@@ -1,0 +1,204 @@
+// Checks for Theme Engine, VS Code/OpenVSX theme JSON import, when-clause keybindings,
+// and 5-locale i18n (page/customize.coax; GitHub #13887).
+//   coax/bin/coax test apps/openagents-desktop/page/checks/customize-checks.coax --library
+
+#load "../parts.coax";
+
+cp_cust_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin_for(s), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], w, h);
+  return uiframe_end(f[..], s[0].surface[..]);
+}
+
+cp_cust_test_row :: (s: [] CoderPage, id: string) -> El {
+  i := surface_find(s[0].surface[..], id);
+  if i < 0 { return El.{}; }
+  return surface_rows(s[0].surface[..]).rows[i];
+}
+
+#test "customize: theme engine switches dark/light/system, built-in skins, and contrast live" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+
+  // Default: Dark + Coder Noir + monochrome.
+  #assert coder_page_cust_theme_mode(s) == CP_THEME_MODE_DARK;
+  #assert coder_page_cust_theme_skin(s) == CP_SKIN_NOIR;
+  #assert !coder_page_cust_theme_contrast(s);
+  #assert cp_cust_is_monochrome(s);
+  noir_th := cp_cust_theme(s);
+  #assert abs(noir_th.shell.r - hex(NOIR_BACKGROUND, 1).r) < 0.001f32;
+
+  // Light mode -> Daylight skin (bright ground, dark text, non-monochrome).
+  coder_page_cust_theme_set(s, CP_THEME_MODE_LIGHT, CP_SKIN_NOIR, false);
+  light_th := cp_cust_theme(s);
+  #assert light_th.shell.r > 0.9f32 && light_th.text.r < 0.2f32;
+  #assert !cp_cust_is_monochrome(s);
+
+  // System mode tracks OS appearance live without restart.
+  coder_page_cust_theme_set(s, CP_THEME_MODE_SYSTEM, CP_SKIN_OCEAN, false);
+  coder_page_cust_system_dark_set(s, false);
+  #assert cp_cust_theme(s).shell.r > 0.9f32;   // Light -> Daylight
+  coder_page_cust_system_dark_set(s, true);
+  ocean_th := cp_cust_theme(s);
+  #assert ocean_th.shell.b > ocean_th.shell.r && ocean_th.accent.b > 0.8f32;   // Dark -> Ocean
+
+  // Built-in skins: Grove (green accent) and Ember (amber accent).
+  coder_page_cust_theme_set(s, CP_THEME_MODE_DARK, CP_SKIN_GROVE, false);
+  grove_th := cp_cust_theme(s);
+  #assert grove_th.accent.g > grove_th.accent.r && grove_th.accent.g > grove_th.accent.b;
+  coder_page_cust_theme_set(s, CP_THEME_MODE_DARK, CP_SKIN_EMBER, false);
+  ember_th := cp_cust_theme(s);
+  #assert ember_th.accent.r > ember_th.accent.b && ember_th.accent.g > ember_th.accent.b;
+
+  // Contrast boost strengthens text and border ink.
+  base_border := ember_th.border.r;
+  coder_page_cust_theme_set(s, CP_THEME_MODE_DARK, CP_SKIN_EMBER, true);
+  hc_th := cp_cust_theme(s);
+  #assert coder_page_cust_theme_contrast(s);
+  #assert hc_th.text.r == 1.0f32 && hc_th.border.r > base_border;
+}
+
+#test "customize: VS Code / OpenVSX theme JSON import maps tokens cleanly and reverts on clear" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+
+  // Reject empty or malformed JSON.
+  #assert !coder_page_cust_import_vscode_theme(s, "");
+  #assert !coder_page_cust_import_vscode_theme(s, "not json");
+  #assert !coder_page_cust_import_vscode_theme(s, "{\"name\":\"Empty\",\"colors\":{}}");
+  #assert !s[0].cust[0].theme[0].has_vscode;
+
+  // Valid VS Code JSONC dark theme with comments and 6- and 8-digit hex colors.
+  vs_json := "{\n  // Dracula-inspired test theme\n  \"name\": \"Midnight Pulse\",\n  \"type\": \"dark\",\n  \"colors\": {\n    \"editor.background\": \"#1a1b26\",\n    \"editor.foreground\": \"#c0caf5\",\n    \"sideBar.background\": \"#16161e\",\n    \"panel.border\": \"#292e42\",\n    \"focusBorder\": \"#7aa2f7ff\",\n    \"statusBar.background\": \"#1f2335\"\n  }\n}";
+  #assert coder_page_cust_import_vscode_theme(s, vs_json);
+  #assert s[0].cust[0].theme[0].has_vscode;
+  #assert !cp_cust_is_monochrome(s);
+  #assert cp_cust_str(s[0].cust[0].theme[0].vscode_name[..], s[0].cust[0].theme[0].vscode_name_n) == "Midnight Pulse";
+
+  th := cp_cust_theme(s);
+  #assert abs(th.shell.r - hex(0x1a1b26, 1).r) < 0.002f32;
+  #assert abs(th.shell.b - hex(0x1a1b26, 1).b) < 0.002f32;
+  #assert abs(th.text.r - hex(0xc0caf5, 1).r) < 0.002f32;
+  #assert abs(th.sidebar.r - hex(0x16161e, 1).r) < 0.002f32;
+  #assert abs(th.border.r - hex(0x292e42, 1).r) < 0.002f32;
+  #assert abs(th.accent.b - hex(0x7aa2f7, 1).b) < 0.002f32;
+  #assert abs(th.base.r - hex(0x1f2335, 1).r) < 0.002f32;
+
+  // Light VS Code theme with 3-digit hex and button.background fallback for accent.
+  light_json := "{\"name\":\"Solar Paper\",\"colors\":{\"editor.background\":\"#fff\",\"editor.foreground\":\"#222\",\"button.background\":\"#005cc5\"}}";
+  #assert coder_page_cust_import_vscode_theme(s, light_json);
+  #assert s[0].cust[0].theme[0].vscode_is_light;
+  lth := cp_cust_theme(s);
+  #assert lth.shell.r > 0.99f32 && lth.accent.b > 0.7f32;
+
+  // Clearing reverts to built-in Coder Noir.
+  coder_page_cust_clear_vscode_theme(s);
+  #assert !s[0].cust[0].theme[0].has_vscode;
+  #assert cp_cust_is_monochrome(s);
+}
+
+#test "customize: when-clause boolean expression evaluator handles predicates, !, &&, ||, and parens" {
+  #assert cp_when_eval("", 0);
+  #assert cp_when_eval("editorFocus", CP_CTX_EDITOR);
+  #assert !cp_when_eval("editorFocus", CP_CTX_TERMINAL);
+  #assert cp_when_eval("!settingsFocus", CP_CTX_EDITOR);
+  #assert !cp_when_eval("!settingsFocus", CP_CTX_SETTINGS);
+  #assert cp_when_eval("editorFocus && !settingsFocus", CP_CTX_EDITOR);
+  #assert !cp_when_eval("editorFocus && !settingsFocus", CP_CTX_EDITOR | CP_CTX_SETTINGS);
+  #assert cp_when_eval("terminalFocus || filePaneFocus", CP_CTX_FILEPANE);
+  #assert !cp_when_eval("terminalFocus || filePaneFocus", CP_CTX_EDITOR);
+  // Precedence: && binds tighter than ||
+  #assert cp_when_eval("settingsFocus || editorFocus && terminalFocus", CP_CTX_SETTINGS);
+  #assert !cp_when_eval("(settingsFocus || editorFocus) && terminalFocus", CP_CTX_SETTINGS);
+  #assert cp_when_eval("(settingsFocus || editorFocus) && terminalFocus", CP_CTX_EDITOR | CP_CTX_TERMINAL);
+  #assert cp_when_eval("!!filePaneFocus", CP_CTX_FILEPANE);
+  #assert !cp_when_eval("unknownPredicate", CP_CTX_EDITOR | CP_CTX_TERMINAL | CP_CTX_FILEPANE | CP_CTX_SETTINGS);
+}
+
+#test "customize: keymap conflict detection, context-scoped matching, rebind, and reset" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  km := s[0].cust[0].keymap[..];
+
+  // Defaults have zero conflicts (even though Cmd+F is bound to !settingsFocus and settingsFocus,
+  // and Escape is bound to settingsFocus and editorFocus && !settingsFocus — mutually exclusive!).
+  #assert km[0].nbindings >= 10;
+  for i: 0..<km[0].nbindings {
+    #assert cp_keymap_conflict(km, i) == -1;
+  }
+
+  // Context-scoped matching dispatches Cmd+F to the right action.
+  id_buf: [64] u8;
+  n1 := coder_page_cust_kb_match(s, "Cmd+F", CP_CTX_EDITOR, id_buf[..]);
+  #assert cast(string) id_buf[0..<n1] == "find_in_thread";
+  n2 := coder_page_cust_kb_match(s, "Cmd+F", CP_CTX_SETTINGS, id_buf[..]);
+  #assert cast(string) id_buf[0..<n2] == "search_settings";
+
+  // Rebinding toggle_sidebar to Cmd+N (both !settingsFocus) triggers a conflict with new_chat!
+  sb_idx := cp_keymap_find_id(km, "toggle_sidebar");
+  nc_idx := cp_keymap_find_id(km, "new_chat");
+  #assert sb_idx >= 0 && nc_idx >= 0;
+  #assert coder_page_cust_kb_rebind(s, sb_idx, "Cmd+N", "", false);
+  #assert coder_page_cust_kb_conflict(s, sb_idx) == nc_idx;
+  #assert coder_page_cust_kb_conflict(s, nc_idx) == sb_idx;
+
+  // Narrowing toggle_sidebar's when-clause to settingsFocus resolves the conflict!
+  #assert coder_page_cust_kb_rebind(s, sb_idx, "Cmd+N", "settingsFocus", true);
+  #assert coder_page_cust_kb_conflict(s, sb_idx) == -1;
+
+  // Reset all restores defaults cleanly.
+  coder_page_cust_kb_reset_all(s);
+  cbuf: [64] u8;
+  cn := coder_page_cust_kb_chord(s, sb_idx, cbuf[..]);
+  #assert cast(string) cbuf[0..<cn] == "Cmd+B";
+  #assert !km[0].bindings[sb_idx].overridden;
+}
+
+#test "customize: i18n locale translation, English fallback, and live Settings Appearance/Keybindings UI" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+
+  #assert cp_locale_from_code("en") == CP_LOCALE_EN;
+  #assert cp_locale_from_code("es") == CP_LOCALE_ES;
+  #assert cp_locale_from_code("fr") == CP_LOCALE_FR;
+  #assert cp_locale_from_code("de") == CP_LOCALE_DE;
+  #assert cp_locale_from_code("ja") == CP_LOCALE_JA;
+  #assert cp_locale_from_code("zz") == CP_LOCALE_EN;
+
+  #assert cp_tr(CP_LOCALE_EN, "new_chat") == "New chat";
+  #assert cp_tr(CP_LOCALE_ES, "new_chat") == "Nuevo chat";
+  #assert cp_tr(CP_LOCALE_FR, "appearance") == "Apparence";
+  #assert cp_tr(CP_LOCALE_DE, "keybindings") == "Tastenkürzel";
+  #assert cp_tr(CP_LOCALE_JA, "send") == "送信";
+  #assert cp_tr(99, "stop") == "Stop";                  // out-of-range locale falls back to English
+  #assert cp_tr(CP_LOCALE_FR, "unknown_key") == "unknown_key";
+
+  // Settings -> Appearance renders and dispatches asks.
+  coder_page_settings_open(s, CP_PG_APPEARANCE, "");
+  #assert cp_cust_test_frame(s, 1200, 1200);
+  #assert cp_cust_test_row(s, "set.cust.mode.0").action == CP_SET_ACT;
+  #assert cp_cust_test_row(s, "set.cust.contrast.1").action == CP_SET_ACT;
+  #assert cp_cust_test_row(s, "set.cust.skin.2.a").action == CP_SET_ACT;
+  #assert cp_cust_test_row(s, "set.cust.vscode.a").action == CP_SET_ACT;
+  #assert cp_cust_test_row(s, "set.cust.locale.1.a").action == CP_SET_ACT;
+
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cust.mode.2") && coder_page_action(s) == CP_ASK_CUSTOM_THEME;
+  #assert coder_page_cust_theme_mode(s) == CP_THEME_MODE_LIGHT;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cust.vscode.a") && coder_page_action(s) == CP_ASK_CUSTOM_IMPORT_THEME;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cust.locale.1.a") && coder_page_action(s) == CP_ASK_CUSTOM_LOCALE;
+  #assert coder_page_cust_locale(s) == CP_LOCALE_ES;
+
+  // Switching locale updates rendered UI labels (e.g. Back to chats -> Volver a chats).
+  #assert cp_cust_test_frame(s, 1200, 1200);
+  back := cp_cust_test_row(s, "set.back");
+  #assert cast(string) back.label[0..<back.label_n] == "Volver a chats";
+
+  // Settings -> Keybindings renders and dispatches rebind & reset asks.
+  coder_page_settings_open(s, CP_PG_KEYBINDINGS, "");
+  #assert cp_cust_test_frame(s, 1200, 1200);
+  #assert cp_cust_test_row(s, "set.cust.kb.reset.a").action == CP_SET_ACT;
+  #assert cp_cust_test_row(s, "set.cust.kb.0.a").action == CP_SET_ACT;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cust.kb.0.a") && coder_page_action(s) == CP_ASK_CUSTOM_REBIND && coder_page_cust_kb_target(s) == 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cust.kb.reset.a") && coder_page_action(s) == CP_ASK_CUSTOM_RESET_KEYS;
+}

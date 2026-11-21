@@ -1636,3 +1636,74 @@ int cd_preview_last_snapshot(void *page, char *out, int cap) {
   CoderHost *c = page; if (!c || !out || cap < 2) return 0;
   return cd_text_out((int)coder_page_preview_last_snapshot(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }
+// Theme engine, customizable when-clause keybindings, and i18n locale (page/customize.coax; #13887).
+void cd_cust_theme_set(void *page, int mode, int skin, int high_contrast) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_cust_theme_set(cd_state(c), mode, skin, high_contrast != 0);
+  cd_woke(c);
+}
+void cd_cust_system_dark_set(void *page, int is_dark) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_cust_system_dark_set(cd_state(c), is_dark != 0);
+  cd_woke(c);
+}
+int cd_cust_theme_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_cust_theme_mode(cd_state(c)) : 1; }
+int cd_cust_theme_skin(void *page) { CoderHost *c = page; return c ? (int)coder_page_cust_theme_skin(cd_state(c)) : 0; }
+int cd_cust_theme_contrast(void *page) { CoderHost *c = page; return c && coder_page_cust_theme_contrast(cd_state(c)) ? 1 : 0; }
+int cd_cust_import_vscode_theme(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_cust_import_vscode_theme(cd_state(c), cd_string(json)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+void cd_cust_clear_vscode_theme(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_cust_clear_vscode_theme(cd_state(c));
+  cd_woke(c);
+}
+void cd_cust_locale_set(void *page, int locale) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_cust_locale_set(cd_state(c), locale);
+  cd_woke(c);
+}
+int cd_cust_locale(void *page) { CoderHost *c = page; return c ? (int)coder_page_cust_locale(cd_state(c)) : 0; }
+int cd_cust_kb_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_cust_kb_count(cd_state(c)) : 0; }
+int cd_cust_kb_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_cust_kb_target(cd_state(c)) : -1; }
+int cd_cust_kb_id(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_cust_kb_id(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_cust_kb_label(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_cust_kb_label(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_cust_kb_chord(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_cust_kb_chord(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_cust_kb_when(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_cust_kb_when(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_cust_kb_rebind(void *page, int idx, const char *chord, const char *when_expr, int update_when) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_cust_kb_rebind(cd_state(c), idx, cd_string(chord), cd_string(when_expr), update_when != 0) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_cust_kb_rebind_id(void *page, const char *id, const char *chord, const char *when_expr, int update_when) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_cust_kb_rebind_id(cd_state(c), cd_string(id), cd_string(chord), cd_string(when_expr), update_when != 0) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+void cd_cust_kb_reset_all(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_cust_kb_reset_all(cd_state(c));
+  cd_woke(c);
+}
+int cd_cust_kb_conflict(void *page, int idx) { CoderHost *c = page; return c ? (int)coder_page_cust_kb_conflict(cd_state(c), idx) : -1; }
+int cd_cust_kb_match(void *page, const char *chord, int ctx, char *out_id, int cap) {
+  CoderHost *c = page; if (!c || !out_id || cap < 2) return 0;
+  return cd_text_out((int)coder_page_cust_kb_match(cd_state(c), cd_string(chord), ctx, (coax_v_u8){(uint8_t *)out_id, cap - 1}), out_id, cap);
+}

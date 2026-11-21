@@ -468,7 +468,7 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
-    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
+    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, cp_tr(s[0].cust[0].locale.active, "new_chat"), APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
@@ -586,7 +586,8 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
   cp_voice_mic_button(s, f, sx - mic_gap - mic_side, sy + (send - mic_side) / 2, mic_side);
   can_send := running || (!off && (text.count > 0 || cp_cargo_n(s) > 0));
-  send_label := ifx running then "Stop" else "Send";
+  loc := s[0].cust[0].locale.active;
+  send_label := ifx running then cp_tr(loc, "stop") else cp_tr(loc, "send");
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
   send_prs := can_send && uiframe_pressed(f, "coder.composer.send");

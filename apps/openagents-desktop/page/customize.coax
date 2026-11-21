@@ -1,0 +1,1126 @@
+// Coder Desktop page (../page.coax): Theme Engine (System/Dark/Light + 5 built-in skins +
+// high-contrast boost + VS Code / OpenVSX theme JSON import), Customizable when-clause
+// Keybindings with exact context-overlap conflict detection, and 5-locale i18n catalog
+// (GitHub #13887).
+
+// Host asks (CP_ASK_* in state.coax; 120..129 reserved for customize.coax).
+CP_ASK_CUSTOM_THEME :: 120;         // theme mode, built-in skin, or high-contrast boost changed
+CP_ASK_CUSTOM_IMPORT_THEME :: 121;  // open file picker to import a VS Code / OpenVSX .json theme
+CP_ASK_CUSTOM_CLEAR_THEME :: 122;   // clear imported VS Code theme and revert to built-in skin
+CP_ASK_CUSTOM_REBIND :: 123;        // open rebind dialog for keybinding at cust.kb_target
+CP_ASK_CUSTOM_RESET_KEYS :: 124;    // reset all keybindings to defaults
+CP_ASK_CUSTOM_LOCALE :: 125;        // UI language / locale changed
+
+// Row action IDs reserved in 310..319 (no collisions with sibling features).
+CP_CUST_ACTION_BASE :: 310;
+
+// Theme modes.
+CP_THEME_MODE_SYSTEM :: 0;
+CP_THEME_MODE_DARK :: 1;
+CP_THEME_MODE_LIGHT :: 2;
+
+// Built-in skins.
+CP_SKIN_NOIR :: 0;
+CP_SKIN_DAYLIGHT :: 1;
+CP_SKIN_GROVE :: 2;
+CP_SKIN_OCEAN :: 3;
+CP_SKIN_EMBER :: 4;
+CP_SKIN_COUNT :: 5;
+
+CP_SKIN_NAMES :: [CP_SKIN_COUNT] string.["Coder Noir", "Daylight", "Grove", "Ocean", "Ember"];
+CP_SKIN_DESCS :: [CP_SKIN_COUNT] string.[
+  "Monochrome dark — OpenAgents' signature low-glare studio skin.",
+  "Crisp light — high-legibility paper ground with ink contrast.",
+  "Deep forest dark — pine slate surfaces with emerald accents.",
+  "Deep slate-blue dark — midnight harbour ground with sky accents.",
+  "Warm charcoal dark — obsidian hearth surfaces with amber accents."
+];
+
+// Keybinding context bitmask flags for `when`-clause evaluation.
+CP_CTX_EDITOR :: 1;
+CP_CTX_TERMINAL :: 2;
+CP_CTX_FILEPANE :: 4;
+CP_CTX_SETTINGS :: 8;
+
+// Keybinding capacities.
+CP_KB_MAX :: 32;
+CP_KB_ID :: 40;
+CP_KB_LABEL :: 64;
+CP_KB_CHORD :: 40;
+CP_KB_WHEN :: 96;
+
+// Locales (i18n).
+CP_LOCALE_EN :: 0;
+CP_LOCALE_ES :: 1;
+CP_LOCALE_FR :: 2;
+CP_LOCALE_DE :: 3;
+CP_LOCALE_JA :: 4;
+CP_LOCALE_COUNT :: 5;
+
+CP_LOCALE_CODES :: [CP_LOCALE_COUNT] string.["en", "es", "fr", "de", "ja"];
+CP_LOCALE_NAMES :: [CP_LOCALE_COUNT] string.["English", "Español", "Français", "Deutsch", "日本語"];
+
+// ---------------------------------------------------------------- data structs
+
+CpThemeState :: struct {
+  mode: int;                  // CP_THEME_MODE_SYSTEM / _DARK / _LIGHT
+  skin: int;                  // CP_SKIN_NOIR .. CP_SKIN_EMBER
+  system_dark: bool;          // OS effective appearance (true = dark, updated live by host)
+  high_contrast: bool;        // contrast boost toggle
+  // Imported VS Code / OpenVSX theme overrides.
+  has_vscode: bool;
+  vscode_is_light: bool;
+  vscode_name: [64] u8; vscode_name_n: int;
+  vs_bg: int; vs_has_bg: bool;               // editor.background
+  vs_fg: int; vs_has_fg: bool;               // editor.foreground
+  vs_sidebar: int; vs_has_sidebar: bool;     // sideBar.background
+  vs_border: int; vs_has_border: bool;       // panel.border
+  vs_accent: int; vs_has_accent: bool;       // focusBorder / button.background
+  vs_status: int; vs_has_status: bool;       // statusBar.background
+}
+
+CpKeyBinding :: struct {
+  id: [CP_KB_ID] u8; id_n: int;
+  label: [CP_KB_LABEL] u8; label_n: int;
+  default_chord: [CP_KB_CHORD] u8; default_chord_n: int;
+  chord: [CP_KB_CHORD] u8; chord_n: int;
+  default_when: [CP_KB_WHEN] u8; default_when_n: int;
+  when_expr: [CP_KB_WHEN] u8; when_expr_n: int;
+  overridden: bool;
+}
+
+CpKeymap :: struct {
+  bindings: [CP_KB_MAX] CpKeyBinding;
+  nbindings: int;
+}
+
+CpLocale :: struct {
+  active: int;                // CP_LOCALE_EN .. CP_LOCALE_JA
+}
+
+CpCustomizeState :: struct {
+  theme: [1] CpThemeState;
+  keymap: [1] CpKeymap;
+  locale: CpLocale;
+  kb_target: int;             // index of keybinding requested for rebind (-1: none)
+}
+
+// ---------------------------------------------------------------- string & hex helpers
+
+cp_cust_str :: (buf: [] const u8, n: int) -> string {
+  k := n;
+  if k < 0 { k = 0; }
+  if k > buf.count { k = buf.count; }
+  return cast(string) buf[0..<k];
+}
+
+cp_hex_digit :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return 10 + cast(int) (c - 'a'); }
+  if c >= 'A' && c <= 'F' { return 10 + cast(int) (c - 'A'); }
+  return -1;
+}
+
+// Parses a CSS/VS Code hex color (#RGB, #RGBA, #RRGGBB, #RRGGBBAA) into 0xRRGGBB; -1 if invalid.
+cp_parse_hex_rgb :: (raw: string) -> int {
+  s := cp_trim(raw);
+  if s.count == 0 { return -1; }
+  if s[0] == '#' { s = cast(string) s[1..<s.count]; }
+  if s.count == 3 || s.count == 4 {
+    r := cp_hex_digit(s[0]); g := cp_hex_digit(s[1]); b := cp_hex_digit(s[2]);
+    if r < 0 || g < 0 || b < 0 { return -1; }
+    return ((r * 17) << 16) | ((g * 17) << 8) | (b * 17);
+  }
+  if s.count == 6 || s.count == 8 {
+    r1 := cp_hex_digit(s[0]); r2 := cp_hex_digit(s[1]);
+    g1 := cp_hex_digit(s[2]); g2 := cp_hex_digit(s[3]);
+    b1 := cp_hex_digit(s[4]); b2 := cp_hex_digit(s[5]);
+    if r1 < 0 || r2 < 0 || g1 < 0 || g2 < 0 || b1 < 0 || b2 < 0 { return -1; }
+    return (((r1 << 4) | r2) << 16) | (((g1 << 4) | g2) << 8) | ((b1 << 4) | b2);
+  }
+  return -1;
+}
+
+cp_rgb_is_light :: (rgb: int) -> bool {
+  r := cast(f32) ((rgb >> 16) & 0xff) / 255.0f32;
+  g := cast(f32) ((rgb >> 8) & 0xff) / 255.0f32;
+  b := cast(f32) (rgb & 0xff) / 255.0f32;
+  luma := 0.2126f32 * r + 0.7152f32 * g + 0.0722f32 * b;
+  return luma > 0.52f32;
+}
+
+cp_mix_rgba :: (a: Rgba, b: Rgba, t: f32) -> Rgba {
+  return Rgba.{
+    r = a.r + (b.r - a.r) * t,
+    g = a.g + (b.g - a.g) * t,
+    b = a.b + (b.b - a.b) * t,
+    a = a.a + (b.a - a.a) * t
+  };
+}
+
+// ---------------------------------------------------------------- theme engine
+
+// Builds a full Theme from core palette tokens (dark or light).
+cp_theme_build :: (is_light: bool, bg_rgb: int, sidebar_rgb: int, raised_rgb: int, card_rgb: int, input_rgb: int, text_rgb: int, muted_rgb: int, faint_rgb: int, border_rgb: int, border_strong_rgb: int, accent_rgb: int, on_accent_rgb: int) -> Theme {
+  bg := hex(bg_rgb, 1);
+  sidebar := hex(sidebar_rgb, 1);
+  raised := hex(raised_rgb, 1);
+  card := hex(card_rgb, 1);
+  input := hex(input_rgb, 1);
+  text := hex(text_rgb, 1);
+  muted := hex(muted_rgb, 1);
+  faint := hex(faint_rgb, 1);
+  border := hex(border_rgb, 1);
+  border_strong := hex(border_strong_rgb, 1);
+  accent := hex(accent_rgb, 1);
+  on_accent := hex(on_accent_rgb, 1);
+  wash := opacity(accent, ifx is_light then 0.16f32 else 0.22f32);
+  hover_a := ifx is_light then 0.06f32 else 0.08f32;
+  acc_hover := ifx is_light then noir_mix(accent, 0, 0.16f32) else noir_mix(accent, 1, 0.24f32);
+  acc_active := ifx is_light then noir_mix(accent, 0, 0.28f32) else noir_mix(accent, 0, 0.18f32);
+  danger := hex(ifx is_light then 0xd93025 else NOIR_DANGER, 1);
+  warning := hex(ifx is_light then 0xb45309 else NOIR_WARNING, 1);
+  success := hex(ifx is_light then 0x15803d else NOIR_SUCCESS, 1);
+  info := hex(ifx is_light then 0x1d4ed8 else NOIR_BLUE, 1);
+  cyan := hex(ifx is_light then 0x0e7490 else NOIR_CYAN, 1);
+  magenta := hex(ifx is_light then 0x9333ea else NOIR_MAGENTA, 1);
+  sh_sm := ifx is_light then rgba(0, 0, 0, 0.10f32) else rgba(0, 0, 0, 0x59 / 255.0f32);
+  sh_md := ifx is_light then rgba(0, 0, 0, 0.14f32) else rgba(0, 0, 0, 0x66 / 255.0f32);
+  sh_lg := ifx is_light then rgba(0, 0, 0, 0.20f32) else rgba(0, 0, 0, 0x80 / 255.0f32);
+  return Theme.{
+    shell = bg,
+    surface = input,
+    border = border,
+    text = text,
+    muted = muted,
+    faint = faint,
+    disabled = opacity(text, ifx is_light then 0.36f32 else 0.28f32),
+    accent = accent,
+    accent_hover = acc_hover,
+    accent_active = acc_active,
+    selection = opacity(accent, ifx is_light then 0.22f32 else 0.35f32),
+    focus_ring = opacity(accent, 0.6f32),
+    bg = on_accent,
+    claude = hex(0xd97757, 1),
+    line = border,
+    line_subtle = cp_mix_rgba(border, bg, 0.5f32),
+    line_strong = border_strong,
+    hover = opacity(text, hover_a),
+    pressed = wash,
+    selected = wash,
+    raised = raised,
+    base = card,
+    sidebar = sidebar,
+    row_selected = wash,
+    primary = accent,
+    primary_hover = acc_hover,
+    primary_active = acc_active,
+    secondary = raised,
+    secondary_hover = input,
+    menu = raised,
+    menu_selected = opacity(text, hover_a),
+    popover = raised,
+    composer_tint = input,
+    shadow_sm = sh_sm,
+    shadow_md = sh_md,
+    shadow_lg = sh_lg,
+    composer_shadow = sh_md,
+    menu_shadow = sh_sm,
+    dialog_shadow = sh_lg,
+    danger = danger,
+    warning = warning,
+    success = success,
+    info = info,
+    connecting = info,
+    input = cyan,
+    approval = warning,
+    plan = magenta,
+    done = success,
+    failed = danger,
+    limited = warning
+  };
+}
+
+// The 5 built-in themes.
+cp_theme_daylight :: () -> Theme {
+  return cp_theme_build(true, 0xfafaf9, 0xf2f2f0, 0xffffff, 0xf5f5f3, 0xffffff, 0x18181b, 0x52525b, 0x71717a, 0xd4d4d8, 0xa1a1aa, 0x18181b, 0xfafaf9);
+}
+
+cp_theme_grove :: () -> Theme {
+  return cp_theme_build(false, 0x0b120e, 0x070c09, 0x15221a, 0x0f1913, 0x19291f, 0xe8f3ec, 0x8da696, 0x627c6c, 0x24382c, 0x355240, 0x4ade80, 0x07120a);
+}
+
+cp_theme_ocean :: () -> Theme {
+  return cp_theme_build(false, 0x0b111b, 0x070c14, 0x142033, 0x0f1826, 0x18263d, 0xe6effa, 0x8ba1be, 0x5f7490, 0x22334d, 0x334c70, 0x38bdf8, 0x06131f);
+}
+
+cp_theme_ember :: () -> Theme {
+  return cp_theme_build(false, 0x130e0b, 0x0c0806, 0x241a14, 0x1a130e, 0x2b2018, 0xf5ece6, 0xa89284, 0x7a665a, 0x3d2c22, 0x573f30, 0xf59e0b, 0x140c04);
+}
+
+cp_theme_builtin :: (skin_id: int) -> Theme {
+  if skin_id == CP_SKIN_DAYLIGHT { return cp_theme_daylight(); }
+  if skin_id == CP_SKIN_GROVE { return cp_theme_grove(); }
+  if skin_id == CP_SKIN_OCEAN { return cp_theme_ocean(); }
+  if skin_id == CP_SKIN_EMBER { return cp_theme_ember(); }
+  return coder_noir();
+}
+
+// Applies high-contrast boost on top of a Theme (light or dark).
+cp_theme_apply_contrast :: (th: Theme, is_light: bool) -> Theme {
+  out := th;
+  if is_light {
+    out.text = hex(0x000000, 1);
+    out.muted = noir_mix(out.muted, 0, 0.35f32);
+    out.faint = noir_mix(out.faint, 0, 0.35f32);
+    out.border = noir_mix(out.border, 0, 0.45f32);
+    out.line = out.border;
+    out.line_strong = noir_mix(out.line_strong, 0, 0.45f32);
+  } else {
+    out.text = hex(0xffffff, 1);
+    out.muted = noir_mix(out.muted, 1, 0.30f32);
+    out.faint = noir_mix(out.faint, 1, 0.30f32);
+    out.border = noir_mix(out.border, 1, 0.32f32);
+    out.line = out.border;
+    out.line_strong = noir_mix(out.line_strong, 1, 0.38f32);
+  }
+  return out;
+}
+
+// Resolves which built-in skin index is active given mode, selected skin, and OS appearance.
+cp_theme_effective_skin_id :: (t: CpThemeState) -> int {
+  if t.mode == CP_THEME_MODE_LIGHT { return CP_SKIN_DAYLIGHT; }
+  if t.mode == CP_THEME_MODE_SYSTEM && !t.system_dark { return CP_SKIN_DAYLIGHT; }
+  if t.skin >= CP_SKIN_NOIR && t.skin < CP_SKIN_COUNT && t.skin != CP_SKIN_DAYLIGHT { return t.skin; }
+  return CP_SKIN_NOIR;
+}
+
+cp_theme_is_light_now :: (t: CpThemeState) -> bool {
+  if t.has_vscode { return t.vscode_is_light; }
+  return cp_theme_effective_skin_id(t) == CP_SKIN_DAYLIGHT;
+}
+
+// Builds a Theme from imported VS Code theme tokens.
+cp_theme_from_vscode :: (t: CpThemeState) -> Theme {
+  is_light := t.vscode_is_light;
+  bg_rgb := ifx t.vs_has_bg then t.vs_bg else (ifx is_light then 0xfafaf9 else NOIR_BACKGROUND);
+  fg_rgb := ifx t.vs_has_fg then t.vs_fg else (ifx is_light then 0x18181b else NOIR_TEXT);
+  side_rgb := ifx t.vs_has_sidebar then t.vs_sidebar else bg_rgb;
+  border_rgb := ifx t.vs_has_border then t.vs_border else (ifx is_light then 0xd4d4d8 else NOIR_BORDER);
+  accent_rgb := ifx t.vs_has_accent then t.vs_accent else (ifx is_light then 0x2563eb else 0x60a5fa);
+  on_acc := ifx cp_rgb_is_light(accent_rgb) then 0x0a0a0a else 0xfafafa;
+  bg_c := hex(bg_rgb, 1);
+  fg_c := hex(fg_rgb, 1);
+  // Derive raised, card, input, muted, faint smoothly from bg & fg (or statusBar.background for card).
+  raised_c := ifx is_light then noir_mix(bg_c, 1, 0.40f32) else noir_mix(bg_c, 1, 0.08f32);
+  input_c := ifx is_light then noir_mix(bg_c, 1, 0.65f32) else noir_mix(bg_c, 1, 0.11f32);
+  card_c := ifx t.vs_has_status then hex(t.vs_status, 1) else (ifx is_light then noir_mix(bg_c, 0, 0.03f32) else noir_mix(bg_c, 1, 0.04f32));
+  muted_c := cp_mix_rgba(fg_c, bg_c, 0.38f32);
+  faint_c := cp_mix_rgba(fg_c, bg_c, 0.56f32);
+  b_c := hex(border_rgb, 1);
+  b_strong := ifx is_light then noir_mix(b_c, 0, 0.22f32) else noir_mix(b_c, 1, 0.18f32);
+  th := cp_theme_build(is_light, bg_rgb, side_rgb, bg_rgb, bg_rgb, bg_rgb, fg_rgb, fg_rgb, fg_rgb, border_rgb, border_rgb, accent_rgb, on_acc);
+  th.raised = raised_c;
+  th.secondary = raised_c;
+  th.menu = raised_c;
+  th.popover = raised_c;
+  th.surface = input_c;
+  th.composer_tint = input_c;
+  th.secondary_hover = input_c;
+  th.base = card_c;
+  th.muted = muted_c;
+  th.faint = faint_c;
+  th.line_strong = b_strong;
+  return th;
+}
+
+// Resolves the live Theme for CoderPage.
+cp_cust_theme :: (s: [] CoderPage) -> Theme {
+  if s.count < 1 { return coder_noir(); }
+  t := s[0].cust[0].theme[0];
+  th := ifx t.has_vscode then cp_theme_from_vscode(t) else cp_theme_builtin(cp_theme_effective_skin_id(t));
+  if t.high_contrast { th = cp_theme_apply_contrast(th, cp_theme_is_light_now(t)); }
+  return th;
+}
+
+// True only when Coder Noir is active with no imported VS Code theme (keeps legacy monochrome pass).
+cp_cust_is_monochrome :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return true; }
+  t := s[0].cust[0].theme[0];
+  if t.has_vscode { return false; }
+  return cp_theme_effective_skin_id(t) == CP_SKIN_NOIR;
+}
+
+// ---------------------------------------------------------------- VS Code / OpenVSX JSON theme importer
+
+// Skips JSON whitespace and // or /* */ JSONC comments (common in VS Code themes).
+cp_json_skip_ws :: (src: string, p: int) -> int {
+  i := p;
+  while i < src.count {
+    c := src[i];
+    if c == ' ' || c == '\t' || c == '\n' || c == '\r' { i += 1; continue; }
+    if c == '/' && i + 1 < src.count && src[i + 1] == '/' {
+      i += 2;
+      while i < src.count && src[i] != '\n' { i += 1; }
+      continue;
+    }
+    if c == '/' && i + 1 < src.count && src[i + 1] == '*' {
+      i += 2;
+      while i + 1 < src.count && !(src[i] == '*' && src[i + 1] == '/') { i += 1; }
+      if i + 1 < src.count { i += 2; }
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+// Parses a JSON string literal starting at src[p] == '"'. Writes unescaped bytes into out, sets out_n, returns next index (or -1).
+cp_json_read_str :: (src: string, p: int, out: [] u8, out_n: [] int) -> int {
+  if p >= src.count || src[p] != '"' { return -1; }
+  i := p + 1;
+  n := 0;
+  while i < src.count {
+    c := src[i];
+    if c == '"' { out_n[0] = n; return i + 1; }
+    if c == '\\' && i + 1 < src.count {
+      i += 1;
+      esc := src[i];
+      ch := esc;
+      if esc == 'n' { ch = '\n'; }
+      else if esc == 't' { ch = '\t'; }
+      else if esc == 'r' { ch = '\r'; }
+      if n < out.count { out[n] = ch; n += 1; }
+      i += 1;
+      continue;
+    }
+    if n < out.count { out[n] = c; n += 1; }
+    i += 1;
+  }
+  return -1;
+}
+
+// Skips one JSON value (string, object, array, number, bool, null) starting at p.
+cp_json_skip_val :: (src: string, p: int) -> int {
+  i := cp_json_skip_ws(src, p);
+  if i >= src.count { return i; }
+  c := src[i];
+  if c == '"' {
+    dummy: [4] u8; dn: [1] int;
+    nxt := cp_json_read_str(src, i, dummy[..], dn[..]);
+    return ifx nxt >= 0 then nxt else src.count;
+  }
+  if c == '{' || c == '[' {
+    depth := 1;
+    i += 1;
+    while i < src.count && depth > 0 {
+      i = cp_json_skip_ws(src, i);
+      if i >= src.count { break; }
+      ch := src[i];
+      if ch == '"' {
+        dummy: [4] u8; dn: [1] int;
+        nxt := cp_json_read_str(src, i, dummy[..], dn[..]);
+        i = ifx nxt >= 0 then nxt else src.count;
+      } else if ch == '{' || ch == '[' { depth += 1; i += 1; }
+      else if ch == '}' || ch == ']' { depth -= 1; i += 1; }
+      else { i += 1; }
+    }
+    return i;
+  }
+  while i < src.count && src[i] != ',' && src[i] != '}' && src[i] != ']' && src[i] != '\n' && src[i] != '\r' { i += 1; }
+  return i;
+}
+
+// Imports a VS Code / OpenVSX theme JSON string into CpThemeState.
+// Maps editor.background, editor.foreground, sideBar.background, panel.border,
+// focusBorder / button.background, and statusBar.background onto skin tokens live.
+cp_theme_import_vscode_json :: (t: [] CpThemeState, json: string) -> bool {
+  if t.count < 1 || json.count == 0 { return false; }
+  i := cp_json_skip_ws(json, 0);
+  if i >= json.count || json[i] != '{' { return false; }
+  i += 1;
+  tmp := t[0];
+  tmp.vs_has_bg = false; tmp.vs_has_fg = false; tmp.vs_has_sidebar = false;
+  tmp.vs_has_border = false; tmp.vs_has_accent = false; tmp.vs_has_status = false;
+  tmp.vscode_name_n = 0;
+  has_type := false;
+  type_light := false;
+  imported := 0;
+
+  kbuf: [64] u8; kn: [1] int;
+  vbuf: [96] u8; vn: [1] int;
+
+  while i < json.count {
+    i = cp_json_skip_ws(json, i);
+    if i >= json.count || json[i] == '}' { break; }
+    if json[i] == ',' { i += 1; continue; }
+    nxt := cp_json_read_str(json, i, kbuf[..], kn[..]);
+    if nxt < 0 { break; }
+    key := cast(string) kbuf[0..<kn[0]];
+    i = cp_json_skip_ws(json, nxt);
+    if i >= json.count || json[i] != ':' { break; }
+    i = cp_json_skip_ws(json, i + 1);
+    if i >= json.count { break; }
+
+    if key == "name" && json[i] == '"' {
+      nxt2 := cp_json_read_str(json, i, vbuf[..], vn[..]);
+      if nxt2 < 0 { break; }
+      tmp.vscode_name_n = cp_out(tmp.vscode_name[..], cast(string) vbuf[0..<vn[0]]);
+      i = nxt2;
+    } else if key == "type" && json[i] == '"' {
+      nxt2 := cp_json_read_str(json, i, vbuf[..], vn[..]);
+      if nxt2 < 0 { break; }
+      val := cast(string) vbuf[0..<vn[0]];
+      has_type = true;
+      type_light = cp_eq_ci(val, "light") || cp_eq_ci(val, "hcLight");
+      i = nxt2;
+    } else if key == "colors" && json[i] == '{' {
+      i += 1;
+      ckbuf: [64] u8; ckn: [1] int;
+      cvbuf: [32] u8; cvn: [1] int;
+      while i < json.count {
+        i = cp_json_skip_ws(json, i);
+        if i >= json.count || json[i] == '}' { if i < json.count { i += 1; } break; }
+        if json[i] == ',' { i += 1; continue; }
+        cnxt := cp_json_read_str(json, i, ckbuf[..], ckn[..]);
+        if cnxt < 0 { break; }
+        ckey := cast(string) ckbuf[0..<ckn[0]];
+        i = cp_json_skip_ws(json, cnxt);
+        if i >= json.count || json[i] != ':' { break; }
+        i = cp_json_skip_ws(json, i + 1);
+        if i < json.count && json[i] == '"' {
+          cnxt2 := cp_json_read_str(json, i, cvbuf[..], cvn[..]);
+          if cnxt2 < 0 { break; }
+          rgb := cp_parse_hex_rgb(cast(string) cvbuf[0..<cvn[0]]);
+          if rgb >= 0 {
+            if ckey == "editor.background" { tmp.vs_bg = rgb; tmp.vs_has_bg = true; imported += 1; }
+            else if ckey == "editor.foreground" { tmp.vs_fg = rgb; tmp.vs_has_fg = true; imported += 1; }
+            else if ckey == "sideBar.background" { tmp.vs_sidebar = rgb; tmp.vs_has_sidebar = true; imported += 1; }
+            else if ckey == "panel.border" || (!tmp.vs_has_border && (ckey == "editorGroup.border" || ckey == "sideBar.border")) { tmp.vs_border = rgb; tmp.vs_has_border = true; imported += 1; }
+            else if ckey == "focusBorder" || (!tmp.vs_has_accent && ckey == "button.background") { tmp.vs_accent = rgb; tmp.vs_has_accent = true; imported += 1; }
+            else if ckey == "statusBar.background" { tmp.vs_status = rgb; tmp.vs_has_status = true; imported += 1; }
+          }
+          i = cnxt2;
+        } else {
+          i = cp_json_skip_val(json, i);
+        }
+      }
+    } else {
+      i = cp_json_skip_val(json, i);
+    }
+  }
+
+  if imported == 0 { return false; }
+  tmp.has_vscode = true;
+  if tmp.vscode_name_n == 0 { tmp.vscode_name_n = cp_out(tmp.vscode_name[..], "Imported VS Code Theme"); }
+  if has_type { tmp.vscode_is_light = type_light; }
+  else if tmp.vs_has_bg { tmp.vscode_is_light = cp_rgb_is_light(tmp.vs_bg); }
+  else { tmp.vscode_is_light = false; }
+  t[0] = tmp;
+  return true;
+}
+
+cp_theme_clear_vscode :: (t: [] CpThemeState) {
+  if t.count < 1 { return; }
+  t[0].has_vscode = false;
+  t[0].vscode_name_n = 0;
+  t[0].vs_has_bg = false; t[0].vs_has_fg = false; t[0].vs_has_sidebar = false;
+  t[0].vs_has_border = false; t[0].vs_has_accent = false; t[0].vs_has_status = false;
+}
+
+// ---------------------------------------------------------------- when-clause evaluator & keymap
+
+cp_when_skip_ws :: (expr: string, p: int) -> int {
+  i := p;
+  while i < expr.count && cp_is_space(expr[i]) { i += 1; }
+  return i;
+}
+
+cp_when_is_ident :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
+}
+
+cp_when_parse_atom :: (expr: string, pos: [] int, ctx: int) -> bool {
+  i := cp_when_skip_ws(expr, pos[0]);
+  if i >= expr.count { pos[0] = i; return false; }
+  if expr[i] == '!' {
+    pos[0] = i + 1;
+    return !cp_when_parse_atom(expr, pos, ctx);
+  }
+  if expr[i] == '(' {
+    pos[0] = i + 1;
+    val := cp_when_parse_or(expr, pos, ctx);
+    j := cp_when_skip_ws(expr, pos[0]);
+    if j < expr.count && expr[j] == ')' { j += 1; }
+    pos[0] = j;
+    return val;
+  }
+  start := i;
+  while i < expr.count && cp_when_is_ident(expr[i]) { i += 1; }
+  pos[0] = i;
+  tok := cast(string) expr[start..<i];
+  if cp_eq_ci(tok, "editorFocus") { return (ctx & CP_CTX_EDITOR) != 0; }
+  if cp_eq_ci(tok, "terminalFocus") { return (ctx & CP_CTX_TERMINAL) != 0; }
+  if cp_eq_ci(tok, "filePaneFocus") { return (ctx & CP_CTX_FILEPANE) != 0; }
+  if cp_eq_ci(tok, "settingsFocus") { return (ctx & CP_CTX_SETTINGS) != 0; }
+  if cp_eq_ci(tok, "true") { return true; }
+  if cp_eq_ci(tok, "false") { return false; }
+  return false;
+}
+
+cp_when_parse_and :: (expr: string, pos: [] int, ctx: int) -> bool {
+  lhs := cp_when_parse_atom(expr, pos, ctx);
+  while true {
+    i := cp_when_skip_ws(expr, pos[0]);
+    if i + 1 < expr.count && expr[i] == '&' && expr[i + 1] == '&' {
+      pos[0] = i + 2;
+      rhs := cp_when_parse_atom(expr, pos, ctx);
+      lhs = lhs && rhs;
+    } else {
+      pos[0] = i;
+      break;
+    }
+  }
+  return lhs;
+}
+
+cp_when_parse_or :: (expr: string, pos: [] int, ctx: int) -> bool {
+  lhs := cp_when_parse_and(expr, pos, ctx);
+  while true {
+    i := cp_when_skip_ws(expr, pos[0]);
+    if i + 1 < expr.count && expr[i] == '|' && expr[i + 1] == '|' {
+      pos[0] = i + 2;
+      rhs := cp_when_parse_and(expr, pos, ctx);
+      lhs = lhs || rhs;
+    } else {
+      pos[0] = i;
+      break;
+    }
+  }
+  return lhs;
+}
+
+// Evaluates a VS Code-style `when` clause against a context bitmask (CP_CTX_*).
+// Supports editorFocus, terminalFocus, filePaneFocus, settingsFocus, !, &&, ||, and ().
+// Empty expression evaluates to true (always active).
+cp_when_eval :: (expr: string, ctx: int) -> bool {
+  t := cp_trim(expr);
+  if t.count == 0 { return true; }
+  pos: [1] int;
+  pos[0] = 0;
+  return cp_when_parse_or(t, pos[..], ctx);
+}
+
+cp_kb_add_default :: (km: [] CpKeymap, id: string, label: string, chord: string, when_expr: string) {
+  if km.count < 1 || km[0].nbindings >= CP_KB_MAX { return; }
+  i := km[0].nbindings;
+  b := CpKeyBinding.{};
+  b.id_n = cp_out(b.id[..], id);
+  b.label_n = cp_out(b.label[..], label);
+  b.default_chord_n = cp_out(b.default_chord[..], chord);
+  b.chord_n = cp_out(b.chord[..], chord);
+  b.default_when_n = cp_out(b.default_when[..], when_expr);
+  b.when_expr_n = cp_out(b.when_expr[..], when_expr);
+  b.overridden = false;
+  km[0].bindings[i] = b;
+  km[0].nbindings += 1;
+}
+
+cp_keymap_init :: (km: [] CpKeymap) {
+  if km.count < 1 { return; }
+  km[0] = CpKeymap.{};
+  cp_kb_add_default(km, "new_chat", "New Chat", "Cmd+N", "!settingsFocus");
+  cp_kb_add_default(km, "command_palette", "Command Palette", "Cmd+K", "");
+  cp_kb_add_default(km, "find_in_thread", "Find in Thread", "Cmd+F", "!settingsFocus");
+  cp_kb_add_default(km, "search_settings", "Search Settings", "Cmd+F", "settingsFocus");
+  cp_kb_add_default(km, "open_settings", "Open Settings", "Cmd+,", "");
+  cp_kb_add_default(km, "close_settings", "Close Settings", "Escape", "settingsFocus");
+  cp_kb_add_default(km, "toggle_sidebar", "Toggle Sidebar", "Cmd+B", "!settingsFocus");
+  cp_kb_add_default(km, "toggle_terminal", "Toggle Terminal", "Ctrl+`", "!settingsFocus");
+  cp_kb_add_default(km, "terminal_clear", "Clear Terminal", "Cmd+Shift+K", "terminalFocus");
+  cp_kb_add_default(km, "toggle_file_tree", "Toggle File Explorer", "Cmd+Shift+E", "!settingsFocus");
+  cp_kb_add_default(km, "save_file", "Save File in Editor", "Cmd+S", "filePaneFocus");
+  cp_kb_add_default(km, "focus_composer", "Focus Composer", "Cmd+L", "!settingsFocus");
+  cp_kb_add_default(km, "stop_generation", "Stop Generation", "Escape", "editorFocus && !settingsFocus");
+  cp_kb_add_default(km, "zoom_in", "Zoom In", "Cmd+=", "");
+  cp_kb_add_default(km, "zoom_out", "Zoom Out", "Cmd+-", "");
+  cp_kb_add_default(km, "zoom_reset", "Reset Zoom", "Cmd+0", "");
+}
+
+// Rebinds slot idx to a new chord and optional when_expr (pass keep_when=true to keep existing when).
+cp_keymap_rebind :: (km: [] CpKeymap, idx: int, chord: string, when_expr: string, update_when: bool) -> bool {
+  if km.count < 1 || idx < 0 || idx >= km[0].nbindings { return false; }
+  c := cp_trim(chord);
+  if c.count == 0 { return false; }
+  km[0].bindings[idx].chord_n = cp_out(km[0].bindings[idx].chord[..], c);
+  if update_when {
+    w := cp_trim(when_expr);
+    km[0].bindings[idx].when_expr_n = cp_out(km[0].bindings[idx].when_expr[..], w);
+  }
+  def_c := cp_cust_str(km[0].bindings[idx].default_chord[..], km[0].bindings[idx].default_chord_n);
+  cur_c := cp_cust_str(km[0].bindings[idx].chord[..], km[0].bindings[idx].chord_n);
+  def_w := cp_cust_str(km[0].bindings[idx].default_when[..], km[0].bindings[idx].default_when_n);
+  cur_w := cp_cust_str(km[0].bindings[idx].when_expr[..], km[0].bindings[idx].when_expr_n);
+  km[0].bindings[idx].overridden = !cp_eq_ci(cur_c, def_c) || cur_w != def_w;
+  return true;
+}
+
+cp_keymap_reset_one :: (km: [] CpKeymap, idx: int) {
+  if km.count < 1 || idx < 0 || idx >= km[0].nbindings { return; }
+  def_c := cp_cust_str(km[0].bindings[idx].default_chord[..], km[0].bindings[idx].default_chord_n);
+  def_w := cp_cust_str(km[0].bindings[idx].default_when[..], km[0].bindings[idx].default_when_n);
+  km[0].bindings[idx].chord_n = cp_out(km[0].bindings[idx].chord[..], def_c);
+  km[0].bindings[idx].when_expr_n = cp_out(km[0].bindings[idx].when_expr[..], def_w);
+  km[0].bindings[idx].overridden = false;
+}
+
+cp_keymap_reset_all :: (km: [] CpKeymap) {
+  if km.count < 1 { return; }
+  for i: 0..<km[0].nbindings { cp_keymap_reset_one(km, i); }
+}
+
+// Finds another binding index j != idx that shares the same chord AND has an overlapping `when`
+// clause (checked exhaustively across all 16 combinations of the 4 focus flags). Returns -1 if none.
+cp_keymap_conflict :: (km: [] CpKeymap, idx: int) -> int {
+  if km.count < 1 || idx < 0 || idx >= km[0].nbindings { return -1; }
+  c1 := cp_cust_str(km[0].bindings[idx].chord[..], km[0].bindings[idx].chord_n);
+  w1 := cp_cust_str(km[0].bindings[idx].when_expr[..], km[0].bindings[idx].when_expr_n);
+  if c1.count == 0 { return -1; }
+  for j: 0..<km[0].nbindings {
+    if j == idx { continue; }
+    c2 := cp_cust_str(km[0].bindings[j].chord[..], km[0].bindings[j].chord_n);
+    if !cp_eq_ci(c1, c2) { continue; }
+    w2 := cp_cust_str(km[0].bindings[j].when_expr[..], km[0].bindings[j].when_expr_n);
+    for mask: 0..<16 {
+      if cp_when_eval(w1, mask) && cp_when_eval(w2, mask) { return j; }
+    }
+  }
+  return -1;
+}
+
+// Matches a pressed chord under the current context bitmask; prefers user-overridden bindings.
+cp_keymap_match :: (km: [] CpKeymap, chord: string, ctx: int) -> int {
+  if km.count < 1 || chord.count == 0 { return -1; }
+  best := -1;
+  for i: 0..<km[0].nbindings {
+    c := cp_cust_str(km[0].bindings[i].chord[..], km[0].bindings[i].chord_n);
+    if !cp_eq_ci(c, chord) { continue; }
+    w := cp_cust_str(km[0].bindings[i].when_expr[..], km[0].bindings[i].when_expr_n);
+    if !cp_when_eval(w, ctx) { continue; }
+    if km[0].bindings[i].overridden { return i; }
+    if best < 0 { best = i; }
+  }
+  return best;
+}
+
+cp_keymap_find_id :: (km: [] CpKeymap, id: string) -> int {
+  if km.count < 1 { return -1; }
+  for i: 0..<km[0].nbindings {
+    if cp_cust_str(km[0].bindings[i].id[..], km[0].bindings[i].id_n) == id { return i; }
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------- localization / i18n
+
+cp_locale_clamp :: (loc: int) -> int {
+  if loc < 0 || loc >= CP_LOCALE_COUNT { return CP_LOCALE_EN; }
+  return loc;
+}
+
+cp_locale_code :: (loc: int) -> string {
+  codes := CP_LOCALE_CODES;
+  return codes[cp_locale_clamp(loc)];
+}
+
+cp_locale_from_code :: (code: string) -> int {
+  codes := CP_LOCALE_CODES;
+  for i: 0..<CP_LOCALE_COUNT {
+    if cp_eq_ci(code, codes[i]) { return i; }
+  }
+  return CP_LOCALE_EN;
+}
+
+CpTrEntry :: struct {
+  key: string;
+  v: [CP_LOCALE_COUNT] string;
+}
+
+CP_TR_COUNT :: 22;
+cp_tr_catalog :: () -> [CP_TR_COUNT] CpTrEntry {
+  return [CP_TR_COUNT] CpTrEntry.[
+    CpTrEntry.{key = "new_chat", v = [CP_LOCALE_COUNT] string.["New chat", "Nuevo chat", "Nouveau chat", "Neuer Chat", "新しいチャット"]},
+    CpTrEntry.{key = "search", v = [CP_LOCALE_COUNT] string.["Search", "Buscar", "Rechercher", "Suchen", "検索"]},
+    CpTrEntry.{key = "settings", v = [CP_LOCALE_COUNT] string.["Settings", "Ajustes", "Paramètres", "Einstellungen", "設定"]},
+    CpTrEntry.{key = "back_to_chats", v = [CP_LOCALE_COUNT] string.["Back to chats", "Volver a chats", "Retour aux chats", "Zurück zu Chats", "チャットに戻る"]},
+    CpTrEntry.{key = "search_settings", v = [CP_LOCALE_COUNT] string.["Search settings", "Buscar ajustes", "Rechercher", "Einstellungen suchen", "設定を検索"]},
+    CpTrEntry.{key = "appearance", v = [CP_LOCALE_COUNT] string.["Appearance", "Apariencia", "Apparence", "Darstellung", "外観"]},
+    CpTrEntry.{key = "keybindings", v = [CP_LOCALE_COUNT] string.["Keybindings", "Atajos", "Raccourcis", "Tastenkürzel", "キーバインド"]},
+    CpTrEntry.{key = "language", v = [CP_LOCALE_COUNT] string.["Language", "Idioma", "Langue", "Sprache", "言語"]},
+    CpTrEntry.{key = "general", v = [CP_LOCALE_COUNT] string.["General", "General", "Général", "Allgemein", "一般"]},
+    CpTrEntry.{key = "models", v = [CP_LOCALE_COUNT] string.["Models", "Modelos", "Modèles", "Modelle", "モデル"]},
+    CpTrEntry.{key = "send", v = [CP_LOCALE_COUNT] string.["Send", "Enviar", "Envoyer", "Senden", "送信"]},
+    CpTrEntry.{key = "stop", v = [CP_LOCALE_COUNT] string.["Stop", "Detener", "Arrêter", "Stopp", "停止"]},
+    CpTrEntry.{key = "theme_mode", v = [CP_LOCALE_COUNT] string.["Theme mode", "Modo de tema", "Mode de thème", "Farbmodus", "テーマモード"]},
+    CpTrEntry.{key = "color_theme", v = [CP_LOCALE_COUNT] string.["Built-in themes", "Temas integrados", "Thèmes intégrés", "Integrierte Themen", "組み込みテーマ"]},
+    CpTrEntry.{key = "high_contrast", v = [CP_LOCALE_COUNT] string.["High contrast", "Alto contraste", "Contraste élevé", "Hoher Kontrast", "ハイコントラスト"]},
+    CpTrEntry.{key = "vscode_theme", v = [CP_LOCALE_COUNT] string.["VS Code / OpenVSX theme", "Tema de VS Code / OpenVSX", "Thème VS Code / OpenVSX", "VS Code / OpenVSX-Design", "VS Code / OpenVSX テーマ"]},
+    CpTrEntry.{key = "reset_all", v = [CP_LOCALE_COUNT] string.["Reset all", "Restablecer todo", "Tout réinitialiser", "Alle zurücksetzen", "すべてリセット"]},
+    CpTrEntry.{key = "rebind", v = [CP_LOCALE_COUNT] string.["Rebind…", "Cambiar…", "Modifier…", "Ändern…", "変更…"]},
+    CpTrEntry.{key = "conflict", v = [CP_LOCALE_COUNT] string.["Conflict", "Conflicto", "Conflit", "Konflikt", "競合"]},
+    CpTrEntry.{key = "connections", v = [CP_LOCALE_COUNT] string.["Connections", "Conexiones", "Connexions", "Verbindungen", "接続"]},
+    CpTrEntry.{key = "about", v = [CP_LOCALE_COUNT] string.["About & updates", "Acerca de y actualizaciones", "À propos et mises à jour", "Über & Updates", "情報とアップデート"]},
+    CpTrEntry.{key = "active", v = [CP_LOCALE_COUNT] string.["Active", "Activo", "Actif", "Aktiv", "有効"]}
+  ];
+}
+
+// Translates a UI key for the given locale with automatic English fallback (or key if unknown).
+cp_tr :: (locale: int, key: string) -> string {
+  loc := cp_locale_clamp(locale);
+  cat := cp_tr_catalog();
+  for e: cat {
+    if e.key == key {
+      s := e.v[loc];
+      if s.count > 0 { return s; }
+      return e.v[CP_LOCALE_EN];
+    }
+  }
+  return key;
+}
+
+// Localized Settings page title for sidebar & page headers.
+cp_set_page_label :: (s: [] CoderPage, page: int) -> string {
+  loc := ifx s.count > 0 then s[0].cust[0].locale.active else CP_LOCALE_EN;
+  if page == CP_PG_GENERAL { return cp_tr(loc, "general"); }
+  if page == CP_PG_MODELS { return cp_tr(loc, "models"); }
+  if page == CP_PG_APPEARANCE { return cp_tr(loc, "appearance"); }
+  if page == CP_PG_KEYBINDINGS { return cp_tr(loc, "keybindings"); }
+  if page == CP_PG_CONNECTIONS { return cp_tr(loc, "connections"); }
+  if page == CP_PG_ABOUT { return cp_tr(loc, "about"); }
+  names := CP_SET_NAME;
+  if page >= 0 && page < CP_SET_PAGES { return names[page]; }
+  return "";
+}
+
+// ---------------------------------------------------------------- init
+
+cp_cust_init :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  c := s[0].cust[..];
+  c[0] = CpCustomizeState.{};
+  c[0].theme[0].mode = CP_THEME_MODE_DARK;
+  c[0].theme[0].skin = CP_SKIN_NOIR;
+  c[0].theme[0].system_dark = true;
+  c[0].theme[0].high_contrast = false;
+  c[0].locale.active = CP_LOCALE_EN;
+  c[0].kb_target = -1;
+  cp_keymap_init(c[0].keymap[..]);
+}
+
+// ---------------------------------------------------------------- Settings pages (Appearance & Keybindings)
+
+cp_settings_appearance :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  c := s[0].cust[..];
+  th := c[0].theme[0];
+  loc := c[0].locale.active;
+  y := y0;
+  y += set_page_head(f, "set.title", x, y, w, cp_tr(loc, "appearance"), "Theme mode, built-in skins, VS Code / OpenVSX theme import, contrast, and interface language.") + t.block_gap;
+
+  // Mode & contrast card.
+  mrows: [2] SetRow;
+  mrows[0] = SetRow.{
+    id = "set.cust.mode",
+    name = cp_tr(loc, "theme_mode"),
+    desc = ifx th.mode == CP_THEME_MODE_SYSTEM then "Follows macOS Light/Dark appearance live without restart."
+           else ifx th.mode == CP_THEME_MODE_LIGHT then "Always use light appearance."
+           else "Always use dark appearance.",
+    kind = SET_ROW_CHOICE, noptions = 3, chosen = th.mode, action = CP_SET_ACT
+  };
+  mrows[0].options[0] = "System"; mrows[0].options[1] = "Dark"; mrows[0].options[2] = "Light";
+  mrows[1] = SetRow.{
+    id = "set.cust.contrast",
+    name = cp_tr(loc, "high_contrast"),
+    desc = "Strengthens borders, muted labels, and foreground ink for higher legibility.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx th.high_contrast then 1 else 0, action = CP_SET_ACT
+  };
+  mrows[1].options[0] = "Off"; mrows[1].options[1] = "On";
+  y += cp_set_group(s, f, "set.cust.mode.group", x, y, w, mrows[..]) + t.block_gap;
+
+  // Built-in skins card.
+  y += set_section_head(f, "set.cust.skins.head", x, y, w, cp_tr(loc, "color_theme"), "Switch live between OpenAgents' built-in skins over components/skin/.") + t.section_gap;
+  eff := cp_theme_effective_skin_id(th);
+  snames := CP_SKIN_NAMES; sdescs := CP_SKIN_DESCS;
+  srows: [CP_SKIN_COUNT] SetRow;
+  for i: 0..<CP_SKIN_COUNT {
+    ib: [32] u8; in_n := el_put(ib[..], 0, "set.cust.skin."); in_n = el_put_i(ib[..], in_n, i);
+    is_active := !th.has_vscode && eff == i;
+    srows[i] = SetRow.{
+      id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+      name = snames[i],
+      desc = sdescs[i],
+      kind = SET_ROW_BUTTON,
+      button = ifx is_active then cp_tr(loc, "active") else "Apply",
+      action = CP_SET_ACT,
+      state = ifx is_active then EL_S_DISABLED else 0
+    };
+  }
+  y += cp_set_group(s, f, "set.cust.skins.group", x, y, w, srows[..]) + t.block_gap;
+
+  // VS Code / OpenVSX theme JSON import card.
+  y += set_section_head(f, "set.cust.vscode.head", x, y, w, cp_tr(loc, "vscode_theme"), "Import a VS Code or OpenVSX .json color theme and map editor, sidebar, border, and accent tokens live.") + t.section_gap;
+  vs_val := ifx th.has_vscode then sheet_pool(sh, cp_cust_str(th.vscode_name[..], th.vscode_name_n)) else "None imported";
+  vrows: [2] SetRow;
+  vrows[0] = SetRow.{
+    id = "set.cust.vscode",
+    name = "Import theme JSON",
+    desc = "Maps editor.background, editor.foreground, sideBar.background, panel.border, focusBorder, and statusBar.background.",
+    value = vs_val,
+    kind = SET_ROW_BUTTON, button = "Import…", action = CP_SET_ACT
+  };
+  vrows[1] = SetRow.{
+    id = "set.cust.vscode.clear",
+    name = "Clear imported theme",
+    desc = "Revert to the selected built-in skin.",
+    kind = SET_ROW_BUTTON, button = "Clear", action = CP_SET_ACT,
+    state = ifx th.has_vscode then 0 else EL_S_DISABLED
+  };
+  y += cp_set_group(s, f, "set.cust.vscode.group", x, y, w, vrows[..]) + t.block_gap;
+
+  // Localization / i18n card.
+  y += set_section_head(f, "set.cust.locale.head", x, y, w, cp_tr(loc, "language"), "Switch Desktop UI labels live. Missing keys fall back to English.") + t.section_gap;
+  lnames := CP_LOCALE_NAMES; lcodes := CP_LOCALE_CODES;
+  lrows: [CP_LOCALE_COUNT] SetRow;
+  for i: 0..<CP_LOCALE_COUNT {
+    ib: [32] u8; in_n := el_put(ib[..], 0, "set.cust.locale."); in_n = el_put_i(ib[..], in_n, i);
+    is_cur := c[0].locale.active == i;
+    lrows[i] = SetRow.{
+      id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+      name = lnames[i],
+      desc = lcodes[i],
+      kind = SET_ROW_BUTTON,
+      button = ifx is_cur then cp_tr(loc, "active") else "Select",
+      action = CP_SET_ACT,
+      state = ifx is_cur then EL_S_DISABLED else 0
+    };
+  }
+  y += cp_set_group(s, f, "set.cust.locale.group", x, y, w, lrows[..]);
+  return y - y0;
+}
+
+cp_settings_keybindings :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  c := s[0].cust[..];
+  km := c[0].keymap[..];
+  loc := c[0].locale.active;
+  y := y0;
+  y += set_page_head(f, "set.title", x, y, w, cp_tr(loc, "keybindings"), "Customize keyboard shortcuts with VS Code-style when-clause context predicates (editorFocus, terminalFocus, filePaneFocus, settingsFocus) and live conflict detection.") + t.block_gap;
+
+  // Reset card.
+  rrows: [1] SetRow;
+  rrows[0] = SetRow.{
+    id = "set.cust.kb.reset",
+    name = "Reset keybindings",
+    desc = "Restore all shortcuts and when-clauses to their built-in defaults.",
+    kind = SET_ROW_BUTTON, button = cp_tr(loc, "reset_all"), action = CP_SET_ACT, danger = true
+  };
+  y += cp_set_group(s, f, "set.cust.kb.reset.group", x, y, w, rrows[..]) + t.block_gap;
+
+  // Shortcut rows.
+  y += set_section_head(f, "set.cust.kb.head", x, y, w, "Shortcuts", "Click Rebind… to change a shortcut chord or its when-clause.") + t.section_gap;
+  if km[0].nbindings > 0 {
+    krows: [CP_KB_MAX] SetRow;
+    for i: 0..<km[0].nbindings {
+      b := km[0].bindings[i];
+      ib: [32] u8; in_n := el_put(ib[..], 0, "set.cust.kb."); in_n = el_put_i(ib[..], in_n, i);
+      db: [224] u8; dn := 0;
+      wh := cp_cust_str(b.when_expr[..], b.when_expr_n);
+      dn = el_put(db[..], dn, "when: ");
+      dn = el_put(db[..], dn, ifx wh.count > 0 then wh else "always");
+      if b.overridden { dn = el_put(db[..], dn, " · custom"); }
+      conf := cp_keymap_conflict(km, i);
+      if conf >= 0 {
+        dn = el_put(db[..], dn, " · ");
+        dn = el_put(db[..], dn, cp_tr(loc, "conflict"));
+        dn = el_put(db[..], dn, ": ");
+        dn = el_put(db[..], dn, cp_cust_str(km[0].bindings[conf].label[..], km[0].bindings[conf].label_n));
+      }
+      krows[i] = SetRow.{
+        id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+        name = sheet_pool(sh, cp_cust_str(b.label[..], b.label_n)),
+        desc = sheet_pool(sh, cast(string) db[0..<dn]),
+        value = sheet_pool(sh, cp_cust_str(b.chord[..], b.chord_n)),
+        kind = SET_ROW_BUTTON,
+        button = cp_tr(loc, "rebind"),
+        action = CP_SET_ACT,
+        danger = conf >= 0
+      };
+    }
+    y += cp_set_group(s, f, "set.cust.kb.group", x, y, w, krows[0..<km[0].nbindings]);
+  }
+  return y - y0;
+}
+
+// Handles Settings -> Appearance & Keybindings row presses.
+cp_cust_settings_press :: (s: [] CoderPage, id: string) -> bool {
+  c := s[0].cust[..];
+  m := cp_number(id, "set.cust.mode.");
+  if m >= CP_THEME_MODE_SYSTEM && m <= CP_THEME_MODE_LIGHT {
+    c[0].theme[0].mode = m;
+    s[0].ask = CP_ASK_CUSTOM_THEME;
+    return true;
+  }
+  ct := cp_number(id, "set.cust.contrast.");
+  if ct == 0 || ct == 1 {
+    c[0].theme[0].high_contrast = (ct == 1);
+    s[0].ask = CP_ASK_CUSTOM_THEME;
+    return true;
+  }
+  sk := cp_number(id, "set.cust.skin.");
+  if sk >= 0 && sk < CP_SKIN_COUNT {
+    c[0].theme[0].skin = sk;
+    cp_theme_clear_vscode(c[0].theme[..]);
+    if sk == CP_SKIN_DAYLIGHT { c[0].theme[0].mode = CP_THEME_MODE_LIGHT; }
+    else if c[0].theme[0].mode == CP_THEME_MODE_LIGHT { c[0].theme[0].mode = CP_THEME_MODE_DARK; }
+    s[0].ask = CP_ASK_CUSTOM_THEME;
+    return true;
+  }
+  if id == "set.cust.vscode.a" { s[0].ask = CP_ASK_CUSTOM_IMPORT_THEME; return true; }
+  if id == "set.cust.vscode.clear.a" {
+    cp_theme_clear_vscode(c[0].theme[..]);
+    s[0].ask = CP_ASK_CUSTOM_CLEAR_THEME;
+    return true;
+  }
+  lc := cp_number(id, "set.cust.locale.");
+  if lc >= 0 && lc < CP_LOCALE_COUNT {
+    c[0].locale.active = lc;
+    s[0].ask = CP_ASK_CUSTOM_LOCALE;
+    return true;
+  }
+  if id == "set.cust.kb.reset.a" {
+    cp_keymap_reset_all(c[0].keymap[..]);
+    s[0].ask = CP_ASK_CUSTOM_RESET_KEYS;
+    return true;
+  }
+  kb := cp_number(id, "set.cust.kb.");
+  if kb >= 0 && kb < c[0].keymap[0].nbindings {
+    c[0].kb_target = kb;
+    s[0].ask = CP_ASK_CUSTOM_REBIND;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_cust_theme_set :: (s: [] CoderPage, mode: int, skin: int, high_contrast: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  t := s[0].cust[0].theme[..];
+  if mode >= CP_THEME_MODE_SYSTEM && mode <= CP_THEME_MODE_LIGHT { t[0].mode = mode; }
+  if skin >= 0 && skin < CP_SKIN_COUNT { t[0].skin = skin; }
+  t[0].high_contrast = high_contrast;
+}
+
+coder_page_cust_system_dark_set :: (s: [] CoderPage, is_dark: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  s[0].cust[0].theme[0].system_dark = is_dark;
+}
+
+coder_page_cust_theme_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].cust[0].theme[0].mode else CP_THEME_MODE_DARK;
+}
+
+coder_page_cust_theme_skin :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].cust[0].theme[0].skin else CP_SKIN_NOIR;
+}
+
+coder_page_cust_theme_contrast :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].cust[0].theme[0].high_contrast;
+}
+
+coder_page_cust_import_vscode_theme :: (s: [] CoderPage, json: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  return cp_theme_import_vscode_json(s[0].cust[0].theme[..], json);
+}
+
+coder_page_cust_clear_vscode_theme :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_theme_clear_vscode(s[0].cust[0].theme[..]);
+}
+
+coder_page_cust_locale_set :: (s: [] CoderPage, locale: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  s[0].cust[0].locale.active = cp_locale_clamp(locale);
+}
+
+coder_page_cust_locale :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].cust[0].locale.active else CP_LOCALE_EN;
+}
+
+coder_page_cust_kb_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].cust[0].keymap[0].nbindings else 0;
+}
+
+coder_page_cust_kb_target :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].cust[0].kb_target else -1;
+}
+
+coder_page_cust_kb_id :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].cust[0].keymap[0].nbindings { return 0; }
+  b := s[0].cust[0].keymap[0].bindings[idx];
+  return cp_out(out, cp_cust_str(b.id[..], b.id_n));
+}
+
+coder_page_cust_kb_label :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].cust[0].keymap[0].nbindings { return 0; }
+  b := s[0].cust[0].keymap[0].bindings[idx];
+  return cp_out(out, cp_cust_str(b.label[..], b.label_n));
+}
+
+coder_page_cust_kb_chord :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].cust[0].keymap[0].nbindings { return 0; }
+  b := s[0].cust[0].keymap[0].bindings[idx];
+  return cp_out(out, cp_cust_str(b.chord[..], b.chord_n));
+}
+
+coder_page_cust_kb_when :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].cust[0].keymap[0].nbindings { return 0; }
+  b := s[0].cust[0].keymap[0].bindings[idx];
+  return cp_out(out, cp_cust_str(b.when_expr[..], b.when_expr_n));
+}
+
+coder_page_cust_kb_rebind :: (s: [] CoderPage, idx: int, chord: string, when_expr: string, update_when: bool) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  return cp_keymap_rebind(s[0].cust[0].keymap[..], idx, chord, when_expr, update_when);
+}
+
+coder_page_cust_kb_rebind_id :: (s: [] CoderPage, id: string, chord: string, when_expr: string, update_when: bool) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  idx := cp_keymap_find_id(s[0].cust[0].keymap[..], id);
+  if idx < 0 { return false; }
+  return cp_keymap_rebind(s[0].cust[0].keymap[..], idx, chord, when_expr, update_when);
+}
+
+coder_page_cust_kb_reset_all :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_keymap_reset_all(s[0].cust[0].keymap[..]);
+}
+
+coder_page_cust_kb_conflict :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  return cp_keymap_conflict(s[0].cust[0].keymap[..], idx);
+}
+
+coder_page_cust_kb_match :: (s: [] CoderPage, chord: string, ctx: int, out_id: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  idx := cp_keymap_match(s[0].cust[0].keymap[..], chord, ctx);
+  if idx < 0 { return 0; }
+  b := s[0].cust[0].keymap[0].bindings[idx];
+  return cp_out(out_id, cp_cust_str(b.id[..], b.id_n));
+}

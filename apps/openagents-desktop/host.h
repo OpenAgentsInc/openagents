@@ -644,4 +644,25 @@ int cd_preview_dom_pick(void *page, const char *selector, const char *tag, const
 void cd_preview_trigger_snapshot(void *page);
 int cd_preview_snapshot_done(void *page, const char *path, int64_t ts);
 int cd_preview_last_snapshot(void *page, char *out, int cap);
+// Theme engine, customizable when-clause keybindings, and i18n locale (page/customize.coax; #13887).
+void cd_cust_theme_set(void *page, int mode, int skin, int high_contrast);
+void cd_cust_system_dark_set(void *page, int is_dark);
+int cd_cust_theme_mode(void *page);
+int cd_cust_theme_skin(void *page);
+int cd_cust_theme_contrast(void *page);
+int cd_cust_import_vscode_theme(void *page, const char *json);
+void cd_cust_clear_vscode_theme(void *page);
+void cd_cust_locale_set(void *page, int locale);
+int cd_cust_locale(void *page);
+int cd_cust_kb_count(void *page);
+int cd_cust_kb_target(void *page);
+int cd_cust_kb_id(void *page, int idx, char *out, int cap);
+int cd_cust_kb_label(void *page, int idx, char *out, int cap);
+int cd_cust_kb_chord(void *page, int idx, char *out, int cap);
+int cd_cust_kb_when(void *page, int idx, char *out, int cap);
+int cd_cust_kb_rebind(void *page, int idx, const char *chord, const char *when_expr, int update_when);
+int cd_cust_kb_rebind_id(void *page, const char *id, const char *chord, const char *when_expr, int update_when);
+void cd_cust_kb_reset_all(void *page);
+int cd_cust_kb_conflict(void *page, int idx);
+int cd_cust_kb_match(void *page, const char *chord, int ctx, char *out_id, int cap);
 #endif

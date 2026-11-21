@@ -69,3 +69,4 @@
 #load "rich.coax";
 #load "scheduled.coax";
 #load "preview.coax";
+#load "customize.coax";

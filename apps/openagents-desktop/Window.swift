@@ -160,6 +160,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var previewLoadedURL = ""
     var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
     let voice = CoderVoiceController()   // native & local voice dictation (Window+Voice.swift, #13882)
+    var appearanceObservation: NSKeyValueObservation? // live macOS Light/Dark appearance watcher (Window+Customize.swift, #13887)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var keyUpMonitor: Any? // Push-to-talk release for ⌥Space voice dictation (#13882)
@@ -236,6 +237,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncSettingsInfo()
         setupUsageDashboard()
         setupVoiceDictation()
+        setupCustomize()
         detectInstalledEditors()
         setupRichComposer()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -301,7 +303,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if CommandLine.arguments.contains("--gym") { openGym() }
         // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -489,6 +491,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 114: schedWebhookDialog()
         case 115: applyUpdateEverything()
         case 116: checkUpdateEverything()
+        case 120...125: customizeAsked(what)
         case 130...137: previewAsked(what)
         case 40...43: fileAsked(what)
         default: break

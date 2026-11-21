@@ -375,6 +375,7 @@ CoderPage :: struct {
   mcp_skills: [1] CpMcpSkills; // MCP server management, OAuth PKCE card, and Skills catalog (mcpskills.coax; #13879)
   prov: [1] CpProviders;       // Codex, Cursor, ACP Registry, budgeted handoff, Fresh Session & multi-model fan-out (providers.coax; #13878)
   env: [1] CpEnvState;         // Remote SSH/Boat/WSL2 environments, Server Exposure & Keep-Awake (environments.coax; #13883)
+  cust: [1] CpCustomizeState;  // Theme engine, when-clause keybindings & i18n locale (customize.coax; #13887)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
@@ -521,6 +522,7 @@ cp_init :: (s: [] CoderPage) {
   cp_rich_init(s);
   cp_sched_init(s);
   cp_preview_init(s);
+  cp_cust_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

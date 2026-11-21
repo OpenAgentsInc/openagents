@@ -13,11 +13,9 @@ CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placehol
 // colour from when the skin has no role for it. Every colour on the page is the skin's or this;
 // none is written out in the page (#13738).
 cp_theme :: () -> Theme { return coder_noir(); }
-// Coder Desktop's skin: Zeron's measures in points on Coder Noir's colours, typography, transcript
-// rhythm (user bubbles, markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
-cp_skin :: () -> UiSkin {
-  // Zeron's skin on Coder Noir (coder_noir_skin): the sidebar Noir's shell, darker than the main area.
-  k := coder_noir_skin();
+// Builds Coder Desktop's UiSkin over any resolved Theme (Coder Noir, Daylight, Grove, Ocean, Ember, or imported VS Code theme).
+cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
+  k := ifx base_noir then coder_noir_skin() else zeron_skin_from(th);
   k.chat.enabled = true;
   // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
   k.app.side_row = 32.0f32;
@@ -61,8 +59,8 @@ cp_skin :: () -> UiSkin {
   k.app.bubble_pad_y = 10.0f32;
   k.app.bubble_radius = 16.0f32;
   k.app.bubble_share = 0.80f32;
-  k.bubble = cp_theme().secondary;   // the bubble's ground (zeron.prose.bubble.bg): Noir's raised
-  k.float_ground = cp_theme().menu;  // Jump to latest on the menus' solid ground (zeron.menu.solid)
+  k.bubble = th.secondary;           // the bubble's ground (zeron.prose.bubble.bg)
+  k.float_ground = th.menu;          // Jump to latest on the menus' solid ground (zeron.menu.solid)
   k.app.code_head = 32.0f32;
   k.app.code_pad = 14.0f32;
   k.app.code_radius = 12.0f32;
@@ -102,6 +100,17 @@ cp_skin :: () -> UiSkin {
   // a thought's words a step smaller than a reply's, as Zeron's (prose.small 14/20, ds/activity.luau): Geist 14,
   // Medium 14 for **bold** (the atlas has no SemiBold 14), code 13
   k.act.thought_face = CP_COMPOSER_FACE; k.act.thought_bold = FONT_SEARCH; k.act.thought_code = FONT_CODE;
-  k.set = coder_noir_settings();
+  st := zeron_settings_from(th);
+  st.tint = th.base; st.field = th.surface; st.field_edge = th.border;
+  k.set = st;
   return k;
+}
+// Coder Desktop's default skin (Coder Noir): kept for tests and callers without page state.
+cp_skin :: () -> UiSkin { return cp_skin_from(coder_noir(), true); }
+// Coder Desktop's live skin for the active theme state (customize.coax; #13887).
+cp_skin_for :: (s: [] CoderPage) -> UiSkin {
+  if s.count < 1 { return cp_skin(); }
+  th := cp_cust_theme(s);
+  is_default_noir := cp_cust_is_monochrome(s) && !s[0].cust[0].theme[0].high_contrast;
+  return cp_skin_from(th, is_default_noir);
 }

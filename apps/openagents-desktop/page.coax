@@ -47,3 +47,4 @@
 #load "page/checks/rich-checks.coax" #test;
 #load "page/checks/scheduled-checks.coax" #test;
 #load "page/checks/preview-checks.coax" #test;
+#load "page/checks/customize-checks.coax" #test;

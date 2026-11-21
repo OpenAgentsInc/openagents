@@ -15,22 +15,22 @@
 
 #load "../../components/app/settings.coax";
 
-CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9; CP_PG_CONNECTIONS :: 10; CP_PG_SCHED :: 11;
-CP_SET_PAGES :: 12;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks"];
-CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN];
+CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9; CP_PG_CONNECTIONS :: 10; CP_PG_SCHED :: 11; CP_PG_APPEARANCE :: 12; CP_PG_KEYBINDINGS :: 13;
+CP_SET_PAGES :: 14;
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks", "Appearance", "Keybindings"];
+CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN, ICON_SET_GENERAL, ICON_SET_GENERAL];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
 CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
-CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_SCHED, CP_PG_FOREMAN, CP_PG_CONNECTIONS, CP_PG_ABOUT];
-CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2];   // the group of each place in CP_SET_ORDER
+CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_APPEARANCE, CP_PG_KEYBINDINGS, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_SCHED, CP_PG_FOREMAN, CP_PG_CONNECTIONS, CP_PG_ABOUT];
+CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 61;
+CP_SET_ENTRIES :: 69;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -93,7 +93,15 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_SCHED, id = "", name = "Scheduled Tasks", terms = "cron schedule automation webhook recurring timer tasks"},
     CpSetEntry.{page = CP_PG_SCHED, id = "set.sched.add", name = "Add scheduled task", terms = "cron schedule new task automation"},
     CpSetEntry.{page = CP_PG_SCHED, id = "set.sched.webhook", name = "Webhook triggers", terms = "webhook hmac sha256 signature secret dedupe"},
-    CpSetEntry.{page = CP_PG_ABOUT, id = "set.update.all", name = "Update Everything", terms = "update everything cli agy claude codex provider lease"}];
+    CpSetEntry.{page = CP_PG_ABOUT, id = "set.update.all", name = "Update Everything", terms = "update everything cli agy claude codex provider lease"},
+    CpSetEntry.{page = CP_PG_APPEARANCE, id = "", name = "Appearance", terms = "theme dark light system skin color contrast vscode openvsx language locale i18n"},
+    CpSetEntry.{page = CP_PG_APPEARANCE, id = "set.cust.mode", name = "Theme mode", terms = "dark light system appearance mode"},
+    CpSetEntry.{page = CP_PG_APPEARANCE, id = "set.cust.contrast", name = "High contrast", terms = "contrast accessibility legible borders"},
+    CpSetEntry.{page = CP_PG_APPEARANCE, id = "set.cust.vscode", name = "VS Code / OpenVSX theme", terms = "vscode openvsx json import custom theme"},
+    CpSetEntry.{page = CP_PG_APPEARANCE, id = "set.cust.locale.0", name = "Language", terms = "language locale i18n english spanish french german japanese"},
+    CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "", name = "Keybindings", terms = "keybindings shortcuts hotkeys keys rebind when clause conflict"},
+    CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.reset", name = "Reset keybindings", terms = "reset default shortcuts keybindings"},
+    CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.0", name = "Customize shortcuts", terms = "rebind shortcut when editorFocus terminalFocus filePaneFocus settingsFocus"}];
 }
 // Whether a page shows: Foreman's and Account's are experimental features (General's last row).
 cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
@@ -236,6 +244,8 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if cp_env_settings_press(s, id) { return true; }
   // Settings -> Scheduled Tasks & About -> Update Everything (#13885)
   if cp_settings_sched_press(s, id) { return true; }
+  // Settings -> Appearance & Keybindings (#13887)
+  if cp_cust_settings_press(s, id) { return true; }
   if id == "set.update.a" {
     st := s[0].update_state;
     s[0].ask = ifx st == CP_UPD_AVAILABLE || st == CP_UPD_READY then CP_ASK_UPDATE else CP_ASK_CHECK_UPDATES;
@@ -258,10 +268,11 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   sheet_fill(sh, 0, 0, lw, h, 0, ifx k.sidebar.a > 0 then k.sidebar else k.surface);
   x := t.list_pad; w := lw - 2 * t.list_pad;
   y := cp_bar(s) + t.list_pad;   // under the window's title bar (page/layout/titlebar.coax)
-  y += set_nav_row(f, "set.back", x, y, w, ICON_SET_BACK, "Back to chats", false, true, CP_SET_BACK) + t.list_gap;
+  loc := s[0].cust[0].locale.active;
+  y += set_nav_row(f, "set.back", x, y, w, ICON_SET_BACK, cp_tr(loc, "back_to_chats"), false, true, CP_SET_BACK) + t.list_gap;
   keys := [2] string.["⌘", "F"];
   q := cp_set_query(s);
-  _ := set_search(f, "set.search", x, y, w, "Search settings", q.count == 0, keys[..], CP_SET_SEARCH);
+  _ := set_search(f, "set.search", x, y, w, cp_tr(loc, "search_settings"), q.count == 0, keys[..], CP_SET_SEARCH);
   b := set_search_box(t, x, y, w);
   s[0].set_box[0] = b.x; s[0].set_box[1] = b.y; s[0].set_box[2] = b.w; s[0].set_box[3] = b.h;
   cp_ed_draw(s, f, CP_ED_SEARCH, b.x, b.y, b.w, b.h, "");   // its words, caret and selection (page/editor.coax)
@@ -297,7 +308,7 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
         ry += set_nav_head(f, sheet_pool(sh, cast(string) gb[0..<gn]), x, ry, w, groups[within[i]]) + t.list_gap;
       }
       pn := el_put(pb[..], 0, "set.page."); pn = el_put_i(pb[..], pn, p);
-      ry += set_nav_row(f, sheet_pool(sh, cast(string) pb[0..<pn]), x, ry, w, icons[p], names[p], p == s[0].set_page, false, CP_SET_PAGE) + t.list_gap;
+      ry += set_nav_row(f, sheet_pool(sh, cast(string) pb[0..<pn]), x, ry, w, icons[p], cp_set_page_label(s, p), p == s[0].set_page, false, CP_SET_PAGE) + t.list_gap;
     }
   }
   uiframe_unclip(f);
@@ -564,6 +575,10 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     }
   } else if page == CP_PG_CONNECTIONS {
     y += cp_settings_connections(s, f, x, y, w);
+  } else if page == CP_PG_APPEARANCE {
+    y += cp_settings_appearance(s, f, x, y, w);
+  } else if page == CP_PG_KEYBINDINGS {
+    y += cp_settings_keybindings(s, f, x, y, w);
   } else {
     y += set_page_head(f, "set.title", x, y, w, names[CP_PG_ABOUT], "Coder's version and its updates.") + t.block_gap;
     ver := ifx s[0].set_version_n > 0 then sheet_pool(sh, cast(string) s[0].set_version[0..<s[0].set_version_n]) else "";
@@ -698,7 +713,7 @@ coder_page_search_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   n := cp_set_hits("model", hits[..]);
   #assert n >= 3 && es[hits[0]].name == "Models" && (es[hits[1]].name == "Model for Microcoder" || es[hits[1]].name == "Model for sub-agents");
   n = cp_set_hits("KEY", hits[..]);
-  #assert n >= 3 && (es[hits[0]].name == "Gemini API key" || es[hits[0]].name == "Claude key" || es[hits[0]].name == "OpenRouter key");
+  #assert n >= 3 && (es[hits[0]].name == "Keybindings" || es[hits[0]].name == "Gemini API key" || es[hits[0]].name == "Claude key" || es[hits[0]].name == "OpenRouter key");
   n = cp_set_hits("zoom", hits[..]);
   #assert n == 1 && es[hits[0]].id == "set.zoom";
   #assert cp_set_hits("", hits[..]) == 0 && cp_set_hits("nothing like this", hits[..]) == 0;

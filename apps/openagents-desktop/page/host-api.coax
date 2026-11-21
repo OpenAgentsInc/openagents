@@ -40,7 +40,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
     s[0].copied_kind = CP_COPIED_NONE; s[0].copied_turn = -1;
   }
   a[0].frame += 1;
-  k := cp_skin();
+  k := cp_skin_for(s);
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
   if !a[0].ready { return v; }
   f: [1] UiFrame;
@@ -75,7 +75,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
     v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
     v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
   }
-  gpu_monochrome(out, v);
+  if cp_cust_is_monochrome(s) { gpu_monochrome(out, v); }
   return v;
 }
 // An icon's size in the atlas, in points. An icon draws at this size wherever it is, so the ones that
