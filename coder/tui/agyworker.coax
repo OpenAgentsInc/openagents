@@ -109,8 +109,13 @@ AgywState :: struct {
   sink: bool; log: [16384] u8; log_n: int;      // checks: lines go here instead of stdout
 }
 
+// Copy src into dst, backing up to a valid UTF-8 codepoint boundary when truncating (#13836).
 agyw_copy :: (dst: [] u8, src: string) -> int {
   n := ifx src.count < dst.count then src.count else dst.count;
+  if n < src.count && n > 0 && (src[n] & 0xC0) == 0x80 {
+    while n > 0 && (src[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > 0 { n -= 1; }
+  }
   for i: 0..<n { dst[i] = src[i]; }
   return n;
 }
@@ -720,6 +725,44 @@ agyw_ran :: (s: [] AgywState, x: [] CuEngine, result: string, model: string, eff
   agyw_write_line(s, mww_attempt(s[0].out[..], "antigravity", agyw_str(s[0].ran[..], s[0].ran_n), effort, "configured", 0, none[..]));
 }
 
+// Verify that a conversation DB / pbtxt blob belongs to our temporary probe session
+// (matches both session_id and workspace_uri) before unlinking (#13836).
+agyw_session_db_owned :: (raw: string, session_id: string, workspace_uri: string) -> bool {
+  if raw.count == 0 || session_id.count == 0 || workspace_uri.count == 0 { return false; }
+  return agr_has(raw, session_id) && agr_has(raw, workspace_uri);
+}
+
+agyw_probe_cleanup :: (profile: string, home: string, session_id: string, cwd: string) {
+  if session_id.count == 0 || cwd.count == 0 { return; }
+  // Reject any path separator or ".." in session_id.
+  for c: session_id { if c == '/' || c == '\\' || c == '.' { return; } }
+  base_buf: [1024] u8;
+  base := "";
+  if profile.count > 0 {
+    base = fs_join(profile, AGY_APP_DATA_DIR, base_buf[..]);
+  } else if home.count > 0 {
+    base = fs_join(home, ".gemini/antigravity-acp", base_buf[..]);
+  }
+  if base.count == 0 { return; }
+  conv_buf: [1024] u8;
+  conv := fs_join(base, "conversations", conv_buf[..]);
+  if conv.count == 0 { return; }
+  uri_buf: [1088] u8;
+  un := agyw_copy(uri_buf[..], "file://");
+  un += agyw_copy(uri_buf[un..<uri_buf.count], cwd);
+  uri := cast(string) uri_buf[0..<un];
+  exts := [2] string.[".db", ".pbtxt"];
+  for ext: exts {
+    nb: [256] u8; nn := agyw_copy(nb[..], session_id); nn += agyw_copy(nb[nn..<nb.count], ext);
+    pb: [2048] u8; p := fs_join(conv, cast(string) nb[0..<nn], pb[..]);
+    if p.count == 0 || !fs_exists(p) { continue; }
+    rb: [65536] u8; rn := fs_read(p, rb[..]);
+    if rn > 0 && agyw_session_db_owned(cast(string) rb[0..<rn], session_id, uri) {
+      _ = fs_remove(p);
+    }
+  }
+}
+
 // agyworker --probe: agy started with the run's settings, one session opened, its model printed.
 AGYW_PROBE_MS :: 45000;
 agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
@@ -742,7 +785,9 @@ agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
     tool_errln(ifx w.count > 0 then w else "Antigravity stopped before it opened a session.");
     return 1;
   }
+  sid_buf: [CU_ID] u8; sid_n := agyw_copy(sid_buf[..], cu_session_id(x[0].c));
   cue_close(x);
+  agyw_probe_cleanup(agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n), cwd, cast(string) sid_buf[0..<sid_n], cwd);
   n := agyw_copy(s[0].out[..], agyw_str(s[0].ran[..], s[0].ran_n));
   n += agyw_copy(s[0].out[n..<s[0].out.count], "\t");
   n += agyw_copy(s[0].out[n..<s[0].out.count], agyw_str(s[0].ran_name[..], s[0].ran_name_n));
@@ -1350,4 +1395,28 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   // Read-repair closes the open tool call when served
   #assert agyw_read_repair_served(s, "/repo/notes.txt", true, true);
   #assert !s[0].calls[at].used && agyw_logged(s, "\"kind\":\"command\",\"command\":\"Read notes.txt\",\"exit\":0");
+}
+
+#test "agyworker: UTF-8-safe truncation never splits multi-byte codepoints and probe cleanup verifies ownership" {
+  // 2-byte 'é' (C3 A9), 3-byte '中' (E4 B8 AD), 4-byte '😀' (F0 9F 98 80)
+  s2 := "aé";       // 1 + 2 = 3 bytes
+  b2: [2] u8;
+  #assert agyw_copy(b2[..], s2) == 1 && cast(string) b2[0..<1] == "a";
+  b3: [3] u8;
+  #assert agyw_copy(b3[..], s2) == 3 && cast(string) b3[0..<3] == "aé";
+
+  s3 := "x中y";      // 1 + 3 + 1 = 5 bytes
+  c2: [2] u8; #assert agyw_copy(c2[..], s3) == 1 && cast(string) c2[0..<1] == "x";
+  c3: [3] u8; #assert agyw_copy(c3[..], s3) == 1 && cast(string) c3[0..<1] == "x";
+  c4: [4] u8; #assert agyw_copy(c4[..], s3) == 4 && cast(string) c4[0..<4] == "x中";
+
+  s4 := "😀!";       // 4 + 1 = 5 bytes
+  d3: [3] u8; #assert agyw_copy(d3[..], s4) == 0;
+  d4: [4] u8; #assert agyw_copy(d4[..], s4) == 4 && cast(string) d4[0..<4] == "😀";
+
+  // Probe temp-session ownership verification requires BOTH session_id and workspace_uri
+  #assert agyw_session_db_owned("...session_id:probe-1...file:///Users/me...", "probe-1", "file:///Users/me");
+  #assert !agyw_session_db_owned("...session_id:probe-1...file:///other...", "probe-1", "file:///Users/me");
+  #assert !agyw_session_db_owned("...session_id:real-9...file:///Users/me...", "probe-1", "file:///Users/me");
+  #assert !agyw_session_db_owned("", "probe-1", "file:///Users/me");
 }
