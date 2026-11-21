@@ -1,0 +1,464 @@
+// Headless scheduled tasks & signed HMAC-SHA256 HTTP webhook listener for coder-host (GitHub #13885).
+// Reuses coax/lib/agent/desktop/scheduled.coax (5-field cron & JSON helpers) and
+// #authority coax/lib/agent/desktop/webhook-auth.coax (constant-time HMAC-SHA256 & 64-delivery dedup).
+// Reads/writes the same ~/.openagents/desktop/scheduled-tasks.json and ~/.openagents/desktop/webhook.secret
+// that OpenAgents Desktop Settings manages, launching headless worker runs via host-runs.coax (dr_start)
+// even when the Desktop window is closed.
+#load "../../coax/lib/agent/desktop/scheduled.coax";
+#load "../../coax/lib/agent/desktop/webhook-auth.coax";
+
+SC_TASKS_MAX :: 32;
+SC_WEBHOOK_DEFAULT_PORT :: 47391;
+
+ScTask :: struct {
+  id: [64] u8; id_n: int;
+  name: [96] u8; name_n: int;
+  cron: [64] u8; cron_n: int;
+  folder: [256] u8; folder_n: int;
+  prompt: [512] u8; prompt_n: int;
+  enabled: bool;
+  last_run_ms: int;
+  last_chat_id: [64] u8; last_chat_id_n: int;
+}
+
+ScHost :: struct {
+  last_min: int;
+  listener: int = -1;
+  port: int;
+  dedup: [1] SchedDedup;
+}
+
+// Convert Unix epoch seconds (>= 0) to UTC [minute, hour, dom, month, dow (0=Sun..6=Sat)].
+sc_epoch_to_utc :: (epoch_sec: int, out_parts: [] int) {
+  if out_parts.count < 5 { return; }
+  s := ifx epoch_sec < 0 then 0 else epoch_sec;
+  days := s / 86400;
+  rem := s % 86400;
+  hour := rem / 3600;
+  minute := (rem % 3600) / 60;
+  dow := (days + 4) % 7;
+  // Howard Hinnant's civil-from-days algorithm.
+  z := days + 719468;
+  era := z / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  dom := doy - (153 * mp + 2) / 5 + 1;
+  month := mp + (ifx mp < 10 then 3 else -9);
+  out_parts[0] = minute;
+  out_parts[1] = hour;
+  out_parts[2] = dom;
+  out_parts[3] = month;
+  out_parts[4] = dow;
+}
+
+sc_desktop_file :: (leaf: string, out: [] u8) -> string {
+  hb: [1024] u8; home := ph_home(hb[..]);
+  if home.count == 0 { return ""; }
+  n := hs_cat(out, 0, home);
+  n = hs_cat(out, n, "/.openagents/desktop/");
+  n = hs_cat(out, n, leaf);
+  return cast(string) out[0..<n];
+}
+
+sc_tasks_load :: (json: string, tasks: [] ScTask) -> int {
+  count := 0;
+  at := 0;
+  for k: 0..<json.count {
+    if json[k] == '[' { at = k + 1; break; }
+  }
+  while at < json.count && count < tasks.count {
+    while at < json.count && json[at] != '{' { at += 1; }
+    if at >= json.count { break; }
+    start := at;
+    depth := 0;
+    in_str := false;
+    esc := false;
+    end := -1;
+    i := start;
+    while i < json.count {
+      c := json[i];
+      if in_str {
+        if esc { esc = false; }
+        else if c == '\\' { esc = true; }
+        else if c == '"' { in_str = false; }
+      } else {
+        if c == '"' { in_str = true; }
+        else if c == '{' { depth += 1; }
+        else if c == '}' {
+          depth -= 1;
+          if depth == 0 { end = i + 1; break; }
+        }
+      }
+      i += 1;
+    }
+    if end < 0 { break; }
+    obj := cast(string) json[start..<end];
+    t: ScTask;
+    id_n := sched_jstr(obj, "id", t.id[..]);
+    cr_n := sched_jstr(obj, "cron", t.cron[..]);
+    if id_n > 0 && cr_n > 0 && sched_cron_valid(cast(string) t.cron[0..<cr_n]) {
+      t.id_n = id_n;
+      t.cron_n = cr_n;
+      nm_n := sched_jstr(obj, "name", t.name[..]);
+      t.name_n = ifx nm_n > 0 then nm_n else sched_copy(t.name[..], cast(string) t.id[0..<id_n]);
+      fl_n := sched_jstr(obj, "folder", t.folder[..]);
+      t.folder_n = ifx fl_n > 0 then fl_n else 0;
+      pr_n := sched_jstr(obj, "prompt", t.prompt[..]);
+      t.prompt_n = ifx pr_n > 0 then pr_n else 0;
+      t.enabled = sched_jbool(obj, "enabled");
+      t.last_run_ms = sched_jint(obj, "last_run_ms", 0);
+      lc_n := sched_jstr(obj, "last_chat_id", t.last_chat_id[..]);
+      t.last_chat_id_n = ifx lc_n > 0 then lc_n else 0;
+      tasks[count] = t;
+      count += 1;
+    }
+    at = end;
+  }
+  return count;
+}
+
+sc_tasks_save :: (tasks: [] ScTask, count: int, out: [] u8) -> int {
+  n := sched_put(out, 0, "{\"tasks\":[");
+  for i: 0..<count {
+    t := tasks[i];
+    if i > 0 { n = sched_put(out, n, ","); }
+    n = sched_put(out, n, "{\"id\":");
+    n = sched_put_jstr(out, n, cast(string) t.id[0..<t.id_n]);
+    n = sched_put(out, n, ",\"name\":");
+    n = sched_put_jstr(out, n, cast(string) t.name[0..<t.name_n]);
+    n = sched_put(out, n, ",\"cron\":");
+    n = sched_put_jstr(out, n, cast(string) t.cron[0..<t.cron_n]);
+    n = sched_put(out, n, ",\"folder\":");
+    n = sched_put_jstr(out, n, cast(string) t.folder[0..<t.folder_n]);
+    n = sched_put(out, n, ",\"prompt\":");
+    n = sched_put_jstr(out, n, cast(string) t.prompt[0..<t.prompt_n]);
+    n = sched_put(out, n, ",\"enabled\":");
+    n = sched_put(out, n, ifx t.enabled then "true" else "false");
+    n = sched_put(out, n, ",\"last_run_ms\":");
+    n = sched_put_int(out, n, t.last_run_ms);
+    n = sched_put(out, n, ",\"last_chat_id\":");
+    n = sched_put_jstr(out, n, cast(string) t.last_chat_id[0..<t.last_chat_id_n]);
+    n = sched_put(out, n, "}");
+  }
+  n = sched_put(out, n, "]}");
+  return ifx n < out.count then n else 0;
+}
+
+// Launch a headless worker run in coder-host for a scheduled or webhook-triggered task.
+// When h.count == 0 (unit test dry-run mode), generates a run ID without spawning a process.
+sc_launch_run :: (h: [] HsHost, prompt: string, folder: string, out_id: [] u8) -> string {
+  id := hs_random_hex(16, out_id);
+  if id.count != 32 { return ""; }
+  if h.count == 0 { return id; }
+  hb: [1024] u8;
+  cwd := ifx folder.count > 0 then folder else ph_home(hb[..]);
+  if !dr_dir() { return ""; }
+  line: [EX_INPUT_MAX + 4096] u8;
+  ln := ph_task(prompt, id, cwd, PA_MICRO, "", line[..]);
+  if ln < 2 { return ""; }
+  ip: [1400] u8;
+  if !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { return ""; }
+  why := ph_spec(id, PA_MICRO, cwd, 0);
+  if why.count == 0 { why = dr_start(h[0].runs[..], id); }
+  return ifx why.count == 0 then id else "";
+}
+
+// Evaluate all tasks in `path` at `epoch_sec` (UTC), launching due ones and persisting updated
+// last_run_ms / last_chat_id back to `path`. Returns number of tasks fired.
+sc_tick_file :: (h: [] HsHost, path: string, epoch_sec: int) -> int {
+  if path.count == 0 || epoch_sec <= 0 || !fs_exists(path) { return 0; }
+  raw: [65536] u8;
+  rn := fs_read(path, raw[..]);
+  if rn <= 0 { return 0; }
+  tasks: [SC_TASKS_MAX] ScTask;
+  count := sc_tasks_load(cast(string) raw[0..<rn], tasks[..]);
+  if count == 0 { return 0; }
+  parts: [5] int;
+  sc_epoch_to_utc(epoch_sec, parts[..]);
+  now_min := epoch_sec / 60;
+  fired := 0;
+  for i: 0..<count {
+    if !tasks[i].enabled { continue; }
+    if tasks[i].last_run_ms > 0 && (tasks[i].last_run_ms / 60000) == now_min { continue; }
+    if !sched_cron_matches(cast(string) tasks[i].cron[0..<tasks[i].cron_n], parts[0], parts[1], parts[2], parts[3], parts[4]) { continue; }
+    idb: [64] u8;
+    run_id := sc_launch_run(
+      h,
+      cast(string) tasks[i].prompt[0..<tasks[i].prompt_n],
+      cast(string) tasks[i].folder[0..<tasks[i].folder_n],
+      idb[..]);
+    if run_id.count > 0 {
+      tasks[i].last_run_ms = epoch_sec * 1000;
+      tasks[i].last_chat_id_n = sched_copy(tasks[i].last_chat_id[..], run_id);
+      fired += 1;
+    }
+  }
+  if fired > 0 {
+    out: [65536] u8;
+    on := sc_tasks_save(tasks[..], count, out[..]);
+    if on > 0 { _ = fs_replace_durable(path, cast(string) out[0..<on]); }
+  }
+  return fired;
+}
+
+sc_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+// Extract a case-insensitive HTTP header value from raw headers (before \r\n\r\n).
+sc_http_header :: (headers: string, name: string, out: [] u8) -> string {
+  at := 0;
+  while at < headers.count {
+    eol := at;
+    while eol < headers.count && headers[eol] != '\n' { eol += 1; }
+    end := ifx eol > at && headers[eol - 1] == '\r' then eol - 1 else eol;
+    if end - at > name.count + 1 {
+      ok := true;
+      for j: 0..<name.count {
+        if sc_lower(headers[at + j]) != sc_lower(name[j]) { ok = false; break; }
+      }
+      if ok && headers[at + name.count] == ':' {
+        v := at + name.count + 1;
+        while v < end && (headers[v] == ' ' || headers[v] == '\t') { v += 1; }
+        n := 0;
+        while v < end && n < out.count { out[n] = headers[v]; n += 1; v += 1; }
+        return cast(string) out[0..<n];
+      }
+    }
+    at = eol + 1;
+  }
+  return "";
+}
+
+sc_http_reply :: (conn: int, status: string, body: string) {
+  b: [1024] u8;
+  n := hs_cat(b[..], 0, "HTTP/1.1 ");
+  n = hs_cat(b[..], n, status);
+  n = hs_cat(b[..], n, "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ");
+  lb: [24] u8;
+  n = hs_cat(b[..], n, hs_itoa(body.count, lb[..]));
+  n = hs_cat(b[..], n, "\r\n\r\n");
+  n = hs_cat(b[..], n, body);
+  for i: 0..<n { _ = cxsock_write(conn, cast(int) b[i]); }
+  _ = cxsock_flush(conn, 500);
+}
+
+sc_webhook_open :: (sc: [] ScHost, port: int) -> bool {
+  if sc[0].listener >= 0 { return true; }
+  fd := cxsock_listen(port);
+  if fd < 0 { return false; }
+  sc[0].listener = fd;
+  sc[0].port = cxsock_port(fd);
+  return true;
+}
+
+sc_webhook_close :: (sc: [] ScHost) {
+  if sc[0].listener >= 0 {
+    _ = cxsock_close(sc[0].listener);
+    sc[0].listener = -1;
+    sc[0].port = 0;
+  }
+}
+
+// Accept and serve one pending HTTP webhook request (non-blocking).
+// Verifies X-OpenAgents-Signature & X-OpenAgents-Delivery via #authority sched_webhook_admit.
+sc_webhook_serve_one :: (h: [] HsHost, sc: [] ScHost, secret: string) -> int {
+  if sc[0].listener < 0 { return 0; }
+  conn := cxsock_accept(sc[0].listener, 0);
+  if conn < 0 { return 0; }
+  defer { _ = cxsock_close(conn); }
+  req: [16384] u8;
+  rn := 0;
+  for pass: 0..<8 {
+    got := cxsock_read(conn, 100);
+    if got <= 0 { break; }
+    for i: 0..<got { if rn < req.count { req[rn] = cast(u8) cxsock_byte(conn, i); rn += 1; } }
+    // Stop once we see header terminator and either Content-Length bytes or non-empty body.
+    sep := -1;
+    for k: 0..<rn - 3 {
+      if req[k] == '\r' && req[k + 1] == '\n' && req[k + 2] == '\r' && req[k + 3] == '\n' { sep = k; break; }
+    }
+    if sep >= 0 {
+      clb: [32] u8;
+      cl_str := sc_http_header(cast(string) req[0..<sep], "content-length", clb[..]);
+      cl := hs_atoi(cl_str);
+      if cl <= 0 || rn >= sep + 4 + cl { break; }
+    }
+  }
+  if rn < 16 { sc_http_reply(conn, "400 Bad Request", "{\"ok\":false,\"error\":\"empty_request\"}"); return 400; }
+  raw := cast(string) req[0..<rn];
+  if !hs_prefix(raw, "POST /webhook") {
+    sc_http_reply(conn, "404 Not Found", "{\"ok\":false,\"error\":\"not_found\"}");
+    return 404;
+  }
+  sep := -1;
+  for k: 0..<rn - 3 {
+    if req[k] == '\r' && req[k + 1] == '\n' && req[k + 2] == '\r' && req[k + 3] == '\n' { sep = k; break; }
+  }
+  if sep < 0 { sc_http_reply(conn, "400 Bad Request", "{\"ok\":false,\"error\":\"malformed_http\"}"); return 400; }
+  headers := cast(string) req[0..<sep];
+  body := cast(string) req[sep + 4..<rn];
+  sig_b: [128] u8; sig := sc_http_header(headers, "x-openagents-signature", sig_b[..]);
+  del_b: [128] u8; delivery := sc_http_header(headers, "x-openagents-delivery", del_b[..]);
+  verdict := sched_webhook_admit(sc[0].dedup[..], secret, delivery, body, sig);
+  if verdict == SCHED_WH_EMPTY_SECRET || verdict == SCHED_WH_BAD_SIG {
+    sc_http_reply(conn, "401 Unauthorized", "{\"ok\":false,\"error\":\"invalid_signature\"}");
+    return 401;
+  }
+  if verdict == SCHED_WH_BAD_ID {
+    sc_http_reply(conn, "400 Bad Request", "{\"ok\":false,\"error\":\"missing_delivery_id\"}");
+    return 400;
+  }
+  if verdict == SCHED_WH_DUPLICATE {
+    sc_http_reply(conn, "409 Conflict", "{\"ok\":false,\"error\":\"duplicate_delivery\"}");
+    return 409;
+  }
+  pb: [512] u8; pn := sched_jstr(body, "prompt", pb[..]);
+  fb: [256] u8; fn := sched_jstr(body, "folder", fb[..]);
+  prompt := ifx pn > 0 then cast(string) pb[0..<pn] else "Webhook trigger";
+  folder := ifx fn > 0 then cast(string) fb[0..<fn] else "";
+  idb: [64] u8;
+  run_id := sc_launch_run(h, prompt, folder, idb[..]);
+  if run_id.count == 0 {
+    sc_http_reply(conn, "503 Service Unavailable", "{\"ok\":false,\"error\":\"run_launch_failed\"}");
+    return 503;
+  }
+  rb: [256] u8;
+  n := hs_cat(rb[..], 0, "{\"ok\":true,\"run_id\":\"");
+  n = hs_cat(rb[..], n, run_id);
+  n = hs_cat(rb[..], n, "\"}");
+  sc_http_reply(conn, "200 OK", cast(string) rb[0..<n]);
+  return 200;
+}
+
+sc_read_secret :: (out: [] u8) -> string {
+  p: [1400] u8; sf := sc_desktop_file("webhook.secret", p[..]);
+  if sf.count == 0 || !fs_exists(sf) { return ""; }
+  n := fs_read(sf, out);
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ' || out[n - 1] == '\t') { n -= 1; }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+sc_tick :: (h: [] HsHost) {
+  now_sec := hs_now();
+  now_min := now_sec / 60;
+  if now_min != h[0].sched[0].last_min {
+    h[0].sched[0].last_min = now_min;
+    tp: [1400] u8;
+    _ = sc_tick_file(h, sc_desktop_file("scheduled-tasks.json", tp[..]), now_sec);
+  }
+  sb: [256] u8; secret := sc_read_secret(sb[..]);
+  if secret.count > 0 {
+    if h[0].sched[0].listener < 0 {
+      pb: [32] u8; penv := proc_getenv("OPENAGENTS_WEBHOOK_PORT", pb[..]);
+      port := hs_atoi(penv);
+      if port <= 0 || port > 65535 { port = SC_WEBHOOK_DEFAULT_PORT; }
+      _ = sc_webhook_open(h[0].sched[..], port);
+    }
+    _ = sc_webhook_serve_one(h, h[0].sched[..], secret);
+  }
+}
+
+#test "host-scheduled: UTC epoch calendar, JSON task codec, and case-insensitive HTTP header parser (#13885)" {
+  p: [5] int;
+  sc_epoch_to_utc(0, p[..]);
+  #assert p[0] == 0 && p[1] == 0 && p[2] == 1 && p[3] == 1 && p[4] == 4; // 1970-01-01 00:00 Thu
+  sc_epoch_to_utc(1709251140, p[..]);
+  #assert p[0] == 59 && p[1] == 23 && p[2] == 29 && p[3] == 2 && p[4] == 4; // 2024-02-29 23:59 Thu (leap day)
+  sc_epoch_to_utc(1795185000, p[..]);
+  #assert p[0] == 30 && p[1] == 14 && p[2] == 20 && p[3] == 11 && p[4] == 5; // 2026-11-20 14:30 Fri
+
+  seed := "{\"tasks\":[{\"id\":\"t1\",\"name\":\"Daily\",\"cron\":\"30 14 * * 5\",\"folder\":\"/tmp\",\"prompt\":\"audit\",\"enabled\":true,\"last_run_ms\":0,\"last_chat_id\":\"\"},{\"id\":\"t2\",\"name\":\"Paused\",\"cron\":\"* * * * *\",\"folder\":\"/tmp\",\"prompt\":\"skip\",\"enabled\":false,\"last_run_ms\":0,\"last_chat_id\":\"\"}]}";
+  tasks: [SC_TASKS_MAX] ScTask;
+  #assert sc_tasks_load(seed, tasks[..]) == 2;
+  #assert tasks[0].enabled && !tasks[1].enabled;
+  #assert cast(string) tasks[0].cron[0..<tasks[0].cron_n] == "30 14 * * 5";
+  out: [4096] u8;
+  on := sc_tasks_save(tasks[..], 2, out[..]);
+  #assert on > 0;
+  reloaded: [SC_TASKS_MAX] ScTask;
+  #assert sc_tasks_load(cast(string) out[0..<on], reloaded[..]) == 2;
+  #assert cast(string) reloaded[0].id[0..<reloaded[0].id_n] == "t1";
+
+  hdrs := "POST /webhook HTTP/1.1\r\nHost: localhost\r\nx-openagents-delivery: d-42\r\nX-OpenAgents-Signature: sha256=abcd";
+  vb: [128] u8;
+  #assert sc_http_header(hdrs, "X-OpenAgents-Delivery", vb[..]) == "d-42";
+  #assert sc_http_header(hdrs, "x-openagents-signature", vb[..]) == "sha256=abcd";
+  #assert sc_http_header(hdrs, "X-Missing", vb[..]) == "";
+}
+
+sc_selftest :: () -> int #effects(all) {
+  // 1. Headless cron tick against a temp scheduled-tasks.json
+  tb: [256] u8; rhex := hs_random_hex(8, tb[..]);
+  pb: [512] u8; pn := hs_cat(pb[..], 0, "/tmp/oa-sched-test-"); pn = hs_cat(pb[..], pn, rhex); pn = hs_cat(pb[..], pn, ".json");
+  tpath := cast(string) pb[0..<pn];
+  defer { _ = fs_remove(tpath); }
+  seed := "{\"tasks\":[{\"id\":\"t1\",\"name\":\"Daily\",\"cron\":\"30 14 * * 5\",\"folder\":\"/tmp\",\"prompt\":\"audit\",\"enabled\":true,\"last_run_ms\":0,\"last_chat_id\":\"\"},{\"id\":\"t2\",\"name\":\"Paused\",\"cron\":\"* * * * *\",\"folder\":\"/tmp\",\"prompt\":\"skip\",\"enabled\":false,\"last_run_ms\":0,\"last_chat_id\":\"\"}]}";
+  if !fs_replace_durable(tpath, seed) { tool_errln("sched-selftest: write failed"); return 1; }
+  no_host: [1] HsHost;
+  empty_h := no_host[0..<0];
+  if sc_tick_file(empty_h, tpath, 1795185000) != 1 { tool_errln("sched-selftest: expected 1 due task"); return 1; }
+  if sc_tick_file(empty_h, tpath, 1795185020) != 0 { tool_errln("sched-selftest: double-fired in same minute"); return 1; }
+  rb: [4096] u8; rn := fs_read(tpath, rb[..]);
+  loaded: [SC_TASKS_MAX] ScTask;
+  if rn <= 0 || sc_tasks_load(cast(string) rb[0..<rn], loaded[..]) != 2 { tool_errln("sched-selftest: reload failed"); return 1; }
+  if loaded[0].last_run_ms != 1795185000000 || loaded[0].last_chat_id_n != 32 || loaded[1].last_run_ms != 0 {
+    tool_errln("sched-selftest: persisted fields mismatch"); return 1;
+  }
+
+  // 2. Real loopback TCP HTTP webhook listener with #authority HMAC-SHA256 + 64-delivery dedup
+  sc: [1] ScHost;
+  if !sc_webhook_open(sc[..], 0) || sc[0].port <= 0 { tool_errln("sched-selftest: listen failed"); return 1; }
+  defer { sc_webhook_close(sc[..]); }
+  secret := "oa-webhook-test-secret";
+  body := "{\"prompt\":\"run nightly checks\",\"folder\":\"/tmp\"}";
+  sig_b: [80] u8; sig := sched_webhook_sign(secret, body, sig_b[..]);
+  if sig.count != 71 { tool_errln("sched-selftest: sign failed"); return 1; }
+
+  // Case A: valid signed delivery -> 200 OK
+  for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
+  cli1 := cxsock_connect(sc[0].port, 1000);
+  if cli1 < 0 { tool_errln("sched-selftest: connect 1 failed"); return 1; }
+  req1: [1024] u8;
+  n1 := hs_cat(req1[..], 0, "POST /webhook HTTP/1.1\r\nHost: localhost\r\nX-OpenAgents-Delivery: del-001\r\nX-OpenAgents-Signature: ");
+  n1 = hs_cat(req1[..], n1, sig);
+  n1 = hs_cat(req1[..], n1, "\r\nContent-Length: ");
+  lb1: [24] u8; n1 = hs_cat(req1[..], n1, hs_itoa(body.count, lb1[..]));
+  n1 = hs_cat(req1[..], n1, "\r\n\r\n");
+  n1 = hs_cat(req1[..], n1, body);
+  for i: 0..<n1 { _ = cxsock_write(cli1, cast(int) req1[i]); }
+  _ = cxsock_flush(cli1, 500);
+  c1 := sc_webhook_serve_one(empty_h, sc[..], secret);
+  _ = cxsock_close(cli1);
+  if c1 != 200 { tool_errln("sched-selftest: expected 200 OK"); return 1; }
+
+  // Case B: replay of same delivery ID -> 409 Conflict
+  for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
+  cli2 := cxsock_connect(sc[0].port, 1000);
+  if cli2 < 0 { tool_errln("sched-selftest: connect 2 failed"); return 1; }
+  for i: 0..<n1 { _ = cxsock_write(cli2, cast(int) req1[i]); }
+  _ = cxsock_flush(cli2, 500);
+  c2 := sc_webhook_serve_one(empty_h, sc[..], secret);
+  _ = cxsock_close(cli2);
+  if c2 != 409 { tool_errln("sched-selftest: expected 409 Conflict"); return 1; }
+
+  // Case C: tampered signature -> 401 Unauthorized
+  for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
+  cli3 := cxsock_connect(sc[0].port, 1000);
+  if cli3 < 0 { tool_errln("sched-selftest: connect 3 failed"); return 1; }
+  req3: [1024] u8;
+  n3 := hs_cat(req3[..], 0, "POST /webhook HTTP/1.1\r\nHost: localhost\r\nX-OpenAgents-Delivery: del-002\r\nX-OpenAgents-Signature: sha256=0000000000000000000000000000000000000000000000000000000000000000\r\nContent-Length: ");
+  n3 = hs_cat(req3[..], n3, hs_itoa(body.count, lb1[..]));
+  n3 = hs_cat(req3[..], n3, "\r\n\r\n");
+  n3 = hs_cat(req3[..], n3, body);
+  for i: 0..<n3 { _ = cxsock_write(cli3, cast(int) req3[i]); }
+  _ = cxsock_flush(cli3, 500);
+  c3 := sc_webhook_serve_one(empty_h, sc[..], secret);
+  _ = cxsock_close(cli3);
+  if c3 != 401 { tool_errln("sched-selftest: expected 401 Unauthorized"); return 1; }
+
+  hs_outln("sched-selftest: PASS (cron persistence + loopback HMAC webhook 200/409/401)");
+  return 0;
+}

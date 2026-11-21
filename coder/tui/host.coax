@@ -30,6 +30,7 @@
 //   coax/web/tool.sh coder/tui/host.coax ...   (coder/tui/coder.sh host ... runs this)
 // tool.sh: tls
 // tool.sh: run-steps 250000000
+#run_steps 250000000;
 
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
@@ -58,6 +59,7 @@
 #load "../../coax/lib/agent/desktop/paths.coax";        // dc_join, dc_cat: ph_worker_path
 #load "../../coax/lib/agent/desktop/os-windows.coax";   // dc_list_has: ph_worker_path
 #load "host-phone.coax";
+#load "host-scheduled.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -481,6 +483,7 @@ HsHost :: struct {
   environment:[1]EsHost;providers:[1]PaManager;station:[1]StCache;offers:[1]XoHost;
   runs:[1]DrHost;   // Coder Desktop's worker runs (host-runs.coax)
   phone:[1]PhHost;  // what this computer runs for a phone's chat (host-phone.coax)
+  sched:[1]ScHost;  // headless scheduled tasks & signed HMAC-SHA256 webhook listener (#13885)
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
@@ -719,8 +722,9 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln(cast(string) lb[0..<ln]);
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
+  defer { sc_webhook_close(h[0].sched[..]); }
   while end_at == 0 || hs_now() < end_at {
-    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);
+    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);sc_tick(h);
     es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]);
     // while a worker run is going its lines reach Coder within a few tens of milliseconds
     busy_ms := ifx dr_active(h) > 0 then 20 else 250;
@@ -962,6 +966,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "accounts-enable" {return pa_enable(args);}
   if verb == "workspace-write-selftest" {return ws_selftest_more(args_value(args,"--root",""));}
   if verb == "workspace-selftest" {return ws_selftest(args_value(args,"--root",""));}
+  if verb == "sched-selftest" {return sc_selftest();}
   if verb == "workspace-enable" {return ws_enable(args);}
   if verb == "workspace-rpc" {return ws_rpc_call(args);}
   if verb == "accounts-rpc" {return pa_rpc_call(args);}
