@@ -68,7 +68,7 @@ lp_axiom_allowed :: (name: string) -> bool #effects(all) {
 lp_axiom_code :: (name: string) -> int #effects(all) {
   if lp_axiom_allowed(name) { return LP_OK; }
   if name == "sorryAx" { return LP_SORRY; }
-  if name == "Lean.ofReduceBool" { return LP_NATIVE_DECIDE; }
+  if name == "Lean.ofReduceBool" || lp_has(name, ".native_decide.") { return LP_NATIVE_DECIDE; }
   if name == "Lean.trustCompiler" { return LP_TRUST_COMPILER; }
   return LP_BAD_AXIOM;
 }
@@ -162,6 +162,7 @@ lp_code_name :: (code: int) -> string #effects(all) {
   #assert lp_axiom_code("Classical.choice") == LP_OK;
   #assert lp_axiom_code("sorryAx") == LP_SORRY;
   #assert lp_axiom_code("Lean.ofReduceBool") == LP_NATIVE_DECIDE;
+  #assert lp_axiom_code("two_plus_two._native.native_decide.ax_1_1") == LP_NATIVE_DECIDE;
   #assert lp_axiom_code("Lean.trustCompiler") == LP_TRUST_COMPILER;
   #assert lp_axiom_code("cheat") == LP_BAD_AXIOM;
   #assert lp_axiom_rank(LP_SORRY) == 4 && lp_axiom_rank(LP_NATIVE_DECIDE) == 3 && lp_axiom_rank(LP_TRUST_COMPILER) == 2 && lp_axiom_rank(LP_BAD_AXIOM) == 1 && lp_axiom_rank(LP_OK) == 0;

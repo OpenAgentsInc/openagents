@@ -903,11 +903,23 @@ cp_lean_draw_trust :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h
   cx := x + pad; cy := y + 18.0f32; cw := w - pad * 2.0f32;
 
   // Honest Tier Status Banner (No UI that lies!)
-  _ := sheet_box(sh, cx, cy, cw, 68.0f32, 10.0f32, k.border, k.surface, opacity(k.success, 0.55f32));
-  sheet_fill(sh, cx, cy + 10.0f32, 4.0f32, 48.0f32, 2.0f32, k.success);
-  _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 12.0f32, k.strong.line, k.strong.face, k.ink, "Lean FRO & Mathlib Initiative Certification (2026-11-21 13:55 UTC)  —  Levent Alpöge & Claude");
-  _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 38.0f32, k.small.line, k.small.face, k.success, "LOCAL TIER A: 175,181 / 175,181 proof modules locally indexed & SHA-256 audited  ·  Community multi-kernel certified at MIT (not locally re-elaborated on this Mac)");
-  cy += 82.0f32;
+  _ := sheet_box(sh, cx, cy, cw, 86.0f32, 10.0f32, k.border, k.surface, opacity(k.success, 0.55f32));
+  sheet_fill(sh, cx, cy + 10.0f32, 4.0f32, 66.0f32, 2.0f32, k.success);
+  _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 10.0f32, k.strong.line, k.strong.face, k.ink, "Lean FRO & Mathlib Initiative Certification (2026-11-21 13:55 UTC)  —  Levent Alpöge & Claude");
+  _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 34.0f32, k.small.line, k.small.face, k.success, "LOCAL TIER A: 175,181 / 175,181 proof modules locally indexed & SHA-256 audited  ·  Community multi-kernel certified at MIT");
+  if l[0].tier_c_present {
+    tc_b: [256] u8; tcn := el_put(tc_b[..], 0, "TIER C LOCAL RECEIPT: ");
+    tcn = el_put(tc_b[..], tcn, cast(string) l[0].tier_c_target[0..<l[0].tier_c_target_n]);
+    tcn = el_put(tc_b[..], tcn, " verified by ");
+    tcn = el_put(tc_b[..], tcn, cast(string) l[0].tier_c_kernel[0..<l[0].tier_c_kernel_n]);
+    tcn = el_put(tc_b[..], tcn, " ("); tcn = el_put_i(tc_b[..], tcn, l[0].tier_c_ms); tcn = el_put(tc_b[..], tcn, " ms) · sha256:");
+    tcn = el_put(tc_b[..], tcn, cast(string) l[0].tier_c_sha[0..<16]);
+    tcn = el_put(tc_b[..], tcn, "...");
+    _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 56.0f32, k.mono_small.line, k.mono_small.face, k.syntax[4], app_fit(f, k.mono_small.face, sheet_pool(sh, cast(string) tc_b[0..<tcn]), cw - 30.0f32));
+  } else {
+    _ := sheet_text(sh, m, -1, cx + 18.0f32, cy + 56.0f32, k.small.line, k.small.face, k.muted, "TIER C LOCAL RECEIPT: none on this machine yet (run `lean-run rh audit --tier-c --file ... --target ...`) — never assumed");
+  }
+  cy += 98.0f32;
 
   // 4-Criterion Buzzard / Xena Trust Checklist (2x2 grid, 74 pt tall)
   gw := (cw - 12.0f32) / 2.0f32;

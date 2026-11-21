@@ -1,0 +1,309 @@
+// #authority Lemma Simplification Lab admission & diff-metrics policy
+// (Epic #13943, #13949; docs/lean/riemann-hypothesis-workbench-spec.md §4 View 4/5).
+//
+// Enforces:
+//   1. Verbatim normalized theorem/lemma statement identity before `:=` between the
+//      original RH declaration and the candidate replacement.
+//   2. Full kernel verification + strict standard axiom triad via #authority policy.coax
+//      (rejecting sorryAx, Lean.ofReduceBool / .native_decide., Lean.trustCompiler,
+//      custom axioms, timeouts, non-zero exit codes, and unsafe flags).
+//   3. Deterministic diff metrics (lines saved, bytes saved, heartbeats saved) and
+//      strict shortening gate when `require_shorter` is set.
+//
+//   coax/bin/coax test coax/lib/lean/rh-simplify.coax --library
+//   coax/bin/coax mutate coax/lib/lean/rh-simplify.coax --root-only
+#load "policy.coax";
+#authority;
+
+RHS_OK :: 0;
+RHS_EMPTY_ORIG :: 1;
+RHS_EMPTY_CAND :: 2;
+RHS_STMT_MISMATCH :: 3;
+RHS_KERNEL_REJECTED :: 4;
+RHS_NOT_SHORTER :: 5;
+
+RhsInput :: struct {
+  target: string;
+  orig_src: string;
+  cand_src: string;
+  kernel_exit_code: int;
+  kernel_timed_out: bool;
+  has_axioms_field: bool;
+  unsafe_flag: bool;
+  axioms: [] string;
+  orig_heartbeats: int;
+  cand_heartbeats: int;
+  require_shorter: bool;
+}
+
+RhsResult :: struct {
+  accepted: bool;
+  verdict: int;
+  policy_code: int;
+  statement_identical: bool;
+  orig_lines: int;
+  cand_lines: int;
+  lines_saved: int;
+  orig_bytes: int;
+  cand_bytes: int;
+  bytes_saved: int;
+  heartbeats_saved: int;
+}
+
+rhs_is_ws :: (c: u8) -> bool #effects(all) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+rhs_count_lines :: (s: string) -> int #effects(all) {
+  if s.count == 0 { return 0; }
+  n := 1;
+  last := s.count - 1;
+  for i: 0..<last {
+    if s[i] == '\n' { n += 1; }
+  }
+  return n;
+}
+
+// Extracts and normalizes the theorem/lemma statement prefix prior to `:=`, stripping
+// `-- ...` line comments and collapsing whitespace runs into single spaces.
+// Returns normalized byte length (> 0), or -1 if no `:=` is present or buffer overflows.
+rhs_sig_normalize :: (src: string, out: [] u8) -> int #effects(all) {
+  pos := 0;
+  i := 0;
+  found := false;
+  need_sp := false;
+  while i < src.count {
+    c := src[i];
+    if c == '-' && i + 1 < src.count && src[i + 1] == '-' {  // mutant: equivalent (a trailing "--" at exact EOF cannot precede ":=", so i+2 < src.count still returns -1)
+      while i < src.count && src[i] != '\n' { i += 1; }
+      continue;
+    }
+    if c == ':' && i + 1 < src.count && src[i + 1] == '=' {
+      found = true;
+      break;
+    }
+    if rhs_is_ws(c) {
+      if pos > 0 { need_sp = true; }
+      i += 1;
+      continue;
+    }
+    if need_sp {
+      if pos >= out.count { return -1; }
+      out[pos] = ' ';
+      pos += 1;
+      need_sp = false;
+    }
+    if pos >= out.count { return -1; }
+    out[pos] = c;
+    pos += 1;
+    i += 1;
+  }
+  if !found || pos == 0 { return -1; }
+  return pos;
+}
+
+rhs_sig_equal :: (orig_src: string, cand_src: string) -> bool #effects(all) {
+  b1: [4096] u8;
+  b2: [4096] u8;
+  n1 := rhs_sig_normalize(orig_src, b1[..]);
+  n2 := rhs_sig_normalize(cand_src, b2[..]);
+  if n1 == -1 || n1 != n2 { return false; }
+  for i: 0..<n1 {
+    if b1[i] != b2[i] { return false; }
+  }
+  return true;
+}
+
+rhs_evaluate :: (inp: RhsInput) -> RhsResult #effects(all) {
+  ol := rhs_count_lines(inp.orig_src);
+  cl := rhs_count_lines(inp.cand_src);
+  ob := inp.orig_src.count;
+  cb := inp.cand_src.count;
+  hb := inp.orig_heartbeats - inp.cand_heartbeats;
+  res := RhsResult.{
+    accepted = false,
+    verdict = RHS_OK,
+    policy_code = LP_OK,
+    statement_identical = false,
+    orig_lines = ol,
+    cand_lines = cl,
+    lines_saved = ol - cl,
+    orig_bytes = ob,
+    cand_bytes = cb,
+    bytes_saved = ob - cb,
+    heartbeats_saved = hb,
+  };
+  if ob == 0 { res.verdict = RHS_EMPTY_ORIG; return res; }
+  if cb == 0 { res.verdict = RHS_EMPTY_CAND; return res; }
+
+  same := rhs_sig_equal(inp.orig_src, inp.cand_src);
+  res.statement_identical = same;
+  chk := LpCheck.{
+    target = inp.target,
+    exit_code = inp.kernel_exit_code,
+    timed_out = inp.kernel_timed_out,
+    statement_match = same,
+    has_axioms_field = inp.has_axioms_field,
+    unsafe_flag = inp.unsafe_flag,
+    axioms = inp.axioms,
+  };
+  pcode := lp_verdict(chk);
+  res.policy_code = pcode;
+  if !same && pcode == LP_STATEMENT_MISMATCH {
+    res.verdict = RHS_STMT_MISMATCH;
+    return res;
+  }
+  if pcode != LP_OK {
+    res.verdict = RHS_KERNEL_REJECTED;
+    return res;
+  }
+  shorter := cl < ol || (cl == ol && cb < ob);
+  if inp.require_shorter && !shorter {
+    res.verdict = RHS_NOT_SHORTER;
+    return res;
+  }
+  res.accepted = true;
+  return res;
+}
+
+rhs_verdict_name :: (v: int) -> string #effects(all) {
+  if v == RHS_OK { return "ok"; }
+  if v == RHS_EMPTY_ORIG { return "empty_orig"; }
+  if v == RHS_EMPTY_CAND { return "empty_cand"; }
+  if v == RHS_STMT_MISMATCH { return "statement_mismatch"; }
+  if v == RHS_KERNEL_REJECTED { return "kernel_rejected"; }
+  if v == RHS_NOT_SHORTER { return "not_shorter"; }
+  return "unknown";
+}
+
+#test "rh-simplify: line counting and normalized signature matching" {
+  #assert rhs_count_lines("") == 0;
+  #assert rhs_count_lines("a") == 1;
+  #assert rhs_count_lines("a\n") == 1;
+  #assert rhs_count_lines("\na") == 2;
+  #assert rhs_count_lines("a\nb") == 2;
+  #assert rhs_count_lines("a\nb\n") == 2;
+  #assert rhs_count_lines("a\nb\nc\n") == 3;
+
+  out: [64] u8;
+  n := rhs_sig_normalize("-- comment\n  theorem foo (n : Nat) : n + 0 = n := by rfl\n", out[..]);
+  #assert n == 33 && cast(string) out[0..<n] == "theorem foo (n : Nat) : n + 0 = n";
+  // Comment inside header and single '-' (subtraction) preserved
+  n2 := rhs_sig_normalize("theorem bar (n : Nat) : n - 1 = n - 1 -- trailing\n\t:= by rfl", out[..]);
+  #assert n2 == 37 && cast(string) out[0..<n2] == "theorem bar (n : Nat) : n - 1 = n - 1";
+  // Empty comment immediately before newline inserts one space after 1-byte prefix
+  n3 := rhs_sig_normalize("a--\nb:=", out[..]);
+  #assert n3 == 3 && cast(string) out[0..<n3] == "a b";
+  // Whitespace variants (\r, \t, spaces, newlines) collapse identically
+  #assert rhs_sig_equal("theorem foo\r\n\t(n : Nat) : n + 0 = n := by\n  induction n\n", "theorem foo (n : Nat) : n + 0 = n := by rfl");
+  // Missing `:=`, empty prefix before `:=`, or altered signature rejected
+  #assert rhs_sig_normalize("theorem foo (n : Nat) : n + 0 = n", out[..]) == -1;
+  #assert rhs_sig_normalize("   := by rfl", out[..]) == -1;
+  #assert rhs_sig_normalize("theorem foo : n := by rfl", out[0..<10]) == -1;
+  // Exact boundary overflow on space insertion
+  #assert rhs_sig_normalize("a b := rfl", out[0..<1]) == -1;
+  #assert rhs_sig_normalize("a b := rfl", out[0..<2]) == -1;
+  #assert rhs_sig_normalize("a b := rfl", out[0..<3]) == 3 && cast(string) out[0..<3] == "a b";
+  // Colon not followed by '=' preserved (type annotations)
+  #assert rhs_sig_normalize("theorem f : Nat := 0", out[..]) == 15 && cast(string) out[0..<15] == "theorem f : Nat";
+  // Trailing single '-', '--', ':' at EOF and `:=` at exact EOF handled cleanly
+  #assert rhs_sig_normalize("a -", out[..]) == -1;
+  #assert rhs_sig_normalize("a--", out[..]) == -1;
+  #assert rhs_sig_normalize("a :", out[..]) == -1;
+  #assert rhs_sig_normalize("a:=", out[..]) == 1 && cast(string) out[0..<1] == "a";
+  // Trailing comment with no newline at EOF
+  #assert rhs_sig_normalize("a -- comment", out[..]) == -1;
+  #assert rhs_sig_equal("a:=1", "a:=2");
+  #assert !rhs_sig_equal("no assign", "no assign");
+  #assert !rhs_sig_equal("x := 1", "y := 1");
+  #assert !rhs_sig_equal("theorem foo (n : Nat) : n + 0 = n := by rfl", "theorem foo (n : Nat) : n = n := by rfl");
+  #assert !rhs_sig_equal("theorem foo (n : Nat) : n + 0 = n := by rfl", "theorem foo (n : Nat) : n + 0 = m := by rfl");
+}
+
+#test "rh-simplify: admission gate, anti-cheat, shortening, and metrics" {
+  orig := "theorem add_zero_right (n : Nat) : n + 0 = n := by\n  induction n with\n  | zero => rfl\n  | succ k ih => simp [ih]\n";
+  cand := "theorem add_zero_right (n : Nat) : n + 0 = n := by\n  rfl\n";
+  ok_ax := [1] string.["propext"];
+  base := RhsInput.{
+    target = "add_zero_right",
+    orig_src = orig,
+    cand_src = cand,
+    kernel_exit_code = 0,
+    kernel_timed_out = false,
+    has_axioms_field = true,
+    unsafe_flag = false,
+    axioms = ok_ax[..],
+    orig_heartbeats = 1200,
+    cand_heartbeats = 300,
+    require_shorter = true,
+  };
+  r := rhs_evaluate(base);
+  #assert r.accepted && r.verdict == RHS_OK && r.policy_code == LP_OK && r.statement_identical;
+  #assert r.orig_lines == 4 && r.cand_lines == 2 && r.lines_saved == 2;
+  #assert r.orig_bytes == orig.count && r.cand_bytes == cand.count && r.bytes_saved == orig.count - cand.count;
+  #assert r.heartbeats_saved == 900;
+
+  // Same line count, fewer bytes still counts as strictly shorter
+  same_lines_orig := "theorem f (n : Nat) : n + 0 = n := by exact Nat.add_zero n\n";
+  same_lines_cand := "theorem f (n : Nat) : n + 0 = n := by rfl\n";
+  sl := base; sl.orig_src = same_lines_orig; sl.cand_src = same_lines_cand;
+  #assert rhs_evaluate(sl).accepted;
+
+  // Same length or longer rejected when require_shorter == true, accepted when false
+  same_len := base; same_len.cand_src = orig;
+  r_ns := rhs_evaluate(same_len);
+  #assert !r_ns.accepted && r_ns.verdict == RHS_NOT_SHORTER;
+  same_len.require_shorter = false;
+  #assert rhs_evaluate(same_len).accepted;
+
+  // Longer line count rejected even if require_shorter == true
+  longer := base; longer.orig_src = cand; longer.cand_src = orig;
+  #assert !rhs_evaluate(longer).accepted && rhs_evaluate(longer).verdict == RHS_NOT_SHORTER;
+
+  // Empty orig or cand rejected
+  e1 := base; e1.orig_src = "";
+  re1 := rhs_evaluate(e1);
+  #assert !re1.accepted && re1.verdict == RHS_EMPTY_ORIG && re1.policy_code == LP_OK && !re1.statement_identical;
+  e2 := base; e2.cand_src = "";
+  #assert !rhs_evaluate(e2).accepted && rhs_evaluate(e2).verdict == RHS_EMPTY_CAND;
+
+  // Altered statement rejected with RHS_STMT_MISMATCH
+  bad_stmt := base; bad_stmt.cand_src = "theorem add_zero_right (n : Nat) : n = n := by\n  rfl\n";
+  rs := rhs_evaluate(bad_stmt);
+  #assert !rs.accepted && rs.verdict == RHS_STMT_MISMATCH && rs.policy_code == LP_STATEMENT_MISMATCH && !rs.statement_identical;
+
+  // Kernel exit failure precedes statement mismatch
+  bad_exit := bad_stmt; bad_exit.kernel_exit_code = 1;
+  rx := rhs_evaluate(bad_exit);
+  #assert !rx.accepted && rx.verdict == RHS_KERNEL_REJECTED && rx.policy_code == LP_EXITED_NONZERO;
+
+  // Anti-cheat: sorryAx, Lean.ofReduceBool, .native_decide., Lean.trustCompiler, custom axiom all rejected
+  ax_s := [1] string.["sorryAx"];
+  c_s := base; c_s.axioms = ax_s[..];
+  #assert !rhs_evaluate(c_s).accepted && rhs_evaluate(c_s).verdict == RHS_KERNEL_REJECTED && rhs_evaluate(c_s).policy_code == LP_SORRY;
+
+  ax_nd := [1] string.["Lean.ofReduceBool"];
+  c_nd := base; c_nd.axioms = ax_nd[..];
+  #assert !rhs_evaluate(c_nd).accepted && rhs_evaluate(c_nd).policy_code == LP_NATIVE_DECIDE;
+
+  ax_nd4 := [1] string.["foo._native.native_decide.ax_1_1"];
+  c_nd4 := base; c_nd4.axioms = ax_nd4[..];
+  #assert !rhs_evaluate(c_nd4).accepted && rhs_evaluate(c_nd4).policy_code == LP_NATIVE_DECIDE;
+
+  ax_tc := [1] string.["Lean.trustCompiler"];
+  c_tc := base; c_tc.axioms = ax_tc[..];
+  #assert !rhs_evaluate(c_tc).accepted && rhs_evaluate(c_tc).policy_code == LP_TRUST_COMPILER;
+
+  ax_cu := [1] string.["my_cheat"];
+  c_cu := base; c_cu.axioms = ax_cu[..];
+  #assert !rhs_evaluate(c_cu).accepted && rhs_evaluate(c_cu).policy_code == LP_BAD_AXIOM;
+
+  // Verdict names
+  #assert rhs_verdict_name(RHS_OK) == "ok";
+  #assert rhs_verdict_name(RHS_EMPTY_ORIG) == "empty_orig";
+  #assert rhs_verdict_name(RHS_EMPTY_CAND) == "empty_cand";
+  #assert rhs_verdict_name(RHS_STMT_MISMATCH) == "statement_mismatch";
+  #assert rhs_verdict_name(RHS_KERNEL_REJECTED) == "kernel_rejected";
+  #assert rhs_verdict_name(RHS_NOT_SHORTER) == "not_shorter";
+  #assert rhs_verdict_name(99) == "unknown";
+}

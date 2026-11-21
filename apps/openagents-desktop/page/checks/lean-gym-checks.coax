@@ -142,3 +142,25 @@
   #assert s[0].refused == 0 && s[0].fp[0].lean_goal_line == 2 && s[0].fp[0].lean_goal_ok;
   #assert cp_fp_press(s, CP_FP_LEAN_GOAL) && coder_page_action(s) == CP_ASK_FILE_LEAN_GOAL && s[0].fp[0].lean_goal_busy;
 }
+
+#test "lean trust ledger: Tier C receipt strictly requires verified==true and 64-hex SHA-256" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  s[0].experimental = true; s[0].gym_open = true; s[0].gym_mode = CP_GYM_LEAN; s[0].lean[0].view = CP_LEAN_TRUST;
+
+  // Genuine SHA-256-bound Tier C receipt accepted
+  #assert cp_lean_load_audit(s, "{\"reachable_from_main\":175181,\"digests\":[],\"tier_c_receipt\":{\"verified\":true,\"target\":\"add_zero_right\",\"kernel\":\"lean4\",\"elapsed_ms\":182,\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}}");
+  #assert s[0].lean[0].tier_c_present && s[0].lean[0].tier_c_ms == 182 && s[0].lean[0].tier_c_sha_n == 64;
+  verts: [CP_MAX_VERTICES] f32;
+  _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+  #assert s[0].refused == 0;
+
+  // Unverified or truncated-SHA receipt must NEVER set tier_c_present
+  #assert cp_lean_load_audit(s, "{\"reachable_from_main\":175181,\"digests\":[],\"tier_c_receipt\":{\"verified\":false,\"target\":\"add_zero_right\",\"kernel\":\"lean4\",\"elapsed_ms\":10,\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}}");
+  #assert !s[0].lean[0].tier_c_present;
+  #assert cp_lean_load_audit(s, "{\"reachable_from_main\":175181,\"digests\":[],\"tier_c_receipt\":{\"verified\":true,\"target\":\"add_zero_right\",\"kernel\":\"lean4\",\"elapsed_ms\":10,\"file_sha256\":\"short\"}}");
+  #assert !s[0].lean[0].tier_c_present;
+}

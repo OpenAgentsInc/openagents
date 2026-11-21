@@ -23,6 +23,7 @@ LwcWork :: struct {
   ix: [1] LwRhIndex;
   nt: [1] LwRhNote;
   w32: [1] LaW32Row;
+  bs: [1] LwBenchStatus;
   checked: int;
   failed: int;
 }
@@ -50,6 +51,9 @@ lwc_roundtrip :: (w: [] LwcWork, kind: string, line: string) -> bool {
   } else if kind == LA_W32_SCHEMA {
     if !la_read_psionic_w32(line, w[0].w32[..]) { return false; }
     k = la_write_psionic_w32_row(w[0].w32[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_BENCH_STATUS {
+    if !lw_bench_status_read(line, w[0].bs[..]) { return false; }
+    k = lw_bench_status_write(w[0].bs[..], w[0].back[..]);
   } else {
     return false;
   }
@@ -63,7 +67,8 @@ lwc_accepts_any :: (w: [] LwcWork, line: string) -> bool {
     || lw_gym_state_read(line, w[0].st[..])
     || lw_rh_index_read(line, w[0].ix[..])
     || lw_rh_note_read(line, w[0].nt[..])
-    || la_read_psionic_w32(line, w[0].w32[..]);
+    || la_read_psionic_w32(line, w[0].w32[..])
+    || lw_bench_status_read(line, w[0].bs[..]);
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -80,8 +85,8 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   d := jd[0];
   goldens := jv_get(d, 0, "goldens");
-  seen := [7] bool.[false, false, false, false, false, false, false];
-  schemas := [7] string.[LW_SCHEMA_DOCTOR, LW_SCHEMA_VERIFY, LW_SCHEMA_GYM_REQ, LW_SCHEMA_GYM_STATE, LW_SCHEMA_RH_INDEX, LW_SCHEMA_RH_NOTE, LA_W32_SCHEMA];
+  seen := [8] bool.[false, false, false, false, false, false, false, false];
+  schemas := [8] string.[LW_SCHEMA_DOCTOR, LW_SCHEMA_VERIFY, LW_SCHEMA_GYM_REQ, LW_SCHEMA_GYM_STATE, LW_SCHEMA_RH_INDEX, LW_SCHEMA_RH_NOTE, LA_W32_SCHEMA, LW_SCHEMA_BENCH_STATUS];
   for i: 0..<jv_len(d, goldens) {
     e := jv_at(d, goldens, i);
     kn := jv_str(d, jv_get(d, e, "schema"), w[0].kind[..]);
@@ -94,10 +99,10 @@ tool_main :: () -> int #export_c #effects(all) {
       tool_err("lean wire-checks: roundtrip mismatch for "); tool_errln(kind);
       w[0].failed += 1;
     } else {
-      for s: 0..<7 { if schemas[s] == kind { seen[s] = true; } }
+      for s: 0..<8 { if schemas[s] == kind { seen[s] = true; } }
     }
   }
-  for s: 0..<7 {
+  for s: 0..<8 {
     if !seen[s] {
       tool_err("lean wire-checks: missing golden for "); tool_errln(schemas[s]);
       w[0].failed += 1;

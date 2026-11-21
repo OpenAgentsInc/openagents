@@ -7034,6 +7034,20 @@
         "coax/lib/lean/atif.coax"
       ],
       "note": "Verified-only Psionic W3.2 distillation row derived from an ATIF-v1.8 Lean proof trajectory (#13948)."
+    },
+    {
+      "id": "lean-bench-status.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Incremental progress snapshot written by detached lean-run bench start|status|stop sweeps (#13949)."
     }
   ]
 }

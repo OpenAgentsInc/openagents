@@ -8,7 +8,8 @@
     "lean-gym-state.v1",
     "rh-index.v1",
     "rh-note.v1",
-    "lean-psionic-w32.v1"
+    "lean-psionic-w32.v1",
+    "lean-bench-status.v1"
   ],
   "goldens": [
     {
@@ -42,6 +43,10 @@
     {
       "schema": "lean-psionic-w32.v1",
       "line": "{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"run-lean-001\",\"task_id\":\"l01_add_zero_right\",\"model\":\"inkling-2-mini\",\"target\":\"add_zero_right\",\"prompt\":\"Prove n + 0 = n\",\"solution\":\"theorem add_zero_right (n : Nat) : n + 0 = n := by rfl\",\"verdict\":\"ok\",\"axioms\":\"\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}"
+    },
+    {
+      "schema": "lean-bench-status.v1",
+      "line": "{\"schema\":\"lean-bench-status.v1\",\"run_id\":\"bench-lean-001\",\"suite\":\"lean-core-smoke\",\"state\":\"running\",\"pid\":4242,\"total\":5,\"completed\":2,\"passed\":2,\"failed\":0,\"elapsed_ms\":412,\"current_task\":\"l03_mul_one_right\",\"out_dir\":\"/Users/test/.openagents/lean/runs/bench-lean-001\",\"note\":\"grading live\"}"
     }
   ],
   "refused": [
@@ -56,6 +61,7 @@
     "{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"rh_modules\":-5}",
     "{\"schema\":\"rh-index.v1\",\"modules\":-1}",
     "{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"u\",\"updated_s\":1,\"body\":\"empty module rejected\"}",
-    "{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"r\",\"task_id\":\"t\",\"model\":\"m\",\"target\":\"x\",\"prompt\":\"p\",\"solution\":\"s\",\"verdict\":\"sorry\",\"axioms\":\"sorryAx\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}"
+    "{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"r\",\"task_id\":\"t\",\"model\":\"m\",\"target\":\"x\",\"prompt\":\"p\",\"solution\":\"s\",\"verdict\":\"sorry\",\"axioms\":\"sorryAx\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}",
+    "{\"schema\":\"lean-bench-status.v1\",\"run_id\":\"\",\"suite\":\"s\",\"state\":\"running\",\"pid\":-1,\"total\":5,\"completed\":0,\"passed\":0,\"failed\":0,\"elapsed_ms\":0,\"current_task\":\"\",\"out_dir\":\"\",\"note\":\"\"}"
   ]
 }

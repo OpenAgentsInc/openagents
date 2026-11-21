@@ -1,0 +1,630 @@
+// Pure Coax Phase 4 / RH-4 Runtime Orchestrators (Epic #13943, #13949):
+//   1. RH Lemma Simplification Lab (`la_rh_simplify`, gated by #authority rh-simplify.coax)
+//   2. Detached Benchmark Sweeper (`la_bench_start`, `la_bench_worker`, `la_bench_status`, `la_bench_stop`)
+//   3. Tier C Multi-Kernel Independent Audit (`la_tier_c_audit` -> ~/.openagents/lean/provenance/)
+//   4. Pantograph / LeanREPL / Warm-Host Branching Tactic Search (`la_branch_search`)
+//
+// Imperative OS-effect shell (no #test block); verified end-to-end via live `lean-run` CLI commands.
+#load "rh-simplify.coax";
+#load "pantograph.coax";
+#load "verify.coax";
+#load "atif.coax";
+#load "host.coax";
+
+LA_SRC_MAX :: 262144;
+
+LaAuditWork :: struct {
+  orig_file: [LA_SRC_MAX] u8;
+  cand_file: [65536] u8;
+  orig_sig: [4096] u8;
+  patch: [131072] u8;
+  out_json: [131072] u8;
+  task_json: [16384] u8;
+  nodes: [512] JvNode;
+  flist: [1] FsList;
+  ver: [1] LwVerify;
+  bs: [1] LwBenchStatus;
+  tree: [1] PtTree;
+  rep: [65536] u8;
+}
+
+la_str_ends :: (s: string, suf: string) -> bool {
+  if suf.count > s.count { return false; }
+  off := s.count - suf.count;
+  for i: 0..<suf.count { if s[off + i] != suf[i] { return false; } }
+  return true;
+}
+
+la_str_starts :: (s: string, pre: string) -> bool {
+  if pre.count > s.count { return false; }
+  for i: 0..<pre.count { if s[i] != pre[i] { return false; } }
+  return true;
+}
+
+la_is_ident_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '\'' || c == '.';
+}
+
+// Extracts the slice of `src` corresponding to `theorem <decl>` / `lemma <decl>` up to the next
+// top-level keyword or EOF. Falls back to the full file if `decl` is the sole declaration.
+la_extract_decl :: (src: string, decl: string) -> string {
+  if src.count == 0 || decl.count == 0 { return ""; }
+  start := -1;
+  pos := 0;
+  while pos < src.count {
+    ls := pos;
+    while pos < src.count && src[pos] != '\n' { pos += 1; }
+    le := pos;
+    if pos < src.count { pos += 1; }
+    line := cast(string) src[ls..<le];
+    // Skip leading indentation
+    k := 0;
+    while k < line.count && (line[k] == ' ' || line[k] == '\t') { k += 1; }
+    rest := cast(string) line[k..<line.count];
+    kw_len := 0;
+    if la_str_starts(rest, "theorem ") { kw_len = 8; }
+    else if la_str_starts(rest, "lemma ") { kw_len = 6; }
+    else if la_str_starts(rest, "private theorem ") { kw_len = 16; }
+    else if la_str_starts(rest, "private lemma ") { kw_len = 14; }
+    else if la_str_starts(rest, "noncomputable theorem ") { kw_len = 22; }
+    if kw_len > 0 {
+      after := cast(string) rest[kw_len..<rest.count];
+      if la_str_starts(after, decl) {
+        next_c := ifx decl.count < after.count then after[decl.count] else cast(u8) ' ';
+        if !la_is_ident_char(next_c) {
+          start = ls;
+          break;
+        }
+      }
+    }
+  }
+  if start < 0 { return src; }
+  end := src.count;
+  while pos < src.count {
+    ls := pos;
+    while pos < src.count && src[pos] != '\n' { pos += 1; }
+    le := pos;
+    if pos < src.count { pos += 1; }
+    line := cast(string) src[ls..<le];
+    if line.count > 0 && line[0] != ' ' && line[0] != '\t' {
+      if la_str_starts(line, "theorem ") || la_str_starts(line, "lemma ") || la_str_starts(line, "def ")
+         || la_str_starts(line, "private ") || la_str_starts(line, "noncomputable ") || la_str_starts(line, "end ") {
+        end = ls;
+        break;
+      }
+    }
+  }
+  return cast(string) src[start..<end];
+}
+
+// Writes a clean unified diff patch comparing `orig_txt` against `cand_txt`.
+la_build_unified_diff :: (label: string, orig_txt: string, cand_txt: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  ol := rhs_count_lines(orig_txt);
+  cl := rhs_count_lines(cand_txt);
+  jo_put(o[..], "--- a/"); jo_put(o[..], label); jo_byte(o[..], '\n');
+  jo_put(o[..], "+++ b/"); jo_put(o[..], label); jo_byte(o[..], '\n');
+  jo_put(o[..], "@@ -1,"); jo_int(o[..], ol); jo_put(o[..], " +1,"); jo_int(o[..], cl); jo_put(o[..], " @@\n");
+  i := 0;
+  while i < orig_txt.count {
+    ls := i;
+    while i < orig_txt.count && orig_txt[i] != '\n' { i += 1; }
+    jo_byte(o[..], '-'); jo_put(o[..], cast(string) orig_txt[ls..<i]); jo_byte(o[..], '\n');
+    if i < orig_txt.count { i += 1; }
+  }
+  j := 0;
+  while j < cand_txt.count {
+    ls := j;
+    while j < cand_txt.count && cand_txt[j] != '\n' { j += 1; }
+    jo_byte(o[..], '+'); jo_put(o[..], cast(string) cand_txt[ls..<j]); jo_byte(o[..], '\n');
+    if j < cand_txt.count { j += 1; }
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Resolves MODULE_OR_FILE: direct path if present on disk, else RH corpus `.lean` module path.
+la_resolve_module_file :: (home: string, mod_or_file: string, out: [] u8) -> string {
+  if fs_exists(mod_or_file) { return mod_or_file; }
+  cb: [FS_PATH_MAX] u8;
+  corpus := fs_join(home, ".openagents/lean/corpora/riemann-hypothesis", cb[..]);
+  rel: [FS_PATH_MAX] u8; rn := 0;
+  for c: mod_or_file {
+    if rn + 6 >= FS_PATH_MAX { break; }
+    rel[rn] = ifx c == '.' then cast(u8) '/' else c;
+    rn += 1;
+  }
+  suf := ".lean";
+  for c: suf { rel[rn] = c; rn += 1; }
+  p := fs_join(corpus, cast(string) rel[0..<rn], out);
+  if fs_exists(p) { return p; }
+  // Also check under `RiemannHypothesis/` or `Supplements/` if prefixed
+  return p;
+}
+
+// ---- 1. RH Lemma Simplification Lab (`lean-run rh simplify`) ----
+
+la_rh_simplify :: (home: string, mod_or_file: string, decl: string, cand_path: string, out_patch: string, allow_same_len: bool, want_json: bool) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  pb: [FS_PATH_MAX] u8;
+  orig_path := la_resolve_module_file(home, mod_or_file, pb[..]);
+  on := fs_read(orig_path, w[0].orig_file[..]);
+  if on <= 0 {
+    tool_err("lean-run rh simplify: cannot read original module/file: "); tool_errln(orig_path);
+    return 1;
+  }
+  cn := fs_read(cand_path, w[0].cand_file[..]);
+  if cn <= 0 {
+    tool_err("lean-run rh simplify: cannot read candidate file: "); tool_errln(cand_path);
+    return 1;
+  }
+  orig_full := cast(string) w[0].orig_file[0..<on];
+  orig_decl := la_extract_decl(orig_full, decl);
+  cand_full := cast(string) w[0].cand_file[0..<cn];
+  cand_decl := la_extract_decl(cand_full, decl);
+
+  sig_n := rhs_sig_normalize(orig_decl, w[0].orig_sig[..]);
+  orig_sig := ifx sig_n > 0 then cast(string) w[0].orig_sig[0..<sig_n] else "";
+
+  // Real Lean 4 kernel verification against the frozen original signature
+  lv_verify_file(home, cand_path, decl, orig_sig, w[0].ver[..]);
+
+  ax_arr: [LW_AXIOMS] string;
+  for i: 0..<w[0].ver[0].axiom_count {
+    ax_arr[i] = cast(string) w[0].ver[0].axioms[i][0..<w[0].ver[0].axioms_n[i]];
+  }
+  inp := RhsInput.{
+    target = decl,
+    orig_src = orig_decl,
+    cand_src = cand_decl,
+    kernel_exit_code = w[0].ver[0].exit_code,
+    kernel_timed_out = false,
+    has_axioms_field = w[0].ver[0].exit_code == 0,
+    unsafe_flag = false,
+    axioms = ax_arr[0..<w[0].ver[0].axiom_count],
+    orig_heartbeats = 0,
+    cand_heartbeats = 0,
+    require_shorter = !allow_same_len,
+  };
+  res := rhs_evaluate(inp);
+  patch_n := 0;
+  if res.accepted {
+    patch_n = la_build_unified_diff(mod_or_file, orig_decl, cand_decl, w[0].patch[..]);
+    if out_patch.count > 0 && patch_n > 0 {
+      _ = fs_write(out_patch, cast(string) w[0].patch[0..<patch_n]);
+    }
+  }
+
+  verdict_s := rhs_verdict_name(res.verdict);
+  pcode_s := lp_code_name(res.policy_code);
+  sha_s := cast(string) w[0].ver[0].file_sha256[0..<w[0].ver[0].file_sha256_n];
+
+  if want_json {
+    o: [1] Jo; jo_start(o[..], w[0].out_json[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "accepted"); jo_bool(o[..], res.accepted);
+    jo_key(o[..], "verdict"); jo_str(o[..], verdict_s);
+    jo_key(o[..], "policy_code"); jo_str(o[..], pcode_s);
+    jo_key(o[..], "module"); jo_str(o[..], mod_or_file);
+    jo_key(o[..], "decl"); jo_str(o[..], decl);
+    jo_key(o[..], "statement_identical"); jo_bool(o[..], res.statement_identical);
+    jo_key(o[..], "orig_lines"); jo_int(o[..], res.orig_lines);
+    jo_key(o[..], "cand_lines"); jo_int(o[..], res.cand_lines);
+    jo_key(o[..], "lines_saved"); jo_int(o[..], res.lines_saved);
+    jo_key(o[..], "orig_bytes"); jo_int(o[..], res.orig_bytes);
+    jo_key(o[..], "cand_bytes"); jo_int(o[..], res.cand_bytes);
+    jo_key(o[..], "bytes_saved"); jo_int(o[..], res.bytes_saved);
+    jo_key(o[..], "kernel_ms"); jo_int(o[..], w[0].ver[0].elapsed_ms);
+    jo_key(o[..], "file_sha256"); jo_str(o[..], sha_s);
+    jo_key(o[..], "axioms"); jo_arr(o[..]);
+    for i: 0..<w[0].ver[0].axiom_count { jo_str(o[..], ax_arr[i]); }
+    jo_end(o[..]);
+    jo_key(o[..], "patch_file"); jo_str(o[..], ifx res.accepted && out_patch.count > 0 then out_patch else "");
+    jo_key(o[..], "diff"); jo_str(o[..], ifx patch_n > 0 then cast(string) w[0].patch[0..<patch_n] else "");
+    jo_end(o[..]);
+    print("%\n", jo_text(o[..]));
+  } else {
+    print("RH Lemma Simplification: % (% / policy=%)\n", ifx res.accepted then "ACCEPTED" else "REJECTED", verdict_s, pcode_s);
+    print("  module: %  decl: %  statement_identical: %\n", mod_or_file, decl, ifx res.statement_identical then "true" else "false");
+    print("  lines:  % -> % (saved %)\n", res.orig_lines, res.cand_lines, res.lines_saved);
+    print("  bytes:  % -> % (saved %)  kernel: % ms\n", res.orig_bytes, res.cand_bytes, res.bytes_saved, w[0].ver[0].elapsed_ms);
+    if patch_n > 0 { print("\n%\n", cast(string) w[0].patch[0..<patch_n]); }
+  }
+  return ifx res.accepted then 0 else 1;
+}
+
+// ---- 2. Detached Benchmark Sweeper (`lean-run bench start|status|stop|worker`) ----
+
+la_write_bench_status :: (run_dir: string, bs: [] LwBenchStatus) -> bool #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  sp := fs_join(run_dir, "status.json", pb[..]);
+  buf: [4096] u8;
+  n := lw_bench_status_write(bs, buf[..]);
+  if n <= 0 { return false; }
+  return fs_replace_durable(sp, cast(string) buf[0..<n]);
+}
+
+la_resolve_suite_dir :: (home: string, suite: string, out: [] u8) -> string #effects(all) {
+  if fs_exists(suite) {
+    tb: [FS_PATH_MAX] u8;
+    if fs_exists(fs_join(suite, "tasks", tb[..])) { return suite; }
+  }
+  b0: [FS_PATH_MAX] u8; b1: [FS_PATH_MAX] u8; b2: [FS_PATH_MAX] u8;
+  cwd := fs_cwd(b0[..]);
+  c1 := fs_join(fs_join(cwd, "evals/openagents-desktop/lean", b1[..]), suite, out);
+  if fs_exists(fs_join(c1, "tasks", b2[..])) { return c1; }
+  c2 := fs_join(fs_join(home, ".openagents/lean/benchmarks", b1[..]), suite, out);
+  if fs_exists(fs_join(c2, "tasks", b2[..])) { return c2; }
+  return c1;
+}
+
+la_bench_start :: (home: string, self_exe: string, suite: string, run_dir: string, solutions_dir: string, want_json: bool) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  t0 := proc_now_ms();
+  rb: [64] u8;
+  ro: [1] Jo; jo_start(ro[..], rb[..]); jo_put(ro[..], "bench-"); jo_int(ro[..], t0);
+  run_id := jo_text(ro[..]);
+  d0: [FS_PATH_MAX] u8; d1: [FS_PATH_MAX] u8;
+  rdir := run_dir;
+  if rdir.count == 0 {
+    rdir = fs_join(fs_join(home, ".openagents/lean/runs", d0[..]), run_id, d1[..]);
+  }
+  if !fs_mkdir_all(rdir) { tool_errln("lean-run bench start: cannot create run dir"); return 1; }
+  sb: [FS_PATH_MAX] u8;
+  _ = fs_remove(fs_join(rdir, "stop.flag", sb[..]));
+
+  w[0].bs[0] = LwBenchStatus.{};
+  w[0].bs[0].run_id_n = lw_put(w[0].bs[0].run_id[..], run_id);
+  w[0].bs[0].suite_n = lw_put(w[0].bs[0].suite[..], suite);
+  w[0].bs[0].state_n = lw_put(w[0].bs[0].state[..], "starting");
+  w[0].bs[0].out_dir_n = lw_put(w[0].bs[0].out_dir[..], rdir);
+  w[0].bs[0].note_n = lw_put(w[0].bs[0].note[..], "spawning detached worker");
+  _ = la_write_bench_status(rdir, w[0].bs[..]);
+
+  // Spawn detached background worker that survives CLI exit
+  h := proc_new();
+  if h < 0 { tool_errln("lean-run bench start: proc_new failed"); return 1; }
+  ok := proc_arg(h, self_exe) && proc_arg(h, "bench") && proc_arg(h, "worker")
+    && proc_arg(h, "--suite") && proc_arg(h, suite)
+    && proc_arg(h, "--run-dir") && proc_arg(h, rdir)
+    && proc_arg(h, "--run-id") && proc_arg(h, run_id);
+  if solutions_dir.count > 0 {
+    ok = ok && proc_arg(h, "--solutions-dir") && proc_arg(h, solutions_dir);
+  }
+  ok = ok && proc_detach(h) && proc_quiet(h);
+  started := ok && proc_start(h) == 0;
+  pid := ifx started then proc_pid(h) else -1;
+  _ = proc_release(h);
+  if !started || pid <= 0 {
+    tool_errln("lean-run bench start: failed to spawn detached worker");
+    return 1;
+  }
+  w[0].bs[0].pid = pid;
+  w[0].bs[0].state_n = lw_put(w[0].bs[0].state[..], "running");
+  w[0].bs[0].note_n = lw_put(w[0].bs[0].note[..], "detached worker running");
+  _ = la_write_bench_status(rdir, w[0].bs[..]);
+
+  // Also persist latest run dir pointer so `bench status` / `bench stop` work without --run-dir
+  lb: [FS_PATH_MAX] u8;
+  _ = fs_mkdir_all(fs_join(home, ".openagents/lean/runs", d0[..]));
+  _ = fs_write(fs_join(home, ".openagents/lean/runs/latest-bench.txt", lb[..]), rdir);
+
+  if want_json {
+    n := lw_bench_status_write(w[0].bs[..], w[0].out_json[..]);
+    if n > 0 { print("%\n", cast(string) w[0].out_json[0..<n]); }
+  } else {
+    print("Detached Lean benchmark started: run_id=% pid=% suite=% dir=%\n", run_id, pid, suite, rdir);
+  }
+  return 0;
+}
+
+la_bench_worker :: (home: string, suite: string, run_dir: string, run_id: string, solutions_dir: string) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  t0 := proc_now_ms();
+  sdir_b: [FS_PATH_MAX] u8;
+  sdir := la_resolve_suite_dir(home, suite, sdir_b[..]);
+  tdir_b: [FS_PATH_MAX] u8;
+  tdir := fs_join(sdir, "tasks", tdir_b[..]);
+  nf := fs_list(tdir, w[0].flist[..]);
+  total := 0;
+  for i: 0..<nf {
+    if la_str_ends(fs_entry(w[0].flist[..], i), ".json") { total += 1; }
+  }
+  w[0].bs[0] = LwBenchStatus.{ total = total };
+  // Preserve detached worker PID written by parent if present
+  sp_old_b: [FS_PATH_MAX] u8;
+  old_n := fs_read(fs_join(run_dir, "status.json", sp_old_b[..]), w[0].task_json[..]);
+  if old_n > 0 {
+    prev: [1] LwBenchStatus;
+    if lw_bench_status_read(cast(string) w[0].task_json[0..<old_n], prev[..]) && prev[0].pid > 0 {
+      w[0].bs[0].pid = prev[0].pid;
+    }
+  }
+  w[0].bs[0].run_id_n = lw_put(w[0].bs[0].run_id[..], run_id);
+  w[0].bs[0].suite_n = lw_put(w[0].bs[0].suite[..], suite);
+  w[0].bs[0].state_n = lw_put(w[0].bs[0].state[..], "running");
+  w[0].bs[0].out_dir_n = lw_put(w[0].bs[0].out_dir[..], run_dir);
+  w[0].bs[0].note_n = lw_put(w[0].bs[0].note[..], "verifying suite via Lean 4 kernel");
+  _ = la_write_bench_status(run_dir, w[0].bs[..]);
+
+  stop_b: [FS_PATH_MAX] u8;
+  stop_flag := fs_join(run_dir, "stop.flag", stop_b[..]);
+
+  for i: 0..<nf {
+    if fs_exists(stop_flag) {
+      w[0].bs[0].state_n = lw_put(w[0].bs[0].state[..], "stopped");
+      w[0].bs[0].elapsed_ms = proc_now_ms() - t0;
+      w[0].bs[0].note_n = lw_put(w[0].bs[0].note[..], "stopped cleanly via stop.flag");
+      _ = la_write_bench_status(run_dir, w[0].bs[..]);
+      return 0;
+    }
+    ename := fs_entry(w[0].flist[..], i);
+    if !la_str_ends(ename, ".json") { continue; }
+    tp_b: [FS_PATH_MAX] u8;
+    tp := fs_join(tdir, ename, tp_b[..]);
+    tn := fs_read(tp, w[0].task_json[..]);
+    if tn <= 0 { continue; }
+    jd: [1] Jv;
+    if !jv_parse(jd[..], cast(string) w[0].task_json[0..<tn], w[0].nodes[..]) { continue; }
+    d := jd[0];
+    id_b: [128] u8; fx_b: [128] u8; fl_b: [128] u8; tg_b: [128] u8; st_b: [512] u8;
+    id_n := jv_str(d, jv_get(d, 0, "id"), id_b[..]);
+    fx_n := jv_str(d, jv_get(d, 0, "fixture"), fx_b[..]);
+    g0 := jv_at(d, jv_get(d, 0, "graders"), 0);
+    fl_n := jv_str(d, jv_get(d, g0, "file"), fl_b[..]);
+    tg_n := jv_str(d, jv_get(d, g0, "target"), tg_b[..]);
+    st_n := jv_str(d, jv_get(d, g0, "statement"), st_b[..]);
+    if id_n <= 0 || tg_n <= 0 { continue; }
+
+    tid := cast(string) id_b[0..<id_n];
+    fname := ifx fl_n > 0 then cast(string) fl_b[0..<fl_n] else "Problem.lean";
+    target := cast(string) tg_b[0..<tg_n];
+    stmt := ifx st_n > 0 then cast(string) st_b[0..<st_n] else "";
+
+    w[0].bs[0].current_task_n = lw_put(w[0].bs[0].current_task[..], tid);
+    w[0].bs[0].elapsed_ms = proc_now_ms() - t0;
+    _ = la_write_bench_status(run_dir, w[0].bs[..]);
+
+    // Check candidate file under solutions_dir/<tid>/<fname> if given, else fixture stub
+    p0: [FS_PATH_MAX] u8; p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+    lean_file := "";
+    if solutions_dir.count > 0 {
+      cand := fs_join(fs_join(solutions_dir, tid, p0[..]), fname, p1[..]);
+      if fs_exists(cand) { lean_file = cand; }
+    }
+    if lean_file.count == 0 {
+      fxs := fs_join(sdir, "fixtures", p0[..]);
+      lean_file = fs_join(fs_join(fxs, ifx fx_n > 0 then cast(string) fx_b[0..<fx_n] else tid, p1[..]), fname, p2[..]);
+    }
+
+    lv_verify_file(home, lean_file, target, stmt, w[0].ver[..]);
+    w[0].bs[0].completed += 1;
+    if w[0].ver[0].verified { w[0].bs[0].passed += 1; } else { w[0].bs[0].failed += 1; }
+    w[0].bs[0].elapsed_ms = proc_now_ms() - t0;
+    _ = la_write_bench_status(run_dir, w[0].bs[..]);
+  }
+
+  w[0].bs[0].state_n = lw_put(w[0].bs[0].state[..], "done");
+  w[0].bs[0].current_task_n = 0;
+  w[0].bs[0].elapsed_ms = proc_now_ms() - t0;
+  w[0].bs[0].note_n = lw_put(w[0].bs[0].note[..], "completed all tasks");
+  _ = la_write_bench_status(run_dir, w[0].bs[..]);
+  return 0;
+}
+
+la_resolve_bench_dir :: (home: string, given: string, out: [] u8) -> string #effects(all) {
+  if given.count > 0 { return given; }
+  lb: [FS_PATH_MAX] u8;
+  n := fs_read(fs_join(home, ".openagents/lean/runs/latest-bench.txt", lb[..]), out);
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r') { n -= 1; }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+la_bench_status :: (home: string, given_dir: string, want_json: bool) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  db: [FS_PATH_MAX] u8; sp_b: [FS_PATH_MAX] u8;
+  rdir := la_resolve_bench_dir(home, given_dir, db[..]);
+  if rdir.count == 0 { tool_errln("lean-run bench status: no benchmark run found (pass --run-dir)"); return 1; }
+  sn := fs_read(fs_join(rdir, "status.json", sp_b[..]), w[0].task_json[..]);
+  if sn <= 0 || !lw_bench_status_read(cast(string) w[0].task_json[0..<sn], w[0].bs[..]) {
+    tool_errln("lean-run bench status: invalid or missing status.json");
+    return 1;
+  }
+  if want_json {
+    print("%\n", cast(string) w[0].task_json[0..<sn]);
+  } else {
+    print("Lean Bench % [%]: %/% completed (% pass, % fail) | % ms | dir=%\n",
+      cast(string) w[0].bs[0].run_id[0..<w[0].bs[0].run_id_n],
+      cast(string) w[0].bs[0].state[0..<w[0].bs[0].state_n],
+      w[0].bs[0].completed, w[0].bs[0].total, w[0].bs[0].passed, w[0].bs[0].failed,
+      w[0].bs[0].elapsed_ms, rdir);
+  }
+  return 0;
+}
+
+la_bench_stop :: (home: string, given_dir: string, want_json: bool) -> int #effects(all) {
+  db: [FS_PATH_MAX] u8; fb: [FS_PATH_MAX] u8;
+  rdir := la_resolve_bench_dir(home, given_dir, db[..]);
+  if rdir.count == 0 { tool_errln("lean-run bench stop: no benchmark run found (pass --run-dir)"); return 1; }
+  _ = fs_write(fs_join(rdir, "stop.flag", fb[..]), "stop\n");
+  if want_json {
+    print("{\"ok\":true,\"stopped\":true,\"run_dir\":\"%\"}\n", rdir);
+  } else {
+    print("Stop signal written to %/stop.flag\n", rdir);
+  }
+  return 0;
+}
+
+// ---- 3. Tier C Multi-Kernel Independent Audit (`lean-run rh audit --tier-c`) ----
+
+la_tier_c_audit :: (home: string, file: string, target: string, stmt: string, manifest_out: string, want_json: bool) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  b_lean: [FS_PATH_MAX] u8; b_lake: [FS_PATH_MAX] u8;
+  b_lc: [FS_PATH_MAX] u8; b_nan: [FS_PATH_MAX] u8;
+  b_cl: [FS_PATH_MAX] u8; b_cr: [FS_PATH_MAX] u8;
+  p_lean := lv_find_bin("lean", home, b_lean[..]);
+  p_lake := lv_find_bin("lake", home, b_lake[..]);
+  p_lc := lv_find_bin("leanchecker", home, b_lc[..]);
+  p_nan := lv_find_bin("nanoda", home, b_nan[..]);
+  p_cl := lv_find_bin("con-leche", home, b_cl[..]);
+  p_cr := lv_find_bin("con-ron", home, b_cr[..]);
+
+  prov_b: [FS_PATH_MAX] u8; rec_b: [FS_PATH_MAX] u8; plan_b: [FS_PATH_MAX] u8;
+  prov_dir := fs_join(home, ".openagents/lean/provenance", prov_b[..]);
+  _ = fs_mkdir_all(prov_dir);
+  receipt_path := fs_join(prov_dir, "tier-c-latest.json", rec_b[..]);
+  plan_path := ifx manifest_out.count > 0 then manifest_out else fs_join(prov_dir, "tier-c-remote-plan.json", plan_b[..]);
+
+  // Write honest remote high-RAM orchestration plan for coax/remote/remote.sh
+  po: [1] Jo; jo_start(po[..], w[0].patch[..]);
+  jo_obj(po[..]);
+  jo_key(po[..], "tier"); jo_str(po[..], "C");
+  jo_key(po[..], "runner"); jo_str(po[..], "OA_REMOTE=1 coax/remote/remote.sh run --");
+  jo_key(po[..], "corpus_commit"); jo_str(po[..], "f2584cb8c");
+  jo_key(po[..], "kernels"); jo_arr(po[..]);
+  jo_str(po[..], "lake check --paranoid");
+  jo_str(po[..], "leanchecker");
+  jo_str(po[..], "nanoda");
+  jo_str(po[..], "con-leche --compare");
+  jo_str(po[..], "con-ron");
+  jo_end(po[..]);
+  jo_key(po[..], "receipt_output"); jo_str(po[..], receipt_path);
+  jo_end(po[..]);
+  _ = fs_write(plan_path, jo_text(po[..]));
+
+  ran_local := false;
+  receipt_saved := false;
+  if file.count > 0 && target.count > 0 {
+    ran_local = true;
+    lv_verify_file(home, file, target, stmt, w[0].ver[..]);
+    // STRICT ANTI-LYING GATE: persist Tier C receipt ONLY when verified == true AND sha256 is 64 hex chars!
+    if w[0].ver[0].verified && w[0].ver[0].file_sha256_n == 64 {
+      vn := lw_verify_write(w[0].ver[..], w[0].task_json[..]);
+      if vn > 0 {
+        receipt_saved = fs_replace_durable(receipt_path, cast(string) w[0].task_json[0..<vn]);
+      }
+    }
+  }
+
+  o: [1] Jo; jo_start(o[..], w[0].out_json[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "tier"); jo_str(o[..], "C");
+  jo_key(o[..], "kernels_local"); jo_obj(o[..]);
+  jo_key(o[..], "lean"); jo_bool(o[..], p_lean.count > 0);
+  jo_key(o[..], "lake"); jo_bool(o[..], p_lake.count > 0);
+  jo_key(o[..], "leanchecker"); jo_bool(o[..], p_lc.count > 0);
+  jo_key(o[..], "nanoda"); jo_bool(o[..], p_nan.count > 0);
+  jo_key(o[..], "con_leche"); jo_bool(o[..], p_cl.count > 0);
+  jo_key(o[..], "con_ron"); jo_bool(o[..], p_cr.count > 0);
+  jo_end(o[..]);
+  jo_key(o[..], "ran_local"); jo_bool(o[..], ran_local);
+  jo_key(o[..], "verified"); jo_bool(o[..], ran_local && w[0].ver[0].verified);
+  jo_key(o[..], "verdict"); jo_str(o[..], ifx ran_local then cast(string) w[0].ver[0].verdict[0..<w[0].ver[0].verdict_n] else "plan_only");
+  jo_key(o[..], "file_sha256"); jo_str(o[..], ifx ran_local then cast(string) w[0].ver[0].file_sha256[0..<w[0].ver[0].file_sha256_n] else "");
+  jo_key(o[..], "elapsed_ms"); jo_int(o[..], ifx ran_local then w[0].ver[0].elapsed_ms else 0);
+  jo_key(o[..], "receipt_saved"); jo_bool(o[..], receipt_saved);
+  jo_key(o[..], "receipt_path"); jo_str(o[..], ifx receipt_saved then receipt_path else "");
+  jo_key(o[..], "remote_plan"); jo_str(o[..], plan_path);
+  jo_end(o[..]);
+
+  if want_json {
+    print("%\n", jo_text(o[..]));
+  } else {
+    print("Tier C Multi-Kernel Audit\n");
+    print("  local kernels: lean=% lake=% leanchecker=% nanoda=% con-leche=% con-ron=%\n",
+      ifx p_lean.count > 0 then "yes" else "no",
+      ifx p_lake.count > 0 then "yes" else "no",
+      ifx p_lc.count > 0 then "yes" else "no",
+      ifx p_nan.count > 0 then "yes" else "no",
+      ifx p_cl.count > 0 then "yes" else "no",
+      ifx p_cr.count > 0 then "yes" else "no");
+    if ran_local {
+      print("  local check:   % (% | % ms | sha256=%)\n",
+        ifx w[0].ver[0].verified then "VERIFIED" else "REJECTED",
+        cast(string) w[0].ver[0].verdict[0..<w[0].ver[0].verdict_n],
+        w[0].ver[0].elapsed_ms,
+        cast(string) w[0].ver[0].file_sha256[0..<w[0].ver[0].file_sha256_n]);
+      print("  receipt:       %\n", ifx receipt_saved then receipt_path else "(not saved — unverified)");
+    }
+    print("  remote plan:   %\n", plan_path);
+  }
+  if ran_local && !w[0].ver[0].verified { return 1; }
+  return 0;
+}
+
+// ---- 4. Pantograph / LeanREPL / Warm-Host Branching Tactic Search (`lean-run search`) ----
+
+la_branch_search :: (home: string, self_exe: string, file: string, line_1: int, col_1: int, tactics_csv: string, want_json: bool) -> int #effects(all) {
+  w: [1] LaAuditWork;
+  b_pt: [FS_PATH_MAX] u8;
+  pt_bin := lv_find_bin("pantograph", home, b_pt[..]);
+  if pt_bin.count == 0 { pt_bin = lv_find_bin("repl", home, b_pt[..]); }
+  backend := ifx pt_bin.count > 0 then "pantograph" else "oa-leanhost";
+
+  pt_tree_init(w[0].tree[..], 0, "root", 1);
+  w[0].tree[0].nodes[0].expanded = true;
+
+  // Split comma-separated candidate tactics and branch from root state 0
+  t0 := proc_now_ms();
+  pos := 0;
+  tried := 0;
+  solved_tac := "";
+  while pos < tactics_csv.count {
+    st := pos;
+    while pos < tactics_csv.count && tactics_csv[pos] != ',' { pos += 1; }
+    tac := cast(string) tactics_csv[st..<pos];
+    if pos < tactics_csv.count { pos += 1; }
+    if tac.count == 0 { continue; }
+    tried += 1;
+
+    req_b: [4096] u8; ro: [1] Jo; jo_start(ro[..], req_b[..]);
+    jo_obj(ro[..]);
+    jo_key(ro[..], "op"); jo_str(ro[..], "try");
+    jo_key(ro[..], "file"); jo_str(ro[..], file);
+    jo_key(ro[..], "line"); jo_int(ro[..], line_1);
+    jo_key(ro[..], "col"); jo_int(ro[..], col_1);
+    jo_key(ro[..], "tactic"); jo_str(ro[..], tac);
+    jo_end(ro[..]);
+    rn := lh_client_call(home, self_exe, jo_text(ro[..]), true, w[0].rep[..]);
+    ok_try := false;
+    goals_left := 1;
+    if rn > 0 {
+      jd: [1] Jv;
+      if jv_parse(jd[..], cast(string) w[0].rep[0..<rn], w[0].nodes[..]) {
+        d := jd[0];
+        if jv_kind(d, jv_get(d, 0, "ok")) == JV_TRUE {
+          ok_try = true;
+          goals_left = jv_int(d, jv_get(d, 0, "goal_count"), 1);
+          if jv_kind(d, jv_get(d, 0, "solved")) == JV_TRUE { goals_left = 0; }
+        }
+      }
+    }
+    nid := pt_tree_branch(w[0].tree[..], 0, tac, tried, goals_left, ifx goals_left == 0 then "solved" else "open");
+    if !ok_try && nid > 0 {
+      _ = pt_tree_rollback(w[0].tree[..], nid);
+    } else if goals_left == 0 {
+      solved_tac = tac;
+      break;
+    }
+  }
+  dt := proc_now_ms() - t0;
+  solved := w[0].tree[0].solved_node != PT_NO_NODE;
+  if want_json {
+    o: [1] Jo; jo_start(o[..], w[0].out_json[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], true);
+    jo_key(o[..], "backend"); jo_str(o[..], backend);
+    jo_key(o[..], "solved"); jo_bool(o[..], solved);
+    jo_key(o[..], "tactic"); jo_str(o[..], solved_tac);
+    jo_key(o[..], "branches_tried"); jo_int(o[..], tried);
+    jo_key(o[..], "tree_nodes"); jo_int(o[..], w[0].tree[0].count);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], dt);
+    jo_end(o[..]);
+    print("%\n", jo_text(o[..]));
+  } else {
+    print("Lean Tactic Branch Search [%]: % (tried % branches in % ms%)\n",
+      backend, ifx solved then "SOLVED" else "UNSOLVED", tried, dt,
+      ifx solved then ", tactic: " else "");
+    if solved { print("  proof tactic: %\n", solved_tac); }
+  }
+  return ifx solved then 0 else 1;
+}

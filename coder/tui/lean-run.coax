@@ -22,6 +22,7 @@
 #load "../../coax/lib/lean/gym.coax";
 #load "../../coax/lib/lean/host.coax";
 #load "../../coax/lib/lean/atif.coax";
+#load "../../coax/lib/lean/audit.coax";
 #load "lean-run-mcp.coax";
 
 cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
@@ -46,6 +47,8 @@ lr_usage :: () -> int {
   print("  lean-run try FILE LINE COL TACTIC [--json]\n");
   print("  lean-run hover FILE LINE COL [--json]\n");
   print("  lean-run diagnostics FILE [--json]\n");
+  print("  lean-run search FILE LINE COL --tactics \"rfl,simp,omega\" [--json]\n");
+  print("  lean-run bench start|status|stop [--suite NAME] [--run-dir DIR] [--solutions-dir DIR] [--json]\n");
   print("  lean-run host status|stop|serve\n");
   print("  lean-run mcp\n");
   print("  lean-run sample [--out DIR]\n");
@@ -59,7 +62,8 @@ lr_usage :: () -> int {
   print("  lean-run rh path MODULE [--json]\n");
   print("  lean-run rh cone MODULE [--limit N] [--json]\n");
   print("  lean-run rh module MODULE [--lines N] [--json]\n");
-  print("  lean-run rh audit [--json]\n");
+  print("  lean-run rh simplify MODULE_OR_FILE DECL CANDIDATE.lean [--out-patch F] [--allow-same-len] [--json]\n");
+  print("  lean-run rh audit [--tier-c] [--file F --target T --statement S] [--remote-manifest F] [--json]\n");
   return 0;
 }
 
@@ -280,6 +284,28 @@ lr_cmd_rh :: (a: [] Args, home: string) -> int {
     if st != 0 { tool_errln("lean-run rh fetch: git clone failed"); return 1; }
     print("Cloned Riemann Hypothesis corpus into %\n", dest);
     return 0;
+  }
+
+  if sub == "simplify" {
+    mod_f := args_at(a, 2);
+    decl := args_at(a, 3);
+    cand := args_at(a, 4);
+    if mod_f.count == 0 || decl.count == 0 || cand.count == 0 {
+      tool_errln("usage: lean-run rh simplify MODULE_OR_FILE DECL CANDIDATE.lean [--out-patch FILE] [--allow-same-len] [--json]");
+      return 2;
+    }
+    return la_rh_simplify(home, mod_f, decl, cand, args_value(a, "--out-patch", ""), args_has(a, "--allow-same-len"), args_has(a, "--json"));
+  }
+
+  if sub == "audit" && args_has(a, "--tier-c") {
+    return la_tier_c_audit(
+      home,
+      args_value(a, "--file", ""),
+      args_value(a, "--target", ""),
+      args_value(a, "--statement", ""),
+      args_value(a, "--remote-manifest", ""),
+      args_has(a, "--json")
+    );
   }
 
   w: [1] RhIndexWork;
@@ -520,6 +546,24 @@ lr_cmd_rh :: (a: [] Args, home: string) -> int {
       jo_key(o[..], "metaprog_count"); jo_int(o[..], w[0].total_metaprog);
       jo_key(o[..], "tier_b_olean_cache"); jo_bool(o[..], has_tier_b);
       jo_key(o[..], "tier_b_note"); jo_str(o[..], "Tier B Interactive Cache (cached .olean Infoview — NOT independent kernel verification)");
+      // Real Tier C receipt strictly bound to verified 64-hex SHA-256 kernel output (never fabricated)
+      tc_pb: [FS_PATH_MAX] u8; tc_buf: [4096] u8; tc_ver: [1] LwVerify;
+      tc_p := fs_join(home, ".openagents/lean/provenance/tier-c-latest.json", tc_pb[..]);
+      tc_n := fs_read(tc_p, tc_buf[..]);
+      tc_ok := tc_n > 0 && lw_verify_read(cast(string) tc_buf[0..<tc_n], tc_ver[..]) && tc_ver[0].verified && tc_ver[0].file_sha256_n == 64;
+      jo_key(o[..], "tier_c_receipt");
+      if tc_ok {
+        jo_obj(o[..]);
+        jo_key(o[..], "verified"); jo_bool(o[..], true);
+        jo_key(o[..], "target"); jo_str(o[..], cast(string) tc_ver[0].target[0..<tc_ver[0].target_n]);
+        jo_key(o[..], "kernel"); jo_str(o[..], cast(string) tc_ver[0].kernel[0..<tc_ver[0].kernel_n]);
+        jo_key(o[..], "toolchain"); jo_str(o[..], cast(string) tc_ver[0].toolchain[0..<tc_ver[0].toolchain_n]);
+        jo_key(o[..], "elapsed_ms"); jo_int(o[..], tc_ver[0].elapsed_ms);
+        jo_key(o[..], "file_sha256"); jo_str(o[..], cast(string) tc_ver[0].file_sha256[0..<64]);
+        jo_end(o[..]);
+      } else {
+        jo_null(o[..]);
+      }
       jo_key(o[..], "metaprog_modules"); jo_arr(o[..]);
       for id: 0..<w[0].n_mods {
         if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0 { jo_str(o[..], rhi_mod_name(w[..], id)); }
@@ -769,6 +813,49 @@ lr_cmd_atif_export :: (a: [] Args, home: string) -> int #effects(all) {
   return ifx ver[0].verified then 0 else 1;
 }
 
+lr_cmd_bench :: (a: [] Args, home: string) -> int #effects(all) {
+  sub := args_at(a, 1);
+  if sub == "start" {
+    suite := args_value(a, "--suite", "lean-core-smoke");
+    rdir := args_value(a, "--run-dir", "");
+    sdir := args_value(a, "--solutions-dir", "");
+    sb: [FS_PATH_MAX] u8;
+    self := lr_self_exe(sb[..]);
+    if self.count == 0 { tool_errln("lean-run bench start: cannot determine self executable path"); return 1; }
+    return la_bench_start(home, self, suite, rdir, sdir, args_has(a, "--json"));
+  }
+  if sub == "worker" {
+    suite := args_value(a, "--suite", "lean-core-smoke");
+    rdir := args_value(a, "--run-dir", "");
+    rid := args_value(a, "--run-id", "bench-worker");
+    sdir := args_value(a, "--solutions-dir", "");
+    if rdir.count == 0 { return 2; }
+    return la_bench_worker(home, suite, rdir, rid, sdir);
+  }
+  if sub == "status" {
+    return la_bench_status(home, args_value(a, "--run-dir", ""), args_has(a, "--json"));
+  }
+  if sub == "stop" {
+    return la_bench_stop(home, args_value(a, "--run-dir", ""), args_has(a, "--json"));
+  }
+  tool_errln("usage: lean-run bench start|status|stop [--suite NAME] [--run-dir DIR] [--solutions-dir DIR] [--json]");
+  return 2;
+}
+
+lr_cmd_search :: (a: [] Args, home: string) -> int #effects(all) {
+  file := args_at(a, 1);
+  if file.count == 0 {
+    tool_errln("usage: lean-run search FILE LINE COL [--tactics \"rfl,simp,omega\"] [--json]");
+    return 2;
+  }
+  line_1 := lr_parse_int(args_at(a, 2), 1);
+  col_1 := lr_parse_int(args_at(a, 3), 1);
+  tacs := args_value(a, "--tactics", "rfl,simp,omega");
+  sb: [FS_PATH_MAX] u8;
+  self := lr_self_exe(sb[..]);
+  return la_branch_search(home, self, file, line_1, col_1, tacs, args_has(a, "--json"));
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; _ = args_load(a[..]);
   verb := args_at(a[..], 0);
@@ -779,6 +866,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "verify" { return lr_cmd_verify(a[..], home); }
   if verb == "atif-export" { return lr_cmd_atif_export(a[..], home); }
   if verb == "goal" || verb == "try" || verb == "hover" || verb == "diagnostics" { return lr_cmd_lsp_op(verb, a[..], home); }
+  if verb == "search" { return lr_cmd_search(a[..], home); }
+  if verb == "bench" { return lr_cmd_bench(a[..], home); }
   if verb == "host" { return lr_cmd_host(a[..], home); }
   if verb == "mcp" { return lr_cmd_mcp(); }
   if verb == "sample" { return lr_cmd_sample(a[..], home); }

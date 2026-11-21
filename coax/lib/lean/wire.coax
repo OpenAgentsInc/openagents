@@ -19,6 +19,7 @@ LW_SCHEMA_GYM_REQ :: "lean-gym-request.v1";
 LW_SCHEMA_GYM_STATE :: "lean-gym-state.v1";
 LW_SCHEMA_RH_INDEX :: "rh-index.v1";
 LW_SCHEMA_RH_NOTE :: "rh-note.v1";
+LW_SCHEMA_BENCH_STATUS :: "lean-bench-status.v1";
 
 LW_TEXT :: 512;
 LW_PATH :: 1024;
@@ -398,6 +399,64 @@ lw_rh_note_read :: (src: string, m: [] LwRhNote) -> bool {
   return ok[0] && m[0].mod_name_n > 0 && m[0].updated_s >= 0;
 }
 
+// ---- 7. lean-bench-status.v1 ----
+
+LwBenchStatus :: struct {
+  run_id: [128] u8; run_id_n: int;
+  suite: [128] u8; suite_n: int;
+  state: [32] u8; state_n: int;
+  pid: int;
+  total: int;
+  completed: int;
+  passed: int;
+  failed: int;
+  elapsed_ms: int;
+  current_task: [128] u8; current_task_n: int;
+  out_dir: [LW_PATH] u8; out_dir_n: int;
+  note: [LW_TEXT] u8; note_n: int;
+}
+
+lw_bench_status_write :: (m: [] LwBenchStatus, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_BENCH_STATUS);
+  jo_key(o[..], "run_id"); jo_str(o[..], cast(string) m[0].run_id[0..<m[0].run_id_n]);
+  jo_key(o[..], "suite"); jo_str(o[..], cast(string) m[0].suite[0..<m[0].suite_n]);
+  jo_key(o[..], "state"); jo_str(o[..], cast(string) m[0].state[0..<m[0].state_n]);
+  jo_key(o[..], "pid"); jo_int(o[..], m[0].pid);
+  jo_key(o[..], "total"); jo_int(o[..], m[0].total);
+  jo_key(o[..], "completed"); jo_int(o[..], m[0].completed);
+  jo_key(o[..], "passed"); jo_int(o[..], m[0].passed);
+  jo_key(o[..], "failed"); jo_int(o[..], m[0].failed);
+  jo_key(o[..], "elapsed_ms"); jo_int(o[..], m[0].elapsed_ms);
+  jo_key(o[..], "current_task"); jo_str(o[..], cast(string) m[0].current_task[0..<m[0].current_task_n]);
+  jo_key(o[..], "out_dir"); jo_str(o[..], cast(string) m[0].out_dir[0..<m[0].out_dir_n]);
+  jo_key(o[..], "note"); jo_str(o[..], cast(string) m[0].note[0..<m[0].note_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_bench_status_read :: (src: string, m: [] LwBenchStatus) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if jv_kind(d, 0) != JV_OBJECT || !lw_schema_ok(d, LW_SCHEMA_BENCH_STATUS) { return false; }
+  m[0] = LwBenchStatus.{};
+  ok := [1] bool.[true];
+  m[0].run_id_n = lw_jstr(d, 0, "run_id", m[0].run_id[..], ok[..]);
+  m[0].suite_n = lw_jstr(d, 0, "suite", m[0].suite[..], ok[..]);
+  m[0].state_n = lw_jstr(d, 0, "state", m[0].state[..], ok[..]);
+  m[0].pid = lw_jint(d, 0, "pid", ok[..]);
+  m[0].total = lw_jint(d, 0, "total", ok[..]);
+  m[0].completed = lw_jint(d, 0, "completed", ok[..]);
+  m[0].passed = lw_jint(d, 0, "passed", ok[..]);
+  m[0].failed = lw_jint(d, 0, "failed", ok[..]);
+  m[0].elapsed_ms = lw_jint(d, 0, "elapsed_ms", ok[..]);
+  m[0].current_task_n = lw_jstr(d, 0, "current_task", m[0].current_task[..], ok[..]);
+  m[0].out_dir_n = lw_jstr(d, 0, "out_dir", m[0].out_dir[..], ok[..]);
+  m[0].note_n = lw_jstr(d, 0, "note", m[0].note[..], ok[..]);
+  return ok[0] && m[0].run_id_n > 0 && m[0].state_n > 0 && m[0].pid >= 0 && m[0].total >= 0 && m[0].completed >= 0 && m[0].passed >= 0 && m[0].failed >= 0 && m[0].elapsed_ms >= 0;
+}
+
 #test "lean wire: round-trip all six schemas" {
   buf: [8192] u8; back: [8192] u8;
 
@@ -552,4 +611,11 @@ lw_rh_note_read :: (src: string, m: [] LwRhNote) -> bool {
   #assert lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"M\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":0,\"body\":\"b\"}", nt[..]);
   #assert !lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":0,\"body\":\"b\"}", nt[..]);
   #assert !lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"M\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":-1,\"body\":\"b\"}", nt[..]);
+
+  // bench_status roundtrip and negative refusal
+  bs: [1] LwBenchStatus;
+  #assert lw_bench_status_write(bs[..], tiny[..]) == -1;
+  #assert lw_bench_status_read("{\"schema\":\"lean-bench-status.v1\",\"run_id\":\"bench-1\",\"suite\":\"lean-core-smoke\",\"state\":\"running\",\"pid\":1234,\"total\":5,\"completed\":2,\"passed\":2,\"failed\":0,\"elapsed_ms\":412,\"current_task\":\"l03_mul_one_right\",\"out_dir\":\"/tmp/b1\",\"note\":\"ok\"}", bs[..]) && bs[0].passed == 2;
+  #assert !lw_bench_status_read("{\"schema\":\"lean-bench-status.v1\",\"run_id\":\"\",\"suite\":\"s\",\"state\":\"running\",\"pid\":1,\"total\":5,\"completed\":0,\"passed\":0,\"failed\":0,\"elapsed_ms\":0,\"current_task\":\"\",\"out_dir\":\"\",\"note\":\"\"}", bs[..]);
+  #assert !lw_bench_status_read("{\"schema\":\"lean-bench-status.v1\",\"run_id\":\"b\",\"suite\":\"s\",\"state\":\"running\",\"pid\":-1,\"total\":5,\"completed\":0,\"passed\":0,\"failed\":0,\"elapsed_ms\":0,\"current_task\":\"\",\"out_dir\":\"\",\"note\":\"\"}", bs[..]);
 }

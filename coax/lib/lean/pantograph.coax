@@ -1,0 +1,315 @@
+// Pure Coax Pantograph / LeanREPL JSON protocol codec & branching tactic search tree
+// (Epic #13943, #13949; docs/lean/spec.md §7).
+//
+// Enables tree-structured tactic state cloning, rollback, dead-end pruning, and
+// deterministic best-first / MCTS frontier expansion without re-elaborating a Lean file.
+//
+//   coax/bin/coax test coax/lib/lean/pantograph.coax --library
+#load "../json/json.coax";
+
+PT_MAX_NODES :: 256;
+PT_NO_NODE :: -1;
+
+PtReply :: struct {
+  ok: bool;
+  solved: bool;
+  next_state_id: int;
+  goal_count: int;
+  first_goal: [256] u8; first_goal_n: int;
+  error_msg: [256] u8; error_msg_n: int;
+}
+
+PtNode :: struct {
+  node_id: int;
+  parent_id: int;
+  state_id: int;
+  depth: int;
+  goal_count: int;
+  score: int;
+  expanded: bool;
+  pruned: bool;
+  solved: bool;
+  tactic: [128] u8; tactic_n: int;
+  goal_preview: [256] u8; goal_preview_n: int;
+}
+
+PtTree :: struct {
+  nodes: [PT_MAX_NODES] PtNode;
+  count: int;
+  active_node: int;
+  solved_node: int;
+}
+
+pt_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Encodes Pantograph `goal.start` JSON-line command.
+pt_write_goal_start :: (expr: string, out: [] u8) -> int {
+  if expr.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "cmd"); jo_str(o[..], "goal.start");
+  jo_key(o[..], "payload");
+  jo_obj(o[..]);
+  jo_key(o[..], "expr"); jo_str(o[..], expr);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Encodes Pantograph `goal.tactic` JSON-line command targeting a specific stateId and goalId.
+pt_write_goal_tactic :: (state_id: int, goal_id: int, tactic: string, out: [] u8) -> int {
+  if state_id < 0 || goal_id < 0 || tactic.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "cmd"); jo_str(o[..], "goal.tactic");
+  jo_key(o[..], "payload");
+  jo_obj(o[..]);
+  jo_key(o[..], "stateId"); jo_int(o[..], state_id);
+  jo_key(o[..], "goalId"); jo_int(o[..], goal_id);
+  jo_key(o[..], "tactic"); jo_str(o[..], tactic);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Encodes LeanREPL `tactic` JSON-line command targeting a specific proofState.
+pt_write_repl_tactic :: (proof_state: int, tactic: string, out: [] u8) -> int {
+  if proof_state < 0 || tactic.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "tactic"); jo_str(o[..], tactic);
+  jo_key(o[..], "proofState"); jo_int(o[..], proof_state);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Parses either a Pantograph reply (`nextStateId`/`stateId`, `goals`, `error`)
+// or a LeanREPL reply (`proofState`, `goals`, `messages`).
+pt_parse_reply :: (line: string, r: [] PtReply) -> bool {
+  r[0] = PtReply.{ next_state_id = -1 };
+  nodes: [512] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], line, nodes[..]) { return false; }
+  d := jd[0];
+  if jv_kind(d, 0) != JV_OBJECT { return false; }
+
+  err_n := jv_get(d, 0, "error");
+  if jv_kind(d, err_n) == JV_STRING {
+    en := jv_str(d, err_n, r[0].error_msg[..]);
+    if en > 0 {
+      r[0].error_msg_n = en;
+      r[0].ok = false;
+      return true;
+    }
+  }
+  // Check LeanREPL `messages` array for severity == "error"
+  msgs_n := jv_get(d, 0, "messages");
+  if jv_kind(d, msgs_n) == JV_ARRAY {
+    for i: 0..<jv_len(d, msgs_n) {
+      m := jv_at(d, msgs_n, i);
+      sb: [32] u8;
+      sn := jv_str(d, jv_get(d, m, "severity"), sb[..]);
+      if sn == 5 && cast(string) sb[0..<5] == "error" {
+        dn := jv_str(d, jv_get(d, m, "data"), r[0].error_msg[..]);
+        r[0].error_msg_n = ifx dn > 0 then dn else pt_copy(r[0].error_msg[..], "tactic error");
+        r[0].ok = false;
+        return true;
+      }
+    }
+  }
+
+  sid := -1;
+  n_sid := jv_get(d, 0, "nextStateId");
+  if jv_kind(d, n_sid) == JV_NUMBER { sid = jv_int(d, n_sid, -1); }
+  else {
+    n_sid = jv_get(d, 0, "stateId");
+    if jv_kind(d, n_sid) == JV_NUMBER { sid = jv_int(d, n_sid, -1); }
+    else {
+      n_sid = jv_get(d, 0, "proofState");
+      if jv_kind(d, n_sid) == JV_NUMBER { sid = jv_int(d, n_sid, -1); }
+    }
+  }
+  if sid < 0 { return false; }
+  r[0].next_state_id = sid;
+
+  gn := jv_get(d, 0, "goals");
+  if jv_kind(d, gn) != JV_ARRAY { return false; }
+  r[0].goal_count = jv_len(d, gn);
+  if r[0].goal_count > 0 {
+    g0 := jv_at(d, gn, 0);
+    if jv_kind(d, g0) == JV_STRING {
+      k := jv_str(d, g0, r[0].first_goal[..]);
+      if k > 0 { r[0].first_goal_n = k; }
+    } else if jv_kind(d, g0) == JV_OBJECT {
+      k := jv_str(d, jv_get(d, g0, "target"), r[0].first_goal[..]);
+      if k > 0 { r[0].first_goal_n = k; }
+    }
+  }
+  r[0].ok = true;
+  r[0].solved = r[0].goal_count == 0;
+  return true;
+}
+
+// ---- Branching / Rollback Search Tree ----
+
+pt_tree_init :: (t: [] PtTree, root_state_id: int, root_goal: string, root_goals: int) {
+  t[0] = PtTree.{ active_node = 0, solved_node = PT_NO_NODE };
+  t[0].count = 1;
+  t[0].nodes[0] = PtNode.{
+    node_id = 0,
+    parent_id = PT_NO_NODE,
+    state_id = root_state_id,
+    depth = 0,
+    goal_count = root_goals,
+    score = root_goals * 100,
+    solved = root_goals == 0,
+  };
+  t[0].nodes[0].goal_preview_n = pt_copy(t[0].nodes[0].goal_preview[..], root_goal);
+  if root_goals == 0 { t[0].solved_node = 0; }
+}
+
+// Branches a new child node from ANY existing `parent_node` (state cloning without re-elaboration).
+pt_tree_branch :: (t: [] PtTree, parent_node: int, tactic: string, next_state_id: int, goals_left: int, goal_preview: string) -> int {
+  if parent_node < 0 || parent_node >= t[0].count { return PT_NO_NODE; }
+  if t[0].count >= PT_MAX_NODES { return PT_NO_NODE; }
+  if t[0].nodes[parent_node].pruned { return PT_NO_NODE; }
+  id := t[0].count;
+  t[0].count += 1;
+  d := t[0].nodes[parent_node].depth + 1;
+  solved := goals_left == 0;
+  sc := ifx solved then 0 else goals_left * 100 + d * 5;
+  t[0].nodes[id] = PtNode.{
+    node_id = id,
+    parent_id = parent_node,
+    state_id = next_state_id,
+    depth = d,
+    goal_count = goals_left,
+    score = sc,
+    solved = solved,
+  };
+  t[0].nodes[id].tactic_n = pt_copy(t[0].nodes[id].tactic[..], tactic);
+  t[0].nodes[id].goal_preview_n = pt_copy(t[0].nodes[id].goal_preview[..], goal_preview);
+  t[0].active_node = id;
+  if solved && t[0].solved_node == PT_NO_NODE { t[0].solved_node = id; }
+  return id;
+}
+
+// Marks `node_id` (and any descendants) as pruned and rolls active_node back to its parent.
+pt_tree_rollback :: (t: [] PtTree, node_id: int) -> int {
+  if node_id <= 0 || node_id >= t[0].count { return PT_NO_NODE; }
+  t[0].nodes[node_id].pruned = true;
+  // Prune descendants (parent_id < child_id always holds in append-only tree)
+  for i: node_id + 1..<t[0].count {
+    p := t[0].nodes[i].parent_id;
+    if p >= 0 && t[0].nodes[p].pruned {
+      t[0].nodes[i].pruned = true;
+    }
+  }
+  parent := t[0].nodes[node_id].parent_id;
+  t[0].active_node = parent;
+  return parent;
+}
+
+// Picks the unexpanded, unpruned, unsolved frontier node with lowest score.
+pt_tree_pick_best :: (t: [] PtTree) -> int {
+  best := PT_NO_NODE;
+  best_sc := 999999999;
+  for i: 0..<t[0].count {
+    nd := t[0].nodes[i];
+    if nd.expanded || nd.pruned || nd.solved { continue; }
+    if nd.score < best_sc {
+      best_sc = nd.score;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// Reconstructs root-to-`target_node` tactic node indices in forward order (excludes root node 0).
+pt_tree_reconstruct_path :: (t: [] PtTree, target_node: int, out_indices: [] int) -> int {
+  if target_node <= 0 || target_node >= t[0].count { return 0; }
+  rev: [PT_MAX_NODES] int;
+  rn := 0;
+  cur := target_node;
+  while cur > 0 && rn < PT_MAX_NODES {
+    rev[rn] = cur;
+    rn += 1;
+    cur = t[0].nodes[cur].parent_id;
+  }
+  if cur != 0 || rn > out_indices.count { return 0; }
+  for i: 0..<rn {
+    out_indices[i] = rev[rn - 1 - i];
+  }
+  return rn;
+}
+
+#test "pantograph: JSON wire codecs for Pantograph and LeanREPL" {
+  b: [512] u8;
+  n1 := pt_write_goal_start("forall n : Nat, n + 0 = n", b[..]);
+  #assert n1 > 0 && cast(string) b[0..<n1] == "{\"cmd\":\"goal.start\",\"payload\":{\"expr\":\"forall n : Nat, n + 0 = n\"}}";
+  n2 := pt_write_goal_tactic(7, 0, "intro n", b[..]);
+  #assert n2 > 0 && cast(string) b[0..<n2] == "{\"cmd\":\"goal.tactic\",\"payload\":{\"stateId\":7,\"goalId\":0,\"tactic\":\"intro n\"}}";
+  n3 := pt_write_repl_tactic(3, "omega", b[..]);
+  #assert n3 > 0 && cast(string) b[0..<n3] == "{\"tactic\":\"omega\",\"proofState\":3}";
+
+  rep: [1] PtReply;
+  // Pantograph subgoal reply
+  #assert pt_parse_reply("{\"nextStateId\":8,\"goals\":[{\"target\":\"n + 0 = n\"}]}", rep[..]);
+  #assert rep[0].ok && !rep[0].solved && rep[0].next_state_id == 8 && rep[0].goal_count == 1;
+  #assert cast(string) rep[0].first_goal[0..<rep[0].first_goal_n] == "n + 0 = n";
+
+  // Pantograph solved (0 goals) reply
+  #assert pt_parse_reply("{\"nextStateId\":9,\"goals\":[]}", rep[..]);
+  #assert rep[0].ok && rep[0].solved && rep[0].next_state_id == 9 && rep[0].goal_count == 0;
+
+  // LeanREPL solved reply
+  #assert pt_parse_reply("{\"proofState\":4,\"goals\":[]}", rep[..]);
+  #assert rep[0].ok && rep[0].solved && rep[0].next_state_id == 4;
+
+  // Error replies (Pantograph `error` and LeanREPL `messages` error)
+  #assert pt_parse_reply("{\"error\":\"tactic 'rfl' failed\"}", rep[..]);
+  #assert !rep[0].ok && !rep[0].solved && cast(string) rep[0].error_msg[0..<rep[0].error_msg_n] == "tactic 'rfl' failed";
+  #assert pt_parse_reply("{\"proofState\":1,\"goals\":[\"x\"],\"messages\":[{\"severity\":\"error\",\"data\":\"unknown tactic\"}]}", rep[..]);
+  #assert !rep[0].ok && cast(string) rep[0].error_msg[0..<rep[0].error_msg_n] == "unknown tactic";
+}
+
+#test "pantograph: deterministic state cloning, rollback, pruning, best-first frontier, and path reconstruction" {
+  t: [1] PtTree;
+  pt_tree_init(t[..], 0, "∀ n : Nat, n + 0 = n", 1);
+  #assert t[0].count == 1 && t[0].active_node == 0 && t[0].solved_node == PT_NO_NODE;
+  #assert pt_tree_pick_best(t[..]) == 0;
+
+  // Expand root state 0 into two competing branches from the SAME kernel stateId=0
+  t[0].nodes[0].expanded = true;
+  b_ind := pt_tree_branch(t[..], 0, "induction n", 10, 2, "0 + 0 = 0");
+  b_int := pt_tree_branch(t[..], 0, "intro n", 11, 1, "n + 0 = n");
+  #assert b_ind == 1 && b_int == 2;
+  #assert t[0].nodes[b_ind].score == 205 && t[0].nodes[b_int].score == 105;
+
+  // Best-first picks lower-score branch (`intro n`, 1 goal) before `induction n` (2 goals)
+  #assert pt_tree_pick_best(t[..]) == b_int;
+
+  // Try a dead-end child under `intro n`, then roll back cleanly to `b_int` (stateId=11)
+  b_dead := pt_tree_branch(t[..], b_int, "cases n", 12, 2, "dead end");
+  b_dead_sub := pt_tree_branch(t[..], b_dead, "simp", 13, 2, "still stuck");
+  #assert b_dead == 3 && b_dead_sub == 4;
+  rolled := pt_tree_rollback(t[..], b_dead);
+  #assert rolled == b_int && t[0].active_node == b_int;
+  #assert t[0].nodes[b_dead].pruned && t[0].nodes[b_dead_sub].pruned;
+  // Branching under a pruned node is refused
+  #assert pt_tree_branch(t[..], b_dead, "omega", 14, 0, "") == PT_NO_NODE;
+
+  // Now finish cleanly from stateId=11 (`b_int`) with `rfl`
+  b_done := pt_tree_branch(t[..], b_int, "rfl", 15, 0, "");
+  #assert b_done == 5 && t[0].nodes[b_done].solved && t[0].solved_node == b_done;
+
+  // Reconstruct exact tactic sequence: ["intro n", "rfl"]
+  path: [16] int;
+  pn := pt_tree_reconstruct_path(t[..], b_done, path[..]);
+  #assert pn == 2 && path[0] == b_int && path[1] == b_done;
+  #assert cast(string) t[0].nodes[path[0]].tactic[0..<t[0].nodes[path[0]].tactic_n] == "intro n";
+  #assert cast(string) t[0].nodes[path[1]].tactic[0..<t[0].nodes[path[1]].tactic_n] == "rfl";
+}

@@ -116,6 +116,12 @@ CpLeanRh :: struct {
   dig_names: [5] [32] u8; dig_names_n: [5] int;
   dig_sha: [5] [64] u8; dig_sha_n: [5] int;
   dig_n: int;
+  // Real Tier C local kernel verification receipt (strictly SHA-256-bound, never assumed)
+  tier_c_present: bool;
+  tier_c_target: [64] u8; tier_c_target_n: int;
+  tier_c_kernel: [48] u8; tier_c_kernel_n: int;
+  tier_c_sha: [64] u8; tier_c_sha_n: int;
+  tier_c_ms: int;
   // Tour state
   tour_track: int;             // 0 = 5-min, 1 = 20-step, 2 = audit
   tour_step: int;              // 0..19
@@ -402,6 +408,29 @@ cp_lean_load_audit :: (s: [] CoderPage, json_str: string) -> bool {
       l[0].dig_names_n[l[0].dig_n] = fn;
       l[0].dig_sha_n[l[0].dig_n] = ifx hn > 0 then hn else 0;
       l[0].dig_n += 1;
+    }
+  }
+  // Strictly bind Tier C local receipt only when verified == true AND sha256 is 64 hex chars
+  l[0].tier_c_present = false;
+  l[0].tier_c_target_n = 0; l[0].tier_c_kernel_n = 0; l[0].tier_c_sha_n = 0; l[0].tier_c_ms = 0;
+  tc := jv_get(d, 0, "tier_c_receipt");
+  if jv_kind(d, tc) == JV_OBJECT && jv_bool(d, jv_get(d, tc, "verified")) {
+    tn := jv_str(d, jv_get(d, tc, "target"), l[0].tier_c_target[..]);
+    kn := jv_str(d, jv_get(d, tc, "kernel"), l[0].tier_c_kernel[..]);
+    sn := jv_str(d, jv_get(d, tc, "file_sha256"), l[0].tier_c_sha[..]);
+    hex_ok := sn == 64;
+    if hex_ok {
+      for hi: 0..<64 {
+        c := l[0].tier_c_sha[hi];
+        if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { hex_ok = false; break; }
+      }
+    }
+    if tn > 0 && kn > 0 && hex_ok {
+      l[0].tier_c_target_n = tn;
+      l[0].tier_c_kernel_n = kn;
+      l[0].tier_c_sha_n = 64;
+      l[0].tier_c_ms = jv_int(d, jv_get(d, tc, "elapsed_ms"), 0);
+      l[0].tier_c_present = true;
     }
   }
   return true;
