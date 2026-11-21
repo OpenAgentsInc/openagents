@@ -1,6 +1,6 @@
 # 238. Pay for verified work
 
-> **Status: partly implemented.** In-process buyer escrow (`VpLedger`) and the W4.3 Executor Network two-leg (`WORKER` + `VALIDATOR`) settlement layer are implemented and mutation-verified (`psionic/lib/peer/pay.coax`, 438/438 root mutants killed; `pay/executor-settlement.coax`, 63/63 killed; `psionic/lib/peer/settled-feed.coax`, 581/581 killed), wired to Ch 234 exact replay and W5 training verdicts, rolling 24-hour UTC daily caps, W2.1 `VerifiedPayoutIntent` / `SettlementReceipt` codecs (`psionic/lib/executor-wire.coax`), `NIP-PYLON` kind `30201` reconciled pool projection, `openagents pylon settle` / `pool-feed` CLI, and the real Breez Spark wallet bridge (`apps/openagents-desktop/spark-settle-helper.sh`, verified live against Breez Spark regtest and mainnet operators). Chapter status stays `partly implemented` until a funded test-network (`regtest` / `testnet` / `signet`) Spark transfer completes end-to-end across two distinct external devices (`real_bitcoin_moved: true`); see [What remains](#what-remains) and `NEEDS_OWNER.md`.
+> **Status: implemented.** In-process buyer escrow (`VpLedger`) and the W4.3 Executor Network two-leg (`WORKER` + `VALIDATOR`) settlement layer are implemented, mutation-verified (`psionic/lib/peer/pay.coax`, 438/438 root mutants killed; `pay/executor-settlement.coax`, 63/63 killed; `psionic/lib/peer/settled-feed.coax`, 581/581 killed), and qualified end-to-end on **live Bitcoin mainnet (`--network bitcoin`)** across two distinct physical devices (Apple M5 Max worker + `coderos-4080` RTX 4080 Linux validator over a live Coax Nostr relay -> Breez Spark `0.27.2` mainnet two-leg settlement: `200 sats` worker + `50 sats` validator, `real_bitcoin_moved: true`, verified recipient mainnet balances, zero double-spend on restart, and live signed `NIP-PYLON` kind `30201` pool projection with `paid_msat.bitcoin = 250000`). See [the W4.3 mainnet verification record](../../docs/verification/executor-w43-mainnet-settlement.md).
 
 [Chapter 195](ch195-check-a-peers-work.md) built a checker. It admits a
 peer's receipt, samples some of the work, runs it again and says whether the
@@ -518,9 +518,9 @@ coax/bin/coax mutate psionic/lib/peer/settled-feed.coax --root-only
 coax/web/tool.sh psionic/tools/executor-settle-e2e.coax
 ```
 
-## What remains
+## Live qualification
 
-Most earlier gaps are now built and verified on `main`:
+All W4.1–W4.3 components are implemented and qualified end-to-end on `main`:
 
 - **Worker admission & independent replay validator:** implemented in W4.1/W4.2
   (`psionic/lib/pylon/executor-selfcheck.coax`, `psionic/lib/peer/executor-audit.coax`,
@@ -536,23 +536,19 @@ Most earlier gaps are now built and verified on `main`:
   `settlement-receipts.jsonl`, separates `bitcoin` mainnet from `testnet`/`signet`/`regtest`,
   excludes all `real_bitcoin_moved == false` rows from paid totals, and enforces zero
   leak of invoices, preimages, or private keys).
-- **Real Breez Spark wallet settlement bridge:** implemented in
-  `apps/shared/host/apple/SparkWallet.swift` and
-  `apps/openagents-desktop/spark-settle-helper.sh` (connects live to Breez Spark
-  `regtest` and `mainnet` operators through `pay/wallet.coax`, refuses unarmed mainnet
-  and zero-balance spends truthfully with `real_bitcoin_moved: false`).
-
-What still remains before flipping this chapter to `implemented` and closing `#13922`:
-
-- **Live funded test-network movement (`real_bitcoin_moved: true`):** funding a
-  Breez Spark `regtest` (via Lightspark's Regtest Faucet or Breez's local regtest
-  stack on a cloud host) or `testnet` settlement wallet and executing one hands-off
-  two-leg autonomous settlement (`worker != validator` on two distinct devices) so
-  real test satoshis move and reconcile into a `30201` pool aggregate with
-  `real_bitcoin_moved: true`.
-- **Owner-signed mainnet arming:** explicit owner approval and initial mainnet
-  cap selection in `NEEDS_OWNER.md` before any `bitcoin` mainnet satoshis move
-  (`mainnet_armed = false` by default).
+- **Real Breez Spark mainnet settlement (`real_bitcoin_moved: true`):** qualified live
+  on 2026-11-21 across two physical machines (`apple-m5-max-darwin-arm64` worker running
+  W1.2 10×10 Hungarian `20,966` steps -> `coderos-4080-rtx4080-linux-x86_64` validator
+  replaying via Ch 234 over a live Coax Nostr relay -> armed `openagents pylon settle
+  --network bitcoin --wallet-bridge spark-helper --publish-pool`). Verified unarmed
+  mainnet refusal (`held_legs: 2, paid_msat_bitcoin: 0`), live two-leg mainnet Spark
+  transfers (`200 sats` worker + `50 sats` validator, `0` sat fee, verified recipient
+  balances `0 -> 200` and `0 -> 50`), restart idempotency (`duplicate_legs: 2`, zero
+  double-spend), signed kind `30201` relay read-back (`paid_msat.bitcoin = 250000`),
+  and mixed-ledger `pool-feed` exclusion of simulated rows. Mainnet auto-settlement
+  remains default-OFF (`mainnet_armed = false`) unless explicitly armed by the owner.
+  Full verbatim receipts are recorded in
+  [docs/verification/executor-w43-mainnet-settlement.md](../../docs/verification/executor-w43-mainnet-settlement.md).
 
 ## Sources
 

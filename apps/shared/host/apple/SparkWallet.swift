@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import BreezSdkSpark
 
@@ -127,6 +128,7 @@ public actor OASparkWallet {
     private var prepared: PrepareSendPaymentResponse?
     private var preparedLnurl: PrepareLnurlPayResponse?
     private var currentQuote: Quote?
+    public private(set) var lastSendError: String?
 
     public init() {}
 
@@ -466,10 +468,12 @@ public actor OASparkWallet {
         }
 
         flow = metaverse_wallet_step(flow, EventCode.confirm)
+        self.lastSendError = nil
+        let sdkKey = Self.sparkIdempotencyUUID(idempotencyKey)
         do {
             let sdk = try requireSdk()
             if let lnurl = preparedLnurl {
-                let resp = try await sdk.lnurlPay(request: LnurlPayRequest(prepareResponse: lnurl, idempotencyKey: idempotencyKey))
+                let resp = try await sdk.lnurlPay(request: LnurlPayRequest(prepareResponse: lnurl, idempotencyKey: sdkKey))
                 preparedLnurl = nil
                 currentQuote = nil
                 return finishSend(resp.payment)
@@ -490,12 +494,13 @@ public actor OASparkWallet {
             let resp = try await sdk.sendPayment(request: SendPaymentRequest(
                 prepareResponse: prepared,
                 options: options,
-                idempotencyKey: idempotencyKey
+                idempotencyKey: sdkKey
             ))
             self.prepared = nil
             self.currentQuote = nil
             return finishSend(resp.payment)
         } catch let error as SdkError {
+            self.lastSendError = String(describing: error)
             switch error {
             case .InsufficientFunds:
                 flow = metaverse_wallet_step(flow, EventCode.failed)
@@ -508,6 +513,7 @@ public actor OASparkWallet {
                 return .waiting(nil)
             }
         } catch {
+            self.lastSendError = String(describing: error)
             flow = metaverse_wallet_step(flow, EventCode.timedOut)
             return .waiting(nil)
         }
@@ -548,6 +554,23 @@ public actor OASparkWallet {
         case VerdictCode.badAmount: return "Invalid payment amount or fee."
         default: return "Wallet is busy or has no active quote."
         }
+    }
+
+    public static func sparkIdempotencyUUID(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = UUID(uuidString: trimmed) {
+            return existing.uuidString.lowercased()
+        }
+        var bytes = Array(SHA256.hash(data: Data("openagents.spark-idempotency.v1:\(trimmed)".utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let hex = bytes.map { String(format: "%02x", $0) }.joined()
+        let i0 = hex.startIndex
+        let i1 = hex.index(i0, offsetBy: 8)
+        let i2 = hex.index(i1, offsetBy: 4)
+        let i3 = hex.index(i2, offsetBy: 4)
+        let i4 = hex.index(i3, offsetBy: 4)
+        return "\(hex[i0..<i1])-\(hex[i1..<i2])-\(hex[i2..<i3])-\(hex[i3..<i4])-\(hex[i4...])"
     }
 
     private static func u64(_ v: U128) -> UInt64 {

@@ -197,6 +197,7 @@ struct SparkSettleHelper {
                     feeCapSats: feeCap,
                     dailyRemainingSats: dailyRem
                 )
+                let lastErr = await wallet.lastSendError ?? ""
                 await wallet.disconnect()
 
                 switch outcome {
@@ -243,7 +244,8 @@ struct SparkSettleHelper {
                         "real_bitcoin_moved": false,
                         "status": "pending",
                         "network": wireNet,
-                        "pending_id": id ?? ""
+                        "pending_id": id ?? "",
+                        "error": lastErr
                     ])
                     exit(5)
                 }

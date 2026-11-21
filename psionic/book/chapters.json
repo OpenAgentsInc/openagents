@@ -5414,8 +5414,8 @@
       "number": 238,
       "title": "Pay for verified work",
       "file": "ch238-pay-for-verified-work.md",
-      "status": "partly implemented",
-      "profile": "psionic-verified-pay-v0, in-process CPU ledger",
+      "status": "implemented",
+      "profile": "psionic-verified-pay-v1, live 2-device Bitcoin mainnet Spark settlement & NIP-PYLON 30201 feed",
       "depends_on": [
         24,
         25,
@@ -5427,6 +5427,9 @@
       "source": [
         "psionic/examples/verified-pay.coax",
         "psionic/lib/peer/pay.coax",
+        "pay/executor-settlement.coax",
+        "psionic/lib/peer/settled-feed.coax",
+        "psionic/lib/executor-wire.coax",
         "psionic/lib/peer/audit.coax",
         "psionic/lib/peer/audit-run.coax",
         "psionic/lib/serve-price.coax"
@@ -5434,7 +5437,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/pylon-settle.coax"
+      ]
     },
     {
       "number": 239,

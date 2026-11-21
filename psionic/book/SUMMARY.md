@@ -293,7 +293,7 @@
 - [235. Can gradient descent learn exact execution?](ch235-can-gradient-descent-learn-exact-execution.md)
 - [236. A frozen exact core with a learned interface](ch236-a-frozen-exact-core-with-a-learned-interface.md)
 - [237. Composable weight modules](ch237-composable-weight-modules.md)
-- [238. Pay for verified work](ch238-pay-for-verified-work.md) — partly implemented
+- [238. Pay for verified work](ch238-pay-for-verified-work.md)
 
 **XXIV. Measure, then improve**
 
