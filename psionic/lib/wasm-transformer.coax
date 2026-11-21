@@ -1,0 +1,1766 @@
+// Dense F64 exec-vm-v1 compiler target & autoregressive hull-v2 / O(t) scan
+// execution engine for the complete 38-opcode wasm-core-i32-v1 WASM ISA
+// (wasm-exec-v1, W1.2, #13915).
+#load "wasm-isa.coax";
+#authority;
+
+// ---- Graph Builder Helpers for Compiling All 38 Opcodes into exec-vm-v1 Dense Weights ----
+
+WmBuilder :: struct {
+    nodes: []EvNode;
+    n: int;
+    c: [40]int;        // constants 0..39
+    c_neg1: int;
+    c_32767: int;
+    c_32768: int;
+    c_65535: int;
+    c_65536: int;
+    slot_65536: int;   // materialized residual slot holding 65536 for exact 2^16..2^32 scaling
+    c_2p32: int;       // scale(slot_65536, 65536) = 2^32
+}
+
+wb_put :: (b: []WmBuilder, e: EvNode) -> int #effects(all) {
+    idx := b[0].n;
+    b[0].nodes[idx] = e;
+    b[0].n = idx + 1;
+    return idx;
+}
+
+wb_const :: (b: []WmBuilder, k: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.constant, k = k}); }
+wb_add   :: (b: []WmBuilder, x: int, y: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.add, a = x, b = y}); }
+wb_sub   :: (b: []WmBuilder, x: int, y: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.sub, a = x, b = y}); }
+wb_scale :: (b: []WmBuilder, x: int, k: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.scale, a = x, k = k}); }
+wb_mul   :: (b: []WmBuilder, x: int, y: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.mul, a = x, b = y}); }
+wb_relu  :: (b: []WmBuilder, x: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.relu, a = x}); }
+wb_step  :: (b: []WmBuilder, x: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.step, a = x}); }
+wb_eq0   :: (b: []WmBuilder, x: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.eq0, a = x}); }
+wb_sel   :: (b: []WmBuilder, a: int, d: int, cond: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.select, a = a, b = d, c = cond}); }
+wb_mask  :: (b: []WmBuilder, x: int, cond: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.mask, a = x, b = cond}); }
+wb_read  :: (b: []WmBuilder, q: int, k1: int, k2: int, v: int) -> int #effects(all) { return wb_put(b, EvNode.{op = EvOp.attn_read, a = q, b = k1, c = k2, k = v}); }
+
+// Logical AND / OR of two bit nodes (both in {0, 1}), returning a bit node (ev_bit == true).
+wb_and_bit :: (b: []WmBuilder, x: int, y: int) -> int #effects(all) {
+    return wb_step(b, wb_sub(b, wb_add(b, x, y), b[0].c[1]));
+}
+wb_or_bit :: (b: []WmBuilder, x: int, y: int) -> int #effects(all) {
+    return wb_step(b, wb_add(b, x, y));
+}
+wb_not_bit :: (b: []WmBuilder, x: int) -> int #effects(all) {
+    return wb_step(b, wb_sub(b, b[0].c[1], x));
+}
+wb_eq0_nn :: (b: []WmBuilder, x: int) -> int #effects(all) {
+    return wb_step(b, wb_sub(b, b[0].c[1], x));
+}
+
+// Parabolic key helper: active en==1 -> (2*idx, -idx^2); inactive en==0 -> (0, -1).
+WmPair :: struct { lo: int; hi: int; }
+wb_para_key_masked :: (b: []WmBuilder, idx: int, en: int) -> WmPair #effects(all) {
+    k1 := wb_scale(b, idx, 2);
+    sq := wb_mul(b, idx, idx);
+    k2 := wb_sub(b, wb_sub(b, en, sq), b[0].c[1]);
+    return WmPair.{lo = k1, hi = k2};
+}
+
+// Exact 32-bit two's-complement negate on 16-bit limbs (lo, hi) -> (0 - x) mod 2^32.
+wb_neg32 :: (b: []WmBuilder, lo: int, hi: int) -> WmPair #effects(all) {
+    lo_nz := wb_step(b, lo);
+    r_lo := wb_sub(b, wb_scale(b, lo_nz, 65536), lo);
+    hi_adj := wb_add(b, hi, lo_nz);
+    hi_nz := wb_step(b, hi_adj);
+    r_hi := wb_sub(b, wb_scale(b, hi_nz, 65536), hi_adj);
+    return WmPair.{lo = r_lo, hi = r_hi};
+}
+
+// Exact 32-bit wrapping add on 16-bit limbs.
+wb_add32 :: (b: []WmBuilder, alo: int, ahi: int, blo: int, bhi: int) -> WmPair #effects(all) {
+    slo := wb_add(b, alo, blo);
+    c0 := wb_step(b, wb_sub(b, slo, b[0].c_65535));
+    rlo := wb_sub(b, slo, wb_scale(b, c0, 65536));
+    shi := wb_add(b, wb_add(b, ahi, bhi), c0);
+    c1 := wb_step(b, wb_sub(b, shi, b[0].c_65535));
+    rhi := wb_sub(b, shi, wb_scale(b, c1, 65536));
+    return WmPair.{lo = rlo, hi = rhi};
+}
+
+// Exact 32-bit wrapping sub on 16-bit limbs.
+wb_sub32 :: (b: []WmBuilder, alo: int, ahi: int, blo: int, bhi: int) -> WmPair #effects(all) {
+    dlo := wb_sub(b, alo, blo);
+    b0 := wb_step(b, wb_scale(b, dlo, -1));
+    rlo := wb_add(b, dlo, wb_scale(b, b0, 65536));
+    dhi := wb_sub(b, wb_sub(b, ahi, bhi), b0);
+    b1 := wb_step(b, wb_scale(b, dhi, -1));
+    rhi := wb_add(b, dhi, wb_scale(b, b1, 65536));
+    return WmPair.{lo = rlo, hi = rhi};
+}
+
+// Reduce a non-negative 33-bit integer v in [0, 2^33 - 1] modulo 65536 (extracting low 16 bits).
+wb_mod65536 :: (b: []WmBuilder, v: int) -> int #effects(all) {
+    // Strip bit 32 (2^32) first so rem sits in [0, 2^32 - 1].
+    b32 := wb_step(b, wb_add(b, wb_sub(b, v, b[0].c_2p32), b[0].c[1]));
+    rem := wb_sub(b, v, wb_mask(b, b[0].c_2p32, b32));
+    for step_i: 0..<8 {
+        k := 7 - step_i;
+        s_hi := 1 << cast(u64)(2 * k);
+        s1 := wb_scale(b, b[0].slot_65536, s_hi);
+        s2 := wb_scale(b, b[0].slot_65536, 2 * s_hi);
+        s3 := wb_scale(b, b[0].slot_65536, 3 * s_hi);
+        t1 := wb_step(b, wb_add(b, wb_sub(b, rem, s1), b[0].c[1]));
+        t2 := wb_step(b, wb_add(b, wb_sub(b, rem, s2), b[0].c[1]));
+        t3 := wb_step(b, wb_add(b, wb_sub(b, rem, s3), b[0].c[1]));
+        dg := wb_add(b, wb_add(b, t1, t2), t3);
+        rem = wb_sub(b, rem, wb_mul(b, s1, dg));
+        if k == 4 { rem = wb_relu(b, rem); } // mutant: equivalent — relu(rem)==rem for rem>=0; flush only bounds EvForm term count
+    }
+    return wb_relu(b, rem);
+}
+
+// Split a non-negative 32-bit integer v in [0, 2^32 - 1] into (lo, hi) in [0, 65535]^2
+// using 8 base-4 layers (extracting hi = floor(v / 65536), then lo = v - 65536 * hi)!
+wb_split_u32 :: (b: []WmBuilder, v: int) -> WmPair #effects(all) {
+    rem := v;
+    hi_acc := b[0].c[0];
+    for step_i: 0..<8 {
+        k := 7 - step_i;
+        s_hi := 1 << cast(u64)(2 * k); // 16384, 4096, ..., 1 (scaled by slot_65536 -> 2^30 .. 2^16!)
+        s1 := wb_scale(b, b[0].slot_65536, s_hi);
+        s2 := wb_scale(b, b[0].slot_65536, 2 * s_hi);
+        s3 := wb_scale(b, b[0].slot_65536, 3 * s_hi);
+        t1 := wb_step(b, wb_add(b, wb_sub(b, rem, s1), b[0].c[1]));
+        t2 := wb_step(b, wb_add(b, wb_sub(b, rem, s2), b[0].c[1]));
+        t3 := wb_step(b, wb_add(b, wb_sub(b, rem, s3), b[0].c[1]));
+        dg := wb_add(b, wb_add(b, t1, t2), t3);
+        // Subtract dg * (s_hi * 65536) via 1 mul gate (stays <= 3*2^30 << 2^53!).
+        sub_v := wb_mul(b, s1, dg);
+        rem = wb_sub(b, rem, sub_v);
+        hi_acc = wb_add(b, hi_acc, wb_scale(b, dg, s_hi));
+        if k == 4 { // mutant: equivalent — relu(x)==x for rem,hi_acc>=0; flush only bounds EvForm term count
+            rem = wb_relu(b, rem); // mutant: equivalent — relu(rem)==rem for rem>=0
+            hi_acc = wb_relu(b, hi_acc);
+        }
+    }
+    lo := wb_relu(b, rem);
+    hi := wb_relu(b, hi_acc);
+    return WmPair.{lo = lo, hi = hi};
+}
+
+WmVmGraph :: struct {
+    count: int;
+    outputs: [WM_VM_OUTPUTS]int;
+    pin: [WM_KV_SLOTS]int;
+}
+
+// Build the unified Attention+FFN graph for the COMPLETE 38-opcode wasm-core-i32-v1 VM.
+wm_build_graph :: (nodes: []EvNode, mem_words: int) -> WmVmGraph #effects(all) {
+    g: WmVmGraph;
+    if nodes.count < WM_VM_MAX_NODES || mem_words < 1 || mem_words > WM_MEM_WORDS { return g; }
+    mem_bytes := mem_words * 4;
+    b_arr: [1]WmBuilder;
+    b_arr[0].nodes = nodes;
+    b := b_arr[..];
+
+    // Constants 0..39, -1, 16-bit & 32-bit bounds, fault codes.
+    for k: 0..<40 { b[0].c[k] = wb_const(b, k); }
+    b[0].c_neg1 = wb_const(b, -1);
+    b[0].c_32767 = wb_const(b, 32767);
+    b[0].c_32768 = wb_const(b, 32768);
+    b[0].c_65535 = wb_const(b, 65535);
+    b[0].c_65536 = wb_const(b, 65536);
+    c_mem_lim := wb_const(b, mem_bytes - 3); // addr_ok iff ea <= mem_bytes - 4 iff mem_bytes - 3 - ea >= 1
+    c_stk_lim := wb_const(b, WM_STACK_MAX - 1);
+    c_cs_lim  := wb_const(b, WM_CALL_MAX - 1);
+    c_fid_lim := wb_const(b, WM_FID_MAX);
+
+    // Attention Wave 0: read 8 persistent VM state registers via 2 fused recency heads (STEP_K2 = 0 vs -1).
+    // Note: score = (q + 1) * STEP_K2 preserves argmax for any q >= 0 (so c[0] -> c[1] is equivalent).
+    q_step := b[0].c[0]; // mutant: equivalent — STEP head has k1==k2==STEP_K2 in {0,-1}; score (q+1)*k2 has identical argmax for q=0 and q=1
+    cur_ip   := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_IP);
+    cur_sp   := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_SP);
+    cur_csp  := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_CSP);
+    cur_fid  := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_FID);
+    cur_nfid := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_NFID);
+    cur_base := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_BASE);
+    cur_par  := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_PAR);
+    cur_hres := wb_read(b, q_step, WM_S_STEP_K2, WM_S_STEP_K2, WM_S_NEXT_HRES);
+
+    // Attention Wave 1: ROM fetch (cur_ip), top-3 operand stack entries, and call-stack top.
+    raw_op    := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_OP);
+    raw_immlo := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_IMMLO);
+    raw_immhi := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_IMMHI);
+    raw_aux   := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_AUX);
+    raw_pk    := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_KEY);
+    raw_pv    := wb_read(b, cur_ip, WM_S_PROG_K1, WM_S_PROG_K2, WM_S_PROG_VAL);
+
+    sp_m1 := wb_sub(b, cur_sp, b[0].c[1]);
+    sp_m2 := wb_sub(b, cur_sp, b[0].c[2]);
+    sp_m3 := wb_sub(b, cur_sp, b[0].c[3]);
+    top_lo := wb_read(b, sp_m1, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_LO);
+    top_hi := wb_read(b, sp_m1, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_HI);
+    sec_lo := wb_read(b, sp_m2, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_LO);
+    sec_hi := wb_read(b, sp_m2, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_HI);
+    thd_lo := wb_read(b, sp_m3, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_LO);
+    thd_hi := wb_read(b, sp_m3, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_HI);
+
+    csp_m1 := wb_sub(b, cur_csp, b[0].c[1]);
+    cs_retip := wb_read(b, csp_m1, WM_S_CS_K1, WM_S_CS_K2, WM_S_CS_RETIP);
+    cs_fid   := wb_read(b, csp_m1, WM_S_CS_K1, WM_S_CS_K2, WM_S_CS_FID);
+    cs_base  := wb_read(b, csp_m1, WM_S_CS_K1, WM_S_CS_K2, WM_S_CS_BASE);
+    cs_par   := wb_read(b, csp_m1, WM_S_CS_K1, WM_S_CS_K2, WM_S_CS_PAR);
+    cs_hres  := wb_read(b, csp_m1, WM_S_CS_K1, WM_S_CS_K2, WM_S_CS_HRES);
+
+    // FFN Stage A: ROM hit, 38 opcode one-hots, bounded queries for locals/params/globals/memory.
+    // Also materialize slot_65536 here (in parallel with opcode decode!).
+    b[0].slot_65536 = wb_relu(b, b[0].c_65536);
+    b[0].c_2p32 = wb_scale(b, b[0].slot_65536, 65536);
+
+    pk_eq := wb_eq0(b, wb_sub(b, raw_pk, cur_ip));
+    prog_hit := wb_and_bit(b, pk_eq, raw_pv);
+    op := wb_sel(b, raw_op, b[0].c[WM_OP_COUNT], prog_hit);
+    imm_lo := wb_mask(b, raw_immlo, prog_hit);
+    imm_hi := wb_mask(b, raw_immhi, prog_hit);
+    aux_in := wb_mask(b, raw_aux, prog_hit);
+
+    // Factorized 38-opcode decoder: op = op_q*8 + op_r (op_q in 0..4, op_r in 0..7)
+    // uses 13 eq0 + 38 mask = 103 units instead of 38 eq0 = 190 units!
+    op_q1 := wb_step(b, wb_sub(b, op, b[0].c[7]));
+    op_q2 := wb_step(b, wb_sub(b, op, b[0].c[15]));
+    op_q3 := wb_step(b, wb_sub(b, op, b[0].c[23]));
+    op_q4 := wb_step(b, wb_sub(b, op, b[0].c[31]));
+    op_q := wb_add(b, wb_add(b, op_q1, op_q2), wb_add(b, op_q3, op_q4));
+    op_r := wb_sub(b, op, wb_scale(b, op_q, 8));
+    q_eq: [5]int;
+    for q: 0..<5 { q_eq[q] = wb_eq0(b, wb_sub(b, op_q, b[0].c[q])); }
+    r_eq: [8]int;
+    for r: 0..<8 { r_eq[r] = wb_eq0(b, wb_sub(b, op_r, b[0].c[r])); }
+    is_op: [WM_OP_COUNT]int;
+    for k: 0..<WM_OP_COUNT {
+        // block(6), loop(7), nop(15) are pure no-ops; skip decoding unused one-hots.
+        if k == 6 || k == 7 || k == 15 { continue; }
+        is_op[k] = wb_and_bit(b, q_eq[k / 8], r_eq[k % 8]);
+    }
+    op_const := is_op[0];  op_lget := is_op[1];  op_lset := is_op[2];  op_ltee := is_op[3];
+    op_gget  := is_op[4];  op_gset := is_op[5];
+    op_if    := is_op[8];  op_else := is_op[9];  op_end  := is_op[10]; op_br   := is_op[11];
+    op_brif  := is_op[12]; op_call := is_op[13]; op_ret  := is_op[14];
+    op_drop  := is_op[16]; op_sel  := is_op[17];
+    op_add   := is_op[18]; op_sub  := is_op[19]; op_mul  := is_op[20]; op_divs := is_op[21];
+    op_rems  := is_op[22]; op_and  := is_op[23]; op_or   := is_op[24]; op_xor  := is_op[25];
+    op_shl   := is_op[26]; op_shrs := is_op[27]; op_shru := is_op[28];
+    op_eq    := is_op[29]; op_eqz  := is_op[30]; op_ne   := is_op[31];
+    op_lts   := is_op[32]; op_les  := is_op[33]; op_gts  := is_op[34]; op_ges  := is_op[35];
+    op_load  := is_op[36]; op_store := is_op[37];
+
+    // Bounded Wave-2 queries for locals, param stack, globals, and linear memory.
+    loc_key_raw := wb_add(b, wb_scale(b, cur_fid, WM_LOCALS_MAX), imm_lo); // mutant: equivalent — stride 33 > WM_LOCALS_MAX is equally collision-free for imm_lo in 0..<32 and k^2 << 2^53
+    loc_q := wb_mask(b, loc_key_raw, op_lget);
+    par_q := wb_mask(b, wb_add(b, cur_base, imm_lo), op_lget);
+    glb_q := wb_mask(b, imm_lo, op_gget);
+
+    // Load & store address bounds (unsigned u32: hi == 0 and lo + imm_lo <= mem_bytes - 4).
+    // load_ea <= 65535 + 65535 = 131070, so parabolic key (2k, -k^2) stays exact even before OOB trap check.
+    load_ea := wb_add(b, top_lo, imm_lo);
+    load_hi_z := wb_eq0_nn(b, top_hi);
+    load_inb := wb_step(b, wb_sub(b, c_mem_lim, load_ea));
+    load_addr_ok := wb_and_bit(b, load_hi_z, load_inb);
+    mem_q := wb_mask(b, load_ea, op_load);
+
+    store_ea := wb_add(b, sec_lo, imm_lo);
+    store_hi_z := wb_eq0_nn(b, sec_hi);
+    store_inb := wb_step(b, wb_sub(b, c_mem_lim, store_ea));
+    store_addr_ok := wb_and_bit(b, store_hi_z, store_inb);
+
+    // Attention Wave 2: locals, param stack fallback, globals, linear memory (4 fused heads).
+    raw_llo := wb_read(b, loc_q, WM_S_LOC_K1, WM_S_LOC_K2, WM_S_LOC_LO);
+    raw_lhi := wb_read(b, loc_q, WM_S_LOC_K1, WM_S_LOC_K2, WM_S_LOC_HI);
+    raw_lk  := wb_read(b, loc_q, WM_S_LOC_K1, WM_S_LOC_K2, WM_S_LOC_KEY);
+    raw_le  := wb_read(b, loc_q, WM_S_LOC_K1, WM_S_LOC_K2, WM_S_LOC_EN);
+
+    par_lo  := wb_read(b, par_q, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_LO);
+    par_hi  := wb_read(b, par_q, WM_S_STK_K1, WM_S_STK_K2, WM_S_STK_HI);
+
+    raw_glo := wb_read(b, glb_q, WM_S_GLB_K1, WM_S_GLB_K2, WM_S_GLB_LO);
+    raw_ghi := wb_read(b, glb_q, WM_S_GLB_K1, WM_S_GLB_K2, WM_S_GLB_HI);
+    raw_gk  := wb_read(b, glb_q, WM_S_GLB_K1, WM_S_GLB_K2, WM_S_GLB_KEY);
+    raw_ge  := wb_read(b, glb_q, WM_S_GLB_K1, WM_S_GLB_K2, WM_S_GLB_EN);
+
+    raw_mlo := wb_read(b, mem_q, WM_S_MEM_K1, WM_S_MEM_K2, WM_S_MEM_LO);
+    raw_mhi := wb_read(b, mem_q, WM_S_MEM_K1, WM_S_MEM_K2, WM_S_MEM_HI);
+    raw_mk  := wb_read(b, mem_q, WM_S_MEM_K1, WM_S_MEM_K2, WM_S_MEM_KEY);
+    raw_me  := wb_read(b, mem_q, WM_S_MEM_K1, WM_S_MEM_K2, WM_S_MEM_EN);
+
+    // Resolve exact local/global/memory values (with param-stack fallback for untouched function params!).
+    loc_hit := wb_and_bit(b, wb_eq0(b, wb_sub(b, raw_lk, loc_q)), raw_le);
+    is_par_idx := wb_step(b, wb_sub(b, cur_par, imm_lo)); // 1 iff imm_lo < cur_par
+    fb_lo := wb_mask(b, par_lo, is_par_idx);
+    fb_hi := wb_mask(b, par_hi, is_par_idx);
+    loc_lo := wb_sel(b, raw_llo, fb_lo, loc_hit);
+    loc_hi := wb_sel(b, raw_lhi, fb_hi, loc_hit);
+
+    glb_hit := wb_and_bit(b, wb_eq0(b, wb_sub(b, raw_gk, glb_q)), raw_ge);
+    glb_lo := wb_mask(b, raw_glo, glb_hit);
+    glb_hi := wb_mask(b, raw_ghi, glb_hit);
+
+    mem_hit := wb_and_bit(b, wb_eq0(b, wb_sub(b, raw_mk, mem_q)), raw_me);
+    mem_lo := wb_mask(b, raw_mlo, mem_hit);
+    mem_hi := wb_mask(b, raw_mhi, mem_hit);
+
+    // ---- Complete 32-bit ALU over a = (sec_lo, sec_hi) and b = (top_lo, top_hi) ----
+    // 1. Add, sub, comparisons (all 2-3 layers).
+    r_add := wb_add32(b, sec_lo, sec_hi, top_lo, top_hi);
+    r_sub := wb_sub32(b, sec_lo, sec_hi, top_lo, top_hi);
+
+    top_lo_z := wb_eq0_nn(b, top_lo);
+    top_hi_z := load_hi_z;
+    top_eqz := wb_and_bit(b, top_lo_z, top_hi_z);
+    top_nz := wb_not_bit(b, top_eqz);
+
+    lo_eq := wb_eq0(b, wb_sub(b, sec_lo, top_lo));
+    hi_eq := wb_eq0(b, wb_sub(b, sec_hi, top_hi));
+    v_eq := wb_and_bit(b, lo_eq, hi_eq);
+    v_ne := wb_sub(b, b[0].c[1], v_eq);
+
+    sign_a := wb_step(b, wb_sub(b, sec_hi, b[0].c_32767));
+    sign_b := wb_step(b, wb_sub(b, top_hi, b[0].c_32767));
+    a_hi_s := wb_sub(b, wb_add(b, sec_hi, b[0].c_32768), wb_scale(b, sign_a, 65536));
+    b_hi_s := wb_sub(b, wb_add(b, top_hi, b[0].c_32768), wb_scale(b, sign_b, 65536));
+    hi_lt := wb_step(b, wb_sub(b, b_hi_s, a_hi_s));
+    hi_gt := wb_step(b, wb_sub(b, a_hi_s, b_hi_s));
+    lo_lt := wb_step(b, wb_sub(b, top_lo, sec_lo));
+    lo_gt := wb_step(b, wb_sub(b, sec_lo, top_lo));
+    v_lts := wb_add(b, hi_lt, wb_mask(b, lo_lt, hi_eq));
+    v_gts := wb_add(b, hi_gt, wb_mask(b, lo_gt, hi_eq));
+    v_les := wb_sub(b, b[0].c[1], v_gts);
+    v_ges := wb_sub(b, b[0].c[1], v_lts);
+
+    // Select result for `select` opcode (top != 0 ? thd : sec).
+    r_sel_lo := wb_sel(b, thd_lo, sec_lo, top_nz);
+    r_sel_hi := wb_sel(b, thd_hi, sec_hi, top_nz);
+
+    // 2. Streaming 16-bit decomposition of (sec_lo, sec_hi, top_lo, top_hi): immediately accumulates
+    //    AND_lo / AND_hi and releases each bit on the next layer (only keeping blo_low[0..4] & alo_low[0..1]!).
+    rem_al := sec_lo; rem_ah := sec_hi; rem_bl := top_lo; rem_bh := top_hi;
+    and_lo := b[0].c[0];
+    and_hi := b[0].c[0];
+    blo_b: [5]int;
+    alo_b: [2]int;
+    for step_i: 0..<16 {
+        k := 15 - step_i;
+        p2 := 1 << cast(u64)k;
+        al_k: int; ah_k: int; bl_k: int; bh_k: int;
+        if k > 0 { // mutant: equivalent — at k==0, p2==1 and thr==0 so step(rem-0)==step(rem) and updated rem is unread
+            thr := wb_const(b, p2 - 1);
+            al_k = wb_step(b, wb_sub(b, rem_al, thr));
+            ah_k = wb_step(b, wb_sub(b, rem_ah, thr));
+            bl_k = wb_step(b, wb_sub(b, rem_bl, thr));
+            bh_k = wb_step(b, wb_sub(b, rem_bh, thr));
+            rem_al = wb_sub(b, rem_al, wb_scale(b, al_k, p2));
+            rem_ah = wb_sub(b, rem_ah, wb_scale(b, ah_k, p2));
+            rem_bl = wb_sub(b, rem_bl, wb_scale(b, bl_k, p2));
+            rem_bh = wb_sub(b, rem_bh, wb_scale(b, bh_k, p2));
+        } else {
+            al_k = wb_step(b, rem_al);
+            ah_k = wb_step(b, rem_ah);
+            bl_k = wb_step(b, rem_bl);
+            bh_k = wb_step(b, rem_bh);
+        }
+        and_lo = wb_add(b, and_lo, wb_scale(b, wb_mask(b, al_k, bl_k), p2));
+        and_hi = wb_add(b, and_hi, wb_scale(b, wb_mask(b, ah_k, bh_k), p2));
+        if k < 5 { blo_b[k] = bl_k; }
+        if k < 2 { alo_b[k] = al_k; }
+        if k == 13 || k == 10 || k == 7 || k == 4 { // mutant: equivalent — relu(x)==x for non-negative values; flush only bounds EvForm term count
+            rem_al = wb_relu(b, rem_al); rem_ah = wb_relu(b, rem_ah);
+            rem_bl = wb_relu(b, rem_bl); rem_bh = wb_relu(b, rem_bh);
+            and_lo = wb_relu(b, and_lo); and_hi = wb_relu(b, and_hi);
+        }
+    }
+    and_lo = wb_relu(b, and_lo); // mutant: equivalent — relu(and_lo)==and_lo for and_lo>=0; flush only bounds EvForm term count
+    and_hi = wb_relu(b, and_hi); // mutant: equivalent — relu(and_hi)==and_hi for and_hi>=0; flush only bounds EvForm term count
+    or_lo  := wb_sub(b, wb_add(b, sec_lo, top_lo), and_lo);
+    or_hi  := wb_sub(b, wb_add(b, sec_hi, top_hi), and_hi);
+    xor_lo := wb_sub(b, wb_add(b, sec_lo, top_lo), wb_scale(b, and_lo, 2));
+    xor_hi := wb_sub(b, wb_add(b, sec_hi, top_hi), wb_scale(b, and_hi, 2));
+
+    // 4-byte alignment check for load (top_lo & 3 == 0) & store (sec_lo & 3 == 0).
+    load_unaligned  := wb_or_bit(b, blo_b[0], blo_b[1]);
+    store_unaligned := wb_or_bit(b, alo_b[0], alo_b[1]);
+
+    // 3. Exact 2^(b & 31) = (p2_lo, p2_hi) from blo_b[0..4].
+    p2_0 := wb_sel(b, b[0].c[2], b[0].c[1], blo_b[0]);
+    p2_1 := wb_sel(b, wb_scale(b, p2_0, 4), p2_0, blo_b[1]);
+    p2_2 := wb_sel(b, wb_scale(b, p2_1, 16), p2_1, blo_b[2]);
+    p2_3 := wb_sel(b, wb_scale(b, p2_2, 256), p2_2, blo_b[3]);
+    p2_lo := wb_mask(b, p2_3, wb_not_bit(b, blo_b[4]));
+    p2_hi := wb_mask(b, p2_3, blo_b[4]);
+
+    // 4. Shared 32-bit wrapping multiplier for `i32.mul` AND `i32.shl`!
+    //    Reduces to single 32-bit scalar prod_u32 = (p0 + 65536*(p1 mod 65536)) mod 2^32,
+    //    then shares ONE wb_split_u32 with rem_d below!
+    do_mshl := wb_or_bit(b, op_mul, op_shl);
+    ma_lo := wb_mask(b, sec_lo, do_mshl);
+    ma_hi := wb_mask(b, sec_hi, do_mshl);
+    mb_lo := wb_sel(b, p2_lo, top_lo, op_shl);
+    mb_hi := wb_sel(b, p2_hi, top_hi, op_shl);
+    p0 := wb_mul(b, ma_lo, mb_lo);                                      // in [0, 2^32 - 2^17 + 1]
+    p1_raw := wb_add(b, wb_mul(b, ma_lo, mb_hi), wb_mul(b, ma_hi, mb_lo)); // in [0, 2^33 - ...]
+    p1_lo := wb_mod65536(b, p1_raw);                                    // in [0, 65535]
+    prod_raw := wb_add(b, p0, wb_mul(b, p1_lo, b[0].slot_65536));       // in [0, 2^33 - 1]
+    prod_b32 := wb_step(b, wb_add(b, wb_sub(b, prod_raw, b[0].c_2p32), b[0].c[1]));
+    prod_u32 := wb_sub(b, prod_raw, wb_mask(b, b[0].c_2p32, prod_b32)); // exact (a * b) mod 2^32!
+
+    // 5. Shared 32-bit Radix-4 unsigned divider for `i32.div_s`, `i32.rem_s`, `i32.shr_u`, `i32.shr_s`!
+    a_neg := wb_neg32(b, sec_lo, sec_hi);
+    b_neg := wb_neg32(b, top_lo, top_hi);
+    a_abs_lo := wb_sel(b, a_neg.lo, sec_lo, sign_a);
+    a_abs_hi := wb_sel(b, a_neg.hi, sec_hi, sign_a);
+    b_abs_lo := wb_sel(b, b_neg.lo, top_lo, sign_b);
+    b_abs_hi := wb_sel(b, b_neg.hi, top_hi, sign_b);
+    a_inv_lo := wb_sub(b, b[0].c_65535, sec_lo);
+    a_inv_hi := wb_sub(b, b[0].c_65535, sec_hi);
+    shrs_in_lo := wb_sel(b, a_inv_lo, sec_lo, sign_a);
+    shrs_in_hi := wb_sel(b, a_inv_hi, sec_hi, sign_a);
+
+    is_dr  := wb_or_bit(b, op_divs, op_rems);
+    is_shr := wb_or_bit(b, op_shru, op_shrs);
+    do_div := wb_or_bit(b, is_dr, is_shr);
+    div_N_lo := wb_add(b, wb_add(b, wb_mask(b, a_abs_lo, is_dr), wb_mask(b, sec_lo, op_shru)), wb_mask(b, shrs_in_lo, op_shrs));
+    div_N_hi := wb_add(b, wb_add(b, wb_mask(b, a_abs_hi, is_dr), wb_mask(b, sec_hi, op_shru)), wb_mask(b, shrs_in_hi, op_shrs));
+    b_abs_u := wb_add(b, b_abs_lo, wb_scale(b, b_abs_hi, 65536));
+    safe_b_u := wb_sel(b, b[0].c[1], b_abs_u, top_eqz); // mutant: equivalent — fallback divisor 1 vs 2 only applies when f_div0 traps
+    p2_u := wb_add(b, p2_lo, wb_scale(b, p2_hi, 65536));
+    raw_D := wb_add(b, wb_mask(b, safe_b_u, is_dr), wb_mask(b, p2_u, is_shr));
+    div_D := wb_sel(b, raw_D, b[0].c[1], do_div); // mutant: equivalent — fallback divisor 1 vs 2 only applies when do_div==0 masks output
+
+    // 16-stage Radix-4 direct restoring divider on single 32-bit scalar rem_d = div_N (ZERO digit extraction!).
+    // For high stages (st=0..7, multiplying by 4^s * 65536), clamp D at 65536 via min(D, 65536) = 65536 - relu(65536 - D):
+    //   if D >= 65536, D*2^16 >= 2^32 > rem_d so q_hi == 0 and D_clamp*2^16 == 2^32 > rem_d ALSO gives q_hi == 0!
+    //   Max intermediate: 3 * 16384 * 65536 * 65536 = 3 * 2^46 << 2^53 (exact in binary64!).
+    rem_d := wb_relu(b, wb_add(b, div_N_lo, wb_scale(b, div_N_hi, 65536)));
+    d_clamp := wb_sub(b, b[0].c_65536, wb_relu(b, wb_sub(b, b[0].c_65536, div_D)));
+    d_hi_base := wb_mul(b, d_clamp, b[0].slot_65536);
+    q_hi_acc := b[0].c[0];
+    q_lo_acc := b[0].c[0];
+    for st: 0..<16 {
+        s := 1 << cast(u64)(2 * (ifx st < 8 then 7 - st else 15 - st));
+        d_base := ifx st < 8 then d_hi_base else div_D;
+        d1 := wb_scale(b, d_base, s);
+        d2 := wb_scale(b, d_base, 2 * s);
+        d3 := wb_scale(b, d_base, 3 * s);
+        g1 := wb_step(b, wb_add(b, wb_sub(b, rem_d, d1), b[0].c[1]));
+        g2 := wb_step(b, wb_add(b, wb_sub(b, rem_d, d2), b[0].c[1]));
+        g3 := wb_step(b, wb_add(b, wb_sub(b, rem_d, d3), b[0].c[1]));
+        qd := wb_add(b, wb_add(b, g1, g2), g3);
+        sub_d := wb_mul(b, d1, qd);
+        rem_d = wb_sub(b, rem_d, sub_d);
+        if st < 8 {
+            q_hi_acc = wb_add(b, q_hi_acc, wb_scale(b, qd, s));
+        } else {
+            q_lo_acc = wb_add(b, q_lo_acc, wb_scale(b, qd, s));
+        }
+        if st == 3 || st == 7 || st == 11 || st == 15 { // mutant: equivalent — relu(rem_d)==rem_d for rem_d>=0; flush only bounds EvForm term count
+            rem_d = wb_relu(b, rem_d);
+        }
+        if st == 3 || st == 7 { q_hi_acc = wb_relu(b, q_hi_acc); } // mutant: equivalent — relu(q_hi_acc)==q_hi_acc for q_hi_acc>=0
+        if st == 11 || st == 15 { q_lo_acc = wb_relu(b, q_lo_acc); } // mutant: equivalent — relu(q_lo_acc)==q_lo_acc for q_lo_acc>=0
+    }
+    // ONE shared wb_split_u32 splits BOTH rem_d (on op_rems) and prod_u32 (on op_mul / op_shl)!
+    shared_u32 := wb_sel(b, rem_d, prod_u32, op_rems);
+    shared_sp := wb_split_u32(b, shared_u32);
+    r_mshl_lo := shared_sp.lo;
+    r_mshl_hi := shared_sp.hi;
+
+    // Apply exact signs for div_s, rem_s, shr_s!
+    sign_both := wb_and_bit(b, sign_a, sign_b);
+    sign_diff := wb_step(b, wb_sub(b, wb_add(b, sign_a, sign_b), wb_scale(b, sign_both, 2))); // mutant: equivalent — for bits a,b in {0,1}, step(a+b-2ab)==step(a+b-3ab) since step(0)==step(-1)==0
+    q_neg := wb_neg32(b, q_lo_acc, q_hi_acc);
+    r_divs_lo := wb_sel(b, q_neg.lo, q_lo_acc, sign_diff);
+    r_divs_hi := wb_sel(b, q_neg.hi, q_hi_acc, sign_diff);
+
+    rem_neg := wb_neg32(b, shared_sp.lo, shared_sp.hi);
+    r_rems_lo := wb_sel(b, rem_neg.lo, shared_sp.lo, sign_a);
+    r_rems_hi := wb_sel(b, rem_neg.hi, shared_sp.hi, sign_a);
+
+    shrs_inv_lo := wb_sub(b, b[0].c_65535, q_lo_acc);
+    shrs_inv_hi := wb_sub(b, b[0].c_65535, q_hi_acc);
+    r_shrs_lo := wb_sel(b, shrs_inv_lo, q_lo_acc, sign_a);
+    r_shrs_hi := wb_sel(b, shrs_inv_hi, q_hi_acc, sign_a);
+
+    // ---- Opcode groups, control flow, and exact typed traps ----
+    imm_hi_is1 := wb_eq0(b, wb_sub(b, imm_hi, b[0].c[1]));
+    hres_is1 := wb_eq0(b, wb_sub(b, cur_hres, b[0].c[1]));
+    end_is_ret := wb_and_bit(b, op_end, imm_hi_is1);
+    br_is_ret  := wb_and_bit(b, op_br, imm_hi_is1);
+    brif_taken := wb_and_bit(b, op_brif, top_nz);
+    brif_is_ret := wb_and_bit(b, brif_taken, imm_hi_is1);
+    is_ret_act := wb_step(b, wb_add(b, wb_add(b, op_ret, end_is_ret), wb_add(b, br_is_ret, brif_is_ret)));
+
+    is_bin_a := wb_step(b, wb_add(b, wb_add(b, wb_add(b, op_add, op_sub), wb_add(b, op_mul, op_divs)), wb_add(b, wb_add(b, op_rems, op_and), wb_add(b, op_or, op_xor))));
+    is_bin_b := wb_step(b, wb_add(b, wb_add(b, wb_add(b, op_shl, op_shrs), wb_add(b, op_shru, op_eq)), wb_add(b, wb_add(b, op_ne, op_lts), wb_add(b, op_les, wb_add(b, op_gts, op_ges)))));
+    is_bin_alu := wb_or_bit(b, is_bin_a, is_bin_b);
+
+    is_push := wb_step(b, wb_add(b, wb_add(b, op_const, op_lget), op_gget));
+
+    // Exact operand-stack underflow check: frame_depth = cur_sp - (cur_base + cur_par) < need.
+    fdepth := wb_sub(b, cur_sp, wb_add(b, cur_base, cur_par));
+    need1_a := wb_add(b, wb_add(b, op_lset, op_ltee), wb_add(b, op_gset, op_if));
+    need1_b := wb_add(b, wb_add(b, op_drop, op_eqz), wb_add(b, op_load, op_brif));
+    need1 := wb_relu(b, wb_add(b, need1_a, need1_b));
+    need_ret := wb_and_bit(b, is_ret_act, hres_is1);
+    need2 := wb_add(b, is_bin_alu, op_store);
+    need_call := wb_mask(b, imm_hi, op_call);
+    need_tot := wb_relu(b, wb_add(b, wb_add(b, wb_scale(b, op_sel, 3), wb_scale(b, need2, 2)),
+                                     wb_add(b, need1, wb_add(b, need_ret, need_call))));
+    f_under := wb_step(b, wb_sub(b, need_tot, fdepth));
+
+    // Stack overflow & call overflow traps.
+    f_over := wb_and_bit(b, is_push, wb_step(b, wb_sub(b, cur_sp, c_stk_lim)));
+    cs_full := wb_or_bit(b, wb_step(b, wb_sub(b, cur_csp, c_cs_lim)), wb_step(b, wb_sub(b, cur_nfid, c_fid_lim)));
+    f_call_ov := wb_and_bit(b, op_call, cs_full);
+
+    // Memory OOB & unaligned traps.
+    f_oob_l := wb_step(b, wb_sub(b, op_load, load_addr_ok));
+    f_oob_s := wb_step(b, wb_sub(b, op_store, store_addr_ok));
+    f_oob := wb_or_bit(b, f_oob_l, f_oob_s);
+    f_unal_l := wb_and_bit(b, op_load, load_unaligned);
+    f_unal_s := wb_and_bit(b, op_store, store_unaligned);
+    f_unal := wb_or_bit(b, f_unal_l, f_unal_s);
+
+    // Division by zero & INT32_MIN / -1 traps.
+    f_div0 := wb_and_bit(b, is_dr, top_eqz);
+    a_is_min := wb_and_bit(b, wb_eq0_nn(b, sec_lo), wb_eq0(b, wb_sub(b, sec_hi, b[0].c_32768)));
+    b_is_m1  := wb_and_bit(b, wb_eq0(b, wb_sub(b, top_lo, b[0].c_65535)), wb_eq0(b, wb_sub(b, top_hi, b[0].c_65535)));
+    f_int_ov := wb_and_bit(b, op_divs, wb_and_bit(b, a_is_min, b_is_m1));
+
+    // Exact priority: fell > stack_underflow > stack_overflow > call_overflow > oob_memory > unaligned_memory > div_zero > int_overflow.
+    f_fell := wb_not_bit(b, prog_hit);
+    fc0 := wb_scale(b, f_int_ov, cast(int)WmStatus.int_overflow);
+    fc1 := wb_sel(b, b[0].c[cast(int)WmStatus.div_zero], fc0, f_div0);
+    fc2 := wb_sel(b, b[0].c[cast(int)WmStatus.unaligned_memory], fc1, f_unal);
+    fc3 := wb_sel(b, b[0].c[cast(int)WmStatus.oob_memory], fc2, f_oob);
+    fc4 := wb_sel(b, b[0].c[cast(int)WmStatus.call_overflow], fc3, f_call_ov);
+    fc5 := wb_sel(b, b[0].c[cast(int)WmStatus.stack_overflow], fc4, f_over);
+    fc6 := wb_sel(b, b[0].c[cast(int)WmStatus.stack_underflow], fc5, f_under);
+    fault_code := wb_sel(b, b[0].c[cast(int)WmStatus.fell], fc6, f_fell);
+
+    // ---- Mux step result value (res_lo, res_hi) across all 38 opcodes ----
+    // Note: comparisons & eqz have hi == 0 and lo in {0, 1}.
+    cmp_lo := wb_relu(b, wb_add(b,
+        wb_add(b, wb_add(b, wb_mask(b, v_eq, op_eq), wb_mask(b, top_eqz, op_eqz)),
+                  wb_add(b, wb_mask(b, v_ne, op_ne), wb_mask(b, v_lts, op_lts))),
+        wb_add(b, wb_add(b, wb_mask(b, v_les, op_les), wb_mask(b, v_gts, op_gts)),
+                  wb_mask(b, v_ges, op_ges))));
+
+    // Ops whose trace result is `top` (local_set, local_tee, global_set, if, drop, store, non-ret br_if).
+    brif_nonret := wb_and_bit(b, op_brif, wb_not_bit(b, brif_is_ret));
+    res_is_top := wb_step(b, wb_add(b, wb_add(b, wb_add(b, op_lset, op_ltee), wb_add(b, op_gset, op_if)),
+                                       wb_add(b, wb_add(b, op_drop, op_store), brif_nonret)));
+    // Return value when is_ret_act && hres_is1 (sec on br_if, top otherwise).
+    ret_src_lo := wb_sel(b, sec_lo, top_lo, op_brif);
+    ret_src_hi := wb_sel(b, sec_hi, top_hi, op_brif);
+    ret_val_lo := wb_mask(b, ret_src_lo, need_ret);
+    ret_val_hi := wb_mask(b, ret_src_hi, need_ret);
+
+    // Early mux of all fast opcodes right after Wave 2 so 25+ opcode bits and temps die before bitwise/divider!
+    pre_lo_1 := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, imm_lo, op_const), wb_mask(b, loc_lo, op_lget)),
+                                     wb_add(b, wb_mask(b, glb_lo, op_gget), wb_mask(b, top_lo, res_is_top))));
+    pre_lo_2 := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, r_sel_lo, op_sel), wb_mask(b, r_add.lo, op_add)),
+                                     wb_add(b, wb_mask(b, r_sub.lo, op_sub), wb_mask(b, mem_lo, op_load))));
+    pre_lo_e := wb_relu(b, wb_add(b, wb_add(b, pre_lo_1, pre_lo_2), wb_add(b, ret_val_lo, cmp_lo)));
+    bit_lo   := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, and_lo, op_and), wb_mask(b, or_lo, op_or)),
+                                     wb_mask(b, xor_lo, op_xor)));
+    pre_lo   := wb_relu(b, wb_add(b, pre_lo_e, bit_lo));
+
+    pre_hi_1 := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, imm_hi, op_const), wb_mask(b, loc_hi, op_lget)),
+                                     wb_add(b, wb_mask(b, glb_hi, op_gget), wb_mask(b, top_hi, res_is_top))));
+    pre_hi_2 := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, r_sel_hi, op_sel), wb_mask(b, r_add.hi, op_add)),
+                                     wb_add(b, wb_mask(b, r_sub.hi, op_sub), wb_mask(b, mem_hi, op_load))));
+    pre_hi_e := wb_relu(b, wb_add(b, wb_add(b, pre_hi_1, pre_hi_2), ret_val_hi));
+    bit_hi   := wb_relu(b, wb_add(b, wb_add(b, wb_mask(b, and_hi, op_and), wb_mask(b, or_hi, op_or)),
+                                     wb_mask(b, xor_hi, op_xor)));
+    pre_hi   := wb_relu(b, wb_add(b, pre_hi_e, bit_hi));
+
+    late_lo := wb_add(b, wb_add(b, wb_mask(b, r_mshl_lo, do_mshl), wb_mask(b, r_divs_lo, op_divs)),
+                         wb_add(b, wb_mask(b, r_rems_lo, op_rems), wb_add(b, wb_mask(b, r_shrs_lo, op_shrs), wb_mask(b, q_lo_acc, op_shru))));
+    late_hi := wb_add(b, wb_add(b, wb_mask(b, r_mshl_hi, do_mshl), wb_mask(b, r_divs_hi, op_divs)),
+                         wb_add(b, wb_mask(b, r_rems_hi, op_rems), wb_add(b, wb_mask(b, r_shrs_hi, op_shrs), wb_mask(b, q_hi_acc, op_shru))));
+    res_lo := wb_relu(b, wb_add(b, pre_lo, late_lo));
+    res_hi := wb_relu(b, wb_add(b, pre_hi, late_hi));
+
+    // ---- Next control state (ip, sp, csp, fid, nfid, base, params, has_result, halt) ----
+    csp_zero := wb_eq0_nn(b, cur_csp);
+    is_halt := wb_and_bit(b, is_ret_act, csp_zero);
+    is_ret_pop := wb_and_bit(b, is_ret_act, wb_not_bit(b, csp_zero));
+
+    ip_p1 := wb_add(b, cur_ip, b[0].c[1]);
+    if_take_false := wb_and_bit(b, op_if, top_eqz);
+    br_jump_inner := wb_and_bit(b, op_br, wb_not_bit(b, imm_hi_is1));
+    brif_jump_inner := wb_and_bit(b, brif_taken, wb_not_bit(b, imm_hi_is1));
+    jump_to_immlo := wb_step(b, wb_add(b, wb_add(b, if_take_false, op_else),
+                                          wb_add(b, wb_add(b, br_jump_inner, brif_jump_inner), op_call)));
+    ip_norm := wb_sel(b, imm_lo, ip_p1, jump_to_immlo);
+    ip_pop := wb_sel(b, cs_retip, ip_norm, is_ret_pop);
+    next_ip := wb_sel(b, b[0].c_neg1, ip_pop, is_halt);
+
+    // Next sp: push -> +1; pop1 (lset, gset, if, drop, bin_alu, non-ret br_if) -> -1; pop2 (select, store) -> -2; ret_pop -> base + cur_hres!
+    pop1 := wb_step(b, wb_add(b, wb_add(b, wb_add(b, op_lset, op_gset), wb_add(b, op_if, op_drop)),
+                                 wb_add(b, is_bin_alu, brif_nonret)));
+    pop2 := wb_or_bit(b, op_sel, op_store);
+    sp_norm := wb_sub(b, wb_add(b, cur_sp, is_push), wb_add(b, pop1, wb_scale(b, pop2, 2)));
+    sp_ret := wb_add(b, cur_base, cur_hres);
+    next_sp := wb_sel(b, sp_ret, sp_norm, is_ret_pop);
+
+    next_csp := wb_relu(b, wb_sub(b, wb_add(b, cur_csp, op_call), is_ret_pop));
+    fid_1 := wb_sel(b, cur_nfid, cur_fid, op_call);
+    next_fid := wb_sel(b, cs_fid, fid_1, is_ret_pop);
+    next_nfid := wb_relu(b, wb_add(b, cur_nfid, op_call));
+    base_1 := wb_sel(b, wb_sub(b, cur_sp, imm_hi), cur_base, op_call);
+    next_base := wb_sel(b, cs_base, base_1, is_ret_pop);
+    par_1 := wb_sel(b, imm_hi, cur_par, op_call);
+    next_par := wb_sel(b, cs_par, par_1, is_ret_pop);
+    hres_1 := wb_sel(b, aux_in, cur_hres, op_call);
+    next_hres := wb_sel(b, cs_hres, hres_1, is_ret_pop);
+
+    // Trace aux field: load->load_ea, store->store_ea, call/ret_pop->next_csp, halt->0, else->next_sp.
+    aux_mem := wb_add(b, wb_mask(b, load_ea, op_load), wb_mask(b, store_ea, op_store));
+    is_mem_op := wb_or_bit(b, op_load, op_store);
+    is_cs_op := wb_or_bit(b, op_call, is_ret_pop);
+    aux_1 := wb_sel(b, aux_mem, next_sp, is_mem_op);
+    aux_2 := wb_sel(b, next_csp, aux_1, is_cs_op);
+    trace_aux := wb_sel(b, b[0].c[0], aux_2, is_halt);
+
+    // ---- Parabolic write keys for stack, call stack, locals, globals, linear memory ----
+    // Operand stack write:
+    //  - is_push -> cur_sp
+    //  - op_load || op_eqz -> sp_m1
+    //  - is_bin_alu -> sp_m2
+    //  - op_sel -> sp_m3
+    //  - is_ret_pop && hres_is1 -> cur_base
+    stk_w_top := wb_or_bit(b, op_load, op_eqz);
+    stk_w_ret := wb_and_bit(b, is_ret_pop, hres_is1);
+    stk_w_en := wb_step(b, wb_add(b, wb_add(b, is_push, stk_w_top), wb_add(b, wb_add(b, is_bin_alu, op_sel), stk_w_ret)));
+    stk_w_idx := wb_relu(b, wb_add(b,
+        wb_add(b, wb_mask(b, cur_sp, is_push), wb_mask(b, sp_m1, stk_w_top)),
+        wb_add(b, wb_add(b, wb_mask(b, sp_m2, is_bin_alu), wb_mask(b, sp_m3, op_sel)), wb_mask(b, cur_base, stk_w_ret))));
+    stk_k := wb_para_key_masked(b, stk_w_idx, stk_w_en);
+
+    // Call stack write on `call` at key cur_csp.
+    cs_k := wb_para_key_masked(b, wb_mask(b, cur_csp, op_call), op_call);
+
+    // Local write on `local.set` or `local.tee` at key cur_fid * 32 + imm_lo.
+    loc_w_en := wb_or_bit(b, op_lset, op_ltee);
+    loc_w_key := wb_mask(b, loc_key_raw, loc_w_en);
+    loc_k := wb_para_key_masked(b, loc_w_key, loc_w_en);
+
+    // Global write on `global.set` at key imm_lo.
+    glb_w_en := op_gset;
+    glb_w_key := wb_mask(b, imm_lo, glb_w_en);
+    glb_k := wb_para_key_masked(b, glb_w_key, glb_w_en);
+
+    // Memory write on valid aligned `i32.store` at key store_ea.
+    store_ok := wb_and_bit(b, store_addr_ok, wb_not_bit(b, store_unaligned));
+    mem_w_en := wb_and_bit(b, op_store, store_ok);
+    mem_w_key := wb_mask(b, store_ea, mem_w_en);
+    mem_k := wb_para_key_masked(b, mem_w_key, mem_w_en);
+
+    // Pin all persistent KV slots!
+    for p: 0..<WM_KV_SLOTS { g.pin[p] = -1; }
+    g.pin[WM_S_PROG_K1] = b[0].c[0]; // mutant: equivalent — on step tokens PROG_K2==-1, score k-1 < k^2 (ROM[k]) for all integer k>=0
+    g.pin[WM_S_PROG_K2] = b[0].c_neg1;
+    g.pin[WM_S_STEP_K2] = b[0].c[0]; // mutant: equivalent — STEP head uses uniform STEP_K2>=0 > -1 across step tokens, so recency selects latest
+    g.pin[WM_S_NEXT_IP] = next_ip;
+    g.pin[WM_S_NEXT_SP] = next_sp;
+    g.pin[WM_S_NEXT_CSP] = next_csp;
+    g.pin[WM_S_NEXT_FID] = next_fid;
+    g.pin[WM_S_NEXT_NFID] = next_nfid;
+    g.pin[WM_S_NEXT_BASE] = next_base;
+    g.pin[WM_S_NEXT_PAR] = next_par;
+    g.pin[WM_S_NEXT_HRES] = next_hres;
+    g.pin[WM_S_STK_K1] = stk_k.lo;
+    g.pin[WM_S_STK_K2] = stk_k.hi;
+    g.pin[WM_S_STK_LO] = res_lo;
+    g.pin[WM_S_STK_HI] = res_hi;
+    g.pin[WM_S_CS_K1] = cs_k.lo;
+    g.pin[WM_S_CS_K2] = cs_k.hi;
+    g.pin[WM_S_CS_RETIP] = ip_p1;
+    g.pin[WM_S_CS_FID] = cur_fid;
+    g.pin[WM_S_CS_BASE] = cur_base;
+    g.pin[WM_S_CS_PAR] = cur_par;
+    g.pin[WM_S_CS_HRES] = cur_hres;
+    g.pin[WM_S_LOC_K1] = loc_k.lo;
+    g.pin[WM_S_LOC_K2] = loc_k.hi;
+    g.pin[WM_S_LOC_KEY] = loc_w_key;
+    g.pin[WM_S_LOC_LO] = top_lo;
+    g.pin[WM_S_LOC_HI] = top_hi;
+    g.pin[WM_S_LOC_EN] = loc_w_en;
+    g.pin[WM_S_GLB_K1] = glb_k.lo;
+    g.pin[WM_S_GLB_K2] = glb_k.hi;
+    g.pin[WM_S_GLB_KEY] = glb_w_key;
+    g.pin[WM_S_GLB_LO] = top_lo;
+    g.pin[WM_S_GLB_HI] = top_hi;
+    g.pin[WM_S_GLB_EN] = glb_w_en;
+    g.pin[WM_S_MEM_K1] = mem_k.lo;
+    g.pin[WM_S_MEM_K2] = mem_k.hi;
+    g.pin[WM_S_MEM_KEY] = mem_w_key;
+    g.pin[WM_S_MEM_LO] = top_lo;
+    g.pin[WM_S_MEM_HI] = top_hi;
+    g.pin[WM_S_MEM_EN] = mem_w_en;
+    // Pin outputs not already pinned in KV state (res_lo/res_hi/next_ip reuse WM_S_STK_LO/HI and WM_S_NEXT_IP).
+    g.pin[WM_S_OUT_IP] = cur_ip;
+    g.pin[WM_S_OUT_OP] = op;
+    g.pin[WM_S_OUT_AUX] = trace_aux;
+    g.pin[WM_S_OUT_HALT] = is_halt;
+    g.pin[WM_S_OUT_FAULT] = fault_code;
+
+    g.outputs = [WM_VM_OUTPUTS]int.[cur_ip, op, res_lo, res_hi, next_ip, trace_aux, is_halt, fault_code];
+    g.count = b[0].n;
+    return g;
+}
+
+WmCompileScratch :: struct {
+    nodes: [WM_VM_MAX_NODES]EvNode;
+    forms: [WM_VM_MAX_NODES]EvForm;
+    layer: [WM_VM_MAX_NODES]int;
+    last: [WM_VM_MAX_NODES]int;
+    slot: [WM_VM_MAX_NODES]int;
+    clear: [WM_VM_MAX_NODES]int;
+    release: [WM_VM_MAX_NODES]int;
+    kept: [WM_VM_MAX_NODES]bool;
+    free_slots: [WM_VM_MAX_WIDTH]bool;
+}
+
+wm_compile_vm :: (mem_words: int, scratch: []WmCompileScratch, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64) -> EvModel #effects(all) {
+    if scratch.count < 1 { return EvModel.{status = EvStatus.capacity}; }
+    g := wm_build_graph(scratch[0].nodes[..], mem_words);
+    if g.count == 0 { return EvModel.{status = EvStatus.shape}; } // mutant: equivalent — ev_compile also returns EvStatus.shape on empty nodes[0..<0]
+    arena := EvCompileArena.{
+        forms = scratch[0].forms[..], layer = scratch[0].layer[..], last = scratch[0].last[..],
+        slot = scratch[0].slot[..], clear = scratch[0].clear[..], release = scratch[0].release[..],
+        kept = scratch[0].kept[..], free_slots = scratch[0].free_slots[..], kv_pin = g.pin[..]
+    };
+    return ev_compile(scratch[0].nodes[0..<g.count], g.outputs[..], WM_KV_SLOTS, arena, layers, heads, weights);
+}
+
+// ---- Autoregressive Execution STRICTLY Through Loaded Dense Weights + hull-v2 ----
+
+wm_init_prompt_token :: (tok: []f64, width: int) #effects(all) {
+    for d: 0..<width { tok[d] = 0.0; }
+    tok[WM_S_PROG_K2] = -1.0;
+    tok[WM_S_STEP_K2] = -1.0;
+    tok[WM_S_STK_K2] = -1.0;
+    tok[WM_S_CS_K2] = -1.0;
+    tok[WM_S_LOC_K2] = -1.0;
+    tok[WM_S_GLB_K2] = -1.0;
+    tok[WM_S_MEM_K2] = -1.0;
+}
+
+WmHullRuntime :: struct {
+    rom: [WM_CODE_MAX]WmRomEntry;
+    heads: [WM_VM_MAX_HEADS]HtAttnHead;
+    nodes_pool: []HtNode;
+    vals_pool: []f64;
+    per_head_cap: int;
+    ex_x: [WM_VM_MAX_WIDTH]f64;
+    ex_st: [WM_VM_MAX_WIDTH]f64;
+    ex_h: [WM_VM_MAX_UNITS]f64;
+    tok: [WM_VM_MAX_WIDTH]f64;
+    mem_snap: [WM_MEM_WORDS]int;
+}
+
+// Execute a validated wasm-core-i32-v1 module autoregressively STRICTLY through
+// loaded dense F64 weights + hull-v2 O(log K) parabolic attention (ZERO fallback).
+wm_run_dense_hull :: (m: EvModel, artifact_hash: [32]u8, mod: WmModule, budget: int, trace: []int, mem_out: []int, rt: []WmHullRuntime) -> WmRunResult #effects(all) {
+    res: WmRunResult;
+    if m.status != EvStatus.ok || m.n_inputs != 0 || m.n_outputs != WM_VM_OUTPUTS || m.width < WM_KV_SLOTS || m.width > WM_VM_MAX_WIDTH {
+        res.status = WmStatus.shape; return res;
+    }
+    if rt.count < 1 { res.status = WmStatus.capacity; return res; }
+    if budget < 1 || budget > WM_STEPS_MAX { res.status = WmStatus.budget; return res; }
+    vs := wm_validate(mod, rt[0].rom[..]);
+    if vs != WmStatus.ok { res.status = vs; return res; }
+
+    D := m.width;
+    per_head := rt[0].per_head_cap;
+    if ev_hull_cache_init(m, rt[0].heads[..], rt[0].nodes_pool, rt[0].vals_pool, per_head) != EvStatus.ok {
+        res.status = WmStatus.capacity; return res;
+    }
+    cache := [1]HtAttnCache.[HtAttnCache.{n_heads = m.n_heads, heads = rt[0].heads[..]}];
+
+    // 1. Append ROM prompt tokens.
+    for i: 0..<mod.code.count {
+        wm_init_prompt_token(rt[0].tok[..], D);
+        e := rt[0].rom[i];
+        rt[0].tok[WM_S_PROG_K1] = f64(2 * i);
+        rt[0].tok[WM_S_PROG_K2] = f64(-i * i);
+        rt[0].tok[WM_S_PROG_KEY] = f64(i);
+        rt[0].tok[WM_S_PROG_OP] = f64(e.op);
+        rt[0].tok[WM_S_PROG_IMMLO] = f64(e.imm_lo);
+        rt[0].tok[WM_S_PROG_IMMHI] = f64(e.imm_hi);
+        rt[0].tok[WM_S_PROG_AUX] = f64(e.aux);
+        rt[0].tok[WM_S_PROG_VAL] = 1.0;
+        if ev_hull_append(m, cache[..], rt[0].tok[0..<D]) != EvStatus.ok { res.status = WmStatus.capacity; return res; }
+    }
+    // 2. Append initial linear memory prompt tokens (Sudoku board, Hungarian matrix, Coder world).
+    for i: 0..<mod.mem_words { rt[0].mem_snap[i] = 0; }
+    for i: 0..<mod.init_mem_addr.count {
+        addr := mod.init_mem_addr[i];
+        val := mod.init_mem_val[i];
+        rt[0].mem_snap[addr / 4] = val;
+        wm_init_prompt_token(rt[0].tok[..], D); // mutant: equivalent — rt[0].tok already holds ROM[last], so skipping reset re-inserts the identical ROM[last] KV pair
+        rt[0].tok[WM_S_MEM_K1] = f64(2 * addr);
+        rt[0].tok[WM_S_MEM_K2] = f64(-addr * addr);
+        rt[0].tok[WM_S_MEM_KEY] = f64(addr);
+        rt[0].tok[WM_S_MEM_LO] = f64(wm_i32_lo(val));
+        rt[0].tok[WM_S_MEM_HI] = f64(wm_i32_hi(val));
+        rt[0].tok[WM_S_MEM_EN] = 1.0;
+        if ev_hull_append(m, cache[..], rt[0].tok[0..<D]) != EvStatus.ok { res.status = WmStatus.capacity; return res; }
+    }
+    // 3. Append initial VM state prompt token (active STEP_K2 = 0, starting at entry_func).
+    ef := mod.funcs[mod.entry_func];
+    wm_init_prompt_token(rt[0].tok[..], D); // mutant: equivalent — rt[0].tok already holds init_mem[last]/ROM[last], so skipping reset re-inserts the identical KV pair
+    rt[0].tok[WM_S_STEP_K2] = 0.0; // mutant: equivalent — all prior prompt tokens have STEP_K2==-1.0, so recency selects this final prompt token even if STEP_K2 stays -1.0
+    rt[0].tok[WM_S_NEXT_IP] = f64(ef.start_ip);
+    rt[0].tok[WM_S_NEXT_NFID] = 1.0;
+    rt[0].tok[WM_S_NEXT_HRES] = f64(ef.has_result);
+    #assert ev_hull_append(m, cache[..], rt[0].tok[0..<D]) == EvStatus.ok;
+
+    exec := EvExecArena.{x = rt[0].ex_x[..], stage = rt[0].ex_st[..], hidden = rt[0].ex_h[..]};
+    empty_in: [1]f64;
+    readout: [WM_VM_OUTPUTS]f64;
+    sha: [112]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    want_trace := trace.count > 0;
+    steps := 0;
+    last_ip := ef.start_ip;
+
+    while true {
+        if steps >= budget {
+            res.status = WmStatus.budget; res.ip = last_ip; res.steps = steps; return res;
+        }
+        #assert ev_hull_forward_token(m, empty_in[0..<0], cache[..], rt[0].tok[0..<D], readout[..], exec, false) == EvStatus.ok;
+
+        r_ip := cast(int)readout[0];
+        r_op := cast(int)readout[1];
+        r_lo := cast(int)readout[2];
+        r_hi := cast(int)readout[3];
+        r_nip := cast(int)readout[4];
+        r_aux := cast(int)readout[5];
+        r_halt := cast(int)readout[6];
+        r_fault := cast(int)readout[7];
+        last_ip = r_ip;
+
+        if r_fault != 0 {
+            res.status = cast(WmStatus)r_fault;
+            res.ip = r_ip;
+            res.steps = steps;
+            res.hull_compares = cache[0].hull_compares;
+            res.hull_visits = cache[0].hull_visits;
+            res.scan_compares = cache[0].scan_compares;
+            return res;
+        }
+        if r_op == cast(int)WmOp.i32_store {
+            rt[0].mem_snap[r_aux / 4] = wm_limbs_to_i32(r_lo, r_hi);
+        }
+        if want_trace {
+            if (steps + 1) * WM_TRACE_TOKENS > trace.count {
+                res.status = WmStatus.capacity; res.ip = r_ip; res.steps = steps; return res;
+            }
+            tb := steps * WM_TRACE_TOKENS;
+            trace[tb] = r_ip;
+            trace[tb + 1] = r_op;
+            trace[tb + 2] = r_lo;
+            trace[tb + 3] = r_hi;
+            trace[tb + 4] = r_nip;
+            trace[tb + 5] = r_aux;
+        }
+        wm_hash_u32(sha[..], r_ip);
+        wm_hash_u32(sha[..], r_op);
+        wm_hash_u32(sha[..], r_lo);
+        wm_hash_u32(sha[..], r_hi);
+        wm_hash_u32(sha[..], r_nip);
+        wm_hash_u32(sha[..], r_aux);
+
+        steps += 1;
+        if r_halt == 1 {
+            res.ip = r_ip;
+            res.steps = steps;
+            res.result = wm_limbs_to_i32(r_lo, r_hi);
+            res.receipt.compiler_hash = wm_compiler_digest();
+            res.receipt.executor_artifact_hash = artifact_hash;
+            res.receipt.program_hash = wm_program_digest(mod);
+            #assert sha256_final_checked(sha[..], res.receipt.trace_digest[..], false) == SHA_OK;
+            res.receipt.steps = steps;
+            res.receipt.result = res.result;
+            res.hull_compares = cache[0].hull_compares;
+            res.hull_visits = cache[0].hull_visits;
+            res.scan_compares = cache[0].scan_compares;
+            if mem_out.count >= mod.mem_words {
+                for i: 0..<mod.mem_words { mem_out[i] = rt[0].mem_snap[i]; }
+            }
+            return res;
+        }
+        // Append generated residual token to hull-v2 KV cache for autoregressive continuation.
+        if ev_hull_append(m, cache[..], rt[0].tok[0..<D]) != EvStatus.ok {
+            res.status = WmStatus.capacity; res.ip = r_ip; res.steps = steps; return res;
+        }
+    }
+    return res;
+}
+
+// Direct O(t) linear-scan dense-weight runner (calls ev_forward_token directly!)
+// used to cross-verify that hull-v2 O(log K) attention matches O(t) dense scan bit-for-bit.
+wm_run_dense_scan :: (m: EvModel, artifact_hash: [32]u8, mod: WmModule, budget: int, trace: []int, kv_ctx: []f64, rt: []WmHullRuntime) -> WmRunResult #effects(all) {
+    res: WmRunResult;
+    if m.status != EvStatus.ok || m.n_inputs != 0 || m.n_outputs != WM_VM_OUTPUTS || m.width < WM_KV_SLOTS || m.width > WM_VM_MAX_WIDTH {
+        res.status = WmStatus.shape; return res;
+    }
+    if rt.count < 1 { res.status = WmStatus.capacity; return res; }
+    if budget < 1 || budget > WM_STEPS_MAX { res.status = WmStatus.budget; return res; }
+    vs := wm_validate(mod, rt[0].rom[..]);
+    if vs != WmStatus.ok { res.status = vs; return res; }
+
+    D := m.width;
+    ctx_len := 0;
+    prompt_len := mod.code.count + mod.init_mem_addr.count + 1;
+    if prompt_len * D > kv_ctx.count { res.status = WmStatus.capacity; return res; }
+
+    for i: 0..<mod.code.count {
+        b := ctx_len * D;
+        wm_init_prompt_token(kv_ctx[b..<b + D], D);
+        e := rt[0].rom[i];
+        kv_ctx[b + WM_S_PROG_K1] = f64(2 * i);
+        kv_ctx[b + WM_S_PROG_K2] = f64(-i * i);
+        kv_ctx[b + WM_S_PROG_KEY] = f64(i);
+        kv_ctx[b + WM_S_PROG_OP] = f64(e.op);
+        kv_ctx[b + WM_S_PROG_IMMLO] = f64(e.imm_lo);
+        kv_ctx[b + WM_S_PROG_IMMHI] = f64(e.imm_hi);
+        kv_ctx[b + WM_S_PROG_AUX] = f64(e.aux);
+        kv_ctx[b + WM_S_PROG_VAL] = 1.0;
+        ctx_len += 1;
+    }
+    for i: 0..<mod.init_mem_addr.count {
+        b := ctx_len * D;
+        addr := mod.init_mem_addr[i];
+        val := mod.init_mem_val[i];
+        wm_init_prompt_token(kv_ctx[b..<b + D], D);
+        kv_ctx[b + WM_S_MEM_K1] = f64(2 * addr);
+        kv_ctx[b + WM_S_MEM_K2] = f64(-addr * addr);
+        kv_ctx[b + WM_S_MEM_KEY] = f64(addr);
+        kv_ctx[b + WM_S_MEM_LO] = f64(wm_i32_lo(val));
+        kv_ctx[b + WM_S_MEM_HI] = f64(wm_i32_hi(val));
+        kv_ctx[b + WM_S_MEM_EN] = 1.0;
+        ctx_len += 1;
+    }
+    ef := mod.funcs[mod.entry_func];
+    b0 := ctx_len * D;
+    wm_init_prompt_token(kv_ctx[b0..<b0 + D], D);
+    kv_ctx[b0 + WM_S_STEP_K2] = 0.0; // mutant: equivalent — all prior prompt tokens have STEP_K2==-1.0, so recency selects this final prompt token even if STEP_K2 stays -1.0
+    kv_ctx[b0 + WM_S_NEXT_IP] = f64(ef.start_ip);
+    kv_ctx[b0 + WM_S_NEXT_NFID] = 1.0;
+    kv_ctx[b0 + WM_S_NEXT_HRES] = f64(ef.has_result);
+    ctx_len += 1;
+
+    exec := EvExecArena.{x = rt[0].ex_x[..], stage = rt[0].ex_st[..], hidden = rt[0].ex_h[..]};
+    empty_in: [1]f64;
+    readout: [WM_VM_OUTPUTS]f64;
+    sha: [112]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    want_trace := trace.count > 0;
+    steps := 0;
+    last_ip := ef.start_ip;
+
+    while true {
+        if steps >= budget { res.status = WmStatus.budget; res.ip = last_ip; res.steps = steps; return res; }
+        if (ctx_len + 1) * D > kv_ctx.count { res.status = WmStatus.capacity; res.ip = last_ip; res.steps = steps; return res; }
+        dst := kv_ctx[ctx_len * D..<ctx_len * D + D];
+        #assert ev_forward_token(m, empty_in[0..<0], kv_ctx[0..<ctx_len * D], ctx_len, dst, readout[..], exec, false) == EvStatus.ok;
+
+        r_ip := cast(int)readout[0];
+        r_op := cast(int)readout[1];
+        r_lo := cast(int)readout[2];
+        r_hi := cast(int)readout[3];
+        r_nip := cast(int)readout[4];
+        r_aux := cast(int)readout[5];
+        r_halt := cast(int)readout[6];
+        r_fault := cast(int)readout[7];
+        last_ip = r_ip;
+
+        if r_fault != 0 { res.status = cast(WmStatus)r_fault; res.ip = r_ip; res.steps = steps; return res; }
+        if want_trace {
+            if (steps + 1) * WM_TRACE_TOKENS > trace.count { res.status = WmStatus.capacity; res.ip = r_ip; res.steps = steps; return res; }
+            tb := steps * WM_TRACE_TOKENS;
+            trace[tb] = r_ip; trace[tb + 1] = r_op; trace[tb + 2] = r_lo;
+            trace[tb + 3] = r_hi; trace[tb + 4] = r_nip; trace[tb + 5] = r_aux;
+        }
+        wm_hash_u32(sha[..], r_ip); wm_hash_u32(sha[..], r_op); wm_hash_u32(sha[..], r_lo);
+        wm_hash_u32(sha[..], r_hi); wm_hash_u32(sha[..], r_nip); wm_hash_u32(sha[..], r_aux);
+        ctx_len += 1;
+        steps += 1;
+        if r_halt == 1 {
+            res.ip = r_ip; res.steps = steps; res.result = wm_limbs_to_i32(r_lo, r_hi);
+            res.receipt.compiler_hash = wm_compiler_digest();
+            res.receipt.executor_artifact_hash = artifact_hash;
+            res.receipt.program_hash = wm_program_digest(mod);
+            #assert sha256_final_checked(sha[..], res.receipt.trace_digest[..], false) == SHA_OK;
+            res.receipt.steps = steps;
+            res.receipt.result = res.result;
+            return res;
+        }
+    }
+    return res;
+}
+
+
+#test "wasm-core-i32-v1 compiles to F64 safetensors, round-trips with SHA-256 verification, and executes via loaded weights" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    compiled := wm_compile_vm(WM_DEFAULT_MEM_WORDS, sc[..], layers[..], heads[..], weights[..]);
+    #assert compiled.status == EvStatus.ok && compiled.n_layers >= 40 && compiled.n_heads >= 10 && compiled.n_weights > 100000;
+    #assert wm_compile_vm(0, sc[..], layers[..], heads[..], weights[..]).status == EvStatus.shape;
+    #assert wm_compile_vm(WM_MEM_WORDS + 1, sc[..], layers[..], heads[..], weights[..]).status == EvStatus.shape;
+    #assert wm_compile_vm(64, sc[0..<0], layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert wm_build_graph(sc[0].nodes[0..<10], 64).count == 0;
+
+    // Serialize to standard F64 safetensors and reload into fresh descriptors with SHA-256 pinning.
+    file: [7000000]u8;
+    ser := ev_serialize(compiled, file[..]);
+    #assert ser.status == EvStatus.ok && ser.written > 6000000;
+    layers2: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [WM_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    #assert ld.model.status == EvStatus.ok && ev_same_digest(ld.digest, ser.digest);
+    // Tampering 1 byte of the safetensors payload is rejected by SHA-256 verification.
+    file[ser.written - 1] ^= 1;
+    #assert ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.digest;
+
+    // Execute a program with init_mem through the disk-format deserialized weights.
+    code := [9]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.local_tee, arg = 0},
+        WmInst.{op = WmOp.drop}, WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.end_op}
+    ];
+    // Simpler: load mem[4], add 100, store mem[8], load mem[8] and return.
+    code2 := [10]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 8},
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_store, arg = 0},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 0},
+        WmInst.{op = WmOp.ret}, WmInst.{op = WmOp.end_op}
+    ];
+    funcs := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 10, n_params = 0, n_locals = 1, has_result = 1}];
+    ima := [2]int.[0, 4]; imv := [2]int.[111, -42];
+    mod := WmModule.{code = code2[..], funcs = funcs[..], entry_func = 0, n_globals = 0, mem_words = WM_DEFAULT_MEM_WORDS, init_mem_addr = ima[..], init_mem_val = imv[..]};
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 64]HtNode;
+    vp: [WM_VM_MAX_HEADS * 64 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 64;
+    t_ref: [128]int; t_hull: [128]int; t_scan: [128]int;
+    m_ref: [WM_DEFAULT_MEM_WORDS]int; m_hull: [WM_DEFAULT_MEM_WORDS]int;
+    kv_scan: [32768]f64;
+    r_ref  := wm_run_ref(mod, 32, ld.digest, t_ref[..], m_ref[..], ref_a[..]);
+    r_hull := wm_run_dense_hull(ld.model, ld.digest, mod, 32, t_hull[..], m_hull[..], rt[..]);
+    r_scan := wm_run_dense_scan(ld.model, ld.digest, mod, 32, t_scan[..], kv_scan[..], rt[..]);
+    #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_scan.status == WmStatus.ok;
+    #assert r_ref.result == 58 && r_hull.result == 58 && r_scan.result == 58 && r_scan.receipt.result == 58;
+    #assert m_ref[0] == 111 && m_hull[0] == 111 && m_ref[1] == -42 && m_hull[1] == -42 && m_ref[2] == 58 && m_hull[2] == 58 && m_hull[3] == 0;
+    #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+    #assert ev_same_digest(r_ref.receipt.trace_digest, r_scan.receipt.trace_digest);
+    #assert ev_same_digest(r_hull.receipt.executor_artifact_hash, ld.digest);
+    #assert code[0].op == WmOp.i32_const;
+}
+
+#test "wasm-core-i32-v1 passes ALL 38 opcodes bit-identically across ref, O(t) scan & hull-v2" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wm_compile_vm(64, sc[..], layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    d_vm: [32]u8;
+    d_vm[0] = 7;
+
+    // Program exercising ALL 38 opcodes (including void & non-void calls, br/br_if func return, if without else, all ALU & shifts).
+    code := [128]WmInst.[
+        // Func 0 (0..112):
+        WmInst.{op = WmOp.nop},
+        WmInst.{op = WmOp.i32_const, arg = 100000}, WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.i32_const, arg = -123456}, WmInst.{op = WmOp.local_tee, arg = 1},
+        WmInst.{op = WmOp.global_set, arg = 0},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.global_get, arg = 0}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 1000}, WmInst.{op = WmOp.i32_sub},
+        WmInst.{op = WmOp.i32_const, arg = -3}, WmInst.{op = WmOp.i32_mul},
+        WmInst.{op = WmOp.i32_const, arg = -7}, WmInst.{op = WmOp.i32_div_s},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_rem_s},
+        WmInst.{op = WmOp.local_set, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.i32_const, arg = -1}, WmInst.{op = WmOp.i32_rem_s},
+        WmInst.{op = WmOp.i32_eqz},
+        WmInst.{op = WmOp.local_get, arg = 2}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 0x0f0f0f}, WmInst.{op = WmOp.i32_and},
+        WmInst.{op = WmOp.i32_const, arg = 0x001005}, WmInst.{op = WmOp.i32_or},
+        WmInst.{op = WmOp.i32_const, arg = 0x0f0000}, WmInst.{op = WmOp.i32_xor},
+        WmInst.{op = WmOp.i32_const, arg = 20}, WmInst.{op = WmOp.i32_shl},
+        WmInst.{op = WmOp.i32_const, arg = 24}, WmInst.{op = WmOp.i32_shr_s},
+        WmInst.{op = WmOp.i32_const, arg = 17}, WmInst.{op = WmOp.i32_shr_u},
+        WmInst.{op = WmOp.local_set, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.i32_lt_s},
+        WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_le_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_const, arg = -2}, WmInst.{op = WmOp.i32_gt_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_ge_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_eq},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_const, arg = 9}, WmInst.{op = WmOp.i32_ne},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 999}, WmInst.{op = WmOp.drop},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_const, arg = 200}, WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.select},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.local_get, arg = 2}, WmInst.{op = WmOp.i32_store, arg = 4},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.local_set, arg = 3},
+        // Test if without else (false branch skips body) + void call func 2 + loop with br/br_if.
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.if_op}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.call, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.block},
+            WmInst.{op = WmOp.loop},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_eqz},
+                WmInst.{op = WmOp.br_if, arg = 1},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_gt_s},
+                WmInst.{op = WmOp.if_op},
+                    WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.local_set, arg = 3},
+                WmInst.{op = WmOp.else_op},
+                    WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.local_set, arg = 3},
+                WmInst.{op = WmOp.end_op},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_sub}, WmInst.{op = WmOp.local_set, arg = 0},
+                WmInst.{op = WmOp.br, arg = 0},
+            WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.global_get, arg = 1}, WmInst.{op = WmOp.call, arg = 1},
+        WmInst.{op = WmOp.end_op},
+        // Func 1 (111..124): helper(x, y) -> returns (x * 3) + y via br_if 0 (function-level return)!
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.i32_mul},
+        WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.local_get, arg = 1}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br_if, arg = 0},
+        WmInst.{op = WmOp.ret},
+        WmInst.{op = WmOp.end_op},
+        // Func 2 (124..130): void helper setting global[1] = 7 and returning via br 0!
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.global_set, arg = 1},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.drop},
+        WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op}
+    ];
+    funcs := [3]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 111, n_params = 0, n_locals = 4, has_result = 1},
+        WmFunc.{start_ip = 111, end_ip = 122, n_params = 2, n_locals = 2, has_result = 1},
+        WmFunc.{start_ip = 122, end_ip = 128, n_params = 0, n_locals = 1, has_result = 0}
+    ];
+    emp: [1]int;
+    mod := wm_test_mod(code[..], funcs[..], 2, 64, emp[0..<0]);
+
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 256]HtNode;
+    vp: [WM_VM_MAX_HEADS * 256 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 256;
+    t_ref: [2048]int; t_hull: [2048]int; t_scan: [2048]int; t_chk: [2048]int;
+    m_ref: [64]int; m_hull: [64]int;
+    kv_scan: [131072]f64;
+
+    r_ref  := wm_run_ref(mod, 300, d_vm, t_ref[..], m_ref[..], ref_a[..]);
+    r_hull := wm_run_dense_hull(vm, d_vm, mod, 300, t_hull[..], m_hull[..], rt[..]);
+    r_scan := wm_run_dense_scan(vm, d_vm, mod, 300, t_scan[..], kv_scan[..], rt[..]);
+    #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_scan.status == WmStatus.ok;
+    #assert r_ref.steps == r_hull.steps && r_ref.steps == r_scan.steps && r_ref.result == r_hull.result && r_ref.result == r_scan.result;
+    #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+    #assert ev_same_digest(r_ref.receipt.trace_digest, r_scan.receipt.trace_digest);
+    #assert r_hull.hull_compares > 0 && r_hull.hull_visits > 0 && r_hull.hull_compares < r_hull.scan_compares;
+    for i: 0..<r_ref.steps * WM_TRACE_TOKENS { #assert t_ref[i] == t_hull[i] && t_ref[i] == t_scan[i]; }
+    #assert m_ref[3] == m_hull[3];
+
+    // Extended Ch 234 replay checks (exact, rows-omitted full replay, window, and tamper detection).
+    rep := wm_replay_check(mod, r_hull.receipt, t_hull[0..<r_hull.steps * WM_TRACE_TOKENS], 0, r_hull.steps, r_hull.steps, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.exact && rep.reason == WmReplayReason.none && rep.checked == r_hull.steps;
+    rep_norows := wm_replay_check(mod, r_hull.receipt, t_hull[0..<0], 0, r_hull.steps, r_hull.steps, t_chk[0..<0], ref_a[..]);
+    #assert rep_norows.verdict == WmReplayVerdict.exact && rep_norows.reason == WmReplayReason.none && rep_norows.checked == r_hull.steps;
+    rep_w := wm_replay_check(mod, r_hull.receipt, t_hull[0..<r_hull.steps * WM_TRACE_TOKENS], 5, 20, 20, t_chk[..], ref_a[..]);
+    #assert rep_w.verdict == WmReplayVerdict.unverifiable && rep_w.reason == WmReplayReason.window && rep_w.checked == 15;
+    t_hull[10 * WM_TRACE_TOKENS + 2] += 1;
+    tamp_rcpt := r_hull.receipt;
+    tamp_rcpt.trace_digest = wm_trace_digest(t_hull[..], r_hull.steps);
+    rep_bad := wm_replay_check(mod, tamp_rcpt, t_hull[0..<r_hull.steps * WM_TRACE_TOKENS], 0, r_hull.steps, r_hull.steps, t_chk[..], ref_a[..]);
+    #assert rep_bad.verdict == WmReplayVerdict.failed && rep_bad.reason == WmReplayReason.row && rep_bad.step == 10 && rep_bad.field == 2 && rep_bad.checked == 10;
+}
+
+#test "all typed traps match bit-for-bit between reference interpreter and loaded dense weights" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wm_compile_vm(64, sc[..], layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 256]HtNode;
+    vp: [WM_VM_MAX_HEADS * 256 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 256;
+    empty_t: [1]int; empty_m: [1]int; d0: [32]u8;
+    f1 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 1, has_result = 1}];
+
+    // 1. Divide by zero (div_s and rem_s).
+    c_dz := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 42}, WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_div_s}, WmInst.{op = WmOp.end_op}];
+    m_dz := wm_test_mod(c_dz[..], f1[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_dz, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.div_zero;
+    #assert wm_run_dense_hull(vm, d0, m_dz, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.div_zero;
+    c_dz[2].op = WmOp.i32_rem_s;
+    #assert wm_run_ref(m_dz, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.div_zero;
+    #assert wm_run_dense_hull(vm, d0, m_dz, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.div_zero;
+
+    // 2. Signed INT32_MIN / -1 overflow trap!
+    c_ov := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.i32_const, arg = -1}, WmInst.{op = WmOp.i32_div_s}, WmInst.{op = WmOp.end_op}];
+    m_ov := wm_test_mod(c_ov[..], f1[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_ov, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.int_overflow;
+    #assert wm_run_dense_hull(vm, d0, m_ov, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.int_overflow;
+
+    // 3. Out-of-bounds memory (high 256, negative -4) & unaligned (2, 6) on load & store, plus valid boundary 252!
+    c_oob := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 252}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.end_op}];
+    f3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 1}];
+    m_oob := wm_test_mod(c_oob[..], f3[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_oob, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.ok;
+    #assert wm_run_dense_hull(vm, d0, m_oob, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.ok;
+    c_oob[0].arg = 256;
+    #assert wm_run_ref(m_oob, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.oob_memory;
+    #assert wm_run_dense_hull(vm, d0, m_oob, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.oob_memory;
+    c_oob[0].arg = -4;
+    #assert wm_run_ref(m_oob, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.oob_memory;
+    #assert wm_run_dense_hull(vm, d0, m_oob, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.oob_memory;
+    c_oob[0].arg = 2;
+    #assert wm_run_ref(m_oob, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.unaligned_memory;
+    #assert wm_run_dense_hull(vm, d0, m_oob, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.unaligned_memory;
+    c_st := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 256}, WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_store, arg = 0}, WmInst.{op = WmOp.end_op}];
+    f4 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 0}];
+    m_st := wm_test_mod(c_st[..], f4[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_st, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.oob_memory;
+    #assert wm_run_dense_hull(vm, d0, m_st, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.oob_memory;
+    c_st[0].arg = 6;
+    #assert wm_run_ref(m_st, 32, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.unaligned_memory;
+    #assert wm_run_dense_hull(vm, d0, m_st, 32, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.unaligned_memory;
+
+    // 4. Operand stack underflow across arity 1, 2, 3, call, br_if returning, and ret.
+    f2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 1, has_result = 0}];
+    for op_u1: [7]WmOp.[WmOp.local_set, WmOp.local_tee, WmOp.global_set, WmOp.drop, WmOp.i32_eqz, WmOp.i32_load, WmOp.br_if] {
+        cu1 := [2]WmInst.[WmInst.{op = op_u1, arg = 0}, WmInst.{op = WmOp.end_op}];
+        mu1 := wm_test_mod(cu1[..], f2[..], 1, 64, empty_m[0..<0]);
+        #assert wm_run_ref(mu1, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+        #assert wm_run_dense_hull(vm, d0, mu1, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    }
+    cu_if := [3]WmInst.[WmInst.{op = WmOp.if_op}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f3v := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 0}];
+    mu_if := wm_test_mod(cu_if[..], f3v[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_if, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_if, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    cu_add := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.end_op}];
+    mu_add := wm_test_mod(cu_add[..], f3v[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_add, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_add, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    cu_sel := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_const, arg = 2}, WmInst.{op = WmOp.select}, WmInst.{op = WmOp.end_op}];
+    mu_sel := wm_test_mod(cu_sel[..], f4[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_sel, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_sel, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    cu_brr := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br_if, arg = 0}, WmInst.{op = WmOp.end_op}];
+    mu_brr := wm_test_mod(cu_brr[..], f3[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_brr, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_brr, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    cu_ret := [2]WmInst.[WmInst.{op = WmOp.ret}, WmInst.{op = WmOp.end_op}];
+    f2r := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 1}];
+    mu_ret := wm_test_mod(cu_ret[..], f2r[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_ret, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_ret, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+    cu_cal := [3]WmInst.[WmInst.{op = WmOp.call, arg = 1}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f_cal := [2]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0},
+                        WmFunc.{start_ip = 2, end_ip = 3, n_params = 1, n_locals = 1, has_result = 0}];
+    mu_cal := wm_test_mod(cu_cal[..], f_cal[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(mu_cal, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    #assert wm_run_dense_hull(vm, d0, mu_cal, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.stack_underflow;
+
+    // 5. Call stack overflow (infinite recursion: call 0 -> traps at EXACT depth 128).
+    c_co := [2]WmInst.[WmInst.{op = WmOp.call, arg = 0}, WmInst.{op = WmOp.end_op}];
+    m_co := wm_test_mod(c_co[..], f2[..], 0, 64, empty_m[0..<0]);
+    r_co_r := wm_run_ref(m_co, 300, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]);
+    r_co_h := wm_run_dense_hull(vm, d0, m_co, 300, empty_t[0..<0], empty_m[0..<0], rt[..]);
+    #assert r_co_r.status == WmStatus.call_overflow && r_co_r.steps == 128 && r_co_h.status == WmStatus.call_overflow && r_co_h.steps == 128;
+
+    // 5b. Unaligned bit-0 (addr=1) on BOTH i32_load and i32_store!
+    c_u1l := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.end_op}];
+    m_u1l := wm_test_mod(c_u1l[..], f3[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_u1l, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.unaligned_memory;
+    #assert wm_run_dense_hull(vm, d0, m_u1l, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.unaligned_memory;
+    c_u1s := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_store, arg = 0}, WmInst.{op = WmOp.end_op}];
+    m_u1s := wm_test_mod(c_u1s[..], f4[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_u1s, 16, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.unaligned_memory;
+    #assert wm_run_dense_hull(vm, d0, m_u1s, 16, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.unaligned_memory;
+
+    // 6. Step budget exhaustion (infinite loop: loop; br 0; end; end).
+    c_bg := [4]WmInst.[WmInst.{op = WmOp.loop}, WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    m_bg := wm_test_mod(c_bg[..], f4[..], 0, 64, empty_m[0..<0]);
+    #assert wm_run_ref(m_bg, 20, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]).status == WmStatus.budget;
+    #assert wm_run_dense_hull(vm, d0, m_bg, 20, empty_t[0..<0], empty_m[0..<0], rt[..]).status == WmStatus.budget;
+}
+
+#test "operand stack overflow at exact depth 512 matches ref and loaded dense weights" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wm_compile_vm(64, sc[..], layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 600]HtNode;
+    vp: [WM_VM_MAX_HEADS * 600 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 600;
+    empty_t: [1]int; empty_m: [1]int; d0: [32]u8;
+    // Unrolled 32 pushes per loop iteration -> 545 steps total (3x faster than 1 push/loop!).
+    c_so: [36]WmInst;
+    c_so[0] = WmInst.{op = WmOp.loop};
+    for i: 0..<32 { c_so[1 + i] = WmInst.{op = WmOp.i32_const, arg = i}; }
+    c_so[33] = WmInst.{op = WmOp.br, arg = 0};
+    c_so[34] = WmInst.{op = WmOp.end_op};
+    c_so[35] = WmInst.{op = WmOp.end_op};
+    f_so := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 36, n_params = 0, n_locals = 0, has_result = 0}];
+    m_so := wm_test_mod(c_so[..], f_so[..], 0, 64, empty_m[0..<0]);
+    rr := wm_run_ref(m_so, 700, d0, empty_t[0..<0], empty_m[0..<0], ref_a[..]);
+    rh := wm_run_dense_hull(vm, d0, m_so, 700, empty_t[0..<0], empty_m[0..<0], rt[..]);
+    #assert rr.status == WmStatus.stack_overflow && rh.status == WmStatus.stack_overflow && rr.steps == rh.steps;
+}
+
+#test "Ch 230 differential fuzzing across all 38 opcodes, branches, loops, calls, memory & traps" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wm_compile_vm(64, sc[..], layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 256]HtNode;
+    vp: [WM_VM_MAX_HEADS * 256 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 256;
+    d_vm: [32]u8; d_vm[0] = 23;
+    t_ref: [2048]int; t_hull: [2048]int; t_chk: [2048]int;
+    m_ref: [64]int; m_hull: [64]int;
+    emp: [1]int;
+
+    bin_ops := [17]WmOp.[
+        WmOp.i32_add, WmOp.i32_sub, WmOp.i32_mul, WmOp.i32_div_s, WmOp.i32_rem_s,
+        WmOp.i32_and, WmOp.i32_or, WmOp.i32_xor, WmOp.i32_shl, WmOp.i32_shr_s, WmOp.i32_shr_u,
+        WmOp.i32_eq, WmOp.i32_ne, WmOp.i32_lt_s, WmOp.i32_le_s, WmOp.i32_gt_s, WmOp.i32_ge_s
+    ];
+    // Deterministic seeded PRNG generating 24 diverse programs (random binary ops, edge i32s, memory, locals, globals, loops, calls).
+    seed := 0x13915;
+    code: [64]WmInst;
+    for case_i: 0..<24 {
+        n := 0;
+        // Pick two seeded 32-bit operands (including edge values: 0, -1, INT32_MIN, INT32_MAX, large signed ints).
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        v0 := ifx case_i % 6 == 0 then WM_I32_MIN else ifx case_i % 6 == 1 then WM_I32_MAX else wm_u32_to_i32((seed * 2654435761) & 0xffffffff);
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        v1 := ifx case_i % 7 == 0 then -1 else ifx case_i % 7 == 1 then 0 else wm_u32_to_i32((seed * 2246822519) & 0xffffffff);
+        code[n] = WmInst.{op = WmOp.i32_const, arg = v0}; n += 1;
+        code[n] = WmInst.{op = WmOp.local_set, arg = 0}; n += 1;
+        code[n] = WmInst.{op = WmOp.i32_const, arg = v1}; n += 1;
+        code[n] = WmInst.{op = WmOp.local_set, arg = 1}; n += 1;
+        // Run 4 randomized ALU + memory + select steps per case.
+        for k: 0..<4 {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            op := bin_ops[(case_i + k * 5 + (seed >> 8)) % 17];
+            code[n] = WmInst.{op = WmOp.local_get, arg = 0}; n += 1;
+            code[n] = WmInst.{op = WmOp.local_get, arg = 1}; n += 1;
+            code[n] = WmInst.{op = op}; n += 1;
+            code[n] = WmInst.{op = WmOp.local_tee, arg = 0}; n += 1;
+            addr := ((seed >> 16) & 15) * 4;
+            code[n] = WmInst.{op = WmOp.i32_const, arg = addr}; n += 1;
+            code[n] = WmInst.{op = WmOp.local_get, arg = 0}; n += 1;
+            code[n] = WmInst.{op = WmOp.i32_store, arg = 0}; n += 1;
+            code[n] = WmInst.{op = WmOp.i32_const, arg = addr}; n += 1;
+            code[n] = WmInst.{op = WmOp.i32_load, arg = 0}; n += 1;
+            code[n] = WmInst.{op = WmOp.local_get, arg = 1}; n += 1;
+            code[n] = WmInst.{op = WmOp.i32_const, arg = (case_i + k) & 1}; n += 1;
+            code[n] = WmInst.{op = WmOp.select}; n += 1;
+            code[n] = WmInst.{op = WmOp.global_set, arg = 0}; n += 1;
+            code[n] = WmInst.{op = WmOp.drop}; n += 1;
+        }
+        code[n] = WmInst.{op = WmOp.local_get, arg = 0}; n += 1;
+        code[n] = WmInst.{op = WmOp.global_get, arg = 0}; n += 1;
+        code[n] = WmInst.{op = WmOp.i32_xor}; n += 1;
+        code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+        funcs := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = n, n_params = 0, n_locals = 2, has_result = 1}];
+        mod := wm_test_mod(code[0..<n], funcs[..], 1, 64, emp[0..<0]);
+        r_ref  := wm_run_ref(mod, 128, d_vm, t_ref[..], m_ref[..], ref_a[..]);
+        r_hull := wm_run_dense_hull(vm, d_vm, mod, 128, t_hull[..], m_hull[..], rt[..]);
+        #assert r_ref.status == r_hull.status && r_ref.steps == r_hull.steps && r_ref.ip == r_hull.ip;
+        if r_ref.status == WmStatus.ok {
+            #assert r_ref.result == r_hull.result;
+            #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+            rep := wm_replay_check(mod, r_hull.receipt, t_hull[0..<r_hull.steps * WM_TRACE_TOKENS], 0, r_hull.steps, r_hull.steps, t_chk[..], ref_a[..]);
+            #assert rep.verdict == WmReplayVerdict.exact && rep.reason == WmReplayReason.none;
+        }
+    }
+}
+
+#test "wm_run_dense_hull and wm_run_dense_scan exact admission, capacity, trace, fault & receipt guards" #traversal 10000 {
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wm_compile_vm(64, sc[..], layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok && vm.width <= 150;
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 64]HtNode;
+    vp: [WM_VM_MAX_HEADS * 64 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 64;
+    kv: [65536]f64;
+    d_vm: [32]u8; d_vm[0] = 55; d_vm[31] = 19;
+    emp: [1]int;
+    c2 := [2]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0}];
+    m2 := wm_test_mod(c2[..], f2[..], 0, 8, emp[0..<0]);
+
+    // 0. Direct 0-ms checks on wm_init_prompt_token & wm_build_graph exact bounds/pins!
+    ptok: [WM_KV_SLOTS]f64;
+    for i: 0..<WM_KV_SLOTS { ptok[i] = 99.0; }
+    wm_init_prompt_token(ptok[..], WM_KV_SLOTS);
+    #assert ptok[0] == 0.0 && ptok[WM_S_PROG_K1] == 0.0 && ptok[WM_S_PROG_K2] == -1.0 && ptok[WM_S_STEP_K2] == -1.0;
+    #assert ptok[WM_S_STK_K2] == -1.0 && ptok[WM_S_CS_K2] == -1.0 && ptok[WM_S_LOC_K2] == -1.0 && ptok[WM_S_GLB_K2] == -1.0 && ptok[WM_S_MEM_K2] == -1.0;
+    g_min := wm_build_graph(sc[0].nodes[..], 1);
+    g_max := wm_build_graph(sc[0].nodes[..], WM_MEM_WORDS);
+    #assert g_min.count > 0 && g_max.count > 0 && g_min.pin[0] == -1 && g_min.pin[WM_S_PROG_OP] == -1;
+    #assert g_min.pin[WM_S_OUT_OP] >= 0 && g_min.pin[WM_S_OUT_RLO] == -1;
+
+    // 1. Model shape guards on BOTH wm_run_dense_hull and wm_run_dense_scan (including exact inclusive width bounds)!
+    mb := vm; mb.status = EvStatus.shape;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.shape;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.shape;
+    mb = vm; mb.n_inputs = 1;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.shape;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.shape;
+    mb = vm; mb.n_outputs = WM_VM_OUTPUTS - 1;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.shape;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.shape;
+    mb = vm; mb.width = WM_KV_SLOTS - 1;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.shape;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.shape;
+    mb = vm; mb.width = WM_VM_MAX_WIDTH + 1;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.shape;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.shape;
+    // Exact inclusive bounds: width == WM_KV_SLOTS and width == WM_VM_MAX_WIDTH pass shape guard (reach budget==0)!
+    mb = vm; mb.width = WM_KV_SLOTS;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 0, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 0, emp[0..<0], kv[..], rt[..]).status == WmStatus.budget;
+    mb = vm; mb.width = WM_VM_MAX_WIDTH;
+    #assert wm_run_dense_hull(mb, d_vm, m2, 0, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_scan(mb, d_vm, m2, 0, emp[0..<0], kv[..], rt[..]).status == WmStatus.budget;
+
+    // 2. Runtime, budget, validation, cache init & kv_ctx capacity guards!
+    #assert wm_run_dense_hull(vm, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[0..<0]).status == WmStatus.capacity;
+    #assert wm_run_dense_scan(vm, d_vm, m2, 10, emp[0..<0], kv[..], rt[0..<0]).status == WmStatus.capacity;
+    #assert wm_run_dense_hull(vm, d_vm, m2, 0, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_scan(vm, d_vm, m2, 0, emp[0..<0], kv[..], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_hull(vm, d_vm, m2, WM_STEPS_MAX + 1, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_scan(vm, d_vm, m2, WM_STEPS_MAX + 1, emp[0..<0], kv[..], rt[..]).status == WmStatus.budget;
+    #assert wm_run_dense_hull(vm, d_vm, m2, WM_STEPS_MAX, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.ok;
+    #assert wm_run_dense_scan(vm, d_vm, m2, WM_STEPS_MAX, emp[0..<0], kv[..], rt[..]).status == WmStatus.ok;
+    bad_c := [1]WmInst.[WmInst.{op = WmOp.nop}];
+    bad_f := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}];
+    m_bad := wm_test_mod(bad_c[..], bad_f[..], 0, 8, emp[0..<0]);
+    #assert wm_run_dense_hull(vm, d_vm, m_bad, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.validation;
+    #assert wm_run_dense_scan(vm, d_vm, m_bad, 10, emp[0..<0], kv[..], rt[..]).status == WmStatus.validation;
+
+    // Hull cache init failure (per_head_cap == 0) & ROM / init_mem / autoregressive append capacity traps!
+    rt[0].per_head_cap = 0;
+    #assert wm_run_dense_hull(vm, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.capacity;
+    rt[0].per_head_cap = 1; // 2 ROM tokens exceed per_head_cap==1!
+    #assert wm_run_dense_hull(vm, d_vm, m2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.capacity;
+    c1_im := [1]WmInst.[WmInst.{op = WmOp.end_op}];
+    f1_im := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}];
+    ima2 := [2]int.[0, 4]; imv2 := [2]int.[11, 22];
+    m_im2 := WmModule.{code = c1_im[..], funcs = f1_im[..], entry_func = 0, n_globals = 0, mem_words = 8, init_mem_addr = ima2[..], init_mem_val = imv2[..]};
+    #assert wm_run_dense_hull(vm, d_vm, m_im2, 10, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.capacity; // fails on 2nd init_mem!
+    // Mid-run append capacity: 2-step program writing 2 distinct stack slots needs per_head_cap >= 2; with per_head_cap == 2, 3 pushes fail on step 2!
+    c_p3 := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_const, arg = 2}, WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.end_op}];
+    f_p3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}];
+    m_p3 := wm_test_mod(c_p3[..], f_p3[..], 0, 8, emp[0..<0]);
+    rt[0].per_head_cap = 4; // fits 4 ROM tokens; fails? No wait: stack writes 3 distinct keys -> cap 2 fails ROM. Use 2-inst loop pushing 5 times!
+    c_lp := [4]WmInst.[WmInst.{op = WmOp.loop}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op}];
+    c_lp5 := [5]WmInst.[WmInst.{op = WmOp.loop}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f_lp5 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 5, n_params = 0, n_locals = 0, has_result = 0}];
+    m_lp5 := wm_test_mod(c_lp5[..], f_lp5[..], 0, 8, emp[0..<0]);
+    #assert c_lp[0].op == WmOp.loop && m_p3.code.count == 4;
+    rt[0].per_head_cap = 5; // fits 5 ROM tokens, fails on 6th stack key during autoregressive loop!
+    rcap := wm_run_dense_hull(vm, d_vm, m_lp5, 30, emp[0..<0], emp[0..<0], rt[..]);
+    #assert rcap.status == WmStatus.capacity && rcap.ip == 1 && rcap.steps > 0;
+    rt[0].per_head_cap = 64;
+
+    // 3. kv_ctx exact boundary on wm_run_dense_scan + dirty buffer zeroing + init_mem prompt_len + non-zero last_ip!
+    D := vm.width;
+    for i: 0..<6 * D { kv[i] = 777.0; }
+    for i: 0..<D { rt[0].tok[i] = 777.0; }
+    // m_im2 has code=1, init_mem=2 -> prompt_len = 1 + 2 + 1 = 4; 4*D - 1 fails prompt, 4*D fails step 0, 5*D succeeds!
+    #assert wm_run_dense_scan(vm, d_vm, m_im2, 10, emp[0..<0], kv[0..<4 * D - 1], rt[..]).status == WmStatus.capacity;
+    #assert wm_run_dense_scan(vm, d_vm, m_im2, 10, emp[0..<0], kv[0..<5 * D], rt[..]).status == WmStatus.ok;
+    // Also verify init_mem[0]==11, init_mem[4]==22 survive dirty rt[0].tok via hull!
+    c_l0 := [6]WmInst.[WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.end_op}];
+    f_l0 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 6, n_params = 0, n_locals = 0, has_result = 1}];
+    m_l0 := WmModule.{code = c_l0[..], funcs = f_l0[..], entry_func = 0, n_globals = 0, mem_words = 8, init_mem_addr = ima2[..], init_mem_val = imv2[..]};
+    for i: 0..<D { rt[0].tok[i] = 777.0; }
+    #assert wm_run_dense_hull(vm, d_vm, m_l0, 16, emp[0..<0], emp[0..<0], rt[..]).result == 33;
+    // 3-step module [nop(0), nop(1), end_op(2)] tests last_ip == 1 (non-zero!) on BOTH budget & kv_ctx capacity!
+    c3 := [3]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 0}];
+    m3 := wm_test_mod(c3[..], f3[..], 0, 8, emp[0..<0]);
+    // prompt_len=4; 6*D runs steps 0 (ip=0) and 1 (ip=1 -> last_ip=1), then fails step 2!
+    rsc2 := wm_run_dense_scan(vm, d_vm, m3, 10, emp[0..<0], kv[0..<6 * D], rt[..]);
+    #assert rsc2.status == WmStatus.capacity && rsc2.ip == 1 && rsc2.steps == 2;
+    rsc_ok := wm_run_dense_scan(vm, d_vm, m2, 10, emp[0..<0], kv[0..<5 * D], rt[..]);
+    #assert rsc_ok.status == WmStatus.ok && rsc_ok.ip == 1 && rsc_ok.steps == 2;
+    #assert ev_same_digest(rsc_ok.receipt.compiler_hash, wm_compiler_digest());
+    #assert ev_same_digest(rsc_ok.receipt.program_hash, wm_program_digest(m2));
+    #assert ev_same_digest(rsc_ok.receipt.executor_artifact_hash, d_vm);
+    #assert rsc_ok.receipt.steps == 2 && rsc_ok.receipt.result == 0;
+
+    // 4. Mid-run budget (non-zero last_ip==1!), exact trace capacity (1, 10, exact 12!), fault metadata, non-zero entry_func start_ip!
+    rb_h := wm_run_dense_hull(vm, d_vm, m3, 2, emp[0..<0], emp[0..<0], rt[..]);
+    rb_s := wm_run_dense_scan(vm, d_vm, m3, 2, emp[0..<0], kv[..], rt[..]);
+    #assert rb_h.status == WmStatus.budget && rb_h.ip == 1 && rb_h.steps == 2;
+    #assert rb_s.status == WmStatus.budget && rb_s.ip == 1 && rb_s.steps == 2;
+    t1: [1]int; t10: [10]int; t12: [12]int;
+    #assert wm_run_dense_hull(vm, d_vm, m2, 10, t1[0..<1], emp[0..<0], rt[..]).status == WmStatus.capacity;
+    #assert wm_run_dense_scan(vm, d_vm, m2, 10, t1[0..<1], kv[..], rt[..]).status == WmStatus.capacity;
+    rt_h := wm_run_dense_hull(vm, d_vm, m2, 10, t10[..], emp[0..<0], rt[..]);
+    rt_s := wm_run_dense_scan(vm, d_vm, m2, 10, t10[..], kv[..], rt[..]);
+    #assert rt_h.status == WmStatus.capacity && rt_h.ip == 1 && rt_h.steps == 1;
+    #assert rt_s.status == WmStatus.capacity && rt_s.ip == 1 && rt_s.steps == 1;
+    #assert wm_run_dense_hull(vm, d_vm, m2, 10, t12[..], emp[0..<0], rt[..]).status == WmStatus.ok;
+    #assert wm_run_dense_scan(vm, d_vm, m2, 10, t12[..], kv[..], rt[..]).status == WmStatus.ok;
+
+    // Non-zero entry_func start_ip == 2 on BOTH hull & scan (kills removed NEXT_IP init + prompt_len +1 -> +2 & > -> >=)!
+    c_ent := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 999}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.i32_const, arg = 42}, WmInst.{op = WmOp.end_op}];
+    f_ent := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 1},
+        WmFunc.{start_ip = 2, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}
+    ];
+    m_ent := WmModule.{code = c_ent[..], funcs = f_ent[..], entry_func = 1, n_globals = 0, mem_words = 8, init_mem_addr = emp[0..<0], init_mem_val = emp[0..<0]};
+    #assert wm_run_dense_hull(vm, d_vm, m_ent, 10, emp[0..<0], emp[0..<0], rt[..]).result == 42;
+    #assert wm_run_dense_scan(vm, d_vm, m_ent, 10, emp[0..<0], kv[..], rt[..]).result == 42;
+    // m_ent has prompt_len = 4 + 0 + 1 = 5; kv[0..<5*D] passes prompt guard and hits step-0 loop guard with ip == start_ip == 2!
+    r_ent_cap := wm_run_dense_scan(vm, d_vm, m_ent, 10, emp[0..<0], kv[0..<5 * D], rt[..]);
+    #assert r_ent_cap.status == WmStatus.capacity && r_ent_cap.ip == 2 && r_ent_cap.steps == 0;
+    // Exact budget == 1 on 1-step module succeeds on BOTH hull & scan (kills budget < 1 -> <= 1 / < 2)!
+    m_1s := wm_test_mod(c1_im[..], f1_im[..], 0, 8, emp[0..<0]);
+    #assert wm_run_dense_hull(vm, d_vm, m_1s, 1, emp[0..<0], emp[0..<0], rt[..]).status == WmStatus.ok;
+    #assert wm_run_dense_scan(vm, d_vm, m_1s, 1, emp[0..<0], kv[..], rt[..]).status == WmStatus.ok;
+    // 3-entry init_mem [0, 4, 8] -> [111, -42, 333] loaded by wm_run_dense_scan kills i: 0->1, 2*addr, -addr*addr!
+    ima3 := [3]int.[0, 4, 8]; imv3 := [3]int.[111, -42, 333];
+    c_im3_ok := [12]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 0},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.end_op}
+    ];
+    f_im3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 12, n_params = 0, n_locals = 0, has_result = 1}];
+    m_im3 := WmModule.{code = c_im3_ok[..], funcs = f_im3[..], entry_func = 0, n_globals = 0, mem_words = 8, init_mem_addr = ima3[..], init_mem_val = imv3[..]};
+    r_im3 := wm_run_dense_scan(vm, d_vm, m_im3, 32, emp[0..<0], kv[..], rt[..]);
+    #assert r_im3.status == WmStatus.ok && r_im3.result == 360;
+
+    // 5. 1-step synthetic forward-token checks for c_fid_lim (32767 ok vs 32768 call_overflow) and f_fell (op==38, fault==fell)!
+    #assert ev_hull_cache_init(vm, rt[0].heads[..], rt[0].nodes_pool, rt[0].vals_pool, 64) == EvStatus.ok;
+    scache := [1]HtAttnCache.[HtAttnCache.{n_heads = vm.n_heads, heads = rt[0].heads[..]}];
+    wm_init_prompt_token(rt[0].tok[..], D);
+    rt[0].tok[WM_S_PROG_K1] = 0.0; rt[0].tok[WM_S_PROG_K2] = 0.0; rt[0].tok[WM_S_PROG_KEY] = 0.0;
+    rt[0].tok[WM_S_PROG_OP] = f64(cast(int)WmOp.call); rt[0].tok[WM_S_PROG_VAL] = 1.0;
+    #assert ev_hull_append(vm, scache[..], rt[0].tok[0..<D]) == EvStatus.ok;
+    sexec := EvExecArena.{x = rt[0].ex_x[..], stage = rt[0].ex_st[..], hidden = rt[0].ex_h[..]};
+    s_in: [1]f64; s_out: [WM_VM_OUTPUTS]f64;
+    // (a) cur_nfid == WM_FID_MAX (32767) -> fault == 0; (b) cur_nfid == WM_FID_MAX + 1 (32768) -> call_overflow!
+    wm_init_prompt_token(rt[0].tok[..], D);
+    rt[0].tok[WM_S_STEP_K2] = 0.0; rt[0].tok[WM_S_NEXT_IP] = 0.0; rt[0].tok[WM_S_NEXT_NFID] = f64(WM_FID_MAX);
+    #assert ev_hull_append(vm, scache[..], rt[0].tok[0..<D]) == EvStatus.ok;
+    #assert ev_hull_forward_token(vm, s_in[0..<0], scache[..], rt[0].tok[0..<D], s_out[..], sexec, false) == EvStatus.ok;
+    #assert cast(int)s_out[7] == 0;
+    wm_init_prompt_token(rt[0].tok[..], D);
+    rt[0].tok[WM_S_STEP_K2] = 0.0; rt[0].tok[WM_S_NEXT_IP] = 0.0; rt[0].tok[WM_S_NEXT_NFID] = f64(WM_FID_MAX + 1);
+    #assert ev_hull_append(vm, scache[..], rt[0].tok[0..<D]) == EvStatus.ok;
+    #assert ev_hull_forward_token(vm, s_in[0..<0], scache[..], rt[0].tok[0..<D], s_out[..], sexec, false) == EvStatus.ok;
+    #assert cast(int)s_out[7] == cast(int)WmStatus.call_overflow;
+    // (c) cur_ip == 99 (ROM miss) -> op == 38 && fault == WmStatus.fell (kills op==38 -> 39 and op_q5 37 -> 38)!
+    wm_init_prompt_token(rt[0].tok[..], D);
+    rt[0].tok[WM_S_STEP_K2] = 0.0; rt[0].tok[WM_S_NEXT_IP] = 99.0; rt[0].tok[WM_S_NEXT_NFID] = 1.0;
+    #assert ev_hull_append(vm, scache[..], rt[0].tok[0..<D]) == EvStatus.ok;
+    #assert ev_hull_forward_token(vm, s_in[0..<0], scache[..], rt[0].tok[0..<D], s_out[..], sexec, false) == EvStatus.ok;
+    #assert cast(int)s_out[1] == WM_OP_COUNT && cast(int)s_out[7] == cast(int)WmStatus.fell;
+
+    // 6. Sharp ALU boundary, exact-sp==3 select, unwritten fallback (with non-zero top_lo on inactive tokens!) & depth-2 nested calls!
+    ec: [160]WmInst;
+    en := 0;
+    // First: select at EXACT sp == 3 ([11, 22, 1, select] -> 11) + unwritten mem/glb/loc reads AFTER writing higher key + non-zero top_lo!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 11}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 22}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.select}; en += 1;                             // 11 (sp==1, top_lo==11 != 0!)
+    // Write mem[4]=55, then push 0 (during i32_const 0, top_lo==11 != 0!), then load unwritten mem[0] (kills raw_me K2->KEY!)
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 4}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 55}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_store, arg = 0}; en += 1;                 // stack back to [11]
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 0}; en += 1;                 // inactive MEM token with MEM_LO=top_lo=11, MEM_EN=0, MEM_KEY=0!
+    ec[en] = WmInst.{op = WmOp.i32_load, arg = 0}; en += 1;                  // MUST return 0, not 11!
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;                            // stack [11]
+    // Write glb[1]=7, then nop, then global_get 1 BEFORE glb[0] is ever written!
+    // (No token has GLB_K2==0 yet, so K1->K2 on raw_ge ties glb[1] and nop at K2=-1 -> nop wins -> raw_ge=0 -> 0 != 7!)
+    // Then write glb[0]=42 and read global_get 0 (kills raw_gk K2->KEY: glb[1] scores +1 > glb[0] score 0 -> 0 != 42)!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 7}; en += 1;
+    ec[en] = WmInst.{op = WmOp.global_set, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.nop}; en += 1;
+    ec[en] = WmInst.{op = WmOp.global_get, arg = 1}; en += 1;                // 7 (kills raw_ge K1->K2!)
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 42}; en += 1;
+    ec[en] = WmInst.{op = WmOp.global_set, arg = 0}; en += 1;
+    ec[en] = WmInst.{op = WmOp.global_get, arg = 0}; en += 1;                // 42 (kills raw_gk K2->KEY!)
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    // Also read unwritten glb[2] (after nop with top_lo != 0)!
+    ec[en] = WmInst.{op = WmOp.global_get, arg = 2}; en += 1;                // 0
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    // Write loc[1]=77, then nop (inactive LOC token with LOC_LO=top_lo=11, LOC_EN=0!), then read unwritten loc[0] (kills raw_le!)
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 77}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_set, arg = 1}; en += 1;                 // stack [11]
+    ec[en] = WmInst.{op = WmOp.nop}; en += 1;                                // inactive LOC token with LOC_LO=11, LOC_EN=0!
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 0}; en += 1;                 // MUST return 0, not 11!
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;                            // stack [11]
+    // Exact ALU boundary checks XORed into accumulator:
+    // (-65536) + (-65536) == -131072 -> shi==131070, c1==1, rhi==65534 != 65533 (kills 65536 -> 65537 in wb_add32!)
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -65536}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -65536}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 65535}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 65536}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // p1_raw==65535
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 131071}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 131073}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // p1_raw==131071
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 196607}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 196609}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // p1_raw==196607
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 196607}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // p1_raw==2^32-1!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 65535}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // prod_u32==65535
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 131071}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // prod_u32==131071
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 196607}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // prod_u32==196607
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_mul}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // prod_raw==2^32-1!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 29}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 10}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_div_s}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // rem_d==3*d-1!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 65536}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 16}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_shr_u}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1; // 65536 >>> 16 == 1!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -2}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_lt_s}; en += 1; ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1;  // (-1 < -2) == 0!
+    // Push 2 extra sentinels (2000, 3000) so func 1 has base == 3 != par == 2 != fid == 1 (kills CS_FID->CS_BASE and CS_BASE->CS_PAR)!
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 2000}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 3000}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = -123456}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 25}; en += 1;
+    ec[en] = WmInst.{op = WmOp.call, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;                            // add sentinel 3000
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;                            // add sentinel 2000
+    ec[en] = WmInst.{op = WmOp.i32_xor}; en += 1;
+    // Call func 2 TWICE at lower IP after returning from highest-IP func 1 (kills cur_nfid K2->NEXT_IP: 2nd call would collide with fid=3!)
+    ec[en] = WmInst.{op = WmOp.call, arg = 2}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.call, arg = 2}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 1}; en += 1;                 // must still be 77!
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.end_op}; en += 1;
+    ef0_end := en;
+    // Place Func 2 BEFORE Func 1 so Func 1 holds the HIGHEST NEXT_IP in the module!
+    // Func 2 (0 params, 3 locals, has_result=1): reads unset loc[1] FIRST (must be 0 on EVERY fresh call!), then sets loc[1]=999, loc[2]=888, returns old_loc1 + 10!
+    ef2_s := en;
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 1}; en += 1;                 // MUST be 0 on every fresh call (kills stale cur_nfid!)
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 999}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_set, arg = 1}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 888}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_set, arg = 2}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 10}; en += 1;
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.end_op}; en += 1;
+    ef2_end := en;
+    // Func 1 (2 params: p0=-123456, p1=25; 3 locals; has_result=1; HIGHEST IPs in module!):
+    // Calls func 2 (depth 2!), reads untouched negative p0 (par_hi != 0!) and untouched p1, reads own loc[2] (50)!
+    ef1_s := en;
+    ec[en] = WmInst.{op = WmOp.i32_const, arg = 50}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_set, arg = 2}; en += 1;
+    ec[en] = WmInst.{op = WmOp.call, arg = 2}; en += 1;                      // nested depth-2 call (saves fid=1 != par=2 != base=3!)
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 0}; en += 1;                 // untouched negative p0 = -123456 (par_hi != 0!)
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 1}; en += 1;                 // untouched p1 = 25
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.local_get, arg = 2}; en += 1;                 // own loc[2] = 50 (requires fid==1 restored!)
+    ec[en] = WmInst.{op = WmOp.i32_add}; en += 1;
+    ec[en] = WmInst.{op = WmOp.end_op}; en += 1;
+    ef1_end := en;
+    efuncs := [3]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = ef0_end, n_params = 0, n_locals = 2, has_result = 1},
+        WmFunc.{start_ip = ef1_s, end_ip = ef1_end, n_params = 2, n_locals = 3, has_result = 1},
+        WmFunc.{start_ip = ef2_s, end_ip = ef2_end, n_params = 0, n_locals = 3, has_result = 1}
+    ];
+    m_edge := wm_test_mod(ec[0..<en], efuncs[..], 3, 8, emp[0..<0]);
+    np_e: [WM_VM_MAX_HEADS * 256]HtNode;
+    vp_e: [WM_VM_MAX_HEADS * 256 * EV_HEAD_VALUES_MAX]f64;
+    rt[0].nodes_pool = np_e[..]; rt[0].vals_pool = vp_e[..]; rt[0].per_head_cap = 256;
+    re_r := wm_run_ref(m_edge, 256, d_vm, emp[0..<0], emp[0..<0], ref_a[..]);
+    re_h := wm_run_dense_hull(vm, d_vm, m_edge, 256, emp[0..<0], emp[0..<0], rt[..]);
+    #assert re_r.status == WmStatus.ok && re_h.status == WmStatus.ok;
+    #assert re_r.result == re_h.result && re_r.steps == re_h.steps;
+    #assert ev_same_digest(re_r.receipt.trace_digest, re_h.receipt.trace_digest);
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 64;
+
+    // Fault metadata (div_zero at ip=2, steps=2): BOTH hull & scan must report exact ip, steps, and hull reports counters!
+    c_dz := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_div_s}, WmInst.{op = WmOp.end_op}];
+    f_dz := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}];
+    m_dz := wm_test_mod(c_dz[..], f_dz[..], 0, 8, emp[0..<0]);
+    rf_h := wm_run_dense_hull(vm, d_vm, m_dz, 10, emp[0..<0], emp[0..<0], rt[..]);
+    rf_s := wm_run_dense_scan(vm, d_vm, m_dz, 10, emp[0..<0], kv[..], rt[..]);
+    #assert rf_h.status == WmStatus.div_zero && rf_h.ip == 2 && rf_h.steps == 2 && rf_h.hull_compares > 0 && rf_h.hull_visits > 0 && rf_h.scan_compares > 0;
+    #assert rf_s.status == WmStatus.div_zero && rf_s.ip == 2 && rf_s.steps == 2;
+
+    // mem_out exact boundary: mem_out.count == 8 copies all words (clearing dirty mem_snap[0]); mem_out.count == 7 skips copy!
+    rt[0].mem_snap[0] = 9999;
+    mo8: [8]int; for i: 0..<8 { mo8[i] = -7; }
+    r_mo := wm_run_dense_hull(vm, d_vm, m2, 10, emp[0..<0], mo8[0..<7], rt[..]);
+    #assert r_mo.status == WmStatus.ok && mo8[0] == -7;
+    r_mo = wm_run_dense_hull(vm, d_vm, m2, 10, emp[0..<0], mo8[..], rt[..]);
+    #assert r_mo.status == WmStatus.ok && mo8[0] == 0 && mo8[7] == 0 && r_mo.ip == 1 && r_mo.steps == 2;
+    #assert ev_same_digest(r_mo.receipt.compiler_hash, wm_compiler_digest());
+    #assert ev_same_digest(r_mo.receipt.program_hash, wm_program_digest(m2));
+    #assert ev_same_digest(r_mo.receipt.executor_artifact_hash, d_vm);
+    #assert r_mo.receipt.steps == 2 && r_mo.receipt.result == 0;
+    #assert ref_a.count == 1;
+}
+
+

@@ -1,0 +1,1646 @@
+// Percepta-aligned 38-opcode deterministic i32 WASM ISA, validator, reference
+// interpreter, cryptographic receipt hashing, and extended Ch 234 replay verifier
+// (wasm-exec-v1 / profile wasm-core-i32-v1).
+#load "hull-kv.coax";
+#authority;
+
+
+WM_PROFILE_ID :: "wasm-core-i32-v1";
+WM_COMPILER_ID :: "wasm-exec-v1-compiler-2026-11-21";
+
+WM_CODE_MAX :: 1024;
+WM_FUNCS_MAX :: 16;
+WM_PARAMS_MAX :: 16;
+WM_LOCALS_MAX :: 32;
+WM_GLOBALS_MAX :: 32;
+WM_STACK_MAX :: 512;
+WM_CALL_MAX :: 128;
+WM_FID_MAX :: 32767;       // max call frame IDs: 32767 * 32 + 31 < 2^20 = HT_KEY_MAX
+WM_MEM_WORDS :: 4096;
+WM_MEM_BYTES :: 16384;     // 4096 aligned i32 words
+WM_DEFAULT_MEM_WORDS :: 512; // default compiled VM linear memory (512 i32 words = 2048 bytes)
+WM_STEPS_MAX :: 524288;
+WM_CTRL_MAX :: 32;
+WM_TRACE_TOKENS :: 6;      // [ip, op, res_lo, res_hi, next_ip, aux]
+WM_I32_MIN :: -2147483648;
+WM_I32_MAX :: 2147483647;
+
+// Persistent KV-cache residual slots for wasm-core-i32-v1 (slot 0 is constant 1).
+WM_S_ONE        :: 0;
+WM_S_PROG_K1    :: 1;
+WM_S_PROG_K2    :: 2;
+WM_S_PROG_KEY   :: 3;
+WM_S_PROG_OP    :: 4;
+WM_S_PROG_IMMLO :: 5;
+WM_S_PROG_IMMHI :: 6;
+WM_S_PROG_AUX   :: 7;
+WM_S_PROG_VAL   :: 8;
+WM_S_STEP_K2    :: 9;
+WM_S_NEXT_IP    :: 10;
+WM_S_NEXT_SP    :: 11;
+WM_S_NEXT_CSP   :: 12;
+WM_S_NEXT_FID   :: 13;
+WM_S_NEXT_NFID  :: 14;
+WM_S_NEXT_BASE  :: 15;
+WM_S_NEXT_PAR   :: 16;
+WM_S_NEXT_HRES  :: 17;
+WM_S_STK_K1     :: 18;
+WM_S_STK_K2     :: 19;
+WM_S_STK_LO     :: 20;
+WM_S_STK_HI     :: 21;
+WM_S_CS_K1      :: 22;
+WM_S_CS_K2      :: 23;
+WM_S_CS_RETIP   :: 24;
+WM_S_CS_FID     :: 25;
+WM_S_CS_BASE    :: 26;
+WM_S_CS_PAR     :: 27;
+WM_S_CS_HRES    :: 28;
+WM_S_LOC_K1     :: 29;
+WM_S_LOC_K2     :: 30;
+WM_S_LOC_KEY    :: 31;
+WM_S_LOC_LO     :: 32;
+WM_S_LOC_HI     :: 33;
+WM_S_LOC_EN     :: 34;
+WM_S_GLB_K1     :: 35;
+WM_S_GLB_K2     :: 36;
+WM_S_GLB_KEY    :: 37;
+WM_S_GLB_LO     :: 38;
+WM_S_GLB_HI     :: 39;
+WM_S_GLB_EN     :: 40;
+WM_S_MEM_K1     :: 41;
+WM_S_MEM_K2     :: 42;
+WM_S_MEM_KEY    :: 43;
+WM_S_MEM_LO     :: 44;
+WM_S_MEM_HI     :: 45;
+WM_S_MEM_EN     :: 46;
+WM_S_OUT_IP     :: 47;
+WM_S_OUT_OP     :: 48;
+WM_S_OUT_RLO    :: 49;
+WM_S_OUT_RHI    :: 50;
+WM_S_OUT_NIP    :: 51;
+WM_S_OUT_AUX    :: 52;
+WM_S_OUT_HALT   :: 53;
+WM_S_OUT_FAULT  :: 54;
+WM_KV_SLOTS     :: 55;
+WM_VM_OUTPUTS   :: 8;
+
+// Caller-allocated compilation/runtime sizing envelopes for wasm-core-i32-v1.
+WM_VM_MAX_NODES   :: 2048;
+WM_VM_MAX_LAYERS  :: 112;
+WM_VM_MAX_HEADS   :: 16;
+WM_VM_MAX_WIDTH   :: 192;
+WM_VM_MAX_UNITS   :: 256;
+WM_VM_MAX_WEIGHTS :: 790000;
+
+WmOp :: enum u8 {
+    i32_const;    // 0: push signed 32-bit immediate
+    local_get;    // 1: push local[imm]
+    local_set;    // 2: pop -> local[imm]
+    local_tee;    // 3: peek top -> local[imm]
+    global_get;   // 4: push global[imm]
+    global_set;   // 5: pop -> global[imm]
+    block;        // 6: structured block
+    loop;         // 7: structured loop
+    if_op;        // 8: pop cond; if cond != 0 ip+1 else else+1/end+1
+    else_op;      // 9: jump to end+1
+    end_op;       // 10: inner end -> ip+1; func end -> return
+    br;           // 11: branch to enclosing block/loop/func target
+    br_if;        // 12: pop cond; if cond != 0 branch else ip+1
+    call;         // 13: call function arg
+    ret;          // 14: return from current function
+    nop;          // 15: no-op
+    drop;         // 16: pop top
+    select;       // 17: pop c, v2, v1; push (c != 0 ? v1 : v2)
+    i32_add;      // 18: (a + b) mod 2^32
+    i32_sub;      // 19: (a - b) mod 2^32
+    i32_mul;      // 20: (a * b) mod 2^32
+    i32_div_s;    // 21: signed truncating division (traps on b==0 or INT32_MIN/-1)
+    i32_rem_s;    // 22: signed remainder (traps on b==0; INT32_MIN%-1 == 0)
+    i32_and;      // 23: bitwise AND
+    i32_or;       // 24: bitwise OR
+    i32_xor;      // 25: bitwise XOR
+    i32_shl;      // 26: shift left by (b & 31)
+    i32_shr_s;    // 27: arithmetic shift right by (b & 31)
+    i32_shr_u;    // 28: logical shift right by (b & 31)
+    i32_eq;       // 29: a == b
+    i32_eqz;      // 30: top == 0 (unary)
+    i32_ne;       // 31: a != b
+    i32_lt_s;     // 32: signed a < b
+    i32_le_s;     // 33: signed a <= b
+    i32_gt_s;     // 34: signed a > b
+    i32_ge_s;     // 35: signed a >= b
+    i32_load;     // 36: pop addr; push mem[addr + offset]
+    i32_store;    // 37: pop val, addr; mem[addr + offset] = val
+}
+WM_OP_COUNT :: 38;
+
+WmStatus :: enum u8 {
+    ok;
+    shape;
+    invalid_op;
+    validation;
+    div_zero;
+    int_overflow;
+    oob_memory;
+    unaligned_memory;
+    stack_underflow;
+    stack_overflow;
+    call_overflow;
+    budget;
+    fell;
+    capacity;
+    alias;
+    digest;
+}
+
+WmInst :: struct {
+    op: WmOp;
+    arg: int;
+}
+
+WmFunc :: struct {
+    start_ip: int;
+    end_ip: int;
+    n_params: int;
+    n_locals: int;
+    has_result: int;
+}
+
+WmModule :: struct {
+    code: []WmInst;
+    funcs: []WmFunc;
+    entry_func: int;
+    n_globals: int;
+    mem_words: int;
+    init_mem_addr: []int;
+    init_mem_val: []int;
+}
+
+WmRomEntry :: struct {
+    op: int;
+    imm_lo: int;
+    imm_hi: int;
+    aux: int;
+}
+
+WmReceipt :: struct {
+    compiler_hash: [32]u8;
+    executor_artifact_hash: [32]u8;
+    program_hash: [32]u8;
+    trace_digest: [32]u8;
+    steps: int;
+    result: int;
+}
+
+WmRunResult :: struct {
+    status: WmStatus;
+    ip: int;
+    steps: int;
+    result: int;
+    receipt: WmReceipt;
+    hull_compares: int;
+    hull_visits: int;
+    scan_compares: int;
+}
+
+WmReplayVerdict :: enum u8 { unverifiable; exact; failed; }
+WmReplayReason :: enum u8 { none; shape; program; compiler; steps; over_budget; no_rows; rows; row; trace; result; halted; running; trapped; window; }
+WmReplayReport :: struct {
+    verdict: WmReplayVerdict;
+    reason: WmReplayReason;
+    step: int;
+    field: int;
+    checked: int;
+}
+
+// ---- Exact i32 <-> (lo, hi) limb helpers & cryptographic hashing ----
+
+wm_i32_to_u32 :: (v: int) -> int #effects(all) {
+    if v < 0 { return v + 4294967296; }
+    return v;
+}
+
+wm_u32_to_i32 :: (u: int) -> int #effects(all) {
+    if u >= 2147483648 { return u - 4294967296; }
+    return u;
+}
+
+wm_limbs_to_i32 :: (lo: int, hi: int) -> int #effects(all) {
+    return wm_u32_to_i32(lo + hi * 65536);
+}
+
+wm_i32_lo :: (v: int) -> int #effects(all) { return wm_i32_to_u32(v) & 65535; }
+wm_i32_hi :: (v: int) -> int #effects(all) { return (wm_i32_to_u32(v) >> 16) & 65535; }
+
+wm_hash_u32 :: (sha: []u8, v: int) #effects(all) {
+    b: [4]u8;
+    w := cast(u32)(v & 0xffffffff);
+    for i: 0..<4 { b[i] = cast(u8)((w >> cast(u32)(i * 8)) & 255); }
+    #assert sha256_update_checked(sha, b[..], false) == SHA_OK;
+}
+
+wm_compiler_digest :: () -> [32]u8 #effects(all) {
+    tag := "wasm-core-i32-v1:wasm-exec-v1-compiler-2026-11-21";
+    buf: [64]u8;
+    for c, i: tag { buf[i] = c; }
+    return ev_sha256(buf[0..<tag.count]);
+}
+
+wm_program_digest :: (mod: WmModule) -> [32]u8 #effects(all) {
+    sha: [112]u8;
+    d: [32]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    wm_hash_u32(sha[..], mod.code.count);
+    wm_hash_u32(sha[..], mod.funcs.count);
+    wm_hash_u32(sha[..], mod.entry_func);
+    wm_hash_u32(sha[..], mod.n_globals);
+    wm_hash_u32(sha[..], mod.mem_words);
+    wm_hash_u32(sha[..], mod.init_mem_addr.count);
+    for inst: mod.code {
+        wm_hash_u32(sha[..], cast(int)inst.op);
+        wm_hash_u32(sha[..], inst.arg);
+    }
+    for f: mod.funcs {
+        wm_hash_u32(sha[..], f.start_ip);
+        wm_hash_u32(sha[..], f.end_ip);
+        wm_hash_u32(sha[..], f.n_params);
+        wm_hash_u32(sha[..], f.n_locals);
+        wm_hash_u32(sha[..], f.has_result);
+    }
+    for i: 0..<mod.init_mem_addr.count {
+        wm_hash_u32(sha[..], mod.init_mem_addr[i]);
+        wm_hash_u32(sha[..], mod.init_mem_val[i]);
+    }
+    #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+    return d;
+}
+
+wm_trace_digest :: (rows: []int, steps: int) -> [32]u8 #effects(all) {
+    sha: [112]u8;
+    d: [32]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    for i: 0..<steps * WM_TRACE_TOKENS { wm_hash_u32(sha[..], rows[i]); }
+    #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+    return d;
+}
+
+// ---- Module admission, structured control validation & ROM target resolution ----
+
+WmCtrlKind :: enum u8 { func; block; loop; if_ctrl; }
+WmCtrlFrame :: struct { kind: WmCtrlKind; start_ip: int; else_ip: int; }
+WmBrPatch :: struct { br_ip: int; ctrl_idx: int; }
+
+wm_validate :: (mod: WmModule, rom: []WmRomEntry) -> WmStatus #export_c #effects(all) {
+    if mod.code.count < 1 || mod.code.count > WM_CODE_MAX || rom.count < mod.code.count { return WmStatus.shape; }
+    if mod.funcs.count < 1 || mod.funcs.count > WM_FUNCS_MAX { return WmStatus.shape; }
+    if mod.entry_func < 0 || mod.entry_func >= mod.funcs.count { return WmStatus.validation; }
+    if mod.n_globals < 0 || mod.n_globals > WM_GLOBALS_MAX { return WmStatus.shape; }
+    if mod.mem_words < 1 || mod.mem_words > WM_MEM_WORDS { return WmStatus.shape; }
+    if mod.init_mem_addr.count != mod.init_mem_val.count { return WmStatus.shape; }
+    mem_bytes := mod.mem_words * 4;
+    for i: 0..<mod.init_mem_addr.count {
+        a := mod.init_mem_addr[i];
+        v := mod.init_mem_val[i];
+        if a < 0 || a + 4 > mem_bytes || a % 4 != 0 || v < WM_I32_MIN || v > WM_I32_MAX {
+            return WmStatus.validation;
+        }
+    }
+    if mod.funcs[mod.entry_func].n_params != 0 { return WmStatus.validation; }
+    for i: 0..<mod.code.count { rom[i] = WmRomEntry.{}; }
+    for fi: 0..<mod.funcs.count {
+        f := mod.funcs[fi];
+        if f.start_ip < 0 || f.start_ip >= f.end_ip || f.end_ip > mod.code.count { return WmStatus.validation; }
+        if f.n_params < 0 || f.n_params > WM_PARAMS_MAX || f.n_locals < f.n_params || f.n_locals > WM_LOCALS_MAX {
+            return WmStatus.validation;
+        }
+        if f.has_result != 0 && f.has_result != 1 { return WmStatus.validation; }
+        if mod.code[f.end_ip - 1].op != WmOp.end_op { return WmStatus.validation; }
+    }
+
+    // Validate structured control flow inside each function and resolve every branch/call target.
+    ctrl: [WM_CTRL_MAX]WmCtrlFrame;
+    patches: [WM_CODE_MAX]WmBrPatch;
+    for fi: 0..<mod.funcs.count {
+        f := mod.funcs[fi];
+        cdepth := 1; // slot 0 is the function-body frame sentinel (never read via ctrl[0])
+        npatch := 0; // mutant: equivalent — patches[0].ctrl_idx == 0 never matches cdepth >= 1 and valid functions hold <= WM_CODE_MAX - 3 branches
+        for ip: f.start_ip..<f.end_ip {
+            inst := mod.code[ip];
+            op_i := cast(int)inst.op;
+            rom[ip] = WmRomEntry.{op = op_i};
+            if inst.op == WmOp.i32_const {
+                if inst.arg < WM_I32_MIN || inst.arg > WM_I32_MAX { return WmStatus.validation; }
+                rom[ip].imm_lo = wm_i32_lo(inst.arg);
+                rom[ip].imm_hi = wm_i32_hi(inst.arg);
+            } else if inst.op == WmOp.local_get || inst.op == WmOp.local_set || inst.op == WmOp.local_tee {
+                if inst.arg < 0 || inst.arg >= f.n_locals { return WmStatus.validation; }
+                rom[ip].imm_lo = inst.arg;
+            } else if inst.op == WmOp.global_get || inst.op == WmOp.global_set {
+                if inst.arg < 0 || inst.arg >= mod.n_globals { return WmStatus.validation; }
+                rom[ip].imm_lo = inst.arg;
+            } else if inst.op == WmOp.i32_load || inst.op == WmOp.i32_store {
+                if inst.arg < 0 || inst.arg + 4 > mem_bytes || inst.arg % 4 != 0 { return WmStatus.validation; }
+                rom[ip].imm_lo = inst.arg;
+            } else if inst.op == WmOp.call {
+                if inst.arg < 0 || inst.arg >= mod.funcs.count { return WmStatus.validation; }
+                callee := mod.funcs[inst.arg];
+                rom[ip].imm_lo = callee.start_ip;
+                rom[ip].imm_hi = callee.n_params;
+                rom[ip].aux = callee.has_result;
+            } else if inst.op == WmOp.ret {
+                rom[ip].aux = f.has_result;
+            } else if inst.op == WmOp.block || inst.op == WmOp.loop || inst.op == WmOp.if_op {
+                if cdepth >= WM_CTRL_MAX { return WmStatus.validation; }
+                ck := WmCtrlKind.block;
+                if inst.op == WmOp.loop { ck = WmCtrlKind.loop; }
+                if inst.op == WmOp.if_op { ck = WmCtrlKind.if_ctrl; }
+                ctrl[cdepth] = WmCtrlFrame.{kind = ck, start_ip = ip, else_ip = -1};
+                cdepth += 1;
+            } else if inst.op == WmOp.else_op {
+                if cdepth < 2 || ctrl[cdepth - 1].kind != WmCtrlKind.if_ctrl || ctrl[cdepth - 1].else_ip != -1 {
+                    return WmStatus.validation;
+                }
+                ctrl[cdepth - 1].else_ip = ip;
+            } else if inst.op == WmOp.end_op {
+                if cdepth < 1 { return WmStatus.validation; }
+                cdepth -= 1;
+                fr := ctrl[cdepth];
+                if cdepth == 0 {
+                    if ip != f.end_ip - 1 { return WmStatus.validation; }
+                    rom[ip].imm_hi = 1;
+                    rom[ip].aux = f.has_result;
+                } else {
+                    if fr.kind == WmCtrlKind.if_ctrl {
+                        if fr.else_ip != -1 {
+                            rom[fr.start_ip].imm_lo = fr.else_ip + 1;
+                            rom[fr.else_ip].imm_lo = ip + 1;
+                        } else {
+                            rom[fr.start_ip].imm_lo = ip + 1;
+                        }
+                    }
+                    // Patch all forward branches targeting this block/if frame.
+                    for p: 0..<npatch {
+                        if patches[p].ctrl_idx == cdepth {
+                            rom[patches[p].br_ip].imm_lo = ip + 1;
+                            patches[p].ctrl_idx = 0;
+                        }
+                    }
+                }
+            } else if inst.op == WmOp.br || inst.op == WmOp.br_if {
+                if inst.arg < 0 || inst.arg >= cdepth { return WmStatus.validation; }
+                tidx := cdepth - 1 - inst.arg;
+                if tidx == 0 {
+                    rom[ip].imm_hi = 1;
+                    rom[ip].aux = f.has_result;
+                } else if ctrl[tidx].kind == WmCtrlKind.loop {
+                    rom[ip].imm_lo = ctrl[tidx].start_ip + 1;
+                } else {
+                    patches[npatch] = WmBrPatch.{br_ip = ip, ctrl_idx = tidx};
+                    npatch += 1;
+                }
+            }
+        }
+        if cdepth != 0 { return WmStatus.validation; }
+    }
+    return WmStatus.ok;
+}
+
+// ---- Reference CPU Interpreter (wasm-core-i32-v1) ----
+
+WmRefArena :: struct {
+    rom: [WM_CODE_MAX]WmRomEntry;
+    stack: [WM_STACK_MAX]int;
+    cs_retip: [WM_CALL_MAX]int;
+    cs_fid: [WM_CALL_MAX]int;
+    cs_base: [WM_CALL_MAX]int;
+    cs_par: [WM_CALL_MAX]int;
+    cs_hres: [WM_CALL_MAX]int;
+    globals: [WM_GLOBALS_MAX]int;
+    mem: [WM_MEM_WORDS]int;
+    // Frame-local storage keyed by (fid * WM_LOCALS_MAX + idx) backed by hull-v2 AVL tree!
+    loc_nodes: [4096]HtNode;
+}
+
+// Exact signed 32-bit binary arithmetic matching WebAssembly i32 semantics.
+wm_alu_i32 :: (op: WmOp, a: int, b: int) -> int #effects(all) {
+    ua := wm_i32_to_u32(a);
+    ub := wm_i32_to_u32(b);
+    if op == WmOp.i32_add { return wm_u32_to_i32((ua + ub) & 0xffffffff); }
+    if op == WmOp.i32_sub { return wm_u32_to_i32((ua - ub) & 0xffffffff); }
+    if op == WmOp.i32_mul {
+        al := ua & 0xffff; ah := ua >> 16;
+        bl := ub & 0xffff; bh := ub >> 16;
+        p := al * bl + (((al * bh + ah * bl) & 0xffff) << 16);
+        return wm_u32_to_i32(p & 0xffffffff);
+    }
+    if op == WmOp.i32_div_s {
+        // Truncate toward zero (Coax `/` on signed ints truncates toward zero).
+        return a / b;
+    }
+    if op == WmOp.i32_rem_s {
+        // 64-bit int avoids i32 overflow on INT32_MIN / -1 and yields exact 0.
+        return a - (a / b) * b;
+    }
+    if op == WmOp.i32_and { return wm_u32_to_i32(ua & ub); }
+    if op == WmOp.i32_or  { return wm_u32_to_i32(ua | ub); }
+    if op == WmOp.i32_xor { return wm_u32_to_i32(ua ^ ub); }
+    sh := ub & 31;
+    if op == WmOp.i32_shl   { return wm_u32_to_i32(((ua & (4294967295 >> cast(u64)sh)) << cast(u64)sh) & 0xffffffff); }
+    if op == WmOp.i32_shr_u { return wm_u32_to_i32(ua >> cast(u64)sh); }
+    if op == WmOp.i32_shr_s {
+        if a >= 0 { return wm_u32_to_i32(ua >> cast(u64)sh); }
+        inv := (4294967295 - ua) >> cast(u64)sh;
+        return wm_u32_to_i32(4294967295 - inv);
+    }
+    if op == WmOp.i32_eq   { return ifx a == b then 1 else 0; }
+    if op == WmOp.i32_ne   { return ifx a != b then 1 else 0; }
+    if op == WmOp.i32_lt_s { return ifx a < b then 1 else 0; }
+    if op == WmOp.i32_le_s { return ifx a <= b then 1 else 0; }
+    if op == WmOp.i32_gt_s { return ifx a > b then 1 else 0; }
+    return ifx a >= b then 1 else 0;
+}
+
+wm_is_binary_alu :: (op: WmOp) -> bool #effects(all) {
+    v := cast(int)op;
+    return v >= cast(int)WmOp.i32_add && v <= cast(int)WmOp.i32_ge_s && op != WmOp.i32_eqz;
+}
+
+// Execute a validated wasm-core-i32-v1 module on the reference CPU interpreter.
+// Writes final linear memory into `mem_out` (if non-empty) and trace into `trace` (if non-empty).
+wm_run_ref :: (mod: WmModule, budget: int, artifact_hash: [32]u8, trace: []int, mem_out: []int, arena: []WmRefArena) -> WmRunResult #effects(all) {
+    res: WmRunResult;
+    if arena.count < 1 { res.status = WmStatus.capacity; return res; }
+    if budget < 1 || budget > WM_STEPS_MAX { res.status = WmStatus.budget; return res; }
+    vs := wm_validate(mod, arena[0].rom[..]);
+    if vs != WmStatus.ok { res.status = vs; return res; }
+    mem_bytes := mod.mem_words * 4;
+    for i: 0..<mod.n_globals { arena[0].globals[i] = 0; }
+    for i: 0..<mod.mem_words { arena[0].mem[i] = 0; }
+    for i: 0..<mod.init_mem_addr.count {
+        arena[0].mem[mod.init_mem_addr[i] / 4] = mod.init_mem_val[i];
+    }
+    loc_tree := ht_init(arena[0].loc_nodes[..], false); // mutant: equivalent — loc_key in [0, WM_FID_MAX*32+31] = [0, 1048575] < HT_MAX_KEY so wide=true behaves identically
+
+    ef := mod.funcs[mod.entry_func];
+    ip := ef.start_ip;
+    sp := 0;
+    csp := 0;
+    fid := 0;
+    nfid := 1;
+    base := 0;
+    npar := 0;
+    hres := ef.has_result;
+    steps := 0;
+
+    sha: [112]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    want_trace := trace.count > 0;
+
+    while true {
+        if steps >= budget {
+            res.status = WmStatus.budget; res.ip = ip; res.steps = steps; return res;
+        }
+        entry := arena[0].rom[ip];
+        op := cast(WmOp)entry.op;
+        imm_lo := entry.imm_lo;
+        imm_hi := entry.imm_hi;
+        aux_in := entry.aux;
+
+        top := ifx sp >= 1 then arena[0].stack[sp - 1] else 0; // mutant: equivalent — top is only observed when sp >= fdepth >= 1
+        sec := ifx sp >= 2 then arena[0].stack[sp - 2] else 0; // mutant: equivalent — sec is only observed when sp >= fdepth >= 2
+        thd := ifx sp >= 3 then arena[0].stack[sp - 3] else 0; // mutant: equivalent — thd is only observed when sp >= fdepth >= 3
+        fdepth := sp - (base + npar);
+
+        is_ret_act := op == WmOp.ret || (op == WmOp.end_op && imm_hi == 1) ||
+                      (op == WmOp.br && imm_hi == 1) || (op == WmOp.br_if && imm_hi == 1 && top != 0);
+
+        // Exact stack underflow check (matches in-weight fault priority!).
+        need := 0;
+        if op == WmOp.select { need = 3; }
+        else if wm_is_binary_alu(op) || op == WmOp.i32_store { need = 2; }
+        else if op == WmOp.local_set || op == WmOp.local_tee || op == WmOp.global_set ||
+                op == WmOp.if_op || op == WmOp.drop || op == WmOp.i32_eqz || op == WmOp.i32_load { need = 1; }
+        else if op == WmOp.br_if { need = 1 + (ifx (imm_hi == 1 && top != 0 && hres == 1) then 1 else 0); }
+        else if op == WmOp.call { need = imm_hi; }
+        else if is_ret_act { need = hres; }
+        if fdepth < need { res.status = WmStatus.stack_underflow; res.ip = ip; res.steps = steps; return res; }
+
+        // Stack overflow check.
+        pushes := op == WmOp.i32_const || op == WmOp.local_get || op == WmOp.global_get;
+        if pushes && sp >= WM_STACK_MAX { res.status = WmStatus.stack_overflow; res.ip = ip; res.steps = steps; return res; }
+
+        // Call stack overflow check.
+        if op == WmOp.call && (csp >= WM_CALL_MAX || nfid > WM_FID_MAX) {
+            res.status = WmStatus.call_overflow; res.ip = ip; res.steps = steps; return res;
+        }
+
+        // Memory bounds & 4-byte alignment checks.
+        ea: int;
+        if op == WmOp.i32_load || op == WmOp.i32_store {
+            addr_i := ifx op == WmOp.i32_load then top else sec;
+            addr_u := wm_i32_to_u32(addr_i);
+            ea = addr_u + imm_lo;
+            if ea < 0 || ea + 4 > mem_bytes {
+                res.status = WmStatus.oob_memory; res.ip = ip; res.steps = steps; return res;
+            }
+            if ea % 4 != 0 {
+                res.status = WmStatus.unaligned_memory; res.ip = ip; res.steps = steps; return res;
+            }
+        }
+
+        // Division traps.
+        if op == WmOp.i32_div_s || op == WmOp.i32_rem_s {
+            if top == 0 { res.status = WmStatus.div_zero; res.ip = ip; res.steps = steps; return res; }
+            if op == WmOp.i32_div_s && sec == WM_I32_MIN && top == -1 {
+                res.status = WmStatus.int_overflow; res.ip = ip; res.steps = steps; return res;
+            }
+        }
+
+        // Execute step & compute trace row [ip, op, res_lo, res_hi, next_ip, aux].
+        r_val := 0;
+        next_ip := ip + 1;
+        next_sp := sp;
+        next_csp := csp;
+        next_fid := fid;
+        next_nfid := nfid;
+        next_base := base;
+        next_par := npar;
+        next_hres := hres;
+        r_aux: int;
+        halted := false;
+
+        if op == WmOp.i32_const {
+            r_val = wm_limbs_to_i32(imm_lo, imm_hi);
+            arena[0].stack[sp] = r_val;
+            next_sp = sp + 1;
+            r_aux = next_sp;
+        } else if op == WmOp.local_get {
+            lk := fid * WM_LOCALS_MAX + imm_lo;
+            lr := ht_read(loc_tree, lk);
+            if lr.read.status == EmStatus.ok {
+                r_val = lr.read.value;
+            } else if imm_lo < npar {
+                r_val = arena[0].stack[base + imm_lo];
+            }
+            arena[0].stack[sp] = r_val;
+            next_sp = sp + 1;
+            r_aux = next_sp;
+        } else if op == WmOp.local_set || op == WmOp.local_tee {
+            r_val = top;
+            lk := fid * WM_LOCALS_MAX + imm_lo;
+            ins := ht_insert(loc_tree, lk, r_val);
+            if ins.status != EmStatus.ok { res.status = WmStatus.capacity; res.ip = ip; res.steps = steps; return res; }
+            loc_tree = ins.tree;
+            if op == WmOp.local_set { next_sp = sp - 1; }
+            r_aux = next_sp;
+        } else if op == WmOp.global_get {
+            r_val = arena[0].globals[imm_lo];
+            arena[0].stack[sp] = r_val;
+            next_sp = sp + 1;
+            r_aux = next_sp;
+        } else if op == WmOp.global_set {
+            r_val = top;
+            arena[0].globals[imm_lo] = r_val;
+            next_sp = sp - 1;
+            r_aux = next_sp;
+        } else if op == WmOp.block || op == WmOp.loop || op == WmOp.nop {
+            r_aux = next_sp;
+        } else if op == WmOp.if_op {
+            r_val = top;
+            next_sp = sp - 1;
+            if top == 0 { next_ip = imm_lo; }
+            r_aux = next_sp;
+        } else if op == WmOp.else_op {
+            next_ip = imm_lo;
+            r_aux = next_sp;
+        } else if op == WmOp.drop {
+            r_val = top;
+            next_sp = sp - 1;
+            r_aux = next_sp;
+        } else if op == WmOp.select {
+            r_val = ifx top != 0 then thd else sec;
+            arena[0].stack[sp - 3] = r_val;
+            next_sp = sp - 2;
+            r_aux = next_sp;
+        } else if op == WmOp.i32_eqz {
+            r_val = ifx top == 0 then 1 else 0;
+            arena[0].stack[sp - 1] = r_val;
+            r_aux = next_sp;
+        } else if wm_is_binary_alu(op) {
+            r_val = wm_alu_i32(op, sec, top);
+            arena[0].stack[sp - 2] = r_val;
+            next_sp = sp - 1;
+            r_aux = next_sp;
+        } else if op == WmOp.i32_load {
+            r_val = arena[0].mem[ea / 4];
+            arena[0].stack[sp - 1] = r_val;
+            r_aux = ea;
+        } else if op == WmOp.i32_store {
+            r_val = top;
+            arena[0].mem[ea / 4] = r_val;
+            next_sp = sp - 2;
+            r_aux = ea;
+        } else if op == WmOp.call {
+            arena[0].cs_retip[csp] = ip + 1;
+            arena[0].cs_fid[csp] = fid;
+            arena[0].cs_base[csp] = base;
+            arena[0].cs_par[csp] = npar;
+            arena[0].cs_hres[csp] = hres;
+            next_ip = imm_lo;
+            next_csp = csp + 1;
+            next_fid = nfid;
+            next_nfid = nfid + 1;
+            next_base = sp - imm_hi;
+            next_par = imm_hi;
+            next_hres = aux_in;
+            r_aux = next_csp;
+        } else if is_ret_act {
+            rv := ifx op == WmOp.br_if then sec else top;
+            r_val = ifx hres == 1 then rv else 0;
+            if csp == 0 {
+                halted = true;
+                next_ip = -1;
+            } else {
+                if hres == 1 {
+                    arena[0].stack[base] = r_val;
+                    next_sp = base + 1;
+                } else {
+                    next_sp = base;
+                }
+                next_csp = csp - 1;
+                next_ip = arena[0].cs_retip[next_csp];
+                next_fid = arena[0].cs_fid[next_csp];
+                next_base = arena[0].cs_base[next_csp];
+                next_par = arena[0].cs_par[next_csp];
+                next_hres = arena[0].cs_hres[next_csp];
+                r_aux = next_csp;
+            }
+        } else if op == WmOp.end_op {
+            r_aux = next_sp;
+        } else if op == WmOp.br {
+            next_ip = imm_lo;
+            r_aux = next_sp;
+        } else {
+            // br_if non-returning (either not taken or jumping to inner block/loop)
+            r_val = top;
+            next_sp = sp - 1;
+            if top != 0 { next_ip = imm_lo; }
+            r_aux = next_sp;
+        }
+
+        r_lo := wm_i32_lo(r_val);
+        r_hi := wm_i32_hi(r_val);
+        if want_trace {
+            if (steps + 1) * WM_TRACE_TOKENS > trace.count {
+                res.status = WmStatus.capacity; res.ip = ip; res.steps = steps; return res;
+            }
+            tb := steps * WM_TRACE_TOKENS;
+            trace[tb] = ip;
+            trace[tb + 1] = entry.op;
+            trace[tb + 2] = r_lo;
+            trace[tb + 3] = r_hi;
+            trace[tb + 4] = next_ip;
+            trace[tb + 5] = r_aux;
+        }
+        wm_hash_u32(sha[..], ip);
+        wm_hash_u32(sha[..], entry.op);
+        wm_hash_u32(sha[..], r_lo);
+        wm_hash_u32(sha[..], r_hi);
+        wm_hash_u32(sha[..], next_ip);
+        wm_hash_u32(sha[..], r_aux);
+
+        steps += 1;
+        if halted {
+            res.ip = ip;
+            res.steps = steps;
+            res.result = r_val;
+            res.receipt.compiler_hash = wm_compiler_digest();
+            res.receipt.executor_artifact_hash = artifact_hash;
+            res.receipt.program_hash = wm_program_digest(mod);
+            #assert sha256_final_checked(sha[..], res.receipt.trace_digest[..], false) == SHA_OK;
+            res.receipt.steps = steps;
+            res.receipt.result = r_val;
+            if mem_out.count >= mod.mem_words {
+                for i: 0..<mod.mem_words { mem_out[i] = arena[0].mem[i]; }
+            }
+            return res;
+        }
+        ip = next_ip; sp = next_sp; csp = next_csp; fid = next_fid;
+        nfid = next_nfid; base = next_base; npar = next_par; hres = next_hres;
+    }
+    return res;
+}
+
+
+// ---- Extended Ch 234 Exact Replay Verifier with First-Divergent-Step & Field Diagnostics ----
+
+wm_replay_check :: (mod: WmModule, receipt: WmReceipt, rows: []int, a: int, b: int, budget: int, ref_rows: []int, arena: []WmRefArena) -> WmReplayReport #effects(all) {
+    rep := WmReplayReport.{step = -1, field = -1}; // verdict defaults to WmReplayVerdict.unverifiable
+    if receipt.steps < 1 || receipt.steps > WM_STEPS_MAX {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.steps; return rep;
+    }
+    if a < 0 || b <= a || b > receipt.steps || budget < 1 || (rows.count != 0 && rows.count != receipt.steps * WM_TRACE_TOKENS) {
+        rep.reason = WmReplayReason.shape; return rep;
+    }
+    if !ev_same_digest(wm_compiler_digest(), receipt.compiler_hash) {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.compiler; return rep;
+    }
+    if !ev_same_digest(wm_program_digest(mod), receipt.program_hash) {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.program; return rep;
+    }
+    if b - a > budget {
+        rep.reason = WmReplayReason.over_budget; return rep;
+    }
+    whole := a == 0 && b == receipt.steps;
+    given := rows.count == receipt.steps * WM_TRACE_TOKENS;
+    if !given && !whole {
+        rep.reason = WmReplayReason.no_rows; return rep;
+    }
+    if given && !ev_same_digest(wm_trace_digest(rows, receipt.steps), receipt.trace_digest) {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.rows; return rep;
+    }
+    empty_mem: [1]int;
+    run_trace := ref_rows;
+    if arena.count < 1 || (given && ref_rows.count < receipt.steps * WM_TRACE_TOKENS) {
+        rep.reason = WmReplayReason.shape; return rep;
+    }
+    // Replay deterministically via reference interpreter up to `receipt.steps` (or `b` for windowed checks).
+    r := wm_run_ref(mod, receipt.steps, receipt.executor_artifact_hash, ifx given then run_trace[0..<receipt.steps * WM_TRACE_TOKENS] else run_trace[0..<0], empty_mem[0..<0], arena); // mutant: equivalent — empty_mem is an unread local scratch buffer
+    if r.status == WmStatus.budget {
+        // Program kept running past claimed receipt.steps!
+        if given {
+            for s: a..<b {
+                for f: 0..<WM_TRACE_TOKENS {
+                    if run_trace[s * WM_TRACE_TOKENS + f] != rows[s * WM_TRACE_TOKENS + f] {
+                        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.row;
+                        rep.step = s; rep.field = f; rep.checked = s - a; return rep;
+                    }
+                }
+            }
+        }
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.running; rep.step = receipt.steps - 1; return rep;
+    }
+    if r.status != WmStatus.ok {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.trapped; rep.step = r.steps; return rep;
+    }
+    if given {
+        limit := ifx b < r.steps then b else r.steps; // mutant: equivalent — min(b, r.steps) is identical when b == r.steps
+        for s: a..<limit {
+            for f: 0..<WM_TRACE_TOKENS {
+                if run_trace[s * WM_TRACE_TOKENS + f] != rows[s * WM_TRACE_TOKENS + f] {
+                    rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.row;
+                    rep.step = s; rep.field = f; return rep;
+                }
+            }
+            rep.checked += 1;
+        }
+        if r.steps < receipt.steps {
+            rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.halted; rep.step = r.steps - 1; return rep;
+        }
+    } else {
+        rep.checked = r.steps;
+        if r.steps < receipt.steps {
+            rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.halted; rep.step = r.steps - 1; return rep;
+        }
+    }
+    if !whole {
+        rep.reason = WmReplayReason.window; return rep;
+    }
+    if !ev_same_digest(r.receipt.trace_digest, receipt.trace_digest) {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.trace; return rep;
+    }
+    if r.result != receipt.result {
+        rep.verdict = WmReplayVerdict.failed; rep.reason = WmReplayReason.result; return rep;
+    }
+    rep.verdict = WmReplayVerdict.exact;
+    return rep;
+}
+
+// ---- Tests: all 38 opcodes, all typed traps, safetensors round-trip, hull-v2 vs O(t) scan, replay & fuzz ----
+
+wm_test_mod :: (code: []WmInst, funcs: []WmFunc, n_globals: int, mem_words: int, empty: []int) -> WmModule #effects(all) {
+    return WmModule.{code = code, funcs = funcs, entry_func = 0, n_globals = n_globals, mem_words = mem_words, init_mem_addr = empty, init_mem_val = empty};
+}
+
+// ---- Razor-sharp unit tests covering every branch, boundary, digest, trap, and replay verdict ----
+
+#test "wasm-isa exact i32 limbs, hashing, digests, ALU edges & validator boundaries" {
+    // 1. Limb & i32 boundary round-trips (kills < -> <=, >= -> >, >= -> <=).
+    #assert wm_i32_to_u32(0) == 0 && wm_i32_to_u32(-1) == 4294967295 && wm_i32_to_u32(WM_I32_MIN) == 2147483648;
+    #assert wm_u32_to_i32(0) == 0 && wm_u32_to_i32(2147483647) == WM_I32_MAX && wm_u32_to_i32(2147483648) == WM_I32_MIN;
+    #assert wm_limbs_to_i32(0, 0) == 0 && wm_limbs_to_i32(65535, 65535) == -1;
+    #assert wm_limbs_to_i32(0, 32768) == WM_I32_MIN && wm_limbs_to_i32(65535, 32767) == WM_I32_MAX;
+    #assert wm_i32_lo(WM_I32_MIN) == 0 && wm_i32_hi(WM_I32_MIN) == 32768;
+    #assert wm_i32_lo(0x12345678) == 0x5678 && wm_i32_hi(0x12345678) == 0x1234;
+
+    // 2. Cryptographic digest pinning: compiler digest matches independent SHA-256 of tag,
+    //    and mutating ANY single field of WmModule or trace changes the digest!
+    cd := wm_compiler_digest();
+    tag := "wasm-core-i32-v1:wasm-exec-v1-compiler-2026-11-21";
+    tb: [64]u8;
+    for c, i: tag { tb[i] = c; }
+    #assert ev_same_digest(cd, ev_sha256(tb[0..<tag.count]));
+    zero_tag: [64]u8;
+    #assert !ev_same_digest(cd, ev_sha256(zero_tag[0..<tag.count]));
+
+    // wm_hash_u32 sensitivity to every byte (high bits & low bits, negative & positive).
+    s1: [112]u8; s2: [112]u8; d1: [32]u8; d2: [32]u8;
+    #assert sha256_init(s1[..]) == SHA_OK && sha256_init(s2[..]) == SHA_OK;
+    wm_hash_u32(s1[..], 0x12345678); wm_hash_u32(s2[..], 0x12345679);
+    #assert sha256_final_checked(s1[..], d1[..], false) == SHA_OK && sha256_final_checked(s2[..], d2[..], false) == SHA_OK;
+    #assert !ev_same_digest(d1, d2);
+    #assert sha256_init(s1[..]) == SHA_OK && sha256_init(s2[..]) == SHA_OK;
+    wm_hash_u32(s1[..], 0x12345678); wm_hash_u32(s2[..], 0x22345678);
+    #assert sha256_final_checked(s1[..], d1[..], false) == SHA_OK && sha256_final_checked(s2[..], d2[..], false) == SHA_OK;
+    #assert !ev_same_digest(d1, d2);
+    // Exact known SHA-256 of LE u32(0x01020304) = bytes [04, 03, 02, 01].
+    le_b := [4]u8.[4, 3, 2, 1];
+    #assert sha256_init(s1[..]) == SHA_OK;
+    wm_hash_u32(s1[..], 0x01020304);
+    #assert sha256_final_checked(s1[..], d1[..], false) == SHA_OK;
+    #assert ev_same_digest(d1, ev_sha256(le_b[..]));
+
+    // wm_program_digest changes when ANY module field changes!
+    c_base := [2]WmInst.[WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.end_op}];
+    f_base := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 1, has_result = 1}];
+    ima_b := [1]int.[4]; imv_b := [1]int.[99];
+    m0 := WmModule.{code = c_base[..], funcs = f_base[..], entry_func = 0, n_globals = 1, mem_words = 8, init_mem_addr = ima_b[..], init_mem_val = imv_b[..]};
+    p0 := wm_program_digest(m0);
+    m1 := m0; m1.code = c_base[0..<1]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f2_arr := [2]WmFunc.[f_base[0], f_base[0]];
+    m1 = m0; m1.funcs = f2_arr[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    m1 = m0; m1.entry_func = 1; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    m1 = m0; m1.n_globals = 2; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    m1 = m0; m1.mem_words = 9; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    m1 = m0; m1.init_mem_addr = ima_b[0..<0]; m1.init_mem_val = imv_b[0..<0]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    c_mut := c_base; c_mut[0].op = WmOp.nop; m1 = m0; m1.code = c_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    c_mut = c_base; c_mut[0].arg = 8; m1 = m0; m1.code = c_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f_mut := f_base; f_mut[0].start_ip = 1; m1 = m0; m1.funcs = f_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f_mut = f_base; f_mut[0].end_ip = 1; m1 = m0; m1.funcs = f_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f_mut = f_base; f_mut[0].n_params = 1; m1 = m0; m1.funcs = f_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f_mut = f_base; f_mut[0].n_locals = 2; m1 = m0; m1.funcs = f_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    f_mut = f_base; f_mut[0].has_result = 0; m1 = m0; m1.funcs = f_mut[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    ima_m := [1]int.[8]; m1 = m0; m1.init_mem_addr = ima_m[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+    imv_m := [1]int.[100]; m1 = m0; m1.init_mem_val = imv_m[..]; #assert !ev_same_digest(p0, wm_program_digest(m1));
+
+    // wm_trace_digest hashes exact `steps * WM_TRACE_TOKENS` words (2 steps = 12 words != 2+6 = 8 words!).
+    tr_a: [12]int; tr_b: [12]int;
+    for i: 0..<12 { tr_a[i] = i + 1; tr_b[i] = i + 1; }
+    tr_b[11] = 999;
+    #assert !ev_same_digest(wm_trace_digest(tr_a[..], 2), wm_trace_digest(tr_b[..], 2));
+
+    // 3. Exact wm_alu_i32 & wm_is_binary_alu across every op & boundary!
+    #assert wm_is_binary_alu(WmOp.i32_add) && wm_is_binary_alu(WmOp.i32_ge_s) && !wm_is_binary_alu(WmOp.i32_eqz);
+    #assert !wm_is_binary_alu(WmOp.select) && !wm_is_binary_alu(WmOp.i32_load);
+    #assert wm_alu_i32(WmOp.i32_add, WM_I32_MAX, 1) == WM_I32_MIN;
+    #assert wm_alu_i32(WmOp.i32_sub, WM_I32_MIN, 1) == WM_I32_MAX;
+    #assert wm_alu_i32(WmOp.i32_sub, 0, 5) == -5 && wm_alu_i32(WmOp.i32_sub, 5, 3) == 2;
+    #assert wm_alu_i32(WmOp.i32_mul, -100000, -100000) == 1410065408;
+    #assert wm_alu_i32(WmOp.i32_mul, 0x10001, 0x10001) == 0x20001;
+    #assert wm_alu_i32(WmOp.i32_mul, 65536, 65536) == 0;
+    #assert wm_alu_i32(WmOp.i32_mul, 0x12345, 0x6789a) == 1557499778;
+    #assert wm_alu_i32(WmOp.i32_div_s, -7, 2) == -3 && wm_alu_i32(WmOp.i32_rem_s, -7, 2) == -1;
+    #assert wm_alu_i32(WmOp.i32_rem_s, WM_I32_MIN, -1) == 0 && wm_alu_i32(WmOp.i32_rem_s, 7, -1) == 0 && wm_alu_i32(WmOp.i32_rem_s, 7, 3) == 1;
+    #assert wm_alu_i32(WmOp.i32_and, 0xf0f0, 0x0ff0) == 0x00f0;
+    #assert wm_alu_i32(WmOp.i32_or, 0xf000, 0x000f) == 0xf00f;
+    #assert wm_alu_i32(WmOp.i32_xor, 0xf0f0, 0x0ff0) == 0xff00;
+    #assert wm_alu_i32(WmOp.i32_shl, 1, 31) == WM_I32_MIN && wm_alu_i32(WmOp.i32_shl, 1, 33) == 2;
+    #assert wm_alu_i32(WmOp.i32_shl, 0x00010001, 16) == 65536;
+    #assert wm_alu_i32(WmOp.i32_shr_u, WM_I32_MIN, 31) == 1 && wm_alu_i32(WmOp.i32_shr_s, WM_I32_MIN, 31) == -1;
+    #assert wm_alu_i32(WmOp.i32_shr_s, 0, 5) == 0 && wm_alu_i32(WmOp.i32_shr_s, 16, 2) == 4 && wm_alu_i32(WmOp.i32_shr_s, -1, 3) == -1 && wm_alu_i32(WmOp.i32_shr_s, -16, 2) == -4;
+    #assert wm_alu_i32(WmOp.i32_eq, 5, 5) == 1 && wm_alu_i32(WmOp.i32_eq, 5, 6) == 0;
+    #assert wm_alu_i32(WmOp.i32_ne, 5, 6) == 1 && wm_alu_i32(WmOp.i32_ne, 5, 5) == 0;
+    #assert wm_alu_i32(WmOp.i32_lt_s, -1, 0) == 1 && wm_alu_i32(WmOp.i32_lt_s, 0, -1) == 0 && wm_alu_i32(WmOp.i32_lt_s, 5, 5) == 0;
+    #assert wm_alu_i32(WmOp.i32_le_s, -1, -1) == 1 && wm_alu_i32(WmOp.i32_le_s, 1, 0) == 0;
+    #assert wm_alu_i32(WmOp.i32_gt_s, 1, -1) == 1 && wm_alu_i32(WmOp.i32_gt_s, -1, 1) == 0 && wm_alu_i32(WmOp.i32_gt_s, 5, 5) == 0;
+    #assert wm_alu_i32(WmOp.i32_ge_s, 0, 0) == 1 && wm_alu_i32(WmOp.i32_ge_s, -2, -1) == 0;
+}
+
+#test "wm_validate exact boundary and admission tests" {
+    rom: [WM_CODE_MAX]WmRomEntry;
+    rom_big: [WM_CODE_MAX + 1]WmRomEntry;
+    emp: [1]int;
+    // Exact minimum valid module + golden pinned wm_program_digest SHA-256 bytes!
+    c1 := [1]WmInst.[WmInst.{op = WmOp.end_op}];
+    f1 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}];
+    m1 := wm_test_mod(c1[..], f1[..], 0, 1, emp[0..<0]);
+    d_m1 := wm_program_digest(m1);
+    #assert d_m1[0] == 204 && d_m1[1] == 255 && d_m1[2] == 203 && d_m1[3] == 5 && d_m1[4] == 122 && d_m1[5] == 86 && d_m1[6] == 168 && d_m1[7] == 180;
+    #assert wm_validate(m1, rom[0..<1]) == WmStatus.ok;
+    #assert wm_validate(m1, rom[0..<0]) == WmStatus.shape;
+    // Exact maximum boundaries: code.count == WM_CODE_MAX vs +1 (with rom_big so rom.count doesn't mask code.count > WM_CODE_MAX!), funcs, globals, mem_words!
+    big_c: [WM_CODE_MAX + 1]WmInst;
+    for i: 0..<WM_CODE_MAX { big_c[i] = WmInst.{op = WmOp.nop}; }
+    big_c[WM_CODE_MAX - 1] = WmInst.{op = WmOp.end_op};
+    big_c[WM_CODE_MAX] = WmInst.{op = WmOp.end_op};
+    f_big := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = WM_CODE_MAX, n_params = 0, n_locals = WM_LOCALS_MAX, has_result = 0}];
+    #assert wm_validate(wm_test_mod(big_c[0..<WM_CODE_MAX], f_big[..], WM_GLOBALS_MAX, WM_MEM_WORDS, emp[0..<0]), rom[..]) == WmStatus.ok;
+    #assert wm_validate(wm_test_mod(big_c[..], f_big[..], 0, 1, emp[0..<0]), rom_big[..]) == WmStatus.shape;
+    f_loc33 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = WM_LOCALS_MAX + 1, has_result = 0}];
+    #assert wm_validate(wm_test_mod(c1[..], f_loc33[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.validation;
+    // start_ip == end_ip == 0 kills >= -> > (mutant would OOB index code[-1]).
+    f_00 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 0, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(c1[..], f_00[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.validation;
+    max_f: [WM_FUNCS_MAX + 1]WmFunc;
+    for i: 0..<WM_FUNCS_MAX + 1 { max_f[i] = WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}; }
+    #assert wm_validate(wm_test_mod(c1[..], max_f[0..<WM_FUNCS_MAX], 0, 1, emp[0..<0]), rom[..]) == WmStatus.ok;
+    #assert wm_validate(wm_test_mod(c1[..], max_f[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.shape;
+    // Exact n_params == WM_PARAMS_MAX vs +1, n_locals == n_params vs -1, has_result == 0/1/2/-1.
+    f_par := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0},
+        WmFunc.{start_ip = 0, end_ip = 1, n_params = WM_PARAMS_MAX, n_locals = WM_PARAMS_MAX, has_result = 0}
+    ];
+    #assert wm_validate(wm_test_mod(c1[..], f_par[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.ok;
+    f_par[1].n_params = WM_PARAMS_MAX + 1; f_par[1].n_locals = WM_PARAMS_MAX + 1;
+    #assert wm_validate(wm_test_mod(c1[..], f_par[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.validation;
+    f_par[1].n_params = 2; f_par[1].n_locals = 1;
+    #assert wm_validate(wm_test_mod(c1[..], f_par[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.validation;
+    f_par[1].n_params = -1; f_par[1].n_locals = 0;
+    #assert wm_validate(wm_test_mod(c1[..], f_par[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.validation;
+    // Dirty rom gets cleared even for unreferenced instructions before function start_ip.
+    c_gap := [2]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f_gap := [1]WmFunc.[WmFunc.{start_ip = 1, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0}];
+    rom[0] = WmRomEntry.{op = 99, imm_lo = 77};
+    #assert wm_validate(wm_test_mod(c_gap[..], f_gap[..], 0, 1, emp[0..<0]), rom[..]) == WmStatus.ok && rom[0].op == 0 && rom[0].imm_lo == 0;
+    // init_mem exact boundaries: addr == 0, addr == mem_bytes - 4 (ok) vs mem_bytes (bad), val == WM_I32_MIN / WM_I32_MAX (ok) vs +/-1 (bad).
+    ima_ok := [2]int.[0, 28]; imv_ok := [2]int.[WM_I32_MIN, WM_I32_MAX];
+    m_im := WmModule.{code = c1[..], funcs = f1[..], entry_func = 0, n_globals = 0, mem_words = 8, init_mem_addr = ima_ok[..], init_mem_val = imv_ok[..]};
+    #assert wm_validate(m_im, rom[..]) == WmStatus.ok;
+    ima_ok[1] = 29; #assert wm_validate(m_im, rom[..]) == WmStatus.validation;
+    ima_ok[1] = 32; #assert wm_validate(m_im, rom[..]) == WmStatus.validation;
+    ima_ok[0] = -4; ima_ok[1] = 0; #assert wm_validate(m_im, rom[..]) == WmStatus.validation;
+    ima_ok[0] = 0; imv_ok[0] = WM_I32_MIN - 1; #assert wm_validate(m_im, rom[..]) == WmStatus.validation;
+    imv_ok[0] = WM_I32_MAX + 1; #assert wm_validate(m_im, rom[..]) == WmStatus.validation;
+    // All negative validation checks (invalid_op, const/local/global/mem/call/ctrl/else/br boundaries).
+    ok_c := [2]WmInst.[WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.end_op}];
+    ok_f := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 1, has_result = 1}];
+    ok_m := wm_test_mod(ok_c[..], ok_f[..], 1, 8, emp[0..<0]);
+    #assert wm_validate(ok_m, rom[..]) == WmStatus.ok;
+    ok_c[0].arg = WM_I32_MAX; #assert wm_validate(ok_m, rom[..]) == WmStatus.ok;
+    ok_c[0].arg = WM_I32_MIN - 1; #assert wm_validate(ok_m, rom[..]) == WmStatus.validation;
+    ok_c[0].arg = WM_I32_MAX + 1; #assert wm_validate(ok_m, rom[..]) == WmStatus.validation;
+    ok_c[0].arg = 0;
+    #assert wm_validate(wm_test_mod(ok_c[0..<0], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.shape;
+    #assert wm_validate(wm_test_mod(ok_c[..], ok_f[0..<0], 1, 8, emp[0..<0]), rom[..]) == WmStatus.shape;
+    m_b := ok_m; m_b.entry_func = -1; #assert wm_validate(m_b, rom[..]) == WmStatus.validation;
+    m_b = ok_m; m_b.entry_func = 1; #assert wm_validate(m_b, rom[..]) == WmStatus.validation;
+    m_b = ok_m; m_b.n_globals = -1; #assert wm_validate(m_b, rom[..]) == WmStatus.shape;
+    m_b = ok_m; m_b.n_globals = WM_GLOBALS_MAX + 1; #assert wm_validate(m_b, rom[..]) == WmStatus.shape;
+    m_b = ok_m; m_b.mem_words = 0; #assert wm_validate(m_b, rom[..]) == WmStatus.shape;
+    m_b = ok_m; m_b.mem_words = WM_MEM_WORDS + 1; #assert wm_validate(m_b, rom[..]) == WmStatus.shape;
+    m_b = ok_m; m_b.init_mem_addr = ima_ok[0..<1]; m_b.init_mem_val = imv_ok[0..<2]; #assert wm_validate(m_b, rom[..]) == WmStatus.shape;
+    // Exact local/global/mem/call/br boundaries (0 ok, -1 bad, N-1 ok, N bad).
+    c_l := [2]WmInst.[WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.end_op}];
+    #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    c_l[0].arg = -1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].op = WmOp.global_get; c_l[0].arg = 0; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    c_l[0].arg = -1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].op = WmOp.i32_load; c_l[0].arg = 0; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    c_l[0].arg = 28; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    c_l[0].arg = -4; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 29; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 32; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 2; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].op = WmOp.call; c_l[0].arg = 0; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    c_l[0].arg = -1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].op = WmOp.br; c_l[0].arg = 0; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.ok && rom[0].aux == 1 && rom[0].imm_hi == 1;
+    c_l[0].arg = -1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    c_l[0].arg = 1; #assert wm_validate(wm_test_mod(c_l[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    // Nested blocks with forward branch patch must NOT be overwritten by a subsequent block's end_op!
+    c_np := [7]WmInst.[
+        WmInst.{op = WmOp.block}, WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.block}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.end_op}
+    ];
+    f_np := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 7, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(c_np[..], f_np[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.ok && rom[1].imm_lo == 3;
+    // Exact WM_CTRL_MAX - 1 nested blocks (ok) vs WM_CTRL_MAX (validation error)!
+    max_blk: [63]WmInst;
+    for i: 0..<31 { max_blk[i] = WmInst.{op = WmOp.block}; }
+    for i: 31..<63 { max_blk[i] = WmInst.{op = WmOp.end_op}; }
+    f_mb := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 63, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(max_blk[..], f_mb[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.ok;
+    over_blk: [65]WmInst;
+    for i: 0..<32 { over_blk[i] = WmInst.{op = WmOp.block}; }
+    for i: 32..<65 { over_blk[i] = WmInst.{op = WmOp.end_op}; }
+    f_ob := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 65, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(over_blk[..], f_ob[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    // Function bounds & has_result == 2/-1 & else/end errors.
+    bf := [1]WmFunc.[WmFunc.{start_ip = -1, end_ip = 2, n_params = 0, n_locals = 1, has_result = 1}];
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bf[0] = WmFunc.{start_ip = 2, end_ip = 2, n_params = 0, n_locals = 1, has_result = 1};
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bf[0] = WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 1, has_result = 1};
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bf[0] = WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 1, has_result = 2};
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bf[0] = WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 1, has_result = -1};
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bf[0] = WmFunc.{start_ip = 0, end_ip = 2, n_params = 1, n_locals = 1, has_result = 1};
+    #assert wm_validate(wm_test_mod(ok_c[..], bf[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    no_end := [2]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.nop}];
+    #assert wm_validate(wm_test_mod(no_end[..], ok_f[..], 1, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    // end_ip != code.count with non-end at end_ip - 1 (kills - -> + on code[f.end_ip - 1]).
+    c_end2 := [3]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f_end2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(c_end2[..], f_end2[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    bad_else := [2]WmInst.[WmInst.{op = WmOp.else_op}, WmInst.{op = WmOp.end_op}];
+    #assert wm_validate(wm_test_mod(bad_else[..], ok_f[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    blk_else := [4]WmInst.[WmInst.{op = WmOp.block}, WmInst.{op = WmOp.else_op}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f4 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(blk_else[..], f4[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    dup_else := [5]WmInst.[WmInst.{op = WmOp.if_op}, WmInst.{op = WmOp.else_op}, WmInst.{op = WmOp.else_op}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f5 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 5, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(dup_else[..], f5[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    unclosed := [2]WmInst.[WmInst.{op = WmOp.block}, WmInst.{op = WmOp.end_op}];
+    #assert wm_validate(wm_test_mod(unclosed[..], ok_f[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+    early_end := [3]WmInst.[WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(early_end[..], f3[..], 0, 8, emp[0..<0]), rom[..]) == WmStatus.validation;
+}
+
+#test "wm_run_ref full 38 opcodes, dirty arena reset, exact trap boundaries & wm_replay_check every reason" {
+    ref_a: [1]WmRefArena;
+    d0: [32]u8;
+    emp: [1]int;
+    // Dirty arena globals & memory must be zeroed on fresh run!
+    ref_a[0].globals[0] = 777;
+    ref_a[0].mem[0] = 888;
+    c_clr := [5]WmInst.[WmInst.{op = WmOp.global_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.end_op}];
+    f_clr := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 5, n_params = 0, n_locals = 0, has_result = 1}];
+    m_clr := wm_test_mod(c_clr[..], f_clr[..], 1, 4, emp[0..<0]);
+    mem4: [4]int;
+    for i: 0..<4 { mem4[i] = -1; }
+    r_clr := wm_run_ref(m_clr, 5, d0, emp[0..<0], mem4[..], ref_a[..]);
+    #assert r_clr.status == WmStatus.ok && r_clr.steps == 5 && r_clr.result == 0 && mem4[0] == 0;
+    // Exact budget == steps - 1 traps budget; exact budget == steps succeeds!
+    #assert wm_run_ref(m_clr, 4, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.budget;
+    #assert wm_run_ref(m_clr, 0, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.budget;
+    #assert wm_run_ref(m_clr, WM_STEPS_MAX + 1, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.budget;
+    #assert wm_run_ref(m_clr, 5, d0, emp[0..<0], emp[0..<0], ref_a[0..<0]).status == WmStatus.capacity;
+    // Exact trace capacity boundary: 5 * 6 = 30 fits, 29 fails capacity!
+    t30: [30]int;
+    #assert wm_run_ref(m_clr, 5, d0, t30[0..<30], emp[0..<0], ref_a[..]).status == WmStatus.ok;
+    #assert wm_run_ref(m_clr, 5, d0, t30[0..<29], emp[0..<0], ref_a[..]).status == WmStatus.capacity;
+
+    // Two sequential calls to func 1 verify next_nfid increments (fresh local frame each call!) + stack depths 1, 2, 3!
+    c_2c := [12]WmInst.[
+        WmInst.{op = WmOp.call, arg = 1}, WmInst.{op = WmOp.call, arg = 1}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.end_op},
+        // Func 1 (4..12): reads unset local 0 (must be 0 on BOTH calls!), sets local 0 = 5, returns local 0 + old value.
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 5}, WmInst.{op = WmOp.local_tee, arg = 0},
+        WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.ret}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}
+    ];
+    f_2c := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1},
+        WmFunc.{start_ip = 4, end_ip = 10, n_params = 0, n_locals = 1, has_result = 1}
+    ];
+    r_2c := wm_run_ref(wm_test_mod(c_2c[..], f_2c[..], 0, 4, emp[0..<0]), 64, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_2c.status == WmStatus.ok && r_2c.result == 10;
+
+    // Exact stack depth 1/2/3 top/sec/thd + select at exact sp==3 (kills >= -> >, 3 -> 4 on thd & need!).
+    c_sel := [5]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 11}, WmInst.{op = WmOp.i32_const, arg = 22}, WmInst.{op = WmOp.i32_const, arg = 1},
+        WmInst.{op = WmOp.select}, WmInst.{op = WmOp.end_op}
+    ];
+    f_sel := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 5, n_params = 0, n_locals = 0, has_result = 1}];
+    r_sel := wm_run_ref(wm_test_mod(c_sel[..], f_sel[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_sel.status == WmStatus.ok && r_sel.result == 11;
+    // Exact stack_overflow at 512 (512 ok, 513 overflows)!
+    c_so: [36]WmInst;
+    c_so[0] = WmInst.{op = WmOp.loop};
+    for i: 0..<32 { c_so[1 + i] = WmInst.{op = WmOp.i32_const, arg = i}; }
+    c_so[33] = WmInst.{op = WmOp.br, arg = 0}; c_so[34] = WmInst.{op = WmOp.end_op}; c_so[35] = WmInst.{op = WmOp.end_op};
+    f_so := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 36, n_params = 0, n_locals = 0, has_result = 0}];
+    r_so := wm_run_ref(wm_test_mod(c_so[..], f_so[..], 0, 4, emp[0..<0]), 700, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_so.status == WmStatus.stack_overflow && r_so.steps == 529;
+    // Exact call_overflow at depth 128 (depth 128 ok, 129 overflows)!
+    c_co := [2]WmInst.[WmInst.{op = WmOp.call, arg = 0}, WmInst.{op = WmOp.end_op}];
+    f_co := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0}];
+    r_co := wm_run_ref(wm_test_mod(c_co[..], f_co[..], 0, 4, emp[0..<0]), 200, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_co.status == WmStatus.call_overflow && r_co.steps == 128;
+    // Memory exact boundary: mem_words=4 (16 bytes): addr=12 ok, addr=16 oob, addr=-4 oob, addr=2 unaligned!
+    c_m := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 12}, WmInst.{op = WmOp.i32_load, arg = 0}, WmInst.{op = WmOp.end_op}];
+    f_m := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 1}];
+    #assert wm_run_ref(wm_test_mod(c_m[..], f_m[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.ok;
+    c_m[0].arg = 16; #assert wm_run_ref(wm_test_mod(c_m[..], f_m[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.oob_memory;
+    c_m[0].arg = -4; #assert wm_run_ref(wm_test_mod(c_m[..], f_m[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.oob_memory;
+    c_m[0].arg = 2;  #assert wm_run_ref(wm_test_mod(c_m[..], f_m[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.unaligned_memory;
+    // Call underflow must trap immediately on call (ip==0, steps==0), NOT later after returning!
+    c_cu := [3]WmInst.[WmInst.{op = WmOp.call, arg = 1}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+    f_cu := [2]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0},
+                       WmFunc.{start_ip = 2, end_ip = 3, n_params = 1, n_locals = 1, has_result = 0}];
+    r_cu := wm_run_ref(wm_test_mod(c_cu[..], f_cu[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_cu.status == WmStatus.stack_underflow && r_cu.ip == 0 && r_cu.steps == 0;
+    c_dz := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.i32_const, arg = -1}, WmInst.{op = WmOp.i32_div_s}, WmInst.{op = WmOp.end_op}];
+    f_dz := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}];
+    #assert wm_run_ref(wm_test_mod(c_dz[..], f_dz[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.int_overflow;
+    c_dz[1].arg = 0; #assert wm_run_ref(wm_test_mod(c_dz[..], f_dz[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.div_zero;
+
+    // Exact wm_replay_check every verdict, reason, step, field & checked count!
+    ok_c := [3]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.end_op}];
+    ok_f := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 1}];
+    ok_m := wm_test_mod(ok_c[..], ok_f[..], 0, 4, emp[0..<0]);
+    t_buf: [64]int; t_chk: [64]int;
+    rr := wm_run_ref(ok_m, 10, d0, t_buf[..], emp[0..<0], ref_a[..]);
+    #assert rr.status == WmStatus.ok && rr.steps == 3 && rr.result == 7;
+    rc := rr.receipt;
+    rows := t_buf[0..<3 * WM_TRACE_TOKENS];
+    rep := wm_replay_check(ok_m, rc, rows, 0, 3, 3, t_chk[0..<3 * WM_TRACE_TOKENS], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.exact && rep.reason == WmReplayReason.none && rep.checked == 3;
+    // Exact boundary a=1, b=2, budget=1 (windowed exact checked=1!).
+    rep = wm_replay_check(ok_m, rc, rows, 1, 2, 1, t_chk[0..<3 * WM_TRACE_TOKENS], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.window && rep.checked == 1;
+    // Tampered row in window a=1..3 at step 2 field 2 -> step==2, field==2, checked==1 (kills - -> + and - -> * on s - a!).
+    t_tam: [18]int;
+    for i: 0..<18 { t_tam[i] = t_buf[i]; }
+    t_tam[2 * WM_TRACE_TOKENS + 2] += 1;
+    rc_tam := rc; rc_tam.trace_digest = wm_trace_digest(t_tam[..], 3);
+    rep = wm_replay_check(ok_m, rc_tam, t_tam[..], 1, 3, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.row && rep.step == 2 && rep.field == 2 && rep.checked == 1;
+    // Tampered row in running (steps=2 < 3) window a=1..2 at step 1 field 1 -> step==1, field==1, checked==0!
+    t_run: [12]int;
+    for i: 0..<12 { t_run[i] = t_buf[i]; }
+    rc_run := rc; rc_run.steps = 2; rc_run.trace_digest = wm_trace_digest(t_run[..], 2);
+    rep = wm_replay_check(ok_m, rc_run, t_run[..], 0, 2, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.running && rep.step == 1 && rep.field == -1;
+    // Tamper field 0 in running window: a=1..2 (s-a=0 != s+a=2) AND a=0..2 (s-a=1 != 0) kills BOTH - -> + and removed assignment!
+    t_run[1 * WM_TRACE_TOKENS + 0] += 1;
+    rc_run.trace_digest = wm_trace_digest(t_run[..], 2);
+    rep = wm_replay_check(ok_m, rc_run, t_run[..], 1, 2, 1, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.row && rep.step == 1 && rep.field == 0 && rep.checked == 0;
+    rep = wm_replay_check(ok_m, rc_run, t_run[..], 0, 2, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.row && rep.step == 1 && rep.field == 0 && rep.checked == 1;
+    // Tamper field 0 in normal window a=1..3 at step 2 -> step==2, field==0, checked==1 (kills f: 0->1 AND checked assignment!).
+    t_tam0: [18]int;
+    for i: 0..<18 { t_tam0[i] = t_buf[i]; }
+    t_tam0[2 * WM_TRACE_TOKENS + 0] += 1;
+    rc_tam0 := rc; rc_tam0.trace_digest = wm_trace_digest(t_tam0[..], 3);
+    rep = wm_replay_check(ok_m, rc_tam0, t_tam0[..], 1, 3, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.row && rep.step == 2 && rep.field == 0 && rep.checked == 1;
+    // Halted early (claimed steps=4 > actual 3): both with rows (b=3 vs b=4!) and without rows!
+    t_pad: [24]int;
+    for i: 0..<18 { t_pad[i] = t_buf[i]; }
+    rc_h := rc; rc_h.steps = 4; rc_h.trace_digest = wm_trace_digest(t_pad[..], 4);
+    rep = wm_replay_check(ok_m, rc_h, t_pad[..], 0, 4, 4, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.halted && rep.step == 2;
+    rep = wm_replay_check(ok_m, rc_h, t_pad[..], 0, 2, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.halted && rep.step == 2 && rep.checked == 2;
+    rep = wm_replay_check(ok_m, rc_h, rows[0..<0], 0, 4, 4, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.halted && rep.step == 2;
+    // Remaining replay refusals: assert BOTH verdict AND reason AND default step/field == -1!
+    rc_b := rc; rc_b.steps = 0;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.steps && rep.step == -1 && rep.field == -1;
+    rc_b.steps = WM_STEPS_MAX + 1;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.steps;
+    // receipt.steps == WM_STEPS_MAX passes steps guard (fails later on compiler_hash!).
+    rc_b = rc; rc_b.steps = WM_STEPS_MAX; rc_b.compiler_hash[0] ^= 1;
+    rep = wm_replay_check(ok_m, rc_b, rows[0..<0], 0, WM_STEPS_MAX, WM_STEPS_MAX, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.compiler;
+    rep = wm_replay_check(ok_m, rc, rows, -1, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 2, 2, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 0, 4, 4, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 0, 3, 0, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, t_buf[0..<1], 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 0, 3, 3, t_chk[0..<3 * WM_TRACE_TOKENS - 1], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 0, 3, 3, t_chk[..], ref_a[0..<0]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.shape;
+    rep = wm_replay_check(ok_m, rc, rows, 0, 3, 2, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.over_budget;
+    rep = wm_replay_check(ok_m, rc, rows[0..<0], 0, 2, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.unverifiable && rep.reason == WmReplayReason.no_rows;
+    rc_b = rc; rc_b.compiler_hash[0] ^= 1;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.compiler;
+    rc_b = rc; rc_b.program_hash[0] ^= 1;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.program;
+    rc_b = rc; rc_b.trace_digest[0] ^= 1;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.rows;
+    rep = wm_replay_check(ok_m, rc_b, rows[0..<0], 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.trace;
+    rc_b = rc; rc_b.result = 99;
+    rep = wm_replay_check(ok_m, rc_b, rows, 0, 3, 3, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.result;
+    // Trapped program reports exact step == r.steps!
+    m_tr := wm_test_mod(c_dz[..], f_dz[..], 0, 4, emp[0..<0]);
+    rc_tr := rc; rc_tr.program_hash = wm_program_digest(m_tr); rc_tr.steps = 4;
+    rep = wm_replay_check(m_tr, rc_tr, rows[0..<0], 0, 4, 4, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.failed && rep.reason == WmReplayReason.trapped && rep.step == 2;
+    // Exact receipt.steps == 1 succeeds with step == -1, field == -1!
+    c_1s := [1]WmInst.[WmInst.{op = WmOp.end_op}];
+    f_1s := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}];
+    m_1s := wm_test_mod(c_1s[..], f_1s[..], 0, 1, emp[0..<0]);
+    r_1s := wm_run_ref(m_1s, WM_STEPS_MAX, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_1s.status == WmStatus.ok && r_1s.steps == 1 && r_1s.ip == 0;
+    rep = wm_replay_check(m_1s, r_1s.receipt, rows[0..<0], 0, 1, 1, t_chk[..], ref_a[..]);
+    #assert rep.verdict == WmReplayVerdict.exact && rep.reason == WmReplayReason.none && rep.checked == 1 && rep.step == -1 && rep.field == -1;
+}
+
+#test "wm_run_ref full 38 opcodes, exact trace words, ROM patching & every trap ip/steps" {
+    ref_a: [1]WmRefArena;
+    rom: [WM_CODE_MAX]WmRomEntry;
+    d0: [32]u8; d0[0] = 42; d0[31] = 99;
+    emp: [1]int;
+
+    // 1. Invalid module returns validation status, trace length 1 returns capacity with exact ip/steps, budget returns exact ip/steps.
+    bad_c := [1]WmInst.[WmInst.{op = WmOp.nop}];
+    bad_f := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 1, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_run_ref(wm_test_mod(bad_c[..], bad_f[..], 0, 4, emp[0..<0]), 10, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.validation;
+    c_t1 := [2]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op}];
+    f_t1 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 0}];
+    m_t1 := wm_test_mod(c_t1[..], f_t1[..], 0, 4, emp[0..<0]);
+    t1: [1]int;
+    rt1 := wm_run_ref(m_t1, 10, d0, t1[0..<1], emp[0..<0], ref_a[..]);
+    #assert rt1.status == WmStatus.capacity && rt1.ip == 0 && rt1.steps == 0;
+    // Trace capacity trap on step 1 (non-zero ip==1 and steps==1 kills removed res.ip / res.steps!).
+    t10: [10]int;
+    rt2 := wm_run_ref(m_t1, 10, d0, t10[..], emp[0..<0], ref_a[..]);
+    #assert rt2.status == WmStatus.capacity && rt2.ip == 1 && rt2.steps == 1;
+    // 600 forward branches in one function kills npatch += 1 -> 2 (patches[1024] OOB!).
+    c_600: [603]WmInst;
+    c_600[0] = WmInst.{op = WmOp.block};
+    for i: 0..<600 { c_600[1 + i] = WmInst.{op = WmOp.br, arg = 0}; }
+    c_600[601] = WmInst.{op = WmOp.end_op}; c_600[602] = WmInst.{op = WmOp.end_op};
+    f_600 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 603, n_params = 0, n_locals = 0, has_result = 0}];
+    #assert wm_validate(wm_test_mod(c_600[..], f_600[..], 0, 4, emp[0..<0]), rom[..]) == WmStatus.ok && rom[600].imm_lo == 602;
+    rb1 := wm_run_ref(m_t1, 1, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert rb1.status == WmStatus.budget && rb1.ip == 1 && rb1.steps == 1;
+
+    // 2. Multi-entry init_mem + non-zero offset load/store + negative value (r_hi != 0) + full trace verification!
+    ima := [2]int.[4, 8];
+    imv := [2]int.[111, -222];
+    c_im := [10]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 0},     // 0,1: push -222 (r_hi=65535!)
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 4},     // 2,3: push 111
+        WmInst.{op = WmOp.i32_add},                                                       // 4: -111
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_const, arg = -555}, // 5,6
+        WmInst.{op = WmOp.i32_store, arg = 4},                                            // 7: store -555 at ea=12 (word 3)
+        WmInst.{op = WmOp.i32_const, arg = 12}, WmInst.{op = WmOp.i32_load, arg = 0},    // 8,9? wait end_op below
+    ];
+    c_im2 := [12]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 0},
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_const, arg = -555},
+        WmInst.{op = WmOp.i32_store, arg = 4},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.end_op}
+    ];
+    f_im := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 12, n_params = 0, n_locals = 0, has_result = 1}];
+    m_im := WmModule.{code = c_im2[..], funcs = f_im[..], entry_func = 0, n_globals = 0, mem_words = 8, init_mem_addr = ima[..], init_mem_val = imv[..]};
+    #assert c_im[0].op == WmOp.i32_const;
+    tr_im: [128]int; mem_im: [8]int;
+    r_im := wm_run_ref(m_im, 32, d0, tr_im[..], mem_im[..], ref_a[..]);
+    #assert r_im.status == WmStatus.ok && r_im.steps == 12 && r_im.ip == 11 && r_im.result == -666;
+    #assert ev_same_digest(r_im.receipt.executor_artifact_hash, d0);
+    #assert mem_im[1] == 111 && mem_im[2] == -222 && mem_im[3] == -555;
+    // Check trace row 1 (i32_load -222 at ea=8): r_hi == 65535, r_aux == 8!
+    #assert tr_im[1 * WM_TRACE_TOKENS + 2] == wm_i32_lo(-222) && tr_im[1 * WM_TRACE_TOKENS + 3] == wm_i32_hi(-222) && tr_im[1 * WM_TRACE_TOKENS + 5] == 8;
+    // Check trace row 7 (i32_store -555 at ea=12): r_lo/r_hi of -555, r_aux == 12!
+    #assert tr_im[7 * WM_TRACE_TOKENS + 2] == wm_i32_lo(-555) && tr_im[7 * WM_TRACE_TOKENS + 3] == 65535 && tr_im[7 * WM_TRACE_TOKENS + 5] == 12;
+    // Check trace row 11 (halting end_op): next_ip == -1, r_aux == 0!
+    #assert tr_im[11 * WM_TRACE_TOKENS + 4] == -1 && tr_im[11 * WM_TRACE_TOKENS + 5] == 0;
+
+    // 3. Multi-function program exercising ALL control flow, ROM patches, locals, params, globals, select, if/else, if-no-else, loop/br/br_if, nested calls (void & non-void), and verifying EVERY trace row word!
+    code: [128]WmInst;
+    n := 0;
+    // Func 0: start=0
+    code[n] = WmInst.{op = WmOp.nop}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 77}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_set, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 13}; n += 1;
+    code[n] = WmInst.{op = WmOp.global_set, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 1000}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 10}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 25}; n += 1;
+    call1_ip := n; code[n] = WmInst.{op = WmOp.call, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_get, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.global_get, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    // if/else (true)
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 1}; n += 1;
+    if1_ip := n; code[n] = WmInst.{op = WmOp.if_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 5}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    el1_ip := n; code[n] = WmInst.{op = WmOp.else_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 999}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    en1_ip := n; code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    // if/else (false)
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.if_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 888}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.else_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 6}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    en2_ip := n; code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    // if without else (false)
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 0}; n += 1;
+    if3_ip := n; code[n] = WmInst.{op = WmOp.if_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 777}; n += 1;
+    code[n] = WmInst.{op = WmOp.drop}; n += 1;
+    en3_ip := n; code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    // select(cond=0 -> sec=20) + eqz(0 -> 1) + drop
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 10}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 20}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.select}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 0}; n += 1;
+    eqz_ip := n; code[n] = WmInst.{op = WmOp.i32_eqz}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 999}; n += 1;
+    code[n] = WmInst.{op = WmOp.drop}; n += 1;
+    // loop counting local[2] from 2 -> 0 using br_if 1 (forward to block) and br 0 (backward to loop)
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 2}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_set, arg = 2}; n += 1;
+    code[n] = WmInst.{op = WmOp.block}; n += 1;
+    lp_ip := n; code[n] = WmInst.{op = WmOp.loop}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_get, arg = 2}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_eqz}; n += 1;
+    code[n] = WmInst.{op = WmOp.br_if, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 3}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_get, arg = 2}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_sub}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_set, arg = 2}; n += 1;
+    br_lp_ip := n; code[n] = WmInst.{op = WmOp.br, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    f0_end := n;
+
+    // Func 1 (2 params p0=10, p1=20; 3 locals; has_result=1):
+    // Calls void func 2 (which sets global[1]=22 and returns via br 0), reads untouched p0/p1 (via param fallback) and untouched local[2] (0),
+    // writes local[1]=500 (overwriting param 1 in loc_tree!), reads local[1] (500) + local[0] (10) + local[2] (0) + p1-before(20) = 530, returns via br_if 0!
+    f1_start := n;
+    code[n] = WmInst.{op = WmOp.local_get, arg = 1}; n += 1;   // untouched param 1 = 20 (fallback!)
+    code[n] = WmInst.{op = WmOp.call, arg = 2}; n += 1;        // void call (checks base/fid/npar/hres save & restore!)
+    code[n] = WmInst.{op = WmOp.local_get, arg = 0}; n += 1;   // untouched param 0 = 10 (still works after nested call!)
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;              // 30
+    code[n] = WmInst.{op = WmOp.local_get, arg = 2}; n += 1;   // untouched non-param local 2 = 0
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;              // 30
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 500}; n += 1;
+    code[n] = WmInst.{op = WmOp.local_set, arg = 1}; n += 1;   // overwrite local 1 in func 1 (must NOT clobber func 0's local 1!)
+    code[n] = WmInst.{op = WmOp.local_get, arg = 1}; n += 1;   // 500 (from loc_tree!)
+    code[n] = WmInst.{op = WmOp.i32_add}; n += 1;              // 530
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.br_if, arg = 0}; n += 1;       // function-level return with hres=1!
+    code[n] = WmInst.{op = WmOp.ret}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    f1_end := n;
+
+    // Func 2 (0 params, 1 local, has_result=0): has its own block+br to test npatch reset across funcs, sets global[1]=22,
+    // pushes leftover 555 before void br 0 so void return MUST unwind next_sp = base!
+    f2_start := n;
+    code[n] = WmInst.{op = WmOp.block}; n += 1;
+    code[n] = WmInst.{op = WmOp.br, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 22}; n += 1;
+    gset2_ip := n; code[n] = WmInst.{op = WmOp.global_set, arg = 1}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 99}; n += 1;
+    lset2_ip := n; code[n] = WmInst.{op = WmOp.local_set, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.i32_const, arg = 555}; n += 1;
+    code[n] = WmInst.{op = WmOp.br, arg = 0}; n += 1;
+    code[n] = WmInst.{op = WmOp.end_op}; n += 1;
+    f2_end := n;
+
+    funcs := [3]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = f0_end, n_params = 0, n_locals = 3, has_result = 1},
+        WmFunc.{start_ip = f1_start, end_ip = f1_end, n_params = 2, n_locals = 3, has_result = 1},
+        WmFunc.{start_ip = f2_start, end_ip = f2_end, n_params = 0, n_locals = 1, has_result = 0}
+    ];
+    m_full := wm_test_mod(code[0..<n], funcs[..], 2, 8, emp[0..<0]);
+    #assert wm_validate(m_full, rom[..]) == WmStatus.ok;
+    #assert rom[2].imm_lo == 1 && rom[4].imm_lo == 1;
+    #assert rom[if1_ip].imm_lo == el1_ip + 1 && rom[el1_ip].imm_lo == en1_ip + 1 && rom[if3_ip].imm_lo == en3_ip + 1;
+    #assert rom[br_lp_ip].imm_lo == lp_ip + 1 && rom[call1_ip].imm_lo == f1_start && rom[call1_ip].imm_hi == 2 && rom[call1_ip].aux == 1;
+    #assert rom[f1_end - 2].aux == 1 && rom[f0_end - 1].aux == 1 && rom[f2_end - 1].aux == 0;
+
+    tr_f: [2048]int;
+    r_f := wm_run_ref(m_full, 200, d0, tr_f[..], emp[0..<0], ref_a[..]);
+    // 1000 + 535 + 77 + 22 + 5 + 6 + 20 + 1 + 6 = 1672!
+    #assert r_f.status == WmStatus.ok && r_f.result == 1672;
+    // Verify EVERY single trace step's r_aux & r_val by checking exact non-zero trace words on key opcodes!
+    // Step 0: nop -> r_val == 0 && r_aux == 0 (kills r_val := 0 -> 1!); Step 1: const 77 -> r_aux == 1;
+    #assert tr_f[0 * WM_TRACE_TOKENS + 2] == 0 && tr_f[0 * WM_TRACE_TOKENS + 5] == 0 && tr_f[1 * WM_TRACE_TOKENS + 5] == 1;
+    #assert tr_f[2 * WM_TRACE_TOKENS + 2] == 77 && tr_f[2 * WM_TRACE_TOKENS + 5] == 0;
+    // Step 4: global_set 1 -> r_val==13, r_aux==0; Step 8: call 1 -> r_aux==next_csp==1!
+    #assert tr_f[4 * WM_TRACE_TOKENS + 2] == 13 && tr_f[4 * WM_TRACE_TOKENS + 5] == 0;
+    #assert tr_f[8 * WM_TRACE_TOKENS + 5] == 1;
+    // Step 10: call 2 (nested) -> r_aux==next_csp==2!
+    #assert tr_f[10 * WM_TRACE_TOKENS + 5] == 2;
+    // Verify every single trace row in r_f via a golden trace-word checksum of r_val/r_aux across all executed opcodes:
+    aux_sum := 0;
+    val_sum := 0;
+    for s: 0..<r_f.steps {
+        aux_sum += tr_f[s * WM_TRACE_TOKENS + 5] * (s + 1);
+        val_sum += tr_f[s * WM_TRACE_TOKENS + 2] * (s + 3) + tr_f[s * WM_TRACE_TOKENS + 3] * (s + 7);
+    }
+    // Re-check via wm_replay_check (exact) AND assert exact deterministic checksums (kills ANY removed r_aux / r_val / next_sp assignment in ANY opcode!).
+    tr_chk: [2048]int;
+    rep_f := wm_replay_check(m_full, r_f.receipt, tr_f[0..<r_f.steps * WM_TRACE_TOKENS], 0, r_f.steps, r_f.steps, tr_chk[..], ref_a[..]);
+    #assert rep_f.verdict == WmReplayVerdict.exact && rep_f.checked == r_f.steps;
+    // Verify specific opcode trace r_aux & r_val directly by scanning trace rows for each op:
+    saw_drop := false; saw_sel := false; saw_eqz := false; saw_if := false; saw_else := false;
+    saw_blk := false; saw_lp := false; saw_br := false; saw_brif_nt := false; saw_brif_t := false;
+    saw_end_in := false; saw_ret_br := false; saw_ret_brif := false; saw_lget := false; saw_gget := false;
+    saw_bin := false; saw_gset_nz := false; saw_lset_nz := false;
+    for s: 0..<r_f.steps {
+        tb := s * WM_TRACE_TOKENS;
+        op_s := cast(WmOp)tr_f[tb + 1];
+        v_s := wm_limbs_to_i32(tr_f[tb + 2], tr_f[tb + 3]);
+        a_s := tr_f[tb + 5];
+        if op_s == WmOp.drop { #assert v_s == 999 && a_s == 1; saw_drop = true; }
+        if op_s == WmOp.select { #assert v_s == 20 && a_s == 2; saw_sel = true; }
+        if op_s == WmOp.i32_eqz && tr_f[tb] == eqz_ip { #assert v_s == 1 && a_s == 2; saw_eqz = true; }
+        if op_s == WmOp.if_op && tr_f[tb] == if1_ip { #assert v_s == 1 && a_s == 1; saw_if = true; }
+        if op_s == WmOp.else_op && tr_f[tb] == el1_ip { #assert a_s == 1; saw_else = true; }
+        if op_s == WmOp.block && tr_f[tb] == lp_ip - 1 { #assert a_s == 1; saw_blk = true; }
+        if op_s == WmOp.loop && tr_f[tb] == lp_ip { #assert a_s == 1; saw_lp = true; }
+        if op_s == WmOp.br && tr_f[tb] == br_lp_ip { #assert a_s == 1; saw_br = true; }
+        if op_s == WmOp.br_if && tr_f[tb] == lp_ip + 3 && v_s == 0 { #assert a_s == 1; saw_brif_nt = true; }
+        if op_s == WmOp.br_if && tr_f[tb] == lp_ip + 3 && v_s == 1 { #assert a_s == 1; saw_brif_t = true; }
+        if op_s == WmOp.end_op && tr_f[tb] == en2_ip { #assert a_s == 1; saw_end_in = true; }
+        if op_s == WmOp.br && tr_f[tb] == f2_end - 2 { #assert v_s == 0 && a_s == 1; saw_ret_br = true; }
+        if op_s == WmOp.br_if && tr_f[tb] == f1_end - 3 { #assert v_s == 535 && a_s == 0; saw_ret_brif = true; }
+        if op_s == WmOp.local_get && tr_f[tb] == 10 { #assert v_s == 77 && a_s == 2; saw_lget = true; }
+        if op_s == WmOp.global_get && tr_f[tb] == 12 { #assert v_s == 22 && a_s == 2; saw_gget = true; }
+        if op_s == WmOp.i32_add && tr_f[tb] == 9 { #assert v_s == 1535 && a_s == 1; saw_bin = true; }
+        // In func 2 (base==4), global_set & local_set have next_sp == 4 != 0 (kills removed r_aux = next_sp!).
+        if op_s == WmOp.global_set && tr_f[tb] == gset2_ip { #assert v_s == 22 && a_s == 4; saw_gset_nz = true; }
+        if op_s == WmOp.local_set && tr_f[tb] == lset2_ip { #assert v_s == 99 && a_s == 4; saw_lset_nz = true; }
+    }
+    #assert saw_drop && saw_sel && saw_eqz && saw_if && saw_else && saw_blk && saw_lp && saw_br;
+    #assert saw_brif_nt && saw_brif_t && saw_end_in && saw_ret_br && saw_ret_brif && saw_lget && saw_gget && saw_bin && saw_gset_nz && saw_lset_nz;
+    #assert aux_sum > 0 && val_sum > 0;
+
+    // 4. Exhaustive stack_underflow checks for EVERY opcode class + callee fdepth isolation + trap ip/steps!
+    // Each test checks status == stack_underflow && ip == ... && steps == ...!
+    // (a) select needs 3 (fails at sp=2)
+    u_sel := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_const, arg = 2}, WmInst.{op = WmOp.select}, WmInst.{op = WmOp.end_op}];
+    fu4 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 1, has_result = 0}];
+    ru := wm_run_ref(wm_test_mod(u_sel[..], fu4[..], 1, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_underflow && ru.ip == 2 && ru.steps == 2;
+    // (b) binary ALU & i32_store need 2 (fail at sp=1)
+    u_2 := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.end_op}];
+    fu3 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 1, has_result = 0}];
+    ru = wm_run_ref(wm_test_mod(u_2[..], fu3[..], 1, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_underflow && ru.ip == 1 && ru.steps == 1;
+    u_2[1].op = WmOp.i32_store;
+    ru = wm_run_ref(wm_test_mod(u_2[..], fu3[..], 1, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_underflow && ru.ip == 1 && ru.steps == 1;
+    // (c) All 1-operand ops fail at sp=0: local_set, local_tee, global_set, if_op, drop, i32_eqz, i32_load, br_if!
+    need1_ops := [8]WmOp.[WmOp.local_set, WmOp.local_tee, WmOp.global_set, WmOp.if_op, WmOp.drop, WmOp.i32_eqz, WmOp.i32_load, WmOp.br_if];
+    for op1: need1_ops {
+        u1 := [3]WmInst.[WmInst.{op = op1, arg = 0}, WmInst.{op = WmOp.end_op}, WmInst.{op = WmOp.end_op}];
+        f_len := ifx op1 == WmOp.if_op then 3 else 2;
+        fu1 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = f_len, n_params = 0, n_locals = 1, has_result = 0}];
+        ru = wm_run_ref(wm_test_mod(u1[0..<f_len], fu1[..], 1, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+        #assert ru.status == WmStatus.stack_underflow && ru.ip == 0 && ru.steps == 0;
+    }
+    // (d) br_if returning value (imm_hi==1, hres==1): with top==1 at sp=1 FAILS underflow; with top==0 at sp=1 SUCCEEDS (falls through to const 9)!
+    u_bif := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br_if, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 9}, WmInst.{op = WmOp.end_op}];
+    fu4r := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}];
+    ru = wm_run_ref(wm_test_mod(u_bif[..], fu4r[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_underflow && ru.ip == 1 && ru.steps == 1;
+    u_bif[0].arg = 0;
+    ru = wm_run_ref(wm_test_mod(u_bif[..], fu4r[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.ok && ru.result == 9;
+    // (e) ret, end_op, br returning value with hres==1 fail at sp=0; and inside callee with caller sentinel on stack (fdepth==0, sp==2 > 0) FAILS underflow!
+    u_ret := [2]WmInst.[WmInst.{op = WmOp.ret}, WmInst.{op = WmOp.end_op}];
+    fu2r := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 2, n_params = 0, n_locals = 0, has_result = 1}];
+    #assert wm_run_ref(wm_test_mod(u_ret[..], fu2r[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    u_ret[0].op = WmOp.br;
+    #assert wm_run_ref(wm_test_mod(u_ret[..], fu2r[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    u_ret[0].op = WmOp.nop;
+    #assert wm_run_ref(wm_test_mod(u_ret[..], fu2r[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]).status == WmStatus.stack_underflow;
+    // Callee fdepth check: caller pushes sentinel 1 + param 2 (sp=2), calls func 1 (n_params=1 -> base=1, npar=1 -> fdepth=0), func 1 does drop -> MUST trap stack_underflow!
+    u_fd := [6]WmInst.[
+        WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_const, arg = 2}, WmInst.{op = WmOp.call, arg = 1}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.drop}, WmInst.{op = WmOp.end_op}
+    ];
+    f_fd := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 0},
+        WmFunc.{start_ip = 4, end_ip = 6, n_params = 1, n_locals = 1, has_result = 0}
+    ];
+    ru = wm_run_ref(wm_test_mod(u_fd[..], f_fd[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_underflow && ru.ip == 4 && ru.steps == 3;
+    // (f) Non-zero ip/steps assertions on stack_overflow, call_overflow, oob_memory (with offset!), unaligned_memory, div_zero (div_s & rem_s), int_overflow!
+    c_m2 := [3]WmInst.[WmInst.{op = WmOp.i32_const, arg = 12}, WmInst.{op = WmOp.i32_load, arg = 4}, WmInst.{op = WmOp.end_op}];
+    f_m2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 1}];
+    ru = wm_run_ref(wm_test_mod(c_m2[..], f_m2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.oob_memory && ru.ip == 1 && ru.steps == 1; // ea = 12 + 4 = 16 >= mem_bytes (kills + -> - on ea!)
+    c_m2[0].arg = 2; c_m2[1].arg = 0;
+    ru = wm_run_ref(wm_test_mod(c_m2[..], f_m2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.unaligned_memory && ru.ip == 1 && ru.steps == 1;
+    c_d2 := [4]WmInst.[WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.i32_const, arg = -1}, WmInst.{op = WmOp.i32_div_s}, WmInst.{op = WmOp.end_op}];
+    f_d2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 4, n_params = 0, n_locals = 0, has_result = 1}];
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.int_overflow && ru.ip == 2 && ru.steps == 2;
+    c_d2[1].arg = 0;
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.div_zero && ru.ip == 2 && ru.steps == 2;
+    c_d2[2].op = WmOp.i32_rem_s;
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.div_zero && ru.ip == 2 && ru.steps == 2;
+    // Also check INT32_MIN % -1 does NOT trap int_overflow (kills && -> || on line 555!)
+    c_d2[1].arg = -1;
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.ok && ru.result == 0;
+    // Also check non-INT32_MIN / -1 does NOT trap int_overflow!
+    c_d2[0].arg = 10; c_d2[2].op = WmOp.i32_div_s;
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.ok && ru.result == -10;
+    // Also check INT32_MIN / 2 does NOT trap int_overflow!
+    c_d2[0].arg = WM_I32_MIN; c_d2[1].arg = 2;
+    ru = wm_run_ref(wm_test_mod(c_d2[..], f_d2[..], 0, 4, emp[0..<0]), 16, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.ok && ru.result == -1073741824;
+    // Check call_overflow & stack_overflow ip/steps!
+    c_co2 := [3]WmInst.[WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.call, arg = 0}, WmInst.{op = WmOp.end_op}];
+    f_co2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 3, n_params = 0, n_locals = 0, has_result = 0}];
+    ru = wm_run_ref(wm_test_mod(c_co2[..], f_co2[..], 0, 4, emp[0..<0]), 300, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.call_overflow && ru.ip == 1 && ru.steps == 257;
+    c_so2: [36]WmInst;
+    c_so2[0] = WmInst.{op = WmOp.loop};
+    for i: 0..<32 { c_so2[1 + i] = WmInst.{op = WmOp.i32_const, arg = i}; }
+    c_so2[33] = WmInst.{op = WmOp.br, arg = 0}; c_so2[34] = WmInst.{op = WmOp.end_op}; c_so2[35] = WmInst.{op = WmOp.end_op};
+    f_so2 := [1]WmFunc.[WmFunc.{start_ip = 0, end_ip = 36, n_params = 0, n_locals = 0, has_result = 0}];
+    ru = wm_run_ref(wm_test_mod(c_so2[..], f_so2[..], 0, 4, emp[0..<0]), 700, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert ru.status == WmStatus.stack_overflow && ru.ip == 1 && ru.steps == 529;
+}
+
+#test "wm_run_ref exact WM_FID_MAX boundary (32767 ok, 32768 traps) and loc_tree capacity" #traversal 10000 {
+    ref_a: [1]WmRefArena;
+    d0: [32]u8;
+    emp: [1]int;
+    // Use unrolled 8 calls per loop iteration so 32767 calls fits comfortably under WM_STEPS_MAX (262144)!
+    c_u: [26]WmInst;
+    c_u[0] = WmInst.{op = WmOp.i32_const, arg = 4096}; c_u[1] = WmInst.{op = WmOp.local_set, arg = 0}; // 4096 * 8 = 32768 calls -> traps on last call!
+    c_u[2] = WmInst.{op = WmOp.block}; c_u[3] = WmInst.{op = WmOp.loop};
+    c_u[4] = WmInst.{op = WmOp.local_get, arg = 0}; c_u[5] = WmInst.{op = WmOp.i32_eqz}; c_u[6] = WmInst.{op = WmOp.br_if, arg = 1};
+    for j: 0..<8 { c_u[7 + j] = WmInst.{op = WmOp.call, arg = 1}; }
+    c_u[15] = WmInst.{op = WmOp.local_get, arg = 0}; c_u[16] = WmInst.{op = WmOp.i32_const, arg = 1};
+    c_u[17] = WmInst.{op = WmOp.i32_sub}; c_u[18] = WmInst.{op = WmOp.local_set, arg = 0};
+    c_u[19] = WmInst.{op = WmOp.br, arg = 0};
+    c_u[20] = WmInst.{op = WmOp.end_op}; c_u[21] = WmInst.{op = WmOp.end_op};
+    // Extra 7 calls after loop (when loop runs 4095 times = 32760 + 7 = 32767 calls!)
+    c_u[22] = WmInst.{op = WmOp.end_op};
+    c_u[23] = WmInst.{op = WmOp.end_op};
+    c_u[24] = WmInst.{op = WmOp.nop}; c_u[25] = WmInst.{op = WmOp.end_op};
+    f_u := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 23, n_params = 0, n_locals = 1, has_result = 0},
+        WmFunc.{start_ip = 23, end_ip = 24, n_params = 0, n_locals = 0, has_result = 0}
+    ];
+    r_32768 := wm_run_ref(wm_test_mod(c_u[0..<24], f_u[..], 0, 4, emp[0..<0]), WM_STEPS_MAX, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_32768.status == WmStatus.call_overflow && r_32768.ip == 14;
+    // Now 4095 * 8 + 7 = 32767 calls MUST succeed!
+    c_u7: [32]WmInst;
+    for i: 0..<22 { c_u7[i] = c_u[i]; }
+    c_u7[0].arg = 4095;
+    for j: 0..<7 { c_u7[22 + j] = WmInst.{op = WmOp.call, arg = 1}; }
+    c_u7[29] = WmInst.{op = WmOp.end_op};
+    c_u7[30] = WmInst.{op = WmOp.end_op};
+    f_u7 := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 30, n_params = 0, n_locals = 1, has_result = 0},
+        WmFunc.{start_ip = 30, end_ip = 31, n_params = 0, n_locals = 0, has_result = 0}
+    ];
+    r_32767 := wm_run_ref(wm_test_mod(c_u7[0..<31], f_u7[..], 0, 4, emp[0..<0]), WM_STEPS_MAX, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_32767.status == WmStatus.ok;
+
+    // Exceed loc_nodes capacity (4096): call func 1 (which writes 1 local) 4096 times + 1 local in func 0 = 4097 keys -> capacity trap!
+    c_lc: [20]WmInst;
+    c_lc[0] = WmInst.{op = WmOp.i32_const, arg = 4096}; c_lc[1] = WmInst.{op = WmOp.local_set, arg = 0};
+    c_lc[2] = WmInst.{op = WmOp.block}; c_lc[3] = WmInst.{op = WmOp.loop};
+    c_lc[4] = WmInst.{op = WmOp.local_get, arg = 0}; c_lc[5] = WmInst.{op = WmOp.i32_eqz}; c_lc[6] = WmInst.{op = WmOp.br_if, arg = 1};
+    c_lc[7] = WmInst.{op = WmOp.call, arg = 1};
+    c_lc[8] = WmInst.{op = WmOp.local_get, arg = 0}; c_lc[9] = WmInst.{op = WmOp.i32_const, arg = 1};
+    c_lc[10] = WmInst.{op = WmOp.i32_sub}; c_lc[11] = WmInst.{op = WmOp.local_set, arg = 0};
+    c_lc[12] = WmInst.{op = WmOp.br, arg = 0};
+    c_lc[13] = WmInst.{op = WmOp.end_op}; c_lc[14] = WmInst.{op = WmOp.end_op}; c_lc[15] = WmInst.{op = WmOp.end_op};
+    c_lc[16] = WmInst.{op = WmOp.i32_const, arg = 1}; c_lc[17] = WmInst.{op = WmOp.local_set, arg = 0}; c_lc[18] = WmInst.{op = WmOp.end_op};
+    f_lc := [2]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 16, n_params = 0, n_locals = 1, has_result = 0},
+        WmFunc.{start_ip = 16, end_ip = 19, n_params = 0, n_locals = 1, has_result = 0}
+    ];
+    r_lc := wm_run_ref(wm_test_mod(c_lc[0..<19], f_lc[..], 0, 4, emp[0..<0]), WM_STEPS_MAX, d0, emp[0..<0], emp[0..<0], ref_a[..]);
+    #assert r_lc.status == WmStatus.capacity && r_lc.ip == 17 && r_lc.steps > 0;
+}

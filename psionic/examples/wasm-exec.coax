@@ -1,0 +1,280 @@
+// W1.2 (hull-v2 + wasm-exec-v1):
+// 1. Verify hull-v2 O(log t) balanced-tree parabolic attention bit-for-bit against
+//    O(t) linear scan across 10,000 randomized read/write/overwrite/miss ops AND
+//    benchmark 1,048,576 writes + 1,048,576 reads over wide segmented +/-2^30 keys.
+// 2. Compile the complete 38-opcode wasm-core-i32-v1 VM into ONE dense F64
+//    exec-vm-v1 transformer model.
+// 3. Execute ALL THREE real non-toy benchmarks (4 real 9x9 Sudoku puzzles with
+//    45-53 blanks & real backtracking, 4 real 10x10 Hungarian cost matrices with
+//    LP strong-duality optimality certificates, and 4 real Coder Ch 8 tool
+//    programs lowered from PgProgram ASTs) completely through loaded dense F64
+//    weights + hull-v2 parabolic attention (ZERO interpreter fallback), verify
+//    100% bit-exact SHA-256 trace digest match via Ch 234 replay, and report
+//    honest side-by-side CPU interpreter vs. loaded dense-weight throughput!
+#import "Basic";
+#load "../lib/wasm-transformer-benchmarks.coax";
+
+clock :: () -> int #foreign #effects(all);
+
+WX_SCALE_OPS  :: 1048576;
+WX_SCALE_KEYS :: 131072;
+
+wx_hex_ch :: (v: int) -> u8 {
+    if v < 10 { return cast(u8)('0' + v); }
+    return cast(u8)('a' + (v - 10));
+}
+
+wx_hex :: (d: [32]u8, out: []u8) -> string {
+    for i: 0..<32 {
+        b := cast(int)d[i];
+        out[2 * i] = wx_hex_ch(b >> 4);
+        out[2 * i + 1] = wx_hex_ch(b & 15);
+    }
+    return cast(string)out[0..<64];
+}
+
+// Step 1: hull-v2 parity vs O(t) linear scan (>=10,000 randomized ops) + 1,048,576 writes/reads.
+// Runs in its own stack frame (~5.4 MiB) before VM weights are allocated so `coax run` fits default 8 MiB stack!
+wx_run_hull_benchmarks :: () #export_c #effects(all) {
+    // 1A. 10,000 randomized read/write/overwrite/miss ops bit-exact against exact-memory O(t) linear scan!
+    lin_k: [2048]int; lin_v: [2048]int;
+    lin_n := 0;
+    p_nodes: [2048]HtNode;
+    pt := ht_init(p_nodes[..], false);
+    seed := 0x13915a;
+    ops := 10000;
+    hits := 0; misses := 0; writes := 0;
+    hull_ops := 0; scan_ops := 0;
+    for step: 0..<ops {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        k := ((seed >> 10) % 4096) - 2048;
+        if (seed & 3) == 0 && lin_n < 2048 {
+            val := (step * 37) - 50000;
+            lin_k[lin_n] = k;
+            lin_v[lin_n] = val;
+            lin_n += 1;
+            ins := ht_insert(pt, k, val);
+            #assert ins.status == EmStatus.ok;
+            pt = ins.tree;
+            hull_ops += ins.compares;
+            writes += 1;
+        } else {
+            rk := ht_read(pt, k);
+            hull_ops += rk.compares;
+            rl := em_read(lin_k[0..<lin_n], lin_v[0..<lin_n], lin_n, k);
+            scan_ops += lin_n;
+            #assert rk.read.status == rl.status;
+            if rl.status == EmStatus.ok {
+                #assert rk.read.value == rl.value;
+                hits += 1;
+            } else {
+                misses += 1;
+            }
+        }
+    }
+    #assert ht_verify_avl(pt);
+    print("hull-v2 vs O(t) linear scan parity: % randomized ops (% writes, % hits, % misses), 0 divergences, avl_height=%, hull_cmp=% vs linear_scan_cmp=%\n",
+        ops, writes, hits, misses, pt.nodes[pt.root].height, hull_ops, scan_ops);
+
+    // 1B. 1,048,576 writes + 1,048,576 reads across 131,072 active wide segmented (+/-2^30) keys!
+    // (Full 1,048,576 DISTINCT-node tree benchmark also runs in psionic/tools/wasm-exec-artifact.coax with 1 GiB stack.)
+    s_nodes: [WX_SCALE_KEYS]HtNode;
+    st := ht_init(s_nodes[..], true);
+    w_cmp := 0; w_rot := 0;
+    t0 := clock();
+    for i: 0..<WX_SCALE_OPS {
+        // Spread keys across wide +/-2^30 space (stride 16001 over 131,072 keys -> [-1,048,576,000 .. +1,048,576,000])!
+        slot := i & (WX_SCALE_KEYS - 1);
+        key := (slot - (WX_SCALE_KEYS / 2)) * 16001;
+        ins := ht_insert(st, key, i * 3 + 7);
+        #assert ins.status == EmStatus.ok;
+        st = ins.tree;
+        w_cmp += ins.compares;
+        w_rot += ins.rotations;
+    }
+    t1 := clock();
+    r_cmp := 0; r_vis := 0;
+    for i: 0..<WX_SCALE_OPS {
+        slot := ((i * 2654435761) >> 15) & (WX_SCALE_KEYS - 1);
+        key := (slot - (WX_SCALE_KEYS / 2)) * 16001;
+        rr := ht_read(st, key);
+        #assert rr.read.status == EmStatus.ok;
+        r_cmp += rr.compares;
+        r_vis += rr.visits;
+    }
+    t2 := clock();
+    #assert st.count == WX_SCALE_KEYS && ht_verify_avl(st);
+    dt_w := t1 - t0; if dt_w < 1 { dt_w = 1; }
+    dt_r := t2 - t1; if dt_r < 1 { dt_r = 1; }
+    print("hull-v2 1,048,576 scale (wide +/-2^30 segmented, % active nodes, avl_height=%):\n", st.count, st.nodes[st.root].height);
+    print("  1,048,576 writes: % ms (% ops/s), avg_cmp=%, rotations=%\n", dt_w / 1000, (WX_SCALE_OPS * 1000000) / dt_w, w_cmp / WX_SCALE_OPS, w_rot);
+    print("  1,048,576 reads : % ms (% ops/s), avg_cmp=%, avg_visits=%\n", dt_r / 1000, (WX_SCALE_OPS * 1000000) / dt_r, r_cmp / WX_SCALE_OPS, r_vis / WX_SCALE_OPS);
+}
+
+// Separate non-inlined stack frames (#export_c) so weights (6.02 MiB) + active helper (<0.65 MiB) stays well under 7.98 MiB!
+wx_compile_step :: (layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64) -> EvModel #export_c #effects(all) {
+    sc: [1]WmCompileScratch;
+    return wm_compile_vm(WM_DEFAULT_MEM_WORDS, sc[..], layers, heads, weights);
+}
+
+wx_run_ref_timed :: (mod: WmModule, budget: int, d_art: [32]u8, mem_out: []int, reps: int, us_out: []int) -> WmRunResult #export_c #effects(all) {
+    ref_a: [1]WmRefArena;
+    emp: [1]int;
+    t0 := clock();
+    r: WmRunResult;
+    for k: 0..<reps {
+        r = wm_run_ref(mod, budget, d_art, emp[0..<0], mem_out, ref_a[..]);
+    }
+    t1 := clock();
+    dt := t1 - t0;
+    if dt < 1 { dt = 1; }
+    us_out[0] = dt;
+    return r;
+}
+
+wx_replay_verify :: (mod: WmModule, rcpt: WmReceipt) -> WmReplayReport #export_c #effects(all) {
+    ref_a: [1]WmRefArena;
+    emp: [1]int;
+    return wm_replay_check(mod, rcpt, emp[0..<0], 0, rcpt.steps, rcpt.steps, emp[0..<0], ref_a[..]);
+}
+
+wx_run_hull_timed :: (vm: EvModel, d_art: [32]u8, mod: WmModule, budget: int, mem_out: []int, us_out: []int) -> WmRunResult #export_c #effects(all) {
+    np: [13 * 640]HtNode;
+    vp: [13 * 640 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 640;
+    emp: [1]int;
+    t0 := clock();
+    r := wm_run_dense_hull(vm, d_art, mod, budget, emp[0..<0], mem_out, rt[..]);
+    t1 := clock();
+    dt := t1 - t0;
+    if dt < 1 { dt = 1; }
+    us_out[0] = dt;
+    return r;
+}
+
+wx_run_coder_pg :: (text: string, w_init: [3]int, prog_out: []PgProgram, world_out: []int) -> PgRun #export_c #effects(all) {
+    bx: [1]PgBox;
+    env := pg_box(bx[..], 99);
+    all := PG_ALL;
+    gm := pg_grammar(env.tools, all[..], pg_gwork(bx[..])).grammar;
+    open_pol := SbPolicy.{ceiling = HtEffect.write, reach = 7, allow = HtEffect.write, open = 7, cost = 2, calls = 20, bytes = 600, ticks = 80, timeout = 3, wait = 5};
+    parsed := pg_parse(env.tools, gm, text);
+    #assert parsed.why == PgWhy.none;
+    prog_out[0] = parsed.program;
+    logs_b: [1]PgLogs; l := pg_logs(logs_b[..]); s: [1]SbSession;
+    pg_session(open_pol, s[..], l[..]);
+    w_pg := [8]int.[w_init[0], w_init[1], w_init[2], 0, 0, 0, 0, 0];
+    pr := pg_program(env, gm, s[..], text, 64, w_pg[..], l[..]);
+    for i: 0..<3 { world_out[i] = w_pg[i]; }
+    return pr;
+}
+
+wx_run_wasm_benchmarks :: () #export_c #effects(all) {
+    // 2. Compile the unified 38-opcode wasm-core-i32-v1 dense F64 transformer artifact.
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    vm := wx_compile_step(layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    d_art := wm_compiler_digest();
+    print("\nwasm-core-i32-v1 dense F64 artifact: width=%, layers=%, heads=%, weights=%, kv_slots=%, mem_words=%\n",
+        vm.width, vm.n_layers, vm.n_heads, vm.n_weights, vm.kv_slots, WM_DEFAULT_MEM_WORDS);
+
+    code_b: [512]WmInst; func_b: [4]WmFunc; ia: [128]int; iv: [128]int;
+    m_ref: [WM_DEFAULT_MEM_WORDS]int; m_hull: [WM_DEFAULT_MEM_WORDS]int;
+    us_ref: [1]int; us_hull: [1]int;
+    hex: [64]u8;
+    tot_steps := 0; tot_ref_us := 0; tot_hull_us := 0;
+    tot_hcmp := 0; tot_scmp := 0;
+
+    // 3. Real 9x9 Sudoku benchmark (all 4 non-trivial 81-cell puzzles, 45-53 blanks, real backtracking!).
+    print("\n--- Benchmark 1: Real 9x9 Sudoku Solver (4 puzzles, 45-53 blanks, MRV bitmask backtracking) ---\n");
+    for idx: 0..<WM_SUDOKU_COUNT {
+        puz := WM_SUDOKU_PUZZLES[idx];
+        mod := wm_build_sudoku_module(puz, code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wx_run_ref_timed(mod, 300000, d_art, m_ref[..], 5, us_ref[..]);
+        r_hull := wx_run_hull_timed(vm, d_art, mod, 300000, m_hull[..], us_hull[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_ref.result == 1 && r_hull.result == 1;
+        #assert r_ref.steps == r_hull.steps && ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        #assert wm_verify_sudoku(puz, m_hull[..]);
+        for k: 0..<81 { #assert m_ref[k] == m_hull[k]; }
+        rep := wx_replay_verify(mod, r_hull.receipt);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        ref_sps := (r_ref.steps * 5 * 1000000) / us_ref[0];
+        hull_sps := (r_hull.steps * 1000000) / us_hull[0];
+        tot_steps += r_hull.steps; tot_ref_us += us_ref[0] / 5; tot_hull_us += us_hull[0];
+        tot_hcmp += r_hull.hull_compares; tot_scmp += r_hull.scan_compares;
+        print("  %: solved=1 backtracks=% steps=% | ref=% steps/s vs dense_hull=% steps/s | hull_cmp=% vs scan_cmp=% (%x) | digest=%\n",
+            WM_SUDOKU_NAMES[idx], m_hull[1732 / 4], r_hull.steps, ref_sps, hull_sps,
+            r_hull.hull_compares, r_hull.scan_compares, r_hull.scan_compares / r_hull.hull_compares,
+            wx_hex(r_hull.receipt.trace_digest, hex[..]));
+    }
+
+    // 4. Real 10x10 Hungarian assignment benchmark (all 4 held-out 10x10 integer matrices + LP strong duality!).
+    print("\n--- Benchmark 2: Real 10x10 Hungarian Assignment Solver (4 held-out 10x10 matrices + LP duality) ---\n");
+    cost: [100]int;
+    for idx: 0..<WM_HUNG_COUNT {
+        wm_hungarian_matrix(idx, cost[..]);
+        mod := wm_build_hungarian_module(cost[..], code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wx_run_ref_timed(mod, 200000, d_art, m_ref[..], 5, us_ref[..]);
+        r_hull := wx_run_hull_timed(vm, d_art, mod, 200000, m_hull[..], us_hull[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_ref.result == r_hull.result;
+        #assert r_ref.steps == r_hull.steps && ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        #assert wm_verify_hungarian(cost[..], m_hull[..], r_hull.result);
+        for k: 0..<10 { #assert m_ref[WM_HG_ASN / 4 + k] == m_hull[WM_HG_ASN / 4 + k]; }
+        rep := wx_replay_verify(mod, r_hull.receipt);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        ref_sps := (r_ref.steps * 5 * 1000000) / us_ref[0];
+        hull_sps := (r_hull.steps * 1000000) / us_hull[0];
+        tot_steps += r_hull.steps; tot_ref_us += us_ref[0] / 5; tot_hull_us += us_hull[0];
+        tot_hcmp += r_hull.hull_compares; tot_scmp += r_hull.scan_compares;
+        print("  %: opt_cost=% dual_verified=1 steps=% | ref=% steps/s vs dense_hull=% steps/s | hull_cmp=% vs scan_cmp=% (%x) | digest=%\n",
+            WM_HUNG_NAMES[idx], r_hull.result, r_hull.steps, ref_sps, hull_sps,
+            r_hull.hull_compares, r_hull.scan_compares, r_hull.scan_compares / r_hull.hull_compares,
+            wx_hex(r_hull.receipt.trace_digest, hex[..]));
+    }
+
+    // 5. Real Coder Ch 8 tool-program benchmark (4 real PgProgram ASTs lowered to wasm-core-i32-v1!).
+    print("\n--- Benchmark 3: Real Coder Ch 8 Tool Programs (PgProgram -> wasm-core-i32-v1) ---\n");
+    pg_arr: [1]PgProgram;
+    w_pg: [3]int;
+    for idx: 0..<WM_CODER_COUNT {
+        text := WM_CODER_TEXTS[idx];
+        w_init := WM_CODER_WORLDS[idx];
+        pr := wx_run_coder_pg(text, w_init, pg_arr[..], w_pg[..]);
+        #assert pr.stop == PgStop.done && pr.why == PgWhy.none;
+        mod := wm_lower_coder_program(pg_arr[0], w_init[..], code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wx_run_ref_timed(mod, 2000, d_art, m_ref[..], 50, us_ref[..]);
+        r_hull := wx_run_hull_timed(vm, d_art, mod, 2000, m_hull[..], us_hull[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok;
+        #assert r_ref.steps == r_hull.steps && r_hull.result == pr.defined;
+        #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        for rm: 0..<3 { #assert m_hull[rm] == w_pg[rm]; }
+        for v: 0..<PG_VARS { #assert m_hull[3 + v] == pr.vars[v]; }
+        rep := wx_replay_verify(mod, r_hull.receipt);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        ref_sps := (r_ref.steps * 50 * 1000000) / us_ref[0];
+        hull_sps := (r_hull.steps * 1000000) / us_hull[0];
+        tot_steps += r_hull.steps; tot_ref_us += us_ref[0] / 50; tot_hull_us += us_hull[0];
+        tot_hcmp += r_hull.hull_compares; tot_scmp += r_hull.scan_compares;
+        print("  %: defined=% world=[%,%,%] steps=% | ref=% steps/s vs dense_hull=% steps/s | digest=%\n",
+            WM_CODER_NAMES[idx], pr.defined, m_hull[0], m_hull[1], m_hull[2], r_hull.steps,
+            ref_sps, hull_sps, wx_hex(r_hull.receipt.trace_digest, hex[..]));
+    }
+
+    if tot_ref_us < 1 { tot_ref_us = 1; }
+    if tot_hull_us < 1 { tot_hull_us = 1; }
+    print("\nTOTAL across 12 real workloads: % steps, 0 divergences, 100%% Ch 234 replay exact\n", tot_steps);
+    print("Aggregate throughput: CPU ref=% steps/s vs dense F64 hull-v2=% steps/s\n",
+        (tot_steps * 1000000) / tot_ref_us, (tot_steps * 1000000) / tot_hull_us);
+    print("Aggregate attention comparisons: hull-v2=% vs O(t) linear scan=% (%x reduction)\n",
+        tot_hcmp, tot_scmp, tot_scmp / tot_hcmp);
+}
+
+main :: () {
+    // Run hull-v2 and wasm-core-i32-v1 in separate non-overlapping stack frames so
+    // `coax run psionic/examples/wasm-exec.coax --release` fits cleanly in macOS's default 8 MiB stack!
+    wx_run_hull_benchmarks();
+    wx_run_wasm_benchmarks();
+}

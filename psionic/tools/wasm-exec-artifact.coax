@@ -1,0 +1,322 @@
+// Materialize the compiled wasm-core-i32-v1 dense F64 safetensors artifact to
+// disk, reload it from disk with SHA-256 verification, benchmark hull-v2 on
+// 1,048,576 DISTINCT keys (sequential & randomized wide +/-2^30), and execute
+// all 38 opcodes, all typed traps, 4 real 9x9 Sudoku puzzles, 4 real 10x10
+// Hungarian cost matrices, and 4 real Coder Ch 8 tool programs STRICTLY through
+// the disk-loaded dense F64 weights + hull-v2 parabolic attention, printing
+// machine-checkable receipts for `psionic/tests/wasm_exec_oracle.py`.
+// tool.sh: release
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../lib/wasm-transformer-benchmarks.coax";
+
+clock :: () -> int #foreign #effects(all);
+
+WA_1M :: 1048576;
+
+wa_hex_ch :: (v: int) -> u8 {
+    if v < 10 { return cast(u8)('0' + v); }
+    return cast(u8)('a' + (v - 10));
+}
+
+wa_hex :: (d: [32]u8, out: []u8) -> string {
+    for i: 0..<32 {
+        b := cast(int)d[i];
+        out[2 * i] = wa_hex_ch(b >> 4);
+        out[2 * i + 1] = wa_hex_ch(b & 15);
+    }
+    return cast(string)out[0..<64];
+}
+
+wa_print_module_ops :: (mod: WmModule) {
+    print(" funcs=");
+    for f, i: mod.funcs {
+        if i > 0 { print(","); }
+        print("%:%:%:%:%", f.start_ip, f.end_ip, f.n_params, f.n_locals, f.has_result);
+    }
+    print(" ng=% mw=% init=", mod.n_globals, mod.mem_words);
+    for i: 0..<mod.init_mem_addr.count {
+        if i > 0 { print(","); }
+        print("%:%", mod.init_mem_addr[i], mod.init_mem_val[i]);
+    }
+    print(" ops=");
+    for inst, i: mod.code {
+        if i > 0 { print(","); }
+        print("%:%", cast(int)inst.op, inst.arg);
+    }
+    print("\n");
+}
+
+// Benchmark 1,048,576 DISTINCT keys (sequential AND randomized wide +/-2^30) in 1 GiB stack!
+wa_bench_hull_1m :: () {
+    nodes: [WA_1M]HtNode;
+    // A. Sequential 1,048,576 distinct keys in [-524288 .. +524287] (standard mode, worst-case BST input -> proves AVL rebalancing!).
+    t_seq := ht_init(nodes[..], false);
+    w_cmp := 0; w_rot := 0;
+    t0 := clock();
+    for i: 0..<WA_1M {
+        ins := ht_insert(t_seq, i - 524288, i * 5 - 100);
+        #assert ins.status == EmStatus.ok;
+        t_seq = ins.tree;
+        w_cmp += ins.compares;
+        w_rot += ins.rotations;
+    }
+    t1 := clock();
+    r_cmp := 0; r_vis := 0; max_r_cmp := 0;
+    for i: 0..<WA_1M {
+        k := ((i * 2654435761) >> 12) & (WA_1M - 1);
+        rr := ht_read(t_seq, k - 524288);
+        #assert rr.read.status == EmStatus.ok && rr.read.value == k * 5 - 100;
+        r_cmp += rr.compares;
+        r_vis += rr.visits;
+        if rr.compares > max_r_cmp { max_r_cmp = rr.compares; }
+    }
+    t2 := clock();
+    #assert t_seq.count == WA_1M && ht_verify_avl(t_seq);
+    dt_w := t1 - t0; if dt_w < 1 { dt_w = 1; }
+    dt_r := t2 - t1; if dt_r < 1 { dt_r = 1; }
+    print("HULL_1M mode=sequential_distinct count=% height=% write_ms=% write_avg_cmp=% rotations=% read_ms=% read_avg_cmp=% read_max_cmp=% read_avg_vis=%\n",
+        t_seq.count, t_seq.nodes[t_seq.root].height, dt_w / 1000, w_cmp / WA_1M, w_rot,
+        dt_r / 1000, r_cmp / WA_1M, max_r_cmp, r_vis / WA_1M);
+
+    // B. Randomized 1,048,576 distinct keys across wide +/-2^30 segmented space!
+    // Bijection over [0..1048575] mapped to [-1,048,576,000 .. +1,048,574,000] via stride 1999!
+    t_rnd := ht_init(nodes[..], true);
+    rw_cmp := 0; rw_rot := 0;
+    t3 := clock();
+    for i: 0..<WA_1M {
+        perm := ((i * 636413 + 13915) & (WA_1M - 1));
+        key := (perm - 524288) * 1999;
+        ins := ht_insert(t_rnd, key, perm * 7 + 1);
+        #assert ins.status == EmStatus.ok;
+        t_rnd = ins.tree;
+        rw_cmp += ins.compares;
+        rw_rot += ins.rotations;
+    }
+    t4 := clock();
+    rr_cmp := 0; rr_vis := 0; max_rr_cmp := 0;
+    for i: 0..<WA_1M {
+        perm := ((i * 265443 + 77) & (WA_1M - 1));
+        key := (perm - 524288) * 1999;
+        rr := ht_read(t_rnd, key);
+        #assert rr.read.status == EmStatus.ok && rr.read.value == perm * 7 + 1;
+        rr_cmp += rr.compares;
+        rr_vis += rr.visits;
+        if rr.compares > max_rr_cmp { max_rr_cmp = rr.compares; }
+    }
+    t5 := clock();
+    #assert t_rnd.count == WA_1M && ht_verify_avl(t_rnd);
+    dt_rw := t4 - t3; if dt_rw < 1 { dt_rw = 1; }
+    dt_rr := t5 - t4; if dt_rr < 1 { dt_rr = 1; }
+    print("HULL_1M mode=random_wide_2p30 count=% height=% write_ms=% write_avg_cmp=% rotations=% read_ms=% read_avg_cmp=% read_max_cmp=% read_avg_vis=%\n",
+        t_rnd.count, t_rnd.nodes[t_rnd.root].height, dt_rw / 1000, rw_cmp / WA_1M, rw_rot,
+        dt_rr / 1000, rr_cmp / WA_1M, max_rr_cmp, rr_vis / WA_1M);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+    args: [1]Args;
+    if !args_load(args[..]) || args_count(args[..]) != 1 {
+        print("usage: wasm-exec-artifact OUT.safetensors\n");
+        return 2;
+    }
+    out_path := args_at(args[..], 0);
+
+    // 1. Run full 1,048,576 DISTINCT-node hull-v2 scaling benchmark (sequential & random wide +/-2^30).
+    wa_bench_hull_1m();
+
+    // 2. Compile wasm-core-i32-v1 (mem_words=512), serialize to F64 safetensors, write to disk, reload & verify SHA-256!
+    sc: [1]WmCompileScratch;
+    layers: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights: [WM_VM_MAX_WEIGHTS]f64;
+    compiled := wm_compile_vm(WM_DEFAULT_MEM_WORDS, sc[..], layers[..], heads[..], weights[..]);
+    if compiled.status != EvStatus.ok { print("compile failed %\n", compiled.status); return 1; }
+
+    file_out: [7000000]u8;
+    ser := ev_serialize(compiled, file_out[..]);
+    if ser.status != EvStatus.ok { print("serialize failed %\n", ser.status); return 1; }
+    if !fs_write(out_path, cast(string)file_out[0..<ser.written]) { print("write failed\n"); return 1; }
+
+    file_in: [7000000]u8;
+    n_read := fs_read(out_path, file_in[..]);
+    if n_read != ser.written { print("reload size mismatch\n"); return 1; }
+    layers2: [WM_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [WM_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [WM_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file_in[0..<n_read], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    if ld.model.status != EvStatus.ok { print("deserialize failed %\n", ld.model.status); return 1; }
+    vm := ld.model;
+
+    hex: [64]u8;
+    print("ARTIFACT_BYTES %\n", n_read);
+    print("ARTIFACT_SHA256 %\n", wa_hex(ld.digest, hex[..]));
+    print("COMPILER_SHA256 %\n", wa_hex(wm_compiler_digest(), hex[..]));
+    print("MODEL width=% layers=% heads=% weights=% kv_slots=% mem_words=%\n",
+        vm.width, vm.n_layers, vm.n_heads, vm.n_weights, vm.kv_slots, WM_DEFAULT_MEM_WORDS);
+
+    ref_a: [1]WmRefArena;
+    np: [WM_VM_MAX_HEADS * 2048]HtNode;
+    vp: [WM_VM_MAX_HEADS * 2048 * EV_HEAD_VALUES_MAX]f64;
+    rt: [1]WmHullRuntime;
+    rt[0].nodes_pool = np[..]; rt[0].vals_pool = vp[..]; rt[0].per_head_cap = 2048;
+    m_ref: [WM_DEFAULT_MEM_WORDS]int; m_hull: [WM_DEFAULT_MEM_WORDS]int;
+    emp: [1]int;
+
+    // 3. Emit & verify a compact 38-opcode program (executed by BOTH Coax disk-loaded weights AND Python pure-dense oracle!).
+    c38 := [128]WmInst.[
+        WmInst.{op = WmOp.nop},
+        WmInst.{op = WmOp.i32_const, arg = 100000}, WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.i32_const, arg = -123456}, WmInst.{op = WmOp.local_tee, arg = 1},
+        WmInst.{op = WmOp.global_set, arg = 0},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.global_get, arg = 0}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 1000}, WmInst.{op = WmOp.i32_sub},
+        WmInst.{op = WmOp.i32_const, arg = -3}, WmInst.{op = WmOp.i32_mul},
+        WmInst.{op = WmOp.i32_const, arg = -7}, WmInst.{op = WmOp.i32_div_s},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_rem_s},
+        WmInst.{op = WmOp.local_set, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = WM_I32_MIN}, WmInst.{op = WmOp.i32_const, arg = -1}, WmInst.{op = WmOp.i32_rem_s},
+        WmInst.{op = WmOp.i32_eqz},
+        WmInst.{op = WmOp.local_get, arg = 2}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 0x0f0f0f}, WmInst.{op = WmOp.i32_and},
+        WmInst.{op = WmOp.i32_const, arg = 0x001005}, WmInst.{op = WmOp.i32_or},
+        WmInst.{op = WmOp.i32_const, arg = 0x0f0000}, WmInst.{op = WmOp.i32_xor},
+        WmInst.{op = WmOp.i32_const, arg = 20}, WmInst.{op = WmOp.i32_shl},
+        WmInst.{op = WmOp.i32_const, arg = 24}, WmInst.{op = WmOp.i32_shr_s},
+        WmInst.{op = WmOp.i32_const, arg = 17}, WmInst.{op = WmOp.i32_shr_u},
+        WmInst.{op = WmOp.local_set, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.i32_lt_s},
+        WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_const, arg = -5}, WmInst.{op = WmOp.i32_le_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_const, arg = -2}, WmInst.{op = WmOp.i32_gt_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.i32_ge_s},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_eq},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 4}, WmInst.{op = WmOp.i32_const, arg = 9}, WmInst.{op = WmOp.i32_ne},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 999}, WmInst.{op = WmOp.drop},
+        WmInst.{op = WmOp.i32_const, arg = 100}, WmInst.{op = WmOp.i32_const, arg = 200}, WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.select},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.local_get, arg = 2}, WmInst.{op = WmOp.i32_store, arg = 4},
+        WmInst.{op = WmOp.i32_const, arg = 8}, WmInst.{op = WmOp.i32_load, arg = 4},
+        WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.local_set, arg = 3},
+        WmInst.{op = WmOp.i32_const, arg = 0}, WmInst.{op = WmOp.if_op}, WmInst.{op = WmOp.nop}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.call, arg = 2},
+        WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.block},
+            WmInst.{op = WmOp.loop},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_eqz}, WmInst.{op = WmOp.br_if, arg = 1},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_gt_s},
+                WmInst.{op = WmOp.if_op},
+                    WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.local_set, arg = 3},
+                WmInst.{op = WmOp.else_op},
+                    WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_add}, WmInst.{op = WmOp.local_set, arg = 3},
+                WmInst.{op = WmOp.end_op},
+                WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.i32_sub}, WmInst.{op = WmOp.local_set, arg = 0},
+                WmInst.{op = WmOp.br, arg = 0},
+            WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.local_get, arg = 3}, WmInst.{op = WmOp.global_get, arg = 1}, WmInst.{op = WmOp.call, arg = 1},
+        WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.i32_const, arg = 3}, WmInst.{op = WmOp.i32_mul},
+        WmInst.{op = WmOp.local_set, arg = 0},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.local_get, arg = 1}, WmInst.{op = WmOp.i32_add},
+        WmInst.{op = WmOp.i32_const, arg = 1}, WmInst.{op = WmOp.br_if, arg = 0},
+        WmInst.{op = WmOp.ret}, WmInst.{op = WmOp.end_op},
+        WmInst.{op = WmOp.i32_const, arg = 7}, WmInst.{op = WmOp.global_set, arg = 1},
+        WmInst.{op = WmOp.local_get, arg = 0}, WmInst.{op = WmOp.drop},
+        WmInst.{op = WmOp.br, arg = 0}, WmInst.{op = WmOp.end_op}
+    ];
+    f38 := [3]WmFunc.[
+        WmFunc.{start_ip = 0, end_ip = 111, n_params = 0, n_locals = 4, has_result = 1},
+        WmFunc.{start_ip = 111, end_ip = 122, n_params = 2, n_locals = 2, has_result = 1},
+        WmFunc.{start_ip = 122, end_ip = 128, n_params = 0, n_locals = 1, has_result = 0}
+    ];
+    mod38 := WmModule.{code = c38[..], funcs = f38[..], entry_func = 0, n_globals = 2, mem_words = WM_DEFAULT_MEM_WORDS, init_mem_addr = emp[0..<0], init_mem_val = emp[0..<0]};
+    r38_ref  := wm_run_ref(mod38, 300, ld.digest, emp[0..<0], m_ref[..], ref_a[..]);
+    r38_hull := wm_run_dense_hull(vm, ld.digest, mod38, 300, emp[0..<0], m_hull[..], rt[..]);
+    #assert r38_ref.status == WmStatus.ok && r38_hull.status == WmStatus.ok && ev_same_digest(r38_ref.receipt.trace_digest, r38_hull.receipt.trace_digest);
+    print("PROG name=all38_opcodes steps=% result=% digest=%", r38_hull.steps, r38_hull.result, wa_hex(r38_hull.receipt.trace_digest, hex[..]));
+    wa_print_module_ops(mod38);
+
+    // 4. All 4 real 9x9 Sudoku puzzles via disk-loaded dense weights!
+    code_b: [512]WmInst; func_b: [4]WmFunc; ia: [128]int; iv: [128]int;
+    for idx: 0..<WM_SUDOKU_COUNT {
+        puz := WM_SUDOKU_PUZZLES[idx];
+        mod := wm_build_sudoku_module(puz, code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wm_run_ref(mod, 300000, ld.digest, emp[0..<0], m_ref[..], ref_a[..]);
+        r_hull := wm_run_dense_hull(vm, ld.digest, mod, 300000, emp[0..<0], m_hull[..], rt[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_hull.result == 1;
+        #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        #assert wm_verify_sudoku(puz, m_hull[..]);
+        rep := wm_replay_check(mod, r_hull.receipt, emp[0..<0], 0, r_hull.steps, r_hull.steps, emp[0..<0], ref_a[..]);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        board_str: [81]u8;
+        for k: 0..<81 { board_str[k] = cast(u8)('0' + m_hull[k]); }
+        print("SUDOKU name=% puzzle=% solved=% backtracks=% steps=% digest=% hull_cmp=% scan_cmp=%",
+            WM_SUDOKU_NAMES[idx], puz, cast(string)board_str[..], m_hull[1732 / 4], r_hull.steps,
+            wa_hex(r_hull.receipt.trace_digest, hex[..]), r_hull.hull_compares, r_hull.scan_compares);
+        wa_print_module_ops(mod);
+    }
+
+    // 5. All 4 real 10x10 Hungarian matrices via disk-loaded dense weights!
+    cost: [100]int;
+    for idx: 0..<WM_HUNG_COUNT {
+        wm_hungarian_matrix(idx, cost[..]);
+        mod := wm_build_hungarian_module(cost[..], code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wm_run_ref(mod, 200000, ld.digest, emp[0..<0], m_ref[..], ref_a[..]);
+        r_hull := wm_run_dense_hull(vm, ld.digest, mod, 200000, emp[0..<0], m_hull[..], rt[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_hull.result == r_ref.result;
+        #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        #assert wm_verify_hungarian(cost[..], m_hull[..], r_hull.result);
+        rep := wm_replay_check(mod, r_hull.receipt, emp[0..<0], 0, r_hull.steps, r_hull.steps, emp[0..<0], ref_a[..]);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        print("HUNGARIAN name=% opt_cost=% steps=% digest=% hull_cmp=% scan_cmp=% assign=",
+            WM_HUNG_NAMES[idx], r_hull.result, r_hull.steps, wa_hex(r_hull.receipt.trace_digest, hex[..]),
+            r_hull.hull_compares, r_hull.scan_compares);
+        for r: 0..<10 {
+            if r > 0 { print(","); }
+            print("%", m_hull[WM_HG_ASN / 4 + r]);
+        }
+        wa_print_module_ops(mod);
+    }
+
+    // 6. All 4 real Coder Ch 8 tool programs via disk-loaded dense weights!
+    bx: [1]PgBox;
+    env := pg_box(bx[..], 99);
+    all := PG_ALL;
+    gm := pg_grammar(env.tools, all[..], pg_gwork(bx[..])).grammar;
+    open_pol := SbPolicy.{ceiling = HtEffect.write, reach = 7, allow = HtEffect.write, open = 7, cost = 2, calls = 20, bytes = 600, ticks = 80, timeout = 3, wait = 5};
+    for idx: 0..<WM_CODER_COUNT {
+        text := WM_CODER_TEXTS[idx];
+        parsed := pg_parse(env.tools, gm, text);
+        #assert parsed.why == PgWhy.none;
+        logs_b: [1]PgLogs; l := pg_logs(logs_b[..]); s: [1]SbSession;
+        pg_session(open_pol, s[..], l[..]);
+        w_init := WM_CODER_WORLDS[idx];
+        w_pg := [8]int.[w_init[0], w_init[1], w_init[2], 0, 0, 0, 0, 0];
+        pr := pg_program(env, gm, s[..], text, 64, w_pg[..], l[..]);
+        #assert pr.stop == PgStop.done && pr.why == PgWhy.none;
+        mod := wm_lower_coder_program(parsed.program, w_init[..], code_b[..], func_b[..], ia[..], iv[..]);
+        r_ref  := wm_run_ref(mod, 2000, ld.digest, emp[0..<0], m_ref[..], ref_a[..]);
+        r_hull := wm_run_dense_hull(vm, ld.digest, mod, 2000, emp[0..<0], m_hull[..], rt[..]);
+        #assert r_ref.status == WmStatus.ok && r_hull.status == WmStatus.ok && r_hull.result == pr.defined;
+        #assert ev_same_digest(r_ref.receipt.trace_digest, r_hull.receipt.trace_digest);
+        for rm: 0..<3 { #assert m_hull[rm] == w_pg[rm]; }
+        for v: 0..<PG_VARS { #assert m_hull[3 + v] == pr.vars[v]; }
+        rep := wm_replay_check(mod, r_hull.receipt, emp[0..<0], 0, r_hull.steps, r_hull.steps, emp[0..<0], ref_a[..]);
+        #assert rep.verdict == WmReplayVerdict.exact;
+        print("CODER name=% defined=% steps=% world=%,%,% vars=%,%,%,%,%,%,%,% digest=%",
+            WM_CODER_NAMES[idx], pr.defined, r_hull.steps, m_hull[0], m_hull[1], m_hull[2],
+            m_hull[3], m_hull[4], m_hull[5], m_hull[6], m_hull[7], m_hull[8], m_hull[9], m_hull[10],
+            wa_hex(r_hull.receipt.trace_digest, hex[..]));
+        wa_print_module_ops(mod);
+    }
+
+    print("VERIFIED_ALL 13 DIVERGENCES 0\n");
+    return 0;
+}
