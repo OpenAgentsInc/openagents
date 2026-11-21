@@ -1,0 +1,141 @@
+// Thread Proof, Effective-Model Honesty & Private-by-Default Trace Policy (GitHub #13895).
+//
+// Rules enforced by #authority:
+// 1. Effective-model badges ALWAYS name the actual provider, model, and execution mode
+//    returned by the worker — never hiding a fallback behind the requested label.
+// 2. Trace sync/sharing is strictly local/private by default; outbound sync is admitted
+//    ONLY when both persisted opt-in and explicit user consent are true.
+#authority;
+
+TP_GOAL_NONE :: 0;
+TP_GOAL_ACTIVE :: 1;
+TP_GOAL_VERIFYING :: 2;
+TP_GOAL_COMPLETED :: 3;
+TP_GOAL_BLOCKED :: 4;
+
+tp_copy :: (dst: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count < dst.count then src.count else dst.count; // mutant: equivalent (when equal, both branches return same n)
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+tp_put :: (dst: [] u8, at: int, src: string) -> int #effects(all) {
+  if at < 0 || at >= dst.count { return at; } // mutant: equivalent (at == dst.count copies 0 bytes and returns at)
+  n := tp_copy(dst[at..<dst.count], src);
+  return at + n;
+}
+
+// True when the actual runner differs from what was requested (e.g., silent fallback).
+tp_is_fallback :: (req_provider: string, req_model: string, act_provider: string, act_model: string) -> bool #effects(all) {
+  if req_provider.count > 0 && act_provider.count > 0 && req_provider != act_provider { return true; }
+  if req_model.count > 0 && act_model.count > 0 && req_model != act_model { return true; }
+  return false;
+}
+
+// Format an honest effective-model badge into out. Never masks a fallback behind req_model.
+tp_effective_badge :: (
+  req_provider: string,
+  req_model: string,
+  act_provider: string,
+  act_model: string,
+  exec_mode: string,
+  out: [] u8
+) -> string #effects(all) {
+  if out.count == 0 { return ""; }
+  n := 0;
+  if act_provider.count == 0 && act_model.count == 0 {
+    n = tp_put(out, n, "unknown-runner");
+    return cast(string) out[0..<n];
+  }
+  if act_provider.count > 0 { // mutant: equivalent (copying 0 bytes leaves n unchanged)
+    n = tp_put(out, n, act_provider);
+  }
+  if act_model.count > 0 {
+    if n > 0 { n = tp_put(out, n, " / "); }
+    n = tp_put(out, n, act_model);
+  }
+  if exec_mode.count > 0 {
+    n = tp_put(out, n, " [");
+    n = tp_put(out, n, exec_mode);
+    n = tp_put(out, n, "]");
+  }
+  if tp_is_fallback(req_provider, req_model, act_provider, act_model) {
+    n = tp_put(out, n, " (fallback");
+    if req_model.count > 0 {
+      n = tp_put(out, n, " from ");
+      n = tp_put(out, n, req_model);
+    }
+    n = tp_put(out, n, ")");
+  }
+  return cast(string) out[0..<n];
+}
+
+// Strict private-by-default admission: nothing leaves the machine unless both opt-in and consent hold.
+tp_privacy_may_sync :: (opt_in_enabled: bool, explicit_consent: bool) -> bool #effects(all) {
+  return opt_in_enabled && explicit_consent;
+}
+
+tp_privacy_label :: (opt_in_enabled: bool) -> string #effects(all) {
+  return ifx opt_in_enabled then "Encrypted Sync (Opt-In)" else "Private · Local Only";
+}
+
+tp_goal_verdict_label :: (status: int) -> string #effects(all) {
+  if status == TP_GOAL_ACTIVE { return "active"; }
+  if status == TP_GOAL_VERIFYING { return "verifying"; }
+  if status == TP_GOAL_COMPLETED { return "verified-complete"; }
+  if status == TP_GOAL_BLOCKED { return "blocked"; }
+  return "none";
+}
+
+#test "thread-proof: honest effective-model badges, fallback disclosure, and private-by-default sync (#13895)" {
+  b: [256] u8;
+  empty_b: [1] u8;
+  #assert tp_effective_badge("Antigravity", "m", "Antigravity", "m", "", empty_b[0..<0]) == "";
+  #assert tp_put(b[..], -1, "x") == -1;
+  #assert tp_put(b[..], 256, "x") == 256;
+
+  // 1-char boundary checks for provider, model, exec_mode, req_model, and 1-byte out
+  one_b: [1] u8;
+  #assert tp_effective_badge("p", "r", "q", "m", "e", one_b[..]) == "q";
+  #assert tp_effective_badge("p", "r", "q", "m", "e", b[..]) == "q / m [e] (fallback from r)";
+  #assert !tp_is_fallback("p", "r", "p", "");
+  #assert !tp_is_fallback("p", "r", "", "r");
+  #assert tp_is_fallback("p", "r", "q", "");
+  #assert tp_is_fallback("p", "r", "", "m");
+
+  // Unknown runner when worker reported neither provider nor model
+  #assert tp_effective_badge("OpenRouter", "gpt-5", "", "", "", b[..]) == "unknown-runner";
+  #assert !tp_is_fallback("OpenRouter", "gpt-5", "", "");
+
+  // Exact match (no fallback)
+  #assert tp_effective_badge("Psionic Metal", "inkling-2-mini", "Psionic Metal", "inkling-2-mini", "local", b[..]) == "Psionic Metal / inkling-2-mini [local]";
+  #assert !tp_is_fallback("Psionic Metal", "inkling-2-mini", "Psionic Metal", "inkling-2-mini");
+
+  // Model-only (no provider)
+  #assert tp_effective_badge("", "", "", "gemini-4-neon", "", b[..]) == "gemini-4-neon";
+  // Provider-only (no model)
+  #assert tp_effective_badge("", "", "Antigravity", "", "", b[..]) == "Antigravity";
+
+  // Fallback on model must disclose actual runner and requested model
+  #assert tp_is_fallback("Antigravity", "gemini-4-neon", "Antigravity", "gemini-4-flash");
+  #assert tp_effective_badge("Antigravity", "gemini-4-neon", "Antigravity", "gemini-4-flash", "cloud", b[..]) == "Antigravity / gemini-4-flash [cloud] (fallback from gemini-4-neon)";
+
+  // Fallback on provider with empty requested model
+  #assert tp_is_fallback("Psionic Metal", "", "llama.cpp Metal", "qwen-7b");
+  #assert tp_effective_badge("Psionic Metal", "", "llama.cpp Metal", "qwen-7b", "", b[..]) == "llama.cpp Metal / qwen-7b (fallback)";
+
+  // Private-by-default trace sync policy
+  #assert !tp_privacy_may_sync(false, false);
+  #assert !tp_privacy_may_sync(true, false);
+  #assert !tp_privacy_may_sync(false, true);
+  #assert tp_privacy_may_sync(true, true);
+  #assert tp_privacy_label(false) == "Private · Local Only";
+  #assert tp_privacy_label(true) == "Encrypted Sync (Opt-In)";
+
+  // Goal verdict labels
+  #assert tp_goal_verdict_label(TP_GOAL_NONE) == "none";
+  #assert tp_goal_verdict_label(TP_GOAL_ACTIVE) == "active";
+  #assert tp_goal_verdict_label(TP_GOAL_VERIFYING) == "verifying";
+  #assert tp_goal_verdict_label(TP_GOAL_COMPLETED) == "verified-complete";
+  #assert tp_goal_verdict_label(TP_GOAL_BLOCKED) == "blocked";
+}

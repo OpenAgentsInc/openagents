@@ -170,6 +170,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func editPaste(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("v").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender) } }
     @objc func editSelectAll(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("a").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender) } }
     @objc func toggleTerminal(_ sender: Any?) { main?.toggleTerminal() }
+    @objc func openThreadProof(_ sender: Any?) { ThreadProofDrawer.shared.present(window: main) }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
@@ -344,6 +345,8 @@ enum TestLaunch {
         sim.target = delegate; sim.keyEquivalentModifierMask = [.command, .option]
         let term = view.addItem(withTitle: "Toggle Terminal", action: #selector(CoderDelegate.toggleTerminal(_:)), keyEquivalent: "j")
         term.target = delegate; term.keyEquivalentModifierMask = [.command]
+        let proofItem = view.addItem(withTitle: "Thread Proof & ATIF Trace…", action: #selector(CoderDelegate.openThreadProof(_:)), keyEquivalent: "P")
+        proofItem.target = delegate; proofItem.keyEquivalentModifierMask = [.command, .shift]
         // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys
         let next = view.addItem(withTitle: "Next Chat", action: #selector(CoderDelegate.nextChat(_:)), keyEquivalent: "\t")
         next.target = delegate; next.keyEquivalentModifierMask = [.control]

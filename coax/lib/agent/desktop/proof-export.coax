@@ -1,0 +1,222 @@
+// Thread Proof & ATIF-v1.8 Exporter / Verifier CLI (GitHub #13895).
+//
+// Converts an OpenAgents Desktop chat JSON file into a canonical ATIF-v1.8
+// `.atif.jsonl` log using coax/lib/nostr/atif/{log,digest}.coax, verifies it
+// through `atif_verify_log`, and emits a machine-readable JSON proof summary
+// (honest effective-model badge, steps_digest, step_count, verification verdict).
+//
+// Usage:
+//   coax/web/tool.sh coax/lib/agent/desktop/proof-export.coax export --chat CHAT.json --out OUT.atif.jsonl [--req-provider P] [--req-model M] [--act-provider P] [--act-model M] [--exec-mode MODE] [--goal-status N]
+//   coax/web/tool.sh coax/lib/agent/desktop/proof-export.coax verify --file TRACE.atif.jsonl
+//   coax/web/tool.sh coax/lib/agent/desktop/proof-export.coax selftest
+#load "thread-proof.coax";
+#load "../../nostr/atif/log.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/tool.coax";
+
+PE_BUF :: 262144;
+PE_LINE :: 32768;
+
+pe_append :: (dst: [] u8, used: int, src: string) -> int {
+  if used + src.count > dst.count { return -1; }
+  for i: 0..<src.count { dst[used + i] = src[i]; }
+  return used + src.count;
+}
+
+pe_export_chat :: (
+  chat_path: string,
+  out_path: string,
+  req_prov: string,
+  req_mod: string,
+  act_prov: string,
+  act_mod: string,
+  exec_mode: string,
+  goal_status: int,
+  out_digest: [] u8,
+  out_steps: [] int
+) -> string {
+  cbuf: [PE_BUF] u8;
+  cn := fs_read(chat_path, cbuf[..]);
+  if cn <= 0 { return "failed to read chat JSON"; }
+  nodes: [4096] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], cast(string) cbuf[0..<cn], nodes[..]) { return "invalid chat JSON"; }
+
+  id_b: [128] u8; id_n := jv_str(doc[0], jv_get(doc[0], 0, "id"), id_b[..]);
+  chat_id := ifx id_n > 0 then cast(string) id_b[0..<id_n] else "thread-local";
+  cwd_b: [512] u8; cwd_n := jv_str(doc[0], jv_get(doc[0], 0, "folder"), cwd_b[..]);
+  cwd := ifx cwd_n > 0 then cast(string) cwd_b[0..<cwd_n] else ".";
+  mod_b: [128] u8; mod_n := jv_str(doc[0], jv_get(doc[0], 0, "model"), mod_b[..]);
+  eff_mod := ifx act_mod.count > 0 then act_mod else ifx mod_n > 0 then cast(string) mod_b[0..<mod_n] else "unknown";
+
+  log_buf: [PE_BUF] u8;
+  used := 0;
+  line_b: [PE_LINE] u8;
+  step_b: [PE_LINE] u8;
+  scratch: [PE_LINE] u8;
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = chat_id,
+    session_id = chat_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = ifx act_prov.count > 0 then act_prov else "openagents-desktop",
+    model_name = eff_mod,
+    cwd = cwd,
+    git_branch = "",
+    source_harness = "openagents-desktop",
+    created_at = "2026-11-21T00:00:00Z"
+  };
+  sn := atif_write_session_line(hdr, line_b[..]);
+  if sn <= 0 { return "failed to write ATIF session header"; }
+  used = pe_append(log_buf[..], used, cast(string) line_b[0..<sn]);
+  if used < 0 { return "ATIF log buffer overflow"; }
+
+  hasher: [1] AtifStepsHasher;
+  atif_steps_hash_init(hasher[..]);
+  step_id := 0;
+
+  turns := jv_get(doc[0], 0, "turns");
+  tcount := jv_len(doc[0], turns);
+  ub: [8192] u8;
+  ab: [16384] u8;
+  tb: [8192] u8;
+  tm: [128] u8;
+
+  for i: 0..<tcount {
+    t := jv_at(doc[0], turns, i);
+    un := jv_str(doc[0], jv_get(doc[0], t, "ask"), ub[..]);
+    if un <= 0 { un = jv_str(doc[0], jv_get(doc[0], t, "user"), ub[..]); }
+    if un <= 0 { un = jv_str(doc[0], jv_get(doc[0], t, "prompt"), ub[..]); }
+    if un > 0 {
+      step_id += 1;
+      ustep := AtifStep.{
+        step_id = step_id,
+        source = ATIF_SOURCE_USER,
+        message = cast(string) ub[0..<un]
+      };
+      jn := atif_write_step_json(ustep, step_b[..]);
+      if jn <= 0 { return "failed to encode user ATIF step"; }
+      if atif_steps_hash_step(hasher[..], cast(string) step_b[0..<jn], scratch[..]) != ATIF_DIGEST_OK { return "failed to hash user ATIF step"; }
+      ln := atif_write_step_line(cast(string) step_b[0..<jn], line_b[..]);
+      used = pe_append(log_buf[..], used, cast(string) line_b[0..<ln]);
+      if used < 0 { return "ATIF log buffer overflow"; }
+    }
+
+    an := jv_str(doc[0], jv_get(doc[0], t, "reply"), ab[..]);
+    if an <= 0 { an = jv_str(doc[0], jv_get(doc[0], t, "assistant"), ab[..]); }
+    thn := jv_str(doc[0], jv_get(doc[0], t, "thought"), tb[..]);
+    tmn := jv_str(doc[0], jv_get(doc[0], t, "ran"), tm[..]);
+    if tmn <= 0 { tmn = jv_str(doc[0], jv_get(doc[0], t, "model"), tm[..]); }
+    turn_model := ifx tmn > 0 then cast(string) tm[0..<tmn] else eff_mod;
+    if an > 0 || thn > 0 {
+      step_id += 1;
+      astep := AtifStep.{
+        step_id = step_id,
+        source = ATIF_SOURCE_AGENT,
+        message = ifx an > 0 then cast(string) ab[0..<an] else "",
+        reasoning_content = ifx thn > 0 then cast(string) tb[0..<thn] else "",
+        model_name = turn_model
+      };
+      jn := atif_write_step_json(astep, step_b[..]);
+      if jn <= 0 { return "failed to encode agent ATIF step"; }
+      if atif_steps_hash_step(hasher[..], cast(string) step_b[0..<jn], scratch[..]) != ATIF_DIGEST_OK { return "failed to hash agent ATIF step"; }
+      ln := atif_write_step_line(cast(string) step_b[0..<jn], line_b[..]);
+      used = pe_append(log_buf[..], used, cast(string) line_b[0..<ln]);
+      if used < 0 { return "ATIF log buffer overflow"; }
+    }
+  }
+
+  en := atif_write_end_line("2026-11-21T00:00:01Z", ATIF_STATE_ENDED, line_b[..]);
+  if en <= 0 { return "failed to write ATIF end record"; }
+  used = pe_append(log_buf[..], used, cast(string) line_b[0..<en]);
+  if used < 0 { return "ATIF log buffer overflow"; }
+
+  if atif_steps_hash_final(hasher[..], out_digest) != ATIF_DIGEST_OK { return "failed to finalize steps_digest"; }
+  out_steps[0] = step_id;
+
+  // Verify the serialized ATIF-v1.8 log against its own canonical steps_digest before writing to disk.
+  log_str := cast(string) log_buf[0..<used];
+  summary := atif_verify_log(log_str, cast(string) out_digest[0..<64]);
+  if !summary.ok || summary.step_count != step_id {
+    return "exported ATIF-v1.8 log failed atif_verify_log";
+  }
+
+  if out_path.count > 0 {
+    _ = fs_mkdir_all(fs_dir(out_path));
+    if !fs_replace_durable(out_path, log_str) { return "failed to write .atif.jsonl file"; }
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("proof-export: arguments did not fit"); return 2; }
+  cmd := args_at(a[..], 0);
+
+  if cmd == "selftest" {
+    tb: [1024] u8; tmp := fs_temp("oa-proof-test-", tb[..]);
+    if tmp.count == 0 { tool_errln("selftest: fs_temp failed"); return 1; }
+    cb: [1200] u8; chat_p := fs_join(tmp, "chat.json", cb[..]);
+    ob: [1200] u8; out_p := fs_join(tmp, "trace.atif.jsonl", ob[..]);
+    sample := "{\"id\":\"chat-proof-1\",\"folder\":\"/tmp/repo\",\"model\":\"gemini-4-flash\",\"turns\":[{\"user\":\"Run tests\",\"assistant\":\"All checks passed (exit 0).\",\"thought\":\"Checking suite output.\",\"model\":\"gemini-4-flash\"}]}";
+    if !fs_write(chat_p, sample) { tool_errln("selftest: write chat failed"); return 1; }
+    dig: [64] u8; steps: [1] int;
+    err := pe_export_chat(chat_p, out_p, "Antigravity", "gemini-4-neon", "Antigravity", "gemini-4-flash", "cloud", TP_GOAL_COMPLETED, dig[..], steps[..]);
+    if err.count > 0 { tool_errln(err); _ = fs_remove(tmp); return 1; }
+    // Verify exported file back from disk
+    rb: [PE_BUF] u8; rn := fs_read(out_p, rb[..]);
+    if rn <= 0 { tool_errln("selftest: read exported .atif.jsonl failed"); _ = fs_remove(tmp); return 1; }
+    v := atif_verify_log(cast(string) rb[0..<rn], cast(string) dig[0..<64]);
+    badge_b: [256] u8;
+    badge := tp_effective_badge("Antigravity", "gemini-4-neon", "Antigravity", "gemini-4-flash", "cloud", badge_b[..]);
+    _ = fs_remove(tmp);
+    if !v.ok || v.step_count != 2 || badge != "Antigravity / gemini-4-flash [cloud] (fallback from gemini-4-neon)" {
+      tool_errln("selftest: verification mismatch");
+      return 1;
+    }
+    print("proof-export selftest: PASS (steps=2 digest=% badge=%)\n", cast(string) dig[0..<64], badge);
+    return 0;
+  }
+
+  if cmd == "verify" {
+    f := args_value(a[..], "--file", "");
+    if f.count == 0 { tool_errln("usage: proof-export verify --file TRACE.atif.jsonl"); return 2; }
+    rb: [PE_BUF] u8; rn := fs_read(f, rb[..]);
+    if rn <= 0 { tool_errln("proof-export verify: failed to read file"); return 1; }
+    v := atif_verify_log(cast(string) rb[0..<rn], "");
+    if !v.ok { tool_errln("proof-export verify: INVALID ATIF-v1.8 log"); return 1; }
+    print("{\"ok\":true,\"step_count\":%,\"steps_digest\":\"%\"}\n", v.step_count, cast(string) v.steps_digest[0..<64]);
+    return 0;
+  }
+
+  if cmd == "export" {
+    chat_p := args_value(a[..], "--chat", "");
+    out_p := args_value(a[..], "--out", "");
+    req_p := args_value(a[..], "--req-provider", "");
+    req_m := args_value(a[..], "--req-model", "");
+    act_p := args_value(a[..], "--act-provider", "");
+    act_m := args_value(a[..], "--act-model", "");
+    emode := args_value(a[..], "--exec-mode", "");
+    if chat_p.count == 0 { tool_errln("usage: proof-export export --chat CHAT.json [--out OUT.atif.jsonl]"); return 2; }
+    dig: [64] u8; steps: [1] int;
+    err := pe_export_chat(chat_p, out_p, req_p, req_m, act_p, act_m, emode, TP_GOAL_NONE, dig[..], steps[..]);
+    if err.count > 0 { tool_errln(err); return 1; }
+    badge_b: [256] u8;
+    badge := tp_effective_badge(req_p, req_m, act_p, act_m, emode, badge_b[..]);
+    jb: [2048] u8; j: [1] Jo;
+    jo_start(j[..], jb[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "ok"); jo_bool(j[..], true);
+    jo_key(j[..], "verified"); jo_bool(j[..], true);
+    jo_key(j[..], "step_count"); jo_int(j[..], steps[0]);
+    jo_key(j[..], "steps_digest"); jo_str(j[..], cast(string) dig[0..<64]);
+    jo_key(j[..], "effective_badge"); jo_str(j[..], badge);
+    jo_key(j[..], "out_path"); jo_str(j[..], out_p);
+    jo_end(j[..]);
+    print("%\n", cast(string) jb[0..<j[0].n]);
+    return 0;
+  }
+
+  tool_errln("usage: proof-export <export|verify|selftest>");
+  return 2;
+}
