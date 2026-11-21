@@ -990,15 +990,39 @@ cp_latex_render :: (src: string, out: [] u8) -> int {
   return cp_latex_render_core(t, out, 0);
 }
 
-// True when text contains at least one $$...$$ or valid inline $...$ math span.
-cp_latex_has_math :: (text: string) -> bool {
+// The MdRun covering byte i of a paragraph, or a plain default run.
+cp_latex_run_at :: (runs: [] MdRun, i: int) -> MdRun {
+  for k: 0..<runs.count {
+    if i >= runs[k].from && i < runs[k].to { return runs[k]; }
+  }
+  return MdRun.{style = MD_PLAIN};
+}
+
+// Append [from..<to] with r's style/marks/link to out_runs, coalescing adjacent matching runs.
+cp_latex_push_run :: (out_runs: [] MdRun, nr: int, from: int, to: int, r: MdRun) -> int {
+  if to <= from || out_runs.count == 0 { return nr; }
+  if nr > 0 {
+    last := out_runs[nr - 1];
+    if last.to == from && last.style == r.style && last.marks == r.marks && last.link_at == r.link_at && last.link_n == r.link_n {
+      out_runs[nr - 1].to = to;
+      return nr;
+    }
+  }
+  if nr >= out_runs.count { return nr; }
+  out_runs[nr] = MdRun.{from = from, to = to, style = r.style, marks = r.marks, link_at = r.link_at, link_n = r.link_n};
+  return nr + 1;
+}
+
+// True when text contains at least one $$...$$ or valid inline $...$ math span outside MD_CODE runs.
+cp_latex_has_math_runs :: (text: string, runs: [] MdRun) -> bool {
   i := 0;
   while i < text.count {
-    if text[i] == '$' {
-      if i + 1 < text.count && text[i + 1] == '$' {
+    if text[i] == '$' && md_style_at(runs, i) != MD_CODE {
+      if i + 1 < text.count && text[i + 1] == '$' && md_style_at(runs, i + 1) != MD_CODE {
         j := i + 2;
         while j + 1 < text.count {
-          if text[j] == '$' && text[j + 1] == '$' { return j > i + 2; }
+          if md_style_at(runs, j) == MD_CODE { break; }
+          if text[j] == '$' && text[j + 1] == '$' && md_style_at(runs, j + 1) != MD_CODE { return j > i + 2; }
           j += 1;
         }
         return false;
@@ -1006,6 +1030,7 @@ cp_latex_has_math :: (text: string) -> bool {
       if i + 1 < text.count && text[i + 1] != ' ' && text[i + 1] != '\n' {
         j := i + 1;
         while j < text.count && text[j] != '\n' {
+          if md_style_at(runs, j) == MD_CODE { break; }
           if text[j] == '$' && j > i + 1 && text[j - 1] != ' ' { return true; }
           j += 1;
         }
@@ -1016,52 +1041,95 @@ cp_latex_has_math :: (text: string) -> bool {
   return false;
 }
 
-// Render inline $...$ and $$...$$ spans inside a prose paragraph, leaving non-math text untouched.
-cp_latex_inline :: (src: string, out: [] u8) -> int {
-  n := 0; i := 0;
+// True when text contains at least one $$...$$ or valid inline $...$ math span.
+cp_latex_has_math :: (text: string) -> bool {
+  no_runs: [1] MdRun;
+  return cp_latex_has_math_runs(text, no_runs[0..<0]);
+}
+
+CpLatexInline :: struct { n: int; nr: int; }
+
+// Render inline $...$ and $$...$$ spans inside a prose paragraph, leaving non-math text and
+// MD_CODE spans untouched while remapping all Markdown runs to the new byte offsets.
+cp_latex_inline_runs :: (src: string, runs: [] MdRun, out: [] u8, out_runs: [] MdRun) -> CpLatexInline {
+  n := 0; nr := 0; i := 0;
   mb: [512] u8;
   while i < src.count && n < out.count {
-    if src[i] == '$' {
-      if i + 1 < src.count && src[i + 1] == '$' {
+    r := cp_latex_run_at(runs, i);
+    if r.style != MD_CODE && src[i] == '$' {
+      if i + 1 < src.count && src[i + 1] == '$' && md_style_at(runs, i + 1) != MD_CODE {
         j := i + 2; found := -1;
         while j + 1 < src.count {
-          if src[j] == '$' && src[j + 1] == '$' { found = j; break; }
+          if md_style_at(runs, j) == MD_CODE { break; }
+          if text_at_eq2(src, j, '$', '$') && md_style_at(runs, j + 1) != MD_CODE { found = j; break; }
           j += 1;
         }
         if found > i + 2 {
+          n0 := n;
           mn := cp_latex_render_core(cp_trim(cast(string) src[i + 2..<found]), mb[..], 0);
           n = cp_latex_put(out, n, cast(string) mb[0..<mn]);
+          nr = cp_latex_push_run(out_runs, nr, n0, n, r);
           i = found + 2; continue;
         }
       } else if i + 1 < src.count && src[i + 1] != ' ' && src[i + 1] != '\n' {
         j := i + 1; found := -1;
         while j < src.count && src[j] != '\n' {
+          if md_style_at(runs, j) == MD_CODE { break; }
           if src[j] == '$' && j > i + 1 && src[j - 1] != ' ' { found = j; break; }
           j += 1;
         }
         if found > i + 1 {
+          n0 := n;
           mn := cp_latex_render_core(cast(string) src[i + 1..<found], mb[..], 0);
           n = cp_latex_put(out, n, cast(string) mb[0..<mn]);
+          nr = cp_latex_push_run(out_runs, nr, n0, n, r);
           i = found + 1; continue;
         }
       }
     }
-    out[n] = src[i]; n += 1; i += 1;
+    n0 := n;
+    out[n] = src[i]; n += 1;
+    nr = cp_latex_push_run(out_runs, nr, n0, n, r);
+    i += 1;
   }
-  return n;
+  return CpLatexInline.{n = n, nr = nr};
 }
 
-// Draw a display math card (for ```math / ```latex fences or standalone $$...$$ blocks).
+text_at_eq2 :: (src: string, j: int, a: u8, b: u8) -> bool {
+  return j + 1 < src.count && src[j] == a && src[j + 1] == b;
+}
+
+// Render inline $...$ and $$...$$ spans inside a prose paragraph, leaving non-math text untouched.
+cp_latex_inline :: (src: string, out: [] u8) -> int {
+  no_runs: [1] MdRun;
+  res := cp_latex_inline_runs(src, no_runs[0..<0], out, no_runs[0..<0]);
+  return res.n;
+}
+
+// Draw a display math card (for ```math / ```latex fences or standalone $$...$$ blocks),
+// wrapping long or multi-line equations inside the card width.
 cp_latex_draw_card :: (f: [] UiFrame, x: f32, y: f32, w: f32, rendered: string) -> f32 {
   k := f[0].skin; sh := f[0].sheet; m := f[0].m; th := cp_theme();
+  pad_x := 12.0f32;
   pad_y := 10.0f32;
-  h := k.body.line + 2.0f32 * pad_y;
-  _ := sheet_box(sh, x, y, w, h, 8.0f32, k.border, th.surface, th.border);
+  iw := w - 2.0f32 * pad_x;
+  if iw < 40.0f32 { iw = 40.0f32; }
   text_s := sheet_pool(sh, rendered);
-  tw := measure_width(m, k.body.face, text_s);
-  tx := x + (w - tw) / 2.0f32;
-  if tx < x + 12.0f32 { tx = x + 12.0f32; }
-  _ := sheet_text(sh, m, -1, tx, y + pad_y, k.body.line, k.body.face, k.ink, text_s);
+  faces := uiskin_faces(k);
+  lines: [64] TextLine;
+  n := text_wrap_lines(m, faces, text_s, iw, lines[..]);
+  if n < 1 { n = 1; lines[0] = TextLine.{from = 0, to = text_s.count}; }
+  h := cast(f32) n * k.body.line + 2.0f32 * pad_y;
+  _ := sheet_box(sh, x, y, w, h, 8.0f32, k.border, th.surface, th.border);
+  for q: 0..<n {
+    seg := cast(string) text_s[lines[q].from..<lines[q].to];
+    tw := measure_width(m, k.body.face, seg);
+    tx := x + (w - tw) / 2.0f32;
+    if tx < x + pad_x { tx = x + pad_x; }
+    ly := y + pad_y + cast(f32) q * k.body.line;
+    ln := sheet_line(sh, tx, ly, k.body.line, q + 1 == n);
+    _ := sheet_text(sh, m, ln, tx, ly, k.body.line, k.body.face, k.ink, seg);
+  }
   return h;
 }
 
@@ -1073,7 +1141,7 @@ cp_doc_has_rich :: (doc: [] MdDoc, block0: int, blocks: int) -> bool {
       lang := md_lang(doc, b);
       if cp_eq_ci(lang, "mermaid") || cp_eq_ci(lang, "math") || cp_eq_ci(lang, "latex") { return true; }
     } else if kind == MB_PARA {
-      if cp_latex_has_math(md_block_text(doc, b)) { return true; }
+      if cp_latex_has_math_runs(md_block_text(doc, b), md_block_runs(doc, b)) { return true; }
     }
   }
   return false;
@@ -1091,7 +1159,8 @@ cp_rich_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc
   row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, block0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
   uiframe_open(f, row);
   g: [1] CpMermaidGraph;
-  lb: [2048] u8;
+  lb: [8192] u8;
+  mr: [256] MdRun;
   for b: block0..<block0 + blocks {
     if b > block0 { h += s.md.block_gap; }
     kind := doc[0].blocks[b].kind;
@@ -1110,16 +1179,17 @@ cp_rich_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc
         if ln > 0 { h += cp_latex_draw_card(f, x, y + h, w, cast(string) lb[0..<ln]); continue; }
       }
       h += app_code_veiled(f, bid, x, y + h, w, lang, code, copied == b - block0, copy_action, vv, doc[0].blocks[b].at);
-    } else if kind == MB_PARA && cp_latex_has_math(md_block_text(doc, b)) {
+    } else if kind == MB_PARA && cp_latex_has_math_runs(md_block_text(doc, b), md_block_runs(doc, b)) {
       raw := cp_trim(md_block_text(doc, b));
       if raw.count >= 4 && raw[0] == '$' && raw[1] == '$' && raw[raw.count - 2] == '$' && raw[raw.count - 1] == '$' {
         ln := cp_latex_render(raw, lb[..]);
         h += cp_latex_draw_card(f, x, y + h, w, cast(string) lb[0..<ln]);
       } else {
-        ln := cp_latex_inline(md_block_text(doc, b), lb[..]);
-        rendered := sheet_pool(sh, cast(string) lb[0..<ln]);
-        _ := sheet_text(sh, m, -1, x, y + h, s.md.line, s.body.face, s.ink, rendered);
-        h += s.md.line;
+        res := cp_latex_inline_runs(md_block_text(doc, b), md_block_runs(doc, b), lb[..], mr[..]);
+        rendered := sheet_pool(sh, cast(string) lb[0..<res.n]);
+        ls := s; ls.md.link_paths = false; ls.md.link_urls = link_action != 0; nh0 := sh[0].nh;
+        h += markdown_text_veiled(sh, m, ls, rendered, mr[0..<res.nr], x, y + h, w, s.md.line, s.ink, doc[0].blocks[b].at, vv);
+        if link_action != 0 { urls += app_message_links(f, id, doc, b, nh0, urls, link_action); }
       }
     } else if kind == MB_RULE {
       h += app_divider(f, x, y + h, w);

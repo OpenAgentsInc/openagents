@@ -192,6 +192,62 @@ cp_rich_test_setup :: (s: [] CoderPage) {
   #assert saw_table;
 }
 
+#test "paragraph with inline LaTeX math wraps within column width and preserves inline code pills" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  eb_set(s[0].draft[..], "explain RowSrc");
+  #assert cp_send(s);
+  reply := "### Mathematical Role in the Proof\n`RowSrc` is the final assembly step for the Galois-representation / integral-structure side of the argument. It discharges the `UpperTheory.GalStar.Row0b recT` hypothesis to establish `UpperTheory.EveryCharacter` (non-vanishing of Dirichlet $L$-functions to the right of $\\operatorname{Re}(s) = 1/2$ for every character), which directly yields `Main.riemannHypothesis`.";
+  cp_reply_set(s, 0, reply, false);
+  s[0].turns[0].state = CP_DONE;
+
+  // Render with font metrics at a realistic window width (1024x660) so wrapping is exercised in pixels.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(s[0].atlas[..]), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, s[0].reduced, false);
+  cp_layout(s, f[..], 1024, 660);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+
+  sh := surface_sheet(s[0].surface[..]);
+  // Every text primitive in the reply must stay within the window width (never run off screen right),
+  // inline code (`RowSrc`) must still be drawn in the code face, and the paragraph must wrap across multiple lines.
+  k := cp_skin();
+  saw_code_rowsrc := false;
+  saw_math_re := false;
+  para_lines := 0;
+  last_y: f32 = -1;
+  for qi: 0..<sh.no {
+    pr := sh.over[qi];
+    if pr.kind != PRIM_TEXT { continue; }
+    #assert pr.x + pr.w <= 1024.0f32;
+    if pr.text == "RowSrc" && pr.id == k.code.face { saw_code_rowsrc = true; }
+    if cp_contains(pr.text, "Re(s) = 1/2") { saw_math_re = true; }
+    if pr.text == "RowSrc" || cp_contains(pr.text, "discharges") || cp_contains(pr.text, "Re(s) = 1/2") || cp_contains(pr.text, "Main.riemannHypothesis") {
+      if pr.y != last_y { para_lines += 1; last_y = pr.y; }
+    }
+  }
+  #assert saw_code_rowsrc && saw_math_re && para_lines >= 3;
+
+  // Display math card with a long formula also wraps within the column width.
+  eb_set(s[0].draft[..], "long display math");
+  #assert cp_send(s);
+  long_math := "$$\\alpha_1 + \\alpha_2 + \\alpha_3 + \\alpha_4 + \\alpha_5 + \\alpha_6 + \\alpha_7 + \\alpha_8 + \\alpha_9 + \\alpha_{10} + \\beta_1 + \\beta_2 + \\beta_3 + \\beta_4 + \\beta_5 + \\beta_6 + \\beta_7 + \\beta_8 + \\beta_9 + \\beta_{10} = \\infty$$";
+  cp_reply_set(s, 1, long_math, false);
+  s[0].turns[1].state = CP_DONE;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(s[0].atlas[..]), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, s[0].reduced, false);
+  cp_layout(s, f[..], 800, 660);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  sh2 := surface_sheet(s[0].surface[..]);
+  for qi: 0..<sh2.no {
+    pr := sh2.over[qi];
+    if pr.kind == PRIM_TEXT { #assert pr.x + pr.w <= 800.0f32; }
+  }
+
+  // Dollar signs inside inline code (`$a` and `$b`) are not treated as LaTeX math.
+  d_code: [1] MdDoc;
+  _ := md_parse(d_code[..], "Use `echo $a $b` in shell.", 0);
+  #assert !cp_latex_has_math_runs(md_block_text(d_code[..], 0), md_block_runs(d_code[..], 0));
+}
+
 #test "inline selection-to-quote and reply Quote button insert blockquote into composer" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
   cp_rich_test_setup(s);
