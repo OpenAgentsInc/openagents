@@ -510,4 +510,27 @@ int cd_skills_count(void *page);
 int cd_skills_target(void *page);
 int cd_skills_toggle(void *page, int idx);
 int cd_skill_name(void *page, int idx, char *out, int cap);
+// External CLI & ACP Registry providers, cross-provider budgeted handoff, Fresh Session & multi-model fan-out (page/providers.coax; #13878).
+void cd_set_codex(void *page, int on, const char *status, const char *auth);
+void cd_set_cursor(void *page, int on, const char *status, const char *auth);
+int cd_acp_load(void *page, const char *json_text);
+int cd_acp_save(void *page, char *out, int cap);
+int cd_acp_add(void *page, const char *id, const char *name, const char *program, const char *args, int enabled);
+int cd_acp_remove(void *page, const char *id);
+int cd_acp_count(void *page);
+int cd_model_provider(void *page);
+int cd_model_id_out(void *page, char *out, int cap);
+int cd_model_acp_program(void *page, char *out, int cap);
+int cd_model_acp_args(void *page, char *out, int cap);
+void cd_fresh_session_set(void *page, int on);
+int cd_fresh_session(void *page);
+int cd_handoff_compose(void *page, const char *from_provider, const char *to_provider, int budget, char *out, int cap);
+int cd_handoff_needed(void *page, int prev_kind, int next_kind);
+int cd_fanout_toggle(void *page, const char *model_id);
+void cd_fanout_set_active(void *page, int active);
+void cd_fanout_clear(void *page);
+int cd_fanout_count(void *page);
+int cd_fanout_active(void *page);
+int cd_fanout_target(void *page, int idx, char *out, int cap);
+int cd_fanout_prompt(void *page, char *out, int cap);
 #endif

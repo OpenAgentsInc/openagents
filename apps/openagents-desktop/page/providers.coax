@@ -1,0 +1,623 @@
+// Coder Desktop page (../page.coax): Codex, Cursor, and generic ACP Registry providers,
+// cross-provider budgeted mid-thread handoff, Fresh Session toggle, and multi-model fan-out
+// (GitHub #13878).
+
+// Provider kinds for routing workers and detecting cross-provider switches.
+CP_PROV_CLOUD :: 0;     // Gemini (Vertex/API) or OpenRouter via mcworker
+CP_PROV_AGY :: 1;       // Antigravity CLI via agyworker
+CP_PROV_INKLING :: 2;   // Local Inkling 2 Mini via Psionic Metal + mcworker
+CP_PROV_CODEX :: 3;     // OpenAI Codex CLI (`codex`)
+CP_PROV_CURSOR :: 4;    // Cursor ACP CLI (`agent` / `cursor`)
+CP_PROV_ACP :: 5;       // User-registered generic ACP CLI binary
+
+// Host actions (coder_page_action; non-conflicting with state.coax / mcpskills.coax 0..74).
+CP_ASK_CODEX :: 75;        // Settings > Models > Codex status/configure dialog
+CP_ASK_CURSOR :: 76;       // Settings > Models > Cursor status/configure dialog
+CP_ASK_ACP_REGISTRY :: 77; // Settings > Models > Custom ACP Registry Add/Remove dialog
+CP_ASK_FANOUT :: 78;       // Composer submitted while multi-model fan-out is active
+CP_ASK_FANOUT_PICK :: 79;  // Composer fan-out chip pressed: open multi-model target picker
+
+// Dispatch actions (non-conflicting with state.coax / find.coax / usage.coax 1..242).
+CP_FRESH_TOGGLE :: 250;    // Composer foot chip: toggle Fresh Session (skip prior history)
+CP_FANOUT_OPEN :: 251;     // Composer foot chip: open multi-model fan-out target picker
+CP_FANOUT_TOGGLE :: 252;   // Toggle a model in/out of the fan-out target set
+
+// Custom ACP Registry limits.
+CP_ACP_MAX :: 8;
+CP_ACP_ID :: 32;
+CP_ACP_NAME :: 64;
+CP_ACP_PROG :: 256;
+CP_ACP_ARGS :: 128;
+CP_ACP_PREFIX :: "acp:";
+CP_PROV_STATUS :: 96;
+
+// Cross-provider handoff defaults.
+CP_HANDOFF_DEFAULT_BUDGET :: 8192;
+CP_HANDOFF_TRUNC :: "… [truncated]";
+
+// Multi-model fan-out limits.
+CP_FANOUT_MIN :: 2;
+CP_FANOUT_MAX :: 4;
+CP_FANOUT_ID :: 64;
+CP_FANOUT_PROMPT :: 4096;
+
+CpAcpEntry :: struct {
+  id: [CP_ACP_ID] u8; id_n: int;
+  name: [CP_ACP_NAME] u8; name_n: int;
+  program: [CP_ACP_PROG] u8; program_n: int;
+  args: [CP_ACP_ARGS] u8; args_n: int;
+  enabled: bool;
+  used: bool;
+}
+
+CpProviders :: struct {
+  codex: bool;
+  codex_status: [CP_PROV_STATUS] u8; codex_status_n: int;
+  codex_auth: [CP_PROV_STATUS] u8; codex_auth_n: int;
+  cursor: bool;
+  cursor_status: [CP_PROV_STATUS] u8; cursor_status_n: int;
+  cursor_auth: [CP_PROV_STATUS] u8; cursor_auth_n: int;
+  acp: [CP_ACP_MAX] CpAcpEntry;
+  acp_n: int;
+  acp_status: [CP_PROV_STATUS] u8; acp_status_n: int;
+  // Scratch buffers for formatting ACP model ids / descriptions / bylines.
+  acp_id_buf: [64] u8;
+  acp_desc_buf: [160] u8;
+  acp_meta_buf: [128] u8;
+  // Composer Fresh Session toggle (skips prior history / handoff on next send).
+  fresh_session: bool;
+  // Multi-model fan-out state (2..4 selected model ids).
+  fanout_ids: [CP_FANOUT_MAX][CP_FANOUT_ID] u8;
+  fanout_id_n: [CP_FANOUT_MAX] int;
+  fanout_n: int;
+  fanout_active: bool;
+  fanout_prompt: [CP_FANOUT_PROMPT] u8;
+  fanout_prompt_n: int;
+}
+
+cp_prov_reset_chat :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].prov[0].fresh_session = false;
+  s[0].prov[0].fanout_prompt_n = 0;
+}
+
+// ---------------------------------------------------------------- ACP Registry helpers
+
+cp_acp_enabled_count :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return 0; }
+  n := 0;
+  for i: 0..<s[0].prov[0].acp_n {
+    if s[0].prov[0].acp[i].used && s[0].prov[0].acp[i].enabled { n += 1; }
+  }
+  return n;
+}
+
+// Returns the 0..<acp_n slot of the k-th enabled ACP entry, or -1.
+cp_acp_nth_enabled :: (s: [] CoderPage, k: int) -> int {
+  if s.count < 1 || k < 0 { return -1; }
+  seen := 0;
+  for i: 0..<s[0].prov[0].acp_n {
+    if !s[0].prov[0].acp[i].used || !s[0].prov[0].acp[i].enabled { continue; }
+    if seen == k { return i; }
+    seen += 1;
+  }
+  return -1;
+}
+
+cp_acp_find_by_id :: (s: [] CoderPage, id: string) -> int {
+  if s.count < 1 || id.count == 0 { return -1; }
+  for i: 0..<s[0].prov[0].acp_n {
+    if s[0].prov[0].acp[i].used && cast(string) s[0].prov[0].acp[i].id[0..<s[0].prov[0].acp[i].id_n] == id {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Generate a slug id from name when id is empty (lowercase ascii alnum + '-').
+cp_acp_make_id :: (name: string, out: [] u8) -> int {
+  n := 0;
+  for c: name {
+    if n >= out.count { break; }
+    ch := cp_lower(c);
+    if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+      out[n] = ch; n += 1;
+    } else if (ch == ' ' || ch == '-' || ch == '_') && n > 0 && out[n - 1] != '-' {
+      out[n] = '-'; n += 1;
+    }
+  }
+  while n > 0 && out[n - 1] == '-' { n -= 1; }
+  if n == 0 { n = cp_out(out, "acp"); }
+  return n;
+}
+
+cp_acp_refresh_status :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  total := s[0].prov[0].acp_n;
+  en := cp_acp_enabled_count(s);
+  if total == 0 {
+    s[0].prov[0].acp_status_n = cp_out(s[0].prov[0].acp_status[..], "None registered");
+    return;
+  }
+  b := s[0].prov[0].acp_status[..];
+  n := el_put_i(b, 0, total);
+  n = el_put(b, n, " registered (");
+  n = el_put_i(b, n, en);
+  n = el_put(b, n, " enabled)");
+  s[0].prov[0].acp_status_n = n;
+}
+
+cp_acp_add :: (s: [] CoderPage, id: string, name: string, program: string, args: string, enabled: bool) -> bool {
+  if s.count < 1 || name.count == 0 || program.count == 0 { return false; }
+  id_buf: [CP_ACP_ID] u8;
+  id_n := ifx id.count > 0 then cp_out(id_buf[..], id) else cp_acp_make_id(name, id_buf[..]);
+  eff_id := cast(string) id_buf[0..<id_n];
+  // Update existing entry if id matches.
+  at := cp_acp_find_by_id(s, eff_id);
+  if at < 0 {
+    if s[0].prov[0].acp_n >= CP_ACP_MAX { return false; }
+    at = s[0].prov[0].acp_n;
+    s[0].prov[0].acp_n += 1;
+  }
+  s[0].prov[0].acp[at] = CpAcpEntry.{};
+  s[0].prov[0].acp[at].id_n = cp_out(s[0].prov[0].acp[at].id[..], eff_id);
+  s[0].prov[0].acp[at].name_n = cp_out(s[0].prov[0].acp[at].name[..], name);
+  s[0].prov[0].acp[at].program_n = cp_out(s[0].prov[0].acp[at].program[..], program);
+  s[0].prov[0].acp[at].args_n = cp_out(s[0].prov[0].acp[at].args[..], args);
+  s[0].prov[0].acp[at].enabled = enabled;
+  s[0].prov[0].acp[at].used = true;
+  cp_acp_refresh_status(s);
+  s[0].model = cp_model_index(s);
+  return true;
+}
+
+cp_acp_remove :: (s: [] CoderPage, id: string) -> bool {
+  if s.count < 1 { return false; }
+  at := cp_acp_find_by_id(s, id);
+  if at < 0 { return false; }
+  for i: at + 1..<s[0].prov[0].acp_n {
+    s[0].prov[0].acp[i - 1] = s[0].prov[0].acp[i];
+  }
+  s[0].prov[0].acp_n -= 1;
+  s[0].prov[0].acp[s[0].prov[0].acp_n] = CpAcpEntry.{};
+  cp_acp_refresh_status(s);
+  s[0].model = cp_model_index(s);
+  return true;
+}
+
+cp_acp_set_enabled :: (s: [] CoderPage, id: string, enabled: bool) -> bool {
+  if s.count < 1 { return false; }
+  at := cp_acp_find_by_id(s, id);
+  if at < 0 { return false; }
+  s[0].prov[0].acp[at].enabled = enabled;
+  cp_acp_refresh_status(s);
+  s[0].model = cp_model_index(s);
+  return true;
+}
+
+// Serialize all ACP Registry entries to JSON array:
+// [{"id":"...","name":"...","program":"...","args":"...","enabled":true},...]
+cp_acp_serialize :: (s: [] CoderPage, out: [] u8) -> int {
+  if s.count < 1 || out.count < 2 { return 0; }
+  n := json_raw(out, 0, "[");
+  some := false;
+  for i: 0..<s[0].prov[0].acp_n {
+    if !s[0].prov[0].acp[i].used { continue; }
+    n = json_raw(out, n, ifx some then ",{\"id\":" else "{\"id\":");
+    n = json_write_string(out, n, cast(string) s[0].prov[0].acp[i].id[0..<s[0].prov[0].acp[i].id_n]);
+    n = json_raw(out, n, ",\"name\":");
+    n = json_write_string(out, n, cast(string) s[0].prov[0].acp[i].name[0..<s[0].prov[0].acp[i].name_n]);
+    n = json_raw(out, n, ",\"program\":");
+    n = json_write_string(out, n, cast(string) s[0].prov[0].acp[i].program[0..<s[0].prov[0].acp[i].program_n]);
+    n = json_raw(out, n, ",\"args\":");
+    n = json_write_string(out, n, cast(string) s[0].prov[0].acp[i].args[0..<s[0].prov[0].acp[i].args_n]);
+    n = json_raw(out, n, ifx s[0].prov[0].acp[i].enabled then ",\"enabled\":true}" else ",\"enabled\":false}");
+    some = true;
+  }
+  n = json_raw(out, n, "]");
+  return ifx n < 0 then 0 else n;
+}
+
+// Parse JSON array of ACP Registry entries into CpProviders (replaces existing list).
+// Returns number of valid entries loaded, or -1 on invalid JSON.
+cp_acp_parse :: (s: [] CoderPage, text: string) -> int {
+  if s.count < 1 { return -1; }
+  // Clear existing entries.
+  for i: 0..<CP_ACP_MAX { s[0].prov[0].acp[i] = CpAcpEntry.{}; }
+  s[0].prov[0].acp_n = 0;
+  // Trim leading whitespace to check for '['.
+  a := 0;
+  while a < text.count && (text[a] == ' ' || text[a] == '\t' || text[a] == '\n' || text[a] == '\r') { a += 1; }
+  if a >= text.count || text[a] != '[' {
+    cp_acp_refresh_status(s);
+    s[0].model = cp_model_index(s);
+    return -1;
+  }
+  arr := cast(string) text[a..<text.count];
+  cnt := cl_count(arr);
+  ab: [4096] u8;
+  ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  loaded := 0;
+  for i: 0..<cnt {
+    if loaded >= CP_ACP_MAX { break; }
+    ar[0].at = 0;
+    item := cl_json(arr, cl_item(arr, i));
+    if item.count == 0 { continue; }
+    id := cl_str(ar[..], item, "id");
+    name := cl_str(ar[..], item, "name");
+    program := cl_str(ar[..], item, "program");
+    args := cl_str(ar[..], item, "args");
+    en_opt := cl_bool(item, "enabled");
+    enabled := ifx en_opt.ok then en_opt.value else true;
+    if name.count == 0 || program.count == 0 { continue; }
+    if cp_acp_add(s, id, name, program, args, enabled) { loaded += 1; }
+  }
+  cp_acp_refresh_status(s);
+  s[0].model = cp_model_index(s);
+  return loaded;
+}
+
+// ---------------------------------------------------------------- Model-picker index helpers
+
+cp_codex_idx :: (s: [] CoderPage) -> int {
+  if s.count < 1 || !s[0].prov[0].codex { return -1; }
+  n := 0;
+  if cp_cloud_ok(s) {
+    n = CP_MODELS;
+    if s[0].or_main_n > 0 { n += 1; }
+  }
+  if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
+  return n;
+}
+cp_is_codex :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].codex && idx == cp_codex_idx(s); }
+
+cp_cursor_idx :: (s: [] CoderPage) -> int {
+  if s.count < 1 || !s[0].prov[0].cursor { return -1; }
+  n := 0;
+  if cp_cloud_ok(s) {
+    n = CP_MODELS;
+    if s[0].or_main_n > 0 { n += 1; }
+  }
+  if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
+  if s[0].prov[0].codex { n += 1; }
+  return n;
+}
+cp_is_cursor :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].cursor && idx == cp_cursor_idx(s); }
+
+cp_acp_base_idx :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return 0; }
+  n := 0;
+  if cp_cloud_ok(s) {
+    n = CP_MODELS;
+    if s[0].or_main_n > 0 { n += 1; }
+  }
+  if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
+  if s[0].prov[0].codex { n += 1; }
+  if s[0].prov[0].cursor { n += 1; }
+  return n;
+}
+
+// Returns the 0..<acp_n entry index for picker index `idx`, or -1 if `idx` is not an ACP entry.
+cp_acp_slot_for_model :: (s: [] CoderPage, idx: int) -> int {
+  if s.count < 1 { return -1; }
+  base := cp_acp_base_idx(s);
+  if idx < base { return -1; }
+  return cp_acp_nth_enabled(s, idx - base);
+}
+
+cp_is_acp :: (s: [] CoderPage, idx: int) -> bool { return cp_acp_slot_for_model(s, idx) >= 0; }
+
+cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
+  if cp_is_agy(s, idx) { return CP_PROV_AGY; }
+  if cp_is_inkling(s, idx) { return CP_PROV_INKLING; }
+  if cp_is_codex(s, idx) { return CP_PROV_CODEX; }
+  if cp_is_cursor(s, idx) { return CP_PROV_CURSOR; }
+  if cp_is_acp(s, idx) { return CP_PROV_ACP; }
+  return CP_PROV_CLOUD;
+}
+
+// ---------------------------------------------------------------- Cross-provider budgeted handoff
+
+// Copy up to `cap` bytes of `src` into `dst`, backing up to a UTF-8 boundary and appending
+// CP_HANDOFF_TRUNC when truncated. Returns bytes written.
+cp_handoff_fit :: (dst: [] u8, src: string, cap: int) -> int {
+  lim := ifx cap < dst.count then cap else dst.count;
+  if lim <= 0 { return 0; }
+  if src.count <= lim {
+    for i: 0..<src.count { dst[i] = src[i]; }
+    return src.count;
+  }
+  if lim <= CP_HANDOFF_TRUNC.count {
+    k := text_byte_floor(src, lim);
+    for i: 0..<k { dst[i] = src[i]; }
+    return k;
+  }
+  k := text_byte_floor(src, lim - CP_HANDOFF_TRUNC.count);
+  for i: 0..<k { dst[i] = src[i]; }
+  for i: 0..<CP_HANDOFF_TRUNC.count { dst[k + i] = CP_HANDOFF_TRUNC[i]; }
+  return k + CP_HANDOFF_TRUNC.count;
+}
+
+// Pure budgeted transcript summary builder for cross-provider mid-thread handoff.
+// Returns 0 when Fresh Session is toggled on, no completed turns exist, or budget <= 0.
+// Never writes more than min(budget, out.count) bytes.
+cp_handoff_compose :: (s: [] CoderPage, from_provider: string, to_provider: string, budget: int, out: [] u8) -> int {
+  if s.count < 1 || s[0].prov[0].fresh_session || s[0].nturns == 0 || budget <= 0 || out.count == 0 { return 0; }
+  lim := ifx budget < out.count then budget else out.count;
+  // Collect indices of completed turns with non-empty asks.
+  done_idx: [CP_TURNS] int;
+  ndone := 0;
+  for i: 0..<s[0].nturns {
+    if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].ask_n == 0 { continue; }
+    if ndone < CP_TURNS { done_idx[ndone] = i; ndone += 1; }
+  }
+  if ndone == 0 { return 0; }
+
+  // Build header.
+  hdr: [256] u8;
+  hn := cp_out(hdr[..], "[Provider handoff");
+  if from_provider.count > 0 && to_provider.count > 0 {
+    hn += cp_out(hdr[hn..<hdr.count], " from ");
+    hn += cp_out(hdr[hn..<hdr.count], from_provider);
+    hn += cp_out(hdr[hn..<hdr.count], " to ");
+    hn += cp_out(hdr[hn..<hdr.count], to_provider);
+  }
+  hn += cp_out(hdr[hn..<hdr.count], " — prior conversation summary]\n");
+  if hn >= lim { return cp_handoff_fit(out, cast(string) hdr[0..<hn], lim); }
+
+  // Estimate how many most-recent turns fit within remaining budget.
+  // Reserve space for optional omission note (~56 bytes) if we drop older turns.
+  rem := lim - hn;
+  start_k := ndone;
+  used := 0;
+  for rev: 0..<ndone {
+    k := ndone - 1 - rev;
+    ti := done_idx[k];
+    ask_len := s[0].turns[ti].ask_n;
+    rep_len := ifx s[0].turns[ti].reply_n > 0 then s[0].turns[ti].reply_n else 32;
+    // Cap per-turn budget so at least the most recent turn always fits.
+    need := 24 + ask_len + rep_len;
+    omit_reserve := ifx k > 0 then 56 else 0;
+    if rev > 0 && used + need + omit_reserve > rem { break; }
+    used += need;
+    start_k = k;
+  }
+
+  n := cp_out(out[0..<lim], cast(string) hdr[0..<hn]);
+  if start_k > 0 {
+    nb: [64] u8;
+    nn := cp_out(nb[..], "(");
+    nn = el_put_i(nb[..], nn, start_k);
+    nn += cp_out(nb[nn..<nb.count], ifx start_k == 1 then " earlier turn omitted for context budget)\n" else " earlier turns omitted for context budget)\n");
+    if n + nn <= lim {
+      for i: 0..<nn { out[n + i] = nb[i]; }
+      n += nn;
+    }
+  }
+
+  kept := ndone - start_k;
+  for k: start_k..<ndone {
+    if n >= lim { break; }
+    ti := done_idx[k];
+    turns_left := ndone - k;
+    room := lim - n;
+    // Share remaining space across remaining turns, keeping at least 1 byte for labels.
+    turn_budget := ifx turns_left > 1 then room / turns_left else room;
+    if turn_budget < 24 { turn_budget = room; }
+    u_lbl := "User: ";
+    a_lbl := "\nAssistant: ";
+    tail := "\n";
+    overhead := u_lbl.count + a_lbl.count + tail.count;
+    if room <= u_lbl.count + 4 { break; }
+
+    ask := cast(string) s[0].turns[ti].ask[0..<s[0].turns[ti].ask_n];
+    reply := ifx s[0].turns[ti].reply_n > 0 then cast(string) s[0].turns[ti].reply[0..<s[0].turns[ti].reply_n] else cp_recall_ended(s[0].turns[ti].state);
+
+    // Split text budget between ask (up to 40%) and reply (remainder), or full if short.
+    text_budget := ifx turn_budget > overhead then turn_budget - overhead else 0;
+    ask_cap := ifx ask.count + reply.count <= text_budget then ask.count else text_budget / 2;
+    if ask_cap > ask.count { ask_cap = ask.count; }
+    rep_cap := ifx text_budget > ask_cap then text_budget - ask_cap else 0;
+    if rep_cap > reply.count { rep_cap = reply.count; }
+
+    if n + u_lbl.count > lim { break; }
+    for i: 0..<u_lbl.count { out[n + i] = u_lbl[i]; }
+    n += u_lbl.count;
+    if ask_cap > 0 && n < lim {
+      n += cp_handoff_fit(out[n..<lim], ask, ask_cap);
+    }
+    if n + a_lbl.count > lim { break; }
+    for i: 0..<a_lbl.count { out[n + i] = a_lbl[i]; }
+    n += a_lbl.count;
+    if rep_cap > 0 && n < lim {
+      n += cp_handoff_fit(out[n..<lim], reply, rep_cap);
+    }
+    if n + tail.count <= lim {
+      out[n] = '\n'; n += 1;
+    }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- Multi-model fan-out
+
+cp_fanout_find :: (s: [] CoderPage, model_id: string) -> int {
+  if s.count < 1 || model_id.count == 0 { return -1; }
+  for i: 0..<s[0].prov[0].fanout_n {
+    if cast(string) s[0].prov[0].fanout_ids[i][0..<s[0].prov[0].fanout_id_n[i]] == model_id {
+      return i;
+    }
+  }
+  return -1;
+}
+
+cp_fanout_has :: (s: [] CoderPage, model_id: string) -> bool { return cp_fanout_find(s, model_id) >= 0; }
+cp_fanout_count :: (s: [] CoderPage) -> int { return ifx s.count > 0 then s[0].prov[0].fanout_n else 0; }
+cp_fanout_ready :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].prov[0].fanout_active && s[0].prov[0].fanout_n >= CP_FANOUT_MIN; }
+
+cp_fanout_toggle_model :: (s: [] CoderPage, model_id: string) -> bool {
+  if s.count < 1 || model_id.count == 0 || model_id.count > CP_FANOUT_ID { return false; }
+  at := cp_fanout_find(s, model_id);
+  if at >= 0 {
+    for i: at + 1..<s[0].prov[0].fanout_n {
+      s[0].prov[0].fanout_id_n[i - 1] = cp_out(s[0].prov[0].fanout_ids[i - 1][..], cast(string) s[0].prov[0].fanout_ids[i][0..<s[0].prov[0].fanout_id_n[i]]);
+    }
+    s[0].prov[0].fanout_n -= 1;
+    s[0].prov[0].fanout_id_n[s[0].prov[0].fanout_n] = 0;
+    if s[0].prov[0].fanout_n < CP_FANOUT_MIN { s[0].prov[0].fanout_active = false; }
+    return true;
+  }
+  if s[0].prov[0].fanout_n >= CP_FANOUT_MAX { return false; }
+  idx := s[0].prov[0].fanout_n;
+  s[0].prov[0].fanout_id_n[idx] = cp_out(s[0].prov[0].fanout_ids[idx][..], model_id);
+  s[0].prov[0].fanout_n += 1;
+  if s[0].prov[0].fanout_n >= CP_FANOUT_MIN { s[0].prov[0].fanout_active = true; }
+  return true;
+}
+
+cp_fanout_clear :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  for i: 0..<CP_FANOUT_MAX { s[0].prov[0].fanout_id_n[i] = 0; }
+  s[0].prov[0].fanout_n = 0;
+  s[0].prov[0].fanout_active = false;
+  s[0].prov[0].fanout_prompt_n = 0;
+}
+
+// Capture draft and dispatch CP_ASK_FANOUT when multi-model fan-out is ready.
+cp_fanout_submit :: (s: [] CoderPage, text: string) -> bool {
+  if !cp_fanout_ready(s) || text.count == 0 { return false; }
+  s[0].prov[0].fanout_prompt_n = cp_out(s[0].prov[0].fanout_prompt[..], text);
+  eb_set(s[0].draft[..], "");
+  s[0].ask = CP_ASK_FANOUT;
+  return true;
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_set_codex :: (s: [] CoderPage, on: bool, status: string, auth: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  prev_id_buf: [64] u8;
+  prev_id := cp_model_id(s, cp_model_index(s));
+  prev_n := cp_out(prev_id_buf[..], prev_id);
+  s[0].prov[0].codex = on;
+  s[0].prov[0].codex_status_n = cp_out(s[0].prov[0].codex_status[..], status);
+  s[0].prov[0].codex_auth_n = cp_out(s[0].prov[0].codex_auth[..], auth);
+  if prev_n > 0 {
+    kept := cp_model_find_s(s, cast(string) prev_id_buf[0..<prev_n]);
+    if kept >= 0 { s[0].model = kept; }
+  }
+  s[0].model = cp_model_index(s);
+}
+
+coder_page_set_cursor :: (s: [] CoderPage, on: bool, status: string, auth: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  prev_id_buf: [64] u8;
+  prev_id := cp_model_id(s, cp_model_index(s));
+  prev_n := cp_out(prev_id_buf[..], prev_id);
+  s[0].prov[0].cursor = on;
+  s[0].prov[0].cursor_status_n = cp_out(s[0].prov[0].cursor_status[..], status);
+  s[0].prov[0].cursor_auth_n = cp_out(s[0].prov[0].cursor_auth[..], auth);
+  if prev_n > 0 {
+    kept := cp_model_find_s(s, cast(string) prev_id_buf[0..<prev_n]);
+    if kept >= 0 { s[0].model = kept; }
+  }
+  s[0].model = cp_model_index(s);
+}
+
+coder_page_acp_load :: (s: [] CoderPage, json_text: string) -> int #export_c #effects(all) {
+  return cp_acp_parse(s, json_text);
+}
+
+coder_page_acp_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  return cp_acp_serialize(s, out);
+}
+
+coder_page_acp_add :: (s: [] CoderPage, id: string, name: string, program: string, args: string, enabled: bool) -> bool #export_c #effects(all) {
+  return cp_acp_add(s, id, name, program, args, enabled);
+}
+
+coder_page_acp_remove :: (s: [] CoderPage, id: string) -> bool #export_c #effects(all) {
+  return cp_acp_remove(s, id);
+}
+
+coder_page_acp_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].prov[0].acp_n else 0;
+}
+
+coder_page_model_provider :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_PROV_CLOUD; }
+  return cp_model_provider_kind(s, cp_model_index(s));
+}
+
+coder_page_model_id_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cp_model_id(s, cp_model_index(s)));
+}
+
+coder_page_model_acp_program :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  slot := cp_acp_slot_for_model(s, cp_model_index(s));
+  if slot < 0 { return 0; }
+  return cp_out(out, cast(string) s[0].prov[0].acp[slot].program[0..<s[0].prov[0].acp[slot].program_n]);
+}
+
+coder_page_model_acp_args :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  slot := cp_acp_slot_for_model(s, cp_model_index(s));
+  if slot < 0 { return 0; }
+  return cp_out(out, cast(string) s[0].prov[0].acp[slot].args[0..<s[0].prov[0].acp[slot].args_n]);
+}
+
+coder_page_fresh_session_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].prov[0].fresh_session = on;
+}
+
+coder_page_fresh_session :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].prov[0].fresh_session;
+}
+
+coder_page_handoff_compose :: (s: [] CoderPage, from_provider: string, to_provider: string, budget: int, out: [] u8) -> int #export_c #effects(all) {
+  return cp_handoff_compose(s, from_provider, to_provider, budget, out);
+}
+
+coder_page_handoff_needed :: (s: [] CoderPage, prev_kind: int, next_kind: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if s[0].prov[0].fresh_session { return false; }
+  if s[0].nturns == 0 { return false; }
+  return prev_kind >= 0 && next_kind >= 0 && prev_kind != next_kind;
+}
+
+coder_page_fanout_toggle :: (s: [] CoderPage, model_id: string) -> bool #export_c #effects(all) {
+  return cp_fanout_toggle_model(s, model_id);
+}
+
+coder_page_fanout_set_active :: (s: [] CoderPage, active: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].prov[0].fanout_active = active && s[0].prov[0].fanout_n >= CP_FANOUT_MIN;
+}
+
+coder_page_fanout_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  cp_fanout_clear(s);
+}
+
+coder_page_fanout_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return cp_fanout_count(s);
+}
+
+coder_page_fanout_active :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return cp_fanout_ready(s);
+}
+
+coder_page_fanout_target :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].prov[0].fanout_n { return 0; }
+  return cp_out(out, cast(string) s[0].prov[0].fanout_ids[idx][0..<s[0].prov[0].fanout_id_n[idx]]);
+}
+
+coder_page_fanout_prompt :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].prov[0].fanout_prompt[0..<s[0].prov[0].fanout_prompt_n]);
+}

@@ -1,0 +1,190 @@
+// Checks for page/providers.coax: Codex, Cursor, generic ACP Registry, cross-provider budgeted
+// handoff, Fresh Session toggle, and multi-model fan-out (GitHub #13878). Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "Codex, Cursor, and ACP Registry entries join the model picker and route provider metadata" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  base := cp_models(s);
+  #assert base == CP_MODELS;
+  #assert coder_page_model_provider(s) == CP_PROV_CLOUD;
+
+  // Enable Codex and Cursor.
+  coder_page_set_codex(s, true, "codex 0.42.0", "Signed in (ChatGPT)");
+  coder_page_set_cursor(s, true, "agent 1.2.0", "Signed in (Cursor)");
+  #assert cp_models(s) == base + 2;
+  #assert coder_page_pick_model(s, "codex");
+  #assert coder_page_model_provider(s) == CP_PROV_CODEX;
+  #assert cp_model_id(s, s[0].model) == "codex";
+  #assert cp_model_label(s, s[0].model) == "Codex";
+  #assert cp_backend_label(s) == "Codex CLI";
+
+  #assert coder_page_pick_model(s, "cursor");
+  #assert coder_page_model_provider(s) == CP_PROV_CURSOR;
+  #assert cp_model_id(s, s[0].model) == "cursor";
+  #assert cp_model_label(s, s[0].model) == "Cursor";
+  #assert cp_backend_label(s) == "Cursor ACP";
+
+  // Add custom ACP agents (one enabled, one disabled).
+  #assert coder_page_acp_add(s, "opencode", "OpenCode", "/usr/local/bin/opencode", "acp", true);
+  #assert coder_page_acp_add(s, "kiro", "Kiro", "/usr/local/bin/kiro-cli", "acp --stdio", false);
+  #assert coder_page_acp_count(s) == 2;
+  #assert cp_acp_enabled_count(s) == 1;
+  #assert cp_models(s) == base + 3;
+
+  // Pick enabled ACP entry; disabled one cannot be picked.
+  #assert coder_page_pick_model(s, "acp:opencode");
+  #assert !coder_page_pick_model(s, "acp:kiro");
+  #assert coder_page_model_provider(s) == CP_PROV_ACP;
+  #assert cp_model_label(s, s[0].model) == "OpenCode";
+  #assert cp_backend_label(s) == "ACP Registry";
+
+  pb: [256] u8; ab: [128] u8;
+  pn := coder_page_model_acp_program(s, pb[..]);
+  an := coder_page_model_acp_args(s, ab[..]);
+  #assert cast(string) pb[0..<pn] == "/usr/local/bin/opencode";
+  #assert cast(string) ab[0..<an] == "acp";
+
+  // Settings > Models rows dispatch non-conflicting CP_ASK_* actions.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.codex.a") && coder_page_action(s) == CP_ASK_CODEX;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.cursor.a") && coder_page_action(s) == CP_ASK_CURSOR;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.acp.a") && coder_page_action(s) == CP_ASK_ACP_REGISTRY;
+}
+
+#test "ACP Registry JSON serialization, parsing, deduplication, removal, and 8-entry cap" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  // Slug generation when id is empty.
+  #assert coder_page_acp_add(s, "", "My Custom Agent!", "/opt/bin/custom-acp", "--fast", true);
+  #assert coder_page_acp_count(s) == 1;
+  #assert cp_acp_find_by_id(s, "my-custom-agent") == 0;
+
+  // Reject empty name or program.
+  #assert !coder_page_acp_add(s, "bad", "", "/bin/true", "", true);
+  #assert !coder_page_acp_add(s, "bad", "Bad", "", "", true);
+
+  // Round-trip JSON serialize -> parse into fresh page.
+  #assert coder_page_acp_add(s, "kiro", "Kiro CLI", "/usr/local/bin/kiro", "acp", false);
+  jb: [4096] u8;
+  jn := coder_page_acp_save(s, jb[..]);
+  #assert jn > 0;
+
+  p2: [1] CoderPage; p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
+  cp_init(s2);
+  loaded := coder_page_acp_load(s2, cast(string) jb[0..<jn]);
+  #assert loaded == 2 && coder_page_acp_count(s2) == 2 && cp_acp_enabled_count(s2) == 1;
+  #assert cp_acp_find_by_id(s2, "my-custom-agent") == 0;
+  #assert cp_acp_find_by_id(s2, "kiro") == 1;
+  #assert !s2[0].prov[0].acp[1].enabled;
+
+  // Remove entry.
+  #assert coder_page_acp_remove(s2, "kiro") && coder_page_acp_count(s2) == 1;
+  #assert !coder_page_acp_remove(s2, "nonexistent");
+
+  // Invalid JSON returns -1 and clears cleanly.
+  #assert coder_page_acp_load(s2, "not-json") == -1 && coder_page_acp_count(s2) == 0;
+
+  // Cap at CP_ACP_MAX (8) entries.
+  for i: 0..<CP_ACP_MAX {
+    ib: [16] u8; in_n := el_put(ib[..], 0, "a"); in_n = el_put_i(ib[..], in_n, i);
+    #assert coder_page_acp_add(s2, cast(string) ib[0..<in_n], cast(string) ib[0..<in_n], "/bin/acp", "", true);
+  }
+  #assert coder_page_acp_count(s2) == CP_ACP_MAX;
+  #assert !coder_page_acp_add(s2, "overflow", "Overflow", "/bin/acp", "", true);
+}
+
+#test "cross-provider budgeted handoff summarizes recent turns within byte budget and respects Fresh Session" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  // Add 3 completed turns.
+  #assert coder_page_set_text(s, "First question about auth") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"First answer explaining OAuth tokens.\"}") == MWW_ENDED;
+  #assert coder_page_set_text(s, "Second question about storage") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Second answer explaining SQLite schema.\"}") == MWW_ENDED;
+  #assert coder_page_set_text(s, "Third question about tests") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Third answer listing unit tests.\"}") == MWW_ENDED;
+
+  // Provider switch detection.
+  #assert coder_page_handoff_needed(s, CP_PROV_CLOUD, CP_PROV_CODEX);
+  #assert !coder_page_handoff_needed(s, CP_PROV_CLOUD, CP_PROV_CLOUD);
+
+  // Generous budget includes header and all 3 turns.
+  buf: [4096] u8;
+  n := coder_page_handoff_compose(s, "Gemini", "Codex", 2048, buf[..]);
+  #assert n > 0 && n <= 2048;
+  txt := cast(string) buf[0..<n];
+  #assert cp_find_ci(txt, "from Gemini to Codex") >= 0;
+  #assert cp_find_ci(txt, "First question") >= 0;
+  #assert cp_find_ci(txt, "Third answer") >= 0;
+
+  // Tight budget drops older turns and strictly respects budget cap.
+  tight := 220;
+  nt := coder_page_handoff_compose(s, "Gemini", "Codex", tight, buf[..]);
+  #assert nt > 0 && nt <= tight;
+  ttxt := cast(string) buf[0..<nt];
+  #assert cp_find_ci(ttxt, "earlier") >= 0;
+  #assert cp_find_ci(ttxt, "Third question") >= 0;
+
+  // Fresh Session suppresses handoff, handoff_needed, and recall_line.
+  coder_page_fresh_session_set(s, true);
+  #assert coder_page_fresh_session(s);
+  #assert !coder_page_handoff_needed(s, CP_PROV_CLOUD, CP_PROV_CODEX);
+  #assert coder_page_handoff_compose(s, "Gemini", "Codex", 2048, buf[..]) == 0;
+  rbuf: [4096] u8;
+  #assert coder_page_recall_line(s, rbuf[..]) == 0;
+
+  // Turning Fresh Session off restores recall_line.
+  coder_page_fresh_session_set(s, false);
+  #assert coder_page_recall_line(s, rbuf[..]) > 0;
+
+  // New chat resets Fresh Session.
+  coder_page_fresh_session_set(s, true);
+  #assert coder_page_new(s) && !coder_page_fresh_session(s);
+}
+
+#test "multi-model fan-out manages 2..4 targets and dispatches CP_ASK_FANOUT on submit" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  // Single target is not yet active/ready.
+  #assert coder_page_fanout_toggle(s, "gemini-4-neon");
+  #assert coder_page_fanout_count(s) == 1 && !coder_page_fanout_active(s);
+
+  // Second target activates fan-out.
+  #assert coder_page_fanout_toggle(s, "codex");
+  #assert coder_page_fanout_count(s) == 2 && coder_page_fanout_active(s);
+
+  // Up to 4 targets allowed; 5th rejected.
+  #assert coder_page_fanout_toggle(s, "cursor");
+  #assert coder_page_fanout_toggle(s, "acp:opencode");
+  #assert coder_page_fanout_count(s) == 4;
+  #assert !coder_page_fanout_toggle(s, "gemini-4-carbon");
+
+  // Toggle removes an existing target.
+  #assert coder_page_fanout_toggle(s, "cursor") && coder_page_fanout_count(s) == 3;
+  tb: [64] u8;
+  tn := coder_page_fanout_target(s, 0, tb[..]);
+  #assert cast(string) tb[0..<tn] == "gemini-4-neon";
+  tn = coder_page_fanout_target(s, 1, tb[..]);
+  #assert cast(string) tb[0..<tn] == "codex";
+  tn = coder_page_fanout_target(s, 2, tb[..]);
+  #assert cast(string) tb[0..<tn] == "acp:opencode";
+
+  // Submitting composer dispatches CP_ASK_FANOUT and captures prompt without creating a local turn.
+  #assert coder_page_set_text(s, "Compare sorting implementations");
+  #assert coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_FANOUT;
+  #assert s[0].nturns == 0;
+  pb: [256] u8;
+  pn := coder_page_fanout_prompt(s, pb[..]);
+  #assert cast(string) pb[0..<pn] == "Compare sorting implementations";
+
+  // Clearing fan-out returns composer to normal single-model send.
+  coder_page_fanout_clear(s);
+  #assert coder_page_fanout_count(s) == 0 && !coder_page_fanout_active(s);
+  #assert coder_page_set_text(s, "Normal prompt") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND && s[0].nturns == 1;
+}

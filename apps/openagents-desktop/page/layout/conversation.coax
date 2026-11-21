@@ -703,6 +703,32 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if show_cost { other_right += w_cost + gap; }
   if show_goal { other_right += w_goal + gap; }
   fw := ifx show_branch then w_folder else w_short;
+  right_total := other_right + (ifx show_folder then fw + gap else 0.0f32);
+  // Fresh Session toggle & Multi-model fan-out chips: fold before goal/cost/context/folder
+  if !running && (s[0].nturns > 0 || s[0].prov[0].fresh_session) {
+    fresh_lbl := ifx s[0].prov[0].fresh_session then "Fresh ✓" else "Fresh";
+    w_fresh := cp_foot_chip_width(f, -1, fresh_lbl, false);
+    if fx + gap + w_fresh + right_total <= end_x {
+      fx += gap;
+      fx += cp_foot_chip(f, "coder.fresh", "Fresh Session (skip prior history on next send)", fx, y, w_fresh, -1, fresh_lbl, false, ifx s[0].prov[0].fresh_session then EL_S_CURRENT else 0, CP_FRESH_TOGGLE);
+    }
+  }
+  if !running && (cp_models(s) >= 2 || cp_fanout_ready(s)) {
+    fob: [24] u8; fon := 0;
+    if cp_fanout_ready(s) {
+      fon = el_put(fob[..], 0, "Fan-out (");
+      fon = el_put_i(fob[..], fon, cp_fanout_count(s));
+      fon = el_put(fob[..], fon, ")");
+    } else {
+      fon = el_put(fob[..], 0, "Fan-out");
+    }
+    fo_lbl := sheet_pool(f[0].sheet, cast(string) fob[0..<fon]);
+    w_fo := cp_foot_chip_width(f, -1, fo_lbl, false);
+    if fx + gap + w_fo + right_total <= end_x {
+      fx += gap;
+      fx += cp_foot_chip(f, "coder.fanout", "Multi-model fan-out (send to 2–4 models in parallel)", fx, y, w_fo, -1, fo_lbl, false, ifx cp_fanout_ready(s) then EL_S_CURRENT else 0, CP_FANOUT_OPEN);
+    }
+  }
   max_fw := rx - fx - (ifx mw > 0 then gap else 0.0f32) - other_right;
   if fw > max_fw { fw = max_fw; }
   if show_folder && fw > 2 * c.chip_pad {

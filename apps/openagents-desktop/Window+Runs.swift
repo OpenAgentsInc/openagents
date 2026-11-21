@@ -82,10 +82,12 @@ extension CoderWindow {
         }
         let useAgy = cd_model_agy(r.page) != 0
         let useInkling = cd_model_inkling(r.page) != 0
+        let provKind = cd_model_provider(r.page)
+        let useExternal = provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
-        if !useAgy && !useInkling && !cloudOk {
+        if !useAgy && !useInkling && !useExternal && !cloudOk {
             cd_failed(r.page, CoderWorker.hasAntigravity
                 ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
                 : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
@@ -114,13 +116,18 @@ extension CoderWindow {
         launchWorker(r, useAgy: useAgy, needsRecall: needsRecall)
     }
     private func launchWorker(_ r: CoderRun, useAgy: Bool, needsRecall: Bool) {
-        let wantProgram = useAgy ? "agyworker" : "mcworker"
-        let switchedProgram = r.worker.program != wantProgram
+        let resolved = resolveProviderWorker(r)
+        let wantProgram = resolved.program
+        let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
+        let switchedProgram = r.worker.program != wantProgram || switchedProvider
         if switchedProgram {
             if r.worker.alive { r.worker.stop(forget: false) }
             r.worker.program = wantProgram
         }
-        let sendRecall = needsRecall || switchedProgram
+        r.lastProviderKind = resolved.providerKind
+        let freshSession = cd_fresh_session(r.page) != 0
+        let sendRecall = needsRecall || switchedProgram || freshSession
+        let handoffJSON = resolved.handoffJSON
         r.startingWorker = true
         r.worker.startAsync { [weak self, weak r] ok in
             guard let self, let r else { return }
@@ -141,7 +148,13 @@ extension CoderWindow {
             var out = [CChar](repeating: 0, count: 262144)
             let cwd = (stillShown ? self.folder : r.folder).path
             let from = r.worker.offset
-            if sendRecall {
+            if freshSession {
+                let n = cd_forget_line(&out, Int32(out.count))
+                r.worker.write(out, count: Int(n))
+            } else if let handoffJSON, !handoffJSON.isEmpty {
+                let bytes = Array(handoffJSON.utf8CString)
+                r.worker.write(bytes, count: max(0, bytes.count - 1))
+            } else if sendRecall {
                 // an opened chat's turns (or after switching workers mid-thread), or nothing to remember when it has none that ended
                 var n = cd_recall_line(r.page, &out, Int32(out.count))
                 if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
@@ -180,6 +193,7 @@ extension CoderWindow {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
             coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
+            syncExternalProviders(on: back)
             cd_experimental_set(back, Experimental.on ? 1 : 0)
             cd_cloud_authed_set(back, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")

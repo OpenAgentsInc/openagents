@@ -219,6 +219,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_TOAST_CLOSE { return app_toast_dismiss(s[0].toasts[..], app_toast_pressed(surface_id(s[0].surface[..], row)), s[0].clock); }
   if act == CP_MENTION { return cp_mn_pick(s, app_mn_pressed("coder.mention", surface_id(s[0].surface[..], row))); }
   if act == CP_EFFORT_CYCLE { s[0].model_menu = false; cp_effort_cycle(s); return true; }
+  if act == CP_FRESH_TOGGLE { s[0].model_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
+  if act == CP_FANOUT_OPEN { s[0].model_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
   if act == CP_MODEL_MENU {
     s[0].usage[0].popover_open = false;
     s[0].model_menu = !s[0].model_menu;

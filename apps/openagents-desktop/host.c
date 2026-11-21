@@ -1117,3 +1117,89 @@ int cd_skill_name(void *page, int idx, char *out, int cap) {
   out[n > 0 ? n : 0] = 0;
   return n;
 }
+// External CLI & ACP Registry providers, cross-provider budgeted handoff, Fresh Session & multi-model fan-out (page/providers.coax; #13878).
+void cd_set_codex(void *page, int on, const char *status, const char *auth) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_set_codex(cd_state(c), on != 0, cd_string(status), cd_string(auth));
+  cd_woke(c);
+}
+void cd_set_cursor(void *page, int on, const char *status, const char *auth) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_set_cursor(cd_state(c), on != 0, cd_string(status), cd_string(auth));
+  cd_woke(c);
+}
+int cd_acp_load(void *page, const char *json_text) {
+  CoderHost *c = page; if (!c) return -1;
+  int n = (int)coder_page_acp_load(cd_state(c), cd_string(json_text));
+  cd_woke(c);
+  return n;
+}
+int cd_acp_save(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_acp_save(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_acp_add(void *page, const char *id, const char *name, const char *program, const char *args, int enabled) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_acp_add(cd_state(c), cd_string(id), cd_string(name), cd_string(program), cd_string(args), enabled != 0) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_acp_remove(void *page, const char *id) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_acp_remove(cd_state(c), cd_string(id)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_acp_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_acp_count(cd_state(c)) : 0; }
+int cd_model_provider(void *page) { CoderHost *c = page; return c ? (int)coder_page_model_provider(cd_state(c)) : 0; }
+int cd_model_id_out(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_model_id_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_model_acp_program(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_model_acp_program(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_model_acp_args(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_model_acp_args(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_fresh_session_set(void *page, int on) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_fresh_session_set(cd_state(c), on != 0);
+  cd_woke(c);
+}
+int cd_fresh_session(void *page) { CoderHost *c = page; return c && coder_page_fresh_session(cd_state(c)) ? 1 : 0; }
+int cd_handoff_compose(void *page, const char *from_provider, const char *to_provider, int budget, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_handoff_compose(cd_state(c), cd_string(from_provider), cd_string(to_provider), budget, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_handoff_needed(void *page, int prev_kind, int next_kind) {
+  CoderHost *c = page; return c && coder_page_handoff_needed(cd_state(c), prev_kind, next_kind) ? 1 : 0;
+}
+int cd_fanout_toggle(void *page, const char *model_id) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_fanout_toggle(cd_state(c), cd_string(model_id)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+void cd_fanout_set_active(void *page, int active) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_fanout_set_active(cd_state(c), active != 0);
+  cd_woke(c);
+}
+void cd_fanout_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_fanout_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_fanout_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_fanout_count(cd_state(c)) : 0; }
+int cd_fanout_active(void *page) { CoderHost *c = page; return c && coder_page_fanout_active(cd_state(c)) ? 1 : 0; }
+int cd_fanout_target(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_fanout_target(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_fanout_prompt(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_fanout_prompt(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}

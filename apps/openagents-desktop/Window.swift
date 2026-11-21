@@ -25,6 +25,7 @@ final class CoderRun {
     var preparingWorktree = false, worktreeSkip = false, startingWorker = false
     var lastPermitOpen = false
     var lastGoalStatus: Int32 = 0
+    var lastProviderKind: Int32 = -1
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -183,6 +184,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
         cd_agy(page, CoderWorker.hasAntigravity ? 1 : 0)
+        syncExternalProviders(on: page)
         coderApplyOpenRouter(page)
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
         for proj in store.savedProjects { _ = cd_sb_add_project(page, proj) }
@@ -433,6 +435,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 72: mcpRemoveSelected()
         case 73: mcpStartOAuth()
         case 74: skillToggleSelected()
+        case 75: showCodexSettings()
+        case 76: showCursorSettings()
+        case 77: manageAcpRegistry()
+        case 78: runMultiModelFanout()
+        case 79: openFanoutPicker()
         case 40...43: fileAsked(what)
         default: break
         }

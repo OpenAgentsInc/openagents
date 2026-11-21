@@ -13,12 +13,18 @@ cp_models :: (s: [] CoderPage) -> int {
     n := 0;
     if s.count > 0 && s[0].agy { n += 1; }
     if s.count > 0 && s[0].inkling { n += 1; }
+    if s.count > 0 && s[0].prov[0].codex { n += 1; }
+    if s.count > 0 && s[0].prov[0].cursor { n += 1; }
+    n += cp_acp_enabled_count(s);
     return n;
   }
   n := CP_MODELS;
   if s[0].or_main_n > 0 { n += 1; }
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
+  if s[0].prov[0].codex { n += 1; }
+  if s[0].prov[0].cursor { n += 1; }
+  n += cp_acp_enabled_count(s);
   return n;
 }
 cp_agy_idx :: (s: [] CoderPage) -> int {
@@ -60,6 +66,26 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
     if s.count > 0 && s[0].inkling { return cp_inkling_idx(s); }
     return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
+  if name == "codex" || name == "Codex" {
+    if s.count > 0 && s[0].prov[0].codex { return cp_codex_idx(s); }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
+  if name == "cursor" || name == "Cursor" {
+    if s.count > 0 && s[0].prov[0].cursor { return cp_cursor_idx(s); }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
+  if name.count > CP_ACP_PREFIX.count && cast(string) name[0..<CP_ACP_PREFIX.count] == CP_ACP_PREFIX {
+    aid := cast(string) name[CP_ACP_PREFIX.count..<name.count];
+    en := cp_acp_enabled_count(s);
+    base := cp_acp_base_idx(s);
+    for k: 0..<en {
+      slot := cp_acp_nth_enabled(s, k);
+      if slot >= 0 && cast(string) s[0].prov[0].acp[slot].id[0..<s[0].prov[0].acp[slot].id_n] == aid {
+        return base + k;
+      }
+    }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
   if !cp_cloud_ok(s) { return ifx cp_models(s) > 0 then 0 else -1; }
   return cp_model_find(name);
 }
@@ -70,6 +96,14 @@ cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_cloud_ok(s) && idx =
 cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "antigravity"; }
   if cp_is_inkling(s, idx) { return "inkling-2-mini"; }
+  if cp_is_codex(s, idx) { return "codex"; }
+  if cp_is_cursor(s, idx) { return "cursor"; }
+  acp_slot := cp_acp_slot_for_model(s, idx);
+  if acp_slot >= 0 {
+    n := cp_out(s[0].prov[0].acp_id_buf[..], CP_ACP_PREFIX);
+    n += cp_out(s[0].prov[0].acp_id_buf[n..<s[0].prov[0].acp_id_buf.count], cast(string) s[0].prov[0].acp[acp_slot].id[0..<s[0].prov[0].acp[acp_slot].id_n]);
+    return cast(string) s[0].prov[0].acp_id_buf[0..<n];
+  }
   if !cp_cloud_ok(s) { return ""; }
   if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
   ids := CP_MODEL_ID;
@@ -79,6 +113,10 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "Antigravity"; }
   if cp_is_inkling(s, idx) { return "Inkling 2 Mini (Local)"; }
+  if cp_is_codex(s, idx) { return "Codex"; }
+  if cp_is_cursor(s, idx) { return "Cursor"; }
+  acp_slot := cp_acp_slot_for_model(s, idx);
+  if acp_slot >= 0 { return cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     m := cp_or_main(s); at := 0;
@@ -103,6 +141,14 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].agy_desc[0..<n];
   }
   if cp_is_inkling(s, idx) { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if cp_is_codex(s, idx) { return "OpenAI Codex CLI · app-server"; }
+  if cp_is_cursor(s, idx) { return "Cursor ACP CLI · agent acp"; }
+  acp_slot := cp_acp_slot_for_model(s, idx);
+  if acp_slot >= 0 {
+    n := cp_out(s[0].prov[0].acp_desc_buf[..], "ACP Registry · ");
+    n += cp_out(s[0].prov[0].acp_desc_buf[n..<s[0].prov[0].acp_desc_buf.count], cast(string) s[0].prov[0].acp[acp_slot].program[0..<s[0].prov[0].acp[acp_slot].program_n]);
+    return cast(string) s[0].prov[0].acp_desc_buf[0..<n];
+  }
   if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy) or download a Local Model"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
@@ -155,6 +201,14 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     return cp_agy_meta(s, cp_agy_shown(s));
   }
   if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
+  if cp_is_codex(s, idx) { return "Codex CLI"; }
+  if cp_is_cursor(s, idx) { return "Cursor ACP"; }
+  acp_slot := cp_acp_slot_for_model(s, idx);
+  if acp_slot >= 0 {
+    n := cp_out(s[0].prov[0].acp_meta_buf[..], "ACP · ");
+    n += cp_out(s[0].prov[0].acp_meta_buf[n..<s[0].prov[0].acp_meta_buf.count], cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]);
+    return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
+  }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
@@ -179,6 +233,29 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
     if !s[0].inkling { return false; }
     s[0].model = cp_inkling_idx(s);
     return true;
+  }
+  if name == "codex" || name == "Codex" {
+    if !s[0].prov[0].codex { return false; }
+    s[0].model = cp_codex_idx(s);
+    return true;
+  }
+  if name == "cursor" || name == "Cursor" {
+    if !s[0].prov[0].cursor { return false; }
+    s[0].model = cp_cursor_idx(s);
+    return true;
+  }
+  if name.count > CP_ACP_PREFIX.count && cast(string) name[0..<CP_ACP_PREFIX.count] == CP_ACP_PREFIX {
+    aid := cast(string) name[CP_ACP_PREFIX.count..<name.count];
+    en := cp_acp_enabled_count(s);
+    base := cp_acp_base_idx(s);
+    for k: 0..<en {
+      slot := cp_acp_nth_enabled(s, k);
+      if slot >= 0 && cast(string) s[0].prov[0].acp[slot].id[0..<s[0].prov[0].acp[slot].id_n] == aid {
+        s[0].model = base + k;
+        return true;
+      }
+    }
+    return false;
   }
   if !cp_cloud_ok(s) { return false; }
   idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
@@ -222,6 +299,9 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if idx < 0 { return ""; }
   if cp_is_agy(s, idx) { return "Antigravity CLI"; }
   if cp_is_inkling(s, idx) { return "Psionic Metal"; }
+  if cp_is_codex(s, idx) { return "Codex CLI"; }
+  if cp_is_cursor(s, idx) { return "Cursor ACP"; }
+  if cp_is_acp(s, idx) { return "ACP Registry"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   if s[0].gauth_vertex { return "Vertex AI"; }                // Microcoder tries Vertex before any key (microcoder_keys.coax mk_plan)
   return "Gemini API";                                         // a Gemini API key, or Microcoder's own credentials with Experimental features

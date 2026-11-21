@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 43;
+CP_SET_ENTRIES :: 46;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -54,6 +54,9 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.agy.mode", name = "Antigravity review mode", terms = "antigravity agy mode auto default plan review"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.agy.model", name = "Antigravity model & effort", terms = "antigravity agy model effort low medium high gemini"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.agy.auth", name = "Antigravity sign-in & profile", terms = "antigravity agy auth google login profile adc env"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.codex", name = "Codex CLI", terms = "codex openai chatgpt cli oauth login provider"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.cursor", name = "Cursor ACP CLI", terms = "cursor agent acp cli oauth login provider"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.acp", name = "ACP Registry", terms = "acp registry custom agent opencode kiro cli binary provider"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "", name = "Foreman", terms = "manager"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "set.tier", name = "Permission tier", terms = "observe managed auto autonomous read-only"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "set.audit", name = "Audit log", terms = "history actions"},
@@ -202,6 +205,9 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
       return true;
     }
   }
+  if id == "set.codex.a" || id == "set.codex" { s[0].ask = CP_ASK_CODEX; return true; }
+  if id == "set.cursor.a" || id == "set.cursor" { s[0].ask = CP_ASK_CURSOR; return true; }
+  if id == "set.acp.a" || id == "set.acp" { s[0].ask = CP_ASK_ACP_REGISTRY; return true; }
   if id == "set.update.a" {
     st := s[0].update_state;
     s[0].ask = ifx st == CP_UPD_AVAILABLE || st == CP_UPD_READY then CP_ASK_UPDATE else CP_ASK_CHECK_UPDATES;
@@ -386,7 +392,21 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     lrows: [1] SetRow;
     lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (16.4 GB IQ4_NL GGUF on native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.", 
       value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]);
+    y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]) + t.block_gap;
+    codex_st := ifx s[0].prov[0].codex_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_status[0..<s[0].prov[0].codex_status_n]) else "Not installed";
+    codex_au := ifx s[0].prov[0].codex_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_auth[0..<s[0].prov[0].codex_auth_n]) else "Run `codex login` to sign in";
+    cursor_st := ifx s[0].prov[0].cursor_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_status[0..<s[0].prov[0].cursor_status_n]) else "Not installed";
+    cursor_au := ifx s[0].prov[0].cursor_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_auth[0..<s[0].prov[0].cursor_auth_n]) else "Run `agent login` to sign in";
+    acp_st := ifx s[0].prov[0].acp_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].acp_status[0..<s[0].prov[0].acp_status_n]) else "None registered";
+    y += set_section_head(f, "set.providers.head", x, y, w, "External CLI & ACP Providers", "Wire Codex, Cursor, or any ACP-compliant CLI agent (OpenCode, Kiro, custom binaries) into the model picker.") + t.section_gap;
+    provs: [3] SetRow;
+    provs[0] = SetRow.{id = "set.codex", name = "Codex CLI", desc = codex_au,
+      value = codex_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
+    provs[1] = SetRow.{id = "set.cursor", name = "Cursor ACP CLI", desc = cursor_au,
+      value = cursor_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
+    provs[2] = SetRow.{id = "set.acp", name = "ACP Registry", desc = "Custom ACP binaries (~/.openagents/desktop/acp-registry.json).",
+      value = acp_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.providers.group", x, y, w, provs[..]);
   } else if page == CP_PG_FOREMAN {
     y += set_page_head(f, "set.title", x, y, w, names[page], "How much Foreman may do across your chats.") + t.block_gap;
     tier := s[0].foreman_tier;

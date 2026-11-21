@@ -200,6 +200,7 @@ extension CoderWindow {
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
         syncAntigravitySettings()
+        syncExternalProviders(on: page)
         syncWalletSettings()
         if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         syncMcpSkills()
