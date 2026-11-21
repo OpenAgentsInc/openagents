@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §7.2, §8.2; GitHub #13905).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-IOS_SCENARIO_COUNT :: 7;
+IOS_SCENARIO_COUNT :: 12;
 
 IosScenario :: struct {
   id: string;
@@ -19,7 +19,12 @@ ios_scenarios :: () -> [IOS_SCENARIO_COUNT] IosScenario {
     IosScenario.{id = "ios.appearance.light-dark", area = "appearance", title = "Switch light and dark appearance via oasim and verify render stability", required = true},
     IosScenario.{id = "ios.lifecycle.rotate", area = "lifecycle", title = "Rotate portrait -> landscape -> portrait via oasim", required = true},
     IosScenario.{id = "ios.lifecycle.background-resume", area = "lifecycle", title = "Press Home to background, relaunch app, verify clean resume", required = true},
-    IosScenario.{id = "ios.accessibility.describe", area = "accessibility", title = "Query oasim describe accessibility tree for interactive UI elements", required = true}
+    IosScenario.{id = "ios.accessibility.describe", area = "accessibility", title = "Query oasim describe accessibility tree for interactive UI elements", required = true},
+    IosScenario.{id = "ios.lifecycle.draft-persistence", area = "lifecycle", title = "Verify unsent composer draft persists across background and relaunch (#13906)", required = true},
+    IosScenario.{id = "ios.sidebar.settings-sheet", area = "settings", title = "Open sidebar drawer, tap Settings gear, verify Settings screen and dismiss", required = true},
+    IosScenario.{id = "ios.composer.computer-picker", area = "composer", title = "Tap Computer chip in composer, verify picker sheet renders and dismiss", required = true},
+    IosScenario.{id = "ios.composer.repo-picker", area = "composer", title = "Tap Repository chip in composer, verify picker sheet renders and dismiss", required = true},
+    IosScenario.{id = "ios.conversation.options-menu", area = "conversation", title = "Tap Conversation options (...) button, verify menu renders and dismiss", required = true}
   ];
 }
 

@@ -572,6 +572,19 @@ t_write_reports :: (s: [] DaSession, results: [] TsResult, count: int) {
   _ = fs_write(da_cat(b[..], out_dir, "/report.html"), cast(string) rh[0..<hj[0].n]);
 }
 
+t_substr :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    match := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { match = false; break; }
+    }
+    if match { return true; }
+  }
+  return false;
+}
+
 t_run_ios_scenario :: (s: [] IosSession, sc_id: string, res_out: [] TsResult) {
   t0 := proc_now_ms();
   obs: [1] TsObservation;
@@ -688,6 +701,92 @@ t_run_ios_scenario :: (s: [] IosSession, sc_id: string, res_out: [] TsResult) {
       r.screenshot_ref = obs[0].screenshot_ref;
     } else {
       r.summary = "simhost describe returned live OpenAgents iOS accessibility tree";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.lifecycle.draft-persistence" {
+    r.steps_run = 4;
+    // Note: ios.input.composer-type typed "hello from ios tester" earlier, and ios.lifecycle.background-resume
+    // already backgrounded + relaunched. Verify the draft persisted in the live accessibility tree (#13906).
+    ok_d := ios_act(s, "describe", "ios-app", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-08-draft-persist", "draft persistence check", obs[..]);
+    tree := cast(string) rep[0..<rep.count];
+    kept := ok_d && (t_substr(tree, "Hello from iOS tester") || t_substr(tree, "hello from ios tester"));
+    if !ok_d {
+      r.verdict = "product-fail"; r.first_failure = "describe-failed"; r.summary = "simhost describe failed during draft persistence check";
+    } else if !kept {
+      r.verdict = "product-fail"; r.first_failure = "draft-lost";
+      r.summary = "unsent composer draft was lost across background + relaunch (#13906)";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "unsent composer draft persisted across background + relaunch (#13906)";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+    _ = ok_o;
+  } else if sc_id == "ios.sidebar.settings-sheet" {
+    r.steps_run = 4;
+    ok1 := ios_act(s, "tap", "open-sidebar", "\"x\":34,\"y\":84", 200, rep[..]);
+    proc_sleep(450);
+    // Tap Settings gear at bottom-right of sidebar drawer (~275, 815 on 402x874).
+    ok2 := ios_act(s, "tap", "settings-gear", "\"x\":275,\"y\":815", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-settings", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-09-settings", "iOS Settings sheet", obs[..]);
+    // Dismiss Settings (top-left back/close button or swipe down).
+    _ = ios_act(s, "tap", "settings-close", "\"x\":34,\"y\":84", 200, rep[..]);
+    proc_sleep(400);
+    _ = ios_act(s, "swipe", "close-sidebar", "\"x\":340,\"y\":400,\"x2\":30,\"y2\":400,\"duration\":0.25", 250, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok2 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "settings-open"; r.summary = "failed to open or inspect iOS Settings sheet";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "opened sidebar, tapped Settings gear, captured Settings frame & accessibility tree, dismissed";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.composer.computer-picker" {
+    r.steps_run = 3;
+    // Tap Computer chip at bottom-left of composer (~95, 812).
+    ok1 := ios_act(s, "tap", "computer-chip", "\"x\":95,\"y\":812", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-computer-picker", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-10-computer-picker", "computer picker sheet", obs[..]);
+    // Dismiss picker by tapping dimmed backdrop near top.
+    _ = ios_act(s, "tap", "dismiss-picker", "\"x\":200,\"y\":160", 200, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "computer-picker"; r.summary = "failed to open or capture Computer picker sheet";
+    } else {
+      r.summary = "tapped Computer chip, captured picker sheet & accessibility tree, dismissed cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.composer.repo-picker" {
+    r.steps_run = 3;
+    // Tap Repository chip next to Computer chip (~235, 812).
+    ok1 := ios_act(s, "tap", "repo-chip", "\"x\":235,\"y\":812", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-repo-picker", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-11-repo-picker", "repo picker sheet", obs[..]);
+    _ = ios_act(s, "tap", "dismiss-picker", "\"x\":200,\"y\":160", 200, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "repo-picker"; r.summary = "failed to open or capture Repository picker sheet";
+    } else {
+      r.summary = "tapped Repository chip, captured picker sheet & accessibility tree, dismissed cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.conversation.options-menu" {
+    r.steps_run = 3;
+    // Tap top-right Conversation options (...) button (346, 66, 44, 44 -> center 368, 88).
+    ok1 := ios_act(s, "tap", "conversation-options", "\"x\":368,\"y\":88", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-options-menu", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-12-options-menu", "conversation options menu", obs[..]);
+    _ = ios_act(s, "tap", "dismiss-options", "\"x\":200,\"y\":320", 200, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "options-menu"; r.summary = "failed to open or capture Conversation options menu";
+    } else {
+      r.summary = "tapped Conversation options (...), captured menu & accessibility tree, dismissed cleanly";
       r.screenshot_ref = obs[0].screenshot_ref;
     }
   } else {
