@@ -1,0 +1,128 @@
+// #authority Signed Shadow-to-Promote Auto-Distribution & H7 Qualification Gate
+// (Executor W6.3, GitHub #13928).
+// Enforces signed ExecutorReleaseManifest transitions (shadow -> canary -> promoted)
+// with pinned rollback target, H7 held-out coding benchmark lift, 100% exact replay,
+// and automatic canary rollback on divergence or crash-rate breach.
+#authority;
+
+RpChannel :: enum u8 {
+  shadow;
+  canary;
+  promoted;
+  rolled_back;
+}
+
+RpStatus :: enum u8 {
+  ok;
+  bad_signature;
+  bad_manifest;
+  h7_not_qualified;
+  exactness_failed;
+  canary_unhealthy;
+  invalid_transition;
+}
+
+RpRelease :: struct {
+  channel: RpChannel;
+  release_sha: int;
+  rollback_target_sha: int;
+  canary_pct: int;
+  active_sha: int;
+}
+
+RpQual :: struct {
+  sig_ok: bool;
+  digest_ok: bool;
+  base_pass_bps: int;
+  cand_pass_bps: int;
+  min_lift_bps: int;
+  exact_replay_bps: int;
+  crash_rate_bps: int;
+  max_crash_bps: int;
+}
+
+rp_init :: (current_active_sha: int) -> RpRelease #effects(all) {
+  return RpRelease.{channel = RpChannel.shadow, active_sha = current_active_sha};
+}
+
+// Stage a signed release manifest into shadow -> canary (1..100%) after H7 qualification passes.
+rp_enter_canary :: (r: [] RpRelease, release_sha: int, rollback_sha: int, canary_pct: int, q: RpQual) -> RpStatus #effects(all) {
+  if !q.sig_ok { return RpStatus.bad_signature; }
+  if !q.digest_ok || release_sha == 0 || rollback_sha == 0 || release_sha == rollback_sha { return RpStatus.bad_manifest; }
+  if canary_pct < 1 || canary_pct > 100 { return RpStatus.bad_manifest; }
+  if r[0].channel != RpChannel.shadow { return RpStatus.invalid_transition; }
+  if q.exact_replay_bps != 10000 { return RpStatus.exactness_failed; }
+  if (q.cand_pass_bps - q.base_pass_bps) < q.min_lift_bps || q.crash_rate_bps > q.max_crash_bps {
+    return RpStatus.h7_not_qualified;
+  }
+  r[0].release_sha = release_sha;
+  r[0].rollback_target_sha = rollback_sha;
+  r[0].canary_pct = canary_pct;
+  r[0].channel = RpChannel.canary;
+  return RpStatus.ok;
+}
+
+// Evaluate live canary health: promote to 100% if healthy, else auto-rollback to pinned rollback_target_sha.
+rp_finalize_canary :: (r: [] RpRelease, canary_samples: int, min_samples: int, divergences: int, crash_bps: int, max_crash_bps: int) -> RpStatus #effects(all) {
+  if r[0].channel != RpChannel.canary { return RpStatus.invalid_transition; }
+  if divergences > 0 || crash_bps > max_crash_bps {
+    r[0].active_sha = r[0].rollback_target_sha;
+    r[0].canary_pct = 0;
+    r[0].channel = RpChannel.rolled_back;
+    return RpStatus.canary_unhealthy;
+  }
+  if min_samples < 1 || canary_samples < min_samples { return RpStatus.h7_not_qualified; }
+  r[0].active_sha = r[0].release_sha;
+  r[0].canary_pct = 100;
+  r[0].channel = RpChannel.promoted;
+  return RpStatus.ok;
+}
+
+#test "release-promote: signed H7 qualification, shadow->canary->promoted, and auto-rollback (#13928)" {
+  r: [1] RpRelease;
+  r[0] = rp_init(1000);
+  #assert r[0].channel == RpChannel.shadow && r[0].active_sha == 1000;
+
+  q := RpQual.{
+    sig_ok = true, digest_ok = true,
+    base_pass_bps = 6800, cand_pass_bps = 7300, min_lift_bps = 500,
+    exact_replay_bps = 10000, crash_rate_bps = 10, max_crash_bps = 10,
+  };
+  // Refusals: bad sig, bad manifest, bad canary_pct, exactness < 100%, insufficient H7 lift, crash rate breach
+  q_sig := q; q_sig.sig_ok = false;
+  #assert rp_enter_canary(r[..], 2000, 1000, 10, q_sig) == RpStatus.bad_signature;
+  q_dig := q; q_dig.digest_ok = false;
+  #assert rp_enter_canary(r[..], 2000, 1000, 10, q_dig) == RpStatus.bad_manifest;
+  #assert rp_enter_canary(r[..], 0, 1000, 10, q) == RpStatus.bad_manifest;
+  #assert rp_enter_canary(r[..], 2000, 0, 10, q) == RpStatus.bad_manifest;
+  #assert rp_enter_canary(r[..], 1000, 1000, 10, q) == RpStatus.bad_manifest;
+  #assert rp_enter_canary(r[..], 2000, 1000, 0, q) == RpStatus.bad_manifest;
+  #assert rp_enter_canary(r[..], 2000, 1000, 101, q) == RpStatus.bad_manifest;
+  q_ex := q; q_ex.exact_replay_bps = 9999;
+  #assert rp_enter_canary(r[..], 2000, 1000, 10, q_ex) == RpStatus.exactness_failed;
+  q_lift := q; q_lift.cand_pass_bps = 7299;
+  #assert rp_enter_canary(r[..], 2000, 1000, 10, q_lift) == RpStatus.h7_not_qualified;
+  q_cr := q; q_cr.crash_rate_bps = 11;
+  #assert rp_enter_canary(r[..], 2000, 1000, 10, q_cr) == RpStatus.h7_not_qualified;
+  #assert rp_finalize_canary(r[..], 100, 100, 0, 0, 10) == RpStatus.invalid_transition;
+
+  // Enter canary at exact boundary (canary_pct=1) -> promote after min_samples met
+  #assert rp_enter_canary(r[..], 2000, 1000, 1, q) == RpStatus.ok;
+  #assert r[0].channel == RpChannel.canary && r[0].canary_pct == 1;
+  #assert rp_enter_canary(r[..], 2001, 1000, 10, q) == RpStatus.invalid_transition;
+  #assert rp_finalize_canary(r[..], 99, 100, 0, 10, 10) == RpStatus.h7_not_qualified;
+  #assert rp_finalize_canary(r[..], 100, 0, 0, 10, 10) == RpStatus.h7_not_qualified;
+  #assert rp_finalize_canary(r[..], 1, 1, 0, 10, 10) == RpStatus.ok;
+  #assert r[0].channel == RpChannel.promoted && r[0].active_sha == 2000 && r[0].canary_pct == 100;
+
+  // Canary auto-rollback restores pinned rollback_target_sha (distinct from active_sha) on divergence or crash breach
+  r2: [1] RpRelease; r2[0] = rp_init(2000);
+  #assert rp_enter_canary(r2[..], 3000, 1500, 100, q) == RpStatus.ok;
+  #assert rp_finalize_canary(r2[..], 50, 100, 1, 0, 10) == RpStatus.canary_unhealthy;
+  #assert r2[0].channel == RpChannel.rolled_back && r2[0].active_sha == 1500 && r2[0].canary_pct == 0;
+
+  r3: [1] RpRelease; r3[0] = rp_init(2000);
+  #assert rp_enter_canary(r3[..], 3001, 2000, 25, q) == RpStatus.ok;
+  #assert rp_finalize_canary(r3[..], 100, 100, 0, 11, 10) == RpStatus.canary_unhealthy;
+  #assert r3[0].channel == RpChannel.rolled_back && r3[0].active_sha == 2000 && r3[0].canary_pct == 0;
+}

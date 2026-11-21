@@ -1,0 +1,177 @@
+// #authority Bounded TrainingWindow Lease Protocol & Dataset Shard Authority
+// (Executor W5.1, GitHub #13923).
+// Enforces:
+//   - Hard shard admission: verified rows >= min_rows, zero quarantined/unverified rows,
+//     secret/PII redaction verified, and zero held-out eval exposure overlap.
+//   - Bounded Local-SGD / DiLoCo window leases (inner steps, max upload bytes, TTL,
+//     unique active lease per (shard, worker), and clean expiry reclamation).
+#authority;
+
+TW_MAX_LEASES :: 32;
+TW_MAX_INNER_STEPS :: 500;
+TW_MAX_BYTES_OUT :: 67108864; // 64 MiB per window delta cap
+TW_MAX_TTL_S :: 3600;
+
+TwStatus :: enum u8 {
+  ok;
+  unverified_rows;
+  insufficient_rows;
+  unredacted_pii;
+  eval_leakage;
+  invalid_bounds;
+  duplicate_lease;
+  lease_not_found;
+  lease_expired;
+  capacity;
+}
+
+TwLease :: struct {
+  active: bool;
+  lease_id: int;
+  worker_key: int;
+  parent_sha: int;
+  shard_sha: int;
+  inner_steps: int;
+  max_bytes_out: int;
+  expires_at_s: int;
+}
+
+TwPool :: struct {
+  leases: [TW_MAX_LEASES] TwLease;
+  active_count: int;
+  completed_count: int;
+  expired_count: int;
+}
+
+// Dataset Shard Authority: never train on quarantined/unverified rows, unredacted PII, or held-out eval leakage.
+tw_admit_shard :: (
+  verified_rows: int, min_rows: int, quarantined_rows: int,
+  redacted_pii_ok: bool, exposure_overlap: int
+) -> TwStatus #effects(all) {
+  if quarantined_rows > 0 { return TwStatus.unverified_rows; }
+  if min_rows < 1 || verified_rows < min_rows { return TwStatus.insufficient_rows; }
+  if !redacted_pii_ok { return TwStatus.unredacted_pii; }
+  if exposure_overlap > 0 { return TwStatus.eval_leakage; }
+  return TwStatus.ok;
+}
+
+// Issue a bounded TrainingWindow lease for (worker_key, parent_sha, shard_sha).
+tw_issue_lease :: (
+  p: [] TwPool, lease_id: int, worker_key: int, parent_sha: int, shard_sha: int,
+  inner_steps: int, max_bytes_out: int, now_s: int, ttl_s: int
+) -> TwStatus #effects(all) {
+  if lease_id == 0 || worker_key == 0 || parent_sha == 0 || shard_sha == 0 { return TwStatus.invalid_bounds; }
+  if inner_steps < 1 || inner_steps > TW_MAX_INNER_STEPS { return TwStatus.invalid_bounds; }
+  if max_bytes_out < 1 || max_bytes_out > TW_MAX_BYTES_OUT { return TwStatus.invalid_bounds; }
+  if ttl_s < 1 || ttl_s > TW_MAX_TTL_S { return TwStatus.invalid_bounds; }
+
+  free_slot := -1;
+  for i: 0..<TW_MAX_LEASES {
+    if p[0].leases[i].active {
+      if p[0].leases[i].lease_id == lease_id ||
+         (p[0].leases[i].worker_key == worker_key && p[0].leases[i].shard_sha == shard_sha) {
+        return TwStatus.duplicate_lease;
+      }
+    } else if free_slot < 0 { // mutant: equivalent — any free slot yields identical pool semantics
+      free_slot = i;
+    }
+  }
+  if free_slot < 0 { return TwStatus.capacity; }
+  p[0].leases[free_slot] = TwLease.{
+    active = true,
+    lease_id = lease_id,
+    worker_key = worker_key,
+    parent_sha = parent_sha,
+    shard_sha = shard_sha,
+    inner_steps = inner_steps,
+    max_bytes_out = max_bytes_out,
+    expires_at_s = now_s + ttl_s,
+  };
+  p[0].active_count += 1;
+  return TwStatus.ok;
+}
+
+// Complete a leased window within its TTL and bandwidth budget.
+tw_complete_lease :: (p: [] TwPool, lease_id: int, worker_key: int, bytes_out: int, now_s: int) -> TwStatus #effects(all) {
+  for i: 0..<TW_MAX_LEASES {
+    l := p[0].leases[i];
+    if l.active && l.lease_id == lease_id && l.worker_key == worker_key {
+      if now_s > l.expires_at_s { return TwStatus.lease_expired; }
+      if bytes_out < 1 || bytes_out > l.max_bytes_out { return TwStatus.invalid_bounds; }
+      p[0].leases[i].active = false;
+      p[0].active_count -= 1;
+      p[0].completed_count += 1;
+      return TwStatus.ok;
+    }
+  }
+  return TwStatus.lease_not_found;
+}
+
+// Reclaim all expired leases at `now_s`. Returns count reclaimed.
+tw_expire_leases :: (p: [] TwPool, now_s: int) -> int #effects(all) {
+  reclaimed := 0;
+  for i: 0..<TW_MAX_LEASES {
+    if p[0].leases[i].active && now_s > p[0].leases[i].expires_at_s {
+      p[0].leases[i].active = false;
+      p[0].active_count -= 1;
+      p[0].expired_count += 1;
+      reclaimed += 1;
+    }
+  }
+  return reclaimed;
+}
+
+#test "training-window: shard authority, bounded leases, bandwidth caps, and expiry reclamation (#13923)" {
+  // Shard admission checks
+  #assert tw_admit_shard(100, 100, 0, true, 0) == TwStatus.ok;
+  #assert tw_admit_shard(1, 1, 0, true, 0) == TwStatus.ok;
+  #assert tw_admit_shard(100, 100, 1, true, 0) == TwStatus.unverified_rows;
+  #assert tw_admit_shard(99, 100, 0, true, 0) == TwStatus.insufficient_rows;
+  #assert tw_admit_shard(100, 0, 0, true, 0) == TwStatus.insufficient_rows;
+  #assert tw_admit_shard(100, 100, 0, false, 0) == TwStatus.unredacted_pii;
+  #assert tw_admit_shard(100, 100, 0, true, 1) == TwStatus.eval_leakage;
+
+  // Bounded lease issuance
+  p: [1] TwPool;
+  #assert tw_issue_lease(p[..], 0, 10, 100, 200, 50, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 0, 100, 200, 50, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 0, 200, 50, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 0, 50, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 0, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, TW_MAX_INNER_STEPS + 1, 1024, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 50, 0, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 50, TW_MAX_BYTES_OUT + 1, 1000, 60) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 50, 1024, 1000, 0) == TwStatus.invalid_bounds;
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 50, 1024, 1000, TW_MAX_TTL_S + 1) == TwStatus.invalid_bounds;
+
+  // Exact upper & lower boundaries
+  #assert tw_issue_lease(p[..], 1, 10, 100, 200, 1, 1, 1000, 1) == TwStatus.ok;
+  #assert tw_issue_lease(p[..], 2, 11, 100, 200, TW_MAX_INNER_STEPS, TW_MAX_BYTES_OUT, 1000, TW_MAX_TTL_S) == TwStatus.ok;
+  #assert p[0].active_count == 2;
+  // Duplicate lease_id or duplicate (worker, shard) refused
+  #assert tw_issue_lease(p[..], 1, 99, 100, 999, 10, 100, 1000, 60) == TwStatus.duplicate_lease;
+  #assert tw_issue_lease(p[..], 3, 10, 100, 200, 10, 100, 1000, 60) == TwStatus.duplicate_lease;
+
+  // Completion: wrong worker, expired, bad bytes, exact boundary success
+  #assert tw_complete_lease(p[..], 1, 99, 1, 1001) == TwStatus.lease_not_found;
+  #assert tw_complete_lease(p[..], 1, 10, 1, 1002) == TwStatus.lease_expired;
+  #assert tw_complete_lease(p[..], 1, 10, 0, 1001) == TwStatus.invalid_bounds;
+  #assert tw_complete_lease(p[..], 1, 10, 2, 1001) == TwStatus.invalid_bounds;
+  #assert tw_complete_lease(p[..], 1, 10, 1, 1001) == TwStatus.ok;
+  #assert tw_complete_lease(p[..], 1, 10, 1, 1001) == TwStatus.lease_not_found;
+  #assert p[0].active_count == 1 && p[0].completed_count == 1;
+
+  // Expiry reclamation (including slot 0)
+  #assert tw_expire_leases(p[..], 1000 + TW_MAX_TTL_S) == 0;
+  #assert tw_expire_leases(p[..], 1000 + TW_MAX_TTL_S + 1) == 1;
+  #assert p[0].active_count == 0 && p[0].expired_count == 1;
+  p0: [1] TwPool;
+  #assert tw_issue_lease(p0[..], 7, 70, 100, 200, 1, 1, 1000, 5) == TwStatus.ok;
+  #assert tw_expire_leases(p0[..], 1006) == 1 && p0[0].active_count == 0;
+
+  // Capacity bound
+  for i: 0..<TW_MAX_LEASES {
+    #assert tw_issue_lease(p[..], 100 + i, 500 + i, 100, 200, 10, 1024, 2000, 60) == TwStatus.ok;
+  }
+  #assert tw_issue_lease(p[..], 999, 999, 100, 200, 10, 1024, 2000, 60) == TwStatus.capacity;
+}
