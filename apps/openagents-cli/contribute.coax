@@ -10,6 +10,7 @@ contribute_usage :: () {
   print("  openagents contribute enable                      Explicitly opt in to redacted trajectory capture\n");
   print("  openagents contribute disable                     Disable trajectory capture (local only)\n");
   print("  openagents contribute preview --file TRACE.jsonl  Inspect redacted payload & #authority verdict locally\n");
+  print("  openagents contribute submit --file TRACE.jsonl --out SHARD.json [--verdict compiler|test|patch|none] [--repo-hash HEX] [--held-out-hash HEX]\n");
   print("  openagents contribute selftest                    Verify default-OFF, secret redaction & verifier gate\n");
 }
 
@@ -92,6 +93,66 @@ contribute_main :: (a: [] Args, r: [] Rep) -> int {
     code := rt_admit_trajectory(adm);
     print("--- REDACTED PREVIEW ---\n%\n--- GATE VERDICT ---\n%\n", red_str, rt_verdict_label(code));
     return ifx code == RT_ADMIT then 0 else 3;
+  }
+
+  if sub == "submit" {
+    file_path := args_value(a, "--file", "");
+    out_path := args_value(a, "--out", "");
+    verdict := args_value(a, "--verdict", "none");
+    repo_hash := args_value(a, "--repo-hash", "0000000000000000");
+    held_out := args_value(a, "--held-out-hash", "");
+    if file_path.count == 0 || out_path.count == 0 {
+      tool_errln("usage: openagents contribute submit --file TRACE.atif.jsonl --out SHARD.json [--verdict compiler|test|patch|none] [--repo-hash HEX] [--held-out-hash HEX]");
+      return 2;
+    }
+    raw_b: [65536] u8;
+    rn := fs_read(file_path, raw_b[..]);
+    if rn <= 0 { tool_errln("contribute submit: failed to read input file"); return 1; }
+    red_b: [65536] u8;
+    red_n := rt_redact(cast(string) raw_b[0..<rn], red_b[..]);
+    if red_n < 0 { tool_errln("contribute submit: redaction buffer overflow"); return 1; }
+    red_str := cast(string) red_b[0..<red_n];
+    leak_at := rt_find_secret(red_str);
+    opt_on := contribute_is_enabled();
+    contaminated := held_out.count > 0 && repo_hash == held_out;
+    adm := RtAdmission.{
+      global_opt_in = opt_on,
+      workspace_opt_in = opt_on,
+      secret_clean = leak_at == -1,
+      has_compiler_verdict = verdict == "compiler",
+      has_test_verdict = verdict == "test",
+      has_patch_replay_verdict = verdict == "patch",
+      held_out_contaminated = contaminated,
+      atif_verified = true
+    };
+    code := rt_admit_trajectory(adm);
+    if code != RT_ADMIT {
+      tool_err("contribute submit: ");
+      tool_errln(rt_verdict_label(code));
+      return 3;
+    }
+    h: [32] u8; hex: [64] u8;
+    #assert sha256_hash_checked(red_b[0..<red_n], h[..], false) == SHA_OK;
+    #assert cli_hex(h[..], hex[..]);
+    shard_b: [73728] u8;
+    sn := 0;
+    sn = json_raw(shard_b[..], sn, "{\"v\":\"openagents.executor.dataset-shard.v1alpha1\",\"format\":\"ATIF-v1.8\",\"quarantine_state\":\"quarantined\",\"verifier\":\"");
+    sn = json_raw(shard_b[..], sn, verdict);
+    sn = json_raw(shard_b[..], sn, "\",\"repo_hash\":\"");
+    sn = json_raw(shard_b[..], sn, repo_hash);
+    sn = json_raw(shard_b[..], sn, "\",\"content_sha256\":\"");
+    sn = json_raw(shard_b[..], sn, cast(string) hex[..]);
+    sn = json_raw(shard_b[..], sn, "\",\"redacted_bytes\":");
+    sn = json_write_int(shard_b[..], sn, red_n);
+    sn = json_raw(shard_b[..], sn, ",\"payload\":");
+    sn = json_write_string(shard_b[..], sn, red_str);
+    sn = json_raw(shard_b[..], sn, "}\n");
+    if sn < 0 || !fs_replace_durable(out_path, cast(string) shard_b[0..<sn]) {
+      tool_errln("contribute submit: failed to write shard manifest");
+      return 1;
+    }
+    print("contribute submit: ADMITTED shard=% sha256=% bytes=%\n", out_path, cast(string) hex[..], red_n);
+    return 0;
   }
 
   if sub == "selftest" {

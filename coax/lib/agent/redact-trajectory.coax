@@ -65,6 +65,7 @@ rt_find_secret :: (s: string) -> int #effects(reads, traps) {
     if rt_starts_at(s, i, "API_KEY=") { return i; }
     if rt_starts_at(s, i, "SECRET=") { return i; }
     if rt_starts_at(s, i, "PASSWORD=") { return i; }
+    if rt_starts_at(s, i, "MNEMONIC=") { return i; }
   }
   return -1;
 }
@@ -99,6 +100,14 @@ rt_redact :: (src: string, dst: [] u8) -> int #effects(reads, writes, traps) {
       j := i + 7;
       while j < src.count && rt_is_tok_char(src[j]) { j += 1; }
       used = rt_copy(dst, used, "[REDACTED_BEARER]");
+      if used < 0 { return -1; }   // mutant: equivalent (rt_copy returns >= 1 for non-empty replacement, -1 on overflow)
+      i = j;
+      continue;
+    }
+    if rt_starts_at(src, i, "MNEMONIC=") {
+      j := i + 9;
+      while j < src.count && src[j] != '\n' && src[j] != '"' { j += 1; }
+      used = rt_copy(dst, used, "[REDACTED_MNEMONIC]");
       if used < 0 { return -1; }   // mutant: equivalent (rt_copy returns >= 1 for non-empty replacement, -1 on overflow)
       i = j;
       continue;
@@ -272,4 +281,23 @@ rt_verdict_label :: (code: int) -> string #effects() {
   #assert rt_verdict_label(RT_REFUSE_NO_VERIFIER) == "REFUSED: missing objective compiler/test/replay verifier verdict";
 
   #assert rt_verdict_label(99) == "REFUSED: unknown admission code";
+}
+
+#test "rt_redact strips BIP-39 12-word mnemonics cleanly and fails closed on overflow" {
+  buf: [128] u8;
+  s1 := "MNEMONIC=abandon ability able about above absent absorb abstract absurd abuse access accident\nok";
+  #assert rt_find_secret(s1) == 0;
+  n1 := rt_redact(s1, buf[..]);
+  #assert n1 > 0 && cast(string) buf[0..<n1] == "[REDACTED_MNEMONIC]\nok" && rt_find_secret(cast(string) buf[0..<n1]) == -1;
+
+  s2 := "{\"k\":\"MNEMONIC=zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong\"}";
+  n2 := rt_redact(s2, buf[..]);
+  #assert n2 > 0 && cast(string) buf[0..<n2] == "{\"k\":\"[REDACTED_MNEMONIC]\"}" && rt_find_secret(cast(string) buf[0..<n2]) == -1;
+
+  s3 := "MNEMONIC=\nok";
+  n3 := rt_redact(s3, buf[..]);
+  #assert n3 > 0 && cast(string) buf[0..<n3] == "[REDACTED_MNEMONIC]\nok";
+
+  tiny: [4] u8;
+  #assert rt_redact("MNEMONIC=one two", tiny[..]) == -1;
 }
