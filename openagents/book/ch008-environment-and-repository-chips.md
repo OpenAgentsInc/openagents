@@ -53,8 +53,8 @@ It builds on what exists today:
 - [`docs/protocol/environments-claude-and-world-editing.md`](../../docs/protocol/environments-claude-and-world-editing.md)
 - [`docs/protocol/environment-runtime-v1alpha1.md`](../../docs/protocol/environment-runtime-v1alpha1.md)
 - [`apps/shared/environment-app.coax`](../../apps/shared/environment-app.coax)
-- [`components/zeron/composer.coax`](../../components/zeron/composer.coax) (its chips)
-- [`components/zeron/picker.coax`](../../components/zeron/picker.coax)
+- [`components/zeron/composer.coax`](../../components/kit/form.coax) (its chips)
+- `components/zeron/picker.coax`
 
 ### The chapter's check
 

@@ -33,7 +33,8 @@
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
         "apps/openagents-ios/composer_screen.coax",
-        "openagents/examples/cases/send.ops"
+        "openagents/examples/cases/send.ops",
+        "openagents/examples/chat-screen-flow.coax"
       ],
       "qualified_targets": [
         "cpu"

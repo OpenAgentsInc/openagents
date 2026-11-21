@@ -78,7 +78,7 @@ It builds on what exists today:
 - [`coax/lib/agent/session/session.coax`](../../coax/lib/agent/session/session.coax)
 - [`components/core/markdown.coax`](../../components/core/markdown.coax)
 - [`components/kit/markdown.coax`](../../components/kit/markdown.coax)
-- [`components/zeron/transcript.coax`](../../components/zeron/transcript.coax)
+- [`components/zeron/transcript.coax`](../../components/kit/markdown.coax)
 - [`components/core/scroll.coax`](../../components/core/scroll.coax)
 - [`components/core/keyed.coax`](../../components/core/keyed.coax)
 
@@ -116,5 +116,17 @@ Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/scree
   - [GPU components, "Scrolling"](../../components/gpu-components.md#scrolling)
   - [The chat zero-base audit](../../docs/audits/2026-11-11-chat-zero-base-audit.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1
+
+## Source listing
+
+Pin-to-bottom invariant in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), exercised by [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax):
+
+<!-- source: apps/shared/chat/screen.coax transcript-pin -->
+```jai
+chat_state_pinned :: (st: [] ChatState) -> bool {
+  if st.count < 1 { return true; }
+  return !st[0].unpinned;
+}
+```
 
 Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

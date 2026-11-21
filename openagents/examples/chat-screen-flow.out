@@ -1,0 +1,5 @@
+empty_send accepted=false reason=1 count=0
+edit accepted=true send_enabled=true dirty_composer=true dirty_transcript=false
+send accepted=true count=1 pinned=true draft_len=0
+reply accepted=true count=2 pinned=false unread=1
+jump pinned=true unread=0

@@ -122,4 +122,84 @@ Generic dispatch code goes in the proposed `coax/lib/app/` that
   - [Exact: what to adapt](../../docs/research/exact/03-what-to-adapt.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1
 
+## Source listings & runnable example
+
+Explicit state, action, and dispatch result types in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax):
+
+<!-- source: apps/shared/chat/screen.coax state-types -->
+```jai
+ChatState :: struct {
+  draft: [1] EditBuf;
+  messages: [CS_MAX_MESSAGES] ChatMessage;
+  message_count: int;
+  next_message_id: int;
+  send_enabled: bool;
+  // Chapter 3: transcript scroll & pin-to-bottom state.
+  // Zero-initialized state starts pinned to bottom (!unpinned).
+  scroll_y: f32;
+  content_h: f32;
+  viewport_h: f32;
+  unpinned: bool;
+  unread_below: int;
+}
+
+ChatAction :: struct {
+  kind: int;
+  role: int;
+  text: string;
+  delta_y: f32;
+}
+
+ChatDispatchResult :: struct {
+  accepted: bool;
+  reason: int;
+  dirty_composer: bool;
+  dirty_transcript: bool;
+  seq: int;
+}
+```
+
+Serialized, re-entrancy-refusing dispatch:
+
+<!-- source: apps/shared/chat/screen.coax dispatch -->
+```jai
+// Serialized action dispatch on the screen.
+cs_dispatch :: (s: [] ComposerScreen, act: ChatAction) -> ChatDispatchResult {
+  if s.count < 1 { return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_UNKNOWN}; }
+  if s[0].dispatching {
+    s[0].actions_refused += 1;
+    return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_REENTRANT, seq = s[0].action_seq};
+  }
+  s[0].dispatching = true;
+  res := chat_state_apply(s[0].state[..], act);
+  s[0].dispatching = false;
+  if !res.accepted {
+    s[0].actions_refused += 1;
+    res.seq = s[0].action_seq;
+    return res;
+  }
+  s[0].action_seq += 1;
+  res.seq = s[0].action_seq;
+  if res.dirty_composer { s[0].dirty_composer = true; }
+  if res.dirty_transcript { s[0].dirty_transcript = true; }
+  return res;
+}
+```
+
+Run [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax):
+
+```shell
+coax/bin/coax run openagents/examples/chat-screen-flow.coax
+```
+
+Expected output:
+
+```text
+empty_send accepted=false reason=1 count=0
+edit accepted=true send_enabled=true dirty_composer=true dirty_transcript=false
+send accepted=true count=1 pinned=true draft_len=0
+reply accepted=true count=2 pinned=false unread=1
+jump pinned=true unread=0
+```
+
 Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

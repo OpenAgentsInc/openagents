@@ -96,7 +96,7 @@ It builds on what exists today:
 - [`components/rendering.md`](../../components/rendering.md)
 - [`components/kit/frame.coax`](../../components/kit/frame.coax)
 - [`components/kit/form.coax`](../../components/kit/form.coax) (`ctx_field`)
-- [`components/zeron/composer.coax`](../../components/zeron/composer.coax)
+- [`components/zeron/composer.coax`](../../components/kit/form.coax)
 - [`components/core/edit.coax`](../../components/core/edit.coax)
 - [`apps/shared/login/screen.coax`](../../apps/shared/login/screen.coax)
 - [`apps/shared/native/NativeLogin.swift`](../../apps/shared/native/NativeLogin.swift)
@@ -143,5 +143,36 @@ components extend [`components/`](../../components).
 
 1. Does the first TestFlight build of the lean app ship with only this
    chapter's text input, or does it wait until chapter 4 gives it a reply?
+
+## Source listing
+
+The shared composer layout in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) places `composer.input` and `composer.send` on the GPU frame and exercises duplicate-ID atomic refusal:
+
+<!-- source: apps/shared/chat/screen.coax composer-layout -->
+```jai
+cs_layout_composer :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id: bool) {
+  k := f[0].skin;
+  margin := cs_margin(s);
+  panel_max := cs_panel_max(s);
+  pw := ifx w - 2 * margin < panel_max then w - 2 * margin else panel_max;
+  px := (w - pw) / 2;
+  fh := form_field_height(k);
+  py := cs_composer_top(s, k, h);
+  send_w := button_width(f[0].m, k, "Send");
+  gap := k.space;
+  field_w := pw - send_w - gap;
+  if field_w < 80 { field_w = 80; }
+  send_x := px + field_w + gap;
+  send_y := py + (fh - k.control_h) / 2;
+  send_state := ifx s[0].state[0].send_enabled then 0 else EL_S_DISABLED;
+  _ := ctx_field(f, "composer.input", px, py, field_w, "Message", cs_draft(s), "Message", s[0].focused, 0, CS_HIT_COMPOSER);
+  _ := ctx_button(f, "composer.send", send_x, send_y, "Send", s[0].state[0].send_enabled, send_state, CS_HIT_SEND);
+  if duplicate_id {
+    _ := ctx_field(f, "composer.input", px, py + fh + k.space, field_w, "Message", cs_draft(s), "Message", false, 0, CS_HIT_COMPOSER);
+  }
+}
+```
+
+Run the end-to-end Chapters 1–3 example in [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax) with `coax/bin/coax run openagents/examples/chat-screen-flow.coax`.
 
 Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

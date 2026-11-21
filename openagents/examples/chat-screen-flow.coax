@@ -1,0 +1,53 @@
+// Runnable example for The OpenAgents Book Chapters 1-3 (GitHub #13907).
+// Exercises the shared GPU chat screen state machine: empty-send refusal,
+// typing, sending, appending an assistant reply, and pin-to-bottom scroll.
+//   coax/bin/coax run openagents/examples/chat-screen-flow.coax
+//   coax/bin/coax test openagents/examples/chat-screen-flow.coax
+#import "Basic";
+#load "../../apps/shared/chat/screen.coax";
+
+main :: () {
+  st: [1] ChatState;
+  // Broken case: sending an empty draft is refused cleanly.
+  r0 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SEND});
+  print("empty_send accepted=% reason=% count=%\n", r0.accepted, r0.reason, st[0].message_count);
+
+  // Edit draft -> composer dirty only, send enabled.
+  r1 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_EDIT, text = "hello"});
+  print("edit accepted=% send_enabled=% dirty_composer=% dirty_transcript=%\n",
+    r1.accepted, st[0].send_enabled, r1.dirty_composer, r1.dirty_transcript);
+
+  // Send draft -> clears draft, appends user message, stays pinned.
+  r2 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SEND});
+  print("send accepted=% count=% pinned=% draft_len=%\n",
+    r2.accepted, st[0].message_count, chat_state_pinned(st[..]), eb_text(st[0].draft[..]).count);
+
+  // Append assistant reply while scrolled up -> unread_below increments.
+  st[0].content_h = 800.0f32;
+  st[0].viewport_h = 300.0f32;
+  st[0].scroll_y = 500.0f32;
+  _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SCROLL, delta_y = -200.0f32});
+  r3 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "hi there"});
+  print("reply accepted=% count=% pinned=% unread=%\n",
+    r3.accepted, st[0].message_count, chat_state_pinned(st[..]), st[0].unread_below);
+
+  // Jump to bottom -> re-pins and clears unread count.
+  _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_JUMP_BOTTOM});
+  print("jump pinned=% unread=%\n", chat_state_pinned(st[..]), st[0].unread_below);
+}
+
+#test "openagents book ch1-3 chat screen flow" {
+  st: [1] ChatState;
+  r0 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SEND});
+  #assert !r0.accepted && r0.reason == CS_DISPATCH_REFUSED_EMPTY && st[0].message_count == 0;
+  r1 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_EDIT, text = "hello"});
+  #assert r1.accepted && st[0].send_enabled && r1.dirty_composer && !r1.dirty_transcript;
+  r2 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SEND});
+  #assert r2.accepted && st[0].message_count == 1 && chat_state_pinned(st[..]);
+  st[0].content_h = 800.0f32; st[0].viewport_h = 300.0f32; st[0].scroll_y = 500.0f32;
+  _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SCROLL, delta_y = -200.0f32});
+  r3 := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "hi there"});
+  #assert r3.accepted && st[0].message_count == 2 && !chat_state_pinned(st[..]) && st[0].unread_below == 1;
+  _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_JUMP_BOTTOM});
+  #assert chat_state_pinned(st[..]) && st[0].unread_below == 0;
+}

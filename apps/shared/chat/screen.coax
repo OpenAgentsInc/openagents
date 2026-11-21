@@ -63,6 +63,7 @@ ChatMessage :: struct {
   body_n: int;
 }
 
+// book:begin state-types
 ChatState :: struct {
   draft: [1] EditBuf;
   messages: [CS_MAX_MESSAGES] ChatMessage;
@@ -92,6 +93,7 @@ ChatDispatchResult :: struct {
   dirty_transcript: bool;
   seq: int;
 }
+// book:end state-types
 
 CsGeneration :: struct {
   under: [CS_UNDER] Prim;
@@ -216,10 +218,12 @@ cs_msg_line :: (st: [] ChatState, idx: int, out: [] u8) -> int {
   return el_put(out, n, cs_msg_body(st, idx));
 }
 
+// book:begin transcript-pin
 chat_state_pinned :: (st: [] ChatState) -> bool {
   if st.count < 1 { return true; }
   return !st[0].unpinned;
 }
+// book:end transcript-pin
 
 // Pure all-or-nothing state transition for one action.
 chat_state_apply :: (st: [] ChatState, act: ChatAction) -> ChatDispatchResult {
@@ -303,6 +307,7 @@ chat_state_equal :: (a: [] ChatState, b: [] ChatState) -> bool {
   return true;
 }
 
+// book:begin dispatch
 // Serialized action dispatch on the screen.
 cs_dispatch :: (s: [] ComposerScreen, act: ChatAction) -> ChatDispatchResult {
   if s.count < 1 { return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_UNKNOWN}; }
@@ -324,6 +329,7 @@ cs_dispatch :: (s: [] ComposerScreen, act: ChatAction) -> ChatDispatchResult {
   if res.dirty_transcript { s[0].dirty_transcript = true; }
   return res;
 }
+// book:end dispatch
 
 cs_dirty :: (s: [] ComposerScreen) -> bool {
   if s.count < 1 { return false; }
@@ -341,6 +347,7 @@ cs_composer_top :: (s: [] ComposerScreen, k: UiSkin, h: f32) -> f32 {
   return py;
 }
 
+// book:begin composer-layout
 cs_layout_composer :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id: bool) {
   k := f[0].skin;
   margin := cs_margin(s);
@@ -362,6 +369,7 @@ cs_layout_composer :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, dupl
     _ := ctx_field(f, "composer.input", px, py + fh + k.space, field_w, "Message", cs_draft(s), "Message", false, 0, CS_HIT_COMPOSER);
   }
 }
+// book:end composer-layout
 
 cs_measure_message :: (a: [] Atlas, doc: [] MdDoc, m: TextMeasure, k: UiSkin, sh: [] Sheet, role: int, body: string, w: f32) -> f32 {
   h := k.label.line + 4.0f32;

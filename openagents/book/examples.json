@@ -1,1 +1,13 @@
-{"schema": 1, "examples": [], "libraries": []}
+{
+  "schema": 1,
+  "examples": [
+    {
+      "source": "openagents/examples/chat-screen-flow.coax",
+      "chapter": "openagents/book/ch002-state-and-actions.md",
+      "stdout": "openagents/examples/chat-screen-flow.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    }
+  ],
+  "libraries": []
+}
