@@ -33,4 +33,4 @@ context coax/web/api/agent-attest.coax -> coax/lib/nostr/nipoa.coax  # seeded (#
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/event_sign.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/nip44-key.coax  # seeded (#13317)
 context coax/lib/media/media.coax -> metaverse-engine/ui/font.coax  # the stroke font moved from apps/openagents-web/ to the engine's UI, beside draw.coax; the load is as old (#13268)
-context apps/metaverse-engine-desktop/scene-policy.coax -> everglade/world/edits.coax  # the editor's scene policy reads Everglade's edit codec, which moved from verse/everglade/ into the world context; the load is as old (#13269)
+context apps/shared/aethyrforge/scene-policy.coax -> everglade/world/edits.coax  # the editor's scene policy reads Everglade's edit codec, which moved from verse/everglade/ into the world context; the load is as old (#13269)

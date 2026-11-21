@@ -1,6 +1,0 @@
-// Desktop presentation preference; display observations come from AppKit.
-#test "desktop asks WebKit for high refresh only on a faster display" {
-  #assert !editor_high_refresh(0) && !editor_high_refresh(30) && !editor_high_refresh(60);
-  #assert editor_high_refresh(61) && editor_high_refresh(120) && editor_high_refresh(240);
-}
-editor_high_refresh :: (display_hz:int)->bool #export_c #effects(all) {return display_hz>60;}

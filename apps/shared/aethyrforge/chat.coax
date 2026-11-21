@@ -1,0 +1,197 @@
+// Coder's existing JSONL is the desktop's message transport. Coax owns the
+// catalog, event interpretation and layout; AppKit provides text/IME effects.
+#import "Basic";
+#load "chat-policy.coax";
+#load "chat-presentation.coax";
+#load "chat-launch.coax";
+#load "chat-run.coax";        // a turn on the shared turn runner, in this process (the Mac's chat.m through chat-face.c)
+#load "scene-context.coax";
+#load "voice-coder.coax";
+#load "scene-session.coax";   // the scene session file the app writes (fgc_scene_session)
+#load "microphone.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/encoding/json-f64.coax";
+#load "../../../metaverse-engine/ui/draw.coax";
+#load "../../../metaverse-engine/ui/feed-draw.coax";
+
+FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"];
+FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
+EditorChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;live:bool=false;}
+EditorChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
+// router.json's local default is its codec's (coax/lib/agent/engine/route.coax, coder.router.v1).
+fc_router_default :: ()->string #export_c #effects(all) {return agr_router_local();}
+
+#test "desktop routing reports the chosen engine and honest fallback without exposing controls" {
+  s:[1]EditorChatEvent;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"owned-session\",\"engine\":\"codex\"}")==1 && cast(string)s[0].text[0..<s[0].tn]=="codex";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"schema\":\"coder.route.v2\",\"ok\":true,\"source\":\"local-elephant\",\"ran\":\"claude\",\"difficulty\":3,\"effort\":\"high\",\"model\":\"opus\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="local-elephant · claude · hard · high · opus";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"ok\":false,\"ran\":\"codex\",\"text\":\"router unavailable\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="Fallback · codex · router unavailable";
+  #assert fc_read(s[..],"{\"kind\":\"route\",\"ok\":true,\"engine\":\"claude\",\"ran\":\"codex\",\"probability\":0.1,\"text\":\"low confidence\"}")==10;
+  #assert cast(string)s[0].text[0..<s[0].tn]=="Fallback · codex · low-confidence decision";
+}
+fc_cat :: (out:[]u8,n:int,text:string)->int {
+  if n<0 || n+text.count>out.count {return -1;}
+  for i:0..<text.count {out[n+i]=text[i];} return n+text.count;
+}
+// A route record (read by stream.coax, the codec) as the line the chat shows.
+fc_route_text :: (e:CstEvent,out:[]u8)->int {
+  n:=0;
+  // The route has an explicit selected engine even on a default/failure.
+  if e.ok {n=fc_cat(out,n,ifx e.source.count>0 then e.source else "Automatic");}
+  else {n=fc_cat(out,n,"Fallback");}
+  if e.ran.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.ran);}
+  if !e.ok {
+    if e.text.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.text);} return n;
+  }
+  // Low confidence is explicitly an eligible default, never a smart-pick claim.
+  if e.has_probability && (!e.probability.ok || e.probability.value<0.5) {
+    n=fc_cat(out,0,"Fallback");
+    if e.ran.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.ran);}
+    return fc_cat(out,n," · low-confidence decision");
+  }
+  levels:=[5]string.["trivial","easy","moderate","hard","very hard"];
+  d:=e.difficulty;
+  if d>=0 && d<5 {n=fc_cat(out,n," · ");n=fc_cat(out,n,levels[d]);}
+  for field:[2]string.[e.effort,e.model] {if field.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,field);}}
+  return n;
+}
+
+#test "desktop model choices use visible IDs and their reported effort levels" {
+  m:[1]EditorChatModels;
+  #assert fc_models(m[..],"{\"data\":[{\"model\":\"test-model\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]},{\"id\":\"private\",\"hidden\":true}]}");
+  #assert m[0].n==1 && fc_model(m[..],0,-1)=="test-model" && fc_model(m[..],0,0)=="high";
+  #assert fc_model(m[..],0,1)=="" && fc_model(m[..],-1,0)=="";
+  #assert !fc_models(m[..],"not json") && m[0].n==1;
+}
+fc_cstr :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
+fc_model :: (m:[]EditorChatModels,i:int,effort:int)->string #export_c #effects(all) {
+  if i<0 || i>=m[0].n {return "";}
+  if effort<0 {return fc_cstr(m[0].ids[i][..]);}
+  if effort>=m[0].counts[i] {return "";}
+  return fc_cstr(m[0].levels[i][effort][..]);
+}
+fc_models :: (m:[]EditorChatModels,line:string)->bool #export_c #effects(all) {
+  nodes:[4096]JvNode; d:[1]Jv;
+  if !jv_parse(d[..],line,nodes[..]) {return false;}
+  v:=d[0]; data:=jv_get(v,0,"data"); if jv_kind(v,data)!=JV_ARRAY {return false;}
+  for i:0..<jv_len(v,data) {
+    row:=jv_at(v,data,i); if jv_bool(v,jv_get(v,row,"hidden")) || m[0].n>=64 {continue;}
+    k:=m[0].n; id:[128]u8; n:=jv_str(v,jv_get(v,row,"model"),id[0..<127]);
+    if n<=0 {n=jv_str(v,jv_get(v,row,"id"),id[0..<127]);} if n<=0 {continue;}
+    exists:=false; for j:0..<k {if fc_model(m,j,-1)==cast(string)id[0..<n] {exists=true;}}
+    if exists {continue;}
+    for j:0..<n {m[0].ids[k][j]=id[j];} m[0].ids[k][n]=0;
+    levels:=jv_get(v,row,"supportedReasoningEfforts");
+    for j:0..<jv_len(v,levels) {
+      if m[0].counts[k]>=8 {break;} l:=m[0].counts[k]; x:=jv_at(v,levels,j);
+      value:=ifx jv_kind(v,x)==JV_STRING then x else jv_get(v,x,"reasoningEffort");
+      n=jv_str(v,value,m[0].levels[k][l][0..<15]);
+      if n>0 {m[0].levels[k][l][n]=0;m[0].counts[k]+=1;}
+    }
+    m[0].n+=1;
+  }
+  return true;
+}
+
+#test "chat consumes Coder events without confusing tool results with replies" {
+  s:[1]EditorChatEvent;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"20261104-123\"}")==1 && s[0].sn==12;
+  #assert fc_read(s[..],"{\"kind\":\"reply\",\"text\":\"Hello\\nworld\"}")==3 && s[0].tn==11 && s[0].text[5]==10;
+  #assert fc_read(s[..],"{\"kind\":\"tool\",\"label\":\"Read(file)\"}")==4;
+  #assert fc_read(s[..],"{\"kind\":\"ask\",\"text\":\"Run command?\"}")==6;
+  #assert fc_read(s[..],"{\"kind\":\"end\",\"ending\":\"failed\",\"text\":\"login needed\"}")==7 && s[0].tn==20;
+  #assert fc_read(s[..],"{\"kind\":\"request\",\"text\":\"hidden metadata\"}")==0;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}")==0 && s[0].sn==12;
+  #assert fc_read(s[..],"invalid")==0;
+  #assert fc_read(s[..],"{\"kind\":\"model\",\"model\":\"chosen-model\",\"effort\":\"high\"}")==9 && s[0].tn==12;
+  #assert fc_engine(0)=="codex" && fc_engine(5)=="echo" && fc_engine(6)=="" && fc_label(-1)=="";
+}
+#test "live chunks open one reply and finish it without duplicate whole replies" {
+  s:[1]EditorChatEvent;
+  #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"wrong\",\"text\":\"ignored\"}")==0;
+  #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"Hello \"}")==11 && s[0].live;
+  #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"world\"}")==12 && s[0].tn==5;
+  #assert fc_read(s[..],"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\"}")==13 && !s[0].live;
+  #assert fc_read(s[..],"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\"}")==0;
+  #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"unfinished\"}")==11;
+  #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"new-turn\",\"engine\":\"codex\"}")==1 && !s[0].live;
+  #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"new reply\"}")==11;
+}
+#test "HUD keeps the composer at the bottom and the settings beside each other" {
+  for w:[3]f32.[900,1280,1920] {
+    b:=fc_box(0,w,800); t:=fc_box(1,w,800); i:=fc_box(2,w,800);
+    #assert b.x==16 && b.y+b.height==788 && b.width==w-32 && b.height==88;
+    #assert t.y+t.height<b.y && i.y>b.y && i.x+i.width<b.x+b.width;
+    #assert fc_box(3,w,800).x+fc_box(3,w,800).width<fc_box(6,w,800).x;
+  }
+  out:[24000]f32; n:=fc_draw(out[..],900,800,1,false);
+  #assert n>0 && n<=2000 && n%6==0;
+}
+fc_engine :: (index:int)->string #export_c #effects(all) {return ifx index>=0 && index<6 then FC_ENGINES[index] else "";}
+fc_label :: (index:int)->string #export_c #effects(all) {return ifx index>=0 && index<6 then FC_LABELS[index] else "";}
+// One line of Coder's JSONL as an event. The session log's lines through its reader (log.coax);
+// the stream records that ride beside them (reply_delta, reply_end, route, model: C3's, #13240) here.
+fc_read :: (s:[]EditorChatEvent,line:string)->int #export_c #effects(all) {
+  s[0].kind=0; s[0].tn=0;
+  r:[1]SlReader; r[0]=SlReader.{text=line}; l:[1]SlLine;
+  if !sl_next(r[..],l[..]) {return 0;}
+  if l[0].kind==SK_OTHER {return fc_read_stream(s,line);}
+  ab:[SL_ARENA]u8; ar:[1]ClArena; ar[0]=ClArena.{buf=ab[..]};
+  sl_read(ar[..],l[..]);
+  k:=l[0].kind;
+  if k==SK_SESSION {
+    id:=l[0].header.id;
+    if id.count==0 || id.count>128 || !fc_can_answer(true,true,id) {return 0;}
+    s[0].sn=id.count; for i:0..<id.count {s[0].session[i]=id[i];}
+    if l[0].header.engine.count>0 {s[0].tn=fc_cat(s[0].text[..],0,l[0].header.engine);}
+    s[0].live=false;s[0].kind=1; return 1;
+  }
+  t:="";
+  if k==SK_USER {s[0].kind=2;t=l[0].text;} else if k==SK_REPLY {s[0].kind=3;t=l[0].text;}
+  else if k==SK_TOOL {s[0].kind=4;t=l[0].label;} else if k==SK_RESULT {s[0].kind=5;t=l[0].text;}
+  else if k==SK_ASK {s[0].kind=6;t=l[0].text;} else if k==SK_END {s[0].kind=7;t=l[0].ending;}
+  else if k==SK_DIFF {s[0].kind=8;t=l[0].path;} else {return 0;}
+  if t.count>s[0].text.count {s[0].kind=0;return 0;}
+  s[0].tn=fc_cat(s[0].text[..],0,t);
+  if k==SK_END && l[0].text.count>0 && l[0].text.count<=65536 && s[0].tn+2+l[0].text.count<=s[0].text.count {
+    s[0].tn=fc_cat(s[0].text[..],s[0].tn,": "); s[0].tn=fc_cat(s[0].text[..],s[0].tn,l[0].text);
+  }
+  return s[0].kind;
+}
+// The stream records Coder prints beside the log's lines, read by their codec
+// (coax/lib/agent/session/stream.coax, cst_read).
+fc_read_stream :: (s:[]EditorChatEvent,line:string)->int {
+  ab:[SL_ARENA+4096]u8; ar:[1]ClArena; ar[0]=ClArena.{buf=ab[..]}; ev:[1]CstEvent;
+  k:=cst_read(ar[..],line,ev[..]);
+  if k==CST_KIND_REPLY_END {was:=s[0].live;s[0].live=false;return ifx was then 13 else 0;}
+  if k==CST_KIND_REPLY_DELTA {
+    t:=ev[0].text; if t.count==0 || t.count>s[0].text.count {return 0;}
+    s[0].tn=fc_cat(s[0].text[..],0,t);kind:=ifx s[0].live then 12 else 11;s[0].live=true;return kind;
+  }
+  if k==CST_KIND_MODEL {t:=ev[0].model; if t.count>s[0].text.count {return 0;} s[0].tn=fc_cat(s[0].text[..],0,t);s[0].kind=9;return 9;}
+  if k==CST_KIND_ROUTE {s[0].tn=fc_route_text(ev[0],s[0].text[..]);s[0].kind=10;return 10;}
+  return 0;
+}
+// Shared point-space boxes: native text controls and the GPU frames use these.
+fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c #effects(all) {
+  if kind==0 {return HudBox.{x=16,y=h-100,width=w-32,height=88};}
+  if kind==1 {return HudBox.{x=16,y=h-356,width=620,height=244};}
+  if kind==2 {return HudBox.{x=28,y=h-68,width=w-152,height=30};}
+  if kind==3 {return HudBox.{x=28,y=h-91,width=w-324,height=18};}
+  if kind==4 {return HudBox.{x=168,y=h-94,width=180,height=22};}
+  if kind==5 {return HudBox.{x=356,y=h-94,width=120,height=22};}
+  if kind==6 {return HudBox.{x=w-268,y=h-94,width=240,height=22};}
+  if kind==7 {return HudBox.{x=w-112,y=h-66,width=84,height=26};}
+  return HudBox.{};
+}
+fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c #effects(all) {
+  p:=HdPen.{d=d,cyan=true,top=0,bottom=h,sans=false}; n:=0;
+  n=hd_panel(out,n,fc_box(0,w,h),p,busy);
+  n=hd_panel(out,n,fc_box(2,w,h),p,false);
+  return n;
+}
+fc_feed_draw :: (out:[]f32,feed:[]HudFeed,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
+  return hd_feed(out,0,feed,fc_box(1,w,h),HdPen.{d=d,top=0,bottom=h,sans=false});
+}

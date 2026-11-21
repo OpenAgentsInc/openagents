@@ -2,12 +2,12 @@
 # coax/web/tool.sh layer-check reads this file; coax/web/tool.sh layer-check --consumers lists the modules.
 # A module has a product consumer when a file outside metaverse-engine/ that is not a test, tool, example, book
 # or document loads it, directly or through another module. A module with none needs a line here:
-#   adopt PREFIX #ISSUE     an open issue of the AAA program (#13257) takes it into the product
+#   adopt PREFIX #ISSUE     an open adopt of the AAA program (#13257) takes it into the product
 #   book PREFIX CHAPTER     it is the Metaverse Engine book's own implementation; CHAPTER names it
 #   built PREFIX SCRIPT     no file loads it: SCRIPT compiles it by name
 #   pipeline PREFIX TOOL    an offline tool that makes a shipped thing loads it
 # The longest prefix covers a module. A line that covers nothing now fails: take it out when its
-# issue lands the adoption or the module is deleted. A module nobody adopts by the end of the
+# adopt lands the adoption or the module is deleted. A module nobody adopts by the end of the
 # program is deleted; git keeps it.
 
 # P2: one world
@@ -57,3 +57,14 @@ adopt metaverse-engine/script/ #13467  # stage 2 loads the host from the page's 
 adopt metaverse-engine/import/ple-scene.coax #13792  # Stage 1 3D PLE scene loader; Stage 2 adopts it in the OpenAgents Desktop Gym workbench
 adopt metaverse-engine/import/ple-scene-out.coax #13812  # a scene back to JSON and its CPU picture; apps/openagents-desktop/ple-run.coax (a shipped tool) uses it today, and #13812 brings it into the desktop page for the live inline view
 pipeline metaverse-engine/import/ple-ifc.coax apps/openagents-desktop/ple-run.coax  # IFC (STEP) models to ple-scene.v1: the shipped ple-run reads a real ple-kit run's model.ifc with it (#13812)
+
+# Previously consumed by retired apps/metaverse-engine-desktop/ (#13856); adopting into openagents-desktop/ios (#13857).
+adopt metaverse-engine/audio/everglade-pcm-assets.coax #13857
+adopt metaverse-engine/audio/host-convolution.coax #13857
+adopt metaverse-engine/audio/host-dynamics.coax #13857
+adopt metaverse-engine/audio/host-effects.coax #13857
+adopt metaverse-engine/audio/host-level.coax #13857
+adopt metaverse-engine/audio/host-opus.coax #13857
+adopt metaverse-engine/audio/host-pcm-asset.coax #13857
+adopt metaverse-engine/audio/host-pcm.coax #13857
+adopt metaverse-engine/audio/host-voice.coax #13857

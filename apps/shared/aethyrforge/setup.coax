@@ -1,0 +1,189 @@
+// Setup's state and bounded CLI-report readers. AppKit renders these values;
+// scanning the machine and moving files are explicit CLI/platform effects.
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/local/inventory-wire.coax";
+
+EditorSetup :: struct {
+  completed: bool;
+  microphone:int;microphone_pending:bool;
+  voice_stage:int;
+  cli: bool; agents: bool; models: bool; voice: bool; verified: bool; text_model: bool;
+  counts: [4] int; total: int; selected: int = -1;
+  version: [64] u8; version_n: int;
+  voice_path: [4096] u8; voice_path_n: int;
+  problem: int;
+}
+FSU_NAMES :: [4] string.["Claude Code", "Codex", "Coder", "Cursor"];
+FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
+
+#test "setup completion comes from the saved entry receipt and survives background discovery" {
+  s:[1]EditorSetup;fsu_reset(s[..]);#assert !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"parakeet\",\"agent_engine\":\"codex\"}") && fsu_completed(s[..]);
+  #assert fsu_read(s[..],0,"{\"ok\":true,\"openagents\":\"1.0\"}") && fsu_completed(s[..]);
+  fsu_reset(s[..]);#assert !fsu_completed(s[..]);
+  #assert !fsu_read(s[..],3,"oops") && !fsu_completed(s[..]);
+  #assert !fsu_read(s[..],3,"{\"schema\":\"unknown\",\"audio_model\":\"parakeet\"}") && !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\"}") && !fsu_completed(s[..]);
+  #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"other\"}") && !fsu_completed(s[..]);
+  b:[512]u8;#assert fsu_read(s[..],3,fsu_settings(s[..],b[..])) && fsu_completed(s[..]);
+}
+
+#test "setup uses actual CLI, running-agent and local model reports" {
+  s: [1] EditorSetup; fsu_reset(s[..]);
+  #assert !fsu_can_enter(s[..], true);
+  #assert fsu_read(s[..], 0, "{\"ok\":true,\"openagents\":\"1.0.0-dev\"}");
+  #assert fsu_read(s[..], 1, "{\"ok\":true,\"complete\":true,\"schema\":\"openagents.coder.agents.v1\",\"agents\":[{\"engine\":\"codex\",\"pid\":42,\"state\":\"running\",\"attached\":false}]}");
+  #assert fsu_read(s[..], 2, "{\"ok\":true,\"schema\":\"openagents.models.v1\",\"models\":[{\"id\":\"parakeet\",\"present\":true,\"verified\":false,\"path\":\"/home/me/.openagents/models/parakeet\"},{\"id\":\"gpt-oss-20b\",\"present\":true}]}");
+  #assert s[0].total == 1 && s[0].counts[1] == 1 && s[0].selected == 1;
+  #assert s[0].voice && !s[0].verified && s[0].text_model;
+  #assert fsu_can_enter(s[..], true) && !fsu_can_enter(s[..], false);
+  b: [256] u8; #assert fsu_settings(s[..], b[..]) == "{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"parakeet\",\"agent_engine\":\"codex\"}";
+  fsu_choose(s[..], -1); #assert s[0].selected == -1;
+  s[0].selected = 1;
+  #assert fsu_read(s[..], 3, "{\"schema\":\"openagents.aethyrforge.setup.v1\",\"agent_engine\":null}") && s[0].selected == -1;
+  #assert !fsu_read(s[..], 3, "{\"agent_engine\":\"codex\"}") && s[0].selected == -1;
+}
+#test "setup distinguishes missing data, a failed scan and a verified model" {
+  s: [1] EditorSetup; fsu_reset(s[..]);
+  #assert !fsu_read(s[..], 1, "{\"ok\":false,\"complete\":false}") && !s[0].agents;
+  #assert !fsu_read(s[..], 2, "{}");
+  #assert fsu_read(s[..], 2, "{\"ok\":true,\"schema\":\"openagents.models.v1\",\"models\":[{\"id\":\"parakeet\",\"present\":true,\"verified\":true,\"path\":\"/shared/parakeet\"}]}");
+  #assert s[0].voice && s[0].verified && !s[0].text_model;
+  #assert !fsu_read(s[..], 0, "not json") && !s[0].cli;
+  fsu_choose(s[..], 99); #assert s[0].selected == -1;
+  #assert fsu_text_byte(s[..], 0, 0) == 'S' && fsu_text_byte(s[..], 0, -1) == -1;
+}
+
+#test "setup shows current microphone permission independently of model discovery and saved setup" {
+  s:[1]EditorSetup;fsu_reset(s[..]);
+  #assert fsu_text(s[..],14)=="Microphone permission requested during setup" && fsu_text(s[..],15)=="Allow microphone" && fsu_status(s[..],3)==1;
+  fsu_microphone(s[..],0,true);#assert fsu_text(s[..],14)=="Waiting for macOS microphone permission…" && fsu_status(s[..],3)==0;
+  fsu_microphone(s[..],3,false);#assert fsu_text(s[..],14)=="Microphone allowed · Ready for TALK / V" && fsu_text(s[..],15)=="Allowed" && fsu_status(s[..],3)==0;
+  for status:1..<3 {fsu_microphone(s[..],status,false);#assert fsu_text(s[..],14)=="Microphone blocked in macOS Settings" && fsu_text(s[..],15)=="Open Settings" && fsu_status(s[..],3)==2;}
+  fsu_microphone(s[..],99,false);#assert fsu_text(s[..],14)=="Microphone status unavailable" && fsu_status(s[..],3)==0;
+  #assert !s[0].voice && !fsu_completed(s[..]);
+  b:[512]u8;#assert fsu_read(s[..],3,fsu_settings(s[..],b[..]));
+  fsu_microphone(s[..],0,false);#assert fsu_completed(s[..]) && fsu_status(s[..],3)==1;
+}
+
+#test "setup reports resident voice preparation independently of microphone capture" {
+  s:[1]EditorSetup;
+  #assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
+  fsu_voice_ready(s[..],1);#assert fsu_text(s[..],16)=="Preparing local voice…";
+  fsu_voice_ready(s[..],2);#assert fsu_text(s[..],16)=="Voice ready · Hold TALK / V";
+  fsu_voice_ready(s[..],3);#assert fsu_text(s[..],16)=="Voice not ready · TALK / V will retry";
+  fsu_voice_ready(s[..],99);#assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
+}
+
+fsu_reset :: (s: [] EditorSetup) #export_c #effects(all) { s[0] = EditorSetup.{}; }
+fsu_read :: (s: [] EditorSetup, kind: int, text: string) -> bool #export_c #effects(all) {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { s[0].problem = kind + 1; return false; }
+  v := d[0];
+  if kind == 3 {
+    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.aethyrforge.setup.v1" { return false; }
+    s[0].completed = jv_raw(v, jv_get(v, 0, "audio_model")) == "parakeet";
+    engine := jv_raw(v, jv_get(v, 0, "agent_engine"));
+    s[0].selected = -1;
+    for i: 0..<4 { if engine == FSU_IDS[i] && s[0].counts[i] > 0 { s[0].selected = i; } }
+    return true;
+  }
+  if kind == 0 {
+    s[0].cli = false;
+    n := jv_str(v, jv_get(v, 0, "openagents"), s[0].version[..]);
+    s[0].cli = n > 0 && jv_bool(v, jv_get(v, 0, "ok"));
+    s[0].version_n = ifx n > 0 then n else 0;
+    return s[0].cli;
+  }
+  // the two inventories, through their one codec (coax/lib/local/inventory-wire.coax)
+  if kind == 1 {
+    s[0].agents = false; s[0].total = 0;
+    for i: 0..<4 { s[0].counts[i] = 0; }
+    rows: [INV_AGENTS_MOST] InvAgent;
+    got := inv_read_agents(text, nodes[..], rows[..]);
+    if !got.read || !got.ok || !got.complete { return false; }
+    for i: 0..<got.n {
+      if !rows[i].running || rows[i].pid <= 0 { continue; }
+      engine := inv_agent_engine(rows[..], i);
+      for k: 0..<4 { if engine == FSU_IDS[k] { s[0].counts[k] += 1; s[0].total += 1; } }
+    }
+    if s[0].selected < 0 || s[0].counts[s[0].selected] == 0 {
+      s[0].selected = -1;
+      for k: 0..<4 { if s[0].counts[k] > 0 { s[0].selected = k; } }
+      if s[0].counts[1] > 0 { s[0].selected = 1; }
+    }
+    s[0].agents = true; return true;
+  }
+  if kind == 2 {
+    s[0].models = false; s[0].voice = false; s[0].verified = false; s[0].text_model = false;
+    rows: [INV_MODELS_MOST] InvModel;
+    got := inv_read_models(text, nodes[..], rows[..]);
+    if !got.read { return false; }
+    for i: 0..<got.n {
+      id := inv_model_id(rows[..], i);
+      if id == "parakeet" {
+        s[0].voice = rows[i].present;
+        s[0].verified = s[0].voice && rows[i].verified;
+        path := inv_model_path(rows[..], i);
+        for k: 0..<path.count { s[0].voice_path[k] = path[k]; }
+        s[0].voice_path_n = path.count;
+      }
+      if id == "gpt-oss-20b" { s[0].text_model = rows[i].present; }
+    }
+    s[0].models = true; return true;
+  }
+  return false;
+}
+fsu_can_enter :: (s: [] EditorSetup, scene: bool) -> bool #export_c #effects(all) { return scene && s[0].cli && s[0].agents && s[0].models; }
+fsu_completed :: (s: [] EditorSetup) -> bool #export_c #effects(all) { return s[0].completed; }
+fsu_microphone :: (s:[]EditorSetup,status:int,pending:bool) #export_c #effects(all) {s[0].microphone=status;s[0].microphone_pending=pending;}
+fsu_voice_ready :: (s:[]EditorSetup,stage:int) #export_c #effects(all) {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
+fsu_choose :: (s: [] EditorSetup, kind: int) #export_c #effects(all) { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
+fsu_count :: (s: [] EditorSetup, kind: int) -> int #export_c #effects(all) { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
+fsu_selected :: (s: [] EditorSetup) -> int #export_c #effects(all) { return s[0].selected; }
+fsu_status :: (s: [] EditorSetup, kind: int) -> int #export_c #effects(all) {
+  if kind==3 {
+    if s[0].microphone_pending {return 0;}
+    if s[0].microphone==0 {return 1;}
+    return ifx s[0].microphone==1 || s[0].microphone==2 then 2 else 0;
+  }
+  if kind == 0 { return ifx s[0].cli then 1 else 0; }
+  if kind == 1 { return ifx s[0].models then (ifx s[0].verified then 2 else ifx s[0].voice then 1 else 0) else -1; }
+  return ifx s[0].agents then 1 else 0;
+}
+fsu_text :: (s: [] EditorSetup, field: int) -> string {
+  if field==16 {
+    if s[0].voice_stage==1 {return "Preparing local voice…";}
+    if s[0].voice_stage==2 {return "Voice ready · Hold TALK / V";}
+    return ifx s[0].voice_stage==3 then "Voice not ready · TALK / V will retry" else "Voice prepares automatically after approval";
+  }
+  if field==14 {
+    if s[0].microphone_pending {return "Waiting for macOS microphone permission…";}
+    if s[0].microphone==0 {return "Microphone permission requested during setup";}
+    if s[0].microphone==3 {return "Microphone allowed · Ready for TALK / V";}
+    return ifx s[0].microphone==1 || s[0].microphone==2 then "Microphone blocked in macOS Settings" else "Microphone status unavailable";
+  }
+  if field==15 {return ifx fsu_status(s[..],3)==2 then "Open Settings" else ifx s[0].microphone==3 then "Allowed" else "Allow microphone";}
+  if field == 0 { return "Set up the Metaverse Engine"; }
+  if field == 1 { return "Local tools. Shared models. Your world."; }
+  if field == 2 { return ifx s[0].cli then cast(string) s[0].version[0..<s[0].version_n] else "CLI unavailable"; }
+  if field == 3 { return "Parakeet TDT v3"; }
+  if field == 4 {
+    if !s[0].models { return "Checking local models…"; }
+    if s[0].verified { return "Verified checkpoint · 2.51 GB · On this Mac"; }
+    return ifx s[0].voice then "Installed · Checkpoint not yet verified" else "Model not installed";
+  }
+  if field == 5 { return ifx s[0].text_model then "gpt-oss-20b · Installed" else "gpt-oss-20b · Not installed"; }
+  if field == 6 { return cast(string) s[0].voice_path[0..<s[0].voice_path_n]; }
+  if field == 7 { return ifx !s[0].agents then "Agent discovery unavailable" else ifx s[0].total == 0 then "No running local agents" else "Running on this Mac"; }
+  if field >= 10 && field < 14 { return FSU_NAMES[field - 10]; }
+  return "";
+}
+fsu_text_byte :: (s: [] EditorSetup, field: int, index: int) -> int #export_c #effects(all) { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_settings :: (s: [] EditorSetup, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "openagents.aethyrforge.setup.v1");
+  jo_key(o[..], "audio_model"); jo_str(o[..], "parakeet"); jo_key(o[..], "agent_engine");
+  if s[0].selected >= 0 { jo_str(o[..], FSU_IDS[s[0].selected]); } else { jo_null(o[..]); }
+  jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
+}
+fsu_settings_byte :: (s: [] EditorSetup, index: int) -> int #export_c #effects(all) { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
