@@ -3,6 +3,8 @@
 #load "../registry/wire.coax";
 
 TS_BUF :: 16384;
+TESTER_RESULT_SCHEMA :: "tester.result.v1";
+TESTER_REPORT_SCHEMA :: "tester.report.v1";
 
 TsObservation :: struct {
   client_id: string;

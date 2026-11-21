@@ -257,6 +257,11 @@
     "projects": [
       "openagents/project/v1alpha1/project.proto",
       "openagents/project/chat/v1alpha1/chat.proto"
+    ],
+    "tester": [
+      "openagents/agent/v1alpha1/definition.proto",
+      "openagents/agent/v1alpha1/invocation.proto",
+      "openagents/tester/v1alpha1/tester.proto"
     ]
   },
   "profile_namespaces": {
@@ -456,6 +461,10 @@
     "projects": [
       "openagents.project.",
       "openagents.options."
+    ],
+    "tester": [
+      "openagents.agent.v1alpha1",
+      "openagents.tester.v1alpha1"
     ]
   }
 }

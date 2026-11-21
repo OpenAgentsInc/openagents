@@ -6731,6 +6731,16 @@
       "check": "coax/lib/agent/tester/schema.coax",
       "step": "C1",
       "note": "Simulated App Tester scenario result and verdict record (#13891)."
+    },
+    {
+      "id": "tester.report.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/tester/v1alpha1/tester.proto",
+      "codec": "coax/lib/agent/tester/schema.coax",
+      "check": "coax/lib/agent/tester/schema.coax",
+      "step": "C1",
+      "note": "Simulated App Tester run report JSON summary emitted by cli.coax (#13891)."
     }
   ]
 }

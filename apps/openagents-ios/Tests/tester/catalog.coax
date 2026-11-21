@@ -38,7 +38,7 @@ ios_agent_definition :: () -> ArDefRecord {
     execution_mode = "deterministic",
     runtime = "coax-tool:apps/shared/tester/cli.coax",
     input_contract = "tester.run_request.v1",
-    output_contract = "tester.result.v1",
+    output_contract = TESTER_RESULT_SCHEMA,
     max_depth = 2,
     max_concurrency = 4,
     budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},

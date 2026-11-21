@@ -1,7 +1,7 @@
 // Firm reason: 6 (AppKit loopback HTTP wallet RPC and interactive spend-approval bridge over pay/wallet-rpc.coax).
 import AppKit
 
-/// Local loopback wallet RPC (`openagents.desktop.wallet-rpc.v1`, #13901).
+/// Local loopback wallet RPC (schema from `pay/wallet-rpc.coax`, #13901).
 /// Allows `openagents wallet` CLI and agent workers to query balance, create
 /// receive invoices, prepare quotes, and request Bitcoin/Lightning/x402 spends.
 ///
@@ -12,7 +12,11 @@ import AppKit
 /// - Every approved or refused spend appends a structured receipt to
 ///   `~/.openagents/wallet/receipts.jsonl` for ATIF-v1.8 trace attachment.
 extension CoderWindow {
-    private static let wrpcSchema = "openagents.desktop.wallet-rpc.v1"
+    private static let wrpcSchema: String = {
+        let s = wallet_rpc_schema_version()
+        guard let ptr = s.data, s.count > 0 else { return "" }
+        return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(s.count)), encoding: .utf8) ?? ""
+    }()
 
     private static var receiptsURL: URL {
         FileManager.default.homeDirectoryForCurrentUser

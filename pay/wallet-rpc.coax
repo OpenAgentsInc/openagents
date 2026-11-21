@@ -49,6 +49,11 @@ wallet_rpc_http_status :: (v: WrpcVerdict) -> int #export_c #effects(all) {
   return 403;
 }
 
+// Canonical schema identifier for Desktop Wallet RPC responses & receipts.
+wallet_rpc_schema_version :: () -> string #export_c #effects(all) {
+  return "openagents.desktop.wallet-rpc.v1";
+}
+
 // Whether a spend verdict should write an audit/ATIF refusal receipt.
 // Every non-allow verdict writes a receipt so refusals are verifiable.
 wallet_rpc_writes_receipt :: (v: WrpcVerdict) -> bool #export_c #effects(all) {
@@ -67,6 +72,7 @@ wallet_rpc_writes_receipt :: (v: WrpcVerdict) -> bool #export_c #effects(all) {
 }
 
 #test "spend_admit near MAX_SAT" {
+  #assert wallet_rpc_schema_version() == "openagents.desktop.wallet-rpc.v1";
   #assert wallet_rpc_spend_admit(true, true, WRPC_MAX_SAT, 0, 0, WRPC_MAX_SAT, 1, 2) == WrpcVerdict.allow;
   #assert wallet_rpc_spend_admit(true, true, WRPC_MAX_SAT + 1, 0, 0, WRPC_MAX_SAT, 1, 2) == WrpcVerdict.bad_amount;
   #assert wallet_rpc_spend_admit(true, false, 1000, 10, 50, 5000, 1, 2) == WrpcVerdict.needs_approval;
