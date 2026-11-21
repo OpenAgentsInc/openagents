@@ -66,7 +66,7 @@ final class DesktopWalletController {
     static func formatSats(_ sats: UInt64) -> String {
         let nf = NumberFormatter()
         nf.numberStyle = .decimal
-        return "₿" + (nf.string(from: NSNumber(value: sats)) ?? String(sats))
+        return (nf.string(from: NSNumber(value: sats)) ?? String(sats)) + " sats"
     }
 
     static func parseTypedSats(_ text: String) -> UInt64? {

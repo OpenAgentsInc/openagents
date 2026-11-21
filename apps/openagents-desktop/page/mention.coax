@@ -11,8 +11,8 @@ CP_CMDS :: 9;
 CP_CMD_NAME :: [CP_CMDS] string.["goal", "model", "new", "fork", "compact", "clear", "review", "usage", "stash"];
 CP_CMD_DESC :: [CP_CMDS] string.[
   "Set or manage the thread goal",
-  "Choose the model · ⌘/",
-  "Start a new chat · ⌘N",
+  "Choose the model · Cmd+/",
+  "Start a new chat · Cmd+N",
   "Fork this chat into a new copy",
   "Compact conversation context",
   "Clear thread and start fresh",

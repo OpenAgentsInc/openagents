@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §7.2, §8.2; GitHub #13905).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-IOS_SCENARIO_COUNT :: 15;
+IOS_SCENARIO_COUNT :: 18;
 
 IosScenario :: struct {
   id: string;
@@ -27,7 +27,10 @@ ios_scenarios :: () -> [IOS_SCENARIO_COUNT] IosScenario {
     IosScenario.{id = "ios.conversation.options-menu", area = "conversation", title = "Tap Conversation options (...) button, verify menu renders and dismiss", required = true},
     IosScenario.{id = "ios.settings.usage-screen", area = "settings", title = "Open Settings -> Usage, capture Usage screen & accessibility tree, navigate back cleanly", required = true},
     IosScenario.{id = "ios.sidebar.search-filter", area = "navigation", title = "Open sidebar, tap Search, type filter query, capture Search UI and dismiss", required = true},
-    IosScenario.{id = "ios.accessibility.audit", area = "accessibility", title = "Audit live OpenAgents iOS accessibility tree for required nav & options controls", required = true}
+    IosScenario.{id = "ios.accessibility.audit", area = "accessibility", title = "Audit live OpenAgents iOS accessibility tree for required nav & options controls", required = true},
+    IosScenario.{id = "ios.settings.experimental-toggle", area = "settings", title = "Toggle Experimental features ON in Settings, inspect revealed sections, toggle back OFF", required = true},
+    IosScenario.{id = "ios.nav.new-chat-from-sidebar", area = "navigation", title = "Open sidebar drawer and tap New chat to navigate cleanly to fresh chat", required = true},
+    IosScenario.{id = "ios.composer.long-draft", area = "input", title = "Type multi-line long prompt in iOS composer and verify chips stay unclipped", required = true}
   ];
 }
 

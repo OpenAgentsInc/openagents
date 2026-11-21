@@ -545,6 +545,124 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
         r.screenshot_ref = "screenshots/20-git-actions-menu.png";
       }
     }
+  } else if sc_id == "desktop.composer.slash-commands" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "composer", "key cmd+n", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_act(s, "type", "composer", "type /", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "21-slash-popover", "slash command popover open", obs[..], active[..]);
+    has_slash := obs[0].composer_text == "/";
+    _ = da_act(s, "key", "composer", "key escape", 120, rep[..]);
+    proc_sleep(150);
+    _ = da_act(s, "key", "composer", "key cmd+a", 100, rep[..]);
+    _ = da_act(s, "key", "composer", "key cmd+x", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "", "after slash dismiss and clear", obs[..], active[..]);
+    if !has_slash {
+      r.verdict = "product-fail"; r.first_failure = "slash-not-typed"; r.summary = "typing / in composer did not populate slash draft";
+    } else if obs[0].composer_text.count != 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "slash-dismiss-clear"; r.summary = "Escape + Cmd+A + Cmd+X did not dismiss slash popover and clear composer";
+      r.screenshot_ref = "screenshots/21-slash-popover.png";
+    } else {
+      r.summary = "typed / to open slash-command popover, dismissed with Escape, and cleared composer cleanly";
+      r.screenshot_ref = "screenshots/21-slash-popover.png";
+    }
+  } else if sc_id == "desktop.files.tree-toggle" {
+    r.steps_run = 3;
+    bx := da_box(s, "coder.ft.toggle");
+    if !bx.ok {
+      r.verdict = "product-fail"; r.first_failure = "ft-toggle-missing"; r.summary = "coder.ft.toggle toolbar button box not found";
+    } else {
+      cbuf: [128] u8; cj: [1] Jo; jo_start(cj[..], cbuf[..]);
+      jo_put(cj[..], "click "); jo_int(cj[..], bx.x + bx.w / 2); jo_put(cj[..], " "); jo_int(cj[..], bx.y + bx.h / 2);
+      _ = da_act(s, "click", "ft.toggle", cast(string) cbuf[0..<cj[0].n], 150, rep[..]);
+      proc_sleep(300);
+      _ = da_observe(s, "22-file-tree-open", "file tree pane open", obs[..], active[..]);
+      // Click again to close file tree pane.
+      bx2 := da_box(s, "coder.ft.toggle");
+      if bx2.ok {
+        jo_start(cj[..], cbuf[..]);
+        jo_put(cj[..], "click "); jo_int(cj[..], bx2.x + bx2.w / 2); jo_put(cj[..], " "); jo_int(cj[..], bx2.y + bx2.h / 2);
+        _ = da_act(s, "click", "ft.toggle", cast(string) cbuf[0..<cj[0].n], 150, rep[..]);
+        proc_sleep(250);
+      }
+      _ = da_observe(s, "", "file tree pane closed", obs[..], active[..]);
+      if !obs[0].composer_focused {
+        r.verdict = "product-fail"; r.first_failure = "ft-close-focus"; r.summary = "closing file tree pane did not preserve composer focus";
+        r.screenshot_ref = "screenshots/22-file-tree-open.png";
+      } else {
+        r.summary = "toggled right-hand file tree pane open and closed cleanly via coder.ft.toggle";
+        r.screenshot_ref = "screenshots/22-file-tree-open.png";
+      }
+    }
+  } else if sc_id == "desktop.settings.wallet-page" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Wallet", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "23-settings-wallet", "settings wallet page", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after wallet escape", obs[..], active[..]);
+    if !opened {
+      r.verdict = "product-fail"; r.first_failure = "wallet-not-opened"; r.summary = "Cmd+K -> Wallet did not open Settings Wallet page";
+      r.screenshot_ref = "screenshots/23-settings-wallet.png";
+    } else if obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "wallet-escape-failed"; r.summary = "Escape from Settings -> Wallet did not restore composer focus";
+      r.screenshot_ref = "screenshots/23-settings-wallet.png";
+    } else {
+      r.summary = "Cmd+K -> Wallet opened Settings Wallet page cleanly and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/23-settings-wallet.png";
+    }
+  } else if sc_id == "desktop.settings.scheduled-tasks" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Scheduled", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "24-settings-scheduled", "settings scheduled tasks page", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after scheduled escape", obs[..], active[..]);
+    if !opened {
+      r.verdict = "product-fail"; r.first_failure = "scheduled-not-opened"; r.summary = "Cmd+K -> Scheduled did not open Scheduled Tasks settings";
+      r.screenshot_ref = "screenshots/24-settings-scheduled.png";
+    } else if obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "scheduled-escape-failed"; r.summary = "Escape from Scheduled Tasks settings did not restore composer focus";
+      r.screenshot_ref = "screenshots/24-settings-scheduled.png";
+    } else {
+      r.summary = "Cmd+K -> Scheduled opened Scheduled Tasks settings cleanly and Escape restored focus";
+      r.screenshot_ref = "screenshots/24-settings-scheduled.png";
+    }
+  } else if sc_id == "desktop.zoom.settings-stress" {
+    r.steps_run = 5;
+    _ = da_act(s, "key", "zoom", "key cmd+=", 100, rep[..]);
+    _ = da_act(s, "key", "zoom", "key cmd+=", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_act(s, "key", "settings", "key cmd+,", 120, rep[..]);
+    proc_sleep(300);
+    _ = da_observe(s, "25-zoomed-settings", "zoomed 2x settings", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "zoom", "key cmd+0", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_observe(s, "", "after zoom reset", obs[..], active[..]);
+    if !opened || obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "zoom-settings-stress"; r.summary = "zoomed Settings open/Escape/reset failed";
+      r.screenshot_ref = "screenshots/25-zoomed-settings.png";
+    } else {
+      r.summary = "zoomed 2x into Settings, escaped cleanly, and reset zoom with Cmd+0";
+      r.screenshot_ref = "screenshots/25-zoomed-settings.png";
+    }
   } else {
     r.verdict = "unqualified";
     r.first_failure = "unknown-scenario";
@@ -931,6 +1049,59 @@ t_run_ios_scenario :: (s: [] IosSession, sc_id: string, res_out: [] TsResult) {
       r.screenshot_ref = obs[0].screenshot_ref;
     }
     _ = ok_o;
+  } else if sc_id == "ios.settings.experimental-toggle" {
+    r.steps_run = 6;
+    ok1 := ios_act(s, "tap", "open-sidebar", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(450);
+    ok2 := ios_act(s, "tap", "settings-gear", "\"x\":275,\"y\":815", 250, rep[..]);
+    proc_sleep(450);
+    // Tap Experimental features toggle switch (~x=355, y=245 on 402x874).
+    ok3 := ios_act(s, "tap", "experimental-on", "\"x\":355,\"y\":245", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-experimental", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-16-experimental-on", "iOS Settings Experimental ON", obs[..]);
+    // Toggle back OFF and return to main chat.
+    _ = ios_act(s, "tap", "experimental-off", "\"x\":355,\"y\":245", 250, rep[..]);
+    proc_sleep(350);
+    _ = ios_act(s, "tap", "settings-back", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(350);
+    _ = ios_act(s, "swipe", "close-sidebar", "\"x\":340,\"y\":400,\"x2\":30,\"y2\":400,\"duration\":0.25", 250, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok2 || !ok3 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "experimental-toggle"; r.summary = "failed to toggle Experimental features in iOS Settings";
+    } else {
+      r.summary = "toggled Experimental features ON in iOS Settings, captured revealed UI, toggled back OFF cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.nav.new-chat-from-sidebar" {
+    r.steps_run = 3;
+    ok1 := ios_act(s, "tap", "open-sidebar", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(450);
+    // Tap "New chat" row at top of sidebar drawer (~x=110, y=98).
+    ok2 := ios_act(s, "tap", "sidebar-new-chat", "\"x\":110,\"y\":98", 250, rep[..]);
+    proc_sleep(450);
+    ok_o := ios_observe(s, "ios-17-new-chat", "after sidebar New chat", obs[..]);
+    if !ok1 || !ok2 || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "sidebar-new-chat"; r.summary = "failed to tap New chat from sidebar drawer";
+    } else {
+      r.summary = "opened sidebar drawer and tapped New chat cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.composer.long-draft" {
+    r.steps_run = 3;
+    ok1 := ios_act(s, "tap", "composer", "\"x\":196,\"y\":780", 200, rep[..]);
+    proc_sleep(400);
+    ok2 := ios_act(s, "text", "composer", "\"text\":\"Testing multi-line wrapping inside the iOS composer pill so chips stay unclipped\"", 500, rep[..]);
+    proc_sleep(500);
+    ok_o := ios_observe(s, "ios-18-long-draft", "iOS composer long multiline draft", obs[..]);
+    _ = ios_act(s, "tap", "dismiss-kb", "\"x\":196,\"y\":220", 200, rep[..]);
+    proc_sleep(300);
+    if !ok1 || !ok2 || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "long-draft"; r.summary = "failed to type long multi-line draft in iOS composer";
+    } else {
+      r.summary = "typed multi-line long prompt in iOS composer and captured pill expansion frame";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
   } else {
     r.verdict = "unqualified"; r.first_failure = "unknown"; r.summary = "unknown iOS scenario";
   }

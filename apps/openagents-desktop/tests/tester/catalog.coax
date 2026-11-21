@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-DT_SCENARIO_COUNT :: 21;
+DT_SCENARIO_COUNT :: 26;
 
 DtScenario :: struct {
   id: string;
@@ -33,7 +33,12 @@ dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
     DtScenario.{id = "desktop.terminal.toggle", area = "terminal", title = "Cmd+J toggle embedded terminal pane open and closed cleanly", required = true},
     DtScenario.{id = "desktop.settings.usage-dashboard", area = "settings", title = "Open Settings -> Usage via Cmd+K jump, verify Usage dashboard renders and Escape closes", required = true},
     DtScenario.{id = "desktop.chat.multi-switch", area = "chat", title = "Create two chats, switch via Cmd+1/Cmd+2, verify independent draft isolation", required = true},
-    DtScenario.{id = "desktop.git.output-tray", area = "git", title = "Open Git Actions menu from toolbar chip and dismiss cleanly with Escape", required = true}
+    DtScenario.{id = "desktop.git.output-tray", area = "git", title = "Open Git Actions menu from toolbar chip and dismiss cleanly with Escape", required = true},
+    DtScenario.{id = "desktop.composer.slash-commands", area = "composer", title = "Type / in composer to open slash-command popover, dismiss with Escape, clear cleanly", required = true},
+    DtScenario.{id = "desktop.files.tree-toggle", area = "files", title = "Click Files toolbar button (coder.ft.toggle) to open and close right-hand file tree pane", required = true},
+    DtScenario.{id = "desktop.settings.wallet-page", area = "settings", title = "Open Settings -> Wallet via Cmd+K jump, capture frame, Escape restores composer focus", required = true},
+    DtScenario.{id = "desktop.settings.scheduled-tasks", area = "settings", title = "Open Settings -> Scheduled Tasks via Cmd+K jump, capture frame, Escape restores focus", required = true},
+    DtScenario.{id = "desktop.zoom.settings-stress", area = "zoom", title = "Zoom in 2x, open Settings, Escape, reset zoom with Cmd+0 cleanly", required = true}
   ];
 }
 
