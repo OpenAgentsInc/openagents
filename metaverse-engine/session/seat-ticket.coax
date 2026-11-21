@@ -28,8 +28,8 @@
 #authority;
 #run_steps 250000000;
 #load "resume-envelope.coax";
-#load "../../coax/lib/nostr/block/fi-base64url.coax";
-#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/lib/encoding/fi-base64url.coax";
+#load "../../coax/lib/encoding/hex.coax";
 #load "../../coax/lib/crypto/schnorr.coax";
 #load "../../coax/lib/crypto/schnorr_sign.coax";
 

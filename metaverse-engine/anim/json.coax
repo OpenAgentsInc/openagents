@@ -1,6 +1,6 @@
 // Asset-independent JSON, decimal and name admission, moved unchanged from document.coax.
 #load "../../coax/lib/json/json.coax";
-#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/encoding/json.coax";
 #load "../core/points.coax";
 #load "json-checks.coax" #test;
 #authority;

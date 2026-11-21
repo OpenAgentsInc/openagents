@@ -3,7 +3,7 @@
 // Confidence maps preserve every catalogue option. They are model-reported probabilities,
 // not an empirical calibration result. No words are searched to choose a direction.
 #load "../../lib/json/json.coax";
-#load "../../lib/nostr/json.coax";
+#load "../../lib/encoding/json.coax";
 #load "../../../metaverse-engine/anime/director.coax";
 #load "../../../metaverse-engine/anime/render-profile.coax";
 #load "anime-route-policy.coax";

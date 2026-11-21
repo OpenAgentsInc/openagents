@@ -14,7 +14,7 @@
 // The API then checks the shard against the shard the body names (rooms.c, player.c).
 #authority;
 #load "../../lib/crypto/hmac.coax";
-#load "../../lib/nostr/hex.coax";
+#load "../../lib/encoding/hex.coax";
 
 RW_MASTERS :: 2;
 RW_BODY :: 32768;      // the most bytes a write signs (a directory report's limit)

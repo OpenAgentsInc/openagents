@@ -1,6 +1,6 @@
 // Experimental reviewed v2 framing and selected DNS-only URL profile.
 // No effects, legacy rewrite, signing authority or production format switch.
-#load "../nostr/json.coax";
+#load "../encoding/json.coax";
 #load "../crypto/sha256.coax";
 #load "../net/uri.coax";
 #load "../../tests/nostr/phrase_gate_vectors.coax";

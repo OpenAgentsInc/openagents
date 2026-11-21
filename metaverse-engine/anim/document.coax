@@ -1,7 +1,7 @@
 // Common, bounded animation JSON admission. Retained values own their names;
 // JSON nodes and pack views are borrowed only for the synchronous call.
 #load "../../coax/lib/json/json.coax";
-#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/encoding/json.coax";
 #load "../core/assets.coax";
 #load "pose.coax";
 #load "field-catalog.coax";

@@ -10,7 +10,7 @@
 #load "scene-session.coax";   // the scene session file the app writes (fgc_scene_session)
 #load "microphone.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../coax/lib/nostr/json-f64.coax";
+#load "../../coax/lib/encoding/json-f64.coax";
 #load "../../metaverse-engine/ui/draw.coax";
 #load "../../metaverse-engine/ui/feed-draw.coax";
 

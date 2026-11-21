@@ -3,7 +3,7 @@
 #authority;
 #load "resume-payload.coax";
 #load "../../coax/lib/crypto/hmac.coax";
-#load "../../coax/lib/nostr/block/fi-base64url.coax";
+#load "../../coax/lib/encoding/fi-base64url.coax";
 ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterCapture;rest:CharacterRest;}
 #test "resume envelope: signed core and full capture are bound together, or no capture for a first join" {
   key:="profile-check-key-not-a-secret-0123456789";core:="v3.p-a.0.-.pair-a.1.1762190600000.-x350g7.signature";

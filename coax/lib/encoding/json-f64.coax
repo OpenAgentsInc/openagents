@@ -1,0 +1,58 @@
+// Opt-in approximate CLI/SDK cost decoding. Not the integer-only Nostr
+// admission/canonicalization profile; no correct-rounding or authority claim.
+#load "json.coax";
+
+// A number token's text as the nearest-ish f64: the significant digits (the
+// first 18) times a power of ten. Within a few ulps, not correctly rounded;
+// for amounts the CLI reports, such as a turn's cost in dollars.
+JsonF64 :: struct { ok: bool; value: f64; }
+json_f64 :: (s: string) -> JsonF64 {
+  r: JsonF64; i := 0; negative := false;
+  if s.count == 0 { return r; }
+  if s[0] == '-' { negative = true; i = 1; }
+  if i >= s.count || !json_digit(s[i]) { return r; }
+  mantissa := 0; digits := 0; ten_power := 0; seen := false;
+  while i < s.count && json_digit(s[i]) {
+    d := cast(int) (s[i] - '0');
+    if d != 0 || seen { seen = true; if digits < 18 { mantissa = mantissa * 10 + d; digits += 1; } else { ten_power += 1; } }
+    i += 1;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    if i >= s.count || !json_digit(s[i]) { return r; }
+    while i < s.count && json_digit(s[i]) {
+      d := cast(int) (s[i] - '0');
+      if d != 0 || seen { seen = true; if digits < 18 { mantissa = mantissa * 10 + d; digits += 1; ten_power -= 1; } }
+      else { ten_power -= 1; }
+      i += 1;
+    }
+  }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; minus := false;
+    if i < s.count && (s[i] == '+' || s[i] == '-') { minus = s[i] == '-'; i += 1; }
+    if i >= s.count || !json_digit(s[i]) { return r; }
+    e := 0;
+    while i < s.count && json_digit(s[i]) { if e < 100000 { e = e * 10 + cast(int) (s[i] - '0'); } i += 1; }
+    ten_power = ifx minus then ten_power - e else ten_power + e;
+  }
+  if i != s.count { return r; }
+  v := f64(mantissa);
+  if mantissa != 0 {
+    if ten_power > 308 { return r; }
+    if ten_power < -340 { v = 0; }
+    else if ten_power < 0 { v = v / pow(10.0f64, f64(-ten_power)); }
+    else if ten_power > 0 { v = v * pow(10.0f64, f64(ten_power)); }
+  }
+  return JsonF64.{ok = true, value = ifx negative then -v else v};
+}
+
+#test "numbers as f64: fractions, exponents, signs; not what isn't a number" {
+  #assert json_f64("0.05").ok && abs(json_f64("0.05").value - 0.05) < 0.0000000000001;
+  #assert json_f64("-1.5e2").value == -150.0 && json_f64("1E+3").value == 1000.0;
+  #assert json_f64("0").ok && json_f64("0").value == 0.0 && json_f64("-0.0").ok;
+  #assert json_f64("200000").value == 200000.0 && json_f64("0.001").ok;
+  #assert abs(json_f64("123456789012345678901234").value - 123456789012345678901234.0) < 1e10;
+  #assert !json_f64("").ok && !json_f64("-").ok && !json_f64("1.").ok && !json_f64("1e").ok && !json_f64("x").ok && !json_f64("1x").ok;
+  #assert !json_f64("1e400").ok && json_f64("1e-400").value == 0.0;
+}
+

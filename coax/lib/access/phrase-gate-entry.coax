@@ -1,7 +1,7 @@
 // Bounded transport projection. MAC input remains the original decoded wire,
 // never this JSON wrapper or a reconstruction of authenticated fields.
 #load "phrase-gate-profile.coax";
-#load "../nostr/base64.coax";
+#load "../encoding/base64.coax";
 #authority;
 PG_ENTRY_VERSION :: "openagents.phrase-gate.v2";
 PG_ENTRY_PREFIX :: "{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"";

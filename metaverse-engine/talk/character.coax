@@ -2,7 +2,7 @@
 #module "metaverse.engine.talk.character";
 #authority;
 #load "../core/ids.coax";
-#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/encoding/json.coax";
 
 // book:begin character
 TALK_NAME_BYTES :: 64;

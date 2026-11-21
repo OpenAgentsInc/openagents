@@ -2,7 +2,7 @@
 // browser URL parsing; it never chooses a host. In particular a normalized
 // pathname beginning // remains a path on the already bound site.
 #load "routes.coax";
-#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/encoding/json.coax";
 #authority;
 
 HttCase :: struct {input:string;target:string;}

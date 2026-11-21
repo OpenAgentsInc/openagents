@@ -11,7 +11,7 @@
 // (apps/openagents-desktop/zeron/microcoder.coax).
 //
 // Checks: coax test coax/lib/x402/x402.coax --library (no main of its own).
-#load "../nostr/json.coax";
+#load "../encoding/json.coax";
 
 X402_MAINNET :: "lnbtc:000000000019d6689c085ae165831e93";
 X402_SPARK_PROFILE :: "openagents:spark-receiver:1";

@@ -1,6 +1,6 @@
 // A build/link and runtime probe for the shared Coax Nostr JSON parser.
 // This validates fixed public fixtures only; it grants no Nostr authority.
-#load "../../lib/nostr/json.coax";
+#load "../../lib/encoding/json.coax";
 
 api_nostr_json_probe :: () -> s32 #export_c #effects(all) {
   if !json_valid("{\"kind\":27235,\"tags\":[]}") { return 0; }
