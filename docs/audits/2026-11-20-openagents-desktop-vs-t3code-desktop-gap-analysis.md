@@ -281,10 +281,12 @@ Ordered by day-to-day developer impact and architectural fit with OpenAgents' Co
 11. **Remote Environments (SSH / Boats) & Keep-Awake:** Wire `coder/tui/remote.coax` and Boats into a Desktop environment picker (SSH host discovery + remote daemon tunnel), and add OS sleep-prevention (`IOPMAssertion` / `systemd-inhibit` / `SetThreadExecutionState`) while runs are active.
 12. **Rich Markdown & Composer Upgrades:** Add Mermaid diagram rendering and LaTeX math to `components/core/` Markdown, prompt stashing/history, and multi-model fan-out send.
 
-### P3 — Customization & Ecosystem Integrations
-13. **Pull Requests & Issue Trackers View:** GitHub PR list/review view (and optional Linear/GitHub Issues list) for spawning worktree chats directly from issues/PRs.
-14. **Themes, Custom Keybindings & Custom Protocol (`openagents://`):** Light/dark/custom skin switcher over `components/skin/`, customizable keybindings in Settings, custom `openagents://` protocol handler + CLI activation socket.
-15. **Embedded Web Preview & Screen Capture:** Evaluate whether a lightweight native WKWebView/WebView2 preview pane + OS region-capture hotkey (`SnapShot` equivalent) is needed alongside the existing iOS Simulator pane.
+### P3 — Shell Polish & Deferred Items
+13. **Custom Protocol (`openagents://`), CLI Activation & Shell Polish (`#13889`):** Custom `openagents://` protocol handler, single-instance CLI activation socket, CLI shim installer, quit-hold protection, and multi-display bounds polish.
+14. **Deferred / Closed as Won't Do (2026-11-20, see `docs/audits/2026-11-20-neon-transcripts-and-release-vision-audit.md`):**
+    - ~~Pull Requests inbox, multi-forge source control (GitLab/Bitbucket/Azure/Forgejo), AI review tours, and Issues view (`#13886`)~~ — deferred; GitHub commit/push/PR actions remain in `#13871`.
+    - ~~Full VS Code/OpenVSX theme engine, customizable `when`-clause keybindings, and 10-locale i18n (`#13887`)~~ — deferred from short-term trajectory.
+    - ~~Embedded Chromium web Preview Browser & global SnapShot (`#13888`)~~ — closed as won't do to preserve OpenAgents Desktop's zero-Chromium native Metal/Vulkan architecture (`oasim`, native 3D/Game Builder viewports, and external headless Chrome/CDP cover preview/testing needs).
 
 ---
 

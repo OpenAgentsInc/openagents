@@ -113,7 +113,7 @@ One of the subtler, sharpest themes in `docs/transcripts/README.md` is **"Open c
 - Clear visual separation between private traces, team/self-hosted relays, and public NIP-EVAL/NIP-SKILL claims.
 
 ### 4.7 Clean up two small narrative/operational drifts
-1. **`docs/transcripts/README.md` lags behind the folder:** The index stops at episode 294 (as of 2026-11-11), while `295.md` (*Nostr From Scratch*), `296.md` (*Coup*), and `297.md` (*Epic game jam / Game Builder*) are already committed. Updating the index keeps the archive accurate as the canonical history.
+1. **`docs/transcripts/README.md` archive index:** Updated on 2026-11-20 to index `295.md` (*Nostr From Scratch*), `296.md` (*Coup*), and `297.md` (*Epic game jam / Game Builder*), bringing the guide current through all 297 numbered episodes.
 2. **`openagents.com` lags behind the app:** Per `docs/audits/2026-11-20-openagents-com-live-surface-audit.md`, the live site has 807 pages, hasn't released since `b80819d924` (2026-11-13), and holds a stale `/release.lock` from 2026-11-19. Before any public release push, zero-base `openagents.com` to one crisp Coax-native landing + `/download` page that matches the consolidated Desktop + iOS + Verse story.
 
 ---
@@ -172,21 +172,21 @@ Rather than trying to ship all 22 `t3code` parity issues *and* all 16 Episode 28
 
 ---
 
-## 6. Explicit Deferrals (Do Not Let These Block Wave 1)
+## 6. Explicit Deferrals (Closed as Won't Do — Do Not Block Wave 1)
 
-To protect shipping velocity and native architecture, explicitly defer:
-- **Embedded Chromium Preview Browser (`#13888`):** Do not pull Chromium into a zero-Chromium native GPU app. Use `oasim` for iOS, native Metal/Vulkan viewports for 3D/Game Builder, and external Chrome/CDP tooling when web DOM inspection is needed.
-- **Multi-forge PR tours beyond GitHub (`#13886`):** GitHub PR/issue context is enough for Wave 1; GitLab/Bitbucket/Azure DevOps/Forgejo can wait until demand pulls them.
-- **10-locale i18n & VS Code/OpenVSX theme marketplace (`#13887`):** Light/dark toggle and sensible keybindings first; full i18n and external theme importers are Wave 2/3 polish.
+To protect shipping velocity and native architecture, the following P3 parity issues were closed as `not planned` (won't do) on 2026-11-20 and marked deferred in `#13890`:
+- **Embedded Chromium Preview Browser (`#13888` — closed as won't do):** Do not pull Chromium into a zero-Chromium native GPU app. Use `oasim` for iOS, native Metal/Vulkan viewports for 3D/Game Builder, and external Chrome/CDP tooling when web DOM inspection is needed.
+- **Multi-forge PR tours beyond GitHub (`#13886` — closed as won't do):** GitHub PR/issue actions (`#13871`) are enough for Wave 1; GitLab/Bitbucket/Azure DevOps/Forgejo can wait until demand pulls them.
+- **10-locale i18n & VS Code/OpenVSX theme marketplace (`#13887` — closed as won't do):** Light/dark toggle and sensible keybindings first; full i18n and external theme importers are deferred.
 - **Public marketplace payouts before local evals work:** Never repeat Episode 100's mistake of shipping store plumbing before the local capability-and-eval loop proves it compounds real work.
 
 ---
 
-## 7. Summary Checklist for Next Issues to Open
+## 7. Tracking Issues Opened for Agent Delegation
 
-If we want the GitHub issue queue to reflect the full vision rather than only `t3code` parity, four focused tracking issues would close the gap between `#13890` and Episode 289:
+The four "OpenAgents Soul" / Episode 289 workstreams are now tracked as standalone agent-ready issues:
 
-1. **Wave 1 — `Agents` Page & Live Surfaces:** Wire `4c929e4e8a` (proto-first `AgentDefinition`/`AgentInvocation`, top-left `Agents` page, Simulated App Tester, and Game Builder live viewport) into `apps/openagents-desktop`.
-2. **Wave 1 — Thread Proof & ATIF Trace Drawer:** Surface real effective model/provider, `/goal` verification receipts, and private-by-default ATIF-v1.8 trace export (`#13830`, `#13864`) in Desktop & iOS.
-3. **Wave 2 — Local Capability Authoring & Two-Arm Eval Loop:** Bridge `#13830` traces + `#13879` Skills/MCP into Episode 289's in-chat plugin/skill creation and verification loop.
-4. **Wave 2 — Desktop/iOS Nostr Identity & Lightning Wallet Panel:** Surface `coax/lib/nostr` identity and `pay/` Spark/Lightning wallet with spend-approval cards in `apps/openagents-desktop` and `apps/openagents-ios`.
+1. **`#13894` (Wave 1 — `Agents` Page & Live Surfaces):** Wire `4c929e4e8a` (proto-first `AgentDefinition`/`AgentInvocation`, top-left `Agents` page, Simulated App Tester, and Game Builder live 3D viewport) into `apps/openagents-desktop`.
+2. **`#13895` (Wave 1 — Thread Proof & ATIF Trace Drawer):** Surface real effective model/provider, `/goal` verification receipts, and private-by-default ATIF-v1.8 trace export (`#13830`, `#13864`) in Desktop & iOS.
+3. **`#13896` (Wave 2 — Local Capability Authoring & Two-Arm Eval Loop):** Bridge `#13830` traces + `#13879` Skills/MCP + `coax/lib/systemone/` into Episode 289's in-chat plugin/skill creation and verification loop.
+4. **`#13897` (Wave 2 — Desktop/iOS Nostr Identity & Lightning Wallet Panel):** Surface `coax/lib/nostr` identity and `pay/` Spark/Lightning wallet with spend-approval cards in `apps/openagents-desktop` and `apps/openagents-ios`.
