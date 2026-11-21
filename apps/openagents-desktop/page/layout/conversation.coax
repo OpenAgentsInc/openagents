@@ -214,7 +214,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h - s[0].voice[0].pill_h;   // what scrolls runs up to the trays and the bar
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h - s[0].voice[0].pill_h - s[0].rich[0].tray_h;   // what scrolls runs up to the trays and the bar
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -261,18 +261,21 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         s[0].turns[i].ay = y;
         f[0].skin.motion.enter = 0;
         vv := ifx s[0].veil_turn == i then MdVeil.{ veil = s[0].veil[..], now = s[0].clock } else MdVeil.{};
-        y += app_message_agent_linked_veiled(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
-                                             ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
+        y += cp_rich_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
+                                   ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
           ck_w := cp_ckpt_turn_actions(s, f, i, x + cw, y);
-          meta_w := cw - lane_btn - a.gap_small - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
-          // who wrote it, always beside Copy: the harness and its model
-          if meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
-          y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, a_hov || did || s[0].turns[i].info, did, CP_COPY_REPLY);
+          q_vis := a_hov || did || s[0].turns[i].info;
+          q_off := ifx q_vis then lane_btn + a.gap_small else 0.0f32;
+          meta_w := cw - lane_btn - q_off - a.gap_small - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
+          // who wrote it, always beside Copy/Quote: the harness and its model
+          if meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + q_off + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
+          cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis);
+          y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, q_vis, did, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else {
         s[0].turns[i].ah = 0;
@@ -499,7 +502,8 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   git_h := cp_git_output_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw);
   permit_h := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h, cw);
   oauth_h := cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw);
-  _ := cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw);
+  voice_h := cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw);
+  _ := cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw);
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }

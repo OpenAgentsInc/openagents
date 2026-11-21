@@ -1413,3 +1413,70 @@ int cd_env_wsl_to_win(const char *path, const char *distro, char *out, int cap) 
   if (!out || cap < 2) return 0;
   return cd_text_out((int)coder_page_env_wsl_to_win(cd_string(path), cd_string(distro), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }
+int cd_stash_push(void *page, const char *text) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_stash_push(cd_state(c), cd_string(text)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_stash_pop(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_stash_pop(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_stash_remove(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_stash_remove(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_stash_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_stash_count(cd_state(c)) : 0; }
+int cd_stash_save(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_stash_save(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_stash_load(void *page, const char *data) {
+  CoderHost *c = page; if (!c) return 0;
+  int n = (int)coder_page_stash_load(cd_state(c), cd_string(data));
+  cd_woke(c);
+  return n;
+}
+int cd_hist_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_hist_count(cd_state(c)) : 0; }
+int cd_hist_save(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_hist_save(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_hist_load(void *page, const char *data) {
+  CoderHost *c = page; if (!c) return 0;
+  int n = (int)coder_page_hist_load(cd_state(c), cd_string(data));
+  cd_woke(c);
+  return n;
+}
+int cd_rich_quote(void *page, const char *selected) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_rich_quote(cd_state(c), cd_string(selected)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_side_chat_open(void *page, const char *chat_id, const char *title) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_side_chat_open(cd_state(c), cd_string(chat_id), cd_string(title));
+  cd_woke(c);
+}
+int cd_side_chat_add_turn(void *page, const char *ask, const char *reply) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_side_chat_add_turn(cd_state(c), cd_string(ask), cd_string(reply)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_side_chat_close(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_side_chat_close(cd_state(c));
+  cd_woke(c);
+}
+int cd_side_chat_is_open(void *page) { CoderHost *c = page; return c && coder_page_side_chat_is_open(cd_state(c)) ? 1 : 0; }
+int cd_side_chat_id(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_side_chat_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}

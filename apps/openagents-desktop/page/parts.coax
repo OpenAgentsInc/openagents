@@ -64,3 +64,4 @@
 #load "mcpskills.coax";
 #load "voice.coax";
 #load "environments.coax";
+#load "rich.coax";

@@ -224,6 +224,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
   }
   if which == CP_ED_COMPOSER {
     if cp_mn_key(s, key, mods) { return true; }   // the @ and / popover's keys first (mention.coax)
+    if cp_hist_key(s, key, mods) { return true; } // Up/Down prompt history on first/last line (rich.coax)
     if key == KEY_ENTER && mods == 0 {
       if coder_page_followup_submit(s, false) { return true; }
       _ = cp_send(s); return true;

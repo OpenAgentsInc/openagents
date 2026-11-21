@@ -7,10 +7,20 @@
 // /goal goes in for its objective (goal.coax reads hit on send), /model opens the models' menu and
 // /new starts a new chat. Escape closes hit until the token changes.
 
-CP_CMDS :: 3;
-CP_CMD_NAME :: [CP_CMDS] string.["goal", "model", "new"];
-CP_CMD_DESC :: [CP_CMDS] string.["Set or manage the thread goal", "Choose the model · ⌘/", "Start a new chat · ⌘N"];
-CP_CMD_GOAL :: 0; CP_CMD_MODEL :: 1; CP_CMD_NEW :: 2;
+CP_CMDS :: 9;
+CP_CMD_NAME :: [CP_CMDS] string.["goal", "model", "new", "fork", "compact", "clear", "review", "usage", "stash"];
+CP_CMD_DESC :: [CP_CMDS] string.[
+  "Set or manage the thread goal",
+  "Choose the model · ⌘/",
+  "Start a new chat · ⌘N",
+  "Fork this chat into a new copy",
+  "Compact conversation context",
+  "Clear thread and start fresh",
+  "Open working-tree Git diff review",
+  "Open Usage & quota dashboard",
+  "Stash draft prompt (or /stash pop)"
+];
+CP_CMD_GOAL :: 0; CP_CMD_MODEL :: 1; CP_CMD_NEW :: 2; CP_CMD_FORK :: 3; CP_CMD_COMPACT :: 4; CP_CMD_CLEAR :: 5; CP_CMD_REVIEW :: 6; CP_CMD_USAGE :: 7; CP_CMD_STASH :: 8;
 
 // The popover follows the composer's token at the caret: opened, narrowed and ranked again when
 // the draft, the caret or the files changed since hit last looked. None while the composer hasn't
@@ -134,6 +144,7 @@ cp_mn_pick :: (s: [] CoderPage, k: int) -> bool {
   mn[0].open = false; mn[0].shut = -1;
   if mn[0].trigger == '/' && hit == CP_CMD_MODEL { s[0].model_menu = true; }
   if mn[0].trigger == '/' && hit == CP_CMD_NEW { _ = cp_new(s); }
+  if mn[0].trigger == '/' && hit >= CP_CMD_FORK && hit <= CP_CMD_STASH { _ = cp_rich_run_cmd(s, hit); }
   return true;
 }
 // A key in the composer while the popover is open: Up and Down move, Return and Tab pick, Escape

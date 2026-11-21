@@ -1,0 +1,1310 @@
+// Coder Desktop page (../page.coax): rich composer & transcript upgrades (GitHub #13884).
+//
+// 1. Prompt Stash & Prompt History:
+//    - LIFO stash stack (up to CP_STASH_MAX = 8 draft prompts) with push/pop/remove, compact
+//      composer tray chips, and line-escaped serialization for persistence across restarts.
+//    - Up/Down prompt history navigation (up to CP_HIST_MAX = 32 submitted prompts) when the
+//      composer caret is on the first/last line, restoring the unsent live draft when returning
+//      past the newest entry, plus serialization for persistence.
+// 2. Expanded Slash Commands:
+//    - /compact, /clear, /review, /usage, /stash (and /stash pop, /stash clear) dispatched from
+//      both the `/` popover (mention.coax) and direct composer submission (transcript.coax).
+// 3. Mermaid Diagram & LaTeX Math Native Rendering:
+//    - cp_mermaid_parse: parses flowchart/graph and sequenceDiagram Mermaid blocks into nodes and
+//      directed edges; cp_mermaid_draw renders them natively with GPU boxes, labels, and arrows
+//      (falling back to formatted code for unsupported diagram types).
+//    - cp_latex_render & cp_latex_inline: converts common LaTeX math tokens (Greek letters,
+//      operators, relations, \frac, \sqrt, superscripts, subscripts) to Unicode math display lines
+//      for $$...$$, $...$, and ```math / ```latex blocks.
+// 4. Inline Selection-to-Quote / Comment:
+//    - cp_rich_quote_text / coder_page_rich_quote: formats selected reply text as `> ...\n\n`
+//      directly into the composer and focuses it; reply hover lane exposes a Quote button.
+// 5. Side-by-Side Linked Chat Pane:
+//    - Extends the right pane with a Side Chat mode displaying any secondary/linked chat's turns
+//      alongside the active chat, with scrolling and an "Open in main" button.
+
+// Host actions (CP_ASK_*; 100..105 free after CP_ASK_ENV_* 90..96).
+CP_ASK_RICH_COMPACT    :: 100; // /compact: summarize/compact active conversation context
+CP_ASK_RICH_CLEAR      :: 101; // /clear: clear thread and start fresh
+CP_ASK_RICH_REVIEW     :: 102; // /review: open working-tree Git diff review pane
+CP_ASK_RICH_USAGE      :: 103; // /usage: open Usage & quota dashboard
+CP_ASK_RICH_STASH_SAVE :: 104; // prompt stash or history mutated -> host persists to UserDefaults
+CP_ASK_RICH_SIDE_OPEN  :: 105; // promote linked Side Chat into the main pane (coder_page_side_chat_id)
+
+// Surface action IDs (290..294 free after CP_FT_* 270..281).
+CP_RICH_STASH_POP      :: 290; // click stashed prompt chip -> pop into composer
+CP_RICH_STASH_DEL      :: 291; // click × on stashed prompt chip -> remove
+CP_RICH_QUOTE          :: 292; // click Quote in an assistant reply's hover lane -> quote into composer
+CP_RICH_SIDE_CLOSE     :: 293; // close Side Chat pane
+CP_RICH_SIDE_OPEN_MAIN :: 294; // open Side Chat in main conversation pane
+
+// Wheel scroll target for the Side Chat pane (after CP_SCR_FILETREE :: 7).
+CP_SCR_SIDE_CHAT :: 8;
+
+// Capacities.
+CP_STASH_MAX    :: 8;
+CP_STASH_TEXT   :: 1024;
+CP_HIST_MAX     :: 32;
+CP_HIST_TEXT    :: 1024;
+CP_SIDE_TURNS   :: 32;
+CP_SIDE_TEXT    :: 1024;
+
+CP_MERMAID_NODES :: 24;
+CP_MERMAID_EDGES :: 36;
+CP_MERMAID_LABEL :: 64;
+CP_MERMAID_NONE  :: 0;
+CP_MERMAID_FLOW  :: 1;
+CP_MERMAID_SEQ   :: 2;
+
+CpStashItem :: struct {
+  text: [CP_STASH_TEXT] u8;
+  n: int;
+}
+
+CpHistItem :: struct {
+  text: [CP_HIST_TEXT] u8;
+  n: int;
+}
+
+CpSideTurn :: struct {
+  ask: [CP_SIDE_TEXT] u8; ask_n: int;
+  reply: [CP_SIDE_TEXT] u8; reply_n: int;
+}
+
+CpMermaidNode :: struct {
+  id: [32] u8; id_n: int;
+  label: [CP_MERMAID_LABEL] u8; label_n: int;
+  shape: int;  // 0: rect [...], 1: round (...), 2: diamond {...}
+}
+
+CpMermaidEdge :: struct {
+  from: int;
+  to: int;
+  label: [CP_MERMAID_LABEL] u8; label_n: int;
+  dashed: bool;
+}
+
+CpMermaidGraph :: struct {
+  kind: int;
+  dir_lr: bool;
+  nodes: [CP_MERMAID_NODES] CpMermaidNode; nnodes: int;
+  edges: [CP_MERMAID_EDGES] CpMermaidEdge; nedges: int;
+}
+
+CpRichState :: struct {
+  // Prompt stash (LIFO stack; newest at nstash - 1).
+  stash: [CP_STASH_MAX] CpStashItem;
+  nstash: int;
+  tray_h: f32;
+
+  // Prompt history (chronological; newest at nhist - 1).
+  hist: [CP_HIST_MAX] CpHistItem;
+  nhist: int;
+  hist_pos: int;  // -1 when not browsing history
+  hist_saved: [CP_HIST_TEXT] u8;
+  hist_saved_n: int;
+
+  // Side-by-side linked chat pane.
+  side_open: bool;
+  side_chat_id: [CP_CHAT_ID] u8; side_chat_id_n: int;
+  side_title: [CP_CHAT_TITLE] u8; side_title_n: int;
+  side_turns: [CP_SIDE_TURNS] CpSideTurn; side_nturns: int;
+  side_scroll: f32; side_content: f32; side_view: f32;
+}
+
+cp_rich_init :: (s: [] CoderPage) {
+  r := s[0].rich[..];
+  r[0].nstash = 0;
+  r[0].tray_h = 0.0f32;
+  r[0].nhist = 0;
+  r[0].hist_pos = -1;
+  r[0].hist_saved_n = 0;
+  r[0].side_open = false;
+  r[0].side_chat_id_n = 0;
+  r[0].side_title_n = 0;
+  r[0].side_nturns = 0;
+  r[0].side_scroll = 0.0f32;
+  r[0].side_content = 0.0f32;
+  r[0].side_view = 0.0f32;
+}
+
+// ---------------------------------------------------------------- escape codec for persistence
+
+cp_rich_encode_line :: (out: [] u8, pos: int, text: string) -> int {
+  n := pos;
+  for c: text {
+    if c == '\\' {
+      if n + 2 > out.count { break; }
+      out[n] = '\\'; out[n + 1] = '\\'; n += 2;
+    } else if c == '\n' {
+      if n + 2 > out.count { break; }
+      out[n] = '\\'; out[n + 1] = 'n'; n += 2;
+    } else if c == '\r' {
+      if n + 2 > out.count { break; }
+      out[n] = '\\'; out[n + 1] = 'r'; n += 2;
+    } else if c == '\t' {
+      if n + 2 > out.count { break; }
+      out[n] = '\\'; out[n + 1] = 't'; n += 2;
+    } else {
+      if n + 1 > out.count { break; }
+      out[n] = c; n += 1;
+    }
+  }
+  return n;
+}
+
+cp_rich_decode_line :: (line: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < line.count && n < out.count {
+    if line[i] == '\\' && i + 1 < line.count {
+      nx := line[i + 1];
+      if nx == 'n' { out[n] = '\n'; n += 1; i += 2; continue; }
+      if nx == 'r' { out[n] = '\r'; n += 1; i += 2; continue; }
+      if nx == 't' { out[n] = '\t'; n += 1; i += 2; continue; }
+      if nx == '\\' { out[n] = '\\'; n += 1; i += 2; continue; }
+    }
+    out[n] = line[i]; n += 1; i += 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- 1. Prompt Stash
+
+cp_stash_push :: (s: [] CoderPage, text: string) -> bool {
+  trimmed := cp_trim(text);
+  if trimmed.count == 0 { return false; }
+  r := s[0].rich[..];
+  if r[0].nstash >= CP_STASH_MAX {
+    for k: 1..<CP_STASH_MAX { r[0].stash[k - 1] = r[0].stash[k]; }
+    r[0].nstash = CP_STASH_MAX - 1;
+  }
+  idx := r[0].nstash;
+  r[0].stash[idx].n = cp_out(r[0].stash[idx].text[..], trimmed);
+  r[0].nstash += 1;
+  s[0].ask = CP_ASK_RICH_STASH_SAVE;
+  return true;
+}
+
+cp_stash_remove :: (s: [] CoderPage, idx: int) -> bool {
+  r := s[0].rich[..];
+  if idx < 0 || idx >= r[0].nstash { return false; }
+  for k: idx + 1..<r[0].nstash { r[0].stash[k - 1] = r[0].stash[k]; }
+  r[0].nstash -= 1;
+  s[0].ask = CP_ASK_RICH_STASH_SAVE;
+  return true;
+}
+
+cp_stash_pop_to_composer :: (s: [] CoderPage, idx_in: int) -> bool {
+  r := s[0].rich[..];
+  if r[0].nstash <= 0 { return false; }
+  idx := ifx idx_in < 0 then r[0].nstash - 1 else idx_in;
+  if idx < 0 || idx >= r[0].nstash { return false; }
+  tmp: [CP_STASH_TEXT] u8;
+  tn := cp_out(tmp[..], cast(string) r[0].stash[idx].text[0..<r[0].stash[idx].n]);
+  _ = cp_stash_remove(s, idx);
+  eb_set(s[0].draft[..], cast(string) tmp[0..<tn]);
+  e := cp_ed(s, CP_ED_COMPOSER);
+  _ = ue_key(e, s[0].atlas[..], KEY_END, 0);
+  cp_ed_focus(s, CP_KB_COMPOSER);
+  s[0].ask = CP_ASK_RICH_STASH_SAVE;
+  return true;
+}
+
+coder_page_stash_push :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_stash_push(s, text);
+}
+
+coder_page_stash_pop :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_stash_pop_to_composer(s, idx);
+}
+
+coder_page_stash_remove :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_stash_remove(s, idx);
+}
+
+coder_page_stash_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].rich[0].nstash else 0;
+}
+
+coder_page_stash_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || out.count < 1 { return 0; }
+  r := s[0].rich[..];
+  n := 0;
+  for k: 0..<r[0].nstash {
+    if k > 0 {
+      if n >= out.count { break; }
+      out[n] = '\n'; n += 1;
+    }
+    n = cp_rich_encode_line(out, n, cast(string) r[0].stash[k].text[0..<r[0].stash[k].n]);
+  }
+  return n;
+}
+
+coder_page_stash_load :: (s: [] CoderPage, data: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  r := s[0].rich[..];
+  r[0].nstash = 0;
+  if data.count == 0 { return 0; }
+  at := 0;
+  while at < data.count && r[0].nstash < CP_STASH_MAX {
+    end := at;
+    while end < data.count && data[end] != '\n' { end += 1; }
+    if end > at {
+      idx := r[0].nstash;
+      dn := cp_rich_decode_line(cast(string) data[at..<end], r[0].stash[idx].text[..]);
+      if dn > 0 { r[0].stash[idx].n = dn; r[0].nstash += 1; }
+    }
+    at = end + 1;
+  }
+  return r[0].nstash;
+}
+
+// Compact horizontal stash bar drawn above the composer when at least one draft is stashed.
+cp_stash_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, y_bottom: f32, cw: f32) -> f32 {
+  r := s[0].rich[..];
+  if r[0].nstash <= 0 { r[0].tray_h = 0.0f32; return 0.0f32; }
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  th := cp_theme();
+  ch := k.cmp.chip_h;
+  pad := 6.0f32;
+  h := ch + pad * 2.0f32;
+  y := y_bottom - h;
+  _ := sheet_box(sh, x, y, cw, h, 10.0f32, k.border, th.surface, th.border);
+  cx := x + 10.0f32;
+  cy := y + pad;
+  lb: [32] u8; ln := el_put(lb[..], 0, "Stash ("); ln = el_put_i(lb[..], ln, r[0].nstash); ln = el_put(lb[..], ln, ")");
+  lbl := sheet_pool(sh, cast(string) lb[0..<ln]);
+  lw := sheet_text(sh, m, -1, cx, cy + (ch - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, lbl);
+  cx += lw + 8.0f32;
+  right := x + cw - 8.0f32;
+  ib: [EL_ID] u8; db: [EL_ID] u8; pb: [48] u8;
+  // Show newest stashed prompts first.
+  for rev: 0..<r[0].nstash {
+    idx := r[0].nstash - 1 - rev;
+    raw := cast(string) r[0].stash[idx].text[0..<r[0].stash[idx].n];
+    pn := 0;
+    for c: raw {
+      if pn >= 26 { break; }
+      pb[pn] = ifx c == '\n' || c == '\r' || c == '\t' then cast(u8) ' ' else c;
+      pn += 1;
+    }
+    if raw.count > 26 && pn + 3 <= pb.count { pn = el_put(pb[..], pn, "..."); }
+    preview := sheet_pool(sh, cast(string) pb[0..<pn]);
+    tw := measure_width(m, k.small.face, preview);
+    del_w := 16.0f32;
+    chip_w := tw + 14.0f32 + del_w;
+    if cx + chip_w > right { break; }
+    idn := el_put(ib[..], 0, "coder.rich.stash."); idn = el_put_i(ib[..], idn, idx);
+    cid := cast(string) ib[0..<idn];
+    did_n := el_put(db[..], 0, "coder.rich.stash.del."); did_n = el_put_i(db[..], did_n, idx);
+    did := cast(string) db[0..<did_n];
+    hov := uiframe_hovered(f, cid);
+    bg := ifx hov then th.hover else th.secondary;
+    _ := sheet_box(sh, cx, cy, chip_w, ch, ch / 2.0f32, k.border, bg, th.border);
+    _ := sheet_text(sh, m, -1, cx + 8.0f32, cy + (ch - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, preview);
+    pop_row := uiframe_semantic(f, cid, EL_BUTTON, preview, cx, cy, chip_w - del_w, ch, 0, CP_RICH_STASH_POP);
+    sheet_hit(sh, UIFRAME_HIT, pop_row, 0, cx, cy, chip_w - del_w, ch);
+    dx := cx + chip_w - del_w - 2.0f32;
+    del_hov := uiframe_hovered(f, did);
+    _ := sheet_text(sh, m, -1, dx + 3.0f32, cy + (ch - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx del_hov then k.ink else k.muted, "×");
+    del_row := uiframe_semantic(f, did, EL_BUTTON, "Remove stashed prompt", dx, cy, del_w, ch, 0, CP_RICH_STASH_DEL);
+    sheet_hit(sh, UIFRAME_HIT, del_row, 0, dx, cy, del_w, ch);
+    cx += chip_w + 6.0f32;
+  }
+  total := h + a.gap_small;
+  r[0].tray_h = total;
+  return total;
+}
+
+// ---------------------------------------------------------------- 2. Prompt History (Up/Down)
+
+cp_hist_record :: (s: [] CoderPage, text: string) {
+  trimmed := cp_trim(text);
+  if trimmed.count == 0 { return; }
+  r := s[0].rich[..];
+  r[0].hist_pos = -1;
+  r[0].hist_saved_n = 0;
+  // Deduplicate consecutive identical entries.
+  if r[0].nhist > 0 {
+    last := cast(string) r[0].hist[r[0].nhist - 1].text[0..<r[0].hist[r[0].nhist - 1].n];
+    if last == trimmed { return; }
+  }
+  if r[0].nhist >= CP_HIST_MAX {
+    for k: 1..<CP_HIST_MAX { r[0].hist[k - 1] = r[0].hist[k]; }
+    r[0].nhist = CP_HIST_MAX - 1;
+  }
+  idx := r[0].nhist;
+  r[0].hist[idx].n = cp_out(r[0].hist[idx].text[..], trimmed);
+  r[0].nhist += 1;
+}
+
+cp_hist_on_first_line :: (text: string, caret: int) -> bool {
+  lim := ifx caret < text.count then caret else text.count;
+  for i: 0..<lim { if text[i] == '\n' { return false; } }
+  return true;
+}
+
+cp_hist_on_last_line :: (text: string, caret: int) -> bool {
+  start := ifx caret < 0 then 0 else caret;
+  for i: start..<text.count { if text[i] == '\n' { return false; } }
+  return true;
+}
+
+cp_hist_apply_draft :: (s: [] CoderPage, text: string) {
+  eb_set(s[0].draft[..], text);
+  e := cp_ed(s, CP_ED_COMPOSER);
+  e[0].body[0].ed[0].caret = text.count;
+  e[0].body[0].ed[0].anchor = text.count;
+}
+
+// Up/Down prompt history navigation in the composer when caret is on the first/last line.
+cp_hist_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  if mods != 0 || (key != KEY_UP && key != KEY_DOWN) { return false; }
+  r := s[0].rich[..];
+  if r[0].nhist <= 0 { return false; }
+  e := cp_ed(s, CP_ED_COMPOSER);
+  b := e[0].body[0].ed[..];
+  if b[0].anchor != b[0].caret { return false; }
+  cur := ue_value(e);
+  if key == KEY_UP {
+    if !cp_hist_on_first_line(cur, b[0].caret) { return false; }
+    if r[0].hist_pos < 0 {
+      r[0].hist_saved_n = cp_out(r[0].hist_saved[..], cur);
+      r[0].hist_pos = r[0].nhist - 1;
+    } else if r[0].hist_pos > 0 {
+      r[0].hist_pos -= 1;
+    } else {
+      return true;  // already at oldest entry
+    }
+    p := r[0].hist_pos;
+    cp_hist_apply_draft(s, cast(string) r[0].hist[p].text[0..<r[0].hist[p].n]);
+    return true;
+  }
+  // KEY_DOWN
+  if r[0].hist_pos < 0 { return false; }
+  if !cp_hist_on_last_line(cur, b[0].caret) { return false; }
+  if r[0].hist_pos + 1 < r[0].nhist {
+    r[0].hist_pos += 1;
+    p := r[0].hist_pos;
+    cp_hist_apply_draft(s, cast(string) r[0].hist[p].text[0..<r[0].hist[p].n]);
+    return true;
+  }
+  r[0].hist_pos = -1;
+  cp_hist_apply_draft(s, cast(string) r[0].hist_saved[0..<r[0].hist_saved_n]);
+  return true;
+}
+
+coder_page_hist_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].rich[0].nhist else 0;
+}
+
+coder_page_hist_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || out.count < 1 { return 0; }
+  r := s[0].rich[..];
+  n := 0;
+  for k: 0..<r[0].nhist {
+    if k > 0 {
+      if n >= out.count { break; }
+      out[n] = '\n'; n += 1;
+    }
+    n = cp_rich_encode_line(out, n, cast(string) r[0].hist[k].text[0..<r[0].hist[k].n]);
+  }
+  return n;
+}
+
+coder_page_hist_load :: (s: [] CoderPage, data: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  r := s[0].rich[..];
+  r[0].nhist = 0;
+  r[0].hist_pos = -1;
+  if data.count == 0 { return 0; }
+  at := 0;
+  while at < data.count && r[0].nhist < CP_HIST_MAX {
+    end := at;
+    while end < data.count && data[end] != '\n' { end += 1; }
+    if end > at {
+      idx := r[0].nhist;
+      dn := cp_rich_decode_line(cast(string) data[at..<end], r[0].hist[idx].text[..]);
+      if dn > 0 { r[0].hist[idx].n = dn; r[0].nhist += 1; }
+    }
+    at = end + 1;
+  }
+  return r[0].nhist;
+}
+
+// ---------------------------------------------------------------- 3. Expanded Slash Commands
+
+cp_rich_run_cmd :: (s: [] CoderPage, cmd: int) -> bool {
+  if cmd == CP_CMD_FORK {
+    cur := cast(string) s[0].current[0..<s[0].current_n];
+    if cur == "chat.foreman" || s[0].nturns == 0 { return false; }
+    s[0].ask = CP_ASK_FORK;
+    return true;
+  }
+  if cmd == CP_CMD_COMPACT { s[0].ask = CP_ASK_RICH_COMPACT; return true; }
+  if cmd == CP_CMD_CLEAR { s[0].ask = CP_ASK_RICH_CLEAR; return true; }
+  if cmd == CP_CMD_REVIEW {
+    s[0].review = true;
+    s[0].pane_tab = CP_TAB_CHANGES;
+    s[0].ask = CP_ASK_RICH_REVIEW;
+    return true;
+  }
+  if cmd == CP_CMD_USAGE {
+    cp_settings_show(s, true, CP_PG_USAGE);
+    s[0].ask = CP_ASK_RICH_USAGE;
+    return true;
+  }
+  if cmd == CP_CMD_STASH {
+    cur := cp_trim(eb_text(s[0].draft[..]));
+    if cur.count > 0 {
+      if cp_stash_push(s, cur) {
+        eb_set(s[0].draft[..], "");
+        return true;
+      }
+    } else if s[0].rich[0].nstash > 0 {
+      return cp_stash_pop_to_composer(s, -1);
+    }
+    return true;
+  }
+  return false;
+}
+
+// Direct slash submission from cp_send: /compact, /clear, /review, /usage, /stash [pop|clear|<text>].
+cp_rich_slash :: (s: [] CoderPage, text: string) -> bool {
+  t := cp_trim(text);
+  if t.count < 2 || t[0] != '/' { return false; }
+  if cp_eq_ci(t, "/compact") { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_COMPACT); }
+  if cp_eq_ci(t, "/clear")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_CLEAR); }
+  if cp_eq_ci(t, "/review")  { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_REVIEW); }
+  if cp_eq_ci(t, "/usage")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_USAGE); }
+  if cp_eq_ci(t, "/stash") {
+    eb_set(s[0].draft[..], "");
+    if s[0].rich[0].nstash > 0 { _ = cp_stash_pop_to_composer(s, -1); }
+    return true;
+  }
+  if t.count >= 7 && cp_eq_ci(cast(string) t[0..<7], "/stash ") {
+    arg := cp_trim(cast(string) t[7..<t.count]);
+    eb_set(s[0].draft[..], "");
+    if cp_eq_ci(arg, "pop") { _ = cp_stash_pop_to_composer(s, -1); return true; }
+    if cp_eq_ci(arg, "clear") { s[0].rich[0].nstash = 0; s[0].ask = CP_ASK_RICH_STASH_SAVE; return true; }
+    if arg.count > 0 { _ = cp_stash_push(s, arg); return true; }
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- 4. Mermaid Diagram Parser & GPU Renderer
+
+cp_mermaid_starts_with :: (line: string, prefix: string) -> bool {
+  if line.count < prefix.count { return false; }
+  return cp_eq_ci(cast(string) line[0..<prefix.count], prefix);
+}
+
+cp_mermaid_find_node :: (g: [] CpMermaidGraph, id: string) -> int {
+  for i: 0..<g[0].nnodes {
+    if cast(string) g[0].nodes[i].id[0..<g[0].nodes[i].id_n] == id { return i; }
+  }
+  return -1;
+}
+
+cp_mermaid_add_node :: (g: [] CpMermaidGraph, id: string, label: string, shape: int) -> int {
+  tid := cp_trim(id);
+  if tid.count == 0 { return -1; }
+  existing := cp_mermaid_find_node(g, tid);
+  tlbl := cp_trim(label);
+  if tlbl.count >= 2 && ((tlbl[0] == '"' && tlbl[tlbl.count - 1] == '"') || (tlbl[0] == '\'' && tlbl[tlbl.count - 1] == '\'')) {
+    tlbl = cast(string) tlbl[1..<tlbl.count - 1];
+  }
+  if existing >= 0 {
+    if tlbl.count > 0 && tlbl != tid {
+      g[0].nodes[existing].label_n = cp_out(g[0].nodes[existing].label[..], tlbl);
+      g[0].nodes[existing].shape = shape;
+    }
+    return existing;
+  }
+  if g[0].nnodes >= CP_MERMAID_NODES { return -1; }
+  idx := g[0].nnodes;
+  g[0].nodes[idx].id_n = cp_out(g[0].nodes[idx].id[..], tid);
+  shown := ifx tlbl.count > 0 then tlbl else tid;
+  g[0].nodes[idx].label_n = cp_out(g[0].nodes[idx].label[..], shown);
+  g[0].nodes[idx].shape = shape;
+  g[0].nnodes += 1;
+  return idx;
+}
+
+cp_mermaid_parse_node_spec :: (g: [] CpMermaidGraph, raw: string) -> int {
+  s := cp_trim(raw);
+  if s.count == 0 { return -1; }
+  // Strip trailing semicolon.
+  if s[s.count - 1] == ';' { s = cp_trim(cast(string) s[0..<s.count - 1]); }
+  if s.count == 0 { return -1; }
+  open_at := -1; shape := 0; close_ch: u8 = 0;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '[' { open_at = i; shape = 0; close_ch = ']'; break; }
+    if c == '(' { open_at = i; shape = 1; close_ch = ')'; break; }
+    if c == '{' { open_at = i; shape = 2; close_ch = '}'; break; }
+  }
+  if open_at > 0 {
+    id := cp_trim(cast(string) s[0..<open_at]);
+    inner_start := open_at + 1;
+    if inner_start < s.count && (s[inner_start] == '(' || s[inner_start] == '[' || s[inner_start] == '{') { inner_start += 1; }
+    inner_end := s.count;
+    while inner_end > inner_start && s[inner_end - 1] == close_ch { inner_end -= 1; }
+    lbl := ifx inner_end > inner_start then cast(string) s[inner_start..<inner_end] else id;
+    return cp_mermaid_add_node(g, id, lbl, shape);
+  }
+  return cp_mermaid_add_node(g, s, s, 0);
+}
+
+cp_mermaid_add_edge :: (g: [] CpMermaidGraph, from: int, to: int, label: string, dashed: bool) {
+  if from < 0 || to < 0 || g[0].nedges >= CP_MERMAID_EDGES { return; }
+  idx := g[0].nedges;
+  g[0].edges[idx].from = from;
+  g[0].edges[idx].to = to;
+  g[0].edges[idx].label_n = cp_out(g[0].edges[idx].label[..], cp_trim(label));
+  g[0].edges[idx].dashed = dashed;
+  g[0].nedges += 1;
+}
+
+// Parse flowchart, graph, or sequenceDiagram Mermaid code into nodes & directed edges.
+// Returns true when supported and at least one node was parsed; false for unsupported syntax.
+cp_mermaid_parse :: (code: string, g: [] CpMermaidGraph) -> bool {
+  g[0] = CpMermaidGraph.{};
+  at := 0;
+  while at < code.count {
+    end := at;
+    while end < code.count && code[end] != '\n' { end += 1; }
+    line := cp_trim(cast(string) code[at..<end]);
+    at = end + 1;
+    if line.count == 0 { continue; }
+    if line.count >= 2 && line[0] == '%' && line[1] == '%' { continue; }
+    if g[0].kind == CP_MERMAID_NONE {
+      if cp_mermaid_starts_with(line, "flowchart") || cp_mermaid_starts_with(line, "graph") {
+        g[0].kind = CP_MERMAID_FLOW;
+        g[0].dir_lr = cp_contains(line, "LR") || cp_contains(line, "RL");
+        continue;
+      }
+      if cp_mermaid_starts_with(line, "sequenceDiagram") {
+        g[0].kind = CP_MERMAID_SEQ;
+        g[0].dir_lr = true;
+        continue;
+      }
+      return false;
+    }
+    if g[0].kind == CP_MERMAID_FLOW {
+      if cp_mermaid_starts_with(line, "subgraph") || cp_eq_ci(line, "end") || cp_mermaid_starts_with(line, "classDef") || cp_mermaid_starts_with(line, "style ") || cp_mermaid_starts_with(line, "click ") { continue; }
+      // Find arrow token: -.->, -->, ==>, ---
+      arrow_at := -1; arrow_len := 0; dashed := false;
+      i := 0;
+      while i < line.count {
+        if i + 4 <= line.count && cast(string) line[i..<i + 4] == "-.->" { arrow_at = i; arrow_len = 4; dashed = true; break; }
+        if i + 3 <= line.count && cast(string) line[i..<i + 3] == "-->"  { arrow_at = i; arrow_len = 3; dashed = false; break; }
+        if i + 3 <= line.count && cast(string) line[i..<i + 3] == "==>"  { arrow_at = i; arrow_len = 3; dashed = false; break; }
+        if i + 3 <= line.count && cast(string) line[i..<i + 3] == "---"  { arrow_at = i; arrow_len = 3; dashed = false; break; }
+        i += 1;
+      }
+      if arrow_at > 0 {
+        lhs := cp_trim(cast(string) line[0..<arrow_at]);
+        rhs := cp_trim(cast(string) line[arrow_at + arrow_len..<line.count]);
+        elbl := "";
+        // Optional |label| immediately after arrow.
+        if rhs.count > 2 && rhs[0] == '|' {
+          bar := 1;
+          while bar < rhs.count && rhs[bar] != '|' { bar += 1; }
+          if bar < rhs.count {
+            elbl = cast(string) rhs[1..<bar];
+            rhs = cp_trim(cast(string) rhs[bar + 1..<rhs.count]);
+          }
+        }
+        u := cp_mermaid_parse_node_spec(g, lhs);
+        v := cp_mermaid_parse_node_spec(g, rhs);
+        cp_mermaid_add_edge(g, u, v, elbl, dashed);
+      } else {
+        _ = cp_mermaid_parse_node_spec(g, line);
+      }
+    } else if g[0].kind == CP_MERMAID_SEQ {
+      if cp_mermaid_starts_with(line, "participant ") || cp_mermaid_starts_with(line, "actor ") {
+        sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+        rest := cp_trim(cast(string) line[sp..<line.count]);
+        // Optional "ID as Label"
+        as_at := -1;
+        for k: 0..<rest.count {
+          if k + 4 <= rest.count && cast(string) rest[k..<k + 4] == " as " { as_at = k; break; }
+        }
+        if as_at > 0 {
+          _ = cp_mermaid_add_node(g, cast(string) rest[0..<as_at], cast(string) rest[as_at + 4..<rest.count], 0);
+        } else {
+          _ = cp_mermaid_add_node(g, rest, rest, 0);
+        }
+        continue;
+      }
+      // Sequence arrow: -->>, ->>, -->, ->
+      arrow_at := -1; arrow_len := 0; dashed := false;
+      i := 0;
+      while i < line.count {
+        if i + 4 <= line.count && cast(string) line[i..<i + 4] == "-->>" { arrow_at = i; arrow_len = 4; dashed = true; break; }
+        if i + 3 <= line.count && cast(string) line[i..<i + 3] == "->>"  { arrow_at = i; arrow_len = 3; dashed = false; break; }
+        if i + 3 <= line.count && cast(string) line[i..<i + 3] == "-->"  { arrow_at = i; arrow_len = 3; dashed = true; break; }
+        if i + 2 <= line.count && cast(string) line[i..<i + 2] == "->"   { arrow_at = i; arrow_len = 2; dashed = false; break; }
+        i += 1;
+      }
+      if arrow_at > 0 {
+        lhs := cp_trim(cast(string) line[0..<arrow_at]);
+        rhs_all := cp_trim(cast(string) line[arrow_at + arrow_len..<line.count]);
+        colon := -1;
+        for k: 0..<rhs_all.count { if rhs_all[k] == ':' { colon = k; break; } }
+        rhs := ifx colon >= 0 then cp_trim(cast(string) rhs_all[0..<colon]) else rhs_all;
+        elbl := ifx colon >= 0 && colon + 1 < rhs_all.count then cp_trim(cast(string) rhs_all[colon + 1..<rhs_all.count]) else "";
+        u := cp_mermaid_add_node(g, lhs, lhs, 0);
+        v := cp_mermaid_add_node(g, rhs, rhs, 0);
+        cp_mermaid_add_edge(g, u, v, elbl, dashed);
+      }
+    }
+  }
+  return g[0].kind != CP_MERMAID_NONE && g[0].nnodes > 0;
+}
+
+// GPU-drawn Mermaid diagram card (flowchart boxes + arrows, or sequence diagram lanes + arrows).
+cp_mermaid_draw :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, g: [] CpMermaidGraph, copied: bool, copy_action: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; th := cp_theme();
+  pad := 12.0f32;
+  head_h := 26.0f32;
+  node_h := 30.0f32;
+  edge_h := 20.0f32;
+  kind_lbl := ifx g[0].kind == CP_MERMAID_SEQ then "Mermaid · Sequence" else "Mermaid · Flowchart";
+
+  // Measure body height cleanly.
+  body_h := 0.0f32;
+  if g[0].kind == CP_MERMAID_SEQ {
+    body_h = node_h + 10.0f32 + cast(f32) g[0].nedges * 28.0f32 + 8.0f32;
+  } else {
+    body_h = cast(f32) g[0].nnodes * (node_h + 10.0f32) + cast(f32) g[0].nedges * edge_h + 6.0f32;
+  }
+  total_h := head_h + pad + body_h + pad;
+
+  _ := sheet_box(sh, x, y, w, total_h, 10.0f32, k.border, th.surface, th.border);
+  sheet_rule(sh, x, y + head_h, w, k.border, th.border);
+  _ := sheet_text(sh, m, -1, x + pad, y + (head_h - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, kind_lbl);
+
+  // Copy button in top-right of card header.
+  if copy_action != 0 {
+    cb_lbl := ifx copied then "Copied" else "Copy";
+    cw_b := measure_width(m, k.small.face, cb_lbl) + 12.0f32;
+    cb_x := x + w - pad - cw_b;
+    cb_row := uiframe_semantic(f, id, EL_BUTTON, cb_lbl, cb_x, y + 3.0f32, cw_b, head_h - 6.0f32, 0, copy_action);
+    _ := sheet_text(sh, m, -1, cb_x + 6.0f32, y + (head_h - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx uiframe_hovered(f, id) then k.ink else k.muted, cb_lbl);
+    sheet_hit(sh, UIFRAME_HIT, cb_row, 0, cb_x, y + 3.0f32, cw_b, head_h - 6.0f32);
+  }
+
+  cy := y + head_h + pad;
+  inner_w := w - 2.0f32 * pad;
+  if g[0].kind == CP_MERMAID_SEQ {
+    // Draw participant header boxes across the top.
+    n := g[0].nnodes;
+    col_w := ifx n > 0 then inner_w / cast(f32) n else inner_w;
+    box_w := col_w - 8.0f32;
+    if box_w > 130.0f32 { box_w = 130.0f32; }
+    if box_w < 48.0f32 { box_w = 48.0f32; }
+    for i: 0..<n {
+      cx := x + pad + cast(f32) i * col_w + (col_w - box_w) / 2.0f32;
+      lbl := sheet_pool(sh, cast(string) g[0].nodes[i].label[0..<g[0].nodes[i].label_n]);
+      _ := sheet_box(sh, cx, cy, box_w, node_h, 6.0f32, k.border, th.secondary, k.accent);
+      tw := measure_width(m, k.small.face, lbl);
+      tx := cx + (box_w - tw) / 2.0f32;
+      if tx < cx + 4.0f32 { tx = cx + 4.0f32; }
+      _ := sheet_text(sh, m, -1, tx, cy + (node_h - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, lbl);
+      // Vertical lifeline.
+      lx := cx + box_w / 2.0f32;
+      sheet_rule(sh, lx, cy + node_h, 1.0f32, body_h - node_h - 4.0f32, opacity(th.border, 0.7f32));
+    }
+    ey := cy + node_h + 12.0f32;
+    for ei: 0..<g[0].nedges {
+      e := g[0].edges[ei];
+      fx := x + pad + (cast(f32) e.from + 0.5f32) * col_w;
+      tx := x + pad + (cast(f32) e.to + 0.5f32) * col_w;
+      lo := ifx fx < tx then fx else tx;
+      hi := ifx fx > tx then fx else tx;
+      if hi - lo < 4.0f32 { hi = lo + 24.0f32; }
+      col := ifx e.dashed then k.muted else k.accent;
+      sheet_rule(sh, lo, ey + 12.0f32, hi - lo, 1.5f32, col);
+      // Arrowhead marker.
+      ah_x := ifx tx >= fx then hi - 5.0f32 else lo;
+      sheet_fill(sh, ah_x, ey + 9.5f32, 5.0f32, 6.0f32, 2.0f32, col);
+      if e.label_n > 0 {
+        elbl := sheet_pool(sh, cast(string) e.label[0..<e.label_n]);
+        _ := sheet_text(sh, m, -1, lo + 4.0f32, ey - 2.0f32, k.small.line, k.small.face, k.muted, elbl);
+      }
+      ey += 28.0f32;
+    }
+  } else {
+    // Flowchart: draw each node box and directed edges.
+    for i: 0..<g[0].nnodes {
+      lbl := sheet_pool(sh, cast(string) g[0].nodes[i].label[0..<g[0].nodes[i].label_n]);
+      tw := measure_width(m, k.small.face, lbl);
+      bw := tw + 24.0f32;
+      if bw < 72.0f32 { bw = 72.0f32; }
+      if bw > inner_w { bw = inner_w; }
+      rad := ifx g[0].nodes[i].shape == 1 then node_h / 2.0f32 else ifx g[0].nodes[i].shape == 2 then 2.0f32 else 6.0f32;
+      bx := x + pad + (inner_w - bw) / 2.0f32;
+      _ := sheet_box(sh, bx, cy, bw, node_h, rad, k.border, th.secondary, k.accent);
+      _ := sheet_text(sh, m, -1, bx + (bw - tw) / 2.0f32, cy + (node_h - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, lbl);
+      cy += node_h + 10.0f32;
+    }
+    eb: [192] u8;
+    for ei: 0..<g[0].nedges {
+      e := g[0].edges[ei];
+      en := 0;
+      en = el_put(eb[..], en, cast(string) g[0].nodes[e.from].label[0..<g[0].nodes[e.from].label_n]);
+      en = el_put(eb[..], en, ifx e.dashed then " ⇢ " else " → ");
+      en = el_put(eb[..], en, cast(string) g[0].nodes[e.to].label[0..<g[0].nodes[e.to].label_n]);
+      if e.label_n > 0 {
+        en = el_put(eb[..], en, "  [");
+        en = el_put(eb[..], en, cast(string) e.label[0..<e.label_n]);
+        en = el_put(eb[..], en, "]");
+      }
+      line_s := sheet_pool(sh, cast(string) eb[0..<en]);
+      _ := sheet_text(sh, m, -1, x + pad + 4.0f32, cy, k.small.line, k.small.face, k.muted, line_s);
+      cy += edge_h;
+    }
+  }
+  return total_h;
+}
+
+// ---------------------------------------------------------------- 5. LaTeX Math -> Unicode Renderer
+
+cp_latex_put :: (out: [] u8, pos: int, s: string) -> int {
+  n := pos;
+  for c: s {
+    if n >= out.count { break; }
+    out[n] = c; n += 1;
+  }
+  return n;
+}
+
+cp_latex_sup_char :: (c: u8) -> string {
+  if c == '0' { return "⁰"; } if c == '1' { return "¹"; } if c == '2' { return "²"; }
+  if c == '3' { return "³"; } if c == '4' { return "⁴"; } if c == '5' { return "⁵"; }
+  if c == '6' { return "⁶"; } if c == '7' { return "⁷"; } if c == '8' { return "⁸"; }
+  if c == '9' { return "⁹"; } if c == '+' { return "⁺"; } if c == '-' { return "⁻"; }
+  if c == '=' { return "⁼"; } if c == '(' { return "⁽"; } if c == ')' { return "⁾"; }
+  if c == 'n' { return "ⁿ"; } if c == 'i' { return "ⁱ"; }
+  return "";
+}
+
+cp_latex_sub_char :: (c: u8) -> string {
+  if c == '0' { return "₀"; } if c == '1' { return "₁"; } if c == '2' { return "₂"; }
+  if c == '3' { return "₃"; } if c == '4' { return "₄"; } if c == '5' { return "₅"; }
+  if c == '6' { return "₆"; } if c == '7' { return "₇"; } if c == '8' { return "₈"; }
+  if c == '9' { return "₉"; } if c == '+' { return "₊"; } if c == '-' { return "₋"; }
+  if c == '=' { return "₌"; } if c == '(' { return "₍"; } if c == ')' { return "₎"; }
+  if c == 'a' { return "ₐ"; } if c == 'e' { return "ₑ"; } if c == 'i' { return "ᵢ"; }
+  if c == 'j' { return "ⱼ"; } if c == 'k' { return "ₖ"; } if c == 'n' { return "ₙ"; }
+  if c == 'x' { return "ₓ"; }
+  return "";
+}
+
+cp_latex_symbol :: (cmd: string) -> string {
+  // Greek lowercase
+  if cmd == "alpha"      { return "α"; } if cmd == "beta"       { return "β"; }
+  if cmd == "gamma"      { return "γ"; } if cmd == "delta"      { return "δ"; }
+  if cmd == "epsilon" || cmd == "varepsilon" { return "ε"; }
+  if cmd == "zeta"       { return "ζ"; } if cmd == "eta"        { return "η"; }
+  if cmd == "theta" || cmd == "vartheta" { return "θ"; }
+  if cmd == "iota"       { return "ι"; } if cmd == "kappa"      { return "κ"; }
+  if cmd == "lambda"     { return "λ"; } if cmd == "mu"         { return "μ"; }
+  if cmd == "nu"         { return "ν"; } if cmd == "xi"         { return "ξ"; }
+  if cmd == "pi"         { return "π"; } if cmd == "rho"        { return "ρ"; }
+  if cmd == "sigma"      { return "σ"; } if cmd == "tau"        { return "τ"; }
+  if cmd == "upsilon"    { return "υ"; } if cmd == "phi" || cmd == "varphi" { return "φ"; }
+  if cmd == "chi"        { return "χ"; } if cmd == "psi"        { return "ψ"; }
+  if cmd == "omega"      { return "ω"; }
+  // Greek uppercase
+  if cmd == "Gamma"      { return "Γ"; } if cmd == "Delta"      { return "Δ"; }
+  if cmd == "Theta"      { return "Θ"; } if cmd == "Lambda"     { return "Λ"; }
+  if cmd == "Xi"         { return "Ξ"; } if cmd == "Pi"         { return "Π"; }
+  if cmd == "Sigma"      { return "Σ"; } if cmd == "Phi"        { return "Φ"; }
+  if cmd == "Psi"        { return "Ψ"; } if cmd == "Omega"      { return "Ω"; }
+  // Operators & relations
+  if cmd == "sum"        { return "∑"; } if cmd == "prod"       { return "∏"; }
+  if cmd == "int"        { return "∫"; } if cmd == "oint"       { return "∮"; }
+  if cmd == "partial"    { return "∂"; } if cmd == "nabla"      { return "∇"; }
+  if cmd == "infty"      { return "∞"; }
+  if cmd == "le" || cmd == "leq" { return "≤"; }
+  if cmd == "ge" || cmd == "geq" { return "≥"; }
+  if cmd == "ne" || cmd == "neq" { return "≠"; }
+  if cmd == "approx"     { return "≈"; } if cmd == "equiv"      { return "≡"; }
+  if cmd == "sim"        { return "∼"; }
+  if cmd == "to" || cmd == "rightarrow" { return "→"; }
+  if cmd == "leftarrow"  { return "←"; } if cmd == "leftrightarrow" { return "↔"; }
+  if cmd == "Rightarrow" || cmd == "implies" { return "⇒"; }
+  if cmd == "Leftarrow"  { return "⇐"; } if cmd == "iff"        { return "⇔"; }
+  if cmd == "times"      { return "×"; } if cmd == "cdot"       { return "·"; }
+  if cmd == "div"        { return "÷"; } if cmd == "pm"         { return "±"; }
+  if cmd == "mp"         { return "∓"; }
+  if cmd == "in"         { return "∈"; } if cmd == "notin"      { return "∉"; }
+  if cmd == "subset"     { return "⊂"; } if cmd == "subseteq"   { return "⊆"; }
+  if cmd == "cup"        { return "∪"; } if cmd == "cap"        { return "∩"; }
+  if cmd == "forall"     { return "∀"; } if cmd == "exists"     { return "∃"; }
+  if cmd == "emptyset"   { return "∅"; }
+  if cmd == "dots" || cmd == "ldots" || cmd == "cdots" { return "…"; }
+  if cmd == "degree"     { return "°"; }
+  return "";
+}
+
+// Read a `{...}` braced group starting at src[at], returning the index after `}` (and writing the inner slice bounds).
+cp_latex_brace_end :: (src: string, at: int) -> int {
+  if at >= src.count || src[at] != '{' { return at; }
+  depth := 0; i := at;
+  while i < src.count {
+    if src[i] == '{' { depth += 1; }
+    else if src[i] == '}' { depth -= 1; if depth == 0 { return i + 1; } }
+    i += 1;
+  }
+  return src.count;
+}
+
+cp_latex_is_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+
+cp_latex_render_core :: (src: string, out: [] u8, depth: int) -> int {
+  if depth > 6 { return cp_latex_put(out, 0, src); }
+  n := 0; i := 0;
+  while i < src.count && n < out.count {
+    c := src[i];
+    if c == '\\' && i + 1 < src.count {
+      nx := src[i + 1];
+      if nx == ',' || nx == ';' || nx == ' ' || nx == '!' {
+        n = cp_latex_put(out, n, " "); i += 2; continue;
+      }
+      if !cp_latex_is_alpha(nx) {
+        out[n] = nx; n += 1; i += 2; continue;
+      }
+      j := i + 1;
+      while j < src.count && cp_latex_is_alpha(src[j]) { j += 1; }
+      cmd := cast(string) src[i + 1..<j];
+      i = j;
+      if cmd == "left" || cmd == "right" { continue; }
+      if cmd == "frac" {
+        while i < src.count && src[i] == ' ' { i += 1; }
+        e1 := cp_latex_brace_end(src, i);
+        num_s := ifx e1 > i + 1 then cast(string) src[i + 1..<e1 - 1] else "";
+        i = e1;
+        while i < src.count && src[i] == ' ' { i += 1; }
+        e2 := cp_latex_brace_end(src, i);
+        den_s := ifx e2 > i + 1 then cast(string) src[i + 1..<e2 - 1] else "";
+        i = e2;
+        nb: [256] u8; db: [256] u8;
+        nn := cp_latex_render_core(num_s, nb[..], depth + 1);
+        dn := cp_latex_render_core(den_s, db[..], depth + 1);
+        num_r := cast(string) nb[0..<nn];
+        den_r := cast(string) db[0..<dn];
+        simple_n := nn <= 2 && !cp_contains(num_r, " ");
+        simple_d := dn <= 2 && !cp_contains(den_r, " ");
+        if !simple_n { n = cp_latex_put(out, n, "("); }
+        n = cp_latex_put(out, n, num_r);
+        if !simple_n { n = cp_latex_put(out, n, ")"); }
+        n = cp_latex_put(out, n, "/");
+        if !simple_d { n = cp_latex_put(out, n, "("); }
+        n = cp_latex_put(out, n, den_r);
+        if !simple_d { n = cp_latex_put(out, n, ")"); }
+        continue;
+      }
+      if cmd == "sqrt" {
+        while i < src.count && src[i] == ' ' { i += 1; }
+        e1 := cp_latex_brace_end(src, i);
+        arg_s := ifx e1 > i + 1 then cast(string) src[i + 1..<e1 - 1] else "";
+        i = e1;
+        ab: [256] u8;
+        an := cp_latex_render_core(arg_s, ab[..], depth + 1);
+        n = cp_latex_put(out, n, "√");
+        if an > 1 { n = cp_latex_put(out, n, "("); }
+        n = cp_latex_put(out, n, cast(string) ab[0..<an]);
+        if an > 1 { n = cp_latex_put(out, n, ")"); }
+        continue;
+      }
+      if cmd == "text" || cmd == "mathrm" || cmd == "mathbf" || cmd == "mathit" || cmd == "operatorname" {
+        while i < src.count && src[i] == ' ' { i += 1; }
+        e1 := cp_latex_brace_end(src, i);
+        if e1 > i + 1 {
+          n = cp_latex_put(out, n, cast(string) src[i + 1..<e1 - 1]);
+          i = e1;
+        }
+        continue;
+      }
+      sym := cp_latex_symbol(cmd);
+      if sym.count > 0 { n = cp_latex_put(out, n, sym); }
+      else { n = cp_latex_put(out, n, cmd); }
+      continue;
+    }
+    if (c == '^' || c == '_') && i + 1 < src.count {
+      is_sup := c == '^';
+      i += 1;
+      arg := "";
+      if src[i] == '{' {
+        e1 := cp_latex_brace_end(src, i);
+        if e1 > i + 1 { arg = cast(string) src[i + 1..<e1 - 1]; }
+        i = e1;
+      } else {
+        arg = cast(string) src[i..<i + 1];
+        i += 1;
+      }
+      ab: [128] u8;
+      an := cp_latex_render_core(arg, ab[..], depth + 1);
+      // Check if every byte maps to a Unicode superscript/subscript.
+      all_mapped := an > 0;
+      for k: 0..<an {
+        mapped := ifx is_sup then cp_latex_sup_char(ab[k]) else cp_latex_sub_char(ab[k]);
+        if mapped.count == 0 { all_mapped = false; break; }
+      }
+      if all_mapped {
+        for k: 0..<an {
+          mapped := ifx is_sup then cp_latex_sup_char(ab[k]) else cp_latex_sub_char(ab[k]);
+          n = cp_latex_put(out, n, mapped);
+        }
+      } else {
+        n = cp_latex_put(out, n, ifx is_sup then "^(" else "_(");
+        n = cp_latex_put(out, n, cast(string) ab[0..<an]);
+        n = cp_latex_put(out, n, ")");
+      }
+      continue;
+    }
+    if c == '{' || c == '}' { i += 1; continue; }
+    out[n] = c; n += 1; i += 1;
+  }
+  return n;
+}
+
+// Convert a LaTeX math expression (stripping optional $$...$$, $...$, \[...\], \(...\)) into Unicode math.
+cp_latex_render :: (src: string, out: [] u8) -> int {
+  t := cp_trim(src);
+  if t.count >= 4 && t[0] == '$' && t[1] == '$' && t[t.count - 2] == '$' && t[t.count - 1] == '$' {
+    t = cp_trim(cast(string) t[2..<t.count - 2]);
+  } else if t.count >= 2 && t[0] == '$' && t[t.count - 1] == '$' {
+    t = cp_trim(cast(string) t[1..<t.count - 1]);
+  } else if t.count >= 4 && t[0] == '\\' && (t[1] == '[' || t[1] == '(') && t[t.count - 2] == '\\' && (t[t.count - 1] == ']' || t[t.count - 1] == ')') {
+    t = cp_trim(cast(string) t[2..<t.count - 2]);
+  }
+  return cp_latex_render_core(t, out, 0);
+}
+
+// True when text contains at least one $$...$$ or valid inline $...$ math span.
+cp_latex_has_math :: (text: string) -> bool {
+  i := 0;
+  while i < text.count {
+    if text[i] == '$' {
+      if i + 1 < text.count && text[i + 1] == '$' {
+        j := i + 2;
+        while j + 1 < text.count {
+          if text[j] == '$' && text[j + 1] == '$' { return j > i + 2; }
+          j += 1;
+        }
+        return false;
+      }
+      if i + 1 < text.count && text[i + 1] != ' ' && text[i + 1] != '\n' {
+        j := i + 1;
+        while j < text.count && text[j] != '\n' {
+          if text[j] == '$' && j > i + 1 && text[j - 1] != ' ' { return true; }
+          j += 1;
+        }
+      }
+    }
+    i += 1;
+  }
+  return false;
+}
+
+// Render inline $...$ and $$...$$ spans inside a prose paragraph, leaving non-math text untouched.
+cp_latex_inline :: (src: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  mb: [512] u8;
+  while i < src.count && n < out.count {
+    if src[i] == '$' {
+      if i + 1 < src.count && src[i + 1] == '$' {
+        j := i + 2; found := -1;
+        while j + 1 < src.count {
+          if src[j] == '$' && src[j + 1] == '$' { found = j; break; }
+          j += 1;
+        }
+        if found > i + 2 {
+          mn := cp_latex_render_core(cp_trim(cast(string) src[i + 2..<found]), mb[..], 0);
+          n = cp_latex_put(out, n, cast(string) mb[0..<mn]);
+          i = found + 2; continue;
+        }
+      } else if i + 1 < src.count && src[i + 1] != ' ' && src[i + 1] != '\n' {
+        j := i + 1; found := -1;
+        while j < src.count && src[j] != '\n' {
+          if src[j] == '$' && j > i + 1 && src[j - 1] != ' ' { found = j; break; }
+          j += 1;
+        }
+        if found > i + 1 {
+          mn := cp_latex_render_core(cast(string) src[i + 1..<found], mb[..], 0);
+          n = cp_latex_put(out, n, cast(string) mb[0..<mn]);
+          i = found + 1; continue;
+        }
+      }
+    }
+    out[n] = src[i]; n += 1; i += 1;
+  }
+  return n;
+}
+
+// Draw a display math card (for ```math / ```latex fences or standalone $$...$$ blocks).
+cp_latex_draw_card :: (f: [] UiFrame, x: f32, y: f32, w: f32, rendered: string) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; th := cp_theme();
+  pad_y := 10.0f32;
+  h := k.body.line + 2.0f32 * pad_y;
+  _ := sheet_box(sh, x, y, w, h, 8.0f32, k.border, th.surface, th.border);
+  text_s := sheet_pool(sh, rendered);
+  tw := measure_width(m, k.body.face, text_s);
+  tx := x + (w - tw) / 2.0f32;
+  if tx < x + 12.0f32 { tx = x + 12.0f32; }
+  _ := sheet_text(sh, m, -1, tx, y + pad_y, k.body.line, k.body.face, k.ink, text_s);
+  return h;
+}
+
+// Whether a parsed reply contains any Mermaid fence, math/latex fence, or $...$/$$...$$ math.
+cp_doc_has_rich :: (doc: [] MdDoc, block0: int, blocks: int) -> bool {
+  for b: block0..<block0 + blocks {
+    kind := doc[0].blocks[b].kind;
+    if kind == MB_CODE {
+      lang := md_lang(doc, b);
+      if cp_eq_ci(lang, "mermaid") || cp_eq_ci(lang, "math") || cp_eq_ci(lang, "latex") { return true; }
+    } else if kind == MB_PARA {
+      if cp_latex_has_math(md_block_text(doc, b)) { return true; }
+    }
+  }
+  return false;
+}
+
+// Rich agent message renderer: delegates directly to app_message_agent_linked_veiled when no
+// Mermaid/LaTeX blocks are present; otherwise renders Mermaid diagrams & LaTeX math natively.
+cp_rich_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int,
+                          copied: int, copy_action: int, path_action: int, link_action: int, vv: MdVeil) -> f32 {
+  if !cp_doc_has_rich(doc, block0, blocks) {
+    return app_message_agent_linked_veiled(f, id, x, y, w, doc, block0, blocks, copied, copy_action, path_action, link_action, vv);
+  }
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  h: f32 = 0; files := 0; urls := 0;
+  row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, block0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
+  uiframe_open(f, row);
+  g: [1] CpMermaidGraph;
+  lb: [2048] u8;
+  for b: block0..<block0 + blocks {
+    if b > block0 { h += s.md.block_gap; }
+    kind := doc[0].blocks[b].kind;
+    if kind == MB_CODE {
+      lang := md_lang(doc, b);
+      code := md_block_text(doc, b);
+      part: [EL_ID] u8; cid: [EL_ID] u8;
+      pn := el_copy(part[..], ".code."); pn = text_put_int(part[..], pn, b - block0);
+      bid := app_id(cid[..], id, cast(string) part[0..<pn]);
+      if cp_eq_ci(lang, "mermaid") && cp_mermaid_parse(code, g[..]) {
+        h += cp_mermaid_draw(f, bid, x, y + h, w, g[..], copied == b - block0, copy_action);
+        continue;
+      }
+      if cp_eq_ci(lang, "math") || cp_eq_ci(lang, "latex") {
+        ln := cp_latex_render(code, lb[..]);
+        if ln > 0 { h += cp_latex_draw_card(f, x, y + h, w, cast(string) lb[0..<ln]); continue; }
+      }
+      h += app_code_veiled(f, bid, x, y + h, w, lang, code, copied == b - block0, copy_action, vv, doc[0].blocks[b].at);
+    } else if kind == MB_PARA && cp_latex_has_math(md_block_text(doc, b)) {
+      raw := cp_trim(md_block_text(doc, b));
+      if raw.count >= 4 && raw[0] == '$' && raw[1] == '$' && raw[raw.count - 2] == '$' && raw[raw.count - 1] == '$' {
+        ln := cp_latex_render(raw, lb[..]);
+        h += cp_latex_draw_card(f, x, y + h, w, cast(string) lb[0..<ln]);
+      } else {
+        ln := cp_latex_inline(md_block_text(doc, b), lb[..]);
+        rendered := sheet_pool(sh, cast(string) lb[0..<ln]);
+        _ := sheet_text(sh, m, -1, x, y + h, s.md.line, s.body.face, s.ink, rendered);
+        h += s.md.line;
+      }
+    } else if kind == MB_RULE {
+      h += app_divider(f, x, y + h, w);
+    } else {
+      ls := s; ls.md.link_paths = path_action != 0; ls.md.link_urls = link_action != 0; nh0 := sh[0].nh;
+      h += markdown_block_veiled(sh, m, ls, doc, b, x, y + h, w, vv);
+      if path_action != 0 { files += app_message_paths(f, id, doc, b, nh0, files, path_action); }
+      if link_action != 0 { urls += app_message_links(f, id, doc, b, nh0, urls, link_action); }
+    }
+  }
+  uiframe_close(f);
+  if row >= 0 && h > 0 { f[0].rows[0].rows[row].h = h; }
+  return h;
+}
+
+// ---------------------------------------------------------------- 6. Inline Selection-to-Quote
+
+// Format selected text as a Markdown blockquote (`> ...\n\n`) and insert it into the composer.
+cp_rich_quote_text :: (s: [] CoderPage, selected: string) -> bool {
+  trimmed := cp_trim(selected);
+  if trimmed.count == 0 { return false; }
+  buf: [EB_TEXT] u8;
+  n := 0;
+  // Prefix every line with "> ".
+  at := 0;
+  while at < trimmed.count && n + 4 < buf.count {
+    end := at;
+    while end < trimmed.count && trimmed[end] != '\n' { end += 1; }
+    n = cp_latex_put(buf[..], n, "> ");
+    n = cp_latex_put(buf[..], n, cast(string) trimmed[at..<end]);
+    n = cp_latex_put(buf[..], n, "\n");
+    at = end + 1;
+  }
+  n = cp_latex_put(buf[..], n, "\n");
+  existing := eb_text(s[0].draft[..]);
+  if existing.count > 0 { n = cp_latex_put(buf[..], n, existing); }
+  eb_set(s[0].draft[..], cast(string) buf[0..<n]);
+  e := cp_ed(s, CP_ED_COMPOSER);
+  e[0].body[0].ed[0].caret = n;
+  e[0].body[0].ed[0].anchor = n;
+  cp_ed_focus(s, CP_KB_COMPOSER);
+  return true;
+}
+
+coder_page_rich_quote :: (s: [] CoderPage, selected: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_rich_quote_text(s, selected);
+}
+
+// Quote button rendered beside Copy in an assistant reply's hover lane.
+cp_quote_button :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool) {
+  if !visible { return; }
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  side := 24.0f32 / u;
+  top := 8.0f32 / u;
+  rad := 6.0f32 / u;
+  by := y + top;
+  key := uiframe_key(f, id);
+  p := uiframe_press(f, key, id);
+  hov := uiframe_hover(f, key, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, "Quote reply", bx, by, side, side, 0, CP_RICH_QUOTE);
+  if p > 0 { sheet_fill(sh, bx, by, side, side, rad, k.raised); }
+  else if hov > 0 { sheet_fill(sh, bx, by, side, side, rad, opacity(k.hover, hov)); }
+  ink := ifx p > 0 then k.ink else rgba_mix(k.muted, k.ink, hov);
+  _ := sheet_text(sh, m, -1, bx + 7.0f32, by + (side - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, "”");
+  sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
+}
+
+// ---------------------------------------------------------------- 7. Side-by-Side Linked Chat Pane
+
+cp_side_chat_shown :: (s: [] CoderPage) -> bool { return s[0].rich[0].side_open; }
+
+coder_page_side_chat_open :: (s: [] CoderPage, chat_id: string, title: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  r := s[0].rich[..];
+  r[0].side_open = true;
+  r[0].side_chat_id_n = cp_out(r[0].side_chat_id[..], chat_id);
+  r[0].side_title_n = cp_out(r[0].side_title[..], ifx title.count > 0 then title else "Linked Chat");
+  r[0].side_nturns = 0;
+  r[0].side_scroll = 0.0f32;
+  r[0].side_content = 0.0f32;
+}
+
+coder_page_side_chat_add_turn :: (s: [] CoderPage, ask: string, reply: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  r := s[0].rich[..];
+  if r[0].side_nturns >= CP_SIDE_TURNS { return false; }
+  idx := r[0].side_nturns;
+  r[0].side_turns[idx].ask_n = cp_out(r[0].side_turns[idx].ask[..], ask);
+  r[0].side_turns[idx].reply_n = cp_out(r[0].side_turns[idx].reply[..], reply);
+  r[0].side_nturns += 1;
+  return true;
+}
+
+coder_page_side_chat_close :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].rich[0].side_open = false;
+}
+
+coder_page_side_chat_is_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].rich[0].side_open;
+}
+
+coder_page_side_chat_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  r := s[0].rich[..];
+  return cp_out(out, cast(string) r[0].side_chat_id[0..<r[0].side_chat_id_n]);
+}
+
+cp_side_chat_scroll :: (s: [] CoderPage, delta: f32) {
+  r := s[0].rich[..];
+  r[0].side_scroll = scroll_clamp(r[0].side_scroll + delta, r[0].side_content, r[0].side_view);
+}
+
+cp_side_chat_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; r := s[0].rich[..];
+  tb: [160] u8; tn := el_put(tb[..], 0, "Side Chat · ");
+  tn = el_put(tb[..], tn, cast(string) r[0].side_title[0..<r[0].side_title_n]);
+  head_title := sheet_pool(sh, cast(string) tb[0..<tn]);
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  stop := app_pane_tab_shell(f, px, top, pw, h, ICON_CHATS, head_title, "coder.sidechat.meta", "", "coder.sidechat.close", CP_RICH_SIDE_CLOSE, CP_CORNER, 1.0f32);
+  r[0].side_view = h - stop;
+  r[0].side_scroll = scroll_clamp(r[0].side_scroll, r[0].side_content, r[0].side_view);
+  uiframe_clip(f, px, stop, px + pw, h);
+  x := px + CP_PAD; cw := pw - 2.0f32 * CP_PAD;
+  y := stop - r[0].side_scroll + a.gap;
+  // Toolbar: "Open in main" button.
+  if r[0].side_chat_id_n > 0 {
+    bw := app_button_width(f, -1, "Open in main");
+    y += app_button(f, "coder.sidechat.open", x, y, bw, -1, "Open in main", APP_BUTTON_DEFAULT, 0, CP_RICH_SIDE_OPEN_MAIN) + a.gap;
+  }
+  if r[0].side_nturns == 0 {
+    y += app_meta(f, "coder.sidechat.empty", x, y, cw, "No turns in this linked chat yet.", false) + a.gap;
+  } else {
+    ib: [EL_ID] u8;
+    enter := f[0].skin.motion.enter;
+    f[0].skin.motion.enter = 0;
+    for i: 0..<r[0].side_nturns {
+      ask := cast(string) r[0].side_turns[i].ask[0..<r[0].side_turns[i].ask_n];
+      rep := cast(string) r[0].side_turns[i].reply[0..<r[0].side_turns[i].reply_n];
+      if ask.count > 0 {
+        in_n := el_put(ib[..], 0, "sc.u."); in_n = el_put_i(ib[..], in_n, i);
+        y += app_message_user(f, cast(string) ib[0..<in_n], x, y, cw, ask) + a.gap_small;
+      }
+      if rep.count > 0 {
+        in_n := el_put(ib[..], 0, "sc.a."); in_n = el_put_i(ib[..], in_n, i);
+        y += app_meta(f, cast(string) ib[0..<in_n], x, y, cw, sheet_pool(sh, rep), false) + a.gap;
+      }
+    }
+    f[0].skin.motion.enter = enter;
+  }
+  uiframe_unclip(f);
+  r[0].side_content = y + r[0].side_scroll - stop;
+}
+
+// ---------------------------------------------------------------- action dispatch
+
+cp_rich_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  if act == CP_RICH_STASH_POP {
+    idx := cp_number(id, "coder.rich.stash.");
+    return cp_stash_pop_to_composer(s, idx);
+  }
+  if act == CP_RICH_STASH_DEL {
+    idx := cp_number(id, "coder.rich.stash.del.");
+    return cp_stash_remove(s, idx);
+  }
+  if act == CP_RICH_QUOTE {
+    turn := cp_number(id, "t");
+    if turn < 0 || turn >= s[0].nturns || s[0].turns[turn].reply_n <= 0 { return false; }
+    rep := cast(string) s[0].turns[turn].reply[0..<s[0].turns[turn].reply_n];
+    cut := ifx rep.count > 240 then 240 else rep.count;
+    if cut < rep.count {
+      while cut > 1 && rep[cut] >= 128 && rep[cut] < 192 { cut -= 1; }
+    }
+    return cp_rich_quote_text(s, cast(string) rep[0..<cut]);
+  }
+  if act == CP_RICH_SIDE_CLOSE {
+    s[0].rich[0].side_open = false;
+    return true;
+  }
+  if act == CP_RICH_SIDE_OPEN_MAIN {
+    if s[0].rich[0].side_chat_id_n <= 0 { return false; }
+    s[0].ask = CP_ASK_RICH_SIDE_OPEN;
+    return true;
+  }
+  return false;
+}

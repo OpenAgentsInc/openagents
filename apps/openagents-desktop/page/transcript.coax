@@ -20,10 +20,12 @@ cp_send :: (s: [] CoderPage) -> bool {
   if text.count == 0 && cp_cargo_n(s) == 0 { return false; }
   if text.count > 0 && cp_goal_slash(s, text) { return true; }
   if text.count > 0 && cp_fork_slash(s, text) { return true; }
+  if text.count > 0 && cp_rich_slash(s, text) { return true; }
   if cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
-  if text.count > 0 && cp_fanout_submit(s, text) { return true; }
+  if text.count > 0 && cp_fanout_submit(s, text) { cp_hist_record(s, text); return true; }
   // the message takes the draft's attachments and the files it mentions (attach.coax, #13699)
   if !cp_start_turn(s, ifx text.count > 0 then text else CP_ATTACHED_ONLY, CP_GOAL_PROMPT_NONE) { return false; }
+  if text.count > 0 { cp_hist_record(s, text); }
   cp_refs_take(s, s[0].nturns - 1, text);
   eb_set(s[0].draft[..], "");
   return true;

@@ -589,4 +589,20 @@ void cd_env_awake_active_set(void *page, int active);
 int cd_env_should_keep_awake(void *page, int bg_running);
 int cd_env_win_to_wsl(const char *path, char *out, int cap);
 int cd_env_wsl_to_win(const char *path, const char *distro, char *out, int cap);
+// Rich composer & transcript upgrades (page/rich.coax; #13884): prompt stash/history, inline quote, Side Chat pane.
+int cd_stash_push(void *page, const char *text);
+int cd_stash_pop(void *page, int idx);
+int cd_stash_remove(void *page, int idx);
+int cd_stash_count(void *page);
+int cd_stash_save(void *page, char *out, int cap);
+int cd_stash_load(void *page, const char *data);
+int cd_hist_count(void *page);
+int cd_hist_save(void *page, char *out, int cap);
+int cd_hist_load(void *page, const char *data);
+int cd_rich_quote(void *page, const char *selected);
+void cd_side_chat_open(void *page, const char *chat_id, const char *title);
+int cd_side_chat_add_turn(void *page, const char *ask, const char *reply);
+void cd_side_chat_close(void *page);
+int cd_side_chat_is_open(void *page);
+int cd_side_chat_id(void *page, char *out, int cap);
 #endif

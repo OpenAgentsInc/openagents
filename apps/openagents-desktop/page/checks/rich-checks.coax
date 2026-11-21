@@ -1,0 +1,240 @@
+// Checks for rich composer & transcript upgrades (page/rich.coax, GitHub #13884):
+// prompt stash & history (with persistence round-trips), expanded slash commands,
+// Mermaid diagram parsing & GPU rendering, LaTeX math Unicode rendering, Markdown tables,
+// inline selection-to-quote, and Side-by-Side Linked Chat pane.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_rich_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, px: f32, py: f32, present: bool) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(px, py, present, false, "", ""), 0, 0.016, s[0].reduced, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+cp_rich_test_setup :: (s: [] CoderPage) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, true);
+  coder_page_folder(s, "~/work/app");
+}
+
+#test "prompt stash: push, cap at 8, LIFO pop, remove, tray click, and persistence round-trip" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  #assert !coder_page_stash_push(s, "   ");
+  #assert coder_page_stash_count(s) == 0;
+
+  // Push 9 items -> oldest ("draft-0") evicted, 8 kept ("draft-1" .. "draft-8").
+  for i: 0..<9 {
+    b: [32] u8; n := el_put(b[..], 0, "draft-"); n = el_put_i(b[..], n, i);
+    #assert coder_page_stash_push(s, cast(string) b[0..<n]);
+  }
+  #assert coder_page_stash_count(s) == CP_STASH_MAX;
+  #assert coder_page_action(s) == CP_ASK_RICH_STASH_SAVE;
+
+  // Multi-line + tab + backslash item persists cleanly through save/load.
+  #assert coder_page_stash_push(s, "line1\nline2\t\\ok");
+  buf: [4096] u8;
+  saved_n := coder_page_stash_save(s, buf[..]);
+  #assert saved_n > 0;
+
+  // Load into a fresh page and verify round-trip.
+  p2: [1] CoderPage; p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
+  cp_rich_test_setup(s2);
+  #assert coder_page_stash_load(s2, cast(string) buf[0..<saved_n]) == CP_STASH_MAX;
+  #assert coder_page_stash_pop(s2, -1);
+  #assert eb_text(s2[0].draft[..]) == "line1\nline2\t\\ok";
+  #assert coder_page_stash_count(s2) == CP_STASH_MAX - 1;
+
+  // Tray renders clickable chips and remove button.
+  #assert cp_rich_test_frame(s2, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[surface_rows(s2[0].surface[..])];
+  chip := elt_find(t[..], "coder.rich.stash.6");
+  del := elt_find(t[..], "coder.rich.stash.del.6");
+  #assert chip >= 0 && del >= 0;
+  #assert cp_press(s2, del) && coder_page_stash_count(s2) == CP_STASH_MAX - 2;
+}
+
+#test "prompt history: record, Up/Down on first/last line, live draft restore, and persistence" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  // Send two turns so history records them.
+  eb_set(s[0].draft[..], "first prompt");
+  #assert cp_send(s) && s[0].nturns == 1;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok 1\"}") == MWW_ENDED;
+  eb_set(s[0].draft[..], "second prompt");
+  #assert cp_send(s) && s[0].nturns == 2;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok 2\"}") == MWW_ENDED;
+  #assert coder_page_hist_count(s) == 2;
+
+  // Type a live unsent draft, press Up twice, then Down twice -> restores live draft.
+  eb_set(s[0].draft[..], "work in progress");
+  #assert cp_rich_test_frame(s, f[..], 1200, 800, 0, 0, false);
+  #assert coder_page_key(s, KEY_UP, 0) && eb_text(s[0].draft[..]) == "second prompt";
+  #assert coder_page_key(s, KEY_UP, 0) && eb_text(s[0].draft[..]) == "first prompt";
+  #assert coder_page_key(s, KEY_DOWN, 0) && eb_text(s[0].draft[..]) == "second prompt";
+  #assert coder_page_key(s, KEY_DOWN, 0) && eb_text(s[0].draft[..]) == "work in progress";
+
+  // Multi-line draft with caret on line 2: Up does NOT trigger history.
+  eb_set(s[0].draft[..], "line one\nline two");
+  e := cp_ed(s, CP_ED_COMPOSER);
+  e[0].body[0].ed[0].caret = 17; e[0].body[0].ed[0].anchor = 17;
+  #assert !cp_hist_key(s, KEY_UP, 0);
+
+  // Persistence round-trip.
+  hbuf: [4096] u8;
+  hn := coder_page_hist_save(s, hbuf[..]);
+  #assert hn > 0;
+  p2: [1] CoderPage; p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
+  cp_rich_test_setup(s2);
+  #assert coder_page_hist_load(s2, cast(string) hbuf[0..<hn]) == 2;
+  #assert coder_page_key(s2, KEY_UP, 0) && eb_text(s2[0].draft[..]) == "second prompt";
+}
+
+#test "expanded slash commands: /compact, /clear, /review, /usage, /stash in popover and send" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  // Popover lists all 9 commands when typing "/".
+  coder_page_ime_replace(s, -1, -1, "/");
+  #assert cp_rich_test_frame(s, f[..], 1200, 800, 0, 0, false);
+  #assert s[0].mn[0].open && s[0].mn[0].n == CP_CMDS && CP_CMDS == 9;
+
+  // Direct /compact, /clear, /review, /usage, /stash commands.
+  eb_set(s[0].draft[..], "/compact");
+  #assert cp_send(s) && coder_page_action(s) == CP_ASK_RICH_COMPACT && eb_text(s[0].draft[..]) == "";
+
+  eb_set(s[0].draft[..], "/clear");
+  #assert cp_send(s) && coder_page_action(s) == CP_ASK_RICH_CLEAR;
+
+  eb_set(s[0].draft[..], "/review");
+  #assert cp_send(s) && coder_page_action(s) == CP_ASK_RICH_REVIEW && s[0].review;
+  s[0].review = false;
+
+  eb_set(s[0].draft[..], "/usage");
+  #assert cp_send(s) && coder_page_action(s) == CP_ASK_RICH_USAGE && s[0].set_open && s[0].set_page == CP_PG_USAGE;
+  s[0].set_open = false;
+
+  eb_set(s[0].draft[..], "/stash save this idea");
+  #assert cp_send(s) && coder_page_stash_count(s) == 1 && coder_page_action(s) == CP_ASK_RICH_STASH_SAVE;
+
+  eb_set(s[0].draft[..], "/stash pop");
+  #assert cp_send(s) && eb_text(s[0].draft[..]) == "save this idea" && coder_page_stash_count(s) == 0;
+}
+
+#test "Mermaid parser: flowchart, sequenceDiagram, and unsupported fallback" {
+  g: [1] CpMermaidGraph;
+
+  flow := "flowchart TD\n  A[Start] --> B{Valid?}\n  B -->|Yes| C(Run)\n  B -.->|No| D[Stop]\n";
+  #assert cp_mermaid_parse(flow, g[..]);
+  #assert g[0].kind == CP_MERMAID_FLOW && !g[0].dir_lr;
+  #assert g[0].nnodes == 4 && g[0].nedges == 3;
+  #assert cast(string) g[0].nodes[0].label[0..<g[0].nodes[0].label_n] == "Start";
+  #assert cast(string) g[0].nodes[1].label[0..<g[0].nodes[1].label_n] == "Valid?" && g[0].nodes[1].shape == 2;
+  #assert cast(string) g[0].edges[1].label[0..<g[0].edges[1].label_n] == "Yes" && !g[0].edges[1].dashed;
+  #assert cast(string) g[0].edges[2].label[0..<g[0].edges[2].label_n] == "No" && g[0].edges[2].dashed;
+
+  seq := "sequenceDiagram\n  participant U as User\n  participant A as Agent\n  U->>A: Run tests\n  A-->>U: All green\n";
+  #assert cp_mermaid_parse(seq, g[..]);
+  #assert g[0].kind == CP_MERMAID_SEQ && g[0].nnodes == 2 && g[0].nedges == 2;
+  #assert cast(string) g[0].nodes[0].label[0..<g[0].nodes[0].label_n] == "User";
+  #assert cast(string) g[0].edges[0].label[0..<g[0].edges[0].label_n] == "Run tests" && !g[0].edges[0].dashed;
+  #assert cast(string) g[0].edges[1].label[0..<g[0].edges[1].label_n] == "All green" && g[0].edges[1].dashed;
+
+  // Unsupported diagram returns false (caller falls back to formatted code block).
+  #assert !cp_mermaid_parse("pie title Pets\n  \"Dogs\" : 10\n", g[..]);
+}
+
+#test "LaTeX math renderer: Greek, operators, frac, sqrt, super/subscripts, and inline prose" {
+  out: [512] u8;
+
+  n1 := cp_latex_render("$$\\alpha + \\beta \\le \\infty$$", out[..]);
+  #assert cast(string) out[0..<n1] == "α + β ≤ ∞";
+
+  n2 := cp_latex_render("\\frac{a}{b} \\times \\sqrt{x^2 + y_0}", out[..]);
+  #assert cast(string) out[0..<n2] == "a/b × √(x² + y₀)";
+
+  n3 := cp_latex_render("\\sum_{i=1}^{n} i \\to \\pm \\approx \\ne \\ge", out[..]);
+  #assert cast(string) out[0..<n3] == "∑ᵢ₌₁ⁿ i → ± ≈ ≠ ≥";
+
+  // Inline prose renders $...$ while leaving currency ($50) untouched.
+  #assert !cp_latex_has_math("Cost is $50 per month");
+  #assert cp_latex_has_math("Energy is $E = mc^2$ here");
+  n4 := cp_latex_inline("Energy is $E = mc^2$ and cost is $50", out[..]);
+  #assert cast(string) out[0..<n4] == "Energy is E = mc² and cost is $50";
+}
+
+#test "transcript renders Mermaid, LaTeX math, and Markdown tables natively" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  eb_set(s[0].draft[..], "show diagram and math");
+  #assert cp_send(s);
+  reply := "Here is $E = mc^2$:\n\n```mermaid\nflowchart LR\n  A[Input] --> B[Output]\n```\n\n| Col | Val |\n| --- | --- |\n| A | 1 |\n";
+  cp_reply_set(s, 0, reply, false);
+  s[0].turns[0].state = CP_DONE;
+
+  #assert cp_rich_test_frame(s, f[..], 1200, 800, 0, 0, false);
+  sh := surface_sheet(s[0].surface[..]);
+  saw_mermaid := false; saw_math := false;
+  for qi: 0..<sh.no {
+    if sh.over[qi].kind == PRIM_TEXT {
+      if cp_contains(sh.over[qi].text, "Mermaid · Flowchart") { saw_mermaid = true; }
+      if cp_contains(sh.over[qi].text, "mc²") { saw_math = true; }
+    }
+  }
+  #assert saw_mermaid && saw_math;
+  // Verify table block was parsed in the same reply.
+  d := cp_doc(s, 0);
+  saw_table := false;
+  for b: 0..<s[0].turns[0].blocks { if d[0].blocks[b].kind == MB_TABLE { saw_table = true; } }
+  #assert saw_table;
+}
+
+#test "inline selection-to-quote and reply Quote button insert blockquote into composer" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  #assert coder_page_rich_quote(s, "Line one\nLine two");
+  #assert eb_text(s[0].draft[..]) == "> Line one\n> Line two\n\n";
+
+  // Clicking Quote button in assistant reply hover lane quotes the reply.
+  eb_set(s[0].draft[..], "explain");
+  #assert cp_send(s);
+  cp_reply_set(s, 0, "The answer is 42.", false);
+  s[0].turns[0].state = CP_DONE;
+  s[0].turns[0].info = true;  // reveals hover lane buttons deterministically
+  #assert cp_rich_test_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  qbtn := elt_find(t[..], "t0.aq");
+  #assert qbtn >= 0;
+  #assert cp_press(s, qbtn) && eb_text(s[0].draft[..]) == "> The answer is 42.\n\n";
+}
+
+#test "Side-by-Side Linked Chat pane: open, render turns, promote to main, and close" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_rich_test_setup(s);
+
+  #assert !coder_page_side_chat_is_open(s);
+  coder_page_side_chat_open(s, "chat.linked-42", "Design Notes");
+  #assert coder_page_side_chat_is_open(s);
+  #assert coder_page_side_chat_add_turn(s, "What is the plan?", "Ship Mermaid and Side Chat.");
+
+  id_buf: [64] u8;
+  id_n := coder_page_side_chat_id(s, id_buf[..]);
+  #assert cast(string) id_buf[0..<id_n] == "chat.linked-42";
+
+  #assert cp_rich_test_frame(s, f[..], 1280, 800, 0, 0, false);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  open_btn := elt_find(t[..], "coder.sidechat.open");
+  close_btn := elt_find(t[..], "coder.sidechat.close");
+  #assert open_btn >= 0 && close_btn >= 0;
+  #assert s[0].pane_w > 0;
+
+  // "Open in main" dispatches CP_ASK_RICH_SIDE_OPEN.
+  #assert cp_press(s, open_btn) && coder_page_action(s) == CP_ASK_RICH_SIDE_OPEN;
+
+  // Close button shuts the Side Chat pane.
+  #assert cp_press(s, close_btn) && !coder_page_side_chat_is_open(s);
+}

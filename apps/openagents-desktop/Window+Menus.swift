@@ -55,6 +55,7 @@ extension CoderWindow {
             Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"),
             Item(label: "Rename Chat…"),
             Item(label: "Fork Chat"),
+            Item(label: "Open in Side Pane"),
             Item(kind: 2),
             Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)),
         ]
@@ -62,6 +63,7 @@ extension CoderWindow {
             { [weak self] in self?.togglePin(id) },
             { [weak self] in self?.rename(id) },
             { [weak self] in self?.fork(id) },
+            { [weak self] in self?.openSideChat(id) },
             {},
             { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } },
         ]

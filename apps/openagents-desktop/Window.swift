@@ -230,6 +230,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         setupUsageDashboard()
         setupVoiceDictation()
         detectInstalledEditors()
+        setupRichComposer()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleModifierFlags(event.modifierFlags)
             return event
@@ -468,6 +469,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 94: envPairMobileDevice()
         case 95: envRevokeDevice()
         case 96: envKeepAwakeChanged()
+        case 100: handleRichCompact()
+        case 101: handleRichClear()
+        case 102: handleRichReview()
+        case 103: handleRichUsage()
+        case 104: saveRichPersistence()
+        case 105: handleRichSideOpenMain()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -601,6 +608,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         retired = true
         gitProcess?.terminate(); gitProcess = nil
         voice.stop(cancel: true)
+        saveRichPersistence()
         updater.stop()
         usageTimer?.invalidate(); usageTimer = nil
         stopAllTerminals()

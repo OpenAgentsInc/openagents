@@ -51,6 +51,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_SB_GROUP_TOGGLE && act <= CP_SB_UNDO_CLOSE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar groups, archive, bulk & undo (sidebar_groups.coax; #13875)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
   if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
+  if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   _ = cp_ft_yield(s, act);
@@ -287,7 +288,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -444,6 +445,7 @@ CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3; CP_S
 cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if cp_side_chat_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_SIDE_CHAT; }
   if cp_term_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_TERM; }
   if cp_fp_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
     if s[0].ft[0].tree_w > 0 && s[0].px >= s[0].ft[0].tree_x && s[0].px < s[0].ft[0].tree_x + s[0].ft[0].tree_w { return CP_SCR_FILETREE; }
@@ -465,6 +467,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
   }
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
   // the code review moves as the deltas come, the platform's own coast included
+  if view == CP_SCR_SIDE_CHAT { cp_side_chat_scroll(s, delta); return; }
   if view == CP_SCR_TERM { cp_term_scroll(s, delta); return; }
   if view == CP_SCR_FILETREE { cp_ft_scroll(s, delta); return; }
   if view == CP_SCR_FILE { cp_fp_scroll(s, delta); return; }
