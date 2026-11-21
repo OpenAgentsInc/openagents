@@ -35,6 +35,8 @@ US_WARN :: 0.80;
 US_CRITICAL :: 0.95;
 US_LEVEL_NORMAL :: 0; US_LEVEL_WARN :: 1; US_LEVEL_CRITICAL :: 2;
 US_IDLE :: 0; US_FETCH :: 2;
+US_PROV_CODEX :: 0; US_PROV_CLAUDE :: 1; US_PROV_AGY :: 2;
+US_STALE_MS :: 900000;         // 15m (3 poll intervals) without a fresh read → stale
 US_CODEX_URL :: "https://chatgpt.com/backend-api/wham/usage";
 
 UsWindow :: struct {
@@ -45,7 +47,8 @@ UsWindow :: struct {
 
 // One agent's login: its windows and the probe in flight.
 UsAcct :: struct {
-  claude: bool;                  // Claude Code, else Codex
+  claude: bool;                  // Claude Code, else Codex (or Antigravity when provider == US_PROV_AGY)
+  provider: int;                 // US_PROV_CODEX, US_PROV_CLAUDE, US_PROV_AGY
   w: [4] UsWindow; nw: int;
   plan: [48] u8; nplan: int;
   got_ms: int;                   // when the windows were read (wall clock), 0 never
@@ -145,6 +148,135 @@ us_read_codex :: (a: [] UsAcct, body: string) -> bool {
   return true;
 }
 
+// A JSON decimal in [0, 1] (e.g. remainingFraction "0.72" → 0.72), -1 on invalid.
+us_fraction :: (raw: string) -> f32 {
+  v: f32 = 0.0; frac: f32 = 0.0; scale: f32 = 1.0; seen := false; dot := false;
+  for c: raw {
+    if c >= '0' && c <= '9' {
+      seen = true;
+      if dot { scale = scale / 10.0; frac = frac + scale * cast(f32) cast(int) (c - '0'); }
+      else { v = v * 10.0 + cast(f32) cast(int) (c - '0'); }
+    } else if c == '.' { dot = true; }
+    else if c == '-' || c == '+' || c == 'e' || c == 'E' { return -1.0; }
+  }
+  if !seen { return -1.0; }
+  r := v + frac;
+  return ifx r < 0.0 then 0.0 else ifx r > 1.0 then 1.0 else r;
+}
+
+// Add or tighten (keep highest used) a window with the given label.
+us_add_max :: (a: [] UsAcct, label: string, used: f32, reset_s: int) {
+  if used < 0.0 { return; }
+  for i: 0..<a[0].nw {
+    if cast(string) a[0].w[i].label[0..<a[0].w[i].nlabel] == label {
+      if used > a[0].w[i].used { a[0].w[i].used = used; a[0].w[i].reset_s = reset_s; }
+      return;
+    }
+  }
+  us_add(a, label, used, reset_s);
+}
+
+us_agy_buckets :: (a: [] UsAcct, arr: string, ar: [] ClArena) {
+  n := cl_count(arr);
+  for i: 0..<n {
+    item := cl_json(arr, cl_item(arr, i));
+    if cl_raw(item, "disabled") == "true" { continue; }
+    rem_raw := cl_raw(item, "remainingFraction");
+    if rem_raw.count == 0 || rem_raw == "null" { continue; }
+    rem := us_fraction(rem_raw);
+    if rem < 0.0 { continue; }
+    used := 1.0 - rem;
+    ar[0].at = 0;
+    win := cl_str(ar, item, "window");
+    label := ifx win == "weekly" then "Week" else ifx win == "5h" then "Session" else "Quota";
+    ar[0].at = 0;
+    reset_s := us_when(cl_raw(item, "resetTime"), ar, item, "resetTime");
+    us_add_max(a, label, used, reset_s);
+  }
+}
+
+// Antigravity 1.5.x retrieveUserQuotaSummary (groups[].buckets[] or buckets[]) or
+// fetchAvailableModels (models.*.quotaInfo / weeklyQuotaInfo) into windows (#13838).
+us_read_antigravity :: (a: [] UsAcct, body: string) -> bool {
+  ab: [16384] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a[0].nw = 0;
+  groups := cl_raw(body, "groups");
+  if groups.count > 0 && groups[0] == '[' {
+    ng := cl_count(groups);
+    for g: 0..<ng {
+      grp := cl_json(groups, cl_item(groups, g));
+      b := cl_raw(grp, "buckets");
+      if b.count > 0 && b[0] == '[' { us_agy_buckets(a, b, ar[..]); }
+    }
+  }
+  if a[0].nw == 0 {
+    b := cl_raw(body, "buckets");
+    if b.count > 0 && b[0] == '[' { us_agy_buckets(a, b, ar[..]); }
+  }
+  // Fallback: fetchAvailableModels response with quotaInfo / weeklyQuotaInfo
+  if a[0].nw == 0 {
+    models := cl_raw(body, "models");
+    if models.count > 0 && models[0] == '{' {
+      qkeys := [2] string.["quotaInfo", "weeklyQuotaInfo"];
+      qlabels := [2] string.["Quota", "Week"];
+      // Scan top-level model objects inside models: { "gemini-...": { ... }, ... }
+      pos := 1;
+      while pos < models.count {
+        while pos < models.count && (models[pos] == ' ' || models[pos] == '\n' || models[pos] == '\r' || models[pos] == '\t' || models[pos] == ',') { pos += 1; }
+        if pos >= models.count || models[pos] == '}' { break; }
+        if models[pos] != '"' { break; }
+        pos += 1;
+        while pos < models.count && models[pos] != '"' { if models[pos] == '\\' { pos += 1; } pos += 1; }
+        if pos >= models.count { break; }
+        pos += 1;
+        while pos < models.count && (models[pos] == ' ' || models[pos] == ':' || models[pos] == '\t' || models[pos] == '\n' || models[pos] == '\r') { pos += 1; }
+        if pos >= models.count || models[pos] != '{' { break; }
+        obj_start := pos;
+        depth := 0; in_str := false; esc := false;
+        while pos < models.count {
+          ch := models[pos];
+          if in_str {
+            if esc { esc = false; }
+            else if ch == '\\' { esc = true; }
+            else if ch == '"' { in_str = false; }
+          } else {
+            if ch == '"' { in_str = true; }
+            else if ch == '{' { depth += 1; }
+            else if ch == '}' { depth -= 1; if depth == 0 { pos += 1; break; } }
+          }
+          pos += 1;
+        }
+        mobj := cast(string) models[obj_start..<pos];
+        for qi: 0..<2 {
+          q := cl_raw(mobj, qkeys[qi]);
+          if q.count == 0 || q == "null" { continue; }
+          rem_raw := cl_raw(q, "remainingFraction");
+          if rem_raw.count == 0 || rem_raw == "null" { continue; }
+          rem := us_fraction(rem_raw);
+          if rem < 0.0 { continue; }
+          ar[0].at = 0;
+          reset_s := us_when(cl_raw(q, "resetTime"), ar[..], q, "resetTime");
+          us_add_max(a, qlabels[qi], 1.0 - rem, reset_s);
+        }
+      }
+    }
+  }
+  if a[0].nw == 0 { return false; }
+  if a[0].nplan == 0 { a[0].nplan = cd_cat(a[0].plan[..], 0, "Antigravity"); }
+  return true;
+}
+
+// Explicit usage state matching docs/protocol/provider-accounts-v1.md (#13838).
+us_status_label :: (a: [] UsAcct, now_ms: int) -> string {
+  if a[0].nw > 0 {
+    if a[0].got_ms > 0 && now_ms > a[0].got_ms && now_ms - a[0].got_ms > US_STALE_MS { return "stale"; }
+    return "observed";
+  }
+  why := cast(string) a[0].why[0..<a[0].nwhy];
+  if rt_has_prefix(why, "signed_out") || s_has(why, "isn't signed in") { return "signed_out"; }
+  return "unavailable";
+}
+
 // The binding limit: the most-used window, -1 when none.
 us_binding :: (a: [] UsAcct) -> int {
   best := -1;
@@ -211,6 +343,11 @@ us_url :: (out: [] u8) -> string {
   return ifx u.count > 0 then u else US_CODEX_URL;
 }
 
+us_agy_url :: (out: [] u8) -> string {
+  u := us_env("CODER_USAGE_AGY_URL", out);
+  return ifx u.count > 0 then u else AGY_QUOTA_SUMMARY_URL;
+}
+
 // ---------------------------------------------------------------- the probe
 
 us_why :: (a: [] UsAcct, s: string) { a[0].nwhy = cd_cat(a[0].why[..], 0, s); }
@@ -271,16 +408,43 @@ us_fetch :: (a: [] UsAcct) {
   a[0].stage = US_FETCH;
 }
 
-// Starts a probe: Claude's through the shared adapter's child; Codex's reads
+// Starts curl with Antigravity's OAuth token on stdin only (curl -K -); never logs or mutates it (#13838).
+us_agy_fetch :: (a: [] UsAcct) {
+  ub: [1024] u8; url := us_agy_url(ub[..]);
+  argv := [15] string.["curl", "-sS", "-m", US_HTTP_S, "-D", "-", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}", "-K", "-", url];
+  if !us_spawn(a, argv[..]) { us_fail(a, 0, 0, "unavailable: curl did not start"); return; }
+  cb: [9000] u8; n := 0;
+  n = cd_cat(cb[..], n, "header = \"Authorization: Bearer "); n = cd_cat(cb[..], n, cast(string) a[0].tok[0..<a[0].ntok]); n = cd_cat(cb[..], n, "\"\n");
+  for i: 0..<n { x := cxproc_write(a[0].h, cast(int) cb[i]); }
+  y := cxproc_flush(a[0].h); z := cxproc_close_stdin(a[0].h);
+  for i: 0..<cb.count { cb[i] = 0; }
+  us_wipe(a);
+  a[0].stage = US_FETCH;
+}
+
+// Starts a probe: Claude's through the shared adapter's child; Codex's or Antigravity's reads
 // its login, then fetches. Nothing when one is running.
 us_probe :: (a: [] UsAcct) {
   if a[0].stage != US_IDLE { return; }
   a[0].tried_ms = cxproc_now_ms();
   db: [1300] u8;
-  if a[0].claude {
+  if a[0].claude || a[0].provider == US_PROV_CLAUDE {
     if !pa_quota_start(a[0].probe[..], pa_system_dir(db[..]), true, a[0].tried_ms) { us_fail(a, 0, 0, "the usage check did not start"); return; }
     a[0].stage = US_FETCH;
     return;
+  }
+  if a[0].provider == US_PROV_AGY {
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    prb: [1024] u8; prof := cl_getenv("CODER_AGY_PROFILE_DIR", prb[..]);
+    pb: [1400] u8; path := agy_token_path(home, prof, pb[..]);
+    fb: [32768] u8; m := ifx path.count > 0 then fs_read(path, fb[..]) else 0;
+    if m > 0 {
+      tok := agy_read_cli_token(cast(string) fb[0..<m], a[0].tok[..]);
+      for i: 0..<m { fb[i] = 0; }
+      if tok.count > 0 { a[0].ntok = tok.count; us_agy_fetch(a); return; }
+      us_fail(a, -1, 0, "unavailable: the Antigravity login has no token"); return;
+    }
+    us_fail(a, -1, 0, "signed_out: Antigravity isn't signed in here"); return;
   }
   pb: [1400] u8; pn := 0;
   d := us_env("CODEX_HOME", db[..]);
@@ -368,10 +532,16 @@ us_answer :: (a: [] UsAcct, status_out: [] int, retry_out: [] int) -> string {
 }
 
 // Saves the windows, so the next start paints them at once.
+us_cache_name :: (a: [] UsAcct) -> string {
+  if a[0].claude || a[0].provider == US_PROV_CLAUDE { return "/../usage-claude.txt"; }
+  if a[0].provider == US_PROV_AGY { return "/../usage-antigravity.txt"; }
+  return "/../usage-codex.txt";
+}
+
 us_save :: (a: [] UsAcct) {
   db: [1100] u8; dir := cs_dir(db[..]);
   if dir.count == 0 { return; }
-  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, ifx a[0].claude then "/../usage-claude.txt" else "/../usage-codex.txt");
+  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, us_cache_name(a));
   ob: [2048] u8; tb: [32] u8;
   n := cd_cat(ob[..], 0, cd_itoa(a[0].got_ms, tb[..])); n = cd_cat(ob[..], n, "\n"); n = cd_cat(ob[..], n, cast(string) a[0].plan[0..<a[0].nplan]); n = cd_cat(ob[..], n, "\n");
   for i: 0..<a[0].nw {
@@ -386,7 +556,7 @@ us_save :: (a: [] UsAcct) {
 us_load :: (a: [] UsAcct) {
   db: [1100] u8; dir := cs_dir(db[..]);
   if dir.count == 0 { return; }
-  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, ifx a[0].claude then "/../usage-claude.txt" else "/../usage-codex.txt");
+  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, us_cache_name(a));
   fb: [2048] u8; m := fs_read(cast(string) pb[0..<pn], fb[..]);
   if m <= 0 { return; }
   text := cast(string) fb[0..<m];
@@ -414,7 +584,7 @@ us_tick :: (a: [] UsAcct) -> bool {
     if now >= a[0].next_ms { us_probe(a); }
     return false;
   }
-  if a[0].claude {
+  if a[0].claude || a[0].provider == US_PROV_CLAUDE {
     status := pa_child_tick(a[0].probe[..], now);
     if a[0].probe[0].h >= 0 { return false; }
     return us_claude_done(a, status, now);
@@ -426,11 +596,15 @@ us_tick :: (a: [] UsAcct) -> bool {
   body := us_answer(a, st[..], ra[..]);
   if st[0] == 0 { us_fail(a, 0, 0, "the usage service didn't answer"); return false; }
   if st[0] != 200 {
+    if a[0].provider == US_PROV_AGY && (st[0] == 401 || st[0] == 403) {
+      us_fail(a, st[0], ra[0], "signed_out: Antigravity session expired"); return false;
+    }
     tb: [16] u8; wb: [80] u8; wn := cd_cat(wb[..], 0, "the usage service answered "); wn = cd_cat(wb[..], wn, cd_itoa(st[0], tb[..]));
     us_fail(a, st[0], ra[0], cast(string) wb[0..<wn]); return false;
   }
   bb: [131072] u8; bn := cd_cat(bb[..], 0, body);
-  if !us_read_codex(a, cast(string) bb[0..<bn]) { us_fail(a, -2, 0, "the usage answer held no limits"); return false; }
+  ok := ifx a[0].provider == US_PROV_AGY then us_read_antigravity(a, cast(string) bb[0..<bn]) else us_read_codex(a, cast(string) bb[0..<bn]);
+  if !ok { us_fail(a, -2, 0, "the usage answer held no limits"); return false; }
   return us_done(a, now);
 }
 
@@ -478,4 +652,35 @@ us_force :: (a: [] UsAcct) {
   a: [1] UsAcct; us_plan(a[..], "Claude ", "max");
   #assert cast(string) a[0].plan[0..<a[0].nplan] == "Claude Max";
   a[0].nplan = 0; us_plan(a[..], "Claude ", ""); #assert a[0].nplan == 0;
+}
+
+#test "usage: Antigravity 1.5.x Summary and Models quota parsing, disabled buckets, and status states (#13838)" {
+  // 1. retrieveUserQuotaSummary with groups[].buckets[], disabled bucket ignored, highest used kept
+  a: [1] UsAcct; a[0].provider = US_PROV_AGY;
+  sum := "{\"groups\":[{\"displayName\":\"Gemini\",\"buckets\":[{\"bucketId\":\"gemini-5h\",\"window\":\"5h\",\"remainingFraction\":0.28,\"resetTime\":\"1970-01-02T00:00:00Z\"},{\"bucketId\":\"gemini-wk\",\"window\":\"weekly\",\"remainingFraction\":0.85,\"resetTime\":\"1970-01-08T00:00:00Z\"},{\"bucketId\":\"disabled-1\",\"window\":\"5h\",\"remainingFraction\":0.0,\"disabled\":true}]}]}";
+  #assert us_read_antigravity(a[..], sum);
+  #assert a[0].nw == 2;
+  #assert cast(string) a[0].w[0].label[0..<a[0].w[0].nlabel] == "Session" && a[0].w[0].reset_s == 86400;
+  #assert a[0].w[0].used > 0.71 && a[0].w[0].used < 0.73;
+  #assert cast(string) a[0].w[1].label[0..<a[0].w[1].nlabel] == "Week" && a[0].w[1].used > 0.14 && a[0].w[1].used < 0.16;
+  #assert cast(string) a[0].plan[0..<a[0].nplan] == "Antigravity";
+  a[0].got_ms = 1000000;
+  #assert us_status_label(a[..], 1000000 + 60000) == "observed";
+  #assert us_status_label(a[..], 1000000 + US_STALE_MS + 1) == "stale";
+
+  // 2. fetchAvailableModels fallback with quotaInfo + weeklyQuotaInfo
+  m: [1] UsAcct; m[0].provider = US_PROV_AGY;
+  mod_json := "{\"models\":{\"gemini-3-pro\":{\"quotaInfo\":{\"remainingFraction\":0.40,\"resetTime\":\"1970-01-03T00:00:00Z\"},\"weeklyQuotaInfo\":{\"remainingFraction\":0.90}}}}";
+  #assert us_read_antigravity(m[..], mod_json);
+  #assert m[0].nw == 2;
+  #assert cast(string) m[0].w[0].label[0..<m[0].w[0].nlabel] == "Quota" && m[0].w[0].used > 0.59 && m[0].w[0].used < 0.61;
+  #assert cast(string) m[0].w[1].label[0..<m[0].w[1].nlabel] == "Week" && m[0].w[1].used > 0.09 && m[0].w[1].used < 0.11;
+
+  // 3. Explicit signed_out and unavailable states
+  s: [1] UsAcct; s[0].provider = US_PROV_AGY;
+  us_why(s[..], "signed_out: Antigravity isn't signed in here");
+  #assert us_status_label(s[..], 0) == "signed_out";
+  us_why(s[..], "unavailable: the usage service answered 503");
+  #assert us_status_label(s[..], 0) == "unavailable";
+  #assert !us_read_antigravity(s[..], "{}");
 }

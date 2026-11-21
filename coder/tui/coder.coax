@@ -122,7 +122,7 @@ App :: struct {
   realm_mcp: [1200] u8;          // the openagents CLI as an MCP server for Claude Code (cd_claude_realm_tools)
   // recaps (chapter 36): on a Mac with Apple's on-device model, the status bar says what the agent is doing
   afm: [1] AfmClient;
-  use: [2] UsAcct;               // plan usage of Claude Code's and Codex's logins (chapter 36), as Zeron reads it
+  use: [3] UsAcct;               // plan usage of Claude Code's, Codex's, and Antigravity's logins (chapter 36)
   recap: [256] u8; nrecap: int; recap_ms: int; recap_seen: int; recap_turn: int;
   recap_task: [600] u8; nrecap_task: int;
   recent: [6] [160] u8; nrecent: [6] int; recent_at: int;
@@ -444,26 +444,28 @@ cd_now :: (a: [] App) -> int { return cxproc_now_ms(); }
 
 // ---------------------------------------------------------------- plan usage (chapter 36)
 
-// Which login's usage an engine shows: 0 Claude Code, 1 Codex, -1 none.
+// Which login's usage an engine shows: 0 Claude Code, 1 Codex, 2 Antigravity, -1 none.
 // An API-key Claude session has no plan meter.
 cd_usage_of :: (a: [] App, e: int) -> int {
   if e == ENGINE_CLAUDE && a[0].api_key { return -1; }
-  return ifx e == ENGINE_CLAUDE then 0 else ifx e == ENGINE_CODEX then 1 else -1;
+  return ifx e == ENGINE_CLAUDE then 0 else ifx e == ENGINE_CODEX then 1 else ifx e == ENGINE_ANTIGRAVITY then 2 else -1;
 }
 
 // The last answers from disk at once; the agent's own login is read now, then every 5 minutes.
 cd_usage_open :: (a: [] App) {
-  a[0].use[0].claude = true; a[0].use[1].claude = false;
+  a[0].use[0].claude = true; a[0].use[0].provider = US_PROV_CLAUDE;
+  a[0].use[1].claude = false; a[0].use[1].provider = US_PROV_CODEX;
+  a[0].use[2].claude = false; a[0].use[2].provider = US_PROV_AGY;
   eb: [8] u8;
-  if cl_getenv("CODER_USAGE", eb[..]) == "0" { a[0].use[0].next_ms = 9000000000000000; a[0].use[1].next_ms = 9000000000000000; return; }
-  for i: 0..<2 { us_load(a[0].use[i..<i + 1]); }
+  if cl_getenv("CODER_USAGE", eb[..]) == "0" { for i: 0..<3 { a[0].use[i].next_ms = 9000000000000000; } return; }
+  for i: 0..<3 { us_load(a[0].use[i..<i + 1]); }
 }
 
 // Only the agent in use is probed, as Zeron probes only the composer's harness.
 cd_usage_tick :: (a: [] App) -> bool {
   ua := cd_usage_of(a, a[0].engine);
   changed := false;
-  for i: 0..<2 {
+  for i: 0..<3 {
     if i == ua || a[0].use[i].stage != US_IDLE { if us_tick(a[0].use[i..<i + 1]) { changed = true; } }
   }
   return changed;
@@ -483,13 +485,13 @@ cd_usage_lines :: (u: [] UsAcct, name: string, now_s: int, out: [] u8) -> int {
   return n;
 }
 
-// /usage: both logins' meters; asks for fresh reads (no more often than every 30 seconds).
+// /usage: all logins' meters; asks for fresh reads (no more often than every 30 seconds).
 cd_usage_show :: (a: [] App) {
   if a[0].api_key { cd_commit(a, TUI_DIM, "  Claude API · ANTHROPIC_API_KEY, which has no plan limits"); }
-  for i: 0..<2 { if !(a[0].api_key && i == 0) { us_force(a[0].use[i..<i + 1]); } }
+  for i: 0..<3 { if !(a[0].api_key && i == 0) { us_force(a[0].use[i..<i + 1]); } }
   now_s := cxproc_wall_us() / 1000000;
-  names := [2] string.["Claude Code", "Codex"];
-  for i: 0..<2 {
+  names := [3] string.["Claude Code", "Codex", "Antigravity"];
+  for i: 0..<3 {
     if a[0].api_key && i == 0 { continue; }
     ob: [2048] u8; n := cd_usage_lines(a[0].use[i..<i + 1], names[i], now_s, ob[..]);
     b := us_binding(a[0].use[i..<i + 1]);
@@ -498,22 +500,24 @@ cd_usage_show :: (a: [] App) {
   }
 }
 
-// coder usage [--json]: reads both logins now and prints their windows.
+// coder usage [--json]: reads all logins now and prints their windows.
 cd_cmd_usage :: (json: bool) -> int {
-  u_b: [2] UsAcct; u := u_b[..];
-  u[0].claude = true;
-  for i: 0..<2 { us_probe(u[i..<i + 1]); }
+  u_b: [3] UsAcct; u := u_b[..];
+  u[0].claude = true; u[0].provider = US_PROV_CLAUDE;
+  u[1].provider = US_PROV_CODEX;
+  u[2].provider = US_PROV_AGY;
+  for i: 0..<3 { us_probe(u[i..<i + 1]); }
   t0 := cxproc_now_ms();
-  while (u[0].stage != US_IDLE || u[1].stage != US_IDLE) && cxproc_now_ms() - t0 < 40000 {
-    for i: 0..<2 { if u[i].stage != US_IDLE { x := us_tick(u[i..<i + 1]); } }
+  while (u[0].stage != US_IDLE || u[1].stage != US_IDLE || u[2].stage != US_IDLE) && cxproc_now_ms() - t0 < 40000 {
+    for i: 0..<3 { if u[i].stage != US_IDLE { x := us_tick(u[i..<i + 1]); } }
     y := cxproc_sleep_ms(20);
   }
-  for i: 0..<2 { if u[i].stage != US_IDLE { us_end(u[i..<i + 1]); } }
+  for i: 0..<3 { if u[i].stage != US_IDLE { us_end(u[i..<i + 1]); } }
   now_s := cxproc_wall_us() / 1000000;
   if json {
-    names := [2] string.["claude", "codex"];
-    ob: [4096] u8; n := json_raw(ob[..], 0, CJ_LIST_OPEN);
-    for i: 0..<2 {
+    names := [3] string.["claude", "codex", "antigravity"];
+    ob: [6144] u8; n := json_raw(ob[..], 0, CJ_LIST_OPEN);
+    for i: 0..<3 {
       n = cj_usage_agent(ob[..], n, i == 0, names[i], cast(string) u[i].plan[0..<u[i].nplan]);
       for k: 0..<u[i].nw {
         w := u[i].w[k];
@@ -524,10 +528,10 @@ cd_cmd_usage :: (json: bool) -> int {
     n = json_raw(ob[..], n, CJ_LIST_CLOSE);
     cd_outln(cast(string) ob[0..<n]);
   } else {
-    labels := [2] string.["Claude Code", "Codex"];
-    for i: 0..<2 { ob: [2048] u8; n := cd_usage_lines(u[i..<i + 1], labels[i], now_s, ob[..]); cd_outln(cast(string) ob[0..<n]); }
+    labels := [3] string.["Claude Code", "Codex", "Antigravity"];
+    for i: 0..<3 { ob: [2048] u8; n := cd_usage_lines(u[i..<i + 1], labels[i], now_s, ob[..]); cd_outln(cast(string) ob[0..<n]); }
   }
-  return ifx u[0].nw > 0 || u[1].nw > 0 then 0 else 1;
+  return ifx u[0].nw > 0 || u[1].nw > 0 || u[2].nw > 0 then 0 else 1;
 }
 
 // ---------------------------------------------------------------- the reply
@@ -2970,7 +2974,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cd_claude_options(o[..], "/tmp", "", false, "", false, false, true);
   #assert o[0].env_remove_count == 0 && o[0].include_partial_messages;
   a: [1] App;
-  #assert cd_usage_of(a[..], ENGINE_CLAUDE) == 0 && cd_usage_of(a[..], ENGINE_CODEX) == 1;
+  #assert cd_usage_of(a[..], ENGINE_CLAUDE) == 0 && cd_usage_of(a[..], ENGINE_CODEX) == 1 && cd_usage_of(a[..], ENGINE_ANTIGRAVITY) == 2;
   a[0].api_key = true;
   #assert cd_usage_of(a[..], ENGINE_CLAUDE) == -1 && cd_usage_of(a[..], ENGINE_CODEX) == 1;
 }
