@@ -1,0 +1,15 @@
+{"id":"sh_011_antigravity_backend_foot_label","category":"session-history","bucket":"B_multi_file","description":"Show the backend label (cp_backend_label) in the home screen composer foot across models.coax, conversation.coax, and composer/models checks.","source":{"harness":"antigravity","trajectory_id":"120cff91-c689-4a53-837a-397d0fc1b508","step_range":[
+      1,
+      32
+    ],"steps_digest":"da0d976d7e07ebf9d19796d40ee33c612a12609738fbba6d8fcf2861fb800933","project":"work/openagents","base_sha":"d9ddbbf962652946c0fab8b0b7b6b64635e8fdba","target_sha":"05cffcdef3daae61d230b691b54bc56414b62f32","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "Gemini 4 Carbon (Low)",
+    "turns": 31,
+    "tool_calls": 20,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 128636,
+    "completion_tokens": 1943,
+    "cached_tokens": 409440,
+    "cost_usd_micros": 0,
+    "wall_s": 248,
+    "passed": true
+  },"budget_usd_micros":200000,"timeout_s":300,"steps":[{"send":"In OpenAgents Desktop (`apps/openagents-desktop/page/models.coax`, `apps/openagents-desktop/page/layout/conversation.coax`, `apps/openagents-desktop/page/checks/composer-checks.coax`, and `apps/openagents-desktop/page/checks/models-checks.coax`): add `cp_backend_label` in `models.coax` returning `\"Antigravity CLI\"`, `\"Psionic Metal\"`, `\"OpenRouter\"`, `\"Vertex AI\"`, or `\"Gemini API\"` (or `\"\"` with no model), and show it in the composer foot on the home screen instead of cost. Update the composer and model checks and verify with `coax/bin/coax test apps/openagents-desktop/page.coax --only model`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'cp_backend_label' apps/openagents-desktop/page/models.coax && coax/bin/coax test apps/openagents-desktop/page.coax --only model"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

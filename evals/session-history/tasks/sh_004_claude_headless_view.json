@@ -1,0 +1,15 @@
+{"id":"sh_004_claude_headless_view","category":"session-history","bucket":"A_edit_precision","description":"Fix cd_view in apps/openagents-desktop/host.c so headless host_driver builds with UI_HOST_STUB_H return ui_view.","source":{"harness":"claude","trajectory_id":"579233dd-c807-43bf-b8c4-7c20cf8f8a45","step_range":[
+      686,
+      692
+    ],"steps_digest":"f09c8ca3a627e1eb42f1968e62935868699ad39c6bc4fff112fb5d63f9724b3b","project":"work/openagents","base_sha":"dd1c93f8c0c5285f2701c3a4e4ac606fd209afa7","target_sha":"09ade01a7ebd78923334f325143a5581c7cee512","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 3,
+    "tool_calls": 3,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 8,
+    "completion_tokens": 987,
+    "cached_tokens": 436984,
+    "cost_usd_micros": 0,
+    "wall_s": 24,
+    "passed": true
+  },"budget_usd_micros":120000,"timeout_s":300,"steps":[{"send":"In `apps/openagents-desktop/host.c`, `cd_view` currently checks `#ifdef __APPLE__`, which causes headless `host_driver` builds using `UI_HOST_STUB_H` on Linux to return `NULL`. Update the preprocessor guard in `cd_view` to `#if defined(__APPLE__) || defined(UI_HOST_STUB_H)` so stubbed builds return `ui_view(((CoderHost *)page)->app.host)`. Verify with `grep -q 'defined(UI_HOST_STUB_H)' apps/openagents-desktop/host.c`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'defined(UI_HOST_STUB_H)' apps/openagents-desktop/host.c && grep -q 'ui_view' apps/openagents-desktop/host.c"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

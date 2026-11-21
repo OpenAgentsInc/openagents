@@ -1,0 +1,15 @@
+{"id":"sh_019_claude_sign_realtime_clock","category":"session-history","bucket":"D_error_recovery","description":"Use CLOCK_REALTIME in coax/web/api/sign.c and retry stale created_at in API tests (test_access.py, test_private.py).","source":{"harness":"claude","trajectory_id":"15b5ffe6-562f-4f49-a610-9b2445ac8bb0","step_range":[
+      229,
+      233
+    ],"steps_digest":"3e4322fdaf14c556a2b95092c7fbf97d8d0cddc8c0a50d3274810f8e420b8852","project":"work/openagents","base_sha":"08117a2a2d996383641164d34f5e0aa46100c946","target_sha":"dc1bdc86bd140f949f1e1ff51562ef3536c72fda","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 2,
+    "tool_calls": 2,
+    "failed_tool_calls": 1,
+    "prompt_tokens": 6,
+    "completion_tokens": 1034,
+    "cached_tokens": 564757,
+    "cost_usd_micros": 0,
+    "wall_s": 20,
+    "passed": true
+  },"budget_usd_micros":180000,"timeout_s":300,"steps":[{"send":"In `coax/web/api/sign.c`, `coax/web/api/test_access.py`, and `coax/web/api/test_private.py` (#13800): 1) Switch timestamp generation in `coax/web/api/sign.c` to `CLOCK_REALTIME` (`clock_gettime(CLOCK_REALTIME, ...)`). 2) In `test_access.py` and `test_private.py`, wait/retry until the signed NIP-98 `created_at` strictly advances past `prev` so rapid requests never collide on the same second. Verify with `python3 -m py_compile coax/web/api/test_access.py coax/web/api/test_private.py`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'CLOCK_REALTIME' coax/web/api/sign.c && python3 -m py_compile coax/web/api/test_access.py coax/web/api/test_private.py && grep -q 'created_at > prev' coax/web/api/test_private.py"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

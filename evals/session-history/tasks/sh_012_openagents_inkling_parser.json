@@ -1,0 +1,15 @@
+{"id":"sh_012_openagents_inkling_parser","category":"session-history","bucket":"B_multi_file","description":"Implement psionic/lib/inkling-responses.coax reasoning/tool-call parser and SSE formatter with runnable example.","source":{"harness":"openagents","trajectory_id":"worker-1795200782866484","step_range":[
+      173,
+      233
+    ],"steps_digest":"6c15e73d54416d319cd622cb34894b543e8c5d9cf9aaad8360edde715de04e8d","project":"work/openagents","base_sha":"a137a95ec27de950cbdc5912971b0d668d9a82aa","target_sha":"0c498eef86c6c748b201eeacc27882f9979fd44b","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "gemini-4-neon",
+    "turns": 60,
+    "tool_calls": 23,
+    "failed_tool_calls": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 480,
+    "passed": true
+  },"budget_usd_micros":250000,"timeout_s":300,"steps":[{"send":"Implement the Inkling 2 Mini reasoning/tool-call parser and SSE formatter (#13824): create `psionic/lib/inkling-responses.coax` with `#test` checks for parsing `<think>...</think>` reasoning blocks, `<tool_call>...</tool_call>` blocks, and formatting OpenAI-compatible SSE response chunks, plus a runnable example `psionic/examples/inkling-responses.coax`. Verify with `coax/bin/coax test psionic/lib/inkling-responses.coax`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"test -f psionic/lib/inkling-responses.coax && coax/bin/coax test psionic/lib/inkling-responses.coax"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

@@ -1,0 +1,15 @@
+{"id":"sh_005_claude_large_chat_open","category":"session-history","bucket":"A_edit_precision","description":"Size the read buffer in CoderStore.text from the chat file size so chats over 4 MB open cleanly.","source":{"harness":"claude","trajectory_id":"15b5ffe6-562f-4f49-a610-9b2445ac8bb0","step_range":[
+      683,
+      703
+    ],"steps_digest":"bfd66d566e67d2bf1c890c29020e5f91e78a383d8be75b2ed7223f8608167493","project":"work/openagents","base_sha":"a80dd70a1131470fd23431ce1a880f4976071a63","target_sha":"0454193df2ecdc3b66004ccfce43e57156d939d8","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 13,
+    "tool_calls": 8,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 28,
+    "completion_tokens": 6175,
+    "cached_tokens": 3594193,
+    "cost_usd_micros": 0,
+    "wall_s": 104,
+    "passed": true
+  },"budget_usd_micros":120000,"timeout_s":300,"steps":[{"send":"In `apps/openagents-desktop/Store.swift`, `CoderStore.text(_ id: String)` allocates a fixed `4 * 1024 * 1024` byte buffer, causing chats larger than 4 MB to fail to open. Compute the on-disk file size of `dir.appendingPathComponent(id + \".json\").path` via `FileManager.default.attributesOfItem(atPath:)` and allocate `max(4 * 1024 * 1024, size + 64 * 1024)` bytes. Verify syntax with `swiftc -parse apps/openagents-desktop/Store.swift`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"swiftc -parse apps/openagents-desktop/Store.swift && grep -q 'attributesOfItem' apps/openagents-desktop/Store.swift && grep -q '64 \\* 1024' apps/openagents-desktop/Store.swift"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

@@ -1,0 +1,15 @@
+{"id":"sh_016_openagents_inkling_gguf_local","category":"session-history","bucket":"C_verification","description":"Replace the stub LocalModelStore manifest writer with a real resumable Inkling 2 Mini GGUF download and LocalModelServer Metal GPU inference.","source":{"harness":"openagents","trajectory_id":"worker-1795200782866484","step_range":[
+      173,
+      233
+    ],"steps_digest":"6c15e73d54416d319cd622cb34894b543e8c5d9cf9aaad8360edde715de04e8d","project":"work/openagents","base_sha":"1aaecdf3753f528b7b21d732667a38c7e0d33d6b","target_sha":"6789db8debe0ecdad6473e1eaef12027848b7b31","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "gemini-4-neon",
+    "turns": 60,
+    "tool_calls": 23,
+    "failed_tool_calls": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 480,
+    "passed": true
+  },"budget_usd_micros":250000,"timeout_s":300,"steps":[{"send":"Replace the stub `LocalModelStore` manifest writer in `apps/openagents-desktop/Window+Dialogs.swift` with a real resumable Hugging Face download of `Inkling-2-Mini-IQ4_NL.gguf` and add `LocalModelServer` to launch `llama-server` on demand. Wire `Window+Runs.swift`, `host.c`, `host.h`, `page/models.coax`, `page/host-api.coax`, and `page/checks/models-checks.coax` so Inkling 2 Mini turns run locally without requiring cloud credentials. Verify with `swiftc -parse apps/openagents-desktop/Window+Dialogs.swift apps/openagents-desktop/Window+Runs.swift && coax/bin/coax test apps/openagents-desktop/page.coax --library --only model`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q LocalModelServer apps/openagents-desktop/Window+Dialogs.swift && swiftc -parse apps/openagents-desktop/Window+Dialogs.swift apps/openagents-desktop/Window+Runs.swift && coax/bin/coax test apps/openagents-desktop/page.coax --library --only model"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

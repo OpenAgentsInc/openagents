@@ -972,6 +972,17 @@ int main(int argc, char **argv) {
       sscanf(line, "%*s %d %lld", &si, &micros);
       int ok = (si >= 0 && si < MAX_SLOTS && g_slots[si].page) ? cd_set_budget_usd_micros(g_slots[si].page, (int64_t)micros) : 0;
       printf("{\"ok\":%s}\n", ok ? "true" : "false");
+    } else if (strcmp(cmd, "SET_MODEL") == 0) {
+      int si = 0;
+      char val[128] = {0};
+      int got = sscanf(line, "%*s %d %127s", &si, val);
+      int ok = 0;
+      if (got >= 2 && si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        cd_experimental_set(g_slots[si].page, 1);
+        cd_cloud_authed_set(g_slots[si].page, 1);
+        ok = cd_pick_model(g_slots[si].page, val);
+      }
+      printf("{\"ok\":%s}\n", ok ? "true" : "false");
     } else if (strcmp(cmd, "BUDGET_APPROVE") == 0) {
       int si = 0;
       sscanf(line, "%*s %d", &si);

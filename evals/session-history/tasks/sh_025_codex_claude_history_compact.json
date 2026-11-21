@@ -1,0 +1,15 @@
+{"id":"sh_025_codex_claude_history_compact","category":"session-history","bucket":"E_long_context","description":"Render native Claude history as compact tool activity in coax/lib/agent/environment/history.coax instead of empty messages.","source":{"harness":"codex","trajectory_id":"rollout-2026-11-13T12-30-17-01a1d62c-b79f-7d51-b242-1e89af329d9b","step_range":[
+      1533,
+      1568
+    ],"steps_digest":"48c5c9fbc73dc8cfc3c16f39ca2f20197da087d5e24ea2d773050f49aeb1616d","project":"work/openagents","base_sha":"947d805681f61118b9b4bf823559b68945ccbd81","target_sha":"96825b529e18431677a78658a1eff9cc09aa91fd","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "codex",
+    "turns": 34,
+    "tool_calls": 15,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 272,
+    "passed": true
+  },"budget_usd_micros":250000,"timeout_s":300,"steps":[{"send":"Native Claude history entries that contain only tool calls were rendering as empty messages. In `coax/lib/agent/environment/history.coax` (and related `read-request.coax` / `wire.coax`), format tool-only turns as compact tool-activity summaries instead of empty strings, and add `#test` coverage. Verify with `coax/bin/coax test coax/lib/agent/environment/history.coax`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"test -f coax/lib/agent/environment/history.coax && coax/bin/coax test coax/lib/agent/environment/history.coax"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

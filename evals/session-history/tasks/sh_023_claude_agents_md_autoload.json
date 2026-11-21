@@ -1,0 +1,15 @@
+{"id":"sh_023_claude_agents_md_autoload","category":"session-history","bucket":"E_long_context","description":"Automatically load AGENTS.md with CLAUDE.md fallback in coax/lib/microcoder/instructions.coax and wire into loop.coax/run.coax.","source":{"harness":"claude","trajectory_id":"15b5ffe6-562f-4f49-a610-9b2445ac8bb0","step_range":[
+      57,
+      61
+    ],"steps_digest":"453d4276cb0095ebf2b9cc085111a1f7da09f7ba5eb8015f438a720e41162020","project":"work/openagents","base_sha":"2f9110da5954227f6b6a63505c73cd73ead29cb8","target_sha":"2ffe672210735a94861faa0283492e9eaefae9a4","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 2,
+    "tool_calls": 2,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 6,
+    "completion_tokens": 566,
+    "cached_tokens": 336518,
+    "cost_usd_micros": 0,
+    "wall_s": 20,
+    "passed": true
+  },"budget_usd_micros":250000,"timeout_s":300,"steps":[{"send":"Add automatic workspace instruction loading to Microcoder: create `coax/lib/microcoder/instructions.coax` (and `coax/lib/microcoder/instructions-selftest.coax`) that discovers and loads `AGENTS.md` (with `CLAUDE.md` fallback) from the workspace root, wire it into `coax/lib/microcoder/loop.coax`, `coax/lib/microcoder/run.coax`, `coax/lib/agent/engine/microcoder.coax`, and `coder/tui/mcworker.coax`. Verify with `coax/bin/coax test coax/lib/microcoder/instructions-selftest.coax`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"test -f coax/lib/microcoder/instructions.coax && test -f coax/lib/microcoder/instructions-selftest.coax && coax/bin/coax test coax/lib/microcoder/instructions-selftest.coax"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

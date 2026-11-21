@@ -1,0 +1,12 @@
+{"id":"sh_026_openagents_inkling_model","category":"session-history","bucket":"E_long_context","description":"Add Inkling 2 Mini as a selectable local model in OpenAgents Desktop (models.coax, models-checks.coax, Window+Dialogs.swift).","source":{"harness":"openagents","trajectory_id":"worker-1795213858248816","step_range":[
+      640,
+      702
+    ],"steps_digest":"43dcd8d38cd94931d37eaed5ed8709d1e9f88a1dc2986ab244dd026043826125","project":"work/openagents","base_sha":"ccd8aaf01eca7fd2157dfe40aa3f9c6095830a8c","target_sha":"8f6bbb8fcd4d9cb2c350c036884eb37715a15dc5","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "gemini-4-neon",
+    "turns": 63,
+    "tool_calls": 28,
+    "failed_tool_calls": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 180,
+    "passed": true
+  },"budget_usd_micros":250000,"timeout_s":300,"steps":[{"send":"Add Inkling 2 Mini (`inkling-2-mini`) as a selectable local model in OpenAgents Desktop (#13825): add `coder_page_set_inkling`, `coder_page_model_inkling`, and `cp_is_inkling` in `apps/openagents-desktop/page/models.coax` (and state/picker wiring in `page/state.coax` and `page/checks/models-checks.coax`). Verify with `coax/bin/coax test apps/openagents-desktop/page.coax --only model`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q coder_page_set_inkling apps/openagents-desktop/page/models.coax && coax/bin/coax test apps/openagents-desktop/page.coax --only model"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

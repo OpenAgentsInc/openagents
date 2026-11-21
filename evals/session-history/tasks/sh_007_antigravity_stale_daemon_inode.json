@@ -1,0 +1,15 @@
+{"id":"sh_007_antigravity_stale_daemon_inode","category":"session-history","bucket":"A_edit_precision","description":"Detect stale resident openagents-environment daemon by executable path via lsof instead of ps comm in install.sh.","source":{"harness":"antigravity","trajectory_id":"120cff91-c689-4a53-837a-397d0fc1b508","step_range":[
+      1,
+      12
+    ],"steps_digest":"fd611f02c101494c60846701bb24a9987aa78c7a1fbf4b9e0fa4a5ea82729fe0","project":"work/openagents","base_sha":"6109d9b7b1a8efc86285ba030c52692c033e40a2","target_sha":"4a7e7567a36ec32fe42816bb0386721599683270","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "Gemini 4 Carbon (Low)",
+    "turns": 11,
+    "tool_calls": 6,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 26529,
+    "completion_tokens": 705,
+    "cached_tokens": 64865,
+    "cost_usd_micros": 0,
+    "wall_s": 88,
+    "passed": true
+  },"budget_usd_micros":120000,"timeout_s":300,"steps":[{"send":"In `apps/openagents-desktop/install.sh` inside `sync_resident()`, `ps -o comm= -p \"$p\"` returns the symlink name the daemon started through rather than the actual binary path it is running, so stale daemons are missed when the symlink is updated. Replace the `ps -o comm=` lookup with `lsof -a -p \"$p\" -d txt -Fn` parsed with `awk` to extract the first `n`-prefixed executable path. Verify with `bash -n apps/openagents-desktop/install.sh`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"bash -n apps/openagents-desktop/install.sh && grep -q 'lsof -a -p' apps/openagents-desktop/install.sh"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

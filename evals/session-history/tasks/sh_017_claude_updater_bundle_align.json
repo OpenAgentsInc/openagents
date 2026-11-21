@@ -1,0 +1,15 @@
+{"id":"sh_017_claude_updater_bundle_align","category":"session-history","bucket":"C_verification","description":"Align desktop core updater bundle id with com.openagents.desktop across update.coax, smoke.coax, and proto/coder/desktop-update-v1.json.","source":{"harness":"claude","trajectory_id":"15b5ffe6-562f-4f49-a610-9b2445ac8bb0","step_range":[
+      144,
+      148
+    ],"steps_digest":"341f6ffbdd8187d234cbfaf42616e51bffa256fdf93222b52aa2a507c1306d63","project":"work/openagents","base_sha":"dc19ee57bf29ce55e731c615065efb3830084e47","target_sha":"13bd2b755a4d633aa455b630adf819d8b9d60ee4","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 2,
+    "tool_calls": 2,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 6,
+    "completion_tokens": 745,
+    "cached_tokens": 423764,
+    "cost_usd_micros": 0,
+    "wall_s": 20,
+    "passed": true
+  },"budget_usd_micros":180000,"timeout_s":300,"steps":[{"send":"Align the desktop core updater with `com.openagents.desktop` (#13784): update `coax/lib/agent/desktop/update.coax`, `coax/lib/agent/desktop/smoke.coax`, `proto/coder/desktop-update-v1.json`, and `evals/coder-desktop/host_driver/build.sh` to reference `com.openagents.desktop` consistently. Verify with `coax/bin/coax test coax/lib/agent/desktop/update.coax`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'com.openagents.desktop' coax/lib/agent/desktop/update.coax && grep -q 'com.openagents.desktop' proto/coder/desktop-update-v1.json && coax/bin/coax test coax/lib/agent/desktop/update.coax"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

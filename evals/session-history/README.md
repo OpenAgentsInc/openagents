@@ -81,12 +81,46 @@ evals/session-history/run.sh sanitize \
   --out evals/session-history/tasks/sh_001.json \
   --verify --require-base-fail --repo .
 
+# Run the hermeticity gate across the entire tasks/ directory
+evals/session-history/run.sh sanitize --verify --require-base-fail --repo .
+
 # Run committed tasks via evals/openagents-desktop (host_driver + mcworker) and emit scorecard
-evals/session-history/run.sh run
+evals/session-history/run.sh run --model gemini-4-hydrogen --workers 4
 
 # Re-compute comparison scorecard from an existing run directory
 evals/session-history/run.sh compare --tasks evals/session-history/tasks --run evals/session-history/results/<run_id>
 ```
+
+## Phase 3 Stratified Suite (`tasks/`, 27 Tasks)
+
+All 27 tasks are anchored to real `work/openagents` trajectories in `~/.openagents/evals/session-history/atif/` with exact ATIF-v1.8 provenance (`trajectory_id`, `step_range`, `steps_digest`, `base_sha`, `target_sha`) and pass `./evals/session-history/run.sh sanitize --verify --require-base-fail --repo .` (27/27 fail on `base_sha`, 27/27 pass on `target_sha`, zero secrets/PII or `/Users/...` paths).
+
+### Suite Breakdown
+
+| Bucket | Count | Sources |
+| --- | --- | --- |
+| `A_edit_precision` | 6 | 3 claude, 2 openagents, 1 antigravity |
+| `B_multi_file` | 5 | 2 claude, 1 codex, 1 antigravity, 1 openagents |
+| `C_verification` | 6 | 3 claude, 2 antigravity, 1 openagents |
+| `D_error_recovery` | 5 | 5 claude |
+| `E_long_context` | 5 | 1 claude, 2 codex, 1 openagents, 1 antigravity |
+| **Total** | **27** | **14 claude, 5 openagents, 5 antigravity, 3 codex** |
+
+### Phase 3 Multi-Model Scorecard (Baseline vs `mcworker`)
+
+Run via `./evals/session-history/run.sh run --model <model> --workers 4` against `evals/openagents-desktop` `host_driver` + `mcworker` (using each task's `$0.12–$0.25` budget cap):
+
+| Model | Overall Pass | Command Grader Pass | Budget-Stopped | `git push` Guard Trips | Total Cost | Total Wall | Top Failure Tags |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Observed Baseline (`claude-opus-5-5`, `gemini-4-neon`, `Gemini 4 Neon/Carbon`, `codex`) | 27/27 (100%) | 27/27 (100%) | - | - | - | 4367s | - |
+| `gemini-4-hydrogen` | 7/27 (25%) | 14/27 (52%) | 15 | 6 | \$4.8971 | 1218s | `premature_done` (17), `edit_mismatch` (2), `compaction_drop` (1) |
+| `gemini-4-neon` | 5/27 (18%) | 10/27 (37%) | 20 | 3 | \$6.3495 | 1361s | `premature_done` (19), `edit_mismatch` (2), `compaction_drop` (1) |
+| `gemini-4-carbon` | 0/27 (0%) | 4/27 (15%) | 27 | 0 | \$7.2356 | 1026s | `premature_done` (23), `edit_mismatch` (2), `compaction_drop` (2) |
+
+Key Phase 4 `mcworker` levers identified from the scorecard:
+1. **Context/cost efficiency:** Per-attempt cost (`~$0.07–$0.12` on Carbon, `~$0.04–$0.08` on Neon) exhausts `$0.12–$0.25` per-task budgets in 2–4 attempts before completion (`budget_stopped` on 15/27 Hydrogen, 20/27 Neon, 27/27 Carbon).
+2. **Unsolicited `git push` suppression:** Auto-loaded `AGENTS.md` triggers `git push` attempts after solving the task (6/27 Hydrogen, 3/27 Neon), tripping `no_guard_trips` despite passing the `command` grader.
+3. **Coax syntax & edit discipline:** Repeated `E0216` (`..` vs `..<`) and `E0105` escape errors burn attempts before compiling.
 
 ## Verification
 

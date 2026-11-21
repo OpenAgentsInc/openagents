@@ -1,0 +1,15 @@
+{"id":"sh_010_codex_slab_mooring_seam","category":"session-history","bucket":"B_multi_file","description":"Distinguish 'SECURE FIRST MOORINGS' (joined == 0) from 'CONNECT AND TEST SEAM' in apps/openagents-web/slab.coax, metaverse/slab-construction.coax, and index.md.","source":{"harness":"codex","trajectory_id":"rollout-2026-11-13T12-30-17-01a1d62c-b79f-7d51-b242-1e89af329d9b","step_range":[
+      1533,
+      1568
+    ],"steps_digest":"48c5c9fbc73dc8cfc3c16f39ca2f20197da087d5e24ea2d773050f49aeb1616d","project":"work/openagents","base_sha":"7411bdc88c4fb4cc5821b8234f93c0938e261946","target_sha":"a5aa19101bd30faa087b694761884e8b5af19750","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "codex",
+    "turns": 34,
+    "tool_calls": 15,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 272,
+    "passed": true
+  },"budget_usd_micros":200000,"timeout_s":300,"steps":[{"send":"In the SLAB construction visualization (`apps/openagents-web/slab.coax`, `metaverse/slab-construction.coax`, and `apps/openagents-web/realms/slab/index.md`): 1) In `build_hud` (`apps/openagents-web/slab.coax`), when `b.phase == BUILD_JOIN && b.approach >= 0.65`, display `\"SECURE FIRST MOORINGS\"` if `b.joined == 0`, else `\"CONNECT AND TEST SEAM\"`. 2) Update `BTN_FIRST_JOIN` in `press` to seek to `build_cursor(BUILD_SAIL + BUILD_CYCLE + 0.92)` so it lands on the first real seam (`joining.joined == 1 && joining.phase == BUILD_JOIN && joining.approach > 0.65`) and add an assertion for it in the build `#test`. 3) Update `metaverse/slab-construction.coax` and `apps/openagents-web/realms/slab/index.md` accordingly. Verify with `coax/bin/coax test apps/openagents-web/slab.coax --only build`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'SECURE FIRST MOORINGS' apps/openagents-web/slab.coax && coax/bin/coax test apps/openagents-web/slab.coax --only build"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

@@ -1,0 +1,15 @@
+{"id":"sh_022_claude_desktop_core_stack","category":"session-history","bucket":"D_error_recovery","description":"Run desktop-core calls on a 64 MB stack in apps/openagents-desktop/DesktopCore.swift to prevent stack-overflow crash on open.","source":{"harness":"claude","trajectory_id":"15b5ffe6-562f-4f49-a610-9b2445ac8bb0","step_range":[
+      241,
+      276
+    ],"steps_digest":"7b4cdb38feedf2e221b15f41912649490e67ff9a81836c4e433a0b0753221987","project":"work/openagents","base_sha":"554a68403628b2a579a63403ba63d7f53a2a809b","target_sha":"8eaef788d13d84f457fc0afde8c8b2febdab3200","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 20,
+    "tool_calls": 16,
+    "failed_tool_calls": 1,
+    "prompt_tokens": 44,
+    "completion_tokens": 13633,
+    "cached_tokens": 6321084,
+    "cost_usd_micros": 0,
+    "wall_s": 160,
+    "passed": true
+  },"budget_usd_micros":180000,"timeout_s":300,"steps":[{"send":"OpenAgents Desktop crashes on open with a stack overflow because Coax desktop-core calls exceed the default macOS main/worker thread stack (#13794). In `apps/openagents-desktop/DesktopCore.swift`, add `onCoreStack<R>(_ body: () -> R) -> R` that executes `body` on a dedicated `Thread` with a 64 MB `stackSize` (re-entering directly if already on the core stack), and route `DesktopCore` / `Worktree.swift` calls through it. Verify syntax with `swiftc -parse apps/openagents-desktop/DesktopCore.swift apps/openagents-desktop/Worktree.swift apps/openagents-desktop/worktree-test.swift`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"swiftc -parse apps/openagents-desktop/DesktopCore.swift apps/openagents-desktop/Worktree.swift apps/openagents-desktop/worktree-test.swift && grep -q 'onCoreStack' apps/openagents-desktop/DesktopCore.swift && grep -q 'stackSize' apps/openagents-desktop/DesktopCore.swift"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

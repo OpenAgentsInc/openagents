@@ -366,11 +366,11 @@ san_link_coax_bin :: (repo: string, wt: string) {
   src := fs_join(repo, "coax/bin/coax", cb[..]);
   if fs_kind(src) != FS_FILE { return; }
   cmd_buf: [2048] u8; at: [1] int;
-  san_append(cmd_buf[..], at[..], "mkdir -p '");
+  san_append(cmd_buf[..], at[..], "ABS=\"$(CDPATH= cd -- '");
+  san_append(cmd_buf[..], at[..], repo);
+  san_append(cmd_buf[..], at[..], "' && pwd)/coax/bin/coax\" && mkdir -p '");
   san_append(cmd_buf[..], at[..], wt);
-  san_append(cmd_buf[..], at[..], "/coax/bin' && ln -sf '");
-  san_append(cmd_buf[..], at[..], src);
-  san_append(cmd_buf[..], at[..], "' '");
+  san_append(cmd_buf[..], at[..], "/coax/bin' && ln -sf \"$ABS\" '");
   san_append(cmd_buf[..], at[..], wt);
   san_append(cmd_buf[..], at[..], "/coax/bin/coax'");
   _ := san_run_sh(cast(string) cmd_buf[0..<at[0]], 10000);
@@ -476,37 +476,25 @@ san_verify_hermeticity :: (task_json: string, repo: string, patch_path: string, 
   return target_all_passed;
 }
 
-// ---- CLI entrypoint
+san_ends_with :: (s: string, suf: string) -> bool {
+  return s.count >= suf.count && s[s.count - suf.count..<s.count] == suf;
+}
 
-tool_main :: () -> int #export_c #effects(all) {
-  a: [1] Args;
-  if !args_load(a[..]) { tool_errln("sanitize: failed to load argv"); return 2; }
-  if args_has(a[..], "--help") || args_has(a[..], "-h") {
-    print("Usage: sanitize.coax --in FILE [--out FILE] [--verify] [--repo PATH] [--patch FILE] [--require-base-fail]\n");
-    return 0;
-  }
-  in_path := args_value(a[..], "--in", "");
-  if in_path.count == 0 { tool_errln("sanitize: --in FILE is required"); return 2; }
-  out_path := args_value(a[..], "--out", "");
-  do_verify := args_has(a[..], "--verify");
-  req_base_fail := args_has(a[..], "--require-base-fail");
-  repo := args_value(a[..], "--repo", ".");
-  patch := args_value(a[..], "--patch", "");
-
+san_process_file :: (in_path: string, out_path: string, do_verify: bool, repo: string, patch: string, req_base_fail: bool) -> bool {
   raw_buf: [SAN_FILE_MAX] u8;
   rn := fs_read(in_path, raw_buf[..]);
-  if rn <= 0 { tool_errln("sanitize: failed to read --in file"); return 1; }
+  if rn <= 0 { tool_err("sanitize: failed to read "); tool_errln(in_path); return false; }
   raw := cast(string) raw_buf[0..<rn];
 
   out_buf: [SAN_FILE_MAX] u8;
   on := san_rewrite_task_json(raw, out_buf[..]);
-  if on <= 0 { tool_errln("sanitize: failed to parse/sanitize task JSON"); return 1; }
+  if on <= 0 { tool_err("sanitize: failed to parse/sanitize "); tool_errln(in_path); return false; }
   sanitized := cast(string) out_buf[0..<on];
 
   if out_path.count > 0 {
     if !fs_write(out_path, sanitized) {
-      tool_errln("sanitize: failed to write --out file");
-      return 1;
+      tool_err("sanitize: failed to write "); tool_errln(out_path);
+      return false;
     }
     print("sanitize: wrote % (% bytes)\n", out_path, on);
   }
@@ -514,12 +502,61 @@ tool_main :: () -> int #export_c #effects(all) {
   if do_verify {
     ok := san_verify_hermeticity(sanitized, repo, patch, req_base_fail);
     if !ok {
-      tool_errln("sanitize: hermeticity gate FAILED");
-      return 1;
+      tool_err("sanitize: hermeticity gate FAILED for "); tool_errln(in_path);
+      return false;
     }
-    print("sanitize: hermeticity gate PASSED\n");
+    print("sanitize: hermeticity gate PASSED (%)\n", in_path);
   }
-  return 0;
+  return true;
+}
+
+// ---- CLI entrypoint
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("sanitize: failed to load argv"); return 2; }
+  if args_has(a[..], "--help") || args_has(a[..], "-h") {
+    print("Usage: sanitize.coax [--in FILE | --dir DIR] [--out FILE] [--verify] [--repo PATH] [--patch FILE] [--require-base-fail]\n");
+    return 0;
+  }
+  in_path := args_value(a[..], "--in", "");
+  dir_path := args_value(a[..], "--dir", "");
+  out_path := args_value(a[..], "--out", "");
+  do_verify := args_has(a[..], "--verify");
+  req_base_fail := args_has(a[..], "--require-base-fail");
+  repo := args_value(a[..], "--repo", ".");
+  patch := args_value(a[..], "--patch", "");
+
+  if in_path.count == 0 && dir_path.count == 0 {
+    if do_verify {
+      dir_path = "evals/session-history/tasks";
+    } else {
+      tool_errln("sanitize: --in FILE or --dir DIR is required");
+      return 2;
+    }
+  }
+
+  if dir_path.count > 0 {
+    files: [1] FsList;
+    nf := fs_list(dir_path, files[..]);
+    if nf <= 0 { tool_errln("sanitize: no files found in --dir"); return 1; }
+    total := 0; passed := 0; failed := 0;
+    for i: 0..<nf {
+      fname := fs_entry(files[..], i);
+      if !san_ends_with(fname, ".json") { continue; }
+      pbuf: [1024] u8; fp := fs_join(dir_path, fname, pbuf[..]);
+      total += 1;
+      if san_process_file(fp, "", do_verify, repo, patch, req_base_fail) {
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+    }
+    print("sanitize: % tasks checked, % passed, % failed\n", total, passed, failed);
+    return ifx failed == 0 && total > 0 then 0 else 1;
+  }
+
+  return ifx san_process_file(in_path, out_path, do_verify, repo, patch, req_base_fail) then 0 else 1;
 }
 
 // ---- Checks

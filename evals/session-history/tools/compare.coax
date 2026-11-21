@@ -14,6 +14,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 
 CMP_MAX_CASES :: 128;
+CMP_MAX_GROUPS :: 32;
 CMP_FILE_MAX :: 262144;
 
 TAG_NONE :: "";
@@ -22,6 +23,19 @@ TAG_PREMATURE_DONE :: "premature_done";
 TAG_SEARCH_BLOAT :: "search_bloat";
 TAG_COMPACTION_DROP :: "compaction_drop";
 TAG_BAD_DELEGATION :: "bad_delegation";
+
+GroupAgg :: struct {
+  key: [96] u8; key_n: int;
+  total: int;
+  base_pass: int;
+  cand_pass: int;
+  base_cost_micros: int;
+  cand_cost_micros: int;
+  base_wall_s: int;
+  cand_wall_ms: int;
+  edit_attempts: int;
+  edit_failures: int;
+}
 
 WireSignals :: struct {
   edit_attempts: int;
@@ -169,12 +183,87 @@ cmp_scan_wire :: (wire_text: string) -> WireSignals {
   return s;
 }
 
-// Writes `summary.json` with baseline comparison and failure taxonomy.
+// Group aggregation helpers (field: 0=bucket, 1=source_harness, 2=baseline_model).
+cmp_build_groups :: (cases: [] CaseComparison, n_cases: int, field: int, groups: [] GroupAgg) -> int {
+  ng := 0;
+  for i: 0..<n_cases {
+    c := cases[i];
+    k := "unknown";
+    if field == 0 && c.bucket_n > 0 { k = cast(string) c.bucket[0..<c.bucket_n]; }
+    else if field == 1 && c.harness_n > 0 { k = cast(string) c.harness[0..<c.harness_n]; }
+    else if field == 2 && c.base_model_n > 0 { k = cast(string) c.base_model[0..<c.base_model_n]; }
+    found := -1;
+    for g: 0..<ng {
+      if cast(string) groups[g].key[0..<groups[g].key_n] == k { found = g; break; }
+    }
+    if found < 0 {
+      if ng >= groups.count { continue; }
+      found = ng;
+      groups[found] = GroupAgg.{};
+      groups[found].key_n = cmp_copy(groups[found].key[..], k);
+      ng += 1;
+    }
+    groups[found].total += 1;
+    if c.base_passed { groups[found].base_pass += 1; }
+    if c.cand_passed { groups[found].cand_pass += 1; }
+    groups[found].base_cost_micros += c.base_cost_micros;
+    groups[found].cand_cost_micros += c.cand_cost_micros;
+    groups[found].base_wall_s += c.base_wall_s;
+    groups[found].cand_wall_ms += c.cand_wall_ms;
+    groups[found].edit_attempts += c.sig.edit_attempts;
+    groups[found].edit_failures += c.sig.edit_failures;
+  }
+  return ng;
+}
+
+cmp_write_groups_json :: (o: [] Jo, key_name: string, groups: [] GroupAgg, ng: int) {
+  jo_key(o, key_name);
+  jo_obj(o);
+  for i: 0..<ng {
+    g := groups[i];
+    base_pct := ifx g.total > 0 then (g.base_pass * 100) / g.total else 0;
+    cand_pct := ifx g.total > 0 then (g.cand_pass * 100) / g.total else 0;
+    jo_key(o, cast(string) g.key[0..<g.key_n]);
+    jo_obj(o);
+    jo_key(o, "total"); jo_int(o, g.total);
+    jo_key(o, "baseline_passed"); jo_int(o, g.base_pass);
+    jo_key(o, "candidate_passed"); jo_int(o, g.cand_pass);
+    jo_key(o, "baseline_pass_rate_pct"); jo_int(o, base_pct);
+    jo_key(o, "candidate_pass_rate_pct"); jo_int(o, cand_pct);
+    jo_key(o, "baseline_cost_usd_micros"); jo_int(o, g.base_cost_micros);
+    jo_key(o, "candidate_cost_usd_micros"); jo_int(o, g.cand_cost_micros);
+    jo_key(o, "baseline_wall_s"); jo_int(o, g.base_wall_s);
+    jo_key(o, "candidate_wall_s"); jo_int(o, g.cand_wall_ms / 1000);
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+cmp_write_groups_md :: (out: [] u8, at: [] int, title: string, col: string, groups: [] GroupAgg, ng: int) {
+  cmp_append(out, at, "## "); cmp_append(out, at, title); cmp_append(out, at, "\n\n");
+  cmp_append(out, at, "| "); cmp_append(out, at, col); cmp_append(out, at, " | Tasks | Baseline Pass | Candidate Pass | Candidate Cost | Candidate Wall |\n");
+  cmp_append(out, at, "| --- | --- | --- | --- | --- | --- |\n");
+  for i: 0..<ng {
+    g := groups[i];
+    base_pct := ifx g.total > 0 then (g.base_pass * 100) / g.total else 0;
+    cand_pct := ifx g.total > 0 then (g.cand_pass * 100) / g.total else 0;
+    cmp_append(out, at, "| "); cmp_append(out, at, cast(string) g.key[0..<g.key_n]);
+    cmp_append(out, at, " | "); cmp_append_int(out, at, g.total);
+    cmp_append(out, at, " | "); cmp_append_int(out, at, g.base_pass); cmp_append(out, at, "/"); cmp_append_int(out, at, g.total); cmp_append(out, at, " ("); cmp_append_int(out, at, base_pct); cmp_append(out, at, "%)");
+    cmp_append(out, at, " | "); cmp_append_int(out, at, g.cand_pass); cmp_append(out, at, "/"); cmp_append_int(out, at, g.total); cmp_append(out, at, " ("); cmp_append_int(out, at, cand_pct); cmp_append(out, at, "%)");
+    cmp_append(out, at, " | "); cmp_append_usd(out, at, g.cand_cost_micros);
+    cmp_append(out, at, " | "); cmp_append_int(out, at, g.cand_wall_ms / 1000); cmp_append(out, at, "s |\n");
+  }
+  cmp_append(out, at, "\n");
+}
+
+// Writes `summary.json` with baseline comparison, grouped slices, and failure taxonomy.
 cmp_write_summary_json :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -> int {
   base_pass := 0; cand_pass := 0;
   base_cost := 0; cand_cost := 0;
   base_wall := 0; cand_wall_ms := 0;
   tot_edit_att := 0; tot_edit_fail := 0;
+  f_edit := 0; f_premature := 0; f_search := 0; f_compact := 0; f_deleg := 0;
 
   for i: 0..<n_cases {
     c := cases[i];
@@ -186,6 +275,12 @@ cmp_write_summary_json :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -
     cand_wall_ms += c.cand_wall_ms;
     tot_edit_att += c.sig.edit_attempts;
     tot_edit_fail += c.sig.edit_failures;
+    ft := cast(string) c.failure_tag[0..<c.failure_tag_n];
+    if ft == TAG_EDIT_MISMATCH { f_edit += 1; }
+    else if ft == TAG_PREMATURE_DONE { f_premature += 1; }
+    else if ft == TAG_SEARCH_BLOAT { f_search += 1; }
+    else if ft == TAG_COMPACTION_DROP { f_compact += 1; }
+    else if ft == TAG_BAD_DELEGATION { f_deleg += 1; }
   }
 
   base_rate_pct := ifx n_cases > 0 then (base_pass * 100) / n_cases else 0;
@@ -205,6 +300,23 @@ cmp_write_summary_json :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -
   jo_key(o[..], "candidate_wall_s"); jo_int(o[..], cand_wall_ms / 1000);
   jo_key(o[..], "baseline_wall_s"); jo_int(o[..], base_wall);
   jo_key(o[..], "failed_edit_rate_pct"); jo_int(o[..], fail_edit_pct);
+
+  jo_key(o[..], "failure_taxonomy");
+  jo_obj(o[..]);
+  jo_key(o[..], TAG_EDIT_MISMATCH); jo_int(o[..], f_edit);
+  jo_key(o[..], TAG_PREMATURE_DONE); jo_int(o[..], f_premature);
+  jo_key(o[..], TAG_SEARCH_BLOAT); jo_int(o[..], f_search);
+  jo_key(o[..], TAG_COMPACTION_DROP); jo_int(o[..], f_compact);
+  jo_key(o[..], TAG_BAD_DELEGATION); jo_int(o[..], f_deleg);
+  jo_end(o[..]);
+
+  grp: [CMP_MAX_GROUPS] GroupAgg;
+  nb := cmp_build_groups(cases, n_cases, 0, grp[..]);
+  cmp_write_groups_json(o[..], "by_bucket", grp[..], nb);
+  nh := cmp_build_groups(cases, n_cases, 1, grp[..]);
+  cmp_write_groups_json(o[..], "by_source_harness", grp[..], nh);
+  nm := cmp_build_groups(cases, n_cases, 2, grp[..]);
+  cmp_write_groups_json(o[..], "by_baseline_model", grp[..], nm);
 
   jo_key(o[..], "cases");
   jo_arr(o[..]);
@@ -234,13 +346,14 @@ cmp_write_summary_json :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-// Writes a human-readable Markdown scorecard.
+// Writes a human-readable Markdown scorecard grouped by bucket, source harness, baseline model, and failure taxonomy.
 cmp_write_scorecard_md :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -> int {
   at: [1] int;
   base_pass := 0; cand_pass := 0;
   base_cost := 0; cand_cost := 0;
   base_wall := 0; cand_wall_ms := 0;
   tot_edit_att := 0; tot_edit_fail := 0;
+  f_edit := 0; f_premature := 0; f_search := 0; f_compact := 0; f_deleg := 0;
   for i: 0..<n_cases {
     c := cases[i];
     if c.base_passed { base_pass += 1; }
@@ -251,6 +364,12 @@ cmp_write_scorecard_md :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -
     cand_wall_ms += c.cand_wall_ms;
     tot_edit_att += c.sig.edit_attempts;
     tot_edit_fail += c.sig.edit_failures;
+    ft := cast(string) c.failure_tag[0..<c.failure_tag_n];
+    if ft == TAG_EDIT_MISMATCH { f_edit += 1; }
+    else if ft == TAG_PREMATURE_DONE { f_premature += 1; }
+    else if ft == TAG_SEARCH_BLOAT { f_search += 1; }
+    else if ft == TAG_COMPACTION_DROP { f_compact += 1; }
+    else if ft == TAG_BAD_DELEGATION { f_deleg += 1; }
   }
   base_rate := ifx n_cases > 0 then (base_pass * 100) / n_cases else 0;
   cand_rate := ifx n_cases > 0 then (cand_pass * 100) / n_cases else 0;
@@ -264,6 +383,22 @@ cmp_write_scorecard_md :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -
   cmp_append(out, at[..], "| wall_s | "); cmp_append_int(out, at[..], base_wall); cmp_append(out, at[..], "s | "); cmp_append_int(out, at[..], cand_wall_ms / 1000); cmp_append(out, at[..], "s |\n");
   cmp_append(out, at[..], "| failed_edit_rate | - | "); cmp_append_int(out, at[..], fail_edit); cmp_append(out, at[..], "% ("); cmp_append_int(out, at[..], tot_edit_fail); cmp_append(out, at[..], "/"); cmp_append_int(out, at[..], tot_edit_att); cmp_append(out, at[..], ") |\n\n");
 
+  grp: [CMP_MAX_GROUPS] GroupAgg;
+  nb := cmp_build_groups(cases, n_cases, 0, grp[..]);
+  cmp_write_groups_md(out, at[..], "By Bucket", "Bucket", grp[..], nb);
+  nh := cmp_build_groups(cases, n_cases, 1, grp[..]);
+  cmp_write_groups_md(out, at[..], "By Source Harness", "Source Harness", grp[..], nh);
+  nm := cmp_build_groups(cases, n_cases, 2, grp[..]);
+  cmp_write_groups_md(out, at[..], "By Baseline Model", "Baseline Model", grp[..], nm);
+
+  cmp_append(out, at[..], "## Failure Taxonomy\n\n| Failure Tag | Count |\n| --- | --- |\n");
+  cmp_append(out, at[..], "| edit_mismatch | "); cmp_append_int(out, at[..], f_edit); cmp_append(out, at[..], " |\n");
+  cmp_append(out, at[..], "| premature_done | "); cmp_append_int(out, at[..], f_premature); cmp_append(out, at[..], " |\n");
+  cmp_append(out, at[..], "| search_bloat | "); cmp_append_int(out, at[..], f_search); cmp_append(out, at[..], " |\n");
+  cmp_append(out, at[..], "| compaction_drop | "); cmp_append_int(out, at[..], f_compact); cmp_append(out, at[..], " |\n");
+  cmp_append(out, at[..], "| bad_delegation | "); cmp_append_int(out, at[..], f_deleg); cmp_append(out, at[..], " |\n\n");
+
+  cmp_append(out, at[..], "## Per-Task Results\n\n");
   cmp_append(out, at[..], "| Task | Source | Bucket | Baseline | Candidate | Cost | Wall | Failure Tag |\n");
   cmp_append(out, at[..], "| --- | --- | --- | --- | --- | --- | --- | --- |\n");
   for i: 0..<n_cases {
@@ -367,14 +502,14 @@ tool_main :: () -> int #export_c #effects(all) {
     n_cases += 1;
   }
 
-  sbuf: [65536] u8;
+  sbuf: [262144] u8;
   sn := cmp_write_summary_json(cases[..], n_cases, sbuf[..]);
   if sn > 0 {
     sp_buf: [1024] u8; sp := fs_join(run_dir, "summary.json", sp_buf[..]);
     _ := fs_write(sp, cast(string) sbuf[0..<sn]);
   }
 
-  mbuf: [32768] u8;
+  mbuf: [131072] u8;
   mn := cmp_write_scorecard_md(cases[..], n_cases, mbuf[..]);
   if mn > 0 {
     mp_buf: [1024] u8; mp := fs_join(run_dir, "scorecard.md", mp_buf[..]);
@@ -404,6 +539,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cases[0].id_n = cmp_copy(cases[0].id[..], "sh_001_claude_demo");
   cases[0].bucket_n = cmp_copy(cases[0].bucket[..], "A_edit_precision");
   cases[0].harness_n = cmp_copy(cases[0].harness[..], "claude");
+  cases[0].base_model_n = cmp_copy(cases[0].base_model[..], "claude-opus-5-5");
   cases[0].base_passed = true; cases[0].cand_passed = true;
   cases[0].base_cost_micros = 100000; cases[0].cand_cost_micros = 20000;
   cases[0].base_wall_s = 30; cases[0].cand_wall_ms = 12000;
@@ -412,22 +548,30 @@ tool_main :: () -> int #export_c #effects(all) {
   cases[1].id_n = cmp_copy(cases[1].id[..], "sh_002_agy_demo");
   cases[1].bucket_n = cmp_copy(cases[1].bucket[..], "D_error_recovery");
   cases[1].harness_n = cmp_copy(cases[1].harness[..], "antigravity");
+  cases[1].base_model_n = cmp_copy(cases[1].base_model[..], "Gemini 4 Neon (Medium)");
   cases[1].base_passed = true; cases[1].cand_passed = false;
   cases[1].base_cost_micros = 200000; cases[1].cand_cost_micros = 40000;
   cases[1].base_wall_s = 60; cases[1].cand_wall_ms = 25000;
   cases[1].sig = WireSignals.{edit_attempts = 2, edit_failures = 2};
   cases[1].failure_tag_n = cmp_copy(cases[1].failure_tag[..], TAG_EDIT_MISMATCH);
 
-  jbuf: [8192] u8;
+  jbuf: [16384] u8;
   jn := cmp_write_summary_json(cases[..], 2, jbuf[..]);
   #assert jn > 0;
-  nodes: [512] JvNode; d: [1] Jv;
+  nodes: [1024] JvNode; d: [1] Jv;
   #assert jv_parse(d[..], cast(string) jbuf[0..<jn], nodes[..]);
   #assert jv_int(d[0], jv_get(d[0], 0, "candidate_pass_rate_pct"), -1) == 50;
   #assert jv_int(d[0], jv_get(d[0], 0, "baseline_pass_rate_pct"), -1) == 100;
   #assert jv_int(d[0], jv_get(d[0], 0, "failed_edit_rate_pct"), -1) == 50;
+  #assert jv_int(d[0], jv_path(d[0], 0, "failure_taxonomy.edit_mismatch"), -1) == 1;
+  #assert jv_int(d[0], jv_path(d[0], 0, "failure_taxonomy.premature_done"), -1) == 0;
+  #assert jv_int(d[0], jv_path(d[0], 0, "by_bucket.A_edit_precision.candidate_passed"), -1) == 1;
+  #assert jv_int(d[0], jv_path(d[0], 0, "by_source_harness.antigravity.candidate_passed"), -1) == 0;
+  #assert jv_int(d[0], jv_path(d[0], 0, "by_baseline_model.claude-opus-5-5.total"), -1) == 1;
 
-  mbuf: [4096] u8;
+  mbuf: [8192] u8;
   mn := cmp_write_scorecard_md(cases[..], 2, mbuf[..]);
-  #assert mn > 0 && cmp_has(cast(string) mbuf[0..<mn], "edit_mismatch") && cmp_has(cast(string) mbuf[0..<mn], "$0.0600");
+  md := cast(string) mbuf[0..<mn];
+  #assert mn > 0 && cmp_has(md, "edit_mismatch") && cmp_has(md, "$0.0600");
+  #assert cmp_has(md, "## By Bucket") && cmp_has(md, "## By Source Harness") && cmp_has(md, "## By Baseline Model") && cmp_has(md, "## Failure Taxonomy");
 }

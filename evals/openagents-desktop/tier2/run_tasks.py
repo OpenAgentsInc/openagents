@@ -22,6 +22,7 @@ Per task it writes, under evals/openagents-desktop/results/tier2-<ts>-<sha>/case
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import fnmatch
 import glob
 import hashlib
@@ -32,9 +33,12 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+GIT_WORKTREE_LOCK = threading.Lock()
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVAL_DIR = REPO_ROOT / "evals/openagents-desktop"
@@ -138,7 +142,8 @@ class Sandbox:
             shutil.copytree(self.fixture, self.repo)
         elif self.base_sha:
             self.fixture = None
-            r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=120)
+            with GIT_WORKTREE_LOCK:
+                r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=120)
             if r.returncode != 0:
                 raise RuntimeError(f"git worktree add {self.base_sha} failed: {r.stderr}")
             self.is_git_worktree = True
@@ -202,7 +207,8 @@ class Sandbox:
 
     def remove(self) -> None:
         if self.is_git_worktree:
-            sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=60)
+            with GIT_WORKTREE_LOCK:
+                sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=60)
         shutil.rmtree(self.root, ignore_errors=True)
 
 
@@ -309,10 +315,12 @@ def esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
 
 
-def open_slot(d: Driver, sb: Sandbox, task: dict[str, Any], session: str, claude: bool) -> None:
+def open_slot(d: Driver, sb: Sandbox, task: dict[str, Any], session: str, claude: bool, model: str = "") -> None:
     must(d.cmd(f"OPEN 0 0 {RESOURCES_DIR}"), "OPEN")
     must(d.cmd(f"SET_CWD 0 {sb.repo}"), "SET_CWD")
     must(d.cmd(f"SET_SESSION 0 {session}"), "SET_SESSION")
+    if model:
+        must(d.cmd(f"SET_MODEL 0 {model}"), "SET_MODEL")
     if sb.skills_note:
         must(d.cmd(f"SKILLS 0 {esc(sb.skills_note)}"), "SKILLS")
     if claude:
@@ -342,7 +350,7 @@ def pump_until_idle(d: Driver, deadline: float) -> tuple[dict[str, Any], bool]:
     return st, False
 
 
-def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path, keep: bool) -> dict[str, Any]:
+def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path, keep: bool, model: str = "") -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
     sb = Sandbox(task, gcloud_cache)
     wire = case_dir / "wire.jsonl"
@@ -359,7 +367,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log")
     try:
         must(d.cmd(f"WIRE_LOG {wire}"), "WIRE_LOG")
-        open_slot(d, sb, task, session, bool(task.get("claude")))
+        open_slot(d, sb, task, session, bool(task.get("claude")), model)
         must(d.cmd(f"SET_BUDGET 0 {budget}"), "SET_BUDGET")
         must(d.cmd("SPAWN_EXEC 0"), "SPAWN_EXEC")
         d.cmd("PUMP 0 3000 1")
@@ -380,7 +388,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
                 kept = case_dir / f"chat.reload{reloads}.saved"
                 must(d.cmd(f"SAVE 0 {kept}"), "SAVE")
                 d.cmd("CLOSE 0")
-                open_slot(d, sb, task, session, bool(task.get("claude")))
+                open_slot(d, sb, task, session, bool(task.get("claude")), model)
                 must(d.cmd(f"LOAD 0 {kept}"), "LOAD")
                 if step.get("budget_usd_micros"):
                     d.cmd(f"SET_BUDGET 0 {int(step['budget_usd_micros'])}")
@@ -725,6 +733,8 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
     ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
     ap.add_argument("--tasks-dir", default="", help="load task JSONs from this directory (e.g. evals/session-history/tasks)")
+    ap.add_argument("--model", default="", help="override composer model (e.g. gemini-4-hydrogen, gemini-4-carbon, gemini-4-neon)")
+    ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     args = ap.parse_args()
 
     tier = 2
@@ -763,15 +773,24 @@ def main() -> int:
     gcloud_cache = Path(tempfile.mkdtemp(prefix="coder-t2-gcloud-"))
 
     results = []
-    try:
-        for t in tasks:
-            t0 = time.time()
-            r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep)
-            results.append(r)
-            tag = "ok  " if r["passed"] else ("KNOWN" if r["known_failure"] else "FAIL")
-            fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
+    print_lock = threading.Lock()
+    def _run_one(t: dict[str, Any]) -> dict[str, Any]:
+        r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep, args.model)
+        tag = "ok  " if r["passed"] else ("KNOWN" if r["known_failure"] else "FAIL")
+        fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
+        with print_lock:
             print(f"{tag} task {r['id']}: {r['description']} ({r['wall_ms']} ms, ${r['cost_usd_micros'] / 1e6:.4f}, "
                   f"{r['attempts']} attempts, {r['turns']} turns, {r['tool_calls']} commands)" + (f" -- {fails}" if fails else ""), flush=True)
+        return r
+
+    try:
+        workers = max(1, int(args.workers))
+        if workers == 1:
+            for t in tasks:
+                results.append(_run_one(t))
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                results = list(ex.map(_run_one, tasks))
     finally:
         shutil.rmtree(gcloud_cache, ignore_errors=True)
 
