@@ -1,0 +1,160 @@
+// #authority External Pylon Operator Onboarding & Readiness Policy (GitHub #13956).
+//
+// Evaluates truthful operator readiness across identity custody, real digest
+// self-test verification, tamper refusal, distinct-device validator safety,
+// relay configuration, and default-OFF Bitcoin/Spark mainnet settlement arming.
+// Never reports a lane or mainnet settlement ready unless every prerequisite holds.
+#authority;
+
+PO_MAX_DAILY_CAP_SAT :: 1_000_000;
+PO_MIN_MODULES_TRAINING :: 4;
+
+PoBlocker :: enum u8 {
+  none;
+  missing_nostr_key;
+  selftest_failed;
+  tamper_not_refused;
+  missing_relay;
+  same_device_validator;
+  wallet_not_ready;
+  mainnet_unarmed;
+  invalid_daily_cap;
+}
+
+PoInputs :: struct {
+  has_nostr_key: bool;
+  executor_selftest_ok: bool;
+  tamper_refused_ok: bool;
+  modules_installed: int;
+  relay_configured: bool;
+  distinct_validator_device: bool;
+  wallet_ready: bool;
+  mainnet_armed: bool;
+  daily_cap_sat: int;
+}
+
+PoReport :: struct {
+  can_run_executor: bool;
+  can_run_validator: bool;
+  can_run_training: bool;
+  can_settle_mainnet: bool;
+  blocker: PoBlocker;
+}
+
+po_blocker_name :: (b: PoBlocker) -> string #effects(all) {
+  if b == PoBlocker.none { return "none"; }
+  if b == PoBlocker.missing_nostr_key { return "missing_nostr_key"; }
+  if b == PoBlocker.selftest_failed { return "selftest_failed"; }
+  if b == PoBlocker.tamper_not_refused { return "tamper_not_refused"; }
+  if b == PoBlocker.missing_relay { return "missing_relay"; }
+  if b == PoBlocker.same_device_validator { return "same_device_validator"; }
+  if b == PoBlocker.wallet_not_ready { return "wallet_not_ready"; }
+  if b == PoBlocker.mainnet_unarmed { return "mainnet_unarmed"; }
+  return "invalid_daily_cap";
+}
+
+// Compute exact per-lane eligibility and the first blocking prerequisite.
+po_evaluate :: (inp: PoInputs) -> PoReport #effects(all) {
+  base_ok := inp.has_nostr_key && inp.executor_selftest_ok && inp.tamper_refused_ok && inp.relay_configured;
+  can_exec := base_ok;
+  can_val := base_ok && inp.distinct_validator_device;
+  can_train := base_ok && inp.modules_installed >= PO_MIN_MODULES_TRAINING;
+  cap_ok := inp.daily_cap_sat >= 1 && inp.daily_cap_sat <= PO_MAX_DAILY_CAP_SAT;
+  can_settle := base_ok && inp.wallet_ready && inp.mainnet_armed && cap_ok;
+
+  blk := PoBlocker.none;
+  if !inp.has_nostr_key { blk = PoBlocker.missing_nostr_key; }
+  else if !inp.executor_selftest_ok { blk = PoBlocker.selftest_failed; }
+  else if !inp.tamper_refused_ok { blk = PoBlocker.tamper_not_refused; }
+  else if !inp.relay_configured { blk = PoBlocker.missing_relay; }
+  else if !inp.distinct_validator_device { blk = PoBlocker.same_device_validator; }
+  else if !inp.wallet_ready { blk = PoBlocker.wallet_not_ready; }
+  else if !inp.mainnet_armed { blk = PoBlocker.mainnet_unarmed; }
+  else if !cap_ok { blk = PoBlocker.invalid_daily_cap; }
+
+  return PoReport.{
+    can_run_executor = can_exec,
+    can_run_validator = can_val,
+    can_run_training = can_train,
+    can_settle_mainnet = can_settle,
+    blocker = blk,
+  };
+}
+
+// Settled satoshis counter must stay non-negative and only increment on real_bitcoin_moved.
+po_accumulate_settled_sat :: (total_sat: int, row_sat: int, real_bitcoin_moved: bool) -> int #effects(all) {
+  if !real_bitcoin_moved || row_sat <= 0 { return total_sat; } // mutant: equivalent — adding 0 preserves total_sat
+  return total_sat + row_sat;
+}
+
+#test "pylon onboard: #authority readiness policy, lane gating, blockers & truthful totals (#13956)" {
+  ready := PoInputs.{
+    has_nostr_key = true,
+    executor_selftest_ok = true,
+    tamper_refused_ok = true,
+    modules_installed = PO_MIN_MODULES_TRAINING,
+    relay_configured = true,
+    distinct_validator_device = true,
+    wallet_ready = true,
+    mainnet_armed = true,
+    daily_cap_sat = 1,
+  };
+  r0 := po_evaluate(ready);
+  #assert r0.can_run_executor && r0.can_run_validator && r0.can_run_training && r0.can_settle_mainnet;
+  #assert r0.blocker == PoBlocker.none && po_blocker_name(PoBlocker.none) == "none";
+
+  // Upper daily cap boundary
+  hi := ready; hi.daily_cap_sat = PO_MAX_DAILY_CAP_SAT;
+  #assert po_evaluate(hi).can_settle_mainnet;
+
+  // Below training module threshold disables training lane without blocking executor
+  few_m := ready; few_m.modules_installed = PO_MIN_MODULES_TRAINING - 1;
+  rfm := po_evaluate(few_m);
+  #assert rfm.can_run_executor && rfm.can_run_validator && !rfm.can_run_training && rfm.can_settle_mainnet;
+
+  // Every blocker in strict priority order
+  b1 := ready; b1.has_nostr_key = false;
+  r1 := po_evaluate(b1);
+  #assert !r1.can_run_executor && !r1.can_run_validator && !r1.can_run_training && !r1.can_settle_mainnet;
+  #assert r1.blocker == PoBlocker.missing_nostr_key && po_blocker_name(r1.blocker) == "missing_nostr_key";
+
+  b2 := ready; b2.executor_selftest_ok = false;
+  r2 := po_evaluate(b2);
+  #assert !r2.can_run_executor && r2.blocker == PoBlocker.selftest_failed && po_blocker_name(r2.blocker) == "selftest_failed";
+
+  b3 := ready; b3.tamper_refused_ok = false;
+  r3 := po_evaluate(b3);
+  #assert !r3.can_run_executor && r3.blocker == PoBlocker.tamper_not_refused && po_blocker_name(r3.blocker) == "tamper_not_refused";
+
+  b4 := ready; b4.relay_configured = false;
+  r4 := po_evaluate(b4);
+  #assert !r4.can_run_executor && r4.blocker == PoBlocker.missing_relay && po_blocker_name(r4.blocker) == "missing_relay";
+
+  b5 := ready; b5.distinct_validator_device = false;
+  r5 := po_evaluate(b5);
+  #assert r5.can_run_executor && !r5.can_run_validator && r5.can_settle_mainnet;
+  #assert r5.blocker == PoBlocker.same_device_validator && po_blocker_name(r5.blocker) == "same_device_validator";
+
+  b6 := ready; b6.wallet_ready = false;
+  r6 := po_evaluate(b6);
+  #assert r6.can_run_executor && r6.can_run_validator && !r6.can_settle_mainnet;
+  #assert r6.blocker == PoBlocker.wallet_not_ready && po_blocker_name(r6.blocker) == "wallet_not_ready";
+
+  b7 := ready; b7.mainnet_armed = false;
+  r7 := po_evaluate(b7);
+  #assert r7.can_run_executor && r7.can_run_validator && !r7.can_settle_mainnet;
+  #assert r7.blocker == PoBlocker.mainnet_unarmed && po_blocker_name(r7.blocker) == "mainnet_unarmed";
+
+  b8_lo := ready; b8_lo.daily_cap_sat = 0;
+  b8_hi := ready; b8_hi.daily_cap_sat = PO_MAX_DAILY_CAP_SAT + 1;
+  r8l := po_evaluate(b8_lo); r8h := po_evaluate(b8_hi);
+  #assert !r8l.can_settle_mainnet && r8l.blocker == PoBlocker.invalid_daily_cap;
+  #assert !r8h.can_settle_mainnet && r8h.blocker == PoBlocker.invalid_daily_cap && po_blocker_name(r8h.blocker) == "invalid_daily_cap";
+
+  // Truthful settled satoshi accumulation (excludes dry-run / non-positive rows)
+  #assert po_accumulate_settled_sat(100, 1, true) == 101;
+  #assert po_accumulate_settled_sat(100, 200, true) == 300;
+  #assert po_accumulate_settled_sat(100, 200, false) == 100;
+  #assert po_accumulate_settled_sat(100, 0, true) == 100;
+  #assert po_accumulate_settled_sat(100, -50, true) == 100;
+}

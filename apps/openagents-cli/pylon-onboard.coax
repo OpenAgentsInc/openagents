@@ -1,0 +1,182 @@
+// External Pylon Operator Onboarding (`openagents pylon onboard [--json]`, GitHub #13956).
+// Runs the real local wasm-exec-v1 digest self-test + tamper-refusal check,
+// inspects real NIP-06 key custody, installed ~/.openagents/modules/ artifacts,
+// real settled ledger rows (real_bitcoin_moved == true only), and evaluates
+// #authority psionic/lib/pylon/onboard.coax without ever faking readiness.
+#load "../../psionic/lib/pylon/onboard.coax";
+
+po_count_modules :: () -> int {
+  hb: [1024] u8; h := home(hb[..]);
+  if h.count == 0 { return 0; }
+  rb: [1200] u8; root := fs_join(h, ".openagents/modules", rb[..]);
+  if fs_kind(root) != FS_DIR { return 0; }
+  l: [1] FsList;
+  cnt := fs_list(root, l[..]);
+  found := 0;
+  for i: 0..<cnt {
+    ent := fs_entry(l[..], i);
+    if ent.count != 64 { continue; }
+    db: [1400] u8; dir := fs_join(root, ent, db[..]);
+    mb: [1450] u8; wb: [1450] u8;
+    if fs_kind(fs_join(dir, "manifest.json", mb[..])) == FS_FILE &&
+       fs_kind(fs_join(dir, "weights.safetensors", wb[..])) == FS_FILE {
+      found += 1;
+    }
+  }
+  return found;
+}
+
+po_str_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count { if hay[i + j] != needle[j] { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+
+po_json_int_in :: (line: string, key: string) -> int {
+  kb: [64] u8;
+  kn := copy("\"", kb[..]); kn += copy(key, kb[kn..<64]); kn += copy("\":", kb[kn..<64]);
+  if kn > line.count { return -1; }
+  pos := -1;
+  for i: 0..<line.count - kn + 1 {
+    ok := true;
+    for j: 0..<kn { if line[i + j] != kb[j] { ok = false; break; } }
+    if ok { pos = i + kn; break; }
+  }
+  if pos < 0 || pos >= line.count { return -1; }
+  i := pos;
+  while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+  v := 0; seen := false;
+  while i < line.count && line[i] >= '0' && line[i] <= '9' {
+    v = v * 10 + cast(int) (line[i] - '0');
+    seen = true;
+    i += 1;
+  }
+  return ifx seen then v else -1;
+}
+
+// Read truthful settled satoshis from a settlement JSONL log (only real_bitcoin_moved == true).
+po_read_settled_sats :: (ledger_dir: string) -> int {
+  if ledger_dir.count == 0 { return 0; }
+  p1: [1400] u8;
+  path := fs_join(ledger_dir, "settlements.jsonl", p1[..]);
+  if fs_kind(path) != FS_FILE {
+    p2: [1400] u8;
+    path = fs_join(ledger_dir, "settled.jsonl", p2[..]);
+    if fs_kind(path) != FS_FILE { return 0; }
+  }
+  buf: [65536] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { return 0; }
+  total := 0;
+  start := 0;
+  for i: 0..<n {
+    if buf[i] == '\n' || i == n - 1 {
+      end := ifx buf[i] == '\n' then i else i + 1;
+      line := cast(string) buf[start..<end];
+      start = i + 1;
+      real_moved := po_str_contains(line, "\"real_bitcoin_moved\":true") ||
+                    po_str_contains(line, "\"real_bitcoin_moved\": true");
+      sat := po_json_int_in(line, "amount_sat");
+      if sat < 0 {
+        msat := po_json_int_in(line, "amount_msat");
+        if msat > 0 { sat = msat / 1000; }
+      }
+      total = po_accumulate_settled_sat(total, sat, real_moved);
+    }
+  }
+  return total;
+}
+
+po_wallet_present :: () -> bool {
+  hb: [1024] u8; h := home(hb[..]);
+  if h.count == 0 { return false; }
+  wb: [1200] u8;
+  wdir := fs_join(h, ".openagents/wallet", wb[..]);
+  if fs_kind(wdir) == FS_DIR { return true; }
+  sb: [256] u8;
+  return proc_getenv("SPARK_API_KEY", sb[..]).count > 0;
+}
+
+pylon_onboard_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  relay := args_value(a, "--relay", "wss://relay.openagents.com");
+  device := args_value(a, "--device", "local-pylon");
+  worker_device := args_value(a, "--worker-device", "");
+  armed := args_has(a, "--armed");
+  daily_cap := text_int(args_value(a, "--daily-cap", "5000"));
+
+  hb: [1024] u8; ldef: [1200] u8;
+  ledger := args_value(a, "--ledger", fs_join(pylon_home(hb[..]), "ledger", ldef[..]));
+
+  // 1. Check real NIP-06 Nostr identity key custody (wipe secret immediately)
+  k: [1] Key;
+  has_key := load_key(profile, k[..]);
+  npub_buf: [80] u8;
+  npub := "";
+  if has_key {
+    np_n := npub_of(k[0].secret[..], npub_buf[..]);
+    if np_n > 0 { npub = cast(string) npub_buf[0..<np_n]; }
+    wipe(k[0].secret[..]);
+  }
+
+  // 2. Run the REAL local wasm-exec-v1 digest self-test + tamper-refusal check
+  layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  weights: [WX_CORE_MAX_WEIGHTS] f64;
+  core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+  sc_ok := pe_run_selfcheck(core, false);
+  sc_tamper := pe_run_selfcheck(core, true);
+  art_hex_buf: [64] u8;
+  art_hex := pe_hex32(core.artifact_hash, art_hex_buf[..]);
+
+  // 3. Inspect real installed weight modules, wallet, and truthful settled satoshis
+  mods := po_count_modules();
+  wallet_ok := po_wallet_present();
+  settled_sats := po_read_settled_sats(ledger);
+  distinct_val := worker_device.count == 0 || device != worker_device;
+
+  inp := PoInputs.{
+    has_nostr_key = has_key,
+    executor_selftest_ok = sc_ok.may_advertise_executor,
+    tamper_refused_ok = !sc_tamper.may_advertise_executor,
+    modules_installed = mods,
+    relay_configured = relay.count > 0,
+    distinct_validator_device = distinct_val,
+    wallet_ready = wallet_ok,
+    mainnet_armed = armed,
+    daily_cap_sat = daily_cap,
+  };
+  rep := po_evaluate(inp);
+
+  rep_bool(r, "nostr_key", has_key);
+  if npub.count > 0 { rep_str(r, "npub", npub); }
+  rep_bool(r, "executor_selftest", sc_ok.may_advertise_executor);
+  rep_bool(r, "tamper_refused", !sc_tamper.may_advertise_executor);
+  rep_str(r, "artifact_sha256", art_hex);
+  rep_int(r, "modules_installed", mods);
+  rep_str(r, "relay", relay);
+  rep_str(r, "device", device);
+  rep_bool(r, "wallet_ready", wallet_ok);
+  rep_bool(r, "mainnet_armed", armed);
+  rep_int(r, "daily_cap_sat", daily_cap);
+  rep_int(r, "real_settled_sats", settled_sats);
+  rep_bool(r, "can_run_executor", rep.can_run_executor);
+  rep_bool(r, "can_run_validator", rep.can_run_validator);
+  rep_bool(r, "can_run_training", rep.can_run_training);
+  rep_bool(r, "can_settle_mainnet", rep.can_settle_mainnet);
+  rep_str(r, "blocker", po_blocker_name(rep.blocker));
+  if !has_key {
+    rep_str(r, "next", "openagents nostr new");
+  } else if mods < PO_MIN_MODULES_TRAINING {
+    rep_str(r, "next", "openagents module install-builtins");
+  } else if !armed {
+    rep_str(r, "next", "openagents pylon executor start --relay wss://relay.openagents.com --device <unique-name>");
+  } else {
+    rep_str(r, "next", "openagents pylon settle --network bitcoin --armed --wallet-bridge spark-helper --publish-pool");
+  }
+  return rep_done(r, EXIT_OK);
+}

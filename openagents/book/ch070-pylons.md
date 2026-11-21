@@ -74,8 +74,8 @@ It builds on what exists today:
 - [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax), [`psionic/lib/peer/settled-feed.coax`](../../psionic/lib/peer/settled-feed.coax), and [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)
 - [`psionic/lib/peer/training-window.coax`](../../psionic/lib/peer/training-window.coax), [`psionic/lib/peer/train-verify.coax`](../../psionic/lib/peer/train-verify.coax), and [`psionic/lib/peer/quarantine-opt.coax`](../../psionic/lib/peer/quarantine-opt.coax)
 - [`coax/lib/gateway/pylon.coax`](../../coax/lib/gateway/pylon.coax)
-- [`apps/openagents-cli/pylon.coax`](../../apps/openagents-cli/pylon.coax) and [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
-- [`docs/connect-a-pylon.md`](../../docs/connect-a-pylon.md)
+- [`apps/openagents-cli/pylon.coax`](../../apps/openagents-cli/pylon.coax), [`apps/openagents-cli/pylon-onboard.coax`](../../apps/openagents-cli/pylon-onboard.coax), and [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
+- [`docs/connect-a-pylon.md`](../../docs/connect-a-pylon.md) and [`docs/pylon/external-operator-quickstart.md`](../../docs/pylon/external-operator-quickstart.md)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):

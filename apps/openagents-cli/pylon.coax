@@ -5,9 +5,11 @@
 #load "../../psionic/lib/pylon/beacon.coax";
 #load "pylon-executor.coax";
 #load "pylon-settle.coax";
+#load "pylon-onboard.coax";
 
 pylon_usage :: () {
   print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
+  print("%\n", "  pylon onboard [--json] [--relay URL] [--device REF] [--armed] [--daily-cap SAT]  run local digest self-test & operator readiness audit");
   print("%\n", "  pylon start [--model psionic-toy|elephant-1] [--label TEXT] [--slug NAME]");
   print("%\n", "              [--relay wss://HOST] [--self-test] [--official] [--wait SECONDS]");
   print("%\n", "              [--trainer NPUB | --no-link]   links it to your npub by default");
@@ -79,6 +81,9 @@ pylon_status :: (a: [] Args, r: [] Rep) -> int {
   state := pylon_state(model, st[..]);
   rep_str(r, "model", model);
   rep_str(r, "state", state);
+  hb_l: [1024] u8; ldef: [1200] u8;
+  rep_int(r, "modules_installed", po_count_modules());
+  rep_int(r, "real_settled_sats", po_read_settled_sats(fs_join(pylon_home(hb_l[..]), "ledger", ldef[..])));
   if fs_kind(state) != FS_DIR { rep_bool(r, "running", false); rep_bool(r, "online", false); return rep_done(r, EXIT_OK); }
   pid := join_pid(model);
   rep_bool(r, "running", pid > 0);
@@ -206,6 +211,7 @@ pylon_logs :: (a: [] Args, r: [] Rep) -> int {
 
 
 pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "onboard" { return pylon_onboard_main(a, r, profile); }
   if verb == "executor" { return pylon_executor_main(a, r, profile); }
   if verb == "validate" { return pylon_validate_main(a, r, profile); }
   if verb == "settle" { return pylon_settle_main(a, r, profile); }
@@ -217,7 +223,7 @@ pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "status" || verb == "" { return pylon_status(a, r); }
   if verb == "stop" { return pylon_stop(a, r); }
   if verb == "logs" { return pylon_logs(a, r); }
-  return fail(r, EXIT_USAGE, "pylon: start, status, stop, logs, claim, unclaim or list (openagents help)");
+  return fail(r, EXIT_USAGE, "pylon: onboard, start, status, stop, logs, claim, unclaim, list, executor, validate, settle or pool-feed (openagents help)");
 }
 
 // ---- links, claims and the network's Pylons ----------------------------------

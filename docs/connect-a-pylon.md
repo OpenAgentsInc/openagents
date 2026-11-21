@@ -8,6 +8,8 @@ url: "https://openagents.com/docs/connect-a-pylon"
 
 A Pylon runs a model on your computer and contributes it to the mesh. Load original Elephant on your GPU, then verify an encrypted relay task with your own Pylon.
 
+> **Executor Network (`cj-executor` / `cj-validate` / `cj-training`):** For one-command local digest self-test onboarding (`openagents pylon onboard --json`), Class-E compiled weight modules, and live two-leg Bitcoin/Spark settlement, see the [External Pylon Operator Quickstart](pylon/external-operator-quickstart.md).
+
 [Report a bug or request a feature](https://github.com/OpenAgentsInc/openagents/issues)
 
 ## 1. Prepare
