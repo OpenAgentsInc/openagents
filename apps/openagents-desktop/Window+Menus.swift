@@ -49,16 +49,42 @@ extension CoderWindow {
             return false
         }
         let id = String(cString: out)
-        let items = [Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"), Item(label: "Rename Chat…"), Item(label: "Fork Chat"), Item(kind: 2), Item(label: "Delete Chat…", disabled: busy(id), danger: true)]
-        overlay.presentMenu(items, x: px, y: py) { [weak self] chosen in
-            guard let self else { return }
-            switch chosen {
-            case 0: self.togglePin(id)
-            case 1: self.rename(id)
-            case 2: self.fork(id)
-            case 4: self.delete(id)
-            default: break
+        let isArchived = store.isArchived(id)
+        let isSnoozed = store.snoozedUntil(id) > Int64(Date().timeIntervalSince1970 * 1000)
+        var items: [Item] = [
+            Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"),
+            Item(label: "Rename Chat…"),
+            Item(label: "Fork Chat"),
+            Item(kind: 2),
+            Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)),
+        ]
+        var acts: [() -> Void] = [
+            { [weak self] in self?.togglePin(id) },
+            { [weak self] in self?.rename(id) },
+            { [weak self] in self?.fork(id) },
+            {},
+            { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } },
+        ]
+        if !isArchived {
+            if isSnoozed {
+                items.append(Item(label: "Unsnooze Chat"))
+                acts.append { [weak self] in self?.unsnoozeChat(id) }
+            } else {
+                items.append(Item(label: "Snooze 1 Hour"))
+                acts.append { [weak self] in self?.snoozeChat(id, durationSeconds: 3600) }
+                items.append(Item(label: "Snooze 4 Hours"))
+                acts.append { [weak self] in self?.snoozeChat(id, durationSeconds: 4 * 3600) }
+                items.append(Item(label: "Snooze Until Tomorrow"))
+                acts.append { [weak self] in self?.snoozeChatUntilTomorrow(id) }
+                items.append(Item(label: "Snooze Custom…"))
+                acts.append { [weak self] in self?.snoozeChatCustom(id) }
             }
+        }
+        items.append(Item(kind: 2)); acts.append {}
+        items.append(Item(label: "Delete Chat…", disabled: busy(id), danger: true))
+        acts.append { [weak self] in self?.delete(id) }
+        overlay.presentMenu(items, x: px, y: py) { chosen in
+            if chosen >= 0 && chosen < acts.count { acts[chosen]() }
         }
         return true
     }

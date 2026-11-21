@@ -46,6 +46,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
+  if act >= CP_SB_GROUP_TOGGLE && act <= CP_SB_UNDO_CLOSE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar groups, archive, bulk & undo (sidebar_groups.coax; #13875)
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   if cp_fp_yield(s, act, surface_id(s[0].surface[..], row)) { return true; }
@@ -164,8 +165,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_CHAT {
     id := surface_id(s[0].surface[..], row);
-    if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
-    for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; } }
+    for q: 0..<s[0].nchats {
+      if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+        if cp_sb_chat_click(s, q) { return true; }
+        if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
+        s[0].open = q; s[0].ask = CP_ASK_OPEN; return true;
+      }
+    }
     return false;
   }
   if act == CP_FU { return cp_fu_press(s, surface_id(s[0].surface[..], row)); }

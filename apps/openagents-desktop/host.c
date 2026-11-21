@@ -220,12 +220,18 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   if (over && c->overlay) c->overlay(c->overlay_context);
   return took;
 }
-// A file the person gave the window (dropped, pasted or chosen): a regular file joins the draft's
-// attachments with its name and size (page/attach.coax). Files carried over the window show "Drop to attach".
+// A file or folder the person gave the window (dropped, pasted or chosen): a folder registers a
+// project group in the sidebar (page/sidebar_groups.coax; #13875); a regular file joins the
+// draft's attachments with its name and size (page/attach.coax).
 static void cd_on_file(void *user, int request, const char *path) {
   CoderHost *c = user; (void)request;
   struct stat st;
-  if (!path || stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return;
+  if (!path || stat(path, &st) != 0) return;
+  if (S_ISDIR(st.st_mode)) {
+    if (coder_page_sb_drop_folder(cd_state(c), cd_string(path))) cd_woke(c);
+    return;
+  }
+  if (!S_ISREG(st.st_mode)) return;
   const char *slash = strrchr(path, '/');
   (void)coder_page_attach(cd_state(c), cd_string(path), cd_string(slash ? slash + 1 : path), (int64_t)st.st_size);
   cd_woke(c);
@@ -911,3 +917,26 @@ int cd_notify_badge_label(int count, char *out, int cap) {
   out[n] = 0;
   return n;
 }
+void cd_sb_now_ms(void *page, int64_t now_ms) { CoderHost *c = page; if (!c) return; coder_page_sb_now_ms(cd_state(c), now_ms); }
+int cd_sb_add_project(void *page, const char *path) { CoderHost *c = page; if (!c || !path) return 0; int ok = coder_page_sb_add_project(cd_state(c), cd_string(path)) ? 1 : 0; if (ok) cd_woke(c); return ok; }
+int cd_sb_drop_folder(void *page, const char *path) { CoderHost *c = page; if (!c || !path) return 0; int ok = coder_page_sb_drop_folder(cd_state(c), cd_string(path)) ? 1 : 0; if (ok) cd_woke(c); return ok; }
+int cd_sb_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_op(cd_state(c)) : 0; }
+int cd_sb_drop_path(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 1) return 0;
+  int n = (int)coder_page_sb_drop_path(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_sb_selected_ids(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 1) return 0;
+  int n = (int)coder_page_sb_selected_ids(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+void cd_sb_undo_show(void *page, const char *text, int kind, float duration) { CoderHost *c = page; if (!c) return; coder_page_sb_undo_show(cd_state(c), cd_string(text), kind, duration); cd_woke(c); }
+void cd_sb_undo_dismiss(void *page) { CoderHost *c = page; if (!c) return; coder_page_sb_undo_dismiss(cd_state(c)); cd_woke(c); }
+void cd_sb_set_view(void *page, int mode) { CoderHost *c = page; if (!c) return; coder_page_sb_set_view(cd_state(c), mode); cd_woke(c); }
+int cd_sb_view(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_view(cd_state(c)) : 0; }
+int cd_sb_sel_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_sel_count(cd_state(c)) : 0; }

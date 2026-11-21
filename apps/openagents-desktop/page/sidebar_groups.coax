@@ -1,0 +1,589 @@
+// Coder Desktop page (../page.coax): project-grouped sidebar, archiving, snoozing,
+// multi-select bulk actions, and undo toast (GitHub #13875).
+//
+// Owns:
+// - Project/repo grouping by working folder with collapsible headers and explicit
+//   added/dropped projects (lifting the old 50-chat visibility cap via CP_CHATS).
+// - Active vs. Archived view toggle & filtering (wired to DaemonSessionMeta.archived).
+// - Snooze wake-time filtering (snoozed_until_ms) with automatic resurfacing when now_ms >= wake.
+// - Multi-select (Cmd-click toggle, Shift-click contiguous range) + bulk archive/restore/delete/pin bar.
+// - Floating Undo toast with interactive Undo button, Close button, and auto-dismiss timer.
+
+CP_CHAT_FOLDER :: 160;        // bytes of a chat's project/working folder path
+CP_SB_MAX_GROUPS :: 64;       // max distinct project groups shown in sidebar
+CP_SB_UNDO_TEXT :: 160;       // bytes of undo toast message
+CP_SB_UNDO_LIFE :: 6.0f32;    // default undo toast auto-dismiss seconds
+
+// Sidebar view modes.
+CP_SB_VIEW_ACTIVE :: 0;
+CP_SB_VIEW_ARCHIVED :: 1;
+
+// Undo toast kinds.
+CP_SB_UNDO_NONE :: 0;
+CP_SB_UNDO_ARCHIVE :: 1;
+CP_SB_UNDO_DELETE :: 2;
+
+// Host ask code (coder_page_action).
+CP_ASK_SIDEBAR :: 62;
+
+// Sidebar host operations (coder_page_sb_op).
+CP_SB_OP_NONE :: 0;
+CP_SB_OP_ADD_PROJECT :: 1;    // user pressed "+ Project" -> host opens folder picker
+CP_SB_OP_DROP_PROJECT :: 2;   // user dropped a folder -> host reads coder_page_sb_drop_path
+CP_SB_OP_BULK_ARCHIVE :: 3;   // bulk archive selected chats (coder_page_sb_selected_ids)
+CP_SB_OP_BULK_RESTORE :: 4;   // bulk unarchive selected chats
+CP_SB_OP_BULK_DELETE :: 5;    // bulk delete selected chats
+CP_SB_OP_BULK_PIN :: 6;       // bulk toggle pin on selected chats
+CP_SB_OP_UNDO :: 7;           // user pressed Undo on the undo toast
+
+// Sidebar widget action IDs (210..220; free of all other page action ranges).
+CP_SB_GROUP_TOGGLE :: 210;
+CP_SB_VIEW_ACTIVE_ACT :: 211;
+CP_SB_VIEW_ARCHIVED_ACT :: 212;
+CP_SB_ADD_PROJECT_ACT :: 213;
+CP_SB_BULK_ARCHIVE_ACT :: 214;
+CP_SB_BULK_RESTORE_ACT :: 215;
+CP_SB_BULK_DELETE_ACT :: 216;
+CP_SB_BULK_PIN_ACT :: 217;
+CP_SB_BULK_CLEAR_ACT :: 218;
+CP_SB_UNDO_ACT :: 219;
+CP_SB_UNDO_CLOSE_ACT :: 220;
+
+CpSbProject :: struct {
+  path: [CP_CHAT_FOLDER] u8; path_n: int;
+  label: [64] u8; label_n: int;
+  collapsed: bool;
+  added: bool;                // added via folder picker or drag-and-drop (shown even when empty)
+}
+
+CpSbUndo :: struct {
+  active: bool;
+  kind: int;                  // CP_SB_UNDO_*
+  text: [CP_SB_UNDO_TEXT] u8; text_n: int;
+  shown_at: f32;
+  duration: f32;
+}
+
+CpSidebar :: struct {
+  view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
+  now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
+  projects: [CP_SB_MAX_GROUPS] CpSbProject; nprojects: int;
+  sel: [CP_CHATS] bool;       // multi-select bitset indexed by s[0].chats[q]
+  sel_count: int;
+  sel_anchor: int;            // last clicked chat index q for Shift-click range (-1: none)
+  last_mods: int;             // modifier bits from coder_page_press (1=Shift, 8=Cmd)
+  vis_order: [CP_CHATS] int; vis_n: int;  // visual order of rendered chat indices q
+  undo: [1] CpSbUndo;
+  op: int;                    // pending CP_SB_OP_* for host
+  drop_path: [CP_CHAT_FOLDER] u8; drop_path_n: int;
+  pending_ids: [CP_CHATS * (CP_CHAT_ID + 1)] u8; pending_ids_n: int;
+}
+
+cp_sb_init :: (s: [] CoderPage) {
+  s[0].sb[0] = CpSidebar.{sel_anchor = -1};
+}
+
+// Parse a decimal integer from a string (e.g. snoozed_until_ms column). Returns 0 on invalid/empty.
+cp_sb_parse_int :: (t: string) -> int {
+  if t.count == 0 { return 0; }
+  v := 0;
+  for c: t {
+    if c < '0' || c > '9' { return 0; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+// Extract a display label (basename) from a folder path. Strips trailing slashes.
+cp_sb_folder_label :: (path: string, out: [] u8) -> int {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  if end == 0 { return cp_out(out, "General"); }
+  if end == 1 && path[0] == '~' { return cp_out(out, "Home"); }
+  if end == 1 && path[0] == '/' { return cp_out(out, "/"); }
+  start := end;
+  while start > 0 && path[start - 1] != '/' { start -= 1; }
+  if start >= end { return cp_out(out, "General"); }
+  return cp_out(out, cast(string) path[start..<end]);
+}
+
+// Normalize a folder path into out by trimming trailing slashes (except root "/").
+cp_sb_norm_path :: (path: string, out: [] u8) -> int {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  return cp_out(out, cast(string) path[0..<end]);
+}
+
+// True while chat c is currently snoozed (wake time in the future).
+// When now_ms == 0 (host hasn't set wall-clock yet), any positive snoozed_until_ms counts as snoozed.
+// Once now_ms >= snoozed_until_ms, the chat automatically wakes and returns false.
+cp_sb_is_snoozed :: (c: CpChat, now_ms: int) -> bool {
+  if c.snoozed_until_ms <= 0 { return false; }
+  if now_ms <= 0 { return true; }
+  return now_ms < c.snoozed_until_ms;
+}
+
+// True when chat c should appear in the Active sidebar view.
+cp_sb_is_visible_active :: (c: CpChat, now_ms: int) -> bool {
+  return !c.archived && !cp_sb_is_snoozed(c, now_ms);
+}
+
+cp_sb_archived_count :: (s: [] CoderPage) -> int {
+  n := 0;
+  for q: 0..<s[0].nchats { if s[0].chats[q].archived { n += 1; } }
+  return n;
+}
+
+cp_sb_snoozed_count :: (s: [] CoderPage) -> int {
+  n := 0;
+  now_ms := s[0].sb[0].now_ms;
+  for q: 0..<s[0].nchats {
+    if !s[0].chats[q].archived && cp_sb_is_snoozed(s[0].chats[q], now_ms) { n += 1; }
+  }
+  return n;
+}
+
+cp_sb_find_project :: (s: [] CoderPage, path: string) -> int {
+  nb: [CP_CHAT_FOLDER] u8; nn := cp_sb_norm_path(path, nb[..]);
+  norm := cast(string) nb[0..<nn];
+  if norm.count == 0 { return -1; }
+  for i: 0..<s[0].sb[0].nprojects {
+    if cast(string) s[0].sb[0].projects[i].path[0..<s[0].sb[0].projects[i].path_n] == norm { return i; }
+  }
+  return -1;
+}
+
+// Ensure a project folder exists in s[0].sb[0].projects, preserving its collapsed state.
+cp_sb_ensure_project :: (s: [] CoderPage, path: string, added: bool) -> int {
+  nb: [CP_CHAT_FOLDER] u8; nn := cp_sb_norm_path(path, nb[..]);
+  norm := cast(string) nb[0..<nn];
+  if norm.count == 0 { return -1; }
+  idx := cp_sb_find_project(s, norm);
+  if idx >= 0 {
+    if added { s[0].sb[0].projects[idx].added = true; }
+    return idx;
+  }
+  if s[0].sb[0].nprojects >= CP_SB_MAX_GROUPS { return -1; }
+  k := s[0].sb[0].nprojects;
+  s[0].sb[0].projects[k] = CpSbProject.{added = added};
+  s[0].sb[0].projects[k].path_n = cp_out(s[0].sb[0].projects[k].path[..], norm);
+  s[0].sb[0].projects[k].label_n = cp_sb_folder_label(norm, s[0].sb[0].projects[k].label[..]);
+  s[0].sb[0].nprojects += 1;
+  return k;
+}
+
+// Sync project groups from all chats' folders (preserving collapsed state and explicit projects).
+cp_sb_sync_projects :: (s: [] CoderPage) {
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].folder_n > 0 {
+      _ = cp_sb_ensure_project(s, cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n], false);
+    }
+  }
+}
+
+// True when the sidebar should render project-grouped sections instead of a single flat Recents section.
+cp_sb_has_projects :: (s: [] CoderPage) -> bool {
+  for i: 0..<s[0].sb[0].nprojects {
+    if s[0].sb[0].projects[i].added { return true; }
+  }
+  now_ms := s[0].sb[0].now_ms;
+  for q: 0..<s[0].nchats {
+    if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && s[0].chats[q].folder_n > 0 { return true; }
+  }
+  return false;
+}
+
+cp_sb_toggle_group :: (s: [] CoderPage, idx: int) -> bool {
+  if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
+  s[0].sb[0].projects[idx].collapsed = !s[0].sb[0].projects[idx].collapsed;
+  return true;
+}
+
+// ---- Multi-select helpers
+
+cp_sb_clear_sel :: (s: [] CoderPage) {
+  for q: 0..<CP_CHATS { s[0].sb[0].sel[q] = false; }
+  s[0].sb[0].sel_count = 0;
+  s[0].sb[0].sel_anchor = -1;
+}
+
+cp_sb_recount_sel :: (s: [] CoderPage) {
+  n := 0;
+  for q: 0..<s[0].nchats { if s[0].sb[0].sel[q] { n += 1; } }
+  for q: s[0].nchats..<CP_CHATS { s[0].sb[0].sel[q] = false; }
+  s[0].sb[0].sel_count = n;
+}
+
+cp_sb_toggle_sel :: (s: [] CoderPage, q: int) -> bool {
+  if q < 0 || q >= s[0].nchats { return false; }
+  s[0].sb[0].sel[q] = !s[0].sb[0].sel[q];
+  s[0].sb[0].sel_anchor = q;
+  cp_sb_recount_sel(s);
+  return true;
+}
+
+// Shift-click range selection along the rendered visual order (vis_order).
+cp_sb_range_sel :: (s: [] CoderPage, q: int) -> bool {
+  if q < 0 || q >= s[0].nchats { return false; }
+  anchor := s[0].sb[0].sel_anchor;
+  if anchor < 0 || anchor >= s[0].nchats {
+    s[0].sb[0].sel[q] = true;
+    s[0].sb[0].sel_anchor = q;
+    cp_sb_recount_sel(s);
+    return true;
+  }
+  a_pos := -1; b_pos := -1;
+  for i: 0..<s[0].sb[0].vis_n {
+    v := s[0].sb[0].vis_order[i];
+    if v == anchor { a_pos = i; }
+    if v == q { b_pos = i; }
+  }
+  if a_pos < 0 || b_pos < 0 {
+    s[0].sb[0].sel[q] = true;
+    s[0].sb[0].sel_anchor = q;
+    cp_sb_recount_sel(s);
+    return true;
+  }
+  lo := ifx a_pos < b_pos then a_pos else b_pos;
+  hi := ifx a_pos > b_pos then a_pos else b_pos;
+  for i: lo..<hi + 1 {
+    idx := s[0].sb[0].vis_order[i];
+    if idx >= 0 && idx < s[0].nchats { s[0].sb[0].sel[idx] = true; }
+  }
+  cp_sb_recount_sel(s);
+  return true;
+}
+
+// Capture currently selected bare chat IDs (without "chat." prefix) newline-separated into pending_ids.
+cp_sb_capture_selected :: (s: [] CoderPage) -> int {
+  n := 0; count := 0;
+  for q: 0..<s[0].nchats {
+    if !s[0].sb[0].sel[q] { continue; }
+    if s[0].chats[q].id_n <= 5 { continue; }
+    if count > 0 && n < s[0].sb[0].pending_ids.count { s[0].sb[0].pending_ids[n] = 10; n += 1; }
+    id := cast(string) s[0].chats[q].id[5..<s[0].chats[q].id_n];
+    n += cp_out(s[0].sb[0].pending_ids[n..<s[0].sb[0].pending_ids.count], id);
+    count += 1;
+  }
+  s[0].sb[0].pending_ids_n = n;
+  return count;
+}
+
+// Handle a chat row click with modifier awareness (Cmd=8 toggles, Shift=1 ranges, plain opens).
+// Returns true if multi-select handled the click (caller should not open the chat).
+cp_sb_chat_click :: (s: [] CoderPage, q: int) -> bool {
+  mods := s[0].sb[0].last_mods;
+  if (mods & 1) != 0 { return cp_sb_range_sel(s, q); }
+  if (mods & 8) != 0 { return cp_sb_toggle_sel(s, q); }
+  if s[0].sb[0].sel_count > 0 { cp_sb_clear_sel(s); }
+  s[0].sb[0].sel_anchor = q;
+  return false;
+}
+
+// ---- Undo toast state & rendering
+
+cp_sb_undo_show :: (s: [] CoderPage, text: string, kind: int, duration: f32) {
+  u := s[0].sb[0].undo[..];
+  u[0].active = text.count > 0;
+  u[0].kind = kind;
+  u[0].text_n = cp_out(u[0].text[..], text);
+  u[0].shown_at = s[0].clock;
+  u[0].duration = ifx duration > 0.0f32 then duration else CP_SB_UNDO_LIFE;
+}
+
+cp_sb_undo_dismiss :: (s: [] CoderPage) {
+  s[0].sb[0].undo[0].active = false;
+  s[0].sb[0].undo[0].kind = CP_SB_UNDO_NONE;
+}
+
+cp_sb_undo_step :: (s: [] CoderPage) {
+  u := s[0].sb[0].undo[..];
+  if !u[0].active { return; }
+  if u[0].duration > 0.0f32 && s[0].clock - u[0].shown_at >= u[0].duration {
+    u[0].active = false;
+    u[0].kind = CP_SB_UNDO_NONE;
+  }
+}
+
+cp_sb_undo_wake :: (s: [] CoderPage) -> f32 {
+  u := s[0].sb[0].undo[..];
+  if !u[0].active || !(u[0].duration > 0.0f32) { return -1.0f32; }
+  rem := u[0].shown_at + u[0].duration - s[0].clock;
+  return ifx rem < 0.0f32 then 0.0f32 else rem;
+}
+
+// Paint the interactive Undo toast at the bottom-right of the window (above standard toasts).
+cp_sb_undo_paint :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
+  cp_sb_undo_step(s);
+  u := s[0].sb[0].undo[..];
+  if !u[0].active || u[0].text_n <= 0 { return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; o := cp_ov_spec();
+  slot := o.menu_row; pad := o.menu_pad_x; inset := o.menu_inset;
+  th := slot + 2.0f32 * inset;
+  tw := 340.0f32;
+  if tw > w - 4.0f32 * o.margin { tw = w - 4.0f32 * o.margin; }
+  if tw < 180.0f32 { return; }
+  x := w - 2.0f32 * o.margin - tw;
+  // Sit above any visible standard toasts so they never overlap.
+  toast_offset := 0.0f32;
+  for i: 0..<s[0].toasts[0].n {
+    if s[0].toasts[0].items[i].phase != APP_TOAST_WAITING { toast_offset += th + cast(f32) APP_TOAST_GAP; }
+  }
+  y := h - 2.0f32 * o.margin - toast_offset - th;
+  frosted := app_overlay_paint_panel(f, o, x, y, tw, th, o.menu_radius, k.shadows.menu);
+  text := sheet_pool(sh, cast(string) u[0].text[0..<u[0].text_n]);
+  row := uiframe_semantic(f, "coder.sb.undo", EL_NOTICE, text, x, y, tw, th, EL_S_LIVE, 0);
+  uiframe_open(f, row);
+  // Close button at far right
+  cx := x + tw - inset - slot;
+  chv := uiframe_hover(f, KEYED_LAZY, "coder.sb.undo.close");
+  if chv > 0 { sheet_fill(sh, cx, y + inset, slot, slot, o.menu_item_radius, opacity(k.hover, chv)); }
+  ci := k.app.notice_icon;
+  sheet_icon(sh, ICON_CLOSE, cx + (slot - ci) / 2.0f32, y + inset + (slot - ci) / 2.0f32, ci, rgba_mix(k.muted, k.ink, chv));
+  close_r := uiframe_semantic(f, "coder.sb.undo.close", EL_BUTTON, "Dismiss", cx, y + inset, slot, slot, 0, CP_SB_UNDO_CLOSE_ACT);
+  sheet_hit(sh, UIFRAME_HIT, close_r, 0, cx, y + inset, slot, slot);
+  // Undo button just left of Close
+  undo_lbl := "Undo";
+  uw := ceil(measure_width(m, k.small.face, undo_lbl)) + 16.0f32;
+  ux := cx - 4.0f32 - uw;
+  uhv := uiframe_hover(f, KEYED_LAZY, "coder.sb.undo.btn");
+  ubg := rgba_mix(k.raised, k.hover, uhv);
+  _ := sheet_box(sh, ux, y + inset + 2.0f32, uw, slot - 4.0f32, 6.0f32, k.border, ubg, k.accent);
+  _ := sheet_text(sh, m, -1, ux + 8.0f32, y + (th - k.small.line) / 2.0f32, k.small.line, k.small.face, k.accent, undo_lbl);
+  undo_r := uiframe_semantic(f, "coder.sb.undo.btn", EL_BUTTON, undo_lbl, ux, y + inset, uw, slot, 0, CP_SB_UNDO_ACT);
+  sheet_hit(sh, UIFRAME_HIT, undo_r, 0, ux, y + inset, uw, slot);
+  // Message text on the left
+  lx := x + pad;
+  room := ux - pad - lx;
+  if room > 0 {
+    _ := sheet_text(sh, m, -1, lx, y + (th - k.label.line) / 2.0f32, k.label.line, k.label.face, k.ink, app_fit(f, k.label.face, text, room));
+  }
+  uiframe_close(f);
+  app_overlay_end_panel(f, frosted);
+}
+
+// ---- Sidebar toolbar (Active | Archived | + Project) and Bulk Action Bar
+
+cp_sb_pill_btn :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, label: string, active: bool, danger: bool, action: int) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  hv := uiframe_hover(f, KEYED_LAZY, id);
+  if active { sheet_fill(sh, x, y, w, h, 6.0f32, k.raised); }
+  else if hv > 0 { sheet_fill(sh, x, y, w, h, 6.0f32, opacity(k.raised, 0.75f32 * hv)); }
+  ink := ifx danger then k.danger else ifx active then k.ink else rgba_mix(k.muted, k.ink, hv);
+  tw := measure_width(m, k.small.face, label);
+  tx := x + (w - tw) / 2.0f32;
+  if tx < x + 4.0f32 { tx = x + 4.0f32; }
+  _ := sheet_text(sh, m, -1, tx, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, app_fit(f, k.small.face, label, w - 8.0f32));
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, ifx active then EL_S_CURRENT else 0, action);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+
+// Compact sidebar strip below Foreman/Gym: Active | Archived (N) | + Project.
+// Returns its height.
+cp_sb_toolbar :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32) -> f32 {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  h := 24.0f32;
+  x := a.row_inset;
+  avail := sw - 2.0f32 * a.row_inset;
+  if avail < 120.0f32 { return 0.0f32; }
+  act_on := s[0].sb[0].view_mode == CP_SB_VIEW_ACTIVE;
+  arch_on := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
+  n_arch := cp_sb_archived_count(s);
+  ab: [32] u8; an := el_put(ab[..], 0, "Archived");
+  if n_arch > 0 { an = el_put(ab[..], an, " "); an = el_put_i(ab[..], an, n_arch); }
+  arch_lbl := sheet_pool(sh, cast(string) ab[0..<an]);
+  w_act := ceil(measure_width(m, k.small.face, "Active")) + 14.0f32;
+  w_arch := ceil(measure_width(m, k.small.face, arch_lbl)) + 14.0f32;
+  w_add := ceil(measure_width(m, k.small.face, "+ Project")) + 14.0f32;
+  cp_sb_pill_btn(f, "coder.sb.tab.active", x, sy, w_act, h, "Active", act_on, false, CP_SB_VIEW_ACTIVE_ACT);
+  cp_sb_pill_btn(f, "coder.sb.tab.archived", x + w_act + 2.0f32, sy, w_arch, h, arch_lbl, arch_on, false, CP_SB_VIEW_ARCHIVED_ACT);
+  if x + w_act + 2.0f32 + w_arch + 4.0f32 + w_add <= x + avail {
+    cp_sb_pill_btn(f, "coder.sb.add_project", x + avail - w_add, sy, w_add, h, "+ Project", false, false, CP_SB_ADD_PROJECT_ACT);
+  }
+  return h + 4.0f32;
+}
+
+// Multi-select Bulk Action Bar shown when sel_count > 0. Returns its height.
+cp_sb_bulk_bar :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32) -> f32 {
+  if s[0].sb[0].sel_count <= 0 { return 0.0f32; }
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  h := 52.0f32;
+  bx := a.row_inset; bw := sw - 2.0f32 * a.row_inset;
+  if bw < 120.0f32 { return 0.0f32; }
+  _ := sheet_box(sh, bx, sy, bw, h, 8.0f32, k.border, k.raised, k.hairline);
+  // Top row: "N selected" + Clear button
+  cb: [32] u8; cn := el_put_i(cb[..], 0, s[0].sb[0].sel_count); cn = el_put(cb[..], cn, " selected");
+  _ := sheet_text(sh, m, -1, bx + 8.0f32, sy + 5.0f32, k.small.line, k.small.face, k.ink, sheet_pool(sh, cast(string) cb[0..<cn]));
+  cp_sb_pill_btn(f, "coder.sb.bulk.clear", bx + bw - 48.0f32, sy + 2.0f32, 44.0f32, 20.0f32, "Clear", false, false, CP_SB_BULK_CLEAR_ACT);
+  // Bottom row: Pin | Archive (or Restore) | Delete
+  by := sy + 26.0f32; bh := 22.0f32;
+  gap := 4.0f32;
+  btn_w := (bw - 12.0f32 - 2.0f32 * gap) / 3.0f32;
+  is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
+  cp_sb_pill_btn(f, "coder.sb.bulk.pin", bx + 6.0f32, by, btn_w, bh, "Pin", false, false, CP_SB_BULK_PIN_ACT);
+  if is_arch {
+    cp_sb_pill_btn(f, "coder.sb.bulk.restore", bx + 6.0f32 + btn_w + gap, by, btn_w, bh, "Restore", false, false, CP_SB_BULK_RESTORE_ACT);
+  } else {
+    cp_sb_pill_btn(f, "coder.sb.bulk.archive", bx + 6.0f32 + btn_w + gap, by, btn_w, bh, "Archive", false, false, CP_SB_BULK_ARCHIVE_ACT);
+  }
+  cp_sb_pill_btn(f, "coder.sb.bulk.delete", bx + 6.0f32 + 2.0f32 * (btn_w + gap), by, btn_w, bh, "Delete", false, true, CP_SB_BULK_DELETE_ACT);
+  return h + 6.0f32;
+}
+
+// ---- Action dispatch for sidebar_groups controls (called from cp_press in input.coax)
+
+cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  if act == CP_SB_GROUP_TOGGLE {
+    idx := cp_number(id, "coder.proj.");
+    return cp_sb_toggle_group(s, idx);
+  }
+  if act == CP_SB_VIEW_ACTIVE_ACT {
+    s[0].sb[0].view_mode = CP_SB_VIEW_ACTIVE;
+    cp_sb_clear_sel(s);
+    s[0].side_scroll = 0;
+    return true;
+  }
+  if act == CP_SB_VIEW_ARCHIVED_ACT {
+    s[0].sb[0].view_mode = CP_SB_VIEW_ARCHIVED;
+    cp_sb_clear_sel(s);
+    s[0].side_scroll = 0;
+    return true;
+  }
+  if act == CP_SB_ADD_PROJECT_ACT {
+    s[0].sb[0].op = CP_SB_OP_ADD_PROJECT;
+    s[0].ask = CP_ASK_SIDEBAR;
+    return true;
+  }
+  if act == CP_SB_BULK_CLEAR_ACT {
+    cp_sb_clear_sel(s);
+    return true;
+  }
+  if act == CP_SB_BULK_ARCHIVE_ACT {
+    if cp_sb_capture_selected(s) > 0 {
+      cp_sb_clear_sel(s);
+      s[0].sb[0].op = CP_SB_OP_BULK_ARCHIVE;
+      s[0].ask = CP_ASK_SIDEBAR;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_SB_BULK_RESTORE_ACT {
+    if cp_sb_capture_selected(s) > 0 {
+      cp_sb_clear_sel(s);
+      s[0].sb[0].op = CP_SB_OP_BULK_RESTORE;
+      s[0].ask = CP_ASK_SIDEBAR;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_SB_BULK_DELETE_ACT {
+    if cp_sb_capture_selected(s) > 0 {
+      cp_sb_clear_sel(s);
+      s[0].sb[0].op = CP_SB_OP_BULK_DELETE;
+      s[0].ask = CP_ASK_SIDEBAR;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_SB_BULK_PIN_ACT {
+    if cp_sb_capture_selected(s) > 0 {
+      cp_sb_clear_sel(s);
+      s[0].sb[0].op = CP_SB_OP_BULK_PIN;
+      s[0].ask = CP_ASK_SIDEBAR;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_SB_UNDO_ACT {
+    if !s[0].sb[0].undo[0].active { return false; }
+    cp_sb_undo_dismiss(s);
+    s[0].sb[0].op = CP_SB_OP_UNDO;
+    s[0].ask = CP_ASK_SIDEBAR;
+    return true;
+  }
+  if act == CP_SB_UNDO_CLOSE_ACT {
+    cp_sb_undo_dismiss(s);
+    return true;
+  }
+  return false;
+}
+
+// ---- C-exported host bridge functions
+
+// Update the sidebar's wall-clock epoch milliseconds (used for automatic snooze wake-up).
+coder_page_sb_now_ms :: (s: [] CoderPage, now_ms: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].sb[0].now_ms = now_ms;
+}
+
+// Register an explicit project folder (from saved projects, folder picker, or drag-and-drop).
+coder_page_sb_add_project :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || path.count == 0 { return false; }
+  return cp_sb_ensure_project(s, path, true) >= 0;
+}
+
+// Handle a folder dropped onto the sidebar/window from Finder.
+coder_page_sb_drop_folder :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || path.count == 0 { return false; }
+  if cp_sb_ensure_project(s, path, true) < 0 { return false; }
+  s[0].sb[0].drop_path_n = cp_sb_norm_path(path, s[0].sb[0].drop_path[..]);
+  s[0].sb[0].op = CP_SB_OP_DROP_PROJECT;
+  s[0].ask = CP_ASK_SIDEBAR;
+  return true;
+}
+
+// Read and consume the pending sidebar host op after CP_ASK_SIDEBAR.
+coder_page_sb_op :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_SB_OP_NONE; }
+  op := s[0].sb[0].op;
+  s[0].sb[0].op = CP_SB_OP_NONE;
+  return op;
+}
+
+// Read the dropped project folder path after CP_SB_OP_DROP_PROJECT.
+coder_page_sb_drop_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].sb[0].drop_path_n <= 0 { return 0; }
+  n := cp_out(out, cast(string) s[0].sb[0].drop_path[0..<s[0].sb[0].drop_path_n]);
+  s[0].sb[0].drop_path_n = 0;
+  return n;
+}
+
+// Read the newline-separated bare chat IDs captured for a bulk action.
+coder_page_sb_selected_ids :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].sb[0].pending_ids_n <= 0 { return 0; }
+  n := cp_out(out, cast(string) s[0].sb[0].pending_ids[0..<s[0].sb[0].pending_ids_n]);
+  s[0].sb[0].pending_ids_n = 0;
+  return n;
+}
+
+// Show an interactive Undo toast (kind: 1=archive, 2=delete; duration <= 0 uses CP_SB_UNDO_LIFE).
+coder_page_sb_undo_show :: (s: [] CoderPage, text: string, kind: int, duration: f32) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_sb_undo_show(s, text, kind, duration);
+}
+
+// Dismiss the active Undo toast.
+coder_page_sb_undo_dismiss :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_sb_undo_dismiss(s);
+}
+
+// Switch between Active (0) and Archived (1) sidebar views from host or tests.
+coder_page_sb_set_view :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].sb[0].view_mode = ifx mode == CP_SB_VIEW_ARCHIVED then CP_SB_VIEW_ARCHIVED else CP_SB_VIEW_ACTIVE;
+  cp_sb_clear_sel(s);
+  s[0].side_scroll = 0;
+}
+
+// Return the current sidebar view mode (0=Active, 1=Archived).
+coder_page_sb_view :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_SB_VIEW_ACTIVE; }
+  return s[0].sb[0].view_mode;
+}
+
+// Return the number of currently multi-selected chats.
+coder_page_sb_sel_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return s[0].sb[0].sel_count;
+}

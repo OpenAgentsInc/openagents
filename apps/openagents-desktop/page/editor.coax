@@ -315,6 +315,7 @@ coder_page_ime_index :: (s: [] CoderPage, x: f32, y: f32) -> int #export_c #effe
 // it first (the caret, a selection), the rest of the page after.
 coder_page_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return false; }
+  s[0].sb[0].last_mods = mods;
   if cp_ed_pointer(s, x / s[0].d, y / s[0].d, phase, clicks, mods) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
   if cp_term_pointer(s, x / s[0].d, y / s[0].d, phase) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
   return coder_page_pointer(s, x, y, phase);
@@ -324,7 +325,10 @@ coder_page_blink :: (s: [] CoderPage) -> f32 #export_c #effects(all) {
   if s.count < 1 { return -1; }
   b := ifx s[0].fld[0].active then s[0].fld[0].blink else -1.0f32;
   t := cp_toast_wake(s);   // a toast due to leave wakes the host too (overlay.coax)
-  return ifx t >= 0 && (b < 0 || t < b) then t else b;
+  u := cp_sb_undo_wake(s);
+  if t >= 0 && (b < 0 || t < b) { b = t; }
+  if u >= 0 && (b < 0 || u < b) { b = u; }
+  return b;
 }
 // The composer's draft (its committed text): its length in out, 0 when out does not hold it.
 coder_page_draft :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {

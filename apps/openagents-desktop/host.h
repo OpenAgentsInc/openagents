@@ -445,4 +445,16 @@ int cd_notify_goal_event(int old_status, int new_status);
 int cd_notify_title(int event, const char *chat_title, char *out, int cap);
 int cd_notify_body(int event, const char *detail, char *out, int cap);
 int cd_notify_badge_label(int count, char *out, int cap);
+// Project-grouped sidebar, archiving, snoozing, bulk actions, and undo toast (page/sidebar_groups.coax; #13875).
+void cd_sb_now_ms(void *page, int64_t now_ms);
+int cd_sb_add_project(void *page, const char *path);
+int cd_sb_drop_folder(void *page, const char *path);
+int cd_sb_op(void *page);
+int cd_sb_drop_path(void *page, char *out, int cap);
+int cd_sb_selected_ids(void *page, char *out, int cap);
+void cd_sb_undo_show(void *page, const char *text, int kind, float duration);
+void cd_sb_undo_dismiss(void *page);
+void cd_sb_set_view(void *page, int mode);
+int cd_sb_view(void *page);
+int cd_sb_sel_count(void *page);
 #endif

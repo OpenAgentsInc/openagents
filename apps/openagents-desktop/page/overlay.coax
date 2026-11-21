@@ -63,6 +63,7 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
   if app_palette_step(pal, dt, s[0].reduced, cp_pal_spec()) { moving = true; }
   // toasts at the window's foot, right of the column, under the palette, menus and dialogs (#13774)
   app_toasts(f, o, s[0].toasts[..], s[0].clock, w - 2 * o.margin, h - 2 * o.margin, w - 4 * o.margin, CP_TOAST_CLOSE);
+  cp_sb_undo_paint(s, f, w, h);
   if uiframe_moving(f) { moving = true; }
   // the palette's words are the page's fourth editor once it is at rest (editor.coax)
   pbox: [4] f32;

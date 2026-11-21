@@ -146,6 +146,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var simStarting = false
     var simRetryAt: Date?
     var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871)
+    var sidebarUndo: SidebarUndoSnapshot? // last archive/delete for Undo toast restore (#13875)
+    private var lastSnoozeCheckAt: CFTimeInterval = 0
     // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
     var termSessions: [Int32: TerminalSession] = [:]
     var termPortTimer: Timer?
@@ -181,6 +183,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
         cd_agy(page, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(page)
+        cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
+        for proj in store.savedProjects { _ = cd_sb_add_project(page, proj) }
         cd_chats(page, chatLines)
         syncForemanUI()
         foremanServer.handler = { [weak self] request, done in
@@ -410,6 +414,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 59: walletBackupDialog()
         case 60: walletRefresh()
         case 61: notificationModeChanged()
+        case 62: sidebarAsked()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -442,6 +447,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if what != 0 { act(what); wake() }
         if now - sweptAt >= CoderWindow.sweepEvery { sweepRuns() }
         checkRunNotifications(run)
+        if now - lastSnoozeCheckAt >= 1.0 {
+            lastSnoozeCheckAt = now
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            cd_sb_now_ms(page, nowMs)
+            if store.wakeExpiredSnoozes(nowMs: nowMs) {
+                cd_chats(page, chatLines)
+                wake()
+            }
+        }
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning

@@ -31,6 +31,7 @@
 #load "goal.coax";
 #load "transcript.coax";
 #load "chats.coax";
+#load "sidebar_groups.coax";
 #load "persist.coax";
 #load "input.coax";
 #load "layout/layout.coax";

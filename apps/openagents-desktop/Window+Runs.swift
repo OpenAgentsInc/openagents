@@ -294,14 +294,19 @@ extension CoderWindow {
         }
     }
     /// The list as the page reads it: one chat a line, its id, a tab, its title, and optional tabs
-    /// for busy, pinned, managed and unread flags.
+    /// for busy, pinned, managed, unread, archived, snoozed_until_ms, and project_folder (#13875).
     var chatLines: String {
         store.orderedList.map { chat in
             let isBusy = runs[chat.id] != nil
             let isPinned = chat.pinned != nil
             let isManaged = chat.managedBy == Foreman.managedTag
             let isUnread = unread.contains(chat.id)
-            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0")
+            let isArchived = store.isArchived(chat.id)
+            let snoozeMs = store.snoozedUntil(chat.id)
+            let proj = store.effectiveProjectFolder(chat)
+                .replacingOccurrences(of: "\t", with: " ")
+                .replacingOccurrences(of: "\n", with: "")
+            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + proj
         }.joined(separator: "\n")
     }
     var isForemanShown: Bool { chat == Foreman.chatID }
@@ -326,6 +331,10 @@ extension CoderWindow {
                 }
                 if let pinned = item.pinned, self.store.isPinned(item.session_id) != pinned {
                     self.store.togglePin(item.session_id)
+                    changed = true
+                }
+                if let archived = item.archived, self.store.isArchived(item.session_id) != archived {
+                    self.store.setArchived(item.session_id, archived)
                     changed = true
                 }
             }

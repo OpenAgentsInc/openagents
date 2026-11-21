@@ -14,13 +14,18 @@ struct CoderChat: Codable {
     var worktreePath: String? = nil
     var worktreeBranch: String? = nil
     var repoRoot: String? = nil
+    var archived: Bool? = nil
+    var snoozedUntilMs: Int64? = nil
+    var projectFolder: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, title, created, updated, folder, renamed, pinned
+        case id, title, created, updated, folder, renamed, pinned, archived
         case managedBy = "managed_by"
         case worktreePath = "worktree_path"
         case worktreeBranch = "worktree_branch"
         case repoRoot = "repo_root"
+        case snoozedUntilMs = "snoozed_until_ms"
+        case projectFolder = "project_folder"
     }
     var worktree: ChatWorktree? {
         guard let worktreePath, let repoRoot, let worktreeBranch else { return nil }
@@ -28,17 +33,44 @@ struct CoderChat: Codable {
     }
 }
 
+/// Sidecar sidebar metadata (archived, snoozedUntilMs, projectFolder, explicit projects) persisted
+/// beside index.json so oa_dc_store_* rewrites never drop sidebar state (#13875).
+private struct SidebarMetaStore: Codable {
+    var archived: Set<String> = []
+    var snoozedUntilMs: [String: Int64] = [:]
+    var projectFolder: [String: String] = [:]
+    var projects: [String] = []
+}
+
 /// The chats kept on this Mac, persisted and sorted by coax/lib/agent/desktop/store.coax.
 final class CoderStore {
     private let dirPath: String
     private let dir: URL
     private(set) var list: [CoderChat] = []
+    private var sidebarMeta = SidebarMetaStore()
 
     init() {
         let p = DesktopCore.callString(4096) { oa_dc_chats_dir($0) }
         self.dirPath = p
         self.dir = URL(fileURLWithPath: p, isDirectory: true)
+        loadSidebarMeta()
         reload()
+    }
+
+    private var sidebarMetaURL: URL { dir.appendingPathComponent("sidebar-meta.json") }
+
+    private func loadSidebarMeta() {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        guard let data = try? Data(contentsOf: sidebarMetaURL),
+              let decoded = try? JSONDecoder().decode(SidebarMetaStore.self, from: data) else { return }
+        sidebarMeta = decoded
+    }
+
+    private func saveSidebarMeta() {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        if let data = try? JSONEncoder().encode(sidebarMeta) {
+            try? data.write(to: sidebarMetaURL, options: .atomic)
+        }
     }
 
     /// Every store call, in every window, one at a time: two saves at once shared index.json's
@@ -62,7 +94,13 @@ final class CoderStore {
             let ta = a.element.created ?? a.element.updated
             let tb = b.element.created ?? b.element.updated
             return ta != tb ? ta > tb : a.offset < b.offset
-        }.map(\.element)
+        }.map { pair in
+            var c = pair.element
+            if sidebarMeta.archived.contains(c.id) { c.archived = true }
+            if let s = sidebarMeta.snoozedUntilMs[c.id], s > 0 { c.snoozedUntilMs = s }
+            if let pf = sidebarMeta.projectFolder[c.id], !pf.isEmpty { c.projectFolder = pf }
+            return c
+        }
     }
 
     static func cleanTitle(_ raw: String) -> String {
@@ -175,6 +213,87 @@ final class CoderStore {
     }
 
     func worktree(_ id: String) -> ChatWorktree? { list.first { $0.id == id }?.worktree }
+
+    // ---- Sidebar grouping, archiving, snoozing & undo restore (#13875)
+
+    var savedProjects: [String] { sidebarMeta.projects }
+
+    func addProject(_ path: String) {
+        let norm = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard !norm.isEmpty, !sidebarMeta.projects.contains(norm) else { return }
+        sidebarMeta.projects.append(norm)
+        saveSidebarMeta()
+    }
+
+    func isArchived(_ id: String) -> Bool {
+        sidebarMeta.archived.contains(id) || (list.first { $0.id == id }?.archived == true)
+    }
+
+    func setArchived(_ id: String, _ archived: Bool) {
+        if archived {
+            sidebarMeta.archived.insert(id)
+            sidebarMeta.snoozedUntilMs.removeValue(forKey: id)
+        } else {
+            sidebarMeta.archived.remove(id)
+        }
+        if let i = list.firstIndex(where: { $0.id == id }) {
+            list[i].archived = archived ? true : nil
+            if archived { list[i].snoozedUntilMs = nil }
+        }
+        saveSidebarMeta()
+        saveIndex()
+    }
+
+    func snoozedUntil(_ id: String) -> Int64 {
+        sidebarMeta.snoozedUntilMs[id] ?? (list.first { $0.id == id }?.snoozedUntilMs ?? 0)
+    }
+
+    func setSnoozed(_ id: String, untilMs: Int64) {
+        if untilMs > 0 {
+            sidebarMeta.snoozedUntilMs[id] = untilMs
+        } else {
+            sidebarMeta.snoozedUntilMs.removeValue(forKey: id)
+        }
+        if let i = list.firstIndex(where: { $0.id == id }) {
+            list[i].snoozedUntilMs = untilMs > 0 ? untilMs : nil
+        }
+        saveSidebarMeta()
+        saveIndex()
+    }
+
+    func wakeExpiredSnoozes(nowMs: Int64) -> Bool {
+        var woke = false
+        for (id, wakeAt) in sidebarMeta.snoozedUntilMs where wakeAt > 0 && nowMs >= wakeAt {
+            sidebarMeta.snoozedUntilMs.removeValue(forKey: id)
+            if let i = list.firstIndex(where: { $0.id == id }) { list[i].snoozedUntilMs = nil }
+            woke = true
+        }
+        if woke {
+            saveSidebarMeta()
+            saveIndex()
+        }
+        return woke
+    }
+
+    func effectiveProjectFolder(_ chat: CoderChat) -> String {
+        let raw = chat.projectFolder ?? chat.repoRoot ?? chat.folder
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        return URL(fileURLWithPath: trimmed).standardizedFileURL.path
+    }
+
+    func restoreDeleted(meta: CoderChat, text: String) {
+        keep(id: meta.id, title: meta.title, folder: meta.folder, text: text, managedBy: meta.managedBy, worktree: meta.worktree)
+        if meta.renamed == true { rename(meta.id, to: meta.title) }
+        if meta.pinned != nil && !isPinned(meta.id) { togglePin(meta.id) }
+        if meta.archived == true { setArchived(meta.id, true) }
+        if let wake = meta.snoozedUntilMs, wake > 0 { setSnoozed(meta.id, untilMs: wake) }
+        if let pf = meta.projectFolder, !pf.isEmpty {
+            sidebarMeta.projectFolder[meta.id] = pf
+            saveSidebarMeta()
+            reload()
+        }
+    }
 
     func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {
         let managed = managedBy ?? ""

@@ -45,7 +45,7 @@ CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter",
 CP_LEVEL_OR :: 3;                           // the OpenRouter level
 CP_LEVEL_CLAUDE :: 4;                       // the first Claude level
 CP_PAD :: 32;               // the page's margin: Zeron's side room for the composer
-CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
+CP_CHATS :: 512;            // recent chats the sidebar lists (50 cap lifted in #13875); it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
 CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
 CP_SIDE :: 272;             // the sidebar's width until its edge is dragged (Zeron's)
@@ -227,7 +227,13 @@ CpTurn :: struct {
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 // One kept chat in the sidebar's list.
-CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; pinned: bool; managed: bool; unread: bool; }   // busy: a reply runs in it, out of view; pinned: shown in Pinned section; managed: Foreman-managed; unread: completed or updated out of view
+CpChat :: struct {
+  id: [CP_CHAT_ID] u8; id_n: int;
+  title: [CP_CHAT_TITLE] u8; title_n: int;
+  busy: bool; pinned: bool; managed: bool; unread: bool;   // busy: a reply runs in it, out of view; pinned: shown in Pinned section; managed: Foreman-managed; unread: completed or updated out of view
+  archived: bool; snoozed_until_ms: int;                   // archived: hidden from active list (#13875); snoozed_until_ms: epoch ms wake time (#13875)
+  folder: [CP_CHAT_FOLDER] u8; folder_n: int;              // project/working folder path for sidebar grouping (#13875)
+}
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
   ready: bool; time: f32; d: f32;
@@ -364,6 +370,7 @@ CoderPage :: struct {
   permit: [1] CpPermit;        // interactive permission / question prompt (permit.coax; GitHub #13831)
   git: [1] CpGit;              // Git Actions toolbar, branch picker, worktree mode & live hook output (gitactions.coax; #13871)
   ckpt: [1] CpCheckpoints;     // Git-backed per-turn checkpoints, turn diff & rewind (checkpoint.coax; #13872)
+  sb: [1] CpSidebar;           // project-grouped sidebar, archive/snooze, bulk select & undo toast (sidebar_groups.coax; #13875)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
@@ -496,6 +503,7 @@ cp_init :: (s: [] CoderPage) {
   cp_git_init(s);
   cp_gd_init(s);
   cp_ckpt_init(s);
+  cp_sb_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {
