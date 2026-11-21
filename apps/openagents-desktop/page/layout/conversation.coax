@@ -439,8 +439,9 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
     shown := cp_review_shown(s);
     _ := app_icon_button(f, "coder.review", lead_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);
   }
-  _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
-                       ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
+  // Copy chat: commented out for now; it will be moved elsewhere later.
+  // _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
+  //                      ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
     _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);

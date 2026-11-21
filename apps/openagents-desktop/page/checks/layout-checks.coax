@@ -284,11 +284,11 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cast(string) t.label[0..<t.label_n] == "Hide sidebar";
   // the sidebar's first row, the first message and the corners' buttons: under the bar, or on its line
   #assert cp_bar_row(s, "coder.new").y >= 38 && cp_bar_row(s, "t0.u").y >= 38;
-  c := cp_bar_row(s, "coder.copy");
-  #assert c.y >= 0 && c.y + c.h <= 38 && abs(c.y + c.h / 2 - 20) < 0.01;
+  // the copy chat button is commented out for now (conversation.coax cp_corners)
+  #assert surface_find(s[0].surface[..], "coder.copy") < 0;
   // the bar moves the window where nothing is: not on the toggle, a corner's button, under the bar or on the sidebar's edge
   #assert coder_page_bar_drags(s, 200, 10) && coder_page_bar_drags(s, 700, 30);
-  #assert !coder_page_bar_drags(s, t.x + 4, t.y + 4) && !coder_page_bar_drags(s, c.x + 4, c.y + 4);
+  #assert !coder_page_bar_drags(s, t.x + 4, t.y + 4);
   #assert !coder_page_bar_drags(s, 700, 38) && !coder_page_bar_drags(s, s[0].side, 10);
   // collapsed: the toggle stays where it was, Show sidebar, with the island behind it and the lights
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
@@ -298,6 +298,9 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   i := cp_island(s, true);
   #assert i.x == 6 && i.y == 4 && i.h == 32 && i.x + i.w == 88 + 24 + 10;   // zeron.island: inset 6, pad 4, control 24
   #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 150, 20);
+  // with no sidebar the New chat button sits in the top right corner, on the bar's line, and dragging it moves no window
+  n := cp_bar_row(s, "coder.new");
+  #assert n.y >= 0 && n.y + n.h <= 38 && !coder_page_bar_drags(s, n.x + 4, n.y + 4);
   // a narrow window can't show the sidebar: no toggle, the island behind the lights alone
   #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") < 0;
   i = cp_island(s, false);
