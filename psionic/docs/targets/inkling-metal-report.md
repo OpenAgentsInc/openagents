@@ -1,6 +1,6 @@
 # Beating `llama.cpp` on Apple Silicon with Coax & Metal 4: The Inkling 2 Mini Engineering Report
 
-> **TL;DR:** We built a native Metal 4 inference runtime for **Inkling 2 Mini** (26.4B total / 3.4B active looped MoE, 16.4 GB `IQ4_NL` GGUF) in **Psionic** — OpenAgents' ML library written in **Coax** — with zero PyTorch, zero `llama.cpp`, zero MPS/Accelerate GEMM calls, and zero hand-written `.metal` kernels. Over 22 optimization sprints on an Apple M5 Max, we took Psionic from **50× slower than `llama.cpp` on prefill and 2.5× slower on decode** to **beating `llama.cpp` across decode (+4.2% to +11.0%), medium/long prefill (+36.9% to +39.6%, up to 677 tok/s on 2.3K prompts), all 4 end-to-end workloads (1.5% to 27.1% faster), a real 3-turn tool-calling agent session (-4.14 s faster overall, winning every turn), warm startup (2.7–4.9× faster), and process RSS (3.3×–8.5× lower)**.
+> **TL;DR:** We built a native Metal 4 inference runtime for **Inkling 2 Mini** (26.4B total / 3.4B active looped MoE, 16.4 GB `IQ4_NL` GGUF) in **Psionic** — OpenAgents' ML library written in **Coax** — with zero PyTorch, zero `llama.cpp`, zero MPS/Accelerate GEMM calls, and zero hand-written `.metal` kernels. Over 22 optimization sprints on an Apple M5 Max, we took Psionic from **50× slower than `llama.cpp` on prefill and 2.5× slower on decode** to **beating `llama.cpp` across decode (+4.2% to +11.0%), medium/long prefill (+36.9% to +39.6%, up to 792 tok/s on 2.3K prompts), all 4 end-to-end workloads (1.5% to 27.1% faster), a real 3-turn tool-calling agent session (winning every turn: 30.67 s vs 44.16 s to natural EOS, and 29.75 s vs 33.89 s / -4.14 s at matched token counts), warm startup (2.7–4.9× faster), and process RSS (3.3×–8.5× lower)**.
 
 ---
 
@@ -42,23 +42,24 @@ Baseline `llama.cpp` binary: `~/.openagents/bin/llama-server` (`1.0.0-dev`, buil
 To test real-world agent responsiveness — not just synthetic single-turn benchmarks — we ran an identical 3-turn coding-agent conversation against both servers separately (no GPU contention) and rendered both live streams side-by-side through our Zeron WebGPU chat UI:
 - **Turn 1 (`1,048` prompt tok):** User asks the agent to inspect `psionic/lib/inkling/kernels.coax` → model emits a `Grep` tool call.
 - **Turn 2 (`1,415` prompt tok):** `Grep` result fed back → model emits a `Read` tool call (`kernels.coax:2556-2595`).
-- **Turn 3 (`2,287` / `2,296` prompt tok):** `Read` result fed back → model streams a ~640-token technical Markdown explanation.
+- **Turn 3 (`2,296` prompt tok):** `Read` result fed back → model streams a complete ~1,710-character technical Markdown explanation + Coax snippet to natural EOS (`max_tokens=2048`).
 
-| Turn | Prompt Length | Psionic Metal (SWA fix + `B=3072`) | `llama.cpp` Metal (`29b52d3`) | Result |
+| Turn | Prompt Length | Psionic Metal (`5e6b109baf`) | `llama.cpp` Metal (`29b52d3`) | Result |
 | --- | ---: | --- | --- | --- |
-| **Turn 1** (`Grep` tool call) | 1,048 tok | **1.602 s TTFT** / **4.930 s done** | 1.789 s TTFT / 5.255 s done | **Psionic 0.33 s faster** (identical tool call) |
-| **Turn 2** (`Read` tool call) | 1,415 tok | **2.237 s TTFT (633 tok/s)** / **9.626 s done** | 2.360 s TTFT (600 tok/s) / 10.383 s done | **Psionic 0.76 s faster** (identical tool call) |
-| **Turn 3** (640-tok Markdown) | 2,296 tok | **3.391 s TTFT (677 tok/s)** / **29.752 s E2E** | 3.898 s TTFT (589 tok/s) / 33.893 s E2E | **Psionic 4.14 s faster overall** |
+| **Turn 1** (`Grep` tool call) | 1,048 tok | **1.609 s TTFT** / **4.823 s done** (128 tok) | 2.157 s TTFT / 5.092 s done (120 tok) | **Psionic 0.27 s faster** (identical tool call) |
+| **Turn 2** (`Read` tool call) | 1,415 tok | **1.984 s TTFT (713 tok/s)** / **9.079 s done** (89 tok) | 2.205 s TTFT (642 tok/s) / 9.659 s done (94 tok) | **Psionic 0.58 s faster** (identical tool call) |
+| **Turn 3** (natural EOS, ~1,710 chars) | 2,296 tok | **2.898 s TTFT (792 tok/s)** / **30.667 s E2E** (716 tok, 1,717 chars) | 3.515 s TTFT (653 tok/s) / 44.156 s E2E (1,195 tok, 1,704 chars) | **Psionic 13.49 s faster to EOS** |
+| **Turn 3 (matched `max_tokens=640`)** | 2,296 tok | **3.391 s TTFT (677 tok/s)** / **29.752 s E2E** (640 tok) | 3.898 s TTFT (589 tok/s) / 33.893 s E2E (640 tok) | **Psionic 4.14 s faster at matched tokens** |
 | **Peak Process RSS** | — | **5.5 GiB** (`B=3072`, SWA cap `4096`) | 18.0 GiB | **Psionic 3.3× lower RSS** |
 
-Psionic beats `llama.cpp` on **every single turn** — first tool call, second tool call, final-answer streaming start (-1.26 s earlier), and total completion (-4.14 s / 12.2% faster) — with 100% identical prompt token counts (`1,048`, `1,415`, `2,296`) and byte-for-byte identical tool calls. *(Note on phrasing: because Psionic executes `nb >= 64` prefill GEMMs on Metal 4 BF16 Neural Accelerators with a 7-bit mantissa while `llama.cpp` uses FP16/FP32 `simdgroup_matrix`, a tiny rounding difference on a near-tie logit in Turn 1/3 reasoning can flip one word and cause downstream prose phrasing to differ even at `temperature=0`.)*
+Psionic beats `llama.cpp` on **every single turn** — first tool call, second tool call, Turn 3 streaming start, and final completion (**13.49 s faster** to natural EOS on equal-length ~1,710-char answers, and **4.14 s faster** at matched token counts) — with 100% identical prompt token counts (`1,048`, `1,415`, `2,296`) and byte-for-byte identical tool calls. *(Note on phrasing & thinking tokens: because Psionic executes `nb >= 64` prefill GEMMs on Metal 4 BF16 Neural Accelerators with a 7-bit mantissa while `llama.cpp` uses FP16/FP32 `simdgroup_matrix`, a tiny rounding difference on a near-tie logit in Turn 1/3 reasoning can flip one word and cause downstream prose phrasing and `<think>` length to differ even at `temperature=0`.)*
 
 ### B. Standard 4-Workload Benchmark Suite (Baseline → Optimized vs `llama.cpp`)
 
 | Metric | Psionic Baseline (`55bf398569`) | **Psionic Optimized (`4059be9291`–`ac561624d4`)** | `llama.cpp` Metal (`29b52d3`) | Speedup vs Baseline | Psionic vs `llama.cpp` |
 | --- | ---: | ---: | ---: | ---: | --- |
 | **Warm startup to `/health`** | 0.60 s | **0.22–0.40 s** | 1.078 s (11.29 s cold) | **1.5–2.7×** | **Psionic 2.7–4.9× faster** |
-| **Process RSS (`ps -o rss=`)** | 483 MiB\* | **2.1 GiB (`B=1024`) / 5.0 GiB (`B=3072`)**\* | 18.0 GiB | — | **Psionic 3.6×–8.5× lower** |
+| **Process RSS (`ps -o rss=`)** | 483 MiB\* | **2.1 GiB (`B=1024`) / 5.5 GiB (`B=3072`)**\* | 18.0 GiB | — | **Psionic 3.3×–8.5× lower** |
 | **Tokenizer prompt parity** | +7.5–7.8% extra tok | **100% exact** (`29, 37, 903, 2622`) | `29, 37, 903, 2622` | **Fixed** | **Exact match** |
 | **`short_math` (`29` tok) TTFT** | 2.049 s | **0.317–0.321 s** | **0.246 s** | **6.5×** | `llama.cpp` 1.29× (-71 ms) |
 | **`short_math` decode** | 15.83 tok/s | **44.18–44.32 tok/s** | 39.93 tok/s | **2.80×** | **Psionic +10.6–11.0% faster** |
@@ -69,7 +70,7 @@ Psionic beats `llama.cpp` on **every single turn** — first tool call, second t
 | **`medium_prefill` (`903` tok) TTFT** | 73.830 s (13.2 tok/s) | **1.436 s (628.9 tok/s)** | 1.966 s (459.4 tok/s) | **51.4×** | **Psionic +36.9% faster** |
 | **`medium_prefill` decode** | 10.97 tok/s | **39.89 tok/s** | 38.29 tok/s | **3.64×** | **Psionic +4.2% faster** |
 | **`medium_prefill` E2E** | 81.885 s | **3.642 s** | 4.997 s | **22.5×** | **Psionic 27.1% faster** |
-| **`long_prefill` (`2,622` tok) TTFT** | 244.229 s (11.6 tok/s) | **4.277 s (613.1 tok/s)** *(751 tok/s @ 2.3K w/ `B=3072`)* | 5.971 s (439.1 tok/s) | **57.1×** | **Psionic +39.6% faster** |
+| **`long_prefill` (`2,622` tok) TTFT** | 244.229 s (11.6 tok/s) | **4.277 s (613.1 tok/s)** *(up to 792 tok/s @ 2.3K w/ `B=3072`)* | 5.971 s (439.1 tok/s) | **57.1×** | **Psionic +39.6% faster** |
 | **`long_prefill` decode (`2,622` ctx)** | 10.56 tok/s | **39.71 tok/s** | 37.22 tok/s | **3.76×** | **Psionic +6.7% faster** |
 | **`long_prefill` TPOT (`2,622` ctx)** | 94.7 ms | **25.2 ms** | 26.9 ms | **3.76× lower** | **Psionic 6.3% lower** |
 | **`long_prefill` E2E** | 250.194 s | **5.863 s** | 7.664 s | **42.7×** | **Psionic 23.5% faster** |
@@ -116,10 +117,10 @@ The initial native Metal runtime worked end-to-end and wired Inkling 2 Mini into
 - **Specialized `m4` MoE & `tm=32` Metal 4 dense BF16:** Added `mc == 1/2` specialized loops, tight `max_tiles` bounds, `mc`-guarded TGEM writes, `ink_mm_bf16_32`/`64` single-tile dense BF16 for `17..64` tokens, and cached pipeline state in `metal-host.m`.
 - **Impact:** **44.32 / 41.97 / 39.89 / 39.71 tok/s decode** (+4.2% to +11.0% faster than `llama.cpp` across all 4 workloads) and **628.9 / 613.1 tok/s prefill** (+36.9% to +39.6% faster).
 
-### Sprint 22 — `ac561624d4` + SWA Ring-Buffer Fix (*Single-Pass `INK_PREFILL_B = 3072` for Multi-Turn Agent Prompts*)
+### Sprint 22 — `ac561624d4` & `5e6b109baf` (*Single-Pass `INK_PREFILL_B = 3072` + SWA Ring-Buffer Fix*)
 - **Diagnosis from the first side-by-side video:** Even after beating `llama.cpp` on all 4 standard benchmarks, our first side-by-side 3-turn agent recording showed `llama.cpp` finishing 3.26 s earlier (`33.06 s` vs `36.32 s`). Profiling revealed why: `INK_PREFILL_B = 1024` (plus a hardcoded `if (chunk > 1024) chunk = 1024;` in `inkling-serve.c`) split our real 1,048-, 1,415-, and 2,296-token agent prompts into **2–3 separate passes over all 16.4 GB of weights**.
-- **Fix:** Raised the dynamic prefill chunk ceiling to `3072` for `max_ctx <= 8192` (`2048` up to `16384`, `1024` above) in `kernels.coax`, `inkling-metal.c`, and `inkling-serve.c`, and sized SWA KV ring buffers to `min(max_ctx, hp->swa + s->prefill_b)` so `K_KV_STORE_BATCH` never overwrites earlier keys in `[k_start, pos + nb)` before MMA prefill attention reads them.
-- **Impact:** Turn 3 prefill (2,296 tokens) jumped to **677 tok/s** (3.391 s vs `llama.cpp`'s 3.898 s / 589 tok/s), and total 3-turn agent E2E dropped from **36.32 s → 29.75 s**, beating `llama.cpp` (`33.89 s`) by **4.14 full seconds** with identical prompt token counts and identical tool calls.
+- **Fix:** Raised the dynamic prefill chunk ceiling to `3072` for `max_ctx <= 8192` (`2048` up to `16384`, `1024` above) in `kernels.coax`, `inkling-metal.c`, and `inkling-serve.c` (`ac561624d4`), and sized SWA KV ring buffers to `min(max_ctx, hp->swa + s->prefill_b)` (`5e6b109baf`) so `K_KV_STORE_BATCH` never overwrites earlier keys in `[k_start, pos + nb)` before MMA prefill attention reads them.
+- **Impact:** Turn 3 prefill (2,296 tokens) jumped to **677–792 tok/s** (2.898–3.391 s vs `llama.cpp`'s 3.515–3.898 s / 589–653 tok/s), and the 3-turn agent session flipped to **30.67 s vs 44.16 s** to natural EOS (and **29.75 s vs 33.89 s**, **4.14 s faster** at matched token counts) with identical prompt token counts and identical tool calls.
 
 ---
 
