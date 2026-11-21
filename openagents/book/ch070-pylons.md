@@ -25,37 +25,56 @@ rebuild the network under the name Pylon. Episode 290 relaunches it and says
 who it is for: people with strong computers at home that sit idle most of the
 day, who would be both sellers and buyers. Gamers.
 
-Demand is different this time because the buyer is in this book. The front
-makes a decision on every turn of every conversation. Decision models are
-small, and they run fast on ordinary hardware. Every guard and shopkeeper in
-the OpenAgents Metaverse makes decisions too (chapter 74). That is a steady stream of small
-paid jobs.
+Demand is different this time because the buyer is in this book—and because
+the **OpenAgents Executor Network** (`#13912`–`#13928`) turns consumer Macs
+and NVIDIA GPUs into a verifiable execution, validation, and decentralized
+training mesh rather than an unverified token relay:
 
-A Pylon announces what it can serve. The gateway sends it requests. The work
-can be checked by recomputing it on a second machine, so payment does not rest
-on trusting a stranger. Receipts and payouts are the ones from chapters 56 to 58.
+- **Three `NIP-PYLON` lanes:** `cj-executor` (runs digest-pinned `exec-vm-v1` /
+  `wasm-exec-v1` programs after passing a local self-test), `cj-validate`
+  (a second distinct physical device independently replays traces via
+  [Psionic ch234](../../psionic/book/ch234-exact-replay-as-a-verification-class.md)
+  and publishes signed NIP-32 kind `1985` verdicts), and `cj-training`
+  (runs bounded Local-SGD / DiLoCo routing-adapter windows whose updates pass
+  a 6-tier Byzantine verifier and the Quarantine Optimizer in
+  [Psionic ch272–274](../../psionic/book/ch272-bounded-training-windows-and-diloco.md)).
+- **Live Bitcoin mainnet two-leg settlement:** Verified across an Apple M5 Max
+  worker and an NVIDIA RTX 4080 Linux validator over a live Coax Nostr relay,
+  automatically paying both legs on Bitcoin mainnet via Breez Spark (`200 sats`
+  worker + `50 sats` validator, `0` sat fee, zero double-spend on restart),
+  gated by `#authority` rolling 24h UTC caps and reconciled into signed kind
+  `30201` pool aggregates ([W4.3 mainnet settlement record](../../docs/verification/executor-w43-mainnet-settlement.md),
+  [Bitcoin ch123](../../bitcoin/book/ch123-paying-for-requests.md),
+  [Psionic ch238](../../psionic/book/ch238-pay-for-verified-work.md)).
+- **Ambient decision demand:** The front makes decisions on every turn, coding
+  agents invoke exact weight modules, and every guard and shopkeeper in the
+  OpenAgents Metaverse makes decisions too (chapter 74).
 
-Episode 290 calls this having ambient compute as a primitive. Whether demand
-now meets supply is the claim this chapter has to earn, and the chapter
-reports the numbers either way.
+Episode 290 calls this having ambient compute as a primitive. The Executor
+Network capstone ([executor-network-flywheel.md](../../docs/books/capstones/executor-network-flywheel.md))
+proves the end-to-end loop on our own hardware; scaling to independent outside
+operators is what 1.0 tracks.
 
 ## What we build
 
 A plan for what this chapter ships once the draft is approved:
 
-- A Pylon you install with one command, which serves decision models and
-  announces itself.
-- Routing through the gateway to Pylons, with a recompute check on a sample of
-  results.
-- Receipts and payouts for Pylon owners, using the machinery of chapters 56 to 58, and a live
-  count of Pylons and jobs.
+- A Pylon you install with one command (`openagents pylon`), which passes a
+  digest self-test and advertises decision, `cj-executor`, `cj-validate`, and
+  `cj-training` lanes.
+- Routing through the gateway and `NIP-PYLON` relays with distinct-device
+  exact replay verification and Byzantine-safe training quarantine.
+- Receipt-first two-leg Breez Spark / Lightning payouts under rolling daily
+  caps, with a reconciled public kind `30201` settled feed (`paid_msat.bitcoin`).
 
 It builds on what exists today:
 
 - [`psionic/lib/pylon`](../../psionic/lib/pylon)
 - [`psionic/lib/mesh`](../../psionic/lib/mesh)
+- [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax), [`psionic/lib/peer/settled-feed.coax`](../../psionic/lib/peer/settled-feed.coax), and [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)
+- [`psionic/lib/peer/training-window.coax`](../../psionic/lib/peer/training-window.coax), [`psionic/lib/peer/train-verify.coax`](../../psionic/lib/peer/train-verify.coax), and [`psionic/lib/peer/quarantine-opt.coax`](../../psionic/lib/peer/quarantine-opt.coax)
 - [`coax/lib/gateway/pylon.coax`](../../coax/lib/gateway/pylon.coax)
-- [`apps/openagents-cli/pylon.coax`](../../apps/openagents-cli/pylon.coax)
+- [`apps/openagents-cli/pylon.coax`](../../apps/openagents-cli/pylon.coax) and [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
 - [`docs/connect-a-pylon.md`](../../docs/connect-a-pylon.md)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 
@@ -106,8 +125,10 @@ Planned paths: none. Pylons are [`psionic/lib/pylon`](../../psionic/lib/pylon).
 
 ## Open questions for the owner
 
-1. What does a Pylon earn per decision, and who sets it: us, the Pylon's
-   owner, or a market?
-2. How large a sample of results do we recompute, and what happens to a Pylon
-   whose answers don't match?
-3. Beyond our own agent and the Metaverse, who is the first outside buyer?
+1. As public operators join beyond our own machines, should per-job payouts
+   stay fixed (starting at `200 sats` worker + `50 sats` validator for exact
+   replay) or move to open market bidding under daily caps?
+2. What trust/reputation threshold graduates a new public Pylon from Tier-2
+   redundant replication to sampled validation?
+3. Beyond our own coding agents and the Metaverse, who is the first external
+   buyer of verified execution or DiLoCo training capacity?

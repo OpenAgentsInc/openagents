@@ -873,6 +873,16 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
   only. A protocol OpenAgents publishes starts in `proto/` and
   `docs/protocol/` with a version.
 
+## Exposing compiled weight modules over MCP (W6.1)
+
+External coding agents (Claude Code, Codex, Cursor, and Antigravity) can invoke
+OpenAgents' digest-pinned Class-E compiled weight modules over standard MCP via
+`openagents mcp --domains executor`
+([`apps/openagents-cli/executor-mcp.coax`](../../apps/openagents-cli/executor-mcp.coax)).
+Every tool response returns both the exact output (or typed `<exec_refuse>`)
+and its Ch 234 replay digest so third-party harnesses inherit the same
+zero-hallucination verification boundary without modifying their own runtimes.
+
 ## Sources
 
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.

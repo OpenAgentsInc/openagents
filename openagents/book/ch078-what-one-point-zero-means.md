@@ -26,12 +26,20 @@ a payout that matches its receipts. Some need a person: a stranger publishes a
 plugin and is paid. The list says which is which.
 
 The general-agent essay ends by separating what was shown from what was not,
-and that section stays true until we change it. We have not shown independent
-contributors at scale. We have not shown that the network compounds, that
-adding people makes the agent measurably better. And we have not shown the
-composition working outside software. 1.0 does not need all three. It needs
-each to be stated plainly next to the version number, with the measurement
-that would settle it.
+and that section stays true until we change it. With the **OpenAgents Executor
+Network** (`#13912`–`#13928`, [master capstone](../../docs/books/capstones/executor-network-flywheel.md)),
+we have now proven the full end-to-end compounding loop on our own real
+hardware—exact compiled WASM/VM transformers across Apple Metal 4 and NVIDIA
+RTX 4080 CUDA, `Inkling-2-Mini` hybrid routing with `0` silent hallucinations,
+multi-device replay verification with live Bitcoin mainnet two-leg Breez Spark
+settlement, Byzantine-safe DiLoCo training (`7/7` attacks and `3/3` regressions
+blocked), and signed shadow-to-promote rollouts
+([H7 qualification record](../../docs/verification/executor-network-effect-h7.md)).
+What we have **not** yet shown is independent outside contributors operating
+Pylons and submitting winning capabilities at scale, sustained real-world
+compounding across public users, and composition working outside software. 1.0
+does not need all three. It needs each to be stated plainly next to the version
+number, with the measurement that would settle it.
 
 The essay also says what would show the thesis is wrong. If members that pass
 every check do not make the agent better on new work, the method has failed,

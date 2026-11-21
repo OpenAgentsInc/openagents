@@ -51,6 +51,7 @@ It builds on what exists today:
 - [`coax/lib/nostr/nipmv.coax`](../../coax/lib/nostr/nipmv.coax)
 - [`coax/remote`](../../coax/remote)
 - [`apps/openagents-web`](../../apps/openagents-web)
+- [`psionic/lib/peer/quarantine-opt.coax`](../../psionic/lib/peer/quarantine-opt.coax) and [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax) (Executor Network quarantine promotion & H7 shadow-to-promote qualification, [H7 verification record](../../docs/verification/executor-network-effect-h7.md))
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 

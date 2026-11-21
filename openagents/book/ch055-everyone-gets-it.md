@@ -54,6 +54,7 @@ It builds on what exists today:
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/crypto`](../../coax/lib/crypto)
 - [`coder/tui/plugins.coax`](../../coder/tui/plugins.coax)
+- [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax) (`#authority` `shadow -> canary -> promoted` state machine with automatic rollback on canary divergence) and [`apps/openagents-cli/executor.coax`](../../apps/openagents-cli/executor.coax) ([W6.3 H7 verification record](../../docs/verification/executor-network-effect-h7.md))
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 

@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The shared Coax chat screen module
 > (`apps/shared/chat/screen.coax`), the primary desktop consumer
-> (`apps/openagents-desktop/chat_screen.coax`), and the mobile consumer
+> (`apps/openagents-desktop/page.coax`), and the mobile consumer
 > (`apps/openagents-ios/composer_screen.coax`) pass their `#test` checks for
 > the `tree` / `type composer.input hello` / `state draft` / `counts` trace
 > and duplicate-ID refusal on `cpu`, beside
@@ -120,7 +120,7 @@ It builds on what exists today:
   that find the field through the accessibility tree and type into it with
   the system keyboard, with no `coax drive`, and read back the same value.
 - **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
-  `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
+  `coax/bin/coax test apps/openagents-desktop/page.coax`, and
   `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
 Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is

@@ -90,6 +90,18 @@ ok   status of an unknown ID exits 6
 - [ ] Cache hit rate, prefill saved, time to first token, task success and
   cost are reported for the local model and a hosted one on the same tasks.
 
+## Hybrid executor models (`hybrid-exec-v1`, W3.1 / W6.1)
+
+In addition to plain local or Pylon inference, Microcoder and OpenAgents
+Desktop run the live **hybrid executor** ([Psionic chapter 236](../../psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md),
+[`psionic/lib/executor-desktop.coax`](../../psionic/lib/executor-desktop.coax),
+[`coax/lib/agent/desktop/executor-store.coax`](../../coax/lib/agent/desktop/executor-store.coax)):
+the real 16.38 GB `Inkling-2-Mini` GGUF on Apple Silicon Metal 4 paired with a
+hot-swappable rank-8 LoRA routing adapter that invokes frozen compiled weight
+cores while reusing the KV cache (`11/48 → 48/48` on held-out tasks, `0` silent
+hallucinations; [W3.1 verification record](../../docs/verification/executor-w31-hybrid-exec.md),
+[W6.1 verification record](../../docs/verification/executor-w61-coding-agent.md)).
+
 ## Sources
 
 - `coder/tui/microcoder_keys.coax` (`mk_plan_local`), `coder/tui/mcworker.coax`,

@@ -251,6 +251,23 @@ such session, 130 stopped.
 - [ ] Each verb exists in the shared command table with `--json` and the
   spec's exit codes; the journey does not establish that catalog work.
 
+## Sibling Executor Network CLI domains
+
+Beside `openagents coder`, the same CLI binary exposes the domains that close
+the Executor Network flywheel:
+
+- `openagents module` ([Psionic chapter 237](../../psionic/book/ch237-composable-weight-modules.md)):
+  inspect, verify, and link compiled weight modules in `~/.openagents/modules/`.
+- `openagents mcp --domains executor` ([`apps/openagents-cli/executor-mcp.coax`](../../apps/openagents-cli/executor-mcp.coax)):
+  serve compiled weight modules to external MCP coding agents.
+- `openagents contribute` ([`apps/openagents-cli/contribute.coax`](../../apps/openagents-cli/contribute.coax)):
+  preview and submit opt-in, secret/BIP-39-redacted `ATIF-v1.8` trajectories as
+  W5.1 dataset shards.
+- `openagents executor` ([`apps/openagents-cli/executor.coax`](../../apps/openagents-cli/executor.coax))
+  and `openagents pylon` (`executor`, `validate`, `train`, `settle`): run
+  shadow-to-promote rollouts, multi-device replay validation, DiLoCo training
+  windows, and live Spark settlement.
+
 ## Sources
 
 - [The openagents CLI, v1.0.0](../../docs/cli/2026-11-01-openagents-cli-v1.md).

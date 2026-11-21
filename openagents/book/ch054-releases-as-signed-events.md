@@ -53,6 +53,7 @@ It builds on what exists today:
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 - [`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax)
 - [`nostr/relay/relay_server.coax`](../../nostr/relay/relay_server.coax)
+- [`proto/openagents/executor/v1alpha1/release.proto`](../../proto/openagents/executor/v1alpha1/release.proto), [`psionic/lib/peer/executor-release.coax`](../../psionic/lib/peer/executor-release.coax), and [`psionic/lib/peer/executor-release-sign.coax`](../../psionic/lib/peer/executor-release-sign.coax) (signed `ExecutorReleaseManifest` events pinning promoted models and Class-E compiled weight modules)
 - [`coax/lib/nostr/event_sign.coax`](../../coax/lib/nostr/event_sign.coax)
 - [`apps/openagents-cli/relay.coax`](../../apps/openagents-cli/relay.coax)
 - [`apps/openagents-cli/skill.coax`](../../apps/openagents-cli/skill.coax)

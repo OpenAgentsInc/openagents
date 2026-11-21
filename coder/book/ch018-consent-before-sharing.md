@@ -812,6 +812,21 @@ and its state to System One.
 - [Chapter19](ch019-remember-a-fact-then-revise-it.md): facts with a
   scope and an owner, the sources of `user` and `project` labels.
 
+## Opt-in redacted `ATIF-v1.8` trajectory contribution (W6.2)
+
+When a user explicitly opts in to improve the Executor Network,
+[`apps/openagents-cli/contribute.coax`](../../apps/openagents-cli/contribute.coax)
+(`openagents contribute submit`) runs every `ATIF-v1.8` coding trajectory
+through `#authority` [`coax/lib/agent/redact-trajectory.coax`](../../coax/lib/agent/redact-trajectory.coax)
+before anything leaves the machine. Telemetry stays **default OFF**; secrets,
+tokens, PII, and BIP-39 mnemonic phrases are stripped with user preview before
+upload, only real compiler/test/replay labels are kept (never LLM
+self-summaries), and accepted bundles emit `DatasetShardManifest` records
+([`proto/openagents/executor/v1alpha1/training.proto`](../../proto/openagents/executor/v1alpha1/training.proto))
+that must pass [Psionic chapter 272](../../psionic/book/ch272-bounded-training-windows-and-diloco.md)'s
+Dataset Shard Authority and exposure ledger before entering any Pylon DiLoCo
+training window.
+
 ## Sources
 
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.

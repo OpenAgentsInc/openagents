@@ -161,10 +161,22 @@ python3 coder/tui/smoke.py                   # the Vertex recording replayed twi
   a row that fail the schema"), and all but `stopped` also through `coder
   run` with replayed responses.
 
+## Exact-core edit and schema guards (W6.1)
+
+Microcoder's edit and tool loop now wires directly into the four W2.2 Class-E
+compiled weight modules (`oa-exec-diff-verify`, `oa-exec-json-schema`,
+`oa-exec-dep-sched`, `oa-exec-arith-budget`) via
+[`coax/lib/microcoder/executor-guard.coax`](../../coax/lib/microcoder/executor-guard.coax)
+and [`coax/lib/microcoder/executor-bench.coax`](../../coax/lib/microcoder/executor-bench.coax).
+Before a patch or tool payload takes effect, the exact compiled core verifies
+hunk/line offsets, JSON schemas, DAG ordering, and satoshi/token budgets with
+zero silent hallucinations ([W6.1 verification record](../../docs/verification/executor-w61-coding-agent.md)).
+
 ## Sources
 
 - `coax/lib/microcoder/` (`loop.coax`, `state.coax`, `action.coax`,
-  `text_action.coax`, `tools.coax`, `run.coax`).
+  `text_action.coax`, `tools.coax`, `run.coax`, `executor-guard.coax`,
+  `executor-bench.coax`).
 - `coder/tui/mcworker.coax`, `coder/tui/microcoder_keys.coax`,
   `coder/tui/microcoder.coax`.
 - [Microcoder in Coax, and the inference gateways](../../docs/coder/microcoder.md).

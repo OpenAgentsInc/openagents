@@ -685,6 +685,21 @@ second call.
 
 ## Sources
 
+## Compiled weight modules as deterministic tool cores (W2.2 / W6.1)
+
+Bounded tool programs lowered from `PgProgram` ASTs also compile directly into
+dense `binary64` transformer weights via [Psionic chapter 231](../../psionic/book/ch231-an-interpreter-in-weights-or-one-program-in-weights.md)
+(`wasm-exec-v1`) and link as digest-pinned Class-E weight modules under
+`~/.openagents/modules/<sha256>/` ([Psionic chapter 237](../../psionic/book/ch237-composable-weight-modules.md)).
+The first four shipping coding-agent cores—`oa-exec-diff-verify`,
+`oa-exec-json-schema`, `oa-exec-dep-sched`, and `oa-exec-arith-budget`—are
+guarded by [`coax/lib/microcoder/executor-guard.coax`](../../coax/lib/microcoder/executor-guard.coax)
+so exact diff, schema, DAG, and budget checks run with bit-exact Ch 234 replay
+receipts and typed `<exec_refuse>` traps instead of silent hallucinations
+([W6.1 coding-agent verification record](../../docs/verification/executor-w61-coding-agent.md)).
+
+## Sources
+
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
 - [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
 - [Chapter5](ch005-a-sandbox-and-approvals.md): the sandbox every call

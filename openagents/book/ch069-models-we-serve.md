@@ -54,6 +54,7 @@ It builds on what exists today:
 - [`psionic/lib/decision-models.coax`](../../psionic/lib/decision-models.coax)
 - [`psionic/lib/decision-session.coax`](../../psionic/lib/decision-session.coax)
 - [`psionic/lib/decision-calibration.coax`](../../psionic/lib/decision-calibration.coax)
+- [`psionic/lib/hybrid-exec.coax`](../../psionic/lib/hybrid-exec.coax) and [`psionic/lib/executor-desktop.coax`](../../psionic/lib/executor-desktop.coax) (real 16.38 GB `Inkling-2-Mini` GGUF on Metal 4 + rank-8 LoRA routing adapter + frozen W2.2 compiled weight cores: `11/48 → 48/48` on held-out tasks, `0` silent hallucinations; [W3.1 verification record](../../docs/verification/executor-w31-hybrid-exec.md), [Psionic ch236](../../psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md), [ch237](../../psionic/book/ch237-composable-weight-modules.md), [ch269](../../psionic/book/ch269-inkling-2-mini-on-metal.md))
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coax/lib/gateway/psionic.coax`](../../coax/lib/gateway/psionic.coax)
 - [`psionic/book/README.md`](../../psionic/book/README.md)
