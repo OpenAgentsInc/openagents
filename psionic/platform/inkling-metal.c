@@ -1668,7 +1668,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_f32v(s->row_wt, 0, tot_rows));
         pm_barrier(batch);
 
-        int64_t e_chunk_gu = 64;
+        int64_t e_chunk_gu = 16;
         int64_t gu_rows = 2 * n_ff;
         int64_t gu_w_u32 = gu_rows * (d / 2);
         int64_t gu_r_tiles = (gu_rows + tn - 1) / tn;
@@ -1702,8 +1702,8 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_f32v(s->moe_hid, 0, tot_rows * n_ff));
         pm_barrier(batch);
 
-        /* Down projection (128 experts = 1 single chunk in 220M u32 w_bf16!) */
-        int64_t e_chunk_dn = 128;
+        /* Down projection (32 experts/chunk fits in 44M u32 w_bf16!) */
+        int64_t e_chunk_dn = 32;
         int64_t dn_w_u32 = d * (n_ff / 2);
         int64_t dn_r_tiles = (d + tn - 1) / tn;
         int64_t dn_deq_rgrps = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? ((d + 7) / 8) : ((d + 3) / 4);
