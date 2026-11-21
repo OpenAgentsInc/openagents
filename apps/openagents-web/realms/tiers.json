@@ -1,0 +1,61 @@
+{
+  "schema": "oa-realm-tiers-v1",
+  "note": "Separates production realms from experimental labs, legacy v1 realms, and test fixtures (#13851).",
+  "production": [
+    "archery-range",
+    "belt-2200",
+    "built",
+    "character-creator",
+    "characters",
+    "crew",
+    "dead-gears",
+    "drop",
+    "druid",
+    "everglade2",
+    "fairy-forest",
+    "garden",
+    "haunted-house",
+    "hecates-cemetery",
+    "hold-the-stair",
+    "ice-cream-man",
+    "new",
+    "one-shot",
+    "orbit-league",
+    "painted-village",
+    "penultimate-frontier",
+    "slab",
+    "splice-bots",
+    "the-grid",
+    "valley-canyon",
+    "valley-world",
+    "watchtower"
+  ],
+  "lab": [
+    "5e-lab",
+    "animation-lab",
+    "anime-lab",
+    "audio-lab",
+    "bitcoin-lab",
+    "coax-lab",
+    "dragon-lab",
+    "metahuman-lab",
+    "nostr-lab",
+    "portal-lab",
+    "sandbox",
+    "splat-lab",
+    "state-lab",
+    "valley-lab",
+    "waterlab"
+  ],
+  "legacy": [
+    "5e-mmo",
+    "create-world",
+    "everglade",
+    "everglade-classic",
+    "everglade-experimental",
+    "splice-bots-jam"
+  ],
+  "fixture": [
+    "fixture"
+  ]
+}
