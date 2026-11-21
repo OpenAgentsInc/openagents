@@ -21,7 +21,7 @@ With two owner decisions on 2026-11-20 — **(1) open-source GameBuilder** and *
 - **Do NOT migrate standalone native shells:** `~/work/gamebuilder/host/` (41 files, 3.48 MB: 16 Swift files, `Shaders.metal`, `Assets.xcassets`, `project.yml`, `GameBuilder.xcodeproj`, `host/linux/`, `host/panel/`, `host/page/`, `com.openagents.gamebuilder` bundle IDs) is **dropped outright**. Only GameBuilder's Coax domain logic (`core/`, `shared/`), CLI/MCP (`cli/`), tests, tools, and web/API surfaces move into a domain package **`gamebuilder/`** (just like `everglade/`, `coder/`, `metaverse-engine/`, `pay/`, `rules/`).
 - **Collapse `apps/` from 8 app directories to 4 + `shared/`:** Retire `apps/everglade-desktop/` (47 files, 1.37 MB), `apps/everglade-mobile/` (35 files, 0.46 MB), and `apps/metaverse-engine-desktop/` (117 files, 0.92 MB). Everything lives in `apps/openagents-desktop/`, `apps/openagents-ios/`, `apps/openagents-web/`, and `apps/openagents-cli/` (plus `apps/shared/`).
 - **Direct unblock for `#13846` & `components/zeron/`:** Those three standalone desktop/mobile shells were major callers of `apps/openagents-web/old/`, `everglade/legacy/`, and legacy `components/zeron/` chat bridges (`Workshop.swift`). Retiring them eliminates a large chunk of cross-repo coupling in one stroke.
-- **Solve asset bloat in one migration (`#13844` + GameBuilder assets):** Instead of committing `village.pack` (1.84 MB) and `scrappers.gbm` (1.87 MB) into git, introduce one unified content-addressed asset pipeline (`gs://openagents-assets` + `~/.openagents/assets/sha256/` + `coax/web/tool.sh assets-sync`) covering GameBuilder assets, `openagents` realm `.pack`/`.pack.gz` bundles (358 MB), and large `psionic/fixtures/` (235 MB) — **net ~-575 MB** working-tree reduction.
+- **Solve asset bloat in one migration (`#13844` + GameBuilder assets):** Instead of committing `village.pack` (1.84 MB) and `scrappers.gbm` (1.87 MB) into git, introduce one unified content-addressed asset pipeline (`gs://openagentsgemini-assets` + `~/.openagents/assets/sha256/` + `coax/web/tool.sh assets-sync`) covering GameBuilder assets, `openagents` realm `.pack`/`.pack.gz` bundles (358 MB), and large `psionic/fixtures/` (235 MB) — **net ~-575 MB** working-tree reduction.
 
 ---
 
@@ -113,9 +113,9 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
 ### Architecture
 
 1. **One Durable Content-Addressed Remote Bucket (No TTL)**
-   - Provision **`gs://openagents-assets`** (separate from the 14-day-TTL `gs://openagentsgemini-coax-build-cache` build cache, in the same GCP project as `gs://openagentsgemini-gamebuilder-web`).
-   - Object key layout: `gs://openagents-assets/sha256/<first2>/<sha256>` (immutable, globally deduplicated across all realms, GameBuilder, and Psionic fixtures).
-   - Serve public read-only HTTPS via Cloud CDN (or Cloudflare R2) at `https://assets.openagents.com/sha256/<first2>/<sha256>` so **fresh checkouts, contributors, and remote build hosts need zero credentials to download**. Uploads use the existing automation service account.
+   - Provision **`gs://openagentsgemini-assets`** (separate from the 14-day-TTL `gs://openagentsgemini-coax-build-cache` build cache, in the same GCP project as `gs://openagentsgemini-gamebuilder-web`).
+   - Object key layout: `gs://openagentsgemini-assets/sha256/<first2>/<sha256>` (immutable, globally deduplicated across all realms, GameBuilder, and Psionic fixtures).
+   - Serve public read-only HTTPS via Cloud CDN (or Cloudflare R2) at `https://storage.googleapis.com/openagentsgemini-assets/sha256/<first2>/<sha256>` so **fresh checkouts, contributors, and remote build hosts need zero credentials to download**. Uploads use the existing automation service account.
 
 2. **One Shared Local Cache (`~/.openagents/assets/sha256/`)**
    - Extends the `~/.openagents/assets/` directory already mandated by `AGENTS.md` ("Shared asset library").
@@ -132,7 +132,7 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
    - `coax/web/tool.sh assets-sync [--group gamebuilder|realms|psionic|all] [--check]`
    - Reads `assets/registry/collections/*.lock.json`. For each entry:
      1. Checks if workspace target exists with matching size/SHA-256 (fast no-op).
-     2. Checks `~/.openagents/assets/sha256/<aa>/<sha256>`; if missing, downloads from `https://assets.openagents.com/sha256/<aa>/<sha256>` into a temp file, verifies SHA-256 (fails closed on mismatch), and atomically moves into cache.
+     2. Checks `~/.openagents/assets/sha256/<aa>/<sha256>`; if missing, downloads from `https://storage.googleapis.com/openagentsgemini-assets/sha256/<aa>/<sha256>` into a temp file, verifies SHA-256 (fails closed on mismatch), and atomically moves into cache.
      3. Materializes into the workspace path via **APFS clonefile (`cp -c`) / regular copy** — **not symlink** — because `coax/web/serve.c:1444` explicitly rejects symlinks (`realpath(full) != full`). On macOS APFS, `cp -c` is copy-on-write (instant, zero extra disk space, regular file).
    - Invoked automatically by `gamebuilder/scripts/web.sh`, `apps/openagents-web/build.sh`, `psionic/check.sh`, and `coax/remote/host-job.sh`.
    - Externalized workspace paths are `.gitignore`d.
@@ -157,11 +157,11 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
 ### Phase 0 — Pre-Flight & Owner Sign-Offs (Day 1)
 - [ ] In `~/work/gamebuilder`: commit or discard uncommitted `scripts/web-deploy.sh` and untracked `docs/claude-ui-spec/tokens.css`.
 - [ ] Owner confirms **D1** (`docs/business/` stays private outside public `openagents`) and whether `gamebuilder.org` web/API deploys stay live during transition (see Section 6.2).
-- [ ] Owner provisions durable no-TTL bucket `gs://openagents-assets` + public read CDN `https://assets.openagents.com/sha256/` (unblocking `#13844`, tracked in `NEEDS_OWNER.md`).
+- [ ] Owner provisions durable no-TTL bucket `gs://openagentsgemini-assets` + public read CDN `https://storage.googleapis.com/openagentsgemini-assets/sha256/` (unblocking `#13844`, tracked in `NEEDS_OWNER.md`).
 
 ### Phase 1 — Build Unified Asset Pipeline & Close `#13844` (Days 2–3)
 - [ ] Implement `coax/web/assets-sync.coax` (with `#test` checks for `assets/registry/collections/*.lock.json` parsing, SHA-256 verification, fail-closed mismatch refusal, and clone/copy materialization).
-- [ ] Upload `apps/openagents-web/realms/**/*.pack{,.gz}`, large `psionic/fixtures/`, and GameBuilder's `village.pack` + `scrappers.gbm` to `gs://openagents-assets/sha256/`.
+- [ ] Upload `apps/openagents-web/realms/**/*.pack{,.gz}`, large `psionic/fixtures/`, and GameBuilder's `village.pack` + `scrappers.gbm` to `gs://openagentsgemini-assets/sha256/`.
 - [ ] Commit `assets/registry/collections/{realms,psionic-fixtures,gamebuilder}.lock.json`, wire `assets-sync` into `apps/openagents-web/build.sh`, `psionic/check.sh`, and `coax/remote/host-job.sh`, `git rm` the externalized blobs, and verify fresh-worktree builds pass.
 - [ ] Add binary-size guard to `coax/web/prepush.coax`. Close `#13844`.
 
