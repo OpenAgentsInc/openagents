@@ -242,7 +242,13 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     if key == KEY_ENTER && mods == 0 { _ = coder_page_search_submit(s); return true; }
     if key == -15 { return true; }   // Tab stays in the search
   }
-  if !ue_key(e, s[0].atlas[..], key, mods) { return false; }
+  // A real key event delivered to the focused field still edits even when the window is inactive
+  // (e.g. Edit menu chords or background-window automation); preserve `focused` for caret paint.
+  prev_f := e[0].body[0].focused;
+  e[0].body[0].focused = true;
+  took := ue_key(e, s[0].atlas[..], key, mods);
+  e[0].body[0].focused = prev_f;
+  if !took { return false; }
   cp_ed_publish(s, which);
   return true;
 }

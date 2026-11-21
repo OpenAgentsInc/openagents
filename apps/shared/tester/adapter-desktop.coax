@@ -250,21 +250,42 @@ da_launch :: (s: [] DaSession) -> bool {
   }
   s[0].proc_h = h;
 
-  // Poll probe socket until ping returns {"ok":true}.
+  // Poll probe socket until ping returns {"ok":true,"window":1/true} and first frame paints.
   rep: [DA_REPLY] u8;
   deadline := proc_now_ms() + 15000;
   ready := false;
   while proc_now_ms() < deadline {
     n := da_probe(sock, "ping", rep[..], 500);
     if n > 0 && da_json_ok(cast(string) rep[0..<n]) {
-      ready = true;
-      break;
+      nodes: [64] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) rep[0..<n], nodes[..]) {
+        wn := jv_get(doc[0], 0, "window");
+        if jv_bool(doc[0], wn) || jv_int(doc[0], wn, 0) != 0 {
+          ready = true;
+          break;
+        }
+      }
     }
     proc_sleep(150);
   }
   if !ready {
-    tool_errln("desktop-adapter: probe socket did not respond to ping within 15s");
+    tool_errln("desktop-adapter: probe socket did not report window ready within 15s");
     return false;
+  }
+  // Wait briefly for the first Metal frame so CoderPage.ready is true before scenarios start.
+  fdead := proc_now_ms() + 3000;
+  while proc_now_ms() < fdead {
+    cn := da_probe(sock, "composer", rep[..], 500);
+    if cn > 0 && da_json_ok(cast(string) rep[0..<cn]) {
+      nodes: [64] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) rep[0..<cn], nodes[..]) {
+        hn := jv_get(doc[0], 0, "hidden");
+        if !jv_bool(doc[0], hn) && jv_int(doc[0], hn, 0) == 0 {
+          break;
+        }
+      }
+    }
+    proc_sleep(100);
   }
   // Cache window ID.
   wn := da_probe(sock, "window", rep[..], 2000);

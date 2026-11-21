@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-DT_SCENARIO_COUNT :: 15;
+DT_SCENARIO_COUNT :: 18;
 
 DtScenario :: struct {
   id: string;
@@ -27,7 +27,10 @@ dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
     DtScenario.{id = "desktop.git.toolbar-visible", area = "git", title = "Git Actions toolbar chips (branch, mode, commit, actions) drawn cleanly", required = true},
     DtScenario.{id = "desktop.git.mode-toggle", area = "git", title = "Click Local vs. Worktree mode chip and verify toggle", required = true},
     DtScenario.{id = "desktop.git.branch-and-commit-guard", area = "git", title = "Branch picker menu, Escape dismiss, and Commit dialog on main", required = true},
-    DtScenario.{id = "desktop.git.worktree-per-chat", area = "git", title = "New chat in git repo creates isolated coder/<id> worktree under CODER_WORKTREES", required = true}
+    DtScenario.{id = "desktop.git.worktree-per-chat", area = "git", title = "New chat in git repo creates isolated coder/<id> worktree under CODER_WORKTREES", required = true},
+    DtScenario.{id = "desktop.composer.undo-redo", area = "composer", title = "Cmd+A + Cmd+X cut, Cmd+Z undo restores text, Shift+Cmd+Z redo clears again", required = true},
+    DtScenario.{id = "desktop.find.in-thread", area = "find", title = "Cmd+F in-thread Find open, type query, Escape restores composer focus", required = true},
+    DtScenario.{id = "desktop.terminal.toggle", area = "terminal", title = "Cmd+J toggle embedded terminal pane open and closed cleanly", required = true}
   ];
 }
 

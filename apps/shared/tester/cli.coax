@@ -404,6 +404,70 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       r.summary = "starting a chat in a git repo created an isolated per-chat worktree under CODER_WORKTREES";
       r.screenshot_ref = obs[0].screenshot_ref;
     }
+  } else if sc_id == "desktop.composer.undo-redo" {
+    r.steps_run = 5;
+    _ = da_act(s, "key", "composer", "key cmd+n", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_act(s, "type", "composer", "type undo redo check", 200, rep[..]);
+    proc_sleep(150);
+    _ = da_act(s, "key", "composer", "key cmd+a", 100, rep[..]);
+    _ = da_act(s, "key", "composer", "key cmd+x", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "", "after cut", obs[..], active[..]);
+    cut_ok := obs[0].composer_text.count == 0;
+    _ = da_act(s, "key", "composer", "key cmd+z", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "15-composer-undo", "after undo", obs[..], active[..]);
+    undo_ok := obs[0].composer_text == "undo redo check";
+    _ = da_act(s, "key", "composer", "key shift+cmd+Z", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "", "after redo", obs[..], active[..]);
+    redo_ok := obs[0].composer_text.count == 0;
+    if !cut_ok {
+      r.verdict = "product-fail"; r.first_failure = "cut-failed"; r.summary = "Cmd+A + Cmd+X did not clear composer before undo";
+    } else if !undo_ok {
+      r.verdict = "product-fail"; r.first_failure = "undo-failed"; r.summary = "Cmd+Z did not restore cut composer text";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else if !redo_ok {
+      r.verdict = "product-fail"; r.first_failure = "redo-failed"; r.summary = "Shift+Cmd+Z did not redo cut in composer";
+    } else {
+      r.summary = "Cmd+A + Cmd+X cut, Cmd+Z restored draft, Shift+Cmd+Z cleared again";
+      r.screenshot_ref = "screenshots/15-composer-undo.png";
+    }
+  } else if sc_id == "desktop.find.in-thread" {
+    r.steps_run = 3;
+    _ = da_act(s, "key", "find", "key cmd+f", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "find", "type probe", 150, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "16-find-in-thread", "find open", obs[..], active[..]);
+    _ = da_act(s, "key", "find", "key escape", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_observe(s, "", "after find escape", obs[..], active[..]);
+    if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "find-escape-focus";
+      r.summary = "Escape from in-thread Find did not restore composer focus";
+      r.screenshot_ref = "screenshots/16-find-in-thread.png";
+    } else {
+      r.summary = "Cmd+F opened in-thread Find, typed query, and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/16-find-in-thread.png";
+    }
+  } else if sc_id == "desktop.terminal.toggle" {
+    r.steps_run = 2;
+    _ = da_act(s, "key", "terminal", "key cmd+j", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "17-terminal-open", "terminal pane open", obs[..], active[..]);
+    _ = da_act(s, "key", "terminal", "key cmd+j", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "terminal pane closed", obs[..], active[..]);
+    if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "terminal-close-focus";
+      r.summary = "closing terminal pane with Cmd+J did not restore composer focus";
+      r.screenshot_ref = "screenshots/17-terminal-open.png";
+    } else {
+      r.summary = "Cmd+J toggled embedded terminal pane open and closed cleanly with focus restored";
+      r.screenshot_ref = "screenshots/17-terminal-open.png";
+    }
   } else {
     r.verdict = "unqualified";
     r.first_failure = "unknown-scenario";

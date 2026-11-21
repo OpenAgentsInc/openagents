@@ -316,8 +316,9 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "Hide OpenAgents", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        edit.addItem(withTitle: "Undo", action: #selector(CoderDelegate.editUndo(_:)), keyEquivalent: "z").target = delegate
-        let redo = edit.addItem(withTitle: "Redo", action: #selector(CoderDelegate.editRedo(_:)), keyEquivalent: "z")
+        let undo = edit.addItem(withTitle: "Undo", action: #selector(CoderDelegate.editUndo(_:)), keyEquivalent: "z")
+        undo.target = delegate; undo.keyEquivalentModifierMask = [.command]
+        let redo = edit.addItem(withTitle: "Redo", action: #selector(CoderDelegate.editRedo(_:)), keyEquivalent: "Z")
         redo.target = delegate; redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
         edit.addItem(withTitle: "Cut", action: #selector(CoderDelegate.editCut(_:)), keyEquivalent: "x").target = delegate
