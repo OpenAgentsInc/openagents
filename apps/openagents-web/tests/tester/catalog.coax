@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §7.3, §8.3).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-WEB_SCENARIO_COUNT :: 14;
+WEB_SCENARIO_COUNT :: 16;
 
 WebScenario :: struct {
   id: string;
@@ -28,7 +28,9 @@ web_scenarios :: () -> [WEB_SCENARIO_COUNT] WebScenario {
     WebScenario.{id = "web.metaverse.desktop", area = "metaverse", route = "/metaverse", viewport = "1280x820", title = "Load /metaverse at 1280x820, verify Metaverse portal renders cleanly", required = true},
     WebScenario.{id = "web.components.desktop", area = "components", route = "/components", viewport = "1280x820", title = "Load /components at 1280x820, verify component gallery renders cleanly", required = true},
     WebScenario.{id = "web.login.mobile", area = "auth", route = "/login", viewport = "393x852", title = "Load /login at 393x852 mobile viewport, verify responsive login layout", required = true},
-    WebScenario.{id = "web.projects.mobile", area = "projects", route = "/projects", viewport = "393x852", title = "Load /projects at 393x852 mobile viewport, verify responsive projects layout", required = true}
+    WebScenario.{id = "web.projects.mobile", area = "projects", route = "/projects", viewport = "393x852", title = "Load /projects at 393x852 mobile viewport, verify responsive projects layout", required = true},
+    WebScenario.{id = "web.status.mobile", area = "status", route = "/status", viewport = "393x852", title = "Load /status at 393x852 mobile viewport, verify responsive status layout", required = true},
+    WebScenario.{id = "web.download.mobile", area = "download", route = "/download", viewport = "393x852", title = "Load /download at 393x852 mobile viewport, verify responsive download layout", required = true}
   ];
 }
 

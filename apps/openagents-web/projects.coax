@@ -475,10 +475,10 @@ draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: 
     cx := x;
     for c: 0..<3 {
       v = put(out, v, labels[c], cx, b.y0 + 70 * d, 6 * d, dim);
-      cx += text_width(labels[c], 6 * d) + 5 * d;
+      cx += text_width(labels[c], 6 * d) + 12 * d;
       k := ifx c == 1 && parse(counts[c]) > 0 then accent else white;
       v = put(out, v, counts[c], cx, b.y0 + 70 * d, 8 * d, k);
-      cx += text_width(counts[c], 8 * d) + 14 * d;
+      cx += text_width(counts[c], 8 * d) + 18 * d;
     }
     if working.count > 0 { v = put_fit(out, v, working, x, b.y0 + 86 * d, 6.5 * d, accent, right - x); }
     else { v = put(out, v, "NOBODY WORKING NOW", x, b.y0 + 86 * d, 6.5 * d, faint); }

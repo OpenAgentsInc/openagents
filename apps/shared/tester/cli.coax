@@ -663,6 +663,87 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       r.summary = "zoomed 2x into Settings, escaped cleanly, and reset zoom with Cmd+0";
       r.screenshot_ref = "screenshots/25-zoomed-settings.png";
     }
+  } else if sc_id == "desktop.composer.mention-at" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "composer", "key cmd+n", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_act(s, "type", "composer", "type @", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "26-mention-at", "at mention popover open", obs[..], active[..]);
+    has_at := obs[0].composer_text == "@";
+    _ = da_act(s, "key", "composer", "key escape", 120, rep[..]);
+    proc_sleep(150);
+    _ = da_act(s, "key", "composer", "key cmd+a", 100, rep[..]);
+    _ = da_act(s, "key", "composer", "key cmd+x", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "", "after mention dismiss and clear", obs[..], active[..]);
+    if !has_at || obs[0].composer_text.count != 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "mention-at-failed"; r.summary = "@ mention popover open/dismiss/clear failed";
+      r.screenshot_ref = "screenshots/26-mention-at.png";
+    } else {
+      r.summary = "typed @ to trigger file mention popover, dismissed with Escape, and cleared composer cleanly";
+      r.screenshot_ref = "screenshots/26-mention-at.png";
+    }
+  } else if sc_id == "desktop.settings.voice-page" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Voice", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "27-settings-voice", "settings voice page", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after voice escape", obs[..], active[..]);
+    if !opened || obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "voice-settings-failed"; r.summary = "Settings -> Voice open or Escape failed";
+      r.screenshot_ref = "screenshots/27-settings-voice.png";
+    } else {
+      r.summary = "Cmd+K -> Voice opened Settings Voice page cleanly and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/27-settings-voice.png";
+    }
+  } else if sc_id == "desktop.settings.keybindings-page" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Keybindings", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "28-settings-keybindings", "settings keybindings page", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after keybindings escape", obs[..], active[..]);
+    if !opened || obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "keybindings-settings-failed"; r.summary = "Settings -> Keybindings open or Escape failed";
+      r.screenshot_ref = "screenshots/28-settings-keybindings.png";
+    } else {
+      r.summary = "Cmd+K -> Keybindings opened Settings Keybindings page cleanly and Escape restored focus";
+      r.screenshot_ref = "screenshots/28-settings-keybindings.png";
+    }
+  } else if sc_id == "desktop.settings.mcp-page" {
+    r.steps_run = 4;
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type MCP", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "29-settings-mcp", "settings mcp page", obs[..], active[..]);
+    opened := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after mcp escape", obs[..], active[..]);
+    if !opened || obs[0].settings_page >= 0 || !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "mcp-settings-failed"; r.summary = "Settings -> MCP open or Escape failed";
+      r.screenshot_ref = "screenshots/29-settings-mcp.png";
+    } else {
+      r.summary = "Cmd+K -> MCP opened Settings MCP page cleanly and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/29-settings-mcp.png";
+    }
   } else {
     r.verdict = "unqualified";
     r.first_failure = "unknown-scenario";

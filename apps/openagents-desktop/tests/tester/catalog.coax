@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-DT_SCENARIO_COUNT :: 26;
+DT_SCENARIO_COUNT :: 30;
 
 DtScenario :: struct {
   id: string;
@@ -38,7 +38,11 @@ dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
     DtScenario.{id = "desktop.files.tree-toggle", area = "files", title = "Click Files toolbar button (coder.ft.toggle) to open and close right-hand file tree pane", required = true},
     DtScenario.{id = "desktop.settings.wallet-page", area = "settings", title = "Open Settings -> Wallet via Cmd+K jump, capture frame, Escape restores composer focus", required = true},
     DtScenario.{id = "desktop.settings.scheduled-tasks", area = "settings", title = "Open Settings -> Scheduled Tasks via Cmd+K jump, capture frame, Escape restores focus", required = true},
-    DtScenario.{id = "desktop.zoom.settings-stress", area = "zoom", title = "Zoom in 2x, open Settings, Escape, reset zoom with Cmd+0 cleanly", required = true}
+    DtScenario.{id = "desktop.zoom.settings-stress", area = "zoom", title = "Zoom in 2x, open Settings, Escape, reset zoom with Cmd+0 cleanly", required = true},
+    DtScenario.{id = "desktop.composer.mention-at", area = "composer", title = "Type @ in composer to trigger file mention popover, Escape and clear cleanly", required = true},
+    DtScenario.{id = "desktop.settings.voice-page", area = "settings", title = "Open Settings -> Voice via Cmd+K jump, capture frame, Escape restores focus", required = true},
+    DtScenario.{id = "desktop.settings.keybindings-page", area = "settings", title = "Open Settings -> Keybindings via Cmd+K jump, capture frame, Escape restores focus", required = true},
+    DtScenario.{id = "desktop.settings.mcp-page", area = "settings", title = "Open Settings -> MCP via Cmd+K jump, capture frame, Escape restores focus", required = true}
   ];
 }
 

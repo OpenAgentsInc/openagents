@@ -88,7 +88,7 @@ cp_voice_backend_label :: (backend: int) -> string {
 }
 
 cp_voice_mode_label :: (mode: int) -> string {
-  return ifx mode == CP_VOICE_MODE_HOLD then "Push-to-talk (hold ⌥Space)" else "Toggle (⌥Space)";
+  return ifx mode == CP_VOICE_MODE_HOLD then "Push-to-talk (hold Opt+Space)" else "Toggle (Opt+Space)";
 }
 
 // Normalize raw linear RMS amplitude (0.0..1.0) into a visually responsive 0.0..1.0 bar height.
@@ -343,7 +343,7 @@ cp_voice_mic_button :: (s: [] CoderPage, f: [] UiFrame, bx: f32, by: f32, side: 
   v := s[0].voice[..];
   listening := v[0].state == CP_VOICE_LISTENING;
   transcribing := v[0].state == CP_VOICE_TRANSCRIBING;
-  label := ifx listening then "Stop voice dictation (⌥Space)" else ifx transcribing then "Transcribing speech…" else "Voice dictation (⌥Space)";
+  label := ifx listening then "Stop voice dictation (Opt+Space)" else ifx transcribing then "Transcribing speech…" else "Voice dictation (Opt+Space)";
   row := uiframe_semantic(f, "coder.composer.mic", EL_BUTTON, label, bx, by, side, side, ifx listening then EL_S_CURRENT else 0, CP_VOICE_MIC);
   hov := uiframe_hovered(f, "coder.composer.mic");
   prs := uiframe_pressed(f, "coder.composer.mic");
@@ -463,7 +463,7 @@ cp_settings_voice :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -
   k := f[0].skin; t := k.set; sh := f[0].sheet;
   v := s[0].voice[..];
   y := y0;
-  y += set_page_head(f, "set.title", x, y, w, "Voice", "Offline voice dictation in the composer via macOS Apple Speech or Local Whisper under ~/.openagents/models/. Press ⌥Space or click the composer mic button.") + t.block_gap;
+  y += set_page_head(f, "set.title", x, y, w, "Voice", "Offline voice dictation in the composer via macOS Apple Speech or Local Whisper under ~/.openagents/models/. Press Opt+Space or click the composer mic button.") + t.block_gap;
 
   y += set_section_head(f, "set.voice.engine.head", x, y, w, "Dictation", "Choose your offline recognition backend, trigger gesture, and input microphone.") + t.section_gap;
   erows: [4] SetRow;
@@ -473,8 +473,8 @@ cp_settings_voice :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -
   erows[0].options[0] = "Apple Speech";
   erows[0].options[1] = "Local Whisper";
 
-  erows[1] = SetRow.{id = "set.voice.mode", name = "Shortcut mode (⌥Space)",
-    desc = "Toggle starts and stops on press; Push-to-talk records while ⌥Space is held and inserts on release.",
+  erows[1] = SetRow.{id = "set.voice.mode", name = "Shortcut mode (Opt+Space)",
+    desc = "Toggle starts and stops on press; Push-to-talk records while Opt+Space is held and inserts on release.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = v[0].mode, action = CP_SET_ACT};
   erows[1].options[0] = "Toggle";
   erows[1].options[1] = "Push-to-talk";
