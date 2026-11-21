@@ -45,9 +45,17 @@ Per `AGENTS.md` ("Never hand-roll what already exists"), Stage 1 converters reus
 | **OpenAgents Desktop** | `~/.openagents/coder/sessions/*.ajr` (and `*.jsonl`) | `AJR1` binary-framed journal / JSONL | `coax/lib/agent/journal.coax`, `coax/lib/agent/observe/transcripts.coax` | Decode `AJR1` frames into ATIF `user`/`agent` steps, tool calls, results, worktree `cwd`, model, and cost metadata. |
 | **Antigravity** | `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl` and `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl` | JSONL (`transcript.jsonl` + `transcript_full.jsonl`) | `coax/lib/agent/observe/antigravity.coax`, `transcripts.coax` (extend walk to include both `antigravity/brain` and `antigravity-cli/brain`) | Read `transcript.jsonl`; fetch corresponding line from `transcript_full.jsonl` only when `truncated_fields` is present. Map `USER_INPUT` → `user`, `PLANNER_RESPONSE` → `agent` (with `tool_calls` and `thinking`), `GENERIC` tool outputs → `observation`. |
 | **Codex** | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | JSONL | `coax/lib/agent/observe/transcripts.coax` | Map user prompts, assistant turns, function/shell calls, and tool outputs into ATIF-v1.8 steps. |
-| **OpenCode / Other** *(optional)* | `~/.local/share/opencode/`, etc. | Local store | Pluggable adapter | Same contract: emit valid `ATIF-v1.8` `.atif.jsonl` + manifest. |
+| **OpenCode** | `~/.local/share/opencode/` | Local session store | Pluggable adapter | Same contract: preserve raw backup and emit valid `ATIF-v1.8` `.atif.jsonl` + manifest. |
 
 Existing ATIF carriage utilities live in `coax/lib/nostr/atif/chunks.coax`; shared `ATIF-v1.8` log writer/reader and sorted-key `steps_digest` helpers should live in `coax/lib/nostr/atif/` so both `evals/session-history/` and OpenAgents Desktop share one implementation.
+
+### 3.1 Encrypted Cloud Backup (`openagents traces` / `vault.coax`)
+
+Because Claude Code automatically deletes local transcripts after **30 days**, preserving raw and ATIF-v1.8 trajectories off-machine is **Phase 0** (tracked in GitHub `#13864`).
+
+- **Reuse `apps/openagents-cli/vault.coax`:** Encrypt locally to the owner's Nostr key (**NIP-44 v2**, `openagents.sealed-file.v1`) and upload **ciphertext only** to the private GCS bucket `gs://openagentsgemini-openagents-vault/` (using `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` or `OPENAGENTS_VAULT_BUCKET`).
+- **CLI surface:** `openagents traces inventory`, `openagents traces backup [--source all|claude|codex|openagents|antigravity|opencode] [--raw|--atif]`, `openagents traces status`, and `openagents traces restore <id>`.
+- **Incremental ledger:** Track synced objects in `~/.openagents/evals/session-history/backup-ledger.jsonl` keyed by `(source, session_id, sha256, bytes)` so daily/recurring backups skip unchanged files and capture newly grown sessions before Claude Code prunes them.
 
 ---
 
@@ -191,7 +199,8 @@ Every failing candidate trajectory is tagged with a primary failure mode so impr
 
 ## 7. Phased Rollout
 
-1. **Phase 1 — `ATIF-v1.8` Converters & Local Index:** Build `ingest.coax` (reusing `transcripts.coax`, `claude-history.coax`, `journal.coax`, and `antigravity.coax`) to convert Claude Code, OpenAgents Desktop, Antigravity, and Codex sessions read-only into local `ATIF-v1.8` `.atif.jsonl` logs + `inventory.json`.
-2. **Phase 2 — Vertical Slice Proof (1 Task per Source):** Prove the complete end-to-end loop on 3 real tasks (1 Claude, 1 OpenAgents Desktop, 1 Antigravity): sanitize → verify baseline patch passes grader at `base_sha` → run via `evals/openagents-desktop` `host_driver` + `mcworker` → emit comparison scorecard.
+0. **Phase 0 — Urgent Encrypted Cloud Backup & `openagents traces` CLI (`#13864`):** Immediately snapshot and encrypt current local histories (**Claude Code**, **Codex**, **OpenAgents Desktop**, **Antigravity**, **OpenCode**) into `gs://openagentsgemini-openagents-vault/` (NIP-44 v2 ciphertext only) so Claude Code's 30-day retention window causes zero further data loss, and land `openagents traces backup/status/restore` in `apps/openagents-cli/`.
+1. **Phase 1 — `ATIF-v1.8` Converters & Local Index:** Build `ingest.coax` (reusing `transcripts.coax`, `claude-history.coax`, `journal.coax`, and `antigravity.coax`) to convert Claude Code, Codex, OpenAgents Desktop, Antigravity, and OpenCode sessions read-only into local `ATIF-v1.8` `.atif.jsonl` logs + `inventory.json`.
+2. **Phase 2 — Vertical Slice Proof (1 Task per Source):** Prove the complete end-to-end loop on real tasks across sources (Claude, Codex, OpenAgents Desktop, Antigravity): sanitize → verify baseline patch passes grader at `base_sha` → run via `evals/openagents-desktop` `host_driver` + `mcworker` → emit comparison scorecard.
 3. **Phase 3 — Stratified 25–30 Task Suite & Scorecard:** Scale Stage 2 mining across Buckets A–E from `work/openagents`, verify every task's grader passes on the baseline commit, commit sanitized task JSONs to `evals/session-history/tasks/`, and produce the first multi-model comparison scorecard.
 4. **Phase 4 — Continuous Improvement Loop:** Use failure tags from Phase 3 scorecards to ship targeted `mcworker` prompt/tool/compaction fixes and re-run to verify measurable gains.
