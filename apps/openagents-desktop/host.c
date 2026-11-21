@@ -602,3 +602,17 @@ void cd_experimental_set(void *page, int on) { CoderHost *c = page; if (!c) retu
 int cd_experimental(void *page) { CoderHost *c = page; return c ? coder_page_experimental(cd_state(c)) : 0; }
 void cd_cloud_authed_set(void *page, int on) { CoderHost *c = page; if (!c) return; coder_page_set_cloud_authed(cd_state(c), on != 0); cd_woke(c); }
 int cd_gym_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_gym_rect(cd_state(c), (coax_v_f32){out, 4}); }
+void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind) { CoderHost *c = page; if (!c) return; coder_page_git_status(cd_state(c), in_repo != 0, in_worktree != 0, dirty, ahead, behind); cd_woke(c); }
+void cd_git_mode_set(void *page, int mode) { CoderHost *c = page; if (!c) return; coder_page_git_mode_set(cd_state(c), mode); cd_woke(c); }
+int cd_git_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_git_mode(cd_state(c)) : 1; }
+int cd_git_branches(void *page, const char *lines) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_git_branches(cd_state(c), cd_string(lines)); cd_changed(c); return n; }
+void cd_git_busy(void *page, int busy, const char *label) { CoderHost *c = page; if (!c) return; coder_page_git_busy(cd_state(c), busy != 0, cd_string(label)); cd_woke(c); }
+void cd_git_output_clear(void *page) { CoderHost *c = page; if (!c) return; coder_page_git_output_clear(cd_state(c)); cd_woke(c); }
+void cd_git_output_append(void *page, const char *chunk) { CoderHost *c = page; if (!c) return; coder_page_git_output_append(cd_state(c), cd_string(chunk)); cd_woke(c); }
+void cd_git_output_done(void *page, int failed) { CoderHost *c = page; if (!c) return; coder_page_git_output_done(cd_state(c), failed != 0); cd_woke(c); }
+void cd_git_wt_status(void *page, int status, const char *note) { CoderHost *c = page; if (!c) return; coder_page_git_wt_status(cd_state(c), status, cd_string(note)); cd_woke(c); }
+int cd_git_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_git_op(cd_state(c)) : 0; }
+int cd_git_anchor(void *page, float out[2]) { CoderHost *c = page; return c && out && coder_page_git_anchor(cd_state(c), (coax_v_f32){out, 2}); }
+int cd_git_needs_guard(const char *branch, int op) { return coder_page_git_needs_guard(cd_string(branch), op) ? 1 : 0; }
+int cd_git_valid_branch(const char *name) { return coder_page_git_valid_branch(cd_string(name)) ? 1 : 0; }
+int cd_git_valid_commit(const char *msg) { return coder_page_git_valid_commit(cd_string(msg)) ? 1 : 0; }

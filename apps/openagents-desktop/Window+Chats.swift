@@ -22,6 +22,7 @@ extension CoderWindow {
     /// HEAD's short commit, "" outside a repository. Read again when a reply ends.
     func refreshBranch() {
         cd_branch(page, ChatWorktree.shown(CoderWindow.gitBranch(folder)))
+        refreshGitStatus()
     }
     static func gitBranch(_ folder: URL) -> String {
         var dir = folder.standardizedFileURL

@@ -365,4 +365,19 @@ int cd_gym_rect(void *page, float out[4]);
 void cd_experimental_set(void *page, int on);
 int cd_experimental(void *page);
 void cd_cloud_authed_set(void *page, int on);
+// Git Actions toolbar (page/gitactions.coax, GitHub #13871). cd_action 49 asks; cd_git_op says which op.
+void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind);
+void cd_git_mode_set(void *page, int mode);
+int cd_git_mode(void *page);
+int cd_git_branches(void *page, const char *lines);
+void cd_git_busy(void *page, int busy, const char *label);
+void cd_git_output_clear(void *page);
+void cd_git_output_append(void *page, const char *chunk);
+void cd_git_output_done(void *page, int failed);
+void cd_git_wt_status(void *page, int status, const char *note);
+int cd_git_op(void *page);
+int cd_git_anchor(void *page, float out[2]);
+int cd_git_needs_guard(const char *branch, int op);
+int cd_git_valid_branch(const char *name);
+int cd_git_valid_commit(const char *msg);
 #endif

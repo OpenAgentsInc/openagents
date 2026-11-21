@@ -1,0 +1,168 @@
+// Checks for the Git Actions toolbar, branch picker/creator, Local vs. Worktree mode toggle,
+// default-branch confirmation guard, commit/PR message validation & formatting, and live
+// git-hook output tray (page/gitactions.coax, GitHub #13871).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_git_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+#test "git actions: default-branch guard protects main and master on commit and push only" {
+  #assert cp_git_is_default_branch("main") && cp_git_is_default_branch("master");
+  #assert cp_git_is_default_branch("MAIN") && cp_git_is_default_branch(" origin/main ") && cp_git_is_default_branch("origin/master");
+  #assert !cp_git_is_default_branch("feat/git-actions") && !cp_git_is_default_branch("main-fix") && !cp_git_is_default_branch("");
+
+  #assert cp_git_needs_default_guard("main", CP_GIT_OP_COMMIT);
+  #assert cp_git_needs_default_guard("main", CP_GIT_OP_PUSH);
+  #assert cp_git_needs_default_guard("master", CP_GIT_OP_COMMIT);
+  #assert cp_git_needs_default_guard("master", CP_GIT_OP_PUSH);
+  #assert !cp_git_needs_default_guard("main", CP_GIT_OP_PULL);
+  #assert !cp_git_needs_default_guard("main", CP_GIT_OP_PR);
+  #assert !cp_git_needs_default_guard("feat/toolbar", CP_GIT_OP_COMMIT);
+  #assert !cp_git_needs_default_guard("feat/toolbar", CP_GIT_OP_PUSH);
+  #assert coder_page_git_needs_guard("main", CP_GIT_OP_PUSH);
+  #assert !coder_page_git_needs_guard("coder/abc", CP_GIT_OP_COMMIT);
+}
+
+#test "git actions: branch list parsing handles standard, worktree, tab-delimited, and detached HEAD lines" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  raw := "* main\n  feat/git-toolbar\n+ coder/chat-42\n  (HEAD detached at a1b2c3d)\n  master\n\n";
+  n := coder_page_git_branches(s, raw);
+  #assert n == 4;
+  #assert cast(string) s[0].git[0].branches[0].name[0..<s[0].git[0].branches[0].name_n] == "main";
+  #assert s[0].git[0].branches[0].current && s[0].git[0].branches[0].is_default;
+  #assert cast(string) s[0].git[0].branches[1].name[0..<s[0].git[0].branches[1].name_n] == "feat/git-toolbar";
+  #assert !s[0].git[0].branches[1].current && !s[0].git[0].branches[1].is_default;
+  #assert cast(string) s[0].git[0].branches[2].name[0..<s[0].git[0].branches[2].name_n] == "coder/chat-42";
+  #assert cast(string) s[0].git[0].branches[3].name[0..<s[0].git[0].branches[3].name_n] == "master";
+  #assert s[0].git[0].branches[3].is_default;
+
+  // Tab-delimited format
+  n2 := coder_page_git_branches(s, "main\t0\nfeat/new\t1\n");
+  #assert n2 == 2;
+  #assert !s[0].git[0].branches[0].current && s[0].git[0].branches[1].current;
+}
+
+#test "git actions: branch name validation rejects invalid git refs" {
+  #assert cp_git_validate_branch_name("feat/git-toolbar");
+  #assert cp_git_validate_branch_name("fix/issue-13871");
+  #assert cp_git_validate_branch_name("release/v1.2.3");
+  #assert !cp_git_validate_branch_name("");
+  #assert !cp_git_validate_branch_name("   ");
+  #assert !cp_git_validate_branch_name("-bad-start");
+  #assert !cp_git_validate_branch_name("/leading-slash");
+  #assert !cp_git_validate_branch_name("trailing-slash/");
+  #assert !cp_git_validate_branch_name("has space");
+  #assert !cp_git_validate_branch_name("bad..range");
+  #assert !cp_git_validate_branch_name("bad.lock");
+  #assert !cp_git_validate_branch_name("bad~1");
+  #assert !cp_git_validate_branch_name("bad^2");
+  #assert !cp_git_validate_branch_name("bad:ref");
+  #assert !cp_git_validate_branch_name("bad@{0}");
+  #assert coder_page_git_valid_branch("coder/test-1");
+  #assert !coder_page_git_valid_branch("bad name");
+}
+
+#test "git actions: commit and PR message validation and Conventional Commits formatting" {
+  #assert cp_git_is_conventional_commit("feat(desktop): add git actions toolbar");
+  #assert cp_git_is_conventional_commit("fix: guard default branch commits");
+  #assert cp_git_is_conventional_commit("refactor(git)!: replace hidden defaults flag");
+  #assert !cp_git_is_conventional_commit("update stuff");
+  #assert !cp_git_is_conventional_commit("feat:");
+  #assert !cp_git_is_conventional_commit("feat:   ");
+  #assert !cp_git_is_conventional_commit("unknown(scope): bad type");
+
+  #assert cp_git_validate_commit_msg("feat(desktop): add git actions");
+  #assert cp_git_validate_commit_msg("  fix: trim ok\n\nDetails here.");
+  #assert !cp_git_validate_commit_msg("");
+  #assert !cp_git_validate_commit_msg("   \n  ");
+  #assert coder_page_git_valid_commit("chore: bump");
+  #assert !coder_page_git_valid_commit("   ");
+
+  out: [512] u8;
+  #assert cp_git_format_commit_msg("  feat(git): add toolbar  ", "", out[..]) == "feat(git): add toolbar";
+  #assert cp_git_format_commit_msg("feat(git): add toolbar", "  Includes branch picker.\n", out[..]) == "feat(git): add toolbar\n\nIncludes branch picker.";
+  #assert cp_git_format_commit_msg("   ", "body only", out[..]) == "";
+
+  #assert cp_git_validate_pr("Desktop: Git Actions toolbar", "## Summary\n- Adds toolbar");
+  #assert cp_git_validate_pr("Quick fix", "");
+  #assert !cp_git_validate_pr("   ", "body");
+}
+
+#test "git actions: Local vs. Worktree mode state and toolbar action dispatch" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_folder(s, "~/work/openagents");
+  coder_page_branch(s, "feat/git-toolbar");
+
+  // Default mode is Worktree
+  #assert coder_page_git_mode(s) == CP_GIT_MODE_WORKTREE;
+  #assert cp_git_mode_label(CP_GIT_MODE_WORKTREE) == "Worktree";
+  #assert cp_git_mode_label(CP_GIT_MODE_LOCAL) == "Local";
+
+  // Hidden when not in a git repo
+  #assert cp_git_test_frame(s, f[..], 1280, 800);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_find(t[..], "coder.git.branch") < 0;
+
+  // Shown when in a git repo with dirty + ahead indicators and full inline actions
+  coder_page_git_status(s, true, true, 3, 2, 1);
+  #assert cp_git_test_frame(s, f[..], 1280, 800);
+  t[0] = surface_rows(s[0].surface[..]);
+  br_row := elt_find(t[..], "coder.git.branch");
+  mode_row := elt_find(t[..], "coder.git.mode");
+  commit_row := elt_find(t[..], "coder.git.commit");
+  push_row := elt_find(t[..], "coder.git.push");
+  pull_row := elt_find(t[..], "coder.git.pull");
+  pr_row := elt_find(t[..], "coder.git.pr");
+  more_row := elt_find(t[..], "coder.git.actions");
+  #assert br_row >= 0 && mode_row >= 0 && commit_row >= 0 && push_row >= 0 && pull_row >= 0 && pr_row >= 0 && more_row >= 0;
+  #assert elt_value_of(t[..], br_row) == "feat/git-toolbar · 3 ↑2 ↓1";
+  #assert elt_value_of(t[..], mode_row) == "Worktree";
+
+  // Pressing mode chip toggles Worktree -> Local and emits CP_ASK_GIT / CP_GIT_OP_TOGGLE_MODE
+  #assert cp_press(s, mode_row);
+  #assert coder_page_git_mode(s) == CP_GIT_MODE_LOCAL;
+  #assert coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_TOGGLE_MODE;
+
+  // Pressing each action chip emits the expected CP_GIT_OP_*
+  #assert cp_press(s, br_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_BRANCH_MENU;
+  #assert cp_press(s, commit_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_COMMIT;
+  #assert cp_press(s, push_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_PUSH;
+  #assert cp_press(s, pull_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_PULL;
+  #assert cp_press(s, pr_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_PR;
+  #assert cp_press(s, more_row) && coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_ACTIONS_MENU;
+}
+
+#test "git actions: live git-hook output streaming, tail capping, and output tray" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_folder(s, "~/work/openagents");
+  coder_page_branch(s, "feat/hooks");
+  coder_page_git_status(s, true, true, 1, 0, 0);
+
+  coder_page_git_output_clear(s);
+  coder_page_git_busy(s, true, "Committing…");
+  coder_page_git_output_append(s, "Running pre-commit hook...\n");
+  coder_page_git_output_append(s, "coax tools-check: ok\n");
+  #assert s[0].git[0].busy && s[0].git[0].output_open;
+  #assert cp_git_test_frame(s, f[..], 1280, 800);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_find(t[..], "coder.git.busy") >= 0;
+  #assert elt_find(t[..], "coder.git.output") >= 0;
+  close_row := elt_find(t[..], "coder.git.out.close");
+  #assert close_row >= 0 && elt_label(t[..], close_row) == "Stop";
+
+  // Finish with failure: keeps tray open, Close button dismisses it
+  coder_page_git_output_done(s, true);
+  #assert !s[0].git[0].busy && s[0].git[0].output_failed && s[0].git[0].output_open;
+  #assert cp_git_test_frame(s, f[..], 1280, 800);
+  t[0] = surface_rows(s[0].surface[..]);
+  close_row = elt_find(t[..], "coder.git.out.close");
+  #assert close_row >= 0 && elt_label(t[..], close_row) == "Close";
+  #assert cp_press(s, close_row) && !s[0].git[0].output_open;
+}

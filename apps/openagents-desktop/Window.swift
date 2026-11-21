@@ -142,6 +142,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var simGen = 0
     var simStarting = false
     var simRetryAt: Date?
+    var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -379,6 +380,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 45: resetInstructions()
         case 47: manageLocalModels()
         case 48: pump(run)
+        case 49: gitAsked()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -489,6 +491,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     func retire() {
         guard !retired else { return }
         retired = true
+        gitProcess?.terminate(); gitProcess = nil
         updater.stop()
         foremanServer.stop()
         ForemanControlDescriptor.remove()

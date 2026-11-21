@@ -1,0 +1,490 @@
+// Coder Desktop page (../page.coax): Git Actions toolbar, branch selector, Local vs. Worktree
+// mode toggle, default-branch safety guard, commit/PR message validation & formatting, and live
+// git-hook / command output tray (GitHub #13871).
+
+CP_GIT_BRANCHES :: 64;       // branches kept from `git branch` for the picker
+CP_GIT_OUT :: 4096;          // live git-hook / command output tail buffer
+CP_GIT_NOTE :: 128;          // worktree setup-script / hydration status note
+
+// Local checkout vs. Worktree mode (replaces hidden `defaults write chatWorktrees`).
+CP_GIT_MODE_LOCAL :: 0;
+CP_GIT_MODE_WORKTREE :: 1;
+
+// Worktree setup-script / hydration status.
+CP_GIT_WT_NONE :: 0;
+CP_GIT_WT_READY :: 1;
+CP_GIT_WT_RUNNING :: 2;
+CP_GIT_WT_FAILED :: 3;
+
+// Host action code (coder_page_action) and sub-ops (coder_page_git_op).
+CP_ASK_GIT :: 49;
+CP_GIT_OP_NONE :: 0;
+CP_GIT_OP_REFRESH :: 1;
+CP_GIT_OP_BRANCH_MENU :: 2;
+CP_GIT_OP_TOGGLE_MODE :: 3;
+CP_GIT_OP_ACTIONS_MENU :: 4;
+CP_GIT_OP_COMMIT :: 5;
+CP_GIT_OP_PUSH :: 6;
+CP_GIT_OP_PULL :: 7;
+CP_GIT_OP_PR :: 8;
+CP_GIT_OP_WT_CLEANUP :: 9;
+CP_GIT_OP_STOP :: 10;
+
+// Row dispatch action codes (130..139, clear of CP_FP_* 80..82 and CP_SIM_* 90..125).
+CP_GIT_BRANCH :: 130;
+CP_GIT_MODE :: 131;
+CP_GIT_ACTIONS :: 132;
+CP_GIT_COMMIT :: 133;
+CP_GIT_PUSH :: 134;
+CP_GIT_PULL :: 135;
+CP_GIT_PR :: 136;
+CP_GIT_OUTPUT_TOGGLE :: 137;
+CP_GIT_OUTPUT_CLOSE :: 138;
+CP_GIT_STOP :: 139;
+
+CpGitBranch :: struct {
+  name: [CP_BRANCH_TEXT] u8; name_n: int;
+  current: bool;
+  is_default: bool;
+}
+
+CpGit :: struct {
+  in_repo: bool;
+  in_worktree: bool;
+  worktree_mode: int;          // CP_GIT_MODE_LOCAL or CP_GIT_MODE_WORKTREE
+  dirty: int;                  // modified + untracked files (`git status --porcelain`)
+  ahead: int; behind: int;     // commits ahead/behind upstream
+  branches: [CP_GIT_BRANCHES] CpGitBranch; nbranches: int;
+  busy: bool;
+  busy_label: [64] u8; busy_label_n: int;
+  output: [CP_GIT_OUT] u8; output_n: int;
+  output_open: bool;
+  output_failed: bool;
+  wt_status: int;              // CP_GIT_WT_*
+  wt_note: [CP_GIT_NOTE] u8; wt_note_n: int;
+  op: int;                     // pending CP_GIT_OP_*
+  anchor_x: f32; anchor_y: f32;
+  branch_x: f32; branch_y: f32;
+  actions_x: f32; actions_y: f32;
+  tray_h: f32;                 // live output tray height drawn above composer
+}
+
+cp_git_init :: (s: [] CoderPage) {
+  g := s[0].git[..];
+  g[0] = CpGit.{};
+  g[0].worktree_mode = CP_GIT_MODE_WORKTREE;
+}
+
+// ---------------------------------------------------------------- pure rules & parsers
+
+// True when `branch` is a protected default branch (`main`, `master`, `origin/main`, `origin/master`).
+cp_git_is_default_branch :: (branch: string) -> bool {
+  b := cp_trim(branch);
+  if b.count == 0 { return false; }
+  return cp_eq_ci(b, "main") || cp_eq_ci(b, "master") || cp_eq_ci(b, "origin/main") || cp_eq_ci(b, "origin/master");
+}
+
+// True when an operation requires a default-branch confirmation guard before executing.
+cp_git_needs_default_guard :: (branch: string, op: int) -> bool {
+  if op != CP_GIT_OP_COMMIT && op != CP_GIT_OP_PUSH { return false; }
+  return cp_git_is_default_branch(branch);
+}
+
+// Validates a git branch name for creation: non-empty, <= 120 bytes, no whitespace or illegal git ref chars.
+cp_git_validate_branch_name :: (raw: string) -> bool {
+  name := cp_trim(raw);
+  if name.count == 0 || name.count > 120 { return false; }
+  if name[0] == '-' || name[0] == '/' || name[0] == '.' { return false; }
+  if name[name.count - 1] == '/' || name[name.count - 1] == '.' { return false; }
+  if name.count >= 5 && cast(string) name[name.count - 5..<name.count] == ".lock" { return false; }
+  prev: u8 = 0;
+  for c: name {
+    if c <= 32 || c == 127 { return false; }
+    if c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\' { return false; }
+    if c == '.' && prev == '.' { return false; }
+    if c == '/' && prev == '/' { return false; }
+    if c == '{' && prev == '@' { return false; }
+    prev = c;
+  }
+  return true;
+}
+
+// Parses newline-separated branch lines from `git branch`:
+// supports "* main", "  feat/foo", or "main\t1" / "feat/foo\t0". Skips detached HEAD markers.
+cp_git_parse_branches :: (s: [] CoderPage, raw: string) -> int {
+  g := s[0].git[..];
+  g[0].nbranches = 0;
+  at := 0;
+  while at < raw.count && g[0].nbranches < CP_GIT_BRANCHES {
+    e := at;
+    while e < raw.count && raw[e] != 10 { e += 1; }
+    line := cast(string) raw[at..<e];
+    at = e + 1;
+    if line.count > 0 && line[line.count - 1] == 13 { line = cast(string) line[0..<line.count - 1]; }
+    current := false;
+    // Check tab-delimited format: "<name>\t1"
+    tab := -1;
+    for ci: 0..<line.count { if line[ci] == 9 { tab = ci; break; } }
+    name := line;
+    if tab >= 0 {
+      name = cp_trim(cast(string) line[0..<tab]);
+      flag := cp_trim(cast(string) line[tab + 1..<line.count]);
+      if flag == "1" || flag == "*" { current = true; }
+    } else {
+      t := cp_trim(line);
+      if t.count >= 2 && t[0] == '*' && t[1] == ' ' {
+        current = true;
+        name = cp_trim(cast(string) t[2..<t.count]);
+      } else if t.count >= 2 && t[0] == '+' && t[1] == ' ' {
+        // worktree-checked-out branch marker in `git branch`
+        name = cp_trim(cast(string) t[2..<t.count]);
+      } else {
+        name = t;
+      }
+    }
+    if name.count == 0 { continue; }
+    if name[0] == '(' { continue; }   // skip "(HEAD detached at ...)"
+    idx := g[0].nbranches;
+    g[0].branches[idx] = CpGitBranch.{};
+    g[0].branches[idx].name_n = cp_out(g[0].branches[idx].name[..], name);
+    g[0].branches[idx].current = current;
+    g[0].branches[idx].is_default = cp_git_is_default_branch(name);
+    g[0].nbranches += 1;
+  }
+  return g[0].nbranches;
+}
+
+// True when `subject` follows Conventional Commits: `<type>[(<scope>)][!]: <description>`.
+cp_git_is_conventional_commit :: (raw: string) -> bool {
+  s := cp_trim(raw);
+  // Find first colon
+  colon := -1;
+  for i: 0..<s.count { if s[i] == ':' { colon = i; break; } }
+  if colon < 2 || colon + 2 >= s.count { return false; }
+  if s[colon + 1] != ' ' { return false; }
+  desc := cp_trim(cast(string) s[colon + 2..<s.count]);
+  if desc.count == 0 { return false; }
+  head := cast(string) s[0..<colon];
+  if head.count > 0 && head[head.count - 1] == '!' { head = cast(string) head[0..<head.count - 1]; }
+  // Split optional (scope)
+  open := -1;
+  for i: 0..<head.count { if head[i] == '(' { open = i; break; } }
+  kind := head;
+  if open >= 0 {
+    if head[head.count - 1] != ')' || head.count - open <= 2 { return false; }
+    kind = cast(string) head[0..<open];
+  }
+  return kind == "feat" || kind == "fix" || kind == "docs" || kind == "style" || kind == "refactor"
+      || kind == "perf" || kind == "test" || kind == "build" || kind == "ci" || kind == "chore" || kind == "revert";
+}
+
+// Validates a commit message: first line non-empty and <= 200 bytes.
+cp_git_validate_commit_msg :: (raw: string) -> bool {
+  s := cp_trim(raw);
+  if s.count == 0 { return false; }
+  nl := s.count;
+  for i: 0..<s.count { if s[i] == 10 { nl = i; break; } }
+  first := cp_trim(cast(string) s[0..<nl]);
+  return first.count > 0 && first.count <= 200;
+}
+
+// Formats a commit message from subject + optional body into `out`.
+cp_git_format_commit_msg :: (subject: string, body: string, out: [] u8) -> string {
+  sub := cp_trim(subject);
+  if sub.count == 0 { return ""; }
+  n := cp_out(out, sub);
+  b := cp_trim(body);
+  if b.count > 0 {
+    n += cp_out(out[n..<out.count], "\n\n");
+    n += cp_out(out[n..<out.count], b);
+  }
+  return cast(string) out[0..<n];
+}
+
+// Validates a PR title (non-empty, <= 200 bytes). Body is optional.
+cp_git_validate_pr :: (title: string, body: string) -> bool {
+  _ = body;
+  t := cp_trim(title);
+  return t.count > 0 && t.count <= 200;
+}
+
+cp_git_mode_label :: (mode: int) -> string {
+  return ifx mode == CP_GIT_MODE_WORKTREE then "Worktree" else "Local";
+}
+
+// Appends live git-hook / command output into the tail buffer and opens the tray.
+cp_git_append_output :: (s: [] CoderPage, chunk: string) {
+  if chunk.count == 0 { return; }
+  g := s[0].git[..];
+  g[0].output_open = true;
+  cap := CP_GIT_OUT;
+  if chunk.count >= cap {
+    tail := cast(string) chunk[chunk.count - cap..<chunk.count];
+    g[0].output_n = cp_out(g[0].output[..], tail);
+    return;
+  }
+  if g[0].output_n + chunk.count > cap {
+    drop := g[0].output_n + chunk.count - cap;
+    keep := g[0].output_n - drop;
+    for i: 0..<keep { g[0].output[i] = g[0].output[drop + i]; }
+    g[0].output_n = keep;
+  }
+  for c: chunk {
+    if g[0].output_n < cap { g[0].output[g[0].output_n] = c; g[0].output_n += 1; }
+  }
+}
+
+// ---------------------------------------------------------------- toolbar & live output tray
+
+cp_git_ask :: (s: [] CoderPage, op: int, ax: f32, ay: f32) -> bool {
+  s[0].git[0].op = op;
+  s[0].git[0].anchor_x = ax;
+  s[0].git[0].anchor_y = ay;
+  s[0].ask = CP_ASK_GIT;
+  return true;
+}
+
+cp_git_press :: (s: [] CoderPage, act: int) -> bool {
+  g := s[0].git[..];
+  if act == CP_GIT_BRANCH { return cp_git_ask(s, CP_GIT_OP_BRANCH_MENU, g[0].branch_x, g[0].branch_y); }
+  if act == CP_GIT_MODE {
+    g[0].worktree_mode = ifx g[0].worktree_mode == CP_GIT_MODE_WORKTREE then CP_GIT_MODE_LOCAL else CP_GIT_MODE_WORKTREE;
+    return cp_git_ask(s, CP_GIT_OP_TOGGLE_MODE, g[0].branch_x, g[0].branch_y);
+  }
+  if act == CP_GIT_ACTIONS { return cp_git_ask(s, CP_GIT_OP_ACTIONS_MENU, g[0].actions_x, g[0].actions_y); }
+  if act == CP_GIT_COMMIT { return cp_git_ask(s, CP_GIT_OP_COMMIT, g[0].actions_x, g[0].actions_y); }
+  if act == CP_GIT_PUSH { return cp_git_ask(s, CP_GIT_OP_PUSH, g[0].actions_x, g[0].actions_y); }
+  if act == CP_GIT_PULL { return cp_git_ask(s, CP_GIT_OP_PULL, g[0].actions_x, g[0].actions_y); }
+  if act == CP_GIT_PR { return cp_git_ask(s, CP_GIT_OP_PR, g[0].actions_x, g[0].actions_y); }
+  if act == CP_GIT_OUTPUT_TOGGLE { g[0].output_open = !g[0].output_open; return true; }
+  if act == CP_GIT_OUTPUT_CLOSE { g[0].output_open = false; return true; }
+  if act == CP_GIT_STOP { return cp_git_ask(s, CP_GIT_OP_STOP, g[0].actions_x, g[0].actions_y); }
+  return false;
+}
+
+// Draws the Git Actions toolbar in the chat header / title bar between `min_x` and `right_x` at `cy`.
+// Only shown when the active folder is inside a Git repository (`in_repo == true`).
+cp_git_toolbar :: (s: [] CoderPage, f: [] UiFrame, min_x: f32, right_x: f32, cy: f32) {
+  g := s[0].git[..];
+  if !g[0].in_repo { return; }
+  k := f[0].skin; c := k.cmp; gap := k.app.gap_small;
+  ty := cp_bar_y(s, c.chip_h);
+  avail := right_x - min_x;
+  if avail < 120 { return; }
+  // Branch chip text: "<branch>" + optional " · N" dirty + optional " ↑A" / " ↓B"
+  bb: [CP_BRANCH_TEXT + 48] u8;
+  br := cast(string) s[0].branch[0..<s[0].branch_n];
+  if br.count == 0 { br = "HEAD"; }
+  bn := el_put(bb[..], 0, br);
+  if g[0].dirty > 0 { bn = el_put(bb[..], bn, " · "); bn = el_put_i(bb[..], bn, g[0].dirty); }
+  if g[0].ahead > 0 { bn = el_put(bb[..], bn, " ↑"); bn = el_put_i(bb[..], bn, g[0].ahead); }
+  if g[0].behind > 0 { bn = el_put(bb[..], bn, " ↓"); bn = el_put_i(bb[..], bn, g[0].behind); }
+  br_label := sheet_pool(f[0].sheet, cast(string) bb[0..<bn]);
+  mode_label := cp_git_mode_label(g[0].worktree_mode);
+
+  // Measure chips
+  w_br := cp_foot_chip_width(f, -1, br_label, true);
+  if w_br > 180 { w_br = 180; }
+  w_mode := cp_foot_chip_width(f, -1, mode_label, false);
+  w_commit := cp_foot_chip_width(f, -1, "Commit", false);
+  w_push := cp_foot_chip_width(f, -1, "Push", false);
+  w_pull := cp_foot_chip_width(f, -1, "Pull", false);
+  w_pr := cp_foot_chip_width(f, -1, "PR", false);
+  w_more := cp_foot_chip_width(f, -1, "Git", true);
+
+  busy_text := ifx g[0].busy_label_n > 0 then cast(string) g[0].busy_label[0..<g[0].busy_label_n] else "Git…";
+  w_busy := ifx g[0].busy then cp_foot_chip_width(f, -1, busy_text, false) else 0.0f32;
+
+  // Decide whether full inline action buttons fit or collapse to the compact Git menu chip
+  full_w := w_br + gap + w_mode + gap + (ifx g[0].busy then w_busy else w_commit + gap + w_push + gap + w_pull + gap + w_pr + gap + w_more);
+  compact_w := w_br + gap + w_mode + gap + (ifx g[0].busy then w_busy else w_more);
+  show_inline := full_w <= avail;
+  show_mode := compact_w <= avail;
+
+  // Lay out from right_x leftward so it hugs the right-side review/copy icons cleanly
+  total := ifx show_inline then full_w else ifx show_mode then compact_w else w_br + gap + (ifx g[0].busy then w_busy else w_more);
+  if total > avail { total = avail; }
+  x := right_x - total;
+  if x < min_x { x = min_x; }
+
+  // 1. Branch picker/creator chip
+  bw := w_br;
+  if x + bw > right_x { bw = right_x - x; }
+  if bw > 2 * c.chip_pad {
+    g[0].branch_x = x * s[0].d; g[0].branch_y = (ty + c.chip_h) * s[0].d;
+    _ := cp_foot_chip(f, "coder.git.branch", "Switch or create branch", x, ty, bw, -1, br_label, true, ifx g[0].dirty > 0 then EL_S_CURRENT else 0, CP_GIT_BRANCH);
+    x += bw + gap;
+  }
+  // 2. Local vs. Worktree mode toggle chip
+  if show_mode && x + w_mode <= right_x {
+    st := ifx g[0].worktree_mode == CP_GIT_MODE_WORKTREE then EL_S_CURRENT else 0;
+    _ := cp_foot_chip(f, "coder.git.mode", "Toggle Local checkout vs. Worktree mode", x, ty, w_mode, -1, mode_label, false, st, CP_GIT_MODE);
+    x += w_mode + gap;
+  }
+  // 3. Busy status chip OR Commit / Push / Pull / PR / Git menu
+  if g[0].busy {
+    if x + w_busy <= right_x {
+      g[0].actions_x = x * s[0].d; g[0].actions_y = (ty + c.chip_h) * s[0].d;
+      _ := cp_foot_chip(f, "coder.git.busy", "Git command output", x, ty, w_busy, -1, sheet_pool(f[0].sheet, busy_text), false, EL_S_CURRENT, CP_GIT_OUTPUT_TOGGLE);
+    }
+    return;
+  }
+  if show_inline {
+    _ := cp_foot_chip(f, "coder.git.commit", "Stage and commit changes", x, ty, w_commit, -1, "Commit", false, 0, CP_GIT_COMMIT);
+    x += w_commit + gap;
+    _ := cp_foot_chip(f, "coder.git.push", "Push branch to remote", x, ty, w_push, -1, "Push", false, 0, CP_GIT_PUSH);
+    x += w_push + gap;
+    _ := cp_foot_chip(f, "coder.git.pull", "Pull from remote", x, ty, w_pull, -1, "Pull", false, 0, CP_GIT_PULL);
+    x += w_pull + gap;
+    _ := cp_foot_chip(f, "coder.git.pr", "Create pull request", x, ty, w_pr, -1, "PR", false, 0, CP_GIT_PR);
+    x += w_pr + gap;
+  }
+  if x + w_more <= right_x + 0.5f32 {
+    g[0].actions_x = x * s[0].d; g[0].actions_y = (ty + c.chip_h) * s[0].d;
+    _ := cp_foot_chip(f, "coder.git.actions", "Git actions & worktree status", x, ty, w_more, -1, "Git", true, ifx g[0].output_open then EL_S_CURRENT else 0, CP_GIT_ACTIONS);
+  }
+  _ = cy;
+}
+
+// Draws the live git-hook / command output tray above the composer when open. Returns its height.
+cp_git_output_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, y_bottom: f32, cw: f32) -> f32 {
+  g := s[0].git[..];
+  g[0].tray_h = 0;
+  if !g[0].output_open || (!g[0].busy && g[0].output_n == 0) { return 0; }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme(); a := k.app;
+  pad := 10.0f32;
+  head_h := k.label.line + 4.0f32;
+  // Show up to last 6 lines of live output
+  text := cast(string) g[0].output[0..<g[0].output_n];
+  lines_start: [6] int; lines_end: [6] int; nlines := 0;
+  at := 0;
+  while at < text.count {
+    e := at;
+    while e < text.count && text[e] != 10 { e += 1; }
+    end := e;
+    if end > at && text[end - 1] == 13 { end -= 1; }
+    if nlines < 6 {
+      lines_start[nlines] = at; lines_end[nlines] = end; nlines += 1;
+    } else {
+      for j: 0..<5 { lines_start[j] = lines_start[j + 1]; lines_end[j] = lines_end[j + 1]; }
+      lines_start[5] = at; lines_end[5] = end;
+    }
+    at = e + 1;
+  }
+  body_h := cast(f32) (ifx nlines > 0 then nlines else 1) * k.mono_tiny.line;
+  th_card := pad * 2 + head_h + body_h + 4.0f32;
+  y := y_bottom - th_card;
+  r := 12.0f32;
+  border_col := ifx g[0].output_failed then th.danger else th.line;
+  _ := sheet_box(sh, x, y, cw, th_card, r, 1.0f32, th.surface, border_col);
+  head_str := ifx g[0].busy then (ifx g[0].busy_label_n > 0 then cast(string) g[0].busy_label[0..<g[0].busy_label_n] else "Running git…")
+              else ifx g[0].output_failed then "Git command failed" else "Git output";
+  card_row := uiframe_semantic(f, "coder.git.output", EL_REGION, head_str, x, y, cw, th_card, 0, 0);
+  elt_value(f[0].rows, card_row, text);
+  head_ink := ifx g[0].output_failed then th.danger else th.text;
+  _ := sheet_text(sh, f[0].m, -1, x + pad, y + pad, k.label.line, k.label.face, head_ink, app_fit(f, k.label.face, head_str, cw - 2 * pad - 60));
+  // Close or Stop button at top-right of the card
+  btn_lbl := ifx g[0].busy then "Stop" else "Close";
+  btn_act := ifx g[0].busy then CP_GIT_STOP else CP_GIT_OUTPUT_CLOSE;
+  bw := cp_foot_chip_width(f, -1, btn_lbl, false);
+  _ := cp_foot_chip(f, "coder.git.out.close", btn_lbl, x + cw - pad - bw, y + pad - 4.0f32, bw, -1, btn_lbl, false, 0, btn_act);
+  ly := y + pad + head_h;
+  if nlines == 0 {
+    _ := sheet_text(sh, f[0].m, -1, x + pad, ly, k.mono_tiny.line, k.mono_tiny.face, th.muted, "Waiting for output…");
+  } else {
+    for j: 0..<nlines {
+      ln := cast(string) text[lines_start[j]..<lines_end[j]];
+      _ := sheet_text(sh, f[0].m, -1, x + pad, ly + cast(f32) j * k.mono_tiny.line, k.mono_tiny.line, k.mono_tiny.face, th.muted, app_fit(f, k.mono_tiny.face, ln, cw - 2 * pad));
+    }
+  }
+  g[0].tray_h = th_card + a.gap_small;
+  return g[0].tray_h;
+}
+
+// ---------------------------------------------------------------- C host exports
+
+coder_page_git_status :: (s: [] CoderPage, in_repo: bool, in_worktree: bool, dirty: int, ahead: int, behind: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  g := s[0].git[..];
+  g[0].in_repo = in_repo;
+  g[0].in_worktree = in_worktree;
+  g[0].dirty = ifx dirty < 0 then 0 else dirty;
+  g[0].ahead = ifx ahead < 0 then 0 else ahead;
+  g[0].behind = ifx behind < 0 then 0 else behind;
+}
+
+coder_page_git_mode_set :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].git[0].worktree_mode = ifx mode == CP_GIT_MODE_LOCAL then CP_GIT_MODE_LOCAL else CP_GIT_MODE_WORKTREE;
+}
+
+coder_page_git_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_GIT_MODE_WORKTREE; }
+  return s[0].git[0].worktree_mode;
+}
+
+coder_page_git_branches :: (s: [] CoderPage, lines: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_git_parse_branches(s, lines);
+}
+
+coder_page_git_busy :: (s: [] CoderPage, busy: bool, label: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  g := s[0].git[..];
+  g[0].busy = busy;
+  g[0].busy_label_n = cp_out(g[0].busy_label[..], label);
+  if busy { g[0].output_failed = false; g[0].output_open = true; }
+}
+
+coder_page_git_output_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  g := s[0].git[..];
+  g[0].output_n = 0;
+  g[0].output_failed = false;
+}
+
+coder_page_git_output_append :: (s: [] CoderPage, chunk: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_git_append_output(s, chunk);
+}
+
+coder_page_git_output_done :: (s: [] CoderPage, failed: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  g := s[0].git[..];
+  g[0].busy = false;
+  g[0].output_failed = failed;
+  if failed { g[0].output_open = true; }
+}
+
+coder_page_git_wt_status :: (s: [] CoderPage, status: int, note: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  g := s[0].git[..];
+  g[0].wt_status = status;
+  g[0].wt_note_n = cp_out(g[0].wt_note[..], note);
+}
+
+coder_page_git_op :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_GIT_OP_NONE; }
+  op := s[0].git[0].op;
+  s[0].git[0].op = CP_GIT_OP_NONE;
+  return op;
+}
+
+coder_page_git_anchor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 2 { return false; }
+  out[0] = s[0].git[0].anchor_x;
+  out[1] = s[0].git[0].anchor_y;
+  return true;
+}
+
+coder_page_git_needs_guard :: (branch: string, op: int) -> bool #export_c #effects(all) {
+  return cp_git_needs_default_guard(branch, op);
+}
+
+coder_page_git_valid_branch :: (name: string) -> bool #export_c #effects(all) {
+  return cp_git_validate_branch_name(name);
+}
+
+coder_page_git_valid_commit :: (msg: string) -> bool #export_c #effects(all) {
+  return cp_git_validate_commit_msg(msg);
+}

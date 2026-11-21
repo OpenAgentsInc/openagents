@@ -347,6 +347,7 @@ CoderPage :: struct {
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   todos: [1] CpTodos;          // live agent to-do checklist (todos.coax)
   permit: [1] CpPermit;        // interactive permission / question prompt (permit.coax; GitHub #13831)
+  git: [1] CpGit;              // Git Actions toolbar, branch picker, worktree mode & live hook output (gitactions.coax; #13871)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
@@ -473,6 +474,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
+  cp_git_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {
