@@ -186,12 +186,12 @@ put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink
 
 // Text wrapped to width from baseline y, lines step apart, at most lines
 // lines. Returns the vertex count; drawn[0] gets the lines drawn.
-put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32,
+put_lines :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32,
                 step: f32, lines: int, drawn: [] int) -> int {
   v := at; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
+    end := font_ink_line(text, from, width, cap, GAP, SPACE, k, next[..]);
     v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
     n += 1;
     if next[0] <= from { break; }
@@ -1084,7 +1084,7 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
     chips_y = ty - 8 * d;
   } else {
     lines: [1] int;
-    v = put_wrapped(out, v, tag, x, ty + 22 * d, 7.5 * d, white, right - x, 13 * d, 3, lines[..]);
+    v = put_lines(out, v, tag, x, ty + 22 * d, 7.5 * d, white, right - x, 13 * d, 3, lines[..]);
     chips_y = ty + 22 * d + 13 * d * cast(f32) lines[0] + 14 * d;
   }
   // the chips: open for contributions (pulsing), the licence, and the data's
@@ -1214,7 +1214,7 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
       lines := 1;
       if tall {
         drawn: [1] int;
-        v = put_wrapped(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw, 12 * d, 2, drawn[..]);
+        v = put_lines(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw, 12 * d, 2, drawn[..]);
         lines = drawn[0];
       } else {
         v = put_fit(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw);
@@ -1268,7 +1268,7 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
   }
   if note_room > 0 {
     lines: [1] int;
-    v = put_wrapped(out, v, note, x, b.y1 - note_room + 2 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
+    v = put_lines(out, v, note, x, b.y1 - note_room + 2 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
   }
   return frame(out, v, b, 10 * d, p);
 }
@@ -1330,7 +1330,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   lead := 52 * d;
   if !compact {
     lines: [1] int;
-    v = put_wrapped(out, v, "This project takes work from people and agents. Pull an open task, claim it, push a commit that meets its acceptance, and a maintainer reviews it.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    v = put_lines(out, v, "This project takes work from people and agents. Pull an open task, claim it, push a commit that meets its acceptance, and a maintainer reviews it.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
     y += 12 * d * cast(f32) lines[0] + 10 * d;
   }
   for r: 0..<rows(AGENT_STEPS) {
@@ -1341,7 +1341,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   }
   if !compact && y + 20 * d < b.y1 - 10 * d {
     lines: [1] int;
-    v = put_wrapped(out, v, "Tasks are NIP-WORK items; claims are NIP-COORD leases; the project is a NIP-MP group over NIP-34 repositories.", x, y + 8 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
+    v = put_lines(out, v, "Tasks are NIP-WORK items; claims are NIP-COORD leases; the project is a NIP-MP group over NIP-34 repositories.", x, y + 8 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
     y += 8 * d + 11 * d * cast(f32) lines[0] + 16 * d;
   }
   if !compact && y + 90 * d < b.y1 - 10 * d {
@@ -1419,7 +1419,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   if w[0].n == 0 {
     v = put(out, v, "NO TASKS PUBLISHED YET", x, y + 6 * d, cap, white);
     lines: [1] int;
-    v = put_wrapped(out, v, "The queue fills from the project's events on the relay.", x, y + 24 * d, small, dim, right - x, 11 * d, 3, lines[..]);
+    v = put_lines(out, v, "The queue fills from the project's events on the relay.", x, y + 24 * d, small, dim, right - x, 11 * d, 3, lines[..]);
     return frame(out, v, b, 10 * d, p);
   }
   order: [MAX_ITEMS] int; sect: [MAX_ITEMS] int;
@@ -1458,7 +1458,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     lines := 1;
     if tall {
       drawn: [1] int;
-      v = put_wrapped(out, v, title, x + idw, y, cap, tint, room, 12 * d, 2, drawn[..]);
+      v = put_lines(out, v, title, x + idw, y, cap, tint, room, 12 * d, 2, drawn[..]);
       lines = drawn[0];
     } else {
       v = put_fit(out, v, title, x + idw, y, cap, tint, room);
@@ -1641,7 +1641,7 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
   lead := 52 * d;
   if !compact {
     lines: [1] int;
-    v = put_wrapped(out, v, "Take the top ready task nobody is on: its issue says what to build, the checks that must pass and the files it writes. Claim it with a comment on the issue, note as you go, and finish it with the commit that passes its checks.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    v = put_lines(out, v, "Take the top ready task nobody is on: its issue says what to build, the checks that must pass and the files it writes. Claim it with a comment on the issue, note as you go, and finish it with the commit that passes its checks.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
     y += 12 * d * cast(f32) lines[0] + 10 * d;
   }
   for r: 0..<rows(w[0].steps) {
@@ -1828,7 +1828,7 @@ flow :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, w
   v := at; from := 0; yy := y;
   next: [1] int;
   while from < text.count {
-    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
+    end := font_ink_line(text, from, width, cap, GAP, SPACE, k, next[..]);
     if in_view(yy, cap, top, bottom) { v = put(out, v, text[from..<end], x, yy, cap, k); }
     yy += step;
     if next[0] <= from { break; }
@@ -1970,7 +1970,7 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
   y += 30 * d;
   tcap := (ifx narrow then 9.5f32 else 11.0f32) * d; tstep := tcap + 7 * d;
   lines: [1] int;
-  v = put_wrapped(out, v, item(w, text, r, 3), x, y, tcap, white, right - x, tstep, 4, lines[..]);
+  v = put_lines(out, v, item(w, text, r, 3), x, y, tcap, white, right - x, tstep, 4, lines[..]);
   y += tstep * cast(f32) (lines[0] - 1) + 18 * d;
   // the facts: size, labels, milestone
   m := 0;
@@ -1985,7 +1985,7 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
     m += put_text(buf[..], m, item(w, text, ms, 0)); m += put_text(buf[..], m, " "); m += put_text(buf[..], m, item(w, text, ms, 3));
   }
   if m > 0 {
-    v = put_wrapped(out, v, cast(string) buf[0..<m], x, y, small, dim, right - x, 12 * d, 3, lines[..]);
+    v = put_lines(out, v, cast(string) buf[0..<m], x, y, small, dim, right - x, 12 * d, 3, lines[..]);
     y += 12 * d * cast(f32) (lines[0] - 1) + 10 * d;
   }
   v = rule(out, v, b.x0 + 12 * d, y, b.x1 - 12 * d, y, dim, 0.14 * p.fade);

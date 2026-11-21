@@ -1002,13 +1002,13 @@ btn :: (s: [] Villa, out: [] f32, n: int, b: Box, word: string, kind: int, arg: 
   pet_button(s[0].pet[..], b, kind, arg);
   return m;
 }
-// Text wrapped to a width, from its top line's base; at most lines lines. Returns n; the next base into y[0].
-wrapped :: (out: [] f32, n: int, t: string, x: f32, base: f32, width: f32, cap: f32, k: f32, lines: int, alpha: f32, y: [] f32) -> int {
+// Text pet_lines to a width, from its top line's base; at most lines lines. Returns n; the next base into y[0].
+pet_lines :: (out: [] f32, n: int, t: string, x: f32, base: f32, width: f32, cap: f32, k: f32, lines: int, alpha: f32, y: [] f32) -> int {
   m := n; from := 0; line := 0; b := base;
   next: [1] int;
   while from < t.count && line < lines {
     next[0] = t.count;
-    end := wrap(t, from, width / cap, GAP, SPACE, false, next[..]);
+    end := font_line(t, from, width / cap, GAP, SPACE, false, next[..]);
     if end <= from && next[0] <= from { break; }
     m = pt(out, m, t[from..<end], x, b, cap, k, alpha);
     from = next[0]; line += 1; b += cap * 1.9;
@@ -1041,7 +1041,7 @@ field_draw :: (s: [] Villa, out: [] f32, n: int, f: int, x0: f32, x1: f32, top: 
     m = pt(out, m, show, b.x0 + 8 * k, b.y0 + 6 * k + cap, cap, k, 0.95);
     if focused { cx := b.x0 + 8 * k + text_width(show, cap) + 2 * k; if lit(out, m, cx, b.y0 + 5 * k, cx, b.y1 - 5 * k, 0.6 * k, 0.9, 1 * k, PALE_R, PALE_G, PALE_B, 0) { m += 6; } }
   } else {
-    m = wrapped(out, m, t, b.x0 + 8 * k, b.y0 + 6 * k + cap, b.x1 - b.x0 - 16 * k, cap, k, lines, 0.95, y[..]);
+    m = pet_lines(out, m, t, b.x0 + 8 * k, b.y0 + 6 * k + cap, b.x1 - b.x0 - 16 * k, cap, k, lines, 0.95, y[..]);
   }
   if focused { p[0].field_box = b; }
   return m;
@@ -1068,7 +1068,7 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
   y += bh + 4 * k;
   uy: [1] f32;
-  m = wrapped(out, m, "ONLY YOU SEE THEM UNLESS YOU PUT ONE ON THEIR MEMORIAL. THEY'RE USED FOR THEIR AVATAR AND MEMORIAL, NEVER FOR ANYTHING ELSE", x0, y + 7 * k, x1 - x0, 6.5 * k, k, 2, 0.6, uy[..]);
+  m = pet_lines(out, m, "ONLY YOU SEE THEM UNLESS YOU PUT ONE ON THEIR MEMORIAL. THEY'RE USED FOR THEIR AVATAR AND MEMORIAL, NEVER FOR ANYTHING ELSE", x0, y + 7 * k, x1 - x0, 6.5 * k, k, 2, 0.6, uy[..]);
   y = uy[0] - 4 * k;
   // the kept ones, each on or off the memorial, and DELETE (pressed twice)
   for f: 0..<lo_int(p[0].fl_n, 3) {
@@ -1208,7 +1208,7 @@ pet_draw_look :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) 
   y := top; cap := 7 * k;
   yb: [1] f32;
   for c: 0..<p[0].choices {
-    m = wrapped(out, m, pet_s(p[0].choice[c * 220..<c * 220 + 220], p[0].choice_n[c]), x0, y + cap, x1 - x0, cap, k, 2, 0.8, yb[..]);
+    m = pet_lines(out, m, pet_s(p[0].choice[c * 220..<c * 220 + 220], p[0].choice_n[c]), x0, y + cap, x1 - x0, cap, k, 2, 0.8, yb[..]);
     y = yb[0] - cap + 4 * k;
     if y > top + 110 * k { break; }
   }
@@ -1276,7 +1276,7 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
   if !p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 64 * k, y0 = y, x1 = x1, y1 = y + 20 * k}, "REPORT", B_REPORT, REPORT_MEMORIAL * 1000000, false); }
   y += big + 14 * k;
   if p[0].m_dates_n > 0 { m = pt_dim(out, m, pet_s(p[0].m_dates[..], p[0].m_dates_n), x0, y + 8 * k, 8 * k, k); y += 20 * k; }
-  if p[0].m_line_n > 0 { m = wrapped(out, m, pet_s(p[0].m_line[..], p[0].m_line_n), x0, y + 9 * k, x1 - x0, 9 * k, k, 2, 0.95, yb[..]); y = yb[0]; }
+  if p[0].m_line_n > 0 { m = pet_lines(out, m, pet_s(p[0].m_line[..], p[0].m_line_n), x0, y + 9 * k, x1 - x0, 9 * k, k, 2, 0.95, yb[..]); y = yb[0]; }
   y += 6 * k;
   // the photos and videos their owner put here, drawn by the host (coaxial_media); one open large
   if p[0].m_media_n > 0 && p[0].m_big >= 0 && p[0].m_big < p[0].m_media_n {
@@ -1306,7 +1306,7 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
     t := ifx q == 0 then pet_s(p[0].m_story[..], p[0].m_story_n) else ifx q == 1 then pet_s(p[0].m_traits[..], p[0].m_traits_n) else pet_s(p[0].m_ach[..], p[0].m_ach_n);
     if t.count == 0 { continue; }
     m = pt_dim(out, m, parts[q], x0, y + 7 * k, 7 * k, k); y += 14 * k;
-    m = wrapped(out, m, t, x0, y + 8 * k, x1 - x0, 8 * k, k, ifx q == 0 then 6 else 3, 0.9, yb[..]); y = yb[0];
+    m = pet_lines(out, m, t, x0, y + 8 * k, x1 - x0, 8 * k, k, ifx q == 0 then 6 else 3, 0.9, yb[..]); y = yb[0];
   }
   y += 4 * k;
   m = pt_dim(out, m, "FROM THOSE WHO KNEW THEM", x0, y + 7 * k, 7 * k, k); y += 14 * k;
@@ -1317,7 +1317,7 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
     if p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 54 * k, y0 = y - 4 * k, x1 = x1, y1 = y + 14 * k}, "HIDE", B_HIDE, p[0].n_num[i], false); }
     else { m = btn(s, out, m, Box.{x0 = x1 - 64 * k, y0 = y - 4 * k, x1 = x1, y1 = y + 14 * k}, "REPORT", B_REPORT, REPORT_NOTE * 1000000 + p[0].n_num[i] % 1000000, false); }
     y += 13 * k;
-    m = wrapped(out, m, pet_s(p[0].n_text[i * NOTE_BYTES..<(i + 1) * NOTE_BYTES], p[0].n_text_n[i]), x0, y + 8 * k, x1 - x0, 8 * k, k, 3, 0.88, yb[..]);
+    m = pet_lines(out, m, pet_s(p[0].n_text[i * NOTE_BYTES..<(i + 1) * NOTE_BYTES], p[0].n_text_n[i]), x0, y + 8 * k, x1 - x0, 8 * k, k, 3, 0.88, yb[..]);
     y = yb[0];
   }
   // leave a note
@@ -1384,7 +1384,7 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
       plate(s, u, cb, 0.82, 0);
       m = pt(out, m, pet_s(p[0].g_name[i * 40..<i * 40 + 40], p[0].g_name_n[i]), cb.x0 + 14 * k, cb.y0 + 24 * k, 12 * k, k, 1);
       yb: [1] f32;
-      m = wrapped(out, m, pet_s(p[0].g_line[i * 120..<i * 120 + 120], p[0].g_line_n[i]), cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 1, 0.85, yb[..]);
+      m = pet_lines(out, m, pet_s(p[0].g_line[i * 120..<i * 120 + 120], p[0].g_line_n[i]), cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 1, 0.85, yb[..]);
       m = btn(s, out, m, Box.{x0 = cb.x0 + 14 * k, y0 = cb.y1 - 40 * k, x1 = cb.x1 - 14 * k, y1 = cb.y1 - 10 * k}, "OPEN THEIR MEMORIAL", B_MEMORIAL, i, true);
     }
   } else {

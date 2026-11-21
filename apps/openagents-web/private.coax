@@ -1056,7 +1056,7 @@ pv_text :: (s: [] PrivateState, out: [] f32, f: PvFlow, text: string, x: f32, wi
   r := f; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap_ink(text, from, width, cap * d, GAP, SPACE, k, next[..]);
+    end := font_ink_line(text, from, width, cap * d, GAP, SPACE, k, next[..]);
     base := r.y + step * 0.8;
     show := draw && base > top && base - step < s[0].height;
     if n == lines - 1 && next[0] < text.count && next[0] > from {

@@ -110,7 +110,7 @@ ffq_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   m = redit_put(title[..], m, "'S QUEST");
   n := draw_text(out, at, cast(string) title[0..<m], x0 + pad, y0 + pad + 9 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   y := y0 + pad + 11 * k + 8 * k;
-  n = redit_wrap(e, out, n, ask, x0 + pad, y - cap * 0.7, cap, bw - 2 * pad, ask_lines, redit_parch(k, 0.9));
+  n = redit_lines(e, out, n, ask, x0 + pad, y - cap * 0.7, cap, bw - 2 * pad, ask_lines, redit_parch(k, 0.9));
   y += f32(ask_lines) * cap * 1.7 + 6 * k;
   size := 12 * k;
   for r: 0..<shown_rows {

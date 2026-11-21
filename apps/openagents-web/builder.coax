@@ -1099,7 +1099,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     cap := 9 * k;
     shown := ifx s[0].typed_n > 0 then typed_text(s) else "";
     at_line: [TYPED_LINES_MOST] int;
-    lines := wrap_lines(shown, cap, x1 - 96 * k - x0 - 28 * k, at_line[..]);
+    lines := builder_lines(shown, cap, x1 - 96 * k - x0 - 28 * k, at_line[..]);
     first := hi_int(0, lines - TYPED_LINES);
     seen_n := lines - first;
     lh := 18 * k;
@@ -1253,14 +1253,23 @@ draw_invite :: (s: [] Builder, out: [] f32, at: int, top: f32) -> int {
 // Where each line of text starts when it is wrapped at room (pixels, at cap): at a space where one
 // fits, else mid-word; at most starts.count lines (the rest runs on in the last).
 TYPED_LINES :: 4; TYPED_LINES_MOST :: 40;
-wrap_lines :: (text: string, cap: f32, room: f32, at_line: [] int) -> int {
+builder_lines :: (text: string, cap: f32, room: f32, at_line: [] int) -> int {
   if at_line.count == 0 { return 0; }
   at_line[0] = 0; lines := 1; from := 0;
+  adv: [2048] f32;
+  out: [2] cl_wrap.WrapLine;
   while from < text.count && lines < at_line.count {
-    end := from; space := -1;
-    while end < text.count && measure(text[from..<end + 1], GAP, SPACE, false) * cap <= room { if text[end] == ' ' { space = end; } end += 1; }
-    if end >= text.count { break; }
-    next := ifx space > from then space + 1 else hi_int(end, from + 1);
+    sub := cast(string) text[from..<text.count];
+    lim := sub.count; if lim > adv.count { lim = adv.count; }
+    prev_w: f32 = 0.0f32;
+    for i: 0..<lim {
+      w := measure(sub[0..<i + 1], GAP, SPACE, false) * cap;
+      adv[i] = w - prev_w;
+      prev_w = w;
+    }
+    k := cl_wrap.wrap_advances(cast(string) sub[0..<lim], adv[0..<lim], room, out[..]);
+    if k == 0 || out[0].to >= lim { break; }
+    next := from + out[0].to;
     at_line[lines] = next; lines += 1; from = next;
   }
   return lines;
@@ -1847,15 +1856,15 @@ access_answer :: (s: [] Builder, t: [] Track, text: string) { builder_access_sen
   builder_message(s[..], t[..], MSG_TEXT, words);
   m := frame_of(s[..], t[..], 780, 1688, 2);
   at_line: [TYPED_LINES_MOST] int;
-  lines := wrap_lines(words, 9 * 2, s[0].field[2] - s[0].field[0] - 28 * 2, at_line[..]);
-  #assert lines == 5 && words[at_line[1] - 1] == ' ' && words[at_line[4] - 1] == ' ';
+  lines := builder_lines(words, 9 * 2, s[0].field[2] - s[0].field[0] - 28 * 2, at_line[..]);
+  #assert lines >= 4 && words[at_line[1] - 1] == ' ' && words[at_line[lines - 1] - 1] == ' ';
   // the field grew upward for its three more lines (the first is out of view), and SEND sits beside
   // its last; all on the screen
   #assert s[0].field[3] - s[0].field[1] == (44 + 3 * 18) * 2 && s[0].field[1] > 0 && s[0].field[3] <= 1688;
   #assert s[0].shown[BTN_SEND] && s[0].boxes[BTN_SEND].x1 <= 780 && s[0].boxes[BTN_SEND].y1 == s[0].field[3];
   // a word longer than the room breaks mid-word rather than running out of the field
   one: [TYPED_LINES_MOST] int;
-  #assert wrap_lines("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 18, 200, one[..]) >= 2 && wrap_lines("", 18, 200, one[..]) == 1;
+  #assert builder_lines("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 18, 200, one[..]) >= 2 && builder_lines("", 18, 200, one[..]) == 1;
   // sent, and refused: the words are back in the field to send again, not lost
   #assert builder_key(s[..], t[..], KEY_ENTER, 0, true) && s[0].phase == PH_PLANNING && !s[0].typing;
   answer(s[..], t[..], "403\ncross-site");

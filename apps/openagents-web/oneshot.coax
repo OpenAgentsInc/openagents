@@ -201,12 +201,12 @@ say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: In
 }
 // Text wrapped to a width from the top-left (x, y): the vertices, and the y below its last line.
 Wrapped :: struct { n: int; y: f32; }
-say_wrap :: (out: [] f32, at: int, t: string, x: f32, y: f32, width: f32, cap: f32, k: Ink, lines: int) -> Wrapped {
+say_lines :: (out: [] f32, at: int, t: string, x: f32, y: f32, width: f32, cap: f32, k: Ink, lines: int) -> Wrapped {
   n := at; i := 0; row := 0; base := y + cap;
   lh := cap * 1.85;
   while i < t.count && row < lines {
     nx: [1] int;
-    e := wrap(t, i, width / cap, GAP, SPACE, false, nx[..]);
+    e := font_line(t, i, width / cap, GAP, SPACE, false, nx[..]);
     if e <= i && nx[0] <= i { break; }
     n = say_at(out, n, t[i..<e], x, base, cap, k);
     i = nx[0]; row += 1; base += lh;
@@ -214,11 +214,11 @@ say_wrap :: (out: [] f32, at: int, t: string, x: f32, y: f32, width: f32, cap: f
   return Wrapped.{n = n, y = base - lh + cap * 0.9};
 }
 // How many lines t wraps to.
-wrap_lines :: (t: string, width: f32, cap: f32) -> int {
+count_lines :: (t: string, width: f32, cap: f32) -> int {
   i := 0; rows := 0;
   while i < t.count && rows < 200 {
     nx: [1] int;
-    e := wrap(t, i, width / cap, GAP, SPACE, false, nx[..]);
+    e := font_line(t, i, width / cap, GAP, SPACE, false, nx[..]);
     if e <= i && nx[0] <= i { break; }
     i = nx[0]; rows += 1;
   }
@@ -246,13 +246,13 @@ field :: (s: [] Os, out: [] f32, at: int, id: int, f: int, r: Rect, label: strin
   n = say_at(out, n, label, r.x0, r.y0 - 5 * k, 7.5 * k, ink(k, 0.6, DIM));
   n = fill(out, n, r, 0.05, WHITE);
   n = box_lines(out, n, r, 0.7 * k, ifx on then 0.9 else 0.4, ifx on then GOLD else DIM);
-  w := say_wrap(out, n, text, r.x0 + 7 * k, r.y0 + 7 * k, r.x1 - r.x0 - 14 * k, cap, ink(k, 0.85, WHITE), lines);
+  w := say_lines(out, n, text, r.x0 + 7 * k, r.y0 + 7 * k, r.x1 - r.x0 - 14 * k, cap, ink(k, 0.85, WHITE), lines);
   n = w.n;
   if on {
     // the caret, after the text
-    rows := wrap_lines(text, r.x1 - r.x0 - 14 * k, cap);
+    rows := count_lines(text, r.x1 - r.x0 - 14 * k, cap);
     last := 0; i := 0; rr := 0;
-    while i < text.count && rr < rows - 1 { nx: [1] int; e := wrap(text, i, (r.x1 - r.x0 - 14 * k) / cap, GAP, SPACE, false, nx[..]); i = nx[0]; rr += 1; }
+    while i < text.count && rr < rows - 1 { nx: [1] int; e := font_line(text, i, (r.x1 - r.x0 - 14 * k) / cap, GAP, SPACE, false, nx[..]); i = nx[0]; rr += 1; }
     last = i;
     cx := r.x0 + 7 * k + text_width(text[last..<text.count], cap) + 2 * k;
     cy := r.y0 + 7 * k + f32(rs_max(rows - 1, 0)) * cap * 1.85;
@@ -643,7 +643,7 @@ top_height :: (s: [] Os, w: f32, k: f32) -> f32 {
   return ifx nt > 3 then 128 * k else 96 * k;
 }
 footer :: (s: [] Os, out: [] f32, at: int, x: f32, y: f32, width: f32, k: f32) -> Wrapped {
-  return say_wrap(out, at, ATTRIBUTION, x, y, width, 6.2 * k, ink(k, 0.4, DIM), 6);
+  return say_lines(out, at, ATTRIBUTION, x, y, width, 6.2 * k, ink(k, 0.4, DIM), 6);
 }
 header :: (out: [] f32, at: int, t: string, x: f32, y: f32, k: f32) -> int { return say_at(out, at, t, x, y, 8 * k, ink(k, 0.62, CYAN)); }
 
@@ -654,7 +654,7 @@ draw_campaigns :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, k: 
   width := lo(w - pad * 2, 760 * k);
   n = say_at(out, n, "RUN A 5E GAME FOR YOUR FRIENDS.", x, y + 16 * k, 16 * k, ink(k, 0.95, WHITE));
   y += 32 * k;
-  wr := say_wrap(out, n, "Make a one-shot from our starter adventure, change what you like, then run it at the Table: you on the GM Screen, the shared picture on the Table Display, and each player's hero on My Character.", x, y, width, 8.5 * k, ink(k, 0.6, DIM), 4);
+  wr := say_lines(out, n, "Make a one-shot from our starter adventure, change what you like, then run it at the Table: you on the GM Screen, the shared picture on the Table Display, and each player's hero on My Character.", x, y, width, 8.5 * k, ink(k, 0.6, DIM), 4);
   n = wr.n; y = wr.y + 16 * k;
   n = button(s, out, n, B_NEW, rect(x, y, x + 180 * k, y + 34 * k), "NEW ONE-SHOT", false, true);
   y += 52 * k;
@@ -718,7 +718,7 @@ draw_builder :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f3
   y += 44 * k;
   n = button(s, out, n, B_BUILD_RUN, rect(x, y, x + lw, y + 34 * k), "RUN IT AT THE TABLE", false, true);
   y += 48 * k;
-  wr := say_wrap(out, n, "Your own content: saved in this browser and kept apart from the SRD. Encounters use the SRD 5.2.1 Skeleton, the one monster the rules engine holds today.", x, y, lw, 7 * k, ink(k, 0.45, DIM), 5);
+  wr := say_lines(out, n, "Your own content: saved in this browser and kept apart from the SRD. Encounters use the SRD 5.2.1 Skeleton, the one monster the rules engine holds today.", x, y, lw, 7 * k, ink(k, 0.45, DIM), 5);
   n = wr.n; y = wr.y + 10 * k;
   // the scene
   sx := ifx narrow then x else x + lw + 24 * k;
@@ -849,7 +849,7 @@ draw_log :: (s: [] Os, out: [] f32, at: int, vs: [] OsView, x: f32, y: f32, w: f
   while q >= 0 && yy > y + 16 * k {
     l := v.lines[q];
     txt := os_text(vs[0].lines[..], q);
-    nl := rs_min(wrap_lines(txt, w - (ifx l.hidden then 64 * k else 0), cap), 3);
+    nl := rs_min(count_lines(txt, w - (ifx l.hidden then 64 * k else 0), cap), 3);
     top := yy - f32(nl) * lh;
     if top < y + 10 * k { break; }
     col := ifx l.kind == LN_ROLL then GOLD else ifx l.kind == LN_SCENE then CYAN else ifx l.kind == LN_GM then WHITE else DIM;
@@ -858,7 +858,7 @@ draw_log :: (s: [] Os, out: [] f32, at: int, vs: [] OsView, x: f32, y: f32, w: f
       n = button(s, out, n, B_REVEAL + l.seq, r, "SHOW", false, gm);
       col = Col.{r = col.r * 0.6, g = col.g * 0.6, b = col.b * 0.75};
     }
-    wr := say_wrap(out, n, txt, x, top, w - (ifx l.hidden then 64 * k else 0), cap, ink(k, ifx l.hidden then 0.55 else 0.85, col), 3);
+    wr := say_lines(out, n, txt, x, top, w - (ifx l.hidden then 64 * k else 0), cap, ink(k, ifx l.hidden then 0.55 else 0.85, col), 3);
     n = wr.n;
     yy = top - 3 * k; rows += 1;
     q -= 1;
@@ -905,7 +905,7 @@ draw_gm :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k:
   ly += 38 * k;
   seated := 0; for q: 0..<SEATS { if s[0].seat_hero[q] >= 0 { seated += 1; } }
   m = ifx s[0].link == LINK_IN then put(l[..], 0, "OTHER SCREENS CAN JOIN: THREE SEATS") else ifx s[0].link == LINK_JOINING then put(l[..], 0, "OPENING THE ROOM") else put(l[..], 0, "NO ROOM HERE: PLAY ON THIS DEVICE, A TAB EACH");
-  wr := say_wrap(out, n, cast(string) l[0..<m], lx, ly, lw, 6.8 * k, ink(k, 0.55, DIM), 3);
+  wr := say_lines(out, n, cast(string) l[0..<m], lx, ly, lw, 6.8 * k, ink(k, 0.55, DIM), 3);
   n = wr.n; ly = wr.y + 8 * k;
   n = button(s, out, n, B_INVITE, rect(lx, ly, lx + lw, ly + 26 * k), "COPY INVITE LINK", false, s[0].link == LINK_IN);
   ly += 32 * k;
@@ -936,11 +936,11 @@ draw_gm :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k:
     for q: 0..<4 { n = button(s, out, n, btns[q], rect(cx + f32(q) * (bw + 6 * k), cy, cx + f32(q) * (bw + 6 * k) + bw, cy + 30 * k), labels[q], ons[q], works[q]); }
     cy += 42 * k;
     n = say_at(out, n, "READ ALOUD", cx, cy, 7 * k, ink(k, 0.5, DIM));
-    wr = say_wrap(out, n, os_scene_text(t[0].camp.scenes[..], sc), cx, cy + 6 * k, cw, 8.6 * k, ink(k, 0.88, WHITE), 14);
+    wr = say_lines(out, n, os_scene_text(t[0].camp.scenes[..], sc), cx, cy + 6 * k, cw, 8.6 * k, ink(k, 0.88, WHITE), 14);
     n = wr.n; cy = wr.y + 14 * k;
     if t[0].camp.scenes[sc].handout_n > 0 {
       n = say_at(out, n, "HANDOUT", cx, cy, 7 * k, ink(k, 0.5, DIM));
-      wr = say_wrap(out, n, os_scene_handout(t[0].camp.scenes[..], sc), cx + 8 * k, cy + 8 * k, cw - 16 * k, 7.8 * k, ink(k, 0.7, CYAN), 6);
+      wr = say_lines(out, n, os_scene_handout(t[0].camp.scenes[..], sc), cx + 8 * k, cy + 8 * k, cw - 16 * k, 7.8 * k, ink(k, 0.7, CYAN), 6);
       n = seg(out, n, cx, cy + 6 * k, cx, wr.y + 2 * k, 1 * k, 0.5, CYAN);
       n = wr.n; cy = wr.y + 14 * k;
     }
@@ -1230,8 +1230,8 @@ draw_display :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f3
   // the read-aloud text, when the GM shows it
   if v.text_n > 0 {
     tw := lo(w - pad * 2, 820 * k);
-    top := ifx glade_on(v) then y0 + h - 30 * k - f32(rs_min(wrap_lines(os_str(s[0].seen[0].text[..], v.text_n), tw, 9 * k), 8)) * 9 * k * 1.85 else y0 + h * 0.3 + 40 * k;
-    wr := say_wrap(out, n, os_str(s[0].seen[0].text[..], v.text_n), x0 + (w - tw) / 2, top, tw, 9 * k, ink(k, 0.9, WHITE), 8);
+    top := ifx glade_on(v) then y0 + h - 30 * k - f32(rs_min(count_lines(os_str(s[0].seen[0].text[..], v.text_n), tw, 9 * k), 8)) * 9 * k * 1.85 else y0 + h * 0.3 + 40 * k;
+    wr := say_lines(out, n, os_str(s[0].seen[0].text[..], v.text_n), x0 + (w - tw) / 2, top, tw, 9 * k, ink(k, 0.9, WHITE), 8);
     n = wr.n;
   }
   // the order along the top
@@ -1264,12 +1264,12 @@ draw_display :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f3
   // the handout, a card on the right
   if v.handout_n > 0 {
     hw := lo(300 * k, w * 0.32);
-    hh := f32(rs_min(wrap_lines(os_str(s[0].seen[0].handout[..], v.handout_n), hw - 24 * k, 8.5 * k), 10)) * 8.5 * k * 1.85 + 44 * k;
+    hh := f32(rs_min(count_lines(os_str(s[0].seen[0].handout[..], v.handout_n), hw - 24 * k, 8.5 * k), 10)) * 8.5 * k * 1.85 + 44 * k;
     r := rect(x0 + w - pad - hw, y0 + 60 * k, x0 + w - pad, y0 + 60 * k + hh);
     n = fill(out, n, r, 0.1, GOLD);
     n = box_lines(out, n, r, 0.8 * k, 0.7, GOLD);
     n = say_at(out, n, "HANDOUT", r.x0 + 12 * k, r.y0 + 18 * k, 7 * k, ink(k, 0.7, GOLD));
-    wr := say_wrap(out, n, os_str(s[0].seen[0].handout[..], v.handout_n), r.x0 + 12 * k, r.y0 + 26 * k, hw - 24 * k, 8.5 * k, ink(k, 0.92, WHITE), 10);
+    wr := say_lines(out, n, os_str(s[0].seen[0].handout[..], v.handout_n), r.x0 + 12 * k, r.y0 + 26 * k, hw - 24 * k, 8.5 * k, ink(k, 0.92, WHITE), 10);
     n = wr.n;
   }
   // the newest open lines, small, bottom left
@@ -1281,7 +1281,7 @@ draw_display :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f3
     n = say_at(out, n, txt, x0 + pad, ly, 6.8 * k, ink(k, 0.6 - f32(shown) * 0.1, DIM));
     ly -= 13 * k; shown += 1; q -= 1;
   }
-  n = say_wrap(out, n, ATTRIBUTION, x0 + pad, y0 + h - 22 * k, w - pad * 2, 5 * k, ink(k, 0.3, DIM), 2).n;
+  n = say_lines(out, n, ATTRIBUTION, x0 + pad, y0 + h - 22 * k, w - pad * 2, 5 * k, ink(k, 0.3, DIM), 2).n;
   return f32(n);
 }
 

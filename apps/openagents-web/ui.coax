@@ -719,17 +719,17 @@ draw_home :: (u: [] Ui, out: [] f32, at: int) -> int {
 // Lines that text wraps to at width pixels and cap.
 line_total :: (text: string, cap: f32, width: f32, gap: f32, space: f32, rich: bool) -> int {
   next: [1] int; i := 0; lines := 0;
-  while i < text.count && lines < 200 { _ := wrap(text, i, width / cap, gap, space, rich, next[..]); i = next[0]; lines += 1; }
+  while i < text.count && lines < 200 { _ := font_line(text, i, width / cap, gap, space, rich, next[..]); i = next[0]; lines += 1; }
   return lines;
 }
 
 // Draws text wrapped to width pixels, the first line's top at y. Returns
 // the new vertex count; writes the height used to height[0].
-draw_wrapped :: (d: f32, out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, gap: f32, space: f32,
+draw_lines :: (d: f32, out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, gap: f32, space: f32,
                  k: Ink, width: f32, leading: f32, rich: bool, draw: bool, height: [] f32) -> int {
   next: [1] int; i := 0; lines := 0; vertices := at;
   while i < text.count && lines < 200 {
-    end := wrap(text, i, width / cap, gap, space, rich, next[..]);
+    end := font_line(text, i, width / cap, gap, space, rich, next[..]);
     if draw { vertices = write(d, out, vertices, text[i..<end], x, y + cap + cast(f32) lines * leading, cap, gap, space, k, rich, rich && bold_at(text, i)); }
     i = next[0]; lines += 1;
   }
@@ -757,21 +757,21 @@ slide_flow :: (u: [] Ui, out: [] f32, at: int, k: int, x0: f32, y: f32, width: f
     text := deck[i + 1..<end];
     i = end + 1;
     if kind == 'T' {
-      vertices = draw_wrapped(d, out, vertices, text, x0, top, title, 0.22, 0.7, ink(0.75 * d * scale + 0.35 * d, 0.97 * light, 10 * d * scale, 0.95, 0.95, 0.97), width, title * 1.55, true, draw, used[..]);
+      vertices = draw_lines(d, out, vertices, text, x0, top, title, 0.22, 0.7, ink(0.75 * d * scale + 0.35 * d, 0.97 * light, 10 * d * scale, 0.95, 0.95, 0.97), width, title * 1.55, true, draw, used[..]);
       top += used[0] + title * 0.75;
     }
     if kind == 'S' {
-      vertices = draw_wrapped(d, out, vertices, text, x0, top, sub, 0.22, 0.75, ink(0.55 * d, 0.85 * light, 4 * d, 0.66, 0.66, 0.7), width, sub * 2, true, draw, used[..]);
+      vertices = draw_lines(d, out, vertices, text, x0, top, sub, 0.22, 0.75, ink(0.55 * d, 0.85 * light, 4 * d, 0.66, 0.66, 0.7), width, sub * 2, true, draw, used[..]);
       top += used[0] + sub * 2.4;
     }
     if kind == 'B' {
       indent := body * 2.2;
-      vertices = draw_wrapped(d, out, vertices, text, x0 + indent, top, body, 0.22, 0.75, ink(0.6 * d, 0.92 * light, 4 * d, 0.92, 0.92, 0.94), width - indent, body * 2.1, true, draw, used[..]);
+      vertices = draw_lines(d, out, vertices, text, x0 + indent, top, body, 0.22, 0.75, ink(0.6 * d, 0.92 * light, 4 * d, 0.92, 0.92, 0.94), width - indent, body * 2.1, true, draw, used[..]);
       if draw && tinted_dot(out, vertices, x0 + body * 0.5, top + body * 0.5, body * 0.22, light, body * 0.5, ORANGE_R, ORANGE_G, ORANGE_B) { vertices += 6; }
       top += used[0] + body * 1.25;
     }
     if kind == 'P' {
-      vertices = draw_wrapped(d, out, vertices, text, x0, top, body, 0.22, 0.75, ink(0.6 * d, 0.84 * light, 4 * d, 0.84, 0.84, 0.86), width, body * 2.1, true, draw, used[..]);
+      vertices = draw_lines(d, out, vertices, text, x0, top, body, 0.22, 0.75, ink(0.6 * d, 0.84 * light, 4 * d, 0.84, 0.84, 0.86), width, body * 2.1, true, draw, used[..]);
       top += used[0] + body * 1.1;
     }
     if kind == 'N' && u[0].notes {
@@ -780,7 +780,7 @@ slide_flow :: (u: [] Ui, out: [] f32, at: int, k: int, x0: f32, y: f32, width: f
         if draw && lit(out, vertices, x0, top, x0 + width, top, 0.4 * d, 0.35 * light, 2 * d, 0.6, 0.6, 0.66, MODE_STROKE) { vertices += 6; }
         top += body * 1.4; noted = true;
       }
-      vertices = draw_wrapped(d, out, vertices, text, x0, top, note, 0.22, 0.75, ink(0.5 * d, 0.6 * light, 3 * d, 0.6, 0.6, 0.66), width, note * 2, true, draw, used[..]);
+      vertices = draw_lines(d, out, vertices, text, x0, top, note, 0.22, 0.75, ink(0.5 * d, 0.6 * light, 3 * d, 0.6, 0.6, 0.66), width, note * 2, true, draw, used[..]);
       top += used[0] + note * 1.2;
     }
   }
@@ -845,7 +845,7 @@ draw_prompt :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   vertices = draw_fit(d, out, vertices, "THIS DECK IS LOCKED TO A KEY", x, y + title, title, 0.28, 0.9, ink(0.7 * d, 0.97 * a, 9 * d, 0.95, 0.95, 0.97), inner);
   y += title + 18 * d;
   used: [1] f32;
-  vertices = draw_wrapped(d, out, vertices, step, x, y, small, 0.28, 0.8, ink(0.5 * d, 0.85 * a, 3 * d, 0.85, 0.85, 0.88), inner, small * 2.2, false, true, used[..]);
+  vertices = draw_lines(d, out, vertices, step, x, y, small, 0.28, 0.8, ink(0.5 * d, 0.85 * a, 3 * d, 0.85, 0.85, 0.88), inner, small * 2.2, false, true, used[..]);
   y += used[0] + 18 * d;
   // the field, in focus: orange
   box := Box.{x0 = x, x1 = b.x1 - 24 * d, y0 = y, y1 = y + 38 * d};
@@ -905,7 +905,7 @@ draw_status :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   panel(uniforms, b, d, a, 0);
   vertices := hud(out, at, b, d, 0, 0, a, HUD_R, HUD_G, HUD_B);
   used: [1] f32;
-  return draw_wrapped(d, out, vertices, text, b.x0 + 24 * d, b.y0 + 24 * d, cap, 0.25, 0.75, ink(0.6 * d, 0.92 * a, 5 * d, 0.93, 0.93, 0.95), pw - 48 * d, cap * 2.1, false, true, used[..]);
+  return draw_lines(d, out, vertices, text, b.x0 + 24 * d, b.y0 + 24 * d, cap, 0.25, 0.75, ink(0.6 * d, 0.92 * a, 5 * d, 0.93, 0.93, 0.95), pw - 48 * d, cap * 2.1, false, true, used[..]);
 }
 
 // Everything above the scene, from vertex at. Sets the panel uniforms.

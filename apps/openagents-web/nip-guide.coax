@@ -86,9 +86,9 @@ ng_pointer :: (s:[]Ng,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
 }
 ng_paragraph :: (out:[]f32,at:int,text:string,x:f32,y:f32,width:f32,size:f32,d:f32,color:Ink)->int {
   v:=at;from:=0;line:=0;next:[1]int;
-  while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)line*size*1.65,size,0.2,0.65,color,false,false);if next[0]<=from {break;}from=next[0];line+=1;}return v;
+  while from<text.count && line<12 {end:=font_line(text,from,width/size,0.2,0.65,false,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)line*size*1.65,size,0.2,0.65,color,false,false);if next[0]<=from {break;}from=next[0];line+=1;}return v;
 }
-ng_lines :: (text:string,width:f32,size:f32)->int {from:=0;line:=0;next:[1]int;while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);if next[0]<=from {break;}from=next[0];line+=1;}return line;}
+ng_lines :: (text:string,width:f32,size:f32)->int {from:=0;line:=0;next:[1]int;while from<text.count && line<12 {end:=font_line(text,from,width/size,0.2,0.65,false,next[..]);if next[0]<=from {break;}from=next[0];line+=1;}return line;}
 ng_frame :: (s:[]Ng,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
   if s.count!=1 || u.count<16 || w<1 || h<1 || d<0.5 || d>4 {return 0;}
   s[0].width=w;s[0].height=h;s[0].dpr=d;for i:0..<16 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[4]=1;

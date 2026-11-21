@@ -176,11 +176,11 @@ put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink
   return put(out, v, "...", x + ink_width(text[0..<n], cap, GAP, SPACE, k) + (ifx uses_sans(k, cap) then 0.0f32 else GAP * cap), y, cap, k);
 }
 // Text wrapped to width, at most lines lines, the last cut with "..." when more is left.
-put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
+put_lines :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
   v := at; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
+    end := font_ink_line(text, from, width, cap, GAP, SPACE, k, next[..]);
     if n == lines - 1 && next[0] < text.count && next[0] > from { v = put_fit(out, v, text[from..<text.count], x, y + step * cast(f32) n, cap, k, width); n += 1; break; }
     v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
     n += 1;
@@ -471,7 +471,7 @@ draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: 
   } else {
     v = put_fit(out, v, name, x, b.y0 + 20 * d, 11 * d, nk, right - x - text_width(last, 6.5 * d) - 12 * d);
     v = put_right(out, v, last, right, b.y0 + 20 * d, 6.5 * d, dim);
-    v = put_wrapped(out, v, desc, x, b.y0 + 38 * d, 6.5 * d, dim, right - x, 12 * d, 2);
+    v = put_lines(out, v, desc, x, b.y0 + 38 * d, 6.5 * d, dim, right - x, 12 * d, 2);
     cx := x;
     for c: 0..<3 {
       v = put(out, v, labels[c], cx, b.y0 + 70 * d, 6 * d, dim);
@@ -516,10 +516,10 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
     y := l.rows_top + 30 * d; x := b.x0 + 26 * d; w := box_w(b) - 52 * d;
     if m == FILTER_MINE && !signed_in(viewer) {
       v = put_fit(out, v, "LOG IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
-      v = put_wrapped(out, v, "LOG IN AT OPENAGENTS.COM/LOGIN WITH YOUR EMAIL. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+      v = put_lines(out, v, "LOG IN AT OPENAGENTS.COM/LOGIN WITH YOUR EMAIL. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
     } else if m == FILTER_MINE {
       v = put_fit(out, v, "NONE OF THESE ARE YOURS YET", x, y, 10 * d, white, w);
-      v = put_wrapped(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+      v = put_lines(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
     } else {
       v = put_fit(out, v, "NO PUBLIC PROJECTS YET", x, y, 10 * d, white, w);
     }
@@ -645,11 +645,11 @@ put_center :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap: f32, k:
 }
 
 // Wrapped text, each line centred on cx.
-put_center_wrapped :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
+put_center_lines :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
   v := at; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
+    end := font_ink_line(text, from, width, cap, GAP, SPACE, k, next[..]);
     if n == lines - 1 && next[0] < text.count { end = text.count; }
     v = put_center(out, v, text[from..<end], cx, y + step * cast(f32) n, cap, k, width);
     n += 1;
@@ -672,7 +672,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     if k.close.x0 - 10 * d > nx { v = put_fit(out, v, onto, nx, b.y0 + 20 * d, 6.5 * d, pale, k.close.x0 - 10 * d - nx); }
   }
   v = chip(out, v, "CLOSE", k.close.x0, k.close.y1 - 5 * d, FILTER_CAP * d, ifx hot == HIT_CLOSE then white else dim, p);
-  v = put_wrapped(out, v, ifx onto.count > 0 then "Drop new notes, voice memos, art, models and sounds for it. We read them against its work and propose changes you accept or decline."
+  v = put_lines(out, v, ifx onto.count > 0 then "Drop new notes, voice memos, art, models and sounds for it. We read them against its work and propose changes you accept or decline."
                   else "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",
                   b.x0 + 26 * d, b.y0 + title_room(p) + 12 * d, 6.5 * d, dim, box_w(b) - 52 * d, 12 * d, 3);
   z := k.zone; cx := (z.x0 + z.x1) * 0.5; zw := box_w(z) - 24 * d; mid := (z.y0 + z.y1) * 0.5;
@@ -689,13 +689,13 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
       v = chip(out, v, "LOG IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else accent, p);
       v = put_center(out, v, "Your browser's Nostr signer signs you in.", cx, mid + 4 * d, 6.5 * d, dim, zw);
     } else {
-      v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin login link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
+      v = put_center_lines(out, v, "Use a Nostr signer in this browser, or open your admin login link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
     }
   } else {
     v = put_center(out, v, ifx l.wide then "DROP FILES HERE" else "TAP TO PICK FILES", cx, mid - 14 * d, 16 * d, ifx hot == HIT_ZONE then accent else white, zw);
     v = put_center(out, v, ifx l.wide then "or click to pick them" else "or drop them here", cx, mid + 10 * d, 7 * d, dim, zw);
   }
-  v = put_center_wrapped(out, v, "Documents, images, audio, 3D models, textures, video and zip. 64 MB a file, 40 files a drop.",
+  v = put_center_lines(out, v, "Documents, images, audio, 3D models, textures, video and zip. 64 MB a file, 40 files a drop.",
                          cx, z.y1 - (ifx l.wide then 14.0f32 else 24.0f32) * d, 6 * d, faint, zw, 11 * d, 2);
   note := field(text, 0, 4);
   if note.count > 0 && same(field(text, 0, 0), "S") { v = put_center(out, v, note, cx, z.y0 + 18 * d, 6.5 * d, pale, zw); }
@@ -766,16 +766,16 @@ draw_draft :: (out: [] f32, at: int, b: Box, p: Pen, text: string, r: int, wide:
   status := field(text, r, 1);
   if same(status, "reading") {
     v = put(out, v, "READING YOUR DROP", x, y, 9 * d, accent);
-    return put_wrapped(out, v, "An agent is reading every file and drafting the card, the design, the roadmap and what the engine needs. This takes a minute or two.",
+    return put_lines(out, v, "An agent is reading every file and drafting the card, the design, the roadmap and what the engine needs. This takes a minute or two.",
                        x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 3);
   }
   if same(status, "failed") {
     v = put(out, v, "THE DRAFT DIDN'T WORK", x, y, 9 * d, pale);
-    return put_wrapped(out, v, field(text, r, 9), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 2);
+    return put_lines(out, v, field(text, r, 9), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 2);
   }
   v = put(out, v, "DRAFT", x, y, 7 * d, accent);
   v = put_fit(out, v, field(text, r, 2), x + text_width("DRAFT", 7 * d) + 14 * d, y, 11 * d, white, w - text_width("DRAFT", 7 * d) - 14 * d);
-  v = put_wrapped(out, v, field(text, r, 3), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, ifx wide then 1 else 2);
+  v = put_lines(out, v, field(text, r, 3), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, ifx wide then 1 else 2);
   sb: [160] u8; c := 0;
   labels := [5] string.[" MILESTONES  ", " TASKS  ", " MECHANICS  ", " OPEN QUESTIONS  ", " ENGINE NEEDS"];
   for i: 0..<5 { c += put_text(sb[..], c, field(text, r, 4 + i)); c += put_text(sb[..], c, labels[i]); }
@@ -1173,12 +1173,12 @@ draw_item :: (out: [] f32, at: int, s: [] ProjectsState, i: int, b: Box, p: Pen,
     return rule(out, v, b.x0, b.y0 + 26 * d, b.x1, b.y0 + 26 * d, accent, 0.25 * p.fade);
   }
   if kind == 'G' { return put_fit(out, v, label, b.x0, b.y0 + 17 * d, 7.5 * d, pale, w); }
-  if kind == 'N' { return put_wrapped(out, v, label, b.x0, b.y0 + 12 * d, 6.5 * d, pale, w, 11 * d, 2); }
+  if kind == 'N' { return put_lines(out, v, label, b.x0, b.y0 + 12 * d, 6.5 * d, pale, w, 11 * d, 2); }
   if kind == 'A' { return put_fit(out, v, label, b.x0, b.y0 + 14 * d, 6.5 * d, ifx lit_up then accent else faint, w); }
   if lit_up && open { v = rule(out, v, b.x0 - 7 * d, b.y0 + 4 * d, b.x0 - 7 * d, b.y1 - 6 * d, accent, 0.9 * p.fade); }
   v = put_fit(out, v, label, b.x0, b.y0 + 11 * d, 5.5 * d, ifx lit_up then accent else dim, w);
   if preview.count == 0 { return put(out, v, "empty", b.x0, b.y0 + 24 * d, 6.5 * d, faint); }
-  return put_wrapped(out, v, preview, b.x0, b.y0 + 24 * d, 6.5 * d, white, w, 11 * d, 2);
+  return put_lines(out, v, preview, b.x0, b.y0 + 24 * d, 6.5 * d, white, w, 11 * d, 2);
 }
 
 draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) -> int {
@@ -1200,11 +1200,11 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
     v = put_fit(out, v, ifx grows then "Decline them? The drop's files leave the bucket and the proposals are gone."
                 else "Discard this drop? Its files leave the bucket and the draft is gone.", tx, ty, 6.5 * d, white, tw);
   } else if approved && note.count == 0 {
-    v = put_wrapped(out, v, "Queued to publish. Nothing is public until the publisher runs.", tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
+    v = put_lines(out, v, "Queued to publish. Nothing is public until the publisher runs.", tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
   } else if note.count > 0 {
-    v = put_wrapped(out, v, note, tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
+    v = put_lines(out, v, note, tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
   } else {
-    v = put_wrapped(out, v, ifx grows then (ifx l.wide then "Click any field to change it. Nothing changes on the project until you ACCEPT." else "Tap any field to change it. Nothing changes on the project until you ACCEPT.")
+    v = put_lines(out, v, ifx grows then (ifx l.wide then "Click any field to change it. Nothing changes on the project until you ACCEPT." else "Tap any field to change it. Nothing changes on the project until you ACCEPT.")
                     else (ifx l.wide then "Click any field to change it. Nothing is public until you PUBLISH." else "Tap any field to change it. Nothing is public until you PUBLISH."),
                     tx, ty, 6.5 * d, dim, tw, 11 * d, 2);
   }
@@ -1352,7 +1352,7 @@ draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: P
   next: [1] int;
   from := 0; n := 0; cl := -1; cfrom := 0; last := 0;
   while from < text.count {
-    end := wrap_ink(text, from, w, tc, GAP, SPACE, white, next[..]);
+    end := font_ink_line(text, from, w, tc, GAP, SPACE, white, next[..]);
     nx := next[0]; if nx <= from { nx = text.count; }
     if cl < 0 && caret >= from && caret < nx { cl = n; cfrom = from; }
     last = from; n += 1; from = nx;
@@ -1366,7 +1366,7 @@ draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: P
   base := tb.y0 + 18 * d;
   from = 0; n = 0;
   while from < text.count && n < top + fit {
-    end := wrap_ink(text, from, w, tc, GAP, SPACE, white, next[..]);
+    end := font_ink_line(text, from, w, tc, GAP, SPACE, white, next[..]);
     nx := next[0]; if nx <= from { nx = text.count; }
     if n >= top {
       ly := base + step * cast(f32) (n - top);

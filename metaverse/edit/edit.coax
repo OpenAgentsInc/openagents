@@ -46,6 +46,7 @@
 #load "../../metaverse-engine/editor/change.coax";   // the edits' bodies (edits.proto): one writer
 #load "../../metaverse-engine/editor/lists.coax";   // the feature list's and the panes' lines: one reader
 #load "realm-page.coax";   // the realm's world: followed by an editor's page, told to the editor shell (#13478)
+#load "../../components/layout/wrap.coax" as cl_wrap;
 
 REDIT_ROWS :: 16; REDIT_KEY :: 32; REDIT_LABEL :: 48;
 REDIT_TOOLS :: 6; REDIT_THING :: 16;
@@ -876,20 +877,27 @@ redit_frame :: (out: [] f32, at: int, b: RBox, bright: bool, k: f32) -> int {
   if lit(out, n, b.x0, b.y1, b.x0, b.y0, 0.7 * k, a, 0.8 * k, 0.80, 0.64, 0.36, 0) { n += 6; }
   return n;
 }
-// Text wrapped in a box, at most `p_lines` lines: the last ones when it runs over (so what you type shows).
-redit_wrap :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, room: f32, p_lines: int, k: Ink) -> int {
-  p_starts: [64] int; m := 0; i := 0;
-  while i < text.count && m < 64 {
-    while i < text.count && text[i] == ' ' { i += 1; }
-    if i >= text.count { break; }
-    p_starts[m] = i; m += 1;
-    i = redit_fit(text, i, cap, room);
+// Text wrapped in a box via components/layout/text.coax (text_wrap_advances),
+// at most `p_lines` lines: the last ones when it runs over (so what you type shows).
+redit_lines :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, room: f32, p_lines: int, k: Ink) -> int {
+  adv: [2048] f32;
+  lim := text.count; if lim > adv.count { lim = adv.count; }
+  i := 0;
+  while i < lim {
+    end_c := i + 1;
+    while end_c < lim && (text[end_c] & 0xC0) == 0x80 { end_c += 1; }
+    adv[i] = redit_width(text[i..<end_c], cap);
+    for q: i + 1..<end_c { adv[q] = 0.0f32; }
+    i = end_c;
   }
+  lines: [64] cl_wrap.WrapLine;
+  m := cl_wrap.wrap_advances(cast(string) text[0..<lim], adv[0..<lim], room, lines[..]);
   p_first := redit_hi_int(0, m - p_lines);
   n := at;
   for l: p_first..<m {
-    end := ifx l + 1 < m then p_starts[l + 1] else text.count;
-    n = redit_text(e, out, n, text[p_starts[l]..<end], x, y + f32(l - p_first) * cap * 1.7 + cap, cap, redit_parch(e[0].dpr, 0.95), room);
+    s := lines[l].from; end := lines[l].to;
+    while s < end && text[s] == ' ' { s += 1; }
+    n = redit_text(e, out, n, text[s..<end], x, y + f32(l - p_first) * cap * 1.7 + cap, cap, redit_parch(e[0].dpr, 0.95), room);
   }
   return n;
 }

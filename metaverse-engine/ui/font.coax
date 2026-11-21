@@ -201,6 +201,7 @@ EMOJI_PIXELS :: [820] u8.[
 
 // A code point and how many bytes of UTF-8 it took.
 #load "../../components/core/rune.coax";   // Rune
+#load "../../components/layout/wrap.coax" as cl_wrap;
 
 FONT_BAD :: 0xFFFD;    // what a malformed byte reads as
 FONT_TOFU :: 0x25A1;   // the box a character with no glyph draws as
@@ -540,35 +541,36 @@ draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, g
 }
 
 // The end of text's line that starts at byte from, wrapped to width cap
-// heights at spaces: the first byte of the next line (past its spaces) is
-// written to next[0]. A word longer than the line breaks where it must.
-wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, next: [] int) -> int {
-  i := from; end := from; w := 0.0f32;
-  while i < text.count {
-    if text[i] == '\n' { end = i; next[0] = i + 1; return end; }
-    // the next word
-    j := i;
-    while j < text.count && text[j] != ' ' && text[j] != '\n' { j += 1; }
-    word := measure(text[i..<j], gap, space, rich);
-    lead := ifx end > from then space else 0.0f32;
-    if end > from && w + lead + word > width {
-      next[0] = i; return end;
-    }
-    if end == from && word > width {
-      // one long word: as many letters as fit
-      k := i; fit := k;
-      while k < j {
-        d := cluster(text, k);
-        if measure(text[i..<k + d.len], gap, space, rich) > width && fit > i { break; }
-        k += d.len; fit = k;
-      }
-      next[0] = fit; return fit;
-    }
-    w += lead + word; end = j; i = j;
-    while i < text.count && text[i] == ' ' { i += 1; }
+// heights at spaces via components/layout/text.coax (text_wrap_advances):
+// the first byte of the next line (past its spaces) is written to next[0].
+font_line :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, next: [] int) -> int {
+  if from >= text.count { next[0] = text.count; return from; }
+  nl := from;
+  while nl < text.count && text[nl] != '\n' { nl += 1; }
+  if nl == from { next[0] = from + 1; return from; }
+  sub := cast(string) text[from..<nl];
+  adv: [4096] f32;
+  lim := sub.count; if lim > adv.count { lim = adv.count; }
+  prev_w: f32 = 0.0f32;
+  i := 0;
+  while i < lim {
+    d := cluster(sub, i);
+    w := measure(sub[0..<i + d.len], gap, space, rich);
+    adv[i] = w - prev_w;
+    prev_w = w;
+    for q: 1..<d.len { if i + q < lim { adv[i + q] = 0.0f32; } }
+    i += d.len;
   }
-  next[0] = text.count;
-  return end;
+  lines: [2] cl_wrap.WrapLine;
+  k := cl_wrap.wrap_advances(cast(string) sub[0..<lim], adv[0..<lim], width, lines[..]);
+  if k == 0 { next[0] = nl; return nl; }
+  stop := from + lines[0].to;
+  e := stop; while e > from && text[e - 1] == ' ' { e -= 1; }
+  n := stop;
+  if n == nl && nl < text.count && text[nl] == '\n' { n = nl + 1; }
+  else { while n < text.count && text[n] == ' ' { n += 1; } }
+  next[0] = n;
+  return e;
 }
 
 #test "every glyph is on the grid, inside its width, and the table is sorted" {
@@ -755,14 +757,14 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
   text := "ONE TWO THREE FOUR";
   next: [1] int;
   width := measure("ONE TWO", 0.3, 0.7, false) + 0.01;
-  end := wrap(text[..], 0, width, 0.3, 0.7, false, next[..]);
+  end := font_line(text[..], 0, width, 0.3, 0.7, false, next[..]);
   #assert end == 7 && next[0] == 8;
-  end = wrap(text[..], 8, width, 0.3, 0.7, false, next[..]);
+  end = font_line(text[..], 8, width, 0.3, 0.7, false, next[..]);
   #assert end == 13 && next[0] == 14;
-  end = wrap(text[..], 14, width, 0.3, 0.7, false, next[..]);
+  end = font_line(text[..], 14, width, 0.3, 0.7, false, next[..]);
   #assert end == 18 && next[0] == 18;
   long := "ABCDEFGHIJ";
-  end = wrap(long[..], 0, 3, 0.3, 0.7, false, next[..]);
+  end = font_line(long[..], 0, 3, 0.3, 0.7, false, next[..]);
   #assert end > 0 && end < 10 && measure(long[0..<end], 0.3, 0.7, false) <= 3;
 }
 
@@ -887,32 +889,36 @@ draw_sans :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k
   return v;
 }
 
-// wrap, measured in device pixels in ink k at cap, so sans text wraps by its own widths.
-wrap_ink :: (text: string, from: int, width: f32, cap: f32, gap: f32, space: f32, k: Ink, next: [] int) -> int {
-  if !uses_sans(k, cap) { return wrap(text, from, width / cap, gap, space, false, next); }
-  i := from; end := from; w := 0.0f32;
-  sp := sans_width(" ", sans_em(cap));
-  while i < text.count {
-    if text[i] == '\n' { end = i; next[0] = i + 1; return end; }
-    j := i;
-    while j < text.count && text[j] != ' ' && text[j] != '\n' { j += 1; }
-    word := ink_width(text[i..<j], cap, gap, space, k);
-    lead := ifx end > from then sp else 0.0f32;
-    if end > from && w + lead + word > width { next[0] = i; return end; }
-    if end == from && word > width {
-      q := i; fit := q;
-      while q < j {
-        d := cluster(text, q);
-        if ink_width(text[i..<q + d.len], cap, gap, space, k) > width && fit > i { break; }
-        q += d.len; fit = q;
-      }
-      next[0] = fit; return fit;
-    }
-    w += lead + word; end = j; i = j;
-    while i < text.count && text[i] == ' ' { i += 1; }
+// font_line, measured in device pixels in ink k at cap via components/layout/text.coax (text_wrap_advances).
+font_ink_line :: (text: string, from: int, width: f32, cap: f32, gap: f32, space: f32, k: Ink, next: [] int) -> int {
+  if !uses_sans(k, cap) { return font_line(text, from, width / cap, gap, space, false, next); }
+  if from >= text.count { next[0] = text.count; return from; }
+  nl := from;
+  while nl < text.count && text[nl] != '\n' { nl += 1; }
+  if nl == from { next[0] = from + 1; return from; }
+  sub := cast(string) text[from..<nl];
+  adv: [4096] f32;
+  lim := sub.count; if lim > adv.count { lim = adv.count; }
+  prev_w: f32 = 0.0f32;
+  i := 0;
+  while i < lim {
+    d := cluster(sub, i);
+    w := ink_width(sub[0..<i + d.len], cap, gap, space, k);
+    adv[i] = w - prev_w;
+    prev_w = w;
+    for q: 1..<d.len { if i + q < lim { adv[i + q] = 0.0f32; } }
+    i += d.len;
   }
-  next[0] = text.count;
-  return end;
+  lines: [2] cl_wrap.WrapLine;
+  c := cl_wrap.wrap_advances(cast(string) sub[0..<lim], adv[0..<lim], width, lines[..]);
+  if c == 0 { next[0] = nl; return nl; }
+  stop := from + lines[0].to;
+  e := stop; while e > from && text[e - 1] == ' ' { e -= 1; }
+  n := stop;
+  if n == nl && nl < text.count && text[nl] == '\n' { n = nl + 1; }
+  else { while n < text.count && text[n] == ' ' { n += 1; } }
+  next[0] = n;
+  return e;
 }
 
 #test "the sans covers ASCII and its extras, in the host's order" {

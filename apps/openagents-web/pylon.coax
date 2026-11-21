@@ -105,11 +105,11 @@ pl_pointer :: (p:[]Pylon,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
 pl_wheel :: (p:[]Pylon,dy:f32) #export_c #effects(all) {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}
 pl_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,d:f32,k:Ink)->int {
   at:=v;start:=0;line:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
-  while start<text.count {n:=wrap_ink(text,start,width,10*d,0.15,0.55,k2,next[..]);at=write(d,out,at,text[start..<n],x,y+cast(f32)line*18*d,10*d,0.15,0.55,k2,false,false);if next[0]<=start {break;}start=next[0];line+=1;}return at;
+  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);at=write(d,out,at,text[start..<n],x,y+cast(f32)line*18*d,10*d,0.15,0.55,k2,false,false);if next[0]<=start {break;}start=next[0];line+=1;}return at;
 }
 pl_text_lines :: (text:string,width:f32,d:f32,k:Ink)->int {
   start:=0;lines:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
-  while start<text.count {n:=wrap_ink(text,start,width,10*d,0.15,0.55,k2,next[..]);lines+=1;if next[0]<=start {break;}start=next[0];}
+  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);lines+=1;if next[0]<=start {break;}start=next[0];}
   return ifx lines>0 then lines else 1;
 }
 pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {

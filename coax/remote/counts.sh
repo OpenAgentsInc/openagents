@@ -37,7 +37,10 @@ cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is l
     /^EF_KNOWN :: \[[0-9]+\]/ && pk == "" { sub(/^EF_KNOWN :: \[/, ""); sub(/\].*/, ""); pk = $0 }
     /^EF_GAPS :: \[[0-9]+\]/  && pg == "" { sub(/^EF_GAPS :: \[/, "");  sub(/\].*/, ""); pg = $0 }
     END { if (pk != "") print "parity-known " pk; if (pg != "") print "parity-gaps " pg }'
-  git show "$r:coax/web/components-check.coax" 2> /dev/null | sed -nE 's/^CC_TO_MOVE :: \[([0-9]+)\].*/components-to-move \1/p'
+  git show "$r:coax/web/components-check.coax" 2> /dev/null | awk '
+    /^CC_TO_MOVE_COUNT :: [0-9]+/ { sub(/^CC_TO_MOVE_COUNT :: /, ""); sub(/;.*/, ""); n = $0; next }
+    /^CC_TO_MOVE :: \[[0-9]+\]/ && n == "" { sub(/^CC_TO_MOVE :: \[/, ""); sub(/\].*/, ""); n = $0 }
+    END { if (n != "") print "components-to-move " n }'
   local f n
   for f in wire-allowlist:proto/wire-allowlist.txt tools-port:coax/tools-port.txt; do
     git cat-file -e "$r:${f#*:}" 2> /dev/null || continue

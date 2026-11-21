@@ -2630,13 +2630,13 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
 }
 
 // A text's lines, at most firsts.count of them, each at most width (measure's units) wide; how many.
-talk_wrap :: (text: string, width: f32, firsts: [] int, lasts: [] int) -> int {
+talk_lines :: (text: string, width: f32, firsts: [] int, lasts: [] int) -> int {
   i := 0; m := 0;
   while i < text.count && m < firsts.count {
     while i < text.count && text[i] == ' ' { i += 1; }
     if i >= text.count { break; }
     nx: [1] int;
-    e := wrap(text, i, width, GAP, SPACE, false, nx[..]);
+    e := font_line(text, i, width, GAP, SPACE, false, nx[..]);
     firsts[m] = i; lasts[m] = e; m += 1;
     if nx[0] <= i { break; }
     i = nx[0];
@@ -2655,8 +2655,8 @@ draw_talk :: (s: [] MyRealm, out: [] f32, at: int, bottom: f32) -> int {
   if them >= 0 && you > them { them = -1; }
   yb: [TALK_LINE + 8] u8; ym := 0;
   if you >= 0 { ym = put(yb[..], 0, "YOU: "); ym = put(yb[..], ym, talk_text(s, you)); }
-  ys: [2] int; ye: [2] int; yl := talk_wrap(cast(string) yb[0..<ym], room / cap, ys[..], ye[..]);
-  af: [9] int; at_: [9] int; al := ifx them >= 0 then talk_wrap(talk_text(s, them), room / cap, af[..], at_[..]) else 0;
+  ys: [2] int; ye: [2] int; yl := talk_lines(cast(string) yb[0..<ym], room / cap, ys[..], ye[..]);
+  af: [9] int; at_: [9] int; al := ifx them >= 0 then talk_lines(talk_text(s, them), room / cap, af[..], at_[..]) else 0;
   shown := yl + hi_int(al, ifx s[0].talk_wait then 1 else 0);
   ph := 136 * k + lh * cast(f32) hi_int(shown, 1);
   b := Box.{x0 = x0, y0 = bottom - ph, x1 = x0 + pw, y1 = bottom};
@@ -2679,10 +2679,10 @@ draw_talk :: (s: [] MyRealm, out: [] f32, at: int, bottom: f32) -> int {
   n = redit_frame(out, n, RBox.{x0 = fb.x0, y0 = fb.y0, x1 = fb.x1, y1 = fb.y1}, !s[0].voice_held, k);
   if s[0].voice_held || s[0].heard_due {
     words := ifx s[0].caption_n > 0 then cast(string) s[0].caption[0..<s[0].caption_n] else "LISTENING";
-    n = redit_wrap(s[0].ed[..], out, n, words, fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, ember(k, 0.95));
+    n = redit_lines(s[0].ed[..], out, n, words, fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, ember(k, 0.95));
   } else if s[0].typed_n > 0 {
     tb: [TYPED + 1] u8; tm := copy_into(tb[..], cast(string) s[0].typed[0..<s[0].typed_n]); tb[tm] = '_'; tm += 1;
-    n = redit_wrap(s[0].ed[..], out, n, cast(string) tb[0..<tm], fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, white(k, 0.95));
+    n = redit_lines(s[0].ed[..], out, n, cast(string) tb[0..<tm], fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, white(k, 0.95));
   } else {
     hb: [PERSON + 24] u8; hm := put(hb[..], 0, "SAY SOMETHING TO "); hm = put(hb[..], hm, person_name(s, p)); upper(hb[..], hm);
     hint := cast(string) hb[0..<hm];

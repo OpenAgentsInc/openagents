@@ -16,6 +16,7 @@
 #load "../../coax/lib/image/png.coax";
 #load "../../coax/lib/image/jpeg_enc.coax";
 #load "../../coax/lib/text/ttf.coax";
+#load "../../components/layout/text.coax";
 
 HB_FONT :: "assets/metaverse/fonts/paper-mono/PaperMono-Medium.ttf";
 HB_ICONS :: "assets/metaverse/icons/game-icons";
@@ -283,41 +284,30 @@ hb_icon :: (hb: []Hb, buf: []u8, svg_in: string, tint: [3] f64, key: string, siz
   return im;
 }
 
-// ui.rs wrap, for a monospace face: the lines into out (start and end of each); their count.
-hb_wrap :: (words: string, width: f64, advance: int, starts: []int, ends: []int, text: []u8, used: []int) -> int {
-  // the lines are built into text (a word can be cut), each [starts[k], ends[k])
-  n := 0; line_s := used[0]; line_e := used[0];
-  at := 0;
-  while true {
-    e := at; while e < words.count && words[e] != ' ' { e += 1; }
-    w0 := at; w1 := e;
-    while true {
-      wl := hb_chars(cast(string) words[w0..<w1]);
-      ll := hb_chars(cast(string) text[line_s..<line_e]);
-      cand := ifx line_e == line_s then wl else ll + 1 + wl;
-      if cast(f64) (cand * advance) <= width {
-        if line_e != line_s { text[line_e] = ' '; line_e += 1; }
-        for i: w0..<w1 { text[line_e] = words[i]; line_e += 1; }
-        break;
-      }
-      if line_e != line_s {
-        starts[n] = line_s; ends[n] = line_e; n += 1;
-        line_s = line_e; line_e = line_s;
-        continue;
-      }
-      per := cast(int) floor(width / cast(f64) advance); if per < 1 { per = 1; }
-      cutb := w0 + hb_prefix(cast(string) words[w0..<w1], per);
-      for i: w0..<cutb { text[line_e] = words[i]; line_e += 1; }
-      starts[n] = line_s; ends[n] = line_e; n += 1;
-      line_s = line_e; line_e = line_s;
-      w0 = cutb;
-      if w0 >= w1 { break; }
-    }
-    if e >= words.count { break; }
-    at = e + 1;
+// ui.rs line layout for a monospace face, delegated to components/layout/text.coax (text_wrap_advances).
+hb_lines :: (words: string, width: f64, advance: int, starts: []int, ends: []int, text: []u8, used: []int) -> int {
+  adv: [4096] f32;
+  lim := words.count; if lim > adv.count { lim = adv.count; }
+  i := 0;
+  while i < lim {
+    r := rune_at(words, i);
+    adv[i] = cast(f32) advance;
+    for k: 1..<r.len { if i + k < lim { adv[i + k] = 0.0f32; } }
+    i += r.len;
   }
-  if line_e != line_s || n == 0 { starts[n] = line_s; ends[n] = line_e; n += 1; }
-  used[0] = line_e;
+  lines: [64] TextLine;
+  cap := starts.count; if cap > lines.count { cap = lines.count; }
+  k := text_wrap_advances(cast(string) words[0..<lim], adv[0..<lim], cast(f32) width, lines[0..<cap]);
+  n := 0; u := used[0];
+  for j: 0..<k {
+    s := lines[j].from; e := lines[j].to;
+    while e > s && words[e - 1] == ' ' { e -= 1; }
+    ls := u;
+    for q: s..<e { if u < text.count { text[u] = words[q]; u += 1; } }
+    starts[n] = ls; ends[n] = u; n += 1;
+  }
+  if n == 0 { starts[0] = u; ends[0] = u; n = 1; }
+  used[0] = u;
   return n;
 }
 hb_notched :: (im: HbImg, x: int, y: int, ww: int, hh: int, r: int, colour: [3] f64) {
@@ -334,8 +324,8 @@ hb_card :: (hb: []Hb, buf: []u8, title: string, body: string, nd: int, dt: [6] s
   inner := HB_MAX_WIDTH * sc - 2.0 * pad_x;
   text: [8192] u8; used: [1] int;
   ts: [64] int; te: [64] int; bs: [64] int; be: [64] int;
-  nt := hb_wrap(title, inner, m.advance, ts[..], te[..], text[..], used[..]);
-  nb := ifx body.count > 0 then hb_wrap(body, inner, m.advance, bs[..], be[..], text[..], used[..]) else 0;
+  nt := hb_lines(title, inner, m.advance, ts[..], te[..], text[..], used[..]);
+  nb := ifx body.count > 0 then hb_lines(body, inner, m.advance, bs[..], be[..], text[..], used[..]) else 0;
   // the details' rows: a row's first detail, its count, and its length in characters
   row_first: [8] int; row_n: [8] int; row_len: [8] int; rows := 0;
   dot := " · ";

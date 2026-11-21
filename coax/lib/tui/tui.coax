@@ -12,6 +12,7 @@
 #load "../../../components/core/markdown.coax";
 #load "../../../components/core/edit.coax";         // the composer's text: the one edit buffer
 #load "../../../components/backend/terminal.coax";   // a styled line is painted as a display list and written by the terminal backend
+#load "../../../components/layout/text.coax";
 
 // ---------------------------------------------------------------- output
 
@@ -563,28 +564,38 @@ tui_last_esc :: (s: string) -> string {
 }
 
 // Adds text wrapped to cols columns after a first-line prefix and a
-// continuation prefix of the same width; returns the rows added.
-tui_rows_wrap :: (r: [] TuiRows, style: int, first: string, cont: string, s: string, cols: int) -> int {
+// continuation prefix of the same width via components/layout/text.coax
+// (text_wrap_advances), preserving ANSI escape sequences; returns rows added.
+tui_rows_lines :: (r: [] TuiRows, style: int, first: string, cont: string, s: string, cols: int) -> int {
   room := cols - tui_text_width(first);
   if room < 4 { room = 4; }
   added := 0; at := 0;
+  adv: [4096] f32;
+  lines: [TUI_MAX_ROWS] TextLine;
   for guard: 0..<TUI_MAX_ROWS {
     nl := at; while nl < s.count && s[nl] != 10 { nl += 1; }
     line := cast(string) s[at..<nl];
-    pos := 0;
-    for g2: 0..<TUI_MAX_ROWS {
-      take := tui_fit(cast(string) line[pos..<line.count], room);
-      if take == 0 && pos < line.count { take = tui_rune(line, pos).len; }
-      // break at the last space when the line goes on
-      if pos + take < line.count {
-        sp := pos + take; while sp > pos && line[sp - 1] != ' ' { sp -= 1; }
-        if sp > pos { take = sp - pos; }
+    lim := line.count; if lim > adv.count { lim = adv.count; }
+    i := 0;
+    while i < lim {
+      e := tui_esc_len(line, i);
+      if e > 0 {
+        for q: 0..<e { if i + q < lim { adv[i + q] = 0.0f32; } }
+        i += e; continue;
       }
+      ru := tui_rune(line, i);
+      adv[i] = cast(f32) tui_width(ru.cp);
+      for q: 1..<ru.len { if i + q < lim { adv[i + q] = 0.0f32; } }
+      i += ru.len;
+    }
+    n := text_wrap_advances(cast(string) line[0..<lim], adv[0..<lim], cast(f32) room, lines[..]);
+    for j: 0..<n {
+      pos := lines[j].from;
+      end := lines[j].to;
       k := tui_rows_add(r, style, ifx added == 0 then first else cont);
-      if pos > 0 { tui_rows_append(r, k, tui_last_esc(cast(string) line[0..<pos])); }   // the style a span had where it wrapped
-      tui_rows_append(r, k, cast(string) line[pos..<pos + take]);
-      added += 1; pos += take;
-      if pos >= line.count { break; }
+      if pos > 0 { tui_rows_append(r, k, tui_last_esc(cast(string) line[0..<pos])); }
+      tui_rows_append(r, k, cast(string) line[pos..<end]);
+      added += 1;
     }
     if nl >= s.count { break; }
     at = nl + 1;
@@ -1376,7 +1387,7 @@ tui_tb :: (s: string, out: [] u8) -> string {
 
 #test "wrapping breaks at spaces, and the composer places the cursor" {
   r_b: [1] TuiRows; r := r_b[..]; tui_rows_reset(r);
-  n := tui_rows_wrap(r, TUI_PLAIN, "● ", "  ", "one two three four", 10);
+  n := tui_rows_lines(r, TUI_PLAIN, "● ", "  ", "one two three four", 10);
   #assert n == 3 && cast(string) r[0].text[0][0..<r[0].len[0]] == "● one two ";
   e_b: [1] TuiEditor; e := e_b[..]; tui_ed_set(e, "abcdefgh\nxy");
   tui_rows_reset(r);

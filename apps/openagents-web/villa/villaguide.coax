@@ -135,7 +135,7 @@ example_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   m = pt(out, m, EXAMPLE_NAME, cb.x0 + 14 * k, cb.y0 + 24 * k, 12 * k, k, 1);
   m = pt_dim(out, m, EXAMPLE_DATES, cb.x0 + 14 * k + text_width(EXAMPLE_NAME, 12 * k) + 12 * k, cb.y0 + 24 * k, 7 * k, k);
   yb: [1] f32;
-  m = wrapped(out, m, EXAMPLE_LINE, cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 3, 0.85, yb[..]);
+  m = pet_lines(out, m, EXAMPLE_LINE, cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 3, 0.85, yb[..]);
   word := ifx p[0].has then "YOUR DOG" else "BRING YOUR DOG";
   m = btn(s, out, m, Box.{x0 = cb.x0 + 14 * k, y0 = cb.y1 - 40 * k, x1 = cb.x1 - 14 * k, y1 = cb.y1 - 10 * k}, word, B_OPEN, 0, true);
   return m;

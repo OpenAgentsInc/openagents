@@ -2132,7 +2132,7 @@ conversation :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   starts: [5] int; ends: [5] int; lines := 0; from := 0;
   next: [1] int;
   while from < said.count && lines < 4 {
-    e := wrap(said, from, inner / cap, GAP, SPACE, false, next[..]);
+    e := font_line(said, from, inner / cap, GAP, SPACE, false, next[..]);
     starts[lines] = from; ends[lines] = e; lines += 1;
     if next[0] <= from { break; }
     from = next[0];

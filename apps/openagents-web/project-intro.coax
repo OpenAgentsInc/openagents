@@ -10,7 +10,7 @@ project_intro :: (w:[]Work)->bool {return w.count==1 && same(w[0].slug,"coax") &
 coax_intro_lines :: (room:f32)->int {
   p:=Pen.{d=1,fade=1};k:=ink(p,INK_WHITE);next:[1]int;from:=0;n:=0;
   while from<COAX_INTRO.count {
-    end:=wrap_ink(COAX_INTRO,from,room,8.5,GAP,SPACE,k,next[..]);
+    end:=font_ink_line(COAX_INTRO,from,room,8.5,GAP,SPACE,k,next[..]);
     if next[0]<=from {break;}from=next[0];n+=1;
   }return n;
 }

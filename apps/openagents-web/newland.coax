@@ -1802,8 +1802,8 @@ network_line_end :: (text:string,start:int,width:f32,cap:f32,k:Ink)->int {
 network_lines :: (text:string,width:f32,cap:f32,k:Ink)->int {
   count:=0;at:=0;while at<text.count {at=network_line_end(text,at,width,cap,k);count+=1;}return hi_int(1,count);
 }
-network_wrap :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,cap:f32,step:f32,k:Ink)->int {
-  at:=0;line:=0;n:=v;while at<text.count {end:=network_line_end(text,at,width,cap,k);n=put(out,n,text[at..<end],x,y+cast(f32)line*step,cap,k);at=end;line+=1;}return n;
+network_draw_lines :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,cap:f32,step:f32,k:Ink)->int {
+  at:=0;line:=0;n:=v;next:[1]int;while at<text.count {end:=font_ink_line(text,at,width,cap,GAP,SPACE,k,next[..]);n=put(out,n,text[at..<end],x,y+cast(f32)line*step,cap,k);if next[0]<=at {break;}at=next[0];line+=1;}return n;
 }
 network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height:f32)->int {
   d:=p.d;x:=ifx l.phone then 16*d else 28*d;right:=ifx l.phone then width-16*d else lo(width-28*d,x+480*d);
@@ -1843,8 +1843,8 @@ network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height
     else {rn=app(row[..],rn,ifx q.status==ST_DRAINING then "Draining" else ifx q.status==ST_STALE then "Expired" else "Offline");}
     rn=app(row[..],rn," / ");rn=app(row[..],rn,ifx q.family==FAM_GPU then "GPU" else ifx q.family==FAM_CPU then "CPU" else "Unified");rn=app(row[..],rn," / ");rn=app_int(row[..],rn,q.jobs);rn=app(row[..],rn," answers");
     v=put_fit(out,v,cast(string)row[0..<rn],left,y+36*d,6.5*d,dim,room);
-    v=network_wrap(out,v,model,left,y+54*d,room,6.5*d,14*d,tone);
-    v=network_wrap(out,v,npub,left,y+(54+14*cast(f32)ml)*d,room,6*d,12*d,dim);
+    v=network_draw_lines(out,v,model,left,y+54*d,room,6.5*d,14*d,tone);
+    v=network_draw_lines(out,v,npub,left,y+(54+14*cast(f32)ml)*d,room,6*d,12*d,dim);
     v=rule(out,v,left,y+row_h-4*d,inner_right,y+row_h-4*d,dim,0.2);y+=row_h;
   }
   for i:first..<v {if out[i*VERTEX_FLOATS+1]<list.y0 || out[i*VERTEX_FLOATS+1]>list.y1 {out[i*VERTEX_FLOATS+6]=0;}}

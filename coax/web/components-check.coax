@@ -50,20 +50,9 @@ CcMove :: struct { path: string; does: int; }
 // Still to move, as of 2026-11-10. Each reads Markdown's marks itself, wraps
 // text itself or keeps its own edit buffer. Take a line out when its file
 // uses components/ instead.
-CC_TO_MOVE :: [13] CcMove.[
-  CcMove.{path = "apps/openagents-web/builder.coax", does = CC_WRAP},
-  CcMove.{path = "metaverse-engine/ui/font.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/memorial.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/myrealm.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/newland.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/oneshot.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/project.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/projects.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/ui.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/villa/villapet.coax", does = CC_WRAP},
-  CcMove.{path = "coax/lib/tui/tui.coax", does = CC_WRAP},
-  CcMove.{path = "metaverse/edit/edit.coax", does = CC_WRAP},
-  CcMove.{path = "metaverse/tools/hotbar.coax", does = CC_WRAP}
+CC_TO_MOVE_COUNT :: 0;
+CC_TO_MOVE :: [1] CcMove.[
+  CcMove.{path = "", does = 0}
 ];
 
 cc_starts :: (s: string, with: string) -> bool { return s.count >= with.count && cast(string) s[0..<with.count] == with; }

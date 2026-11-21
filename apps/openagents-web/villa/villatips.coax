@@ -131,7 +131,7 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   y0 := tips_top(s, x0);
   m := n;
   y: [1] f32;
-  m = wrapped(out, m, tips_text(s, q[0].step), x0 + pad, y0 + pad + cap, bw - 2 * pad, cap, k, 3, 0.95, y[..]);
+  m = pet_lines(out, m, tips_text(s, q[0].step), x0 + pad, y0 + pad + cap, bw - 2 * pad, cap, k, 3, 0.95, y[..]);
   by0 := y[0] - cap * 0.9 + 4 * k;
   bh := 28 * k;
   if q[0].step < TIP_END {

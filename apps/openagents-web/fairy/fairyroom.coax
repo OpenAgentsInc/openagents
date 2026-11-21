@@ -747,7 +747,7 @@ ffs_inbox :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
     t := ffs_msg_text(g, i);
     // up to two lines each
     next: [1] int;
-    e := wrap(t, 0, (inner - text_width(who, cap * 0.9)) / (cap * 0.9), GAP, SPACE, false, next[..]);
+    e := font_line(t, 0, (inner - text_width(who, cap * 0.9)) / (cap * 0.9), GAP, SPACE, false, next[..]);
     n = draw_text(out, n, who, x0 + pad, base, cap * 0.9, GAP, SPACE, ink(k, 0.8, GOLD_R, GOLD_G, GOLD_B), false, false);
     n = draw_text(out, n, t[0..<e], x0 + pad + text_width(who, cap * 0.9), base, cap * 0.9, GAP, SPACE, ink(k, ifx g[0].msg_mine[i] then 0.7f32 else 0.95f32, CREAM_R, CREAM_G, CREAM_B), false, false);
     if next[0] > e && next[0] < t.count {

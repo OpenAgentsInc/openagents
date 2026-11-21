@@ -219,11 +219,11 @@ NIP_CAVEAT :: "Libraries on main. Production keys and verified live project adop
 nip_body_ink :: (d:f32)->Ink {k:=ink(0.55*d,0.95,2*d,0.82,0.84,0.86);k.sans=true;k.scale=d;return k;}
 nip_lines :: (text:string,room:f32,d:f32)->int {
   from:=0;n:=0;next:[1]int;k:=nip_body_ink(d);
-  while from<text.count {end:=wrap_ink(text,from,room,8*d,0.2,0.6,k,next[..]);if next[0]<=from {break;}from=next[0];n+=1;}return n;
+  while from<text.count {end:=font_ink_line(text,from,room,8*d,0.2,0.6,k,next[..]);if next[0]<=from {break;}from=next[0];n+=1;}return n;
 }
 nip_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,room:f32,d:f32,k:Ink)->int {
   v:=at;from:=0;n:=0;next:[1]int;
-  while from<text.count {end:=wrap_ink(text,from,room,8*d,0.2,0.6,k,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)n*18*d,8*d,0.2,0.6,k,false,false);if next[0]<=from {break;}from=next[0];n+=1;}return v;
+  while from<text.count {end:=font_ink_line(text,from,room,8*d,0.2,0.6,k,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)n*18*d,8*d,0.2,0.6,k,false,false);if next[0]<=from {break;}from=next[0];n+=1;}return v;
 }
 nip_body_top :: (p:[]Nip)->f32 {d:=p[0].dpr;return (166+18*cast(f32)nip_lines(NIP_CAVEAT,p[0].width-48*d,d))*d;}
 nip_wheel :: (p:[]Nip,dy:f32) #export_c #effects(all) {if p.count==1 {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}}

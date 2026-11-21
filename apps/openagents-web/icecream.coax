@@ -585,7 +585,7 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     t := lines[l];
     while from < t.count && wrap_n < 46 {
       wk := h_white(k, 0.95); wk.scale = k;
-      end := wrap_ink(t, from, cw - 2 * pad, lcap, GAP, SPACE, wk, next[..]);
+      end := font_ink_line(t, from, cw - 2 * pad, lcap, GAP, SPACE, wk, next[..]);
       wraps[wrap_n] = l * 4096 + from; wraps[wrap_n + 1] = l * 4096 + end; wrap_n += 2;
       if next[0] <= from { break; }
       from = next[0];

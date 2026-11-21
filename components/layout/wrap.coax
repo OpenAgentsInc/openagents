@@ -1,0 +1,43 @@
+// Pure advance-based line breaking for components/layout/text.coax and
+// callers with custom font or stroke advances (#13847).
+//   coax/bin/coax test components/layout/wrap.coax
+#module "components.layout.wrap";
+
+WrapLine :: struct { from: int; to: int; }
+
+// Wraps plain text given per-byte advance widths (adv[i] for byte i; 0 for UTF-8
+// continuation bytes) to width, breaking at spaces when possible or mid-word when
+// a single word exceeds width. Returns the line count.
+wrap_advances :: (text: string, adv: [] f32, width: f32, out: [] WrapLine) -> int {
+  count := text.count;
+  if adv.count < count { count = adv.count; }
+  n := 0; start := 0;
+  while n < out.count {
+    x: f32 = 0; i := start; brk := -1;
+    stop := count;
+    while i < count {
+      a := adv[i];
+      if text[i] != ' ' && x + a > width && i > start {
+        stop = ifx brk > start then brk else i;
+        break;
+      }
+      x += a;
+      if text[i] == ' ' && i + 1 < count && text[i + 1] != ' ' { brk = i + 1; }
+      i += 1;
+    }
+    out[n] = WrapLine.{from = start, to = stop}; n += 1;
+    if stop >= count { break; }
+    start = stop;
+  }
+  return n;
+}
+
+#test "wrap_advances breaks at spaces and splits long words using caller advances" {
+  adv: [16] f32;
+  for i: 0..<16 { adv[i] = 1.0f32; }
+  lines: [8] WrapLine;
+  n := wrap_advances("aaa bbb cc", adv[..], 6.0f32, lines[..]);
+  #assert n == 2 && lines[0].from == 0 && lines[0].to == 4 && lines[1].from == 4 && lines[1].to == 10;
+  n2 := wrap_advances("abcdefgh", adv[..], 3.0f32, lines[..]);
+  #assert n2 == 3 && lines[0].to == 3 && lines[1].to == 6 && lines[2].to == 8;
+}

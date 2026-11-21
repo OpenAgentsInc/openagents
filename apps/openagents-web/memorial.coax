@@ -128,12 +128,12 @@ put_center :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: 
 }
 // Wrapped text from the top line's baseline y: how far down it went (the next line's baseline) in end[0].
 // Lines above top or below bottom are measured but not drawn. centred: each line centred on x0..x1.
-wrapped :: (out: [] f32, at: int, text: string, x0: f32, x1: f32, y: f32, cap: f32, lead: f32, k: Ink, top: f32, bottom: f32,
+draw_memorial_lines :: (out: [] f32, at: int, text: string, x0: f32, x1: f32, y: f32, cap: f32, lead: f32, k: Ink, top: f32, bottom: f32,
             centred: bool, end: [] f32) -> int {
   v := at; from := 0; base := y;
   next: [1] int;
   while from < text.count {
-    stop := wrap_ink(text, from, x1 - x0, cap, GAP, SPACE, k, next[..]);
+    stop := font_ink_line(text, from, x1 - x0, cap, GAP, SPACE, k, next[..]);
     if next[0] <= from { break; }
     piece := text[from..<stop];
     if base > top && base - cap < bottom {
@@ -373,7 +373,7 @@ memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f
   if s[0].dates_n > 0 { ny += cap; v = put_center(out, v, cast(string) s[0].dates[0..<s[0].dates_n], cx, ny, cap, ink(d, INK_LABEL)); ny += 10 * d; }
   end: [1] f32;
   if s[0].line_n > 0 {
-    v = wrapped(out, v, cast(string) s[0].line[0..<s[0].line_n], sb.x0 + 22 * d, sb.x1 - 22 * d, ny + cap * 1.3, cap * 1.25, cap * 2.0, ink(d, INK_TEXT), -100, height + 100, true, end[..]);
+    v = draw_memorial_lines(out, v, cast(string) s[0].line[0..<s[0].line_n], sb.x0 + 22 * d, sb.x1 - 22 * d, ny + cap * 1.3, cap * 1.25, cap * 2.0, ink(d, INK_TEXT), -100, height + 100, true, end[..]);
     ny = end[0] - cap * 0.6;
   }
   sb.y1 = ny + 22 * d;
@@ -409,7 +409,7 @@ memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f
     y += small;
     v = put(out, v, PARTS[q], l.x0 + 16 * d, y, small, ink(d, INK_LABEL));
     y += 12 * d + l.body * 1.3;
-    v = wrapped(out, v, text, l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
+    v = draw_memorial_lines(out, v, text, l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
     y = end[0] + 12 * d;
   }
   // from those who knew them
@@ -426,7 +426,7 @@ memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f
     y += l.body * 1.4 + 6 * d;
     v = put(out, v, who, l.x0 + 16 * d, y, l.body * 0.9, ink(d, INK_DIM));
     y += l.body * 2.1;
-    v = wrapped(out, v, cast(string) s[0].n_text[i * NOTE_TEXT..<i * NOTE_TEXT + s[0].n_text_n[i]], l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
+    v = draw_memorial_lines(out, v, cast(string) s[0].n_text[i * NOTE_TEXT..<i * NOTE_TEXT + s[0].n_text_n[i]], l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
     y = end[0] - 2 * d;
   }
   y += 8 * d;

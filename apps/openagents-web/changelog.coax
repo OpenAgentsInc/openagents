@@ -117,7 +117,7 @@ cc_step :: (kind:int)->f32 {return ifx kind==1 then 34.0f32 else 24.0f32;}
 cc_inside :: (b:CcBox,x:f32,y:f32)->bool {return x>=b.x0 && x<b.x1 && y>=b.y0 && y<b.y1;}
 cc_count :: (text:string,width:f32,kind:int)->int {
   from:=0;lines:=0;next:[1]int;k:=cc_ink(kind,1);cap:=cc_cap(kind);
-  while from<text.count {end:=wrap_ink(text,from,width,cap,0.34,0.95,k,next[..]);
+  while from<text.count {end:=font_ink_line(text,from,width,cap,0.34,0.95,k,next[..]);
     from=ifx next[0]>from then next[0] else from+1;lines+=1;
   }return ifx lines>0 then lines else 1;
 }
@@ -243,7 +243,7 @@ cc_frame :: (s:[]ChangelogState,out:[]f32,u:[]f32,width:f32,height:f32,d:f32,dt:
     from:=0;line:=0;next:[1]int;cap:=cc_cap(kind)*d;k:=cc_ink(kind,d);
     while from<CC_TEXT[i].count {
       // Measure in the same CSS space as layout so DPR cannot change line breaks.
-      end:=wrap_ink(CC_TEXT[i],from,b.x1-b.x0-32,cc_cap(kind),0.34,0.95,cc_ink(kind,1),next[..]);top:=y+cast(f32)line*step;
+      end:=font_ink_line(CC_TEXT[i],from,b.x1-b.x0-32,cc_cap(kind),0.34,0.95,cc_ink(kind,1),next[..]);top:=y+cast(f32)line*step;
       if top>=b.y0 && top+step<=b.y1 {
         if s[0].first<0 {s[0].first=i;}s[0].last=i;
         v=cc_text(out,v,CC_TEXT[i][from..<end],x,(top+(ifx kind==1 then 23.0f32 else 18.0f32))*d,cap,k);
