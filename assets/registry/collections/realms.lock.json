@@ -28,12 +28,6 @@
       "group": "realms"
     },
     {
-      "path": "apps/openagents-web/realms/create-world/assets/worldbuilder.pack.gz",
-      "sha256": "08fbe2f7741d64e7908a72384274732140662e8bcb85db2ac7c387539725c78e",
-      "bytes": 12078015,
-      "group": "realms"
-    },
-    {
       "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
       "sha256": "8722a5ad0ed212a19b17344a6450c80839e2996265a08174d5a946f59ea4c8f8",
       "bytes": 93138894,
