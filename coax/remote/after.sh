@@ -746,7 +746,8 @@ mutants_proc() {   # head path line: the procedure the line is in ("?" when none
 # C SUITE SUMMARY PATH COUNT (survivors in a check unit, which only checks reach: counted, never
 # an action item, #13610) and R SUITE SUMMARY (a suite whose mutants ran to a summary).
 mutants_records() {   # log
-  "$here/../web/tool.sh" "$here/mutants-records.coax" "$1"
+  if [[ -n "${OA_MUTANTS_RECORDS:-}" ]]; then "$OA_MUTANTS_RECORDS" "$1"
+  else "$here/../web/tool.sh" "$here/mutants-records.coax" "$1"; fi
 }
 mutants_report() {   # head base dir status...: the report (markdown); status 1 when it has no action item
   local head="$1" base="$2" dir="$3" i=0 s n_s=0 n_u=0 n_t=0 n_c=0 n_o=0 line alone="coax/remote/remote.sh run -- coax/remote/check.sh"; shift 3

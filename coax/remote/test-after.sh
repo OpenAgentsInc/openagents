@@ -65,6 +65,12 @@ g() { git -C "$w/repo" -c user.name=t -c user.email=t@t "$@"; }
 git init -q --bare "$w/origin.git"
 mkdir -p "$w/repo/coax/remote" "$w/repo/coax/web" "$w/repo/everglade" "$w/repo/proto" "$w/repo/metaverse-engine" "$w/repo/lib"
 cp "$here/after.sh" "$here/pipeline-lib.sh" "$here/counts.sh" "$w/repo/coax/remote/"
+cat > "$w/mutants-records" <<EOF
+#!/usr/bin/env bash
+exec "$here/../web/tool.sh" "$here/mutants-records.coax" "\$@"
+EOF
+chmod +x "$w/mutants-records"
+export OA_MUTANTS_RECORDS="$w/mutants-records"
 printf '# list\na\nb\nc\n' > "$w/repo/coax/tools-port.txt"
 printf '# list\nshape x\n' > "$w/repo/proto/wire-allowlist.txt"
 printf '# layers\nengine-up a -> b\ntests c -> d\n' > "$w/repo/metaverse-engine/layer-allowlist.txt"

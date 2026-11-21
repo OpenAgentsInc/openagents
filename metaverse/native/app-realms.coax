@@ -13,7 +13,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 
-APR_SCRIPTS :: [2] string.["apps/everglade-desktop/build.sh", "apps/everglade-mobile/build.sh"];
+APR_SCRIPTS :: [1] string.["metaverse/native/app-realms.txt"];
 APR_MAX :: 32;
 APR_WORDS :: 12;
 

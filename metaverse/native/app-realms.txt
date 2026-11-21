@@ -1,0 +1,12 @@
+# Active native realms and shader passes checked by metaverse/native/app-realms.coax
+# (replaces retired apps/everglade-desktop/build.sh and apps/everglade-mobile/build.sh, #13856).
+emit_pair "$1" bg "$2" "$3_bg_vs" "$3_bg_fs" & pids+=($!)
+emit_pair "$1" shadow "$2" "$3_shadow_vs" "$3_shadow_fs" & pids+=($!)
+emit_pair "$1" scene "$2" "$3_scene_vs" "$3_scene_fs" & pids+=($!)
+emit_pair "$1" bloom "$2" "$3_bg_vs" "$3_bloom_fs" & pids+=($!)
+emit_pair "$1" post "$2" "$3_bg_vs" "$3_post_fs" & pids+=($!)
+emit_pair "$1" fx "$2" "$3_fx_vs" "$3_fx_fs" & pids+=($!)
+emit_pair "$1" particle "$4" "$5_particle_vs" "$5_particle_fs" & pids+=($!)
+emit_pair "$1" particle_over "$4" "$5_particle_over_vs" "$5_particle_over_fs" & pids+=($!)
+build_realm everglade2
+emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx

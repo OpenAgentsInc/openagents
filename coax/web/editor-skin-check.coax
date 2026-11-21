@@ -17,7 +17,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 
-ESC_FILES :: [27] string.[
+ESC_FILES :: [26] string.[
   "apps/openagents-web/site-side.coax",       // the site's side: its rules only; its look is the kit's (#13471)
   "apps/openagents-web/crew-pane.coax",       // Crew's pane has no look of its own either (#13462)
   "apps/openagents-web/crew-pane-face.c",
@@ -29,7 +29,6 @@ ESC_FILES :: [27] string.[
   "apps/openagents-web/play-bar-face.c",
   "apps/openagents-web/view-menu.coax",       // a page's inspection menu: the kit's menu button and rows, nothing else
   "apps/openagents-web/view-menu-face.c",
-  "apps/openagents-web/worldbuilder/worldbuilder-world.coax",
   "metaverse-engine/editor/shell.coax",
   "metaverse-engine/editor/shell-assets.coax",
   "metaverse-engine/editor/shell-actors.coax",   // the actors: the time of day, the Actors list and a plan (#13466)
