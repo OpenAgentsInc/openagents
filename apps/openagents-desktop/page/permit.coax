@@ -1,0 +1,165 @@
+// Coder Desktop page (../page.coax): Interactive permission escalation and user-input
+// question card docked over the composer (GitHub #13831). Driven by MWW_PERMIT from
+// agyworker (or any interactive worker) and answered via MWW_ANSWER (mww_answer_option).
+
+CP_PERMIT_OPTS :: 4;
+CP_PERMIT_ID :: 64;
+CP_PERMIT_LABEL :: 96;
+CP_PERMIT_TITLE :: 160;
+CP_PERMIT_CMD :: 256;
+
+CpPermitOpt :: struct {
+  id: [CP_PERMIT_ID] u8; nid: int;
+  label: [CP_PERMIT_LABEL] u8; nlabel: int;
+  kind: [32] u8; nkind: int;
+}
+
+CpPermit :: struct {
+  open: bool;
+  question: bool;
+  ticket: int;
+  title: [CP_PERMIT_TITLE] u8; ntitle: int;
+  cmd: [CP_PERMIT_CMD] u8; ncmd: int;
+  opts: [CP_PERMIT_OPTS] CpPermitOpt; nopts: int;
+  tray_h: f32;
+  answer_due: bool;
+  answer_ticket: int;
+  answer_allow: bool;
+  answer_opt: [CP_PERMIT_ID] u8; answer_opt_n: int;
+}
+
+cp_permit_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+cp_permit_put :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  while n > 0 && n < src.count && (src[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+cp_permit_reset :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].permit[0] = CpPermit.{};
+}
+
+cp_permit_take :: (s: [] CoderPage, ticket: int, question: bool, title: string, cmd: string, opts_raw: string) {
+  if s.count < 1 { return; }
+  p := s[0].permit[..];
+  p[0] = CpPermit.{open = true, question = question, ticket = ticket};
+  p[0].ntitle = cp_permit_put(p[0].title[..], ifx title.count > 0 then title else (ifx question then "Choose an option" else "Approval requested"));
+  p[0].ncmd = cp_permit_put(p[0].cmd[..], cmd);
+  if opts_raw.count > 0 {
+    ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+    cnt := cl_count(opts_raw);
+    k := 0;
+    for i: 0..<cnt {
+      if k >= CP_PERMIT_OPTS { break; }
+      item := cl_item(opts_raw, i);
+      if !item.ok { continue; }
+      obj := opts_raw[item.from..<item.to];
+      oid := cl_str(ar[..], obj, "optionId");
+      if oid.count == 0 { oid = cl_str(ar[..], obj, "id"); }
+      kind := cl_str(ar[..], obj, "kind");
+      // For approvals, Deny has its own dedicated button so skip reject_* in the allow strip.
+      if !question && (kind == "reject_once" || kind == "reject_always") { continue; }
+      lbl := cl_str(ar[..], obj, "name");
+      if lbl.count == 0 { lbl = cl_str(ar[..], obj, "label"); }
+      if lbl.count == 0 { lbl = ifx kind == "allow_always" then "Allow for thread" else ifx kind == "allow_once" then "Allow once" else oid; }
+      if oid.count == 0 { continue; }
+      p[0].opts[k].nid = cp_permit_put(p[0].opts[k].id[..], oid);
+      p[0].opts[k].nlabel = cp_permit_put(p[0].opts[k].label[..], lbl);
+      p[0].opts[k].nkind = cp_permit_put(p[0].opts[k].kind[..], kind);
+      k += 1;
+    }
+    p[0].nopts = k;
+  }
+  if !question && p[0].nopts == 0 {
+    p[0].opts[0].nid = cp_permit_put(p[0].opts[0].id[..], "allow_once");
+    p[0].opts[0].nlabel = cp_permit_put(p[0].opts[0].label[..], "Allow");
+    p[0].opts[0].nkind = cp_permit_put(p[0].opts[0].kind[..], "allow_once");
+    p[0].nopts = 1;
+  }
+}
+
+cp_permit_choose :: (s: [] CoderPage, allow: bool, opt_idx: int) -> bool {
+  if s.count < 1 || !s[0].permit[0].open { return false; }
+  p := s[0].permit[..];
+  p[0].answer_due = true;
+  p[0].answer_ticket = p[0].ticket;
+  p[0].answer_allow = allow;
+  p[0].answer_opt_n = 0;
+  if allow && opt_idx >= 0 && opt_idx < p[0].nopts {
+    p[0].answer_opt_n = cp_permit_put(p[0].answer_opt[..], cp_permit_str(p[0].opts[opt_idx].id[..], p[0].opts[opt_idx].nid));
+  }
+  p[0].open = false;
+  p[0].tray_h = 0.0f32;
+  s[0].ask = CP_ASK_ANSWER;
+  return true;
+}
+
+cp_permit_answer_line :: (s: [] CoderPage, out: [] u8) -> int {
+  if s.count < 1 || !s[0].permit[0].answer_due { return 0; }
+  p := s[0].permit[..];
+  p[0].answer_due = false;
+  opt := cp_permit_str(p[0].answer_opt[..], p[0].answer_opt_n);
+  return mww_answer_option(out, p[0].answer_allow, p[0].answer_ticket, opt, ifx p[0].answer_allow then "" else "denied by user");
+}
+
+cp_permit_card :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f32) -> f32 {
+  if s.count < 1 || !s[0].permit[0].open {
+    if s.count > 0 { s[0].permit[0].tray_h = 0.0f32; }
+    return 0.0f32;
+  }
+  p := s[0].permit[..];
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  pad := cast(f32) CP_CARD_PAD;
+  btn_h := 28.0f32;
+  has_cmd := p[0].ncmd > 0;
+  h := pad * 2 + k.label.line + (ifx has_cmd then k.small.line + 4.0f32 else 0.0f32) + 8.0f32 + btn_h;
+  y := bottom_y - h;
+  p[0].tray_h = h + k.app.gap_small;
+  _ = sheet_box(sh, x, y, cw, h, 10.0f32, 1.0f32, th.menu, th.line);
+  title := cp_permit_str(p[0].title[..], p[0].ntitle);
+  _ := uiframe_semantic(f, "coder.permit.card", EL_REGION, title, x, y, cw, h, 0, 0);
+  _ := sheet_text(sh, f[0].m, -1, x + pad, y + pad, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, title, cw - 2 * pad));
+  by := y + pad + k.label.line + 8.0f32;
+  if has_cmd {
+    cmd := cp_permit_str(p[0].cmd[..], p[0].ncmd);
+    _ := sheet_text(sh, f[0].m, -1, x + pad, y + pad + k.label.line + 2.0f32, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, cmd, cw - 2 * pad));
+    by += k.small.line + 4.0f32;
+  }
+  bx := x + pad;
+  ib: [32] u8;
+  for i: 0..<p[0].nopts {
+    lbl := cp_permit_str(p[0].opts[i].label[..], p[0].opts[i].nlabel);
+    bw := measure_width(f[0].m, k.label.face, lbl) + 20.0f32;
+    if bw < 64.0f32 { bw = 64.0f32; }
+    if bx + bw > x + cw - pad { break; }
+    in_n := el_put(ib[..], 0, "coder.permit.opt."); in_n = el_put_i(ib[..], in_n, i);
+    id := sheet_pool(sh, cast(string) ib[0..<in_n]);
+    row := uiframe_semantic(f, id, EL_BUTTON, lbl, bx, by, bw, btn_h, 0, CP_PERMIT_OPT);
+    hov := uiframe_hovered(f, id);
+    fill := ifx i == 0 then (ifx hov then rgba_mix(th.text, th.hover, 0.2) else th.text) else (ifx hov then th.hover else th.surface);
+    fg := ifx i == 0 then th.bg else th.text;
+    _ = sheet_box(sh, bx, by, bw, btn_h, 6.0f32, 1.0f32, fill, th.line);
+    _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, fg, lbl);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, bw, btn_h);
+    bx += bw + 8.0f32;
+  }
+  if !p[0].question {
+    dlbl := "Deny";
+    dw := measure_width(f[0].m, k.label.face, dlbl) + 20.0f32;
+    if dw < 64.0f32 { dw = 64.0f32; }
+    if bx + dw <= x + cw - pad {
+      drow := uiframe_semantic(f, "coder.permit.deny", EL_BUTTON, dlbl, bx, by, dw, btn_h, 0, CP_PERMIT_DENY);
+      dhov := uiframe_hovered(f, "coder.permit.deny");
+      _ = sheet_box(sh, bx, by, dw, btn_h, 6.0f32, 1.0f32, ifx dhov then th.hover else th.surface, th.line);
+      _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, th.text, dlbl);
+      sheet_hit(sh, UIFRAME_HIT, drow, 0, bx, by, dw, btn_h);
+    }
+  }
+  return p[0].tray_h;
+}
+
+coder_page_permit_open :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 && s[0].permit[0].open then 1 else 0;
+}

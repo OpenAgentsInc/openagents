@@ -378,6 +378,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 46: simAsked()
         case 45: resetInstructions()
         case 47: manageLocalModels()
+        case 48: pump(run)
         case 40...43: fileAsked(what)
         default: break
         }
@@ -399,6 +400,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 sendTask(back)
             } else if bgAct == 3 {
                 stopRun(back)
+            } else if bgAct == 48 {
+                pump(back)
             }
             if cd_save_due(back.page) != 0 { keep(back) }
             if cd_running(back.page) == 0 && cd_queue_waiting(back.page) == 0 { finish(id) }   // a waiting queue starts its next message

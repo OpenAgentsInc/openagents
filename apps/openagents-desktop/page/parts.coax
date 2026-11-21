@@ -43,6 +43,7 @@
 #load "host-api.coax";
 #load "followups.coax";
 #load "todos.coax";
+#load "permit.coax";
 #load "overlay.coax";
 #load "palette.coax";
 #load "attach.coax";

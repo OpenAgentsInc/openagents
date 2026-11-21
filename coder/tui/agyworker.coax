@@ -61,6 +61,7 @@ AgywConfig :: struct {
   mode: [32] u8; mode_n: int;
   model: [128] u8; model_n: int;
   effort: [32] u8; effort_n: int;
+  interactive: bool;
 }
 
 AgywState :: struct {
@@ -84,6 +85,11 @@ AgywState :: struct {
   compact: bool;                                // the turn is a /compact, which may end with no words
   denied: [AGYW_LABEL] u8; denied_n: int;       // why this worker denied a tool call this turn ("" none)
   denied_id: [AGYW_ID] u8; denied_id_n: int;    // ... and that call's toolCallId
+  pending_permit: bool;                         // waiting for owner MWW_ANSWER to an escalated permission / question (#13831)
+  pending_ticket: int;
+  pending_is_question: bool;
+  pending_id: [AGYW_ID] u8; pending_id_n: int;
+  pending_label: [AGYW_LABEL] u8; pending_label_n: int;
   out: [AGYW_LINE] u8;
   sink: bool; log: [16384] u8; log_n: int;      // checks: lines go here instead of stdout
 }
@@ -162,6 +168,8 @@ agyw_load_env :: (s: [] AgywState) {
   s[0].cfg.model_n = agyw_copy(s[0].cfg.model[..], mod);
   eff := agyw_resolve_effort("", cl_getenv("CODER_AGY_EFFORT", eb[..]));
   s[0].cfg.effort_n = agyw_copy(s[0].cfg.effort[..], eff);
+  ib: [16] u8; intr := agyw_trim(cl_getenv("CODER_AGY_INTERACTIVE", ib[..]));
+  s[0].cfg.interactive = intr == "1" || intr == "true";
 }
 
 // ---------------------------------------------------------------- wire I/O
@@ -186,6 +194,9 @@ agyw_emit_command :: (s: [] AgywState, cmd: string, exit_code: int, out_text: st
 agyw_emit_ended :: (s: [] AgywState, ending: string, text: string) { agyw_write_line(s, mww_ended(s[0].out[..], ending, text)); }
 agyw_emit_steered :: (s: [] AgywState, id: string, status: string, reason: string, text: string) {
   agyw_write_line(s, mww_steered(s[0].out[..], id, status, 0, reason, 0, text));
+}
+agyw_emit_permit :: (s: [] AgywState, ticket: int, question: bool, title: string, cmd: string, options_json: string) {
+  agyw_write_line(s, mww_permit(s[0].out[..], ticket, question, title, cmd, options_json));
 }
 
 // Read one line from stdin with timeout. Returns: >0 line length, 0 timeout, -1 EOF.
@@ -319,6 +330,66 @@ agyw_answer_permission :: (s: [] AgywState, c: [] CuClient, params: string, mode
   return CU_DISP_DENY;
 }
 
+// Handle a session/request_permission event: hard-denied calls decline immediately; when
+// interactive mode is enabled and the request is a user-input question ("interaction_*") or
+// an escalated approval (auto mode or supervised default mode), emit MWW_PERMIT and pause
+// waiting for the owner's MWW_ANSWER (#13831).
+agyw_on_permission :: (s: [] AgywState, c: [] CuClient, params: string, mode: string, emit: bool) -> int {
+  why := agyw_deny_reason(c, params, mode);
+  if why.count > 0 { return agyw_answer_permission(s, c, params, mode); }
+  is_q := cu_perm_is_question(params, c[0].ar[..]);
+  ask_user := s[0].cfg.interactive && (is_q || cu_permission_disposition(c, CU_DISP_ALLOW) == CU_DISP_ASK || mode == "default");
+  if !ask_user { return agyw_answer_permission(s, c, params, mode); }
+  tool := cl_raw(params, "toolCall");
+  nb: [AGYW_LABEL] u8;
+  label := cu_tool_display_name(tool, c[0].ar[..], nb[..]);
+  if label.count == 0 { label = ifx is_q then "Choose an option." else "Approve tool call"; }
+  cmd := cl_str(c[0].ar[..], tool, "rawInput.CommandLine");
+  if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.command"); }
+  if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.Path"); }
+  if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.TargetFile"); }
+  opts := cl_raw(params, "options");
+  s[0].next_ticket += 1;
+  s[0].pending_permit = true;
+  s[0].pending_ticket = s[0].next_ticket;
+  s[0].pending_is_question = is_q;
+  s[0].pending_id_n = agyw_copy(s[0].pending_id[..], cl_str(c[0].ar[..], tool, "toolCallId"));
+  s[0].pending_label_n = agyw_copy(s[0].pending_label[..], label);
+  if emit { agyw_emit_permit(s, s[0].pending_ticket, is_q, label, cmd, opts); }
+  return CU_DISP_ASK;
+}
+
+// Apply the owner's MWW_ANSWER to a pending interactive permission or question (#13831).
+agyw_handle_answer :: (s: [] AgywState, x: [] CuEngine, req: MwwRequest) -> bool {
+  if !s[0].pending_permit { return false; }
+  if req.ticket.ok && req.ticket.value != s[0].pending_ticket { return false; }
+  s[0].pending_permit = false;
+  c := x[0].c;
+  if req.allow {
+    opt := req.option;
+    if opt.count == 0 || !cu_perm_has_option(c, opt) { opt = cu_allow_option(c); }
+    if opt.count > 0 { cu_permit(c, opt); } else { cu_decline(c); }
+  } else {
+    label := agyw_str(s[0].pending_label[..], s[0].pending_label_n);
+    if label.count == 0 { label = "a tool call"; }
+    why := ifx req.why.count > 0 then req.why else "denied by user";
+    n := agyw_copy(s[0].denied[..], "OpenAgents denied ");
+    n += agyw_copy(s[0].denied[n..<s[0].denied.count], label);
+    n += agyw_copy(s[0].denied[n..<s[0].denied.count], ": ");
+    n += agyw_copy(s[0].denied[n..<s[0].denied.count], why);
+    n += agyw_copy(s[0].denied[n..<s[0].denied.count], ".");
+    s[0].denied_n = n;
+    s[0].denied_id_n = agyw_copy(s[0].denied_id[..], agyw_str(s[0].pending_id[..], s[0].pending_id_n));
+    cu_decline(c);
+  }
+  s[0].pending_ticket = 0;
+  s[0].pending_is_question = false;
+  s[0].pending_id_n = 0;
+  s[0].pending_label_n = 0;
+  if x[0].live && !s[0].sink { _ = cu_flush(x[0].c, x[0].p); }
+  return true;
+}
+
 // True when a prompt is a /compact slash command.
 agyw_is_compact :: (text: string) -> bool {
   t := agyw_trim(text);
@@ -431,6 +502,8 @@ agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) 
   if emit { agyw_emit_ended(s, ending, text); }
   s[0].reply_n = 0;
   s[0].denied_n = 0; s[0].denied_id_n = 0;
+  s[0].pending_permit = false; s[0].pending_ticket = 0; s[0].pending_is_question = false;
+  s[0].pending_id_n = 0; s[0].pending_label_n = 0;
   s[0].compact = false;
 }
 
@@ -580,7 +653,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
   }
   if ev.kind == CuEventKind.permission {
     mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-    _ = agyw_answer_permission(s, x[0].c, ev.params, mode);
+    _ = agyw_on_permission(s, x[0].c, ev.params, mode, emit);
     return;
   }
   if ev.kind == CuEventKind.question { cu_question(x[0].c, true); return; }
@@ -636,7 +709,14 @@ tool_main :: () -> int #export_c #effects(all) {
         s[0].recall_n = agyw_copy(s[0].recall[..], req[0].recall);
         s[0].has_recall = s[0].recall_n > 0;
         if x[0].live && x[0].ready { cue_fresh_session(x); }
+      } else if rk == MWW_ANSWER {
+        _ = agyw_handle_answer(s, x, req[0]);
       } else if rk == MWW_STOP || rk == MWW_INTERRUPT {
+        if s[0].pending_permit {
+          s[0].pending_permit = false;
+          cu_decline(x[0].c);
+          if x[0].live { _ = cu_flush(x[0].c, x[0].p); }
+        }
         if s[0].turn_active {
           s[0].stopping = true;
           if x[0].live { cue_stop(x); }
@@ -707,8 +787,8 @@ tool_main :: () -> int #export_c #effects(all) {
       }
     }
 
-    // 2. Poll the ACP engine and watchdog.
-    if x[0].live {
+    // 2. Poll the ACP engine and watchdog (paused while awaiting an interactive permit/question answer).
+    if x[0].live && !s[0].pending_permit {
       for step: 0..<64 {
         ev: [1] CuEvent;
         cue_poll(x, ev[..]);
@@ -978,4 +1058,50 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   agyw_fx_feed(s, x, AGYW_FX_LOW_WORDS);
   agyw_fx_feed(s, x, AGYW_FX_ENDED_MEDIUM);
   #assert agyw_logged(s, "\"kind\":\"thought\"") && agyw_logged(s, "\"ending\":\"finished\"");
+}
+
+#test "agyworker: interactive auto-mode escalations and interaction_ questions wait for MWW_ANSWER" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  s[0].cfg.interactive = true;
+  s[0].cfg.mode_n = agyw_copy(s[0].cfg.mode[..], "auto");
+  // Simulate session/new advertising auto mode and currentModeId auto.
+  _ = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  _ = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"modes\":{\"currentModeId\":\"auto\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]}}}");
+  cu_outbox_clear(x[0].c);
+
+  // 1. Escalated permission in auto mode emits MWW_PERMIT and does not answer agy yet.
+  perm := "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"tc-1\",\"title\":\"Run shell command\",\"kind\":\"execute\",\"rawInput\":{\"CommandLine\":\"rm -rf build\"}},\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}";
+  agyw_fx_feed(s, x, perm);
+  #assert s[0].pending_permit && !s[0].pending_is_question && s[0].pending_ticket == 1;
+  #assert agyw_logged(s, "\"kind\":\"permit\",\"ticket\":1,\"question\":false,\"title\":\"Run shell command\",\"command\":\"rm -rf build\"");
+  #assert cu_outbox(x[0].c).count == 0;   // agy has not been answered yet
+
+  // Owner approves with native optionId allow_once -> cu_permit sends selected optionId.
+  ar_buf: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ar_buf[..]}];
+  req: [1] MwwRequest;
+  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":1,\"option\":\"allow_once\"}", req[..]) == MWW_ANSWER;
+  #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
+  #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"allow_once\"");
+
+  // 2. Native Antigravity question (toolCallId starts with interaction_) emits question:true and sends chosen optionId.
+  cu_outbox_clear(x[0].c); s[0].log_n = 0;
+  q := "{\"jsonrpc\":\"2.0\",\"id\":51,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"interaction_9\",\"title\":\"Which backend?\",\"kind\":\"other\"},\"options\":[{\"optionId\":\"opt_1\",\"name\":\"Metal\"},{\"optionId\":\"opt_2\",\"name\":\"Vulkan\"}]}}";
+  agyw_fx_feed(s, x, q);
+  #assert s[0].pending_permit && s[0].pending_is_question && s[0].pending_ticket == 2;
+  #assert agyw_logged(s, "\"kind\":\"permit\",\"ticket\":2,\"question\":true,\"title\":\"Which backend?\"");
+  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":2,\"option\":\"opt_2\"}", req[..]) == MWW_ANSWER;
+  #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
+  #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"opt_2\"");
+
+  // 3. Denying an escalated permission declines agy and records the denial reason.
+  cu_outbox_clear(x[0].c); s[0].log_n = 0;
+  agyw_fx_feed(s, x, perm);
+  #assert s[0].pending_permit && s[0].pending_ticket == 3;
+  #assert mww_request(ar[..], "{\"answer\":false,\"ticket\":3,\"why\":\"too risky\"}", req[..]) == MWW_ANSWER;
+  #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
+  #assert agy_out_has(x, "\"optionId\":\"reject_once\"") && s[0].denied_n > 0;
 }

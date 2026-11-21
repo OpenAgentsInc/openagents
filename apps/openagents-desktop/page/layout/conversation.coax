@@ -471,7 +471,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded);
   s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
-  if !s[0].todos[0].docked { _ := cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
+  todos_h: f32 = 0.0f32;
+  if !s[0].todos[0].docked { todos_h = cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
+  _ := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw);
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }

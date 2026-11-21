@@ -751,7 +751,7 @@ enum CoderAntigravity {
     }
 
     static func workerEnv() -> [String: String] {
-        var env: [String: String] = ["CODER_AGY_MODE": mode]
+        var env: [String: String] = ["CODER_AGY_MODE": mode, "CODER_AGY_INTERACTIVE": "1"]
         if !bin.isEmpty { env["CODER_AGY_BIN"] = (bin as NSString).expandingTildeInPath }
         if !model.isEmpty { env["CODER_AGY_MODEL"] = model }
         if !effort.isEmpty { env["CODER_AGY_EFFORT"] = effort }

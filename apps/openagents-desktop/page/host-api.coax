@@ -167,6 +167,7 @@ coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
     s[0].results_due = false; s[0].turns[i].waiting = false; s[0].turns[i].h = 0;
     return cp_results(s, i, out);
   }
+  if s[0].permit[0].answer_due { return cp_permit_answer_line(s, out); }
   if !s[0].answer_due { return 0; }
   s[0].answer_due = false;
   return mww_answer(out, true, s[0].answer, "");
@@ -190,6 +191,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   else if kind == MWW_ATTEMPT && l[0].gateway == "antigravity" { s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], l[0].model); }   // the model agy opened the session on: the reply's label
   else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]); }
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
+  else if kind == MWW_PERMIT { cp_permit_take(s, l[0].ticket.value, l[0].question.ok && l[0].question.value, l[0].title, l[0].command, l[0].options); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_STOP_AGENT { if l[0].agent.ok { cp_agent_stopped_by_run(s, i, l[0].agent.value); } }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
@@ -208,6 +210,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
     }
     cp_cmds_end(s, i);
     cp_todos_reset(s);
+    cp_permit_reset(s);
     s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
     cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
   }
@@ -221,6 +224,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
   cp_cmds_end(s, i);
   cp_todos_reset(s);
+  cp_permit_reset(s);
 }
 // What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
 // chat (each message under "You:", each command under "Ran:", each reply under "Microcoder:"). Its length in out.

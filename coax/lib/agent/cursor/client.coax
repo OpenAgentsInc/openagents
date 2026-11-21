@@ -278,6 +278,39 @@ cu_permission_disposition :: (c: [] CuClient, disposition: int) -> int {
   return disposition;
 }
 
+// Antigravity native user-input questions share session/request_permission with a
+// toolCallId starting with "interaction_" (GitHub #13831).
+cu_is_interaction_id :: (id: string) -> bool {
+  return id.count >= 12 && cast(string) id[0..<12] == "interaction_";
+}
+
+// True when a session/request_permission params object is an interactive user question
+// (toolCallId starts with "interaction_" and at least one option with a non-empty optionId exists).
+cu_perm_is_question :: (params: string, ar: [] ClArena) -> bool {
+  id := cl_str(ar, params, "toolCall.toolCallId");
+  if !cu_is_interaction_id(id) { return false; }
+  opts := cl_raw(params, "options");
+  n := cl_count(opts);
+  if n <= 0 { return false; }
+  for i: 0..<n {
+    item := cl_json(opts, cl_item(opts, i));
+    if cl_str(ar, item, "optionId").count == 0 { return false; }
+  }
+  return true;
+}
+
+// True when a session/request_permission optionId is offered in the pending options list.
+cu_perm_has_option :: (c: [] CuClient, option_id: string) -> bool {
+  if option_id.count == 0 || c[0].ask_opts_n == 0 { return false; }
+  opts := cast(string) c[0].ask_opts[0..<c[0].ask_opts_n];
+  n := cl_count(opts);
+  for i: 0..<n {
+    item := cl_json(opts, cl_item(opts, i));
+    if cl_str(c[0].ar[..], item, "optionId") == option_id { return true; }
+  }
+  return false;
+}
+
 // Unwrap call_mcp_tool display names to the underlying MCP server/tool name when
 // present in rawInput, else return the tool's title.
 cu_tool_display_name :: (tool: string, ar: [] ClArena, out: [] u8) -> string {

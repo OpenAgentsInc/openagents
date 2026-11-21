@@ -31,7 +31,7 @@ extension CoderWindow {
         r.worker.write(out, count: Int(n))
         for (_, one) in r.agents { one.write(out, count: Int(n)) }
     }
-    private func pump(_ r: CoderRun) {
+    func pump(_ r: CoderRun) {
         var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
         let page = r.page, cwd = (r === run ? folder : r.folder).path
         if r !== run && cd_action(page) == 3 { stopRun(r) }
