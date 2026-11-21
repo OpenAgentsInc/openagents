@@ -1,8 +1,8 @@
 // Prints the long-horizon compaction scenarios' numbers (scenarios.coax), one line each, for
-// evals/coder-desktop/compaction/run.sh and docs/coder/compaction-theory.md. No model is called.
+// evals/openagents-desktop/compaction/run.sh and docs/coder/compaction-theory.md. No model is called.
 // The scenarios load the worker's transports, whose process natives tool.sh links: with `coax run`
 // gcc at -O0 keeps their unused callers and the link fails on Linux (GitHub #13734).
-//   coax/web/tool.sh evals/coder-desktop/compaction/report.coax
+//   coax/web/tool.sh evals/openagents-desktop/compaction/report.coax
 #import "Basic";
 #load "scenarios.coax";
 

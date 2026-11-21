@@ -2,10 +2,10 @@
 # Firm reason: 5 (Tier 3 runner: builds a scratch Coder.app, drives it through flows, compares window captures)
 """Tier 3: the real Coder.app, driven end to end, with window captures checked against goldens.
 
-  python3 evals/coder-desktop/tier3/run_ui.py                    build, run every flow, compare
-  python3 evals/coder-desktop/tier3/run_ui.py --filter settings  flows whose name contains TEXT
-  python3 evals/coder-desktop/tier3/run_ui.py --no-build         reuse the last scratch build
-  python3 evals/coder-desktop/tier3/run_ui.py --update-goldens   write the captures as the goldens
+  python3 evals/openagents-desktop/tier3/run_ui.py                    build, run every flow, compare
+  python3 evals/openagents-desktop/tier3/run_ui.py --filter settings  flows whose name contains TEXT
+  python3 evals/openagents-desktop/tier3/run_ui.py --no-build         reuse the last scratch build
+  python3 evals/openagents-desktop/tier3/run_ui.py --update-goldens   write the captures as the goldens
 
 What it does:
 1. Builds Coder.app with apps/coder-desktop/build.sh into results/tier3-build/ (never
@@ -57,9 +57,9 @@ from typing import Any, Callable
 from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[3]
-HERE = REPO / "evals/coder-desktop/tier3"
+HERE = REPO / "evals/openagents-desktop/tier3"
 GOLDENS = HERE / "goldens"
-RESULTS = REPO / "evals/coder-desktop/results"
+RESULTS = REPO / "evals/openagents-desktop/results"
 BUNDLE_ID = "com.openagents.desktop.evals-t3"
 
 

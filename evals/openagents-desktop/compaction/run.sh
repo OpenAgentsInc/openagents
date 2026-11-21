@@ -11,10 +11,10 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)"
 
 cd "$ROOT"
-coax/bin/coax test evals/coder-desktop/compaction/compaction_test.coax --library
-coax/bin/coax test evals/coder-desktop/compaction/compaction_scenarios_test.coax --library
+coax/bin/coax test evals/openagents-desktop/compaction/compaction_test.coax --library
+coax/bin/coax test evals/openagents-desktop/compaction/compaction_scenarios_test.coax --library
 # C16 runs the worker as a process on recorded replies; a failure stops the suite (set -e)
 c16="$(coax/web/tool.sh coder/tests/aware-worker.coax 2>/dev/null)"
 echo "$c16"
 echo "ok   #test compaction C16: the worker gives every run the working memory (1 case, process, 0 ms)"
-coax/web/tool.sh evals/coder-desktop/compaction/report.coax
+coax/web/tool.sh evals/openagents-desktop/compaction/report.coax

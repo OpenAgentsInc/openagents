@@ -20,7 +20,7 @@ writes it back.
 An owner's line this script wrote itself (the first three runs) is marked read_only: the profile
 reads it as the worker does and does not write it back. The page's lines are written back.
 
-Usage: python3 evals/coder-desktop/followups/capture_wire.py [--worker BIN] [--write] [--only NAME]
+Usage: python3 evals/openagents-desktop/followups/capture_wire.py [--worker BIN] [--write] [--only NAME]
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ def interrupt(w_bin: Path) -> list[dict]:
 
 def page(w_bin: Path) -> list[tuple[str, str]]:
     if not rf.HOST_DRIVER.exists():
-        raise SystemExit("build evals/coder-desktop/host_driver first (bash evals/coder-desktop/host_driver/build.sh)")
+        raise SystemExit("build evals/openagents-desktop/host_driver first (bash evals/openagents-desktop/host_driver/build.sh)")
     box = rf.Box([rf.act(commands=["sleep 2"], finished=False), rf.act("first done"), rf.act("took the steer"), rf.act(commands=["sleep 5"], finished=False)])
     log = box.root / "wire.jsonl"
     h = rf.Host(w_bin, box)
@@ -205,9 +205,9 @@ RUNS = [
     ("followups-interrupt", interrupt, True,
      "a steer accepted, then interrupt with resubmit: the turn stops and the steer starts turn 2"),
     ("followups-page", page, False,
-     "the desktop's host.c and page (evals/coder-desktop/host_driver) on the worker: queue open, a message, a steer, pause, two follow-ups, move, delete, promote now, interrupt, list"),
+     "the desktop's host.c and page (evals/openagents-desktop/host_driver) on the worker: queue open, a message, a steer, pause, two follow-ups, move, delete, promote now, interrupt, list"),
 ]
-FROM_DRIVER = ("capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. "
+FROM_DRIVER = ("capture_wire.py (evals/openagents-desktop/followups/) on the worker built from this tree; nothing called a model. "
                "Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.")
 FROM_PAGE = ("capture_wire.py through host_driver's WIRE_LOG: the owner's lines are what the page (apps/coder-desktop/page/followups.coax, persist.coax) "
              "and host.c wrote, the worker's what it sent; nothing called a model.")

@@ -5,7 +5,7 @@
 The Tier 3 runner puts a two-line `mcworker` in the scratch Coder.app's Resources that runs this
 file. Every worker Coder starts (the chat's own and each sub-agent's) is this process. It reads
 lines until the first {"task": ...} line, picks a script from the flow's worker file
-(CODER_T3_WORKERS) and hands the rest to evals/coder-desktop/mock_worker/mock_worker.py:
+(CODER_T3_WORKERS) and hands the rest to evals/openagents-desktop/mock_worker/mock_worker.py:
 
   {"main": [{"match": "TEXT", "script": {...}}, ...],     first whose TEXT is in the task text
    "default": {...},                                         when none matches

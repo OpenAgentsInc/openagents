@@ -3,18 +3,18 @@
 The tiers from [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals-spec.md), run with one command:
 
 ```sh
-evals/coder-desktop/run.sh                 # Tier 0, Tier 1 and compaction (the default, --tier all)
-evals/coder-desktop/run.sh --tier 1        # Tier 1 only
-evals/coder-desktop/run.sh --tier 2        # Tier 2 live-agent suite: real models, costs money
-evals/coder-desktop/run.sh --tier 2 --filter a1_,e2_
-evals/coder-desktop/run.sh --tier 3        # Tier 3: build and drive the real Coder.app, compare captures
-evals/coder-desktop/run.sh --tier 3 --update-goldens   # write new goldens after a deliberate UI change
-evals/coder-desktop/run.sh --tier 4        # Tier 4: golden trajectories + 25-task benchmark slice, costs money
-evals/coder-desktop/run.sh --compare BASE NEW   # diff two Tier 2 or Tier 4 runs (summary.json or run folder)
-evals/coder-desktop/run.sh --trend         # one row per kept run: pass rate, cost a task, p95 wall, regressions
+evals/openagents-desktop/run.sh                 # Tier 0, Tier 1 and compaction (the default, --tier all)
+evals/openagents-desktop/run.sh --tier 1        # Tier 1 only
+evals/openagents-desktop/run.sh --tier 2        # Tier 2 live-agent suite: real models, costs money
+evals/openagents-desktop/run.sh --tier 2 --filter a1_,e2_
+evals/openagents-desktop/run.sh --tier 3        # Tier 3: build and drive the real Coder.app, compare captures
+evals/openagents-desktop/run.sh --tier 3 --update-goldens   # write new goldens after a deliberate UI change
+evals/openagents-desktop/run.sh --tier 4        # Tier 4: golden trajectories + 25-task benchmark slice, costs money
+evals/openagents-desktop/run.sh --compare BASE NEW   # diff two Tier 2 or Tier 4 runs (summary.json or run folder)
+evals/openagents-desktop/run.sh --trend         # one row per kept run: pass rate, cost a task, p95 wall, regressions
 ```
 
-Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-desktop/results/` (gitignored).
+Run `coax/build.sh` first in a fresh worktree. Results go to `evals/openagents-desktop/results/` (gitignored).
 
 | Tier | What it runs | Cost |
 |---|---|---|
@@ -257,7 +257,7 @@ tiers run on a schedule on a Mac:
 
 | When | What | Where |
 |---|---|---|
-| Every head of `main` that reaches Coder Desktop (`apps/coder-desktop/`, `evals/coder-desktop/`, `components/`, or what Coder's graph reaches) | `check.sh coder` / `coder-since`: the step `coder-desktop-evals` runs `tier1/replay_test.coax`, which loads `page.coax`, so Tier 0's page tests run with Tier 1's replay fixtures (272 checks, about 25 s); `coder-desktop-scenarios` runs the 20 host scenarios and `coder-desktop-compaction` the compaction suite | the Linux build hosts; free. `mcworker-wire.coax` already runs in the pipeline's suites |
+| Every head of `main` that reaches Coder Desktop (`apps/coder-desktop/`, `evals/openagents-desktop/`, `components/`, or what Coder's graph reaches) | `check.sh coder` / `coder-since`: the step `coder-desktop-evals` runs `tier1/replay_test.coax`, which loads `page.coax`, so Tier 0's page tests run with Tier 1's replay fixtures (272 checks, about 25 s); `coder-desktop-scenarios` runs the 20 host scenarios and `coder-desktop-compaction` the compaction suite | the Linux build hosts; free. `mcworker-wire.coax` already runs in the pipeline's suites |
 | Nightly, 03:00 | `nightly.sh night`: `run.sh --tier all` (Tier 0, Tier 1 with the host scenarios, compaction), Tier 2 compared with the previous night, and Tier 3 | a Mac with the model credentials; about $0.50 |
 | Weekly (Sunday 05:00), and by hand before a desktop release | `nightly.sh week`: Tier 4, compared with `tier4/baseline/` | the same; about $1.20 |
 
@@ -271,7 +271,7 @@ Coder Desktop evals failed" (or comments on it while it is open). `OA_DESKTOP_EV
 is about $15 a month for the nights and $5 for the weeks, on the existing Vertex and OpenRouter keys;
 no new cloud resources.
 
-Nothing is scheduled until someone installs it: `evals/coder-desktop/nightly.sh install` prints the
+Nothing is scheduled until someone installs it: `evals/openagents-desktop/nightly.sh install` prints the
 two crontab lines (it changes nothing itself), as `coax/remote/mutation-sweep.sh install` does on a
 Mac. Tier 3 captures need Screen Recording for the process that runs them; under cron, set
 `OA_DESKTOP_EVALS_TIER3=0` in the lines until cron has it. By hand: `nightly.sh night`, `nightly.sh week`

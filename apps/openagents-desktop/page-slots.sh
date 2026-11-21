@@ -1,7 +1,7 @@
 #!/bin/bash
 # Firm reason: 5 (thin wrapper around coax test; holds no logic)
 # The page's checks under 85% of the compiler's value slots (#13767). Each check file under
-# page/checks/, and evals/coder-desktop/tier1/replay_test.coax, runs in the evaluator
+# page/checks/, and evals/openagents-desktop/tier1/replay_test.coax, runs in the evaluator
 # (COAX_NATIVE_CHECKS=0), as a run of one check does, with the slot limit lowered to 85% of the
 # checks' 33,554,432: a check that needs more fails with E0400 and names what holds its slots. A
 # file above 75% of that also prints the compiler's near-limit note.
@@ -14,7 +14,7 @@ repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
 limit=$((33554432 * 85 / 100))
 # the page's check files and Tier 1's replay checks, which load the page too
-if [ $# -eq 0 ]; then set -- "$here"/page/checks/*-checks.coax "$repo/evals/coder-desktop/tier1/replay_test.coax"; fi
+if [ $# -eq 0 ]; then set -- "$here"/page/checks/*-checks.coax "$repo/evals/openagents-desktop/tier1/replay_test.coax"; fi
 # Files run side by side, PAGE_SLOTS_JOBS at once (default: half the cores, at most 8); each is one
 # evaluator process. The report comes in the files' order.
 cores="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)"

@@ -2,7 +2,7 @@
 
 This document describes how Coder keeps a long run inside the model's context,
 what OpenAI Codex and T3 Code do instead, and what Coder should do next. It
-also describes the compaction evals in `evals/coder-desktop/compaction/`.
+also describes the compaction evals in `evals/openagents-desktop/compaction/`.
 GitHub issue #13706 tracks this work, and #13730 its P1 and P2 follow-ups.
 
 ## The theory in two lines
@@ -161,7 +161,7 @@ A run sees earlier turns of the conversation as `environment.conversation`:
 
 ### Measured behavior
 
-`evals/coder-desktop/compaction/report.coax` runs four 200-step scenarios
+`evals/openagents-desktop/compaction/report.coax` runs four 200-step scenarios
 against `state.coax` for three windows and prints these numbers. "Cache share"
 is the bytes each prompt shares with the one before it, as a share of all
 prompt bytes. Every run has the working memory on.
@@ -351,7 +351,7 @@ hands context between them rather than compacting itself.
 
 ## Evals
 
-The suite lives in `evals/coder-desktop/compaction/`. It calls no model; every
+The suite lives in `evals/openagents-desktop/compaction/`. It calls no model; every
 byte is deterministic.
 
 | ID | File | What it checks |
@@ -379,14 +379,14 @@ share.
 Run the suite:
 
 ```sh
-evals/coder-desktop/compaction/run.sh
+evals/openagents-desktop/compaction/run.sh
 ```
 
 Or run it with the other Coder Desktop evals, which write one JSONL record per
-check to `evals/coder-desktop/results/`:
+check to `evals/openagents-desktop/results/`:
 
 ```sh
-evals/coder-desktop/run.sh --tier compaction
+evals/openagents-desktop/run.sh --tier compaction
 ```
 
 When you change a compaction constant or the state's layout, run the suite and

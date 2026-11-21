@@ -324,10 +324,10 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, tests:
   #assert su_in("coax/native/updates-policy.coax") && su_in("coax/native/starter/app.coax");
   #assert !su_in("coax/native/.scratch/app.coax");
   #assert su_in("pay/wallet-balance-policy.coax") && su_in("apps/openagents-desktop/extras/app.coax");
-  // the desktop page suite (641 checks) ran only from evals/coder-desktop/run.sh, so no suite run saw
+  // the desktop page suite (641 checks) ran only from evals/openagents-desktop/run.sh, so no suite run saw
   // 76ded7e0e0 break it; the whole app folder is a suite folder, extras/ with it
   #assert su_in("apps/openagents-desktop/page.coax") && su_in("apps/openagents-desktop/page/checks/simpane-checks.coax");
-  #assert !su_in("apps/openagents-cli/main.coax") && !su_in("evals/coder-desktop/tier1/replay_test.coax");
+  #assert !su_in("apps/openagents-cli/main.coax") && !su_in("evals/openagents-desktop/tier1/replay_test.coax");
 }
 su_in :: (path: string) -> bool {
   roots := [10] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/", "pay/", "apps/openagents-desktop/"];

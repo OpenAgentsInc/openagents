@@ -714,7 +714,7 @@ Changed:
 | `coax/lib/agent/engine/mcworker-wire.coax`, `coder/tui/mcworker.coax` (Phase 2) | `"device":true` in, the `device` line out |
 | `apps/openagents-cli/mcp.coax`, `commands.coax` | `--domains device` serves the same tools (through `oasim`'s library); `openagents sim ...` as an alias of `oasim` |
 | `apps/shared/app/preview/loop.coax` | Load `sim-devices.coax` instead of its own `simctl list` parsing |
-| `apps/shared/host/drive.c` / desktop drive | `shot` composites the simulator view's current still into the window picture (11). *As built:* nothing to composite. The Swift app's drive (the Tier 3 probe, `evals/coder-desktop/tier3/probe/probe.m`) takes its pictures with WindowServer capture of the window (`screencapture -l WINDOW`), which already holds the native simulator view over the page; checked in the Phase 1 test launch, whose shots show the device screen. The offscreen `coax drive` host (`host-main.c`) draws no native views at all, so it shows the pane's frame and notices only, as it does for the 3D scene view |
+| `apps/shared/host/drive.c` / desktop drive | `shot` composites the simulator view's current still into the window picture (11). *As built:* nothing to composite. The Swift app's drive (the Tier 3 probe, `evals/openagents-desktop/tier3/probe/probe.m`) takes its pictures with WindowServer capture of the window (`screencapture -l WINDOW`), which already holds the native simulator view over the page; checked in the Phase 1 test launch, whose shots show the device screen. The offscreen `coax drive` host (`host-main.c`) draws no native views at all, so it shows the pane's frame and notices only, as it does for the 3D scene view |
 | `docs/reuse.md` | The device library as the one place for simulator control |
 
 ## 11. Test plan
@@ -751,7 +751,7 @@ Helper (on a Mac with Xcode; `coder/tui/simhost-check.coax`, run with `coax/web/
   mid-gesture and restarted by the next client; shutdown and delete the device.
 - Runs on each Xcode the team uses, and is the first thing run after installing a new Xcode.
 
-App (with the mock worker, `evals/coder-desktop/mock_worker`, which issues scripted `oasim` commands):
+App (with the mock worker, `evals/openagents-desktop/mock_worker`, which issues scripted `oasim` commands):
 
 - A build of the worktree's app opened with `--home` a throwaway folder (never
   `/Applications/OpenAgents.app`, never the person's daemon or helper: `OA_SIMHOST` and a socket of

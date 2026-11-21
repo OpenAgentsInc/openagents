@@ -13,7 +13,7 @@
 //     overs counts the prompts that would not fit that window's request bound without loop.coax
 //     mc_request's emergency compaction
 // No model is called; every byte is deterministic. compaction_scenarios_test.coax asserts the
-// bounds, and report.coax prints the numbers (evals/coder-desktop/compaction/run.sh runs both).
+// bounds, and report.coax prints the numbers (evals/openagents-desktop/compaction/run.sh runs both).
 
 #load "../../../coax/lib/microcoder/prefix.coax";
 #load "../../../coax/lib/agent/engine/mcworker-wire.coax";

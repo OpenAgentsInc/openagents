@@ -2,7 +2,7 @@
 # Firm reason: 5 (live-agent eval runner: temp repos, process control and JSON grading for Tier 2)
 """Tier 2 headless live-agent runner for Coder Desktop.
 
-Each task in evals/coder-desktop/tier2/tasks/*.json runs the real page (page.coax
+Each task in evals/openagents-desktop/tier2/tasks/*.json runs the real page (page.coax
 through host.c, linked into host_driver) against the real Microcoder worker
 (coder/tui/mcworker.coax) with the flags the desktop sends (gated, edits, agents,
 unlimited, the skills prefix, the composer's default model) inside an isolated temp
@@ -10,7 +10,7 @@ git repo, with a temp HOME, a chat budget and a wall-clock limit.
 
 It calls real models and costs money. run.sh only runs it with --tier 2.
 
-Per task it writes, under evals/coder-desktop/results/tier2-<ts>-<sha>/cases/<id>/:
+Per task it writes, under evals/openagents-desktop/results/tier2-<ts>-<sha>/cases/<id>/:
   wire.jsonl       every line each way between page and workers (host_driver WIRE_LOG)
   journal.jsonl    the workers' durable journals (.ajr frames), decoded, payloads cut
   attempts.jsonl   the model attempts (MWW_ATTEMPT lines) with cost and tokens
@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EVAL_DIR = REPO_ROOT / "evals/coder-desktop"
+EVAL_DIR = REPO_ROOT / "evals/openagents-desktop"
 HOST_DRIVER_DIR = EVAL_DIR / "host_driver"
 HOST_DRIVER_BIN = HOST_DRIVER_DIR / "build/host_driver"
 TASKS_DIR = EVAL_DIR / "tier2/tasks"
@@ -687,11 +687,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--filter", default="", help="run tasks whose id contains this text (comma-separated list allowed)")
     ap.add_argument("--category", default="", help="run one category")
-    ap.add_argument("--out", default="", help="run directory (default evals/coder-desktop/results/tier2-<ts>-<sha>)")
+    ap.add_argument("--out", default="", help="run directory (default evals/openagents-desktop/results/tier2-<ts>-<sha>)")
     ap.add_argument("--keep", action="store_true", help="keep each task's temp sandbox")
     ap.add_argument("--claude", action="store_true", help="build claudeworker and let tasks marked claude use it")
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
-    ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/coder-desktop/tier4/slice.json)")
+    ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
     args = ap.parse_args()
 
     tier = 2

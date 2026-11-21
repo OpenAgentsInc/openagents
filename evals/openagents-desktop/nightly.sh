@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Firm reason: 5. The scheduled Coder Desktop evals (#13705): git worktrees, coax/build.sh,
-# evals/coder-desktop/run.sh and compare.py, and gh for the one issue a bad run opens.
+# evals/openagents-desktop/run.sh and compare.py, and gh for the one issue a bad run opens.
 #
-#   evals/coder-desktop/nightly.sh night [--commit REV] [--out DIR]
+#   evals/openagents-desktop/nightly.sh night [--commit REV] [--out DIR]
 #       Tier 0, Tier 1 and compaction (free), Tier 2 (15 live tasks, about $0.50) and, on
 #       macOS, Tier 3 (the real Coder.app on the mock worker, free). Tier 2 is compared with
 #       the previous night's run (the committed tier2/baseline before there is one).
-#   evals/coder-desktop/nightly.sh week [--commit REV] [--out DIR]
+#   evals/openagents-desktop/nightly.sh week [--commit REV] [--out DIR]
 #       Tier 4 (4 golden trajectories and the 25-task benchmark slice, about $1.20), compared with
 #       the committed tier4/baseline: the weekly and pre-release scorecard.
-#   evals/coder-desktop/nightly.sh trend
+#   evals/openagents-desktop/nightly.sh trend
 #       The trend table of every kept run (pass rate, cost a task, p95 wall, regressions).
-#   evals/coder-desktop/nightly.sh install
+#   evals/openagents-desktop/nightly.sh install
 #       Prints the crontab lines that run it each night at 03:00 and each Sunday at 05:00 (as
 #       coax/remote/mutation-sweep.sh install does on a Mac); it changes nothing itself. It makes
 #       the checkout those lines run from (STATE/checkout, moved to origin/main before each run).
@@ -65,7 +65,7 @@ if [[ "$mode" == install ]]; then
     git -C "$repo" fetch -q origin main || exit 2
     git -C "$repo" worktree add -q --detach "$co" origin/main || exit 2
   fi
-  run="cd '$co' && git fetch -q origin && git checkout -q --detach origin/main && PATH='$PATH' evals/coder-desktop/nightly.sh"
+  run="cd '$co' && git fetch -q origin && git checkout -q --detach origin/main && PATH='$PATH' evals/openagents-desktop/nightly.sh"
   echo "# Coder Desktop evals (#13705): add with 'crontab -e', or paste this whole block into a terminal."
   echo "( crontab -l 2> /dev/null; echo \"0 3 * * * $run night > '$state/night.log' 2>&1\"; echo \"0 5 * * 0 $run week > '$state/week.log' 2>&1\" ) | crontab -"
   exit 0
@@ -139,10 +139,10 @@ if ! (cd "$wt" && coax/build.sh) > "$out/build.log" 2>&1; then
 fi
 
 # run TIER LABEL: one tier in the worktree; its run folder goes to the kept runs.
-newest() { ls -1dt "$wt/evals/coder-desktop/results/$1"-* 2> /dev/null | head -n 1; }
+newest() { ls -1dt "$wt/evals/openagents-desktop/results/$1"-* 2> /dev/null | head -n 1; }
 run_tier() {
   local tier="$1" log="$out/tier$1.log" s=0
-  (cd "$wt" && evals/coder-desktop/run.sh --tier "$tier") > "$log" 2>&1 || s=$?
+  (cd "$wt" && evals/openagents-desktop/run.sh --tier "$tier") > "$log" 2>&1 || s=$?
   say "tier $tier: status $s ($log)"
   grep -E '^\[(PASS|FAIL)\]|^Summary:' "$log" >> "$report"
   return "$s"
@@ -166,7 +166,7 @@ if (( ${#bad[@]} == 0 )); then
     run_tier all || bad+=("Tier 0, Tier 1 or compaction failed (tierall.log)")
     if (( paid )); then
       prev="$(ls -1dt "$state/runs"/tier2-* 2> /dev/null | head -n 1)"
-      base="${prev:+$prev/summary.json}"; base="${base:-$wt/evals/coder-desktop/tier2/baseline/summary.json}"
+      base="${prev:+$prev/summary.json}"; base="${base:-$wt/evals/openagents-desktop/tier2/baseline/summary.json}"
       run_tier 2 || true
       dir="$(newest tier2)"
       if [[ -n "$dir" && -f "$dir/summary.json" ]]; then compare_with 2 "$dir" "$base"
@@ -180,7 +180,7 @@ if (( ${#bad[@]} == 0 )); then
     if (( paid )); then
       run_tier 4 || true
       dir="$(newest tier4)"
-      if [[ -n "$dir" && -f "$dir/summary.json" ]]; then compare_with 4 "$dir" "$wt/evals/coder-desktop/tier4/baseline/summary.json"
+      if [[ -n "$dir" && -f "$dir/summary.json" ]]; then compare_with 4 "$dir" "$wt/evals/openagents-desktop/tier4/baseline/summary.json"
       else bad+=("tier 4 wrote no summary (tier4.log)"); fi
     fi
   fi
@@ -195,7 +195,7 @@ if (( ${#bad[@]} == 0 )); then
 fi
 for b in "${bad[@]}"; do say "FAIL: $b"; done
 if [[ "${OA_DESKTOP_EVALS_ISSUES:-1}" != 0 ]] && command -v gh > /dev/null; then
-  body="The scheduled Coder Desktop evals (\`evals/coder-desktop/nightly.sh $mode\`, #13705) failed at \`$sha\`. The run folder is \`$out/\` on the machine that ran it.
+  body="The scheduled Coder Desktop evals (\`evals/openagents-desktop/nightly.sh $mode\`, #13705) failed at \`$sha\`. The run folder is \`$out/\` on the machine that ran it.
 
 $(printf -- '- %s\n' "${bad[@]}")
 

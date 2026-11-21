@@ -3,7 +3,7 @@
  "check": "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json",
  "codec": "coax/lib/agent/engine/mcworker-wire.coax",
  "scope": "What Microcoder's worker process (coder/tui/mcworker.coax) and its owner say to each other over the worker's standard input and output: one JSON object a line each way, with no spaces. The owners are Coder's terminal (coder/tui/microcoder.coax), the turn runner (coax/lib/agent/engine/run.coax), both through mcworker-client.coax, Coder's memory (coder/tui/memory.coax) for embeddings, and Coder Desktop's page (apps/coder-desktop/page/followups.coax and persist.coax, through host.c) for messages, steers, the follow-up queue and interrupts.",
- "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time). The runs named followups-* (GitHub #13718) were captured on 2026-11-19 by evals/coder-desktop/followups/capture_wire.py from the worker built from this tree, on scripted GW_REPLAY answers; followups-page through the desktop's host.c and page (host_driver's WIRE_LOG). The run followups-delegate-stop (GitHub #13766) was captured the same way on 2026-11-19.",
+ "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time). The runs named followups-* (GitHub #13718) were captured on 2026-11-19 by evals/openagents-desktop/followups/capture_wire.py from the worker built from this tree, on scripted GW_REPLAY answers; followups-page through the desktop's host.c and page (host_driver's WIRE_LOG). The run followups-delegate-stop (GitHub #13766) was captured the same way on 2026-11-19.",
  "framing": "A line ends with one line feed. A string is escaped as coax/lib/nostr/json.coax json_write_string does: a quote and a backslash behind a backslash, \\n \\r \\t \\b \\f, any other byte under 32 as \\u00XX, every other byte as it is. Members are written in the order given here; the readers find them by name in any order and skip members they do not know. The worker takes an owner's line as the first of stop, forget, embed, recall, results, answer, steer, interrupt, queue, task that fits; a line that fits none is skipped. An owner skips a worker's line of a kind it does not know. Two kinds share a line kind with an owner's line: the profile calls the worker's {\"kind\":\"steer\"} steered and its {\"kind\":\"queue\"} queued (line_kind gives the kind the line carries). After ended, a run with intel or memory also writes {\"kind\":\"aware\",...}: that line is coax/lib/microcoder/aware.coax's (mc_aw_report), not this codec's, and the owners here skip it, so the runs leave it out.",
  "endings": {
   "finished": "the reply is whole",
@@ -1676,7 +1676,7 @@
   {
    "name": "followups-steer-queue",
    "what": "the worker on a temp HOME with GW_REPLAY answers: a step's thought; turn 1 from a message; a steer accepted then applied, one for another turn rejected; a follow-up queued and an unknown id refused; turn 2 from the queue",
-   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "from": "capture_wire.py (evals/openagents-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
    "lines": [
     {
      "from": "worker",
@@ -1829,7 +1829,7 @@
   {
    "name": "followups-delegate",
    "what": "the recall line, then a task with agents: the worker delegates one task and takes the owner's results",
-   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "from": "capture_wire.py (evals/openagents-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
    "lines": [
     {
      "from": "worker",
@@ -1899,7 +1899,7 @@
   {
    "name": "followups-interrupt",
    "what": "a steer accepted, then interrupt with resubmit: the turn stops and the steer starts turn 2",
-   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "from": "capture_wire.py (evals/openagents-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
    "lines": [
     {
      "from": "worker",
@@ -1998,7 +1998,7 @@
   },
   {
    "name": "followups-page",
-   "what": "the desktop's host.c and page (evals/coder-desktop/host_driver) on the worker: queue open, a message, a steer, pause, two follow-ups, move, delete, promote now, interrupt, list",
+   "what": "the desktop's host.c and page (evals/openagents-desktop/host_driver) on the worker: queue open, a message, a steer, pause, two follow-ups, move, delete, promote now, interrupt, list",
    "from": "capture_wire.py through host_driver's WIRE_LOG: the owner's lines are what the page (apps/coder-desktop/page/followups.coax, persist.coax) and host.c wrote, the worker's what it sent; nothing called a model.",
    "lines": [
     {
@@ -2221,7 +2221,7 @@
   {
    "name": "followups-delegate-stop",
    "what": "a task with agents: a steer while the run waits on its two sub-agents is accepted; the owner answers at once with one still running; the next step takes the steer and stops sub-agent 2 (stop_agent), waiting on nothing",
-   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "from": "capture_wire.py (evals/openagents-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
    "lines": [
     {
      "from": "worker",

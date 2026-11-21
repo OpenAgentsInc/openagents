@@ -1,6 +1,6 @@
 // Firm reason: 6 (AppKit test seam: a dylib the Tier 3 runner loads into a scratch Coder.app with DYLD_INSERT_LIBRARIES)
 //
-// Tier 3 probe for Coder Desktop. The runner (evals/coder-desktop/tier3/run_ui.py) starts a scratch
+// Tier 3 probe for Coder Desktop. The runner (evals/openagents-desktop/tier3/run_ui.py) starts a scratch
 // build of Coder.app with DYLD_INSERT_LIBRARIES pointing here and CODER_T3_SOCKET naming a Unix
 // socket. The app binary is the one build.sh makes, unchanged: this file only adds a socket that
 // drives it from inside its own process.

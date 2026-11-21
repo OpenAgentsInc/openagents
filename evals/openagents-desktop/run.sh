@@ -3,9 +3,9 @@
 set -eu
 
 # Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2, 3 and 4).
-# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|3|4|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]
-#        evals/coder-desktop/run.sh --compare BASE NEW     (two summary.json files or run folders)
-#        evals/coder-desktop/run.sh --trend [TIER]
+# Usage: evals/openagents-desktop/run.sh [--tier 0|1|2|3|4|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]
+#        evals/openagents-desktop/run.sh --compare BASE NEW     (two summary.json files or run folders)
+#        evals/openagents-desktop/run.sh --trend [TIER]
 # Tier 2 and Tier 4 call real models and cost money: they run only with --tier 2 or --tier 4,
 # never with --tier all. Tier 3 builds and drives the real Coder.app on this Mac: only with --tier 3.
 
@@ -13,7 +13,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
 T3_ARGS=""
-HERE="$ROOT/evals/coder-desktop"
+HERE="$ROOT/evals/openagents-desktop"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -92,7 +92,7 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 TS_FILE="$(date -u +%Y%m%dT%H%M%SZ)"
 SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo nogit)"
 RUN_ID="${TS}-${SHA}"
-RESULTS_DIR="$ROOT/evals/coder-desktop/results"
+RESULTS_DIR="$ROOT/evals/openagents-desktop/results"
 mkdir -p "$RESULTS_DIR"
 OUT_JSONL="$RESULTS_DIR/${TS_FILE}-${SHA}.jsonl"
 : > "$OUT_JSONL"
@@ -289,22 +289,22 @@ if [ "$TIER" = "0" ] || [ "$TIER" = "all" ]; then
 fi
 
 if [ "$TIER" = "1" ] || [ "$TIER" = "all" ]; then
-  run_case 1 "tier1_fixtures_sync" python3 evals/coder-desktop/tier1/gen_fixtures.py
-  run_case 1 "tier1_replay_suite" coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library
-  run_case 1 "tier1_host_scenarios" python3 evals/coder-desktop/tier1/run_scenarios.py
-  run_case 1 "tier1_followups" python3 evals/coder-desktop/followups/run_followups.py
+  run_case 1 "tier1_fixtures_sync" python3 evals/openagents-desktop/tier1/gen_fixtures.py
+  run_case 1 "tier1_replay_suite" coax/bin/coax test evals/openagents-desktop/tier1/replay_test.coax --library
+  run_case 1 "tier1_host_scenarios" python3 evals/openagents-desktop/tier1/run_scenarios.py
+  run_case 1 "tier1_followups" python3 evals/openagents-desktop/followups/run_followups.py
 fi
 
 if [ "$TIER" = "1" ] || [ "$TIER" = "compaction" ] || [ "$TIER" = "all" ]; then
-  run_case 1 "compaction_suite" sh evals/coder-desktop/compaction/run.sh
+  run_case 1 "compaction_suite" sh evals/openagents-desktop/compaction/run.sh
 fi
 
 # Tier 2 is opt-in: real models, real cost. Never part of --tier all.
 if [ "$TIER" = "2" ]; then
   if [ -n "$FILTER" ]; then
-    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --filter "$FILTER"
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --filter "$FILTER"
   else
-    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py
   fi
 fi
 
@@ -314,9 +314,9 @@ fi
 if [ "$TIER" = "4" ]; then
   T4_OUT="$RESULTS_DIR/tier4-${TS_FILE}-${SHA}"
   if [ -n "$FILTER" ]; then
-    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --manifest evals/coder-desktop/tier4/slice.json --out "$T4_OUT" --filter "$FILTER"
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT" --filter "$FILTER"
   else
-    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --manifest evals/coder-desktop/tier4/slice.json --out "$T4_OUT"
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT"
   fi
   if [ -f "$T4_OUT/summary.json" ] && [ -f "$HERE/tier4/baseline/summary.json" ]; then
     python3 "$HERE/compare.py" diff "$HERE/tier4/baseline/summary.json" "$T4_OUT/summary.json" --out "$T4_OUT/compare.md" > /dev/null || true
@@ -328,9 +328,9 @@ fi
 # window. It uses the mock worker, so it costs nothing. Never part of --tier all.
 if [ "$TIER" = "3" ]; then
   if [ -n "$FILTER" ]; then
-    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier3/run_ui.py --filter "$FILTER" $T3_ARGS
+    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier3/run_ui.py --filter "$FILTER" $T3_ARGS
   else
-    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier3/run_ui.py $T3_ARGS
+    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier3/run_ui.py $T3_ARGS
   fi
 fi
 

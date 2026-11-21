@@ -2,9 +2,9 @@
 # Firm reason: 5 (deterministic scenario driver for Tier 1 Coder Desktop evals)
 """Tier 1 deterministic host & mock-worker scenario runner.
 
-Drives evals/coder-desktop/host_driver/build/host_driver against
-evals/coder-desktop/mock_worker/mock_worker.py using declarative JSON scenarios
-in evals/coder-desktop/tier1/scenarios/*.json.
+Drives evals/openagents-desktop/host_driver/build/host_driver against
+evals/openagents-desktop/mock_worker/mock_worker.py using declarative JSON scenarios
+in evals/openagents-desktop/tier1/scenarios/*.json.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-HOST_DRIVER_DIR = REPO_ROOT / "evals/coder-desktop/host_driver"
+HOST_DRIVER_DIR = REPO_ROOT / "evals/openagents-desktop/host_driver"
 HOST_DRIVER_BIN = HOST_DRIVER_DIR / "build/host_driver"
-SCENARIOS_DIR = REPO_ROOT / "evals/coder-desktop/tier1/scenarios"
+SCENARIOS_DIR = REPO_ROOT / "evals/openagents-desktop/tier1/scenarios"
 RESOURCES_DIR = REPO_ROOT / "components/zeron"
 
 

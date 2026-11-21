@@ -193,7 +193,7 @@ ce_step_label :: (buf: [] u8, prefix: string, idx: int) -> string {
   h: [1] CE_Harness; st: [1] McState;
   mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\"}", "memory survival", "{\"local_work\":0.9}");
   mc_memory_on(st[..], h[0].mem[..]);
-  mc_memory_set(st[..], "state.coax:169 mc_compact", "docs/coder/compaction-theory.md:1-180", "run evals/coder-desktop/run.sh");
+  mc_memory_set(st[..], "state.coax:169 mc_compact", "docs/coder/compaction-theory.md:1-180", "run evals/openagents-desktop/run.sh");
 
   mc_action_begin(st[..], "step 1");
   mc_action_command(st[..], "echo hi", 0, false, "hi\n");

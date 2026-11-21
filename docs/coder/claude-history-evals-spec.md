@@ -2,7 +2,7 @@
 
 **Status:** Proposed  
 **Target:** `evals/claude-history/` (extraction pipeline + hermetic task suite)  
-**Related docs:** [`desktop-evals-spec.md`](desktop-evals-spec.md), [`evaluation-qualification.md`](evaluation-qualification.md), [`../../evals/coder-desktop/README.md`](../../evals/coder-desktop/README.md)
+**Related docs:** [`desktop-evals-spec.md`](desktop-evals-spec.md), [`evaluation-qualification.md`](evaluation-qualification.md), [`../../evals/openagents-desktop/README.md`](../../evals/openagents-desktop/README.md)
 
 ---
 
@@ -16,7 +16,7 @@ This specification defines how to **extract, sanitize, structure, and run** thos
 
 - Not a raw dump of `~/.claude/` into git (`~/.claude` is ~17 GB and contains private paths, tokens, and debug blobs).
 - Not a subjective LLM-as-judge-only benchmark; every promoted eval must have **objective, deterministic graders** (exit codes, unit/integration tests, diff/seal invariants).
-- Not a replacement for `evals/coder-desktop/` tiers 0–4; instead, it **feeds** real-world tasks into the same `host_driver` + `mcworker` harness.
+- Not a replacement for `evals/openagents-desktop/` tiers 0–4; instead, it **feeds** real-world tasks into the same `host_driver` + `mcworker` harness.
 
 ---
 
@@ -102,7 +102,7 @@ Before any mined episode is written to `evals/claude-history/tasks/`:
 3. **Baseline verification:** Replay or verify the baseline's final state passes the extracted grader commands on `base_sha` + baseline patch (confirming the eval is actually solvable and the grader is not broken).
 
 ### Stage 4 — Materialize in `coder-desktop` Task Format
-Each curated task is stored as JSON compatible with `evals/coder-desktop/tier2` and `tier4/golden-template.json`, extended with a `baseline` block:
+Each curated task is stored as JSON compatible with `evals/openagents-desktop/tier2` and `tier4/golden-template.json`, extended with a `baseline` block:
 
 ```json
 {
@@ -172,5 +172,5 @@ Every failing candidate trajectory is tagged with a primary failure mode so impr
 
 1. **Phase 1 — Indexer & Bloat Filter:** Build `ingest` to scan `~/.claude/projects/` read-only, strip debug blobs, and emit a local session/episode index + summary report.
 2. **Phase 2 — Miner, Git Anchor & Sanitizer:** Extract an initial **25–30 task stratified slice** across Buckets A–E from `work/openagents`, verify every task's grader passes on the baseline commit, and commit sanitized task JSONs to `evals/claude-history/tasks/`.
-3. **Phase 3 — Harness Integration & Scorecard:** Wire `evals/claude-history/run.sh` to the `evals/coder-desktop` `host_driver` runner and produce the first comparison scorecard (Gemini 4 Hydrogen / Carbon / Neon vs. Opus/Fable baselines).
+3. **Phase 3 — Harness Integration & Scorecard:** Wire `evals/claude-history/run.sh` to the `evals/openagents-desktop` `host_driver` runner and produce the first comparison scorecard (Gemini 4 Hydrogen / Carbon / Neon vs. Opus/Fable baselines).
 4. **Phase 4 — Continuous Improvement Loop:** Use failure tags from Phase 3 scorecards to ship targeted `mcworker` prompt/tool/compaction fixes and re-run to verify measurable gains.

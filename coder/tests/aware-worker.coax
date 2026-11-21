@@ -1,7 +1,7 @@
 // The owned worker with the compiler's answers turned on by its message (GitHub #13444, #13445) and
 // the working memory on in every run (GitHub #13730): "intel" reaches the run, the journal's context
 // has the longer system prompt, and after "ended" the worker writes the run's "aware" counts. Then a
-// second run whose message names no mode still has the memory (eval C16, evals/coder-desktop/
+// second run whose message names no mode still has the memory (eval C16, evals/openagents-desktop/
 // compaction/run.sh). Recorded replies (GW_REPLAY), no provider credentials. The modes themselves
 // are checked in coax/lib/microcoder/aware-selftest.coax. The runs use danger-full-access, the
 // profile Coder Desktop sends: workspace-write needs Linux bwrap, and on macOS its views read

@@ -27,7 +27,7 @@ calls a model and nothing touches real Coder data. Every case drives the worker'
   page_host            the same through the desktop's real host.c and page (host_driver): the
                        page's steer statuses, the queue it shows, and a turn the worker starts
 
-Usage: python3 evals/coder-desktop/followups/run_followups.py [--worker BIN] [--filter NAME]
+Usage: python3 evals/openagents-desktop/followups/run_followups.py [--worker BIN] [--filter NAME]
 """
 from __future__ import annotations
 
@@ -501,7 +501,7 @@ def during_command(w_bin: Path) -> None:
         w.close(); box.close()
 
 
-HOST_DRIVER = REPO / "evals/coder-desktop/host_driver/build/host_driver"
+HOST_DRIVER = REPO / "evals/openagents-desktop/host_driver/build/host_driver"
 
 
 class Host:
@@ -537,7 +537,7 @@ class Host:
 
 def page_host(w_bin: Path) -> None:
     if not HOST_DRIVER.exists():
-        r = subprocess.run(["bash", str(REPO / "evals/coder-desktop/host_driver/build.sh")], cwd=str(REPO), capture_output=True, text=True, timeout=900)
+        r = subprocess.run(["bash", str(REPO / "evals/openagents-desktop/host_driver/build.sh")], cwd=str(REPO), capture_output=True, text=True, timeout=900)
         if r.returncode != 0:
             raise AssertionError("host_driver build failed: " + (r.stdout + r.stderr)[-2000:])
     box = Box([act(commands=["sleep 1"], finished=False), act("first done"), act("took the steer"), act("queued done")])

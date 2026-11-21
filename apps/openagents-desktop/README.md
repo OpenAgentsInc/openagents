@@ -451,7 +451,7 @@ when a check needs more. `coax/remote/check.sh` runs it as the `coder-desktop-pa
 every change to Coder Desktop (`coder` and `coder-since`).
 
 On Linux, the chat flow test runs the app headless (offscreen page on software Vulkan) with
-the mock worker (`evals/coder-desktop/mock_worker`, no model, no keys) and a throwaway home: it
+the mock worker (`evals/openagents-desktop/mock_worker`, no model, no keys) and a throwaway home: it
 sends a message, checks the reply shows, makes a new chat and sends another, and checks the chat
 list at the XDG data home after a restart, that an index it can't read is never written over, and
 that a chat another process kept is not dropped:

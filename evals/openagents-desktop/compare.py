@@ -11,7 +11,7 @@
       the pass rate fell by more than 5 points.
 
   compare.py trend [--results DIR] [--tier N] [--out FILE]
-      One row per run folder under DIR (default evals/coder-desktop/results) with a summary.json,
+      One row per run folder under DIR (default evals/openagents-desktop/results) with a summary.json,
       oldest first: time, commit, tier, pass rate, cost a task, p95 wall, and regressions against
       the previous run of the same tier.
 """

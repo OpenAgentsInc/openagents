@@ -199,3 +199,8 @@ group. Install it from that group; the handoff records the delivery and checks.
       selected computer; existing Claude permissions and GitHub auth apply.
 - [ ] Share excerpt → verify the chooser and Cancel; check VoiceOver and
       largest text. Model/effort, attachments and mic remain hidden.
+
+## Durable asset bucket for externalizing realm `.pack` files and `psionic/fixtures/` (#13844, 2026-11-20)
+
+- [ ] Provision or designate a permanent (no-TTL) content-addressed bucket (GCS or Cloudflare R2) with public read URL + upload credentials for realm `.pack`/`.pack.gz` bundles (`apps/openagents-web/realms/`, 358 MB) and large `psionic/fixtures/` binaries (235 MB).
+- Context: the existing `gs://openagentsgemini-coax-build-cache` bucket has a 14-day lifecycle TTL (ephemeral build cache only), and local `gcloud` auth requires interactive re-login (`gcloud auth login`). Until a durable bucket is named and writable, deleting these 593 MB of assets from git would break fresh checkouts and remote build hosts.

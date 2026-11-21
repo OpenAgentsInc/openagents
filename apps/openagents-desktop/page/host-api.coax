@@ -271,7 +271,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
   return n;
 }
 // The drawn box of the row with this id, in points (x, y from the content's top-left, w, h): for a
-// test driver that presses what a person sees (evals/coder-desktop/tier3/probe). False when no
+// test driver that presses what a person sees (evals/openagents-desktop/tier3/probe). False when no
 // row has the id or none of it shows.
 coder_page_box :: (s: [] CoderPage, id: string, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 { return false; }

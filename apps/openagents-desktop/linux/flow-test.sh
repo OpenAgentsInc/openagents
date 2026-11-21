@@ -2,7 +2,7 @@
 # Firm reason: 5 (thin wrapper: makes a throwaway home and the mock worker, then runs the app's
 # --flow-test; every check is in host-main.c run_flow)
 # The OpenAgents Desktop chat flow test on Linux, headless: the app opens its page offscreen
-# (software Vulkan), sends a message to a real worker process (evals/coder-desktop/mock_worker,
+# (software Vulkan), sends a message to a real worker process (evals/openagents-desktop/mock_worker,
 # never a model or a key), shows the reply, makes a new chat and sends another, and checks the
 # chat list at the XDG data home: both chats, newest first, after a restart too; an index it
 # can't read is never written over; a chat kept by another process is not dropped.
@@ -41,7 +41,7 @@ JSON
 python3="$(command -v python3)"
 cat > "$tmp/worker" <<SH
 #!/bin/sh
-exec "$python3" "$repo/evals/coder-desktop/mock_worker/mock_worker.py" --script "$tmp/script.json" --record "$tmp/record.jsonl"
+exec "$python3" "$repo/evals/openagents-desktop/mock_worker/mock_worker.py" --script "$tmp/script.json" --record "$tmp/record.jsonl"
 SH
 chmod +x "$tmp/worker"
 

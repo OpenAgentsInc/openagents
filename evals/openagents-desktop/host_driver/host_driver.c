@@ -71,7 +71,7 @@ typedef struct {
 } Slot;
 
 static Slot g_slots[MAX_SLOTS];
-static char g_mock_worker_path[1024] = "evals/coder-desktop/mock_worker/mock_worker.py";
+static char g_mock_worker_path[1024] = "evals/openagents-desktop/mock_worker/mock_worker.py";
 static char g_worker_bin[1024] = "";
 static char g_claude_worker_bin[1024] = "";
 static FILE *g_wire = NULL;
