@@ -369,7 +369,7 @@ ink_ctrl_up_apply :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate
 // ---- MoE gate_up + SITU for top-K selected experts (IQ4_NL).
 // Launch items = n_used * ceil(n_ff / 4). Group of 128 threads (4 simdgroups x 2 rows):
 // simd 0,1 compute 4 gate rows; simd 2,3 compute 4 matching up rows; then write situ(gate, up).
-// ---- MoE gate_up + SITU (IQ4_NL): 128 threads = 4 simdgroups x 2 rows (4 rows/TG, gate+up split).
+// ---- MoE gate_up + SITU (IQ4_NL): 128 threads (4 simdgroups x 2 rows), 4 lanes/block coalesced (72/8=9 exact, 0 idle lanes!).
 ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     lut:[16]f32;
@@ -387,19 +387,22 @@ ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,id
         lane:=thread%32;simd:=thread/32;
         is_up:=simd/2;
         sub:=simd%2;
+        blk_lane:=lane/4;bsub:=lane%4;
         r0:=row0+sub*2;
         r1:=r0+1;
         wrow0:=r0+is_up*n_ff;
         a0:f32=0;a1:f32=0;
-        for step:0..<(blocks+31)/32 {
-            block:=step*32+lane;
+        k0:=bsub*2;
+        for step:0..<(blocks+7)/8 {
+            block:=step*8+blk_lane;
             if block<blocks {
                 xb:=block*32;boff:=block*9;
                 if r1<n_ff {
                     at0:=exp_base+wrow0*row_words+boff;
                     at1:=at0+row_words;
                     s0:f32=0;s1:f32=0;
-                    for k:0..<8 {
+                    for j:0..<2 {
+                        k:=k0+j;
                         x0:=x[xb+2*k];
                         x1:=x[xb+16+2*k];
                         x2:=x[xb+2*k+1];
@@ -415,7 +418,8 @@ ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,id
                 } else if r0<n_ff {
                     at0:=exp_base+wrow0*row_words+boff;
                     s0:f32=0;
-                    for k:0..<8 {
+                    for j:0..<2 {
+                        k:=k0+j;
                         x0:=x[xb+2*k];
                         x1:=x[xb+16+2*k];
                         x2:=x[xb+2*k+1];
@@ -769,6 +773,88 @@ ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32
     }
 }
 
+// ---- Sprint 10: Fused Depth-Attention Mix + RMSNorm (1 item, 256 threads).
+// Eliminates 43 dispatches + 43 GPU barriers per decode token across non-message layers and output head!
+ink_mix_rmsnorm :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[]f32,query:[]f32,norm_w:[]f32,out:[]f32) #export_c #effects(all) {
+    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    n_states:=n_blocks+1;
+    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
+    for s:0..<n_states {
+        for thread:0..<INK_NT {
+            ss:f32=0;dot:f32=0;
+            sbase:=s*dim;
+            for k:0..<(dim+255)/256 {
+                i:=k*256+thread;
+                if i<dim {
+                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[i];
+                    ss+=v*v;
+                    dot+=v*query[i];
+                }
+            }
+            part_ss[thread]=ss;
+            part_dot[thread]=dot;
+        }
+        for thread:0..<INK_NT {
+            if thread<16 {
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                p2_ss[thread]=tss;p2_dot[thread]=tdot;
+            }
+        }
+        for thread:0..<INK_NT {
+            if thread==s {
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
+                invs[thread]=inv;
+                scores[thread]=tdot*inv*inv_sqrt_d;
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        if thread<n_states {
+            mx:f32=scores[0];
+            for s:1..<n_states {if scores[s]>mx {mx=scores[s];}}
+            w[thread]=exp(scores[thread]-mx);
+        } else {
+            w[thread]=0.0f32;
+        }
+    }
+    for thread:0..<INK_NT {
+        esum:f32=0;
+        for s:0..<n_states {esum+=w[s];}
+        inv_e:=1.0f32/esum;
+        ss:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                acc:f32=0;
+                for s:0..<n_states {
+                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
+                    acc+=(w[s]*inv_e*invs[s])*v;
+                }
+                out[i]=acc;
+                ss+=acc*acc;
+            }
+        }
+        part_ss[thread]=ss;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            sm:f32=0;for j:0..<16 {sm+=part_ss[j*16+thread];}
+            p2_ss[thread]=sm;
+        }
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<16 {tot+=p2_ss[j];}
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {out[i]=out[i]*inv*norm_w[i];}
+        }
+    }
+}
+
 // ---- Loop control prep: concat(rms(cur, 1e-6), rms(msg, 1e-6)) into out[0..2*dim-1].
 // Launch 1 work item (256 threads).
 ink_ctrl_prep :: (item:int,dim:int,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
@@ -905,6 +991,55 @@ ink_head_rmsnorm :: (item:int,head_dim:int,eps:f32,x:[]f32) #export_c #effects(a
         for k:cast(u32)0..<(hd+63)/64 {
             i:=add_wrap(mul_wrap(k,64),t);
             if i<hd {idx:=cast(int)add_wrap(base,i);x[idx]=x[idx]*inv;}
+        }
+    }
+}
+
+// ---- Fused K L2 clip + f16 KV cache store (eliminates 48 K_KV_STORE + 48 barriers per decode token!).
+// Launch items = n_head_kv (8), lanes = 64.
+ink_clip_kv :: (item:int,head_dim:int,n_kv_elem:int,slot_pos:int,threshold:f32,x:[]f32,k_cache:[]u16) #export_c #effects(all) {
+    part:[64]f32;
+    base:=item*head_dim;
+    dbase:=slot_pos*n_kv_elem+base;
+    for thread:0..<INK_T {
+        s:f32=0;
+        for k:0..<(head_dim+63)/64 {
+            i:=k*64+thread;
+            if i<head_dim {v:=x[base+i];s+=v*v;}
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_T {
+        tot:f32=0;for j:0..<INK_T {tot+=part[j];}
+        nrm:=sqrt(tot)+0.000001f32;
+        fac:=threshold/nrm;
+        if fac>1.0f32 {fac=1.0f32;}
+        for k:0..<(head_dim+63)/64 {
+            i:=k*64+thread;
+            if i<head_dim {k_cache[dbase+i]=cast(u16)ink_f16(x[base+i]*fac);}
+        }
+    }
+}
+
+// ---- Fused V head RMSNorm + f16 KV cache store. Launch items = n_head_kv (8), lanes = 64.
+ink_head_rmsnorm_kv :: (item:int,head_dim:int,n_kv_elem:int,slot_pos:int,eps:f32,x:[]f32,v_cache:[]u16) #export_c #effects(all) {
+    part:[64]f32;
+    base:=item*head_dim;
+    dbase:=slot_pos*n_kv_elem+base;
+    for thread:0..<INK_T {
+        s:f32=0;
+        for k:0..<(head_dim+63)/64 {
+            i:=k*64+thread;
+            if i<head_dim {v:=x[base+i];s+=v*v;}
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_T {
+        tot:f32=0;for j:0..<INK_T {tot+=part[j];}
+        inv:=1.0f32/sqrt(tot/f32(head_dim)+eps);
+        for k:0..<(head_dim+63)/64 {
+            i:=k*64+thread;
+            if i<head_dim {v_cache[dbase+i]=cast(u16)ink_f16(x[base+i]*inv);}
         }
     }
 }
@@ -1047,9 +1182,13 @@ ink_copy :: (item:int,n:int,src:[]f32,dst:[]f32) #export_c #effects(all) {
     }
 }
 
-// ---- Final logit softcapping: x[i] = cap * tanh(x[i] / cap). Launch items = n, lanes = 1.
+// ---- Final logit softcapping: x[i] = cap * tanh(x[i] / cap). Launch items = ceil(n/256), lanes = 256.
 ink_softcap :: (item:int,n:int,cap:f32,x:[]f32) #export_c #effects(all) {
-    if item<n {x[item]=cap*ink_tanh(x[item]/cap);}
+    base:=item*INK_NT;
+    for thread:0..<INK_NT {
+        idx:=base+thread;
+        if idx<n {x[idx]=cap*ink_tanh(x[idx]/cap);}
+    }
 }
 
 // ============================================================================
@@ -1275,6 +1414,7 @@ ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[
         }
     }
 }
+
 
 // ---- Batched loop control prep: concat(rms(cur[t]), rms(msg[t])) into out[t*2*dim..].
 // Launch items = n_tok, lanes = 256.
@@ -1957,9 +2097,9 @@ ink_attn_scores_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:
     }
 }
 
-// ---- MMA Prefill Attention Stage 2: Softmax with sink=0 over valid [j_lo..j_hi) and zero-fill rest of span.
+// ---- MMA Prefill Attention Stage 2: Softmax (2-pass — stores inv_gsum instead of Pass 3 rewrite -> 33% less scores traffic!).
 // Launch items = n_tok * n_head, lanes = 256.
-ink_attn_softmax_mma :: (item:int,dims0:u32,dims1:u32,score_stride:int,pos0:int,n_tok:int,k_start:int,scores:[]f32) #export_c #effects(all) {
+ink_attn_softmax_mma :: (item:int,dims0:u32,dims1:u32,score_stride:int,pos0:int,n_tok:int,k_start:int,scores:[]f32,inv_gsum:[]f32) #export_c #effects(all) {
     smax:[256]f32;ssum:[256]f32;rmax:[16]f32;rsum:[16]f32;
     n_head:=cast(int)(dims0&255);
     is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
@@ -2016,21 +2156,19 @@ ink_attn_softmax_mma :: (item:int,dims0:u32,dims1:u32,score_stride:int,pos0:int,
         }
     }
     for thread:0..<INK_NT {
-        gmax:f32=0.0f32;
-        for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
-        gsum:f32=exp(-gmax);
-        for j:0..<16 {gsum+=rsum[j];}
-        inv:=1.0f32/gsum;
-        for c:0..<n_chunks {
-            j:=c*INK_NT+thread;
-            if j>=j_lo && j<j_hi {scores[sbase+j]=scores[sbase+j]*inv;}
+        if thread==0 {
+            gmax:f32=0.0f32;
+            for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
+            gsum:f32=exp(-gmax);
+            for j:0..<16 {gsum+=rsum[j];}
+            inv_gsum[item]=1.0f32/gsum;
         }
     }
 }
 
-// ---- MMA Prefill Attention Stage 3: P*V * sigmoid(gate) using am_sg_mma_64x32x32!
+// ---- MMA Prefill Attention Stage 3: P*V * inv_gsum * sigmoid(gate) using am_sg_mma_64x32x32!
 // Launch items = n_head * ceil(n_tok/64) * 4, lanes = 128.
-ink_attn_values_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,scores:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
+ink_attn_values_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,scores:[]f32,inv_gsum:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
     n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);
     is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
@@ -2077,7 +2215,7 @@ ink_attn_values_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:
             t:=t0+e/32;c:=e%32;
             if t<n_tok {
                 idx:=(t*n_head+h)*INK_HEAD+c0+c;
-                out[idx]=a[e]*ink_sigmoid(gate[idx]);
+                out[idx]=a[e]*inv_gsum[t*n_head+h]*ink_sigmoid(gate[idx]);
             }
         }
     }
@@ -2247,30 +2385,33 @@ ink_attn_gqa_reduce :: (item:int,n_splits:int,split_out:[]f32,gate:[]f32,out:[]f
     }
 }
 
-// ---- Sprint 8A: Metal 4 Neural Accelerator (am_matmul_bf16) dense Q8_0 prefill!
-// Dequantize Q8_0 [rows, cols] -> BF16 pairs [rows, cols/2] u32.
-// Launch items = rows, lanes = 128 (hits _n32, 100% coalesced).
+// ---- Sprint 11: Dequantize Q8_0 [rows, cols] -> BF16 pairs [rows, cols/2] u32 (4 rows/TG -> 4x fewer TGs!).
+// Launch items = ceil(rows / 4), lanes = 128.
 ink_dequant_q8_bf16 :: (item:int,rows:int,cols:int,w:[]u16,out_bf16:[]u32) #export_c #effects(all) {
-    if item<rows {
-        blocks:=cols/32;
-        words:=blocks*17;
-        half_cols:=cols/2;
-        rbase:=item*words;
-        obase:=item*half_cols;
-        for thread:0..<128 {
-            b_lane:=thread/16;
-            k:=thread%16;
-            for step:0..<(blocks+7)/8 {
-                blk:=step*8+b_lane;
-                if blk<blocks {
-                    at:=rbase+blk*17;
-                    sc:=ink_half(cast(u32)w[at]);
-                    v:=cast(u32)w[at+1+k];
-                    f0:=sc*ink_signed(v&255);
-                    f1:=sc*ink_signed(v>>8);
-                    b0:=(f32_bits(f0)+0x8000)>>16;
-                    b1:=(f32_bits(f1)+0x8000)>>16;
-                    out_bf16[obase+blk*16+k]=b0|(b1<<16);
+    blocks:=cols/32;
+    words:=blocks*17;
+    half_cols:=cols/2;
+    row0:=item*4;
+    for thread:0..<128 {
+        b_lane:=thread/16;
+        k:=thread%16;
+        for rr:0..<4 {
+            row:=row0+rr;
+            if row<rows {
+                rbase:=row*words;
+                obase:=row*half_cols;
+                for step:0..<(blocks+7)/8 {
+                    blk:=step*8+b_lane;
+                    if blk<blocks {
+                        at:=rbase+blk*17;
+                        sc:=ink_half(cast(u32)w[at]);
+                        v:=cast(u32)w[at+1+k];
+                        f0:=sc*ink_signed(v&255);
+                        f1:=sc*ink_signed(v>>8);
+                        b0:=(f32_bits(f0)+0x8000)>>16;
+                        b1:=(f32_bits(f1)+0x8000)>>16;
+                        out_bf16[obase+blk*16+k]=b0|(b1<<16);
+                    }
                 }
             }
         }
@@ -2350,73 +2491,85 @@ ink_moe_gather_x :: (item:int,dim:int,n_used:int,x:[]f32,exp_toks:[]u32,exp_slot
     }
 }
 
-// Dequantize IQ4_NL expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32.
-// Launch items = e_cnt * rows, lanes = 128.
+// Dequantize IQ4_NL expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32 (8 rows/TG -> 8x fewer TGs & LUT barriers!).
+// Launch items = e_cnt * ceil(rows / 8), lanes = 128.
 ink_dequant_iq4_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
     lut:[16]f32;
-    local_e:=item/rows;
-    row:=item%rows;
+    r_grps:=(rows+7)/8;
+    local_e:=item/r_grps;
+    row0:=(item%r_grps)*8;
     exp_id:=e_lo+local_e;
     if exp_cnt[exp_id]>0 {
         blocks:=cols/32;
         row_words:=blocks*9;
         half_cols:=cols/2;
-        rbase:=(exp_id*rows+row)*row_words;
-        obase:=(local_e*rows+row)*half_cols;
         for thread:0..<128 {
             if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
         }
         for thread:0..<128 {
             b_lane:=thread/8;
             k:=thread%8;
-            for step:0..<(blocks+15)/16 {
-                blk:=step*16+b_lane;
-                if blk<blocks {
-                    at:=rbase+blk*9;
-                    sc:=ink_half(cast(u32)w[at]);
-                    v:=cast(u32)w[at+1+k];
-                    f0:=sc*lut[cast(int)(v&15)];
-                    f1:=sc*lut[cast(int)((v>>4)&15)];
-                    f2:=sc*lut[cast(int)((v>>8)&15)];
-                    f3:=sc*lut[cast(int)(v>>12)];
-                    b0:=(f32_bits(f0)+0x8000)>>16;
-                    b1:=(f32_bits(f1)+0x8000)>>16;
-                    b2:=(f32_bits(f2)+0x8000)>>16;
-                    b3:=(f32_bits(f3)+0x8000)>>16;
-                    out_bf16[obase+blk*16+k]=b0|(b2<<16);
-                    out_bf16[obase+blk*16+8+k]=b1|(b3<<16);
+            for rr:0..<8 {
+                row:=row0+rr;
+                if row<rows {
+                    rbase:=(exp_id*rows+row)*row_words;
+                    obase:=(local_e*rows+row)*half_cols;
+                    for step:0..<(blocks+15)/16 {
+                        blk:=step*16+b_lane;
+                        if blk<blocks {
+                            at:=rbase+blk*9;
+                            sc:=ink_half(cast(u32)w[at]);
+                            v:=cast(u32)w[at+1+k];
+                            f0:=sc*lut[cast(int)(v&15)];
+                            f1:=sc*lut[cast(int)((v>>4)&15)];
+                            f2:=sc*lut[cast(int)((v>>8)&15)];
+                            f3:=sc*lut[cast(int)(v>>12)];
+                            b0:=(f32_bits(f0)+0x8000)>>16;
+                            b1:=(f32_bits(f1)+0x8000)>>16;
+                            b2:=(f32_bits(f2)+0x8000)>>16;
+                            b3:=(f32_bits(f3)+0x8000)>>16;
+                            out_bf16[obase+blk*16+k]=b0|(b2<<16);
+                            out_bf16[obase+blk*16+8+k]=b1|(b3<<16);
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// Dequantize Q8_0 expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32.
-// Launch items = e_cnt * rows, lanes = 128.
+// Dequantize Q8_0 expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32 (4 rows/TG -> 4x fewer TGs!).
+// Launch items = e_cnt * ceil(rows / 4), lanes = 128.
 ink_dequant_q8_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
-    local_e:=item/rows;
-    row:=item%rows;
+    r_grps:=(rows+3)/4;
+    local_e:=item/r_grps;
+    row0:=(item%r_grps)*4;
     exp_id:=e_lo+local_e;
     if exp_cnt[exp_id]>0 {
         blocks:=cols/32;
         row_words:=blocks*17;
         half_cols:=cols/2;
-        rbase:=(exp_id*rows+row)*row_words;
-        obase:=(local_e*rows+row)*half_cols;
         for thread:0..<128 {
             b_lane:=thread/16;
             k:=thread%16;
-            for step:0..<(blocks+7)/8 {
-                blk:=step*8+b_lane;
-                if blk<blocks {
-                    at:=rbase+blk*17;
-                    sc:=ink_half(cast(u32)w[at]);
-                    v:=cast(u32)w[at+1+k];
-                    f0:=sc*ink_signed(v&255);
-                    f1:=sc*ink_signed(v>>8);
-                    b0:=(f32_bits(f0)+0x8000)>>16;
-                    b1:=(f32_bits(f1)+0x8000)>>16;
-                    out_bf16[obase+blk*16+k]=b0|(b1<<16);
+            for rr:0..<4 {
+                row:=row0+rr;
+                if row<rows {
+                    rbase:=(exp_id*rows+row)*row_words;
+                    obase:=(local_e*rows+row)*half_cols;
+                    for step:0..<(blocks+7)/8 {
+                        blk:=step*8+b_lane;
+                        if blk<blocks {
+                            at:=rbase+blk*17;
+                            sc:=ink_half(cast(u32)w[at]);
+                            v:=cast(u32)w[at+1+k];
+                            f0:=sc*ink_signed(v&255);
+                            f1:=sc*ink_signed(v>>8);
+                            b0:=(f32_bits(f0)+0x8000)>>16;
+                            b1:=(f32_bits(f1)+0x8000)>>16;
+                            out_bf16[obase+blk*16+k]=b0|(b1<<16);
+                        }
+                    }
                 }
             }
         }

@@ -65,6 +65,7 @@ Unloaded measurements on Apple M5 Max (`--ctx 8192`, `--no-cache-prompt`, `tempe
 | **Sprint 4 (GQA Flash-Decoding)** | Coalesced 3:1 GQA split-K 1-pass online-softmax attention (`ink_attn_gqa_split` + `reduce`) | 0.534 s / 39.93 tok/s | 2.43 s / 35.33 tok/s | 8.37 s / 35.51 tok/s |
 | **Sprint 6–7 (`_n32` + Compact Tiles)** | Packed `u32` args unlocking Coax `_n32` 32-bit fast paths across all attention/MoE/copy/add/kv kernels, 8× compacted MoE tile table, `n_a_iters` zero-skip, fused `convolve_add_batch`, Flash-Decoding `>=128` | 0.519 s / 39.85 tok/s | 2.21 s (408 tok/s) / 35.82 tok/s | 6.74 s (389 tok/s) / 35.56 tok/s |
 | **Sprint 8 (Metal 4 Neural Accelerators)** | On-the-fly Q8_0/IQ4_NL → BF16 staging (`w_bf16`) + Metal 4 `am_matmul_bf16` (`MetalPerformancePrimitives::matmul2d`) for both Dense Q8_0 and Expert-Grouped MoE (`64×64` for `nb>=64`, `16×64` for `8<=nb<64`) | **0.458 s / 39.30 tok/s** | **1.682 s (536.7 tok/s) / 35.71 tok/s** | **5.018 s (522.5 tok/s) / 35.73 tok/s** |
+| **Sprints 9–11 (Decode & Prefill Fusion)** | 4-lane coalesced `ink_moe_gu_iq4` (`72/8=9` exact, cold CLI decode 36.8 → 39.25 tok/s, +6.6%), fused `ink_clip_kv` + `ink_head_rmsnorm_kv` (-48 `K_KV_STORE` & barriers/tok), fused `ink_mix_rmsnorm` (-25 `K_RMSNORM` & barriers/tok), 8-row IQ4 & 4-row Q8 BF16 dequant (4×–8× fewer TGs), 2-pass `ink_attn_softmax_mma` (-33% `scores` traffic), unpadded LM head + 256-thread `ink_softcap` | verified exact (`"391"`) | verified exact | verified exact |
 
 ---
 

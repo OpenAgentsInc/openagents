@@ -75,6 +75,9 @@ enum {
     K_MOE_MM_BF16,
     K_MOE_MM_BF16_16,
     K_MOE_SCATTER_WT,
+    K_CLIP_KV,
+    K_HEAD_RMSNORM_KV,
+    K_MIX_RMSNORM,
     K_COUNT
 };
 
@@ -138,6 +141,9 @@ static const char *const k_names[K_COUNT] = {
     "ink_moe_mm_bf16",
     "ink_moe_mm_bf16_16",
     "ink_moe_scatter_wt",
+    "ink_clip_kv",
+    "ink_head_rmsnorm_kv",
+    "ink_mix_rmsnorm",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -164,7 +170,7 @@ static const int64_t k_lanes[K_COUNT] = {
     512,    /* K_ATTN */
     INK_NT, /* K_ADD */
     INK_NT, /* K_COPY */
-    1,      /* K_SOFTCAP */
+    INK_NT, /* K_SOFTCAP */
     128,    /* K_MM_Q8 */
     128,    /* K_MM_F32 */
     INK_NT, /* K_EMBED_Q8_BATCH */
@@ -200,6 +206,9 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MOE_MM_BF16 */
     128,    /* K_MOE_MM_BF16_16 */
     128,    /* K_MOE_SCATTER_WT */
+    INK_T,  /* K_CLIP_KV */
+    INK_T,  /* K_HEAD_RMSNORM_KV */
+    INK_NT, /* K_MIX_RMSNORM */
 };
 
 struct InkSession {
@@ -507,20 +516,13 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
         pm_barrier(batch);
     }
 
-    /* Wave 5: K clip + V head RMSNorm concurrently. */
-    CALL(s, batch, K_CLIP, n_head_kv, a_int(hd), a_int(0),
-         a_f32(hp->qk_clip), a_f32(1.0f),
-         a_f32v(s->k_buf, 0, n_kv), a_f32v(s->dummy_f32, 0, 64));
-    CALL(s, batch, K_HEAD_RMSNORM, n_head_kv, a_int(hd), a_f32(hp->rms_eps),
-         a_f32v(s->v_buf, 0, n_kv));
-    pm_barrier(batch);
-
-    /* Store K, V into KV cache for slot il */
+    /* Wave 5: Fused K clip+KV store and V head RMSNorm+KV store concurrently (eliminates K_KV_STORE + 48 barriers/tok!). */
     int64_t kv_cap = s->kv_cap[il];
     int64_t slot_pos = is_swa ? (s->pos % kv_cap) : s->pos;
-    CALL(s, batch, K_KV_STORE, n_kv, a_int(n_kv), a_int(slot_pos),
-         a_f32v(s->k_buf, 0, n_kv), a_f32v(s->v_buf, 0, n_kv),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    CALL(s, batch, K_CLIP_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos),
+         a_f32(hp->qk_clip), a_f32v(s->k_buf, 0, n_kv), a_u16v(s->kv_k[il], 0, kv_cap * n_kv));
+    CALL(s, batch, K_HEAD_RMSNORM_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos),
+         a_f32(hp->rms_eps), a_f32v(s->v_buf, 0, n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
     pm_barrier(batch);
 
     /* Attention (packed u32 dims keep all int args <= 1048576 so Coax hits _n32 fast path!) */
@@ -587,20 +589,28 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
     }
     pm_barrier(batch);
 
-    /* ffn_inp = cur concurrently with MoE input mix */
+    /* ffn_inp = cur concurrently with MoE input mix (+ fused RMSNorm when !has_messages!) */
     CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->ffn_inp, 0, d));
-    CALL(s, batch, K_MIX, 1, a_int(d), a_int(*n_blocks),
-         a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
-         a_f32v(s->cur, 0, d),
-         a_tensor_f32(s, &L->ffn_res_query),
-         a_f32v(s->norm_buf, 0, d));
-    pm_barrier(batch);
-    if (has_messages) {
+    if (!has_messages) {
+        CALL(s, batch, K_MIX_RMSNORM, 1, a_int(d), a_int(*n_blocks), a_f32(hp->rms_eps),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
+             a_f32v(s->cur, 0, d),
+             a_tensor_f32(s, &L->ffn_res_query),
+             a_tensor_f32(s, &L->ffn_norm),
+             a_f32v(s->norm_buf, 0, d));
+        pm_barrier(batch);
+    } else {
+        CALL(s, batch, K_MIX, 1, a_int(d), a_int(*n_blocks),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
+             a_f32v(s->cur, 0, d),
+             a_tensor_f32(s, &L->ffn_res_query),
+             a_f32v(s->norm_buf, 0, d));
+        pm_barrier(batch);
         if (dispatch_control(s, batch, L, 3, s->norm_buf, 0, s->messages, 3 * d, s->norm_buf, 0)) return 1;
+        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, d));
+        pm_barrier(batch);
     }
-    CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-         a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, d));
-    pm_barrier(batch);
 
     /* MoE router */
     if (dispatch_mv(s, batch, &L->ffn_gate_inp, hp->n_expert, d, 0, s->norm_buf, 0, s->router_logits, 0)) return 1;
@@ -787,8 +797,8 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         alloc_buf(s, &s->exp_off, (size_t)hp->n_expert * 4) ||
         alloc_buf(s, &s->row_dst, B * (size_t)hp->n_expert_used * 4) ||
         alloc_buf(s, &s->row_wt, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + B / 8 + 16) * 4) ||
-        alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + B / 8 + 16) * 4) ||
+        alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + B / 2 + 16) * 4) ||
+        alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
         alloc_buf(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
         alloc_buf(s, &s->tok_ids_buf, B * 4) ||
@@ -954,20 +964,19 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
 
     /* 5. Output mix -> output_norm -> lm_head -> logit softcap */
     if (compute_logits) {
-        CALL(s, batch, K_MIX, 1, a_int(d), a_int(n_blocks),
+        CALL(s, batch, K_MIX_RMSNORM, 1, a_int(d), a_int(n_blocks), a_f32(hp->rms_eps),
              a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
              a_f32v(s->cur, 0, d),
              a_tensor_f32(s, &s->gguf.out_res_query),
+             a_tensor_f32(s, &s->gguf.out_norm),
              a_f32v(s->norm_buf, 0, d));
         pm_barrier(batch);
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, 0, d));
-        pm_barrier(batch);
-        if (dispatch_mv(s, batch, &s->gguf.output, hp->n_vocab, d, 0, s->norm_buf, 0, s->logits, 0) != 0) return 1;
+        int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+        if (dispatch_mv(s, batch, &s->gguf.output, nv, d, 0, s->norm_buf, 0, s->logits, 0) != 0) return 1;
         if (hp->logit_softcap > 0.0f) {
             pm_barrier(batch);
-            CALL(s, batch, K_SOFTCAP, hp->n_vocab, a_int(hp->n_vocab),
-                 a_f32(hp->logit_softcap), a_f32v(s->logits, 0, hp->n_vocab));
+            CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
+                 a_f32(hp->logit_softcap), a_f32v(s->logits, 0, nv));
         }
     }
 
@@ -995,7 +1004,7 @@ static int dispatch_mm(InkSession *s, PmBatch batch, const InkTensor *w, int64_t
 }
 
 static int dispatch_dequant_q8_bf16(InkSession *s, PmBatch batch, const InkTensor *w, int64_t rows, int64_t cols, int64_t bf16_off) {
-    CALL(s, batch, K_DEQUANT_Q8_BF16, rows, a_int(rows), a_int(cols),
+    CALL(s, batch, K_DEQUANT_Q8_BF16, (rows + 3) / 4, a_int(rows), a_int(cols),
          a_tensor_u16(s, w), a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)));
     return 0;
 }
@@ -1211,11 +1220,13 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
     pm_barrier(batch);
     CALL(s, batch, K_ATTN_SOFTMAX_MMA, nb * n_head,
          a_u32(dims0), a_u32(dims1), a_int(s->max_ctx), a_int(s->pos), a_int(nb), a_int(k_start),
-         a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx));
+         a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx),
+         a_f32v(s->sinks_buf, 0, nb * n_head));
     pm_barrier(batch);
     CALL(s, batch, K_ATTN_VALUES_MMA, n_head * q_tiles * 4,
          a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
          a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx),
+         a_f32v(s->sinks_buf, 0, nb * n_head),
          a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
          a_f32v(s->gate_buf, 0, nb * n_q),
          a_f32v(s->attn_out, 0, nb * n_q));
@@ -1294,11 +1305,11 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
     pm_barrier(batch);
 
     int64_t n_ff = hp->n_ff_exp;
-    int64_t tile_cap = hp->n_expert + INK_PREFILL_B / 8 + 16;
+    int64_t tile_cap = hp->n_expert + INK_PREFILL_B / 2 + 16;
     if (nb >= 8 &&
         (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL || L->ffn_gate_up_exps.type == INK_GGML_Q8_0) &&
         (L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0)) {
-        /* Sprint 8C: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE (64x128 for nb>=64, 16x64 for 8<=nb<64)! */
+        /* Sprint 9B: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE (64-exp GU = 2 chunks, 128-exp Down = 1 chunk!) */
         int64_t tot_rows = nb * hp->n_expert_used;
         int use_64 = (nb >= 64);
         int64_t tm = use_64 ? 64 : 16;
@@ -1325,6 +1336,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         int64_t gu_w_u32 = gu_rows * (d / 2);
         int64_t gu_r_tiles = (gu_rows + tn - 1) / tn;
         int gu_deq_k = (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16;
+        int64_t gu_deq_rgrps = (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) ? ((gu_rows + 7) / 8) : ((gu_rows + 3) / 4);
         for (int64_t e_lo = 0; e_lo < hp->n_expert; e_lo += e_chunk_gu) {
             int64_t e_hi = e_lo + e_chunk_gu;
             if (e_hi > hp->n_expert) e_hi = hp->n_expert;
@@ -1334,7 +1346,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
             CALL(s, batch, K_MOE_CHUNK_TILES, 1, a_int(e_lo), a_int(e_hi), a_int(tm),
                  a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
-            CALL(s, batch, gu_deq_k, ec * gu_rows, a_int(e_lo), a_int(gu_rows), a_int(d),
+            CALL(s, batch, gu_deq_k, ec * gu_deq_rgrps, a_int(e_lo), a_int(gu_rows), a_int(d),
                  a_tensor_u16(s, &L->ffn_gate_up_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->w_bf16, 0, ec * gu_w_u32));
             pm_barrier(batch);
@@ -1358,6 +1370,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         int64_t dn_w_u32 = d * (n_ff / 2);
         int64_t dn_r_tiles = (d + tn - 1) / tn;
         int dn_deq_k = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16;
+        int64_t dn_deq_rgrps = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? ((d + 7) / 8) : ((d + 3) / 4);
         for (int64_t e_lo = 0; e_lo < hp->n_expert; e_lo += e_chunk_dn) {
             int64_t e_hi = e_lo + e_chunk_dn;
             if (e_hi > hp->n_expert) e_hi = hp->n_expert;
@@ -1367,7 +1380,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
             CALL(s, batch, K_MOE_CHUNK_TILES, 1, a_int(e_lo), a_int(e_hi), a_int(tm),
                  a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
-            CALL(s, batch, dn_deq_k, ec * d, a_int(e_lo), a_int(d), a_int(n_ff),
+            CALL(s, batch, dn_deq_k, ec * dn_deq_rgrps, a_int(e_lo), a_int(d), a_int(n_ff),
                  a_tensor_u16(s, &L->ffn_down_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->w_bf16, 0, ec * dn_w_u32));
             pm_barrier(batch);
@@ -1594,11 +1607,12 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
              a_f32v(s->norm_buf, last_off, d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, last_off, d));
         pm_barrier(batch);
-        if (dispatch_mv(s, batch, &s->gguf.output, hp->n_vocab, d, 0, s->norm_buf, last_off, s->logits, 0) != 0) { pm_wait(batch, NULL); return 1; }
+        int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+        if (dispatch_mv(s, batch, &s->gguf.output, nv, d, 0, s->norm_buf, last_off, s->logits, 0) != 0) { pm_wait(batch, NULL); return 1; }
         if (hp->logit_softcap > 0.0f) {
             pm_barrier(batch);
-            CALL(s, batch, K_SOFTCAP, hp->n_vocab, a_int(hp->n_vocab),
-                 a_f32(hp->logit_softcap), a_f32v(s->logits, 0, hp->n_vocab));
+            CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
+                 a_f32(hp->logit_softcap), a_f32v(s->logits, 0, nv));
         }
     }
 
