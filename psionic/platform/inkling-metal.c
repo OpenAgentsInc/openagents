@@ -1564,7 +1564,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         (L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0)) {
         /* Sprint 9B: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE (64-exp GU = 2 chunks, 128-exp Down = 1 chunk!) */
         int64_t tot_rows = nb * hp->n_expert_used;
-        int use_64 = (nb >= 64);
+        int use_64 = (nb >= 384);
         int64_t tm = use_64 ? 64 : 16;
         int64_t tn = 64;
         int moe_mm_k = use_64 ? K_MOE_MM_BF16 : K_MOE_MM_BF16_16;
