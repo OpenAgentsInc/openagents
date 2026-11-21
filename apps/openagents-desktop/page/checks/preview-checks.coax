@@ -1,0 +1,206 @@
+// Checks for embedded Web Preview Pane & SnapShot region capture (page/preview.coax, GitHub #13888):
+// URL normalization & http/https-only safety validation, viewport presets, DOM picker context
+// formatting & composer insertion, SnapShot trigger & attachment, dev-server port presets,
+// preview toolbar rendering, rect/overlay hiding, and Command Palette integration.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_preview_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, s[0].reduced, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+cp_preview_test_setup :: (s: [] CoderPage) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, true);
+  coder_page_folder(s, "~/work/app");
+}
+
+#test "preview URL normalization and http/https safety validation" {
+  buf: [CP_PREVIEW_URL_CAP] u8;
+
+  // Bare localhost:port, :port, loopback, and remote hosts normalize properly.
+  n := cp_preview_normalize_url("localhost:3000", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "http://localhost:3000";
+
+  n = cp_preview_normalize_url("  :5173/dashboard  ", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "http://localhost:5173/dashboard";
+
+  n = cp_preview_normalize_url("127.0.0.1:8080/api", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "http://127.0.0.1:8080/api";
+
+  n = cp_preview_normalize_url("localhost/app", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "http://localhost/app";
+
+  n = cp_preview_normalize_url("example.com/docs", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "https://example.com/docs";
+
+  n = cp_preview_normalize_url("HTTP://localhost:4000", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "http://localhost:4000";
+
+  n = cp_preview_normalize_url("HTTPS://openagents.com", buf[..]);
+  #assert n > 0 && cast(string) buf[0..<n] == "https://openagents.com";
+
+  // Unsafe and non-http(s) schemes must be rejected.
+  #assert cp_preview_normalize_url("javascript:alert(1)", buf[..]) == 0;
+  #assert cp_preview_normalize_url("JAVASCRIPT:void(0)", buf[..]) == 0;
+  #assert cp_preview_normalize_url("file:///etc/passwd", buf[..]) == 0;
+  #assert cp_preview_normalize_url("file:/etc/hosts", buf[..]) == 0;
+  #assert cp_preview_normalize_url("data:text/html,<h1>xss</h1>", buf[..]) == 0;
+  #assert cp_preview_normalize_url("vbscript:msgbox(1)", buf[..]) == 0;
+  #assert cp_preview_normalize_url("ftp://example.com/file", buf[..]) == 0;
+  #assert cp_preview_normalize_url("about:blank", buf[..]) == 0;
+  #assert cp_preview_normalize_url("http://", buf[..]) == 0;
+  #assert cp_preview_normalize_url("https:///only-path", buf[..]) == 0;
+  #assert cp_preview_normalize_url("   ", buf[..]) == 0;
+  #assert cp_preview_normalize_url("http://localhost:3000/bad path", buf[..]) == 0;
+  #assert cp_preview_normalize_url("http://localhost:3000/\nfoo", buf[..]) == 0;
+
+  // C export rejects unsafe URLs and preserves existing valid URL.
+  p: [1] CoderPage; p_st: [1] CpCheckLean; s := cp_check_lean(p[..], p_st[..]);
+  cp_preview_test_setup(s);
+  #assert coder_page_preview_set_url(s, "localhost:4321");
+  #assert !coder_page_preview_set_url(s, "javascript:alert(1)");
+  #assert !coder_page_preview_set_url(s, "file:///Users/test/.ssh/id_rsa");
+  un := coder_page_preview_url(s, buf[..]);
+  #assert cast(string) buf[0..<un] == "http://localhost:4321";
+}
+
+#test "preview viewport presets: dimensions, aspect-fit centering, and cycling" {
+  sz: [2] f32;
+  cp_preview_vp_size(CP_VP_DESKTOP, sz[..]);
+  #assert sz[0] == 0.0f32 && sz[1] == 0.0f32 && cp_preview_vp_label(CP_VP_DESKTOP) == "Desktop";
+
+  cp_preview_vp_size(CP_VP_TABLET, sz[..]);
+  #assert sz[0] == 768.0f32 && sz[1] == 1024.0f32 && cp_preview_vp_label(CP_VP_TABLET) == "Tablet 768×1024";
+
+  cp_preview_vp_size(CP_VP_MOBILE, sz[..]);
+  #assert sz[0] == 390.0f32 && sz[1] == 844.0f32 && cp_preview_vp_label(CP_VP_MOBILE) == "Mobile 390×844";
+
+  // Fit inside a 500x700 pane body: Desktop fills, Tablet scales down to fit, Mobile fits proportionally.
+  r: [4] f32;
+  cp_preview_fit_rect(CP_VP_DESKTOP, 100.0f32, 80.0f32, 500.0f32, 700.0f32, r[..]);
+  #assert r[0] == 100.0f32 && r[1] == 80.0f32 && r[2] == 500.0f32 && r[3] == 700.0f32;
+
+  cp_preview_fit_rect(CP_VP_TABLET, 100.0f32, 80.0f32, 500.0f32, 700.0f32, r[..]);
+  #assert r[2] > 0.0f32 && r[2] <= 500.0f32 && r[3] > 0.0f32 && r[3] <= 700.0f32;
+  #assert r[0] >= 100.0f32 && r[1] >= 80.0f32;
+
+  cp_preview_fit_rect(CP_VP_MOBILE, 100.0f32, 80.0f32, 500.0f32, 900.0f32, r[..]);
+  #assert r[2] == 390.0f32 && r[3] == 844.0f32;
+  #assert r[0] == 155.0f32 && r[1] == 108.0f32;
+}
+
+#test "DOM picker context formatting and composer attachment" {
+  out: [CP_PREVIEW_DOM_CAP] u8;
+  n := cp_preview_format_dom_pick("button#submit.primary", "button", "Save\nChanges", "120,440 96x36", "http://localhost:3000/settings", "Align with input", out[..]);
+  #assert n > 0;
+  md := cast(string) out[0..<n];
+  #assert cp_contains(md, "> **DOM Element** (`<button>` · `button#submit.primary`)");
+  #assert cp_contains(md, "> - **URL:** `http://localhost:3000/settings`");
+  #assert cp_contains(md, "> - **Rect:** `120,440 96x36`");
+  #assert cp_contains(md, "> - **Text:** \"Save Changes\"");
+  #assert cp_contains(md, "> - **Note:** Align with input");
+
+  // Empty selector and tag rejected.
+  #assert cp_preview_format_dom_pick("  ", "", "hi", "", "", "", out[..]) == 0;
+
+  // Attaching picked DOM element inserts into composer and clears picking mode.
+  p: [1] CoderPage; p_st: [1] CpCheckLean; s := cp_check_lean(p[..], p_st[..]);
+  cp_preview_test_setup(s);
+  coder_page_preview_set_picking(s, true);
+  #assert coder_page_preview_picking(s);
+  eb_set(s[0].draft[..], "Please fix this button:");
+  #assert coder_page_preview_dom_pick(s, "#save-btn", "button", "Save", "10,20 80x32", "http://localhost:3000", "Make it rounded");
+  #assert !coder_page_preview_picking(s);
+  draft := eb_text(s[0].draft[..]);
+  #assert cp_contains(draft, "Please fix this button:");
+  #assert cp_contains(draft, "`#save-btn`");
+  #assert cp_contains(draft, "Make it rounded");
+}
+
+#test "SnapShot region capture trigger and composer attachment" {
+  p: [1] CoderPage; p_st: [1] CpCheckLean; s := cp_check_lean(p[..], p_st[..]);
+  cp_preview_test_setup(s);
+
+  coder_page_preview_trigger_snapshot(s);
+  #assert coder_page_action(s) == CP_ASK_SNAPSHOT;
+  #assert CP_ASK_SNAPSHOT == 135;
+
+  #assert coder_page_preview_snapshot_done(s, "/Users/test/.openagents/shots/snapshot-1732170000.png", 1732170000);
+  #assert coder_page_attached(s) == 1;
+  #assert s[0].preview[0].snap_ts == 1732170000 && s[0].preview[0].snap_count == 1;
+
+  pbuf: [CP_PREVIEW_PATH_CAP] u8;
+  pn := coder_page_preview_last_snapshot(s, pbuf[..]);
+  #assert cast(string) pbuf[0..<pn] == "/Users/test/.openagents/shots/snapshot-1732170000.png";
+}
+
+#test "preview toolbar rendering, dev-server port presets, rect visibility, and palette commands" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_preview_test_setup(s);
+
+  // Seed a detected dev-server port in the terminal pane so preview reuses it.
+  tid := coder_page_term_new_tab(s, "dev", "~/work/app");
+  #assert coder_page_term_ports(s, tid, "PORT\t5173\t4242\tvite\t12\t4096\nPORT\t3000\t4243\tnode\t5\t2048\n") == 2;
+
+  // Open Web Preview pane and render a frame.
+  coder_page_preview_show(s, true);
+  #assert coder_page_action(s) == CP_ASK_PREVIEW_OPENED;
+  #assert coder_page_preview_shown(s);
+  #assert cp_preview_test_frame(s, f[..], 1400, 900);
+
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  r_url := elt_find(t[..], "coder.preview.url");
+  r_rel := elt_find(t[..], "coder.preview.reload");
+  r_vp := elt_find(t[..], "coder.preview.viewport");
+  r_pick := elt_find(t[..], "coder.preview.pick");
+  r_shot := elt_find(t[..], "coder.preview.shot");
+  r_close := elt_find(t[..], "coder.preview.close");
+  r_port0 := elt_find(t[..], "coder.preview.port.0");
+  #assert r_url >= 0 && r_rel >= 0 && r_vp >= 0 && r_pick >= 0 && r_shot >= 0 && r_close >= 0 && r_port0 >= 0;
+
+  // Rect is valid and uncovered while normal conversation shows.
+  rect: [5] f32;
+  #assert coder_page_preview_rect(s, rect[..]);
+  #assert rect[2] > 100.0f32 && rect[3] > 100.0f32 && rect[4] == 0.0f32;
+
+  // Clicking port preset 0 switches URL to http://localhost:5173 and emits CP_ASK_PREVIEW_PORTS.
+  #assert cp_press(s, r_port0);
+  #assert coder_page_action(s) == CP_ASK_PREVIEW_PORTS;
+  ubuf: [CP_PREVIEW_URL_CAP] u8;
+  un := coder_page_preview_url(s, ubuf[..]);
+  #assert cast(string) ubuf[0..<un] == "http://localhost:5173";
+
+  // Clicking viewport cycles Desktop -> Tablet -> Mobile -> Desktop.
+  #assert coder_page_preview_viewport(s) == CP_VP_DESKTOP;
+  #assert cp_press(s, r_vp) && coder_page_preview_viewport(s) == CP_VP_TABLET;
+  #assert cp_press(s, r_vp) && coder_page_preview_viewport(s) == CP_VP_MOBILE;
+  #assert cp_press(s, r_vp) && coder_page_preview_viewport(s) == CP_VP_DESKTOP;
+
+  // Clicking DOM picker toggles picking mode and emits CP_ASK_PREVIEW_PICK_TOGGLE.
+  #assert cp_press(s, r_pick) && coder_page_preview_picking(s) && coder_page_action(s) == CP_ASK_PREVIEW_PICK_TOGGLE;
+
+  // Clicking Reload and Shot emit their host actions.
+  #assert cp_press(s, r_rel) && coder_page_action(s) == CP_ASK_PREVIEW_RELOAD;
+  #assert cp_press(s, r_shot) && coder_page_action(s) == CP_ASK_PREVIEW_SHOT;
+
+  // Opening Settings marks preview rect as covered (rect[4] == 1.0).
+  s[0].set_open = true;
+  #assert coder_page_preview_rect(s, rect[..]) && rect[4] == 1.0f32;
+  s[0].set_open = false;
+
+  // Close button hides preview pane and emits CP_ASK_PREVIEW_CLOSED.
+  #assert cp_press(s, r_close) && !coder_page_preview_shown(s) && coder_page_action(s) == CP_ASK_PREVIEW_CLOSED;
+
+  // Command palette includes "Toggle Web Preview" and "SnapShot region".
+  #assert coder_page_palette_toggle(s, 0);
+  pal := cp_pal(s);
+  found_prev := false; found_snap := false;
+  for i: 0..<pal[0].n {
+    if pal[0].items[i].code == CP_PC_PREVIEW { found_prev = true; }
+    if pal[0].items[i].code == CP_PC_SNAPSHOT { found_snap = true; }
+  }
+  #assert found_prev && found_snap;
+}

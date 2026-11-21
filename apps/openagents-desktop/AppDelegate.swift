@@ -170,6 +170,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func editPaste(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("v").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender) } }
     @objc func editSelectAll(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("a").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender) } }
     @objc func toggleTerminal(_ sender: Any?) { main?.toggleTerminal() }
+    @objc func toggleWebPreview(_ sender: Any?) { main?.toggleWebPreview() }
+    @objc func triggerSnapShot(_ sender: Any?) { main?.triggerRegionSnapshot() }
     @objc func openThreadProof(_ sender: Any?) { ThreadProofDrawer.shared.present(window: main) }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
@@ -345,6 +347,10 @@ enum TestLaunch {
         sim.target = delegate; sim.keyEquivalentModifierMask = [.command, .option]
         let term = view.addItem(withTitle: "Toggle Terminal", action: #selector(CoderDelegate.toggleTerminal(_:)), keyEquivalent: "j")
         term.target = delegate; term.keyEquivalentModifierMask = [.command]
+        let webPrev = view.addItem(withTitle: "Toggle Web Preview", action: #selector(CoderDelegate.toggleWebPreview(_:)), keyEquivalent: "p")
+        webPrev.target = delegate; webPrev.keyEquivalentModifierMask = [.command, .option]
+        let snapItem = view.addItem(withTitle: "SnapShot Region", action: #selector(CoderDelegate.triggerSnapShot(_:)), keyEquivalent: "6")
+        snapItem.target = delegate; snapItem.keyEquivalentModifierMask = [.command, .shift]
         let proofItem = view.addItem(withTitle: "Thread Proof & ATIF Trace…", action: #selector(CoderDelegate.openThreadProof(_:)), keyEquivalent: "P")
         proofItem.target = delegate; proofItem.keyEquivalentModifierMask = [.command, .shift]
         // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys

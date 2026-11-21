@@ -53,6 +53,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
   if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
   if act >= CP_SCHED_ACT_ADD && act <= CP_SCHED_ACT_UPDATE_ALL { return cp_sched_press(s, act, surface_id(s[0].surface[..], row)); }  // Scheduled Tasks & Update Everything (scheduled.coax; #13885)
+  if act >= CP_PREVIEW_CLOSE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS { return cp_preview_press(s, act); } // Embedded Web Preview Pane (preview.coax; #13888)
+  _ = cp_preview_yield(s, act);
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   _ = cp_ft_yield(s, act);

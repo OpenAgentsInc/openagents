@@ -61,6 +61,8 @@ cp_palette_fill :: (s: [] CoderPage) {
     if cp_has_edits(s) { cp_pal_cmd(p, ifx cp_review_shown(s) then "Hide changes" else "Show changes", "review diff edits changes", "", -1, CP_PC_REVIEW, 0); }
   }
   cp_pal_cmd(p, ifx cp_sim_shown(s) then "Hide iOS Simulator" else "Show iOS Simulator", "ios iphone simulator device phone", "⌥ ⌘ S", ICON_SET_PHONE, CP_PC_SIM, 0);
+  cp_pal_cmd(p, ifx cp_preview_shown(s) then "Hide Web Preview" else "Toggle Web Preview", "web preview browser wkwebview dom picker localhost", "⌥ ⌘ P", ICON_GLOBAL, CP_PC_PREVIEW, 0);
+  cp_pal_cmd(p, "SnapShot region", "snapshot screenshot capture screen region attach", "⇧ ⌘ 6", ICON_SIM_CAMERA, CP_PC_SNAPSHOT, 0);
   cp_pal_cmd(p, ifx cp_term_shown(s) then "Hide terminal" else "Show terminal", "terminal shell pty console drawer", "⌘ J", ICON_TERMINAL, CP_PC_TERM, 0);
   cp_pal_cmd(p, "New terminal tab", "terminal shell tab pty", "", ICON_TERMINAL, CP_PC_TERM_NEW, 0);
   cp_pal_cmd(p, "Bigger text", "zoom in larger font", "⌘ +", -1, CP_PC_BIGGER, 0);
@@ -171,6 +173,8 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_FORK { cur := cast(string) s[0].current[0..<s[0].current_n]; if s[0].nturns == 0 || cur == "chat.foreman" { return false; } s[0].ask = CP_ASK_FORK; return true; }
   if c == CP_PC_STOP { if !cp_running(s) { return false; } s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
   if c == CP_PC_SIM { if cp_sim_shown(s) { cp_sim_hide(s); } else { s[0].sim[0].closed_by_person = false; cp_sim_show(s); } return true; }
+  if c == CP_PC_PREVIEW { cp_preview_toggle(s); return true; }
+  if c == CP_PC_SNAPSHOT { cp_preview_trigger_snapshot(s); return true; }
   if c == CP_PC_TERM { cp_term_toggle(s); return true; }
   if c == CP_PC_TERM_NEW { cp_term_show(s); _ = cp_term_new_tab(s, "", ""); return true; }
   if c == CP_PC_REVIEW { if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }

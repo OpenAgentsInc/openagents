@@ -68,3 +68,4 @@
 #load "environments.coax";
 #load "rich.coax";
 #load "scheduled.coax";
+#load "preview.coax";

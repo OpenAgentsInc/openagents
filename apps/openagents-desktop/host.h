@@ -628,4 +628,20 @@ int cd_sched_webhook_admit(void *page, const char *secret, const char *delivery_
 void cd_upd_all_set(void *page, int target, const char *current, const char *latest, int available, int leases, int atomic_switch, const char *status);
 int cd_upd_all_decision(void *page, int target);
 void cd_upd_all_busy_set(void *page, int busy);
+// Embedded Web Preview Pane & SnapShot region capture (page/preview.coax; #13888).
+void cd_preview_show(void *page, int open);
+void cd_preview_toggle(void *page);
+int cd_preview_open(void *page);
+int cd_preview_shown(void *page);
+int cd_preview_set_url(void *page, const char *raw);
+int cd_preview_url(void *page, char *out, int cap);
+void cd_preview_set_viewport(void *page, int vp);
+int cd_preview_viewport(void *page);
+void cd_preview_set_picking(void *page, int on);
+int cd_preview_picking(void *page);
+int cd_preview_rect(void *page, float out[5]);
+int cd_preview_dom_pick(void *page, const char *selector, const char *tag, const char *text, const char *rect, const char *url, const char *note);
+void cd_preview_trigger_snapshot(void *page);
+int cd_preview_snapshot_done(void *page, const char *path, int64_t ts);
+int cd_preview_last_snapshot(void *page, char *out, int cap);
 #endif

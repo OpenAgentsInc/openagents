@@ -1,0 +1,578 @@
+// Coder Desktop page (../page.coax): embedded Web Preview Pane (native WKWebView on macOS,
+// zero Chromium/Electron) with URL normalization & safety validation, dev-server port presets,
+// device viewport presets, DOM element picker context formatter, annotation notes, and global
+// SnapShot OS region capture (GitHub #13888).
+
+// Host actions (CP_ASK_PREVIEW_* allocated in 130..139).
+CP_ASK_PREVIEW_URL         :: 130; // user clicked URL chip -> host opens URL/port dialog
+CP_ASK_PREVIEW_RELOAD      :: 131; // reload the active WKWebView page
+CP_ASK_PREVIEW_PICK_TOGGLE :: 132; // DOM element picker mode toggled on/off
+CP_ASK_PREVIEW_SHOT        :: 133; // capture/annotate current preview pane into composer
+CP_ASK_PREVIEW_PORTS       :: 134; // dev-server port preset selected -> navigate WKWebView
+CP_ASK_SNAPSHOT            :: 135; // global OS SnapShot region capture -> attach to composer
+CP_ASK_PREVIEW_OPENED      :: 136; // preview pane opened or URL updated -> sync WKWebView
+CP_ASK_PREVIEW_CLOSED      :: 137; // preview pane closed -> hide WKWebView
+
+// Surface row action IDs (allocated in 320..329).
+CP_PREVIEW_CLOSE     :: 320;
+CP_PREVIEW_URL       :: 321;
+CP_PREVIEW_RELOAD    :: 322;
+CP_PREVIEW_VIEWPORT  :: 323;
+CP_PREVIEW_PICK      :: 324;
+CP_PREVIEW_SHOT      :: 325;
+CP_PREVIEW_PORT_BASE :: 326; // 326..329: up to 4 detected dev-server port chips
+CP_PREVIEW_MAX_PORTS :: 4;
+
+// Command palette command codes.
+CP_PC_PREVIEW  :: 35;
+CP_PC_SNAPSHOT :: 36;
+
+// Device viewport presets.
+CP_VP_DESKTOP :: 0;
+CP_VP_TABLET  :: 1; // 768 x 1024
+CP_VP_MOBILE  :: 2; // 390 x 844
+CP_VP_COUNT   :: 3;
+
+// Buffer capacities.
+CP_PREVIEW_URL_CAP  :: 512;
+CP_PREVIEW_NOTE_CAP :: 1024;
+CP_PREVIEW_PATH_CAP :: 1024;
+CP_PREVIEW_DOM_CAP  :: 4096;
+CP_PREVIEW_PAD      :: 8.0f32;
+
+CpPreview :: struct {
+  open: bool;
+  front: bool;
+  url: [CP_PREVIEW_URL_CAP] u8; url_n: int;
+  viewport: int;                 // CP_VP_DESKTOP, CP_VP_TABLET, CP_VP_MOBILE
+  picking: bool;                 // DOM element picker overlay active
+  note: [CP_PREVIEW_NOTE_CAP] u8; note_n: int;
+  last_dom: [CP_PREVIEW_DOM_CAP] u8; last_dom_n: int;
+  body_x: f32; body_y: f32; body_w: f32; body_h: f32; // WKWebView rect (top-left logical points)
+  snap_path: [CP_PREVIEW_PATH_CAP] u8; snap_path_n: int;
+  snap_ts: int;
+  snap_count: int;
+  ports: [CP_PREVIEW_MAX_PORTS] int; nports: int;
+}
+
+cp_preview :: (s: [] CoderPage) -> [] CpPreview { return s[0].preview[..]; }
+
+cp_preview_init :: (s: [] CoderPage) {
+  p := cp_preview(s);
+  p[0] = CpPreview.{};
+  p[0].url_n = cp_out(p[0].url[..], "http://localhost:3000");
+}
+
+// ---------------------------------------------------------------- URL normalization & safety
+
+cp_preview_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+}
+
+cp_preview_starts_ci :: (text: string, prefix: string) -> bool {
+  if text.count < prefix.count { return false; }
+  for i: 0..<prefix.count {
+    if cp_preview_lower(text[i]) != cp_preview_lower(prefix[i]) { return false; }
+  }
+  return true;
+}
+
+cp_preview_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+// Normalize and validate a preview URL:
+// - Allows http:// and https:// only (rejects javascript:, file:, data:, vbscript:, about:, ftp:, etc.).
+// - Rejects control chars and embedded whitespace.
+// - Normalizes bare localhost:3000 -> http://localhost:3000, :5173 -> http://localhost:5173,
+//   127.0.0.1:8080 -> http://127.0.0.1:8080, example.com -> https://example.com.
+// Returns bytes written to out, or 0 if invalid/unsafe.
+cp_preview_normalize_url :: (raw: string, out: [] u8) -> int {
+  t := cp_trim(raw);
+  if t.count == 0 || out.count == 0 { return 0; }
+  // Reject control characters and embedded spaces.
+  for i: 0..<t.count {
+    c := t[i];
+    if c <= 32 || c == 127 { return 0; }
+  }
+  // Explicit http:// or https://
+  if cp_preview_starts_ci(t, "http://") {
+    rest := cast(string) t[7..<t.count];
+    if rest.count == 0 || rest[0] == '/' { return 0; }
+    n := el_put(out, 0, "http://");
+    n = el_put(out, n, rest);
+    return ifx n <= out.count then n else 0;
+  }
+  if cp_preview_starts_ci(t, "https://") {
+    rest := cast(string) t[8..<t.count];
+    if rest.count == 0 || rest[0] == '/' { return 0; }
+    n := el_put(out, 0, "https://");
+    n = el_put(out, n, rest);
+    return ifx n <= out.count then n else 0;
+  }
+  // Reject any other explicit scheme (scheme://...)
+  for i: 0..<t.count {
+    if i + 2 < t.count && t[i] == ':' && t[i + 1] == '/' && t[i + 2] == '/' { return 0; }
+  }
+  // Bare ":PORT" or ":PORT/path" -> "http://localhost:PORT..."
+  if t[0] == ':' {
+    if t.count < 2 || !cp_preview_is_digit(t[1]) { return 0; }
+    j := 1;
+    while j < t.count && cp_preview_is_digit(t[j]) { j += 1; }
+    if j < t.count && t[j] != '/' && t[j] != '?' && t[j] != '#' { return 0; }
+    n := el_put(out, 0, "http://localhost");
+    n = el_put(out, n, t);
+    return ifx n <= out.count then n else 0;
+  }
+  // Check for colon before first slash: must be host:port (digits after ':'), else it is a disallowed scheme (e.g. javascript:alert(1), file:/etc/passwd, data:text/html).
+  colon := -1;
+  for i: 0..<t.count {
+    if t[i] == '/' || t[i] == '?' || t[i] == '#' { break; }
+    if t[i] == ':' { colon = i; break; }
+  }
+  if colon >= 0 {
+    if colon == 0 { return 0; }
+    pstart := colon + 1;
+    if pstart >= t.count || !cp_preview_is_digit(t[pstart]) { return 0; }
+    j := pstart;
+    while j < t.count && cp_preview_is_digit(t[j]) { j += 1; }
+    if j < t.count && t[j] != '/' && t[j] != '?' && t[j] != '#' { return 0; }
+    n := el_put(out, 0, "http://");
+    n = el_put(out, n, t);
+    return ifx n <= out.count then n else 0;
+  }
+  // No scheme and no port: localhost / loopback uses http://, remote hosts use https://.
+  is_local := cp_preview_starts_ci(t, "localhost") && (t.count == 9 || t[9] == '/' || t[9] == '?' || t[9] == '#');
+  if !is_local && (cp_preview_starts_ci(t, "127.0.0.1") || cp_preview_starts_ci(t, "0.0.0.0")) { is_local = true; }
+  n := el_put(out, 0, ifx is_local then "http://" else "https://");
+  n = el_put(out, n, t);
+  return ifx n <= out.count then n else 0;
+}
+
+// ---------------------------------------------------------------- viewport presets
+
+cp_preview_vp_label :: (vp: int) -> string {
+  if vp == CP_VP_TABLET { return "Tablet 768×1024"; }
+  if vp == CP_VP_MOBILE { return "Mobile 390×844"; }
+  return "Desktop";
+}
+
+cp_preview_vp_short :: (vp: int) -> string {
+  if vp == CP_VP_TABLET { return "768×1024"; }
+  if vp == CP_VP_MOBILE { return "390×844"; }
+  return "Desktop";
+}
+
+// Writes [width, height] for preset vp into out[0..2]; Desktop yields [0, 0] (responsive fill).
+cp_preview_vp_size :: (vp: int, out: [] f32) {
+  if out.count < 2 { return; }
+  if vp == CP_VP_TABLET { out[0] = 768.0f32; out[1] = 1024.0f32; return; }
+  if vp == CP_VP_MOBILE { out[0] = 390.0f32; out[1] = 844.0f32; return; }
+  out[0] = 0.0f32; out[1] = 0.0f32;
+}
+
+// Computes the WKWebView frame [x, y, w, h] inside available area (ax, ay, aw, ah) for preset vp.
+cp_preview_fit_rect :: (vp: int, ax: f32, ay: f32, aw: f32, ah: f32, out: [] f32) {
+  if out.count < 4 { return; }
+  out[0] = ax; out[1] = ay; out[2] = 0.0f32; out[3] = 0.0f32;
+  if !(aw > 0.0f32) || !(ah > 0.0f32) { return; }
+  sz: [2] f32;
+  cp_preview_vp_size(vp, sz[..]);
+  if !(sz[0] > 0.0f32) || !(sz[1] > 0.0f32) {
+    out[0] = ax; out[1] = ay; out[2] = aw; out[3] = ah;
+    return;
+  }
+  scale := 1.0f32;
+  if sz[0] > aw { scale = aw / sz[0]; }
+  if sz[1] * scale > ah { scale = ah / sz[1]; }
+  rw := sz[0] * scale;
+  rh := sz[1] * scale;
+  out[0] = ax + (aw - rw) * 0.5f32;
+  out[1] = ay + (ah - rh) * 0.5f32;
+  out[2] = rw;
+  out[3] = rh;
+}
+
+// ---------------------------------------------------------------- DOM picker & annotation formatting
+
+// Formats a picked DOM element and optional annotation note into a clean Markdown block for the composer.
+cp_preview_format_dom_pick :: (selector: string, tag: string, text: string, rect: string, url: string, note: string, out: [] u8) -> int {
+  if out.count < 16 { return 0; }
+  sel := cp_trim(selector);
+  tg := cp_trim(tag);
+  if sel.count == 0 && tg.count == 0 { return 0; }
+  n := el_put(out, 0, "> **DOM Element** (");
+  if tg.count > 0 {
+    n = el_put(out, n, "`<"); n = el_put(out, n, tg); n = el_put(out, n, ">`");
+    if sel.count > 0 { n = el_put(out, n, " · "); }
+  }
+  if sel.count > 0 {
+    n = el_put(out, n, "`"); n = el_put(out, n, sel); n = el_put(out, n, "`");
+  }
+  n = el_put(out, n, ")\n");
+  u := cp_trim(url);
+  if u.count > 0 {
+    n = el_put(out, n, "> - **URL:** `"); n = el_put(out, n, u); n = el_put(out, n, "`\n");
+  }
+  r := cp_trim(rect);
+  if r.count > 0 {
+    n = el_put(out, n, "> - **Rect:** `"); n = el_put(out, n, r); n = el_put(out, n, "`\n");
+  }
+  tx := cp_trim(text);
+  if tx.count > 0 {
+    n = el_put(out, n, "> - **Text:** \"");
+    limit := ifx tx.count > 240 then 240 else tx.count;
+    for i: 0..<limit {
+      c := tx[i];
+      if c == '\n' || c == '\r' || c == '\t' { c = ' '; }
+      if n < out.count { out[n] = c; n += 1; }
+    }
+    if tx.count > 240 { n = el_put(out, n, "…"); }
+    n = el_put(out, n, "\"\n");
+  }
+  nt := cp_trim(note);
+  if nt.count > 0 {
+    n = el_put(out, n, "> - **Note:** "); n = el_put(out, n, nt); n = el_put(out, n, "\n");
+  }
+  return n;
+}
+
+// Appends formatted DOM context into the composer draft and focuses the composer.
+cp_preview_attach_dom_pick :: (s: [] CoderPage, selector: string, tag: string, text: string, rect: string, url: string, note: string) -> bool {
+  p := cp_preview(s);
+  use_url := ifx cp_trim(url).count > 0 then url else cast(string) p[0].url[0..<p[0].url_n];
+  bn := cp_preview_format_dom_pick(selector, tag, text, rect, use_url, note, p[0].last_dom[..]);
+  if bn <= 0 { return false; }
+  p[0].last_dom_n = bn;
+  p[0].note_n = cp_out(p[0].note[..], cp_trim(note));
+  p[0].picking = false;
+  block := cast(string) p[0].last_dom[0..<bn];
+  cur := eb_text(s[0].draft[..]);
+  buf: [EB_TEXT] u8;
+  k := 0;
+  if cur.count > 0 {
+    k = el_put(buf[..], 0, cur);
+    if cur[cur.count - 1] != '\n' { k = el_put(buf[..], k, "\n"); }
+    k = el_put(buf[..], k, "\n");
+  }
+  k = el_put(buf[..], k, block);
+  k = el_put(buf[..], k, "\n");
+  eb_set(s[0].draft[..], cast(string) buf[0..<k]);
+  e := cp_ed(s, CP_ED_COMPOSER);
+  e[0].body[0].ed[0].caret = k;
+  e[0].body[0].ed[0].anchor = k;
+  cp_ed_focus(s, CP_KB_COMPOSER);
+  return true;
+}
+
+// ---------------------------------------------------------------- dev-server port discovery
+
+// Collects unique listening dev-server ports from terminal tabs and explicit preview ports.
+cp_preview_collect_ports :: (s: [] CoderPage, out: [] int) -> int {
+  n := 0;
+  p := cp_preview(s);
+  // First gather ports detected by the integrated terminal pane (termpane.coax).
+  t := cp_term(s);
+  for ti: 0..<t[0].ntabs {
+    if !t[0].tabs[ti].used { continue; }
+    for pi: 0..<t[0].tabs[ti].nports {
+      port := t[0].tabs[ti].ports[pi].port;
+      if port <= 0 || port > 65535 { continue; }
+      dup := false;
+      for k: 0..<n { if out[k] == port { dup = true; break; } }
+      if !dup && n < out.count { out[n] = port; n += 1; }
+    }
+  }
+  // Then include any explicitly registered preview ports.
+  for pi: 0..<p[0].nports {
+    port := p[0].ports[pi];
+    if port <= 0 || port > 65535 { continue; }
+    dup := false;
+    for k: 0..<n { if out[k] == port { dup = true; break; } }
+    if !dup && n < out.count { out[n] = port; n += 1; }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- pane visibility & actions
+
+cp_preview_front :: (s: [] CoderPage) -> bool { return s[0].preview[0].open && s[0].preview[0].front; }
+
+cp_preview_shown :: (s: [] CoderPage) -> bool {
+  p := cp_preview(s);
+  return p[0].open && !s[0].rich[0].side_open && !cp_term_front(s) && !cp_sim_front(s) && (p[0].front || !(s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open));
+}
+
+cp_preview_show :: (s: [] CoderPage) {
+  p := cp_preview(s);
+  p[0].open = true;
+  p[0].front = true;
+  s[0].fp[0].front = false;
+  s[0].sim[0].front = false;
+  s[0].term[0].front = false;
+  s[0].rich[0].side_open = false;
+  s[0].ask = CP_ASK_PREVIEW_OPENED;
+}
+
+cp_preview_hide :: (s: [] CoderPage) {
+  p := cp_preview(s);
+  if !p[0].open { return; }
+  p[0].open = false;
+  p[0].front = false;
+  p[0].picking = false;
+  s[0].ask = CP_ASK_PREVIEW_CLOSED;
+}
+
+cp_preview_toggle :: (s: [] CoderPage) {
+  if cp_preview_shown(s) { cp_preview_hide(s); } else { cp_preview_show(s); }
+}
+
+cp_preview_yield :: (s: [] CoderPage, act: int) -> bool {
+  p := cp_preview(s);
+  if !p[0].open || !p[0].front { return false; }
+  if act == CP_REVIEW || act == CP_AGENT || act == CP_TERM_TOGGLE || act == CP_SIM_ROW {
+    p[0].front = false;
+  }
+  return false;
+}
+
+cp_preview_set_port_url :: (s: [] CoderPage, port: int) -> bool {
+  if port <= 0 || port > 65535 { return false; }
+  p := cp_preview(s);
+  n := el_put(p[0].url[..], 0, "http://localhost:");
+  n = el_put_i(p[0].url[..], n, port);
+  p[0].url_n = n;
+  s[0].ask = CP_ASK_PREVIEW_PORTS;
+  return true;
+}
+
+cp_preview_press :: (s: [] CoderPage, act: int) -> bool {
+  p := cp_preview(s);
+  if act == CP_PREVIEW_CLOSE { cp_preview_hide(s); return true; }
+  if act == CP_PREVIEW_URL { s[0].ask = CP_ASK_PREVIEW_URL; return true; }
+  if act == CP_PREVIEW_RELOAD { s[0].ask = CP_ASK_PREVIEW_RELOAD; return true; }
+  if act == CP_PREVIEW_VIEWPORT {
+    p[0].viewport = (p[0].viewport + 1) % CP_VP_COUNT;
+    return true;
+  }
+  if act == CP_PREVIEW_PICK {
+    p[0].picking = !p[0].picking;
+    s[0].ask = CP_ASK_PREVIEW_PICK_TOGGLE;
+    return true;
+  }
+  if act == CP_PREVIEW_SHOT {
+    s[0].ask = CP_ASK_PREVIEW_SHOT;
+    return true;
+  }
+  if act >= CP_PREVIEW_PORT_BASE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS {
+    idx := act - CP_PREVIEW_PORT_BASE;
+    ports: [CP_PREVIEW_MAX_PORTS] int;
+    np := cp_preview_collect_ports(s, ports[..]);
+    if idx < np { return cp_preview_set_port_url(s, ports[idx]); }
+    return false;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- SnapShot region capture
+
+cp_preview_trigger_snapshot :: (s: [] CoderPage) {
+  s[0].ask = CP_ASK_SNAPSHOT;
+}
+
+cp_preview_basename :: (path: string) -> string {
+  at := 0;
+  for i: 0..<path.count { if path[i] == '/' { at = i + 1; } }
+  return cast(string) path[at..<path.count];
+}
+
+cp_preview_snapshot_done :: (s: [] CoderPage, path: string, ts: int) -> bool {
+  if path.count == 0 { return false; }
+  p := cp_preview(s);
+  p[0].snap_path_n = cp_out(p[0].snap_path[..], path);
+  p[0].snap_ts = ts;
+  p[0].snap_count += 1;
+  name := cp_preview_basename(path);
+  _ = at_stage(s[0].cargo[..], path, name, -1);
+  s[0].anim = true;
+  return true;
+}
+
+// ---------------------------------------------------------------- drawing
+
+cp_previewpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; p := cp_preview(s); sh := f[0].sheet; th := cp_theme();
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  state_word := ifx p[0].picking then "Picking DOM" else cp_preview_vp_short(p[0].viewport);
+  y := app_pane_tab_shell(f, px, top, pw, h, ICON_GLOBAL, "Preview", "coder.preview.state", state_word, "coder.preview.close", CP_PREVIEW_CLOSE, CP_CORNER, 1.0f32);
+
+  x := px + a.gap;
+  cw := pw - 2 * a.gap;
+  y += a.gap_small;
+  ib := a.icon_button;
+
+  // Right-aligned toolbar actions: SnapShot, Pick DOM, Viewport preset, Reload.
+  rx := x + cw;
+  rx -= ib;
+  _ := app_icon_button(f, "coder.preview.shot", rx, y, ICON_SIM_CAMERA, "Capture Preview / SnapShot", APP_BUTTON_QUIET, 0, CP_PREVIEW_SHOT);
+  rx -= ib;
+  _ := app_icon_button(f, "coder.preview.pick", rx, y, ICON_MAGNIFER, "Pick DOM Element", APP_BUTTON_QUIET, ifx p[0].picking then EL_S_CURRENT else 0, CP_PREVIEW_PICK);
+  rx -= ib;
+  _ := app_icon_button(f, "coder.preview.reload", rx, y, ICON_SIM_ROTATE, "Reload", APP_BUTTON_QUIET, 0, CP_PREVIEW_RELOAD);
+
+  // Viewport preset chip left of Reload.
+  vp_s := cp_preview_vp_short(p[0].viewport);
+  vp_w := app_chip_width(f, ICON_SET_PHONE, vp_s, 112.0f32);
+  if rx - vp_w - a.gap_small > x + 90.0f32 {
+    rx -= vp_w + a.gap_small;
+    _ := app_chip(f, "coder.preview.viewport", rx, y + (ib - k.cmp.chip_h) * 0.5f32, vp_w, ICON_SET_PHONE, "Viewport", vp_s, 0, CP_PREVIEW_VIEWPORT);
+  } else {
+    rx -= ib;
+    _ := app_icon_button(f, "coder.preview.viewport", rx, y, ICON_SET_PHONE, vp_s, APP_BUTTON_QUIET, 0, CP_PREVIEW_VIEWPORT);
+  }
+
+  // URL chip fills remaining left space.
+  url_max := rx - x - a.gap_small;
+  if url_max > 48.0f32 {
+    shown_url := ifx p[0].url_n > 0 then cast(string) p[0].url[0..<p[0].url_n] else "http://localhost:3000";
+    _ := app_chip(f, "coder.preview.url", x, y + (ib - k.cmp.chip_h) * 0.5f32, url_max, ICON_GLOBAL, "Preview URL", shown_url, 0, CP_PREVIEW_URL);
+  }
+  y += ib + a.gap_small;
+
+  // Detected dev-server port presets strip (reusing terminal pane's port scanner).
+  ports: [CP_PREVIEW_MAX_PORTS] int;
+  np := cp_preview_collect_ports(s, ports[..]);
+  if np > 0 {
+    tx := x;
+    for i: 0..<np {
+      pb: [24] u8; pn := el_put(pb[..], 0, ":"); pn = el_put_i(pb[..], pn, ports[i]);
+      label := sheet_pool(sh, cast(string) pb[0..<pn]);
+      cw_chip := app_chip_width(f, -1, label, 80.0f32);
+      if tx + cw_chip > x + cw { break; }
+      idb: [32] u8; idn := el_put(idb[..], 0, "coder.preview.port."); idn = el_put_i(idb[..], idn, i);
+      tx += app_chip(f, sheet_pool(sh, cast(string) idb[0..<idn]), tx, y, cw_chip, -1, "Local port", label, 0, CP_PREVIEW_PORT_BASE + i) + a.gap_small;
+    }
+    y += k.cmp.chip_h + a.gap_small;
+  }
+
+  // Divider above web viewport.
+  sheet_fill(sh, px, y, pw, k.border, 0, k.menu_divider);
+  y += k.border;
+
+  // Compute native WKWebView body rect respecting viewport preset.
+  ax := px + CP_PREVIEW_PAD;
+  ay := y + CP_PREVIEW_PAD;
+  aw := pw - 2.0f32 * CP_PREVIEW_PAD;
+  ah := h - ay - CP_PREVIEW_PAD;
+  rect: [4] f32;
+  cp_preview_fit_rect(p[0].viewport, ax, ay, aw, ah, rect[..]);
+  p[0].body_x = rect[0];
+  p[0].body_y = rect[1];
+  p[0].body_w = rect[2];
+  p[0].body_h = rect[3];
+
+  // Subtle frame around viewport area (visible behind WKWebView and in headless tests).
+  if rect[2] > 1.0f32 && rect[3] > 1.0f32 {
+    sheet_under(sh, prim_box(sh[0].under, sh[0].nu, rect[0] - 1.0f32, rect[1] - 1.0f32, rect[2] + 2.0f32, rect[3] + 2.0f32, 6.0f32, 1.0f32, th.surface, th.border));
+  }
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_preview_show :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  if open { cp_preview_show(s); } else { cp_preview_hide(s); }
+}
+
+coder_page_preview_toggle :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_preview_toggle(s);
+}
+
+coder_page_preview_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].preview[0].open;
+}
+
+coder_page_preview_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_preview_shown(s);
+}
+
+coder_page_preview_set_url :: (s: [] CoderPage, raw: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  buf: [CP_PREVIEW_URL_CAP] u8;
+  n := cp_preview_normalize_url(raw, buf[..]);
+  if n <= 0 { return false; }
+  p := cp_preview(s);
+  p[0].url_n = cp_out(p[0].url[..], cast(string) buf[0..<n]);
+  return true;
+}
+
+coder_page_preview_url :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  p := cp_preview(s);
+  return cp_out(out, cast(string) p[0].url[0..<p[0].url_n]);
+}
+
+coder_page_preview_set_viewport :: (s: [] CoderPage, vp: int) #export_c #effects(all) {
+  if s.count < 1 || vp < 0 || vp >= CP_VP_COUNT { return; }
+  s[0].preview[0].viewport = vp;
+}
+
+coder_page_preview_viewport :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].preview[0].viewport else CP_VP_DESKTOP;
+}
+
+coder_page_preview_set_picking :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].preview[0].picking = on;
+}
+
+coder_page_preview_picking :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].preview[0].picking;
+}
+
+// out[0..4] = x, y, w, h (top-left logical points), out[4] = covered (1 when Settings/overlay/gym covers it).
+coder_page_preview_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 5 { return false; }
+  p := cp_preview(s);
+  if !cp_preview_shown(s) || !(p[0].body_w > 0.0f32) || !(p[0].body_h > 0.0f32) { return false; }
+  out[0] = p[0].body_x;
+  out[1] = p[0].body_y;
+  out[2] = p[0].body_w;
+  out[3] = p[0].body_h;
+  out[4] = ifx s[0].set_open || s[0].gym_open || cp_overlay_open(s) then 1.0f32 else 0.0f32;
+  return true;
+}
+
+coder_page_preview_dom_pick :: (s: [] CoderPage, selector: string, tag: string, text: string, rect: string, url: string, note: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  return cp_preview_attach_dom_pick(s, selector, tag, text, rect, url, note);
+}
+
+coder_page_preview_format_dom :: (selector: string, tag: string, text: string, rect: string, url: string, note: string, out: [] u8) -> int #export_c #effects(all) {
+  return cp_preview_format_dom_pick(selector, tag, text, rect, url, note, out);
+}
+
+coder_page_preview_normalize_url :: (raw: string, out: [] u8) -> int #export_c #effects(all) {
+  return cp_preview_normalize_url(raw, out);
+}
+
+coder_page_preview_trigger_snapshot :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_preview_trigger_snapshot(s);
+}
+
+coder_page_preview_snapshot_done :: (s: [] CoderPage, path: string, ts: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  return cp_preview_snapshot_done(s, path, ts);
+}
+
+coder_page_preview_last_snapshot :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  p := cp_preview(s);
+  return cp_out(out, cast(string) p[0].snap_path[0..<p[0].snap_path_n]);
+}

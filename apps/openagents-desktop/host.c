@@ -1576,4 +1576,63 @@ void cd_upd_all_busy_set(void *page, int busy) {
   CoderHost *c = page; if (!c) return;
   coder_page_upd_all_busy_set(cd_state(c), busy != 0);
   cd_woke(c);
+// Embedded Web Preview Pane & SnapShot region capture (page/preview.coax; #13888).
+void cd_preview_show(void *page, int open) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_preview_show(cd_state(c), open != 0);
+  cd_woke(c);
+}
+void cd_preview_toggle(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_preview_toggle(cd_state(c));
+  cd_woke(c);
+}
+int cd_preview_open(void *page) { CoderHost *c = page; return c && coder_page_preview_open(cd_state(c)) ? 1 : 0; }
+int cd_preview_shown(void *page) { CoderHost *c = page; return c && coder_page_preview_shown(cd_state(c)) ? 1 : 0; }
+int cd_preview_set_url(void *page, const char *raw) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_preview_set_url(cd_state(c), cd_string(raw)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_preview_url(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_preview_url(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_preview_set_viewport(void *page, int vp) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_preview_set_viewport(cd_state(c), vp);
+  cd_woke(c);
+}
+int cd_preview_viewport(void *page) { CoderHost *c = page; return c ? (int)coder_page_preview_viewport(cd_state(c)) : 0; }
+void cd_preview_set_picking(void *page, int on) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_preview_set_picking(cd_state(c), on != 0);
+  cd_woke(c);
+}
+int cd_preview_picking(void *page) { CoderHost *c = page; return c && coder_page_preview_picking(cd_state(c)) ? 1 : 0; }
+int cd_preview_rect(void *page, float out[5]) {
+  CoderHost *c = page;
+  return c && out && coder_page_preview_rect(cd_state(c), (coax_v_f32){out, 5}) ? 1 : 0;
+}
+int cd_preview_dom_pick(void *page, const char *selector, const char *tag, const char *text, const char *rect, const char *url, const char *note) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_preview_dom_pick(cd_state(c), cd_string(selector), cd_string(tag), cd_string(text), cd_string(rect), cd_string(url), cd_string(note)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+void cd_preview_trigger_snapshot(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_preview_trigger_snapshot(cd_state(c));
+  cd_woke(c);
+}
+int cd_preview_snapshot_done(void *page, const char *path, int64_t ts) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_preview_snapshot_done(cd_state(c), cd_string(path), ts) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_preview_last_snapshot(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_preview_last_snapshot(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }

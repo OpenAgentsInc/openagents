@@ -1,6 +1,7 @@
 // Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
 // The window: a chat's run, the page, the clock, what the page asks for, and quitting.
 import AppKit
+import WebKit
 
 /// The window: the compiled page fills it and draws and edits its own text fields (page/editor.coax:
 /// the view hands it every key and the input method); what the page asks for (send, stop, a new
@@ -152,6 +153,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
     var termSessions: [Int32: TerminalSession] = [:]
     var termPortTimer: Timer?
+    // embedded Web Preview Pane (Window+Preview.swift, #13888)
+    var previewWebView: WKWebView?
+    var previewScriptHandler: PreviewScriptHandler?
+    var previewNavDelegate: PreviewNavigationDelegate?
+    var previewLoadedURL = ""
     var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
     let voice = CoderVoiceController()   // native & local voice dictation (Window+Voice.swift, #13882)
     private var monitor: Any?
@@ -483,6 +489,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 114: schedWebhookDialog()
         case 115: applyUpdateEverything()
         case 116: checkUpdateEverything()
+        case 130...137: previewAsked(what)
         case 40...43: fileAsked(what)
         default: break
         }
@@ -561,6 +568,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncGymPanelFrame()
         syncSimulatorFrame()
         syncTerminalFrame()
+        syncPreviewFrame()
         syncKeepAwake()
     }
 
@@ -620,6 +628,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         updater.stop()
         usageTimer?.invalidate(); usageTimer = nil
         stopAllTerminals()
+        retirePreview()
         retireEnvironments()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
