@@ -1,0 +1,32 @@
+// Runnable verification check for Capstone #3: Coder takes a job and gets paid (#13908).
+// Exercises the #authority spend-admission, refusal, and receipt boundary across
+// pay/wallet.coax and pay/wallet-rpc.coax.
+//   coax/bin/coax test pay/capstone-job-payout-check.coax
+#load "wallet-rpc.coax";
+
+#test "capstone #3: approved job payout admits, unapproved or over-limit refuses with receipt" {
+  // 1. Valid quote (1000 sats + 10 sat fee, cap 50, daily remaining 5000, not expired)
+  //    MUST refuse when user has not approved yet (no bypass path).
+  v_unapproved := wallet_rpc_spend_admit(true, false, 1000, 10, 50, 5000, 100, 200);
+  #assert v_unapproved == WrpcVerdict.needs_approval;
+  #assert wallet_rpc_http_status(v_unapproved) == 403;
+  #assert wallet_rpc_writes_receipt(v_unapproved);
+
+  // 2. Over daily limit (1000 + 10 > 1005) refuses even if approved.
+  v_limit := wallet_rpc_spend_admit(true, true, 1000, 10, 50, 1005, 100, 200);
+  #assert v_limit == WrpcVerdict.over_daily_limit;
+  #assert wallet_rpc_http_status(v_limit) == 403;
+  #assert wallet_rpc_writes_receipt(v_limit);
+
+  // 3. Expired quote refuses with 409 Conflict.
+  v_exp := wallet_rpc_spend_admit(true, true, 1000, 10, 50, 5000, 200, 200);
+  #assert v_exp == WrpcVerdict.expired;
+  #assert wallet_rpc_http_status(v_exp) == 409;
+  #assert wallet_rpc_writes_receipt(v_exp);
+
+  // 4. Explicit user approval within cap, limit, and expiry admits (HTTP 200).
+  v_ok := wallet_rpc_spend_admit(true, true, 1000, 10, 50, 5000, 100, 200);
+  #assert v_ok == WrpcVerdict.allow;
+  #assert wallet_rpc_http_status(v_ok) == 200;
+  #assert wallet_rpc_writes_receipt(v_ok);
+}

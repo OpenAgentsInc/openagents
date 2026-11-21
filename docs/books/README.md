@@ -131,8 +131,8 @@ model books.
 - [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md):
   Everglade, the Metaverse Engine, Psionic, Nostr and Bitcoin. Design draft.
 - A maker is paid: Metaverse Engine Part VI, Nostr and Bitcoin. Not drafted.
-- Coder takes a job from the queue: Coder, Nostr, Bitcoin and the book that
-  supplies the task. Not drafted.
+- [Coder takes a job and gets paid](capstones/coder-takes-a-job-and-gets-paid.md):
+  Coder, Nostr, Bitcoin and OpenAgents. Verified on CPU / `#authority` boundary.
 
 ## More
 
