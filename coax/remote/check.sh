@@ -299,7 +299,14 @@ changed_since() {   # the files changed since $arg, in $out/changed
   git diff --name-only "$arg" HEAD > "$out/changed" || exit 2
   echo "$(wc -l < "$out/changed" | tr -d ' ') files changed since ${arg:0:10}" >> "$log"
 }
+_realms_assets_synced=0
+ensure_realms_assets() {
+  [[ "$_realms_assets_synced" == 1 ]] && return 0
+  _realms_assets_synced=1
+  step assets-sync coax/web/tool.sh assets-sync --group realms || status=1
+}
 reports() {
+  ensure_realms_assets
   step tools-check coax/web/tool.sh tools-check || status=1
   step remote-cleanup coax/remote/test-remote.sh || status=1
   step after-gates coax/remote/test-after.sh || status=1
@@ -346,6 +353,7 @@ visuals() { step check-visuals coax/web/check-visuals.sh apps/openagents-web || 
 # The other committed files the web build writes (#13117): each realm's page
 # from realms.json, and the changelog page from coax/CHANGELOG.md.
 generated() {
+  ensure_realms_assets
   step realm-pages bun coax/web/realms.ts --check || status=1
   step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
 }
@@ -381,6 +389,7 @@ pack_reader_c() {
 # files' (rig-pack --check), the checks that pose its bodies pass on it (rig-poses.coax), and the packs
 # that carry a rig entry carry the file's (rig-pack --holds; gunzipped for the glade's).
 rig_checks() {
+  ensure_realms_assets
   step rig-source coax/web/tool.sh everglade/model/tools/rig-pack.coax --check everglade/model/rigs.vrg || status=1
   step rig-poses coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg || status=1
   step rig-packs bash -c 'set -e; t="$(mktemp -d)"; r=0; h() { coax/web/tool.sh everglade/model/tools/rig-pack.coax --holds everglade/model/rigs.vrg "$1" || r=1; }; a=apps/openagents-web/realms; h $a/everglade2/assets/everglade2.pack; h $a/everglade/assets/everglade.pack; h $a/everglade/assets/everglade-avatar.pack; h $a/everglade/assets/everglade-zone.pack; gzip -dc $a/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; h "$t/glade.pack"; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
@@ -389,6 +398,7 @@ rig_checks() {
 # II's, and Experimental's once inflated. A pack tool that leaves its working form fails here; the
 # last step of a pack build is metaverse-engine/tools/pack-seal.coax.
 packs_admitted() {
+  ensure_realms_assets
   step packs-admitted bash -c 'set -e; t="$(mktemp -d)"; gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; r=0; coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --check apps/openagents-web/realms/everglade2/assets/everglade2.pack "$t/glade.pack" || r=1; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
   # and Everglade II's names the surface of each id its kit vertices carry (everglade/scene/surfaces.coax, #13545)
   step pack-surfaces coax/web/tool.sh everglade/model/tools/material-pack.coax --holds apps/openagents-web/realms/everglade2/assets/everglade2.pack || status=1
