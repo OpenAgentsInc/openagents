@@ -32,7 +32,7 @@ coax_header :: (out:[]f32,at:int,b:Box,p:Pen,w:[]Work)->int {
   v=put(out,v,"OPENAGENTS / PROJECTS / COAX",x,b.y0+22*d,7*d,accent);
   ab:=add_box(w,b,d);if ab.x1>ab.x0 {v=put(out,v,add_label(w,b,d),ab.x0,b.y0+22*d,7*d,accent);}
   v=put(out,v,"Coax",x,b.y0+58*d,26*d,title);
-  lines:[1]int;v=put_wrapped(out,v,COAX_INTRO,x,b.y0+82*d,8.5*d,body,right-x,19*d,32,lines[..]);
+  lines:[1]int;v=put_lines(out,v,COAX_INTRO,x,b.y0+82*d,8.5*d,body,right-x,19*d,32,lines[..]);
   book:=coax_book_box(b,d);
   v=put(out,v,COAX_BOOK_LABEL,book.x0,book.y0+28*d,9*d,accent);
   v=rule(out,v,book.x0,book.y0+34*d,book.x0+text_width(COAX_BOOK_LABEL,9*d),book.y0+34*d,accent,0.8*p.fade);
