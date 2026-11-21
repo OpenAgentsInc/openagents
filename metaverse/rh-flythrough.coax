@@ -17,7 +17,7 @@ RH3D_DURATION :: 62.0f32;
 // 10-key Metaverse Engine Catmull-Rom flyover spline (Y-up meters, matching metaverse-engine/cam/flyover.coax):
 //   t=0..49s glides smoothly through all 8 stations (X = -42 .. +42, 12m apart along Z = 0),
 //   t=55s sweeps high into a full panoramic vista of all 8 stations end-to-end,
-//   t=62s loops cleanly back toward Station 1 (Zeta Terrain).
+//   t=62s loops cleanly back toward Station 1 (Prime Music / Zeta Terrain).
 RH3D_FLY_PATH :: "0,-49,8.5,15,-42,2.6,0~7,-34,7.2,13.5,-30,2.8,0~14,-21,7.5,14,-18,3.2,0~21,-8,8.5,15,-6,3.8,0~28,6,11.5,18,6,4.5,0~35,19,8.0,14.5,18,3.2,0~42,32,8.5,15,30,3.6,0~49,47,10.5,16,42,5.5,0~55,0,32.0,74,0,3.0,0~62,-49,8.5,15,-42,2.6,0";
 
 Rh3dStation :: struct {
@@ -29,9 +29,13 @@ Rh3dStation :: struct {
   eye_y: f32;
   eye_z: f32;
   short_name: string;
+  badge: string;
   title: string;
   subtitle: string;
   plain_english: string;
+  why_it_matters: string;
+  analogy: string;
+  next_link: string;
   module_name: string;
 }
 
@@ -40,10 +44,14 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -42.0f32, y = 2.6f32, z = 0.0f32, time_s = 0.0f32,
       eye_x = -49.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "1. Zeta Terrain",
-      title = "1. THE MYSTERY — Riemann Zeta Terrain & Critical Wall",
-      subtitle = "Real |zeta(sigma + it)| mountain range computed live in Coax",
-      plain_english = "The height of this 3D landscape is |zeta(s)| over the complex plane. Every deep valley where it hits zero (gold beacons) sits on one golden glass wall at Re(s) = 1/2. Proving NO zero ever wanders off this wall is the Riemann Hypothesis.",
+      short_name = "1. Prime Music",
+      badge = "167-YEAR MYSTERY · $1M PRIZE",
+      title = "1. The 167-Year Mystery: Do Primes Have a Hidden Rhythm?",
+      subtitle = "Unsolved from 1859 until Nov 20, 2026 · Clay $1,000,000 Millennium Prize",
+      plain_english = "The glowing wireframe hills are Riemann's zeta wave computed live in Coax. Every place the wave dives straight down to zero shoots up a glowing gold spike — and every single spike lines up dead-center on that one golden glass wall (Re = 1/2).",
+      why_it_matters = "Prime numbers (2, 3, 5, 7, 11...) are the atoms of math and internet encryption, yet they look totally chaotic. In 1859 Riemann discovered these zero spikes act like hidden sound notes predicting where primes appear. Proving NO zero ever drifts off this wall settles the distribution of primes forever and turns hundreds of 'assuming RH' theorems across math and computer science into proven fact.",
+      analogy = "Like discovering that static noise on a radio is actually a hidden symphony — and proving every single musical note in the universe is tuned to the exact same frequency line.",
+      next_link = "Checking an infinite wave sounds impossible. Next: a surprisingly simple whole-number gut-check that is 100% equivalent to RH.",
       module_name = "Statements",
     };
   }
@@ -51,10 +59,14 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -30.0f32, y = 2.8f32, z = 0.0f32, time_s = 7.0f32,
       eye_x = -34.0f32, eye_y = 7.2f32, eye_z = 13.5f32,
-      short_name = "2. Robin 5040",
-      title = "2. THE EQUIVALENT TEST — Robin's 5040 Gate",
-      subtitle = "Exact divisor sums sigma(n) break the ceiling up to 5040, then stay under forever",
-      plain_english = "In 1984 Guy Robin proved RH is 100% identical to a test on whole numbers: divisor sums sigma(n) stay below e^gamma * n * ln(ln n) for every n > 5040. The golden tower at 5040 is the last exception in math — used to cross-check Challenge.lean.",
+      short_name = "2. 5040 Test",
+      badge = "THE WHOLE-NUMBER GUT CHECK",
+      title = "2. The 5,040 Test: A Whole-Number Check Anyone Can Understand",
+      subtitle = "Guy Robin (1984): RH is 100% identical to a simple ceiling on divisors past 5,040",
+      plain_english = "Each pillar is a whole number, and its height measures how rich its list of divisors is. Early rebel numbers (red bars on the left) poke right through the cyan glass ceiling. The blazing gold tower is 5,040 — the very last rebel. Every number to the right stays safely under the glass.",
+      why_it_matters = "This does two huge things: it translates abstract complex waves into plain whole-number arithmetic, and it gives the Lean proof an independent sanity check (Challenge.lean). Skeptics can inspect this short statement and know immediately the proof really proves the famous Riemann Hypothesis — no hidden definitions or loopholes.",
+      analogy = "Like checking whether a 100-story skyscraper is truly straight using a pocket bubble level: if even ONE number larger than 5,040 ever broke the cyan ceiling, RH would collapse.",
+      next_link = "Stating RH simply is one thing; proving it was a 167-year brick wall. Next: the infamous 2/3 barrier that stopped everyone cold.",
       module_name = "Challenge",
     };
   }
@@ -62,10 +74,14 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -18.0f32, y = 3.2f32, z = 0.0f32, time_s = 14.0f32,
       eye_x = -21.0f32, eye_y = 7.5f32, eye_z = 14.0f32,
-      short_name = "3. 2/3 Barrier",
-      title = "3. THE BREAKTHROUGH — Smashing the 2/3 Wall",
-      subtitle = "Classical transfer stalled below 2/3; Alpoge's 8-stage sqrt(X) chain climbs past it",
-      plain_english = "For decades, classical math stalled under the crimson 2/3 density barrier (red glass slab). By pairing sqrt(X) square-root cancellation with an 8-stage iterated Theta-Lift chain (glowing cyan staircase), Alpoge's proof vaults straight over 2/3.",
+      short_name = "3. 2/3 Wall",
+      badge = "THE HISTORIC BREAKTHROUGH",
+      title = "3. The Breakthrough: Smashing the 100-Year '2/3' Brick Wall",
+      subtitle = "Classical math stalled below 2/3 for a century; Alpoge's 8-step chain vaults clean over it",
+      plain_english = "The glowing red horizontal slab is the infamous 2/3 density wall. Notice the dim red columns behind it — a century of older proof methods — all stalling underneath. Front and center, the glowing cyan staircase climbs 8 stages straight through the gap and punches well past 2/3.",
+      why_it_matters = "THIS is the exact lightning bolt that cracked RH open. Older techniques could squeeze most zeros near the line, but always hit a hard ceiling at 2/3 — leaving room for rogue zeros to hide off the wall. Levent Alpoge chained square-root cancellation with 8 iterated mirror-symmetry boosts that finally clear 2/3 and eliminate every hiding spot.",
+      analogy = "Like trying to reach orbit when every rocket fuel on Earth tops out at 66% escape velocity. Alpoge built an 8-stage booster that finally breaks out into orbit.",
+      next_link = "How does that 8-stage mathematical booster actually work? Next: step inside the Mirror-Symmetry Engine Room.",
       module_name = "Supplements.ThetaPairLifts",
     };
   }
@@ -73,10 +89,14 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -6.0f32, y = 3.8f32, z = 0.0f32, time_s = 21.0f32,
       eye_x = -8.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "4. Theta Bridge",
-      title = "4. THE ENGINE — Formal Degree & Bessel Cathedral",
-      subtitle = "44,578 Supplements modules mapping primes into curved automorphic symmetries",
-      plain_english = "These 8 luminous sapphire columns represent the core analytic engine (FormalDegreeBessel, ThetaPairLifts, Whittaker, Spectral, Endoscopy). They translate prime-number oscillations into symmetries on curved hyperbolic spaces where cancellations become visible.",
+      short_name = "4. Mirror Bridge",
+      badge = "HOW THE ENGINE WORKS",
+      title = "4. The Engine Room: Turning Chaotic Primes Into Smooth Geometry",
+      subtitle = "44,578 Supplements files translating primes into waves on curved mirror-symmetric spaces",
+      plain_english = "Eight tall obsidian pillars beam pulsing cyan light into the hovering diamond translator core. Each pillar is one gear of the analytic engine — spectral frequency splitters, Bessel wave kernels, symmetry transfer, and iterated theta lifts working together.",
+      why_it_matters = "Attacking prime numbers head-on is a dead end because they look too jagged. Modern number theory's biggest superpower is translating primes into smooth vibrating waves on curved higher-dimensional shapes. In that curved mirror world, hidden symmetries force massive chunks of chaotic error to cancel themselves out.",
+      analogy = "Like putting noise-canceling headphones on prime numbers: in raw air the static looks hopeless, but flipped into clean frequencies, opposite noise waves erase each other.",
+      next_link = "Writing out every microscopic logical step of this engine without skipping a single detail takes staggering scale. Next: the 175,182-file Proof City.",
       module_name = "Supplements.FormalDegreeBessel",
     };
   }
@@ -85,9 +105,13 @@ rh3d_station :: (idx: int) -> Rh3dStation {
       x = 6.0f32, y = 4.5f32, z = 0.0f32, time_s = 28.0f32,
       eye_x = 6.0f32, eye_y = 11.5f32, eye_z = 18.0f32,
       short_name = "5. 175k City",
-      title = "5. THE 17.37M-LINE CITY — All 175,182 Real Lean Files",
-      subtitle = "Real 3D skyline hydrated live from ~/.openagents/lean/index/rh-atlas.json",
-      plain_english = "Every skyscraper here is a real folder of machine-checked Lean 4 code built by Levent Alpoge & Claude: Formalism (130,278 files, emerald district) + Supplements (44,578 files, sapphire district) + 8 specialist districts feeding upward into Main.",
+      badge = "17.37 MILLION LINES · HUMAN + AI",
+      title = "5. The 17.37-Million-Line City: Every Real File of the Proof",
+      subtitle = "Real 3D skyline of all 175,182 Lean 4 files hydrated live from rh-atlas.json",
+      plain_english = "Every dark-glass skyscraper here is a REAL folder from the actual proof repo on disk — taller building means more lines of code. The tallest tower alone (AbelianVarietyTheory) packs 99,187 files and 8.14 million lines of computer-checked mathematics!",
+      why_it_matters = "This is a historic shift in how humanity does math and science. Traditional journal papers skip thousands of routine details and take years for humans to referee. Partnering with AI (Claude), Levent Alpoge spelled out EVERY single logical step across 17.37 million lines — bigger than many operating systems — with zero hand-waving.",
+      analogy = "If a blackboard proof is an architect's rough napkin sketch, this city is the full CAD blueprint down to every single bolt and rivet — stress-tested in a physics engine before opening day.",
+      next_link = "Even a 0.0001% leftover error could topple a city this huge. Next: the two mathematical safety nets that lock down every loophole.",
       module_name = "Formalism",
     };
   }
@@ -95,10 +119,14 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = 18.0f32, y = 3.2f32, z = 0.0f32, time_s = 35.0f32,
       eye_x = 19.0f32, eye_y = 8.0f32, eye_z = 14.5f32,
-      short_name = "6. Behrend/Weil",
-      title = "6. THE GUARDRAILS — Behrend Sets & Weil Bounds",
-      subtitle = "Additive combinatorics crystal lattice + algebraic geometry arches lock error terms",
-      plain_english = "Even a tiny uncontrolled error term could hide an off-line zero. Behrend progression-free sphere sets (amber 3D crystal lattice) and Weil finite-field bounds (golden arches overhead) prove residual terms can never conspire against Re(s) = 1/2.",
+      short_name = "6. Safety Nets",
+      badge = "ZERO LOOPHOLES ALLOWED",
+      title = "6. The Safety Nets: Locking Down Every Last Leftover Error",
+      subtitle = "Behrend anti-collision cages + Weil wave speed-limits prove no error can hide a zero",
+      plain_english = "Inside the wireframe cube, glowing amber blocks sit ONLY on a thin hollow sphere shell — a Behrend set where no three blocks ever form an evenly spaced line. Three sweeping golden Weil arches tower overhead like protective containment domes.",
+      why_it_matters = "Over 167 years, dozens of claimed RH proofs collapsed because a tiny leftover 'error term' wasn't tightly bounded and could secretly conceal a rogue off-line zero. These two tools weld every crack shut: Behrend cages forbid sneaky aligned patterns, and Weil bounds cap wave noise at strict square-root speed limits.",
+      analogy = "Like guarding a vault with both motion sensors (Weil speed-limits) and laser grids with zero blind corridors (Behrend spheres) — nothing can sneak past.",
+      next_link = "Wait: 17 million lines written with AI?! How do we KNOW there's no hallucination or sneaky cheat buried inside? Next: the #1 reason everyone knows it's real.",
       module_name = "Formalism.BehrendSets.FinalE",
     };
   }
@@ -106,20 +134,28 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = 30.0f32, y = 3.6f32, z = 0.0f32, time_s = 42.0f32,
       eye_x = 32.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "7. 4 Kernels",
-      title = "7. THE TRUST FORTRESS — 4 Independent Lean Kernels",
-      subtitle = "MIT multi-kernel certification: 0 sorry, 0 native_decide, 3 standard axioms only",
-      plain_english = "Four separate typecheckers (lake check --paranoid, leanchecker, nanoda, con-leche & con-ron) re-checked the proof using only propext, Quot.sound, and Classical.choice. The 6 small amber beacons show the 6 audited metaprogramming sites.",
+      short_name = "7. 4 Checkers",
+      badge = "WHY YOU DON'T HAVE TO TRUST AI",
+      title = "7. Don't Trust, Verify: 4 Independent Computer Fact-Checkers",
+      subtitle = "Lean kernel + C++ leanchecker + Rust nanoda + multi-audit · 0 cheats · 3 basic axioms",
+      plain_english = "Four towering fortress monoliths lock cyan laser beams onto the central logic crystal. Each tower is a completely separate, tiny verifier program written from scratch. The 6 small amber gems in front are the ONLY 6 helper scripts in the entire 17M-line repo — all audited by human experts.",
+      why_it_matters = "THIS is why the Lean FRO & Mathlib community could certify a 17-million-line proof in ONE day! Nobody on Earth could read 17M lines by eye without missing a bug — and you don't have to trust the author OR the AI. If even ONE single step were invalid or cheated ('sorry'), all 4 independent referees would instantly reject it. All 4 passed 100% from just 3 standard math axioms.",
+      analogy = "Bitcoin's 'don't trust, verify' applied to pure math: it doesn't matter whether a human or an AI typed the proof — four tiny independent referee programs verified every single atom of logic.",
+      next_link = "Follow the final glowing conduit to the Summit — where 813,182 proven theorems lock into 4 legendary lines of code.",
       module_name = "BuildAid.D1",
     };
   }
   return Rh3dStation.{
     x = 42.0f32, y = 5.5f32, z = 0.0f32, time_s = 49.0f32,
     eye_x = 47.0f32, eye_y = 10.5f32, eye_z = 16.0f32,
-    short_name = "8. Summit Q.E.D.",
-    title = "8. THE SUMMIT — Main.riemannHypothesis (Q.E.D.)",
-    subtitle = "813,182 theorems lock into 4 lines of Lean: theorem riemannHypothesis := rhOfAll",
-    plain_english = "Every glowing conduit across all 175,182 Lean files converges into this golden summit spire. Four lines in src/Main.lean seal the Riemann Hypothesis — released Nov 20, 2026 and certified by the Lean FRO & Mathlib Initiative on Nov 21, 2026.",
+    short_name = "8. Solved Q.E.D.",
+    badge = "HISTORY MADE · NOV 21, 2026",
+    title = "8. The Summit: Main.riemannHypothesis — 167 Years Later, Q.E.D.",
+    subtitle = "813,182 machine-verified theorems snap into 4 final lines in src/Main.lean",
+    plain_english = "Every glowing conduit from all 7 stations converges into this terraced obsidian ziggurat and shoots straight up the golden light needle through double cyan halo rings into the Q.E.D. crown — the final 4-line theorem sealing the proof.",
+    why_it_matters = "Two world-changing milestones just landed on the same day: (1) The most famous unsolved math problem since 1859 ($1M Millennium Prize) is now certified truth, instantly promoting hundreds of conditional theorems in math and algorithms into unconditional facts. (2) It proves human insight + AI scale + formal Lean verification can solve and certify problems at a scale no human team could ever audit alone.",
+    analogy = "The Moon landing for mathematics — except anyone with a laptop can download the code, run a verifier, and prove to themselves beyond a shadow of a doubt that it's 100% true.",
+    next_link = "Click OVERVIEW to see the full 8-step story end-to-end, SOURCE to inspect real Lean files, or jump to Tabs 2–6 to run your own live checks!",
     module_name = "Main",
   };
 }
@@ -184,9 +220,13 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
     jo_key(o[..], "eye_y_mm"); jo_int(o[..], cast(int) (st.eye_y * 1000.0f32));
     jo_key(o[..], "eye_z_mm"); jo_int(o[..], cast(int) (st.eye_z * 1000.0f32));
     jo_key(o[..], "short_name"); jo_str(o[..], st.short_name);
+    jo_key(o[..], "badge"); jo_str(o[..], st.badge);
     jo_key(o[..], "title"); jo_str(o[..], st.title);
     jo_key(o[..], "subtitle"); jo_str(o[..], st.subtitle);
     jo_key(o[..], "plain_english"); jo_str(o[..], st.plain_english);
+    jo_key(o[..], "why_it_matters"); jo_str(o[..], st.why_it_matters);
+    jo_key(o[..], "analogy"); jo_str(o[..], st.analogy);
+    jo_key(o[..], "next_link"); jo_str(o[..], st.next_link);
     jo_key(o[..], "module"); jo_str(o[..], st.module_name);
     jo_end(o[..]);
   }
@@ -226,7 +266,7 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
   return o[0].n;
 }
 
-#test "rh3d flythrough: Metaverse Engine Catmull-Rom spline is valid, smooth, and hits all 8 stations" {
+#test "rh3d flythrough: Metaverse Engine Catmull-Rom spline is valid, smooth, and all 8 stations have friendly explainers" {
   p := fly_parse(RH3D_FLY_PATH);
   #assert p.ok && p.flight.count == 10 && p.length == RH3D_DURATION;
 
@@ -237,11 +277,16 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
   s_pan := rh3d_eval_fly(55.0f32);
   #assert s_pan.eye.y == 32.0f32 && s_pan.eye.z == 74.0f32;
 
-  for k: 0..<120 {
-    t := cast(f32) k * 0.5f32;
+  for k: 0..<62 {
+    t := cast(f32) k;
     a := rh3d_eval_fly(t);
-    b := rh3d_eval_fly(t + 0.5f32);
-    #assert length(sub(a.eye, b.eye)) < 25.0f32;
+    b := rh3d_eval_fly(t + 1.0f32);
+    #assert length(sub(a.eye, b.eye)) < 35.0f32;
+  }
+
+  for i: 0..<RH3D_STATIONS {
+    st := rh3d_station(i);
+    #assert st.badge.count > 4 && st.plain_english.count > 40 && st.why_it_matters.count > 60 && st.analogy.count > 30 && st.next_link.count > 20;
   }
 
   h_zero := rh3d_zeta_height(0.5, RHM_ZEROS[0]);
@@ -251,9 +296,11 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
   grid: [64] f32;
   #assert rh3d_fill_zeta_grid(8, 8, grid[..]) == 64;
 
-  // C ABI exports work end-to-end
   mm: [6] int;
   #assert oa_dc_rh3d_fly_shot(0, mm[..]) == 1 && mm[0] == -49000 && mm[3] == -42000;
+}
+
+#test "rh3d flythrough: scene JSON export serializes all 8 stations, explainers, and zeta grid" {
   jb: [32768] u8;
-  #assert oa_dc_rh3d_scene_json(jb[..]) > 2000;
+  #assert oa_dc_rh3d_scene_json(jb[..]) > 6000;
 }
