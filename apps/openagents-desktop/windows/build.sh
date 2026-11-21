@@ -129,10 +129,12 @@ for arch in "${arches[@]}"; do
     *) echo "build.sh: --arch is x64, arm64 or all" >&2; exit 2 ;;
   esac
   out="$work/$arch"; rm -rf "$out"; mkdir -p "$out/resources"
+  core_renames=(-Dcb_span=oa_hc_cb_span -Dcb_load_be32=oa_hc_cb_load_be32 -Dcb_load_le32=oa_hc_cb_load_le32 -Dcb_load_be64=oa_hc_cb_load_be64 -Dcb_load_le64=oa_hc_cb_load_le64 -Dcb_store_be32=oa_hc_cb_store_be32 -Dcb_store_le32=oa_hc_cb_store_le32 -Dcb_store_be64=oa_hc_cb_store_be64 -Dcb_store_le64=oa_hc_cb_store_le64 -Dcb_mask=oa_hc_cb_mask -Dcb_ct_select64=oa_hc_cb_ct_select64 -Dcb_ct_select32=oa_hc_cb_ct_select32 -Dcb_ct_equal=oa_hc_cb_ct_equal -Dsha256_state_size=oa_hc_sha256_state_size -Dsha256_update_limit=oa_hc_sha256_update_limit -Dsha256_init=oa_hc_sha256_init -Dsha256_info=oa_hc_sha256_info -DS_hash=oa_hc_S_hash -DS_hex=oa_hc_S_hex)
+  zig cc -target "$target" "${common[@]}" "${core_renames[@]}" -I"$work/c" -I"$p" -c "$work/c/core.c" -o "$work/c/core-$arch.o"
   zig cc -target "$target" "${common[@]}" -municode -Wl,--subsystem,windows \
     -include "$h/vk-load.h" -I"$work/c" -I"$app_dir" -I"$h" -I"$repo/metaverse/gpu" -I"$p" -I"$vk_include" \
     "$here/main.c" "$app_dir/carrier.c" "$h/ui-host.c" "$h/portal.c" "$h/vk-load.c" \
-    "$work/c/gallery.c" "$work/c/core.c" "$work/c/entropy.c" \
+    "$work/c/gallery.c" "$work/c/core-$arch.o" "$work/c/entropy.c" \
     "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" \
     "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" "$p/entropy-native.c" "$p/entropy-foreign.c" \
     "$work/res/app.rc" \

@@ -210,6 +210,76 @@ static void oa_exit_note(void) {
   }
 }
 
+// Single-instance Named Pipe (\\.\pipe\openagents-desktop-activate) and HKCU openagents://
+// protocol handler registration for Windows Desktop (#13889).
+#define OA_WIN_PIPE L"\\\\.\\pipe\\openagents-desktop-activate"
+
+static void oa_win_register_uri_scheme(void) {
+  wchar_t self[MAX_PATH * 4];
+  DWORD n = GetModuleFileNameW(NULL, self, (DWORD)(sizeof self / sizeof self[0]));
+  if (n == 0 || n >= sizeof self / sizeof self[0]) return;
+  HKEY hkey = NULL;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\openagents", 0, NULL, 0, KEY_WRITE, NULL, &hkey, NULL) == ERROR_SUCCESS) {
+    const wchar_t *desc = L"URL:OpenAgents Protocol";
+    const wchar_t *empty = L"";
+    RegSetValueExW(hkey, NULL, 0, REG_SZ, (const BYTE *)desc, (DWORD)((wcslen(desc) + 1) * sizeof(wchar_t)));
+    RegSetValueExW(hkey, L"URL Protocol", 0, REG_SZ, (const BYTE *)empty, (DWORD)sizeof(wchar_t));
+    HKEY hcmd = NULL;
+    if (RegCreateKeyExW(hkey, L"shell\\open\\command", 0, NULL, 0, KEY_WRITE, NULL, &hcmd, NULL) == ERROR_SUCCESS) {
+      wchar_t cmd[MAX_PATH * 4 + 32];
+      swprintf(cmd, sizeof cmd / sizeof cmd[0], L"\"%ls\" \"%%1\"", self);
+      RegSetValueExW(hcmd, NULL, 0, REG_SZ, (const BYTE *)cmd, (DWORD)((wcslen(cmd) + 1) * sizeof(wchar_t)));
+      RegCloseKey(hcmd);
+    }
+    RegCloseKey(hkey);
+  }
+}
+
+static int oa_win_try_forward(const char *payload) {
+  HANDLE h = CreateFileW(OA_WIN_PIPE, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+  if (h == INVALID_HANDLE_VALUE) return 0;
+  DWORD written = 0, readn = 0;
+  BOOL ok = WriteFile(h, payload, (DWORD)strlen(payload), &written, NULL);
+  char reply[64];
+  if (ok) ok = ReadFile(h, reply, sizeof reply - 1, &readn, NULL) && readn > 0;
+  CloseHandle(h);
+  return ok ? 1 : 0;
+}
+
+static volatile LONG oa_win_pipe_running = 0;
+
+static DWORD WINAPI oa_win_pipe_thread(LPVOID arg) {
+  (void)arg;
+  while (InterlockedCompareExchange(&oa_win_pipe_running, 1, 1) == 1) {
+    HANDLE h = CreateNamedPipeW(
+      OA_WIN_PIPE,
+      PIPE_ACCESS_DUPLEX,
+      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+      4, 4096, 4096, 0, NULL
+    );
+    if (h == INVALID_HANDLE_VALUE) { Sleep(250); continue; }
+    if (ConnectNamedPipe(h, NULL) || GetLastError() == ERROR_PIPE_CONNECTED) {
+      char buf[4096];
+      DWORD n = 0, w = 0;
+      if (ReadFile(h, buf, sizeof buf - 1, &n, NULL) && n > 0) {
+        buf[n] = '\0';
+        WriteFile(h, "ok\n", 3, &w, NULL);
+      }
+      FlushFileBuffers(h);
+      DisconnectNamedPipe(h);
+    }
+    CloseHandle(h);
+  }
+  return 0;
+}
+
+static void oa_win_start_activation_server(void) {
+  oa_win_register_uri_scheme();
+  InterlockedExchange(&oa_win_pipe_running, 1);
+  HANDLE th = CreateThread(NULL, 0, oa_win_pipe_thread, NULL, 0, NULL);
+  if (th) CloseHandle(th);
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev, PWSTR cmdline, int show) {
   (void)instance; (void)prev; (void)cmdline; (void)show;
   int argc = 0;
@@ -218,16 +288,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev, PWSTR cmdline, int show)
   char **argv = calloc((size_t)argc + 1, sizeof *argv);
   if (!argv) return 1;
   int console = 0;
+  const char *uri = NULL;
   for (int i = 0; i < argc; i++) {
     int cap = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, NULL, 0, NULL, NULL);
     argv[i] = malloc(cap > 0 ? (size_t)cap : 1);
     if (!argv[i]) return 1;
     oa_utf8(wargv[i], argv[i], cap > 0 ? (size_t)cap : 1);
     if (i > 0 && (strcmp(argv[i], "--smoke") == 0 || strcmp(argv[i], "--check-update") == 0 || strcmp(argv[i], "--shot") == 0)) console = 1;
+    else if (i > 0 && strncmp(argv[i], "openagents://", 13) == 0) uri = argv[i];
   }
   LocalFree(wargv);
+  if (!console && uri) {
+    char msg[4096];
+    snprintf(msg, sizeof msg, "{\"action\":\"uri\",\"uri\":\"%s\"}\n", uri);
+    if (oa_win_try_forward(msg)) return 0;
+  }
   if (console) oa_attach_console();
-  else { oa_open_log(); atexit(oa_exit_note); }
+  else { oa_open_log(); atexit(oa_exit_note); oa_win_start_activation_server(); }
 
   // Vulkan comes from the graphics driver (vulkan-1.dll): without it the window cannot draw, so
   // the person is told what to install before anything else runs.

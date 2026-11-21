@@ -63,7 +63,7 @@ cc "${cflags[@]}" \
   "$p/process-native.c" "$p/store-file-native.c" "$p/read-file-native.c" \
   "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" \
   $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon libsystemd) \
-  -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
+  -Wl,--allow-multiple-definition -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
 
 rm -rf "$work/resources/fonts" "$work/resources/icons"
 mkdir -p "$work/resources/fonts" "$work/resources/icons"

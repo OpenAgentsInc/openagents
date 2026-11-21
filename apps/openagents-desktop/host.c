@@ -1576,6 +1576,7 @@ void cd_upd_all_busy_set(void *page, int busy) {
   CoderHost *c = page; if (!c) return;
   coder_page_upd_all_busy_set(cd_state(c), busy != 0);
   cd_woke(c);
+}
 // Embedded Web Preview Pane & SnapShot region capture (page/preview.coax; #13888).
 void cd_preview_show(void *page, int open) {
   CoderHost *c = page; if (!c) return;
