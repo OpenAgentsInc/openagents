@@ -65,7 +65,6 @@ coax/web/api/import_demo.sh
 coax/web/api/lb.sh
 coax/web/api/mesh-client-test.sh
 coax/web/api/mesh-client.sh
-coax/web/api/mesh-policy.sh
 coax/web/api/mesh-test.sh
 coax/web/api/mesh_test.py
 coax/web/api/piece_live.sh

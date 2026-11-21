@@ -190,8 +190,8 @@ if runs checks; then
 "$work/api" --limits | diff - "$repo_root/apps/openagents-web/docs/limits/index.md" > /dev/null || { echo "apps/openagents-web/docs/limits/index.md is stale: run api --limits > it" >&2; exit 1; }
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/nip98_diff" \
-  "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$here/nip98.generated.c" \
+  -I"$work" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/nip98_diff" \
+  "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$work/nip98.generated.c" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto
 [[ $serve == 1 ]] || "$work/nip98_diff" "$here/nip98_corpus.tsv" 400
 fi
