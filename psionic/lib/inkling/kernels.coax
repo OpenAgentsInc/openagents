@@ -929,11 +929,11 @@ ink_kv_store :: (item:int,n_kv_elem:int,slot_pos:int,k_in:[]f32,v_in:[]f32,k_cac
 // scratch_scores: [n_head * score_stride] f32 scratch buffer in device memory (score_stride >= max_ctx).
 // pos: current 0-based token position.
 // rel_bias: [extent, n_rel] f32; R: [n_head, n_rel] f32; sinks: [n_head] f32; gate: [n_head, head_dim] f32.
-ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32) #export_c #effects(all) {
+ink_attn :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32) #export_c #effects(all) {
     smax:[512]f32;ssum:[512]f32;rmax:[16]f32;rsum:[16]f32;vpart:[512]f32;qsh:[128]f32;rsh:[16]f32;
-    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
-    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
-    kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
+    n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    kv_cap:=cast(int)(kv_info&65535);score_stride:=cast(int)((kv_info>>16)&65535);
     h:=item;
     kv_h:=h/(n_head/n_head_kv);
     n_kv_elem:=n_head_kv*head_dim;
@@ -1029,14 +1029,22 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,re
     }
 }
 
-// ---- Residual add: dst[i] = a[i] + b[i]. Launch items = n, lanes = 1.
+// ---- Residual add: dst[i] = a[i] + b[i]. Launch items = ceil(n/256), lanes = 256 (hits _n32 even for n > 1M!).
 ink_add :: (item:int,n:int,a:[]f32,b:[]f32,dst:[]f32) #export_c #effects(all) {
-    if item<n {dst[item]=a[item]+b[item];}
+    base:=item*INK_NT;
+    for thread:0..<INK_NT {
+        idx:=base+thread;
+        if idx<n {dst[idx]=a[idx]+b[idx];}
+    }
 }
 
-// ---- Copy: dst[i] = src[i]. Launch items = n, lanes = 1.
+// ---- Copy: dst[i] = src[i]. Launch items = ceil(n/256), lanes = 256 (hits _n32 even for n > 1M!).
 ink_copy :: (item:int,n:int,src:[]f32,dst:[]f32) #export_c #effects(all) {
-    if item<n {dst[item]=src[item];}
+    base:=item*INK_NT;
+    for thread:0..<INK_NT {
+        idx:=base+thread;
+        if idx<n {dst[idx]=src[idx];}
+    }
 }
 
 // ---- Final logit softcapping: x[i] = cap * tanh(x[i] / cap). Launch items = n, lanes = 1.
@@ -1056,6 +1064,14 @@ ink_mm_q8 :: (item:int,rows:int,cols:int,n_tok:int,w:[]u16,x:[]f32,out:[]f32) #e
     r_tiles:=(rows+31)/32;
     t0:=(item/r_tiles)*64;
     r0:=(item%r_tiles)*32;
+    m_rem:=n_tok-t0;
+    if m_rem>64 {m_rem=64;}
+    n_a_iters:=(m_rem+3)/4;
+    if n_a_iters<16 {
+        for thread:0..<128 {
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
+        }
+    }
     blocks:=cols/32;words:=blocks*17;
     for blk:0..<blocks {
         xb:=blk*32;boff:=blk*17;
@@ -1063,10 +1079,12 @@ ink_mm_q8 :: (item:int,rows:int,cols:int,n_tok:int,w:[]u16,x:[]f32,out:[]f32) #e
             col:=thread%32;
             t_off:=thread/32;
             for i:0..<16 {
-                t:=t0+t_off+4*i;
-                v:f32=0.0f32;
-                if t<n_tok {v=x[t*cols+xb+col];}
-                a[thread+128*i]=v;
+                if i<n_a_iters {
+                    t:=t0+t_off+4*i;
+                    v:f32=0.0f32;
+                    if t<n_tok {v=x[t*cols+xb+col];}
+                    a[thread+128*i]=v;
+                }
             }
             // 4 threads per row: r_loc = thread/4, sub = thread%4 -> b[thread*8 + 0..7] == b[r_loc*32 + sub*8 + 0..7]!
             row:=r0+thread/4;
@@ -1092,7 +1110,7 @@ ink_mm_q8 :: (item:int,rows:int,cols:int,n_tok:int,w:[]u16,x:[]f32,out:[]f32) #e
     }
     am_sg_spill_64x32(acc[..],a[..]);
     for thread:0..<128 {
-        for i:0..<16 {
+        for i:0..<n_a_iters {
             e:=thread+128*i;
             t:=t0+e/32;c:=e%32;
             row:=r0+c;
@@ -1108,6 +1126,14 @@ ink_mm_f32 :: (item:int,rows:int,cols:int,n_tok:int,w:[]f32,x:[]f32,out:[]f32) #
     r_tiles:=(rows+31)/32;
     t0:=(item/r_tiles)*64;
     r0:=(item%r_tiles)*32;
+    m_rem:=n_tok-t0;
+    if m_rem>64 {m_rem=64;}
+    n_a_iters:=(m_rem+3)/4;
+    if n_a_iters<16 {
+        for thread:0..<128 {
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
+        }
+    }
     blocks:=(cols+31)/32;
     for blk:0..<blocks {
         xb:=blk*32;
@@ -1116,10 +1142,12 @@ ink_mm_f32 :: (item:int,rows:int,cols:int,n_tok:int,w:[]f32,x:[]f32,out:[]f32) #
             t_off:=thread/32;
             c_idx:=xb+col;
             for i:0..<16 {
-                t:=t0+t_off+4*i;
-                v:f32=0.0f32;
-                if t<n_tok && c_idx<cols {v=x[t*cols+c_idx];}
-                a[thread+128*i]=v;
+                if i<n_a_iters {
+                    t:=t0+t_off+4*i;
+                    v:f32=0.0f32;
+                    if t<n_tok && c_idx<cols {v=x[t*cols+c_idx];}
+                    a[thread+128*i]=v;
+                }
             }
             for i:0..<8 {
                 r_loc:=t_off+4*i;
@@ -1338,6 +1366,26 @@ ink_convolve_batch :: (item:int,n_channels:int,n_heads:int,has_dyn:int,n_tok:int
     }
 }
 
+// ---- Fused batched post shortconv + residual add: out[t,ch] = res[t,ch] + (cur[t,ch] + conv(cur)) / sqrt(5).
+// Launch items = n_channels, lanes = 1.
+ink_convolve_add_batch :: (item:int,n_channels:int,n_tok:int,cur:[]f32,w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        h_idx:=item*3;
+        x0:=hist[h_idx+0];x1:=hist[h_idx+1];x2:=hist[h_idx+2];
+        wb:=item*4;
+        w0:=w[wb+0];w1:=w[wb+1];w2:=w[wb+2];w3:=w[wb+3];
+        inv_s:=1.0f32/sqrt(5.0f32);
+        for t:0..<n_tok {
+            idx:=t*n_channels+item;
+            x3:=cur[idx];
+            acc:=x0*w0+x1*w1+x2*w2+x3*w3;
+            out[idx]=res[idx]+(x3+acc)*inv_s;
+            x0=x1;x1=x2;x2=x3;
+        }
+        hist[h_idx+0]=x0;hist[h_idx+1]=x1;hist[h_idx+2]=x2;
+    }
+}
+
 // ---- Batched per-head L2 clip: optional per-channel scale, L2 norm clip to threshold, tau multiplier.
 // Launch items = n_tok * n_heads, lanes = 64.
 ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,tau:f32,x:[]f32,scale:[]f32) #export_c #effects(all) {
@@ -1371,15 +1419,22 @@ ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32
     }
 }
 
-// ---- Batched KV cache store. Launch items = n_tok * n_kv_elem, lanes = 1.
+// ---- Batched KV cache store. Launch items = n_tok, lanes = 128 (hits _n32!).
 ink_kv_store_batch :: (item:int,n_kv_elem:int,pos0:int,kv_cap:int,is_swa:int,k_in:[]f32,v_in:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
-    t:=item/n_kv_elem;
-    e:=item%n_kv_elem;
-    p:=pos0+t;
+    p:=pos0+item;
     slot:=ifx is_swa!=0 then p%kv_cap else p;
-    dst:=slot*n_kv_elem+e;
-    k_cache[dst]=cast(u16)ink_f16(k_in[item]);
-    v_cache[dst]=cast(u16)ink_f16(v_in[item]);
+    sbase:=item*n_kv_elem;
+    dbase:=slot*n_kv_elem;
+    steps:=(n_kv_elem+127)/128;
+    for thread:0..<128 {
+        for st:0..<steps {
+            e:=st*128+thread;
+            if e<n_kv_elem {
+                k_cache[dbase+e]=cast(u16)ink_f16(k_in[sbase+e]);
+                v_cache[dbase+e]=cast(u16)ink_f16(v_in[sbase+e]);
+            }
+        }
+    }
 }
 
 // ---- Batched Router: launch items = n_tok, lanes = 256.
@@ -1464,29 +1519,47 @@ ink_moe_group_batch :: (item:int,n_tok:int,n_used:int,ids:[]u32,wts:[]f32,exp_to
     exp_cnt[item]=cast(u32)c;
 }
 
-// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (IQ4_NL).
-// Writes raw [gate(n_ff), up(n_ff)] into gu_out[(t*n_used + s)*2*n_ff + row].
-// Launch items = n_expert * m_tiles * ceil(2*n_ff / 32), lanes = 128.
-// Uses 4 threads/row (b[thread*8+0..7]) + cached tsh[64] token indices!
-ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
-    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;tsh:[64]int;
-    n_used:=n_used_mt&65535;
-    m_tiles:=(n_used_mt>>16)&65535;
+// ---- Build compact list of active (exp_id, m0) MoE tiles of size tile_m (4 for small prompts, 64 for MMA).
+// Launch items = 1, lanes = 1.
+ink_moe_build_tiles :: (item:int,n_exp:int,tile_m:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
+    t:int=0;
+    for e:0..<n_exp {
+        cnt:=cast(int)exp_cnt[e];
+        if cnt>0 {
+            nt:=(cnt+tile_m-1)/tile_m;
+            for k:0..<nt {
+                tile_exp[t]=cast(u32)e;
+                tile_m0[t]=cast(u32)(k*tile_m);
+                t+=1;
+            }
+        }
+    }
+    tile_cnt[0]=cast(u32)t;
+}
+
+// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (IQ4_NL), compacted active tiles.
+// Launch items = max_tiles * ceil(2*n_ff / 32), lanes = 128.
+ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;tsh:[64]u32;
     r_tiles:=(rows+31)/32;
-    per_exp:=m_tiles*r_tiles;
-    exp_id:=item/per_exp;
-    rem:=item%per_exp;
-    m0:=(rem/r_tiles)*64;
-    r0:=(rem%r_tiles)*32;
-    nm:=cast(int)exp_cnt[exp_id];
-    if m0<nm {
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*32;
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
         ebase:=exp_id*INK_PREFILL_B;
+        m_rem:=nm-m0;
+        if m_rem>64 {m_rem=64;}
+        n_a_iters:=(m_rem+3)/4;
         for thread:0..<128 {
             if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
             if thread<64 {
                 mi:=m0+thread;
-                tsh[thread]=ifx mi<nm then cast(int)exp_toks[ebase+mi] else -1;
+                tsh[thread]=ifx mi<nm then exp_toks[ebase+mi] else 4294967295;
             }
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
         }
         blocks:=cols/32;row_words:=blocks*9;
         exp_base:=exp_id*rows*row_words;
@@ -1496,10 +1569,12 @@ ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f3
                 col:=thread%32;
                 t_off:=thread/32;
                 for i:0..<16 {
-                    t:=tsh[t_off+4*i];
-                    v:f32=0.0f32;
-                    if t>=0 {v=x[t*cols+xb+col];}
-                    a[thread+128*i]=v;
+                    if i<n_a_iters {
+                        tu:=tsh[t_off+4*i];
+                        v:f32=0.0f32;
+                        if tu!=4294967295 {v=x[cast(int)tu*cols+xb+col];}
+                        a[thread+128*i]=v;
+                    }
                 }
                 // 4 threads/row: sub 0->elem 0..7 (w[1..4] lo nibs), sub 1->elem 8..15 (w[5..8] lo nibs),
                 //                sub 2->elem 16..23 (w[1..4] hi nibs), sub 3->elem 24..31 (w[5..8] hi nibs).
@@ -1537,12 +1612,12 @@ ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f3
         }
         am_sg_spill_64x32(acc[..],a[..]);
         for thread:0..<128 {
-            for i:0..<16 {
+            for i:0..<n_a_iters {
                 e:=thread+128*i;
                 mi:=m0+e/32;c:=e%32;
                 row:=r0+c;
                 if mi<nm && row<rows {
-                    tt:=tsh[e/32];
+                    tt:=cast(int)tsh[e/32];
                     ss:=cast(int)exp_slots[ebase+mi];
                     gu_out[(tt*n_used+ss)*rows+row]=a[e];
                 }
@@ -1551,26 +1626,28 @@ ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f3
     }
 }
 
-// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (Q8_0, last 4 layers).
-// Launch items = n_expert * m_tiles * ceil(2*n_ff / 32), lanes = 128.
-ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
-    a:[2048]f32;b:[1024]f32;acc:[2048]f32;tsh:[64]int;
-    n_used:=n_used_mt&65535;
-    m_tiles:=(n_used_mt>>16)&65535;
+// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (Q8_0, last 4 layers), compacted active tiles.
+// Launch items = max_tiles * ceil(2*n_ff / 32), lanes = 128.
+ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;tsh:[64]u32;
     r_tiles:=(rows+31)/32;
-    per_exp:=m_tiles*r_tiles;
-    exp_id:=item/per_exp;
-    rem:=item%per_exp;
-    m0:=(rem/r_tiles)*64;
-    r0:=(rem%r_tiles)*32;
-    nm:=cast(int)exp_cnt[exp_id];
-    if m0<nm {
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*32;
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
         ebase:=exp_id*INK_PREFILL_B;
+        m_rem:=nm-m0;
+        if m_rem>64 {m_rem=64;}
+        n_a_iters:=(m_rem+3)/4;
         for thread:0..<128 {
             if thread<64 {
                 mi:=m0+thread;
-                tsh[thread]=ifx mi<nm then cast(int)exp_toks[ebase+mi] else -1;
+                tsh[thread]=ifx mi<nm then exp_toks[ebase+mi] else 4294967295;
             }
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
         }
         blocks:=cols/32;row_words:=blocks*17;
         exp_base:=exp_id*rows*row_words;
@@ -1580,10 +1657,12 @@ ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32
                 col:=thread%32;
                 t_off:=thread/32;
                 for i:0..<16 {
-                    t:=tsh[t_off+4*i];
-                    v:f32=0.0f32;
-                    if t>=0 {v=x[t*cols+xb+col];}
-                    a[thread+128*i]=v;
+                    if i<n_a_iters {
+                        tu:=tsh[t_off+4*i];
+                        v:f32=0.0f32;
+                        if tu!=4294967295 {v=x[cast(int)tu*cols+xb+col];}
+                        a[thread+128*i]=v;
+                    }
                 }
                 row:=r0+thread/4;
                 sub:=thread%4;
@@ -1604,12 +1683,12 @@ ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32
         }
         am_sg_spill_64x32(acc[..],a[..]);
         for thread:0..<128 {
-            for i:0..<16 {
+            for i:0..<n_a_iters {
                 e:=thread+128*i;
                 mi:=m0+e/32;c:=e%32;
                 row:=r0+c;
                 if mi<nm && row<rows {
-                    tt:=tsh[e/32];
+                    tt:=cast(int)tsh[e/32];
                     ss:=cast(int)exp_slots[ebase+mi];
                     gu_out[(tt*n_used+ss)*rows+row]=a[e];
                 }
@@ -1618,41 +1697,48 @@ ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32
     }
 }
 
-// ---- Batched SITU activation: gu_out[slot_idx * 2*n_ff + (0..n_ff-1 | n_ff..2*n_ff-1)] -> hid[slot_idx * n_ff + row].
-// Launch items = n_tok * n_used * n_ff, lanes = 1.
+// ---- Batched SITU activation: Launch items = n_tok * n_used (<= 8192 -> hits _n32!), lanes = 128.
 ink_situ_batch :: (item:int,n_ff:int,beta:f32,lb:f32,gu_out:[]f32,hid:[]f32) #export_c #effects(all) {
-    slot_idx:=item/n_ff;
-    row:=item%n_ff;
-    base:=slot_idx*2*n_ff;
-    g:=gu_out[base+row];
-    u:=gu_out[base+n_ff+row];
-    act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
-    if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
-    hid[item]=act*u;
+    base:=item*2*n_ff;
+    hbase:=item*n_ff;
+    steps:=(n_ff+127)/128;
+    for thread:0..<128 {
+        for s:0..<steps {
+            row:=s*128+thread;
+            if row<n_ff {
+                g:=gu_out[base+row];
+                u:=gu_out[base+n_ff+row];
+                act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
+                if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
+                hid[hbase+row]=act*u;
+            }
+        }
+    }
 }
 
-// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (IQ4_NL).
-// Launch items = n_expert * m_tiles * ceil(rows / 32), lanes = 128.
-// Uses 4 threads/row (b[thread*8+0..7]) + cached hsh[64] hidden-row offsets!
-ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
-    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;hsh:[64]int;
-    n_used:=n_used_mt&65535;
-    m_tiles:=(n_used_mt>>16)&65535;
+// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (IQ4_NL), compacted active tiles.
+// Launch items = max_tiles * ceil(rows / 32), lanes = 128.
+ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;hsh:[64]u32;
     r_tiles:=(rows+31)/32;
-    per_exp:=m_tiles*r_tiles;
-    exp_id:=item/per_exp;
-    rem:=item%per_exp;
-    m0:=(rem/r_tiles)*64;
-    r0:=(rem%r_tiles)*32;
-    nm:=cast(int)exp_cnt[exp_id];
-    if m0<nm {
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*32;
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
         ebase:=exp_id*INK_PREFILL_B;
+        m_rem:=nm-m0;
+        if m_rem>64 {m_rem=64;}
+        n_a_iters:=(m_rem+3)/4;
         for thread:0..<128 {
             if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
             if thread<64 {
                 mi:=m0+thread;
-                hsh[thread]=ifx mi<nm then (cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else -1;
+                hsh[thread]=ifx mi<nm then cast(u32)(cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else 4294967295;
             }
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
         }
         blocks:=cols/32;row_words:=blocks*9;
         exp_base:=exp_id*rows*row_words;
@@ -1662,10 +1748,12 @@ ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]
                 col:=thread%32;
                 t_off:=thread/32;
                 for i:0..<16 {
-                    hs:=hsh[t_off+4*i];
-                    v:f32=0.0f32;
-                    if hs>=0 {v=x[hs*cols+xb+col];}
-                    a[thread+128*i]=v;
+                    if i<n_a_iters {
+                        hu:=hsh[t_off+4*i];
+                        v:f32=0.0f32;
+                        if hu!=4294967295 {v=x[cast(int)hu*cols+xb+col];}
+                        a[thread+128*i]=v;
+                    }
                 }
                 row:=r0+thread/4;
                 sub:=thread%4;
@@ -1701,12 +1789,12 @@ ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]
         }
         am_sg_spill_64x32(acc[..],a[..]);
         for thread:0..<128 {
-            for i:0..<16 {
+            for i:0..<n_a_iters {
                 e:=thread+128*i;
                 mi:=m0+e/32;c:=e%32;
                 row:=r0+c;
                 if mi<nm && row<rows {
-                    hs:=hsh[e/32];
+                    hs:=cast(int)hsh[e/32];
                     ew:=exp_wts[ebase+mi];
                     slot_out[hs*rows+row]=ew*a[e];
                 }
@@ -1715,26 +1803,28 @@ ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]
     }
 }
 
-// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (Q8_0, last 4 layers).
-// Launch items = n_expert * m_tiles * ceil(rows / 32), lanes = 128.
-ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
-    a:[2048]f32;b:[1024]f32;acc:[2048]f32;hsh:[64]int;
-    n_used:=n_used_mt&65535;
-    m_tiles:=(n_used_mt>>16)&65535;
+// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (Q8_0, last 4 layers), compacted active tiles.
+// Launch items = max_tiles * ceil(rows / 32), lanes = 128.
+ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;hsh:[64]u32;
     r_tiles:=(rows+31)/32;
-    per_exp:=m_tiles*r_tiles;
-    exp_id:=item/per_exp;
-    rem:=item%per_exp;
-    m0:=(rem/r_tiles)*64;
-    r0:=(rem%r_tiles)*32;
-    nm:=cast(int)exp_cnt[exp_id];
-    if m0<nm {
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*32;
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
         ebase:=exp_id*INK_PREFILL_B;
+        m_rem:=nm-m0;
+        if m_rem>64 {m_rem=64;}
+        n_a_iters:=(m_rem+3)/4;
         for thread:0..<128 {
             if thread<64 {
                 mi:=m0+thread;
-                hsh[thread]=ifx mi<nm then (cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else -1;
+                hsh[thread]=ifx mi<nm then cast(u32)(cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else 4294967295;
             }
+            for i:0..<16 {if i>=n_a_iters {a[thread+128*i]=0.0f32;}}
         }
         blocks:=cols/32;row_words:=blocks*17;
         exp_base:=exp_id*rows*row_words;
@@ -1744,10 +1834,12 @@ ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f
                 col:=thread%32;
                 t_off:=thread/32;
                 for i:0..<16 {
-                    hs:=hsh[t_off+4*i];
-                    v:f32=0.0f32;
-                    if hs>=0 {v=x[hs*cols+xb+col];}
-                    a[thread+128*i]=v;
+                    if i<n_a_iters {
+                        hu:=hsh[t_off+4*i];
+                        v:f32=0.0f32;
+                        if hu!=4294967295 {v=x[cast(int)hu*cols+xb+col];}
+                        a[thread+128*i]=v;
+                    }
                 }
                 row:=r0+thread/4;
                 sub:=thread%4;
@@ -1768,12 +1860,12 @@ ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f
         }
         am_sg_spill_64x32(acc[..],a[..]);
         for thread:0..<128 {
-            for i:0..<16 {
+            for i:0..<n_a_iters {
                 e:=thread+128*i;
                 mi:=m0+e/32;c:=e%32;
                 row:=r0+c;
                 if mi<nm && row<rows {
-                    hs:=hsh[e/32];
+                    hs:=cast(int)hsh[e/32];
                     ew:=exp_wts[ebase+mi];
                     slot_out[hs*rows+row]=ew*a[e];
                 }
@@ -1782,28 +1874,30 @@ ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f
     }
 }
 
-// ---- Sum n_used expert slot outputs into moe_out[t*dim + r]. Launch items = n_tok * dim, lanes = 1.
+// ---- Sum n_used expert slot outputs into moe_out[t*dim + r]. Launch items = n_tok (<= 1024 -> _n32!), lanes = 128.
 ink_moe_reduce_batch :: (item:int,dim:int,n_used:int,slot_out:[]f32,out:[]f32) #export_c #effects(all) {
-    t:=item/dim;
-    r:=item%dim;
-    s:f32=0;
-    base:=t*n_used*dim+r;
-    for slot:0..<n_used {s+=slot_out[base+slot*dim];}
-    out[item]=s;
+    tbase:=item*n_used*dim;
+    obase:=item*dim;
+    steps:=(dim+127)/128;
+    for thread:0..<128 {
+        for st:0..<steps {
+            r:=st*128+thread;
+            if r<dim {
+                s:f32=0;
+                for slot:0..<n_used {s+=slot_out[tbase+slot*dim+r];}
+                out[obase+r]=s;
+            }
+        }
+    }
 }
 
 // ---- MMA Prefill Attention Stage 1: Q*K^T + rel_bias - sink using am_sg_mma_64x32x32!
-// dims0 = n_head | (n_head_kv << 16) | (head_dim << 32) | (n_rel << 48)
-// dims1 = extent | (is_swa << 24) | (swa << 32)
-// kv_info = kv_cap | (score_stride << 32)
-// pos_info = pos0 | (n_tok << 24) | (k_start << 40)
 // Launch items = n_head * ceil(n_tok/64) * ceil(span/32), lanes = 128.
-ink_attn_scores_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,scores:[]f32) #export_c #effects(all) {
+ink_attn_scores_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,scores:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
-    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
-    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
-    kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
-    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    kv_cap:=cast(int)(kv_info&65535);score_stride:=cast(int)((kv_info>>16)&65535);
     span:=pos0+n_tok-k_start;
     qt:=(n_tok+63)/64;kt:=(span+31)/32;
     per:=qt*kt;
@@ -1865,11 +1959,10 @@ ink_attn_scores_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,q:
 
 // ---- MMA Prefill Attention Stage 2: Softmax with sink=0 over valid [j_lo..j_hi) and zero-fill rest of span.
 // Launch items = n_tok * n_head, lanes = 256.
-ink_attn_softmax_mma :: (item:int,dims0:int,dims1:int,score_stride:int,pos_info:int,scores:[]f32) #export_c #effects(all) {
+ink_attn_softmax_mma :: (item:int,dims0:u32,dims1:u32,score_stride:int,pos0:int,n_tok:int,k_start:int,scores:[]f32) #export_c #effects(all) {
     smax:[256]f32;ssum:[256]f32;rmax:[16]f32;rsum:[16]f32;
-    n_head:=dims0&65535;
-    is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
-    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    n_head:=cast(int)(dims0&255);
+    is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
     span:=pos0+n_tok-k_start;
     t:=item/n_head;
     p:=pos0+t;
@@ -1937,12 +2030,11 @@ ink_attn_softmax_mma :: (item:int,dims0:int,dims1:int,score_stride:int,pos_info:
 
 // ---- MMA Prefill Attention Stage 3: P*V * sigmoid(gate) using am_sg_mma_64x32x32!
 // Launch items = n_head * ceil(n_tok/64) * 4, lanes = 128.
-ink_attn_values_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,scores:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
+ink_attn_values_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,scores:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
     a:[2048]f32;b:[1024]f32;acc:[2048]f32;
-    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;
-    is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
-    kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
-    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);
+    is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    kv_cap:=cast(int)(kv_info&65535);score_stride:=cast(int)((kv_info>>16)&65535);
     span:=pos0+n_tok-k_start;
     qt:=(n_tok+63)/64;
     per:=qt*4;
@@ -1995,14 +2087,14 @@ ink_attn_values_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,sc
 // Launch items = n_head_kv * n_splits, lanes = 128.
 // Each threadgroup processes 1 KV head (3 Q heads: h0, h0+1, h0+2) across its split of keys in 16-key tiles.
 // Reads K and V 100% coalesced and shares them across all 3 Q heads (3x less KV bandwidth, zero scratch_scores).
-ink_attn_gqa_split :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,v_cache:[]u16,split_out:[]f32) #export_c #effects(all) {
+ink_attn_gqa_split :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,v_cache:[]u16,split_out:[]f32) #export_c #effects(all) {
     q0sh:[128]f32;q1sh:[128]f32;q2sh:[128]f32;rsh:[48]f32;ksh:[2048]f32;scsh:[64]f32;wsh:[64]f32;
     vacc0:[128]f32;vacc1:[128]f32;vacc2:[128]f32;
     ms0:[128]f32;ms1:[128]f32;ms2:[128]f32;
     ls0:[128]f32;ls1:[128]f32;ls2:[128]f32;
-    n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
-    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
-    kv_cap:=kv_info&4294967295;n_splits:=(kv_info>>32)&4294967295;
+    n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    kv_cap:=cast(int)(kv_info&65535);n_splits:=cast(int)((kv_info>>16)&65535);
     kv_h:=item/n_splits;
     sp:=item%n_splits;
     h0:=kv_h*3;h1:=h0+1;h2:=h0+2;
@@ -2154,3 +2246,245 @@ ink_attn_gqa_reduce :: (item:int,n_splits:int,split_out:[]f32,gate:[]f32,out:[]f
         out[idx]=(vtot/gsum)*ink_sigmoid(gate[idx]);
     }
 }
+
+// ---- Sprint 8A: Metal 4 Neural Accelerator (am_matmul_bf16) dense Q8_0 prefill!
+// Dequantize Q8_0 [rows, cols] -> BF16 pairs [rows, cols/2] u32.
+// Launch items = rows, lanes = 128 (hits _n32, 100% coalesced).
+ink_dequant_q8_bf16 :: (item:int,rows:int,cols:int,w:[]u16,out_bf16:[]u32) #export_c #effects(all) {
+    if item<rows {
+        blocks:=cols/32;
+        words:=blocks*17;
+        half_cols:=cols/2;
+        rbase:=item*words;
+        obase:=item*half_cols;
+        for thread:0..<128 {
+            b_lane:=thread/16;
+            k:=thread%16;
+            for step:0..<(blocks+7)/8 {
+                blk:=step*8+b_lane;
+                if blk<blocks {
+                    at:=rbase+blk*17;
+                    sc:=ink_half(cast(u32)w[at]);
+                    v:=cast(u32)w[at+1+k];
+                    f0:=sc*ink_signed(v&255);
+                    f1:=sc*ink_signed(v>>8);
+                    b0:=(f32_bits(f0)+0x8000)>>16;
+                    b1:=(f32_bits(f1)+0x8000)>>16;
+                    out_bf16[obase+blk*16+k]=b0|(b1<<16);
+                }
+            }
+        }
+    }
+}
+
+// Metal 4 tensor-op GEMM (64x64 tile for nb>=64, 16x64 tile for 8<=nb<64) on M5 Max Neural Accelerators!
+ink_mm_bf16 :: (item:int,rows:int,cols:int,n_tok:int,w_bf16:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    r_tiles:=(rows+63)/64;
+    t0:=(item/r_tiles)*64;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    am_matmul_bf16(128,64,64,rows,cols,n_tok,r0,t0,w_bf16[..],x[..],out[..]);
+}
+
+ink_mm_bf16_16 :: (item:int,rows:int,cols:int,n_tok:int,w_bf16:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    r_tiles:=(rows+63)/64;
+    t0:=(item/r_tiles)*16;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    am_matmul_bf16(128,16,64,rows,cols,n_tok,r0,t0,w_bf16[..],x[..],out[..]);
+}
+
+// ---- Sprint 8B: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE!
+// Compute prefix sums exp_off[0..n_exp-1] from exp_cnt[0..n_exp-1]. Launch items = 1, lanes = 1.
+ink_moe_exp_off :: (item:int,n_exp:int,exp_cnt:[]u32,exp_off:[]u32) #export_c #effects(all) {
+    acc:int=0;
+    for e:0..<n_exp {
+        exp_off[e]=cast(u32)acc;
+        acc+=cast(int)exp_cnt[e];
+    }
+}
+
+// Build active (exp_id, m0) tiles for expert chunk [e_lo..e_hi). Launch items = 1, lanes = 1.
+ink_moe_chunk_tiles :: (item:int,e_lo:int,e_hi:int,tile_m:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
+    t:int=0;
+    for e:e_lo..<e_hi {
+        cnt:=cast(int)exp_cnt[e];
+        if cnt>0 {
+            nt:=(cnt+tile_m-1)/tile_m;
+            for k:0..<nt {
+                tile_exp[t]=cast(u32)e;
+                tile_m0[t]=cast(u32)(k*tile_m);
+                t+=1;
+            }
+        }
+    }
+    tile_cnt[0]=cast(u32)t;
+}
+
+// Gather tokens into contiguous per-expert rows x_exp[exp_off[e]+c] and record row_dst / row_wt.
+// Launch items = n_exp, lanes = 128.
+ink_moe_gather_x :: (item:int,dim:int,n_used:int,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,exp_off:[]u32,x_exp:[]f32,row_dst:[]u32,row_wt:[]f32) #export_c #effects(all) {
+    cnt:=cast(int)exp_cnt[item];
+    if cnt>0 {
+        ebase:=item*INK_PREFILL_B;
+        off:=cast(int)exp_off[item];
+        steps:=(dim+127)/128;
+        for c:0..<cnt {
+            tok:=cast(int)exp_toks[ebase+c];
+            sl:=cast(int)exp_slots[ebase+c];
+            ew:=exp_wts[ebase+c];
+            dst_row:=off+c;
+            sbase:=tok*dim;
+            dbase:=dst_row*dim;
+            for thread:0..<128 {
+                if thread==0 {
+                    row_dst[dst_row]=cast(u32)(tok*n_used+sl);
+                    row_wt[dst_row]=ew;
+                }
+                for st:0..<steps {
+                    r:=st*128+thread;
+                    if r<dim {x_exp[dbase+r]=x[sbase+r];}
+                }
+            }
+        }
+    }
+}
+
+// Dequantize IQ4_NL expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32.
+// Launch items = e_cnt * rows, lanes = 128.
+ink_dequant_iq4_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
+    lut:[16]f32;
+    local_e:=item/rows;
+    row:=item%rows;
+    exp_id:=e_lo+local_e;
+    if exp_cnt[exp_id]>0 {
+        blocks:=cols/32;
+        row_words:=blocks*9;
+        half_cols:=cols/2;
+        rbase:=(exp_id*rows+row)*row_words;
+        obase:=(local_e*rows+row)*half_cols;
+        for thread:0..<128 {
+            if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+        }
+        for thread:0..<128 {
+            b_lane:=thread/8;
+            k:=thread%8;
+            for step:0..<(blocks+15)/16 {
+                blk:=step*16+b_lane;
+                if blk<blocks {
+                    at:=rbase+blk*9;
+                    sc:=ink_half(cast(u32)w[at]);
+                    v:=cast(u32)w[at+1+k];
+                    f0:=sc*lut[cast(int)(v&15)];
+                    f1:=sc*lut[cast(int)((v>>4)&15)];
+                    f2:=sc*lut[cast(int)((v>>8)&15)];
+                    f3:=sc*lut[cast(int)(v>>12)];
+                    b0:=(f32_bits(f0)+0x8000)>>16;
+                    b1:=(f32_bits(f1)+0x8000)>>16;
+                    b2:=(f32_bits(f2)+0x8000)>>16;
+                    b3:=(f32_bits(f3)+0x8000)>>16;
+                    out_bf16[obase+blk*16+k]=b0|(b2<<16);
+                    out_bf16[obase+blk*16+8+k]=b1|(b3<<16);
+                }
+            }
+        }
+    }
+}
+
+// Dequantize Q8_0 expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32.
+// Launch items = e_cnt * rows, lanes = 128.
+ink_dequant_q8_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
+    local_e:=item/rows;
+    row:=item%rows;
+    exp_id:=e_lo+local_e;
+    if exp_cnt[exp_id]>0 {
+        blocks:=cols/32;
+        row_words:=blocks*17;
+        half_cols:=cols/2;
+        rbase:=(exp_id*rows+row)*row_words;
+        obase:=(local_e*rows+row)*half_cols;
+        for thread:0..<128 {
+            b_lane:=thread/16;
+            k:=thread%16;
+            for step:0..<(blocks+7)/8 {
+                blk:=step*8+b_lane;
+                if blk<blocks {
+                    at:=rbase+blk*17;
+                    sc:=ink_half(cast(u32)w[at]);
+                    v:=cast(u32)w[at+1+k];
+                    f0:=sc*ink_signed(v&255);
+                    f1:=sc*ink_signed(v>>8);
+                    b0:=(f32_bits(f0)+0x8000)>>16;
+                    b1:=(f32_bits(f1)+0x8000)>>16;
+                    out_bf16[obase+blk*16+k]=b0|(b1<<16);
+                }
+            }
+        }
+    }
+}
+
+// Metal 4 Neural Accelerator batched MoE GEMM on contiguous per-expert activations!
+// Launch items = max_chunk_tiles * ceil(rows/64), lanes = 128 (64x64 tile for large chunks).
+ink_moe_mm_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w_bf16:[]u32,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+    r_tiles:=(rows+63)/64;
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        local_e:=exp_id-e_lo;
+        nm:=cast(int)exp_cnt[exp_id];
+        e_off:=cast(int)exp_off[exp_id];
+        w_stride:=rows*(cols/2);
+        w_lo:=local_e*w_stride;
+        x_lo:=e_off*cols;
+        y_lo:=e_off*rows;
+        am_matmul_bf16(128,64,64,rows,cols,nm,r0,m0,
+            w_bf16[w_lo..<w_lo+w_stride],
+            x_exp[x_lo..<x_lo+nm*cols],
+            y_exp[y_lo..<y_lo+nm*rows]);
+    }
+}
+
+// Metal 4 Neural Accelerator MoE GEMM for small prompts (16x64 tile, tile_m=16).
+ink_moe_mm_bf16_16 :: (item:int,e_lo:int,rows:int,cols:int,w_bf16:[]u32,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+    r_tiles:=(rows+63)/64;
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        local_e:=exp_id-e_lo;
+        nm:=cast(int)exp_cnt[exp_id];
+        e_off:=cast(int)exp_off[exp_id];
+        w_stride:=rows*(cols/2);
+        w_lo:=local_e*w_stride;
+        x_lo:=e_off*cols;
+        y_lo:=e_off*rows;
+        am_matmul_bf16(128,16,64,rows,cols,nm,r0,m0,
+            w_bf16[w_lo..<w_lo+w_stride],
+            x_exp[x_lo..<x_lo+nm*cols],
+            y_exp[y_lo..<y_lo+nm*rows]);
+    }
+}
+
+// Scatter weighted expert outputs back to moe_slot_out[(tok*n_used + sl)*dim + r].
+// Launch items = n_tok * n_used, lanes = 128.
+ink_moe_scatter_wt :: (item:int,dim:int,out_exp:[]f32,row_dst:[]u32,row_wt:[]f32,slot_out:[]f32) #export_c #effects(all) {
+    dst_slot:=cast(int)row_dst[item];
+    ew:=row_wt[item];
+    sbase:=item*dim;
+    dbase:=dst_slot*dim;
+    steps:=(dim+127)/128;
+    for thread:0..<128 {
+        for st:0..<steps {
+            r:=st*128+thread;
+            if r<dim {slot_out[dbase+r]=ew*out_exp[sbase+r];}
+        }
+    }
+}
+
