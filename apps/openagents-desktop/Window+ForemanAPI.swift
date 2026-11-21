@@ -21,6 +21,10 @@ extension CoderWindow {
             foremanWait(request.payload, done: done)
             return
         }
+        if request.path.hasPrefix("/v1/wallet/") {
+            handleWalletRPC(request, done: done)
+            return
+        }
         if request.path == "/v1/gym" && (request.method == "GET" || request.method == "POST") {
             if request.method == "GET" {
                 done(ForemanResponse(status: 200, body: gymStateForProgram()))

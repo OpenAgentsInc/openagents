@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openagents.desktop.wallet-rpc.v1",
+  "description": "Local loopback wallet RPC request/receipt contract between OpenAgents Desktop (SparkWallet.swift), openagents CLI, and agent workers (#13901). Seeds and private keys never appear on this wire.",
+  "type": "object",
+  "required": ["schema_version", "ok", "status"],
+  "properties": {
+    "schema_version": { "const": "openagents.desktop.wallet-rpc.v1" },
+    "ok": { "type": "boolean" },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "not_ready", "quoted", "sent", "pending", "refused_by_user", "refused_by_policy", "failed"]
+    },
+    "balance_sats": { "type": "integer", "minimum": 0 },
+    "daily_limit_sats": { "type": "integer", "minimum": 0 },
+    "daily_spent_sats": { "type": "integer", "minimum": 0 },
+    "daily_remaining_sats": { "type": "integer", "minimum": 0 },
+    "payment_request": { "type": "string" },
+    "receipt": {
+      "type": "object",
+      "required": ["timestamp", "rail", "amount_sats", "fee_sats", "outcome"],
+      "properties": {
+        "timestamp": { "type": "integer" },
+        "id": { "type": "string" },
+        "rail": { "type": "string" },
+        "recipient": { "type": "string" },
+        "amount_sats": { "type": "integer", "minimum": 0 },
+        "fee_sats": { "type": "integer", "minimum": 0 },
+        "outcome": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

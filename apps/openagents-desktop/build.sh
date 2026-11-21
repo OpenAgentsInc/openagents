@@ -36,21 +36,24 @@ done
 ld -r "$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/process-native.c.o" "$work/c/store-file-native.c.o" "$work/c/read-file-native.c.o" "$work/c/socket-native.c.o" "$work/c/entropy-native.c.o" "$work/c/entropy-foreign.c.o" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
 "$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h" > "$work/c/pay-wallet.c"
 "$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
+"$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/pay-wallet.c" -o "$work/c/pay-wallet-all.o"
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/pay-wallet-backup.c" -o "$work/c/pay-wallet-backup-all.o"
+/usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/pay-wallet-rpc.c" -o "$work/c/pay-wallet-rpc-all.o"
 ld -r "$work/c/pay-wallet-all.o" -exported_symbol '_metaverse_wallet_*' -o "$work/c/pay-wallet.o"
 ld -r "$work/c/pay-wallet-backup-all.o" -exported_symbol '_metaverse_backup_*' -exported_symbol '_metaverse_limit_*' -o "$work/c/pay-wallet-backup.o"
+ld -r "$work/c/pay-wallet-rpc-all.o" -exported_symbol '_wallet_rpc_*' -o "$work/c/pay-wallet-rpc.o"
 spark_sdk="$("$repo/apps/shared/host/apple/spark-sdk.sh")"
 mkdir -p "$app/Contents/Frameworks"
 rm -rf "$app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
 cp -R "$spark_sdk/breez_sdk_sparkFFI.framework" "$app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
   -I "$spark_sdk" -F "$spark_sdk" \
-  "$here/DesktopCore.swift" "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/Window+GitDiff.swift" "$here/Window+Simulator.swift" "$here/Window+Terminal.swift" "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift" "$here/GymDiscovery.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift" "$here/Window+Wallet.swift" "$here/AppDelegate.swift" \
+  "$here/DesktopCore.swift" "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/Window+GitDiff.swift" "$here/Window+Simulator.swift" "$here/Window+Terminal.swift" "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift" "$here/GymDiscovery.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift" "$here/Window+Wallet.swift" "$here/Window+WalletRPC.swift" "$here/AppDelegate.swift" \
   "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$here/Worktree.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" \
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift" \
   "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift" "$repo/apps/shared/host/apple/WalletKeychain.swift" "$repo/apps/shared/host/apple/SparkWallet.swift" \
-  "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/lab-sign.o" "$work/c/desktop-core.o" "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o" \
+  "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/lab-sign.o" "$work/c/desktop-core.o" "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o" "$work/c/pay-wallet-rpc.o" \
   "$spark_sdk/libBreezSdkSpark.a" "$spark_sdk/libBigNumber.a" \
   -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \

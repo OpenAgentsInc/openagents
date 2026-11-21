@@ -41,6 +41,14 @@ bool metaverse_backup_newer(int64_t seen, int64_t epoch);
 int64_t metaverse_limit_local(int64_t amount, int64_t spent, int64_t limit, bool logged_in);
 int64_t metaverse_limit_next(int64_t status, bool step_up, bool stepped, bool can, int64_t local);
 
+/* pay/wallet-rpc.coax (#authority) */
+typedef uint8_t coax_t_WrpcVerdict;
+coax_t_WrpcVerdict wallet_rpc_spend_admit(
+    bool ready, bool approved, int64_t amount, int64_t fee,
+    int64_t fee_cap, int64_t daily_remaining, int64_t now, int64_t expires);
+int64_t wallet_rpc_http_status(coax_t_WrpcVerdict v);
+bool wallet_rpc_writes_receipt(coax_t_WrpcVerdict v);
+
 #ifdef __cplusplus
 }
 #endif

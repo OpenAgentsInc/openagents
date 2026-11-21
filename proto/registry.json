@@ -1420,6 +1420,19 @@
       "note": "Read-only native Spark observation: status 0 loading, 1 available, 2 missing seed, 3 locked, 4 unreadable seed, 5 unavailable. Sats is -1 except for a successful supply-bounded Bitcoin balance. No seed or SDK error text crosses the bridge."
     },
     {
+      "id": "openagents.desktop.wallet-rpc.v1",
+      "kind": "profile",
+      "owner": "payments",
+      "schema": "proto/coax-native/wallet-rpc-v1.json",
+      "codec": "pay/wallet-rpc.coax",
+      "check": "coax/bin/coax test pay/wallet-rpc.coax",
+      "step": "new",
+      "tests": [
+        "pay/wallet-rpc.coax"
+      ],
+      "note": "Local loopback wallet RPC policy & receipt contract between OpenAgents Desktop, openagents CLI, and agent workers (#13901). Every spend is gated by pay/wallet-rpc.coax (#authority) and an explicit interactive approval prompt; seeds never cross the wire."
+    },
+    {
       "id": "coax.native.package.v1",
       "kind": "profile",
       "owner": "toolchain",

@@ -1,0 +1,176 @@
+// openagents wallet: talk to OpenAgents Desktop's local Spark wallet RPC (#13901).
+// Every spend routes through Desktop's pay/wallet-rpc.coax (#authority) and a
+// non-bypassable interactive approval prompt; seeds never enter the CLI.
+
+wallet_usage :: () {
+  print("%\n", "Bitcoin & Lightning wallet (via OpenAgents Desktop Spark RPC):");
+  print("%\n", "  wallet status [--json]                             balance, Spark address, and daily limit");
+  print("%\n", "  wallet receive [--amount SATS] [--note TEXT] [--spark|--bitcoin] [--json]");
+  print("%\n", "  wallet quote DEST [--amount SATS] [--json]         preview exact fee quote");
+  print("%\n", "  wallet pay DEST [--amount SATS] [--reason TEXT] [--x402 CHALLENGE] [--json]");
+}
+
+wallet_control_path :: (out: [] u8) -> string {
+  env: [1024] u8;
+  custom := proc_getenv("CODER_FOREMAN_CONTROL_FILE", env[..]);
+  if custom != "" && custom.count <= out.count {
+    for i: 0..<custom.count { out[i] = custom[i]; }
+    return cast(string) out[0..<custom.count];
+  }
+  h: [1024] u8;
+  user := home(h[..]);
+  if user == "" { return ""; }
+  return fs_join(user, "Library/Application Support/Coder/foreman-control.json", out);
+}
+
+// Extracts a plain JSON string field value `"key": "value"` from a small descriptor.
+wallet_json_field :: (src: string, key: string, out: [] u8) -> string {
+  pat: [64] u8;
+  if key.count + 2 > pat.count { return ""; }
+  pat[0] = '"';
+  for i: 0..<key.count { pat[1 + i] = key[i]; }
+  pat[1 + key.count] = '"';
+  plen := key.count + 2;
+  pos := -1;
+  if src.count >= plen {
+    for i: 0..<src.count - plen + 1 {
+      ok := true;
+      for j: 0..<plen {
+        if src[i + j] != pat[j] { ok = false; break; }
+      }
+      if ok { pos = i + plen; break; }
+    }
+  }
+  if pos < 0 { return ""; }
+  while pos < src.count && (src[pos] == ' ' || src[pos] == '\t' || src[pos] == '\n' || src[pos] == '\r' || src[pos] == ':') {
+    pos += 1;
+  }
+  if pos >= src.count || src[pos] != '"' { return ""; }
+  pos += 1;
+  n := 0;
+  while pos < src.count && src[pos] != '"' {
+    if src[pos] == '\\' && pos + 1 < src.count { pos += 1; }
+    if n < out.count { out[n] = src[pos]; n += 1; }
+    pos += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+wallet_rpc_call :: (method: string, route: string, body: string, out: [] u8) -> int {
+  pbuf: [2048] u8;
+  cpath := wallet_control_path(pbuf[..]);
+  if cpath == "" || fs_kind(cpath) != FS_FILE { return -2; }
+  raw: [8192] u8;
+  n := fs_read(cpath, raw[..]);
+  if n <= 0 { return -2; }
+  txt := cast(string) raw[0..<n];
+  ubuf: [256] u8; tbuf: [256] u8;
+  base := wallet_json_field(txt, "url", ubuf[..]);
+  tok := wallet_json_field(txt, "token", tbuf[..]);
+  if base == "" || tok == "" { return -2; }
+
+  full_url: [512] u8;
+  un := 0;
+  for i: 0..<base.count { if un < full_url.count { full_url[un] = base[i]; un += 1; } }
+  for i: 0..<route.count { if un < full_url.count { full_url[un] = route[i]; un += 1; } }
+  url_s := cast(string) full_url[0..<un];
+
+  auth_hdr: [320] u8;
+  prefix := "Authorization: Bearer ";
+  an := 0;
+  for i: 0..<prefix.count { auth_hdr[an] = prefix[i]; an += 1; }
+  for i: 0..<tok.count { if an < auth_hdr.count { auth_hdr[an] = tok[i]; an += 1; } }
+  auth_s := cast(string) auth_hdr[0..<an];
+
+  err: [2048] u8;
+  if method == "GET" {
+    argv := [7] string.["curl", "-sS", "-H", auth_s, "-X", "GET", url_s];
+    got := proc_run(argv[..], 30000, out, err[..]);
+    if got.started != 0 || got.status != 0 || got.timed_out { return -1; }
+    return got.out_n;
+  }
+  argv := [11] string.["curl", "-sS", "-H", auth_s, "-H", "Content-Type: application/json", "-X", "POST", "-d", body, url_s];
+  got := proc_run(argv[..], 120000, out, err[..]);
+  if got.started != 0 || got.status != 0 || got.timed_out { return -1; }
+  return got.out_n;
+}
+
+wallet_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
+  if verb == "" || verb == "help" { wallet_usage(); return EXIT_OK; }
+  resp: [32768] u8;
+  if verb == "status" {
+    n := wallet_rpc_call("GET", "/v1/wallet/status", "", resp[..]);
+    if n == -2 { return fail(r, EXIT_FAIL, "OpenAgents Desktop control server not running (open OpenAgents.app first)"); }
+    if n < 0 { return fail(r, EXIT_FAIL, "failed to reach Desktop wallet RPC"); }
+    print("%\n", cast(string) resp[0..<n]);
+    return EXIT_OK;
+  }
+  if verb == "receive" {
+    kind := ifx args_has(a, "--spark") then "spark" else ifx args_has(a, "--bitcoin") then "bitcoin" else "lightning";
+    amt := args_value(a, "--amount", "");
+    note := args_value(a, "--note", "OpenAgents");
+    jbuf: [2048] u8; o: [1] Jo; jo_start(o[..], jbuf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "kind"); jo_str(o[..], kind);
+    jo_key(o[..], "description"); jo_str(o[..], note);
+    if amt != "" {
+      v := cli_parse_u64(amt);
+      if v <= 0 { return fail(r, EXIT_USAGE, "--amount must be a positive integer of sats"); }
+      jo_key(o[..], "amount_sats"); jo_int(o[..], v);
+    }
+    jo_end(o[..]);
+    n := wallet_rpc_call("POST", "/v1/wallet/receive", jo_text(o[..]), resp[..]);
+    if n == -2 { return fail(r, EXIT_FAIL, "OpenAgents Desktop control server not running (open OpenAgents.app first)"); }
+    if n < 0 { return fail(r, EXIT_FAIL, "wallet receive RPC failed"); }
+    print("%\n", cast(string) resp[0..<n]);
+    return EXIT_OK;
+  }
+  if verb == "quote" || verb == "pay" {
+    dest := positional(a, 2);
+    if dest == "" { return fail(r, EXIT_USAGE, "destination required (BOLT11, Lightning Address, LNURL, or Spark address)"); }
+    amt := args_value(a, "--amount", "");
+    reason := args_value(a, "--reason", "openagents wallet CLI");
+    x402 := args_value(a, "--x402", "");
+    jbuf: [4096] u8; o: [1] Jo; jo_start(o[..], jbuf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "destination"); jo_str(o[..], dest);
+    if amt != "" {
+      v := cli_parse_u64(amt);
+      if v <= 0 { return fail(r, EXIT_USAGE, "--amount must be a positive integer of sats"); }
+      jo_key(o[..], "amount_sats"); jo_int(o[..], v);
+    }
+    if verb == "pay" {
+      jo_key(o[..], "reason"); jo_str(o[..], reason);
+      if x402 != "" { jo_key(o[..], "x402_challenge"); jo_str(o[..], x402); }
+    }
+    jo_end(o[..]);
+    route := ifx verb == "quote" then "/v1/wallet/quote" else "/v1/wallet/pay";
+    n := wallet_rpc_call("POST", route, jo_text(o[..]), resp[..]);
+    if n == -2 { return fail(r, EXIT_FAIL, "OpenAgents Desktop control server not running (open OpenAgents.app first)"); }
+    if n < 0 { return fail(r, EXIT_FAIL, "wallet RPC failed"); }
+    print("%\n", cast(string) resp[0..<n]);
+    return EXIT_OK;
+  }
+  return fail(r, EXIT_USAGE, "wallet status | receive | quote | pay");
+}
+
+cli_parse_u64 :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for i: 0..<s.count {
+    c := s[i];
+    if c < '0' || c > '9' { return -1; }
+    if v > 210_000_000_000_000 { return -1; }
+    v = v * 10 + cast(int)(c - '0');
+  }
+  return v;
+}
+
+#test "wallet CLI: json field extractor and amount parser" {
+  buf: [64] u8;
+  sample := "{\"token\": \"abc123\", \"url\": \"http://127.0.0.1:49152\"}";
+  #assert wallet_json_field(sample, "token", buf[..]) == "abc123";
+  #assert wallet_json_field(sample, "url", buf[..]) == "http://127.0.0.1:49152";
+  #assert wallet_json_field(sample, "missing", buf[..]) == "";
+  #assert cli_parse_u64("1000") == 1000 && cli_parse_u64("0") == 0 && cli_parse_u64("-5") == -1 && cli_parse_u64("12a") == -1;
+}

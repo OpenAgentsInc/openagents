@@ -1,0 +1,83 @@
+// Desktop Wallet RPC spend-admission policy & receipt rules (#13901).
+// Every agent or CLI spend request passes through this #authority file before
+// any satoshis can move. No seed, mnemonic, or private key ever enters here.
+//   coax/bin/coax test pay/wallet-rpc.coax
+//   coax/bin/coax mutate pay/wallet-rpc.coax
+#import "Basic";
+#authority;
+
+WRPC_MAX_SAT :: 2_100_000_000_000_000;
+
+WrpcVerdict :: enum u8 {
+  allow;
+  not_ready;
+  needs_approval;
+  bad_amount;
+  over_fee_cap;
+  over_daily_limit;
+  expired;
+}
+
+// Decides whether an agent/CLI wallet_pay request may proceed to signing.
+// `approved` MUST be true (explicit user approval in Desktop UI); there is no
+// bypass path for unapproved agent spends.
+wallet_rpc_spend_admit :: (
+  ready: bool,
+  approved: bool,
+  amount: int,
+  fee: int,
+  fee_cap: int,
+  daily_remaining: int,
+  now: int,
+  expires: int
+) -> WrpcVerdict #export_c #effects(all) {
+  if !ready { return WrpcVerdict.not_ready; }
+  if amount <= 0 || fee < 0 || amount > WRPC_MAX_SAT { return WrpcVerdict.bad_amount; }
+  if now >= expires { return WrpcVerdict.expired; }
+  if fee > fee_cap { return WrpcVerdict.over_fee_cap; }
+  if amount > daily_remaining - fee { return WrpcVerdict.over_daily_limit; }
+  if !approved { return WrpcVerdict.needs_approval; }
+  return WrpcVerdict.allow;
+}
+
+// HTTP status code mapped from a spend verdict for the loopback wallet RPC.
+wallet_rpc_http_status :: (v: WrpcVerdict) -> int #export_c #effects(all) {
+  if v == WrpcVerdict.allow { return 200; }
+  if v == WrpcVerdict.not_ready { return 503; }
+  if v == WrpcVerdict.bad_amount { return 400; }
+  if v == WrpcVerdict.expired { return 409; }
+  return 403;
+}
+
+// Whether a spend verdict should write an audit/ATIF refusal receipt.
+// Every non-allow verdict writes a receipt so refusals are verifiable.
+wallet_rpc_writes_receipt :: (v: WrpcVerdict) -> bool #export_c #effects(all) {
+  return v != WrpcVerdict.not_ready;
+}
+
+#forall "spend_admit" ready: bool, approved: bool, amount: -1..<5, fee: -1..<3, fee_cap: 0..<3, left: 0..<6, late: bool {
+  v := wallet_rpc_spend_admit(ready, approved, amount, fee, fee_cap, left, ifx late then 10 else 9, 10);
+  if !ready { #assert v == WrpcVerdict.not_ready; }
+  else if amount <= 0 || fee < 0 { #assert v == WrpcVerdict.bad_amount; }
+  else if late { #assert v == WrpcVerdict.expired; }
+  else if fee > fee_cap { #assert v == WrpcVerdict.over_fee_cap; }
+  else if amount + fee > left { #assert v == WrpcVerdict.over_daily_limit; }
+  else if !approved { #assert v == WrpcVerdict.needs_approval; }
+  else { #assert v == WrpcVerdict.allow; }
+}
+
+#test "spend_admit near MAX_SAT" {
+  #assert wallet_rpc_spend_admit(true, true, WRPC_MAX_SAT, 0, 0, WRPC_MAX_SAT, 1, 2) == WrpcVerdict.allow;
+  #assert wallet_rpc_spend_admit(true, true, WRPC_MAX_SAT + 1, 0, 0, WRPC_MAX_SAT, 1, 2) == WrpcVerdict.bad_amount;
+  #assert wallet_rpc_spend_admit(true, false, 1000, 10, 50, 5000, 1, 2) == WrpcVerdict.needs_approval;
+}
+
+#forall "http_status and receipt policy" v: WrpcVerdict {
+  code := wallet_rpc_http_status(v);
+  if v == WrpcVerdict.allow { #assert code == 200; }
+  else if v == WrpcVerdict.not_ready { #assert code == 503; }
+  else if v == WrpcVerdict.bad_amount { #assert code == 400; }
+  else if v == WrpcVerdict.expired { #assert code == 409; }
+  else { #assert code == 403; }
+  #assert wallet_rpc_writes_receipt(v) == (v != WrpcVerdict.not_ready);
+}
