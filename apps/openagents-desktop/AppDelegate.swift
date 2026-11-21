@@ -18,6 +18,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         self.main = main
         main.installPaletteKeys()
         DesktopActivation.shared.start(delegate: self)
+        ScheduledTaskManager.shared.start(delegate: self)
         TestLaunch.start()
         CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
         MacPush.delegateForwards = true
@@ -153,6 +154,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationWillTerminate(_ notification: Notification) {
         DesktopActivation.shared.stop()
+        ScheduledTaskManager.shared.stop()
         main?.retire()
         for w in extraWindows { w.retire() }
         TestLaunch.stopHost()
@@ -198,6 +200,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func claudeKey(_ sender: Any?) { main?.openSettings(1, row: "set.claude") }
     @objc func openRouterModels(_ sender: Any?) { main?.openSettings(1, row: "set.or") }
     @objc func checkForUpdates(_ sender: Any?) { main?.openSettings(4, row: "set.update"); main?.checkForUpdates() }
+    @objc func openScheduledTasks(_ sender: Any?) { ScheduledTaskManager.shared.showScheduledTasksDialog() }
+    @objc func openUpdateEverything(_ sender: Any?) { ScheduledTaskManager.shared.showUpdateEverythingDialog() }
     @objc func openSettings(_ sender: Any?) { main?.openSettings() }
     @objc func backToChats(_ sender: Any?) { main?.closeSettings() }
     @objc func findInSettings(_ sender: Any?) { main?.openFind() }
@@ -366,6 +370,8 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Update Everything…", action: #selector(CoderDelegate.openUpdateEverything(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Scheduled Tasks…", action: #selector(CoderDelegate.openScheduledTasks(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Install CLI Shim…", action: #selector(CoderDelegate.toggleCliShim(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Hold-to-Quit Protection (⌘Q×2)", action: #selector(CoderDelegate.toggleQuitHold(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())

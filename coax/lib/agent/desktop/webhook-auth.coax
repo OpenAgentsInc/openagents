@@ -1,0 +1,153 @@
+// Signed HMAC-SHA256 webhook admission & delivery deduplication policy (GitHub #13885).
+#load "../../crypto/hmac.coax";
+#authority;
+
+SCHED_WH_OK :: 0;
+SCHED_WH_BAD_SIG :: 1;
+SCHED_WH_DUPLICATE :: 2;
+SCHED_WH_EMPTY_SECRET :: 3;
+SCHED_WH_BAD_ID :: 4;
+SCHED_DEDUP_CAP :: 64;
+
+SchedDedup :: struct {
+  ids: [SCHED_DEDUP_CAP][64] u8;
+  lens: [SCHED_DEDUP_CAP] int;
+  head: int;
+  count: int;
+}
+
+wh_copy :: (dst: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count < dst.count then src.count else dst.count; // mutant: equivalent (when src.count == dst.count both branches equal)
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Compute "sha256=<64 lowercase hex>" HMAC-SHA256 webhook signature into out.
+sched_webhook_sign :: (secret: string, body: string, out: [] u8) -> string #effects(all) {
+  if secret.count == 0 || out.count < 71 { return ""; }
+  kb: [256] u8;
+  mb: [4096] u8;
+  if secret.count > kb.count || body.count > mb.count { return ""; }
+  kn := wh_copy(kb[..], secret);
+  mn := wh_copy(mb[..], body);
+  dig: [32] u8;
+  if hmac_sha256_checked(kb[0..<kn], mb[0..<mn], dig[..], false) != SHA_OK { return ""; } // mutant: equivalent (bounds already enforced above)
+  prefix := "sha256=";
+  for i: 0..<7 { out[i] = prefix[i]; }
+  hex := "0123456789abcdef";
+  for i: 0..<32 {
+    out[7 + i * 2] = hex[cast(int) (dig[i] >> 4)];
+    out[7 + i * 2 + 1] = hex[cast(int) (dig[i] & 15)];
+  }
+  return cast(string) out[0..<71];
+}
+
+// Constant-time verification of X-OpenAgents-Signature ("sha256=<64-hex>").
+sched_webhook_verify :: (secret: string, body: string, sig_header: string) -> bool #effects(all) {
+  if secret.count == 0 || sig_header.count != 71 { return false; }
+  exp_b: [72] u8;
+  want := sched_webhook_sign(secret, body, exp_b[..]);
+  if want.count != 71 { return false; }
+  diff: u8 = 0;
+  for i: 0..<71 {
+    a := sig_header[i];
+    if i >= 7 && a >= 'A' && a <= 'F' { a = a + 32; } // mutant: equivalent (want[i] is hex 0-9/a-f, never 'g')
+    diff = diff | (a ^ want[i]);
+  }
+  return diff == 0;
+}
+
+// Verify signature and deduplicate delivery_id atomically (#13885).
+sched_webhook_admit :: (d: [] SchedDedup, secret: string, delivery_id: string, body: string, sig_header: string) -> int #effects(all) {
+  if secret.count == 0 { return SCHED_WH_EMPTY_SECRET; }
+  if delivery_id.count == 0 || delivery_id.count > 64 { return SCHED_WH_BAD_ID; }
+  if !sched_webhook_verify(secret, body, sig_header) { return SCHED_WH_BAD_SIG; }
+  for i: 0..<d[0].count {
+    if d[0].lens[i] == delivery_id.count && cast(string) d[0].ids[i][0..<d[0].lens[i]] == delivery_id {
+      return SCHED_WH_DUPLICATE;
+    }
+  }
+  slot := d[0].head;
+  d[0].lens[slot] = wh_copy(d[0].ids[slot][..], delivery_id);
+  d[0].head = (d[0].head + 1) % SCHED_DEDUP_CAP;
+  if d[0].count < SCHED_DEDUP_CAP { d[0].count += 1; }
+  return SCHED_WH_OK;
+}
+
+#test "webhook-auth: HMAC-SHA256 signing, case-insensitive verify, bounds, and ring deduplication (#13885)" {
+  // Sign boundaries: empty secret, short output (70 vs 71), oversized secret (>256)
+  short_out: [70] u8;
+  ok_out: [71] u8;
+  #assert sched_webhook_sign("", "hi", ok_out[..]) == "";
+  #assert sched_webhook_sign("k", "hi", short_out[..]) == "";
+  big_k: [257] u8; for i: 0..<257 { big_k[i] = 'a'; }
+  #assert sched_webhook_sign(cast(string) big_k[..], "hi", ok_out[..]) == "";
+  max_k: [256] u8; for i: 0..<256 { max_k[i] = 'a'; }
+  #assert sched_webhook_sign(cast(string) max_k[..], "hi", ok_out[..]).count == 71;
+
+  // RFC 4231 test case 2: key="Jefe", data="what do ya want for nothing?"
+  rfc_b: [71] u8;
+  rfc := sched_webhook_sign("Jefe", "what do ya want for nothing?", rfc_b[..]);
+  #assert rfc == "sha256=5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+  // Exact 4096-byte body boundary + 1-byte secret
+  max_body: [4096] u8; for i: 0..<4096 { max_body[i] = 'b'; }
+  mb_sig: [71] u8;
+  #assert sched_webhook_sign("k", cast(string) max_body[..], mb_sig[..]).count == 71;
+  #assert sched_webhook_verify("k", cast(string) max_body[..], cast(string) mb_sig[..]);
+
+  // Verify exact signature, uppercase hex normalization (including index 7!), wrong length, wrong prefix, empty secret
+  secret := "whsec_test_secret_13885";
+  body := "{\"event\":\"push\"}";
+  sig_b: [71] u8;
+  sig := sched_webhook_sign(secret, body, sig_b[..]);
+  #assert sig.count == 71 && cast(string) sig[0..<7] == "sha256=";
+  #assert sched_webhook_verify(secret, body, sig);
+  #assert !sched_webhook_verify("", body, sig);
+  #assert !sched_webhook_verify(secret, body, cast(string) sig[0..<70]);
+  #assert !sched_webhook_verify(cast(string) big_k[..], body, sig);
+  #assert !sched_webhook_verify("wrong", body, sig);
+  #assert !sched_webhook_verify(secret, "{\"event\":\"x\"}", sig);
+
+  // Uppercase A..F including first hex byte (index 7) and non-hex 'G' rejection
+  k_hex := "key-for-alpha-first";
+  s_a_b: [71] u8;
+  // Find a message whose first hex char is a..f (RFC 4231 case 1 has 'b' at index 7!)
+  k_rfc1: [20] u8; for i: 0..<20 { k_rfc1[i] = 0x0b; }
+  s_a := sched_webhook_sign(cast(string) k_rfc1[..], "Hi There", s_a_b[..]);
+  #assert s_a == "sha256=b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7";
+  up_b: [71] u8;
+  for i: 0..<71 {
+    c := s_a[i];
+    up_b[i] = ifx i >= 7 && c >= 'a' && c <= 'f' then c - 32 else c;
+  }
+  #assert up_b[7] == 'B' && sched_webhook_verify(cast(string) k_rfc1[..], "Hi There", cast(string) up_b[..]);
+  up_b[7] = 'G';
+  #assert !sched_webhook_verify(cast(string) k_rfc1[..], "Hi There", cast(string) up_b[..]);
+  up_b[7] = 'B'; up_b[0] = 'S';
+  #assert !sched_webhook_verify(cast(string) k_rfc1[..], "Hi There", cast(string) up_b[..]);
+
+  // Admission & dedup ring wraparound (64 entries -> 65th evicts 0th)
+  d: [1] SchedDedup;
+  #assert sched_webhook_admit(d[..], "", "id1", body, sig) == SCHED_WH_EMPTY_SECRET;
+  #assert sched_webhook_admit(d[..], secret, "", body, sig) == SCHED_WH_BAD_ID;
+  big_id: [65] u8; for i: 0..<65 { big_id[i] = 'x'; }
+  #assert sched_webhook_admit(d[..], secret, cast(string) big_id[..], body, sig) == SCHED_WH_BAD_ID;
+  max_id: [64] u8; for i: 0..<64 { max_id[i] = 'x'; }
+  #assert sched_webhook_admit(d[..], secret, cast(string) max_id[..], body, sig) == SCHED_WH_OK;
+  #assert d[0].count == 1;
+  #assert sched_webhook_admit(d[..], secret, cast(string) max_id[..], body, sig) == SCHED_WH_DUPLICATE;
+  #assert sched_webhook_admit(d[..], secret, "id-bad", body, "sha256=0000000000000000000000000000000000000000000000000000000000000000") == SCHED_WH_BAD_SIG;
+
+  // Fill ring to 64 and verify wraparound evicts slot 0
+  for k: 1..<64 {
+    ib: [8] u8;
+    ib[0] = 'd'; ib[1] = cast(u8) ('0' + (k / 10)); ib[2] = cast(u8) ('0' + (k % 10));
+    #assert sched_webhook_admit(d[..], secret, cast(string) ib[0..<3], body, sig) == SCHED_WH_OK;
+  }
+  #assert d[0].count == 64 && d[0].head == 0;
+  #assert sched_webhook_admit(d[..], secret, "d01", body, sig) == SCHED_WH_DUPLICATE;
+  #assert sched_webhook_admit(d[..], secret, "d64", body, sig) == SCHED_WH_OK;
+  #assert d[0].count == 64 && d[0].head == 1;
+  // Slot 0 (max_id) was evicted, so it is admitted again
+  #assert sched_webhook_admit(d[..], secret, cast(string) max_id[..], body, sig) == SCHED_WH_OK;
+}

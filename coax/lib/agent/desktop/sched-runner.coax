@@ -1,0 +1,313 @@
+// Scheduled tasks runner, webhook verifier CLI, and unified "Update Everything"
+// orchestrator for OpenAgents Desktop & managed provider CLIs (GitHub #13885).
+//
+// Usage:
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax list [--store PATH]
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax add --id ID --name NAME --cron EXPR --folder DIR --prompt TEXT [--model M] [--store PATH]
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax pause|resume|delete ID [--store PATH]
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax tick [--store PATH] [--dry-run]
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax run-now ID [--store PATH]
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax webhook-verify --secret S --delivery ID --sig SIG --body JSON
+//   coax/web/tool.sh coax/lib/agent/desktop/sched-runner.coax update-everything [--apply] [--json]
+#load "scheduled.coax";
+#load "webhook-auth.coax";
+#load "../../json/json.coax";
+#load "../engine/antigravity.coax";
+#load "../../sys/proc.coax";
+#load "../../sys/tool.coax";
+
+SCHED_MAX_TASKS :: 64;
+
+sched_default_store :: (out: [] u8) -> string {
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  return fs_join(home, ".openagents/coder/scheduled-tasks.jsonl", out);
+}
+
+sched_load_all :: (path: string, tasks: [] SchedTask) -> int {
+  if !fs_exists(path) { return 0; }
+  buf: [65536] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { return 0; }
+  count := 0;
+  at := 0;
+  while at < n && count < tasks.count {
+    end := at;
+    while end < n && buf[end] != 10 { end += 1; }
+    line := cast(string) buf[at..<end];
+    at = end + 1;
+    if line.count == 0 { continue; }
+    one: [1] SchedTask;
+    if sched_task_parse(line, one[..]) {
+      tasks[count] = one[0];
+      count += 1;
+    }
+  }
+  return count;
+}
+
+sched_save_all :: (path: string, tasks: [] SchedTask, count: int) -> bool {
+  _ = fs_mkdir_all(fs_dir(path));
+  out: [65536] u8;
+  used := 0;
+  lb: [2048] u8;
+  for i: 0..<count {
+    one: [1] SchedTask;
+    one[0] = tasks[i];
+    ln := sched_task_write(one[..], lb[..]);
+    if ln <= 0 || used + ln + 1 > out.count { return false; }
+    for j: 0..<ln { out[used + j] = lb[j]; }
+    used += ln;
+    out[used] = 10;
+    used += 1;
+  }
+  return fs_replace_durable(path, cast(string) out[0..<used]);
+}
+
+sched_now_utc :: (out_fields: [] int) -> bool {
+  // Returns [epoch_min, min, hour, dom, month, dow] via `date -u "+%s %M %H %d %m %w"`.
+  argv := [3] string.["date", "-u", "+%s %M %H %d %m %w"];
+  ob: [128] u8; eb: [64] u8;
+  r := proc_run(argv[..], 3000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return false; }
+  s := cast(string) ob[0..<r.out_n];
+  at := 0;
+  for f: 0..<6 {
+    while at < s.count && (s[at] == ' ' || s[at] == '\n' || s[at] == '\r') { at += 1; }
+    end := at;
+    while end < s.count && s[end] >= '0' && s[end] <= '9' { end += 1; }
+    if end == at { return false; }
+    v := 0;
+    for k: at..<end { v = v * 10 + cast(int) (s[k] - '0'); }
+    out_fields[f] = v;
+    at = end;
+  }
+  out_fields[0] = out_fields[0] / 60;
+  return true;
+}
+
+sched_probe_cli_version :: (prog: string, arg: string, out: [] u8) -> string {
+  argv := [2] string.[prog, arg];
+  ob: [256] u8; eb: [128] u8;
+  r := proc_run(argv[..], 5000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return ""; }
+  end := r.out_n;
+  for i: 0..<end { if ob[i] == '\n' || ob[i] == '\r' { end = i; break; } }
+  return cast(string) out[0..<sched_copy(out, cast(string) ob[0..<end])];
+}
+
+sched_detect_arch :: (out: [] u8) -> string {
+  argv := [2] string.["uname", "-m"];
+  ob: [64] u8; eb: [64] u8;
+  r := proc_run(argv[..], 5000, ob[..], eb[..]);
+  if r.started == 0 && r.status == 0 && r.out_n > 0 {
+    m := cast(string) ob[0..<r.out_n];
+    if m == "arm64" || m == "aarch64" { return cast(string) out[0..<sched_copy(out, "arm64")]; }
+    if m == "x86_64" || m == "amd64" { return cast(string) out[0..<sched_copy(out, "x64")]; }
+  }
+  return cast(string) out[0..<sched_copy(out, "arm64")];
+}
+
+sched_fetch_agy_manifest :: (os: string, arch: string, out_json: [] u8) -> string {
+  ub: [256] u8; url := agy_manifest_url(os, arch, false, ub[..]);
+  if url.count == 0 { return ""; }
+  argv := [3] string.["curl", "-fsSL", url];
+  eb: [512] u8;
+  r := proc_run(argv[..], 15000, out_json, eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return ""; }
+  return cast(string) out_json[0..<r.out_n];
+}
+
+sched_count_agy_leases :: (root: string) -> int {
+  db: [1200] u8; dir := agy_leases_dir(root, db[..]);
+  if dir.count == 0 || fs_kind(dir) != FS_DIR { return 0; }
+  list: [1] FsList;
+  if fs_list(dir, list[..]) < 0 { return 0; }
+  c := 0;
+  for i: 0..<list[0].n {
+    ridb: [64] u8;
+    if agy_parse_lease_filename(fs_entry(list[..], i), ridb[..]) > 0 { c += 1; }
+  }
+  return c;
+}
+
+sched_update_everything :: (apply: bool, as_json: bool) -> int {
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  // 1. Check Antigravity CLI (managed via #13839)
+  agy_cur_b: [64] u8;
+  agy_prog_b: [1024] u8;
+  agy_p := agy_program(agy_prog_b[..]);
+  agy_cur := ifx agy_p.count > 0 then sched_probe_cli_version(agy_p, "--version", agy_cur_b[..]) else "";
+  os := ifx tool_os() == TOOL_MAC then "darwin" else "linux";
+  arch_b: [16] u8; arch := sched_detect_arch(arch_b[..]);
+  mb: [4096] u8; mjson := sched_fetch_agy_manifest(os, arch, mb[..]);
+  rel: [1] AgyRelease;
+  agy_lat := "";
+  if mjson.count > 0 && agy_parse_release(mjson, os, arch, false, rel[..]) {
+    agy_lat = cast(string) rel[0].version[0..<rel[0].nversion];
+  }
+  rb: [1200] u8; root := agy_managed_root(home, rb[..]);
+  agy_leases := ifx root.count > 0 then sched_count_agy_leases(root) else 0;
+
+  agy_item: [1] UpdItem;
+  agy_item[0].name_n = sched_copy(agy_item[0].name[..], "agy");
+  agy_item[0].current_n = sched_copy(agy_item[0].current[..], agy_cur);
+  agy_item[0].latest_n = sched_copy(agy_item[0].latest[..], agy_lat);
+  agy_item[0].active_leases = agy_leases;
+  agy_item[0].supports_atomic_switch = true;
+  agy_dec := upd_decide_apply(agy_item[..]);
+  agy_applied := false;
+  if apply && agy_dec == UPD_APPLY_NOW && mjson.count > 0 && root.count > 0 {
+    argv := [3] string.["coax/web/tool.sh", "coax/lib/agent/engine/agy-install.coax", "install"];
+    ob: [1024] u8; eb: [1024] u8;
+    rr := proc_run(argv[..], 300000, ob[..], eb[..]);
+    agy_applied = rr.started == 0 && rr.status == 0;
+  }
+
+  // 2. Check Claude Code CLI & Codex CLI installed versions
+  cl_b: [64] u8; cl_ver := sched_probe_cli_version("claude", "--version", cl_b[..]);
+  cx_b: [64] u8; cx_ver := sched_probe_cli_version("codex", "--version", cx_b[..]);
+
+  if as_json {
+    jb: [2048] u8; j: [1] Jo;
+    jo_start(j[..], jb[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "ok"); jo_bool(j[..], true);
+    jo_key(j[..], "items"); jo_arr(j[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "name"); jo_str(j[..], "agy");
+    jo_key(j[..], "current"); jo_str(j[..], agy_cur);
+    jo_key(j[..], "latest"); jo_str(j[..], agy_lat);
+    jo_key(j[..], "leases"); jo_int(j[..], agy_leases);
+    jo_key(j[..], "decision"); jo_str(j[..], ifx agy_dec == UPD_UP_TO_DATE then "up_to_date" else ifx agy_dec == UPD_APPLY_NOW then "apply_now" else "defer_leased");
+    jo_key(j[..], "applied"); jo_bool(j[..], agy_applied);
+    jo_end(j[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "name"); jo_str(j[..], "claude");
+    jo_key(j[..], "current"); jo_str(j[..], cl_ver);
+    jo_end(j[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "name"); jo_str(j[..], "codex");
+    jo_key(j[..], "current"); jo_str(j[..], cx_ver);
+    jo_end(j[..]);
+    jo_end(j[..]);
+    jo_end(j[..]);
+    print("%\n", cast(string) jb[0..<j[0].n]);
+  } else {
+    print("agy: current=% latest=% leases=% decision=% applied=%\n",
+      ifx agy_cur.count > 0 then agy_cur else "not-installed",
+      ifx agy_lat.count > 0 then agy_lat else "unknown",
+      agy_leases,
+      ifx agy_dec == UPD_UP_TO_DATE then "up_to_date" else ifx agy_dec == UPD_APPLY_NOW then "update_available" else "deferred_leased",
+      agy_applied);
+    print("claude: current=%\n", ifx cl_ver.count > 0 then cl_ver else "not-installed");
+    print("codex: current=%\n", ifx cx_ver.count > 0 then cx_ver else "not-installed");
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("sched-runner: arguments did not fit"); return 2; }
+  cmd := args_at(a[..], 0);
+  sb: [1200] u8;
+  store := args_value(a[..], "--store", sched_default_store(sb[..]));
+
+  if cmd == "update-everything" {
+    return sched_update_everything(args_has(a[..], "--apply"), args_has(a[..], "--json"));
+  }
+
+  if cmd == "webhook-verify" {
+    sec := args_value(a[..], "--secret", "");
+    did := args_value(a[..], "--delivery", "");
+    sig := args_value(a[..], "--sig", "");
+    body := args_value(a[..], "--body", "");
+    d: [1] SchedDedup;
+    res := sched_webhook_admit(d[..], sec, did, body, sig);
+    if res == SCHED_WH_OK { print("ok\n"); return 0; }
+    tool_errln("webhook verification failed");
+    return 1;
+  }
+
+  tasks: [SCHED_MAX_TASKS] SchedTask;
+  count := sched_load_all(store, tasks[..]);
+
+  if cmd == "list" {
+    for i: 0..<count {
+      print("%\t%\t%\t%\n",
+        cast(string) tasks[i].id[0..<tasks[i].id_n],
+        ifx tasks[i].enabled then "enabled" else "paused",
+        cast(string) tasks[i].cron[0..<tasks[i].cron_n],
+        cast(string) tasks[i].name[0..<tasks[i].name_n]);
+    }
+    return 0;
+  }
+
+  if cmd == "add" {
+    id := args_value(a[..], "--id", "");
+    name := args_value(a[..], "--name", id);
+    cron := args_value(a[..], "--cron", "");
+    folder := args_value(a[..], "--folder", ".");
+    prompt := args_value(a[..], "--prompt", "");
+    model := args_value(a[..], "--model", "");
+    if id.count == 0 || !sched_cron_valid(cron) || prompt.count == 0 {
+      tool_errln("sched-runner add: requires --id, valid 5-field --cron, and --prompt");
+      return 2;
+    }
+    if count >= SCHED_MAX_TASKS { tool_errln("sched-runner: task store full"); return 1; }
+    t: SchedTask;
+    t.id_n = sched_copy(t.id[..], id);
+    t.name_n = sched_copy(t.name[..], name);
+    t.cron_n = sched_copy(t.cron[..], cron);
+    t.folder_n = sched_copy(t.folder[..], folder);
+    t.prompt_n = sched_copy(t.prompt[..], prompt);
+    t.model_n = sched_copy(t.model[..], model);
+    t.enabled = true;
+    tasks[count] = t;
+    count += 1;
+    if !sched_save_all(store, tasks[..], count) { tool_errln("sched-runner: save failed"); return 1; }
+    print("added %\n", id);
+    return 0;
+  }
+
+  if cmd == "pause" || cmd == "resume" || cmd == "delete" {
+    id := args_at(a[..], 1);
+    found := -1;
+    for i: 0..<count {
+      if cast(string) tasks[i].id[0..<tasks[i].id_n] == id { found = i; break; }
+    }
+    if found < 0 { tool_errln("sched-runner: task not found"); return 1; }
+    if cmd == "pause" { tasks[found].enabled = false; }
+    else if cmd == "resume" { tasks[found].enabled = true; }
+    else {
+      for j: found..<count - 1 { tasks[j] = tasks[j + 1]; }
+      count -= 1;
+    }
+    if !sched_save_all(store, tasks[..], count) { tool_errln("sched-runner: save failed"); return 1; }
+    print("% %\n", cmd, id);
+    return 0;
+  }
+
+  if cmd == "tick" {
+    now: [6] int;
+    if !sched_now_utc(now[..]) { tool_errln("sched-runner: failed to read UTC clock"); return 1; }
+    dry := args_has(a[..], "--dry-run");
+    fired := 0;
+    for i: 0..<count {
+      one: [1] SchedTask; one[0] = tasks[i];
+      if !sched_is_due(one[..], now[0], now[1], now[2], now[3], now[4], now[5]) { continue; }
+      fired += 1;
+      print("due: % (%)\n", cast(string) tasks[i].id[0..<tasks[i].id_n], cast(string) tasks[i].cron[0..<tasks[i].cron_n]);
+      if !dry {
+        tasks[i].last_run_min = now[0];
+        tasks[i].run_count += 1;
+      }
+    }
+    if !dry && fired > 0 { _ = sched_save_all(store, tasks[..], count); }
+    print("tick: % due\n", fired);
+    return 0;
+  }
+
+  tool_errln("usage: sched-runner <list|add|pause|resume|delete|tick|webhook-verify|update-everything>");
+  return 2;
+}

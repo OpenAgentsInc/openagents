@@ -1,0 +1,307 @@
+// Scheduled tasks (5-field cron), JSONL task store, and lease-safe
+// "Update Everything" policy (GitHub #13885).
+// Signed HMAC-SHA256 webhook verification & deduplication live in webhook-auth.coax (#authority).
+
+UPD_UP_TO_DATE :: 0;
+UPD_APPLY_NOW :: 1;
+UPD_DEFER_LEASED :: 2;
+
+SchedTask :: struct {
+  id: [64] u8; id_n: int;
+  name: [128] u8; name_n: int;
+  cron: [64] u8; cron_n: int;
+  folder: [512] u8; folder_n: int;
+  prompt: [1024] u8; prompt_n: int;
+  model: [64] u8; model_n: int;
+  enabled: bool;
+  last_run_min: int;
+  run_count: int;
+}
+
+UpdItem :: struct {
+  name: [32] u8; name_n: int;
+  current: [32] u8; current_n: int;
+  latest: [32] u8; latest_n: int;
+  active_leases: int;
+  supports_atomic_switch: bool;
+}
+
+sched_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+sched_put :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+
+sched_put_int :: (out: [] u8, at: int, v: int) -> int {
+  if v == 0 { return sched_put(out, at, "0"); }
+  n := at;
+  x := v;
+  if x < 0 { n = sched_put(out, n, "-"); x = -x; }
+  tmp: [32] u8; k := 0;
+  while x > 0 && k < tmp.count { tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10; }
+  for i: 0..<k { if n < out.count { out[n] = tmp[k - 1 - i]; n += 1; } }
+  return n;
+}
+
+sched_put_jstr :: (out: [] u8, at: int, s: string) -> int {
+  n := sched_put(out, at, "\"");
+  for c: s {
+    if c == '"' || c == '\\' {
+      if n + 2 <= out.count { out[n] = '\\'; out[n + 1] = c; n += 2; }
+    } else if c >= 32 {
+      if n < out.count { out[n] = c; n += 1; }
+    }
+  }
+  return sched_put(out, n, "\"");
+}
+
+sched_jstr :: (line: string, key: string, dst: [] u8) -> int {
+  needle: [64] u8;
+  nn := sched_put(needle[..], 0, "\"");
+  nn = sched_put(needle[..], nn, key);
+  nn = sched_put(needle[..], nn, "\":\"");
+  if nn > line.count { return -1; }
+  pos := -1;
+  for i: 0..<line.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if line[i + j] != needle[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 { return -1; }
+  n := 0; i := pos;
+  while i < line.count && line[i] != '"' {
+    if line[i] == '\\' && i + 1 < line.count { i += 1; }
+    if n < dst.count { dst[n] = line[i]; n += 1; }
+    i += 1;
+  }
+  return ifx i < line.count && line[i] == '"' then n else -1;
+}
+
+sched_jbool :: (line: string, key: string) -> bool {
+  needle: [64] u8;
+  nn := sched_put(needle[..], 0, "\"");
+  nn = sched_put(needle[..], nn, key);
+  nn = sched_put(needle[..], nn, "\":true");
+  if nn > line.count { return false; }
+  for i: 0..<line.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if line[i + j] != needle[j] { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+
+sched_jint :: (line: string, key: string, fallback: int) -> int {
+  needle: [64] u8;
+  nn := sched_put(needle[..], 0, "\"");
+  nn = sched_put(needle[..], nn, key);
+  nn = sched_put(needle[..], nn, "\":");
+  if nn > line.count { return fallback; }
+  pos := -1;
+  for i: 0..<line.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if line[i + j] != needle[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 || pos >= line.count { return fallback; }
+  v := 0; seen := false;
+  i := pos;
+  while i < line.count && line[i] >= '0' && line[i] <= '9' {
+    v = v * 10 + cast(int) (line[i] - '0');
+    seen = true; i += 1;
+  }
+  return ifx seen then v else fallback;
+}
+
+sched_parse_uint :: (s: string, out_val: [] int) -> bool {
+  if s.count == 0 || s.count > 4 { return false; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return false; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  out_val[0] = v;
+  return true;
+}
+
+sched_field_eval :: (field: string, lo: int, hi: int, val: int, check_match: bool) -> bool {
+  if field.count == 0 { return false; }
+  matched := false;
+  i := 0;
+  while i <= field.count {
+    comma := i;
+    while comma < field.count && field[comma] != ',' { comma += 1; }
+    part := cast(string) field[i..<comma];
+    if part.count == 0 { return false; }
+    slash := part.count;
+    for k: 0..<part.count { if part[k] == '/' { slash = k; break; } }
+    base := cast(string) part[0..<slash];
+    step := 1;
+    if slash < part.count {
+      sv: [1] int;
+      if !sched_parse_uint(cast(string) part[slash + 1..<part.count], sv[..]) || sv[0] <= 0 { return false; }
+      step = sv[0];
+    }
+    a := lo; b := hi;
+    if base == "*" {
+      a = lo; b = hi;
+    } else {
+      dash := base.count;
+      for k: 0..<base.count { if base[k] == '-' { dash = k; break; } }
+      if dash < base.count {
+        va: [1] int; vb: [1] int;
+        if !sched_parse_uint(cast(string) base[0..<dash], va[..]) || !sched_parse_uint(cast(string) base[dash + 1..<base.count], vb[..]) { return false; }
+        a = va[0]; b = vb[0];
+        if a < lo || b > hi || a > b { return false; }
+      } else {
+        v: [1] int;
+        if !sched_parse_uint(base, v[..]) { return false; }
+        if v[0] < lo || v[0] > hi { return false; }
+        a = v[0]; b = ifx slash < part.count then hi else v[0];
+      }
+    }
+    if check_match && val >= a && val <= b && ((val - a) % step) == 0 { matched = true; }
+    i = comma + 1;
+  }
+  return ifx check_match then matched else true;
+}
+
+sched_cron_eval :: (expr: string, min: int, hour: int, dom: int, month: int, dow: int, check_match: bool) -> bool {
+  los := [5] int.[0, 0, 1, 1, 0];
+  his := [5] int.[59, 23, 31, 12, 6];
+  vals := [5] int.[min, hour, dom, month, dow];
+  at := 0;
+  for f: 0..<5 {
+    while at < expr.count && (expr[at] == ' ' || expr[at] == '\t') { at += 1; }
+    if at >= expr.count { return false; }
+    end := at;
+    while end < expr.count && expr[end] != ' ' && expr[end] != '\t' { end += 1; }
+    tok := cast(string) expr[at..<end];
+    if !sched_field_eval(tok, los[f], his[f], vals[f], false) { return false; }
+    if check_match && !sched_field_eval(tok, los[f], his[f], vals[f], true) { return false; }
+    at = end;
+  }
+  while at < expr.count && (expr[at] == ' ' || expr[at] == '\t') { at += 1; }
+  return at == expr.count;
+}
+
+sched_cron_valid :: (expr: string) -> bool { return sched_cron_eval(expr, 0, 0, 1, 1, 0, false); }
+sched_cron_matches :: (expr: string, min: int, hour: int, dom: int, month: int, dow: int) -> bool {
+  return sched_cron_eval(expr, min, hour, dom, month, dow, true);
+}
+
+sched_is_due :: (t: [] SchedTask, epoch_min: int, min: int, hour: int, dom: int, month: int, dow: int) -> bool {
+  if !t[0].enabled || epoch_min <= 0 { return false; }
+  if t[0].last_run_min == epoch_min { return false; }
+  return sched_cron_matches(cast(string) t[0].cron[0..<t[0].cron_n], min, hour, dom, month, dow);
+}
+
+sched_task_write :: (t: [] SchedTask, out: [] u8) -> int {
+  n := sched_put(out, 0, "{\"id\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].id[0..<t[0].id_n]);
+  n = sched_put(out, n, ",\"name\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].name[0..<t[0].name_n]);
+  n = sched_put(out, n, ",\"cron\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].cron[0..<t[0].cron_n]);
+  n = sched_put(out, n, ",\"folder\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].folder[0..<t[0].folder_n]);
+  n = sched_put(out, n, ",\"prompt\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].prompt[0..<t[0].prompt_n]);
+  n = sched_put(out, n, ",\"model\":");
+  n = sched_put_jstr(out, n, cast(string) t[0].model[0..<t[0].model_n]);
+  n = sched_put(out, n, ",\"enabled\":");
+  n = sched_put(out, n, ifx t[0].enabled then "true" else "false");
+  n = sched_put(out, n, ",\"last_run_min\":");
+  n = sched_put_int(out, n, t[0].last_run_min);
+  n = sched_put(out, n, ",\"run_count\":");
+  n = sched_put_int(out, n, t[0].run_count);
+  n = sched_put(out, n, "}");
+  return ifx n < out.count then n else 0;
+}
+
+sched_task_parse :: (line: string, out: [] SchedTask) -> bool {
+  out[0] = SchedTask.{};
+  idn := sched_jstr(line, "id", out[0].id[..]);
+  cn := sched_jstr(line, "cron", out[0].cron[..]);
+  if idn <= 0 || cn <= 0 { return false; }
+  out[0].id_n = idn;
+  out[0].cron_n = cn;
+  nn := sched_jstr(line, "name", out[0].name[..]); out[0].name_n = ifx nn > 0 then nn else 0;
+  fn := sched_jstr(line, "folder", out[0].folder[..]); out[0].folder_n = ifx fn > 0 then fn else 0;
+  pn := sched_jstr(line, "prompt", out[0].prompt[..]); out[0].prompt_n = ifx pn > 0 then pn else 0;
+  mn := sched_jstr(line, "model", out[0].model[..]); out[0].model_n = ifx mn > 0 then mn else 0;
+  out[0].enabled = sched_jbool(line, "enabled");
+  out[0].last_run_min = sched_jint(line, "last_run_min", 0);
+  out[0].run_count = sched_jint(line, "run_count", 0);
+  return sched_cron_valid(cast(string) out[0].cron[0..<out[0].cron_n]);
+}
+
+upd_decide_apply :: (item: [] UpdItem) -> int {
+  cur := cast(string) item[0].current[0..<item[0].current_n];
+  lat := cast(string) item[0].latest[0..<item[0].latest_n];
+  if lat.count == 0 || cur == lat { return UPD_UP_TO_DATE; }
+  if item[0].active_leases > 0 && !item[0].supports_atomic_switch { return UPD_DEFER_LEASED; }
+  return UPD_APPLY_NOW;
+}
+
+#test "scheduled: 5-field cron parsing, JSONL round-trip, and Update Everything lease gate (#13885)" {
+  #assert sched_cron_valid("*/15 9-17 * * 1-5");
+  #assert sched_cron_valid("0 0 1 1 *");
+  #assert !sched_cron_valid("60 * * * *");
+  #assert !sched_cron_valid("* * * *");
+  #assert !sched_cron_valid("*/0 * * * *");
+
+  #assert sched_cron_matches("*/15 9-17 * * 1-5", 30, 10, 20, 11, 5);
+  #assert !sched_cron_matches("*/15 9-17 * * 1-5", 31, 10, 20, 11, 5);
+  #assert !sched_cron_matches("*/15 9-17 * * 1-5", 30, 10, 20, 11, 0);
+
+  t: [1] SchedTask;
+  t[0].id_n = sched_copy(t[0].id[..], "daily-audit");
+  t[0].name_n = sched_copy(t[0].name[..], "Daily Audit");
+  t[0].cron_n = sched_copy(t[0].cron[..], "0 9 * * 1-5");
+  t[0].folder_n = sched_copy(t[0].folder[..], "/Users/me/work/openagents");
+  t[0].prompt_n = sched_copy(t[0].prompt[..], "Run nightly checks");
+  t[0].enabled = true;
+  t[0].last_run_min = 0;
+
+  #assert sched_is_due(t[..], 29900000, 0, 9, 20, 11, 5);
+  t[0].last_run_min = 29900000;
+  #assert !sched_is_due(t[..], 29900000, 0, 9, 20, 11, 5);
+  t[0].enabled = false;
+  #assert !sched_is_due(t[..], 29900001, 0, 9, 20, 11, 5);
+
+  t[0].enabled = true;
+  jb: [2048] u8;
+  jn := sched_task_write(t[..], jb[..]);
+  #assert jn > 0;
+  parsed: [1] SchedTask;
+  #assert sched_task_parse(cast(string) jb[0..<jn], parsed[..]);
+  #assert cast(string) parsed[0].id[0..<parsed[0].id_n] == "daily-audit";
+  #assert parsed[0].enabled && parsed[0].last_run_min == 29900000;
+
+  agy_item: [1] UpdItem;
+  agy_item[0].name_n = sched_copy(agy_item[0].name[..], "agy");
+  agy_item[0].current_n = sched_copy(agy_item[0].current[..], "1.5.10");
+  agy_item[0].latest_n = sched_copy(agy_item[0].latest[..], "1.5.13");
+  agy_item[0].active_leases = 2;
+  agy_item[0].supports_atomic_switch = true;
+  #assert upd_decide_apply(agy_item[..]) == UPD_APPLY_NOW;
+
+  desk_item: [1] UpdItem;
+  desk_item[0].name_n = sched_copy(desk_item[0].name[..], "OpenAgents Desktop");
+  desk_item[0].current_n = sched_copy(desk_item[0].current[..], "1.0.0");
+  desk_item[0].latest_n = sched_copy(desk_item[0].latest[..], "1.1.0");
+  desk_item[0].active_leases = 1;
+  desk_item[0].supports_atomic_switch = false;
+  #assert upd_decide_apply(desk_item[..]) == UPD_DEFER_LEASED;
+  desk_item[0].active_leases = 0;
+  #assert upd_decide_apply(desk_item[..]) == UPD_APPLY_NOW;
+  desk_item[0].current_n = sched_copy(desk_item[0].current[..], "1.1.0");
+  #assert upd_decide_apply(desk_item[..]) == UPD_UP_TO_DATE;
+}
