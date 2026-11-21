@@ -3793,6 +3793,16 @@
         "docs/verification/incremental-asr-2026-11-03/README.md",
         "docs/verification/incremental-asr-2026-11-03/README.md"
       ]
+    },
+    {
+      "source": "psionic/examples/exec-vm.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch231-an-interpreter-in-weights-or-one-program-in-weights.md",
+      "consumer": "coax/platform/tool-native.c",
+      "evidence": [
+        "psionic/tests/exec_vm_oracle.py",
+        "psionic/tools/exec-vm-artifact.coax"
+      ]
     }
   ]
 }

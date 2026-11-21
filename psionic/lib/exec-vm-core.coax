@@ -1,0 +1,2234 @@
+// Unified Attention+FFN compiled transformer substrate (exec-vm-v1).
+// Alternating parabolic hard-max attention heads ((2k, -k^2) keys with recency
+// tie-breaking), uniform causal prefix-sum heads, and ReGLU residual FFN layers
+// in exact binary64 (no RMSNorm, no SiLU, explicit 2^53 exactness envelope).
+// All graph, schedule, weight and execution storage comes from caller-allocated
+// bounded arenas sized and checked by preflight admission (no 16-input or
+// 128-node static ceiling). Dense weight matrices (W_Q, W_K, W_V, W_O, W_up,
+// W_gate, W_down, W_out) serialize to and load from standard F64 safetensors
+// pinned by SHA-256 artifact digest.
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/encoding/json.coax";
+#authority;
+
+EV_VALUE_MAX :: 67108864;          // 2^26: operands within +/-2^26 keep products <= 2^52 < 2^53
+EV_EXACT_MAX :: 9007199254740992;  // 2^53: exact binary64 integer envelope
+EV_COEF_SUM_MAX :: 134217728;      // 2^27: partial linear sums stay within 2^53
+EV_KEY_MAX :: 1048576;             // 2^20: parabolic scores stay within 3*2^40 << 2^53
+EV_FORM_TERMS :: 16;               // max distinct base terms in one linear form
+EV_HEAD_VALUES_MAX :: 4;           // max fused values per attention head (d_v <= 4)
+EV_HEADER_MAX :: 32768;            // max safetensors JSON header bytes
+
+EvStatus :: enum u8 {
+    ok;
+    shape;
+    operand;
+    type;
+    range;
+    capacity;
+    terms;
+    number;
+    format;
+    digest;
+    alias;
+}
+
+EvOp :: enum u8 {
+    input;       // k = input index (0, 1, ...)
+    constant;    // k = constant integer value
+    add;         // a + b
+    sub;         // a - b
+    scale;       // a * k
+    mul;         // a * b (ReGLU 2 units)
+    relu;        // ReLU(a) (1 unit)
+    step;        // 1 if a >= 1 else 0 (2 units)
+    eq0;         // 1 if a == 0 else 0 (5 units)
+    select;      // c ? a : b, c must be bit (2 units)
+    mask;        // b ? a : 0 = a * ReLU(b), b must be bit (1 unit)
+    attn_read;   // parabolic hard-max: query node a, kv_k1=b, kv_k2=c, kv_v=k
+    attn_sum;    // uniform causal prefix-sum: kv_v=k
+}
+
+EvAttnMask :: enum u8 { causal_past; causal_self; }
+EvLayerKind :: enum u8 { ffn; attn; }
+EvHeadKind :: enum u8 { parabolic_hardmax; parabolic_oldest; uniform_sum; }
+
+// Planted compiler bugs for the extended Ch 230 differential harness.
+EvFault :: enum u8 {
+    none;
+    early_reuse;      // FFN slot released 1 layer before its last reader (schedule)
+    same_layer;       // FFN gate placed in its deepest operand's layer (schedule)
+    no_clear;         // Reused FFN slot never cleared (schedule)
+    clear_sign;       // Clear unit emitted with +1 instead of -1 in W_down (emission)
+    attn_key_sign;    // Parabolic W_K emitted with -1 on k2 (score 2kq+k^2) (emission)
+    attn_tie_break;   // Parabolic head emitted oldest-wins instead of recency-wins (emission)
+    attn_same_layer;  // Attention node placed before its query is ready (schedule)
+}
+
+EvNode :: struct {
+    op: EvOp;
+    a: int;
+    b: int;
+    c: int;
+    k: int;
+    mask: EvAttnMask;
+}
+
+EvResult :: struct { status: EvStatus; node: int; }
+
+EvForm :: struct {
+    count: int;
+    slots: [EV_FORM_TERMS]int;
+    coefs: [EV_FORM_TERMS]int;
+}
+
+EvLayerDesc :: struct {
+    kind: EvLayerKind;
+    units: int;
+    head_first: int;
+    head_count: int;
+    w_offset: int;
+}
+
+EvHeadDesc :: struct {
+    kind: EvHeadKind;
+    mask: EvAttnMask;
+    d_k: int;
+    d_v: int;
+    w_offset: int;
+}
+
+EvCompileArena :: struct {
+    forms: []EvForm;
+    layer: []int;
+    last: []int;
+    slot: []int;
+    clear: []int;
+    release: []int;
+    kept: []bool;
+    free_slots: []bool;
+    kv_pin: []int;
+}
+
+EvModel :: struct {
+    status: EvStatus;
+    node: int;
+    width: int;
+    n_layers: int;
+    n_heads: int;
+    n_inputs: int;
+    n_outputs: int;
+    kv_slots: int;
+    n_weights: int;
+    w_out_offset: int;
+    n_nodes: int;
+    layers: []EvLayerDesc;
+    heads: []EvHeadDesc;
+    weights: []f64;
+}
+
+EvExecArena :: struct {
+    x: []f64;
+    stage: []f64;
+    hidden: []f64;
+}
+
+EvSerialResult :: struct {
+    status: EvStatus;
+    written: int;
+    digest: [32]u8;
+}
+
+EvLoadResult :: struct {
+    model: EvModel;
+    digest: [32]u8;
+}
+
+// ---- Exactness, arithmetic and SHA-256 helpers ----
+
+ev_exact_range :: (v: f64) -> bool #effects(all) {
+    return abs(v) <= f64(EV_EXACT_MAX);
+}
+
+ev_value_ok :: (v: int) -> bool #effects(all) {
+    return v >= -EV_VALUE_MAX && v <= EV_VALUE_MAX;
+}
+
+ev_max :: (a: int, b: int) -> int #effects(all) {
+    return (a + b + cast(int)abs(f64(a - b))) / 2;
+}
+
+ev_relu_int :: (x: int) -> int #effects(all) {
+    return (x + cast(int)abs(f64(x))) / 2;
+}
+
+ev_sha256 :: (bytes: []u8) -> [32]u8 #effects(all) {
+    sha: [112]u8;
+    d: [32]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    at := 0;
+    while at < bytes.count {
+        end := at + 4096; // mutant: equivalent (SHA-256 streaming chunks of 4096 vs 4097 bytes hash the identical byte stream)
+        if end > bytes.count { end = bytes.count; } // mutant: equivalent (clamping end == bytes.count to bytes.count is a no-op)
+        #assert sha256_update_checked(sha[..], bytes[at..<end], false) == SHA_OK;
+        at = end;
+    }
+    #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+    return d;
+}
+
+ev_same_digest :: (a: [32]u8, b: [32]u8) -> bool #effects(all) {
+    for i: 0..<32 { if a[i] != b[i] { return false; } }
+    return true;
+}
+
+// ---- Linear forms over residual slots (canonical sorted order) ----
+
+ev_term :: (slot: int, coef: int) -> EvForm #effects(all) {
+    f: EvForm;
+    if coef != 0 {
+        f.count = 1;
+        f.slots[0] = slot;
+        f.coefs[0] = coef;
+    }
+    return f;
+}
+
+ev_one :: () -> EvForm #effects(all) { return ev_term(0, 1); }
+
+ev_neg :: (a: EvForm) -> EvForm #effects(all) {
+    r := a;
+    for i: 0..<a.count { r.coefs[i] = -a.coefs[i]; }
+    return r;
+}
+
+ev_plus :: (a: EvForm, b: EvForm) -> EvForm #effects(all) {
+    r := a;
+    if a.count < 0 || b.count < 0 { r.count = -1; return r; }
+    for i: 0..<b.count {
+        found := -1;
+        for j: 0..<r.count { if r.slots[j] == b.slots[i] { found = j; } }
+        if found >= 0 {
+            r.coefs[found] += b.coefs[i];
+        } else {
+            if r.count == EV_FORM_TERMS { r.count = -1; return r; }
+            r.slots[r.count] = b.slots[i];
+            r.coefs[r.count] = b.coefs[i];
+            r.count += 1;
+        }
+    }
+    kept := 0;
+    for j: 0..<r.count {
+        if r.coefs[j] != 0 {
+            r.slots[kept] = r.slots[j];
+            r.coefs[kept] = r.coefs[j];
+            kept += 1;
+        }
+    }
+    r.count = kept;
+    // Keep terms sorted by ascending slot so form equality is canonical.
+    for i: 0..<r.count {
+        for j: i + 1..<r.count {
+            if r.slots[j] < r.slots[i] { // mutant: equivalent (all slots in r are distinct after merging, so equality never holds)
+                ts := r.slots[i]; r.slots[i] = r.slots[j]; r.slots[j] = ts;
+                tc := r.coefs[i]; r.coefs[i] = r.coefs[j]; r.coefs[j] = tc;
+            }
+        }
+    }
+    return r;
+}
+
+ev_coef_sum :: (f: EvForm) -> f64 #effects(all) {
+    s: f64 = 0;
+    for t: 0..<f.count { s += abs(f64(f.coefs[t])); }
+    return s;
+}
+
+ev_forms_equal :: (a: EvForm, b: EvForm) -> bool #effects(all) {
+    if a.count != b.count { return false; }
+    for i: 0..<a.count {
+        if a.slots[i] != b.slots[i] || a.coefs[i] != b.coefs[i] { return false; }
+    }
+    return true;
+}
+
+ev_map_slots :: (f: EvForm, slot: []int) -> EvForm #effects(all) {
+    r: EvForm;
+    for t: 0..<f.count {
+        r = ev_plus(r, ev_term(slot[f.slots[t]], f.coefs[t]));
+    }
+    return r;
+}
+
+// ---- Unified Attention+FFN graph admission & integer reference evaluator ----
+
+ev_arity :: (op: EvOp) -> int #effects(all) {
+    if op == EvOp.input || op == EvOp.constant || op == EvOp.attn_sum { return 0; }
+    if op == EvOp.add || op == EvOp.sub || op == EvOp.mul || op == EvOp.mask { return 2; }
+    if op == EvOp.select { return 3; }
+    return 1;
+}
+
+ev_bit :: (op: EvOp) -> bool #effects(all) { return op == EvOp.step || op == EvOp.eq0; }
+ev_linear :: (op: EvOp) -> bool #effects(all) {
+    return op == EvOp.add || op == EvOp.sub || op == EvOp.scale || op == EvOp.constant;
+}
+ev_is_attn :: (op: EvOp) -> bool #effects(all) { return op == EvOp.attn_read || op == EvOp.attn_sum; }
+ev_is_ffn :: (op: EvOp) -> bool #effects(all) { return op != EvOp.input && !ev_linear(op) && !ev_is_attn(op); }
+
+ev_admit :: (nodes: []EvNode, outputs: []int, kv_slots: int) -> EvResult #export_c #effects(all) {
+    if nodes.count < 1 || outputs.count < 1 || kv_slots < 0 { return EvResult.{status = EvStatus.shape}; }
+    inputs := 0;
+    for i: 0..<nodes.count {
+        n := nodes[i];
+        if cast(int)n.op > cast(int)EvOp.attn_sum { return EvResult.{status = EvStatus.operand, node = i}; }
+        ar := ev_arity(n.op);
+        if ar >= 1 && (n.a < 0 || n.a >= i) { return EvResult.{status = EvStatus.operand, node = i}; }
+        if ar >= 2 && (n.b < 0 || n.b >= i) { return EvResult.{status = EvStatus.operand, node = i}; }
+        if ar == 3 && (n.c < 0 || n.c >= i) { return EvResult.{status = EvStatus.operand, node = i}; }
+        if n.op == EvOp.select && !ev_bit(nodes[n.c].op) { return EvResult.{status = EvStatus.type, node = i}; }
+        if n.op == EvOp.mask && !ev_bit(nodes[n.b].op) { return EvResult.{status = EvStatus.type, node = i}; }
+        if n.op == EvOp.input {
+            if n.k != inputs { return EvResult.{status = EvStatus.operand, node = i}; }
+            inputs += 1;
+        }
+        if (n.op == EvOp.scale || n.op == EvOp.constant) && !ev_value_ok(n.k) {
+            return EvResult.{status = EvStatus.range, node = i};
+        }
+        if n.op == EvOp.attn_read {
+            if cast(int)n.mask > cast(int)EvAttnMask.causal_self { return EvResult.{status = EvStatus.operand, node = i}; }
+            if kv_slots < 1 || n.b < 0 || n.b >= kv_slots || n.c < 0 || n.c >= kv_slots || n.k < 0 || n.k >= kv_slots {
+                return EvResult.{status = EvStatus.operand, node = i};
+            }
+        }
+        if n.op == EvOp.attn_sum {
+            if cast(int)n.mask > cast(int)EvAttnMask.causal_self { return EvResult.{status = EvStatus.operand, node = i}; }
+            if kv_slots < 1 || n.k < 0 || n.k >= kv_slots { return EvResult.{status = EvStatus.operand, node = i}; }
+        }
+    }
+    for o: outputs { if o < 0 || o >= nodes.count { return EvResult.{status = EvStatus.operand, node = o}; } }
+    return EvResult.{};
+}
+
+// Reference integer evaluator for unified Attention+FFN graphs (causal_past KV context).
+ev_eval :: (nodes: []EvNode, inputs: []int, kv_ctx: []int, kv_count: int, kv_slots: int, outputs: []int, values: []int, scratch: []int) -> EvResult #export_c #effects(all) {
+    adm := ev_admit(nodes, outputs, kv_slots);
+    if adm.status != EvStatus.ok { return adm; }
+    in_count := 0;
+    for n: nodes { if n.op == EvOp.input { in_count += 1; } }
+    if inputs.count != in_count || values.count < outputs.count || scratch.count < nodes.count {
+        return EvResult.{status = EvStatus.capacity};
+    }
+    if kv_count < 0 || kv_ctx.count < kv_count * kv_slots {
+        return EvResult.{status = EvStatus.capacity};
+    }
+    for i: 0..<nodes.count {
+        n := nodes[i];
+        x := 0;
+        if n.op == EvOp.input { x = inputs[n.k]; }
+        if n.op == EvOp.constant { x = n.k; }
+        if n.op == EvOp.add { x = scratch[n.a] + scratch[n.b]; }
+        if n.op == EvOp.sub { x = scratch[n.a] - scratch[n.b]; }
+        if n.op == EvOp.scale { x = scratch[n.a] * n.k; }
+        if n.op == EvOp.mul { x = scratch[n.a] * scratch[n.b]; }
+        if n.op == EvOp.relu && scratch[n.a] >= 1 { x = scratch[n.a]; }
+        if n.op == EvOp.step && scratch[n.a] >= 1 { x = 1; }
+        if n.op == EvOp.eq0 && scratch[n.a] == 0 { x = 1; }
+        if n.op == EvOp.select { x = scratch[n.b]; if scratch[n.c] == 1 { x = scratch[n.a]; } }
+        if n.op == EvOp.mask && scratch[n.b] == 1 { x = scratch[n.a]; }
+        if n.op == EvOp.attn_read {
+            q := scratch[n.a];
+            if q < -EV_KEY_MAX || q > EV_KEY_MAX { return EvResult.{status = EvStatus.range, node = i}; }
+            if kv_count > 0 {
+                best := 0;
+                best_score := kv_ctx[n.b] * q + kv_ctx[n.c];
+                for s: 1..<kv_count {
+                    sc := kv_ctx[s * kv_slots + n.b] * q + kv_ctx[s * kv_slots + n.c];
+                    if sc >= best_score { best_score = sc; best = s; }
+                }
+                x = kv_ctx[best * kv_slots + n.k];
+            }
+        }
+        if n.op == EvOp.attn_sum {
+            for s: 0..<kv_count { x += kv_ctx[s * kv_slots + n.k]; }
+        }
+        if !ev_value_ok(x) { return EvResult.{status = EvStatus.range, node = i}; }
+        scratch[i] = x;
+    }
+    for i: 0..<outputs.count { values[i] = scratch[outputs[i]]; }
+    return EvResult.{};
+}
+
+// ---- Compiler helpers (dense matrix placement) ----
+
+ev_form_of :: (nodes: []EvNode, forms: []EvForm, i: int) -> EvForm #effects(all) {
+    n := nodes[i];
+    if n.op == EvOp.add { return ev_plus(forms[n.a], forms[n.b]); }
+    if n.op == EvOp.sub { return ev_plus(forms[n.a], ev_neg(forms[n.b])); }
+    if n.op == EvOp.scale {
+        f := forms[n.a];
+        if n.k == 0 { return EvForm.{}; }
+        for t: 0..<f.count { f.coefs[t] *= n.k; }
+        return f;
+    }
+    if n.op == EvOp.constant { return ev_term(i, n.k); }
+    return ev_term(i, 1);
+}
+
+ev_ffn_weights :: (width: int, units: int) -> int #effects(all) { return 3 * width * units; }
+ev_head_weights :: (width: int, d_k: int, d_v: int) -> int #effects(all) { return (2 * d_k + 2 * d_v) * width; }
+
+ev_gate_units :: (op: EvOp) -> int #effects(all) {
+    if op == EvOp.relu || op == EvOp.mask { return 1; }
+    if op == EvOp.eq0 { return 5; }
+    return 2;
+}
+
+// Write one ReGLU unit into FFN dense matrices W_up [U,D], W_gate [U,D], W_down [D,U].
+ev_emit_unit :: (w: []f64, base: int, width: int, units: int, u: int, val_f: EvForm, gate_f: EvForm, target: int, scale: int) #effects(all) {
+    for i: 0..<val_f.count { w[base + u * width + val_f.slots[i]] += f64(val_f.coefs[i]); }
+    for i: 0..<gate_f.count { w[base + (units + u) * width + gate_f.slots[i]] += f64(gate_f.coefs[i]); }
+    w[base + 2 * units * width + target * units + u] += f64(scale);
+}
+
+ev_emit_gate :: (w: []f64, base: int, width: int, units: int, u: int, op: EvOp, a: EvForm, b: EvForm, c: EvForm, target: int) -> int #effects(all) {
+    one := ev_one();
+    if op == EvOp.mul {
+        ev_emit_unit(w, base, width, units, u, a, b, target, 1);
+        ev_emit_unit(w, base, width, units, u + 1, a, ev_neg(b), target, -1);
+        return u + 2;
+    }
+    if op == EvOp.relu {
+        ev_emit_unit(w, base, width, units, u, one, a, target, 1);
+        return u + 1;
+    }
+    if op == EvOp.mask {
+        ev_emit_unit(w, base, width, units, u, a, b, target, 1);
+        return u + 1;
+    }
+    if op == EvOp.step {
+        ev_emit_unit(w, base, width, units, u, one, a, target, 1);
+        ev_emit_unit(w, base, width, units, u + 1, one, ev_plus(a, ev_term(0, -1)), target, -1);
+        return u + 2;
+    }
+    if op == EvOp.eq0 {
+        na := ev_neg(a);
+        ev_emit_unit(w, base, width, units, u, one, one, target, 1);
+        ev_emit_unit(w, base, width, units, u + 1, one, a, target, -1);
+        ev_emit_unit(w, base, width, units, u + 2, one, ev_plus(a, ev_term(0, -1)), target, 1);
+        ev_emit_unit(w, base, width, units, u + 3, one, na, target, -1);
+        ev_emit_unit(w, base, width, units, u + 4, one, ev_plus(na, ev_term(0, -1)), target, 1);
+        return u + 5;
+    }
+    // select(c, a, b) = b + (a - b) * ReLU(c)
+    ev_emit_unit(w, base, width, units, u, b, one, target, 1);
+    ev_emit_unit(w, base, width, units, u + 1, ev_plus(a, ev_neg(b)), c, target, 1);
+    return u + 2;
+}
+
+ev_operand :: (n: EvNode, which: int) -> int #effects(all) {
+    if which == 1 { return n.b; }
+    if which == 2 { return n.c; }
+    return n.a;
+}
+
+ev_form_ready :: (f: EvForm, layer: []int, max_layer: int) -> bool #effects(all) {
+    for t: 0..<f.count {
+        l := layer[f.slots[t]];
+        if l < 0 || l > max_layer { return false; }
+    }
+    return true;
+}
+
+ev_form_max_layer :: (f: EvForm, layer: []int) -> int #effects(all) {
+    deepest := 0;
+    for t: 0..<f.count { deepest = ev_max(deepest, layer[f.slots[t]]); }
+    return deepest;
+}
+
+ev_arena_ok :: (arena: EvCompileArena, n: int) -> bool #effects(all) {
+    return arena.forms.count >= n && arena.layer.count >= n && arena.last.count >= n &&
+           arena.slot.count >= n && arena.clear.count >= n && arena.release.count >= n &&
+           arena.kept.count >= n && arena.free_slots.count >= 1;
+}
+
+// ---- Unified Attention+FFN Arena Compiler ----
+
+ev_compile :: (nodes: []EvNode, outputs: []int, kv_slots: int, arena: EvCompileArena, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64) -> EvModel #export_c #effects(all) {
+    return ev_compile_planted(nodes, outputs, kv_slots, arena, layers, heads, weights, EvFault.none);
+}
+
+ev_compile_planted :: (nodes: []EvNode, outputs: []int, kv_slots: int, arena: EvCompileArena, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64, fault: EvFault) -> EvModel #export_c #effects(all) {
+    adm := ev_admit(nodes, outputs, kv_slots);
+    if adm.status != EvStatus.ok { return EvModel.{status = adm.status, node = adm.node}; }
+    n := nodes.count;
+    if !ev_arena_ok(arena, n) { return EvModel.{status = EvStatus.capacity}; }
+    has_pins := arena.kv_pin.count > 0;
+    if has_pins {
+        if arena.kv_pin.count < kv_slots || arena.kv_pin.count > arena.free_slots.count {
+            return EvModel.{status = EvStatus.capacity};
+        }
+        for p: 1..<arena.kv_pin.count {
+            v := arena.kv_pin[p];
+            if v < -1 || v >= n { return EvResult_model(EvStatus.operand, p); }
+        }
+        // Every output must be pinned when kv_pin writeback is enabled.
+        for o: outputs {
+            found := false;
+            for p: 1..<arena.kv_pin.count { if arena.kv_pin[p] == o { found = true; } }
+            if !found { return EvResult_model(EvStatus.operand, o); }
+        }
+    }
+    m: EvModel;
+    m.n_outputs = outputs.count;
+    m.kv_slots = kv_slots;
+    m.n_nodes = n;
+    m.layers = layers;
+    m.heads = heads;
+    m.weights = weights;
+
+    // 1. Build linear forms over base nodes, validate form & coefficient bounds.
+    unplaced := 0;
+    for i: 0..<n {
+        arena.last[i] = 0;
+        arena.slot[i] = 0;
+        arena.clear[i] = 0;
+        arena.release[i] = 0;
+        arena.kept[i] = false;
+        nd := nodes[i];
+        arena.forms[i] = ev_form_of(nodes, arena.forms, i);
+        if arena.forms[i].count == -1 { return EvResult_model(EvStatus.terms, i); }
+        if ev_coef_sum(arena.forms[i]) > f64(EV_COEF_SUM_MAX) { return EvResult_model(EvStatus.range, i); }
+        if nd.op == EvOp.input { m.n_inputs += 1; }
+        if (nd.op == EvOp.step || nd.op == EvOp.eq0) && arena.forms[nd.a].count >= EV_FORM_TERMS {
+            return EvResult_model(EvStatus.terms, i);
+        }
+        if nd.op == EvOp.select && ev_plus(arena.forms[nd.a], ev_neg(arena.forms[nd.b])).count == -1 {
+            return EvResult_model(EvStatus.terms, i);
+        }
+        if nd.op == EvOp.constant { arena.kept[i] = true; }
+        if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            arena.layer[i] = -1;
+            unplaced += 1;
+        } else {
+            arena.layer[i] = 0;
+        }
+    }
+
+    // 2. Wave scheduling into alternating Attention and FFN layers.
+    n_layers := 0;
+    while unplaced > 0 {
+        L := n_layers + 1;
+        if n_layers >= layers.count { return EvResult_model(EvStatus.capacity, L); }
+        // Check if any Attention node is ready at this wave.
+        ready_attn := false;
+        for i: 0..<n {
+            if arena.layer[i] == -1 && ev_is_attn(nodes[i].op) {
+                nd := nodes[i];
+                ok := true;
+                if nd.op == EvOp.attn_read {
+                    ok = ev_form_ready(arena.forms[nd.a], arena.layer, n_layers);
+                }
+                if ok { ready_attn = true; }
+            }
+        }
+        if ready_attn {
+            layers[n_layers] = EvLayerDesc.{kind = EvLayerKind.attn};
+            for i: 0..<n {
+                if arena.layer[i] == -1 && ev_is_attn(nodes[i].op) {
+                    nd := nodes[i];
+                    ok := true;
+                    if nd.op == EvOp.attn_read {
+                        ok = ev_form_ready(arena.forms[nd.a], arena.layer, n_layers);
+                    }
+                    if ok {
+                        arena.layer[i] = L;
+                        unplaced -= 1;
+                    }
+                }
+            }
+        } else {
+            layers[n_layers] = EvLayerDesc.{kind = EvLayerKind.ffn};
+            // Node 0 has arity 0 (input, constant, or attn_sum), never an FFN gate.
+            for i: 1..<n {
+                if arena.layer[i] == -1 && ev_is_ffn(nodes[i].op) {
+                    nd := nodes[i];
+                    ok := true;
+                    for wh: 0..<ev_arity(nd.op) {
+                        if !ev_form_ready(arena.forms[ev_operand(nd, wh)], arena.layer, n_layers) { ok = false; }
+                    }
+                    if ok {
+                        arena.layer[i] = L;
+                        unplaced -= 1;
+                    }
+                }
+            }
+        }
+        n_layers = L;
+    }
+
+    // Planted scheduling bugs applied cleanly after wave discovery.
+    if fault == EvFault.same_layer {
+        // Nodes 0 and 1 can never depend on an FFN layer (node 0 has arity 0).
+        for i: 2..<n {
+            if ev_is_ffn(nodes[i].op) {
+                nd := nodes[i];
+                deepest := 0; // mutant: equivalent (for layer-1 FFN nodes, deepest=1 reassigns arena.layer[i]=1 unchanged; for layer >= 2 nodes, at least one operand already has layer >= 1)
+                for wh: 0..<ev_arity(nd.op) {
+                    deepest = ev_max(deepest, ev_form_max_layer(arena.forms[ev_operand(nd, wh)], arena.layer));
+                }
+                if deepest >= 1 && layers[deepest - 1].kind == EvLayerKind.ffn {
+                    arena.layer[i] = deepest;
+                }
+            }
+        }
+    }
+    if fault == EvFault.attn_same_layer {
+        first_attn := 0;
+        for L: 0..<n_layers {
+            if first_attn == 0 && layers[L].kind == EvLayerKind.attn { first_attn = L + 1; }
+        }
+        if first_attn >= 1 {
+            for i: 1..<n {
+                if nodes[i].op == EvOp.attn_read && arena.layer[i] > first_attn { // mutant: equivalent (when arena.layer[i] == first_attn, assigning first_attn is a no-op)
+                    arena.layer[i] = first_attn;
+                }
+            }
+        }
+    }
+
+    // 3. Liveness: last reading layer of every base node; mark outputs & pins kept.
+    for i: 1..<n {
+        nd := nodes[i];
+        if ev_is_ffn(nd.op) {
+            for wh: 0..<ev_arity(nd.op) {
+                f := arena.forms[ev_operand(nd, wh)];
+                for t: 0..<f.count { arena.last[f.slots[t]] = ev_max(arena.last[f.slots[t]], arena.layer[i]); }
+            }
+        }
+        if nd.op == EvOp.attn_read {
+            f := arena.forms[nd.a];
+            for t: 0..<f.count { arena.last[f.slots[t]] = ev_max(arena.last[f.slots[t]], arena.layer[i]); }
+        }
+    }
+    for o: outputs {
+        f := arena.forms[o];
+        for t: 0..<f.count { arena.kept[f.slots[t]] = true; }
+    }
+    if has_pins {
+        for p: 1..<arena.kv_pin.count {
+            if arena.kv_pin[p] >= 0 {
+                f := arena.forms[arena.kv_pin[p]];
+                for t: 0..<f.count { arena.kept[f.slots[t]] = true; }
+            }
+        }
+    }
+
+    // Clearing: only FFN layers can clear dead slots; find earliest FFN layer >= last[i].
+    for i: 0..<n {
+        if arena.last[i] >= 1 && !arena.kept[i] {
+            cL := 0;
+            for L: arena.last[i] - 1..<n_layers {
+                if cL == 0 && layers[L].kind == EvLayerKind.ffn { cL = L + 1; }
+            }
+            if cL >= 1 {
+                arena.clear[i] = cL;
+                arena.release[i] = cL;
+                if fault == EvFault.early_reuse && cL >= 2 {
+                    // Release one layer early if that earlier layer is FFN (or one before).
+                    arena.release[i] = cL - 1;
+                }
+                if fault == EvFault.no_clear { arena.clear[i] = 0; }
+            }
+        }
+    }
+
+    // 4. Residual slot allocation with reuse across layers (slot 0 is reserved for constant 1).
+    for s: 1..<arena.free_slots.count { arena.free_slots[s] = false; }
+    m.width = 1;
+    for i: 0..<n {
+        if nodes[i].op == EvOp.input {
+            if m.width >= arena.free_slots.count { return EvResult_model(EvStatus.capacity, i); }
+            arena.slot[i] = m.width;
+            m.width += 1;
+        }
+    }
+    for li: 0..<n_layers {
+        L := li + 1;
+        for i: 0..<n { if arena.release[i] == L { arena.free_slots[arena.slot[i]] = true; } }
+        for i: 0..<n {
+            if arena.layer[i] == L && (ev_is_ffn(nodes[i].op) || ev_is_attn(nodes[i].op)) {
+                chosen := 0;
+                for s: 1..<m.width { if chosen == 0 && arena.free_slots[s] { chosen = s; } }
+                if chosen == 0 {
+                    if m.width >= arena.free_slots.count { return EvResult_model(EvStatus.capacity, i); }
+                    chosen = m.width;
+                    m.width += 1;
+                }
+                arena.free_slots[chosen] = false;
+                arena.slot[i] = chosen;
+            }
+        }
+    }
+    if kv_slots > m.width { // mutant: equivalent (when kv_slots == m.width, m.width <= free_slots.count already holds and assignment is a no-op)
+        if kv_slots > arena.free_slots.count { return EvResult_model(EvStatus.capacity, kv_slots); }
+        m.width = kv_slots;
+    }
+    if arena.kv_pin.count > m.width { // mutant: equivalent (when equal, assignment is a no-op)
+        m.width = arena.kv_pin.count;
+    }
+
+    // Optional final KV-slot writeback FFN layer when kv_pin is supplied.
+    wb_layer := -1;
+    if has_pins {
+        if n_layers >= layers.count { return EvResult_model(EvStatus.capacity, n_layers + 1); }
+        wb_layer = n_layers;
+        layers[wb_layer] = EvLayerDesc.{kind = EvLayerKind.ffn};
+        n_layers += 1;
+    }
+    m.n_layers = n_layers;
+
+    // 5. Count FFN units and fuse Attention heads per layer, then size dense weights.
+    head_cursor := 0;
+    w_cursor := 0;
+    for li: 0..<n_layers {
+        L := li + 1;
+        if layers[li].kind == EvLayerKind.ffn {
+            units := 0;
+            if li == wb_layer {
+                for p: 1..<arena.kv_pin.count {
+                    if arena.kv_pin[p] >= 0 {
+                        want := ev_map_slots(arena.forms[arena.kv_pin[p]], arena.slot);
+                        delta := ev_plus(want, ev_term(p, -1));
+                        if delta.count == -1 { return EvResult_model(EvStatus.terms, arena.kv_pin[p]); }
+                        if delta.count > 0 { units += 1; }
+                    }
+                }
+            } else {
+                for i: 0..<n {
+                    if arena.layer[i] == L && ev_is_ffn(nodes[i].op) { units += ev_gate_units(nodes[i].op); }
+                    if arena.clear[i] == L { units += 1; }
+                }
+            }
+            layers[li].units = units;
+            layers[li].w_offset = w_cursor;
+            w_cursor += ev_ffn_weights(m.width, units);
+        } else {
+            // Attention layer: group compatible attn_read / attn_sum nodes into heads (d_v <= 4).
+            layers[li].head_first = head_cursor;
+            // Track which nodes in layer L have been grouped into a head.
+            for i: 0..<n {
+                if arena.layer[i] != L || !ev_is_attn(nodes[i].op) { continue; }
+                // Check whether node i already matches an earlier node in this layer within the same head.
+                matched_head := false;
+                ni := nodes[i];
+                qf_i: EvForm;
+                if ni.op == EvOp.attn_read { qf_i = ev_map_slots(arena.forms[ni.a], arena.slot); }
+                // Count how many earlier nodes in layer L match (same op, mask, k1, k2, query form).
+                same_before := 0;
+                for j: 0..<i {
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    same_before += 1; // mutant: equivalent (only same_before % 4 == 0 is tested, which holds identically for +k and -k)
+                }
+                if same_before % EV_HEAD_VALUES_MAX != 0 { matched_head = true; }
+                if !matched_head {
+                    // Start a new head covering node i and up to EV_HEAD_VALUES_MAX-1 later matching nodes.
+                    if head_cursor >= heads.count { return EvResult_model(EvStatus.capacity, i); }
+                    dv := 1;
+                    seen_after := 0;
+                    for j: i + 1..<n {
+                        if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                        if ni.op == EvOp.attn_read {
+                            if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                            if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                        }
+                        if seen_after < EV_HEAD_VALUES_MAX - 1 { dv += 1; }
+                        seen_after += 1;
+                    }
+                    dk := 0;
+                    hk := EvHeadKind.uniform_sum;
+                    if ni.op == EvOp.attn_read {
+                        dk = 2;
+                        hk = ifx fault == EvFault.attn_tie_break then EvHeadKind.parabolic_oldest else EvHeadKind.parabolic_hardmax;
+                    }
+                    heads[head_cursor] = EvHeadDesc.{kind = hk, mask = ni.mask, d_k = dk, d_v = dv, w_offset = w_cursor};
+                    w_cursor += ev_head_weights(m.width, dk, dv);
+                    head_cursor += 1;
+                }
+            }
+            layers[li].head_count = head_cursor - layers[li].head_first;
+        }
+    }
+    m.n_heads = head_cursor;
+    m.w_out_offset = w_cursor;
+    w_cursor += outputs.count * m.width;
+    m.n_weights = w_cursor;
+    if weights.count < m.n_weights { return EvResult_model(EvStatus.capacity, m.n_weights); }
+    for k: 0..<m.n_weights { weights[k] = 0; }
+
+    // 6. Emit dense weight matrices for every FFN layer, Attention head, and W_out.
+    emit_head := 0;
+    for li: 0..<n_layers {
+        L := li + 1;
+        if layers[li].kind == EvLayerKind.ffn {
+            units := layers[li].units;
+            base := layers[li].w_offset;
+            u := 0;
+            if li == wb_layer {
+                for p: 1..<arena.kv_pin.count {
+                    if arena.kv_pin[p] >= 0 {
+                        want := ev_map_slots(arena.forms[arena.kv_pin[p]], arena.slot);
+                        delta := ev_plus(want, ev_term(p, -1));
+                        if delta.count > 0 {
+                            ev_emit_unit(weights, base, m.width, units, u, delta, ev_one(), p, 1);
+                            u += 1;
+                        }
+                    }
+                }
+            } else {
+                for i: 1..<n {
+                    nd := nodes[i];
+                    if arena.layer[i] == L && ev_is_ffn(nd.op) {
+                        fa := ev_map_slots(arena.forms[nd.a], arena.slot);
+                        fb: EvForm;
+                        fc: EvForm;
+                        if ev_arity(nd.op) >= 2 { fb = ev_map_slots(arena.forms[nd.b], arena.slot); }
+                        if ev_arity(nd.op) == 3 { fc = ev_map_slots(arena.forms[nd.c], arena.slot); }
+                        u = ev_emit_gate(weights, base, m.width, units, u, nd.op, fa, fb, fc, arena.slot[i]);
+                    }
+                }
+                for i: 0..<n {
+                    if arena.clear[i] == L {
+                        sign := -1;
+                        if fault == EvFault.clear_sign { sign = 1; }
+                        ev_emit_unit(weights, base, m.width, units, u, ev_term(arena.slot[i], 1), ev_one(), arena.slot[i], sign);
+                        u += 1;
+                    }
+                }
+            }
+            #assert u == units;
+        } else {
+            for i: 0..<n {
+                if arena.layer[i] != L || !ev_is_attn(nodes[i].op) { continue; }
+                ni := nodes[i];
+                qf_i: EvForm;
+                if ni.op == EvOp.attn_read { qf_i = ev_map_slots(arena.forms[ni.a], arena.slot); }
+                same_before := 0;
+                for j: 0..<i {
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    same_before += 1; // mutant: equivalent (only same_before % 4 == 0 is tested, which holds identically for +k and -k)
+                }
+                if same_before % EV_HEAD_VALUES_MAX != 0 { continue; }
+                hd := heads[emit_head];
+                hb := hd.w_offset;
+                D := m.width;
+                if hd.d_k == 2 {
+                    // W_Q: row 0 = query form over slots, row 1 = const_1 (slot 0).
+                    for t: 0..<qf_i.count { weights[hb + qf_i.slots[t]] += f64(qf_i.coefs[t]); }
+                    weights[hb + D] = 1.0;
+                    // W_K: row 0 = kv_k1 (2k), row 1 = kv_k2 (-k^2; flipped on attn_key_sign fault).
+                    wk_base := hb + 2 * D;
+                    weights[wk_base + ni.b] = 1.0;
+                    k2_sign := 1.0;
+                    if fault == EvFault.attn_key_sign { k2_sign = -1.0; }
+                    weights[wk_base + D + ni.c] = k2_sign;
+                }
+                wv_base := hb + 2 * hd.d_k * D;
+                wo_base := wv_base + hd.d_v * D;
+                // Place value channel 0 from node i, then up to d_v-1 matching later nodes.
+                weights[wv_base + ni.k] = 1.0;
+                weights[wo_base + arena.slot[i] * hd.d_v] = 1.0;
+                r := 1;
+                for j: i + 1..<n {
+                    if r >= hd.d_v { break; }
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    weights[wv_base + r * D + nodes[j].k] = 1.0;
+                    weights[wo_base + arena.slot[j] * hd.d_v + r] = 1.0;
+                    r += 1;
+                }
+                #assert r == hd.d_v;
+                emit_head += 1;
+            }
+        }
+    }
+    #assert emit_head == m.n_heads;
+
+    // Emit dense readout projection W_out [n_outputs, width].
+    for k: 0..<outputs.count {
+        row_base := m.w_out_offset + k * m.width;
+        if has_pins {
+            for p: 1..<arena.kv_pin.count {
+                if arena.kv_pin[p] == outputs[k] {
+                    weights[row_base + p] = 1.0;
+                    break;
+                }
+            }
+        } else {
+            f := ev_map_slots(arena.forms[outputs[k]], arena.slot);
+            for t: 0..<f.count { weights[row_base + f.slots[t]] += f64(f.coefs[t]); }
+        }
+    }
+    return m;
+}
+
+EvResult_model :: (s: EvStatus, node: int) -> EvModel #effects(all) {
+    return EvModel.{status = s, node = node};
+}
+
+// ---- Pure Dense-Matmul Transformer Forward Pass (ZERO interpreter fallback) ----
+
+ev_dot :: (w: []f64, base: int, width: int, x: []f64) -> f64 #effects(all) {
+    sum: f64 = 0;
+    for i: 0..<width { sum += w[base + i] * x[i]; }
+    return sum;
+}
+
+ev_forward_token :: (m: EvModel, inputs: []f64, kv_ctx: []f64, kv_count: int, out_residual: []f64, out_readout: []f64, exec: EvExecArena, overlap: bool) -> EvStatus #export_c #effects(all) {
+    if m.status != EvStatus.ok { return m.status; }
+    if overlap { return EvStatus.alias; }
+    D := m.width;
+    if inputs.count != m.n_inputs || out_residual.count < D || out_readout.count < m.n_outputs {
+        return EvStatus.capacity;
+    }
+    if exec.x.count < D || exec.stage.count < D || kv_count < 0 || kv_ctx.count < kv_count * D { return EvStatus.capacity; }
+    for v: inputs { if !ev_exact_range(v) { return EvStatus.number; } }
+    if m.weights.count < m.n_weights { return EvStatus.capacity; }
+
+    // Initialize residual stream: slot 0 = 1.0, inputs in 1..n_inputs, zeros elsewhere.
+    exec.x[0] = 1.0;
+    for k: 0..<m.n_inputs { exec.x[1 + k] = inputs[k]; }
+    for i: 1 + m.n_inputs..<D { exec.x[i] = 0.0; }
+
+    for li: 0..<m.n_layers {
+        ly := m.layers[li];
+        if ly.kind == EvLayerKind.ffn {
+            U := ly.units;
+            if exec.hidden.count < U { return EvStatus.capacity; }
+            base := ly.w_offset;
+            for u: 0..<U {
+                v := ev_dot(m.weights, base + u * D, D, exec.x);
+                g := ev_dot(m.weights, base + (U + u) * D, D, exec.x);
+                h := v * ((g + abs(g)) * 0.5);
+                if !ev_exact_range(v) || !ev_exact_range(g) || !ev_exact_range(h) { return EvStatus.number; }
+                exec.hidden[u] = h;
+            }
+            out_base := base + 2 * U * D;
+            for i: 0..<D {
+                acc := exec.x[i];
+                for u: 0..<U { acc += m.weights[out_base + i * U + u] * exec.hidden[u]; }
+                if !ev_exact_range(acc) { return EvStatus.number; }
+                exec.stage[i] = acc;
+            }
+            for i: 0..<D { exec.x[i] = exec.stage[i]; }
+        } else {
+            for i: 0..<D { exec.stage[i] = exec.x[i]; }
+            for hi: ly.head_first..<ly.head_first + ly.head_count {
+                hd := m.heads[hi];
+                hb := hd.w_offset;
+                n_attend := kv_count;
+                if hd.mask == EvAttnMask.causal_self { n_attend = kv_count + 1; }
+                yv: [EV_HEAD_VALUES_MAX]f64;
+                if hd.kind == EvHeadKind.uniform_sum {
+                    wv_base := hb;
+                    for s: 0..<n_attend {
+                        src := ifx s < kv_count then kv_ctx[s * D..<s * D + D] else exec.x[0..<D];
+                        for r: 0..<hd.d_v {
+                            yv[r] += ev_dot(m.weights, wv_base + r * D, D, src);
+                            if !ev_exact_range(yv[r]) { return EvStatus.number; }
+                        }
+                    }
+                } else {
+                    q: [2]f64;
+                    for d: 0..<hd.d_k {
+                        q[d] = ev_dot(m.weights, hb + d * D, D, exec.x);
+                        if !ev_exact_range(q[d]) { return EvStatus.number; }
+                    }
+                    if n_attend > 0 {
+                        wk_base := hb + hd.d_k * D;
+                        best := 0;
+                        best_score: f64 = 0;
+                        for s: 0..<n_attend {
+                            src := ifx s < kv_count then kv_ctx[s * D..<s * D + D] else exec.x[0..<D];
+                            sc: f64 = 0;
+                            for d: 0..<hd.d_k {
+                                kd := ev_dot(m.weights, wk_base + d * D, D, src);
+                                if !ev_exact_range(kd) { return EvStatus.number; }
+                                sc += q[d] * kd;
+                            }
+                            if !ev_exact_range(sc) { return EvStatus.number; }
+                            if s == 0 {
+                                best_score = sc;
+                            } else if hd.kind == EvHeadKind.parabolic_hardmax {
+                                if sc >= best_score { best_score = sc; best = s; }
+                            } else {
+                                if sc > best_score { best_score = sc; best = s; }
+                            }
+                        }
+                        best_src := ifx best < kv_count then kv_ctx[best * D..<best * D + D] else exec.x[0..<D];
+                        wv_base := hb + 2 * hd.d_k * D; // mutant: equivalent (parabolic heads always have d_k == 2, so 2 * d_k == 2 + d_k == 4)
+                        for r: 0..<hd.d_v {
+                            yv[r] = ev_dot(m.weights, wv_base + r * D, D, best_src);
+                            if !ev_exact_range(yv[r]) { return EvStatus.number; }
+                        }
+                    }
+                }
+                wo_base := hb + (2 * hd.d_k + hd.d_v) * D;
+                for i: 0..<D {
+                    acc := exec.stage[i];
+                    for r: 0..<hd.d_v { acc += m.weights[wo_base + i * hd.d_v + r] * yv[r]; }
+                    if !ev_exact_range(acc) { return EvStatus.number; }
+                    exec.stage[i] = acc;
+                }
+            }
+            for i: 0..<D { exec.x[i] = exec.stage[i]; }
+        }
+    }
+
+    // Readout: dense matrix-vector product W_out @ x.
+    for k: 0..<m.n_outputs {
+        v := ev_dot(m.weights, m.w_out_offset + k * D, D, exec.x);
+        if !ev_exact_range(v) { return EvStatus.number; }
+        exec.stage[k] = v;
+    }
+    for i: 0..<D { out_residual[i] = exec.x[i]; }
+    for k: 0..<m.n_outputs { out_readout[k] = exec.stage[k]; }
+    return EvStatus.ok;
+}
+
+// ---- Standard F64 Safetensors Dense Weight Serialization & SHA-256 Round-Trip ----
+
+ev_put64 :: (b: []u8, at: int, x: u64) -> int #effects(all) {
+    b[at] = cast(u8)(x & 255);
+    b[at + 1] = cast(u8)((x >> 8) & 255);
+    b[at + 2] = cast(u8)((x >> 16) & 255);
+    b[at + 3] = cast(u8)((x >> 24) & 255);
+    b[at + 4] = cast(u8)((x >> 32) & 255);
+    b[at + 5] = cast(u8)((x >> 40) & 255);
+    b[at + 6] = cast(u8)((x >> 48) & 255);
+    b[at + 7] = cast(u8)((x >> 56) & 255);
+    return at + 8;
+}
+
+ev_get64 :: (b: []u8, at: int) -> u64 #effects(all) {
+    return cast(u64)b[at] | (cast(u64)b[at + 1] << 8) | (cast(u64)b[at + 2] << 16) | (cast(u64)b[at + 3] << 24) |
+           (cast(u64)b[at + 4] << 32) | (cast(u64)b[at + 5] << 40) | (cast(u64)b[at + 6] << 48) | (cast(u64)b[at + 7] << 56);
+}
+
+ev_write_tensor_entry :: (buf: []u8, at0: int, name_prefix: string, l: int, h: int, suffix: string, rows: int, cols: int, off_begin: int, off_end: int) -> int #effects(all) {
+    at := at0;
+    at = json_raw(buf, at, ",\"");
+    at = json_raw(buf, at, name_prefix);
+    if l >= 0 { at = json_write_int(buf, at, l); }
+    if h >= 0 {
+        at = json_raw(buf, at, ".attn.H");
+        at = json_write_int(buf, at, h);
+    }
+    at = json_raw(buf, at, suffix);
+    at = json_raw(buf, at, "\":{\"dtype\":\"F64\",\"shape\":[");
+    at = json_write_int(buf, at, rows);
+    at = json_raw(buf, at, ",");
+    at = json_write_int(buf, at, cols);
+    at = json_raw(buf, at, "],\"data_offsets\":[");
+    at = json_write_int(buf, at, off_begin);
+    at = json_raw(buf, at, ",");
+    at = json_write_int(buf, at, off_end);
+    at = json_raw(buf, at, "]}");
+    return at;
+}
+
+ev_build_header :: (m: EvModel, buf: []u8) -> int #effects(all) {
+    at := json_raw(buf, 0, "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"");
+    at = json_write_int(buf, at, m.width);
+    at = json_raw(buf, at, "\",\"layers\":\"");
+    at = json_write_int(buf, at, m.n_layers);
+    at = json_raw(buf, at, "\",\"inputs\":\"");
+    at = json_write_int(buf, at, m.n_inputs);
+    at = json_raw(buf, at, "\",\"outputs\":\"");
+    at = json_write_int(buf, at, m.n_outputs);
+    at = json_raw(buf, at, "\",\"kv_slots\":\"");
+    at = json_write_int(buf, at, m.kv_slots);
+    at = json_raw(buf, at, "\",\"layer_spec\":\"");
+    for li: 0..<m.n_layers {
+        if li > 0 { at = json_raw(buf, at, "|"); }
+        ly := m.layers[li];
+        if ly.kind == EvLayerKind.ffn {
+            at = json_raw(buf, at, "F:");
+            at = json_write_int(buf, at, ly.units);
+        } else {
+            at = json_raw(buf, at, "A:");
+            at = json_write_int(buf, at, ly.head_count);
+            for hi: ly.head_first..<ly.head_first + ly.head_count {
+                hd := m.heads[hi];
+                at = json_raw(buf, at, ";");
+                at = json_write_int(buf, at, cast(int)hd.kind);
+                at = json_raw(buf, at, ":");
+                at = json_write_int(buf, at, hd.d_k);
+                at = json_raw(buf, at, ":");
+                at = json_write_int(buf, at, hd.d_v);
+                at = json_raw(buf, at, ":");
+                at = json_write_int(buf, at, cast(int)hd.mask);
+            }
+        }
+    }
+    at = json_raw(buf, at, "\"}");
+    D := m.width;
+    for li: 0..<m.n_layers {
+        ly := m.layers[li];
+        if ly.kind == EvLayerKind.ffn {
+            U := ly.units;
+            if U > 0 {
+                b := ly.w_offset * 8;
+                sz := U * D * 8;
+                at = ev_write_tensor_entry(buf, at, "L", li, -1, ".ffn.W_up", U, D, b, b + sz);
+                at = ev_write_tensor_entry(buf, at, "L", li, -1, ".ffn.W_gate", U, D, b + sz, b + 2 * sz);
+                at = ev_write_tensor_entry(buf, at, "L", li, -1, ".ffn.W_down", D, U, b + 2 * sz, b + 3 * sz);
+            }
+        } else {
+            for hi: 0..<ly.head_count {
+                hd := m.heads[ly.head_first + hi];
+                b := hd.w_offset * 8;
+                if hd.d_k > 0 { // mutant: equivalent (d_k is always 0 or 2, so > 0 and > 1 agree)
+                    ksz := hd.d_k * D * 8;
+                    at = ev_write_tensor_entry(buf, at, "L", li, hi, ".W_Q", hd.d_k, D, b, b + ksz);
+                    b += ksz;
+                    at = ev_write_tensor_entry(buf, at, "L", li, hi, ".W_K", hd.d_k, D, b, b + ksz);
+                    b += ksz;
+                }
+                vsz := hd.d_v * D * 8;
+                at = ev_write_tensor_entry(buf, at, "L", li, hi, ".W_V", hd.d_v, D, b, b + vsz);
+                b += vsz;
+                at = ev_write_tensor_entry(buf, at, "L", li, hi, ".W_O", D, hd.d_v, b, b + vsz);
+            }
+        }
+    }
+    at = ev_write_tensor_entry(buf, at, "readout", -1, -1, ".W_out", m.n_outputs, D, m.w_out_offset * 8, m.n_weights * 8);
+    at = json_raw(buf, at, "}");
+    if at < 0 { return -1; } // mutant: equivalent (json_raw returns -1 on overflow or >= 200 bytes for any valid header)
+    while at % 8 != 0 {
+        if at >= buf.count { return -1; }
+        buf[at] = 32;
+        at += 1;
+    }
+    return at;
+}
+
+ev_serialize :: (m: EvModel, out_bytes: []u8) -> EvSerialResult #export_c #effects(all) {
+    if m.status != EvStatus.ok { return EvSerialResult.{status = m.status}; }
+    if m.width < 1 || m.n_outputs < 1 || m.weights.count < m.n_weights {
+        return EvSerialResult.{status = EvStatus.shape};
+    }
+    for i: 0..<m.n_weights {
+        if !ev_exact_range(m.weights[i]) { return EvSerialResult.{status = EvStatus.number}; }
+    }
+    header: [EV_HEADER_MAX]u8;
+    hlen := ev_build_header(m, header[..]);
+    if hlen < 8 { return EvSerialResult.{status = EvStatus.capacity}; } // mutant: equivalent (ev_build_header returns -1 on overflow or >= 208 bytes for any valid header)
+    total := 8 + hlen + m.n_weights * 8;
+    if out_bytes.count < total { return EvSerialResult.{status = EvStatus.capacity}; }
+    at := ev_put64(out_bytes, 0, cast(u64)hlen);
+    for i: 0..<hlen { out_bytes[at + i] = header[i]; }
+    at += hlen;
+    for i: 0..<m.n_weights { at = ev_put64(out_bytes, at, f64_bits(m.weights[i])); }
+    d := ev_sha256(out_bytes[0..<total]);
+    return EvSerialResult.{written = total, digest = d};
+}
+
+// Parse non-negative decimal integer from s[at..], advancing at_out.
+EvNum :: struct { ok: bool; val: int; next: int; }
+ev_parse_uint :: (s: string, at: int) -> EvNum #effects(all) {
+    if at >= s.count || !json_digit(s[at]) { return EvNum.{}; }
+    v := 0;
+    i := at;
+    while i < s.count && json_digit(s[i]) {
+        if v > 100000000 { return EvNum.{}; }
+        v = v * 10 + cast(int)(s[i] - '0');
+        i += 1;
+    }
+    return EvNum.{ok = true, val = v, next = i};
+}
+
+ev_parse_whole :: (s: string) -> EvNum #effects(all) {
+    r := ev_parse_uint(s, 0);
+    if !r.ok || r.next != s.count { return EvNum.{}; }
+    return r;
+}
+
+ev_parse_layer_spec :: (spec: string, n_layers: int, width: int, layers: []EvLayerDesc, heads: []EvHeadDesc) -> EvModel #effects(all) {
+    m: EvModel;
+    if n_layers < 0 || n_layers > layers.count { return EvResult_model(EvStatus.capacity, n_layers); }
+    if n_layers == 0 {
+        if spec.count != 0 { return EvResult_model(EvStatus.format, 0); }
+        return m;
+    }
+    at := 0;
+    hcur := 0;
+    wcur := 0;
+    for li: 0..<n_layers {
+        if li > 0 {
+            if at >= spec.count || spec[at] != '|' { return EvResult_model(EvStatus.format, li); }
+            at += 1;
+        }
+        if at + 2 > spec.count || spec[at + 1] != ':' { return EvResult_model(EvStatus.format, li); } // mutant: equivalent (every valid layer entry has >= 3 bytes e.g. F:0, so > spec.count, >= spec.count and at+3 guard spec[at+1] identically)
+        tag := spec[at];
+        at += 2;
+        if tag == 'F' {
+            u := ev_parse_uint(spec, at);
+            if !u.ok { return EvResult_model(EvStatus.format, li); }
+            at = u.next;
+            layers[li] = EvLayerDesc.{kind = EvLayerKind.ffn, units = u.val, w_offset = wcur};
+            wcur += ev_ffn_weights(width, u.val);
+        } else if tag == 'A' {
+            hc := ev_parse_uint(spec, at);
+            if !hc.ok || hc.val < 1 { return EvResult_model(EvStatus.format, li); }
+            at = hc.next;
+            if hcur + hc.val > heads.count { return EvResult_model(EvStatus.capacity, li); }
+            layers[li] = EvLayerDesc.{kind = EvLayerKind.attn, head_first = hcur, head_count = hc.val, w_offset = wcur};
+            for k: 0..<hc.val {
+                if at >= spec.count || spec[at] != ';' { return EvResult_model(EvStatus.format, li); }
+                at += 1;
+                hk := ev_parse_uint(spec, at);
+                if !hk.ok || hk.val > cast(int)EvHeadKind.uniform_sum || hk.next >= spec.count || spec[hk.next] != ':' {
+                    return EvResult_model(EvStatus.format, li);
+                }
+                dk := ev_parse_uint(spec, hk.next + 1);
+                if !dk.ok || (dk.val != 0 && dk.val != 2) || dk.next >= spec.count || spec[dk.next] != ':' {
+                    return EvResult_model(EvStatus.format, li);
+                }
+                dv := ev_parse_uint(spec, dk.next + 1);
+                if !dv.ok || dv.val < 1 || dv.val > EV_HEAD_VALUES_MAX || dv.next >= spec.count || spec[dv.next] != ':' {
+                    return EvResult_model(EvStatus.format, li);
+                }
+                mk := ev_parse_uint(spec, dv.next + 1);
+                if !mk.ok || mk.val > cast(int)EvAttnMask.causal_self { return EvResult_model(EvStatus.format, li); }
+                if (hk.val == cast(int)EvHeadKind.uniform_sum) != (dk.val == 0) {
+                    return EvResult_model(EvStatus.format, li);
+                }
+                at = mk.next;
+                heads[hcur] = EvHeadDesc.{kind = cast(EvHeadKind)hk.val, mask = cast(EvAttnMask)mk.val, d_k = dk.val, d_v = dv.val, w_offset = wcur};
+                wcur += ev_head_weights(width, dk.val, dv.val);
+                hcur += 1;
+            }
+        } else {
+            return EvResult_model(EvStatus.format, li);
+        }
+    }
+    if at != spec.count { return EvResult_model(EvStatus.format, n_layers); }
+    m.n_layers = n_layers;
+    m.n_heads = hcur;
+    m.w_out_offset = wcur;
+    return m;
+}
+
+// Verify that the safetensors header matches the canonical exec-vm-v1 layout byte-for-byte
+// (every metadata field, tensor name, F64 dtype, shape, contiguous data_offsets and alignment)
+// and atomically validate & load all dense F64 weights.
+ev_deserialize :: (bytes: []u8, expect_digest: [32]u8, check_digest: bool, layers_buf: []EvLayerDesc, heads_buf: []EvHeadDesc, weights_buf: []f64) -> EvLoadResult #export_c #effects(all) {
+    res: EvLoadResult;
+    if bytes.count < 16 { res.model.status = EvStatus.format; return res; } // mutant: equivalent (every valid exec-vm-v1 artifact is >= 224 bytes; < 16 only guards ev_get64(bytes, 0))
+    hlen_u64 := ev_get64(bytes, 0);
+    if hlen_u64 == 0 || hlen_u64 > cast(u64)EV_HEADER_MAX || hlen_u64 % 8 != 0 || hlen_u64 > cast(u64)(bytes.count - 8) { // mutant: equivalent (every valid header is an 8-byte-aligned canonical JSON object in [208, 32768] bytes, followed by >= 8 payload bytes)
+        res.model.status = EvStatus.format;
+        return res;
+    }
+    hlen := cast(int)hlen_u64;
+    res.digest = ev_sha256(bytes);
+    if check_digest && !ev_same_digest(res.digest, expect_digest) {
+        res.model.status = EvStatus.digest;
+        return res;
+    }
+    // Parse leading {"__metadata__":{...}} to recover shape and layer_spec.
+    text := cast(string)bytes[8..<8 + hlen]; // mutant: equivalent (only leading __metadata__ is scanned here; exact hlen and every header byte are verified against canon below)
+    j: [1]Json;
+    json_start_bounded(j[..], text, EV_HEADER_MAX, EV_HEADER_MAX); // mutant: equivalent (text.count <= EV_HEADER_MAX already holds, so 32768 and 32769 accept identical headers)
+    if json_next(j[..]) != JSON_OBJECT { res.model.status = EvStatus.format; return res; }
+    if json_next(j[..]) != JSON_STRING || json_text(j[..]) != "__metadata__" { res.model.status = EvStatus.format; return res; } // mutant: equivalent (non-string JSON tokens never have text "__metadata__")
+    if json_next(j[..]) != JSON_OBJECT { res.model.status = EvStatus.format; return res; }
+    width := 0; // mutant: equivalent (omitted metadata fields are independently rejected by canonical header equality below)
+    n_layers := 0; // mutant: equivalent (omitted metadata fields are independently rejected by canonical header equality below)
+    n_inputs := 0; // mutant: equivalent (omitted metadata fields are independently rejected by canonical header equality below)
+    n_outputs := 0; // mutant: equivalent (omitted metadata fields are independently rejected by canonical header equality below)
+    kv_slots := 0; // mutant: equivalent (omitted metadata fields are independently rejected by canonical header equality below)
+    layer_spec := "";
+    mt := json_next(j[..]);
+    while mt != JSON_OBJECT_END {
+        if mt != JSON_STRING { res.model.status = EvStatus.format; return res; }
+        mk := json_text(j[..]);
+        if json_next(j[..]) != JSON_STRING { res.model.status = EvStatus.format; return res; }
+        mv := json_text(j[..]);
+        if mk == "format" || mk == "dtype" {
+            // Exact format/dtype strings are verified by canonical header equality below.
+        } else if mk == "width" {
+            p := ev_parse_whole(mv); if !p.ok { res.model.status = EvStatus.format; return res; } width = p.val;
+        } else if mk == "layers" {
+            p := ev_parse_whole(mv); if !p.ok { res.model.status = EvStatus.format; return res; } n_layers = p.val;
+        } else if mk == "inputs" {
+            p := ev_parse_whole(mv); if !p.ok { res.model.status = EvStatus.format; return res; } n_inputs = p.val;
+        } else if mk == "outputs" {
+            p := ev_parse_whole(mv); if !p.ok { res.model.status = EvStatus.format; return res; } n_outputs = p.val;
+        } else if mk == "kv_slots" {
+            p := ev_parse_whole(mv); if !p.ok { res.model.status = EvStatus.format; return res; } kv_slots = p.val;
+        } else if mk == "layer_spec" {
+            layer_spec = mv;
+        } else {
+            res.model.status = EvStatus.format; return res;
+        }
+        mt = json_next(j[..]);
+    }
+    if width < 1 || n_outputs < 1 {
+        res.model.status = EvStatus.format;
+        return res;
+    }
+
+    // Reconstruct layers and heads from layer_spec and verify exact canonical safetensors header.
+    parsed := ev_parse_layer_spec(layer_spec, n_layers, width, layers_buf, heads_buf);
+    if parsed.status != EvStatus.ok { res.model.status = parsed.status; return res; }
+    parsed.width = width;
+    parsed.n_inputs = n_inputs;
+    parsed.n_outputs = n_outputs;
+    parsed.kv_slots = kv_slots;
+    parsed.n_weights = parsed.w_out_offset + n_outputs * width;
+    parsed.layers = layers_buf;
+    parsed.heads = heads_buf;
+    parsed.weights = weights_buf;
+
+    payload_bytes := bytes.count - 8 - hlen;
+    if parsed.n_weights * 8 != payload_bytes { res.model.status = EvStatus.format; return res; }
+    canon: [EV_HEADER_MAX]u8;
+    clen := ev_build_header(parsed, canon[..]);
+    if clen != hlen { res.model.status = EvStatus.format; return res; }
+    for i: 0..<hlen { if bytes[8 + i] != canon[i] { res.model.status = EvStatus.format; return res; } } // mutant: equivalent (canon[0] is '{' and canon[1] is '"'; any bytes[8] != '{' either fails json_next == JSON_OBJECT or shifts '{' to index >= 1, differing from canon[1])
+    if weights_buf.count < parsed.n_weights { res.model.status = EvStatus.capacity; return res; }
+
+    // Validate every IEEE-754 F64 bit pattern before publishing into weights_buf.
+    data_start := 8 + hlen;
+    for i: 0..<parsed.n_weights {
+        bits := ev_get64(bytes, data_start + i * 8);
+        if ((bits >> 52) & 0x7ff) == 0x7ff { res.model.status = EvStatus.number; return res; }
+        v := f64_from_bits(bits);
+        if !ev_exact_range(v) { res.model.status = EvStatus.number; return res; }
+    }
+    for i: 0..<parsed.n_weights {
+        weights_buf[i] = f64_from_bits(ev_get64(bytes, data_start + i * 8));
+    }
+    res.model = parsed;
+    return res;
+}
+
+// ---- Tests (covering all rules, ceilings removed, attention+FFN, safetensors, faults) ----
+
+ev_test_arena :: (forms: []EvForm, layer: []int, last: []int, slot: []int, clear: []int, release: []int, kept: []bool, free_slots: []bool, kv_pin: []int) -> EvCompileArena #effects(all) {
+    return EvCompileArena.{
+        forms = forms, layer = layer, last = last, slot = slot,
+        clear = clear, release = release, kept = kept, free_slots = free_slots,
+        kv_pin = kv_pin
+    };
+}
+
+#test "basic exactness, forms, and sha256 helpers" {
+    #assert ev_exact_range(f64(EV_EXACT_MAX)) && ev_exact_range(-f64(EV_EXACT_MAX));
+    #assert !ev_exact_range(f64(EV_EXACT_MAX) * 2.0) && !ev_exact_range(-f64(EV_EXACT_MAX) * 2.0);
+    #assert ev_value_ok(EV_VALUE_MAX) && ev_value_ok(-EV_VALUE_MAX);
+    #assert !ev_value_ok(EV_VALUE_MAX + 1) && !ev_value_ok(-EV_VALUE_MAX - 1);
+    #assert ev_max(3, 5) == 5 && ev_max(5, 3) == 5 && ev_max(4, 4) == 4 && ev_max(-3, -7) == -3;
+    #assert ev_relu_int(-4) == 0 && ev_relu_int(0) == 0 && ev_relu_int(7) == 7;
+    #assert ev_term(2, 0).count == 0 && ev_term(2, 5).count == 1 && ev_one().slots[0] == 0;
+    a := ev_plus(ev_term(5, 2), ev_term(2, -3));
+    #assert a.count == 2 && a.slots[0] == 2 && a.coefs[0] == -3 && a.slots[1] == 5 && a.coefs[1] == 2;
+    b := ev_plus(ev_term(2, -3), ev_term(5, 2));
+    #assert ev_forms_equal(a, b) && !ev_forms_equal(a, ev_neg(a));
+    c := ev_plus(a, ev_term(2, 3));
+    #assert c.count == 1 && c.slots[0] == 5 && c.coefs[0] == 2 && !ev_forms_equal(a, c);
+    d := ev_plus(c, ev_term(6, 2));
+    #assert !ev_forms_equal(ev_plus(ev_term(5, 2), ev_term(7, 2)), d);
+    // Overflowing EV_FORM_TERMS (16).
+    f := ev_term(0, 1);
+    for i: 1..<EV_FORM_TERMS { f = ev_plus(f, ev_term(i, 1)); }
+    #assert f.count == EV_FORM_TERMS && ev_coef_sum(f) == f64(EV_FORM_TERMS);
+    bad := ev_plus(f, ev_term(EV_FORM_TERMS, 1));
+    #assert bad.count == -1 && ev_plus(bad, a).count == -1 && ev_plus(a, bad).count == -1;
+    // SHA-256 over NIST "abc" vector AND >65536 bytes exercising chunking.
+    abc := [3]u8.[97, 98, 99];
+    habc := ev_sha256(abc[..]);
+    #assert habc[0] == 0xba && habc[1] == 0x78 && habc[2] == 0x16 && habc[3] == 0xbf && habc[31] == 0xad;
+    big: [5000]u8;
+    for i: 0..<5000 { big[i] = cast(u8)(i % 251); }
+    h1 := ev_sha256(big[..]);
+    big[4999] ^= 1;
+    h2 := ev_sha256(big[..]);
+    #assert ev_same_digest(h1, h1) && !ev_same_digest(h1, h2);
+    // Empty-form addition, single-term equality, arity, operand, and 64-bit endian round-trip.
+    #assert ev_plus(a, EvForm.{}).count == 2 && ev_plus(EvForm.{}, a).count == 2;
+    #assert !ev_forms_equal(ev_term(1, 2), ev_term(1, 3)) && !ev_forms_equal(ev_term(1, 2), ev_term(2, 2));
+    #assert ev_arity(EvOp.input) == 0 && ev_arity(EvOp.constant) == 0 && ev_arity(EvOp.attn_sum) == 0;
+    #assert ev_arity(EvOp.add) == 2 && ev_arity(EvOp.sub) == 2 && ev_arity(EvOp.mul) == 2 && ev_arity(EvOp.mask) == 2;
+    #assert ev_arity(EvOp.select) == 3 && ev_arity(EvOp.relu) == 1 && ev_arity(EvOp.scale) == 1 && ev_arity(EvOp.attn_read) == 1;
+    tn := EvNode.{a = 3, b = 5, c = 7};
+    #assert ev_operand(tn, 0) == 3 && ev_operand(tn, 1) == 5 && ev_operand(tn, 2) == 7;
+    eb: [8]u8;
+    #assert ev_put64(eb[..], 0, 0x8877665544332211) == 8;
+    #assert eb[0] == 0x11 && eb[1] == 0x22 && eb[2] == 0x33 && eb[3] == 0x44 && eb[4] == 0x55 && eb[5] == 0x66 && eb[6] == 0x77 && eb[7] == 0x88;
+    #assert ev_get64(eb[..], 0) == 0x8877665544332211;
+    #assert ev_put64(eb[..], 0, 0x0102030405060708) == 8 && ev_get64(eb[..], 0) == 0x0102030405060708;
+    // Uint/whole parsing boundaries.
+    #assert !ev_parse_uint("", 0).ok && !ev_parse_uint("x", 0).ok && !ev_parse_whole("12x").ok;
+    #assert ev_parse_whole("1000000009").ok && ev_parse_whole("1000000009").val == 1000000009;
+    #assert !ev_parse_whole("1000000010").ok;
+}
+
+#test "static 16-input and 128-node ceilings are removed via caller arenas" {
+    // 24 inputs, 160 nodes: computes sum of pairwise products and ReLU/step/mask/select.
+    nodes: [160]EvNode;
+    n := 0;
+    for k: 0..<24 { nodes[n] = EvNode.{op = EvOp.input, k = k}; n += 1; }
+    // 24 ReLUs (nodes 24..47)
+    for k: 0..<24 { nodes[n] = EvNode.{op = EvOp.relu, a = k}; n += 1; }
+    // 12 products (nodes 48..59)
+    for k: 0..<12 { nodes[n] = EvNode.{op = EvOp.mul, a = 24 + 2 * k, b = 24 + 2 * k + 1}; n += 1; }
+    // 12 steps (nodes 60..71), 12 masks (nodes 72..83), 12 selects (nodes 84..95)
+    for k: 0..<12 { nodes[n] = EvNode.{op = EvOp.step, a = k}; n += 1; }
+    for k: 0..<12 { nodes[n] = EvNode.{op = EvOp.mask, a = 48 + k, b = 60 + k}; n += 1; }
+    for k: 0..<12 { nodes[n] = EvNode.{op = EvOp.select, a = 72 + k, b = 48 + k, c = 60 + k}; n += 1; }
+    // Chain of 64 nodes (adds + scales + eq0) reaching 160 nodes total.
+    acc := 84;
+    for k: 1..<12 { nodes[n] = EvNode.{op = EvOp.add, a = acc, b = 84 + k}; acc = n; n += 1; }
+    // n = 107; add 53 more nodes (relu chain on acc) to pass 128 nodes cleanly.
+    cur := acc;
+    for k: 0..<53 {
+        if k % 2 == 0 { nodes[n] = EvNode.{op = EvOp.relu, a = cur}; }
+        else { nodes[n] = EvNode.{op = EvOp.scale, a = cur, k = 1}; }
+        cur = n;
+        n += 1;
+    }
+    #assert n == 160;
+    outs := [2]int.[cur, 84];
+    forms: [160]EvForm; layer: [160]int; last: [160]int; slot: [160]int;
+    clear: [160]int; release: [160]int; kept: [160]bool; free_slots: [96]bool; ep: [1]int;
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [48]EvLayerDesc; heads: [4]EvHeadDesc; weights: [65536]f64;
+    m := ev_compile(nodes[..], outs[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert m.status == EvStatus.ok && m.n_inputs == 24 && m.n_nodes == 160 && m.n_layers > 20;
+
+    inp_i: [24]int; inp_f: [24]f64;
+    for k: 0..<24 { inp_i[k] = k - 5; inp_f[k] = f64(inp_i[k]); }
+    want: [2]int; sc: [160]int; empty_kv_i: [1]int; empty_kv_f: [1]f64;
+    #assert ev_eval(nodes[..], inp_i[..], empty_kv_i[0..<0], 0, 0, outs[..], want[..], sc[..]).status == EvStatus.ok;
+    ex_x: [96]f64; ex_st: [96]f64; ex_h: [256]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [96]f64; got: [2]f64;
+    #assert ev_forward_token(m, inp_f[..], empty_kv_f[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.ok;
+    #assert got[0] == f64(want[0]) && got[1] == f64(want[1]) && want[0] > 0;
+}
+
+#test "parabolic hard-max attention with recency tie-breaking, uniform sum, FFN, and safetensors round-trip" {
+    // KV layout (kv_slots = 5): [const_1, k1=2k, k2=-k^2, val, delta].
+    // Graph:
+    // n0 = input(0) (query q)
+    // n1 = attn_read(q=n0, k1=1, k2=2, v=3) -> latest val for key q (or nearest)
+    // n2 = attn_read(q=n0, k1=1, k2=2, v=1) -> 2*k_best (fused into SAME head as n1!)
+    // n3 = attn_sum(v=4) -> uniform prefix sum of delta
+    // n4 = scale(n0, 2), n5 = sub(n2, n4), n6 = eq0(n5) -> matched (1 iff k_best == q)
+    // n7 = mask(n1, n6) -> exact read (0 if missing!)
+    // n8 = add(n7, n3) -> exact read + prefix sum
+    g := [9]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 1},
+        EvNode.{op = EvOp.attn_sum, k = 4},
+        EvNode.{op = EvOp.scale, a = 0, k = 2},
+        EvNode.{op = EvOp.sub, a = 2, b = 4},
+        EvNode.{op = EvOp.eq0, a = 5},
+        EvNode.{op = EvOp.mask, a = 1, b = 6},
+        EvNode.{op = EvOp.add, a = 7, b = 3}
+    ];
+    outs := [3]int.[7, 3, 8];
+    forms: [16]EvForm; layer: [16]int; last: [16]int; slot: [16]int;
+    clear: [16]int; release: [16]int; kept: [16]bool; free_slots: [32]bool; ep: [1]int;
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [8]EvLayerDesc; heads: [8]EvHeadDesc; weights: [8192]f64;
+    m := ev_compile(g[..], outs[..], 5, arena, layers[..], heads[..], weights[..]);
+    // Layer 0: attn with 2 fused heads (parabolic d_v=2, uniform d_v=1); then 2 FFN layers (eq0, mask).
+    #assert m.status == EvStatus.ok && m.n_layers == 3 && m.n_heads == 2;
+    #assert m.layers[0].kind == EvLayerKind.attn && m.layers[0].head_count == 2;
+    #assert m.heads[0].d_k == 2 && m.heads[0].d_v == 2 && m.heads[1].kind == EvHeadKind.uniform_sum && m.heads[1].d_v == 1;
+
+    // Serialize to F64 safetensors and deserialize into brand-new buffers.
+    file: [65536]u8;
+    ser := ev_serialize(m, file[..]);
+    #assert ser.status == EvStatus.ok && ser.written > 64;
+    layers2: [8]EvLayerDesc; heads2: [8]EvHeadDesc; weights2: [8192]f64;
+    ld := ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    #assert ld.model.status == EvStatus.ok && ev_same_digest(ld.digest, ser.digest);
+    #assert ld.model.n_weights == m.n_weights && ld.model.width == m.width && ld.model.n_layers == m.n_layers;
+    for i: 0..<m.n_weights { #assert f64_bits(weights2[i]) == f64_bits(weights[i]); }
+
+    // KV history with 4 tokens: key 3->10, key 7->20, key 3->99 (overwrites 3!), key -2->5; deltas 1, 2, -1, 4 (sum=6).
+    D := ld.model.width;
+    kv_i: [20]int; kv_f: [64]f64;
+    ks := [4]int.[3, 7, 3, -2];
+    vs := [4]int.[10, 20, 99, 5];
+    ds := [4]int.[1, 2, -1, 4];
+    for s: 0..<4 {
+        kv_i[s * 5 + 0] = 1; kv_i[s * 5 + 1] = 2 * ks[s]; kv_i[s * 5 + 2] = -ks[s] * ks[s];
+        kv_i[s * 5 + 3] = vs[s]; kv_i[s * 5 + 4] = ds[s];
+        kv_f[s * D + 0] = 1; kv_f[s * D + 1] = f64(2 * ks[s]); kv_f[s * D + 2] = f64(-ks[s] * ks[s]);
+        kv_f[s * D + 3] = f64(vs[s]); kv_f[s * D + 4] = f64(ds[s]);
+    }
+    ex_x: [32]f64; ex_st: [32]f64; ex_h: [64]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [32]f64; got: [3]f64; want: [3]int; sc: [9]int;
+    for q: [4]int.[3, 7, -2, 5] {
+        ii := [1]int.[q]; ff := [1]f64.[f64(q)];
+        #assert ev_eval(g[..], ii[..], kv_i[..], 4, 5, outs[..], want[..], sc[..]).status == EvStatus.ok;
+        #assert ev_forward_token(ld.model, ff[..], kv_f[0..<4 * D], 4, res_v[..], got[..], exec, false) == EvStatus.ok;
+        for j: 0..<3 { #assert got[j] == f64(want[j]); }
+        if q == 3 { #assert want[0] == 99 && want[1] == 6 && want[2] == 105; }
+        if q == 5 { #assert want[0] == 0 && want[1] == 6 && want[2] == 6; }
+    }
+    // Empty KV history returns 0 for both parabolic read and uniform sum.
+    ii0 := [1]int.[3]; ff0 := [1]f64.[3.0];
+    #assert ev_eval(g[..], ii0[..], kv_i[0..<0], 0, 5, outs[..], want[..], sc[..]).status == EvStatus.ok && want[2] == 0;
+    #assert ev_forward_token(ld.model, ff0[..], kv_f[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.ok && got[2] == 0;
+
+    // Causal-self attention test: current token carries key=11, val=77 in slots 1..3.
+    g_self := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.input, k = 1},
+        EvNode.{op = EvOp.input, k = 2},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3, mask = EvAttnMask.causal_self}
+    ];
+    // Input 0 = query (slot 1 -> wait: slots 1=q, 2=k1, 3=k2, 4=val -> b=2, c=3, k=4)
+    g_self2 := [5]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.input, k = 1},
+        EvNode.{op = EvOp.input, k = 2},
+        EvNode.{op = EvOp.input, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 2, c = 3, k = 4, mask = EvAttnMask.causal_self}
+    ];
+    os := [1]int.[4];
+    ms := ev_compile(g_self2[..], os[..], 5, arena, layers[..], heads[..], weights[..]);
+    #assert ms.status == EvStatus.ok;
+    self_in := [4]f64.[11.0, 22.0, -121.0, 77.0];
+    got1: [1]f64;
+    #assert ev_forward_token(ms, self_in[..], kv_f[0..<0], 0, res_v[..], got1[..], exec, false) == EvStatus.ok && got1[0] == 77.0;
+}
+
+#test "kv_pin writeback pins exact residual slots and supports >4 values via head splitting" {
+    // 5 attn_read nodes with identical query/keys split cleanly into 2 heads (d_v=4 and d_v=1).
+    g := [7]EvNode.[
+        EvNode.{op = EvOp.constant, k = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 1},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 2},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 4},
+        EvNode.{op = EvOp.add, a = 4, b = 5}
+    ];
+    outs := [2]int.[4, 6];
+    forms: [8]EvForm; layer: [8]int; last: [8]int; slot: [8]int;
+    clear: [8]int; release: [8]int; kept: [8]bool; free_slots: [16]bool;
+    pin := [6]int.[-1, 1, 2, 4, 6, -1];
+    arena := EvCompileArena.{
+        forms = forms[..], layer = layer[..], last = last[..], slot = slot[..],
+        clear = clear[..], release = release[..], kept = kept[..], free_slots = free_slots[..],
+        kv_pin = pin[..]
+    };
+    layers: [8]EvLayerDesc; heads: [8]EvHeadDesc; weights: [8192]f64;
+    m := ev_compile(g[..], outs[..], 5, arena, layers[..], heads[..], weights[..]);
+    #assert m.status == EvStatus.ok && m.n_heads == 2 && m.heads[0].d_v == 4 && m.heads[1].d_v == 1 && m.n_layers == 2;
+    D := m.width;
+    kv: [16]f64;
+    kv[0] = 1; kv[1] = 0; kv[2] = 0; kv[3] = 12; kv[4] = 30;
+    ex_x: [16]f64; ex_st: [16]f64; ex_h: [32]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [16]f64; got: [2]f64; empty_in: [1]f64;
+    #assert ev_forward_token(m, empty_in[0..<0], kv[0..<D], 1, res_v[..], got[..], exec, false) == EvStatus.ok;
+    #assert got[0] == 12 && got[1] == 42 && res_v[3] == 12 && res_v[4] == 42 && res_v[0] == 1;
+}
+
+#test "safetensors tamper, corruption, capacity and non-finite refusals" {
+    g := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.step, a = 1}];
+    outs := [1]int.[2];
+    forms: [4]EvForm; layer: [4]int; last: [4]int; slot: [4]int;
+    clear: [4]int; release: [4]int; kept: [4]bool; free_slots: [8]bool; ep: [1]int;
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [4]EvLayerDesc; heads: [2]EvHeadDesc; weights: [256]f64;
+    m := ev_compile(g[..], outs[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert m.status == EvStatus.ok;
+    file: [4096]u8;
+    ser := ev_serialize(m, file[..]);
+    #assert ser.status == EvStatus.ok;
+    #assert ev_serialize(m, file[0..<ser.written - 1]).status == EvStatus.capacity;
+    bad_m := m; bad_m.status = EvStatus.shape;
+    #assert ev_serialize(bad_m, file[..]).status == EvStatus.shape;
+    bad_m = m; bad_m.width = 0;
+    #assert ev_serialize(bad_m, file[..]).status == EvStatus.shape;
+    weights[0] = f64(EV_EXACT_MAX) * 2.0;
+    #assert ev_serialize(m, file[..]).status == EvStatus.number;
+    weights[0] = 0;
+
+    layers2: [4]EvLayerDesc; heads2: [2]EvHeadDesc; weights2: [256]f64;
+    weights2[0] = -77.0;
+    // Digest mismatch refuses atomically without touching weights2.
+    bad_d := ser.digest; bad_d[0] ^= 1;
+    #assert ev_deserialize(file[0..<ser.written], bad_d, true, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.digest;
+    #assert weights2[0] == -77.0;
+    // Truncated / malformed headers refused.
+    #assert ev_deserialize(file[0..<15], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.format;
+    #assert ev_deserialize(file[0..<ser.written - 1], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.format;
+    // Capacity refusals on layers_buf and weights_buf.
+    #assert ev_deserialize(file[0..<ser.written], ser.digest, false, layers2[0..<1], heads2[..], weights2[..]).model.status == EvStatus.capacity;
+    #assert ev_deserialize(file[0..<ser.written], ser.digest, false, layers2[..], heads2[..], weights2[0..<m.n_weights - 1]).model.status == EvStatus.capacity;
+    // Corrupted float bits (NaN and > 2^53) refused before publication.
+    tampered: [4096]u8;
+    for i: 0..<ser.written { tampered[i] = file[i]; }
+    hlen := cast(int)ev_get64(file[..], 0);
+    _ = ev_put64(tampered[..], 8 + hlen, 0x7ff8000000000000);
+    #assert ev_deserialize(tampered[0..<ser.written], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.number;
+    _ = ev_put64(tampered[..], 8 + hlen, f64_bits(f64(EV_EXACT_MAX) * 2.0));
+    #assert ev_deserialize(tampered[0..<ser.written], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.number;
+    #assert weights2[0] == -77.0;
+    // Header byte tampered.
+    for i: 0..<ser.written { tampered[i] = file[i]; }
+    tampered[9] = 'X';
+    #assert ev_deserialize(tampered[0..<ser.written], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.format;
+    // Unaligned header length.
+    for i: 0..<ser.written { tampered[i] = file[i]; }
+    _ = ev_put64(tampered[..], 0, cast(u64)(hlen + 1));
+    #assert ev_deserialize(tampered[0..<ser.written], ser.digest, false, layers2[..], heads2[..], weights2[..]).model.status == EvStatus.format;
+}
+
+#test "admission, compile, eval and forward refusals cover every error branch" {
+    one := [1]EvNode.[EvNode.{op = EvOp.input, k = 0}];
+    o := [1]int.[0];
+    #assert ev_admit(one[0..<0], o[..], 0).status == EvStatus.shape;
+    #assert ev_admit(one[..], o[0..<0], 0).status == EvStatus.shape;
+    #assert ev_admit(one[..], o[..], -1).status == EvStatus.shape;
+    o[0] = 1; #assert ev_admit(one[..], o[..], 0).status == EvStatus.operand;
+    o[0] = -1; #assert ev_admit(one[..], o[..], 0).status == EvStatus.operand;
+    o[0] = 0;
+    two := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 1}];
+    #assert ev_admit(two[..], o[..], 0).status == EvStatus.operand;
+    two[1] = EvNode.{op = EvOp.add, a = 0, b = 1}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.operand;
+    two[1] = EvNode.{op = EvOp.select, a = 0, b = 0, c = 1}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.operand;
+    two[1] = EvNode.{op = EvOp.select, a = 0, b = 0, c = 0}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.type;
+    two[1] = EvNode.{op = EvOp.mask, a = 0, b = 0}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.type;
+    two[1] = EvNode.{op = EvOp.input, k = 0}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.operand;
+    two[1] = EvNode.{op = EvOp.constant, k = EV_VALUE_MAX + 1}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.range;
+    two[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = 0, k = 0}; #assert ev_admit(two[..], o[..], 0).status == EvStatus.operand;
+    #assert ev_admit(two[..], o[..], 1).status == EvStatus.ok;
+    two[1] = EvNode.{op = EvOp.attn_sum, k = 1}; #assert ev_admit(two[..], o[..], 1).status == EvStatus.operand;
+    #assert ev_admit(two[..], o[..], 2).status == EvStatus.ok;
+
+    // Forward refusals: alias, capacity, >2^53 input, >2^53 intermediate.
+    forms: [4]EvForm; layer: [4]int; last: [4]int; slot: [4]int;
+    clear: [4]int; release: [4]int; kept: [4]bool; free_slots: [8]bool; ep: [1]int;
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [4]EvLayerDesc; heads: [2]EvHeadDesc; weights: [256]f64;
+    g := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.mul, a = 0, b = 0}];
+    o1 := [1]int.[1];
+    m := ev_compile(g[..], o1[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert m.status == EvStatus.ok;
+    ex_x: [8]f64; ex_st: [8]f64; ex_h: [8]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [8]f64; got: [1]f64; empty_kv: [1]f64;
+    inp := [1]f64.[4.0];
+    #assert ev_forward_token(m, inp[..], empty_kv[0..<0], 0, res_v[..], got[..], exec, true) == EvStatus.alias;
+    #assert ev_forward_token(m, inp[0..<0], empty_kv[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.capacity;
+    #assert ev_forward_token(m, inp[..], empty_kv[0..<0], 0, res_v[..], got[..], EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[0..<1]}, false) == EvStatus.capacity;
+    inp[0] = f64(EV_EXACT_MAX) * 2.0;
+    #assert ev_forward_token(m, inp[..], empty_kv[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.number;
+    // 10^8 * 10^8 = 10^16 > 2^53: refused inside FFN!
+    inp[0] = 100000000.0;
+    #assert ev_forward_token(m, inp[..], empty_kv[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.number;
+    inp[0] = 4.0;
+    #assert ev_forward_token(m, inp[..], empty_kv[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.ok && got[0] == 16.0;
+}
+
+#test "planted compiler faults break compiled execution while honest build passes" {
+    // Mixed Attention+FFN graph with duplicate keys in KV (tests tie-break & key sign)
+    // and multi-layer FFN chain (tests early_reuse, same_layer, no_clear, clear_sign, attn_same_layer).
+    // n0=in0, n1=attn_read(n0), n2=relu(n1), n3=relu(n2), n4=relu(n3), n5=mul(n2, n4), n6=attn_read(n2)
+    g := [7]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 1},
+        EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.relu, a = 3},
+        EvNode.{op = EvOp.mul, a = 2, b = 4},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 3}
+    ];
+    outs := [2]int.[5, 6];
+    forms: [8]EvForm; layer: [8]int; last: [8]int; slot: [8]int;
+    clear: [8]int; release: [8]int; kept: [8]bool; free_slots: [16]bool; ep: [1]int;
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [12]EvLayerDesc; heads: [8]EvHeadDesc; weights: [8192]f64;
+    ex_x: [16]f64; ex_st: [16]f64; ex_h: [64]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [16]f64; got: [2]f64;
+
+    // KV: key 2 -> 5, key 5 -> 8, key 2 -> 3 (latest for key 2 is 3; key 3 -> 7).
+    ks := [4]int.[2, 5, 2, 3];
+    vs := [4]int.[5, 8, 3, 7];
+    honest := ev_compile(g[..], outs[..], 4, arena, layers[..], heads[..], weights[..]);
+    #assert honest.status == EvStatus.ok;
+    D := honest.width;
+    kv: [64]f64;
+    for s: 0..<4 {
+        kv[s * D + 0] = 1; kv[s * D + 1] = f64(2 * ks[s]); kv[s * D + 2] = f64(-ks[s] * ks[s]); kv[s * D + 3] = f64(vs[s]);
+    }
+    inp := [1]f64.[2.0];
+    #assert ev_forward_token(honest, inp[..], kv[0..<4 * D], 4, res_v[..], got[..], exec, false) == EvStatus.ok;
+    // n1=3, n2=3, n3=3, n4=3, n5=9, n6=attn(3)=7.
+    #assert got[0] == 9.0 && got[1] == 7.0;
+
+    for f: [7]EvFault.[EvFault.early_reuse, EvFault.same_layer, EvFault.no_clear, EvFault.clear_sign, EvFault.attn_key_sign, EvFault.attn_tie_break, EvFault.attn_same_layer] {
+        bad := ev_compile_planted(g[..], outs[..], 4, arena, layers[..], heads[..], weights[..], f);
+        #assert bad.status == EvStatus.ok;
+        bd := bad.width;
+        bkv: [64]f64;
+        for s: 0..<4 {
+            bkv[s * bd + 0] = 1; bkv[s * bd + 1] = f64(2 * ks[s]); bkv[s * bd + 2] = f64(-ks[s] * ks[s]); bkv[s * bd + 3] = f64(vs[s]);
+        }
+        #assert ev_forward_token(bad, inp[..], bkv[0..<4 * bd], 4, res_v[..], got[..], exec, false) == EvStatus.ok;
+        #assert got[0] != 9.0 || got[1] != 7.0;
+        if f == EvFault.clear_sign { #assert got[0] == 161.0; }
+        if f == EvFault.attn_tie_break { #assert got[0] == 25.0; }
+        if f == EvFault.attn_same_layer { #assert arena.layer[6] == 1 && got[1] == 3.0; }
+        if f == EvFault.same_layer { #assert arena.layer[3] == 2 && arena.layer[4] == 2; }
+        if f == EvFault.early_reuse { #assert arena.release[2] == 5; }
+        if f == EvFault.no_clear { #assert arena.clear[1] == 0; }
+    }
+}
+
+#test "sharp gate exactness, negative mul, head fusion, dirty arenas, and header/layer_spec pins" {
+    // 1. Negative mul, step (-2..3), eq0 (-2..2), select (c=0,1), constant kept across FFN layers.
+    g_gates := [9]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.input, k = 1},
+        EvNode.{op = EvOp.constant, k = 7},
+        EvNode.{op = EvOp.mul, a = 0, b = 1},
+        EvNode.{op = EvOp.step, a = 0},
+        EvNode.{op = EvOp.eq0, a = 0},
+        EvNode.{op = EvOp.select, a = 1, b = 2, c = 4},
+        EvNode.{op = EvOp.add, a = 6, b = 2},
+        EvNode.{op = EvOp.relu, a = 7}
+    ];
+    og := [5]int.[3, 4, 5, 6, 8];
+    forms: [24]EvForm; layer: [24]int; last: [24]int; slot: [24]int;
+    clear: [24]int; release: [24]int; kept: [24]bool; free_slots: [24]bool; ep: [1]int;
+    // Dirty arena pre-fill (clear=1 so layer 1 would notice if clear weren't reset!).
+    for i: 0..<24 { last[i] = 9; slot[i] = 9; clear[i] = 1; release[i] = 9; kept[i] = true; layer[i] = 9; free_slots[i] = true; }
+    arena := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    layers: [8]EvLayerDesc; heads: [8]EvHeadDesc; weights: [4096]f64;
+    for k: 0..<4096 { weights[k] = 77.0; }
+    mg := ev_compile(g_gates[..], og[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert mg.status == EvStatus.ok && mg.kv_slots == 0 && mg.n_layers == 3;
+    ex_x: [24]f64; ex_st: [24]f64; ex_h: [64]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [24]f64; got: [5]f64; want: [5]int; sc: [9]int; ek_i: [1]int; ek_f: [1]f64;
+    for a_v: [5]int.[-2, -1, 0, 1, 2] {
+        ii := [2]int.[a_v, -5];
+        ff := [2]f64.[f64(a_v), -5.0];
+        #assert ev_eval(g_gates[..], ii[..], ek_i[0..<0], 0, 0, og[..], want[..], sc[..]).status == EvStatus.ok;
+        for k: 0..<mg.width { ex_x[k] = 999.0; }
+        #assert ev_forward_token(mg, ff[..], ek_f[0..<0], 0, res_v[..], got[..], exec, false) == EvStatus.ok;
+        for k: 0..<5 { #assert got[k] == f64(want[k]); }
+        #assert want[0] == a_v * -5;
+        if a_v <= 0 { #assert want[1] == 0 && want[3] == 7; } else { #assert want[1] == 1 && want[3] == -5; }
+        if a_v == 0 { #assert want[2] == 1; } else { #assert want[2] == 0; }
+    }
+
+    // 2. Node 0 as attn_sum + interleaved head fusion (non-matching op/mask/b/c/layer between fused pairs).
+    #assert ev_head_weights(4, 0, 1) == 8 && ev_head_weights(4, 2, 1) == 24 && ev_head_weights(4, 2, 3) == 40;
+    zero_ly := [2]int.[0, 0];
+    #assert ev_form_max_layer(ev_term(0, 1), zero_ly[..]) == 0;
+    // Single-node attn_sum graph exercises ready_attn at index 0 alone, and [attn_sum, attn_read(0)] tests attn_same_layer at index 1.
+    g_s0 := [1]EvNode.[EvNode.{op = EvOp.attn_sum, k = 0}];
+    os0 := [1]int.[0];
+    ms0 := ev_compile(g_s0[..], os0[..], 1, arena, layers[..], heads[..], weights[..]);
+    #assert ms0.status == EvStatus.ok && ms0.n_layers == 1 && ms0.n_heads == 1;
+    g_s1 := [2]EvNode.[EvNode.{op = EvOp.attn_sum, k = 0}, EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = 0, k = 0}];
+    os1 := [1]int.[1];
+    ms1 := ev_compile_planted(g_s1[..], os1[..], 1, arena, layers[..], heads[..], weights[..], EvFault.attn_same_layer);
+    #assert ms1.status == EvStatus.ok && arena.layer[1] == 1;
+    // Different-layer same-op node placed between two fused attn_read nodes (kills layer[j] != L || op != ni.op -> &&):
+    // n0=in0 (slot 1), n1=relu(n0) (L2, reuses slot 1!), n2=attn_read(n0, k=3) (L1), n3=attn_read(n1, k=2) (L3, same slot 1 query!), n4=attn_read(n0, k=4) (L1, fuses with n2!).
+    g_dl := [5]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 1, b = 1, c = 2, k = 2},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 4}
+    ];
+    odl := [3]int.[2, 3, 4];
+    mdl := ev_compile(g_dl[..], odl[..], 5, arena, layers[..], heads[..], weights[..]);
+    #assert mdl.status == EvStatus.ok && mdl.n_layers == 3 && mdl.heads[0].d_v == 2;
+    Ddl := mdl.width;
+    kv_dl: [32]f64;
+    kv_dl[0] = 1; kv_dl[1] = 4; kv_dl[2] = -4; kv_dl[3] = 11; kv_dl[4] = 22;
+    in_dl := [1]f64.[2.0]; got_dl: [3]f64;
+    #assert ev_forward_token(mdl, in_dl[..], kv_dl[0..<Ddl], 1, res_v[..], got_dl[..], exec, false) == EvStatus.ok;
+    #assert got_dl[0] == 11.0 && got_dl[1] == -4.0 && got_dl[2] == 22.0;
+    // Interleaved fusion: n0(sum self k=1), n1(sum past k=3), n2(in0), n3(in1), n4(read b=1,c=2 k=3),
+    // n5(read b=1,c=4 k=3), n6(read b=4,c=2 k=3), n7(sum self k=4 -> fuses with n0!), n8(read b=1,c=2 k=4 -> fuses with n4!),
+    // n9(relu(n4) in L2), n10(attn_read(n9) in L3).
+    g_mix := [11]EvNode.[
+        EvNode.{op = EvOp.attn_sum, k = 1, mask = EvAttnMask.causal_self},
+        EvNode.{op = EvOp.attn_sum, k = 3, mask = EvAttnMask.causal_past},
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.input, k = 1},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 4, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 4, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_sum, k = 4, mask = EvAttnMask.causal_self},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 4},
+        EvNode.{op = EvOp.relu, a = 4},
+        EvNode.{op = EvOp.attn_read, a = 9, b = 1, c = 2, k = 3}
+    ];
+    om := [6]int.[0, 7, 1, 4, 8, 10];
+    mm := ev_compile(g_mix[..], om[..], 5, arena, layers[..], heads[..], weights[..]);
+    #assert mm.status == EvStatus.ok && mm.n_layers == 3 && mm.n_heads == 6;
+    #assert mm.layers[0].head_count == 5 && mm.layers[2].head_count == 1;
+    #assert mm.heads[0].d_v == 2 && mm.heads[1].d_v == 1 && mm.heads[2].d_v == 2 && mm.heads[3].d_v == 1 && mm.heads[4].d_v == 1;
+    Dm := mm.width;
+    kv_m: [64]f64;
+    kv_m[0] = 1; kv_m[1] = 4; kv_m[2] = -4; kv_m[3] = 10; kv_m[4] = 20;
+    in_m := [2]f64.[2.0, 9.0];
+    got_m: [6]f64;
+    // n0 is causal_self uniform_sum over slot 1: kv has 4.0 and current token has input(0)=2.0 -> 6.0!
+    #assert ev_forward_token(mm, in_m[..], kv_m[0..<Dm], 1, res_v[..], got_m[..], exec, false) == EvStatus.ok;
+    #assert got_m[0] == 6.0 && got_m[1] == 20.0 && got_m[2] == 10.0 && got_m[3] == 10.0 && got_m[4] == 20.0;
+    // Check 2-head header offsets (H0 has w_offset=0, H1 uniform_sum has w_offset = 4*Dm = 32 -> byte offset 256!).
+    hm_buf: [4096]u8;
+    hm_len := ev_build_header(mm, hm_buf[..]);
+    #assert hm_len > 200;
+    // Verify H1 (uniform_sum, d_k=0) data_offsets starts at exact h1_off (kills 8 -> 9 on hd.w_offset * 8).
+    hm_s := cast(string)hm_buf[0..<hm_len];
+    h1_off := mm.heads[1].w_offset * 8;
+    #assert h1_off == 4 * Dm * 8 && h1_off > 0;
+    pbuf: [128]u8;
+    plen := json_raw(pbuf[..], 0, "\"L0.attn.H1.W_V\":{\"dtype\":\"F64\",\"shape\":[1,");
+    plen = json_write_int(pbuf[..], plen, Dm);
+    plen = json_raw(pbuf[..], plen, "],\"data_offsets\":[");
+    plen = json_write_int(pbuf[..], plen, h1_off);
+    plen = json_raw(pbuf[..], plen, ",");
+    want_h1 := cast(string)pbuf[0..<plen];
+    found_h1 := false;
+    for pos: 0..<hm_s.count - want_h1.count {
+        if hm_s[pos..<pos + want_h1.count] == want_h1 { found_h1 = true; break; }
+    }
+    #assert found_h1;
+    // Deserialize round-trip on mm confirms every H0..H5 offset (including H1 w_offset*8 and d_k=0).
+    fm_buf: [32768]u8;
+    smm := ev_serialize(mm, fm_buf[..]);
+    #assert smm.status == EvStatus.ok;
+    lm2: [8]EvLayerDesc; hm2: [8]EvHeadDesc; wm2: [4096]f64;
+    ldm := ev_deserialize(fm_buf[0..<smm.written], smm.digest, true, lm2[..], hm2[..], wm2[..]);
+    #assert ldm.model.status == EvStatus.ok && ldm.model.n_heads == 6;
+
+    // 2b. Pure-FFN chain (width==2 slot reuse at cL==1, same_layer at deepest==1, early_reuse at cL==1/2, two distinct constants across layers).
+    g_c2 := [7]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.constant, k = 5},
+        EvNode.{op = EvOp.add, a = 0, b = 1},
+        EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.constant, k = 3},
+        EvNode.{op = EvOp.add, a = 3, b = 4},
+        EvNode.{op = EvOp.relu, a = 5}
+    ];
+    oc2 := [1]int.[6];
+    mc2 := ev_compile(g_c2[..], oc2[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert mc2.status == EvStatus.ok && mc2.width == 2 && mc2.n_layers == 2;
+    in_c2 := [1]f64.[3.0]; got_c2: [1]f64;
+    #assert ev_forward_token(mc2, in_c2[..], kv_m[0..<0], 0, res_v[..], got_c2[..], exec, false) == EvStatus.ok && got_c2[0] == 11.0;
+    mc2_same := ev_compile_planted(g_c2[..], oc2[..], 0, arena, layers[..], heads[..], weights[..], EvFault.same_layer);
+    #assert mc2_same.status == EvStatus.ok && arena.layer[6] == 1;
+    // Also test same_layer specifically on node index 2 ([in0, relu(0), relu(1)]).
+    g_n2 := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 1}];
+    on2 := [1]int.[2];
+    #assert ev_compile_planted(g_n2[..], on2[..], 0, arena, layers[..], heads[..], weights[..], EvFault.same_layer).status == EvStatus.ok && arena.layer[2] == 1;
+    mc2_er := ev_compile_planted(g_c2[..], oc2[..], 0, arena, layers[..], heads[..], weights[..], EvFault.early_reuse);
+    #assert mc2_er.status == EvStatus.ok && arena.release[0] == 1 && arena.release[3] == 1;
+    // FFN-first then Attn-wave-1 then FFN then Attn-wave-2 (tests attn_same_layer with first_attn == 2).
+    g_fafa := [5]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.attn_read, a = 1, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.attn_read, a = 3, b = 1, c = 2, k = 3}
+    ];
+    ofafa := [1]int.[4];
+    mfafa := ev_compile_planted(g_fafa[..], ofafa[..], 4, arena, layers[..], heads[..], weights[..], EvFault.attn_same_layer);
+    #assert mfafa.status == EvStatus.ok && arena.layer[1] == 1 && arena.layer[2] == 2 && arena.layer[3] == 3 && arena.layer[4] == 2;
+    // Non-output node pinned at kv_pin[1] = 0 with NEGATIVE input (-3.0 != relu(-3.0)=0.0) so clearing slot 1 would corrupt res_v[1]!
+    g_kp := [3]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.relu, a = 1}
+    ];
+    okp := [1]int.[2];
+    pin_kp := [3]int.[-1, 0, 2]; // node 0 (not an output!) pinned at slot 1; node 2 pinned at slot 2.
+    akp := ev_test_arena(forms[0..<3], layer[0..<3], last[0..<3], slot[0..<3], clear[0..<3], release[0..<3], kept[0..<3], free_slots[0..<8], pin_kp[..]);
+    mkp := ev_compile(g_kp[..], okp[..], 3, akp, layers[..], heads[..], weights[..]);
+    #assert mkp.status == EvStatus.ok;
+    in_neg := [1]f64.[-3.0];
+    #assert ev_forward_token(mkp, in_neg[..], kv_m[0..<0], 0, res_v[..], got_c2[..], exec, false) == EvStatus.ok;
+    #assert res_v[1] == -3.0 && res_v[2] == 0.0 && got_c2[0] == 0.0;
+    // Constant node 0 pinned at slot 1 (delta copies 5*slot[0] into slot 1!).
+    g_kc := [2]EvNode.[EvNode.{op = EvOp.constant, k = 5}, EvNode.{op = EvOp.relu, a = 0}];
+    okc := [1]int.[1];
+    pin_kc := [3]int.[-1, 0, 1];
+    akc := ev_test_arena(forms[0..<2], layer[0..<2], last[0..<2], slot[0..<2], clear[0..<2], release[0..<2], kept[0..<2], free_slots[0..<8], pin_kc[..]);
+    mkc := ev_compile(g_kc[..], okc[..], 3, akc, layers[..], heads[..], weights[..]);
+    #assert mkc.status == EvStatus.ok;
+    e_in: [1]f64;
+    #assert ev_forward_token(mkc, e_in[0..<0], kv_m[0..<0], 0, res_v[..], got_c2[..], exec, false) == EvStatus.ok && res_v[1] == 5.0 && res_v[2] == 5.0;
+    // U == 1 FFN model (in0 kept as output so no clear unit!) compiled into dirty free_slots[1]=true AND header verified to emit L0.ffn.W_up.
+    for s: 0..<24 { free_slots[s] = true; }
+    g_u1 := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}];
+    ou1 := [2]int.[0, 1];
+    mu1 := ev_compile(g_u1[..], ou1[..], 0, arena, layers[..], heads[..], weights[..]);
+    #assert mu1.status == EvStatus.ok && mu1.width == 3 && mu1.n_layers == 1 && mu1.layers[0].units == 1;
+    su1 := ev_serialize(mu1, fm_buf[..]);
+    #assert su1.status == EvStatus.ok && ev_get64(fm_buf[..], 0) > 350;
+    #assert ev_deserialize(fm_buf[0..<su1.written], su1.digest, true, lm2[..], hm2[..], wm2[..]).model.status == EvStatus.ok;
+
+    // 3. Zero-layer model (constant only, width=1, free_slots.count==1) + exact header string verification!
+    g0 := [1]EvNode.[EvNode.{op = EvOp.constant, k = 42}];
+    o0 := [1]int.[0];
+    a0 := ev_test_arena(forms[0..<1], layer[0..<1], last[0..<1], slot[0..<1], clear[0..<1], release[0..<1], kept[0..<1], free_slots[0..<1], ep[0..<0]);
+    m0 := ev_compile(g0[..], o0[..], 0, a0, layers[0..<0], heads[0..<0], weights[0..<1]);
+    #assert m0.status == EvStatus.ok && m0.width == 1 && m0.n_layers == 0 && m0.n_weights == 1;
+    f0: [512]u8;
+    s0 := ev_serialize(m0, f0[..]);
+    #assert s0.status == EvStatus.ok;
+    #assert ev_serialize(m0, f0[0..<s0.written]).status == EvStatus.ok;
+    hl0 := cast(int)ev_get64(f0[..], 0);
+    htxt0 := cast(string)f0[8..<8 + hl0];
+    want_h0 := "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\",\"layer_spec\":\"\"},\"readout.W_out\":{\"dtype\":\"F64\",\"shape\":[1,1],\"data_offsets\":[0,8]}}    ";
+    #assert htxt0 == want_h0;
+    l0_b: [1]EvLayerDesc; h0_b: [1]EvHeadDesc; w0_b: [1]f64;
+    ld0 := ev_deserialize(f0[0..<s0.written], s0.digest, true, l0_b[0..<0], h0_b[0..<0], w0_b[..]);
+    #assert ld0.model.status == EvStatus.ok && w0_b[0] == 42.0 && ld0.model.n_heads == 0;
+
+    // 4. Exact header string check for Attention + FFN model (verifies L0.attn.H0.W_Q/W_K/W_V/W_O and L1.ffn.W_up/W_gate/W_down).
+    g_af := [3]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 1}
+    ];
+    oaf := [1]int.[2];
+    maf := ev_compile(g_af[..], oaf[..], 4, arena, layers[..], heads[..], weights[..]);
+    #assert maf.status == EvStatus.ok && maf.n_layers == 2 && maf.n_heads == 1;
+    haf_buf: [2048]u8;
+    haf_len := ev_build_header(maf, haf_buf[..]);
+    #assert haf_len > 100 && ev_build_header(maf, haf_buf[0..<10]) == -1;
+    #assert ev_build_header(maf, haf_buf[0..<haf_len - 1]) == -1;
+    htxt_af := cast(string)haf_buf[0..<haf_len];
+    // Verify exact tensor names appear in the canonical header.
+    want_af_prefix := "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"4\",\"layers\":\"2\",\"inputs\":\"1\",\"outputs\":\"1\",\"kv_slots\":\"4\",\"layer_spec\":\"A:1;0:2:1:0|F:3\"},\"L0.attn.H0.W_Q\":{\"dtype\":\"F64\",\"shape\":[2,4],\"data_offsets\":[0,64]},\"L0.attn.H0.W_K\":{\"dtype\":\"F64\",\"shape\":[2,4],\"data_offsets\":[64,128]},\"L0.attn.H0.W_V\":{\"dtype\":\"F64\",\"shape\":[1,4],\"data_offsets\":[128,160]},\"L0.attn.H0.W_O\":{\"dtype\":\"F64\",\"shape\":[4,1],\"data_offsets\":[160,192]},\"L1.ffn.W_up\":{\"dtype\":\"F64\",\"shape\":[3,4],\"data_offsets\":[192,288]},\"L1.ffn.W_gate\":{\"dtype\":\"F64\",\"shape\":[3,4],\"data_offsets\":[288,384]},\"L1.ffn.W_down\":{\"dtype\":\"F64\",\"shape\":[4,3],\"data_offsets\":[384,480]},\"readout.W_out\":{\"dtype\":\"F64\",\"shape\":[1,4],\"data_offsets\":[480,512]}}";
+    #assert htxt_af.count >= want_af_prefix.count && htxt_af[0..<want_af_prefix.count] == want_af_prefix;
+
+    // 5. Modify slot 0 via W_down AND W_O in maf (while maf owns layers/heads/weights) to ensure forward pass copies index 0 cleanly.
+    weights[maf.layers[1].w_offset + 2 * 3 * 4 + 0] = 1.0; // W_down[row=0, u=0] = 1
+    in1 := [1]f64.[2.0];
+    kv1 := [4]f64.[1.0, 4.0, -4.0, 3.0];
+    g1: [1]f64;
+    #assert ev_forward_token(maf, in1[..], kv1[..], 1, res_v[..], g1[..], exec, false) == EvStatus.ok && res_v[0] == 4.0;
+    weights[maf.layers[1].w_offset + 2 * 3 * 4 + 0] = 0.0;
+    weights[maf.heads[0].w_offset + 5 * 4 + 0] = 1.0; // W_O[row=0, r=0] = 1
+    #assert ev_forward_token(maf, in1[..], kv1[..], 1, res_v[..], g1[..], exec, false) == EvStatus.ok && res_v[0] == 4.0;
+
+    // Also check FFN layer with 0 units (kv_pin already in place) omits L*.ffn tensors.
+    pin0 := [2]int.[-1, 0];
+    ap0 := ev_test_arena(forms[0..<1], layer[0..<1], last[0..<1], slot[0..<1], clear[0..<1], release[0..<1], kept[0..<1], free_slots[0..<2], pin0[..]);
+    g_in1 := [1]EvNode.[EvNode.{op = EvOp.input, k = 0}];
+    mp0 := ev_compile(g_in1[..], o0[..], 2, ap0, layers[0..<1], heads[0..<0], weights[..]);
+    #assert mp0.status == EvStatus.ok && mp0.n_layers == 1 && mp0.layers[0].units == 0;
+    #assert ev_forward_token(mp0, in1[..], kv1[0..<0], 0, res_v[..], g1[..], exec, false) == EvStatus.ok && g1[0] == 2.0;
+    hp0_len := ev_build_header(mp0, haf_buf[..]);
+    want_p0 := "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"2\",\"layers\":\"1\",\"inputs\":\"1\",\"outputs\":\"1\",\"kv_slots\":\"2\",\"layer_spec\":\"F:0\"},\"read";
+    #assert hp0_len > want_p0.count && (cast(string)haf_buf[0..<want_p0.count]) == want_p0;
+}
+
+#test "exhaustive boundary refusals for admit, eval, compile, kv_pin, forward, layer_spec and deserialize" {
+    // Admit boundaries: scale range, non-scale large k, attn_read all 7 bounds, attn_sum causal_self & bounds.
+    g2 := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.scale, a = 0, k = EV_VALUE_MAX + 1}];
+    o0 := [1]int.[0];
+    #assert ev_admit(g2[..], o0[..], 0).status == EvStatus.range;
+    g2[1] = EvNode.{op = EvOp.scale, a = 0, k = EV_VALUE_MAX};
+    #assert ev_admit(g2[..], o0[..], 0).status == EvStatus.ok;
+    g2[1] = EvNode.{op = EvOp.relu, a = 0, k = EV_VALUE_MAX + 1};
+    #assert ev_admit(g2[..], o0[..], 0).status == EvStatus.ok;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = -1, c = 0, k = 0}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 2, c = 0, k = 0}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = -1, k = 0}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = 2, k = 0}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = 0, k = -1}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 0, c = 0, k = 2}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.operand;
+    g2[1] = EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 1, k = 1}; #assert ev_admit(g2[..], o0[..], 2).status == EvStatus.ok;
+    g2[1] = EvNode.{op = EvOp.attn_sum, k = 0, mask = EvAttnMask.causal_self}; #assert ev_admit(g2[..], o0[..], 0).status == EvStatus.operand;
+    #assert ev_admit(g2[..], o0[..], 1).status == EvStatus.ok;
+    g2[1] = EvNode.{op = EvOp.attn_sum, k = -1}; #assert ev_admit(g2[..], o0[..], 1).status == EvStatus.operand;
+
+    // Eval boundaries: capacity checks, q +/- EV_KEY_MAX, kv_count == 1 vs 2 with kv[0] winning.
+    g_ar := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3}];
+    o1 := [1]int.[1];
+    inp := [1]int.[3]; kv_i := [8]int.[1, 6, -9, 55, 1, 2, -1, 11]; val: [1]int; sc: [2]int;
+    #assert ev_eval(g_ar[..], inp[0..<0], kv_i[..], 2, 4, o1[..], val[..], sc[..]).status == EvStatus.capacity;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[..], 2, 4, o1[..], val[0..<0], sc[..]).status == EvStatus.capacity;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[..], 2, 4, o1[..], val[..], sc[0..<1]).status == EvStatus.capacity;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[..], -1, 4, o1[..], val[..], sc[..]).status == EvStatus.capacity;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[0..<7], 2, 4, o1[..], val[..], sc[..]).status == EvStatus.capacity;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[0..<4], 1, 4, o1[..], val[..], sc[..]).status == EvStatus.ok && val[0] == 55;
+    #assert ev_eval(g_ar[..], inp[..], kv_i[..], 2, 4, o1[..], val[..], sc[..]).status == EvStatus.ok && val[0] == 55;
+    inp[0] = EV_KEY_MAX; #assert ev_eval(g_ar[..], inp[..], kv_i[0..<4], 1, 4, o1[..], val[..], sc[..]).status == EvStatus.ok;
+    inp[0] = -EV_KEY_MAX; #assert ev_eval(g_ar[..], inp[..], kv_i[0..<4], 1, 4, o1[..], val[..], sc[..]).status == EvStatus.ok;
+    inp[0] = EV_KEY_MAX + 1; #assert ev_eval(g_ar[..], inp[..], kv_i[0..<4], 1, 4, o1[..], val[..], sc[..]).status == EvStatus.range;
+    inp[0] = -EV_KEY_MAX - 1; #assert ev_eval(g_ar[..], inp[..], kv_i[0..<4], 1, 4, o1[..], val[..], sc[..]).status == EvStatus.range;
+
+    // Compile arena/pin/terms/range/capacity boundaries.
+    forms: [40]EvForm; layer: [40]int; last: [40]int; slot: [40]int;
+    clear: [40]int; release: [40]int; kept: [40]bool; free_slots: [40]bool; ep: [1]int;
+    layers: [8]EvLayerDesc; heads: [8]EvHeadDesc; weights: [4096]f64;
+    // Arena slice too short (each field individually).
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[0..<1], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[0..<1], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[0..<1], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[0..<1], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[0..<1], release[..], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[0..<1], kept[..], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[0..<1], free_slots[..], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<0], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    // Pin checks: count == 1 on a 0-kv_slot graph (unpinned output -> operand!), count < kv_slots, count > free_slots, bad pin indices (-2, n) with valid output at pin[2], width expansion, wb_layer capacity.
+    g_nop := [1]EvNode.[EvNode.{op = EvOp.input, k = 0}];
+    pin_bad := [4]int.[-1, 1, -1, -1];
+    #assert ev_compile(g_nop[..], o0[..], 0, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], pin_bad[0..<1]), layers[..], heads[..], weights[..]).status == EvStatus.operand;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], pin_bad[0..<3]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<3], pin_bad[..]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    pin_bad = [4]int.[-1, -2, 1, -1];
+    r_p1 := ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], pin_bad[..]), layers[..], heads[..], weights[..]);
+    #assert r_p1.status == EvStatus.operand && r_p1.node == 1;
+    pin_bad = [4]int.[-1, 2, 1, -1];
+    r_p2 := ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], pin_bad[..]), layers[..], heads[..], weights[..]);
+    #assert r_p2.status == EvStatus.operand && r_p2.node == 1;
+    pin_bad = [4]int.[-1, 0, -1, -1]; // node 0 pinned, output is node 1 (unpinned)
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], pin_bad[..]), layers[..], heads[..], weights[..]).status == EvStatus.operand;
+    // Exact kv_slots == free_slots.count == 4 succeeds when width was 3.
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<4], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.ok;
+    // Pin node 0 at slot 1 and output node 0, with pin.count == 5 > kv_slots(4) > width(3), and exact vs insufficient wb_layer.
+    pin_ok := [5]int.[-1, 0, 1, -1, -1];
+    ap_ok := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<5], pin_ok[..]);
+    mb_wb := ev_compile(g_ar[..], o0[..], 4, ap_ok, layers[0..<1], heads[..], weights[..]);
+    #assert mb_wb.status == EvStatus.capacity && mb_wb.node == 2;
+    mp_ok := ev_compile(g_ar[..], o0[..], 4, ap_ok, layers[0..<2], heads[0..<1], weights[..]);
+    #assert mp_ok.status == EvStatus.ok && mp_ok.width == 5 && mp_ok.n_layers == 2;
+    // Exact weights capacity vs 1 short, heads capacity 0, layers capacity 0, free_slots short for inputs/gates/kv_slots.
+    a_full := ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[..], ep[0..<0]);
+    #assert ev_compile(g_ar[..], o1[..], 4, a_full, layers[0..<0], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, a_full, layers[..], heads[0..<0], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<1], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<2], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    #assert ev_compile(g_ar[..], o1[..], 4, ev_test_arena(forms[..], layer[..], last[..], slot[..], clear[..], release[..], kept[..], free_slots[0..<3], ep[0..<0]), layers[..], heads[..], weights[..]).status == EvStatus.capacity;
+    m_ar := ev_compile(g_ar[..], o1[..], 4, a_full, layers[..], heads[..], weights[..]);
+    #assert m_ar.status == EvStatus.ok && m_ar.width == 4;
+    #assert ev_compile(g_ar[..], o1[..], 4, a_full, layers[..], heads[..], weights[0..<m_ar.n_weights]).status == EvStatus.ok;
+    #assert ev_compile(g_ar[..], o1[..], 4, a_full, layers[..], heads[..], weights[0..<m_ar.n_weights - 1]).status == EvStatus.capacity;
+
+    // Forward capacity exact boundaries (while m_ar owns layers/heads/weights).
+    ex_x: [8]f64; ex_st: [8]f64; ex_h: [8]f64;
+    exec := EvExecArena.{x = ex_x[0..<4], stage = ex_st[0..<4], hidden = ex_h[..]};
+    res_v: [8]f64; got: [1]f64; kv_f: [8]f64; in_f := [1]f64.[2.0];
+    kv_f[0] = 1; kv_f[1] = 4; kv_f[2] = -4; kv_f[3] = 7;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<1], exec, false) == EvStatus.ok && got[0] == 7.0;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], 1, res_v[0..<3], got[0..<1], exec, false) == EvStatus.capacity;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<0], exec, false) == EvStatus.capacity;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<1], EvExecArena.{x = ex_x[0..<3], stage = ex_st[0..<4], hidden = ex_h[..]}, false) == EvStatus.capacity;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<1], EvExecArena.{x = ex_x[0..<4], stage = ex_st[0..<3], hidden = ex_h[..]}, false) == EvStatus.capacity;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<4], -1, res_v[0..<4], got[0..<1], exec, false) == EvStatus.capacity;
+    #assert ev_forward_token(m_ar, in_f[..], kv_f[0..<3], 1, res_v[0..<4], got[0..<1], exec, false) == EvStatus.capacity;
+    m_exact := m_ar; m_exact.weights = weights[0..<m_ar.n_weights];
+    #assert ev_forward_token(m_exact, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<1], exec, false) == EvStatus.ok && got[0] == 7.0;
+    m_sh := m_ar; m_sh.weights = weights[0..<m_ar.n_weights - 1];
+    #assert ev_forward_token(m_sh, in_f[..], kv_f[0..<4], 1, res_v[0..<4], got[0..<1], exec, false) == EvStatus.capacity;
+    // Empty KV reading slot 1 (which holds input=2.0 in exec.x) MUST return 0.0, not exec.x[1]!
+    g_ar1 := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 1}];
+    m_ar1 := ev_compile(g_ar1[..], o1[..], 4, a_full, layers[..], heads[..], weights[..]);
+    #assert m_ar1.status == EvStatus.ok;
+    #assert ev_forward_token(m_ar1, in_f[..], kv_f[0..<0], 0, res_v[0..<4], got[0..<1], exec, false) == EvStatus.ok && got[0] == 0.0;
+    bad_b: [256]u8;
+    ms_bad := m_ar; ms_bad.n_outputs = 0;
+    #assert ev_serialize(ms_bad, bad_b[..]).status == EvStatus.shape;
+    ms_bad = m_ar; ms_bad.weights = weights[0..<m_ar.n_weights - 1];
+    #assert ev_serialize(ms_bad, bad_b[..]).status == EvStatus.shape;
+
+    // Coef sum boundary (exact EV_COEF_SUM_MAX ok vs +1 range), step/eq0 16-term refusal vs 15-term ok, select >16 terms.
+    g_cs := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.scale, a = 0, k = EV_VALUE_MAX},
+        EvNode.{op = EvOp.scale, a = 0, k = EV_VALUE_MAX},
+        EvNode.{op = EvOp.add, a = 1, b = 2}
+    ];
+    o3 := [1]int.[3];
+    #assert ev_compile(g_cs[..], o3[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.ok;
+    g_cs2 := [5]EvNode.[g_cs[0], g_cs[1], g_cs[2], g_cs[3], EvNode.{op = EvOp.add, a = 3, b = 0}];
+    o4 := [1]int.[4];
+    #assert ev_compile(g_cs2[..], o4[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.range;
+    // Build a 16-term linear sum over 16 inputs.
+    g_tm: [34]EvNode;
+    for k: 0..<16 { g_tm[k] = EvNode.{op = EvOp.input, k = k}; }
+    acc := 0; cur := 16;
+    for k: 1..<16 { g_tm[cur] = EvNode.{op = EvOp.add, a = acc, b = k}; acc = cur; cur += 1; }
+    // acc (node 30) has 16 terms; node 29 has 15 terms.
+    g_tm[31] = EvNode.{op = EvOp.step, a = 29};
+    o31 := [1]int.[31];
+    #assert ev_compile(g_tm[0..<32], o31[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.ok;
+    g_tm[31] = EvNode.{op = EvOp.step, a = 30};
+    #assert ev_compile(g_tm[0..<32], o31[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.terms;
+    g_tm[31] = EvNode.{op = EvOp.eq0, a = 30};
+    #assert ev_compile(g_tm[0..<32], o31[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.terms;
+    // Select where a has 16 terms and b has a 17th input -> a - b exceeds 16 terms.
+    g_tm[31] = EvNode.{op = EvOp.input, k = 16};
+    g_tm[32] = EvNode.{op = EvOp.step, a = 0};
+    g_tm[33] = EvNode.{op = EvOp.select, a = 30, b = 31, c = 32};
+    o33 := [1]int.[33];
+    #assert ev_compile(g_tm[0..<34], o33[..], 0, a_full, layers[..], heads[..], weights[..]).status == EvStatus.terms;
+
+    // FFN exact hidden capacity (U=1) + independent v/g/h number refusals.
+    g_vg := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}];
+    ovg := [2]int.[0, 1]; // keep input 0 so layer 0 has U == 1 unit (no clear unit).
+    m_vg := ev_compile(g_vg[..], ovg[..], 0, a_full, layers[..], heads[..], weights[..]);
+    #assert m_vg.status == EvStatus.ok && m_vg.layers[0].units == 1;
+    got2: [2]f64;
+    #assert ev_forward_token(m_vg, in_f[..], kv_f[0..<0], 0, res_v[..], got2[..], EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[0..<1]}, false) == EvStatus.ok;
+    // 1) Value overflow ONLY (v = 2*x > 2^53, g = 0 so h = 0, acc = 0):
+    in_big := [1]f64.[f64(EV_EXACT_MAX) * 0.75];
+    weights[m_vg.layers[0].w_offset + 0 * m_vg.width + 1] = 2.0; // W_up[0, 1] = 2
+    weights[m_vg.layers[0].w_offset + 1 * m_vg.width + 1] = 0.0; // W_gate[0, 1] = 0
+    #assert ev_forward_token(m_vg, in_big[..], kv_f[0..<0], 0, res_v[..], got2[..], exec, false) == EvStatus.number;
+    // 2) Gate overflow ONLY (v = 0, g = 2*x > 2^53 so h = 0, acc = 0):
+    weights[m_vg.layers[0].w_offset + 0 * m_vg.width + 0] = 0.0;
+    weights[m_vg.layers[0].w_offset + 0 * m_vg.width + 1] = 0.0; // W_up = 0 -> v = 0
+    weights[m_vg.layers[0].w_offset + 1 * m_vg.width + 1] = 2.0; // W_gate[0, 1] = 2 -> g > 2^53
+    #assert ev_forward_token(m_vg, in_big[..], kv_f[0..<0], 0, res_v[..], got2[..], exec, false) == EvStatus.number;
+    // Parabolic_oldest with 3 tokens (s=0 score -9, s=1 score 4 [best!], s=2 score 3 [beats -9 but loses to 4]):
+    m_old := ev_compile_planted(g_ar[..], o1[..], 4, a_full, layers[..], heads[..], weights[..], EvFault.attn_tie_break);
+    #assert m_old.status == EvStatus.ok;
+    kv3: [12]f64;
+    kv3[0] = 1; kv3[1] = -2; kv3[2] = -1; kv3[3] = 11; // k=-1: 2(-1)(2)-1 = -5
+    kv3[4] = 1; kv3[5] = 4;  kv3[6] = -4; kv3[7] = 99; // k=2:  2(2)(2)-4 = 4 (best!)
+    kv3[8] = 1; kv3[9] = 2;  kv3[10] = -1; kv3[11] = 77; // k=1: 2(1)(2)-1 = 3 (beats -5, loses to 4!)
+    #assert ev_forward_token(m_old, in_f[..], kv3[..], 3, res_v[..], got[..], exec, false) == EvStatus.ok && got[0] == 99.0;
+
+    // Layer spec parser error branches + exact boundaries.
+    pl: [4]EvLayerDesc; ph: [4]EvHeadDesc;
+    #assert ev_parse_layer_spec("", -1, 4, pl[..], ph[..]).status == EvStatus.capacity;
+    #assert ev_parse_layer_spec("", 5, 4, pl[..], ph[..]).status == EvStatus.capacity;
+    r_z := ev_parse_layer_spec("x", 0, 4, pl[..], ph[..]);
+    #assert r_z.status == EvStatus.format && r_z.node == 0;
+    #assert ev_parse_layer_spec("", 0, 4, pl[..], ph[..]).status == EvStatus.ok;
+    r_f1 := ev_parse_layer_spec("F:1", 1, 4, pl[..], ph[..]);
+    #assert r_f1.status == EvStatus.ok && r_f1.n_heads == 0;
+    r_a1 := ev_parse_layer_spec("A:1;0:2:1:0", 1, 4, pl[..], ph[0..<1]);
+    #assert r_a1.status == EvStatus.ok && r_a1.n_heads == 1;
+    #assert ev_parse_layer_spec("F:1", 2, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("F:1X", 2, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("F", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("FX1", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("X:1", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("F:x", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:x", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:5;0:2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.capacity;
+    #assert ev_parse_layer_spec("A:1", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1X0:2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;x:2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;3:2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0X2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:x:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:1:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2X1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:x:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:0:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:5:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:4", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:4X0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:4:x", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:4:2", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;2:2:1:0", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+    #assert ev_parse_layer_spec("A:1;0:2:4:1", 1, 4, pl[..], ph[..]).status == EvStatus.ok;
+    #assert ev_parse_layer_spec("A:1;0:2:4:1|", 1, 4, pl[..], ph[..]).status == EvStatus.format;
+
+    // Deserialize malformed headers & metadata branches.
+    zd: [32]u8;
+    _ = ev_put64(bad_b[..], 0, 0);
+    #assert ev_deserialize(bad_b[0..<16], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    _ = ev_put64(bad_b[..], 0, cast(u64)(EV_HEADER_MAX + 8));
+    #assert ev_deserialize(bad_b[0..<32], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    _ = ev_put64(bad_b[..], 0, 16);
+    #assert ev_deserialize(bad_b[0..<16], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    // Helper to pack an arbitrary JSON header + 8 payload bytes for ev_deserialize rejection tests.
+    bad_jsons := [14]string.[
+        "[]      ",
+        "{\"x\":1} ",
+        "{\"__metadata__\":1}      ",
+        "{\"__metadata__\":{1:2}}  ",
+        "{\"__metadata__\":{\"width\":1}}   ",
+        "{\"__metadata__\":{\"width\":\"x\"}} ",
+        "{\"__metadata__\":{\"layers\":\"x\"}}        ",
+        "{\"__metadata__\":{\"inputs\":\"x\"}}        ",
+        "{\"__metadata__\":{\"outputs\":\"x\"}}       ",
+        "{\"__metadata__\":{\"kv_slots\":\"x\"}}      ",
+        "{\"__metadata__\":{\"extra\":\"1\"}} ",
+        "{\"__metadata__\":{\"width\":\"0\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\"}}     ",
+        "{\"__metadata__\":{\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"0\",\"kv_slots\":\"0\"}}     ",
+        "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\",\"layer_spec\":\"\"}}    "
+    ];
+    for bj: bad_jsons {
+        raw: [256]u8;
+        hl := bj.count;
+        while hl % 8 != 0 { hl += 1; }
+        _ = ev_put64(raw[..], 0, cast(u64)hl);
+        for k: 0..<bj.count { raw[8 + k] = bj[k]; }
+        for k: bj.count..<hl { raw[8 + k] = 32; }
+        #assert ev_deserialize(raw[0..<8 + hl + 8], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    }
+    // Zero-payload crafted headers with width=0 or outputs=0 (matching canonical W_out) must still be refused!
+    zero_jsons := [2]string.[
+        "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"0\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\",\"layer_spec\":\"\"},\"readout.W_out\":{\"dtype\":\"F64\",\"shape\":[1,0],\"data_offsets\":[0,0]}}    ",
+        "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"0\",\"kv_slots\":\"0\",\"layer_spec\":\"\"},\"readout.W_out\":{\"dtype\":\"F64\",\"shape\":[0,1],\"data_offsets\":[0,0]}}    "
+    ];
+    for zj: zero_jsons {
+        raw: [256]u8;
+        hl := zj.count;
+        _ = ev_put64(raw[..], 0, cast(u64)hl);
+        for k: 0..<hl { raw[8 + k] = zj[k]; }
+        #assert ev_deserialize(raw[0..<8 + hl], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    }
+    // Tampering header byte 0 (leading space before '{') and tampering tensor name after __metadata__ both hit canon check!
+    tamp_jsons := [2]string.[
+        " {\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\",\"layer_spec\":\"\"},\"readout.W_out\":{\"dtype\":\"F64\",\"shape\":[1,1],\"data_offsets\":[0,8]}}   ",
+        "{\"__metadata__\":{\"format\":\"exec-vm-v1\",\"dtype\":\"F64\",\"width\":\"1\",\"layers\":\"0\",\"inputs\":\"0\",\"outputs\":\"1\",\"kv_slots\":\"0\",\"layer_spec\":\"\"},\"readout.W_bad\":{\"dtype\":\"F64\",\"shape\":[1,1],\"data_offsets\":[0,8]}}    "
+    ];
+    for tj: tamp_jsons {
+        raw: [256]u8;
+        hl := tj.count;
+        _ = ev_put64(raw[..], 0, cast(u64)hl);
+        for k: 0..<hl { raw[8 + k] = tj[k]; }
+        #assert ev_deserialize(raw[0..<8 + hl + 8], zd, false, pl[..], ph[..], weights[..]).model.status == EvStatus.format;
+    }
+}

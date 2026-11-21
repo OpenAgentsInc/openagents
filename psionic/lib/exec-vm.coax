@@ -1,0 +1,703 @@
+// Full Ch 226 stack+memory VM compiled into one loadable exec-vm-v1 dense
+// transformer artifact (parabolic hard-max attention + uniform prefix-sum +
+// ReGLU residual FFN layers in binary64). Autoregressive step execution runs
+// strictly through dense weight matrices loaded from F64 safetensors with zero
+// fallback to the native reference interpreter.
+#load "exec-vm-core.coax";
+#load "trace-machine.coax";
+#authority;
+
+// Persistent KV-cache residual slot layout (30 slots; slot 0 is constant 1).
+EV_S_ONE      :: 0;
+EV_S_PROG_K1  :: 1;
+EV_S_PROG_K2  :: 2;
+EV_S_PROG_KEY :: 3;
+EV_S_PROG_OP  :: 4;
+EV_S_PROG_ARG :: 5;
+EV_S_PROG_VAL :: 6;
+EV_S_STEP_K2  :: 7;
+EV_S_NEXT_IP  :: 8;
+EV_S_DELTA_D  :: 9;
+EV_S_DELTA_O  :: 10;
+EV_S_STK_K1   :: 11;
+EV_S_STK_K2   :: 12;
+EV_S_STK_VAL  :: 13;
+EV_S_LOC_K1   :: 14;
+EV_S_LOC_K2   :: 15;
+EV_S_LOC_IDX  :: 16;
+EV_S_LOC_VAL  :: 17;
+EV_S_LOC_EN   :: 18;
+EV_S_MEM_K1   :: 19;
+EV_S_MEM_K2   :: 20;
+EV_S_MEM_IDX  :: 21;
+EV_S_MEM_VAL  :: 22;
+EV_S_MEM_EN   :: 23;
+EV_S_OUT_IP   :: 24;
+EV_S_OUT_CODE :: 25;
+EV_S_OUT_X    :: 26;
+EV_S_OUT_Y    :: 27;
+EV_S_OUT_HALT :: 28;
+EV_S_OUT_FAULT :: 29;
+EV_VM_KV_SLOTS :: 30;
+EV_VM_OUTPUTS :: 6;
+
+// Sizing envelopes for caller-allocated Ch 226 VM compilation/runtime arenas.
+EV_VM_MAX_NODES :: 320;
+EV_VM_MAX_LAYERS :: 24;
+EV_VM_MAX_HEADS :: 16;
+EV_VM_MAX_WIDTH :: 128;
+EV_VM_MAX_UNITS :: 256;
+EV_VM_MAX_WEIGHTS :: 131072;
+
+EvVmGraph :: struct {
+    count: int;
+    outputs: [EV_VM_OUTPUTS]int;
+    pin: [EV_VM_KV_SLOTS]int;
+}
+
+ev_put :: (nodes: []EvNode, n: int, e: EvNode) -> int #effects(all) {
+    nodes[n] = e;
+    return n + 1;
+}
+
+// Build the unified Attention+FFN graph for the full Ch 226 stack+memory VM
+// (all 11 opcodes, 32-slot operand stack, 8 locals, `mem_cells` >= 64 linear
+// memory cells, 64 outputs, up to 256 instructions, and in-weight fault checks).
+ev_ch226_build_graph :: (nodes: []EvNode, mem_cells: int) -> EvVmGraph #effects(all) {
+    g: EvVmGraph;
+    if nodes.count < EV_VM_MAX_NODES || mem_cells < TM_CELLS || mem_cells > EV_KEY_MAX { return g; }
+    n := 0;
+    ADD := EvOp.add; SUB := EvOp.sub; SCALE := EvOp.scale; MUL := EvOp.mul;
+    STEP := EvOp.step; EQ := EvOp.eq0; SEL := EvOp.select; MASK := EvOp.mask;
+    READ := EvOp.attn_read; SUM := EvOp.attn_sum; CONST := EvOp.constant;
+
+    // Constants 0..11, -1, 2, mem_cells, stack/output caps, value bound, fault status codes.
+    c: [12]int;
+    for k: 0..<12 { c[k] = n; n = ev_put(nodes, n, EvNode.{op = CONST, k = k}); }
+    c_neg1 := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = -1});
+    c_mem  := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = mem_cells});
+    c_stk_lim := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = TM_STACK_MAX - 1});
+    c_out_lim := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = TM_OUTPUTS - 1});
+    c_vmax := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = EV_VALUE_MAX});
+    c_f_under := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = cast(int)TmStatus.underflow});
+    c_f_over  := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = cast(int)TmStatus.overflow});
+    c_f_fell  := n; n = ev_put(nodes, n, EvNode.{op = CONST, k = cast(int)TmStatus.fell});
+
+    // Attention Wave 0: latest ip (recency head: prompt STEP_K2=-1, step STEP_K2=0) + exact depth/outputs (uniform prefix sum).
+    cur_ip := n; n = ev_put(nodes, n, EvNode.{op = READ, a = c[0], b = EV_S_STEP_K2, c = EV_S_STEP_K2, k = EV_S_NEXT_IP}); // mutant: equivalent (prompt STEP_K2=-1 and step STEP_K2=0 give -(q+1) < 0 for every q >= 0)
+    cur_depth := n; n = ev_put(nodes, n, EvNode.{op = SUM, k = EV_S_DELTA_D});
+    cur_outputs := n; n = ev_put(nodes, n, EvNode.{op = SUM, k = EV_S_DELTA_O});
+
+    // Attention Wave 1: instruction ROM fetch + top two operand stack reads (3 fused parabolic heads).
+    raw_op  := n; n = ev_put(nodes, n, EvNode.{op = READ, a = cur_ip, b = EV_S_PROG_K1, c = EV_S_PROG_K2, k = EV_S_PROG_OP});
+    raw_arg := n; n = ev_put(nodes, n, EvNode.{op = READ, a = cur_ip, b = EV_S_PROG_K1, c = EV_S_PROG_K2, k = EV_S_PROG_ARG});
+    raw_pk  := n; n = ev_put(nodes, n, EvNode.{op = READ, a = cur_ip, b = EV_S_PROG_K1, c = EV_S_PROG_K2, k = EV_S_PROG_KEY});
+    raw_pv  := n; n = ev_put(nodes, n, EvNode.{op = READ, a = cur_ip, b = EV_S_PROG_K1, c = EV_S_PROG_K2, k = EV_S_PROG_VAL});
+
+    d_m1 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = cur_depth, b = c[1]});
+    top_val := n; n = ev_put(nodes, n, EvNode.{op = READ, a = d_m1, b = EV_S_STK_K1, c = EV_S_STK_K2, k = EV_S_STK_VAL});
+
+    d_m2 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = cur_depth, b = c[2]});
+    sec_val := n; n = ev_put(nodes, n, EvNode.{op = READ, a = d_m2, b = EV_S_STK_K1, c = EV_S_STK_K2, k = EV_S_STK_VAL});
+
+    // FFN Stage A: program ROM hit mask, 11 opcode one-hots, bounded queries for locals & memory.
+    t0 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = raw_pk, b = cur_ip});
+    pk_eq := n; n = ev_put(nodes, n, EvNode.{op = EQ, a = t0});
+    t1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = pk_eq, b = raw_pv});
+    t2 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = t1, b = c[1]});
+    prog_hit := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t2});
+
+    op := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = raw_op, b = c[11], c = prog_hit});
+    arg := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = raw_arg, b = prog_hit});
+
+    is_op: [11]int;
+    for k: 0..<11 {
+        d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = op, b = c[k]});
+        is_op[k] = n; n = ev_put(nodes, n, EvNode.{op = EQ, a = d});
+    }
+    is_push := is_op[0]; is_get := is_op[1]; is_set := is_op[2];
+    is_add := is_op[3]; is_sub := is_op[4]; is_mul := is_op[5];
+    is_load := is_op[6]; is_store := is_op[7]; is_brif := is_op[8];
+    is_out := is_op[9]; is_ret := is_op[10];
+
+    // Bounded query for locals[arg] (always 0 when not get).
+    loc_q := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = arg, b = is_get});
+
+    // Memory address bounds for load: 0 <= top_val < mem_cells.
+    t_p1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = top_val, b = c[1]});
+    top_ge0 := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t_p1});
+    t_rem := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = c_mem, b = top_val});
+    top_ltM := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t_rem});
+    t_ok_sum := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = top_ge0, b = top_ltM});
+    t_ok_m1 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = t_ok_sum, b = c[1]});
+    top_addr_ok := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t_ok_m1});
+    dl_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_load, b = top_addr_ok});
+    dl_m := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = dl_s, b = c[1]});
+    do_load_ok := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = dl_m});
+    mem_q := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = top_val, b = do_load_ok});
+
+    // Attention Wave 2: locals[loc_q] and linear memory mem[mem_q] (2 fused parabolic heads).
+    raw_lv := n; n = ev_put(nodes, n, EvNode.{op = READ, a = loc_q, b = EV_S_LOC_K1, c = EV_S_LOC_K2, k = EV_S_LOC_VAL});
+    raw_lk := n; n = ev_put(nodes, n, EvNode.{op = READ, a = loc_q, b = EV_S_LOC_K1, c = EV_S_LOC_K2, k = EV_S_LOC_IDX});
+    raw_le := n; n = ev_put(nodes, n, EvNode.{op = READ, a = loc_q, b = EV_S_LOC_K1, c = EV_S_LOC_K2, k = EV_S_LOC_EN});
+
+    raw_mv := n; n = ev_put(nodes, n, EvNode.{op = READ, a = mem_q, b = EV_S_MEM_K1, c = EV_S_MEM_K2, k = EV_S_MEM_VAL});
+    raw_mk := n; n = ev_put(nodes, n, EvNode.{op = READ, a = mem_q, b = EV_S_MEM_K1, c = EV_S_MEM_K2, k = EV_S_MEM_IDX});
+    raw_me := n; n = ev_put(nodes, n, EvNode.{op = READ, a = mem_q, b = EV_S_MEM_K1, c = EV_S_MEM_K2, k = EV_S_MEM_EN});
+
+    // FFN Stage B: verify local/memory hits, ALU, fault detection, trace row, next state & parabolic keys.
+    t0 = n; n = ev_put(nodes, n, EvNode.{op = SUB, a = raw_lk, b = loc_q});
+    lk_eq := n; n = ev_put(nodes, n, EvNode.{op = EQ, a = t0});
+    t1 = n; n = ev_put(nodes, n, EvNode.{op = ADD, a = lk_eq, b = raw_le});
+    t2 = n; n = ev_put(nodes, n, EvNode.{op = SUB, a = t1, b = c[1]});
+    loc_hit := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t2});
+    loc_val := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = raw_lv, b = loc_hit});
+
+    t0 = n; n = ev_put(nodes, n, EvNode.{op = SUB, a = raw_mk, b = mem_q});
+    mk_eq := n; n = ev_put(nodes, n, EvNode.{op = EQ, a = t0});
+    t1 = n; n = ev_put(nodes, n, EvNode.{op = ADD, a = mk_eq, b = raw_me});
+    t2 = n; n = ev_put(nodes, n, EvNode.{op = SUB, a = t1, b = c[1]});
+    mem_hit := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = t2});
+    mem_val := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = raw_mv, b = mem_hit});
+
+    // ALU: add, sub, mul (gated before mul so non-mul steps compute 0*top=0).
+    s_add := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sec_val, b = top_val});
+    v_add_m := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = s_add, b = is_add});
+    s_sub := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = sec_val, b = top_val});
+    v_sub_m := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = s_sub, b = is_sub});
+    mul_a := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = sec_val, b = is_mul});
+    v_mul := n; n = ev_put(nodes, n, EvNode.{op = MUL, a = mul_a, b = top_val});
+    alu_01 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = v_add_m, b = v_sub_m});
+    alu_v := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = alu_01, b = v_mul});
+
+    // Grouped bit helpers.
+    alu_s0 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_add, b = is_sub});
+    alu_s1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = alu_s0, b = is_mul});
+    is_alu := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = alu_s1});
+
+    push_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_push, b = is_get});
+    pushes := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = push_s});
+
+    // Arithmetic overflow check (|alu_v| > EV_VALUE_MAX = 2^26).
+    ov_hi_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = alu_v, b = c_vmax});
+    ov_hi := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = ov_hi_d});
+    neg_alu := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = alu_v, k = -1});
+    ov_lo_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = neg_alu, b = c_vmax});
+    ov_lo := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = ov_lo_d});
+    ov_any := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = ov_hi, b = ov_lo});
+    fa_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_alu, b = ov_any});
+    fa_m := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = fa_s, b = c[1]});
+    fault_arith := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = fa_m});
+
+    // Stack underflow & overflow checks.
+    need2_a := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = alu_s1, b = is_store});
+    need2_x2 := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = need2_a, k = 2});
+    need1_a := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_set, b = is_load});
+    need1_b := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_brif, b = is_out});
+    need1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = need1_a, b = need1_b});
+    need := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = need2_x2, b = need1});
+    uf_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = need, b = cur_depth});
+    fault_underflow := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = uf_d});
+
+    sf_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = cur_depth, b = c_stk_lim});
+    stack_full := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = sf_d});
+    fo_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = pushes, b = stack_full});
+    fo_m := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = fo_s, b = c[1]});
+    fault_overflow := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = fo_m});
+
+    // Memory bounds for store: 0 <= sec_val < mem_cells.
+    s_p1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sec_val, b = c[1]});
+    sec_ge0 := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = s_p1});
+    s_rem := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = c_mem, b = sec_val});
+    sec_ltM := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = s_rem});
+    s_ok_sum := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sec_ge0, b = sec_ltM});
+    s_ok_m1 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = s_ok_sum, b = c[1]});
+    sec_addr_ok := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = s_ok_m1});
+
+    fl_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = is_load, b = top_addr_ok});
+    fault_addr_load := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = fl_d});
+    fs_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = is_store, b = sec_addr_ok});
+    fault_addr_store := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = fs_d});
+    fault_address := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = fault_addr_load, b = fault_addr_store});
+
+    // Output capacity check.
+    of_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = cur_outputs, b = c_out_lim});
+    outs_full := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = of_d});
+    fc_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_out, b = outs_full});
+    fc_m := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = fc_s, b = c[1]});
+    fault_capacity := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = fc_m});
+
+    // Combined fault code with exact Ch 226 priority: fell > underflow > overflow > op-specific.
+    fault_fell := n; n = ev_put(nodes, n, EvNode.{op = EQ, a = prog_hit});
+    fa_c := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = fault_arith, k = cast(int)TmStatus.arithmetic});
+    fad_c := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = fault_address, k = cast(int)TmStatus.address});
+    fcp_c := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = fault_capacity, k = cast(int)TmStatus.capacity});
+    f_op0 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = fa_c, b = fad_c});
+    f_op := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = f_op0, b = fcp_c});
+    f_1 := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = c_f_over, b = f_op, c = fault_overflow});
+    f_2 := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = c_f_under, b = f_1, c = fault_underflow});
+    fault_code := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = c_f_fell, b = f_2, c = fault_fell});
+
+    // Control flow & trace row (ip, code, x, y).
+    ip_p1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = cur_ip, b = c[1]});
+    top_z := n; n = ev_put(nodes, n, EvNode.{op = EQ, a = top_val});
+    brif_next := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = ip_p1, b = arg, c = top_z});
+    non_ret_ip := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = brif_next, b = ip_p1, c = is_brif});
+    next_ip := n; n = ev_put(nodes, n, EvNode.{op = SEL, a = c_neg1, b = non_ret_ip, c = is_ret});
+
+    // trace_x: push->arg, get->loc_val, {set,store,brif,out}->top_val, alu->alu_v, load->mem_val, ret->0.
+    tx_s0 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_set, b = is_store});
+    tx_s1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_brif, b = is_out});
+    tx_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = tx_s0, b = tx_s1});
+    is_top_x := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = tx_s});
+    x_push := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = arg, b = is_push});
+    x_get  := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = loc_val, b = is_get});
+    x_top  := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = top_val, b = is_top_x});
+    x_load := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = mem_val, b = is_load});
+    x_a := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = x_push, b = x_get});
+    x_b := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = x_top, b = x_load});
+    x_c := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = x_a, b = x_b});
+    trace_x := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = x_c, b = alu_v});
+
+    // trace_y: push->d+1, {get,set}->arg, alu->d-1, load->top, store->sec, brif->brif_next, out->o+1, ret->0.
+    d_p1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = cur_depth, b = c[1]});
+    o_p1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = cur_outputs, b = c[1]});
+    gs_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_get, b = is_set});
+    is_gs := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = gs_s});
+    y_push  := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = d_p1, b = is_push});
+    y_gs    := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = arg, b = is_gs});
+    y_alu   := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = d_m1, b = is_alu});
+    y_load  := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = top_val, b = is_load});
+    y_store := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = sec_val, b = is_store});
+    y_brif  := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = brif_next, b = is_brif});
+    y_out   := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = o_p1, b = is_out});
+    y_01 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_push, b = y_gs});
+    y_23 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_alu, b = y_load});
+    y_45 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_store, b = y_brif});
+    y_03 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_01, b = y_23});
+    y_46 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_45, b = y_out});
+    trace_y := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = y_03, b = y_46});
+
+    // Uniform prefix-sum depth delta: +1 for push/get, -1 for set/alu/brif/out, -2 for store, 0 for load/ret.
+    dd_neg1_a := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_set, b = is_alu});
+    dd_neg1_b := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_brif, b = is_out});
+    dd_neg1 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = dd_neg1_a, b = dd_neg1_b});
+    dd_neg2 := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = is_store, k = 2});
+    dd_neg := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = dd_neg1, b = dd_neg2});
+    delta_d := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = pushes, b = dd_neg});
+
+    // Stack write record + parabolic key (2*idx, -idx^2) or (0, -1) when inactive.
+    sw_s0 := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = pushes, b = is_alu});
+    sw_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sw_s0, b = is_load});
+    stk_w_en := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = sw_s});
+    sw_i0 := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = cur_depth, b = pushes});
+    sw_i1 := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = d_m2, b = is_alu});
+    sw_i2 := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = d_m1, b = is_load});
+    sw_ia := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sw_i0, b = sw_i1});
+    stk_w_idx := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = sw_ia, b = sw_i2});
+    stk_k1 := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = stk_w_idx, k = 2});
+    stk_sq := n; n = ev_put(nodes, n, EvNode.{op = MUL, a = stk_w_idx, b = stk_w_idx});
+    stk_k2a := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = stk_w_en, b = stk_sq});
+    stk_k2 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = stk_k2a, b = c[1]});
+
+    // Local write record + parabolic key.
+    loc_w_en := is_set;
+    loc_w_idx := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = arg, b = is_set});
+    loc_k1 := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = loc_w_idx, k = 2});
+    loc_sq := n; n = ev_put(nodes, n, EvNode.{op = MUL, a = loc_w_idx, b = loc_w_idx});
+    loc_k2a := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = loc_w_en, b = loc_sq});
+    loc_k2 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = loc_k2a, b = c[1]});
+
+    // Memory write record + parabolic key.
+    mw_s := n; n = ev_put(nodes, n, EvNode.{op = ADD, a = is_store, b = sec_addr_ok});
+    mw_m := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = mw_s, b = c[1]});
+    mem_w_en := n; n = ev_put(nodes, n, EvNode.{op = STEP, a = mw_m});
+    mem_w_idx := n; n = ev_put(nodes, n, EvNode.{op = MASK, a = sec_val, b = mem_w_en});
+    mem_k1 := n; n = ev_put(nodes, n, EvNode.{op = SCALE, a = mem_w_idx, k = 2});
+    mem_sq := n; n = ev_put(nodes, n, EvNode.{op = MUL, a = mem_w_idx, b = mem_w_idx});
+    mem_k2a := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = mem_w_en, b = mem_sq});
+    mem_k2 := n; n = ev_put(nodes, n, EvNode.{op = SUB, a = mem_k2a, b = c[1]});
+
+    // Pin persistent KV-cache slots (slot 0 is constant 1; inactive ROM slots stay -1).
+    for p: 0..<EV_VM_KV_SLOTS { g.pin[p] = -1; }
+    g.pin[EV_S_PROG_K1] = c[0];
+    g.pin[EV_S_PROG_K2] = c_neg1;
+    g.pin[EV_S_STEP_K2] = c[0];
+    g.pin[EV_S_NEXT_IP] = next_ip;
+    g.pin[EV_S_DELTA_D] = delta_d;
+    g.pin[EV_S_DELTA_O] = is_out;
+    g.pin[EV_S_STK_K1] = stk_k1;
+    g.pin[EV_S_STK_K2] = stk_k2;
+    g.pin[EV_S_STK_VAL] = trace_x;
+    g.pin[EV_S_LOC_K1] = loc_k1;
+    g.pin[EV_S_LOC_K2] = loc_k2;
+    g.pin[EV_S_LOC_IDX] = loc_w_idx;
+    g.pin[EV_S_LOC_VAL] = top_val;
+    g.pin[EV_S_LOC_EN] = loc_w_en;
+    g.pin[EV_S_MEM_K1] = mem_k1;
+    g.pin[EV_S_MEM_K2] = mem_k2;
+    g.pin[EV_S_MEM_IDX] = mem_w_idx;
+    g.pin[EV_S_MEM_VAL] = top_val;
+    g.pin[EV_S_MEM_EN] = mem_w_en;
+    g.pin[EV_S_OUT_IP] = cur_ip;
+    g.pin[EV_S_OUT_CODE] = op;
+    g.pin[EV_S_OUT_X] = trace_x;
+    g.pin[EV_S_OUT_Y] = trace_y;
+    g.pin[EV_S_OUT_HALT] = is_ret;
+    g.pin[EV_S_OUT_FAULT] = fault_code;
+
+    g.outputs = [EV_VM_OUTPUTS]int.[cur_ip, op, trace_x, trace_y, is_ret, fault_code];
+    g.count = n;
+    return g;
+}
+
+// Compile the full Ch 226 VM into one dense exec-vm-v1 transformer model.
+ev_ch226_compile :: (mem_cells: int, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64) -> EvModel #export_c #effects(all) {
+    nodes: [EV_VM_MAX_NODES]EvNode;
+    g := ev_ch226_build_graph(nodes[..], mem_cells);
+    if g.count == 0 { return EvModel.{status = EvStatus.shape}; } // mutant: equivalent (ev_ch226_build_graph returns 0 on refusal or > 150 nodes for the Ch 226 VM)
+    forms: [EV_VM_MAX_NODES]EvForm;
+    layer: [EV_VM_MAX_NODES]int;
+    last: [EV_VM_MAX_NODES]int;
+    slot: [EV_VM_MAX_NODES]int;
+    clear: [EV_VM_MAX_NODES]int;
+    release: [EV_VM_MAX_NODES]int;
+    kept: [EV_VM_MAX_NODES]bool;
+    free_slots: [EV_VM_MAX_WIDTH]bool;
+    arena := EvCompileArena.{
+        forms = forms[..], layer = layer[..], last = last[..], slot = slot[..],
+        clear = clear[..], release = release[..], kept = kept[..], free_slots = free_slots[..],
+        kv_pin = g.pin[..]
+    };
+    return ev_compile(nodes[0..<g.count], g.outputs[..], EV_VM_KV_SLOTS, arena, layers, heads, weights);
+}
+
+// Program admission under exec-vm-v1's binary64 exactness envelope (+/- 2^26 operands).
+ev_ch226_admit :: (program: []TmOp) -> TmStatus #export_c #effects(all) {
+    st := tm_admit(program);
+    if st != TmStatus.ok { return st; }
+    for op: program {
+        if op.code == TmCode.push && !ev_value_ok(op.arg) { return TmStatus.argument; }
+    }
+    return TmStatus.ok;
+}
+
+// Encode a program as prompt tokens H[0..<program.count] in kv_ctx (width D).
+ev_ch226_encode_program :: (program: []TmOp, width: int, kv_ctx: []f64) -> bool #effects(all) {
+    if width < EV_VM_KV_SLOTS || kv_ctx.count < program.count * width { return false; }
+    for i: 0..<program.count {
+        base := i * width;
+        kv_ctx[base] = 1.0;
+        kv_ctx[base + EV_S_PROG_K1] = f64(2 * i);
+        kv_ctx[base + EV_S_PROG_K2] = f64(-i * i);
+        kv_ctx[base + EV_S_PROG_KEY] = f64(i);
+        kv_ctx[base + EV_S_PROG_OP] = f64(cast(int)program[i].code);
+        kv_ctx[base + EV_S_PROG_ARG] = f64(program[i].arg);
+        kv_ctx[base + EV_S_PROG_VAL] = 1.0;
+        // Inactive step key (-1 < 0) so step 0 reads prompt NEXT_IP=0 while steps >= 1 beat prompts.
+        kv_ctx[base + EV_S_STEP_K2] = -1.0;
+        for d: EV_S_NEXT_IP..<width { kv_ctx[base + d] = 0.0; }
+    }
+    return true;
+}
+
+// Execute any Ch 226 program autoregressively STRICTLY through loaded dense
+// transformer weights (ev_forward_token), with ZERO reference-interpreter fallback!
+ev_ch226_run :: (m: EvModel, program: []TmOp, budget: int, trace: []int, outputs: []int, kv_ctx: []f64, exec: EvExecArena, overlap: bool) -> TmResult #export_c #effects(all) {
+    if m.status != EvStatus.ok || m.n_inputs != 0 || m.n_outputs != EV_VM_OUTPUTS || m.width < EV_VM_KV_SLOTS {
+        return TmResult.{status = TmStatus.shape};
+    }
+    admitted := ev_ch226_admit(program);
+    if admitted != TmStatus.ok { return TmResult.{status = admitted}; }
+    if budget < 1 || budget > TM_STEPS_MAX { return TmResult.{status = TmStatus.budget}; }
+    if outputs.count < 1 { return TmResult.{status = TmStatus.capacity}; }
+    if overlap { return TmResult.{status = TmStatus.alias}; }
+    D := m.width;
+    if !ev_ch226_encode_program(program, D, kv_ctx) { return TmResult.{status = TmStatus.capacity}; }
+
+    sha: [112]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    stage_out: [TM_OUTPUTS]int;
+    out_count := 0;
+    steps := 0;
+    last_ip := 0;
+    ctx_len := program.count;
+    empty_in: [1]f64;
+    readout: [EV_VM_OUTPUTS]f64;
+    row: [TM_TOKENS]int;
+    bytes: [16]u8;
+
+    while true {
+        if (ctx_len + 1) * D > kv_ctx.count { return TmResult.{status = TmStatus.capacity, ip = last_ip, steps = steps}; }
+        if steps >= budget {
+            // Check whether the next step would be fell (ip == program.count) before budget, matching tm_pass!
+            prev_next := cast(int)kv_ctx[(ctx_len - 1) * D + EV_S_NEXT_IP];
+            if prev_next == program.count { return TmResult.{status = TmStatus.fell, ip = prev_next, steps = steps}; }
+            return TmResult.{status = TmStatus.budget, ip = last_ip, steps = steps};
+        }
+        // Pure dense transformer forward pass: attends causally over kv_ctx[0..<ctx_len].
+        dst := kv_ctx[ctx_len * D..<ctx_len * D + D];
+        fs := ev_forward_token(m, empty_in[0..<0], kv_ctx[0..<ctx_len * D], ctx_len, dst, readout[..], exec, false);
+        if fs != EvStatus.ok { return TmResult.{status = TmStatus.arithmetic, ip = last_ip, steps = steps}; }
+
+        r_ip := cast(int)readout[0];
+        r_code := cast(int)readout[1];
+        r_x := cast(int)readout[2];
+        r_y := cast(int)readout[3];
+        r_halt := cast(int)readout[4];
+        r_fault := cast(int)readout[5];
+        last_ip = r_ip;
+
+        if r_fault != 0 {
+            return TmResult.{status = cast(TmStatus)r_fault, ip = r_ip, steps = steps};
+        }
+        if r_code == cast(int)TmCode.out {
+            stage_out[out_count] = r_x;
+            out_count += 1;
+        }
+        if (steps + 1) * TM_TOKENS > trace.count || out_count > outputs.count {
+            return TmResult.{status = TmStatus.capacity, ip = r_ip, steps = steps};
+        }
+        row[0] = r_ip; row[1] = r_code; row[2] = r_x; row[3] = r_y;
+        tm_bytes(row[..], bytes[..]);
+        #assert sha256_update_checked(sha[..], bytes[..], false) == SHA_OK;
+        ctx_len += 1;
+        steps += 1;
+        if r_halt == 1 { break; }
+    }
+    res := TmResult.{ip = last_ip, steps = steps, outputs = out_count};
+    #assert sha256_final_checked(sha[..], res.digest[..], false) == SHA_OK;
+    // Publish trace and outputs atomically only after the entire run succeeded.
+    for s: 0..<steps {
+        base := (program.count + s) * D;
+        trace[s * 4] = cast(int)kv_ctx[base + EV_S_OUT_IP];
+        trace[s * 4 + 1] = cast(int)kv_ctx[base + EV_S_OUT_CODE];
+        trace[s * 4 + 2] = cast(int)kv_ctx[base + EV_S_OUT_X];
+        trace[s * 4 + 3] = cast(int)kv_ctx[base + EV_S_OUT_Y];
+    }
+    for i: 0..<out_count { outputs[i] = stage_out[i]; }
+    return res;
+}
+
+// ---- Tests: full Ch 226 VM safetensors round-trip, all 11 opcodes, boundaries & refusals ----
+
+#test "Ch 226 VM graph admission, build boundaries, and program admission/encoding" {
+    nodes: [EV_VM_MAX_NODES]EvNode;
+    #assert ev_ch226_build_graph(nodes[0..<EV_VM_MAX_NODES - 1], TM_CELLS).count == 0;
+    #assert ev_ch226_build_graph(nodes[..], TM_CELLS - 1).count == 0;
+    #assert ev_ch226_build_graph(nodes[..], EV_KEY_MAX + 1).count == 0;
+    #assert ev_ch226_build_graph(nodes[..], EV_KEY_MAX).count > 100;
+    gb := ev_ch226_build_graph(nodes[..], TM_CELLS);
+    #assert gb.count > 100 && gb.pin[EV_S_ONE] == -1 && gb.pin[EV_S_PROG_K1] == 0 && gb.pin[EV_S_PROG_K2] == 12 && gb.pin[EV_S_STEP_K2] == 0;
+
+    // Program admission boundaries (+/- 2^26 exact).
+    p_ok := [2]TmOp.[TmOp.{code = TmCode.push, arg = EV_VALUE_MAX}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_admit(p_ok[..]) == TmStatus.ok;
+    p_ok[0].arg = -EV_VALUE_MAX;
+    #assert ev_ch226_admit(p_ok[..]) == TmStatus.ok;
+    p_ok[0].arg = EV_VALUE_MAX + 1;
+    #assert ev_ch226_admit(p_ok[..]) == TmStatus.argument;
+    p_ok[0].arg = -EV_VALUE_MAX - 1;
+    #assert ev_ch226_admit(p_ok[..]) == TmStatus.argument;
+    #assert ev_ch226_admit(p_ok[0..<0]) == TmStatus.shape;
+
+    // Program encoding capacity & exact dirty-buffer clearing.
+    kv: [128]f64;
+    for i: 0..<128 { kv[i] = 99.0; }
+    p_ok[0].arg = 7;
+    #assert !ev_ch226_encode_program(p_ok[..], EV_VM_KV_SLOTS - 1, kv[..]);
+    #assert !ev_ch226_encode_program(p_ok[..], EV_VM_KV_SLOTS, kv[0..<2 * EV_VM_KV_SLOTS - 1]);
+    #assert ev_ch226_encode_program(p_ok[..], EV_VM_KV_SLOTS, kv[0..<2 * EV_VM_KV_SLOTS]);
+    #assert kv[0] == 1.0 && kv[EV_S_PROG_ARG] == 7.0 && kv[EV_S_STEP_K2] == -1.0 && kv[EV_S_NEXT_IP] == 0.0 && kv[EV_S_OUT_IP] == 0.0;
+    #assert kv[EV_VM_KV_SLOTS + EV_S_PROG_K1] == 2.0 && kv[EV_VM_KV_SLOTS + EV_S_PROG_K2] == -1.0;
+}
+
+#test "full Ch 226 VM compiles to dense weights, round-trips via F64 safetensors, and matches reference on all 11 opcodes" #steps 40000000 {
+    layers: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights: [EV_VM_MAX_WEIGHTS]f64;
+    compiled := ev_ch226_compile(TM_CELLS, layers[..], heads[..], weights[..]);
+    #assert compiled.status == EvStatus.ok && compiled.n_layers >= 6 && compiled.n_heads == 7 && compiled.n_weights > 10000;
+
+    // Serialize to standard F64 safetensors bytes + SHA-256 artifact digest, then load into fresh buffers.
+    file: [1048576]u8;
+    ser := ev_serialize(compiled, file[..]);
+    #assert ser.status == EvStatus.ok && ser.written > 80000;
+    layers2: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [EV_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    #assert ld.model.status == EvStatus.ok && ev_same_digest(ld.digest, ser.digest);
+    vm := ld.model;
+
+    kv_ctx: [16384]f64;
+    ex_x: [EV_VM_MAX_WIDTH]f64; ex_st: [EV_VM_MAX_WIDTH]f64; ex_h: [EV_VM_MAX_UNITS]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    t_ref: [512]int; t_vm: [512]int;
+    o_ref: [TM_OUTPUTS]int; o_vm: [TM_OUTPUTS]int;
+
+    // Compact program exercising ALL 11 opcodes, adjacent non-zero keys (loc[2]&loc[3], mem[3]&mem[5]) so
+    // parabolic 2*k*q - k^2 is strictly separated from 3*k*q - k^2, unwritten interior reads (loc[6], mem[7]),
+    // and jumping back to ip=0.
+    p := [48]TmOp.[
+        TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1},
+        TmOp.{code = TmCode.add}, TmOp.{code = TmCode.set, arg = 0},                    // loc[0] += 1 (0->1->2)
+        TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 2},
+        TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.brif, arg = 0},                   // jump BACK to ip=0!
+        TmOp.{code = TmCode.push, arg = 11}, TmOp.{code = TmCode.set, arg = 2},         // loc[2] = 11
+        TmOp.{code = TmCode.push, arg = 17}, TmOp.{code = TmCode.set, arg = 3},         // loc[3] = 17 (adjacent > 2!)
+        TmOp.{code = TmCode.push, arg = 3}, TmOp.{code = TmCode.get, arg = 2},
+        TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.mul}, TmOp.{code = TmCode.store}, // mem[3] = 11*2 = 22
+        TmOp.{code = TmCode.push, arg = 5}, TmOp.{code = TmCode.push, arg = 77}, TmOp.{code = TmCode.store},  // mem[5] = 77 (near > 3!)
+        TmOp.{code = TmCode.push, arg = 0}, TmOp.{code = TmCode.push, arg = 42}, TmOp.{code = TmCode.store},  // mem[0] = 42
+        TmOp.{code = TmCode.push, arg = 63}, TmOp.{code = TmCode.push, arg = -5}, TmOp.{code = TmCode.store}, // mem[63] = -5
+        TmOp.{code = TmCode.push, arg = 3}, TmOp.{code = TmCode.push, arg = 20}, TmOp.{code = TmCode.store},  // overwrite mem[3] = 20
+        TmOp.{code = TmCode.push, arg = 3}, TmOp.{code = TmCode.load},                  // mem[3] = 20 (vs mem[5]=77!)
+        TmOp.{code = TmCode.push, arg = 63}, TmOp.{code = TmCode.load},                 // mem[63] = -5
+        TmOp.{code = TmCode.add}, TmOp.{code = TmCode.out},                             // out[0] = 15
+        TmOp.{code = TmCode.push, arg = 0}, TmOp.{code = TmCode.load},                  // mem[0] = 42
+        TmOp.{code = TmCode.push, arg = 7}, TmOp.{code = TmCode.load},                  // unwritten interior mem[7] = 0
+        TmOp.{code = TmCode.get, arg = 2},                                              // loc[2] = 11 (vs loc[3]=17!)
+        TmOp.{code = TmCode.get, arg = 3},                                              // loc[3] = 17
+        TmOp.{code = TmCode.get, arg = 6},                                              // unwritten interior loc[6] = 0
+        TmOp.{code = TmCode.add}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.add},
+        TmOp.{code = TmCode.out},                                                       // out[1] = 42 + 0 + 11 + 17 + 0 = 70
+        TmOp.{code = TmCode.ret}
+    ];
+    r := tm_run(p[..], 128, t_ref[..], o_ref[..], false);
+    w := ev_ch226_run(vm, p[..], 128, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+    #assert r.status == TmStatus.ok && w.status == TmStatus.ok;
+    #assert r.steps == w.steps && r.outputs == w.outputs && r.ip == w.ip && w.outputs == 2;
+    #assert o_vm[0] == 15 && o_vm[1] == 70;
+    #assert ev_same_digest(r.digest, w.digest);
+    for i: 0..<r.steps * TM_TOKENS { #assert t_ref[i] == t_vm[i]; }
+    for i: 0..<r.outputs { #assert o_ref[i] == o_vm[i]; }
+    // Exact kv_ctx, trace, outputs, and budget fit succeeds; 1 element short refuses cleanly.
+    exact_kv := (p.count + r.steps) * vm.width;
+    #assert ev_ch226_run(vm, p[..], r.steps, t_vm[0..<r.steps * 4], o_vm[0..<2], kv_ctx[0..<exact_kv], exec, false).status == TmStatus.ok;
+    #assert ev_ch226_run(vm, p[..], r.steps, t_vm[0..<r.steps * 4], o_vm[0..<2], kv_ctx[0..<exact_kv - 1], exec, false).status == TmStatus.capacity;
+    #assert ev_ch226_run(vm, p[..], r.steps, t_vm[0..<r.steps * 4 - 1], o_vm[0..<2], kv_ctx[0..<exact_kv], exec, false).status == TmStatus.capacity;
+    #assert ev_ch226_run(vm, p[..], r.steps, t_vm[0..<r.steps * 4], o_vm[0..<1], kv_ctx[0..<exact_kv], exec, false).status == TmStatus.capacity;
+    // Exact outputs.count == 1 succeeds on 0-output [ret], and step-0 kv capacity refusal returns ip == 0.
+    just_ret := [1]TmOp.[TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, just_ret[..], 1, t_vm[0..<4], o_vm[0..<1], kv_ctx[..], exec, false).status == TmStatus.ok;
+    r_k0 := ev_ch226_run(vm, just_ret[..], 1, t_vm[0..<4], o_vm[0..<1], kv_ctx[0..<vm.width], exec, false);
+    #assert r_k0.status == TmStatus.capacity && r_k0.ip == 0;
+}
+
+#test "typed refusals on every fault, priority, boundary, capacity, budget and 128-cell memory" #steps 40000000 {
+    layers: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights: [EV_VM_MAX_WEIGHTS]f64;
+    vm := ev_ch226_compile(TM_CELLS, layers[..], heads[..], weights[..]);
+    #assert vm.status == EvStatus.ok;
+    kv_ctx: [32768]f64;
+    ex_x: [EV_VM_MAX_WIDTH]f64; ex_st: [EV_VM_MAX_WIDTH]f64; ex_h: [EV_VM_MAX_UNITS]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    trace := [16]int.[-9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9];
+    outs := [2]int.[-9, -9];
+
+    // Arithmetic exact bounds (+/- 2^26 ok vs +/- (2^26+1) refused).
+    at_lim := [4]TmOp.[TmOp.{code = TmCode.push, arg = EV_VALUE_MAX - 1}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.ret}];
+    big_t: [400]int; big_o: [TM_OUTPUTS]int;
+    #assert ev_ch226_run(vm, at_lim[..], 8, big_t[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.ok;
+    at_lim[0].arg = EV_VALUE_MAX;
+    #assert ev_ch226_run(vm, at_lim[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.arithmetic;
+    ov_sub := [4]TmOp.[TmOp.{code = TmCode.push, arg = -EV_VALUE_MAX}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, ov_sub[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.arithmetic;
+    ov_mul := [4]TmOp.[TmOp.{code = TmCode.push, arg = 8193}, TmOp.{code = TmCode.push, arg = 8192}, TmOp.{code = TmCode.mul}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, ov_mul[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.arithmetic;
+
+    // Bad jump & bad local.
+    jump := [2]TmOp.[TmOp.{code = TmCode.brif, arg = 2}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, jump[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.branch;
+    loc := [3]TmOp.[TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.set, arg = 8}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, loc[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.local;
+
+    // Stack underflow on every 1-arg (set, load, brif, out) and 2-arg (add, sub, mul, store) opcode.
+    for code: [4]TmCode.[TmCode.set, TmCode.load, TmCode.brif, TmCode.out] {
+        u1 := [2]TmOp.[TmOp.{code = code, arg = 0}, TmOp.{code = TmCode.ret}];
+        #assert ev_ch226_run(vm, u1[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.underflow;
+    }
+    for code: [4]TmCode.[TmCode.add, TmCode.sub, TmCode.mul, TmCode.store] {
+        u2 := [3]TmOp.[TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = code, arg = 0}, TmOp.{code = TmCode.ret}];
+        #assert ev_ch226_run(vm, u2[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.underflow;
+    }
+
+    // Stack overflow at 33 pushes vs 32 pushes ok (and get at depth 32 overflows).
+    deep: [34]TmOp;
+    for i: 0..<32 { deep[i] = TmOp.{code = TmCode.push, arg = i}; }
+    deep[32] = TmOp.{code = TmCode.ret};
+    #assert ev_ch226_run(vm, deep[0..<33], 64, big_t[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.ok;
+    deep[32] = TmOp.{code = TmCode.push, arg = 32}; deep[33] = TmOp.{code = TmCode.ret};
+    #assert ev_ch226_run(vm, deep[..], 64, big_t[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.overflow;
+    deep[32] = TmOp.{code = TmCode.get, arg = 0};
+    #assert ev_ch226_run(vm, deep[..], 64, big_t[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.overflow;
+
+    // Memory out-of-bounds on load (-1 and 64) and store (-1 and 64), plus valid 0 and 63.
+    oob_l := [3]TmOp.[TmOp.{code = TmCode.push, arg = 64}, TmOp.{code = TmCode.load}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, oob_l[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.address;
+    oob_l[0].arg = -1;
+    #assert ev_ch226_run(vm, oob_l[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.address;
+    oob_s := [4]TmOp.[TmOp.{code = TmCode.push, arg = 64}, TmOp.{code = TmCode.push, arg = 5}, TmOp.{code = TmCode.store}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, oob_s[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.address;
+    oob_s[0].arg = -1;
+    #assert ev_ch226_run(vm, oob_s[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.address;
+
+    // Output capacity fault inside weights: unrolled 65x (push 1, out) = 131 ops (~4x fewer steps, ~16x faster!).
+    many_o: [131]TmOp;
+    for i: 0..<65 {
+        many_o[2 * i] = TmOp.{code = TmCode.push, arg = 1};
+        many_o[2 * i + 1] = TmOp.{code = TmCode.out};
+    }
+    many_o[130] = TmOp.{code = TmCode.ret};
+    big_t2: [600]int;
+    #assert ev_ch226_run(vm, many_o[..], 140, big_t2[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.capacity;
+    many_o[128] = TmOp.{code = TmCode.ret};
+    #assert ev_ch226_run(vm, many_o[0..<129], 140, big_t2[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.ok;
+
+    // Fell off program (2-op program with budget=2 so ctx_len-1==3 and NEXT_IP==2 != DELTA_D==1!), budget, alias, bad model shapes.
+    fall := [2]TmOp.[TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.push, arg = 2}];
+    rf1 := ev_ch226_run(vm, fall[..], 8, trace[..], outs[..], kv_ctx[..], exec, false);
+    #assert rf1.status == TmStatus.fell && rf1.ip == 2 && rf1.steps == 2;
+    rf2 := ev_ch226_run(vm, fall[..], 2, trace[..], outs[..], kv_ctx[..], exec, false);
+    #assert rf2.status == TmStatus.fell && rf2.ip == 2 && rf2.steps == 2;
+    spin := [3]TmOp.[TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.brif, arg = 0}, TmOp.{code = TmCode.ret}];
+    rb := ev_ch226_run(vm, spin[..], 2, trace[..], outs[..], kv_ctx[..], exec, false);
+    #assert rb.status == TmStatus.budget && rb.steps == 2 && rb.ip == 1;
+    #assert ev_ch226_run(vm, spin[..], 0, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.budget;
+    #assert ev_ch226_run(vm, spin[..], TM_STEPS_MAX + 1, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.budget;
+    ok := [3]TmOp.[TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}];
+    #assert ev_ch226_run(vm, ok[..], TM_STEPS_MAX, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.ok;
+    for i: 0..<16 { trace[i] = -9; }
+    for i: 0..<2 { outs[i] = -9; }
+    #assert ev_ch226_run(vm, ok[..], 8, trace[..], outs[0..<0], kv_ctx[..], exec, false).status == TmStatus.capacity;
+    #assert ev_ch226_run(vm, ok[..], 8, trace[..], outs[..], kv_ctx[..], exec, true).status == TmStatus.alias;
+    #assert ev_ch226_run(vm, ok[..], 8, trace[..], outs[..], kv_ctx[..], EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[0..<1]}, false).status == TmStatus.arithmetic;
+    bm := vm; bm.status = EvStatus.shape;
+    #assert ev_ch226_run(bm, ok[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.shape;
+    bm = vm; bm.n_inputs = 1;
+    #assert ev_ch226_run(bm, ok[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.shape;
+    bm = vm; bm.n_outputs = 5;
+    #assert ev_ch226_run(bm, ok[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.shape;
+    bm = vm; bm.width = EV_VM_KV_SLOTS - 1;
+    #assert ev_ch226_run(bm, ok[..], 8, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.shape;
+    bm.width = EV_VM_KV_SLOTS; // exact boundary passes shape check and hits budget=0 check!
+    #assert ev_ch226_run(bm, ok[..], 0, trace[..], outs[..], kv_ctx[..], exec, false).status == TmStatus.budget;
+    // Refusals never wrote caller trace or outputs.
+    for v: trace { #assert v == -9; }
+    for v: outs { #assert v == -9; }
+
+    // Configurable 128-cell linear memory VM executes stores & loads past 64 cells with zero extra weights.
+    l128: [EV_VM_MAX_LAYERS]EvLayerDesc; h128: [EV_VM_MAX_HEADS]EvHeadDesc; w128: [EV_VM_MAX_WEIGHTS]f64;
+    vm128 := ev_ch226_compile(128, l128[..], h128[..], w128[..]);
+    #assert vm128.status == EvStatus.ok && vm128.n_weights == vm.n_weights;
+    #assert ev_ch226_compile(63, l128[..], h128[..], w128[..]).status == EvStatus.shape;
+    p128 := [7]TmOp.[
+        TmOp.{code = TmCode.push, arg = 120}, TmOp.{code = TmCode.push, arg = 314}, TmOp.{code = TmCode.store},
+        TmOp.{code = TmCode.push, arg = 120}, TmOp.{code = TmCode.load}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}
+    ];
+    #assert ev_ch226_run(vm, p128[..], 16, big_t[..], big_o[..], kv_ctx[..], exec, false).status == TmStatus.address;
+    r128 := ev_ch226_run(vm128, p128[..], 16, big_t[..], big_o[..], kv_ctx[..], exec, false);
+    #assert r128.status == TmStatus.ok && r128.outputs == 1 && big_o[0] == 314;
+}

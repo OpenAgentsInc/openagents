@@ -379,14 +379,46 @@ blocks as chapter 237 shows.
 The [verification record](../../docs/verification/psionic-ch170-2026-10-30.md)
 has the commands and results.
 
+## The full chapter 226 stack+memory VM in dense weights (`exec-vm-v1`)
+
+With [exec-vm-core.coax](../lib/exec-vm-core.coax) removing chapter 229's
+16-input and 128-node ceilings and adding parabolic hard-max and uniform
+prefix-sum attention layers, [exec-vm.coax](../lib/exec-vm.coax) compiles the
+complete [chapter 226](ch226-a-machine-whose-state-is-a-trace.md) stack+memory
+machine — all 11 opcodes (`push`, `get`, `set`, `add`, `sub`, `mul`, `load`,
+`store`, `brif`, `out`, `ret`), 32-slot operand stack, 8 locals, configurable
+`≥ 64`-cell linear memory, 64 outputs, and in-weight fault detection — into one
+loadable `exec-vm-v1` F64 safetensors artifact (residual width 49, 16 layers,
+7 fused attention heads, 63 dense F64 tensors, 41,013 weights, 333,264 bytes).
+
+```shell
+coax/bin/coax run psionic/examples/exec-vm.coax --release
+python3 -I psionic/tests/exec_vm_oracle.py
+```
+
+- [exec-vm.coax](../examples/exec-vm.coax) compiles the artifact, round-trips
+  it through standard F64 safetensors pinned by SHA-256, verifies all 54
+  programs (`squares`, `sum`, `fact`, `memfill`, plus 50 seeded programs from
+  [exec-vm-programs.coax](../lib/exec-vm-programs.coax): 3,692 autoregressive
+  steps, 0 divergences against `tm_run`), runs the extended seven-fault
+  differential harness, and measures native CPU interpreter throughput
+  (`~3.88M steps/s`) side-by-side against loaded dense-weight throughput
+  (`~51.2k steps/s`, an honest `~75x` CPU ratio).
+- [exec_vm_oracle.py](../tests/exec_vm_oracle.py) invokes
+  [exec-vm-artifact.coax](../tools/exec-vm-artifact.coax) to write the actual
+  `.safetensors` file to disk, loads all 63 dense F64 matrices independently in
+  Python, and verifies bit-identical traces, SHA-256 trace digests, and 8/8
+  typed refusals strictly via pure dense matrix-vector products and parabolic
+  attention with zero interpreter fallback.
+- Mutation testing of `exec-vm.coax` kills 528 of 531 mutants with 0 survivors
+  (3 marked equivalent).
+
 ## What this does not do yet
 
-- **Chapter 226's machine.** Its stack and memory need far more inputs and
-  nodes than chapter 229's blocks allow. Chapter 227's exact memory,
-  read by attention, is the way to hold them.
-- **GPU timings.** The plan asks for steps per second from running weights;
-  these are CPU forward passes. A device run of the same blocks belongs with
-  chapter 43's fused replay.
+- **GPU timings and logarithmic decoding.** These are CPU `binary64` forward
+  passes with linear causal attention over the trace. Device execution and
+  logarithmic-time decoding belong in [chapter 232](ch232-decode-in-logarithmic-time.md)
+  and fused GPU replay.
 - **The second projection.** Specializing the specializer to the interpreter
   would give a compiler from programs to blocks. Here the specializer is
   general and runs each time.

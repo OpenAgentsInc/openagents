@@ -372,6 +372,28 @@ weights multiply 4097 by 4097 exactly in binary64 and round it in binary32.
   tested a constant read by an early gate, which would have cleared slot 0
   under every later layer.
 
+## Unified Attention+FFN compiler (`exec-vm-v1`)
+
+To compile whole trace machines without chapter 229's 16-input, 128-node, and
+64-slot fixed ceilings, [exec-vm-core.coax](../lib/exec-vm-core.coax) extends
+the exact binary64 profile to `exec-vm-v1`:
+
+- **Caller-allocated bounded arenas** (`EvCompileArena`, `EvExecArena`) replace
+  the fixed static arrays; every graph, schedule, weight, and KV capacity limit
+  is checked up front by `#authority` admission.
+- **Alternating Attention and FFN waves:** parabolic hard-max attention heads
+  with `(2k, −k²)` keys and recency tie-breaking (`attn_read`), plus uniform
+  causal prefix-sum heads (`attn_sum`), fuse up to four compatible value
+  channels per head (`d_v ≤ 4`) alongside ReGLU residual FFN layers (still with
+  no RMSNorm and no SiLU, inside the ±2⁵³ binary64 exactness envelope).
+- **Dense weight materialization:** `ev_serialize` and `ev_deserialize` emit
+  and load standard `F64` safetensors (`W_Q`, `W_K`, `W_V`, `W_O`, `W_up`,
+  `W_gate`, `W_down`, `W_out` plus `__metadata__`) pinned by a SHA-256 artifact
+  digest. `ev_forward_token` runs strictly through those dense matrices.
+- **Mutation testing:** `coax mutate psionic/lib/exec-vm-core.coax --root-only --native`
+  leaves zero surviving mutants across 1,804 sites (1,768 killed, 36 marked
+  equivalent).
+
 ## What this does not do yet
 
 [Chapter 230](ch230-a-harness-that-catches-the-compiler.md)'s harness found a
@@ -381,7 +403,8 @@ already accepted, and the compiler then failed an internal assertion instead
 of refusing. The fix merges like terms (so `x − x` costs nothing) and checks
 each gadget's forms before scheduling.
 
-This is straight-line code, one step at a time, with no memory. Chapter 230
-attacks the compiler with a differential harness and planted bugs. Chapter 231
-adds chapter 227's attention reads and loops the block over a trace, so the
-whole of chapter 226's machine runs as weights.
+`gate-graph.coax` stays straight-line for single-step blocks, while
+`exec-vm-core.coax` carries the unified Attention+FFN compiler that
+[chapter 230](ch230-a-harness-that-catches-the-compiler.md)'s extended harness
+tests and [chapter 231](ch231-an-interpreter-in-weights-or-one-program-in-weights.md)
+uses to compile chapter 226's full stack+memory machine into weights.

@@ -1,0 +1,154 @@
+// W1.1 (exec-vm-v1): Compile the complete Ch 226 stack+memory VM into dense
+// F64 safetensors weights (parabolic hard-max attention + uniform prefix-sum +
+// ReGLU residual FFN), reload with SHA-256 verification, verify bit-for-bit
+// trace digest equality on 54 programs, run the extended Ch 230 Attention+FFN
+// differential harness, and report native CPU interpreter vs. loaded dense-
+// weight steps/s side-by-side.
+#import "Basic";
+#load "../lib/exec-vm-programs.coax";
+#load "../lib/exec-vm-harness.coax";
+
+// Host processor clock in microseconds (C clock(), CLOCKS_PER_SEC = 1,000,000 on macOS & Linux).
+clock :: () -> int #foreign #effects(all);
+
+ev_ex_hex :: (v: int) -> u8 {
+    if v < 10 { return cast(u8)('0' + v); }
+    return cast(u8)('a' + (v - 10));
+}
+
+ev_ex_digest :: (d: [32]u8, out: []u8) -> string {
+    for i: 0..<32 {
+        b := cast(int)d[i];
+        out[2 * i] = ev_ex_hex(b >> 4);
+        out[2 * i + 1] = ev_ex_hex(b & 15);
+    }
+    return cast(string)out[0..<64];
+}
+
+// book:begin example
+main :: () {
+    // 1. Compile the full Ch 226 stack+memory VM into one exec-vm-v1 transformer artifact.
+    layers: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights: [EV_VM_MAX_WEIGHTS]f64;
+    compiled := ev_ch226_compile(TM_CELLS, layers[..], heads[..], weights[..]);
+    #assert compiled.status == EvStatus.ok;
+
+    // 2. Materialize dense F64 safetensors bytes, hash with SHA-256, and reload into fresh buffers.
+    file: [1048576]u8;
+    ser := ev_serialize(compiled, file[..]);
+    #assert ser.status == EvStatus.ok;
+    layers2: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [EV_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    #assert ld.model.status == EvStatus.ok && ev_same_digest(ld.digest, ser.digest);
+    vm := ld.model;
+
+    hex: [64]u8;
+    print("exec-vm-v1 Ch 226 artifact: width %, % layers, % attention heads, % dense F64 weights (% safetensors bytes)\n",
+        vm.width, vm.n_layers, vm.n_heads, vm.n_weights, ser.written);
+    print("artifact sha256: %\n", ev_ex_digest(ld.digest, hex[..]));
+
+    // 3. Execute 4 named programs + 50 seeded programs strictly via loaded dense weights.
+    kv_ctx: [131072]f64;
+    ex_x: [EV_VM_MAX_WIDTH]f64;
+    ex_st: [EV_VM_MAX_WIDTH]f64;
+    ex_h: [EV_VM_MAX_UNITS]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    prog: [48]TmOp;
+    t_ref: [2048]int; t_vm: [2048]int;
+    o_ref: [TM_OUTPUTS]int; o_vm: [TM_OUTPUTS]int;
+
+    total_steps := 0;
+    divergences := 0;
+    names := [4]string.["squares(4)", "sum(10)", "fact(10)", "memfill(5,8)"];
+    for named: 0..<4 {
+        plen := 0;
+        if named == 0 { plen = ev_prog_squares(4, prog[..]); }
+        else if named == 1 { plen = ev_prog_sum(10, prog[..]); }
+        else if named == 2 { plen = ev_prog_fact(10, prog[..]); }
+        else { plen = ev_prog_memfill(5, 8, prog[..]); }
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        #assert r.status == TmStatus.ok && w.status == TmStatus.ok;
+        if r.steps != w.steps || !ev_same_digest(r.digest, w.digest) { divergences += 1; }
+        total_steps += w.steps;
+        print("  %: % steps, out %, trace sha256 %... (match %)\n",
+            names[named], w.steps, o_vm[0], ev_ex_digest(w.digest, hex[..])[0..<16], ev_same_digest(r.digest, w.digest));
+    }
+    for seed: 0..<50 {
+        plen := ev_seed_program(seed, prog[..]);
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        #assert r.status == TmStatus.ok && w.status == TmStatus.ok;
+        if r.steps != w.steps || !ev_same_digest(r.digest, w.digest) { divergences += 1; }
+        total_steps += w.steps;
+    }
+    #assert divergences == 0;
+    print("verified 54 programs (4 named + 50 seeded): % autoregressive steps, % divergences\n", total_steps, divergences);
+
+    // 4. Extended Ch 230 differential harness over unified Attention+FFN blocks.
+    fault_names := [8]string.[
+        "honest compiler", "early_reuse", "same_layer", "no_clear",
+        "clear_sign", "attn_key_sign", "attn_tie_break", "attn_same_layer"
+    ];
+    for fi: 0..<8 {
+        caught := 0; sched := 0; emit := 0; graphs := 0;
+        for seed: 1..<26 {
+            c := evh_differential(seed, 20, cast(EvFault)fi);
+            graphs += c.graphs;
+            if c.caught {
+                caught += 1;
+                if c.where == EvWhere.schedule { sched += 1; } else { emit += 1; }
+            }
+        }
+        if fi == 0 {
+            #assert caught == 0;
+            print("differential harness (%): % graphs over 25 seeds, 0 disagreements\n", fault_names[fi], graphs);
+        } else {
+            #assert caught == 25;
+            print("differential harness (%): caught %/25 seeds (schedule %, emission %)\n", fault_names[fi], caught, sched, emit);
+        }
+    }
+
+    // 5. Honest side-by-side CPU speed comparison: native interpreter vs loaded dense weights.
+    // Workload: squares(4) (53 steps) + sum(10) (107 steps) + fact(10) (107 steps) + memfill(5,8) (150 steps) = 417 steps/iter.
+    p0: [48]TmOp; n0 := ev_prog_squares(4, p0[..]);
+    p1: [48]TmOp; n1 := ev_prog_sum(10, p1[..]);
+    p2: [48]TmOp; n2 := ev_prog_fact(10, p2[..]);
+    p3: [48]TmOp; n3 := ev_prog_memfill(5, 8, p3[..]);
+
+    native_reps := 400;
+    native_steps := 0;
+    t0 := clock();
+    for rep: 0..<native_reps {
+        native_steps += tm_run(p0[0..<n0], 400, t_ref[..], o_ref[..], false).steps;
+        native_steps += tm_run(p1[0..<n1], 400, t_ref[..], o_ref[..], false).steps;
+        native_steps += tm_run(p2[0..<n2], 400, t_ref[..], o_ref[..], false).steps;
+        native_steps += tm_run(p3[0..<n3], 400, t_ref[..], o_ref[..], false).steps;
+    }
+    native_us := clock() - t0;
+    if native_us < 1 { native_us = 1; }
+
+    dense_reps := 5;
+    dense_steps := 0;
+    t1 := clock();
+    for rep: 0..<dense_reps {
+        dense_steps += ev_ch226_run(vm, p0[0..<n0], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false).steps;
+        dense_steps += ev_ch226_run(vm, p1[0..<n1], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false).steps;
+        dense_steps += ev_ch226_run(vm, p2[0..<n2], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false).steps;
+        dense_steps += ev_ch226_run(vm, p3[0..<n3], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false).steps;
+    }
+    dense_us := clock() - t1;
+    if dense_us < 1 { dense_us = 1; }
+
+    native_sps := (f64(native_steps) * 1000000.0) / f64(native_us);
+    dense_sps := (f64(dense_steps) * 1000000.0) / f64(dense_us);
+    ratio := native_sps / dense_sps;
+    print("benchmark (Ch 226 4-program suite, CPU binary64):\n");
+    print("  native CPU interpreter (tm_run):     % steps in % us -> % steps/s\n", native_steps, native_us, cast(int)native_sps);
+    print("  loaded dense weights (exec-vm-v1):   % steps in % us -> % steps/s\n", dense_steps, dense_us, cast(int)dense_sps);
+    print("  honest ratio (native / dense-weight): %x (CPU is faster for raw batch loops; weights enable zero-cost replay & composition)\n", cast(int)ratio);
+}
+// book:end example

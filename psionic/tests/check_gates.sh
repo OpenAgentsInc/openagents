@@ -20,6 +20,10 @@ for mode in debug release; do
     "$coax" test psionic/lib/relu-arith.coax "${flags[@]}"
     "$coax" test psionic/lib/gate-graph.coax "${flags[@]}"
     "$coax" test psionic/lib/compiler-harness.coax "${flags[@]}"
+    "$coax" test psionic/lib/exec-vm-core.coax "${flags[@]}"
+    "$coax" test psionic/lib/exec-vm.coax "${flags[@]}"
+    "$coax" test psionic/lib/exec-vm-harness.coax "${flags[@]}"
+    "$coax" test psionic/lib/exec-vm-programs.coax "${flags[@]}"
     "$coax" c psionic/lib/gate-graph.coax --library --header "$out/gate-graph.h" "${flags[@]}" > "$out/gate-graph.c"
     "$coax" c psionic/lib/compiler-harness.coax --library --header "$out/compiler-harness.h" "${flags[@]}" > "$out/compiler-harness.c"
     for native in plain sanitized; do
@@ -43,7 +47,12 @@ for mode in debug release; do
         cmp "psionic/fixtures/$example.out" "$out/example.out"
     done
 done
+python3 -I psionic/tests/exec_vm_oracle.py
+"$coax" run psionic/examples/exec-vm.coax --release
 "$coax" mutate psionic/lib/relu-arith.coax --jobs "${PSIONIC_JOBS:-8}"
 "$coax" mutate psionic/lib/gate-graph.coax --jobs "${PSIONIC_JOBS:-8}"
 "$coax" mutate psionic/lib/compiler-harness.coax --jobs "${PSIONIC_JOBS:-8}"
-echo "Gate chapters pass: independent oracle, debug/release, ASan/UBSan, example and zero-survivor mutation"
+"$coax" mutate psionic/lib/exec-vm-core.coax --root-only --native --jobs "${PSIONIC_JOBS:-8}"
+"$coax" mutate psionic/lib/exec-vm.coax --root-only --native --jobs "${PSIONIC_JOBS:-8}"
+"$coax" mutate psionic/lib/exec-vm-harness.coax --root-only --native --jobs "${PSIONIC_JOBS:-8}"
+echo "Gate chapters pass: independent oracles, debug/release, ASan/UBSan, examples and zero-survivor mutation"

@@ -1,0 +1,229 @@
+// Named classic & >=50 seeded Ch 226 program suite for exec-vm-v1 verification
+// and benchmarking (squares, sum, fact, memfill, plus 50 diverse seeded programs
+// covering every opcode, stack ops, locals 0..7, linear memory load/store, loops,
+// forward/backward branches, add/sub/mul, out, ret).
+#load "exec-vm.coax";
+
+ev_op :: (code: TmCode, arg: int) -> TmOp #effects(all) { return TmOp.{code = code, arg = arg}; }
+
+// Program 0: Ch 227/234 squares (store i*i at mem[i] for i=n..1, output mem[n]+mem[1]).
+ev_prog_squares :: (n: int, out: []TmOp) -> int #effects(all) {
+    if n < 1 || n >= TM_CELLS || out.count < 20 { return 0; }
+    p := [20]TmOp.[
+        ev_op(TmCode.push, n), ev_op(TmCode.set, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.get, 0), ev_op(TmCode.get, 0), ev_op(TmCode.mul, 0), ev_op(TmCode.store, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.push, 1), ev_op(TmCode.sub, 0), ev_op(TmCode.set, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.brif, 2),
+        ev_op(TmCode.push, n), ev_op(TmCode.load, 0), ev_op(TmCode.push, 1), ev_op(TmCode.load, 0),
+        ev_op(TmCode.add, 0), ev_op(TmCode.out, 0), ev_op(TmCode.ret, 0)
+    ];
+    for i: 0..<20 { out[i] = p[i]; }
+    return 20;
+}
+
+// Program 1: Ch 235 sum (sum 1..n into local 1, output total).
+ev_prog_sum :: (n: int, out: []TmOp) -> int #effects(all) {
+    if n < 1 || n > 1000 || out.count < 17 { return 0; }
+    p := [17]TmOp.[
+        ev_op(TmCode.push, n), ev_op(TmCode.set, 0),
+        ev_op(TmCode.push, 0), ev_op(TmCode.set, 1),
+        ev_op(TmCode.get, 1), ev_op(TmCode.get, 0), ev_op(TmCode.add, 0), ev_op(TmCode.set, 1),
+        ev_op(TmCode.get, 0), ev_op(TmCode.push, 1), ev_op(TmCode.sub, 0), ev_op(TmCode.set, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.brif, 4),
+        ev_op(TmCode.get, 1), ev_op(TmCode.out, 0), ev_op(TmCode.ret, 0)
+    ];
+    for i: 0..<17 { out[i] = p[i]; }
+    return 17;
+}
+
+// Program 2: Ch 236 factorial (n! in local 1, output n!).
+ev_prog_fact :: (n: int, out: []TmOp) -> int #effects(all) {
+    if n < 1 || n > 12 || out.count < 17 { return 0; }
+    p := [17]TmOp.[
+        ev_op(TmCode.push, n), ev_op(TmCode.set, 0),
+        ev_op(TmCode.push, 1), ev_op(TmCode.set, 1),
+        ev_op(TmCode.get, 1), ev_op(TmCode.get, 0), ev_op(TmCode.mul, 0), ev_op(TmCode.set, 1),
+        ev_op(TmCode.get, 0), ev_op(TmCode.push, 1), ev_op(TmCode.sub, 0), ev_op(TmCode.set, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.brif, 4),
+        ev_op(TmCode.get, 1), ev_op(TmCode.out, 0), ev_op(TmCode.ret, 0)
+    ];
+    for i: 0..<17 { out[i] = p[i]; }
+    return 17;
+}
+
+// Program 3: memory-fill & overwrite-reload across cells [base..base+count-1].
+ev_prog_memfill :: (base: int, count: int, out: []TmOp) -> int #effects(all) {
+    if base < 0 || count < 1 || base + count > TM_CELLS || out.count < 31 { return 0; }
+    last_addr := base + count - 1;
+    p := [31]TmOp.[
+        ev_op(TmCode.push, count), ev_op(TmCode.set, 0),
+        ev_op(TmCode.push, base), ev_op(TmCode.set, 1),
+        ev_op(TmCode.get, 1), ev_op(TmCode.get, 0), ev_op(TmCode.add, 0), ev_op(TmCode.push, 1), ev_op(TmCode.sub, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.push, 3), ev_op(TmCode.mul, 0), ev_op(TmCode.push, 7), ev_op(TmCode.add, 0),
+        ev_op(TmCode.store, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.push, 1), ev_op(TmCode.sub, 0), ev_op(TmCode.set, 0),
+        ev_op(TmCode.get, 0), ev_op(TmCode.brif, 4),
+        ev_op(TmCode.push, base), ev_op(TmCode.push, 999), ev_op(TmCode.store, 0),
+        ev_op(TmCode.push, base), ev_op(TmCode.load, 0),
+        ev_op(TmCode.push, last_addr), ev_op(TmCode.load, 0),
+        ev_op(TmCode.add, 0), ev_op(TmCode.out, 0), ev_op(TmCode.ret, 0)
+    ];
+    for i: 0..<31 { out[i] = p[i]; }
+    return 31;
+}
+
+ev_lcg :: (x: int) -> int #effects(all) { return (x * 1103515245 + 12345) % 2147483648; }
+
+ev_seed_program :: (seed: int, out: []TmOp) -> int #effects(all) {
+    if seed < 0 || out.count < 48 { return 0; }
+    x := ev_lcg(seed * 7919 + 17);
+    kind := seed % 5;
+    if kind == 0 {
+        n := 2 + (x >> 8) % 6;
+        return ev_prog_squares(n, out);
+    }
+    if kind == 1 {
+        x = ev_lcg(x); n := 2 + (x >> 8) % 8;
+        x = ev_lcg(x); k := ((x >> 8) % 13) - 6;
+        x = ev_lcg(x); addr := (x >> 8) % 60;
+        x = ev_lcg(x); loc_a := (x >> 8) % 4;
+        loc_b := loc_a + 4;
+        at := 0;
+        out[at] = ev_op(TmCode.push, n); at += 1;
+        out[at] = ev_op(TmCode.set, loc_a); at += 1;
+        out[at] = ev_op(TmCode.push, k); at += 1;
+        out[at] = ev_op(TmCode.set, loc_b); at += 1;
+        loop_at := at;
+        out[at] = ev_op(TmCode.push, addr); at += 1;
+        out[at] = ev_op(TmCode.get, loc_b); at += 1;
+        out[at] = ev_op(TmCode.store, 0); at += 1;
+        out[at] = ev_op(TmCode.get, loc_b); at += 1;
+        out[at] = ev_op(TmCode.get, loc_a); at += 1;
+        out[at] = ev_op(TmCode.add, 0); at += 1;
+        out[at] = ev_op(TmCode.set, loc_b); at += 1;
+        out[at] = ev_op(TmCode.get, loc_a); at += 1;
+        out[at] = ev_op(TmCode.push, 1); at += 1;
+        out[at] = ev_op(TmCode.sub, 0); at += 1;
+        out[at] = ev_op(TmCode.set, loc_a); at += 1;
+        out[at] = ev_op(TmCode.get, loc_a); at += 1;
+        out[at] = ev_op(TmCode.brif, loop_at); at += 1;
+        out[at] = ev_op(TmCode.push, addr); at += 1;
+        out[at] = ev_op(TmCode.load, 0); at += 1;
+        out[at] = ev_op(TmCode.push, k); at += 1;
+        out[at] = ev_op(TmCode.mul, 0); at += 1;
+        out[at] = ev_op(TmCode.push, addr + 1); at += 1;
+        out[at] = ev_op(TmCode.load, 0); at += 1;
+        out[at] = ev_op(TmCode.sub, 0); at += 1;
+        out[at] = ev_op(TmCode.out, 0); at += 1;
+        out[at] = ev_op(TmCode.get, loc_b); at += 1;
+        out[at] = ev_op(TmCode.out, 0); at += 1;
+        out[at] = ev_op(TmCode.ret, 0); at += 1;
+        return at;
+    }
+    if kind == 2 {
+        n := 1 + (x >> 8) % 9;
+        return ev_prog_fact(n, out);
+    }
+    if kind == 3 {
+        x = ev_lcg(x); base := (x >> 8) % 50;
+        x = ev_lcg(x); cnt := 2 + (x >> 8) % 8;
+        return ev_prog_memfill(base, cnt, out);
+    }
+    x = ev_lcg(x); a := ((x >> 8) % 41) - 20;
+    x = ev_lcg(x); b := ((x >> 8) % 41) - 20;
+    x = ev_lcg(x); c := ((x >> 8) % 21) - 10;
+    x = ev_lcg(x); cond := (x >> 8) % 2;
+    x = ev_lcg(x); addr1 := (x >> 8) % 32;
+    addr2 := addr1 + 16;
+    at := 0;
+    out[at] = ev_op(TmCode.push, a); at += 1;
+    out[at] = ev_op(TmCode.push, b); at += 1;
+    out[at] = ev_op(TmCode.add, 0); at += 1;
+    out[at] = ev_op(TmCode.push, c); at += 1;
+    out[at] = ev_op(TmCode.push, a); at += 1;
+    out[at] = ev_op(TmCode.sub, 0); at += 1;
+    out[at] = ev_op(TmCode.mul, 0); at += 1;
+    out[at] = ev_op(TmCode.push, b); at += 1;
+    out[at] = ev_op(TmCode.push, c); at += 1;
+    out[at] = ev_op(TmCode.mul, 0); at += 1;
+    out[at] = ev_op(TmCode.add, 0); at += 1;
+    out[at] = ev_op(TmCode.set, 3); at += 1;
+    out[at] = ev_op(TmCode.push, addr1); at += 1;
+    out[at] = ev_op(TmCode.get, 3); at += 1;
+    out[at] = ev_op(TmCode.store, 0); at += 1;
+    out[at] = ev_op(TmCode.push, addr2); at += 1;
+    out[at] = ev_op(TmCode.push, a * b); at += 1;
+    out[at] = ev_op(TmCode.store, 0); at += 1;
+    out[at] = ev_op(TmCode.push, cond); at += 1;
+    skip_to := at + 4;
+    out[at] = ev_op(TmCode.brif, skip_to); at += 1;
+    out[at] = ev_op(TmCode.push, addr1); at += 1;
+    out[at] = ev_op(TmCode.push, c * c); at += 1;
+    out[at] = ev_op(TmCode.store, 0); at += 1;
+    out[at] = ev_op(TmCode.push, addr1); at += 1;
+    out[at] = ev_op(TmCode.load, 0); at += 1;
+    out[at] = ev_op(TmCode.out, 0); at += 1;
+    out[at] = ev_op(TmCode.push, addr1); at += 1;
+    out[at] = ev_op(TmCode.load, 0); at += 1;
+    out[at] = ev_op(TmCode.push, addr2); at += 1;
+    out[at] = ev_op(TmCode.load, 0); at += 1;
+    out[at] = ev_op(TmCode.add, 0); at += 1;
+    out[at] = ev_op(TmCode.out, 0); at += 1;
+    out[at] = ev_op(TmCode.ret, 0); at += 1;
+    return at;
+}
+
+#test "round-tripped dense Ch 226 VM matches reference bit-for-bit on classics and 50 seeded programs" #steps 80000000 {
+    layers: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights: [EV_VM_MAX_WEIGHTS]f64;
+    compiled := ev_ch226_compile(TM_CELLS, layers[..], heads[..], weights[..]);
+    #assert compiled.status == EvStatus.ok;
+    file: [1048576]u8;
+    ser := ev_serialize(compiled, file[..]);
+    #assert ser.status == EvStatus.ok;
+    layers2: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [EV_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file[0..<ser.written], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    #assert ld.model.status == EvStatus.ok && ev_same_digest(ld.digest, ser.digest);
+    vm := ld.model;
+
+    kv_ctx: [65536]f64;
+    ex_x: [EV_VM_MAX_WIDTH]f64; ex_st: [EV_VM_MAX_WIDTH]f64; ex_h: [EV_VM_MAX_UNITS]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    prog: [48]TmOp;
+    t_ref: [2048]int; t_vm: [2048]int;
+    o_ref: [TM_OUTPUTS]int; o_vm: [TM_OUTPUTS]int;
+
+    for named: 0..<4 {
+        plen := 0;
+        if named == 0 { plen = ev_prog_squares(4, prog[..]); }
+        else if named == 1 { plen = ev_prog_sum(10, prog[..]); }
+        else if named == 2 { plen = ev_prog_fact(10, prog[..]); }
+        else { plen = ev_prog_memfill(5, 8, prog[..]); }
+        #assert plen > 0;
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        #assert r.status == TmStatus.ok && w.status == TmStatus.ok;
+        #assert r.steps == w.steps && r.outputs == w.outputs && r.ip == w.ip;
+        #assert ev_same_digest(r.digest, w.digest);
+        for i: 0..<r.steps * TM_TOKENS { #assert t_ref[i] == t_vm[i]; }
+        for i: 0..<r.outputs { #assert o_ref[i] == o_vm[i]; }
+        if named == 0 { #assert o_vm[0] == 17 && w.steps == 53; }
+        if named == 1 { #assert o_vm[0] == 55; }
+        if named == 2 { #assert o_vm[0] == 3628800; }
+        if named == 3 { #assert o_vm[0] == 1030; }
+    }
+    for seed: 0..<50 {
+        plen := ev_seed_program(seed, prog[..]);
+        #assert plen > 0;
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        #assert r.status == TmStatus.ok && w.status == TmStatus.ok;
+        #assert r.steps == w.steps && r.outputs == w.outputs && r.ip == w.ip;
+        #assert ev_same_digest(r.digest, w.digest);
+        for i: 0..<r.steps * TM_TOKENS { #assert t_ref[i] == t_vm[i]; }
+        for i: 0..<r.outputs { #assert o_ref[i] == o_vm[i]; }
+    }
+}

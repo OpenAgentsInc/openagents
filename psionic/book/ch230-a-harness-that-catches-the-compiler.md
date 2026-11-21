@@ -275,10 +275,33 @@ alone decides what was intended.
 The [verification record](../../docs/verification/psionic-ch169-2026-10-29.md)
 has the commands and results.
 
+## Extending the harness to Attention+FFN blocks (`exec-vm-v1`)
+
+[exec-vm-harness.coax](../lib/exec-vm-harness.coax) extends the same three-way
+differential method (integer evaluator, schedule interpreter, compiled dense
+weights) to mixed Attention+FFN graphs with duplicate and distinct parabolic
+keys, uniform prefix sums, multi-layer FFN slot reuse, and second-wave
+attention queries produced by FFN gates. It plants seven compiler bugs covering
+both sublayers:
+
+| Fault | Sublayer | Where the harness places it |
+| --- | --- | --- |
+| `early_reuse`, `same_layer`, `no_clear` | FFN scheduling & slot reuse | schedule |
+| `attn_same_layer` | Attention wave placement before query is ready | schedule |
+| `clear_sign` | FFN clear unit emitted with `+1` instead of `−1` | emission |
+| `attn_key_sign` | Parabolic `W_K` emitted with flipped `−k²` sign | emission |
+| `attn_tie_break` | Parabolic head emitted oldest-wins instead of recency-wins | emission |
+
+Across 25 seeds of 20 graphs, the honest compiler has zero disagreements and
+all seven planted faults are caught in 25 of 25 seeds with 100% accurate
+`schedule` vs `emission` attribution. Mutation testing of
+`exec-vm-harness.coax` kills all 497 of 497 mutants.
+
 ## What this does not do yet
 
 The planted bugs are ones we chose. The harness catches those and any bug
-that changes a value on these cases. A bug that only appears beyond 16 nodes,
-past the input range, or in binary32 would need cases that reach it.
-[Chapter 231](PLAN.md) runs the whole machine as weights, and this harness is
-how its compiler will be judged.
+that changes a value on these cases. A bug that only appears past the generated
+graph envelope or in binary32 would need cases that reach it.
+[Chapter 231](ch231-an-interpreter-in-weights-or-one-program-in-weights.md)
+runs both the small three-register machine and chapter 226's full stack+memory
+machine as compiled weights.

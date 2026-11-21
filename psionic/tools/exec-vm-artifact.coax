@@ -1,0 +1,128 @@
+// Materialize the compiled Ch 226 exec-vm-v1 dense transformer artifact to disk
+// as standard F64 safetensors, reload it from disk with SHA-256 verification,
+// execute 54 programs strictly via dense matmul + parabolic attention, and print
+// machine-checkable trace digests for the independent Python oracle.
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../lib/exec-vm-programs.coax";
+
+ev_hex_char :: (v: int) -> u8 {
+    if v < 10 { return cast(u8)('0' + v); }
+    return cast(u8)('a' + (v - 10));
+}
+
+ev_hex_digest :: (d: [32]u8, out: []u8) -> string {
+    for i: 0..<32 {
+        b := cast(int)d[i];
+        out[2 * i] = ev_hex_char(b >> 4);
+        out[2 * i + 1] = ev_hex_char(b & 15);
+    }
+    return cast(string)out[0..<64];
+}
+
+ev_print_prog :: (name: string, prog: []TmOp, r: TmResult) {
+    hex: [64]u8;
+    print("PROG % len=% steps=% outputs=% digest=% ops=", name, prog.count, r.steps, r.outputs, ev_hex_digest(r.digest, hex[..]));
+    for i: 0..<prog.count {
+        if i > 0 { print(","); }
+        print("%:%", cast(int)prog[i].code, prog[i].arg);
+    }
+    print("\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+    args: [1]Args;
+    if !args_load(args[..]) || args_count(args[..]) != 1 {
+        print("usage: exec-vm-artifact OUT.safetensors\n");
+        return 2;
+    }
+    out_path := args_at(args[..], 0);
+
+    // 1. Compile the full Ch 226 stack+memory VM into one exec-vm-v1 dense artifact.
+    layers: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights: [EV_VM_MAX_WEIGHTS]f64;
+    compiled := ev_ch226_compile(TM_CELLS, layers[..], heads[..], weights[..]);
+    if compiled.status != EvStatus.ok {
+        print("compile failed: %\n", compiled.status);
+        return 1;
+    }
+
+    // 2. Serialize to standard F64 safetensors and write to disk.
+    file_out: [1048576]u8;
+    ser := ev_serialize(compiled, file_out[..]);
+    if ser.status != EvStatus.ok {
+        print("serialize failed: %\n", ser.status);
+        return 1;
+    }
+    if !fs_write(out_path, cast(string)file_out[0..<ser.written]) {
+        print("failed to write %\n", out_path);
+        return 1;
+    }
+
+    // 3. Reload the serialized safetensors bytes back off disk into brand-new buffers.
+    file_in: [1048576]u8;
+    n_read := fs_read(out_path, file_in[..]);
+    if n_read != ser.written {
+        print("disk reload size mismatch: got % want %\n", n_read, ser.written);
+        return 1;
+    }
+    layers2: [EV_VM_MAX_LAYERS]EvLayerDesc;
+    heads2: [EV_VM_MAX_HEADS]EvHeadDesc;
+    weights2: [EV_VM_MAX_WEIGHTS]f64;
+    ld := ev_deserialize(file_in[0..<n_read], ser.digest, true, layers2[..], heads2[..], weights2[..]);
+    if ld.model.status != EvStatus.ok {
+        print("deserialize failed: %\n", ld.model.status);
+        return 1;
+    }
+    vm := ld.model;
+
+    hex: [64]u8;
+    print("ARTIFACT_BYTES %\n", n_read);
+    print("ARTIFACT_SHA256 %\n", ev_hex_digest(ld.digest, hex[..]));
+    print("MODEL width=% layers=% heads=% weights=% kv_slots=%\n", vm.width, vm.n_layers, vm.n_heads, vm.n_weights, vm.kv_slots);
+
+    // 4. Execute 4 named classics + 50 seeded programs strictly via disk-loaded dense weights.
+    kv_ctx: [131072]f64;
+    ex_x: [EV_VM_MAX_WIDTH]f64;
+    ex_st: [EV_VM_MAX_WIDTH]f64;
+    ex_h: [EV_VM_MAX_UNITS]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    prog: [48]TmOp;
+    t_ref: [2048]int; t_vm: [2048]int;
+    o_ref: [TM_OUTPUTS]int; o_vm: [TM_OUTPUTS]int;
+    names := [4]string.["squares", "sum", "fact", "memfill"];
+
+    for named: 0..<4 {
+        plen := 0;
+        if named == 0 { plen = ev_prog_squares(4, prog[..]); }
+        else if named == 1 { plen = ev_prog_sum(10, prog[..]); }
+        else if named == 2 { plen = ev_prog_fact(10, prog[..]); }
+        else { plen = ev_prog_memfill(5, 8, prog[..]); }
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        if r.status != TmStatus.ok || w.status != TmStatus.ok || !ev_same_digest(r.digest, w.digest) {
+            print("DIVERGENCE on named %\n", names[named]);
+            return 1;
+        }
+        ev_print_prog(names[named], prog[0..<plen], w);
+    }
+
+    for seed: 0..<50 {
+        plen := ev_seed_program(seed, prog[..]);
+        r := tm_run(prog[0..<plen], 400, t_ref[..], o_ref[..], false);
+        w := ev_ch226_run(vm, prog[0..<plen], 400, t_vm[..], o_vm[..], kv_ctx[..], exec, false);
+        if r.status != TmStatus.ok || w.status != TmStatus.ok || !ev_same_digest(r.digest, w.digest) {
+            print("DIVERGENCE on seed %\n", seed);
+            return 1;
+        }
+        name_buf: [16]u8;
+        at := json_raw(name_buf[..], 0, "seed_");
+        at = json_write_int(name_buf[..], at, seed);
+        ev_print_prog(cast(string)name_buf[0..<at], prog[0..<plen], w);
+    }
+    print("VERIFIED_PROGRAMS 54 DIVERGENCES 0\n");
+    return 0;
+}
