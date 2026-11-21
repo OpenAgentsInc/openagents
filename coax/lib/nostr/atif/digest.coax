@@ -1,0 +1,327 @@
+// ATIF sorted-key JSON canonicalizer and SHA-256 digest (NIP-ATIF "Identity").
+//
+// The ATIF digest rule (used for `steps_digest` and step digests):
+// serialize the JSON value with every object's keys sorted at every depth in
+// byte order of their UTF-8 encoding, each key written as a JSON string, no
+// whitespace, arrays in order, and other values as a standard JSON serializer
+// writes them; then SHA-256 the UTF-8 text (64 lowercase hex, no prefix).
+//
+// Also provides streaming `AtifStepsHasher` so arbitrarily large `.atif.jsonl`
+// logs compute the exact same `steps_digest` as canonicalizing the whole
+// `steps` array, using only one step's scratch buffer at a time.
+//   coax/bin/coax test coax/lib/nostr/atif/digest.coax
+#load "../../json/json.coax";
+#load "../../crypto/sha256.coax";
+#load "../../encoding/hex.coax";
+
+ATIF_DIGEST_OK :: cast(u32) 0;
+ATIF_DIGEST_JSON :: cast(u32) 1;     // invalid JSON or exceeds parser node/depth budget
+ATIF_DIGEST_OUTPUT :: cast(u32) 2;   // output buffer too small
+ATIF_DIGEST_LIMIT :: cast(u32) 3;    // object key count or key scratch arena exceeded
+
+ATIF_CANON_NODES :: 8192;
+ATIF_CANON_KEYS :: 1024;
+ATIF_CANON_KEY_BUF :: 65536;
+
+AtifCanonResult :: struct { written: int; error: u32; }
+AtifCanonScratch :: struct { buf: [ATIF_CANON_KEY_BUF] u8; used: int; }
+
+// Lexicographic UTF-8 byte comparison: -1 when a < b, 0 when equal, 1 when a > b.
+atif_bytes_cmp :: (a: string, b: string) -> int {
+  n := ifx a.count < b.count then a.count else b.count; // mutant: equivalent (a.count == b.count yields same n)
+  for i: 0..<n {
+    if a[i] < b[i] { return -1; }
+    if a[i] > b[i] { return 1; }
+  }
+  if a.count < b.count { return -1; }
+  if a.count > b.count { return 1; }
+  return 0;
+}
+
+atif_canon_node :: (d: Jv, at: int, o: [] Jo, sc: [] AtifCanonScratch) -> u32 {
+  k := jv_kind(d, at);
+  if k == JV_NUMBER {
+    raw := jv_raw(d, at);
+    jo_raw(o, ifx raw == "-0" then "0" else raw);
+    return ifx o[0].bad then ATIF_DIGEST_OUTPUT else ATIF_DIGEST_OK;
+  }
+  if k == JV_STRING {
+    jo_value(o);
+    jo_requote(o, jv_raw(d, at));
+    return ifx o[0].bad then ATIF_DIGEST_OUTPUT else ATIF_DIGEST_OK;
+  }
+  if k != JV_ARRAY && k != JV_OBJECT {
+    jo_raw(o, jv_raw(d, at));
+    return ifx o[0].bad then ATIF_DIGEST_OUTPUT else ATIF_DIGEST_OK;
+  }
+  if k == JV_ARRAY {
+    jo_arr(o);
+    c := d.nodes[at].first;
+    while c != -1 {
+      err := atif_canon_node(d, c, o, sc);
+      if err != ATIF_DIGEST_OK { return err; }
+      c = d.nodes[c].next;
+    }
+    jo_end(o);
+    return ifx o[0].bad then ATIF_DIGEST_OUTPUT else ATIF_DIGEST_OK;
+  }
+  mark := sc[0].used;
+  defer { sc[0].used = mark; }
+  kids: [ATIF_CANON_KEYS] int;
+  kfrom: [ATIF_CANON_KEYS] int;
+  kto: [ATIF_CANON_KEYS] int;
+  n := 0;
+  c := d.nodes[at].first;
+  while c != -1 {
+    if n >= ATIF_CANON_KEYS { return ATIF_DIGEST_LIMIT; }
+    dec := jv_unescape(jv_key(d, c), sc[0].buf[sc[0].used..<ATIF_CANON_KEY_BUF]);
+    if dec < 0 { return ATIF_DIGEST_LIMIT; }
+    kf := sc[0].used;
+    kt := kf + dec;
+    sc[0].used = kt;
+    pos := n;
+    key_str := cast(string) sc[0].buf[kf..<kt];
+    while pos > 0 {
+      prev_str := cast(string) sc[0].buf[kfrom[pos - 1]..<kto[pos - 1]];
+      if atif_bytes_cmp(prev_str, key_str) <= 0 { break; }
+      kids[pos] = kids[pos - 1];
+      kfrom[pos] = kfrom[pos - 1];
+      kto[pos] = kto[pos - 1];
+      pos -= 1;
+    }
+    kids[pos] = c;
+    kfrom[pos] = kf;
+    kto[pos] = kt;
+    n += 1;
+    c = d.nodes[c].next;
+  }
+  jo_obj(o);
+  for i: 0..<n {
+    jo_key(o, cast(string) sc[0].buf[kfrom[i]..<kto[i]]);
+    err := atif_canon_node(d, kids[i], o, sc);
+    if err != ATIF_DIGEST_OK { return err; }
+  }
+  jo_end(o);
+  return ifx o[0].bad then ATIF_DIGEST_OUTPUT else ATIF_DIGEST_OK;
+}
+
+// Canonicalizes any valid JSON value according to the ATIF sorted-key rule.
+atif_canonicalize :: (text: string, out: [] u8) -> AtifCanonResult {
+  nodes: [ATIF_CANON_NODES] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) {
+    return AtifCanonResult.{written = 0, error = ATIF_DIGEST_JSON};
+  }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  sc: [1] AtifCanonScratch;
+  err := atif_canon_node(d[0], 0, o[..], sc[..]);
+  if err != ATIF_DIGEST_OK {
+    return AtifCanonResult.{written = 0, error = err};
+  }
+  return AtifCanonResult.{written = o[0].n, error = ATIF_DIGEST_OK};
+}
+
+// Lowercase 64-hex SHA-256 of raw UTF-8 bytes (no "sha256:" prefix).
+atif_sha256_hex :: (bytes: string, hex_out: [] u8) -> u32 {
+  if hex_out.count < 64 { return ATIF_DIGEST_OUTPUT; }
+  // The state and output buffers are owned and bounded, so these primitives cannot refuse.
+  state: [112] u8;
+  r0 := sha256_init(state[..]);
+  chunk: [4096] u8;
+  at := 0;
+  while at < bytes.count {
+    n := bytes.count - at;
+    if n > chunk.count { n = chunk.count; } // mutant: equivalent (n == chunk.count is identical)
+    for i: 0..<n { chunk[i] = bytes[at + i]; }
+    r1 := sha256_update_checked(state[..], chunk[0..<n], false);
+    at += n;
+  }
+  raw: [32] u8;
+  r2 := sha256_final_checked(state[..], raw[..], false);
+  r3 := hex_encode_checked(cast(string) raw[..], hex_out[0..<64], false);
+  return ATIF_DIGEST_OK;
+}
+
+// Shared Digest form: "sha256:" + 64 lowercase hex (71 bytes) over raw bytes.
+atif_artifact_digest :: (bytes: string, out71: [] u8) -> u32 {
+  if out71.count < 71 { return ATIF_DIGEST_OUTPUT; }
+  prefix := "sha256:";
+  for i: 0..<7 { out71[i] = prefix[i]; }
+  return atif_sha256_hex(bytes, out71[7..<71]);
+}
+
+// ATIF digest of any JSON value (64 lowercase hex, no prefix) using `scratch`
+// for the canonical JSON bytes.
+atif_digest_with :: (json: string, scratch: [] u8, hex_out: [] u8) -> u32 {
+  if hex_out.count < 64 { return ATIF_DIGEST_OUTPUT; }
+  r := atif_canonicalize(json, scratch);
+  if r.error != ATIF_DIGEST_OK { return r.error; }
+  return atif_sha256_hex(cast(string) scratch[0..<r.written], hex_out);
+}
+
+// Streaming hasher for `steps_digest`: hashes `"[" + canon(step_1) + "," + ... + "]"`
+// without holding the entire steps array in memory.
+AtifStepsHasher :: struct {
+  sha: [112] u8;
+  count: int;
+  error: u32;
+}
+
+atif_steps_hash_init :: (h: [] AtifStepsHasher) {
+  h[0] = AtifStepsHasher.{};
+  r0 := sha256_init(h[0].sha[..]);
+  open := [1] u8.['['];
+  r1 := sha256_update_checked(h[0].sha[..], open[..], false);
+}
+
+atif_steps_hash_step :: (h: [] AtifStepsHasher, step_json: string, scratch: [] u8) -> u32 {
+  if h[0].error != ATIF_DIGEST_OK { return h[0].error; }
+  r := atif_canonicalize(step_json, scratch);
+  if r.error != ATIF_DIGEST_OK { h[0].error = r.error; return r.error; }
+  if h[0].count > 0 {
+    comma := [1] u8.[','];
+    r1 := sha256_update_checked(h[0].sha[..], comma[..], false);
+  }
+  r2 := sha256_update_checked(h[0].sha[..], scratch[0..<r.written], false);
+  h[0].count += 1;
+  return ATIF_DIGEST_OK;
+}
+
+atif_steps_hash_final :: (h: [] AtifStepsHasher, hex_out: [] u8) -> u32 {
+  if h[0].error != ATIF_DIGEST_OK { return h[0].error; }
+  if hex_out.count < 64 { return ATIF_DIGEST_OUTPUT; }
+  close := [1] u8.[']'];
+  r1 := sha256_update_checked(h[0].sha[..], close[..], false);
+  raw: [32] u8;
+  r2 := sha256_final_checked(h[0].sha[..], raw[..], false);
+  r3 := hex_encode_checked(cast(string) raw[..], hex_out[0..<64], false);
+  return ATIF_DIGEST_OK;
+}
+
+// ---- checks
+
+#test "ATIF byte comparison covers order, prefixes, and equality" {
+  #assert atif_bytes_cmp("", "") == 0 && atif_bytes_cmp("a", "a") == 0;
+  #assert atif_bytes_cmp("", "a") == -1 && atif_bytes_cmp("a", "") == 1;
+  #assert atif_bytes_cmp("a", "ab") == -1 && atif_bytes_cmp("ab", "a") == 1;
+  #assert atif_bytes_cmp("a", "b") == -1 && atif_bytes_cmp("b", "a") == 1;
+}
+
+#test "ATIF canonicalization sorts keys in UTF-8 byte order at every depth and removes whitespace" {
+  out: [512] u8;
+  r := atif_canonicalize(" { \"z\" : 1 , \"a\" : { \"d\" : true , \"b\" : [ 3 , 2 , { \"y\" : \"x\" , \"a\" : null } ] } } ", out[..]);
+  #assert r.error == ATIF_DIGEST_OK;
+  #assert cast(string) out[0..<r.written] == "{\"a\":{\"b\":[3,2,{\"a\":null,\"y\":\"x\"}],\"d\":true},\"z\":1}";
+  hex: [64] u8;
+  #assert atif_sha256_hex(cast(string) out[0..<r.written], hex[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) hex[..] == "af9c386eb4818fd755c4645aeb1194f7df1cbd58ed2bbf260b170a1a6db1c2ed";
+  // UTF-8 byte order puts U+E000 (EE 80 80) before U+10000 (F0 90 80 80), unlike JCS UTF-16.
+  r2 := atif_canonicalize("{\"\\ud800\\udc00\":2,\"\\ue000\":1,\"\":3}", out[..]);
+  #assert r2.error == ATIF_DIGEST_OK;
+  #assert atif_sha256_hex(cast(string) out[0..<r2.written], hex[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) hex[..] == "de035ec2bed22b9cb0a7c8987e4ca475abcb04d8bc3a3dcd4f0303ab11c10861";
+  // Scalar roots and multi-chunk SHA-256 (>4096 bytes)
+  #assert atif_canonicalize("false", out[..]).written == 5 && cast(string) out[0..<5] == "false";
+  #assert atif_canonicalize("\"hi\"", out[..]).written == 4 && cast(string) out[0..<4] == "\"hi\"";
+  big: [4097] u8; for i: 0..<4097 { big[i] = 'a'; }
+  #assert atif_sha256_hex(cast(string) big[..], hex[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) hex[0..<8] == "4e369b56";
+}
+
+#test "ATIF steps_digest is invariant to key order, whitespace, and matches streaming hasher" {
+  sc: [4096] u8;
+  h1: [64] u8; h2: [64] u8; h3: [64] u8;
+  // Empty steps array
+  #assert atif_digest_with("[]", sc[..], h1[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) h1[..] == "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
+  sh: [1] AtifStepsHasher;
+  atif_steps_hash_init(sh[..]);
+  #assert atif_steps_hash_final(sh[..], h2[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) h1[..] == cast(string) h2[..];
+
+  // One step: key-order & whitespace invariance
+  a := "[{\"step_id\":1,\"source\":\"user\",\"message\":\"hello\"}]";
+  b := "[\n  {\n    \"message\": \"hello\",\n    \"step_id\": 1,\n    \"source\": \"user\"\n  }\n]";
+  #assert atif_digest_with(a, sc[..], h1[..]) == ATIF_DIGEST_OK;
+  #assert atif_digest_with(b, sc[..], h2[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) h1[..] == "d0c3a3f0b0b64584b46d900fae12964453b8ad085c15f18cf07303ca4db7dd73";
+  #assert cast(string) h1[..] == cast(string) h2[..];
+
+  // Two steps: streaming hasher matches whole-array digest
+  two := "[{\"step_id\":1,\"source\":\"user\",\"message\":\"hi\"},{\"step_id\":2,\"source\":\"agent\",\"message\":\"ok\",\"metrics\":{\"prompt_tokens\":10,\"completion_tokens\":5}}]";
+  #assert atif_digest_with(two, sc[..], h1[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) h1[..] == "fa7a3207fb5b7f5af13282301653bea3a553cb0ec07f61e9542131273d5fb5e6";
+  atif_steps_hash_init(sh[..]);
+  #assert atif_steps_hash_step(sh[..], "{\"source\":\"user\", \"message\":\"hi\", \"step_id\":1}", sc[..]) == ATIF_DIGEST_OK;
+  #assert sh[0].count == 1;
+  #assert atif_steps_hash_step(sh[..], "{\"metrics\":{\"completion_tokens\":5,\"prompt_tokens\":10},\"message\":\"ok\",\"step_id\":2,\"source\":\"agent\"}", sc[..]) == ATIF_DIGEST_OK;
+  #assert sh[0].count == 2;
+  #assert atif_steps_hash_final(sh[..], h3[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) h3[..] == cast(string) h1[..];
+
+  // Sticky error propagation and short output refusal
+  atif_steps_hash_init(sh[..]);
+  #assert atif_steps_hash_step(sh[..], "{bad", sc[..]) == ATIF_DIGEST_JSON;
+  #assert atif_steps_hash_step(sh[..], "{}", sc[..]) == ATIF_DIGEST_JSON;
+  #assert atif_steps_hash_final(sh[..], h3[..]) == ATIF_DIGEST_JSON;
+  atif_steps_hash_init(sh[..]);
+  #assert atif_steps_hash_final(sh[..], h3[0..<63]) == ATIF_DIGEST_OUTPUT;
+}
+
+#test "ATIF canonicalization normalizes escapes, -0, and rejects malformed JSON or tiny buffers" {
+  out: [64] u8;
+  r := atif_canonicalize("{\"k\":\"\\u0041\\/\\n\",\"n\":-0,\"f\":1.25}", out[..]);
+  #assert r.error == ATIF_DIGEST_OK;
+  #assert cast(string) out[0..<r.written] == "{\"f\":1.25,\"k\":\"A/\\n\",\"n\":0}";
+  r_bad := atif_canonicalize("{bad", out[..]);
+  #assert r_bad.error == ATIF_DIGEST_JSON && r_bad.written == 0;
+  r_out := atif_canonicalize("{\"a\":1}", out[0..<4]);
+  #assert r_out.error == ATIF_DIGEST_OUTPUT && r_out.written == 0;
+  // Tie-breaking preserves source order on equal keys
+  r_dup := atif_canonicalize("{\"a\":1,\"a\":2}", out[..]);
+  #assert r_dup.error == ATIF_DIGEST_OK && cast(string) out[0..<r_dup.written] == "{\"a\":1,\"a\":2}";
+  #assert atif_canonicalize("{\"a\":1}", out[0..<6]).error == ATIF_DIGEST_OUTPUT;
+  #assert atif_canonicalize("[1,2]", out[0..<2]).error == ATIF_DIGEST_OUTPUT;
+  #assert atif_canonicalize("[1]", out[0..<2]).error == ATIF_DIGEST_OUTPUT;
+  #assert atif_canonicalize("\"abcd\"", out[0..<3]).error == ATIF_DIGEST_OUTPUT;
+  #assert atif_canonicalize("12345", out[0..<3]).error == ATIF_DIGEST_OUTPUT;
+  #assert atif_canonicalize("true", out[0..<3]).error == ATIF_DIGEST_OUTPUT;
+  hex: [64] u8;
+  #assert atif_sha256_hex("x", hex[0..<63]) == ATIF_DIGEST_OUTPUT;
+  #assert atif_digest_with("{}", out[..], hex[0..<63]) == ATIF_DIGEST_OUTPUT;
+  #assert atif_digest_with("{bad", out[..], hex[..]) == ATIF_DIGEST_JSON;
+  art: [71] u8;
+  #assert atif_artifact_digest("x", art[0..<70]) == ATIF_DIGEST_OUTPUT;
+  #assert atif_artifact_digest("x", art[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) art[..] == "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881";
+}
+
+#test "ATIF canonicalization enforces member quota and reuses key arena across siblings" {
+  // Member quota: 1024 passes, 1025 returns ATIF_DIGEST_LIMIT.
+  for count: [2] int.[1024, 1025] {
+    txt: [16384] u8; at := 0;
+    txt[at] = '{'; at += 1;
+    for i: 0..<count {
+      if i > 0 { txt[at] = ','; at += 1; }
+      txt[at] = '"'; at += 1;
+      v := i;
+      for d: 0..<4 { txt[at + 3 - d] = cast(u8) ('0' + v % 10); v /= 10; }
+      at += 4;
+      txt[at] = '"'; txt[at + 1] = ':'; txt[at + 2] = '0'; at += 3;
+    }
+    txt[at] = '}'; at += 1;
+    out: [16384] u8;
+    r := atif_canonicalize(cast(string) txt[0..<at], out[..]);
+    #assert r.error == (ifx count == 1024 then ATIF_DIGEST_OK else ATIF_DIGEST_LIMIT);
+  }
+  // Two sibling objects each with a 40000-byte key fit only if key scratch is reclaimed.
+  sib: [81000] u8; p := 0;
+  sib[p] = '['; sib[p + 1] = '{'; sib[p + 2] = '"'; p += 3;
+  for i: 0..<40000 { sib[p] = 'a'; p += 1; }
+  sib[p] = '"'; sib[p + 1] = ':'; sib[p + 2] = '1'; sib[p + 3] = '}'; sib[p + 4] = ','; sib[p + 5] = '{'; sib[p + 6] = '"'; p += 7;
+  for i: 0..<40000 { sib[p] = 'b'; p += 1; }
+  sib[p] = '"'; sib[p + 1] = ':'; sib[p + 2] = '2'; sib[p + 3] = '}'; sib[p + 4] = ']'; p += 5;
+  out2: [81000] u8;
+  #assert atif_canonicalize(cast(string) sib[0..<p], out2[..]).error == ATIF_DIGEST_OK;
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/evals/session-history/baseline-metrics.schema.json",
+  "title": "Session History Index & Inventory Schema (ATIF-v1.8)",
+  "description": "Schemas for ~/.openagents/evals/session-history/index.jsonl records and inventory.json summaries.",
+  "$defs": {
+    "toolCallBreakdown": {
+      "type": "object",
+      "required": ["read", "edit", "search", "shell", "delegate", "other"],
+      "properties": {
+        "read": { "type": "integer", "minimum": 0 },
+        "edit": { "type": "integer", "minimum": 0 },
+        "search": { "type": "integer", "minimum": 0 },
+        "shell": { "type": "integer", "minimum": 0 },
+        "delegate": { "type": "integer", "minimum": 0 },
+        "other": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "indexEntry": {
+      "type": "object",
+      "required": [
+        "source",
+        "project",
+        "trajectory_id",
+        "session_id",
+        "schema_version",
+        "primary_model",
+        "step_count",
+        "turns",
+        "tool_calls",
+        "failed_tool_calls",
+        "cwd",
+        "git_branch",
+        "has_verify_cmd",
+        "steps_digest",
+        "artifact_digest",
+        "artifact_size"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["claude", "codex", "openagents", "antigravity", "opencode"]
+        },
+        "project": { "type": "string" },
+        "trajectory_id": { "type": "string", "minLength": 1 },
+        "session_id": { "type": "string" },
+        "schema_version": { "type": "string", "const": "ATIF-v1.8" },
+        "primary_model": { "type": "string" },
+        "step_count": { "type": "integer", "minimum": 0 },
+        "turns": { "type": "integer", "minimum": 0 },
+        "tool_calls": { "$ref": "#/$defs/toolCallBreakdown" },
+        "failed_tool_calls": { "type": "integer", "minimum": 0 },
+        "prompt_tokens": { "type": "integer", "minimum": 0 },
+        "completion_tokens": { "type": "integer", "minimum": 0 },
+        "cached_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd_micros": { "type": "integer", "minimum": 0 },
+        "cwd": { "type": "string" },
+        "git_branch": { "type": "string" },
+        "started_at": { "type": "string" },
+        "ended_at": { "type": "string" },
+        "has_verify_cmd": { "type": "boolean" },
+        "steps_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "artifact_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "artifact_size": { "type": "integer", "minimum": 0 },
+        "artifact_path": { "type": "string" },
+        "manifest_path": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sourceSummary": {
+      "type": "object",
+      "required": ["discovered", "ingested", "skipped", "steps", "bytes", "anchorable"],
+      "properties": {
+        "discovered": { "type": "integer", "minimum": 0 },
+        "ingested": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "anchorable": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "total_discovered",
+    "total_ingested",
+    "total_steps",
+    "total_bytes",
+    "anchorable_episodes",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "ATIF-v1.8" },
+    "generated_at_s": { "type": "integer", "minimum": 0 },
+    "total_discovered": { "type": "integer", "minimum": 0 },
+    "total_ingested": { "type": "integer", "minimum": 0 },
+    "total_steps": { "type": "integer", "minimum": 0 },
+    "total_bytes": { "type": "integer", "minimum": 0 },
+    "anchorable_episodes": { "type": "integer", "minimum": 0 },
+    "sources": {
+      "type": "object",
+      "properties": {
+        "claude": { "$ref": "#/$defs/sourceSummary" },
+        "codex": { "$ref": "#/$defs/sourceSummary" },
+        "openagents": { "$ref": "#/$defs/sourceSummary" },
+        "antigravity": { "$ref": "#/$defs/sourceSummary" },
+        "opencode": { "$ref": "#/$defs/sourceSummary" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

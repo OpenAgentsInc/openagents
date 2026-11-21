@@ -1,0 +1,1405 @@
+// Read-only Session History Evals Stage 1 ingest & index tool (GitHub #13830).
+// Converts local agent histories from Claude Code, Codex, OpenAgents Desktop
+// (AJR1), Antigravity (both antigravity/brain and antigravity-cli/brain), and
+// OpenCode into canonical Harbor ATIF-v1.8 `.atif.jsonl` logs,
+// `openagents.atif-manifest.v1` manifests, `index.jsonl`, and `inventory.json`
+// under `~/.openagents/evals/session-history/` (or `--out DIR`).
+//
+// Usage:
+//   coax/web/tool.sh evals/session-history/tools/ingest.coax [--source all|claude|codex|openagents|antigravity|opencode] [--limit N] [--out DIR] [--home DIR] [--dry-run]
+//   coax/bin/coax test evals/session-history/tools/ingest.coax
+#import "Basic";
+#load "../../../coax/lib/nostr/atif/log.coax";
+#load "../../../coax/lib/agent/observe/claude-history.coax";
+#load "../../../coax/lib/agent/observe/antigravity.coax";
+#load "../../../coax/lib/agent/journal.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/openagents-paths.coax";
+#load "../../../coax/lib/sys/clock.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+SRC_CLAUDE :: 0;
+SRC_CODEX :: 1;
+SRC_OPENAGENTS :: 2;
+SRC_ANTIGRAVITY :: 3;
+SRC_OPENCODE :: 4;
+SRC_COUNT :: 5;
+SRC_NAMES :: [5] string.["claude", "codex", "openagents", "antigravity", "opencode"];
+
+ROLE_READ :: 0;
+ROLE_EDIT :: 1;
+ROLE_SEARCH :: 2;
+ROLE_SHELL :: 3;
+ROLE_DELEGATE :: 4;
+ROLE_OTHER :: 5;
+
+ING_MAX_CANDS :: 4096;
+ING_LINE_MAX :: 262144;
+ING_READ_CHUNK :: 65536;
+ING_MSG_MAX :: 16384;
+ING_THINK_MAX :: 8192;
+ING_OBS_MAX :: 8192;
+ING_FLUSH_BUF :: 65536;
+
+IngCandidate :: struct {
+  path: [1024] u8; path_n: int;
+  project: [160] u8; project_n: int;
+  id: [128] u8; id_n: int;
+  mtime: int;
+  size: int;
+  source: int;
+}
+
+IngStats :: struct {
+  discovered: int;
+  ingested: int;
+  skipped: int;
+  steps: int;
+  bytes: int;
+  anchorable: int;
+}
+
+IngTrajMeta :: struct {
+  source: int;
+  project: [160] u8; project_n: int;
+  trajectory_id: [128] u8; trajectory_id_n: int;
+  session_id: [128] u8; session_id_n: int;
+  model: [128] u8; model_n: int;
+  cwd: [512] u8; cwd_n: int;
+  git_branch: [128] u8; git_branch_n: int;
+  started_at: [64] u8; started_at_n: int;
+  ended_at: [64] u8; ended_at_n: int;
+  turns: int;
+  roles: [6] int;
+  failed_tool_calls: int;
+  prompt_tokens: int;
+  completion_tokens: int;
+  cached_tokens: int;
+  cost_usd_micros: int;
+  has_verify_cmd: bool;
+  ended: bool;
+}
+
+// Streaming ATIF log sink: writes `.atif.jsonl` in buffered chunks while
+// hashing exact artifact bytes (SHA-256) and ATIF sorted-key `steps_digest`.
+IngSink :: struct {
+  path: [2048] u8; path_n: int;
+  started_file: bool;
+  ok: bool;
+  out_buf: [ING_FLUSH_BUF] u8;
+  out_n: int;
+  art_sha: [112] u8;
+  art_size: int;
+  step_hasher: AtifStepsHasher;
+  step_count: int;
+}
+
+// Streaming line reader over a file via fs_read_at.
+IngReader :: struct {
+  path: [1024] u8; path_n: int;
+  file_size: int;
+  offset: int;
+  chunk: [ING_READ_CHUNK] u8;
+  chunk_n: int;
+  chunk_at: int;
+  eof: bool;
+  skipped_long: int;
+}
+
+// ---- Pure helpers
+
+ing_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+ing_ends_with :: (s: string, suf: string) -> bool {
+  return s.count >= suf.count && s[s.count - suf.count..<s.count] == suf;
+}
+
+ing_starts_with :: (s: string, pre: string) -> bool {
+  return s.count >= pre.count && s[0..<pre.count] == pre;
+}
+
+ing_sanitize_id :: (raw: string, out: [] u8) -> string {
+  n := 0;
+  limit := ifx out.count < 120 then out.count else 120;
+  for c: raw {
+    if n >= limit { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    out[n] = ifx ok then c else cast(u8) '_';
+    n += 1;
+  }
+  if n == 0 && limit > 0 { out[0] = 'x'; n = 1; }
+  return cast(string) out[0..<n];
+}
+
+ing_tool_role :: (name: string) -> int {
+  if name == "Read" || name == "read_file" || name == "view" || name == "view_file" || name == "view_file_outline" || name == "view_code_item" || name == "list_dir" || name == "find_by_name" { return ROLE_READ; }
+  if name == "Edit" || name == "Write" || name == "MultiEdit" || name == "NotebookEdit" || name == "edit_file" || name == "write_file" || name == "replace_file_content" || name == "multi_replace_file_content" || name == "write_to_file" || name == "apply_patch" { return ROLE_EDIT; }
+  if name == "Grep" || name == "Glob" || name == "grep_search" || name == "search_web" || name == "WebSearch" || name == "WebFetch" { return ROLE_SEARCH; }
+  if name == "Bash" || name == "run_command" || name == "exec" || name == "shell" || name == "command" || name == "exec_command" { return ROLE_SHELL; }
+  if name == "Agent" || name == "Task" || name == "invoke_subagent" || name == "delegate" || name == "swarm" { return ROLE_DELEGATE; }
+  return ROLE_OTHER;
+}
+
+ing_is_verify_cmd :: (cmd: string) -> bool {
+  if cmd.count == 0 { return false; }
+  if csr_has(cmd, "coax test") || csr_has(cmd, "tools-check") || csr_has(cmd, "coax mutate") { return true; }
+  if csr_has(cmd, "pytest") || csr_has(cmd, "unittest") || csr_has(cmd, "cargo test") || csr_has(cmd, "go test") || csr_has(cmd, "npm test") { return true; }
+  if csr_has(cmd, "check.sh") || csr_has(cmd, "build.sh") { return true; }
+  return false;
+}
+
+ing_claude_drop_type :: (ty: string) -> bool {
+  if ty == "api-request-blob" || ty == "api-request" || ty == "api-request-shape" { return true; }
+  if ty == "file-history-snapshot" || ty == "file-history-delta" || ty == "queue-operation" || ty == "atis-latch" { return true; }
+  if ty == "progress" || ty == "attribution-snapshot" || ty == "content-replacement" || ty == "last-prompt" || ty == "saved_hook_context" { return true; }
+  return false;
+}
+
+ing_source_by_name :: (name: string) -> int {
+  if name == "claude" { return SRC_CLAUDE; }
+  if name == "codex" { return SRC_CODEX; }
+  if name == "openagents" || name == "coder" { return SRC_OPENAGENTS; }
+  if name == "antigravity" || name == "agy" { return SRC_ANTIGRAVITY; }
+  if name == "opencode" { return SRC_OPENCODE; }
+  return -1;
+}
+
+ing_project_from_cwd :: (cwd: string) -> string {
+  if cwd.count == 0 { return ""; }
+  end := cwd.count;
+  while end > 1 && cwd[end - 1] == '/' { end -= 1; }
+  i := end - 1;
+  while i >= 0 && cwd[i] != '/' { i -= 1; }
+  return cwd[i + 1..<end];
+}
+
+// ---- Streaming reader & sink
+
+ing_reader_init :: (r: [] IngReader, path: string) -> bool {
+  r[0] = IngReader.{};
+  sz := fs_size(path);
+  if sz <= 0 { return false; }
+  r[0].path_n = ing_copy(r[0].path[..], path);
+  r[0].file_size = sz;
+  return true;
+}
+
+// Reads next line into `line_buf`. Returns byte count (>= 0), or -1 on EOF.
+// Lines exceeding `line_buf.count` are skipped cleanly (returns 0 and increments skipped_long).
+ing_reader_next_line :: (r: [] IngReader, line_buf: [] u8) -> int {
+  if r[0].eof { return -1; }
+  n := 0;
+  overflow := false;
+  got_any := false;
+  path := cast(string) r[0].path[0..<r[0].path_n];
+  while true {
+    if r[0].chunk_at >= r[0].chunk_n {
+      if r[0].offset >= r[0].file_size {
+        r[0].eof = true;
+        if !got_any { return -1; }
+        if overflow { r[0].skipped_long += 1; return 0; }
+        if n > 0 && line_buf[n - 1] == 13 { n -= 1; }
+        return n;
+      }
+      want := r[0].file_size - r[0].offset;
+      if want > ING_READ_CHUNK { want = ING_READ_CHUNK; }
+      got := fs_read_at(path, r[0].offset, r[0].chunk[0..<want]);
+      if got <= 0 {
+        r[0].eof = true;
+        if !got_any { return -1; }
+        if overflow { r[0].skipped_long += 1; return 0; }
+        return n;
+      }
+      r[0].offset += got;
+      r[0].chunk_n = got;
+      r[0].chunk_at = 0;
+    }
+    c := r[0].chunk[r[0].chunk_at];
+    r[0].chunk_at += 1;
+    got_any = true;
+    if c == 10 {
+      if overflow { r[0].skipped_long += 1; return 0; }
+      if n > 0 && line_buf[n - 1] == 13 { n -= 1; }
+      return n;
+    }
+    if !overflow {
+      if n < line_buf.count { line_buf[n] = c; n += 1; }
+      else { overflow = true; }
+    }
+  }
+  return -1;
+}
+
+ing_sink_init :: (s: [] IngSink, path: string) {
+  s[0] = IngSink.{};
+  s[0].path_n = ing_copy(s[0].path[..], path);
+  s[0].ok = sha256_init(s[0].art_sha[..]) == SHA_OK;
+  h: [1] AtifStepsHasher;
+  atif_steps_hash_init(h[..]);
+  s[0].step_hasher = h[0];
+}
+
+ing_sink_flush :: (s: [] IngSink) -> bool {
+  if !s[0].ok { return false; }
+  if s[0].out_n == 0 { return true; }
+  p := cast(string) s[0].path[0..<s[0].path_n];
+  data := cast(string) s[0].out_buf[0..<s[0].out_n];
+  ok := ifx !s[0].started_file then fs_write(p, data) else fs_append(p, data);
+  s[0].started_file = true;
+  s[0].out_n = 0;
+  if !ok { s[0].ok = false; }
+  return ok;
+}
+
+ing_sink_write :: (s: [] IngSink, data: string) -> bool {
+  if !s[0].ok { return false; }
+  if data.count == 0 { return true; }
+  // Hash exact bytes
+  at := 0;
+  tmp: [4096] u8;
+  while at < data.count {
+    k := data.count - at;
+    if k > tmp.count { k = tmp.count; }
+    for i: 0..<k { tmp[i] = data[at + i]; }
+    if sha256_update_checked(s[0].art_sha[..], tmp[0..<k], false) != SHA_OK { s[0].ok = false; return false; }
+    at += k;
+  }
+  s[0].art_size += data.count;
+  // Buffer or flush to disk
+  if data.count > s[0].out_buf.count {
+    if !ing_sink_flush(s) { return false; }
+    p := cast(string) s[0].path[0..<s[0].path_n];
+    ok := ifx !s[0].started_file then fs_write(p, data) else fs_append(p, data);
+    s[0].started_file = true;
+    if !ok { s[0].ok = false; }
+    return ok;
+  }
+  if s[0].out_n + data.count > s[0].out_buf.count {
+    if !ing_sink_flush(s) { return false; }
+  }
+  for i: 0..<data.count { s[0].out_buf[s[0].out_n + i] = data[i]; }
+  s[0].out_n += data.count;
+  return true;
+}
+
+ing_sink_step :: (s: [] IngSink, step: AtifStep) -> bool {
+  if !s[0].ok { return false; }
+  st := step;
+  st.step_id = s[0].step_count + 1;
+  sbuf: [131072] u8;
+  sn := atif_write_step_json(st, sbuf[..]);
+  if sn <= 0 { return false; }
+  step_json := cast(string) sbuf[0..<sn];
+  // Hash into ATIF steps_digest
+  h: [1] AtifStepsHasher; h[0] = s[0].step_hasher;
+  sc: [131072] u8;
+  if atif_steps_hash_step(h[..], step_json, sc[..]) != ATIF_DIGEST_OK { return false; }
+  s[0].step_hasher = h[0];
+  // Wrap as log line and write
+  lbuf: [131200] u8;
+  ln := atif_write_step_line(step_json, lbuf[..]);
+  if ln <= 0 { return false; }
+  if !ing_sink_write(s, cast(string) lbuf[0..<ln]) { return false; }
+  s[0].step_count += 1;
+  return true;
+}
+
+ing_sink_finish :: (s: [] IngSink, ended_at: string, ended: bool, art_digest71: [] u8, steps_digest64: [] u8) -> bool {
+  if !s[0].ok { return false; }
+  ebuf: [256] u8;
+  en := atif_write_end_line(ended_at, ifx ended then ATIF_STATE_ENDED else ATIF_STATE_INTERRUPTED, ebuf[..]);
+  if en > 0 { if !ing_sink_write(s, cast(string) ebuf[0..<en]) { return false; } }
+  if !ing_sink_flush(s) { return false; }
+  raw: [32] u8;
+  if sha256_final_checked(s[0].art_sha[..], raw[..], false) != SHA_OK { return false; }
+  pre := "sha256:";
+  for i: 0..<7 { art_digest71[i] = pre[i]; }
+  if hex_encode_checked(cast(string) raw[..], art_digest71[7..<71], false).error != NC_OK { return false; }
+  h: [1] AtifStepsHasher; h[0] = s[0].step_hasher;
+  if atif_steps_hash_final(h[..], steps_digest64) != ATIF_DIGEST_OK { return false; }
+  return true;
+}
+
+// ---- Candidate discovery (newest-first bounded list per source)
+
+ing_add_cand :: (list: [] IngCandidate, count: [] int, total_found: [] int, path: string, project: string, id: string, source: int) {
+  sz := fs_size(path);
+  if sz <= 0 { return; }
+  mt := fs_mtime_ns(path) / 1000000000;
+  total_found[0] += 1;
+  slot := count[0];
+  if slot >= list.count {
+    oldest := 0;
+    for i: 1..<list.count { if list[i].mtime < list[oldest].mtime { oldest = i; } }
+    if list[oldest].mtime >= mt { return; }
+    slot = oldest;
+  } else {
+    count[0] += 1;
+  }
+  c: IngCandidate;
+  c.path_n = ing_copy(c.path[..], path);
+  c.project_n = ing_copy(c.project[..], project);
+  c.id_n = ing_copy(c.id[..], id);
+  c.mtime = mt;
+  c.size = sz;
+  c.source = source;
+  list[slot] = c;
+}
+
+ing_sort_cands_newest :: (list: [] IngCandidate, n: int) {
+  for i: 1..<n {
+    key := list[i];
+    j := i - 1;
+    while j >= 0 && list[j].mtime < key.mtime {
+      list[j + 1] = list[j];
+      j -= 1;
+    }
+    list[j + 1] = key;
+  }
+}
+
+ing_discover_claude :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  rb: [1024] u8; root := fs_join(home, ".claude/projects", rb[..]);
+  if fs_kind(root) != FS_DIR { return; }
+  dirs: [1] FsList; nd := fs_list(root, dirs[..]);
+  if nd <= 0 { return; }
+  for i: 0..<nd {
+    pname := fs_entry(dirs[..], i);
+    if pname.count == 0 || pname[0] == '.' { continue; }
+    db: [1024] u8; pdir := fs_join(root, pname, db[..]);
+    if fs_kind(pdir) != FS_DIR { continue; }
+    files: [1] FsList; nf := fs_list(pdir, files[..]);
+    if nf <= 0 { continue; }
+    for j: 0..<nf {
+      fname := fs_entry(files[..], j);
+      if !ing_ends_with(fname, ".jsonl") || fname.count <= 6 { continue; }
+      pb: [1024] u8; full := fs_join(pdir, fname, pb[..]);
+      if fs_kind(full) != FS_FILE { continue; }
+      ing_add_cand(list, count, total, full, pname, fname[0..<fname.count - 6], SRC_CLAUDE);
+    }
+  }
+}
+
+ing_discover_codex :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  rb: [1024] u8; root := fs_join(home, ".codex/sessions", rb[..]);
+  if fs_kind(root) != FS_DIR { return; }
+  years: [1] FsList; ny := fs_list(root, years[..]);
+  if ny <= 0 { return; }
+  for yi: 0..<ny {
+    yb: [1024] u8; ydir := fs_join(root, fs_entry(years[..], yi), yb[..]);
+    if fs_kind(ydir) != FS_DIR { continue; }
+    months: [1] FsList; nm := fs_list(ydir, months[..]);
+    if nm <= 0 { continue; }
+    for mi: 0..<nm {
+      mb: [1024] u8; mdir := fs_join(ydir, fs_entry(months[..], mi), mb[..]);
+      if fs_kind(mdir) != FS_DIR { continue; }
+      days: [1] FsList; nd := fs_list(mdir, days[..]);
+      if nd <= 0 { continue; }
+      for di: 0..<nd {
+        db: [1024] u8; ddir := fs_join(mdir, fs_entry(days[..], di), db[..]);
+        if fs_kind(ddir) != FS_DIR { continue; }
+        files: [1] FsList; nf := fs_list(ddir, files[..]);
+        if nf <= 0 { continue; }
+        for fi: 0..<nf {
+          fname := fs_entry(files[..], fi);
+          if !ing_ends_with(fname, ".jsonl") || fname.count <= 6 { continue; }
+          pb: [1024] u8; full := fs_join(ddir, fname, pb[..]);
+          if fs_kind(full) != FS_FILE { continue; }
+          ing_add_cand(list, count, total, full, "codex", fname[0..<fname.count - 6], SRC_CODEX);
+        }
+      }
+    }
+  }
+}
+
+ing_discover_openagents :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  rb: [1024] u8; root := fs_join(home, ".openagents/coder/sessions", rb[..]);
+  if fs_kind(root) != FS_DIR { return; }
+  files: [1] FsList; nf := fs_list(root, files[..]);
+  if nf <= 0 { return; }
+  for i: 0..<nf {
+    fname := fs_entry(files[..], i);
+    is_ajr := ing_ends_with(fname, ".ajr") && fname.count > 4;
+    is_jsonl := ing_ends_with(fname, ".jsonl") && fname.count > 6;
+    if !is_ajr && !is_jsonl { continue; }
+    pb: [1024] u8; full := fs_join(root, fname, pb[..]);
+    if fs_kind(full) != FS_FILE { continue; }
+    stem := ifx is_ajr then fname[0..<fname.count - 4] else fname[0..<fname.count - 6];
+    ing_add_cand(list, count, total, full, "openagents-desktop", stem, SRC_OPENAGENTS);
+  }
+}
+
+ing_discover_agy_root :: (brain_root: string, tag: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  if fs_kind(brain_root) != FS_DIR { return; }
+  dirs: [1] FsList; nd := fs_list(brain_root, dirs[..]);
+  if nd <= 0 { return; }
+  for i: 0..<nd {
+    id := fs_entry(dirs[..], i);
+    if id.count == 0 || id[0] == '.' { continue; }
+    b1: [1024] u8; b2: [1024] u8;
+    tpath := fs_join(fs_join(brain_root, id, b1[..]), ".system_generated/logs/transcript.jsonl", b2[..]);
+    if fs_kind(tpath) != FS_FILE { continue; }
+    ing_add_cand(list, count, total, tpath, tag, id, SRC_ANTIGRAVITY);
+  }
+}
+
+ing_discover_antigravity :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  b1: [1024] u8; ing_discover_agy_root(fs_join(home, ".gemini/antigravity/brain", b1[..]), "antigravity", list, count, total);
+  b2: [1024] u8; ing_discover_agy_root(fs_join(home, ".gemini/antigravity-cli/brain", b2[..]), "antigravity-cli", list, count, total);
+}
+
+ing_discover_opencode :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
+  rb: [1024] u8; root := fs_join(home, ".local/share/opencode/storage/session", rb[..]);
+  if fs_kind(root) != FS_DIR { return; }
+  files: [1] FsList; nf := fs_list(root, files[..]);
+  if nf <= 0 { return; }
+  for i: 0..<nf {
+    fname := fs_entry(files[..], i);
+    if !ing_ends_with(fname, ".jsonl") || fname.count <= 6 { continue; }
+    pb: [1024] u8; full := fs_join(root, fname, pb[..]);
+    if fs_kind(full) != FS_FILE { continue; }
+    ing_add_cand(list, count, total, full, "opencode", fname[0..<fname.count - 6], SRC_OPENCODE);
+  }
+}
+
+// ---- Shared JSON text extraction helpers
+
+ing_jv_str_cut :: (d: Jv, node: int, out: [] u8, limit: int) -> string {
+  if jv_kind(d, node) != JV_STRING { return ""; }
+  cap := ifx limit < out.count then limit else out.count;
+  n := jv_str(d, node, out[0..<cap]);
+  if n >= 0 { return cast(string) out[0..<n]; }
+  // String was longer than cap: take raw slice bounded cleanly.
+  return csr_cut(jv_raw(d, node), cap);
+}
+
+// Copies `text` into `buf` starting at `at[0]`, replacing any invalid UTF-8
+// byte sequence with '?' so emitted `.atif.jsonl` is guaranteed valid UTF-8.
+ing_append_text :: (buf: [] u8, at: [] int, text: string, sep: u8) {
+  if text.count == 0 || at[0] >= buf.count { return; }
+  if at[0] > 0 && sep != 0 && at[0] < buf.count { buf[at[0]] = sep; at[0] += 1; }
+  i := 0;
+  while i < text.count && at[0] < buf.count {
+    b := text[i];
+    if b < 128 {
+      buf[at[0]] = b; at[0] += 1; i += 1;
+    } else if b >= 194 && b <= 223 && i + 1 < text.count && (text[i + 1] & 192) == 128 {
+      if at[0] + 2 > buf.count { break; }
+      buf[at[0]] = b; buf[at[0] + 1] = text[i + 1]; at[0] += 2; i += 2;
+    } else if b >= 224 && b <= 239 && i + 2 < text.count && (text[i + 1] & 192) == 128 && (text[i + 2] & 192) == 128 {
+      if (b == 224 && text[i + 1] < 160) || (b == 237 && text[i + 1] >= 160) {
+        buf[at[0]] = '?'; at[0] += 1; i += 1;
+      } else {
+        if at[0] + 3 > buf.count { break; }
+        buf[at[0]] = b; buf[at[0] + 1] = text[i + 1]; buf[at[0] + 2] = text[i + 2]; at[0] += 3; i += 3;
+      }
+    } else if b >= 240 && b <= 244 && i + 3 < text.count && (text[i + 1] & 192) == 128 && (text[i + 2] & 192) == 128 && (text[i + 3] & 192) == 128 {
+      if (b == 240 && text[i + 1] < 144) || (b == 244 && text[i + 1] > 143) {
+        buf[at[0]] = '?'; at[0] += 1; i += 1;
+      } else {
+        if at[0] + 4 > buf.count { break; }
+        buf[at[0]] = b; buf[at[0] + 1] = text[i + 1]; buf[at[0] + 2] = text[i + 2]; buf[at[0] + 3] = text[i + 3]; at[0] += 4; i += 4;
+      }
+    } else {
+      buf[at[0]] = '?'; at[0] += 1; i += 1;
+    }
+  }
+}
+
+// ---- Adapter 1: Claude Code (.jsonl)
+
+ing_convert_claude :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
+  cand := cand_in;
+  path := cast(string) cand.path[0..<cand.path_n];
+  // Fast header pre-scan (first 64 KiB) for cwd, gitBranch, model, timestamp.
+  pre: [65536] u8;
+  pn := fs_read_at(path, 0, pre[..]);
+  if pn > 0 {
+    from := 0;
+    for i: 0..<pn {
+      if pre[i] != 10 { continue; }
+      line := cast(string) pre[from..<i];
+      from = i + 1;
+      nodes: [4096] JvNode; d: [1] Jv;
+      if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { continue; }
+      sb: [512] u8;
+      if meta[0].cwd_n == 0 { s := ing_jv_str_cut(d[0], jv_get(d[0], 0, "cwd"), sb[..], 512); if s.count > 0 { meta[0].cwd_n = ing_copy(meta[0].cwd[..], s); } }
+      if meta[0].git_branch_n == 0 { s := ing_jv_str_cut(d[0], jv_get(d[0], 0, "gitBranch"), sb[..], 128); if s.count > 0 { meta[0].git_branch_n = ing_copy(meta[0].git_branch[..], s); } }
+      if meta[0].started_at_n == 0 { s := ing_jv_str_cut(d[0], jv_get(d[0], 0, "timestamp"), sb[..], 64); if s.count > 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], s); } }
+      if meta[0].model_n == 0 { s := ing_jv_str_cut(d[0], jv_path(d[0], 0, "message.model"), sb[..], 128); if s.count > 0 { meta[0].model_n = ing_copy(meta[0].model[..], s); } }
+    }
+  }
+  hdr := AtifSessionHeader.{
+    trajectory_id = cast(string) meta[0].trajectory_id[0..<meta[0].trajectory_id_n],
+    session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "claude-code",
+    model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+    cwd = cast(string) meta[0].cwd[0..<meta[0].cwd_n],
+    git_branch = cast(string) meta[0].git_branch[0..<meta[0].git_branch_n],
+    source_harness = "claude",
+    created_at = cast(string) meta[0].started_at[0..<meta[0].started_at_n],
+  };
+  hbuf: [4096] u8;
+  hn := atif_write_session_line(hdr, hbuf[..]);
+  if hn <= 0 || !ing_sink_write(sink, cast(string) hbuf[0..<hn]) { return false; }
+
+  rd: [1] IngReader;
+  if !ing_reader_init(rd[..], path) { return false; }
+  line_buf: [ING_LINE_MAX] u8;
+  while true {
+    ln := ing_reader_next_line(rd[..], line_buf[..]);
+    if ln < 0 { break; }
+    if ln == 0 { continue; }
+    line := cast(string) line_buf[0..<ln];
+    nodes: [ATIF_CANON_NODES] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { continue; }
+    tb: [64] u8; ty := ing_jv_str_cut(d[0], jv_get(d[0], 0, "type"), tb[..], 64);
+    if ing_claude_drop_type(ty) { continue; }
+    if ty != "user" && ty != "assistant" && ty != "system" { continue; }
+
+    tsb: [64] u8; ts := ing_jv_str_cut(d[0], jv_get(d[0], 0, "timestamp"), tsb[..], 64);
+    if ts.count > 0 {
+      if meta[0].started_at_n == 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], ts); }
+      meta[0].ended_at_n = ing_copy(meta[0].ended_at[..], ts);
+    }
+    sb: [512] u8;
+    if meta[0].cwd_n == 0 { c := ing_jv_str_cut(d[0], jv_get(d[0], 0, "cwd"), sb[..], 512); if c.count > 0 { meta[0].cwd_n = ing_copy(meta[0].cwd[..], c); } }
+    br := ing_jv_str_cut(d[0], jv_get(d[0], 0, "gitBranch"), sb[..], 128);
+    if br.count > 0 { meta[0].git_branch_n = ing_copy(meta[0].git_branch[..], br); }
+
+    mb: [128] u8; model := ing_jv_str_cut(d[0], jv_path(d[0], 0, "message.model"), mb[..], 128);
+    if model.count > 0 && meta[0].model_n == 0 { meta[0].model_n = ing_copy(meta[0].model[..], model); }
+
+    step: AtifStep;
+    step.timestamp = ts;
+    step.source = ifx ty == "user" then ATIF_SOURCE_USER else ifx ty == "assistant" then ATIF_SOURCE_AGENT else ATIF_SOURCE_SYSTEM;
+    step.model_name = model;
+
+    // Usage metrics
+    usage := jv_path(d[0], 0, "message.usage");
+    if jv_kind(d[0], usage) == JV_OBJECT {
+      inp := jv_int(d[0], jv_get(d[0], usage, "input_tokens"), -1);
+      outp := jv_int(d[0], jv_get(d[0], usage, "output_tokens"), -1);
+      cac := jv_int(d[0], jv_get(d[0], usage, "cache_read_input_tokens"), -1);
+      if inp >= 0 { step.metrics.has_prompt = true; step.metrics.prompt_tokens = inp; meta[0].prompt_tokens += inp; }
+      if outp >= 0 { step.metrics.has_completion = true; step.metrics.completion_tokens = outp; meta[0].completion_tokens += outp; }
+      if cac >= 0 { step.metrics.has_cached = true; step.metrics.cached_tokens = cac; meta[0].cached_tokens += cac; }
+    }
+
+    msg_buf: [ING_MSG_MAX] u8; msg_n: [1] int;
+    th_buf: [ING_THINK_MAX] u8; th_n: [1] int;
+    tc_buf: [16384] u8; tco: [1] Jo; jo_start(tco[..], tc_buf[..]); jo_arr(tco[..]); tc_count := 0;
+    obs_buf: [16384] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]); jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]); obs_count := 0;
+    tmp: [ING_MSG_MAX] u8;
+
+    content := jv_path(d[0], 0, "message.content");
+    if jv_kind(d[0], content) == JV_STRING {
+      s := ing_jv_str_cut(d[0], content, tmp[..], ING_MSG_MAX);
+      ing_append_text(msg_buf[..], msg_n[..], s, 10);
+    } else if jv_kind(d[0], content) == JV_ARRAY {
+      for bi: 0..<jv_len(d[0], content) {
+        blk := jv_at(d[0], content, bi);
+        btb: [32] u8; bt := ing_jv_str_cut(d[0], jv_get(d[0], blk, "type"), btb[..], 32);
+        if bt == "text" || bt == "input_text" || bt == "output_text" {
+          s := ing_jv_str_cut(d[0], jv_get(d[0], blk, "text"), tmp[..], ING_MSG_MAX);
+          ing_append_text(msg_buf[..], msg_n[..], s, 10);
+        } else if bt == "thinking" {
+          s := ing_jv_str_cut(d[0], jv_get(d[0], blk, "thinking"), tmp[..], ING_THINK_MAX);
+          ing_append_text(th_buf[..], th_n[..], s, 10);
+        } else if bt == "image" {
+          // Drop inline base64 image data; replace with [image:sha256]
+          raw_img := jv_raw(d[0], jv_path(d[0], blk, "source.data"));
+          if raw_img.count > 0 {
+            ih: [64] u8;
+            if atif_sha256_hex(raw_img, ih[..]) == ATIF_DIGEST_OK {
+              tag: [32] u8; tn := ing_copy(tag[..], "[image:sha256:");
+              for k: 0..<12 { tag[tn + k] = ih[k]; }
+              tag[tn + 12] = ']';
+              ing_append_text(msg_buf[..], msg_n[..], cast(string) tag[0..<tn + 13], 10);
+            } else {
+              ing_append_text(msg_buf[..], msg_n[..], "[image:sha256]", 10);
+            }
+          } else {
+            ing_append_text(msg_buf[..], msg_n[..], "[image:sha256]", 10);
+          }
+        } else if bt == "tool_use" {
+          idb: [128] u8; cid := ing_jv_str_cut(d[0], jv_get(d[0], blk, "id"), idb[..], 128);
+          nb: [128] u8; cname := ing_jv_str_cut(d[0], jv_get(d[0], blk, "name"), nb[..], 128);
+          inp_node := jv_get(d[0], blk, "input");
+          inp_raw := jv_raw(d[0], inp_node);
+          role := ing_tool_role(cname);
+          meta[0].roles[role] += 1;
+          if role == ROLE_SHELL {
+            cb: [2048] u8; cmd := ing_jv_str_cut(d[0], jv_get(d[0], inp_node, "command"), cb[..], 2048);
+            if ing_is_verify_cmd(cmd) { meta[0].has_verify_cmd = true; }
+          }
+          if inp_raw.count <= 4096 && jv_kind(d[0], inp_node) == JV_OBJECT {
+            atif_jo_tool_call(tco[..], cid, cname, inp_raw);
+          } else {
+            // Wrap truncated arguments as a valid JSON object
+            tb2: [1200] u8; to2: [1] Jo; jo_start(to2[..], tb2[..]);
+            jo_obj(to2[..]); jo_key(to2[..], "truncated"); jo_bool(to2[..], true);
+            jo_key(to2[..], "preview"); jo_str(to2[..], csr_cut(inp_raw, 512)); jo_end(to2[..]);
+            atif_jo_tool_call(tco[..], cid, cname, ifx !to2[0].bad then jo_text(to2[..]) else "{}");
+          }
+          tc_count += 1;
+        } else if bt == "tool_result" {
+          idb: [128] u8; cid := ing_jv_str_cut(d[0], jv_get(d[0], blk, "tool_use_id"), idb[..], 128);
+          is_err := jv_kind(d[0], jv_get(d[0], blk, "is_error")) == JV_TRUE;
+          if is_err { meta[0].failed_tool_calls += 1; }
+          rc := jv_get(d[0], blk, "content");
+          rtxt := "";
+          if jv_kind(d[0], rc) == JV_STRING { rtxt = ing_jv_str_cut(d[0], rc, tmp[..], ING_OBS_MAX); }
+          else if jv_kind(d[0], rc) == JV_ARRAY && jv_len(d[0], rc) > 0 {
+            rtxt = ing_jv_str_cut(d[0], jv_get(d[0], jv_at(d[0], rc, 0), "text"), tmp[..], ING_OBS_MAX);
+          }
+          atif_jo_obs_result(obso[..], cid, rtxt, is_err);
+          obs_count += 1;
+        }
+      }
+    } else if ty == "system" {
+      s := ing_jv_str_cut(d[0], jv_get(d[0], 0, "subtype"), tmp[..], 256);
+      ing_append_text(msg_buf[..], msg_n[..], s, 0);
+    }
+
+    jo_end(tco[..]);
+    jo_end(obso[..]); jo_end(obso[..]);
+    if msg_n[0] == 0 && th_n[0] == 0 && tc_count == 0 && obs_count == 0 { continue; }
+    if ty == "user" && obs_count == 0 && msg_n[0] > 0 { meta[0].turns += 1; }
+    step.message = cast(string) msg_buf[0..<msg_n[0]];
+    step.reasoning_content = cast(string) th_buf[0..<th_n[0]];
+    if tc_count > 0 && !tco[0].bad { step.tool_calls_json = jo_text(tco[..]); }
+    if obs_count > 0 && !obso[0].bad { step.observation_json = jo_text(obso[..]); }
+    if !ing_sink_step(sink, step) { return false; }
+  }
+  meta[0].ended = true;
+  return true;
+}
+
+// ---- Adapter 2: Codex (.jsonl)
+
+ing_convert_codex :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
+  cand := cand_in;
+  path := cast(string) cand.path[0..<cand.path_n];
+  // Pre-scan first 64 KiB for session_meta / turn_context
+  pre: [65536] u8;
+  pn := fs_read_at(path, 0, pre[..]);
+  if pn > 0 {
+    from := 0;
+    for i: 0..<pn {
+      if pre[i] != 10 { continue; }
+      line := cast(string) pre[from..<i];
+      from = i + 1;
+      nodes: [4096] JvNode; d: [1] Jv;
+      if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { continue; }
+      sb: [512] u8;
+      if meta[0].started_at_n == 0 { s := ing_jv_str_cut(d[0], jv_get(d[0], 0, "timestamp"), sb[..], 64); if s.count > 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], s); } }
+      ty := ing_jv_str_cut(d[0], jv_get(d[0], 0, "type"), sb[..], 64);
+      if ty == "session_meta" {
+        sid := ing_jv_str_cut(d[0], jv_path(d[0], 0, "payload.session_id"), sb[..], 128);
+        if sid.count > 0 { meta[0].session_id_n = ing_copy(meta[0].session_id[..], sid); }
+        cw := ing_jv_str_cut(d[0], jv_path(d[0], 0, "payload.cwd"), sb[..], 512);
+        if cw.count > 0 { meta[0].cwd_n = ing_copy(meta[0].cwd[..], cw); }
+      } else if ty == "turn_context" {
+        cw := ing_jv_str_cut(d[0], jv_path(d[0], 0, "payload.cwd"), sb[..], 512);
+        if cw.count > 0 && meta[0].cwd_n == 0 { meta[0].cwd_n = ing_copy(meta[0].cwd[..], cw); }
+        md := ing_jv_str_cut(d[0], jv_path(d[0], 0, "payload.model"), sb[..], 128);
+        if md.count > 0 && meta[0].model_n == 0 { meta[0].model_n = ing_copy(meta[0].model[..], md); }
+      }
+    }
+  }
+  if meta[0].model_n == 0 { meta[0].model_n = ing_copy(meta[0].model[..], "codex"); }
+  if meta[0].cwd_n > 0 {
+    proj := ing_project_from_cwd(cast(string) meta[0].cwd[0..<meta[0].cwd_n]);
+    if proj.count > 0 { meta[0].project_n = ing_copy(meta[0].project[..], proj); }
+  }
+  hdr := AtifSessionHeader.{
+    trajectory_id = cast(string) meta[0].trajectory_id[0..<meta[0].trajectory_id_n],
+    session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "codex",
+    model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+    cwd = cast(string) meta[0].cwd[0..<meta[0].cwd_n],
+    git_branch = cast(string) meta[0].git_branch[0..<meta[0].git_branch_n],
+    source_harness = "codex",
+    created_at = cast(string) meta[0].started_at[0..<meta[0].started_at_n],
+  };
+  hbuf: [4096] u8;
+  hn := atif_write_session_line(hdr, hbuf[..]);
+  if hn <= 0 || !ing_sink_write(sink, cast(string) hbuf[0..<hn]) { return false; }
+
+  rd: [1] IngReader;
+  if !ing_reader_init(rd[..], path) { return false; }
+  line_buf: [ING_LINE_MAX] u8;
+  while true {
+    ln := ing_reader_next_line(rd[..], line_buf[..]);
+    if ln < 0 { break; }
+    if ln == 0 { continue; }
+    line := cast(string) line_buf[0..<ln];
+    nodes: [ATIF_CANON_NODES] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { continue; }
+    tsb: [64] u8; ts := ing_jv_str_cut(d[0], jv_get(d[0], 0, "timestamp"), tsb[..], 64);
+    if ts.count > 0 {
+      if meta[0].started_at_n == 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], ts); }
+      meta[0].ended_at_n = ing_copy(meta[0].ended_at[..], ts);
+    }
+    tb: [64] u8; ty := ing_jv_str_cut(d[0], jv_get(d[0], 0, "type"), tb[..], 64);
+    pl := jv_get(d[0], 0, "payload");
+    if jv_kind(d[0], pl) != JV_OBJECT { continue; }
+
+    if ty == "event_msg" {
+      ptb: [64] u8; pt := ing_jv_str_cut(d[0], jv_get(d[0], pl, "type"), ptb[..], 64);
+      if pt == "token_count" {
+        tot := jv_path(d[0], pl, "info.total_token_usage");
+        if jv_kind(d[0], tot) == JV_OBJECT {
+          inp := jv_int(d[0], jv_get(d[0], tot, "input_tokens"), -1);
+          outp := jv_int(d[0], jv_get(d[0], tot, "output_tokens"), -1);
+          cac := jv_int(d[0], jv_get(d[0], tot, "cached_input_tokens"), -1);
+          if inp > meta[0].prompt_tokens { meta[0].prompt_tokens = inp; }
+          if outp > meta[0].completion_tokens { meta[0].completion_tokens = outp; }
+          if cac > meta[0].cached_tokens { meta[0].cached_tokens = cac; }
+        }
+      }
+      continue;
+    }
+    if ty != "response_item" { continue; }
+
+    ptb: [64] u8; pt := ing_jv_str_cut(d[0], jv_get(d[0], pl, "type"), ptb[..], 64);
+    tmp: [ING_MSG_MAX] u8;
+    if pt == "message" {
+      rb: [32] u8; role := ing_jv_str_cut(d[0], jv_get(d[0], pl, "role"), rb[..], 32);
+      src := ifx role == "user" then ATIF_SOURCE_USER else ifx role == "assistant" then ATIF_SOURCE_AGENT else ATIF_SOURCE_SYSTEM;
+      msg_buf: [ING_MSG_MAX] u8; msg_n: [1] int;
+      content := jv_get(d[0], pl, "content");
+      if jv_kind(d[0], content) == JV_ARRAY {
+        for ci: 0..<jv_len(d[0], content) {
+          citem := jv_at(d[0], content, ci);
+          t := ing_jv_str_cut(d[0], jv_get(d[0], citem, "text"), tmp[..], ING_MSG_MAX);
+          ing_append_text(msg_buf[..], msg_n[..], t, 10);
+        }
+      } else if jv_kind(d[0], content) == JV_STRING {
+        t := ing_jv_str_cut(d[0], content, tmp[..], ING_MSG_MAX);
+        ing_append_text(msg_buf[..], msg_n[..], t, 10);
+      }
+      if msg_n[0] == 0 { continue; }
+      if src == ATIF_SOURCE_USER { meta[0].turns += 1; }
+      step := AtifStep.{
+        timestamp = ts,
+        source = src,
+        message = cast(string) msg_buf[0..<msg_n[0]],
+        model_name = ifx src == ATIF_SOURCE_AGENT then cast(string) meta[0].model[0..<meta[0].model_n] else "",
+      };
+      if !ing_sink_step(sink, step) { return false; }
+    } else if pt == "custom_tool_call" || pt == "function_call" {
+      idb: [128] u8; cid := ing_jv_str_cut(d[0], jv_get(d[0], pl, "call_id"), idb[..], 128);
+      nb: [128] u8; cname := ing_jv_str_cut(d[0], jv_get(d[0], pl, "name"), nb[..], 128);
+      arg_node := jv_get(d[0], pl, "input");
+      if arg_node < 0 { arg_node = jv_get(d[0], pl, "arguments"); }
+      arg_txt := "";
+      if jv_kind(d[0], arg_node) == JV_STRING {
+        s := ing_jv_str_cut(d[0], arg_node, tmp[..], 4096);
+        tb2: [4500] u8; to2: [1] Jo; jo_start(to2[..], tb2[..]);
+        jo_obj(to2[..]); jo_key(to2[..], "input"); jo_str(to2[..], s); jo_end(to2[..]);
+        arg_txt = ifx !to2[0].bad then jo_text(to2[..]) else "{}";
+      } else if jv_kind(d[0], arg_node) == JV_OBJECT && jv_raw(d[0], arg_node).count <= 4096 {
+        arg_txt = jv_raw(d[0], arg_node);
+      } else {
+        arg_txt = "{}";
+      }
+      role := ing_tool_role(cname);
+      meta[0].roles[role] += 1;
+      if role == ROLE_SHELL && ing_is_verify_cmd(arg_txt) { meta[0].has_verify_cmd = true; }
+      tc_buf: [8192] u8; tco: [1] Jo; jo_start(tco[..], tc_buf[..]);
+      jo_arr(tco[..]); atif_jo_tool_call(tco[..], cid, cname, arg_txt); jo_end(tco[..]);
+      if tco[0].bad { continue; }
+      step := AtifStep.{
+        timestamp = ts,
+        source = ATIF_SOURCE_AGENT,
+        message = "",
+        model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+        tool_calls_json = jo_text(tco[..]),
+      };
+      if !ing_sink_step(sink, step) { return false; }
+    } else if pt == "custom_tool_call_output" || pt == "function_call_output" {
+      idb: [128] u8; cid := ing_jv_str_cut(d[0], jv_get(d[0], pl, "call_id"), idb[..], 128);
+      out_node := jv_get(d[0], pl, "output");
+      out_txt := "";
+      if jv_kind(d[0], out_node) == JV_STRING { out_txt = ing_jv_str_cut(d[0], out_node, tmp[..], ING_OBS_MAX); }
+      else if jv_kind(d[0], out_node) == JV_ARRAY && jv_len(d[0], out_node) > 0 {
+        out_txt = ing_jv_str_cut(d[0], jv_get(d[0], jv_at(d[0], out_node, 0), "text"), tmp[..], ING_OBS_MAX);
+      }
+      is_err := csr_has(out_txt, "Exit code: 1") || csr_has(out_txt, "Process exited with code 1") || csr_has(out_txt, "error[");
+      if is_err { meta[0].failed_tool_calls += 1; }
+      obs_buf: [12288] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]);
+      jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]);
+      atif_jo_obs_result(obso[..], cid, out_txt, is_err);
+      jo_end(obso[..]); jo_end(obso[..]);
+      if obso[0].bad { continue; }
+      step := AtifStep.{
+        timestamp = ts,
+        source = ATIF_SOURCE_AGENT,
+        message = "",
+        observation_json = jo_text(obso[..]),
+      };
+      if !ing_sink_step(sink, step) { return false; }
+    }
+  }
+  meta[0].ended = true;
+  return true;
+}
+
+// ---- Adapter 3: OpenAgents Desktop (AJR1 binary journal via coax/lib/agent/journal.coax)
+
+ing_extract_quoted_field :: (text: string, needle: string, out: [] u8) -> string {
+  at := agr_find(text, needle, 0);
+  if at < 0 { return ""; }
+  from := at + needle.count;
+  end := from;
+  while end < text.count && text[end] != '"' && text[end] != '\\' { end += 1; }
+  n := ing_copy(out, text[from..<end]);
+  return cast(string) out[0..<n];
+}
+
+ing_convert_openagents_ajr :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
+  cand := cand_in;
+  path := cast(string) cand.path[0..<cand.path_n];
+  fsize := fs_size(path);
+  if fsize < AJ_OVERHEAD { return false; }
+
+  // Read first frame to get context (cwd, session) if present
+  win: [65536] u8;
+  wn := fs_read_at(path, 0, win[0..<ifx fsize < 65536 then fsize else 65536]);
+  if wn < AJ_OVERHEAD { return false; }
+  st0: AjState;
+  r0 := aj_read(st0, win[0..<wn]);
+  if !r0.ok { return false; }
+  if r0.kind == AjKind.context {
+    ctx := cast(string) win[r0.at..<r0.at + r0.count];
+    nodes: [2048] JvNode; d: [1] Jv;
+    if jv_parse(d[..], ctx, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+      sb: [512] u8;
+      cw := ing_jv_str_cut(d[0], jv_get(d[0], 0, "cwd"), sb[..], 512);
+      if cw.count > 0 { meta[0].cwd_n = ing_copy(meta[0].cwd[..], cw); }
+      ss := ing_jv_str_cut(d[0], jv_get(d[0], 0, "session"), sb[..], 128);
+      if ss.count > 0 { meta[0].session_id_n = ing_copy(meta[0].session_id[..], ss); }
+    }
+  }
+  if meta[0].cwd_n > 0 {
+    proj := ing_project_from_cwd(cast(string) meta[0].cwd[0..<meta[0].cwd_n]);
+    if proj.count > 0 { meta[0].project_n = ing_copy(meta[0].project[..], proj); }
+  }
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = cast(string) meta[0].trajectory_id[0..<meta[0].trajectory_id_n],
+    session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "openagents-desktop",
+    model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+    cwd = cast(string) meta[0].cwd[0..<meta[0].cwd_n],
+    source_harness = "openagents",
+  };
+  hbuf: [4096] u8;
+  hn := atif_write_session_line(hdr, hbuf[..]);
+  if hn <= 0 || !ing_sink_write(sink, cast(string) hbuf[0..<hn]) { return false; }
+
+  // Stream AJR1 frames in rolling 64 KiB window
+  state: AjState;
+  off := 0;
+  reply_buf: [ING_MSG_MAX] u8; reply_n: [1] int;
+  tool_out_buf: [ING_OBS_MAX] u8; tool_out_n: [1] int;
+  call_seq := 0;
+
+  while off + AJ_OVERHEAD <= fsize {
+    want := fsize - off;
+    if want > 65536 { want = 65536; }
+    got := fs_read_at(path, off, win[0..<want]);
+    if got < AJ_OVERHEAD { break; }
+    at := 0;
+    advanced := false;
+    while at + AJ_OVERHEAD <= got {
+      rd := aj_read(state, win[at..<got]);
+      if !rd.ok { break; }
+      payload := cast(string) win[at + rd.at..<at + rd.at + rd.count];
+      if rd.kind == AjKind.context {
+        step := AtifStep.{source = ATIF_SOURCE_SYSTEM, message = csr_cut(payload, 1024)};
+        if !ing_sink_step(sink, step) { return false; }
+      } else if rd.kind == AjKind.model_intent {
+        mb: [128] u8;
+        m := ing_extract_quoted_field(payload, "\\\"model\\\":\\\"", mb[..]);
+        if m.count == 0 { m = ing_extract_quoted_field(payload, "\"model\":\"", mb[..]); }
+        if m.count > 0 { meta[0].model_n = ing_copy(meta[0].model[..], m); }
+        meta[0].turns += 1;
+      } else if rd.kind == AjKind.model_reply {
+        ing_append_text(reply_buf[..], reply_n[..], payload, 0);
+      } else if rd.kind == AjKind.model_end {
+        if reply_n[0] > 0 {
+          step := AtifStep.{
+            source = ATIF_SOURCE_AGENT,
+            message = cast(string) reply_buf[0..<reply_n[0]],
+            model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+          };
+          reply_n[0] = 0;
+          if !ing_sink_step(sink, step) { return false; }
+        }
+      } else if rd.kind == AjKind.command_intent || rd.kind == AjKind.view_intent {
+        call_seq += 1;
+        is_cmd := rd.kind == AjKind.command_intent;
+        meta[0].roles[ifx is_cmd then ROLE_SHELL else ROLE_READ] += 1;
+        if is_cmd && ing_is_verify_cmd(payload) { meta[0].has_verify_cmd = true; }
+        tc_buf: [8192] u8; tco: [1] Jo; jo_start(tco[..], tc_buf[..]);
+        jo_arr(tco[..]);
+        jo_obj(tco[..]);
+        jo_key(tco[..], "tool_call_id");
+        cid_buf: [32] u8; co: [1] Jo; jo_start(co[..], cid_buf[..]); jo_int(co[..], call_seq);
+        jo_str(tco[..], jo_text(co[..]));
+        jo_key(tco[..], "function_name"); jo_str(tco[..], ifx is_cmd then "shell" else "view");
+        jo_key(tco[..], "arguments"); jo_obj(tco[..]);
+        jo_key(tco[..], ifx is_cmd then "command" else "path"); jo_str(tco[..], csr_cut(payload, 2048));
+        jo_end(tco[..]);
+        jo_end(tco[..]);
+        jo_end(tco[..]);
+        if !tco[0].bad {
+          step := AtifStep.{
+            source = ATIF_SOURCE_AGENT,
+            message = "",
+            model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+            tool_calls_json = jo_text(tco[..]),
+          };
+          if !ing_sink_step(sink, step) { return false; }
+        }
+      } else if rd.kind == AjKind.tool_output {
+        ing_append_text(tool_out_buf[..], tool_out_n[..], payload, 0);
+      } else if rd.kind == AjKind.tool_end {
+        is_err := !ing_starts_with(payload, "exit=0") || csr_has(payload, "timed_out=true");
+        if is_err { meta[0].failed_tool_calls += 1; }
+        obs_buf: [12288] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]);
+        jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]);
+        cid_buf: [32] u8; co: [1] Jo; jo_start(co[..], cid_buf[..]); jo_int(co[..], call_seq);
+        atif_jo_obs_result(obso[..], jo_text(co[..]), cast(string) tool_out_buf[0..<tool_out_n[0]], is_err);
+        jo_end(obso[..]); jo_end(obso[..]);
+        tool_out_n[0] = 0;
+        if !obso[0].bad {
+          step := AtifStep.{source = ATIF_SOURCE_AGENT, message = "", observation_json = jo_text(obso[..])};
+          if !ing_sink_step(sink, step) { return false; }
+        }
+      } else if rd.kind == AjKind.stop {
+        meta[0].ended = payload == "finished";
+      }
+      state = rd.after;
+      at += rd.consumed;
+      advanced = true;
+    }
+    if !advanced { break; }
+    off += at;
+  }
+  return true;
+}
+
+// ---- Adapter 4: Antigravity (reusing coax/lib/agent/observe/antigravity.coax)
+
+ing_convert_antigravity :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
+  cand := cand_in;
+  path := cast(string) cand.path[0..<cand.path_n];
+  // Pre-scan first 64 KiB for model selection and first created_at
+  pre: [65536] u8;
+  pn := fs_read_at(path, 0, pre[..]);
+  if pn > 0 {
+    ab: [16384] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+    from := 0;
+    for i: 0..<pn {
+      if pre[i] != 10 { continue; }
+      line := cast(string) pre[from..<i];
+      from = i + 1;
+      st := agr_step(line, ar[..]);
+      if st.model.count > 0 && meta[0].model_n == 0 { meta[0].model_n = ing_copy(meta[0].model[..], st.model); }
+      if meta[0].started_at_n == 0 {
+        nodes: [2048] JvNode; d: [1] Jv;
+        if jv_parse(d[..], line, nodes[..]) {
+          tb: [64] u8; ts := ing_jv_str_cut(d[0], jv_get(d[0], 0, "created_at"), tb[..], 64);
+          if ts.count > 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], ts); }
+        }
+      }
+    }
+  }
+  hdr := AtifSessionHeader.{
+    trajectory_id = cast(string) meta[0].trajectory_id[0..<meta[0].trajectory_id_n],
+    session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "antigravity",
+    model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+    source_harness = "antigravity",
+    created_at = cast(string) meta[0].started_at[0..<meta[0].started_at_n],
+  };
+  hbuf: [4096] u8;
+  hn := atif_write_session_line(hdr, hbuf[..]);
+  if hn <= 0 || !ing_sink_write(sink, cast(string) hbuf[0..<hn]) { return false; }
+
+  rd: [1] IngReader;
+  if !ing_reader_init(rd[..], path) { return false; }
+  line_buf: [ING_LINE_MAX] u8;
+  ab: [65536] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  call_seq := 0;
+  while true {
+    ln := ing_reader_next_line(rd[..], line_buf[..]);
+    if ln < 0 { break; }
+    if ln == 0 { continue; }
+    line := cast(string) line_buf[0..<ln];
+    st := agr_step(line, ar[..]);
+    if st.kind == AGR_OTHER { continue; }
+    if st.model.count > 0 { meta[0].model_n = ing_copy(meta[0].model[..], st.model); }
+
+    nodes: [ATIF_CANON_NODES] JvNode; d: [1] Jv;
+    has_jv := jv_parse(d[..], line, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+    tsb: [64] u8; ts := "";
+    if has_jv {
+      ts = ing_jv_str_cut(d[0], jv_get(d[0], 0, "created_at"), tsb[..], 64);
+      if ts.count > 0 {
+        if meta[0].started_at_n == 0 { meta[0].started_at_n = ing_copy(meta[0].started_at[..], ts); }
+        meta[0].ended_at_n = ing_copy(meta[0].ended_at[..], ts);
+      }
+    }
+
+    if st.kind == AGR_USER {
+      meta[0].turns += 1;
+      step := AtifStep.{timestamp = ts, source = ATIF_SOURCE_USER, message = csr_cut(st.text, ING_MSG_MAX)};
+      if !ing_sink_step(sink, step) { return false; }
+    } else if st.kind == AGR_MODEL {
+      step: AtifStep;
+      step.timestamp = ts;
+      step.source = ATIF_SOURCE_AGENT;
+      step.message = csr_cut(st.text, ING_MSG_MAX);
+      step.model_name = cast(string) meta[0].model[0..<meta[0].model_n];
+      if st.input > 0 { step.metrics.has_prompt = true; step.metrics.prompt_tokens = st.input; meta[0].prompt_tokens += st.input; }
+      if st.output > 0 { step.metrics.has_completion = true; step.metrics.completion_tokens = st.output; meta[0].completion_tokens += st.output; }
+      if st.cached > 0 { step.metrics.has_cached = true; step.metrics.cached_tokens = st.cached; meta[0].cached_tokens += st.cached; }
+
+      th_buf: [ING_THINK_MAX] u8;
+      tc_buf: [16384] u8; tco: [1] Jo; jo_start(tco[..], tc_buf[..]); jo_arr(tco[..]); tc_count := 0;
+      if has_jv {
+        step.reasoning_content = ing_jv_str_cut(d[0], jv_get(d[0], 0, "thinking"), th_buf[..], ING_THINK_MAX);
+        tcs := jv_get(d[0], 0, "tool_calls");
+        if jv_kind(d[0], tcs) == JV_ARRAY {
+          for ti: 0..<jv_len(d[0], tcs) {
+            call_seq += 1;
+            tc := jv_at(d[0], tcs, ti);
+            nb: [128] u8; cname := ing_jv_str_cut(d[0], jv_get(d[0], tc, "name"), nb[..], 128);
+            args_node := jv_get(d[0], tc, "args");
+            args_raw := jv_raw(d[0], args_node);
+            role := ing_tool_role(cname);
+            meta[0].roles[role] += 1;
+            if role == ROLE_SHELL {
+              cb: [2048] u8; cmd := ing_jv_str_cut(d[0], jv_get(d[0], args_node, "CommandLine"), cb[..], 2048);
+              if ing_is_verify_cmd(cmd) { meta[0].has_verify_cmd = true; }
+            }
+            cid_buf: [32] u8; co: [1] Jo; jo_start(co[..], cid_buf[..]); jo_int(co[..], call_seq);
+            if args_raw.count <= 4096 && jv_kind(d[0], args_node) == JV_OBJECT {
+              atif_jo_tool_call(tco[..], jo_text(co[..]), cname, args_raw);
+            } else {
+              tb2: [1200] u8; to2: [1] Jo; jo_start(to2[..], tb2[..]);
+              jo_obj(to2[..]); jo_key(to2[..], "truncated"); jo_bool(to2[..], true);
+              jo_key(to2[..], "preview"); jo_str(to2[..], csr_cut(args_raw, 512)); jo_end(to2[..]);
+              atif_jo_tool_call(tco[..], jo_text(co[..]), cname, ifx !to2[0].bad then jo_text(to2[..]) else "{}");
+            }
+            tc_count += 1;
+          }
+        }
+      }
+      jo_end(tco[..]);
+      if tc_count > 0 && !tco[0].bad { step.tool_calls_json = jo_text(tco[..]); }
+      if step.message.count == 0 && step.reasoning_content.count == 0 && tc_count == 0 { continue; }
+      if !ing_sink_step(sink, step) { return false; }
+    } else if st.kind == AGR_RESULT {
+      is_err := csr_has(st.text, "Command exited with code 1") || csr_has(st.text, "Encountered error");
+      if is_err { meta[0].failed_tool_calls += 1; }
+      obs_buf: [12288] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]);
+      jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]);
+      cid_buf: [32] u8; co: [1] Jo; jo_start(co[..], cid_buf[..]); jo_int(co[..], call_seq);
+      atif_jo_obs_result(obso[..], jo_text(co[..]), csr_cut(st.text, ING_OBS_MAX), is_err);
+      jo_end(obso[..]); jo_end(obso[..]);
+      if obso[0].bad { continue; }
+      step := AtifStep.{timestamp = ts, source = ATIF_SOURCE_AGENT, message = "", observation_json = jo_text(obso[..])};
+      if !ing_sink_step(sink, step) { return false; }
+    }
+  }
+  meta[0].ended = true;
+  return true;
+}
+
+// ---- Index & Inventory writers
+
+ing_write_index_line :: (meta_in: IngTrajMeta, steps: int, art_digest: string, art_size: int, steps_digest: string, art_path: string, man_path: string, out: [] u8) -> int {
+  meta := meta_in;
+  names := SRC_NAMES;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "source"); jo_str(o[..], names[meta.source]);
+  jo_key(o[..], "project"); jo_str(o[..], cast(string) meta.project[0..<meta.project_n]);
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], cast(string) meta.trajectory_id[0..<meta.trajectory_id_n]);
+  jo_key(o[..], "session_id"); jo_str(o[..], cast(string) meta.session_id[0..<meta.session_id_n]);
+  jo_key(o[..], "schema_version"); jo_str(o[..], ATIF_SCHEMA_VERSION);
+  jo_key(o[..], "primary_model"); jo_str(o[..], cast(string) meta.model[0..<meta.model_n]);
+  jo_key(o[..], "step_count"); jo_int(o[..], steps);
+  jo_key(o[..], "turns"); jo_int(o[..], meta.turns);
+  jo_key(o[..], "tool_calls");
+  jo_obj(o[..]);
+  jo_key(o[..], "read"); jo_int(o[..], meta.roles[ROLE_READ]);
+  jo_key(o[..], "edit"); jo_int(o[..], meta.roles[ROLE_EDIT]);
+  jo_key(o[..], "search"); jo_int(o[..], meta.roles[ROLE_SEARCH]);
+  jo_key(o[..], "shell"); jo_int(o[..], meta.roles[ROLE_SHELL]);
+  jo_key(o[..], "delegate"); jo_int(o[..], meta.roles[ROLE_DELEGATE]);
+  jo_key(o[..], "other"); jo_int(o[..], meta.roles[ROLE_OTHER]);
+  jo_end(o[..]);
+  jo_key(o[..], "failed_tool_calls"); jo_int(o[..], meta.failed_tool_calls);
+  jo_key(o[..], "prompt_tokens"); jo_int(o[..], meta.prompt_tokens);
+  jo_key(o[..], "completion_tokens"); jo_int(o[..], meta.completion_tokens);
+  jo_key(o[..], "cached_tokens"); jo_int(o[..], meta.cached_tokens);
+  jo_key(o[..], "cost_usd_micros"); jo_int(o[..], meta.cost_usd_micros);
+  jo_key(o[..], "cwd"); jo_str(o[..], cast(string) meta.cwd[0..<meta.cwd_n]);
+  jo_key(o[..], "git_branch"); jo_str(o[..], cast(string) meta.git_branch[0..<meta.git_branch_n]);
+  jo_key(o[..], "started_at"); jo_str(o[..], cast(string) meta.started_at[0..<meta.started_at_n]);
+  jo_key(o[..], "ended_at"); jo_str(o[..], cast(string) meta.ended_at[0..<meta.ended_at_n]);
+  jo_key(o[..], "has_verify_cmd"); jo_bool(o[..], meta.has_verify_cmd);
+  jo_key(o[..], "steps_digest"); jo_str(o[..], steps_digest);
+  jo_key(o[..], "artifact_digest"); jo_str(o[..], art_digest);
+  jo_key(o[..], "artifact_size"); jo_int(o[..], art_size);
+  jo_key(o[..], "artifact_path"); jo_str(o[..], art_path);
+  jo_key(o[..], "manifest_path"); jo_str(o[..], man_path);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+ing_write_inventory :: (stats: [] IngStats, now_s: int, out: [] u8) -> int {
+  tot_disc := 0; tot_ing := 0; tot_steps := 0; tot_bytes := 0; tot_anc := 0;
+  for i: 0..<SRC_COUNT {
+    tot_disc += stats[i].discovered;
+    tot_ing += stats[i].ingested;
+    tot_steps += stats[i].steps;
+    tot_bytes += stats[i].bytes;
+    tot_anc += stats[i].anchorable;
+  }
+  names := SRC_NAMES;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema_version"); jo_str(o[..], ATIF_SCHEMA_VERSION);
+  jo_key(o[..], "generated_at_s"); jo_int(o[..], now_s);
+  jo_key(o[..], "total_discovered"); jo_int(o[..], tot_disc);
+  jo_key(o[..], "total_ingested"); jo_int(o[..], tot_ing);
+  jo_key(o[..], "total_steps"); jo_int(o[..], tot_steps);
+  jo_key(o[..], "total_bytes"); jo_int(o[..], tot_bytes);
+  jo_key(o[..], "anchorable_episodes"); jo_int(o[..], tot_anc);
+  jo_key(o[..], "sources");
+  jo_obj(o[..]);
+  for i: 0..<SRC_COUNT {
+    jo_key(o[..], names[i]);
+    jo_obj(o[..]);
+    jo_key(o[..], "discovered"); jo_int(o[..], stats[i].discovered);
+    jo_key(o[..], "ingested"); jo_int(o[..], stats[i].ingested);
+    jo_key(o[..], "skipped"); jo_int(o[..], stats[i].skipped);
+    jo_key(o[..], "steps"); jo_int(o[..], stats[i].steps);
+    jo_key(o[..], "bytes"); jo_int(o[..], stats[i].bytes);
+    jo_key(o[..], "anchorable"); jo_int(o[..], stats[i].anchorable);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---- Main CLI entrypoint
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("ingest: arguments too large"); return 2; }
+  if args_has(a[..], "--help") || args_has(a[..], "-h") {
+    print("usage: ingest.coax [--source all|claude|codex|openagents|antigravity|opencode] [--limit N] [--out DIR] [--home DIR] [--dry-run]\n");
+    return 0;
+  }
+
+  src_arg := args_value(a[..], "--source", "all");
+  only_src := -1;
+  if src_arg != "all" {
+    only_src = ing_source_by_name(src_arg);
+    if only_src < 0 { tool_errln("ingest: unknown --source"); return 2; }
+  }
+  lim_str := args_value(a[..], "--limit", "0");
+  limit := args_whole(lim_str);
+  if limit < 0 { tool_errln("ingest: invalid --limit"); return 2; }
+  dry_run := args_has(a[..], "--dry-run");
+
+  hb: [1024] u8;
+  home := args_value(a[..], "--home", "");
+  if home.count == 0 { home = proc_getenv("HOME", hb[..]); }
+  if home.count == 0 { tool_errln("ingest: HOME not set"); return 1; }
+
+  ob: [2048] u8;
+  out_dir := args_value(a[..], "--out", "");
+  if out_dir.count == 0 { out_dir = oa_path(home, "evals/session-history", ob[..]); }
+  if !fs_mkdir_all(out_dir) { tool_errln("ingest: cannot create output directory"); return 1; }
+
+  idx_path_b: [2048] u8; idx_path := fs_join(out_dir, "index.jsonl", idx_path_b[..]);
+  inv_path_b: [2048] u8; inv_path := fs_join(out_dir, "inventory.json", inv_path_b[..]);
+  if !dry_run { ok := fs_write(idx_path, ""); if !ok { tool_errln("ingest: cannot write index.jsonl"); return 1; } }
+
+  stats: [SRC_COUNT] IngStats;
+  names := SRC_NAMES;
+
+  for sidx: 0..<SRC_COUNT {
+    if only_src >= 0 && only_src != sidx { continue; }
+    cands: [ING_MAX_CANDS] IngCandidate;
+    nc: [1] int; tot: [1] int;
+    if sidx == SRC_CLAUDE { ing_discover_claude(home, cands[..], nc[..], tot[..]); }
+    else if sidx == SRC_CODEX { ing_discover_codex(home, cands[..], nc[..], tot[..]); }
+    else if sidx == SRC_OPENAGENTS { ing_discover_openagents(home, cands[..], nc[..], tot[..]); }
+    else if sidx == SRC_ANTIGRAVITY { ing_discover_antigravity(home, cands[..], nc[..], tot[..]); }
+    else if sidx == SRC_OPENCODE { ing_discover_opencode(home, cands[..], nc[..], tot[..]); }
+
+    stats[sidx].discovered = tot[0];
+    if dry_run || nc[0] == 0 { continue; }
+
+    ing_sort_cands_newest(cands[..], nc[0]);
+    take := nc[0];
+    if limit > 0 && take > limit { take = limit; }
+
+    sdir_b1: [2048] u8; sdir_b2: [2048] u8;
+    sdir := fs_join(fs_join(out_dir, "atif", sdir_b1[..]), names[sidx], sdir_b2[..]);
+    if !fs_mkdir_all(sdir) { tool_errln("ingest: cannot create atif source dir"); return 1; }
+
+    for ci: 0..<take {
+      c := cands[ci];
+      meta: [1] IngTrajMeta;
+      meta[0].source = sidx;
+      meta[0].project_n = ing_copy(meta[0].project[..], cast(string) c.project[0..<c.project_n]);
+      sid_raw := cast(string) c.id[0..<c.id_n];
+      meta[0].session_id_n = ing_copy(meta[0].session_id[..], sid_raw);
+      tid_s := ing_sanitize_id(sid_raw, meta[0].trajectory_id[..]);
+      meta[0].trajectory_id_n = tid_s.count;
+
+      // Build artifact & manifest paths
+      fname_b: [256] u8; fn := ing_copy(fname_b[..], tid_s);
+      fn += ing_copy(fname_b[fn..<fname_b.count], ".atif.jsonl");
+      art_path_b: [2048] u8; art_path := fs_join(sdir, cast(string) fname_b[0..<fn], art_path_b[..]);
+
+      mname_b: [256] u8; mn := ing_copy(mname_b[..], tid_s);
+      mn += ing_copy(mname_b[mn..<mname_b.count], ".manifest.json");
+      man_path_b: [2048] u8; man_path := fs_join(sdir, cast(string) mname_b[0..<mn], man_path_b[..]);
+
+      sink: [1] IngSink;
+      ing_sink_init(sink[..], art_path);
+      converted := false;
+      if sidx == SRC_CLAUDE { converted = ing_convert_claude(c, sink[..], meta[..]); }
+      else if sidx == SRC_CODEX { converted = ing_convert_codex(c, sink[..], meta[..]); }
+      else if sidx == SRC_OPENAGENTS {
+        if ing_ends_with(cast(string) c.path[0..<c.path_n], ".ajr") { converted = ing_convert_openagents_ajr(c, sink[..], meta[..]); }
+        else { converted = ing_convert_claude(c, sink[..], meta[..]); }
+      } else if sidx == SRC_ANTIGRAVITY { converted = ing_convert_antigravity(c, sink[..], meta[..]); }
+      else { converted = false; }
+
+      if !converted || sink[0].step_count == 0 {
+        r_rm := fs_remove(art_path);
+        stats[sidx].skipped += 1;
+        continue;
+      }
+
+      art_dig: [71] u8; st_dig: [64] u8;
+      if !ing_sink_finish(sink[..], cast(string) meta[0].ended_at[0..<meta[0].ended_at_n], meta[0].ended, art_dig[..], st_dig[..]) {
+        r_rm := fs_remove(art_path);
+        stats[sidx].skipped += 1;
+        continue;
+      }
+
+      // Write openagents.atif-manifest.v1
+      man_in := AtifManifestInput.{
+        trajectory_id = tid_s,
+        session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+        schema_version = ATIF_SCHEMA_VERSION,
+        form = "log",
+        artifact_digest = cast(string) art_dig[..],
+        artifact_size = sink[0].art_size,
+        steps_digest = cast(string) st_dig[..],
+        step_count = sink[0].step_count,
+        state = ifx meta[0].ended then ATIF_STATE_ENDED else ATIF_STATE_INTERRUPTED,
+        coverage = ATIF_COV_PARTIAL,
+        derivation_kind = "converted",
+        derivation_source = "",
+      };
+      man_buf: [4096] u8;
+      man_n := atif_write_manifest(man_in, man_buf[..]);
+      if man_n <= 0 || !fs_write(man_path, cast(string) man_buf[0..<man_n]) {
+        stats[sidx].skipped += 1;
+        continue;
+      }
+
+      // Append index.jsonl entry
+      idx_buf: [8192] u8;
+      idx_n := ing_write_index_line(meta[0], sink[0].step_count, cast(string) art_dig[..], sink[0].art_size, cast(string) st_dig[..], art_path, man_path, idx_buf[..]);
+      if idx_n > 0 { ok := fs_append(idx_path, cast(string) idx_buf[0..<idx_n]); }
+
+      stats[sidx].ingested += 1;
+      stats[sidx].steps += sink[0].step_count;
+      stats[sidx].bytes += sink[0].art_size;
+      total_tools := meta[0].roles[ROLE_READ] + meta[0].roles[ROLE_EDIT] + meta[0].roles[ROLE_SEARCH] + meta[0].roles[ROLE_SHELL] + meta[0].roles[ROLE_DELEGATE] + meta[0].roles[ROLE_OTHER];
+      if total_tools >= 2 && (meta[0].roles[ROLE_EDIT] >= 1 || meta[0].has_verify_cmd) {
+        stats[sidx].anchorable += 1;
+      }
+    }
+  }
+
+  inv_buf: [8192] u8;
+  inv_n := ing_write_inventory(stats[..], cxproc_wall_us() / 1000000, inv_buf[..]);
+  if inv_n <= 0 || !fs_write(inv_path, cast(string) inv_buf[0..<inv_n]) {
+    tool_errln("ingest: cannot write inventory.json");
+    return 1;
+  }
+  print("%", cast(string) inv_buf[0..<inv_n]);
+  return 0;
+}
+
+// ---- checks
+
+#test "ingest: tool role classification, verify detection, and id sanitization" {
+  #assert ing_tool_role("Read") == ROLE_READ && ing_tool_role("read_file") == ROLE_READ && ing_tool_role("view") == ROLE_READ;
+  #assert ing_tool_role("Edit") == ROLE_EDIT && ing_tool_role("edit_file") == ROLE_EDIT && ing_tool_role("write_file") == ROLE_EDIT;
+  #assert ing_tool_role("Grep") == ROLE_SEARCH && ing_tool_role("grep_search") == ROLE_SEARCH;
+  #assert ing_tool_role("Bash") == ROLE_SHELL && ing_tool_role("run_command") == ROLE_SHELL && ing_tool_role("exec") == ROLE_SHELL;
+  #assert ing_tool_role("invoke_subagent") == ROLE_DELEGATE && ing_tool_role("Agent") == ROLE_DELEGATE;
+  #assert ing_tool_role("custom_foo") == ROLE_OTHER;
+
+  #assert ing_is_verify_cmd("coax/bin/coax test foo.coax");
+  #assert ing_is_verify_cmd("coax/web/tool.sh tools-check");
+  #assert ing_is_verify_cmd("python3 -m pytest -q");
+  #assert !ing_is_verify_cmd("ls -la");
+
+  #assert ing_claude_drop_type("api-request-blob") && ing_claude_drop_type("file-history-snapshot") && ing_claude_drop_type("queue-operation");
+  #assert !ing_claude_drop_type("user") && !ing_claude_drop_type("assistant") && !ing_claude_drop_type("system");
+
+  b: [128] u8;
+  #assert ing_sanitize_id("abc-123.def", b[..]) == "abc-123.def";
+  #assert ing_sanitize_id("a/b:c d", b[..]) == "a_b_c_d";
+  #assert ing_project_from_cwd("/Users/me/work/openagents/") == "openagents";
+  #assert ing_source_by_name("claude") == SRC_CLAUDE && ing_source_by_name("antigravity") == SRC_ANTIGRAVITY && ing_source_by_name("nope") == -1;
+}
+
+#test "ingest: inventory JSON generation sums sources cleanly" {
+  stats: [SRC_COUNT] IngStats;
+  stats[SRC_CLAUDE] = IngStats.{discovered = 10, ingested = 5, skipped = 0, steps = 42, bytes = 9000, anchorable = 3};
+  stats[SRC_ANTIGRAVITY] = IngStats.{discovered = 4, ingested = 4, skipped = 0, steps = 20, bytes = 4000, anchorable = 2};
+  buf: [4096] u8;
+  n := ing_write_inventory(stats[..], 1795200000, buf[..]);
+  #assert n > 0;
+  nodes: [256] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) buf[0..<n], nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], 0, "total_discovered"), -1) == 14;
+  #assert jv_int(d[0], jv_get(d[0], 0, "total_ingested"), -1) == 9;
+  #assert jv_int(d[0], jv_get(d[0], 0, "total_steps"), -1) == 62;
+  #assert jv_int(d[0], jv_get(d[0], 0, "anchorable_episodes"), -1) == 5;
+  #assert jv_int(d[0], jv_path(d[0], 0, "sources.claude.ingested"), -1) == 5;
+  #assert jv_int(d[0], jv_path(d[0], 0, "sources.antigravity.steps"), -1) == 20;
+}

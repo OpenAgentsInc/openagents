@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/evals/session-history/task.schema.json",
+  "title": "Session History Eval Task (ATIF-v1.8)",
+  "description": "Sanitized eval task compatible with evals/openagents-desktop/tier2 and tier4/golden-template.json, extended with ATIF-v1.8 provenance and observed baseline metrics.",
+  "type": "object",
+  "required": [
+    "id",
+    "category",
+    "bucket",
+    "source",
+    "baseline",
+    "budget_usd_micros",
+    "timeout_s",
+    "steps",
+    "graders"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{2,63}$"
+    },
+    "category": {
+      "type": "string",
+      "const": "session-history"
+    },
+    "bucket": {
+      "type": "string",
+      "enum": [
+        "A_edit_precision",
+        "B_multi_file",
+        "C_verification",
+        "D_error_recovery",
+        "E_long_context"
+      ]
+    },
+    "fixture": {
+      "type": "string",
+      "description": "Optional fixture name when not anchored solely by git base_sha."
+    },
+    "description": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "harness",
+        "trajectory_id",
+        "step_range",
+        "steps_digest",
+        "project"
+      ],
+      "properties": {
+        "harness": {
+          "type": "string",
+          "enum": ["claude", "codex", "openagents", "antigravity", "opencode"]
+        },
+        "trajectory_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "step_range": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "steps_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "ATIF sorted-key SHA-256 digest of the steps array."
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "target_sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "derivation": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "redacted" },
+            "source": { "type": ["string", "null"] }
+          },
+          "required": ["kind", "source"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "baseline": {
+      "type": "object",
+      "required": [
+        "model",
+        "turns",
+        "tool_calls",
+        "failed_tool_calls",
+        "cost_usd_micros",
+        "wall_s",
+        "passed"
+      ],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "turns": { "type": "integer", "minimum": 1 },
+        "tool_calls": { "type": "integer", "minimum": 0 },
+        "failed_tool_calls": { "type": "integer", "minimum": 0 },
+        "prompt_tokens": { "type": "integer", "minimum": 0 },
+        "completion_tokens": { "type": "integer", "minimum": 0 },
+        "cached_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd_micros": { "type": "integer", "minimum": 0 },
+        "wall_s": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "budget_usd_micros": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["send"],
+        "properties": {
+          "send": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "graders": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "not_timed_out",
+              "ended",
+              "command",
+              "outside_unchanged",
+              "no_guard_trips",
+              "file_exists",
+              "file_contains"
+            ]
+          },
+          "run": { "type": "string" },
+          "restore": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

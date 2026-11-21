@@ -1,0 +1,700 @@
+// ATIF-v1.8 append-only log (.atif.jsonl) writer/reader and
+// openagents.atif-manifest.v1 builder (NIP-ATIF).
+//
+// Log record lifecycle (one JSON object per line, trailing '\n'):
+//   {"record":"session","schema_version":"ATIF-v1.8","at":...,"session":{...}}
+//   {"record":"step","step":{...}}
+//   {"record":"end","at":...,"state":"ended"}
+//
+// Each step follows Harbor ATIF-v1.8 fields: step_id (1-based), source
+// ("system" | "user" | "agent"), message, optional timestamp,
+// reasoning_content, model_name, tool_calls, observation, metrics, extra.
+// Unreported metric counts stay absent, never fabricated as zero.
+//   coax/bin/coax test coax/lib/nostr/atif/log.coax
+#load "digest.coax";
+
+ATIF_SCHEMA_VERSION :: "ATIF-v1.8";
+ATIF_MANIFEST_V :: "openagents.atif-manifest.v1";
+ATIF_MEDIA_LOG :: "application/jsonl";
+ATIF_MEDIA_DOC :: "application/json";
+
+ATIF_SOURCE_SYSTEM :: "system";
+ATIF_SOURCE_USER :: "user";
+ATIF_SOURCE_AGENT :: "agent";
+
+ATIF_STATE_ENDED :: "ended";
+ATIF_STATE_INTERRUPTED :: "interrupted";
+
+ATIF_COV_COMPLETE :: "complete";
+ATIF_COV_PARTIAL :: "partial";
+
+ATIF_REC_INVALID :: 0;
+ATIF_REC_SESSION :: 1;
+ATIF_REC_STEP :: 2;
+ATIF_REC_END :: 3;
+
+AtifSessionHeader :: struct {
+  trajectory_id: string;
+  session_id: string;
+  schema_version: string;
+  agent_name: string;
+  model_name: string;
+  cwd: string;
+  git_branch: string;
+  source_harness: string;
+  created_at: string;
+}
+
+AtifMetrics :: struct {
+  has_prompt: bool;
+  prompt_tokens: int;
+  has_completion: bool;
+  completion_tokens: int;
+  has_cached: bool;
+  cached_tokens: int;
+  has_cost: bool;
+  cost_usd_micros: int;
+}
+
+AtifStep :: struct {
+  step_id: int;
+  timestamp: string;
+  source: string;
+  message: string;
+  reasoning_content: string;
+  model_name: string;
+  tool_calls_json: string;    // JSON array "[...]" when non-empty
+  observation_json: string;   // JSON object "{\"results\":[...]}" when non-empty
+  metrics: AtifMetrics;
+  extra_json: string;         // JSON object "{...}" when non-empty
+}
+
+AtifManifestInput :: struct {
+  trajectory_id: string;
+  session_id: string;
+  schema_version: string;
+  form: string;               // "log" or "document"
+  artifact_digest: string;    // "sha256:" + 64 hex
+  artifact_size: int;
+  steps_digest: string;       // 64 lowercase hex
+  step_count: int;
+  state: string;              // "ended" or "interrupted"
+  coverage: string;           // "complete" or "partial"
+  derivation_kind: string;    // "" for null, else "converted" | "redacted" | "truncated"
+  derivation_source: string;  // "" for null, else 64 hex
+}
+
+AtifParsedRecord :: struct {
+  kind: int;
+  ok: bool;
+  schema_version: string;
+  trajectory_id: string;
+  session_id: string;
+  step_id: int;
+  source: string;
+  message: string;
+  reasoning_content: string;
+  model_name: string;
+  timestamp: string;
+  state: string;
+  step_raw: string;
+  has_tool_calls: bool;
+  has_observation: bool;
+}
+
+AtifLogSummary :: struct {
+  ok: bool;
+  faults: int;
+  has_session: bool;
+  has_end: bool;
+  step_count: int;
+  ended: bool;
+  schema_version: [32] u8;
+  schema_version_n: int;
+  trajectory_id: [256] u8;
+  trajectory_id_n: int;
+  session_id: [256] u8;
+  session_id_n: int;
+  steps_digest: [64] u8;
+  digest_ok: bool;
+  digest_matches: bool;
+}
+
+// Readers accept ATIF-v1.0 through ATIF-v1.8 (NIP-ATIF "Manifest").
+atif_version_supported :: (v: string) -> bool {
+  if v.count != 9 { return false; }
+  if v[0..<8] != "ATIF-v1." { return false; }
+  return v[8] >= '0' && v[8] <= '8';
+}
+
+atif_source_valid :: (s: string) -> bool {
+  return s == ATIF_SOURCE_SYSTEM || s == ATIF_SOURCE_USER || s == ATIF_SOURCE_AGENT;
+}
+
+// Writes integer micro-dollars as an exact JSON decimal number (e.g. 185000 -> 0.185).
+atif_jo_micros :: (o: [] Jo, micros: int) {
+  jo_value(o);
+  m := micros;
+  if m < 0 { jo_byte(o, '-'); m = -m; }
+  whole := m / 1000000;
+  frac := m % 1000000;
+  // Write whole part
+  tmp: [20] u8; k := 0;
+  x := whole;
+  while true {
+    tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10;
+    if x == 0 { break; }
+  }
+  for i: 0..<k { jo_byte(o, tmp[k - 1 - i]); }
+  if frac == 0 { return; }
+  jo_byte(o, '.');
+  fb: [6] u8;
+  f := frac;
+  for i: 0..<6 { fb[5 - i] = cast(u8) ('0' + (f % 10)); f /= 10; }
+  end := 6;
+  while end > 1 && fb[end - 1] == '0' { end -= 1; } // mutant: equivalent (frac != 0 guarantees a non-zero digit in fb[0..<6])
+  for i: 0..<end { jo_byte(o, fb[i]); }
+}
+
+// Appends one ATIF tool call object to `o` (inside an open array).
+atif_jo_tool_call :: (o: [] Jo, tool_call_id: string, function_name: string, arguments_json: string) {
+  jo_obj(o);
+  jo_key(o, "tool_call_id"); jo_str(o, tool_call_id);
+  jo_key(o, "function_name"); jo_str(o, function_name);
+  jo_key(o, "arguments");
+  if arguments_json.count >= 2 && arguments_json[0] == '{' {
+    jo_raw(o, arguments_json);
+  } else {
+    jo_obj(o);
+    if arguments_json != "" { jo_key(o, "raw"); jo_str(o, arguments_json); }
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+// Appends one ATIF observation result object to `o` (inside an open "results" array).
+atif_jo_obs_result :: (o: [] Jo, source_call_id: string, content: string, is_error: bool) {
+  jo_obj(o);
+  if source_call_id.count > 0 { jo_key(o, "source_call_id"); jo_str(o, source_call_id); }
+  jo_key(o, "content"); jo_str(o, content);
+  if is_error {
+    jo_key(o, "extra"); jo_obj(o); jo_key(o, "is_error"); jo_bool(o, true); jo_end(o);
+  }
+  jo_end(o);
+}
+
+// Writes the opening `session` record line (including trailing '\n'). Returns bytes written or -1.
+atif_write_session_line :: (hdr: AtifSessionHeader, out: [] u8) -> int {
+  ver := ifx hdr.schema_version != "" then hdr.schema_version else ATIF_SCHEMA_VERSION;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "record"); jo_str(o[..], "session");
+  jo_key(o[..], "schema_version"); jo_str(o[..], ver);
+  if hdr.created_at != "" { jo_key(o[..], "at"); jo_str(o[..], hdr.created_at); }
+  jo_key(o[..], "session");
+  jo_obj(o[..]);
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], hdr.trajectory_id);
+  if hdr.session_id != "" { jo_key(o[..], "session_id"); jo_str(o[..], hdr.session_id); }
+  jo_key(o[..], "agent");
+  jo_obj(o[..]);
+  jo_key(o[..], "name"); jo_str(o[..], ifx hdr.agent_name != "" then hdr.agent_name else "unknown");
+  if hdr.model_name != "" { jo_key(o[..], "model_name"); jo_str(o[..], hdr.model_name); }
+  jo_end(o[..]);
+  if hdr.cwd != "" || hdr.git_branch != "" || hdr.source_harness != "" {
+    jo_key(o[..], "extra");
+    jo_obj(o[..]);
+    if hdr.source_harness != "" { jo_key(o[..], "source_harness"); jo_str(o[..], hdr.source_harness); }
+    if hdr.cwd != "" { jo_key(o[..], "cwd"); jo_str(o[..], hdr.cwd); }
+    if hdr.git_branch != "" { jo_key(o[..], "git_branch"); jo_str(o[..], hdr.git_branch); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Writes one ATIF step object `{...}` (no newline) into `out`. Returns bytes written or -1.
+atif_write_step_json :: (step: AtifStep, out: [] u8) -> int {
+  if step.step_id < 1 || !atif_source_valid(step.source) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "step_id"); jo_int(o[..], step.step_id);
+  if step.timestamp != "" { jo_key(o[..], "timestamp"); jo_str(o[..], step.timestamp); }
+  jo_key(o[..], "source"); jo_str(o[..], step.source);
+  jo_key(o[..], "message"); jo_str(o[..], step.message);
+  if step.model_name != "" { jo_key(o[..], "model_name"); jo_str(o[..], step.model_name); }
+  if step.reasoning_content != "" { jo_key(o[..], "reasoning_content"); jo_str(o[..], step.reasoning_content); }
+  if step.tool_calls_json != "" { jo_key(o[..], "tool_calls"); jo_raw(o[..], step.tool_calls_json); }
+  if step.observation_json != "" { jo_key(o[..], "observation"); jo_raw(o[..], step.observation_json); }
+  m := step.metrics;
+  if m.has_prompt || m.has_completion || m.has_cached || m.has_cost {
+    jo_key(o[..], "metrics");
+    jo_obj(o[..]);
+    if m.has_prompt { jo_key(o[..], "prompt_tokens"); jo_int(o[..], m.prompt_tokens); }
+    if m.has_completion { jo_key(o[..], "completion_tokens"); jo_int(o[..], m.completion_tokens); }
+    if m.has_cached { jo_key(o[..], "cached_tokens"); jo_int(o[..], m.cached_tokens); }
+    if m.has_cost { jo_key(o[..], "cost_usd"); atif_jo_micros(o[..], m.cost_usd_micros); }
+    jo_end(o[..]);
+  }
+  if step.extra_json != "" { jo_key(o[..], "extra"); jo_raw(o[..], step.extra_json); }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Wraps an already-encoded step object into `{"record":"step","step":...}\n`.
+atif_write_step_line :: (step_json: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "record"); jo_str(o[..], "step");
+  jo_key(o[..], "step"); jo_raw(o[..], step_json);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Writes the closing `end` record line (including trailing '\n').
+atif_write_end_line :: (at: string, state: string, out: [] u8) -> int {
+  st := ifx state.count > 0 then state else ATIF_STATE_ENDED;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "record"); jo_str(o[..], "end");
+  if at.count > 0 { jo_key(o[..], "at"); jo_str(o[..], at); }
+  jo_key(o[..], "state"); jo_str(o[..], st);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Builds a closed `openagents.atif-manifest.v1` JSON object (NIP-ATIF "Manifest").
+atif_write_manifest :: (m: AtifManifestInput, out: [] u8) -> int {
+  if m.trajectory_id.count < 1 || m.trajectory_id.count > 256 { return -1; }
+  ver := ifx m.schema_version != "" then m.schema_version else ATIF_SCHEMA_VERSION;
+  if !atif_version_supported(ver) { return -1; }
+  form := ifx m.form != "" then m.form else "log";
+  media := ifx form == "document" then ATIF_MEDIA_DOC else ATIF_MEDIA_LOG;
+  st := ifx m.state != "" then m.state else ATIF_STATE_ENDED;
+  cov := ifx m.coverage != "" then m.coverage else ATIF_COV_PARTIAL;
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "v"); jo_str(o[..], ATIF_MANIFEST_V);
+  jo_key(o[..], "requires"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], m.trajectory_id);
+  jo_key(o[..], "session_id");
+  if m.session_id != "" { jo_str(o[..], m.session_id); } else { jo_null(o[..]); }
+  jo_key(o[..], "schema_version"); jo_str(o[..], ver);
+  jo_key(o[..], "form"); jo_str(o[..], form);
+  jo_key(o[..], "artifact");
+  jo_obj(o[..]);
+  jo_key(o[..], "digest"); jo_str(o[..], m.artifact_digest);
+  jo_key(o[..], "size"); jo_int(o[..], m.artifact_size);
+  jo_key(o[..], "media_type"); jo_str(o[..], media);
+  jo_key(o[..], "schema"); jo_str(o[..], ver);
+  jo_end(o[..]);
+  jo_key(o[..], "steps_digest"); jo_str(o[..], m.steps_digest);
+  jo_key(o[..], "step_count"); jo_int(o[..], m.step_count);
+  jo_key(o[..], "state"); jo_str(o[..], st);
+  jo_key(o[..], "coverage"); jo_str(o[..], cov);
+  jo_key(o[..], "derivation");
+  if m.derivation_kind != "" {
+    jo_obj(o[..]);
+    jo_key(o[..], "kind"); jo_str(o[..], m.derivation_kind);
+    jo_key(o[..], "source");
+    if m.derivation_source != "" { jo_str(o[..], m.derivation_source); } else { jo_null(o[..]); }
+    jo_end(o[..]);
+  } else {
+    jo_null(o[..]);
+  }
+  jo_key(o[..], "chunks"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "task"); jo_null(o[..]);
+  jo_key(o[..], "run"); jo_null(o[..]);
+  jo_key(o[..], "selector"); jo_null(o[..]);
+  jo_key(o[..], "parent"); jo_null(o[..]);
+  jo_key(o[..], "children"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "previous"); jo_null(o[..]);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---- Reader / Verifier
+
+atif_arena_str :: (d: Jv, node: int, arena: [] u8, used: [] int) -> string {
+  if jv_kind(d, node) != JV_STRING { return ""; }
+  n := jv_str(d, node, arena[used[0]..<arena.count]);
+  if n < 0 { return ""; } // mutant: equivalent (n == 0 returns empty slice in both branches)
+  start := used[0];
+  used[0] += n;
+  return cast(string) arena[start..<used[0]];
+}
+
+// Parses one `.atif.jsonl` line into an `AtifParsedRecord`. Decoded strings live
+// in `arena`; `step_raw` borrows directly from `line`.
+atif_parse_line :: (line: string, arena: [] u8) -> AtifParsedRecord {
+  r: AtifParsedRecord;
+  nodes: [ATIF_CANON_NODES] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) { return r; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return r; }
+  used: [1] int;
+  rec := atif_arena_str(d[0], jv_get(d[0], 0, "record"), arena, used[..]);
+  if rec == "session" {
+    ver := atif_arena_str(d[0], jv_get(d[0], 0, "schema_version"), arena, used[..]);
+    if !atif_version_supported(ver) { return r; }
+    sess := jv_get(d[0], 0, "session");
+    if jv_kind(d[0], sess) != JV_OBJECT { return r; }
+    r.kind = ATIF_REC_SESSION;
+    r.ok = true;
+    r.schema_version = ver;
+    r.trajectory_id = atif_arena_str(d[0], jv_get(d[0], sess, "trajectory_id"), arena, used[..]);
+    r.session_id = atif_arena_str(d[0], jv_get(d[0], sess, "session_id"), arena, used[..]);
+    r.timestamp = atif_arena_str(d[0], jv_get(d[0], 0, "at"), arena, used[..]);
+    r.model_name = atif_arena_str(d[0], jv_path(d[0], sess, "agent.model_name"), arena, used[..]);
+    return r;
+  }
+  if rec == "step" {
+    st := jv_get(d[0], 0, "step");
+    if jv_kind(d[0], st) != JV_OBJECT { return r; }
+    sid := jv_int(d[0], jv_get(d[0], st, "step_id"), 0);
+    src := atif_arena_str(d[0], jv_get(d[0], st, "source"), arena, used[..]);
+    if sid < 1 || !atif_source_valid(src) { return r; }
+    r.kind = ATIF_REC_STEP;
+    r.ok = true;
+    r.step_id = sid;
+    r.source = src;
+    r.message = atif_arena_str(d[0], jv_get(d[0], st, "message"), arena, used[..]);
+    r.reasoning_content = atif_arena_str(d[0], jv_get(d[0], st, "reasoning_content"), arena, used[..]);
+    r.model_name = atif_arena_str(d[0], jv_get(d[0], st, "model_name"), arena, used[..]);
+    r.timestamp = atif_arena_str(d[0], jv_get(d[0], st, "timestamp"), arena, used[..]);
+    r.step_raw = jv_raw(d[0], st);
+    r.has_tool_calls = jv_kind(d[0], jv_get(d[0], st, "tool_calls")) == JV_ARRAY;
+    r.has_observation = jv_kind(d[0], jv_get(d[0], st, "observation")) == JV_OBJECT;
+    return r;
+  }
+  if rec == "end" {
+    r.kind = ATIF_REC_END;
+    r.ok = true;
+    r.timestamp = atif_arena_str(d[0], jv_get(d[0], 0, "at"), arena, used[..]);
+    r.state = atif_arena_str(d[0], jv_get(d[0], 0, "state"), arena, used[..]);
+    if r.state.count == 0 { r.state = ATIF_STATE_ENDED; }
+    return r;
+  }
+  return r;
+}
+
+atif_copy_str :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count; // mutant: equivalent (src.count == dst.count yields same n)
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Verifies an `.atif.jsonl` log in memory: checks lifecycle, parses every line,
+// computes `steps_digest`, and compares with `expected_steps_digest` when non-empty.
+atif_verify_log :: (log_bytes: string, expected_steps_digest: string) -> AtifLogSummary {
+  s: AtifLogSummary;
+  sh: [1] AtifStepsHasher;
+  atif_steps_hash_init(sh[..]);
+  arena: [65536] u8;
+  scratch: [65536] u8;
+  from := 0;
+  for i: 0..<log_bytes.count {
+    if log_bytes[i] != 10 { continue; }
+    line := log_bytes[from..<i];
+    from = i + 1;
+    rec := atif_parse_line(line, arena[..]);
+    if !rec.ok { s.faults += 1; continue; }
+    if s.has_end { s.faults += 1; continue; }
+    if rec.kind == ATIF_REC_SESSION {
+      if s.has_session { s.faults += 1; continue; }
+      s.has_session = true;
+      s.schema_version_n = atif_copy_str(s.schema_version[..], rec.schema_version);
+      s.trajectory_id_n = atif_copy_str(s.trajectory_id[..], rec.trajectory_id);
+      s.session_id_n = atif_copy_str(s.session_id[..], rec.session_id);
+    } else if rec.kind == ATIF_REC_STEP {
+      if !s.has_session { s.faults += 1; continue; }
+      if atif_steps_hash_step(sh[..], rec.step_raw, scratch[..]) != ATIF_DIGEST_OK {
+        s.faults += 1;
+        continue;
+      }
+      s.step_count += 1;
+    } else if rec.kind == ATIF_REC_END {
+      if !s.has_session { s.faults += 1; continue; }
+      s.has_end = true;
+      s.ended = rec.state == ATIF_STATE_ENDED;
+    }
+  }
+  // A trailing unterminated line is a fault per NIP-ATIF / atif::log.
+  if from < log_bytes.count { s.faults += 1; }
+  if atif_steps_hash_final(sh[..], s.steps_digest[..]) == ATIF_DIGEST_OK {
+    s.digest_ok = true;
+    if expected_steps_digest.count == 0 || cast(string) s.steps_digest[..] == expected_steps_digest {
+      s.digest_matches = true;
+    }
+  }
+  s.ok = s.has_session && s.faults == 0 && s.digest_ok && s.digest_matches;
+  return s;
+}
+
+// ---- checks
+
+#test "ATIF version and source validation match NIP-ATIF 1.0..1.8 contract" {
+  #assert atif_version_supported("ATIF-v1.0") && atif_version_supported("ATIF-v1.7") && atif_version_supported("ATIF-v1.8");
+  #assert !atif_version_supported("ATIF-v1./") && !atif_version_supported("ATIF-v1.9") && !atif_version_supported("ATIF-v2.0");
+  #assert !atif_version_supported("ATIF-v1.80") && !atif_version_supported("ATIF-v1.") && !atif_version_supported("");
+  #assert atif_source_valid("system") && atif_source_valid("user") && atif_source_valid("agent");
+  #assert !atif_source_valid("assistant") && !atif_source_valid("");
+}
+
+#test "ATIF log writer, parser, and verifier round-trip with exact steps_digest" {
+  buf: [8192] u8; n := 0;
+  hdr := AtifSessionHeader.{
+    trajectory_id = "traj-demo-1",
+    session_id = "sess-demo-1",
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "claude-code",
+    model_name = "claude-opus-5-5",
+    cwd = "/work/openagents",
+    git_branch = "main",
+    source_harness = "claude",
+    created_at = "2026-11-20T00:00:00Z",
+  };
+  k := atif_write_session_line(hdr, buf[n..<buf.count]);
+  #assert k > 0;
+  #assert cast(string) buf[0..<k] == "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":\"2026-11-20T00:00:00Z\",\"session\":{\"trajectory_id\":\"traj-demo-1\",\"session_id\":\"sess-demo-1\",\"agent\":{\"name\":\"claude-code\",\"model_name\":\"claude-opus-5-5\"},\"extra\":{\"source_harness\":\"claude\",\"cwd\":\"/work/openagents\",\"git_branch\":\"main\"}}}\n";
+  n += k;
+
+  s1_buf: [2048] u8;
+  s1 := AtifStep.{step_id = 1, source = ATIF_SOURCE_USER, message = "hi"};
+  s1_n := atif_write_step_json(s1, s1_buf[..]);
+  #assert s1_n > 0 && cast(string) s1_buf[0..<s1_n] == "{\"step_id\":1,\"source\":\"user\",\"message\":\"hi\"}";
+  k = atif_write_step_line(cast(string) s1_buf[0..<s1_n], buf[n..<buf.count]);
+  #assert k > 0; n += k;
+
+  s2_buf: [2048] u8;
+  s2 := AtifStep.{
+    step_id = 2,
+    source = ATIF_SOURCE_AGENT,
+    message = "ok",
+    metrics = AtifMetrics.{has_prompt = true, prompt_tokens = 10, has_completion = true, completion_tokens = 5},
+  };
+  s2_n := atif_write_step_json(s2, s2_buf[..]);
+  #assert s2_n > 0;
+  k = atif_write_step_line(cast(string) s2_buf[0..<s2_n], buf[n..<buf.count]);
+  #assert k > 0; n += k;
+
+  k = atif_write_end_line("2026-11-20T00:01:00Z", ATIF_STATE_ENDED, buf[n..<buf.count]);
+  #assert k > 0 && cast(string) buf[n..<n + k] == "{\"record\":\"end\",\"at\":\"2026-11-20T00:01:00Z\",\"state\":\"ended\"}\n";
+  n += k;
+
+  // Must match the exact Python oracle digest for those two steps.
+  expected := "fa7a3207fb5b7f5af13282301653bea3a553cb0ec07f61e9542131273d5fb5e6";
+  sum := atif_verify_log(cast(string) buf[0..<n], expected);
+  #assert sum.ok && sum.faults == 0 && sum.has_session && sum.has_end && sum.step_count == 2;
+  #assert sum.ended && sum.digest_ok && sum.digest_matches;
+  #assert cast(string) sum.schema_version[0..<sum.schema_version_n] == "ATIF-v1.8";
+  #assert cast(string) sum.trajectory_id[0..<sum.trajectory_id_n] == "traj-demo-1";
+  #assert cast(string) sum.session_id[0..<sum.session_id_n] == "sess-demo-1";
+  #assert cast(string) sum.steps_digest[..] == expected;
+  // Mismatched expected digest fails verification
+  bad_sum := atif_verify_log(cast(string) buf[0..<n], "0000000000000000000000000000000000000000000000000000000000000000");
+  #assert !bad_sum.ok && bad_sum.digest_ok && !bad_sum.digest_matches;
+  // Empty expected digest accepts computed digest
+  any_sum := atif_verify_log(cast(string) buf[0..<n], "");
+  #assert any_sum.ok && any_sum.digest_matches;
+}
+
+#test "ATIF manifest builder emits closed openagents.atif-manifest.v1 object and enforces bounds" {
+  art: [71] u8;
+  #assert atif_artifact_digest("sample\n", art[..]) == ATIF_DIGEST_OK;
+  m := AtifManifestInput.{
+    trajectory_id = "traj-1",
+    session_id = "sess-1",
+    schema_version = ATIF_SCHEMA_VERSION,
+    form = "log",
+    artifact_digest = cast(string) art[..],
+    artifact_size = 7,
+    steps_digest = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    step_count = 0,
+    state = ATIF_STATE_ENDED,
+    coverage = ATIF_COV_PARTIAL,
+    derivation_kind = "converted",
+    derivation_source = "",
+  };
+  buf: [4096] u8;
+  n := atif_write_manifest(m, buf[..]);
+  #assert n > 0 && buf[n - 1] == 10;
+  nodes: [256] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) buf[0..<n], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "v")) == ATIF_MANIFEST_V;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "trajectory_id")) == "traj-1";
+  #assert jv_raw(d[0], jv_get(d[0], 0, "session_id")) == "sess-1";
+  #assert jv_raw(d[0], jv_get(d[0], 0, "schema_version")) == ATIF_SCHEMA_VERSION;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "form")) == "log";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "artifact.media_type")) == ATIF_MEDIA_LOG;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "coverage")) == "partial";
+  #assert jv_raw(d[0], jv_get(d[0], 0, "state")) == "ended";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "derivation.kind")) == "converted";
+  #assert jv_kind(d[0], jv_path(d[0], 0, "derivation.source")) == JV_NULL;
+  #assert jv_len(d[0], jv_get(d[0], 0, "chunks")) == 0;
+  #assert jv_len(d[0], jv_get(d[0], 0, "requires")) == 0;
+
+  // Defaults + document form + null session_id + null derivation + redacted with source
+  m2 := AtifManifestInput.{
+    trajectory_id = "t",
+    form = "document",
+    artifact_digest = cast(string) art[..],
+    artifact_size = 7,
+    steps_digest = m.steps_digest,
+    step_count = 1,
+  };
+  n2 := atif_write_manifest(m2, buf[..]);
+  #assert n2 > 0 && jv_parse(d[..], cast(string) buf[0..<n2], nodes[..]);
+  #assert jv_kind(d[0], jv_get(d[0], 0, "session_id")) == JV_NULL;
+  #assert jv_kind(d[0], jv_get(d[0], 0, "derivation")) == JV_NULL;
+  #assert jv_raw(d[0], jv_path(d[0], 0, "artifact.media_type")) == ATIF_MEDIA_DOC;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "schema_version")) == ATIF_SCHEMA_VERSION;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "state")) == ATIF_STATE_ENDED;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "coverage")) == ATIF_COV_PARTIAL;
+
+  m3 := m; m3.form = ""; m3.derivation_kind = "redacted"; m3.derivation_source = m.steps_digest;
+  n3 := atif_write_manifest(m3, buf[..]);
+  #assert n3 > 0 && jv_parse(d[..], cast(string) buf[0..<n3], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "form")) == "log";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "derivation.source")) == m.steps_digest;
+
+  // Refusals: empty id, 257-byte id, bad version, tiny buffer
+  m_bad := m; m_bad.trajectory_id = ""; #assert atif_write_manifest(m_bad, buf[..]) == -1;
+  id256: [256] u8; for i: 0..<256 { id256[i] = 'a'; }
+  id257: [257] u8; for i: 0..<257 { id257[i] = 'a'; }
+  m_bad.trajectory_id = cast(string) id256[..]; #assert atif_write_manifest(m_bad, buf[..]) > 0;
+  m_bad.trajectory_id = cast(string) id257[..]; #assert atif_write_manifest(m_bad, buf[..]) == -1;
+  m_bad = m; m_bad.schema_version = "ATIF-v2.0"; #assert atif_write_manifest(m_bad, buf[..]) == -1;
+  #assert atif_write_manifest(m, buf[0..<16]) == -1;
+}
+
+#test "ATIF cost_usd, tool_calls, observation, optional fields, and writer bounds" {
+  buf: [1024] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_arr(o[..]);
+  atif_jo_micros(o[..], 0);
+  atif_jo_micros(o[..], 185000);
+  atif_jo_micros(o[..], 1002500);
+  atif_jo_micros(o[..], 2000000);
+  atif_jo_micros(o[..], 10000000);
+  atif_jo_micros(o[..], 5);
+  atif_jo_micros(o[..], -500000);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "[0,0.185,1.0025,2,10,0.000005,-0.5]";
+
+  tc_buf: [512] u8; jo_start(o[..], tc_buf[..]);
+  jo_arr(o[..]);
+  atif_jo_tool_call(o[..], "c1", "Bash", "{}");
+  atif_jo_tool_call(o[..], "c2", "Note", "x");
+  atif_jo_tool_call(o[..], "c3", "Noop", "");
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "[{\"tool_call_id\":\"c1\",\"function_name\":\"Bash\",\"arguments\":{}},{\"tool_call_id\":\"c2\",\"function_name\":\"Note\",\"arguments\":{\"raw\":\"x\"}},{\"tool_call_id\":\"c3\",\"function_name\":\"Noop\",\"arguments\":{}}]";
+
+  obs_buf: [512] u8; jo_start(o[..], obs_buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "results"); jo_arr(o[..]);
+  atif_jo_obs_result(o[..], "c", "ok", false);
+  atif_jo_obs_result(o[..], "", "boom", true);
+  jo_end(o[..]); jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"results\":[{\"source_call_id\":\"c\",\"content\":\"ok\"},{\"content\":\"boom\",\"extra\":{\"is_error\":true}}]}";
+
+  // Full step with every optional field
+  step_buf: [2048] u8;
+  full := AtifStep.{
+    step_id = 1,
+    timestamp = "2026-11-20T00:00:01Z",
+    source = ATIF_SOURCE_AGENT,
+    message = "running",
+    reasoning_content = "check files",
+    model_name = "claude-opus-5-5",
+    tool_calls_json = "[{\"tool_call_id\":\"c1\",\"function_name\":\"Bash\",\"arguments\":{}}]",
+    observation_json = jo_text(o[..]),
+    metrics = AtifMetrics.{has_prompt = true, prompt_tokens = 3, has_completion = true, completion_tokens = 4, has_cached = true, cached_tokens = 2, has_cost = true, cost_usd_micros = 5000},
+    extra_json = "{\"k\":1}",
+  };
+  sn := atif_write_step_json(full, step_buf[..]);
+  #assert sn > 0;
+  #assert cast(string) step_buf[0..<sn] == "{\"step_id\":1,\"timestamp\":\"2026-11-20T00:00:01Z\",\"source\":\"agent\",\"message\":\"running\",\"model_name\":\"claude-opus-5-5\",\"reasoning_content\":\"check files\",\"tool_calls\":[{\"tool_call_id\":\"c1\",\"function_name\":\"Bash\",\"arguments\":{}}],\"observation\":{\"results\":[{\"source_call_id\":\"c\",\"content\":\"ok\"},{\"content\":\"boom\",\"extra\":{\"is_error\":true}}]},\"metrics\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"cached_tokens\":2,\"cost_usd\":0.005},\"extra\":{\"k\":1}}";
+  #assert atif_write_step_json(AtifStep.{step_id = 0, source = ATIF_SOURCE_USER}, step_buf[..]) == -1;
+  #assert atif_write_step_json(AtifStep.{step_id = 1, source = "bad"}, step_buf[..]) == -1;
+  #assert atif_write_step_json(full, step_buf[0..<10]) == -1;
+
+  // 1-byte optional strings kill `count > 0` -> `count > 1` mutants; individual metrics flags
+  one_step := AtifStep.{step_id = 1, timestamp = "t", source = ATIF_SOURCE_AGENT, message = "m", model_name = "M", reasoning_content = "r", tool_calls_json = "[]", observation_json = "{}", extra_json = "{}"};
+  on_n := atif_write_step_json(one_step, step_buf[..]);
+  #assert on_n > 0 && cast(string) step_buf[0..<on_n] == "{\"step_id\":1,\"timestamp\":\"t\",\"source\":\"agent\",\"message\":\"m\",\"model_name\":\"M\",\"reasoning_content\":\"r\",\"tool_calls\":[],\"observation\":{},\"extra\":{}}";
+  c_n := atif_write_step_json(AtifStep.{step_id = 1, source = ATIF_SOURCE_AGENT, metrics = AtifMetrics.{has_completion = true, completion_tokens = 1}}, step_buf[..]);
+  #assert c_n > 0 && cast(string) step_buf[0..<c_n] == "{\"step_id\":1,\"source\":\"agent\",\"message\":\"\",\"metrics\":{\"completion_tokens\":1}}";
+  #assert atif_write_step_json(AtifStep.{step_id = 1, source = ATIF_SOURCE_AGENT, metrics = AtifMetrics.{has_cached = true, cached_tokens = 7}}, step_buf[..]) > 0;
+  #assert atif_write_step_json(AtifStep.{step_id = 1, source = ATIF_SOURCE_AGENT, metrics = AtifMetrics.{has_cost = true, cost_usd_micros = 1}}, step_buf[..]) > 0;
+
+  // Minimal session header + 1-byte optional fields + minimal end line + tiny buffer failures
+  sb: [512] u8;
+  sn0 := atif_write_session_line(AtifSessionHeader.{trajectory_id = "t0"}, sb[..]);
+  #assert sn0 > 0 && cast(string) sb[0..<sn0] == "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":{\"trajectory_id\":\"t0\",\"agent\":{\"name\":\"unknown\"}}}\n";
+  sn1 := atif_write_session_line(AtifSessionHeader.{trajectory_id = "t", session_id = "s", agent_name = "a", model_name = "m", cwd = "c", git_branch = "b", source_harness = "h", created_at = "x"}, sb[..]);
+  #assert sn1 > 0 && cast(string) sb[0..<sn1] == "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":\"x\",\"session\":{\"trajectory_id\":\"t\",\"session_id\":\"s\",\"agent\":{\"name\":\"a\",\"model_name\":\"m\"},\"extra\":{\"source_harness\":\"h\",\"cwd\":\"c\",\"git_branch\":\"b\"}}}\n";
+  sn2 := atif_write_session_line(AtifSessionHeader.{trajectory_id = "t1", cwd = "c"}, sb[..]);
+  #assert sn2 > 0 && cast(string) sb[0..<sn2] == "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":{\"trajectory_id\":\"t1\",\"agent\":{\"name\":\"unknown\"},\"extra\":{\"cwd\":\"c\"}}}\n";
+  sn3 := atif_write_session_line(AtifSessionHeader.{trajectory_id = "t2", git_branch = "b"}, sb[..]);
+  #assert sn3 > 0 && cast(string) sb[0..<sn3] == "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":{\"trajectory_id\":\"t2\",\"agent\":{\"name\":\"unknown\"},\"extra\":{\"git_branch\":\"b\"}}}\n";
+  #assert atif_write_session_line(AtifSessionHeader.{trajectory_id = "t0"}, sb[0..<8]) == -1;
+  #assert atif_write_step_line("{}", sb[0..<8]) == -1;
+  en0 := atif_write_end_line("", "", sb[..]);
+  #assert en0 > 0 && cast(string) sb[0..<en0] == "{\"record\":\"end\",\"state\":\"ended\"}\n";
+  en1 := atif_write_end_line("x", "e", sb[..]);
+  #assert en1 > 0 && cast(string) sb[0..<en1] == "{\"record\":\"end\",\"at\":\"x\",\"state\":\"e\"}\n";
+  #assert atif_write_end_line("", "", sb[0..<8]) == -1;
+}
+
+#test "ATIF log parser and verifier catch every lifecycle and format fault" {
+  arena: [2048] u8;
+  // Parse refusals
+  #assert !atif_parse_line("bad", arena[..]).ok;
+  #assert !atif_parse_line("[]", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"unknown\"}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"session\",\"schema_version\":\"ATIF-v2.0\",\"session\":{}}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":1}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"step\",\"step\":1}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"step\",\"step\":{\"step_id\":0,\"source\":\"user\"}}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"step\",\"step\":{\"source\":\"user\"}}", arena[..]).ok;
+  #assert !atif_parse_line("{\"record\":\"step\",\"step\":{\"step_id\":1,\"source\":\"bad\"}}", arena[..]).ok;
+
+  // Valid end with/without state & timestamp; session & step fields round-trip
+  re := atif_parse_line("{\"record\":\"end\",\"at\":\"2026-11-20T00:00:00Z\"}", arena[..]);
+  #assert re.ok && re.kind == ATIF_REC_END && re.state == ATIF_STATE_ENDED && re.timestamp == "2026-11-20T00:00:00Z";
+  rs := atif_parse_line("{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":\"2026-11-20T00:00:00Z\",\"session\":{\"trajectory_id\":\"t\",\"session_id\":\"s\",\"agent\":{\"model_name\":\"m\"}}}", arena[..]);
+  #assert rs.ok && rs.kind == ATIF_REC_SESSION && rs.timestamp == "2026-11-20T00:00:00Z" && rs.model_name == "m";
+  rst := atif_parse_line("{\"record\":\"step\",\"step\":{\"step_id\":1,\"source\":\"agent\",\"message\":\"m\",\"reasoning_content\":\"r\",\"model_name\":\"mm\",\"timestamp\":\"ts\",\"tool_calls\":[],\"observation\":{}}}", arena[..]);
+  #assert rst.ok && rst.kind == ATIF_REC_STEP && rst.step_id == 1 && rst.source == ATIF_SOURCE_AGENT && rst.message == "m" && rst.reasoning_content == "r" && rst.model_name == "mm" && rst.timestamp == "ts" && rst.has_tool_calls && rst.has_observation;
+  // Tiny arena fails string decode gracefully
+  tiny: [2] u8;
+  #assert !atif_parse_line("{\"record\":\"end\"}", tiny[..]).ok;
+
+  // Verifier lifecycle faults
+  sess := "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":{\"trajectory_id\":\"t\"}}\n";
+  step := "{\"record\":\"step\",\"step\":{\"step_id\":1,\"source\":\"user\",\"message\":\"hi\"}}\n";
+  end_i := "{\"record\":\"end\",\"state\":\"interrupted\"}\n";
+  #assert atif_verify_log("\n\n", "").faults == 2;
+  #assert atif_verify_log("x\n", "").faults == 1;
+  #assert atif_verify_log("not-json\n", "").faults == 1;
+  #assert atif_verify_log(step, "").faults == 1;
+  #assert atif_verify_log("{\"record\":\"end\"}\n", "").faults == 1;
+  dup: [512] u8; dn := atif_copy_str(dup[..], sess); dn += atif_copy_str(dup[dn..<dup.count], sess);
+  #assert atif_verify_log(cast(string) dup[0..<dn], "").faults == 1;
+  after: [512] u8; an := atif_copy_str(after[..], sess); an += atif_copy_str(after[an..<after.count], end_i); an += atif_copy_str(after[an..<after.count], step);
+  s_after := atif_verify_log(cast(string) after[0..<an], "");
+  #assert !s_after.ok && s_after.faults == 1 && !s_after.ended;
+  #assert atif_verify_log("{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"session\":{\"trajectory_id\":\"t\"}}", "").faults == 1;
+  // Step exceeding canonicalizer scratch (65536) is counted as a fault
+  big: [66000] u8; bn := atif_copy_str(big[..], sess);
+  bn += atif_copy_str(big[bn..<big.count], "{\"record\":\"step\",\"step\":{\"step_id\":1,\"source\":\"user\",\"message\":\"");
+  for i: 0..<65600 { big[bn] = 'a'; bn += 1; }
+  bn += atif_copy_str(big[bn..<big.count], "\"}}\n");
+  #assert atif_verify_log(cast(string) big[0..<bn], "").faults == 1;
+  small: [2] u8; #assert atif_copy_str(small[..], "abcd") == 2 && cast(string) small[..] == "ab";
+}
