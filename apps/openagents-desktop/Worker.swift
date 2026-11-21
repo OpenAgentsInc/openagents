@@ -766,7 +766,15 @@ enum CoderAntigravity {
         try? FileManager.default.createDirectory(atPath: profileDir, withIntermediateDirectories: true)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: agy)
-        p.arguments = ["--user-data-dir", profileDir]
+        p.arguments = ["acp", "--gemini-dir", profileDir, "--app-data-dir", "antigravity-acp", "--login"]
+        var env = ProcessInfo.processInfo.environment
+        for k in ["GOOGLE_APPLICATION_CREDENTIALS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_QUOTA_PROJECT", "CLOUDSDK_CORE_PROJECT"] {
+            env.removeValue(forKey: k)
+        }
+        env["GEMINI_HOME"] = profileDir
+        env["AGY_CLI_DISABLE_AUTO_UPDATE"] = "1"
+        if env["SSH_CONNECTION"] == nil { env["SSH_CONNECTION"] = "127.0.0.1 0 127.0.0.1 0" }
+        p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do { try p.run(); return true } catch { return false }

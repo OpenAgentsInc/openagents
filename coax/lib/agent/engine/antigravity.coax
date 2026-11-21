@@ -161,9 +161,83 @@ agy_prepare_launch :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: strin
     if !has_ssh_conn && !agy_env_has(e, "SSH_CONNECTION") {
       agy_env_push(e, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
     }
+    // Strip ambient Google credentials so an isolated OAuth profile cannot inherit another account (#13837).
+    l[0].unset[0] = "GOOGLE_APPLICATION_CREDENTIALS";
+    l[0].unset[1] = "GEMINI_API_KEY";
+    l[0].unset[2] = "GOOGLE_API_KEY";
+    l[0].unset[3] = "GOOGLE_CLOUD_PROJECT";
+    l[0].unset[4] = "GOOGLE_CLOUD_QUOTA_PROJECT";
+    l[0].unset[5] = "CLOUDSDK_CORE_PROJECT";
+    l[0].unset_n = 6;
   }
   for i: 0..<e[0].nvars { l[0].env[i] = e[0].vars[i]; }
   l[0].env_n = e[0].nvars;
+}
+
+// Prepare an isolated `agy acp ... --login` launch with DISPLAY/WAYLAND_DISPLAY stripped so
+// agy prints the Google OAuth URL to stdout instead of opening a browser (#13837).
+agy_prepare_login :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: string, profile_dir: string) {
+  agy_prepare_launch(l, e, program, cwd, profile_dir, false, false, false);
+  if l[0].args_n < l[0].args.count { l[0].args[l[0].args_n] = "--login"; l[0].args_n += 1; }
+  if l[0].unset_n + 2 <= l[0].unset.count {
+    l[0].unset[l[0].unset_n] = "DISPLAY"; l[0].unset_n += 1;
+    l[0].unset[l[0].unset_n] = "WAYLAND_DISPLAY"; l[0].unset_n += 1;
+  }
+}
+
+// Extract and validate an https://accounts.google.com/... OAuth URL from `agy --login` output (#13837).
+AGY_OAUTH_PREFIX :: "https://accounts.google.com/";
+agy_parse_oauth_url :: (text: string, out: [] u8) -> string {
+  if text.count < AGY_OAUTH_PREFIX.count { return ""; }
+  start := -1;
+  for i: 0..<text.count - AGY_OAUTH_PREFIX.count + 1 {
+    if cast(string) text[i..<i + AGY_OAUTH_PREFIX.count] == AGY_OAUTH_PREFIX { start = i; break; }
+  }
+  if start < 0 { return ""; }
+  end := start;
+  while end < text.count && text[end] > 32 && text[end] != '"' && text[end] != '\'' && text[end] != ')' && text[end] != '>' {
+    end += 1;
+  }
+  url := cast(string) text[start..<end];
+  if url.count <= AGY_OAUTH_PREFIX.count || url.count > out.count { return ""; }
+  return cast(string) out[0..<cl_copy(out, url)];
+}
+
+// Validate a loopback OAuth callback URL (http://127.0.0.1:... or http://localhost:... with code=) (#13837).
+agy_validate_callback_url :: (url: string) -> bool {
+  if url.count < 16 { return false; }
+  is_v4 := url.count >= 17 && cast(string) url[0..<17] == "http://127.0.0.1:";
+  is_lh := url.count >= 17 && cast(string) url[0..<17] == "http://localhost:";
+  if !is_v4 && !is_lh { return false; }
+  return s_has(url, "code=");
+}
+
+// Drain running Antigravity processes and clear session state on sign-out (#13837).
+agy_signout_drain :: (x: [] CuEngine) {
+  if x[0].live { cue_close(x); }
+  x[0].nresume = 0;
+  x[0].last_session_n = 0;
+  x[0].restart_required = false;
+  x[0].ready = false;
+}
+
+// Parse skill names from a skills.json file ({"skills":[{"name":"..."}]} or [{"name":"..."}]) (#13837).
+agy_parse_skills_json :: (json: string, ar: [] ClArena, out_names: [] u8) -> int {
+  arr := cl_raw(json, "skills");
+  if arr.count == 0 { arr = json; }
+  n := cl_count(arr);
+  if n <= 0 { return 0; }
+  used := 0;
+  for i: 0..<n {
+    item := cl_json(arr, cl_item(arr, i));
+    name := cl_str(ar, item, "name");
+    if name.count == 0 { continue; }
+    need := name.count + (ifx used > 0 then 1 else 0);
+    if used + need > out_names.count { break; }
+    if used > 0 { out_names[used] = '\n'; used += 1; }
+    used += cl_copy(out_names[used..<out_names.count], name);
+  }
+  return used;
 }
 
 // Parse an Antigravity agentInfo.version (stripping any agy_acp_server_ prefix).
@@ -846,4 +920,31 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   #assert agy_is_snippet_patch("fn foo() {\n...\n}");
   #assert !agy_is_snippet_patch("--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-a\n+b\n");
   #assert !agy_is_snippet_patch("");
+}
+
+#test "antigravity: OAuth --login launch, profile env stripping, callback validation, sign-out drain, and skills.json" {
+  e: [1] AgyEnv; l: [1] CuLaunch;
+  agy_prepare_login(l[..], e[..], "/usr/local/bin/agy", "/tmp", "/tmp/p1");
+  #assert l[0].args_n == 5 && l[0].args[0] == "--gemini-dir" && l[0].args[1] == "/tmp/p1" && l[0].args[4] == "--login";
+  #assert l[0].unset_n == 8 && l[0].unset[0] == "GOOGLE_APPLICATION_CREDENTIALS" && l[0].unset[6] == "DISPLAY" && l[0].unset[7] == "WAYLAND_DISPLAY";
+
+  ub: [256] u8;
+  #assert agy_parse_oauth_url("Open https://accounts.google.com/o/oauth2/v2/auth?client_id=abc in your browser.", ub[..]) == "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc";
+  #assert agy_parse_oauth_url("Open https://evil.example.com/oauth in your browser.", ub[..]) == "";
+  #assert agy_validate_callback_url("http://127.0.0.1:41234/callback?code=xyz&state=1");
+  #assert agy_validate_callback_url("http://localhost:8080/cb?code=abc");
+  #assert !agy_validate_callback_url("https://evil.example.com/?code=abc");
+  #assert !agy_validate_callback_url("http://127.0.0.1:41234/callback?state=1");
+
+  // Sign-out drain clears session/resume state
+  xb: [1] CuEngine; x := xb[..];
+  x[0].nresume = 3; x[0].last_session_n = 4; x[0].restart_required = true; x[0].ready = true;
+  agy_signout_drain(x);
+  #assert x[0].nresume == 0 && x[0].last_session_n == 0 && !x[0].restart_required && !x[0].ready;
+
+  // skills.json discovery
+  ab: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  sb: [256] u8;
+  sn := agy_parse_skills_json("{\"skills\":[{\"name\":\"coax-review\"},{\"name\":\"git-hygiene\"}]}", ar[..], sb[..]);
+  #assert cast(string) sb[0..<sn] == "coax-review\ngit-hygiene";
 }
