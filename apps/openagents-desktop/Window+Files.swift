@@ -7,15 +7,11 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension CoderWindow {
-    /// A file a row, a reply or an attachment names: a text file opens in the pane, anything else
-    /// (a picture, a PDF) in the Mac's own app for it, as before.
+    /// A file a row, a reply or an attachment names: opens in the pane (editable text up to 128 KB,
+    /// syntax-highlighted code, or rich read-only preview for CSV/TSV, .ipynb, images, PDFs, binary hex).
     func openNamedFile(_ url: URL) {
         if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
             openFileInPane(url)
-            return
-        }
-        if let type = UTType(filenameExtension: url.pathExtension), type.isDeclared, !type.conforms(to: .text) {
-            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
             return
         }
         openFileInPane(url)
@@ -63,10 +59,6 @@ extension CoderWindow {
         do { data = try Data(contentsOf: url) } catch {
             cd_file_failed(page, shown, "Coder couldn't read \(name): \(error.localizedDescription)"); wake(); return
         }
-        guard String(data: data, encoding: .utf8) != nil else {
-            cd_file_failed(page, shown, "\(name) isn't text, so Coder can't show it here. Open it in its own app with the button above.")
-            wake(); return
-        }
         let ok = data.withUnsafeBytes { raw in
             cd_file_open(page, shown, raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), Int64(size))
         }
@@ -99,7 +91,8 @@ extension CoderWindow {
     @discardableResult
     func saveOpenFile() -> Bool {
         guard let url = fileURL, cd_file_mode(page) == 1 else { return false }
-        var out = [CChar](repeating: 0, count: 16384 + 1)
+        let cap = max(Int(cd_file_edit_most()), 16384) + 1
+        var out = [CChar](repeating: 0, count: cap)
         let n = cd_file_text(page, &out, Int32(out.count))
         guard n >= 0 else { return false }
         let data = out.withUnsafeBufferPointer { Data(buffer: UnsafeBufferPointer(rebasing: $0[0..<Int(n)])) }
@@ -158,6 +151,171 @@ extension CoderWindow {
             return
         }
         ws.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - File Explorer Tree, Multi-Tab & Open-in-Editor Picker (page/filetree.coax, GitHub #13881)
+
+    /// Handles File Explorer / Open-in-Editor host asks (cd_action 86..89).
+    func fileTreeAsked(_ what: Int32) {
+        switch what {
+        case 86: refreshFileTree()
+        case 87: openFileTreeRequestedPath()
+        case 88: launchPickedEditor()
+        case 89: closeFileTreeTab()
+        default: break
+        }
+    }
+
+    /// Populates the collapsible File Explorer directory tree from git ls-files / folder walk
+    /// (respecting .gitignore) and refreshes the detected installed editors catalog.
+    func refreshFileTree() {
+        detectInstalledEditors()
+        let root = folder
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let lines = CoderWindow.folderFiles(root, most: 512)
+            DispatchQueue.main.async {
+                guard let self, self.folder == root else { return }
+                _ = cd_filetree_set(self.page, lines)
+                self.wake()
+            }
+        }
+    }
+
+    /// Detects installed macOS IDEs/terminals and hands the installed mask to page/filetree.coax.
+    func detectInstalledEditors() {
+        let fm = FileManager.default
+        var mask: Int32 = 0
+        let checks: [(Int32, [String])] = [
+            (0, ["/Applications/Cursor.app", "/usr/local/bin/cursor", "/opt/homebrew/bin/cursor"]),
+            (1, ["/Applications/Visual Studio Code.app", "/usr/local/bin/code", "/opt/homebrew/bin/code"]),
+            (2, ["/Applications/Zed.app", "/usr/local/bin/zed", "/opt/homebrew/bin/zed"]),
+            (3, ["/Applications/Xcode.app", "/usr/bin/xed"]),
+            (4, ["/Applications/Ghostty.app", "/opt/homebrew/bin/ghostty"]),
+            (5, ["/System/Library/CoreServices/Finder.app"]),
+        ]
+        for (bit, paths) in checks {
+            if paths.contains(where: { fm.fileExists(atPath: $0) }) {
+                mask |= (1 << bit)
+            }
+        }
+        let custom = UserDefaults.standard.string(forKey: "openagents.customEditor") ?? ""
+        let sshHost = UserDefaults.standard.string(forKey: "openagents.sshHost") ?? ""
+        cd_editors_set(page, mask, custom, sshHost)
+    }
+
+    /// Opens the path selected in the File Explorer tree or multi-tab bar.
+    private func openFileTreeRequestedPath() {
+        var buf = [CChar](repeating: 0, count: 1024)
+        let n = cd_filetree_req_path(page, &buf, Int32(buf.count))
+        guard n > 0 else { return }
+        let raw = String(cString: buf)
+        let url: URL
+        if raw.hasPrefix("~") {
+            url = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
+        } else if raw.hasPrefix("/") {
+            url = URL(fileURLWithPath: raw)
+        } else {
+            url = folder.appendingPathComponent(raw)
+        }
+        openFileInPane(url)
+    }
+
+    /// Closes a tab from the multi-tab bar, asking to save if it is the currently open dirty file.
+    private func closeFileTreeTab() {
+        let idx = cd_filetree_close_tab(page)
+        guard idx >= 0 else { return }
+        var pbuf = [CChar](repeating: 0, count: 1024)
+        let pn = cd_filetree_tab_path(page, idx, &pbuf, Int32(pbuf.count))
+        let tabPath = pn > 0 ? String(cString: pbuf) : ""
+        let activePath = fileURL.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
+        let finishDrop: () -> Void = { [weak self] in
+            guard let self else { return }
+            let nextIdx = cd_filetree_tab_drop(self.page, idx)
+            if tabPath == activePath {
+                if nextIdx >= 0 {
+                    var nbuf = [CChar](repeating: 0, count: 1024)
+                    if cd_filetree_tab_path(self.page, nextIdx, &nbuf, Int32(nbuf.count)) > 0 {
+                        let nextRaw = String(cString: nbuf)
+                        let nextURL = nextRaw.hasPrefix("~")
+                            ? URL(fileURLWithPath: (nextRaw as NSString).expandingTildeInPath)
+                            : (nextRaw.hasPrefix("/") ? URL(fileURLWithPath: nextRaw) : self.folder.appendingPathComponent(nextRaw))
+                        self.openFileInPane(nextURL)
+                        return
+                    }
+                }
+                self.dropFile()
+            } else {
+                self.wake()
+            }
+        }
+        if tabPath == activePath && cd_file_dirty(page) != 0 {
+            askToSave(then: finishDrop)
+        } else {
+            finishDrop()
+        }
+    }
+
+    /// Launches the editor picked in the Open-in-Editor dropdown at the active file & caret line
+    /// (or the active worktree folder if no file is open).
+    func launchPickedEditor() {
+        let edId = cd_editor_pick_id(page)
+        guard edId >= 0 else { return }
+        let targetURL = fileURL ?? folder
+        let line = max(Int(cd_file_line(page)), 1)
+        let path = targetURL.path
+        let fm = FileManager.default
+        let ws = NSWorkspace.shared
+
+        func runCLI(_ candidates: [String], args: [String], appFallback: String?) {
+            for bin in candidates where fm.isExecutableFile(atPath: bin) {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: bin)
+                p.arguments = args
+                p.standardOutput = FileHandle.nullDevice
+                p.standardError = FileHandle.nullDevice
+                if (try? p.run()) != nil { return }
+            }
+            if let app = appFallback, fm.fileExists(atPath: app) {
+                ws.open([targetURL], withApplicationAt: URL(fileURLWithPath: app), configuration: NSWorkspace.OpenConfiguration())
+            }
+        }
+
+        switch edId {
+        case 0: // Cursor
+            runCLI(["/usr/local/bin/cursor", "/opt/homebrew/bin/cursor", "/Applications/Cursor.app/Contents/Resources/app/bin/cursor"],
+                   args: fileURL != nil ? ["-g", "\(path):\(line)"] : [path],
+                   appFallback: "/Applications/Cursor.app")
+        case 1: // VS Code
+            runCLI(["/usr/local/bin/code", "/opt/homebrew/bin/code", "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"],
+                   args: fileURL != nil ? ["-g", "\(path):\(line)"] : [path],
+                   appFallback: "/Applications/Visual Studio Code.app")
+        case 2: // Zed
+            runCLI(["/usr/local/bin/zed", "/opt/homebrew/bin/zed", "/Applications/Zed.app/Contents/MacOS/cli"],
+                   args: fileURL != nil ? ["\(path):\(line)"] : [path],
+                   appFallback: "/Applications/Zed.app")
+        case 3: // Xcode
+            runCLI(["/usr/bin/xed"],
+                   args: fileURL != nil ? ["-l", "\(line)", path] : [path],
+                   appFallback: "/Applications/Xcode.app")
+        case 4: // Ghostty
+            let dir = fileURL?.deletingLastPathComponent() ?? folder
+            runCLI(["/usr/bin/open"], args: ["-a", "Ghostty", dir.path], appFallback: "/Applications/Ghostty.app")
+        case 5: // Finder
+            ws.activateFileViewerSelecting([targetURL])
+        case 6: // Custom Editor
+            var cmdBuf = [CChar](repeating: 0, count: 1024)
+            let cn = cd_editor_cmd(page, edId, path, Int32(fileURL != nil ? line : 0), &cmdBuf, Int32(cmdBuf.count))
+            if cn > 0 {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/bin/sh")
+                p.arguments = ["-c", String(cString: cmdBuf)]
+                p.standardOutput = FileHandle.nullDevice
+                p.standardError = FileHandle.nullDevice
+                _ = try? p.run()
+            }
+        default:
+            break
+        }
     }
 
     // MARK: - 3D PLE Scene Viewport (SceneView.swift, GitHub #13792)

@@ -1,20 +1,12 @@
-// Coder Desktop page (../page.coax): a file in the pane on the window's right (GitHub #13760),
-// as Zeron's file preview shows one (crates/ui/src/files): its name on the pane's tab, Edited
-// while it has changes that are not saved, Save, Open in Default App and Close; under them its
-// path, then its text in the code face with each line's number in a gutter. A file up to the
-// shared editor's size (EB_TEXT bytes, CP_FP_EDIT_LINES lines) is edited in place: it is the
-// page's fifth editor (editor.coax, CP_ED_FILE). A longer one, up to CP_FP_MOST bytes, is shown
-// read-only, and the pane says why. A file Coder could not read says that instead.
-//
-// The host reads and writes the file (Window+Files.swift): a press on a file a row or a reply names
-// opens it here, so does a .coax file the Mac opens with Coder (#13759). The page asks the host to
-// save (CP_ASK_FILE_SAVE), to open the file in the Mac's own app for it (CP_ASK_FILE_EXTERNAL) and
-// to close it (CP_ASK_FILE_CLOSE: the host asks first when it has changes). The pane takes the
-// window's right side over a sub-agent's transcript and the code review; a press on either of
-// those shows it, and the file comes back when it closes.
+// Coder Desktop page (../page.coax): a file in the pane on the window's right (GitHub #13760, #13881),
+// with collapsible File Explorer directory tree, multi-tab open files, syntax-highlighted editing
+// up to 128 KB / 4,096 lines, rich read-only previews (CSV/TSV, Jupyter .ipynb, binary hex,
+// image/PDF metadata), and Open-in-Editor picker.
 
-CP_FP_MOST :: 262144;        // bytes the pane shows; a longer file is not read
-CP_FP_EDIT_LINES :: 512;     // lines a file may have to be edited here (the shared editor's rows, wrapped)
+CP_FP_MOST :: 524288;        // bytes the pane shows (512 KB); a longer file is not read
+CP_FP_EDIT_MOST :: 131072;   // bytes a file may have to be edited inline (128 KB, lifted from 16 KB in #13881)
+CP_FP_EDIT_LINES :: 4096;    // lines a file may have to be edited inline (4,096 lines, lifted from 512 in #13881)
+CP_FP_SMALL_LINES :: 512;    // lines fitting in the shared UiEditor; larger files use large_edit mode
 CP_FP_PATH :: 1024;          // bytes of the path it shows
 CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3; CP_FP_SCENE :: 4;   // what the pane holds
 // what its controls dispatch, and what it asks of the host (coder_page_action)
@@ -27,40 +19,69 @@ CpFilePane :: struct {
   open: bool;
   front: bool;                // in front of a sub-agent's transcript or the review
   mode: int;                  // CP_FP_*
+  large_edit: bool;           // true when editing a file > EB_TEXT or > CP_FP_SMALL_LINES (up to 128 KB / 4,096 lines)
   path: [CP_FP_PATH] u8; path_n: int;   // as the host shows it (~/work/app/a.coax)
   src: [] u8;                 // the file as last read or saved, in the host's buffer (it keeps it until the next)
   size: int;                  // its bytes on disk
   why: [512] u8; why_n: int;  // why it could not be read, or why the last save failed
   save_failed: bool;
-  text: [EB_TEXT] u8; text_n: int;   // what the editor holds, as it last published it
+  text: [CP_FP_EDIT_MOST] u8; text_n: int;   // what the editor holds, as it last published it
+  caret: int;                 // byte offset of caret in large_edit mode
   dirty: bool;                // text is not what the file holds
   saved: bool;                // saved since it opened, with no change after
-  scroll: f32; content: f32; view: f32;   // the read-only view's scroll
-  body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the pane body rect in logical points (for native 3D scene viewport)
+  scroll: f32; content: f32; view: f32;   // the read-only / large-edit view's scroll
+  body_x: f32; body_y: f32; body_w: f32; body_h: f32; cell_w: f32;   // the pane body rect and mono cell width in logical points
 }
 
 // ---------------------------------------------------------------- what the rest of the page asks
 
-// Whether the pane draws the file: it is open, in front, or nothing else wants the pane.
-cp_fp_shown :: (s: [] CoderPage) -> bool { fp := s[0].fp[..]; return fp[0].open && !cp_sim_front(s) && !cp_term_front(s) && (fp[0].front || !(s[0].pane_open || s[0].review)); }
+// Whether the pane draws the file or file explorer: open, in front, or nothing else wants the pane.
+cp_fp_shown :: (s: [] CoderPage) -> bool {
+  fp := s[0].fp[..]; ft := s[0].ft[..];
+  any_open := fp[0].open || ft[0].open;
+  any_front := fp[0].front || ft[0].front;
+  return any_open && !cp_sim_front(s) && !cp_term_front(s) && (any_front || !(s[0].pane_open || s[0].review));
+}
 // Whether the file's editor is on screen: the keyboard can go to it.
-cp_fp_editing :: (s: [] CoderPage) -> bool { return cp_fp_shown(s) && s[0].fp[0].mode == CP_FP_EDIT && !s[0].set_open; }
+cp_fp_editing :: (s: [] CoderPage) -> bool {
+  return cp_fp_shown(s) && s[0].fp[0].open && s[0].fp[0].mode == CP_FP_EDIT && !s[0].set_open;
+}
 cp_fp_name :: (s: [] CoderPage) -> string {
   p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
   at := p.count;
   while at > 0 && p[at - 1] != '/' { at -= 1; }
   return cast(string) p[at..<p.count];
 }
-// What the tab says after the name: Edited, Saved, Read-only, or nothing.
+// What the tab says after the name: Edited, Saved, Read-only, Preview, or nothing.
 cp_fp_state :: (s: [] CoderPage) -> string {
   fp := s[0].fp[..];
   if fp[0].mode == CP_FP_SCENE { return "3D Scene"; }
-  if fp[0].mode == CP_FP_READ { return "Read-only"; }
+  if fp[0].mode == CP_FP_READ {
+    pk := s[0].ft[0].preview_kind;
+    if pk == CP_FT_PREV_CSV { return "Table"; }
+    if pk == CP_FT_PREV_IPYNB { return "Notebook"; }
+    if pk == CP_FT_PREV_HEX { return "Hex"; }
+    if pk == CP_FT_PREV_IMAGE { return "Image"; }
+    if pk == CP_FT_PREV_PDF { return "PDF"; }
+    return "Read-only";
+  }
   if fp[0].mode != CP_FP_EDIT { return ""; }
   return ifx fp[0].dirty then "Edited" else ifx fp[0].saved then "Saved" else "";
 }
-// The editor's text, as the page keeps it (editor.coax opens the field on it).
+// The editor's text, as the page keeps it (editor.coax opens the field on it for small files).
 cp_fp_text :: (s: [] CoderPage) -> string { return cast(string) s[0].fp[0].text[0..<s[0].fp[0].text_n]; }
+// Current 1-based caret line number in the open file (for Open-in-Editor at line).
+cp_fp_caret_line :: (s: [] CoderPage) -> int {
+  fp := s[0].fp[..];
+  if !fp[0].open || fp[0].mode != CP_FP_EDIT { return 1; }
+  t := cp_fp_text(s);
+  cpos := ifx fp[0].large_edit then fp[0].caret else s[0].fld[0].ed[CP_ED_FILE].body[0].ed[0].caret;
+  if cpos > t.count { cpos = t.count; }
+  if cpos < 0 { cpos = 0; }
+  ln := 1;
+  for i: 0..<cpos { if t[i] == '\n' { ln += 1; } }
+  return ln;
+}
 // What the editor holds becomes the page's: changed when it is not the file's text.
 cp_fp_publish :: (s: [] CoderPage, text: string) {
   fp := s[0].fp[..];
@@ -68,19 +89,22 @@ cp_fp_publish :: (s: [] CoderPage, text: string) {
   dirty := text != cast(string) fp[0].src;
   if dirty { fp[0].saved = false; }
   fp[0].dirty = dirty;
+  cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], dirty);
 }
 // The file editor's skin: the code face on its own line, no room above the text for a scroll.
+// Text ink is transparent when syntax highlighting paints colored runs on top.
 cp_fp_skin :: (k: UiSkin) -> UiSkin {
   sk := k;
   sk.body.face = k.mono.face; sk.body.line = k.mono.line; sk.cmp.line = k.mono.line; sk.cmp.pad_top = 0;
+  sk.ink = Rgba.{};   // selection, caret, and IME underline draw from UiEditor; colored syntax runs draw over it
   return sk;
 }
 // A press on a sub-agent's row or the Review button while the file is in front: that pane comes
 // forward (the file stays open behind it). True when the press did all it asked.
 cp_fp_yield :: (s: [] CoderPage, act: int, id: string) -> bool {
-  fp := s[0].fp[..];
-  if !fp[0].open || !fp[0].front || act != CP_REVIEW && act != CP_AGENT { return false; }
-  fp[0].front = false;
+  fp := s[0].fp[..]; ft := s[0].ft[..];
+  if (!fp[0].open && !ft[0].open) || (!fp[0].front && !ft[0].front) || act != CP_REVIEW && act != CP_AGENT { return false; }
+  fp[0].front = false; ft[0].front = false; ft[0].editor_menu = false;
   if act == CP_REVIEW && s[0].review { s[0].pane_tab = CP_TAB_CHANGES; return true; }
   if act == CP_AGENT && s[0].pane_open && s[0].pane_turn == cp_number(id, "t") && s[0].pane_agent == cp_number(id, ".g") { s[0].pane_tab = CP_TAB_AGENT; return true; }
   return false;
@@ -92,11 +116,10 @@ cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_FP_EXTERNAL { s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
   return false;
 }
-// The wheel over the pane: the editor's rows move (and stop following the caret until it moves),
-// or the read-only text does.
+// The wheel over the pane: the editor's rows move, or the read-only / large-edit view does.
 cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
   fp := s[0].fp[..];
-  if fp[0].mode == CP_FP_EDIT {
+  if fp[0].open && fp[0].mode == CP_FP_EDIT && !fp[0].large_edit {
     c := s[0].fld[0].ed[CP_ED_FILE].body[..];
     c[0].follow = false; c[0].scroll += delta;
     most := cast(f32) c[0].lines * composer_line(c) - c[0].view_h;
@@ -107,10 +130,140 @@ cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
   fp[0].scroll = scroll_clamp(fp[0].scroll + delta, fp[0].content, fp[0].view);
 }
 
-// ---------------------------------------------------------------- drawing
+// ---------------------------------------------------------------- large-file (>16 KB) inline editing
+
+cp_fp_large_sync_dirty :: (s: [] CoderPage) {
+  fp := s[0].fp[..];
+  dirty := cp_fp_text(s) != cast(string) fp[0].src;
+  if dirty { fp[0].saved = false; }
+  fp[0].dirty = dirty;
+  cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], dirty);
+}
+
+cp_fp_large_insert :: (s: [] CoderPage, ins: string) -> bool {
+  fp := s[0].fp[..];
+  if !fp[0].open || fp[0].mode != CP_FP_EDIT || !fp[0].large_edit { return false; }
+  if ins.count == 0 { return true; }
+  if fp[0].text_n + ins.count > CP_FP_EDIT_MOST { return false; }
+  pos := fp[0].caret;
+  if pos < 0 { pos = 0; }
+  if pos > fp[0].text_n { pos = fp[0].text_n; }
+  // shift tail right
+  i := fp[0].text_n - 1;
+  while i >= pos {
+    fp[0].text[i + ins.count] = fp[0].text[i];
+    i -= 1;
+  }
+  for k: 0..<ins.count { fp[0].text[pos + k] = ins[k]; }
+  fp[0].text_n += ins.count;
+  fp[0].caret = pos + ins.count;
+  cp_fp_large_sync_dirty(s);
+  return true;
+}
+
+cp_fp_large_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  fp := s[0].fp[..];
+  if !fp[0].open || fp[0].mode != CP_FP_EDIT || !fp[0].large_edit { return false; }
+  pos := fp[0].caret;
+  if pos < 0 { pos = 0; }
+  if pos > fp[0].text_n { pos = fp[0].text_n; }
+  if key == KEY_ENTER && mods == 0 { return cp_fp_large_insert(s, "\n"); }
+  if key == -15 && mods == 0 { return cp_fp_large_insert(s, "  "); }
+  if key == KEY_BACKSPACE {
+    if pos == 0 { return true; }
+    del := pos - 1;
+    while del > 0 && (fp[0].text[del] & 0xC0) == 0x80 { del -= 1; }
+    span := pos - del;
+    for i: pos..<fp[0].text_n { fp[0].text[i - span] = fp[0].text[i]; }
+    fp[0].text_n -= span;
+    fp[0].caret = del;
+    cp_fp_large_sync_dirty(s);
+    return true;
+  }
+  if key == KEY_DELETE {
+    if pos >= fp[0].text_n { return true; }
+    end := pos + 1;
+    while end < fp[0].text_n && (fp[0].text[end] & 0xC0) == 0x80 { end += 1; }
+    span := end - pos;
+    for i: end..<fp[0].text_n { fp[0].text[i - span] = fp[0].text[i]; }
+    fp[0].text_n -= span;
+    cp_fp_large_sync_dirty(s);
+    return true;
+  }
+  if key == KEY_LEFT {
+    if (mods & MOD_CMD) != 0 {
+      while pos > 0 && fp[0].text[pos - 1] != '\n' { pos -= 1; }
+      fp[0].caret = pos; return true;
+    }
+    if pos > 0 { pos -= 1; while pos > 0 && (fp[0].text[pos] & 0xC0) == 0x80 { pos -= 1; } }
+    fp[0].caret = pos; return true;
+  }
+  if key == KEY_RIGHT {
+    if (mods & MOD_CMD) != 0 {
+      while pos < fp[0].text_n && fp[0].text[pos] != '\n' { pos += 1; }
+      fp[0].caret = pos; return true;
+    }
+    if pos < fp[0].text_n { pos += 1; while pos < fp[0].text_n && (fp[0].text[pos] & 0xC0) == 0x80 { pos += 1; } }
+    fp[0].caret = pos; return true;
+  }
+  if key == KEY_UP || key == KEY_DOWN {
+    // find start of current line and column
+    ls := pos; while ls > 0 && fp[0].text[ls - 1] != '\n' { ls -= 1; }
+    col := pos - ls;
+    if key == KEY_UP {
+      if ls == 0 { fp[0].caret = 0; return true; }
+      pe := ls - 1;
+      ps := pe; while ps > 0 && fp[0].text[ps - 1] != '\n' { ps -= 1; }
+      plen := pe - ps;
+      fp[0].caret = ps + (ifx col < plen then col else plen);
+    } else {
+      le := pos; while le < fp[0].text_n && fp[0].text[le] != '\n' { le += 1; }
+      if le >= fp[0].text_n { fp[0].caret = fp[0].text_n; return true; }
+      ns := le + 1;
+      ne := ns; while ne < fp[0].text_n && fp[0].text[ne] != '\n' { ne += 1; }
+      nlen := ne - ns;
+      fp[0].caret = ns + (ifx col < nlen then col else nlen);
+    }
+    return true;
+  }
+  return false;
+}
+
+cp_fp_large_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool {
+  fp := s[0].fp[..];
+  if phase != 0 || !cp_fp_editing(s) || !fp[0].large_edit { return false; }
+  if !(fp[0].body_w > 0 && fp[0].body_h > 0) { return false; }
+  if x < fp[0].body_x || x >= fp[0].body_x + fp[0].body_w || y < fp[0].body_y || y >= fp[0].body_y + fp[0].body_h { return false; }
+  cp_ed_focus(s, CP_KB_FILE);
+  k := cp_skin();
+  lh := ifx k.mono.line > 0 then k.mono.line else 18.0f32;
+  cell := ifx fp[0].cell_w > 0 then fp[0].cell_w else 8.0f32;
+  if !(cell > 0) { cell = 8.0f32; }
+  target_ln := cast(int) ((y - fp[0].body_y + fp[0].scroll) / lh);
+  if target_ln < 0 { target_ln = 0; }
+  target_col := cast(int) ((x - fp[0].body_x) / cell);
+  if target_col < 0 { target_col = 0; }
+  t := cp_fp_text(s);
+  at := 0; ln := 0;
+  while at < t.count && ln < target_ln {
+    if t[at] == '\n' { ln += 1; }
+    at += 1;
+  }
+  c := 0;
+  while at < t.count && t[at] != '\n' && c < target_col {
+    at += 1;
+    while at < t.count && (t[at] & 0xC0) == 0x80 { at += 1; }
+    c += 1;
+  }
+  fp[0].caret = at;
+  return true;
+}
+
+// ---------------------------------------------------------------- syntax-highlighted drawing
 
 // How many lines text has (one more than its newlines).
 cp_fp_lines :: (text: string) -> int { n := 1; for c: text { if c == '\n' { n += 1; } } return n; }
+
 // Line number n right-aligned to `right` on the row at y, in the gutter's face; the caret's line in the ink.
 cp_fp_number :: (f: [] UiFrame, n: int, right: f32, y: f32, line: f32, lit: bool) {
   k := f[0].skin; sh := f[0].sheet;
@@ -118,80 +271,176 @@ cp_fp_number :: (f: [] UiFrame, n: int, right: f32, y: f32, line: f32, lit: bool
   w := measure_width(f[0].m, k.mono_tiny.face, t);
   _ := sheet_text(sh, f[0].m, -1, right - w, y, line, k.mono_tiny.face, ifx lit then k.muted else k.faint, t);
 }
-// The pane: the tab with the file's name and state, Save while it has changes, Open in Default App;
-// its path; a notice when it could not be read or saved; then its lines.
+
+// Paints one line of source code using components/core/syntax.coax roles + uiskin_syntax palette
+// (same shared pattern as page/gitdiff.coax). Returns number of syntax runs painted.
+cp_fp_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
+  if code.count == 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  runs: [96] MdRun;
+  nr := syn_rust(code, runs[..]);
+  ln := sheet_line(sh, x, y, lh, true);
+  pen := x; i := 0;
+  for r: 0..<nr {
+    if runs[r].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) code[i..<runs[r].from]); }
+    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(k, runs[r].style, plain), cast(string) code[runs[r].from..<runs[r].to]);
+    i = runs[r].to;
+  }
+  if i < code.count { _ := sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) code[i..<code.count]); }
+  return nr;
+}
+
+// Whether a file path should receive syntax highlighting (false for plain text / rich previews).
+cp_fp_is_code :: (path: string, preview_kind: int) -> bool {
+  if preview_kind != CP_FT_PREV_NONE { return false; }
+  if cp_ft_ends_ci(path, ".txt") || cp_ft_ends_ci(path, ".log") { return false; }
+  return true;
+}
+
+// The pane: multi-tab bar, optional collapsible File Explorer directory tree, Open-in-Editor picker,
+// Save while dirty, Open in Default App, path, rich preview / syntax-highlighted editor / read-only view.
 cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  k := f[0].skin; a := k.app; fp := s[0].fp[..];
+  k := f[0].skin; a := k.app; fp := s[0].fp[..]; ft := s[0].ft[..];
   top := ifx px > 0 then 0.0f32 else cp_bar(s);
   side := a.icon_button; mid := top + CP_CORNER + side / 2;
-  // Open in Default App at the right end of the tab's line, Save before it while there are changes
+
+  // When only the File Explorer tree is open (no file loaded yet): draw tree full-width
+  if !fp[0].open {
+    if px > 0 { sheet_fill(f[0].sheet, px, 0, k.border, h, 0, k.menu_divider); }
+    ex := px + pw - CP_CORNER - side;
+    ft[0].editor_btn_x = ex; ft[0].editor_btn_y = top + CP_CORNER;
+    _ := app_icon_button(f, "coder.ft.editors", ex, top + CP_CORNER, ICON_SHARE, "Open in Editor", APP_BUTTON_QUIET, 0, CP_FT_EDITOR_MENU);
+    stop := app_pane_tab_shell(f, px, top, ex - px, h, ICON_FOLDER, "Files", "coder.ft.state", "", "coder.ft.close", CP_FT_CLOSE, CP_CORNER, 1.0f32);
+    stop += cp_ft_draw_tabs(s, f, px, stop, pw);
+    cp_ft_draw_tree(s, f, px, stop, pw, h - stop);
+    cp_ft_draw_editor_menu(s, f);
+    return;
+  }
+
+  // Right-side header controls: Open in Default App, Open in Editor picker, Tree toggle, Save (when dirty)
   ex := px + pw - CP_CORNER - side;
-  right := ex;
+  ed_x := ex - a.gap_small - side;
+  tree_x := ed_x - a.gap_small - side;
+  right := tree_x;
   if fp[0].mode == CP_FP_EDIT && fp[0].dirty {
-    bw := app_button_width(f, -1, "Save"); right = ex - a.gap_small - bw;
+    bw := app_button_width(f, -1, "Save"); right = tree_x - a.gap_small - bw;
     _ := app_button(f, "coder.file.save", right, mid - k.control_h / 2, bw, -1, "Save", APP_BUTTON_PRIMARY, 0, CP_FP_SAVE);
   }
+  ft[0].editor_btn_x = ed_x; ft[0].editor_btn_y = top + CP_CORNER;
+  _ := app_icon_button(f, "coder.ft.tree_toggle", tree_x, top + CP_CORNER, ICON_FOLDER, ifx ft[0].tree_visible then "Hide File Tree" else "Show File Tree", APP_BUTTON_QUIET, ifx ft[0].tree_visible then EL_S_CURRENT else 0, CP_FT_TREE_TOGGLE);
+  _ := app_icon_button(f, "coder.ft.editors", ed_x, top + CP_CORNER, ICON_CHEVRON, "Open in Editor", APP_BUTTON_QUIET, ifx ft[0].editor_menu then EL_S_CURRENT else 0, CP_FT_EDITOR_MENU);
   _ := app_icon_button(f, "coder.file.external", ex, top + CP_CORNER, ICON_SHARE, "Open in Default App", APP_BUTTON_QUIET, 0, CP_FP_EXTERNAL);
   stop := app_pane_tab_shell(f, px, top, right - px, h, ICON_FILE_TEXT, cp_fp_name(s), "coder.file.state", cp_fp_state(s), "coder.file.close", CP_FP_CLOSE, CP_CORNER, 1.0f32);
-  x := px + a.gap; cw := pw - 2 * a.gap; y := stop;
+
+  // Multi-tab strip when more than one tab (or any tab) is open
+  if ft[0].ntabs > 1 {
+    stop += cp_ft_draw_tabs(s, f, px, stop, pw);
+  }
+
+  // Optional collapsible File Explorer directory tree column on the left side of the file pane
+  fx := px; fw := pw;
+  ft[0].tree_w = 0;
+  if ft[0].tree_visible && pw >= 420.0f32 {
+    tw_col := CP_FT_TREE_W;
+    cp_ft_draw_tree(s, f, px, stop, tw_col, h - stop);
+    fx = px + tw_col;
+    fw = pw - tw_col;
+  }
+
+  x := fx + a.gap; cw := fw - 2 * a.gap; y := stop;
   y += app_meta(f, "coder.file.path", x, y, cw, cast(string) fp[0].path[0..<fp[0].path_n], false) + a.gap_small;
   why := cast(string) fp[0].why[0..<fp[0].why_n];
-  if fp[0].mode == CP_FP_FAILED { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap; return; }
+  if fp[0].mode == CP_FP_FAILED {
+    y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap;
+    cp_ft_draw_editor_menu(s, f);
+    return;
+  }
   if fp[0].mode == CP_FP_SCENE {
-    sx := px + k.border; sw := pw - k.border; sh_h := h - y;
+    sx := fx + k.border; sw := fw - k.border; sh_h := h - y;
     fp[0].body_x = sx; fp[0].body_y = y; fp[0].body_w = ifx sw > 0 then sw else 0.0f32; fp[0].body_h = ifx sh_h > 0 then sh_h else 0.0f32;
     if fp[0].body_w > 0 && fp[0].body_h > 0 {
       _ := uiframe_semantic(f, "coder.file.scene", EL_REGION, cp_fp_name(s), sx, y, fp[0].body_w, fp[0].body_h, 0, 0);
     }
+    cp_ft_draw_editor_menu(s, f);
     return;
   }
   if fp[0].save_failed { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap_small; }
+  pk := ft[0].preview_kind;
   if fp[0].mode == CP_FP_READ {
-    b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 16 KB and 512 lines here; this one is ");
-    n = el_put_i(b[..], n, (fp[0].size + 1023) / 1024); n = el_put(b[..], n, " KB with ");
-    n = el_put_i(b[..], n, cp_fp_lines(cast(string) fp[0].src)); n = el_put(b[..], n, " lines.");
-    y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(f[0].sheet, cast(string) b[0..<n]), false) + a.gap_small;
+    if pk != CP_FT_PREV_NONE && !ft[0].preview_raw {
+      pmsg := ifx pk == CP_FT_PREV_CSV then "CSV/TSV table preview (read-only)."
+              else ifx pk == CP_FT_PREV_IPYNB then "Jupyter notebook cell preview (read-only)."
+              else ifx pk == CP_FT_PREV_HEX then "Binary hex dump preview (read-only)."
+              else ifx pk == CP_FT_PREV_IMAGE then "Image metadata preview (read-only)."
+              else "PDF document metadata preview (read-only).";
+      y += app_meta(f, "coder.file.readonly", x, y, cw, pmsg, false) + a.gap_small;
+    } else {
+      b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 128 KB and 4096 lines here; this one is ");
+      n = el_put_i(b[..], n, (fp[0].size + 1023) / 1024); n = el_put(b[..], n, " KB with ");
+      n = el_put_i(b[..], n, cp_fp_lines(cast(string) fp[0].src)); n = el_put(b[..], n, " lines.");
+      y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(f[0].sheet, cast(string) b[0..<n]), false) + a.gap_small;
+    }
   }
-  // the gutter: as wide as the last line's number, then the text
-  src := ifx fp[0].mode == CP_FP_EDIT then cp_fp_text(s) else cast(string) fp[0].src;
+  // source text to display
+  src := ifx fp[0].mode == CP_FP_EDIT then cp_fp_text(s)
+         else ifx pk != CP_FT_PREV_NONE && !ft[0].preview_raw && ft[0].preview_n > 0 then cast(string) ft[0].preview_buf[0..<ft[0].preview_n]
+         else cast(string) fp[0].src;
   digits := 2; d := cp_fp_lines(src); while d >= 100 { digits += 1; d /= 10; }
   gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
-  gx := x + gw; tx := gx + a.gap; tw := px + pw - a.gap - tx;
+  gx := x + gw; tx := gx + a.gap; tw := fx + fw - a.gap - tx;
   body := y; bh := h - a.gap_small - body;
-  if !(bh > 0) || !(tw > 0) { return; }
+  if !(bh > 0) || !(tw > 0) { cp_ft_draw_editor_menu(s, f); return; }
+  fp[0].body_x = tx; fp[0].body_y = body; fp[0].body_w = tw; fp[0].body_h = bh;
   _ := uiframe_semantic(f, "coder.file.body", EL_TEXT, cp_fp_name(s), tx, body, tw, bh, 0, 0);
-  if fp[0].mode == CP_FP_EDIT { cp_fp_edit_view(s, f, px, gx, tx, body, tw, bh); return; }
-  cp_fp_read_view(s, f, src, px, gx, tx, body, tw, bh);
+  if fp[0].mode == CP_FP_EDIT {
+    if fp[0].large_edit { cp_fp_large_edit_view(s, f, src, fx, gx, tx, body, tw, bh); }
+    else { cp_fp_edit_view(s, f, fx, gx, tx, body, tw, bh); }
+  } else {
+    cp_fp_read_view(s, f, src, fx, gx, tx, body, tw, bh);
+  }
+  cp_ft_draw_editor_menu(s, f);
 }
-// The file in its editor: the field at (tx, body), and the number of each row that starts a line.
+
+// The file in its shared UiEditor (<= 16 KB, <= 512 lines): selection & caret from UiEditor,
+// line numbers in the gutter, and syntax-highlighted runs painted per visible line.
 cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   cp_ed_draw(s, f, CP_ED_FILE, tx, body, tw, bh, "");
   c := s[0].fld[0].ed[CP_ED_FILE].body[..];
   if !(c[0].text_w > 0) { return; }
+  k := f[0].skin;
   t := typed(c); lh := composer_line(c); top := c[0].text_y - c[0].scroll;
+  path := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+  syn := cp_fp_is_code(path, CP_FT_PREV_NONE);
   // the caret's line, lit while the editor has the keyboard
   lit := -1;
   if c[0].focused { lit = 1; for i: 0..<(ifx c[0].ed[0].caret < t.count then c[0].ed[0].caret else t.count) { if t[i] == '\n' { lit += 1; } } }
-  uiframe_clip(f, px, body, tx, body + bh);
+  uiframe_clip(f, px, body, tx + tw, body + bh);
   ln := 0;
   for r: 0..<c[0].lines {
-    at := c[0].line_at[r];
+    at := c[0].line_at[r]; end := c[0].line_end[r];
     starts := r == 0 || at > 0 && t[at - 1] == '\n';
     if starts { ln += 1; }
     ry := top + cast(f32) r * lh;
-    if !starts || ry + lh < body || ry > body + bh { continue; }
-    cp_fp_number(f, ln, gx, ry, lh, ln == lit);
+    if ry + lh < body || ry > body + bh { continue; }
+    if starts { cp_fp_number(f, ln, gx, ry, lh, ln == lit); }
+    if end > at {
+      seg := cast(string) t[at..<end];
+      if syn { _ = cp_fp_syntax_line(f, tx, ry, lh, k.mono.face, k.ink, seg); }
+      else { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, ry, lh, k.mono.face, k.ink, seg); }
+    }
   }
   uiframe_unclip(f);
 }
-// A file too long to edit here: its lines from body, each wrapped at tw on the code face's cells,
-// its number on its first row. Lines out of view are only counted.
-cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
+
+// Large-file (>16 KB or >512 lines, up to 128 KB / 4,096 lines) syntax-highlighted inline editor view.
+cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
   face := k.mono.face; lh := k.mono.line;
-  cell := measure_width(f[0].m, face, "0");
-  cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
-  if cols < 1 { cols = 1; }
+  fp[0].cell_w = measure_width(f[0].m, face, "0");
+  focused := s[0].fld[0].active && cp_ed_which(s) == CP_ED_FILE;
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  syn := cp_fp_is_code(path, CP_FT_PREV_NONE);
+  lit := ifx focused then cp_fp_caret_line(s) else -1;
   fp[0].view = bh;
   fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
   uiframe_clip(f, px, body, tx + tw, body + bh);
@@ -199,7 +448,44 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
   while true {
     end := at; while end < src.count && src[end] != '\n' { end += 1; }
     stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
-    // its code points, and the rows they wrap to
+    if y + lh > body && y < body + bh {
+      cp_fp_number(f, ln, gx, y, lh, ln == lit);
+      if stop > at {
+        seg := cast(string) src[at..<stop];
+        if syn { _ = cp_fp_syntax_line(f, tx, y, lh, face, k.ink, seg); }
+        else { _ := sheet_text(sh, f[0].m, -1, tx, y, lh, face, k.ink, seg); }
+      }
+      if focused && fp[0].caret >= at && fp[0].caret <= stop {
+        cx := tx + measure_width(f[0].m, face, cast(string) src[at..<fp[0].caret]);
+        sheet_fill(sh, cx, y + 1, k.cmp.caret, lh - 2, 0, k.accent);
+      }
+    }
+    y += lh; ln += 1;
+    if end >= src.count { break; }
+    at = end + 1;
+  }
+  uiframe_unclip(f);
+  fp[0].content = y + fp[0].scroll - body;
+}
+
+// A read-only file or rich preview: its lines from body, each wrapped at tw on the code face's cells,
+// syntax-highlighted for code files, with its line number on its first row.
+cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
+  k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
+  face := k.mono.face; lh := k.mono.line;
+  fp[0].cell_w = measure_width(f[0].m, face, "0");
+  cell := measure_width(f[0].m, face, "0");
+  cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
+  if cols < 1 { cols = 1; }
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  syn := cp_fp_is_code(path, s[0].ft[0].preview_kind);
+  fp[0].view = bh;
+  fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+  uiframe_clip(f, px, body, tx + tw, body + bh);
+  y := body - fp[0].scroll; at := 0; ln := 1;
+  while true {
+    end := at; while end < src.count && src[end] != '\n' { end += 1; }
+    stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
     n := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { n += 1; } }
     rows := ifx n == 0 then 1 else (n + cols - 1) / cols;
     if y + cast(f32) rows * lh > body && y < body + bh {
@@ -208,7 +494,11 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
       for r: 0..<rows {
         j := i; m := 0; while j < stop && m < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } m += 1; }
         ry := y + cast(f32) r * lh;
-        if ry + lh > body && ry < body + bh && j > i { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, cast(string) src[i..<j]); }
+        if ry + lh > body && ry < body + bh && j > i {
+          seg := cast(string) src[i..<j];
+          if syn { _ = cp_fp_syntax_line(f, tx, ry, lh, face, k.ink, seg); }
+          else { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, seg); }
+        }
         i = j;
       }
     }
@@ -224,20 +514,37 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
 
 // The bytes the pane shows at most: the host does not read a longer file.
 coder_page_file_most :: () -> int #export_c #effects(all) { return CP_FP_MOST; }
+// The bytes the pane edits inline at most (128 KB).
+coder_page_file_edit_most :: () -> int #export_c #effects(all) { return CP_FP_EDIT_MOST; }
+// Current 1-based caret line in the open file.
+coder_page_file_line :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_fp_caret_line(s) else 1; }
+
 // A file the host read: path as it shows it, its bytes (the host keeps them until the next file
-// or save), its size on disk. It comes forward in the pane; it is edited here when the shared
-// editor holds it, else shown read-only. False when it does not fit at all.
+// or save), its size on disk. Opens rich read-only preview for CSV/TSV, .ipynb, binary, image/PDF;
+// opens editable up to 128 KB / 4,096 lines; else read-only. Registers/activates its tab.
 coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
   if s.count < 1 || bytes.count > CP_FP_MOST { return false; }
   if !s[0].ready { cp_init(s); }
   cp_fp_begin(s, path);
   fp := s[0].fp[..];
   fp[0].src = bytes; fp[0].size = size;
+  _ = cp_ft_tab_open(s, path);
+  pk := cp_ft_prepare_preview(s, path, bytes, size);
+  if pk != CP_FT_PREV_NONE {
+    fp[0].mode = CP_FP_READ;
+    return true;
+  }
   text := cast(string) bytes;
-  if text.count <= EB_TEXT && cp_fp_lines(text) <= CP_FP_EDIT_LINES {
-    fp[0].mode = CP_FP_EDIT; fp[0].text_n = cp_out(fp[0].text[..], text);
+  nlines := cp_fp_lines(text);
+  if text.count <= CP_FP_EDIT_MOST && nlines <= CP_FP_EDIT_LINES {
+    fp[0].mode = CP_FP_EDIT;
+    fp[0].text_n = cp_out(fp[0].text[..], text);
+    fp[0].large_edit = (text.count > EB_TEXT || nlines > CP_FP_SMALL_LINES);
+    fp[0].caret = 0;
     s[0].fld[0].kb = CP_KB_FILE;
-  } else { fp[0].mode = CP_FP_READ; }
+  } else {
+    fp[0].mode = CP_FP_READ;
+  }
   return true;
 }
 // A 3D scene file (ple-scene.v1.json) opened in the pane: the host mounts the Metal viewport over its body rect.
@@ -245,6 +552,7 @@ coder_page_file_open_scene :: (s: [] CoderPage, path: string) -> bool #export_c 
   if s.count < 1 { return false; }
   if !s[0].ready { cp_init(s); }
   cp_fp_begin(s, path);
+  _ = cp_ft_tab_open(s, path);
   s[0].fp[0].mode = CP_FP_SCENE;
   return true;
 }
@@ -269,6 +577,9 @@ cp_fp_begin :: (s: [] CoderPage, path: string) {
   ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);   // a new file is a new field: no undo into the last one
   fp[0] = CpFilePane.{};
   fp[0].open = true; fp[0].front = true;
+  s[0].ft[0].editor_menu = false;
+  s[0].ft[0].preview_kind = CP_FT_PREV_NONE;
+  s[0].ft[0].preview_n = 0;
   s[0].sim[0].front = false; s[0].term[0].front = false;   // the file comes in front of the simulator and terminal
   fp[0].path_n = cp_out(fp[0].path[..], path);
 }
@@ -287,6 +598,7 @@ coder_page_file_saved :: (s: [] CoderPage, bytes: [] u8) #export_c #effects(all)
   fp[0].src = bytes; fp[0].size = bytes.count; fp[0].save_failed = false; fp[0].why_n = 0;
   fp[0].dirty = cp_fp_text(s) != cast(string) bytes;
   fp[0].saved = !fp[0].dirty;
+  cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], fp[0].dirty);
 }
 // The host could not write the file: the pane says why, and the changes stay.
 coder_page_file_save_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
@@ -298,6 +610,9 @@ coder_page_file_close :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count < 1 { return; }
   if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
   ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);
+  p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+  tidx := cp_ft_tab_find(s, p);
+  if tidx >= 0 { _ = cp_ft_tab_remove(s, tidx); }
   s[0].fp[0] = CpFilePane.{};
 }
 // The open file comes forward in the pane (it was open behind another). False when none is open.

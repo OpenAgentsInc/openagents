@@ -43,6 +43,7 @@
 #load "gitdiff.coax";
 #load "layout/review.coax";
 #load "filepane.coax";
+#load "filetree.coax";
 #load "simpane.coax";
 #load "termpane.coax";
 #load "layout/conversation.coax";

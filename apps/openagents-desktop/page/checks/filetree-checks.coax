@@ -1,0 +1,169 @@
+// Checks for File Explorer directory tree, multi-tab open files, >16 KB syntax-highlighted
+// editor, rich read-only previews (CSV/TSV, .ipynb, hex, image/PDF), and Open-in-Editor picker
+// (page/filetree.coax, page/filepane.coax; GitHub #13881). Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_ft_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].surface[..], id); }
+cp_ft_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_ft_test_find(s, id); return r >= 0 && cp_press(s, r); }
+cp_ft_test_page :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  #assert cp_test_draw_side(s, f);
+}
+
+#test "file explorer tree builds folders, collapses/expands, filters, and requests file open" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  // Press corner Files toggle button -> opens tree and asks host for file list
+  #assert cp_ft_test_press(s, "coder.ft.toggle") && coder_page_filetree_shown(s);
+  #assert coder_page_action(s) == CP_ASK_FILETREE_LIST;
+  // Feed git ls-files output -> synthesizes intermediate directories
+  n := coder_page_filetree_set(s, "README.md\nsrc/main.coax\nsrc/core/syntax.coax\ndocs/guide.md\n");
+  #assert n == 7;   // README.md, src, src/main.coax, src/core, src/core/syntax.coax, docs, docs/guide.md
+  #assert cp_ft_visible_count(s) == 7;
+  // Collapse "src" -> hides src/main.coax, src/core, src/core/syntax.coax (3 children)
+  cp_ft_toggle_dir(s, "src");
+  #assert cp_ft_visible_count(s) == 4;
+  // Re-expand "src"
+  cp_ft_toggle_dir(s, "src");
+  #assert cp_ft_visible_count(s) == 7;
+  // Quick filter (case-insensitive) shows only matching files
+  cp_ft_filter_set(s, "SYNTAX");
+  #assert cp_ft_visible_count(s) == 1;
+  cp_ft_filter_set(s, "");
+  #assert cp_ft_visible_count(s) == 7;
+  // Draw and click a file row (entry 2 = src/main.coax)
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_ft_test_press(s, "coder.ft.row.2") && coder_page_action(s) == CP_ASK_FILETREE_OPEN;
+  req: [256] u8;
+  rn := coder_page_filetree_req_path(s, req[..]);
+  #assert cast(string) req[0..<rn] == "src/main.coax";
+}
+
+#test "multi-tab bar tracks up to 8 open files, dirty dots, switching, and closing" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  b1: [32] u8; n1 := cp_out(b1[..], "fn a() {}\n");
+  b2: [32] u8; n2 := cp_out(b2[..], "fn b() {}\n");
+  #assert coder_page_file_open(s, "~/proj/a.rs", b1[0..<n1], n1);
+  #assert coder_page_file_open(s, "~/proj/b.rs", b2[0..<n2], n2);
+  #assert s[0].ft[0].ntabs == 2 && s[0].ft[0].active_tab == 1;
+  // Re-opening a.rs activates tab 0 without duplicating
+  #assert coder_page_file_open(s, "~/proj/a.rs", b1[0..<n1], n1);
+  #assert s[0].ft[0].ntabs == 2 && s[0].ft[0].active_tab == 0;
+  // Draw multi-tab bar and click tab 1 -> asks host to open b.rs
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_ft_test_find(s, "coder.ft.tab.0") >= 0 && cp_ft_test_find(s, "coder.ft.tab.1") >= 0;
+  #assert cp_ft_test_press(s, "coder.ft.tab.1") && coder_page_action(s) == CP_ASK_FILETREE_OPEN;
+  req: [256] u8;
+  #assert cast(string) req[0..<coder_page_filetree_req_path(s, req[..])] == "~/proj/b.rs";
+  // Click tab close × -> asks host CP_ASK_FILETREE_TAB_CLOSE and drop removes it
+  #assert cp_ft_test_press(s, "coder.ft.tabx.1") && coder_page_action(s) == CP_ASK_FILETREE_TAB_CLOSE;
+  #assert coder_page_filetree_close_tab(s) == 1;
+  #assert coder_page_filetree_tab_drop(s, 1) == 0 && s[0].ft[0].ntabs == 1;
+}
+
+#test "files larger than 16 KB and 512 lines open editable with syntax highlighting and save" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  #assert coder_page_file_edit_most() == 131072;
+  // Build a ~24 KB, 600-line Rust file (> 16 KB and > 512 lines)
+  big: [28000] u8; n := 0;
+  for i: 0..<600 {
+    n = el_put(big[..], n, "fn step() -> i32 { return 42; } // row\n");
+  }
+  #assert n > EB_TEXT && n < CP_FP_EDIT_MOST;
+  #assert coder_page_file_open(s, "~/proj/large.rs", big[0..<n], n);
+  #assert coder_page_file_mode(s) == CP_FP_EDIT && s[0].fp[0].large_edit && !coder_page_file_dirty(s);
+  #assert cp_test_draw_side(s, f[..]);
+  // Edit at caret (insert + Enter + Down arrow)
+  #assert coder_page_paste(s, "// header");
+  #assert coder_page_key(s, KEY_ENTER, 0);
+  #assert coder_page_file_dirty(s) && coder_page_file_line(s) == 2;
+  #assert coder_page_key(s, KEY_DOWN, 0) && coder_page_file_line(s) == 3;
+  // Extract full >16 KB edited text for saving
+  out: [32768] u8;
+  saved_n := coder_page_file_text(s, out[..]);
+  #assert saved_n == n + 10;
+  #assert cast(string) out[0..<10] == "// header\n";
+  // Mark saved -> clears dirty
+  coder_page_file_saved(s, out[0..<saved_n]);
+  #assert !coder_page_file_dirty(s);
+}
+
+#test "syntax highlighting paints multiple token roles on code lines" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  b: [256] u8; src := "fn greet(name: &str) -> bool { // hi\n  return true;\n}\n";
+  #assert coder_page_file_open(s, "~/proj/greet.rs", b[0..<cp_out(b[..], src)], src.count);
+  #assert cp_test_draw_side(s, f[..]);
+  nr := cp_fp_syntax_line(f[..], 10, 10, 18, f[0].skin.mono.face, f[0].skin.ink, "fn greet(name: &str) -> bool { // hi");
+  #assert nr >= 8;
+}
+
+#test "rich read-only previewers format CSV/TSV tables, Jupyter notebooks, binary hex, and image/PDF metadata" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  // 1. CSV aligned table
+  csv := "name,score\nAlice,98\nBob,100\n";
+  cb: [128] u8; cn := cp_out(cb[..], csv);
+  #assert coder_page_file_open(s, "~/data/scores.csv", cb[0..<cn], cn);
+  #assert coder_page_file_mode(s) == CP_FP_READ && s[0].ft[0].preview_kind == CP_FT_PREV_CSV;
+  cprev := cast(string) s[0].ft[0].preview_buf[0..<s[0].ft[0].preview_n];
+  #assert cp_find(cprev, "name  | score") >= 0 && cp_find(cprev, "------+------") >= 0 && cp_find(cprev, "Alice | 98") >= 0;
+
+  // 2. Jupyter .ipynb cells
+  nb := "{\"cells\":[{\"cell_type\":\"markdown\",\"source\":[\"# Title\\n\"]},{\"cell_type\":\"code\",\"source\":[\"x = 1\\n\",\"print(x)\"]}]}";
+  nb_b: [256] u8; nb_n := cp_out(nb_b[..], nb);
+  #assert coder_page_file_open(s, "~/nb/demo.ipynb", nb_b[0..<nb_n], nb_n);
+  #assert s[0].ft[0].preview_kind == CP_FT_PREV_IPYNB;
+  nprev := cast(string) s[0].ft[0].preview_buf[0..<s[0].ft[0].preview_n];
+  #assert cp_find(nprev, "--- Cell 1 [markdown] ---") >= 0 && cp_find(nprev, "--- Cell 2 [code] ---") >= 0 && cp_find(nprev, "print(x)") >= 0;
+
+  // 3. Binary hex dump
+  bin := [8] u8.[0x7f, 'E', 'L', 'F', 0x00, 0x01, 0x02, 0x03];
+  #assert coder_page_file_open(s, "~/bin/app.o", bin[..], 8);
+  #assert s[0].ft[0].preview_kind == CP_FT_PREV_HEX;
+  hprev := cast(string) s[0].ft[0].preview_buf[0..<s[0].ft[0].preview_n];
+  #assert cp_find(hprev, "00000000: 7f 45 4c 46 00 01 02 03") >= 0 && cp_find(hprev, "|.ELF....|") >= 0;
+
+  // 4. PNG image metadata (IHDR 640x480)
+  png: [24] u8;
+  png[0] = 0x89; png[1] = 'P'; png[2] = 'N'; png[3] = 'G';
+  png[18] = 0x02; png[19] = 0x80;   // 640
+  png[22] = 0x01; png[23] = 0xe0;   // 480
+  #assert coder_page_file_open(s, "~/img/shot.png", png[..], 4096);
+  #assert s[0].ft[0].preview_kind == CP_FT_PREV_IMAGE;
+  iprev := cast(string) s[0].ft[0].preview_buf[0..<s[0].ft[0].preview_n];
+  #assert cp_find(iprev, "Format: PNG") >= 0 && cp_find(iprev, "640 x 480 px") >= 0;
+
+  // 5. PDF metadata
+  pdf := "%PDF-1.7\n%binary";
+  pb: [32] u8; pn := cp_out(pb[..], pdf);
+  #assert coder_page_file_open(s, "~/doc/spec.pdf", pb[0..<pn], 8192);
+  #assert s[0].ft[0].preview_kind == CP_FT_PREV_PDF;
+  pprev := cast(string) s[0].ft[0].preview_buf[0..<s[0].ft[0].preview_n];
+  #assert cp_find(pprev, "Header: %PDF-1.7") >= 0;
+}
+
+#test "Open-in-Editor picker formats local and SSH commands and dispatches host action" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  // Installed: Cursor (0), VS Code (1), Zed (2), Xcode (3), Ghostty (4), Finder (5) + custom "nvim"
+  mask := (1 << CP_ED_ID_CURSOR) | (1 << CP_ED_ID_VSCODE) | (1 << CP_ED_ID_ZED) | (1 << CP_ED_ID_XCODE) | (1 << CP_ED_ID_GHOSTTY);
+  coder_page_editors_set(s, mask, "nvim", "");
+  out: [256] u8;
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_CURSOR, "/work/a.rs", 42, out[..])] == "cursor -g /work/a.rs:42";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_VSCODE, "/work/a.rs", 42, out[..])] == "code -g /work/a.rs:42";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_ZED, "/work/a.rs", 42, out[..])] == "zed /work/a.rs:42";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_XCODE, "/work/a.rs", 42, out[..])] == "xed -l 42 /work/a.rs";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_GHOSTTY, "/work", 0, out[..])] == "open -a Ghostty /work";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_FINDER, "/work/a.rs", 0, out[..])] == "open -R /work/a.rs";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_CUSTOM, "/work/a.rs", 42, out[..])] == "nvim /work/a.rs:42";
+  // Remote SSH host formatting
+  coder_page_editors_set(s, mask, "", "devbox");
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_VSCODE, "/srv/app/a.rs", 10, out[..])] == "code --file-uri vscode-remote://ssh-remote+devbox/srv/app/a.rs";
+  #assert cast(string) out[0..<coder_page_editor_cmd(s, CP_ED_ID_ZED, "/srv/app/a.rs", 10, out[..])] == "zed ssh://devbox/srv/app/a.rs:10";
+  // Open dropdown in UI and pick Zed
+  b: [32] u8; bn := cp_out(b[..], "fn main() {}\n");
+  #assert coder_page_file_open(s, "~/a.rs", b[0..<bn], bn) && cp_test_draw_side(s, f[..]);
+  #assert cp_ft_test_press(s, "coder.ft.editors") && s[0].ft[0].editor_menu;
+  #assert cp_test_draw_side(s, f[..]) && cp_ft_test_find(s, "coder.ft.ed.2") >= 0;
+  #assert cp_ft_test_press(s, "coder.ft.ed.2") && coder_page_action(s) == CP_ASK_OPEN_EDITOR;
+  #assert coder_page_editor_pick_id(s) == CP_ED_ID_ZED && !s[0].ft[0].editor_menu;
+}

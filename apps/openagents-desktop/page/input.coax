@@ -43,6 +43,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
   if act >= CP_FP_CLOSE && act <= CP_FP_EXTERNAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
+  if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
@@ -52,6 +53,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
+  _ = cp_ft_yield(s, act);
   if cp_fp_yield(s, act, surface_id(s[0].surface[..], row)) { return true; }
   if act == CP_TOOL {
     id := surface_id(s[0].surface[..], row);
@@ -285,7 +287,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -351,6 +353,13 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
     act := surface_action(s[0].surface[..], row);
     if act != CP_USAGE_POPOVER && act != CP_USAGE_OPEN && act != CP_USAGE_REFRESH && id != "coder.usage.popover" {
       s[0].usage[0].popover_open = false;
+      return true;
+    }
+  }
+  if phase == 0 && s[0].ft[0].editor_menu {
+    act := surface_action(s[0].surface[..], row);
+    if act != CP_FT_EDITOR_MENU && act != CP_FT_EDITOR_PICK && id != "coder.ft.edmenu" {
+      s[0].ft[0].editor_menu = false;
       return true;
     }
   }
@@ -436,7 +445,10 @@ cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
   if cp_term_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_TERM; }
-  if cp_fp_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FILE; }
+  if cp_fp_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
+    if s[0].ft[0].tree_w > 0 && s[0].px >= s[0].ft[0].tree_x && s[0].px < s[0].ft[0].tree_x + s[0].ft[0].tree_w { return CP_SCR_FILETREE; }
+    return CP_SCR_FILE;
+  }
   if cp_review_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_REVIEW; }
   if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_PANE; }
   return CP_SCR_TALK;
@@ -454,6 +466,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
   // the code review moves as the deltas come, the platform's own coast included
   if view == CP_SCR_TERM { cp_term_scroll(s, delta); return; }
+  if view == CP_SCR_FILETREE { cp_ft_scroll(s, delta); return; }
   if view == CP_SCR_FILE { cp_fp_scroll(s, delta); return; }
   if view == CP_SCR_REVIEW { s[0].review_scroll = scroll_clamp(s[0].review_scroll + delta, s[0].review_content, s[0].pane_view); return; }
   if view == CP_SCR_PANE {

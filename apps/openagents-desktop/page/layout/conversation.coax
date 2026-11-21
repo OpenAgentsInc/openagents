@@ -460,6 +460,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   }
   term_shown := cp_term_shown(s);
   _ := app_icon_button(f, "coder.term.toggle", lead_x - side, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
+  ft_shown := cp_ft_shown(s);
+  _ := app_icon_button(f, "coder.ft.toggle", lead_x - 2 * side, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
   _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {

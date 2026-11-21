@@ -229,6 +229,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncSettingsInfo()
         setupUsageDashboard()
         setupVoiceDictation()
+        detectInstalledEditors()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleModifierFlags(event.modifierFlags)
             return event
@@ -459,6 +460,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 83: editVoiceDictionary()
         case 84: chooseVoiceMicrophone()
         case 85: voicePrefsChanged()
+        case 86...89: fileTreeAsked(what)
         case 40...43: fileAsked(what)
         default: break
         }

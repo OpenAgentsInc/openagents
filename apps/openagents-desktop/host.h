@@ -112,6 +112,8 @@ void cd_files(void *page, const char *lines);
 // cd_file_name: its name, NUL-ended. cd_action asks 40 save, 41 open it in its own app, 42 close
 // (ask first when dirty), 43 keep the keyboard on the view for it.
 int cd_file_most(void);
+int cd_file_edit_most(void);
+int cd_file_line(void *page);
 int cd_file_open(void *page, const char *path, const char *bytes, int len, long long size);
 void cd_file_failed(void *page, const char *path, const char *why);
 int cd_file_text(void *page, char *out, int cap);
@@ -125,6 +127,18 @@ int cd_file_shown(void *page);
 int cd_file_name(void *page, char *out, int cap);
 int cd_file_open_scene(void *page, const char *path);
 int cd_file_scene_rect(void *page, float out[4]);
+// File Explorer directory tree, multi-tab open files, and Open-in-Editor picker (page/filetree.coax, #13881).
+// cd_action asks: 86 list project files, 87 open requested path, 88 launch picked editor, 89 close tab.
+int cd_filetree_set(void *page, const char *lines);
+void cd_filetree_open(void *page, int on);
+int cd_filetree_shown(void *page);
+int cd_filetree_req_path(void *page, char *out, int cap);
+int cd_filetree_close_tab(void *page);
+int cd_filetree_tab_drop(void *page, int idx);
+int cd_filetree_tab_path(void *page, int idx, char *out, int cap);
+void cd_editors_set(void *page, int mask, const char *custom_cmd, const char *ssh_host);
+int cd_editor_pick_id(void *page);
+int cd_editor_cmd(void *page, int editor_id, const char *path, int line, char *out, int cap);
 // The live 3D card on screen (page/shows.coax, #13812): its rect then the conversation's clip (x, y, w, h each,
 // points from the top left) into out, its scene's path into path. Returns the path's length; 0 when none shows.
 int cd_live_scene(void *page, float out[8], char *path, int cap);

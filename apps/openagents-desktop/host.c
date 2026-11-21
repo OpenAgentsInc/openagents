@@ -551,6 +551,8 @@ void cd_files(void *page, const char *lines) {
 // The file in the pane (page/filepane.coax): the page reads its bytes from the carrier's copy.
 static char *cd_keep(const char *bytes, int len) { char *keep = malloc(len > 0 ? (size_t)len : 1); if (keep && len > 0) memcpy(keep, bytes, (size_t)len); return keep; }
 int cd_file_most(void) { return (int)coder_page_file_most(); }
+int cd_file_edit_most(void) { return (int)coder_page_file_edit_most(); }
+int cd_file_line(void *page) { CoderHost *c = page; return c ? (int)coder_page_file_line(cd_state(c)) : 1; }
 int cd_file_open(void *page, const char *path, const char *bytes, int len, long long size) {
   CoderHost *c = page;
   if (!c || len < 0 || len > cd_file_most()) return 0;
@@ -582,6 +584,16 @@ int cd_file_shown(void *page) { CoderHost *c = page; return c && coder_page_file
 int cd_file_name(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_file_name(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_file_open_scene(void *page, const char *path) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_open_scene(cd_state(c), cd_string(path)); if (ok) { free(c->file); c->file = NULL; cd_woke(c); } return ok; }
 int cd_file_scene_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_file_scene_rect(cd_state(c), (coax_v_f32){out, 4}); }
+int cd_filetree_set(void *page, const char *lines) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_filetree_set(cd_state(c), cd_string(lines)); cd_woke(c); return n; }
+void cd_filetree_open(void *page, int on) { CoderHost *c = page; if (c) { coder_page_filetree_open(cd_state(c), on != 0); cd_woke(c); } }
+int cd_filetree_shown(void *page) { CoderHost *c = page; return c && coder_page_filetree_shown(cd_state(c)); }
+int cd_filetree_req_path(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_filetree_req_path(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_filetree_close_tab(void *page) { CoderHost *c = page; return c ? (int)coder_page_filetree_close_tab(cd_state(c)) : -1; }
+int cd_filetree_tab_drop(void *page, int idx) { CoderHost *c = page; if (!c) return -1; int next = (int)coder_page_filetree_tab_drop(cd_state(c), idx); cd_woke(c); return next; }
+int cd_filetree_tab_path(void *page, int idx, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_filetree_tab_path(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+void cd_editors_set(void *page, int mask, const char *custom_cmd, const char *ssh_host) { CoderHost *c = page; if (c) { coder_page_editors_set(cd_state(c), mask, cd_string(custom_cmd), cd_string(ssh_host)); cd_woke(c); } }
+int cd_editor_pick_id(void *page) { CoderHost *c = page; return c ? (int)coder_page_editor_pick_id(cd_state(c)) : -1; }
+int cd_editor_cmd(void *page, int editor_id, const char *path, int line, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_editor_cmd(cd_state(c), editor_id, cd_string(path), line, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_live_scene(void *page, float out[8], char *path, int cap) { CoderHost *c = page; return c && out && cap > 1 ? cd_text_out((int)coder_page_live_scene(cd_state(c), (coax_v_f32){out, 8}, (coax_v_u8){(uint8_t *)path, cap - 1}), path, cap) : 0; }
 int cd_over_rects(void *page, float *out, int rects) { CoderHost *c = page; return c && out && rects > 0 ? (int)coder_page_over_rects(cd_state(c), (coax_v_f32){out, (int64_t)rects * 4}) : 0; }
 // The iOS Simulator in the pane (page/simpane.coax, GitHub #13811): the page speaks the helper's
