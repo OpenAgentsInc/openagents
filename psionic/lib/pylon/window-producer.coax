@@ -1,0 +1,149 @@
+// #authority Open-Window Producer for Executor W4.1 (GitHub #13919):
+// Maintains a bounded rolling pool of claimable executor workloads across
+// >= 3 distinct program families (Sudoku, Hungarian, WASM conformance,
+// Coder Ch 8, module-v2), enforcing:
+//   - Hard anti-repetition invariant: duplicate (program_hash, input_hash)
+//     pairs are refused within a season.
+//   - Per-family quotas and global daily window caps.
+//   - Bounded rolling open-window pool capacity.
+#authority;
+
+WP_FAMILIES :: 5;
+WP_SEEN_CAP :: 64;
+
+WpFamily :: enum u8 {
+  sudoku;
+  hungarian;
+  wasm_conformance;
+  coder_ch8;
+  module_v2;
+}
+
+WpStatus :: enum u8 {
+  ok;
+  invalid_hash;
+  duplicate_pair;
+  family_quota_reached;
+  daily_cap_reached;
+  pool_full;
+  seen_full;
+  no_open_window;
+}
+
+WpPair :: struct {
+  prog_hash: int;
+  input_hash: int;
+}
+
+WpProducer :: struct {
+  pool_cap: int;
+  daily_cap: int;
+  family_quota: int;
+  open_count: int;
+  daily_issued: int;
+  family_issued: [WP_FAMILIES] int;
+  seen: [WP_SEEN_CAP] WpPair;
+  nseen: int;
+}
+
+wp_init :: (pool_cap: int, daily_cap: int, family_quota: int) -> WpProducer #effects(all) {
+  return WpProducer.{
+    pool_cap = ifx pool_cap < 1 then 1 else pool_cap, // mutant: equivalent — pool_cap == 1 returns 1 either way
+    daily_cap = ifx daily_cap < 1 then 1 else daily_cap, // mutant: equivalent — daily_cap == 1 returns 1 either way
+    family_quota = ifx family_quota < 1 then 1 else family_quota, // mutant: equivalent — family_quota == 1 returns 1 either way
+  };
+}
+
+wp_seen_pair :: (p: [] WpProducer, prog_hash: int, input_hash: int) -> bool #effects(all) {
+  for i: 0..<p[0].nseen {
+    if p[0].seen[i].prog_hash == prog_hash && p[0].seen[i].input_hash == input_hash {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Admit and issue a new open executor window into the rolling pool.
+wp_issue :: (p: [] WpProducer, fam: WpFamily, prog_hash: int, input_hash: int) -> WpStatus #effects(all) {
+  if prog_hash == 0 || input_hash == 0 { return WpStatus.invalid_hash; }
+  if p[0].open_count >= p[0].pool_cap { return WpStatus.pool_full; }
+  if p[0].daily_issued >= p[0].daily_cap { return WpStatus.daily_cap_reached; }
+  fi := cast(int) fam;
+  if p[0].family_issued[fi] >= p[0].family_quota { return WpStatus.family_quota_reached; }
+  if wp_seen_pair(p, prog_hash, input_hash) { return WpStatus.duplicate_pair; }
+  if p[0].nseen >= WP_SEEN_CAP { return WpStatus.seen_full; }
+
+  p[0].seen[p[0].nseen] = WpPair.{prog_hash = prog_hash, input_hash = input_hash};
+  p[0].nseen += 1;
+  p[0].open_count += 1;
+  p[0].daily_issued += 1;
+  p[0].family_issued[fi] += 1;
+  return WpStatus.ok;
+}
+
+// Claim (remove) one open window from the rolling pool.
+wp_claim :: (p: [] WpProducer) -> WpStatus #effects(all) {
+  if p[0].open_count < 1 { return WpStatus.no_open_window; }
+  p[0].open_count -= 1;
+  return WpStatus.ok;
+}
+
+// Count how many distinct program families have issued >= 1 window in this season.
+wp_distinct_families :: (p: [] WpProducer) -> int #effects(all) {
+  n := 0;
+  for f: 0..<WP_FAMILIES {
+    if p[0].family_issued[f] > 0 { n += 1; }
+  }
+  return n;
+}
+
+#test "window-producer: anti-repetition, per-family quotas, daily cap, pool cap, and diversity (#13919)" {
+  p: [1] WpProducer;
+  p[0] = wp_init(0, 0, 0);
+  #assert p[0].pool_cap == 1 && p[0].daily_cap == 1 && p[0].family_quota == 1;
+  #assert wp_claim(p[..]) == WpStatus.no_open_window;
+  #assert wp_issue(p[..], WpFamily.sudoku, 1, 2) == WpStatus.ok;
+  #assert wp_claim(p[..]) == WpStatus.ok;
+  p[0] = wp_init(2, 2, 2);
+  #assert p[0].pool_cap == 2 && p[0].daily_cap == 2 && p[0].family_quota == 2;
+
+  p[0] = wp_init(3, 5, 2);
+  #assert p[0].pool_cap == 3 && p[0].daily_cap == 5 && p[0].family_quota == 2;
+  #assert wp_issue(p[..], WpFamily.sudoku, 0, 11) == WpStatus.invalid_hash;
+  #assert wp_issue(p[..], WpFamily.sudoku, 11, 0) == WpStatus.invalid_hash;
+
+  // Issue 2 Sudoku windows -> 3rd Sudoku refused by family_quota, duplicate refused
+  #assert wp_issue(p[..], WpFamily.sudoku, 101, 201) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.sudoku, 101, 201) == WpStatus.duplicate_pair;
+  #assert wp_issue(p[..], WpFamily.sudoku, 101, 202) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.sudoku, 101, 203) == WpStatus.family_quota_reached;
+
+  // 3rd open window fills pool_cap=3; 4th refused by pool_full
+  #assert wp_issue(p[..], WpFamily.hungarian, 301, 401) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.coder_ch8, 501, 601) == WpStatus.pool_full;
+  #assert p[0].open_count == 3 && p[0].daily_issued == 3;
+
+  // Claim 2 windows -> frees pool slots, issue 2 more families (diversity >= 4), then hit daily_cap=5
+  #assert wp_claim(p[..]) == WpStatus.ok && wp_claim(p[..]) == WpStatus.ok;
+  #assert p[0].open_count == 1;
+  #assert wp_issue(p[..], WpFamily.coder_ch8, 501, 601) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.module_v2, 701, 801) == WpStatus.ok;
+  #assert wp_distinct_families(p[..]) == 4;
+  #assert wp_claim(p[..]) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.wasm_conformance, 901, 1001) == WpStatus.daily_cap_reached;
+
+  // Fill seen table to exact cap WP_SEEN_CAP -> next unique pair returns seen_full
+  q: [1] WpProducer;
+  q[0] = wp_init(100, 100, 100);
+  for i: 0..<WP_SEEN_CAP {
+    #assert wp_issue(q[..], WpFamily.wasm_conformance, 1000 + i, 2000 + i) == WpStatus.ok;
+  }
+  #assert wp_issue(q[..], WpFamily.wasm_conformance, 9999, 9999) == WpStatus.seen_full;
+}
+
+#forall "window-producer: duplicate (program_hash, input_hash) is always refused" seed:1..<16 {
+  p: [1] WpProducer;
+  p[0] = wp_init(8, 16, 8);
+  #assert wp_issue(p[..], WpFamily.sudoku, seed * 17, seed * 31) == WpStatus.ok;
+  #assert wp_issue(p[..], WpFamily.hungarian, seed * 17, seed * 31) == WpStatus.duplicate_pair;
+}

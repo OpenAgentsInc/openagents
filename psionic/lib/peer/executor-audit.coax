@@ -1,0 +1,238 @@
+// #authority Multi-Device Independent Replay Validator, 4-Tier Validator Ladder
+// & Trace-Factory Quarantine Admission Policy (Executor W4.2, GitHub #13921).
+//
+// Enforces:
+//   - Distinct key, distinct NIP-OA owner (on public pools), and distinct device_ref
+//     between worker and validator (and between Tier-3 redundant validators).
+//   - Exact first-divergence reporting on trace row comparison.
+//   - Hard quarantine invariant: raw submissions increment ONLY quarantined_count;
+//     admitted_count rises ONLY on verified promotion transitions.
+#authority;
+
+EaStatus :: enum u8 {
+  ok;
+  self_validation;
+  same_owner;
+  same_device;
+  invalid_schema;
+  bad_signature;
+  bad_digest;
+  divergent_trace;
+  duplicate_receipt;
+  not_quarantined;
+  needs_tier3;
+  duplicate_validator;
+  capacity;
+}
+
+EaTraceState :: enum u8 {
+  empty;
+  quarantined;
+  verified;
+  rejected;
+}
+
+EaDiff :: struct {
+  exact: bool;
+  first_step: int;
+  expected: int;
+  observed: int;
+}
+
+EaEntry :: struct {
+  receipt_id: int;
+  worker_key: int;
+  worker_owner: int;
+  worker_device: int;
+  tier1_val_key: int;
+  tier1_val_device: int;
+  high_value: bool;
+  state: EaTraceState;
+}
+
+EA_MAX_ENTRIES :: 32;
+
+EaQuarantine :: struct {
+  entries: [EA_MAX_ENTRIES] EaEntry;
+  count: int;
+  quarantined_count: int;
+  admitted_count: int;
+  rejected_count: int;
+}
+
+// Strict distinct-key, distinct-owner (public pool), and distinct-device pairing gate.
+ea_check_pairing :: (
+  worker_key: int, worker_owner: int, worker_device: int,
+  val_key: int, val_owner: int, val_device: int,
+  public_pool: bool
+) -> EaStatus #effects(all) {
+  if worker_key == 0 || val_key == 0 || worker_device == 0 || val_device == 0 { return EaStatus.invalid_schema; }
+  if val_key == worker_key { return EaStatus.self_validation; }
+  if public_pool && worker_owner != 0 && val_owner == worker_owner { return EaStatus.same_owner; }
+  if val_device == worker_device { return EaStatus.same_device; }
+  return EaStatus.ok;
+}
+
+// Compare expected vs observed trace rows and report the exact first divergent step.
+ea_compare_traces :: (expected: [] int, observed: [] int) -> EaDiff #effects(all) {
+  n := ifx expected.count < observed.count then expected.count else observed.count; // mutant: equivalent — equal lengths give same min
+  for i: 0..<n {
+    if expected[i] != observed[i] {
+      return EaDiff.{exact = false, first_step = i, expected = expected[i], observed = observed[i]};
+    }
+  }
+  if expected.count != observed.count {
+    return EaDiff.{
+      exact = false,
+      first_step = n,
+      expected = ifx n < expected.count then expected[n] else -1,
+      observed = ifx n < observed.count then observed[n] else -1,
+    };
+  }
+  return EaDiff.{exact = true, first_step = -1};
+}
+
+// Tier 0 + Tier 1 submission into quarantine. Never increments admitted_count.
+ea_submit_quarantine :: (
+  q: [] EaQuarantine,
+  receipt_id: int, worker_key: int, worker_owner: int, worker_device: int,
+  schema_ok: bool, sig_ok: bool, digest_ok: bool, high_value: bool
+) -> EaStatus #effects(all) {
+  if !schema_ok || receipt_id == 0 || worker_key == 0 || worker_device == 0 { return EaStatus.invalid_schema; }
+  if !sig_ok { return EaStatus.bad_signature; }
+  if !digest_ok { return EaStatus.bad_digest; }
+  for i: 0..<q[0].count {
+    if q[0].entries[i].receipt_id == receipt_id { return EaStatus.duplicate_receipt; }
+  }
+  if q[0].count >= EA_MAX_ENTRIES { return EaStatus.capacity; }
+  q[0].entries[q[0].count] = EaEntry.{
+    receipt_id = receipt_id,
+    worker_key = worker_key,
+    worker_owner = worker_owner,
+    worker_device = worker_device,
+    high_value = high_value,
+    state = EaTraceState.quarantined,
+  };
+  q[0].count += 1;
+  q[0].quarantined_count += 1;
+  return EaStatus.ok;
+}
+
+// Tier 2 (+ Tier 3 for high-value workloads) validator transition from quarantined -> verified/rejected.
+// Corpus admitted_count rises ONLY when all required independent replay tiers succeed.
+ea_apply_verdict :: (
+  q: [] EaQuarantine,
+  receipt_id: int,
+  val_key: int, val_owner: int, val_device: int,
+  public_pool: bool, sig_ok: bool, replay_exact: bool
+) -> EaStatus #effects(all) {
+  if !sig_ok { return EaStatus.bad_signature; }
+  idx := -1;
+  for i: 0..<q[0].count {
+    if q[0].entries[i].receipt_id == receipt_id { idx = i; break; }
+  }
+  if idx < 0 || q[0].entries[idx].state != EaTraceState.quarantined { return EaStatus.not_quarantined; }
+  e := q[0].entries[idx];
+  pair := ea_check_pairing(e.worker_key, e.worker_owner, e.worker_device, val_key, val_owner, val_device, public_pool);
+  if pair != EaStatus.ok { return pair; }
+
+  if !replay_exact {
+    q[0].entries[idx].state = EaTraceState.rejected;
+    q[0].quarantined_count -= 1;
+    q[0].rejected_count += 1;
+    return EaStatus.divergent_trace;
+  }
+
+  if e.high_value {
+    if e.tier1_val_key == 0 {
+      // First validator passed; record and require a second distinct validator (Tier 3)
+      q[0].entries[idx].tier1_val_key = val_key;
+      q[0].entries[idx].tier1_val_device = val_device;
+      return EaStatus.needs_tier3;
+    }
+    if val_key == e.tier1_val_key || val_device == e.tier1_val_device {
+      return EaStatus.duplicate_validator;
+    }
+  }
+
+  q[0].entries[idx].state = EaTraceState.verified;
+  q[0].quarantined_count -= 1;
+  q[0].admitted_count += 1;
+  return EaStatus.ok;
+}
+
+#test "executor-audit: all 7 adversarial tamper fixtures, first-divergence, Tier-3, and 10->7 quarantine invariant (#13921)" {
+  // 1. First-divergence exact reporting (Tamper A: 1-bit trace row flip)
+  want_t := [5] int.[10, 20, 30, 40, 50];
+  obs := [5] int.[10, 20, 31, 40, 50];
+  d_ok := ea_compare_traces(want_t[..], want_t[..]);
+  #assert d_ok.exact && d_ok.first_step == -1;
+  d_flip := ea_compare_traces(want_t[..], obs[..]);
+  #assert !d_flip.exact && d_flip.first_step == 2 && d_flip.expected == 30 && d_flip.observed == 31;
+  obs0 := [5] int.[11, 20, 30, 40, 50];
+  d0 := ea_compare_traces(want_t[..], obs0[..]);
+  #assert !d0.exact && d0.first_step == 0 && d0.expected == 10 && d0.observed == 11;
+  d_short := ea_compare_traces(want_t[..], want_t[0..<3]);
+  #assert !d_short.exact && d_short.first_step == 3 && d_short.expected == 40 && d_short.observed == -1;
+  d_long := ea_compare_traces(want_t[0..<3], want_t[..]);
+  #assert !d_long.exact && d_long.first_step == 3 && d_long.expected == -1 && d_long.observed == 40;
+
+  // 2. Quarantine-only invariant: submit 10 unvalidated traces -> admitted MUST stay 0; validate 7 -> admitted == 7
+  q: [1] EaQuarantine;
+  for k: 1..<11 {
+    #assert ea_submit_quarantine(q[..], k, 100, 10, 1000, true, true, true, false) == EaStatus.ok;
+  }
+  #assert q[0].quarantined_count == 10 && q[0].admitted_count == 0 && q[0].rejected_count == 0;
+
+  // Adversarial Tamper B (bad digest), C (invalid schema/program), F (duplicate receipt), G (malformed sig)
+  #assert ea_submit_quarantine(q[..], 99, 100, 10, 1000, true, true, false, false) == EaStatus.bad_digest;
+  #assert ea_submit_quarantine(q[..], 99, 100, 10, 1000, false, true, true, false) == EaStatus.invalid_schema;
+  #assert ea_submit_quarantine(q[..], 0, 100, 10, 1000, true, true, true, false) == EaStatus.invalid_schema;
+  #assert ea_submit_quarantine(q[..], 99, 0, 10, 1000, true, true, true, false) == EaStatus.invalid_schema;
+  #assert ea_submit_quarantine(q[..], 99, 100, 10, 0, true, true, true, false) == EaStatus.invalid_schema;
+  #assert ea_submit_quarantine(q[..], 99, 100, 10, 1000, true, false, true, false) == EaStatus.bad_signature;
+  #assert ea_submit_quarantine(q[..], 1, 100, 10, 1000, true, true, true, false) == EaStatus.duplicate_receipt;
+  #assert q[0].quarantined_count == 10 && q[0].admitted_count == 0;
+
+  // Adversarial Tamper D (self-validation same key), E (same device), same owner on public pool, bad sig on verdict
+  #assert ea_apply_verdict(q[..], 1, 100, 20, 2000, true, true, true) == EaStatus.self_validation;
+  #assert ea_apply_verdict(q[..], 1, 200, 10, 2000, true, true, true) == EaStatus.same_owner;
+  #assert ea_apply_verdict(q[..], 1, 200, 20, 1000, true, true, true) == EaStatus.same_device;
+  #assert ea_apply_verdict(q[..], 1, 200, 20, 2000, true, false, true) == EaStatus.bad_signature;
+  #assert ea_apply_verdict(q[..], 999, 200, 20, 2000, true, true, true) == EaStatus.not_quarantined;
+  #assert ea_check_pairing(0, 10, 1000, 200, 20, 2000, true) == EaStatus.invalid_schema;
+  #assert ea_check_pairing(100, 10, 1000, 0, 20, 2000, true) == EaStatus.invalid_schema;
+  #assert ea_check_pairing(100, 10, 0, 200, 20, 2000, true) == EaStatus.invalid_schema;
+  #assert ea_check_pairing(100, 10, 1000, 200, 20, 0, true) == EaStatus.invalid_schema;
+  // Private pool allows same owner when key & device are distinct
+  #assert ea_check_pairing(100, 10, 1000, 200, 10, 2000, false) == EaStatus.ok;
+  #assert ea_check_pairing(100, 0, 1000, 200, 0, 2000, true) == EaStatus.ok;
+
+  // Validate 7 of the 10 quarantined traces -> admitted == 7, quarantined == 3
+  for k: 1..<8 {
+    #assert ea_apply_verdict(q[..], k, 200, 20, 2000, true, true, true) == EaStatus.ok;
+  }
+  #assert q[0].admitted_count == 7 && q[0].quarantined_count == 3;
+  // Re-validating already verified trace is refused
+  #assert ea_apply_verdict(q[..], 1, 200, 20, 2000, true, true, true) == EaStatus.not_quarantined;
+
+  // Divergent replay transitions trace 8 to rejected (admitted stays 7; cannot be re-validated)
+  #assert ea_apply_verdict(q[..], 8, 200, 20, 2000, true, true, false) == EaStatus.divergent_trace;
+  #assert q[0].admitted_count == 7 && q[0].rejected_count == 1 && q[0].quarantined_count == 2;
+  #assert ea_apply_verdict(q[..], 8, 200, 20, 2000, true, true, true) == EaStatus.not_quarantined;
+
+  // 3. Tier-3 redundant second validator check for high-value workloads
+  #assert ea_submit_quarantine(q[..], 50, 100, 10, 1000, true, true, true, true) == EaStatus.ok;
+  #assert ea_apply_verdict(q[..], 50, 200, 20, 2000, true, true, true) == EaStatus.needs_tier3;
+  #assert ea_apply_verdict(q[..], 50, 200, 20, 3000, true, true, true) == EaStatus.duplicate_validator;
+  #assert ea_apply_verdict(q[..], 50, 300, 30, 2000, true, true, true) == EaStatus.duplicate_validator;
+  #assert ea_apply_verdict(q[..], 50, 300, 30, 3000, true, true, true) == EaStatus.ok;
+  #assert q[0].admitted_count == 8;
+
+  // 4. Capacity boundary
+  q2: [1] EaQuarantine;
+  for i: 1..<EA_MAX_ENTRIES + 1 {
+    #assert ea_submit_quarantine(q2[..], i, 100, 10, 1000, true, true, true, false) == EaStatus.ok;
+  }
+  #assert ea_submit_quarantine(q2[..], 999, 100, 10, 1000, true, true, true, false) == EaStatus.capacity;
+}
