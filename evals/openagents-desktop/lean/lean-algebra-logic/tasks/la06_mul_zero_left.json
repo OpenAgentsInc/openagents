@@ -1,0 +1,20 @@
+{
+  "id": "la06_mul_zero_left",
+  "category": "lean_proof",
+  "fixture": "la06_mul_zero_left",
+  "description": "Prove that multiplying 0 on the left by any natural number yields 0.",
+  "steps": [
+    {
+      "send": "Complete the Lean 4 proof of `mul_zero_left` in `Problem.lean` without using `sorry`, custom axioms, or `native_decide`, and without changing the theorem statement:\n\n```lean\ntheorem mul_zero_left (n : Nat) : 0 * n = 0\n```\n\nUse `Read`, `Write`, and `LeanCheck` (with `file: \"Problem.lean\"` and `target: \"mul_zero_left\"`) to verify your proof before finishing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "lean_verify",
+      "file": "Problem.lean",
+      "target": "mul_zero_left",
+      "statement": "theorem mul_zero_left (n : Nat) : 0 * n = 0"
+    }
+  ],
+  "timeout_s": 120
+}

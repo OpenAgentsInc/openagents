@@ -7019,6 +7019,21 @@
         "coax/lib/lean/wire-checks.coax"
       ],
       "note": "Persistent user or agent study note attached to a Riemann Hypothesis module or declaration (#13946)."
+    },
+    {
+      "id": "lean-psionic-w32.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/atif.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax",
+        "coax/lib/lean/atif.coax"
+      ],
+      "note": "Verified-only Psionic W3.2 distillation row derived from an ATIF-v1.8 Lean proof trajectory (#13948)."
     }
   ]
 }

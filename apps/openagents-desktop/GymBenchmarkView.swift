@@ -549,6 +549,29 @@ final class GymBenchmarkView: NSView {
         .init(tier: "tier4", id: "k17_js_group_by", langBadge: "JS/Node"),
     ]
 
+    static let leanCoreSmokeTasks: [GymBenchTaskSpec] = [
+        .init(tier: "lean/lean-core-smoke", id: "l01_add_zero_right", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-core-smoke", id: "l02_add_comm_nat", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-core-smoke", id: "l03_mul_one_right", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-core-smoke", id: "l04_and_comm", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-core-smoke", id: "l05_list_append_nil", langBadge: "Lean 4"),
+    ]
+
+    static let leanAlgebraLogicTasks: [GymBenchTaskSpec] = [
+        .init(tier: "lean/lean-algebra-logic", id: "la01_add_assoc", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la02_double_eq_add", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la03_or_comm", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la04_list_length_append", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la05_le_add_right", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la06_mul_zero_left", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la07_succ_add", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la08_imp_trans", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la09_list_reverse_nil", langBadge: "Lean 4"),
+        .init(tier: "lean/lean-algebra-logic", id: "la10_sub_self_nat", langBadge: "Lean 4"),
+    ]
+
+    private var externalLeanSuites: [(title: String, root: URL, specs: [GymBenchTaskSpec])] = []
+
     private let suitePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let runButton = NSButton(title: "Run Benchmark", target: nil, action: nil)
     private let stopButton = NSButton(title: "Stop", target: nil, action: nil)
@@ -606,6 +629,12 @@ final class GymBenchmarkView: NSView {
         } else if args.contains("--gym-suite=tier4") {
             suitePopup.selectItem(at: 2)
             activeSpecs = Self.allTenTasks.filter { $0.tier == "tier4" }
+        } else if args.contains("--gym-suite=lean-smoke") {
+            suitePopup.selectItem(at: 3)
+            activeSpecs = Self.leanCoreSmokeTasks
+        } else if args.contains("--gym-suite=lean-algebra") {
+            suitePopup.selectItem(at: 4)
+            activeSpecs = Self.leanAlgebraLogicTasks
         }
         rebuildTaskRows()
         loadSavedIfPresent(silent: true)
@@ -627,10 +656,16 @@ final class GymBenchmarkView: NSView {
         suitePopup.controlSize = .small
         suitePopup.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
         suitePopup.addItems(withTitles: [
-            "10-Task Real Coding Suite (Tier 2 + Tier 4)",
-            "Tier 2 Quick Suite (3 Python Tasks)",
-            "Tier 4 Multi-Language Suite (7 Tasks: Py / C / JS / Bash)",
+            "Coding — All 10 Real Tasks (Tier 2 + Tier 4)",
+            "Coding — Tier 2 Quick Suite (3 Python Tasks)",
+            "Coding — Tier 4 Multi-Language (7 Tasks: Py / C / JS / Bash)",
+            "Lean Proofs — Core Smoke (5 real Lean 4 proofs)",
+            "Lean Proofs — Algebra & Logic (10 multi-step proofs)",
         ])
+        discoverExternalLeanSuites()
+        for ext in externalLeanSuites {
+            suitePopup.addItem(withTitle: ext.title)
+        }
         suitePopup.target = self
         suitePopup.action = #selector(suiteChanged)
         addSubview(suitePopup)
@@ -812,19 +847,47 @@ final class GymBenchmarkView: NSView {
         return String(format: "**%@** in **%.2fs** (%d turns · %d tok · %.1f tok/s)\n\nTTFTs: `%@`\n\n%@", r.passed ? "PASS" : "FAIL", r.wall_s, r.turns, r.toks, r.decode_tok_s, ttftStr, checksMd)
     }
 
+    private func discoverExternalLeanSuites() {
+        externalLeanSuites.removeAll()
+        let fm = FileManager.default
+        let extRoot = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/lean/benchmarks")
+        guard let dirs = try? fm.contentsOfDirectory(at: extRoot, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+        for d in dirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let tasksDir = d.appendingPathComponent("tasks")
+            guard let files = try? fm.contentsOfDirectory(at: tasksDir, includingPropertiesForKeys: nil) else { continue }
+            let jsonIds = files.filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }.sorted()
+            if jsonIds.isEmpty { continue }
+            let name = d.lastPathComponent
+            let specs = jsonIds.map { GymBenchTaskSpec(tier: "ext-lean:\(name)", id: $0, langBadge: "Lean 4") }
+            externalLeanSuites.append((title: "Lean External — \(name) (\(specs.count) tasks)", root: d, specs: specs))
+        }
+    }
+
     @objc private func suiteChanged() {
         guard !isRunning else { return }
-        switch suitePopup.indexOfSelectedItem {
+        let idx = suitePopup.indexOfSelectedItem
+        switch idx {
         case 1: activeSpecs = Self.allTenTasks.filter { $0.tier == "tier2" }
         case 2: activeSpecs = Self.allTenTasks.filter { $0.tier == "tier4" }
-        default: activeSpecs = Self.allTenTasks
+        case 3: activeSpecs = Self.leanCoreSmokeTasks
+        case 4: activeSpecs = Self.leanAlgebraLogicTasks
+        default:
+            let extIdx = idx - 5
+            if extIdx >= 0 && extIdx < externalLeanSuites.count {
+                activeSpecs = externalLeanSuites[extIdx].specs
+            } else {
+                activeSpecs = Self.allTenTasks
+            }
         }
         psiResults.removeAll()
         llamaResults.removeAll()
         rebuildTaskRows()
         psiCard.reset(total: activeSpecs.count)
         llamaCard.reset(total: activeSpecs.count)
-        deltaBanner.stringValue = "Suite selected: \(activeSpecs.count) real coding eval tasks. Click Run Benchmark to begin."
+        let isLean = activeSpecs.first?.tier.contains("lean") == true
+        deltaBanner.stringValue = isLean
+            ? "Lean 4 Proof Suite: \(activeSpecs.count) kernel-verified theorems (ATIF-v1.8 -> Psionic W3.2). Click Run Benchmark."
+            : "Suite selected: \(activeSpecs.count) real coding eval tasks. Click Run Benchmark to begin."
     }
 
     @objc private func runClicked() {
@@ -951,6 +1014,28 @@ final class GymBenchmarkView: NSView {
         pairs.append(("/Users/christopherdavid/work/openagents/psionic/build/psionic-inkling-serve", "/Users/christopherdavid/work/openagents/psionic/build/inkling-kernels.metal"))
         for (b, m) in pairs {
             if fm.isExecutableFile(atPath: b) && fm.fileExists(atPath: m) { return (b, m) }
+        }
+        return nil
+    }
+
+    private func resolveLeanRunBinary() -> String? {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        var candidates: [String] = []
+        if let res = Bundle.main.resourceURL {
+            candidates.append(res.appendingPathComponent("lean-run").path)
+        }
+        candidates.append("\(home)/.openagents/bin/lean-run")
+        if let wf = workingFolderProvider?() {
+            let td = wf.appendingPathComponent("coax/web/build/tools")
+            if let entries = try? fm.contentsOfDirectory(atPath: td.path) {
+                for e in entries.sorted().reversed() where e.hasPrefix("lean-run-") && !e.hasSuffix(".sources") {
+                    candidates.append(td.appendingPathComponent(e).path)
+                }
+            }
+        }
+        for c in candidates {
+            if fm.isExecutableFile(atPath: c) { return c }
         }
         return nil
     }
@@ -1184,7 +1269,16 @@ final class GymBenchmarkView: NSView {
     }
 
     private func runSingleTask(side: GymBenchSide, port: Int, pid: Int32, evalRoot: URL, spec: GymBenchTaskSpec) -> GymBenchTaskResult {
-        let tierDir = evalRoot.appendingPathComponent(spec.tier)
+        let isLean = spec.tier.hasPrefix("lean/") || spec.tier.hasPrefix("ext-lean:")
+        let tierDir: URL
+        if spec.tier.hasPrefix("ext-lean:") {
+            let extName = String(spec.tier.dropFirst("ext-lean:".count))
+            tierDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".openagents/lean/benchmarks")
+                .appendingPathComponent(extName)
+        } else {
+            tierDir = evalRoot.appendingPathComponent(spec.tier)
+        }
         let taskFile = tierDir.appendingPathComponent("tasks/\(spec.id).json")
         guard let taskData = try? Data(contentsOf: taskFile),
               let taskObj = try? JSONSerialization.jsonObject(with: taskData) as? [String: Any],
@@ -1201,7 +1295,12 @@ final class GymBenchmarkView: NSView {
         try? FileManager.default.copyItem(at: fixDir, to: tmpDir)
 
         let files = listRelativeFiles(in: tmpDir)
-        let sysPrompt = "You are OpenAgents, a coding agent working in a local repository. Read the relevant files first, make the required edits without modifying test files, run the test command with Bash to verify everything passes, then give a concise summary. Keep thinking brief.\n\nWorkspace files: " + files.joined(separator: ", ")
+        let sysPrompt: String
+        if isLean {
+            sysPrompt = "You are OpenAgents, a Lean 4 theorem prover working in a local workspace. Read Problem.lean, write a complete proof without using sorry, custom axioms, or native_decide, and never alter the theorem signature. Verify with LeanCheck (or inspect tactic states with LeanGoal and LeanTry) until Lean 4 verifies ok, then give a concise summary. Keep thinking brief.\n\nWorkspace files: " + files.joined(separator: ", ")
+        } else {
+            sysPrompt = "You are OpenAgents, a coding agent working in a local repository. Read the relevant files first, make the required edits without modifying test files, run the test command with Bash to verify everything passes, then give a concise summary. Keep thinking brief.\n\nWorkspace files: " + files.joined(separator: ", ")
+        }
 
         var messages: [[String: Any]] = [
             ["role": "system", "content": sysPrompt],
@@ -1239,7 +1338,7 @@ final class GymBenchmarkView: NSView {
                 self.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: 0, activeTool: ""), scaleMaxSeconds: 25.0)
             }
             var streamedChars = 0
-            let tr = streamTurn(port: port, messages: messages, maxTokens: 1024) { [weak self] deltaContent, deltaReason, elapsedDecode in
+            let tr = streamTurn(port: port, messages: messages, maxTokens: 1024, useLeanTools: isLean) { [weak self] deltaContent, deltaReason, elapsedDecode in
                 streamedChars += deltaContent.count + deltaReason.count
                 let approxTok = Double(streamedChars) / 4.0
                 let rate = elapsedDecode > 0.2 ? approxTok / elapsedDecode : 0
@@ -1292,7 +1391,7 @@ final class GymBenchmarkView: NSView {
                     self.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: turnTokRate, activeTool: fnName), scaleMaxSeconds: 25.0)
                 }
                 let (toolOut, exitCode) = execTool(workdir: tmpDir, name: fnName, args: argObj)
-                let preview = (argObj["path"] as? String) ?? (argObj["command"] as? String) ?? ""
+                let preview = (argObj["path"] as? String) ?? (argObj["file"] as? String) ?? (argObj["command"] as? String) ?? ""
                 appendLog("    ↳ \(fnName)(\(preview.prefix(64)))")
                 if fnName == "Read" {
                     emitChat(["kind": "view", "path": preview, "found": !toolOut.hasPrefix("(file not found")])
@@ -1306,7 +1405,7 @@ final class GymBenchmarkView: NSView {
         }
 
         let wallS = CFAbsoluteTimeGetCurrent() - t0
-        let (passed, checks) = gradeTask(taskObj: taskObj, fixDir: fixDir, workdir: tmpDir)
+        let (passed, checks) = gradeTask(taskObj: taskObj, fixDir: fixDir, workdir: tmpDir, spec: spec, side: side, prompt: prompt)
         let decodeTokS = totalDecodeS > 0 ? Double(totalToks) / totalDecodeS : 0
         let chkSummary = checks.map { "\($0[1] == "pass" ? "✓" : "✗") \($0[0])" }.joined(separator: "  ")
         appendLog(String(format: "  ⇒ %@ in %.2fs (%d turns, %d tok, %.1f tok/s)  %@", passed ? "PASS" : "FAIL", wallS, turns, totalToks, decodeTokS, chkSummary))
@@ -1362,6 +1461,57 @@ final class GymBenchmarkView: NSView {
         ],
     ]
 
+    private static let leanToolsSchema: [[String: Any]] = toolsSchema + [
+        [
+            "type": "function",
+            "function": [
+                "name": "LeanCheck",
+                "description": "Verify a Lean 4 theorem with the real Lean 4 kernel and #authority axiom policy.",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "file": ["type": "string", "description": "Relative path to the .lean file (e.g. Problem.lean)"],
+                        "target": ["type": "string", "description": "Theorem name to verify"],
+                    ],
+                    "required": ["file", "target"],
+                ],
+            ],
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "LeanGoal",
+                "description": "Query the live Lean 4 tactic proof state at a 1-based line and column.",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "file": ["type": "string"],
+                        "line": ["type": "integer"],
+                        "col": ["type": "integer"],
+                    ],
+                    "required": ["file", "line", "col"],
+                ],
+            ],
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "LeanTry",
+                "description": "Try a Lean 4 tactic in memory via oa-leanhost without modifying the file on disk.",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "file": ["type": "string"],
+                        "line": ["type": "integer"],
+                        "col": ["type": "integer"],
+                        "tactic": ["type": "string"],
+                    ],
+                    "required": ["file", "line", "col", "tactic"],
+                ],
+            ],
+        ],
+    ]
+
     private func waitHealth(port: Int) -> Bool {
         let url = URL(string: "http://127.0.0.1:\(port)/health")!
         for _ in 0..<300 {
@@ -1395,12 +1545,12 @@ final class GymBenchmarkView: NSView {
         return ((kb / 1024.0) * 10).rounded() / 10
     }
 
-    private func streamTurn(port: Int, messages: [[String: Any]], maxTokens: Int, onStream: ((String, String, Double) -> Void)?) -> GymBenchStreamTurn {
+    private func streamTurn(port: Int, messages: [[String: Any]], maxTokens: Int, useLeanTools: Bool = false, onStream: ((String, String, Double) -> Void)?) -> GymBenchStreamTurn {
         let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
         let payload: [String: Any] = [
             "model": "inkling-2-mini",
             "messages": messages,
-            "tools": Self.toolsSchema,
+            "tools": useLeanTools ? Self.leanToolsSchema : Self.toolsSchema,
             "max_tokens": maxTokens,
             "temperature": 0.0,
             "stream": true,
@@ -1535,8 +1685,53 @@ final class GymBenchmarkView: NSView {
             let cmd = (args["command"] as? String) ?? ""
             let (code, out) = runShell(cmd, cwd: workdir)
             return ("exit=\(code)\n\(out.trimmingCharacters(in: .whitespacesAndNewlines))", code)
+        } else if name == "LeanCheck" || name == "LeanGoal" || name == "LeanTry" {
+            guard let leanRun = resolveLeanRunBinary() else {
+                return ("(lean-run binary not found)", 1)
+            }
+            let rel = ((args["file"] as? String) ?? "Problem.lean").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let full = workdir.appendingPathComponent(rel).path
+            var argv: [String] = []
+            if name == "LeanCheck" {
+                let target = (args["target"] as? String) ?? ""
+                argv = ["verify", full, target, "--json"]
+            } else if name == "LeanGoal" {
+                let line = (args["line"] as? Int) ?? 1
+                let col = (args["col"] as? Int) ?? 1
+                argv = ["goal", full, String(line), String(col), "--json"]
+            } else {
+                let line = (args["line"] as? Int) ?? 1
+                let col = (args["col"] as? Int) ?? 1
+                let tactic = (args["tactic"] as? String) ?? "rfl"
+                argv = ["try", full, String(line), String(col), tactic, "--json"]
+            }
+            let (code, out) = runExec(leanRun, args: argv, cwd: workdir)
+            return (out.trimmingCharacters(in: .whitespacesAndNewlines), code)
         }
         return ("(unknown tool \(name))", 1)
+    }
+
+    private func runExec(_ exe: String, args: [String], cwd: URL) -> (Int32, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: exe)
+        p.arguments = args
+        p.currentDirectoryURL = cwd
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extraPath = "\(home)/.elan/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        env["PATH"] = (env["PATH"]?.isEmpty == false) ? "\(env["PATH"]!):\(extraPath)" : extraPath
+        p.environment = env
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        do {
+            try p.run()
+            p.waitUntilExit()
+        } catch {
+            return (1, error.localizedDescription)
+        }
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return (p.terminationStatus, out)
     }
 
     private func runShell(_ cmd: String, cwd: URL) -> (Int32, String) {
@@ -1578,7 +1773,7 @@ final class GymBenchmarkView: NSView {
         return out.sorted()
     }
 
-    private func gradeTask(taskObj: [String: Any], fixDir: URL, workdir: URL) -> (Bool, [[String]]) {
+    private func gradeTask(taskObj: [String: Any], fixDir: URL, workdir: URL, spec: GymBenchTaskSpec, side: GymBenchSide, prompt: String) -> (Bool, [[String]]) {
         let fm = FileManager.default
         let graders = (taskObj["graders"] as? [[String: Any]]) ?? []
         var checks: [[String]] = []
@@ -1586,7 +1781,57 @@ final class GymBenchmarkView: NSView {
 
         for g in graders {
             let gt = (g["type"] as? String) ?? ""
-            if gt == "files_unchanged" {
+            if gt == "lean_verify" {
+                let rel = (g["file"] as? String) ?? "Problem.lean"
+                let target = (g["target"] as? String) ?? spec.id
+                let statement = (g["statement"] as? String) ?? ""
+                let full = workdir.appendingPathComponent(rel).path
+                guard let leanRun = resolveLeanRunBinary() else {
+                    checks.append(["lean_verify:missing_lean_run", "fail"])
+                    allOk = false
+                    continue
+                }
+                let sideSlug = (side == .psionic) ? "psionic" : "llamacpp"
+                let runId = "gym-\(sideSlug)-\(spec.id)-\(Int(Date().timeIntervalSince1970))"
+                var argv = [
+                    "atif-export",
+                    "--file", full,
+                    "--target", target,
+                    "--run", runId,
+                    "--task", spec.id,
+                    "--model", side.rawValue,
+                    "--prompt", prompt,
+                    "--json",
+                ]
+                if !statement.isEmpty {
+                    argv.append(contentsOf: ["--statement", statement])
+                }
+                let (code, out) = runExec(leanRun, args: argv, cwd: workdir)
+                let trimmed = out.trimmingCharacters(in: .whitespacesAndNewlines)
+                var verified = false
+                var verdict = "error"
+                var axiomsStr = ""
+                var ms = 0
+                if let line = trimmed.split(separator: "\n").last(where: { $0.hasPrefix("{") }),
+                   let data = String(line).data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    verified = (obj["verified"] as? Bool) ?? false
+                    verdict = (obj["verdict"] as? String) ?? "error"
+                    ms = (obj["elapsed_ms"] as? Int) ?? 0
+                    if let axs = obj["axioms"] as? [String], !axs.isEmpty {
+                        axiomsStr = axs.joined(separator: ",")
+                    }
+                }
+                let ok = (code == 0) && verified && (verdict == "ok")
+                let label: String
+                if ok {
+                    label = "lean_verify:ok (\(ms)ms\(axiomsStr.isEmpty ? "" : ", \(axiomsStr)"))"
+                } else {
+                    label = "lean_verify:REJECTED[\(verdict)]\(axiomsStr.isEmpty ? "" : " (\(axiomsStr))")"
+                }
+                checks.append([label, ok ? "pass" : "fail"])
+                if !ok { allOk = false }
+            } else if gt == "files_unchanged" {
                 let patterns = (g["paths"] as? [String]) ?? []
                 var ok = true
                 for rel in listRelativeFiles(in: fixDir) {

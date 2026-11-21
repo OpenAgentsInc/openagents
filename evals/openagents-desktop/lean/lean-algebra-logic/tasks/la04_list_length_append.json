@@ -1,0 +1,20 @@
+{
+  "id": "la04_list_length_append",
+  "category": "lean_proof",
+  "fixture": "la04_list_length_append",
+  "description": "Prove that the length of concatenated lists equals the sum of their lengths.",
+  "steps": [
+    {
+      "send": "Complete the Lean 4 proof of `list_length_append` in `Problem.lean` without using `sorry`, custom axioms, or `native_decide`, and without changing the theorem statement:\n\n```lean\ntheorem list_length_append (\u03b1 : Type) (xs ys : List \u03b1) : (xs ++ ys).length = xs.length + ys.length\n```\n\nUse `Read`, `Write`, and `LeanCheck` (with `file: \"Problem.lean\"` and `target: \"list_length_append\"`) to verify your proof before finishing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "lean_verify",
+      "file": "Problem.lean",
+      "target": "list_length_append",
+      "statement": "theorem list_length_append (\u03b1 : Type) (xs ys : List \u03b1) : (xs ++ ys).length = xs.length + ys.length"
+    }
+  ],
+  "timeout_s": 120
+}

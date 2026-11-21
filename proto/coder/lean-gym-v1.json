@@ -7,7 +7,8 @@
     "lean-gym-request.v1",
     "lean-gym-state.v1",
     "rh-index.v1",
-    "rh-note.v1"
+    "rh-note.v1",
+    "lean-psionic-w32.v1"
   ],
   "goldens": [
     {
@@ -37,6 +38,10 @@
     {
       "schema": "rh-note.v1",
       "line": "{\"schema\":\"rh-note.v1\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"author\":\"user\",\"updated_s\":1795284849,\"body\":\"Entry theorem wrapping rhOfAll from Supplements.Kernels.MainTheorems.\"}"
+    },
+    {
+      "schema": "lean-psionic-w32.v1",
+      "line": "{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"run-lean-001\",\"task_id\":\"l01_add_zero_right\",\"model\":\"inkling-2-mini\",\"target\":\"add_zero_right\",\"prompt\":\"Prove n + 0 = n\",\"solution\":\"theorem add_zero_right (n : Nat) : n + 0 = n := by rfl\",\"verdict\":\"ok\",\"axioms\":\"\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}"
     }
   ],
   "refused": [
@@ -50,6 +55,7 @@
     "{\"schema\":\"lean-gym-request.v1\",\"tour_step\":-1}",
     "{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"rh_modules\":-5}",
     "{\"schema\":\"rh-index.v1\",\"modules\":-1}",
-    "{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"u\",\"updated_s\":1,\"body\":\"empty module rejected\"}"
+    "{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"u\",\"updated_s\":1,\"body\":\"empty module rejected\"}",
+    "{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"r\",\"task_id\":\"t\",\"model\":\"m\",\"target\":\"x\",\"prompt\":\"p\",\"solution\":\"s\",\"verdict\":\"sorry\",\"axioms\":\"sorryAx\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}"
   ]
 }

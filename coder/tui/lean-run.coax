@@ -21,6 +21,7 @@
 #load "../../coax/lib/lean/rh-index.coax";
 #load "../../coax/lib/lean/gym.coax";
 #load "../../coax/lib/lean/host.coax";
+#load "../../coax/lib/lean/atif.coax";
 #load "lean-run-mcp.coax";
 
 cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
@@ -39,6 +40,8 @@ lr_usage :: () -> int {
   print("Usage:\n");
   print("  lean-run doctor [--json]\n");
   print("  lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]\n");
+  print("  lean-run atif-export --file FILE --target TARGET [--statement SIG] [--run ID]\n");
+  print("                       [--task ID] [--model M] [--prompt P] [--out-dir DIR] [--json]\n");
   print("  lean-run goal FILE LINE COL [--json]\n");
   print("  lean-run try FILE LINE COL TACTIC [--json]\n");
   print("  lean-run hover FILE LINE COL [--json]\n");
@@ -627,6 +630,145 @@ lr_cmd_mcp :: () -> int #effects(all) {
   return lm_main(ifx self.count > 0 then self else "lean-run");
 }
 
+LrAtifWork :: struct {
+  src: [32768] u8;
+  log_b: [65536] u8;
+  doc_b: [65536] u8;
+  man_b: [4096] u8;
+  w32_b: [16384] u8;
+  out_b: [8192] u8;
+  ax_b: [512] u8;
+  shx: [64] u8;
+  ahx: [64] u8;
+}
+
+lr_cmd_atif_export :: (a: [] Args, home: string) -> int #effects(all) {
+  file := args_value(a, "--file", "");
+  if file.count == 0 { file = args_at(a, 1); }
+  target := args_value(a, "--target", "");
+  if target.count == 0 { target = args_at(a, 2); }
+  if file.count == 0 || target.count == 0 {
+    tool_errln("usage: lean-run atif-export --file FILE --target TARGET [--statement SIG] [--run ID] [--task ID] [--model M] [--prompt P] [--out-dir DIR] [--json]");
+    return 2;
+  }
+  stmt := args_value(a, "--statement", "");
+  run_id := args_value(a, "--run", "");
+  rb: [64] u8;
+  if run_id.count == 0 {
+    ro: [1] Jo; jo_start(ro[..], rb[..]);
+    jo_put(ro[..], "lean-"); jo_int(ro[..], proc_now_ms());
+    run_id = jo_text(ro[..]);
+  }
+  task_id := args_value(a, "--task", target);
+  model := args_value(a, "--model", "local-model");
+  prompt := args_value(a, "--prompt", "");
+  out_dir := args_value(a, "--out-dir", "");
+  db0: [FS_PATH_MAX] u8; db1: [FS_PATH_MAX] u8;
+  if out_dir.count == 0 {
+    runs_dir := fs_join(home, ".openagents/lean/runs", db0[..]);
+    out_dir = fs_join(runs_dir, run_id, db1[..]);
+  }
+
+  ver: [1] LwVerify;
+  lv_verify_file(home, file, target, stmt, ver[..]);
+
+  w: [1] LrAtifWork;
+  sn := fs_read(file, w[0].src[..]);
+  src_s := ifx sn > 0 then cast(string) w[0].src[0..<sn] else "";
+
+  ao: [1] Jo; jo_start(ao[..], w[0].ax_b[..]);
+  for i: 0..<ver[0].axiom_count {
+    if i > 0 { jo_put(ao[..], ","); }
+    jo_put(ao[..], cast(string) ver[0].axioms[i][0..<ver[0].axioms_n[i]]);
+  }
+  ax_csv := jo_text(ao[..]);
+  verdict_s := cast(string) ver[0].verdict[0..<ver[0].verdict_n];
+  sha_s := cast(string) ver[0].file_sha256[0..<ver[0].file_sha256_n];
+  msg_s := cast(string) ver[0].message[0..<ver[0].message_n];
+
+  inp := LaTrajectoryInput.{
+    run_id = run_id,
+    task_id = task_id,
+    model_name = model,
+    prompt = ifx prompt.count > 0 then prompt else target,
+    proof_text = src_s,
+    file_path = file,
+    target = target,
+    verified = ver[0].verified,
+    verdict = verdict_s,
+    axioms_csv = ax_csv,
+    file_sha256 = sha_s,
+    kernel_ms = ver[0].elapsed_ms,
+    created_at = "2026-11-21T20:00:00Z",
+  };
+
+  if !fs_mkdir_all(out_dir) {
+    tool_errln("lean-run atif-export: failed to create output directory");
+    return 1;
+  }
+  ln := la_write_atif_log(inp, w[0].log_b[..]);
+  if ln <= 0 { tool_errln("lean-run atif-export: failed to build ATIF-v1.8 log"); return 1; }
+  log_s := cast(string) w[0].log_b[0..<ln];
+  mn := la_build_manifest(inp, log_s, w[0].man_b[..], w[0].shx[..], w[0].ahx[..]);
+  if mn <= 0 { tool_errln("lean-run atif-export: failed ATIF-v1.8 self-verification"); return 1; }
+  shx_s := cast(string) w[0].shx[..];
+  ahx_s := cast(string) w[0].ahx[..];
+  dn := la_write_atif_doc(inp, shx_s, w[0].doc_b[..]);
+  if dn <= 0 { tool_errln("lean-run atif-export: failed to build trajectory.atif.json"); return 1; }
+
+  p0: [FS_PATH_MAX] u8; p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8; p3: [FS_PATH_MAX] u8;
+  f_jsonl := fs_join(out_dir, "trajectory.atif.jsonl", p0[..]);
+  f_doc := fs_join(out_dir, "trajectory.atif.json", p1[..]);
+  f_man := fs_join(out_dir, "manifest.atif.json", p2[..]);
+  f_w32 := fs_join(out_dir, "psionic-w32.jsonl", p3[..]);
+
+  ok_w := fs_write(f_jsonl, log_s)
+    && fs_write(f_doc, cast(string) w[0].doc_b[0..<dn])
+    && fs_write(f_man, cast(string) w[0].man_b[0..<mn]);
+  if !ok_w { tool_errln("lean-run atif-export: failed to write ATIF files"); return 1; }
+
+  w32_exported := false;
+  wn := la_write_psionic_w32(inp, ahx_s, shx_s, w[0].w32_b[..]);
+  if wn > 0 && wn + 1 <= w[0].w32_b.count {
+    w[0].w32_b[wn] = '\n';
+    w32_exported = fs_write(f_w32, cast(string) w[0].w32_b[0..<wn + 1]);
+  }
+
+  if args_has(a, "--json") {
+    o: [1] Jo; jo_start(o[..], w[0].out_b[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "verified"); jo_bool(o[..], ver[0].verified);
+    jo_key(o[..], "verdict"); jo_str(o[..], verdict_s);
+    jo_key(o[..], "statement_match"); jo_bool(o[..], ver[0].statement_match);
+    jo_key(o[..], "target"); jo_str(o[..], target);
+    jo_key(o[..], "file_sha256"); jo_str(o[..], sha_s);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], ver[0].elapsed_ms);
+    jo_key(o[..], "exit_code"); jo_int(o[..], ver[0].exit_code);
+    jo_key(o[..], "axioms"); jo_arr(o[..]);
+    for i: 0..<ver[0].axiom_count { jo_str(o[..], cast(string) ver[0].axioms[i][0..<ver[0].axioms_n[i]]); }
+    jo_end(o[..]);
+    jo_key(o[..], "message"); jo_str(o[..], msg_s);
+    jo_key(o[..], "out_dir"); jo_str(o[..], out_dir);
+    jo_key(o[..], "atif_json"); jo_str(o[..], f_doc);
+    jo_key(o[..], "atif_jsonl"); jo_str(o[..], f_jsonl);
+    jo_key(o[..], "manifest_json"); jo_str(o[..], f_man);
+    jo_key(o[..], "steps_digest"); jo_str(o[..], shx_s);
+    jo_key(o[..], "artifact_sha256"); jo_str(o[..], ahx_s);
+    jo_key(o[..], "w32_exported"); jo_bool(o[..], w32_exported);
+    jo_key(o[..], "w32_jsonl"); jo_str(o[..], ifx w32_exported then f_w32 else "");
+    jo_end(o[..]);
+    print("%\n", jo_text(o[..]));
+  } else {
+    print("ATIF-v1.8 Export: % (% | % ms)\n", ifx ver[0].verified then "VERIFIED" else "REJECTED", verdict_s, ver[0].elapsed_ms);
+    print("  trajectory.atif.json:  %\n", f_doc);
+    print("  trajectory.atif.jsonl: %\n", f_jsonl);
+    print("  manifest.atif.json:    %\n", f_man);
+    print("  steps_digest:          %\n", shx_s);
+    print("  psionic-w32.jsonl:     %\n", ifx w32_exported then f_w32 else "(not exported — unverified)");
+  }
+  return ifx ver[0].verified then 0 else 1;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; _ = args_load(a[..]);
   verb := args_at(a[..], 0);
@@ -635,6 +777,7 @@ tool_main :: () -> int #export_c #effects(all) {
   home := proc_getenv("HOME", hb[..]);
   if verb == "doctor" { return lr_cmd_doctor(a[..], home); }
   if verb == "verify" { return lr_cmd_verify(a[..], home); }
+  if verb == "atif-export" { return lr_cmd_atif_export(a[..], home); }
   if verb == "goal" || verb == "try" || verb == "hover" || verb == "diagnostics" { return lr_cmd_lsp_op(verb, a[..], home); }
   if verb == "host" { return lr_cmd_host(a[..], home); }
   if verb == "mcp" { return lr_cmd_mcp(); }

@@ -1,0 +1,328 @@
+// Pure Coax ATIF-v1.8 trajectory exporter & Psionic W3.2 distillation bridge for
+// Lean 4 theorem-proving runs (Epic #13943, #13948; docs/lean/wire-and-artifacts.md §8-9).
+//
+// Builds directly on the shared NIP-ATIF primitives (coax/lib/nostr/atif/log.coax and
+// coax/lib/nostr/atif/digest.coax) so every Lean proof trajectory carries an exact
+// SHA-256 artifact digest and canonical sorted-key steps_digest across both the
+// append-only `.atif.jsonl` log and single-document `trajectory.atif.json`.
+//
+//   coax/bin/coax test coax/lib/lean/atif.coax --library
+#load "../nostr/atif/log.coax";
+
+LA_HARNESS :: "openagents-lean-gym";
+LA_W32_SCHEMA :: "lean-psionic-w32.v1";
+
+LaTrajectoryInput :: struct {
+  run_id: string;
+  task_id: string;
+  model_name: string;
+  prompt: string;
+  proof_text: string;
+  file_path: string;
+  target: string;
+  verified: bool;
+  verdict: string;
+  axioms_csv: string;
+  file_sha256: string;
+  kernel_ms: int;
+  created_at: string;
+}
+
+LaW32Row :: struct {
+  run_id: [128] u8; run_id_n: int;
+  task_id: [128] u8; task_id_n: int;
+  model: [128] u8; model_n: int;
+  target: [256] u8; target_n: int;
+  prompt: [2048] u8; prompt_n: int;
+  solution: [8192] u8; solution_n: int;
+  verdict: [64] u8; verdict_n: int;
+  axioms: [256] u8; axioms_n: int;
+  file_sha256: [64] u8; file_sha256_n: int;
+  atif_artifact_sha256: [64] u8; atif_artifact_sha256_n: int;
+  atif_steps_digest: [64] u8; atif_steps_digest_n: int;
+}
+
+// Helper: builds step 1 (user prompt) and step 2 (agent proof + LeanCheck call/observation)
+// JSON objects so `.atif.jsonl` and `.atif.json` produce byte-identical steps and steps_digest.
+la_build_steps :: (inp: LaTrajectoryInput, s1_buf: [] u8, s1_n: [] int, s2_buf: [] u8, s2_n: [] int) -> bool {
+  if inp.run_id.count == 0 || inp.task_id.count == 0 || inp.target.count == 0 { return false; }
+  at := ifx inp.created_at.count > 0 then inp.created_at else "2026-11-21T00:00:00Z";
+  model := ifx inp.model_name.count > 0 then inp.model_name else "unknown";
+
+  s1 := AtifStep.{
+    step_id = 1,
+    timestamp = at,
+    source = ATIF_SOURCE_USER,
+    message = ifx inp.prompt.count > 0 then inp.prompt else inp.target,
+  };
+  n1 := atif_write_step_json(s1, s1_buf);
+  if n1 <= 0 { return false; }
+
+  tc_b: [2048] u8; tco: [1] Jo; jo_start(tco[..], tc_b[..]);
+  jo_arr(tco[..]);
+  arg_b: [1024] u8; argo: [1] Jo; jo_start(argo[..], arg_b[..]);
+  jo_obj(argo[..]);
+  jo_key(argo[..], "file"); jo_str(argo[..], inp.file_path);
+  jo_key(argo[..], "target"); jo_str(argo[..], inp.target);
+  jo_end(argo[..]);
+  atif_jo_tool_call(tco[..], "lean_verify_1", "LeanCheck", jo_text(argo[..]));
+  jo_end(tco[..]);
+
+  obs_b: [2048] u8; obso: [1] Jo; jo_start(obso[..], obs_b[..]);
+  jo_obj(obso[..]);
+  jo_key(obso[..], "results"); jo_arr(obso[..]);
+  msg_b: [512] u8; mo: [1] Jo; jo_start(mo[..], msg_b[..]);
+  jo_put(mo[..], ifx inp.verified then "VERIFIED: " else "REJECTED: ");
+  jo_put(mo[..], inp.verdict);
+  if inp.axioms_csv.count > 0 { jo_put(mo[..], " axioms=["); jo_put(mo[..], inp.axioms_csv); jo_put(mo[..], "]"); }
+  atif_jo_obs_result(obso[..], "lean_verify_1", jo_text(mo[..]), !inp.verified);
+  jo_end(obso[..]);
+  jo_end(obso[..]);
+
+  ex_b: [1024] u8; exo: [1] Jo; jo_start(exo[..], ex_b[..]);
+  jo_obj(exo[..]);
+  jo_key(exo[..], "task_id"); jo_str(exo[..], inp.task_id);
+  jo_key(exo[..], "target"); jo_str(exo[..], inp.target);
+  jo_key(exo[..], "verified"); jo_bool(exo[..], inp.verified);
+  jo_key(exo[..], "verdict"); jo_str(exo[..], inp.verdict);
+  jo_key(exo[..], "axioms"); jo_str(exo[..], inp.axioms_csv);
+  jo_key(exo[..], "file_sha256"); jo_str(exo[..], inp.file_sha256);
+  jo_key(exo[..], "kernel_ms"); jo_int(exo[..], inp.kernel_ms);
+  jo_end(exo[..]);
+
+  s2 := AtifStep.{
+    step_id = 2,
+    timestamp = at,
+    source = ATIF_SOURCE_AGENT,
+    message = inp.proof_text,
+    model_name = model,
+    tool_calls_json = jo_text(tco[..]),
+    observation_json = jo_text(obso[..]),
+    extra_json = jo_text(exo[..]),
+  };
+  n2 := atif_write_step_json(s2, s2_buf);
+  if n2 <= 0 { return false; }
+
+  s1_n[0] = n1;
+  s2_n[0] = n2;
+  return true;
+}
+
+// Writes a complete ATIF-v1.8 append-only `.atif.jsonl` log (session + 2 steps + end).
+la_write_atif_log :: (inp: LaTrajectoryInput, out: [] u8) -> int {
+  s1_buf: [8192] u8; s2_buf: [32768] u8;
+  n1: [1] int; n2: [1] int;
+  if !la_build_steps(inp, s1_buf[..], n1[..], s2_buf[..], n2[..]) { return -1; }
+  at := ifx inp.created_at.count > 0 then inp.created_at else "2026-11-21T00:00:00Z";
+  model := ifx inp.model_name.count > 0 then inp.model_name else "unknown";
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = inp.run_id,
+    session_id = inp.task_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "openagents-lean-prover",
+    model_name = model,
+    source_harness = LA_HARNESS,
+    created_at = at,
+  };
+  pos := atif_write_session_line(hdr, out);
+  if pos <= 0 { return -1; }
+  w1 := atif_write_step_line(cast(string) s1_buf[0..<n1[0]], out[pos..<out.count]);
+  if w1 <= 0 { return -1; }
+  pos += w1;
+  w2 := atif_write_step_line(cast(string) s2_buf[0..<n2[0]], out[pos..<out.count]);
+  if w2 <= 0 { return -1; }
+  pos += w2;
+  we := atif_write_end_line(at, ATIF_STATE_ENDED, out[pos..<out.count]);
+  if we <= 0 { return -1; }
+  pos += we;
+  return pos;
+}
+
+// Writes a Harbor/Psionic-readable single-document ATIF-v1.8 `trajectory.atif.json` whose
+// `steps` array carries the exact same canonical `steps_digest` as `trajectory.atif.jsonl`.
+la_write_atif_doc :: (inp: LaTrajectoryInput, steps_hex: string, out: [] u8) -> int {
+  s1_buf: [8192] u8; s2_buf: [32768] u8;
+  n1: [1] int; n2: [1] int;
+  if !la_build_steps(inp, s1_buf[..], n1[..], s2_buf[..], n2[..]) { return -1; }
+  at := ifx inp.created_at.count > 0 then inp.created_at else "2026-11-21T00:00:00Z";
+  model := ifx inp.model_name.count > 0 then inp.model_name else "unknown";
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema_version"); jo_str(o[..], ATIF_SCHEMA_VERSION);
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], inp.run_id);
+  jo_key(o[..], "session_id"); jo_str(o[..], inp.task_id);
+  jo_key(o[..], "created_at"); jo_str(o[..], at);
+  jo_key(o[..], "agent");
+  jo_obj(o[..]);
+  jo_key(o[..], "name"); jo_str(o[..], "openagents-lean-prover");
+  jo_key(o[..], "model_name"); jo_str(o[..], model);
+  jo_key(o[..], "source_harness"); jo_str(o[..], LA_HARNESS);
+  jo_end(o[..]);
+  jo_key(o[..], "steps");
+  jo_arr(o[..]);
+  jo_raw(o[..], cast(string) s1_buf[0..<n1[0]]);
+  jo_raw(o[..], cast(string) s2_buf[0..<n2[0]]);
+  jo_end(o[..]);
+  jo_key(o[..], "extra");
+  jo_obj(o[..]);
+  jo_key(o[..], "verified"); jo_bool(o[..], inp.verified);
+  jo_key(o[..], "verdict"); jo_str(o[..], inp.verdict);
+  jo_key(o[..], "target"); jo_str(o[..], inp.target);
+  jo_key(o[..], "axioms"); jo_str(o[..], inp.axioms_csv);
+  jo_key(o[..], "file_sha256"); jo_str(o[..], inp.file_sha256);
+  jo_key(o[..], "kernel_ms"); jo_int(o[..], inp.kernel_ms);
+  if steps_hex.count == 64 { jo_key(o[..], "steps_digest"); jo_str(o[..], steps_hex); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Verifies `log_bytes` via NIP-ATIF and emits an `openagents.atif-manifest.v1` JSON object.
+la_build_manifest :: (inp: LaTrajectoryInput, log_bytes: string, out: [] u8, steps_hex_out: [] u8, art_hex_out: [] u8) -> int {
+  sum := atif_verify_log(log_bytes, "");
+  if !sum.ok || !sum.digest_ok { return -1; }
+  if atif_sha256_hex(log_bytes, art_hex_out) != ATIF_DIGEST_OK { return -1; }
+  for i: 0..<64 { if i < steps_hex_out.count { steps_hex_out[i] = sum.steps_digest[i]; } }
+
+  ad_b: [80] u8; ado: [1] Jo; jo_start(ado[..], ad_b[..]);
+  jo_put(ado[..], "sha256:"); jo_put(ado[..], cast(string) art_hex_out[0..<64]);
+
+  mi := AtifManifestInput.{
+    trajectory_id = inp.run_id,
+    session_id = inp.task_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    form = "log",
+    artifact_digest = jo_text(ado[..]),
+    artifact_size = log_bytes.count,
+    steps_digest = cast(string) sum.steps_digest[0..<64],
+    step_count = sum.step_count,
+    state = ATIF_STATE_ENDED,
+    coverage = ATIF_COV_COMPLETE,
+  };
+  return atif_write_manifest(mi, out);
+}
+
+// Emits one Psionic W3.2 distillation JSONL row (`lean-psionic-w32.v1`) ONLY for
+// kernel-verified proofs (`verified && verdict == "ok"`). Returns 0 if unverified.
+la_write_psionic_w32 :: (inp: LaTrajectoryInput, art_hex: string, steps_hex: string, out: [] u8) -> int {
+  if !inp.verified || inp.verdict != "ok" { return 0; }
+  if inp.run_id.count == 0 || inp.task_id.count == 0 || inp.target.count == 0 { return -1; }
+  if art_hex.count != 64 || steps_hex.count != 64 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LA_W32_SCHEMA);
+  jo_key(o[..], "run_id"); jo_str(o[..], inp.run_id);
+  jo_key(o[..], "task_id"); jo_str(o[..], inp.task_id);
+  jo_key(o[..], "model"); jo_str(o[..], inp.model_name);
+  jo_key(o[..], "target"); jo_str(o[..], inp.target);
+  jo_key(o[..], "prompt"); jo_str(o[..], inp.prompt);
+  jo_key(o[..], "solution"); jo_str(o[..], inp.proof_text);
+  jo_key(o[..], "verdict"); jo_str(o[..], inp.verdict);
+  jo_key(o[..], "axioms"); jo_str(o[..], inp.axioms_csv);
+  jo_key(o[..], "file_sha256"); jo_str(o[..], inp.file_sha256);
+  jo_key(o[..], "atif_artifact_sha256"); jo_str(o[..], art_hex);
+  jo_key(o[..], "atif_steps_digest"); jo_str(o[..], steps_hex);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+la_read_psionic_w32 :: (src: string, r: [] LaW32Row) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if jv_kind(d, 0) != JV_OBJECT { return false; }
+  sb: [64] u8;
+  sn := jv_str(d, jv_get(d, 0, "schema"), sb[..]);
+  if sn != LA_W32_SCHEMA.count || cast(string) sb[0..<sn] != LA_W32_SCHEMA { return false; }
+  r[0] = LaW32Row.{};
+  r[0].run_id_n = jv_str(d, jv_get(d, 0, "run_id"), r[0].run_id[..]);
+  r[0].task_id_n = jv_str(d, jv_get(d, 0, "task_id"), r[0].task_id[..]);
+  r[0].model_n = jv_str(d, jv_get(d, 0, "model"), r[0].model[..]);
+  r[0].target_n = jv_str(d, jv_get(d, 0, "target"), r[0].target[..]);
+  r[0].prompt_n = jv_str(d, jv_get(d, 0, "prompt"), r[0].prompt[..]);
+  r[0].solution_n = jv_str(d, jv_get(d, 0, "solution"), r[0].solution[..]);
+  r[0].verdict_n = jv_str(d, jv_get(d, 0, "verdict"), r[0].verdict[..]);
+  r[0].axioms_n = jv_str(d, jv_get(d, 0, "axioms"), r[0].axioms[..]);
+  r[0].file_sha256_n = jv_str(d, jv_get(d, 0, "file_sha256"), r[0].file_sha256[..]);
+  r[0].atif_artifact_sha256_n = jv_str(d, jv_get(d, 0, "atif_artifact_sha256"), r[0].atif_artifact_sha256[..]);
+  r[0].atif_steps_digest_n = jv_str(d, jv_get(d, 0, "atif_steps_digest"), r[0].atif_steps_digest[..]);
+  if r[0].run_id_n <= 0 || r[0].task_id_n <= 0 || r[0].target_n <= 0 { return false; }
+  if r[0].verdict_n != 2 || cast(string) r[0].verdict[0..<2] != "ok" { return false; }
+  if r[0].model_n < 0 || r[0].prompt_n < 0 || r[0].solution_n < 0 || r[0].axioms_n < 0 { return false; }
+  if r[0].file_sha256_n != 64 || r[0].atif_artifact_sha256_n != 64 || r[0].atif_steps_digest_n != 64 { return false; }
+  return true;
+}
+
+la_write_psionic_w32_row :: (r: [] LaW32Row, out: [] u8) -> int {
+  inp := LaTrajectoryInput.{
+    run_id = cast(string) r[0].run_id[0..<r[0].run_id_n],
+    task_id = cast(string) r[0].task_id[0..<r[0].task_id_n],
+    model_name = cast(string) r[0].model[0..<r[0].model_n],
+    target = cast(string) r[0].target[0..<r[0].target_n],
+    prompt = cast(string) r[0].prompt[0..<r[0].prompt_n],
+    proof_text = cast(string) r[0].solution[0..<r[0].solution_n],
+    verified = true,
+    verdict = cast(string) r[0].verdict[0..<r[0].verdict_n],
+    axioms_csv = cast(string) r[0].axioms[0..<r[0].axioms_n],
+    file_sha256 = cast(string) r[0].file_sha256[0..<r[0].file_sha256_n],
+  };
+  return la_write_psionic_w32(inp, cast(string) r[0].atif_artifact_sha256[0..<r[0].atif_artifact_sha256_n], cast(string) r[0].atif_steps_digest[0..<r[0].atif_steps_digest_n], out);
+}
+
+#test "lean atif: emits valid ATIF-v1.8 log & doc with matching steps_digest, manifest, and strict W3.2 gate" {
+  inp := LaTrajectoryInput.{
+    run_id = "run-lean-001",
+    task_id = "l01_add_zero_right",
+    model_name = "inkling-2-mini",
+    prompt = "Prove theorem add_zero_right (n : Nat) : n + 0 = n",
+    proof_text = "theorem add_zero_right (n : Nat) : n + 0 = n := by\n  rfl\n",
+    file_path = "AddZeroRight.lean",
+    target = "add_zero_right",
+    verified = true,
+    verdict = "ok",
+    axioms_csv = "",
+    file_sha256 = "4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf",
+    kernel_ms = 220,
+    created_at = "2026-11-21T20:00:00Z",
+  };
+  log_b: [65536] u8;
+  ln := la_write_atif_log(inp, log_b[..]);
+  #assert ln > 100;
+  log_s := cast(string) log_b[0..<ln];
+  sum := atif_verify_log(log_s, "");
+  #assert sum.ok && sum.faults == 0 && sum.step_count == 2 && sum.ended && sum.digest_ok;
+
+  man_b: [4096] u8; shx: [64] u8; ahx: [64] u8;
+  mn := la_build_manifest(inp, log_s, man_b[..], shx[..], ahx[..]);
+  #assert mn > 100;
+  #assert atif_verify_log(log_s, cast(string) shx[..]).digest_matches;
+
+  // Single-document trajectory.atif.json has the exact same canonical steps_digest!
+  doc_b: [65536] u8;
+  dn := la_write_atif_doc(inp, cast(string) shx[..], doc_b[..]);
+  #assert dn > 100;
+  doc_s := cast(string) doc_b[0..<dn];
+  dnodes: [512] JvNode; djd: [1] Jv;
+  #assert jv_parse(djd[..], doc_s, dnodes[..]);
+  steps_node := jv_get(djd[0], 0, "steps");
+  #assert jv_kind(djd[0], steps_node) == JV_ARRAY && jv_len(djd[0], steps_node) == 2;
+  doc_shx: [64] u8; sc: [65536] u8;
+  #assert atif_digest_with(jv_raw(djd[0], steps_node), sc[..], doc_shx[..]) == ATIF_DIGEST_OK;
+  #assert cast(string) doc_shx[..] == cast(string) shx[..];
+
+  // Psionic W3.2 row roundtrips cleanly when verified && verdict == "ok"
+  w32_b: [8192] u8;
+  wn := la_write_psionic_w32(inp, cast(string) ahx[..], cast(string) shx[..], w32_b[..]);
+  #assert wn > 100;
+  row: [1] LaW32Row;
+  #assert la_read_psionic_w32(cast(string) w32_b[0..<wn], row[..]);
+  #assert cast(string) row[0].task_id[0..<row[0].task_id_n] == "l01_add_zero_right";
+
+  // Unverified/cheated trajectory (sorry) must NEVER emit a Psionic W3.2 training row or parse as valid!
+  bad := inp; bad.verified = false; bad.verdict = "sorry"; bad.axioms_csv = "sorryAx";
+  #assert la_write_psionic_w32(bad, cast(string) ahx[..], cast(string) shx[..], w32_b[..]) == 0;
+  #assert !la_read_psionic_w32("{\"schema\":\"lean-psionic-w32.v1\",\"run_id\":\"r\",\"task_id\":\"t\",\"model\":\"m\",\"target\":\"x\",\"prompt\":\"p\",\"solution\":\"s\",\"verdict\":\"sorry\",\"axioms\":\"sorryAx\",\"file_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_artifact_sha256\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_steps_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\"}", row[..]);
+}

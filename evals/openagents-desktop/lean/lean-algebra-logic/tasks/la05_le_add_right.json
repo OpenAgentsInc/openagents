@@ -1,0 +1,20 @@
+{
+  "id": "la05_le_add_right",
+  "category": "lean_proof",
+  "fixture": "la05_le_add_right",
+  "description": "Prove that a <= a + b for all natural numbers a and b.",
+  "steps": [
+    {
+      "send": "Complete the Lean 4 proof of `le_add_right_nat` in `Problem.lean` without using `sorry`, custom axioms, or `native_decide`, and without changing the theorem statement:\n\n```lean\ntheorem le_add_right_nat (a b : Nat) : a \u2264 a + b\n```\n\nUse `Read`, `Write`, and `LeanCheck` (with `file: \"Problem.lean\"` and `target: \"le_add_right_nat\"`) to verify your proof before finishing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "lean_verify",
+      "file": "Problem.lean",
+      "target": "le_add_right_nat",
+      "statement": "theorem le_add_right_nat (a b : Nat) : a \u2264 a + b"
+    }
+  ],
+  "timeout_s": 120
+}

@@ -97,6 +97,11 @@ if [[ -d "$repo/evals/openagents-desktop/tier2/tasks" && -d "$repo/evals/openage
   mkdir -p "$res/gym-evals/tier2" "$res/gym-evals/tier4"
   cp -R "$repo/evals/openagents-desktop/tier2/tasks" "$repo/evals/openagents-desktop/tier2/fixtures" "$res/gym-evals/tier2/"
   cp -R "$repo/evals/openagents-desktop/tier4/tasks" "$repo/evals/openagents-desktop/tier4/fixtures" "$res/gym-evals/tier4/"
+  if [[ -d "$repo/evals/openagents-desktop/lean/lean-core-smoke/tasks" ]]; then
+    mkdir -p "$res/gym-evals/lean/lean-core-smoke" "$res/gym-evals/lean/lean-algebra-logic"
+    cp -R "$repo/evals/openagents-desktop/lean/lean-core-smoke/tasks" "$repo/evals/openagents-desktop/lean/lean-core-smoke/fixtures" "$res/gym-evals/lean/lean-core-smoke/"
+    cp -R "$repo/evals/openagents-desktop/lean/lean-algebra-logic/tasks" "$repo/evals/openagents-desktop/lean/lean-algebra-logic/fixtures" "$res/gym-evals/lean/lean-algebra-logic/"
+  fi
 fi
 # ple-run (ple-run.coax): a PLE run a chat starts and the pictures it shows inline (docs/desktop/steer-ple-from-chat.md).
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null 2>&1 || true

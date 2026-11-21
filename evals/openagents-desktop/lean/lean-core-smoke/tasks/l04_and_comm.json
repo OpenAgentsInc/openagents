@@ -1,0 +1,20 @@
+{
+  "id": "l04_and_comm",
+  "category": "lean_proof",
+  "fixture": "l04_and_comm",
+  "description": "Prove commutativity of logical conjunction.",
+  "steps": [
+    {
+      "send": "Complete the Lean 4 proof of `and_comm_prop` in `Problem.lean` without using `sorry`, custom axioms, or `native_decide`, and without changing the theorem statement:\n\n```lean\ntheorem and_comm_prop (P Q : Prop) : P \u2227 Q \u2192 Q \u2227 P\n```\n\nUse `Read`, `Write`, and `LeanCheck` (with `file: \"Problem.lean\"` and `target: \"and_comm_prop\"`) to verify your proof before finishing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "lean_verify",
+      "file": "Problem.lean",
+      "target": "and_comm_prop",
+      "statement": "theorem and_comm_prop (P Q : Prop) : P \u2227 Q \u2192 Q \u2227 P"
+    }
+  ],
+  "timeout_s": 120
+}
