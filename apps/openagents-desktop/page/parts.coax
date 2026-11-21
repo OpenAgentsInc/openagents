@@ -57,3 +57,4 @@
 #load "checkpoint.coax";
 #load "notify.coax";
 #load "find.coax";
+#load "usage.coax";

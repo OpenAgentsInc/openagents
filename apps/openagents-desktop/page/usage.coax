@@ -1,0 +1,806 @@
+// Coder Desktop page (../page.coax): Usage & quota limits dashboard, composer
+// quota-ring popover, aggregate local token/USD spend with model price overrides,
+// multi-account pooling, and automatic rate-limit recovery (GitHub #13877).
+//
+// Quota state labels match coder/tui/usage.coax & docs/protocol/provider-accounts-v1.md:
+//   observed | stale | signed_out | unavailable
+// Local history aggregation skips Antigravity SQLite index databases matching
+// coax/lib/agent/engine/antigravity.coax (agy_is_index_db, #13838).
+// OAuth/API tokens are never stored, logged, or displayed in any UI field.
+
+// Quota status states (explicit, never silently conflated).
+CP_US_ST_UNAVAILABLE :: 0;
+CP_US_ST_OBSERVED :: 1;
+CP_US_ST_STALE :: 2;
+CP_US_ST_SIGNED_OUT :: 3;
+
+// Tracked providers for quota windows and local spend breakdown.
+CP_US_PROV_CLAUDE :: 0;
+CP_US_PROV_CODEX :: 1;
+CP_US_PROV_AGY :: 2;
+CP_US_PROV_GEMINI :: 3;
+CP_US_PROV_OPENROUTER :: 4;
+CP_US_PROV_COUNT :: 5;
+
+CP_US_PROV_NAME :: [CP_US_PROV_COUNT] string.["Claude", "Codex", "Antigravity", "Gemini", "OpenRouter"];
+
+// Thresholds matching coder/tui/usage.coax (basis points 0..10000).
+CP_US_STALE_MS :: 900000;     // 15m without a fresh read -> stale
+CP_US_WARN_BP :: 8000;        // 80.00%
+CP_US_CRIT_BP :: 9500;        // 95.00%
+CP_US_LEVEL_NORMAL :: 0;
+CP_US_LEVEL_WARN :: 1;
+CP_US_LEVEL_CRITICAL :: 2;
+
+// Capacities.
+CP_US_MAX_ACCTS :: 12;
+CP_US_MAX_WINS :: 4;
+CP_US_MAX_PRICES :: 16;
+
+// Host ask IDs (coder_page_action; 65 is CP_ASK_PALETTE_JUMP).
+CP_ASK_USAGE_REFRESH :: 66;   // probe local Claude/Codex/Antigravity quotas & rescan local chats
+CP_ASK_USAGE_PRICES :: 67;    // open model price overrides editor dialog
+CP_ASK_USAGE_POOL :: 68;      // multi-account pooling toggle or profile management
+CP_ASK_USAGE_RECOVERY :: 69;  // limit-recovery toggle or automatic reset recovery notification
+
+// UI dispatch action IDs (235 is CP_MINIMAP_TRACK).
+CP_USAGE_POPOVER :: 240;      // composer quota ring pressed: toggle usage popover
+CP_USAGE_OPEN :: 241;         // popover "Open Usage…" button: open Settings -> Usage
+CP_USAGE_REFRESH :: 242;      // popover "Refresh" button: ask host for fresh probe
+
+CpUsageWindow :: struct {
+  label: [16] u8; nlabel: int;
+  used_bp: int;               // 0..10000 (e.g. 8400 = 84%)
+  reset_s: int;               // Unix seconds, 0 when unknown
+}
+
+CpUsageAccount :: struct {
+  provider: int;              // CP_US_PROV_*
+  profile: [48] u8; nprofile: int;
+  plan: [48] u8; nplan: int;
+  status: int;                // CP_US_ST_*
+  why: [128] u8; nwhy: int;   // plain status/error detail, scrubbed of secrets
+  got_ms: int;                // wall clock ms when last observed
+  windows: [CP_US_MAX_WINS] CpUsageWindow; nwindows: int;
+  limited: bool;              // true when rate-limited or binding window reached 100%
+  limit_reset_s: int;         // Unix seconds when rate limit resets (0 when unknown)
+}
+
+CpPriceOverride :: struct {
+  model: [64] u8; nmodel: int;
+  in_micros_per_m: int;       // input USD microdollars per 1M tokens (e.g. 3000000 = $3.00/M)
+  out_micros_per_m: int;      // output USD microdollars per 1M tokens
+  cached_micros_per_m: int;   // cached input USD microdollars per 1M tokens
+}
+
+CpProviderSpend :: struct {
+  chats: int;
+  in_tokens: int;
+  cached_tokens: int;
+  out_tokens: int;
+  cost_micros: int;
+}
+
+CpUsageState :: struct {
+  accts: [CP_US_MAX_ACCTS] CpUsageAccount; naccts: int;
+  prices: [CP_US_MAX_PRICES] CpPriceOverride; nprices: int;
+  spend: [CP_US_PROV_COUNT] CpProviderSpend;
+  total_chats: int;
+  total_in: int;
+  total_cached: int;
+  total_out: int;
+  total_cost_micros: int;
+  skipped_index_dbs: int;
+  pool_enabled: bool;
+  recovery_enabled: bool;
+  recovery_fired: bool;
+  recovery_prov: int;
+  recovery_msg: [128] u8; nrecovery_msg: int;
+  popover_open: bool;
+  now_s: int;
+  last_refresh_s: int;
+  refreshing: bool;
+}
+
+// ---------------------------------------------------------------- pure helpers
+
+cp_usage_init :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].usage[0] = CpUsageState.{};
+  s[0].usage[0].pool_enabled = true;
+  s[0].usage[0].recovery_enabled = true;
+  s[0].usage[0].recovery_prov = -1;
+}
+
+cp_usage_provider_name :: (prov: int) -> string {
+  names := CP_US_PROV_NAME;
+  if prov >= 0 && prov < CP_US_PROV_COUNT { return names[prov]; }
+  return "Unknown";
+}
+
+cp_usage_status_name :: (st: int) -> string {
+  if st == CP_US_ST_OBSERVED { return "observed"; }
+  if st == CP_US_ST_STALE { return "stale"; }
+  if st == CP_US_ST_SIGNED_OUT { return "signed_out"; }
+  return "unavailable";
+}
+
+// Classifies an account's explicit quota status matching coder/tui/usage.coax (#13838).
+cp_usage_status_for :: (nwindows: int, got_ms: int, now_ms: int, why: string) -> int {
+  if nwindows > 0 {
+    if got_ms > 0 && now_ms > got_ms && now_ms - got_ms > CP_US_STALE_MS { return CP_US_ST_STALE; }
+    return CP_US_ST_OBSERVED;
+  }
+  if cp_starts_ci(why, 0, "signed_out") || cp_find_ci(why, "isn't signed in") >= 0 || cp_find_ci(why, "not signed in") >= 0 || cp_find_ci(why, "credentials_unavailable") >= 0 || cp_find_ci(why, "login_required") >= 0 {
+    return CP_US_ST_SIGNED_OUT;
+  }
+  return CP_US_ST_UNAVAILABLE;
+}
+
+cp_usage_clamp_bp :: (bp: int) -> int {
+  if bp < 0 { return 0; }
+  if bp > 10000 { return 10000; }
+  return bp;
+}
+
+cp_usage_level :: (bp: int) -> int {
+  if bp >= CP_US_CRIT_BP { return CP_US_LEVEL_CRITICAL; }
+  if bp >= CP_US_WARN_BP { return CP_US_LEVEL_WARN; }
+  return CP_US_LEVEL_NORMAL;
+}
+
+// True when `name` is an Antigravity SQLite index database that must be skipped during
+// local history/usage aggregation (matches agy_is_index_db in antigravity.coax, #13838).
+cp_usage_is_index_db :: (name: string) -> bool {
+  if name.count == 0 { return false; }
+  s := 0;
+  for i: 0..<name.count { if name[i] == '/' || name[i] == '\\' { s = i + 1; } }
+  base := cast(string) name[s..<name.count];
+  if base == "index.db" || base == "index.db-wal" || base == "index.db-shm" || base == "index.sqlite" || base == "index.sqlite3" { return true; }
+  if base.count > 9 && cast(string) base[base.count - 9..<base.count] == "-index.db" { return true; }
+  if base.count > 9 && cast(string) base[base.count - 9..<base.count] == ".index.db" { return true; }
+  if base.count > 13 && cast(string) base[base.count - 13..<base.count] == "-index.db-wal" { return true; }
+  if base.count > 13 && cast(string) base[base.count - 13..<base.count] == "-index.db-shm" { return true; }
+  return false;
+}
+
+// True if `text` looks like it contains a raw OAuth/API token or Bearer header.
+cp_usage_has_secret :: (text: string) -> bool {
+  if cp_find_ci(text, "Bearer ") >= 0 { return true; }
+  if cp_find_ci(text, "sk-ant-") >= 0 { return true; }
+  if cp_find_ci(text, "sk-or-") >= 0 { return true; }
+  if cp_find_ci(text, "sk-proj-") >= 0 { return true; }
+  if cp_find_ci(text, "ya29.") >= 0 { return true; }
+  if cp_find_ci(text, "AIza") >= 0 { return true; }
+  if cp_find_ci(text, "ghp_") >= 0 { return true; }
+  if cp_find_ci(text, "access_token") >= 0 { return true; }
+  if cp_find_ci(text, "refresh_token") >= 0 { return true; }
+  return false;
+}
+
+// Copies a status/error note while guaranteeing raw OAuth/API tokens can never reach the UI.
+cp_usage_sanitize_note :: (dst: [] u8, src: string) -> int {
+  if src.count == 0 { return 0; }
+  if cp_usage_has_secret(src) { return cp_out(dst, "redacted"); }
+  return cp_out(dst, src);
+}
+
+// Formats a reset countdown ("4d 17h", "3h 10m", "12m", "now") matching coder/tui/usage.coax.
+cp_usage_until :: (sec: int, out: [] u8) -> string {
+  if sec <= 0 { return "now"; }
+  n := 0;
+  d := sec / 86400; h := (sec % 86400) / 3600; m := (sec % 3600) / 60;
+  if d > 0 {
+    n = el_put_i(out, n, d); n = el_put(out, n, "d ");
+    n = el_put_i(out, n, h); n = el_put(out, n, "h");
+  } else if h > 0 {
+    n = el_put_i(out, n, h); n = el_put(out, n, "h ");
+    n = el_put_i(out, n, m); n = el_put(out, n, "m");
+  } else {
+    n = el_put_i(out, n, ifx m > 0 then m else 1); n = el_put(out, n, "m");
+  }
+  return cast(string) out[0..<n];
+}
+
+// Formats a compact 10-cell bar ("████████░░ 84%") for Settings -> Usage & popover.
+cp_usage_bar :: (used_bp: int, out: [] u8) -> string {
+  bp := cp_usage_clamp_bp(used_bp);
+  cells := (bp + 500) / 1000;
+  if bp > 0 && cells == 0 { cells = 1; }
+  if cells > 10 { cells = 10; }
+  n := 0;
+  for i: 0..<10 { n = el_put(out, n, ifx i < cells then "█" else "░"); }
+  n = el_put(out, n, " ");
+  pct := (bp + 50) / 100;
+  n = el_put_i(out, n, pct);
+  n = el_put(out, n, "%");
+  return cast(string) out[0..<n];
+}
+
+// Maps a model id string (from a chat or turn) to a CP_US_PROV_* bucket.
+cp_usage_provider_for_model :: (model: string) -> int {
+  if cp_starts_ci(model, 0, "openrouter:") { return CP_US_PROV_OPENROUTER; }
+  if cp_find_ci(model, "claude") >= 0 || cp_find_ci(model, "haiku") >= 0 || cp_find_ci(model, "sonnet") >= 0 || cp_find_ci(model, "opus") >= 0 || cp_find_ci(model, "fable") >= 0 { return CP_US_PROV_CLAUDE; }
+  if cp_find_ci(model, "codex") >= 0 || cp_find_ci(model, "gpt-") >= 0 || cp_find_ci(model, "o1") >= 0 || cp_find_ci(model, "o3") >= 0 || cp_find_ci(model, "o4") >= 0 { return CP_US_PROV_CODEX; }
+  if cp_find_ci(model, "antigravity") >= 0 || cp_starts_ci(model, 0, "agy") { return CP_US_PROV_AGY; }
+  return CP_US_PROV_GEMINI;
+}
+
+// ---------------------------------------------------------------- quota accounts & pooling
+
+cp_usage_binding_idx :: (acct: CpUsageAccount) -> int {
+  best := -1;
+  for i: 0..<acct.nwindows {
+    if best < 0 || acct.windows[i].used_bp > acct.windows[best].used_bp { best = i; }
+  }
+  return best;
+}
+
+cp_usage_binding_bp :: (acct: CpUsageAccount) -> int {
+  b := cp_usage_binding_idx(acct);
+  return ifx b >= 0 then acct.windows[b].used_bp else 0;
+}
+
+cp_usage_clear :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].usage[0].naccts = 0;
+}
+
+// Adds or updates a provider account entry; returns its index (or -1 if full/invalid).
+cp_usage_set_account :: (s: [] CoderPage, provider: int, profile: string, plan: string, status: int, why: string, got_ms: int, limited: bool, limit_reset_s: int) -> int {
+  if s.count < 1 || provider < 0 || provider >= CP_US_PROV_COUNT { return -1; }
+  u := s[0].usage[..];
+  prof := ifx profile.count > 0 then profile else "Default";
+  idx := -1;
+  for i: 0..<u[0].naccts {
+    if u[0].accts[i].provider == provider && cast(string) u[0].accts[i].profile[0..<u[0].accts[i].nprofile] == prof {
+      idx = i;
+      break;
+    }
+  }
+  if idx < 0 {
+    if u[0].naccts >= CP_US_MAX_ACCTS { return -1; }
+    idx = u[0].naccts;
+    u[0].naccts += 1;
+    u[0].accts[idx] = CpUsageAccount.{};
+  }
+  u[0].accts[idx].provider = provider;
+  u[0].accts[idx].nprofile = cp_usage_sanitize_note(u[0].accts[idx].profile[..], prof);
+  u[0].accts[idx].nplan = cp_usage_sanitize_note(u[0].accts[idx].plan[..], plan);
+  u[0].accts[idx].status = status;
+  u[0].accts[idx].nwhy = cp_usage_sanitize_note(u[0].accts[idx].why[..], why);
+  u[0].accts[idx].got_ms = got_ms;
+  u[0].accts[idx].nwindows = 0;
+  u[0].accts[idx].limited = limited;
+  u[0].accts[idx].limit_reset_s = limit_reset_s;
+  return idx;
+}
+
+// Appends a quota window (e.g. Session, Week, Month, Quota) to account `acct_idx`.
+cp_usage_add_window :: (s: [] CoderPage, acct_idx: int, label: string, used_bp: int, reset_s: int) -> bool {
+  if s.count < 1 { return false; }
+  u := s[0].usage[..];
+  if acct_idx < 0 || acct_idx >= u[0].naccts { return false; }
+  k := u[0].accts[acct_idx].nwindows;
+  if k >= CP_US_MAX_WINS { return false; }
+  bp := cp_usage_clamp_bp(used_bp);
+  u[0].accts[acct_idx].windows[k].nlabel = cp_usage_sanitize_note(u[0].accts[acct_idx].windows[k].label[..], label);
+  u[0].accts[acct_idx].windows[k].used_bp = bp;
+  u[0].accts[acct_idx].windows[k].reset_s = reset_s;
+  u[0].accts[acct_idx].nwindows = k + 1;
+  if bp >= 10000 {
+    u[0].accts[acct_idx].limited = true;
+    if reset_s > 0 && (u[0].accts[acct_idx].limit_reset_s == 0 || reset_s < u[0].accts[acct_idx].limit_reset_s) {
+      u[0].accts[acct_idx].limit_reset_s = reset_s;
+    }
+  }
+  return true;
+}
+
+// Selects the best account index for `provider`. When multi-account pooling is enabled,
+// picks the non-limited observed/stale account with the lowest binding utilization.
+// When pooling is off, picks the first observed/stale non-limited account. Returns -1 if none.
+cp_usage_pool_select :: (s: [] CoderPage, provider: int) -> int {
+  if s.count < 1 || provider < 0 || provider >= CP_US_PROV_COUNT { return -1; }
+  u := s[0].usage[..];
+  best := -1;
+  best_bp := 10001;
+  for i: 0..<u[0].naccts {
+    a := u[0].accts[i];
+    if a.provider != provider { continue; }
+    if a.status != CP_US_ST_OBSERVED && a.status != CP_US_ST_STALE { continue; }
+    if a.limited { continue; }
+    bp := cp_usage_binding_bp(a);
+    if !u[0].pool_enabled { return i; }
+    if best < 0 || bp < best_bp {
+      best = i;
+      best_bp = bp;
+    }
+  }
+  return best;
+}
+
+// Counts observed/stale accounts registered for `provider`.
+cp_usage_pool_count :: (s: [] CoderPage, provider: int) -> int {
+  if s.count < 1 { return 0; }
+  u := s[0].usage[..];
+  n := 0;
+  for i: 0..<u[0].naccts {
+    if u[0].accts[i].provider == provider && (u[0].accts[i].status == CP_US_ST_OBSERVED || u[0].accts[i].status == CP_US_ST_STALE) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// Checks whether any rate-limited account's reset window has elapsed at `now_s`.
+// Clears the expired limit, formats a recovery message, and asks the host to notify/resume.
+cp_usage_check_recovery :: (s: [] CoderPage, now_s: int) -> bool {
+  if s.count < 1 { return false; }
+  u := s[0].usage[..];
+  u[0].now_s = now_s;
+  recovered := false;
+  for i: 0..<u[0].naccts {
+    if !u[0].accts[i].limited { continue; }
+    rs := u[0].accts[i].limit_reset_s;
+    if rs <= 0 || now_s < rs { continue; }
+    u[0].accts[i].limited = false;
+    u[0].accts[i].limit_reset_s = 0;
+    for w: 0..<u[0].accts[i].nwindows {
+      if u[0].accts[i].windows[w].reset_s > 0 && now_s >= u[0].accts[i].windows[w].reset_s {
+        u[0].accts[i].windows[w].used_bp = 0;
+        u[0].accts[i].windows[w].reset_s = 0;
+      }
+    }
+    if !recovered {
+      recovered = true;
+      u[0].recovery_fired = true;
+      u[0].recovery_prov = u[0].accts[i].provider;
+      n := el_put(u[0].recovery_msg[..], 0, cp_usage_provider_name(u[0].accts[i].provider));
+      if u[0].accts[i].nprofile > 0 {
+        n = el_put(u[0].recovery_msg[..], n, " (");
+        n = el_put(u[0].recovery_msg[..], n, cast(string) u[0].accts[i].profile[0..<u[0].accts[i].nprofile]);
+        n = el_put(u[0].recovery_msg[..], n, ")");
+      }
+      n = el_put(u[0].recovery_msg[..], n, " quota reset — ready to resume");
+      u[0].nrecovery_msg = n;
+      if u[0].recovery_enabled { s[0].ask = CP_ASK_USAGE_RECOVERY; }
+    }
+  }
+  return recovered;
+}
+
+// ---------------------------------------------------------------- price overrides & spend aggregation
+
+cp_usage_price_clear :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].usage[0].nprices = 0;
+}
+
+cp_usage_price_set :: (s: [] CoderPage, model: string, in_micros_per_m: int, out_micros_per_m: int, cached_micros_per_m: int) -> bool {
+  if s.count < 1 || model.count == 0 { return false; }
+  if in_micros_per_m < 0 || out_micros_per_m < 0 || cached_micros_per_m < 0 { return false; }
+  u := s[0].usage[..];
+  idx := -1;
+  for i: 0..<u[0].nprices {
+    existing := cast(string) u[0].prices[i].model[0..<u[0].prices[i].nmodel];
+    if existing.count == model.count && cp_starts_ci(existing, 0, model) { idx = i; break; }
+  }
+  if idx < 0 {
+    if u[0].nprices >= CP_US_MAX_PRICES { return false; }
+    idx = u[0].nprices;
+    u[0].nprices += 1;
+  }
+  u[0].prices[idx].nmodel = cp_out(u[0].prices[idx].model[..], model);
+  u[0].prices[idx].in_micros_per_m = in_micros_per_m;
+  u[0].prices[idx].out_micros_per_m = out_micros_per_m;
+  u[0].prices[idx].cached_micros_per_m = cached_micros_per_m;
+  return true;
+}
+
+// Computes microdollars for a model's tokens using user price overrides when present,
+// otherwise returning `fallback_micros` (recorded cost from chat history).
+cp_usage_calc_cost_micros :: (s: [] CoderPage, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> int {
+  if s.count < 1 { return ifx fallback_micros > 0 then fallback_micros else 0; }
+  u := s[0].usage[..];
+  for i: 0..<u[0].nprices {
+    p := u[0].prices[i];
+    pm := cast(string) p.model[0..<p.nmodel];
+    if pm.count == 0 { continue; }
+    if (pm.count == model.count && cp_starts_ci(model, 0, pm)) || cp_find_ci(model, pm) >= 0 {
+      in_t := ifx in_tok > 0 then in_tok else 0;
+      ca_t := ifx cached_tok > 0 then cached_tok else 0;
+      ou_t := ifx out_tok > 0 then out_tok else 0;
+      c_in := (in_t * p.in_micros_per_m) / 1000000;
+      c_ca := (ca_t * p.cached_micros_per_m) / 1000000;
+      c_ou := (ou_t * p.out_micros_per_m) / 1000000;
+      return c_in + c_ca + c_ou;
+    }
+  }
+  return ifx fallback_micros > 0 then fallback_micros else 0;
+}
+
+cp_usage_spend_reset :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  u := s[0].usage[..];
+  for i: 0..<CP_US_PROV_COUNT { u[0].spend[i] = CpProviderSpend.{}; }
+  u[0].total_chats = 0; u[0].total_in = 0; u[0].total_cached = 0; u[0].total_out = 0; u[0].total_cost_micros = 0;
+  u[0].skipped_index_dbs = 0;
+}
+
+// Adds one local session/chat record to aggregate spend. Skips Antigravity index DBs (#13838).
+cp_usage_spend_add :: (s: [] CoderPage, path: string, provider_in: int, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> bool {
+  if s.count < 1 { return false; }
+  u := s[0].usage[..];
+  if cp_usage_is_index_db(path) {
+    u[0].skipped_index_dbs += 1;
+    return false;
+  }
+  prov := ifx provider_in >= 0 && provider_in < CP_US_PROV_COUNT then provider_in else cp_usage_provider_for_model(model);
+  in_t := ifx in_tok > 0 then in_tok else 0;
+  ca_t := ifx cached_tok > 0 then cached_tok else 0;
+  ou_t := ifx out_tok > 0 then out_tok else 0;
+  cost := cp_usage_calc_cost_micros(s, model, in_t, ca_t, ou_t, fallback_micros);
+  u[0].spend[prov].chats += 1;
+  u[0].spend[prov].in_tokens += in_t;
+  u[0].spend[prov].cached_tokens += ca_t;
+  u[0].spend[prov].out_tokens += ou_t;
+  u[0].spend[prov].cost_micros += cost;
+  u[0].total_chats += 1;
+  u[0].total_in += in_t;
+  u[0].total_cached += ca_t;
+  u[0].total_out += ou_t;
+  u[0].total_cost_micros += cost;
+  return true;
+}
+
+// ---------------------------------------------------------------- composer quota ring & popover
+
+// Highest binding quota share (0..1) across observed/stale accounts for the composer ring.
+cp_usage_ring_share :: (s: [] CoderPage) -> f32 {
+  if s.count < 1 { return 0.0f32; }
+  u := s[0].usage[..];
+  best := 0;
+  for i: 0..<u[0].naccts {
+    a := u[0].accts[i];
+    if a.status != CP_US_ST_OBSERVED && a.status != CP_US_ST_STALE { continue; }
+    bp := cp_usage_binding_bp(a);
+    if bp > best { best = bp; }
+  }
+  return cast(f32) best / 10000.0f32;
+}
+
+cp_usage_has_observed :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  u := s[0].usage[..];
+  for i: 0..<u[0].naccts {
+    if u[0].accts[i].status == CP_US_ST_OBSERVED || u[0].accts[i].status == CP_US_ST_STALE { return true; }
+  }
+  return false;
+}
+
+// Draws the clickable quota ring in the composer footer. Clicking toggles the usage popover.
+cp_usage_ring :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32) {
+  k := f[0].skin; c := k.cmp; sh := f[0].sheet; th := cp_theme();
+  side := c.chip_h; ring := c.chip_icon;
+  share := cp_usage_ring_share(s);
+  row := uiframe_semantic(f, "coder.usage.ring", EL_BUTTON, "Plan quota & usage", x, y, side, side, ifx s[0].usage[0].popover_open then EL_S_CURRENT else 0, CP_USAGE_POPOVER);
+  elt_value_share(f[0].rows, row, share);
+  hov := uiframe_hovered(f, "coder.usage.ring");
+  if hov || s[0].usage[0].popover_open { sheet_fill(sh, x, y, side, side, c.chip_radius, th.hover); }
+  progress_ring(sh, k, x + (side - ring) / 2, y + (side - ring) / 2, ring, share);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, side, side);
+}
+
+// Formats one concise summary line for account `a` (status, binding bar, reset timer).
+cp_usage_acct_summary :: (a_in: CpUsageAccount, now_s: int, out: [] u8) -> string {
+  a := a_in;
+  n := 0;
+  if a.status == CP_US_ST_OBSERVED || a.status == CP_US_ST_STALE {
+    b := cp_usage_binding_idx(a);
+    if b >= 0 {
+      w := a.windows[b];
+      n = el_put(out, n, cast(string) w.label[0..<w.nlabel]);
+      n = el_put(out, n, " ");
+      bb: [48] u8;
+      n = el_put(out, n, cp_usage_bar(w.used_bp, bb[..]));
+      if w.reset_s > 0 && now_s > 0 {
+        ub: [32] u8;
+        n = el_put(out, n, " · resets in ");
+        n = el_put(out, n, cp_usage_until(w.reset_s - now_s, ub[..]));
+      }
+    }
+    if a.status == CP_US_ST_STALE { n = el_put(out, n, " (stale)"); }
+  } else {
+    n = el_put(out, n, cp_usage_status_name(a.status));
+    if a.nwhy > 0 {
+      n = el_put(out, n, " · ");
+      n = el_put(out, n, cast(string) a.why[0..<a.nwhy]);
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+// Draws the composer quota-ring popover over the composer with live quota windows,
+// aggregate spend, Refresh, and Open Usage… actions.
+cp_usage_popover :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, box_y: f32, foot_y: f32, h: f32) {
+  if s.count < 1 || !s[0].usage[0].popover_open { return; }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  u := s[0].usage[..];
+  glass := cp_glass(s);
+  pw := 320.0f32;
+  if pw > cw { pw = cw; }
+  pad := 12.0f32;
+  row_h := 34.0f32;
+  shown_accts := ifx u[0].naccts > 0 then (ifx u[0].naccts > 4 then 4 else u[0].naccts) else 3;
+  header_h := 22.0f32;
+  spend_h := 26.0f32;
+  foot_h := 30.0f32;
+  ph := pad * 2 + header_h + cast(f32) shown_accts * row_h + spend_h + foot_h;
+  px := x + cw - pw;
+  if px < x { px = x; }
+  py := box_y - ph - 8.0f32;
+  if py < 8.0f32 { py = 8.0f32; }
+  if py + ph > h - 8.0f32 { py = h - ph - 8.0f32; }
+  menu_r := 12.0f32;
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, k.shadows.menu));
+  if glass {
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, px, py, px + pw, py + ph));
+    sheet_over_n(sh, prim_backdrop(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, cp_glass_blur(s)));
+  }
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32, ifx glass then opacity(th.menu, 0.86) else th.menu, th.line));
+  card_row := uiframe_semantic(f, "coder.usage.popover", EL_REGION, "Usage & quota limits", px, py, pw, ph, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
+  cy := py + pad;
+  tw := pw - 2 * pad;
+  _ := sheet_text(sh, f[0].m, -1, px + pad, cy, k.label.line, k.label.face, th.text, "Usage & Quota Limits");
+  cy += header_h;
+  if u[0].naccts > 0 {
+    for i: 0..<shown_accts {
+      a := u[0].accts[i];
+      tb: [96] u8; tn := el_put(tb[..], 0, cp_usage_provider_name(a.provider));
+      if a.nprofile > 0 && cast(string) a.profile[0..<a.nprofile] != "Default" {
+        tn = el_put(tb[..], tn, " · ");
+        tn = el_put(tb[..], tn, cast(string) a.profile[0..<a.nprofile]);
+      }
+      if a.nplan > 0 {
+        tn = el_put(tb[..], tn, " (");
+        tn = el_put(tb[..], tn, cast(string) a.plan[0..<a.nplan]);
+        tn = el_put(tb[..], tn, ")");
+      }
+      sb: [160] u8;
+      sub := cp_usage_acct_summary(a, u[0].now_s, sb[..]);
+      title := sheet_pool(sh, cast(string) tb[0..<tn]);
+      detail := sheet_pool(sh, sub);
+      _ := sheet_text(sh, f[0].m, -1, px + pad, cy, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, title, tw));
+      _ := sheet_text(sh, f[0].m, -1, px + pad, cy + 16.0f32, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, detail, tw));
+      cy += row_h;
+    }
+  } else {
+    defs := [3] string.["Claude", "Codex", "Antigravity"];
+    for i: 0..<3 {
+      _ := sheet_text(sh, f[0].m, -1, px + pad, cy, k.label.line, k.label.face, th.text, defs[i]);
+      _ := sheet_text(sh, f[0].m, -1, px + pad, cy + 16.0f32, k.small.line, k.small.face, th.muted, "unavailable · click Refresh to probe");
+      cy += row_h;
+    }
+  }
+  // Aggregate spend line
+  cb: [32] u8; tkb: [32] u8; spb: [128] u8;
+  spn := el_put(spb[..], 0, "Local spend: ");
+  spn = el_put(spb[..], spn, ifx u[0].total_cost_micros > 0 then cp_cost(cb[..], u[0].total_cost_micros) else "$0.00");
+  spn = el_put(spb[..], spn, " · ");
+  spn = el_put(spb[..], spn, cp_tokens(tkb[..], u[0].total_in + u[0].total_cached + u[0].total_out));
+  spn = el_put(spb[..], spn, " tokens");
+  _ := sheet_text(sh, f[0].m, -1, px + pad, cy + 4.0f32, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, sheet_pool(sh, cast(string) spb[0..<spn]), tw));
+  cy += spend_h;
+  // Footer buttons: Refresh and Open Usage…
+  ref_label := ifx u[0].refreshing then "Refreshing…" else "Refresh";
+  rw := cp_foot_chip_width(f, -1, ref_label, false);
+  ow := cp_foot_chip_width(f, -1, "Open Usage…", false);
+  _ := cp_foot_chip(f, "coder.usage.refresh", "Refresh quota usage", px + pad, cy + 2.0f32, rw, -1, ref_label, false, ifx u[0].refreshing then EL_S_DISABLED else 0, CP_USAGE_REFRESH);
+  _ := cp_foot_chip(f, "coder.usage.open", "Open Usage settings", px + pw - pad - ow, cy + 2.0f32, ow, -1, "Open Usage…", false, 0, CP_USAGE_OPEN);
+  if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
+}
+
+// ---------------------------------------------------------------- Settings -> Usage page
+
+cp_settings_usage :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
+  k := f[0].skin; t := k.set; sh := f[0].sheet;
+  u := s[0].usage[..];
+  y := y0;
+  y += set_page_head(f, "set.title", x, y, w, "Usage", "Live quota windows, local token & USD spend, model price overrides, multi-account pooling, and limit recovery.") + t.block_gap;
+
+  // Section 1: Quota Limits
+  y += set_section_head(f, "set.usage.quota.head", x, y, w, "Quota Limits", "Live plan windows from Claude, Codex, and Antigravity. Tokens are never logged or shown.") + t.section_gap;
+  ref_btn := ifx u[0].refreshing then "Refreshing…" else "Refresh now";
+  q_top: [1] SetRow;
+  q_top[0] = SetRow.{id = "set.usage.refresh", name = "Quota probe status",
+    desc = "Probes local Claude, Codex, and Antigravity sessions using shared Coax quota probes.",
+    value = ifx u[0].refreshing then "Probing…" else ifx cp_usage_has_observed(s) then "Live" else "Idle",
+    kind = SET_ROW_BUTTON, button = ref_btn, action = CP_SET_ACT, state = ifx u[0].refreshing then EL_S_DISABLED else 0};
+  y += cp_set_group(s, f, "set.usage.refresh.group", x, y, w, q_top[..]) + t.section_gap;
+
+  if u[0].naccts > 0 {
+    arows: [CP_US_MAX_ACCTS] SetRow;
+    cnt := u[0].naccts;
+    for i: 0..<cnt {
+      a := u[0].accts[i];
+      idb: [32] u8; idn := el_put(idb[..], 0, "set.usage.acct."); idn = el_put_i(idb[..], idn, i);
+      nb: [96] u8; nn := el_put(nb[..], 0, cp_usage_provider_name(a.provider));
+      if a.nprofile > 0 { nn = el_put(nb[..], nn, " · "); nn = el_put(nb[..], nn, cast(string) a.profile[0..<a.nprofile]); }
+      if a.nplan > 0 { nn = el_put(nb[..], nn, " ("); nn = el_put(nb[..], nn, cast(string) a.plan[0..<a.nplan]); nn = el_put(nb[..], nn, ")"); }
+      db: [220] u8; dn := 0;
+      if a.status == CP_US_ST_OBSERVED || a.status == CP_US_ST_STALE {
+        for wi: 0..<a.nwindows {
+          if wi > 0 { dn = el_put(db[..], dn, "   |   "); }
+          ww := a.windows[wi];
+          dn = el_put(db[..], dn, cast(string) ww.label[0..<ww.nlabel]);
+          dn = el_put(db[..], dn, " ");
+          bb: [48] u8; dn = el_put(db[..], dn, cp_usage_bar(ww.used_bp, bb[..]));
+          if ww.reset_s > 0 && u[0].now_s > 0 {
+            ub: [32] u8; dn = el_put(db[..], dn, " (resets in "); dn = el_put(db[..], dn, cp_usage_until(ww.reset_s - u[0].now_s, ub[..])); dn = el_put(db[..], dn, ")");
+          }
+        }
+        if a.limited { dn = el_put(db[..], dn, " · Rate limited"); }
+      } else {
+        if a.nwhy > 0 { dn = el_put(db[..], dn, cast(string) a.why[0..<a.nwhy]); }
+        else if a.status == CP_US_ST_SIGNED_OUT { dn = el_put(db[..], dn, "Not signed in on this computer."); }
+        else { dn = el_put(db[..], dn, "Quota endpoint unavailable."); }
+      }
+      arows[i] = SetRow.{id = sheet_pool(sh, cast(string) idb[0..<idn]),
+        name = sheet_pool(sh, cast(string) nb[0..<nn]),
+        desc = sheet_pool(sh, cast(string) db[0..<dn]),
+        value = cp_usage_status_name(a.status),
+        kind = SET_ROW_PLAIN};
+    }
+    y += cp_set_group(s, f, "set.usage.accts.group", x, y, w, arows[0..<cnt]) + t.block_gap;
+  } else {
+    drows: [3] SetRow;
+    drows[0] = SetRow.{id = "set.usage.claude", name = "Claude", desc = "No probe data yet. Click Refresh now to check Claude Code quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    drows[1] = SetRow.{id = "set.usage.codex", name = "Codex", desc = "No probe data yet. Click Refresh now to check Codex quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    drows[2] = SetRow.{id = "set.usage.agy", name = "Antigravity", desc = "No probe data yet. Click Refresh now to check Antigravity quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    y += cp_set_group(s, f, "set.usage.accts.group", x, y, w, drows[..]) + t.block_gap;
+  }
+
+  // Section 2: Local Spend & Tokens (per-provider chart & totals)
+  y += set_section_head(f, "set.usage.spend.head", x, y, w, "Local Spend & Tokens", "Aggregated from local chat history (Antigravity index databases skipped), respecting model price overrides.") + t.section_gap;
+  tot_cb: [32] u8; tot_tb: [32] u8; tot_ib: [32] u8; tot_ob: [32] u8; tot_db: [160] u8;
+  tdn := el_put(tot_db[..], 0, "");
+  tdn = el_put_i(tot_db[..], tdn, u[0].total_chats);
+  tdn = el_put(tot_db[..], tdn, " chats · Input ");
+  tdn = el_put(tot_db[..], tdn, cp_tokens(tot_ib[..], u[0].total_in));
+  tdn = el_put(tot_db[..], tdn, " · Output ");
+  tdn = el_put(tot_db[..], tdn, cp_tokens(tot_ob[..], u[0].total_out));
+  if u[0].skipped_index_dbs > 0 {
+    tdn = el_put(tot_db[..], tdn, " · ");
+    tdn = el_put_i(tot_db[..], tdn, u[0].skipped_index_dbs);
+    tdn = el_put(tot_db[..], tdn, " index DBs skipped");
+  }
+  srows: [CP_US_PROV_COUNT + 1] SetRow;
+  srows[0] = SetRow.{id = "set.usage.spend", name = "Total local spend",
+    desc = sheet_pool(sh, cast(string) tot_db[0..<tdn]),
+    value = sheet_pool(sh, ifx u[0].total_cost_micros > 0 then cp_cost(tot_cb[..], u[0].total_cost_micros) else "$0.00"),
+    kind = SET_ROW_PLAIN};
+  max_cost := 1;
+  for p: 0..<CP_US_PROV_COUNT { if u[0].spend[p].cost_micros > max_cost { max_cost = u[0].spend[p].cost_micros; } }
+  for p: 0..<CP_US_PROV_COUNT {
+    sp := u[0].spend[p];
+    pidb: [32] u8; pidn := el_put(pidb[..], 0, "set.usage.prov."); pidn = el_put_i(pidb[..], pidn, p);
+    share_bp := ifx u[0].total_cost_micros > 0 then (sp.cost_micros * 10000) / max_cost else 0;
+    bar_b: [48] u8; p_cb: [32] u8; p_tkb: [32] u8; p_db: [160] u8;
+    pdn := el_put(p_db[..], 0, cp_usage_bar(share_bp, bar_b[..]));
+    pdn = el_put(p_db[..], pdn, " · ");
+    pdn = el_put_i(p_db[..], pdn, sp.chats);
+    pdn = el_put(p_db[..], pdn, " chats · ");
+    pdn = el_put(p_db[..], pdn, cp_tokens(p_tkb[..], sp.in_tokens + sp.cached_tokens + sp.out_tokens));
+    pdn = el_put(p_db[..], pdn, " tokens");
+    srows[p + 1] = SetRow.{id = sheet_pool(sh, cast(string) pidb[0..<pidn]),
+      name = cp_usage_provider_name(p),
+      desc = sheet_pool(sh, cast(string) p_db[0..<pdn]),
+      value = sheet_pool(sh, ifx sp.cost_micros > 0 then cp_cost(p_cb[..], sp.cost_micros) else "$0.00"),
+      kind = SET_ROW_PLAIN};
+  }
+  y += cp_set_group(s, f, "set.usage.spend.group", x, y, w, srows[..]) + t.block_gap;
+
+  // Section 3: Model Price Overrides
+  y += set_section_head(f, "set.usage.prices.head", x, y, w, "Model Price Overrides", "Custom USD per 1M input/output/cached tokens applied to local spend charts.") + t.section_gap;
+  pr_vb: [48] u8; pr_vn := 0;
+  if u[0].nprices == 0 { pr_vn = el_put(pr_vb[..], 0, "Default pricing"); }
+  else { pr_vn = el_put_i(pr_vb[..], 0, u[0].nprices); pr_vn = el_put(pr_vb[..], pr_vn, ifx u[0].nprices == 1 then " override" else " overrides"); }
+  prows: [1] SetRow;
+  prows[0] = SetRow.{id = "set.usage.prices", name = "Model price overrides",
+    desc = "Override per-million token rates for any model id (e.g. gemini-4-neon, claude-sonnet-4).",
+    value = sheet_pool(sh, cast(string) pr_vb[0..<pr_vn]),
+    kind = SET_ROW_BUTTON, button = "Edit prices…", action = CP_SET_ACT};
+  y += cp_set_group(s, f, "set.usage.prices.group", x, y, w, prows[..]) + t.block_gap;
+
+  // Section 4: Multi-Account Pooling & Limit Recovery
+  y += set_section_head(f, "set.usage.pool.head", x, y, w, "Pooling & Limit Recovery", "Distribute work across multiple provider account profiles and notify/resume automatically when rate limits reset.") + t.section_gap;
+  mrows: [2] SetRow;
+  mrows[0] = SetRow.{id = "set.usage.pool", name = "Multi-account pooling",
+    desc = ifx u[0].pool_enabled then "Least-used pool — automatically prefers the signed-in profile with the most remaining quota." else "Single account — always uses the default profile for each provider.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx u[0].pool_enabled then 1 else 0, action = CP_SET_ACT};
+  mrows[0].options[0] = "Off"; mrows[0].options[1] = "Least-used";
+  mrows[1] = SetRow.{id = "set.usage.recovery", name = "Limit-recovery alerts",
+    desc = ifx u[0].recovery_enabled then "Notify & resume — watches rate-limited windows and announces when the reset timer elapses." else "Off — do not notify when rate-limit windows reset.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx u[0].recovery_enabled then 1 else 0, action = CP_SET_ACT};
+  mrows[1].options[0] = "Off"; mrows[1].options[1] = "Notify & resume";
+  y += cp_set_group(s, f, "set.usage.pool.group", x, y, w, mrows[..]);
+  return y - y0;
+}
+
+// ---------------------------------------------------------------- C host exports
+
+coder_page_usage_clear :: (s: [] CoderPage) #export_c #effects(all) { cp_usage_clear(s); }
+
+coder_page_usage_set_account :: (s: [] CoderPage, provider: int, profile: string, plan: string, status: int, why: string, got_ms: int, limited: bool, limit_reset_s: int) -> int #export_c #effects(all) {
+  return cp_usage_set_account(s, provider, profile, plan, status, why, got_ms, limited, limit_reset_s);
+}
+
+coder_page_usage_add_window :: (s: [] CoderPage, acct_idx: int, label: string, used_bp: int, reset_s: int) -> bool #export_c #effects(all) {
+  return cp_usage_add_window(s, acct_idx, label, used_bp, reset_s);
+}
+
+coder_page_usage_spend_reset :: (s: [] CoderPage) #export_c #effects(all) { cp_usage_spend_reset(s); }
+
+coder_page_usage_spend_add :: (s: [] CoderPage, path: string, provider: int, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> bool #export_c #effects(all) {
+  return cp_usage_spend_add(s, path, provider, model, in_tok, cached_tok, out_tok, fallback_micros);
+}
+
+coder_page_usage_price_clear :: (s: [] CoderPage) #export_c #effects(all) { cp_usage_price_clear(s); }
+
+coder_page_usage_price_set :: (s: [] CoderPage, model: string, in_micros_per_m: int, out_micros_per_m: int, cached_micros_per_m: int) -> bool #export_c #effects(all) {
+  return cp_usage_price_set(s, model, in_micros_per_m, out_micros_per_m, cached_micros_per_m);
+}
+
+coder_page_usage_pool_set :: (s: [] CoderPage, enabled: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].usage[0].pool_enabled = enabled;
+}
+
+coder_page_usage_pool_enabled :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].usage[0].pool_enabled;
+}
+
+coder_page_usage_pool_select :: (s: [] CoderPage, provider: int) -> int #export_c #effects(all) {
+  return cp_usage_pool_select(s, provider);
+}
+
+coder_page_usage_recovery_set :: (s: [] CoderPage, enabled: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].usage[0].recovery_enabled = enabled;
+}
+
+coder_page_usage_recovery_enabled :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].usage[0].recovery_enabled;
+}
+
+coder_page_usage_tick :: (s: [] CoderPage, now_s: int) -> bool #export_c #effects(all) {
+  return cp_usage_check_recovery(s, now_s);
+}
+
+coder_page_usage_recovery_msg :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].usage[0].recovery_fired { return 0; }
+  n := cp_out(out, cast(string) s[0].usage[0].recovery_msg[0..<s[0].usage[0].nrecovery_msg]);
+  s[0].usage[0].recovery_fired = false;
+  return n;
+}
+
+coder_page_usage_refreshing_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].usage[0].refreshing = on;
+}
+
+coder_page_usage_is_index_db :: (path: string) -> bool #export_c #effects(all) {
+  return cp_usage_is_index_db(path);
+}
+
+coder_page_usage_total_cost_micros :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].usage[0].total_cost_micros else 0;
+}
+
+coder_page_usage_total_tokens :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  u := s[0].usage[0];
+  return u.total_in + u.total_cached + u.total_out;
+}

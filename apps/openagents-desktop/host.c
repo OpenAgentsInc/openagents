@@ -972,3 +972,59 @@ int cd_palette_jump_chat(void *page, char *out, int cap) {
   return n;
 }
 int cd_palette_jump_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_palette_jump_turn(cd_state(c)) : -1; }
+// Usage & quota limits dashboard, composer popover, multi-account pooling & limit recovery (page/usage.coax, GitHub #13877).
+void cd_usage_clear(void *page) { CoderHost *c = page; if (!c) return; coder_page_usage_clear(cd_state(c)); cd_woke(c); }
+int cd_usage_set_account(void *page, int provider, const char *profile, const char *plan, int status, const char *why, int64_t got_ms, int limited, int64_t limit_reset_s) {
+  CoderHost *c = page;
+  if (!c) return -1;
+  int idx = (int)coder_page_usage_set_account(cd_state(c), provider, cd_string(profile), cd_string(plan), status, cd_string(why), got_ms, limited != 0, limit_reset_s);
+  cd_woke(c);
+  return idx;
+}
+int cd_usage_add_window(void *page, int acct_idx, const char *label, int used_bp, int64_t reset_s) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_usage_add_window(cd_state(c), acct_idx, cd_string(label), used_bp, reset_s) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_usage_spend_reset(void *page) { CoderHost *c = page; if (!c) return; coder_page_usage_spend_reset(cd_state(c)); cd_woke(c); }
+int cd_usage_spend_add(void *page, const char *path, int provider, const char *model, int64_t in_tok, int64_t cached_tok, int64_t out_tok, int64_t fallback_micros) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_usage_spend_add(cd_state(c), cd_string(path), provider, cd_string(model), in_tok, cached_tok, out_tok, fallback_micros) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_usage_price_clear(void *page) { CoderHost *c = page; if (!c) return; coder_page_usage_price_clear(cd_state(c)); cd_woke(c); }
+int cd_usage_price_set(void *page, const char *model, int64_t in_micros_per_m, int64_t out_micros_per_m, int64_t cached_micros_per_m) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_usage_price_set(cd_state(c), cd_string(model), in_micros_per_m, out_micros_per_m, cached_micros_per_m) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_usage_pool_set(void *page, int enabled) { CoderHost *c = page; if (!c) return; coder_page_usage_pool_set(cd_state(c), enabled != 0); cd_woke(c); }
+int cd_usage_pool_enabled(void *page) { CoderHost *c = page; return c && coder_page_usage_pool_enabled(cd_state(c)) ? 1 : 0; }
+int cd_usage_pool_select(void *page, int provider) { CoderHost *c = page; return c ? (int)coder_page_usage_pool_select(cd_state(c), provider) : -1; }
+void cd_usage_recovery_set(void *page, int enabled) { CoderHost *c = page; if (!c) return; coder_page_usage_recovery_set(cd_state(c), enabled != 0); cd_woke(c); }
+int cd_usage_recovery_enabled(void *page) { CoderHost *c = page; return c && coder_page_usage_recovery_enabled(cd_state(c)) ? 1 : 0; }
+int cd_usage_tick(void *page, int64_t now_s) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int rec = coder_page_usage_tick(cd_state(c), now_s) ? 1 : 0;
+  if (rec) cd_woke(c);
+  return rec;
+}
+int cd_usage_recovery_msg(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_usage_recovery_msg(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0; if (n >= cap) n = cap - 1;
+  out[n] = 0;
+  return n;
+}
+void cd_usage_refreshing_set(void *page, int on) { CoderHost *c = page; if (!c) return; coder_page_usage_refreshing_set(cd_state(c), on != 0); cd_woke(c); }
+int cd_usage_is_index_db(const char *path) { return coder_page_usage_is_index_db(cd_string(path)) ? 1 : 0; }
+int64_t cd_usage_total_cost_micros(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_cost_micros(cd_state(c)) : 0; }
+int64_t cd_usage_total_tokens(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_tokens(cd_state(c)) : 0; }

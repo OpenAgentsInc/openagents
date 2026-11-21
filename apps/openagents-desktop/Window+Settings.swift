@@ -201,6 +201,7 @@ extension CoderWindow {
         syncLocalModels()
         syncAntigravitySettings()
         syncWalletSettings()
+        if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }

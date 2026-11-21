@@ -498,9 +498,10 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
+  if s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
-  if !s[0].model_menu { cp_mn_paint(s, f, x, cw); }
+  if !s[0].model_menu && !s[0].usage[0].popover_open { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -657,17 +658,19 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   w_model := cp_foot_chip_width(f, -1, m_label, true);
   w_effort := cp_foot_chip_width(f, -1, e_label, false);
   w_ring := c.chip_h;
+  w_usage := c.chip_h;
   w_cost := cp_foot_chip_width(f, -1, cost, false);
   w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
-  show_goal := has_goal; show_cost := !home; show_ring := s[0].ctx_in > 0; show_branch := show_folder && s[0].branch_n > 0 && !running;
+  show_goal := has_goal; show_cost := !home; show_ring := s[0].ctx_in > 0; show_usage := s[0].usage[0].naccts > 0 || s[0].usage[0].popover_open; show_branch := show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
-  for step: 0..<5 {
+  for step: 0..<6 {
     need := w_model + gap + w_effort;
     if show_fu_draft { need += gap + w_fu; }
     if show_folder { need += gap + (ifx show_branch then w_folder else w_short); }
+    if show_usage { need += gap + w_usage; }
     if show_ring { need += gap + w_ring; } if show_cost { need += gap + w_cost; } if show_goal { need += gap + w_goal; }
     if need <= room { break; }
-    if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
+    if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
   // the left side: Steer & Queue (while a reply runs with a draft) and the model chip, kept whole
   // before the working folder is shortened
@@ -694,6 +697,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   // when space is tight, the working folder shrinks before the model chip ever truncates
   rx := end_x;
   other_right: f32 = 0;
+  if show_usage { other_right += w_usage + gap; }
   if show_ring { other_right += w_ring + gap; }
   if show_cost { other_right += w_cost + gap; }
   if show_goal { other_right += w_goal + gap; }
@@ -706,6 +710,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     _ := cp_foot_chip(f, "coder.folder", "Working folder", rx, y, fw, ICON_FOLDER, shown, false, 0, CP_FOLDER);
     rx -= gap;
   }
+  if show_usage && rx - w_usage >= fx { rx -= w_usage; cp_usage_ring(s, f, rx, y); rx -= gap; }
   if show_ring && rx - w_ring >= fx { rx -= w_ring; cp_context_ring(s, f, rx, y, x, cw); rx -= gap; }
   if show_cost && rx - w_cost >= fx { rx -= w_cost; _ := cp_foot_chip(f, "coder.cost", "Chat budget", rx, y, w_cost, -1, cost, false, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT); rx -= gap; }
   if show_goal && rx - w_goal >= fx { rx -= w_goal; _ := cp_foot_chip(f, "coder.goal", "Thread goal", rx, y, w_goal, -1, goal, false, ifx s[0].goal_status == CP_GOAL_ACTIVE then EL_S_CURRENT else 0, CP_GOAL_OPEN); rx -= gap; }

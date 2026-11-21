@@ -38,3 +38,4 @@
 #load "page/checks/notify-checks.coax" #test;
 #load "page/checks/sidebar-groups-checks.coax" #test;
 #load "page/checks/find-checks.coax" #test;
+#load "page/checks/usage-checks.coax" #test;

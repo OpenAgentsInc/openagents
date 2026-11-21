@@ -1,0 +1,186 @@
+// Checks for Usage & quota limits dashboard, composer quota-ring popover,
+// local token/USD spend aggregation, model price overrides, multi-account
+// pooling, limit recovery, and token non-exposure (page/usage.coax, #13877).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "usage: explicit quota states (observed, stale, signed_out, unavailable), bars, and reset timers" {
+  now_ms := 2000000;
+  #assert cp_usage_status_for(2, now_ms - 60000, now_ms, "") == CP_US_ST_OBSERVED;
+  #assert cp_usage_status_name(CP_US_ST_OBSERVED) == "observed";
+  #assert cp_usage_status_for(1, now_ms - CP_US_STALE_MS - 1, now_ms, "") == CP_US_ST_STALE;
+  #assert cp_usage_status_name(CP_US_ST_STALE) == "stale";
+  #assert cp_usage_status_for(0, 0, now_ms, "signed_out: Antigravity isn't signed in here") == CP_US_ST_SIGNED_OUT;
+  #assert cp_usage_status_for(0, 0, now_ms, "Claude Code isn't signed in here") == CP_US_ST_SIGNED_OUT;
+  #assert cp_usage_status_for(0, 0, now_ms, "credentials_unavailable") == CP_US_ST_SIGNED_OUT;
+  #assert cp_usage_status_name(CP_US_ST_SIGNED_OUT) == "signed_out";
+  #assert cp_usage_status_for(0, 0, now_ms, "the usage service answered 503") == CP_US_ST_UNAVAILABLE;
+  #assert cp_usage_status_name(CP_US_ST_UNAVAILABLE) == "unavailable";
+
+  #assert cp_usage_level(5000) == CP_US_LEVEL_NORMAL;
+  #assert cp_usage_level(CP_US_WARN_BP) == CP_US_LEVEL_WARN;
+  #assert cp_usage_level(CP_US_CRIT_BP) == CP_US_LEVEL_CRITICAL;
+
+  ub: [32] u8;
+  #assert cp_usage_until(0, ub[..]) == "now";
+  #assert cp_usage_until(90000, ub[..]) == "1d 1h";
+  #assert cp_usage_until(3 * 3600 + 10 * 60, ub[..]) == "3h 10m";
+  #assert cp_usage_until(720, ub[..]) == "12m";
+
+  bb: [48] u8;
+  #assert cp_usage_bar(8400, bb[..]) == "████████░░ 84%";
+  #assert cp_usage_bar(300, bb[..]) == "█░░░░░░░░░ 3%";
+  #assert cp_usage_bar(0, bb[..]) == "░░░░░░░░░░ 0%";
+}
+
+#test "usage: Antigravity index DBs are skipped during local spend aggregation (#13838)" {
+  #assert coder_page_usage_is_index_db("index.db");
+  #assert coder_page_usage_is_index_db("/Users/me/.gemini/antigravity-acp/index.db");
+  #assert coder_page_usage_is_index_db("/Users/me/.gemini/antigravity-acp/conversations-index.db");
+  #assert coder_page_usage_is_index_db("cache.index.db");
+  #assert coder_page_usage_is_index_db("index.db-wal") && coder_page_usage_is_index_db("index.db-shm");
+  #assert coder_page_usage_is_index_db("index.sqlite") && coder_page_usage_is_index_db("index.sqlite3");
+  #assert !coder_page_usage_is_index_db("session-abc123.json") && !coder_page_usage_is_index_db("transcript.jsonl") && !coder_page_usage_is_index_db("");
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  coder_page_usage_spend_reset(s);
+  #assert !coder_page_usage_spend_add(s, "/Users/me/.gemini/antigravity-acp/index.db", CP_US_PROV_AGY, "agy", 500000, 0, 100000, 999999);
+  #assert !coder_page_usage_spend_add(s, "conversations-index.db", CP_US_PROV_AGY, "agy", 100000, 0, 10000, 500000);
+  #assert s[0].usage[0].skipped_index_dbs == 2;
+  #assert coder_page_usage_total_cost_micros(s) == 0 && coder_page_usage_total_tokens(s) == 0;
+
+  #assert coder_page_usage_spend_add(s, "chat-1.json", CP_US_PROV_GEMINI, "gemini-4-neon", 100000, 20000, 50000, 420000);
+  #assert s[0].usage[0].total_chats == 1 && coder_page_usage_total_cost_micros(s) == 420000 && coder_page_usage_total_tokens(s) == 170000;
+}
+
+#test "usage: aggregate spend across providers respects user model price overrides" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  coder_page_usage_price_clear(s);
+  // Set custom override for gemini-4-neon: $2.00/M input, $8.00/M output, $0.50/M cached.
+  #assert coder_page_usage_price_set(s, "gemini-4-neon", 2000000, 8000000, 500000);
+  // Set custom override for claude-sonnet-4: $3.00/M input, $15.00/M output, $0.30/M cached.
+  #assert coder_page_usage_price_set(s, "claude-sonnet-4", 3000000, 15000000, 300000);
+
+  coder_page_usage_spend_reset(s);
+  // 500k input ($1.00) + 200k cached ($0.10) + 250k output ($2.00) = $3.10 = 3,100,000 micros (ignores fallback 999)
+  #assert coder_page_usage_spend_add(s, "c1.json", -1, "gemini-4-neon", 500000, 200000, 250000, 999);
+  // 1M input ($3.00) + 0 cached + 100k output ($1.50) = $4.50 = 4,500,000 micros
+  #assert coder_page_usage_spend_add(s, "c2.json", -1, "claude-sonnet-4", 1000000, 0, 100000, 123);
+  // Model with no override uses fallback cost (750,000 micros = $0.75)
+  #assert coder_page_usage_spend_add(s, "c3.json", -1, "openrouter:qwen/qwen3", 10000, 0, 5000, 750000);
+
+  #assert s[0].usage[0].spend[CP_US_PROV_GEMINI].cost_micros == 3100000;
+  #assert s[0].usage[0].spend[CP_US_PROV_CLAUDE].cost_micros == 4500000;
+  #assert s[0].usage[0].spend[CP_US_PROV_OPENROUTER].cost_micros == 750000;
+  #assert coder_page_usage_total_cost_micros(s) == 8350000;
+  #assert coder_page_usage_total_tokens(s) == 2065000;
+}
+
+#test "usage: multi-account pooling selects least-used active profile and skips limited/signed_out" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  coder_page_usage_clear(s);
+
+  a0 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Personal", "Claude Max", CP_US_ST_OBSERVED, "", 1000, false, 0);
+  #assert a0 == 0 && coder_page_usage_add_window(s, a0, "Session", 8200, 5000);
+  a1 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Work", "Claude Pro", CP_US_ST_OBSERVED, "", 1000, false, 0);
+  #assert a1 == 1 && coder_page_usage_add_window(s, a1, "Session", 2400, 5000);
+  a2 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Backup", "Claude Max", CP_US_ST_OBSERVED, "", 1000, true, 6000);
+  #assert a2 == 2 && coder_page_usage_add_window(s, a2, "Session", 10000, 6000);
+  a3 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "LoggedOut", "", CP_US_ST_SIGNED_OUT, "signed_out", 0, false, 0);
+  #assert a3 == 3;
+
+  // Pooling on (default): chooses Work (24% < 82%), skips Backup (limited) and LoggedOut (signed_out).
+  #assert coder_page_usage_pool_enabled(s);
+  #assert coder_page_usage_pool_select(s, CP_US_PROV_CLAUDE) == a1;
+
+  // Pooling off: chooses first non-limited observed profile (Personal).
+  coder_page_usage_pool_set(s, false);
+  #assert !coder_page_usage_pool_enabled(s);
+  #assert coder_page_usage_pool_select(s, CP_US_PROV_CLAUDE) == a0;
+  #assert coder_page_usage_pool_select(s, CP_US_PROV_CODEX) == -1;
+}
+
+#test "usage: automatic limit-recovery detects elapsed reset window, clears limit, and notifies host" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  coder_page_usage_clear(s);
+
+  a0 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Work", "Claude Max", CP_US_ST_OBSERVED, "", 1000, false, 0);
+  #assert coder_page_usage_add_window(s, a0, "Session", 10000, 1700005000);
+  #assert s[0].usage[0].accts[a0].limited && s[0].usage[0].accts[a0].limit_reset_s == 1700005000;
+
+  // Before reset window: still limited, no recovery action.
+  #assert !coder_page_usage_tick(s, 1700004999);
+  #assert s[0].usage[0].accts[a0].limited && coder_page_action(s) == CP_ASK_NONE;
+
+  // At/after reset window: limit clears, window resets to 0%, host gets CP_ASK_USAGE_RECOVERY + message.
+  #assert coder_page_usage_tick(s, 1700005000);
+  #assert !s[0].usage[0].accts[a0].limited && s[0].usage[0].accts[a0].windows[0].used_bp == 0;
+  #assert coder_page_action(s) == CP_ASK_USAGE_RECOVERY;
+  mb: [128] u8;
+  mn := coder_page_usage_recovery_msg(s, mb[..]);
+  #assert cast(string) mb[0..<mn] == "Claude (Work) quota reset — ready to resume";
+  // Consumed once
+  #assert coder_page_usage_recovery_msg(s, mb[..]) == 0;
+}
+
+#test "usage: raw OAuth and API tokens are scrubbed and never exposed in UI fields" {
+  #assert cp_usage_has_secret("Authorization: Bearer eyJhbGciOi");
+  #assert cp_usage_has_secret("sk-ant-api03-secretvalue");
+  #assert cp_usage_has_secret("ya29.a0AfH6SM-oauth-token");
+  #assert cp_usage_has_secret("AIzaSyFakeKey12345");
+  #assert cp_usage_has_secret("{\"access_token\":\"secret\"}");
+  #assert !cp_usage_has_secret("the usage service answered 503");
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  idx := coder_page_usage_set_account(s, CP_US_PROV_AGY, "Default", "Antigravity", CP_US_ST_UNAVAILABLE, "failed with Bearer ya29.secret-token", 0, false, 0);
+  #assert idx == 0;
+  why := cast(string) s[0].usage[0].accts[0].why[0..<s[0].usage[0].accts[0].nwhy];
+  #assert why == "redacted" && !cp_usage_has_secret(why);
+}
+
+#test "usage: Settings -> Usage renders, searches, dispatches actions, and composer popover works" {
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  hn := cp_set_hits("usage", hits[..]);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_USAGE;
+  hn2 := cp_set_hits("price", hits[..]);
+  #assert hn2 >= 1 && es[hits[0]].id == "set.usage.prices";
+  hn3 := cp_set_hits("pooling", hits[..]);
+  #assert hn3 >= 1 && es[hits[0]].id == "set.usage.pool";
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  #assert cp_set_page_ok(false, CP_PG_USAGE);
+  a0 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Default", "Claude Max", CP_US_ST_OBSERVED, "", 1000, false, 0);
+  #assert coder_page_usage_add_window(s, a0, "Week", 7200, 1700100000);
+  _ := coder_page_usage_tick(s, 1700000000);
+
+  // Composer quota ring renders and opens popover; popover buttons dispatch refresh and Settings -> Usage.
+  #assert cp_set_test_frame(s, 1200, 700);
+  ring := cp_set_test_row(s, "coder.usage.ring");
+  #assert ring.action == CP_USAGE_POPOVER;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.usage.ring"));
+  #assert s[0].usage[0].popover_open;
+  #assert cp_set_test_frame(s, 1200, 700);
+  #assert surface_find(s[0].surface[..], "coder.usage.popover") >= 0;
+  #assert cp_set_test_row(s, "coder.usage.refresh").action == CP_USAGE_REFRESH;
+  #assert cp_set_test_row(s, "coder.usage.open").action == CP_USAGE_OPEN;
+
+  // Clicking Refresh in popover asks host to refresh.
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.usage.refresh"));
+  #assert coder_page_action(s) == CP_ASK_USAGE_REFRESH;
+
+  // Clicking Open Usage… opens Settings -> Usage and closes popover.
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.usage.open"));
+  #assert !s[0].usage[0].popover_open && coder_page_settings_page(s) == CP_PG_USAGE;
+  #assert cp_set_test_frame(s, 1200, 700);
+  #assert cp_set_test_row(s, "set.usage.refresh.a").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.usage.prices.a").action == CP_SET_ACT;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.usage.prices.a") && coder_page_action(s) == CP_ASK_USAGE_PRICES;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.usage.pool.0") && coder_page_action(s) == CP_ASK_USAGE_POOL && !coder_page_usage_pool_enabled(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.usage.recovery.0") && coder_page_action(s) == CP_ASK_USAGE_RECOVERY && !coder_page_usage_recovery_enabled(s);
+}

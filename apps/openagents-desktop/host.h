@@ -474,4 +474,23 @@ int cd_palette_query(void *page, char *out, int cap);
 void cd_palette_content_hits(void *page, const char *payload);
 int cd_palette_jump_chat(void *page, char *out, int cap);
 int cd_palette_jump_turn(void *page);
+// Usage & quota limits dashboard, composer popover, multi-account pooling & limit recovery (page/usage.coax, GitHub #13877).
+void cd_usage_clear(void *page);
+int cd_usage_set_account(void *page, int provider, const char *profile, const char *plan, int status, const char *why, int64_t got_ms, int limited, int64_t limit_reset_s);
+int cd_usage_add_window(void *page, int acct_idx, const char *label, int used_bp, int64_t reset_s);
+void cd_usage_spend_reset(void *page);
+int cd_usage_spend_add(void *page, const char *path, int provider, const char *model, int64_t in_tok, int64_t cached_tok, int64_t out_tok, int64_t fallback_micros);
+void cd_usage_price_clear(void *page);
+int cd_usage_price_set(void *page, const char *model, int64_t in_micros_per_m, int64_t out_micros_per_m, int64_t cached_micros_per_m);
+void cd_usage_pool_set(void *page, int enabled);
+int cd_usage_pool_enabled(void *page);
+int cd_usage_pool_select(void *page, int provider);
+void cd_usage_recovery_set(void *page, int enabled);
+int cd_usage_recovery_enabled(void *page);
+int cd_usage_tick(void *page, int64_t now_s);
+int cd_usage_recovery_msg(void *page, char *out, int cap);
+void cd_usage_refreshing_set(void *page, int on);
+int cd_usage_is_index_db(const char *path);
+int64_t cd_usage_total_cost_micros(void *page);
+int64_t cd_usage_total_tokens(void *page);
 #endif

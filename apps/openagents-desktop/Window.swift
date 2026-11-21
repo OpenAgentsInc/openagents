@@ -151,6 +151,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
     var termSessions: [Int32: TerminalSession] = [:]
     var termPortTimer: Timer?
+    var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -222,6 +223,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             setFolder(URL(fileURLWithPath: kept), keep: false)
         } else { setFolder(folder, keep: false) }
         syncSettingsInfo()
+        setupUsageDashboard()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleModifierFlags(event.modifierFlags)
             return event
@@ -273,9 +275,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         if CommandLine.arguments.contains("--gym") { openGym() }
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about).
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -422,6 +424,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 63: focusFind()
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
+        case 66: refreshUsageDashboard()
+        case 67: editUsagePriceOverrides()
+        case 68: handleUsagePoolChanged()
+        case 69: handleUsageRecoveryAction()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -550,6 +556,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         retired = true
         gitProcess?.terminate(); gitProcess = nil
         updater.stop()
+        usageTimer?.invalidate(); usageTimer = nil
         stopAllTerminals()
         foremanServer.stop()
         ForemanControlDescriptor.remove()

@@ -15,22 +15,22 @@
 
 #load "../../components/app/settings.coax";
 
-CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5;
-CP_SET_PAGES :: 6;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet"];
-CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG];
+CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6;
+CP_SET_PAGES :: 7;
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage"];
+CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
 CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
-CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_FOREMAN, CP_PG_ABOUT];
-CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 1, 1, 2];   // the group of each place in CP_SET_ORDER
+CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_FOREMAN, CP_PG_ABOUT];
+CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 1, 1, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 33;
+CP_SET_ENTRIES :: 39;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -65,7 +65,13 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.exp", name = "Experimental features", terms = "experimental labs flag account login gym foreman"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr", name = "Agent instructions", terms = "system prompt instructions rules commit push git agents.md claude.md default"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr.reset", name = "Reset agent instructions", terms = "default restore instructions system prompt"},
-    CpSetEntry.{page = CP_PG_GENERAL, id = "set.notify", name = "Notifications", terms = "notifications alerts sound chime badge dock bell"}];
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.notify", name = "Notifications", terms = "notifications alerts sound chime badge dock bell"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "", name = "Usage", terms = "usage quota limits spend cost tokens claude codex antigravity"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.refresh", name = "Quota probe status", terms = "quota refresh probe claude codex antigravity limits window"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.spend", name = "Total local spend", terms = "spend cost usd tokens history chart breakdown"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.prices", name = "Model price overrides", terms = "price pricing override rates cost per million tokens"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.pool", name = "Provider profile pooling", terms = "pool pooling profiles least-used quota"},
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.recovery", name = "Limit-recovery alerts", terms = "recovery rate limit reset resume notification"}];
 }
 // Whether a page shows: Foreman's and Account's are experimental features (General's last row).
 cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
@@ -113,7 +119,7 @@ cp_settings_show :: (s: [] CoderPage, open: bool, page: int) {
   if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { s[0].set_scroll = 0; } s[0].set_page = page; }
   if open && !cp_set_page_ok(s[0].experimental, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
   if open == s[0].set_open { return; }
-  s[0].set_open = open; s[0].model_menu = false;
+  s[0].set_open = open; s[0].model_menu = false; s[0].usage[0].popover_open = false;
   if !open { s[0].set_query_n = 0; s[0].set_target_n = 0; }
   s[0].fld[0].kb = ifx open then CP_KB_NONE else CP_KB_COMPOSER;
   s[0].ask = CP_ASK_SETTINGS;
@@ -153,6 +159,12 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.wallet.send.a" { s[0].ask = CP_ASK_WALLET_SEND; return true; }
   if id == "set.wallet.limit.a" { s[0].ask = CP_ASK_WALLET_LIMIT; return true; }
   if id == "set.wallet.backup.a" { s[0].ask = CP_ASK_WALLET_BACKUP; return true; }
+  if id == "set.usage.refresh.a" { s[0].ask = CP_ASK_USAGE_REFRESH; return true; }
+  if id == "set.usage.prices.a" { s[0].ask = CP_ASK_USAGE_PRICES; return true; }
+  upool := cp_number(id, "set.usage.pool.");
+  if upool == 0 || upool == 1 { s[0].usage[0].pool_enabled = (upool == 1); s[0].ask = CP_ASK_USAGE_POOL; return true; }
+  urec := cp_number(id, "set.usage.recovery.");
+  if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
   if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
   if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
@@ -409,6 +421,8 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     crows[2] = SetRow.{id = "set.wallet.npub", name = "Nostr identity", desc = "NIP-06 key paired with this wallet's seed.",
       value = wnpub, kind = SET_ROW_PLAIN};
     y += cp_set_group(s, f, "set.wallet.custody.group", x, y, w, crows[..]);
+  } else if page == CP_PG_USAGE {
+    y += cp_settings_usage(s, f, x, y, w);
   } else {
     y += set_page_head(f, "set.title", x, y, w, names[CP_PG_ABOUT], "Coder's version and its updates.") + t.block_gap;
     ver := ifx s[0].set_version_n > 0 then sheet_pool(sh, cast(string) s[0].set_version[0..<s[0].set_version_n]) else "";
