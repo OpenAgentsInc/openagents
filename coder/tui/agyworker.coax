@@ -35,6 +35,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";        // proc_sleep: --probe waits on agy
 #load "../../coax/lib/agent/engine/antigravity.coax";
+#load "../../coax/lib/agent/observe/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 
@@ -45,6 +46,7 @@ AGYW_LINE :: 1048576;
 AGYW_LABEL :: 300;
 AGYW_OUTPUT :: 4000;
 AGYW_OPEN :: 32;
+AGYW_SUBS :: 16;
 AGYW_ID :: 96;
 AGYW_RECALL :: 65536;
 AGYW_REPLY :: 65536;
@@ -52,6 +54,13 @@ AGYW_REPLY :: 65536;
 AgywCall :: struct {
   id: [AGYW_ID] u8; id_n: int;
   label: [AGYW_LABEL] u8; label_n: int;
+  used: bool;
+}
+
+AgywSub :: struct {
+  id: [AGYW_ID] u8; id_n: int;
+  label: [AGYW_LABEL] u8; label_n: int;
+  state: int;
   used: bool;
 }
 
@@ -67,6 +76,8 @@ AgywConfig :: struct {
 AgywState :: struct {
   cfg: AgywConfig;
   calls: [AGYW_OPEN] AgywCall;
+  subs: [AGYW_SUBS] AgywSub;
+  last_sub_poll: int;
   next_ticket: int;
   turn_active: bool;
   turn: int;                              // the turns started, as the turn lines number them
@@ -248,6 +259,107 @@ agyw_call_close :: (s: [] AgywState, at: int) {
 
 agyw_calls_clear :: (s: [] AgywState) {
   for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; }
+}
+
+// ---------------------------------------------------------------- detached subagents (#13832)
+
+agyw_subs_clear :: (s: [] AgywState) {
+  for i: 0..<AGYW_SUBS { s[0].subs[i].used = false; s[0].subs[i].id_n = 0; s[0].subs[i].label_n = 0; s[0].subs[i].state = AGR_SUB_UNKNOWN; }
+  s[0].last_sub_poll = 0;
+}
+
+agyw_sub_find :: (s: [] AgywState, id: string) -> int {
+  if id.count == 0 { return -1; }
+  for i: 0..<AGYW_SUBS {
+    if s[0].subs[i].used && agyw_str(s[0].subs[i].id[..], s[0].subs[i].id_n) == id { return i; }
+  }
+  return -1;
+}
+
+agyw_sub_label :: (sub: AgrSubagent, out: [] u8) -> string {
+  n := agyw_copy(out, "Subagent");
+  if sub.name.count > 0 {
+    n += agyw_copy(out[n..<out.count], ": ");
+    n += agyw_copy(out[n..<out.count], sub.name);
+  }
+  if sub.prompt.count > 0 {
+    n += agyw_copy(out[n..<out.count], " — ");
+    n += agyw_copy(out[n..<out.count], sub.prompt);
+  }
+  return cast(string) out[0..<n];
+}
+
+// Sync a batch of parsed detached subagents into CuEngine's held-turn counter and emit
+// worker ask/command lines for newly running or settled subagents. Killed subagents
+// (AGR_SUB_KILLED / SUBAGENT_STATE_KILLED) are terminal and never hold a parent turn open.
+agyw_sync_subagents :: (s: [] AgywState, x: [] CuEngine, subs: [] AgrSubagent, n: int, emit: bool) -> int {
+  running := agr_subagents_running(subs, n);
+  cue_bg_subagents_set(x, running);
+  limit := ifx n < subs.count then n else subs.count;
+  for i: 0..<limit {
+    sub := subs[i];
+    if sub.id.count == 0 { continue; }
+    at := agyw_sub_find(s, sub.id);
+    if at < 0 {
+      for k: 0..<AGYW_SUBS {
+        if !s[0].subs[k].used {
+          at = k;
+          s[0].subs[k].used = true;
+          s[0].subs[k].id_n = agyw_copy(s[0].subs[k].id[..], sub.id);
+          s[0].subs[k].state = AGR_SUB_UNKNOWN;
+          break;
+        }
+      }
+      if at < 0 { continue; }
+    }
+    prev := s[0].subs[at].state;
+    if prev == sub.state { continue; }
+    lb: [AGYW_LABEL] u8;
+    label := agyw_sub_label(sub, lb[..]);
+    if s[0].subs[at].label_n == 0 { s[0].subs[at].label_n = agyw_copy(s[0].subs[at].label[..], label); }
+    shown := agyw_str(s[0].subs[at].label[..], s[0].subs[at].label_n);
+    s[0].subs[at].state = sub.state;
+    if sub.state == AGR_SUB_RUNNING {
+      s[0].next_ticket += 1;
+      if emit { agyw_emit_ask(s, shown, s[0].next_ticket); }
+    } else if sub.state == AGR_SUB_DONE || sub.state == AGR_SUB_FAILED || sub.state == AGR_SUB_KILLED {
+      if prev == AGR_SUB_UNKNOWN {
+        s[0].next_ticket += 1;
+        if emit { agyw_emit_ask(s, shown, s[0].next_ticket); }
+      }
+      exit_code := ifx sub.state == AGR_SUB_DONE then 0 else 1;
+      out_txt := ifx sub.state == AGR_SUB_KILLED then (ifx sub.error.count > 0 then sub.error else "Subagent killed.")
+                 else ifx sub.state == AGR_SUB_FAILED then (ifx sub.error.count > 0 then sub.error else "Subagent failed.")
+                 else sub.summary;
+      if emit { agyw_emit_command(s, shown, exit_code, out_txt); }
+    }
+  }
+  return running;
+}
+
+// Resolve Antigravity's brain directory: <profile>/antigravity-acp/brain when profiled,
+// else $HOME/.gemini/antigravity-acp/brain (or antigravity-cli/brain if present).
+agyw_brain_dir :: (profile: string, home: string, out: [] u8) -> string {
+  if profile.count > 0 {
+    b1: [1024] u8; p1 := fs_join(profile, AGY_APP_DATA_DIR, b1[..]);
+    return ifx p1.count > 0 then fs_join(p1, "brain", out) else "";
+  }
+  if home.count == 0 { return ""; }
+  b1: [1024] u8; p1 := fs_join(home, ".gemini/antigravity-acp/brain", b1[..]);
+  if p1.count > 0 && fs_exists(p1) { return cast(string) out[0..<agyw_copy(out, p1)]; }
+  return fs_join(home, ".gemini/antigravity-cli/brain", out);
+}
+
+agyw_poll_subagents :: (s: [] AgywState, x: [] CuEngine, emit: bool) {
+  root_id := cu_session_id(x[0].c);
+  if root_id.count == 0 { return; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  bb: [2048] u8; brain := agyw_brain_dir(agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n), home, bb[..]);
+  if brain.count == 0 { return; }
+  ab: [16384] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  subs: [AGYW_SUBS] AgrSubagent;
+  n := agr_subagents_read(brain, root_id, subs[..], ar[..]);
+  if n > 0 || cue_bg_subagents(x) > 0 { _ = agyw_sync_subagents(s, x, subs[..], n, emit); }
 }
 
 // Extract textual output from a tool_call_update's content or rawOutput.
@@ -499,6 +611,7 @@ agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) 
   s[0].turn_active = false;
   s[0].stopping = false;
   agyw_calls_clear(s);
+  agyw_subs_clear(s);
   if emit { agyw_emit_ended(s, ending, text); }
   s[0].reply_n = 0;
   s[0].denied_n = 0; s[0].denied_id_n = 0;
@@ -743,6 +856,7 @@ tool_main :: () -> int #export_c #effects(all) {
           s[0].denied_n = 0; s[0].denied_id_n = 0;
           s[0].compact = agyw_is_compact(req[0].task);
           agyw_calls_clear(s);
+  agyw_subs_clear(s);
 
           mod := agyw_resolve_model(req[0].model, agyw_str(s[0].cfg.model[..], s[0].cfg.model_n));
           eff := agyw_resolve_effort(req[0].effort, agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n));
@@ -797,7 +911,12 @@ tool_main :: () -> int #export_c #effects(all) {
         if !x[0].live { break; }
       }
       if x[0].live && s[0].turn_active {
-        w := cue_watch(x, cxproc_now_ms());
+        now := cxproc_now_ms();
+        if now - s[0].last_sub_poll >= 250 {
+          s[0].last_sub_poll = now;
+          agyw_poll_subagents(s, x, true);
+        }
+        w := cue_watch(x, now);
         if w == CUE_WATCH_BG_DONE {
           agyw_turn_end(s, x[0].c[0].ar[..], "", true);
         } else if w == CUE_WATCH_ENDED {
@@ -1104,4 +1223,34 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert mww_request(ar[..], "{\"answer\":false,\"ticket\":3,\"why\":\"too risky\"}", req[..]) == MWW_ANSWER;
   #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
   #assert agy_out_has(x, "\"optionId\":\"reject_once\"") && s[0].denied_n > 0;
+}
+
+#test "agyworker: detached subagents hold turn open while running and settle when killed or completed" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  _ = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  _ = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"root-7\"}}");
+  #assert cue_send(x, "audit tests");
+  cu_outbox_clear(x[0].c);
+
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  subs: [2] AgrSubagent;
+  subs[0] = agr_subagent_parse("{\"id\":\"c-1\",\"name\":\"researcher\",\"state\":\"SUBAGENT_STATE_RUNNING\",\"prompt\":\"Scan repo\"}", "c-1", ar[..]);
+  subs[1] = agr_subagent_parse("{\"id\":\"c-2\",\"name\":\"helper\",\"state\":\"SUBAGENT_STATE_KILLED\",\"error\":\"killed by parent\"}", "c-2", ar[..]);
+  #assert agyw_sync_subagents(s, x, subs[..], 2, true) == 1 && cue_bg_subagents(x) == 1;
+  #assert agyw_logged(s, "\"kind\":\"ask\",\"command\":\"Subagent: researcher — Scan repo\"");
+  #assert agyw_logged(s, "\"kind\":\"command\",\"command\":\"Subagent: helper\",\"exit\":1,\"timed_out\":false,\"output\":\"killed by parent\"");
+
+  // Prompt settles while c-1 is still running -> turn stays held_bg.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert s[0].turn_active && cue_held_bg(x);
+  #assert cue_watch(x, 1000) == CUE_WATCH_NONE;
+
+  // c-1 is killed -> running drops to 0 -> cue_watch releases the held turn.
+  subs[0] = agr_subagent_parse("{\"id\":\"c-1\",\"name\":\"researcher\",\"state\":\"SUBAGENT_STATE_KILLED\"}", "c-1", ar[..]);
+  #assert agyw_sync_subagents(s, x, subs[..], 2, true) == 0 && cue_bg_subagents(x) == 0;
+  #assert cue_watch(x, 1250) == CUE_WATCH_BG_DONE && !cue_held_bg(x);
 }

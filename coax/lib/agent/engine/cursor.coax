@@ -56,9 +56,10 @@ CuEngine :: struct {
   err: [2048] u8; err_n: int;     // why the agent stopped, when it said nothing itself
   agent: CuAgent;                 // the agent and its quirks; none (no name) is Cursor's
   notice: [1024] u8; notice_n: int; // the turn's words were agy's failure notice (antigravity.coax, agy_chunk)
-  // background command held-turn state (defer_finalize_background)
+  // background command & detached subagent held-turn state (defer_finalize_background)
   bg_tools: [CUE_TOOLS] int; nbg_tools: int; // active non-daemon execute tool calls (hashed ids)
-  held_bg: bool;                  // session/prompt settled while a background execute tool is active
+  bg_subagents: int;              // live detached subagents (e.g. agr_subagents_running; excludes SUBAGENT_STATE_KILLED)
+  held_bg: bool;                  // session/prompt settled while background work is active
   held_bg_since: int;             // owner's clock (ms) when held_bg began (-1 until first cue_watch)
   detached_stream: bool;          // detached session/update or permission arrived while held_bg
   // the stall watchdog (cue_watch): off while stall_ms is 0, as for Cursor; agy_launch turns it on
@@ -342,8 +343,15 @@ cue_bg_tool :: (x: [] CuEngine, id: string, status: string, tool_kind: string, i
   }
 }
 
+// Update the count of live detached subagents (GitHub #13832). Killed/completed subagents
+// must not be counted so they never wedge a held parent turn.
+cue_bg_subagents_set :: (x: [] CuEngine, running: int) {
+  x[0].bg_subagents = ifx running > 0 then running else 0;
+}
+cue_bg_subagents :: (x: [] CuEngine) -> int { return x[0].bg_subagents; }
+
 // The watchdog and held-turn part of an event: the agent spoke, a tool call started or ended,
-// the turn ended or was held open for a background execute tool.
+// the turn ended or was held open for a background execute tool or detached subagent.
 cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
   k := ev.kind;
   if k == CuEventKind.idle { return k; }
@@ -386,12 +394,12 @@ cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
     x[0].recovering = 0;
     return CuEventKind.none;
   }
-  if defer_bg && k == CuEventKind.answered && x[0].nbg_tools > 0 && cl_str(ar, ev.result, "stopReason") != "cancelled" {
+  if defer_bg && k == CuEventKind.answered && (x[0].nbg_tools > 0 || x[0].bg_subagents > 0) && cl_str(ar, ev.result, "stopReason") != "cancelled" {
     x[0].held_bg = true; x[0].held_bg_since = -1; x[0].detached_stream = false;
     x[0].recovering = 0; x[0].watching = false;
     return CuEventKind.none;
   }
-  x[0].nbg_tools = 0; x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false;
+  x[0].nbg_tools = 0; x[0].bg_subagents = 0; x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false;
   x[0].recovering = 0; x[0].watching = false;     // (recovered and stalled stay for the owner's end of the turn)
   return k;
 }
@@ -416,12 +424,12 @@ cue_watch :: (x: [] CuEngine, now: int) -> int {
     else if slept {
       if sleep_delta > 0 { x[0].held_bg_since += sleep_delta; } else { x[0].held_bg_since = now; }
     }
-    if x[0].nbg_tools == 0 && !x[0].detached_stream && x[0].c[0].asking == 0 {
+    if x[0].nbg_tools == 0 && x[0].bg_subagents == 0 && !x[0].detached_stream && x[0].c[0].asking == 0 {
       x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false;
       return CUE_WATCH_BG_DONE;
     }
     if now - x[0].held_bg_since >= CUE_BG_HOLD_LIMIT_MS {
-      x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false; x[0].nbg_tools = 0;
+      x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false; x[0].nbg_tools = 0; x[0].bg_subagents = 0;
       return CUE_WATCH_BG_DONE;
     }
     return CUE_WATCH_NONE;
@@ -728,4 +736,25 @@ CUE_T_USAGE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\
   x[0].live = true; x[0].ready = true; cu_outbox_clear(x[0].c);
   cue_fresh_session(x);
   #assert x[0].nresume == 0 && x[0].last_session_n == 0 && !x[0].ready && cue_out_has(x, "session/new");
+}
+
+#test "detached subagents: running subagent holds turn open after prompt settles; zero running settles via cue_watch" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  a := cu_agent_cursor(); a.defer_finalize_background = true; a.steers_with_prompt = true; cue_agent(x, a);
+  cue_test_turn(x, 2);
+  // One detached subagent is running when session/prompt settles -> turn stays held_bg.
+  cue_bg_subagents_set(x, 1);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert ev.kind == CuEventKind.none && cue_held_bg(x);
+  #assert cue_watch(x, 1000) == CUE_WATCH_NONE && cue_held_bg(x);
+  // Mid-turn steer while held opens a new prompt without session/cancel; when that settles with
+  // bg_subagents still > 0, the turn stays held until running drops to 0.
+  cu_outbox_clear(x[0].c);
+  #assert cue_steer(x, "keep checking") && cue_out_has(x, "session/prompt") && !cue_out_has(x, "session/cancel");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert ev.kind == CuEventKind.none && cue_held_bg(x);
+  // Once subagent completes or is killed (running == 0), cue_watch releases the held turn.
+  cue_bg_subagents_set(x, 0);
+  #assert cue_watch(x, 1100) == CUE_WATCH_BG_DONE && !cue_held_bg(x);
 }
