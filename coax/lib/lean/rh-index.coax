@@ -1,0 +1,803 @@
+// Pure Coax streaming binary indexer and < 15 ms query engine for the Nov 2026
+// Riemann Hypothesis Lean 4 proof (175,187 modules, 17.37M lines, 818,755 theorems;
+// Epic #13943, #13945; docs/lean/riemann-hypothesis-workbench-spec.md).
+//
+// Imperative shell loaded by coder/tui/lean-run.coax (pure classifiers live in rh-index-core.coax).
+// Writes ~/.openagents/lean/index/:
+//   - rh-manifest.json   (rh-index.v1 canonical manifest)
+//   - rh-modules.bin     (compact RHI1 binary graph: all modules, forward/reverse CSR, BFS tree, names)
+//   - rh-atlas.json      (LOD 0 libraries + cross-lib matrix + LOD 1 clusters + onion peel + audit)
+//   - rh-decls.tsv       (all 1M+ declarations: mod_id\tline\tkind\tname)
+#load "rh-index-core.coax";
+#load "verify.coax";
+
+RH_MAX_MODS :: 200000;
+RH_HASH_CAP :: 524288;
+RH_HASH_MASK :: 524287;
+RH_NAME_POOL :: 16777216;
+RH_MAX_EDGES :: 2500000;
+RH_MAX_CLUSTERS :: 512;
+RH_NO_ID :: cast(u32) 0xFFFFFFFF;
+RH_BIN_MAGIC :: cast(u32) 0x31494852; // "RHI1"
+RH_IO_CHUNK :: 524288;
+
+RhCluster :: struct {
+  name: [128] u8; name_n: int;
+  lib_id: int;
+  modules: int;
+  theorems: int;
+  defs: int;
+  lines: int;
+  min_depth: int;
+  max_depth: int;
+  hub_mod: int;
+  hub_score: int;
+  atlas_x: int;   // 0..1000 normalized * 1000
+  atlas_y: int;
+}
+
+RhIndexWork :: struct {
+  n_mods: int;
+  n_edges: int;
+  n_clusters: int;
+  name_used: int;
+  main_id: int;
+  max_depth: int;
+  total_theorems: int;
+  total_defs: int;
+  total_lines: int;
+  total_bytes: int;
+  total_metaprog: int;
+
+  // Per-module dense arrays (12 * 200k * 4B = 9.6 MB)
+  m_name_off: [RH_MAX_MODS] u32;
+  m_name_len: [RH_MAX_MODS] u32;
+  m_lib: [RH_MAX_MODS] u32;
+  m_cluster: [RH_MAX_MODS] u32;
+  m_depth: [RH_MAX_MODS] u32;
+  m_parent: [RH_MAX_MODS] u32;
+  m_lines: [RH_MAX_MODS] u32;
+  m_bytes: [RH_MAX_MODS] u32;
+  m_theorems: [RH_MAX_MODS] u32;
+  m_defs: [RH_MAX_MODS] u32;
+  m_flags: [RH_MAX_MODS] u32;
+  m_indeg: [RH_MAX_MODS] u32;
+
+  // Open-addressed hash table: stores mod_id + 1 (0 = empty)
+  ht: [RH_HASH_CAP] u32;
+  names: [RH_NAME_POOL] u8;
+
+  // Edge list -> CSR
+  edge_src: [RH_MAX_EDGES] u32;
+  edge_dst: [RH_MAX_EDGES] u32;
+  fwd_off: [RH_MAX_MODS + 1] u32;
+  fwd_dst: [RH_MAX_EDGES] u32;
+  rev_off: [RH_MAX_MODS + 1] u32;
+  rev_dst: [RH_MAX_EDGES] u32;
+  bfs_q: [RH_MAX_MODS] u32;
+
+  // Library & cluster rollups
+  lib_mods: [RH_LIBS] int;
+  lib_theorems: [RH_LIBS] int;
+  lib_defs: [RH_LIBS] int;
+  lib_lines: [RH_LIBS] int;
+  lib_bytes: [RH_LIBS] int;
+  lib_min_d: [RH_LIBS] int;
+  lib_max_d: [RH_LIBS] int;
+  lib_edges: [RH_LIBS * RH_LIBS] int;
+  clusters: [RH_MAX_CLUSTERS] RhCluster;
+
+  // Streaming I/O scratch
+  fbuf: [RH_IO_CHUNK] u8;
+  iobuf: [RH_IO_CHUNK] u8;
+  declbuf: [RH_IO_CHUNK] u8;
+  decl_n: int;
+  decl_started: bool;
+}
+
+rhi_mod_name :: (w: [] RhIndexWork, id: int) -> string {
+  if id < 0 || id >= w[0].n_mods { return ""; }
+  off := cast(int) w[0].m_name_off[id];
+  ln := cast(int) w[0].m_name_len[id];
+  return cast(string) w[0].names[off..<off + ln];
+}
+
+rhi_ht_find :: (w: [] RhIndexWork, name: string) -> int {
+  if name.count == 0 { return -1; }
+  slot := cast(int) (rh_hash_str(name) & cast(u64) RH_HASH_MASK);
+  for probe: 0..<RH_HASH_CAP {
+    v := w[0].ht[slot];
+    if v == 0 { return -1; }
+    id := cast(int) (v - 1);
+    if rhi_mod_name(w, id) == name { return id; }
+    slot = (slot + 1) & RH_HASH_MASK;
+  }
+  return -1;
+}
+
+rhi_ht_insert :: (w: [] RhIndexWork, name: string, id: int) {
+  slot := cast(int) (rh_hash_str(name) & cast(u64) RH_HASH_MASK);
+  for probe: 0..<RH_HASH_CAP {
+    if w[0].ht[slot] == 0 {
+      w[0].ht[slot] = cast(u32) (id + 1);
+      return;
+    }
+    slot = (slot + 1) & RH_HASH_MASK;
+  }
+}
+
+rhi_get_cluster :: (w: [] RhIndexWork, cname: string, lib_id: int) -> int {
+  for i: 0..<w[0].n_clusters {
+    if cast(string) w[0].clusters[i].name[0..<w[0].clusters[i].name_n] == cname { return i; }
+  }
+  if w[0].n_clusters >= RH_MAX_CLUSTERS { return RH_MAX_CLUSTERS - 1; }
+  idx := w[0].n_clusters;
+  w[0].n_clusters += 1;
+  w[0].clusters[idx] = RhCluster.{lib_id = lib_id, min_depth = 999999, max_depth = 0, hub_mod = -1, hub_score = -1};
+  w[0].clusters[idx].name_n = lw_put(w[0].clusters[idx].name[..], cname);
+  return idx;
+}
+
+rhi_decl_flush :: (w: [] RhIndexWork, path: string) {
+  if w[0].decl_n <= 0 { return; }
+  s := cast(string) w[0].declbuf[0..<w[0].decl_n];
+  if !w[0].decl_started {
+    _ = fs_write(path, s);
+    w[0].decl_started = true;
+  } else {
+    _ = fs_append(path, s);
+  }
+  w[0].decl_n = 0;
+}
+
+rhi_decl_put_int :: (w: [] RhIndexWork, v: int) {
+  tmp: [24] u8; k := 0; x := v;
+  if x == 0 { tmp[0] = '0'; k = 1; }
+  else {
+    while x > 0 { tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10; }
+  }
+  for i: 0..<k {
+    if w[0].decl_n < RH_IO_CHUNK { w[0].declbuf[w[0].decl_n] = tmp[k - 1 - i]; w[0].decl_n += 1; }
+  }
+}
+
+rhi_decl_add :: (w: [] RhIndexWork, decl_path: string, mod_id: int, line_no: int, kind: int, name: string) {
+  if name.count == 0 { return; }
+  if w[0].decl_n + name.count + 40 >= RH_IO_CHUNK { rhi_decl_flush(w, decl_path); }
+  rhi_decl_put_int(w, mod_id);
+  w[0].declbuf[w[0].decl_n] = '\t'; w[0].decl_n += 1;
+  rhi_decl_put_int(w, line_no);
+  w[0].declbuf[w[0].decl_n] = '\t'; w[0].decl_n += 1;
+  w[0].declbuf[w[0].decl_n] = ifx kind == RH_DECL_THEOREM then cast(u8) 'T' else cast(u8) 'D';
+  w[0].decl_n += 1;
+  w[0].declbuf[w[0].decl_n] = '\t'; w[0].decl_n += 1;
+  for c: name {
+    if w[0].decl_n < RH_IO_CHUNK - 2 { w[0].declbuf[w[0].decl_n] = c; w[0].decl_n += 1; }
+  }
+  w[0].declbuf[w[0].decl_n] = '\n'; w[0].decl_n += 1;
+}
+
+rhi_scan_line :: (w: [] RhIndexWork, decl_path: string, id: int, line_no: int, line: string) {
+  if line.count == 0 { return; }
+  // 1. import line
+  imp := rh_parse_import(line);
+  if imp.count > 0 {
+    dst := rhi_ht_find(w, imp);
+    if dst >= 0 && dst != id && w[0].n_edges < RH_MAX_EDGES {
+      w[0].edge_src[w[0].n_edges] = cast(u32) id;
+      w[0].edge_dst[w[0].n_edges] = cast(u32) dst;
+      w[0].n_edges += 1;
+    }
+    return;
+  }
+  // 2. declaration line
+  dh := rh_parse_decl(line);
+  if dh.kind == RH_DECL_THEOREM {
+    w[0].m_theorems[id] += 1;
+    w[0].total_theorems += 1;
+    rhi_decl_add(w, decl_path, id, line_no, RH_DECL_THEOREM, dh.name);
+  } else if dh.kind == RH_DECL_DEF {
+    w[0].m_defs[id] += 1;
+    w[0].total_defs += 1;
+    rhi_decl_add(w, decl_path, id, line_no, RH_DECL_DEF, dh.name);
+  }
+  // 3. metaprogramming audit
+  if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) == 0 && rh_line_has_metaprog(line) {
+    w[0].m_flags[id] = w[0].m_flags[id] | cast(u32) RH_FLAG_METAPROG;
+    w[0].total_metaprog += 1;
+  }
+}
+
+// Reconstructs the file path `<src_dir>/<Mod/Path>.lean` for module `id`.
+rhi_mod_path :: (w: [] RhIndexWork, src_dir: string, id: int, out: [] u8) -> string {
+  nm := rhi_mod_name(w, id);
+  n := lv_cat(out, 0, src_dir);
+  if n > 0 && n < out.count && out[n - 1] != '/' { out[n] = '/'; n += 1; }
+  for c: nm {
+    if n < out.count { out[n] = ifx c == '.' then cast(u8) '/' else c; n += 1; }
+  }
+  n = lv_cat(out, n, ".lean");
+  return cast(string) out[0..<n];
+}
+
+// Writes `rh-modules.bin` in 512 KiB chunks.
+rhi_write_bin :: (w: [] RhIndexWork, path: string) -> bool {
+  started := false;
+  bi := 0;
+  // Helper inline flush macro-like pattern via small local helpers? We write into w[0].iobuf[..].
+  // Header: 16 u32s = 64 bytes
+  hdr: [64] u8;
+  rh_put_u32(hdr[..], 0, RH_BIN_MAGIC);
+  rh_put_u32(hdr[..], 4, 1);
+  rh_put_u32(hdr[..], 8, cast(u32) w[0].n_mods);
+  rh_put_u32(hdr[..], 12, cast(u32) w[0].n_edges);
+  rh_put_u32(hdr[..], 16, cast(u32) w[0].n_clusters);
+  rh_put_u32(hdr[..], 20, cast(u32) w[0].name_used);
+  rh_put_u32(hdr[..], 24, cast(u32) (ifx w[0].main_id >= 0 then w[0].main_id else 0));
+  rh_put_u32(hdr[..], 28, cast(u32) w[0].max_depth);
+  rh_put_u32(hdr[..], 32, cast(u32) w[0].total_theorems);
+  rh_put_u32(hdr[..], 36, cast(u32) w[0].total_defs);
+  rh_put_u32(hdr[..], 40, cast(u32) w[0].total_lines);
+  rh_put_u32(hdr[..], 44, cast(u32) (w[0].total_bytes & 0xFFFFFFFF));
+  rh_put_u32(hdr[..], 48, cast(u32) ((w[0].total_bytes >> 32) & 0xFFFFFFFF));
+  rh_put_u32(hdr[..], 52, cast(u32) w[0].total_metaprog);
+  rh_put_u32(hdr[..], 56, 0);
+  rh_put_u32(hdr[..], 60, 0);
+  if !fs_write(path, cast(string) hdr[0..<64]) { return false; }
+  started = true;
+
+  // 1. Module records (n_mods * 48 bytes)
+  bi = 0;
+  for i: 0..<w[0].n_mods {
+    if bi + 48 > RH_IO_CHUNK {
+      if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; }
+      bi = 0;
+    }
+    rh_put_u32(w[0].iobuf[..], bi + 0, w[0].m_name_off[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 4, w[0].m_name_len[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 8, w[0].m_lib[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 12, w[0].m_cluster[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 16, w[0].m_depth[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 20, w[0].m_parent[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 24, w[0].m_lines[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 28, w[0].m_bytes[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 32, w[0].m_theorems[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 36, w[0].m_defs[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 40, w[0].m_flags[i]);
+    rh_put_u32(w[0].iobuf[..], bi + 44, w[0].m_indeg[i]);
+    bi += 48;
+  }
+  if bi > 0 { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+
+  // 2. fwd_off[n_mods + 1]
+  for i: 0..<w[0].n_mods + 1 {
+    if bi + 4 > RH_IO_CHUNK { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+    rh_put_u32(w[0].iobuf[..], bi, w[0].fwd_off[i]); bi += 4;
+  }
+  if bi > 0 { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+
+  // 3. fwd_dst[n_edges]
+  for i: 0..<w[0].n_edges {
+    if bi + 4 > RH_IO_CHUNK { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+    rh_put_u32(w[0].iobuf[..], bi, w[0].fwd_dst[i]); bi += 4;
+  }
+  if bi > 0 { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+
+  // 4. rev_off[n_mods + 1]
+  for i: 0..<w[0].n_mods + 1 {
+    if bi + 4 > RH_IO_CHUNK { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+    rh_put_u32(w[0].iobuf[..], bi, w[0].rev_off[i]); bi += 4;
+  }
+  if bi > 0 { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+
+  // 5. rev_dst[n_edges]
+  for i: 0..<w[0].n_edges {
+    if bi + 4 > RH_IO_CHUNK { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+    rh_put_u32(w[0].iobuf[..], bi, w[0].rev_dst[i]); bi += 4;
+  }
+  if bi > 0 { if !fs_append(path, cast(string) w[0].iobuf[0..<bi]) { return false; } bi = 0; }
+
+  // 6. name string pool
+  off := 0;
+  while off < w[0].name_used {
+    take := w[0].name_used - off;
+    if take > RH_IO_CHUNK { take = RH_IO_CHUNK; }
+    if !fs_append(path, cast(string) w[0].names[off..<off + take]) { return false; }
+    off += take;
+  }
+  return started;
+}
+
+// Loads `rh-modules.bin` back into `w` in < 15 ms for instant CLI & Desktop queries!
+rhi_load_bin :: (w: [] RhIndexWork, path: string) -> bool {
+  hdr: [64] u8;
+  if fs_read_at(path, 0, hdr[..]) != 64 { return false; }
+  if rh_get_u32(hdr[..], 0) != RH_BIN_MAGIC || rh_get_u32(hdr[..], 4) != 1 { return false; }
+  w[0].n_mods = cast(int) rh_get_u32(hdr[..], 8);
+  w[0].n_edges = cast(int) rh_get_u32(hdr[..], 12);
+  w[0].n_clusters = cast(int) rh_get_u32(hdr[..], 16);
+  w[0].name_used = cast(int) rh_get_u32(hdr[..], 20);
+  w[0].main_id = cast(int) rh_get_u32(hdr[..], 24);
+  w[0].max_depth = cast(int) rh_get_u32(hdr[..], 28);
+  w[0].total_theorems = cast(int) rh_get_u32(hdr[..], 32);
+  w[0].total_defs = cast(int) rh_get_u32(hdr[..], 36);
+  w[0].total_lines = cast(int) rh_get_u32(hdr[..], 40);
+  lo_b := cast(int) rh_get_u32(hdr[..], 44);
+  hi_b := cast(int) rh_get_u32(hdr[..], 48);
+  w[0].total_bytes = lo_b + (hi_b << 32);
+  w[0].total_metaprog = cast(int) rh_get_u32(hdr[..], 52);
+  if w[0].n_mods <= 0 || w[0].n_mods > RH_MAX_MODS || w[0].n_edges < 0 || w[0].n_edges > RH_MAX_EDGES || w[0].name_used > RH_NAME_POOL {
+    return false;
+  }
+
+  fpos := 64;
+  // 1. Module records
+  mod_idx := 0;
+  while mod_idx < w[0].n_mods {
+    batch := w[0].n_mods - mod_idx;
+    if batch > RH_IO_CHUNK / 48 { batch = RH_IO_CHUNK / 48; }
+    need := batch * 48;
+    got := fs_read_at(path, fpos, w[0].iobuf[0..<need]);
+    if got != need { return false; }
+    for b: 0..<batch {
+      o := b * 48;
+      id := mod_idx + b;
+      w[0].m_name_off[id] = rh_get_u32(w[0].iobuf[..], o + 0);
+      w[0].m_name_len[id] = rh_get_u32(w[0].iobuf[..], o + 4);
+      w[0].m_lib[id] = rh_get_u32(w[0].iobuf[..], o + 8);
+      w[0].m_cluster[id] = rh_get_u32(w[0].iobuf[..], o + 12);
+      w[0].m_depth[id] = rh_get_u32(w[0].iobuf[..], o + 16);
+      w[0].m_parent[id] = rh_get_u32(w[0].iobuf[..], o + 20);
+      w[0].m_lines[id] = rh_get_u32(w[0].iobuf[..], o + 24);
+      w[0].m_bytes[id] = rh_get_u32(w[0].iobuf[..], o + 28);
+      w[0].m_theorems[id] = rh_get_u32(w[0].iobuf[..], o + 32);
+      w[0].m_defs[id] = rh_get_u32(w[0].iobuf[..], o + 36);
+      w[0].m_flags[id] = rh_get_u32(w[0].iobuf[..], o + 40);
+      w[0].m_indeg[id] = rh_get_u32(w[0].iobuf[..], o + 44);
+    }
+    fpos += need;
+    mod_idx += batch;
+  }
+
+  // 2..5. CSR arrays (read in u32 chunks)
+  cnt := w[0].n_mods + 1; idx := 0;
+  while idx < cnt {
+    batch := cnt - idx; if batch > RH_IO_CHUNK / 4 { batch = RH_IO_CHUNK / 4; }
+    if fs_read_at(path, fpos, w[0].iobuf[0..<batch * 4]) != batch * 4 { return false; }
+    for b: 0..<batch { w[0].fwd_off[idx + b] = rh_get_u32(w[0].iobuf[..], b * 4); }
+    fpos += batch * 4; idx += batch;
+  }
+  idx = 0;
+  while idx < w[0].n_edges {
+    batch := w[0].n_edges - idx; if batch > RH_IO_CHUNK / 4 { batch = RH_IO_CHUNK / 4; }
+    if fs_read_at(path, fpos, w[0].iobuf[0..<batch * 4]) != batch * 4 { return false; }
+    for b: 0..<batch { w[0].fwd_dst[idx + b] = rh_get_u32(w[0].iobuf[..], b * 4); }
+    fpos += batch * 4; idx += batch;
+  }
+  idx = 0;
+  while idx < cnt {
+    batch := cnt - idx; if batch > RH_IO_CHUNK / 4 { batch = RH_IO_CHUNK / 4; }
+    if fs_read_at(path, fpos, w[0].iobuf[0..<batch * 4]) != batch * 4 { return false; }
+    for b: 0..<batch { w[0].rev_off[idx + b] = rh_get_u32(w[0].iobuf[..], b * 4); }
+    fpos += batch * 4; idx += batch;
+  }
+  idx = 0;
+  while idx < w[0].n_edges {
+    batch := w[0].n_edges - idx; if batch > RH_IO_CHUNK / 4 { batch = RH_IO_CHUNK / 4; }
+    if fs_read_at(path, fpos, w[0].iobuf[0..<batch * 4]) != batch * 4 { return false; }
+    for b: 0..<batch { w[0].rev_dst[idx + b] = rh_get_u32(w[0].iobuf[..], b * 4); }
+    fpos += batch * 4; idx += batch;
+  }
+
+  // 6. Names pool
+  off := 0;
+  while off < w[0].name_used {
+    take := w[0].name_used - off; if take > RH_IO_CHUNK { take = RH_IO_CHUNK; }
+    if fs_read_at(path, fpos, w[0].names[off..<off + take]) != take { return false; }
+    fpos += take; off += take;
+  }
+
+  // Rebuild fast O(1) hash table
+  for i: 0..<RH_HASH_CAP { w[0].ht[i] = 0; }
+  for i: 0..<w[0].n_mods { rhi_ht_insert(w, rhi_mod_name(w, i), i); }
+  return true;
+}
+
+// Writes compact `rh-atlas.json` (~80 KB) for instant < 2 ms Desktop Gym GPU rendering!
+rhi_write_atlas_json :: (w: [] RhIndexWork, path: string) -> bool {
+  // Deterministic layered coordinates (0..1000) for the 10 libraries flowing right -> left or bottom -> top toward Main
+  lib_x := [RH_LIBS] int.[500, 500, 860, 140, 340, 660, 500, 180, 500, 820];
+  lib_y := [RH_LIBS] int.[70,  175, 220, 260, 320, 320, 440, 620, 660, 620];
+
+  // Place clusters cleanly inside their library's local grid band
+  lib_seen: [RH_LIBS] int;
+  lib_tot: [RH_LIBS] int;
+  for c: 0..<w[0].n_clusters { lib_tot[w[0].clusters[c].lib_id] += 1; }
+  for c: 0..<w[0].n_clusters {
+    l := w[0].clusters[c].lib_id;
+    k := lib_seen[l]; lib_seen[l] += 1;
+    tot := ifx lib_tot[l] > 0 then lib_tot[l] else 1;
+    cols := ifx tot > 40 then 8 else ifx tot > 16 then 5 else ifx tot > 4 then 3 else tot;
+    if cols < 1 { cols = 1; }
+    col := k % cols;
+    row := k / cols;
+    rows := (tot + cols - 1) / cols;
+    if rows < 1 { rows = 1; }
+    span_x := ifx l == RH_LIB_FORMALISM || l == RH_LIB_DEVELOPMENT then 280 else 180;
+    span_y := ifx l == RH_LIB_FORMALISM || l == RH_LIB_DEVELOPMENT then 240 else 110;
+    cx := lib_x[l] - span_x / 2 + (ifx cols > 1 then col * span_x / (cols - 1) else span_x / 2);
+    cy := lib_y[l] - span_y / 2 + (ifx rows > 1 then row * span_y / (rows - 1) else span_y / 2);
+    if cx < 30 { cx = 30; } if cx > 970 { cx = 970; }
+    if cy < 30 { cy = 30; } if cy > 970 { cy = 970; }
+    w[0].clusters[c].atlas_x = cx;
+    w[0].clusters[c].atlas_y = cy;
+  }
+
+  o: [1] Jo; jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]);
+  jo_key(o[..], "modules"); jo_int(o[..], w[0].n_mods);
+  jo_key(o[..], "edges"); jo_int(o[..], w[0].n_edges);
+  jo_key(o[..], "theorems"); jo_int(o[..], w[0].total_theorems);
+  jo_key(o[..], "defs"); jo_int(o[..], w[0].total_defs);
+  jo_key(o[..], "lines"); jo_int(o[..], w[0].total_lines);
+  jo_key(o[..], "bytes"); jo_int(o[..], w[0].total_bytes);
+  jo_key(o[..], "metaprog_files"); jo_int(o[..], w[0].total_metaprog);
+  jo_key(o[..], "max_depth"); jo_int(o[..], w[0].max_depth);
+
+  // 10 libraries
+  jo_key(o[..], "libs"); jo_arr(o[..]);
+  for l: 0..<RH_LIBS {
+    jo_obj(o[..]);
+    jo_key(o[..], "id"); jo_int(o[..], l);
+    jo_key(o[..], "name"); jo_str(o[..], RH_LIB_NAMES[l]);
+    jo_key(o[..], "modules"); jo_int(o[..], w[0].lib_mods[l]);
+    jo_key(o[..], "theorems"); jo_int(o[..], w[0].lib_theorems[l]);
+    jo_key(o[..], "defs"); jo_int(o[..], w[0].lib_defs[l]);
+    jo_key(o[..], "lines"); jo_int(o[..], w[0].lib_lines[l]);
+    jo_key(o[..], "bytes"); jo_int(o[..], w[0].lib_bytes[l]);
+    jo_key(o[..], "min_depth"); jo_int(o[..], ifx w[0].lib_min_d[l] == 999999 then 0 else w[0].lib_min_d[l]);
+    jo_key(o[..], "max_depth"); jo_int(o[..], w[0].lib_max_d[l]);
+    jo_key(o[..], "x"); jo_int(o[..], lib_x[l]);
+    jo_key(o[..], "y"); jo_int(o[..], lib_y[l]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+
+  // Non-zero cross-library edges
+  jo_key(o[..], "lib_edges"); jo_arr(o[..]);
+  for a: 0..<RH_LIBS {
+    for b: 0..<RH_LIBS {
+      wt := w[0].lib_edges[a * RH_LIBS + b];
+      if a != b && wt > 0 {
+        jo_obj(o[..]);
+        jo_key(o[..], "from"); jo_int(o[..], a);
+        jo_key(o[..], "to"); jo_int(o[..], b);
+        jo_key(o[..], "weight"); jo_int(o[..], wt);
+        jo_end(o[..]);
+      }
+    }
+  }
+  jo_end(o[..]);
+
+  // All domain clusters (sorted by module count descending, up to 260)
+  order: [RH_MAX_CLUSTERS] int;
+  for i: 0..<w[0].n_clusters { order[i] = i; }
+  for i: 0..<w[0].n_clusters {
+    best := i;
+    for j: i + 1..<w[0].n_clusters {
+      if w[0].clusters[order[j]].modules > w[0].clusters[order[best]].modules { best = j; }
+    }
+    tmp := order[i]; order[i] = order[best]; order[best] = tmp;
+  }
+  jo_key(o[..], "clusters"); jo_arr(o[..]);
+  c_cap := ifx w[0].n_clusters < 260 then w[0].n_clusters else 260;
+  for k: 0..<c_cap {
+    c := order[k];
+    cl := w[0].clusters[c];
+    jo_obj(o[..]);
+    jo_key(o[..], "id"); jo_int(o[..], c);
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) cl.name[0..<cl.name_n]);
+    jo_key(o[..], "lib"); jo_int(o[..], cl.lib_id);
+    jo_key(o[..], "modules"); jo_int(o[..], cl.modules);
+    jo_key(o[..], "theorems"); jo_int(o[..], cl.theorems);
+    jo_key(o[..], "defs"); jo_int(o[..], cl.defs);
+    jo_key(o[..], "lines"); jo_int(o[..], cl.lines);
+    jo_key(o[..], "min_depth"); jo_int(o[..], ifx cl.min_depth == 999999 then 0 else cl.min_depth);
+    jo_key(o[..], "x"); jo_int(o[..], cl.atlas_x);
+    jo_key(o[..], "y"); jo_int(o[..], cl.atlas_y);
+    jo_key(o[..], "hub"); jo_str(o[..], ifx cl.hub_mod >= 0 then rhi_mod_name(w, cl.hub_mod) else "");
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+
+  // Top-down onion peel from Main (depth 0..3, up to 48 real modules)
+  jo_key(o[..], "onion"); jo_arr(o[..]);
+  onion_n := 0;
+  for depth: 0..<4 {
+    for id: 0..<w[0].n_mods {
+      if onion_n >= 48 { break; }
+      if cast(int) w[0].m_depth[id] == depth {
+        jo_obj(o[..]);
+        jo_key(o[..], "name"); jo_str(o[..], rhi_mod_name(w, id));
+        jo_key(o[..], "lib"); jo_int(o[..], cast(int) w[0].m_lib[id]);
+        jo_key(o[..], "depth"); jo_int(o[..], depth);
+        jo_key(o[..], "lines"); jo_int(o[..], cast(int) w[0].m_lines[id]);
+        jo_key(o[..], "theorems"); jo_int(o[..], cast(int) w[0].m_theorems[id]);
+        jo_key(o[..], "indeg"); jo_int(o[..], cast(int) w[0].m_indeg[id]);
+        jo_end(o[..]);
+        onion_n += 1;
+      }
+    }
+  }
+  jo_end(o[..]);
+
+  // Metaprogramming audit files (all real flagged files, up to 32)
+  jo_key(o[..], "metaprog"); jo_arr(o[..]);
+  mp_n := 0;
+  for id: 0..<w[0].n_mods {
+    if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0 && mp_n < 32 {
+      jo_str(o[..], rhi_mod_name(w, id));
+      mp_n += 1;
+    }
+  }
+  jo_end(o[..]);
+
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return fs_write(path, jo_text(o[..]));
+}
+
+// Runs the complete pure-Coax streaming index over all .lean files in `corpus_dir/src/`.
+rhi_build :: (w: [] RhIndexWork, corpus_dir: string, out_dir: string, out_manifest: [] LwRhIndex) -> bool {
+  t0 := proc_now_ms();
+  w[0].n_mods = 0; w[0].n_edges = 0; w[0].n_clusters = 0; w[0].name_used = 0;
+  w[0].main_id = -1; w[0].max_depth = 0;
+  w[0].total_theorems = 0; w[0].total_defs = 0; w[0].total_lines = 0; w[0].total_bytes = 0; w[0].total_metaprog = 0;
+  w[0].decl_n = 0; w[0].decl_started = false;
+  for i: 0..<RH_HASH_CAP { w[0].ht[i] = 0; }
+  for l: 0..<RH_LIBS {
+    w[0].lib_mods[l] = 0; w[0].lib_theorems[l] = 0; w[0].lib_defs[l] = 0;
+    w[0].lib_lines[l] = 0; w[0].lib_bytes[l] = 0; w[0].lib_min_d[l] = 999999; w[0].lib_max_d[l] = 0;
+  }
+  for k: 0..<RH_LIBS * RH_LIBS { w[0].lib_edges[k] = 0; }
+
+  sd_b: [FS_PATH_MAX] u8; src_dir := fs_join(corpus_dir, "src", sd_b[..]);
+  if fs_kind(src_dir) != FS_DIR { return false; }
+  if !fs_mkdir_all(out_dir) { return false; }
+
+  // Pass 0: enumerate all .lean files under src/ via `find` (read-only traversal)
+  h := proc_new();
+  _ = proc_arg(h, "/usr/bin/find");
+  _ = proc_arg(h, src_dir);
+  _ = proc_arg(h, "-type");
+  _ = proc_arg(h, "f");
+  _ = proc_arg(h, "-name");
+  _ = proc_arg(h, "*.lean");
+  if proc_start(h) != 0 { _ = proc_release(h); return false; }
+
+  prefix_len := src_dir.count + (ifx src_dir.count > 0 && src_dir[src_dir.count - 1] == '/' then 0 else 1);
+  line_b: [FS_PATH_MAX] u8;
+  mod_b: [512] u8;
+  while true {
+    ln := proc_line(h, 30000, line_b[..]);
+    if ln == PROC_EOF { break; }
+    if ln <= prefix_len { continue; }
+    if w[0].n_mods >= RH_MAX_MODS { break; }
+    rel := cast(string) line_b[prefix_len..<ln];
+    mname := rh_path_to_module(rel, mod_b[..]);
+    if mname.count == 0 || w[0].name_used + mname.count > RH_NAME_POOL { continue; }
+    id := w[0].n_mods;
+    w[0].n_mods += 1;
+    off := w[0].name_used;
+    for k: 0..<mname.count { w[0].names[off + k] = mname[k]; }
+    w[0].name_used += mname.count;
+    w[0].m_name_off[id] = cast(u32) off;
+    w[0].m_name_len[id] = cast(u32) mname.count;
+    lib := rh_lib_of(mname);
+    w[0].m_lib[id] = cast(u32) lib;
+    w[0].m_cluster[id] = cast(u32) rhi_get_cluster(w, rh_cluster_of(mname), lib);
+    w[0].m_depth[id] = RH_NO_ID;
+    w[0].m_parent[id] = RH_NO_ID;
+    w[0].m_lines[id] = 0; w[0].m_bytes[id] = 0; w[0].m_theorems[id] = 0; w[0].m_defs[id] = 0;
+    w[0].m_flags[id] = ifx mname == "Main" || mname == "Statements" then cast(u32) RH_FLAG_HEADLINE else 0;
+    w[0].m_indeg[id] = 0;
+    rhi_ht_insert(w, rhi_mod_name(w, id), id);
+    if mname == "Main" { w[0].main_id = id; }
+  }
+  _ = proc_wait(h, 5000);
+  _ = proc_release(h);
+  if w[0].n_mods == 0 { return false; }
+
+  // Pass 1: single streaming scan over all modules -> imports, declarations, lines, bytes, metaprog
+  dp_b: [FS_PATH_MAX] u8; decl_path := fs_join(out_dir, "rh-decls.tsv", dp_b[..]);
+  fp_b: [FS_PATH_MAX] u8;
+  carry: [4096] u8;
+  for id: 0..<w[0].n_mods {
+    fpath := rhi_mod_path(w, src_dir, id, fp_b[..]);
+    off := 0;
+    carry_n := 0;
+    lines := 0;
+    fbytes := 0;
+    while true {
+      got := fs_read_at(fpath, off, w[0].fbuf[..]);
+      if got <= 0 { break; }
+      off += got;
+      fbytes += got;
+      st := 0;
+      for i: 0..<got {
+        if w[0].fbuf[i] == '\n' {
+          lines += 1;
+          if carry_n > 0 {
+            take := i - st;
+            if carry_n + take > 4096 { take = 4096 - carry_n; }
+            for k: 0..<take { carry[carry_n + k] = w[0].fbuf[st + k]; }
+            rhi_scan_line(w, decl_path, id, lines, cast(string) carry[0..<carry_n + take]);
+            carry_n = 0;
+          } else {
+            rhi_scan_line(w, decl_path, id, lines, cast(string) w[0].fbuf[st..<i]);
+          }
+          st = i + 1;
+        }
+      }
+      if st < got {
+        rem := got - st;
+        if carry_n + rem > 4096 { rem = 4096 - carry_n; }
+        for k: 0..<rem { carry[carry_n + k] = w[0].fbuf[st + k]; }
+        carry_n += rem;
+      }
+      if got < RH_IO_CHUNK { break; }
+    }
+    if carry_n > 0 {
+      lines += 1;
+      rhi_scan_line(w, decl_path, id, lines, cast(string) carry[0..<carry_n]);
+    }
+    w[0].m_lines[id] = cast(u32) lines;
+    w[0].m_bytes[id] = cast(u32) fbytes;
+    w[0].total_lines += lines;
+    w[0].total_bytes += fbytes;
+  }
+  rhi_decl_flush(w, decl_path);
+
+  // Pass 2: build forward & reverse CSR in O(N + E)
+  for i: 0..<w[0].n_mods + 1 { w[0].fwd_off[i] = 0; w[0].rev_off[i] = 0; }
+  for e: 0..<w[0].n_edges {
+    s := cast(int) w[0].edge_src[e];
+    d := cast(int) w[0].edge_dst[e];
+    w[0].fwd_off[s + 1] += 1;
+    w[0].rev_off[d + 1] += 1;
+    w[0].m_indeg[d] += 1;
+    sl := cast(int) w[0].m_lib[s];
+    dl := cast(int) w[0].m_lib[d];
+    w[0].lib_edges[sl * RH_LIBS + dl] += 1;
+  }
+  for i: 0..<w[0].n_mods {
+    w[0].fwd_off[i + 1] += w[0].fwd_off[i];
+    w[0].rev_off[i + 1] += w[0].rev_off[i];
+  }
+  // Fill CSR using m_depth & m_parent temporarily as write cursors? No, reuse bfs_q & write cursors cleanly.
+  // We have edge_src/edge_dst; copy fwd_off into bfs_q? Even simpler: fill backwards and restore offsets!
+  for e: 0..<w[0].n_edges {
+    s := cast(int) w[0].edge_src[e];
+    pos := cast(int) w[0].fwd_off[s];
+    w[0].fwd_dst[pos] = w[0].edge_dst[e];
+    w[0].fwd_off[s] += 1;
+  }
+  // Shift fwd_off right by 1 to restore CSR offsets
+  i := w[0].n_mods;
+  while i > 0 { w[0].fwd_off[i] = w[0].fwd_off[i - 1]; i -= 1; }
+  w[0].fwd_off[0] = 0;
+
+  for e: 0..<w[0].n_edges {
+    d := cast(int) w[0].edge_dst[e];
+    pos := cast(int) w[0].rev_off[d];
+    w[0].rev_dst[pos] = w[0].edge_src[e];
+    w[0].rev_off[d] += 1;
+  }
+  i = w[0].n_mods;
+  while i > 0 { w[0].rev_off[i] = w[0].rev_off[i - 1]; i -= 1; }
+  w[0].rev_off[0] = 0;
+
+  // Pass 3: BFS from Main over forward imports to compute depth_from_main & parent_to_main
+  if w[0].main_id >= 0 {
+    qh := 0; qt := 0;
+    w[0].m_depth[w[0].main_id] = 0;
+    w[0].m_parent[w[0].main_id] = RH_NO_ID;
+    w[0].bfs_q[qt] = cast(u32) w[0].main_id; qt += 1;
+    while qh < qt {
+      u := cast(int) w[0].bfs_q[qh]; qh += 1;
+      du := cast(int) w[0].m_depth[u];
+      if du > w[0].max_depth { w[0].max_depth = du; }
+      e0 := cast(int) w[0].fwd_off[u];
+      e1 := cast(int) w[0].fwd_off[u + 1];
+      for e: e0..<e1 {
+        v := cast(int) w[0].fwd_dst[e];
+        if w[0].m_depth[v] == RH_NO_ID {
+          w[0].m_depth[v] = cast(u32) (du + 1);
+          w[0].m_parent[v] = cast(u32) u;
+          w[0].bfs_q[qt] = cast(u32) v; qt += 1;
+        }
+      }
+    }
+  }
+
+  // Pass 4: Roll up per-library & per-cluster statistics and choose hub module per cluster
+  for id: 0..<w[0].n_mods {
+    l := cast(int) w[0].m_lib[id];
+    c := cast(int) w[0].m_cluster[id];
+    d := cast(int) w[0].m_depth[id];
+    th := cast(int) w[0].m_theorems[id];
+    df := cast(int) w[0].m_defs[id];
+    ln := cast(int) w[0].m_lines[id];
+    bt := cast(int) w[0].m_bytes[id];
+    indeg := cast(int) w[0].m_indeg[id];
+
+    w[0].lib_mods[l] += 1;
+    w[0].lib_theorems[l] += th;
+    w[0].lib_defs[l] += df;
+    w[0].lib_lines[l] += ln;
+    w[0].lib_bytes[l] += bt;
+    if w[0].m_depth[id] != RH_NO_ID {
+      if d < w[0].lib_min_d[l] { w[0].lib_min_d[l] = d; }
+      if d > w[0].lib_max_d[l] { w[0].lib_max_d[l] = d; }
+    }
+
+    w[0].clusters[c].modules += 1;
+    w[0].clusters[c].theorems += th;
+    w[0].clusters[c].defs += df;
+    w[0].clusters[c].lines += ln;
+    if w[0].m_depth[id] != RH_NO_ID {
+      if d < w[0].clusters[c].min_depth { w[0].clusters[c].min_depth = d; }
+      if d > w[0].clusters[c].max_depth { w[0].clusters[c].max_depth = d; }
+    }
+    score := indeg * 4 + th;
+    if score > w[0].clusters[c].hub_score {
+      w[0].clusters[c].hub_score = score;
+      w[0].clusters[c].hub_mod = id;
+    }
+  }
+
+  // Read corpus commit & lean-toolchain
+  commit_s := "unknown";
+  cb: [128] u8;
+  gh := proc_new();
+  _ = proc_arg(gh, "git"); _ = proc_arg(gh, "-C"); _ = proc_arg(gh, corpus_dir);
+  _ = proc_arg(gh, "rev-parse"); _ = proc_arg(gh, "--short=8"); _ = proc_arg(gh, "HEAD");
+  if proc_start(gh) == 0 {
+    gn := proc_line(gh, 3000, cb[..]);
+    if gn > 0 { commit_s = lv_trim_line(cast(string) cb[0..<gn]); }
+    _ = proc_wait(gh, 2000);
+  }
+  _ = proc_release(gh);
+
+  tc_p_b: [FS_PATH_MAX] u8; tc_b: [128] u8;
+  tc_s := "leanprover/lean4:v4.33.1";
+  tcn := fs_read(fs_join(corpus_dir, "lean-toolchain", tc_p_b[..]), tc_b[..]);
+  if tcn > 0 { tc_s = lv_first_line(cast(string) tc_b[0..<tcn]); }
+
+  // Write rh-modules.bin, rh-atlas.json, and rh-manifest.json
+  bin_b: [FS_PATH_MAX] u8; atl_b: [FS_PATH_MAX] u8; man_b: [FS_PATH_MAX] u8;
+  if !rhi_write_bin(w, fs_join(out_dir, "rh-modules.bin", bin_b[..])) { return false; }
+  if !rhi_write_atlas_json(w, fs_join(out_dir, "rh-atlas.json", atl_b[..])) { return false; }
+
+  elapsed := proc_now_ms() - t0;
+  if elapsed < 0 { elapsed = 0; }
+  out_manifest[0] = LwRhIndex.{
+    modules = w[0].n_mods,
+    edges = w[0].n_edges,
+    theorems = w[0].total_theorems,
+    defs = w[0].total_defs,
+    lines = w[0].total_lines,
+    bytes = w[0].total_bytes,
+    metaprog_files = w[0].total_metaprog,
+    max_depth = w[0].max_depth,
+    main_id = ifx w[0].main_id >= 0 then w[0].main_id else 0,
+    elapsed_ms = elapsed
+  };
+  out_manifest[0].corpus_path_n = lw_put(out_manifest[0].corpus_path[..], corpus_dir);
+  out_manifest[0].corpus_commit_n = lw_put(out_manifest[0].corpus_commit[..], commit_s);
+  out_manifest[0].lean_toolchain_n = lw_put(out_manifest[0].lean_toolchain[..], tc_s);
+
+  mbuf: [4096] u8;
+  mn := lw_rh_index_write(out_manifest, mbuf[..]);
+  if mn <= 0 { return false; }
+  return fs_write(fs_join(out_dir, "rh-manifest.json", man_b[..]), cast(string) mbuf[0..<mn]);
+}

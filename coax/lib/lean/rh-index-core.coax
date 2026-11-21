@@ -1,0 +1,257 @@
+// Pure indexing primitives for the Nov 2026 Riemann Hypothesis Lean 4 corpus (Epic #13943, #13945;
+// docs/lean/riemann-hypothesis-workbench-spec.md).
+//
+// Handles library classification (the 10 real lakefile.toml libraries), domain cluster naming,
+// Lean module-name derivation from src/ paths, declaration & import line scanning, metaprogramming
+// risk detection, case-insensitive substring matching, and FNV-1a 64-bit hashing.
+//
+//   coax/bin/coax test coax/lib/lean/rh-index-core.coax --library
+
+RH_LIBS :: 10;
+RH_LIB_ROOT :: 0;          // Main, Statements, Challenge
+RH_LIB_SUPPLEMENTS :: 1;
+RH_LIB_BUILDAID :: 2;
+RH_LIB_LEMMATA :: 3;
+RH_LIB_POSITIVITY :: 4;
+RH_LIB_COMPANION :: 5;
+RH_LIB_RECIPROCITY :: 6;
+RH_LIB_GROUND :: 7;
+RH_LIB_FORMALISM :: 8;
+RH_LIB_DEVELOPMENT :: 9;
+
+RH_LIB_NAMES :: [RH_LIBS] string.[
+  "Main",
+  "Supplements",
+  "BuildAid",
+  "Lemmata",
+  "PositivityTheory",
+  "CompanionTheory",
+  "ReciprocityTheory",
+  "GroundTheory",
+  "Formalism",
+  "Development"
+];
+
+RH_FLAG_METAPROG :: 1;
+RH_FLAG_SORRY :: 2;
+RH_FLAG_HEADLINE :: 4;
+
+RH_DECL_NONE :: 0;
+RH_DECL_THEOREM :: 1;
+RH_DECL_DEF :: 2;
+
+rh_starts :: (s: string, p: string) -> bool {
+  if p.count > s.count { return false; }
+  for i: 0..<p.count { if s[i] != p[i] { return false; } }
+  return true;
+}
+
+rh_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+rh_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count {
+      if rh_lower(hay[i + j]) != rh_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// 32-bit FNV-1a hash (overflow-free in u64) for O(1) module name lookup table.
+rh_hash_str :: (s: string) -> u64 {
+  h: u64 = 2166136261;
+  for i: 0..<s.count {
+    h = (h ^ cast(u64) s[i]) & 0xFFFFFFFF;
+    h = (h * 16777619) & 0xFFFFFFFF;
+  }
+  return h;
+}
+
+// Classifies a Lean module name into one of the 10 RH libraries (0..9).
+rh_lib_of :: (mod_name: string) -> int {
+  if rh_starts(mod_name, "Development.") || mod_name == "Development" { return RH_LIB_DEVELOPMENT; }
+  if rh_starts(mod_name, "Formalism.") || mod_name == "Formalism" { return RH_LIB_FORMALISM; }
+  if rh_starts(mod_name, "GroundTheory.") || mod_name == "GroundTheory" { return RH_LIB_GROUND; }
+  if rh_starts(mod_name, "ReciprocityTheory.") || mod_name == "ReciprocityTheory" { return RH_LIB_RECIPROCITY; }
+  if rh_starts(mod_name, "CompanionTheory.") || mod_name == "CompanionTheory" { return RH_LIB_COMPANION; }
+  if rh_starts(mod_name, "PositivityTheory.") || mod_name == "PositivityTheory" { return RH_LIB_POSITIVITY; }
+  if rh_starts(mod_name, "Lemmata.") || mod_name == "Lemmata" { return RH_LIB_LEMMATA; }
+  if rh_starts(mod_name, "BuildAid.") || mod_name == "BuildAid" { return RH_LIB_BUILDAID; }
+  if rh_starts(mod_name, "Supplements.") || mod_name == "Supplements" { return RH_LIB_SUPPLEMENTS; }
+  return RH_LIB_ROOT;
+}
+
+// Derives the semantic domain cluster name for LOD 1 of the Proof Atlas (~220 real domains).
+// - Development.AutomorphicArithmetic.<Sub>.* -> 3 components (breaks out ~55 sub-domains)
+// - Formalism/GroundTheory/ReciprocityTheory/CompanionTheory/PositivityTheory/Development.* -> 2 components
+// - Lemmata / BuildAid / Supplements / Root -> 1 component (library level)
+rh_cluster_of :: (mod_name: string) -> string {
+  lib := rh_lib_of(mod_name);
+  if lib == RH_LIB_ROOT { return "Main"; }
+  if lib == RH_LIB_LEMMATA { return "Lemmata"; }
+  if lib == RH_LIB_BUILDAID { return "BuildAid"; }
+  if lib == RH_LIB_SUPPLEMENTS { return "Supplements"; }
+  want_dots := ifx rh_starts(mod_name, "Development.AutomorphicArithmetic.") then 3 else 2;
+  dots := 0;
+  for i: 0..<mod_name.count {
+    if mod_name[i] == '.' {
+      dots += 1;
+      if dots == want_dots { return cast(string) mod_name[0..<i]; }
+    }
+  }
+  return mod_name;
+}
+
+// Converts a relative path under src/ (e.g. "Formalism/BehrendSets/Main.lean") into a Lean module name.
+rh_path_to_module :: (rel_path: string, out: [] u8) -> string {
+  n := rel_path.count;
+  if n >= 5 && cast(string) rel_path[n - 5..<n] == ".lean" { n -= 5; }
+  if n <= 0 || n > out.count { return ""; }
+  start := 0;
+  if n >= 2 && rel_path[0] == '.' && rel_path[1] == '/' { start = 2; }
+  k := 0;
+  for i: start..<n {
+    c := rel_path[i];
+    out[k] = ifx c == '/' then cast(u8) '.' else c;
+    k += 1;
+  }
+  return cast(string) out[0..<k];
+}
+
+// Parses a single `import <Module>` line, returning the trimmed module name or "".
+rh_parse_import :: (line: string) -> string {
+  a := 0;
+  while a < line.count && (line[a] == ' ' || line[a] == '\t') { a += 1; }
+  rest := cast(string) line[a..<line.count];
+  if !rh_starts(rest, "import ") { return ""; }
+  p := 7;
+  while p < rest.count && (rest[p] == ' ' || rest[p] == '\t') { p += 1; }
+  e := p;
+  while e < rest.count && rest[e] != ' ' && rest[e] != '\t' && rest[e] != '\r' && rest[e] != '\n' { e += 1; }
+  return cast(string) rest[p..<e];
+}
+
+RhDeclHit :: struct {
+  kind: int;
+  name: string;
+}
+
+// Fast single-line Lean declaration classifier (theorem/lemma vs def/abbrev/structure/class/instance/inductive).
+rh_parse_decl :: (line: string) -> RhDeclHit {
+  res := RhDeclHit.{kind = RH_DECL_NONE, name = ""};
+  p := 0;
+  while p < line.count && (line[p] == ' ' || line[p] == '\t') { p += 1; }
+  // Skip optional visibility/modifier prefixes
+  for step: 0..<3 {
+    r := cast(string) line[p..<line.count];
+    if rh_starts(r, "private ") { p += 8; }
+    else if rh_starts(r, "protected ") { p += 10; }
+    else if rh_starts(r, "noncomputable ") { p += 14; }
+    else if rh_starts(r, "local ") { p += 6; }
+    else if rh_starts(r, "scoped ") { p += 7; }
+    else { break; }
+  }
+  r := cast(string) line[p..<line.count];
+  if rh_starts(r, "theorem ") { res.kind = RH_DECL_THEOREM; p += 8; }
+  else if rh_starts(r, "lemma ") { res.kind = RH_DECL_THEOREM; p += 6; }
+  else if rh_starts(r, "def ") { res.kind = RH_DECL_DEF; p += 4; }
+  else if rh_starts(r, "abbrev ") { res.kind = RH_DECL_DEF; p += 7; }
+  else if rh_starts(r, "structure ") { res.kind = RH_DECL_DEF; p += 10; }
+  else if rh_starts(r, "class ") { res.kind = RH_DECL_DEF; p += 6; }
+  else if rh_starts(r, "inductive ") { res.kind = RH_DECL_DEF; p += 10; }
+  else if rh_starts(r, "instance ") { res.kind = RH_DECL_DEF; p += 9; }
+  else { return res; }
+  while p < line.count && (line[p] == ' ' || line[p] == '\t') { p += 1; }
+  e := p;
+  while e < line.count {
+    c := line[e];
+    if c == ' ' || c == '\t' || c == ':' || c == '(' || c == '{' || c == '[' || c == '\r' || c == '\n' { break; }
+    e += 1;
+  }
+  if e > p { res.name = cast(string) line[p..<e]; }
+  return res;
+}
+
+// Detects the exact risky metaprogramming constructs audited in verification/static-scan.txt.
+rh_line_has_metaprog :: (line: string) -> bool {
+  keys := [8] string.["addDecl", "addAndCompile", "modifyEnv", "setEnv", "run_cmd", "run_elab", "run_meta", "#eval"];
+  for k: keys {
+    if k.count <= line.count {
+      for i: 0..<line.count - k.count + 1 {
+        ok := true;
+        for j: 0..<k.count { if line[i + j] != k[j] { ok = false; break; } }
+        if ok { return true; }
+      }
+    }
+  }
+  return false;
+}
+
+// Little-endian u32 pack/unpack helpers for compact rh-modules.bin binary index.
+rh_put_u32 :: (buf: [] u8, off: int, v: u32) {
+  buf[off] = cast,trunc(u8) (v & 255);
+  buf[off + 1] = cast,trunc(u8) ((v >> 8) & 255);
+  buf[off + 2] = cast,trunc(u8) ((v >> 16) & 255);
+  buf[off + 3] = cast,trunc(u8) ((v >> 24) & 255);
+}
+
+rh_get_u32 :: (buf: [] u8, off: int) -> u32 {
+  return cast(u32) buf[off]
+    | (cast(u32) buf[off + 1] << 8)
+    | (cast(u32) buf[off + 2] << 16)
+    | (cast(u32) buf[off + 3] << 24);
+}
+
+#test "rh index core: library, cluster, path, import, decl, metaprog, and endian round-trip" {
+  #assert rh_lib_of("Main") == RH_LIB_ROOT;
+  #assert rh_lib_of("Statements") == RH_LIB_ROOT;
+  #assert rh_lib_of("Supplements.Kernels.MainTheorems") == RH_LIB_SUPPLEMENTS;
+  #assert rh_lib_of("BuildAid.D1") == RH_LIB_BUILDAID;
+  #assert rh_lib_of("Lemmata.Foo") == RH_LIB_LEMMATA;
+  #assert rh_lib_of("PositivityTheory.PublishedTheorems.TowerLemmas") == RH_LIB_POSITIVITY;
+  #assert rh_lib_of("CompanionTheory.RealGroups.A") == RH_LIB_COMPANION;
+  #assert rh_lib_of("ReciprocityTheory.ClassFieldTheory.B") == RH_LIB_RECIPROCITY;
+  #assert rh_lib_of("GroundTheory.LocalFields.C") == RH_LIB_GROUND;
+  #assert rh_lib_of("Formalism.BehrendSets.D") == RH_LIB_FORMALISM;
+  #assert rh_lib_of("Development.AutomorphicArithmetic.CharacterBoxes.MainConclusion") == RH_LIB_DEVELOPMENT;
+
+  #assert rh_cluster_of("Development.AutomorphicArithmetic.CharacterBoxes.MainConclusion") == "Development.AutomorphicArithmetic.CharacterBoxes";
+  #assert rh_cluster_of("Development.EtaleCohomology.KummerTheory.A") == "Development.EtaleCohomology";
+  #assert rh_cluster_of("Formalism.FormalDegreeBessel.Step1") == "Formalism.FormalDegreeBessel";
+  #assert rh_cluster_of("GroundTheory.LocalFields.Val") == "GroundTheory.LocalFields";
+  #assert rh_cluster_of("Lemmata.Sub.A") == "Lemmata";
+  #assert rh_cluster_of("Main") == "Main";
+
+  buf: [128] u8;
+  #assert rh_path_to_module("Supplements/Kernels/MainTheorems.lean", buf[..]) == "Supplements.Kernels.MainTheorems";
+  #assert rh_path_to_module("./Main.lean", buf[..]) == "Main";
+  #assert rh_parse_import("import Supplements.Kernels.MainTheorems\r") == "Supplements.Kernels.MainTheorems";
+  #assert rh_parse_import("  import   Mathlib") == "Mathlib";
+  #assert rh_parse_import("theorem foo : True := trivial") == "";
+
+  d1 := rh_parse_decl("theorem riemannHypothesis : RiemannHypothesis := rhOfAll");
+  #assert d1.kind == RH_DECL_THEOREM && d1.name == "riemannHypothesis";
+  d2 := rh_parse_decl("private noncomputable def helper_x (n : Nat) := n");
+  #assert d2.kind == RH_DECL_DEF && d2.name == "helper_x";
+  d3 := rh_parse_decl("  protected lemma UpperTheory.foo : True := trivial");
+  #assert d3.kind == RH_DECL_THEOREM && d3.name == "UpperTheory.foo";
+  d4 := rh_parse_decl("open Complex");
+  #assert d4.kind == RH_DECL_NONE;
+
+  #assert rh_line_has_metaprog("run_cmd do modifyEnv fun env => env");
+  #assert !rh_line_has_metaprog("theorem clean : True := trivial");
+
+  #assert rh_contains_ci("Formalism.BehrendSets.Main", "behrend");
+  #assert !rh_contains_ci("Main", "behrend");
+  #assert rh_hash_str("Main") != rh_hash_str("Statements");
+
+  eb: [4] u8;
+  rh_put_u32(eb[..], 0, 0x12345678);
+  #assert rh_get_u32(eb[..], 0) == 0x12345678;
+}

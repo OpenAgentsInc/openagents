@@ -18,7 +18,7 @@
 //   coax/web/tool.sh coder/tui/lean-run.coax doctor --json
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
-#load "../../coax/lib/lean/verify.coax";
+#load "../../coax/lib/lean/rh-index.coax";
 #load "../../coax/lib/lean/gym.coax";
 
 LR_GYM_WAIT_S :: 15;
@@ -38,6 +38,13 @@ lr_usage :: () -> int {
   print("               [--decl DECL] [--tour-step N] [--search Q] [--math-tab strip|robin|theta]\n");
   print("               [--no-open] [--wait S]\n");
   print("  lean-run card --out FILE.jpg [--fail]\n");
+  print("  lean-run rh fetch [--dest DIR]\n");
+  print("  lean-run rh index [--corpus DIR] [--out DIR] [--json]\n");
+  print("  lean-run rh search QUERY [--limit N] [--decls] [--json]\n");
+  print("  lean-run rh path MODULE [--json]\n");
+  print("  lean-run rh cone MODULE [--limit N] [--json]\n");
+  print("  lean-run rh module MODULE [--lines N] [--json]\n");
+  print("  lean-run rh audit [--json]\n");
   return 0;
 }
 
@@ -215,6 +222,319 @@ lr_cmd_card :: (a: [] Args) -> int {
   return 0;
 }
 
+lr_rh_corpus_dir :: (a: [] Args, home: string, out: [] u8) -> string {
+  given := args_value(a, "--corpus", "");
+  if given.count > 0 { return cast(string) out[0..<lw_put(out, given)]; }
+  return fs_join(home, ".openagents/lean/corpora/riemann-hypothesis", out);
+}
+
+lr_rh_index_dir :: (a: [] Args, home: string, out: [] u8) -> string {
+  given := args_value(a, "--out", "");
+  if given.count > 0 { return cast(string) out[0..<lw_put(out, given)]; }
+  return fs_join(home, ".openagents/lean/index", out);
+}
+
+lr_rh_load :: (w: [] RhIndexWork, home: string) -> bool {
+  ib: [FS_PATH_MAX] u8; bp: [FS_PATH_MAX] u8;
+  idx_dir := fs_join(home, ".openagents/lean/index", ib[..]);
+  return rhi_load_bin(w, fs_join(idx_dir, "rh-modules.bin", bp[..]));
+}
+
+lr_cmd_rh :: (a: [] Args, home: string) -> int {
+  sub := args_at(a, 1);
+  if sub.count == 0 || sub == "help" { return lr_usage(); }
+
+  if sub == "fetch" {
+    db: [FS_PATH_MAX] u8;
+    dest := args_value(a, "--dest", "");
+    if dest.count == 0 { dest = fs_join(home, ".openagents/lean/corpora/riemann-hypothesis", db[..]); }
+    mb: [FS_PATH_MAX] u8;
+    if fs_kind(fs_join(dest, "src/Main.lean", mb[..])) == FS_FILE {
+      print("RH corpus already present at %\n", dest);
+      return 0;
+    }
+    _ = fs_mkdir_all(fs_dir(dest));
+    h := proc_new();
+    _ = proc_arg(h, "git"); _ = proc_arg(h, "clone"); _ = proc_arg(h, "--depth=1");
+    _ = proc_arg(h, "https://github.com/leanprover-community/riemann-hypothesis.git");
+    _ = proc_arg(h, dest);
+    _ = proc_err_ours(h);
+    if proc_start(h) != 0 { _ = proc_release(h); tool_errln("lean-run rh fetch: failed to start git"); return 1; }
+    st := proc_wait(h, 600000);
+    _ = proc_release(h);
+    if st != 0 { tool_errln("lean-run rh fetch: git clone failed"); return 1; }
+    print("Cloned Riemann Hypothesis corpus into %\n", dest);
+    return 0;
+  }
+
+  w: [1] RhIndexWork;
+
+  if sub == "index" {
+    cb: [FS_PATH_MAX] u8; ob: [FS_PATH_MAX] u8;
+    corp := lr_rh_corpus_dir(a, home, cb[..]);
+    outd := lr_rh_index_dir(a, home, ob[..]);
+    man: [1] LwRhIndex;
+    if !rhi_build(w[..], corp, outd, man[..]) {
+      tool_errln("lean-run rh index: indexing failed (is corpus fetched at ~/.openagents/lean/corpora/riemann-hypothesis?)");
+      return 1;
+    }
+    if args_has(a, "--json") {
+      jb: [4096] u8; jn := lw_rh_index_write(man[..], jb[..]);
+      print("%\n", cast(string) jb[0..<jn]);
+      return 0;
+    }
+    print("Indexed Riemann Hypothesis corpus in % ms\n", man[0].elapsed_ms);
+    print("  corpus:    % (commit %, %)\n", cast(string) man[0].corpus_path[0..<man[0].corpus_path_n], cast(string) man[0].corpus_commit[0..<man[0].corpus_commit_n], cast(string) man[0].lean_toolchain[0..<man[0].lean_toolchain_n]);
+    print("  modules:   %  |  edges: %  |  max depth from Main: %\n", man[0].modules, man[0].edges, man[0].max_depth);
+    print("  theorems:  %  |  defs: %  |  lines: %  |  bytes: %\n", man[0].theorems, man[0].defs, man[0].lines, man[0].bytes);
+    print("  clusters:  %  |  metaprog files: %\n", w[0].n_clusters, man[0].metaprog_files);
+    print("  index dir: %\n", outd);
+    return 0;
+  }
+
+  if !lr_rh_load(w[..], home) {
+    tool_errln("lean-run rh: binary index not found — run `lean-run rh index` first");
+    return 1;
+  }
+
+  if sub == "search" {
+    q := args_at(a, 2);
+    if q.count == 0 { tool_errln("usage: lean-run rh search QUERY [--limit N] [--decls] [--json]"); return 2; }
+    limit := args_whole(args_value(a, "--limit", ""));
+    if limit <= 0 || limit > 200 { limit = 25; }
+    want_json := args_has(a, "--json");
+    t0 := proc_now_ms();
+    found := 0;
+    if args_has(a, "--decls") {
+      // Stream rh-decls.tsv (1M+ declarations)
+      ib: [FS_PATH_MAX] u8; dp: [FS_PATH_MAX] u8;
+      dpath := fs_join(fs_join(home, ".openagents/lean/index", ib[..]), "rh-decls.tsv", dp[..]);
+      o: [1] Jo; if want_json { jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]); jo_key(o[..], "query"); jo_str(o[..], q); jo_key(o[..], "hits"); jo_arr(o[..]); }
+      off := 0; carry: [1024] u8; cn := 0;
+      while found < limit {
+        got := fs_read_at(dpath, off, w[0].fbuf[..]);
+        if got <= 0 { break; }
+        off += got;
+        st := 0;
+        for i: 0..<got {
+          if w[0].fbuf[i] == '\n' {
+            line := "";
+            if cn > 0 {
+              take := i - st; if cn + take > 1024 { take = 1024 - cn; }
+              for k: 0..<take { carry[cn + k] = w[0].fbuf[st + k]; }
+              line = cast(string) carry[0..<cn + take]; cn = 0;
+            } else { line = cast(string) w[0].fbuf[st..<i]; }
+            st = i + 1;
+            if rh_contains_ci(line, q) {
+              // parse mod_id\tline\tkind\tname
+              t1 := 0; while t1 < line.count && line[t1] != '\t' { t1 += 1; }
+              t2 := t1 + 1; while t2 < line.count && line[t2] != '\t' { t2 += 1; }
+              t3 := t2 + 1; while t3 < line.count && line[t3] != '\t' { t3 += 1; }
+              if t3 < line.count {
+                mid := args_whole(cast(string) line[0..<t1]);
+                lno := args_whole(cast(string) line[t1 + 1..<t2]);
+                kd := cast(string) line[t2 + 1..<t3];
+                dn := cast(string) line[t3 + 1..<line.count];
+                if rh_contains_ci(dn, q) && mid >= 0 && mid < w[0].n_mods {
+                  mname := rhi_mod_name(w[..], mid);
+                  if want_json {
+                    jo_obj(o[..]); jo_key(o[..], "decl"); jo_str(o[..], dn); jo_key(o[..], "kind"); jo_str(o[..], kd);
+                    jo_key(o[..], "module"); jo_str(o[..], mname); jo_key(o[..], "line"); jo_int(o[..], lno);
+                    jo_key(o[..], "depth"); jo_int(o[..], cast(int) w[0].m_depth[mid]); jo_end(o[..]);
+                  } else {
+                    print("[%] %  (%:% | depth %)\n", kd, dn, mname, lno, cast(int) w[0].m_depth[mid]);
+                  }
+                  found += 1;
+                  if found >= limit { break; }
+                }
+              }
+            }
+          }
+        }
+        if st < got && found < limit {
+          rem := got - st; if cn + rem > 1024 { rem = 1024 - cn; }
+          for k: 0..<rem { carry[cn + k] = w[0].fbuf[st + k]; } cn += rem;
+        }
+        if got < RH_IO_CHUNK { break; }
+      }
+      dt := proc_now_ms() - t0;
+      if want_json { jo_end(o[..]); jo_key(o[..], "count"); jo_int(o[..], found); jo_key(o[..], "elapsed_ms"); jo_int(o[..], dt); jo_end(o[..]); print("%\n", jo_text(o[..])); }
+      else { print("(% declaration matches in % ms)\n", found, dt); }
+      return 0;
+    }
+
+    o: [1] Jo; if want_json { jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]); jo_key(o[..], "query"); jo_str(o[..], q); jo_key(o[..], "hits"); jo_arr(o[..]); }
+    for id: 0..<w[0].n_mods {
+      nm := rhi_mod_name(w[..], id);
+      if !rh_contains_ci(nm, q) { continue; }
+      if want_json {
+        jo_obj(o[..]);
+        jo_key(o[..], "module"); jo_str(o[..], nm);
+        jo_key(o[..], "lib"); jo_str(o[..], RH_LIB_NAMES[cast(int) w[0].m_lib[id]]);
+        jo_key(o[..], "depth"); jo_int(o[..], cast(int) w[0].m_depth[id]);
+        jo_key(o[..], "lines"); jo_int(o[..], cast(int) w[0].m_lines[id]);
+        jo_key(o[..], "theorems"); jo_int(o[..], cast(int) w[0].m_theorems[id]);
+        jo_key(o[..], "defs"); jo_int(o[..], cast(int) w[0].m_defs[id]);
+        jo_key(o[..], "indeg"); jo_int(o[..], cast(int) w[0].m_indeg[id]);
+        jo_end(o[..]);
+      } else {
+        print("%  [% | depth % | % lines | % thms | % in]\n", nm, RH_LIB_NAMES[cast(int) w[0].m_lib[id]], cast(int) w[0].m_depth[id], cast(int) w[0].m_lines[id], cast(int) w[0].m_theorems[id], cast(int) w[0].m_indeg[id]);
+      }
+      found += 1;
+      if found >= limit { break; }
+    }
+    dt := proc_now_ms() - t0;
+    if want_json { jo_end(o[..]); jo_key(o[..], "count"); jo_int(o[..], found); jo_key(o[..], "elapsed_ms"); jo_int(o[..], dt); jo_end(o[..]); print("%\n", jo_text(o[..])); }
+    else { print("(% module matches in % ms)\n", found, dt); }
+    return 0;
+  }
+
+  if sub == "path" {
+    mod_q := args_at(a, 2);
+    id := rhi_ht_find(w[..], mod_q);
+    if id < 0 {
+      // Allow prefix match for cluster/directory names (e.g. Formalism.BehrendSets)
+      best_d := 999999;
+      for i: 0..<w[0].n_mods {
+        nm := rhi_mod_name(w[..], i);
+        if rh_starts(nm, mod_q) && w[0].m_depth[i] != RH_NO_ID && cast(int) w[0].m_depth[i] < best_d {
+          best_d = cast(int) w[0].m_depth[i]; id = i;
+        }
+      }
+    }
+    if id < 0 { tool_err("lean-run rh path: module not found: "); tool_errln(mod_q); return 1; }
+    want_json := args_has(a, "--json");
+    o: [1] Jo; if want_json { jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]); jo_key(o[..], "start"); jo_str(o[..], rhi_mod_name(w[..], id)); jo_key(o[..], "hops"); jo_arr(o[..]); }
+    cur := id;
+    hops := 0;
+    while cur >= 0 && cur < w[0].n_mods && hops < 256 {
+      nm := rhi_mod_name(w[..], cur);
+      if want_json {
+        jo_obj(o[..]);
+        jo_key(o[..], "module"); jo_str(o[..], nm);
+        jo_key(o[..], "lib"); jo_str(o[..], RH_LIB_NAMES[cast(int) w[0].m_lib[cur]]);
+        jo_key(o[..], "depth"); jo_int(o[..], cast(int) w[0].m_depth[cur]);
+        jo_key(o[..], "lines"); jo_int(o[..], cast(int) w[0].m_lines[cur]);
+        jo_key(o[..], "theorems"); jo_int(o[..], cast(int) w[0].m_theorems[cur]);
+        jo_end(o[..]);
+      } else {
+        print("  [d=%] %  (% lines, % thms)\n", cast(int) w[0].m_depth[cur], nm, cast(int) w[0].m_lines[cur], cast(int) w[0].m_theorems[cur]);
+      }
+      hops += 1;
+      if cur == w[0].main_id || w[0].m_parent[cur] == RH_NO_ID { break; }
+      cur = cast(int) w[0].m_parent[cur];
+    }
+    if want_json { jo_end(o[..]); jo_key(o[..], "length"); jo_int(o[..], hops); jo_end(o[..]); print("%\n", jo_text(o[..])); }
+    return 0;
+  }
+
+  if sub == "cone" || sub == "module" {
+    mod_q := args_at(a, 2);
+    id := rhi_ht_find(w[..], mod_q);
+    if id < 0 { tool_err("lean-run rh: module not found: "); tool_errln(mod_q); return 1; }
+    limit := args_whole(args_value(a, "--limit", ""));
+    if limit <= 0 || limit > 100 { limit = 32; }
+    want_json := args_has(a, "--json");
+    e0 := cast(int) w[0].fwd_off[id]; e1 := cast(int) w[0].fwd_off[id + 1];
+    r0 := cast(int) w[0].rev_off[id]; r1 := cast(int) w[0].rev_off[id + 1];
+
+    if want_json {
+      o: [1] Jo; jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]);
+      jo_key(o[..], "module"); jo_str(o[..], rhi_mod_name(w[..], id));
+      jo_key(o[..], "lib"); jo_str(o[..], RH_LIB_NAMES[cast(int) w[0].m_lib[id]]);
+      jo_key(o[..], "depth"); jo_int(o[..], cast(int) w[0].m_depth[id]);
+      jo_key(o[..], "lines"); jo_int(o[..], cast(int) w[0].m_lines[id]);
+      jo_key(o[..], "bytes"); jo_int(o[..], cast(int) w[0].m_bytes[id]);
+      jo_key(o[..], "theorems"); jo_int(o[..], cast(int) w[0].m_theorems[id]);
+      jo_key(o[..], "defs"); jo_int(o[..], cast(int) w[0].m_defs[id]);
+      jo_key(o[..], "metaprog"); jo_bool(o[..], (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0);
+      jo_key(o[..], "imports_total"); jo_int(o[..], e1 - e0);
+      jo_key(o[..], "imported_by_total"); jo_int(o[..], r1 - r0);
+      jo_key(o[..], "imports"); jo_arr(o[..]);
+      n_up := 0;
+      for e: e0..<e1 { if n_up >= limit { break; } jo_str(o[..], rhi_mod_name(w[..], cast(int) w[0].fwd_dst[e])); n_up += 1; }
+      jo_end(o[..]);
+      jo_key(o[..], "imported_by"); jo_arr(o[..]);
+      n_dn := 0;
+      for e: r0..<r1 { if n_dn >= limit { break; } jo_str(o[..], rhi_mod_name(w[..], cast(int) w[0].rev_dst[e])); n_dn += 1; }
+      jo_end(o[..]);
+      jo_key(o[..], "path_to_main"); jo_arr(o[..]);
+      cur := id; hops := 0;
+      while cur >= 0 && cur < w[0].n_mods && hops < 64 {
+        jo_str(o[..], rhi_mod_name(w[..], cur)); hops += 1;
+        if cur == w[0].main_id || w[0].m_parent[cur] == RH_NO_ID { break; }
+        cur = cast(int) w[0].m_parent[cur];
+      }
+      jo_end(o[..]);
+      if sub == "module" {
+        cb: [FS_PATH_MAX] u8; sb: [FS_PATH_MAX] u8; fp: [FS_PATH_MAX] u8;
+        corp := lr_rh_corpus_dir(a, home, cb[..]);
+        fpath := rhi_mod_path(w[..], fs_join(corp, "src", sb[..]), id, fp[..]);
+        sn := fs_read_at(fpath, 0, w[0].fbuf[0..<65536]);
+        jo_key(o[..], "source_path"); jo_str(o[..], fpath);
+        jo_key(o[..], "source"); jo_str(o[..], ifx sn > 0 then cast(string) w[0].fbuf[0..<sn] else "");
+      }
+      jo_end(o[..]);
+      print("%\n", jo_text(o[..]));
+      return 0;
+    }
+
+    print("Module: % [%]\n", rhi_mod_name(w[..], id), RH_LIB_NAMES[cast(int) w[0].m_lib[id]]);
+    print("  depth from Main: % | % lines | % theorems | % defs\n", cast(int) w[0].m_depth[id], cast(int) w[0].m_lines[id], cast(int) w[0].m_theorems[id], cast(int) w[0].m_defs[id]);
+    print("  imports (% total):\n", e1 - e0);
+    for e: e0..<e1 { if e - e0 >= limit { break; } print("    -> %\n", rhi_mod_name(w[..], cast(int) w[0].fwd_dst[e])); }
+    print("  imported by (% total):\n", r1 - r0);
+    for e: r0..<r1 { if e - r0 >= limit { break; } print("    <- %\n", rhi_mod_name(w[..], cast(int) w[0].rev_dst[e])); }
+    return 0;
+  }
+
+  if sub == "audit" {
+    cb: [FS_PATH_MAX] u8; corp := lr_rh_corpus_dir(a, home, cb[..]);
+    files := [5] string.["src/Main.lean", "src/Statements.lean", "src/Challenge.lean", "lakefile.toml", "lean-toolchain"];
+    want_json := args_has(a, "--json");
+    reachable := 0;
+    for id: 0..<w[0].n_mods {
+      if w[0].m_depth[id] != RH_NO_ID { reachable += 1; }
+    }
+    if want_json {
+      o: [1] Jo; jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]);
+      jo_key(o[..], "modules"); jo_int(o[..], w[0].n_mods);
+      jo_key(o[..], "reachable_from_main"); jo_int(o[..], reachable);
+      jo_key(o[..], "metaprog_count"); jo_int(o[..], w[0].total_metaprog);
+      jo_key(o[..], "metaprog_modules"); jo_arr(o[..]);
+      for id: 0..<w[0].n_mods {
+        if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0 { jo_str(o[..], rhi_mod_name(w[..], id)); }
+      }
+      jo_end(o[..]);
+      jo_key(o[..], "digests"); jo_arr(o[..]);
+      for f: files {
+        fp: [FS_PATH_MAX] u8; hx: [64] u8;
+        p := fs_join(corp, f, fp[..]);
+        hn := lv_sha256_file(p, hx[..]);
+        jo_obj(o[..]); jo_key(o[..], "file"); jo_str(o[..], f); jo_key(o[..], "sha256"); jo_str(o[..], cast(string) hx[0..<hn]); jo_end(o[..]);
+      }
+      jo_end(o[..]); jo_end(o[..]);
+      print("%\n", jo_text(o[..]));
+      return 0;
+    }
+    print("Riemann Hypothesis Proof Provenance & Metaprogramming Audit\n");
+    print("  indexed modules: % | reachable from Main: % | metaprogramming sites: %\n", w[0].n_mods, reachable, w[0].total_metaprog);
+    for id: 0..<w[0].n_mods {
+      if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0 { print("    [metaprog] %\n", rhi_mod_name(w[..], id)); }
+    }
+    print("  file SHA-256 digests:\n");
+    for f: files {
+      fp: [FS_PATH_MAX] u8; hx: [64] u8;
+      hn := lv_sha256_file(fs_join(corp, f, fp[..]), hx[..]);
+      print("    %  %\n", cast(string) hx[0..<hn], f);
+    }
+    return 0;
+  }
+
+  tool_err("lean-run rh: unknown subcommand: "); tool_errln(sub);
+  return 2;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; _ = args_load(a[..]);
   verb := args_at(a[..], 0);
@@ -226,6 +546,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "sample" { return lr_cmd_sample(a[..], home); }
   if verb == "gym" { return lr_cmd_gym(a[..], home); }
   if verb == "card" { return lr_cmd_card(a[..]); }
+  if verb == "rh" { return lr_cmd_rh(a[..], home); }
   tool_err("lean-run: unknown verb: "); tool_errln(verb);
   return 2;
 }
