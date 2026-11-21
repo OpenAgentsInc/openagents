@@ -840,7 +840,10 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
 
     for (int il = 0; il < s->n_slots; il++) {
         int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
-        int cap = hp->is_swa[ip] ? (hp->swa < s->max_ctx ? hp->swa : s->max_ctx) : s->max_ctx;
+        /* SWA ring buffer must hold at least (swa + prefill_b) entries so K_KV_STORE_BATCH never
+         * overwrites earlier keys in [k_start, pos + nb) before MMA prefill attention reads them. */
+        int swa_cap = hp->swa + s->prefill_b;
+        int cap = hp->is_swa[ip] ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
         s->kv_cap[il] = cap;
         if (alloc_buf(s, &s->kv_k[il], (size_t)cap * n_kv * 2) ||
             alloc_buf(s, &s->kv_v[il], (size_t)cap * n_kv * 2) ||
