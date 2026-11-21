@@ -343,23 +343,9 @@ static int call_k(InkSession *s, PmBatch batch, int k, int64_t items, int count,
     return 0;
 }
 
-static int call_k_indirect(InkSession *s, PmBatch batch, int k, int64_t max_items,
-                           PmBuffer ibuf, int64_t ioff, int count, const PmArg *args) {
-    if (pm_launch_indirect(batch, s->kernels[k], max_items, ibuf, ioff, (int)k_lanes[k], args, count) != PM_OK) {
-        snprintf(s->error, sizeof s->error, "kernel %s (indirect): %s", k_names[k], pm_log());
-        return 1;
-    }
-    return 0;
-}
-
 #define CALL(s, b, k, items, ...) do { \
     PmArg _args[] = { __VA_ARGS__ }; \
     if (call_k((s), (b), (k), (items), (int)(sizeof _args / sizeof _args[0]), _args) != 0) return 1; \
-} while (0)
-
-#define CALL_INDIRECT(s, b, k, max_items, ibuf, ioff, ...) do { \
-    PmArg _args[] = { __VA_ARGS__ }; \
-    if (call_k_indirect((s), (b), (k), (max_items), (ibuf), (ioff), (int)(sizeof _args / sizeof _args[0]), _args) != 0) return 1; \
 } while (0)
 
 static int dispatch_mv(InkSession *s, PmBatch batch, const InkTensor *w, int64_t rows, int64_t cols, int add,
@@ -1556,7 +1542,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         int64_t max_tiles = (tot_rows + (tm - 1) * hp->n_expert) / tm;
         if (max_tiles > tot_rows) max_tiles = tot_rows;
         if (max_tiles > tile_cap) max_tiles = tile_cap;
-        CALL_INDIRECT(s, batch, K_MOE_GU_IQ4_M4, max_tiles * gu_rg, s->tile_cnt, 16,
+        CALL(s, batch, K_MOE_GU_IQ4_M4, max_tiles * gu_rg,
              a_int(n_ff), a_int(d), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
              a_tensor_u16(s, &L->ffn_gate_up_exps),
              a_f32v(s->moe_slot_out, 0, tot_rows * d),
@@ -1564,7 +1550,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16),
              a_f32v(s->moe_hid, 0, tot_rows * n_ff));
         pm_barrier(batch);
-        CALL_INDIRECT(s, batch, K_MOE_DOWN_IQ4_M4, max_tiles * dn_rg, s->tile_cnt, 32,
+        CALL(s, batch, K_MOE_DOWN_IQ4_M4, max_tiles * dn_rg,
              a_int(d), a_int(n_ff),
              a_tensor_u16(s, &L->ffn_down_exps),
              a_f32v(s->moe_hid, 0, tot_rows * n_ff),
@@ -1617,7 +1603,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
                  a_tensor_u16(s, &L->ffn_gate_up_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->w_bf16, 0, ec * gu_w_u32));
             pm_barrier(batch);
-            CALL_INDIRECT(s, batch, moe_mm_k, max_ct * gu_r_tiles, s->tile_cnt, 16, a_int(e_lo), a_int(gu_rows), a_int(d),
+            CALL(s, batch, moe_mm_k, max_ct * gu_r_tiles, a_int(e_lo), a_int(gu_rows), a_int(d),
                  a_u32v(s->w_bf16, 0, ec * gu_w_u32),
                  a_f32v(s->moe_slot_out, 0, tot_rows * d),
                  a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
@@ -1651,7 +1637,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
                  a_tensor_u16(s, &L->ffn_down_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->w_bf16, 0, ec * dn_w_u32));
             pm_barrier(batch);
-            CALL_INDIRECT(s, batch, moe_mm_k, max_ct * dn_r_tiles, s->tile_cnt, 16, a_int(e_lo), a_int(d), a_int(n_ff),
+            CALL(s, batch, moe_mm_k, max_ct * dn_r_tiles, a_int(e_lo), a_int(d), a_int(n_ff),
                  a_u32v(s->w_bf16, 0, ec * dn_w_u32),
                  a_f32v(s->moe_hid, 0, tot_rows * n_ff),
                  a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
