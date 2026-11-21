@@ -348,7 +348,9 @@ extension MacAccount {
         guard loggedIn, Bundle.main.bundleIdentifier != nil, ProcessInfo.processInfo.environment["OPENAGENTS_PUSH"] != "0", let app = NSApp else { return }
         if app.delegate == nil { app.delegate = MacPush.shared }
         guard app.delegate === MacPush.shared || MacPush.delegateForwards else { return }
-        UNUserNotificationCenter.current().delegate = MacPush.shared
+        if UNUserNotificationCenter.current().delegate == nil {
+            UNUserNotificationCenter.current().delegate = MacPush.shared
+        }
         app.registerForRemoteNotifications()
     }
 }

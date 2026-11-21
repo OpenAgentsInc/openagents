@@ -35,3 +35,4 @@
 #load "page/checks/gitactions-checks.coax" #test;
 #load "page/checks/checkpoint-checks.coax" #test;
 #load "page/checks/permit-checks.coax" #test;
+#load "page/checks/notify-checks.coax" #test;

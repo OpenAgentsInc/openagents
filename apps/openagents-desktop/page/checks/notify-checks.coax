@@ -1,0 +1,140 @@
+// Checks for OS notifications, audio chimes, and Dock/taskbar unread badge policy
+// (page/notify.coax, GitHub #13874).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "notify: decision rules respect mode, window focus, active chat, and chime kind" {
+  // Focused + active chat never interrupts regardless of mode or event.
+  d := cp_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_TURN_DONE, true, true);
+  #assert !d.fire_os && !d.fire_sound && d.sound_kind == CP_SOUND_NONE;
+  d = cp_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_NEED_INPUT, true, true);
+  #assert !d.fire_os && !d.fire_sound && d.sound_kind == CP_SOUND_NONE;
+
+  // Off mode never fires even when unfocused or background.
+  d = cp_notify_decide(CP_NOTIFY_OFF, CP_NOTIFY_EV_TURN_DONE, false, false);
+  #assert !d.fire_os && !d.fire_sound && d.sound_kind == CP_SOUND_NONE;
+  d = cp_notify_decide(CP_NOTIFY_OFF, CP_NOTIFY_EV_NEED_INPUT, false, true);
+  #assert !d.fire_os && !d.fire_sound && d.sound_kind == CP_SOUND_NONE;
+
+  // Unfocused active chat in OS-only mode fires OS notification without sound.
+  d = cp_notify_decide(CP_NOTIFY_OS, CP_NOTIFY_EV_TURN_DONE, false, true);
+  #assert d.fire_os && !d.fire_sound && d.sound_kind == CP_SOUND_NONE;
+
+  // Background chat while app is focused fires sound-only in SOUND mode with completion chime.
+  d = cp_notify_decide(CP_NOTIFY_SOUND, CP_NOTIFY_EV_TURN_DONE, true, false);
+  #assert !d.fire_os && d.fire_sound && d.sound_kind == CP_SOUND_COMPLETE;
+
+  // Background permission request in BOTH mode fires OS notification + attention chime.
+  d = cp_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_NEED_INPUT, true, false);
+  #assert d.fire_os && d.fire_sound && d.sound_kind == CP_SOUND_ATTENTION;
+
+  // Failed turn uses attention chime; goal change uses completion chime.
+  d = cp_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_TURN_FAILED, false, true);
+  #assert d.fire_os && d.fire_sound && d.sound_kind == CP_SOUND_ATTENTION;
+  d = cp_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_GOAL_CHANGE, false, false);
+  #assert d.fire_os && d.fire_sound && d.sound_kind == CP_SOUND_COMPLETE;
+
+  // Packed C export bitmask matches: bit 0 = fire_os, bit 1 = fire_sound, bits 2..3 = sound_kind.
+  bits := coder_page_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_NEED_INPUT, false, true);
+  #assert (bits & 1) == 1 && (bits & 2) == 2 && (bits >> 2) == CP_SOUND_ATTENTION;
+  bits2 := coder_page_notify_decide(CP_NOTIFY_OS, CP_NOTIFY_EV_TURN_DONE, false, false);
+  #assert (bits2 & 1) == 1 && (bits2 & 2) == 0 && (bits2 >> 2) == CP_SOUND_NONE;
+  #assert coder_page_notify_decide(CP_NOTIFY_BOTH, CP_NOTIFY_EV_NONE, false, false) == 0;
+}
+
+#test "notify: goal transitions map to completion or attention events only when actionable" {
+  #assert coder_page_notify_goal_event(CP_GOAL_ACTIVE, CP_GOAL_COMPLETE) == CP_NOTIFY_EV_GOAL_CHANGE;
+  #assert coder_page_notify_goal_event(CP_GOAL_ACTIVE, CP_GOAL_BLOCKED) == CP_NOTIFY_EV_NEED_INPUT;
+  #assert coder_page_notify_goal_event(CP_GOAL_ACTIVE, CP_GOAL_BUDGET_LIMITED) == CP_NOTIFY_EV_NEED_INPUT;
+  #assert coder_page_notify_goal_event(CP_GOAL_ACTIVE, CP_GOAL_PAUSED) == CP_NOTIFY_EV_NONE;
+  #assert coder_page_notify_goal_event(CP_GOAL_COMPLETE, CP_GOAL_COMPLETE) == CP_NOTIFY_EV_NONE;
+  #assert coder_page_notify_goal_event(CP_GOAL_NONE, CP_GOAL_ACTIVE) == CP_NOTIFY_EV_NONE;
+}
+
+#test "notify: badge count, label formatting, and unread list clearing on view" {
+  #assert cp_notify_badge_total(0, 0) == 0;
+  #assert cp_notify_badge_total(-3, 2) == 2;
+  #assert cp_notify_badge_total(3, 1) == 4;
+
+  buf: [16] u8;
+  #assert coder_page_notify_badge_label(0, buf[..]) == 0;
+  #assert coder_page_notify_badge_label(-5, buf[..]) == 0;
+  n1 := coder_page_notify_badge_label(1, buf[..]);
+  #assert cast(string) buf[0..<n1] == "1";
+  n99 := coder_page_notify_badge_label(99, buf[..]);
+  #assert cast(string) buf[0..<n99] == "99";
+  n100 := coder_page_notify_badge_label(100, buf[..]);
+  #assert cast(string) buf[0..<n100] == "99+";
+
+  // Sidebar unread count drops when the unread chat becomes current.
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  coder_page_chats(s, "c1\tBuild app\t0\t0\t0\t1\nc2\tFix tests\t0\t0\t0\t1\nc3\tRead docs\t0\t0\t0\t0");
+  #assert cp_notify_unread_in_list(s) == 2;
+  coder_page_current(s, "c1");
+  #assert cp_notify_unread_in_list(s) == 1;
+  coder_page_current(s, "c2");
+  #assert cp_notify_unread_in_list(s) == 0;
+}
+
+#test "notify: title and body formatter collapses whitespace, uses defaults, and truncates safely" {
+  tb: [128] u8; bb: [128] u8;
+  tn := coder_page_notify_title(CP_NOTIFY_EV_TURN_DONE, "  Fix\n  build  ", tb[..]);
+  #assert cast(string) tb[0..<tn] == "Turn completed · Fix build";
+  tn2 := coder_page_notify_title(CP_NOTIFY_EV_NEED_INPUT, "", tb[..]);
+  #assert cast(string) tb[0..<tn2] == "Input needed · OpenAgents";
+
+  bn := coder_page_notify_body(CP_NOTIFY_EV_TURN_DONE, "", bb[..]);
+  #assert cast(string) bb[0..<bn] == "Agent finished its reply.";
+  bn2 := coder_page_notify_body(CP_NOTIFY_EV_NEED_INPUT, "Allow running\tgit push?", bb[..]);
+  #assert cast(string) bb[0..<bn2] == "Allow running git push?";
+  bn3 := coder_page_notify_body(CP_NOTIFY_EV_TURN_FAILED, "", bb[..]);
+  #assert cast(string) bb[0..<bn3] == "The agent run ended with an error.";
+
+  // Small buffer truncation never overflows or leaves partial UTF-8 bytes.
+  small: [10] u8;
+  sn := coder_page_notify_body(CP_NOTIFY_EV_TURN_DONE, "Hello world from OpenAgents", small[..]);
+  #assert sn > 0 && sn <= 10;
+}
+
+#test "notify: Settings -> General Notifications row renders, searches, and updates mode" {
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  hn := cp_set_hits("notifications", hits[..]);
+  #assert hn >= 1 && es[hits[0]].id == "set.notify";
+  hn2 := cp_set_hits("chime", hits[..]);
+  #assert hn2 >= 1 && es[hits[0]].id == "set.notify";
+
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  #assert coder_page_notify_mode(s) == CP_NOTIFY_BOTH;
+  coder_page_settings_open(s, CP_PG_GENERAL, "");
+  #assert cp_set_test_frame(s, 1200, 700);
+  #assert cp_set_test_row(s, "set.notify.0").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.notify.3").state & EL_S_CURRENT != 0;
+
+  #assert cp_settings_press(s, CP_SET_ACT, "set.notify.2");
+  #assert coder_page_action(s) == CP_ASK_NOTIFY && coder_page_notify_mode(s) == CP_NOTIFY_SOUND;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.notify.0");
+  #assert coder_page_action(s) == CP_ASK_NOTIFY && coder_page_notify_mode(s) == CP_NOTIFY_OFF;
+  coder_page_notify_mode_set(s, 99);
+  #assert coder_page_notify_mode(s) == CP_NOTIFY_BOTH;
+  coder_page_notify_mode_set(s, -4);
+  #assert coder_page_notify_mode(s) == CP_NOTIFY_OFF;
+}
+
+#test "notify: permit state exports and transfers cleanly on coder_page_take" {
+  p1: [1] CoderPage; st1: [1] CpCheckLean; bg := cp_check_lean(p1[..], st1[..]);
+  p2: [1] CoderPage; st2: [1] CpCheckLean; fg := cp_check_lean(p2[..], st2[..]);
+  cp_init(bg); cp_init(fg);
+  #assert coder_page_permit_open(bg) == 0;
+  cp_permit_take(bg, 42, false, "Run shell command", "rm -rf build", "");
+  #assert coder_page_permit_open(bg) != 0;
+  tb: [128] u8;
+  tn := coder_page_permit_title(bg, tb[..]);
+  #assert cast(string) tb[0..<tn] == "Run shell command";
+
+  #assert coder_page_take(fg, bg);
+  #assert coder_page_permit_open(fg) != 0 && coder_page_permit_open(bg) == 0;
+  tn2 := coder_page_permit_title(fg, tb[..]);
+  #assert cast(string) tb[0..<tn2] == "Run shell command";
+}

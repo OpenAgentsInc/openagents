@@ -1,0 +1,197 @@
+// Coder Desktop page (../page.coax): OS notification, audio chime, and Dock/taskbar
+// badge policy (GitHub #13874). Pure decision rules for when unfocused or background
+// chats finish a turn, hit a /goal state change, or block on a permission/question
+// card; title/body formatting; badge count/label formatting; and C host exports.
+
+// User notification modes (Settings -> General -> Notifications).
+CP_NOTIFY_OFF :: 0;
+CP_NOTIFY_OS :: 1;
+CP_NOTIFY_SOUND :: 2;
+CP_NOTIFY_BOTH :: 3;
+CP_NOTIFY_DEFAULT :: CP_NOTIFY_BOTH;
+
+// Notification event kinds.
+CP_NOTIFY_EV_NONE :: 0;
+CP_NOTIFY_EV_TURN_DONE :: 1;
+CP_NOTIFY_EV_TURN_FAILED :: 2;
+CP_NOTIFY_EV_NEED_INPUT :: 3;
+CP_NOTIFY_EV_GOAL_CHANGE :: 4;
+
+// Subtle audio chime kinds.
+CP_SOUND_NONE :: 0;
+CP_SOUND_COMPLETE :: 1;
+CP_SOUND_ATTENTION :: 2;
+
+// Host action ID when the user changes Notifications mode in Settings -> General.
+CP_ASK_NOTIFY :: 61;
+
+CpNotifyDecision :: struct {
+  fire_os: bool;
+  fire_sound: bool;
+  sound_kind: int;
+}
+
+cp_notify_clamp_mode :: (mode: int) -> int {
+  if mode < CP_NOTIFY_OFF { return CP_NOTIFY_OFF; }
+  if mode > CP_NOTIFY_BOTH { return CP_NOTIFY_BOTH; }
+  return mode;
+}
+
+cp_notify_mode_name :: (mode: int) -> string {
+  m := cp_notify_clamp_mode(mode);
+  if m == CP_NOTIFY_OFF { return "Off"; }
+  if m == CP_NOTIFY_OS { return "Notifications"; }
+  if m == CP_NOTIFY_SOUND { return "Sound"; }
+  return "Notifications & Sound";
+}
+
+// Decides whether an event should fire an OS notification and/or a subtle audio chime.
+// Never interrupts when the user is actively viewing the originating chat in the focused
+// window (app_focused && is_active_chat). Fires when the app is unfocused or the event
+// comes from a background chat, according to the configured notification mode.
+cp_notify_decide :: (mode: int, event: int, app_focused: bool, is_active_chat: bool) -> CpNotifyDecision {
+  m := cp_notify_clamp_mode(mode);
+  if m == CP_NOTIFY_OFF || event <= CP_NOTIFY_EV_NONE || event > CP_NOTIFY_EV_GOAL_CHANGE {
+    return CpNotifyDecision.{};
+  }
+  if app_focused && is_active_chat {
+    return CpNotifyDecision.{};
+  }
+  want_os := m == CP_NOTIFY_OS || m == CP_NOTIFY_BOTH;
+  want_sound := m == CP_NOTIFY_SOUND || m == CP_NOTIFY_BOTH;
+  sk := CP_SOUND_NONE;
+  if want_sound {
+    if event == CP_NOTIFY_EV_NEED_INPUT || event == CP_NOTIFY_EV_TURN_FAILED {
+      sk = CP_SOUND_ATTENTION;
+    } else {
+      sk = CP_SOUND_COMPLETE;
+    }
+  }
+  return CpNotifyDecision.{fire_os = want_os, fire_sound = want_sound, sound_kind = sk};
+}
+
+// Maps a /goal status transition to a notification event kind (0 when no notification is needed).
+// Blocked and budget-limited goals need user attention; completed goals announce completion.
+cp_notify_goal_event :: (old_status: int, new_status: int) -> int {
+  if old_status == new_status { return CP_NOTIFY_EV_NONE; }
+  if new_status == CP_GOAL_COMPLETE { return CP_NOTIFY_EV_GOAL_CHANGE; }
+  if new_status == CP_GOAL_BLOCKED || new_status == CP_GOAL_BUDGET_LIMITED { return CP_NOTIFY_EV_NEED_INPUT; }
+  return CP_NOTIFY_EV_NONE;
+}
+
+// Badge count combining unread chats and extra attention-needing chats (clamping negatives to 0).
+cp_notify_badge_total :: (unread_count: int, attention_extra: int) -> int {
+  u := ifx unread_count > 0 then unread_count else 0;
+  a := ifx attention_extra > 0 then attention_extra else 0;
+  return u + a;
+}
+
+// Formats a Dock/taskbar badge count: "" for <= 0, "1".."99", or "99+" for > 99.
+cp_notify_badge_label :: (count: int, out: [] u8) -> int {
+  if count <= 0 || out.count == 0 { return 0; }
+  if count > 99 { return cp_out(out, "99+"); }
+  return el_put_i(out, 0, count);
+}
+
+// Counts unread chats currently listed in the sidebar.
+cp_notify_unread_in_list :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return 0; }
+  n := 0;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].unread { n += 1; }
+  }
+  return n;
+}
+
+// Copies `src` into `dst` starting at `at`, collapsing CR/LF/TAB to spaces and trimming
+// trailing UTF-8 continuation bytes if truncated.
+cp_notify_put_clean :: (dst: [] u8, at: int, src: string) -> int {
+  n := at;
+  prev_space := false;
+  for i: 0..<src.count {
+    if n >= dst.count { break; }
+    c := src[i];
+    if c == 10 || c == 13 || c == 9 { c = 32; }
+    if c == 32 {
+      if prev_space { continue; }
+      prev_space = true;
+    } else {
+      prev_space = false;
+    }
+    dst[n] = c;
+    n += 1;
+  }
+  // Avoid cutting in the middle of a multi-byte UTF-8 sequence.
+  if n == dst.count && n > at {
+    while n > at && (dst[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > at && (dst[n - 1] & 0x80) != 0 { n -= 1; }
+  }
+  return n;
+}
+
+// Formats the OS notification title for an event and chat title.
+cp_notify_title :: (event: int, chat_title: string, out: [] u8) -> int {
+  if out.count == 0 { return 0; }
+  name := cp_trim(chat_title);
+  if name.count == 0 { name = "OpenAgents"; }
+  prefix := "";
+  if event == CP_NOTIFY_EV_TURN_DONE { prefix = "Turn completed · "; }
+  else if event == CP_NOTIFY_EV_TURN_FAILED { prefix = "Turn stopped · "; }
+  else if event == CP_NOTIFY_EV_NEED_INPUT { prefix = "Input needed · "; }
+  else if event == CP_NOTIFY_EV_GOAL_CHANGE { prefix = "Goal updated · "; }
+  n := cp_out(out, prefix);
+  return cp_notify_put_clean(out, n, name);
+}
+
+// Formats the OS notification body for an event and optional detail text.
+cp_notify_body :: (event: int, detail: string, out: [] u8) -> int {
+  if out.count == 0 { return 0; }
+  d := cp_trim(detail);
+  if d.count > 0 {
+    return cp_notify_put_clean(out, 0, d);
+  }
+  if event == CP_NOTIFY_EV_TURN_DONE { return cp_out(out, "Agent finished its reply."); }
+  if event == CP_NOTIFY_EV_TURN_FAILED { return cp_out(out, "The agent run ended with an error."); }
+  if event == CP_NOTIFY_EV_NEED_INPUT { return cp_out(out, "An agent is waiting for your approval or answer."); }
+  if event == CP_NOTIFY_EV_GOAL_CHANGE { return cp_out(out, "Thread goal status changed."); }
+  return 0;
+}
+
+// ---------------------------------------------------------------- C host exports
+
+coder_page_notify_mode_set :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].notify_mode = cp_notify_clamp_mode(mode);
+}
+
+coder_page_notify_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_NOTIFY_DEFAULT; }
+  return cp_notify_clamp_mode(s[0].notify_mode);
+}
+
+// Packs CpNotifyDecision into a bitmask for the C/Swift host:
+// bit 0 (1): fire_os, bit 1 (2): fire_sound, bits 2..3 (<< 2): sound_kind (0..2).
+coder_page_notify_decide :: (mode: int, event: int, app_focused: bool, is_active_chat: bool) -> int #export_c #effects(all) {
+  d := cp_notify_decide(mode, event, app_focused, is_active_chat);
+  bits := 0;
+  if d.fire_os { bits |= 1; }
+  if d.fire_sound { bits |= 2; }
+  bits |= (d.sound_kind << 2);
+  return bits;
+}
+
+coder_page_notify_goal_event :: (old_status: int, new_status: int) -> int #export_c #effects(all) {
+  return cp_notify_goal_event(old_status, new_status);
+}
+
+coder_page_notify_title :: (event: int, chat_title: string, out: [] u8) -> int #export_c #effects(all) {
+  return cp_notify_title(event, chat_title, out);
+}
+
+coder_page_notify_body :: (event: int, detail: string, out: [] u8) -> int #export_c #effects(all) {
+  return cp_notify_body(event, detail, out);
+}
+
+coder_page_notify_badge_label :: (count: int, out: [] u8) -> int #export_c #effects(all) {
+  return cp_notify_badge_label(count, out);
+}

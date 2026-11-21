@@ -97,6 +97,16 @@ extension CoderWindow {
         UserDefaults.standard.set(on, forKey: Experimental.key)
         applyExperimental(on)
     }
+    /// Settings > General > Notifications row was pressed (CP_ASK_NOTIFY): persist and request OS permission if needed.
+    func notificationModeChanged() {
+        let mode = CoderNotifyMode(clamping: cd_notify_mode(page))
+        CoderNotifyMode.current = mode
+        for r in runs.values where r.page != page {
+            cd_notify_mode_set(r.page, mode.rawValue)
+        }
+        if mode.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
+        wake()
+    }
     /// Propagates the current experimental + OpenAgents account login state and Gemini API key to the shown page and background runs.
     func syncCloudAuth() {
         let authed: Int32 = (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0
@@ -187,6 +197,7 @@ extension CoderWindow {
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
+        cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
         syncAntigravitySettings()
         syncWalletSettings()

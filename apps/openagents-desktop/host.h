@@ -437,4 +437,12 @@ int cd_permit_secret_name(void *page, char *out, int cap);
 int cd_permit_title(void *page, char *out, int cap);
 int cd_permit_body(void *page, char *out, int cap);
 int cd_permit_secret_done(void *page, int saved);
+// Turn-completion & needs-input OS notifications, audio chimes, and Dock/taskbar badges (page/notify.coax, GitHub #13874).
+void cd_notify_mode_set(void *page, int mode);
+int cd_notify_mode(void *page);
+int cd_notify_decide(int mode, int event, int app_focused, int is_active_chat);
+int cd_notify_goal_event(int old_status, int new_status);
+int cd_notify_title(int event, const char *chat_title, char *out, int cap);
+int cd_notify_body(int event, const char *detail, char *out, int cap);
+int cd_notify_badge_label(int count, char *out, int cap);
 #endif

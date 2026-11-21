@@ -6,12 +6,12 @@ extension CoderWindow {
     /// Marks a background chat unread when it produces output or completes a turn while unfocused.
     private func markUnread(_ r: CoderRun) {
         guard r !== run, let id = r.chat, id != chat else { return }
-        if unread.insert(id).inserted { cd_chats(page, chatLines) }
+        if unread.insert(id).inserted { cd_chats(page, chatLines); updateDockBadge() }
     }
     /// A run's worker lines go to its page, wherever that page is now.
     func wire(_ r: CoderRun) {
         r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.followUpBegan(r); self.markUnread(r); self.pump(r) }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.pump(r) }   // a new worker is told the chat so far
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "Microcoder stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -57,6 +57,7 @@ extension CoderWindow {
             if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
         }
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
+        checkRunNotifications(r)
         wake()
     }
     /// Sub-agent j's worker lines go to its run's page.
@@ -196,6 +197,9 @@ extension CoderWindow {
             followUpBegan(r)   // the worker started a queued message while Coder was closed
             wire(r); r.worker.follow()
             runs[t.chat] = r
+            r.lastGoalStatus = cd_goal_status(back)
+            r.lastPermitOpen = cd_permit_open(back) != 0
+            if r.lastPermitOpen { needsAttention.insert(t.chat) }
             if t.chat != chat { unread.insert(t.chat) }
             named.insert(t.run); named.formUnion(r.turn?.agents ?? [])
             pump(r)
@@ -208,7 +212,7 @@ extension CoderWindow {
                 if one.isLive { CoderWorker.logStop(id, "stopped at launch: idle, no kept message names it"); daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
             }
         }
-        cd_chats(page, chatLines); syncForemanUI()
+        cd_chats(page, chatLines); syncForemanUI(); updateDockBadge()
     }
     /// Every daemon run this Coder holds: each chat's worker and sub-agents, in view or out, and the
     /// runs its kept messages name.
@@ -418,6 +422,8 @@ extension CoderWindow {
             "cost_usd_micros": cost
         ])
         if id != chat { unread.insert(id) }
+        needsAttention.remove(id)
+        notifyTurnCompleted(chatID: id, isActiveChat: id == chat)
         cd_chats(page, chatLines); syncForemanUI(); wake()
     }
 }

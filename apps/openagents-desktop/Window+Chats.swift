@@ -129,7 +129,7 @@ extension CoderWindow {
     /// with its run.
     func open(_ id: String) {
         if id == Foreman.chatID { openForeman(); return }
-        if id == chat { closeGym(); focusComposer(); wake(); return }
+        if id == chat { closeGym(); clearViewedChatBadges(id); focusComposer(); wake(); return }
         closeGym()
         guard detach() else { return }
         if let back = runs[id] {
@@ -137,13 +137,16 @@ extension CoderWindow {
             runs[id] = nil; cd_close(back.page); back.page = page
             run.stop()   // the window's idle worker: a message in a chat opened later starts another
             run = back
+            run.lastGoalStatus = cd_goal_status(page)
+            run.lastPermitOpen = cd_permit_open(page) != 0
             unread.remove(id)
+            if !run.lastPermitOpen { needsAttention.remove(id) }
             chat = id; recallDue = false; cd_current(page, id)
             setFolder(back.folder, keep: false)
             refreshCheckpoints(for: id, in: back.folder.path)
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
-            cd_chats(page, chatLines); syncForemanUI()
+            cd_chats(page, chatLines); syncForemanUI(); updateDockBadge()
             focusComposer(); wake()
             return
         }
@@ -151,12 +154,16 @@ extension CoderWindow {
             present(.notice("This chat could not be opened.", "“" + (store.title(id) ?? "Chat") + "” could not be read."))
             return
         }
+        run.lastGoalStatus = cd_goal_status(page)
+        run.lastPermitOpen = cd_permit_open(page) != 0
         let clearedUnread = unread.remove(id) != nil
+        needsAttention.remove(id)
         chat = id; recallDue = true; cd_current(page, id)
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
         syncForemanUI()
         if clearedUnread { cd_chats(page, chatLines) }
+        updateDockBadge()
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         else { restoreWorktree(id) }
@@ -252,12 +259,14 @@ extension CoderWindow {
             if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
             guard !self.busy(id) else { return }
             self.unread.remove(id)
+            self.needsAttention.remove(id)
             let delFolder = self.store.folder(id) ?? self.store.worktree(id)?.source
             self.cleanupCheckpoints(for: id, in: delFolder)
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: self.store.title(id) ?? "New chat") }
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
             cd_chats(self.page, self.chatLines)
+            self.updateDockBadge()
             self.refocus(); self.wake()
         }
     }

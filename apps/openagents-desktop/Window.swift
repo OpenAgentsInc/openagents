@@ -23,6 +23,8 @@ final class CoderRun {
     var pendingChat: String?           // chat id reserved while its worktree is being created
     let simChat = "run-" + UUID().uuidString.lowercased()   // who asks the simulator helper while it has no chat id (OA_SIM_CHAT, #13811)
     var preparingWorktree = false, worktreeSkip = false, startingWorker = false
+    var lastPermitOpen = false
+    var lastGoalStatus: Int32 = 0
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -94,6 +96,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var run: CoderRun                    // the shown chat's run, on the window's page
     var runs: [String: CoderRun] = [:]   // chats whose replies run out of view, by id
     var unread: Set<String> = []         // background chats with unread output or a completed turn
+    var needsAttention: Set<String> = [] // chats blocked on a permission/question card or blocked /goal (#13874)
     private var last = CACurrentMediaTime()      // when the clock last ticked, for their pages' seconds
     private var link: CADisplayLink?     // the clock: the canvas's display's refresh (120 Hz on ProMotion)
     private var watchdog: Timer?         // ticks while the display link is paused (the window hidden or off every screen)
@@ -189,6 +192,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         // Foreman, Gym, log in and the account are experimental features (Settings > General), off unless set
         cd_experimental_set(page, Experimental.on ? 1 : 0)
+        cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
+        CoderNotifications.shared.install()
+        CoderNotifications.shared.onSelectChat = { [weak self] chatID in self?.openFromNotification(chatID) }
+        if CoderNotifyMode.current.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
         cd_cloud_authed_set(page, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
         cd_settings_gemini(page, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
         // the agent instructions every agent is told (~/.openagents/instructions.md): the default on first run, never over a file there (#13808)
@@ -402,6 +409,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 58: walletLimitDialog()
         case 59: walletBackupDialog()
         case 60: walletRefresh()
+        case 61: notificationModeChanged()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -427,15 +435,20 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 pump(back)
             }
             if cd_save_due(back.page) != 0 { keep(back) }
+            checkRunNotifications(back)
             if cd_running(back.page) == 0 && cd_queue_waiting(back.page) == 0 { finish(id) }   // a waiting queue starts its next message
         }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
         if now - sweptAt >= CoderWindow.sweepEvery { sweepRuns() }
+        checkRunNotifications(run)
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
-            if !fgRunning { run.endTurn(); captureTurnCheckpoint(for: run); refreshBranch(); refreshGitDiff() }
+            if !fgRunning {
+                run.endTurn(); captureTurnCheckpoint(for: run); refreshBranch(); refreshGitDiff()
+                notifyTurnCompleted(chatID: chat, isActiveChat: true)
+            }
             if let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
                     "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),
@@ -475,6 +488,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     func show() { window.makeKeyAndOrderFront(nil); wake() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCmdHold(); window.orderOut(nil); return false }
+    func windowDidBecomeKey(_ notification: Notification) { clearViewedChatBadges(chat) }
     func windowDidResignKey(_ notification: Notification) { cancelCmdHold() }
     private func setCmdHints(_ shown: Bool) {
         guard cmdHintsShown != shown else { return }

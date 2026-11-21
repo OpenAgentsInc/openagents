@@ -54,3 +54,4 @@
 #load "mention.coax";
 #load "gitactions.coax";
 #load "checkpoint.coax";
+#load "notify.coax";

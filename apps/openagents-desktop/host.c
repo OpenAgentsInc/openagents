@@ -865,6 +865,7 @@ int cd_permit_title(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || !out || cap < 2) return 0;
   int n = (int)coder_page_permit_title(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0; if (n >= cap) n = cap - 1;
   out[n] = 0;
   return n;
 }
@@ -881,4 +882,32 @@ int cd_permit_secret_done(void *page, int saved) {
   int ok = coder_page_permit_secret_done(cd_state(c), saved != 0) ? 1 : 0;
   cd_woke(c);
   return ok;
+}
+// Turn-completion & needs-input OS notifications, audio chimes, and Dock/taskbar badges (page/notify.coax, GitHub #13874).
+void cd_notify_mode_set(void *page, int mode) { CoderHost *c = page; if (!c) return; coder_page_notify_mode_set(cd_state(c), mode); cd_woke(c); }
+int cd_notify_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_notify_mode(cd_state(c)) : 3; }
+int cd_notify_decide(int mode, int event, int app_focused, int is_active_chat) {
+  return (int)coder_page_notify_decide(mode, event, app_focused != 0, is_active_chat != 0);
+}
+int cd_notify_goal_event(int old_status, int new_status) { return (int)coder_page_notify_goal_event(old_status, new_status); }
+int cd_notify_title(int event, const char *chat_title, char *out, int cap) {
+  if (!out || cap < 2) return 0;
+  int n = (int)coder_page_notify_title(event, cd_string(chat_title), (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0; if (n >= cap) n = cap - 1;
+  out[n] = 0;
+  return n;
+}
+int cd_notify_body(int event, const char *detail, char *out, int cap) {
+  if (!out || cap < 2) return 0;
+  int n = (int)coder_page_notify_body(event, cd_string(detail), (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0; if (n >= cap) n = cap - 1;
+  out[n] = 0;
+  return n;
+}
+int cd_notify_badge_label(int count, char *out, int cap) {
+  if (!out || cap < 2) return 0;
+  int n = (int)coder_page_notify_badge_label(count, (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0; if (n >= cap) n = cap - 1;
+  out[n] = 0;
+  return n;
 }

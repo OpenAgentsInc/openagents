@@ -319,6 +319,7 @@ CoderPage :: struct {
   // settings (settings.coax): open, its page, the page's and the list's scroll, the search and the
   // row it asked for, the search field's box, and what the host told it
   set_open: bool; set_page: int; set_tier: int;
+  notify_mode: int;           // CP_NOTIFY_OFF / _OS / _SOUND / _BOTH (page/notify.coax; GitHub #13874)
   experimental: bool;         // experimental features (log in and the account, Gym, Foreman) show; off unless the host turns them on
   cloud_authed: bool;         // signed into an OpenAgents account; cloud/Microcoder models require experimental && cloud_authed
   gym_open: bool;             // the 3D PLE Gym Workbench is open beside the sidebar (#13792)
@@ -487,6 +488,7 @@ cp_init :: (s: [] CoderPage) {
   cp_docs_reset(s);
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
   s[0].zoom = CP_ZOOM_USUAL;
+  s[0].notify_mode = CP_NOTIFY_DEFAULT;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
