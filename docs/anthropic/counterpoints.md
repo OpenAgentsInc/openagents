@@ -5,7 +5,7 @@ This document pairs with the restored historical essay [**The case against Anthr
 1. A section-by-section structure for tracking OpenAgents' responses, counterpoints, and steelmanned arguments against each thesis in [The case against Anthropic](the-case-against-anthropic.md).
 2. A complete index and summary of every file in [`docs/transcripts/`](../transcripts/README.md) that mentions Anthropic (case-insensitive).
 
-Related reference in this directory: [Anthropic S-1/A filing](s1/anthropicpbc-sx1ax1.htm).
+Related reference: Anthropic Form S-1/A filing (SEC Registration No. 333-299633, archived out of git under `~/.openagents/archive/docs/anthropic/s1/anthropicpbc-sx1ax1.htm`, SHA-256 `490481a31657ee88b7bab9ef913cbb4bd89c0e978e34365adb30b94cbc8bae1d`).
 
 ---
 

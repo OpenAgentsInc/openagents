@@ -24,13 +24,13 @@ One command takes the film headless at 1920 × 1080 and 30 frames a second,
 with a dev server for the checkout running:
 
 ```shell
-scripts/slab-build-film.sh docs/research/ocean/slab-construction.mp4
+scripts/slab-build-film.sh ~/.openagents/archive/docs/research/ocean/slab-construction.mp4
 ```
 
 Each frame is one fixed step of the page's clock, so the same commit gives
 the same film. The film is about 215 seconds long (6,500 frames).
 
-[slab-construction.mp4](slab-construction.mp4) is the film taken from
+`slab-construction.mp4` (archived out of git under `~/.openagents/archive/docs/research/ocean/slab-construction.mp4`, SHA-256 `533f50357ac2f65781cbc3c9aeb8fee1d62e7354b9d25cea590472d97da930f6`) is the film taken from
 `f2d0854d20` (the build view has not changed since): 216 seconds at
 1920 × 1080. It is encoded small for the
 repository (H.264 at CRF 30, about 28 MB, no sound); take it again with the

@@ -7,14 +7,14 @@
 #
 #   scripts/slab-build-film.sh [OUT.mp4] [SERVER]
 #
-# OUT defaults to docs/research/ocean/slab-construction.mp4. SERVER is a running dev server for this
+# OUT defaults to ~/.openagents/archive/docs/research/ocean/slab-construction.mp4. SERVER is a running dev server for this
 # checkout (default http://127.0.0.1:9681); start one with
 #   OA_SERVE_NO_API=1 OA_SERVE_NO_CODER=1 OA_SERVE_NO_ROOM=1 coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9681
 # after building slab.wasm. The film's length is the film plan's (metaverse/slab-build-film.coax,
 # about 215 s for the default run); FILM_SECONDS overrides it, FILM_SIZE the size.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-out="${1:-docs/research/ocean/slab-construction.mp4}"
+out="${1:-$HOME/.openagents/archive/docs/research/ocean/slab-construction.mp4}"
 server="${2:-http://127.0.0.1:9681}"
 seconds="${FILM_SECONDS:-216}"
 size="${FILM_SIZE:-1920x1080}"

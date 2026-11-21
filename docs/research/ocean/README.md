@@ -119,7 +119,7 @@ a focus on data centers and Bitcoin mining. Its full PDF is
 **What it is:** a shot-by-shot analysis of a 78-second explainer video from
 Nick Touran, a nuclear engineer who runs whatisnuclear.com and is listed as
 CTO of Ocean Atomics. The video itself is
-[ocean-atomics-reactor.mp4](ocean-atomics-reactor.mp4).
+`ocean-atomics-reactor.mp4` (archived out of git under `~/.openagents/archive/docs/research/ocean/ocean-atomics-reactor.mp4`, SHA-256 `e01f2fe2b90d28b483742153cabc3dcab1682d893c0ed53223c155c151859693`).
 
 **What it covers:**
 - Every caption and reactor label, copied from the screen. The reactor is a
@@ -192,6 +192,6 @@ plan in [issue 13682](https://github.com/OpenAgentsInc/openagents/issues/13682).
 |---|---|---|
 | [slab.jpeg](slab.jpeg) | SLAB's AI-generated concept image | palmer-luckey-post.md |
 | [silone-dome.mp4](silone-dome.mp4) | Ben Silone's dome render (46 s, no sound) | silone-dome.md |
-| [ocean-atomics-reactor.mp4](ocean-atomics-reactor.mp4) | Ocean Atomics' reactor explainer (78 s, music only) | ocean-atomics-reactor.md |
+| `ocean-atomics-reactor.mp4` (archived) | Ocean Atomics' reactor explainer (78 s, music only) | ocean-atomics-reactor.md |
 | [SLAB_Research_Report_2026-11-18.pdf](SLAB_Research_Report_2026-11-18.pdf) | Full SLAB research report | slab.md |
 | [OTEC_for_SLAB_Research_Report_2026-11-18.pdf](OTEC_for_SLAB_Research_Report_2026-11-18.pdf) | Full OTEC research report | otec.md |

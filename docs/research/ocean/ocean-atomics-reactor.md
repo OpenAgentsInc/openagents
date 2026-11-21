@@ -2,7 +2,7 @@
 
 Source: a 78-second explainer video from Nick Touran, shared on X from his
 account (`whatisnuclear`). The file is
-[ocean-atomics-reactor.mp4](ocean-atomics-reactor.mp4), originally named
+`ocean-atomics-reactor.mp4` (archived out of git under `~/.openagents/archive/docs/research/ocean/ocean-atomics-reactor.mp4`), originally named
 `whatisnuclear-2106132133043650587.mp4`.
 
 **Who.** Nick Touran is a nuclear engineer and reactor designer (Ph.D.,

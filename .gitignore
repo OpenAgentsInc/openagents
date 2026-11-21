@@ -103,3 +103,6 @@ build/pipeline/
 
 # Copied from metaverse/stage-resources/Cast.bin by apps/openagents-web/build.sh
 apps/openagents-web/demos/grid-crowd/assets/cast/Cast.bin
+
+# Ocean research videos live in ~/.openagents/archive/docs/research/ocean/
+docs/research/ocean/*.mp4
