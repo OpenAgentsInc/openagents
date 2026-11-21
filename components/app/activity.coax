@@ -49,6 +49,7 @@ AppActRow :: struct {
   calls: int;                 // a sub-agent's: the calls its agent has made, said at the row's end before that ("3 tool calls")
   opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
   path: string;               // the file it names, when its target is one: the target is a link that dispatches the row's action under id + ".path"
+  badge: string; badge_bad: bool; // optional compact right-aligned verification pill (e.g. "[E] replay verified · sha256:...")
   diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones, or a unified diff's hunks (diff.coax) with its lines added and removed at the row's end; diff_cut: it was longer
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
@@ -501,6 +502,22 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
     right -= measure_width(m, s.tool.face, took);
     _ := sheet_text(sh, m, -1, right, ly, s.tool.line, s.tool.face, s.faint, took);
     right -= a.verb_gap;
+  }
+  if r.badge.count > 0 {
+    // compact deterministic replay-verification pill (e.g. "[E] replay verified · sha256:...")
+    badge := sheet_pool(sh, r.badge);
+    bw := measure_width(m, s.mono_small.face, badge);
+    bpad: f32 = 6; bh := s.mono_small.line + 2;
+    pw_b := bw + 2 * bpad;
+    if right - pw_b > tx + a.verb_gap {
+      bx := right - pw_b; by := y + (rh - bh) / 2;
+      tone := ifx r.badge_bad then s.danger else s.success;
+      _ := sheet_box(sh, bx, by, pw_b, bh, bh / 2, 1.0f32, opacity(tone, 0.12f32), opacity(tone, 0.35f32));
+      _ := sheet_text(sh, m, -1, bx + bpad, by, bh, s.mono_small.face, tone, badge);
+      bb: [EL_ID] u8;
+      _ := uiframe_semantic(f, app_id(bb[..], id, ".badge"), EL_TEXT, badge, bx, by, pw_b, bh, 0, 0);
+      right = bx - a.verb_gap;
+    }
   }
   vw := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, r.verb);
   link_id := ""; px: f32 = 0; py: f32 = 0; pw: f32 = 0; pb: [EL_ID] u8;

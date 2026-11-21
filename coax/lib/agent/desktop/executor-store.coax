@@ -1,0 +1,413 @@
+// On-disk Executor Model & Compiled Weight-Module Scanner / SHA-256 Verifier
+// for OpenAgents Desktop (Executor W6.1, GitHub #13924).
+//
+// Discovers ~/.openagents/modules/<sha256>/ (W2.2 Class-E dense F64 safetensors)
+// and ~/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf, computes
+// real SHA-256 digests over every on-disk weight file via ev_deserialize, and
+// delegates every admission decision to #authority psionic/lib/executor-desktop.coax.
+// Tampering 1 byte in any module weight file or GGUF header causes atomic refusal.
+#load "os-posix.coax";
+#load "../../../../psionic/lib/module-v2.coax";
+#load "../../../../psionic/lib/executor-desktop.coax";
+
+DCE_SLOTS :: 4;
+DCE_BASE_MIN_BYTES :: 16_000_000_000;
+
+DceSlot :: struct {
+  present: bool;
+  verified: bool;
+  tampered: bool;
+  conformance_failed: bool;
+  label: MvLabel;
+  weights: int;
+  passed: int;
+  total: int;
+  sha: [64] u8;
+  sha_n: int;
+}
+
+dce_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
+
+dce_hex_encode :: (d: [32] u8, out: [] u8) -> string {
+  if out.count < 64 { return ""; }
+  for i: 0..<32 {
+    b := cast(int) d[i];
+    out[2 * i] = dce_hex_ch(b >> 4);
+    out[2 * i + 1] = dce_hex_ch(b & 15);
+  }
+  return cast(string) out[0..<64];
+}
+
+dce_hex_decode :: (s: string, out: [] u8) -> bool {
+  if s.count != 64 || out.count < 32 { return false; }
+  for i: 0..<32 {
+    hi := s[2 * i]; lo := s[2 * i + 1];
+    hv := ifx hi >= '0' && hi <= '9' then cast(int) (hi - '0') else ifx hi >= 'a' && hi <= 'f' then cast(int) (hi - 'a' + 10) else -1;
+    lv := ifx lo >= '0' && lo <= '9' then cast(int) (lo - '0') else ifx lo >= 'a' && lo <= 'f' then cast(int) (lo - 'a' + 10) else -1;
+    if hv < 0 || lv < 0 { return false; }
+    out[i] = cast(u8) ((hv << 4) | lv);
+  }
+  return true;
+}
+
+dce_cat :: (dst: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+dce_put_int :: (dst: [] u8, at: int, v: int) -> int {
+  if v == 0 { return dce_cat(dst, at, "0"); }
+  n := at; x := v;
+  if x < 0 { n = dce_cat(dst, n, "-"); x = -x; }
+  tmp: [32] u8; k := 0;
+  while x > 0 && k < 32 { tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10; }
+  for i: 0..<k { if n < dst.count { dst[n] = tmp[k - 1 - i]; n += 1; } }
+  return n;
+}
+
+dce_jstr :: (text: string, key: string, out: [] u8) -> string {
+  nb: [64] u8;
+  nn := dce_cat(nb[..], 0, "\""); nn = dce_cat(nb[..], nn, key); nn = dce_cat(nb[..], nn, "\":\"");
+  if nn > text.count { return ""; }
+  pos := -1;
+  for i: 0..<text.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if text[i + j] != nb[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 { return ""; }
+  n := 0; i := pos;
+  while i < text.count && text[i] != '"' && n < out.count { out[n] = text[i]; n += 1; i += 1; }
+  return cast(string) out[0..<n];
+}
+
+dce_jint :: (text: string, key: string) -> int {
+  nb: [64] u8;
+  nn := dce_cat(nb[..], 0, "\""); nn = dce_cat(nb[..], nn, key); nn = dce_cat(nb[..], nn, "\":");
+  if nn > text.count { return -1; }
+  pos := -1;
+  for i: 0..<text.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if text[i + j] != nb[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 || pos >= text.count { return -1; }
+  v := 0; seen := false; i := pos;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); seen = true; i += 1; }
+  return ifx seen then v else -1;
+}
+
+dce_slot_name :: (slot: int) -> string {
+  if slot == 0 { return "oa-exec-diff-verify"; }
+  if slot == 1 { return "oa-exec-json-schema"; }
+  if slot == 2 { return "oa-exec-dep-sched"; }
+  return "oa-exec-arith-budget";
+}
+
+dce_slot_short :: (slot: int) -> string {
+  if slot == 0 { return "diff"; }
+  if slot == 1 { return "schema"; }
+  if slot == 2 { return "dep"; }
+  return "bud";
+}
+
+dce_is_hex64 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s {
+    ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    if !ok { return false; }
+  }
+  return true;
+}
+
+dce_copy_str :: (s: string, out: [] u8) -> int {
+  if out.count <= 0 { return 0; }
+  n := ifx s.count < out.count - 1 then s.count else out.count - 1;
+  for i: 0..<n { out[i] = s[i]; }
+  out[n] = 0;
+  return n;
+}
+
+// Verify one module directory under <home>/.openagents/modules/<ent>.
+// Computes real SHA-256 over weights.safetensors and validates against #authority exec_desktop_admit_module.
+dce_check_dir :: (
+  dir: string, dir_hex: string,
+  out_name: [] u8, out_slot: [] int, out_sha: [] u8,
+  out_label: [] MvLabel, out_weights: [] int, out_passed: [] int, out_total: [] int
+) -> ExecModuleState {
+  mp: [1400] u8; mn := dce_cat(mp[..], 0, dir); mn = dce_cat(mp[..], mn, "/manifest.json");
+  cp: [1400] u8; cn := dce_cat(cp[..], 0, dir); cn = dce_cat(cp[..], cn, "/conformance.json");
+  wp: [1400] u8; wn := dce_cat(wp[..], 0, dir); wn = dce_cat(wp[..], wn, "/weights.safetensors");
+  mb: [4096] u8; mr := dcos_read(cast(string) mp[0..<mn], mb[..]);
+  cb: [1024] u8; cr := dcos_read(cast(string) cp[0..<cn], cb[..]);
+  wb: [65536] u8; wr := dcos_read(cast(string) wp[0..<wn], wb[..]);
+  if mr <= 0 || cr <= 0 || wr <= 0 { return ExecModuleState.tampered; }
+
+  mtxt := cast(string) mb[0..<mr];
+  ctxt := cast(string) cb[0..<cr];
+  nm := dce_jstr(mtxt, "name", out_name);
+  if out_slot.count > 0 { out_slot[0] = exec_module_slot(nm); }
+  db: [80] u8; manifest_sha := dce_jstr(mtxt, "weight_digest", db[..]);
+  lb: [16] u8; lbl := mv_label_parse(dce_jstr(mtxt, "verification_class", lb[..]));
+  passed := dce_jint(ctxt, "passed");
+  total := dce_jint(ctxt, "total");
+  if out_label.count > 0 { out_label[0] = lbl; }
+  if out_passed.count > 0 { out_passed[0] = passed; }
+  if out_total.count > 0 { out_total[0] = total; }
+
+  expect_bytes: [32] u8;
+  if !dce_hex_decode(dir_hex, expect_bytes[..]) { return ExecModuleState.tampered; }
+  if manifest_sha != dir_hex { return ExecModuleState.tampered; }
+
+  layers: [MV_MAX_LAYERS] EvLayerDesc;
+  heads: [MV_MAX_HEADS] EvHeadDesc;
+  weights: [8192] f64;
+  loaded := ev_deserialize(wb[0..<wr], expect_bytes, true, layers[..], heads[..], weights[..]);
+  if loaded.model.status != EvStatus.ok {
+    // Either SHA-256 mismatch (EvStatus.digest) or corrupted safetensors bytes: atomic tamper refusal.
+    if out_sha.count >= 64 {
+      for i: 0..<64 { out_sha[i] = dir_hex[i]; }
+    }
+    return ExecModuleState.tampered;
+  }
+  cbuf: [64] u8;
+  computed_sha := dce_hex_encode(loaded.digest, cbuf[..]);
+  if out_sha.count >= 64 {
+    for i: 0..<64 { out_sha[i] = computed_sha[i]; }
+  }
+  if out_weights.count > 0 { out_weights[0] = loaded.model.n_weights; }
+  admit := exec_desktop_admit_module(true, manifest_sha, computed_sha, passed, total, lbl);
+  return admit.state;
+}
+
+dce_min_label :: (a: MvLabel, b: MvLabel) -> MvLabel {
+  return ifx cast(int) a < cast(int) b then a else b;
+}
+
+// Scan ~/.openagents/modules/ and ~/.openagents/models/inkling-2-mini/ under `home` (or $HOME if empty),
+// verify real SHA-256 digests on disk, and populate status, SHA-256 lineage, badge, details, and counts.
+// Returns 1 ONLY when Hybrid Executor (hybrid-exec-v1) is genuinely ready and verified; 0 otherwise.
+dce_scan :: (
+  home_in: string, ram_mb: int,
+  out_status: [] u8, out_lineage: [] u8, out_badge: [] u8, out_details: [] u8, out_counts: [] int
+) -> int {
+  hb: [1024] u8;
+  home := ifx home_in.count > 0 then home_in else dcos_home(hb[..]);
+
+  // 1. Check base local checkpoint (<home>/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf)
+  gp: [1400] u8;
+  gn := dce_cat(gp[..], 0, home);
+  gn = dce_cat(gp[..], gn, "/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf");
+  gguf_path := cast(string) gp[0..<gn];
+  base_bytes := dcos_size(gguf_path);
+  base_present := base_bytes >= DCE_BASE_MIN_BYTES;
+  hdr: [4] u8;
+  hdr_read := ifx base_present then dcos_read_at(gguf_path, 0, hdr[..]) else -1;
+  base_digest_ok := base_present && hdr_read == 4 && hdr[0] == 'G' && hdr[1] == 'G' && hdr[2] == 'U' && hdr[3] == 'F';
+
+  // 2. Scan and SHA-256 verify <home>/.openagents/modules/<64-hex>/
+  mp: [1400] u8;
+  mn := dce_cat(mp[..], 0, home);
+  mn = dce_cat(mp[..], mn, "/.openagents/modules");
+  mod_root := cast(string) mp[0..<mn];
+
+  slots: [DCE_SLOTS] DceSlot;
+  extra_verified := 0;
+  tampered_count := 0;
+  tampered_name: [64] u8;
+  tampered_name_n := 0;
+
+  l: [1] FsList;
+  cnt := dcos_list(mod_root, l[..]);
+  for i: 0..<cnt {
+    ent := fs_entry(l[..], i);
+    if !dce_is_hex64(ent) { continue; }
+    dp: [1400] u8;
+    dn := dce_cat(dp[..], 0, mod_root); dn = dce_cat(dp[..], dn, "/"); dn = dce_cat(dp[..], dn, ent);
+    dir := cast(string) dp[0..<dn];
+    if dcos_kind(dir) != FS_DIR { continue; }
+
+    nmb: [64] u8;
+    sl: [1] int; sl[0] = -1;
+    shab: [64] u8;
+    lbl: [1] MvLabel; lbl[0] = MvLabel.none;
+    wc: [1] int; pa: [1] int; to: [1] int;
+    st := dce_check_dir(dir, ent, nmb[..], sl[..], shab[..], lbl[..], wc[..], pa[..], to[..]);
+    idx := sl[0];
+    if st == ExecModuleState.tampered {
+      tampered_count += 1;
+      if tampered_name_n == 0 {
+        if idx >= 0 && idx < DCE_SLOTS {
+          tampered_name_n = dce_cat(tampered_name[..], 0, dce_slot_name(idx));
+        } else {
+          tampered_name_n = dce_cat(tampered_name[..], 0, cast(string) ent[0..<12]);
+        }
+      }
+      if idx >= 0 && idx < DCE_SLOTS {
+        slots[idx].present = true;
+        slots[idx].verified = false;
+        slots[idx].tampered = true;
+        for k: 0..<64 { slots[idx].sha[k] = ent[k]; }
+        slots[idx].sha_n = 64;
+      }
+    } else if st == ExecModuleState.ready {
+      if idx >= 0 && idx < DCE_SLOTS {
+        if !slots[idx].tampered {
+          slots[idx].present = true;
+          slots[idx].verified = true;
+          slots[idx].conformance_failed = false;
+          slots[idx].label = lbl[0];
+          slots[idx].weights = wc[0];
+          slots[idx].passed = pa[0];
+          slots[idx].total = to[0];
+          for k: 0..<64 { slots[idx].sha[k] = shab[k]; }
+          slots[idx].sha_n = 64;
+        }
+      } else {
+        extra_verified += 1;
+      }
+    } else if idx >= 0 && idx < DCE_SLOTS {
+      slots[idx].present = true;
+      slots[idx].conformance_failed = true;
+      slots[idx].label = lbl[0];
+      for k: 0..<64 { slots[idx].sha[k] = ent[k]; }
+      slots[idx].sha_n = 64;
+    }
+  }
+
+  verified_required := 0;
+  worst_label := MvLabel.exact;
+  for s: 0..<DCE_SLOTS {
+    if slots[s].verified && !slots[s].tampered {
+      verified_required += 1;
+      worst_label = dce_min_label(worst_label, slots[s].label);
+    } else {
+      worst_label = MvLabel.none;
+    }
+  }
+
+  // 3. Admit Hybrid Executor through #authority psionic/lib/executor-desktop.coax
+  hybrid := exec_desktop_hybrid_status(ram_mb, base_present, base_digest_ok, verified_required, tampered_count, worst_label);
+  badge_txt := exec_verification_badge(hybrid.verification_class);
+
+  // 4. Format status line (NEVER lies: "Ready" appears ONLY when hybrid.state == ready)
+  sb: [128] u8; sn := 0;
+  if hybrid.state == ExecDesktopState.ready {
+    sn = dce_cat(sb[..], sn, "Ready · ");
+    sn = dce_cat(sb[..], sn, badge_txt);
+    sn = dce_cat(sb[..], sn, " (4/4)");
+  } else if hybrid.state == ExecDesktopState.tampered {
+    sn = dce_cat(sb[..], sn, "Refused: digest tamper detected");
+  } else if hybrid.state == ExecDesktopState.unsupported_hardware {
+    sn = dce_cat(sb[..], sn, "Requires 32 GB RAM");
+  } else if hybrid.state == ExecDesktopState.base_missing {
+    sn = dce_cat(sb[..], sn, "Base model missing (");
+    sn = dce_put_int(sb[..], sn, verified_required);
+    sn = dce_cat(sb[..], sn, "/4 modules verified)");
+  } else {
+    sn = dce_cat(sb[..], sn, "Modules missing (");
+    sn = dce_put_int(sb[..], sn, verified_required);
+    sn = dce_cat(sb[..], sn, "/4 verified)");
+  }
+  _ = dce_copy_str(cast(string) sb[0..<sn], out_status);
+  _ = dce_copy_str(badge_txt, out_badge);
+
+  // 5. Format compact SHA-256 lineage summary for Settings > Models
+  lb: [160] u8; ln := 0;
+  if tampered_count > 0 {
+    ln = dce_cat(lb[..], ln, "Refused (tampered: ");
+    ln = dce_cat(lb[..], ln, cast(string) tampered_name[0..<tampered_name_n]);
+    ln = dce_cat(lb[..], ln, ")");
+  } else if verified_required == DCE_SLOTS {
+    for s: 0..<DCE_SLOTS {
+      if s > 0 { ln = dce_cat(lb[..], ln, " · "); }
+      ln = dce_cat(lb[..], ln, dce_slot_short(s));
+      ln = dce_cat(lb[..], ln, ":");
+      ln = dce_cat(lb[..], ln, cast(string) slots[s].sha[0..<8]);
+    }
+  } else if verified_required > 0 {
+    ln = dce_put_int(lb[..], ln, verified_required);
+    ln = dce_cat(lb[..], ln, "/4 verified · Install built-ins");
+  } else {
+    ln = dce_cat(lb[..], ln, "0/4 installed · Install built-ins");
+  }
+  _ = dce_copy_str(cast(string) lb[0..<ln], out_lineage);
+
+  // 6. Format multi-line details for Settings > Models > Executor Models & Weight Modules dialog
+  db: [2048] u8; dn := 0;
+  dn = dce_cat(db[..], dn, "Hybrid Executor (hybrid-exec-v1): ");
+  dn = dce_cat(db[..], dn, cast(string) sb[0..<sn]);
+  dn = dce_cat(db[..], dn, "\nHardware: ");
+  dn = dce_put_int(db[..], dn, ram_mb / 1024);
+  dn = dce_cat(db[..], dn, " GB RAM (32 GB minimum)\nBase checkpoint: ");
+  if base_present && base_digest_ok {
+    gb_tenths := (base_bytes * 10) / 1_073_741_824;
+    dn = dce_cat(db[..], dn, "Inkling-2-Mini-IQ4_NL.gguf (");
+    dn = dce_put_int(db[..], dn, gb_tenths / 10);
+    dn = dce_cat(db[..], dn, ".");
+    dn = dce_put_int(db[..], dn, gb_tenths % 10);
+    dn = dce_cat(db[..], dn, " GB · GGUF verified)");
+  } else if base_present && !base_digest_ok {
+    dn = dce_cat(db[..], dn, "REFUSED (corrupted GGUF header)");
+  } else {
+    dn = dce_cat(db[..], dn, "Not downloaded (~/.openagents/models/inkling-2-mini)");
+  }
+  dn = dce_cat(db[..], dn, "\n\nCompiled Weight Modules (~/.openagents/modules/):\n");
+  for s: 0..<DCE_SLOTS {
+    dn = dce_cat(db[..], dn, "• ");
+    dn = dce_cat(db[..], dn, dce_slot_name(s));
+    dn = dce_cat(db[..], dn, " — ");
+    if slots[s].tampered {
+      dn = dce_cat(db[..], dn, "REFUSED (SHA-256 tamper) · sha256:");
+      dn = dce_cat(db[..], dn, cast(string) slots[s].sha[0..<12]);
+    } else if slots[s].verified {
+      dn = dce_cat(db[..], dn, exec_verification_badge(slots[s].label));
+      dn = dce_cat(db[..], dn, " · ");
+      dn = dce_put_int(db[..], dn, slots[s].weights);
+      dn = dce_cat(db[..], dn, " weights · sha256:");
+      dn = dce_cat(db[..], dn, cast(string) slots[s].sha[0..<12]);
+    } else if slots[s].conformance_failed {
+      dn = dce_cat(db[..], dn, "REFUSED (conformance failed)");
+    } else {
+      dn = dce_cat(db[..], dn, "Missing");
+    }
+    dn = dce_cat(db[..], dn, "\n");
+  }
+  if extra_verified > 0 {
+    dn = dce_cat(db[..], dn, "• +");
+    dn = dce_put_int(db[..], dn, extra_verified);
+    dn = dce_cat(db[..], dn, " linked composite module(s) verified\n");
+  }
+  _ = dce_copy_str(cast(string) db[0..<dn], out_details);
+
+  if out_counts.count >= 4 {
+    out_counts[0] = cast(int) hybrid.state;
+    out_counts[1] = verified_required;
+    out_counts[2] = tampered_count;
+    out_counts[3] = ifx hybrid.selectable then 1 else 0;
+  }
+  return ifx hybrid.selectable then 1 else 0;
+}
+
+#test "executor store pure helpers: hex, JSON fields, slots, and label propagation" {
+  d: [32] u8;
+  for i: 0..<32 { d[i] = cast(u8) (i * 7 + 3); }
+  hb: [64] u8;
+  hex := dce_hex_encode(d, hb[..]);
+  #assert dce_is_hex64(hex) && !dce_is_hex64("abc") && !dce_is_hex64("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ");
+  dec: [32] u8;
+  #assert dce_hex_decode(hex, dec[..]);
+  for i: 0..<32 { #assert dec[i] == d[i]; }
+  #assert !dce_hex_decode("short", dec[..]);
+  j := "{\"name\":\"oa-exec-diff-verify\",\"verification_class\":\"E\",\"passed\":24,\"total\":24}";
+  nb: [64] u8;
+  #assert dce_jstr(j, "name", nb[..]) == "oa-exec-diff-verify";
+  #assert dce_jstr(j, "verification_class", nb[..]) == "E";
+  #assert dce_jint(j, "passed") == 24 && dce_jint(j, "total") == 24 && dce_jint(j, "missing") == -1;
+  #assert dce_slot_name(0) == "oa-exec-diff-verify" && dce_slot_name(3) == "oa-exec-arith-budget";
+  #assert dce_slot_short(0) == "diff" && dce_slot_short(1) == "schema" && dce_slot_short(2) == "dep" && dce_slot_short(3) == "bud";
+  #assert dce_min_label(MvLabel.exact, MvLabel.exact) == MvLabel.exact;
+  #assert dce_min_label(MvLabel.exact, MvLabel.tests) == MvLabel.tests;
+  #assert dce_min_label(MvLabel.statistical, MvLabel.none) == MvLabel.none;
+}

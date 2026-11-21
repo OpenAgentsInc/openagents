@@ -223,6 +223,17 @@ extension CoderWindow {
             cd_settings_local(r.page, status)
             cd_inkling(r.page, on)
         }
+        syncExecutorModels()
+    }
+    func syncExecutorModels() {
+        let snap = ExecutorModelStore.scan()
+        let on: Int32 = snap.selectable ? 1 : 0
+        cd_settings_executor(page, snap.status, snap.lineage, snap.badge)
+        cd_hybrid_exec(page, on)
+        for r in runs.values where r.page != page {
+            cd_settings_executor(r.page, snap.status, snap.lineage, snap.badge)
+            cd_hybrid_exec(r.page, on)
+        }
     }
     func syncAntigravitySettings() {
         cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())

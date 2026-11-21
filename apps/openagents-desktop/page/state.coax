@@ -111,6 +111,7 @@ CP_ASK_GEMINI_KEY :: 38;    // Settings > Models > Gemini API key dialog
 CP_ASK_INSTRUCTIONS :: 44;  // Settings > General > Agent instructions: the editor (~/.openagents/instructions.md, #13808)
 CP_ASK_INSTRUCTIONS_RESET :: 45;  // Settings > General > Agent instructions: Reset to default (#13808)
 CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and manager UI (#13826)
+CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
 CP_ASK_WALLET_CONNECT :: 55; // Settings > Wallet: connect/create/sync Spark wallet (#13900)
 CP_ASK_WALLET_RECEIVE :: 56; // Settings > Wallet: generate BOLT11 / Spark receive request (#13900)
@@ -249,6 +250,7 @@ CoderPage :: struct {
   claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
   agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
   inkling: bool;              // Inkling 2 Mini local checkpoint is installed on >=32GB Mac: shown in the model picker (#13825)
+  hybrid_exec: bool;          // Hybrid Executor (hybrid-exec-v1) verified Ready (base + 4/4 Class-E SHA-256 modules, #13924)
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
   open: int;                  // the row a press asked to open
@@ -344,6 +346,10 @@ CoderPage :: struct {
   set_claude: [48] u8; set_claude_n: int;
   set_gemini: [48] u8; set_gemini_n: int;
   set_local_status: [96] u8; set_local_status_n: int;  // Local Models status in Settings > Models (#13826)
+  set_exec_status: [128] u8; set_exec_status_n: int;   // Hybrid Executor status in Settings > Models (#13924)
+  set_exec_lineage: [160] u8; set_exec_lineage_n: int; // Compiled Weight Modules SHA-256 lineage in Settings > Models (#13924)
+  set_exec_badge: [48] u8; set_exec_badge_n: int;      // Verification-class badge ("Exact Replay [E]", "Unverified [N]", #13924)
+  hybrid_desc: [128] u8;                               // Picker subtitle for Hybrid Executor (#13924)
   set_wallet_status: [96] u8; set_wallet_status_n: int;   // Settings > Wallet status (#13900)
   set_wallet_balance: [64] u8; set_wallet_balance_n: int; // Settings > Wallet balance in sats (#13900)
   set_wallet_addr: [128] u8; set_wallet_addr_n: int;      // Settings > Wallet Spark/Lightning address (#13900)

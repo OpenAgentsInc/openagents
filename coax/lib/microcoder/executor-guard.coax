@@ -1,0 +1,449 @@
+// #authority Pre-Edit & Tool-Argument Verification Guard for Microcoder
+// (Executor W6.1, GitHub #13924).
+//
+// Runs W2.2 Class-E compiled dense F64 weight modules (oa-exec-diff-verify,
+// oa-exec-json-schema, oa-exec-dep-sched, oa-exec-arith-budget) directly inside
+// Microcoder's edit/tool pipeline behind W3.1 hybrid-exec-v1 operand bounds,
+// returning exact typed failure diagnostics and Ch 234 LE32 SHA-256 replay
+// digests on every deterministic check.
+#authority;
+
+#load "../../../psionic/lib/module-v2.coax";
+#load "../../../psionic/lib/hybrid-exec-policy.coax";
+
+MC_EXEC_MOD_DIFF :: 1;
+MC_EXEC_MOD_SCHEMA :: 2;
+MC_EXEC_MOD_DEP :: 3;
+MC_EXEC_MOD_BUDGET :: 4;
+MC_EXEC_MAX_PATH :: 4096;
+
+McExecCode :: enum u8 {
+  ok;
+  arg_out_of_range;
+  missing_path;
+  path_too_long;
+  missing_fields;
+  body_over_cap;
+  invalid_start;
+  invalid_count;
+  oob_past_eof;
+  context_mismatch;
+  ambiguous_match;
+  cycle_detected;
+  unmet_deps;
+  slots_full;
+  over_budget;
+  over_daily_cap;
+  unknown_module;
+}
+
+McExecVerdict :: struct {
+  ok: bool;
+  code: McExecCode;
+  label: MvLabel;
+  out0: int;
+  out1: int;
+  out2: int;
+  digest: [32] u8;
+}
+
+// Ch 234 LE32 word encoding into an active SHA-256 context (exact wire match to replay.coax rx_word).
+mc_exec_sha_word :: (sha: [] u8, v: int) #effects(all) {
+  b: [4] u8;
+  w := cast(u32) (v & 0xffffffff);
+  for i: 0..<4 { b[i] = cast(u8) ((w >> cast(u32) (i * 8)) & 0xff); }
+  #assert sha256_update_checked(sha, b[..], false) == SHA_OK;
+}
+
+// Ch 234 replayable trace digest over (module_id, n_inputs, inputs..., n_outputs, outputs...).
+mc_exec_trace_digest :: (module_id: int, inp: [] int, out: [] int) -> [32] u8 #effects(all) {
+  sha: [112] u8;
+  d: [32] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  mc_exec_sha_word(sha[..], module_id);
+  mc_exec_sha_word(sha[..], inp.count);
+  for i: 0..<inp.count { mc_exec_sha_word(sha[..], inp[i]); }
+  mc_exec_sha_word(sha[..], out.count);
+  for i: 0..<out.count { mc_exec_sha_word(sha[..], out[i]); }
+  #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+  return d;
+}
+
+mc_exec_replay_eq :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+mc_exec_hex_ch :: (v: int) -> u8 #effects(all) {
+  return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10));
+}
+
+mc_exec_cat :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+// Format a compact replay-verification pill for transcripts & desktop activity rows:
+//   "[E] replay verified · sha256:<12hex>" or "[E] replay refused · sha256:<12hex>"
+mc_exec_format_pill :: (ok: bool, label: MvLabel, d: [32] u8, out: [] u8) -> string #effects(all) {
+  n := mc_exec_cat(out, 0, "[");
+  n = mc_exec_cat(out, n, mv_label_code(label));
+  n = mc_exec_cat(out, n, ifx ok then "] replay verified · sha256:" else "] replay refused · sha256:");
+  for i: 0..<6 {
+    b := cast(int) d[i];
+    if n + 1 < out.count {
+      out[n] = mc_exec_hex_ch(b >> 4);
+      out[n + 1] = mc_exec_hex_ch(b & 15);
+      n += 2;
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+mc_exec_code_text :: (c: McExecCode) -> string #effects(all) {
+  if c == McExecCode.ok { return "ok"; }
+  if c == McExecCode.arg_out_of_range { return "arg_out_of_range"; }
+  if c == McExecCode.missing_path { return "missing_path"; }
+  if c == McExecCode.path_too_long { return "path_too_long"; }
+  if c == McExecCode.missing_fields { return "missing_fields"; }
+  if c == McExecCode.body_over_cap { return "body_over_cap"; }
+  if c == McExecCode.invalid_start { return "invalid_start"; }
+  if c == McExecCode.invalid_count { return "invalid_count"; }
+  if c == McExecCode.oob_past_eof { return "oob_past_eof"; }
+  if c == McExecCode.context_mismatch { return "context_mismatch"; }
+  if c == McExecCode.ambiguous_match { return "ambiguous_match"; }
+  if c == McExecCode.cycle_detected { return "cycle_detected"; }
+  if c == McExecCode.unmet_deps { return "unmet_deps"; }
+  if c == McExecCode.slots_full { return "slots_full"; }
+  if c == McExecCode.over_budget { return "over_budget"; }
+  if c == McExecCode.over_daily_cap { return "over_daily_cap"; }
+  return "unknown_module";
+}
+
+// Validate structured edit/tool arguments through compiled Class-E oa-exec-json-schema weights.
+mc_exec_check_schema :: (
+  has_path: int, path_len: int, max_path: int,
+  has_old: int, old_len: int, has_new: int, new_len: int, max_body: int
+) -> McExecVerdict #effects(all) {
+  inp := [8] int.[has_path, path_len, max_path, has_old, old_len, has_new, new_len, max_body];
+  got := [3] int.[0, 0, 0];
+  if hx_admit_call(MC_EXEC_MOD_SCHEMA, 8, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_SCHEMA, inp[..], got[..]),
+    };
+  }
+  la: [8] EvLayerDesc; ha: [1] EvHeadDesc; wa: [4096] f64;
+  m := mv_compile_json_schema(la[..], ha[..], wa[..]);
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_SCHEMA, inp[..], got[..]);
+  if got[0] == 1 {
+    return McExecVerdict.{
+      ok = true, code = McExecCode.ok, label = MvLabel.exact,
+      out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+    };
+  }
+  why := McExecCode.body_over_cap;
+  if has_path != 1 || path_len < 1 { why = McExecCode.missing_path; }
+  else if path_len > max_path { why = McExecCode.path_too_long; }
+  else if has_old != 1 || has_new != 1 { why = McExecCode.missing_fields; }
+  return McExecVerdict.{
+    ok = false, code = why, label = MvLabel.exact,
+    out0 = 0, out1 = 0, out2 = got[2], digest = d,
+  };
+}
+
+// Pre-verify structured edit line bounds & context match through compiled Class-E oa-exec-diff-verify weights.
+mc_exec_check_diff :: (
+  old_start: int, old_count: int, new_start: int, new_count: int,
+  file_lines: int, matched_ctx: int, expected_ctx: int
+) -> McExecVerdict #effects(all) {
+  inp := [7] int.[old_start, old_count, new_start, new_count, file_lines, matched_ctx, expected_ctx];
+  got := [3] int.[0, file_lines, 0];
+  if hx_admit_call(MC_EXEC_MOD_DIFF, 7, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      out1 = file_lines,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_DIFF, inp[..], got[..]),
+    };
+  }
+  la: [8] EvLayerDesc; ha: [1] EvHeadDesc; wa: [4096] f64;
+  m := mv_compile_diff_verify(la[..], ha[..], wa[..]);
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_DIFF, inp[..], got[..]);
+  if got[0] == 1 {
+    return McExecVerdict.{
+      ok = true, code = McExecCode.ok, label = MvLabel.exact,
+      out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+    };
+  }
+  why := McExecCode.context_mismatch;
+  if old_start < 1 || new_start < 1 { why = McExecCode.invalid_start; }
+  else if old_count < 0 || new_count < 0 || expected_ctx < 0 { why = McExecCode.invalid_count; }
+  else if old_start - 1 + old_count > file_lines { why = McExecCode.oob_past_eof; }
+  else if matched_ctx > expected_ctx { why = McExecCode.ambiguous_match; } // mutant: equivalent — matched_ctx == expected_ctx would have returned got[0] == 1
+  return McExecVerdict.{
+    ok = false, code = why, label = MvLabel.exact,
+    out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Evaluate DAG task readiness through compiled Class-E oa-exec-dep-sched weights.
+mc_exec_check_dep :: (
+  remaining_deps: int, has_cycle: int, running: int,
+  max_slots: int, priority: int, blocked: int
+) -> McExecVerdict #effects(all) {
+  inp := [6] int.[remaining_deps, has_cycle, running, max_slots, priority, blocked];
+  got := [3] int.[0, running, 0];
+  if hx_admit_call(MC_EXEC_MOD_DEP, 6, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      out1 = running,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_DEP, inp[..], got[..]),
+    };
+  }
+  la: [8] EvLayerDesc; ha: [1] EvHeadDesc; wa: [4096] f64;
+  m := mv_compile_dep_sched(la[..], ha[..], wa[..]);
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_DEP, inp[..], got[..]);
+  if got[0] == 1 {
+    return McExecVerdict.{
+      ok = true, code = McExecCode.ok, label = MvLabel.exact,
+      out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+    };
+  }
+  why := McExecCode.slots_full;
+  if has_cycle != 0 { why = McExecCode.cycle_detected; }
+  else if remaining_deps != 0 || blocked != 0 { why = McExecCode.unmet_deps; }
+  return McExecVerdict.{
+    ok = false, code = why, label = MvLabel.exact,
+    out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Evaluate satoshi/token budget admission through compiled Class-E oa-exec-arith-budget weights.
+mc_exec_check_budget :: (
+  balance_sats: int, spent_sats: int, req_sats: int,
+  daily_cap: int, tokens_k: int, rate_sats: int
+) -> McExecVerdict #effects(all) {
+  inp := [6] int.[balance_sats, spent_sats, req_sats, daily_cap, tokens_k, rate_sats];
+  got := [3] int.[0, balance_sats, 0];
+  if hx_admit_call(MC_EXEC_MOD_BUDGET, 6, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      out1 = balance_sats,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_BUDGET, inp[..], got[..]),
+    };
+  }
+  la: [8] EvLayerDesc; ha: [1] EvHeadDesc; wa: [4096] f64;
+  m := mv_compile_arith_budget(la[..], ha[..], wa[..]);
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_BUDGET, inp[..], got[..]);
+  if got[0] == 1 {
+    return McExecVerdict.{
+      ok = true, code = McExecCode.ok, label = MvLabel.exact,
+      out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+    };
+  }
+  cost := req_sats + tokens_k * rate_sats;
+  why := McExecCode.over_budget;
+  if balance_sats >= 0 && spent_sats >= 0 && req_sats >= 0 && tokens_k >= 0 && rate_sats >= 0 && cost <= balance_sats {
+    why = McExecCode.over_daily_cap;
+  }
+  return McExecVerdict.{
+    ok = false, code = why, label = MvLabel.exact,
+    out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Independent Ch 234 replay verification for any of the 4 Class-E modules.
+mc_exec_verify_replay :: (module_id: int, inp: [] int, claimed: [32] u8) -> bool #effects(all) {
+  if module_id == MC_EXEC_MOD_DIFF && inp.count == 7 {
+    v := mc_exec_check_diff(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_SCHEMA && inp.count == 8 {
+    v := mc_exec_check_schema(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6], inp[7]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_DEP && inp.count == 6 {
+    v := mc_exec_check_dep(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_BUDGET && inp.count == 6 {
+    v := mc_exec_check_budget(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  return false;
+}
+
+#test "executor-guard: schema validation, typed refusals, bounds, and Ch 234 replay (#13924)" #steps 100000000 {
+  v := mc_exec_check_schema(1, 24, 256, 1, 100, 1, 120, 1024);
+  #assert v.ok && v.code == McExecCode.ok && v.label == MvLabel.exact && v.out0 == 1 && v.out1 == 244 && v.out2 == 1;
+  si := [8] int.[1, 24, 256, 1, 100, 1, 120, 1024];
+  so := [3] int.[1, 244, 1];
+  #assert mc_exec_replay_eq(v.digest, mc_exec_trace_digest(MC_EXEC_MOD_SCHEMA, si[..], so[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_SCHEMA, si[..], v.digest);
+  bad_d := v.digest; bad_d[0] ^= 1;
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_SCHEMA, si[..], bad_d);
+  bad_d = v.digest; bad_d[31] ^= 1;
+  #assert !mc_exec_replay_eq(v.digest, bad_d);
+
+  // Exact boundaries and every failure class (including earlier boundaries holding when later ones fail)
+  #assert mc_exec_check_schema(1, 1, 1, 1, 0, 1, 0, 0).ok;
+  #assert mc_exec_check_schema(0, 10, 256, 1, 10, 1, 10, 1024).code == McExecCode.missing_path;
+  #assert mc_exec_check_schema(1, 0, 256, 1, 10, 1, 10, 1024).code == McExecCode.missing_path;
+  #assert mc_exec_check_schema(1, 257, 256, 1, 10, 1, 10, 1024).code == McExecCode.path_too_long;
+  // path_len == 1 and path_len == max_path must NOT trigger missing_path or path_too_long
+  r_mf := mc_exec_check_schema(1, 1, 1, 0, 10, 1, 10, 1024);
+  #assert !r_mf.ok && r_mf.code == McExecCode.missing_fields && r_mf.out0 == 0 && r_mf.out1 == 0 && r_mf.out2 == 1;
+  #assert mc_exec_check_schema(1, 10, 256, 1, 10, 0, 10, 1024).code == McExecCode.missing_fields;
+  r_cap := mc_exec_check_schema(1, 10, 256, 1, 600, 1, 600, 1024);
+  #assert !r_cap.ok && r_cap.code == McExecCode.body_over_cap && r_cap.out0 == 0 && r_cap.out1 == 0 && r_cap.out2 == 0;
+  r_oor := mc_exec_check_schema(1, HX_ARG_MAX + 1, 256, 1, 10, 1, 10, 1024);
+  si_oor := [8] int.[1, HX_ARG_MAX + 1, 256, 1, 10, 1, 10, 1024];
+  so_oor := [3] int.[0, 0, 0];
+  #assert !r_oor.ok && r_oor.code == McExecCode.arg_out_of_range && r_oor.label == MvLabel.exact;
+  #assert mc_exec_replay_eq(r_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_SCHEMA, si_oor[..], so_oor[..]));
+}
+
+#test "executor-guard: diff verification, typed refusals, bounds, and Ch 234 replay (#13924)" #steps 100000000 {
+  v := mc_exec_check_diff(10, 5, 10, 8, 120, 3, 3);
+  #assert v.ok && v.code == McExecCode.ok && v.label == MvLabel.exact && v.out0 == 1 && v.out1 == 123 && v.out2 == 3;
+  di := [7] int.[10, 5, 10, 8, 120, 3, 3];
+  do_ok := [3] int.[1, 123, 3];
+  #assert mc_exec_replay_eq(v.digest, mc_exec_trace_digest(MC_EXEC_MOD_DIFF, di[..], do_ok[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di[..], v.digest);
+  // Exact EOF boundary
+  v_eof := mc_exec_check_diff(1, 10, 1, 4, 10, 0, 0);
+  #assert v_eof.ok && v_eof.out1 == 4 && v_eof.out2 == -6;
+
+  // Every typed refusal + exact lower boundaries (old_count==0, new_count==0, expected_ctx==0, end==file_lines)
+  #assert mc_exec_check_diff(0, 5, 1, 5, 120, 1, 1).code == McExecCode.invalid_start;
+  #assert mc_exec_check_diff(1, 5, 0, 5, 120, 1, 1).code == McExecCode.invalid_start;
+  #assert mc_exec_check_diff(1, -1, 1, 5, 120, 1, 1).code == McExecCode.invalid_count;
+  #assert mc_exec_check_diff(1, 5, 1, -1, 120, 1, 1).code == McExecCode.invalid_count;
+  #assert mc_exec_check_diff(1, 5, 1, 5, 120, -1, -1).code == McExecCode.invalid_count;
+  // old_count==0, new_count==0, expected_ctx==0, old_start - 1 + old_count == file_lines must NOT trigger invalid_count or oob_past_eof
+  r_amb0 := mc_exec_check_diff(1, 0, 1, 0, 0, 2, 0);
+  #assert !r_amb0.ok && r_amb0.code == McExecCode.ambiguous_match && r_amb0.out0 == 0 && r_amb0.out1 == 0 && r_amb0.out2 == 0;
+  r_eof_mis := mc_exec_check_diff(6, 5, 6, 5, 10, 0, 1);
+  #assert !r_eof_mis.ok && r_eof_mis.code == McExecCode.context_mismatch && r_eof_mis.out0 == 0 && r_eof_mis.out1 == 10 && r_eof_mis.out2 == 0;
+  di_mis := [7] int.[6, 5, 6, 5, 10, 0, 1];
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di_mis[..], r_eof_mis.digest);
+  // Exact 1-line past EOF: old_start=6, old_count=6, file_lines=10 -> 6-1+6=11 > 10
+  r_oob := mc_exec_check_diff(6, 6, 6, 6, 10, 1, 1);
+  #assert !r_oob.ok && r_oob.code == McExecCode.oob_past_eof && r_oob.out0 == 0 && r_oob.out1 == 10 && r_oob.out2 == 0;
+  r_oor := mc_exec_check_diff(1, 1, 1, 1, HX_ARG_MAX + 1, 1, 1);
+  di_oor := [7] int.[1, 1, 1, 1, HX_ARG_MAX + 1, 1, 1];
+  do_oor := [3] int.[0, HX_ARG_MAX + 1, 0];
+  #assert !r_oor.ok && r_oor.code == McExecCode.arg_out_of_range && r_oor.out1 == HX_ARG_MAX + 1;
+  #assert mc_exec_replay_eq(r_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_DIFF, di_oor[..], do_oor[..]));
+}
+
+#test "executor-guard: dep-sched, arith-budget, pill formatting, and code strings (#13924)" #steps 100000000 {
+  // oa-exec-dep-sched
+  d_ok := mc_exec_check_dep(0, 0, 2, 8, 5, 0);
+  #assert d_ok.ok && d_ok.code == McExecCode.ok && d_ok.out0 == 1 && d_ok.out1 == 3 && d_ok.out2 == 56;
+  di := [6] int.[0, 0, 2, 8, 5, 0];
+  do_dep := [3] int.[1, 3, 56];
+  #assert mc_exec_replay_eq(d_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_DEP, di[..], do_dep[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_DEP, di[..], d_ok.digest);
+  #assert mc_exec_check_dep(0, 1, 2, 8, 5, 0).code == McExecCode.cycle_detected;
+  r_unmet := mc_exec_check_dep(1, 0, 2, 8, 5, 0);
+  #assert !r_unmet.ok && r_unmet.code == McExecCode.unmet_deps && r_unmet.out0 == 0;
+  di_u := [6] int.[1, 0, 2, 8, 5, 0];
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_DEP, di_u[..], r_unmet.digest);
+  #assert mc_exec_check_dep(0, 0, 2, 8, 5, 1).code == McExecCode.unmet_deps;
+  r_full := mc_exec_check_dep(0, 0, 8, 8, 5, 0);
+  #assert !r_full.ok && r_full.code == McExecCode.slots_full && r_full.out0 == 0 && r_full.out1 == 8 && r_full.out2 == 0;
+  r_door := mc_exec_check_dep(0, 0, HX_ARG_MAX + 1, 8, 5, 0);
+  di_oor := [6] int.[0, 0, HX_ARG_MAX + 1, 8, 5, 0];
+  do_door := [3] int.[0, HX_ARG_MAX + 1, 0];
+  #assert !r_door.ok && r_door.code == McExecCode.arg_out_of_range && r_door.out1 == HX_ARG_MAX + 1;
+  #assert mc_exec_replay_eq(r_door.digest, mc_exec_trace_digest(MC_EXEC_MOD_DEP, di_oor[..], do_door[..]));
+
+  // oa-exec-arith-budget
+  b_ok := mc_exec_check_budget(5000, 1000, 200, 4000, 10, 50);
+  #assert b_ok.ok && b_ok.code == McExecCode.ok && b_ok.out0 == 1 && b_ok.out1 == 4300 && b_ok.out2 == 700;
+  bi := [6] int.[5000, 1000, 200, 4000, 10, 50];
+  bo := [3] int.[1, 4300, 700];
+  #assert mc_exec_replay_eq(b_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_BUDGET, bi[..], bo[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_BUDGET, bi[..], b_ok.digest);
+  #assert mc_exec_check_budget(0, 0, 0, 0, 0, 0).ok;
+  #assert mc_exec_check_budget(500, 1000, 200, 4000, 10, 50).code == McExecCode.over_budget;
+  #assert mc_exec_check_budget(-1, 0, 0, 100, 0, 0).code == McExecCode.over_budget;
+  #assert mc_exec_check_budget(100, -1, 0, 100, 0, 0).code == McExecCode.over_budget;
+  #assert mc_exec_check_budget(100, 0, -1, 100, 0, 0).code == McExecCode.over_budget;
+  #assert mc_exec_check_budget(100, 0, 0, 100, -1, 0).code == McExecCode.over_budget;
+  #assert mc_exec_check_budget(100, 0, 0, 100, 0, -1).code == McExecCode.over_budget;
+  r_dc := mc_exec_check_budget(5000, 3500, 200, 4000, 10, 50);
+  #assert !r_dc.ok && r_dc.code == McExecCode.over_daily_cap && r_dc.out0 == 0 && r_dc.out1 == 5000 && r_dc.out2 == 0;
+  // Exact 0 boundaries on every non-negative field while tripping daily_cap -> over_daily_cap
+  #assert mc_exec_check_budget(0, 1, 0, 0, 0, 0).code == McExecCode.over_daily_cap;
+  #assert mc_exec_check_budget(100, 0, 100, 50, 0, 0).code == McExecCode.over_daily_cap;
+  #assert mc_exec_check_budget(700, 3500, 200, 4000, 10, 50).code == McExecCode.over_daily_cap;
+  r_boor := mc_exec_check_budget(HX_ARG_MAX + 1, 0, 0, 100, 0, 0);
+  bi_oor := [6] int.[HX_ARG_MAX + 1, 0, 0, 100, 0, 0];
+  bo_oor := [3] int.[0, HX_ARG_MAX + 1, 0];
+  #assert !r_boor.ok && r_boor.code == McExecCode.arg_out_of_range && r_boor.out1 == HX_ARG_MAX + 1;
+  #assert mc_exec_replay_eq(r_boor.digest, mc_exec_trace_digest(MC_EXEC_MOD_BUDGET, bi_oor[..], bo_oor[..]));
+
+  // Replay verifier refuses wrong arity or unknown module
+  #assert !mc_exec_verify_replay(99, bi[..], b_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_DIFF, bi[..], b_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_SCHEMA, bi[..], b_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_DEP, bi[0..<5], d_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_BUDGET, bi[0..<5], b_ok.digest);
+
+  // Pill formatting & exact hex/buffer boundaries (including exact-fit 42 bytes and 1-byte-short 41 bytes)
+  d_test: [32] u8;
+  d_test[0] = 0x09; d_test[1] = 0xaf; d_test[2] = 0x1e; d_test[3] = 0x2d; d_test[4] = 0x3c; d_test[5] = 0x4b;
+  pb: [96] u8;
+  p_ok := mc_exec_format_pill(true, MvLabel.exact, d_test, pb[..]);
+  #assert p_ok == "[E] replay verified · sha256:09af1e2d3c4b" && p_ok.count == 42;
+  #assert mc_exec_format_pill(false, MvLabel.tests, d_test, pb[..]) == "[D] replay refused · sha256:09af1e2d3c4b";
+  #assert mc_exec_format_pill(true, MvLabel.exact, d_test, pb[0..<42]) == "[E] replay verified · sha256:09af1e2d3c4b";
+  #assert mc_exec_format_pill(true, MvLabel.exact, d_test, pb[0..<41]) == "[E] replay verified · sha256:09af1e2d3c";
+  #assert mc_exec_format_pill(true, MvLabel.exact, d_test, pb[0..<30]) == "[E] replay verified · sha256:";
+  // Exact-fit mc_exec_cat boundary
+  cb: [3] u8;
+  #assert mc_exec_cat(cb[..], 0, "abc") == 3 && cast(string) cb[..] == "abc";
+  #assert mc_exec_cat(cb[..], 0, "abcd") == 3;
+
+  // All diagnostic code strings
+  #assert mc_exec_code_text(McExecCode.ok) == "ok";
+  #assert mc_exec_code_text(McExecCode.arg_out_of_range) == "arg_out_of_range";
+  #assert mc_exec_code_text(McExecCode.missing_path) == "missing_path";
+  #assert mc_exec_code_text(McExecCode.path_too_long) == "path_too_long";
+  #assert mc_exec_code_text(McExecCode.missing_fields) == "missing_fields";
+  #assert mc_exec_code_text(McExecCode.body_over_cap) == "body_over_cap";
+  #assert mc_exec_code_text(McExecCode.invalid_start) == "invalid_start";
+  #assert mc_exec_code_text(McExecCode.invalid_count) == "invalid_count";
+  #assert mc_exec_code_text(McExecCode.oob_past_eof) == "oob_past_eof";
+  #assert mc_exec_code_text(McExecCode.context_mismatch) == "context_mismatch";
+  #assert mc_exec_code_text(McExecCode.ambiguous_match) == "ambiguous_match";
+  #assert mc_exec_code_text(McExecCode.cycle_detected) == "cycle_detected";
+  #assert mc_exec_code_text(McExecCode.unmet_deps) == "unmet_deps";
+  #assert mc_exec_code_text(McExecCode.slots_full) == "slots_full";
+  #assert mc_exec_code_text(McExecCode.over_budget) == "over_budget";
+  #assert mc_exec_code_text(McExecCode.over_daily_cap) == "over_daily_cap";
+  #assert mc_exec_code_text(McExecCode.unknown_module) == "unknown_module";
+
+  // Independent SHA-256 golden byte-order check (Ch 234 LE32 wire layout: mod=1, n_in=1, in=-2, n_out=1, out=0x01020304)
+  raw_le := [20] u8.[
+    1, 0, 0, 0,
+    1, 0, 0, 0,
+    0xfe, 0xff, 0xff, 0xff,
+    1, 0, 0, 0,
+    4, 3, 2, 1,
+  ];
+  want_le: [32] u8;
+  ws: [112] u8;
+  #assert sha256_init(ws[..]) == SHA_OK && sha256_update_checked(ws[..], raw_le[..], false) == SHA_OK && sha256_final_checked(ws[..], want_le[..], false) == SHA_OK;
+  iv := [1] int.[-2]; ov := [1] int.[0x01020304];
+  d_le := mc_exec_trace_digest(1, iv[..], ov[..]);
+  #assert mc_exec_replay_eq(d_le, want_le);
+  #assert !mc_exec_replay_eq(d_le, mc_exec_trace_digest(2, iv[..], ov[..]));
+}

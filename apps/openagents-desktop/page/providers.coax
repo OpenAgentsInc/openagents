@@ -9,6 +9,7 @@ CP_PROV_INKLING :: 2;   // Local Inkling 2 Mini via Psionic Metal + mcworker
 CP_PROV_CODEX :: 3;     // OpenAI Codex CLI (`codex`)
 CP_PROV_CURSOR :: 4;    // Cursor ACP CLI (`agent` / `cursor`)
 CP_PROV_ACP :: 5;       // User-registered generic ACP CLI binary
+CP_PROV_HYBRID :: 6;    // Local Hybrid Executor (hybrid-exec-v1) via Psionic Metal + W2.2 modules (#13924)
 
 // Host actions (coder_page_action; non-conflicting with state.coax / mcpskills.coax 0..74).
 CP_ASK_CODEX :: 75;        // Settings > Models > Codex status/configure dialog
@@ -268,6 +269,7 @@ cp_codex_idx :: (s: [] CoderPage) -> int {
   }
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
+  if s[0].hybrid_exec { n += 1; }
   return n;
 }
 cp_is_codex :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].codex && idx == cp_codex_idx(s); }
@@ -281,6 +283,7 @@ cp_cursor_idx :: (s: [] CoderPage) -> int {
   }
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
+  if s[0].hybrid_exec { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   return n;
 }
@@ -295,6 +298,7 @@ cp_acp_base_idx :: (s: [] CoderPage) -> int {
   }
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
+  if s[0].hybrid_exec { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   if s[0].prov[0].cursor { n += 1; }
   return n;
@@ -313,6 +317,7 @@ cp_is_acp :: (s: [] CoderPage, idx: int) -> bool { return cp_acp_slot_for_model(
 cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
   if cp_is_agy(s, idx) { return CP_PROV_AGY; }
   if cp_is_inkling(s, idx) { return CP_PROV_INKLING; }
+  if cp_is_hybrid(s, idx) { return CP_PROV_HYBRID; }
   if cp_is_codex(s, idx) { return CP_PROV_CODEX; }
   if cp_is_cursor(s, idx) { return CP_PROV_CURSOR; }
   if cp_is_acp(s, idx) { return CP_PROV_ACP; }

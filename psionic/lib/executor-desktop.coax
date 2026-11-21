@@ -1,0 +1,275 @@
+// #authority Executor Models & Compiled Weight-Module Admission for OpenAgents Desktop
+// (Executor W6.1, GitHub #13924).
+//
+// Enforces "No UI that lies":
+// - Every compiled weight module in ~/.openagents/modules/<sha256>/ is admitted only
+//   when its on-disk SHA-256 matches its manifest digest, conformance passes, and its
+//   verification class is E, D, or S (never N).
+// - Tampering 1 byte in any weight file or base checkpoint causes atomic refusal
+//   (`ExecDesktopState.tampered`, `selectable = false`) and NEVER reports Ready.
+// - Hybrid Executor (`hybrid-exec-v1`) is selectable in the composer picker ONLY when
+//   hardware >= 32 GB, the base Inkling checkpoint is genuinely present & valid, AND
+//   all 4 Class-E coding-agent modules pass SHA-256 verification.
+#authority;
+
+#load "inkling-desktop.coax";
+#load "module-v2-policy.coax";
+#load "hybrid-exec-policy.coax";
+
+EXEC_HYBRID_MODEL_ID :: "hybrid-exec-v1";
+EXEC_HYBRID_MODEL_LABEL :: "Hybrid Executor (hybrid-exec-v1)";
+EXEC_REQUIRED_MODULES :: 4;
+
+ExecModuleState :: enum u8 {
+  missing;
+  tampered;
+  conformance_failed;
+  unverified;
+  ready;
+}
+
+ExecModuleVerdict :: struct {
+  state: ExecModuleState;
+  ready: bool;
+  label: MvLabel;
+  status_code: int;
+}
+
+ExecDesktopState :: enum u8 {
+  unsupported_hardware;
+  base_missing;
+  modules_missing;
+  tampered;
+  ready;
+}
+
+ExecDesktopStatus :: struct {
+  state: ExecDesktopState;
+  selectable: bool;
+  verified_modules: int;
+  required_modules: int;
+  tampered_modules: int;
+  verification_class: MvLabel;
+  status_code: int;
+}
+
+// Map one of the 4 required W2.2 coding-agent module names to its 0..3 slot (-1 otherwise).
+exec_module_slot :: (name: string) -> int #effects(all) {
+  if name == "oa-exec-diff-verify" { return 0; }
+  if name == "oa-exec-json-schema" { return 1; }
+  if name == "oa-exec-dep-sched" { return 2; }
+  if name == "oa-exec-arith-budget" { return 3; }
+  return -1;
+}
+
+// Truthful verification-class badge string displayed in Settings > Models and picker metadata.
+exec_verification_badge :: (label: MvLabel) -> string #effects(all) {
+  if label == MvLabel.exact { return "Exact Replay [E]"; }
+  if label == MvLabel.tests { return "Deterministic [D]"; }
+  if label == MvLabel.statistical { return "Statistical [S]"; }
+  return "Unverified [N]";
+}
+
+// Admit a single installed weight module from ~/.openagents/modules/<sha256>/.
+// Any SHA-256 mismatch (even 1 byte) returns ExecModuleState.tampered and ready = false.
+exec_desktop_admit_module :: (
+  manifest_present: bool,
+  manifest_digest: string,
+  computed_digest: string,
+  passed: int,
+  total: int,
+  label: MvLabel
+) -> ExecModuleVerdict #export_c #effects(all) {
+  if !manifest_present {
+    return ExecModuleVerdict.{state = ExecModuleState.missing, ready = false, label = MvLabel.none, status_code = 1};
+  }
+  gate := mv_admit_install(manifest_digest, computed_digest, passed, total, label);
+  if gate == MvStatus.ok {
+    return ExecModuleVerdict.{state = ExecModuleState.ready, ready = true, label = label, status_code = 0};
+  }
+  if gate == MvStatus.conformance_failed {
+    return ExecModuleVerdict.{state = ExecModuleState.conformance_failed, ready = false, label = MvLabel.none, status_code = 3};
+  }
+  if gate == MvStatus.unverified {
+    return ExecModuleVerdict.{state = ExecModuleState.unverified, ready = false, label = MvLabel.none, status_code = 4};
+  }
+  return ExecModuleVerdict.{state = ExecModuleState.tampered, ready = false, label = MvLabel.none, status_code = 2};
+}
+
+// Evaluate overall Hybrid Executor (hybrid-exec-v1) readiness for OpenAgents Desktop.
+// Atomic refusal: ANY tampered module or invalid base digest forces ExecDesktopState.tampered.
+exec_desktop_hybrid_status :: (
+  ram_mb: int,
+  base_installed: bool,
+  base_digest_ok: bool,
+  verified_modules: int,
+  tampered_modules: int,
+  worst_label: MvLabel
+) -> ExecDesktopStatus #export_c #effects(all) {
+  if ram_mb < INKLING_MIN_RAM_MB {
+    return ExecDesktopStatus.{
+      state = ExecDesktopState.unsupported_hardware,
+      selectable = false,
+      verified_modules = verified_modules,
+      required_modules = EXEC_REQUIRED_MODULES,
+      tampered_modules = tampered_modules,
+      verification_class = MvLabel.none,
+      status_code = 1,
+    };
+  }
+  if verified_modules < 0 || tampered_modules != 0 || (base_installed && !base_digest_ok) {
+    return ExecDesktopStatus.{
+      state = ExecDesktopState.tampered,
+      selectable = false,
+      verified_modules = verified_modules,
+      required_modules = EXEC_REQUIRED_MODULES,
+      tampered_modules = tampered_modules,
+      verification_class = MvLabel.none,
+      status_code = 2,
+    };
+  }
+  if !base_installed {
+    return ExecDesktopStatus.{
+      state = ExecDesktopState.base_missing,
+      selectable = false,
+      verified_modules = verified_modules,
+      required_modules = EXEC_REQUIRED_MODULES,
+      tampered_modules = 0,
+      verification_class = MvLabel.none,
+      status_code = 3,
+    };
+  }
+  if verified_modules < EXEC_REQUIRED_MODULES {
+    return ExecDesktopStatus.{
+      state = ExecDesktopState.modules_missing,
+      selectable = false,
+      verified_modules = verified_modules,
+      required_modules = EXEC_REQUIRED_MODULES,
+      tampered_modules = 0,
+      verification_class = MvLabel.none,
+      status_code = 4,
+    };
+  }
+  if worst_label == MvLabel.none {
+    return ExecDesktopStatus.{
+      state = ExecDesktopState.tampered,
+      selectable = false,
+      verified_modules = verified_modules,
+      required_modules = EXEC_REQUIRED_MODULES,
+      tampered_modules = 0,
+      verification_class = MvLabel.none,
+      status_code = 2,
+    };
+  }
+  return ExecDesktopStatus.{
+    state = ExecDesktopState.ready,
+    selectable = true,
+    verified_modules = verified_modules,
+    required_modules = EXEC_REQUIRED_MODULES,
+    tampered_modules = 0,
+    verification_class = worst_label,
+    status_code = 0,
+  };
+}
+
+// Concise, truthful status line shown in OpenAgents Desktop Settings > Models.
+exec_desktop_summary :: (st: ExecDesktopStatus) -> string #effects(all) {
+  if st.state == ExecDesktopState.unsupported_hardware { return "Requires 32 GB RAM"; }
+  if st.state == ExecDesktopState.tampered { return "Refused: digest tamper detected"; }
+  if st.state == ExecDesktopState.base_missing { return "Base model not downloaded"; }
+  if st.state == ExecDesktopState.modules_missing { return "Weight modules incomplete"; }
+  if st.verification_class == MvLabel.exact { return "Ready · Exact Replay [E]"; }
+  if st.verification_class == MvLabel.tests { return "Ready · Deterministic [D]"; }
+  if st.verification_class == MvLabel.statistical { return "Ready · Statistical [S]"; }
+  return "Refused: unverified";
+}
+
+#test "executor-desktop: module slot lookup and truthful verification badges (#13924)" {
+  #assert exec_module_slot("oa-exec-diff-verify") == 0;
+  #assert exec_module_slot("oa-exec-json-schema") == 1;
+  #assert exec_module_slot("oa-exec-dep-sched") == 2;
+  #assert exec_module_slot("oa-exec-arith-budget") == 3;
+  #assert exec_module_slot("oa-exec-schema-diff-linked") == -1;
+  #assert exec_module_slot("") == -1;
+
+  #assert exec_verification_badge(MvLabel.exact) == "Exact Replay [E]";
+  #assert exec_verification_badge(MvLabel.tests) == "Deterministic [D]";
+  #assert exec_verification_badge(MvLabel.statistical) == "Statistical [S]";
+  #assert exec_verification_badge(MvLabel.none) == "Unverified [N]";
+}
+
+#test "executor-desktop: 1-byte tamper, missing manifest, failed conformance, and unverified N-class are refused (#13924)" {
+  h_ok  := "606049b83f17f20a0fc7f3f6e6278f740f8dc9f0221ead98a79b195b155b9c6a";
+  h_tam := "606049b83f17f20a0fc7f3f6e6278f740f8dc9f0221ead98a79b195b155b9c6b";
+
+  m_miss := exec_desktop_admit_module(false, h_ok, h_ok, 24, 24, MvLabel.exact);
+  #assert !m_miss.ready && m_miss.state == ExecModuleState.missing && m_miss.label == MvLabel.none && m_miss.status_code == 1;
+
+  m_tam := exec_desktop_admit_module(true, h_ok, h_tam, 24, 24, MvLabel.exact);
+  #assert !m_tam.ready && m_tam.state == ExecModuleState.tampered && m_tam.label == MvLabel.none && m_tam.status_code == 2;
+
+  m_bad := exec_desktop_admit_module(true, "short", h_ok, 24, 24, MvLabel.exact);
+  #assert !m_bad.ready && m_bad.state == ExecModuleState.tampered && m_bad.status_code == 2;
+
+  m_conf := exec_desktop_admit_module(true, h_ok, h_ok, 23, 24, MvLabel.exact);
+  #assert !m_conf.ready && m_conf.state == ExecModuleState.conformance_failed && m_conf.label == MvLabel.none && m_conf.status_code == 3;
+
+  m_unv := exec_desktop_admit_module(true, h_ok, h_ok, 24, 24, MvLabel.none);
+  #assert !m_unv.ready && m_unv.state == ExecModuleState.unverified && m_unv.label == MvLabel.none && m_unv.status_code == 4;
+
+  m_ok := exec_desktop_admit_module(true, h_ok, h_ok, 24, 24, MvLabel.exact);
+  #assert m_ok.ready && m_ok.state == ExecModuleState.ready && m_ok.label == MvLabel.exact && m_ok.status_code == 0;
+}
+
+#test "executor-desktop: hybrid executor readiness gates hardware, base model, 4/4 modules, and atomic tamper refusal (#13924)" {
+  // 1. Hardware < 32GB refused even with all modules verified
+  hw := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB - 1, true, true, 4, 0, MvLabel.exact);
+  #assert !hw.selectable && hw.state == ExecDesktopState.unsupported_hardware && hw.status_code == 1 && hw.verified_modules == 4 && hw.required_modules == 4 && hw.tampered_modules == 0 && hw.verification_class == MvLabel.none;
+  #assert exec_desktop_summary(hw) == "Requires 32 GB RAM";
+
+  // 2. Negative counts are refused atomically; 0 modules is modules_missing (not tampered)
+  neg_v := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB, true, true, -1, 0, MvLabel.exact);
+  #assert !neg_v.selectable && neg_v.state == ExecDesktopState.tampered && neg_v.status_code == 2;
+  neg_t := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB, true, true, 4, -1, MvLabel.exact);
+  #assert !neg_t.selectable && neg_t.state == ExecDesktopState.tampered && neg_t.status_code == 2;
+  zero_m := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB, true, true, 0, 0, MvLabel.exact);
+  #assert !zero_m.selectable && zero_m.state == ExecDesktopState.modules_missing && zero_m.verified_modules == 0 && zero_m.status_code == 4;
+
+  // 3. Any tampered module -> atomic refusal (NEVER Ready, even when 4 other modules passed!)
+  tm := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB, true, true, 4, 1, MvLabel.exact);
+  #assert !tm.selectable && tm.state == ExecDesktopState.tampered && tm.tampered_modules == 1 && tm.verified_modules == 4 && tm.required_modules == 4 && tm.verification_class == MvLabel.none && tm.status_code == 2;
+  #assert exec_desktop_summary(tm) == "Refused: digest tamper detected";
+
+  // 4. Base checkpoint tampered -> atomic refusal
+  bt := exec_desktop_hybrid_status(65536, true, false, 4, 0, MvLabel.exact);
+  #assert !bt.selectable && bt.state == ExecDesktopState.tampered && bt.status_code == 2;
+
+  // 5. Missing base checkpoint -> base_missing (even if base_digest_ok is false when not installed)
+  bm := exec_desktop_hybrid_status(65536, false, false, 4, 0, MvLabel.exact);
+  #assert !bm.selectable && bm.state == ExecDesktopState.base_missing && bm.verified_modules == 4 && bm.required_modules == 4 && bm.tampered_modules == 0 && bm.verification_class == MvLabel.none && bm.status_code == 3;
+  #assert exec_desktop_summary(bm) == "Base model not downloaded";
+
+  // 6. Fewer than 4 verified modules -> modules_missing
+  mm := exec_desktop_hybrid_status(65536, true, true, 3, 0, MvLabel.exact);
+  #assert !mm.selectable && mm.state == ExecDesktopState.modules_missing && mm.verified_modules == 3 && mm.required_modules == 4 && mm.tampered_modules == 0 && mm.verification_class == MvLabel.none && mm.status_code == 4;
+  #assert exec_desktop_summary(mm) == "Weight modules incomplete";
+
+  // 7. Unverified N-class worst_label -> atomic refusal
+  nl := exec_desktop_hybrid_status(65536, true, true, 4, 0, MvLabel.none);
+  #assert !nl.selectable && nl.state == ExecDesktopState.tampered && nl.verified_modules == 4 && nl.required_modules == 4 && nl.tampered_modules == 0 && nl.verification_class == MvLabel.none && nl.status_code == 2;
+
+  // 8. Exact boundary: 32GB + valid base + 4 verified Class-E modules -> Ready & selectable
+  ok_e := exec_desktop_hybrid_status(INKLING_MIN_RAM_MB, true, true, 4, 0, MvLabel.exact);
+  #assert ok_e.selectable && ok_e.state == ExecDesktopState.ready && ok_e.verified_modules == 4 && ok_e.required_modules == 4 && ok_e.tampered_modules == 0 && ok_e.verification_class == MvLabel.exact && ok_e.status_code == 0;
+  #assert exec_desktop_summary(ok_e) == "Ready · Exact Replay [E]";
+
+  ok_d := exec_desktop_hybrid_status(65536, true, true, 4, 0, MvLabel.tests);
+  #assert ok_d.selectable && exec_desktop_summary(ok_d) == "Ready · Deterministic [D]";
+
+  ok_s := exec_desktop_hybrid_status(65536, true, true, 4, 0, MvLabel.statistical);
+  #assert ok_s.selectable && exec_desktop_summary(ok_s) == "Ready · Statistical [S]";
+
+  // Defensive summary fallback if someone constructs ready + MvLabel.none manually
+  bad_s := ExecDesktopStatus.{state = ExecDesktopState.ready, verification_class = MvLabel.none};
+  #assert exec_desktop_summary(bad_s) == "Refused: unverified";
+}

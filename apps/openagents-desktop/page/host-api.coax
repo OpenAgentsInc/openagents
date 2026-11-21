@@ -134,7 +134,7 @@ cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, sess
   for c: ask { if n < whole.count { whole[n] = c; n += 1; } }
   if refs.count > 0 { n += cp_out(whole[n..<whole.count], "\n\n"); n += cp_out(whole[n..<whole.count], refs); }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, local = cp_is_inkling(s, model), model = cp_model_id(s, model), effort = cp_task_effort(s, model), openrouter = cp_or_sub(s)};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, local = cp_is_inkling(s, model) || cp_is_hybrid(s, model), model = cp_model_id(s, model), effort = cp_task_effort(s, model), openrouter = cp_or_sub(s)};
   // the simulator pane open and its helper there: the run may drive the device (GitHub #13811)
   t.device = cp_sim(s)[0].open && cp_sim(s)[0].connected;
   return mww_task(out, t);
@@ -310,8 +310,12 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_agy := cp_is_agy(s, s[0].model);
+  was_inkling := cp_is_inkling(s, s[0].model);
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   s[0].experimental = on;
   if was_agy { s[0].model = cp_agy_idx(s); }
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   s[0].model = cp_model_index(s);
   if on { return; }
   s[0].gym_open = false;

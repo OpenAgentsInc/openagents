@@ -13,6 +13,7 @@ cp_models :: (s: [] CoderPage) -> int {
     n := 0;
     if s.count > 0 && s[0].agy { n += 1; }
     if s.count > 0 && s[0].inkling { n += 1; }
+    if s.count > 0 && s[0].hybrid_exec { n += 1; }
     if s.count > 0 && s[0].prov[0].codex { n += 1; }
     if s.count > 0 && s[0].prov[0].cursor { n += 1; }
     n += cp_acp_enabled_count(s);
@@ -22,6 +23,7 @@ cp_models :: (s: [] CoderPage) -> int {
   if s[0].or_main_n > 0 { n += 1; }
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
+  if s[0].hybrid_exec { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   if s[0].prov[0].cursor { n += 1; }
   n += cp_acp_enabled_count(s);
@@ -42,6 +44,18 @@ cp_inkling_idx :: (s: [] CoderPage) -> int {
   return n;
 }
 cp_is_inkling :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].inkling && idx == cp_inkling_idx(s); }
+cp_hybrid_idx :: (s: [] CoderPage) -> int {
+  if s.count < 1 || !s[0].hybrid_exec { return -1; }
+  n := 0;
+  if cp_cloud_ok(s) {
+    n = CP_MODELS;
+    if s[0].or_main_n > 0 { n += 1; }
+  }
+  if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
+  return n;
+}
+cp_is_hybrid :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].hybrid_exec && idx == cp_hybrid_idx(s); }
 cp_model_index :: (s: [] CoderPage) -> int {
   n := cp_models(s);
   if s.count > 0 && s[0].model >= 0 && s[0].model < n { return s[0].model; }
@@ -64,6 +78,10 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
   }
   if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
     if s.count > 0 && s[0].inkling { return cp_inkling_idx(s); }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
+  if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" {
+    if s.count > 0 && s[0].hybrid_exec { return cp_hybrid_idx(s); }
     return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
   if name == "codex" || name == "Codex" {
@@ -96,6 +114,7 @@ cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_cloud_ok(s) && idx =
 cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "antigravity"; }
   if cp_is_inkling(s, idx) { return "inkling-2-mini"; }
+  if cp_is_hybrid(s, idx) { return "hybrid-exec-v1"; }
   if cp_is_codex(s, idx) { return "codex"; }
   if cp_is_cursor(s, idx) { return "cursor"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -113,6 +132,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "Antigravity"; }
   if cp_is_inkling(s, idx) { return "Inkling 2 Mini (Local)"; }
+  if cp_is_hybrid(s, idx) { return "Hybrid Executor [E]"; }
   if cp_is_codex(s, idx) { return "Codex"; }
   if cp_is_cursor(s, idx) { return "Cursor"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -141,6 +161,12 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].agy_desc[0..<n];
   }
   if cp_is_inkling(s, idx) { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if cp_is_hybrid(s, idx) {
+    badge := ifx s[0].set_exec_badge_n > 0 then cast(string) s[0].set_exec_badge[0..<s[0].set_exec_badge_n] else "Exact Replay [E]";
+    n := cp_out(s[0].hybrid_desc[..], "Psionic Metal · hybrid-exec-v1 · ");
+    n += cp_out(s[0].hybrid_desc[n..<s[0].hybrid_desc.count], badge);
+    return cast(string) s[0].hybrid_desc[0..<n];
+  }
   if cp_is_codex(s, idx) { return "OpenAI Codex CLI · app-server"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP CLI · agent acp"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -190,10 +216,14 @@ coder_page_agy_seen :: (s: [] CoderPage, id: string, name: string) #export_c #ef
 coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_agy := cp_is_agy(s, s[0].model);
+  was_inkling := cp_is_inkling(s, s[0].model);
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   ok := kind == "vertex" || kind == "key";
   s[0].set_gauth_n = ifx ok then cp_out(s[0].set_gauth[..], text) else 0;
   s[0].gauth_vertex = kind == "vertex";
   if was_agy { s[0].model = cp_agy_idx(s); }
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   s[0].model = cp_model_index(s);
 }
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
@@ -201,6 +231,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     return cp_agy_meta(s, cp_agy_shown(s));
   }
   if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
+  if cp_is_hybrid(s, idx) { return "Psionic Metal · Hybrid Executor [E]"; }
   if cp_is_codex(s, idx) { return "Codex CLI"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -232,6 +263,11 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
   if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
     if !s[0].inkling { return false; }
     s[0].model = cp_inkling_idx(s);
+    return true;
+  }
+  if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" {
+    if !s[0].hybrid_exec { return false; }
+    s[0].model = cp_hybrid_idx(s);
     return true;
   }
   if name == "codex" || name == "Codex" {
@@ -267,28 +303,45 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
 coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_agy := cp_is_agy(s, s[0].model);
+  was_inkling := cp_is_inkling(s, s[0].model);
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
   s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
   if was_agy { s[0].model = cp_agy_idx(s); }
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_inkling := cp_is_inkling(s, s[0].model);
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   s[0].agy = on;
   if was_inkling { s[0].model = cp_inkling_idx(s); }
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   s[0].inkling = on;
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  s[0].model = cp_model_index(s);
+}
+coder_page_set_hybrid_exec :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].hybrid_exec = on;
   s[0].model = cp_model_index(s);
 }
 coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_agy := cp_is_agy(s, s[0].model);
+  was_inkling := cp_is_inkling(s, s[0].model);
+  was_hybrid := cp_is_hybrid(s, s[0].model);
   s[0].cloud_authed = on;
   if was_agy { s[0].model = cp_agy_idx(s); }
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
+  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   s[0].model = cp_model_index(s);
 }
 // The name of what runs the next message: the Antigravity CLI (agyworker), or Microcoder (mcworker)
@@ -299,6 +352,7 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if idx < 0 { return ""; }
   if cp_is_agy(s, idx) { return "Antigravity CLI"; }
   if cp_is_inkling(s, idx) { return "Psionic Metal"; }
+  if cp_is_hybrid(s, idx) { return "Psionic Metal · [E]"; }
   if cp_is_codex(s, idx) { return "Codex CLI"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP"; }
   if cp_is_acp(s, idx) { return "ACP Registry"; }
@@ -314,6 +368,9 @@ coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 }
 coder_page_model_inkling :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_inkling(s, cp_model_index(s));
+}
+coder_page_model_hybrid :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_is_hybrid(s, cp_model_index(s));
 }
 
 // ---------------------------------------------------------------- effort

@@ -252,6 +252,112 @@ enum LocalModelStore {
     }
 }
 
+/// SHA-256 verified Executor Models & Compiled Weight-Module store (~/.openagents/modules)
+/// backed by Coax #authority admission (psionic/lib/executor-desktop.coax via oa_dc_exec_scan; #13924).
+enum ExecutorModelStore {
+    struct Snapshot {
+        let selectable: Bool
+        let stateCode: Int
+        let verifiedModules: Int
+        let tamperedModules: Int
+        let status: String
+        let lineage: String
+        let badge: String
+        let details: String
+    }
+
+    static var lastError: String?
+    static var isInstalling: Bool = false
+
+    static func scan(home: String = "") -> Snapshot {
+        let ramMB = Int64(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        var stBuf = [UInt8](repeating: 0, count: 160)
+        var linBuf = [UInt8](repeating: 0, count: 192)
+        var bdgBuf = [UInt8](repeating: 0, count: 64)
+        var detBuf = [UInt8](repeating: 0, count: 2048)
+        var counts = [Int64](repeating: 0, count: 4)
+        let rc: Int64 = DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(home) { hStr in
+                DesktopCore.withByteBuf(&stBuf) { stV in
+                    DesktopCore.withByteBuf(&linBuf) { linV in
+                        DesktopCore.withByteBuf(&bdgBuf) { bdgV in
+                            DesktopCore.withByteBuf(&detBuf) { detV in
+                                DesktopCore.withS64Buf(&counts) { cntV in
+                                    oa_dc_exec_scan(hStr, ramMB, stV, linV, bdgV, detV, cntV)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        func cstr(_ b: [UInt8]) -> String {
+            let n = b.firstIndex(of: 0) ?? b.count
+            return String(decoding: b[0..<n], as: UTF8.self)
+        }
+        return Snapshot(
+            selectable: rc == 1 && counts[3] == 1,
+            stateCode: Int(counts[0]),
+            verifiedModules: Int(counts[1]),
+            tamperedModules: Int(counts[2]),
+            status: cstr(stBuf),
+            lineage: cstr(linBuf),
+            badge: cstr(bdgBuf),
+            details: cstr(detBuf)
+        )
+    }
+
+    static var isSelectable: Bool { scan().selectable }
+
+    static func findOpenAgentsCLI() -> String? {
+        let fm = FileManager.default
+        let homeBin = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/openagents").path
+        var candidates: [String] = []
+        if let res = Bundle.main.resourcePath { candidates.append(res + "/openagents") }
+        candidates.append(homeBin)
+        candidates.append("/usr/local/bin/openagents")
+        candidates.append("/opt/homebrew/bin/openagents")
+        for c in candidates where fm.isExecutableFile(atPath: c) { return c }
+        return nil
+    }
+
+    static func installBuiltins(completion: @escaping (String?) -> Void) {
+        guard !isInstalling else { return }
+        guard let cli = findOpenAgentsCLI() else {
+            lastError = "openagents CLI not found in app bundle or ~/.openagents/bin/openagents."
+            completion(lastError)
+            return
+        }
+        isInstalling = true
+        lastError = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: cli)
+            p.arguments = ["module", "install-builtins"]
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            var errMsg: String?
+            do {
+                try p.run()
+                p.waitUntilExit()
+                if p.terminationStatus != 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let out = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                    errMsg = out.isEmpty ? "openagents module install-builtins exited \(p.terminationStatus)." : out
+                }
+            } catch {
+                errMsg = "Could not launch openagents CLI: \(error.localizedDescription)"
+            }
+            DispatchQueue.main.async {
+                isInstalling = false
+                lastError = errMsg
+                completion(errMsg)
+            }
+        }
+    }
+}
+
 /// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:18794.
 final class LocalModelServer {
     static let shared = LocalModelServer()
@@ -525,6 +631,42 @@ extension CoderWindow {
                 self.syncLocalModels()
             }
             self.refocus()
+        }
+    }
+    /// Settings > Models > Executor Models & Weight Modules (CP_ASK_EXECUTOR_MODELS; #13924):
+    /// displays live SHA-256 verification status, verification-class badges ([E]/[D]/[S]/[N]),
+    /// and per-module lineage from oa_dc_exec_scan, with Verify Now and Install Built-ins actions.
+    func manageExecutorModels() {
+        let snap = ExecutorModelStore.scan()
+        var body = snap.details
+        if snap.tamperedModules > 0 {
+            body += "\nWARNING: SHA-256 verification failed. Hybrid Executor is atomically refused until all weight artifacts pass verification."
+        }
+        if let err = ExecutorModelStore.lastError {
+            body += "\n\nLast error: " + err
+        }
+        var d = CoderDialog(size: .lg, title: "Executor Models & Weight Modules", body: body)
+        let installIdx = d.buttons.count
+        d.buttons.append(.init(title: ExecutorModelStore.isInstalling ? "Installing…" : "Install Built-ins", aside: true))
+        let verifyIdx = d.buttons.count
+        d.buttons.append(.init(title: "Verify Now"))
+        let doneIdx = d.buttons.count
+        d.buttons.append(.init(title: "Done", kind: .primary))
+        d.confirm = doneIdx; d.cancel = doneIdx
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == installIdx && !ExecutorModelStore.isInstalling {
+                ExecutorModelStore.installBuiltins { [weak self] _ in
+                    self?.syncLocalModels()
+                    self?.manageExecutorModels()
+                }
+            } else if answer == verifyIdx {
+                self.syncLocalModels()
+                self.manageExecutorModels()
+            } else {
+                self.syncLocalModels()
+                self.refocus()
+            }
         }
     }
     /// Coder > Claude Key: sets, replaces or removes the key Claude sub-agents use. It applies to the

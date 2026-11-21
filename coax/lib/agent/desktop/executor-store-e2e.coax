@@ -1,0 +1,124 @@
+// End-to-end on-disk SHA-256 verification and 1-byte tamper-refusal check
+// for OpenAgents Desktop's Executor Models & Weight Modules store (#13924).
+// Run with: coax/web/tool.sh coax/lib/agent/desktop/executor-store-e2e.coax
+#import "Basic";
+#load "executor-store.coax";
+
+dce_cstr :: (b: [] u8) -> string {
+  n := 0;
+  while n < b.count && b[n] != 0 { n += 1; }
+  return cast(string) b[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  st: [128] u8; lin: [160] u8; bdg: [64] u8; det: [2048] u8; cnts: [4] int;
+
+  // 1. Live host $HOME scan (~/.openagents/modules + ~/.openagents/models/inkling-2-mini)
+  live_sel := dce_scan("", 65536, st[..], lin[..], bdg[..], det[..], cnts[..]);
+  print("=== Live HOME scan ===\n");
+  print("selectable=% state=% verified=%/4 tampered=%\n", live_sel, cnts[0], cnts[1], cnts[2]);
+  print("status: %\n", dce_cstr(st[..]));
+  print("lineage: %\n", dce_cstr(lin[..]));
+  print("badge: %\n", dce_cstr(bdg[..]));
+  print("%\n", dce_cstr(det[..]));
+
+  // 2. Isolated temp HOME with all 4 compiled Class-E modules + real GGUF symlink
+  tb: [512] u8;
+  tmp := fs_temp("oa-exec-desktop-e2e-", tb[..]);
+  if tmp.count == 0 { print("FAIL: fs_temp\n"); return 1; }
+
+  oa_b: [600] u8; oa_dir := fs_join(tmp, ".openagents", oa_b[..]);
+  mod_b: [600] u8; mod_root := fs_join(oa_dir, "modules", mod_b[..]);
+  mdl_b: [600] u8; mdl_dir := fs_join(oa_dir, "models/inkling-2-mini", mdl_b[..]);
+  ok := fs_mkdir_all(mod_root) && fs_mkdir_all(mdl_dir);
+
+  // Symlink the real local Inkling GGUF if present on this machine so we test full Ready -> Tamper transition
+  hb: [1024] u8; real_home := dcos_home(hb[..]);
+  rg_b: [1400] u8; rgn := dce_cat(rg_b[..], 0, real_home);
+  rgn = dce_cat(rg_b[..], rgn, "/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf");
+  real_gguf := cast(string) rg_b[0..<rgn];
+  has_real_gguf := dcos_size(real_gguf) >= DCE_BASE_MIN_BYTES;
+  if has_real_gguf {
+    tg_b: [1400] u8; tg := fs_join(mdl_dir, "Inkling-2-Mini-IQ4_NL.gguf", tg_b[..]);
+    ln_args := [4] string.["/bin/ln", "-s", real_gguf, tg];
+    ok = ok && dcos_status(ln_args[..]) == 0;
+  }
+
+  // Case 2a: empty modules dir -> MUST NOT be Ready
+  sel_empty := dce_scan(tmp, 65536, st[..], lin[..], bdg[..], det[..], cnts[..]);
+  print("=== Temp HOME (empty modules) ===\nselectable=% state=% status=%\n", sel_empty, cnts[0], dce_cstr(st[..]));
+  ok = ok && sel_empty == 0 && cnts[1] == 0 && cnts[2] == 0;
+  if has_real_gguf { ok = ok && cnts[0] == cast(int) ExecDesktopState.modules_missing; }
+
+  // Install all 4 real compiled W2.2 Class-E dense F64 weight modules into temp HOME
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [8192] f64;
+  st_bytes: [65536] u8;
+  diff_wp: [700] u8; diff_wp_n := 0;
+
+  for k: 0..<4 {
+    m: EvModel;
+    name := "";
+    if k == 0 { m = mv_compile_diff_verify(la[..], ha[..], wa[..]); name = "oa-exec-diff-verify"; }
+    else if k == 1 { m = mv_compile_json_schema(la[..], ha[..], wa[..]); name = "oa-exec-json-schema"; }
+    else if k == 2 { m = mv_compile_dep_sched(la[..], ha[..], wa[..]); name = "oa-exec-dep-sched"; }
+    else { m = mv_compile_arith_budget(la[..], ha[..], wa[..]); name = "oa-exec-arith-budget"; }
+    ser := ev_serialize(m, st_bytes[..]);
+    ok = ok && m.status == EvStatus.ok && ser.status == EvStatus.ok;
+    shab: [64] u8; sha := dce_hex_encode(ser.digest, shab[..]);
+    dp: [700] u8; dir := fs_join(mod_root, sha, dp[..]);
+    ok = ok && fs_mkdir_all(dir);
+    wp: [700] u8; wpath := fs_join(dir, "weights.safetensors", wp[..]);
+    ok = ok && fs_write(wpath, cast(string) st_bytes[0..<ser.written]);
+    if k == 0 { diff_wp_n = dce_cat(diff_wp[..], 0, wpath); }
+    mj: [512] u8;
+    mn := dce_cat(mj[..], 0, "{\"name\":\""); mn = dce_cat(mj[..], mn, name);
+    mn = dce_cat(mj[..], mn, "\",\"verification_class\":\"E\",\"weight_digest\":\"");
+    mn = dce_cat(mj[..], mn, sha); mn = dce_cat(mj[..], mn, "\"}\n");
+    mp: [700] u8; mpath := fs_join(dir, "manifest.json", mp[..]);
+    ok = ok && fs_write(mpath, cast(string) mj[0..<mn]);
+    cp: [700] u8; cpath := fs_join(dir, "conformance.json", cp[..]);
+    ok = ok && fs_write(cpath, "{\"passed\":24,\"total\":24,\"exact_replay\":true}\n");
+  }
+
+  // Case 2b: valid 4/4 modules + real GGUF -> MUST be Ready (selectable == 1) on >= 32 GB
+  sel_ok := dce_scan(tmp, 65536, st[..], lin[..], bdg[..], det[..], cnts[..]);
+  print("=== Temp HOME (clean 4/4 modules) ===\nselectable=% state=% status=% badge=% lineage=%\n",
+    sel_ok, cnts[0], dce_cstr(st[..]), dce_cstr(bdg[..]), dce_cstr(lin[..]));
+  if has_real_gguf {
+    ok = ok && sel_ok == 1 && cnts[0] == cast(int) ExecDesktopState.ready && cnts[1] == 4 && cnts[2] == 0;
+    ok = ok && dce_cstr(bdg[..]) == "Exact Replay [E]" && dce_cstr(st[..]) == "Ready · Exact Replay [E] (4/4)";
+  } else {
+    ok = ok && sel_ok == 0 && cnts[0] == cast(int) ExecDesktopState.base_missing && cnts[1] == 4 && cnts[2] == 0;
+  }
+
+  // Case 2c: < 32 GB RAM -> MUST refuse as unsupported_hardware even with valid files
+  sel_ram := dce_scan(tmp, 16384, st[..], lin[..], bdg[..], det[..], cnts[..]);
+  print("=== Temp HOME (16 GB RAM) ===\nselectable=% state=% status=%\n", sel_ram, cnts[0], dce_cstr(st[..]));
+  ok = ok && sel_ram == 0 && cnts[0] == cast(int) ExecDesktopState.unsupported_hardware;
+
+  // Case 2d: FLIP 1 BYTE in oa-exec-diff-verify/weights.safetensors -> ATOMIC TAMPER REFUSAL!
+  diff_path := cast(string) diff_wp[0..<diff_wp_n];
+  rn := fs_read(diff_path, st_bytes[..]);
+  ok = ok && rn > 128;
+  st_bytes[rn - 1] = st_bytes[rn - 1] ^ 1;
+  ok = ok && fs_write(diff_path, cast(string) st_bytes[0..<rn]);
+
+  sel_tamp := dce_scan(tmp, 65536, st[..], lin[..], bdg[..], det[..], cnts[..]);
+  print("=== Temp HOME (1-byte tamper in oa-exec-diff-verify/weights.safetensors) ===\n");
+  print("selectable=% state=% verified=%/4 tampered=%\n", sel_tamp, cnts[0], cnts[1], cnts[2]);
+  print("status: %\n", dce_cstr(st[..]));
+  print("lineage: %\n", dce_cstr(lin[..]));
+  print("badge: %\n", dce_cstr(bdg[..]));
+  ok = ok && sel_tamp == 0 && cnts[0] == cast(int) ExecDesktopState.tampered && cnts[1] == 3 && cnts[2] == 1 && cnts[3] == 0;
+  ok = ok && dce_cstr(st[..]) == "Refused: digest tamper detected" && dce_cstr(bdg[..]) == "Unverified [N]";
+
+  rm_args := [3] string.["/bin/rm", "-rf", tmp];
+  _ = dcos_status(rm_args[..]);
+
+  if ok {
+    print("EXECUTOR_STORE_E2E_PASS\n");
+    return 0;
+  }
+  print("EXECUTOR_STORE_E2E_FAIL\n");
+  return 1;
+}

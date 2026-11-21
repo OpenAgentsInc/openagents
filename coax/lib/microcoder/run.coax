@@ -891,7 +891,10 @@ mc_run_edit_aware :: (r: [] McRun, out: [] McRunEvent, k: int, i: int) -> int {
   why := mc_aw_edit_why(r[0].aw, x);
   if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx x.ok then "applied" else why) || !jf_result(r[0].journal, ifx x.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
   mc_edited_shown(r[0].l[..], e.path, x.ok, why, x.from, x.to, mc_aw_edit_shown(r[0].aw, x));
-  return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx x.ok then 0 else 1, output = mc_run_keep(r, ifx x.ok then "applied" else why)});
+  rp := ifx r[0].tb[0].replay_n > 0 then cast(string) r[0].tb[0].replay[0..<r[0].tb[0].replay_n] else "";
+  db: [4224] u8;
+  ev_out := mc_edit_event_output(db[..], x.ok, x.from, e.old, e.text, why, rp);
+  return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx x.ok then 0 else 1, output = mc_run_keep(r, ev_out)});
 }
 
 // The model says finished, in a run with the memory (MC_FINISH): its notes are kept, the store
@@ -953,6 +956,35 @@ mc_edit_diff :: (out: [] u8, from: int, old: string, text: string) -> int {
   n = mc_diff_put_lines(out, n, '+', text);
   return n;
 }
+// Format an edit's event output: unified diff + optional Ch 234 replay-verification receipt
+// ("\ [E] replay verified · sha256:...") so app_is_diff and +/- stats stay intact while Desktop
+// renders the compact replay-verification pill (#13924).
+mc_edit_event_output :: (db: [] u8, ok: bool, from: int, old: string, text: string, why: string, replay: string) -> string {
+  if ok {
+    dn := mc_edit_diff(db, from, old, text);
+    if dn > 0 {
+      if replay.count > 0 && dn + replay.count + 4 <= db.count {
+        dn = mc_put(db, dn, "\\ ");
+        dn = mc_put(db, dn, replay);
+        dn = mc_put(db, dn, "\n");
+      }
+      return cast(string) db[0..<dn];
+    }
+    if replay.count > 0 {
+      n := mc_put(db, 0, "applied\n");
+      n = mc_put(db, n, replay);
+      return cast(string) db[0..<n];
+    }
+    return "applied";
+  }
+  if replay.count > 0 && why.count + replay.count + 2 <= db.count {
+    n := mc_put(db, 0, why);
+    n = mc_put(db, n, "\n");
+    n = mc_put(db, n, replay);
+    return cast(string) db[0..<n];
+  }
+  return why;
+}
 mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
   tb: [1100] u8; tn := json_raw(tb[..], 0, "edit "); tn = json_raw(tb[..], tn, e.path);
   label := ifx tn < 0 then "edit" else cast(string) tb[0..<tn];
@@ -965,8 +997,8 @@ mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
   res := mc_edit_file(r[0].cwd, e, r[0].profile, r[0].tb[..]);
   if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx res.ok then "applied" else res.why) || !jf_result(r[0].journal, ifx res.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
   mc_edited_shown(r[0].l[..], e.path, res.ok, res.why, res.from, res.to, res.shown);
-  db: [4096] u8; dn := ifx res.ok then mc_edit_diff(db[..], res.from, e.old, e.text) else 0;
-  ev_out := ifx res.ok then (ifx dn > 0 then cast(string) db[0..<dn] else "applied") else res.why;
+  db: [4224] u8;
+  ev_out := mc_edit_event_output(db[..], res.ok, res.from, e.old, e.text, res.why, res.replay);
   return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx res.ok then 0 else 1, output = mc_run_keep(r, ev_out)});
 }
 

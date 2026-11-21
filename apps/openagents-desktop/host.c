@@ -411,6 +411,7 @@ void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_agy(cd_state(c), on != 0); }
 int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model_agy(cd_state(c)) ? 1 : 0; }
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
+int cd_model_hybrid(void *page) { CoderHost *c = page; return c && coder_page_model_hybrid(cd_state(c)) ? 1 : 0; }
 void cd_openrouter(void *page, const char *main, const char *sub) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_set_openrouter(cd_state(c), cd_string(main), cd_string(sub)); } }
 int cd_pick_model(void *page, const char *name) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_pick_model(cd_state(c), cd_string(name)); }
 // The sidebars' widths as dragged: read (1 once after a drag, when they are to be kept) and set.
@@ -922,8 +923,10 @@ int cd_settings_page(void *page) { CoderHost *c = page; return c ? (int)coder_pa
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version)); cd_changed(c); } }
 void cd_settings_gemini(void *page, const char *gemini) { CoderHost *c = page; if (c) { coder_page_settings_gemini(cd_state(c), cd_string(gemini)); cd_changed(c); } }
 void cd_settings_local(void *page, const char *status) { CoderHost *c = page; if (c) { coder_page_settings_local(cd_state(c), cd_string(status)); cd_changed(c); } }
+void cd_settings_executor(void *page, const char *status, const char *lineage, const char *badge) { CoderHost *c = page; if (c) { coder_page_settings_executor(cd_state(c), cd_string(status), cd_string(lineage), cd_string(badge)); cd_changed(c); } }
 void cd_settings_wallet(void *page, const char *status, const char *balance, const char *addr, const char *npub, const char *limit, const char *backup, const char *history, int ready) { CoderHost *c = page; if (c) { coder_page_settings_wallet(cd_state(c), cd_string(status), cd_string(balance), cd_string(addr), cd_string(npub), cd_string(limit), cd_string(backup), cd_string(history), ready != 0); cd_changed(c); } }
 void cd_inkling(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_inkling(cd_state(c), on != 0); cd_changed(c); } }
+void cd_hybrid_exec(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_hybrid_exec(cd_state(c), on != 0); cd_changed(c); } }
 void cd_settings_instructions(void *page, const char *words) { CoderHost *c = page; if (c) { coder_page_settings_instructions(cd_state(c), cd_string(words)); cd_changed(c); } }
 void cd_settings_gauth(void *page, const char *kind, const char *text) { CoderHost *c = page; if (c) { coder_page_settings_gauth(cd_state(c), cd_string(kind), cd_string(text)); cd_changed(c); } }
 void cd_agy_seen(void *page, const char *id, const char *name) { CoderHost *c = page; if (c) { coder_page_agy_seen(cd_state(c), cd_string(id), cd_string(name)); cd_changed(c); } }

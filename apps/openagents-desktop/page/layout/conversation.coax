@@ -1,6 +1,37 @@
 // Coder Desktop page (../../page.coax): the conversation: a message's activity group, the
 // messages and replies, the notices, the corner buttons and the composer.
 
+// Extract a compact deterministic replay-verification pill from an edit or executor tool output
+// (e.g. "[E] replay verified · sha256:a1b2c3d4e5f6" or "[E] replay refused · sha256:...", #13924).
+cp_exec_hex :: (c: u8) -> bool { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
+cp_exec_replay_pill :: (output: string, bad: [] bool) -> string {
+  bad[0] = false;
+  v_mid := "] replay verified · sha256:";
+  r_mid := "] replay refused · sha256:";
+  i := 0;
+  while i + 4 < output.count {
+    if output[i] == '[' {
+      cls := output[i + 1];
+      if cls == 'E' || cls == 'D' || cls == 'S' || cls == 'N' {
+        if i + 2 + v_mid.count + 12 <= output.count && cast(string) output[i + 2..<i + 2 + v_mid.count] == v_mid {
+          hex0 := i + 2 + v_mid.count;
+          ok := true;
+          for k: 0..<12 { if !cp_exec_hex(output[hex0 + k]) { ok = false; break; } }
+          if ok { bad[0] = false; return cast(string) output[i..<hex0 + 12]; }
+        }
+        if i + 2 + r_mid.count + 12 <= output.count && cast(string) output[i + 2..<i + 2 + r_mid.count] == r_mid {
+          hex0 := i + 2 + r_mid.count;
+          ok := true;
+          for k: 0..<12 { if !cp_exec_hex(output[hex0 + k]) { ok = false; break; } }
+          if ok { bad[0] = true; return cast(string) output[i..<hex0 + 12]; }
+        }
+      }
+    }
+    i += 1;
+  }
+  return "";
+}
+
 // Row q of a message as its activity group shows it (#13731): a thought's words, a file read by
 // its name, or a command on one line that opens onto the whole of it and what came back.
 cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
@@ -36,7 +67,10 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
     return AppActRow.{kind = APP_ACT_EXEC, verb = sim.verb, target = sheet_single_line(sh, sim.target), call = text, output = output,
                       failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
   }
+  pbad := [1] bool.[false];
+  pill := cp_exec_replay_pill(output, pbad[..]);
   return AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = sheet_single_line(sh, text), call = text, output = output,
+                    badge = ifx pill.count > 0 then sheet_pool(sh, pill) else "", badge_bad = pbad[0],
                     failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
 }
 // What a press on row q does: an oasim command that went brings the simulator pane to the front
@@ -56,7 +90,10 @@ cp_act_edit :: (s: [] CoderPage, f: [] UiFrame, q: int) -> AppActRow {
           else ifx running then (ifx write then "Writing" else "Editing") else ifx write then "Wrote" else "Edited";
   // a diff is the row's change, drawn as hunks; anything else (why it failed) is its output
   diff := cp_edit_diff(s, q) > 0; out := cp_call_text(s, q);
+  pbad := [1] bool.[false];
+  pill := cp_exec_replay_pill(out, pbad[..]);
   return AppActRow.{kind = ifx write then APP_ACT_WRITE else APP_ACT_EDIT, verb = verb, target = sheet_pool(f[0].sheet, app_diff_base(path)),
+                    badge = ifx pill.count > 0 then sheet_pool(f[0].sheet, pill) else "", badge_bad = pbad[0],
                     output = ifx diff then "" else out, diff = ifx diff then out else "", failed = failed, running = running,
                     timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q), path = ifx failed then "" else path};
 }

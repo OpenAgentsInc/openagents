@@ -9,6 +9,7 @@
 #load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
 #load "../../coax/lib/agent/desktop/gym.coax";
+#load "../../coax/lib/agent/desktop/executor-store.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 
 oa_dc_copy :: (s: string, out: [] u8) -> int {
@@ -594,3 +595,13 @@ oa_dc_instructions_words :: (out: [] u8) -> int #export_c #effects(all) {
 }
 // The most the editor holds (and an agent is told), in bytes.
 oa_dc_instructions_max :: () -> int #export_c #effects(all) { return UINSTR_MAX_BYTES; }
+
+// --- Executor Models & Compiled Weight-Module Store (GitHub #13924) ---
+// Scans ~/.openagents/modules/ and ~/.openagents/models/inkling-2-mini/, verifies
+// real SHA-256 digests on disk, and returns 1 ONLY when Hybrid Executor is verified Ready.
+oa_dc_exec_scan :: (
+  home: string, ram_mb: int,
+  out_status: [] u8, out_lineage: [] u8, out_badge: [] u8, out_details: [] u8, out_counts: [] int
+) -> int #export_c #effects(all) {
+  return dce_scan(home, ram_mb, out_status, out_lineage, out_badge, out_details, out_counts);
+}

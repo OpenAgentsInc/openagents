@@ -82,20 +82,29 @@ extension CoderWindow {
         }
         let useAgy = cd_model_agy(r.page) != 0
         let useInkling = cd_model_inkling(r.page) != 0
+        let useHybrid = cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
         let useExternal = provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
-        if !useAgy && !useInkling && !useExternal && !cloudOk {
+        if !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
             cd_failed(r.page, CoderWorker.hasAntigravity
                 ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
                 : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
             wake()
             return
         }
-        if useInkling {
-            if !LocalModelStore.isSelectable {
+        if useInkling || useHybrid {
+            if useHybrid {
+                let snap = ExecutorModelStore.scan()
+                if !snap.selectable {
+                    syncExecutorModels()
+                    cd_failed(r.page, "Hybrid Executor refused: \(snap.status) (\(snap.lineage)). Open Settings → Models → Executor Models & Weight Modules.")
+                    wake()
+                    return
+                }
+            } else if !LocalModelStore.isSelectable {
                 cd_failed(r.page, "Inkling 2 Mini is not downloaded. Open Settings → Models → Local Models to download it.")
                 wake()
                 return
@@ -382,7 +391,10 @@ extension CoderWindow {
                 env["PATH"] = res
             }
         }
-        if cd_model_inkling(r.page) != 0 {
+        if cd_model_hybrid(r.page) != 0 {
+            env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+            env["PSIONIC_MODEL"] = "hybrid-exec-v1"
+        } else if cd_model_inkling(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "inkling-2-mini"
         }

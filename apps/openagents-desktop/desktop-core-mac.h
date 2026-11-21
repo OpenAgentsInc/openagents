@@ -78,3 +78,4 @@ int64_t oa_dc_instructions_read(coax_v_u8 out);
 int64_t oa_dc_instructions_write(coax_string text);
 int64_t oa_dc_instructions_words(coax_v_u8 out);
 int64_t oa_dc_instructions_max(void);
+int64_t oa_dc_exec_scan(coax_string home, int64_t ram_mb, coax_v_u8 out_status, coax_v_u8 out_lineage, coax_v_u8 out_badge, coax_v_u8 out_details, coax_v_s64 out_counts);

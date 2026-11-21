@@ -497,9 +497,10 @@ tool_main :: () -> int #export_c #effects(all) {
     cn := mk_keep(cwd[..], incoming_cwd);
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
-    local := req[0].local;
+    hybrid := mk_is_hybrid_model(req[0].model);
+    local := req[0].local || hybrid;
     if local {
-      wb: [512] u8; why := mk_plan_local(k[..], plan[..], pb[..], wb[..]);
+      wb: [512] u8; why := mk_plan_local_for(k[..], plan[..], pb[..], ifx hybrid then "hybrid-exec-v1" else "", wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
     } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
       if mk_openrouter_model(req[0].model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
@@ -546,6 +547,9 @@ tool_main :: () -> int #export_c #effects(all) {
     if req[0].no_ask && !mc_no_ask(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the no-ask schema does not fit"); continue; }
     if req[0].device && !mc_device(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the device schema does not fit"); continue; }
     _ = mc_run_load_instructions(run[0].l[..], lb[..], cd);
+    if hybrid {
+      _ = mc_instructions(run[0].l[..], lb[..], "\n\nHybrid Executor (hybrid-exec-v1): structured edits are pre-verified by compiled Class-E dense F64 weight cores (oa-exec-json-schema, oa-exec-diff-verify) before touching disk, emitting Ch 234 replayable trace digests. Prefer targeted edits over whole-file rewrites.");
+    }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");

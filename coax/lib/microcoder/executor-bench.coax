@@ -1,0 +1,222 @@
+// Paired Multi-File Coding/Edit Benchmark for Microcoder + Compiled W2.2 Weight Modules
+// (Executor W6.1, GitHub #13924).
+//
+// Runs 24 real multi-file edit & verification cases against copies of 6 real repository
+// source files, measuring:
+//   - Valid edit success rate and pre-disk malformed-edit interception rate
+//   - Independent Ch 234 LE32 SHA-256 replay verification rate
+//   - Exact wall-clock timing: native CPU reference vs. compiled dense F64 weight core
+//     (Master Spec Standing Rule #1)
+//
+// Run with: coax/web/tool.sh coax/lib/microcoder/executor-bench.coax
+#import "Basic";
+#load "../sys/clock.coax";
+#load "tools.coax";
+
+eb_cat :: (dst: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+eb_copy_repo_file :: (repo_rel: string, tmp_dir: string, tmp_rel: string, buf: [] u8) -> bool {
+  k := fs_read(repo_rel, buf);
+  if k <= 0 { return false; }
+  dstb: [600] u8;
+  dst := fs_join(tmp_dir, tmp_rel, dstb[..]);
+  return fs_write(dst, cast(string) buf[0..<k]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  tb: [512] u8;
+  tmp := fs_temp("oa-w61-bench-", tb[..]);
+  if tmp.count == 0 { print("BENCH_FAIL: fs_temp\n"); return 1; }
+
+  // Copy 6 real files from this repository into the isolated benchmark workspace.
+  fbuf: [524288] u8;
+  files := [6] string.[
+    "psionic/lib/executor-desktop.coax",
+    "psionic/lib/hybrid-exec-policy.coax",
+    "psionic/lib/module-v2-policy.coax",
+    "coax/lib/microcoder/executor-guard.coax",
+    "coax/lib/microcoder/tools.coax",
+    "apps/openagents-cli/executor-mcp.coax",
+  ];
+  names := [6] string.[
+    "executor-desktop.coax",
+    "hybrid-exec-policy.coax",
+    "module-v2-policy.coax",
+    "executor-guard.coax",
+    "tools.coax",
+    "executor-mcp.coax",
+  ];
+  for i: 0..<6 {
+    if !eb_copy_repo_file(files[i], tmp, names[i], fbuf[..]) {
+      print("BENCH_FAIL: could not copy %\n", files[i]);
+      return 1;
+    }
+  }
+
+  b: [1] McToolBuffers;
+
+  // 12 real valid multi-file edits across the 6 repository files (2 chained edits per file).
+  valid_edits := [12] McEdit.[
+    McEdit.{path = "executor-desktop.coax", old = "EXEC_REQUIRED_MODULES :: 4;", text = "EXEC_REQUIRED_MODULES :: 4; // verified"},
+    McEdit.{path = "executor-desktop.coax", old = "EXEC_HYBRID_MODEL_ID :: \"hybrid-exec-v1\";", text = "EXEC_HYBRID_MODEL_ID :: \"hybrid-exec-v1\"; // W6.1"},
+    McEdit.{path = "hybrid-exec-policy.coax", old = "HX_PROFILE_ID :: \"hybrid-exec-v1\";", text = "HX_PROFILE_ID :: \"hybrid-exec-v1\"; // pinned"},
+    McEdit.{path = "hybrid-exec-policy.coax", old = "HX_MAX_ARGS :: 16;", text = "HX_MAX_ARGS :: 16; // W3.1"},
+    McEdit.{path = "module-v2-policy.coax", old = "  none;          // N: unverified", text = "  none;          // N: unverified (default)"},
+    McEdit.{path = "module-v2-policy.coax", old = "  exact;         // E: exact replay", text = "  exact;         // E: exact replay (Ch 234)"},
+    McEdit.{path = "executor-guard.coax", old = "MC_EXEC_MAX_PATH :: 4096;", text = "MC_EXEC_MAX_PATH :: 4096; // W6.1"},
+    McEdit.{path = "executor-guard.coax", old = "MC_EXEC_MOD_BUDGET :: 4;", text = "MC_EXEC_MOD_BUDGET :: 4; // budget"},
+    McEdit.{path = "tools.coax", old = "MC_EXIT_MS :: 5000;", text = "MC_EXIT_MS :: 5000; // grace"},
+    McEdit.{path = "tools.coax", old = "MC_STEP_LINES :: 4096;", text = "MC_STEP_LINES :: 4096; // bounded"},
+    McEdit.{path = "executor-mcp.coax", old = "//   - executor_verify_diff", text = "//   - executor_verify_diff (Class E)"},
+    McEdit.{path = "executor-mcp.coax", old = "//   - executor_verify_trace", text = "//   - executor_verify_trace (Ch 234)"},
+  ];
+
+  // 8 real malformed / adversarial LLM edit traps across the same 6 repository files:
+  // - 5 stale-context / whitespace-drift traps
+  // - 3 ambiguous-duplicate-snippet traps (actual repeated lines in these repo files)
+  trap_edits := [8] McEdit.[
+    McEdit.{path = "executor-desktop.coax", old = "EXEC_REQUIRED_MODULES :: 4;\n", text = "EXEC_REQUIRED_MODULES :: 5;\n"}, // stale after valid_edits[0]
+    McEdit.{path = "hybrid-exec-policy.coax", old = "  HX_MAX_ARGS :: 16;", text = "  HX_MAX_ARGS :: 1;"}, // whitespace drift
+    McEdit.{path = "tools.coax", old = "MC_NONEXISTENT_CONST :: 999;", text = "MC_NONEXISTENT_CONST :: 1;"}, // hallucinated anchor
+    McEdit.{path = "executor-mcp.coax", old = "//   - executor_verify_diff\n", text = "//   - executor_verify_diff_v2\n"}, // stale after valid_edits[10]
+    McEdit.{path = "executor-desktop.coax", old = "return false;", text = "return true;"}, // ambiguous duplicate
+    McEdit.{path = "tools.coax", old = "return -1;", text = "return 0;"}, // ambiguous duplicate
+    McEdit.{path = "executor-guard.coax", old = "return McExecVerdict.{", text = "return McExecVerdict.{ // dup"}, // ambiguous duplicate
+    McEdit.{path = "executor-desktop.coax", old = "nonexistent_line_1\nnonexistent_line_2\n", text = "x\n"}, // multi-line stale mismatch
+  ];
+
+  valid_ok := 0;
+  valid_replayed := 0;
+  t_valid0 := cxproc_wall_us();
+  for i: 0..<12 {
+    fpb: [600] u8; fpath := fs_join(tmp, valid_edits[i].path, fpb[..]);
+    fk := fs_read(fpath, fbuf[..]);
+    ftxt := cast(string) fbuf[0..<fk];
+    f := mc_find_all(ftxt, valid_edits[i].old);
+    old_start := ifx f.count == 1 then mc_line_at(ftxt, f.at) else 1;
+    di := [7] int.[old_start, mc_edit_line_count(valid_edits[i].old), old_start, mc_edit_line_count(valid_edits[i].text), rp_lines(ftxt), f.count, 1];
+
+    res := mc_edit_file(tmp, valid_edits[i], "danger-full-access", b[..]);
+    if res.ok && res.exec_code == McExecCode.ok { valid_ok += 1; }
+    if mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di[..], res.digest) { valid_replayed += 1; }
+  }
+  t_valid1 := cxproc_wall_us();
+
+  traps_caught := 0;
+  traps_replayed := 0;
+  traps_disk_untouched := 0;
+  t_trap0 := cxproc_wall_us();
+  for i: 0..<8 {
+    fpb: [600] u8; fpath := fs_join(tmp, trap_edits[i].path, fpb[..]);
+    fk0 := fs_read(fpath, fbuf[..]);
+    // Hash file before edit attempt to prove zero disk corruption
+    sha0: [112] u8; d0: [32] u8;
+    #assert sha256_init(sha0[..]) == SHA_OK;
+    #assert sha256_update_checked(sha0[..], fbuf[0..<fk0], false) == SHA_OK;
+    #assert sha256_final_checked(sha0[..], d0[..], false) == SHA_OK;
+
+    ftxt := cast(string) fbuf[0..<fk0];
+    f := mc_find_all(ftxt, trap_edits[i].old);
+    old_start := ifx f.count == 1 then mc_line_at(ftxt, f.at) else 1;
+    di := [7] int.[old_start, mc_edit_line_count(trap_edits[i].old), old_start, mc_edit_line_count(trap_edits[i].text), rp_lines(ftxt), f.count, 1];
+
+    res := mc_edit_file(tmp, trap_edits[i], "danger-full-access", b[..]);
+    if !res.ok && (res.exec_code == McExecCode.context_mismatch || res.exec_code == McExecCode.ambiguous_match) {
+      traps_caught += 1;
+    }
+    if mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di[..], res.digest) { traps_replayed += 1; }
+
+    // Verify file bytes on disk are bit-identical after refused edit
+    fk1 := fs_read(fpath, fbuf[..]);
+    sha1: [112] u8; d1: [32] u8;
+    #assert sha256_init(sha1[..]) == SHA_OK;
+    #assert sha256_update_checked(sha1[..], fbuf[0..<fk1], false) == SHA_OK;
+    #assert sha256_final_checked(sha1[..], d1[..], false) == SHA_OK;
+    if fk0 == fk1 && mc_exec_replay_eq(d0, d1) { traps_disk_untouched += 1; }
+  }
+  t_trap1 := cxproc_wall_us();
+
+  // Additional 4 direct Class-E module traps (schema over-cap, diff OOB past EOF, DAG cycle, over-budget)
+  extra_caught := 0;
+  extra_replayed := 0;
+  sv := mc_exec_check_schema(1, 10, MC_EXEC_MAX_PATH, 1, 10, 1, MC_EDIT_BYTES + 1, MC_EDIT_BYTES);
+  si := [8] int.[1, 10, MC_EXEC_MAX_PATH, 1, 10, 1, MC_EDIT_BYTES + 1, MC_EDIT_BYTES];
+  if !sv.ok && sv.code == McExecCode.body_over_cap { extra_caught += 1; }
+  if mc_exec_verify_replay(MC_EXEC_MOD_SCHEMA, si[..], sv.digest) { extra_replayed += 1; }
+
+  dv_oob := mc_exec_check_diff(95, 10, 95, 10, 100, 3, 3);
+  di_oob := [7] int.[95, 10, 95, 10, 100, 3, 3];
+  if !dv_oob.ok && dv_oob.code == McExecCode.oob_past_eof { extra_caught += 1; }
+  if mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di_oob[..], dv_oob.digest) { extra_replayed += 1; }
+
+  dp_cyc := mc_exec_check_dep(0, 1, 1, 4, 10, 0);
+  dpi := [6] int.[0, 1, 1, 4, 10, 0];
+  if !dp_cyc.ok && dp_cyc.code == McExecCode.cycle_detected { extra_caught += 1; }
+  if mc_exec_verify_replay(MC_EXEC_MOD_DEP, dpi[..], dp_cyc.digest) { extra_replayed += 1; }
+
+  bg_over := mc_exec_check_budget(500, 100, 600, 2000, 10, 60);
+  bgi := [6] int.[500, 100, 600, 2000, 10, 60];
+  if !bg_over.ok && bg_over.code == McExecCode.over_budget { extra_caught += 1; }
+  if mc_exec_verify_replay(MC_EXEC_MOD_BUDGET, bgi[..], bg_over.digest) { extra_replayed += 1; }
+
+  // Master Spec Rule #1: paired wall-clock timing — Native Coax CPU reference vs. Compiled Dense F64 Weight Core (10,000 iterations)
+  iters := 10000;
+  ref_out: [3] int;
+  sink_cpu := 0;
+  t_cpu0 := cxproc_wall_us();
+  for k: 0..<iters {
+    inp := [7] int.[(k % 80) + 1, 3, (k % 80) + 1, 4, 120, 1, 1];
+    mv_ref_diff_verify(inp[..], ref_out[..]);
+    sink_cpu += ref_out[0] + ref_out[1];
+  }
+  t_cpu1 := cxproc_wall_us();
+
+  la: [8] EvLayerDesc; ha: [1] EvHeadDesc; wa: [4096] f64;
+  m_diff := mv_compile_diff_verify(la[..], ha[..], wa[..]);
+  sink_w := 0;
+  t_w_eval0 := cxproc_wall_us();
+  for k: 0..<iters {
+    inp := [7] int.[(k % 80) + 1, 3, (k % 80) + 1, 4, 120, 1, 1];
+    _ = mv_eval_model(m_diff, inp[..], ref_out[..]);
+    sink_w += ref_out[0] + ref_out[1];
+  }
+  t_w_eval1 := cxproc_wall_us();
+
+  guard_iters := 1000;
+  sink_g := 0;
+  t_guard0 := cxproc_wall_us();
+  for k: 0..<guard_iters {
+    v := mc_exec_check_diff((k % 80) + 1, 3, (k % 80) + 1, 4, 120, 1, 1);
+    sink_g += v.out0 + v.out1;
+  }
+  t_guard1 := cxproc_wall_us();
+
+  // Clean up temp folder
+  rmb: [600] u8; rn := eb_cat(rmb[..], 0, "rm -rf "); rn = eb_cat(rmb[..], rn, tmp);
+  _ = mc_run_command("/", cast(string) rmb[0..<rn], 30, b[0].out[..]);
+
+  total_replayed := valid_replayed + traps_replayed + extra_replayed;
+  total_checks := 12 + 8 + 4;
+  cpu_us := t_cpu1 - t_cpu0;
+  weval_us := t_w_eval1 - t_w_eval0;
+  guard_us := t_guard1 - t_guard0;
+  print("=== Executor W6.1 Paired Multi-File Edit Benchmark (6 Real Repo Files, 24 Cases) ===\n");
+  print("valid_edits: %/12 applied cleanly (wall: % us)\n", valid_ok, t_valid1 - t_valid0);
+  print("malformed_edit_traps: %/8 intercepted pre-disk, %/8 files bit-identical (wall: % us)\n", traps_caught, traps_disk_untouched, t_trap1 - t_trap0);
+  print("extra_class_e_traps: %/4 refused with exact typed codes (schema/oob/dag/budget)\n", extra_caught);
+  print("ch234_replay_verified: %/% (exact bit-for-bit replay)\n", total_replayed, total_checks);
+  print("timing_native_cpu_ref_%: % us (% ns/call, sink=%)\n", iters, cpu_us, (cpu_us * 1000) / iters, sink_cpu);
+  print("timing_compiled_f64_weights_eval_%: % us (% ns/call, sink=%)\n", iters, weval_us, (weval_us * 1000) / iters, sink_w);
+  print("timing_full_guard_compile_eval_sha256_%: % us (% ns/call, sink=%)\n", guard_iters, guard_us, (guard_us * 1000) / guard_iters, sink_g);
+
+  if valid_ok == 12 && traps_caught == 8 && traps_disk_untouched == 8 && extra_caught == 4 && total_replayed == total_checks {
+    print("EXECUTOR_BENCH_PASS\n");
+    return 0;
+  }
+  print("EXECUTOR_BENCH_FAIL\n");
+  return 1;
+}

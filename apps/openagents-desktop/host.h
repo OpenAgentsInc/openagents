@@ -222,6 +222,7 @@ void cd_claude(void *page, int on);
 void cd_agy(void *page, int on);
 int cd_model_agy(void *page);
 int cd_model_inkling(void *page);
+int cd_model_hybrid(void *page);
 // cd_openrouter: the OpenRouter models set with Coder > OpenRouter Models ("" for none): main is a
 // composer picker entry for Microcoder, sub is a sub-agent level (openrouter).
 void cd_openrouter(void *page, const char *main, const char *sub);
@@ -337,8 +338,10 @@ int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
 void cd_settings_gemini(void *page, const char *gemini);
 void cd_settings_local(void *page, const char *status);
+void cd_settings_executor(void *page, const char *status, const char *lineage, const char *badge);
 void cd_settings_wallet(void *page, const char *status, const char *balance, const char *addr, const char *npub, const char *limit, const char *backup, const char *history, int ready);
 void cd_inkling(void *page, int on);
+void cd_hybrid_exec(void *page, int on);
 // cd_settings_instructions: the agent instructions' state General shows ("Default", "Edited"; #13808).
 void cd_settings_instructions(void *page, const char *words);
 // The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its words.

@@ -274,11 +274,19 @@ mk_plan_openrouter :: (k: [] MkKeys, p: [] GwPlan, picked: string) -> int {
   return p[0].n;
 }
 
+// Whether model requests the local W3.1 Hybrid Executor runtime (Psionic Metal + W2.2 Class-E cores; #13924).
+mk_is_hybrid_model :: (model: string) -> bool {
+  return model == "hybrid-exec-v1" || model == "hybrid-executor";
+}
+
 // The psionic engine's plan: one keyless gateway, the Chat Completions server
 // on this machine at PSIONIC_BASE_URL (http://127.0.0.1:8080 by default),
-// with PSIONIC_MODEL or "local" as the model. Nothing leaves the machine.
-// "" when the plan is made, else why not.
+// with explicit req_model (e.g. "hybrid-exec-v1"), else PSIONIC_MODEL or "local".
+// Nothing leaves the machine. "" when the plan is made, else why not.
 mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) -> string {
+  return mk_plan_local_for(k, p, pb, "", why);
+}
+mk_plan_local_for :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, req_model: string, why: [] u8) -> string {
   gw_plan_init(p, pb);
   base := gw_psionic_base(k[0].pbase[..]);
   rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;    // recorded answers: no server to ask
@@ -287,7 +295,7 @@ mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) 
     n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
     return cast(string) why[0..<n];
   }
-  model := gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
+  model := ifx req_model.count > 0 then cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], req_model)] else gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
   if model.count == 0 { model = "local"; }
   x := gw_plan_add(p, gw_psionic(base, k[0].purl[..]), model, k[0].none[0..<0]);
   return "";

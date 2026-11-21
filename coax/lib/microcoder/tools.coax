@@ -15,6 +15,7 @@
 
 #load "loop.coax";
 #load "git-guard.coax";
+#load "executor-guard.coax";
 #load "../agent/native-profile.coax";
 #load "../sys/fs.coax";
 #load "../repo/lines.coax";
@@ -473,11 +474,43 @@ McToolBuffers :: struct {
   path: [4096] u8;
   shown: [MC_EDIT_SHOW + 512] u8; // an edit's result: the new text or the nearest region, numbered
   whyb: [600] u8;
+  replay: [96] u8;               // Ch 234 replay-verification pill from compiled Class-E guard (#13924)
+  replay_n: int;
 }
 
-// An edit's result (GitHub #13325): applied, with lines from..to of the file now numbered in shown;
+// An edit's result (GitHub #13325, #13924): applied, with lines from..to of the file now numbered in shown;
 // or why not, with the region of the file nearest the old text numbered in shown ("" when none).
-McEditResult :: struct { ok: bool; why: string; shown: string; from: int; to: int; }
+// replay carries the compiled W2.2 Class-E verification pill ("[E] replay verified · sha256:...").
+McEditResult :: struct { ok: bool; why: string; shown: string; from: int; to: int; replay: string; exec_code: McExecCode; delta: int; new_lines: int; digest: [32] u8; }
+
+// Count logical lines of an edit chunk (0 when empty; newlines + 1 when not ending in '\n').
+mc_edit_line_count :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 0;
+  for c: s { if c == '\n' { n += 1; } }
+  return ifx s[s.count - 1] != '\n' then n + 1 else n;
+}
+
+// Pre-verify a structured edit against the compiled W2.2 Class-E dense F64 weight cores
+// (oa-exec-json-schema then oa-exec-diff-verify) before touching disk (#13924).
+McEditPrecheck :: struct { ok: bool; found: McFound; verdict: McExecVerdict; pill: string; }
+mc_edit_precheck :: (e: McEdit, text: string, out_pill: [] u8) -> McEditPrecheck {
+  sv := mc_exec_check_schema(ifx e.path.count > 0 then 1 else 0, e.path.count, MC_EXEC_MAX_PATH, 1, e.old.count, 1, e.text.count, MC_EDIT_BYTES);
+  if !sv.ok {
+    return McEditPrecheck.{ok = false, verdict = sv, pill = mc_exec_format_pill(false, sv.label, sv.digest, out_pill)};
+  }
+  if e.old.count == 0 {
+    dv := mc_exec_check_diff(1, 0, 1, mc_edit_line_count(e.text), 0, 0, 0);
+    return McEditPrecheck.{ok = dv.ok, verdict = dv, pill = mc_exec_format_pill(dv.ok, dv.label, dv.digest, out_pill)};
+  }
+  f := mc_find_all(text, e.old);
+  file_lines := rp_lines(text);
+  old_cnt := mc_edit_line_count(e.old);
+  new_cnt := mc_edit_line_count(e.text);
+  old_start := ifx f.count == 1 then mc_line_at(text, f.at) else 1;
+  dv := mc_exec_check_diff(old_start, old_cnt, old_start, new_cnt, file_lines, f.count, 1);
+  return McEditPrecheck.{ok = dv.ok, found = f, verdict = dv, pill = mc_exec_format_pill(dv.ok, dv.label, dv.digest, out_pill)};
+}
 
 // The line of text that byte at is on, from 1.
 mc_line_at :: (text: string, at: int) -> int {
@@ -558,50 +591,70 @@ mc_splice :: (text: string, at: int, old_count: int, new_text: string, out: [] u
 // becomes text; an empty old writes text as the whole file. Not through a shell: nothing to quote.
 // A read-only profile edits nothing.
 mc_edit_file :: (cwd: string, e: McEdit, profile: string, b: [] McToolBuffers) -> McEditResult {
+  b[0].replay_n = 0;
   if profile == "read-only" { return McEditResult.{why = "this run may not change files"}; }
   if !mc_path_inside(cwd, e.path) { return McEditResult.{why = "the path leaves the working directory"}; }
+  // Pre-verify structured edit arguments through compiled Class-E oa-exec-json-schema weights (#13924).
+  sv := mc_exec_check_schema(ifx e.path.count > 0 then 1 else 0, e.path.count, MC_EXEC_MAX_PATH, 1, e.old.count, 1, e.text.count, MC_EDIT_BYTES);
+  if !sv.ok {
+    rp := mc_exec_format_pill(false, sv.label, sv.digest, b[0].replay[..]);
+    b[0].replay_n = rp.count;
+    why := ifx sv.code == McExecCode.path_too_long then "the path is too long" else "the edit arguments exceed the verified 512 KB cap";
+    return McEditResult.{why = why, replay = rp, exec_code = sv.code, digest = sv.digest};
+  }
   n := 0;
   if e.path[0] != '/' { n = json_raw(b[0].path[..], 0, cwd); n = json_raw(b[0].path[..], n, "/"); }
   n = json_raw(b[0].path[..], n, e.path);
   if n < 0 { return McEditResult.{why = "the path is too long"}; }
   full := cast(string) b[0].path[0..<n];
   if e.old.count == 0 {
-    if !fs_write(full, e.text) { return McEditResult.{why = "could not write the file: does its folder exist?"}; }
+    pre := mc_edit_precheck(e, "", b[0].replay[..]);
+    b[0].replay_n = pre.pill.count;
+    if !pre.ok {
+      return McEditResult.{why = mc_exec_code_text(pre.verdict.code), replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest};
+    }
+    if !fs_write(full, e.text) { return McEditResult.{why = "could not write the file: does its folder exist?", replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest}; }
     to := rp_lines(e.text);
-    return McEditResult.{ok = true, from = 1, to = to, shown = ifx to > 0 then mc_edit_lines(e.text, e.path, 1, to, b[0].shown[..]) else ""};
+    return McEditResult.{ok = true, from = 1, to = to, shown = ifx to > 0 then mc_edit_lines(e.text, e.path, 1, to, b[0].shown[..]) else "", replay = pre.pill, exec_code = pre.verdict.code, delta = pre.verdict.out2, new_lines = pre.verdict.out1, digest = pre.verdict.digest};
   }
   k := fs_read(full, b[0].src[..]);
   if k < 0 { return McEditResult.{why = ifx fs_exists(full) then "the file is over 512 KB: change it with a command" else "no such file (an empty old writes a new one)"}; }
   text := cast(string) b[0].src[0..<k];
-  f := mc_find_all(text, e.old);
-  if f.count == 0 {
-    why := "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file";
-    near := mc_nearest(text, e.old);
-    if near.line == 0 { return McEditResult.{why = why}; }
-    lines := rp_lines(text);
-    from := ifx near.line > 3 then near.line - 3 else 1;
-    to := near.line + near.count + 2;
-    if to > lines { to = lines; }
-    return McEditResult.{why = "the old text is not in the file: copy it exactly, with its whitespace; the nearest lines are these, as the file is now", shown = mc_edit_lines(text, e.path, from, to, b[0].shown[..]), from = from, to = to};
-  }
-  if f.count > 1 {
-    // where each is, so the model can widen old around the one it means
-    w := mc_put(b[0].whyb[..], 0, "the old text is in the file "); w = mc_put_int(b[0].whyb[..], w, f.count); w = mc_put(b[0].whyb[..], w, " times (at lines ");
-    i := 0; seen := 0;
-    while i + e.old.count <= text.count && seen < 8 {
-      if text[i] == e.old[0] && cast(string) text[i..<i + e.old.count] == e.old {
-        if seen > 0 { w = mc_put(b[0].whyb[..], w, ", "); }
-        w = mc_put_int(b[0].whyb[..], w, mc_line_at(text, i)); seen += 1; i += e.old.count;
-      } else { i += 1; }
+  // Pre-verify hunk bounds & context uniqueness through compiled Class-E oa-exec-diff-verify weights (#13924).
+  pre := mc_edit_precheck(e, text, b[0].replay[..]);
+  b[0].replay_n = pre.pill.count;
+  f := pre.found;
+  if !pre.ok {
+    if f.count == 0 {
+      why := "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file";
+      near := mc_nearest(text, e.old);
+      if near.line == 0 { return McEditResult.{why = why, replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest}; }
+      lines := rp_lines(text);
+      from := ifx near.line > 3 then near.line - 3 else 1;
+      to := near.line + near.count + 2;
+      if to > lines { to = lines; }
+      return McEditResult.{why = "the old text is not in the file: copy it exactly, with its whitespace; the nearest lines are these, as the file is now", shown = mc_edit_lines(text, e.path, from, to, b[0].shown[..]), from = from, to = to, replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest};
     }
-    if f.count > seen { w = mc_put(b[0].whyb[..], w, ", ..."); }
-    w = mc_put(b[0].whyb[..], w, "): include more of the lines around it so it is unique");
-    return McEditResult.{why = cast(string) b[0].whyb[0..<w]};
+    if f.count > 1 {
+      // where each is, so the model can widen old around the one it means
+      w := mc_put(b[0].whyb[..], 0, "the old text is in the file "); w = mc_put_int(b[0].whyb[..], w, f.count); w = mc_put(b[0].whyb[..], w, " times (at lines ");
+      i := 0; seen := 0;
+      while i + e.old.count <= text.count && seen < 8 {
+        if text[i] == e.old[0] && cast(string) text[i..<i + e.old.count] == e.old {
+          if seen > 0 { w = mc_put(b[0].whyb[..], w, ", "); }
+          w = mc_put_int(b[0].whyb[..], w, mc_line_at(text, i)); seen += 1; i += e.old.count;
+        } else { i += 1; }
+      }
+      if f.count > seen { w = mc_put(b[0].whyb[..], w, ", ..."); }
+      w = mc_put(b[0].whyb[..], w, "): include more of the lines around it so it is unique");
+      return McEditResult.{why = cast(string) b[0].whyb[0..<w], replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest};
+    }
+    return McEditResult.{why = mc_exec_code_text(pre.verdict.code), replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest};
   }
   m := mc_splice(text, f.at, e.old.count, e.text, b[0].dst[..]);
-  if m < 0 { return McEditResult.{why = "the edited file would be over 512 KB: change it with a command"}; }
+  if m < 0 { return McEditResult.{why = "the edited file would be over 512 KB: change it with a command", replay = pre.pill, exec_code = McExecCode.body_over_cap, digest = pre.verdict.digest}; }
   now := cast(string) b[0].dst[0..<m];
-  if !fs_write(full, now) { return McEditResult.{why = "could not write the file"}; }
+  if !fs_write(full, now) { return McEditResult.{why = "could not write the file", replay = pre.pill, exec_code = pre.verdict.code, digest = pre.verdict.digest}; }
   // the new text and two lines around it, numbered as the file is now
   first := mc_line_at(now, f.at);
   last := mc_line_at(now, ifx e.text.count > 0 then f.at + e.text.count - 1 else f.at);
@@ -609,8 +662,8 @@ mc_edit_file :: (cwd: string, e: McEdit, profile: string, b: [] McToolBuffers) -
   from := ifx first > 2 then first - 2 else 1;
   to := last + 2;
   if to > lines { to = lines; }
-  if lines == 0 { return McEditResult.{ok = true}; }
-  return McEditResult.{ok = true, from = from, to = to, shown = mc_edit_lines(now, e.path, from, to, b[0].shown[..])};
+  if lines == 0 { return McEditResult.{ok = true, replay = pre.pill, exec_code = pre.verdict.code, delta = pre.verdict.out2, new_lines = pre.verdict.out1, digest = pre.verdict.digest}; }
+  return McEditResult.{ok = true, from = from, to = to, shown = mc_edit_lines(now, e.path, from, to, b[0].shown[..]), replay = pre.pill, exec_code = pre.verdict.code, delta = pre.verdict.out2, new_lines = pre.verdict.out1, digest = pre.verdict.digest};
 }
 
 // Runs the pending action's edits, then its commands in order, then its views, into the
@@ -738,6 +791,16 @@ mc_work_list :: (cwd: string, start: string, profile: string, o: [] McOutput, wh
   b: [1] McToolBuffers;
   #assert mc_edit_file("/w", McEdit.{path = "../x", old = "a", text = "b"}, "danger-full-access", b[..]).why == "the path leaves the working directory";
   #assert mc_edit_file("/w", McEdit.{path = "x", old = "a", text = "b"}, "read-only", b[..]).why == "this run may not change files";
+  // Compiled W2.2 Class-E pre-edit verification (oa-exec-json-schema + oa-exec-diff-verify) + Ch 234 replay (#13924)
+  pb: [96] u8;
+  pre_ok := mc_edit_precheck(McEdit.{path = "a.coax", old = "x := 1;\n", text = "x := 1;\ny := 2;\n"}, "head\nx := 1;\ntail\n", pb[..]);
+  #assert pre_ok.ok && pre_ok.verdict.code == McExecCode.ok && pre_ok.verdict.out1 == 4 && pre_ok.verdict.out2 == 1 && cast(string) pre_ok.pill[0..<30] == "[E] replay verified · sha256:";
+  di := [7] int.[2, 1, 2, 2, 3, 1, 1];
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di[..], pre_ok.verdict.digest);
+  pre_mis := mc_edit_precheck(McEdit.{path = "a.coax", old = "missing\n", text = "new\n"}, "head\nx := 1;\ntail\n", pb[..]);
+  #assert !pre_mis.ok && pre_mis.verdict.code == McExecCode.context_mismatch && cast(string) pre_mis.pill[0..<29] == "[E] replay refused · sha256:";
+  pre_amb := mc_edit_precheck(McEdit.{path = "a.coax", old = "dup\n", text = "one\n"}, "dup\ndup\n", pb[..]);
+  #assert !pre_amb.ok && pre_amb.verdict.code == McExecCode.ambiguous_match;
 }
 
 #test "paths stay under the working directory" {

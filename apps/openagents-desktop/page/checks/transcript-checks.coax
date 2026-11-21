@@ -656,3 +656,24 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   n = coder_page_answer_line(s, out[..]);
   #assert cast(string) out[0..<n] == "{\"answer\":false,\"ticket\":11,\"why\":\"denied by user\"}\n";
 }
+
+#test "deterministic executor edits and tool rows render compact replay-verification pills in the transcript (#13924)" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "patch main.coax") && coder_page_submit(s);
+
+  // 1. Verified edit row with unified diff + replay-verified trailer
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"edit a.coax\",\"exit\":0,\"timed_out\":false,\"output\":\"@@ -1,2 +1,2 @@\\n-x := 1;\\n+x := 2;\\n\\\\ [E] replay verified · sha256:606049b83f17\\n\"}") == MWW_COMMAND;
+  // 2. Refused edit row with replay-refused trailer
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"edit b.coax\",\"exit\":1,\"timed_out\":false,\"output\":\"the old text is not in the file\\n[E] replay refused · sha256:5293cf7460be\"}") == MWW_COMMAND;
+  // 3. Deterministic executor CLI / MCP tool row with replay-verified pill
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"openagents module run oa-exec-dep-sched\",\"exit\":0,\"timed_out\":false,\"output\":\"ok=1\\n[E] replay verified · sha256:7a821819a3ad\"}") == MWW_COMMAND;
+
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  b0 := surface_find(s[0].surface[..], "t0.x0.badge");
+  b1 := surface_find(s[0].surface[..], "t0.x1.badge");
+  b2 := surface_find(s[0].surface[..], "t0.x2.badge");
+  #assert b0 >= 0 && surface_say(s[0].surface[..], b0) == "[E] replay verified · sha256:606049b83f17";
+  #assert b1 >= 0 && surface_say(s[0].surface[..], b1) == "[E] replay refused · sha256:5293cf7460be";
+  #assert b2 >= 0 && surface_say(s[0].surface[..], b2) == "[E] replay verified · sha256:7a821819a3ad";
+}
