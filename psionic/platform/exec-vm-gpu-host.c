@@ -14,6 +14,9 @@
    PC_ABSENT cleanly and stops.
 
    Usage: exec-vm-gpu-{metal|cuda} KERNELS.{metal|cu} */
+#if !defined(_POSIX_C_SOURCE) && !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include "evg-bridge.h"
 #ifdef EXEC_GPU_METAL
 #include "metal-host.h"

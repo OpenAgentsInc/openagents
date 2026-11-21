@@ -242,19 +242,3 @@ per `docs/lightning/testing.md` §6):
       and `--arm-mainnet-owner-approved` for mainnet executor/validator two-leg
       auto-settlement.
 
-## Executor W1.3 Live NVIDIA CUDA Hardware Verification (#13916)
-
-Apple M5 Max Metal 4 execution (`54/54` Ch 226 programs bit-exact, `56,715 steps/s`
-batched `i64`, `9/9` device-level Ch 233 precision sweeps), optimal scheduling
-(`-26.4%` weights, width `49 -> 37`), zero-survivor `#authority` mutation gates,
-and `coax cuda --release` emission + `-Wall -Wextra -Werror` host compilation
-landed on `main` in `2ab01aa970`. No NVIDIA CUDA GPU was reachable from this Mac
-(`coderos-4080` offline on Tailscale; GCP `oa-build-*` pool is CPU-only).
-
-- [ ] On `coderos-4080` (or any SM 6.0+ NVIDIA CUDA host with NVRTC), pull `main`
-      and run `./psionic/tests/check_exec_vm_gpu.sh`.
-- [ ] Record the live NVIDIA CUDA bit-exact trace digest parity (`54/54`), Ch 233
-      GPU precision sweep, and CUDA steps/s in `docs/verification/executor-w13-gpu-sched.md`,
-      post the command output on `#13916`, and close `#13916` (and `#13912` once `#13922`
-      is also closed).
-
