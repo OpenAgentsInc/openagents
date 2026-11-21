@@ -664,7 +664,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     double t0 = now_sec();
     for (int i = 0; i < n_prompt && !g_stop; ) {
         int chunk = n_prompt - i;
-        if (chunk > 4) chunk = 4;
+        if (chunk > 1024) chunk = 1024;
         int need_logits = (i + chunk == n_prompt);
         if (ink_prefill(sv->sess, toks + i, chunk, need_logits) != 0) {
             if (!r.stream) {

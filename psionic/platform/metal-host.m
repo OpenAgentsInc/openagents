@@ -19,6 +19,10 @@ static id<MTLCommandQueue> queue;
 /* Every live buffer: a kernel reaches buffers by address, so each encoder
    makes all of them resident. */
 static NSMutableArray<id<MTLBuffer>> *live;
+static id<MTLBuffer> shared_errors;
+static __unsafe_unretained id<MTLResource> *live_cache;
+static NSUInteger live_cache_cap;
+static int live_dirty = 1;
 
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec; }
 
@@ -48,16 +52,23 @@ PmStatus pm_open(PmDeviceInfo *info) {
     }
 }
 
-PmStatus pm_compile(const char *source, size_t length, const char *name, PmModule *module, double *seconds) {
+static PmStatus compile_impl(const char *source, size_t length, const char *name, int fast_math, PmModule *module, double *seconds) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
         double t0 = now();
         NSString *text = [[NSString alloc] initWithBytes:source length:length encoding:NSUTF8StringEncoding];
         if (!text) { note("%s: not UTF-8", name); return PM_ARGUMENT; }
         MTLCompileOptions *options = [MTLCompileOptions new];
-        /* IEEE arithmetic, one rounding per operation, precise math functions. */
-        options.mathMode = MTLMathModeSafe; /* macOS 15 or later */
-        options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+        if (@available(macOS 15.0, *)) {
+            if (fast_math) {
+                options.mathMode = MTLMathModeFast;
+                options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsFast;
+            } else {
+                /* IEEE arithmetic, one rounding per operation, precise math functions. */
+                options.mathMode = MTLMathModeSafe;
+                options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+            }
+        }
         /* Metal 4 (macOS 26) for the tensor ops of am_matmul_bf16; 3.1 otherwise. */
         if (@available(macOS 26.0, *)) options.languageVersion = MTLLanguageVersion4_0;
         else options.languageVersion = MTLLanguageVersion3_1;
@@ -68,6 +79,14 @@ PmStatus pm_compile(const char *source, size_t length, const char *name, PmModul
         if (seconds) *seconds = now() - t0;
         return PM_OK;
     }
+}
+
+PmStatus pm_compile(const char *source, size_t length, const char *name, PmModule *module, double *seconds) {
+    return compile_impl(source, length, name, 0, module, seconds);
+}
+
+PmStatus pm_compile_fast(const char *source, size_t length, const char *name, PmModule *module, double *seconds) {
+    return compile_impl(source, length, name, 1, module, seconds);
 }
 
 PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel) {
@@ -105,6 +124,7 @@ static PmStatus alloc_buffer(size_t bytes, PmBuffer *buffer, int zero) {
         if (!b) { note("cannot allocate %zu bytes", bytes); return PM_MEMORY; }
         if (zero) memset(b.contents, 0, bytes);
         [live addObject:b];
+        live_dirty = 1;
         *buffer = (__bridge_retained void *)b;
         return PM_OK;
     }
@@ -118,6 +138,7 @@ PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer) {
         id<MTLBuffer> b = [device newBufferWithBytesNoCopy:bytes length:length options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked deallocator:nil];
         if (!b) { note("cannot wrap %zu bytes", length); return PM_MEMORY; }
         [live addObject:b];
+        live_dirty = 1;
         *buffer = (__bridge_retained void *)b;
         return PM_OK;
     }
@@ -128,6 +149,7 @@ PmStatus pm_free(PmBuffer buffer) {
     if (!buffer) return PM_OK;
     id<MTLBuffer> b = (__bridge_transfer id<MTLBuffer>)buffer;
     [live removeObjectIdenticalTo:b];
+    live_dirty = 1;
     return PM_OK;
 }
 
@@ -141,24 +163,41 @@ void *pm_contents(PmBuffer buffer) { return buffer ? ((__bridge id<MTLBuffer>)bu
 @implementation PmBatchObject
 @end
 
-PmStatus pm_begin(PmBatch *batch) {
+static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
         PmBatchObject *b = [PmBatchObject new];
         b.commands = [queue commandBufferWithUnretainedReferences];
-        b.encoder = [b.commands computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
-        b.errors = [device newBufferWithLength:8 options:MTLResourceStorageModeShared];
+        b.encoder = [b.commands computeCommandEncoderWithDispatchType:dtype];
+        if (!shared_errors) {
+            shared_errors = [device newBufferWithLength:8 options:MTLResourceStorageModeShared];
+        }
+        b.errors = shared_errors;
         memset(b.errors.contents, 0, 8);
         NSUInteger n = live.count;
         if (n) {
-            __unsafe_unretained id<MTLResource> resources[n];
-            for (NSUInteger i = 0; i < n; i++) resources[i] = live[i];
-            [b.encoder useResources:resources count:n usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+            if (live_dirty) {
+                if (n > live_cache_cap) {
+                    free(live_cache);
+                    live_cache_cap = n * 2;
+                    live_cache = (__unsafe_unretained id<MTLResource> *)malloc(live_cache_cap * sizeof(id<MTLResource>));
+                }
+                for (NSUInteger i = 0; i < n; i++) live_cache[i] = live[i];
+                live_dirty = 0;
+            }
+            [b.encoder useResources:live_cache count:n usage:MTLResourceUsageRead | MTLResourceUsageWrite];
         }
         [b.encoder setBuffer:b.errors offset:0 atIndex:1];
         *batch = (__bridge_retained void *)b;
         return PM_OK;
     }
+}
+
+PmStatus pm_begin(PmBatch *batch) { return begin_impl(batch, MTLDispatchTypeSerial); }
+PmStatus pm_begin_concurrent(PmBatch *batch) { return begin_impl(batch, MTLDispatchTypeConcurrent); }
+void pm_barrier(PmBatch batch) {
+    PmBatchObject *b = (__bridge PmBatchObject *)batch;
+    [b.encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
 }
 
 PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int block, const PmArg *args, int count) {

@@ -64,12 +64,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "\n");
 
     double tp0 = now_sec();
-    for (int i = 0; i < n_tok; i++) {
-        int need_logits = (i == n_tok - 1);
-        if (ink_step(s, toks[i], need_logits) != 0) {
-            fprintf(stderr, "prefill step %d failed: %s\n", i, ink_error(s));
-            ink_close(s); return 1;
-        }
+    if (ink_prefill(s, toks, n_tok, 1) != 0) {
+        fprintf(stderr, "prefill failed: %s\n", ink_error(s));
+        ink_close(s); return 1;
     }
     double tp1 = now_sec();
     fprintf(stderr, "prefill %d tok in %.3fs (%.1f tok/s)\n", n_tok, tp1 - tp0, n_tok / (tp1 - tp0 + 1e-9));

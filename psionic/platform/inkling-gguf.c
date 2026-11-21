@@ -611,6 +611,13 @@ static size_t next_chunk_len(const uint8_t *s, size_t n) {
         while (i < n && is_nl(s[i])) i++;
         return i;
     }
+    /* Single space + punctuation/symbols (must precede generic whitespace!) */
+    if (s[0] == ' ' && n >= 2 && !is_ws_non_nl(s[1]) && !is_nl(s[1]) && !is_ascii_letter(s[1]) && !is_ascii_digit(s[1])) {
+        i = 1;
+        while (i < n && !is_ws_non_nl(s[i]) && !is_nl(s[i]) && !is_ascii_letter(s[i]) && !is_ascii_digit(s[i])) i++;
+        while (i < n && is_nl(s[i])) i++;
+        return i;
+    }
     /* Whitespace */
     if (is_ws_non_nl(s[0])) {
         while (i < n && is_ws_non_nl(s[i])) i++;
@@ -622,12 +629,6 @@ static size_t next_chunk_len(const uint8_t *s, size_t n) {
         return i;
     }
     /* Punctuation / symbols */
-    if (s[0] == ' ' && n >= 2 && !is_ws_non_nl(s[1]) && !is_nl(s[1]) && !is_ascii_letter(s[1]) && !is_ascii_digit(s[1])) {
-        i = 1;
-        while (i < n && !is_ws_non_nl(s[i]) && !is_nl(s[i]) && !is_ascii_letter(s[i]) && !is_ascii_digit(s[i])) i++;
-        while (i < n && is_nl(s[i])) i++;
-        return i;
-    }
     while (i < n && !is_ws_non_nl(s[i]) && !is_nl(s[i]) && !is_ascii_letter(s[i]) && !is_ascii_digit(s[i])) i++;
     while (i < n && is_nl(s[i])) i++;
     return i ? i : 1;

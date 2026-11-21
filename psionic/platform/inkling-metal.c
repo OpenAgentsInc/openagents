@@ -12,6 +12,7 @@
 #define INK_NT  256
 #define INK_D   8
 #define INK_MAX_BLOCKS 8
+#define INK_PREFILL_B 1024
 
 enum {
     K_EMBED_Q8 = 0,
@@ -19,6 +20,8 @@ enum {
     K_DV_Q8,
     K_DV_IQ4,
     K_DV_F32,
+    K_DV_F32_SMALL,
+    K_CTRL_UP_APPLY,
     K_MOE_GU_IQ4,
     K_MOE_GU_Q8,
     K_MOE_DOWN_IQ4,
@@ -28,6 +31,7 @@ enum {
     K_CTRL_PREP,
     K_CTRL_APPLY,
     K_CONVOLVE,
+    K_CONVOLVE_ADD,
     K_CLIP,
     K_HEAD_RMSNORM,
     K_KV_STORE,
@@ -35,6 +39,29 @@ enum {
     K_ADD,
     K_COPY,
     K_SOFTCAP,
+    /* Batched prefill kernels (B <= 64) */
+    K_MM_Q8,
+    K_MM_F32,
+    K_EMBED_Q8_BATCH,
+    K_MIX_BATCH,
+    K_CTRL_PREP_BATCH,
+    K_CTRL_UP_APPLY_BATCH,
+    K_CONVOLVE_BATCH,
+    K_CLIP_BATCH,
+    K_KV_STORE_BATCH,
+    K_ROUTER_BATCH,
+    K_MOE_GROUP_BATCH,
+    K_MOE_GU_BATCH_IQ4,
+    K_MOE_GU_BATCH_Q8,
+    K_SITU_BATCH,
+    K_MOE_DOWN_BATCH_IQ4,
+    K_MOE_DOWN_BATCH_Q8,
+    K_MOE_REDUCE_BATCH,
+    K_ATTN_SCORES_MMA,
+    K_ATTN_SOFTMAX_MMA,
+    K_ATTN_VALUES_MMA,
+    K_ATTN_GQA_SPLIT,
+    K_ATTN_GQA_REDUCE,
     K_COUNT
 };
 
@@ -44,6 +71,8 @@ static const char *const k_names[K_COUNT] = {
     "ink_dv_q8",
     "ink_dv_iq4",
     "ink_dv_f32",
+    "ink_dv_f32_small",
+    "ink_ctrl_up_apply",
     "ink_moe_gu_iq4",
     "ink_moe_gu_q8",
     "ink_moe_down_iq4",
@@ -53,6 +82,7 @@ static const char *const k_names[K_COUNT] = {
     "ink_ctrl_prep",
     "ink_ctrl_apply",
     "ink_convolve",
+    "ink_convolve_add",
     "ink_clip",
     "ink_head_rmsnorm",
     "ink_kv_store",
@@ -60,30 +90,77 @@ static const char *const k_names[K_COUNT] = {
     "ink_add",
     "ink_copy",
     "ink_softcap",
+    "ink_mm_q8",
+    "ink_mm_f32",
+    "ink_embed_q8_batch",
+    "ink_mix_batch",
+    "ink_ctrl_prep_batch",
+    "ink_ctrl_up_apply_batch",
+    "ink_convolve_batch",
+    "ink_clip_batch",
+    "ink_kv_store_batch",
+    "ink_router_batch",
+    "ink_moe_group_batch",
+    "ink_moe_gu_batch_iq4",
+    "ink_moe_gu_batch_q8",
+    "ink_situ_batch",
+    "ink_moe_down_batch_iq4",
+    "ink_moe_down_batch_q8",
+    "ink_moe_reduce_batch",
+    "ink_attn_scores_mma",
+    "ink_attn_softmax_mma",
+    "ink_attn_values_mma",
+    "ink_attn_gqa_split",
+    "ink_attn_gqa_reduce",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
     INK_NT, /* K_EMBED_Q8 */
     INK_NT, /* K_RMSNORM */
-    INK_T,  /* K_DV_Q8 */
+    128,    /* K_DV_Q8 */
     INK_T,  /* K_DV_IQ4 */
     INK_T,  /* K_DV_F32 */
-    INK_T,  /* K_MOE_GU_IQ4 */
-    INK_T,  /* K_MOE_GU_Q8 */
-    INK_T,  /* K_MOE_DOWN_IQ4 */
-    INK_T,  /* K_MOE_DOWN_Q8 */
+    INK_NT, /* K_DV_F32_SMALL */
+    INK_T,  /* K_CTRL_UP_APPLY */
+    128,    /* K_MOE_GU_IQ4 */
+    128,    /* K_MOE_GU_Q8 */
+    128,    /* K_MOE_DOWN_IQ4 */
+    128,    /* K_MOE_DOWN_Q8 */
     INK_NT, /* K_ROUTER */
     INK_NT, /* K_MIX */
     INK_NT, /* K_CTRL_PREP */
     1,      /* K_CTRL_APPLY */
     1,      /* K_CONVOLVE */
+    1,      /* K_CONVOLVE_ADD */
     INK_T,  /* K_CLIP */
     INK_T,  /* K_HEAD_RMSNORM */
     1,      /* K_KV_STORE */
-    INK_NT, /* K_ATTN */
+    512,    /* K_ATTN */
     1,      /* K_ADD */
     1,      /* K_COPY */
     1,      /* K_SOFTCAP */
+    128,    /* K_MM_Q8 */
+    128,    /* K_MM_F32 */
+    INK_NT, /* K_EMBED_Q8_BATCH */
+    INK_NT, /* K_MIX_BATCH */
+    INK_NT, /* K_CTRL_PREP_BATCH */
+    INK_T,  /* K_CTRL_UP_APPLY_BATCH */
+    1,      /* K_CONVOLVE_BATCH */
+    INK_T,  /* K_CLIP_BATCH */
+    1,      /* K_KV_STORE_BATCH */
+    INK_NT, /* K_ROUTER_BATCH */
+    1,      /* K_MOE_GROUP_BATCH */
+    128,    /* K_MOE_GU_BATCH_IQ4 */
+    128,    /* K_MOE_GU_BATCH_Q8 */
+    1,      /* K_SITU_BATCH */
+    128,    /* K_MOE_DOWN_BATCH_IQ4 */
+    128,    /* K_MOE_DOWN_BATCH_Q8 */
+    1,      /* K_MOE_REDUCE_BATCH */
+    128,    /* K_ATTN_SCORES_MMA */
+    INK_NT, /* K_ATTN_SOFTMAX_MMA */
+    128,    /* K_ATTN_VALUES_MMA */
+    128,    /* K_ATTN_GQA_SPLIT */
+    128,    /* K_ATTN_GQA_REDUCE */
 };
 
 struct InkSession {
@@ -126,8 +203,15 @@ struct InkSession {
     PmBuffer router_logits;/* [n_expert] */
     PmBuffer moe_ids;      /* [n_expert_used] u32 */
     PmBuffer moe_wts;      /* [n_expert_used] f32 */
-    PmBuffer moe_hid;      /* [n_expert_used * n_ff_exp] f32 */
-    PmBuffer moe_out;      /* [n_embd] */
+    PmBuffer moe_hid;      /* [INK_PREFILL_B * n_expert_used * n_ff_exp] f32 */
+    PmBuffer moe_gu;       /* [INK_PREFILL_B * n_expert_used * 2 * n_ff_exp] f32 */
+    PmBuffer moe_out;      /* [INK_PREFILL_B * n_embd] */
+    PmBuffer moe_slot_out; /* [INK_PREFILL_B * n_expert_used * n_embd] */
+    PmBuffer exp_toks;     /* [n_expert * INK_PREFILL_B] u32 */
+    PmBuffer exp_slots;    /* [n_expert * INK_PREFILL_B] u32 */
+    PmBuffer exp_wts;      /* [n_expert * INK_PREFILL_B] f32 */
+    PmBuffer exp_cnt;      /* [n_expert] u32 */
+    PmBuffer tok_ids_buf;  /* [INK_PREFILL_B] u32 */
     PmBuffer logits;       /* [vocab_size] f32 */
     PmBuffer dummy_f32;    /* [64] zero f32 */
 
@@ -192,8 +276,13 @@ static int dispatch_mv(InkSession *s, PmBatch batch, const InkTensor *w, int64_t
         CALL(s, batch, K_DV_IQ4, items, a_int(rows), a_int(cols), a_int(add),
              a_tensor_u16(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
     } else if (w->type == INK_GGML_F32) {
-        CALL(s, batch, K_DV_F32, items, a_int(rows), a_int(cols), a_int(add),
-             a_tensor_f32(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
+        if (rows <= 128 && cols >= 256) {
+            CALL(s, batch, K_DV_F32_SMALL, rows, a_int(rows), a_int(cols), a_int(add),
+                 a_tensor_f32(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
+        } else {
+            CALL(s, batch, K_DV_F32, items, a_int(rows), a_int(cols), a_int(add),
+                 a_tensor_f32(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
+        }
     } else {
         snprintf(s->error, sizeof s->error, "unsupported weight type %u for matvec", w->type);
         return 1;
@@ -210,12 +299,27 @@ static int dispatch_control(InkSession *s, PmBatch batch, const InkLayerTensors 
     int64_t rank = hp->gate_rank;
     CALL(s, batch, K_CTRL_PREP, 1, a_int(d),
          a_f32v(cur_buf, cur_off, d), a_f32v(msg_buf, msg_off, d), a_f32v(s->ctrl_cat, 0, 2 * d));
+    pm_barrier(batch);
     if (dispatch_mv(s, batch, &L->loop_ctrl_down[ctrl], rank, 2 * d, 0, s->ctrl_cat, 0, s->ctrl_gate, 0)) return 1;
-    if (dispatch_mv(s, batch, &L->loop_ctrl_gain[ctrl], d, rank, 0, s->ctrl_gate, 0, s->ctrl_gain, 0)) return 1;
-    if (dispatch_mv(s, batch, &L->loop_ctrl_forget[ctrl], d, rank, 0, s->ctrl_gate, 0, s->ctrl_forget, 0)) return 1;
-    CALL(s, batch, K_CTRL_APPLY, d, a_int(d),
-         a_f32v(cur_buf, cur_off, d), a_f32v(msg_buf, msg_off, d),
-         a_f32v(s->ctrl_gain, 0, d), a_f32v(s->ctrl_forget, 0, d), a_f32v(out_buf, out_off, d));
+    pm_barrier(batch);
+    if (L->loop_ctrl_gain[ctrl].type == INK_GGML_F32 && L->loop_ctrl_forget[ctrl].type == INK_GGML_F32 && rank <= 64) {
+        int64_t items = (d + INK_T - 1) / INK_T;
+        CALL(s, batch, K_CTRL_UP_APPLY, items, a_int(d), a_int(rank),
+             a_tensor_f32(s, &L->loop_ctrl_gain[ctrl]),
+             a_tensor_f32(s, &L->loop_ctrl_forget[ctrl]),
+             a_f32v(s->ctrl_gate, 0, rank),
+             a_f32v(cur_buf, cur_off, d),
+             a_f32v(msg_buf, msg_off, d),
+             a_f32v(out_buf, out_off, d));
+    } else {
+        if (dispatch_mv(s, batch, &L->loop_ctrl_gain[ctrl], d, rank, 0, s->ctrl_gate, 0, s->ctrl_gain, 0)) return 1;
+        if (dispatch_mv(s, batch, &L->loop_ctrl_forget[ctrl], d, rank, 0, s->ctrl_gate, 0, s->ctrl_forget, 0)) return 1;
+        pm_barrier(batch);
+        CALL(s, batch, K_CTRL_APPLY, d, a_int(d),
+             a_f32v(cur_buf, cur_off, d), a_f32v(msg_buf, msg_off, d),
+             a_f32v(s->ctrl_gain, 0, d), a_f32v(s->ctrl_forget, 0, d), a_f32v(out_buf, out_off, d));
+    }
+    pm_barrier(batch);
     return 0;
 }
 
@@ -231,10 +335,11 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
     int64_t n_rel = hp->rel_len;
     int is_swa = hp->is_swa[ip];
 
-    /* inpSA = cur */
+    /* Wave 1: save inp_sa = cur concurrently with depth-attention mix (if present). */
     CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->inp_sa, 0, d));
 
-    /* Attention inputs: SWA mixes 1 vector, full attention mixes 3 vectors (Q, K, V) */
+    PmBuffer q_src = s->cur, k_src = s->cur, v_src = s->cur;
+    int64_t q_off = 0, k_off = 0, v_off = 0;
     if (L->attn_res_query.present) {
         int64_t nq = is_swa ? 1 : 3;
         CALL(s, batch, K_MIX, nq, a_int(d), a_int(*n_blocks),
@@ -242,97 +347,126 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
              a_f32v(s->cur, 0, d),
              a_tensor_f32(s, &L->attn_res_query),
              a_f32v(s->mix_out, 0, nq * d));
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->mix_out, 0, d), a_f32v(s->inp_q, 0, d));
-        if (is_swa) {
-            CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->mix_out, 0, d), a_f32v(s->inp_k, 0, d));
-            CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->mix_out, 0, d), a_f32v(s->inp_v, 0, d));
-        } else {
-            CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->mix_out, d, d), a_f32v(s->inp_k, 0, d));
-            CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->mix_out, 2 * d, d), a_f32v(s->inp_v, 0, d));
-        }
-    } else {
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->inp_q, 0, d));
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->inp_k, 0, d));
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->inp_v, 0, d));
+        q_src = s->mix_out; q_off = 0;
+        k_src = s->mix_out; k_off = is_swa ? 0 : d;
+        v_src = s->mix_out; v_off = is_swa ? 0 : 2 * d;
     }
+    pm_barrier(batch);
 
+    /* Optional loop control gates (Q, K, V run CONCURRENTLY in 3 waves instead of 9!). */
     if (has_messages) {
-        if (dispatch_control(s, batch, L, 0, s->inp_q, 0, s->messages, 0 * d, s->inp_q, 0)) return 1;
-        if (dispatch_control(s, batch, L, 1, s->inp_k, 0, s->messages, 1 * d, s->inp_k, 0)) return 1;
-        if (dispatch_control(s, batch, L, 2, s->inp_v, 0, s->messages, 2 * d, s->inp_v, 0)) return 1;
+        int64_t rank = hp->gate_rank;
+        CALL(s, batch, K_CTRL_PREP, 1, a_int(d),
+             a_f32v(q_src, q_off, d), a_f32v(s->messages, 0 * d, d), a_f32v(s->ctrl_cat, 0 * 2 * d, 2 * d));
+        CALL(s, batch, K_CTRL_PREP, 1, a_int(d),
+             a_f32v(k_src, k_off, d), a_f32v(s->messages, 1 * d, d), a_f32v(s->ctrl_cat, 1 * 2 * d, 2 * d));
+        CALL(s, batch, K_CTRL_PREP, 1, a_int(d),
+             a_f32v(v_src, v_off, d), a_f32v(s->messages, 2 * d, d), a_f32v(s->ctrl_cat, 2 * 2 * d, 2 * d));
+        pm_barrier(batch);
+        if (dispatch_mv(s, batch, &L->loop_ctrl_down[0], rank, 2 * d, 0, s->ctrl_cat, 0 * 2 * d, s->ctrl_gate, 0 * rank)) return 1;
+        if (dispatch_mv(s, batch, &L->loop_ctrl_down[1], rank, 2 * d, 0, s->ctrl_cat, 1 * 2 * d, s->ctrl_gate, 1 * rank)) return 1;
+        if (dispatch_mv(s, batch, &L->loop_ctrl_down[2], rank, 2 * d, 0, s->ctrl_cat, 2 * 2 * d, s->ctrl_gate, 2 * rank)) return 1;
+        pm_barrier(batch);
+        if (L->loop_ctrl_gain[0].type == INK_GGML_F32 && L->loop_ctrl_forget[0].type == INK_GGML_F32 && rank <= 64) {
+            int64_t citems = (d + INK_T - 1) / INK_T;
+            CALL(s, batch, K_CTRL_UP_APPLY, citems, a_int(d), a_int(rank),
+                 a_tensor_f32(s, &L->loop_ctrl_gain[0]), a_tensor_f32(s, &L->loop_ctrl_forget[0]),
+                 a_f32v(s->ctrl_gate, 0 * rank, rank), a_f32v(q_src, q_off, d), a_f32v(s->messages, 0 * d, d), a_f32v(s->inp_q, 0, d));
+            CALL(s, batch, K_CTRL_UP_APPLY, citems, a_int(d), a_int(rank),
+                 a_tensor_f32(s, &L->loop_ctrl_gain[1]), a_tensor_f32(s, &L->loop_ctrl_forget[1]),
+                 a_f32v(s->ctrl_gate, 1 * rank, rank), a_f32v(k_src, k_off, d), a_f32v(s->messages, 1 * d, d), a_f32v(s->inp_k, 0, d));
+            CALL(s, batch, K_CTRL_UP_APPLY, citems, a_int(d), a_int(rank),
+                 a_tensor_f32(s, &L->loop_ctrl_gain[2]), a_tensor_f32(s, &L->loop_ctrl_forget[2]),
+                 a_f32v(s->ctrl_gate, 2 * rank, rank), a_f32v(v_src, v_off, d), a_f32v(s->messages, 2 * d, d), a_f32v(s->inp_v, 0, d));
+            pm_barrier(batch);
+        } else {
+            if (dispatch_control(s, batch, L, 0, q_src, q_off, s->messages, 0 * d, s->inp_q, 0)) return 1;
+            if (dispatch_control(s, batch, L, 1, k_src, k_off, s->messages, 1 * d, s->inp_k, 0)) return 1;
+            if (dispatch_control(s, batch, L, 2, v_src, v_off, s->messages, 2 * d, s->inp_v, 0)) return 1;
+        }
+        q_src = s->inp_q; q_off = 0;
+        k_src = s->inp_k; k_off = 0;
+        v_src = s->inp_v; v_off = 0;
     }
 
-    /* Input RMSNorms */
+    /* Wave 2: Input RMSNorms (concurrent across Q, K, V; SWA without messages shares one norm!). */
+    PmBuffer q_in = s->inp_q, k_in = s->inp_k, v_in = s->inp_v;
     if (is_swa && has_messages) {
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_q, 0, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, d));
+             a_f32v(q_src, q_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, d));
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_k, 0, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_k, 0, d));
+             a_f32v(k_src, k_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_k, 0, d));
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_v, 0, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_v, 0, d));
+             a_f32v(v_src, v_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_v, 0, d));
     } else if (is_swa) {
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_q, 0, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, d));
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->inp_q, 0, d), a_f32v(s->inp_k, 0, d));
-        CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->inp_q, 0, d), a_f32v(s->inp_v, 0, d));
+             a_f32v(q_src, q_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, d));
+        k_in = s->inp_q;
+        v_in = s->inp_q;
     } else {
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_q, 0, d), a_tensor_f32(s, &L->attn_q_inp_norm), a_f32v(s->inp_q, 0, d));
+             a_f32v(q_src, q_off, d), a_tensor_f32(s, &L->attn_q_inp_norm), a_f32v(s->inp_q, 0, d));
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_k, 0, d), a_tensor_f32(s, &L->attn_k_inp_norm), a_f32v(s->inp_k, 0, d));
+             a_f32v(k_src, k_off, d), a_tensor_f32(s, &L->attn_k_inp_norm), a_f32v(s->inp_k, 0, d));
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_v, 0, d), a_tensor_f32(s, &L->attn_v_inp_norm), a_f32v(s->inp_v, 0, d));
+             a_f32v(v_src, v_off, d), a_tensor_f32(s, &L->attn_v_inp_norm), a_f32v(s->inp_v, 0, d));
     }
+    pm_barrier(batch);
 
-    /* Q, K, V, R projections + K/V causal shortconv */
-    if (dispatch_mv(s, batch, &L->attn_q, n_q, d, 0, s->inp_q, 0, s->q_buf, 0)) return 1;
-    if (dispatch_mv(s, batch, &L->attn_k, n_kv, d, 0, s->inp_k, 0, s->k_raw, 0)) return 1;
-    if (!is_swa && L->attn_k_conv_proj.present) {
+    /* Wave 3: ALL independent attention input projections run CONCURRENTLY! */
+    if (dispatch_mv(s, batch, &L->attn_q, n_q, d, 0, q_in, 0, s->q_buf, 0)) return 1;
+    if (dispatch_mv(s, batch, &L->attn_k, n_kv, d, 0, k_in, 0, s->k_raw, 0)) return 1;
+    if (dispatch_mv(s, batch, &L->attn_v, n_kv, d, 0, v_in, 0, s->v_raw, 0)) return 1;
+    if (dispatch_mv(s, batch, &L->attn_rel, n_head * n_rel, d, 0, q_in, 0, s->r_buf, 0)) return 1;
+    if (dispatch_mv(s, batch, &L->attn_sink_proj, n_head, d, 0, q_in, 0, s->sinks_buf, 0)) return 1;
+    if (dispatch_mv(s, batch, &L->attn_gate, n_q, d, 0, q_in, 0, s->gate_buf, 0)) return 1;
+    int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
+    int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
+    if (has_k_dyn) {
         if (dispatch_mv(s, batch, &L->attn_k_conv_proj, n_head_kv * hp->conv_len, d, 0,
-                        s->inp_k, 0, s->dyn_buf, 0)) return 1;
-        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(1),
-             a_f32v(s->k_raw, 0, n_kv), a_tensor_f32(s, &L->attn_k_conv),
-             a_f32v(s->dyn_buf, 0, n_head_kv * hp->conv_len),
-             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, n_kv));
-    } else {
-        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(0),
-             a_f32v(s->k_raw, 0, n_kv), a_tensor_f32(s, &L->attn_k_conv),
-             a_f32v(s->dummy_f32, 0, 64),
-             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, n_kv));
+                        k_in, 0, s->dyn_buf, 0)) return 1;
     }
+    pm_barrier(batch);
 
-    if (dispatch_mv(s, batch, &L->attn_v, n_kv, d, 0, s->inp_v, 0, s->v_raw, 0)) return 1;
-    if (!is_swa && L->attn_v_conv_proj.present) {
-        if (dispatch_mv(s, batch, &L->attn_v_conv_proj, n_head_kv * hp->conv_len, d, 0,
-                        s->inp_v, 0, s->dyn_buf, 0)) return 1;
-        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(1),
-             a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
-             a_f32v(s->dyn_buf, 0, n_head_kv * hp->conv_len),
-             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, n_kv));
-    } else {
-        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(0),
-             a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
-             a_f32v(s->dummy_f32, 0, 64),
-             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, n_kv));
-    }
-
-    if (dispatch_mv(s, batch, &L->attn_rel, n_head * n_rel, d, 0, s->inp_q, 0, s->r_buf, 0)) return 1;
-
-    /* Clip Q, K, R; RMSNorm V; apply tau on full-attention Q and R */
+    /* Wave 4: K shortconv, Q clip, R clip (plus V dyn proj if present; else V shortconv concurrently!). */
     float q_tau = is_swa ? 1.0f : tau;
+    CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(has_k_dyn ? 1 : 0),
+         a_f32v(s->k_raw, 0, n_kv), a_tensor_f32(s, &L->attn_k_conv),
+         has_k_dyn ? a_f32v(s->dyn_buf, 0, n_head_kv * hp->conv_len) : a_f32v(s->dummy_f32, 0, 64),
+         a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, n_kv));
     CALL(s, batch, K_CLIP, n_head, a_int(hd), a_int(L->attn_q_clip.present ? 1 : 0),
          a_f32(hp->qk_clip), a_f32(q_tau),
          a_f32v(s->q_buf, 0, n_q),
          L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64));
+    CALL(s, batch, K_CLIP, n_head, a_int(n_rel), a_int(L->attn_rel_clip.present ? 1 : 0),
+         a_f32(hp->rel_clip), a_f32(q_tau),
+         a_f32v(s->r_buf, 0, n_head * n_rel),
+         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
+    if (!has_v_dyn) {
+        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(0),
+             a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, n_kv));
+        pm_barrier(batch);
+    } else {
+        pm_barrier(batch);
+        if (dispatch_mv(s, batch, &L->attn_v_conv_proj, n_head_kv * hp->conv_len, d, 0,
+                        v_in, 0, s->dyn_buf, 0)) return 1;
+        pm_barrier(batch);
+        CALL(s, batch, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(1),
+             a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             a_f32v(s->dyn_buf, 0, n_head_kv * hp->conv_len),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, n_kv));
+        pm_barrier(batch);
+    }
+
+    /* Wave 5: K clip + V head RMSNorm concurrently. */
     CALL(s, batch, K_CLIP, n_head_kv, a_int(hd), a_int(0),
          a_f32(hp->qk_clip), a_f32(1.0f),
          a_f32v(s->k_buf, 0, n_kv), a_f32v(s->dummy_f32, 0, 64));
     CALL(s, batch, K_HEAD_RMSNORM, n_head_kv, a_int(hd), a_f32(hp->rms_eps),
          a_f32v(s->v_buf, 0, n_kv));
-    CALL(s, batch, K_CLIP, n_head, a_int(n_rel), a_int(L->attn_rel_clip.present ? 1 : 0),
-         a_f32(hp->rel_clip), a_f32(q_tau),
-         a_f32v(s->r_buf, 0, n_head * n_rel),
-         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
+    pm_barrier(batch);
 
     /* Store K, V into KV cache for slot il */
     int64_t kv_cap = s->kv_cap[il];
@@ -340,71 +474,97 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
     CALL(s, batch, K_KV_STORE, n_kv, a_int(n_kv), a_int(slot_pos),
          a_f32v(s->k_buf, 0, n_kv), a_f32v(s->v_buf, 0, n_kv),
          a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
-
-    /* Sink logits & attention output gate */
-    if (dispatch_mv(s, batch, &L->attn_sink_proj, n_head, d, 0, s->inp_q, 0, s->sinks_buf, 0)) return 1;
-    if (dispatch_mv(s, batch, &L->attn_gate, n_q, d, 0, s->inp_q, 0, s->gate_buf, 0)) return 1;
+    pm_barrier(batch);
 
     /* Attention (packed scalar dims keep total args <= 16 for metal-host.m) */
     int64_t dims0 = n_head | (n_head_kv << 16) | (hd << 32) | (n_rel << 48);
     int64_t dims1 = hp->rel_extent | ((int64_t)is_swa << 24) | (hp->swa << 32);
-    int64_t kv_info = kv_cap | ((int64_t)s->max_ctx << 32);
-    CALL(s, batch, K_ATTN, n_head,
-         a_int(dims0), a_int(dims1), a_int(kv_info), a_int(s->pos),
-         a_f32v(s->q_buf, 0, n_q),
-         a_f32v(s->r_buf, 0, n_head * n_rel),
-         a_tensor_f32(s, &L->attn_rel_bias),
-         a_f32v(s->sinks_buf, 0, n_head),
-         a_f32v(s->gate_buf, 0, n_q),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
-         a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
-         a_f32v(s->attn_scores, 0, n_head * s->max_ctx),
-         a_f32v(s->attn_out, 0, n_q));
+    int64_t n_keys_attn = (is_swa && s->pos >= hp->swa) ? hp->swa : (s->pos + 1);
+    if (n_head == n_head_kv * 3 && hd == 128 && s->max_ctx >= 130 && n_keys_attn >= 256) {
+        int64_t n_splits = (n_keys_attn >= 1024) ? 32 : 16;
+        int64_t max_sp = s->max_ctx / 130;
+        if (n_splits > max_sp) n_splits = max_sp;
+        if (n_splits < 1) n_splits = 1;
+        int64_t kv_info = kv_cap | (n_splits << 32);
+        int64_t split_elems = n_head * n_splits * 130;
+        CALL(s, batch, K_ATTN_GQA_SPLIT, n_head_kv * n_splits,
+             a_int(dims0), a_int(dims1), a_int(kv_info), a_int(s->pos),
+             a_f32v(s->q_buf, 0, n_q),
+             a_f32v(s->r_buf, 0, n_head * n_rel),
+             a_tensor_f32(s, &L->attn_rel_bias),
+             a_f32v(s->sinks_buf, 0, n_head),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
+             a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+             a_f32v(s->attn_scores, 0, split_elems));
+        pm_barrier(batch);
+        CALL(s, batch, K_ATTN_GQA_REDUCE, n_head,
+             a_int(n_splits),
+             a_f32v(s->attn_scores, 0, split_elems),
+             a_f32v(s->gate_buf, 0, n_q),
+             a_f32v(s->attn_out, 0, n_q));
+    } else {
+        int64_t kv_info = kv_cap | ((int64_t)s->max_ctx << 32);
+        CALL(s, batch, K_ATTN, n_head,
+             a_int(dims0), a_int(dims1), a_int(kv_info), a_int(s->pos),
+             a_f32v(s->q_buf, 0, n_q),
+             a_f32v(s->r_buf, 0, n_head * n_rel),
+             a_tensor_f32(s, &L->attn_rel_bias),
+             a_f32v(s->sinks_buf, 0, n_head),
+             a_f32v(s->gate_buf, 0, n_q),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
+             a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+             a_f32v(s->attn_scores, 0, n_head * s->max_ctx),
+             a_f32v(s->attn_out, 0, n_q));
+    }
+    pm_barrier(batch);
 
-    /* Output projection + post shortconv */
+    /* Output projection + post shortconv + residual (fused when non-block-boundary!) */
     if (dispatch_mv(s, batch, &L->attn_output, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
-    CALL(s, batch, K_CONVOLVE, d, a_int(d), a_int(1), a_int(0),
-         a_f32v(s->o_raw, 0, d), a_tensor_f32(s, &L->attn_post_conv),
-         a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_ao[il], 0, d * 3), a_f32v(s->cur, 0, d));
-
-    /* Residual stream block boundary vs add */
+    pm_barrier(batch);
     if (ip % hp->block_size == 0) {
         if (*n_blocks >= INK_MAX_BLOCKS) {
             snprintf(s->error, sizeof s->error, "block count overflow");
             return 1;
         }
+        CALL(s, batch, K_CONVOLVE, d, a_int(d), a_int(1), a_int(0),
+             a_f32v(s->o_raw, 0, d), a_tensor_f32(s, &L->attn_post_conv),
+             a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_ao[il], 0, d * 3), a_f32v(s->cur, 0, d));
         CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->inp_sa, 0, d),
              a_f32v(s->blocks, (int64_t)(*n_blocks) * d, d));
         (*n_blocks)++;
     } else {
-        CALL(s, batch, K_ADD, d, a_int(d), a_f32v(s->inp_sa, 0, d), a_f32v(s->cur, 0, d),
-             a_f32v(s->cur, 0, d));
+        CALL(s, batch, K_CONVOLVE_ADD, d, a_int(d),
+             a_f32v(s->o_raw, 0, d), a_tensor_f32(s, &L->attn_post_conv),
+             a_f32v(s->conv_ao[il], 0, d * 3), a_f32v(s->inp_sa, 0, d), a_f32v(s->cur, 0, d));
     }
+    pm_barrier(batch);
 
-    /* ffn_inp = cur */
+    /* ffn_inp = cur concurrently with MoE input mix */
     CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->ffn_inp, 0, d));
-
-    /* MoE input: mix -> optional control -> RMSNorm */
     CALL(s, batch, K_MIX, 1, a_int(d), a_int(*n_blocks),
          a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
          a_f32v(s->cur, 0, d),
          a_tensor_f32(s, &L->ffn_res_query),
          a_f32v(s->norm_buf, 0, d));
+    pm_barrier(batch);
     if (has_messages) {
         if (dispatch_control(s, batch, L, 3, s->norm_buf, 0, s->messages, 3 * d, s->norm_buf, 0)) return 1;
     }
     CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
          a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, d));
+    pm_barrier(batch);
 
     /* MoE router */
     if (dispatch_mv(s, batch, &L->ffn_gate_inp, hp->n_expert, d, 0, s->norm_buf, 0, s->router_logits, 0)) return 1;
+    pm_barrier(batch);
     CALL(s, batch, K_ROUTER, 1, a_int(hp->n_expert), a_int(hp->n_expert_used),
          a_int(L->ffn_exp_probs_b.present ? 1 : 0), a_f32(hp->expert_weights_scale),
          a_f32v(s->router_logits, 0, hp->n_expert),
          L->ffn_exp_probs_b.present ? a_tensor_f32(s, &L->ffn_exp_probs_b) : a_f32v(s->dummy_f32, 0, 64),
          a_u32v(s->moe_ids, 0, hp->n_expert_used),
          a_f32v(s->moe_wts, 0, hp->n_expert_used));
+    pm_barrier(batch);
 
     /* MoE gate_up + SITU */
     int64_t n_ff = hp->n_ff_exp;
@@ -427,6 +587,7 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
         snprintf(s->error, sizeof s->error, "unsupported gate_up type %u", L->ffn_gate_up_exps.type);
         return 1;
     }
+    pm_barrier(batch);
 
     /* MoE down + weighted sum */
     int64_t dn_items = (d + INK_D - 1) / INK_D;
@@ -448,14 +609,13 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
         snprintf(s->error, sizeof s->error, "unsupported down type %u", L->ffn_down_exps.type);
         return 1;
     }
+    pm_barrier(batch);
 
-    /* MoE post shortconv + residual add */
-    CALL(s, batch, K_CONVOLVE, d, a_int(d), a_int(1), a_int(0),
+    /* Fused MoE post shortconv + residual add (1 dispatch instead of 2!) */
+    CALL(s, batch, K_CONVOLVE_ADD, d, a_int(d),
          a_f32v(s->moe_out, 0, d), a_tensor_f32(s, &L->ffn_post_conv),
-         a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->cur, 0, d));
-    CALL(s, batch, K_ADD, d, a_int(d), a_f32v(s->ffn_inp, 0, d), a_f32v(s->cur, 0, d),
-         a_f32v(s->cur, 0, d));
+         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->ffn_inp, 0, d), a_f32v(s->cur, 0, d));
+    pm_barrier(batch);
     return 0;
 }
 
@@ -513,7 +673,7 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         ink_close(s); return 1;
     }
     double compile_s = 0.0;
-    PmStatus cs = pm_compile(metal_src, metal_len, "inkling", &s->module, &compile_s);
+    PmStatus cs = pm_compile_fast(metal_src, metal_len, "inkling", &s->module, &compile_s);
     free(metal_src);
     if (cs != PM_OK) {
         snprintf(err, err_bytes, "pm_compile(%s): %s", metal_path, pm_log());
@@ -531,45 +691,53 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         ink_close(s); return 1;
     }
 
+    size_t B = INK_PREFILL_B;
     size_t d = (size_t)hp->n_embd;
     size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
     size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
 
-    if (alloc_buf(s, &s->cur, d * 4) ||
-        alloc_buf(s, &s->inp_sa, d * 4) ||
-        alloc_buf(s, &s->ffn_inp, d * 4) ||
-        alloc_buf(s, &s->prelude, d * 4) ||
-        alloc_buf(s, &s->bank_out, d * 4) ||
-        alloc_buf(s, &s->blocks, INK_MAX_BLOCKS * d * 4) ||
-        alloc_buf(s, &s->prelude_blk, INK_MAX_BLOCKS * d * 4) ||
-        alloc_buf(s, &s->bank_blk, INK_MAX_BLOCKS * d * 4) ||
-        alloc_buf(s, &s->mix_out, 4 * d * 4) ||
-        alloc_buf(s, &s->messages, 4 * d * 4) ||
-        alloc_buf(s, &s->inp_q, d * 4) ||
-        alloc_buf(s, &s->inp_k, d * 4) ||
-        alloc_buf(s, &s->inp_v, d * 4) ||
-        alloc_buf(s, &s->ctrl_cat, 2 * d * 4) ||
-        alloc_buf(s, &s->ctrl_gate, (size_t)hp->gate_rank * 4) ||
+    if (alloc_buf(s, &s->cur, B * d * 4) ||
+        alloc_buf(s, &s->inp_sa, B * d * 4) ||
+        alloc_buf(s, &s->ffn_inp, B * d * 4) ||
+        alloc_buf(s, &s->prelude, B * d * 4) ||
+        alloc_buf(s, &s->bank_out, B * d * 4) ||
+        alloc_buf(s, &s->blocks, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf(s, &s->prelude_blk, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf(s, &s->bank_blk, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf(s, &s->mix_out, 4 * B * d * 4) ||
+        alloc_buf(s, &s->messages, 4 * B * d * 4) ||
+        alloc_buf(s, &s->inp_q, B * d * 4) ||
+        alloc_buf(s, &s->inp_k, B * d * 4) ||
+        alloc_buf(s, &s->inp_v, B * d * 4) ||
+        alloc_buf(s, &s->ctrl_cat, 3 * 2 * B * d * 4) ||
+        alloc_buf(s, &s->ctrl_gate, 3 * B * (size_t)hp->gate_rank * 4) ||
         alloc_buf(s, &s->ctrl_gain, d * 4) ||
         alloc_buf(s, &s->ctrl_forget, d * 4) ||
-        alloc_buf(s, &s->q_buf, n_q * 4) ||
-        alloc_buf(s, &s->k_raw, n_kv * 4) ||
-        alloc_buf(s, &s->k_buf, n_kv * 4) ||
-        alloc_buf(s, &s->v_raw, n_kv * 4) ||
-        alloc_buf(s, &s->v_buf, n_kv * 4) ||
-        alloc_buf(s, &s->r_buf, (size_t)hp->n_head * (size_t)hp->rel_len * 4) ||
-        alloc_buf(s, &s->dyn_buf, (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
-        alloc_buf(s, &s->sinks_buf, (size_t)hp->n_head * 4) ||
-        alloc_buf(s, &s->gate_buf, n_q * 4) ||
-        alloc_buf(s, &s->attn_scores, (size_t)hp->n_head * (size_t)s->max_ctx * 4) ||
-        alloc_buf(s, &s->attn_out, n_q * 4) ||
-        alloc_buf(s, &s->o_raw, d * 4) ||
-        alloc_buf(s, &s->norm_buf, d * 4) ||
-        alloc_buf(s, &s->router_logits, (size_t)hp->n_expert * 4) ||
-        alloc_buf(s, &s->moe_ids, (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->moe_wts, (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->moe_hid, (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp * 4) ||
-        alloc_buf(s, &s->moe_out, d * 4) ||
+        alloc_buf(s, &s->q_buf, B * n_q * 4) ||
+        alloc_buf(s, &s->k_raw, B * n_kv * 4) ||
+        alloc_buf(s, &s->k_buf, B * n_kv * 4) ||
+        alloc_buf(s, &s->v_raw, B * n_kv * 4) ||
+        alloc_buf(s, &s->v_buf, B * n_kv * 4) ||
+        alloc_buf(s, &s->r_buf, B * (size_t)hp->n_head * (size_t)hp->rel_len * 4) ||
+        alloc_buf(s, &s->dyn_buf, B * (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
+        alloc_buf(s, &s->sinks_buf, B * (size_t)hp->n_head * 4) ||
+        alloc_buf(s, &s->gate_buf, B * n_q * 4) ||
+        alloc_buf(s, &s->attn_scores, B * (size_t)hp->n_head * (size_t)s->max_ctx * 4) ||
+        alloc_buf(s, &s->attn_out, B * n_q * 4) ||
+        alloc_buf(s, &s->o_raw, B * d * 4) ||
+        alloc_buf(s, &s->norm_buf, B * d * 4) ||
+        alloc_buf(s, &s->router_logits, B * (size_t)hp->n_expert * 4) ||
+        alloc_buf(s, &s->moe_ids, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf(s, &s->moe_wts, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf(s, &s->moe_hid, B * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp * 4) ||
+        alloc_buf(s, &s->moe_gu, B * (size_t)hp->n_expert_used * 2 * (size_t)hp->n_ff_exp * 4) ||
+        alloc_buf(s, &s->moe_out, B * d * 4) ||
+        alloc_buf(s, &s->moe_slot_out, B * (size_t)hp->n_expert_used * d * 4) ||
+        alloc_buf(s, &s->exp_toks, (size_t)hp->n_expert * B * 4) ||
+        alloc_buf(s, &s->exp_slots, (size_t)hp->n_expert * B * 4) ||
+        alloc_buf(s, &s->exp_wts, (size_t)hp->n_expert * B * 4) ||
+        alloc_buf(s, &s->exp_cnt, (size_t)hp->n_expert * 4) ||
+        alloc_buf(s, &s->tok_ids_buf, B * 4) ||
         alloc_buf(s, &s->logits, (size_t)hp->n_vocab * 4) ||
         alloc_buf(s, &s->dummy_f32, 64 * 4)) {
         snprintf(err, err_bytes, "%s", s->error);
@@ -611,7 +779,9 @@ void ink_close(InkSession *s) {
     pm_free(s->q_buf); pm_free(s->k_raw); pm_free(s->k_buf); pm_free(s->v_raw); pm_free(s->v_buf);
     pm_free(s->r_buf); pm_free(s->dyn_buf); pm_free(s->sinks_buf); pm_free(s->gate_buf);
     pm_free(s->attn_scores); pm_free(s->attn_out); pm_free(s->o_raw); pm_free(s->norm_buf);
-    pm_free(s->router_logits); pm_free(s->moe_ids); pm_free(s->moe_wts); pm_free(s->moe_hid); pm_free(s->moe_out);
+    pm_free(s->router_logits); pm_free(s->moe_ids); pm_free(s->moe_wts); pm_free(s->moe_hid); pm_free(s->moe_gu); pm_free(s->moe_out);
+    pm_free(s->moe_slot_out); pm_free(s->exp_toks); pm_free(s->exp_slots); pm_free(s->exp_wts); pm_free(s->exp_cnt);
+    pm_free(s->tok_ids_buf);
     pm_free(s->logits); pm_free(s->dummy_f32);
     pm_free(s->weights_buf);
     for (int k = 0; k < K_COUNT; k++) pm_kernel_free(s->kernels[k]);
@@ -657,6 +827,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
          a_tensor_f32(s, &s->gguf.tok_norm),
          a_f32(hp->rms_eps),
          a_f32v(s->cur, 0, d));
+    pm_barrier(batch);
 
     int n_blocks = 0;
     int start = (int)hp->loop_start;
@@ -667,7 +838,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
         if (dispatch_layer(s, batch, il, il, &n_blocks, 0, tau) != 0) return 1;
     }
 
-    /* Save prelude output and prelude blocks */
+    /* Save prelude output and prelude blocks (concurrent) */
     CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->prelude, 0, d));
     int prelude_n_blocks = n_blocks;
     if (prelude_n_blocks > 0) {
@@ -675,6 +846,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
              a_f32v(s->blocks, 0, (int64_t)prelude_n_blocks * d),
              a_f32v(s->prelude_blk, 0, (int64_t)prelude_n_blocks * d));
     }
+    pm_barrier(batch);
 
     /* 3. Looped core passes [0 .. loop_count) over physical layers [start .. end) */
     for (int pass = 0; pass < hp->loop_count; pass++) {
@@ -689,6 +861,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
                      a_f32v(s->bank_blk, 0, (int64_t)bank_n_blocks * d));
             }
             CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->bank_out, 0, d));
+            pm_barrier(batch);
             CALL(s, batch, K_COPY, d, a_int(d), a_f32v(s->prelude, 0, d), a_f32v(s->cur, 0, d));
             n_blocks = prelude_n_blocks;
             if (prelude_n_blocks > 0) {
@@ -696,6 +869,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
                      a_f32v(s->prelude_blk, 0, (int64_t)prelude_n_blocks * d),
                      a_f32v(s->blocks, 0, (int64_t)prelude_n_blocks * d));
             }
+            pm_barrier(batch);
         }
         for (int ip = start; ip < end; ip++) {
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
@@ -708,6 +882,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
                      a_f32v(s->bank_out, 0, d),
                      a_tensor_f32(s, &L->loop_msg_query),
                      a_f32v(s->messages, 0, 4 * d));
+                pm_barrier(batch);
                 if (dispatch_layer(s, batch, il, ip, &n_blocks, 1, tau) != 0) return 1;
             }
         }
@@ -725,10 +900,13 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
              a_f32v(s->cur, 0, d),
              a_tensor_f32(s, &s->gguf.out_res_query),
              a_f32v(s->norm_buf, 0, d));
+        pm_barrier(batch);
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
              a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, 0, d));
+        pm_barrier(batch);
         if (dispatch_mv(s, batch, &s->gguf.output, hp->n_vocab, d, 0, s->norm_buf, 0, s->logits, 0) != 0) return 1;
         if (hp->logit_softcap > 0.0f) {
+            pm_barrier(batch);
             CALL(s, batch, K_SOFTCAP, hp->n_vocab, a_int(hp->n_vocab),
                  a_f32(hp->logit_softcap), a_f32v(s->logits, 0, hp->n_vocab));
         }
@@ -739,11 +917,495 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
     return 0;
 }
 
+static int dispatch_mm(InkSession *s, PmBatch batch, const InkTensor *w, int64_t rows, int64_t cols, int64_t nb,
+                       PmBuffer x_buf, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
+    int64_t t_tiles = (nb + 63) / 64;
+    int64_t r_tiles = (rows + 31) / 32;
+    int64_t items = t_tiles * r_tiles;
+    if (w->type == INK_GGML_Q8_0) {
+        CALL(s, batch, K_MM_Q8, items, a_int(rows), a_int(cols), a_int(nb),
+             a_tensor_u16(s, w), a_f32v(x_buf, x_off, nb * cols), a_f32v(out_buf, out_off, nb * rows));
+    } else if (w->type == INK_GGML_F32) {
+        CALL(s, batch, K_MM_F32, items, a_int(rows), a_int(cols), a_int(nb),
+             a_tensor_f32(s, w), a_f32v(x_buf, x_off, nb * cols), a_f32v(out_buf, out_off, nb * rows));
+    } else {
+        snprintf(s->error, sizeof s->error, "unsupported weight type %u for batched matmul", w->type);
+        return 1;
+    }
+    return 0;
+}
+
+static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, int *n_blocks, int has_messages, float tau, int64_t nb) {
+    const InkHParams *hp = &s->gguf.hp;
+    const InkLayerTensors *L = &s->gguf.layers[ip];
+    int64_t d = hp->n_embd;
+    int64_t n_head = hp->n_head;
+    int64_t n_head_kv = hp->n_head_kv;
+    int64_t hd = hp->head_dim;
+    int64_t n_q = n_head * hd;
+    int64_t n_kv = n_head_kv * hd;
+    int64_t n_rel = hp->rel_len;
+    int is_swa = hp->is_swa[ip];
+    int64_t bd = nb * d;
+
+    /* Wave 1: save inp_sa = cur concurrently with depth-attention mix. */
+    CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->cur, 0, bd), a_f32v(s->inp_sa, 0, bd));
+
+    PmBuffer q_src = s->cur, k_src = s->cur, v_src = s->cur;
+    int64_t q_off = 0, k_off = 0, v_off = 0;
+    if (L->attn_res_query.present) {
+        int64_t nq = is_swa ? 1 : 3;
+        CALL(s, batch, K_MIX_BATCH, nq * nb, a_int(d), a_int(*n_blocks), a_int(nb),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * bd),
+             a_f32v(s->cur, 0, bd),
+             a_tensor_f32(s, &L->attn_res_query),
+             a_f32v(s->mix_out, 0, nq * bd));
+        q_src = s->mix_out; q_off = 0;
+        k_src = s->mix_out; k_off = is_swa ? 0 : bd;
+        v_src = s->mix_out; v_off = is_swa ? 0 : 2 * bd;
+    }
+    pm_barrier(batch);
+
+    /* Optional loop control gates (Q, K, V concurrently). */
+    if (has_messages) {
+        int64_t rank = hp->gate_rank;
+        CALL(s, batch, K_CTRL_PREP_BATCH, nb, a_int(d),
+             a_f32v(q_src, q_off, bd), a_f32v(s->messages, 0 * bd, bd), a_f32v(s->ctrl_cat, 0 * 2 * bd, 2 * bd));
+        CALL(s, batch, K_CTRL_PREP_BATCH, nb, a_int(d),
+             a_f32v(k_src, k_off, bd), a_f32v(s->messages, 1 * bd, bd), a_f32v(s->ctrl_cat, 1 * 2 * bd, 2 * bd));
+        CALL(s, batch, K_CTRL_PREP_BATCH, nb, a_int(d),
+             a_f32v(v_src, v_off, bd), a_f32v(s->messages, 2 * bd, bd), a_f32v(s->ctrl_cat, 2 * 2 * bd, 2 * bd));
+        pm_barrier(batch);
+        if (dispatch_mm(s, batch, &L->loop_ctrl_down[0], rank, 2 * d, nb, s->ctrl_cat, 0 * 2 * bd, s->ctrl_gate, 0 * nb * rank)) return 1;
+        if (dispatch_mm(s, batch, &L->loop_ctrl_down[1], rank, 2 * d, nb, s->ctrl_cat, 1 * 2 * bd, s->ctrl_gate, 1 * nb * rank)) return 1;
+        if (dispatch_mm(s, batch, &L->loop_ctrl_down[2], rank, 2 * d, nb, s->ctrl_cat, 2 * 2 * bd, s->ctrl_gate, 2 * nb * rank)) return 1;
+        pm_barrier(batch);
+        int64_t citems = nb * ((d + INK_T - 1) / INK_T);
+        CALL(s, batch, K_CTRL_UP_APPLY_BATCH, citems, a_int(d), a_int(rank),
+             a_tensor_f32(s, &L->loop_ctrl_gain[0]), a_tensor_f32(s, &L->loop_ctrl_forget[0]),
+             a_f32v(s->ctrl_gate, 0 * nb * rank, nb * rank), a_f32v(q_src, q_off, bd), a_f32v(s->messages, 0 * bd, bd), a_f32v(s->inp_q, 0, bd));
+        CALL(s, batch, K_CTRL_UP_APPLY_BATCH, citems, a_int(d), a_int(rank),
+             a_tensor_f32(s, &L->loop_ctrl_gain[1]), a_tensor_f32(s, &L->loop_ctrl_forget[1]),
+             a_f32v(s->ctrl_gate, 1 * nb * rank, nb * rank), a_f32v(k_src, k_off, bd), a_f32v(s->messages, 1 * bd, bd), a_f32v(s->inp_k, 0, bd));
+        CALL(s, batch, K_CTRL_UP_APPLY_BATCH, citems, a_int(d), a_int(rank),
+             a_tensor_f32(s, &L->loop_ctrl_gain[2]), a_tensor_f32(s, &L->loop_ctrl_forget[2]),
+             a_f32v(s->ctrl_gate, 2 * nb * rank, nb * rank), a_f32v(v_src, v_off, bd), a_f32v(s->messages, 2 * bd, bd), a_f32v(s->inp_v, 0, bd));
+        pm_barrier(batch);
+        q_src = s->inp_q; q_off = 0;
+        k_src = s->inp_k; k_off = 0;
+        v_src = s->inp_v; v_off = 0;
+    }
+
+    /* Wave 2: Input RMSNorms (ink_rmsnorm already supports nb rows!). */
+    PmBuffer q_in = s->inp_q, k_in = s->inp_k, v_in = s->inp_v;
+    if (is_swa && has_messages) {
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(q_src, q_off, bd), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, bd));
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(k_src, k_off, bd), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_k, 0, bd));
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(v_src, v_off, bd), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_v, 0, bd));
+    } else if (is_swa) {
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(q_src, q_off, bd), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, bd));
+        k_in = s->inp_q;
+        v_in = s->inp_q;
+    } else {
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(q_src, q_off, bd), a_tensor_f32(s, &L->attn_q_inp_norm), a_f32v(s->inp_q, 0, bd));
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(k_src, k_off, bd), a_tensor_f32(s, &L->attn_k_inp_norm), a_f32v(s->inp_k, 0, bd));
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(v_src, v_off, bd), a_tensor_f32(s, &L->attn_v_inp_norm), a_f32v(s->inp_v, 0, bd));
+    }
+    pm_barrier(batch);
+
+    /* Wave 3: ALL independent attention projections via batched MMA GEMM concurrently! */
+    if (dispatch_mm(s, batch, &L->attn_q, n_q, d, nb, q_in, 0, s->q_buf, 0)) return 1;
+    if (dispatch_mm(s, batch, &L->attn_k, n_kv, d, nb, k_in, 0, s->k_raw, 0)) return 1;
+    if (dispatch_mm(s, batch, &L->attn_v, n_kv, d, nb, v_in, 0, s->v_raw, 0)) return 1;
+    if (dispatch_mm(s, batch, &L->attn_rel, n_head * n_rel, d, nb, q_in, 0, s->r_buf, 0)) return 1;
+    if (dispatch_mm(s, batch, &L->attn_sink_proj, n_head, d, nb, q_in, 0, s->sinks_buf, 0)) return 1;
+    if (dispatch_mm(s, batch, &L->attn_gate, n_q, d, nb, q_in, 0, s->gate_buf, 0)) return 1;
+    int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
+    int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
+    if (has_k_dyn) {
+        if (dispatch_mm(s, batch, &L->attn_k_conv_proj, n_head_kv * hp->conv_len, d, nb,
+                        k_in, 0, s->dyn_buf, 0)) return 1;
+    }
+    pm_barrier(batch);
+
+    /* Wave 4: K shortconv, Q clip, R clip (+ V shortconv if !has_v_dyn). */
+    float q_tau = is_swa ? 1.0f : tau;
+    CALL(s, batch, K_CONVOLVE_BATCH, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(has_k_dyn ? 1 : 0), a_int(nb),
+         a_f32v(s->k_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_k_conv),
+         has_k_dyn ? a_f32v(s->dyn_buf, 0, nb * n_head_kv * hp->conv_len) : a_f32v(s->dummy_f32, 0, 64),
+         a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, nb * n_kv));
+    CALL(s, batch, K_CLIP_BATCH, nb * n_head, a_int(hd), a_int(n_head), a_int(L->attn_q_clip.present ? 1 : 0),
+         a_f32(hp->qk_clip), a_f32(q_tau),
+         a_f32v(s->q_buf, 0, nb * n_q),
+         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64));
+    CALL(s, batch, K_CLIP_BATCH, nb * n_head, a_int(n_rel), a_int(n_head), a_int(L->attn_rel_clip.present ? 1 : 0),
+         a_f32(hp->rel_clip), a_f32(q_tau),
+         a_f32v(s->r_buf, 0, nb * n_head * n_rel),
+         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
+    if (!has_v_dyn) {
+        CALL(s, batch, K_CONVOLVE_BATCH, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(0), a_int(nb),
+             a_f32v(s->v_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, nb * n_kv));
+        pm_barrier(batch);
+    } else {
+        pm_barrier(batch);
+        if (dispatch_mm(s, batch, &L->attn_v_conv_proj, n_head_kv * hp->conv_len, d, nb,
+                        v_in, 0, s->dyn_buf, 0)) return 1;
+        pm_barrier(batch);
+        CALL(s, batch, K_CONVOLVE_BATCH, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(1), a_int(nb),
+             a_f32v(s->v_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             a_f32v(s->dyn_buf, 0, nb * n_head_kv * hp->conv_len),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, nb * n_kv));
+        pm_barrier(batch);
+    }
+
+    /* Wave 5: K clip + V head RMSNorm concurrently. */
+    CALL(s, batch, K_CLIP_BATCH, nb * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
+         a_f32(hp->qk_clip), a_f32(1.0f),
+         a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->dummy_f32, 0, 64));
+    CALL(s, batch, K_HEAD_RMSNORM, nb * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
+         a_f32v(s->v_buf, 0, nb * n_kv));
+    pm_barrier(batch);
+
+    /* Store K, V for all nb tokens into KV cache */
+    int64_t kv_cap = s->kv_cap[il];
+    CALL(s, batch, K_KV_STORE_BATCH, nb * n_kv, a_int(n_kv), a_int(s->pos), a_int(kv_cap), a_int(is_swa),
+         a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->v_buf, 0, nb * n_kv),
+         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    pm_barrier(batch);
+
+    /* 3-stage MMA Flash-Prefill Attention (Q*K^T MMA -> Softmax -> P*V MMA) */
+    int64_t dims0 = n_head | (n_head_kv << 16) | (hd << 32) | (n_rel << 48);
+    int64_t dims1 = hp->rel_extent | ((int64_t)is_swa << 24) | (hp->swa << 32);
+    int64_t kv_info = kv_cap | ((int64_t)s->max_ctx << 32);
+    int64_t k_start = (is_swa && s->pos >= hp->swa) ? (s->pos - hp->swa + 1) : 0;
+    int64_t span = (s->pos + nb) - k_start;
+    int64_t pos_info = (int64_t)s->pos | (nb << 24) | (k_start << 40);
+    int64_t q_tiles = (nb + 63) / 64;
+    int64_t k_tiles = (span + 31) / 32;
+    CALL(s, batch, K_ATTN_SCORES_MMA, n_head * q_tiles * k_tiles,
+         a_int(dims0), a_int(dims1), a_int(kv_info), a_int(pos_info),
+         a_f32v(s->q_buf, 0, nb * n_q),
+         a_f32v(s->r_buf, 0, nb * n_head * n_rel),
+         a_tensor_f32(s, &L->attn_rel_bias),
+         a_f32v(s->sinks_buf, 0, nb * n_head),
+         a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
+         a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx));
+    pm_barrier(batch);
+    CALL(s, batch, K_ATTN_SOFTMAX_MMA, nb * n_head,
+         a_int(dims0), a_int(dims1), a_int(s->max_ctx), a_int(pos_info),
+         a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx));
+    pm_barrier(batch);
+    CALL(s, batch, K_ATTN_VALUES_MMA, n_head * q_tiles * 4,
+         a_int(dims0), a_int(dims1), a_int(kv_info), a_int(pos_info),
+         a_f32v(s->attn_scores, 0, nb * n_head * s->max_ctx),
+         a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+         a_f32v(s->gate_buf, 0, nb * n_q),
+         a_f32v(s->attn_out, 0, nb * n_q));
+    pm_barrier(batch);
+
+    /* Output projection + post shortconv */
+    if (dispatch_mm(s, batch, &L->attn_output, d, n_q, nb, s->attn_out, 0, s->o_raw, 0)) return 1;
+    pm_barrier(batch);
+    CALL(s, batch, K_CONVOLVE_BATCH, d, a_int(d), a_int(1), a_int(0), a_int(nb),
+         a_f32v(s->o_raw, 0, bd), a_tensor_f32(s, &L->attn_post_conv),
+         a_f32v(s->dummy_f32, 0, 64),
+         a_f32v(s->conv_ao[il], 0, d * 3), a_f32v(s->cur, 0, bd));
+    pm_barrier(batch);
+
+    /* Residual stream block boundary vs add */
+    if (ip % hp->block_size == 0) {
+        if (*n_blocks >= INK_MAX_BLOCKS) {
+            snprintf(s->error, sizeof s->error, "block count overflow");
+            return 1;
+        }
+        CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->inp_sa, 0, bd),
+             a_f32v(s->blocks, (int64_t)(*n_blocks) * bd, bd));
+        (*n_blocks)++;
+    } else {
+        CALL(s, batch, K_ADD, bd, a_int(bd), a_f32v(s->inp_sa, 0, bd), a_f32v(s->cur, 0, bd),
+             a_f32v(s->cur, 0, bd));
+    }
+    pm_barrier(batch);
+
+    /* ffn_inp = cur concurrently with MoE input mix */
+    CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->cur, 0, bd), a_f32v(s->ffn_inp, 0, bd));
+    CALL(s, batch, K_MIX_BATCH, nb, a_int(d), a_int(*n_blocks), a_int(nb),
+         a_f32v(s->blocks, 0, INK_MAX_BLOCKS * bd),
+         a_f32v(s->cur, 0, bd),
+         a_tensor_f32(s, &L->ffn_res_query),
+         a_f32v(s->norm_buf, 0, bd));
+    pm_barrier(batch);
+    if (has_messages) {
+        int64_t rank = hp->gate_rank;
+        CALL(s, batch, K_CTRL_PREP_BATCH, nb, a_int(d),
+             a_f32v(s->norm_buf, 0, bd), a_f32v(s->messages, 3 * bd, bd), a_f32v(s->ctrl_cat, 0, 2 * bd));
+        pm_barrier(batch);
+        if (dispatch_mm(s, batch, &L->loop_ctrl_down[3], rank, 2 * d, nb, s->ctrl_cat, 0, s->ctrl_gate, 0)) return 1;
+        pm_barrier(batch);
+        int64_t citems = nb * ((d + INK_T - 1) / INK_T);
+        CALL(s, batch, K_CTRL_UP_APPLY_BATCH, citems, a_int(d), a_int(rank),
+             a_tensor_f32(s, &L->loop_ctrl_gain[3]), a_tensor_f32(s, &L->loop_ctrl_forget[3]),
+             a_f32v(s->ctrl_gate, 0, nb * rank), a_f32v(s->norm_buf, 0, bd), a_f32v(s->messages, 3 * bd, bd), a_f32v(s->norm_buf, 0, bd));
+        pm_barrier(batch);
+    }
+    CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+         a_f32v(s->norm_buf, 0, bd), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, bd));
+    pm_barrier(batch);
+
+    /* MoE router + expert grouping */
+    if (dispatch_mm(s, batch, &L->ffn_gate_inp, hp->n_expert, d, nb, s->norm_buf, 0, s->router_logits, 0)) return 1;
+    pm_barrier(batch);
+    CALL(s, batch, K_ROUTER_BATCH, nb, a_int(hp->n_expert), a_int(hp->n_expert_used),
+         a_int(L->ffn_exp_probs_b.present ? 1 : 0), a_f32(hp->expert_weights_scale),
+         a_f32v(s->router_logits, 0, nb * hp->n_expert),
+         L->ffn_exp_probs_b.present ? a_tensor_f32(s, &L->ffn_exp_probs_b) : a_f32v(s->dummy_f32, 0, 64),
+         a_u32v(s->moe_ids, 0, nb * hp->n_expert_used),
+         a_f32v(s->moe_wts, 0, nb * hp->n_expert_used));
+    pm_barrier(batch);
+    CALL(s, batch, K_MOE_GROUP_BATCH, hp->n_expert, a_int(nb), a_int(hp->n_expert_used),
+         a_u32v(s->moe_ids, 0, nb * hp->n_expert_used),
+         a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
+         a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+         a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+         a_f32v(s->exp_wts, 0, hp->n_expert * INK_PREFILL_B),
+         a_u32v(s->exp_cnt, 0, hp->n_expert));
+    pm_barrier(batch);
+
+    /* Expert-grouped MoE gate_up via hardware MMA + SITU activation */
+    int64_t n_ff = hp->n_ff_exp;
+    int64_t m_tiles = (nb + 63) / 64;
+    int64_t n_used_mt = hp->n_expert_used | (m_tiles << 16);
+    int64_t gu_items = hp->n_expert * m_tiles * ((2 * n_ff + 31) / 32);
+    if (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) {
+        CALL(s, batch, K_MOE_GU_BATCH_IQ4, gu_items, a_int(2 * n_ff), a_int(d), a_int(n_used_mt),
+             a_tensor_u16(s, &L->ffn_gate_up_exps),
+             a_f32v(s->norm_buf, 0, bd),
+             a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_f32v(s->moe_gu, 0, nb * hp->n_expert_used * 2 * n_ff));
+    } else if (L->ffn_gate_up_exps.type == INK_GGML_Q8_0) {
+        CALL(s, batch, K_MOE_GU_BATCH_Q8, gu_items, a_int(2 * n_ff), a_int(d), a_int(n_used_mt),
+             a_tensor_u16(s, &L->ffn_gate_up_exps),
+             a_f32v(s->norm_buf, 0, bd),
+             a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_f32v(s->moe_gu, 0, nb * hp->n_expert_used * 2 * n_ff));
+    } else {
+        snprintf(s->error, sizeof s->error, "unsupported batch gate_up type %u", L->ffn_gate_up_exps.type);
+        return 1;
+    }
+    pm_barrier(batch);
+    CALL(s, batch, K_SITU_BATCH, nb * hp->n_expert_used * n_ff,
+         a_int(n_ff), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+         a_f32v(s->moe_gu, 0, nb * hp->n_expert_used * 2 * n_ff),
+         a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff));
+    pm_barrier(batch);
+
+    /* Expert-grouped MoE down via hardware MMA + slot reduction */
+    int64_t dn_items = hp->n_expert * m_tiles * ((d + 31) / 32);
+    if (L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
+        CALL(s, batch, K_MOE_DOWN_BATCH_IQ4, dn_items, a_int(d), a_int(n_ff), a_int(n_used_mt),
+             a_tensor_u16(s, &L->ffn_down_exps),
+             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+             a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+             a_f32v(s->exp_wts, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d));
+    } else if (L->ffn_down_exps.type == INK_GGML_Q8_0) {
+        CALL(s, batch, K_MOE_DOWN_BATCH_Q8, dn_items, a_int(d), a_int(n_ff), a_int(n_used_mt),
+             a_tensor_u16(s, &L->ffn_down_exps),
+             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+             a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+             a_f32v(s->exp_wts, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d));
+    } else {
+        snprintf(s->error, sizeof s->error, "unsupported batch down type %u", L->ffn_down_exps.type);
+        return 1;
+    }
+    pm_barrier(batch);
+    CALL(s, batch, K_MOE_REDUCE_BATCH, bd, a_int(d), a_int(hp->n_expert_used),
+         a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
+         a_f32v(s->moe_out, 0, bd));
+    pm_barrier(batch);
+
+    /* MoE post shortconv + residual add */
+    CALL(s, batch, K_CONVOLVE_BATCH, d, a_int(d), a_int(1), a_int(0), a_int(nb),
+         a_f32v(s->moe_out, 0, bd), a_tensor_f32(s, &L->ffn_post_conv),
+         a_f32v(s->dummy_f32, 0, 64),
+         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->cur, 0, bd));
+    pm_barrier(batch);
+    CALL(s, batch, K_ADD, bd, a_int(bd), a_f32v(s->ffn_inp, 0, bd), a_f32v(s->cur, 0, bd),
+         a_f32v(s->cur, 0, bd));
+    pm_barrier(batch);
+    return 0;
+}
+
+static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_last_logits) {
+    const InkHParams *hp = &s->gguf.hp;
+    if (s->pos + nb > s->max_ctx) {
+        snprintf(s->error, sizeof s->error, "context full (%d+%d/%d)", s->pos, nb, s->max_ctx);
+        return 1;
+    }
+    uint32_t *tids = (uint32_t *)pm_contents(s->tok_ids_buf);
+    for (int i = 0; i < nb; i++) {
+        if (tokens[i] < 0 || tokens[i] >= hp->n_vocab) {
+            snprintf(s->error, sizeof s->error, "token id %d out of range", tokens[i]);
+            return 1;
+        }
+        tids[i] = (uint32_t)tokens[i];
+    }
+
+    PmBatch batch = NULL;
+    if (pm_begin_concurrent(&batch) != PM_OK) {
+        snprintf(s->error, sizeof s->error, "pm_begin_concurrent: %s", pm_log());
+        return 1;
+    }
+
+    int64_t d = hp->n_embd;
+    int64_t bd = (int64_t)nb * d;
+    float tau = 1.0f;
+
+    /* 1. Batched embedding lookup + token_embd_norm */
+    CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
+         a_u32v(s->tok_ids_buf, 0, nb),
+         a_tensor_u16(s, &s->gguf.tok_embd),
+         a_tensor_f32(s, &s->gguf.tok_norm),
+         a_f32(hp->rms_eps),
+         a_f32v(s->cur, 0, bd));
+    pm_barrier(batch);
+
+    int n_blocks = 0;
+    int start = (int)hp->loop_start;
+    int end = (int)hp->loop_end;
+
+    /* 2. Prelude layers [0 .. start) */
+    for (int il = 0; il < start; il++) {
+        if (dispatch_layer_batch(s, batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+    }
+
+    /* Save prelude output and prelude blocks */
+    CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->cur, 0, bd), a_f32v(s->prelude, 0, bd));
+    int prelude_n_blocks = n_blocks;
+    if (prelude_n_blocks > 0) {
+        CALL(s, batch, K_COPY, (int64_t)prelude_n_blocks * bd, a_int((int64_t)prelude_n_blocks * bd),
+             a_f32v(s->blocks, 0, (int64_t)prelude_n_blocks * bd),
+             a_f32v(s->prelude_blk, 0, (int64_t)prelude_n_blocks * bd));
+    }
+    pm_barrier(batch);
+
+    /* 3. Looped core passes */
+    for (int pass = 0; pass < hp->loop_count; pass++) {
+        int bank_n_blocks = 0;
+        if (pass > 0) {
+            int src_off = prelude_n_blocks + 1;
+            bank_n_blocks = n_blocks - src_off;
+            if (bank_n_blocks < 0) bank_n_blocks = 0;
+            if (bank_n_blocks > 0) {
+                CALL(s, batch, K_COPY, (int64_t)bank_n_blocks * bd, a_int((int64_t)bank_n_blocks * bd),
+                     a_f32v(s->blocks, (int64_t)src_off * bd, (int64_t)bank_n_blocks * bd),
+                     a_f32v(s->bank_blk, 0, (int64_t)bank_n_blocks * bd));
+            }
+            CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->cur, 0, bd), a_f32v(s->bank_out, 0, bd));
+            pm_barrier(batch);
+            CALL(s, batch, K_COPY, bd, a_int(bd), a_f32v(s->prelude, 0, bd), a_f32v(s->cur, 0, bd));
+            n_blocks = prelude_n_blocks;
+            if (prelude_n_blocks > 0) {
+                CALL(s, batch, K_COPY, (int64_t)prelude_n_blocks * bd, a_int((int64_t)prelude_n_blocks * bd),
+                     a_f32v(s->prelude_blk, 0, (int64_t)prelude_n_blocks * bd),
+                     a_f32v(s->blocks, 0, (int64_t)prelude_n_blocks * bd));
+            }
+            pm_barrier(batch);
+        }
+        for (int ip = start; ip < end; ip++) {
+            int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
+            if (pass == 0) {
+                if (dispatch_layer_batch(s, batch, il, ip, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+            } else {
+                const InkLayerTensors *L = &s->gguf.layers[ip];
+                CALL(s, batch, K_MIX_BATCH, 4 * nb, a_int(d), a_int(bank_n_blocks), a_int(nb),
+                     a_f32v(s->bank_blk, 0, INK_MAX_BLOCKS * bd),
+                     a_f32v(s->bank_out, 0, bd),
+                     a_tensor_f32(s, &L->loop_msg_query),
+                     a_f32v(s->messages, 0, 4 * bd));
+                pm_barrier(batch);
+                if (dispatch_layer_batch(s, batch, il, ip, &n_blocks, 1, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+            }
+        }
+    }
+
+    /* 4. Coda layers [end .. n_phys) */
+    for (int il = end; il < hp->n_phys; il++) {
+        if (dispatch_layer_batch(s, batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+    }
+
+    /* 5. Output mix -> output_norm -> lm_head -> logit softcap (ONLY for last token nb-1!) */
+    if (compute_last_logits) {
+        /* Copy last token's blocks[0..n_blocks-1] and cur[nb-1] or mix all nb and take nb-1: */
+        CALL(s, batch, K_MIX_BATCH, nb, a_int(d), a_int(n_blocks), a_int(nb),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * bd),
+             a_f32v(s->cur, 0, bd),
+             a_tensor_f32(s, &s->gguf.out_res_query),
+             a_f32v(s->norm_buf, 0, bd));
+        pm_barrier(batch);
+        int64_t last_off = (int64_t)(nb - 1) * d;
+        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(s->norm_buf, last_off, d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, last_off, d));
+        pm_barrier(batch);
+        if (dispatch_mv(s, batch, &s->gguf.output, hp->n_vocab, d, 0, s->norm_buf, last_off, s->logits, 0) != 0) { pm_wait(batch, NULL); return 1; }
+        if (hp->logit_softcap > 0.0f) {
+            pm_barrier(batch);
+            CALL(s, batch, K_SOFTCAP, hp->n_vocab, a_int(hp->n_vocab),
+                 a_f32(hp->logit_softcap), a_f32v(s->logits, 0, hp->n_vocab));
+        }
+    }
+
+    double gpu_s = 0.0;
+    if (pm_wait(batch, &gpu_s) != PM_OK) {
+        snprintf(s->error, sizeof s->error, "pm_wait: %s", pm_log());
+        return 1;
+    }
+    s->pos += nb;
+    s->total_steps += nb;
+    s->total_gpu_seconds += gpu_s;
+    return 0;
+}
+
 int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits) {
     if (n_tokens <= 0) return 0;
+    const InkHParams *hp = &s->gguf.hp;
+    /* Use true batched MMA prefill for chunks of up to 64 tokens when pos+nb <= log_scale_floor. */
+    if (n_tokens > 1 && s->pos + n_tokens <= hp->log_scale_floor) {
+        int off = 0;
+        while (off < n_tokens) {
+            int nb = n_tokens - off;
+            if (nb > INK_PREFILL_B) nb = INK_PREFILL_B;
+            int need_logits = compute_last_logits && (off + nb == n_tokens);
+            if (nb == 1) {
+                if (ink_step(s, tokens[off], need_logits) != 0) return 1;
+            } else {
+                if (run_chunk(s, tokens + off, nb, need_logits) != 0) return 1;
+            }
+            off += nb;
+        }
+        return 0;
+    }
     PmBatch batch = NULL;
-    if (pm_begin(&batch) != PM_OK) {
-        snprintf(s->error, sizeof s->error, "pm_begin: %s", pm_log());
+    if (pm_begin_concurrent(&batch) != PM_OK) {
+        snprintf(s->error, sizeof s->error, "pm_begin_concurrent: %s", pm_log());
         return 1;
     }
     for (int i = 0; i < n_tokens; i++) {

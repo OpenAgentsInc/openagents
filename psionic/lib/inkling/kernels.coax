@@ -5,6 +5,7 @@
 
 INK_T :: 64;
 INK_NT :: 256;
+INK_PREFILL_B :: 1024;
 INK_DR :: 4;
 INK_D :: 8;
 INK_HEAD :: 128;
@@ -13,11 +14,18 @@ INK_NEG_INF :: -300000000000000000000000000000000000000.0f32;
 
 // ---- Scalars.
 ink_half :: (bits:u32)->f32 {
-    sign:=(bits>>15)&1;e:=(bits>>10)&31;m:=bits&1023;v:f32=0;
-    if e==0 {v=f32(m)*0.000000059604644775390625f32;}
-    else if e==31 {v=f32_from_bits(ifx m==0 then 0x7f800000 else 0x7fc00000);}
-    else {v=f32_from_bits(((e+112)<<23)|(m<<13));}
-    if sign!=0 {return -v;}return v;
+    e:=(bits>>10)&31;
+    if e!=0 && e!=31 {
+        return f32_from_bits(((bits&0x8000)<<16)|(((bits&0x7fff)+0x1c000)<<13));
+    }
+    if e==0 {
+        m:=bits&1023;
+        v:=f32(m)*0.000000059604644775390625f32;
+        return ifx (bits&0x8000)!=0 then -v else v;
+    }
+    m:=bits&1023;
+    v:=f32_from_bits(ifx m==0 then 0x7f800000 else 0x7fc00000);
+    return ifx (bits&0x8000)!=0 then -v else v;
 }
 ink_f16 :: (x:f32)->u32 {
     bits:=f32_bits(x);sign:=(bits>>16)&0x8000;e:=(bits>>23)&255;m:=bits&0x7fffff;
@@ -94,89 +102,88 @@ ink_embed_q8 :: (item:int,tok:int,dim:int,w:[]u16,norm_w:[]f32,eps:f32,out:[]f32
 // ---- RMSNorm: out[i] = x[i] * rsqrt(mean(x^2)+eps) * (has_w ? w[i] : 1).
 // Supports `rows` independent vectors of width `dim`; one work item per row.
 ink_rmsnorm :: (item:int,dim:int,has_w:int,eps:f32,x:[]f32,w:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    d:=cast(u32)dim;base:=mul_wrap(cast(u32)item,d);
+    part:[256]f32;part2:[16]f32;
+    base:=item*dim;
     for thread:0..<INK_NT {
-        s:f32=0;t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {v:=x[cast(int)add_wrap(base,i)];s+=v*v;}
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {v:=x[base+i];s+=v*v;}
         }
         part[thread]=s;
     }
     for thread:0..<INK_NT {
-        tot:f32=0;for j:0..<INK_NT {tot+=part[j];}
+        if thread<16 {
+            s:f32=0;
+            for j:0..<16 {s+=part[j*16+thread];}
+            part2[thread]=s;
+        }
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<16 {tot+=part2[j];}
         inv:=1.0f32/sqrt(tot/f32(dim)+eps);
-        t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
-                idx:=cast(int)add_wrap(base,i);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                idx:=base+i;
                 v:=x[idx]*inv;
-                if has_w!=0 {v=v*w[cast(int)i];}
+                if has_w!=0 {v=v*w[i];}
                 out[idx]=v;
             }
         }
     }
 }
 
-// ---- Matvec Q8_0 (1 token): group of 64 threads (2 simdgroups) writes INK_D=8 rows.
-// w is [rows, cols] Q8_0 stored as u16 (17 u16 per 32 values).
+// ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows) writes INK_D=8 rows.
+// 4 lanes cooperate on each 32-elem Q8_0 block (8 blocks/simdgroup, 100% coalesced & 72/8=9 exact!).
+// ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows = 8 rows/TG), 4 lanes/block coalesced.
 ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*17;row0:=mul_wrap(cast(u32)item,cast(u32)INK_D);
-    for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        base_row:=add_wrap(row0,mul_wrap(simd,cast(u32)INK_DR));
-        r3:=add_wrap(base_row,3);
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:cast(u32)0..<(blocks+31)/32 {
-            block:=add_wrap(mul_wrap(step,32),lane);
+    blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        blk_lane:=lane/4;sub:=lane%4;
+        base_row:=row0+simd*2;
+        r1:=base_row+1;
+        a0:f32=0;a1:f32=0;
+        k0:=sub*4;
+        for step:0..<(blocks+7)/8 {
+            block:=step*8+blk_lane;
             if block<blocks {
-                xb:=mul_wrap(block,32);boff:=mul_wrap(block,17);
-                if r3<nr {
-                    at0:=add_wrap(mul_wrap(base_row,words),boff);
-                    at1:=add_wrap(at0,words);at2:=add_wrap(at1,words);at3:=add_wrap(at2,words);
-                    s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                    for k:0..<16 {
-                        x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                        x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                        kk:=cast(u32)(1+k);
-                        v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
-                        v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
-                        v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];s2+=ink_signed(v2&255)*x0+ink_signed(v2>>8)*x1;
-                        v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];s3+=ink_signed(v3&255)*x0+ink_signed(v3>>8)*x1;
+                xb:=block*32+k0*2;boff:=block*17;
+                if r1<rows {
+                    at0:=base_row*words+boff;
+                    at1:=at0+words;
+                    s0:f32=0;s1:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];
+                        x1:=x[xb+2*j+1];
+                        kk:=1+k0+j;
+                        v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
+                        v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[cast(int)at0])*s0;
-                    a1+=ink_half(cast(u32)w[cast(int)at1])*s1;
-                    a2+=ink_half(cast(u32)w[cast(int)at2])*s2;
-                    a3+=ink_half(cast(u32)w[cast(int)at3])*s3;
-                } else {
-                    for r:0..<INK_DR {
-                        row:=add_wrap(base_row,cast(u32)r);
-                        if row<nr {
-                            at:=add_wrap(mul_wrap(row,words),boff);sum:f32=0;
-                            for k:0..<16 {
-                                x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
-                            }
-                            d:=ink_half(cast(u32)w[cast(int)at])*sum;
-                            if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
-                        }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    a1+=ink_half(cast(u32)w[at1])*s1;
+                } else if base_row<rows {
+                    at:=base_row*words+boff;sum:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];
+                        x1:=x[xb+2*j+1];
+                        v:=cast(u32)w[at+1+k0+j];
+                        sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
                     }
+                    a0+=ink_half(cast(u32)w[at])*sum;
                 }
             }
         }
-        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
     }
-    for thread:0..<INK_T {
+    for thread:0..<128 {
         if thread<INK_D {
             row:=item*INK_D+thread;
             if row<rows {
-                simd:=thread/INK_DR;r:=thread%INK_DR;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*INK_DR+r];}
+                simd:=thread/2;r:=thread%2;sum:f32=0;
+                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
                 if add!=0 {out[row]=out[row]+sum;}else {out[row]=sum;}
             }
         }
@@ -188,53 +195,57 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
 // qs byte j has low nibble for elem j (0..15) and high nibble for elem j+16 (16..31).
 ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;words:=blocks*9;row0:=mul_wrap(cast(u32)item,cast(u32)INK_D);
+    lut:[16]f32;
+    blocks:=cols/32;words:=blocks*9;row0:=item*INK_D;
     for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        base_row:=add_wrap(row0,mul_wrap(simd,cast(u32)INK_DR));
-        r3:=add_wrap(base_row,3);
+        if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+    }
+    for thread:0..<INK_T {
+        lane:=thread%32;simd:=thread/32;
+        base_row:=row0+simd*INK_DR;
+        r3:=base_row+3;
         a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:cast(u32)0..<(blocks+31)/32 {
-            block:=add_wrap(mul_wrap(step,32),lane);
+        for step:0..<(blocks+31)/32 {
+            block:=step*32+lane;
             if block<blocks {
-                xb:=mul_wrap(block,32);boff:=mul_wrap(block,9);
-                if r3<nr {
-                    at0:=add_wrap(mul_wrap(base_row,words),boff);
-                    at1:=add_wrap(at0,words);at2:=add_wrap(at1,words);at3:=add_wrap(at2,words);
+                xb:=block*32;boff:=block*9;
+                if r3<rows {
+                    at0:=base_row*words+boff;
+                    at1:=at0+words;at2:=at1+words;at3:=at2+words;
                     s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
                     for k:0..<8 {
-                        x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                        x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                        x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                        x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                        kk:=cast(u32)(1+k);
-                        v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];
-                        s0+=ink_iq4_val(v0&15)*x0+ink_iq4_val((v0>>4)&15)*x1+ink_iq4_val((v0>>8)&15)*x2+ink_iq4_val(v0>>12)*x3;
-                        v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];
-                        s1+=ink_iq4_val(v1&15)*x0+ink_iq4_val((v1>>4)&15)*x1+ink_iq4_val((v1>>8)&15)*x2+ink_iq4_val(v1>>12)*x3;
-                        v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];
-                        s2+=ink_iq4_val(v2&15)*x0+ink_iq4_val((v2>>4)&15)*x1+ink_iq4_val((v2>>8)&15)*x2+ink_iq4_val(v2>>12)*x3;
-                        v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];
-                        s3+=ink_iq4_val(v3&15)*x0+ink_iq4_val((v3>>4)&15)*x1+ink_iq4_val((v3>>8)&15)*x2+ink_iq4_val(v3>>12)*x3;
+                        x0:=x[xb+2*k];
+                        x1:=x[xb+16+2*k];
+                        x2:=x[xb+2*k+1];
+                        x3:=x[xb+16+2*k+1];
+                        kk:=1+k;
+                        v0:=cast(int)w[at0+kk];
+                        s0+=lut[v0&15]*x0+lut[(v0>>4)&15]*x1+lut[(v0>>8)&15]*x2+lut[v0>>12]*x3;
+                        v1:=cast(int)w[at1+kk];
+                        s1+=lut[v1&15]*x0+lut[(v1>>4)&15]*x1+lut[(v1>>8)&15]*x2+lut[v1>>12]*x3;
+                        v2:=cast(int)w[at2+kk];
+                        s2+=lut[v2&15]*x0+lut[(v2>>4)&15]*x1+lut[(v2>>8)&15]*x2+lut[v2>>12]*x3;
+                        v3:=cast(int)w[at3+kk];
+                        s3+=lut[v3&15]*x0+lut[(v3>>4)&15]*x1+lut[(v3>>8)&15]*x2+lut[v3>>12]*x3;
                     }
-                    a0+=ink_half(cast(u32)w[cast(int)at0])*s0;
-                    a1+=ink_half(cast(u32)w[cast(int)at1])*s1;
-                    a2+=ink_half(cast(u32)w[cast(int)at2])*s2;
-                    a3+=ink_half(cast(u32)w[cast(int)at3])*s3;
+                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    a1+=ink_half(cast(u32)w[at1])*s1;
+                    a2+=ink_half(cast(u32)w[at2])*s2;
+                    a3+=ink_half(cast(u32)w[at3])*s3;
                 } else {
                     for r:0..<INK_DR {
-                        row:=add_wrap(base_row,cast(u32)r);
-                        if row<nr {
-                            at:=add_wrap(mul_wrap(row,words),boff);sum:f32=0;
+                        row:=base_row+r;
+                        if row<rows {
+                            at:=row*words+boff;sum:f32=0;
                             for k:0..<8 {
-                                x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                                x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                                v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                sum+=ink_iq4_val(v&15)*x0+ink_iq4_val((v>>4)&15)*x1+ink_iq4_val((v>>8)&15)*x2+ink_iq4_val(v>>12)*x3;
+                                x0:=x[xb+2*k];
+                                x1:=x[xb+16+2*k];
+                                x2:=x[xb+2*k+1];
+                                x3:=x[xb+16+2*k+1];
+                                v:=cast(int)w[at+1+k];
+                                sum+=lut[v&15]*x0+lut[(v>>4)&15]*x1+lut[(v>>8)&15]*x2+lut[v>>12]*x3;
                             }
-                            d:=ink_half(cast(u32)w[cast(int)at])*sum;
+                            d:=ink_half(cast(u32)w[at])*sum;
                             if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
                         }
                     }
@@ -257,22 +268,38 @@ ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #ex
 
 // ---- Matvec F32 (1 token): 1 group of 64 threads writes INK_D=8 rows.
 ink_dv_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;acc:[256]f32;
-    nr:=cast(u32)rows;nc:=cast(u32)cols;row0:=mul_wrap(cast(u32)item,cast(u32)INK_D);
+    part:[256]f32;
+    row0:=item*INK_D;
     for thread:0..<INK_T {
-        for c:0..<INK_DR {acc[thread*INK_DR+c]=0;}
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        for step:cast(u32)0..<(nc+31)/32 {
-            col:=add_wrap(mul_wrap(step,32),lane);
-            if col<nc {
-                xv:=x[cast(int)col];
-                for r:0..<INK_DR {
-                    row:=add_wrap(row0,add_wrap(mul_wrap(simd,cast(u32)INK_DR),cast(u32)r));
-                    if row<nr {acc[thread*INK_DR+r]+=w[cast(int)add_wrap(mul_wrap(row,nc),col)]*xv;}
+        lane:=thread%32;simd:=thread/32;
+        base_row:=row0+simd*INK_DR;
+        r3:=base_row+3;
+        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
+        if r3<rows {
+            at0:=base_row*cols;
+            at1:=at0+cols;at2:=at1+cols;at3:=at2+cols;
+            for step:0..<(cols+31)/32 {
+                col:=step*32+lane;
+                if col<cols {
+                    xv:=x[col];
+                    a0+=w[at0+col]*xv;
+                    a1+=w[at1+col]*xv;
+                    a2+=w[at2+col]*xv;
+                    a3+=w[at3+col]*xv;
+                }
+            }
+        } else {
+            for step:0..<(cols+31)/32 {
+                col:=step*32+lane;
+                if col<cols {
+                    xv:=x[col];
+                    if base_row<rows {a0+=w[base_row*cols+col]*xv;}
+                    if base_row+1<rows {a1+=w[(base_row+1)*cols+col]*xv;}
+                    if base_row+2<rows {a2+=w[(base_row+2)*cols+col]*xv;}
                 }
             }
         }
-        for c:0..<INK_DR {part[thread*INK_DR+c]=acc[thread*INK_DR+c];}
+        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
     }
     for thread:0..<INK_T {
         if thread<INK_D {
@@ -286,296 +313,329 @@ ink_dv_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #ex
     }
 }
 
+// ---- Matvec F32 for small-row matrices (rows <= 128, e.g. ctrl_down [64,4608], router [128,2304]).
+// Launch items = rows, lanes = 256 (1 threadgroup of 256 threads per row).
+ink_dv_f32_small :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;part2:[32]f32;
+    base:=item*cols;
+    for thread:0..<INK_NT {
+        s:f32=0;
+        for step:0..<(cols+255)/256 {
+            c:=step*256+thread;
+            if c<cols {s+=w[base+c]*x[c];}
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        if thread<32 {
+            s:f32=0;
+            for j:0..<8 {s+=part[j*32+thread];}
+            part2[thread]=s;
+        }
+    }
+    for thread:0..<INK_NT {
+        if thread==0 {
+            tot:f32=0;
+            for j:0..<32 {tot+=part2[j];}
+            if add!=0 {out[item]=out[item]+tot;}else {out[item]=tot;}
+        }
+    }
+}
+
+// ---- Fused loop_ctrl_gain + loop_ctrl_forget + ink_ctrl_apply.
+// gate is [rank] (rank <= 64), w_gain and w_forget are [dim, rank] F32.
+// Launch items = ceil(dim / 64), lanes = 64 (1 thread per output dim).
+ink_ctrl_up_apply :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate:[]f32,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
+    gsh:[64]f32;
+    for thread:0..<INK_T {
+        if thread<rank {gsh[thread]=gate[thread];}
+    }
+    for thread:0..<INK_T {
+        row:=item*INK_T+thread;
+        if row<dim {
+            base:=row*rank;
+            sg:f32=0;sf:f32=0;
+            for k:0..<rank {
+                gv:=gsh[k];
+                sg+=w_gain[base+k]*gv;
+                sf+=w_forget[base+k]*gv;
+            }
+            c:=cur[row];m:=msg[row];
+            out[row]=c-ink_tanh(sf)*c+ink_tanh(sg)*m;
+        }
+    }
+}
+
 // ---- MoE gate_up + SITU for top-K selected experts (IQ4_NL).
-// Launch items = n_used * ceil(n_ff / 4). Each group of 64 threads computes 4 gate rows (simd 0)
-// and their matching 4 up rows (simd 1) for one selected expert, then writes situ(gate, up).
-// w is [n_expert, 2*n_ff, cols] IQ4_NL as u16; exp_words = 2*n_ff*(cols/32)*9.
+// Launch items = n_used * ceil(n_ff / 4). Group of 128 threads (4 simdgroups x 2 rows):
+// simd 0,1 compute 4 gate rows; simd 2,3 compute 4 matching up rows; then write situ(gate, up).
+// ---- MoE gate_up + SITU (IQ4_NL): 128 threads = 4 simdgroups x 2 rows (4 rows/TG, gate+up split).
 ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    groups_per_exp:=(cast(u32)n_ff+3)/4;
-    slot:=cast(u32)item/groups_per_exp;
-    rgrp:=cast(u32)item%groups_per_exp;
-    exp_id:=ids[cast(int)slot];
-    nf:=cast(u32)n_ff;nc:=cast(u32)cols;blocks:=nc/32;row_words:=blocks*9;
-    exp_base:=mul_wrap(exp_id,mul_wrap(mul_wrap(nf,2),row_words));
-    row0:=mul_wrap(rgrp,4);r3:=add_wrap(row0,3);
-    for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        wrow0:=add_wrap(row0,mul_wrap(simd,nf));
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:cast(u32)0..<(blocks+31)/32 {
-            block:=add_wrap(mul_wrap(step,32),lane);
+    lut:[16]f32;
+    groups_per_exp:=(n_ff+3)/4;
+    slot:=item/groups_per_exp;
+    rgrp:=item%groups_per_exp;
+    exp_id:=cast(int)ids[slot];
+    blocks:=cols/32;row_words:=blocks*9;
+    exp_base:=exp_id*2*n_ff*row_words;
+    row0:=rgrp*4;
+    for thread:0..<128 {
+        if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+    }
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        is_up:=simd/2;
+        sub:=simd%2;
+        r0:=row0+sub*2;
+        r1:=r0+1;
+        wrow0:=r0+is_up*n_ff;
+        a0:f32=0;a1:f32=0;
+        for step:0..<(blocks+31)/32 {
+            block:=step*32+lane;
             if block<blocks {
-                xb:=mul_wrap(block,32);boff:=mul_wrap(block,9);
-                if r3<nf {
-                    at0:=add_wrap(exp_base,add_wrap(mul_wrap(wrow0,row_words),boff));
-                    at1:=add_wrap(at0,row_words);at2:=add_wrap(at1,row_words);at3:=add_wrap(at2,row_words);
-                    s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
+                xb:=block*32;boff:=block*9;
+                if r1<n_ff {
+                    at0:=exp_base+wrow0*row_words+boff;
+                    at1:=at0+row_words;
+                    s0:f32=0;s1:f32=0;
                     for k:0..<8 {
-                        x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                        x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                        x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                        x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                        kk:=cast(u32)(1+k);
-                        v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];
-                        s0+=ink_iq4_val(v0&15)*x0+ink_iq4_val((v0>>4)&15)*x1+ink_iq4_val((v0>>8)&15)*x2+ink_iq4_val(v0>>12)*x3;
-                        v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];
-                        s1+=ink_iq4_val(v1&15)*x0+ink_iq4_val((v1>>4)&15)*x1+ink_iq4_val((v1>>8)&15)*x2+ink_iq4_val(v1>>12)*x3;
-                        v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];
-                        s2+=ink_iq4_val(v2&15)*x0+ink_iq4_val((v2>>4)&15)*x1+ink_iq4_val((v2>>8)&15)*x2+ink_iq4_val(v2>>12)*x3;
-                        v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];
-                        s3+=ink_iq4_val(v3&15)*x0+ink_iq4_val((v3>>4)&15)*x1+ink_iq4_val((v3>>8)&15)*x2+ink_iq4_val(v3>>12)*x3;
+                        x0:=x[xb+2*k];
+                        x1:=x[xb+16+2*k];
+                        x2:=x[xb+2*k+1];
+                        x3:=x[xb+16+2*k+1];
+                        kk:=1+k;
+                        v0:=cast(u32)w[at0+kk];
+                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
+                        v1:=cast(u32)w[at1+kk];
+                        s1+=lut[cast(int)(v1&15)]*x0+lut[cast(int)((v1>>4)&15)]*x1+lut[cast(int)((v1>>8)&15)]*x2+lut[cast(int)(v1>>12)]*x3;
                     }
-                    a0+=ink_half(cast(u32)w[cast(int)at0])*s0;
-                    a1+=ink_half(cast(u32)w[cast(int)at1])*s1;
-                    a2+=ink_half(cast(u32)w[cast(int)at2])*s2;
-                    a3+=ink_half(cast(u32)w[cast(int)at3])*s3;
-                } else {
-                    for r:0..<INK_DR {
-                        row:=add_wrap(row0,cast(u32)r);
-                        if row<nf {
-                            wrow:=add_wrap(row,mul_wrap(simd,nf));
-                            at:=add_wrap(exp_base,add_wrap(mul_wrap(wrow,row_words),boff));sum:f32=0;
-                            for k:0..<8 {
-                                x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                                x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                                v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                sum+=ink_iq4_val(v&15)*x0+ink_iq4_val((v>>4)&15)*x1+ink_iq4_val((v>>8)&15)*x2+ink_iq4_val(v>>12)*x3;
-                            }
-                            d:=ink_half(cast(u32)w[cast(int)at])*sum;
-                            if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
-                        }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    a1+=ink_half(cast(u32)w[at1])*s1;
+                } else if r0<n_ff {
+                    at0:=exp_base+wrow0*row_words+boff;
+                    s0:f32=0;
+                    for k:0..<8 {
+                        x0:=x[xb+2*k];
+                        x1:=x[xb+16+2*k];
+                        x2:=x[xb+2*k+1];
+                        x3:=x[xb+16+2*k+1];
+                        v0:=cast(u32)w[at0+1+k];
+                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
                     }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
                 }
             }
         }
-        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
     }
-    for thread:0..<INK_T {
+    for thread:0..<128 {
         if thread<4 {
-            row:=add_wrap(row0,cast(u32)thread);
-            if row<nf {
+            row:=row0+thread;
+            if row<n_ff {
+                sub:=thread/2;rr:=thread%2;
                 g:f32=0;u:f32=0;
-                for l:0..<32 {g+=part[l*INK_DR+thread];u+=part[(32+l)*INK_DR+thread];}
+                for l:0..<32 {
+                    g+=part[(sub*32+l)*2+rr];
+                    u+=part[((2+sub)*32+l)*2+rr];
+                }
                 act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
                 if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
-                out[cast(int)add_wrap(mul_wrap(slot,nf),row)]=act*u;
+                out[slot*n_ff+row]=act*u;
             }
         }
     }
 }
 
-// ---- MoE gate_up + SITU for top-K selected experts (Q8_0).
+// ---- MoE gate_up + SITU for top-K selected experts (Q8_0): 128 threads (4 simdgroups x 2 rows), 4 lanes/block coalesced.
 ink_moe_gu_q8 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    groups_per_exp:=(cast(u32)n_ff+3)/4;
-    slot:=cast(u32)item/groups_per_exp;
-    rgrp:=cast(u32)item%groups_per_exp;
-    exp_id:=ids[cast(int)slot];
-    nf:=cast(u32)n_ff;nc:=cast(u32)cols;blocks:=nc/32;row_words:=blocks*17;
-    exp_base:=mul_wrap(exp_id,mul_wrap(mul_wrap(nf,2),row_words));
-    row0:=mul_wrap(rgrp,4);r3:=add_wrap(row0,3);
-    for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        wrow0:=add_wrap(row0,mul_wrap(simd,nf));
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:cast(u32)0..<(blocks+31)/32 {
-            block:=add_wrap(mul_wrap(step,32),lane);
+    groups_per_exp:=(n_ff+3)/4;
+    slot:=item/groups_per_exp;
+    rgrp:=item%groups_per_exp;
+    exp_id:=cast(int)ids[slot];
+    blocks:=cols/32;row_words:=blocks*17;
+    exp_base:=exp_id*2*n_ff*row_words;
+    row0:=rgrp*4;
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        is_up:=simd/2;sub:=simd%2;
+        blk_lane:=lane/4;bsub:=lane%4;
+        r0:=row0+sub*2;r1:=r0+1;
+        wrow0:=r0+is_up*n_ff;
+        a0:f32=0;a1:f32=0;
+        k0:=bsub*4;
+        for step:0..<(blocks+7)/8 {
+            block:=step*8+blk_lane;
             if block<blocks {
-                xb:=mul_wrap(block,32);boff:=mul_wrap(block,17);
-                if r3<nf {
-                    at0:=add_wrap(exp_base,add_wrap(mul_wrap(wrow0,row_words),boff));
-                    at1:=add_wrap(at0,row_words);at2:=add_wrap(at1,row_words);at3:=add_wrap(at2,row_words);
-                    s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                    for k:0..<16 {
-                        x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                        x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                        kk:=cast(u32)(1+k);
-                        v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
-                        v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
-                        v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];s2+=ink_signed(v2&255)*x0+ink_signed(v2>>8)*x1;
-                        v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];s3+=ink_signed(v3&255)*x0+ink_signed(v3>>8)*x1;
+                xb:=block*32+k0*2;boff:=block*17;
+                if r1<n_ff {
+                    at0:=exp_base+wrow0*row_words+boff;
+                    at1:=at0+row_words;
+                    s0:f32=0;s1:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];x1:=x[xb+2*j+1];
+                        kk:=1+k0+j;
+                        v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
+                        v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[cast(int)at0])*s0;
-                    a1+=ink_half(cast(u32)w[cast(int)at1])*s1;
-                    a2+=ink_half(cast(u32)w[cast(int)at2])*s2;
-                    a3+=ink_half(cast(u32)w[cast(int)at3])*s3;
-                } else {
-                    for r:0..<INK_DR {
-                        row:=add_wrap(row0,cast(u32)r);
-                        if row<nf {
-                            wrow:=add_wrap(row,mul_wrap(simd,nf));
-                            at:=add_wrap(exp_base,add_wrap(mul_wrap(wrow,row_words),boff));sum:f32=0;
-                            for k:0..<16 {
-                                x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
-                            }
-                            d:=ink_half(cast(u32)w[cast(int)at])*sum;
-                            if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
-                        }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    a1+=ink_half(cast(u32)w[at1])*s1;
+                } else if r0<n_ff {
+                    at0:=exp_base+wrow0*row_words+boff;
+                    s0:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];x1:=x[xb+2*j+1];
+                        v0:=cast(u32)w[at0+1+k0+j];
+                        s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
                     }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
                 }
             }
         }
-        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
     }
-    for thread:0..<INK_T {
+    for thread:0..<128 {
         if thread<4 {
-            row:=add_wrap(row0,cast(u32)thread);
-            if row<nf {
+            row:=row0+thread;
+            if row<n_ff {
+                sub:=thread/2;rr:=thread%2;
                 g:f32=0;u:f32=0;
-                for l:0..<32 {g+=part[l*INK_DR+thread];u+=part[(32+l)*INK_DR+thread];}
+                for l:0..<32 {
+                    g+=part[(sub*32+l)*2+rr];
+                    u+=part[((2+sub)*32+l)*2+rr];
+                }
                 act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
                 if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
-                out[cast(int)add_wrap(mul_wrap(slot,nf),row)]=act*u;
+                out[slot*n_ff+row]=act*u;
             }
         }
     }
 }
 
 // ---- MoE down projection + weighted sum over n_used selected experts (IQ4_NL).
-// Launch items = ceil(rows / 8). Each group computes 8 output rows summed across all n_used experts.
+// Launch items = ceil(rows / 8). Group of 128 threads (4 simdgroups x 2 rows) flattens
+// (slot, block) across n_used * blocks (e.g. 8 * 36 = 288 = 9 * 32, zero idle lanes!).
+// ---- MoE down (IQ4_NL): 128 threads = 4 simdgroups x 2 rows (8 rows/TG), flattened (slot, block).
 ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;row_words:=blocks*9;exp_words:=mul_wrap(nr,row_words);
-    row0:=mul_wrap(cast(u32)item,cast(u32)INK_D);
-    for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        base_row:=add_wrap(row0,mul_wrap(simd,cast(u32)INK_DR));
-        r3:=add_wrap(base_row,3);
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for slot:0..<n_used {
-            exp_id:=ids[slot];ew:=wts[slot];
-            exp_base:=mul_wrap(exp_id,exp_words);
-            x_slot:=mul_wrap(cast(u32)slot,nc);
-            for step:cast(u32)0..<(blocks+31)/32 {
-                block:=add_wrap(mul_wrap(step,32),lane);
-                if block<blocks {
-                    xb:=add_wrap(x_slot,mul_wrap(block,32));boff:=mul_wrap(block,9);
-                    if r3<nr {
-                        at0:=add_wrap(exp_base,add_wrap(mul_wrap(base_row,row_words),boff));
-                        at1:=add_wrap(at0,row_words);at2:=add_wrap(at1,row_words);at3:=add_wrap(at2,row_words);
-                        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                        for k:0..<8 {
-                            x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                            x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                            x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                            x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                            kk:=cast(u32)(1+k);
-                            v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];
-                            s0+=ink_iq4_val(v0&15)*x0+ink_iq4_val((v0>>4)&15)*x1+ink_iq4_val((v0>>8)&15)*x2+ink_iq4_val(v0>>12)*x3;
-                            v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];
-                            s1+=ink_iq4_val(v1&15)*x0+ink_iq4_val((v1>>4)&15)*x1+ink_iq4_val((v1>>8)&15)*x2+ink_iq4_val(v1>>12)*x3;
-                            v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];
-                            s2+=ink_iq4_val(v2&15)*x0+ink_iq4_val((v2>>4)&15)*x1+ink_iq4_val((v2>>8)&15)*x2+ink_iq4_val(v2>>12)*x3;
-                            v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];
-                            s3+=ink_iq4_val(v3&15)*x0+ink_iq4_val((v3>>4)&15)*x1+ink_iq4_val((v3>>8)&15)*x2+ink_iq4_val(v3>>12)*x3;
-                        }
-                        a0+=ew*ink_half(cast(u32)w[cast(int)at0])*s0;
-                        a1+=ew*ink_half(cast(u32)w[cast(int)at1])*s1;
-                        a2+=ew*ink_half(cast(u32)w[cast(int)at2])*s2;
-                        a3+=ew*ink_half(cast(u32)w[cast(int)at3])*s3;
-                    } else {
-                        for r:0..<INK_DR {
-                            row:=add_wrap(base_row,cast(u32)r);
-                            if row<nr {
-                                at:=add_wrap(exp_base,add_wrap(mul_wrap(row,row_words),boff));sum:f32=0;
-                                for k:0..<8 {
-                                    x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                    x1:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k))];
-                                    x2:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                    x3:=x[cast(int)add_wrap(xb,cast(u32)(16+2*k+1))];
-                                    v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                    sum+=ink_iq4_val(v&15)*x0+ink_iq4_val((v>>4)&15)*x1+ink_iq4_val((v>>8)&15)*x2+ink_iq4_val(v>>12)*x3;
-                                }
-                                d:=ew*ink_half(cast(u32)w[cast(int)at])*sum;
-                                if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
-                            }
-                        }
+    lut:[16]f32;
+    blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
+    tot_blocks:=n_used*blocks;
+    row0:=item*INK_D;
+    for thread:0..<128 {
+        if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+    }
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        base_row:=row0+simd*2;
+        r1:=base_row+1;
+        a0:f32=0;a1:f32=0;
+        for step:0..<(tot_blocks+31)/32 {
+            idx:=step*32+lane;
+            if idx<tot_blocks {
+                slot:=idx/blocks;
+                block:=idx%blocks;
+                exp_id:=cast(int)ids[slot];ew:=wts[slot];
+                exp_base:=exp_id*exp_words;
+                xb:=slot*cols+block*32;boff:=block*9;
+                if r1<rows {
+                    at0:=exp_base+base_row*row_words+boff;
+                    at1:=at0+row_words;
+                    s0:f32=0;s1:f32=0;
+                    for k:0..<8 {
+                        x0:=x[xb+2*k];
+                        x1:=x[xb+16+2*k];
+                        x2:=x[xb+2*k+1];
+                        x3:=x[xb+16+2*k+1];
+                        kk:=1+k;
+                        v0:=cast(u32)w[at0+kk];
+                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
+                        v1:=cast(u32)w[at1+kk];
+                        s1+=lut[cast(int)(v1&15)]*x0+lut[cast(int)((v1>>4)&15)]*x1+lut[cast(int)((v1>>8)&15)]*x2+lut[cast(int)(v1>>12)]*x3;
                     }
+                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
+                    a1+=ew*ink_half(cast(u32)w[at1])*s1;
+                } else if base_row<rows {
+                    at0:=exp_base+base_row*row_words+boff;
+                    s0:f32=0;
+                    for k:0..<8 {
+                        x0:=x[xb+2*k];
+                        x1:=x[xb+16+2*k];
+                        x2:=x[xb+2*k+1];
+                        x3:=x[xb+16+2*k+1];
+                        v0:=cast(u32)w[at0+1+k];
+                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
+                    }
+                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
                 }
             }
         }
-        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
     }
-    for thread:0..<INK_T {
+    for thread:0..<128 {
         if thread<INK_D {
             row:=item*INK_D+thread;
             if row<rows {
-                simd:=thread/INK_DR;r:=thread%INK_DR;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*INK_DR+r];}
+                simd:=thread/2;r:=thread%2;sum:f32=0;
+                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
                 out[row]=sum;
             }
         }
     }
 }
 
-// ---- MoE down projection + weighted sum over n_used selected experts (Q8_0).
+// ---- MoE down projection + weighted sum over n_used selected experts (Q8_0): 128 threads (4 simdgroups x 2 rows), flattened (slot, block).
 ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
-    nr:=cast(u32)rows;nc:=cast(u32)cols;blocks:=nc/32;row_words:=blocks*17;exp_words:=mul_wrap(nr,row_words);
-    row0:=mul_wrap(cast(u32)item,cast(u32)INK_D);
-    for thread:0..<INK_T {
-        t:=cast(u32)thread;lane:=t%32;simd:=t/32;
-        base_row:=add_wrap(row0,mul_wrap(simd,cast(u32)INK_DR));
-        r3:=add_wrap(base_row,3);
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for slot:0..<n_used {
-            exp_id:=ids[slot];ew:=wts[slot];
-            exp_base:=mul_wrap(exp_id,exp_words);
-            x_slot:=mul_wrap(cast(u32)slot,nc);
-            for step:cast(u32)0..<(blocks+31)/32 {
-                block:=add_wrap(mul_wrap(step,32),lane);
-                if block<blocks {
-                    xb:=add_wrap(x_slot,mul_wrap(block,32));boff:=mul_wrap(block,17);
-                    if r3<nr {
-                        at0:=add_wrap(exp_base,add_wrap(mul_wrap(base_row,row_words),boff));
-                        at1:=add_wrap(at0,row_words);at2:=add_wrap(at1,row_words);at3:=add_wrap(at2,row_words);
-                        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                        for k:0..<16 {
-                            x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                            x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                            kk:=cast(u32)(1+k);
-                            v0:=cast(u32)w[cast(int)add_wrap(at0,kk)];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
-                            v1:=cast(u32)w[cast(int)add_wrap(at1,kk)];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
-                            v2:=cast(u32)w[cast(int)add_wrap(at2,kk)];s2+=ink_signed(v2&255)*x0+ink_signed(v2>>8)*x1;
-                            v3:=cast(u32)w[cast(int)add_wrap(at3,kk)];s3+=ink_signed(v3&255)*x0+ink_signed(v3>>8)*x1;
-                        }
-                        a0+=ew*ink_half(cast(u32)w[cast(int)at0])*s0;
-                        a1+=ew*ink_half(cast(u32)w[cast(int)at1])*s1;
-                        a2+=ew*ink_half(cast(u32)w[cast(int)at2])*s2;
-                        a3+=ew*ink_half(cast(u32)w[cast(int)at3])*s3;
-                    } else {
-                        for r:0..<INK_DR {
-                            row:=add_wrap(base_row,cast(u32)r);
-                            if row<nr {
-                                at:=add_wrap(exp_base,add_wrap(mul_wrap(row,row_words),boff));sum:f32=0;
-                                for k:0..<16 {
-                                    x0:=x[cast(int)add_wrap(xb,cast(u32)(2*k))];
-                                    x1:=x[cast(int)add_wrap(xb,cast(u32)(2*k+1))];
-                                    v:=cast(u32)w[cast(int)add_wrap(at,cast(u32)(1+k))];
-                                    sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
-                                }
-                                d:=ew*ink_half(cast(u32)w[cast(int)at])*sum;
-                                if r==0 {a0+=d;} else if r==1 {a1+=d;} else if r==2 {a2+=d;} else {a3+=d;}
-                            }
-                        }
+    blocks:=cols/32;row_words:=blocks*17;exp_words:=rows*row_words;
+    tot_blocks:=n_used*blocks;
+    row0:=item*INK_D;
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        base_row:=row0+simd*2;
+        r1:=base_row+1;
+        a0:f32=0;a1:f32=0;
+        for step:0..<(tot_blocks+31)/32 {
+            idx:=step*32+lane;
+            if idx<tot_blocks {
+                slot:=idx/blocks;
+                block:=idx%blocks;
+                exp_id:=cast(int)ids[slot];ew:=wts[slot];
+                exp_base:=exp_id*exp_words;
+                xb:=slot*cols+block*32;boff:=block*17;
+                if r1<rows {
+                    at0:=exp_base+base_row*row_words+boff;
+                    at1:=at0+row_words;
+                    s0:f32=0;s1:f32=0;
+                    for k:0..<16 {
+                        x0:=x[xb+2*k];x1:=x[xb+2*k+1];
+                        kk:=1+k;
+                        v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
+                        v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
                     }
+                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
+                    a1+=ew*ink_half(cast(u32)w[at1])*s1;
+                } else if base_row<rows {
+                    at0:=exp_base+base_row*row_words+boff;
+                    s0:f32=0;
+                    for k:0..<16 {
+                        x0:=x[xb+2*k];x1:=x[xb+2*k+1];
+                        v0:=cast(u32)w[at0+1+k];
+                        s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
+                    }
+                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
                 }
             }
         }
-        part[thread*INK_DR+0]=a0;part[thread*INK_DR+1]=a1;part[thread*INK_DR+2]=a2;part[thread*INK_DR+3]=a3;
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
     }
-    for thread:0..<INK_T {
+    for thread:0..<128 {
         if thread<INK_D {
             row:=item*INK_D+thread;
             if row<rows {
-                simd:=thread/INK_DR;r:=thread%INK_DR;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*INK_DR+r];}
+                simd:=thread/2;r:=thread%2;sum:f32=0;
+                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
                 out[row]=sum;
             }
         }
@@ -584,8 +644,9 @@ ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]
 
 // ---- Router: sigmoid(logits) + optional exp_probs_b -> top-k -> normalize * scale.
 // One work item (1 threadgroup of 256 threads; n_expert <= 256).
+// Uses parallel 16-chunk argmax (each of 16 threads scans 8 experts) so thread 0 only reduces 16 values.
 ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32,bias:[]f32,out_ids:[]u32,out_wts:[]f32) #export_c #effects(all) {
-    probs:[256]f32;sel:[256]f32;
+    probs:[256]f32;sel:[256]f32;cval:[16]f32;cidx:[16]u32;pids:[16]u32;pwts:[16]f32;
     for thread:0..<INK_NT {
         if thread<n_exp {
             p:=ink_sigmoid(logits[thread]);
@@ -595,24 +656,47 @@ ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32
             probs[thread]=0.0f32;
             sel[thread]=INK_NEG_INF;
         }
+        if thread<16 {pids[thread]=999999;pwts[thread]=0.0f32;}
+    }
+    n_chunks:=(n_exp+7)/8;
+    for k:0..<n_used {
+        for thread:0..<INK_NT {
+            if thread<n_chunks {
+                base:=thread*8;
+                bv:f32=INK_NEG_INF;bi:u32=0;
+                for j:0..<8 {
+                    e:=base+j;
+                    if e<n_exp {
+                        sv:=sel[e];
+                        if sv>bv {
+                            eu:=cast(u32)e;
+                            dup:u32=0;
+                            for prev:0..<k {if pids[prev]==eu {dup=1;}}
+                            if dup==0 {bv=sv;bi=eu;}
+                        }
+                    }
+                }
+                cval[thread]=bv;cidx[thread]=bi;
+            }
+        }
+        for thread:0..<INK_NT {
+            if thread==k {
+                bv:f32=INK_NEG_INF;bi:u32=0;
+                for c:0..<n_chunks {
+                    if cval[c]>bv {bv=cval[c];bi=cidx[c];}
+                }
+                pids[thread]=bi;
+                pwts[thread]=probs[cast(int)bi];
+            }
+        }
     }
     for thread:0..<INK_NT {
-        if thread==0 {
+        if thread<n_used {
             wsum:f32=0;
-            for k:0..<n_used {
-                best:int=0;bval:f32=INK_NEG_INF;
-                for e:0..<n_exp {
-                    dup:int=0;
-                    for prev:0..<k {if out_ids[prev]==cast(u32)e {dup=1;}}
-                    if dup==0 && sel[e]>bval {bval=sel[e];best=e;}
-                }
-                out_ids[k]=cast(u32)best;
-                out_wts[k]=probs[best];
-                wsum+=probs[best];
-            }
+            for k:0..<n_used {wsum+=pwts[k];}
             if wsum<0.00006103515625f32 {wsum=0.00006103515625f32;}
-            inv:=scale/wsum;
-            for k:0..<n_used {out_wts[k]=out_wts[k]*inv;}
+            out_ids[thread]=pids[thread];
+            out_wts[thread]=pwts[thread]*(scale/wsum);
         }
     }
 }
@@ -621,42 +705,39 @@ ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32
 // blocks_buf holds n_blocks vectors of size dim, cur is 1 vector of size dim (total n_states = n_blocks + 1).
 // Launch items = n_queries (1, 3, or 4). Each item has 256 threads.
 ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
-    d:=cast(u32)dim;n_states:=n_blocks+1;qbase:=mul_wrap(cast(u32)item,d);obase:=qbase;
-    // Pass 1: compute RMS inv and dot(rms(state_s), query) for each state s.
+    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    n_states:=n_blocks+1;qbase:=item*dim;obase:=qbase;
+    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
+    // Pass 1: single read per state computes both ss and dot(state_s, query).
     for s:0..<n_states {
         for thread:0..<INK_NT {
-            ss:f32=0;t:=cast(u32)thread;
-            for k:cast(u32)0..<(d+255)/256 {
-                i:=add_wrap(mul_wrap(k,256),t);
-                if i<d {
-                    v:=ifx s<n_blocks then blocks_buf[cast(int)add_wrap(mul_wrap(cast(u32)s,d),i)] else cur[cast(int)i];
+            ss:f32=0;dot:f32=0;
+            sbase:=s*dim;
+            for k:0..<(dim+255)/256 {
+                i:=k*256+thread;
+                if i<dim {
+                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[i];
                     ss+=v*v;
+                    dot+=v*query[qbase+i];
                 }
             }
-            part[thread]=ss;
+            part_ss[thread]=ss;
+            part_dot[thread]=dot;
+        }
+        for thread:0..<INK_NT {
+            if thread<16 {
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                p2_ss[thread]=tss;p2_dot[thread]=tdot;
+            }
         }
         for thread:0..<INK_NT {
             if thread==s {
-                tot:f32=0;for j:0..<INK_NT {tot+=part[j];}
-                invs[thread]=1.0f32/sqrt(tot/f32(dim)+0.000001f32);
-            }
-        }
-        for thread:0..<INK_NT {
-            dot:f32=0;t:=cast(u32)thread;inv:=invs[s];
-            for k:cast(u32)0..<(d+255)/256 {
-                i:=add_wrap(mul_wrap(k,256),t);
-                if i<d {
-                    v:=ifx s<n_blocks then blocks_buf[cast(int)add_wrap(mul_wrap(cast(u32)s,d),i)] else cur[cast(int)i];
-                    dot+=v*inv*query[cast(int)add_wrap(qbase,i)];
-                }
-            }
-            part[thread]=dot;
-        }
-        for thread:0..<INK_NT {
-            if thread==s {
-                tot:f32=0;for j:0..<INK_NT {tot+=part[j];}
-                scores[thread]=tot/sqrt(f32(dim));
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
+                invs[thread]=inv;
+                scores[thread]=tdot*inv*inv_sqrt_d;
             }
         }
     }
@@ -673,16 +754,16 @@ ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32
     for thread:0..<INK_NT {
         esum:f32=0;
         for s:0..<n_states {esum+=w[s];}
-        t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
+        inv_e:=1.0f32/esum;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
                 acc:f32=0;
                 for s:0..<n_states {
-                    v:=ifx s<n_blocks then blocks_buf[cast(int)add_wrap(mul_wrap(cast(u32)s,d),i)] else cur[cast(int)i];
-                    acc+=(w[s]/esum)*v*invs[s];
+                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
+                    acc+=(w[s]*inv_e*invs[s])*v;
                 }
-                out[cast(int)add_wrap(obase,i)]=acc;
+                out[obase+i]=acc;
             }
         }
     }
@@ -691,29 +772,34 @@ ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32
 // ---- Loop control prep: concat(rms(cur, 1e-6), rms(msg, 1e-6)) into out[0..2*dim-1].
 // Launch 1 work item (256 threads).
 ink_ctrl_prep :: (item:int,dim:int,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;part2:[256]f32;
-    d:=cast(u32)dim;
+    part:[256]f32;part2:[256]f32;r1:[16]f32;r2:[16]f32;
     for thread:0..<INK_NT {
-        s1:f32=0;s2:f32=0;t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
-                a:=cur[cast(int)i];b:=msg[cast(int)i];
+        s1:f32=0;s2:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                a:=cur[i];b:=msg[i];
                 s1+=a*a;s2+=b*b;
             }
         }
         part[thread]=s1;part2[thread]=s2;
     }
     for thread:0..<INK_NT {
-        t1:f32=0;t2:f32=0;for j:0..<INK_NT {t1+=part[j];t2+=part2[j];}
+        if thread<16 {
+            t1:f32=0;t2:f32=0;
+            for j:0..<16 {t1+=part[j*16+thread];t2+=part2[j*16+thread];}
+            r1[thread]=t1;r2[thread]=t2;
+        }
+    }
+    for thread:0..<INK_NT {
+        t1:f32=0;t2:f32=0;for j:0..<16 {t1+=r1[j];t2+=r2[j];}
         inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
         inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
-        t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
-                out[cast(int)i]=cur[cast(int)i]*inv1;
-                out[cast(int)add_wrap(d,i)]=msg[cast(int)i]*inv2;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                out[i]=cur[i]*inv1;
+                out[dim+i]=msg[i]*inv2;
             }
         }
     }
@@ -748,6 +834,19 @@ ink_convolve :: (item:int,n_channels:int,n_heads:int,has_dyn:int,cur:[]f32,w:[]f
         } else {
             out[c]=(x3+acc)/sqrt(5.0f32);
         }
+    }
+}
+
+// ---- Fused post shortconv + residual add (non-dynamic, n_heads=1):
+// out[c] = res[c] + (x3 + x0*w0 + x1*w1 + x2*w2 + x3*w3) / sqrt(5).
+// Eliminates 88 dispatches and 88 GPU barriers per decode token!
+ink_convolve_add :: (item:int,n_channels:int,cur:[]f32,w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        c:=item;
+        x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];x3:=cur[c];
+        hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;
+        acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+        out[c]=res[c]+(x3+acc)*0.4472135954999579f32;
     }
 }
 
@@ -831,7 +930,7 @@ ink_kv_store :: (item:int,n_kv_elem:int,slot_pos:int,k_in:[]f32,v_in:[]f32,k_cac
 // pos: current 0-based token position.
 // rel_bias: [extent, n_rel] f32; R: [n_head, n_rel] f32; sinks: [n_head] f32; gate: [n_head, head_dim] f32.
 ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32) #export_c #effects(all) {
-    smax:[256]f32;ssum:[256]f32;qsh:[128]f32;rsh:[16]f32;
+    smax:[512]f32;ssum:[512]f32;rmax:[16]f32;rsum:[16]f32;vpart:[512]f32;qsh:[128]f32;rsh:[16]f32;
     n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
     extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
     kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
@@ -844,18 +943,17 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,re
     start:int=0;
     if is_swa!=0 && pos>=swa {start=pos-swa+1;}
     n_keys:=pos-start+1;
-    n_chunks:=(n_keys+INK_NT-1)/INK_NT;
-    for thread:0..<INK_NT {
+    n_chunks:=(n_keys+511)/512;
+    for thread:0..<512 {
         if thread<head_dim {qsh[thread]=q[h*head_dim+thread];}
         if thread<n_rel {rsh[thread]=r[h*n_rel+thread];}
         smax[thread]=INK_NEG_INF;
         ssum[thread]=0.0f32;
     }
-    // Pass 1: compute Q*K*scale + rel_bias - sink_val once into scratch_scores and find max.
-    for thread:0..<INK_NT {
+    for thread:0..<512 {
         lmax:f32=INK_NEG_INF;
         for c:0..<n_chunks {
-            kidx:=c*INK_NT+thread;
+            kidx:=c*512+thread;
             if kidx<n_keys {
                 kp:=start+kidx;
                 slot:=ifx is_swa!=0 then kp%kv_cap else kp;
@@ -875,13 +973,19 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,re
         }
         smax[thread]=lmax;
     }
-    // Pass 2: exponentiate into scratch_scores and accumulate denominator (with sink logit = 0.0).
-    for thread:0..<INK_NT {
+    for thread:0..<512 {
+        if thread<16 {
+            mx:f32=0.0f32;
+            for j:0..<32 {v:=smax[j*16+thread];if v>mx {mx=v;}}
+            rmax[thread]=mx;
+        }
+    }
+    for thread:0..<512 {
         gmax:f32=0.0f32;
-        for j:0..<INK_NT {if smax[j]>gmax {gmax=smax[j];}}
+        for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
         lsum:f32=0.0f32;
         for c:0..<n_chunks {
-            kidx:=c*INK_NT+thread;
+            kidx:=c*512+thread;
             if kidx<n_keys {
                 w:=exp(scratch_scores[sbase+kidx]-gmax);
                 scratch_scores[sbase+kidx]=w;
@@ -890,24 +994,37 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,re
         }
         ssum[thread]=lsum;
     }
-    // Pass 3: weighted sum of V into head_dim outputs. Thread t < 128 computes output dim t.
-    for thread:0..<INK_NT {
-        gmax:f32=0.0f32;
-        for j:0..<INK_NT {if smax[j]>gmax {gmax=smax[j];}}
-        gsum:f32=exp(-gmax);
-        for j:0..<INK_NT {gsum+=ssum[j];}
-        inv_sum:=1.0f32/gsum;
-        if thread<head_dim {
-            d:=thread;
-            vsum:f32=0.0f32;
-            for kidx:0..<n_keys {
+    for thread:0..<512 {
+        if thread<16 {
+            sm:f32=0.0f32;
+            for j:0..<32 {sm+=ssum[j*16+thread];}
+            rsum[thread]=sm;
+        }
+    }
+    for thread:0..<512 {
+        d:=thread%128;
+        part_id:=thread/128;
+        vsum:f32=0.0f32;
+        for step:0..<(n_keys+3)/4 {
+            kidx:=step*4+part_id;
+            if kidx<n_keys {
                 kp:=start+kidx;
                 slot:=ifx is_swa!=0 then kp%kv_cap else kp;
                 kbase:=slot*n_kv_elem+kv_h*head_dim;
                 vsum+=scratch_scores[sbase+kidx]*ink_half(cast(u32)v_cache[kbase+d]);
             }
-            idx:=h*head_dim+d;
-            out[idx]=vsum*inv_sum*ink_sigmoid(gate[idx]);
+        }
+        vpart[thread]=vsum;
+    }
+    for thread:0..<512 {
+        if thread<head_dim {
+            gmax:f32=0.0f32;
+            for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
+            gsum:f32=exp(-gmax);
+            for j:0..<16 {gsum+=rsum[j];}
+            vtot:=vpart[thread]+vpart[thread+128]+vpart[thread+256]+vpart[thread+384];
+            idx:=h*head_dim+thread;
+            out[idx]=(vtot/gsum)*ink_sigmoid(gate[idx]);
         }
     }
 }
@@ -925,4 +1042,1115 @@ ink_copy :: (item:int,n:int,src:[]f32,dst:[]f32) #export_c #effects(all) {
 // ---- Final logit softcapping: x[i] = cap * tanh(x[i] / cap). Launch items = n, lanes = 1.
 ink_softcap :: (item:int,n:int,cap:f32,x:[]f32) #export_c #effects(all) {
     if item<n {x[item]=cap*ink_tanh(x[item]/cap);}
+}
+
+// ============================================================================
+// Batched prefill kernels (chunk size B <= 64) using Apple simdgroup MMA.
+// ============================================================================
+
+// ---- Batched matmul Q8_0: out[t*rows+r] = sum_k x[t*cols+k] * W_q8[r,k] for 0<=t<n_tok.
+// 2D-tiled: t_tiles = ceil(n_tok/64), r_tiles = ceil(rows/32), launch items = t_tiles * r_tiles, lanes = 128.
+// Uses 4 threads/row (b[thread*8 + 0..7]): 1 ink_half & 4 u16 loads per thread instead of 8 & 16!
+ink_mm_q8 :: (item:int,rows:int,cols:int,n_tok:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    r_tiles:=(rows+31)/32;
+    t0:=(item/r_tiles)*64;
+    r0:=(item%r_tiles)*32;
+    blocks:=cols/32;words:=blocks*17;
+    for blk:0..<blocks {
+        xb:=blk*32;boff:=blk*17;
+        for thread:0..<128 {
+            col:=thread%32;
+            t_off:=thread/32;
+            for i:0..<16 {
+                t:=t0+t_off+4*i;
+                v:f32=0.0f32;
+                if t<n_tok {v=x[t*cols+xb+col];}
+                a[thread+128*i]=v;
+            }
+            // 4 threads per row: r_loc = thread/4, sub = thread%4 -> b[thread*8 + 0..7] == b[r_loc*32 + sub*8 + 0..7]!
+            row:=r0+thread/4;
+            sub:=thread%4;
+            if row<rows {
+                at:=row*words+boff;
+                sc:=ink_half(cast(u32)w[at]);
+                wbase:=at+1+sub*4;
+                v0:=cast(u32)w[wbase+0];
+                b[thread*8+0]=sc*ink_signed(v0&255);b[thread*8+1]=sc*ink_signed(v0>>8);
+                v1:=cast(u32)w[wbase+1];
+                b[thread*8+2]=sc*ink_signed(v1&255);b[thread*8+3]=sc*ink_signed(v1>>8);
+                v2:=cast(u32)w[wbase+2];
+                b[thread*8+4]=sc*ink_signed(v2&255);b[thread*8+5]=sc*ink_signed(v2>>8);
+                v3:=cast(u32)w[wbase+3];
+                b[thread*8+6]=sc*ink_signed(v3&255);b[thread*8+7]=sc*ink_signed(v3>>8);
+            } else {
+                b[thread*8+0]=0.0f32;b[thread*8+1]=0.0f32;b[thread*8+2]=0.0f32;b[thread*8+3]=0.0f32;
+                b[thread*8+4]=0.0f32;b[thread*8+5]=0.0f32;b[thread*8+6]=0.0f32;b[thread*8+7]=0.0f32;
+            }
+        }
+        am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    }
+    am_sg_spill_64x32(acc[..],a[..]);
+    for thread:0..<128 {
+        for i:0..<16 {
+            e:=thread+128*i;
+            t:=t0+e/32;c:=e%32;
+            row:=r0+c;
+            if t<n_tok && row<rows {out[t*rows+row]=a[e];}
+        }
+    }
+}
+
+// ---- Batched matmul F32: out[t*rows+r] = sum_k x[t*cols+k] * W_f32[r,k] for 0<=t<n_tok.
+// 2D-tiled: launch items = ceil(n_tok/64) * ceil(rows/32), lanes = 128.
+ink_mm_f32 :: (item:int,rows:int,cols:int,n_tok:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    r_tiles:=(rows+31)/32;
+    t0:=(item/r_tiles)*64;
+    r0:=(item%r_tiles)*32;
+    blocks:=(cols+31)/32;
+    for blk:0..<blocks {
+        xb:=blk*32;
+        for thread:0..<128 {
+            col:=thread%32;
+            t_off:=thread/32;
+            c_idx:=xb+col;
+            for i:0..<16 {
+                t:=t0+t_off+4*i;
+                v:f32=0.0f32;
+                if t<n_tok && c_idx<cols {v=x[t*cols+c_idx];}
+                a[thread+128*i]=v;
+            }
+            for i:0..<8 {
+                r_loc:=t_off+4*i;
+                row:=r0+r_loc;
+                v:f32=0.0f32;
+                if row<rows && c_idx<cols {v=w[row*cols+c_idx];}
+                b[thread+128*i]=v;
+            }
+        }
+        am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    }
+    am_sg_spill_64x32(acc[..],a[..]);
+    for thread:0..<128 {
+        for i:0..<16 {
+            e:=thread+128*i;
+            t:=t0+e/32;c:=e%32;
+            row:=r0+c;
+            if t<n_tok && row<rows {out[t*rows+row]=a[e];}
+        }
+    }
+}
+
+// ---- Batched embedding lookup from Q8_0 token_embd + tok_norm. Launch items = n_tok, lanes = 256.
+ink_embed_q8_batch :: (item:int,dim:int,toks:[]u32,w:[]u16,norm_w:[]f32,eps:f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;part2:[16]f32;
+    tok:=cast(int)toks[item];
+    blocks:=dim/32;row_words:=blocks*17;base:=tok*row_words;
+    obase:=item*dim;
+    for thread:0..<INK_NT {
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                blk:=i/32;off:=i%32;at:=base+blk*17;
+                sc:=ink_half(cast(u32)w[at]);
+                word:=cast(u32)w[at+1+off/2];
+                q:=ifx (off%2)==0 then word&255 else (word>>8)&255;
+                v:=sc*ink_signed(q);
+                out[obase+i]=v;s+=v*v;
+            }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            s:f32=0;for j:0..<16 {s+=part[j*16+thread];}part2[thread]=s;
+        }
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<16 {tot+=part2[j];}
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {out[obase+i]=out[obase+i]*inv*norm_w[i];}
+        }
+    }
+}
+
+// ---- Batched depth-attention residual mix.
+// blocks_buf is [n_blocks, n_tok, dim]; cur is [n_tok, dim]; query is [n_queries, dim]; out is [n_queries, n_tok, dim].
+// Launch items = n_queries * n_tok, lanes = 256.
+ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
+    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    q_idx:=item/n_tok;
+    t_idx:=item%n_tok;
+    n_states:=n_blocks+1;
+    qbase:=q_idx*dim;
+    obase:=item*dim;
+    cbase:=t_idx*dim;
+    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
+    for s:0..<n_states {
+        sbase:=(s*n_tok+t_idx)*dim;
+        for thread:0..<INK_NT {
+            ss:f32=0;dot:f32=0;
+            for k:0..<(dim+255)/256 {
+                i:=k*256+thread;
+                if i<dim {
+                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[cbase+i];
+                    ss+=v*v;
+                    dot+=v*query[qbase+i];
+                }
+            }
+            part_ss[thread]=ss;part_dot[thread]=dot;
+        }
+        for thread:0..<INK_NT {
+            if thread<16 {
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                p2_ss[thread]=tss;p2_dot[thread]=tdot;
+            }
+        }
+        for thread:0..<INK_NT {
+            if thread==s {
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
+                invs[thread]=inv;
+                scores[thread]=tdot*inv*inv_sqrt_d;
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        if thread<n_states {
+            mx:f32=scores[0];
+            for s:1..<n_states {if scores[s]>mx {mx=scores[s];}}
+            w[thread]=exp(scores[thread]-mx);
+        } else {
+            w[thread]=0.0f32;
+        }
+    }
+    for thread:0..<INK_NT {
+        esum:f32=0;
+        for s:0..<n_states {esum+=w[s];}
+        inv_e:=1.0f32/esum;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                acc:f32=0;
+                for s:0..<n_states {
+                    v:=ifx s<n_blocks then blocks_buf[(s*n_tok+t_idx)*dim+i] else cur[cbase+i];
+                    acc+=(w[s]*inv_e*invs[s])*v;
+                }
+                out[obase+i]=acc;
+            }
+        }
+    }
+}
+
+// ---- Batched loop control prep: concat(rms(cur[t]), rms(msg[t])) into out[t*2*dim..].
+// Launch items = n_tok, lanes = 256.
+ink_ctrl_prep_batch :: (item:int,dim:int,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;part2:[256]f32;r1:[16]f32;r2:[16]f32;
+    base:=item*dim;obase:=item*2*dim;
+    for thread:0..<INK_NT {
+        s1:f32=0;s2:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                a:=cur[base+i];b:=msg[base+i];
+                s1+=a*a;s2+=b*b;
+            }
+        }
+        part[thread]=s1;part2[thread]=s2;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            t1:f32=0;t2:f32=0;
+            for j:0..<16 {t1+=part[j*16+thread];t2+=part2[j*16+thread];}
+            r1[thread]=t1;r2[thread]=t2;
+        }
+    }
+    for thread:0..<INK_NT {
+        t1:f32=0;t2:f32=0;for j:0..<16 {t1+=r1[j];t2+=r2[j];}
+        inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
+        inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                out[obase+i]=cur[base+i]*inv1;
+                out[obase+dim+i]=msg[base+i]*inv2;
+            }
+        }
+    }
+}
+
+// ---- Batched fused loop_ctrl_gain + loop_ctrl_forget + apply.
+// Launch items = n_tok * ceil(dim / 64), lanes = 64.
+ink_ctrl_up_apply_batch :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate:[]f32,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
+    gsh:[64]f32;
+    groups:=(dim+INK_T-1)/INK_T;
+    t:=item/groups;
+    grp:=item%groups;
+    gbase:=t*rank;
+    for thread:0..<INK_T {
+        if thread<rank {gsh[thread]=gate[gbase+thread];}
+    }
+    for thread:0..<INK_T {
+        row:=grp*INK_T+thread;
+        if row<dim {
+            base:=row*rank;
+            sg:f32=0;sf:f32=0;
+            for k:0..<rank {
+                gv:=gsh[k];
+                sg+=w_gain[base+k]*gv;
+                sf+=w_forget[base+k]*gv;
+            }
+            idx:=t*dim+row;
+            c:=cur[idx];m:=msg[idx];
+            out[idx]=c-ink_tanh(sf)*c+ink_tanh(sg)*m;
+        }
+    }
+}
+
+// ---- Batched causal 4-tap depthwise shortconv over n_tok tokens.
+// Launch items = n_channels, lanes = 1. Updates hist[ch*3..+2] once at the end.
+ink_convolve_batch :: (item:int,n_channels:int,n_heads:int,has_dyn:int,n_tok:int,cur:[]f32,w:[]f32,dyn:[]f32,hist:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        h_idx:=item*3;
+        x0:=hist[h_idx+0];x1:=hist[h_idx+1];x2:=hist[h_idx+2];
+        wb:=item*4;
+        w0:=w[wb+0];w1:=w[wb+1];w2:=w[wb+2];w3:=w[wb+3];
+        head:=ifx n_heads>0 then item/(n_channels/n_heads) else 0;
+        dyn_stride:=n_heads*4;
+        inv_s:=ifx has_dyn!=0 then 1.0f32/3.0f32 else 1.0f32/sqrt(5.0f32);
+        for t:0..<n_tok {
+            x3:=cur[t*n_channels+item];
+            acc:=x0*w0+x1*w1+x2*w2+x3*w3;
+            if has_dyn!=0 {
+                db:=t*dyn_stride+head*4;
+                acc+=dyn[db+0]*x3+dyn[db+1]*x2+dyn[db+2]*x1+dyn[db+3]*x0;
+            }
+            out[t*n_channels+item]=(x3+acc)*inv_s;
+            x0=x1;x1=x2;x2=x3;
+        }
+        hist[h_idx+0]=x0;hist[h_idx+1]=x1;hist[h_idx+2]=x2;
+    }
+}
+
+// ---- Batched per-head L2 clip: optional per-channel scale, L2 norm clip to threshold, tau multiplier.
+// Launch items = n_tok * n_heads, lanes = 64.
+ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,tau:f32,x:[]f32,scale:[]f32) #export_c #effects(all) {
+    part:[64]f32;
+    base:=item*head_dim;
+    h:=item%n_heads;
+    sbase:=h*head_dim;
+    for thread:0..<INK_T {
+        s:f32=0;
+        for k:0..<(head_dim+INK_T-1)/INK_T {
+            i:=k*INK_T+thread;
+            if i<head_dim {
+                idx:=base+i;
+                v:=x[idx];
+                if has_scale!=0 {v=v*scale[sbase+i];x[idx]=v;}
+                s+=v*v;
+            }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_T {
+        tot:f32=0;for j:0..<INK_T {tot+=part[j];}
+        nrm:=sqrt(tot)+0.000001f32;
+        fac:=threshold/nrm;
+        if fac>1.0f32 {fac=1.0f32;}
+        fac=fac*tau;
+        for k:0..<(head_dim+INK_T-1)/INK_T {
+            i:=k*INK_T+thread;
+            if i<head_dim {x[base+i]=x[base+i]*fac;}
+        }
+    }
+}
+
+// ---- Batched KV cache store. Launch items = n_tok * n_kv_elem, lanes = 1.
+ink_kv_store_batch :: (item:int,n_kv_elem:int,pos0:int,kv_cap:int,is_swa:int,k_in:[]f32,v_in:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
+    t:=item/n_kv_elem;
+    e:=item%n_kv_elem;
+    p:=pos0+t;
+    slot:=ifx is_swa!=0 then p%kv_cap else p;
+    dst:=slot*n_kv_elem+e;
+    k_cache[dst]=cast(u16)ink_f16(k_in[item]);
+    v_cache[dst]=cast(u16)ink_f16(v_in[item]);
+}
+
+// ---- Batched Router: launch items = n_tok, lanes = 256.
+ink_router_batch :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32,bias:[]f32,out_ids:[]u32,out_wts:[]f32) #export_c #effects(all) {
+    probs:[256]f32;sel:[256]f32;cval:[16]f32;cidx:[16]u32;pids:[16]u32;pwts:[16]f32;
+    lbase:=item*n_exp;
+    obase:=item*n_used;
+    for thread:0..<INK_NT {
+        if thread<n_exp {
+            p:=ink_sigmoid(logits[lbase+thread]);
+            probs[thread]=p;
+            sel[thread]=ifx has_bias!=0 then p+bias[thread] else p;
+        } else {
+            probs[thread]=0.0f32;
+            sel[thread]=INK_NEG_INF;
+        }
+        if thread<16 {pids[thread]=999999;pwts[thread]=0.0f32;}
+    }
+    n_chunks:=(n_exp+7)/8;
+    for k:0..<n_used {
+        for thread:0..<INK_NT {
+            if thread<n_chunks {
+                base:=thread*8;
+                bv:f32=INK_NEG_INF;bi:u32=0;
+                for j:0..<8 {
+                    e:=base+j;
+                    if e<n_exp {
+                        sv:=sel[e];
+                        if sv>bv {
+                            eu:=cast(u32)e;
+                            dup:u32=0;
+                            for prev:0..<k {if pids[prev]==eu {dup=1;}}
+                            if dup==0 {bv=sv;bi=eu;}
+                        }
+                    }
+                }
+                cval[thread]=bv;cidx[thread]=bi;
+            }
+        }
+        for thread:0..<INK_NT {
+            if thread==k {
+                bv:f32=INK_NEG_INF;bi:u32=0;
+                for c:0..<n_chunks {
+                    if cval[c]>bv {bv=cval[c];bi=cidx[c];}
+                }
+                pids[thread]=bi;
+                pwts[thread]=probs[cast(int)bi];
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        if thread<n_used {
+            wsum:f32=0;
+            for k:0..<n_used {wsum+=pwts[k];}
+            if wsum<0.00006103515625f32 {wsum=0.00006103515625f32;}
+            out_ids[obase+thread]=pids[thread];
+            out_wts[obase+thread]=pwts[thread]*(scale/wsum);
+        }
+    }
+}
+
+// ---- Group tokens by expert once per layer for batched MoE prefill (up to B=256 tokens).
+// Launch items = n_expert (128), lanes = 1.
+// Writes exp_toks[exp*256 + c], exp_slots[exp*256 + c], exp_wts[exp*256 + c], exp_cnt[exp].
+ink_moe_group_batch :: (item:int,n_tok:int,n_used:int,ids:[]u32,wts:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32) #export_c #effects(all) {
+    exp_u:=cast(u32)item;
+    base:=item*INK_PREFILL_B;
+    c:int=0;
+    for t:0..<n_tok {
+        tb:=t*n_used;
+        for s:0..<n_used {
+            if ids[tb+s]==exp_u {
+                if c<INK_PREFILL_B {
+                    exp_toks[base+c]=cast(u32)t;
+                    exp_slots[base+c]=cast(u32)s;
+                    exp_wts[base+c]=wts[tb+s];
+                    c+=1;
+                }
+            }
+        }
+    }
+    exp_cnt[item]=cast(u32)c;
+}
+
+// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (IQ4_NL).
+// Writes raw [gate(n_ff), up(n_ff)] into gu_out[(t*n_used + s)*2*n_ff + row].
+// Launch items = n_expert * m_tiles * ceil(2*n_ff / 32), lanes = 128.
+// Uses 4 threads/row (b[thread*8+0..7]) + cached tsh[64] token indices!
+ink_moe_gu_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;tsh:[64]int;
+    n_used:=n_used_mt&65535;
+    m_tiles:=(n_used_mt>>16)&65535;
+    r_tiles:=(rows+31)/32;
+    per_exp:=m_tiles*r_tiles;
+    exp_id:=item/per_exp;
+    rem:=item%per_exp;
+    m0:=(rem/r_tiles)*64;
+    r0:=(rem%r_tiles)*32;
+    nm:=cast(int)exp_cnt[exp_id];
+    if m0<nm {
+        ebase:=exp_id*INK_PREFILL_B;
+        for thread:0..<128 {
+            if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+            if thread<64 {
+                mi:=m0+thread;
+                tsh[thread]=ifx mi<nm then cast(int)exp_toks[ebase+mi] else -1;
+            }
+        }
+        blocks:=cols/32;row_words:=blocks*9;
+        exp_base:=exp_id*rows*row_words;
+        for blk:0..<blocks {
+            xb:=blk*32;boff:=blk*9;
+            for thread:0..<128 {
+                col:=thread%32;
+                t_off:=thread/32;
+                for i:0..<16 {
+                    t:=tsh[t_off+4*i];
+                    v:f32=0.0f32;
+                    if t>=0 {v=x[t*cols+xb+col];}
+                    a[thread+128*i]=v;
+                }
+                // 4 threads/row: sub 0->elem 0..7 (w[1..4] lo nibs), sub 1->elem 8..15 (w[5..8] lo nibs),
+                //                sub 2->elem 16..23 (w[1..4] hi nibs), sub 3->elem 24..31 (w[5..8] hi nibs).
+                row:=r0+thread/4;
+                sub:=thread%4;
+                if row<rows {
+                    at:=exp_base+row*row_words+boff;
+                    sc:=ink_half(cast(u32)w[at]);
+                    wbase:=at+1+(sub%2)*4;
+                    if sub<2 {
+                        v0:=cast(u32)w[wbase+0];
+                        b[thread*8+0]=sc*lut[cast(int)(v0&15)];b[thread*8+1]=sc*lut[cast(int)((v0>>8)&15)];
+                        v1:=cast(u32)w[wbase+1];
+                        b[thread*8+2]=sc*lut[cast(int)(v1&15)];b[thread*8+3]=sc*lut[cast(int)((v1>>8)&15)];
+                        v2:=cast(u32)w[wbase+2];
+                        b[thread*8+4]=sc*lut[cast(int)(v2&15)];b[thread*8+5]=sc*lut[cast(int)((v2>>8)&15)];
+                        v3:=cast(u32)w[wbase+3];
+                        b[thread*8+6]=sc*lut[cast(int)(v3&15)];b[thread*8+7]=sc*lut[cast(int)((v3>>8)&15)];
+                    } else {
+                        v0:=cast(u32)w[wbase+0];
+                        b[thread*8+0]=sc*lut[cast(int)((v0>>4)&15)];b[thread*8+1]=sc*lut[cast(int)(v0>>12)];
+                        v1:=cast(u32)w[wbase+1];
+                        b[thread*8+2]=sc*lut[cast(int)((v1>>4)&15)];b[thread*8+3]=sc*lut[cast(int)(v1>>12)];
+                        v2:=cast(u32)w[wbase+2];
+                        b[thread*8+4]=sc*lut[cast(int)((v2>>4)&15)];b[thread*8+5]=sc*lut[cast(int)(v2>>12)];
+                        v3:=cast(u32)w[wbase+3];
+                        b[thread*8+6]=sc*lut[cast(int)((v3>>4)&15)];b[thread*8+7]=sc*lut[cast(int)(v3>>12)];
+                    }
+                } else {
+                    b[thread*8+0]=0.0f32;b[thread*8+1]=0.0f32;b[thread*8+2]=0.0f32;b[thread*8+3]=0.0f32;
+                    b[thread*8+4]=0.0f32;b[thread*8+5]=0.0f32;b[thread*8+6]=0.0f32;b[thread*8+7]=0.0f32;
+                }
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        for thread:0..<128 {
+            for i:0..<16 {
+                e:=thread+128*i;
+                mi:=m0+e/32;c:=e%32;
+                row:=r0+c;
+                if mi<nm && row<rows {
+                    tt:=tsh[e/32];
+                    ss:=cast(int)exp_slots[ebase+mi];
+                    gu_out[(tt*n_used+ss)*rows+row]=a[e];
+                }
+            }
+        }
+    }
+}
+
+// ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (Q8_0, last 4 layers).
+// Launch items = n_expert * m_tiles * ceil(2*n_ff / 32), lanes = 128.
+ink_moe_gu_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,gu_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;tsh:[64]int;
+    n_used:=n_used_mt&65535;
+    m_tiles:=(n_used_mt>>16)&65535;
+    r_tiles:=(rows+31)/32;
+    per_exp:=m_tiles*r_tiles;
+    exp_id:=item/per_exp;
+    rem:=item%per_exp;
+    m0:=(rem/r_tiles)*64;
+    r0:=(rem%r_tiles)*32;
+    nm:=cast(int)exp_cnt[exp_id];
+    if m0<nm {
+        ebase:=exp_id*INK_PREFILL_B;
+        for thread:0..<128 {
+            if thread<64 {
+                mi:=m0+thread;
+                tsh[thread]=ifx mi<nm then cast(int)exp_toks[ebase+mi] else -1;
+            }
+        }
+        blocks:=cols/32;row_words:=blocks*17;
+        exp_base:=exp_id*rows*row_words;
+        for blk:0..<blocks {
+            xb:=blk*32;boff:=blk*17;
+            for thread:0..<128 {
+                col:=thread%32;
+                t_off:=thread/32;
+                for i:0..<16 {
+                    t:=tsh[t_off+4*i];
+                    v:f32=0.0f32;
+                    if t>=0 {v=x[t*cols+xb+col];}
+                    a[thread+128*i]=v;
+                }
+                row:=r0+thread/4;
+                sub:=thread%4;
+                if row<rows {
+                    at:=exp_base+row*row_words+boff;
+                    sc:=ink_half(cast(u32)w[at]);
+                    wbase:=at+1+sub*4;
+                    v0:=cast(u32)w[wbase+0];b[thread*8+0]=sc*ink_signed(v0&255);b[thread*8+1]=sc*ink_signed(v0>>8);
+                    v1:=cast(u32)w[wbase+1];b[thread*8+2]=sc*ink_signed(v1&255);b[thread*8+3]=sc*ink_signed(v1>>8);
+                    v2:=cast(u32)w[wbase+2];b[thread*8+4]=sc*ink_signed(v2&255);b[thread*8+5]=sc*ink_signed(v2>>8);
+                    v3:=cast(u32)w[wbase+3];b[thread*8+6]=sc*ink_signed(v3&255);b[thread*8+7]=sc*ink_signed(v3>>8);
+                } else {
+                    b[thread*8+0]=0.0f32;b[thread*8+1]=0.0f32;b[thread*8+2]=0.0f32;b[thread*8+3]=0.0f32;
+                    b[thread*8+4]=0.0f32;b[thread*8+5]=0.0f32;b[thread*8+6]=0.0f32;b[thread*8+7]=0.0f32;
+                }
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        for thread:0..<128 {
+            for i:0..<16 {
+                e:=thread+128*i;
+                mi:=m0+e/32;c:=e%32;
+                row:=r0+c;
+                if mi<nm && row<rows {
+                    tt:=tsh[e/32];
+                    ss:=cast(int)exp_slots[ebase+mi];
+                    gu_out[(tt*n_used+ss)*rows+row]=a[e];
+                }
+            }
+        }
+    }
+}
+
+// ---- Batched SITU activation: gu_out[slot_idx * 2*n_ff + (0..n_ff-1 | n_ff..2*n_ff-1)] -> hid[slot_idx * n_ff + row].
+// Launch items = n_tok * n_used * n_ff, lanes = 1.
+ink_situ_batch :: (item:int,n_ff:int,beta:f32,lb:f32,gu_out:[]f32,hid:[]f32) #export_c #effects(all) {
+    slot_idx:=item/n_ff;
+    row:=item%n_ff;
+    base:=slot_idx*2*n_ff;
+    g:=gu_out[base+row];
+    u:=gu_out[base+n_ff+row];
+    act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
+    if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
+    hid[item]=act*u;
+}
+
+// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (IQ4_NL).
+// Launch items = n_expert * m_tiles * ceil(rows / 32), lanes = 128.
+// Uses 4 threads/row (b[thread*8+0..7]) + cached hsh[64] hidden-row offsets!
+ink_moe_down_batch_iq4 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;lut:[16]f32;hsh:[64]int;
+    n_used:=n_used_mt&65535;
+    m_tiles:=(n_used_mt>>16)&65535;
+    r_tiles:=(rows+31)/32;
+    per_exp:=m_tiles*r_tiles;
+    exp_id:=item/per_exp;
+    rem:=item%per_exp;
+    m0:=(rem/r_tiles)*64;
+    r0:=(rem%r_tiles)*32;
+    nm:=cast(int)exp_cnt[exp_id];
+    if m0<nm {
+        ebase:=exp_id*INK_PREFILL_B;
+        for thread:0..<128 {
+            if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
+            if thread<64 {
+                mi:=m0+thread;
+                hsh[thread]=ifx mi<nm then (cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else -1;
+            }
+        }
+        blocks:=cols/32;row_words:=blocks*9;
+        exp_base:=exp_id*rows*row_words;
+        for blk:0..<blocks {
+            xb:=blk*32;boff:=blk*9;
+            for thread:0..<128 {
+                col:=thread%32;
+                t_off:=thread/32;
+                for i:0..<16 {
+                    hs:=hsh[t_off+4*i];
+                    v:f32=0.0f32;
+                    if hs>=0 {v=x[hs*cols+xb+col];}
+                    a[thread+128*i]=v;
+                }
+                row:=r0+thread/4;
+                sub:=thread%4;
+                if row<rows {
+                    at:=exp_base+row*row_words+boff;
+                    sc:=ink_half(cast(u32)w[at]);
+                    wbase:=at+1+(sub%2)*4;
+                    if sub<2 {
+                        v0:=cast(u32)w[wbase+0];
+                        b[thread*8+0]=sc*lut[cast(int)(v0&15)];b[thread*8+1]=sc*lut[cast(int)((v0>>8)&15)];
+                        v1:=cast(u32)w[wbase+1];
+                        b[thread*8+2]=sc*lut[cast(int)(v1&15)];b[thread*8+3]=sc*lut[cast(int)((v1>>8)&15)];
+                        v2:=cast(u32)w[wbase+2];
+                        b[thread*8+4]=sc*lut[cast(int)(v2&15)];b[thread*8+5]=sc*lut[cast(int)((v2>>8)&15)];
+                        v3:=cast(u32)w[wbase+3];
+                        b[thread*8+6]=sc*lut[cast(int)(v3&15)];b[thread*8+7]=sc*lut[cast(int)((v3>>8)&15)];
+                    } else {
+                        v0:=cast(u32)w[wbase+0];
+                        b[thread*8+0]=sc*lut[cast(int)((v0>>4)&15)];b[thread*8+1]=sc*lut[cast(int)(v0>>12)];
+                        v1:=cast(u32)w[wbase+1];
+                        b[thread*8+2]=sc*lut[cast(int)((v1>>4)&15)];b[thread*8+3]=sc*lut[cast(int)(v1>>12)];
+                        v2:=cast(u32)w[wbase+2];
+                        b[thread*8+4]=sc*lut[cast(int)((v2>>4)&15)];b[thread*8+5]=sc*lut[cast(int)(v2>>12)];
+                        v3:=cast(u32)w[wbase+3];
+                        b[thread*8+6]=sc*lut[cast(int)((v3>>4)&15)];b[thread*8+7]=sc*lut[cast(int)(v3>>12)];
+                    }
+                } else {
+                    b[thread*8+0]=0.0f32;b[thread*8+1]=0.0f32;b[thread*8+2]=0.0f32;b[thread*8+3]=0.0f32;
+                    b[thread*8+4]=0.0f32;b[thread*8+5]=0.0f32;b[thread*8+6]=0.0f32;b[thread*8+7]=0.0f32;
+                }
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        for thread:0..<128 {
+            for i:0..<16 {
+                e:=thread+128*i;
+                mi:=m0+e/32;c:=e%32;
+                row:=r0+c;
+                if mi<nm && row<rows {
+                    hs:=hsh[e/32];
+                    ew:=exp_wts[ebase+mi];
+                    slot_out[hs*rows+row]=ew*a[e];
+                }
+            }
+        }
+    }
+}
+
+// ---- Batched Expert-Grouped MoE down projection via Apple hardware MMA (Q8_0, last 4 layers).
+// Launch items = n_expert * m_tiles * ceil(rows / 32), lanes = 128.
+ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used_mt:int,w:[]u16,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;hsh:[64]int;
+    n_used:=n_used_mt&65535;
+    m_tiles:=(n_used_mt>>16)&65535;
+    r_tiles:=(rows+31)/32;
+    per_exp:=m_tiles*r_tiles;
+    exp_id:=item/per_exp;
+    rem:=item%per_exp;
+    m0:=(rem/r_tiles)*64;
+    r0:=(rem%r_tiles)*32;
+    nm:=cast(int)exp_cnt[exp_id];
+    if m0<nm {
+        ebase:=exp_id*INK_PREFILL_B;
+        for thread:0..<128 {
+            if thread<64 {
+                mi:=m0+thread;
+                hsh[thread]=ifx mi<nm then (cast(int)exp_toks[ebase+mi]*n_used+cast(int)exp_slots[ebase+mi]) else -1;
+            }
+        }
+        blocks:=cols/32;row_words:=blocks*17;
+        exp_base:=exp_id*rows*row_words;
+        for blk:0..<blocks {
+            xb:=blk*32;boff:=blk*17;
+            for thread:0..<128 {
+                col:=thread%32;
+                t_off:=thread/32;
+                for i:0..<16 {
+                    hs:=hsh[t_off+4*i];
+                    v:f32=0.0f32;
+                    if hs>=0 {v=x[hs*cols+xb+col];}
+                    a[thread+128*i]=v;
+                }
+                row:=r0+thread/4;
+                sub:=thread%4;
+                if row<rows {
+                    at:=exp_base+row*row_words+boff;
+                    sc:=ink_half(cast(u32)w[at]);
+                    wbase:=at+1+sub*4;
+                    v0:=cast(u32)w[wbase+0];b[thread*8+0]=sc*ink_signed(v0&255);b[thread*8+1]=sc*ink_signed(v0>>8);
+                    v1:=cast(u32)w[wbase+1];b[thread*8+2]=sc*ink_signed(v1&255);b[thread*8+3]=sc*ink_signed(v1>>8);
+                    v2:=cast(u32)w[wbase+2];b[thread*8+4]=sc*ink_signed(v2&255);b[thread*8+5]=sc*ink_signed(v2>>8);
+                    v3:=cast(u32)w[wbase+3];b[thread*8+6]=sc*ink_signed(v3&255);b[thread*8+7]=sc*ink_signed(v3>>8);
+                } else {
+                    b[thread*8+0]=0.0f32;b[thread*8+1]=0.0f32;b[thread*8+2]=0.0f32;b[thread*8+3]=0.0f32;
+                    b[thread*8+4]=0.0f32;b[thread*8+5]=0.0f32;b[thread*8+6]=0.0f32;b[thread*8+7]=0.0f32;
+                }
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        for thread:0..<128 {
+            for i:0..<16 {
+                e:=thread+128*i;
+                mi:=m0+e/32;c:=e%32;
+                row:=r0+c;
+                if mi<nm && row<rows {
+                    hs:=hsh[e/32];
+                    ew:=exp_wts[ebase+mi];
+                    slot_out[hs*rows+row]=ew*a[e];
+                }
+            }
+        }
+    }
+}
+
+// ---- Sum n_used expert slot outputs into moe_out[t*dim + r]. Launch items = n_tok * dim, lanes = 1.
+ink_moe_reduce_batch :: (item:int,dim:int,n_used:int,slot_out:[]f32,out:[]f32) #export_c #effects(all) {
+    t:=item/dim;
+    r:=item%dim;
+    s:f32=0;
+    base:=t*n_used*dim+r;
+    for slot:0..<n_used {s+=slot_out[base+slot*dim];}
+    out[item]=s;
+}
+
+// ---- MMA Prefill Attention Stage 1: Q*K^T + rel_bias - sink using am_sg_mma_64x32x32!
+// dims0 = n_head | (n_head_kv << 16) | (head_dim << 32) | (n_rel << 48)
+// dims1 = extent | (is_swa << 24) | (swa << 32)
+// kv_info = kv_cap | (score_stride << 32)
+// pos_info = pos0 | (n_tok << 24) | (k_start << 40)
+// Launch items = n_head * ceil(n_tok/64) * ceil(span/32), lanes = 128.
+ink_attn_scores_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,scores:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
+    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
+    kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
+    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    span:=pos0+n_tok-k_start;
+    qt:=(n_tok+63)/64;kt:=(span+31)/32;
+    per:=qt*kt;
+    h:=item/per;rem:=item%per;
+    t0:=(rem/kt)*64;j0:=(rem%kt)*32;
+    last_t:=ifx t0+63<n_tok then t0+63 else n_tok-1;
+    kv_h:=h/(n_head/n_head_kv);
+    n_kv_elem:=n_head_kv*head_dim;
+    // Causal & SWA tile skip:
+    min_k:=ifx is_swa!=0 && pos0+t0>=swa then pos0+t0-swa+1 else 0;
+    if k_start+j0<=pos0+last_t && k_start+j0+31>=min_k {
+        for st:0..<4 {
+            for thread:0..<128 {
+                d:=st*32+thread%32;
+                t_off:=thread/32;
+                for i:0..<16 {
+                    t:=t0+t_off+4*i;
+                    v:f32=0.0f32;
+                    if t<n_tok {v=q[(t*n_head+h)*INK_HEAD+d];}
+                    a[thread+128*i]=v;
+                }
+                for i:0..<8 {
+                    j:=j0+t_off+4*i;
+                    v:f32=0.0f32;
+                    if j<span {
+                        kp:=k_start+j;
+                        slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                        v=ink_half(cast(u32)k_cache[slot*n_kv_elem+kv_h*INK_HEAD+d]);
+                    }
+                    b[thread+128*i]=v;
+                }
+            }
+            am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+        }
+        am_sg_spill_64x32(acc[..],a[..]);
+        scale:=1.0f32/sqrt(f32(head_dim));
+        for thread:0..<128 {
+            for i:0..<16 {
+                e:=thread+128*i;
+                t:=t0+e/32;j:=j0+e%32;
+                if t<n_tok && j<span {
+                    p:=pos0+t;kp:=k_start+j;
+                    if kp<=p && (is_swa==0 || p-kp<swa) {
+                        dist:=p-kp;
+                        rb:f32=0.0f32;
+                        th:=t*n_head+h;
+                        if dist<extent {
+                            rb_base:=dist*n_rel;
+                            r_base:=th*n_rel;
+                            for m:0..<INK_REL {rb+=rel_bias[rb_base+m]*r[r_base+m];}
+                        }
+                        scores[th*score_stride+j]=a[e]*scale+rb-sinks[th];
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- MMA Prefill Attention Stage 2: Softmax with sink=0 over valid [j_lo..j_hi) and zero-fill rest of span.
+// Launch items = n_tok * n_head, lanes = 256.
+ink_attn_softmax_mma :: (item:int,dims0:int,dims1:int,score_stride:int,pos_info:int,scores:[]f32) #export_c #effects(all) {
+    smax:[256]f32;ssum:[256]f32;rmax:[16]f32;rsum:[16]f32;
+    n_head:=dims0&65535;
+    is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
+    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    span:=pos0+n_tok-k_start;
+    t:=item/n_head;
+    p:=pos0+t;
+    start_k:=ifx is_swa!=0 && p>=swa then p-swa+1 else 0;
+    j_lo:=start_k-k_start;
+    if j_lo<0 {j_lo=0;}
+    j_hi:=p-k_start+1;
+    sbase:=item*score_stride;
+    n_chunks:=(span+INK_NT-1)/INK_NT;
+    for thread:0..<INK_NT {
+        lmax:f32=INK_NEG_INF;
+        for c:0..<n_chunks {
+            j:=c*INK_NT+thread;
+            if j>=j_lo && j<j_hi {
+                v:=scores[sbase+j];
+                if v>lmax {lmax=v;}
+            }
+        }
+        smax[thread]=lmax;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            mx:f32=0.0f32;
+            for j:0..<16 {v:=smax[j*16+thread];if v>mx {mx=v;}}
+            rmax[thread]=mx;
+        }
+    }
+    for thread:0..<INK_NT {
+        gmax:f32=0.0f32;
+        for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
+        lsum:f32=0.0f32;
+        for c:0..<n_chunks {
+            j:=c*INK_NT+thread;
+            if j<span {
+                if j>=j_lo && j<j_hi {
+                    w:=exp(scores[sbase+j]-gmax);
+                    scores[sbase+j]=w;
+                    lsum+=w;
+                } else {
+                    scores[sbase+j]=0.0f32;
+                }
+            }
+        }
+        ssum[thread]=lsum;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            sm:f32=0.0f32;
+            for j:0..<16 {sm+=ssum[j*16+thread];}
+            rsum[thread]=sm;
+        }
+    }
+    for thread:0..<INK_NT {
+        gmax:f32=0.0f32;
+        for j:0..<16 {if rmax[j]>gmax {gmax=rmax[j];}}
+        gsum:f32=exp(-gmax);
+        for j:0..<16 {gsum+=rsum[j];}
+        inv:=1.0f32/gsum;
+        for c:0..<n_chunks {
+            j:=c*INK_NT+thread;
+            if j>=j_lo && j<j_hi {scores[sbase+j]=scores[sbase+j]*inv;}
+        }
+    }
+}
+
+// ---- MMA Prefill Attention Stage 3: P*V * sigmoid(gate) using am_sg_mma_64x32x32!
+// Launch items = n_head * ceil(n_tok/64) * 4, lanes = 128.
+ink_attn_values_mma :: (item:int,dims0:int,dims1:int,kv_info:int,pos_info:int,scores:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
+    a:[2048]f32;b:[1024]f32;acc:[2048]f32;
+    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;
+    is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
+    kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
+    pos0:=pos_info&16777215;n_tok:=(pos_info>>24)&65535;k_start:=(pos_info>>40)&16777215;
+    span:=pos0+n_tok-k_start;
+    qt:=(n_tok+63)/64;
+    per:=qt*4;
+    h:=item/per;rem:=item%per;
+    t0:=(rem/4)*64;c0:=(rem%4)*32;
+    last_t:=ifx t0+63<n_tok then t0+63 else n_tok-1;
+    kv_h:=h/(n_head/n_head_kv);
+    n_kv_elem:=n_head_kv*head_dim;
+    j_lo:=ifx is_swa!=0 && pos0+t0>=swa then pos0+t0-swa+1-k_start else 0;
+    if j_lo<0 {j_lo=0;}
+    j_hi:=pos0+last_t-k_start+1;
+    st_lo:=j_lo/32;
+    st_hi:=(j_hi+31)/32;
+    for st:st_lo..<st_hi {
+        for thread:0..<128 {
+            j:=st*32+thread%32;
+            t_off:=thread/32;
+            for i:0..<16 {
+                t:=t0+t_off+4*i;
+                v:f32=0.0f32;
+                if t<n_tok && j<span {v=scores[(t*n_head+h)*score_stride+j];}
+                a[thread+128*i]=v;
+            }
+            for i:0..<8 {
+                v:f32=0.0f32;
+                if j<span {
+                    kp:=k_start+j;
+                    slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                    v=ink_half(cast(u32)v_cache[slot*n_kv_elem+kv_h*INK_HEAD+c0+t_off+4*i]);
+                }
+                b[thread+128*i]=v;
+            }
+        }
+        am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    }
+    am_sg_spill_64x32(acc[..],a[..]);
+    for thread:0..<128 {
+        for i:0..<16 {
+            e:=thread+128*i;
+            t:=t0+e/32;c:=e%32;
+            if t<n_tok {
+                idx:=(t*n_head+h)*INK_HEAD+c0+c;
+                out[idx]=a[e]*ink_sigmoid(gate[idx]);
+            }
+        }
+    }
+}
+
+// ---- Sprint 4A: Coalesced GQA 3:1 Flash-Decoding Split-K Attention (1-pass, online softmax).
+// Launch items = n_head_kv * n_splits, lanes = 128.
+// Each threadgroup processes 1 KV head (3 Q heads: h0, h0+1, h0+2) across its split of keys in 16-key tiles.
+// Reads K and V 100% coalesced and shares them across all 3 Q heads (3x less KV bandwidth, zero scratch_scores).
+ink_attn_gqa_split :: (item:int,dims0:int,dims1:int,kv_info:int,pos:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,v_cache:[]u16,split_out:[]f32) #export_c #effects(all) {
+    q0sh:[128]f32;q1sh:[128]f32;q2sh:[128]f32;rsh:[48]f32;ksh:[2048]f32;scsh:[64]f32;wsh:[64]f32;
+    vacc0:[128]f32;vacc1:[128]f32;vacc2:[128]f32;
+    ms0:[128]f32;ms1:[128]f32;ms2:[128]f32;
+    ls0:[128]f32;ls1:[128]f32;ls2:[128]f32;
+    n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
+    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
+    kv_cap:=kv_info&4294967295;n_splits:=(kv_info>>32)&4294967295;
+    kv_h:=item/n_splits;
+    sp:=item%n_splits;
+    h0:=kv_h*3;h1:=h0+1;h2:=h0+2;
+    n_kv_elem:=n_head_kv*head_dim;
+    scale:=1.0f32/sqrt(f32(head_dim));
+    sk0:=sinks[h0];sk1:=sinks[h1];sk2:=sinks[h2];
+    start:int=0;
+    if is_swa!=0 && pos>=swa {start=pos-swa+1;}
+    n_keys:=pos-start+1;
+    per_sp:=(n_keys+n_splits-1)/n_splits;
+    k_begin:=sp*per_sp;
+    k_end:=k_begin+per_sp;
+    if k_end>n_keys {k_end=n_keys;}
+    n_tiles:int=0;
+    if k_begin<k_end {n_tiles=(k_end-k_begin+15)/16;}
+    for thread:0..<128 {
+        q0sh[thread]=q[h0*INK_HEAD+thread];
+        q1sh[thread]=q[h1*INK_HEAD+thread];
+        q2sh[thread]=q[h2*INK_HEAD+thread];
+        if thread<48 {
+            hl:=thread/16;j:=thread%16;
+            rsh[thread]=r[(h0+hl)*n_rel+j];
+        }
+        vacc0[thread]=0.0f32;vacc1[thread]=0.0f32;vacc2[thread]=0.0f32;
+        ms0[thread]=INK_NEG_INF;ms1[thread]=INK_NEG_INF;ms2[thread]=INK_NEG_INF;
+        ls0[thread]=0.0f32;ls1[thread]=0.0f32;ls2[thread]=0.0f32;
+    }
+    for tile:0..<n_tiles {
+        t_base:=k_begin+tile*16;
+        for thread:0..<128 {
+            k_loc:=thread/8;sub:=thread%8;
+            kidx:=t_base+k_loc;
+            if kidx<k_end {
+                kp:=start+kidx;
+                slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                kbase:=slot*n_kv_elem+kv_h*INK_HEAD+sub*16;
+                for i:0..<16 {ksh[thread*16+i]=ink_half(cast(u32)k_cache[kbase+i]);}
+            } else {
+                for i:0..<16 {ksh[thread*16+i]=0.0f32;}
+            }
+        }
+        for thread:0..<128 {
+            if thread<48 {
+                hl:=thread/16;k_loc:=thread%16;
+                kidx:=t_base+k_loc;
+                if kidx<k_end {
+                    dot:f32=0.0f32;
+                    koff:=k_loc*INK_HEAD;
+                    if hl==0 {
+                        for d:0..<INK_HEAD {dot+=q0sh[d]*ksh[koff+d];}
+                    } else if hl==1 {
+                        for d:0..<INK_HEAD {dot+=q1sh[d]*ksh[koff+d];}
+                    } else {
+                        for d:0..<INK_HEAD {dot+=q2sh[d]*ksh[koff+d];}
+                    }
+                    kp:=start+kidx;dist:=pos-kp;
+                    rb:f32=0.0f32;
+                    if dist<extent {
+                        rb_base:=dist*n_rel;roff:=hl*INK_REL;
+                        for j:0..<INK_REL {rb+=rel_bias[rb_base+j]*rsh[roff+j];}
+                    }
+                    sk:=ifx hl==0 then sk0 else ifx hl==1 then sk1 else sk2;
+                    scsh[thread]=dot*scale+rb-sk;
+                } else {
+                    scsh[thread]=INK_NEG_INF;
+                }
+            }
+        }
+        for thread:0..<128 {
+            if thread<48 {
+                hl:=thread/16;
+                tm:f32=INK_NEG_INF;
+                for kl:0..<16 {s:=scsh[hl*16+kl];if s>tm {tm=s;}}
+                om:=ifx hl==0 then ms0[0] else ifx hl==1 then ms1[0] else ms2[0];
+                nm:=ifx tm>om then tm else om;
+                kidx:=t_base+(thread%16);
+                wsh[thread]=ifx kidx<k_end then exp(scsh[thread]-nm) else 0.0f32;
+            }
+        }
+        for thread:0..<128 {
+            tm0:f32=INK_NEG_INF;tm1:f32=INK_NEG_INF;tm2:f32=INK_NEG_INF;
+            for kl:0..<16 {
+                s0:=scsh[kl];if s0>tm0 {tm0=s0;}
+                s1:=scsh[16+kl];if s1>tm1 {tm1=s1;}
+                s2:=scsh[32+kl];if s2>tm2 {tm2=s2;}
+            }
+            om0:=ms0[thread];om1:=ms1[thread];om2:=ms2[thread];
+            nm0:=ifx tm0>om0 then tm0 else om0;
+            nm1:=ifx tm1>om1 then tm1 else om1;
+            nm2:=ifx tm2>om2 then tm2 else om2;
+            a0:=ifx om0>-1.0e20f32 then exp(om0-nm0) else 0.0f32;
+            a1:=ifx om1>-1.0e20f32 then exp(om1-nm1) else 0.0f32;
+            a2:=ifx om2>-1.0e20f32 then exp(om2-nm2) else 0.0f32;
+            v0:=vacc0[thread]*a0;v1:=vacc1[thread]*a1;v2:=vacc2[thread]*a2;
+            l0:=ls0[thread]*a0;l1:=ls1[thread]*a1;l2:=ls2[thread]*a2;
+            for kl:0..<16 {
+                kidx:=t_base+kl;
+                if kidx<k_end {
+                    kp:=start+kidx;
+                    slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                    vv:=ink_half(cast(u32)v_cache[slot*n_kv_elem+kv_h*INK_HEAD+thread]);
+                    w0:=wsh[kl];l0+=w0;v0+=w0*vv;
+                    w1:=wsh[16+kl];l1+=w1;v1+=w1*vv;
+                    w2:=wsh[32+kl];l2+=w2;v2+=w2*vv;
+                }
+            }
+            ms0[thread]=nm0;ms1[thread]=nm1;ms2[thread]=nm2;
+            ls0[thread]=l0;ls1[thread]=l1;ls2[thread]=l2;
+            vacc0[thread]=v0;vacc1[thread]=v1;vacc2[thread]=v2;
+        }
+    }
+    for thread:0..<128 {
+        b0:=(h0*n_splits+sp)*130;
+        b1:=(h1*n_splits+sp)*130;
+        b2:=(h2*n_splits+sp)*130;
+        split_out[b0+thread]=vacc0[thread];
+        split_out[b1+thread]=vacc1[thread];
+        split_out[b2+thread]=vacc2[thread];
+        if thread==0 {
+            split_out[b0+128]=ms0[0];split_out[b0+129]=ls0[0];
+            split_out[b1+128]=ms1[0];split_out[b1+129]=ls1[0];
+            split_out[b2+128]=ms2[0];split_out[b2+129]=ls2[0];
+        }
+    }
+}
+
+// ---- Combine Flash-Decoding split partials across n_splits for each Q head.
+// Launch items = n_head, lanes = 128.
+ink_attn_gqa_reduce :: (item:int,n_splits:int,split_out:[]f32,gate:[]f32,out:[]f32) #export_c #effects(all) {
+    h:=item;
+    for thread:0..<128 {
+        gmax:f32=0.0f32;
+        for sp:0..<n_splits {
+            m:=split_out[(h*n_splits+sp)*130+128];
+            if m>gmax {gmax=m;}
+        }
+        gsum:f32=exp(-gmax);
+        vtot:f32=0.0f32;
+        for sp:0..<n_splits {
+            sb:=(h*n_splits+sp)*130;
+            l:=split_out[sb+129];
+            if l>0.0f32 {
+                sc:=exp(split_out[sb+128]-gmax);
+                gsum+=l*sc;
+                vtot+=split_out[sb+thread]*sc;
+            }
+        }
+        idx:=h*INK_HEAD+thread;
+        out[idx]=(vtot/gsum)*ink_sigmoid(gate[idx]);
+    }
 }
