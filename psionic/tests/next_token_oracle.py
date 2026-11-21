@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent reference values for chapter 53 (psionic/lib/next-token.coax).
 
 Tooling only. Recomputes the counter RNG words, the uniforms and the

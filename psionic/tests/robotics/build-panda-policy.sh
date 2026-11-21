@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: thin Coax/C/Metal compilation effects, no arithmetic or model.
+# Firm reason: 5  thin Coax/C/Metal compilation effects, no arithmetic or model.
 set -euo pipefail
 work="${1:?usage: build-panda-policy.sh BUILD_DIRECTORY}"
 mkdir -p "$work"

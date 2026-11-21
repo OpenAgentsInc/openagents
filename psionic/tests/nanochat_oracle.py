@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent definition of the pinned nanochat GPT forward pass (pure Python, binary64).
 
 Written from karpathy/nanochat 92d63d4e8bb4df75c3b71618f31ddde2378b2bcd

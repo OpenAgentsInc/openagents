@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent analytic-sensitivity, fit, grid and rollout oracle.
+"""Firm reason: 2  independent analytic-sensitivity, fit, grid and rollout oracle.
 
 Uses derivatives of the augmented matrix polynomial, not TpNodes, Coax loss
 calls, finite-difference fitting, an external AD package or the product's RK

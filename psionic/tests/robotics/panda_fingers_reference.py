@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New finger FK only: independent matrices, analytic branch motion, frozen SDK.
 Python is test tooling; neither an SDK nor downloaded source is executed here.
 """

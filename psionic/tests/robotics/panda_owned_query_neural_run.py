@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """One-shot lifecycle for the frozen, already-built neural/owned-query prefix.
 
 Preparation does file/identity work only.  Running requires a separately reviewed

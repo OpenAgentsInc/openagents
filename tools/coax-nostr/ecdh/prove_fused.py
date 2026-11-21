@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Source-pinned integer lemmas; source translation remains a manual review."""
 import argparse,hashlib,importlib.util,json,re
 from pathlib import Path

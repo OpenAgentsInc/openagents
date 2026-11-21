@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs=require('node:fs'),{Worker,isMainThread,workerData,parentPort}=require('node:worker_threads');
 async function instance(module,memory){const wasi={};for(const item of WebAssembly.Module.imports(module))if(item.module==='wasi_snapshot_preview1')wasi[item.name]=()=>{throw Error('unexpected WASI effect: '+item.name);};return WebAssembly.instantiate(module,{env:{memory},wasi_snapshot_preview1:wasi});}
 if(!isMainThread){

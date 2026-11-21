@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Check the book runner's selection contract without executing real examples."""
 import json
 import os

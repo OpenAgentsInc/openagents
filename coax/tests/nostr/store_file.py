@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The verified store's append-only file, end to end (nostr-event-store #8eb5).
 
 Builds coax/tests/nostr/store_file_main.coax with store-file-native.c under

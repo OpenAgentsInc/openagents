@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Thin effects wrapper for actual original vision24 on required Metal GPU.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

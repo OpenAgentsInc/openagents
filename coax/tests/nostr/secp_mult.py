@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Public verification multiplication: pinned libsecp, bigint, native/Wasm.
 
 Test-only effects, deterministic public scalars, bounded streamed corpora.

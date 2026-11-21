@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Original Coax source through generated C, native diagnostics and real LLDB."""
 from pathlib import Path
 import hashlib, json, os, shutil, subprocess, tempfile, unittest

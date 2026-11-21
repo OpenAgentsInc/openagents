@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Current Coax models and the repaired independent C++ oracle copy. External
 # sources remain read only; original mesh-oracle.coax remains historical.
 # --table retains a new labelled table in the work directory, never overwrites

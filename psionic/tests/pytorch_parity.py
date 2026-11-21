@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 250's opt-in PyTorch comparator. Not a check, never needed at run time.
 
 Loads the two retained MNIST models of chapter 118 (the MLP and the CNN,

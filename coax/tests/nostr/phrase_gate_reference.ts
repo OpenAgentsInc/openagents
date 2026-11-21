@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: generates or signs test vectors outside Coax)
 // Public draft-fixture oracle only. Not an app codec, enabled writer or
 // approved crypto provider. Actual product implementation waits for review.
 import{createCipheriv,createDecipheriv,createHash,createHmac,pbkdf2Sync,hkdfSync,timingSafeEqual}from'node:crypto';

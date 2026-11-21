@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent installed MuJoCo3.3.1 effects/replay oracle.
+"""Firm reason: 2  independent installed MuJoCo3.3.1 effects/replay oracle.
 
 No modules from LIBERO, robosuite or NVIDIA checkouts are imported. Rendering
 uses nonvisible CGL and is separate from the exact physics replay claim.

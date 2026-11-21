@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Offline rest-to-rest timing/sample qualification; no motion execution.
 set -eu
 [ "$#" -le 1 ] || { echo "usage: $0 [NEW_OUTPUT_DIRECTORY]" >&2; exit 2; }

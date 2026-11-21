@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New offline actuator/joint-passive proof, never SDK acquisition or simulation."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,platform,re,struct,subprocess,sys,time

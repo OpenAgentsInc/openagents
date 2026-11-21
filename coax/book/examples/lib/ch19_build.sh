@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build ch17_glow.coax for both of its consumers, then run the C preview.
 set -euo pipefail
 cd "$(dirname "$0")"

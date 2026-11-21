@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs=require('fs'),assert=require('assert'),{WASI}=require('node:wasi');
 (async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const e=instance.exports;
 assert.equal(e.fpa_test_run(-1n),-1n);assert.equal(e.fpa_test_run(1048577n),-1n);

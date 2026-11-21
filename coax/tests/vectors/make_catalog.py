@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Mechanical source index. It computes no cryptographic expected outputs."""
 import argparse
 import csv

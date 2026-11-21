@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Actual renderer ABI: facts clock, pause/expiry, layouts and guard bytes.
 const fs=require('node:fs'),assert=require('node:assert/strict');
 (async()=>{

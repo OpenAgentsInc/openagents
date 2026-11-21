@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Builds chapter 220's ONNX fixtures with the onnx package (pinned 1.17.0).
 
 Not part of the CPU check: it needs `onnx==1.17.0` and numpy, so it runs in a

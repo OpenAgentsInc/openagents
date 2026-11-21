@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW mass solve: pivoted Gaussian reference and retained-component residuals.
 No SDK, renderer, neural runtime, BLAS or old numerical gate executes here.
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """An independent NIP-59 gift wrap for nostr/examples/checks/gift-wrap.coax.
 
 Written from NIP-01, NIP-44 v2, NIP-59, BIP-340 and RFC 8439 with only

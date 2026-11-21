@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """NIP-KB events and NIP-WS document digests for chapter 84.
 
 Written from NIP-01, BIP-340, NIP-KB and NIP-WS with only hashlib and

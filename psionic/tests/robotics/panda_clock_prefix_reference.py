@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New clock-glue oracle: saved state/control bytes plus SDK forward-only poses."""
 import argparse,hashlib,json,math,pathlib,struct
 def identity(p):

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """macOS-only host-reaper vs XPC service ownership experiment.
 Not an authenticated FI provider, broker deployment, or production service.
 """

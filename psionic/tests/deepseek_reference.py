@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned cache-free full-prefix oracle. No Transformers or upstream code.
 
 Opt-in original qualification only; routine checks use the retained capture.

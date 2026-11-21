@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Writes coax/lib/nostr/fixtures/relay_export.coax: chapter 103's six-line
 relay export, built from the recorded production capture coax_relay.jsonl
 (2026-10-28; no network). Five events are copied byte for byte. The sixth is

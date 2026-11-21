@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: compare qualified mode traces and refuse cross-executable restore."""
+"""Firm reason: 2  compare qualified mode traces and refuse cross-executable restore."""
 import argparse
 import hashlib
 import json

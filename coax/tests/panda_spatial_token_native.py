@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """One NEW actual Panda source-token witness; no old mutations/SDK/NN gates."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,platform,struct,subprocess,time

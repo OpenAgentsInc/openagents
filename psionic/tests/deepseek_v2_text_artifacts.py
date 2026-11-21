@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Pack original token bytes and a reviewed original-recipe prompt. No remote code."""
 import argparse
 import gzip

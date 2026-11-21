@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Explicit headless test tool; not a normal compiler/app dependency.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

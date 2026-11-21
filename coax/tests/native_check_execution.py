@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent C1 baseline, AST-artifact and bounded process observations."""
 import hashlib
 import copy

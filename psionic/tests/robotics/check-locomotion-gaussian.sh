@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Scalar CPU/stdlib context only; no model, SDK, environment or private data.
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

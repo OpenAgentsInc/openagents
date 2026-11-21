@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Extract layer zero and one embedding row for an independent Linux oracle.
 
 Run only after authenticating the pinned original checkpoint. This owned

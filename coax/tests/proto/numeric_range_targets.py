@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Actual generated numeric policy on native, Wasm, iOS and protoc wire."""
 import hashlib, os, pathlib, subprocess, tempfile
 R=pathlib.Path(__file__).resolve().parents[3];coax=pathlib.Path(os.environ.get('COAX_TEST_BIN',str(R/'coax/bin/coax')))

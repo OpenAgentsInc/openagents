@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """First three SDK Euler steps after immutable metadata admission.
 
 This authored evaluator links the installed approved MuJoCo SDK. It never

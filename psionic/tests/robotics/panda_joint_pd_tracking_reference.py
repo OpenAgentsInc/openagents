@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Freeze a NEW four-case tracking experiment; generate analytic references.
 
 No SDK, Coax runtime, earlier harness main or old corpus is executed. Imports

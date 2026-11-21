@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 144's original-weight slices of C-RADIOv3-B, in about a minute:
 # the header and the inventory of every tensor against the config, the
 # stored summary indices and conditioner, then the encoder on a 64 by 48

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent tooling: homogeneous matrix product-rule tangents and metric FD.
 No Coax product math, quaternion recursion, SDK or third-party package is used.
 """

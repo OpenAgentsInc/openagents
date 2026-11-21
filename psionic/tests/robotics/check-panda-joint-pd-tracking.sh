@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # OFFLINE newtracking gate. Explicit SDK acquisition uses a different driver.
 set -eu
 [ "$#" -le 1 ] || { echo "usage: $0 [NEW_OUTPUT_DIRECTORY]" >&2; exit 2; }

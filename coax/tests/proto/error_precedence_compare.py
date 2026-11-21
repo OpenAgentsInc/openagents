@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Compare original and new descriptor generators; optional path for new hashes.
 
 Uses protoc's descriptor model to count each affected API, verifies the old

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent NumPy analytic jets and smooth finite differences.
+"""Firm reason: 2  independent NumPy analytic jets and smooth finite differences.
 
 No Coax implementation is imported. Each case has a separate mathematical
 expression; formal derivatives propagate in F64 at F32 stored primal values.

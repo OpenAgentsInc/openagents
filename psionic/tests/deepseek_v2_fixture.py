@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned complete V2 BF16 models and independent cache-free prefix oracle."""
 import argparse
 import hashlib

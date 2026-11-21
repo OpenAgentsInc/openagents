@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Source-pinned conditional arithmetic obligations; not target approval."""
 import argparse
 import ctypes

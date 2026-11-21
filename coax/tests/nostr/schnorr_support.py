@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Frozen test-only native build/admission support for public verification."""
 import ctypes as C
 import hashlib

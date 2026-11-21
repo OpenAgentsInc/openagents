@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Real wasm32/V8/WASI observations against independently computed fixtures.
 const fs=require('node:fs');const{WASI}=require('node:wasi');
 (async()=>{

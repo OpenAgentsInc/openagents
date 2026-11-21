@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Approved transport-only casts; carry passed emissions/debug object, first guards."""
 from pathlib import Path
 import importlib.util,json,os,subprocess,time

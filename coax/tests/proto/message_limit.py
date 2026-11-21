@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Protoc-derived message caps; test native/Wasm behavior at the shared cap."""
 import ctypes as C
 import json, os, pathlib, re, subprocess, sys, tempfile

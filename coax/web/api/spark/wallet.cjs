@@ -1,3 +1,4 @@
+// Firm reason: 6 (Breez Spark SDK Node.js binding; no C API)
 // The API's Spark wallet (NIP-X402 openagents:spark-receiver:1): the one
 // process that imports the Breez Spark SDK on the server, the way
 // SparkHost.swift is the only file that does on iOS. It receives, and since

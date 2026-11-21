@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: opt-in build/effects wrapper, no model/controller arithmetic.
+# Firm reason: 5  opt-in build/effects wrapper, no model/controller arithmetic.
 # Requires separately acquired/authenticated original files and SDK3.3.1.
 set -euo pipefail
 shards="${1:?usage: run-panda-loop-metal.sh SHARDS PST NOISE_F32 PAIRS OUTPUT [TICKS] [SCENARIO] [DEMO_IDS...]}"

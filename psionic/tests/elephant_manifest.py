@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Build/check a reviewable pinned inventory from the unmodified Elephant file."""
 import hashlib
 import json

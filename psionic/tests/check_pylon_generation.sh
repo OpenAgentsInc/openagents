@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Focused authority/native gate; the real restart runner takes prebuilt artifacts
 # so it can reuse a qualified relay, toy engine and unchanged native fleet.
 set -euo pipefail

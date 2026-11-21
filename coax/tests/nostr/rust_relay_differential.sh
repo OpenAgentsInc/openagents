@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # The R1 differential, end to end: builds the Coax relay (ASan+UBSan) outside
 # the sandbox, then runs relay_rust_differential.py inside
 # rust_relay_sandbox.sh's network-less sandbox next to the old Rust relay and

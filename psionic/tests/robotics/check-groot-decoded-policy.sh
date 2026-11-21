@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: thin build/effect wrapper; new composed output, existing adapter.
+# Firm reason: 5  thin build/effect wrapper; new composed output, existing adapter.
 set -euo pipefail
 weights="${1:?usage: check-groot-decoded-policy.sh NORMALIZED_ACTIONS.f32 NEW_OUTPUT_DIRECTORY}"
 work="${2:?}";[[ ! -e "$work" ]] || exit 2;mkdir -p "$work"

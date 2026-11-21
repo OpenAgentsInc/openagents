@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Clean preparation entry for the explicit one-shot grid (no plant/SDK).
 
 The historical native_reference --prepare failure is retained verbatim. This

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Flood the Coax relay (R1) and measure its memory. Tooling only (standard library).
 
 Builds coax/relay (release, or ASan+UBSan with --sanitize), starts it with a

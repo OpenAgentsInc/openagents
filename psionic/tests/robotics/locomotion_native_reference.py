@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Focused current-compile CPU-F64 GAE/PPO native qualification; no learner.
 
 Consumes immutable independently generated tables. It does not generate targets,

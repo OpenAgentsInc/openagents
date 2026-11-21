@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/../.." && pwd)
 temp=$(mktemp -d "${TMPDIR:-/tmp}/coax-cap-check.XXXXXXXX")

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Build fixed original-model descriptors from pinned immutable source headers."""
 import argparse,hashlib,importlib.util,json
 from pathlib import Path

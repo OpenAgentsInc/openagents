@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """C/D effect lifecycle: prepare0steps, ONE SDK capture, ONE OWN set, cached modes.
 
 Explicit SDK capture needs Root's separate GO. The cached default adapter is a

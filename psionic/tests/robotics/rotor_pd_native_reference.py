@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New isolated-rotor native proof against cached 80-digit closed forms.
 
 No product recurrence generates targets, no SDK/NN/old gate runs, and strict

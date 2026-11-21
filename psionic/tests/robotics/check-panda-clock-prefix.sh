@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: opt-in targeted recorded-control SDK integration, no NN.
+# Firm reason: 2/5  opt-in targeted recorded-control SDK integration, no NN.
 set -euo pipefail
 xml="${1:?usage: check-panda-clock-prefix.sh XML INIT TRACE SCENARIO NEW_DIRECTORY}";initial="${2:?}";trace="${3:?}";scenario="${4:?}";work="${5:?}"
 [[ ! -e "$work" ]] || { echo 'new output directory required' >&2;exit 2; };mkdir -p "$work"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """`--diagnostics json`: one coax.diagnostic.v1 object per line on stderr.
 
 One recorded diagnostic of each family (lexer, parser, checker, a failing

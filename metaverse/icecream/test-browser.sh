@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Ice Cream Man in the browser replays on the rules: plays the realm in
 # headless Chrome (the bot, then real key and mouse events), takes the trace
 # the page hands out, and replays it natively step for step (replay.c).

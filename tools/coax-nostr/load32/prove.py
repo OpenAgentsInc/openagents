@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Bit-vector proof that the four-byte u32 accumulator equals the old load (#092b).
 
 The models below are written by hand from the source lines this script pins.

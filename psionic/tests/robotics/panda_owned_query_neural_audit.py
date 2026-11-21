@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent stdlib audit of ONLY the new neural/owned-query receipt/PTR1.
 
 No NN, SDK API, renderer, controller, build, old reference or old gate runs.

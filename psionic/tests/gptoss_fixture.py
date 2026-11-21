@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned tiny original-format model and a dense, cache-free scalar reference."""
 import argparse,hashlib,json,math,random,struct
 from pathlib import Path

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW offline joint PD proof: original gravity facts and analytic matrix dU/dq.
 
 Imports authored matrix-function definitions only. No old harness/main, SDK,

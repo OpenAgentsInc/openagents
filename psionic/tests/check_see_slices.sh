@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 143's original-weight slices of the vision tower, in about a minute:
 # the inventory of every model.visual tensor against the config, then the
 # encoder (patch embedding with positions, block 0, the merger) on a 2 by 4

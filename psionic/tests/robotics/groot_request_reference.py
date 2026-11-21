@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: original-tokenizer development oracle; data packing is tooling.
+"""Firm reason: 2  original-tokenizer development oracle; data packing is tooling.
 
 Original gated bytes and the derived PST stay PRIVATE. No NVIDIA/Transformers
 source is executed. Existing installed tokenizers is the independent BPE oracle.

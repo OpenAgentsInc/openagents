@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent reference values for chapter 151 (psionic/lib/spectral.coax).
 
 Tooling only. Recomputes the mel filter banks and log-mel features that the

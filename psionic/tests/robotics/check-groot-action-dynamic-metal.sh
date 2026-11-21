@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reasons5(thin compiler/effect wrapper),2(independent reference tooling).
+# Firm reason: 5 (thin compiler/effect wrapper),2(independent reference tooling).
 set -euo pipefail
 weights="${1:?usage: check-groot-action-dynamic-metal.sh FULL_SHARDS CAPSULE NEW_OUTPUT [COAX_BACKBONE]}"
 capsule="${2:?reference capsule required}"

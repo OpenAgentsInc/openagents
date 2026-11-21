@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: generates or signs test vectors outside Coax)
 // Generates coax/tests/nostr/nip44_vectors.coax from the pinned NIP-44 corpus.
 // Tooling only; never shipped. Inputs:
 //   coax/tests/vectors/upstream/nip44/nip44.vectors.json (sha256 269ed0f6...)

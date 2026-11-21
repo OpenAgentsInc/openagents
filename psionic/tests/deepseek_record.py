@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Verify retained original numerical evidence with standard-library tooling."""
 import array,gzip,hashlib,json,math,struct
 from pathlib import Path

@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // /nip/01's built module (nip01.coax, nip01-verify.coax and the C face) run
 // as the browser host runs it: every case through the real verifier in Wasm,
 // keys and the hotbar on desktop, phone and 2x, and guard bytes untouched.

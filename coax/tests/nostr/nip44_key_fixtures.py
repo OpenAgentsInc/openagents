@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 # Generates coax/tests/nostr/nip44_key_vectors.coax from the pinned NIP-44
 # corpus. Tooling only; never shipped, never needed at run time. Standard
 # library only: the public keys of the encrypt_decrypt rows' sec2/sec1 come

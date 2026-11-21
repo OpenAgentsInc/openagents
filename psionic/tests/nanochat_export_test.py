@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Checks for psionic/tools/export/nanochat_export.py (no torch, nothing executed).
 
 The committed torch.save checkpoint re-exports byte for byte to the committed

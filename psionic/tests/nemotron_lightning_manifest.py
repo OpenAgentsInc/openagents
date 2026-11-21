@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 164's checkpoint inventory: the tensor names, dtypes and shapes of
 the pinned Nemotron 3.5 Lightning 30B-A3B checkpoint, written as a Coax
 fixture, from the safetensors headers alone.

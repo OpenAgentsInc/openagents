@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Independent OpenSSL oracle and actual emitted Wasm tests. Public fixtures only.
 const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 function oracle(c){const iv=Buffer.alloc(16);iv.writeUInt32LE(c.counter,0);Buffer.from(c.nonce,'hex').copy(iv,4);const cipher=crypto.createCipheriv('chacha20',Buffer.from(c.key,'hex'),iv);return Buffer.concat([cipher.update(Buffer.from(c.input,'hex')),cipher.final()]).toString('hex');}

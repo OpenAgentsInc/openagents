@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Bounded oracle/candidate comparison; never labels oracle smoke as Coax conformance."""
 import argparse
 import csv

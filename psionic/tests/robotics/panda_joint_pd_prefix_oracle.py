@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independently audit controller fields on ONE new SDK-owned trajectory.
 
 No Coax invocation, SDK load/call, integration, rendering, neural execution or

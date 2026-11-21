@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Freeze NEW owned-model gain inputs, immutable baseline carry and heldouts.
 
 Preparation only: no plant steps, source-product calls, SDK, old oracle/main or

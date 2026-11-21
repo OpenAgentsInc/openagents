@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: compiler/native tool wrapper; all policy is Coax.
+# Firm reason: 5  compiler/native tool wrapper; all policy is Coax.
 set -euo pipefail
 work="${1:?new output directory required}"
 mkdir -p "$work"

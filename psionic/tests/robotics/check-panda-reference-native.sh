@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: changed reference FFI boundary, no model or GPU execution.
+# Firm reason: 2/5  changed reference FFI boundary, no model or GPU execution.
 set -euo pipefail
 pst="${1:?usage: check-panda-reference-native.sh ORIGINAL_PST BUILD [QUALIFIED_GENERATED_C_CACHE]}"
 work="${2:?build directory required}"

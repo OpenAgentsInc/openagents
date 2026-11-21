@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Independent ECMAScript UTF-16 ordering and actual emitted Wasm. Public data.
 const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const cases=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));

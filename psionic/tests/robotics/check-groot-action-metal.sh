@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reasons: 5 (thin build/effect wrapper), 2 (independent recorded oracle).
+# Firm reason:  5 (thin build/effect wrapper), 2 (independent recorded oracle).
 set -euo pipefail
 weights="${1:?usage: check-groot-action-metal.sh FULL_SHARDS REFERENCE_CAPSULE NEW_OUTPUT_DIRECTORY}"
 capsule="${2:?reference capsule required}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Warp kernels on a CUDA device: the tensor-core MMA primitive against its Coax
 # meaning, and the tensor-core projection against the CPU reference profile.
 # Prints SKIP without a CUDA driver or NVRTC. Usage: psionic/tests/run_device_warp.sh

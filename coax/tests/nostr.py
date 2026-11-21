@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Compile the Coax event projection consumer and feed canonical protobuf bytes."""
 import ctypes as C
 import os

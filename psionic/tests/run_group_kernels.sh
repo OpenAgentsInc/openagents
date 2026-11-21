@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 48: group kernels (threadgroup memory and barriers) on the GPU
 # against the same Coax on the CPU, bit for bit. On macOS the Apple GPU runs
 # coax metal-compute's output; elsewhere a CUDA device runs coax cuda's.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Public artifact evidence refuses stale and foreign build identities."""
 import copy,unittest
 from ecdh_owned_vectors import verify_required_inputs

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Source-bound integer lemmas for total field reductions; manual review remains required."""
 import argparse
 import hashlib

@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: generates or signs test vectors outside Coax)
 // Signs event templates for the relay's scripted sessions with a TEST-ONLY
 // key (sha256 of a fixed label: no one's key, never used anywhere else).
 // The oracle is @noble/curves (BIP-340 schnorr), independent of Coax.

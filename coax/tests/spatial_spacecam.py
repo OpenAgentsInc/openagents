@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Changed Spacecam boundary only: native F64 oracle and actual frame refusal."""
 from pathlib import Path
 import hashlib

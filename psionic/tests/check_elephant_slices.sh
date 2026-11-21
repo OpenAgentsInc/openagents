@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Original-weight slices of Elephant, checkable in seconds: the embedding
 # gather, linear layer 0, full-attention layer 3 and readout rows 0..4095 over
 # five tokens, against references recorded once from the Psionic CPU path.

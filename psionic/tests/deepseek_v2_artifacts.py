@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Pack inert reviewed V2-Lite header intervals into Coax; never run remote code."""
 import argparse
 import hashlib

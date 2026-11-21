@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: compiler wrapper; independent ABI/device/Torch oracle is reason2.
+# Firm reason: 5  compiler wrapper; independent ABI/device/Torch oracle is reason2.
 set -euo pipefail
 work="${1:?usage: check-groot-text-kernels.sh NEW_OUTPUT_DIRECTORY}"
 mkdir -p "$work"

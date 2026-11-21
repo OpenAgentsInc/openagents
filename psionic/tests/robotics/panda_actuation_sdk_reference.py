@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Installed-SDK effects only; frozen metadata admission before 18 NEW forwards.
 Pure validate_model() is reusable without importing or executing the SDK.
 """

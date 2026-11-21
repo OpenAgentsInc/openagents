@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """SDK-free fresh-feedback and recorded-command-shadow replay of ONE new capture.
 
 Consumes once-emitted Coax C/H and immutable SDK data. No SDK/capture/old gates

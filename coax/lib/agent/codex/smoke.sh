@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build and run the Codex client smoke against the installed codex CLI, on
 # its own ChatGPT login (OPENAI_API_KEY and CODEX_API_KEY never reach the
 # child), never opening a browser, in a scratch folder.

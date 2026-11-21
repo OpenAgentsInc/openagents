@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Scripted sessions against the Coax relay (R1), under ASan and UBSan.
 
 Builds coax/relay with --sanitize, starts it on 127.0.0.1 with a free port,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reasons5(thin wrapper),2(independent native metadata/ABI oracle).
+# Firm reason: 5 (thin wrapper),2(independent native metadata/ABI oracle).
 set -euo pipefail
 work="${1:?usage: check-groot-action-plan-native.sh OUTPUT_DIRECTORY [EXECUTED_GPU_BUILD_DIRECTORY [EXECUTED_TRANSCRIPT]]}"
 executed="${2:-}"

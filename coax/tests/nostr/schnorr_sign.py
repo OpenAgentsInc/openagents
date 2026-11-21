@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """End-to-end signing: schnorr_sign.coax and event_sign.coax looped to
 completion through the generated C, checked and release, plain and
 ASan/UBSan, and the release build as Wasm (wasm32-wasip1 under Node's WASI),

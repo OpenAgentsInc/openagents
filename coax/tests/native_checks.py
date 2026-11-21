@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The native-check runner (coax/tools/native_checks.py, r0-native-check-exe).
 
 Each fixture's expected outcome is written here, independently of the runner:

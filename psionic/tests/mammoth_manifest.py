@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Build/check Mammoth's complete pinned original two-shard inventory."""
 import hashlib
 import json

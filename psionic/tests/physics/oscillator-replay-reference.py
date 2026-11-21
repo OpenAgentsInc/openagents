@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent canonical bytes/parser, actual-build binding and replay oracle."""
+"""Firm reason: 2  independent canonical bytes/parser, actual-build binding and replay oracle."""
 import argparse
 import hashlib
 import json

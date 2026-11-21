@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Offline component gate. SDK acquisition is separate and is never invoked here.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

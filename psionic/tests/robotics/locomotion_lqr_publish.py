@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Publish cached LQR observations only; no product or reference math calls."""
 import argparse
 import csv

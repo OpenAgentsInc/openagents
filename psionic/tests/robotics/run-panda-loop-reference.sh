@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: isolated installed-framework oracle, never a product runtime.
+# Firm reason: 2/5  isolated installed-framework oracle, never a product runtime.
 set -euo pipefail
 python="${GROOT_REFERENCE_PYTHON:-$HOME/.cache/psionic/groot-reference-env/bin/python}"
 sdk="${MUJOCO_ROOT:-$("$python" -c 'import importlib.util,pathlib;print(pathlib.Path(importlib.util.find_spec("mujoco").origin).parent)')}"

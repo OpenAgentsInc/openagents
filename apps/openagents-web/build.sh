@@ -675,9 +675,4 @@ wait "$state_lab"
 # Where the time went: every step of a second or more, in the order they
 # started. A "beside" step ran with others (or in a chain), so the seconds
 # don't add up to the total; the script itself waited on the serial ones.
-awk -v began="$build_began" -v ended="$(now)" '
-  { s = ($4 - $3) / 1e6; if ($2 == "serial") serial += s; if (s >= 1) printf "%s %s %.1f %.1f\n", $1, $2, ($3 - began) / 1e6, s }
-  END { printf "TOTAL - 0 %.1f %.1f\n", (ended - began) / 1e6, serial }' "$steps" | sort -k3,3n | awk '
-  $1 == "TOTAL" { total = $4; serial = $5; next }
-  { rows[++n] = sprintf("  %-22s %-7s started %6.1f s  took %6.1f s", $1, $2, $3, $4) }
-  END { printf "build.sh: %.1f s, %.1f s of it in serial steps. Steps of a second or more:\n", total, serial; for (i = 1; i <= n; i++) print rows[i] }' >&2
+"$repo/coax/web/tool.sh" build-steps "$steps" "$build_began" "$(now)"

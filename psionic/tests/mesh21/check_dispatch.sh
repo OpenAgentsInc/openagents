@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Prove mesh-only checks never enter global Python/model oracle setup.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New scalar/carry/brake audit; no plant, SDK or old oracle/gate execution.
 
 Three already-passed metric cards are carried exactly (local-ID remap only).

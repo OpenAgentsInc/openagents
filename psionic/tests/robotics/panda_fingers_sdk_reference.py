@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW five-case 16body forward-only SDK data, with separate future mass/bias facts.
 Only the installed MuJoCo C SDK executes; no third-party Python/repo imports.
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Optional Z3 check of the hand-authored carry model, not source equivalence."""
 if not __debug__: raise SystemExit('tests require Python assertions')
 import hashlib

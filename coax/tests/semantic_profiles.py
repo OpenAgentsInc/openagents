@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent runtime arithmetic, native optimization and BUILD_DEBUG profiles.
 
 The checked evaluator remains the authority gate under every runtime profile.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Operational wrapper tests; the unchanged cryptographic oracle is not retested."""
 import json,os,pathlib,signal,subprocess,sys,tempfile,time,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[2]

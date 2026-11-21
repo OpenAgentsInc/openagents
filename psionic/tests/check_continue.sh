@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 137: the domain corpus regenerates exactly, and the recorded runs
 # (chapter 128's 1000-step base, then three 300-step continued runs)
 # reproduce their transcript in release. The unit's checks and mutation run

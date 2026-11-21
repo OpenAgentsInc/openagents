@@ -746,21 +746,7 @@ mutants_proc() {   # head path line: the procedure the line is in ("?" when none
 # C SUITE SUMMARY PATH COUNT (survivors in a check unit, which only checks reach: counted, never
 # an action item, #13610) and R SUITE SUMMARY (a suite whose mutants ran to a summary).
 mutants_records() {   # log
-  awk -F'\t' '
-    function flush() { if (cur != "" && mode == "T") printf "T\t%s\t%s\t%s\n", cur, summ, (detail == "" ? "-" : detail); cur = ""; mode = ""; detail = "" }
-    /^(ok   |FAIL )[^ ]+ \(mutate --changed [0-9a-f]+\): / {
-      flush(); cur = $0; sub(/^(ok   |FAIL )/, "", cur); sub(/ .*/, "", cur)
-      summ = $0; sub(/^(ok   |FAIL )[^ ]+ \(mutate --changed [0-9a-f]+\): /, "", summ); sub(/ \([0-9]+ s\)$/, "", summ)
-      mode = (summ ~ /^[0-9]+ mutants?, [0-9]+ killed, [0-9]+ survived/ || summ ~ /^nothing to mutate/) ? "S" : "T"
-      if (mode == "S") printf "R\t%s\t%s\n", cur, summ
-      next }
-    /^FAIL [^ ]+: the compiler did not start$/ { flush(); s = $0; sub(/^FAIL /, "", s); sub(/: .*/, "", s); printf "T\t%s\tthe compiler did not start\t-\n", s; next }
-    /^(ok   |FAIL |suites: |== )/ { flush(); next }
-    mode == "S" && /: mutant survived: / { l = $0; sub(/^ +/, "", l); w = l; sub(/: mutant survived: .*/, "", l); sub(/.*: mutant survived: /, "", w); printf "S\t%s\t%s\t%s\t%s\n", cur, summ, l, w; next }
-    mode == "S" && /^ *not reached by any check: / { l = $0; sub(/^ *not reached by any check: /, "", l); printf "U\t%s\t%s\t%s\n", cur, summ, l; next }
-    mode == "S" && /^ *check-only: [^ ]+: [0-9]+ / { l = $0; sub(/^ *check-only: /, "", l); p = l; sub(/: .*/, "", p); c = l; sub(/^[^ ]+: /, "", c); sub(/ .*/, "", c); printf "C\t%s\t%s\t%s\t%s\n", cur, summ, p, c; next }
-    mode == "T" && detail == "" && /(error\[E[0-9]+\]|^coax: |still running)/ { d = $0; sub(/^ +/, "", d); detail = substr(d, 1, 240) }
-    END { flush() }' "$1"
+  "$here/../web/tool.sh" "$here/mutants-records.coax" "$1"
 }
 mutants_report() {   # head base dir status...: the report (markdown); status 1 when it has no action item
   local head="$1" base="$2" dir="$3" i=0 s n_s=0 n_u=0 n_t=0 n_c=0 n_o=0 line alone="coax/remote/remote.sh run -- coax/remote/check.sh"; shift 3

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Real original 20b GPU path; no downloaded runtime, conversion or CPU fallback.
 set -euo pipefail
 cd "$(dirname "$0")/.."

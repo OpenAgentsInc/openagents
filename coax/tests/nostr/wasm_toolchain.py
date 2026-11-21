@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The Wasm toolchain for the crypto harnesses, found the way coax/web/toolchain.sh finds it.
 
 COAXIAL_CLANG, COAXIAL_SYSROOT and COAXIAL_RESOURCES win when set. Otherwise

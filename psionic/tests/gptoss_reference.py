@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned independent dense full-prefix NumPy oracle. Never imports upstream code.
 Use with a NumPy-equipped Python; not a runtime dependency. Original bytes stay
 outside the repository. Tolerances are fixed before reading candidate results.

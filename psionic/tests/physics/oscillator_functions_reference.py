@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent augmented matrix polynomial and explicitly rounded F32 oracle.
 
 No Coax/model imports. Formal derivatives concern q,v,u, with fixed context;

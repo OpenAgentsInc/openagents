@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Check captured layer-zero outputs; no checkpoint or third-party runtime needed."""
 import hashlib,math,struct
 from pathlib import Path

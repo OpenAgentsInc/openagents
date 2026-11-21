@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 85's checkpoint inventory: the tensor names, dtypes and shapes of
 the pinned Mistral-Small-4-119B-2603 checkpoint (Hugging Face layout), written
 as a Coax fixture, from the safetensors headers alone.

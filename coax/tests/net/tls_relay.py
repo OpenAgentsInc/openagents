@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """relay_fixture.py's scripted relay behind TLS, for coax/tests/net/tls.sh.
 
 Test tooling only. Imports the plain-ws fixture unchanged and wraps its

@@ -1,0 +1,289 @@
+// Parses a coax mutate sweep log (mutate-since.log) into TSV records for
+// coax/remote/after.sh's mutants_report (#13850):
+//   R SUITE SUMMARY
+//   S SUITE SUMMARY LOC WHAT
+//   U SUITE SUMMARY NAMES
+//   C SUITE SUMMARY PATH COUNT
+//   T SUITE WHY DETAIL
+// Usage: coax/web/tool.sh coax/remote/mutants-records.coax LOG_FILE
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+
+MR_MAX_FILE :: 16777216;
+MR_MAX_OUT  :: 4194304;
+
+mr_starts :: (s: string, p: string) -> bool {
+  return s.count >= p.count && s[0..<p.count] == p;
+}
+
+mr_find :: (s: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > s.count { return -1; }
+  i := 0;
+  while i <= s.count - needle.count {
+    if s[i] == needle[0] && s[i..<i + needle.count] == needle { return i; }
+    i += 1;
+  }
+  return -1;
+}
+
+mr_ltrim :: (s: string) -> string {
+  i := 0;
+  while i < s.count && s[i] == ' ' { i += 1; }
+  return s[i..<s.count];
+}
+
+mr_is_hex :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s {
+    ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    if !ok { return false; }
+  }
+  return true;
+}
+
+mr_is_digits :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s {
+    if c < '0' || c > '9' { return false; }
+  }
+  return true;
+}
+
+// Strip trailing " (123 s)" from a summary string if present.
+mr_strip_secs :: (s: string) -> string {
+  if s.count < 6 || s[s.count - 1] != ')' || s[s.count - 2] != 's' || s[s.count - 3] != ' ' { return s; }
+  p := s.count - 4;
+  while p >= 0 && s[p] >= '0' && s[p] <= '9' { p -= 1; }
+  if p == s.count - 4 { return s; }
+  if p >= 1 && s[p] == '(' && s[p - 1] == ' ' { return s[0..<p - 1]; }
+  return s;
+}
+
+// Whether summ matches /^[0-9]+ mutants?, [0-9]+ killed, [0-9]+ survived/ or /^nothing to mutate/.
+mr_is_summary :: (s: string) -> bool {
+  if mr_starts(s, "nothing to mutate") { return true; }
+  i := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { i += 1; }
+  if i == 0 { return false; }
+  rest := s[i..<s.count];
+  if mr_starts(rest, " mutants, ") { rest = rest[10..<rest.count]; }
+  else if mr_starts(rest, " mutant, ") { rest = rest[9..<rest.count]; }
+  else { return false; }
+  j := 0;
+  while j < rest.count && rest[j] >= '0' && rest[j] <= '9' { j += 1; }
+  if j == 0 { return false; }
+  rest = rest[j..<rest.count];
+  if !mr_starts(rest, " killed, ") { return false; }
+  rest = rest[9..<rest.count];
+  k := 0;
+  while k < rest.count && rest[k] >= '0' && rest[k] <= '9' { k += 1; }
+  if k == 0 { return false; }
+  rest = rest[k..<rest.count];
+  return mr_starts(rest, " survived");
+}
+
+mr_has_error_code :: (s: string) -> bool {
+  pos := mr_find(s, "error[E");
+  if pos < 0 { return false; }
+  i := pos + 7;
+  start := i;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { i += 1; }
+  return i > start && i < s.count && s[i] == ']';
+}
+
+mr_detail :: (d: string) -> string {
+  if d.count > 0 { return d; }
+  return "-";
+}
+
+mr_put :: (out: [] u8, pos: int, s: string) -> int {
+  n := pos;
+  for c: s {
+    if n < out.count { out[n] = c; n += 1; }
+  }
+  return n;
+}
+
+mr_parse :: (body: string, out: [] u8) -> int {
+  n := 0;
+  cur := "";
+  summ := "";
+  mode := 0; // 0 = none, 1 = S, 2 = T
+  detail := "";
+
+  i := 0;
+  while i < body.count {
+    j := i;
+    while j < body.count && body[j] != '\n' { j += 1; }
+    line := body[i..<j];
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    i = j + 1;
+
+    // Check "^(ok   |FAIL )<suite> (mutate --changed <hex>): <summ>"
+    is_ok := mr_starts(line, "ok   ");
+    is_fail := mr_starts(line, "FAIL ");
+    if is_ok || is_fail {
+      after_tag := line[5..<line.count];
+      sp := mr_find(after_tag, " (mutate --changed ");
+      if sp > 0 && mr_find(after_tag[0..<sp], " ") < 0 {
+        rest := after_tag[sp + 19..<after_tag.count];
+        close := mr_find(rest, "): ");
+        if close > 0 && mr_is_hex(rest[0..<close]) {
+          if cur.count > 0 && mode == 2 {
+            n = mr_put(out, n, "T\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, mr_detail(detail)); n = mr_put(out, n, "\n");
+          }
+          cur = after_tag[0..<sp];
+          summ = mr_strip_secs(rest[close + 3..<rest.count]);
+          detail = "";
+          if mr_is_summary(summ) {
+            mode = 1;
+            n = mr_put(out, n, "R\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, summ); n = mr_put(out, n, "\n");
+          } else {
+            mode = 2;
+          }
+          continue;
+        }
+      }
+      // Check "^FAIL <suite>: the compiler did not start$"
+      if is_fail {
+        suf := ": the compiler did not start";
+        if after_tag.count > suf.count && after_tag[after_tag.count - suf.count..<after_tag.count] == suf {
+          suite := after_tag[0..<after_tag.count - suf.count];
+          if mr_find(suite, " ") < 0 {
+            if cur.count > 0 && mode == 2 {
+              n = mr_put(out, n, "T\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+              n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+              n = mr_put(out, n, mr_detail(detail)); n = mr_put(out, n, "\n");
+            }
+            cur = ""; mode = 0; detail = "";
+            n = mr_put(out, n, "T\t"); n = mr_put(out, n, suite);
+            n = mr_put(out, n, "\tthe compiler did not start\t-\n");
+            continue;
+          }
+        }
+      }
+      // Any other ok/FAIL line flushes pending T.
+      if cur.count > 0 && mode == 2 {
+        n = mr_put(out, n, "T\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, mr_detail(detail)); n = mr_put(out, n, "\n");
+      }
+      cur = ""; mode = 0; detail = "";
+      continue;
+    }
+
+    if mr_starts(line, "suites: ") || mr_starts(line, "== ") {
+      if cur.count > 0 && mode == 2 {
+        n = mr_put(out, n, "T\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, mr_detail(detail)); n = mr_put(out, n, "\n");
+      }
+      cur = ""; mode = 0; detail = "";
+      continue;
+    }
+
+    if mode == 1 {
+      mark := ": mutant survived: ";
+      mp := mr_find(line, mark);
+      if mp >= 0 {
+        trimmed := mr_ltrim(line);
+        tmp := mr_find(trimmed, mark);
+        loc := trimmed[0..<tmp];
+        what := trimmed[tmp + mark.count..<trimmed.count];
+        n = mr_put(out, n, "S\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, loc); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, what); n = mr_put(out, n, "\n");
+        continue;
+      }
+      trimmed := mr_ltrim(line);
+      unreach := "not reached by any check: ";
+      if mr_starts(trimmed, unreach) {
+        names := trimmed[unreach.count..<trimmed.count];
+        n = mr_put(out, n, "U\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+        n = mr_put(out, n, names); n = mr_put(out, n, "\n");
+        continue;
+      }
+      co := "check-only: ";
+      if mr_starts(trimmed, co) {
+        rest := trimmed[co.count..<trimmed.count];
+        sep := mr_find(rest, ": ");
+        if sep > 0 && mr_find(rest[0..<sep], " ") < 0 {
+          path := rest[0..<sep];
+          after := rest[sep + 2..<rest.count];
+          sp := mr_find(after, " ");
+          if sp > 0 && mr_is_digits(after[0..<sp]) {
+            cnt := after[0..<sp];
+            n = mr_put(out, n, "C\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, path); n = mr_put(out, n, "\t");
+            n = mr_put(out, n, cnt); n = mr_put(out, n, "\n");
+            continue;
+          }
+        }
+      }
+    }
+
+    if mode == 2 && detail.count == 0 {
+      if mr_has_error_code(line) || mr_starts(line, "coax: ") || mr_find(line, "still running") >= 0 {
+        d := mr_ltrim(line);
+        if d.count > 240 { d = d[0..<240]; }
+        detail = d;
+      }
+    }
+  }
+
+  if cur.count > 0 && mode == 2 {
+    n = mr_put(out, n, "T\t"); n = mr_put(out, n, cur); n = mr_put(out, n, "\t");
+    n = mr_put(out, n, summ); n = mr_put(out, n, "\t");
+    n = mr_put(out, n, mr_detail(detail)); n = mr_put(out, n, "\n");
+  }
+  return n;
+}
+
+#test "mr_parse handles R, S, U, C, and T records" {
+  hdr := "ok   pay/wallet.coax (mutate --changed deadbeef): 10 mutants, 9 killed, 1 survived (4 s)\n";
+  b: [2048] u8;
+  k := 0;
+  k = mr_put(b[..], k, hdr);
+  k = mr_put(b[..], k, "  pay/wallet.coax:42:5: mutant survived: + -> -\n");
+  k = mr_put(b[..], k, "  not reached by any check: dead_fn\n");
+  k = mr_put(b[..], k, "  check-only: pay/test_helper.coax: 3 survived\n");
+  k = mr_put(b[..], k, "FAIL pay/broken.coax (mutate --changed deadbeef): baseline checks failed (2 s)\n");
+  k = mr_put(b[..], k, "  pay/broken.coax:10: error[E0306]: bad\n");
+  k = mr_put(b[..], k, "FAIL pay/nostart.coax: the compiler did not start\n");
+
+  out: [2048] u8;
+  n := mr_parse(cast(string) b[0..<k], out[..]);
+  got := cast(string) out[0..<n];
+
+  w: [2048] u8;
+  wn := 0;
+  wn = mr_put(w[..], wn, "R\tpay/wallet.coax\t10 mutants, 9 killed, 1 survived\n");
+  wn = mr_put(w[..], wn, "S\tpay/wallet.coax\t10 mutants, 9 killed, 1 survived\tpay/wallet.coax:42:5\t+ -> -\n");
+  wn = mr_put(w[..], wn, "U\tpay/wallet.coax\t10 mutants, 9 killed, 1 survived\tdead_fn\n");
+  wn = mr_put(w[..], wn, "C\tpay/wallet.coax\t10 mutants, 9 killed, 1 survived\tpay/test_helper.coax\t3\n");
+  wn = mr_put(w[..], wn, "T\tpay/broken.coax\tbaseline checks failed\tpay/broken.coax:10: error[E0306]: bad\n");
+  wn = mr_put(w[..], wn, "T\tpay/nostart.coax\tthe compiler did not start\t-\n");
+  #assert got == cast(string) w[0..<wn];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 {
+    tool_err("usage: mutants-records LOG_FILE\n");
+    return 2;
+  }
+  fbuf: [MR_MAX_FILE] u8;
+  n := fs_read(args_at(a[..], 0), fbuf[0..<fbuf.count]);
+  if n < 0 { return 0; }
+  obuf: [MR_MAX_OUT] u8;
+  on := mr_parse(cast(string) fbuf[0..<n], obuf[0..<obuf.count]);
+  print("%", cast(string) obuf[0..<on]);
+  return 0;
+}

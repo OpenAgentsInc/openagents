@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Freeze and independently evaluate NEW GAE/PPO scalar-foundation fixtures.
 
 No learner, environment, RNG/model/SDK/runtime or old gate executes. GAE's

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: same-input original-head MPS oracle; never a Psionic runtime.
+"""Firm reason: 2  same-input original-head MPS oracle; never a Psionic runtime.
 
 This isolates the head on an actual Coax backbone. It neither replaces the
 independent full-network capsule nor changes its failed hidden-trace metric.

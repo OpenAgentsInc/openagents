@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Coax semantic checker: independent numeric/typed-tree oracles and native ABI.
 Python is test tooling only. The bootstrap and target compilation never use it.
 """

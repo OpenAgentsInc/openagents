@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: compile and run Coax graph with effects-only Metal adapter.
+# Firm reason: 5  compile and run Coax graph with effects-only Metal adapter.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 weights="${1:?usage: check-groot-text-metal.sh WEIGHTS CAPSULE NEW_OUTPUT [VISION_OUTPUT]}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 2 (independent attestation verifier oracle)
 # Optional historical verifier oracle, not part of the Coax/product build.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)

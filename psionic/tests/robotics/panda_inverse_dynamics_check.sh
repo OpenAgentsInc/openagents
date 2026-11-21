@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # NEW inverse-force gate only; ordinary references invoke no SDK or old gates.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

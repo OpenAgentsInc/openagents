@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: native compiler wrapper. The C/Python independent oracle is reason2.
+# Firm reason: 5  native compiler wrapper. The C/Python independent oracle is reason2.
 set -euo pipefail
 work="${1:?usage: check-oscillator.sh OUTPUT_DIRECTORY}";mkdir -p "$work"
 coax="${COAX:-coax/bin/coax}";compiler="${CC:-cc}";python="${PYTHON:-python3}"

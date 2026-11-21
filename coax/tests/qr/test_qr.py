@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Offline reference grids and actual native/Wasm QR interoperability."""
 import ctypes as C
 import hashlib

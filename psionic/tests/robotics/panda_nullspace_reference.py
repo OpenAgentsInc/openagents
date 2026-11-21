@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW nullspace oracle: matrix tangents, exact Gram volume, Decimal projector.
 
 No signed cofactor computation is used here. No old oracle main, SDK, NN,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 136: the recorded supervised fine-tuning run reproduces its
 # transcript in release. The unit's checks and mutation run through
 # psionic/check.sh --only nanochat/sft; the short example runs with the book.

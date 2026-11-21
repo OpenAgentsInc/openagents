@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: NEW bounded SDK metadata oracle, no learned forward pass.
+"""Firm reason: 2  NEW bounded SDK metadata oracle, no learned forward pass.
 
 Instantiate installed Transformers on meta only; get_rope_index performs small
 integer metadata operations on CPU. Original gated configs/tokenizer stay private.

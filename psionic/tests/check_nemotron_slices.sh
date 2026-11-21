@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 163's original-weight slices of Nemotron 3 Nano 4B: the embedding
 # rows of a six-token prompt, Mamba-2 layer 0 (whole, resumed, stepped), MLP
 # layer 1, attention layer 12 (whole and from the cache) and readout rows

@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs = require('node:fs');
 const {WASI} = require('node:wasi');
 const wasi = new WASI({version:'preview1', args:['fixture', process.argv[3]], env:{}});

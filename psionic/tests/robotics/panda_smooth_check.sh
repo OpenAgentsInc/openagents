@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # NEW offline smooth composition only; never acquire SDK facts or run episodes.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

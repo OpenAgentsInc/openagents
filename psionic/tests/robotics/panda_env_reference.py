@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent original-formula NumPy oracle, not runtime code.
+"""Firm reason: 2  independent original-formula NumPy oracle, not runtime code.
 
 No LIBERO, NVIDIA or robosuite modules are imported. Observation conversion
 uses their pinned source equation through NumPy/math.acos; the product's

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Bind NEW native event plan and terminal queries to already cached states.
 
 Standard-library transport only: no geometry, trajectory, Coax, SDK or NN calls.

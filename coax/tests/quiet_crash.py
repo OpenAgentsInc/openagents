@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Launch an expected-fault subprocess without macOS crash dialogs.
 
 Use run(argv, **subprocess_run_options), or python3 quiet_crash.py -- COMMAND.

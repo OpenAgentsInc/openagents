@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: thin native compiler/effect wrapper.
+# Firm reason: 5  thin native compiler/effect wrapper.
 set -euo pipefail
 work="${1:-/tmp/panda-policy-native}"
 mkdir -p "$work"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent NIP-OA and NIP-AA values for coax/lib/nostr/nipoa.coax,
 nipaa.coax and nostr/examples/checks/agent-auth.coax.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned BF16 Qwen2 fixture and independent cache-free, dense scalar oracle."""
 import argparse, hashlib, json, math, struct
 from pathlib import Path

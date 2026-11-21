@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Public throwaway fixtures, signed by an independent bigint BIP-340 oracle.
 Test tooling only. Never reads a key or touches a relay.
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Seal additive continuation metadata and byte/AST carry; no numeric oracle run."""
 from __future__ import annotations
 import argparse

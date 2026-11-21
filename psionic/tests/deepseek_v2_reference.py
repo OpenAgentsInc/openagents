@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Opt-in independent NumPy full-prefix equation oracle; no model framework.
 
 Reads original BF16 directly. It never calls generated Coax or upstream code.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """coax fmt (coax/web/fmt.coax over coax/lib/text/format.coax, r7a-format-evidence).
 
 The formatter lays out whitespace outside literals only (CRLF, trailing

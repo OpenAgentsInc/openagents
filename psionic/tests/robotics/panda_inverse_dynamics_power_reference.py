@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW cache-only physical power identity; no native/SDK/coordinate-FD rerun."""
 from pathlib import Path
 import argparse,hashlib,json,math,struct,time

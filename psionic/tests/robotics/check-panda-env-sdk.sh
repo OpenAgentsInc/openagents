@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: compiler/SDK effect wrapper; independent reference is reason2.
+# Firm reason: 5  compiler/SDK effect wrapper; independent reference is reason2.
 set -euo pipefail
 xml="${1:?usage: check-panda-env-sdk.sh SOURCE_SCENE_XML INIT45F64 NEW_OUTPUT_DIRECTORY}"
 initial="${2:?}";work="${3:?}"

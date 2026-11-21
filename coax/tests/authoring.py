@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The frozen authoring-task corpus (ROADMAP "Early evidence and authoring tools",
 r0-authoring-corpus): four small Coax edits an agent makes, each judged by an
 oracle the agent can't edit.

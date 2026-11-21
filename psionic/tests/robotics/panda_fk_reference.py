@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New Panda FK proof: stdlib homogeneous matrices + retained/new SDK bytes.
 No downloaded source imports, live SDK, model runtime or old gate is invoked.
 """

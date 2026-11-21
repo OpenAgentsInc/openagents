@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: thin dispatcher. Default robotics/all uses Coax, C and Python stdlib;
+# Firm reason: 5  thin dispatcher. Default robotics/all uses Coax, C and Python stdlib;
 # explicit opt-in gates require the documented device/reference/private cache.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

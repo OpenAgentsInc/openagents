@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Bind an existing independent proof to identical new outputs, not rerun it."""
 import argparse,hashlib,json,pathlib,tempfile
 def sha(p):return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()

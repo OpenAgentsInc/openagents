@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New numerical-proof guards, without SDK/native or old FK execution."""
 import copy,json,math,unittest
 import panda_fingers_reference as oracle

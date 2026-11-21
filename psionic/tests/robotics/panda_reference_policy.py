@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: resident original-weight framework oracle, opt-in tooling only.
+"""Firm reason: 2  resident original-weight framework oracle, opt-in tooling only.
 
 Official installed Transformers backbone + independently authored source head.
 All learned arithmetic is MPS/F32. Coax owns shared observation preparation,

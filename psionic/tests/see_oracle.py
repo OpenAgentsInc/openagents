@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent binary64 oracle for chapter 143's vision encoder.
 
 Follows the Qwen3-VL image processor and vision model as written upstream

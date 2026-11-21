@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Package already-audited continuation observations; no oracle/product calls."""
 import argparse
 import csv

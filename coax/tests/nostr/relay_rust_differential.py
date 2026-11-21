@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The Coax relay and the old Rust relay, side by side (R1 differential).
 
 Runs the same scripted sessions against crates/nostr-relay (0b401561a0^,

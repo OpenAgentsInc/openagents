@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // The actual project renderer on desktop and phones, without relay effects.
 const fs=require('node:fs'),assert=require('node:assert/strict');
 (async()=>{

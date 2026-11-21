@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 58's independent references for Llama-3.1-Minitron-4B-Width-Base.
 
 Written from the published architecture (config.json: Llama 3.1 with

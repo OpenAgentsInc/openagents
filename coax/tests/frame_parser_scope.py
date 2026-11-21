@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Materialize the exact M3 frame-parser mutation scope, retaining every check.
 
 This writes a private snapshot only. Run the printed root with the compiler's

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Tooling: qualify original24-block Coax Metal vision against pinned SDK captures.
 No model framework, inference fallback or downloaded project scripts execute here.
 """

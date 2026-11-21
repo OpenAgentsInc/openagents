@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Focused native/independent-oracle and source/drift checks for Nostr profiles.
 
 This is explicit maintenance tooling, never a compiler/app build dependency.

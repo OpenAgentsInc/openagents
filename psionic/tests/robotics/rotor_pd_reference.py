@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent constant-rotor PD oracle: exact Jury, Decimal eigen responses.
 
 Only new profiles are evaluated. Fraction treats each supplied binary64 as its

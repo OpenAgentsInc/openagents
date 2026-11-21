@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Only the NEW fixed Panda Jacobian native/independent-reference corpus.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

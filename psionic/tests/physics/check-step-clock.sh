@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: native/compiler and independent arithmetic verification tooling.
+# Firm reason: 2/5  native/compiler and independent arithmetic verification tooling.
 set -euo pipefail
 work="${1:?usage: check-step-clock.sh NEW_DIRECTORY [PRIOR_QUALIFIED_DIRECTORY]}"
 qualified="${2:-}"

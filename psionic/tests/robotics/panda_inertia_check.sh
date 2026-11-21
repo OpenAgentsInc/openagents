@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # NEW fixed16-body M9/zero-rate gravity comparison; no simulator or old gates.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

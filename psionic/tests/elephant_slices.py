@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Pins and comparisons for the Elephant original-weight slices.
 
 The slices are small parts of the decision path run with the original

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Reproducible protocol recovery, module checks and offline ID migration.
 
 This is bootstrap/build infrastructure. Coax runtime ingestion and bounded

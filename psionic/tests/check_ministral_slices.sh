@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 81's original-weight slices of Ministral 3 3B, checkable in about a
 # minute: the pinned files' hashes and inventory, Tekken on the fixture
 # strings, then the embedding gather, layer 0 and readout rows 0..4095 over

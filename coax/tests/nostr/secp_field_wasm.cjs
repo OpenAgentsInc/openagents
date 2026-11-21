@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Real wasm32 execution; expected bytes come from the independent bigint oracle.
 const fs=require('node:fs'),{WASI}=require('node:wasi');
 (async()=>{

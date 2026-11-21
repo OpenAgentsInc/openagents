@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Actual Coax parser: independent tree assertions and native storage/stack fuzz.
 Python is test tooling only; neither bootstrap nor app generation invokes it.
 """

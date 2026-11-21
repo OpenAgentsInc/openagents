@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 83's pins for Devstral Small 2: the text decoder's tensor
 inventory, read from the safetensors headers alone, and Tekken's ids for the
 chapter's coding-agent conversation, from the full tekken.json.

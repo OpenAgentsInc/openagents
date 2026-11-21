@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Artifact and reminder events for chapter 90 (NIP-AR, NIP-ER).
 
 Written from NIP-01, NIP-44 and Block's NIP-AR and NIP-ER with only hashlib

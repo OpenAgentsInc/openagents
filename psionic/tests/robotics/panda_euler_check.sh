@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # NEW offline Euler evidence only; never acquire SDK observations or run NN.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

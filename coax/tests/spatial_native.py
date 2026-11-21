@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """New M3 aggregate IEEE/ABI/order corpus; never runs the previous quantity corpus."""
 from pathlib import Path
 import hashlib,json,os,platform,random,re,struct,subprocess,tempfile,time

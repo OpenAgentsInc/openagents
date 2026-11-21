@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """First-order native timing probe for #89db with positive controls.
 
 Explicit test tooling, not secret-use approval. Classes: the fixed valid

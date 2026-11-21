@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # New CPU/stdlib numerical context; no model, environment, or private cache.
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Actual built app, including its Coax UI, shared verifier and C transport.
 const fs=require('node:fs'),assert=require('node:assert/strict');
 (async()=>{

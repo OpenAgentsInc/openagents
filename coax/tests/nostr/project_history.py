@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Signed public fixtures: real Coax Fold history agrees with the TS oracle.
 
 This checks log projection only, not cryptographic verification or relay trust.

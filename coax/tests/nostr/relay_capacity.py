@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The Coax relay's --store-capacity with a large --store file (chapters 35, 103).
 
 Signs N synthetic kind 1 events (default 3,000) with relay_sign.ts (a

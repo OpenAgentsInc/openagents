@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent bigint checks for the actual Coax field representation.
 
 Explicit test tooling only. No keys, group arithmetic, timing assurance or

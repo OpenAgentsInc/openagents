@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Offline own/recorded-command-shadow replay; never acquires another SDK prefix.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

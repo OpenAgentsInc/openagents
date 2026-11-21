@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent struct-layout/SHA oracle; Python stdlib only."""
+"""Firm reason: 2  independent struct-layout/SHA oracle; Python stdlib only."""
 import argparse
 import hashlib
 import json

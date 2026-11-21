@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW four-case tracking acquisition; preparation never runs the SDK binary.
 
 --prepare emits/builds once. --admit-metadata-prepared loads metadata only; --capture-prepared then runs

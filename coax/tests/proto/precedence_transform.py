@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Descriptor-checked exact old-to-new ordinal error transformation."""
 import re
 reader=re.compile(r'checked:=([A-Za-z_][A-Za-z0-9_]*)_decode\(msg\.wire\);if msg\.error!=0 \|\| checked\.error!=0 \{return ([A-Za-z_][A-Za-z0-9_]*)\.\{error=msg\.error\|checked\.error(,done=true)?\};\}')

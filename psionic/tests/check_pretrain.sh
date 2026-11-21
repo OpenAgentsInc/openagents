@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 128: the corpus and the independent reference values regenerate
 # exactly, and the recorded 1000-step run reproduces its transcript in
 # release (about a minute on one core). The unit's checks and mutation run

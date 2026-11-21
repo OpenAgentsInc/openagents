@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Offline rest-to-rest quintic query proof against new cached analytic targets.
 
 No motion execution, collision/tracking certificate, SDK, NN or old gate.

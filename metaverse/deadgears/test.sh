@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Dead Gears' Coax checks at the step budgets they need: the rules
 # (metaverse/deadgears/rules.coax, with ecs.coax and arena.coax) and the page
 # (apps/openagents-web/deadgears.coax). Each #test has its own budget; the page's

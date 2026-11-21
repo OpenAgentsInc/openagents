@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent NEW C/D audit: cached SDK/OWN traces only, no effects.
 
 The old scalar law is carried as pure Fraction/RN definitions. NEW SDK states

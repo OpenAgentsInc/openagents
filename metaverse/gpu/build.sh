@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build vk-check and vk-kernel (docs/metaverse/native-gpu.md): Coax to C, then
 # cc with the Vulkan loader.
 #   metaverse/gpu/build.sh [OUT_DIR]                    generate C (if coax is here) and build

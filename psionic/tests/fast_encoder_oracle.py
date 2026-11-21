@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 222's oracle: the fe-tiny-v1 encoder written again in plain Python
 binary64, from the chapter's description, without reading the Coax source.
 Prints psionic/fixtures/fast-encoder/oracle.coax: two weights, the model's

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Explicit one-shot release learning, using the ALREADY qualified native binary.
 
 No compilation, fixture rerun, external simulator, SDK or original-weight model

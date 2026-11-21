@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Parallel and sharded `coax mutate` must equal the serial run byte for byte.
 
 For each source, compares `--jobs 1` (the serial in-process loop) with

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # One opt-in full-model capture; normal iteration uses recorded references.
 # Usage: run_deepseek_original.sh ORIGINAL_DIRECTORY RECORD_DIRECTORY [TOKEN_LIMIT]
 set -euo pipefail

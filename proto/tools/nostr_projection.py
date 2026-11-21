@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Bounded REFERENCE projections for tests/tooling, not relay admission.
 No signatures/JWS are verified and no content is decrypted. Original bytes
 must be retained and checked before returning them; parsed data grants nothing.

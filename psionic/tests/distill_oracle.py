@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 223's teacher stand-in and its oracle, written from the chapter's
 description without reading psionic/lib/distill.coax.
 

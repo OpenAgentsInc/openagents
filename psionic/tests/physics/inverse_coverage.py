@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: new closed-transcript coverage and independent state-word gate.
+"""Firm reason: 2  new closed-transcript coverage and independent state-word gate.
 
 Initial qualification reuses the prior passing numerical calculation. Its
 numeric function ASTs must be unchanged; only entry-point coverage is hardened.

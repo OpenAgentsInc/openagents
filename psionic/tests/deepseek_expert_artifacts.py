@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Retain reviewed original shard/header DATA and borrow exact selected tensors."""
 import argparse
 import gzip

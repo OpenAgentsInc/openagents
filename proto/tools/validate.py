@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Reference validation for the NEW alpha fixtures, not a Coax runtime codec."""
 import math
 from google.protobuf.descriptor import FieldDescriptor

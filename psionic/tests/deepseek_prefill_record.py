@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Replay the current-source original grouped MoE evidence without weights."""
 from pathlib import Path
 import gzip,hashlib,json

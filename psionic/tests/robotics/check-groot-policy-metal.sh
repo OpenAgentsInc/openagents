@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: composed verification wrapper. Every learned operation is Coax.
+# Firm reason: 5  composed verification wrapper. Every learned operation is Coax.
 # The independent same-input/endpoint oracle is development-only reason2 tooling.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

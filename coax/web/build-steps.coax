@@ -1,0 +1,222 @@
+// Formats build.sh's .steps log (one "NAME kind start_us end_us" line per
+// step) into the wall-time summary printed at the end of a web build (#13850).
+//   coax/web/tool.sh build-steps STEPS_FILE BEGAN_US ENDED_US
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+
+BS_MAX_ROWS :: 512;
+BS_MAX_FILE :: 262144;
+BS_MAX_OUT  :: 65536;
+
+BsRow :: struct {
+  name: string;
+  kind: string;
+  start_rel_ds: s64; // tenths of a second since began
+  dur_ds: s64;       // tenths of a second
+}
+
+BsNum :: struct {
+  val: s64;
+  ok: bool;
+}
+
+BsTok :: struct {
+  text: string;
+  next: int;
+}
+
+bs_parse_s64 :: (s: string) -> BsNum {
+  if s.count == 0 { return BsNum.{ val = 0, ok = false }; }
+  neg := false;
+  i := 0;
+  if s[0] == '-' { neg = true; i = 1; }
+  if i >= s.count { return BsNum.{ val = 0, ok = false }; }
+  v: s64 = 0;
+  while i < s.count {
+    c := s[i];
+    if c < '0' || c > '9' { return BsNum.{ val = 0, ok = false }; }
+    v = v * 10 + cast(s64) (c - '0');
+    i += 1;
+  }
+  if neg { return BsNum.{ val = -v, ok = true }; }
+  return BsNum.{ val = v, ok = true };
+}
+
+// Round microseconds to nearest tenth of a second (half away from zero).
+bs_us_to_ds :: (us: s64) -> s64 {
+  if us >= 0 { return (us + 50000) / 100000; }
+  return -((-us + 50000) / 100000);
+}
+
+bs_put :: (buf: [] u8, pos: int, s: string) -> int {
+  n := pos;
+  for c: s {
+    if n < buf.count { buf[n] = c; n += 1; }
+  }
+  return n;
+}
+
+bs_put_pad :: (buf: [] u8, pos: int, count: int) -> int {
+  n := pos;
+  i := 0;
+  while i < count {
+    if n < buf.count { buf[n] = ' '; n += 1; }
+    i += 1;
+  }
+  return n;
+}
+
+bs_put_ds :: (buf: [] u8, pos: int, ds: s64, min_width: int) -> int {
+  tmp: [32] u8;
+  k := 0;
+  v := ds;
+  neg := false;
+  if v < 0 { neg = true; v = -v; }
+  frac := v % 10;
+  whole := v / 10;
+  tmp[k] = cast(u8) ('0' + cast(int) frac); k += 1;
+  tmp[k] = '.'; k += 1;
+  if whole == 0 {
+    tmp[k] = '0'; k += 1;
+  } else {
+    while whole > 0 && k < tmp.count - 1 {
+      tmp[k] = cast(u8) ('0' + cast(int) (whole % 10));
+      k += 1;
+      whole /= 10;
+    }
+  }
+  if neg && k < tmp.count { tmp[k] = '-'; k += 1; }
+  n := pos;
+  if min_width > k { n = bs_put_pad(buf, n, min_width - k); }
+  i := k - 1;
+  while i >= 0 {
+    if n < buf.count { buf[n] = tmp[i]; n += 1; }
+    i -= 1;
+  }
+  return n;
+}
+
+bs_next_tok :: (line: string, start_pos: int) -> BsTok {
+  p := start_pos;
+  while p < line.count && (line[p] == ' ' || line[p] == '\t') { p += 1; }
+  start := p;
+  while p < line.count && line[p] != ' ' && line[p] != '\t' && line[p] != '\r' { p += 1; }
+  return BsTok.{ text = line[start..<p], next = p };
+}
+
+// Parse .steps content, filter to steps >= 1.0 s, sort by start time ascending,
+// and format the summary into out[0..<written].
+bs_format :: (body: string, began: s64, ended: s64, out: [] u8) -> int {
+  rows: [BS_MAX_ROWS] BsRow;
+  rcount := 0;
+  serial_us: s64 = 0;
+
+  i := 0;
+  while i < body.count {
+    j := i;
+    while j < body.count && body[j] != '\n' { j += 1; }
+    line := body[i..<j];
+    i = j + 1;
+    t1 := bs_next_tok(line, 0);
+    t2 := bs_next_tok(line, t1.next);
+    t3 := bs_next_tok(line, t2.next);
+    t4 := bs_next_tok(line, t3.next);
+    if t1.text.count == 0 || t2.text.count == 0 { continue; }
+    st := bs_parse_s64(t3.text);
+    en := bs_parse_s64(t4.text);
+    if !st.ok || !en.ok { continue; }
+    dur_us := en.val - st.val;
+    if t2.text == "serial" { serial_us += dur_us; }
+    if dur_us >= 1000000 && rcount < BS_MAX_ROWS {
+      rows[rcount] = BsRow.{
+        name = t1.text,
+        kind = t2.text,
+        start_rel_ds = bs_us_to_ds(st.val - began),
+        dur_ds = bs_us_to_ds(dur_us),
+      };
+      rcount += 1;
+    }
+  }
+
+  // Insertion sort by start_rel_ds ascending (stable).
+  a := 1;
+  while a < rcount {
+    key := rows[a];
+    b := a - 1;
+    while b >= 0 && rows[b].start_rel_ds > key.start_rel_ds {
+      rows[b + 1] = rows[b];
+      b -= 1;
+    }
+    rows[b + 1] = key;
+    a += 1;
+  }
+
+  n := 0;
+  n = bs_put(out, n, "build.sh: ");
+  n = bs_put_ds(out, n, bs_us_to_ds(ended - began), 0);
+  n = bs_put(out, n, " s, ");
+  n = bs_put_ds(out, n, bs_us_to_ds(serial_us), 0);
+  n = bs_put(out, n, " s of it in serial steps. Steps of a second or more:\n");
+
+  r := 0;
+  while r < rcount {
+    row := rows[r];
+    n = bs_put(out, n, "  ");
+    n = bs_put(out, n, row.name);
+    if row.name.count < 22 { n = bs_put_pad(out, n, 22 - row.name.count); }
+    n = bs_put(out, n, " ");
+    n = bs_put(out, n, row.kind);
+    if row.kind.count < 7 { n = bs_put_pad(out, n, 7 - row.kind.count); }
+    n = bs_put(out, n, " started ");
+    n = bs_put_ds(out, n, row.start_rel_ds, 6);
+    n = bs_put(out, n, " s  took ");
+    n = bs_put_ds(out, n, row.dur_ds, 6);
+    n = bs_put(out, n, " s\n");
+    r += 1;
+  }
+  return n;
+}
+
+#test "bs_parse_s64 and bs_us_to_ds" {
+  v1 := bs_parse_s64("1234567");
+  #assert v1.ok && v1.val == 1234567;
+  v2 := bs_parse_s64("-50");
+  #assert v2.ok && v2.val == -50;
+  #assert !bs_parse_s64("").ok && !bs_parse_s64("12x").ok;
+  #assert bs_us_to_ds(1000000) == 10;
+  #assert bs_us_to_ds(1250000) == 13;
+  #assert bs_us_to_ds(1249999) == 12;
+  #assert bs_us_to_ds(0) == 0;
+}
+
+#test "bs_format sorts by start, sums serial, and filters steps under 1s" {
+  sample := "splash beside 2500000 4000000\nfast serial 1000000 1400000\ncli serial 1000000 3200000\n";
+  buf: [2048] u8;
+  n := bs_format(sample, 1000000, 5500000, buf[0..<buf.count]);
+  got := cast(string) buf[0..<n];
+  want := "build.sh: 4.5 s, 2.6 s of it in serial steps. Steps of a second or more:\n  cli                    serial  started    0.0 s  took    2.2 s\n  splash                 beside  started    1.5 s  took    1.5 s\n";
+  #assert got == want;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 {
+    tool_err("usage: build-steps STEPS_FILE BEGAN_US ENDED_US\n");
+    return 2;
+  }
+  path := args_at(a[..], 0);
+  began := bs_parse_s64(args_at(a[..], 1));
+  ended := bs_parse_s64(args_at(a[..], 2));
+  if !began.ok || !ended.ok {
+    tool_err("build-steps: invalid microsecond timestamp\n");
+    return 2;
+  }
+  fbuf: [BS_MAX_FILE] u8;
+  n := fs_read(path, fbuf[0..<fbuf.count]);
+  if n < 0 { return 0; }
+  obuf: [BS_MAX_OUT] u8;
+  on := bs_format(cast(string) fbuf[0..<n], began.val, ended.val, obuf[0..<obuf.count]);
+  tool_err(cast(string) obuf[0..<on]);
+  return 0;
+}

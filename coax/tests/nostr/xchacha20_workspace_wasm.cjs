@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs=require('fs'),assert=require('assert'),crypto=require('crypto'),{WASI}=require('node:wasi');
 const cases=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));
 if(process.argv[2]==='oracle') {

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Generic procedures through the real driver (spec 7.2, r4a-type-parameters, r4a-instantiation).
 
 TypeParameters: `$T` binds a placeholder type at its first parameter use and

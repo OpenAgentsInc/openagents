@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Write the small nanochat checkpoint fixture with torch.save (tooling only).
 
 Run once, in an isolated CPU-only venv, with python -I; it never imports

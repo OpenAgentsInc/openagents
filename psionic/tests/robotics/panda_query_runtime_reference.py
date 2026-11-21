@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent fixed-source metadata/bitflip oracle. No SDK or NN calls."""
 from pathlib import Path
 import argparse,hashlib,json,os,re,struct,subprocess,time

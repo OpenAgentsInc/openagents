@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Channel events for chapter 89 (NIP-CL, NIP-CW, NIP-DV).
 
 Written from NIP-01, NIP-10, Block's NIP-CL, NIP-CW and NIP-DV with only

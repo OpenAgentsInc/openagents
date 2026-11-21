@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Offline audit of NEW continuation chunks; carries the original numeric kernel.
 
 All coefficient observations are source-bound recomputations, not invented

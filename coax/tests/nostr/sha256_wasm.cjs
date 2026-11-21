@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Execute real wasm32 bytes in V8/WASI, checking independent supplied digests.
 const fs = require('node:fs');
 const { WASI } = require('node:wasi');

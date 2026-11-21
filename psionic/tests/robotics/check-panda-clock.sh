@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: new paired ABI verification only, no SDK/model execution.
+# Firm reason: 2/5  new paired ABI verification only, no SDK/model execution.
 set -euo pipefail
 work="${1:?usage: check-panda-clock.sh NEW_DIRECTORY}"
 [[ ! -e "$work" ]] || { echo 'new output directory required' >&2;exit 2; };mkdir -p "$work"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned HTTP/SDK oracles. Python is verification tooling, never runtime.
 Run with a fixture binary + table, or --url for an already running GPU server.
 An OpenAI SDK/jsonschema environment is required for the optional client checks.

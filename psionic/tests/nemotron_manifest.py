@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 163's checkpoint inventory: the tensor names, dtypes and shapes of
 the pinned Nemotron 3 Nano 4B checkpoint, written as a Coax fixture.
 

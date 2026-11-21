@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Pinned BIP173/NIP19 and independent library oracle against emitted Coax C.
 
 Bun dependencies are test-only, pinned by coax/web/project/bun.lock.

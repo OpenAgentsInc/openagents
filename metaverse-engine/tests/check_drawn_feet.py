@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Check actual walking-realm render roots through native Coax boundaries.
 
 No browser, models, assets, sound or live service is needed. The probes feed

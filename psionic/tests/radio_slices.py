@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent check of chapter 144's original-weight C-RADIOv3-B slices.
 
     python3 -I psionic/tests/radio_slices.py CONFIG.json SAFETENSORS OUT.f32

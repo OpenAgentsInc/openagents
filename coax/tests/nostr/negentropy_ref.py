@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """A Python transcription of Negentropy protocol V1 (NIP-77's appendix) and
 of the reference implementation's choices (hoytech/negentropy, js/Negentropy.js,
 read on 2026-11-01, not run): 16 buckets, an IdList below 32 items, and the

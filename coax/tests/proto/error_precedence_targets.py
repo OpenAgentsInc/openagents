@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Generated Coax error precedence across native guard pages, Wasm and iOS."""
 import hashlib, os, pathlib, subprocess, tempfile
 R=pathlib.Path(__file__).resolve().parents[3]

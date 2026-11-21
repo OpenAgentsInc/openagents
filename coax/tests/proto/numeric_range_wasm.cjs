@@ -1,2 +1,3 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs=require('fs');const {WASI}=require('wasi');
 (async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const result=instance.exports.run_ranges();if(result!==0)throw Error('numeric range case '+result);console.log('numeric range Wasm target passed');})().catch(e=>{console.error(e);process.exit(1)});

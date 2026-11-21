@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Public classified checked addition remains analyzable in all aggregate profiles."""
 import hashlib,json,subprocess,sys,tempfile
 from pathlib import Path

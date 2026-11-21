@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Opt-in NEW SDK capture: frozen q/v/a, M+bias/bodyRNE and matched PcSample.
 Only installed binary C SDK calls; no imported LIBERO/robosuite/NVIDIA code.
 """

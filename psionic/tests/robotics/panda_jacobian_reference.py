@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW Jacobian reference: retained original SDK J plus independent matrix-FK FD.
 No MuJoCo, downloaded code, model runtime or old gate is invoked.
 """

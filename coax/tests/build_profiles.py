@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Actual build-profile parser, native layouts and target/diagnostic boundaries."""
 import ctypes as C
 import json

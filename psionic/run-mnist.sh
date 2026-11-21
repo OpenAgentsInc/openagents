@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Explicit original-data run; no download, Python runtime or silent training.
 set -euo pipefail
 cd "$(dirname "$0")/.."

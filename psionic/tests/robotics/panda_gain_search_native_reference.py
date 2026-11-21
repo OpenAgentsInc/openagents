@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """One-shot OWNED gain grid; cached scoring is a separate SDK/plant-free mode.
 
 The four published baseline trajectories are carried by exact byte identity.

@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # OFFLINE committed evidence only. Actual execution is a separate one-shot CLI.
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

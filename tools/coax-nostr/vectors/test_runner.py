@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Focused optional runner tests, including real incorrect native candidates."""
 from pathlib import Path
 import importlib.util

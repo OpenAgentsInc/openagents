@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 37: the Coax projection kernels on a CUDA device, against the same
 # kernels compiled to C and the CPU reference profile. Without a CUDA driver
 # or NVRTC the harness prints SKIP and exits 0. Usage:

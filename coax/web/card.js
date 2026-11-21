@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: uses WebGPU canvas and Blob APIs to capture share cards)
 // A page's own share card (docs/web/og-tags.md): a page whose app script has data-card=URL (a
 // realm made at /worlds/new, coax/web/api/migrations/0071_made_realm_share.sql) asks the server
 // whether this visitor should take its picture (GET URL: "want" or "no", its owner when it has none

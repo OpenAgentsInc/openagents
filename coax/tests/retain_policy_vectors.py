@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Mechanical historical eight-slot oracle transport into twenty-four-slot carriers.
 
 The original literal oracle and its identity stay unchanged. New inactive slots

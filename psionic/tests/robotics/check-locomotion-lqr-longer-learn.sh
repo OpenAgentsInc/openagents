@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 QUALIFIED="${1:?usage: check-locomotion-lqr-longer-learn.sh QUALIFIED_EXTENSION PERSISTENT_OUTPUT}"

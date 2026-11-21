@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Focused B2 actual-source/CK_run oracles, without compiler/bootstrap gates.
 
 The checker emission strips ONLY physical #test/#forall/#authority regions.

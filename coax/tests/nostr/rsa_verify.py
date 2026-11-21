@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent integer oracle and pinned Wycheproof verification fixtures.
 
 Public-only primitive evidence. This does not claim FI/JOSE authorization.

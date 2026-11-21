@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Offline fixed-model component proof. Never acquires SDK data or simulates.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

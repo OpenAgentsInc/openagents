@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build chapter 203's load generator: OUT [debug|release] [plain|sanitized].
 # Coax emits one C library from psionic/lib/bench-wire.coax (which loads
 # bench.coax); psionic/platform/bench-drive.c links it.

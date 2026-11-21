@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """The oracle for metaverse-engine/core/rand.coax: lowbias32 and the counter-based draw, written
 from the published hash, not from the Coax. Prints the values rand.coax pins.
   python3 metaverse-engine/tests/rand_oracle.py

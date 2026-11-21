@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Scoped byte-helper native oracle, alias/boundary and codegen checks."""
 import ctypes as C
 from pathlib import Path

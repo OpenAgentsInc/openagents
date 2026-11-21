@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Only NEW metadata guard checks; no native numerical or SDK execution."""
 import copy,json,unittest
 from pathlib import Path

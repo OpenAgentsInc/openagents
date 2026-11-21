@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: opt-in reference bridge compiler wrapper, not a shipped runtime.
+# Firm reason: 5  opt-in reference bridge compiler wrapper, not a shipped runtime.
 set -euo pipefail
 work="${1:?usage: build-panda-reference.sh BUILD [QUALIFIED_GENERATED_C_CACHE]}"
 cache="${2:-}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """NIP-CJ execution request and result events for chapter 80.
 
 Written from NIP-01, NIP-44 v2, BIP-340 and NIP-CJ with only hashlib and

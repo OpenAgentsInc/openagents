@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Standalone local probe; ordinary site builds never visit this hidden folder.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

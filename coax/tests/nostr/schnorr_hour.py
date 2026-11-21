@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Real sustained public-verification differential. Explicit test tooling only.
 
 Default is an actual3600s after building/preflight, never simulated elapsed.

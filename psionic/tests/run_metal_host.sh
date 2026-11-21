@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # The Metal host's contract on this Mac's GPU, with the minimum compute
 # consumer (psionic/fixtures/compute/consumer.coax). SKIP without Metal.
 set -euo pipefail

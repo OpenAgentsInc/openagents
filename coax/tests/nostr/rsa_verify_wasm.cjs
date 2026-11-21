@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Test-only Wasm ABI; expected decisions are computed by the Python integer oracle.
 const fs = require('node:fs'), {WASI} = require('node:wasi');
 (async () => {

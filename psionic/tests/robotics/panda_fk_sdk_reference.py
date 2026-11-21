@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Opt-in new forward-only all-link reference. Uses the installed C SDK; no package/repo imports."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,platform,struct,subprocess,time,xml.etree.ElementTree as ET

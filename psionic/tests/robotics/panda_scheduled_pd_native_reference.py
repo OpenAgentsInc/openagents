@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Staged original-case scheduled-PD proof: exact carry, ONE brake, cached scores.
 
 No SDK. Three carried cases never step the plant. A failed carry stops without

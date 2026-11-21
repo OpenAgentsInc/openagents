@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """An independent NIP-ATT endpoint and NIP-VAULT object for chapter 83.
 
 Written from NIP-ATT, NIP-VAULT, FIPS-197, NIST SP 800-38D, RFC 5869,

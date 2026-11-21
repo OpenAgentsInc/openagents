@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent NEW offline fluid expected values; never invokes Coax or SDK.
 Only authored 4x4 matrix/product-rule helper definitions are imported.
 """

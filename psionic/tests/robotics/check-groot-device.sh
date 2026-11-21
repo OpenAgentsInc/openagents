@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reasons: 5 (thin build wrapper), 2 (independent oracle tooling).
+# Firm reason:  5 (thin build wrapper), 2 (independent oracle tooling).
 set -euo pipefail
 work="${1:?usage: check-groot-device.sh NEW_OUTPUT_DIRECTORY}"
 mkdir -p "$work"

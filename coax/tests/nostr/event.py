@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Explicit independent event tests. No runtime Python/signing dependency.
 
 Test signatures use only deterministic throwaway keys via the pinned public

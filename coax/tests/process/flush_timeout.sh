@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 out="$(mktemp -d "${TMPDIR:-/tmp}/coax-process-flush.XXXXXXXX")"

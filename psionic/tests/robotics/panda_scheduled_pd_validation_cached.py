@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Offline C/D cached comparison and scoring only; no SDK or plant collection."""
 from pathlib import Path
 import argparse,json,os,platform

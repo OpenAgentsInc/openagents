@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent layer-streamed CPU Transformers reference; tooling on CoderOS only.
 
 A float32 copy of all of Mammoth needs about 108 GB, more than this host can

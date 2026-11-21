@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: small-graph native/compiler and independent numeric tooling.
+# Firm reason: 2/5  small-graph native/compiler and independent numeric tooling.
 set -euo pipefail
 work="${1:?usage: check-function-native.sh NEW_BUILD [GENERATED_C_CACHE] [PRIOR_REFERENCE_RESULTS]}"
 cache="${2:-}"

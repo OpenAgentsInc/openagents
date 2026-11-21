@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Explicit bounded original qualification; routine gates replay retained arrays.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Stable byte-bound inputs/projection support for focused B2 checks."""
 import hashlib
 import os

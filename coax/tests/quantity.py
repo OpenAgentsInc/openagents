@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Focused R12 quantity syntax, checked semantics and native ABI fixtures."""
 from pathlib import Path
 import os,subprocess,tempfile,unittest

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent check of psionic/fixtures/models/pins against the other retained evidence.
 
 Tooling only: it reads committed files, never the network, and never runs

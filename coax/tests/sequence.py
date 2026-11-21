@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Qualify borrowed sequence operations and their actual native consumers.
 
 No server, GPU, browser or model inference runs. Consumer host-effect imports

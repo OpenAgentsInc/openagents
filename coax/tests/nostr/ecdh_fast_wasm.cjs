@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 const fs=require('node:fs'),{WASI}=require('node:wasi');
 (async()=>{const memory=new WebAssembly.Memory({initial:64,maximum:1024}),wasi=new WASI({version:'preview1',args:[],env:{}});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{env:{memory},wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);
  const x=instance.exports,base=Number(x.__heap_base.value)+1024,b=base+32,out=b+40,u=new Uint8Array(memory.buffer),data=fs.readFileSync(process.argv[3]);if(data.length%97)throw Error('fixture length');

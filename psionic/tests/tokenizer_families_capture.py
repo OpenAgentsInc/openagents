@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Opt-in oracle capture: installed tokenizers/Jinja, local pinned JSON DATA only.
 Usage: python tokenizer_families_capture.py SOURCE_DIR. Normal gate is offline stdlib.
 """

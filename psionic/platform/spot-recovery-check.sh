@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Source checks/mutation and native policy/effect adapter. No Google requests.
 set -euo pipefail
 recovery_here=$(cd "$(dirname "$0")" && pwd)

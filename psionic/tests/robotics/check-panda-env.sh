@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5 compiler wrapper; C/NumPy are independent reason2 oracles.
+# Firm reason: 5  compiler wrapper; C/NumPy are independent reason2 oracles.
 set -euo pipefail
 work="${1:?usage: check-panda-env.sh OUTPUT_DIRECTORY}";mkdir -p "$work"
 coax="${COAX:-coax/bin/coax}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: retrospectively check saved clocks with native Coax ps_time.
+"""Firm reason: 2  retrospectively check saved clocks with native Coax ps_time.
 
 No inference, renderer, controller or simulator is rerun. A trace satisfying
 this check is not relabeled as having executed the newly added guard live.

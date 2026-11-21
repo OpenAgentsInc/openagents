@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # New fixed Panda FK only; all SDK inputs are retained reference data.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

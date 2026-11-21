@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Fresh owned PcSample proof against authenticated, already captured SDK fields.
 
 No SDK, simulator, render, whole-policy inference or old numerical gate runs here.

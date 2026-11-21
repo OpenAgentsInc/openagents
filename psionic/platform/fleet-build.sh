@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter20 loopback HTTP-to-Pylon adapter, Coax protocol and policy.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

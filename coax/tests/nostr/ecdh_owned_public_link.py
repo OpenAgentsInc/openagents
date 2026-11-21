@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """C and C++ consumers load the actual published dylib after relocation."""
 import hashlib,json,pathlib,shutil,subprocess,sys,tempfile
 if len(sys.argv)!=3:raise SystemExit('usage: ecdh_owned_public_link.py CHECKED_DIR RELEASE_DIR')

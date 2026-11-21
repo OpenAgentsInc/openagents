@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Original GR00T selected state encoder: required Metal output vs independent reference.
 Tooling only. Reuses the independently authored original-BF16 reference, never
 Coax packed data or any CPU fallback result. Tolerances stay frozen there.

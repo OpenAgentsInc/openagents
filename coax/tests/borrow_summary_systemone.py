@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Offline native caller-buffer oracles for the unchanged System One adapter."""
 import hashlib
 import json

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """OFFLINE gate: cached scheduled-PD metric wrappers only; no plant/carry/SDK."""
 from pathlib import Path
 import argparse,json,os,platform

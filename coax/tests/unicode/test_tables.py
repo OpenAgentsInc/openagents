@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Pinned-source integrity and deterministic generation, not algorithm evidence."""
 if not __debug__:raise RuntimeError('tests require Python assertions')
 import importlib.util,shutil,tempfile,unittest

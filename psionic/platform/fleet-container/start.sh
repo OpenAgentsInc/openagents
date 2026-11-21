@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Cloud Run authenticates callers with IAM before this private listener.
 # The browser/API caller's credentials never enter the Nostr mesh.
 set -eu

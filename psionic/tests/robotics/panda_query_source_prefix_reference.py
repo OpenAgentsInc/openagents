@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW recomputed-controller prefix: exactly two250step SDK executions, no NN."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,re,struct,subprocess,sys,time

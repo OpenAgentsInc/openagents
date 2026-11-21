@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 250's capability matrix: generated, never hand-written. Book tooling.
 
 The matrix is rebuilt from the chapter registry (psionic/book/chapters.json),

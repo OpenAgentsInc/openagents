@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 work="${1:?usage: check-panda-fingers.sh NEW_OUTPUT_DIRECTORY}"

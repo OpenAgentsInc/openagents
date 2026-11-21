@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent gradients of the pinned nanochat GPT (pure Python, binary64).
 
 Chapter 127's reference. It shares no code with psionic/lib/nanochat/backward.coax:

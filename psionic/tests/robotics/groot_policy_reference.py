@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: join already-executed Coax stages and original GPU replay.
+"""Firm reason: 2  join already-executed Coax stages and original GPU replay.
 
 No learned model runs in this oracle. It checks actual file handoffs, all
 frozen component comparisons, and the original output adapter including exact

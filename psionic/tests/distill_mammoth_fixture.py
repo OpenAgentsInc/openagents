@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 141: turn the recorded CUDA corpus runs into a Coax fixture.
 
 Reads psionic/fixtures/distill-mammoth/corpus.tsv and the two recorded

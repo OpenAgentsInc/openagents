@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New continuation ABI guards only; old math is carried by source/C closure."""
 from __future__ import annotations
 import argparse,hashlib,importlib.util,json,os,platform,re,subprocess,sys,time

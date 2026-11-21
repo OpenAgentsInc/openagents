@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Explicit, expensive first qualification on original weights. Never a routine gate.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 128's independent reference values (pure Python, binary64).
 
 Tooling only; never shipped. It shares no code with

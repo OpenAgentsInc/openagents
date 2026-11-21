@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Fixed-base Coax correctness and build-budget evidence; test tooling only.
 
 The two real tables must be evaluated by the compiler using the explicit

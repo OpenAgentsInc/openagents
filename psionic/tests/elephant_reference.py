@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent CPU Transformers 5.3.0 reference; run only on CoderOS.
 
 The original checkpoint must have been authenticated beforehand. The additive mask implements the same two-block visibility as the pinned

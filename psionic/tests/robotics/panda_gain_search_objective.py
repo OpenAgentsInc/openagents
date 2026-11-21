@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent direct-array metric and deterministic policy audit on NEW cache.
 
 No plant, SDK, Coax invocation, old reference regeneration or old gate run.

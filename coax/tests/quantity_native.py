@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent quantity IEEE and transparent native-ABI qualification.
 
 This focused test does not run the unchanged quantity policy checks/mutations.

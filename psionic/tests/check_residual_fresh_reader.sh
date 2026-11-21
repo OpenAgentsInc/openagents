@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 # New public-API consumer only. No canonical learning or old model gates.
 reader_root=$(cd "$(dirname "$0")/../.." && pwd)

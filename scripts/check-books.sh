@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Owned book delivery entry point. Metadata is fast; qualify one bounded route
 # at a time with --route/--receipt, retaining unchanged evidence with --previous.
 set -euo pipefail

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: thin compiler wrapper; C/Python are independent reason2 oracles.
+# Firm reason: 5  thin compiler wrapper; C/Python are independent reason2 oracles.
 set -euo pipefail
 work="${1:?usage: check-groot-text.sh OUTPUT_DIRECTORY}";mkdir -p "$work"
 coax="${COAX:-coax/bin/coax}";cc="${COAX_CC:-${CC:-cc}}"

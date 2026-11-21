@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW inverse-force proof: exact SDK facts and independent matrix/Christoffel FD.
 No simulator or downloaded repository code is executed by this ordinary gate.
 """

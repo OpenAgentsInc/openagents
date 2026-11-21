@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Target metadata through the real compiler, with an independent C ABI oracle.
 Python is test tooling only; reflection/bootstrap/app compilation do not use it.
 """

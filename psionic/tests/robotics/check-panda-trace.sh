@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: native compiler wrapper; C/stdlib SHA oracle are reason2.
+# Firm reason: 5  native compiler wrapper; C/stdlib SHA oracle are reason2.
 set -euo pipefail
 work="${1:?usage: check-panda-trace.sh OUTPUT_DIRECTORY}";mkdir -p "$work"
 coax="${COAX:-coax/bin/coax}";compiler="${CC:-cc}";python="${PYTHON:-python3}"

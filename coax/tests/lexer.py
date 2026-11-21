@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Actual compiled Coax lexer: ABI/spans/recovery, independent decimal oracles,
 and native address/bounds fuzzing. Python is test tooling, never bootstrap."""
 import ctypes as C

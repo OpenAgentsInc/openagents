@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 81's independent references for Ministral-3-3B-Instruct-2512-BF16.
 
 Written from the published architecture (params.json, Mistral's reference

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Public event-verifier comparison; this is not NIP-98 request parity.
 
 Uses fixed, signed throwaway fixtures. Never reads a user key, changes the API,

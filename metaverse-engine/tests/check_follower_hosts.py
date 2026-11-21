@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Qualify the actual Garden/Villa clock adapters with identical supplied terrain.
 
 Uses production C units separately, as their real faces do. Python supplies

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 163's original-weight slices: an independent binary64 oracle in
 plain Python, written from the published NemotronH architecture, and the
 comparison with the Coax slices.

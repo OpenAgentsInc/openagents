@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason2/5: actual changed host header with synthetic effects only.
+# Firm reason: 2/5  actual changed host header with synthetic effects only.
 set -euo pipefail
 work="${1:?usage: check-panda-clock-host.sh NEW_DIRECTORY}"
 [[ ! -e "$work" ]] || { echo 'new output directory required' >&2;exit 2; };mkdir -p "$work/case"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # One public synthetic prompt; the native Coax client checks signature,
 # provider/model pins, correlation and completed final text before success.
 set -euo pipefail

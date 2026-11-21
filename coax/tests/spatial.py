@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Focused native-C spatial compiler frontend checks; no release sweep."""
 from pathlib import Path
 import os,re,subprocess,tempfile,unittest

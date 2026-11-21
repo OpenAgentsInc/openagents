@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """A host constructs a library's state with the compiler's coax_default_T.
 
 A `--library` unit defines, and its header declares, coax_default_T(T *p) for

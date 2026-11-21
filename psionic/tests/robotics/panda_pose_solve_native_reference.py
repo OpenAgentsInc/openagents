@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New whole-pose solve endpoint and external one-step replay qualification.
 
 Kind1 is NOT an instrumented internal solver trace. Expected data is cached

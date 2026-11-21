@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent reference for chapter 104 (NIP-KEYS): BIP-32 public
 derivation, tpub serialization, BIP-380 checksums, P2WSH sortedmulti
 addresses, the treasury's records and two PSBT v0s. Pure Python integers and

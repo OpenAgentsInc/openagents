@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW independent principal-rotation and one geometric pose-DLS reference.
 
 Full 4x4 matrix tangents, matrix-relative dominant-diagonal quaternion and

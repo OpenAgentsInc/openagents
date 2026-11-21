@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Descriptor -> Coax -> C11 -> native wire tests; optional pinned protoc oracle.
 Normal compiler tests require only Python's standard library and a C compiler.
 PROTOC=/path/to/protoc-29.3 python3 coax/tests/proto_import.py --oracle

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: original VLM/head MPS oracle for a genuine prepared observation.
+"""Firm reason: 2  original VLM/head MPS oracle for a genuine prepared observation.
 
 No NVIDIA checkout executes, no learned CPU fallback, no invented scene input.
 The caller supplies already-prepared pixels/IDs/state and explicit initial noise.

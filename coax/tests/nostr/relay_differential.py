@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The Coax relay against relay.openagents.com's recorded behaviour.
 
 coax/lib/nostr/fixtures/coax_relay.jsonl is what the production (Rust)

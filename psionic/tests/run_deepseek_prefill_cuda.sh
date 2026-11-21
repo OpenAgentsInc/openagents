@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Generated CUDA only; --compile-only needs NVRTC but no device/context.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

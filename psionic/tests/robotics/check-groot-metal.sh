@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Thin required-device original-weight harness; no CPU projection fallback.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

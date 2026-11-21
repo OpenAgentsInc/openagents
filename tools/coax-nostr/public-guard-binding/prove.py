@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Replay reviewed historical field queries; source correspondence is a separate premise."""
 import argparse
 import hashlib

@@ -1,3 +1,4 @@
+// Firm reason: 3 (runs protoc, the reference protobuf implementation we test against)
 // Independent protoc oracle. Test tooling only; no product protocol logic.
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';

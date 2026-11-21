@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent stdlib matrix-polynomial/data/SGD/rollout oracle.
+"""Firm reason: 2  independent stdlib matrix-polynomial/data/SGD/rollout oracle.
 
 No simulator/model imports, subprocess downloads, third-party code or runtime
 requirement. The teacher is evaluated as a fourth-order augmented matrix

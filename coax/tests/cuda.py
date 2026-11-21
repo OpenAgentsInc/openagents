@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """coax cuda: compute-subset admission, kernel entry layout, and (when NVRTC
 is installed) that the generated CUDA C compiles. No GPU is needed."""
 import ctypes as C

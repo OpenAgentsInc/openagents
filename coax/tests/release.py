@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Focused release/status generation and publication drift regressions."""
 from pathlib import Path
 import importlib.util,json,os,re,shlex,shutil,subprocess,tempfile,unittest

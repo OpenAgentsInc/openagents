@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Tooling-only B2 metadata/process cleanup checks; never invokes Coax or C."""
 import argparse
 import contextlib

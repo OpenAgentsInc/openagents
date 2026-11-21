@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 [[ $# == 2 && ( $2 == plain || $2 == sanitized ) ]] || { echo 'usage: text-probe-build.sh OUT plain|sanitized' >&2; exit 2; }

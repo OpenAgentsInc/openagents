@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Tooling only: instantiate the real C/Wasm units without a browser or audio.
 const fs = require("node:fs");
 (async () => {

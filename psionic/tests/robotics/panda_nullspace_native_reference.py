@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """New local posture projection proof; cached Gram/Gaussian oracle only.
 
 No applied candidate, old SDK/FK/pose/rotor gate, or cofactor target generator.

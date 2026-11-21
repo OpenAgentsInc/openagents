@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """coax metal-compute: the CUDA compute subset's admission spelled for Metal,
 the Metal-only refusals (f64 is float-float there), the kernel entry layout,
 and (on macOS with the Metal toolchain) that the generated Metal Shading

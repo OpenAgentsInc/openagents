@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Compatibility/migration/alpha conformance against newly compiled schemas."""
 import math
 from pathlib import Path

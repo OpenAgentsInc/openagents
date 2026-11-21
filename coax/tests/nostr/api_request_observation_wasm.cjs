@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Test-only observer execution. The input fields are not authorized evidence.
 const fs = require('node:fs'), {WASI} = require('node:wasi');
 (async () => {

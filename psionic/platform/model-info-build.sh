@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 [[ $# == 1 || ( $# == 2 && $2 == sanitized ) ]] || { echo 'usage: model-info-build.sh OUT [sanitized]' >&2; exit 2; }

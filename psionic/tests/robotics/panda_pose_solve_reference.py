@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW whole-pose reference: carried matrix/tangent step, new trajectories only.
 
 Freeze inputs before generating expected trajectories. Never invokes Coax, SDK,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build the Coax CNN consumer; C supplies file, clock and logging effects.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

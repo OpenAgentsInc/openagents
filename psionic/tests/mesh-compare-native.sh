@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Compile and run the actual private comparison consumer, without Python.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"

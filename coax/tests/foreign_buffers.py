@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Borrowed numeric views across #foreign (spec 7.1, r3-foreign-borrowed-buffers).
 
 A #foreign parameter may be a view of integers, floats or bool. It crosses

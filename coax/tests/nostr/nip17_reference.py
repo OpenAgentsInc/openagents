@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """An independent NIP-17 for nostr/examples/checks/private-messages.coax.
 
 Written from NIP-17 on top of nip59_reference.py (NIP-01, NIP-44 v2, NIP-59,

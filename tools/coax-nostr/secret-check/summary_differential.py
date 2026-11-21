@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 import json, pathlib, sys, tempfile
 root=pathlib.Path(sys.argv[1]); sys.path.insert(0,str(root/'tools/coax-nostr/secret-check'))
 from aggregate import AggregateAudit

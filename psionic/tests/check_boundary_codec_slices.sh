@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 193's original-weight slice of Ministral 3 3B, about a minute: the
 # pinned file's hashes, then the residual rows after layers 0 and 1 over the
 # chat-format prompt, framed by every codec of boundary-codec.coax and

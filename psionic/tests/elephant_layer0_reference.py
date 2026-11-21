@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Linux-only independent Transformers 5.3.0 layer-zero comparison.
 
 The inputs are a byte-for-byte extract from the authenticated checkpoint.

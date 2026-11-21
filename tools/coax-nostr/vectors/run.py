@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Optional native vector tooling; never an app/compiler build dependency."""
 from pathlib import Path
 import argparse

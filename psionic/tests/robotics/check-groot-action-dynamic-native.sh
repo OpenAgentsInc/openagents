@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reasons5(thin wrapper),2(independent metadata/native ABI oracle).
+# Firm reason: 5 (thin wrapper),2(independent metadata/native ABI oracle).
 set -euo pipefail
 work="${1:?usage: check-groot-action-dynamic-native.sh OUTPUT_DIRECTORY}"
 mkdir -p "$work"

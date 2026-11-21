@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Range-contained checked casts on the native target: the large profile v2
 admits a secret operand for exactly these, so their emitted code must not
 branch on the value. Checked and release C, compiled at -O2 by the host cc:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build pulse.coax as a C library and header, link it into host.c, and run.
 set -euo pipefail
 cd "$(dirname "$0")"

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 87's draft-head inventory: the tensor names, dtypes and shapes of
 Mistral Large 4's embedded draft head (`mtp_dspark.*`), written as a Coax
 fixture, from one safetensors header alone.

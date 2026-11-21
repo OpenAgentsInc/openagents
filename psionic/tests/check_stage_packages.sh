@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 187's original-weight check of stage packages on Ministral 3 3B,
 # about five minutes: the pinned file's hashes; both stages of the 14 + 12
 # split built, written out and verified; chapter 186's two-layer slice run

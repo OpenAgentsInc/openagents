@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Explicit test-only derivation. Never part of the compiler/app build.
 
 Keeps upstream CSV bytes untouched and includes no test secret keys.

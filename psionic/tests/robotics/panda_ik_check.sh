@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Offline fixed-source position IK only; never run SDK, NN, rendering or steps.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # New unconstrained query corpus only. No SDK, simulator or earlier gate runs.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

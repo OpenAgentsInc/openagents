@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Chapter 149's checkpoint inventory: the tensor names, dtypes and shapes of
 the three pinned MotionBricks SOMA checkpoints, and the pose tokenizer's
 codebook, written as Coax fixtures.

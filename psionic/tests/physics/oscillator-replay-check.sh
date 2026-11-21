@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason5: native build wrapper; C/Python evidence is independent reason2 tooling.
+# Firm reason: 5  native build wrapper; C/Python evidence is independent reason2 tooling.
 set -euo pipefail
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) ;;

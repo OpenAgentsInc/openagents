@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned protocol oracle; no upstream code and no model execution."""
 import json
 from pathlib import Path

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent existing OpenCV/NumPy preprocessing oracle.
+"""Firm reason: 2  independent existing OpenCV/NumPy preprocessing oracle.
 
 Synthetic images qualify image arithmetic; no learned/robotic outcome is implied.
 NVIDIA and OpenCV source was read only; no repository scripts are executed.

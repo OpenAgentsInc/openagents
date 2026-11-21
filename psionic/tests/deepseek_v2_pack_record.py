@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Author compact lossless evidence once after both original comparisons pass."""
 import argparse
 import gzip

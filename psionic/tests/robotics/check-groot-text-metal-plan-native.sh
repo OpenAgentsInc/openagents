@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Thin native ABI/original-header metadata gate, no GPU or CPU model replay.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

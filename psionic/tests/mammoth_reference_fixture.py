@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Use the captured independent CPU reference for the original Mammoth sample request.
 
 Mammoth and Elephant pin the same tokenizer.json, so the typed sample renders to

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 [[ $# == 1 || ( $# == 2 && $2 == sanitized ) ]] || { echo 'usage: backend-watch-build.sh OUT [sanitized]' >&2;exit 2; }

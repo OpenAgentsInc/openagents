@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent check of chapter 143's original-weight vision slices.
 
     python3 -I psionic/tests/see_slices.py CONFIG.json SAFETENSORS OUT.f32

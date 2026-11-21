@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Fixture-only native LQR qualification. Explicit learning is a separate tool."""
 from __future__ import annotations
 import argparse,hashlib,importlib.util,json,math,os,platform,re,struct,subprocess,sys,time

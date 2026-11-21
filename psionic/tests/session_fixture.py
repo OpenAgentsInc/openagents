@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Generate an owned four-layer BF16 Safetensors fixture for session admission."""
 import hashlib,json,math,struct,sys
 from pathlib import Path

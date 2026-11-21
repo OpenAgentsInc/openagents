@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Build and run the System One smoke against Baseten. The key comes from
 # BASETEN_API_KEY, or from ~/work/.secrets/baseten.env when that is unset;
 # it is never printed. Two small requests spend credit; the refusals don't.

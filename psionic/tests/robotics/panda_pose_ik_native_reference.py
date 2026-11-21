@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """NEW principal-rotation/one-pose-step native qualification, no SDK calls.
 
 The independent oracle is prepared separately. This consumer never rebuilds

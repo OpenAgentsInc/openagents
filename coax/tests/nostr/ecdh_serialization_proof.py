@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Source-pinned bit and index lemmas; source correspondence is a review premise."""
 import argparse,hashlib,importlib.util,json
 from pathlib import Path

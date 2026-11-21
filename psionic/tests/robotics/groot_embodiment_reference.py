@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent development NumPy oracle, never a runtime dependency.
+"""Firm reason: 2  independent development NumPy oracle, never a runtime dependency.
 
 Read original selected statistics; do not import or execute NVIDIA code. Explicit
 array dtypes reproduce the source NumPy1.26 rounding under newer NumPy as well.

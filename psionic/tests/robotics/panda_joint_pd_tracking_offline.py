@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Reproducible OFFLINE tracking gate against the committed one-shot capture.
 
 This additive adapter emits current Coax, invokes only the SDK-free own/shadow

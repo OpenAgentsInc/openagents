@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """The event sequence of chapter 102, Agents on Nostr, computed independently.
 
 Written from NIP-01, NIP-OA, NIP-42, NIP-44 v2, BIP-340, NIP-CJ and NIP-RUN

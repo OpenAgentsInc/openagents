@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Independent actual-so_post native caller-buffer checks; maintenance tooling."""
 import argparse
 import hashlib

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 221's independent check, with onnx 1.17.0 and numpy.
 
 With no arguments, builds the writer's test network with onnx's own helpers

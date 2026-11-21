@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Firm reason2: independent frozen-budget resident-frame numerical audit.
+"""Firm reason: 2  independent frozen-budget resident-frame numerical audit.
 
 No model executes. Preserve global hidden diagnostics separately from public
 endpoints and the original same-input conditional head proof.

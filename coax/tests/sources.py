@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Multi-file compilation through the real driver, plus a native policy oracle."""
 from pathlib import Path
 import json

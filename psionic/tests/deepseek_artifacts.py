@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: generates/verifies fixtures, vectors, or formal proofs outside Coax)
 """Pin original DATA and pack its byte-BPE tables. Never imports model code."""
 import argparse,gzip,hashlib,json,struct,sys
 from pathlib import Path

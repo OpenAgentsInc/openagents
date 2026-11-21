@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Tooling only: a real NumPy DLPack producer/consumer and independent weights reader.
 No installed safetensors or training framework is required by Psionic at runtime.
 """

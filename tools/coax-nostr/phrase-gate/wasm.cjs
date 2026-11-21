@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Actual emitted Wasm, scalar ABI/buffer observations and public test entropy.
 const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const binary=fs.readFileSync(process.argv[2]),moduleObject=new WebAssembly.Module(binary),imports={};

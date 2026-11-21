@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Actual C11 libraries, scalar math, sequencing and Metal admission gates."""
 import ctypes
 import os

@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Test-only Wasm runner for coax/tests/nostr/schnorr_sign.py: runs the
 // signing driver as a WASI command, stdin and stdout passed through.
 const fs=require('node:fs'),{WASI}=require('node:wasi');

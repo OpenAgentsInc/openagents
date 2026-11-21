@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # New44 joint-PD queries only; no SDK/renderer/NN/step or old qualification.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

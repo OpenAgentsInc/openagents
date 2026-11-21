@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """Crash recovery of the Coax relay's --store file (#966b), under ASan+UBSan.
 
 Builds coax/relay with --sanitize and runs rounds over one --store file.

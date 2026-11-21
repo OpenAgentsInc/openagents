@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper; holds no logic)
 # Chapter 186's original-weight slice of Ministral 3 3B, about a minute:
 # the pinned file's hashes, then layers 0 and 1 and the full readout over
 # the chat-format prompt, whole and split into two stages, compared bit for

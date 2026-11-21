@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent compiler, ABI, diagnostic and native/Wasm-effect oracles; no product implementation)
 """New 0.45 integration seam: named capacities with concrete spatial elements."""
 from pathlib import Path
 import os

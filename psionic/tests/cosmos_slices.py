@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 166's tooling: the Cosmos3-Edge manifest and its real-weight slices.
 
 Reads safetensors headers only (never unpickles, never runs model code), and
