@@ -77,16 +77,29 @@ Psionic beats `llama.cpp` on **every single turn** — first tool call, second t
 
 \* *Memory accounting note:* `psionic-inkling-serve` maps the 16.4 GB GGUF read-only via `mmap` and wraps it directly in Metal with `newBufferWithBytesNoCopy` (`psionic/platform/metal-host.m`). macOS accounts file-backed pages in the unified page cache / GPU wired pool rather than private process RSS, so `ps -o rss=` reflects KV cache, batched prefill scratch buffers, and the reusable 176 MB BF16 staging buffer (~2.1 GiB at `B=1024`, ~5.0 GiB at `B=3072`). Both runtimes read from the same 16.4 GB checkpoint in unified memory.
 
-### C. Real Tier 2 Coding-Agent Evals (`evals/openagents-desktop/tier2/`)
+### C. 10-Task Real Multi-Language Coding Benchmark (`evals/openagents-desktop/tier2/` & `tier4/`)
 
-To verify end-to-end coding-agent correctness — not just speed — we ran all three single-turn coding tasks from `evals/openagents-desktop/tier2/tasks/` (`a1_fix_mean_off_by_one`, `a2_fix_slugify`, `a3_add_restock`) against both **Psionic Metal (`aec4315194`)** and **`llama.cpp` Metal (`29b52d3`, `--jinja`)** with real `Read`, `Write`, and `Bash` tool execution, prompt caching enabled on both backends, and the exact Tier 2 deterministic graders (restoring `test_*.py`, running `python3 -m unittest -q`, hidden edge-case assertions, and checking `test_*.py` unchanged). Both runs executed back-to-back under shared M5 Max GPU load:
+To verify end-to-end coding-agent correctness and real-workload speed — not just synthetic prompts — we ran **10 real, deterministically graded coding tasks** spanning Python, C, JavaScript, Bash, and multi-file refactoring (`a1_fix_mean_off_by_one`, `a2_fix_slugify`, `a3_add_restock`, `k01_csv_to_json`, `k04_lru_cache`, `k05_rename_function`, `k08_roman_numerals`, `k11_bash_quoting`, `k14_c_reverse`, `k17_js_group_by`) head-to-head on **Psionic Metal (`e89f8b6e11`)** vs **`llama.cpp` Metal (`29b52d3`, `--jinja`)**. Both servers ran back-to-back on Apple M5 Max over the **exact same native OpenAI `tools` + `delta.tool_calls` + `role: "tool"` + prompt-caching protocol** (`temperature=0`), graded by each task's full public + hidden test suite:
 
-| Tier 2 Eval Task | Deterministic Graders | Psionic Metal (`aec4315194`) | `llama.cpp` Metal (`29b52d3`) | Result |
+| Real Coding Eval Task | Lang / Type | Psionic Metal (`e89f8b6e11`) | `llama.cpp` Metal (`29b52d3`) | Delta |
 | --- | --- | --- | --- | --- |
-| **`a1_fix_mean_off_by_one`** (`calc.py`) | `unittest` + `test_*.py` unchanged | **PASS** · **24.94 s** (3 turns, 278 tok; 30.48 s in earlier pass) | PASS · 30.74 s (3 turns, 312 tok) | **Psionic 1.23× faster (-5.80 s)** |
-| **`a2_fix_slugify`** (`textutil.py`) | `unittest` + hidden `A  B--C?` case | **PASS** · **32.24 s** (3 turns, 386 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
-| **`a3_add_restock`** (`inventory.py`) | `unittest` + hidden `ValueError(-2)` | **PASS** · **29.09 s** (3 turns, 329 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
-| **Psionic Tier 2 Coding Suite** | **All public + hidden tests** | **3/3 PASS** (3 turns each, 993 tok) | **1/1 completed paired (`a1`: PASS)** | **Psionic faster & 3/3 PASS** |
+| **`a1_fix_mean_off_by_one`** | Python (`calc.py`) | **PASS** · **14.29 s** · 3t · 387 tok | PASS · 14.90 s · 4t · 461 tok | **Psionic faster (-0.61 s)** |
+| **`a2_fix_slugify`** | Python + hidden test | **PASS** · **14.28 s** · 3t · 394 tok | PASS · 17.25 s · 3t · 553 tok | **Psionic 1.21× faster (-2.97 s)** |
+| **`a3_add_restock`** | Python + hidden test | **PASS** · 13.90 s · 3t · 375 tok | **PASS · 12.51 s** · 3t · 363 tok | `llama.cpp` -1.39 s |
+| **`k01_csv_to_json`** | Python CLI | **PASS** · 11.68 s · 4t · 313 tok | **PASS · 11.18 s** · 3t · 340 tok | `llama.cpp` -0.50 s |
+| **`k04_lru_cache`** | Python data structure | **PASS** · 17.30 s · 3t · 490 tok | **PASS · 16.81 s** · 3t · 502 tok | `llama.cpp` -0.49 s |
+| **`k05_rename_function`** | 6-turn multi-file refactor | **PASS** · 21.63 s · 6t · 587 tok | **PASS · 21.60 s** · 6t · 663 tok | **Tie (+0.03 s)** |
+| **`k08_roman_numerals`** | Python algorithm | **PASS** · 23.41 s · 3t · 682 tok | **PASS · 20.95 s** · 3t · 666 tok | `llama.cpp` -2.46 s |
+| **`k11_bash_quoting`** | Bash script | **PASS** · 18.20 s · 3t · 518 tok | **PASS · 14.42 s** · 3t · 455 tok | `llama.cpp` -3.78 s |
+| **`k14_c_reverse`** | C + `Makefile` | **PASS** · 19.07 s · 3t · 496 tok | **PASS · 14.68 s** · 3t · 439 tok | `llama.cpp` -4.39 s |
+| **`k17_js_group_by`** | JavaScript | **PASS** · 16.48 s · 3t · 436 tok | **PASS · 15.55 s** · 3t · 496 tok | `llama.cpp` -0.93 s |
+| **Total (10 real coding evals)** | **Python, C, JS, Bash** | **10/10 PASS · 170.24 s** (median 16.89 s, 4,678 tok, **5.4 GiB RSS**) | **10/10 PASS · 159.85 s** (median 15.23 s, 4,938 tok, 23.9 GiB RSS) | **10/10 parity · 4.5× lower RSS · `llama.cpp` -10.39 s (-6.1%)** |
+
+**What this real-workload benchmark revealed:**
+- **10/10 PASS on both runtimes** across Python, C (`make test`), JavaScript, Bash, hidden tests, and 6-turn multi-file refactoring — proving our native Coax → Metal 4 runtime + native OpenAI `tools`/`tool_calls` server has full coding-agent parity with `llama.cpp`.
+- **4.5× lower process RSS:** **5.4 GiB** (`5,492 MiB`) vs **23.9 GiB** (`24,472 MiB`).
+- **Sprint 25 (`e89f8b6e11`) cut 30.2 seconds** off the 10-task total (`200.4 s → 170.24 s`) by keeping `K_MOE_MM_BF16_16` up to `nb < 384`.
+- **Where the remaining 10.39 s gap lives:** Virtually 100% of the 10.39 s delta is in **small-to-medium cached-turn prefill (`50–250` new tokens)** — Psionic averaged ~`1.05 s/turn` across 34 turns (`35.7 s` total TTFT) vs `llama.cpp`'s ~`0.75 s/turn` (`25.5 s` total TTFT), a `10.2 s` gap caused by dequantizing all active experts to BF16 (`w_bf16`) on `49..250`-token chunks. Closing that `50–250`-token MoE prefill gap is the #1 next optimization target.
 
 ---
 
@@ -133,11 +146,13 @@ The initial native Metal runtime worked end-to-end and wired Inkling 2 Mini into
 - **Fix:** Raised the dynamic prefill chunk ceiling to `3072` for `max_ctx <= 8192` (`2048` up to `16384`, `1024` above) in `kernels.coax`, `inkling-metal.c`, and `inkling-serve.c` (`ac561624d4`), and sized SWA KV ring buffers to `min(max_ctx, hp->swa + s->prefill_b)` (`5e6b109baf`) so `K_KV_STORE_BATCH` never overwrites earlier keys in `[k_start, pos + nb)` before MMA prefill attention reads them.
 - **Impact:** Turn 3 prefill (2,296 tokens) jumped to **677–792 tok/s** (2.898–3.391 s vs `llama.cpp`'s 3.515–3.898 s / 589–653 tok/s), and the 3-turn agent session flipped to **30.67 s vs 44.16 s** to natural EOS (and **29.75 s vs 33.89 s**, **4.14 s faster** at matched token counts) with identical prompt token counts and identical tool calls.
 
-### Sprints 23–24 — `fca065f321`, `335225b5c4` & `aec4315194` (*Exact KV + Shortconv Prefix Caching, 96-Barrier Q8 Overlap & Fused Post-MoE Shortconv*)
+### Sprints 23–25 — `fca065f321`, `335225b5c4`, `aec4315194`, `ecf7d63b65` & `e89f8b6e11` (*Prefix Caching, Post-MoE Fusion, Native OpenAI Tools & `tm=16` Up to `nb<384`*)
 - **Exact cross-request KV + shortconv prefix caching (`fca065f321`):** Added `ink_prefix_save` / `ink_prefix_restore` in `inkling-metal.c` (snapshotting the 3.8 MB recurrent shortconv state + logits with an SWA ring-buffer wrap-safety check) and `cache_prompt` in `inkling-serve.c`. Verified **bit-for-bit exact** on both `reasoning_content` and `content`, cutting cached Turn 2 prefill **7.6×–9.1×** (`345 ms` vs `3,141 ms`).
 - **96-barrier dense Q8 BF16 dequant overlap (`fca065f321`):** Overlapped `Q/K/V/R/Gate` Q8→BF16 dequantization with `K_RMSNORM` (-48 barriers) and `attn_output` Q8→BF16 dequantization with `K_ATTN_VALUES_MMA` (-48 barriers).
 - **Fused post-MoE shortconv + residual (`335225b5c4`):** Fused `K_CONVOLVE_ADD` directly into `ink_moe_down_iq4`/`q8` (-48 dispatches & barriers/token on decode) and `K_CONVOLVE_ADD_BATCH` into `ink_moe_reduce_batch` (-48 dispatches, -48 barriers, and ~2.0 GB of `moe_out` traffic on 2.3K prefill).
 - **Reverted indirect MoE dispatch (`aec4315194`):** `dispatchThreadgroupsWithIndirectBuffer` stalled Metal's concurrent command encoder on Apple Silicon (~350 ms regression on short prompts); reverted to direct `CALL`.
+- **Native OpenAI `tools`, structured `tool_calls` & `role: "tool"` (`ecf7d63b65`):** Added full Inkling `tool_declare` / `<|content_invoke_tool_json|>` support in `psionic-inkling-serve` for drop-in OpenAI tool-calling compatibility.
+- **Keep `K_MOE_MM_BF16_16` up to `nb < 384` (`e89f8b6e11`):** Avoided 3–10× `tm=64` expert padding on 100–350 token cached coding turns, cutting 109-tok TTFT `554.7 → 453.5 ms` (-18.2%), 201-tok `666.1 → 570.2 ms` (-14.4%), 337-tok `800.4 → 701.8 ms` (-12.3%), and cutting 10-task real coding wall time from `200.4 s → 170.24 s` (-30.2 s).
 
 ---
 
