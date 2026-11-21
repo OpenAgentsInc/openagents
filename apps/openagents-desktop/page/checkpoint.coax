@@ -1,0 +1,296 @@
+// Coder Desktop page (../page.coax): per-turn Git checkpoints, per-turn diff inspection in
+// the Changes pane, and one-click rewind of both conversation history and working tree
+// (GitHub #13872). Pure ref naming, validation, and diff-range logic live in
+// coax/lib/agent/desktop/checkpoint.coax.
+
+CP_ASK_CHECKPOINT :: 53;        // host action (coder_page_action)
+
+// Sub-ops read via coder_page_ckpt_op.
+CP_CKPT_OP_NONE :: 0;
+CP_CKPT_OP_DIFF :: 1;           // open per-turn checkpoint diff in Changes pane
+CP_CKPT_OP_REWIND :: 2;         // rewind working tree & chat history to target_turn
+CP_CKPT_OP_CLEAR_DIFF :: 3;     // clear checkpoint diff filter in Changes pane
+
+// Row dispatch action codes (clear of CP_GIT_* 130..139).
+CP_CKPT_DIFF :: 140;
+CP_CKPT_REWIND :: 141;
+CP_CKPT_DIFF_ALL :: 142;
+
+CpCheckpoints :: struct {
+  has_base: bool;
+  recorded: [CP_TURNS] bool;    // true when turn i has a git checkpoint ref
+  op: int;                      // pending CP_CKPT_OP_*
+  target_turn: int;             // turn index for pending op (-1: none)
+  diff_turn: int;               // turn currently shown in Changes pane (-1: all-chat edits)
+  diff: [] u8;                  // unified diff bytes for diff_turn (owned by host buffer)
+  diff_n: int;
+  diff_label: [128] u8; diff_label_n: int;
+}
+
+cp_ckpt_init :: (s: [] CoderPage) {
+  c := s[0].ckpt[..];
+  c[0] = CpCheckpoints.{};
+  c[0].target_turn = -1;
+  c[0].diff_turn = -1;
+}
+
+cp_ckpt_reset :: (s: [] CoderPage) {
+  cp_ckpt_init(s);
+}
+
+cp_ckpt_has :: (s: [] CoderPage, turn: int) -> bool {
+  if turn < 0 || turn >= CP_TURNS || turn >= s[0].nturns { return false; }
+  return s[0].ckpt[0].recorded[turn];
+}
+
+cp_ckpt_can_rewind :: (s: [] CoderPage, turn: int) -> bool {
+  return dc_ckpt_can_rewind(turn, s[0].nturns, cp_running(s), cp_ckpt_has(s, turn));
+}
+
+cp_ckpt_mark :: (s: [] CoderPage, turn: int, present: bool) {
+  if turn < 0 || turn >= CP_TURNS { return; }
+  s[0].ckpt[0].recorded[turn] = present;
+}
+
+cp_ckpt_sync :: (s: [] CoderPage, chat: string, refs_list: string) -> int {
+  c := s[0].ckpt[..];
+  c[0].has_base = false;
+  for i: 0..<CP_TURNS { c[0].recorded[i] = false; }
+  turns: [CP_TURNS] int;
+  hb := [1] bool.[false];
+  n := dc_ckpt_parse_refs_list(refs_list, chat, turns[..], hb[..]);
+  c[0].has_base = hb[0];
+  for i: 0..<n {
+    t := turns[i];
+    if t >= 0 && t < CP_TURNS { c[0].recorded[t] = true; }
+  }
+  return n;
+}
+
+cp_ckpt_diff_set :: (s: [] CoderPage, turn: int, bytes: [] u8, label: string) -> bool {
+  if turn < 0 || turn >= s[0].nturns { return false; }
+  c := s[0].ckpt[..];
+  c[0].diff_turn = turn;
+  c[0].diff = bytes;
+  c[0].diff_n = bytes.count;
+  c[0].diff_label_n = cp_out(c[0].diff_label[..], label);
+  s[0].review = true;
+  s[0].pane_tab = CP_TAB_CHANGES;
+  s[0].review_scroll = 0;
+  return true;
+}
+
+cp_ckpt_diff_clear :: (s: [] CoderPage) {
+  c := s[0].ckpt[..];
+  c[0].diff_turn = -1;
+  c[0].diff_n = 0;
+  c[0].diff_label_n = 0;
+  s[0].review_scroll = 0;
+}
+
+// Truncates conversation state on the page to `turn` (keeping turns 0..turn inclusive),
+// clears checkpoint markers for dropped turns, and marks the page dirty for persistence.
+cp_ckpt_rewind_to :: (s: [] CoderPage, turn: int) -> bool {
+  if cp_running(s) || turn < 0 || turn >= s[0].nturns { return false; }
+  s[0].nturns = turn + 1;
+  c := s[0].ckpt[..];
+  for k: turn + 1..<CP_TURNS { c[0].recorded[k] = false; }
+  if c[0].diff_turn > turn { cp_ckpt_diff_clear(s); }
+  if s[0].pane_open && s[0].pane_turn > turn { s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; }
+  if s[0].copied_turn > turn { s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; }
+  s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
+  cp_docs_reset(s);
+  s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s);
+  s[0].kept_turns = -1;   // forces coder_page_save_due to persist truncated transcript
+  return true;
+}
+
+// ---------------------------------------------------------------- input dispatch
+
+cp_ckpt_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  if act == CP_CKPT_DIFF_ALL {
+    cp_ckpt_diff_clear(s);
+    s[0].ckpt[0].op = CP_CKPT_OP_CLEAR_DIFF;
+    s[0].ckpt[0].target_turn = -1;
+    return true;
+  }
+  if act == CP_CKPT_DIFF {
+    turn := cp_number(id, "t");
+    if !cp_ckpt_has(s, turn) { return false; }
+    s[0].ckpt[0].op = CP_CKPT_OP_DIFF;
+    s[0].ckpt[0].target_turn = turn;
+    s[0].ask = CP_ASK_CHECKPOINT;
+    return true;
+  }
+  if act == CP_CKPT_REWIND {
+    turn := ifx id == "coder.review.ckpt.rewind" then s[0].ckpt[0].diff_turn else cp_number(id, "t");
+    if !cp_ckpt_can_rewind(s, turn) { return false; }
+    s[0].ckpt[0].op = CP_CKPT_OP_REWIND;
+    s[0].ckpt[0].target_turn = turn;
+    s[0].ask = CP_ASK_CHECKPOINT;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- UI rendering
+
+// Total width reserved on the right of a turn's footer lane for checkpoint actions (0 when none).
+cp_ckpt_turn_actions_w :: (s: [] CoderPage, f: [] UiFrame, turn: int) -> f32 {
+  if !cp_ckpt_has(s, turn) { return 0.0f32; }
+  gap := f[0].skin.app.gap_small;
+  w := cp_foot_chip_width(f, -1, "Turn diff", false);
+  if cp_ckpt_can_rewind(s, turn) {
+    w += gap + cp_foot_chip_width(f, -1, "Revert to this turn", false);
+  }
+  return w;
+}
+
+// Draws compact "Turn diff" and "Revert to this turn" chips right-aligned at `right` in the turn lane.
+cp_ckpt_turn_actions :: (s: [] CoderPage, f: [] UiFrame, turn: int, right: f32, y: f32) -> f32 {
+  if !cp_ckpt_has(s, turn) { return 0.0f32; }
+  k := f[0].skin; c := k.cmp; gap := k.app.gap_small;
+  u: f32 = ARCADE_PHONE_SCALE;
+  cy := y + (cp_copy_lane_h() - c.chip_h) / 2 + 2.0f32 / u;
+  ib: [EL_ID] u8;
+  rx := right;
+  if cp_ckpt_can_rewind(s, turn) {
+    rw := cp_foot_chip_width(f, -1, "Revert to this turn", false);
+    rx -= rw;
+    _ := cp_foot_chip(f, cp_id(ib[..], turn, ".ckr"), "Revert working tree and chat to this turn", rx, cy, rw, -1, "Revert to this turn", false, 0, CP_CKPT_REWIND);
+    rx -= gap;
+  }
+  dw := cp_foot_chip_width(f, -1, "Turn diff", false);
+  rx -= dw;
+  st := ifx s[0].review && s[0].ckpt[0].diff_turn == turn then EL_S_CURRENT else 0;
+  _ := cp_foot_chip(f, cp_id(ib[..], turn, ".ckd"), "Inspect diff for this turn", rx, cy, dw, -1, "Turn diff", false, st, CP_CKPT_DIFF);
+  return right - rx;
+}
+
+// Renders the per-turn checkpoint diff inside the Changes/Review pane when `ckpt.diff_turn >= 0`.
+cp_ckpt_review_body :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, cw: f32, stop: f32, h: f32) -> f32 {
+  k := f[0].skin; a := k.app; d := app_diff_look(k); c := k.cmp;
+  ck := s[0].ckpt[..];
+  y := y0 + a.gap_small;
+  // Header bar: checkpoint label on the left, "All edits" and optional "Revert to this turn" on the right.
+  lb: [128] u8;
+  label := ifx ck[0].diff_label_n > 0 then cast(string) ck[0].diff_label[0..<ck[0].diff_label_n] else "Turn checkpoint diff";
+  if ck[0].diff_label_n == 0 && ck[0].diff_turn >= 0 {
+    ln := el_put(lb[..], 0, "Turn "); ln = el_put_i(lb[..], ln, ck[0].diff_turn + 1); ln = el_put(lb[..], ln, " checkpoint diff");
+    label = sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
+  }
+  w_all := cp_foot_chip_width(f, -1, "All edits", false);
+  can_rw := cp_ckpt_can_rewind(s, ck[0].diff_turn);
+  w_rw := ifx can_rw then cp_foot_chip_width(f, -1, "Revert to this turn", false) else 0.0f32;
+  btns_w := w_all + (ifx can_rw then a.gap_small + w_rw else 0.0f32);
+  lbl_w := cw - btns_w - a.gap_small;
+  if lbl_w > 40 {
+    _ := app_meta(f, "coder.review.ckpt.title", x, y + (c.chip_h - k.small.line) / 2, lbl_w, label, false);
+  }
+  bx := x + cw - w_all;
+  _ := cp_foot_chip(f, "coder.review.ckpt.all", "Show all chat edits", bx, y, w_all, -1, "All edits", false, 0, CP_CKPT_DIFF_ALL);
+  if can_rw {
+    bx -= a.gap_small + w_rw;
+    _ := cp_foot_chip(f, "coder.review.ckpt.rewind", "Revert working tree and chat to this turn", bx, y, w_rw, -1, "Revert to this turn", false, 0, CP_CKPT_REWIND);
+  }
+  y += c.chip_h + a.gap;
+
+  diff_text := ifx ck[0].diff_n > 0 && ck[0].diff_n <= ck[0].diff.count then cast(string) ck[0].diff[0..<ck[0].diff_n] else "";
+  files: [APP_DIFF_FILES] AppDiffFile;
+  nf := ifx diff_text.count > 0 then app_diff_files(diff_text, files[..], "") else 0;
+  if nf == 0 {
+    y += app_meta(f, "coder.review.ckpt.empty", x, y, cw, "No file changes recorded in this turn.", false) + 2 * a.gap;
+    return y - y0;
+  }
+  added := 0; removed := 0;
+  for i: 0..<nf { added += files[i].added; removed += files[i].removed; }
+  y += app_diff_head(f, "coder.review.head", x, y, cw, nf, added, removed);
+  fb: [EL_ID] u8; eb: [EL_ID] u8;
+  for i: 0..<nf {
+    fid := app_diff_file_id(fb[..], "coder.review", i);
+    open := app_diff_is_open(f, fid, true);
+    y += app_diff_file_row(f, fid, x, y, cw, files[i], open, CP_REVIEW_FILE);
+    if !open { continue; }
+    n := el_put(eb[..], 0, fid); n = el_put(eb[..], n, ".ck");
+    y += app_diff_hunks(f, cast(string) eb[0..<n], x, y, cw, files[i].body, stop, h) + d.gap;
+  }
+  y += a.gap;
+  return y - y0;
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_ckpt_set_base :: (s: [] CoderPage, present: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].ckpt[0].has_base = present;
+}
+
+coder_page_ckpt_mark :: (s: [] CoderPage, turn: int, present: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_ckpt_mark(s, turn, present);
+}
+
+coder_page_ckpt_sync :: (s: [] CoderPage, chat: string, refs_list: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_ckpt_sync(s, chat, refs_list);
+}
+
+coder_page_ckpt_has :: (s: [] CoderPage, turn: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_ckpt_has(s, turn);
+}
+
+coder_page_ckpt_diff_set :: (s: [] CoderPage, turn: int, bytes: [] u8, label: string) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_ckpt_diff_set(s, turn, bytes, label);
+}
+
+coder_page_ckpt_diff_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_ckpt_diff_clear(s);
+}
+
+coder_page_ckpt_rewind_to :: (s: [] CoderPage, turn: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_ckpt_rewind_to(s, turn);
+}
+
+coder_page_ckpt_op :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_CKPT_OP_NONE; }
+  op := s[0].ckpt[0].op;
+  s[0].ckpt[0].op = CP_CKPT_OP_NONE;
+  return op;
+}
+
+coder_page_ckpt_target :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].ckpt[0].target_turn else -1;
+}
+
+coder_page_ckpt_nturns :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].nturns else 0;
+}
+
+coder_page_ckpt_ref :: (chat: string, turn: int, out: [] u8) -> int #export_c #effects(all) {
+  return dc_ckpt_ref_name(chat, turn, out).count;
+}
+
+coder_page_ckpt_base_ref :: (chat: string, out: [] u8) -> int #export_c #effects(all) {
+  return dc_ckpt_base_ref_name(chat, out).count;
+}
+
+coder_page_ckpt_prefix :: (chat: string, out: [] u8) -> int #export_c #effects(all) {
+  return dc_ckpt_chat_prefix(chat, out).count;
+}
+
+coder_page_ckpt_diff_from :: (s: [] CoderPage, chat: string, turn: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  has_prev := turn > 0 && cp_ckpt_has(s, turn - 1);
+  to_b: [DC_CKPT_REF_MAX] u8;
+  if !dc_ckpt_diff_range(chat, turn, s[0].ckpt[0].has_base, has_prev, out, to_b[..]) { return 0; }
+  // Measure written length in out: dc_ckpt_diff_range uses dc_copy/dc_fits without NUL.
+  if turn > 0 && has_prev { return dc_ckpt_ref_name(chat, turn - 1, out).count; }
+  if s[0].ckpt[0].has_base { return dc_ckpt_base_ref_name(chat, out).count; }
+  return dc_fits(out, dc_copy(out, DC_CKPT_EMPTY_TREE)).count;
+}
+
+coder_page_ckpt_needs_confirm :: (dirty_files: int, turns_dropped: int) -> bool #export_c #effects(all) {
+  return dc_ckpt_needs_confirm(dirty_files, turns_dropped);
+}

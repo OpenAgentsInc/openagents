@@ -411,4 +411,20 @@ int cd_review_comment_edit(void *page, int id, const char *body);
 int cd_review_comment_delete(void *page, int id);
 int cd_review_comments_submit(void *page);
 int cd_review_comments_count(void *page);
+// Per-turn Git checkpoints (page/checkpoint.coax, GitHub #13872). cd_action 53 asks; cd_ckpt_op says which op.
+void cd_ckpt_set_base(void *page, int present);
+void cd_ckpt_mark(void *page, int turn, int present);
+int cd_ckpt_sync(void *page, const char *chat, const char *refs_list);
+int cd_ckpt_has(void *page, int turn);
+int cd_ckpt_diff_set(void *page, int turn, const char *bytes, int len, const char *label);
+void cd_ckpt_diff_clear(void *page);
+int cd_ckpt_rewind_to(void *page, int turn);
+int cd_ckpt_op(void *page);
+int cd_ckpt_target(void *page);
+int cd_ckpt_nturns(void *page);
+int cd_ckpt_ref(const char *chat, int turn, char *out, int cap);
+int cd_ckpt_base_ref(const char *chat, char *out, int cap);
+int cd_ckpt_prefix(const char *chat, char *out, int cap);
+int cd_ckpt_diff_from(void *page, const char *chat, int turn, char *out, int cap);
+int cd_ckpt_needs_confirm(int dirty_files, int turns_dropped);
 #endif

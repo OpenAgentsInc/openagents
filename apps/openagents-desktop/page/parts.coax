@@ -20,6 +20,7 @@
 #load "../../../coax/lib/agent/device/sim-wire.coax";
 #load "../../../coax/lib/agent/device/sim-gesture.coax";
 #load "../../../coax/lib/gateway/card.coax";
+#load "../../../coax/lib/agent/desktop/checkpoint.coax";
 #load "../settings.coax";
 
 #load "state.coax";
@@ -52,3 +53,4 @@
 #load "shows.coax";
 #load "mention.coax";
 #load "gitactions.coax";
+#load "checkpoint.coax";

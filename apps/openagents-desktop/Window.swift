@@ -387,6 +387,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 50: refreshGitDiff()
         case 51: openReviewCommentDialog()
         case 52: termAsked()
+        case 53: checkpointAsked()
         case 55: walletConnectOrCreate()
         case 56: walletReceiveDialog()
         case 57: walletSendDialog()
@@ -426,7 +427,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
-            if !fgRunning { run.endTurn(); refreshBranch(); refreshGitDiff() }
+            if !fgRunning { run.endTurn(); captureTurnCheckpoint(for: run); refreshBranch(); refreshGitDiff() }
             if let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
                     "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),

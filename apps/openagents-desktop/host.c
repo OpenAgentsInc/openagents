@@ -57,6 +57,7 @@ typedef struct {
   char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
   char *gitdiff; // live working-tree git status + diff buffer (cd_git_diff_set): the page reads it here
   uint8_t *term_bufs[8];   // 8 MiB per-tab retained scrollback buffers (page/termpane.coax, #13869)
+  char *ckpt_diff;   // the per-turn checkpoint diff in the Changes pane (cd_ckpt_diff_set; #13872)
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -665,7 +666,7 @@ void cd_close(void *page) {
   if (!c->headless) gallery_free(&c->app);
   for (int i = 0; i < CD_IMAGES; i++) free(c->images[i].rgba);
   for (int i = 0; i < 8; i++) free(c->term_bufs[i]);
-  free(c->files); free(c->file); free(c->gitdiff); free(c->s); free(c->st); free(c);
+  free(c->files); free(c->file); free(c->gitdiff); free(c->ckpt_diff); free(c->s); free(c->st); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.
@@ -799,3 +800,51 @@ int cd_review_comments_submit(void *page) {
   return ok;
 }
 int cd_review_comments_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_review_comments_count(cd_state(c)) : 0; }
+void cd_ckpt_set_base(void *page, int present) { CoderHost *c = page; if (!c) return; coder_page_ckpt_set_base(cd_state(c), present != 0); cd_changed(c); }
+void cd_ckpt_mark(void *page, int turn, int present) { CoderHost *c = page; if (!c) return; coder_page_ckpt_mark(cd_state(c), turn, present != 0); cd_woke(c); }
+int cd_ckpt_sync(void *page, const char *chat, const char *refs_list) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_ckpt_sync(cd_state(c), cd_string(chat), cd_string(refs_list)); cd_woke(c); return n; }
+int cd_ckpt_has(void *page, int turn) { CoderHost *c = page; return c && coder_page_ckpt_has(cd_state(c), turn) ? 1 : 0; }
+int cd_ckpt_diff_set(void *page, int turn, const char *bytes, int len, const char *label) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  if (len < 0) len = 0;
+  char *keep = malloc((size_t)len + 1);
+  if (!keep) return 0;
+  if (len > 0 && bytes) memcpy(keep, bytes, (size_t)len);
+  keep[len] = 0;
+  if (!coder_page_ckpt_diff_set(cd_state(c), turn, (coax_v_u8){(uint8_t *)keep, len}, cd_string(label))) { free(keep); return 0; }
+  free(c->ckpt_diff); c->ckpt_diff = keep;
+  cd_woke(c);
+  return 1;
+}
+void cd_ckpt_diff_clear(void *page) { CoderHost *c = page; if (!c) return; coder_page_ckpt_diff_clear(cd_state(c)); free(c->ckpt_diff); c->ckpt_diff = NULL; cd_woke(c); }
+int cd_ckpt_rewind_to(void *page, int turn) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_ckpt_rewind_to(cd_state(c), turn) ? 1 : 0; if (ok) cd_woke(c); return ok; }
+int cd_ckpt_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_ckpt_op(cd_state(c)) : 0; }
+int cd_ckpt_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_ckpt_target(cd_state(c)) : -1; }
+int cd_ckpt_nturns(void *page) { CoderHost *c = page; return c ? (int)coder_page_ckpt_nturns(cd_state(c)) : 0; }
+int cd_ckpt_ref(const char *chat, int turn, char *out, int cap) {
+  if (!out || cap < 1) return 0;
+  int n = (int)coder_page_ckpt_ref(cd_string(chat), turn, (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_ckpt_base_ref(const char *chat, char *out, int cap) {
+  if (!out || cap < 1) return 0;
+  int n = (int)coder_page_ckpt_base_ref(cd_string(chat), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_ckpt_prefix(const char *chat, char *out, int cap) {
+  if (!out || cap < 1) return 0;
+  int n = (int)coder_page_ckpt_prefix(cd_string(chat), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_ckpt_diff_from(void *page, const char *chat, int turn, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 1) return 0;
+  int n = (int)coder_page_ckpt_diff_from(cd_state(c), cd_string(chat), turn, (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_ckpt_needs_confirm(int dirty_files, int turns_dropped) { return coder_page_ckpt_needs_confirm(dirty_files, turns_dropped) ? 1 : 0; }

@@ -149,6 +149,7 @@ extension CoderWindow {
             let n = cd_task(r.page, r.session, cwd, &out, Int32(out.count))
             r.worker.write(out, count: Int(n))
             self.beginTurn(r, from: from)
+            self.captureBaseCheckpointIfNeeded(for: r)
             self.bindQueue(r)
             self.wake()
         }
@@ -410,6 +411,7 @@ extension CoderWindow {
     func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
         let cost = Int(cd_cost_usd_micros(back.page))
+        captureTurnCheckpoint(for: back)
         back.stop(); cd_close(back.page)
         _ = foremanEvents.emit(type: "chat.finished", chatID: id, data: [
             "title": store.title(id) ?? "Chat",

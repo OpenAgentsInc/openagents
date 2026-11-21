@@ -125,7 +125,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   turns := cl_raw(text, "turns");
   count := cl_count(turns); if count > s[0].turns.count { count = s[0].turns.count; }
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_docs_reset(s);
+  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_docs_reset(s); cp_ckpt_reset(s);
   for i: 0..<count {
     s[0].nturns = i + 1; s[0].turns[i].nagents = 0;
     worked := cl_int(cl_json(turns, cl_item(turns, i)), "worked");
@@ -275,7 +275,7 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
 // host first moves that chat out of view (coder_page_take), where its run goes on.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
+  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_ckpt_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
@@ -330,6 +330,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
   to[0].fu[0] = from[0].fu[0]; from[0].fu[0] = CpFollow.{};     // the follow-ups go with the worker
   to[0].todos[0] = from[0].todos[0]; from[0].todos[0] = CpTodos.{};
+  to[0].ckpt[0] = from[0].ckpt[0]; cp_ckpt_reset(from);
   to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1; to[0].veil[0] = Veil.{}; to[0].veil_turn = -1;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1; from[0].veil[0] = Veil.{}; from[0].veil_turn = -1;
   cp_docs_reset(to); cp_docs_reset(from);   // the replies' documents are parsed again where they now show

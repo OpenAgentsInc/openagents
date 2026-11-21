@@ -198,14 +198,17 @@ cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   }
   uiframe_clip(f, px, stop, px + pw, h);
   x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].review_scroll;
-  y += a.gap_small;
-  y += cp_review_toolbar(s, f, x, y, cw, has_git, has_chat);
-  y += cp_review_comments_bar(s, f, x, y, cw);
-  if nf == 0 {
-    y += app_meta(f, "coder.review.none", x, y + a.gap, cw, "No file has changed in this workspace yet.", false) + 2 * a.gap;
+  if s[0].ckpt[0].diff_turn >= 0 {
+    y += cp_ckpt_review_body(s, f, x, y, cw, stop, h);
   } else {
-    y += app_diff_head(f, "coder.review.head", x, y, cw, vis_files, added, removed);
-    y += cp_review_tree(s, f, x, y, cw, files[..], nf, hidden_tests, use_git, stop, h);
+    y += a.gap_small;
+    y += cp_review_toolbar(s, f, x, y, cw, has_git, has_chat);
+    y += cp_review_comments_bar(s, f, x, y, cw);
+    if nf == 0 {
+      y += app_meta(f, "coder.review.none", x, y + a.gap, cw, "No file has changed in this workspace yet.", false) + 2 * a.gap;
+    } else {
+      y += app_diff_head(f, "coder.review.head", x, y, cw, vis_files, added, removed);
+      y += cp_review_tree(s, f, x, y, cw, files[..], nf, hidden_tests, use_git, stop, h);
     fb: [EL_ID] u8; eb: [EL_ID] u8;
     for i: 0..<nf {
       if use_git && !cp_gd_file_visible(gd, i) { continue; }
@@ -240,6 +243,7 @@ cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       }
     }
     y += a.gap;
+    }
   }
   uiframe_unclip(f);
   s[0].review_content = y + s[0].review_scroll - stop;

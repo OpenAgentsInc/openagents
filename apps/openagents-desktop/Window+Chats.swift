@@ -140,6 +140,7 @@ extension CoderWindow {
             unread.remove(id)
             chat = id; recallDue = false; cd_current(page, id)
             setFolder(back.folder, keep: false)
+            refreshCheckpoints(for: id, in: back.folder.path)
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             cd_chats(page, chatLines); syncForemanUI()
@@ -159,6 +160,7 @@ extension CoderWindow {
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         else { restoreWorktree(id) }
+        refreshCheckpoints(for: id, in: folder.path)
         showKeptQueue(id)
         focusComposer()
         wake()
@@ -250,6 +252,8 @@ extension CoderWindow {
             if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
             guard !self.busy(id) else { return }
             self.unread.remove(id)
+            let delFolder = self.store.folder(id) ?? self.store.worktree(id)?.source
+            self.cleanupCheckpoints(for: id, in: delFolder)
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: self.store.title(id) ?? "New chat") }
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)

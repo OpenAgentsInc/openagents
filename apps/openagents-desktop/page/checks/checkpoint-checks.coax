@@ -1,0 +1,138 @@
+// Checks for Git-backed per-turn checkpoints, per-turn diff inspection in the Changes pane,
+// and one-click turn/working-tree rewind (page/checkpoint.coax, GitHub #13872).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_ckpt_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+cp_ckpt_add_done_turn :: (s: [] CoderPage, ask: string, reply: string) {
+  i := s[0].nturns;
+  s[0].nturns = i + 1;
+  s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], ask);
+  cp_reply_set(s, i, reply, false);
+  s[0].turns[i].state = CP_DONE;
+  s[0].turns[i].heard = true;
+  s[0].turns[i].took = 2.0f32;
+}
+
+#test "checkpoints: sync from for-each-ref, ref exports, and diff-from range selection" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  cp_ckpt_add_done_turn(s, "First ask", "First reply");
+  cp_ckpt_add_done_turn(s, "Second ask", "Second reply");
+  cp_ckpt_add_done_turn(s, "Third ask", "Third reply");
+
+  refs := "refs/openagents/checkpoints/chat-9/base\nrefs/openagents/checkpoints/chat-9/0\nrefs/openagents/checkpoints/chat-9/1\nrefs/openagents/checkpoints/other/2\n";
+  n := coder_page_ckpt_sync(s, "chat-9", refs);
+  #assert n == 2;
+  #assert s[0].ckpt[0].has_base;
+  #assert coder_page_ckpt_has(s, 0);
+  #assert coder_page_ckpt_has(s, 1);
+  #assert !coder_page_ckpt_has(s, 2);
+
+  buf: [DC_CKPT_REF_MAX] u8;
+  rn := coder_page_ckpt_ref("chat-9", 1, buf[..]);
+  #assert cast(string) buf[0..<rn] == "refs/openagents/checkpoints/chat-9/1";
+  bn := coder_page_ckpt_base_ref("chat-9", buf[..]);
+  #assert cast(string) buf[0..<bn] == "refs/openagents/checkpoints/chat-9/base";
+  pn := coder_page_ckpt_prefix("chat-9", buf[..]);
+  #assert cast(string) buf[0..<pn] == "refs/openagents/checkpoints/chat-9/";
+
+  // Turn 0 diffs from base; Turn 1 diffs from Turn 0
+  f0 := coder_page_ckpt_diff_from(s, "chat-9", 0, buf[..]);
+  #assert cast(string) buf[0..<f0] == "refs/openagents/checkpoints/chat-9/base";
+  f1 := coder_page_ckpt_diff_from(s, "chat-9", 1, buf[..]);
+  #assert cast(string) buf[0..<f1] == "refs/openagents/checkpoints/chat-9/0";
+
+  #assert coder_page_ckpt_needs_confirm(1, 0);
+  #assert coder_page_ckpt_needs_confirm(0, 1);
+  #assert !coder_page_ckpt_needs_confirm(0, 0);
+}
+
+#test "checkpoints: turn diff and revert buttons render and dispatch host actions" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  cp_ckpt_add_done_turn(s, "Create hello.txt", "Created hello.txt.");
+  cp_ckpt_add_done_turn(s, "Update hello.txt", "Updated hello.txt.");
+  coder_page_ckpt_mark(s, 0, true);
+  // Turn 1 has no checkpoint yet
+
+  #assert cp_ckpt_test_frame(s, f[..], 1280, 800);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  diff0 := elt_find(t[..], "t0.ckd");
+  rev0 := elt_find(t[..], "t0.ckr");
+  #assert diff0 >= 0 && rev0 >= 0;
+  #assert elt_find(t[..], "t1.ckd") < 0 && elt_find(t[..], "t1.ckr") < 0;
+
+  // Clicking Turn diff dispatches CP_ASK_CHECKPOINT with CP_CKPT_OP_DIFF on turn 0
+  #assert cp_press(s, diff0);
+  #assert coder_page_action(s) == CP_ASK_CHECKPOINT;
+  #assert coder_page_ckpt_op(s) == CP_CKPT_OP_DIFF;
+  #assert coder_page_ckpt_target(s) == 0;
+  // op is consumed once
+  #assert coder_page_ckpt_op(s) == CP_CKPT_OP_NONE;
+
+  // Clicking Revert to this turn dispatches CP_ASK_CHECKPOINT with CP_CKPT_OP_REWIND on turn 0
+  #assert cp_press(s, rev0);
+  #assert coder_page_action(s) == CP_ASK_CHECKPOINT;
+  #assert coder_page_ckpt_op(s) == CP_CKPT_OP_REWIND;
+  #assert coder_page_ckpt_target(s) == 0;
+}
+
+#test "checkpoints: Changes pane renders per-turn unified diff and All edits clears filter" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  cp_ckpt_add_done_turn(s, "Add note", "Added note.txt");
+  coder_page_ckpt_mark(s, 0, true);
+
+  sample := "diff --git a/note.txt b/note.txt\nnew file mode 100644\n--- /dev/null\n+++ b/note.txt\n@@ -0,0 +1,2 @@\n+hello\n+world\n";
+  diff_buf: [256] u8;
+  dn := cp_out(diff_buf[..], sample);
+  #assert coder_page_ckpt_diff_set(s, 0, diff_buf[0..<dn], "Turn 1 checkpoint diff");
+  #assert s[0].review && s[0].pane_tab == CP_TAB_CHANGES && s[0].ckpt[0].diff_turn == 0;
+
+  #assert cp_ckpt_test_frame(s, f[..], 1280, 800);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  all_btn := elt_find(t[..], "coder.review.ckpt.all");
+  rw_btn := elt_find(t[..], "coder.review.ckpt.rewind");
+  file0 := elt_find(t[..], "coder.review.f0");
+  #assert all_btn >= 0 && rw_btn >= 0 && file0 >= 0;
+
+  // Clicking Revert from inside the Changes pane targets diff_turn (0)
+  #assert cp_press(s, rw_btn);
+  #assert coder_page_action(s) == CP_ASK_CHECKPOINT;
+  #assert coder_page_ckpt_op(s) == CP_CKPT_OP_REWIND;
+  #assert coder_page_ckpt_target(s) == 0;
+
+  // Clicking All edits clears the checkpoint diff filter
+  #assert cp_press(s, all_btn);
+  #assert s[0].ckpt[0].diff_turn == -1;
+}
+
+#test "checkpoints: rewind truncates turns, clears later checkpoints, and marks save_due" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  cp_ckpt_add_done_turn(s, "Turn 0", "Reply 0");
+  cp_ckpt_add_done_turn(s, "Turn 1", "Reply 1");
+  cp_ckpt_add_done_turn(s, "Turn 2", "Reply 2");
+  coder_page_ckpt_mark(s, 0, true);
+  coder_page_ckpt_mark(s, 1, true);
+  coder_page_ckpt_mark(s, 2, true);
+  // Consume initial save_due
+  _ := coder_page_save_due(s);
+
+  // Rewind to turn 0 drops turns 1 and 2
+  #assert coder_page_ckpt_rewind_to(s, 0);
+  #assert coder_page_ckpt_nturns(s) == 1;
+  #assert coder_page_ckpt_has(s, 0);
+  #assert !s[0].ckpt[0].recorded[1] && !s[0].ckpt[0].recorded[2];
+  #assert coder_page_save_due(s);
+
+  // Refuses rewind while a turn is running
+  s[0].turns[0].state = CP_RUNNING;
+  #assert !coder_page_ckpt_rewind_to(s, 0);
+}

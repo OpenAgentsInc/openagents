@@ -1,0 +1,292 @@
+// Git-backed per-turn checkpoints for OpenAgents Desktop (GitHub #13872): pure ref naming,
+// ref/SHA validation, checkpoint list parsing, diff range selection, rewind eligibility,
+// confirmation policy, and orphan ref selection for cleanup.
+//
+// Checkpoints are stored under refs/openagents/checkpoints/<clean_chat>/<turn> (and .../base
+// for the pre-turn-0 baseline) using a temporary GIT_INDEX_FILE so tracked and untracked files
+// are captured without mutating user branches, index, or reflogs.
+//   coax/bin/coax test coax/lib/agent/desktop/checkpoint.coax --library
+#load "paths.coax";
+
+DC_CKPT_REF_PREFIX :: "refs/openagents/checkpoints/";
+DC_CKPT_REF_MAX :: 256;
+DC_CKPT_EMPTY_TREE :: "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+// Cleans a chat id for use as a checkpoint ref path segment (same rules as worktree branch names).
+dc_ckpt_chat_clean :: (chat: string, out: [] u8) -> string {
+  return dc_clean(chat, out);
+}
+
+// Prefix covering every checkpoint ref owned by `chat`: "refs/openagents/checkpoints/<clean_chat>/".
+// Returns "" when `chat` is empty or does not fit.
+dc_ckpt_chat_prefix :: (chat: string, out: [] u8) -> string {
+  if chat.count == 0 { return ""; }
+  cb: [80] u8; clean := dc_clean(chat, cb[..]);
+  if clean.count == 0 { return ""; }
+  n := dc_copy(out, DC_CKPT_REF_PREFIX);
+  n = dc_cat(out, n, clean);
+  n = dc_cat(out, n, "/");
+  return dc_fits(out, n);
+}
+
+// Full ref name for turn `turn` (0-based) of `chat`: "refs/openagents/checkpoints/<clean_chat>/<turn>".
+// Returns "" when `chat` is empty, `turn` < 0, or it does not fit.
+dc_ckpt_ref_name :: (chat: string, turn: int, out: [] u8) -> string {
+  if chat.count == 0 || turn < 0 { return ""; }
+  pb: [DC_CKPT_REF_MAX] u8; prefix := dc_ckpt_chat_prefix(chat, pb[..]);
+  if prefix.count == 0 { return ""; }
+  nb: [32] u8; num := dc_num(turn, nb[..]);
+  if num.count == 0 { return ""; }
+  n := dc_copy(out, prefix);
+  n = dc_cat(out, n, num);
+  return dc_fits(out, n);
+}
+
+// Full ref name for the pre-turn-0 baseline snapshot: "refs/openagents/checkpoints/<clean_chat>/base".
+dc_ckpt_base_ref_name :: (chat: string, out: [] u8) -> string {
+  if chat.count == 0 { return ""; }
+  pb: [DC_CKPT_REF_MAX] u8; prefix := dc_ckpt_chat_prefix(chat, pb[..]);
+  if prefix.count == 0 { return ""; }
+  n := dc_copy(out, prefix);
+  n = dc_cat(out, n, "base");
+  return dc_fits(out, n);
+}
+
+// Strict validation for a checkpoint ref name: must match
+// "refs/openagents/checkpoints/<clean_chat>/<nonneg-int|base>" with no traversal, whitespace,
+// or git ref metacharacters.
+dc_ckpt_valid_ref :: (ref: string) -> bool {
+  if !dc_starts(ref, DC_CKPT_REF_PREFIX) { return false; }
+  if ref.count <= DC_CKPT_REF_PREFIX.count || ref.count >= DC_CKPT_REF_MAX { return false; }
+  rest := cast(string) ref[DC_CKPT_REF_PREFIX.count..<ref.count];
+  slash := -1;
+  for i: 0..<rest.count {
+    if rest[i] == '/' {
+      if slash >= 0 { return false; }   // at most one '/' between chat and slot
+      slash = i;
+    }
+  }
+  if slash <= 0 || slash + 1 >= rest.count { return false; }
+  chat := cast(string) rest[0..<slash];
+  slot := cast(string) rest[slash + 1..<rest.count];
+  if chat.count > 64 { return false; }
+  for c: chat {
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+    if !ok { return false; }
+  }
+  if slot == "base" { return true; }
+  if slot.count > 10 { return false; }
+  if slot.count > 1 && slot[0] == '0' { return false; }   // canonical decimal without leading zeros
+  for c: slot {
+    if c < '0' || c > '9' { return false; }
+  }
+  return true;
+}
+
+// True when `sha` is a valid 40-char (SHA-1) or 64-char (SHA-256) hex object id.
+dc_ckpt_valid_sha :: (sha: string) -> bool {
+  if sha.count != 40 && sha.count != 64 { return false; }
+  for c: sha {
+    ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// Parses a validated checkpoint ref into its chat segment, turn index (-1 for base), and base flag.
+dc_ckpt_parse_ref :: (ref: string, chat_out: [] u8, turn_out: [] int, is_base_out: [] bool) -> bool {
+  if !dc_ckpt_valid_ref(ref) { return false; }
+  rest := cast(string) ref[DC_CKPT_REF_PREFIX.count..<ref.count];
+  slash := 0;
+  while slash < rest.count && rest[slash] != '/' { slash += 1; }
+  chat := cast(string) rest[0..<slash];
+  slot := cast(string) rest[slash + 1..<rest.count];
+  if chat_out.count > 0 { _ := dc_copy(chat_out, chat); }
+  if slot == "base" {
+    if turn_out.count > 0 { turn_out[0] = -1; }
+    if is_base_out.count > 0 { is_base_out[0] = true; }
+    return true;
+  }
+  v := 0;
+  for c: slot { v = v * 10 + cast(int) (c - '0'); }
+  if turn_out.count > 0 { turn_out[0] = v; }
+  if is_base_out.count > 0 { is_base_out[0] = false; }
+  return true;
+}
+
+// Parses newline-delimited `git for-each-ref --format=%(refname)` output for `chat`.
+// Populates `turns_out` with sorted unique turn indices and sets `has_base_out[0]` if the
+// baseline ref is present. Returns the number of turn checkpoints found.
+dc_ckpt_parse_refs_list :: (raw: string, chat: string, turns_out: [] int, has_base_out: [] bool) -> int {
+  if has_base_out.count > 0 { has_base_out[0] = false; }
+  if chat.count == 0 { return 0; }
+  cb: [80] u8; want_chat := dc_clean(chat, cb[..]);
+  n := 0;
+  at := 0;
+  while at < raw.count {
+    e := at;
+    while e < raw.count && raw[e] != 10 { e += 1; }
+    line := cast(string) raw[at..<e];
+    at = e + 1;
+    if line.count > 0 && line[line.count - 1] == 13 { line = cast(string) line[0..<line.count - 1]; }
+    if line.count == 0 { continue; }
+    rc: [80] u8; rt := [1] int.[-1]; rb := [1] bool.[false];
+    if !dc_ckpt_parse_ref(line, rc[..], rt[..], rb[..]) { continue; }
+    // Verify the ref belongs to want_chat.
+    rc_len := 0;
+    while rc_len < rc.count && rc[rc_len] != 0 { rc_len += 1; }
+    // dc_copy does not NUL-terminate; compute length via slash position in line.
+    rest := cast(string) line[DC_CKPT_REF_PREFIX.count..<line.count];
+    sl := 0; while sl < rest.count && rest[sl] != '/' { sl += 1; }
+    if cast(string) rest[0..<sl] != want_chat { continue; }
+    if rb[0] {
+      if has_base_out.count > 0 { has_base_out[0] = true; }
+      continue;
+    }
+    t := rt[0];
+    if t < 0 { continue; }
+    // Insert sorted, skipping duplicates.
+    dup := false;
+    for i: 0..<n { if turns_out[i] == t { dup = true; break; } }
+    if dup || n >= turns_out.count { continue; }
+    pos := n;
+    while pos > 0 && turns_out[pos - 1] > t {
+      turns_out[pos] = turns_out[pos - 1];
+      pos -= 1;
+    }
+    turns_out[pos] = t;
+    n += 1;
+  }
+  return n;
+}
+
+// Selects the `(from_ref, to_ref)` pair for diffing `turn`:
+//   - `to_ref` is always `refs/openagents/checkpoints/<chat>/<turn>`.
+//   - `from_ref` is `.../<turn-1>` when `turn > 0 && has_prev_turn`, else `.../base` when
+//     `has_base`, else `DC_CKPT_EMPTY_TREE`.
+// Returns false if `chat` is empty, `turn < 0`, or buffers are too small.
+dc_ckpt_diff_range :: (chat: string, turn: int, has_base: bool, has_prev_turn: bool, from_out: [] u8, to_out: [] u8) -> bool {
+  if chat.count == 0 || turn < 0 { return false; }
+  to_ref := dc_ckpt_ref_name(chat, turn, to_out);
+  if to_ref.count == 0 { return false; }
+  from_ref := "";
+  if turn > 0 && has_prev_turn {
+    from_ref = dc_ckpt_ref_name(chat, turn - 1, from_out);
+  } else if has_base {
+    from_ref = dc_ckpt_base_ref_name(chat, from_out);
+  } else {
+    from_ref = dc_fits(from_out, dc_copy(from_out, DC_CKPT_EMPTY_TREE));
+  }
+  return from_ref.count > 0;
+}
+
+// Whether a turn can be rewound to right now: not running, valid turn index, and has a checkpoint.
+dc_ckpt_can_rewind :: (turn: int, nturns: int, running: bool, has_ckpt: bool) -> bool {
+  return !running && turn >= 0 && turn < nturns && has_ckpt;
+}
+
+// Whether rewinding requires a confirmation dialog: whenever uncommitted working-tree changes
+// would be overwritten or subsequent conversation turns would be truncated.
+dc_ckpt_needs_confirm :: (dirty_files: int, turns_dropped: int) -> bool {
+  return dirty_files > 0 || turns_dropped > 0;
+}
+
+// Selects checkpoint turn indices strictly greater than `turn` that become orphaned after
+// rewinding to `turn` and should be deleted.
+dc_ckpt_orphans_after_rewind :: (turn: int, existing_turns: [] int, n: int, out_drop: [] int) -> int {
+  k := 0;
+  limit := ifx n < existing_turns.count then n else existing_turns.count;
+  for i: 0..<limit {
+    if existing_turns[i] > turn && k < out_drop.count {
+      out_drop[k] = existing_turns[i];
+      k += 1;
+    }
+  }
+  return k;
+}
+
+#test "desktop core checkpoint: ref naming, base ref, and chat prefix" {
+  b: [DC_CKPT_REF_MAX] u8;
+  #assert dc_ckpt_chat_prefix("Chat_42-AB", b[..]) == "refs/openagents/checkpoints/chat42-ab/";
+  #assert dc_ckpt_chat_prefix("", b[..]) == "";
+  #assert dc_ckpt_ref_name("abc-123", 0, b[..]) == "refs/openagents/checkpoints/abc-123/0";
+  #assert dc_ckpt_ref_name("abc-123", 12, b[..]) == "refs/openagents/checkpoints/abc-123/12";
+  #assert dc_ckpt_ref_name("abc-123", -1, b[..]) == "";
+  #assert dc_ckpt_ref_name("", 0, b[..]) == "";
+  #assert dc_ckpt_base_ref_name("abc-123", b[..]) == "refs/openagents/checkpoints/abc-123/base";
+  #assert dc_ckpt_base_ref_name("", b[..]) == "";
+}
+
+#test "desktop core checkpoint: ref and SHA validation rejects malformed or unsafe inputs" {
+  #assert dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/0");
+  #assert dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/42");
+  #assert dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/base");
+  #assert !dc_ckpt_valid_ref("refs/heads/main");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints//0");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/01");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/extra/0");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/../heads/main");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/chat 1/0");
+  #assert !dc_ckpt_valid_ref("refs/openagents/checkpoints/chat-1/abc");
+
+  #assert dc_ckpt_valid_sha("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+  #assert dc_ckpt_valid_sha("0123456789abcdefABCDEF0123456789abcdef01");
+  #assert !dc_ckpt_valid_sha("short");
+  #assert !dc_ckpt_valid_sha("4b825dc642cb6eb9a060e54bf8d69288fbee490z");
+}
+
+#test "desktop core checkpoint: parsing for-each-ref output sorts turns and filters by chat" {
+  raw := "refs/openagents/checkpoints/c1/3\nrefs/openagents/checkpoints/c1/base\nrefs/openagents/checkpoints/c2/0\nrefs/openagents/checkpoints/c1/0\nrefs/openagents/checkpoints/c1/1\nrefs/openagents/checkpoints/c1/1\nrefs/heads/main\n";
+  turns: [16] int;
+  has_base := [1] bool.[false];
+  n := dc_ckpt_parse_refs_list(raw, "c1", turns[..], has_base[..]);
+  #assert n == 3;
+  #assert has_base[0];
+  #assert turns[0] == 0 && turns[1] == 1 && turns[2] == 3;
+
+  // Another chat sees only its own turns and no base
+  n2 := dc_ckpt_parse_refs_list(raw, "c2", turns[..], has_base[..]);
+  #assert n2 == 1 && !has_base[0] && turns[0] == 0;
+}
+
+#test "desktop core checkpoint: diff range, rewind eligibility, confirmation, and orphan cleanup" {
+  from_b: [DC_CKPT_REF_MAX] u8;
+  to_b: [DC_CKPT_REF_MAX] u8;
+
+  // Turn 0 diffs base -> 0 when base exists
+  #assert dc_ckpt_diff_range("c1", 0, true, false, from_b[..], to_b[..]);
+  #assert dc_starts(cast(string) from_b[0..<36], "refs/openagents/checkpoints/c1/base");
+  #assert dc_starts(cast(string) to_b[0..<33], "refs/openagents/checkpoints/c1/0");
+
+  // Turn 2 diffs 1 -> 2 when turn 1 exists
+  from_b2: [DC_CKPT_REF_MAX] u8; to_b2: [DC_CKPT_REF_MAX] u8;
+  #assert dc_ckpt_diff_range("c1", 2, true, true, from_b2[..], to_b2[..]);
+  #assert cast(string) from_b2[0..<32] == "refs/openagents/checkpoints/c1/1";
+  #assert cast(string) to_b2[0..<32] == "refs/openagents/checkpoints/c1/2";
+
+  // Turn 0 without base falls back to empty tree SHA
+  from_b3: [DC_CKPT_REF_MAX] u8; to_b3: [DC_CKPT_REF_MAX] u8;
+  #assert dc_ckpt_diff_range("c1", 0, false, false, from_b3[..], to_b3[..]);
+  #assert cast(string) from_b3[0..<40] == DC_CKPT_EMPTY_TREE;
+
+  // Rewind eligibility
+  #assert dc_ckpt_can_rewind(1, 3, false, true);
+  #assert !dc_ckpt_can_rewind(1, 3, true, true);
+  #assert !dc_ckpt_can_rewind(1, 3, false, false);
+  #assert !dc_ckpt_can_rewind(-1, 3, false, true);
+  #assert !dc_ckpt_can_rewind(3, 3, false, true);
+
+  // Confirmation policy
+  #assert dc_ckpt_needs_confirm(1, 0);
+  #assert dc_ckpt_needs_confirm(0, 2);
+  #assert dc_ckpt_needs_confirm(3, 1);
+  #assert !dc_ckpt_needs_confirm(0, 0);
+
+  // Orphan refs after rewind
+  existing := [4] int.[0, 1, 2, 3];
+  drop: [4] int;
+  nd := dc_ckpt_orphans_after_rewind(1, existing[..], 4, drop[..]);
+  #assert nd == 2 && drop[0] == 2 && drop[1] == 3;
+}

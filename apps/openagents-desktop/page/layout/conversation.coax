@@ -266,11 +266,19 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
+          ck_w := cp_ckpt_turn_actions(s, f, i, x + cw, y);
+          meta_w := cw - lane_btn - a.gap_small - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
           // who wrote it, always beside Copy: the harness and its model
-          { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, cw - lane_btn - a.gap_small, cp_turn_meta(s, i), false); }
+          if meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, a_hov || did || s[0].turns[i].info, did, CP_COPY_REPLY);
         } else { y += a.gap; }
-      } else { s[0].turns[i].ah = 0; }
+      } else {
+        s[0].turns[i].ah = 0;
+        if s[0].turns[i].state != CP_RUNNING && cp_ckpt_has(s, i) {
+          _ := cp_ckpt_turn_actions(s, f, i, x + cw, y);
+          y += lane;
+        }
+      }
       if s[0].turns[i].cut {
         f[0].skin.motion.enter = 0;
         y += app_notice(f, cp_id(ib[..], i, ".c"), x, y, cw, "This reply is longer than 60,000 bytes. The rest is not shown.", APP_NOTICE_INFO) + a.gap;
