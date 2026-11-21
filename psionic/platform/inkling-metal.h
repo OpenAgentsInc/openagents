@@ -55,6 +55,8 @@ int  ink_open(const char *gguf_path, const char *metal_path, int max_ctx,
               InkSession **out, char *err, size_t err_bytes);
 void ink_close(InkSession *s);
 void ink_reset(InkSession *s);
+void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits);
+int  ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens);
 int  ink_step(InkSession *s, int32_t token_id, int compute_logits);
 int  ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits);
 

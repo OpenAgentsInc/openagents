@@ -89,6 +89,10 @@ void pm_barrier(PmBatch batch);
    ignored). A group kernel of 32 threads is launched with lanes 32 and block
    32. */
 PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int block, const PmArg *args, int count);
+/* Indirect threadgroup launch for group kernels (lanes > 32): reads {x, 1, 1} from indirect_buf at indirect_offset. */
+PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
+                            PmBuffer indirect_buf, int64_t indirect_offset, int lanes,
+                            const PmArg *args, int count);
 PmStatus pm_wait(PmBatch batch, double *gpu_seconds);
 
 #endif

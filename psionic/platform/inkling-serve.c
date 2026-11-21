@@ -308,6 +308,7 @@ typedef struct {
     float    temperature;
     float    top_p;
     int      top_k;
+    int      cache_prompt;
 } Req;
 
 static void req_free(Req *r) {
@@ -422,6 +423,7 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
     r->temperature = 0.0f;
     r->top_p = 0.95f;
     r->top_k = 40;
+    r->cache_prompt = 1;
 
     JScan j = { body, body_len, 0 };
     j_ws(&j);
@@ -440,6 +442,8 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
             j_string(&j, &r->model);
         } else if (!strcmp(ks, "stream")) {
             j_bool(&j, &r->stream);
+        } else if (!strcmp(ks, "cache_prompt")) {
+            j_bool(&j, &r->cache_prompt);
         } else if (!strcmp(ks, "max_tokens") || !strcmp(ks, "max_completion_tokens") || !strcmp(ks, "max_output_tokens")) {
             double v = 0;
             if (!j_number(&j, &v) && v > 0) r->max_tokens = (int)v;
@@ -660,9 +664,14 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
     }
 
-    ink_reset(sv->sess);
     double t0 = now_sec();
-    for (int i = 0; i < n_prompt && !g_stop; ) {
+    int cached = 0;
+    if (r.cache_prompt) {
+        cached = ink_prefix_restore(sv->sess, toks, n_prompt);
+    } else {
+        ink_reset(sv->sess);
+    }
+    for (int i = cached; i < n_prompt && !g_stop; ) {
         int chunk = n_prompt - i;
         if (chunk > 3072) chunk = 3072;
         int need_logits = (i + chunk == n_prompt);
@@ -683,7 +692,13 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             }
         }
     }
+    if (r.cache_prompt && !g_stop && cached < n_prompt) {
+        ink_prefix_save(sv->sess, toks, n_prompt, 1);
+    }
     double t_prefill = now_sec() - t0;
+    fprintf(stderr, "[psionic-inkling-serve] req#%d prefill=%d cached=%d new=%d in %.3fs\n",
+            sv->req_seq, n_prompt, cached, n_prompt - cached, t_prefill);
+    fflush(stderr);
     free(toks);
     buf_free(&prompt);
 

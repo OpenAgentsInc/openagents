@@ -259,6 +259,56 @@ PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int
     return PM_OK;
 }
 
+PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
+                            PmBuffer indirect_buf, int64_t indirect_offset, int lanes,
+                            const PmArg *args, int count) {
+    PmBatchObject *b = (__bridge PmBatchObject *)batch;
+    id<MTLComputePipelineState> pipeline = (__bridge id<MTLComputePipelineState>)kernel;
+    id<MTLBuffer> ibuf = (__bridge id<MTLBuffer>)indirect_buf;
+    if (!ibuf || max_items < 0 || lanes <= 32 || lanes % 32 != 0 || lanes > 1024 || count < 0 || count > 16) {
+        note("malformed indirect launch");
+        return PM_ARGUMENT;
+    }
+    if (max_items == 0) return PM_OK;
+    uint8_t block_bytes[8 + 16 * 16];
+    size_t at = 8;
+    memcpy(block_bytes, &max_items, 8);
+    for (int k = 0; k < count; k++) {
+        const PmArg *a = &args[k];
+        uint8_t slot[16] = {0};
+        size_t size = 8;
+        switch (a->kind) {
+            case PM_ARG_INT: memcpy(slot, &a->i, 8); break;
+            case PM_ARG_U32: { uint32_t v = (uint32_t)a->i; memcpy(slot, &v, 4); break; }
+            case PM_ARG_F32: { float v = (float)a->f; memcpy(slot, &v, 4); break; }
+            case PM_ARG_F64: { float hi = (float)a->f, lo = (float)(a->f - (double)hi); memcpy(slot, &hi, 4); memcpy(slot + 4, &lo, 4); break; }
+            case PM_ARG_VIEW: {
+                if (!a->buffer) { note("argument %d: a view without a buffer", k); return PM_ARGUMENT; }
+                id<MTLBuffer> buffer = (__bridge id<MTLBuffer>)a->buffer;
+                if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > buffer.length) { note("argument %d: a view outside its buffer", k); return PM_ARGUMENT; }
+                if ((NSUInteger)a->count > buffer.length - (NSUInteger)a->offset) { note("argument %d: a view longer than its buffer", k); return PM_ARGUMENT; }
+                uint64_t address = buffer.gpuAddress + (uint64_t)a->offset;
+                memcpy(slot, &address, 8);
+                memcpy(slot + 8, &a->count, 8);
+                size = 16;
+                break;
+            }
+            default: note("argument %d: unknown kind", k); return PM_ARGUMENT;
+        }
+        memcpy(block_bytes + at, slot, size);
+        at += size;
+    }
+    if (b.last_pipeline != kernel) {
+        [b.encoder setComputePipelineState:pipeline];
+        b.last_pipeline = kernel;
+    }
+    [b.encoder setBytes:block_bytes length:at atIndex:0];
+    [b.encoder dispatchThreadgroupsWithIndirectBuffer:ibuf
+                                 indirectBufferOffset:(NSUInteger)indirect_offset
+                                threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
+    return PM_OK;
+}
+
 PmStatus pm_wait(PmBatch batch, double *gpu_seconds) {
     @autoreleasepool {
         PmBatchObject *b = (__bridge_transfer PmBatchObject *)batch;

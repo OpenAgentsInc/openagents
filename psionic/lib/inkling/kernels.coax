@@ -1722,7 +1722,7 @@ ink_moe_group_batch :: (item:int,n_tok:int,n_used:int,ids:[]u32,wts:[]f32,exp_to
 
 // ---- Build compact list of active (exp_id, m0) MoE tiles of size tile_m (4 for small prompts, 64 for MMA).
 // Launch items = 1, lanes = 1.
-ink_moe_build_tiles :: (item:int,n_exp:int,tile_m:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
+ink_moe_build_tiles :: (item:int,n_exp:int,tile_m:int,r_mul0:int,r_mul1:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
     t:int=0;
     for e:0..<n_exp {
         cnt:=cast(int)exp_cnt[e];
@@ -1736,6 +1736,8 @@ ink_moe_build_tiles :: (item:int,n_exp:int,tile_m:int,exp_cnt:[]u32,tile_exp:[]u
         }
     }
     tile_cnt[0]=cast(u32)t;
+    tile_cnt[4]=cast(u32)(t*r_mul0); tile_cnt[5]=1; tile_cnt[6]=1;
+    tile_cnt[8]=cast(u32)(t*r_mul1); tile_cnt[9]=1; tile_cnt[10]=1;
 }
 
 // ---- Batched Expert-Grouped MoE gate_up via Apple hardware MMA (IQ4_NL), compacted active tiles.
@@ -2521,7 +2523,7 @@ ink_moe_exp_off :: (item:int,n_exp:int,exp_cnt:[]u32,exp_off:[]u32) #export_c #e
 }
 
 // Build active (exp_id, m0) tiles for expert chunk [e_lo..e_hi). Launch items = 1, lanes = 1.
-ink_moe_chunk_tiles :: (item:int,e_lo:int,e_hi:int,tile_m:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
+ink_moe_chunk_tiles :: (item:int,e_lo:int,e_hi:int,tile_m:int,r_mul:int,exp_cnt:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32) #export_c #effects(all) {
     t:int=0;
     for e:e_lo..<e_hi {
         cnt:=cast(int)exp_cnt[e];
@@ -2535,6 +2537,7 @@ ink_moe_chunk_tiles :: (item:int,e_lo:int,e_hi:int,tile_m:int,exp_cnt:[]u32,tile
         }
     }
     tile_cnt[0]=cast(u32)t;
+    tile_cnt[4]=cast(u32)(t*r_mul); tile_cnt[5]=1; tile_cnt[6]=1;
 }
 
 // Gather tokens into contiguous per-expert rows x_exp[exp_off[e]+c] and record row_dst / row_wt.
