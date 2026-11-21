@@ -10,8 +10,10 @@ coax/bin/coax c apps/openagents-ios/app.coax --library --header $g/gallery.h > $
 coax/bin/coax metal components/backend/gpu-shader.coax --vertex chat_fx_vs --fragment chat_fx_fs -o $g/Components/components.metal
 coax/bin/coax metal components/backend/composition-shader.coax --vertex uc_vs --fragment uc_fs -o $g/Components/composition.metal
 rm -rf $g/Components/fonts $g/Components/icons
-cp -R components/zeron/fonts components/zeron/icons $g/Components/
-cp components/zeron/NOTICE $g/Components/NOTICE
+mkdir -p $g/Components/fonts $g/Components/icons
+cp components/fonts/Geist* $g/Components/fonts/
+cp components/icons/*.svg $g/Components/icons/
+cp components/NOTICE $g/Components/NOTICE
 '
 # Frame budget (#13747): the generated C may hold no stack frame over 512 KB, at -Os with and
 # without inlining, as the iOS release build compiles it. Needs Xcode; skipped elsewhere.

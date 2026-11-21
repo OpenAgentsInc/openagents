@@ -9,7 +9,7 @@
 //   coax/bin/coax test components/app/cargo.coax
 
 #load "base.coax";
-#load "../zeron/attachments.coax";
+#load "../chat/attachments.coax";
 
 APP_CARGO_H :: 40; APP_CARGO_SLOT :: 18; APP_CARGO_THUMB :: 56; APP_CARGO_MOST :: 214;
 APP_CARGO_GAP :: 8; APP_CARGO_PAD :: 11; APP_CARGO_TEXT_GAP :: 8; APP_CARGO_RADIUS :: 10;

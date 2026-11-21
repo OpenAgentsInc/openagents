@@ -4,7 +4,7 @@
 #load "../lib/sys/fs.coax";
 tool_main :: () -> int #export_c #effects(all) {
   a:[1]Args; if !args_load(a[..]) { return 2; }
-  names:=[12]string.["coax/native/starter/index.html","coax/native/starter/native.js","coax/web/dom-host.js","coax/web/shell.js","components/zeron/fonts/Geist.ttf","components/zeron/fonts/Geist-Medium.ttf","components/zeron/fonts/Geist-SemiBold.ttf","components/zeron/fonts/GeistMono.ttf","coax/native/starter/viewport.js","coax/native/starter/runtime.js","coax/web/tree-commands.js","coax/web/tree-commands.js"];
+  names:=[12]string.["coax/native/starter/index.html","coax/native/starter/native.js","coax/web/dom-host.js","coax/web/shell.js","components/fonts/Geist.ttf","components/fonts/Geist-Medium.ttf","components/fonts/Geist-SemiBold.ttf","components/fonts/GeistMono.ttf","coax/native/starter/viewport.js","coax/native/starter/runtime.js","coax/web/tree-commands.js","coax/web/tree-commands.js"];
   targets:=[12]string.["index.html","native.js","coaxial/dom-host.js","coaxial/shell.js","build/zeron/Geist.ttf","build/zeron/Geist-Medium.ttf","build/zeron/Geist-SemiBold.ttf","build/zeron/GeistMono.ttf","viewport.js","runtime.js","tree-commands.js","coaxial/tree-commands.js"];
   data:[2097152]u8; path:[4096]u8;
   ok:=fs_mkdir("coax/native/build/Starter/coaxial");ok=fs_mkdir("coax/native/build/Starter/build/zeron");

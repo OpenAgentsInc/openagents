@@ -25,7 +25,7 @@
 
 #load "../projects.coax";
 #load "../../../components/core/markdown.coax";   // the one Markdown parser (GitHub #13153)
-#load "../../../components/zeron/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
+#load "../../../components/chat/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
 
 CH_MAX_VERTICES :: 240000;
 CH_INBOX :: 1048576;

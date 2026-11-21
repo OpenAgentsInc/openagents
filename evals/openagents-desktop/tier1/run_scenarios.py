@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 HOST_DRIVER_DIR = REPO_ROOT / "evals/openagents-desktop/host_driver"
 HOST_DRIVER_BIN = HOST_DRIVER_DIR / "build/host_driver"
 SCENARIOS_DIR = REPO_ROOT / "evals/openagents-desktop/tier1/scenarios"
-RESOURCES_DIR = REPO_ROOT / "components/zeron"
+RESOURCES_DIR = REPO_ROOT / "components"
 
 
 def ensure_host_driver() -> None:

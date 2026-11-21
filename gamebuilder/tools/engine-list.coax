@@ -128,7 +128,7 @@ el_part :: (summary: string, file: string) -> string {
   part := ""; i := 0;
   while i < summary.count {
     e := el_line_end(summary, i);
-    if el_starts(summary, i, "**") && e - i > 4 && el_starts(summary, e - 2, "**") {
+    if el_starts(summary, i, "**") && e - i > 4 && el_starts(summary, e - 2, "**") { // not Markdown
       a := i + 2; b := e - 2;
       d := el_find(cast(string) summary[a..<b], ". ", 0);
       part = cast(string) summary[ifx d < 0 then a else a + d + 2..<b];

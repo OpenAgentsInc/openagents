@@ -28,7 +28,9 @@ cflags=(-O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$repo/apps/shared
 /usr/bin/clang ${target[@]+"${target[@]}"} "$work/c/main.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
   "${frameworks[@]}" -framework Metal -framework QuartzCore -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics -lm -o "$work/Components.new"
 rm -rf "$work/fonts" "$work/icons"
-cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
-cp "$repo/components/zeron/NOTICE" "$work/NOTICE"
+mkdir -p "$work/fonts" "$work/icons"
+cp "$repo/components/fonts/"Geist* "$work/fonts/"
+cp "$repo/components/icons/"*.svg "$work/icons/"
+cp "$repo/components/NOTICE" "$work/NOTICE"
 mv "$work/Components.new" "$work/Components"
 echo "built $work/Components"

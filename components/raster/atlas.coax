@@ -18,7 +18,7 @@
 //  - no hinting (ttf.coax runs no font program), and no colour glyphs: a
 //    grapheme the font lacks is its missing-glyph box.
 //   coax/bin/coax test components/raster/atlas.coax --library
-#load "../zeron/gpui.coax";
+#load "../backend/gpu.coax";
 #load "svg.coax";
 
 RA_WIDTH :: 4096;          // the atlas's narrowest width; ra_plan doubles it until the height fits

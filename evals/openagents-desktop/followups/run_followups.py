@@ -543,7 +543,7 @@ def page_host(w_bin: Path) -> None:
     box = Box([act(commands=["sleep 1"], finished=False), act("first done"), act("took the steer"), act("queued done")])
     h = Host(w_bin, box)
     try:
-        assert h.cmd(f"OPEN 0 1 {REPO / 'components/zeron'}").get("ok")
+        assert h.cmd(f"OPEN 0 1 {REPO / 'components'}").get("ok")
         assert h.cmd(f"SET_CWD 0 {box.work}").get("ok") and h.cmd("SET_SESSION 0 fu-page").get("ok")
         assert h.cmd("SPAWN_EXEC 0").get("ok")
         assert h.cmd("QUEUE 0 open - 0 0 chat-page").get("ok")

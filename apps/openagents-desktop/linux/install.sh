@@ -29,8 +29,8 @@ WRAP
 chmod 0755 "$bin_dir/openagents-desktop"
 
 sed "s|^Exec=.*|Exec=$bin_dir/openagents-desktop %U|" "$here/openagents-desktop.desktop" > "$xdg_apps/openagents-desktop.desktop"
-if [[ -f "$repo/components/zeron/icons/oa-mark.svg" ]]; then
-  cp "$repo/components/zeron/icons/oa-mark.svg" "$xdg_icons/openagents-desktop.svg"
+if [[ -f "$repo/components/icons/oa-mark.svg" ]]; then
+  cp "$repo/components/icons/oa-mark.svg" "$xdg_icons/openagents-desktop.svg"
 fi
 
 echo "installed $bin_dir/openagents-desktop"

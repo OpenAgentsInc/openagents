@@ -20,8 +20,8 @@ realm-authoring folders: metaverse-engine/editor/ apps/shared/aethyrforge/ apps/
 identity folders: coax/web/api/auth coax/web/api/account-settings coax/native/account- coax/native/messaging- coax/native/nostr- coax/native/relay-session- coax/web/api/nostr-messaging coax/web/api/agent-wire.coax may load: nostr toolchain
 payments folders: pay/ coax/lib/bitcoin/ coax/lib/lightning/ coax/lib/lnaddr/ coax/lib/nostr/nipkeys coax/lib/nostr/vault-wallet.coax nostr/examples/agent-treasury.coax nostr/examples/checks/agent-treasury.coax nostr/tools/treasury.coax may load: nostr identity toolchain
 coder folders: coder/ apps/openagents-desktop/ apps/shared/tester/ coax/lib/agent/ coax/lib/boat/ coax/web/boat.coax coax/lib/microcoder/ coax/lib/gateway/ coax/lib/rlm/ coax/lib/repo/ coax/web/repo/ coax/web/agent/ may load: psionic nostr protocol toolchain realm-seat zeron-kit
-chat folders: components/zeron/ apps/openagents-web/chat.coax coax/web/api/chat.c coax/web/api/chat-history coax/web/api/account-chat coax/web/api/gamebuilder-agent coax/web/api/environment coax/web/api/task-access-policy.coax coax/web/api/router may load: coder identity protocol toolchain zeron-kit
-zeron-kit folders: components/zeron/gpui.coax components/zeron/composer.coax components/zeron/editor.coax may load: toolchain
+chat folders: components/chat/ apps/openagents-web/chat.coax coax/web/api/chat.c coax/web/api/chat-history coax/web/api/account-chat coax/web/api/gamebuilder-agent coax/web/api/environment coax/web/api/task-access-policy.coax coax/web/api/router may load: coder identity protocol toolchain zeron-kit
+zeron-kit folders: components/chat/composer.coax components/chat/editor.coax may load: toolchain
 projects folders: coax/lib/project/api-profile.coax coax/lib/project/api-wire.coax coax/web/api/projects coax/web/api/private.c coax/web/api/drops.c coax/web/project/ may load: identity payments nostr psionic toolchain
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
 psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/api/mesh may load: nostr protocol toolchain

@@ -47,7 +47,7 @@ FIXTURES_DIR = EVAL_DIR / "tier2/fixtures"
 # and a manifest may name Tier 2 tasks too. A fixture is looked up beside its task first.
 TIER4_TASKS_DIR = EVAL_DIR / "tier4/tasks"
 TIER4_FIXTURES_DIR = EVAL_DIR / "tier4/fixtures"
-RESOURCES_DIR = REPO_ROOT / "components/zeron"
+RESOURCES_DIR = REPO_ROOT / "components"
 REAL_HOME = Path(os.path.expanduser("~"))
 
 # Gated commands naming any of these are answered no by host_driver (GUARD), whatever the

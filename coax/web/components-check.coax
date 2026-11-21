@@ -37,8 +37,8 @@ CC_CODER_PAGE :: "apps/openagents-desktop/page/";   // rule 5: a page that takes
 
 // The layers, in the order they may load each other.
 CC_CORE :: 0; CC_LAYOUT :: 1; CC_PAINT :: 2; CC_SKIN :: 3; CC_BACKEND :: 4; CC_KIT :: 5;
-CC_OTHER :: 6;              // in components/ but no layer: gallery/, zeron/ (the chat set), raster/
-CC_CHAT :: "components/zeron/";   // the chat set: no layer of its own yet, but its components wear only their skin
+CC_OTHER :: 6;              // in components/ but no layer: gallery/, chat/ (the chat set), raster/
+CC_CHAT :: "components/chat/";   // the chat set: no layer of its own yet, but its components wear only their skin
 CC_OUTSIDE :: -1;
 CC_LAYERS :: [6] string.["components/core/", "components/layout/", "components/paint/", "components/skin/", "components/backend/", "components/kit/"];
 // What a layer may load from outside components/.
@@ -346,7 +346,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
 #test "layers: which layer a path is in, and what a #load names" {
   #assert cc_layer("components/core/markdown.coax") == CC_CORE && cc_layer("components/kit/markdown.coax") == CC_KIT && cc_layer("components/backend/gpu.coax") == CC_BACKEND;
-  #assert cc_layer("components/gallery/md-term.coax") == CC_OTHER && cc_layer("components/zeron/picker.coax") == CC_OTHER && cc_layer("coax/lib/tui/tui.coax") == CC_OUTSIDE;
+  #assert cc_layer("components/gallery/md-term.coax") == CC_OTHER && cc_layer("components/chat/picker.coax") == CC_OTHER && cc_layer("coax/lib/tui/tui.coax") == CC_OUTSIDE;
   b: [256] u8;
   #assert cc_resolve("components/layout/text.coax", "../core/markdown.coax", b[..]) == "components/core/markdown.coax";
   #assert cc_resolve("components/layout/text.coax", "measure.coax", b[..]) == "components/layout/measure.coax";
@@ -359,7 +359,7 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !cc_may_load(CC_CORE, "components/layout/round.coax") && !cc_may_load(CC_LAYOUT, "components/paint/list.coax") && !cc_may_load(CC_LAYOUT, "components/skin/skin.coax") && !cc_may_load(CC_PAINT, "components/backend/gpu.coax");
   #assert cc_may_load(CC_PAINT, "components/layout/measure.coax") && cc_may_load(CC_SKIN, "components/paint/list.coax") && cc_may_load(CC_BACKEND, "components/skin/terminal.coax");
   #assert cc_may_load(CC_KIT, "components/skin/skin.coax") && cc_may_load(CC_KIT, "components/kit/button.coax") && !cc_may_load(CC_KIT, "components/backend/gpu.coax");
-  #assert !cc_may_load(CC_KIT, "components/zeron/composer.coax") && !cc_may_load(CC_CORE, "metaverse-engine/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
+  #assert !cc_may_load(CC_KIT, "components/chat/composer.coax") && !cc_may_load(CC_CORE, "metaverse-engine/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
   #assert cc_may_load(CC_BACKEND, "metaverse-engine/gpu/wgsl.coax") && cc_may_load(CC_OTHER, "metaverse-engine/ui/hud-style.coax");
 }
 #test "Coder Desktop's page makes no colour: rgba( and hex( fail, a role or a comment does not" {

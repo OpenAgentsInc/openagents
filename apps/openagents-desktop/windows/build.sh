@@ -138,8 +138,10 @@ for arch in "${arches[@]}"; do
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
     -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
   cp "$work/res/components.spv" "$out/resources/"
-  cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$out/resources/"
-  cp "$repo/components/zeron/NOTICE" "$out/NOTICE"
+  mkdir -p "$out/resources/fonts" "$out/resources/icons"
+  cp "$repo/components/fonts/"Geist* "$out/resources/fonts/"
+  cp "$repo/components/icons/"*.svg "$out/resources/icons/"
+  cp "$repo/components/NOTICE" "$out/NOTICE"
   rm -f "$out"/*.pdb "$out"/*.lib
   echo "built $out/OpenAgents.exe ($(du -sh "$out" | cut -f 1))"
   if [[ -n "$zip_dir" ]]; then

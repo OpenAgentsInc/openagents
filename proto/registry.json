@@ -4094,8 +4094,8 @@
       "kind": "profile",
       "owner": "chat",
       "schema": "proto/coder/chat-page-lines-v2.json",
-      "codec": "components/zeron/chat-lines.coax",
-      "check": "coax/web/tool.sh components/zeron/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json",
+      "codec": "components/chat/chat-lines.coax",
+      "check": "coax/web/tool.sh components/chat/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json",
       "step": "C9",
       "files": [
         "apps/openagents-web/chat.coax",
@@ -4103,7 +4103,7 @@
       ],
       "tests": [
         "proto/coder/chat-page-lines-v2.json",
-        "components/zeron/chat-lines-profile.coax",
+        "components/chat/chat-lines-profile.coax",
         "coax/web/api/test_zchat.py"
       ],
       "sql": [

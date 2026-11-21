@@ -10,7 +10,7 @@
 
 #load "base.coax";
 #load "../core/match.coax";
-#load "../zeron/composer.coax";   // the token grammar (composer_token_*)
+#load "../chat/composer.coax";   // the token grammar (composer_token_*)
 
 APP_MN_ROWS :: 8;          // rows shown, then it scrolls (Zeron's ROWS)
 APP_MN_KEEP :: 64;         // ranked rows kept

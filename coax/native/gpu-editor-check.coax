@@ -2,5 +2,5 @@
 // roots. The compiled app is tested separately (apps/openagents-ios/README.md),
 // so UI-only work does not pull its unchanged authority rules into mutation.
 // coax test coax/native/gpu-editor-check.coax --library
-#load "../../components/zeron/editor.coax";
-#load "../../components/zeron/composer-frames-checks.coax" #test;
+#load "../../components/chat/editor.coax";
+#load "../../components/chat/composer-frames-checks.coax" #test;

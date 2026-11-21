@@ -65,8 +65,10 @@ cc "${cflags[@]}" \
   -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
 
 rm -rf "$work/resources/fonts" "$work/resources/icons"
-cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/resources/"
-cp "$repo/components/zeron/NOTICE" "$work/resources/NOTICE"
+mkdir -p "$work/resources/fonts" "$work/resources/icons"
+cp "$repo/components/fonts/"Geist* "$work/resources/fonts/"
+cp "$repo/components/icons/"*.svg "$work/resources/icons/"
+cp "$repo/components/NOTICE" "$work/resources/NOTICE"
 mv "$work/OpenAgents.new" "$work/OpenAgents"
 echo "built $work/OpenAgents"
 

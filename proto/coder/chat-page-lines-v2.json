@@ -1,8 +1,8 @@
 {
  "profile": "chat-page-lines-v2",
  "about": "The /chat page's lines (GitHub #13250, compliance plan step C9): what GET /api/chat/state answers an admin, text, one line each, cells split by \"|\", every line ended by a line end. SQL writes them (chat.lines in coax/web/api/migrations/0139_chat_folders_tabs.sql; chat.v and chat.vv in 0021_chat.sql) and coax/web/api/chat.c sends the text as it is. components/zeron/chat-lines.coax is the one reader, and the writer in Coax; the page apps/openagents-web/chat.coax reads every line through it. \"lines\" names each kind and its cells in order: \"col\" is the cell's column (the kind's letter is column 0) and \"text\" says how the cell is written. \"answers\" are bodies a running API gave the API suite (coax/web/api/test_zchat.py, a throwaway database and a stand-in runner), byte for byte. components/zeron/chat-lines-profile.coax reads every line through the codec and writes the same bytes back.",
- "check": "coax/web/tool.sh components/zeron/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json",
- "codec": "components/zeron/chat-lines.coax",
+ "check": "coax/web/tool.sh components/chat/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json",
+ "codec": "components/chat/chat-lines.coax",
  "captured": "2026-11-13: the API suite's /chat step (coax/web/api/test_zchat.py) against a running oa-api of this tree, each answer recorded as sent. The keys, tokens and hashes in them are the suite's stand-ins.",
  "text": {
   "plain": "a number, a flag, a date or a word the API chooses; it holds no bar and no line end",

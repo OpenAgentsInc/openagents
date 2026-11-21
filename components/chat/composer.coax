@@ -11,7 +11,7 @@
 // copy of what was sent, which the chat screen appends to its transcript).
 // Based on Zeron by Wing, MIT.
 
-#load "gpui.coax";
+#load "../backend/gpu.coax";
 #load "../skin/zeron.coax";   // the fonts, the icons, Zeron Dark and its tokens
 #load "../core/edit.coax";   // the edit buffer
 

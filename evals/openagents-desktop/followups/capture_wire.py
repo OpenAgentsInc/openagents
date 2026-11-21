@@ -158,7 +158,7 @@ def page(w_bin: Path) -> list[tuple[str, str]]:
     h = rf.Host(w_bin, box)
     try:
         assert h.cmd(f"WIRE_LOG {log}").get("ok")
-        assert h.cmd(f"OPEN 0 1 {REPO / 'components/zeron'}").get("ok")
+        assert h.cmd(f"OPEN 0 1 {REPO / 'components'}").get("ok")
         assert h.cmd(f"SET_CWD 0 {box.work}").get("ok") and h.cmd("SET_SESSION 0 fu-wire").get("ok")
         assert h.cmd("SPAWN_EXEC 0").get("ok")
         assert h.cmd("QUEUE 0 open - 0 0 chat-page").get("ok")

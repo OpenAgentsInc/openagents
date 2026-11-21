@@ -27,7 +27,9 @@ mkdir -p "$work/c"
   "$here/../linux/main.c" "$work/c/gallery.c" "$repo/apps/shared/host/android/ui-host.c" "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" \
   -lvulkan -lm -o "$work/Components.new"
 rm -rf "$work/fonts" "$work/icons"
-cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
+mkdir -p "$work/fonts" "$work/icons"
+cp "$repo/components/fonts/"Geist* "$work/fonts/"
+cp "$repo/components/icons/"*.svg "$work/icons/"
 mv "$work/Components.new" "$work/Components"
 echo "built $work/Components"
 if [[ "${1:-}" == --apk || "${1:-}" == --install ]]; then

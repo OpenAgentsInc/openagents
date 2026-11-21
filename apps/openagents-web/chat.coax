@@ -24,9 +24,9 @@
 // page wears the one chosen, and this browser keeps it (host.js action 4).
 // Based on Zeron by Wing, MIT.
 
-#load "../../components/zeron/picker.coax";
-#load "../../components/zeron/chrome.coax";   // the page's buttons, field and notice
-#load "../../components/zeron/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
+#load "../../components/chat/picker.coax";
+#load "../../components/chat/chrome.coax";   // the page's buttons, field and notice
+#load "../../components/chat/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
 #load "../../components/skin/all.coax";       // every skin, in pixels (uiskin_pixels)
 
 WC_MAX_VERTICES :: 120000;

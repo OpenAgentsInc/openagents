@@ -37,7 +37,9 @@ cc "${cflags[@]}" -DENGINE_WAYLAND_INPUT_V1 -DENGINE_WAYLAND_TEXT_V1 \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \
   $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon) -lvulkan -lpthread -lm -o "$work/Components.new"
 rm -rf "$work/fonts" "$work/icons"
-cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
-cp "$repo/components/zeron/NOTICE" "$work/NOTICE"
+mkdir -p "$work/fonts" "$work/icons"
+cp "$repo/components/fonts/"Geist* "$work/fonts/"
+cp "$repo/components/icons/"*.svg "$work/icons/"
+cp "$repo/components/NOTICE" "$work/NOTICE"
 mv "$work/Components.new" "$work/Components"
 echo "built $work/Components"

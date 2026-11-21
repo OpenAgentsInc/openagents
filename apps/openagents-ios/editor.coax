@@ -2,7 +2,7 @@
 // Apple keeps its platform text view. Wayland supplies transactions; the one
 // component editor owns provisional text and publishes only committed values.
 #load "chat.coax";
-#load "../../components/zeron/editor.coax";
+#load "../../components/chat/editor.coax";
 
 #test "the same canvas editor handles Project names and multiline references without submitting on Return" {
  s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;e:[1]ChEditor;app_init(c[..]);c[0].auth=AUTH_IN;ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");

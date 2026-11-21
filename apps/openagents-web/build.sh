@@ -522,9 +522,9 @@ memorial=$!
 timed chat "$here/../../coax/web/wasm.sh" "$here/chat.coax" "$here/chat-face.c" "$here/build/chat.wasm" &
 chat=$!
 mkdir -p "$here/build/zeron"
-cp "$here/../../components/zeron/fonts/"*.ttf "$here/../../components/zeron/fonts/Geist-OFL.txt" "$here/build/zeron/"
+cp "$here/../../components/fonts/"Geist*.ttf "$here/../../components/fonts/Geist-OFL.txt" "$here/build/zeron/"
 python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.join(d,f)).read() for f in sorted(os.listdir(d)) if f.endswith(".svg")}, open(sys.argv[2],"w"))' \
-  "$here/../../components/zeron/icons" "$here/build/zeron/icons.json"
+  "$here/../../components/icons" "$here/build/zeron/icons.json"
 # /components-gpu: the earlier component library's page (components/spec.md, #13153): every component in
 # every skin, drawn by the library (components/gallery/page.coax) with the atlas assets above.
 timed components "$here/../../coax/web/wasm.sh" "$here/components.coax" "$here/components-face.c" "$here/build/components.wasm" &

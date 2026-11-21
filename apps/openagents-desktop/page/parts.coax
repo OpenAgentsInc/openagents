@@ -13,7 +13,7 @@
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
-#load "../../../components/zeron/editor.coax";
+#load "../../../components/chat/editor.coax";
 #load "../../../components/skin/arcade.coax";
 #load "../../../components/backend/gpu.coax";
 #load "../../../coax/lib/agent/engine/mcworker-wire.coax";

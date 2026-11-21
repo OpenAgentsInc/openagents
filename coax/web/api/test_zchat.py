@@ -270,7 +270,7 @@ for cid in (C, C2):
     s, sb = state(cid)
     spath = os.path.join(cwork, f"state-{cid}.txt")
     open(spath, "w").write(sb if s == 200 else "")
-    rd = subprocess.run([os.path.join(REPO, "coax", "web", "tool.sh"), "components/zeron/chat-lines-profile.coax", "--read", spath],
+    rd = subprocess.run([os.path.join(REPO, "coax", "web", "tool.sh"), "components/chat/chat-lines-profile.coax", "--read", spath],
                         cwd=REPO, capture_output=True, text=True, timeout=1200)
     check(f"chat: every line of conversation {cid}'s state reads through chat-lines.coax and is written back byte for byte",
           s == 200 and rd.returncode == 0, (s, rd.stdout[-2000:], rd.stderr[-800:]))

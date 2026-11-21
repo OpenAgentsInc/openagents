@@ -31,7 +31,7 @@
 #load "../../../../components/app/task.coax";
 #load "../../../../components/app/activity.coax";
 #load "../../../../components/app/conversation.coax";
-#load "../../../../components/zeron/tools.coax";
+#load "../../../../components/chat/tools.coax";
 
 // The page's action numbers: what a press on one of its rows is.
 VIEW_A_FIELD :: 1;      // the composer's text: the host gives it the keyboard

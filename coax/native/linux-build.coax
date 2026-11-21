@@ -39,6 +39,6 @@ cnl_build :: (b:CnlBuild)->int {
  binb:[1200]u8;binary:=fs_join(b.folder,ifx b.sanitized then "OpenAgentsGPUCheckASan" else "OpenAgentsGPUCheck",binb[..]);for arg:[5]string.["-lvulkan","-lpthread","-lm","-o",binary] {cnl_add(cc[..],arg);}
  if b.sanitized {cnl_add(cc[..],"-fsanitize=address,undefined");cnl_add(cc[..],"-fno-omit-frame-pointer");}
  if nc_run(cc[0].v[0..<cc[0].n],240,out[..])<0 {return 1;}
- for path:[3]string.["components/zeron/fonts","components/zeron/icons","components/zeron/NOTICE"] {copy:=[4]string.["cp","-R",path,rdir];if nc_run(copy[..],20,out[..])<0 {return 1;}}
+ for path:[3]string.["components/fonts","components/icons","components/NOTICE"] {copy:=[4]string.["cp","-R",path,rdir];if nc_run(copy[..],20,out[..])<0 {return 1;}}
  print("built %\n",binary);return 0;
 }

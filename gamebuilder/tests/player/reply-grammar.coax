@@ -6,7 +6,7 @@ pt_reply_grammar :: (s:string)->ReplyGrammar {
  g:ReplyGrammar;at:=0;g.leading_space=s.count>0 && (s[0]==' ' || s[0]=='\t' || s[0]=='\r' || s[0]=='\n');for v:s {if v=='\r' {g.carriage_returns+=1;}}
  while at<s.count {
   end:=at;while end<s.count && s[end]!='\n' {end+=1;}g.lines+=1;lo:=at;while lo<end && (s[lo]==' ' || s[lo]=='\t' || s[lo]=='\r') {lo+=1;}
-  if end-lo>=3 && s[lo..<lo+3]=="```" {g.fenced=true;}
+  if end-lo>=3 && s[lo..<lo+3]=="```" {g.fenced=true;} // not Markdown
   if end-lo>=6 && s[lo..<lo+6]=="route:" {
    g.route_seen=true;if at==0 && lo==0 {g.route_at_start=true;}start:=lo+6;while start<end && s[start]==' ' {start+=1;}stop:=start;while stop<end && s[stop]!='/' && s[stop]!=' ' && s[stop]!='\r' {stop+=1;}
    for i:0..<7 {if s[start..<stop]==RG_ROOTS[i] {g.root=i;}}
