@@ -575,25 +575,35 @@ static int parse_message_obj(JScan *j, Req *r) {
     j->pos++;
     ChatMsg *m = req_add_msg(r);
     if (!m) return 1;
+    Buf item_type = {0};
+    Buf fc_args = {0};
     j_ws(j);
     while (j->pos < j->len && j->s[j->pos] != '}') {
         Buf k = {0};
-        if (j_string(j, &k)) { buf_free(&k); return 1; }
+        if (j_string(j, &k)) { buf_free(&k); buf_free(&item_type); buf_free(&fc_args); return 1; }
         j_ws(j);
-        if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); return 1; }
+        if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); buf_free(&item_type); buf_free(&fc_args); return 1; }
         j->pos++;
-        if (k.data && !strcmp(k.data, "role")) {
+        if (k.data && !strcmp(k.data, "type")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &item_type);
+            else j_skip(j);
+        } else if (k.data && !strcmp(k.data, "role")) {
             j_string(j, &m->role);
         } else if (k.data && !strcmp(k.data, "name")) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->name);
             else j_skip(j);
-        } else if (k.data && !strcmp(k.data, "tool_call_id")) {
+        } else if (k.data && (!strcmp(k.data, "tool_call_id") || !strcmp(k.data, "call_id"))) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->tool_call_id);
             else j_skip(j);
-        } else if (k.data && !strcmp(k.data, "content")) {
+        } else if (k.data && (!strcmp(k.data, "content") || !strcmp(k.data, "output"))) {
             parse_content_value(j, &m->content);
+        } else if (k.data && !strcmp(k.data, "arguments")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &fc_args);
+            else j_raw_value(j, &fc_args);
         } else if (k.data && (!strcmp(k.data, "reasoning_content") || !strcmp(k.data, "reasoning"))) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->reasoning);
@@ -604,7 +614,7 @@ static int parse_message_obj(JScan *j, Req *r) {
                 j->pos++;
                 j_ws(j);
                 while (j->pos < j->len && j->s[j->pos] != ']') {
-                    if (parse_tool_call_obj(j, m)) { buf_free(&k); return 1; }
+                    if (parse_tool_call_obj(j, m)) { buf_free(&k); buf_free(&item_type); buf_free(&fc_args); return 1; }
                     j_ws(j);
                     if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
                 }
@@ -620,6 +630,24 @@ static int parse_message_obj(JScan *j, Req *r) {
         if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
     }
     if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+    if (item_type.data && !strcmp(item_type.data, "function_call")) {
+        m->role.len = 0;
+        buf_adds(&m->role, "assistant");
+        ToolCall *tc = msg_add_tc(m);
+        if (tc) {
+            if (m->tool_call_id.len) buf_append(&tc->id, m->tool_call_id.data, m->tool_call_id.len);
+            if (m->name.len) buf_append(&tc->name, m->name.data, m->name.len);
+            if (fc_args.len) buf_append(&tc->args_json, fc_args.data, fc_args.len);
+            else buf_adds(&tc->args_json, "{}");
+        }
+        m->name.len = 0;
+        m->tool_call_id.len = 0;
+    } else if (item_type.data && !strcmp(item_type.data, "function_call_output")) {
+        m->role.len = 0;
+        buf_adds(&m->role, "tool");
+    }
+    buf_free(&item_type);
+    buf_free(&fc_args);
     if (!m->role.len) buf_adds(&m->role, "user");
     return 0;
 }
@@ -934,6 +962,35 @@ static void emit_responses_delta(int fd, int is_thinking, const char *s, size_t 
     buf_free(&ev);
 }
 
+static void emit_responses_tool_call(int fd, int idx, const char *id,
+                                     const char *name, size_t name_len,
+                                     const char *args, size_t args_len) {
+    Buf ev = {0};
+    char head[160];
+    snprintf(head, sizeof head, "{\"type\":\"response.output_item.added\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%s\",\"call_id\":\"%s\",\"name\":\"", idx, id, id);
+    buf_adds(&ev, head);
+    buf_add_json_escaped(&ev, name, name_len);
+    buf_adds(&ev, "\",\"arguments\":\"\",\"status\":\"in_progress\"}}");
+    send_sse_event(fd, "response.output_item.added", ev.data, ev.len);
+    ev.len = 0;
+
+    snprintf(head, sizeof head, "{\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_%s\",\"output_index\":%d,\"delta\":\"", id, idx);
+    buf_adds(&ev, head);
+    buf_add_json_escaped(&ev, args, args_len);
+    buf_adds(&ev, "\"}");
+    send_sse_event(fd, "response.function_call_arguments.delta", ev.data, ev.len);
+    ev.len = 0;
+
+    snprintf(head, sizeof head, "{\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%s\",\"call_id\":\"%s\",\"name\":\"", idx, id, id);
+    buf_adds(&ev, head);
+    buf_add_json_escaped(&ev, name, name_len);
+    buf_adds(&ev, "\",\"arguments\":\"");
+    buf_add_json_escaped(&ev, args, args_len);
+    buf_adds(&ev, "\",\"status\":\"completed\"}}");
+    send_sse_event(fd, "response.output_item.done", ev.data, ev.len);
+    buf_free(&ev);
+}
+
 static void handle_inference(Server *sv, int fd, int is_responses, const char *body, size_t body_len) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
@@ -1075,10 +1132,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
                     buf_adds(&tc->id, idbuf);
                     parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
-                    if (r.stream && !is_responses) {
-                        emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
-                                            tc->name.data ? tc->name.data : "", tc->name.len,
-                                            tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                    if (r.stream) {
+                        if (is_responses) {
+                            emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
+                                                     tc->name.data ? tc->name.data : "", tc->name.len,
+                                                     tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        } else {
+                            emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                                                tc->name.data ? tc->name.data : "", tc->name.len,
+                                                tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        }
                     }
                     n_emitted_tcs++;
                 }
@@ -1162,10 +1225,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
             buf_adds(&tc->id, idbuf);
             parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
-            if (r.stream && !is_responses) {
-                emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
-                                    tc->name.data ? tc->name.data : "", tc->name.len,
-                                    tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+            if (r.stream) {
+                if (is_responses) {
+                    emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
+                                             tc->name.data ? tc->name.data : "", tc->name.len,
+                                             tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                } else {
+                    emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                                        tc->name.data ? tc->name.data : "", tc->name.len,
+                                        tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                }
             }
             n_emitted_tcs++;
         }
@@ -1235,11 +1304,37 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         buf_add_json_escaped(&out, model, strlen(model));
         buf_adds(&out, "\",\"output_text\":\"");
         if (full_text.len) buf_add_json_escaped(&out, full_text.data, full_text.len);
-        buf_adds(&out, "\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"");
-        if (full_text.len) buf_add_json_escaped(&out, full_text.data, full_text.len);
+        buf_adds(&out, "\",\"output\":[");
+        int out_n = 0;
+        if (full_think.len) {
+            buf_adds(&out, "{\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"");
+            buf_add_json_escaped(&out, full_think.data, full_think.len);
+            buf_adds(&out, "\"}]}");
+            out_n++;
+        }
+        if (full_text.len || n_emitted_tcs == 0) {
+            if (out_n++) buf_adds(&out, ",");
+            buf_adds(&out, "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"");
+            if (full_text.len) buf_add_json_escaped(&out, full_text.data, full_text.len);
+            buf_adds(&out, "\"}]}");
+        }
+        for (int t = 0; t < n_emitted_tcs; t++) {
+            const ToolCall *tc = &emitted_tcs[t];
+            if (out_n++) buf_adds(&out, ",");
+            buf_adds(&out, "{\"type\":\"function_call\",\"id\":\"fc_");
+            if (tc->id.len) buf_add_json_escaped(&out, tc->id.data, tc->id.len);
+            buf_adds(&out, "\",\"call_id\":\"");
+            if (tc->id.len) buf_add_json_escaped(&out, tc->id.data, tc->id.len);
+            buf_adds(&out, "\",\"name\":\"");
+            if (tc->name.len) buf_add_json_escaped(&out, tc->name.data, tc->name.len);
+            buf_adds(&out, "\",\"arguments\":\"");
+            if (tc->args_json.len) buf_add_json_escaped(&out, tc->args_json.data, tc->args_json.len);
+            else buf_adds(&out, "{}");
+            buf_adds(&out, "\",\"status\":\"completed\"}");
+        }
         char utail[160];
         snprintf(utail, sizeof utail,
-                 "\"}]}],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d}}",
+                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d}}",
                  n_prompt, n_gen, n_prompt + n_gen);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", out.data, out.len);
