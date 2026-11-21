@@ -5,6 +5,7 @@
 #load "changelog-links.coax";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
+#load "../../components/core/markdown.coax";
 
 CG_TITLE :: "Coax changelog";
 CG_SOURCE :: "https://github.com/OpenAgentsInc/openagents/blob/main/coax/CHANGELOG.md";
@@ -65,11 +66,11 @@ cg_char :: (arena:[]u8,at:int,c:u8,start:int)->int {
   arena[at]=ifx space then cast(u8)' ' else c;return at+1;
 }
 cg_plain :: (raw:string,arena:[]u8,position:int)->int {
-  at:=position;start:=at;i:=0;
-  while i<raw.count {
-    if raw[i]=='`' {i+=1;continue;}
-    if CL_at(raw,i,"**") {i+=2;continue;}
-    at=cg_char(arena,at,raw[i],start);if at<0 {return -1;}i+=1;
+  doc:[1]MdDoc;
+  md_inline_text(doc[..],raw);
+  at:=position;start:=at;
+  for i:0..<doc[0].n {
+    at=cg_char(arena,at,doc[0].text[i],start);if at<0 {return -1;}
   }
   if at>start && arena[at-1]==' ' {at-=1;}return at;
 }
@@ -82,7 +83,7 @@ cg_inline :: (raw:string,arena:[]u8,position:int,links:[]CgLink,n:[]int)->int {
       for j:i+1..<code_end {at=cg_char(arena,at,raw[j],start);if at<0 {return -1;}}
       i=code_end+1;continue;
     }
-    if CL_at(raw,i,"**") {i+=2;continue;}
+    if i+1<raw.count && raw[i]=='*' && raw[i+1]=='*' {i+=2;continue;}
     if raw[i]=='[' {
       end:=i+1;while end<raw.count && raw[end]!=']' {end+=1;}
       if CL_at(raw,end,"](") {

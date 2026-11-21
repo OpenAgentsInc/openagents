@@ -36,6 +36,8 @@
 // and a Worker whose log hasn't grown for --stuck seconds is judged by
 // System One, which stops it when it isn't making progress.
 
+#load "../../components/layout/text.coax";
+
 RT_THREADS :: 256;
 RT_CHAT_WORDS :: 100;            // a chat reply's hard cap (chapter 20)
 RT_REPEATS :: 5;                 // the same step this many times in a row stops a Worker
@@ -278,25 +280,48 @@ rt_para :: (text: string) -> string {
   return cast(string) text[0..<e];
 }
 
-// text with each line longer than width broken at spaces; a list item's
-// later lines are indented two spaces. Code lines (four spaces or a fence) stay.
-rt_wrap :: (text: string, width: int, out: [] u8, n0: int) -> int {
+// text with each line longer than cols broken using components/layout/text.coax;
+// a list item's later lines are indented two spaces. Code lines (four spaces or a fence) stay.
+rt_format_lines :: (text: string, cols: int, out: [] u8, n0: int) -> int {
   n := n0; at := 0; fenced := false;
+  m := measure_cells();
+  faces := TextFaces.{};
+  no_runs: [1] MdRun;
+  lines: [256] TextLine;
   while at <= text.count && at < text.count + 1 {
     e := at; while e < text.count && text[e] != 10 { e += 1; }
     line := cast(string) text[at..<e];
-    if line.count >= 3 && cast(string) line[0..<3] == "```" { fenced = !fenced; }
+    if line.count >= 3 && line[0] == '`' && md_fence_char(line) == '`' { fenced = !fenced; }
     code := fenced || (line.count >= 4 && cast(string) line[0..<4] == "    ");
-    item := line.count >= 2 && (line[0] == '-' || line[0] == '*') && line[1] == ' ';
-    rest := line; first := true;
-    while true {
-      lim := ifx first then width else width - (ifx item then 2 else 0);
-      if !first && item { n = cd_cat(out, n, "  "); }
-      if code || rest.count <= lim { n = cd_cat(out, n, rest); break; }
-      c := lim; while c > 0 && rest[c] != ' ' { c -= 1; }
-      if c == 0 { c = lim; while c < rest.count && rest[c] != ' ' { c += 1; } if c >= rest.count { n = cd_cat(out, n, rest); break; } }
-      n = cd_cat(out, n, cast(string) rest[0..<c]); n = cd_cat(out, n, "\n");
-      rest = cast(string) rest[c + 1..<rest.count]; first = false;
+    item := md_bullet(line) == 2 && (line[0] == '-' || line[0] == '*');
+    if code || line.count <= cols {
+      n = cd_cat(out, n, line);
+    } else if item {
+      // First line uses full cols; continuation lines wrap at cols - 2 with "  " prefix.
+      k := text_wrap(m, faces, line, no_runs[0..<0], cast(f32) cols, lines[..]);
+      if k > 0 {
+        f0 := lines[0];
+        t0 := f0.to; while t0 > f0.from && line[t0 - 1] == ' ' { t0 -= 1; }
+        n = cd_cat(out, n, cast(string) line[f0.from..<t0]);
+        if f0.to < line.count {
+          rest := cast(string) line[f0.to..<line.count];
+          k2 := text_wrap(m, faces, rest, no_runs[0..<0], cast(f32) (ifx cols > 2 then cols - 2 else 1), lines[..]);
+          for j: 0..<k2 {
+            s := lines[j];
+            t := s.to; while t > s.from && rest[t - 1] == ' ' { t -= 1; }
+            n = cd_cat(out, n, "\n  ");
+            n = cd_cat(out, n, cast(string) rest[s.from..<t]);
+          }
+        }
+      }
+    } else {
+      k := text_wrap(m, faces, line, no_runs[0..<0], cast(f32) cols, lines[..]);
+      for j: 0..<k {
+        if j > 0 { n = cd_cat(out, n, "\n"); }
+        s := lines[j];
+        t := s.to; while t > s.from && line[t - 1] == ' ' { t -= 1; }
+        n = cd_cat(out, n, cast(string) line[s.from..<t]);
+      }
     }
     if e >= text.count { break; }
     n = cd_cat(out, n, "\n");
@@ -315,9 +340,9 @@ rt_reply_mail :: (task: string, id: string, ending: string, result: string, chec
   if ending != "finished" { n = cd_cat(out, n, "The work ended as "); n = cd_cat(out, n, ending); n = cd_cat(out, n, " before it finished.\n\n"); }
   e := ifx result.count > RT_ISSUE_BYTES then RT_ISSUE_BYTES else result.count;
   while e > 0 && e < result.count && (result[e] & 192) == 128 { e -= 1; }
-  n = rt_wrap(ifx result.count > 0 then cast(string) result[0..<e] else "There is no result text.", 72, out, n);
+  n = rt_format_lines(ifx result.count > 0 then cast(string) result[0..<e] else "There is no result text.", 72, out, n);
   if e < result.count { n = cd_cat(out, n, "\n\nThe rest is in the session: coder log "); n = cd_cat(out, n, id); }
-  if checks.count > 0 { n = cd_cat(out, n, "\n\nCommands run:\n"); n = rt_wrap(checks, 72, out, n); while n > 0 && out[n - 1] == 10 { n -= 1; } }
+  if checks.count > 0 { n = cd_cat(out, n, "\n\nCommands run:\n"); n = rt_format_lines(checks, 72, out, n); while n > 0 && out[n - 1] == 10 { n -= 1; } }
   n = cd_cat(out, n, "\n\nSession: "); n = cd_cat(out, n, id);
   return cast(string) out[0..<n];
 }
@@ -1655,7 +1680,7 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   d1 := rt_reply_doc("x", "S4", "finished", "One paragraph only.", "", ob4[..]);
   #assert !cd_holds(d1, "## Details");
   wb: [256] u8;
-  #assert cast(string) wb[0..<rt_wrap("- one two three four five", 12, wb[..], 0)] == "- one two\n  three four\n  five";
+  #assert cast(string) wb[0..<rt_format_lines("- one two three four five", 12, wb[..], 0)] == "- one two\n  three four\n  five";
 }
 
 #test "router: a mail source's to is one plain address" {

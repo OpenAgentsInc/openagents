@@ -7,6 +7,7 @@
 #load "rank.coax";
 #load "../bpe-train.coax";
 #load "../../../coax/lib/crypto/sha256.coax";
+#load "../../../components/core/markdown.coax";
 
 BsPassage :: struct { file: int; from: int; to: int; head_from: int; head_to: int; part: int; hash: [32] u8; }
 BsChunks :: struct { passages: int; heads: int; full: bool; }
@@ -49,7 +50,7 @@ bs_heading :: (line: string) -> int {
   if level == 0 || level > BS_HEADS_MAX || level >= line.count || line[level] != ' ' { return 0; }
   return level;
 }
-bs_fence :: (line: string) -> bool { return bs_prefix(line, "```"); }
+bs_fence :: (line: string) -> bool { return line.count >= 3 && line[0] == '`' && md_fence_char(line) == '`'; }
 bs_blank :: (line: string) -> bool {
   for c: line { if c != ' ' && c != '\t' && c != '\r' { return false; } }
   return true;
