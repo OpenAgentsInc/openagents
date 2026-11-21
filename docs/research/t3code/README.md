@@ -1,5 +1,12 @@
 # T3 Code: coding-agent connection audit
 
+> [!NOTE]
+> This 2026-11-13 folder is pinned to T3 Code `0.1.9` (`f313d0a6cb`) and early
+> OpenAgents baselines (`6fe29cc703` / `097e11c86d`). For the current
+> comprehensive comparison against T3 Code `v0.1.12-nightly` (`8cfd2b5211`,
+> +1,759 commits) and OpenAgents `855654fc81`, see
+> [`docs/audits/2026-11-20-t3code-comprehensive-gap-analysis.md`](../../audits/2026-11-20-t3code-comprehensive-gap-analysis.md).
+
 Audited 2026-11-13. Source: the local checkout at
 `~/work/projects/repos/t3code`, upstream
 [`pingdotgg/t3code`](https://github.com/pingdotgg/t3code), pinned to
