@@ -493,6 +493,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 116: checkUpdateEverything()
         case 120...125: customizeAsked(what)
         case 130...137: previewAsked(what)
+        case 140...145: forgeAsked(what)
         case 40...43: fileAsked(what)
         default: break
         }

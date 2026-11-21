@@ -665,4 +665,20 @@ int cd_cust_kb_rebind_id(void *page, const char *id, const char *chord, const ch
 void cd_cust_kb_reset_all(void *page);
 int cd_cust_kb_conflict(void *page, int idx);
 int cd_cust_kb_match(void *page, const char *chord, int ctx, char *out_id, int cap);
+// Pull Requests inbox, multi-forge source control, AI review tours & Issues view (page/forge.coax; #13886).
+void cd_forge_open(void *page, int tab);
+void cd_forge_close(void *page);
+int cd_forge_shown(void *page);
+int cd_forge_set_remote(void *page, const char *url);
+void cd_forge_set_status(void *page, int loading, const char *msg);
+void cd_forge_pr_clear(void *page);
+int cd_forge_pr_add(void *page, int number, const char *title, const char *author, const char *head_ref, const char *base_ref, const char *state, const char *url, int draft, int is_authored, int review_requested, int files_total, uint64_t viewed_mask, int viewed_count);
+void cd_forge_pr_finalize(void *page);
+int cd_forge_pr_set_viewed(void *page, int number, uint64_t mask, int count);
+void cd_forge_issue_clear(void *page);
+int cd_forge_issue_add(void *page, int source, const char *key, const char *title, const char *team, const char *assignee, const char *state, const char *url, const char *body);
+int cd_forge_selected_pr(void *page);
+int cd_forge_selected_pr_viewed(void *page, uint64_t *out_mask, int *out_count);
+int cd_forge_prompt(void *page, int tour, char *out, int cap);
+int cd_forge_issue_prompt(void *page, char *out, int cap);
 #endif

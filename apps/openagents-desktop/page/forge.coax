@@ -1,0 +1,996 @@
+// OpenAgents Desktop page (../page.coax): Pull Requests inbox, multi-forge source control
+// (GitHub, GitLab, Bitbucket, Azure DevOps, Forgejo), AI guided code review tours, and Issues view
+// (GitHub Issues & Linear multi-team) with one-click pre-seeded worktree chat spawning (GitHub #13886).
+
+// Multi-forge kinds
+CP_FORGE_NONE :: 0;
+CP_FORGE_GITHUB :: 1;
+CP_FORGE_GITLAB :: 2;
+CP_FORGE_BITBUCKET :: 3;
+CP_FORGE_AZURE :: 4;
+CP_FORGE_FORGEJO :: 5;
+
+// Forge pane tabs
+CP_FORGE_TAB_PRS :: 0;
+CP_FORGE_TAB_ISSUES :: 1;
+
+// PR inbox saved filter views
+CP_PR_FILTER_ALL :: 0;
+CP_PR_FILTER_AUTHORED :: 1;
+CP_PR_FILTER_REVIEW :: 2;
+CP_PR_FILTER_DRAFTS :: 3;
+
+// Issue sources
+CP_ISSUE_SRC_GITHUB :: 0;
+CP_ISSUE_SRC_LINEAR :: 1;
+
+// Capacities
+CP_FORGE_MAX_PRS :: 64;
+CP_FORGE_MAX_ISSUES :: 64;
+CP_FORGE_MAX_TEAMS :: 16;
+
+// Host asks (allocated in 140..145 after CP_ASK_PREVIEW_* 130..137)
+CP_ASK_FORGE_REFRESH :: 140;      // host detects remote URL and fetches PRs + Issues
+CP_ASK_FORGE_OPEN_PR :: 141;      // host spawns worktree chat pre-seeded with selected PR context
+CP_ASK_FORGE_REVIEW_TOUR :: 142;  // host spawns worktree chat pre-seeded with AI Review Tour prompt
+CP_ASK_FORGE_OPEN_ISSUE :: 143;   // host spawns worktree chat pre-seeded with selected Issue context
+CP_ASK_FORGE_MARK_VIEWED :: 144;  // host persists files-viewed mask/count for selected PR in UserDefaults
+CP_ASK_FORGE_OPEN_URL :: 145;     // host opens selected PR/Issue URL in default browser
+
+// Row action IDs (allocated in 340..349 after CP_PREVIEW_* 320..329)
+CP_FORGE_TOGGLE :: 340;           // sidebar button: open/close Pull Requests & Issues pane
+CP_FORGE_CLOSE :: 341;            // close pane button
+CP_FORGE_TAB :: 342;              // switch PRs / Issues tab (coder.forge.tab.<0|1>)
+CP_FORGE_REFRESH :: 343;          // refresh PRs & Issues from host
+CP_FORGE_PR_FILTER :: 344;        // PR filter pill (coder.forge.prf.<0..3>)
+CP_FORGE_PR_VIEWED :: 345;        // mark next file viewed / cycle viewed (coder.forge.pr.view.<idx>)
+CP_FORGE_PR_CHAT :: 346;          // open PR in worktree chat (coder.forge.pr.chat.<idx>)
+CP_FORGE_PR_TOUR :: 347;          // start AI Review Tour for PR (coder.forge.pr.tour.<idx>)
+CP_FORGE_ISS_TEAM :: 348;         // filter issues by team/source (coder.forge.issteam.<idx>)
+CP_FORGE_ISS_CHAT :: 349;         // open Issue in worktree chat (coder.forge.iss.chat.<idx>)
+
+// Wheel scroll target (input.coax CP_SCR_*, after CP_SCR_SIDE_CHAT :: 8)
+CP_SCR_FORGE :: 9;
+
+// Palette command codes (palette.coax CP_PC_*, after CP_PC_SNAPSHOT :: 36)
+CP_PC_FORGE_PRS :: 37;
+CP_PC_FORGE_ISSUES :: 38;
+
+CpForgeRemote :: struct {
+  kind: int;
+  host: [128] u8; host_n: int;
+  owner: [128] u8; owner_n: int;
+  repo: [128] u8; repo_n: int;
+}
+
+CpForgePr :: struct {
+  number: int;
+  title: [160] u8; title_n: int;
+  author: [64] u8; author_n: int;
+  head_ref: [96] u8; head_ref_n: int;
+  base_ref: [96] u8; base_ref_n: int;
+  state: [24] u8; state_n: int;
+  url: [256] u8; url_n: int;
+  draft: bool;
+  is_authored: bool;
+  review_requested: bool;
+  stacked_parent: int;            // parent PR number when base_ref == parent.head_ref, else -1
+  files_total: int;
+  files_viewed_mask: u64;
+  files_viewed_count: int;
+}
+
+CpForgeIssue :: struct {
+  source: int;                    // CP_ISSUE_SRC_GITHUB or CP_ISSUE_SRC_LINEAR
+  key: [32] u8; key_n: int;       // "#13886" or "ENG-412"
+  title: [160] u8; title_n: int;
+  team: [48] u8; team_n: int;     // Linear team key/name or GitHub label
+  assignee: [64] u8; assignee_n: int;
+  state: [32] u8; state_n: int;
+  url: [256] u8; url_n: int;
+  body: [256] u8; body_n: int;
+}
+
+CpForge :: struct {
+  open: bool;
+  front: bool;
+  tab: int;                       // CP_FORGE_TAB_PRS or CP_FORGE_TAB_ISSUES
+  loaded: bool;
+  loading: bool;
+  status: [160] u8; status_n: int;
+  remote: CpForgeRemote;
+  pr_filter: int;                 // CP_PR_FILTER_*
+  prs: [CP_FORGE_MAX_PRS] CpForgePr; nprs: int;
+  issues: [CP_FORGE_MAX_ISSUES] CpForgeIssue; nissues: int;
+  teams: [CP_FORGE_MAX_TEAMS * 48] u8;
+  team_lens: [CP_FORGE_MAX_TEAMS] int;
+  nteams: int;
+  issue_team_idx: int;            // -1 = All teams, >= 0 = index into teams
+  selected_pr: int;               // index in prs[] for pending host action
+  selected_issue: int;            // index in issues[] for pending host action
+  selected_url: [256] u8; selected_url_n: int;
+  scroll: f32; content: f32; view: f32;
+}
+
+// ---------------------------------------------------------------- string & bit helpers
+
+cp_forge_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+cp_forge_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if cp_forge_lower(a[i]) != cp_forge_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+cp_forge_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count {
+      if cp_forge_lower(hay[i + j]) != cp_forge_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+cp_forge_ends_with :: (s: string, suf: string) -> bool {
+  if suf.count > s.count { return false; }
+  return cast(string) s[s.count - suf.count..<s.count] == suf;
+}
+
+cp_forge_starts_with :: (s: string, pre: string) -> bool {
+  if pre.count > s.count { return false; }
+  return cast(string) s[0..<pre.count] == pre;
+}
+
+cp_forge_popcount64 :: (m: u64) -> int {
+  v := m; c := 0;
+  while v != 0 {
+    if (v & 1) != 0 { c += 1; }
+    v = v >> 1;
+  }
+  return c;
+}
+
+cp_forge_name :: (kind: int) -> string {
+  if kind == CP_FORGE_GITHUB { return "GitHub"; }
+  if kind == CP_FORGE_GITLAB { return "GitLab"; }
+  if kind == CP_FORGE_BITBUCKET { return "Bitbucket"; }
+  if kind == CP_FORGE_AZURE { return "Azure DevOps"; }
+  if kind == CP_FORGE_FORGEJO { return "Forgejo"; }
+  return "None";
+}
+
+// ---------------------------------------------------------------- multi-forge remote URL detector
+
+// Detects GitHub, GitLab, Bitbucket, Azure DevOps, and Forgejo from HTTPS or SSH git remote URLs,
+// extracting forge kind, host, owner/org, and repo.
+cp_forge_detect :: (raw_url: string) -> CpForgeRemote {
+  r := CpForgeRemote.{};
+  u := cp_trim(raw_url);
+  if u.count == 0 { return r; }
+
+  // Strip trailing slashes and optional ".git" suffix
+  while u.count > 0 && u[u.count - 1] == '/' { u = cast(string) u[0..<u.count - 1]; }
+  if cp_forge_ends_with(u, ".git") { u = cast(string) u[0..<u.count - 4]; }
+  while u.count > 0 && u[u.count - 1] == '/' { u = cast(string) u[0..<u.count - 1]; }
+
+  host := "";
+  path := "";
+
+  if cp_forge_starts_with(u, "https://") || cp_forge_starts_with(u, "http://") || cp_forge_starts_with(u, "ssh://") || cp_forge_starts_with(u, "git://") {
+    scheme_end := 0;
+    while scheme_end + 2 < u.count && !(u[scheme_end] == ':' && u[scheme_end + 1] == '/' && u[scheme_end + 2] == '/') {
+      scheme_end += 1;
+    }
+    rest := cast(string) u[scheme_end + 3..<u.count];
+    slash := 0;
+    while slash < rest.count && rest[slash] != '/' { slash += 1; }
+    if slash >= rest.count { return r; }
+    auth_host := cast(string) rest[0..<slash];
+    path = cast(string) rest[slash + 1..<rest.count];
+    // Strip optional user@
+    at := -1;
+    for i: 0..<auth_host.count { if auth_host[i] == '@' { at = i; } }
+    if at >= 0 { auth_host = cast(string) auth_host[at + 1..<auth_host.count]; }
+    // Strip optional :port
+    colon := -1;
+    for i: 0..<auth_host.count { if auth_host[i] == ':' { colon = i; break; } }
+    host = ifx colon >= 0 then cast(string) auth_host[0..<colon] else auth_host;
+  } else {
+    // SCP-like SSH syntax: git@host:owner/repo
+    colon := -1;
+    for i: 0..<u.count { if u[i] == ':' { colon = i; break; } }
+    if colon < 0 || colon + 1 >= u.count { return r; }
+    auth_host := cast(string) u[0..<colon];
+    path = cast(string) u[colon + 1..<u.count];
+    at := -1;
+    for i: 0..<auth_host.count { if auth_host[i] == '@' { at = i; } }
+    host = ifx at >= 0 then cast(string) auth_host[at + 1..<auth_host.count] else auth_host;
+  }
+
+  while path.count > 0 && path[0] == '/' { path = cast(string) path[1..<path.count]; }
+  if host.count == 0 || path.count == 0 { return r; }
+
+  // Classify forge by host
+  kind := CP_FORGE_NONE;
+  if cp_forge_eq_ci(host, "github.com") || cp_forge_contains_ci(host, "github.") {
+    kind = CP_FORGE_GITHUB;
+  } else if cp_forge_eq_ci(host, "gitlab.com") || cp_forge_contains_ci(host, "gitlab") {
+    kind = CP_FORGE_GITLAB;
+  } else if cp_forge_eq_ci(host, "bitbucket.org") || cp_forge_contains_ci(host, "bitbucket") {
+    kind = CP_FORGE_BITBUCKET;
+  } else if cp_forge_eq_ci(host, "dev.azure.com") || cp_forge_eq_ci(host, "ssh.dev.azure.com") || cp_forge_contains_ci(host, ".visualstudio.com") {
+    kind = CP_FORGE_AZURE;
+  } else if cp_forge_eq_ci(host, "codeberg.org") || cp_forge_contains_ci(host, "forgejo") || cp_forge_contains_ci(host, "gitea") {
+    kind = CP_FORGE_FORGEJO;
+  }
+
+  r.kind = kind;
+  r.host_n = cp_out(r.host[..], host);
+
+  // Extract owner and repo according to forge path conventions
+  if kind == CP_FORGE_AZURE {
+    // Formats:
+    //   https://dev.azure.com/org/project/_git/repo
+    //   git@ssh.dev.azure.com:v3/org/project/repo
+    //   https://org.visualstudio.com/project/_git/repo
+    p := path;
+    if cp_forge_starts_with(p, "v3/") { p = cast(string) p[3..<p.count]; }
+    if cp_forge_contains_ci(host, ".visualstudio.com") {
+      dot := 0;
+      while dot < host.count && host[dot] != '.' { dot += 1; }
+      r.owner_n = cp_out(r.owner[..], cast(string) host[0..<dot]);
+      last_slash := -1;
+      for i: 0..<p.count { if p[i] == '/' { last_slash = i; } }
+      r.repo_n = cp_out(r.repo[..], ifx last_slash >= 0 then cast(string) p[last_slash + 1..<p.count] else p);
+    } else {
+      s1 := 0;
+      while s1 < p.count && p[s1] != '/' { s1 += 1; }
+      r.owner_n = cp_out(r.owner[..], cast(string) p[0..<s1]);
+      last_slash := -1;
+      for i: 0..<p.count { if p[i] == '/' { last_slash = i; } }
+      if last_slash >= 0 && last_slash + 1 < p.count {
+        r.repo_n = cp_out(r.repo[..], cast(string) p[last_slash + 1..<p.count]);
+      }
+    }
+    return r;
+  }
+
+  // Standard owner/repo (or group/subgroup/repo for GitLab: owner = everything before last '/', repo = after last '/')
+  last_slash := -1;
+  for i: 0..<path.count { if path[i] == '/' { last_slash = i; } }
+  if last_slash <= 0 || last_slash + 1 >= path.count { return r; }
+  r.owner_n = cp_out(r.owner[..], cast(string) path[0..<last_slash]);
+  r.repo_n = cp_out(r.repo[..], cast(string) path[last_slash + 1..<path.count]);
+  return r;
+}
+
+// ---------------------------------------------------------------- init & state helpers
+
+cp_forge_init :: (s: [] CoderPage) {
+  fg := s[0].forge[..];
+  fg[0].open = false;
+  fg[0].front = false;
+  fg[0].tab = CP_FORGE_TAB_PRS;
+  fg[0].loaded = false;
+  fg[0].loading = false;
+  fg[0].status_n = 0;
+  fg[0].pr_filter = CP_PR_FILTER_ALL;
+  fg[0].nprs = 0;
+  fg[0].nissues = 0;
+  fg[0].nteams = 0;
+  fg[0].issue_team_idx = -1;
+  fg[0].selected_pr = -1;
+  fg[0].selected_issue = -1;
+  fg[0].selected_url_n = 0;
+  fg[0].scroll = 0; fg[0].content = 0; fg[0].view = 0;
+}
+
+cp_forge_shown :: (s: [] CoderPage) -> bool {
+  return s[0].forge[0].open && s[0].forge[0].front;
+}
+
+cp_forge_show :: (s: [] CoderPage, tab: int) {
+  fg := s[0].forge[..];
+  fg[0].open = true;
+  fg[0].front = true;
+  if tab == CP_FORGE_TAB_PRS || tab == CP_FORGE_TAB_ISSUES { fg[0].tab = tab; }
+  // Yield other right-side panes so Forge comes to the front cleanly
+  s[0].term[0].front = false;
+  s[0].sim[0].front = false;
+  s[0].fp[0].front = false;
+  s[0].ft[0].front = false;
+  if !fg[0].loaded && !fg[0].loading {
+    fg[0].loading = true;
+    s[0].ask = CP_ASK_FORGE_REFRESH;
+  }
+}
+
+cp_forge_close :: (s: [] CoderPage) {
+  s[0].forge[0].open = false;
+  s[0].forge[0].front = false;
+}
+
+cp_forge_yield :: (s: [] CoderPage, act: int) -> bool {
+  if !cp_forge_shown(s) { return false; }
+  if act == CP_AGENT || act == CP_REVIEW || act == CP_FT_TOGGLE || act == CP_TERM_TOGGLE {
+    s[0].forge[0].front = false;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- PR inbox model
+
+// Computes stacked PR parent links: if PR i's base_ref equals PR j's head_ref (j != i),
+// PR i is stacked on PR j (stacked_parent = prs[j].number).
+cp_forge_compute_stacks :: (fg: [] CpForge) {
+  for i: 0..<fg[0].nprs {
+    fg[0].prs[i].stacked_parent = -1;
+    base := cast(string) fg[0].prs[i].base_ref[0..<fg[0].prs[i].base_ref_n];
+    if base.count == 0 { continue; }
+    for j: 0..<fg[0].nprs {
+      if i == j { continue; }
+      head := cast(string) fg[0].prs[j].head_ref[0..<fg[0].prs[j].head_ref_n];
+      if head.count > 0 && head == base {
+        fg[0].prs[i].stacked_parent = fg[0].prs[j].number;
+        break;
+      }
+    }
+  }
+}
+
+cp_forge_pr_matches :: (pr: CpForgePr, filter: int) -> bool {
+  if filter == CP_PR_FILTER_ALL { return true; }
+  if filter == CP_PR_FILTER_AUTHORED { return pr.is_authored; }
+  if filter == CP_PR_FILTER_REVIEW { return pr.review_requested; }
+  if filter == CP_PR_FILTER_DRAFTS { return pr.draft; }
+  return true;
+}
+
+cp_forge_pr_count_matching :: (fg: [] CpForge, filter: int) -> int {
+  c := 0;
+  for i: 0..<fg[0].nprs {
+    if cp_forge_pr_matches(fg[0].prs[i], filter) { c += 1; }
+  }
+  return c;
+}
+
+// Marks file_idx (0..63) viewed or unviewed on PR pr_idx, updating bitset and viewed count.
+cp_forge_pr_mark_file_viewed :: (fg: [] CpForge, pr_idx: int, file_idx: int, viewed: bool) -> bool {
+  if pr_idx < 0 || pr_idx >= fg[0].nprs || file_idx < 0 || file_idx >= 64 { return false; }
+  bit: u64 = cast(u64) 1 << cast(u64) file_idx;
+  if viewed {
+    fg[0].prs[pr_idx].files_viewed_mask = fg[0].prs[pr_idx].files_viewed_mask | bit;
+  } else {
+    fg[0].prs[pr_idx].files_viewed_mask = fg[0].prs[pr_idx].files_viewed_mask & (bit ^ 0xFFFFFFFFFFFFFFFF);
+  }
+  cnt := cp_forge_popcount64(fg[0].prs[pr_idx].files_viewed_mask);
+  if fg[0].prs[pr_idx].files_total > 0 && cnt > fg[0].prs[pr_idx].files_total {
+    cnt = fg[0].prs[pr_idx].files_total;
+  }
+  fg[0].prs[pr_idx].files_viewed_count = cnt;
+  return true;
+}
+
+// Advances viewed count by marking the next unviewed file bit (or resets to 0 if all viewed).
+cp_forge_pr_cycle_viewed :: (fg: [] CpForge, pr_idx: int) -> bool {
+  if pr_idx < 0 || pr_idx >= fg[0].nprs { return false; }
+  total := fg[0].prs[pr_idx].files_total;
+  if total <= 0 { total = 1; }
+  cap := ifx total > 64 then 64 else total;
+  if fg[0].prs[pr_idx].files_viewed_count >= cap {
+    fg[0].prs[pr_idx].files_viewed_mask = 0;
+    fg[0].prs[pr_idx].files_viewed_count = 0;
+    return true;
+  }
+  for b: 0..<cap {
+    bit: u64 = cast(u64) 1 << cast(u64) b;
+    if (fg[0].prs[pr_idx].files_viewed_mask & bit) == 0 {
+      return cp_forge_pr_mark_file_viewed(fg, pr_idx, b, true);
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- Issues view model
+
+cp_forge_team_str :: (fg: [] CpForge, idx: int) -> string {
+  if idx < 0 || idx >= fg[0].nteams { return ""; }
+  off := idx * 48;
+  return cast(string) fg[0].teams[off..<off + fg[0].team_lens[idx]];
+}
+
+cp_forge_register_team :: (fg: [] CpForge, team: string) {
+  t := cp_trim(team);
+  if t.count == 0 { return; }
+  for i: 0..<fg[0].nteams {
+    if cp_forge_eq_ci(cp_forge_team_str(fg, i), t) { return; }
+  }
+  if fg[0].nteams >= CP_FORGE_MAX_TEAMS { return; }
+  idx := fg[0].nteams;
+  off := idx * 48;
+  n := cp_out(fg[0].teams[off..<off + 48], t);
+  fg[0].team_lens[idx] = n;
+  fg[0].nteams += 1;
+}
+
+cp_forge_issue_matches :: (fg: [] CpForge, idx: int, team_filter: string) -> bool {
+  if team_filter.count == 0 { return true; }
+  return cp_forge_eq_ci(cast(string) fg[0].issues[idx].team[0..<fg[0].issues[idx].team_n], team_filter);
+}
+
+cp_forge_issue_count_matching :: (fg: [] CpForge, team_idx: int) -> int {
+  tf := ifx team_idx >= 0 && team_idx < fg[0].nteams then cp_forge_team_str(fg, team_idx) else "";
+  c := 0;
+  for i: 0..<fg[0].nissues {
+    if cp_forge_issue_matches(fg, i, tf) { c += 1; }
+  }
+  return c;
+}
+
+// ---------------------------------------------------------------- Prompt composers
+
+// Formats a pre-seeded worktree chat prompt for working on a Pull Request.
+cp_forge_pr_prompt :: (fg: [] CpForge, pr_idx: int, out: [] u8) -> int {
+  if pr_idx < 0 || pr_idx >= fg[0].nprs { return 0; }
+  pr := fg[0].prs[pr_idx];
+  n := 0;
+  n = el_put(out, n, "Work on Pull Request #");
+  n = el_put_i(out, n, pr.number);
+  n = el_put(out, n, ": ");
+  n = el_put(out, n, cast(string) pr.title[0..<pr.title_n]);
+  n = el_put(out, n, "\n");
+  if fg[0].remote.kind != CP_FORGE_NONE {
+    n = el_put(out, n, "Forge: ");
+    n = el_put(out, n, cp_forge_name(fg[0].remote.kind));
+    if fg[0].remote.owner_n > 0 && fg[0].remote.repo_n > 0 {
+      n = el_put(out, n, " (");
+      n = el_put(out, n, cast(string) fg[0].remote.owner[0..<fg[0].remote.owner_n]);
+      n = el_put(out, n, "/");
+      n = el_put(out, n, cast(string) fg[0].remote.repo[0..<fg[0].remote.repo_n]);
+      n = el_put(out, n, ")");
+    }
+    n = el_put(out, n, "\n");
+  }
+  if pr.head_ref_n > 0 || pr.base_ref_n > 0 {
+    n = el_put(out, n, "Branches: ");
+    n = el_put(out, n, cast(string) pr.head_ref[0..<pr.head_ref_n]);
+    n = el_put(out, n, " -> ");
+    n = el_put(out, n, cast(string) pr.base_ref[0..<pr.base_ref_n]);
+    n = el_put(out, n, "\n");
+  }
+  if pr.stacked_parent > 0 {
+    n = el_put(out, n, "Stacked on: PR #");
+    n = el_put_i(out, n, pr.stacked_parent);
+    n = el_put(out, n, "\n");
+  }
+  if pr.author_n > 0 {
+    n = el_put(out, n, "Author: @");
+    n = el_put(out, n, cast(string) pr.author[0..<pr.author_n]);
+    n = el_put(out, n, "\n");
+  }
+  if pr.url_n > 0 {
+    n = el_put(out, n, "URL: ");
+    n = el_put(out, n, cast(string) pr.url[0..<pr.url_n]);
+    n = el_put(out, n, "\n");
+  }
+  n = el_put(out, n, "\nInspect the PR diff, check CI/test status, and help me address feedback or finish this PR in this worktree.");
+  return n;
+}
+
+// Formats an AI Guided Code Review Tour prompt for a Pull Request.
+cp_forge_review_tour_prompt :: (fg: [] CpForge, pr_idx: int, out: [] u8) -> int {
+  if pr_idx < 0 || pr_idx >= fg[0].nprs { return 0; }
+  pr := fg[0].prs[pr_idx];
+  n := 0;
+  n = el_put(out, n, "AI Guided Code Review Tour for PR #");
+  n = el_put_i(out, n, pr.number);
+  n = el_put(out, n, ": ");
+  n = el_put(out, n, cast(string) pr.title[0..<pr.title_n]);
+  n = el_put(out, n, "\n");
+  if fg[0].remote.kind != CP_FORGE_NONE {
+    n = el_put(out, n, "Repository: ");
+    n = el_put(out, n, cp_forge_name(fg[0].remote.kind));
+    if fg[0].remote.owner_n > 0 && fg[0].remote.repo_n > 0 {
+      n = el_put(out, n, " ");
+      n = el_put(out, n, cast(string) fg[0].remote.owner[0..<fg[0].remote.owner_n]);
+      n = el_put(out, n, "/");
+      n = el_put(out, n, cast(string) fg[0].remote.repo[0..<fg[0].remote.repo_n]);
+    }
+    n = el_put(out, n, "\n");
+  }
+  if pr.head_ref_n > 0 || pr.base_ref_n > 0 {
+    n = el_put(out, n, "Branch: ");
+    n = el_put(out, n, cast(string) pr.head_ref[0..<pr.head_ref_n]);
+    n = el_put(out, n, " -> ");
+    n = el_put(out, n, cast(string) pr.base_ref[0..<pr.base_ref_n]);
+    if pr.stacked_parent > 0 {
+      n = el_put(out, n, " (stacked on #");
+      n = el_put_i(out, n, pr.stacked_parent);
+      n = el_put(out, n, ")");
+    }
+    n = el_put(out, n, "\n");
+  }
+  if pr.files_total > 0 {
+    n = el_put(out, n, "Files viewed so far: ");
+    n = el_put_i(out, n, pr.files_viewed_count);
+    n = el_put(out, n, "/");
+    n = el_put_i(out, n, pr.files_total);
+    n = el_put(out, n, "\n");
+  }
+  if pr.url_n > 0 {
+    n = el_put(out, n, "URL: ");
+    n = el_put(out, n, cast(string) pr.url[0..<pr.url_n]);
+    n = el_put(out, n, "\n");
+  }
+  n = el_put(out, n, "\nPlease fetch the PR diff and guide me through a structured code review tour:\n");
+  n = el_put(out, n, "1. High-level summary & architectural impact.\n");
+  n = el_put(out, n, "2. Recommended reading order (entry points -> core logic -> tests).\n");
+  n = el_put(out, n, "3. Key risk hotspots, edge cases, security/correctness checks.\n");
+  n = el_put(out, n, "4. Actionable inline review comments with file paths and line numbers.");
+  return n;
+}
+
+// Formats a pre-seeded worktree chat prompt for an Issue (GitHub Issues or Linear).
+cp_forge_issue_prompt :: (fg: [] CpForge, iss_idx: int, out: [] u8) -> int {
+  if iss_idx < 0 || iss_idx >= fg[0].nissues { return 0; }
+  iss := fg[0].issues[iss_idx];
+  src := ifx iss.source == CP_ISSUE_SRC_LINEAR then "Linear" else "GitHub";
+  n := 0;
+  n = el_put(out, n, "Work on ");
+  n = el_put(out, n, src);
+  n = el_put(out, n, " issue ");
+  n = el_put(out, n, cast(string) iss.key[0..<iss.key_n]);
+  n = el_put(out, n, ": ");
+  n = el_put(out, n, cast(string) iss.title[0..<iss.title_n]);
+  n = el_put(out, n, "\n");
+  if iss.team_n > 0 {
+    n = el_put(out, n, "Team / Label: ");
+    n = el_put(out, n, cast(string) iss.team[0..<iss.team_n]);
+    n = el_put(out, n, "\n");
+  }
+  if iss.state_n > 0 {
+    n = el_put(out, n, "State: ");
+    n = el_put(out, n, cast(string) iss.state[0..<iss.state_n]);
+    n = el_put(out, n, "\n");
+  }
+  if iss.assignee_n > 0 {
+    n = el_put(out, n, "Assignee: ");
+    n = el_put(out, n, cast(string) iss.assignee[0..<iss.assignee_n]);
+    n = el_put(out, n, "\n");
+  }
+  if iss.url_n > 0 {
+    n = el_put(out, n, "URL: ");
+    n = el_put(out, n, cast(string) iss.url[0..<iss.url_n]);
+    n = el_put(out, n, "\n");
+  }
+  if iss.body_n > 0 {
+    n = el_put(out, n, "\nContext:\n");
+    n = el_put(out, n, cast(string) iss.body[0..<iss.body_n]);
+    n = el_put(out, n, "\n");
+  }
+  n = el_put(out, n, "\nInspect the codebase in this worktree, implement the fix or feature for this issue, and verify with tests.");
+  return n;
+}
+
+// ---------------------------------------------------------------- Right-pane renderer
+
+cp_forge_scroll :: (s: [] CoderPage, delta: f32) {
+  fg := s[0].forge[..];
+  fg[0].scroll = scroll_clamp(fg[0].scroll + delta, fg[0].content, fg[0].view);
+}
+
+cp_forge_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m; fg := s[0].forge[..];
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  tabs := [2] string.["Pull Requests", "Issues"];
+  icons := [2] int.[ICON_SHARE, ICON_CHECKLIST];
+
+  // Header metadata: detected forge + owner/repo
+  mb: [160] u8; mn := 0;
+  if fg[0].remote.kind != CP_FORGE_NONE {
+    mn = el_put(mb[..], mn, cp_forge_name(fg[0].remote.kind));
+    if fg[0].remote.owner_n > 0 && fg[0].remote.repo_n > 0 {
+      mn = el_put(mb[..], mn, " · ");
+      mn = el_put(mb[..], mn, cast(string) fg[0].remote.owner[0..<fg[0].remote.owner_n]);
+      mn = el_put(mb[..], mn, "/");
+      mn = el_put(mb[..], mn, cast(string) fg[0].remote.repo[0..<fg[0].remote.repo_n]);
+    }
+  }
+  meta := ifx mn > 0 then sheet_pool(sh, cast(string) mb[0..<mn]) else "";
+  stop := app_pane_tabs(f, px, top, pw, h - top, icons[..], tabs[..], fg[0].tab, "coder.forge.tab.", CP_FORGE_TAB,
+                        "coder.forge.meta", meta, "coder.forge.close", CP_FORGE_CLOSE, CP_CORNER, 1.0f32);
+
+  fg[0].view = h - stop;
+  fg[0].scroll = scroll_clamp(fg[0].scroll, fg[0].content, fg[0].view);
+  uiframe_clip(f, px, stop, px + pw, h);
+  x := px + CP_PAD; cw := pw - 2 * CP_PAD;
+  y := stop - fg[0].scroll + a.gap_small;
+
+  // Toolbar: Refresh + filter pills
+  ch := k.control_h; gap := a.gap_small;
+  cx := x; cy := y;
+  ref_lbl := ifx fg[0].loading then "Refreshing…" else "Refresh";
+  rw := app_button_width(f, -1, ref_lbl);
+  _ := app_button(f, "coder.forge.refresh", cx, cy, rw, -1, ref_lbl, APP_BUTTON_QUIET, ifx fg[0].loading then EL_S_DISABLED else 0, CP_FORGE_REFRESH);
+  cx += rw + gap;
+
+  if fg[0].tab == CP_FORGE_TAB_PRS {
+    fnames := [4] string.["All", "Authored", "Review", "Drafts"];
+    ib: [EL_ID] u8;
+    for fi: 0..<4 {
+      fw := app_button_width(f, -1, fnames[fi]);
+      if cx + fw > x + cw { cx = x; cy += ch + gap; }
+      idn := el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.prf."), fi);
+      _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), cx, cy, fw, -1, fnames[fi], APP_BUTTON_DEFAULT,
+                      ifx fg[0].pr_filter == fi then EL_S_CURRENT else 0, CP_FORGE_PR_FILTER);
+      cx += fw + gap;
+    }
+  } else {
+    // Issues team filter pills: All + each discovered team
+    aw := app_button_width(f, -1, "All");
+    if cx + aw > x + cw { cx = x; cy += ch + gap; }
+    _ := app_button(f, "coder.forge.issteam.all", cx, cy, aw, -1, "All", APP_BUTTON_DEFAULT,
+                    ifx fg[0].issue_team_idx < 0 then EL_S_CURRENT else 0, CP_FORGE_ISS_TEAM);
+    cx += aw + gap;
+    ib: [EL_ID] u8;
+    for ti: 0..<fg[0].nteams {
+      tstr := cp_forge_team_str(fg, ti);
+      tw := app_button_width(f, -1, tstr);
+      if cx + tw > x + cw { cx = x; cy += ch + gap; }
+      idn := el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.issteam."), ti);
+      _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), cx, cy, tw, -1, sheet_pool(sh, tstr), APP_BUTTON_DEFAULT,
+                      ifx fg[0].issue_team_idx == ti then EL_S_CURRENT else 0, CP_FORGE_ISS_TEAM);
+      cx += tw + gap;
+    }
+  }
+  y = cy + ch + a.gap;
+
+  // Status notice (e.g. error or empty hint)
+  if fg[0].status_n > 0 {
+    y += app_meta(f, "coder.forge.status", x, y, cw, sheet_pool(sh, cast(string) fg[0].status[0..<fg[0].status_n]), false) + a.gap_small;
+  }
+
+  // Content list
+  if fg[0].tab == CP_FORGE_TAB_PRS {
+    shown := 0;
+    ib: [EL_ID] u8; lb: [256] u8;
+    for i: 0..<fg[0].nprs {
+      pr := fg[0].prs[i];
+      if !cp_forge_pr_matches(pr, fg[0].pr_filter) { continue; }
+      shown += 1;
+      card_pad := 10.0f32;
+      card_h := k.body.line + k.small.line + ch + card_pad * 2 + gap * 2;
+      if y + card_h >= stop && y <= h {
+        _ := sheet_box(sh, x, y, cw, card_h, a.tool_radius, k.border, k.raised, k.hairline);
+        ty := y + card_pad;
+        // Title line: "#N Title"
+        ln := el_put(lb[..], 0, "#");
+        ln = el_put_i(lb[..], ln, pr.number);
+        ln = el_put(lb[..], ln, " ");
+        ln = el_put(lb[..], ln, cast(string) pr.title[0..<pr.title_n]);
+        title_s := sheet_pool(sh, cast(string) lb[0..<ln]);
+        _ := sheet_text(sh, m, -1, x + card_pad, ty, k.body.line, k.body.face, k.ink, app_fit(f, k.body.face, title_s, cw - 2 * card_pad));
+        ty += k.body.line + gap;
+
+        // Metadata line: author · head -> base · Draft · Stacked on #P
+        ln = 0;
+        if pr.author_n > 0 {
+          ln = el_put(lb[..], ln, "@");
+          ln = el_put(lb[..], ln, cast(string) pr.author[0..<pr.author_n]);
+          ln = el_put(lb[..], ln, " · ");
+        }
+        ln = el_put(lb[..], ln, cast(string) pr.head_ref[0..<pr.head_ref_n]);
+        ln = el_put(lb[..], ln, " → ");
+        ln = el_put(lb[..], ln, cast(string) pr.base_ref[0..<pr.base_ref_n]);
+        if pr.draft { ln = el_put(lb[..], ln, " · Draft"); }
+        if pr.stacked_parent > 0 {
+          ln = el_put(lb[..], ln, " · Stacked on #");
+          ln = el_put_i(lb[..], ln, pr.stacked_parent);
+        }
+        meta_s := sheet_pool(sh, cast(string) lb[0..<ln]);
+        _ := sheet_text(sh, m, -1, x + card_pad, ty, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, meta_s, cw - 2 * card_pad));
+        ty += k.small.line + gap;
+
+        // Action row: Viewed X/Y · Open in chat · AI Review Tour
+        bx := x + card_pad;
+        vn := el_put(lb[..], 0, "Viewed ");
+        vn = el_put_i(lb[..], vn, pr.files_viewed_count);
+        vn = el_put(lb[..], vn, "/");
+        vn = el_put_i(lb[..], vn, ifx pr.files_total > 0 then pr.files_total else 1);
+        v_lbl := sheet_pool(sh, cast(string) lb[0..<vn]);
+        vw := app_button_width(f, -1, v_lbl);
+        idn := el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.pr.view."), i);
+        _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), bx, ty, vw, -1, v_lbl, APP_BUTTON_QUIET,
+                        ifx pr.files_total > 0 && pr.files_viewed_count >= pr.files_total then EL_S_CURRENT else 0, CP_FORGE_PR_VIEWED);
+        bx += vw + gap;
+
+        cw_btn := app_button_width(f, -1, "Open in chat");
+        idn = el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.pr.chat."), i);
+        _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), bx, ty, cw_btn, -1, "Open in chat", APP_BUTTON_DEFAULT, 0, CP_FORGE_PR_CHAT);
+        bx += cw_btn + gap;
+
+        tw_btn := app_button_width(f, -1, "AI Review Tour");
+        if bx + tw_btn <= x + cw - card_pad + 4 {
+          idn = el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.pr.tour."), i);
+          _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), bx, ty, tw_btn, -1, "AI Review Tour", APP_BUTTON_PRIMARY, 0, CP_FORGE_PR_TOUR);
+        }
+      }
+      y += card_h + a.gap_small;
+    }
+    if shown == 0 {
+      y += app_meta(f, "coder.forge.pr.empty", x, y + a.gap_small, cw, "No pull requests match this view.", false) + a.gap;
+    }
+  } else {
+    tf := ifx fg[0].issue_team_idx >= 0 && fg[0].issue_team_idx < fg[0].nteams then cp_forge_team_str(fg, fg[0].issue_team_idx) else "";
+    shown := 0;
+    ib: [EL_ID] u8; lb: [256] u8;
+    for i: 0..<fg[0].nissues {
+      if !cp_forge_issue_matches(fg, i, tf) { continue; }
+      iss := fg[0].issues[i];
+      shown += 1;
+      card_pad := 10.0f32;
+      card_h := k.body.line + k.small.line + ch + card_pad * 2 + gap * 2;
+      if y + card_h >= stop && y <= h {
+        _ := sheet_box(sh, x, y, cw, card_h, a.tool_radius, k.border, k.raised, k.hairline);
+        ty := y + card_pad;
+        ln := el_put(lb[..], 0, cast(string) iss.key[0..<iss.key_n]);
+        ln = el_put(lb[..], ln, " ");
+        ln = el_put(lb[..], ln, cast(string) iss.title[0..<iss.title_n]);
+        title_s := sheet_pool(sh, cast(string) lb[0..<ln]);
+        _ := sheet_text(sh, m, -1, x + card_pad, ty, k.body.line, k.body.face, k.ink, app_fit(f, k.body.face, title_s, cw - 2 * card_pad));
+        ty += k.body.line + gap;
+
+        ln = el_put(lb[..], 0, ifx iss.source == CP_ISSUE_SRC_LINEAR then "Linear" else "GitHub");
+        if iss.team_n > 0 {
+          ln = el_put(lb[..], ln, " · ");
+          ln = el_put(lb[..], ln, cast(string) iss.team[0..<iss.team_n]);
+        }
+        if iss.state_n > 0 {
+          ln = el_put(lb[..], ln, " · ");
+          ln = el_put(lb[..], ln, cast(string) iss.state[0..<iss.state_n]);
+        }
+        if iss.assignee_n > 0 {
+          ln = el_put(lb[..], ln, " · @");
+          ln = el_put(lb[..], ln, cast(string) iss.assignee[0..<iss.assignee_n]);
+        }
+        meta_s := sheet_pool(sh, cast(string) lb[0..<ln]);
+        _ := sheet_text(sh, m, -1, x + card_pad, ty, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, meta_s, cw - 2 * card_pad));
+        ty += k.small.line + gap;
+
+        bw := app_button_width(f, -1, "Open in worktree chat");
+        idn := el_put_i(ib[..], el_put(ib[..], 0, "coder.forge.iss.chat."), i);
+        _ := app_button(f, sheet_pool(sh, cast(string) ib[0..<idn]), x + card_pad, ty, bw, -1, "Open in worktree chat", APP_BUTTON_PRIMARY, 0, CP_FORGE_ISS_CHAT);
+      }
+      y += card_h + a.gap_small;
+    }
+    if shown == 0 {
+      y += app_meta(f, "coder.forge.iss.empty", x, y + a.gap_small, cw, "No issues match this filter.", false) + a.gap;
+    }
+  }
+
+  uiframe_unclip(f);
+  fg[0].content = y + fg[0].scroll - stop + a.gap;
+}
+
+// ---------------------------------------------------------------- Action dispatch
+
+cp_forge_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  fg := s[0].forge[..];
+  if act == CP_FORGE_TOGGLE {
+    if cp_forge_shown(s) { cp_forge_close(s); } else { cp_forge_show(s, fg[0].tab); }
+    return true;
+  }
+  if act == CP_FORGE_CLOSE { cp_forge_close(s); return true; }
+  if act == CP_FORGE_TAB {
+    t := cp_number(id, "coder.forge.tab.");
+    if t == CP_FORGE_TAB_PRS || t == CP_FORGE_TAB_ISSUES {
+      fg[0].tab = t;
+      fg[0].scroll = 0;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_FORGE_REFRESH {
+    fg[0].loading = true;
+    s[0].ask = CP_ASK_FORGE_REFRESH;
+    return true;
+  }
+  if act == CP_FORGE_PR_FILTER {
+    fi := cp_number(id, "coder.forge.prf.");
+    if fi >= CP_PR_FILTER_ALL && fi <= CP_PR_FILTER_DRAFTS {
+      fg[0].pr_filter = fi;
+      fg[0].scroll = 0;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_FORGE_PR_VIEWED {
+    idx := cp_number(id, "coder.forge.pr.view.");
+    if idx < 0 || idx >= fg[0].nprs { return false; }
+    _ = cp_forge_pr_cycle_viewed(fg, idx);
+    fg[0].selected_pr = idx;
+    s[0].ask = CP_ASK_FORGE_MARK_VIEWED;
+    return true;
+  }
+  if act == CP_FORGE_PR_CHAT {
+    idx := cp_number(id, "coder.forge.pr.chat.");
+    if idx < 0 || idx >= fg[0].nprs { return false; }
+    fg[0].selected_pr = idx;
+    s[0].ask = CP_ASK_FORGE_OPEN_PR;
+    return true;
+  }
+  if act == CP_FORGE_PR_TOUR {
+    idx := cp_number(id, "coder.forge.pr.tour.");
+    if idx < 0 || idx >= fg[0].nprs { return false; }
+    fg[0].selected_pr = idx;
+    s[0].ask = CP_ASK_FORGE_REVIEW_TOUR;
+    return true;
+  }
+  if act == CP_FORGE_ISS_TEAM {
+    if id == "coder.forge.issteam.all" {
+      fg[0].issue_team_idx = -1;
+      fg[0].scroll = 0;
+      return true;
+    }
+    ti := cp_number(id, "coder.forge.issteam.");
+    if ti >= 0 && ti < fg[0].nteams {
+      fg[0].issue_team_idx = ti;
+      fg[0].scroll = 0;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_FORGE_ISS_CHAT {
+    idx := cp_number(id, "coder.forge.iss.chat.");
+    if idx < 0 || idx >= fg[0].nissues { return false; }
+    fg[0].selected_issue = idx;
+    s[0].ask = CP_ASK_FORGE_OPEN_ISSUE;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_forge_open :: (s: [] CoderPage, tab: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_forge_show(s, tab);
+}
+
+coder_page_forge_close :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_forge_close(s);
+}
+
+coder_page_forge_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_forge_shown(s);
+}
+
+coder_page_forge_set_remote :: (s: [] CoderPage, url: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_FORGE_NONE; }
+  s[0].forge[0].remote = cp_forge_detect(url);
+  return s[0].forge[0].remote.kind;
+}
+
+coder_page_forge_set_status :: (s: [] CoderPage, loading: bool, msg: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  fg := s[0].forge[..];
+  fg[0].loading = loading;
+  if !loading { fg[0].loaded = true; }
+  fg[0].status_n = cp_out(fg[0].status[..], msg);
+}
+
+coder_page_forge_pr_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].forge[0].nprs = 0;
+  s[0].forge[0].selected_pr = -1;
+}
+
+coder_page_forge_pr_add :: (s: [] CoderPage, number: int, title: string, author: string, head_ref: string, base_ref: string, state: string, url: string, draft: bool, is_authored: bool, review_requested: bool, files_total: int, viewed_mask: u64, viewed_count: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  fg := s[0].forge[..];
+  if fg[0].nprs >= CP_FORGE_MAX_PRS { return -1; }
+  idx := fg[0].nprs;
+  fg[0].prs[idx] = CpForgePr.{
+    number = number,
+    draft = draft,
+    is_authored = is_authored,
+    review_requested = review_requested,
+    stacked_parent = -1,
+    files_total = files_total,
+    files_viewed_mask = viewed_mask,
+    files_viewed_count = viewed_count
+  };
+  fg[0].prs[idx].title_n = cp_out(fg[0].prs[idx].title[..], title);
+  fg[0].prs[idx].author_n = cp_out(fg[0].prs[idx].author[..], author);
+  fg[0].prs[idx].head_ref_n = cp_out(fg[0].prs[idx].head_ref[..], head_ref);
+  fg[0].prs[idx].base_ref_n = cp_out(fg[0].prs[idx].base_ref[..], base_ref);
+  fg[0].prs[idx].state_n = cp_out(fg[0].prs[idx].state[..], state);
+  fg[0].prs[idx].url_n = cp_out(fg[0].prs[idx].url[..], url);
+  fg[0].nprs += 1;
+  return idx;
+}
+
+coder_page_forge_pr_finalize :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_forge_compute_stacks(s[0].forge[..]);
+}
+
+coder_page_forge_pr_set_viewed :: (s: [] CoderPage, number: int, mask: u64, count: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  fg := s[0].forge[..];
+  for i: 0..<fg[0].nprs {
+    if fg[0].prs[i].number == number {
+      fg[0].prs[i].files_viewed_mask = mask;
+      fg[0].prs[i].files_viewed_count = count;
+      return true;
+    }
+  }
+  return false;
+}
+
+coder_page_forge_issue_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  fg := s[0].forge[..];
+  fg[0].nissues = 0;
+  fg[0].nteams = 0;
+  fg[0].issue_team_idx = -1;
+  fg[0].selected_issue = -1;
+}
+
+coder_page_forge_issue_add :: (s: [] CoderPage, source: int, key: string, title: string, team: string, assignee: string, state: string, url: string, body: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  fg := s[0].forge[..];
+  if fg[0].nissues >= CP_FORGE_MAX_ISSUES { return -1; }
+  idx := fg[0].nissues;
+  fg[0].issues[idx] = CpForgeIssue.{ source = source };
+  fg[0].issues[idx].key_n = cp_out(fg[0].issues[idx].key[..], key);
+  fg[0].issues[idx].title_n = cp_out(fg[0].issues[idx].title[..], title);
+  fg[0].issues[idx].team_n = cp_out(fg[0].issues[idx].team[..], team);
+  fg[0].issues[idx].assignee_n = cp_out(fg[0].issues[idx].assignee[..], assignee);
+  fg[0].issues[idx].state_n = cp_out(fg[0].issues[idx].state[..], state);
+  fg[0].issues[idx].url_n = cp_out(fg[0].issues[idx].url[..], url);
+  fg[0].issues[idx].body_n = cp_out(fg[0].issues[idx].body[..], body);
+  cp_forge_register_team(fg, team);
+  fg[0].nissues += 1;
+  return idx;
+}
+
+coder_page_forge_selected_pr :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  idx := s[0].forge[0].selected_pr;
+  if idx < 0 || idx >= s[0].forge[0].nprs { return -1; }
+  return s[0].forge[0].prs[idx].number;
+}
+
+coder_page_forge_selected_pr_viewed :: (s: [] CoderPage, out_mask: [] u64, out_count: [] int) -> bool #export_c #effects(all) {
+  if s.count < 1 || out_mask.count < 1 || out_count.count < 1 { return false; }
+  idx := s[0].forge[0].selected_pr;
+  if idx < 0 || idx >= s[0].forge[0].nprs { return false; }
+  out_mask[0] = s[0].forge[0].prs[idx].files_viewed_mask;
+  out_count[0] = s[0].forge[0].prs[idx].files_viewed_count;
+  return true;
+}
+
+coder_page_forge_prompt :: (s: [] CoderPage, tour: bool, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  idx := s[0].forge[0].selected_pr;
+  if idx < 0 || idx >= s[0].forge[0].nprs { return 0; }
+  if tour { return cp_forge_review_tour_prompt(s[0].forge[..], idx, out); }
+  return cp_forge_pr_prompt(s[0].forge[..], idx, out);
+}
+
+coder_page_forge_issue_prompt_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  idx := s[0].forge[0].selected_issue;
+  if idx < 0 || idx >= s[0].forge[0].nissues { return 0; }
+  return cp_forge_issue_prompt(s[0].forge[..], idx, out);
+}

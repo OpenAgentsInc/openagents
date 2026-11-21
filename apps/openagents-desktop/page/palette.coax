@@ -65,6 +65,8 @@ cp_palette_fill :: (s: [] CoderPage) {
   cp_pal_cmd(p, "SnapShot region", "snapshot screenshot capture screen region attach", "⇧ ⌘ 6", ICON_SIM_CAMERA, CP_PC_SNAPSHOT, 0);
   cp_pal_cmd(p, ifx cp_term_shown(s) then "Hide terminal" else "Show terminal", "terminal shell pty console drawer", "⌘ J", ICON_TERMINAL, CP_PC_TERM, 0);
   cp_pal_cmd(p, "New terminal tab", "terminal shell tab pty", "", ICON_TERMINAL, CP_PC_TERM_NEW, 0);
+  cp_pal_cmd(p, "Pull Requests inbox", "pr pull requests forge github gitlab bitbucket azure forgejo review tour", "", ICON_SHARE, CP_PC_FORGE_PRS, 0);
+  cp_pal_cmd(p, "Issues view", "issues github linear team bug task", "", ICON_CHECKLIST, CP_PC_FORGE_ISSUES, 0);
   cp_pal_cmd(p, "Bigger text", "zoom in larger font", "⌘ +", -1, CP_PC_BIGGER, 0);
   cp_pal_cmd(p, "Smaller text", "zoom out font", "⌘ -", -1, CP_PC_SMALLER, 0);
   cp_pal_cmd(p, "Actual size", "reset zoom default normal font", "⌘ 0", -1, CP_PC_ACTUAL, 0);
@@ -177,6 +179,8 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_SNAPSHOT { cp_preview_trigger_snapshot(s); return true; }
   if c == CP_PC_TERM { cp_term_toggle(s); return true; }
   if c == CP_PC_TERM_NEW { cp_term_show(s); _ = cp_term_new_tab(s, "", ""); return true; }
+  if c == CP_PC_FORGE_PRS { cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_PRS); return true; }
+  if c == CP_PC_FORGE_ISSUES { cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_ISSUES); return true; }
   if c == CP_PC_REVIEW { if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }
   if c == CP_PC_BIGGER { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   if c == CP_PC_SMALLER { s[0].ask = CP_ASK_ZOOM_OUT; return true; }

@@ -1707,3 +1707,75 @@ int cd_cust_kb_match(void *page, const char *chord, int ctx, char *out_id, int c
   CoderHost *c = page; if (!c || !out_id || cap < 2) return 0;
   return cd_text_out((int)coder_page_cust_kb_match(cd_state(c), cd_string(chord), ctx, (coax_v_u8){(uint8_t *)out_id, cap - 1}), out_id, cap);
 }
+// Pull Requests inbox, multi-forge source control, AI review tours & Issues view (page/forge.coax; #13886).
+void cd_forge_open(void *page, int tab) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_open(cd_state(c), tab);
+  cd_woke(c);
+}
+void cd_forge_close(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_close(cd_state(c));
+  cd_woke(c);
+}
+int cd_forge_shown(void *page) { CoderHost *c = page; return c && coder_page_forge_shown(cd_state(c)) ? 1 : 0; }
+int cd_forge_set_remote(void *page, const char *url) {
+  CoderHost *c = page; if (!c) return 0;
+  int kind = (int)coder_page_forge_set_remote(cd_state(c), cd_string(url));
+  cd_woke(c);
+  return kind;
+}
+void cd_forge_set_status(void *page, int loading, const char *msg) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_set_status(cd_state(c), loading != 0, cd_string(msg));
+  cd_woke(c);
+}
+void cd_forge_pr_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_pr_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_forge_pr_add(void *page, int number, const char *title, const char *author, const char *head_ref, const char *base_ref, const char *state, const char *url, int draft, int is_authored, int review_requested, int files_total, uint64_t viewed_mask, int viewed_count) {
+  CoderHost *c = page; if (!c) return -1;
+  int idx = (int)coder_page_forge_pr_add(cd_state(c), number, cd_string(title), cd_string(author), cd_string(head_ref), cd_string(base_ref), cd_string(state), cd_string(url), draft != 0, is_authored != 0, review_requested != 0, files_total, viewed_mask, viewed_count);
+  cd_woke(c);
+  return idx;
+}
+void cd_forge_pr_finalize(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_pr_finalize(cd_state(c));
+  cd_woke(c);
+}
+int cd_forge_pr_set_viewed(void *page, int number, uint64_t mask, int count) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_forge_pr_set_viewed(cd_state(c), number, mask, count) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+void cd_forge_issue_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_forge_issue_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_forge_issue_add(void *page, int source, const char *key, const char *title, const char *team, const char *assignee, const char *state, const char *url, const char *body) {
+  CoderHost *c = page; if (!c) return -1;
+  int idx = (int)coder_page_forge_issue_add(cd_state(c), source, cd_string(key), cd_string(title), cd_string(team), cd_string(assignee), cd_string(state), cd_string(url), cd_string(body));
+  cd_woke(c);
+  return idx;
+}
+int cd_forge_selected_pr(void *page) { CoderHost *c = page; return c ? (int)coder_page_forge_selected_pr(cd_state(c)) : -1; }
+int cd_forge_selected_pr_viewed(void *page, uint64_t *out_mask, int *out_count) {
+  CoderHost *c = page; if (!c || !out_mask || !out_count) return 0;
+  uint64_t m = 0; int64_t cnt = 0;
+  int ok = coder_page_forge_selected_pr_viewed(cd_state(c), (coax_v_u64){&m, 1}, (coax_v_s64){&cnt, 1}) ? 1 : 0;
+  if (ok) { *out_mask = m; *out_count = (int)cnt; }
+  return ok;
+}
+int cd_forge_prompt(void *page, int tour, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_forge_prompt(cd_state(c), tour != 0, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_forge_issue_prompt(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_forge_issue_prompt_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}

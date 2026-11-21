@@ -36,6 +36,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     // Gym / 3D PLE Workbench row right under Foreman (#13792).
     sy += app_side_action(f, "coder.gym", 0, sy, sw, ICON_WIDGET, "Gym", ifx s[0].gym_open then EL_S_CURRENT else 0, CP_GYM);
   }
+  sy += app_side_action(f, "coder.forge", 0, sy, sw, ICON_SHARE, "PRs & Issues", ifx cp_forge_shown(s) then EL_S_CURRENT else 0, CP_FORGE_TOGGLE);
   sy += 4.0f32;
   sy += cp_sb_toolbar(s, f, sw, sy);
   sy += cp_sb_bulk_bar(s, f, sw, sy);

@@ -1,0 +1,147 @@
+// Checks for Pull Requests inbox, multi-forge source control (GitHub/GitLab/Bitbucket/Azure/Forgejo),
+// AI review tours, and Issues view (GitHub #13886).
+//   coax/bin/coax test apps/openagents-desktop/page/checks/forge-checks.coax --library
+
+#load "../parts.coax";
+
+#test "forge detect: github https and ssh" {
+  r1 := cp_forge_detect("https://github.com/OpenAgentsInc/openagents.git");
+  #assert r1.kind == CP_FORGE_GITHUB;
+  #assert cast(string) r1.owner[0..<r1.owner_n] == "OpenAgentsInc";
+  #assert cast(string) r1.repo[0..<r1.repo_n] == "openagents";
+
+  r2 := cp_forge_detect("git@github.com:OpenAgentsInc/openagents.git");
+  #assert r2.kind == CP_FORGE_GITHUB;
+  #assert cast(string) r2.owner[0..<r2.owner_n] == "OpenAgentsInc";
+  #assert cast(string) r2.repo[0..<r2.repo_n] == "openagents";
+
+  r3 := cp_forge_detect("ssh://git@github.com/org/app/");
+  #assert r3.kind == CP_FORGE_GITHUB;
+  #assert cast(string) r3.owner[0..<r3.owner_n] == "org";
+  #assert cast(string) r3.repo[0..<r3.repo_n] == "app";
+}
+
+#test "forge detect: gitlab, bitbucket, azure devops, and forgejo" {
+  gl := cp_forge_detect("git@gitlab.com:acme/platform/desktop.git");
+  #assert gl.kind == CP_FORGE_GITLAB;
+  #assert cast(string) gl.owner[0..<gl.owner_n] == "acme/platform";
+  #assert cast(string) gl.repo[0..<gl.repo_n] == "desktop";
+
+  bb := cp_forge_detect("https://alice@bitbucket.org/myteam/myrepo.git");
+  #assert bb.kind == CP_FORGE_BITBUCKET;
+  #assert cast(string) bb.owner[0..<bb.owner_n] == "myteam";
+  #assert cast(string) bb.repo[0..<bb.repo_n] == "myrepo";
+
+  az1 := cp_forge_detect("https://dev.azure.com/contoso/Core/_git/web-app");
+  #assert az1.kind == CP_FORGE_AZURE;
+  #assert cast(string) az1.owner[0..<az1.owner_n] == "contoso";
+  #assert cast(string) az1.repo[0..<az1.repo_n] == "web-app";
+
+  az2 := cp_forge_detect("git@ssh.dev.azure.com:v3/contoso/Core/web-app");
+  #assert az2.kind == CP_FORGE_AZURE;
+  #assert cast(string) az2.owner[0..<az2.owner_n] == "contoso";
+  #assert cast(string) az2.repo[0..<az2.repo_n] == "web-app";
+
+  az3 := cp_forge_detect("https://contoso.visualstudio.com/Core/_git/web-app");
+  #assert az3.kind == CP_FORGE_AZURE;
+  #assert cast(string) az3.owner[0..<az3.owner_n] == "contoso";
+  #assert cast(string) az3.repo[0..<az3.repo_n] == "web-app";
+
+  fj1 := cp_forge_detect("https://codeberg.org/forgejo/forgejo.git");
+  #assert fj1.kind == CP_FORGE_FORGEJO;
+  #assert cast(string) fj1.owner[0..<fj1.owner_n] == "forgejo";
+  #assert cast(string) fj1.repo[0..<fj1.repo_n] == "forgejo";
+
+  fj2 := cp_forge_detect("git@git.forgejo.example.org:team/tool.git");
+  #assert fj2.kind == CP_FORGE_FORGEJO;
+  #assert cast(string) fj2.owner[0..<fj2.owner_n] == "team";
+  #assert cast(string) fj2.repo[0..<fj2.repo_n] == "tool";
+
+  none := cp_forge_detect("https://example.com/foo/bar");
+  #assert none.kind == CP_FORGE_NONE;
+}
+
+#test "forge PR inbox: filters, stacked PR grouping, files-viewed tracking, and AI review tour" {
+  p: [1] CoderPage; st: [1] CpCheckStore;
+  s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+
+  kind := coder_page_forge_set_remote(s, "git@github.com:OpenAgentsInc/openagents.git");
+  #assert kind == CP_FORGE_GITHUB;
+
+  i0 := coder_page_forge_pr_add(s, 101, "Base refactor", "alice", "feat/base", "main", "OPEN", "https://github.com/OpenAgentsInc/openagents/pull/101", false, true, false, 4, 0, 0);
+  i1 := coder_page_forge_pr_add(s, 102, "Stacked UI on base", "bob", "feat/ui", "feat/base", "OPEN", "https://github.com/OpenAgentsInc/openagents/pull/102", false, false, true, 3, 0, 0);
+  i2 := coder_page_forge_pr_add(s, 103, "WIP draft experiment", "alice", "wip/exp", "main", "OPEN", "https://github.com/OpenAgentsInc/openagents/pull/103", true, true, false, 2, 0, 0);
+  #assert i0 == 0 && i1 == 1 && i2 == 2;
+
+  coder_page_forge_pr_finalize(s);
+  #assert s[0].forge[0].prs[0].stacked_parent == -1;
+  #assert s[0].forge[0].prs[1].stacked_parent == 101;
+  #assert s[0].forge[0].prs[2].stacked_parent == -1;
+
+  // Saved filter views
+  fg := s[0].forge[..];
+  #assert cp_forge_pr_count_matching(fg, CP_PR_FILTER_ALL) == 3;
+  #assert cp_forge_pr_count_matching(fg, CP_PR_FILTER_AUTHORED) == 2;
+  #assert cp_forge_pr_count_matching(fg, CP_PR_FILTER_REVIEW) == 1;
+  #assert cp_forge_pr_count_matching(fg, CP_PR_FILTER_DRAFTS) == 1;
+
+  // Files-viewed tracking via bitset & cycle
+  #assert cp_forge_pr_mark_file_viewed(fg, 1, 0, true);
+  #assert cp_forge_pr_mark_file_viewed(fg, 1, 2, true);
+  #assert fg[0].prs[1].files_viewed_count == 2;
+  #assert fg[0].prs[1].files_viewed_mask == 5;
+  #assert cp_forge_pr_cycle_viewed(fg, 1);
+  #assert fg[0].prs[1].files_viewed_count == 3;
+  #assert cp_forge_pr_cycle_viewed(fg, 1);
+  #assert fg[0].prs[1].files_viewed_count == 0;
+
+  // Trigger AI Review Tour action & verify prompt formatting
+  #assert cp_forge_press(s, CP_FORGE_PR_TOUR, "coder.forge.pr.tour.1");
+  #assert coder_page_action(s) == CP_ASK_FORGE_REVIEW_TOUR;
+  #assert coder_page_forge_selected_pr(s) == 102;
+  buf: [2048] u8;
+  n := coder_page_forge_prompt(s, true, buf[..]);
+  tour_prompt := cast(string) buf[0..<n];
+  #assert cp_contains(tour_prompt, "AI Guided Code Review Tour for PR #102");
+  #assert cp_contains(tour_prompt, "stacked on #101");
+  #assert cp_contains(tour_prompt, "OpenAgentsInc/openagents");
+  #assert cp_contains(tour_prompt, "Recommended reading order");
+
+  // Trigger Open PR in worktree chat
+  #assert cp_forge_press(s, CP_FORGE_PR_CHAT, "coder.forge.pr.chat.0");
+  #assert coder_page_action(s) == CP_ASK_FORGE_OPEN_PR;
+  n2 := coder_page_forge_prompt(s, false, buf[..]);
+  pr_prompt := cast(string) buf[0..<n2];
+  #assert cp_contains(pr_prompt, "Work on Pull Request #101: Base refactor");
+  #assert cp_contains(pr_prompt, "feat/base -> main");
+}
+
+#test "forge Issues view: multi-team filtering and pre-seeded worktree chat prompt" {
+  p: [1] CoderPage; st: [1] CpCheckStore;
+  s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+
+  j0 := coder_page_forge_issue_add(s, CP_ISSUE_SRC_GITHUB, "#13886", "Add PR inbox & Issues view", "ui", "alice", "OPEN", "https://github.com/OpenAgentsInc/openagents/issues/13886", "Support multi-forge and Linear.");
+  j1 := coder_page_forge_issue_add(s, CP_ISSUE_SRC_LINEAR, "ENG-402", "Fix Metal shader cache", "ENG", "bob", "In Progress", "https://linear.app/acme/issue/ENG-402", "Invalidate cache on OS upgrade.");
+  j2 := coder_page_forge_issue_add(s, CP_ISSUE_SRC_LINEAR, "DES-19", "Refine sidebar spacing", "DES", "carol", "Todo", "https://linear.app/acme/issue/DES-19", "Align 8pt grid.");
+  #assert j0 == 0 && j1 == 1 && j2 == 2;
+
+  fg := s[0].forge[..];
+  #assert fg[0].nteams == 3;
+  #assert cp_forge_issue_count_matching(fg, -1) == 3;
+  #assert cp_forge_issue_count_matching(fg, 1) == 1;
+
+  // Select Linear team filter and spawn worktree chat for ENG-402
+  #assert cp_forge_press(s, CP_FORGE_ISS_TEAM, "coder.forge.issteam.1");
+  #assert fg[0].issue_team_idx == 1;
+  #assert cp_forge_press(s, CP_FORGE_ISS_CHAT, "coder.forge.iss.chat.1");
+  #assert coder_page_action(s) == CP_ASK_FORGE_OPEN_ISSUE;
+
+  buf: [2048] u8;
+  n := coder_page_forge_issue_prompt_out(s, buf[..]);
+  prompt := cast(string) buf[0..<n];
+  #assert cp_contains(prompt, "Work on Linear issue ENG-402: Fix Metal shader cache");
+  #assert cp_contains(prompt, "Team / Label: ENG");
+  #assert cp_contains(prompt, "Invalidate cache on OS upgrade.");
+}

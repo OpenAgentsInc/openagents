@@ -70,3 +70,4 @@
 #load "scheduled.coax";
 #load "preview.coax";
 #load "customize.coax";
+#load "forge.coax";
