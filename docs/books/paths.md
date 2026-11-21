@@ -29,7 +29,7 @@ Paths by what you want to do:
 | Build or drive an agent | Coax Parts I–II, then Coder's core path, then Psionic 12–20 for decisions and 236–237 for hybrid exact cores. |
 | Run a Pylon | Psionic 7, 12–20, 24–27 and 234–238, then Nostr 82 and 100. |
 | Understand how agents are paid | Bitcoin's core path, Nostr 80, 82, 86 and 102, Psionic 238, and the capstones [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md) and [Coder takes a job and gets paid](capstones/coder-takes-a-job-and-gets-paid.md). |
-| Understand the Executor Network flywheel | Coax 16–18 and 23, Psionic Part XXIII (226–238) and Part XXIV (239–241, 247), Nostr 82 and 100, Bitcoin 121–123, Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70, and the master capstone [The Executor Network closes the loop](capstones/executor-network-flywheel.md). |
+| Understand the Executor Network flywheel | Coax 16–18 and 23, Psionic Part XXIII (226–238), Part XXIV (239–241, 247) and Part XXVIII (272–274), Nostr 82 and 100, Bitcoin 121–123, Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70, and the master capstone [The Executor Network closes the loop](capstones/executor-network-flywheel.md) (runnable route `executor-network-flywheel`). |
 | Read as an agent | Start with the [glossary](glossary.md) and each book's `chapters.json`, which names every chapter's source files and status. |
 
 ## Runnable routes
@@ -48,7 +48,8 @@ took over the cryptography chapters Nostr used (Nostr chapters 1–13, 15 and
 ends in a realm you can play or a payment you can see. The
 [capstones](README.md#capstones) are the plan for those.
 
-The [supported-route catalog](routes.json) declares four bounded CPU routes.
+The [supported-route catalog](routes.json) declares five bounded CPU routes
+(including the cross-book `executor-network-flywheel` capstone route).
 The [delivery process](DELIVERY.md) explains clean-checkout execution, selective
 reuse and source-bound publication receipts.
 Each names its prerequisites, commands, exact stdout fixture, expected exit,

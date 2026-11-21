@@ -555,3 +555,16 @@ This is CPU reflection over an existing binary format. It does not infer Metal
 vector alignment or rewrite a shader. The packed Metal declaration remains a
 platform contract; `metaverse/test_haunt.sh` checks the native layout and real
 bundled geometry, while the simulator test exercises the actual GPU path.
+
+## Single-source Metal 4 and CUDA exact compute kernels
+
+Beyond shaders and CPU layout checks, `coax metal-compute` and `coax cuda`
+emit single-source Coax compute kernels targeting both Apple Silicon Metal 4
+and NVIDIA CUDA. The flagship exact-compute consumer is Psionic's Executor
+Network (`psionic/platform/exec-vm-gpu-bridge.coax`,
+`psionic/lib/trace-distill-kernels.coax`), whose single-source kernels ran
+bit-for-bit identically on Apple M5 Max Metal 4 (`57.5k steps/s` batched `i64`,
+plus a `10.72M`-parameter 6-layer transformer distillation run across `4.92M`
+tokens) and NVIDIA RTX 4080 CUDA (`91.9k steps/s` `i64`, `63.8k steps/s` native
+`f64`; see `docs/verification/executor-w13-gpu-sched.md` and
+`docs/verification/executor-distill-h1-h3-h5.md`).

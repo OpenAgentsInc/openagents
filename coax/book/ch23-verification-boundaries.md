@@ -187,6 +187,17 @@ That tells a reviewer far more than "verified". Keep limits near the
 claim they qualify, and use an actual contract to decide what additional
 evidence a release needs.
 
+The OpenAgents Executor Network applies this exact boundary to real money and
+public decentralized training: `#authority` policy modules hold every money,
+replay-pairing, Byzantine-filtering, and checkpoint-promotion decision at zero
+surviving mutants (`pay/executor-settlement.coax`: `63/63` killed;
+`psionic/lib/peer/pay.coax`: `438/438` killed; `psionic/lib/peer/train-verify.coax`:
+`84/85` killed, `1` equivalent; `psionic/lib/peer/quarantine-opt.coax`:
+`92/92` killed), while the platform hosts perform only the external Metal/CUDA,
+Nostr relay, and Breez Spark Bitcoin mainnet effects (recorded separately in
+`docs/verification/executor-w43-mainnet-settlement.md` and
+`docs/verification/executor-network-effect-h7.md`).
+
 That's the end of Part IV. Part V puts these pieces together in larger
 programs, starting with a complete boundary in
 [Chapter 24](ch24-a-complete-boundary.md). Part VI then turns to the compiler

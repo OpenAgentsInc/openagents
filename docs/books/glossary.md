@@ -113,9 +113,9 @@ that already touches the file (#13267 to #13269, #13280).
 | Mesh | Many Pylons behind one API. | Psionic 25–27 |
 | Compiled weight module | A digest-pinned exact program compiled into transformer weights (`exec-vm-v1` / `module-v2`) that links without recompilation and verifies by exact replay. | Psionic 231 and 237 |
 | Hybrid executor | A neural language model paired with a learned routing adapter (such as a rank-8 LoRA) that invokes frozen compiled weight modules with zero silent hallucinations. | Psionic 236 |
-| Training window | A bounded, digest-pinned decentralized training job (Local-SGD / DiLoCo) over an assigned verified shard whose delta must pass Byzantine verification before entering quarantine. | [Executor Network Master Spec](../../psionic/docs/executor-network-master-spec.md), planned Psionic Part XXVIII |
-| Quarantine optimizer | The three-checkpoint state machine (`canonical -> quarantine -> promoted`) that prevents public updates from mutating production weights until they beat held-out gates. | [Executor Network Master Spec](../../psionic/docs/executor-network-master-spec.md), planned Psionic Part XXVIII |
-| Two-leg settlement | Receipt-first Bitcoin/Spark payout that settles both the worker and the independent replay validator (`worker != validator`, distinct devices) under rolling daily caps. | Psionic 238, `pay/executor-settlement.coax` |
+| Training window | A bounded, digest-pinned decentralized training job (Local-SGD / DiLoCo) over an assigned verified shard whose delta must pass Byzantine verification before entering quarantine. | Psionic 272–273 |
+| Quarantine optimizer | The three-checkpoint state machine (`canonical -> quarantine -> promoted`) that prevents public updates from mutating production weights until they beat held-out gates. | Psionic 274 |
+| Two-leg settlement | Receipt-first Bitcoin/Spark payout that settles both the worker and the independent replay validator (`worker != validator`, distinct devices) under rolling daily caps. | Bitcoin 123, Psionic 238, `pay/executor-settlement.coax` |
 | Harness | The program around a model that sends requests, runs tools and decides when to stop. | Coder 1 |
 | Engine (Coder) | What runs a Coder task: Microcoder, a Psionic-served model, Claude Code or Codex. | Coder 9–13 |
 | Microcoder | Coder's own loop, on any model it can reach. | Coder 9 |

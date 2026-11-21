@@ -670,6 +670,19 @@ byte. The plan is to make that one declaration:
 #test replay "fixtures/icecream/*.trace" step_ice_cream;
 ```
 
+## Cross-GPU exactness in the Executor Network
+
+The same no-fast-math discipline scales past CPU replay to heterogeneous GPUs.
+In the OpenAgents Executor Network (`psionic/platform/exec-vm-gpu-bridge.coax`,
+recorded in `docs/verification/executor-w13-gpu-sched.md` and
+`docs/verification/executor-w12-wasm-exec.md`), compiled transformer weight
+programs (`exec-vm-v1` and the 93-layer `wasm-core-i32-v1` WASM transformer)
+run bit-for-bit identically across CPU `binary64`, Apple M5 Max Metal 4
+(`MTLMathModeSafe`, exact batched `i64`), and NVIDIA RTX 4080 CUDA (`i64` and
+native `f64`) with zero divergences across 398,722 steps. That cross-vendor
+bit-exactness is what allows one physical machine to replay another machine's
+work deterministically before releasing Bitcoin settlement.
+
 ## Summary
 
 Coax closes off two of C's biggest sources of nondeterminism in every

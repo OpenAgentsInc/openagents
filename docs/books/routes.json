@@ -305,6 +305,111 @@
           "timeout": 120
         }
       ]
+    },
+    {
+      "id": "executor-network-flywheel",
+      "title": "Executor Network: exact replay, two-leg settlement, and quarantined decentralized training",
+      "book": "psionic",
+      "scope": "Run the CPU #authority chain behind the OpenAgents Executor Network capstone in debug and release: Ch 234 exact replay verification, Bitcoin Ch 123 two-leg Spark/Lightning settlement policy under rolling 24h UTC caps, Ch 272 Dataset Shard Authority & bounded DiLoCo leases, Ch 273 6-tier Byzantine verification blocking 7/7 attacks, and Ch 274 Quarantine Optimizer blocking 3/3 regressions with atomic rollback.",
+      "limitations": [
+        "This offline CPU route runs the #authority policy, replay, Byzantine verification, quarantine promotion and settlement admission rules with no network, GPU, Nostr relay or live Bitcoin wallet.",
+        "Live Apple M5 Max Metal 4, NVIDIA RTX 4080 CUDA, 16.38 GB Inkling-2-Mini hybrid execution, and live Bitcoin mainnet Breez Spark settlement retain their own dated verification records under docs/verification/executor-*.md.",
+        "Passing this bounded CPU route does not re-execute GPU kernels or move mainnet satoshis."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU, relay or wallet secret is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "coax/book/ch16-determinism.md",
+        "coax/book/ch17-gpu.md",
+        "coax/book/ch23-verification-boundaries.md",
+        "psionic/book/ch234-exact-replay-as-a-verification-class.md",
+        "psionic/book/ch238-pay-for-verified-work.md",
+        "bitcoin/book/ch123-paying-for-requests.md",
+        "nostr/book/ch082-pylons-environments-and-deploys.md",
+        "psionic/book/ch272-bounded-training-windows-and-diloco.md",
+        "psionic/book/ch273-byzantine-verification-for-public-training.md",
+        "psionic/book/ch274-the-quarantine-optimizer.md"
+      ],
+      "evidence": [
+        "docs/books/capstones/executor-network-flywheel.md",
+        "docs/verification/executor-w12-wasm-exec.md",
+        "docs/verification/executor-w13-gpu-sched.md",
+        "docs/verification/executor-w31-hybrid-exec.md",
+        "docs/verification/executor-distill-h1-h3-h5.md",
+        "docs/verification/executor-w43-mainnet-settlement.md",
+        "docs/verification/executor-w61-coding-agent.md",
+        "docs/verification/executor-network-effect-h7.md"
+      ],
+      "steps": [
+        {
+          "id": "exact-replay",
+          "kind": "coax-run",
+          "source": "psionic/examples/exact-replay.coax",
+          "stdout": "psionic/fixtures/exact-replay.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "two-leg-settlement",
+          "kind": "coax-run",
+          "source": "bitcoin/examples/paying-for-requests.coax",
+          "stdout": "bitcoin/fixtures/paying-for-requests.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "training-window",
+          "kind": "coax-run",
+          "source": "psionic/examples/training-window.coax",
+          "stdout": "psionic/fixtures/training-window.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "byzantine-verify",
+          "kind": "coax-run",
+          "source": "psionic/examples/train-verify.coax",
+          "stdout": "psionic/fixtures/train-verify.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "quarantine-promote",
+          "kind": "coax-run",
+          "source": "psionic/examples/quarantine-opt.coax",
+          "stdout": "psionic/fixtures/quarantine-opt.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
     }
   ]
 }

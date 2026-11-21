@@ -42,7 +42,7 @@ steps.
 | Checkable | Coax 11 and 23, the Metaverse Engine 37, Psionic 17 and 234, Coder 21, Bitcoin 116–120, Nostr 93–97 |
 | Payable | Psionic 238, Nostr 80, 82 and 86, Bitcoin 104–115 and 123 |
 | Ownable | The Metaverse Engine 54, 55 and 88, Coder 18, Bitcoin 121 and 122, Nostr 104 |
-| Compounding | Psionic 224, 235–241, 247 and planned Part XXVIII (DiLoCo & Quarantine Optimizer), Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70 |
+| Compounding | Psionic 224, 235–241, 247 and Part XXVIII (272–274: DiLoCo, Byzantine verifier & Quarantine Optimizer), Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70 |
 
 ### Why from scratch
 
@@ -123,7 +123,7 @@ Coder, and the shared cryptography moved from Nostr to Bitcoin.
 | Decision models | Psionic Parts II–IV and XXII | Coder 13, Everglade, the Metaverse Engine 77 |
 | Pylons | Psionic 24–27 and 234–238 for the service, Nostr 82 and 100 for the events | Everglade, OpenAgents 70 |
 | Compiled weight modules & hybrid executors | Psionic Part XXIII (226–237) | Coder 8 and 12, OpenAgents 69 |
-| Decentralized training & Quarantine Optimizer | Psionic planned Part XXVIII (272–274) and Part XXIV (239–241, 247) | Nostr 82, Coder 18, OpenAgents 52 and 70 |
+| Decentralized training & Quarantine Optimizer | Psionic Part XXVIII (272–274) and Part XXIV (239–241, 247) | Nostr 82, Coder 18, OpenAgents 52 and 70 |
 | The frame loop, rendering, physics | Metaverse Engine | Everglade, Coax |
 | Rooms and multiplayer | Metaverse Engine Part XII | Everglade Part IV |
 | Actions, conditions and their presentation | The Metaverse Engine 102 | Everglade Parts V–VII |
@@ -140,7 +140,7 @@ can see. Capstones connect the money and identity books to the world and
 model books.
 
 - [The Executor Network closes the loop](capstones/executor-network-flywheel.md):
-  **Master capstone** across Coax, Psionic, Nostr, Bitcoin, Coder and OpenAgents. Verified on real Metal 4 + RTX 4080 CUDA GPUs and live Bitcoin mainnet Spark (`#13912`–`#13928`); book chapters catching up.
+  **Master capstone** across Coax, Psionic, Nostr, Bitcoin, Coder and OpenAgents. Verified on real Metal 4 + RTX 4080 CUDA GPUs and live Bitcoin mainnet Spark (`#13912`–`#13928`), with runnable CPU route `executor-network-flywheel` in [`routes.json`](routes.json).
 - [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md):
   Everglade, the Metaverse Engine, Psionic, Nostr and Bitcoin. Design draft.
 - A maker is paid: Metaverse Engine Part VI, Nostr and Bitcoin. Not drafted.
