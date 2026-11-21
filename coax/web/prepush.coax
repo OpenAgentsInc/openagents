@@ -92,6 +92,22 @@ pp_verif_bloat :: (path: string) -> bool {
          pp_ends(path, ".jpeg") || pp_ends(path, ".c") || pp_ends(path, ".h") ||
          pp_ends(path, ".coax");
 }
+// Large binary assets (>512 KiB) belong in gs://openagentsgemini-assets + assets/registry/collections/ (#13853, #13844).
+PP_BINARY_MAX :: 524288;
+pp_binary_ext :: (path: string) -> bool {
+  return pp_ends(path, ".pack") || pp_ends(path, ".pack.gz") || pp_ends(path, ".gbm") ||
+         pp_ends(path, ".glb") || pp_ends(path, ".gltf") || pp_ends(path, ".f32") ||
+         pp_ends(path, ".f64") || pp_ends(path, ".mp4") || pp_ends(path, ".ttf") ||
+         pp_ends(path, ".otf");
+}
+pp_blob_size :: (blob: string) -> int {
+  if blob.count == 0 || blob == PP_ZERO { return 0; }
+  out: [64] u8;
+  a := [4] string.["git", "cat-file", "-s", blob];
+  g := pp_git(a[..], out[..]);
+  if !g.ok { return 0; }
+  return pp_atoi(pp_line(g.text, 0));
+}
 pp_has :: (s: string, p: string) -> bool {
   if p.count == 0 || p.count > s.count { return false; }
   for k: 0..<s.count - p.count + 1 { if s[k] == p[0] && cast(string) s[k..<k + p.count] == p { return true; } }
@@ -391,6 +407,9 @@ pp_judge :: (c: string, push: string, st: [] PpState, bufs: [] PpBufs, quiet: bo
   for k: 0..<st[0].n {
     if st[0].now[k] != PP_ZERO && pp_verif_bloat(st[0].path[k]) {
       if v.verif_bloat < PP_SHOW && !quiet { print("  % adds/modifies raw verification artifact % (store in ~/.openagents/verification/ and commit only .md + .sha256, #13840)\n", cast(string) c[0..<10], st[0].path[k]); }
+      v.verif_bloat += 1;
+    } else if st[0].now[k] != PP_ZERO && pp_binary_ext(st[0].path[k]) && pp_blob_size(st[0].now[k]) > PP_BINARY_MAX {
+      if v.verif_bloat < PP_SHOW && !quiet { print("  % adds/modifies binary asset % >512 KiB (pin in assets/registry/collections/*.lock.json and hydrate via coax/web/tool.sh assets-sync, #13853)\n", cast(string) c[0..<10], st[0].path[k]); }
       v.verif_bloat += 1;
     }
   }
@@ -1223,4 +1242,7 @@ PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 1
   #assert !pp_verif_bloat("psionic/docs/verification/2026-11-20-summary.md");
   #assert !pp_verif_bloat("docs/verification/.gitignore");
   #assert !pp_verif_bloat("coax/lib/compiler/checker.coax");
+  #assert pp_binary_ext("apps/openagents-web/realms/everglade2/assets/everglade2.pack");
+  #assert pp_binary_ext("gamebuilder/assets/scrappers.gbm") && pp_binary_ext("a/b.pack.gz") && pp_binary_ext("a/b.ttf");
+  #assert !pp_binary_ext("assets/registry/collections/realms.lock.json") && !pp_binary_ext("coax/web/assets-sync.coax");
 }

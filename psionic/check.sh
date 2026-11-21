@@ -23,6 +23,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 coax=${COAX:-$root/coax/bin/coax}
+# Hydrate externalized Psionic fixture blobs from ~/.openagents/assets/sha256/ (#13853, #13844).
+if [[ -x "$root/coax/web/tool.sh" && -f "$root/assets/registry/collections/psionic-fixtures.lock.json" ]]; then
+    COAX="$coax" "$root/coax/web/tool.sh" assets-sync --group psionic
+fi
 cc=${COAX_CC:-cc}
 # The chapter 253 gate is Coax orchestration and also belongs to a full release.
 if [[ ${#only[@]} -eq 0 ]]; then

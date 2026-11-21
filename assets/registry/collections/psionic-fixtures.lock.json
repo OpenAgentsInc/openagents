@@ -1,0 +1,895 @@
+{
+  "schema": "oa-blob-collection-lock-v1",
+  "group": "psionic",
+  "base_url": "https://storage.googleapis.com/openagentsgemini-assets/sha256",
+  "blobs": [
+    {
+      "path": "psionic/fixtures/deepseek/cache-anchored.bin",
+      "sha256": "26ac9e78c4e6d922aac64d0f1c5a563cb645d68e930b3e32398da3b222214243",
+      "bytes": 1572864,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/cache-bf16.bin",
+      "sha256": "036cf8840b2e0d08bd21ffc35cf41e3bb4127413e7a8785921b710404677d49b",
+      "bytes": 983040,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/cpu-original/prompt-logits.f32.gz",
+      "sha256": "e7efb88863c7792fbda0d1d45df9972ceb10f7d6d998cfc89a46aa49e21deda2",
+      "bytes": 553431,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/cpu-original/prompt-trace.f32.gz",
+      "sha256": "d74207754ef151fbeb924b2b556d36dca7b5382ffb2867106ed50d760444900a",
+      "bytes": 319358,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/cpu-original/reference-logits.f32.gz",
+      "sha256": "e7efb88863c7792fbda0d1d45df9972ceb10f7d6d998cfc89a46aa49e21deda2",
+      "bytes": 553431,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/cpu-original/reference-trace.f32.gz",
+      "sha256": "d74207754ef151fbeb924b2b556d36dca7b5382ffb2867106ed50d760444900a",
+      "bytes": 319358,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/engram-tokenizer.json.gz",
+      "sha256": "d0a53c1a5e7f998a5f42b4f428888da70ed47ad33eb2a8afe32294f39f17ef5a",
+      "bytes": 1868514,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/expert-bits.bin",
+      "sha256": "9231c40fb4943c6ef1348a739f5d1aca71809315119f53fd86b8e2997efe7dae",
+      "bytes": 557064,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/expert-goldens.json",
+      "sha256": "bd21d6828f457bfb6ff2e788dff829f7d07ca484c75093bafe18ba80c2414f2b",
+      "bytes": 307601,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/expert-original.json",
+      "sha256": "f9ecee49efe9835adce93f9069d2c56e5a72aa9e8024f89b93a632031d1f98e2",
+      "bytes": 453047,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/front-v41-unicode-data.txt.gz",
+      "sha256": "daeb4dbe494e9b5be98d4ec4912680a6f1773eefbd4b44f1ab74a8160e567c7e",
+      "bytes": 301475,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/front-v41.pst",
+      "sha256": "8f57ee76c6f236363cb903413bba01b3464c36cbc4cff9291d009996e504e104",
+      "bytes": 3978447,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/original/r1.pst",
+      "sha256": "431e00e6be54a8bb51003c661c8d78ab0bf53c552d604eeb7733603eef75906a",
+      "bytes": 5100245,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/original/tokenizer.json.gz",
+      "sha256": "fca52b8c41bc292b696e6be5d36e62d7f9ca45326197c1b5f9f2f105cd7aac4f",
+      "bytes": 1923735,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-cpu-original/compressed-candidate.bin.gz",
+      "sha256": "0b3913e00878d603900bc00a3e64f39bf5e497960e01eec4e6e80d32a033ae96",
+      "bytes": 24472254,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-cpu-original/expanded-candidate.xor.gz",
+      "sha256": "9cc077569c3b530f677ee194d430981be7cfce02286f6ea5ed4cddd828585dc9",
+      "bytes": 6776418,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-original/headers.json",
+      "sha256": "8da884d1160ba537eae4a5ad5b6f2cf1648dffd21faa7885518ef7a3096fbe9e",
+      "bytes": 658377,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-original/model.safetensors.index.json",
+      "sha256": "d2cdb2f325f6682cf3ad1ad2526a9f979d857390b579380c0331d975136e0acf",
+      "bytes": 479924,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-original/tokenizer.json.gz",
+      "sha256": "d04442a000c3bdc4e5970d85f1a88bd8e1fc9c82f286e9d8f30ffeba65f15bd9",
+      "bytes": 1376521,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/deepseek/v2-original/v2-token-bytes.bin",
+      "sha256": "06f510b759a76101d180215a39f30c6a2f28f5c8ef28c872e48d64a989e12009",
+      "bytes": 1471919,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/gguf/big-endian.gguf.gz",
+      "sha256": "410ccec0e08cce92eb7e61b05e829709254033f388341a69e03ee922e7a69368",
+      "bytes": 1088543,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/gguf/tiny.gguf.gz",
+      "sha256": "ff7f55ef54dd1052eb61d25250ec00e5323c6706b06b3794e3b81ad1f379eac1",
+      "bytes": 1088286,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/gguf/vocab.gguf.gz",
+      "sha256": "5d9dfe049ee75c31c3d7c3c33c5e2ebefd9f8f21ff2e40fc95c66a184bf16e5f",
+      "bytes": 509121,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/harmony/gptoss.hst",
+      "sha256": "713aefbe74715ac78e32ad789ff6e6ad2d6d65372515462b76ab5ecaef8a0e7a",
+      "bytes": 10975886,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/harmony/o200k_base.tiktoken.gz",
+      "sha256": "9326eb6d6d962283c48a3e2564caf0383f60ffd2836d286fbf45db0c26970bfc",
+      "bytes": 1694486,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/0.logits.f32",
+      "sha256": "45d8b3a46d747effc383e76253e491a5b51d5318fa145704a0e6d34687a917bd",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/1.logits.f32",
+      "sha256": "e34d9702b76b20ab459dc60fd54dd4592f5616bc94a37e11e35ef74b103c604b",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/10.logits.f32",
+      "sha256": "7b7bb04f26e76a371c9722d1eac87814611a76d7aea8c4de4eec5fcd1d5884a2",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/11.logits.f32",
+      "sha256": "f2c8eb281cce5babd5599784b047e5640e60203cc4d4f2cb76f76df257940bcb",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/12.logits.f32",
+      "sha256": "34fdbb8b0b19d6354eab85e05ef5404ef9326487d15dbaa5a8ae952defb2ea5a",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/13.logits.f32",
+      "sha256": "e94fadc819e6ffdfe3ef07c58c7579b31ed3673408388343ff41ebf291460d14",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/14.logits.f32",
+      "sha256": "4426a4acac6185b1cb65dfb7029ecc036508ecafab1957a5d891ea5b4a82b3bb",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/15.logits.f32",
+      "sha256": "424a88c4276e638b05766980d5d8bdbcc2450343cc71558ab56f5d92f6ae1ec3",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/16.logits.f32",
+      "sha256": "f613e37d7beea106083b82ee8dc001863c15891ce4435fc851cf7af2b94d976c",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/17.logits.f32",
+      "sha256": "6d14681ec6cf452aec1c1e2f6f91f55b14dd08c7deb28de7f286f0cd58491434",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/18.logits.f32",
+      "sha256": "2066416b29c76e2870eacec0cba2599b74fb3fb9f4b409e666a1c64be9b83779",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/19.logits.f32",
+      "sha256": "c4fff039d5718a074b58f1dc4871176617cf278e8ee164ff23c6d5e7ac7f9352",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/2.logits.f32",
+      "sha256": "318424fb05bda059418a6c6277163c4ee75b26fe2036310edca59e635f67155a",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/20.logits.f32",
+      "sha256": "8b0c0b6a4edc2070667e0319422d2d1a01a1ca0436f09b1fd2b0e8d9a30a0111",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/21.logits.f32",
+      "sha256": "f7fb432f5ded93860db8a48f3504856c9b0af2d6428e17a925671161930f5072",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/22.logits.f32",
+      "sha256": "c5275b8add0d17060eaaf811074f0394afaafa67cc1733383a8fe4bb81acda6d",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/23.logits.f32",
+      "sha256": "7c9290333ca201d8da070f7cc69f7d56a20edfe1ce6460d0f8bf8ad54994a465",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/24.logits.f32",
+      "sha256": "482787c718ec76dedf097483bd1f3a7b997ef326b2a4b92dd6223dbe4fe4e5f3",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/25.logits.f32",
+      "sha256": "78964806b0f07fdb2b9ade303e741f536ccfc5c3f6093357c1e1de2d17b537e6",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/26.logits.f32",
+      "sha256": "866ad272ec94f1a20c750a524914fbb75b7d0bfdc4cb0759f8b5c9dc8fa660c1",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/27.logits.f32",
+      "sha256": "5d7b5d5df76888d5626ace472267e36a8019a1f8bd5d21c50911cd396b07f64b",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/28.logits.f32",
+      "sha256": "2488b3250b48140527de4a3784cff8ee226a71e8a1f64d2b6f2ea53ab2120182",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/29.logits.f32",
+      "sha256": "4a45073b8a7e6b77da21b1d4eb897d0ceda5589d11166aecd20640e9e42c48c0",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/3.logits.f32",
+      "sha256": "2719f949ad074d3a1965be3125a516a2532ab8a43177c7989d6e58d8f3af204f",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/30.logits.f32",
+      "sha256": "c102066bcb0299e60fcb2990f77ee5a577810120ecf1eced6882cfd487556c02",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/31.logits.f32",
+      "sha256": "2bf454671b7a124920bff8907d67d947343c4b6c4143d6cefe17f9f90e8219f6",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/32.logits.f32",
+      "sha256": "391edb24b543a567e6d6b8d6c76927834435f0c7b4e496e6744cfe1d52956e0c",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/33.logits.f32",
+      "sha256": "bdfead01250c350ab906697d30cc66fb65e512b13b4bc17be6f324e4b97af4f1",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/34.logits.f32",
+      "sha256": "ac3ec7268d665a3a8b023c6c9cc51aa1b230bf298ad55201189b3b04bdd4eef5",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/35.logits.f32",
+      "sha256": "0567062b87400b190771609b544724cdc9260925329342ea06b0fefa9ca1930d",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/36.logits.f32",
+      "sha256": "0defe7dea4cacfb994cc66ad948e31605e862e988c7310d71eb079403f4ef314",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/37.logits.f32",
+      "sha256": "4281d6bec314bfb2307101ee4ab2ac8b9b7f5c060175cc94f59a7dc7ec0fb7de",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/38.logits.f32",
+      "sha256": "d69b6b2a3377352af742899fd61e11674736d60489128a3ab8bb71e7135fb91f",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/39.logits.f32",
+      "sha256": "5670315644215e972e3d367eddf6740549e187c3e918ba682e261fbe178c5a8e",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/4.logits.f32",
+      "sha256": "bf0b339f3e3246eb89bfa94487f8781483e069fb36233016e6dd68824f39519b",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/40.logits.f32",
+      "sha256": "45a43bdd6eb402799abd370ea0d0b09a94e85b213c1a02dd4786c7c16fe694cb",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/41.logits.f32",
+      "sha256": "defe9cc475ed088c4bacacc4cc435c185224779dadac17edd7a2cb3d0c0e3f0f",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/42.logits.f32",
+      "sha256": "e65b10193781435d8d4e4ba24664aaf7eb4753b28740fc602d4421fe8cafc8f5",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/43.logits.f32",
+      "sha256": "f7341708d7160a4e00fff7329fd15e4999e7e9ba0298a087b88f3611295966ab",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/44.logits.f32",
+      "sha256": "0fbe6d70d6bd15a30606434f6f86aab8c6de529aad6e4858d02ea83cbb8be98c",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/45.logits.f32",
+      "sha256": "edf8ffc714f02d79eccafb829b919f335a6f955beae51bc4ebe5252a358bd9d0",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/46.logits.f32",
+      "sha256": "401f82ffe63eb468940ffd397fa85a09b3f9209b464d86a5c2cf05e86e2e2a1e",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/47.logits.f32",
+      "sha256": "db237a58d79ef847a6a931ed3c2c8fbbe55cc4f8119d36ba14d3f342cc012332",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/48.logits.f32",
+      "sha256": "26853d559fd79fdf376f330db4aae97e5d4ecfa70c1b59b7c60c28450ad5ecc7",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/49.logits.f32",
+      "sha256": "6bc2f556c7550f45bcf900c54f8f2925fd032014f57508ddd9f969a4a199d4b6",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/5.logits.f32",
+      "sha256": "eece75ede9e14025a6ea27256a077a39cdf72ceb973bd25be1d9e9803575d1da",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/50.logits.f32",
+      "sha256": "cea2df82fd5312583e4e47bdc23763f0e965439c4dcb070beeedd25ecd27064c",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/51.logits.f32",
+      "sha256": "53f20477f02c20151702ee9f65d4fa5bf1e0f69afd70b9aef6e85ebda77acaac",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/52.logits.f32",
+      "sha256": "d67659fd0ac49f09d7da34b63550c561ac82b14d2f0a97edd617a7b3c159fc40",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/53.logits.f32",
+      "sha256": "9e46603e68f003dd9628465e1eb62362a6579842b1e2f9a09153a57adfba103b",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/6.logits.f32",
+      "sha256": "cfc5f7e9cbbf885563e314eeeda9e0351aa5b8e0e38bdc272daa0ed11d62ed89",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/7.logits.f32",
+      "sha256": "f32cbb8c72a8da2931000247a55693cf58a8ebb797a161c6d3c6a6b7737bf3c2",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/8.logits.f32",
+      "sha256": "879658855f4099a1657754eced7d3ca78ccbc86400db2d9c30607645c7991c2f",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/answer/9.logits.f32",
+      "sha256": "c194ef73769a9130f328373b855d8431765138addce89dc7d074d34ac399dee3",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/0.logits.f32",
+      "sha256": "6f91be49af5df357ad8efa3fad2722da0ba962366bb9aee24ad7f2a3edc77291",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/1.logits.f32",
+      "sha256": "cd56285f7b9283275332256092fd5644dea0171b810a2239a593ada6eb53a7f7",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/10.logits.f32",
+      "sha256": "0a1e1ac8580c11edf78708da0af0e8782ea729a4b034acc36cee0f64e27d5c28",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/11.logits.f32",
+      "sha256": "3f76e92fefca4179e4ab4178d4a6f870688ef4b78eba8d47b5602457b16bfac0",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/2.logits.f32",
+      "sha256": "07e079d522610cbd1439bdd1c8bbd5ef3b9565acc6250a58cd888ee184f69e77",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/3.logits.f32",
+      "sha256": "54c982e8d6299e23c1c0a97c449ce244e4d50c7b32262a35b5d025d359bcf538",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/36.logits.f32",
+      "sha256": "fb59cfaee4a8142e18b6046b141106338d6e40ca9cca6b1068ac6950db3b49a2",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/37.logits.f32",
+      "sha256": "94c831e89d9a717f9e501e54b5b8f901a78145c663ff3de062f9dddadc5d8553",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/38.logits.f32",
+      "sha256": "f6cf568e0279f393ca4c86e2fd9d1e50765cd9ebea58652869635dcea8035258",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/39.logits.f32",
+      "sha256": "a053cb452e3b4d8886c959abebf3494dcc7404a9fc824de197521a1dbae9f918",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/4.logits.f32",
+      "sha256": "043362fcb3f267be383d678361eb8d9bdc2f9f04f93b269968fca4e92101f4a5",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/40.logits.f32",
+      "sha256": "174ea0a41d55eb55ebbccb1826dff714c25d14dae519092a7c27d5e1296572ee",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/41.logits.f32",
+      "sha256": "0baf96d55cf37bea87390e096d6540afa4cfc80adca400f8d9d4c15f611c8418",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/5.logits.f32",
+      "sha256": "869b0546956734ff0ada23f5e988adc9fd3354db01924af0c1a012f70d2aa372",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/6.logits.f32",
+      "sha256": "cd090fb80248d3306d56a41dfe4c9819027562ee498b7c48475d40edc12c0895",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/7.logits.f32",
+      "sha256": "2aa9f88ef33b2ea6c9aee3cf9238a4268da4b6df178c1aa089fc6ecae7169103",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/8.logits.f32",
+      "sha256": "698fe307dc1140eb6147b0e900f12cc078370e502a19d71be4497354c94e3a77",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/channel/9.logits.f32",
+      "sha256": "0d24333199b564be1200ad54bb3a669302c87ca6db230b33da48f38845fb8dd4",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/parity-0.f32",
+      "sha256": "fe0b21dff3c9a50f4a549ada6613f18158634682146f16d6eaf62d8e69d42155",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/original-edit/parity-1.f32",
+      "sha256": "3a6d030299bd6859d8264cf1fbb6c3b20d12aed7125245afc6452d37d8f7a52b",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/bg.pcm",
+      "sha256": "78d0aa30f70bc0abf912619089c9fee82aa3bc164702545b21e2a1a2bac4ea63",
+      "bytes": 443520,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/cs.pcm",
+      "sha256": "13217a916ff0e606e5c613f8cbeca34336db08cfbaae049831a840597a5591dc",
+      "bytes": 426240,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/de.pcm",
+      "sha256": "f37289793d13cf31e9885441cc968c6944b1d616c78d42b2f854716f5280421c",
+      "bytes": 574080,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/el.pcm",
+      "sha256": "9527a011228139db04a8ab87ea64f68aeafe6a4316e0e17db699135903f0f426",
+      "bytes": 353280,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/en.pcm",
+      "sha256": "399d811b252e488191998a7c244ba7097cd5c9ecb3246596d3adefb010211119",
+      "bytes": 337920,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/es.pcm",
+      "sha256": "88ed90c18726882ad2e7b838747fd3797776b7c233583ee2bf767dad0d546cb2",
+      "bytes": 410880,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/et.pcm",
+      "sha256": "8dac187f968aa738f6f15c3b387ceeebf435fe3f4925bff1aaf08c90dccf8091",
+      "bytes": 451200,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/fi.pcm",
+      "sha256": "b2a868184517a3ff2a0551f96033f5f5be58bf1e1c06b0ea9357e84009a87bf1",
+      "bytes": 595200,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/fr.pcm",
+      "sha256": "21620d49816591bb527d7fc9c1e15a18cae3f4b5f27acb7c64f3e1ba85305a2b",
+      "bytes": 326400,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/hu.pcm",
+      "sha256": "f19a54db4a28d7f23c05c949ae67b0d0ef7c4e5e10208fdfc8e7b61daf921774",
+      "bytes": 385920,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/it.pcm",
+      "sha256": "f0dae1a14ea651931aaef6bdd60a14b3a30d61181733acaef77302fe6898f553",
+      "bytes": 368640,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/lv.pcm",
+      "sha256": "b59c29cbff042e1f32f3d409405fd753bd57514ca87c78f1fae81a09be8dfb2e",
+      "bytes": 387840,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/mt.pcm",
+      "sha256": "913e8ab06bdf2c0d4086faa2512f9e2b15a7bebf28d5734d0dd8ce9016b7a856",
+      "bytes": 439680,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/pl.pcm",
+      "sha256": "437f87a4e73285ce1801f641b519863f3c8e9dbf54fdff7d203ad47997390ce8",
+      "bytes": 387840,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/pt.pcm",
+      "sha256": "d0acd218aee6a7b628d580b22d5cbce9ebd32b9900701f112005f9af36992416",
+      "bytes": 568320,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/ru.pcm",
+      "sha256": "c608254f1a89e046fae75a4371810f6f60b2383a8a55102fb0a895f0bc2ac13b",
+      "bytes": 541440,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/parakeet-reference/sk.pcm",
+      "sha256": "25d18933766096c9b6c59ca556d163eecf0a2b4e37a926fe5863a1609bca04dc",
+      "bytes": 314880,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/groot-libero/tensor-inventory.json",
+      "sha256": "da7c2eb4156fdb1ec5137bcdc6ad4147bf7b9b84198d1b08461a926c8af16c95",
+      "bytes": 346011,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/curves.json",
+      "sha256": "8f2b2995e1420404da812ecc3c9a611c774427e33c515c993785bef1538de064",
+      "bytes": 713641,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/record.json",
+      "sha256": "6890299496be8725d91ee9db83310310042ae1c29caf004e66a0b6aee8ceca8e",
+      "bytes": 389081,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion-lqr-longer/old-native-closure-tokens.json",
+      "sha256": "50e921d88801f3c66e20d3656e7f390a4bebd5f7fb2f5eee612b803d865b957b",
+      "bytes": 603505,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion-lqr/native-rollout-actual.bin",
+      "sha256": "3c27c278fa5fb856892dfad1d55f3169cfa9004e0d81c962d6ad7a700e2b936f",
+      "bytes": 433160,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion-lqr/rollout-expected.bin",
+      "sha256": "a6d7e1b405d81a1b9e079324f93b57cd83579ea7bdadb459820e3c24d1e70aa4",
+      "bytes": 433160,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/locomotion/gae-rounding.json",
+      "sha256": "353b6c73c71d9101f81432cfb1479c7b19029acdac1cbdd5258286c27cc8a57a",
+      "bytes": 1191005,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-gain-search/compact-cache.bin",
+      "sha256": "8f4cde2c22c60ad39f2029a5926b1f872cacb8adf69ca2018db9ab4631b3530f",
+      "bytes": 5616024,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-joint-pd-tracking/expected-controller.f64",
+      "sha256": "0b6b0e3dae547763f1308a45ec374796da26402a624306041fbfb7251fdcb36f",
+      "bytes": 840000,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-joint-pd-tracking/reference-states.f64",
+      "sha256": "9fd37cf888cb4d9cb73ecaa9e2e8279b1437e9564c5ba2117b89b7ecccf49af5",
+      "bytes": 504672,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-joint-pd-tracking/sdk-progress.jsonl",
+      "sha256": "e51b9b9d2fedfcc8833628793ef9b7b9c9f56a3ba59f297aaa1663f370f14887",
+      "bytes": 374700,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-joint-pd-tracking/sdk-trace.bin",
+      "sha256": "1c8ece9acebc9cf5c87237044fa98ebc31a13b2376400a59667d5eb39e40a78a",
+      "bytes": 3120016,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-pose-ik/rotation-cases.f64",
+      "sha256": "83e77dc07eb80906019399540e14bbde7b0455cbbcc1d1d03b0f25a0a038798b",
+      "bytes": 268800,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-pose-ik/rotation-expected.f64",
+      "sha256": "f046e6d2118029750eff697149cb39aca096b6c8e91027fde01ffbb558e25b87",
+      "bytes": 436800,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-pose-solve/trajectory-diagnostics.json",
+      "sha256": "9e0096c879f8d1a2ce8eeb2cb713d57bd6863f509bdbcfbdefbdc5df1673c329",
+      "bytes": 291362,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/SDK-expected-actuator.f64",
+      "sha256": "dce36d2ef216421654d9e99edf76b1e33567f5a411eb0d1333a643dc4d8720cb",
+      "bytes": 432000,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/SDK-expected-controller.f64",
+      "sha256": "aaa0fb785223b2c235dfc66ef32856b2d90a10e3f8fbaa78472b6a6537f2181f",
+      "bytes": 1680000,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/own-progress.jsonl",
+      "sha256": "75e1c3db377bb317ee9a56d5eaa30b904b200e0b4470de5760b8969251fba471",
+      "bytes": 1084976,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/own-trace.bin",
+      "sha256": "321a59ec35d6549ff520ccfbcd87beab6f1b7a64c1fbce703cdfbb1da05dc7a8",
+      "bytes": 6432024,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-samples.bin",
+      "sha256": "77ad03baa44d6689981416b15e71dc815e9b1dfc98bddad6ba9795d23923dc0c",
+      "bytes": 1105472,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-states.f64",
+      "sha256": "3d9917e7834bd7390720894a89f0e1728e350b8a724ab498e6767b05dccba191",
+      "bytes": 1009344,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/sdk-progress.jsonl",
+      "sha256": "bf65f3837957d280619411abda5654a09fad77b0f10f595c935006b5d32d8067",
+      "bytes": 1607109,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd-validation/sdk-trace.bin",
+      "sha256": "cf9b86934a175196041490657a61d4ade906902c88d76b33439366fc01f2c4dc",
+      "bytes": 6432024,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/robotics/panda-scheduled-pd/own-trace.bin",
+      "sha256": "b8b2be33fdc0cefaab9667591cdd89b6dff7e7299df4343a4767dcc08d832648",
+      "bytes": 3216016,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/serving/partIII-2026-10-29/cpu-prefix-pairs/after.jsonl",
+      "sha256": "0944e7b02c5f82bdcc6ff75264547dd2c1df2e6c365456f7f0dc2c8e73dd94f4",
+      "bytes": 322039,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/serving/partIII-2026-10-29/cpu-prefix-pairs/before.jsonl",
+      "sha256": "792e153d6b1cb44641aeef8b69f8e0d18347f29494c7501250803ce49ee7b628",
+      "bytes": 322834,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/text/ch05/normalization.bin",
+      "sha256": "a63fdcd67bc7644b2c1916c0b97f6f92da7f758292be770127d1e2668e237727",
+      "bytes": 439019,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/text/ch05/qwen35.pst",
+      "sha256": "09eed4956d3394e254e92d9d2cc4cf83d31ac2cc92f5d9986090a1bff9b15223",
+      "bytes": 8277996,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/text/ch05/tokenizer.json.gz",
+      "sha256": "b26a4e24aa98324f0e695a4cd1b0f11478cb03f84e6d041627faf804d733e0f4",
+      "bytes": 3913276,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/tokenizer-families/t5-tokenizer.json.gz",
+      "sha256": "c76fb7f3d59f85a1c92af0faf0bf12d86f4b1c8d9c4f1184244ceb27c1ed8b71",
+      "bytes": 563202,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/verse-villain/parity-0.f32",
+      "sha256": "fe0b21dff3c9a50f4a549ada6613f18158634682146f16d6eaf62d8e69d42155",
+      "bytes": 804352,
+      "group": "psionic"
+    },
+    {
+      "path": "psionic/fixtures/verse-villain/parity-1.f32",
+      "sha256": "3a6d030299bd6859d8264cf1fbb6c3b20d12aed7125245afc6452d37d8f7a52b",
+      "bytes": 804352,
+      "group": "psionic"
+    }
+  ]
+}

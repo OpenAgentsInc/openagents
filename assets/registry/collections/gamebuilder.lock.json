@@ -1,0 +1,19 @@
+{
+  "schema": "oa-blob-collection-lock-v1",
+  "group": "gamebuilder",
+  "base_url": "https://storage.googleapis.com/openagentsgemini-assets/sha256",
+  "blobs": [
+    {
+      "path": "gamebuilder/web/assets/village.pack",
+      "sha256": "a47f78bd6fe12caba7c8d9f8f35a2cd204fa9da7225e6ea8da2fc4d7bc38b08e",
+      "bytes": 1842224,
+      "group": "gamebuilder"
+    },
+    {
+      "path": "gamebuilder/assets/scrappers.gbm",
+      "sha256": "da9f653c422643499c80705a16062519b3c97ae1c82194cc80c5905d52e481ad",
+      "bytes": 1870968,
+      "group": "gamebuilder"
+    }
+  ]
+}

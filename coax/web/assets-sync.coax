@@ -1,0 +1,347 @@
+// Content-addressed asset & fixture hydrator (#13853, #13844).
+// Reads assets/registry/collections/{realms,psionic-fixtures,gamebuilder}.lock.json,
+// verifies SHA-256 against ~/.openagents/assets/sha256/<aa>/<sha256> (fetching from
+// base_url on cache miss, failing closed on any digest mismatch), and materializes
+// regular files (APFS clonefile or copy, never symlinks since coax/web/serve.c
+// rejects symlinks) into the workspace.
+//
+//   coax/web/tool.sh assets-sync [--group all|realms|psionic|gamebuilder] [--check]
+//   coax/bin/coax test coax/web/assets-sync.coax --library
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/encoding/json.coax";
+
+AS_MAX_ROWS :: 512;
+AS_LOCK_BUF :: 262144;
+AS_PATH_POOL :: 131072;
+AS_TIMEOUT_MS :: 300000;
+
+AsRow :: struct {
+  path: string;
+  sha256: string;
+  bytes: int;
+  group: string;
+}
+
+AsParsed :: struct {
+  ok: bool;
+  count: int;
+  base_url: string;
+}
+
+as_hex_lower :: (c: u8) -> bool {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+as_valid_sha256 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !as_hex_lower(c) { return false; } }
+  return true;
+}
+
+as_safe_relpath :: (p: string) -> bool {
+  if p.count == 0 || p[0] == '/' { return false; }
+  i := 0;
+  while i < p.count {
+    j := i;
+    while j < p.count && p[j] != '/' { j += 1; }
+    seg := cast(string) p[i..<j];
+    if seg.count == 0 || seg == "." || seg == ".." { return false; }
+    i = j + 1;
+  }
+  return p[p.count - 1] != '/';
+}
+
+as_cat :: (out: [] u8, parts: [] string) -> string {
+  n := 0;
+  for p: parts {
+    for c: p {
+      if n >= out.count { return ""; }
+      out[n] = c;
+      n += 1;
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+as_pool_copy :: (pool: [] u8, used: [] int, s: string) -> string {
+  if used[0] + s.count > pool.count { return ""; }
+  start := used[0];
+  for c: s {
+    pool[used[0]] = c;
+    used[0] += 1;
+  }
+  return cast(string) pool[start..<used[0]];
+}
+
+as_cache_path :: (home: string, sha: string, out: [] u8) -> string {
+  if home.count == 0 || !as_valid_sha256(sha) { return ""; }
+  p := [5] string.[home, "/.openagents/assets/sha256/", cast(string) sha[0..<2], "/", sha];
+  return as_cat(out, p[..]);
+}
+
+as_blob_url :: (base_url: string, sha: string, out: [] u8) -> string {
+  if base_url.count == 0 || !as_valid_sha256(sha) { return ""; }
+  p := [5] string.[base_url, "/", cast(string) sha[0..<2], "/", sha];
+  return as_cat(out, p[..]);
+}
+
+as_parse_int :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+as_skip_value :: (j: [] Json, tok: int) -> bool {
+  if tok == JSON_ERROR || tok == JSON_END { return false; }
+  if tok != JSON_OBJECT && tok != JSON_ARRAY { return true; }
+  depth := 1;
+  while depth > 0 {
+    t := json_next(j);
+    if t == JSON_ERROR || t == JSON_END { return false; }
+    if t == JSON_OBJECT || t == JSON_ARRAY { depth += 1; }
+    else if t == JSON_OBJECT_END || t == JSON_ARRAY_END { depth -= 1; }
+  }
+  return true;
+}
+
+as_unesc :: (j: [] Json, buf: [] u8) -> string {
+  raw := cast(string) j[0].text[j[0].from..<j[0].to];
+  n := json_unescape(raw, buf);
+  if n < 0 { return ""; }
+  return cast(string) buf[0..<n];
+}
+
+// Parse an oa-blob-collection-lock-v1 JSON lockfile. Fails closed on malformed JSON,
+// invalid sha256, unsafe path, or negative byte count.
+as_parse_lock :: (text: string, pool: [] u8, rows: [] AsRow) -> AsParsed {
+  res: AsParsed;
+  used: [1] int;
+  if !json_valid(text) { return res; }
+  j: [1] Json;
+  json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return res; }
+  unesc: [4096] u8;
+  while true {
+    k := json_next(j[..]);
+    if k == JSON_OBJECT_END { break; }
+    if k != JSON_STRING || !j[0].key { return res; }
+    key := as_unesc(j[..], unesc[..]);
+    if key == "base_url" {
+      if json_next(j[..]) != JSON_STRING { return res; }
+      val := as_unesc(j[..], unesc[..]);
+      res.base_url = as_pool_copy(pool, used[..], val);
+      if res.base_url.count == 0 { return res; }
+    } else if key == "blobs" {
+      if json_next(j[..]) != JSON_ARRAY { return res; }
+      while true {
+        item := json_next(j[..]);
+        if item == JSON_ARRAY_END { break; }
+        if item != JSON_OBJECT { return res; }
+        if res.count >= rows.count { return res; }
+        row: AsRow;
+        row.bytes = -1;
+        while true {
+          fk := json_next(j[..]);
+          if fk == JSON_OBJECT_END { break; }
+          if fk != JSON_STRING || !j[0].key { return res; }
+          fkey := as_unesc(j[..], unesc[..]);
+          fv := json_next(j[..]);
+          if fkey == "path" {
+            if fv != JSON_STRING { return res; }
+            row.path = as_pool_copy(pool, used[..], as_unesc(j[..], unesc[..]));
+          } else if fkey == "sha256" {
+            if fv != JSON_STRING { return res; }
+            row.sha256 = as_pool_copy(pool, used[..], as_unesc(j[..], unesc[..]));
+          } else if fkey == "group" {
+            if fv != JSON_STRING { return res; }
+            row.group = as_pool_copy(pool, used[..], as_unesc(j[..], unesc[..]));
+          } else if fkey == "bytes" {
+            if fv != JSON_NUMBER { return res; }
+            row.bytes = as_parse_int(cast(string) text[j[0].from..<j[0].to]);
+          } else {
+            if !as_skip_value(j[..], fv) { return res; }
+          }
+        }
+        if !as_safe_relpath(row.path) || !as_valid_sha256(row.sha256) || row.bytes < 0 { return res; }
+        rows[res.count] = row;
+        res.count += 1;
+      }
+    } else {
+      v := json_next(j[..]);
+      if !as_skip_value(j[..], v) { return res; }
+    }
+  }
+  if res.base_url.count == 0 { return res; }
+  res.ok = true;
+  return res;
+}
+
+as_file_sha256 :: (path: string, out_hex: [] u8) -> bool {
+  if out_hex.count < 64 { return false; }
+  out: [512] u8; err: [512] u8;
+  a1 := [4] string.["shasum", "-a", "256", path];
+  r := proc_run(a1[..], AS_TIMEOUT_MS, out[..], err[..]);
+  if r.started != 0 || r.status != 0 {
+    a2 := [2] string.["sha256sum", path];
+    r = proc_run(a2[..], AS_TIMEOUT_MS, out[..], err[..]);
+  }
+  if r.started != 0 || r.status != 0 || r.out_n < 64 { return false; }
+  for k: 0..<64 { out_hex[k] = out[k]; }
+  return as_valid_sha256(cast(string) out_hex[0..<64]);
+}
+
+as_copy_regular :: (src: string, dst: string) -> bool {
+  dir := fs_dir(dst);
+  if dir.count > 0 { _ = fs_mkdir_all(dir); }
+  if fs_exists(dst) { _ = fs_remove(dst); }
+  out: [512] u8; err: [512] u8;
+  // Try APFS copy-on-write clone first (instant, zero extra disk space, regular file).
+  a1 := [4] string.["cp", "-c", src, dst];
+  r1 := proc_run(a1[..], AS_TIMEOUT_MS, out[..], err[..]);
+  if r1.started == 0 && r1.status == 0 { return true; }
+  a2 := [4] string.["cp", "-f", src, dst];
+  r2 := proc_run(a2[..], AS_TIMEOUT_MS, out[..], err[..]);
+  return r2.started == 0 && r2.status == 0;
+}
+
+as_sync_lock :: (lock_path: string, home: string, check_only: bool, fetched: [] int, hydrated: [] int, ok_count: [] int) -> bool {
+  if !fs_exists(lock_path) {
+    print("assets-sync: missing lockfile %\n", lock_path);
+    return false;
+  }
+  buf: [AS_LOCK_BUF] u8;
+  n := fs_read(lock_path, buf[..]);
+  if n <= 0 {
+    print("assets-sync: failed to read %\n", lock_path);
+    return false;
+  }
+  pool: [AS_PATH_POOL] u8;
+  rows: [AS_MAX_ROWS] AsRow;
+  parsed := as_parse_lock(cast(string) buf[0..<n], pool[..], rows[..]);
+  if !parsed.ok {
+    print("assets-sync: malformed lockfile %\n", lock_path);
+    return false;
+  }
+  sha_b: [64] u8;
+  cache_b: [4096] u8;
+  tmp_b: [4096] u8;
+  url_b: [4096] u8;
+  out: [4096] u8; err: [4096] u8;
+  for k: 0..<parsed.count {
+    row := rows[k];
+    if fs_exists(row.path) && fs_size(row.path) == row.bytes && as_file_sha256(row.path, sha_b[..]) && cast(string) sha_b[0..<64] == row.sha256 {
+      ok_count[0] += 1;
+      continue;
+    }
+    if check_only {
+      print("assets-sync: MISSING or HASH MISMATCH: % (expected %)\n", row.path, row.sha256);
+      return false;
+    }
+    cache := as_cache_path(home, row.sha256, cache_b[..]);
+    if cache.count == 0 {
+      print("assets-sync: invalid cache path for %\n", row.path);
+      return false;
+    }
+    cache_ok := fs_exists(cache) && fs_size(cache) == row.bytes && as_file_sha256(cache, sha_b[..]) && cast(string) sha_b[0..<64] == row.sha256;
+    if !cache_ok {
+      cdir := fs_dir(cache);
+      if cdir.count > 0 { _ = fs_mkdir_all(cdir); }
+      tp := [2] string.[cache, ".tmp"];
+      tmp := as_cat(tmp_b[..], tp[..]);
+      url := as_blob_url(parsed.base_url, row.sha256, url_b[..]);
+      ca := [5] string.["curl", "-fsSL", "-o", tmp, url];
+      cr := proc_run(ca[..], AS_TIMEOUT_MS, out[..], err[..]);
+      if cr.started != 0 || cr.status != 0 {
+        _ = fs_remove(tmp);
+        print("assets-sync: download failed for % from %\n", row.path, url);
+        return false;
+      }
+      if !as_file_sha256(tmp, sha_b[..]) || cast(string) sha_b[0..<64] != row.sha256 {
+        _ = fs_remove(tmp);
+        print("assets-sync: SHA-256 MISMATCH for % downloaded from % (refused)\n", row.path, url);
+        return false;
+      }
+      ma := [4] string.["mv", "-f", tmp, cache];
+      mr := proc_run(ma[..], AS_TIMEOUT_MS, out[..], err[..]);
+      if mr.started != 0 || mr.status != 0 {
+        _ = fs_remove(tmp);
+        print("assets-sync: failed to commit cache file %\n", cache);
+        return false;
+      }
+      fetched[0] += 1;
+    }
+    if !as_copy_regular(cache, row.path) {
+      print("assets-sync: failed to materialize %\n", row.path);
+      return false;
+    }
+    hydrated[0] += 1;
+    ok_count[0] += 1;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  _ = args_load(args[..]);
+  group := args_value(args[..], "--group", "all");
+  check_only := args_has(args[..], "--check");
+  home_b: [4096] u8;
+  home := proc_getenv("HOME", home_b[..]);
+  if home.count == 0 {
+    print("assets-sync: HOME is not set\n");
+    return 1;
+  }
+  fetched: [1] int; hydrated: [1] int; ok_count: [1] int;
+  ok := true;
+  if group == "all" || group == "realms" {
+    if !as_sync_lock("assets/registry/collections/realms.lock.json", home, check_only, fetched[..], hydrated[..], ok_count[..]) { ok = false; }
+  }
+  if group == "all" || group == "psionic" {
+    if !as_sync_lock("assets/registry/collections/psionic-fixtures.lock.json", home, check_only, fetched[..], hydrated[..], ok_count[..]) { ok = false; }
+  }
+  if group == "all" || group == "gamebuilder" {
+    if !as_sync_lock("assets/registry/collections/gamebuilder.lock.json", home, check_only, fetched[..], hydrated[..], ok_count[..]) { ok = false; }
+  }
+  if !ok { return 1; }
+  print("assets-sync: ok (% blobs verified, % hydrated, % fetched, group=%)\n", ok_count[0], hydrated[0], fetched[0], group);
+  return 0;
+}
+
+// ---- checks
+
+#test "sha256 and safe relative path validation" {
+  good_sha := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  bad_upper := "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert as_valid_sha256(good_sha);
+  #assert !as_valid_sha256(bad_upper) && !as_valid_sha256("abcd") && !as_valid_sha256("");
+  #assert as_safe_relpath("apps/openagents-web/realms/everglade2/assets/everglade2.pack");
+  #assert !as_safe_relpath("") && !as_safe_relpath("/etc/passwd") && !as_safe_relpath("../escape");
+  #assert !as_safe_relpath("a/../b") && !as_safe_relpath("a/./b") && !as_safe_relpath("a/");
+}
+
+#test "cache path and blob url formatting" {
+  sha := "ab23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  b1: [512] u8; b2: [512] u8;
+  #assert as_cache_path("/Users/x", sha, b1[..]) == "/Users/x/.openagents/assets/sha256/ab/ab23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert as_blob_url("https://storage.googleapis.com/openagentsgemini-assets/sha256", sha, b2[..]) == "https://storage.googleapis.com/openagentsgemini-assets/sha256/ab/ab23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert as_cache_path("", sha, b1[..]) == "" && as_blob_url("https://x", "short", b2[..]) == "";
+}
+
+#test "lockfile parser admits valid lockfile and fails closed on bad sha256 or path traversal" {
+  pool: [4096] u8; rows: [8] AsRow;
+  good := "{\"schema\":\"oa-blob-collection-lock-v1\",\"group\":\"realms\",\"base_url\":\"https://storage.googleapis.com/openagentsgemini-assets/sha256\",\"blobs\":[{\"path\":\"a/b.pack\",\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"bytes\":1024,\"group\":\"realms\"}]}";
+  r := as_parse_lock(good, pool[..], rows[..]);
+  #assert r.ok && r.count == 1 && rows[0].path == "a/b.pack" && rows[0].bytes == 1024 && rows[0].group == "realms";
+  bad_path := "{\"base_url\":\"https://x\",\"blobs\":[{\"path\":\"../evil\",\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"bytes\":10}]}";
+  #assert !as_parse_lock(bad_path, pool[..], rows[..]).ok;
+  bad_sha := "{\"base_url\":\"https://x\",\"blobs\":[{\"path\":\"a/b.pack\",\"sha256\":\"not-a-sha\",\"bytes\":10}]}";
+  #assert !as_parse_lock(bad_sha, pool[..], rows[..]).ok;
+  #assert !as_parse_lock("{broken", pool[..], rows[..]).ok;
+}

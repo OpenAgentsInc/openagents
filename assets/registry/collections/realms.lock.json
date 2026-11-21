@@ -1,0 +1,103 @@
+{
+  "schema": "oa-blob-collection-lock-v1",
+  "group": "realms",
+  "base_url": "https://storage.googleapis.com/openagentsgemini-assets/sha256",
+  "blobs": [
+    {
+      "path": "apps/openagents-web/realms/character-creator/assets/arkai_c.ttf",
+      "sha256": "44ab4da39da719ee266e0a502243f42dd9b35ad35e4e7c3d91de5ff14f3eb0cb",
+      "bytes": 14945880,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/character-creator/assets/fantasy.pack",
+      "sha256": "7e4d70674892266fde6895b16e757f2de0bf6e0ec399e05a175151ab7de02740",
+      "bytes": 20914708,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/character-creator/assets/fantasy.pack.gz",
+      "sha256": "5a290ab836b87b4f191d5d0a9d5f8a4df7e4a4b9fb6295c42b99415e7cfd9ebb",
+      "bytes": 12218289,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/character-creator/assets/glade.pack",
+      "sha256": "6ad9a95abb5ae219cdf103d8aa7b0539a46f9b20a4c6ad3cb681cfbe716c2225",
+      "bytes": 33525296,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/create-world/assets/worldbuilder.pack.gz",
+      "sha256": "08fbe2f7741d64e7908a72384274732140662e8bcb85db2ac7c387539725c78e",
+      "bytes": 12078015,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
+      "sha256": "8722a5ad0ed212a19b17344a6450c80839e2996265a08174d5a946f59ea4c8f8",
+      "bytes": 93138894,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade/assets/everglade-avatar.pack",
+      "sha256": "a25ccca91c30cedb0b345949f7ae0c363ce1445db5b095d7c098673c2794eb04",
+      "bytes": 21084284,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade/assets/everglade-zone.pack",
+      "sha256": "b71727fec8a1eef8d71dfc59fa56e4ef1072735fac468aab08a77ae55eca2746",
+      "bytes": 33585368,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade/assets/everglade.pack",
+      "sha256": "c0ab739a5ccc93c8c8897db97527a91aebaf5b0ba04c3195b2e9e669a4092a5c",
+      "bytes": 9633504,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade2/assets/everglade2.pack",
+      "sha256": "ddbb92535746e6c6402ab3b70be1067c9f689bf9ead06c1f36775b7c479d63d1",
+      "bytes": 59536916,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade2/assets/fonts/Spectral-Medium.ttf",
+      "sha256": "f385bc588599c879112272711d4acecc126674009d747a27284f59e93a240e83",
+      "bytes": 272920,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/everglade2/domain/hero.jpg",
+      "sha256": "404113c0dd233b938bb3bfd62b4f4a4264c691de84da0b87ed52c0fca35b8952",
+      "bytes": 330634,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+      "sha256": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9",
+      "bytes": 1267160,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/orbit-league/assets/roadster.bin",
+      "sha256": "6be9a3c06c8d5535c9ddb4833d647afe156a7b7893773fc39f7944ac612f908c",
+      "bytes": 6304920,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/slab/pictures/concept.jpg",
+      "sha256": "abad25d80bf07df507741814d2eeb68fb4af4ceed5c2c89909feec0a65c9849f",
+      "bytes": 281824,
+      "group": "realms"
+    },
+    {
+      "path": "apps/openagents-web/realms/slab/pictures/temples.jpg",
+      "sha256": "f6edd44cc4a4bc31510ba0c7eab3ff058d741bb6548ce6e9610b71fed8f1a0e6",
+      "bytes": 305682,
+      "group": "realms"
+    }
+  ]
+}

@@ -15,6 +15,10 @@ trap 'status=$?; trap - ERR; stop_all; wait 2> /dev/null || true
 trap 'trap - ERR TERM HUP; stop_all; exit 143' TERM HUP
 mkdir -p "$here/build"
 repo="$(cd "$here/../.." && pwd)"
+# Hydrate externalized realm binary packs from ~/.openagents/assets/sha256/ (#13853, #13844).
+if [[ -x "$repo/coax/web/tool.sh" && -f "$repo/assets/registry/collections/realms.lock.json" ]]; then
+  "$repo/coax/web/tool.sh" assets-sync --group realms
+fi
 # The default build makes the pages of what is live. v1 Everglade (everglade, fivemmo,
 # everglade5e), Experimental and the 5E Lab (fivelab) and the lab pages are the old set (#13269):
 # a step with `old` in front runs only under COAXIAL_PAGES=all. A release sets it
