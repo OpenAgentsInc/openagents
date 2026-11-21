@@ -5,361 +5,6 @@ import CryptoKit
 import Foundation
 import UniformTypeIdentifiers
 
-struct PleGymRunItem: Equatable {
-    let id: String          // canonical file path
-    let title: String       // display name in sidebar list
-    let subtitle: String    // source / format hint
-    let url: URL            // .ple-scene.json or .ifc
-    let isIfc: Bool
-    let isSample: Bool
-    let modifiedAt: Date?
-}
-
-/// Stage 4: A single timeline snapshot (discovered on disk, captured during live tailing, or manually pinned).
-struct PleGymSnapshot {
-    let id: String
-    let label: String
-    let url: URL?
-    let isIfc: Bool
-    var scene: PleScene?
-    var score: Double?
-    let isPinned: Bool
-    let isLiveCapture: Bool
-    let capturedAt: Date
-}
-
-/// Stage 4: A discovered diagnostics/log artifact next to a run file.
-struct PleGymLogFile {
-    let name: String
-    let url: URL?
-    let syntheticContent: String?
-}
-
-enum PleGymDiscovery {
-    static let cacheDir = URL(fileURLWithPath: "/tmp/ple-scenes", isDirectory: true)
-
-    /// Locate the repository root (if running from or near a checkout).
-    static func findRepoRoot(workingFolder: URL?) -> URL? {
-        let fm = FileManager.default
-        var seeds: [URL] = []
-        if let wf = workingFolder { seeds.append(wf) }
-        seeds.append(URL(fileURLWithPath: fm.currentDirectoryPath))
-        if let bundleURL = Bundle.main.bundleURL as URL? {
-            seeds.append(bundleURL.deletingLastPathComponent())
-        }
-        let home = fm.homeDirectoryForCurrentUser
-        seeds.append(home.appendingPathComponent("work/openagents"))
-
-        for seed in seeds {
-            var dir = seed.standardizedFileURL
-            for _ in 0..<8 {
-                let fixture = dir.appendingPathComponent("metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json")
-                let tool = dir.appendingPathComponent("tools/ple-ifc-to-scene.py")
-                if fm.fileExists(atPath: fixture.path) || fm.fileExists(atPath: tool.path) {
-                    return dir
-                }
-                let parent = dir.deletingLastPathComponent()
-                if parent.path == dir.path { break }
-                dir = parent
-            }
-        }
-        return nil
-    }
-
-    /// Find the bundled sample fixture URL.
-    static func findBundledSample(repoRoot: URL?) -> URL? {
-        let fm = FileManager.default
-        var candidates: [URL] = []
-        if let repo = repoRoot {
-            candidates.append(repo.appendingPathComponent("metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json"))
-        }
-        if let res = Bundle.main.resourceURL {
-            candidates.append(res.appendingPathComponent("fixtures/ple-data-hall-sample.ple-scene.json"))
-            candidates.append(res.appendingPathComponent("ple-data-hall-sample.ple-scene.json"))
-        }
-        let home = fm.homeDirectoryForCurrentUser
-        candidates.append(home.appendingPathComponent("work/openagents/metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json"))
-        return candidates.first { fm.fileExists(atPath: $0.path) }
-    }
-
-    /// Discover bundled sample + PLE runs in ../ple-kit/runs, ~/work/ple-kit/runs, and ~/.openagents/ple/runs.
-    static func discover(workingFolder: URL?) -> [PleGymRunItem] {
-        let fm = FileManager.default
-        let repoRoot = findRepoRoot(workingFolder: workingFolder)
-        var items: [PleGymRunItem] = []
-        var seenPaths = Set<String>()
-
-        if let sampleURL = findBundledSample(repoRoot: repoRoot) {
-            let canon = sampleURL.standardizedFileURL.path
-            seenPaths.insert(canon)
-            items.append(PleGymRunItem(
-                id: canon,
-                title: "data-hall-mep-routing (sample)",
-                subtitle: "Bundled fixture • PLE Scene",
-                url: sampleURL,
-                isIfc: false,
-                isSample: true,
-                modifiedAt: (try? fm.attributesOfItem(atPath: canon)[.modificationDate]) as? Date
-            ))
-        }
-
-        var runRoots: [(url: URL, label: String)] = []
-        if let repo = repoRoot {
-            let sibling = repo.deletingLastPathComponent().appendingPathComponent("ple-kit/runs")
-            runRoots.append((sibling, "ple-kit/runs"))
-        }
-        let home = fm.homeDirectoryForCurrentUser
-        runRoots.append((home.appendingPathComponent("work/ple-kit/runs"), "ple-kit/runs"))
-        runRoots.append((home.appendingPathComponent(".openagents/ple/runs"), "~/.openagents/ple/runs"))
-
-        var scannedRoots = Set<String>()
-        var discovered: [PleGymRunItem] = []
-
-        for (rootURL, sourceLabel) in runRoots {
-            let canonRoot = rootURL.standardizedFileURL.path
-            guard !scannedRoots.contains(canonRoot) else { continue }
-            scannedRoots.insert(canonRoot)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: canonRoot, isDirectory: &isDir), isDir.boolValue else { continue }
-            scanRunDirectory(rootURL, sourceLabel: sourceLabel, seenPaths: &seenPaths, into: &discovered)
-        }
-
-        discovered.sort { a, b in
-            let da = a.modifiedAt ?? .distantPast
-            let db = b.modifiedAt ?? .distantPast
-            if da != db { return da > db }
-            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-        }
-
-        items.append(contentsOf: discovered)
-        return items
-    }
-
-    private static func scanRunDirectory(
-        _ root: URL,
-        sourceLabel: String,
-        seenPaths: inout Set<String>,
-        into out: inout [PleGymRunItem]
-    ) {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        let rootComponents = root.standardizedFileURL.pathComponents.count
-
-        for case let fileURL as URL in enumerator {
-            let comps = fileURL.standardizedFileURL.pathComponents
-            let depth = comps.count - rootComponents
-            if depth > 7 {
-                enumerator.skipDescendants()
-                continue
-            }
-            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
-            if values?.isDirectory == true {
-                let dirName = fileURL.lastPathComponent
-                if dirName == ".git" || dirName == "node_modules" || dirName == "__pycache__" {
-                    enumerator.skipDescendants()
-                }
-                continue
-            }
-
-            let lower = fileURL.lastPathComponent.lowercased()
-            let isScene = PleSceneLoader.isSceneFile(fileURL)
-            let isOutputIfc = lower == "model.ifc" && fileURL.deletingLastPathComponent().lastPathComponent.lowercased() == "output"
-            let isOtherIfc = !isOutputIfc && PleSceneLoader.isIfcFile(fileURL)
-            guard isScene || isOutputIfc || isOtherIfc else { continue }
-
-            let canon = fileURL.standardizedFileURL.path
-            guard !seenPaths.contains(canon) else { continue }
-            seenPaths.insert(canon)
-
-            let relComponents = Array(comps.dropFirst(rootComponents))
-            let runName = relComponents.first ?? fileURL.deletingLastPathComponent().lastPathComponent
-            let title: String
-            if isOutputIfc {
-                title = runName
-            } else if relComponents.count >= 2 {
-                title = "\(runName) / \(fileURL.lastPathComponent)"
-            } else {
-                title = fileURL.lastPathComponent
-            }
-            let kind = isScene ? "PLE Scene" : (isOutputIfc ? "output/model.ifc" : "IFC")
-            out.append(PleGymRunItem(
-                id: canon,
-                title: title,
-                subtitle: "\(sourceLabel) • \(kind)",
-                url: fileURL,
-                isIfc: !isScene,
-                isSample: false,
-                modifiedAt: values?.contentModificationDate
-            ))
-        }
-    }
-
-    /// Load a scene or convert an .ifc file on demand via tools/ple-ifc-to-scene.py into /tmp/ple-scenes/.
-    /// Stage 4: Discover sibling step_*.ple-scene.json, iter_*.ple-scene.json, snapshots/*.ple-scene.json, or snapshots/*.ifc sorted naturally.
-    static func discoverSnapshots(for item: PleGymRunItem) -> [PleGymSnapshot] {
-        let fm = FileManager.default
-        let dir = item.url.deletingLastPathComponent()
-        var foundURLs: [URL] = []
-        var seen = Set<String>()
-
-        func addIfValid(_ url: URL) {
-            let canon = url.standardizedFileURL.path
-            guard !seen.contains(canon) else { return }
-            seen.insert(canon)
-            foundURLs.append(url)
-        }
-
-        if let siblings = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
-            for u in siblings {
-                let name = u.lastPathComponent.lowercased()
-                if (name.hasPrefix("step_") || name.hasPrefix("iter_")) && (name.hasSuffix(".ple-scene.json") || name.hasSuffix(".ifc")) {
-                    addIfValid(u)
-                }
-            }
-        }
-
-        let snapDir = dir.appendingPathComponent("snapshots", isDirectory: true)
-        var isDir: ObjCBool = false
-        if fm.fileExists(atPath: snapDir.path, isDirectory: &isDir), isDir.boolValue,
-           let snapFiles = try? fm.contentsOfDirectory(at: snapDir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
-            for u in snapFiles {
-                let name = u.lastPathComponent.lowercased()
-                if name.hasSuffix(".ple-scene.json") || name.hasSuffix(".ifc") {
-                    addIfValid(u)
-                }
-            }
-        }
-
-        foundURLs.sort { a, b in
-            a.lastPathComponent.localizedStandardCompare(b.lastPathComponent) == .orderedAscending
-        }
-
-        var snapshots: [PleGymSnapshot] = foundURLs.map { u in
-            let name = u.lastPathComponent
-            let label = name
-                .replacingOccurrences(of: ".ple-scene.json", with: "")
-                .replacingOccurrences(of: ".ifc", with: "")
-            let mtime = (try? fm.attributesOfItem(atPath: u.path)[.modificationDate]) as? Date ?? Date()
-            return PleGymSnapshot(
-                id: u.standardizedFileURL.path,
-                label: label,
-                url: u,
-                isIfc: name.lowercased().hasSuffix(".ifc"),
-                scene: nil,
-                score: nil,
-                isPinned: false,
-                isLiveCapture: false,
-                capturedAt: mtime
-            )
-        }
-
-        let itemCanon = item.url.standardizedFileURL.path
-        if !seen.contains(itemCanon) {
-            let mtime = item.modifiedAt ?? Date()
-            snapshots.append(PleGymSnapshot(
-                id: itemCanon,
-                label: snapshots.isEmpty ? "Current" : "Latest",
-                url: item.url,
-                isIfc: item.isIfc,
-                scene: nil,
-                score: nil,
-                isPinned: false,
-                isLiveCapture: false,
-                capturedAt: mtime
-            ))
-        }
-        return snapshots
-    }
-
-    /// Stage 4: Discover sibling trial.log, harbor.log, reconciliation.json, or verifier.json next to the selected run.
-    static func discoverLogs(for item: PleGymRunItem) -> [PleGymLogFile] {
-        let fm = FileManager.default
-        let names = ["verifier.json", "reconciliation.json", "trial.log", "harbor.log"]
-        let dirs = [item.url.deletingLastPathComponent(), item.url.deletingLastPathComponent().deletingLastPathComponent()]
-        var seen = Set<String>()
-        var out: [PleGymLogFile] = []
-        for d in dirs {
-            for n in names {
-                let u = d.appendingPathComponent(n)
-                let canon = u.standardizedFileURL.path
-                guard !seen.contains(canon), fm.fileExists(atPath: canon) else { continue }
-                seen.insert(canon)
-                let prefix = (d == dirs[0]) ? "" : "../"
-                out.append(PleGymLogFile(name: prefix + n, url: u, syntheticContent: nil))
-            }
-        }
-        return out
-    }
-
-    static func loadScene(for item: PleGymRunItem, workingFolder: URL?, forceReconvert: Bool = false) throws -> PleScene {
-        if !item.isIfc {
-            return try PleSceneLoader.load(from: item.url)
-        }
-        return try convertAndLoadIfc(from: item.url, workingFolder: workingFolder, forceReconvert: forceReconvert)
-    }
-
-    static func convertAndLoadIfc(from url: URL, workingFolder: URL?, forceReconvert: Bool = false) throws -> PleScene {
-        let fm = FileManager.default
-        let repoRoot = findRepoRoot(workingFolder: workingFolder)
-        var candidates: [URL] = []
-        if let repo = repoRoot {
-            candidates.append(repo.appendingPathComponent("tools/ple-ifc-to-scene.py"))
-        }
-        if let wf = workingFolder {
-            candidates.append(wf.appendingPathComponent("tools/ple-ifc-to-scene.py"))
-        }
-        var dir = url.deletingLastPathComponent()
-        for _ in 0..<8 {
-            candidates.append(dir.appendingPathComponent("tools/ple-ifc-to-scene.py"))
-            let parent = dir.deletingLastPathComponent()
-            if parent.path == dir.path { break }
-            dir = parent
-        }
-        candidates.append(URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent("tools/ple-ifc-to-scene.py"))
-        candidates.append(fm.homeDirectoryForCurrentUser.appendingPathComponent("work/openagents/tools/ple-ifc-to-scene.py"))
-
-        guard let script = candidates.first(where: { fm.fileExists(atPath: $0.path) }) else {
-            throw NSError(domain: "PleGymDiscovery", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Could not find tools/ple-ifc-to-scene.py to convert \(url.lastPathComponent)."
-            ])
-        }
-
-        try fm.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        let digest = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
-        let hashPrefix = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
-        let stem = url.deletingPathExtension().lastPathComponent
-        let outURL = cacheDir.appendingPathComponent("\(stem)-\(hashPrefix).ple-scene.json")
-
-        // Reuse cached conversion if newer than the source .ifc file.
-        let srcDate = (try? fm.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-        let dstDate = (try? fm.attributesOfItem(atPath: outURL.path)[.modificationDate]) as? Date
-        let cacheValid = !forceReconvert && fm.fileExists(atPath: outURL.path) && (srcDate == nil || dstDate == nil || dstDate! >= srcDate!)
-
-        if !cacheValid {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            proc.arguments = ["python3", script.path, url.path, "-o", outURL.path]
-            let errPipe = Pipe()
-            proc.standardError = errPipe
-            try proc.run()
-            proc.waitUntilExit()
-            guard proc.terminationStatus == 0, fm.fileExists(atPath: outURL.path) else {
-                let errText = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "conversion failed"
-                throw NSError(domain: "PleGymDiscovery", code: 2, userInfo: [
-                    NSLocalizedDescriptionKey: "IFC conversion failed: \(errText.trimmingCharacters(in: .whitespacesAndNewlines))"
-                ])
-            }
-        }
-
-        return try PleScene.load(from: outURL)
-    }
-}
-
 // MARK: - Run List Row View
 
 private final class PleGymRowButton: NSView {
@@ -526,21 +171,6 @@ private final class PleGymClashRowButton: NSView {
     }
 }
 
-// MARK: - Live File Signature (Stage 3)
-
-struct PleFileSignature: Equatable {
-    let modifiedAt: Date?
-    let size: UInt64?
-
-    static func read(from url: URL) -> PleFileSignature? {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
-            return nil
-        }
-        let mtime = attrs[.modificationDate] as? Date
-        let size = (attrs[.size] as? NSNumber)?.uint64Value
-        return PleFileSignature(modifiedAt: mtime, size: size)
-    }
-}
 
 // MARK: - GymWorkbenchView
 
@@ -561,7 +191,7 @@ final class GymWorkbenchView: NSView {
     private let liveToggleButton = NSButton(title: "Live", target: nil, action: nil)
     private let liveIndicatorDot = NSView()
     private let liveStatusLabel = NSTextField(labelWithString: "Live off")
-    private var liveEnabled = false
+    var liveEnabled = false
     private var liveTimer: Timer?
     private var lastObservedSignature: PleFileSignature?
     private var liveReloadInFlight = false
@@ -569,7 +199,7 @@ final class GymWorkbenchView: NSView {
     // Stage 3: Run Diff Overlay controls
     private let compareLabel = NSTextField(labelWithString: "Compare:")
     private let comparePopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    private var activeScene: PleScene?
+    var activeScene: PleScene?
     private var baselineId: String?
     private var baselineScene: PleScene?
     private var baselineLabel: String?
@@ -611,24 +241,24 @@ final class GymWorkbenchView: NSView {
     private let timelineSlider = NSSlider(value: 0, minValue: 0, maxValue: 0, target: nil, action: nil)
     private let timelineLabel = NSTextField(labelWithString: "1/1 • Current")
     private let pinSnapshotButton = NSButton(title: "Pin", target: nil, action: nil)
-    private var snapshots: [PleGymSnapshot] = []
-    private var currentSnapshotIndex: Int = 0
+    var snapshots: [PleGymSnapshot] = []
+    var currentSnapshotIndex: Int = 0
     private var isPlayingTimeline = false
     private var playbackTimer: Timer?
     private var snapshotLoadGeneration: Int = 0
     private var pinCounter: Int = 0
 
-    private let statusLabel = NSTextField(labelWithString: "")
+    let statusLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "Select a PLE run or click Open… to inspect a .ple-scene.json or .ifc model")
 
-    private var items: [PleGymRunItem] = []
+    var items: [PleGymRunItem] = []
     private var selectedId: String?
     private var loadGeneration: Int = 0
 
     // A program's request being carried out (applyPlan): what is left of it once a scene is in, and
     // who hears how it went.
-    private var pendingPlan: PleGymPlan?
-    private var pendingPlanDone: ((String?) -> Void)?
+    var pendingPlan: PleGymPlan?
+    var pendingPlanDone: ((String?) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1087,7 +717,7 @@ final class GymWorkbenchView: NSView {
         }
     }
 
-    private func rebuildRows() {
+    func rebuildRows() {
         for v in rowViews { v.removeFromSuperview() }
         rowViews.removeAll()
 
@@ -1111,7 +741,7 @@ final class GymWorkbenchView: NSView {
         }
     }
 
-    private var selectedItem: PleGymRunItem? {
+    var selectedItem: PleGymRunItem? {
         guard let id = selectedId else { return nil }
         return items.first(where: { $0.id == id })
     }
@@ -1288,7 +918,7 @@ final class GymWorkbenchView: NSView {
 
     // MARK: - Stage 3: Run Diff Overlay (Compare Two Runs)
 
-    private func rebuildCompareMenu() {
+    func rebuildCompareMenu() {
         comparePopup.removeAllItems()
         comparePopup.addItem(withTitle: "None")
         comparePopup.lastItem?.representedObject = nil
@@ -1493,7 +1123,7 @@ final class GymWorkbenchView: NSView {
         playbackTimer = t
     }
 
-    private func stopPlayback() {
+    func stopPlayback() {
         isPlayingTimeline = false
         playPauseButton.title = "▶"
         playbackTimer?.invalidate()
@@ -1771,164 +1401,3 @@ final class GymWorkbenchView: NSView {
     }
 }
 
-// MARK: - A program's request (GitHub #13812): `ple-run gym` and POST /v1/gym
-
-/// A request to the Gym as oa_dc_gym_plan (coax/lib/agent/desktop/gym.coax) checked and worded it.
-struct PleGymPlan {
-    let id: String
-    let open: Bool
-    let run: String
-    let camera: PleCameraPreset?
-    let layers: [PleSemanticLayer: Bool]
-    var step: Int          // 0 as it is, -1 the last, N from 1
-    let select: String
-    let live: Int          // 1 on, 0 off, -1 as it is
-
-    /// The plan for a request's JSON text, or why it is refused.
-    static func make(request: String) -> (plan: PleGymPlan?, error: String?) {
-        let text = DesktopCore.withCoaxString(request) { r in DesktopCore.callString(8192) { oa_dc_gym_plan(r, $0) } }
-        guard let data = text.data(using: .utf8),
-              let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return (nil, "the desktop core gave no plan")
-        }
-        guard (o["ok"] as? Bool) == true else { return (nil, (o["error"] as? String) ?? "refused") }
-        var layers: [PleSemanticLayer: Bool] = [:]
-        let marks = (o["layers"] as? [Int]) ?? []
-        for (i, layer) in PleSemanticLayer.allCases.enumerated() where i < marks.count && marks[i] >= 0 {
-            layers[layer] = marks[i] == 1
-        }
-        let cam = (o["camera"] as? String) ?? ""
-        return (PleGymPlan(
-            id: (o["id"] as? String) ?? "",
-            open: (o["open"] as? Bool) ?? true,
-            run: (o["run"] as? String) ?? "",
-            camera: cam.isEmpty ? nil : PleCameraPreset(rawValue: cam),
-            layers: layers,
-            step: (o["step"] as? Int) ?? 0,
-            select: (o["select"] as? String) ?? "",
-            live: (o["live"] as? Int) ?? -1
-        ), nil)
-    }
-}
-
-extension GymWorkbenchView {
-    /// Carries out a plan: the run first (its scene loads off the main thread), then the step, then
-    /// the camera, layers, element and Live. done hears nil, or what went wrong, once it is over.
-    func applyPlan(_ plan: PleGymPlan, done: @escaping (String?) -> Void) {
-        if pendingPlan != nil { planFinished("another request came first") }
-        pendingPlan = plan
-        pendingPlanDone = done
-        guard !plan.run.isEmpty else {
-            if activeScene == nil {
-                refreshRuns(autoSelectFirst: true)   // nothing shown yet: the first run, then the rest
-                if selectedItem == nil { planFinished("the Gym has no run to show") }
-                return
-            }
-            planSceneReady()
-            return
-        }
-        refreshRuns(autoSelectFirst: false)
-        guard let item = resolveRun(plan.run) else {
-            planFinished("no run \(plan.run) in the Gym (it lists ~/.openagents/ple/runs, ple-kit/runs and the sample)")
-            return
-        }
-        if !items.contains(where: { $0.id == item.id }) {
-            items.insert(item, at: min(1, items.count))
-            rebuildRows()
-            rebuildCompareMenu()
-        }
-        selectItem(item)
-    }
-
-    /// A run a request names: "latest" (the newest run's), a run's name under ~/.openagents/ple/runs,
-    /// a run's folder (its run.ple-scene.json or model.ple-scene.json, else its newest scene), or a
-    /// scene or IFC file.
-    func resolveRun(_ run: String) -> PleGymRunItem? {
-        let fm = FileManager.default
-        if run == "latest" {
-            guard let newest = items.first(where: { !$0.isSample }) else { return nil }
-            return bestItem(in: newest.url.deletingLastPathComponent().path) ?? newest
-        }
-        let path = run.contains("/")
-            ? (run as NSString).expandingTildeInPath
-            : fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/ple/runs/\(run)").path
-        let canon = URL(fileURLWithPath: path).standardizedFileURL.path
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: canon, isDirectory: &isDir) else { return nil }
-        if isDir.boolValue { return bestItem(in: canon) }
-        if let known = items.first(where: { $0.id == canon }) { return known }
-        let url = URL(fileURLWithPath: canon)
-        guard PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) else { return nil }
-        let isIfc = PleSceneLoader.isIfcFile(url)
-        return PleGymRunItem(id: canon, title: url.lastPathComponent, subtitle: "Asked for • \(isIfc ? "IFC" : "PLE Scene")",
-                             url: url, isIfc: isIfc, isSample: false, modifiedAt: Date())
-    }
-
-    private func bestItem(in folder: String) -> PleGymRunItem? {
-        let inside = items.filter { $0.id.hasPrefix(folder + "/") }
-        for name in ["run.ple-scene.json", "model.ple-scene.json"] {
-            if let hit = inside.first(where: { $0.id == folder + "/" + name }) { return hit }
-        }
-        return inside.first
-    }
-
-    /// A scene is in (a run's, or a step's): the rest of the pending plan.
-    fileprivate func planSceneReady() {
-        guard var plan = pendingPlan else { return }
-        if plan.step != 0, !snapshots.isEmpty {
-            let index = plan.step < 0 ? snapshots.count - 1 : plan.step - 1
-            guard index < snapshots.count else {
-                planFinished("the run has \(snapshots.count) step\(snapshots.count == 1 ? "" : "s"), not \(plan.step)")
-                return
-            }
-            plan.step = 0
-            pendingPlan = plan
-            if index != currentSnapshotIndex || snapshots[index].scene == nil {
-                stopPlayback()
-                scrubToSnapshot(index: index)   // applyScrubbedScene comes back here
-                return
-            }
-        } else if plan.step > 1 {
-            planFinished("the run has 1 step, not \(plan.step)")
-            return
-        }
-        if let camera = plan.camera { scenePanel.applyCamera(camera) }
-        for (layer, on) in plan.layers { scenePanel.setLayer(layer, visible: on) }
-        if !plan.select.isEmpty, !scenePanel.selectElement(id: plan.select) {
-            planFinished("no element \(plan.select) in the scene")
-            return
-        }
-        if plan.live >= 0 { setLiveTailingEnabled(plan.live == 1) }
-        planFinished(nil)
-    }
-
-    fileprivate func planFinished(_ error: String?) {
-        guard let done = pendingPlanDone else { return }
-        pendingPlan = nil
-        pendingPlanDone = nil
-        done(error)
-    }
-
-    /// What the Gym shows, for a program (ple-gym-state.v1).
-    func gymState() -> [String: Any] {
-        var state: [String: Any] = [
-            "version": "ple-gym-state.v1",
-            "runs": items.count,
-            "run": selectedItem?.url.path ?? "",
-            "title": selectedItem?.title ?? "",
-            "step": snapshots.isEmpty ? 0 : currentSnapshotIndex + 1,
-            "steps": snapshots.count,
-            "layers": PleSemanticLayer.allCases.filter { scenePanel.metalView.visibleLayers.contains($0) }.map { $0.rawValue },
-            "selected": scenePanel.metalView.selectedElementId ?? "",
-            "live": liveEnabled,
-            "loading": pendingPlan != nil,
-            "status": statusLabel.stringValue
-        ]
-        if let scene = activeScene {
-            state["elements"] = scene.allElements.count
-            state["clashes"] = scene.totalClashCount
-            if let score = scene.run?.score { state["score"] = score }
-        }
-        return state
-    }
-}

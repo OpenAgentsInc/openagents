@@ -1,0 +1,1092 @@
+// Split from everglade/zone-combat.coax (#13848): combat frame step, input handling, and core combat checks.
+// ---- the frame: after Character Create's (cc.frame), in Experimental
+// The health bars' trails, a frame (metaverse-engine/ui/hud-style.coax hud_trail_step): yours, and each
+// monster's (its plate's and, when it is your target, its frame's). Your bar is set anew, not eased,
+// when your maximum changes (another class, another level).
+xc_trails_step :: (s: [] EgZone, dt: f32) {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0];
+  mine := ifx hs.max_hp > 0 then f32(ifx hs.hp < 0 then 0 else hs.hp) / f32(hs.max_hp) else 0.0f32;
+  if x[0].me_max != hs.max_hp { x[0].me_max = hs.max_hp; cc.hud_trail_snap(x[0].me_trail[..], mine); x[0].vig[0].on = false; }   // a new maximum is no blow
+  cc.hud_trail_step(x[0].me_trail[..], mine, dt);
+  cc.hud_vignette_step(x[0].vig[..], mine, dt);
+  for i: 0..<XC_FOES { c := x[0].b[0].c[1 + i]; cc.hud_trail_step(x[0].foe_trail[i..<i + 1], f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), dt); }
+}
+// Whether you are in a fight: a monster is awake and after you.
+xc_fighting :: (s: [] EgZone) -> bool {
+  hs := s[0].creator[0].hostiles[0];
+  for i: 0..<XC_FOES { e := hs.enemies[i]; if e.awake && !e.dead && !e.returning { return true; } }
+  return false;
+}
+// Your portrait plate, top right (the CLASSES column has the left): your class, its level, your
+// Hit Points with their damage trail, your AC and spell slots, as the rules hold them for you. Its
+// ring glows while you fight and brightens under the pointer (a press opens the class menus).
+xc_portrait :: (s: [] EgZone, out: [] f32, at: int, w: f32, k: f32) -> int {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; me := x[0].b[0].c[0];
+  p: cc.EgPortrait; nb: [32] u8; p.klass = cc.eg_title(nb[..], XC_CL_UP[x[0].klass]); p.name = p.klass; p.level = x[0].level;
+  p.max = hs.max_hp; p.hp = ifx hs.hp < 0 then 0 else hs.hp; p.temp = hs.temp; p.ac = me.ac;
+  for lv: 0..<10 { p.slot_max[lv] = me.slots_max[lv]; p.slot_left[lv] = me.slots[lv]; }
+  if x[0].me_trail[0].on { p.fill = x[0].me_trail[0].fill; p.trail = x[0].me_trail[0].trail; }
+  if xc_fighting(s) { p.combat = 0.5 + 0.5 * sin(s[0].creator[0].clock * 3.93); }   // a pulse every 1.6 s
+  p.lit = x[0].side.side_hover >= 0 || x[0].side.menu >= 0;
+  p.conds = xc_facts(s).rest_say;   // how your rest stands ("SHORT REST", "REST: SLEEPING"), under the plate
+  wide := f32(cc.EG_PORTRAIT_W);
+  return cc.eg_portrait(s[0].creator[0].ui, out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
+}
+XC_TARGET_W :: 300.0;   // CSS px: your target's frame
+// Where your target's frame stands (empty: no room, and the line beside the bar's emblem names it
+// instead): left of your portrait, facing it, where the picker leaves room; else under your portrait.
+// Never over the picker, an open class menu, or the bar.
+xc_target_box :: (s: [] EgZone, lay: XcLayout) -> cc.HudPrim {
+  x := s[0].xc[..]; k := x[0].k; w := x[0].w; wide := f32(XC_TARGET_W) * k; me := xc_portrait_box(x);
+  pb := cm_pick_panel(lay.pick); pick := cc.hud_box(pb.x0, pb.y0, pb.x1, pb.y1);
+  if xc_own_kit(x) || xc_pick_hidden(x, lay) { pick = cc.HudPrim.{}; }
+  beside := cc.hud_box(me.x0 - 12 * k - wide, me.y0, me.x0 - 12 * k, me.y1);
+  under := cc.hud_box(me.x1 - wide, (XC_PORTRAIT_FOOT + 6) * k, me.x1, (XC_PORTRAIT_FOOT + 6 + 76) * k);
+  for b: [2] cc.HudPrim.[beside, under] {
+    grown := cc.hud_box(b.x0 - 8 * k, b.y0, b.x1, b.y1 + 34 * k);   // its conditions' line under it
+    if b.x0 < 12 * k || b.y1 + 34 * k > xc_bar_top(x) - 60 * k || cc.eg_meets(grown, pick) || cc.eg_meets(grown, lay.cover) { continue; }
+    return b;
+  }
+  return cc.HudPrim.{};
+}
+// Your target's frame (everglade/hud/parts.coax eg_portrait, mirrored and red): its name, its Hit
+// Points with their damage trail, its AC once you have studied it, and what holds it. It fades in
+// over a fifth of a second and is gone with the target.
+xc_target_frame :: (s: [] EgZone, lay: XcLayout, out: [] f32, at: int, dt: f32) -> int {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; t := x[0].target; k := x[0].k;
+  b := xc_target_box(s, lay);
+  if t < 0 || t >= XC_FOES || hs.enemies[t].dead || !(b.x1 > b.x0) { x[0].target_shown = 0; return at; }
+  x[0].target_shown += (ifx dt > 0 then dt else 0.0f32) / 0.18; if x[0].target_shown > 1 { x[0].target_shown = 1; }
+  c := x[0].b[0].c[1 + t]; p: cc.EgPortrait; nb: [32] u8;
+  p.name = cc.eg_title(nb[..], XC_FOE_NAMES[hs.enemies[t].kind]); p.foe = true; p.mirror = true;
+  p.hp = rs_max(c.hp, 0); p.max = c.hp_max; if x[0].studied[t] { p.ac = c.ac; }
+  for lv: 0..<10 { p.slot_left[lv] = -1; }
+  if rs_has(c, RS_UNCONSCIOUS) { p.conds = "UNCONSCIOUS"; }
+  tr := x[0].foe_trail[t]; if tr.on { p.fill = tr.fill; p.trail = tr.trail; }
+  return cc.eg_portrait(s[0].creator[0].ui, out, at, b.x0, b.y0, f32(XC_TARGET_W), k, p, x[0].target_shown);
+}
+xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
+  x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
+  n := at;
+  xc_start(x, x[0].klass);
+  x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
+  x[0].compact = zone_compact(s); if !xc_has_more(x) { x[0].more = false; }
+  now := cr[0].clock;
+  cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
+  cc.eg_numbers_frame(x[0].floats[..]); cc.eg_numbers_frame(hs[0].taken[..]);   // the frame's numbers handed on: yours and those over you
+  if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
+  xd_frame(s, dt);
+  xc_objects_tick(s);
+  xc_rite_step(s); xc_glide_step(s);
+  xc_hostile_contacts(s);
+  xc_shots_step(s);
+  observing:=xc_familiar_view(s,u);
+  for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
+  xc_bow_step(s, dt);
+  xc_trails_step(s,dt);
+  n = cc.eg_vignette(out, n, x[0].vig[0], w, h);   // the red edges first, under the rest of the HUD
+  n = xc_crosshair(s, out, n, w, h, k);
+  n = xd_hud(s, out, n, k);
+  if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
+  n=xc_portrait(s,out,n,w,k);
+  n=xc_target_frame(s,xc_layout(s),out,n,dt);
+  n=cc.combat_overlay(cr[0],out,u,n,w,k);
+  // a blow that struck you from off screen points toward its striker (everglade/hud/numbers.coax)
+  hp:=xc_proj(x,x[0].hit_x,meadow_y(x[0].hit_x,x[0].hit_z)+1.0,x[0].hit_z);
+  if x[0].seen && !(hp.ok && hp.x>0 && hp.x<w && hp.y>0 && hp.y<h) {
+    hdx:=x[0].hit_x-cr[0].player_x; hdz:=x[0].hit_z-cr[0].player_z;
+    n=cc.eg_struck_from(out,n,hdx*x[0].u[24]+hdz*x[0].u[26],hdx*x[0].u[20]+hdz*x[0].u[22],now-x[0].hit_at,w,h,k);
+  }
+  xc_strike_due(s);
+  xc_lock_step(s);
+  xc_stops_step(s);
+  // Refresh both permissions after shared expiry, independently of body hit stop.
+  xc_sync_permissions(s);
+  xc_grapple_step(s);
+  // the picker (CLASSES, LEVEL, a wild-shape swap): top left, or under your portrait on a phone (xc_pick);
+  // under ANIMATIONS for a developer (its rows give it room: cc dev_visible)
+  lay := xc_layout(s); pick := lay.pick; pick_box := cm_pick_panel(pick);
+  x[0].top = pick.y0;
+  cr[0].dev_below = cm_pick_height(pick) / k + f32(XC_GAP);
+  if u.count > 54 {
+    // everglade/scene/gpu/character-glade.coax: the ANIMATIONS panel ends over the picker (u[52]); the picker draws its own panel (u[53], u[54] off)
+    u[52] = ifx cr[0].dev_animations && !cr[0].preview_collapsed then cr[0].dev_below * k else 0;
+    u[53] = 0; u[54] = 0;
+  }
+  head := ink_col(k, 0.95, 0.9, 0.7);
+  wild_words := [3]string.["", "", "REPLACE"];
+  if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
+  ui := cr[0].ui; cc.uit_part(ui, "class-menu");   // the layout trace, when the overlap check attaches one (#13076)
+  if !xc_own_kit(x) && !xc_pick_hidden(x, lay) { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
+  // Hover the Thunderwave slot to preview its current footprint. A cast keeps
+  // its footprint at the place and direction where it was released.
+  wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
+  wave_on := wave_preview || now < x[0].wave_until;
+  wave := x[0].wave; wave_y := x[0].wave_y;
+  if wave_preview { wave=aa.area_face(xk_spell_area(SP_THUNDERWAVE),cr[0].player_x,cr[0].player_z,cr[0].player_face); wave_y=cr[0].player_y; }
+  if wave_on { n=xc_area_draw(x,wave,wave_y,out,n,k,ifx wave_preview then 0.8 else 1.0); }
+  // the plates over bodies, Everglade's shared ones (metaverse-engine/ui/hud-plates.coax places them,
+  // everglade/hud/parts.coax eg_plates draws them): the crates', the monsters' (your target's in gold)
+  // and your familiar's; a monster's while its body shows (xc_sight_shows), fading in and out
+  sight_dt := ifx x[0].sight_at < 0 then 1.0f32 else ifx now - x[0].sight_at > 0.1 then 0.1f32 else ifx now < x[0].sight_at then 0.0f32 else now - x[0].sight_at;
+  x[0].sight_at = now;
+  view_x:=ifx observing then x[0].familiar_x else cr[0].player_x;
+  view_z:=ifx observing then x[0].familiar_z else cr[0].player_z;
+  pl := x[0].plates[..]; view := xc_plate_view(x, w, h);
+  cc.hud_plates_begin(pl); pl[0].far = 0;   // no fade with distance: a monster's plate shows within what sees you (30 m)
+  cc.hud_plates_keep_out(pl, pick_box.x0 - 40 * k, pick_box.y0 - 20 * k, pick_box.x1 + 40 * k, pick_box.y1 + 20 * k);   // not over the picker
+  if xc_objects_ready(s) {
+    for i:0..<XC_OBJECTS {
+      o:=x[0].objects[i].rules[0];if o.destroyed {continue;}
+      pos:=XC_OBJECT_POS[i];
+      label:=ifx o.burning then "BURNING CRATE" else "SUPPLY CRATE";
+      q:=cc.hud_plates_add(pl,pos[0],xmeadow.exp_height(pos[0],pos[1])+1.25,pos[1],label,f32(o.hp)/f32(rs_object_hp(o.size,o.resilient)),true,false,1);
+      cc.hud_plates_ink(pl,q,1,0.78,0.35);
+    }
+  }
+  for i: 0..<XC_FOES {
+    e := hs[0].enemies[i];
+    c := x[0].b[0].c[1 + i];
+    if e.dead { continue; }
+    dx := e.x - view_x; dz := e.z - view_z;
+    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { x[0].sight[i] = cc.hud_sight_gone(); continue; }
+    // the name and its health bar ride one settled answer, fading over 0.15 s
+    x[0].sight[i] = xc_sight_step(x, x[0].sight[i], e.x, meadow_y(e.x, e.z), e.z, 1.7, sight_dt);
+    on := i == x[0].target || (wave_on && aa.area_aim_contains(wave,e.x,e.z));
+    nb: [32] u8;
+    q := cc.hud_plates_add(pl, e.x, meadow_y(e.x, e.z) + 1.55, e.z, cc.eg_title(nb[..], XC_FOE_NAMES[e.kind]), f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
+    tr := x[0].foe_trail[i]; if tr.on { cc.hud_plates_trail(pl, q, tr.fill, tr.trail); }   // its bar eases, and a blow leaves its trail
+  }
+  familiar:=rs_familiar_of(x[0].b[..],0);
+  fx:=x[0].familiar_x; fz:=x[0].familiar_z;
+  if !observing && familiar>=0 && rs_up(x[0].b[0].c[familiar]) && xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,fx,fz) {
+    fc:=x[0].b[0].c[familiar];
+    cc.hud_plates_push(pl,fx,meadow_y(fx,fz)+0.75,fz,rs_monster_block(fc.familiar_form).name,f32(rs_max(fc.hp,0))/f32(rs_max(fc.hp_max,1)),false,false,1);
+  }
+  n = cc.eg_plates(out, n, pl, view, k, 0);
+  // the numbers rising off whoever took them
+  for q: 0..<fl.FLOATS {
+    l := cc.eg_numbers_look(x[0].floats[..], q, now);
+    if !l.ok { continue; }
+    f := x[0].floats[0].items[q];
+    p := xc_proj(x, l.x, l.y, l.z);
+    // a target's points show wherever they are on screen, however far (eg_numbers_always); a creature's only while it shows
+    if !p.ok || (!cc.eg_numbers_always(x[0].floats[..], q) && !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6)) { continue; }
+    n = cc.eg_numbers_draw(out, n, x[0].floats[..], q, l, p.x, p.y, k);
+  }
+  // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
+  // on an upright phone the slots behind MORE are left out while it is shut, MORE is the row's last,
+  // and there is no emblem: your portrait names your class (#13189)
+  // MORE's rest, open, is a tray of its own over the row
+  mn := xc_more_n(x); slots: [(XC_SLOTS + 1) * 4] f32; sn := 0;
+  for i: 0..<mn { q := xc_slot(x, i); for c: 0..<4 { slots[sn * 4 + c] = q[c]; } sn += 1; }
+  if xc_has_more(x) { q := xc_more_box(x); for c: 0..<4 { slots[sn * 4 + c] = q[c]; } sn += 1; }
+  tray := cc.uit_next(ui);   // the tray's place in the layout trace: its slots follow it (eg_bar_slot_at)
+  n = cc.eg_bar_frame(ui, out, n, slots[..], sn, k, ifx x[0].compact then cast(u8) 0 else XC_CL_UP[x[0].klass][0], 1);
+  drawer := cc.UIT_NONE;
+  if xc_has_more(x) && x[0].more {
+    dn := 0; for i: mn..<x[0].bar_n { q := xc_slot(x, i); for c: 0..<4 { slots[dn * 4 + c] = q[c]; } dn += 1; }
+    drawer = cc.uit_next(ui); n = cc.eg_bar_frame(ui, out, n, slots[..], dn, k, 0, 1);
+  }
+  if xc_has_more(x) {
+    mb := cc.eg_box4(xc_more_box(x)); word := ifx x[0].more then "LESS" else "MORE";
+    // a raised plate in its slot, as the page's other buttons (zone-touch.coax zt_button), lit while it is open
+    ml: [1] cc.HudList; mw: [1] cc.HudWords; mw[0].ui = ui; mw[0].parent = cc.eg_bar_slot_at(ui, tray, mn);
+    cc.hud_button(ml[..], cc.eg_tokens(), cc.hud_box(mb.x0 + 2 * k, mb.y0 + 2 * k, mb.x1 - 2 * k, mb.y1 - 2 * k), k, x[0].more);
+    cc.hud_word(mw[..], word, (mb.x0 + mb.x1) * 0.5, (mb.y0 + mb.y1) * 0.5 + 4.5 * k, 9 * k, cc.HUD_TEXT_TITLE, true);
+    n = cc.hud_draw(out, n, ml[..], mw[..], 1, k);
+  }
+  m := 0;
+  for i: 0..<x[0].bar_n {
+    if xc_slot_hidden(x, i) { continue; }
+    r := cc.eg_box4(xc_slot(x, i));
+    a := x[0].bar[i]; art := xc_art(a, i);
+    slot := ifx i < mn then cc.eg_bar_slot_at(ui, tray, i) else cc.eg_bar_slot_at(ui, drawer, i - mn);
+    m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
+    m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
+    m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
+    left := f32(XC_COOL) - (now - x[0].cool_at);
+    // the dragon's breath sweeps on its own: spent, the time to its next Recharge roll
+    if a.kind == XC_BREATH { left = zone_breath_wait(s); }
+    // the wait as a sweep on the picture (everglade/hud/parts.coax eg_slot_sweep)
+    if left > 0 {
+      share := ifx a.kind == XC_BREATH then left else left / f32(XC_COOL);
+      sb := [4] f32.[r.x0, r.y0, r.x1, r.y1]; n = cc.eg_slot_sweep(out, n, sb[..], share, k);
+    }
+    // refused, or held by your conditions: the slot greys (#13072), no words
+    grey := deed_look(x[0].deeds[0], i, deed_tick(now), 0).grey; held := deed_bar_dim(rs_bearing(x[0].b[0].c[0])); if held > grey { grey = held; }
+    if grey > 0 {
+      m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
+      m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
+      m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, " "); m = put_int(x[0].media[..], m, cast(int) (100 - 65 * grey)); m = put(x[0].media[..], m, " 0 1000\n");
+    }
+    if a.kind == XC_BREATH { n = cc.ttext(ui, slot, out, n, "F", r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85), "key"); }
+    else if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
+     n = cc.ttext(ui, slot, out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85), "key");}
+    if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
+    // its choices: the slot level it casts at (when it has more than one) and its option
+    levels: [9] int;
+    if a.kind == FB_SPELL && fb_cast_levels(x[0].b[0].c[0], a, levels[..]) > 1 {
+      lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
+      n = cc.ttext(ui, slot, out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35), "slot level");
+    }
+    // its words, one line along its top and one along its bottom, each fitted inside the slot
+    if xc_touch_spell(a) && (x[0].familiar_touch || (familiar>=0 && rs_up(x[0].b[0].c[familiar]))) {
+      n=xc_caption(ui,slot,out,n,ifx x[0].familiar_touch then "Familiar" else "Hand",r,false,7*k,head,k);
+    }
+    if a.kind==XC_FAMILIAR {
+      count:=RS_FAMILIAR_FORMS.count; druid:=rs_has_feature(x[0].b[0].c[0], RS_FT_WILD_COMPANION);
+      cb:[48]u8; cn:=0; for ch: rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name { if cn < 32 { cb[cn]=ch; cn+=1; } }
+      if !druid { spirit:=[3]string.["Fey","Celestial","Fiend"]; for ch: " · " { cb[cn]=ch; cn+=1; } for ch: spirit[a.opt/count] { cb[cn]=ch; cn+=1; } }
+      n=xc_caption(ui,slot,out,n,cast(string)cb[0..<cn],r,false,7*k,head,k);
+      top:=ifx a.lvl>0 then "Spell slot" else ifx druid then "Wild Shape" else "Ritual";
+      if familiar>=0 && x[0].b[0].c[familiar].hp>0 {
+        top=ifx x[0].familiar_order==XC_FAMILIAR_SENSE then "Sense"
+          else ifx x[0].familiar_order==XC_FAMILIAR_STEP then "Step"
+          else ifx x[0].familiar_order==XC_FAMILIAR_RELEASE then "Release"
+          else ifx x[0].familiar_order==XC_FAMILIAR_CAST then "Cast"
+          else ifx x[0].b[0].c[familiar].dead then "Recall" else "Pocket";
+      }
+      n=xc_caption(ui,slot,out,n,top,r,true,7*k,head,k);
+    }
+    if a.kind==FB_WILD {
+      form:=fb_wild_form(x[0].b[0].c[0],a.opt);
+      label:=ifx form==MON_RIDING_HORSE then "Horse" else ifx form==MON_BLACK_BEAR then "Bear" else rs_monster_block(form).name;
+      n=xc_caption(ui,slot,out,n,label,r,false,7*k,head,k);
+    }
+    if fb_ab_option_n(a) > 0 {
+      n = xc_caption(ui, slot, out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r, false, 8 * k, ink_col(k, 1, 0.82, 0.35), k);
+    }
+    // a Ritual under way: a gold frame, its ten minutes filling along the bottom edge (pp.104-105)
+    me := x[0].b[0].c[0];
+    if (a.kind==FB_RITUAL && me.rite==a.sp) || (a.kind==XC_FAMILIAR && me.rite==SP_FIND_FAMILIAR) {
+      seconds:=ifx a.kind!=XC_FAMILIAR then RS_RITE_SECONDS else ifx me.familiar_slot>0 then RS_FIND_FAMILIAR_SECONDS else RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS;
+      done:=1-rs_ticks_s(me.rite_until-x[0].b[0].clock)/f32(seconds); if done>1 { done=1; }
+      n = cc.eg_outline(out, n, r, 2 * k, 1, 0.8, 0.35);
+      n = xc_line(out, n, r.x0, r.y1 - 2 * k, r.x0 + (r.x1 - r.x0) * done, r.y1 - 2 * k, 3 * k, 1, 0.8, 0.35);
+    }
+    // a Ready held: its frame gold until it answers or your next turn starts
+    if a.kind == FB_READY && rs_ready_at(me) >= 0 { n = cc.eg_outline(out, n, r, 2 * k, 1, 0.8, 0.35); }
+  }
+  // The picked-up icon follows the pointer, as in the original Everglade bar.
+  if x[0].arranging && x[0].down >= 0 && x[0].down < x[0].bar_n {
+    a := x[0].bar[x[0].down]; art := xc_art(a, 1);
+    r := cc.Box.{x0 = x[0].drag_x - 26 * k, y0 = x[0].drag_y - 26 * k,
+                x1 = x[0].drag_x + 26 * k, y1 = x[0].drag_y + 26 * k};
+    m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
+    m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
+    m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
+  }
+  // a spell that found no one ahead: its icon flashes red a moment (no words)
+  if x[0].fizzle >= 0 && x[0].fizzle < x[0].bar_n && now - x[0].fizzle_at < 0.45 {
+    r := cc.eg_box4(xc_slot(x, x[0].fizzle)); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
+    n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+    n = xc_line(out, n, r.x0, r.y0, r.x0, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x1, r.y0, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+    n = xc_line(out, n, r.x0 + 8 * k, r.y0 + 8 * k, r.x1 - 8 * k, r.y1 - 8 * k, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+  }
+  // a check's result on its icon: the frame flashes green when it passed, red when it failed
+  if x[0].told >= 0 && x[0].told < x[0].bar_n && now - x[0].told_at < 0.6 {
+    g := 1 - (now - x[0].told_at) / 0.6;
+    n = cc.eg_outline(out, n, cc.eg_box4(xc_slot(x, x[0].told)), 2.5 * k, ifx x[0].told_ok then 0.3 * g else 0.95 * g, ifx x[0].told_ok then 0.9 * g else 0.2 * g, 0.2 * g);
+  }
+  if x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
+    r := cc.eg_box4(xc_slot(x, x[0].hover));
+    n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, 3 * k, 1, 0.8, 0.4);
+    n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, 3 * k, 1, 0.8, 0.4);
+  }
+  if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n && x[0].bar[x[0].hover].kind != XC_BREATH {
+    a := x[0].bar[x[0].hover];
+    card := xc_card_box(x, lay);
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, card.x0, card.y0, card.x1, card.y1, "card");
+    m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(a.art)); m = put(x[0].media[..], m, a.art);
+    m = put(x[0].media[..], m, "-card-2x.jpg "); m = xc_box_text(x[0].media[..], m, card); m = put(x[0].media[..], m, "\n");
+  }
+  x[0].media_n = m;
+  if x[0].bar_n > 0 && !x[0].compact {   // on an upright phone your portrait names your class, and your target's frame it
+    r0 := cc.eg_box4(xc_slot(x, 0));
+    line: [64] u8; ln := put(line[..], 0, XC_CL_UP[x[0].klass]);
+    // your target is in its frame by your portrait; where the page has no room for one, on this line
+    t := x[0].target; framed := xc_target_box(s, lay); framed_on := framed.x1 > framed.x0;
+    if t >= 0 && !hs[0].enemies[t].dead && !framed_on {
+      c := x[0].b[0].c[1 + t];
+      ln = put(line[..], ln, "  ·  "); ln = put(line[..], ln, XC_FOE_NAMES[hs[0].enemies[t].kind]); ln = put(line[..], ln, " ");
+      ln = put_int(line[..], ln, rs_max(c.hp, 0)); ln = put(line[..], ln, " / "); ln = put_int(line[..], ln, c.hp_max); ln = put(line[..], ln, " HP");
+      if rs_has(c, RS_UNCONSCIOUS) { ln = put(line[..], ln, "  ·  UNCONSCIOUS"); }
+      if x[0].studied[t] { ln = put(line[..], ln, "  ·  AC "); ln = put_int(line[..], ln, c.ac); }
+    }
+    tl := cast(string) line[0..<ln];
+    // beside the bar's emblem (everglade/hud/parts.coax eg_bar_frame), not under it
+    lx := ifx x[0].bar_n > 0 then cc.eg_box4(xc_slot(x, 0)).x0 else 0.0f32; rx := lx;
+    for i: 0..<x[0].bar_n { sb := cc.eg_box4(xc_slot(x, i)); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
+    n = cc.ttext(ui, cc.UIT_NONE, out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7), "class and target");
+  }
+  // the class menus under your portrait: REST's, and a tip (everglade/hud/class-bar.coax)
+  sf := xc_facts(s); sg := lay.side;
+  n = eg_side_draw(ui, sf, sg, x[0].side, out, n);
+  n = xc_corner(s, lay, out, n);
+  // the effects: the frame's puffs for the host to draw (fivelab-fx.wgsl)
+  pf := s[0].puffs[..];
+  fxp_begin(pf, now, fxp_v(u[16], u[17], u[18]));
+  fxp_emit_all(pf, now);
+  xc_bow_puffs(s, pf);
+  _ := fxp_close(pf);
+  return n;
+}
+xc_box_text :: (buf: [] u8, at: int, r: cc.Box) -> int {
+  m := put_int(buf, at, cast(int) r.x0); m = put(buf, m, " "); m = put_int(buf, m, cast(int) r.y0); m = put(buf, m, " ");
+  m = put_int(buf, m, cast(int) r.x1); m = put(buf, m, " "); return put_int(buf, m, cast(int) r.y1);
+}
+ink_col :: (k: f32, r: f32, g: f32, b: f32) -> Ink { return cc.ink(k, r, g, b); }
+meadow_y :: (x: f32, z: f32) -> f32 { return xmeadow.exp_height(x, z); }
+xc_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, r: f32, g: f32, b: f32) -> int {
+  if cc.lit(out, n, ax, ay, bx, by, wide, 1, 0, r, g, b, 0) { return n + 6; }
+  return n;
+}
+
+// ---- input
+// Keys 1 to N press the bar's slots.
+xc_key :: (s: [] EgZone, key: int) -> bool {
+  x := s[0].xc[..];
+  if key == -1 && xc_bow_cancel(s) { return true; }   // Escape lets the draw down
+  if key == 'k' || key == 'K' { x[0].knockout = !x[0].knockout; return true; }   // SRD p.17: your melee blows knock out instead of killing
+  if key >= '1' && key <= '9' { i := key - '1'; if xd_aim(s, i) { x[0].dr.breath_key = key; return true; } if i < x[0].bar_n { _ := xc_press(s, i); return true; } }
+  return false;
+}
+// The column and the bar are pressed; a click (no drag) on a monster makes it your target. False
+// leaves the pointer to Character Create (the camera, the ANIMATIONS browser).
+xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  if !x[0].seen || cr[0].walk.on { return false; }
+  k := x[0].k;
+  // MORE (an upright phone): a press opens the rest of the bar over it, or shuts it
+  if xc_has_more(x) {
+    if phase == 0 && xc_in(cc.eg_box4(xc_more_box(x)), px, py) { x[0].more = !x[0].more; x[0].down = -5; x[0].down_id = id; x[0].hover = -1; return true; }
+    if phase != 0 && x[0].down == -5 && id == x[0].down_id { if phase >= 2 { x[0].down = -100; } return true; }
+  }
+  over := -1;
+  for i: 0..<x[0].bar_n { if xc_in(cc.eg_box4(xc_slot(x, i)), px, py) { over = i; } }
+  x[0].hover = over;
+  // a finger leaves no hover behind: the slot's card is up only while it is held, and never over
+  // the bow's slot, whose hold is the draw (the card would cover your aim on an upright phone, #13152)
+  if cr[0].ml[0].touch && (phase >= 2 || x[0].ar[0].touch == id || (over >= 0 && x[0].bar[over].kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW)) { x[0].hover = -1; }
+  lay := xc_layout(s); pick := lay.pick;
+  in_col := !xc_own_kit(x) && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
+  x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
+  // the class menus first: your portrait opens them, a row acts on the press (everglade/hud/class-bar.coax)
+  if x[0].ar[0].touch != id {
+    sf := xc_facts(s); sp := eg_side_press(sf, lay.side, x[0].side, px, py, ifx phase == 0 then 0 else 1);
+    x[0].side = sp.st;
+    if sp.taken {
+      if sp.act != 0 { xc_side_act(s, sf, sp.act); } else if sp.st.menu == EG_SIDE_REST { x[0].rest_refused = false; }
+      x[0].down = -4; x[0].down_id = id; return true;
+    }
+    if phase != 0 && x[0].down == -4 && id == x[0].down_id { if phase >= 2 { x[0].down = -100; } return true; }
+  }
+  // a finger (or a click) held on the bow's slot draws; dragging aims (the camera turns), lifting
+  // looses, and a tap draws on to full and looses itself (metaverse-engine/action/archery.coax archer_touch)
+  bt := arch.archer_touch(x[0].ar[..], id, phase, px, py, k, cr[0].clock);
+  if bt.kind == arch.TOUCH_AIM { cr[0].yaw += bt.yaw; cr[0].pitch = cc.cc_clamp(cr[0].pitch + bt.pitch, -1.2, 1.2); return true; }
+  if bt.kind == arch.TOUCH_CANCEL { _ := xc_bow_cancel(s); return true; }
+  if bt.kind == arch.TOUCH_LOOSE { _ := xc_bow_loose(s); return true; }
+  if bt.kind == arch.TOUCH_TAP { return true; }
+  if phase == 0 && over >= 0 && !s[0].shift && x[0].bar[over].kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW {
+    if xc_bow_begin(s, false) { arch.archer_touch_down(x[0].ar[..], id, px, py, cr[0].clock); }
+    return true;
+  }
+  if over < 0 && x[0].dr.breath_touch != id && xd_pointer(s, px, py, phase, id) { return true; }   // a phone's thumbs in the grove
+  // Fire Breath: a finger held on its slot aims, lifting it breathes (zone-shapechange.coax)
+  if x[0].dr.breath_touch == id && (phase == 2 || phase == 3) { x[0].dr.breath_touch = -100; if phase == 3 { sh_aim_cancel(x[0].dr.sh[..]); x[0].dr.breath_slot = -1; } else { _ := xd_release(s); } return true; }
+  if phase == 0 && over >= 0 && !s[0].shift && xd_aim(s, over) { x[0].dr.breath_touch = id; return true; }
+  if phase == 0 {
+    x[0].down = -100; x[0].down_x = px; x[0].down_y = py; x[0].down_id = id;
+    if over >= 0 { x[0].down = over; x[0].arranging = s[0].shift; x[0].drag_x = px; x[0].drag_y = py; return true; }
+    if in_col { x[0].down = -2; return true; }
+    x[0].down = -3;   // the world: a click or the camera's drag
+    return false;
+  }
+  if phase == 2 && id == x[0].down_id {
+    d := x[0].down; x[0].down = -100;
+    if d >= 0 {
+      if x[0].arranging { xc_swap(x, d, over); x[0].arranging = false; }
+      else if d == over && !xc_choose(s, d, px, py) { _ := xc_press(s, d); }
+      if d == over && xc_has_more(x) && d >= xc_more_n(x) { x[0].more = false; }   // a slot from behind MORE: it shuts again
+      return true;
+    }
+    if d == -3 && abs(px - x[0].down_x) + abs(py - x[0].down_y) < 6 * k { return xc_pick_at(s, px, py); }
+    if d == -2 {
+      if in_col {
+        h := cm_pick_hit(pick, px, py);   // class-menu.coax
+        if h.kind == CM_WILD { _ := xc_wild_pick(x, h.index); }
+        else if h.kind == CM_LEVEL { xc_set_level(x, h.index); }
+        else if h.kind == CM_TOGGLE { x[0].open = !x[0].open; }
+        else if h.kind == CM_CLASS { xc_set_class(x, h.index); }
+      }
+      return true;
+    }
+    return false;
+  }
+  if phase == 3 && id == x[0].down_id { x[0].down = -100; x[0].arranging = false; return true; }
+  if phase == 1 && x[0].arranging && id == x[0].down_id { x[0].drag_x = px; x[0].drag_y = py; }
+  return x[0].down >= 0 || x[0].down == -2;
+}
+// What the checks read (zone_probe 900 on).
+xc_probe :: (s: [] EgZone, f: int) -> int {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..];
+  if f == 900 { return x[0].klass; }
+  // 999 the Attack slot; 1000 + 4i + k monster i's x and z (centimetres), awake (1) and returning (2), and
+  // how far it stands from home (centimetres)
+  if f == 999 { return xc_slot_of(x, FB_ATTACK); }
+  if f >= 1000 && f < 1000 + 4 * XC_FOES {
+    e := hs[0].enemies[(f - 1000) / 4]; k := (f - 1000) % 4;
+    if k == 0 { return cast(int) (e.x * 100); } if k == 1 { return cast(int) (e.z * 100); }
+    if k == 2 { return (ifx e.awake then 1 else 0) + (ifx e.returning then 2 else 0); }
+    hx := e.x - e.home_x; hz := e.z - e.home_z; return cast(int) (sqrt(hx * hx + hz * hz) * 100);
+  }
+  if f == 901 { return x[0].bar_n; }
+  if f == 902 { return x[0].casts; }
+  if f == 903 { return x[0].landed; }
+  if f == 904 { return x[0].kills; }
+  if f == 905 { return x[0].target; }
+  if f == 906 { return x[0].refused; }
+  if f == 909 { return x[0].whiffs; }
+  if f == 916 { return s[0].creator[0].weapon; }
+  if f == 917 { return x[0].pend; }
+  if f == 918 { return x[0].contacts; }
+  if f == 919 { return x[0].fallbacks; }
+  if f == 932 { return x[0].exhausted; }
+  if f == 933 { return cast(int) (x[0].blade_step * 1000); }
+  if f == 934 { return x[0].floats[0].shown; }
+  if f == 935 { return x[0].floats[0].suppressed; }
+  if f == 936 { return x[0].stops.n; }
+  if f == 937 { return cast(int)(s[0].creator[0].player_y*1000); }
+  if f >= 990 && f < 996 { return ifx hs[0].enemies[f - 990].stopped then 1 else 0; }
+  if f == 907 { return x[0].last_dmg; }
+  if f == 908 { return hs[0].hp; }
+  if f >= 910 && f < 916 { return ifx x[0].started then x[0].b[0].c[1 + f - 910].hp else -1; }
+  if f >= 920 && f < 932 {
+    i := (f - 920) / 2; e := hs[0].enemies[i];
+    p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 0.8, e.z);
+    if !p.ok { return -1; }
+    return cast(int) (ifx (f - 920) % 2 == 0 then p.x else p.y);
+  }
+  if f >= 940 && f < 946 { return ifx hs[0].enemies[f - 940].dead then 1 else 0; }
+  if f >= 950 && f < 962 { b := cm_pick_box(xc_pick(s), CM_CLASS, f - 950); return cast(int) ((b.y0 + b.y1) / 2); }
+  if f >= 970 && f < 976 { r := cc.eg_box4(xc_slot(x, f - 970)); return cast(int) ((r.x0 + r.x1) / 2); }
+  if f == 976 { r := cc.eg_box4(xc_slot(x, 0)); return cast(int) ((r.y0 + r.y1) / 2); }
+  if f >= 980 && f < 986 { return cast(int) (x[0].bar[f - 980].sp); }
+  // the bow: shots loosed, that hit, missed, stuck in the world, struck past normal range; the draw's
+  // aim (per mille) and whether drawing; arrows in the air and stuck; where the crosshair is
+  if f == 1000 { return x[0].ar[0].shots; }
+  if f == 1001 { return x[0].bow_hits; }
+  if f == 1002 { return x[0].bow_misses; }
+  if f == 1003 { return x[0].ar[0].stuck; }
+  if f == 1004 { return x[0].bow_far; }
+  if f == 1005 { return cast(int) (bow.bow_aim(x[0].ar[0].draw[0]) * 1000); }
+  if f == 1006 { return ifx x[0].ar[0].draw[0].on then 1 else 0; }
+  if f == 1007 || f == 1008 { m := 0; for i: 0..<bow.ARROWS { if x[0].ar[0].arrows[0].a[i].state == ifx f == 1007 then bow.ARROW_FLYING else bow.ARROW_STUCK { m += 1; } } return m; }
+  if f >= 1011 && f < 1017 {   // the newest arrow: where it left (1011-1013) and stopped (1014-1016), centimetres
+    m := -1; for i: 0..<bow.ARROWS { if x[0].ar[0].arrows[0].a[i].state != bow.ARROW_FREE && (m < 0 || x[0].ar[0].arrows[0].a[i].t0 > x[0].ar[0].arrows[0].a[m].t0) { m = i; } }
+    if m < 0 { return -99999; }
+    a := x[0].ar[0].arrows[0].a[m]; v := ifx f < 1014 then a.from[f - 1011] else a.at[f - 1014];
+    return cast(int) (v * 100);
+  }
+  if f == 1017 { m := -1; for i: 0..<bow.ARROWS { if x[0].ar[0].arrows[0].a[i].state != bow.ARROW_FREE && (m < 0 || x[0].ar[0].arrows[0].a[i].t0 > x[0].ar[0].arrows[0].a[m].t0) { m = i; } } return ifx m < 0 then -2 else x[0].ar[0].arrows[0].a[m].aim; }
+  if f == 1018 { return xc_bow_point(s).foe; }
+  if f >= 1019 && f < 1022 { return cast(int) (xc_bow_point(s).at[f - 1019] * 100); }
+  if f >= 1030 && f < 1048 { e := hs[0].enemies[(f - 1030) / 3]; c := (f - 1030) % 3; return cast(int) (100 * (ifx c == 0 then e.x else ifx c == 1 then meadow_y(e.x, e.z) else e.z)); }
+  if f >= 2000 && f < 2361 { s[0].creator[0].orbit = f32(f - 2000) * 3.14159265 / 180; return 1; }   // a check turns the camera round you
+  if f == 1009 { return cast(int) x[0].u[23]; }
+  if f == 1010 { return cast(int) x[0].u[27]; }
+  return -1;
+}
+
+#test "the class icon already carries its key and other slots draw theirs" {
+ bar:[XC_SLOTS]FbAb;for c:0..<FB_CL_N {n:=xc_bar(c,bar[..]);#assert !xc_draw_slot_key(0,bar[0].art);for i:1..<n {#assert xc_draw_slot_key(i,bar[i].art);}}
+ #assert xc_draw_slot_key(0,"attack") && xc_draw_slot_key(1,"cl-second-wind");
+}
+#test "experimental combat: every class's level 1 bar holds its Character Create ability first, each slot with its picture" #steps 400000000 {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N {
+    n := xc_bar(c, bar[..]);
+    #assert n >= 1 && n <= XC_SLOTS;
+    #assert bar[0].kind == fb_cl_ability(c).kind && bar[0].name == fb_cl_ability(c).name && xc_url(bar[0].art) == XC_EG_URL;
+    for i: 0..<n { #assert bar[i].art.count > 0; if i > 0 { #assert xc_url(bar[i].art) == XC_MMO_URL; } }
+  }
+  #assert xc_bar(FB_CL_WIZARD, bar[..]) == 5 && bar[0].sp == SP_FIRE_BOLT;
+  #assert xc_bar(FB_CL_FIGHTER, bar[..]) == 2 && bar[1].kind == FB_ATTACK;
+}
+#test "experimental combat: a Wizard's Fire Bolt and a Fighter's Attack fell a monster, which then lies still" #steps 2000000000 {
+  for pass: 0..<2 {
+    s: [1] EgZone;
+    zone_enter(s[..], "url=http://localhost/worlds/everglade-experimental\n");
+    cr := s[0].creator[..]; h := cr[0].hostiles[..];
+    h[0].ready = true; h[0].hp = XC_PLAYER_MAX; for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; }
+    x := s[0].xc[..];
+    xc_start(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
+    xc_set_class(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
+    // one gremlin (a Goblin Warrior; the Imp is immune to Fire) just ahead of you (in reach of a sword), the rest far off
+    cr[0].player_x = 0; cr[0].player_z = 0;
+    for i: 0..<XC_FOES { h[0].enemies[i].x = 60; h[0].enemies[i].z = 60 + f32(i) * 3; }
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.2; cr[0].player_face = 0;   // ahead of you (you face +z)
+    slot := ifx pass == 0 then 0 else 1;   // Fire Bolt is slot 1; the Fighter's Attack slot 2
+    #assert (pass == 0 && x[0].bar[0].sp == SP_FIRE_BOLT) || (pass == 1 && x[0].bar[1].kind == FB_ATTACK);
+    tries := 0;
+    while !h[0].enemies[3].dead && tries < 60 {
+      cr[0].clock += 1.1; h[0].hp = XC_PLAYER_MAX;
+      _ := xc_press(s[..], slot); tries += 1;
+    }
+    #assert h[0].enemies[3].dead && x[0].kills == 1 && x[0].landed >= 1 && x[0].casts >= 1;
+    #assert x[0].b[0].c[4].hp <= 0 && x[0].target == -1;
+    // the felled gremlin is out of the fight: the next press finds no one in reach for a sword, and no one is hurt
+    for i: 0..<XC_FOES { if i == 3 { continue; } #assert x[0].b[0].c[1 + i].hp == x[0].b[0].c[1 + i].hp_max; }
+  }
+}
+
+#test "experimental combat: with KNOCK OUT on, a Fighter's blow leaves a monster at 1 HP, Unconscious and still; off, it kills" #steps 2000000000 {
+  for pass: 0..<2 {
+    s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..];
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.2;   // a gremlin (a Goblin Warrior) just ahead
+    x[0].b[0].c[4].hp = 1;
+    // the KNOCK OUT toggle (the sixth box under REST) sets this
+    if pass == 0 { x[0].knockout = true; }
+    tries := 0;
+    while x[0].landed == 0 && tries < 60 { cr[0].clock += 1.1; h[0].hp = XC_PLAYER_MAX; _ := xc_press(s[..], 1); tries += 1; }
+    c := x[0].b[0].c[4];
+    if pass == 0 {
+      #assert c.hp == 1 && !c.dead && rs_knocked_out(c) && rs_has(c, RS_UNCONSCIOUS) && !h[0].enemies[3].dead && x[0].kills == 0;
+      #assert h[0].enemies[3].held && h[0].enemies[3].inactive && x[0].target == 3;
+    } else {
+      #assert c.dead && h[0].enemies[3].dead && x[0].kills == 1;
+    }
+  }
+}
+
+#test "experimental combat: Hide needs cover, Grapple holds and drags, Shove knocks Prone, Ready answers a move" #steps 2000000000 {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N { for level: 1..<7 {
+    hero := fb_cl_hero(c, "You", 0, level); n := xc_bar_level(c, level, bar[..]);
+    #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) + (ifx rs_has_feature(hero, RS_FT_WILD_COMPANION) || hero.klass==RS_WIZARD then 1 else 0) && n + 7 <= XC_SLOTS;
+  } }
+  for pass: 0..<3 {
+    s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+    b[0].dice[0].fixed = true; b[0].c[4].ac = 5; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
+    slot: [4] int;
+    for q: 0..<4 { slot[q] = -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == XC_ACTIONS[q] { slot[q] = i; } } #assert slot[q] >= 0 && x[0].bar[slot[q]].art == XC_ACTION_ART[q]; }
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.5;   // a gremlin (a Goblin Warrior) just ahead
+    cr[0].clock += 1.1;
+    if pass == 0 {
+      #assert !xc_press(s[..], slot[0]) && rs_hidden_at(b[0].c[0]) < 0 && !x[0].seat[0].turn.action;   // it sees you
+      #assert xc_press(s[..], slot[1]) && b[0].c[0].grappling == 4 && rs_has(b[0].c[4], RS_GRAPPLED);
+      xc_sync_permissions(s[..]); #assert h[0].enemies[3].held;
+      cr[0].player_z = -3; xc_grapple_step(s[..]);
+      #assert h[0].enemies[3].z < 0 && h[0].enemies[3].z > -3 && b[0].c[0].grappling == 4;   // dragged along
+      b[0].c[0].cond |= RS_STUNNED;
+      xc_grapple_step(s[..]); #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[4], RS_GRAPPLED) && !h[0].enemies[3].held;
+    } else if pass == 1 {
+      #assert xc_press(s[..], slot[2]) && rs_has(b[0].c[4], RS_PRONE) && b[0].c[0].grappling == -1;
+    } else {
+      #assert xc_press(s[..], slot[3]) && rs_ready_at(b[0].c[0]) >= 0 && !b[0].c[0].reacted;
+      proposed := h[0].enemies[3]; proposed.z = 1.4; proposed.moving = true;
+      xc_monster_move(s[..], 3, proposed);
+      #assert b[0].c[0].reacted && b[0].c[4].hp < 100 && rs_ready_at(b[0].c[0]) < 0;
+    }
+  }
+}
+
+xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[0].bar[i].kind == kind { return i; } } return -1; }
+#test "experimental combat: Shove's push moves it 5 feet away (#13040, #13038)" #steps 2000000000 {
+  // Shove's push (p.181): the strip's second option moves it 5 feet straight away, through the world
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+  b[0].dice[0].fixed = true; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
+  h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.5; cr[0].clock += 1.1;
+  sh := xc_slot_of(x, FB_SHOVE); #assert sh >= 0 && fb_ab_option_n(x[0].bar[sh]) == 2 && fb_ab_option_label(x[0].bar[sh], 1) == "PUSH";
+  x[0].k = 1; x[0].w = 1200; x[0].h = 800; r := cc.eg_box4(xc_slot(x, sh)); #assert xc_choose(s[..], sh, r.x0 + 3, r.y1 - 3) && x[0].bar[sh].opt == 1;
+  #assert xc_press(s[..], sh) && h[0].enemies[3].z > 2.9 && h[0].enemies[3].z < 3.1 && !rs_has(b[0].c[4], RS_PRONE);
+}
+#test "experimental combat: a readied move carries you 30 feet away (#13040, #13038)" #steps 2000000000 {
+  // Ready a move: the gremlin steps, and you are carried 30 feet straight away from it
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+  h[0].enemies[3].x = 0; h[0].enemies[3].z = 4.5; cr[0].clock += 1.1;
+  rd := xc_slot_of(x, FB_READY); x[0].bar[rd].opt = 1;
+  #assert xc_press(s[..], rd) && rs_ready_response(b[0].c[0].eff[rs_ready_at(b[0].c[0])]) == RD_MOVE;
+  proposed := h[0].enemies[3]; proposed.z = 4.2; proposed.moving = true; xc_monster_move(s[..], 3, proposed);
+  #assert b[0].c[0].reacted && rs_ready_at(b[0].c[0]) < 0 && x[0].glide_until > 0 && x[0].glide_z < -8.5;
+  for f: 0..<60 { xc_glide_step(s[..]); }
+  #assert cr[0].player_z < -8.5 && cr[0].player_z > -9.5 && s[0].put_on && x[0].glide_until < 0;
+}
+#test "experimental combat: a readied spell answers a monster that moves in range (#13040, #13038)" #steps 2000000000 {
+  // Ready a spell: a Wizard holds Fire Bolt and lets it go at the monster that moves in range
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+  b[0].dice[0].fixed = true; b[0].c[4].ac = 1; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
+  h[0].enemies[3].x = 0; h[0].enemies[3].z = 9; cr[0].clock += 1.1;
+  rd := xc_slot_of(x, FB_READY); #assert x[0].bar[rd].sp == SP_FIRE_BOLT; x[0].bar[rd].opt = 2;
+  #assert xc_press(s[..], rd) && b[0].c[0].conc == SP_FIRE_BOLT;
+  proposed := h[0].enemies[3]; proposed.z = 8.5; proposed.moving = true; xc_monster_move(s[..], 3, proposed);
+  #assert b[0].c[0].reacted && b[0].c[4].hp < 100 && rs_ready_at(b[0].c[0]) < 0;
+}
+#test "experimental combat: Search, Study and Influence take their checks (#13040, #13038)" #steps 2000000000 {
+  // Search, Study and Influence: each takes the check; Study recalls its AC, Influence calms it
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_BARD, 0);
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.5; cr[0].clock += 1.1;
+  sk := xc_slot_of(x, FB_SKILL); #assert sk >= 0 && fb_ab_option_label(x[0].bar[sk], 2) == "INFLUENCE";
+  #assert xc_press(s[..], sk) && x[0].told == sk;   // Search needs no one
+  b[0].dice[0].fixed = true; b[0].c[0].score[RS_INT] = 30; b[0].c[0].score[RS_CHA] = 30;
+  cr[0].clock += 1.1; x[0].bar[sk].opt = 1; #assert xc_press(s[..], sk) && x[0].told_ok && x[0].studied[0];
+  cr[0].clock += 1.1; x[0].bar[sk].opt = 2; #assert xc_press(s[..], sk) && x[0].told_ok && x[0].calm[0];
+  xc_sync_permission(s[..], 0); #assert h[0].enemies[0].inactive && h[0].enemies[0].held;
+  b[0].c[0].score[RS_CHA] = 1; x[0].calm[0] = false; cr[0].clock += 1.1;
+  #assert xc_press(s[..], sk) && !x[0].told_ok && !x[0].calm[0];
+  cr[0].clock += 1.1; #assert !xc_press(s[..], sk);   // failed: 24 hours before urging it the same way
+}
+#test "experimental combat: a Ritual runs ten minutes and casts with no slot (#13040, #13038)" #steps 2000000000 {
+  // a Ritual: the Druid's Speak with Animals, kept going each turn, cast with no slot after ten minutes
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_DRUID, 0);
+  cr := s[0].creator[..]; x := s[0].xc[..]; b := x[0].b[..];
+  rt := xc_slot_of(x, FB_RITUAL); #assert rt >= 0 && x[0].bar[rt].sp == SP_SPEAK_WITH_ANIMALS;
+  cr[0].clock += 1.1; slots := b[0].c[0].slots;
+  #assert xc_press(s[..], rt) && b[0].c[0].rite == SP_SPEAK_WITH_ANIMALS;
+  b[0].clock = b[0].c[0].turn_at;
+  for t: 0..<400 { b[0].clock += 1500000; fb_seat_step(b, x[0].seat[..]); xc_rite_step(s[..]); #assert (b[0].c[0].rite == SP_SPEAK_WITH_ANIMALS) == (t < 399); }
+  #assert b[0].c[0].slots[1] == slots[1];
+
+}
+// A fresh fight for the aim checks: class c, you at the origin facing +z (or `face`), every monster
+// far away except those the check places.
+xc_test_lab :: (s: [] EgZone, c: int, face: f32) {
+  zone_enter(s, "url=http://localhost/worlds/everglade-experimental\n");
+  cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  h[0].ready = true; h[0].hp = XC_PLAYER_MAX; h[0].safe_r = 0; h[0].calm_until = -1;   // the checks place you and the monsters themselves
+  for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; h[0].enemies[i].x = 70 + f32(i) * 3; h[0].enemies[i].z = -70; }
+  xc_start(s[0].xc[..], c); xc_set_class(s[0].xc[..], c);
+  cr[0].player_x = 0; cr[0].player_z = 0; cr[0].player_face = face;
+}
+xc_hp_sum :: (s: [] EgZone) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b[0].c[1 + i].hp; } return t; }
+#test "experimental combat: a bolt flies the way you face; one behind you is never hit, one ahead is, and a miss does no damage" #steps 2000000000 {
+  // behind you (you face +z, the imp 8 m at -z), fifty Fire Bolts: none touch it
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = -8;
+  hp := xc_hp_sum(s[..]);
+  for i: 0..<50 { s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp && s[0].xc[0].whiffs == 50 && s[0].xc[0].landed == 0 && s[0].xc[0].target == -1;
+  // beside you, out of the 5 degree help: never hit either
+  h[0].enemies[0].x = 6; h[0].enemies[0].z = 6;
+  for i: 0..<20 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp;
+  // past Fire Bolt's 120 feet (36.6 m) straight ahead: it fizzles short of it
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = 40;
+  for i: 0..<20 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp;
+  // turn round to face it, or put it ahead a little off the line (within 5 degrees): it is struck at
+  h[0].enemies[0].x = 0.9; h[0].enemies[0].z = 20;   // 2.6 degrees off
+  m := xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.kind == XC_AIM_BOLT && m.foe == 0 && abs(m.reach - 36.576) < 0.01;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = -8; s[0].creator[0].player_face = 3.14159265;
+  m = xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.foe == 0;
+  // the first monster on the line is the one struck, not one behind it
+  h[0].enemies[1].x = 0; h[0].enemies[1].z = -4;
+  m = xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.foe == 1;
+  h[0].enemies[1].z = -70;
+  // the Imp is immune to Fire: the gremlin (a Goblin Warrior) takes the bolt that lands
+  h[0].enemies[0].z = -70; h[0].enemies[3].x = 0; h[0].enemies[3].z = -8;
+  landed := 0; tries := 0;
+  while s[0].xc[0].landed == 0 && tries < 40 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); tries += 1; }
+  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 3;
+}
+#test "experimental combat: a blow strikes ahead within reach and nothing behind is picked" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  h := s[0].creator[0].hostiles[..]; bar := s[0].xc[0].bar[1];   // Attack (a longsword: a blow)
+  #assert xc_aim_kind(s[..], bar).kind == XC_AIM_MELEE;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = -1.2;   // right behind you
+  hp := xc_hp_sum(s[..]);
+  for i: 0..<30 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 1); }
+  #assert xc_hp_sum(s[..]) == hp && s[0].xc[0].landed == 0;
+  h[0].enemies[0].x = 1.0; h[0].enemies[0].z = 1.0;   // 45 degrees ahead, in reach
+  #assert xc_aim(s[..], bar).foe == 0;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = 3.5;     // ahead but out of reach
+  #assert xc_aim(s[..], bar).foe == -1;
+  #assert xc_aim_kind(s[..], s[0].xc[0].bar[0]).kind == XC_AIM_SELF;
+}
+#test "experimental combat: a save spell takes the cone ahead and nothing outside is picked" #steps 2000000000 {
+  // Sacred Flame: the nearest in range within 30 degrees ahead, or nothing (its icon fizzles, no turn spent)
+  c: [1] EgZone; xc_test_lab(c[..], FB_CL_CLERIC, 0);
+  g := c[0].creator[0].hostiles[..]; flame := c[0].xc[0].bar[0];
+  #assert xc_aim_kind(c[..], flame).kind == XC_AIM_CONE;
+  g[0].enemies[0].x = 4; g[0].enemies[0].z = 4;      // 45 degrees off: outside the cone
+  c[0].creator[0].clock = 5;
+  #assert !xc_press(c[..], 0) && c[0].xc[0].fizzle == 0 && c[0].xc[0].casts == 0;
+  g[0].enemies[0].x = 1; g[0].enemies[0].z = 8;      // 7 degrees off: inside
+  #assert xc_aim(c[..], flame).foe == 0;
+}
+#test "experimental combat: Thunderwave's cube follows the facing direction" #steps 2000000000 {
+  // Thunderwave's cube is set ahead of you; Second Wind is yours
+  w: [1] EgZone; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
+  tw := xc_aim(w[..], w[0].xc[0].bar[4]); #assert tw.kind == XC_AIM_AREA && tw.fx > 0.99 && abs(tw.reach - 4.572) < 0.01;
+}
+#test "experimental combat: a melee class holds its weapon, and a blow lands where its blade meets a monster, not at the press" #steps 2000000000 {
+  #assert xc_kit(FB_CL_BARBARIAN) == 0 && cc.CC_KIT_TWO[0] && xc_kit(FB_CL_FIGHTER) == 1 && xc_kit(FB_CL_PALADIN) == 2;
+  #assert xc_kit(FB_CL_RANGER) == XC_KIT_BOW && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_MONK) == -1 && xc_kit(FB_CL_WIZARD) == -1 && xc_kit(FB_CL_CLERIC) == -1;
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;   // just ahead, in reach
+  hp := xc_hp_sum(s[..]);
+  tries := 0;
+  while s[0].xc[0].landed == 0 && tries < 40 {
+    s[0].creator[0].clock += 1.1 + figs.bd_seconds(figs.BD_SLASH);   // past the cooldown, which starts when the last blow landed
+    #assert xc_press(s[..], 1);
+    // the swing has begun (the slash clip, an action), the blow not yet landed: no one is hurt at the press
+    #assert s[0].xc[0].pend == 1 && s[0].creator[0].swing_clip == figs.BD_SLASH && s[0].creator[0].swing_at == s[0].creator[0].clock;
+    #assert s[0].xc[0].swing.phase == act.ActionPhase.running && act.action_admit(s[0].xc[0].swing_def) == act.ActionStatus.ok;
+    #assert xc_hp_sum(s[..]) == hp || tries > 0;
+    // through the swing it lands, once
+    c0 := s[0].xc[0].contacts;
+    s[0].creator[0].clock += figs.bd_seconds(figs.BD_SLASH) + 0.05; xc_strike_due(s[..]);
+    #assert s[0].xc[0].pend == -1 && s[0].xc[0].contacts == c0 + 1;
+    s[0].creator[0].clock -= figs.bd_seconds(figs.BD_SLASH) + 0.05;
+    tries += 1;
+  }
+  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].fallbacks > 0;
+}
+#test "experimental combat: two-handed weapons use the owned cleave's impact timing" #steps 2000000000 {
+  // the Barbarian's greataxe and the Fighter's greatsword swing the owned two-handed cleave, its impact the action's
+  t: [1] EgZone; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
+  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE && t[0].creator[0].weapon == 0;
+  d := t[0].xc[0].swing_def;
+  #assert d.events[1].kind == act.ActionEventKind.impact && d.events[1].tick == cast(int) floor(f64(figs.BD_OWN_IMPACT) * f64(d.length) + 0.5);
+  #assert d.length == act.action_ticks_of_seconds(f64(figs.bd_seconds(figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE)));
+  xc_test_lab(t[..], FB_CL_FIGHTER, 0); t[0].creator[0].clock = 9; t[0].xc[0].pend = -1;
+  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_SWORD_CLEAVE && t[0].creator[0].weapon == 1;
+}
+#test "experimental combat: a caster's spell resolves without a weapon swing" #steps 2000000000 {
+  // a caster's spell resolves at once, with no swing
+  w: [1] EgZone; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
+  #assert xc_press(w[..], 0) && w[0].xc[0].pend == -1 && w[0].creator[0].swing_clip == -1;
+}
+
+#test "experimental combat level progression" {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N {
+    for level: 1..<7 {
+      n := xc_bar_level(c, level, bar[..]);
+      #assert n > 0 && n <= XC_SLOTS;
+      #assert bar[0].kind == fb_cl_ability(c).kind;
+      hero := fb_cl_hero(c, "You", 0, level);
+      for i: 0..<n { if bar[i].kind == FB_SPELL { #assert rs_spell_ready(hero, bar[i].sp); } }
+    }
+  }
+  n1 := xc_bar_level(FB_CL_WIZARD, 1, bar[..]);
+  for i: 0..<n1 { #assert bar[i].sp != SP_SCORCHING_RAY && bar[i].sp != SP_FIREBALL; }
+  n3 := xc_bar_level(FB_CL_WIZARD, 3, bar[..]); found := false;
+  for i: 0..<n3 { if bar[i].sp == SP_SCORCHING_RAY { found = true; } #assert bar[i].sp != SP_FIREBALL; }
+  #assert found;
+  n5 := xc_bar_level(FB_CL_WIZARD, 5, bar[..]); found = false;
+  for i: 0..<n5 { if bar[i].sp == SP_FIREBALL { found = true; } }
+  #assert found;
+  n2 := xc_bar_level(FB_CL_FIGHTER, 2, bar[..]); found = false;
+  for i: 0..<n2 { if bar[i].kind == FB_SURGE { found = true; } }
+  #assert found;
+}
+
+#test "experimental combat changing level preserves class and monsters" {
+  x: [1] XcCombat; xc_start(x[..], FB_CL_FIGHTER);
+  x[0].b[0].c[1].hp = 3;
+  xc_set_level(x[..], 5);
+  #assert x[0].klass == FB_CL_FIGHTER && x[0].level == 5 && x[0].b[0].c[0].level == 5;
+  #assert x[0].b[0].c[1].hp == 3;
+  xc_set_level(x[..], 7);
+  #assert x[0].level == 5;
+  xc_set_class(x[..], FB_CL_WIZARD);
+  #assert x[0].level == 5 && x[0].b[0].c[0].level == 5;
+}
+
+#test "experimental combat level selector and multirow hotbar" {
+  s: [1] EgZone; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  l := cm_pick_box(xc_pick(s[..]), CM_LEVEL, 3);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 2, 1);
+  #assert x[0].level == 3 && x[0].b[0].c[0].level == 3;
+  x[0].bar_n = 12;
+  a := cc.eg_box4(xc_slot(x, 0)); b := cc.eg_box4(xc_slot(x, 9));
+  #assert a.y0 < b.y0 && a.x0 >= 0 && b.x1 <= x[0].w;
+  x[0].open = false; l = cm_pick_box(xc_pick(s[..]), CM_LEVEL, 6);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 2, 1);
+  #assert x[0].level == 6;
+}
+
+#test "experimental combat shift drag swaps keys without casting and cancels safely" {
+  s: [1] EgZone; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  a := cc.eg_box4(xc_slot(x, 0)); b := cc.eg_box4(xc_slot(x, 1)); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  s[0].shift = true;
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 7);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 1, 7);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 2, 7);
+  #assert x[0].bar[0].sp == second && x[0].bar[1].sp == first && x[0].casts == 0;
+  #assert xc_art(x[0].bar[1], 1) == rs_spell(first).id && xc_draw_slot_key(1, xc_art(x[0].bar[1], 1));
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 8);
+  #assert xc_pointer(s[..], 600, 200, 2, 8);
+  #assert x[0].bar[0].sp == second && x[0].casts == 0;
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 9);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 3, 9);
+  #assert x[0].bar[0].sp == second && x[0].casts == 0;
+  xc_set_level(x, 5); xc_set_level(x, 1);
+  #assert x[0].bar[0].sp == second && x[0].bar[1].sp == first;
+}
+
+#test "experimental combat hotbar arrangement survives a reload" {
+  x: [1] XcCombat; xc_start(x[..], FB_CL_WIZARD); xc_swap(x[..], 0, 1);
+  first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  text: [4096] u8; n := xc_order_save(x[..], text[..]); #assert n > 0;
+  y: [1] XcCombat; #assert xc_order_load(y[..], cast(string) text[0..<n]);
+  xc_start(y[..], FB_CL_WIZARD);
+  #assert y[0].bar[0].sp == first && y[0].bar[1].sp == second;
+  #assert !xc_order_load(y[..], "xc-bar 1\n999999\n");
+  #assert y[0].bar[0].sp == first;
+}
+
+#test "experimental combat stores swaps through the host" {
+  // one Lab at a time: the message and the bar it sets are kept, then the first Lab goes
+  msg: [OUTBOX_CAP] u8; n := 0; sp := 0;
+  { s: [1] EgZone; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
+    xc_start(s[0].xc[..], FB_CL_WIZARD); xc_swap(s[0].xc[..], 0, 1);
+    #assert zone_action(s[..]) == 12 && s[0].out_n > 0;
+    n = s[0].out_n; for i: 0..<n { msg[i] = s[0].outbox[i]; } sp = s[0].xc[0].bar[0].sp; }
+  t: [1] EgZone; _ := zone_message(t[..], 12, cast(string) msg[0..<n]);
+  xc_start(t[0].xc[..], FB_CL_WIZARD);
+  #assert t[0].xc[0].bar[0].sp == sp;
+}
+// One Fighter swing at a monster ahead, the frames dt apart (alternating with dt2): the accepted contacts.
+xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0.2; h[0].enemies[0].z = foe_z; h[0].enemies[1].x = -0.3; h[0].enemies[1].z = foe_z;
+  s[0].creator[0].clock = 3;
+  if !xc_press(s[..], 1) { return -1; }
+  i := 0;
+  while s[0].xc[0].pend >= 0 && i < 2000 { s[0].creator[0].clock += ifx i % 2 == 0 then dt else dt2; xc_strike_due(s[..]); i += 1; }
+  return s[0].xc[0].contacts * 100 + s[0].xc[0].whiffs;
+}
+#test "experimental combat: one swing makes one contact at 30, 60 and 144 FPS" #steps 2000000000 {
+  #assert xc_test_swing(1.0 / 30, 1.0 / 30, 1.2) == 100;
+  #assert xc_test_swing(1.0 / 60, 1.0 / 60, 1.2) == 100;
+  #assert xc_test_swing(1.0 / 144, 1.0 / 144, 1.2) == 100;
+}
+#test "experimental combat: one swing makes one contact over uneven frames and a stall; out of reach it whiffs" #steps 2000000000 {
+  #assert xc_test_swing(0.004, 0.051, 1.2) == 100;
+  #assert xc_test_swing(2.0, 2.0, 1.2) == 100;      // the whole swing in one frame: caught up tick by tick
+  #assert xc_test_swing(1.0 / 60, 1.0 / 60, 3.5) == 1;   // out of the blade's reach: the air
+}
+
+#test "experimental Dash sprints its Speed past the run, steers, and ends after its time" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_BARBARIAN, 0.5); cr := s[0].creator[..]; x := s[0].xc[..];
+  base := zone_move_scale(s[..]); speed := x[0].b[0].c[0].speed;
+  dash := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_DASH { dash = i; } }
+  #assert dash >= 0 && xc_press(s[..], dash) && sprint.sprint_on(x[0].dash[0], cr[0].clock);
+  input := zone_move_in(s[..]);
+  #assert input.key_y == 1 && input.key_x == 0 && input.run && input.link_flags & 512 != 0;
+  #assert zone_move_world(s[..], 0, 0).link_flags & 512 != 0;
+  #assert abs(input.theta - (0.5 - 3.14159265)) < 0.001;
+  // a sixtieth of a second at a time: the run's metres the sprint adds (7.5 m/s at your Speed's scale)
+  extra: f32 = 0; peak: f32 = 0; dt := 1.0f32 / 60;
+  for k: 0..<120 {
+    rate := zone_move_scale(s[..]); extra += 7.5 * (rate - base) * dt; if rate > peak { peak = rate; }
+    cr[0].clock += dt; xc_sprint_frame(s[..]);
+  }
+  // the SRD's extra movement, your Speed in feet as metres, at about twice the run at its peak
+  #assert abs(extra - f32(speed) * 0.3048) < 0.15 && peak > base * 1.85 && peak < base * 1.95;
+  // ended after its 1.8 s: your own keys again, at your run
+  #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && zone_move_scale(s[..]) == base && cr[0].stride > 1;
+  input = zone_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
+  // steered: D held while it runs turns it to your right, a little at a time
+  cr[0].clock += 1; cr[0].yaw = 0; #assert xc_press(s[..], dash);
+  face := x[0].dash[0].face; s[0].held = HOLD_D;
+  for k: 0..<6 { cr[0].clock += dt; xc_sprint_frame(s[..]); }
+  #assert x[0].dash[0].face != face && abs(x[0].dash[0].face - face) <= 6 * dt * f32(sprint.SPRINT_TURN) + 0.001;
+  #assert abs(zone_move_in(s[..]).theta - (x[0].dash[0].face - 3.14159265)) < 0.001;
+  // down, it carries you no more
+  s[0].held = 0; cr[0].hostiles[0].hp = 0; xc_sprint_frame(s[..]); #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && zone_move_in(s[..]).link_flags & 512 == 0;
+}
+#test "experimental Dash kicks up dust behind you as it runs" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_ROGUE, 0); cr := s[0].creator[..]; x := s[0].xc[..];
+  dash := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_DASH { dash = i; } }
+  fxp_clear(s[0].puffs[..]); #assert dash >= 0 && xc_press(s[..], dash);
+  // standing still here, each puff joins the last (fxp_start's merge); on the move each is its own
+  before := s[0].puffs[0].started + s[0].puffs[0].merged;
+  for k: 0..<30 { cr[0].clock += 1.0f32 / 60; xc_sprint_frame(s[..]); }
+  #assert s[0].puffs[0].started + s[0].puffs[0].merged - before >= 4;
+}
+
+#test "no two abilities a class has at once share a cast sound, at every level 1 to 6, and every sound exists" {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N {
+    for level: 1..<7 {
+      n := xc_bar_level(c, level, bar[..]);
+      for i: 0..<n {
+        d := xc_sound(bar[i], c);
+        #assert d.start.count > 0 && d.rate >= 0.5 && d.rate <= 2;
+        for name: [4] string.[d.start, d.layer, d.hit, d.miss] {
+          if name.count > 0 { #assert exsound.sfx_id(name) >= 0 || exsound.xsfx_id(name) >= 0; }
+        }
+        for j: 0..<i { #assert xc_sound(bar[j], c).start != d.start; }
+      }
+    }
+  }
+  // the ones the owner named sound as asked
+  #assert xc_spell_sound(SP_FIRE_BOLT).start == "fire-cast" && xc_spell_sound(SP_FIRE_BOLT).hit == "fire-hit";
+  #assert xc_spell_sound(SP_RAY_OF_FROST).start == "frost-cast" && xc_spell_sound(SP_ELDRITCH_BLAST).rate < 1;
+  #assert xc_spell_sound(SP_SACRED_FLAME).start == "choir" && xc_spell_sound(SP_GUIDING_BOLT).start == "radiant";
+  #assert xc_spell_sound(SP_THUNDERWAVE).layer == "thunder" && xc_spell_sound(SP_VICIOUS_MOCKERY).start == "psychic-cast";
+  #assert xc_spell_sound(SP_CURE_WOUNDS).start == "heal" && xc_spell_sound(SP_FIRE_BOLT).miss == "fizzle";
+  axe := xc_sound(xc_attack(), FB_CL_BARBARIAN); sword := xc_sound(xc_attack(), FB_CL_PALADIN); great := xc_sound(xc_attack(), FB_CL_FIGHTER);
+  #assert axe.start == "swing-heavy" && axe.hit == "hit-heavy" && axe.rate < great.rate && sword.start == "swing" && sword.hit == "hit";
+  rage: FbAb; rage.kind = FB_RAGE; second: FbAb; second.kind = FB_SECOND;
+  #assert xc_sound(rage, FB_CL_BARBARIAN).start == "rage-roar" && xc_sound(second, FB_CL_FIGHTER).start == "second-wind";
+}
+
+// One diagonal facing of Thunderwave's forward cube. A check each (#13115): one check made all four
+// Labs, 92,437,704 traversal visits, 69% of the limit on its own.
+xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
+  s: [1] EgZone; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
+  h := s[0].creator[0].hostiles[..]; fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
+  // Three creatures in a broad fan ahead, one at the shoulder, and one safely behind.
+  h[0].enemies[0].x = fx*2; h[0].enemies[0].z = fz*2;
+  h[0].enemies[1].x = fx*2+rx*1.2; h[0].enemies[1].z = fz*2+rz*1.2;
+  h[0].enemies[2].x = fx*2-rx*1.2; h[0].enemies[2].z = fz*2-rz*1.2;
+  h[0].enemies[3].x = rx*1.2; h[0].enemies[3].z = rz*1.2;
+  h[0].enemies[4].x = -fx*2; h[0].enemies[4].z = -fz*2;
+  s[0].creator[0].clock = 10; #assert xc_press(s[..], 4);
+  for i: 0..<4 { #assert s[0].xc[0].b[0].c[i+1].hp < s[0].xc[0].b[0].c[i+1].hp_max; }
+  #assert s[0].xc[0].b[0].c[5].hp == s[0].xc[0].b[0].c[5].hp_max;
+  #assert s[0].xc[0].b[0].c[5].x == xc_square(h[0].enemies[4].x) && s[0].xc[0].b[0].c[5].y == xc_square(h[0].enemies[4].z);
+  return true;
+}
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings (1 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(0); }
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings (2 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(1); }
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings (3 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(2); }
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings (4 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(3); }
+
+#test "experimental Thunderwave pushes a creature that fails its save in the scene" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; b := s[0].xc[0].b[..];
+  b[0].c[1].score[RS_CON] = 1; pushed := false;
+  for attempt: 0..<12 {
+    h[0].enemies[0].x = 0; h[0].enemies[0].z = 2; h[0].enemies[0].dead = false;
+    b[0].c[1].hp = b[0].c[1].hp_max; b[0].c[1].dead = false;
+    s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 4);
+    if h[0].enemies[0].z > 2.1 { pushed = true; break; }
+  }
+  #assert pushed;
+}
+
+#test "experimental Thunderwave area outline matches every grid square it can hit" {
+  s: [1] EgZone; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  for turn: 0..<4 {
+    face := f32(turn)*0.78539816; wave := aa.area_face(xk_spell_area(SP_THUNDERWAVE), 4, -6, face);
+    b := s[0].xc[0].b[..]; z := rs_area(b, 0, rs_spell(SP_THUNDERWAVE), XC_MID, XC_MID+3);
+    for side: -4..<5 { for forward: -3..<6 {
+      wx := wave.x + f32(side)*f32(XC_SQ)*wave.fz + f32(forward)*f32(XC_SQ)*wave.fx;
+      wz := wave.z - f32(side)*f32(XC_SQ)*wave.fx + f32(forward)*f32(XC_SQ)*wave.fz;
+      #assert aa.area_aim_contains(wave, wx, wz) == rs_inside(z, XC_MID+side, XC_MID+forward);
+    } }
+  }
+}
+
+#test "experimental Thunderwave shows its cast area and keeps it at the cast position" {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0.78539816);
+  s[0].creator[0].clock = 4; #assert xc_press(s[..], 4);
+  #assert s[0].xc[0].wave_until > 4 && s[0].xc[0].wave.x == 0 && s[0].xc[0].wave.z == 0;
+  #assert abs(s[0].xc[0].wave.fx - sin(0.78539816f32)) < 0.001;
+  s[0].creator[0].player_x = 10; #assert s[0].xc[0].wave.x == 0;
+}
+#test "experimental combat: your target is held by attention, never picked for you, kept through the grace and dropped when it falls" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6; h[0].enemies[1].x = 0.5; h[0].enemies[1].z = 3;
+  // a monster near and ahead is not your target until you strike at it
+  s[0].creator[0].clock = 2; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;
+  xc_lock_on(s[..], 0); xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == 0 && s[0].xc[0].lock.reason == attn.AttnReason.kept && s[0].xc[0].lock.runner == -1;
+  // behind you and 20 m off: still yours
+  h[0].enemies[0].z = -20; s[0].creator[0].clock += 0.5; xc_lock_step(s[..]); #assert s[0].xc[0].target == 0;
+  // past 24 m: held through the second's grace, then let go, and the near one is not taken instead
+  h[0].enemies[0].z = -30; s[0].creator[0].clock += 0.5; xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == 0 && s[0].xc[0].lock.reason == attn.AttnReason.out_of_range;
+  s[0].creator[0].clock += 0.3; xc_lock_step(s[..]); #assert s[0].xc[0].target == 0;    // 51 ticks lost: within the grace
+  s[0].creator[0].clock += 0.2; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;   // 64: let go
+  // back in reach after the release: nothing is acquired for you
+  h[0].enemies[0].z = 4; s[0].creator[0].clock += 0.1; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;
+  // a fallen target is dropped at once, with no grace
+  xc_lock_on(s[..], 1); xc_lock_step(s[..]); #assert s[0].xc[0].target == 1;
+  h[0].enemies[1].dead = true; s[0].creator[0].clock += 1.0 / 64; xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == -1 && s[0].xc[0].lock.reason == attn.AttnReason.invalid;
+}
+#test "experimental combat: a landed blow holds the struck monster for its hit stop, a monster's landed blow holds it, and nothing else pauses" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;
+  hp := xc_hp_sum(s[..]); tries := 0; stopped := false;
+  while xc_hp_sum(s[..]) == hp && tries < 40 {
+    s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 1);
+    for f: 0..<60 { s[0].creator[0].clock += 1.0 / 60; xc_strike_due(s[..]); xc_stops_step(s[..]); if h[0].enemies[0].stopped { stopped = true; break; } }
+    tries += 1;
+  }
+  // struck and alive: it is held, for XC_STOP_STRUCK ticks, and the other monsters are not
+  if s[0].xc[0].b[0].c[1].hp > 0 {
+    #assert stopped && s[0].xc[0].stops.n == 1 && s[0].xc[0].target == 0;
+    for i: 1..<XC_FOES { #assert !h[0].enemies[i].stopped; }
+    s[0].creator[0].clock += f32(XC_STOP_STRUCK + 1) / 64; xc_stops_step(s[..]);
+    #assert !h[0].enemies[0].stopped && s[0].xc[0].stops.n == 0;
+  }
+  // a monster's blow that lands on you holds that monster (the striker) for XC_STOP_STRIKER ticks
+  h[0].last = 3; h[0].hits += 1; xc_stops_step(s[..]);
+  #assert h[0].enemies[3].stopped && !h[0].enemies[0].stopped;
+  s[0].creator[0].clock += f32(XC_STOP_STRIKER) / 64; xc_stops_step(s[..]); #assert !h[0].enemies[3].stopped;
+  // the same landed blow is given its stop once
+  xc_stops_step(s[..]); #assert !h[0].enemies[3].stopped && s[0].xc[0].stops.n == 0;
+}
+#test "experimental combat: numbers go through the presentation queue, capped a source a frame and counted" {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
+  for i: 0..<10 { _ := cc.eg_numbers_amount(x[0].floats[..], 0, f32(i), meadow_y(f32(i), 0) + 1.9, 0, 1, false, false, false, 3 + i); }
+  fs := x[0].floats[0];
+  #assert fs.shown == fs.per_source && fs.suppressed == 10 - fs.per_source;
+  // another source has its own share; the next frame starts empty
+  was := fs.suppressed;
+  _ := cc.eg_numbers_word(x[0].floats[..], 4, 0, meadow_y(0, 0) + 1.9, 0, 1, "MISS", false); #assert x[0].floats[0].shown == fs.per_source + 1;
+  cc.eg_numbers_frame(x[0].floats[..]);
+  _ = cc.eg_numbers_amount(x[0].floats[..], 0, 0, meadow_y(0, 0) + 1.9, 0, 2, false, false, false, 7); #assert x[0].floats[0].shown == fs.per_source + 2 && x[0].floats[0].suppressed == was;
+}
+
+#test "experimental combat: Stunned hostiles can move but cannot attack and restraint preserves separate action permission" {
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  h[0].enemies[0].swing=0.34;
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=0,spell=-1,until=60,save=-1});
+  xc_sync_permissions(s[..]);
+  #assert !h[0].enemies[0].held && h[0].enemies[0].inactive && h[0].enemies[0].swing<0;
+  for i: 1..<XC_FOES { h[0].enemies[i].dead=true; }
+  h[0].enemies[0].x=4; h[0].enemies[0].z=0;
+  hostile.hostile_tick(h,0,0,0,0.05);
+  #assert h[0].enemies[0].moving && h[0].enemies[0].x<4 && h[0].hits==0;
+  rs_drop_effect(b,1,0);
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_RESTRAINED,by=0,spell=-1,until=60,save=-1});
+  xc_sync_permissions(s[..]);
+  #assert h[0].enemies[0].held && !h[0].enemies[0].inactive && h[0].enemies[0].swing<0;
+  rs_drop_effect(b,1,0); xc_sync_permissions(s[..]);
+  #assert !h[0].enemies[0].held && !h[0].enemies[0].inactive;
+}
+
+#test "experimental combat: each body kind fights as its SRD stat block" {
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b := s[0].xc[0].b[..];
+  for i: 0..<XC_FOES {
+    k := hostile.hostile_kind(i); c := b[0].c[i+1]; blk := rs_monster_block(XC_FOE_BLOCK[k]);
+    #assert c.ac==blk.ac && c.hp_max==blk.hp && rs_size(c)==blk.size && c.klass==RS_MONSTER && c.immune==blk.immune && c.speed==blk.speed;
+    #assert cast(string)c.name[0..<c.name_n]==XC_FOE_TITLE[k] && hostile.hostile_blow(k).hp==blk.hp && hostile.hostile_blow(k).ac==blk.ac;
+  }
+  #assert xc_hostile_action(xdungeon.DG_KIND_BOSS).count==2 && !rs_stat_action_valid(xc_hostile_action(5)) && !rs_stat_action_valid(xc_hostile_action(-1));
+  #assert xc_hostile_attack(xdungeon.DG_KIND_GREMLIN).name=="Scimitar" && xc_hostile_attack(xdungeon.DG_KIND_BOSS).name=="Tree Club";
+  #assert xc_foe(9).ac==15 && hostile.hostile_shot(xdungeon.DG_KIND_IMP)==0 && hostile.hostile_shot(xdungeon.DG_KIND_GREMLIN)>24;
+}
+

@@ -22,7 +22,7 @@ mkdir -p "$here/build"
 # serve.c's Coax parts are listed once, in serve-parts.sh (#13447): the dev
 # server, the production image and its check build the same files.
 stale=0
-[[ -x "$here/build/serve" && ! "$here/serve.c" -nt "$here/build/serve" && ! "$here/serve-parts.sh" -nt "$here/build/serve" && ! "$here/../bin/coax" -nt "$here/build/serve" ]] || stale=1
+[[ -x "$here/build/serve" && ! "$here/serve.c" -nt "$here/build/serve" && ! "$here/serve-routes.h" -nt "$here/build/serve" && ! "$here/serve-watch.h" -nt "$here/build/serve" && ! "$here/serve-code.h" -nt "$here/build/serve" && ! "$here/serve-parts.sh" -nt "$here/build/serve" && ! "$here/../bin/coax" -nt "$here/build/serve" ]] || stale=1
 while IFS= read -r src; do [[ ! "$src" -nt "$here/build/serve" ]] || stale=1; done < <("$here/serve-parts.sh" --sources)
 if [[ $stale == 1 ]]; then
   # The Mac's system clang; elsewhere the host C compiler (gcc unless CC says).

@@ -1,0 +1,535 @@
+// Split from everglade/zone-combat.coax (#13848): dash sprint, blade pose, and combat action presentation.
+// ---- Dash as a sprint: the engine's (metaverse-engine/action/sprint.coax) at Everglade's distance
+// (everglade/dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
+// (class-feel.coax xf_feel, metaverse-engine/action/deed.coax deed_show). Here it is only wired in: a frame
+// after your step (fivelab.coax zone_you) hands it your keys or thumb, your stride follows it
+// (charactercreator.coax experimental_figure), and its dust is the glade's puff.
+xc_sprint_frame :: (s: [] EgZone) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; h := s[0].held;
+  puff := eg_dash_frame(x[0].dash[..], now, cr[0].yaw, axis(h, HOLD_D, HOLD_A), axis(h, HOLD_W, HOLD_S), s[0].stick_on, s[0].stick_px, s[0].stick_py, !cr[0].airborne, cr[0].hostiles[0].hp <= 0);
+  cr[0].stride = x[0].dash[0].stride;
+  if puff {
+    p := eg_dash_dust(x[0].dash[0], now, cr[0].player_x, cr[0].player_z); y := meadow_y(p[0], p[1]) + 0.15;
+    fx_start_at(s, FXR_DUST, now, fxp_v(p[0], y, p[1]), fxp_v(p[0], y, p[1]), fxp_v(0.62, 0.55, 0.44), 0.6, 0.6);
+  }
+}
+xc_press :: (s: [] EgZone, k: int) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  if !cr[0].experimental || cr[0].walk.on || !x[0].started || k < 0 || k >= x[0].bar_n { return false; }
+  xc_sync_vitals(s);
+  if x[0].bar[k].kind == XC_BREATH { return zone_breath_key(s); }   // the dragon's own action, on its own Recharge
+  now := cr[0].clock;
+  if now - x[0].cool_at < f32(XC_COOL) || h[0].hp <= 0 { x[0].refused += 1; return false; }
+  xc_strike_due(s);
+  a := x[0].bar[k];
+  b := x[0].b[..];
+  // ask first (#13072): your conditions (rs_bearing) must let you act and the ability declares its
+  // feel (class-feel.coax); a no greys the slot, and nothing swings, draws, sounds or shines
+  asked := deed_tick(now);
+  seq := deed_ask(x[0].deeds[..], k, asked, rs_bearing(b[0].c[0]), xf_feel(x[0].klass, a));
+  if seq == 0 { x[0].refused += 1; return false; }
+  // a Ranger's Attack is the bow: a press draws and looses itself at full draw (xc_bow_begin)
+  if a.kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW { drawn := xc_bow_begin(s, true); _ := deed_answer(x[0].deeds[..], seq, drawn, asked, 0); return drawn; }
+  if !x[0].seeded { x[0].seeded = true; b[0].dice[0].state = b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
+  // a blow with a weapon in hand is an action: it swings first and lands where the blade meets a monster
+  kit := xc_kit(x[0].klass);
+  if kit >= 0 && !(x[0].familiar_touch && xc_touch_spell(a)) && xc_aim_kind(s, a).kind == XC_AIM_MELEE {
+    // the rules take the blow (its action is there to spend) before it swings; it lands on contact
+    if !fb_ready(b, 0, a) { _ := deed_answer(x[0].deeds[..], seq, false, asked, 0); x[0].refused += 1; return false; }
+    _ := deed_answer(x[0].deeds[..], seq, true, asked, 0);
+    clip := cp_blow_clip(kit, true);   // a two-hander's owned cleave (cast-pose.coax, shared with Everglade II)
+    cr[0].weapon = kit; cr[0].swing_clip = clip; cr[0].swing_at = now;
+    tick := xc_tick(now);
+    x[0].swing_def = xc_swing_def(s, clip);
+    x[0].swing = act.action_begin(x[0].swing_def, clip, x[0].swing_next, 0, 1, tick, 1, 1);
+    x[0].swing_next += 1; x[0].swing_tick = tick - 1; x[0].swing_struck = false;
+    x[0].pend = k;
+    x[0].cool_at = now; x[0].used = k;
+    xc_cast_sound(s, a);   // the whoosh as the swing starts; the blow's hit when it lands (xc_use)
+    return true;
+  }
+  ok := xc_use(s, k);   // the local rules resolve it first, then it presents (xc_use_ab)
+  _ := deed_answer(x[0].deeds[..], seq, ok, asked, 0);
+  return ok;
+}
+// The fixed tick a creator clock time falls in.
+xc_tick :: (t: f32) -> int { return cast(int) floor(f64(t) * f64(XC_TICK)); }
+// A swing's action: the clip's length in ticks and its sensor window round the impact (bd_blow), the
+// impact itself an event. Its ID is the clip's, version 1.
+xc_swing_def :: (s: [] EgZone, clip: int) -> act.ActionDef {
+  d: act.ActionDef; d.id = 1000 + clip; d.version = 1; d.clip = clip;
+  d.length = act.action_ticks_of_seconds(f64(figs.bd_seconds(clip)));
+  if d.length < 1 { d.length = 1; }
+  hit := cast(int) floor(f64(figs.bd_blow(s[0].bodies[..], s[0].creator[0].female, clip)) * f64(d.length) + 0.5);
+  open := hit - XC_WINDOW; shut := hit + XC_WINDOW;
+  if open < 0 { open = 0; } if shut > d.length { shut = d.length; } if hit > shut { hit = shut; }
+  d.events[0] = act.ActionEvent.{kind = act.ActionEventKind.window_open, tick = open};
+  d.events[1] = act.ActionEvent.{kind = act.ActionEventKind.impact, tick = hit};
+  d.events[2] = act.ActionEvent.{kind = act.ActionEventKind.window_close, tick = shut};
+  d.event_n = 3;
+  return d;
+}
+// The blow pressed earlier: its action stepped tick by tick to now, each sensing tick sweeping the
+// blade (each frame, and before a press). Its slot lands on the first monster the blade meets.
+xc_strike_due :: (s: [] EgZone) { xc_swing_step(s, xc_tick(s[0].creator[0].clock)); }
+xc_swing_step :: (s: [] EgZone, now: int) {
+  x := s[0].xc[..];
+  if x[0].pend < 0 { return; }
+  d := x[0].swing_def;
+  top := ifx now > x[0].swing.start + d.length then x[0].swing.start + d.length else now;
+  for t: x[0].swing_tick + 1..<top + 1 {
+    st := act.action_advance(d, x[0].swing, t);
+    x[0].swing = st.inst; x[0].swing_tick = t;
+    if st.sensing && !x[0].swing_struck { xc_sense(s, t); }   // a blow already swung lands though you fell (#13120)
+    closed := false;
+    for e: 0..<st.n { if st.events[e].kind == act.ActionEventKind.window_close { closed = true; } }
+    if (closed || st.finished) && !x[0].swing_struck {
+      // the window closed on no one: the blow swings at the air (no roll, no damage)
+      x[0].swing_struck = true;
+      xc_whiff(s, x[0].pend);
+    }
+    if st.finished || x[0].swing.phase != act.ActionPhase.running {
+      x[0].ledger = sense.sensor_ledger_retire(x[0].ledger, x[0].swing.id);
+      x[0].pend = -1; return;
+    }
+  }
+}
+// The blade at time t (creator seconds): the swing clip's baked hand pose, between its frames, through
+// the weapon matrix that draws it. Not ready (no bake): the fallback arc, flagged.
+XcBlade :: struct { pose: sense.SensorPose; fallback: bool; }
+xc_blade :: (s: [] EgZone, t: f32) -> XcBlade {
+  cr := s[0].creator[..]; b := s[0].bodies[..];
+  k := cr[0].weapon; clip := cr[0].swing_clip;
+  if k < 0 || k >= cc.CC_KITS { k = 0; }
+  y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + cr[0].player_y;
+  dur := figs.bd_seconds(clip);
+  if !b[0].ready || clip < 0 || dur <= 0 {
+    // the fallback: a blade from the shoulder sweeping 2 radians right to left ahead of you across the window
+    d := s[0].xc[0].swing_def; ft := 0.5f32;
+    if d.event_n == 3 && d.events[2].tick > d.events[0].tick {
+      ft = (t * f32(XC_TICK) - f32(s[0].xc[0].swing.start) - f32(d.events[0].tick)) / f32(d.events[2].tick - d.events[0].tick);
+      ft = ifx ft < 0 then 0 else ifx ft > 1 then 1 else ft;
+    }
+    ang := cr[0].player_face + 1.0 - 2.0 * ft;
+    reach := XC_BLADE_TIP[k] + 0.45;
+    base := asp.world_point(cr[0].player_x + sin(ang) * 0.3, y + 1.2, cr[0].player_z + cos(ang) * 0.3);
+    tip := asp.world_point(cr[0].player_x + sin(ang) * reach, y + 1.2, cr[0].player_z + cos(ang) * reach);
+    return XcBlade.{pose = sense.SensorPose.{a = base, b = tip}, fallback = true};
+  }
+  n := figs.bd_frames(clip);
+  u := (t - cr[0].swing_at) / dur * f32(n) - 0.5;
+  if u < 0 { u = 0; } if u > f32(n - 1) { u = f32(n - 1); }
+  f0 := cast(int) floor(u); f1 := ifx f0 + 1 < n then f0 + 1 else f0; mix := u - f32(f0);
+  r0 := f32(figs.bd_row(cr[0].female, clip, f0)); r1 := f32(figs.bd_row(cr[0].female, clip, f1));
+  o := ifx cr[0].female then 3 else 0;
+  hr := figs.bd_hand(b, r0, r1, mix, false); hand := [3]f32.[b[0].hand_at[o], b[0].hand_at[o + 1], b[0].hand_at[o + 2]];
+  at := [3]f32.[cr[0].player_x, y, cr[0].player_z];
+  w := ifx cc.CC_KIT_TWO[k] then cc.two_hand_matrix(hr, figs.bd_hand(b, r0, r1, mix, true), hand, [3]f32.[b[0].hand_at[6 + o], b[0].hand_at[7 + o], b[0].hand_at[8 + o]], k, cr[0].player_face, at)
+    else cc.weapon_matrix(hr, hand, k, cr[0].player_face, at);
+  l := XC_BLADE_TIP[k] / cc.CC_KIT_SCALE[k];
+  base := asp.world_point(w[0], w[1], w[2]);
+  tip := asp.world_point(w[0] + w[6] * l, w[1] + w[7] * l, w[2] + w[8] * l);
+  return XcBlade.{pose = sense.SensorPose.{a = base, b = tip}};
+}
+// Sense tick t: sample the blade across the tick finely enough for the sensor's motion profile, sweep
+// the living monsters' hurt capsules, and land the slot on the first accepted contact.
+xc_sense :: (s: [] EgZone, t: int) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  t0 := f32(f64(t) / f64(XC_TICK)); t1 := f32(f64(t + 1) / f64(XC_TICK));
+  p := xc_blade(s, t0); q := xc_blade(s, t1);
+  if p.fallback { x[0].fallbacks += 1; }
+  mv := sense.sensor_len(p.pose.b, q.pose.b); if sense.sensor_len(p.pose.a, q.pose.a) > mv { mv = sense.sensor_len(p.pose.a, q.pose.a); }
+  if mv > x[0].blade_step { x[0].blade_step = mv; }
+  n := sense.sensor_samples_needed(p.pose, q.pose, f32(XC_BLADE_R));
+  if n > sense.SENSOR_SAMPLES { x[0].exhausted += 1; return; }
+  // the chord understates a turning blade: add samples until no end moves more than the radius between two
+  sw: sense.SensorSweep;
+  for guard: 0..<sense.SENSOR_SAMPLES {
+    sw.n = n; worst := 0.0f32;
+    for i: 0..<n { sw.poses[i] = xc_blade(s, t0 + (t1 - t0) * f32(i) / f32(n - 1)).pose; }
+    for i: 1..<n { a := sense.sensor_len(sw.poses[i - 1].a, sw.poses[i].a); b := sense.sensor_len(sw.poses[i - 1].b, sw.poses[i].b); if a > worst { worst = a; } if b > worst { worst = b; } }
+    if worst <= f32(XC_BLADE_R) { break; }
+    if n >= sense.SENSOR_SAMPLES { x[0].exhausted += 1; return; }
+    n = n + 1 + cast(int) floor(f32(n - 1) * (worst / f32(XC_BLADE_R) - 1));
+    if n > sense.SENSOR_SAMPLES { n = sense.SENSOR_SAMPLES; }
+  }
+  // the living monsters within a blade's reach, nearest first past the sensor's SENSOR_TARGETS
+  hurt: [sense.SENSOR_TARGETS] sense.HurtCapsule; hn := 0;
+  for i: 0..<XC_FOES {
+    e := h[0].enemies[i];
+    dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
+    if e.dead || dx * dx + dz * dz > 8 * 8 || hn >= hurt.count { continue; }
+    hurt[hn] = sense.HurtCapsule.{id = 1 + i, gen = 1, team = 2, feet = asp.world_point(e.x, xmeadow.exp_height(e.x, e.z) - 0.1, e.z), height = 1.7 * e.scale, radius = 0.35 * e.scale, alive = true}; hn += 1;
+  }
+  y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + cr[0].player_y;
+  origin := asp.world_point(cr[0].player_x, y + 1.2, cr[0].player_z);
+  open: aq.Colliders; open.ground_enabled = false;
+  r := sense.sensor_resolve(x[0].swing_def, x[0].swing, t, 1, 1, origin, sw, f32(XC_BLADE_R), hurt[0..<hn], open, x[0].ledger);
+  if r.status == sense.SensorStatus.exhausted { x[0].exhausted += 1; return; }
+  x[0].ledger = r.ledger;
+  for c: 0..<r.n {
+    if r.contacts[c].status != sense.ContactStatus.hit || x[0].swing_struck { continue; }
+    // the SRD Attack is one creature's: the first accepted contact is it
+    x[0].swing_struck = true; x[0].contacts += 1;
+    x[0].releasing = true; _ := xc_use_on(s, x[0].pend, r.contacts[c].target - 1); x[0].releasing = false;   // swung, it lands though you fell since
+  }
+}
+// A blow that met no one: the turn is spent swinging at the air.
+xc_whiff :: (s: [] EgZone, k: int) {
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  a := x[0].bar[k]; m := xc_aim_kind(s, a);
+  fx := sin(cr[0].player_face); fz := cos(cr[0].player_face);
+  x[0].casts += 1; x[0].whiffs += 1;
+  xc_look(s, a, -1, cr[0].player_x + fx * m.reach, cr[0].player_z + fz * m.reach);
+}
+// One cue heard where it happens: softer the farther it is, panned the way the camera faces.
+xc_cue :: (s: [] EgZone, name: string, gain: f32, x: f32, z: f32, rate: f32) {
+  if name.count == 0 { return; }
+  cr := s[0].creator[..];
+  xc:=s[0].xc[..]; b:=xc[0].b[..];
+  f:=rs_familiar_observer(b,0);
+  borrowed:=f>0 && !rs_has(b[0].c[f],RS_DEAFENED);
+  if !borrowed && b[0].n>0 && rs_has(b[0].c[0],RS_DEAFENED) { return; }
+  dx := x - (ifx borrowed then xc[0].familiar_x else cr[0].player_x);
+  dz := z - (ifx borrowed then xc[0].familiar_z else cr[0].player_z);
+  d := sqrt(dx * dx + dz * dz);
+  pan := 0.0f32;
+  if d > 0.5 { pan = (dx * cos(cr[0].yaw) - dz * sin(cr[0].yaw)) / d * 0.7; }
+  exsound.experimental_sound_play(s[0].experimental_audio[..], name, gain / (1 + d / 10), pan, rate);
+}
+// A monster's voice when it is hurt or dies: the imp shrieks, the gremlin snarls; the bigger
+// they are, the deeper (the Warlord's a growl).
+xc_voice :: (s: [] EgZone, i: int, died: bool) {
+  e := s[0].creator[0].hostiles[0].enemies[i];
+  imp := xdungeon.dg_kind_mesh(e.kind) == 0;
+  name := ifx imp then (ifx died then "imp-death" else "imp-hurt") else (ifx died then "gremlin-death" else "gremlin-hurt");
+  xc_cue(s, name, (ifx died then 0.6f32 else 0.5f32) * (ifx e.scale > 2 then 1.3f32 else 1.0f32), e.x, e.z, 1 / sqrt(e.scale));
+}
+xc_cast_sound :: (s: [] EgZone, a: FbAb) {
+  cr := s[0].creator[..]; d := xc_sound(a, s[0].xc[0].klass);
+  xc_cue(s, d.start, 0.55, cr[0].player_x, cr[0].player_z, d.rate);
+  xc_cue(s, d.layer, 0.32, cr[0].player_x, cr[0].player_z, d.rate);
+}
+// Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
+xc_use :: (s: [] EgZone, k: int) -> bool { return xc_use_on(s, k, -2); }
+// Whether the monster you clicked still stands within reach metres and in sight; a fallen one is let go.
+xc_pick_live :: (s: [] EgZone, reach: f32) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; p := x[0].picked;
+  if p < 0 || p >= XC_FOES { return false; }
+  e := cr[0].hostiles[0].enemies[p];
+  if e.dead { x[0].picked = -1; return false; }
+  dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
+  return dx * dx + dz * dz <= (reach + 1) * (reach + 1) && hostile.hostile_sees(e, cr[0].player_x, cr[0].player_z);
+}
+// A spell slot's choices (#13038), in the bar's own style: its slot level in the top right corner and
+// its option along the bottom edge. A tap there steps to the next choice instead of casting; the
+// engine refuses a choice it can't take, spending nothing.
+XC_BADGE :: 18.0;   // CSS px: the corner's tap square, and the bottom strip's height
+xc_choose :: (s: [] EgZone, i: int, px: f32, py: f32) -> bool {
+  x := s[0].xc[..]; k := x[0].k;
+  if i < 0 || i >= x[0].bar_n { return false; }
+  r := cc.eg_box4(xc_slot(x, i)); a := x[0].bar[i..<i + 1];
+  if a[0].kind==XC_FAMILIAR {
+    if px<=r.x0+f32(XC_BADGE)*k && py<=r.y0+f32(XC_BADGE)*k {
+      f:=rs_familiar_of(x[0].b[..],0);
+      if f>=0 && x[0].b[0].c[f].hp>0 {
+        n:=ifx x[0].b[0].c[f].dead then 3 else 5;
+        x[0].familiar_order=(x[0].familiar_order+1)%n;
+      }
+      return true;
+    }
+    if py>=r.y1-f32(XC_BADGE)*k {
+      count:=RS_FAMILIAR_FORMS.count;
+      if !rs_has_feature(x[0].b[0].c[0], RS_FT_WILD_COMPANION) && px>=r.x1-24*k { a[0].opt=(a[0].opt+count)%(3*count); }
+      else { a[0].opt=a[0].opt/count*count+(a[0].opt+1)%count; }
+      return true;
+    }
+    if px>=r.x1-f32(XC_BADGE)*k && py<=r.y0+f32(XC_BADGE)*k {
+      a[0].lvl=1-a[0].lvl; return true;
+    }
+    return false;
+  }
+  if xc_touch_spell(a[0]) && py>=r.y1-f32(XC_BADGE)*k {
+    b:=x[0].b[..]; f:=rs_familiar_of(b,0);
+    if x[0].familiar_touch || (f>=0 && rs_up(b[0].c[f])) {
+      x[0].familiar_touch=!x[0].familiar_touch;
+      return true;
+    }
+  }
+  if a[0].kind==FB_WILD && py>=r.y1-f32(XC_BADGE)*k {
+    c:=x[0].b[0].c[0];
+    a[0].opt=xc_wild_next(rs_wild_mask(c),fb_wild_form(c,a[0].opt));
+    return true;
+  }
+  if fb_ab_option_n(a[0])==0 && a[0].kind!=FB_SPELL { return false; }
+  levels: [9] int; n := ifx a[0].kind == FB_SPELL then fb_cast_levels(x[0].b[0].c[0], a[0], levels[..]) else 0;
+  if n > 1 && px >= r.x1 - f32(XC_BADGE) * k && py <= r.y0 + f32(XC_BADGE) * k {
+    next := levels[0];
+    for q: 0..<n - 1 { if levels[q] == a[0].lvl { next = levels[q + 1]; } }
+    a[0].lvl = next; return true;
+  }
+  m := fb_ab_option_n(a[0]);
+  if m > 0 && py >= r.y1 - f32(XC_BADGE) * k { a[0].opt = (rs_max(a[0].opt, 0) + 1) % m; return true; }
+  return false;
+}
+// Click the monster under the pointer to pick it (true); a click on nothing lets the pick go.
+xc_pick_at :: (s: [] EgZone, px: f32, py: f32) -> bool {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..]; k := x[0].k;
+  best := -1; bd := 30 * k * 30 * k;
+  for i: 0..<XC_FOES {
+    e := hs[0].enemies[i];
+    if e.dead { continue; }
+    p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 0.8, e.z);
+    d := (p.x - px) * (p.x - px) + (p.y - py) * (p.y - py);
+    if p.ok && d < bd { bd = d; best = i; }
+  }
+  x[0].picked = best;
+  if best >= 0 { xc_lock_on(s, best); }
+  return best >= 0;
+}
+// Slot k used now against monster on (a blade's contact), or at what it aims at when on is -2.
+xc_use_on :: (s: [] EgZone, k: int, on: int) -> bool { return xc_use_ab(s, k, s[0].xc[0].bar[k], on); }
+// Ability a, from slot k, used now (xc_use_on), or an arrow's Attack (FB_SHOOT) on the monster it reached.
+xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  now := cr[0].clock;
+  a := a0;
+  b := x[0].b[..];
+  if a.kind==XC_FAMILIAR { return xc_familiar_press(s,k,a); }
+  via:=x[0].familiar_touch && xc_touch_spell(a);
+  if via && !x[0].seat[0].open { x[0].refused+=1; return false; }
+  b[0].c[0].knockout = x[0].knockout;
+  px := cr[0].player_x; pz := cr[0].player_z;
+  // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
+  aim := xc_aim(s, a);
+  if on >= -1 { aim.foe = on; }
+  // your choices (#13038): a spell at a creature takes only the one aimed at, with the slot's option;
+  // a clicked monster in reach and sight is that creature for a spell with no projectile
+  if a.kind == FB_SPELL && a.tg == FB_FOE && rs_spell(a.sp).area == RS_A_NONE && a.opt < 0 { a.opt = 0; }
+  if on == -2 && aim.kind == XC_AIM_CONE && xc_pick_live(s, aim.reach) { aim.foe = x[0].picked; }
+  if via {
+    aim.foe=ifx a.tg==FB_FOE then (ifx on==-2 then x[0].picked else on) else -1;
+    if a.tg==FB_FOE && (aim.foe<0 || aim.foe>=XC_FOES || h[0].enemies[aim.foe].dead) {
+      x[0].refused+=1; return false;
+    }
+  }
+  foe := aim.foe;
+  snd := xc_sound(a, x[0].klass);
+  swung := !via && xc_kit(x[0].klass) >= 0 && aim.kind == XC_AIM_MELEE;   // its whoosh played at the press (xc_press)
+  if !via && aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; return false; }   // no one ahead: the icon fizzles, silent (refused plays nothing, #13072)
+  if !via && (aim.kind == XC_AIM_BOLT || aim.kind == XC_AIM_MELEE) && foe < 0 {
+    if aim.kind==XC_AIM_BOLT && a.kind==FB_SPELL && rs_object_spell(a.sp) {
+      object:=xc_object_pick(s,aim.fx,aim.fz,aim.reach);
+      if object>=0 {return xc_use_object(s,k,a,object);}
+    }
+    // the bolt flies on to its range and fizzles; the blow swings at the air. No roll, no damage.
+    x[0].cool_at = now; x[0].used = k; x[0].casts += 1; x[0].whiffs += 1;
+    xc_look(s, a, -1, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
+    if !swung { xc_cast_sound(s, a); }
+    if aim.kind == XC_AIM_BOLT { xc_cue(s, snd.miss, 0.45, px + aim.fx * aim.reach, pz + aim.fz * aim.reach, 1); }
+    return true;
+  }
+  // Self-originating cubes use a grid aligned with your facing, so diagonal
+  // casts cover the same width on both sides as casts along a world axis.
+  facing_cube := a.kind == FB_SPELL && rs_spell(a.sp).area == RS_A_CUBE_SELF;
+  if b[0].truth_zones!=0 { xc_sync_world(s); }
+  // Revivify (p. 159) touches the nearest fallen monster; the shared rules judge its death and reach
+  corpse:=-1;
+  if !via && a.kind==FB_SPELL && a.sp==SP_REVIVIFY {
+    best:=0.0f32;
+    for i:0..<XC_FOES {
+      e:=h[0].enemies[i]; dx:=e.x-px; dz:=e.z-pz; d:=dx*dx+dz*dz;
+      if e.dead && (corpse<0 || d<best) { corpse=i; best=d; }
+    }
+    if corpse<0 { x[0].refused+=1; return false; }
+  }
+  // the monsters on the engine's squares round you
+  rs_place(b, 0, XC_MID, XC_MID);
+  for i: 0..<XC_FOES {
+    e := h[0].enemies[i];
+    j := 1 + i;
+    if e.dead && i!=corpse { rs_place(b, j, XC_AWAY, XC_AWAY); continue; }
+    dx := e.x - px; dz := e.z - pz;
+    qx := xc_square(ifx facing_cube then dx * aim.fz - dz * aim.fx else dx);
+    qz := xc_square(ifx facing_cube then dx * aim.fx + dz * aim.fz else dz);
+    if qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
+    rs_place(b, j, qx, qz);
+  }
+  xc_familiar_project(s,ifx facing_cube then aim.fx else 0,ifx facing_cube then aim.fz else 1);
+  // an arrow's monster stands on the engine's line at its true distance, so the Longbow's ranges
+  // (150/600 ft, one square 5 feet) are the world's even past the grid round you
+  if a.kind == FB_SHOOT && foe >= 0 && foe < XC_FOES { rs_place(b, 1 + foe, XC_MID + xc_bow_squares(s, foe), XC_MID); }
+  // Every press is paid (#13284). What it could spend is kept, to put back if the rules refuse it part way.
+  me := b[0].c[0..<1];
+  saved_budget:=rs_press_budget(me[0],x[0].seat[0].turn);
+  was_open:=x[0].seat[0].open;
+  press_turn:[1] RsTurn; press_turn[0]=x[0].seat[0].turn;
+  // This zone's turn is its press cooldown (XC_COOL, a second): a press it admits opens a new turn's
+  // Action, Bonus Action and slot spell. Slots, uses, Focus and Rage are not given back.
+  if !via { press_turn[0].action=false; press_turn[0].bonus=false; press_turn[0].slot_spent=false; }
+  x[0].seat[0].turn=press_turn[0];
+  hp_before := me[0].hp; temp_before := me[0].temp;
+  x[0].seat[0].open = true;
+  before: [XC_FOES] int; bx: [XC_FOES] int; bz: [XC_FOES] int;
+  for i: 0..<XC_FOES { before[i] = b[0].c[1 + i].hp; bx[i] = b[0].c[1+i].x; bz[i] = b[0].c[1+i].y; }
+  tx := XC_MID; ty := XC_MID;
+  if facing_cube { ty = XC_MID + 3; }
+  else if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
+  else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
+  // the walls as cover facts for this press only (rules/srd/cover.coax): a monster on the grid
+  // with no line to you is behind Total Cover; with none seeing you, you are behind it from all (Hide)
+  rs_cover_clear(b); unseen := true;
+  for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && hostile.hostile_sees(h[0].enemies[i], px, pz) { unseen = false; } }
+  if unseen && !via { _ := rs_cover_put(b, -1, 0, RS_COVER_TOTAL); }
+  for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], px, pz) { _ := rs_cover_put(b, 0, 1 + i, RS_COVER_TOTAL); } }
+  if corpse>=0 && !xdungeon.dg_sight(px,pz,h[0].enemies[corpse].x,h[0].enemies[corpse].z) { _:=rs_cover_put(b,0,1+corpse,RS_COVER_TOTAL); }
+  // an area cast at a point reads its cover from that point (p.15): a wall between it and a monster
+  if a.kind == FB_SPELL && rs_area_from_point(rs_spell(a.sp)) {
+    ox := px + f32(tx - XC_MID) * f32(XC_SQ); oz := pz + f32(ty - XC_MID) * f32(XC_SQ);
+    for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], ox, oz) { _ := rs_cover_put(b, RS_COVER_ORIGIN, 1 + i, RS_COVER_TOTAL); } }
+  }
+  // The borrowed viewpoint needs its own wall fact for a selected creature.
+  if !via && a.kind==FB_SPELL && foe>=0 {
+    f:=rs_familiar_observer(b,0);
+    if f!=0 && !xdungeon.dg_sight(x[0].familiar_x,x[0].familiar_z,h[0].enemies[foe].x,h[0].enemies[foe].z) {
+      _:=rs_cover_put(b,f,1+foe,RS_COVER_TOTAL);
+    }
+  }
+  old_truth:=b[0].truth_zones;
+  if facing_cube { b[0].truth_zones=0; }
+  ok := false;
+  if via {
+    f:=rs_familiar_of(b,0);
+    target:=foe+1;
+    if f>=0 && b[0].c[f].x!=XC_AWAY && b[0].c[target].x!=XC_AWAY {
+      dx:=ifx foe>=0 then h[0].enemies[foe].x else px;
+      dz:=ifx foe>=0 then h[0].enemies[foe].z else pz;
+      if !xdungeon.dg_sight(x[0].familiar_x,x[0].familiar_z,dx,dz) { _:=rs_cover_put(b,f,target,RS_COVER_TOTAL); }
+      fb_seat_in(b,x[0].seat[..]);
+      ok=rs_familiar_touch(b,0,a.sp,a.lvl,target);
+      fb_seat_out(b,x[0].seat[..]);
+    }
+  } else if a.kind == FB_SKILL {
+    lore := ifx foe >= 0 then XC_FOE_LORE[rs_min(hostile.hostile_kind(foe), 4)] else SK_ARCANA;
+    r := fb_seat_skill(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, lore);
+    ok = r.accepted;
+    if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
+    if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
+  } else if a.kind == FB_BREATH && x[0].dr.on { ok = xd_breathe(s); }
+  else {
+    up := ifx x[0].releasing then rs_release_stand(b, 0) else RsReleased.{};   // released before you fell, it lands (rules/srd/released.coax)
+    ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0);
+    rs_release_fall(b, 0, up);
+  }
+  if facing_cube { b[0].truth_zones=old_truth; }
+  if ok && a.kind==FB_SPELL && a.sp==SP_ZONE_OF_TRUTH { xc_truth_project(s,rs_clear(b[0].truth_zones,old_truth)); }
+  if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
+  if corpse>=0 {
+    e:=h[0].enemies[corpse..<corpse+1];
+    if ok { x[0].revivify_diamond_used=true; e[0].dead=false; e[0].moving=false; e[0].swing=-1; }
+    else { rs_place(b,1+corpse,XC_AWAY,XC_AWAY); }
+  }
+  rs_cover_clear(b);
+  gain := rs_max(b[0].c[0].hp-hp_before,0);
+  temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
+  xc_sync_vitals(s);
+  if !ok {
+    press_turn[0]=x[0].seat[0].turn; rs_press_restore(me,press_turn[..],saved_budget);
+    x[0].seat[0].turn=press_turn[0]; x[0].seat[0].open=was_open;
+    if facing_cube { xc_sync_world(s); } x[0].refused += 1;
+    if a.kind == FB_HIDE { _ := cc.eg_numbers_word(x[0].floats[..], 0, px, meadow_y(px, pz) + cr[0].player_y + 2.1, pz, now, ifx unseen then "ALREADY HIDDEN" else "IN SIGHT", false); }
+    return false;
+  }
+  if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
+    x[0].wave = aa.area_face(xk_spell_area(SP_THUNDERWAVE), px, pz, cr[0].player_face); x[0].wave_y = cr[0].player_y; x[0].wave_until = now + 1.4;
+  }
+  // presented from the yes (metaverse-engine/action/deed.coax deed_show): an action whose feel moves `dash` sprints
+  if deed_show(xf_feel(x[0].klass, a), DeedResult.effect).move == DeedMove.dash {
+    sprint.sprint_start(x[0].dash[..], now, cr[0].player_face, eg_dash_gain(f32(b[0].c[0].speed)));
+  }
+  x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
+  xd_after(s, a);
+  if foe >= 0 { xc_lock_on(s, foe); }   // the one struck at: your target, its Hit Points over the bar
+  if gain > 0 {
+    _ := cc.eg_numbers_amount(x[0].floats[..], 0, px, meadow_y(px, pz) + cr[0].player_y + 2.1, pz, now, false, true, false, gain);
+  }
+  if temp_gain>0 { l: [1] RsLine; rs_add_int(l[..],temp_gain); rs_add_text(l[..]," TEMP HP"); _ := cc.eg_numbers_word(x[0].floats[..], 0, px, cr[0].player_y+2.1, pz, now, cast(string)l[0].buf[0..<l[0].n], true); }
+  if a.kind != FB_SHOOT { xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach); }
+  if !swung { xc_cast_sound(s, a); }
+  if a.kind == FB_HIDE || a.kind == FB_READY {
+    _ := cc.eg_numbers_word(x[0].floats[..], 0, px, cr[0].player_y + 2.1, pz, now, ifx a.kind == FB_READY then "READY" else ifx rs_hidden_at(b[0].c[0]) >= 0 then "HIDDEN" else "SPOTTED", true);
+  }
+  if (a.kind == FB_GRAPPLE || a.kind == FB_SHOVE) && foe >= 0 {
+    held := ifx a.kind == FB_GRAPPLE then b[0].c[0].grappling == 1 + foe else rs_has(b[0].c[1 + foe], RS_PRONE);
+    _ := cc.eg_numbers_word(x[0].floats[..], 0, h[0].enemies[foe].x, meadow_y(h[0].enemies[foe].x, h[0].enemies[foe].z) + 2.4, h[0].enemies[foe].z, now, ifx !held then "RESISTS" else ifx a.kind == FB_GRAPPLE then "GRAPPLED" else "PRONE", false);
+  }
+  // what it did to each monster: the numbers, and the fallen
+  struck := false;
+  for i: 0..<XC_FOES {
+    c := b[0].c[1 + i];
+    e := h[0].enemies[i..<i + 1];
+    // Copy a successful Thunderwave push back out of the battle grid. Sweep
+    // small increments against the world's obstacles instead of teleporting.
+    if !facing_cube && !c.dead && !e[0].dead && bx[i] != XC_AWAY && (c.x != bx[i] || c.y != bz[i]) {
+      // Shove's push (and any grid move a press made): swept square by square, stopping at a wall
+      dx := f32(c.x - bx[i]) * f32(XC_SQ) / 10; dz := f32(c.y - bz[i]) * f32(XC_SQ) / 10;
+      for step: 0..<10 { nx := e[0].x + dx; nz := e[0].z + dz; if xc_blocked(s,nx,nz) { break; } e[0].x = nx; e[0].z = nz; }
+    }
+    if facing_cube && !c.dead && !e[0].dead {
+      gx := c.x - bx[i]; gz := c.y - bz[i];
+      dist := hi(abs(f32(gx)), abs(f32(gz))) * f32(XC_SQ);
+      if dist > 0 {
+        lx := f32(gx); lz := f32(gz); length := sqrt(lx*lx + lz*lz);
+        dx := (lx*aim.fz + lz*aim.fx) / length * dist / 20;
+        dz := (-lx*aim.fx + lz*aim.fz) / length * dist / 20;
+        for step: 0..<20 {
+          nx := e[0].x + dx; nz := e[0].z + dz;
+          if xc_blocked(s,nx,nz) { break; }
+          e[0].x = nx; e[0].z = nz;
+        }
+      }
+    }
+    if xc_harmed(s, i, before[i], ifx swung then react.DMG_SLASH else ifx a.kind == FB_SHOOT then react.DMG_PIERCE else cast(u32) 0, snd.hit, snd.rate, now) { struck = true; }
+  }
+  xc_sync_permissions(s);
+  if facing_cube { xc_sync_world(s); }
+  // attacked from wherever you stand, hit or missed, the one aimed at wakes and comes after you
+  if foe >= 0 && foe < XC_FOES && aim.kind != XC_AIM_AREA && aim.kind != XC_AIM_SELF { hostile.hostile_provoke(h, foe); }
+  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); _ := cc.eg_numbers_word(x[0].floats[..], 0, h[0].enemies[foe].x, meadow_y(h[0].enemies[foe].x, h[0].enemies[foe].z) + 1.9, h[0].enemies[foe].z, now, "MISS", false); }
+  return true;
+}
+// What a blow, a spell or a dragon's breath did to monster i, which had `before` Hit Points: the
+// number rising off it, its flinch (a hit-stop of react's `kinds`), the hit's sound and its voice;
+// at 0 Hit Points it falls, cries out and dust puffs up. True when it lost any.
+xc_harmed :: (s: [] EgZone, i: int, before: int, kinds: u32, hit: string, rate: f32, now: f32) -> bool {
+  x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; c := x[0].b[0].c[1 + i]; e := h[0].enemies[i..<i + 1];
+  lost := before - rs_max(c.hp, 0);
+  if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
+  if lost > 0 { x[0].landed += 1; x[0].last_dmg = lost; _ := cc.eg_numbers_amount(x[0].floats[..], 0, e[0].x, meadow_y(e[0].x, e[0].z) + 1.9, e[0].z, now, false, false, false, lost);
+    if !c.dead && c.hp > 0 { xc_stop_hit(s, i, kinds); }
+    xc_cue(s, hit, 0.55, e[0].x, e[0].z, rate);
+    if !c.dead && c.hp > 0 { xc_voice(s, i, false); }
+    if rs_knocked_out(c) { _ = cc.eg_numbers_word(x[0].floats[..], 0, e[0].x, meadow_y(e[0].x, e[0].z) + 2.4, e[0].z, now, "KNOCKED OUT", false); } }
+  if !e[0].dead && (c.dead || c.hp <= 0) {
+    e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
+    x[0].kills += 1; xc_voice(s, i, true);
+    if x[0].target == i { x[0].target = -1; x[0].lock = attn.AttnState.{}; }
+    fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
+  }
+  return lost > 0;
+}
+// One of the glade's effects (metaverse-engine/fx/puff.coax), on the creator's clock.
+fx_start_at :: (s: [] EgZone, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
+  c := FxCause.{recipe = recipe, seed = now * 13.7 + f32(recipe), t0 = now, from = from, to = to, col = col, big = big, reach = reach};
+  _ := fxp_start(s[0].puffs[..], c, now);
+}
+// A slot's look: Everglade's recipes for its spells and features (everglade-classes.coax cl_look).
+xc_look :: (s: [] EgZone, a: FbAb, foe: int, ax: f32, az: f32) {
+  cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  at := fxp_v(ax, cr[0].player_y + 1.0, az);   // where it is aimed: ahead of you (a bolt's full range when it hits no one)
+  if foe >= 0 { at = fxp_v(h[0].enemies[foe].x, 0.8, h[0].enemies[foe].z); }
+  l := xc_look_of(a, cr[0].player_x, cr[0].player_y, cr[0].player_z, cr[0].player_face, at);
+  fx_start_at(s, l.recipe, cr[0].clock, l.from, l.to, l.col, 1, l.reach);
+  if l.glimmer { fx_start_at(s, FXR_GLIMMER, cr[0].clock, l.from, l.to, l.col, 1, 1); }
+}
+

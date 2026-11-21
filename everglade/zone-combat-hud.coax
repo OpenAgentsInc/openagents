@@ -1,0 +1,284 @@
+// Split from everglade/zone-combat.coax (#13848): screen projection, class menus, and combat HUD layout.
+// ---- the screen: where a point in the world falls (charactercreator.coax camera's uniforms)
+XcAt :: struct { x: f32; y: f32; ok: bool; }
+// Whether a body standing at (bx, foot, bz), tall m, shows from the camera: the engine's visibility
+// service (metaverse-engine/physics/visibility.coax, through metaverse-engine/ui/hud-sight.coax) with the meadow's heights under the
+// line and the village's, castle's and dungeon's walls near it as boxes.
+// The walls near the line from the eye to (bx, bz), lifted to world heights, and the meadow under it.
+XcSightIn :: struct { eye: [3] f32; near: [1] xvillage.EvNear; land: [cc.HUD_SIGHT_LAND] f32; nl: int; }
+xc_sight_in :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32, o: [] XcSightIn) {
+  u := x[0].u[..]; o[0].eye = [3] f32.[u[16], u[17], u[18]];
+  dx := bx - u[16]; dz := bz - u[18]; mx := (u[16] + bx) * 0.5; mz := (u[18] + bz) * 0.5;
+  xvillage.ev_near_radius(o[0].near[..], mx, mz, 0.5 * sqrt(dx * dx + dz * dz) + 1, true);
+  g := xmeadow.exp_height(mx, mz);
+  for w: 0..<o[0].near[0].wall_n { q := w * 6; o[0].near[0].walls[q + 1] += g; o[0].near[0].walls[q + 4] += g; }
+  o[0].nl = cc.hud_sight_land_n(o[0].eye, bx, foot, bz, tall); if o[0].nl > cc.HUD_SIGHT_LAND { o[0].nl = cc.HUD_SIGHT_LAND; }
+  for k: 0..<o[0].nl { p := cc.hud_sight_land_at(o[0].eye, bx, foot, bz, tall, k); o[0].land[k] = meadow_y(p[0], p[1]); }
+}
+xc_sight_shows :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32) -> bool {
+  i: [1] XcSightIn; xc_sight_in(x, bx, foot, bz, tall, i[..]);
+  return cc.hud_sight_shows(i[0].eye, bx, foot, bz, tall, i[0].land[..], i[0].nl, i[0].near[0].walls[0..<i[0].near[0].wall_n * 6], i[0].land[0..<0], i[0].land[0..<0]);
+}
+xc_sight_step :: (x: [] XcCombat, h: cc.HudSight, bx: f32, foot: f32, bz: f32, tall: f32, dt: f32) -> cc.HudSight {
+  i: [1] XcSightIn; xc_sight_in(x, bx, foot, bz, tall, i[..]);
+  return cc.hud_sight_after(h, i[0].eye, bx, foot, bz, tall, i[0].land[..], i[0].nl, i[0].near[0].walls[0..<i[0].near[0].wall_n * 6], i[0].land[0..<0], i[0].land[0..<0], dt);
+}
+#test "experimental: a foe behind a village wall has no plate's sight; one in the open has" #steps 400000000 {
+  x: [1] XcCombat;
+  // in the open at the spawn: shows
+  x[0].u[16] = 0; x[0].u[17] = meadow_y(0, 0) + 1.8; x[0].u[18] = 0;
+  #assert xc_sight_shows(x[..], 0, meadow_y(0, 10), 10, 1.7);
+  // the first wall near the village's houses: the eye 8 m before its thin side, the foe 2 m past it
+  near: [1] xvillage.EvNear; xvillage.ev_near_radius(near[..], -18, -23, 4, true); #assert near[0].wall_n > 0;
+  w := near[0].walls; g := xmeadow.exp_height(-18, -23);
+  found := false;
+  for i: 0..<near[0].wall_n {
+    o := i * 6; if w[o + 4] - w[o + 1] < 2.5 { continue; }
+    cx := (w[o] + w[o + 3]) * 0.5; cz := (w[o + 2] + w[o + 5]) * 0.5; thin_x := w[o + 3] - w[o] < w[o + 5] - w[o + 2];
+    if thin_x && w[o + 5] - w[o + 2] < 3 { continue; } if !thin_x && w[o + 3] - w[o] < 3 { continue; }
+    ex := ifx thin_x then w[o] - 8 else cx; ez := ifx thin_x then cz else w[o + 2] - 8;
+    bx := ifx thin_x then w[o + 3] + 2 else cx; bz := ifx thin_x then cz else w[o + 5] + 2;
+    x[0].u[16] = ex; x[0].u[17] = g + w[o + 1] + 1.2; x[0].u[18] = ez;
+    #assert !xc_sight_shows(x[..], bx, g + w[o + 1], bz, 1.7);
+    found = true; break;
+  }
+  #assert found;
+}
+xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
+  u := x[0].u[..];
+  dx := wx - u[16]; dy := wy - u[17]; dz := wz - u[18];
+  z := dx * u[20] + dy * u[21] + dz * u[22];
+  if z < 0.2 { return XcAt.{}; }
+  r := dx * u[24] + dy * u[25] + dz * u[26];
+  up := dx * u[28] + dy * u[29] + dz * u[30];
+  return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
+}
+// The camera xc_proj projects through, as the shared plates take it (metaverse-engine/ui/hud-plates.coax).
+xc_plate_view :: (x: [] XcCombat, w: f32, h: f32) -> cc.HudPlateView {
+  u := x[0].u[..];
+  return cc.HudPlateView.{eye = [3] f32.[u[16], u[17], u[18]], fwd = [3] f32.[u[20], u[21], u[22]], right = [3] f32.[u[24], u[25], u[26]],
+                          up = [3] f32.[u[28], u[29], u[30]], focal = u[19], cx = u[23], cy = u[27], w = w, h = h};
+}
+// The column's height, CSS px: its header, and when open its twelve rows.
+xc_wild_next :: (mask:int,after:int)->int {
+  for k:1..<MON_N { form:=(after+k)%MON_N; if (mask&(1<<form))!=0 { return form; } }
+  return after;
+}
+xc_wild_choice :: (mask:int,choice:int)->int {
+  if (mask&(1<<choice))!=0 { return choice; }
+  return xc_wild_next(mask,0);
+}
+xc_wild_options :: (x:[]XcCombat)->[2]int {
+  c:=x[0].b[0].c[0]; known:=rs_wild_mask(c);
+  eligible:=rs_wild_default(c)|RS_WILD_CAT;
+  return [2]int.[xc_wild_choice(known,x[0].wild_old),xc_wild_choice(eligible-known,x[0].wild_new)];
+}
+// The wild-shape row's button i (class-menu.coax CM_WILD): 0 the next known form, 1 the next new one, 2 REPLACE.
+xc_wild_pick :: (x:[]XcCombat,i:int)->bool {
+  c:=x[0].b[0].c[0..<1];
+  if !c[0].wild_swap { return false; }
+  choice:=xc_wild_options(x);
+  known:=rs_wild_mask(c[0]); eligible:=rs_wild_default(c[0])|RS_WILD_CAT;
+  if i==0 { x[0].wild_old=xc_wild_next(known,choice[0]); return true; }
+  if i==1 { x[0].wild_new=xc_wild_next(eligible-known,choice[1]); return true; }
+  if i!=2 { return false; }
+  if rs_wild_swap(c,choice[0],choice[1]) {
+    slot:=xc_slot_of(x,FB_WILD);
+    if slot>=0 { x[0].bar[slot].opt=choice[1]; }
+    x[0].wild_old=0; x[0].wild_new=0;
+  }
+  return true;
+}
+
+xc_rest_request :: (s:[] EgZone,request:int)->bool {
+  x:=s[0].xc[..]; cr:=s[0].creator[..];
+  if !cr[0].experimental || !x[0].started { return false; }
+  settled:=x[0].rest_seen && x[0].rest_settled && !cr[0].airborne && !cr[0].moving && !cr[0].walk.on &&
+    x[0].pend<0 && !sprint.sprint_on(x[0].dash[0],cr[0].clock) && (s[0].held & (HOLD_W|HOLD_A|HOLD_S|HOLD_D|HOLD_JUMP))==0 && !s[0].stick_on;
+  ok:=rs_rest_control(x[0].b[..],0,request,settled);
+  x[0].rest_refused=!ok; xc_sync_permissions(s); xc_sync_vitals(s); return ok;
+}
+xc_rest_label :: (c:RsCreature)->string {
+  if c.long_rest.phase==2 { return "REST INTERRUPTED"; }
+  if c.long_rest.phase==1 {
+    if c.long_rest.mode==1 { return "REST: SLEEPING"; }
+    if c.long_rest.mode==3 { return "REST: EXERTION"; }
+    return "REST: WATCHING";
+  }
+  if c.rest.phase==1 { return "SHORT REST"; }
+  if c.rest.phase==2 { return "SHORT REST: CHOOSE HIT DICE"; }
+  return "REST";
+}
+XC_REST_REQUESTS :: [5]int.[RS_REST_SHORT,RS_REST_SLEEP,RS_REST_WATCH,RS_REST_DIE,RS_REST_END];
+// ---- Experimental on Everglade's class menus (everglade/hud/class-bar.coax, #13092, #13147): REST's
+// choices in the menu your portrait opens, as every Everglade zone has them; nothing of it is a button
+// over the bar. The picker (class-menu.coax cm_pick) keeps CLASSES and LEVEL. The rest choices follow
+// how your rest stands, as Everglade II's room offers them. K turns knocking out on and off (xc_key).
+xc_rest_choices :: (c:RsCreature,out:[]int)->int {
+  if c.long_rest.phase==2 { out[0]=RS_REST_SLEEP; out[1]=RS_REST_WATCH; out[2]=RS_REST_END; return 3; }
+  if c.long_rest.phase==1 { out[0]=ifx c.long_rest.mode==1 then RS_REST_WATCH else RS_REST_SLEEP; out[1]=RS_REST_END; return 2; }
+  if c.rest.phase==2 { out[0]=RS_REST_DIE; out[1]=RS_REST_END; return 2; }
+  if c.rest.phase==1 { out[0]=RS_REST_END; return 1; }
+  out[0]=RS_REST_SHORT; out[1]=RS_REST_SLEEP; return 2;
+}
+xc_facts :: (s:[] EgZone)->EgBarFacts {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; f:EgBarFacts;
+  if !cr[0].experimental || !x[0].started { return f; }
+  c:=x[0].b[0].c[0];
+  if c.hp>0 { f.rest_n=xc_rest_choices(c,f.rest[..]); }
+  f.resting=c.long_rest.phase==1 || c.long_rest.phase==2 || c.rest.phase>0;
+  f.rest_say=ifx x[0].rest_refused then "REST UNAVAILABLE" else ifx f.resting then xc_rest_label(c) else "";
+  return f;
+}
+// ---- the bar on an upright phone (everglade/zone-touch.coax zone_compact, #13189): one row. The slots
+// that fit it, less one, stand in it, and the last place is MORE, which opens the rest in rows over it
+// and shuts them again. Everywhere else the bar is as it was (class-look.coax xc_slot_at).
+// The slots in the row before MORE; all of them when they fit (no MORE).
+xc_more_n :: (x: [] XcCombat) -> int {
+  if !x[0].compact { return x[0].bar_n; }
+  per := xc_slot_row(x[0].w, x[0].k); return ifx x[0].bar_n <= per then x[0].bar_n else per - 1;
+}
+xc_has_more :: (x: [] XcCombat) -> bool { return xc_more_n(x) < x[0].bar_n; }
+// A slot behind MORE while it is shut: under the screen, never drawn or pressed.
+xc_slot_hidden :: (x: [] XcCombat, i: int) -> bool { return xc_has_more(x) && i >= xc_more_n(x) && !x[0].more; }
+// MORE's place: the row's last.
+xc_more_box :: (x: [] XcCombat) -> [4] f32 { m := xc_more_n(x); return xc_slot_at(m + 1, m, x[0].w, x[0].h, x[0].k); }
+// Slot i, device px: x0, y0, x1, y1.
+xc_slot :: (x: [] XcCombat, i: int) -> [4] f32 {
+  w := x[0].w; h := x[0].h; k := x[0].k; m := xc_more_n(x);
+  if m >= x[0].bar_n { return xc_slot_at(x[0].bar_n, i, w, h, k); }
+  per := m + 1;
+  if i < m { return xc_slot_at(per, i, w, h, k); }
+  if !x[0].more { r := xc_slot_at(per, m, w, h, k); return [4] f32.[r[0], h + 1000 * k, r[2], h + 1000 * k + r[3] - r[1]]; }
+  j := i - m; row := j / per; count := rs_min(per, x[0].bar_n - m - row * per);
+  return xc_slot_at(count, j % per, w, h - f32(row + 1) * f32(XC_STEP) * k, k);
+}
+#test "an upright phone's bar is one row: the slots that fit less one, then MORE, which opens the rest over it" #steps 400000000 {
+  x: [1] XcCombat; x[0].bar_n = 9; x[0].w = 390 * 3; x[0].h = 844 * 3; x[0].k = 3;
+  #assert !xc_has_more(x[..]) && xc_slot(x[..], 8)[1] > xc_slot(x[..], 0)[1];   // not compact: two rows, the first over, as before
+  x[0].compact = true;
+  #assert xc_more_n(x[..]) == 5 && xc_has_more(x[..]);
+  for i: 0..<5 { #assert xc_slot(x[..], i)[1] == xc_slot(x[..], 0)[1] && !xc_slot_hidden(x[..], i) && xc_slot(x[..], i)[2] <= xc_more_box(x[..])[0]; }
+  for i: 5..<9 { #assert xc_slot_hidden(x[..], i) && xc_slot(x[..], i)[1] > x[0].h; }
+  #assert xc_bar_top(x[..]) == xc_slot(x[..], 0)[1] && xc_more_box(x[..])[1] == xc_slot(x[..], 0)[1] && xc_more_box(x[..])[2] <= x[0].w;
+  x[0].more = true;
+  for i: 5..<9 { r := xc_slot(x[..], i); #assert !xc_slot_hidden(x[..], i) && r[3] <= xc_slot(x[..], 0)[1] && r[0] >= 0 && r[2] <= x[0].w; }
+  // a bar that fits has no MORE
+  x[0].bar_n = 6; #assert !xc_has_more(x[..]) && xc_slot(x[..], 5)[1] == xc_slot(x[..], 0)[1];
+}
+// The bar's top (its highest slot's), device px.
+xc_bar_top ::(x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot(x, i)); if r.y0<top { top=r.y0; } } return top; }
+xc_side_geo :: (s:[] EgZone)->EgSideGeo { return xc_layout(s).side; }
+// What a menu row asks: a rest choice goes to the rules (xc_rest_request).
+xc_side_act :: (s:[] EgZone,f:EgBarFacts,act:int) {
+  j:=act-EG_DO_REST; if j>=0 && j<f.rest_n { _:=xc_rest_request(s,f.rest[j]); }
+}
+// Your portrait plate's box, top right (xc_portrait): a press on it opens the class menus.
+xc_portrait_box :: (x:[]XcCombat)->cc.HudPrim { wide:=f32(cc.EG_PORTRAIT_W); return cc.eg_portrait_box(x[0].w-(wide+16)*x[0].k,14*x[0].k,wide,x[0].k); }
+XC_PORTRAIT_FOOT :: 124.0;   // CSS px: the portrait plate's foot, its slot gems and conditions under it (xc_portrait)
+// Where the picker and the class menus sit. The picker: top left beside your portrait where the page
+// is wide enough, under it on a phone held upright; it keeps over the bar. The menus hang under your
+// portrait, down to the bar at most; where one would cover the picker, the picker steps aside while it
+// is up (xc_pick_hidden).
+// cover: what the open class menu and its tip take (empty when shut)
+XcLayout :: struct { pick: CmPick; side: EgSideGeo; cover: cc.HudPrim; }
+xc_layout :: (s:[] EgZone)->XcLayout {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
+  lay:XcLayout; bar:=xc_bar_top(x);
+  if !x[0].dr.on { sf:=xc_facts(s); lay.side=eg_side_geo(sf,w,h,k,xc_portrait_box(x),bar-8*k); lay.cover=eg_menu_cover(sf,lay.side,x[0].side); }   // the druid's own bar has no class menus
+  beside:=w-(f32(cc.EG_PORTRAIT_W)+16)*k-24*k; room:=beside>=320*k;
+  wide:=ifx room then beside else w-24*k; if wide>460*k { wide=460*k; }
+  y0:=ifx room then 20*k else (XC_PORTRAIT_FOOT+8)*k;
+  wild:=x[0].b[0].c[0].wild_swap; open:=x[0].open;
+  if cr[0].dev_animations && !cr[0].preview_collapsed {
+    // the developer's ANIMATIONS list has the top: the picker at the foot of the page
+    p:=cm_pick(12*k,0,wide,h-20*k,open,wild,w,h,k); lay.pick=cm_pick(12*k,h-20*k-cm_pick_height(p),wide,h-20*k,open,wild,w,h,k);
+    return lay;
+  }
+  if cr[0].dev_animations && y0<(52+f32(XC_GAP))*k { y0=(52+f32(XC_GAP))*k; }   // under its header
+  // over the bar: clear of its emblem and class line where the picker reaches the bar's middle
+  lx:=w; rx:=0.0f32; for i:0..<x[0].bar_n { sb:=cc.eg_box4(xc_slot(x, i)); if sb.x0<lx { lx=sb.x0; } if sb.x1>rx { rx=sb.x1; } }
+  bfoot:=ifx 12*k+wide>(lx+rx)*0.5-40*k then bar-38*k else bar-14*k;
+  lay.pick=cm_pick(12*k,y0,wide,bfoot,open,wild,w,h,k);
+  return lay;
+}
+// A slot's card, device px (empty with none): over the slot under the pointer, clear of the bar's
+// emblem.
+xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
+  if x[0].arranging || x[0].hover<0 || x[0].hover>=x[0].bar_n || x[0].bar[x[0].hover].kind==XC_BREATH { return cc.Box.{}; }
+  k:=x[0].k; w:=x[0].w; r:=cc.eg_box4(xc_slot(x, x[0].hover));
+  cw:=358*k; ch:=171*k; cx:=(r.x0+r.x1)/2;
+  if cx-cw/2<12*k { cx=12*k+cw/2; }
+  if cx+cw/2>w-12*k { cx=w-12*k-cw/2; }
+  y1:=r.y0-30*k; et:=xc_bar_top(x)-38*k; if et<y1 { y1=et; }
+  return cc.Box.{x0=cx-cw/2,y0=y1-ch,x1=cx+cw/2,y1=y1};
+}
+// The picker steps aside while a slot's card covers it, or a class menu or its tip does.
+// A page with one class of its own shows no CLASSES picker: the druid's grove, the Archery Range.
+xc_own_kit :: (x:[]XcCombat)->bool { return x[0].dr.on || x[0].own_kit; }
+xc_pick_hidden :: (x:[]XcCombat,lay:XcLayout)->bool {
+  c:=xc_card_box(x,lay); pb:=cm_pick_panel(lay.pick);
+  if c.x1>c.x0 && c.x0<pb.x1 && c.x1>pb.x0 && c.y0<pb.y1 && c.y1>pb.y0 { return true; }
+  return cc.eg_meets(lay.cover,cc.hud_box(pb.x0,pb.y0,pb.x1,pb.y1));
+}
+xc_pick :: (s:[] EgZone)->CmPick { return xc_layout(s).pick; }
+// The coordinates and the FPS plaque (charactercreator.coax coord_draw, everglade/hud/parts.coax eg_fps),
+// bottom right: over the bar's tray, its emblem and class line where a narrow page brings them under
+// it, and left out while a class menu or its tip is up over that corner.
+xc_corner :: (s:[] EgZone,lay:XcLayout,out:[]f32,at:int)->int {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; k:=x[0].k; w:=x[0].w; h:=x[0].h;
+  if x[0].compact && !s[0].lines { cr[0].gfx_box=cc.Box.{}; return at; }   // an upright phone: the world, unless ?net asks for them (#13189)
+  top:=h+1000; cx0:=w-240*k;
+  lx:=w; rx:=0.0f32;
+  for i:0..<x[0].bar_n { sr:=cc.eg_box4(xc_slot(x, i)); if sr.x0<lx { lx=sr.x0; } if sr.x1>rx { rx=sr.x1; } if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
+  // the emblem over the bar's middle and the class and target line beside it
+  if top<h+1000 && cx0<(lx+rx)*0.5+200*k { et:=xc_bar_top(x)-42*k; if et<top { top=et; } }
+  if cc.eg_meets(lay.cover,cc.hud_box(cx0,top-40*k,w,h)) { return at; }
+  fh:=ifx top+7*k<h then top+7*k else h;
+  c:=xc_card_box(x,lay); if c.x1>c.x0 && c.x1>cx0 && c.y1>fh-52*k && c.y0<fh { return at; }   // a slot's card is up over the corner
+  n:=cc.coord_draw(cr[0],out,at,w,fh,k);
+  gb:[1]cc.Box;n=cc.eg_fps_gfx(cr[0].ui,cr[0].fps[0],cast(string)cr[0].gfx[0..<cr[0].gfx_n],out,n,w,fh,k,gb[..]);cr[0].gfx_box=gb[0];   // the graphics tier beside it (everglade/zone.coax zone_quality_frame)
+  return n;
+}
+xc_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
+xc_text_w :: (t: string, cap: f32) -> f32 {
+  em := cc.sans_em(cap); w := 0.0f32;
+  for i: 0..<t.count { c := cast(int) t[i]; if c >= 32 && c <= 126 { w += f32(cc.EG_BODY_WIDTH[c - 32]) / f32(cc.EG_FONT_UPM) * em; } }
+  return w;
+}
+// A slot's words along its top or its bottom edge, centred, made smaller until they fit inside it.
+xc_fit_cap :: (t: string, cap: f32, room: f32) -> f32 { w := cc.face_width(t, cap, cc.HUD_FACE_BODY); return ifx w > room && w > 0 then cap * room / w else cap; }
+// ui and parent: the layout trace and the slot's place in it (#13076), or empty and cc.UIT_NONE.
+xc_caption :: (ui: [] cc.UitTrace, parent: int, out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, ink: Ink, k: f32) -> int {
+  room := r.x1 - r.x0 - 6 * k; c := xc_fit_cap(t, cap, room); w := cc.face_width(t, c, cc.HUD_FACE_BODY);
+  return cc.ttext(ui, parent, out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink, "");
+}
+
+// An area's outline and guides on the meadow (metaverse-engine/action/area-aim.coax area_aim_point), lifted by
+// y, each piece drawn while both its ends are before the camera.
+xc_area_draw :: (x: [] XcCombat, a: aa.AreaAim, y: f32, out: [] f32, at: int, k: f32, glow: f32) -> int {
+  n := at; last: XcAt;
+  for p: 0..<aa.area_aim_points(a) {
+    w := aa.area_aim_point(a, p);
+    q := xc_proj(x, w[0], meadow_y(w[0], w[1]) + y + 0.08, w[1]);
+    g := ifx aa.area_aim_guide(p) then 0.55f32 else 1.0f32;
+    if aa.area_aim_joined(a, p) && q.ok && last.ok { n = xc_line(out, n, last.x, last.y, q.x, q.y, (ifx aa.area_aim_guide(p) then 1.1f32 else 3.0f32) * k, 0.35 * glow * g, 0.80 * glow * g, glow * g); }
+    last = q;
+  }
+  return n;
+}
+// The same look angles apply at the familiar's eye. Only view and lighting
+// uniforms change; the player and familiar keep their own world positions.
+xc_familiar_view :: (s:[] EgZone,u:[]f32)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..]; f:=rs_familiar_observer(b,0);
+  if u.count>65 { u[65]=0; }
+  if f==0 || rs_has(b[0].c[f],RS_BLINDED) { return false; }
+  px:=x[0].familiar_x; pz:=x[0].familiar_z;
+  u[16]=px; u[17]=meadow_y(px,pz)+0.28; u[18]=pz;
+  if u.count>65 { u[65]=f32(rs_familiar_darkvision(b[0].c[f]))*f32(XC_SQ)/5; }
+  if u.count>=104 {
+    for i:68..<104 { u[i]=0; }
+    cc.dungeon_light(s[0].creator[..],u,px,pz);
+  }
+  return true;
+}

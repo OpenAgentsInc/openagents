@@ -303,6 +303,8 @@ import {mediaSource} from "./media-source.js";
 import {actionSource} from "./action-source.js";
 import {warmPage, enterPage} from "./zone-host.js";
 import { shellTakes, shellHeld, shellGo, shellDrawn, shellWatch } from "./shell.js";
+import { importedMemoryPages, createWasiStub, align } from "./host-wasm.js";
+import { randomId, kept, styleFacts, buildPageFacts, sendLifeBeacon } from "./host-page.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 // The app shell (docs/app-shell.md, shell.js): a page of the shell's (data-shell) opened at the top of the window becomes
@@ -502,31 +504,7 @@ function retireTransport() {
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
 // ---- engine: compile, check its layout, keep or start over its state
-// The initial page count an app's module declares for its imported memory (0 if none), read from
-// the import section: an app with large static buffers declares more than the shared memory starts with.
-function importedMemoryPages(bytes) {
-  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let i = 8;
-  const leb = () => { let v = 0, shift = 0, c; do { c = b[i++]; v += (c & 0x7f) * 2 ** shift; shift += 7; } while (c & 0x80); return v; };
-  const skipName = () => { const n = leb(); i += n; };
-  while (i < b.length) {
-    const id = b[i++], size = leb(), end = i + size;
-    if (id === 2) {
-      for (let n = leb(); n > 0; n--) {
-        skipName(); skipName();
-        const kind = b[i++];
-        if (kind === 0) leb();                                   // function: type index
-        else if (kind === 1) { i++; const f = leb(); leb(); if (f & 1) leb(); } // table
-        else if (kind === 2) { const f = leb(); return leb(); }   // memory: flags, then the initial pages
-        else if (kind === 3) { i += 2; }                         // global: type, mutability
-        else return 0;
-      }
-      return 0;
-    }
-    i = end;
-  }
-  return 0;
-}
+// importedMemoryPages, createWasiStub, and align live in ./host-wasm.js (#13848).
 
 let stateSaid = ""; // what the last engine swap did with the state, for the swap's dev note
 async function loadEngine(bytes, generation) {
@@ -688,26 +666,7 @@ async function loadEngine(bytes, generation) {
   return true;
 }
 
-function wasiStub(module, name) {
-  if (module !== "wasi_snapshot_preview1") return unsupportedImport(module, name);
-  if (name === "fd_write") return (fd, iovs, n, written) => {
-    const v = new DataView(memory.buffer); let text = "", total = 0;
-    for (let i = 0; i < n; i++) {
-      const p = v.getUint32(iovs + i * 8, true), len = v.getUint32(iovs + i * 8 + 4, true);
-      text += new TextDecoder().decode(new Uint8Array(memory.buffer, p, len)); total += len;
-    }
-    if (fd === 2 && text.trim()) lastStderr = { text: text.trimEnd().split("\n").pop(), at: performance.now() };   // a Coax trap prints PATH:LINE: WHAT, then stops (crashProps)
-    v.setUint32(written, total, true); (fd === 2 ? console.error : console.log)(text.trimEnd()); return 0;
-  };
-  if (name === "proc_exit") return (code) => { throw new Error(`${app} exited (${code})`); };
-  // Existing libc optional probes may be unavailable. Return WASI ENOSYS,
-  // without pretending to initialize their output buffers. All other imports,
-  // especially random_get, refuse before the module can run.
-  if (["fd_fdstat_get", "fd_seek", "fd_close", "clock_time_get"].includes(name)) return () => 52;
-  return unsupportedImport(module, name);
-}
-
-const align = (n, a) => Math.ceil(n / a) * a;
+const wasiStub = createWasiStub({ getMemory: () => memory, app, onStderr: (entry) => { lastStderr = entry; }, unsupportedImport });
 
 // ---- sockets: bytes between a WebSocket and the app, nothing else
 const SOCKETS = 4, SOCKET_KIND = 256;
@@ -911,51 +870,9 @@ function viewer() {
 }
 let viewerIn = false;      // the viewer's lines were not empty: someone is logged in
 let viewerAdmin = false;   // the viewer's lines said A|1: an admin, who may edit a world (the server decides each write)
-const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
-// `store` gives the storage: naming it can throw too, in a sandboxed page with no origin (a realm on
-// the realm origin, #13432), so it is asked for inside the try.
-function kept(store, key) {
-  try { const s = store(), v = s.getItem(key); if (v) return [v, false]; const n = randomId(); s.setItem(key, n); return [n, true]; }
-  catch { return [randomId(), true]; }   // storage refused (a private window, a sandboxed frame): this page only
-}
-// The realm's style, zones and clock (docs/metaverse/art-styles.md, The style field).
-function styleFacts() {
-  const d = script?.dataset || {}, out = { style: d.style || "" };
-  for (const z of (d.zones || "").split(/\s+/)) { const [id, st, v] = z.split(":"); if (id && st) out[`zone.${id}`] = st; if (id && st && v) out[`zone.${id}.variant`] = v; }
-  // an anime realm's variant (data-variant); the URL's ?variant= picks another for shots
-  const pick = new URLSearchParams(location.search).get("variant");
-  if (d.variant || pick) out.variant = pick && /^[a-z]{1,16}$/.test(pick) ? pick : d.variant || "";
-  const pin = new URLSearchParams(location.search).get("clock");
-  out.clock = pin !== null && /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/.test(pin) ? `fixed:${pin}` : pin === "cycle" || pin === "real" ? pin : d.clock || "";
-  // the visitor's local time of day, 0 midnight to 1, for a clock that is real
-  const t = new Date();
-  out.day = ((t.getHours() * 3600 + t.getMinutes() * 60 + t.getSeconds()) / 86400).toFixed(5);
-  return out;
-}
 const GPU_KIND = 613;
 let gpuFacts = {};
-function pageFacts() {
-  const [tab, fresh] = kept(() => sessionStorage, "coaxial.tab"), [visitor] = kept(() => localStorage, "coaxial.visitor");
-  let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
-  const nav = performance.getEntriesByType?.("navigation")?.[0], fcp = performance.getEntriesByName?.("first-contentful-paint")?.[0];
-  const clean = (v) => String(v ?? "").replace(/[\r\n]/g, " ");
-  return Object.entries({ tab, fresh: fresh ? 1 : 0, visitor, now: Date.now(), nav: performance.now().toFixed(1), url: location.href,
-    ref: document.referrer, ua: navigator.userAgent, lang: agentPin?.locale || navigator.language, tz: agentPin?.timeZone || tz, sw: screen.width, sh: screen.height,
-    vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
-    touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
-    cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
-    settled: (() => { try { return localStorage.getItem("verse.quality.settled") || ""; } catch { return ""; } })(), ...gpuFacts,
-    frame_hz: globalThis.coaxialPreferredFrameRate || 0, minimum_hz: globalThis.coaxialMinimumFrameRate || 0,
-    sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
-    settings: (() => { try { return localStorage.getItem("verse.settings") || ""; } catch { return ""; } })(),
-    gyro: (() => { try { return localStorage.getItem("verse.gyro") || ""; } catch { return ""; } })(),
-    focused: document.hasFocus() ? 1 : 0,
-    clip: globalThis.coaxialClip === true ? 1 : 0,
-    webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
-    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "", ruleset: script?.dataset.ruleset || "",
-    fork: script?.dataset.fork || "", rules: script?.dataset.rules || "", ...styleFacts() })
-    .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
-}
+const pageFacts = () => buildPageFacts({ script, agentPin, storedQuality, gpuFacts, player, realmId, slot });
 addEventListener("visibilitychange", () => {hostLifeEvent(document.hidden?4:5);send(document.hidden ? HIDDEN_KIND : SHOWN_KIND);});
 const NET_KIND = 612;
 addEventListener("online", () => {hostLifeEvent(6);send(NET_KIND, "1");});
@@ -970,14 +887,7 @@ addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reaso
 // or renderer that stopped (crash). One event in analytics.coax's batch shape, sent as a beacon to the
 // same ingest, in this tab's session ("c" and the tab id, as analytics.coax names it) under the realm's
 // page name (data-realm, else the app). The message only, no page data.
-function lifeBeacon(ev, msg, more = null) {
-  if (location.protocol === "file:" || !navigator.sendBeacon) return;
-  const [tab] = kept(() => sessionStorage, "coaxial.tab");
-  if (!/^[0-9a-f]{8,64}$/.test(tab)) return;
-  const body = { sid: `c${tab}`, events: [{ ev, page: realmId || app, ct: Date.now(), p: { msg: String(msg || "").slice(0, 80), webgpu: !!navigator.gpu, ...(more || {}) } }] };
-  if (navigator.webdriver) body.auto = "webdriver";
-  try { navigator.sendBeacon("/api/analytics/events", new Blob([JSON.stringify(body)], { type: "text/plain" })); } catch {}
-}
+const lifeBeacon = (ev, msg, more = null) => sendLifeBeacon(realmId, app, ev, msg, more);
 
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {

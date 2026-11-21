@@ -39,7 +39,7 @@ write_parts() {   # DIR
 }
 image() {   # DIR: what deploy.sh sends to Cloud Build
   mkdir -p "$1/server"
-  cp "$here/serve.c" "$root/metaverse/voice-host/ws.c" "$root/metaverse/voice-host/ws.h" "$1/server/"
+  cp "$here/serve.c" "$here/serve-routes.h" "$here/serve-watch.h" "$here/serve-code.h" "$root/metaverse/voice-host/ws.c" "$root/metaverse/voice-host/ws.h" "$1/server/"
   sed -i.bak 's#"../../metaverse/voice-host/ws.h"#"ws.h"#' "$1/server/serve.c" && rm -f "$1/server/serve.c.bak"
   write_parts "$1/server" > /dev/null
   cp "$here/Dockerfile" "$1/"
