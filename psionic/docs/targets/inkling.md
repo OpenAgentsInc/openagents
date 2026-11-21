@@ -2,8 +2,10 @@
 
 Target specification, 2026-11-20. Based on Thinking Machines Lab's
 [Introducing Inkling 2 Mini](https://thinkingmachines.ai/news/inkling-2-mini/)
-announcement. No weights were downloaded and no upstream runtime was executed
-for this note. Part XXVII of [the Psionic book](../../book/SUMMARY.md)
+announcement. For live Apple Silicon measurements of the native Psionic Metal
+GGUF runtime (`55bf398569`) against `llama-server`, see
+[Inkling 2 Mini Benchmark: Psionic Metal vs llama.cpp Metal](inkling-benchmark.md).
+Part XXVII of [the Psionic book](../../book/SUMMARY.md)
 (chapters 266–271) builds native Psionic support from original NVFP4/MXFP8
 weights through Metal execution, `/v1/responses` tool calling, and
 OpenAgents Desktop integration.
