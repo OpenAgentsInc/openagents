@@ -418,6 +418,70 @@ agy_turn_failed :: (x: [] CuEngine, result: string) -> string {
   return cast(string) x[0].notice[0..<x[0].notice_n];
 }
 
+// ---------------------------------------------------------------- 1.5 reliability helpers (#13835)
+
+// Normalized per-turn usage from session/prompt's result.usage.
+// Prevents double-counting thoughtTokens inside outputTokens (t3code #39686).
+AgyUsage :: struct {
+  input: int;
+  cached_read: int;
+  cached_write: int;
+  thought: int;
+  output: int;      // non-thought output tokens
+  total: int;
+}
+
+agy_parse_usage :: (usage_json: string) -> AgyUsage {
+  u: AgyUsage;
+  if usage_json.count == 0 { return u; }
+  iv := cl_int(usage_json, "inputTokens"); if iv.ok { u.input = iv.value; }
+  cr := cl_int(usage_json, "cachedReadTokens"); if cr.ok { u.cached_read = cr.value; }
+  cw := cl_int(usage_json, "cachedWriteTokens"); if cw.ok { u.cached_write = cw.value; }
+  th := cl_int(usage_json, "thoughtTokens"); if th.ok { u.thought = th.value; }
+  ov := cl_int(usage_json, "outputTokens"); raw_out := ifx ov.ok then ov.value else 0;
+  tv := cl_int(usage_json, "totalTokens"); if tv.ok { u.total = tv.value; }
+  // When agy folds thoughtTokens into outputTokens (total == input + cached_read + cached_write + raw_out),
+  // subtract thoughtTokens so output is never double-counted alongside thought.
+  if u.thought > 0 && raw_out >= u.thought && u.total > 0 && u.input + u.cached_read + u.cached_write + raw_out == u.total {
+    u.output = raw_out - u.thought;
+  } else {
+    u.output = raw_out;
+  }
+  return u;
+}
+
+// Detect a mid-turn 404 or upstream error recorded in agy's brain/ transcript log (#13835).
+// Returns a retryable error summary in out, or "" for normal log lines.
+agy_log_upstream_error :: (line: string, ar: [] ClArena, out: [] u8) -> string {
+  if line.count == 0 { return ""; }
+  st := cl_str(ar, line, "status");
+  content := cl_str(ar, line, "content");
+  if content.count == 0 { content = cl_str(ar, line, "error"); }
+  is_err := st == "ERROR" || st == "FAILED";
+  has_404 := s_has(content, "404") || s_has(line, "HTTP 404") || s_has(line, "status 404") || s_has(line, "NOT_FOUND");
+  has_up := s_has(content, "RESOURCE_EXHAUSTED") || s_has(content, "UNAVAILABLE") || s_has(content, "upstream error");
+  if !is_err && !has_404 && !has_up { return ""; }
+  if has_404 {
+    n := cl_copy(out, "Antigravity upstream 404 error (retryable)");
+    if content.count > 0 && content.count <= 200 {
+      n += cl_copy(out[n..<out.count], ": ");
+      n += cl_copy(out[n..<out.count], content);
+    }
+    return cast(string) out[0..<n];
+  }
+  if has_up || is_err {
+    msg := ifx content.count > 0 then content else "Antigravity upstream error (retryable).";
+    return cast(string) out[0..<cl_copy(out, msg)];
+  }
+  return "";
+}
+
+// True when a patch emitted by agy is a truncated snippet rather than a unified diff (#13835).
+agy_is_snippet_patch :: (patch: string) -> bool {
+  if patch.count == 0 { return false; }
+  return !s_has(patch, "@@ ") || s_has(patch, "\n...\n");
+}
+
 #test "antigravity: a turn whose words are agy's failure notice, with no usage, failed" {
   #assert agy_notice("\n⚠ Selected model is not supported in the selected location.\n") == "Selected model is not supported in the selected location.";
   #assert agy_notice("⚠ RESOURCE_EXHAUSTED (code 429)") == "RESOURCE_EXHAUSTED (code 429)" && agy_notice("Done. ⚠ careful") == "" && agy_notice("⚠  ") == "" && agy_notice("") == "";
@@ -761,4 +825,25 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   // Mid-turn steer while held sends session/prompt directly without session/cancel.
   #assert cue_steer(x, "follow up") && !cue_held_bg(x);
   #assert agy_out_has(x, "session/prompt") && !agy_out_has(x, "session/cancel");
+}
+
+#test "antigravity: 1.5 reliability helpers (thoughtTokens de-dup, mid-turn 404 watcher, snippet patch)" {
+  // 1. thoughtTokens folded into outputTokens is not double-counted
+  u1 := agy_parse_usage("{\"inputTokens\":20482,\"outputTokens\":4146,\"cachedReadTokens\":39899,\"cachedWriteTokens\":0,\"thoughtTokens\":1587,\"totalTokens\":64527}");
+  #assert u1.input == 20482 && u1.cached_read == 39899 && u1.thought == 1587 && u1.output == 2559 && u1.total == 64527;
+  // When thoughtTokens is separate from outputTokens (total == input + cached + output + thought), keep output intact
+  u2 := agy_parse_usage("{\"inputTokens\":100,\"outputTokens\":50,\"cachedReadTokens\":0,\"cachedWriteTokens\":0,\"thoughtTokens\":20,\"totalTokens\":170}");
+  #assert u2.output == 50 && u2.thought == 20;
+
+  // 2. Mid-turn 404 / upstream error detection
+  ab: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  eb: [512] u8;
+  err404 := agy_log_upstream_error("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"ERROR\",\"content\":\"HTTP 404 Not Found\"}", ar[..], eb[..]);
+  #assert s_has(err404, "404") && s_has(err404, "retryable");
+  #assert agy_log_upstream_error("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"All good.\"}", ar[..], eb[..]) == "";
+
+  // 3. Snippet patch detection
+  #assert agy_is_snippet_patch("fn foo() {\n...\n}");
+  #assert !agy_is_snippet_patch("--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-a\n+b\n");
+  #assert !agy_is_snippet_patch("");
 }

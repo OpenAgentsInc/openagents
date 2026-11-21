@@ -371,6 +371,7 @@ cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
       st := cl_str(ar, update, "status");
       if x[0].stall_ms > 0 { cue_tool(x, tid, st); }
       if defer_bg {
+        if !x[0].held_bg && !cue_prompting(x) { x[0].held_bg = true; x[0].held_bg_since = -1; x[0].detached_stream = true; }
         tk := cl_str(ar, update, "kind");
         raw := cl_raw(update, "rawInput");
         is_daemon := cl_bool(raw, "IsDaemon").value;
@@ -378,10 +379,13 @@ cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
       }
     } else if x[0].held_bg {
       if kind == "usage_update" {
-        x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false; x[0].nbg_tools = 0;
+        x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false; x[0].nbg_tools = 0; x[0].bg_subagents = 0;
       } else if kind == "agent_message_chunk" || kind == "agent_thought_chunk" {
         x[0].detached_stream = true;
       }
+    } else if defer_bg && !cue_prompting(x) && (kind == "agent_message_chunk" || kind == "agent_thought_chunk") {
+      // Scheduled wake / post-settle continuation arrived with no prompt open: hold run open & steerable (#13835).
+      x[0].held_bg = true; x[0].held_bg_since = -1; x[0].detached_stream = true;
     }
     return k;
   }
@@ -757,4 +761,20 @@ CUE_T_USAGE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\
   // Once subagent completes or is killed (running == 0), cue_watch releases the held turn.
   cue_bg_subagents_set(x, 0);
   #assert cue_watch(x, 1100) == CUE_WATCH_BG_DONE && !cue_held_bg(x);
+}
+
+#test "scheduled wake runs: detached post-settle stream opens held_bg, accepts steers, and ends on usage_update" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  a := cu_agent_cursor(); a.defer_finalize_background = true; a.steers_with_prompt = true; cue_agent(x, a);
+  cue_test_turn(x, 2);
+  // Settle initial prompt cleanly (no background tools).
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert ev.kind == CuEventKind.answered && !cue_held_bg(x) && !cue_turn_active(x);
+  // Scheduled wake arrives with a detached agent_message_chunk -> opens held_bg and makes turn steerable.
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"text\":\"Timer fired.\"}}}}");
+  #assert cue_held_bg(x) && cue_turn_active(x);
+  // usage_update terminates the detached wake reply cleanly.
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"usage_update\"}}}");
+  #assert !cue_held_bg(x) && !cue_turn_active(x);
 }
