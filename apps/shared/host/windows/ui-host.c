@@ -322,6 +322,7 @@ static LRESULT CALLBACK ui_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       h->dpr = HIWORD(wp) / 96.0f;
       const RECT *r = (const RECT *)lp;
       SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
+      h->stale = 1;
       if (h->app.changed) h->app.changed(h->app.user);
       return 0;
     }

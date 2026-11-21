@@ -46,14 +46,18 @@ build_no="$(sed -n 's/^#define OA_APP_BUILD \([0-9]*\)$/\1/p' "$app_dir/host-mai
 if [[ "$check" == 1 ]]; then work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT; else work="$here/build"; fi
 mkdir -p "$work/c" "$work/res"
 
-# 1. The page, the desktop core, the entropy policy and mcworker, in C (the same C for both arches).
+# 1. The page, the desktop core, the entropy policy, workers and daemon, in C (the same C for both arches).
 "$coax" c "$app_dir/app.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
 "$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
+"$coax" c "$repo/coder/tui/claudeworker.coax" --library > "$work/c/claudeworker.c"
 "$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
+"$coax" c "$repo/coder/tui/host.coax" --run-steps 250000000 --library > "$work/c/coder-host.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs \
   -o "$work/res/components.spv" 2> "$work/res/components.spv.bindings"
+"$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs \
+  -o "$work/res/composition.spv" 2> "$work/res/composition.spv.bindings"
 
 # 2. The icon (from the Mac app's), the manifest and the version, as Windows resources.
 iconset="$work/res/OpenAgents.iconset"
@@ -139,10 +143,18 @@ for arch in "${arches[@]}"; do
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
     -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
   zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
+    "$work/c/claudeworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/claudeworker.exe"
+  zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
     "$work/c/agyworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
     -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/agyworker.exe"
-  cp "$work/res/components.spv" "$out/resources/"
+  zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
+    "$work/c/coder-host.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$p/tls-win32.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/coder-host.exe"
+  cp "$work/res/components.spv" "$work/res/composition.spv" "$out/resources/"
   mkdir -p "$out/resources/fonts" "$out/resources/icons"
   cp "$repo/components/fonts/"Geist* "$out/resources/fonts/"
   cp "$repo/components/icons/"*.svg "$out/resources/icons/"

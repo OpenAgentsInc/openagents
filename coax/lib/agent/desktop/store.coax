@@ -157,6 +157,10 @@ dc_store_toggle_pin :: (s: [] DcStore, id: string) -> bool {
   if s[0].x[0].chats[i].pinned >= 0 { dk_unpin(s[0].x[..], i); } else { dk_pin(s[0].x[..], i); }
   return dc_store_save(s);
 }
+dc_store_move_pin :: (s: [] DcStore, id: string, to: int) -> bool {
+  i := dk_find(s[0].x[..], id);
+  return dk_move_pin(s[0].x[..], i, to) && dc_store_save(s);
+}
 // CoderStore.remove: the chat's file and its place in the list; it can't be brought back.
 dc_store_remove :: (s: [] DcStore, id: string) -> bool {
   i := dk_find(s[0].x[..], id);
@@ -297,6 +301,8 @@ dc_store_search_chat :: (chat_json: string, query: string, out: [] DcSearchHit) 
   #assert dk_index_parse(x[..], DK_FIXTURE_INDEX) && x[0].n == 4;
   dc_store_sort(x[..]);   // created or updated, newest first: aaa (1763500000.5), bbb (1763400000), ccc (5), foreman (1)
   #assert dk_id(x[..], 0) == "aaa" && dk_id(x[..], 1) == "bbb" && dk_id(x[..], 2) == "ccc" && dk_id(x[..], 3) == "foreman";
+  st: [1] DcStore; st[0].x[0] = x[0];
+  #assert !dc_store_move_pin(st[..], "missing", 0) && !dc_store_move_pin(st[..], "aaa", 0);
 }
 
 #test "desktop core store: full-text search across prompts, replies, and tool titles" {

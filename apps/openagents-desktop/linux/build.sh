@@ -30,8 +30,9 @@ mkdir -p "$work/c" "$work/wl" "$work/resources"
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 
-# 2. Emit the shared component SPIR-V shader.
+# 2. Emit the shared component and composition SPIR-V shaders.
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/resources/components.spv" 2> "$work/resources/components.spv.bindings"
+"$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$work/resources/composition.spv" 2> "$work/resources/composition.spv.bindings"
 
 # 3. Generate Wayland protocol C bindings.
 protocols="$(pkg-config --variable=pkgdatadir wayland-protocols)"
@@ -72,11 +73,19 @@ cp "$repo/components/NOTICE" "$work/resources/NOTICE"
 mv "$work/OpenAgents.new" "$work/OpenAgents"
 echo "built $work/OpenAgents"
 
-# 5. Build mcworker (Microcoder worker) unless --no-worker is passed.
+# 5. Build workers and resident daemon beside OpenAgents unless --no-worker is passed.
 want_worker=1
 for arg in "$@"; do [[ "$arg" == --no-worker ]] && want_worker=0; done
-if [[ "$want_worker" == 1 && -f "$repo/coder/tui/mcworker.coax" ]]; then
-  "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" --build-only >/dev/null 2>&1 || true
+if [[ "$want_worker" == 1 ]]; then
+  coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
+  for pair in "mcworker:mcworker" "claudeworker:claudeworker" "agyworker:agyworker" "host:coder-host"; do
+    src_name="${pair%%:*}"; dst_name="${pair##*:}"
+    if [[ -f "$repo/coder/tui/$src_name.coax" ]]; then
+      COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/$src_name.coax" build-only < /dev/null >/dev/null 2>&1 || true
+      built="$repo/coax/web/build/tools/$src_name-$coax_hash"
+      [[ -x "$built" ]] && cp "$built" "$work/$dst_name"
+    fi
+  done
 fi
 
 # Headless runs draw on Mesa's software Vulkan (lavapipe) when no driver is set.

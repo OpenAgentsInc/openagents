@@ -7,7 +7,15 @@
    are no POSIX modes. The relay store's append-only file (cxstore_*) is not provided here. */
 #include "win32-native.h"
 #include "store-file-native.h"
+#include "entropy-foreign.h"
+#include "secret-read-native.h"
 #include <stdio.h>
+
+/* Parity with store-file-native.c: Windows has no Apple Keychain; returns -2 (unsupported). */
+int64_t cxsecret_read_service(coax_v_u8 service, coax_v_u8 account, coax_v_u8 out) {
+  (void)service; (void)account; (void)out;
+  return -2;
+}
 
 static char fs_path[CXFS_PATH_MAX + 1];
 static size_t fs_path_n;

@@ -34,13 +34,23 @@ typedef struct {
   char exe_dir[OA_PATH];
   char resources[OA_PATH];
   char worker_bin[OA_PATH];
+  char claude_worker_bin[OA_PATH];
+  char agy_worker_bin[OA_PATH];
   char daemon_bin[OA_PATH];
+  char agy_bin[OA_PATH];
+  char agy_model[128];
+  int agy_mode;
+  int worker_is_agy;
+  int foreman_tier;
   char folder[OA_PATH];
   char worktree_path[OA_PATH];
   char worktree_branch[256];
   char worktree_repo[OA_PATH];
   char chat_id[128];
   char update_url[1024];
+  char update_version[128];
+  char update_sha[65];
+  int64_t update_size;
   int dialog, dialog_status;
   int sub_agent_id[OA_SUBAGENTS];
   int sub_active[OA_SUBAGENTS];
@@ -90,6 +100,13 @@ static void refresh_settings_info(DesktopApp *a) {
   oa_core_key_read(cs("claude-key"), vu(ck, (int)sizeof(ck)));
   oa_core_key_read(cs("openrouter-key"), vu(ok, (int)sizeof(ok)));
   cd_settings_info(a->page, ck[0] ? "configured" : "", ok[0] ? "configured" : "", OA_APP_VERSION);
+  const char *agy_status = a->agy_worker_bin[0] ? (a->agy_bin[0] ? a->agy_bin : "agyworker ready") : "agyworker not bundled";
+  cd_settings_agy(a->page, agy_status, a->agy_mode, a->agy_model[0] ? a->agy_model : "default", "");
+  int64_t tier = a->foreman_tier;
+  if (oa_core_daemon_read_foreman(vc(a), (coax_v_s64){&tier, 1})) {
+    a->foreman_tier = (int)tier;
+  }
+  cd_foreman(a->page, 0, a->foreman_tier);
 }
 
 static void set_folder(DesktopApp *a, const char *folder) {
@@ -155,30 +172,47 @@ static void maybe_prepare_worktree(DesktopApp *a) {
 }
 
 // The worker's extra environment: the OpenRouter key kept in settings (ask_key), which
-// Microcoder reads there (coder/tui/microcoder_keys.coax).
-static void worker_extra(char *out, size_t cap) {
+// Microcoder reads there (coder/tui/microcoder_keys.coax), plus optional Antigravity CLI/model.
+static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
   char key[1024] = {0};
+  size_t pos = 0;
   out[0] = '\0';
-  if (oa_core_key_read(cs("openrouter-key"), vu(key, (int)sizeof key)) > 0) snprintf(out, cap, "OPENROUTER_API_KEY=%s", key);
+  if (oa_core_key_read(cs("openrouter-key"), vu(key, (int)sizeof key)) > 0) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "OPENROUTER_API_KEY=%s\n", key);
+  }
   memset(key, 0, sizeof key);
+  if (is_agy && a) {
+    if (a->agy_bin[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_BIN=%s\n", a->agy_bin);
+    if (a->agy_model[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_MODEL=%s\n", a->agy_model);
+  }
 }
 
 static int ensure_worker(DesktopApp *a) {
-  if (oa_core_worker_alive(vc(a))) return 1;
-  if (!a->worker_bin[0]) {
-    cd_failed(a->page, "mcworker binary not found");
+  int want_agy = cd_model_agy(a->page) != 0 && a->agy_worker_bin[0] != '\0';
+  if (oa_core_worker_alive(vc(a))) {
+    if (a->worker_is_agy == want_agy) return 1;
+    if (!cd_running(a->page)) {
+      oa_core_worker_stop(vc(a), 0);
+    } else {
+      return 1;
+    }
+  }
+  const char *bin = want_agy ? a->agy_worker_bin : a->worker_bin;
+  if (!bin[0]) {
+    cd_failed(a->page, want_agy ? "agyworker binary not found" : "mcworker binary not found");
     return 0;
   }
   maybe_prepare_worktree(a);
   char err[512] = {0};
-  char extra[1100];
-  worker_extra(extra, sizeof extra);
-  int started = oa_core_worker_start(vc(a), cs(a->worker_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
+  char extra[2200];
+  worker_extra(a, want_agy, extra, sizeof extra);
+  int started = oa_core_worker_start(vc(a), cs(bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
   memset(extra, 0, sizeof extra);
   if (!started) {
     cd_failed(a->page, err[0] ? err : "could not start worker");
     return 0;
   }
+  a->worker_is_agy = want_agy;
   return 1;
 }
 
@@ -202,9 +236,11 @@ static void pump_subagents(DesktopApp *a) {
     if (slot < 0) {
       cd_agent_failed(a->page, next, "sub-agent limit reached");
     } else {
-      char err[512] = {0}, extra[1100];
-      worker_extra(extra, sizeof extra);
-      int started = oa_core_subagent_start(vc(a), slot, cs(a->worker_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
+      char err[512] = {0}, extra[2200];
+      int want_claude = cd_agent_claude(a->page, next) != 0 && a->claude_worker_bin[0] != '\0';
+      const char *sub_bin = want_claude ? a->claude_worker_bin : a->worker_bin;
+      worker_extra(a, 0, extra, sizeof extra);
+      int started = oa_core_subagent_start(vc(a), slot, cs(sub_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
       memset(extra, 0, sizeof extra);
       if (!started) {
         cd_agent_failed(a->page, next, err[0] ? err : "could not start sub-agent worker");
@@ -260,22 +296,91 @@ static void check_update_from_file(DesktopApp *a, const char *path) {
   size_t n = fread(buf, 1, sizeof(buf) - 1, f);
   fclose(f);
   buf[n] = '\0';
-  char ver[128] = {0}, url[1024] = {0}, notes[2048] = {0}, err[256] = {0};
-  int64_t r = oa_core_update_verify(
+  char ver[128] = {0}, url[1024] = {0}, sha[65] = {0}, notes[2048] = {0}, err[256] = {0};
+  int64_t size = 0;
+  int64_t r = oa_core_update_verify_full(
       (coax_string){buf, (int64_t)n}, cs(OA_APP_VERSION), OA_APP_BUILD, 0,
       vu(ver, (int)sizeof(ver)), vu(url, (int)sizeof(url)),
+      vu(sha, (int)sizeof(sha)), (coax_v_s64){&size, 1},
       vu(notes, (int)sizeof(notes)), vu(err, (int)sizeof(err)));
   if (!a || !a->page) return;
   if (r > 0) {
     char label[256];
     snprintf(label, sizeof(label), "Update %s available", ver);
     snprintf(a->update_url, sizeof a->update_url, "%s", url);
-    cd_update(a->page, 1, label, url);   // CP_UPD_AVAILABLE: the pill opens the download (case 12)
+    snprintf(a->update_version, sizeof a->update_version, "%s", ver);
+    snprintf(a->update_sha, sizeof a->update_sha, "%s", sha);
+    a->update_size = size;
+    cd_update(a->page, 1, label, url);   // CP_UPD_AVAILABLE: the pill downloads, verifies & swaps (case 12)
   } else if (r == 0) {
     cd_update(a->page, 0, "", "");
     cd_toast(a->page, "OpenAgents is up to date.", 0);
   } else {
     cd_update(a->page, 4, "Update verification failed", err);
+  }
+}
+
+static void check_update_from_feed(DesktopApp *a) {
+  const char *manifest = getenv("OPENAGENTS_UPDATE_MANIFEST");
+  if (manifest && manifest[0]) {
+    check_update_from_file(a, manifest);
+    return;
+  }
+  char url[1024] = {0};
+  const char *override_url = getenv("OPENAGENTS_UPDATE_URL");
+  if (override_url && override_url[0]) snprintf(url, sizeof url, "%s", override_url);
+  else oa_core_update_url(vu(url, (int)sizeof url));
+  if (!url[0]) { cd_update(a->page, 4, "Update check failed", "No update feed URL configured"); return; }
+  char tmp[OA_PATH] = {0}, file[OA_PATH + 32];
+  if (!oa_temp_dir(tmp, sizeof tmp)) { cd_update(a->page, 4, "Update check failed", "Could not create temp directory"); return; }
+  snprintf(file, sizeof file, "%s/manifest.json", tmp);
+  if (!oa_download_url(url, file)) {
+    cd_update(a->page, 4, "Update check failed", "Could not fetch signed update feed");
+    return;
+  }
+  check_update_from_file(a, file);
+  remove(file);
+}
+
+static void install_verified_update(DesktopApp *a) {
+  if (!a->update_url[0]) { cd_update(a->page, 0, "", ""); return; }
+  if (!a->update_sha[0] || a->update_size <= 0) {
+    oa_open_external(a->update_url);
+    return;
+  }
+  cd_update(a->page, 2, "Downloading update...", a->update_version);
+  char tmp[OA_PATH] = {0}, staged[OA_PATH + 64];
+  if (!oa_temp_dir(tmp, sizeof tmp)) {
+    cd_update(a->page, 4, "Update failed", "Could not create temp directory");
+    return;
+  }
+  const char *base = strrchr(a->update_url, '/');
+  const char *name = (base && base[1]) ? base + 1 : "openagents-update.bin";
+  snprintf(staged, sizeof staged, "%s/%s", tmp, name);
+  if (!oa_download_url(a->update_url, staged)) {
+    cd_update(a->page, 4, "Update download failed", "Could not download update payload");
+    return;
+  }
+  char err[256] = {0};
+  if (!oa_core_update_verify_archive(cs(staged), cs(a->update_sha), a->update_size, vu(err, (int)sizeof err))) {
+    remove(staged);
+    cd_update(a->page, 4, "Update verification failed", err[0] ? err : "SHA-256 or size mismatch");
+    return;
+  }
+  size_t nl = strlen(name);
+  int is_archive = (nl > 4 && (strcmp(name + nl - 4, ".zip") == 0 || strcmp(name + nl - 4, ".deb") == 0 || strcmp(name + nl - 4, ".msi") == 0)) ||
+                   (nl > 7 && strcmp(name + nl - 7, ".tar.gz") == 0);
+  if (is_archive) {
+    cd_update(a->page, 3, "Verified update downloaded", staged);
+    oa_open_external(staged);
+    return;
+  }
+  if (oa_swap_self(staged)) {
+    cd_update(a->page, 3, "Update installed — restart OpenAgents", a->update_version);
+    cd_toast(a->page, "Verified update installed. Restart OpenAgents to run the new version.", 0);
+  } else {
+    cd_update(a->page, 4, "Update swap failed", "Verified download kept in temp folder");
+    oa_open_external(tmp);
   }
 }
 
@@ -338,7 +443,7 @@ static void full_path(DesktopApp *a, const char *path, char *out, size_t cap) {
 }
 
 // Dialogs drawn by the page (page/overlay.coax): one at a time, answered in pump_dialog.
-enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE };
+enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN };
 
 static void show_dialog(DesktopApp *a, int kind, int confirm, int cancel) {
   a->dialog = kind;
@@ -409,6 +514,24 @@ static void ask_delete(DesktopApp *a) {
   show_dialog(a, OA_DIALOG_DELETE, 1, 0);
 }
 
+static void ask_agy(DesktopApp *a) {
+  cd_dialog_begin(a->page, 1, "Antigravity CLI",
+                  "Path to the Antigravity CLI (agy / agy.cmd). Leave blank to use agy on PATH or ~/.openagents/runtimes/agy.");
+  cd_dialog_field(a->page, "", a->agy_bin, "agy", 0, 1);
+  cd_dialog_button(a->page, "Reset", 1, 1);
+  cd_dialog_button(a->page, "Cancel", 1, 0);
+  cd_dialog_button(a->page, "Save", 0, 0);
+  show_dialog(a, OA_DIALOG_AGY, 2, 1);
+}
+
+static void ask_clear_foreman(DesktopApp *a) {
+  cd_dialog_begin(a->page, 0, "Clear Foreman history?",
+                  "This removes the Foreman conversation history. Managed chats are not deleted.");
+  cd_dialog_button(a->page, "Cancel", 1, 0);
+  cd_dialog_button(a->page, "Clear History", 2, 0);
+  show_dialog(a, OA_DIALOG_CLEAR_FOREMAN, 1, 0);
+}
+
 static void new_chat(DesktopApp *a);
 
 // The answer to the dialog that is up, once the person gave one.
@@ -460,6 +583,25 @@ static void pump_dialog(DesktopApp *a) {
         new_chat(a);
         oa_core_store_remove(vc(a), cs(id));
         refresh_chats(a);
+      }
+      break;
+    case OA_DIALOG_AGY:
+      if (answer == 2) {
+        snprintf(a->agy_bin, sizeof a->agy_bin, "%s", v);
+        refresh_settings_info(a);
+        cd_toast(a->page, a->agy_bin[0] ? "Antigravity CLI path updated." : "Antigravity CLI reset to auto-detect.", 0);
+      } else if (answer == 0) {
+        a->agy_bin[0] = '\0';
+        refresh_settings_info(a);
+        cd_toast(a->page, "Antigravity CLI reset to auto-detect.", 0);
+      }
+      break;
+    case OA_DIALOG_CLEAR_FOREMAN:
+      if (answer == 1) {
+        if (strcmp(a->chat_id, "foreman") == 0) new_chat(a);
+        oa_core_store_remove(vc(a), cs("foreman"));
+        refresh_chats(a);
+        cd_toast(a->page, "Foreman history cleared.", 0);
       }
       break;
     default: break;
@@ -609,28 +751,61 @@ static void handle_action(DesktopApp *a, int act) {
     }
     case 8: ask_budget(a); break;
     case 9: ask_goal(a); break;
-    case 10: refresh_chats(a); not_here(a, "Reordering pinned chats"); break;
-    case 11: case 18: case 19: case 20: not_here(a, "Foreman"); break;
-    case 12: // the update pill: the verified download, in the browser
-      if (a->update_url[0]) oa_open_external(a->update_url);
-      else cd_update(a->page, 0, "", "");
+    case 10: { // pinned chat drag reorder
+      char id[128] = {0};
+      int to = -1;
+      if (cd_pin_move(a->page, id, (int)sizeof(id), &to) > 0 && to >= 0) {
+        oa_core_store_move_pin(vc(a), cs(id), to);
+      }
+      refresh_chats(a);
       break;
+    }
+    case 11: { // open Foreman chat
+      if (cd_running(a->page)) { cd_toast(a->page, "Stop the current reply before switching to Foreman.", 0); break; }
+      if (strcmp(a->chat_id, "foreman") == 0) { cd_focus(a->page, 1); break; }
+      int n = (int)oa_core_store_text(vc(a), cs("foreman"), vu(a->save_buf, OA_SAVE_CAP));
+      if (n > 0) {
+        open_chat_by_id(a, "foreman");
+      } else {
+        new_chat(a);
+        snprintf(a->chat_id, sizeof a->chat_id, "foreman");
+        cd_current(a->page, "foreman");
+      }
+      cd_foreman(a->page, 0, a->foreman_tier);
+      cd_focus(a->page, 1);
+      break;
+    }
+    case 12: // the update pill: download, verify SHA-256 + size, and swap/open
+      install_verified_update(a);
+      break;
+    case 18: { // Foreman permission tier
+      int tier = cd_settings_tier(a->page);
+      a->foreman_tier = tier;
+      oa_core_daemon_update_foreman(vc(a), tier, cs(""));
+      cd_foreman(a->page, 0, a->foreman_tier);
+      break;
+    }
+    case 19: { // Foreman audit log
+      char hb[OA_PATH] = {0}, audit[OA_PATH + 64];
+      const char *home = oa_home(hb, sizeof hb);
+      if (home && home[0]) {
+        snprintf(audit, sizeof audit, "%s/.openagents/coder/foreman-audit.jsonl", home);
+        if (!file_exists(audit)) {
+          FILE *f = fopen(audit, "ab");
+          if (f) fclose(f);
+        }
+        oa_open_external(audit);
+      }
+      break;
+    }
+    case 20: ask_clear_foreman(a); break;
     case 13: if (cd_settings_page(a->page) < 0) cd_focus(a->page, 1); else refresh_settings_info(a); break;
     case 14: cd_zoom(a->page, 1); break;
     case 15: cd_zoom(a->page, -1); break;
     case 16: ask_key(a, OA_DIALOG_CLAUDE); break;
     case 17: ask_key(a, OA_DIALOG_OPENROUTER); break;
     case 21: oa_open_external("https://openagents.com/login"); break;
-    case 22: { // check for updates
-      const char *manifest = getenv("OPENAGENTS_UPDATE_MANIFEST");
-      if (manifest && manifest[0]) check_update_from_file(a, manifest);
-      else {
-        char msg[256];
-        snprintf(msg, sizeof msg, "This is OpenAgents %s. New %s versions come as a new download for now.", OA_APP_VERSION, OA_PLATFORM_NAME);
-        cd_toast(a->page, msg, 0);
-      }
-      break;
-    }
+    case 22: check_update_from_feed(a); break;
     case 23: cd_focus(a->page, 2); break;
     case 24: { // a file a row or a reply names: opened in the file pane
       char path[OA_PATH] = {0};
@@ -658,7 +833,14 @@ static void handle_action(DesktopApp *a, int act) {
       break;
     }
     case 32: not_here(a, "The Gym"); break;
-    case 33: case 34: case 35: not_here(a, "Antigravity"); break;
+    case 33: ask_agy(a); break;
+    case 34:
+      a->agy_mode = cd_settings_agy_mode(a->page);
+      refresh_settings_info(a);
+      break;
+    case 35:
+      cd_toast(a->page, "Run 'agy auth login' in a terminal to sign in to Antigravity.", 0);
+      break;
     case 36: break;   // Experimental features: the page shows or hides them; Foreman and the Gym are Mac-only
     case 37: fork_shown(a); break;
     case 40: handle_file_save(a); break;
@@ -839,7 +1021,7 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
   // 5. The worker beside the program (the Windows zip's mcworker.exe) starts and says it is ready.
   if (file_exists(a->worker_bin)) {
     char err[512] = {0}, extra[1100];
-    worker_extra(extra, sizeof extra);
+    worker_extra(a, 0, extra, sizeof extra);
     if (!oa_core_worker_start(vc(a), cs(a->worker_bin), cs(tmp), cs(extra), vu(err, (int)sizeof(err)))) {
       fprintf(stderr, "smoke: the worker did not start: %s\n", err);
       return 1;
@@ -1060,8 +1242,15 @@ static int oa_main(int argc, char **argv) {
   if (!file_exists(app.resources)) snprintf(app.resources, sizeof(app.resources), "%s", app.exe_dir);
   snprintf(app.worker_bin, sizeof(app.worker_bin), "%s/%s", app.exe_dir, OA_WORKER);
   if (!file_exists(app.worker_bin)) snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", OA_WORKER);
+  snprintf(app.claude_worker_bin, sizeof(app.claude_worker_bin), "%s/%s", app.exe_dir, OA_CLAUDE_WORKER);
+  if (!file_exists(app.claude_worker_bin)) app.claude_worker_bin[0] = '\0';
+  snprintf(app.agy_worker_bin, sizeof(app.agy_worker_bin), "%s/%s", app.exe_dir, OA_AGY_WORKER);
+  if (!file_exists(app.agy_worker_bin)) app.agy_worker_bin[0] = '\0';
   snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s/%s", app.exe_dir, OA_DAEMON);
-  if (!file_exists(app.daemon_bin)) app.daemon_bin[0] = '\0';
+  if (!file_exists(app.daemon_bin)) {
+    snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s/%s", app.exe_dir, OA_DAEMON_ALT);
+    if (!file_exists(app.daemon_bin)) app.daemon_bin[0] = '\0';
+  }
 
   oa_working_dir(app.folder, sizeof(app.folder));
 
@@ -1111,6 +1300,8 @@ static int oa_main(int argc, char **argv) {
   }
   app.portal = shot ? NULL : portal_open();
   oa_started();
+  cd_claude(app.page, app.claude_worker_bin[0] ? 1 : 0);
+  cd_agy(app.page, app.agy_worker_bin[0] ? 1 : 0);
   set_folder(&app, app.folder);
   refresh_settings_info(&app);
   refresh_chats(&app);

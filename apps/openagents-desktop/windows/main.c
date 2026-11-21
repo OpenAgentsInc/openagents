@@ -28,7 +28,10 @@
 #define OA_PLATFORM "windows"
 #define OA_PLATFORM_NAME "Windows"
 #define OA_WORKER "mcworker.exe"
-#define OA_DAEMON "openagents-daemon.exe"
+#define OA_CLAUDE_WORKER "claudeworker.exe"
+#define OA_AGY_WORKER "agyworker.exe"
+#define OA_DAEMON "coder-host.exe"
+#define OA_DAEMON_ALT "openagents-daemon.exe"
 
 static char oa_log_path[4096];
 static int oa_up;
@@ -126,6 +129,38 @@ static void oa_fail(const char *why) {
   oa_up = 1;   // told: no second note at exit
 }
 static void oa_started(void) { oa_up = 1; }
+static int oa_download_url(const char *url, const char *dest) {
+  if (!url || !url[0] || !dest || !dest[0]) return 0;
+  char cmd[8192];
+  snprintf(cmd, sizeof cmd, "curl.exe -fsSL --max-time 120 -o \"%s\" \"%s\"", dest, url);
+  wchar_t wcmd[8192];
+  oa_wide(cmd, wcmd, sizeof wcmd / sizeof wcmd[0]);
+  STARTUPINFOW si; PROCESS_INFORMATION pi;
+  memset(&si, 0, sizeof si); si.cb = sizeof si;
+  memset(&pi, 0, sizeof pi);
+  if (!CreateProcessW(NULL, wcmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) return 0;
+  WaitForSingleObject(pi.hProcess, 130000);
+  DWORD code = 1;
+  GetExitCodeProcess(pi.hProcess, &code);
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  return code == 0;
+}
+static int oa_swap_self(const char *staged) {
+  wchar_t self[MAX_PATH * 4], old[MAX_PATH * 4], next[MAX_PATH * 4];
+  DWORD n = GetModuleFileNameW(NULL, self, (DWORD)(sizeof self / sizeof self[0]));
+  if (n == 0 || n >= sizeof self / sizeof self[0]) return 0;
+  oa_wide(staged, next, sizeof next / sizeof next[0]);
+  oa_back(next);
+  swprintf(old, sizeof old / sizeof old[0], L"%ls.old", self);
+  DeleteFileW(old);
+  if (!MoveFileExW(self, old, MOVEFILE_REPLACE_EXISTING)) return 0;
+  if (!MoveFileExW(next, self, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+    MoveFileExW(old, self, MOVEFILE_REPLACE_EXISTING);
+    return 0;
+  }
+  return 1;
+}
 
 #include "../host-main.c"
 

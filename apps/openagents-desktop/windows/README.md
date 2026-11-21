@@ -21,8 +21,10 @@ one folder, `OpenAgents`, with:
 | --- | --- |
 | `OpenAgents.exe` | The app: a GUI program with the OpenAgents icon, version information and a manifest |
 | `mcworker.exe` | The Microcoder worker the app starts for each reply |
+| `claudeworker.exe` | The Claude Code worker for Claude sub-agents |
 | `agyworker.exe` | The Antigravity ACP worker (`agy.exe` / `.cmd` launchers) |
-| `resources/` | The shader (`components.spv`), fonts and icons |
+| `coder-host.exe` | The resident daemon (`AF_UNIX` local socket on Windows 10 1803+ / 11) |
+| `resources/` | The shaders (`components.spv`, `composition.spv`), fonts and icons |
 | `NOTICE` | The fonts' and icons' licenses |
 
 No DLLs ship beside them. The C runtime is the Universal C Runtime that Windows 10 and 11
@@ -76,14 +78,15 @@ so in a short note.
 
 | Works | Not on Windows yet |
 | --- | --- |
-| The window: keyboard, mouse, wheel, typing through the input method, the clipboard (text and files copied in Explorer), files dropped on the window, per-monitor DPI | A drop shows no "Drop to attach" while files are carried over the window (that needs an OLE drop target) |
-| Chats: new, open, rename, delete, kept across restarts | Reordering pinned chats |
-| A Microcoder reply through `mcworker.exe`, steering and the follow-up queue, sub-agents | The daemon: a reply stops when the app quits |
-| Attachments through the system's file chooser, the working folder chooser | Picture previews of image attachments |
-| The file pane: open, edit, save, open in the default app | Foreman and the Gym |
-| Antigravity via `agyworker.exe` (including `.cmd` launchers and managed `~/.openagents/runtimes/agy`) | |
-| The chat budget, the thread goal, the OpenRouter and Claude keys | A new text size after moving to a screen with another scale needs a restart to redraw the glyphs sharply |
-| Each chat in its own worktree, when the folder is a Git repository | The update feed: new versions come as a new zip for now |
+| The window: keyboard, mouse, wheel, typing through the input method, the clipboard (text and files copied in Explorer), files dropped on the window, per-monitor DPI with live glyph atlas reload (`WM_DPICHANGED`) | A drop shows no "Drop to attach" while files are carried over the window (that needs an OLE drop target) |
+| Chats: new, open, rename, delete, pinned-chat drag reorder, kept across restarts | The Gym (3D workbench) |
+| Microcoder (`mcworker.exe`), Claude (`claudeworker.exe`), Antigravity (`agyworker.exe`), steering and the follow-up queue, sub-agents, Foreman chat & tier | Remote Nostr relay TLS (`wss://`) in `coder-host.exe` (Windows Schannel not wired yet; local `AF_UNIX` daemon works) |
+| Resident daemon (`coder-host.exe` over Winsock `AF_UNIX`) | Authenticode code signing and MSIX/NSIS installer (`NEEDS_OWNER.md`) |
+| Attachments through the system's file chooser, the working folder chooser, PNG/JPEG image previews (`coax/lib/image/image.coax` + `composition.spv`) | WebP/HEIC image decoding |
+| The file pane: open, edit, save, open in the default app | |
+| The chat budget, the thread goal, the OpenRouter and Claude keys | |
+| Each chat in its own worktree, when the folder is a Git repository | |
+| Ed25519 + SHA-256 verified update feed check, download and atomic swap (`curl.exe`) | Signed release feed publishing & Authenticode verification on downloaded binaries |
 
 Signed update manifests (`openagents.desktop.update.v1`) are checked by the core
 (`oa_core_update_verify`, Ed25519): `OPENAGENTS_UPDATE_MANIFEST=PATH` makes **Check for

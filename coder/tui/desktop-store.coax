@@ -352,6 +352,29 @@ dk_unpin :: (x: [] DkIndex, i: int) {
   x[0].chats[i].pinned = -1;
   dk_normalize_pins(x);
 }
+// Moves a pinned chat i to 0-based pinned slot `to` (clamped), renumbering pins 0..k-1.
+dk_move_pin :: (x: [] DkIndex, i: int, to: int) -> bool {
+  if i < 0 || i >= x[0].n || x[0].chats[i].pinned < 0 { return false; }
+  o: [4096] int; k := dk_ordered(x, o[..], true);
+  from := -1;
+  for j: 0..<k { if o[j] == i { from = j; break; } }
+  if from < 0 { return false; }
+  dest := to;
+  if dest < 0 { dest = 0; } // mutant: equivalent (dest == 0 assigns 0 to 0)
+  if dest >= k { dest = k - 1; }
+  if from < dest { // mutant: equivalent (from == dest runs 0 iterations and writes o[from] back)
+    moved := o[from];
+    for j: from..<dest { o[j] = o[j + 1]; }
+    o[dest] = moved;
+  } else if from > dest { // mutant: equivalent (from == dest runs 0 iterations and writes o[from] back)
+    moved := o[from];
+    j := from;
+    while j > dest { o[j] = o[j - 1]; j -= 1; }
+    o[dest] = moved;
+  }
+  for j: 0..<k { x[0].chats[o[j]].pinned = j; }
+  return true;
+}
 // CoderStore.rename: false when the cleaned title is empty.
 dk_rename :: (x: [] DkIndex, i: int, title: string) -> bool {
   tb: [512] u8; clean := dk_clean_title(title, tb[..]);
@@ -731,8 +754,23 @@ DK_FIXTURE_CHAT :: "{\"v\":1,\"cost_usd_micros\":2000000,\"budget_usd_micros\":3
   chats: [8] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
   #assert dk_index_parse(x[..], DK_FIXTURE_INDEX);
   a := dk_find(x[..], "aaa"); #assert a == 0 && dk_find(x[..], "zzz") == -1;
+  #assert !dk_move_pin(x[..], -1, 0) && !dk_move_pin(x[..], x[0].n, 0) && !dk_move_pin(x[..], a, 0);
+  // Exact-capacity slice ensures i >= x[0].n bounds check is exercised before indexing x[0].chats[i].
+  exact: [4] DkChat; ex := [1] DkIndex.[DkIndex.{chats = exact[..]}];
+  #assert dk_index_parse(ex[..], DK_FIXTURE_INDEX) && !dk_move_pin(ex[..], 4, 0);
+  // With aaa unpinned (k=2), moving ccc to slot 2 clamps to k-1=1 and leaves aaa unpinned.
+  #assert dk_move_pin(x[..], dk_find(x[..], "ccc"), 2) && x[0].chats[dk_find(x[..], "bbb")].pinned == 0 && x[0].chats[dk_find(x[..], "ccc")].pinned == 1 && x[0].chats[a].pinned == -1;
+  #assert dk_move_pin(x[..], dk_find(x[..], "ccc"), 0) && x[0].chats[dk_find(x[..], "ccc")].pinned == 0 && x[0].chats[dk_find(x[..], "bbb")].pinned == 1;
+  f := dk_find(x[..], "foreman"); x[0].chats[f].pinned = 9;
+  #assert !dk_move_pin(x[..], f, 0);
+  x[0].chats[f].pinned = -1;
   dk_pin(x[..], a); #assert x[0].chats[a].pinned == 2;              // after the highest
   dk_pin(x[..], a); #assert x[0].chats[a].pinned == 2;              // pinning again changes nothing
+  #assert dk_move_pin(x[..], a, -5) && x[0].chats[a].pinned == 0 && x[0].chats[dk_find(x[..], "ccc")].pinned == 1 && x[0].chats[dk_find(x[..], "bbb")].pinned == 2;
+  #assert dk_move_pin(x[..], a, 0) && x[0].chats[a].pinned == 0 && x[0].chats[dk_find(x[..], "ccc")].pinned == 1 && x[0].chats[dk_find(x[..], "bbb")].pinned == 2;
+  #assert dk_move_pin(x[..], a, 99) && x[0].chats[dk_find(x[..], "ccc")].pinned == 0 && x[0].chats[dk_find(x[..], "bbb")].pinned == 1 && x[0].chats[a].pinned == 2;
+  #assert dk_move_pin(x[..], a, 1) && x[0].chats[dk_find(x[..], "ccc")].pinned == 0 && x[0].chats[a].pinned == 1 && x[0].chats[dk_find(x[..], "bbb")].pinned == 2;
+  #assert dk_move_pin(x[..], a, 2) && x[0].chats[dk_find(x[..], "ccc")].pinned == 0 && x[0].chats[dk_find(x[..], "bbb")].pinned == 1 && x[0].chats[a].pinned == 2;
   dk_unpin(x[..], dk_find(x[..], "ccc"));                            // the first pinned leaves: the rest close up from 0
   #assert x[0].chats[dk_find(x[..], "ccc")].pinned == -1 && x[0].chats[dk_find(x[..], "bbb")].pinned == 0 && x[0].chats[a].pinned == 1;
   #assert dk_rename(x[..], a, "  New\n name ") && dk_title(x[..], a) == "New name" && x[0].chats[a].renamed;

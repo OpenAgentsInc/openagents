@@ -123,8 +123,47 @@ static int cd_decode_image(const char *path, CdImage *slot, uint64_t gen) {
   slot->rgba = buf; slot->w = (uint32_t)w; slot->h = (uint32_t)h; slot->gen = gen;
   return 1;
 #else
-  (void)path; (void)gen;
-  return 0;
+  // Cross-platform PNG and baseline JPEG decoding via the shared Coax decoder (coax/lib/image/image.coax),
+  // which outputs straight RGBA8 for composition-v1 image slots on Linux and Windows.
+  if (!path || !*path) return 0;
+  FILE *f = fopen(path, "rb");
+  if (!f) return 0;
+  if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }
+  long flen = ftell(f);
+  if (flen <= 0 || flen > 32L * 1024L * 1024L) { fclose(f); return 0; }
+  if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }
+  uint8_t *raw = malloc((size_t)flen);
+  if (!raw) { fclose(f); return 0; }
+  size_t got = fread(raw, 1, (size_t)flen, f);
+  fclose(f);
+  if (got != (size_t)flen) { free(raw); return 0; }
+  int64_t iw = 0, ih = 0, iwork = 0;
+  int64_t st = coder_img_info((coax_v_u8){raw, (int64_t)got}, (coax_v_s64){&iw, 1}, (coax_v_s64){&ih, 1}, (coax_v_s64){&iwork, 1});
+  if (st != 0 || iw < 1 || ih < 1 || iw > 8192 || ih > 8192 || iwork < 0 || iwork > 64L * 1024L * 1024L) {
+    free(raw);
+    return 0;
+  }
+  uint8_t *work = malloc(iwork > 0 ? (size_t)iwork : 1);
+  uint8_t *rgba = malloc((size_t)iw * (size_t)ih * 4);
+  if (!work || !rgba) { free(work); free(rgba); free(raw); return 0; }
+  st = coder_img_decode((coax_v_u8){raw, (int64_t)got}, (coax_v_u8){work, iwork}, (coax_v_u8){rgba, iw * ih * 4});
+  free(work);
+  free(raw);
+  if (st != 0) { free(rgba); return 0; }
+  while (iw > CD_IMAGE_MAX_SIDE || ih > CD_IMAGE_MAX_SIDE) {
+    int64_t dw = iw > 1 ? iw / 2 : 1;
+    int64_t dh = ih > 1 ? ih / 2 : 1;
+    uint8_t *next = malloc((size_t)dw * (size_t)dh * 4);
+    if (!next) break;
+    coder_img_half((coax_v_u8){rgba, iw * ih * 4}, iw, ih, (coax_v_u8){next, dw * dh * 4});
+    free(rgba);
+    rgba = next;
+    iw = dw;
+    ih = dh;
+  }
+  if (iw > 4096 || ih > 4096) { free(rgba); return 0; }
+  slot->rgba = rgba; slot->w = (uint32_t)iw; slot->h = (uint32_t)ih; slot->gen = gen;
+  return 1;
 #endif
 }
 static int cd_serve_images(CoderHost *c) {
@@ -148,8 +187,14 @@ static int cd_image(void *user, int index, UiImage *out) {
   *out = (UiImage){c->images[slot].rgba, c->images[slot].w, c->images[slot].h, c->images[slot].gen};
   return 1;
 }
+static int cd_rescale(CoderHost *c, int row);
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
+  float screen = dpr >= 1.0f ? dpr : 1.0f;
+  if (screen != c->screen) {
+    c->screen = screen;
+    cd_rescale(c, 0);
+  }
   coder_page_env(cd_state(c), c->active != 0, (c->reduced & 1) != 0);
   // reduced transparency: no frost, so the page draws its frosted surfaces solid; pictures still
   // compose (page/compose.coax)

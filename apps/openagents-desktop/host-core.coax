@@ -60,6 +60,19 @@ oa_core_daemon_owns_runs :: (c: [] OaCore) -> int #export_c #effects(all) {
   return ifx c[0].daemon[0].owns_runs then 1 else 0;
 }
 
+oa_core_daemon_read_foreman :: (c: [] OaCore, tier_out: [] int) -> int #export_c #effects(all) {
+  if !c[0].daemon_open { return 0; }
+  v: [1] DmView;
+  if !dc_daemon_read_foreman(c[0].daemon[..], v[..]) || !v[0].ok { return 0; }
+  if tier_out.count > 0 { tier_out[0] = v[0].foreman[0].tier; }
+  return 1;
+}
+
+oa_core_daemon_update_foreman :: (c: [] OaCore, tier: int, prompt: string) -> int #export_c #effects(all) {
+  if !c[0].daemon_open { return 0; }
+  return ifx dc_daemon_update_foreman(c[0].daemon[..], tier, prompt) then 1 else 0;
+}
+
 // Before every write the index is read again from disk, as the Mac host opens it for each write:
 // a chat another Coder process kept since this one started stays in the list, and an index that
 // can't be read (damaged, or longer than the store holds) is never written over. Writing over it
@@ -132,6 +145,11 @@ oa_core_store_rename :: (c: [] OaCore, id: string, title: string) -> int #export
 oa_core_store_toggle_pin :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
   if !oa_store_fresh(c) { return 0; }
   return ifx dc_store_toggle_pin(c[0].store[..], id) then 1 else 0;
+}
+
+oa_core_store_move_pin :: (c: [] OaCore, id: string, to: int) -> int #export_c #effects(all) {
+  if !oa_store_fresh(c) { return 0; }
+  return ifx dc_store_move_pin(c[0].store[..], id, to) then 1 else 0;
 }
 
 oa_core_store_remove :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
@@ -278,4 +296,40 @@ oa_core_update_verify_with_key :: (envelope: string, key_id: string, key_materia
   if code == DC_UPD_NOT_NEWER { return 0; }
   _ := oa_copy_out(dc_update_words(code), err_out);
   return -1;
+}
+
+oa_core_update_url :: (out: [] u8) -> int #export_c #effects(all) {
+  return oa_copy_out(DC_UPDATE_URL, out);
+}
+
+oa_core_update_verify_full :: (envelope: string, current: string, current_build: int, allow_file: int, version_out: [] u8, url_out: [] u8, sha_out: [] u8, size_out: [] int, notes_out: [] u8, err_out: [] u8) -> int #export_c #effects(all) {
+  keys: [1] DcKey;
+  _ := dc_update_default_keys(keys[..]);
+  m: [1] DcManifest;
+  code := dc_update_verify(envelope, keys[..], current, current_build, allow_file != 0, m[..]);
+  if code == DC_UPD_OK {
+    _ := oa_copy_out(dc_manifest_version(m[..]), version_out);
+    _ := oa_copy_out(dc_manifest_url(m[..]), url_out);
+    _ := oa_copy_out(dc_manifest_sha(m[..]), sha_out);
+    if size_out.count > 0 { size_out[0] = m[0].size; }
+    _ := oa_copy_out(dc_manifest_notes(m[..]), notes_out);
+    return 1;
+  }
+  if code == DC_UPD_NOT_NEWER { return 0; }
+  _ := oa_copy_out(dc_update_words(code), err_out);
+  return -1;
+}
+
+oa_core_update_verify_archive :: (path: string, expected_sha: string, expected_size: int, err_out: [] u8) -> int #export_c #effects(all) {
+  if expected_sha.count != 64 || expected_size <= 0 {
+    _ := oa_copy_out(dc_update_words(DC_UPD_SHA), err_out);
+    return 0;
+  }
+  m: [1] DcManifest;
+  m[0].size = expected_size;
+  for i: 0..<64 { m[0].sha[i] = expected_sha[i]; }
+  code := dc_update_archive(path, m[..]);
+  if code == DC_UPD_OK { return 1; }
+  _ := oa_copy_out(dc_update_words(code), err_out);
+  return 0;
 }

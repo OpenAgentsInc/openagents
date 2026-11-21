@@ -16,7 +16,10 @@
 #define OA_PLATFORM "linux"
 #define OA_PLATFORM_NAME "Linux"
 #define OA_WORKER "mcworker"
-#define OA_DAEMON "openagents-daemon"
+#define OA_CLAUDE_WORKER "claudeworker"
+#define OA_AGY_WORKER "agyworker"
+#define OA_DAEMON "coder-host"
+#define OA_DAEMON_ALT "openagents-daemon"
 
 static void oa_exe_dir(const char *argv0, char *out, size_t cap) {
   char self[PATH_MAX];
@@ -48,6 +51,26 @@ static void oa_open_external(const char *target) {
 }
 static void oa_fail(const char *why) { fprintf(stderr, "openagents-desktop: %s\n", why); }
 static void oa_started(void) {}
+static int oa_download_url(const char *url, const char *dest) {
+  if (!url || !url[0] || !dest || !dest[0]) return 0;
+  pid_t pid = fork();
+  if (pid < 0) return 0;
+  if (pid == 0) {
+    execlp("curl", "curl", "-fsSL", "--max-time", "120", "-o", dest, url, (char *)NULL);
+    _exit(127);
+  }
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0) return 0;
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+static int oa_swap_self(const char *staged) {
+  char self[PATH_MAX];
+  ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+  if (n <= 0) return 0;
+  self[n] = '\0';
+  if (chmod(staged, 0755) != 0) return 0;
+  return rename(staged, self) == 0;
+}
 
 #include "../host-main.c"
 

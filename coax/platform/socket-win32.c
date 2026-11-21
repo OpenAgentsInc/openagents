@@ -129,7 +129,26 @@ int64_t cxsock_connect_unix(int64_t timeout_ms) {
   if (r) { closesocket(fd); return r; }
   return cxsock_take(fd, 0);
 }
-int64_t cxsock_listen_unix(void) { cxsock_host_len = 0; cxsock_host_bad = 0; return CXSOCK_ERROR; }
+int64_t cxsock_listen_unix(void) {
+  cxsock_init();
+  struct sockaddr_un addr;
+  int bad = cxsock_host_bad || cxsock_host_len == 0 || cxsock_host_len >= (int)sizeof addr.sun_path;
+  cxsock_host[cxsock_host_len] = 0;
+  memset(&addr, 0, sizeof addr);
+  addr.sun_family = AF_UNIX;
+  if (!bad) memcpy(addr.sun_path, cxsock_host, (size_t)cxsock_host_len);
+  cxsock_host_len = 0; cxsock_host_bad = 0;
+  if (bad) return CXSOCK_ERROR;
+  DeleteFileA(addr.sun_path);
+  SOCKET fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd == INVALID_SOCKET) return CXSOCK_REFUSED;
+  if (bind(fd, (struct sockaddr *)&addr, (int)sizeof addr) != 0 ||
+      listen(fd, 16) != 0 || !cxsock_nonblocking(fd)) {
+    closesocket(fd);
+    return CXSOCK_REFUSED;
+  }
+  return cxsock_take(fd, 0);
+}
 
 /* The user a process runs as is this process's user. */
 static int same_user(DWORD pid) {
