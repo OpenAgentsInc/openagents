@@ -1,0 +1,90 @@
+// Shared Linux & Windows Spark Wallet RPC Policy & Receipts CLI (GitHub #13902).
+//
+// Evaluates spend-admission rules directly through #authority pay/wallet-rpc.coax
+// (no seed, mnemonic, or private key ever enters here; Bitcoin/Spark/Lightning only).
+//
+// Usage:
+//   coax/web/tool.sh coax/lib/agent/desktop/spark-helper-rpc.coax admit --ready 1 --approved 1 --amount 1000 --fee 10 --fee-cap 50 --daily-remaining 10000 --now 100 --expires 200
+//   coax/web/tool.sh coax/lib/agent/desktop/spark-helper-rpc.coax selftest
+#load "../../../../pay/wallet-rpc.coax";
+#load "../../sys/tool.coax";
+
+shr_parse_int :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  neg := false;
+  i := 0;
+  if s[0] == '-' { neg = true; i = 1; }
+  v := 0;
+  while i < s.count {
+    if s[i] < '0' || s[i] > '9' { return 0; }
+    v = v * 10 + cast(int) (s[i] - '0');
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+
+shr_verdict_name :: (v: WrpcVerdict) -> string {
+  if v == WrpcVerdict.allow { return "allow"; }
+  if v == WrpcVerdict.not_ready { return "not_ready"; }
+  if v == WrpcVerdict.needs_approval { return "needs_approval"; }
+  if v == WrpcVerdict.bad_amount { return "bad_amount"; }
+  if v == WrpcVerdict.over_fee_cap { return "over_fee_cap"; }
+  if v == WrpcVerdict.over_daily_limit { return "over_daily_limit"; }
+  if v == WrpcVerdict.expired { return "expired"; }
+  return "refused";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("spark-helper-rpc: arguments did not fit"); return 2; }
+  cmd := args_at(a[..], 0);
+
+  if cmd == "selftest" {
+    v_ok := wallet_rpc_spend_admit(true, true, 1000, 10, 50, 5000, 100, 200);
+    if v_ok != WrpcVerdict.allow || wallet_rpc_http_status(v_ok) != 200 {
+      tool_errln("selftest: expected allow / 200");
+      return 1;
+    }
+    v_unapproved := wallet_rpc_spend_admit(true, false, 1000, 10, 50, 5000, 100, 200);
+    if v_unapproved != WrpcVerdict.needs_approval || wallet_rpc_http_status(v_unapproved) != 403 || !wallet_rpc_writes_receipt(v_unapproved) {
+      tool_errln("selftest: expected needs_approval / 403 / writes_receipt=true");
+      return 1;
+    }
+    v_cap := wallet_rpc_spend_admit(true, true, 6000, 10, 50, 5000, 100, 200);
+    if v_cap != WrpcVerdict.over_daily_limit {
+      tool_errln("selftest: expected over_daily_limit");
+      return 1;
+    }
+    schema := wallet_rpc_schema_version();
+    print("spark-helper-rpc selftest: PASS (schema=% allow=200 unapproved=403)\n", schema);
+    return 0;
+  }
+
+  if cmd == "admit" {
+    ready := false; approved := false;
+    amount := 0; fee := 0; fee_cap := 0; daily_rem := 0; now := 0; expires := 0;
+    i := 1;
+    while i < a[0].n {
+      k := args_at(a[..], i);
+      if k == "--ready" && i + 1 < a[0].n { ready = shr_parse_int(args_at(a[..], i + 1)) != 0; i += 2; continue; }
+      if k == "--approved" && i + 1 < a[0].n { approved = shr_parse_int(args_at(a[..], i + 1)) != 0; i += 2; continue; }
+      if k == "--amount" && i + 1 < a[0].n { amount = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      if k == "--fee" && i + 1 < a[0].n { fee = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      if k == "--fee-cap" && i + 1 < a[0].n { fee_cap = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      if k == "--daily-remaining" && i + 1 < a[0].n { daily_rem = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      if k == "--now" && i + 1 < a[0].n { now = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      if k == "--expires" && i + 1 < a[0].n { expires = shr_parse_int(args_at(a[..], i + 1)); i += 2; continue; }
+      i += 1;
+    }
+    v := wallet_rpc_spend_admit(ready, approved, amount, fee, fee_cap, daily_rem, now, expires);
+    status := wallet_rpc_http_status(v);
+    receipt := wallet_rpc_writes_receipt(v);
+    schema := wallet_rpc_schema_version();
+    print("{\"schema_version\":\"%\",\"verdict\":\"%\",\"http_status\":%,\"writes_receipt\":%}\n",
+      schema, shr_verdict_name(v), status, ifx receipt then "true" else "false");
+    return ifx v == WrpcVerdict.allow then 0 else 3;
+  }
+
+  print("usage: spark-helper-rpc [admit|selftest]\n");
+  return 0;
+}

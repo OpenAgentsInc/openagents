@@ -27,6 +27,9 @@ mkdir -p "$work/c" "$work/wl" "$work/resources"
 "$coax" c "$app_dir/app.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
+"$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h" > "$work/c/pay-wallet.c"
+"$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
+"$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 
@@ -57,6 +60,7 @@ cc "${cflags[@]}" \
   "$repo/apps/shared/host/linux/portal.c" \
   \
   "$work/c/gallery.c" "$work/c/core.c" "$work/c/entropy.c" \
+  "$work/c/pay-wallet.c" "$work/c/pay-wallet-backup.c" "$work/c/pay-wallet-rpc.c" \
   "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
   "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \

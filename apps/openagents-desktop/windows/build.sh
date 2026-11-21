@@ -50,6 +50,9 @@ mkdir -p "$work/c" "$work/res"
 "$coax" c "$app_dir/app.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
+"$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h" > "$work/c/pay-wallet.c"
+"$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
+"$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
 "$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
 "$coax" c "$repo/coder/tui/claudeworker.coax" --library > "$work/c/claudeworker.c"
 "$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
@@ -135,6 +138,7 @@ for arch in "${arches[@]}"; do
     -include "$h/vk-load.h" -I"$work/c" -I"$app_dir" -I"$h" -I"$repo/metaverse/gpu" -I"$p" -I"$vk_include" \
     "$here/main.c" "$app_dir/carrier.c" "$h/ui-host.c" "$h/portal.c" "$h/vk-load.c" \
     "$work/c/gallery.c" "$work/c/core-$arch.o" "$work/c/entropy.c" \
+    "$work/c/pay-wallet.c" "$work/c/pay-wallet-backup.c" "$work/c/pay-wallet-rpc.c" \
     "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" \
     "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" "$p/entropy-native.c" "$p/entropy-foreign.c" \
     "$work/res/app.rc" \
