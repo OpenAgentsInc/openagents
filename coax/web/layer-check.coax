@@ -221,7 +221,7 @@ lc_room_v1 :: (loads: string, root: string, run: LcRun) -> int {
 LC_PAGE_BUILD :: "apps/openagents-web/build.sh";
 LC_PAGE_DIR :: "apps/openagents-web";
 // Clients built outside build.sh: Everglade's client by name (every host builds it) and the Mac app's scene.
-LC_PAGE_ROOTS :: [2] string.["everglade/client/client.coax", "apps/everglade-desktop/desktop.coax"];
+LC_PAGE_ROOTS :: [1] string.["everglade/client/client.coax"];
 LC_PAGE_FILES :: 8192;    // files in the pages' closure tracked
 LC_PAGE_GROUPS :: 16384;  // files with a #load line tracked
 // Whether path is room-only: the room's host, transport and relay (coax/web/room/) or the game's

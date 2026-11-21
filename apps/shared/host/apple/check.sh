@@ -23,8 +23,6 @@ step app-realms "$repo/coax/web/tool.sh" "$repo/metaverse/native/app-realms.coax
 # the Mac, the iPhone simulator, the iPhone and Android from the one driver; the Mac's run (and a
 # booted simulator's) must print what the engine says.
 step host-core-conformance "$repo/metaverse-engine/host/core/platforms.sh" "$scratch/host-core"
-step everglade-mac "$repo/apps/everglade-desktop/build.sh"
-step everglade-iphone-simulator "$repo/apps/everglade-mobile/build.sh"
 step openagents-mac "$repo/apps/openagents-desktop/build.sh"
 step openagents-mac-account "$repo/apps/openagents-desktop/tests/account-check.sh"
 step openagents-mac-signing "$repo/apps/openagents-desktop/tests/sign-check.sh"
