@@ -11,8 +11,8 @@ This roadmap sequences Lean 4 integration into five shippable, independently ver
 
 As verified on 2026-11-21, `elan`, `lean`, and `lake` are not installed on this development Mac (`which lean lake elan` -> not found).
 
-- **Phase 0 Tier 0/1 checks** (pure Coax policy, mutation tests, wire goldens, fake-LSP tests) can be built and verified immediately without `elan`.
-- **Closing Phase 0+ live verification (Tier 2–4)** requires installing `elan` and a pinned Lean 4 toolchain (e.g., `leanprover/lean4:v4.19.0` or current stable 4.x) on the Mac and Linux build hosts (`curl https://elan.lean-lang.org/elan-init.sh -sSf | sh`). No Mathlib download is needed until Phase 3b (`MiniF2F`).
+- **Phase 0 Tier 0/1 checks** (pure Coax policy, mutation tests, wire goldens, fake-LSP tests) and **RH Workbench Tier A** (indexing & visualizing the 175,187-file Riemann Hypothesis source tree; see [riemann-hypothesis-workbench-spec.md](riemann-hypothesis-workbench-spec.md)) can be built and verified immediately without `elan`.
+- **Closing Phase 0+ live verification (Tier 2–4)** requires installing `elan` and the pinned Lean 4 toolchains (`leanprover/lean4:v4.36.0` for `lake check --paranoid`, `lake comparator`, `con-leche`, `con-ron`, `nanoda`, and `leanprover/lean4:v4.33.1` for live LSP / cache interaction with `leanprover-community/riemann-hypothesis`) on the Mac and Linux build hosts (`curl https://elan.lean-lang.org/elan-init.sh -sSf | sh`). No Mathlib download is needed until Phase 3b (`MiniF2F`) or RH Tier B.
 
 ---
 
@@ -124,11 +124,23 @@ As verified on 2026-11-21, `elan`, `lean`, and `lake` are not installed on this 
 
 ---
 
+## Flagship Corpus Track — Riemann Hypothesis Workbench (RH-0 to RH-4)
+
+Built directly on top of Phases 0–2 (and with **RH-0 / RH-1 / RH-2 Tier A** usable immediately even before `elan` is installed). Full specification and per-phase `Done` criteria are in [riemann-hypothesis-workbench-spec.md](riemann-hypothesis-workbench-spec.md):
+
+- **RH-0:** Pure Coax streaming indexer (`rh-index.coax`) over all 175,187 `.lean` files (`< 60 s` index, `< 15 ms` search over 818,755 theorems / 242,067 defs, shortest-path-to-`Main.lean`, SHA-256 provenance verification).
+- **RH-1:** Guided 20-step `remark.pdf` tour (`rh-tour.coax`), Provenance & Multi-Kernel Trust Ledger, and Coax GPU mathematical visualizers (`rh-math.coax`: Critical Strip & Dirichlet $L$-functions, `Robin1984` $\sigma(n)$, $\sqrt{X}$ iterated theta-lift chain).
+- **RH-2:** 60 fps multi-scale semantic-zoom Proof Atlas (`page/gym-rh-atlas.coax`) over the 175,187-module graph.
+- **RH-3:** Module Inspector + Grounded AI Explainer (seeded with [riemann-hypothesis-2026.md](riemann-hypothesis-2026.md)) + local Markdown/LaTeX notes + Tier B live Lean `v4.33.1` LSP Infoview.
+- **RH-4:** Lemma Simplification Lab (`#authority` `rh-simplify.coax` + `con-leche --compare` / `lake comparator` on Lean `v4.36.0`) + Tier C local/remote kernel audit.
+
+---
+
 ## Open Owner Decisions
 
-None of these block Phase 0–1 design, but settling them before Phase 2/3 avoids rework:
+None of these block Phase 0–1 or RH-0–RH-2 design, but settling them before Phase 2/3 avoids rework:
 
-1. **Default pinned Lean 4 toolchain version for bundled samples & `Lean Core Smoke`:** Recommend pinning one current stable release (e.g., `leanprover/lean4:v4.19.0` or latest stable Lean 4.x matching current Mathlib) across `evals/openagents-desktop/lean/` and build hosts.
+1. **Default pinned Lean 4 toolchains:** Recommend pinning **`leanprover/lean4:v4.36.0`** for new OpenAgents Gym suites & multi-kernel judging (`lake check --paranoid`, `lake comparator`, `con-leche`, `con-ron`, `nanoda`) alongside **`leanprover/lean4:v4.33.1`** for live LSP / Tier B builds on `leanprover-community/riemann-hypothesis`.
 2. **Installing `elan` on Mac & remote build hosts:** Should we add an automated `elan` + pinned-toolchain check/setup note to `NEEDS_OWNER.md` (and Nix profile in `os/nix/`) so build hosts and dev Macs can run Tier 2+ live Lean suites continuously?
 3. **Experimental feature gate:** Keep the entire Gym (including `Lean`) behind `Settings > General > Experimental features` initially (matching `PLE 3D` and `Benchmarks`), or promote the `Lean` Gym out of Experimental once Phases 0–2 pass Tier 3?
 4. **Cloud / Frontier side in `GymBenchmarkView`:** In Phase 3, besides `Psionic Metal vs llama.cpp Metal`, do we want a dropdown selector on each race side (`Psionic Metal`, `Psionic + LoRA`, `llama.cpp Metal`, `Gemini 4 Neon`, `Claude Opus`) so the Gym can race local Inkling LoRAs directly against frontier models on Lean theorems?

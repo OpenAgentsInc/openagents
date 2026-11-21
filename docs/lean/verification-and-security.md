@@ -64,21 +64,26 @@ flowchart LR
 - Compiles `Spec.lean` -> `Spec.olean` and `Solution.lean` -> `Solution.olean` using `lake env lean -o ...` under the sandbox profile (Section 3) with deterministic flags (`-DwarningAsError=false` so warnings are inspected structurally rather than hiding `sorryAx`).
 - Computes `spec_sha256`, `solution_sha256`, and `olean_sha256` using `coax/lib/crypto/`.
 
-### Stage 2 — Independent Kernel Replay (`lean4checker`)
-- Invokes `lean4checker` (when installed on PATH or in the project's toolchain) — or our bundled zero-dependency Lean kernel-replay script (which loads the `.olean` into a fresh `Lean.Environment` via `importModules` / `Environment.replay` with zero user macros loaded) — to verify every constant in `Solution.olean` directly through Lean's trusted C++ kernel.
-- Catches metaprogramming tricks where a custom elaborator inserts unchecked axioms or tampered expressions into the `Environment` without going through `Kernel.addDecl`.
+### Stage 2 — Independent Multi-Kernel Replay (`lake check --paranoid`, `con-leche`, `con-ron`, `nanoda`)
+- Since **Lean `v4.35.0` / `v4.36.0`** ([Leonardo de Moura, Oct 15, 2026](https://leodemoura.github.io/blog/2026-10-15-lean-now-ships-with-verified-kernels/)), Lean ships natively with sandboxed **`lake check`**, **`lake check --paranoid`**, **`lake comparator`**, and independent/verified kernels:
+  - **`leanchecker` / `leanchecker-paranoid`** (official C++ kernel + hardened allocator)
+  - **`nanoda`** (independent Rust kernel)
+  - **`lean4lean`** (Lean-in-Lean kernel)
+  - **`con-leche`** (Lean kernel **formally proven consistent** relative to set theory) and **`con-ron`** (Rust translation **formally proven via Aeneas** to refine `con-leche`)
+- `coax/lib/lean/verify.coax` invokes `lake check --paranoid` / `lake comparator` / `con-leche --compare` on an **inert export** (e.g., `lean4export` NDJSON) whenever Lean `v4.35+` is installed — matching the exact four-criterion protocol certified by the Lean FRO & Mathlib Initiative for the November 2026 Riemann Hypothesis proof ([riemann-hypothesis-2026.md](riemann-hypothesis-2026.md)) — and falls back to `lean4checker` or our bundled zero-dependency `OpenAgentsVerify.lean` kernel-replay script on earlier toolchains.
+- Catches both elaborator/metaprogramming bypasses (`kexactB`, `addDecl` misuse, custom macros) and single-kernel implementation bugs.
 
-### Stage 3 — Frozen Statement Equality & Transitive Axiom Audit (`SafeVerify` semantics)
-- In a clean Lean process that imports **both** pristine `Spec.olean` and submitted `Solution.olean` (under separate module prefixes or comparing constant infos directly):
+### Stage 3 — Frozen Statement Equality & Transitive Axiom Audit (`lake comparator` / `con-leche --compare` / `SafeVerify`)
+- Compares an isolated challenge export (importing only Mathlib / `Init` with `sorry` proofs) against the submitted solution export using **`lake comparator`** and/or **`con-leche --compare`** (or our bundled zero-dependency `OpenAgentsVerify.lean` comparator on older Lean toolchains):
   1. Confirms each required `target_theorems[i]` is present as a `.thmInfo` (never downgraded to `axiomInfo`, `opaqueInfo`, or `defnInfo`).
-  2. Confirms exact equality of `levelParams` and `type` (`Expr.equal` / definitional equivalence in the pristine `Spec` environment — preventing renamed binders with altered types, weakened preconditions, or extra hypotheses).
-  3. Collects the full transitive axiom set via `Lean.CollectAxioms.collect` over `Solution.olean` for each target theorem.
+  2. Confirms exact equality of `levelParams` and `type` against the pristine frozen `Spec.lean` / `Challenge.lean` (preventing weakened preconditions, altered types, or renamed targets).
+  3. Collects the full transitive axiom set via `Lean.CollectAxioms.collect` over the compiled `.olean` / export for each target theorem.
   4. Emits machine-readable JSON for `coax/lib/lean/policy.coax` to evaluate.
 
-### Why Bundled Zero-Mathlib Checker + Optional External `SafeVerify` / `lean4checker`?
-- Users with a fresh `elan` install will have `lean` and `lake` immediately, even before installing `lean4checker` or `SafeVerify`.
-- Shipping a small (~120-line) auditable Lean 4 checker file (`resources/lean-checker/OpenAgentsVerify.lean`) that uses **only** Lean's built-in `Lean` core library (`Lean.importModules`, `Lean.Environment.replay`, `Lean.CollectAxioms`) means Stage 2 + Stage 3 run out of the box with **zero external packages** on any Lean 4.x toolchain!
-- When external `lean4checker` or `SafeVerify` / `Comparator` binaries are installed, `lean-run verify` runs them as an additional cross-check and records the exact checker identity in `verify.json`.
+### Why Native Lean `v4.36+` Verified Kernels + Bundled Zero-Mathlib Fallback?
+- On modern Lean `v4.35+` / `v4.36.0`, `lake check --paranoid`, `lake comparator`, `con-leche`, `con-ron`, and `nanoda` provide industrial-grade, formally verified multi-kernel checking out of the box.
+- Shipping a small (~120-line) auditable fallback script (`resources/lean-checker/OpenAgentsVerify.lean`) using only Lean's built-in `Lean` core library guarantees Stage 2 + Stage 3 also work cleanly on older project-pinned toolchains (such as Lean `v4.33.1`, which requires exporting with `lean4export` and judging with `v4.36.0` for `lake comparator`).
+- Every `verify.json` records the exact toolchain and checker versions executed (`checker` field), never overstating which kernels ran.
 
 ---
 
