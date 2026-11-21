@@ -1,0 +1,161 @@
+// Single JSON codec for openagents.tester.v1alpha1 (tester.observation.v1, tester.action.v1,
+// tester.result.v1; docs/apps/2026-11-20-simulated-tester-spec.md §6, GitHub #13891).
+#load "../registry/wire.coax";
+
+TS_BUF :: 16384;
+
+TsObservation :: struct {
+  client_id: string;
+  target: string;
+  mode: string;
+  seq: int;
+  ts_ms: int;
+  width: int;
+  height: int;
+  scale_x100: int;
+  screenshot_ref: string;
+  running: bool;
+  settings_page: int;
+  composer_focused: bool;
+  composer_text: string;
+  window_title: string;
+  summary: string;
+}
+
+TsAction :: struct {
+  action_id: string;
+  source_seq: int;
+  op: string;
+  target: string;
+  text: string;
+  x: int;
+  y: int;
+  lease_ms: int;
+  ts_ms: int;
+  ok: bool;
+  detail: string;
+}
+
+TsResult :: struct {
+  scenario_id: string;
+  client_id: string;
+  target: string;
+  mode: string;
+  verdict: string;
+  duration_ms: int;
+  steps_run: int;
+  first_failure: string;
+  summary: string;
+  screenshot_ref: string;
+  cleanup: string;
+}
+
+ts_verdict_valid :: (v: string) -> bool {
+  return v == "pass" || v == "product-fail" || v == "infrastructure-fail"
+    || v == "blocked" || v == "inconclusive" || v == "not-applicable" || v == "unqualified";
+}
+
+ts_write_obs :: (o: TsObservation, out: [] u8) -> int {
+  pos := [1] int.[0];
+  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.observation.v1\",\"client_id\":")
+    && ar_w_str(out, pos[..], o.client_id)
+    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], o.target)
+    && ar_w_raw(out, pos[..], ",\"mode\":") && ar_w_str(out, pos[..], o.mode)
+    && ar_w_raw(out, pos[..], ",\"seq\":") && ar_w_int(out, pos[..], o.seq)
+    && ar_w_raw(out, pos[..], ",\"ts_ms\":") && ar_w_int(out, pos[..], o.ts_ms)
+    && ar_w_raw(out, pos[..], ",\"width\":") && ar_w_int(out, pos[..], o.width)
+    && ar_w_raw(out, pos[..], ",\"height\":") && ar_w_int(out, pos[..], o.height)
+    && ar_w_raw(out, pos[..], ",\"scale_x100\":") && ar_w_int(out, pos[..], o.scale_x100)
+    && ar_w_raw(out, pos[..], ",\"screenshot_ref\":") && ar_w_str(out, pos[..], o.screenshot_ref)
+    && ar_w_raw(out, pos[..], ",\"running\":") && ar_w_bool(out, pos[..], o.running)
+    && ar_w_raw(out, pos[..], ",\"settings_page\":") && ar_w_int(out, pos[..], o.settings_page)
+    && ar_w_raw(out, pos[..], ",\"composer_focused\":") && ar_w_bool(out, pos[..], o.composer_focused)
+    && ar_w_raw(out, pos[..], ",\"composer_text\":") && ar_w_str(out, pos[..], o.composer_text)
+    && ar_w_raw(out, pos[..], ",\"window_title\":") && ar_w_str(out, pos[..], o.window_title)
+    && ar_w_raw(out, pos[..], ",\"summary\":") && ar_w_str(out, pos[..], o.summary)
+    && ar_w_raw(out, pos[..], "}");
+  return ifx ok then pos[0] else -1;
+}
+
+ts_write_action :: (a: TsAction, out: [] u8) -> int {
+  if !ar_lease_ok(a.lease_ms) { return -1; }
+  pos := [1] int.[0];
+  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.action.v1\",\"action_id\":")
+    && ar_w_str(out, pos[..], a.action_id)
+    && ar_w_raw(out, pos[..], ",\"source_seq\":") && ar_w_int(out, pos[..], a.source_seq)
+    && ar_w_raw(out, pos[..], ",\"op\":") && ar_w_str(out, pos[..], a.op)
+    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], a.target)
+    && ar_w_raw(out, pos[..], ",\"text\":") && ar_w_str(out, pos[..], a.text)
+    && ar_w_raw(out, pos[..], ",\"x\":") && ar_w_int(out, pos[..], a.x)
+    && ar_w_raw(out, pos[..], ",\"y\":") && ar_w_int(out, pos[..], a.y)
+    && ar_w_raw(out, pos[..], ",\"lease_ms\":") && ar_w_int(out, pos[..], a.lease_ms)
+    && ar_w_raw(out, pos[..], ",\"ts_ms\":") && ar_w_int(out, pos[..], a.ts_ms)
+    && ar_w_raw(out, pos[..], ",\"ok\":") && ar_w_bool(out, pos[..], a.ok)
+    && ar_w_raw(out, pos[..], ",\"detail\":") && ar_w_str(out, pos[..], a.detail)
+    && ar_w_raw(out, pos[..], "}");
+  return ifx ok then pos[0] else -1;
+}
+
+ts_write_result :: (r: TsResult, out: [] u8) -> int {
+  if !ts_verdict_valid(r.verdict) { return -1; }
+  pos := [1] int.[0];
+  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.result.v1\",\"scenario_id\":")
+    && ar_w_str(out, pos[..], r.scenario_id)
+    && ar_w_raw(out, pos[..], ",\"client_id\":") && ar_w_str(out, pos[..], r.client_id)
+    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], r.target)
+    && ar_w_raw(out, pos[..], ",\"mode\":") && ar_w_str(out, pos[..], r.mode)
+    && ar_w_raw(out, pos[..], ",\"verdict\":") && ar_w_str(out, pos[..], r.verdict)
+    && ar_w_raw(out, pos[..], ",\"duration_ms\":") && ar_w_int(out, pos[..], r.duration_ms)
+    && ar_w_raw(out, pos[..], ",\"steps_run\":") && ar_w_int(out, pos[..], r.steps_run)
+    && ar_w_raw(out, pos[..], ",\"first_failure\":") && ar_w_str(out, pos[..], r.first_failure)
+    && ar_w_raw(out, pos[..], ",\"summary\":") && ar_w_str(out, pos[..], r.summary)
+    && ar_w_raw(out, pos[..], ",\"screenshot_ref\":") && ar_w_str(out, pos[..], r.screenshot_ref)
+    && ar_w_raw(out, pos[..], ",\"cleanup\":") && ar_w_str(out, pos[..], r.cleanup)
+    && ar_w_raw(out, pos[..], "}");
+  return ifx ok then pos[0] else -1;
+}
+
+#test "tester schema encodes valid observation, action, and result JSON" {
+  buf: [TS_BUF] u8;
+  sb: [256] u8;
+  nodes: [128] JvNode;
+  doc: [1] Jv;
+
+  o := TsObservation.{
+    client_id = "desk-1", target = "desktop-mac", mode = "local", seq = 1, ts_ms = 1234,
+    width = 1280, height = 820, scale_x100 = 200, screenshot_ref = "screenshots/cold.png",
+    running = false, settings_page = -1, composer_focused = true, composer_text = "hi",
+    window_title = "Coder", summary = "ready"
+  };
+  no := ts_write_obs(o, buf[..]);
+  #assert no > 0;
+  #assert jv_parse(doc[..], cast(string) buf[0..<no], nodes[..]);
+  son := jv_str(doc[0], jv_get(doc[0], 0, "schema"), sb[..]);
+  #assert son > 0 && cast(string) sb[0..<son] == "tester.observation.v1";
+
+  a := TsAction.{
+    action_id = "act-1", source_seq = 1, op = "type", target = "composer",
+    text = "hello", x = 0, y = 0, lease_ms = 250, ts_ms = 1250, ok = true, detail = ""
+  };
+  na := ts_write_action(a, buf[..]);
+  #assert na > 0;
+  #assert jv_parse(doc[..], cast(string) buf[0..<na], nodes[..]);
+  san := jv_str(doc[0], jv_get(doc[0], 0, "schema"), sb[..]);
+  #assert san > 0 && cast(string) sb[0..<san] == "tester.action.v1";
+  bad_a := a; bad_a.lease_ms = 1001;
+  #assert ts_write_action(bad_a, buf[..]) == -1;
+
+  r := TsResult.{
+    scenario_id = "desktop.launch.cold", client_id = "desk-1", target = "desktop-mac",
+    mode = "local", verdict = "pass", duration_ms = 420, steps_run = 3,
+    first_failure = "", summary = "window opened and composer focused",
+    screenshot_ref = "screenshots/cold.png", cleanup = "ok"
+  };
+  nr := ts_write_result(r, buf[..]);
+  #assert nr > 0;
+  #assert jv_parse(doc[..], cast(string) buf[0..<nr], nodes[..]);
+  svn := jv_str(doc[0], jv_get(doc[0], 0, "verdict"), sb[..]);
+  #assert svn > 0 && cast(string) sb[0..<svn] == "pass";
+  bad_r := r; bad_r.verdict = "bogus";
+  #assert ts_write_result(bad_r, buf[..]) == -1;
+}

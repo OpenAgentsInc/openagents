@@ -1,0 +1,78 @@
+syntax = "proto3";
+package openagents.agent.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Composable custom agent definitions for OpenAgents Desktop, Mobile, Web, and CLI
+// (docs/apps/2026-11-20-simulated-tester-spec.md, GitHub #13891).
+//
+// An agent is defined by its contract, execution mode, capabilities, and composition policy —
+// not by whether every step calls an LLM. Deterministic scripts, hybrid controller+model agents,
+// and model-backed agents share one manifest and one invocation tree.
+//
+// Single codec: coax/lib/agent/registry/wire.coax
+// Admission & delegation policy (#authority): coax/lib/agent/registry/policy.coax
+
+enum AgentKind {
+  AGENT_KIND_UNSPECIFIED = 0;
+  AGENT_KIND_CODER = 1;
+  AGENT_KIND_TESTER = 2;
+  AGENT_KIND_PLAYTESTER = 3;
+  AGENT_KIND_BUILDER = 4;
+  AGENT_KIND_COORDINATOR = 5;
+  AGENT_KIND_CUSTOM = 6;
+}
+
+enum ExecutionMode {
+  EXECUTION_MODE_UNSPECIFIED = 0;
+  EXECUTION_MODE_DETERMINISTIC = 1; // pure Coax / scripted, zero LLM calls
+  EXECUTION_MODE_HYBRID = 2;        // deterministic controller + bounded decision/vision model
+  EXECUTION_MODE_MODEL = 3;         // LLM / vision-model driven within hard caps
+}
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_DESKTOP_DRIVE = 1;
+  CAPABILITY_IOS_SIM = 2;
+  CAPABILITY_IOS_DEVICE = 3;
+  CAPABILITY_WEB_CDP = 4;
+  CAPABILITY_SPAWN_AGENT = 5;       // may invoke agents listed in allowed_callees
+  CAPABILITY_WORKSPACE_READ = 6;
+  CAPABILITY_WORKSPACE_WRITE = 7;
+}
+
+// Monotonic resource budget. Child invocations cannot exceed their parent's remaining budget.
+message Budget {
+  optional uint64 max_wall_ms = 1 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint32 max_turns = 2;
+  optional uint64 max_tokens = 3;
+  optional uint64 max_cost_usd_e6 = 4; // micro-USD (1_000_000 = $1.00)
+}
+
+message CompositionPolicy {
+  repeated string allowed_callees = 1 [
+    (openagents.options.v1alpha1.max_count) = 32,
+    (openagents.options.v1alpha1.max_bytes) = 64
+  ];
+  optional uint32 max_depth = 2;       // hard upper bound enforced by #authority policy
+  optional uint32 max_concurrency = 3; // max simultaneous active child invocations
+}
+
+message AgentDefinition {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.spec.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+  optional string agent_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string name = 2 [(openagents.options.v1alpha1.max_bytes) = 80];
+  optional string description = 3 [(openagents.options.v1alpha1.max_bytes) = 400];
+  optional uint32 version = 4;
+  AgentKind kind = 5;
+  ExecutionMode execution_mode = 6;
+  // Runtime binding: "coax-tool:<path>", "mcp:<server>", "worker:<kind>", or "composite"
+  optional string runtime = 7 [(openagents.options.v1alpha1.max_bytes) = 160];
+  optional string input_contract = 8 [(openagents.options.v1alpha1.max_bytes) = 80];
+  optional string output_contract = 9 [(openagents.options.v1alpha1.max_bytes) = 80];
+  repeated Capability capabilities = 10 [(openagents.options.v1alpha1.max_count) = 16];
+  CompositionPolicy composition = 11;
+  Budget default_budget = 12;
+  optional string model_hint = 13 [(openagents.options.v1alpha1.max_bytes) = 64];
+}

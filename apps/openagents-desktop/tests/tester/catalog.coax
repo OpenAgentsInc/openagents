@@ -1,0 +1,59 @@
+// Desktop Surface Register & Built-in Tester Agent Definition
+// (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
+#load "../../../../coax/lib/agent/tester/schema.coax";
+
+DT_SCENARIO_COUNT :: 11;
+
+DtScenario :: struct {
+  id: string;
+  area: string;
+  title: string;
+  required: bool;
+}
+
+dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
+  return [DT_SCENARIO_COUNT] DtScenario.[
+    DtScenario.{id = "desktop.launch.cold", area = "launch", title = "Cold launch, window geometry, zero focus stealing, composer ready", required = true},
+    DtScenario.{id = "desktop.composer.type-and-multiline", area = "composer", title = "Type text, Shift-Return newline, select-all and clear", required = true},
+    DtScenario.{id = "desktop.palette.open-and-dismiss", area = "palette", title = "Cmd+K command palette open, filter, and Escape dismiss", required = true},
+    DtScenario.{id = "desktop.settings.pages-and-search", area = "settings", title = "Cmd+, Settings open, search, and Escape close", required = true},
+    DtScenario.{id = "desktop.zoom.step-and-reset", area = "zoom", title = "Cmd+/Cmd-/Cmd+0 text zoom steps and reset", required = true},
+    DtScenario.{id = "desktop.layout.narrow-and-wide", area = "layout", title = "Resize 1400x860 -> 760x640 narrow -> 1280x820 wide", required = true},
+    DtScenario.{id = "desktop.sidebar.toggle", area = "sidebar", title = "Cmd+B toggle sidebar off and on", required = true},
+    DtScenario.{id = "desktop.models.picker", area = "models", title = "Cmd+/ model picker open and Escape dismiss", required = true},
+    DtScenario.{id = "desktop.simulator.pane-toggle", area = "simulator", title = "Opt+Cmd+S iOS Simulator pane toggle", required = true},
+    DtScenario.{id = "desktop.files.open-edit-dirty", area = "files", title = "Open scratch file in right pane, edit, and verify dirty state", required = true},
+    DtScenario.{id = "desktop.chat.mock-send-and-stream", area = "chat", title = "Send prompt via composer, stream mock worker reply, settle", required = true}
+  ];
+}
+
+dt_agent_definition :: () -> ArDefRecord {
+  return ArDefRecord.{
+    agent_id = "desktop-journey-tester",
+    name = "Desktop Journey Tester",
+    description = "Deterministic Coax agent driving compiled OpenAgents.app through required desktop UI journeys without stealing focus",
+    version = 1,
+    kind = "tester",
+    execution_mode = "deterministic",
+    runtime = "coax-tool:apps/shared/tester/cli.coax",
+    input_contract = "tester.run_request.v1",
+    output_contract = "tester.result.v1",
+    max_depth = 2,
+    max_concurrency = 4,
+    budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+    model_hint = ""
+  };
+}
+
+#test "desktop surface register has unique non-empty ids and valid agent definition" {
+  sc := dt_scenarios();
+  for i: 0..<DT_SCENARIO_COUNT {
+    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].title.count > 0;
+    for j: i + 1..<DT_SCENARIO_COUNT {
+      #assert sc[i].id != sc[j].id;
+    }
+  }
+  d := dt_agent_definition();
+  #assert ar_kind_of(d.kind) == AR_KIND_TESTER;
+  #assert ar_mode_of(d.execution_mode) == AR_MODE_DETERMINISTIC;
+}

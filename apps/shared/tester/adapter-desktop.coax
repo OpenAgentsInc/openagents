@@ -1,0 +1,387 @@
+// macOS Desktop Adapter for the Simulated App Tester MVP
+// (docs/apps/2026-11-20-simulated-tester-spec.md §7.1, GitHub #13892).
+//
+// Stages an isolated scratch copy of OpenAgents.app (isolated bundle ID, isolated HOME/CODER_HOME,
+// CODER_TEST_LAUNCH, DYLD_INSERT_LIBRARIES=probe.dylib, zero focus stealing), speaks line-JSON to
+// the probe AF_UNIX socket via Coax's native socket runtime, captures screenshots, and records
+// tester.observation.v1 / tester.action.v1 / tester.result.v1 JSONL evidence.
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/agent/tester/schema.coax";
+
+DA_PATH :: 1024;
+DA_REPLY :: 65536;
+
+DaBuf :: struct { b: [DA_PATH] u8; n: int; }
+
+da_str :: (d: [] DaBuf) -> string { return cast(string) d[0].b[0..<d[0].n]; }
+da_cat :: (d: [] DaBuf, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < d[0].b.count { d[0].b[n] = c; n += 1; } }
+  for c: b { if n < d[0].b.count { d[0].b[n] = c; n += 1; } }
+  d[0].n = n;
+  return cast(string) d[0].b[0..<n];
+}
+da_cat3 :: (d: [] DaBuf, a: string, b: string, c: string) -> string {
+  n := 0;
+  for x: a { if n < d[0].b.count { d[0].b[n] = x; n += 1; } }
+  for x: b { if n < d[0].b.count { d[0].b[n] = x; n += 1; } }
+  for x: c { if n < d[0].b.count { d[0].b[n] = x; n += 1; } }
+  d[0].n = n;
+  return cast(string) d[0].b[0..<n];
+}
+
+da_int_str :: (v: int, out: [] u8) -> string {
+  pos := [1] int.[0];
+  _ = ar_w_int(out, pos[..], v);
+  return cast(string) out[0..<pos[0]];
+}
+
+DaSession :: struct {
+  out_dir: [DA_PATH] u8; out_n: int;
+  home_dir: [DA_PATH] u8; home_n: int;
+  sock_path: [DA_PATH] u8; sock_n: int;
+  app_bin: [DA_PATH] u8; app_n: int;
+  dylib: [DA_PATH] u8; dylib_n: int;
+  workers_file: [DA_PATH] u8; workers_n: int;
+  record_dir: [DA_PATH] u8; record_n: int;
+  obs_file: [DA_PATH] u8; obs_n: int;
+  act_file: [DA_PATH] u8; act_n: int;
+  res_file: [DA_PATH] u8; res_n: int;
+  last_title: [128] u8; last_title_n: int;
+  last_composer: [2048] u8; last_composer_n: int;
+  last_shot: [256] u8; last_shot_n: int;
+  proc_h: int;
+  win_id: int;
+  seq: int;
+  act_seq: int;
+  started_ms: int;
+  mode: [32] u8; mode_n: int;
+}
+
+da_slice :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+da_copy_into :: (dst: [] u8, s: string) -> int {
+  n := 0;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+// Send one line command to the probe AF_UNIX socket and read one line JSON reply.
+da_probe :: (sock_path: string, cmd: string, out: [] u8, timeout_ms: int) -> int {
+  for c: sock_path { _ = cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(timeout_ms);
+  if h < 0 { return -1; }
+  for c: cmd { _ = cxsock_write(h, cast(int) c); }
+  _ = cxsock_write(h, 10);
+  if cxsock_flush(h, timeout_ms) < 0 { _ = cxsock_close(h); return -1; }
+  total := 0;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left < 50 { left = 50; }
+    n := cxsock_read(h, left);
+    if n <= 0 { break; }
+    done := false;
+    for i: 0..<n {
+      b := cxsock_byte(h, i);
+      if b == 10 { done = true; break; }
+      if total < out.count { out[total] = cast(u8) b; total += 1; }
+    }
+    if done { break; }
+  }
+  _ = cxsock_close(h);
+  return total;
+}
+
+da_json_ok :: (reply: string) -> bool {
+  nodes: [256] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], reply, nodes[..]) { return false; }
+  return jv_bool(doc[0], jv_get(doc[0], 0, "ok"));
+}
+
+da_append_line :: (path: string, line: string) {
+  _ = fs_append(path, line);
+  _ = fs_append(path, "\n");
+}
+
+da_run_sh :: (cmd: string, timeout_ms: int) -> bool {
+  out: [4096] u8;
+  err: [4096] u8;
+  argv := [3] string.["/bin/sh", "-c", cmd];
+  r := proc_run(argv[..], timeout_ms, out[..], err[..]);
+  if r.started != 0 || r.status != 0 {
+    if r.err_n > 0 { tool_errln(cast(string) err[0..<r.err_n]); }
+    return false;
+  }
+  return true;
+}
+
+// Stage scratch OpenAgents.app + probe.dylib into out_dir/stage/ (isolated bundle ID, mock workers in local mode).
+da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, mode: string) -> bool {
+  s[0].out_n = da_copy_into(s[0].out_dir[..], out_dir);
+  s[0].mode_n = da_copy_into(s[0].mode[..], mode);
+  s[0].proc_h = -1;
+  s[0].win_id = 0;
+  s[0].seq = 0;
+  s[0].act_seq = 0;
+  s[0].started_ms = proc_now_ms();
+
+  b1: [1] DaBuf;
+  b_stage: [1] DaBuf;
+  b_app: [1] DaBuf;
+  b2: [1] DaBuf;
+  b3: [1] DaBuf;
+  _ = fs_mkdir_all(out_dir);
+  _ = fs_mkdir_all(da_cat(b1[..], out_dir, "/screenshots"));
+  home := da_cat(b1[..], out_dir, "/home");
+  _ = fs_mkdir_all(home);
+  s[0].home_n = da_copy_into(s[0].home_dir[..], home);
+  stage := da_cat(b_stage[..], out_dir, "/stage");
+  _ = fs_mkdir_all(stage);
+  rec := da_cat(b1[..], out_dir, "/worker-record");
+  _ = fs_mkdir_all(rec);
+  s[0].record_n = da_copy_into(s[0].record_dir[..], rec);
+
+  // AF_UNIX sun_path is 104 bytes on macOS; keep the socket path short in /tmp.
+  ib: [32] u8;
+  sock := da_cat3(b1[..], "/tmp/oa-t-", da_int_str(proc_now_ms() % 1000000, ib[..]), ".sock");
+  s[0].sock_n = da_copy_into(s[0].sock_path[..], sock);
+  _ = fs_remove(sock);
+
+  s[0].obs_n = da_copy_into(s[0].obs_file[..], da_cat(b1[..], out_dir, "/observations.jsonl"));
+  s[0].act_n = da_copy_into(s[0].act_file[..], da_cat(b1[..], out_dir, "/actions.jsonl"));
+  s[0].res_n = da_copy_into(s[0].res_file[..], da_cat(b1[..], out_dir, "/results.jsonl"));
+
+  wfile := da_cat(b1[..], out_dir, "/workers.json");
+  s[0].workers_n = da_copy_into(s[0].workers_file[..], wfile);
+  _ = fs_write(wfile, "{\"default\":{\"turns\":[{\"reply\":\"Simulated tester mock reply: hello from deterministic worker.\",\"thought\":\"Checking simulated tester prompt.\"}]}}\n");
+
+  staged_app := da_cat(b_app[..], stage, "/OpenAgents.app");
+  s[0].app_n = da_copy_into(s[0].app_bin[..], da_cat(b2[..], staged_app, "/Contents/MacOS/OpenAgents"));
+  dylib := da_cat(b2[..], stage, "/probe.dylib");
+  s[0].dylib_n = da_copy_into(s[0].dylib[..], dylib);
+
+  // Copy app bundle, set isolated bundle id, install mock workers in local mode, ad-hoc sign, build probe.dylib.
+  cmd_buf: [4096] u8;
+  p := [1] int.[0];
+  _ = ar_w_raw(cmd_buf[..], p[..], "rm -rf '");
+  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+  _ = ar_w_raw(cmd_buf[..], p[..], "' && cp -cR '");
+  _ = ar_w_raw(cmd_buf[..], p[..], built_app);
+  _ = ar_w_raw(cmd_buf[..], p[..], "' '");
+  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+  _ = ar_w_raw(cmd_buf[..], p[..], "' && /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.openagents.desktop.tester' '");
+  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+  _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Info.plist'");
+  if mode == "local" {
+    router := da_cat(b3[..], repo, "/evals/openagents-desktop/tier3/mock_router.py");
+    _ = ar_w_raw(cmd_buf[..], p[..], " && cp '");
+    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker' '");
+    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker-real'");
+    _ = ar_w_raw(cmd_buf[..], p[..], " && printf '#!/bin/sh\\nexec /usr/bin/python3 -I \"");
+    _ = ar_w_raw(cmd_buf[..], p[..], router);
+    _ = ar_w_raw(cmd_buf[..], p[..], "\" \"$@\"\\n' > '");
+    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker' && chmod +x '");
+    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker'");
+  }
+  _ = ar_w_raw(cmd_buf[..], p[..], " && codesign --force --sign - '");
+  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
+  _ = ar_w_raw(cmd_buf[..], p[..], "' >/dev/null 2>&1 && clang -dynamiclib -fobjc-arc -mmacosx-version-min=14.0 -framework AppKit -o '");
+  _ = ar_w_raw(cmd_buf[..], p[..], dylib);
+  _ = ar_w_raw(cmd_buf[..], p[..], "' '");
+  _ = ar_w_raw(cmd_buf[..], p[..], repo);
+  _ = ar_w_raw(cmd_buf[..], p[..], "/evals/openagents-desktop/tier3/probe/probe.m'");
+  _ = ar_w_raw(cmd_buf[..], p[..], " && defaults delete com.openagents.desktop.tester >/dev/null 2>&1 || true");
+  if !da_run_sh(cast(string) cmd_buf[0..<p[0]], 60000) {
+    tool_errln("desktop-adapter: staging failed");
+    return false;
+  }
+  return fs_exists(da_slice(s[0].app_bin[..], s[0].app_n)) && fs_exists(da_slice(s[0].dylib[..], s[0].dylib_n));
+}
+
+da_launch :: (s: [] DaSession) -> bool {
+  sock := da_slice(s[0].sock_path[..], s[0].sock_n);
+  _ = fs_remove(sock);
+  h := proc_new();
+  if h < 0 { return false; }
+  _ = proc_arg(h, da_slice(s[0].app_bin[..], s[0].app_n));
+  _ = proc_arg(h, "--folder");
+  _ = proc_arg(h, da_slice(s[0].home_dir[..], s[0].home_n));
+
+  b: [1] DaBuf;
+  home := da_slice(s[0].home_dir[..], s[0].home_n);
+  _ = proc_env(h, da_cat(b[..], "HOME=", home));
+  _ = proc_env(h, da_cat(b[..], "CFFIXED_USER_HOME=", home));
+  _ = proc_env(h, da_cat(b[..], "CODER_HOME=", home));
+  _ = proc_env(h, da_cat(b[..], "CODER_WORKTREES=", da_cat(b[..], home, "/worktrees")));
+  _ = proc_env(h, "CODER_UPDATE_URL=");
+  _ = proc_env(h, "BROWSER=/usr/bin/true");
+  _ = proc_env(h, "LANG=en_US.UTF-8");
+  _ = proc_env(h, da_cat(b[..], "CODER_T3_SOCKET=", sock));
+  _ = proc_env(h, da_cat(b[..], "CODER_T3_WORKERS=", da_slice(s[0].workers_file[..], s[0].workers_n)));
+  _ = proc_env(h, da_cat(b[..], "CODER_T3_RECORD=", da_slice(s[0].record_dir[..], s[0].record_n)));
+  _ = proc_env(h, da_cat(b[..], "DYLD_INSERT_LIBRARIES=", da_slice(s[0].dylib[..], s[0].dylib_n)));
+  _ = proc_env(h, "CODER_TEST_LAUNCH=simulated-tester");
+  _ = proc_env(h, "CODER_TEST_IDLE_S=180");
+  _ = proc_quiet(h);
+  if proc_start(h) != 0 {
+    _ = proc_release(h);
+    return false;
+  }
+  s[0].proc_h = h;
+
+  // Poll probe socket until ping returns {"ok":true}.
+  rep: [DA_REPLY] u8;
+  deadline := proc_now_ms() + 15000;
+  ready := false;
+  while proc_now_ms() < deadline {
+    n := da_probe(sock, "ping", rep[..], 500);
+    if n > 0 && da_json_ok(cast(string) rep[0..<n]) {
+      ready = true;
+      break;
+    }
+    proc_sleep(150);
+  }
+  if !ready {
+    tool_errln("desktop-adapter: probe socket did not respond to ping within 15s");
+    return false;
+  }
+  // Cache window ID.
+  wn := da_probe(sock, "window", rep[..], 2000);
+  if wn > 0 {
+    nodes: [128] JvNode;
+    doc: [1] Jv;
+    if jv_parse(doc[..], cast(string) rep[0..<wn], nodes[..]) {
+      s[0].win_id = jv_int(doc[0], jv_get(doc[0], 0, "id"), 0);
+    }
+  }
+  return true;
+}
+
+da_stop :: (s: [] DaSession) -> string {
+  if s[0].proc_h < 0 { return "ok"; }
+  sock := da_slice(s[0].sock_path[..], s[0].sock_n);
+  rep: [1024] u8;
+  _ = da_probe(sock, "quit", rep[..], 1000);
+  st := proc_wait(s[0].proc_h, 3000);
+  if st == PROC_RUNNING {
+    _ = proc_kill(s[0].proc_h, PROC_SIGTERM);
+    st = proc_wait(s[0].proc_h, 2000);
+  }
+  if st == PROC_RUNNING {
+    _ = proc_kill(s[0].proc_h, PROC_SIGKILL);
+    _ = proc_wait(s[0].proc_h, 1000);
+  }
+  _ = proc_release(s[0].proc_h);
+  s[0].proc_h = -1;
+  _ = fs_remove(sock);
+  return "ok";
+}
+
+// Capture a window screenshot via screencapture -x -o -l WID (honestly returns "" if unavailable).
+da_capture :: (s: [] DaSession, name: string, ref_out: [] u8) -> string {
+  if s[0].win_id <= 0 { return ""; }
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  rel := da_cat3(b1[..], "screenshots/", name, ".png");
+  full := da_cat3(b2[..], da_slice(s[0].out_dir[..], s[0].out_n), "/", rel);
+  wb: [32] u8;
+  argv := [6] string.["/usr/sbin/screencapture", "-x", "-o", "-l", da_int_str(s[0].win_id, wb[..]), full];
+  out: [512] u8;
+  err: [512] u8;
+  r := proc_run(argv[..], 4000, out[..], err[..]);
+  if r.started == 0 && r.status == 0 && fs_exists(full) && fs_size(full) > 100 {
+    n := da_copy_into(ref_out, rel);
+    return cast(string) ref_out[0..<n];
+  }
+  return "";
+}
+
+// Record a tester.action.v1 and send the probe command.
+da_act :: (s: [] DaSession, op: string, target: string, cmd: string, lease_ms: int, reply_out: [] u8) -> int {
+  s[0].act_seq += 1;
+  sock := da_slice(s[0].sock_path[..], s[0].sock_n);
+  n := da_probe(sock, cmd, reply_out, 5000);
+  ok := n > 0 && da_json_ok(cast(string) reply_out[0..<n]);
+
+  ib: [32] u8;
+  aid_buf: [1] DaBuf;
+  aid := da_cat(aid_buf[..], "act-", da_int_str(s[0].act_seq, ib[..]));
+  detail := ifx n > 0 then cast(string) reply_out[0..<(ifx n > 200 then 200 else n)] else "probe_no_reply";
+  a := TsAction.{
+    action_id = aid, source_seq = s[0].seq, op = op, target = target,
+    text = cmd, x = 0, y = 0, lease_ms = lease_ms,
+    ts_ms = proc_now_ms() - s[0].started_ms, ok = ok, detail = detail
+  };
+  jb: [TS_BUF] u8;
+  jn := ts_write_action(a, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].act_file[..], s[0].act_n), cast(string) jb[0..<jn]); }
+  return n;
+}
+
+// Observe window + state + composer (+ optional screenshot) and append tester.observation.v1.
+da_observe :: (s: [] DaSession, shot_name: string, note: string, obs_out: [] TsObservation, active_out: [] bool) -> bool {
+  s[0].seq += 1;
+  sock := da_slice(s[0].sock_path[..], s[0].sock_n);
+  wrep: [DA_REPLY] u8;
+  srep: [DA_REPLY] u8;
+  crep: [DA_REPLY] u8;
+  wn := da_probe(sock, "window", wrep[..], 3000);
+  sn := da_probe(sock, "state", srep[..], 3000);
+  cn := da_probe(sock, "composer", crep[..], 3000);
+  if wn <= 0 || sn <= 0 || cn <= 0 { return false; }
+
+  nodes: [256] JvNode;
+  doc: [1] Jv;
+  o := TsObservation.{
+    client_id = "desktop-1", target = "desktop-mac",
+    mode = da_slice(s[0].mode[..], s[0].mode_n),
+    seq = s[0].seq, ts_ms = proc_now_ms() - s[0].started_ms,
+    settings_page = -1, summary = note
+  };
+  active_out[0] = false;
+  if jv_parse(doc[..], cast(string) wrep[0..<wn], nodes[..]) {
+    o.width = jv_int(doc[0], jv_get(doc[0], 0, "content_w"), 0);
+    o.height = jv_int(doc[0], jv_get(doc[0], 0, "content_h"), 0);
+    sc := jv_int(doc[0], jv_get(doc[0], 0, "scale"), 2);
+    o.scale_x100 = sc * 100;
+    active_out[0] = jv_bool(doc[0], jv_get(doc[0], 0, "active"));
+  }
+  s[0].last_title_n = 0;
+  if jv_parse(doc[..], cast(string) srep[0..<sn], nodes[..]) {
+    o.running = jv_bool(doc[0], jv_get(doc[0], 0, "running"));
+    o.settings_page = jv_int(doc[0], jv_get(doc[0], 0, "settings_page"), -1);
+    tn := jv_str(doc[0], jv_get(doc[0], 0, "title"), s[0].last_title[..]);
+    if tn > 0 { s[0].last_title_n = tn; o.window_title = da_slice(s[0].last_title[..], tn); }
+  }
+  s[0].last_composer_n = 0;
+  if jv_parse(doc[..], cast(string) crep[0..<cn], nodes[..]) {
+    o.composer_focused = jv_bool(doc[0], jv_get(doc[0], 0, "focused"));
+    ctn := jv_str(doc[0], jv_get(doc[0], 0, "text"), s[0].last_composer[..]);
+    if ctn > 0 { s[0].last_composer_n = ctn; o.composer_text = da_slice(s[0].last_composer[..], ctn); }
+  }
+  s[0].last_shot_n = 0;
+  if shot_name.count > 0 {
+    sh := da_capture(s, shot_name, s[0].last_shot[..]);
+    s[0].last_shot_n = sh.count;
+    o.screenshot_ref = da_slice(s[0].last_shot[..], s[0].last_shot_n);
+  }
+  obs_out[0] = o;
+  jb: [TS_BUF] u8;
+  jn := ts_write_obs(o, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].obs_file[..], s[0].obs_n), cast(string) jb[0..<jn]); }
+  return true;
+}
+
+da_record_result :: (s: [] DaSession, r: TsResult) {
+  jb: [TS_BUF] u8;
+  jn := ts_write_result(r, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
+}

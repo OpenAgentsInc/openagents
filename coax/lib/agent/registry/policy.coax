@@ -1,0 +1,202 @@
+// Composable Agent Registry admission, delegation, lease, and barrier policy
+// (docs/apps/2026-11-20-simulated-tester-spec.md §4.2, GitHub #13891).
+//
+// Decides:
+//   1. Valid agent kinds and execution modes (deterministic, hybrid, model).
+//   2. Delegation admission: spawn capability, depth <= AR_MAX_DEPTH (4), concurrency limit,
+//      allowlisted callee, and monotonic child budgets (child <= parent remaining).
+//   3. Exclusive TargetBinding leases: two active invocations conflict if they share a non-empty
+//      device_lease, account_lease, or workspace_dir.
+//   4. AgentBarrier readiness and deadline enforcement.
+//   5. Input lease upper bound (AR_MAX_LEASE_MS = 1000 ms).
+#authority;
+
+AR_MAX_DEPTH :: 4;
+AR_MAX_CONCURRENCY :: 16;
+AR_MAX_LEASE_MS :: 1000;
+
+AR_KIND_UNKNOWN :: 0;
+AR_KIND_CODER :: 1;
+AR_KIND_TESTER :: 2;
+AR_KIND_PLAYTESTER :: 3;
+AR_KIND_BUILDER :: 4;
+AR_KIND_COORDINATOR :: 5;
+AR_KIND_CUSTOM :: 6;
+
+AR_MODE_UNKNOWN :: 0;
+AR_MODE_DETERMINISTIC :: 1;
+AR_MODE_HYBRID :: 2;
+AR_MODE_MODEL :: 3;
+
+ar_kind_of :: (s: string) -> int #effects(all) {
+  if s == "coder" { return AR_KIND_CODER; }
+  if s == "tester" { return AR_KIND_TESTER; }
+  if s == "playtester" { return AR_KIND_PLAYTESTER; }
+  if s == "builder" { return AR_KIND_BUILDER; }
+  if s == "coordinator" { return AR_KIND_COORDINATOR; }
+  if s == "custom" { return AR_KIND_CUSTOM; }
+  return AR_KIND_UNKNOWN;
+}
+#test "ar_kind_of maps closed set" {
+  #assert ar_kind_of("coder") == AR_KIND_CODER;
+  #assert ar_kind_of("tester") == AR_KIND_TESTER;
+  #assert ar_kind_of("playtester") == AR_KIND_PLAYTESTER;
+  #assert ar_kind_of("builder") == AR_KIND_BUILDER;
+  #assert ar_kind_of("coordinator") == AR_KIND_COORDINATOR;
+  #assert ar_kind_of("custom") == AR_KIND_CUSTOM;
+  #assert ar_kind_of("") == AR_KIND_UNKNOWN && ar_kind_of("Tester") == AR_KIND_UNKNOWN;
+}
+
+ar_mode_of :: (s: string) -> int #effects(all) {
+  if s == "deterministic" { return AR_MODE_DETERMINISTIC; }
+  if s == "hybrid" { return AR_MODE_HYBRID; }
+  if s == "model" { return AR_MODE_MODEL; }
+  return AR_MODE_UNKNOWN;
+}
+#test "ar_mode_of maps closed set" {
+  #assert ar_mode_of("deterministic") == AR_MODE_DETERMINISTIC;
+  #assert ar_mode_of("hybrid") == AR_MODE_HYBRID;
+  #assert ar_mode_of("model") == AR_MODE_MODEL;
+  #assert ar_mode_of("") == AR_MODE_UNKNOWN && ar_mode_of("llm") == AR_MODE_UNKNOWN;
+}
+
+ArBudget :: struct {
+  wall_ms: int;
+  turns: int;
+  tokens: int;
+  cost_usd_e6: int;
+}
+
+// Monotonic budget check: child may not request negative values or exceed parent remaining.
+ar_budget_within :: (child: ArBudget, parent: ArBudget) -> bool #effects(all) {
+  if child.wall_ms < 0 || child.turns < 0 || child.tokens < 0 || child.cost_usd_e6 < 0 { return false; }
+  if child.wall_ms > parent.wall_ms { return false; }
+  if child.turns > parent.turns { return false; }
+  if child.tokens > parent.tokens { return false; }
+  if child.cost_usd_e6 > parent.cost_usd_e6 { return false; }
+  return true;
+}
+#test "ar_budget_within enforces monotonicity and non-negativity" {
+  p := ArBudget.{wall_ms = 60000, turns = 12, tokens = 160000, cost_usd_e6 = 500000};
+  #assert ar_budget_within(p, p);
+  #assert ar_budget_within(ArBudget.{wall_ms = 0, turns = 0, tokens = 0, cost_usd_e6 = 0}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 60001, turns = 12, tokens = 160000, cost_usd_e6 = 500000}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 60000, turns = 13, tokens = 160000, cost_usd_e6 = 500000}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 60000, turns = 12, tokens = 160001, cost_usd_e6 = 500000}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 60000, turns = 12, tokens = 160000, cost_usd_e6 = 500001}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = -1, turns = 0, tokens = 0, cost_usd_e6 = 0}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 0, turns = -1, tokens = 0, cost_usd_e6 = 0}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 0, turns = 0, tokens = -1, cost_usd_e6 = 0}, p);
+  #assert !ar_budget_within(ArBudget.{wall_ms = 0, turns = 0, tokens = 0, cost_usd_e6 = -1}, p);
+}
+
+ArDelegateAsk :: struct {
+  has_spawn_cap: bool;
+  callee_allowed: bool;
+  parent_depth: int;
+  policy_max_depth: int;
+  active_children: int;
+  policy_max_concurrency: int;
+  child_budget: ArBudget;
+  parent_remaining: ArBudget;
+}
+
+// Returns "" when delegation is admitted, else the refusal code.
+ar_admit_delegation :: (a: ArDelegateAsk) -> string #effects(all) {
+  if !a.has_spawn_cap { return "no_spawn_cap"; }
+  if !a.callee_allowed { return "callee_denied"; }
+  cap_depth := a.policy_max_depth;
+  if cap_depth > AR_MAX_DEPTH { cap_depth = AR_MAX_DEPTH; }  // mutant: equivalent (when cap_depth == AR_MAX_DEPTH, assigning AR_MAX_DEPTH is a no-op)
+  if a.parent_depth < 0 || a.parent_depth + 1 > cap_depth { return "depth_limit"; }
+  cap_conc := a.policy_max_concurrency;
+  if cap_conc > AR_MAX_CONCURRENCY { cap_conc = AR_MAX_CONCURRENCY; }  // mutant: equivalent (when cap_conc == AR_MAX_CONCURRENCY, assigning AR_MAX_CONCURRENCY is a no-op)
+  if a.active_children < 0 || a.active_children >= cap_conc { return "concurrency_limit"; }
+  if !ar_budget_within(a.child_budget, a.parent_remaining) { return "budget_exceeded"; }
+  return "";
+}
+#test "ar_admit_delegation enforces capability, callee, depth, concurrency, and budget" {
+  b := ArBudget.{wall_ms = 30000, turns = 4, tokens = 40000, cost_usd_e6 = 100000};
+  ok := ArDelegateAsk.{
+    has_spawn_cap = true, callee_allowed = true,
+    parent_depth = 0, policy_max_depth = 2,
+    active_children = 0, policy_max_concurrency = 4,
+    child_budget = b, parent_remaining = b
+  };
+  #assert ar_admit_delegation(ok) == "";
+  // cap checks
+  no_cap := ok; no_cap.has_spawn_cap = false; #assert ar_admit_delegation(no_cap) == "no_spawn_cap";
+  no_cal := ok; no_cal.callee_allowed = false; #assert ar_admit_delegation(no_cal) == "callee_denied";
+  // depth boundary & hard AR_MAX_DEPTH clamp
+  at_max := ok; at_max.parent_depth = 1; #assert ar_admit_delegation(at_max) == "";
+  past := ok; past.parent_depth = 2; #assert ar_admit_delegation(past) == "depth_limit";
+  hard := ok; hard.policy_max_depth = 99; hard.parent_depth = 3; #assert ar_admit_delegation(hard) == "";
+  hard_past := hard; hard_past.parent_depth = 4; #assert ar_admit_delegation(hard_past) == "depth_limit";
+  zero_md := ok; zero_md.policy_max_depth = 0; #assert ar_admit_delegation(zero_md) == "depth_limit";
+  neg_d := ok; neg_d.parent_depth = -1; #assert ar_admit_delegation(neg_d) == "depth_limit";
+  neg_md := ok; neg_md.policy_max_depth = -1; #assert ar_admit_delegation(neg_md) == "depth_limit";
+  // concurrency boundary & hard AR_MAX_CONCURRENCY clamp
+  c_ok := ok; c_ok.active_children = 3; #assert ar_admit_delegation(c_ok) == "";
+  c_full := ok; c_full.active_children = 4; #assert ar_admit_delegation(c_full) == "concurrency_limit";
+  c_hard := ok; c_hard.policy_max_concurrency = 99; c_hard.active_children = 15; #assert ar_admit_delegation(c_hard) == "";
+  c_hard_full := c_hard; c_hard_full.active_children = 16; #assert ar_admit_delegation(c_hard_full) == "concurrency_limit";
+  c_neg := ok; c_neg.active_children = -1; #assert ar_admit_delegation(c_neg) == "concurrency_limit";
+  // budget
+  over := ok; over.child_budget.wall_ms = 30001; #assert ar_admit_delegation(over) == "budget_exceeded";
+}
+
+ArBinding :: struct {
+  device_lease: string;
+  account_lease: string;
+  workspace_dir: string;
+}
+
+// Two concurrent active invocations conflict if they claim the same non-empty resource.
+ar_bindings_conflict :: (a: ArBinding, b: ArBinding) -> bool #effects(all) {
+  if a.device_lease.count > 0 && a.device_lease == b.device_lease { return true; }
+  if a.account_lease.count > 0 && a.account_lease == b.account_lease { return true; }
+  if a.workspace_dir.count > 0 && a.workspace_dir == b.workspace_dir { return true; }
+  return false;
+}
+#test "ar_bindings_conflict detects overlapping leases and ignores empty fields" {
+  empty := ArBinding.{device_lease = "", account_lease = "", workspace_dir = ""};
+  #assert !ar_bindings_conflict(empty, empty);
+  a := ArBinding.{device_lease = "s", account_lease = "a", workspace_dir = "w"};
+  b := ArBinding.{device_lease = "t", account_lease = "b", workspace_dir = "x"};
+  #assert !ar_bindings_conflict(a, b);
+  d := b; d.device_lease = "s"; #assert ar_bindings_conflict(a, d);
+  ac := b; ac.account_lease = "a"; #assert ar_bindings_conflict(a, ac);
+  w := b; w.workspace_dir = "w"; #assert ar_bindings_conflict(a, w);
+}
+
+// Barrier state: 0 waiting, 1 released, -1 timed out or invalid.
+AR_BARRIER_WAIT :: 0;
+AR_BARRIER_RELEASED :: 1;
+AR_BARRIER_TIMEOUT :: -1;
+
+ar_barrier_eval :: (expected: int, arrived: int, now_ms: int, deadline_ms: int) -> int #effects(all) {
+  if expected <= 0 { return AR_BARRIER_TIMEOUT; }
+  if now_ms > deadline_ms { return AR_BARRIER_TIMEOUT; }
+  if arrived >= expected { return AR_BARRIER_RELEASED; }
+  return AR_BARRIER_WAIT;
+}
+#test "ar_barrier_eval handles wait, release, and timeout boundaries" {
+  #assert ar_barrier_eval(0, 0, 100, 500) == AR_BARRIER_TIMEOUT;
+  #assert ar_barrier_eval(-1, 0, 100, 500) == AR_BARRIER_TIMEOUT;
+  #assert ar_barrier_eval(1, 0, 100, 500) == AR_BARRIER_WAIT;
+  #assert ar_barrier_eval(1, 1, 100, 500) == AR_BARRIER_RELEASED;
+  #assert ar_barrier_eval(2, 1, 500, 500) == AR_BARRIER_WAIT;
+  #assert ar_barrier_eval(2, 2, 500, 500) == AR_BARRIER_RELEASED;
+  #assert ar_barrier_eval(2, 3, 400, 500) == AR_BARRIER_RELEASED;
+  #assert ar_barrier_eval(2, 2, 501, 500) == AR_BARRIER_TIMEOUT;
+}
+
+ar_lease_ok :: (lease_ms: int) -> bool #effects(all) {
+  return lease_ms >= 0 && lease_ms <= AR_MAX_LEASE_MS;
+}
+#test "ar_lease_ok bounds held-input leases" {
+  #assert ar_lease_ok(0);
+  #assert ar_lease_ok(250);
+  #assert ar_lease_ok(1000);
+  #assert !ar_lease_ok(-1);
+  #assert !ar_lease_ok(1001);
+}

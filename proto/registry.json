@@ -6658,6 +6658,66 @@
       "check": "",
       "step": "unaudited",
       "note": "SpliceBots GameBuilder port record migrated into metaverse/splice-bots/gamebuilder-port/ (#13854)."
+    },
+    {
+      "id": "openagents.agent.spec.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/agent/v1alpha1/definition.proto",
+      "codec": "coax/lib/agent/registry/wire.coax",
+      "check": "coax/lib/agent/registry/wire.coax",
+      "step": "C1",
+      "note": "Composable custom agent manifest (deterministic, hybrid, model-backed; #13891)."
+    },
+    {
+      "id": "openagents.agent.invocation.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/agent/v1alpha1/invocation.proto",
+      "codec": "coax/lib/agent/registry/wire.coax",
+      "check": "coax/lib/agent/registry/wire.coax",
+      "step": "C1",
+      "note": "Agent invocation record with parent delegation tree and exclusive TargetBinding lease (#13891)."
+    },
+    {
+      "id": "openagents.agent.barrier.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/agent/v1alpha1/invocation.proto",
+      "codec": "coax/lib/agent/registry/wire.coax",
+      "check": "coax/lib/agent/registry/wire.coax",
+      "step": "C1",
+      "note": "Multi-agent / multiplayer synchronization barrier (#13891)."
+    },
+    {
+      "id": "tester.observation.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/tester/v1alpha1/tester.proto",
+      "codec": "coax/lib/agent/tester/schema.coax",
+      "check": "coax/lib/agent/tester/schema.coax",
+      "step": "C1",
+      "note": "Simulated App Tester perception observation record (#13891)."
+    },
+    {
+      "id": "tester.action.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/tester/v1alpha1/tester.proto",
+      "codec": "coax/lib/agent/tester/schema.coax",
+      "check": "coax/lib/agent/tester/schema.coax",
+      "step": "C1",
+      "note": "Simulated App Tester action record with bounded input lease (#13891)."
+    },
+    {
+      "id": "tester.result.v1",
+      "kind": "local",
+      "owner": "coder",
+      "schema": "proto/openagents/tester/v1alpha1/tester.proto",
+      "codec": "coax/lib/agent/tester/schema.coax",
+      "check": "coax/lib/agent/tester/schema.coax",
+      "step": "C1",
+      "note": "Simulated App Tester scenario result and verdict record (#13891)."
     }
   ]
 }

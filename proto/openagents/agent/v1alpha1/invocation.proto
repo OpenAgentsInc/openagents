@@ -1,0 +1,64 @@
+syntax = "proto3";
+package openagents.agent.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/agent/v1alpha1/definition.proto";
+
+// Composable agent invocations, exclusive target leases, and multi-agent barriers
+// (docs/apps/2026-11-20-simulated-tester-spec.md, GitHub #13891).
+
+enum InvocationState {
+  INVOCATION_STATE_UNSPECIFIED = 0;
+  INVOCATION_STATE_QUEUED = 1;
+  INVOCATION_STATE_RUNNING = 2;
+  INVOCATION_STATE_WAITING_BARRIER = 3;
+  INVOCATION_STATE_PAUSED = 4;
+  INVOCATION_STATE_COMPLETED = 5;
+  INVOCATION_STATE_FAILED = 6;
+  INVOCATION_STATE_CANCELLED = 7;
+  INVOCATION_STATE_TIMED_OUT = 8;
+}
+
+// Exclusive resource lease owned by one invocation so concurrent testers never collide.
+message TargetBinding {
+  optional string target_kind = 1 [(openagents.options.v1alpha1.max_bytes) = 32]; // desktop-mac, ios-sim, ios-device, web-chrome-mac
+  optional string seat = 2 [(openagents.options.v1alpha1.max_bytes) = 40];        // host-player, guest-1, desktop-client, mobile-client
+  optional string device_lease = 3 [(openagents.options.v1alpha1.max_bytes) = 80];
+  optional string account_lease = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string workspace_dir = 5 [(openagents.options.v1alpha1.max_bytes) = 256];
+}
+
+message AgentInvocation {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.invocation.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+  optional string invocation_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string root_session_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string parent_invocation_id = 3 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string agent_id = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint32 depth = 5;
+  TargetBinding binding = 6;
+  Budget budget = 7;
+  optional uint64 seed = 8;
+  optional string input_json = 9 [(openagents.options.v1alpha1.max_bytes) = 16384];
+  InvocationState state = 10;
+  optional string output_json = 11 [(openagents.options.v1alpha1.max_bytes) = 32768];
+  optional string evidence_dir = 12 [(openagents.options.v1alpha1.max_bytes) = 256];
+}
+
+// Multi-agent / multiplayer synchronization checkpoint (never freezes live clocks).
+message AgentBarrier {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.barrier.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 4096;
+  optional string barrier_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string root_session_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string participant_ids = 3 [
+    (openagents.options.v1alpha1.max_count) = 16,
+    (openagents.options.v1alpha1.max_bytes) = 64
+  ];
+  repeated string arrived_ids = 4 [
+    (openagents.options.v1alpha1.max_count) = 16,
+    (openagents.options.v1alpha1.max_bytes) = 64
+  ];
+  optional uint64 deadline_ms = 5 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional bool released = 6;
+}

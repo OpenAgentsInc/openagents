@@ -1,0 +1,62 @@
+syntax = "proto3";
+package openagents.tester.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Simulated App Tester wire and evidence contracts (docs/apps/2026-11-20-simulated-tester-spec.md,
+// GitHub #13891). Single codec: apps/shared/tester/schema.coax.
+
+message Observation {
+  option (openagents.options.v1alpha1.contract) = "tester.observation.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+  optional string schema = 1 [(openagents.options.v1alpha1.max_bytes) = 48];
+  optional string client_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string target = 3 [(openagents.options.v1alpha1.max_bytes) = 32];
+  optional string mode = 4 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional uint64 seq = 5;
+  optional uint64 ts_ms = 6 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional int32 width = 7;
+  optional int32 height = 8;
+  optional int32 scale_x100 = 9; // 200 = 2.0x Retina
+  optional string screenshot_ref = 10 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional bool running = 11;
+  optional int32 settings_page = 12;
+  optional bool composer_focused = 13;
+  optional string composer_text = 14 [(openagents.options.v1alpha1.max_bytes) = 2048];
+  optional string window_title = 15 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional string summary = 16 [(openagents.options.v1alpha1.max_bytes) = 512];
+}
+
+message Action {
+  option (openagents.options.v1alpha1.contract) = "tester.action.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+  optional string schema = 1 [(openagents.options.v1alpha1.max_bytes) = 48];
+  optional string action_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint64 source_seq = 3;
+  optional string op = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string target = 5 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional string text = 6 [(openagents.options.v1alpha1.max_bytes) = 2048];
+  optional int32 x = 7;
+  optional int32 y = 8;
+  optional uint32 lease_ms = 9 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint64 ts_ms = 10 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional bool ok = 11;
+  optional string detail = 12 [(openagents.options.v1alpha1.max_bytes) = 512];
+}
+
+message Result {
+  option (openagents.options.v1alpha1.contract) = "tester.result.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 16384;
+  optional string schema = 1 [(openagents.options.v1alpha1.max_bytes) = 48];
+  optional string scenario_id = 2 [(openagents.options.v1alpha1.max_bytes) = 96];
+  optional string client_id = 3 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string target = 4 [(openagents.options.v1alpha1.max_bytes) = 32];
+  optional string mode = 5 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional string verdict = 6 [(openagents.options.v1alpha1.max_bytes) = 32]; // pass, product-fail, infrastructure-fail, blocked, inconclusive, not-applicable, unqualified
+  optional uint64 duration_ms = 7 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint32 steps_run = 8;
+  optional string first_failure = 9 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string summary = 10 [(openagents.options.v1alpha1.max_bytes) = 1024];
+  optional string screenshot_ref = 11 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string cleanup = 12 [(openagents.options.v1alpha1.max_bytes) = 32]; // ok, failed, quarantined
+}

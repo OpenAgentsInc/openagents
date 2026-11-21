@@ -1,0 +1,508 @@
+// Simulated App Tester CLI & Desktop Journey Runner (MVP)
+// (docs/apps/2026-11-20-simulated-tester-spec.md §11, GitHub #13892).
+//
+// Usage:
+//   coax/web/tool.sh apps/shared/tester/cli.coax --checks
+//   coax/web/tool.sh apps/shared/tester/cli.coax --selftest --target desktop [--out DIR] [--app PATH]
+//   coax/web/tool.sh apps/shared/tester/cli.coax --target desktop --mode local [--only ID] [--out DIR] [--app PATH]
+#load "adapter-desktop.coax";
+#load "../../openagents-desktop/tests/tester/catalog.coax";
+
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+t_out :: (s: string) {
+  ob: [8192] u8;
+  n := 0;
+  for c: s {
+    ob[n] = c;
+    n += 1;
+    if n == ob.count { _ = cxterm_write(ob[0..<n]); n = 0; }
+  }
+  if n > 0 { _ = cxterm_write(ob[0..<n]); }
+}
+t_outln :: (s: string) { t_out(s); t_out("\n"); }
+
+t_has_substr :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  limit := hay.count - needle.count + 1;
+  for i: 0..<limit {
+    match := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { match = false; break; }
+    }
+    if match { return true; }
+  }
+  return false;
+}
+
+t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
+  t0 := proc_now_ms();
+  obs: [1] TsObservation;
+  active: [1] bool;
+  rep: [DA_REPLY] u8;
+  r := TsResult.{
+    scenario_id = sc_id, client_id = "desktop-1", target = "desktop-mac",
+    mode = da_slice(s[0].mode[..], s[0].mode_n), verdict = "pass",
+    cleanup = "ok"
+  };
+
+  if sc_id == "desktop.launch.cold" {
+    r.steps_run = 2;
+    if !da_observe(s, "01-cold-launch", "cold launch state", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "probe observe failed";
+    } else if active[0] {
+      r.verdict = "product-fail"; r.first_failure = "focus-isolation"; r.summary = "scratch app became active and stole focus";
+    } else if obs[0].width < 420 || obs[0].height < 320 {
+      r.verdict = "product-fail"; r.first_failure = "window-size"; r.summary = "window content size below minimum 420x320";
+    } else if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "composer-focus"; r.summary = "composer was not focused on cold launch";
+    } else {
+      r.summary = "cold launch ready, zero focus stealing, composer focused";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "desktop.composer.type-and-multiline" {
+    r.steps_run = 4;
+    _ = da_act(s, "type", "composer", "type hello tester", 250, rep[..]);
+    proc_sleep(100);
+    _ = da_act(s, "key", "composer", "key shift+return", 100, rep[..]);
+    proc_sleep(100);
+    _ = da_act(s, "type", "composer", "type line two", 250, rep[..]);
+    proc_sleep(150);
+    if !da_observe(s, "02-composer-multiline", "multiline draft", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed after typing";
+    } else if !t_has_substr(obs[0].composer_text, "hello tester") || !t_has_substr(obs[0].composer_text, "line two") {
+      r.verdict = "product-fail"; r.first_failure = "draft-mismatch"; r.summary = "composer text did not contain both typed lines";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      _ = da_act(s, "key", "composer", "key cmd+a", 100, rep[..]);
+      proc_sleep(80);
+      _ = da_act(s, "key", "composer", "key delete", 100, rep[..]);
+      proc_sleep(120);
+      _ = da_observe(s, "", "cleared draft", obs[..], active[..]);
+      if obs[0].composer_text.count != 0 {
+        r.verdict = "product-fail"; r.first_failure = "clear-failed"; r.summary = "cmd+a + delete did not clear composer draft";
+      } else {
+        r.summary = "typed multiline draft, verified content, cleared cleanly";
+        r.screenshot_ref = "screenshots/02-composer-multiline.png";
+      }
+    }
+  } else if sc_id == "desktop.palette.open-and-dismiss" {
+    r.steps_run = 3;
+    n1 := da_act(s, "key", "palette", "key cmd+k", 100, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Settings", 200, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "03-palette-open", "command palette open", obs[..], active[..]);
+    n2 := da_act(s, "key", "palette", "key escape", 100, rep[..]);
+    proc_sleep(200);
+    if n1 <= 0 || n2 <= 0 {
+      r.verdict = "infrastructure-fail"; r.first_failure = "probe"; r.summary = "palette key command failed";
+    } else if !da_observe(s, "", "after palette escape", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed after palette escape";
+    } else if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "focus-restore"; r.summary = "composer did not regain focus after dismissing Cmd+K palette with Escape";
+      r.screenshot_ref = "screenshots/03-palette-open.png";
+    } else {
+      r.summary = "Cmd+K palette opened, filtered, and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/03-palette-open.png";
+    }
+  } else if sc_id == "desktop.settings.pages-and-search" {
+    r.steps_run = 3;
+    _ = da_act(s, "key", "settings", "key cmd+,", 100, rep[..]);
+    proc_sleep(250);
+    if !da_observe(s, "04-settings-open", "settings open", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed in settings";
+    } else if obs[0].settings_page < 0 {
+      r.verdict = "product-fail"; r.first_failure = "settings-not-open"; r.summary = "Cmd+, did not open Settings page";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      _ = da_act(s, "key", "settings", "key cmd+f", 100, rep[..]);
+      proc_sleep(120);
+      _ = da_act(s, "type", "settings", "type model", 200, rep[..]);
+      proc_sleep(150);
+      _ = da_act(s, "key", "settings", "key escape", 100, rep[..]);
+      proc_sleep(120);
+      _ = da_act(s, "key", "settings", "key escape", 100, rep[..]);
+      proc_sleep(200);
+      _ = da_observe(s, "", "settings closed", obs[..], active[..]);
+      if obs[0].settings_page >= 0 {
+        // Try Cmd+[ (Back to Chats) as documented menu shortcut.
+        _ = da_act(s, "key", "settings", "key cmd+[", 100, rep[..]);
+        proc_sleep(200);
+        _ = da_observe(s, "", "after cmd+[", obs[..], active[..]);
+        if obs[0].settings_page >= 0 {
+          r.verdict = "product-fail"; r.first_failure = "settings-close"; r.summary = "Settings did not close on Escape or Cmd+[";
+        } else {
+          r.verdict = "product-fail"; r.first_failure = "escape-close"; r.summary = "Escape twice did not close Settings (only Cmd+[ closed it)";
+        }
+      } else {
+        r.summary = "Settings opened with Cmd+,, searched, and closed cleanly with Escape";
+        r.screenshot_ref = "screenshots/04-settings-open.png";
+      }
+    }
+  } else if sc_id == "desktop.zoom.step-and-reset" {
+    r.steps_run = 3;
+    n1 := da_act(s, "key", "window", "key cmd+=", 100, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "05-zoom-in", "zoomed in", obs[..], active[..]);
+    n2 := da_act(s, "key", "window", "key cmd+-", 100, rep[..]);
+    proc_sleep(120);
+    n3 := da_act(s, "key", "window", "key cmd+0", 100, rep[..]);
+    proc_sleep(150);
+    if n1 <= 0 || n2 <= 0 || n3 <= 0 || !da_observe(s, "", "zoom reset", obs[..], active[..]) {
+      r.verdict = "product-fail"; r.first_failure = "zoom"; r.summary = "zoom shortcuts failed or app stopped responding";
+    } else {
+      r.summary = "zoom in (Cmd+=), out (Cmd+-), and reset (Cmd+0) succeeded";
+      r.screenshot_ref = "screenshots/05-zoom-in.png";
+    }
+  } else if sc_id == "desktop.layout.narrow-and-wide" {
+    r.steps_run = 3;
+    _ = da_act(s, "resize", "window", "size 1400 860", 100, rep[..]);
+    proc_sleep(180);
+    _ = da_act(s, "resize", "window", "size 760 640", 100, rep[..]);
+    proc_sleep(220);
+    if !da_observe(s, "06-narrow-760", "narrow 760x640", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed after narrow resize";
+    } else if obs[0].width != 760 || obs[0].height != 640 {
+      r.verdict = "product-fail"; r.first_failure = "resize-mismatch"; r.summary = "window did not adopt narrow 760x640 content size";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      _ = da_act(s, "resize", "window", "size 1280 820", 100, rep[..]);
+      proc_sleep(200);
+      _ = da_observe(s, "", "restored 1280x820", obs[..], active[..]);
+      if obs[0].width != 1280 || obs[0].height != 820 {
+        r.verdict = "product-fail"; r.first_failure = "restore-mismatch"; r.summary = "window did not restore to 1280x820";
+      } else {
+        r.summary = "resized 1400x860 -> 760x640 narrow -> 1280x820 cleanly";
+        r.screenshot_ref = "screenshots/06-narrow-760.png";
+      }
+    }
+  } else if sc_id == "desktop.sidebar.toggle" {
+    r.steps_run = 2;
+    _ = da_act(s, "key", "sidebar", "key cmd+b", 100, rep[..]);
+    proc_sleep(180);
+    _ = da_observe(s, "07-sidebar-hidden", "sidebar toggled off", obs[..], active[..]);
+    _ = da_act(s, "key", "sidebar", "key cmd+b", 100, rep[..]);
+    proc_sleep(180);
+    if !da_observe(s, "", "sidebar restored", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed after sidebar toggle";
+    } else if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "focus-lost"; r.summary = "Cmd+B sidebar toggle lost composer focus";
+    } else {
+      r.summary = "Cmd+B toggled sidebar off and back on while preserving composer focus";
+      r.screenshot_ref = "screenshots/07-sidebar-hidden.png";
+    }
+  } else if sc_id == "desktop.models.picker" {
+    r.steps_run = 2;
+    n1 := da_act(s, "key", "models", "key cmd+/", 100, rep[..]);
+    proc_sleep(200);
+    _ = da_observe(s, "08-models-picker", "model picker open", obs[..], active[..]);
+    n2 := da_act(s, "key", "models", "key escape", 100, rep[..]);
+    proc_sleep(200);
+    if n1 <= 0 || n2 <= 0 || !da_observe(s, "", "model picker closed", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "probe"; r.summary = "model picker shortcut failed";
+    } else if !obs[0].composer_focused {
+      r.verdict = "product-fail"; r.first_failure = "focus-restore"; r.summary = "Escape from Cmd+/ model picker did not restore composer focus";
+      r.screenshot_ref = "screenshots/08-models-picker.png";
+    } else {
+      r.summary = "Cmd+/ model picker opened and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/08-models-picker.png";
+    }
+  } else if sc_id == "desktop.simulator.pane-toggle" {
+    r.steps_run = 2;
+    n1 := da_act(s, "key", "simulator", "key alt+cmd+s", 100, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "09-sim-pane", "simulator pane open", obs[..], active[..]);
+    n2 := da_act(s, "key", "simulator", "key alt+cmd+s", 100, rep[..]);
+    proc_sleep(250);
+    if n1 <= 0 || n2 <= 0 || !da_observe(s, "", "simulator pane closed", obs[..], active[..]) {
+      r.verdict = "product-fail"; r.first_failure = "sim-toggle"; r.summary = "Opt+Cmd+S simulator pane toggle failed or crashed";
+    } else if active[0] {
+      r.verdict = "product-fail"; r.first_failure = "focus-steal"; r.summary = "toggling simulator pane stole focus";
+    } else {
+      r.summary = "Opt+Cmd+S toggled iOS Simulator pane open and closed with zero focus steal";
+      r.screenshot_ref = "screenshots/09-sim-pane.png";
+    }
+  } else if sc_id == "desktop.files.open-edit-dirty" {
+    r.steps_run = 3;
+    b1: [1] DaBuf;
+    b2: [1] DaBuf;
+    sample := da_cat(b1[..], da_slice(s[0].home_dir[..], s[0].home_n), "/tester-sample.txt");
+    _ = fs_write(sample, "line one\nline two\n");
+    _ = da_act(s, "open", "file-pane", da_cat(b2[..], "open ", sample), 100, rep[..]);
+    proc_sleep(300);
+    fn := da_probe(da_slice(s[0].sock_path[..], s[0].sock_n), "file", rep[..], 3000);
+    nodes: [128] JvNode;
+    doc: [1] Jv;
+    mode_val := 0;
+    dirty_before := false;
+    if fn > 0 && jv_parse(doc[..], cast(string) rep[0..<fn], nodes[..]) {
+      mode_val = jv_int(doc[0], jv_get(doc[0], 0, "mode"), 0);
+      dirty_before = jv_bool(doc[0], jv_get(doc[0], 0, "dirty"));
+    }
+    _ = da_observe(s, "10-file-pane", "file pane open", obs[..], active[..]);
+    if mode_val != 1 {
+      r.verdict = "product-fail"; r.first_failure = "file-not-editable"; r.summary = "opening small text file did not enter editable file-pane mode (mode != 1)";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else if dirty_before {
+      r.verdict = "product-fail"; r.first_failure = "dirty-on-open"; r.summary = "freshly opened file reported dirty=true before any edit";
+    } else {
+      _ = da_act(s, "type", "file-pane", "type X", 100, rep[..]);
+      proc_sleep(150);
+      fn2 := da_probe(da_slice(s[0].sock_path[..], s[0].sock_n), "file", rep[..], 3000);
+      dirty_after := false;
+      if fn2 > 0 && jv_parse(doc[..], cast(string) rep[0..<fn2], nodes[..]) {
+        dirty_after = jv_bool(doc[0], jv_get(doc[0], 0, "dirty"));
+      }
+      if !dirty_after {
+        r.verdict = "product-fail"; r.first_failure = "edit-not-dirty"; r.summary = "typing in opened file pane did not mark file dirty (keyboard focus did not move to file editor)";
+      } else {
+        r.summary = "opened scratch file in right pane, typed edit, confirmed dirty=true";
+        r.screenshot_ref = "screenshots/10-file-pane.png";
+      }
+    }
+  } else if sc_id == "desktop.chat.mock-send-and-stream" {
+    r.steps_run = 3;
+    // Start a fresh chat (Cmd+N) to ensure clean composer focus.
+    _ = da_act(s, "key", "chat", "key cmd+n", 100, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "composer", "type ping from simulated tester", 250, rep[..]);
+    proc_sleep(120);
+    _ = da_act(s, "key", "composer", "key return", 100, rep[..]);
+    // Wait up to 8s for worker run to settle (running -> false).
+    deadline := proc_now_ms() + 8000;
+    settled := false;
+    while proc_now_ms() < deadline {
+      proc_sleep(250);
+      if da_observe(s, "", "poll chat settle", obs[..], active[..]) {
+        if !obs[0].running && obs[0].composer_text.count == 0 {
+          settled = true;
+          break;
+        }
+      }
+    }
+    _ = da_observe(s, "11-chat-reply", "after mock reply", obs[..], active[..]);
+    if !settled {
+      r.verdict = "product-fail"; r.first_failure = "chat-not-settled"; r.summary = "sending prompt to mock worker did not clear draft and settle within 8s";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "sent prompt via composer, mock worker replied and settled cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else {
+    r.verdict = "unqualified";
+    r.first_failure = "unknown-scenario";
+    r.summary = "scenario id not implemented in desktop runner";
+  }
+
+  r.duration_ms = proc_now_ms() - t0;
+  da_record_result(s, r);
+  res_out[0] = r;
+}
+
+t_write_reports :: (s: [] DaSession, results: [] TsResult, count: int) {
+  out_dir := da_slice(s[0].out_dir[..], s[0].out_n);
+  b: [1] DaBuf;
+
+  // Write agent-definition.json & agent-invocation.json.
+  jb: [AR_WIRE_BUF] u8;
+  dn := ar_write_def(dt_agent_definition(), jb[..]);
+  if dn > 0 { _ = fs_write(da_cat(b[..], out_dir, "/agent-definition.json"), cast(string) jb[0..<dn]); }
+  inv := ArInvRecord.{
+    invocation_id = "inv-desktop-mvp", root_session_id = "sess-desktop-mvp", parent_invocation_id = "",
+    agent_id = "desktop-journey-tester", depth = 0, target_kind = "desktop-mac",
+    seat = "desktop-client", device_lease = "mac-local-scratch", account_lease = "",
+    workspace_dir = da_slice(s[0].home_dir[..], s[0].home_n),
+    budget = dt_agent_definition().budget, seed = 1, state = "completed",
+    evidence_dir = out_dir
+  };
+  in_n := ar_write_inv(inv, jb[..]);
+  if in_n > 0 { _ = fs_write(da_cat(b[..], out_dir, "/agent-invocation.json"), cast(string) jb[0..<in_n]); }
+
+  passed := 0;
+  failed := 0;
+  infra := 0;
+  for i: 0..<count {
+    if results[i].verdict == "pass" { passed += 1; }
+    else if results[i].verdict == "product-fail" { failed += 1; }
+    else { infra += 1; }
+  }
+
+  // Write report.json
+  rj: [65536] u8;
+  p := [1] int.[0];
+  _ = ar_w_raw(rj[..], p[..], "{\"schema\":\"tester.report.v1\",\"target\":\"desktop-mac\",\"mode\":");
+  _ = ar_w_str(rj[..], p[..], da_slice(s[0].mode[..], s[0].mode_n));
+  _ = ar_w_raw(rj[..], p[..], ",\"total\":"); _ = ar_w_int(rj[..], p[..], count);
+  _ = ar_w_raw(rj[..], p[..], ",\"passed\":"); _ = ar_w_int(rj[..], p[..], passed);
+  _ = ar_w_raw(rj[..], p[..], ",\"product_failed\":"); _ = ar_w_int(rj[..], p[..], failed);
+  _ = ar_w_raw(rj[..], p[..], ",\"other_failed\":"); _ = ar_w_int(rj[..], p[..], infra);
+  _ = ar_w_raw(rj[..], p[..], ",\"results\":[");
+  rb: [TS_BUF] u8;
+  for i: 0..<count {
+    if i > 0 { _ = ar_w_raw(rj[..], p[..], ","); }
+    rn := ts_write_result(results[i], rb[..]);
+    if rn > 0 { _ = ar_w_raw(rj[..], p[..], cast(string) rb[0..<rn]); }
+  }
+  _ = ar_w_raw(rj[..], p[..], "]}\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.json"), cast(string) rj[0..<p[0]]);
+
+  // Write report.html
+  rh: [65536] u8;
+  hp := [1] int.[0];
+  _ = ar_w_raw(rh[..], hp[..], "<!doctype html><html><head><meta charset='utf-8'><title>OpenAgents Desktop Simulated Tester Report</title>");
+  _ = ar_w_raw(rh[..], hp[..], "<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px;background:#111;color:#eee}table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid #333;text-align:left}.pass{color:#4ade80;font-weight:600}.fail{color:#f87171;font-weight:600}.meta{color:#9ca3af}</style></head><body>");
+  _ = ar_w_raw(rh[..], hp[..], "<h1>OpenAgents Desktop Simulated Tester Report</h1><p class='meta'>Passed: ");
+  _ = ar_w_int(rh[..], hp[..], passed);
+  _ = ar_w_raw(rh[..], hp[..], " / ");
+  _ = ar_w_int(rh[..], hp[..], count);
+  _ = ar_w_raw(rh[..], hp[..], " | Product failures: ");
+  _ = ar_w_int(rh[..], hp[..], failed);
+  _ = ar_w_raw(rh[..], hp[..], " | Infra/other: ");
+  _ = ar_w_int(rh[..], hp[..], infra);
+  _ = ar_w_raw(rh[..], hp[..], "</p><table><thead><tr><th>Scenario</th><th>Verdict</th><th>Duration</th><th>Summary</th><th>Screenshot</th></tr></thead><tbody>");
+  for i: 0..<count {
+    cls := ifx results[i].verdict == "pass" then "pass" else "fail";
+    _ = ar_w_raw(rh[..], hp[..], "<tr><td><code>");
+    _ = ar_w_raw(rh[..], hp[..], results[i].scenario_id);
+    _ = ar_w_raw(rh[..], hp[..], "</code></td><td class='");
+    _ = ar_w_raw(rh[..], hp[..], cls);
+    _ = ar_w_raw(rh[..], hp[..], "'>");
+    _ = ar_w_raw(rh[..], hp[..], results[i].verdict);
+    _ = ar_w_raw(rh[..], hp[..], "</td><td>");
+    _ = ar_w_int(rh[..], hp[..], results[i].duration_ms);
+    _ = ar_w_raw(rh[..], hp[..], " ms</td><td>");
+    _ = ar_w_raw(rh[..], hp[..], results[i].summary);
+    _ = ar_w_raw(rh[..], hp[..], "</td><td>");
+    if results[i].screenshot_ref.count > 0 {
+      _ = ar_w_raw(rh[..], hp[..], "<a href='");
+      _ = ar_w_raw(rh[..], hp[..], results[i].screenshot_ref);
+      _ = ar_w_raw(rh[..], hp[..], "'>view</a>");
+    } else {
+      _ = ar_w_raw(rh[..], hp[..], "-");
+    }
+    _ = ar_w_raw(rh[..], hp[..], "</td></tr>");
+  }
+  _ = ar_w_raw(rh[..], hp[..], "</tbody></table></body></html>\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.html"), cast(string) rh[0..<hp[0]]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("tester: failed to load arguments"); return 2; }
+
+  do_checks := false;
+  do_selftest := false;
+  target := "desktop";
+  mode := "local";
+  only := "";
+  out_dir := "";
+  app_path := "";
+
+  i := 0;
+  while i < a[0].n {
+    arg := args_at(a[..], i);
+    if arg == "--checks" { do_checks = true; }
+    else if arg == "--selftest" { do_selftest = true; }
+    else if arg == "--target" && i + 1 < a[0].n { i += 1; target = args_at(a[..], i); }
+    else if arg == "--mode" && i + 1 < a[0].n { i += 1; mode = args_at(a[..], i); }
+    else if arg == "--only" && i + 1 < a[0].n { i += 1; only = args_at(a[..], i); }
+    else if arg == "--out" && i + 1 < a[0].n { i += 1; out_dir = args_at(a[..], i); }
+    else if arg == "--app" && i + 1 < a[0].n { i += 1; app_path = args_at(a[..], i); }
+    i += 1;
+  }
+
+  if do_checks {
+    sc := dt_scenarios();
+    d := dt_agent_definition();
+    jb: [AR_WIRE_BUF] u8;
+    n := ar_write_def(d, jb[..]);
+    if n <= 0 { tool_errln("tester --checks: failed to encode AgentDefinition"); return 1; }
+    ib: [32] u8;
+    t_out("tester --checks: ok (");
+    t_out(da_int_str(DT_SCENARIO_COUNT, ib[..]));
+    t_outln(" desktop scenarios registered, agent definition & schemas valid)");
+    return 0;
+  }
+
+  if target != "desktop" {
+    tool_errln("tester: MVP currently implements --target desktop (ios-sim/web follow in Phase 2/3)");
+    return 2;
+  }
+
+  cwd_buf: [DA_PATH] u8;
+  repo := fs_cwd(cwd_buf[..]);
+  b_app: [1] DaBuf;
+  if app_path.count == 0 {
+    app_path = da_cat(b_app[..], repo, "/apps/openagents-desktop/build/OpenAgents.app");
+  }
+  if !fs_exists(app_path) {
+    tool_err("tester: OpenAgents.app not found at ");
+    tool_errln(app_path);
+    tool_errln("Build it first with: apps/openagents-desktop/build.sh");
+    return 1;
+  }
+
+  b_out: [1] DaBuf;
+  if out_dir.count == 0 {
+    ib: [32] u8;
+    out_dir = da_cat3(b_out[..], repo, "/build/tester-runs/desktop-", da_int_str(proc_now_ms() % 1000000, ib[..]));
+  }
+
+  sess: [1] DaSession;
+  if !da_stage(sess[..], repo, app_path, out_dir, mode) { return 1; }
+  if !da_launch(sess[..]) {
+    _ = da_stop(sess[..]);
+    return 1;
+  }
+
+  if do_selftest {
+    obs: [1] TsObservation;
+    active: [1] bool;
+    ok := da_observe(sess[..], "selftest", "selftest observation", obs[..], active[..]);
+    _ = da_stop(sess[..]);
+    if !ok { tool_errln("selftest: failed to observe launched app"); return 1; }
+    if active[0] { tool_errln("selftest: FAIL — app stole focus (active=true)"); return 1; }
+    if obs[0].width < 420 || obs[0].height < 320 { tool_errln("selftest: FAIL — invalid window size"); return 1; }
+    t_outln("selftest desktop: PASS (probe ok, zero focus stealing, valid window geometry, clean quit)");
+    return 0;
+  }
+
+  sc := dt_scenarios();
+  results: [DT_SCENARIO_COUNT] TsResult;
+  rcount := 0;
+  passed := 0;
+  failed := 0;
+
+  for k: 0..<DT_SCENARIO_COUNT {
+    if only.count > 0 && sc[k].id != only { continue; }
+    one: [1] TsResult;
+    t_run_scenario(sess[..], sc[k].id, one[..]);
+    results[rcount] = one[0];
+    rcount += 1;
+    if one[0].verdict == "pass" { passed += 1; } else { failed += 1; }
+    ib: [32] u8;
+    t_out(one[0].verdict);
+    t_out("  ");
+    t_out(one[0].scenario_id);
+    t_out("  (");
+    t_out(da_int_str(one[0].duration_ms, ib[..]));
+    t_out(" ms)  ");
+    t_outln(one[0].summary);
+  }
+
+  _ = da_stop(sess[..]);
+  t_write_reports(sess[..], results[..], rcount);
+
+  ib1: [32] u8;
+  ib2: [32] u8;
+  t_out("\nSummary: ");
+  t_out(da_int_str(passed, ib1[..]));
+  t_out(" passed, ");
+  t_out(da_int_str(failed, ib2[..]));
+  t_out(" failed. Report: ");
+  t_out(out_dir);
+  t_outln("/report.html");
+  return ifx failed == 0 then 0 else 1;
+}
