@@ -316,9 +316,9 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       value = agy_au, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.agy.group", x, y, w, arows[..]) + t.block_gap;
     local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "None downloaded";
-    y += set_section_head(f, "set.local.head", x, y, w, "Local Models", "Download, verify, and manage local GGUF checkpoints served by llama-server (~/.openagents/models).") + t.section_gap;
+    y += set_section_head(f, "set.local.head", x, y, w, "Local Models", "Download, verify, and manage local checkpoints served by Psionic Metal (~/.openagents/models).") + t.section_gap;
     lrows: [1] SetRow;
-    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (16.4 GB IQ4_NL GGUF via llama-server). Requires >= 32 GB Apple Silicon Mac.",
+    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (16.4 GB IQ4_NL GGUF on native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.", 
       value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]);
   } else if page == CP_PG_FOREMAN {

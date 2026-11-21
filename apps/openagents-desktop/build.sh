@@ -70,6 +70,11 @@ COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/nu
 cp "$repo/coax/web/build/tools/ple-run-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/ple-run"
 cp "$here/foreman-ctl" "$res/foreman-ctl"
 chmod +x "$res/foreman-ctl"
+# Native Psionic Metal runtime for Inkling 2 Mini (psionic/lib/inkling/kernels.coax + psionic/platform/inkling-serve.c).
+COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null
+cp "$work/psionic-inkling/psionic-inkling-serve" "$res/psionic-inkling-serve"
+chmod +x "$res/psionic-inkling-serve"
+cp "$work/psionic-inkling/inkling-kernels.metal" "$res/inkling-kernels.metal"
 rm -rf "$res/Components/fonts" "$res/Components/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$res/Components/"
 cp "$repo/components/zeron/NOTICE" "$res/Components/NOTICE"

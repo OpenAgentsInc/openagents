@@ -252,7 +252,7 @@ enum LocalModelStore {
     }
 }
 
-/// Resident local Metal inference server for Inkling 2 Mini on 127.0.0.1:18794.
+/// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:18794.
 final class LocalModelServer {
     static let shared = LocalModelServer()
     static let host = "127.0.0.1"
@@ -261,29 +261,32 @@ final class LocalModelServer {
     private var process: Process?
     private let queue = DispatchQueue(label: "openagents.local-model-server")
 
-    static func findLlamaServer() -> String? {
-        let homeBin = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".openagents/bin/llama-server").path
-        let candidates = [
-            homeBin,
-            "/opt/homebrew/bin/llama-server",
-            "/usr/local/bin/llama-server",
-            Bundle.main.resourcePath.map { $0 + "/llama-server" } ?? "",
-        ]
-        for path in candidates where !path.isEmpty && FileManager.default.isExecutableFile(atPath: path) {
-            return path
+    static func findPsionicServer() -> (bin: String, metal: String)? {
+        let fm = FileManager.default
+        let homeBinDir = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin").path
+        let dirs = [Bundle.main.resourcePath ?? "", homeBinDir]
+        for dir in dirs where !dir.isEmpty {
+            let bin = dir + "/psionic-inkling-serve"
+            let metal = dir + "/inkling-kernels.metal"
+            if fm.isExecutableFile(atPath: bin) && fm.fileExists(atPath: metal) {
+                return (bin, metal)
+            }
         }
         return nil
     }
 
     private func isHealthy() -> Bool {
-        guard let url = URL(string: Self.baseURL + "/v1/models") else { return false }
+        guard let url = URL(string: Self.baseURL + "/health") else { return false }
         var req = URLRequest(url: url)
         req.timeoutInterval = 1.0
         let sem = DispatchSemaphore(value: 0)
         var ok = false
-        URLSession.shared.dataTask(with: req) { _, resp, _ in
-            if let http = resp as? HTTPURLResponse, http.statusCode == 200 { ok = true }
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200,
+               let data, let body = String(data: data, encoding: .utf8),
+               body.contains("psionic-metal") {
+                ok = true
+            }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 1.5)
@@ -300,21 +303,19 @@ final class LocalModelServer {
                 DispatchQueue.main.async { completion("Inkling 2 Mini weights are not downloaded.") }
                 return
             }
-            guard let bin = Self.findLlamaServer() else {
-                DispatchQueue.main.async { completion("llama-server not found. Install it with: brew install llama.cpp") }
+            guard let server = Self.findPsionicServer() else {
+                DispatchQueue.main.async { completion("psionic-inkling-serve not found in app bundle or ~/.openagents/bin.") }
                 return
             }
             if self.process?.isRunning != true {
                 let p = Process()
-                p.executableURL = URL(fileURLWithPath: bin)
+                p.executableURL = URL(fileURLWithPath: server.bin)
                 p.arguments = [
                     "--model", LocalModelStore.weightsURL.path,
-                    "--alias", "inkling-2-mini",
+                    "--metal", server.metal,
                     "--host", Self.host,
                     "--port", String(Self.port),
-                    "--ctx-size", "32768",
-                    "--n-gpu-layers", "99",
-                    "--flash-attn", "on",
+                    "--ctx", "8192",
                 ]
                 p.standardOutput = FileHandle.nullDevice
                 p.standardError = FileHandle.nullDevice
@@ -322,7 +323,7 @@ final class LocalModelServer {
                     try p.run()
                     self.process = p
                 } catch {
-                    DispatchQueue.main.async { completion("Could not start llama-server: \(error.localizedDescription)") }
+                    DispatchQueue.main.async { completion("Could not start Psionic Metal server: \(error.localizedDescription)") }
                     return
                 }
             }
@@ -332,12 +333,12 @@ final class LocalModelServer {
                     return
                 }
                 if self.process?.isRunning != true {
-                    DispatchQueue.main.async { completion("Local Metal server exited before becoming ready.") }
+                    DispatchQueue.main.async { completion("Psionic Metal server exited before becoming ready.") }
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.5)
             }
-            DispatchQueue.main.async { completion("Timed out waiting for Inkling 2 Mini Metal server on \(Self.baseURL).") }
+            DispatchQueue.main.async { completion("Timed out waiting for Psionic Metal server on \(Self.baseURL).") }
         }
     }
 
