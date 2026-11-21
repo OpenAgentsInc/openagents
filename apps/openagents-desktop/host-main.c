@@ -1431,6 +1431,165 @@ static int run_flow(DesktopApp *a, const char *shot_out) {
   return 0;
 }
 
+#ifndef _WIN32
+// The input test on Linux (linux/input-test.sh): the real window in a headless compositor, typed into
+// with a virtual keyboard (wtype), pressed with a virtual pointer (vpointer) and pasted into from the
+// clipboard (wl-copy), as a person would; every check reads the page back here. The keyboard is one
+// this test holds and lets go of, so the seat losing its keyboard and getting one again is covered.
+static FILE *input_pointer_in, *input_pointer_out;
+static pid_t input_keyboard = -1, input_pointer_pid = -1;
+static int input_fail(const char *step, const char *why) { fprintf(stderr, "input: FAIL %s: %s\n", step, why); return 1; }
+static void input_ok(const char *step, const char *detail) { printf("input: ok %s: %s\n", step, detail); fflush(stdout); }
+static int input_frames(DesktopApp *a, int ms) {
+  for (int t = 0; t < ms / 16 + 1; t++) { if (!cd_step(a->page)) return 0; pump_host(a); }
+  return 1;
+}
+static pid_t input_spawn(const char *const argv[], int *to_child, int *from_child) {
+  int in[2] = {-1, -1}, out[2] = {-1, -1};
+  // close-on-exec, or every later child (the worker, wtype) holds vpointer's stdin open and it never ends
+  if (to_child && pipe2(in, O_CLOEXEC) != 0) return -1;
+  if (from_child && pipe2(out, O_CLOEXEC) != 0) return -1;
+  pid_t pid = fork();
+  if (pid == 0) {
+    if (to_child) { dup2(in[0], 0); close(in[0]); close(in[1]); }
+    if (from_child) { dup2(out[1], 1); close(out[0]); close(out[1]); }
+    execvp(argv[0], (char *const *)argv);
+    _exit(127);
+  }
+  if (to_child) { close(in[0]); *to_child = in[1]; }
+  if (from_child) { close(out[1]); *from_child = out[0]; }
+  return pid;
+}
+// A command to its end, the window kept drawing meanwhile; 1 when it exited 0.
+static int input_run(DesktopApp *a, const char *const argv[]) {
+  pid_t pid = input_spawn(argv, NULL, NULL);
+  if (pid < 0) return 0;
+  int status = 0;
+  for (int t = 0; t < 1000; t++) {
+    pid_t got = waitpid(pid, &status, WNOHANG);
+    if (got == pid) return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    if (!input_frames(a, 10)) break;
+  }
+  kill(pid, SIGKILL); waitpid(pid, NULL, 0);
+  return 0;
+}
+static int input_type(DesktopApp *a, const char *text) { const char *argv[] = {"wtype", text, NULL}; return input_run(a, argv) && input_frames(a, 150); }
+static int input_key(DesktopApp *a, const char *mod, const char *key) {
+  const char *with[] = {"wtype", "-M", mod, "-k", key, "-m", mod, NULL}, *plain[] = {"wtype", "-k", key, NULL};
+  return input_run(a, mod ? with : plain) && input_frames(a, 150);
+}
+// The held keyboard: on (1) a virtual keyboard joins the seat and stays; off (0) it goes.
+static int input_hold_keyboard(DesktopApp *a, int on) {
+  if (on && input_keyboard < 0) { const char *argv[] = {"wtype", "-s", "600000", NULL}; input_keyboard = input_spawn(argv, NULL, NULL); }
+  else if (!on && input_keyboard > 0) { kill(input_keyboard, SIGTERM); waitpid(input_keyboard, NULL, 0); input_keyboard = -1; }
+  return input_frames(a, 400);
+}
+static int input_pointer(DesktopApp *a, const char *cmd) {
+  char reply[64];
+  if (!input_pointer_in || fprintf(input_pointer_in, "%s\n", cmd) < 0 || fflush(input_pointer_in) != 0) return 0;
+  if (!fgets(reply, sizeof reply, input_pointer_out) || strncmp(reply, "ok", 2) != 0) return 0;
+  return input_frames(a, 120);
+}
+// A click in the middle of the row with this id, where the page draws it.
+static int input_press(DesktopApp *a, const char *id) {
+  float b[4]; char cmd[96];
+  if (!cd_box(a->page, id, b)) return 0;
+  snprintf(cmd, sizeof cmd, "move %d %d", (int)(b[0] + b[2] / 2), (int)(b[1] + b[3] / 2));
+  return input_pointer(a, cmd) && input_pointer(a, "click");
+}
+static int input_draft_is(DesktopApp *a, const char *want, char *got, int cap) {
+  for (int t = 0; t < 60; t++) {
+    int n = cd_draft(a->page, got, cap); got[n < 0 ? 0 : n] = '\0';
+    if (!strcmp(got, want)) return 1;
+    if (!input_frames(a, 50)) return 0;
+  }
+  return 0;
+}
+static int input_until_idle(DesktopApp *a, int ms) {
+  int saw = 0;
+  for (int t = 0; t < ms / 20; t++) {
+    if (!input_frames(a, 20)) return 0;
+    if (cd_running(a->page)) saw = 1;
+    else if (saw || t > 25) return input_frames(a, 100);
+  }
+  return 0;
+}
+static int input_step(DesktopApp *a, const char *shot_out) {
+  char got[4096], why[4200], first[128];
+  if (!input_hold_keyboard(a, 1)) return input_fail("keyboard", "the window closed");
+  // 1. Typed keys reach the composer, which has the keyboard when the window opens.
+  const char *typed = "input test first message";
+  if (!input_type(a, typed)) return input_fail("type", "wtype failed");
+  if (!input_draft_is(a, typed, got, (int)sizeof got)) { snprintf(why, sizeof why, "the composer holds \"%s\"", got); return input_fail("type", why); }
+  input_ok("type", "typed keys reach the composer");
+  // 2. Return sends it; the worker's reply shows and is kept.
+  if (!input_key(a, NULL, "Return") || !input_until_idle(a, 15000)) return input_fail("send", "the run did not end");
+  int n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  if (n <= 0 || !strstr(a->save_buf, typed) || !strstr(a->save_buf, "Reply from the worker")) return input_fail("send", "the page does not show the message and its reply");
+  snprintf(first, sizeof first, "%s", a->chat_id);
+  input_ok("send", "Return sent it and the reply shows");
+  // 3. A click on New chat empties the page.
+  if (!input_pointer(a, "move 5 5")) return input_fail("pointer", "vpointer did not answer");
+  if (!input_press(a, "coder.new")) return input_fail("new-chat", "no New chat row to press");
+  n = cd_title(a->page, got, (int)sizeof got);
+  if (a->chat_id[0] && !strcmp(a->chat_id, first)) return input_fail("new-chat", "the click on New chat left the first chat open");
+  input_ok("new-chat", "a click on New chat opened a new chat");
+  // 4. The seat loses its keyboard and gets one again: typing still reaches the composer.
+  if (!input_hold_keyboard(a, 0) || !input_hold_keyboard(a, 1)) return input_fail("replug", "the window closed");
+  if (!input_type(a, "after replug")) return input_fail("replug", "wtype failed");
+  if (!input_draft_is(a, "after replug", got, (int)sizeof got)) { snprintf(why, sizeof why, "after the keyboard came back the composer holds \"%s\"", got); return input_fail("replug", why); }
+  input_ok("replug", "a keyboard that left and came back still types");
+  // 5. Control-V pastes the clipboard into the composer.
+  cd_set_text(a->page, "");
+  const char *copy[] = {"wl-copy", "--paste-once", "pasted from the clipboard", NULL};   // serves this paste, then ends
+  if (!input_run(a, copy)) return input_fail("paste", "wl-copy failed");
+  if (!input_key(a, "ctrl", "v")) return input_fail("paste", "wtype failed");
+  if (!input_draft_is(a, "pasted from the clipboard", got, (int)sizeof got)) { snprintf(why, sizeof why, "after Control-V the composer holds \"%s\"", got); return input_fail("paste", why); }
+  input_ok("paste", "Control-V pastes the clipboard");
+  cd_set_text(a->page, "");
+  // 6. A click on the first chat's row in the sidebar opens it again with its reply.
+  char row[160]; snprintf(row, sizeof row, "chat.%s", first);
+  if (!input_press(a, row)) { snprintf(why, sizeof why, "no sidebar row %s to press", row); return input_fail("open", why); }
+  input_frames(a, 200);
+  n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  if (strcmp(a->chat_id, first) != 0 || n <= 0 || !strstr(a->save_buf, "Reply from the worker")) return input_fail("open", "the click on the chat's row did not open it with its reply");
+  input_ok("open", "a click on a chat's row opens it");
+  if (shot_out && shot_out[0]) {
+    const char *grim[] = {"grim", shot_out, NULL};
+    if (!input_run(a, grim)) return input_fail("shot", shot_out);
+    input_ok("shot", shot_out);
+  }
+  return 0;
+}
+static int run_input(DesktopApp *a, const char *shot_out) {
+  if (!getenv("WAYLAND_DISPLAY")) return input_fail("display", "no WAYLAND_DISPLAY (input-test.sh starts a headless compositor)");
+  if (!oa_core_init(vc(a), cs(""), cs("")) || oa_core_store_count(vc(a)) != 0) return input_fail("store", "the test store did not open empty");
+  a->page = cd_open_ex(a->resources, 0, 1200, 820);
+  if (!a->page) return input_fail("window", "cd_open_ex failed");
+  set_folder(a, a->folder);
+  refresh_settings_info(a);
+  refresh_chats(a);
+  if (!input_frames(a, 800)) return input_fail("window", "the window closed");
+  char vp[OA_PATH]; snprintf(vp, sizeof vp, "%s/vpointer", a->exe_dir);
+  const char *vargv[] = {vp, "1400", "900", NULL};
+  int to = -1, from = -1;
+  input_pointer_pid = input_spawn(vargv, &to, &from);
+  if (input_pointer_pid > 0) { input_pointer_in = fdopen(to, "w"); input_pointer_out = fdopen(from, "r"); }
+  int status = input_step(a, shot_out);
+  if (input_pointer_in) fclose(input_pointer_in);
+  if (input_pointer_out) fclose(input_pointer_out);
+  if (input_pointer_pid > 0) waitpid(input_pointer_pid, NULL, 0);
+  input_hold_keyboard(a, 0);
+  stop_all_terms(a);
+  stop_all_subagents(a);
+  if (oa_core_worker_alive(vc(a))) oa_core_worker_stop(vc(a), 0);
+  cd_close(a->page);
+  a->page = NULL;
+  if (status == 0) printf("openagents-desktop-%s input: ok\n", OA_PLATFORM);
+  return status;
+}
+#endif
+
 // The app: argv as UTF-8. Its exit status.
 static int oa_main(int argc, char **argv) {
   DesktopApp app;
@@ -1460,12 +1619,13 @@ static int oa_main(int argc, char **argv) {
 
   oa_working_dir(app.folder, sizeof(app.folder));
 
-  int smoke = 0, flow = 0;
+  int smoke = 0, flow = 0, input = 0;
   const char *shot = NULL;
   const char *update_file = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--smoke") == 0) smoke = 1;
     else if (strcmp(argv[i], "--flow-test") == 0) flow = 1;
+    else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
     else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", argv[++i]);
@@ -1486,6 +1646,15 @@ static int oa_main(int argc, char **argv) {
     return rc;
   }
 
+#ifndef _WIN32
+  if (input) {
+    int rc = run_input(&app, shot);
+    free(app.core); free(app.line_buf); free(app.save_buf);
+    return rc;
+  }
+#else
+  (void)input;
+#endif
   if (flow) {
     int rc = run_flow(&app, shot);
     free(app.core); free(app.line_buf); free(app.save_buf);

@@ -2,8 +2,9 @@
 # Firm reason: 5 (thin wrapper around coax, cc, wayland-scanner and pkg-config; holds no logic)
 # Builds OpenAgents Desktop for Linux (GitHub #13781): page.coax + desktop core
 # (coax/lib/agent/desktop/) + shared Wayland/Vulkan host (apps/shared/host/linux/).
-#   apps/openagents-desktop/linux/build.sh [--smoke] [--flow-test] [--open] [--no-worker]
+#   apps/openagents-desktop/linux/build.sh [--smoke] [--flow-test] [--input-test] [--open] [--no-worker]
 # --flow-test: the chat flow test (flow-test.sh) on the mock worker, headless.
+# --input-test: the real window typed into and pressed in a headless compositor (input-test.sh).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -13,7 +14,7 @@ repo="$(cd "$here/../../.." && pwd)"
 if [[ -z "${OA_DESKTOP_LINUX_BUILD:-}" ]] && command -v nix-shell >/dev/null 2>&1; then
   export OA_DESKTOP_LINUX_BUILD=1
   cmd="$(printf '%q ' "$here/build.sh" "$@")"
-  exec nix-shell -p gcc pkg-config vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols libxkbcommon dbus systemd mesa \
+  exec nix-shell -p gcc pkg-config vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols wlr-protocols libxkbcommon dbus systemd mesa \
     --run "exec $cmd"
 fi
 
@@ -77,6 +78,15 @@ cp "$repo/components/NOTICE" "$work/resources/NOTICE"
 mv "$work/OpenAgents.new" "$work/OpenAgents"
 echo "built $work/OpenAgents"
 
+# The input test's virtual pointer (vpointer.c), when the wlroots protocols are here.
+wlr="$(pkg-config --variable=pkgdatadir wlr-protocols 2>/dev/null || true)"
+if [[ -n "$wlr" && -f "$wlr/unstable/wlr-virtual-pointer-unstable-v1.xml" ]]; then
+  wayland-scanner client-header "$wlr/unstable/wlr-virtual-pointer-unstable-v1.xml" "$work/wl/wlr-virtual-pointer-unstable-v1-client-protocol.h"
+  wayland-scanner private-code "$wlr/unstable/wlr-virtual-pointer-unstable-v1.xml" "$work/wl/wlr-virtual-pointer-unstable-v1-protocol.c"
+  cc -std=gnu11 -O2 -w -I"$work/wl" "$here/vpointer.c" "$work/wl/wlr-virtual-pointer-unstable-v1-protocol.c" \
+    $(pkg-config --cflags --libs wayland-client) -o "$work/vpointer"
+fi
+
 # 5. Build workers and resident daemon beside OpenAgents unless --no-worker is passed.
 want_worker=1
 for arg in "$@"; do [[ "$arg" == --no-worker ]] && want_worker=0; done
@@ -87,7 +97,8 @@ if [[ "$want_worker" == 1 ]]; then
     if [[ -f "$repo/coder/tui/$src_name.coax" ]]; then
       COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/$src_name.coax" build-only < /dev/null >/dev/null 2>&1 || true
       built="$repo/coax/web/build/tools/$src_name-$coax_hash"
-      [[ -x "$built" ]] && cp "$built" "$work/$dst_name"
+      # beside, then renamed over: a running daemon (coder-host serve outlives the app) keeps its old file
+      if [[ -x "$built" ]]; then cp "$built" "$work/.$dst_name.new" && mv -f "$work/.$dst_name.new" "$work/$dst_name"; fi
     fi
   done
 fi
@@ -114,6 +125,8 @@ for arg in "$@"; do
   elif [[ "$arg" == --flow-test ]]; then
     software_vulkan
     "$here/flow-test.sh" --no-build
+  elif [[ "$arg" == --input-test ]]; then
+    "$here/input-test.sh" --no-build
   elif [[ "$arg" == --open ]]; then
     exec "$work/OpenAgents" --resources "$work/resources"
   fi

@@ -17,9 +17,13 @@ mkdir -p "$bin_dir" "$app_dir" "$xdg_apps" "$xdg_icons"
 
 rm -rf "$app_dir/resources"
 cp -R "$work/resources" "$app_dir/resources"
-install -m 0755 "$work/OpenAgents" "$app_dir/OpenAgents"
-if [[ -x "$work/mcworker" ]]; then install -m 0755 "$work/mcworker" "$app_dir/mcworker"; fi
-if [[ -x "$work/openagents-daemon" ]]; then install -m 0755 "$work/openagents-daemon" "$app_dir/openagents-daemon"; fi
+# each file beside, then renamed over: a running app or daemon keeps the file it started from
+put() { install -m 0755 "$1" "$2.new" && mv -f "$2.new" "$2"; }
+put "$work/OpenAgents" "$app_dir/OpenAgents"
+# the workers and the run daemon build.sh puts beside OpenAgents (host-main.c looks for them there)
+for name in mcworker claudeworker agyworker coder-host openagents-daemon; do
+  if [[ -x "$work/$name" ]]; then put "$work/$name" "$app_dir/$name"; fi
+done
 
 cat > "$bin_dir/openagents-desktop" <<WRAP
 #!/usr/bin/env bash

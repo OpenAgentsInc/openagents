@@ -398,7 +398,8 @@ CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh
 
 ## Linux and Windows
 
-The same page and desktop core run on Linux (`linux/build.sh`, Wayland and Vulkan) and on
+The same page and desktop core run on Linux (`linux/build.sh`, Wayland and Vulkan; `linux/install.sh`
+puts it with its workers in `~/.openagents/desktop/` and a launcher in your applications menu) and on
 Windows 10 and 11 (`windows/build.sh`, cross-compiled from the Mac with zig). Both share
 the entry logic in `host-main.c` and the core's C ABI in `host-core.coax`. See
 [`windows/README.md`](windows/README.md) for the Windows build, what it does not do yet, and
@@ -461,8 +462,19 @@ apps/openagents-desktop/linux/flow-test.sh                                   # o
 coax/remote/remote.sh run -- apps/openagents-desktop/linux/flow-test.sh     # from a Mac, on a build host
 ```
 
-`coax/remote/check.sh` runs it with the Linux smoke (`build.sh --smoke --flow-test`) as the
-`desktop-linux-smoke` step.
+On Linux, the input test runs the real Wayland window in a headless sway nobody sees and works it as a
+person would: it types into the composer with a virtual keyboard (wtype), sends with Return, presses New
+chat and a chat's sidebar row with a virtual pointer (`linux/vpointer.c`), pastes the clipboard with
+Control-V (wl-copy), and takes the seat's keyboard away and back. Every check is in `host-main.c`
+`run_input`; Nix supplies sway, wtype and wl-clipboard:
+
+```sh
+apps/openagents-desktop/linux/input-test.sh                                  # on a Linux host
+OA_INPUT_SHOT=/tmp/input.png apps/openagents-desktop/linux/input-test.sh     # and keep a picture of the window
+```
+
+`coax/remote/check.sh` runs both with the Linux smoke (`build.sh --smoke --flow-test`, and
+`--input-test` where Nix is) as the `desktop-linux-smoke` step.
 
 The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
@@ -512,6 +524,6 @@ apps/openagents-desktop/foreman-control-test.sh --live   # also drives a built O
 | `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |
 | `build.sh` | Coax to C and Metal, the two workers' images and the daemon's, then clang, swiftc and codesign |
 | `host-main.c`, `host-core.coax` | The Linux and Windows apps' entry logic, and their C calls into the desktop core |
-| `linux/` | The Linux build (`build.sh`) and its side of `host-main.c` |
+| `linux/` | The Linux build (`build.sh`), its side of `host-main.c`, the installer, the flow and input tests, and the input test's virtual pointer (`vpointer.c`) |
 | `windows/` | The Windows build, its side of `host-main.c`, and its README |
 | `install.sh` | Builds `origin/main` and keeps `/Applications/OpenAgents.app` at it, every 15 minutes with `--agent` |

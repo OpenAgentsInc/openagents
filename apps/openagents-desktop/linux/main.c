@@ -4,6 +4,7 @@
 // chooser, and the desktop core through host-core.coax).
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
 #include <signal.h>
@@ -199,7 +200,7 @@ int main(int argc, char **argv) {
   int headless = 0;
   const char *uri = NULL;
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--smoke") == 0 || strcmp(argv[i], "--flow-test") == 0 ||
+    if (strcmp(argv[i], "--smoke") == 0 || strcmp(argv[i], "--flow-test") == 0 || strcmp(argv[i], "--input-test") == 0 ||
         strcmp(argv[i], "--shot") == 0 || strcmp(argv[i], "--check-update") == 0) {
       headless = 1;
     } else if (strncmp(argv[i], "openagents://", 13) == 0) {
