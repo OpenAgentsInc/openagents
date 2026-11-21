@@ -408,6 +408,19 @@ cu_initialize :: (c: [] CuClient, name: string, version: string) -> int {
   return id;
 }
 
+// Initialize advertising clientCapabilities.fs.readTextFile (GitHub #13834).
+cu_initialize_fs :: (c: [] CuClient, name: string, version: string, read_text_file: bool) -> int {
+  id := cu_open(c, CU_INITIALIZE, "initialize");
+  o := c[0].out[..];
+  cl_put(o, "{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":");
+  cl_put(o, ifx read_text_file then "true" else "false");
+  cl_put(o, ",\"writeTextFile\":false},\"terminal\":false},\"clientInfo\":{\"name\":");
+  cl_put_string(o, name); cl_put(o, ",\"version\":"); cl_put_string(o, version); cl_put(o, "}}");
+  cu_close(c);
+  c[0].init_wait = true;
+  return id;
+}
+
 cu_authenticate :: (c: [] CuClient) -> int { return cu_authenticate_with(c, "cursor_login"); }
 cu_authenticate_with :: (c: [] CuClient, method: string) -> int {
   id := cu_open(c, CU_AUTHENTICATE, "authenticate");
@@ -452,6 +465,74 @@ cu_session_prompt :: (c: [] CuClient, text: string) -> int {
   cl_put(o, ",\"prompt\":[{\"type\":\"text\",\"text\":"); cl_put_string(o, text); cl_put(o, "}]}");
   cu_close(c);
   return id;
+}
+
+// Multipart ACP session/prompt (text + image/file attachment blocks; GitHub #13834).
+// blocks_json is a comma-separated list of JSON prompt block objects.
+cu_session_prompt_blocks :: (c: [] CuClient, blocks_json: string) -> int {
+  id := cu_open(c, CU_SESSION_PROMPT, "session/prompt");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
+  cl_put(o, ",\"prompt\":["); cl_put(o, blocks_json); cl_put(o, "]}");
+  cu_close(c);
+  return id;
+}
+
+// Strict lexical containment check for scoped fs/read_text_file roots (GitHub #13834).
+// Rejects empty paths, ".." segments, and prefix collisions (/repo vs /repo2).
+cu_path_under_root :: (path: string, root: string) -> bool {
+  if path.count == 0 || root.count == 0 || cu_has_dotdot(path) { return false; }
+  rn := root.count;
+  while rn > 1 && root[rn - 1] == '/' { rn -= 1; }
+  if path.count < rn { return false; }
+  for i: 0..<rn { if path[i] != root[i] { return false; } }
+  if path.count == rn { return true; }
+  return root[rn - 1] == '/' || path[rn] == '/';
+}
+
+// Decode a UTF-16LE (FF FE) or UTF-16BE (FE FF) BOM buffer to UTF-8 (GitHub #13834).
+// Returns decoded byte count (>= 0), or -1 if raw has no UTF-16 BOM.
+cu_decode_utf16_bom :: (raw: [] u8, out: [] u8) -> int {
+  if raw.count < 2 { return -1; }
+  le := raw[0] == 0xFF && raw[1] == 0xFE;
+  be := raw[0] == 0xFE && raw[1] == 0xFF;
+  if !le && !be { return -1; }
+  n := 0;
+  i := 2;
+  while i + 1 < raw.count {
+    lo := cast(int) raw[i]; hi := cast(int) raw[i + 1];
+    cp := ifx le then (lo | (hi << 8)) else ((lo << 8) | hi);
+    i += 2;
+    if cp < 0x80 {
+      if n >= out.count { break; }
+      out[n] = cast(u8) cp; n += 1;
+    } else if cp < 0x800 {
+      if n + 2 > out.count { break; }
+      out[n] = cast(u8) (0xC0 | (cp >> 6));
+      out[n + 1] = cast(u8) (0x80 | (cp & 0x3F));
+      n += 2;
+    } else {
+      if n + 3 > out.count { break; }
+      out[n] = cast(u8) (0xE0 | (cp >> 12));
+      out[n + 1] = cast(u8) (0x80 | ((cp >> 6) & 0x3F));
+      out[n + 2] = cast(u8) (0x80 | (cp & 0x3F));
+      n += 3;
+    }
+  }
+  return n;
+}
+
+// Respond to an ACP fs/read_text_file request with file content or a JSON-RPC error.
+cu_fs_read_result :: (c: [] CuClient, id_json: string, content: string) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id_json);
+  cl_put(o, ",\"result\":{\"content\":"); cl_put_string(o, content); cl_put(o, "}}\n");
+}
+cu_fs_read_error :: (c: [] CuClient, id_json: string, code: int, msg: string) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id_json);
+  cl_put(o, ",\"error\":{\"code\":"); cl_put_int(o, code);
+  cl_put(o, ",\"message\":"); cl_put_string(o, msg); cl_put(o, "}}\n");
 }
 
 // A notification: the turn should stop. Pending permissions are cancelled by the host.

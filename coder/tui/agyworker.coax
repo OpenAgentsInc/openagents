@@ -54,6 +54,7 @@ AGYW_REPLY :: 65536;
 AgywCall :: struct {
   id: [AGYW_ID] u8; id_n: int;
   label: [AGYW_LABEL] u8; label_n: int;
+  path: [512] u8; path_n: int;
   used: bool;
 }
 
@@ -272,11 +273,50 @@ agyw_call_open :: (s: [] AgywState, id: string, label: string) -> int {
 }
 
 agyw_call_close :: (s: [] AgywState, at: int) {
-  if at >= 0 && at < AGYW_OPEN { s[0].calls[at].used = false; s[0].calls[at].id_n = 0; s[0].calls[at].label_n = 0; }
+  if at >= 0 && at < AGYW_OPEN { s[0].calls[at].used = false; s[0].calls[at].id_n = 0; s[0].calls[at].label_n = 0; s[0].calls[at].path_n = 0; }
 }
 
 agyw_calls_clear :: (s: [] AgywState) {
-  for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; }
+  for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; s[0].calls[i].path_n = 0; }
+}
+
+// Read-repair (#13834): when fs/read_text_file is served for a path that has an open
+// read tool call that agy never closes with tool_call_update, synthesize completion.
+agyw_read_repair_served :: (s: [] AgywState, path: string, ok: bool, emit: bool) -> bool {
+  if path.count == 0 { return false; }
+  for i: 0..<AGYW_OPEN {
+    if !s[0].calls[i].used || s[0].calls[i].path_n == 0 { continue; }
+    if agyw_str(s[0].calls[i].path[..], s[0].calls[i].path_n) != path { continue; }
+    cmd := agyw_str(s[0].calls[i].label[..], s[0].calls[i].label_n);
+    if cmd.count == 0 { cmd = path; }
+    if emit { agyw_emit_command(s, cmd, ifx ok then 0 else 1, ifx ok then "" else "Read failed."); }
+    agyw_call_close(s, i);
+    return true;
+  }
+  return false;
+}
+
+// Serve an ACP fs/read_text_file request scoped strictly to [cwd, attach_dir] (#13834).
+agyw_handle_fs_read :: (s: [] AgywState, c: [] CuClient, id_json: string, path: string, cwd: string, attach_dir: string, emit: bool) -> bool {
+  allowed := cu_path_under_root(path, cwd) || (attach_dir.count > 0 && cu_path_under_root(path, attach_dir));
+  if !allowed {
+    cu_fs_read_error(c, id_json, -32000, "path outside allowed roots");
+    _ = agyw_read_repair_served(s, path, false, emit);
+    return false;
+  }
+  raw: [65536] u8;
+  n := fs_read(path, raw[..]);
+  if n < 0 {
+    cu_fs_read_error(c, id_json, -32001, "could not read file");
+    _ = agyw_read_repair_served(s, path, false, emit);
+    return false;
+  }
+  dec: [65536] u8;
+  dn := cu_decode_utf16_bom(raw[0..<n], dec[..]);
+  content := ifx dn >= 0 then cast(string) dec[0..<dn] else cast(string) raw[0..<n];
+  cu_fs_read_result(c, id_json, content);
+  _ = agyw_read_repair_served(s, path, true, emit);
+  return true;
 }
 
 // ---------------------------------------------------------------- detached subagents (#13832)
@@ -589,6 +629,10 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
     if existing < 0 && (status.count == 0 || status == "pending" || status == "in_progress") {
       at := agyw_call_open(s, id, label);
       if at >= 0 {
+        rp := cl_str(ar, update, "rawInput.Path");
+        if rp.count == 0 { rp = cl_str(ar, update, "rawInput.path"); }
+        if rp.count == 0 { rp = cl_str(ar, update, "rawInput.AbsolutePath"); }
+        if rp.count > 0 { s[0].calls[at].path_n = agyw_copy(s[0].calls[at].path[..], rp); }
         s[0].next_ticket += 1;
         if emit { agyw_emit_ask(s, agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n), s[0].next_ticket); }
       }
@@ -1287,4 +1331,23 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   _ = cu_session_new(x[0].c, "/repo");
   #assert agy_out_has(x, "\"openagents-coder\"") && agy_out_has(x, "Bearer super-secret-token");
   #assert !agyw_logged(s, "super-secret-token");
+}
+
+#test "agyworker: fs/read_text_file enforces root scoping and read-repair closes dangling read calls" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  // Open a read tool call that agy never closes with tool_call_update.
+  at := agyw_call_open(s, "tc-read-1", "Read notes.txt");
+  #assert at >= 0;
+  s[0].calls[at].path_n = agyw_copy(s[0].calls[at].path[..], "/repo/notes.txt");
+  // Reject path outside [cwd, attach_dir]
+  cu_outbox_clear(x[0].c);
+  #assert !agyw_handle_fs_read(s, x[0].c, "88", "/etc/passwd", "/repo", "/tmp/attach", true);
+  #assert agy_out_has(x, "\"id\":88") && agy_out_has(x, "outside allowed roots");
+  // Read-repair closes the open tool call when served
+  #assert agyw_read_repair_served(s, "/repo/notes.txt", true, true);
+  #assert !s[0].calls[at].used && agyw_logged(s, "\"kind\":\"command\",\"command\":\"Read notes.txt\",\"exit\":0");
 }

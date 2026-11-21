@@ -261,3 +261,87 @@ cu_test_client :: (c: [] CuClient, b: [] CuTest) { cu_init(c[..], b[0].line[..],
   #assert !cu_mcp_add_http(c[..], "c", cast(string) big[..], "");
   #assert !cu_mcp_add_stdio(c[..], "l", cast(string) big[..], "");
 }
+
+#test "cursor client: initialize_fs, multipart prompt blocks, scoped root check, UTF-16 BOM, and fs/read responses" {
+  c: [1] CuClient; b: [1] CuTest; cu_test_client(c[..], b[..]);
+  #assert cu_initialize_fs(c[..], "OA", "1.0", true) == 1 && c[0].init_wait && c[0].pend_of[0] == CU_INITIALIZE;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":false},\"terminal\":false},\"clientInfo\":{\"name\":\"OA\",\"version\":\"1.0\"}}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_initialize_fs(c[..], "OA", "1.0", false) == 2;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false},\"clientInfo\":{\"name\":\"OA\",\"version\":\"1.0\"}}}\n";
+  cu_outbox_clear(c[..]);
+
+  c[0].session_n = cu_keep(c[0].session[..], "s1");
+  #assert cu_session_prompt_blocks(c[..], "{\"type\":\"text\",\"text\":\"hi\"},{\"type\":\"image\",\"data\":\"AA==\",\"mimeType\":\"image/png\"}") == 3;
+  #assert c[0].pend_of[c[0].npend - 1] == CU_SESSION_PROMPT;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"s1\",\"prompt\":[{\"type\":\"text\",\"text\":\"hi\"},{\"type\":\"image\",\"data\":\"AA==\",\"mimeType\":\"image/png\"}]}}\n";
+  cu_outbox_clear(c[..]);
+
+  // Scoped fs/read_text_file root containment
+  #assert cu_path_under_root("a", "a");
+  #assert cu_path_under_root("/repo/a.txt", "/repo");
+  #assert cu_path_under_root("/repo/a.txt", "/repo/");
+  #assert cu_path_under_root("/repo/a.txt", "/repo///");
+  #assert cu_path_under_root("/repo", "/repo");
+  #assert cu_path_under_root("/a", "/");
+  #assert cu_path_under_root("/a/b", "//");
+  #assert cu_path_under_root("a/b", "a/");
+  #assert !cu_path_under_root("/a/y", "/a/x");
+  #assert !cu_path_under_root("b", "/");
+  #assert !cu_path_under_root("/other/a.txt", "/repo");
+  #assert !cu_path_under_root("/repo/a.txt", "/repo0");
+  #assert !cu_path_under_root("/repo2/a.txt", "/repo");
+  #assert !cu_path_under_root("/repo/../etc/passwd", "/repo");
+  #assert !cu_path_under_root("/r", "/repo");
+  #assert !cu_path_under_root("", "/repo");
+  #assert !cu_path_under_root("/repo/a", "");
+
+  // UTF-16LE and UTF-16BE BOM decoding (boundaries 0x7F/0x80/0x7FF/0x800 + exact fits)
+  ob: [16] u8;
+  short1 := [1] u8.[0xFF];
+  #assert cu_decode_utf16_bom(short1[..], ob[..]) == -1;
+  bad_le := [2] u8.[0xFF, 0x00];
+  #assert cu_decode_utf16_bom(bad_le[..], ob[..]) == -1;
+  bad_be := [2] u8.[0xFE, 0x00];
+  #assert cu_decode_utf16_bom(bad_be[..], ob[..]) == -1;
+  empty_bom := [2] u8.[0xFF, 0xFE];
+  #assert cu_decode_utf16_bom(empty_bom[..], ob[..]) == 0;
+  odd_tail := [3] u8.[0xFF, 0xFE, 0x41];
+  #assert cu_decode_utf16_bom(odd_tail[..], ob[..]) == 0;
+  plain := [4] u8.['a', 'b', 'c', 'd'];
+  #assert cu_decode_utf16_bom(plain[..], ob[..]) == -1;
+  le := [8] u8.[0xFF, 0xFE, 0x41, 0x00, 0xE9, 0x00, 0x2D, 0x4E];   // "Aé中"
+  n := cu_decode_utf16_bom(le[..], ob[..]);
+  #assert n == 6 && cast(string) ob[0..<n] == "Aé中";
+  be := [8] u8.[0xFE, 0xFF, 0x00, 0x41, 0x00, 0xE9, 0x4E, 0x2D];   // "Aé中"
+  n = cu_decode_utf16_bom(be[..], ob[..]);
+  #assert n == 6 && cast(string) ob[0..<n] == "Aé中";
+  // Exact UTF-8 codepoint boundaries: 0x007F (1B), 0x0080 (2B: C2 80), 0x07FF (2B: DF BF), 0x0800 (3B: E0 A0 80)
+  b80 := [4] u8.[0xFF, 0xFE, 0x80, 0x00];
+  ob_fit2: [2] u8;
+  #assert cu_decode_utf16_bom(b80[..], ob_fit2[..]) == 2 && ob_fit2[0] == 0xC2 && ob_fit2[1] == 0x80;
+  b7f := [4] u8.[0xFF, 0xFE, 0x7F, 0x00];
+  #assert cu_decode_utf16_bom(b7f[..], ob[..]) == 1 && ob[0] == 0x7F;
+  b7ff := [4] u8.[0xFF, 0xFE, 0xFF, 0x07];
+  #assert cu_decode_utf16_bom(b7ff[..], ob_fit2[..]) == 2 && ob_fit2[0] == 0xDF && ob_fit2[1] == 0xBF;
+  b800 := [4] u8.[0xFF, 0xFE, 0x00, 0x08];
+  ob_fit3: [3] u8;
+  #assert cu_decode_utf16_bom(b800[..], ob_fit3[..]) == 3 && ob_fit3[0] == 0xE0 && ob_fit3[1] == 0xA0 && ob_fit3[2] == 0x80;
+  // Exact output capacity overflow bounds
+  ob0: [1] u8;
+  #assert cu_decode_utf16_bom(le[..], ob0[0..<0]) == 0;
+  #assert cu_decode_utf16_bom(le[..], ob0[0..<1]) == 1 && ob0[0] == 'A';
+  ob2: [2] u8;
+  #assert cu_decode_utf16_bom(le[..], ob2[..]) == 1;
+  ob4: [4] u8;
+  #assert cu_decode_utf16_bom(le[..], ob4[..]) == 3;
+  ob5: [5] u8;
+  #assert cu_decode_utf16_bom(le[..], ob5[..]) == 3;
+
+  // fs/read_text_file responses
+  cu_fs_read_result(c[..], "9", "hello\n");
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"content\":\"hello\\n\"}}\n";
+  cu_outbox_clear(c[..]);
+  cu_fs_read_error(c[..], "10", -32000, "outside allowed roots");
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"code\":-32000,\"message\":\"outside allowed roots\"}}\n";
+}
