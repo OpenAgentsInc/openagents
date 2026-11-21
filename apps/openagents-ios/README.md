@@ -60,7 +60,11 @@ apps/openagents-ios/check.sh
 
 The conversation presentation follows the captured Claude iOS chat layouts
 in `docs/research/claude-ios/`, using the shared GPU kit and OpenAgents'
-grayscale skin. Navigation, conversation menus and the computer/repository
+dark-only Coder Noir grayscale skin (`UIUserInterfaceStyle = Dark` in
+`Info.plist`, so UIKit keyboards and alerts match the dark GPU surface
+even when iOS is in system Light Mode). Unsent composer drafts and
+selected computer/repository chips persist in `UserDefaults` across
+backgrounding and relaunch. Navigation, conversation menus and the computer/repository
 picker are GPU components; the removed `GlassChrome.swift` projection is no
 longer part of the product. UIKit supplies active text entry, accessibility,
 scroll physics and system credential ceremonies.

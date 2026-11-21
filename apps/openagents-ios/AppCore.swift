@@ -77,6 +77,12 @@ import UIKit
     static func keepDraft(_ bytes: String) {
         if bytes.isEmpty { UserDefaults.standard.removeObject(forKey: draftKey) } else { UserDefaults.standard.set(bytes, forKey: draftKey) }
     }
+    /// The unsent composer draft text, kept across background and relaunch (#13906).
+    private static let composerDraftKey = "openagents.composer-draft"
+    static var keptComposerDraft: String { UserDefaults.standard.string(forKey: composerDraftKey) ?? "" }
+    static func keepComposerDraft(_ text: String) {
+        if text.isEmpty { UserDefaults.standard.removeObject(forKey: composerDraftKey) } else { UserDefaults.standard.set(text, forKey: composerDraftKey) }
+    }
     /// The chips' choice per draft (es_save: a computer's key and a repository's name per line), kept
     /// between launches next to the drafts (no secret: app preferences).
     private static let environmentKey = "openagents.environment"

@@ -28,6 +28,8 @@ import UIKit
     private var display:CADisplayLink?
     private var keyboard:CGFloat=0
     private var draftRev:Int32 = -1
+    private var lastComposerDraft=""
+    private var lastSavedEnv=""
     private var editorFieldID=""
     private let scrollDriver=GPUScrollDriver()
     private var syncingScroll=false
@@ -62,11 +64,17 @@ import UIKit
             services.provider.clearInput={ [weak self] in guard let self,self.field.accessibilityIdentifier=="usage.code" else {return};self.field.text="";oc_secret_ready(owner,0) }
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
-            oc_env_restore(owner,AppServices.keptEnvironment)
+            let savedEnv=AppServices.keptEnvironment
+            lastSavedEnv=savedEnv
+            oc_env_restore(owner,savedEnv)
             oc_experimental_set(owner,AppServices.experimental ? 1:0)
             // after every call into the core: the login flow follows it, and the page draws what changed
             services.core.after={[weak self] in oc_step(owner);self?.wake()}
             services.launch()
+            // Restore unsent composer draft after services.launch() so app_launch cannot clear it (#13906).
+            let savedComposer=AppServices.keptComposerDraft
+            lastComposerDraft=savedComposer
+            if !savedComposer.isEmpty {_ = oc_set_text(owner,savedComposer);oc_step(owner)}
         }
         // A touch lands on the Metal view, not here: the surface says when one changed something.
         oc_on_change(owner,{ context in
@@ -186,8 +194,9 @@ import UIKit
         library?.background()
         display?.invalidate();display=nil
         if field.kind == .secret {field.isHidden=true;field.text="";services?.identity.hideBackup();if let owner {oc_secret_ready(owner,0)}}
-        // the chips' choices, kept for the next launch
-        if let owner {var bytes=[CChar](repeating:0,count:8192);_ = oc_env_save(owner,&bytes,Int32(bytes.count));AppServices.keepEnvironment(String(cString:bytes))}
+        // Unsent composer draft and chip choices, kept for the next launch (#13906).
+        keepComposerDraft()
+        keepEnvironment()
     }
     @objc private func clearPrivate() {services?.identity.clear();services?.provider.clear();field.text="";if let owner {oc_secret_ready(owner,0);if oc_field_kind(owner)==3 {oc_blur(owner)}};wake()}
     @objc private func captureChanged() {if UIScreen.main.isCaptured {clearPrivate()};wake()}
@@ -204,7 +213,7 @@ import UIKit
         syncScroll()
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
-        followFocus();placeEditor();access?.refresh();keepDraft();keepLibrary()
+        followFocus();placeEditor();access?.refresh();keepDraft();keepComposerDraft();keepEnvironment();keepLibrary()
         #if DEBUG
         dumpAccess()
         #endif
@@ -321,6 +330,22 @@ import UIKit
         draftRev=rev
         var bytes=[CChar](repeating:0,count:600);_ = oc_draft(owner,&bytes,Int32(bytes.count))
         AppServices.keepDraft(String(cString:bytes))
+    }
+    private func keepComposerDraft() {
+        guard let owner else {return}
+        var bytes=[CChar](repeating:0,count:20001);_ = oc_text(owner,&bytes,Int32(bytes.count))
+        let now=String(cString:bytes)
+        guard now != lastComposerDraft else {return}
+        lastComposerDraft=now
+        AppServices.keepComposerDraft(now)
+    }
+    private func keepEnvironment() {
+        guard let owner else {return}
+        var bytes=[CChar](repeating:0,count:8192);_ = oc_env_save(owner,&bytes,Int32(bytes.count))
+        let now=String(cString:bytes)
+        guard now != lastSavedEnv else {return}
+        lastSavedEnv=now
+        AppServices.keepEnvironment(now)
     }
     @objc private func fieldChanged() {
         // an input method's provisional text stays the platform's until it is committed (one editing authority)
