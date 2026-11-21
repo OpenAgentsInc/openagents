@@ -1,0 +1,58 @@
+// Web Surface Register & Built-in Web Tester Agent Definition
+// (docs/apps/2026-11-20-simulated-tester-spec.md §7.3, §8.3).
+#load "../../../../coax/lib/agent/tester/schema.coax";
+
+WEB_SCENARIO_COUNT :: 6;
+
+WebScenario :: struct {
+  id: string;
+  area: string;
+  route: string;
+  viewport: string;
+  title: string;
+  required: bool;
+}
+
+web_scenarios :: () -> [WEB_SCENARIO_COUNT] WebScenario {
+  return [WEB_SCENARIO_COUNT] WebScenario.[
+    WebScenario.{id = "web.splash.desktop", area = "splash", route = "/", viewport = "1280x820", title = "Load openagents.com splash at 1280x820 in headless WebGPU Chrome, verify non-blank frame", required = true},
+    WebScenario.{id = "web.splash.mobile", area = "splash", route = "/", viewport = "393x852", title = "Load openagents.com splash at 393x852 mobile viewport, verify clean render", required = true},
+    WebScenario.{id = "web.chat.desktop", area = "chat", route = "/chat", viewport = "1280x820", title = "Load /chat at 1280x820, verify Coax/WebGPU chat surface renders", required = true},
+    WebScenario.{id = "web.chat.mobile", area = "chat", route = "/chat", viewport = "393x852", title = "Load /chat at 393x852 mobile viewport, verify responsive layout", required = true},
+    WebScenario.{id = "web.download.desktop", area = "download", route = "/download", viewport = "1280x820", title = "Load /download at 1280x820, verify download surface renders cleanly", required = true},
+    WebScenario.{id = "web.status.desktop", area = "status", route = "/status", viewport = "1280x820", title = "Load /status at 1280x820, verify status page renders cleanly", required = true}
+  ];
+}
+
+web_agent_definition :: () -> ArDefRecord {
+  return ArDefRecord.{
+    agent_id = "web-journey-tester",
+    name = "Web Journey Tester",
+    description = "Deterministic Coax agent driving openagents.com via coax serve and headless WebGPU Chrome (shot --keep)",
+    version = 1,
+    kind = "tester",
+    execution_mode = "deterministic",
+    runtime = "coax-tool:apps/shared/tester/cli.coax",
+    input_contract = "tester.run_request.v1",
+    output_contract = "tester.result.v1",
+    max_depth = 2,
+    max_concurrency = 4,
+    budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+    model_hint = ""
+  };
+}
+
+#test "web surface register has unique non-empty ids and valid agent definition" {
+  sc := web_scenarios();
+  for i: 0..<WEB_SCENARIO_COUNT {
+    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].route.count > 0 && sc[i].viewport.count > 0 && sc[i].title.count > 0 && sc[i].required;
+    for j: i + 1..<WEB_SCENARIO_COUNT {
+      #assert sc[i].id != sc[j].id;
+    }
+  }
+  d := web_agent_definition();
+  #assert ar_kind_of(d.kind) == AR_KIND_TESTER;
+  #assert ar_mode_of(d.execution_mode) == AR_MODE_DETERMINISTIC;
+  #assert d.version == 1 && d.max_depth == 2 && d.max_concurrency == 4;
+  #assert d.budget.wall_ms == 300000 && d.budget.turns == 0 && d.budget.tokens == 0 && d.budget.cost_usd_e6 == 0;
+}

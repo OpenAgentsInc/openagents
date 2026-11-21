@@ -1,0 +1,149 @@
+// Web Adapter for the Simulated App Tester (Phase 2B)
+// (docs/apps/2026-11-20-simulated-tester-spec.md §7.3).
+//
+// Serves apps/openagents-web locally on an ephemeral port (>9000) using `coax/web/serve.sh`
+// and drives pages in headless Chrome with WebGPU via `coax/web/tool.sh shot ... --keep`
+// (zero visible browser windows, muted audio).
+#load "adapter-ios-sim.coax";
+
+WebSession :: struct {
+  repo_dir: [DA_PATH] u8; repo_n: int;
+  out_dir: [DA_PATH] u8; out_n: int;
+  base_url: [128] u8; base_n: int;
+  obs_file: [DA_PATH] u8; obs_n: int;
+  act_file: [DA_PATH] u8; act_n: int;
+  res_file: [DA_PATH] u8; res_n: int;
+  last_shot: [256] u8; last_shot_n: int;
+  serve_h: int;
+  port: int;
+  seq: int;
+  act_seq: int;
+  started_ms: int;
+}
+
+web_start :: (s: [] WebSession, repo: string, out_dir: string) -> bool {
+  s[0].repo_n = da_copy_into(s[0].repo_dir[..], repo);
+  s[0].out_n = da_copy_into(s[0].out_dir[..], out_dir);
+  s[0].serve_h = -1;
+  s[0].seq = 0;
+  s[0].act_seq = 0;
+  s[0].started_ms = proc_now_ms();
+  s[0].port = 9200 + (proc_now_ms() % 650);
+
+  b1: [1] DaBuf;
+  _ = fs_mkdir_all(out_dir);
+  _ = fs_mkdir_all(da_cat(b1[..], out_dir, "/screenshots"));
+  s[0].obs_n = da_copy_into(s[0].obs_file[..], da_cat(b1[..], out_dir, "/observations.jsonl"));
+  s[0].act_n = da_copy_into(s[0].act_file[..], da_cat(b1[..], out_dir, "/actions.jsonl"));
+  s[0].res_n = da_copy_into(s[0].res_file[..], da_cat(b1[..], out_dir, "/results.jsonl"));
+
+  pb: [32] u8;
+  pstr := da_int_str(s[0].port, pb[..]);
+  s[0].base_n = da_copy_into(s[0].base_url[..], da_cat(b1[..], "http://127.0.0.1:", pstr));
+
+  b2: [1] DaBuf;
+  listen := da_cat(b2[..], "127.0.0.1:", pstr);
+  h := proc_new();
+  if h < 0 { return false; }
+  _ = proc_arg(h, da_cat(b1[..], repo, "/coax/web/serve.sh"));
+  _ = proc_arg(h, da_cat(b1[..], repo, "/apps/openagents-web"));
+  _ = proc_arg(h, "--static");
+  _ = proc_arg(h, "--listen");
+  _ = proc_arg(h, listen);
+  _ = proc_env(h, "OA_SERVE_NO_API=1");
+  _ = proc_env(h, "OA_SERVE_NO_CODER=1");
+  _ = proc_env(h, "OA_SERVE_NO_ROOM=1");
+  _ = proc_quiet(h);
+  if proc_start(h) != 0 { _ = proc_release(h); return false; }
+  s[0].serve_h = h;
+
+  // Poll until local dev server answers HTTP 200 on /.
+  cmd: [512] u8;
+  cj: [1] Jo;
+  jo_start(cj[..], cmd[..]);
+  jo_put(cj[..], "curl -sf '");
+  jo_put(cj[..], da_slice(s[0].base_url[..], s[0].base_n));
+  jo_put(cj[..], "/' >/dev/null 2>&1");
+
+  deadline := proc_now_ms() + 25000;
+  ready := false;
+  while proc_now_ms() < deadline {
+    if da_run_sh(cast(string) cmd[0..<cj[0].n], 2000) { ready = true; break; }
+    proc_sleep(200);
+  }
+  if !ready {
+    tool_errln("web-adapter: coax/web/serve.sh did not become ready within 15s");
+    return false;
+  }
+  return true;
+}
+
+web_stop :: (s: [] WebSession) {
+  if s[0].serve_h >= 0 {
+    _ = proc_kill(s[0].serve_h, PROC_SIGTERM);
+    _ = proc_wait(s[0].serve_h, 2000);
+    _ = proc_release(s[0].serve_h);
+    s[0].serve_h = -1;
+  }
+}
+
+web_shot :: (s: [] WebSession, route: string, viewport: string, shot_name: string, wait_ms: int, obs_out: [] TsObservation) -> bool {
+  s[0].seq += 1;
+  s[0].act_seq += 1;
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  rel := da_cat3(b1[..], "screenshots/", shot_name, ".png");
+  full := da_cat3(b2[..], da_slice(s[0].out_dir[..], s[0].out_n), "/", rel);
+
+  wb: [32] u8;
+  wstr := da_int_str(wait_ms, wb[..]);
+  cmd: [2048] u8;
+  cj: [1] Jo;
+  jo_start(cj[..], cmd[..]);
+  jo_put(cj[..], "'"); jo_put(cj[..], da_slice(s[0].repo_dir[..], s[0].repo_n));
+  jo_put(cj[..], "/coax/web/tool.sh' shot '");
+  jo_put(cj[..], da_slice(s[0].base_url[..], s[0].base_n));
+  jo_put(cj[..], route);
+  jo_put(cj[..], "' '"); jo_put(cj[..], full);
+  jo_put(cj[..], "' "); jo_put(cj[..], viewport);
+  jo_put(cj[..], " "); jo_put(cj[..], wstr);
+  jo_put(cj[..], " --keep >/dev/null 2>&1");
+
+  st := da_run_sh(cast(string) cmd[0..<cj[0].n], 30000);
+  ok := st && fs_exists(full) && fs_size(full) > 2000;
+  s[0].last_shot_n = ifx ok then da_copy_into(s[0].last_shot[..], rel) else 0;
+
+  ib: [32] u8;
+  aid_buf: [1] DaBuf;
+  aid := da_cat(aid_buf[..], "web-act-", da_int_str(s[0].act_seq, ib[..]));
+  a := TsAction.{
+    action_id = aid, source_seq = s[0].seq, op = "shot", target = route,
+    text = viewport, x = 0, y = 0, lease_ms = wait_ms,
+    ts_ms = proc_now_ms() - s[0].started_ms, ok = ok,
+    detail = ifx ok then "shot ok" else "shot failed or blank png"
+  };
+  jb: [TS_BUF] u8;
+  jn := ts_write_action(a, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].act_file[..], s[0].act_n), cast(string) jb[0..<jn]); }
+
+  o := TsObservation.{
+    client_id = "web-1", target = "web", mode = "local",
+    seq = s[0].seq, ts_ms = proc_now_ms() - s[0].started_ms,
+    width = ifx viewport == "393x852" then 393 else 1280,
+    height = ifx viewport == "393x852" then 852 else 820,
+    scale_x100 = 200,
+    screenshot_ref = da_slice(s[0].last_shot[..], s[0].last_shot_n),
+    running = true, settings_page = -1, composer_focused = false,
+    composer_text = "", window_title = route, summary = viewport
+  };
+  obs_out[0] = o;
+  on := ts_write_obs(o, jb[..]);
+  if on > 0 { da_append_line(da_slice(s[0].obs_file[..], s[0].obs_n), cast(string) jb[0..<on]); }
+  return ok;
+}
+
+web_record_result :: (s: [] WebSession, r: TsResult) {
+  jb: [TS_BUF] u8;
+  jn := ts_write_result(r, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
+}
