@@ -291,16 +291,36 @@ static int j_number(JScan *j, double *out) {
 
 /* ---------------- Request parsing & Inkling chat template ---------------- */
 
+static int j_raw_value(JScan *j, Buf *out) {
+    j_ws(j);
+    size_t start = j->pos;
+    if (j_skip(j)) return 1;
+    if (out && j->pos > start) buf_append(out, j->s + start, j->pos - start);
+    return 0;
+}
+
 typedef struct {
-    Buf role;
-    Buf content;
-    Buf reasoning;
+    Buf id;
+    Buf name;
+    Buf args_json; /* JSON object string, e.g. {"path":"calc.py"} */
+} ToolCall;
+
+typedef struct {
+    Buf       role;
+    Buf       name;
+    Buf       tool_call_id;
+    Buf       content;
+    Buf       reasoning;
+    ToolCall *tcs;
+    int       n_tcs;
+    int       cap_tcs;
 } ChatMsg;
 
 typedef struct {
     ChatMsg *msgs;
     int      n_msgs;
     int      cap_msgs;
+    Buf      tools_json;
     Buf      model;
     Buf      effort;
     int      stream;
@@ -311,13 +331,37 @@ typedef struct {
     int      cache_prompt;
 } Req;
 
+static void tc_free(ToolCall *tc) {
+    buf_free(&tc->id);
+    buf_free(&tc->name);
+    buf_free(&tc->args_json);
+}
+
+static ToolCall *msg_add_tc(ChatMsg *m) {
+    if (m->n_tcs >= m->cap_tcs) {
+        int nc = m->cap_tcs ? m->cap_tcs * 2 : 4;
+        ToolCall *p = (ToolCall *)realloc(m->tcs, (size_t)nc * sizeof *p);
+        if (!p) return NULL;
+        m->tcs = p;
+        m->cap_tcs = nc;
+    }
+    ToolCall *tc = &m->tcs[m->n_tcs++];
+    memset(tc, 0, sizeof *tc);
+    return tc;
+}
+
 static void req_free(Req *r) {
     for (int i = 0; i < r->n_msgs; i++) {
         buf_free(&r->msgs[i].role);
+        buf_free(&r->msgs[i].name);
+        buf_free(&r->msgs[i].tool_call_id);
         buf_free(&r->msgs[i].content);
         buf_free(&r->msgs[i].reasoning);
+        for (int t = 0; t < r->msgs[i].n_tcs; t++) tc_free(&r->msgs[i].tcs[t]);
+        free(r->msgs[i].tcs);
     }
     free(r->msgs);
+    buf_free(&r->tools_json);
     buf_free(&r->model);
     buf_free(&r->effort);
 }
@@ -382,6 +426,149 @@ static int parse_content_value(JScan *j, Buf *out) {
     return j_skip(j);
 }
 
+static int parse_tool_call_obj(JScan *j, ChatMsg *m) {
+    j_ws(j);
+    if (j->pos >= j->len || j->s[j->pos] != '{') return j_skip(j);
+    j->pos++;
+    ToolCall *tc = msg_add_tc(m);
+    if (!tc) return 1;
+    j_ws(j);
+    while (j->pos < j->len && j->s[j->pos] != '}') {
+        Buf k = {0};
+        if (j_string(j, &k)) { buf_free(&k); return 1; }
+        j_ws(j);
+        if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); return 1; }
+        j->pos++;
+        const char *ks = k.data ? k.data : "";
+        if (!strcmp(ks, "id")) {
+            j_string(j, &tc->id);
+        } else if (!strcmp(ks, "name")) {
+            j_string(j, &tc->name);
+        } else if (!strcmp(ks, "arguments")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &tc->args_json);
+            else j_raw_value(j, &tc->args_json);
+        } else if (!strcmp(ks, "function")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '{') {
+                j->pos++;
+                j_ws(j);
+                while (j->pos < j->len && j->s[j->pos] != '}') {
+                    Buf fk = {0};
+                    if (j_string(j, &fk)) { buf_free(&fk); buf_free(&k); return 1; }
+                    j_ws(j);
+                    if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&fk); buf_free(&k); return 1; }
+                    j->pos++;
+                    const char *fks = fk.data ? fk.data : "";
+                    if (!strcmp(fks, "name")) {
+                        tc->name.len = 0;
+                        j_string(j, &tc->name);
+                    } else if (!strcmp(fks, "arguments")) {
+                        tc->args_json.len = 0;
+                        j_ws(j);
+                        if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &tc->args_json);
+                        else j_raw_value(j, &tc->args_json);
+                    } else {
+                        j_skip(j);
+                    }
+                    buf_free(&fk);
+                    j_ws(j);
+                    if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+                }
+                if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+            } else {
+                j_skip(j);
+            }
+        } else {
+            j_skip(j);
+        }
+        buf_free(&k);
+        j_ws(j);
+        if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+    }
+    if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+    if (tc->args_json.len == 0) buf_adds(&tc->args_json, "{}");
+    return 0;
+}
+
+static int parse_tools_array(JScan *j, Buf *out) {
+    j_ws(j);
+    if (j->pos >= j->len || j->s[j->pos] != '[') return j_skip(j);
+    j->pos++;
+    j_ws(j);
+    buf_addc(out, '[');
+    int n_out = 0;
+    while (j->pos < j->len && j->s[j->pos] != ']') {
+        j_ws(j);
+        if (j->pos >= j->len || j->s[j->pos] != '{') { if (j_skip(j)) return 1; }
+        else {
+            j->pos++;
+            Buf name = {0}, desc = {0}, params = {0}, type = {0};
+            j_ws(j);
+            while (j->pos < j->len && j->s[j->pos] != '}') {
+                Buf k = {0};
+                if (j_string(j, &k)) { buf_free(&k); buf_free(&name); buf_free(&desc); buf_free(&params); buf_free(&type); return 1; }
+                j_ws(j);
+                if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); buf_free(&name); buf_free(&desc); buf_free(&params); buf_free(&type); return 1; }
+                j->pos++;
+                const char *ks = k.data ? k.data : "";
+                if (!strcmp(ks, "type")) { type.len = 0; j_string(j, &type); }
+                else if (!strcmp(ks, "name")) { name.len = 0; j_string(j, &name); }
+                else if (!strcmp(ks, "description")) { desc.len = 0; j_string(j, &desc); }
+                else if (!strcmp(ks, "parameters")) { params.len = 0; j_raw_value(j, &params); }
+                else if (!strcmp(ks, "function")) {
+                    j_ws(j);
+                    if (j->pos < j->len && j->s[j->pos] == '{') {
+                        j->pos++;
+                        j_ws(j);
+                        while (j->pos < j->len && j->s[j->pos] != '}') {
+                            Buf fk = {0};
+                            if (j_string(j, &fk)) { buf_free(&fk); buf_free(&k); buf_free(&name); buf_free(&desc); buf_free(&params); buf_free(&type); return 1; }
+                            j_ws(j);
+                            if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&fk); buf_free(&k); buf_free(&name); buf_free(&desc); buf_free(&params); buf_free(&type); return 1; }
+                            j->pos++;
+                            const char *fks = fk.data ? fk.data : "";
+                            if (!strcmp(fks, "name")) { name.len = 0; j_string(j, &name); }
+                            else if (!strcmp(fks, "description")) { desc.len = 0; j_string(j, &desc); }
+                            else if (!strcmp(fks, "parameters")) { params.len = 0; j_raw_value(j, &params); }
+                            else j_skip(j);
+                            buf_free(&fk);
+                            j_ws(j);
+                            if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+                        }
+                        if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+                    } else j_skip(j);
+                } else j_skip(j);
+                buf_free(&k);
+                j_ws(j);
+                if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+            }
+            if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+            if (name.len > 0) {
+                if (n_out++ > 0) buf_addc(out, ',');
+                buf_adds(out, "{\"description\":\"");
+                if (desc.len) buf_add_json_escaped(out, desc.data, desc.len);
+                buf_adds(out, "\",\"name\":\"");
+                buf_add_json_escaped(out, name.data, name.len);
+                buf_adds(out, "\",\"parameters\":");
+                if (params.len) buf_append(out, params.data, params.len);
+                else buf_adds(out, "{}");
+                buf_adds(out, ",\"type\":\"");
+                if (type.len) buf_add_json_escaped(out, type.data, type.len);
+                else buf_adds(out, "function");
+                buf_adds(out, "\"}");
+            }
+            buf_free(&name); buf_free(&desc); buf_free(&params); buf_free(&type);
+        }
+        j_ws(j);
+        if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+    }
+    if (j->pos < j->len && j->s[j->pos] == ']') j->pos++;
+    buf_addc(out, ']');
+    if (n_out == 0) out->len = 0;
+    return 0;
+}
+
 static int parse_message_obj(JScan *j, Req *r) {
     j_ws(j);
     if (j->pos >= j->len || j->s[j->pos] != '{') return j_skip(j);
@@ -397,12 +584,34 @@ static int parse_message_obj(JScan *j, Req *r) {
         j->pos++;
         if (k.data && !strcmp(k.data, "role")) {
             j_string(j, &m->role);
+        } else if (k.data && !strcmp(k.data, "name")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->name);
+            else j_skip(j);
+        } else if (k.data && !strcmp(k.data, "tool_call_id")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->tool_call_id);
+            else j_skip(j);
         } else if (k.data && !strcmp(k.data, "content")) {
             parse_content_value(j, &m->content);
         } else if (k.data && (!strcmp(k.data, "reasoning_content") || !strcmp(k.data, "reasoning"))) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->reasoning);
             else j_skip(j);
+        } else if (k.data && !strcmp(k.data, "tool_calls")) {
+            j_ws(j);
+            if (j->pos < j->len && j->s[j->pos] == '[') {
+                j->pos++;
+                j_ws(j);
+                while (j->pos < j->len && j->s[j->pos] != ']') {
+                    if (parse_tool_call_obj(j, m)) { buf_free(&k); return 1; }
+                    j_ws(j);
+                    if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+                }
+                if (j->pos < j->len && j->s[j->pos] == ']') j->pos++;
+            } else {
+                j_skip(j);
+            }
         } else {
             j_skip(j);
         }
@@ -475,6 +684,9 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
                 j_skip(&j);
             }
             buf_free(&ev);
+        } else if (!strcmp(ks, "tools")) {
+            r->tools_json.len = 0;
+            parse_tools_array(&j, &r->tools_json);
         } else if (!strcmp(ks, "instructions")) {
             ChatMsg *m = req_add_msg(r);
             if (m) {
@@ -519,6 +731,12 @@ static void format_inkling_prompt(const Req *r, Buf *out) {
     int effort_emitted = 0;
     const char *eff = (r->effort.data && r->effort.len) ? r->effort.data : "0.7";
 
+    if (r->tools_json.len > 0) {
+        buf_adds(out, "<|message_system|>tool_declare<|content_xml|>");
+        buf_append(out, r->tools_json.data, r->tools_json.len);
+        buf_adds(out, "<|end_message|>");
+    }
+
     for (int i = 0; i < r->n_msgs; i++) {
         const ChatMsg *m = &r->msgs[i];
         const char *role = m->role.data ? m->role.data : "user";
@@ -529,26 +747,62 @@ static void format_inkling_prompt(const Req *r, Buf *out) {
             buf_adds(out, "<|end_message|>");
             effort_emitted = 1;
         }
-        const char *rtok = "<|message_user|>";
-        if (is_sys) rtok = "<|message_system|>";
-        else if (!strcmp(role, "assistant")) rtok = "<|message_model|>";
-        else if (!strcmp(role, "tool")) rtok = "<|message_tool|>";
+        Buf rtok = {0};
+        if (is_sys) buf_adds(&rtok, "<|message_system|>");
+        else if (!strcmp(role, "assistant")) {
+            buf_adds(&rtok, "<|message_model|>");
+            if (m->name.len > 0) buf_append(&rtok, m->name.data, m->name.len);
+        } else if (!strcmp(role, "tool")) {
+            buf_adds(&rtok, "<|message_tool|>");
+            if (m->name.len > 0) {
+                buf_append(&rtok, m->name.data, m->name.len);
+            } else if (m->tool_call_id.len > 0) {
+                for (int pi = 0; pi < i; pi++) {
+                    const ChatMsg *pm = &r->msgs[pi];
+                    for (int t = 0; t < pm->n_tcs; t++) {
+                        if (pm->tcs[t].id.len == m->tool_call_id.len &&
+                            memcmp(pm->tcs[t].id.data, m->tool_call_id.data, m->tool_call_id.len) == 0 &&
+                            pm->tcs[t].name.len > 0) {
+                            buf_append(&rtok, pm->tcs[t].name.data, pm->tcs[t].name.len);
+                            goto found_tname;
+                        }
+                    }
+                }
+found_tname:;
+            }
+        } else {
+            buf_adds(&rtok, "<|message_user|>");
+        }
 
         if (!strcmp(role, "assistant") && m->reasoning.len > 0) {
-            buf_adds(out, rtok);
+            buf_append(out, rtok.data, rtok.len);
             buf_adds(out, "<|content_thinking|>");
             buf_append(out, m->reasoning.data, m->reasoning.len);
             buf_adds(out, "<|end_message|>");
         }
-        if (m->content.len > 0 || strcmp(role, "assistant") != 0 || m->reasoning.len == 0) {
-            buf_adds(out, rtok);
+        if (m->content.len > 0 || strcmp(role, "assistant") != 0 || (m->reasoning.len == 0 && m->n_tcs == 0)) {
+            buf_append(out, rtok.data, rtok.len);
             buf_adds(out, "<|content_text|>");
             if (m->content.len > 0) buf_append(out, m->content.data, m->content.len);
             buf_adds(out, "<|end_message|>");
         }
+        if (!strcmp(role, "assistant") && m->n_tcs > 0) {
+            for (int t = 0; t < m->n_tcs; t++) {
+                const ToolCall *tc = &m->tcs[t];
+                buf_adds(out, "<|message_model|>");
+                if (tc->name.len) buf_append(out, tc->name.data, tc->name.len);
+                buf_adds(out, "<|content_invoke_tool_json|>{\"name\":\"");
+                if (tc->name.len) buf_add_json_escaped(out, tc->name.data, tc->name.len);
+                buf_adds(out, "\",\"args\":");
+                if (tc->args_json.len) buf_append(out, tc->args_json.data, tc->args_json.len);
+                else buf_adds(out, "{}");
+                buf_adds(out, "}<|end_message|>");
+            }
+        }
         if (!strcmp(role, "assistant")) {
             buf_adds(out, "<|content_model_end_sampling|>");
         }
+        buf_free(&rtok);
     }
     if (!effort_emitted) {
         buf_adds(out, "<|message_system|><|content_text|>Thinking effort level: ");
@@ -584,11 +838,70 @@ typedef struct {
     int32_t     tok_model;
     int32_t     tok_thinking;
     int32_t     tok_text;
+    int32_t     tok_invoke_tool;
     int32_t     tok_end_msg;
     int32_t     tok_eog;
     uint64_t    rng;
     int         req_seq;
 } Server;
+
+static void parse_invoked_tool_json(const char *s, size_t n, const Buf *hdr_name, Buf *out_name, Buf *out_args) {
+    JScan j = { s, n, 0 };
+    j_ws(&j);
+    if (j.pos < j.len && j.s[j.pos] == '{') {
+        j.pos++;
+        j_ws(&j);
+        while (j.pos < j.len && j.s[j.pos] != '}') {
+            Buf k = {0};
+            if (j_string(&j, &k)) { buf_free(&k); break; }
+            j_ws(&j);
+            if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&k); break; }
+            j.pos++;
+            const char *ks = k.data ? k.data : "";
+            if (!strcmp(ks, "name")) {
+                out_name->len = 0;
+                j_string(&j, out_name);
+            } else if (!strcmp(ks, "args") || !strcmp(ks, "arguments")) {
+                out_args->len = 0;
+                j_ws(&j);
+                if (j.pos < j.len && j.s[j.pos] == '"') j_string(&j, out_args);
+                else j_raw_value(&j, out_args);
+            } else {
+                j_skip(&j);
+            }
+            buf_free(&k);
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+        }
+    }
+    if (out_name->len == 0 && hdr_name && hdr_name->len > 0) {
+        buf_append(out_name, hdr_name->data, hdr_name->len);
+    }
+    if (out_args->len == 0) buf_adds(out_args, "{}");
+}
+
+static void emit_chat_tool_call(int fd, int64_t created, const char *model, int idx,
+                                const char *id, const char *name, size_t name_len,
+                                const char *args, size_t args_len) {
+    Buf ev = {0};
+    char head[256];
+    snprintf(head, sizeof head,
+             "{\"id\":\"chatcmpl-psionic\",\"object\":\"chat.completion.chunk\",\"created\":%lld,\"model\":\"",
+             (long long)created);
+    buf_adds(&ev, head);
+    buf_add_json_escaped(&ev, model, strlen(model));
+    char mid[160];
+    snprintf(mid, sizeof mid,
+             "\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":%d,\"id\":\"%s\",\"type\":\"function\",\"function\":{\"name\":\"",
+             idx, id);
+    buf_adds(&ev, mid);
+    buf_add_json_escaped(&ev, name, name_len);
+    buf_adds(&ev, "\",\"arguments\":\"");
+    buf_add_json_escaped(&ev, args, args_len);
+    buf_adds(&ev, "\"}}]},\"finish_reason\":null}]}");
+    send_sse_event(fd, NULL, ev.data, ev.len);
+    buf_free(&ev);
+}
 
 static void emit_chat_delta(int fd, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
     if (n == 0) return;
@@ -717,11 +1030,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
     }
 
-    /* Channel state machine: 0=none, 1=thinking, 2=text */
+    /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json */
     int channel = 0;
+    int in_header = 0;
+    Buf header_buf = {0};
+    Buf tool_json = {0};
     Buf pending = {0};
     Buf full_text = {0};
     Buf full_think = {0};
+    ToolCall *emitted_tcs = NULL;
+    int n_emitted_tcs = 0, cap_emitted_tcs = 0;
     InkSampleParams sp = { .temperature = r.temperature, .top_p = r.top_p, .top_k = r.top_k };
 
     int max_gen = r.max_tokens;
@@ -744,7 +1062,28 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
 
         if (tok == sv->tok_model || tok == sv->tok_end_msg) {
-            if (pending.len > 0 && channel != 0) {
+            if (channel == 3 && tool_json.len > 0) {
+                if (n_emitted_tcs >= cap_emitted_tcs) {
+                    int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
+                    ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
+                    if (np) { emitted_tcs = np; cap_emitted_tcs = nc; }
+                }
+                if (n_emitted_tcs < cap_emitted_tcs) {
+                    ToolCall *tc = &emitted_tcs[n_emitted_tcs];
+                    memset(tc, 0, sizeof *tc);
+                    char idbuf[64];
+                    snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
+                    buf_adds(&tc->id, idbuf);
+                    parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+                    if (r.stream && !is_responses) {
+                        emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                                            tc->name.data ? tc->name.data : "", tc->name.len,
+                                            tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                    }
+                    n_emitted_tcs++;
+                }
+                tool_json.len = 0;
+            } else if (pending.len > 0 && (channel == 1 || channel == 2)) {
                 if (channel == 1) buf_append(&full_think, pending.data, pending.len);
                 else buf_append(&full_text, pending.data, pending.len);
                 if (r.stream) {
@@ -754,32 +1093,51 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 pending.len = 0;
             }
             channel = 0;
+            if (tok == sv->tok_model) {
+                in_header = 1;
+                header_buf.len = 0;
+            } else {
+                in_header = 0;
+            }
         } else if (tok == sv->tok_thinking) {
             channel = 1;
+            in_header = 0;
             pending.len = 0;
         } else if (tok == sv->tok_text) {
             channel = 2;
+            in_header = 0;
             pending.len = 0;
+        } else if (sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) {
+            channel = 3;
+            in_header = 0;
+            pending.len = 0;
+            tool_json.len = 0;
         } else if (tok >= 200000) {
             /* Other special control token: ignore in user-visible output */
         } else {
-            if (channel == 0) channel = 2; /* fallback if model emits text directly */
             char piece[512];
             int plen = ink_decode_piece(sv->sess, tok, piece, sizeof piece);
             if (plen > 0) {
-                buf_append(&pending, piece, (size_t)plen);
-                size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, pending.len);
-                if (ready > 0) {
-                    if (channel == 1) buf_append(&full_think, pending.data, ready);
-                    else buf_append(&full_text, pending.data, ready);
-                    if (r.stream) {
-                        if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, ready);
-                        else emit_chat_delta(fd, created, model, channel == 1, pending.data, ready);
+                if (in_header) {
+                    buf_append(&header_buf, piece, (size_t)plen);
+                } else if (channel == 3) {
+                    buf_append(&tool_json, piece, (size_t)plen);
+                } else {
+                    if (channel == 0) channel = 2;
+                    buf_append(&pending, piece, (size_t)plen);
+                    size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, pending.len);
+                    if (ready > 0) {
+                        if (channel == 1) buf_append(&full_think, pending.data, ready);
+                        else buf_append(&full_text, pending.data, ready);
+                        if (r.stream) {
+                            if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, ready);
+                            else emit_chat_delta(fd, created, model, channel == 1, pending.data, ready);
+                        }
+                        if (ready < pending.len) {
+                            memmove(pending.data, pending.data + ready, pending.len - ready);
+                        }
+                        pending.len -= ready;
                     }
-                    if (ready < pending.len) {
-                        memmove(pending.data, pending.data + ready, pending.len - ready);
-                    }
-                    pending.len -= ready;
                 }
             }
         }
@@ -791,13 +1149,36 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             }
         }
     }
-    if (pending.len > 0 && channel != 0) {
+    if (channel == 3 && tool_json.len > 0) {
+        if (n_emitted_tcs >= cap_emitted_tcs) {
+            int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
+            ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
+            if (np) { emitted_tcs = np; cap_emitted_tcs = nc; }
+        }
+        if (n_emitted_tcs < cap_emitted_tcs) {
+            ToolCall *tc = &emitted_tcs[n_emitted_tcs];
+            memset(tc, 0, sizeof *tc);
+            char idbuf[64];
+            snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
+            buf_adds(&tc->id, idbuf);
+            parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+            if (r.stream && !is_responses) {
+                emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                                    tc->name.data ? tc->name.data : "", tc->name.len,
+                                    tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+            }
+            n_emitted_tcs++;
+        }
+    } else if (pending.len > 0 && (channel == 1 || channel == 2)) {
         if (channel == 1) buf_append(&full_think, pending.data, pending.len);
         else buf_append(&full_text, pending.data, pending.len);
         if (r.stream) {
             if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, pending.len);
             else emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
         }
+    }
+    if (n_emitted_tcs > 0 && !strcmp(finish_reason, "stop")) {
+        finish_reason = "tool_calls";
     }
     double t_decode = now_sec() - td0;
     fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (%.2fs) gen=%d (%.2fs, %.1f tok/s) finish=%s\n",
@@ -879,6 +1260,21 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             buf_add_json_escaped(&out, full_think.data, full_think.len);
             buf_adds(&out, "\"");
         }
+        if (n_emitted_tcs > 0) {
+            buf_adds(&out, ",\"tool_calls\":[");
+            for (int t = 0; t < n_emitted_tcs; t++) {
+                if (t > 0) buf_addc(&out, ',');
+                buf_adds(&out, "{\"id\":\"");
+                buf_add_json_escaped(&out, emitted_tcs[t].id.data, emitted_tcs[t].id.len);
+                buf_adds(&out, "\",\"type\":\"function\",\"function\":{\"name\":\"");
+                if (emitted_tcs[t].name.len) buf_add_json_escaped(&out, emitted_tcs[t].name.data, emitted_tcs[t].name.len);
+                buf_adds(&out, "\",\"arguments\":\"");
+                if (emitted_tcs[t].args_json.len) buf_add_json_escaped(&out, emitted_tcs[t].args_json.data, emitted_tcs[t].args_json.len);
+                else buf_adds(&out, "{}");
+                buf_adds(&out, "\"}}");
+            }
+            buf_addc(&out, ']');
+        }
         buf_adds(&out, "},\"finish_reason\":\"");
         buf_adds(&out, finish_reason);
         char utail[160];
@@ -890,6 +1286,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         buf_free(&out);
     }
 
+    for (int t = 0; t < n_emitted_tcs; t++) tc_free(&emitted_tcs[t]);
+    free(emitted_tcs);
+    buf_free(&header_buf);
+    buf_free(&tool_json);
     buf_free(&pending);
     buf_free(&full_text);
     buf_free(&full_think);
@@ -993,11 +1393,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[psionic-inkling-serve] ink_open failed: %s\n", err);
         return 1;
     }
-    sv.tok_model    = ink_find_token(sv.sess, "<|message_model|>");
-    sv.tok_thinking = ink_find_token(sv.sess, "<|content_thinking|>");
-    sv.tok_text     = ink_find_token(sv.sess, "<|content_text|>");
-    sv.tok_end_msg  = ink_find_token(sv.sess, "<|end_message|>");
-    sv.tok_eog      = ink_eos_token(sv.sess);
+    sv.tok_model       = ink_find_token(sv.sess, "<|message_model|>");
+    sv.tok_thinking    = ink_find_token(sv.sess, "<|content_thinking|>");
+    sv.tok_text        = ink_find_token(sv.sess, "<|content_text|>");
+    sv.tok_invoke_tool = ink_find_token(sv.sess, "<|content_invoke_tool_json|>");
+    sv.tok_end_msg     = ink_find_token(sv.sess, "<|end_message|>");
+    sv.tok_eog         = ink_eos_token(sv.sess);
     fprintf(stderr, "[psionic-inkling-serve] loaded %s on Psionic Metal in %.2fs (ctx=%d, eog=%d)\n",
             gguf, now_sec() - t0, max_ctx, sv.tok_eog);
 
