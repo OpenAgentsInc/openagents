@@ -4,7 +4,7 @@ import AppKit
 
 extension CoderWindow {
     /// Opens the Gym in the main content area beside the sidebar.
-    /// mode: 0 Benchmarks, 1 PLE 3D, 2 Lean · RH (nil keeps the page's current mode).
+    /// mode: 0 Benchmarks, 1 PLE 3D, 2 Lean · RH, 3 Terminal-Bench (nil keeps the page's current mode).
     func openGym(mode: Int32? = nil) {
         guard Experimental.on else { return }   // an experimental feature (Settings > General)
         cd_gym_set(page, 1)
@@ -16,8 +16,10 @@ extension CoderWindow {
             hydrateLeanWorkbench(force: false)
         } else {
             let workbench = ensureGymView()
-            workbench.setModeBenchmarks(curMode == 0)
-            workbench.refreshRuns(autoSelectFirst: true)
+            workbench.setGymMode(curMode)
+            if curMode == 1 {
+                workbench.refreshRuns(autoSelectFirst: true)
+            }
         }
         wake()
         syncGymPanelFrame()
@@ -196,7 +198,7 @@ extension CoderWindow {
                 hydrateLeanWorkbench(force: false)
             } else {
                 let wb = ensureGymView()
-                wb.setModeBenchmarks(mode == 0)
+                wb.setGymMode(mode)
                 if mode == 1 { wb.refreshRuns(autoSelectFirst: false) }
             }
             syncGymPanelFrame()

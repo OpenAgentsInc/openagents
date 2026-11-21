@@ -70,7 +70,7 @@ private final class FlippedView: NSView {
 
 // MARK: - Embedded Real OpenAgents GPU Chat Component
 
-private final class GymChatSurfaceView: NSView {
+final class GymChatSurfaceView: NSView {
     private let headerBar = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let badgeLabel = NSTextField(labelWithString: "Ready")
@@ -196,6 +196,10 @@ private final class GymChatSurfaceView: NSView {
 
     func wake() {
         owedFrames = max(owedFrames, 4)
+    }
+
+    func setTitle(_ text: String) {
+        titleLabel.stringValue = text
     }
 
     func setBadge(_ text: String) {

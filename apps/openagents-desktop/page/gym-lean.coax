@@ -12,10 +12,12 @@ cp_gym_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
   _ := sheet_text(sh, m, -1, px, y + (CP_GYM_BAR_H - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "GYM");
   px += 42.0f32;
 
-  modes := [3] string.["Benchmarks", "PLE 3D", "Lean · RH"];
-  tones := [3] Rgba.[k.syntax[4], k.syntax[1], k.warning];
-  for mi: 0..<3 {
-    px += cp_lr_pill(f, cp_lr_id(sh, "coder.gym.mode.", mi), px, y + 6.0f32, modes[mi], s[0].gym_mode == mi, tones[mi], CP_GYM_MODE_ACT) + 6.0f32;
+  mode_ids := [4] int.[CP_GYM_BENCH, CP_GYM_TBENCH, CP_GYM_PLE, CP_GYM_LEAN];
+  modes := [4] string.["Benchmarks", "Terminal-Bench", "PLE 3D", "Lean · RH"];
+  tones := [4] Rgba.[k.syntax[4], k.success, k.syntax[1], k.warning];
+  for mi: 0..<4 {
+    mid := mode_ids[mi];
+    px += cp_lr_pill(f, cp_lr_id(sh, "coder.gym.mode.", mid), px, y + 6.0f32, modes[mi], s[0].gym_mode == mid, tones[mi], CP_GYM_MODE_ACT) + 6.0f32;
   }
 
   // Right-side telemetry & index trigger when in Lean · RH mode
@@ -83,7 +85,7 @@ cp_lean_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   l := s[0].lean[..];
   if act == CP_GYM_MODE_ACT {
     m := cp_number(id, "mode.");
-    if m >= 0 && m <= 2 {
+    if m >= 0 && m <= 3 {
       s[0].gym_mode = m;
       s[0].ask = CP_ASK_LEAN_MODE;
       return true;
@@ -369,7 +371,7 @@ coder_page_gym_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
 }
 coder_page_gym_mode_set :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
   if s.count < 1 { return; }
-  if mode >= 0 && mode <= 2 { s[0].gym_mode = mode; }
+  if mode >= 0 && mode <= 3 { s[0].gym_mode = mode; }
 }
 coder_page_lean_atlas_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }

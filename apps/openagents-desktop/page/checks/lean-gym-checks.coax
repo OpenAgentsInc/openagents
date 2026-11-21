@@ -92,7 +92,9 @@
   test_atlas(s[0].atlas[..]);
   coder_page_gym_set(s, true);
 
-  // Switch GYM mode via lifted bar press
+  // Switch GYM mode via lifted bar press (Terminal-Bench mode 3 & Lean · RH mode 2)
+  #assert cp_lean_press(s, CP_GYM_MODE_ACT, "coder.gym.mode.3") && coder_page_gym_mode(s) == CP_GYM_TBENCH;
+  #assert coder_page_action(s) == CP_ASK_LEAN_MODE;
   #assert cp_lean_press(s, CP_GYM_MODE_ACT, "coder.gym.mode.2") && coder_page_gym_mode(s) == CP_GYM_LEAN;
   #assert coder_page_action(s) == CP_ASK_LEAN_MODE;
 
