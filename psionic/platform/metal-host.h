@@ -72,6 +72,8 @@ PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer);
    be page-aligned, and the memory must outlive the buffer (a mapped model
    file, for example). The GPU reads the bytes where they are. */
 PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer);
+/* Mark a buffer read-only for subsequent batches (MTLResourceUsageRead). */
+void pm_mark_readonly(PmBuffer buffer);
 PmStatus pm_free(PmBuffer buffer);
 void *pm_contents(PmBuffer buffer);
 

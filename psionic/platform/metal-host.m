@@ -19,9 +19,12 @@ static id<MTLCommandQueue> queue;
 /* Every live buffer: a kernel reaches buffers by address, so each encoder
    makes all of them resident. */
 static NSMutableArray<id<MTLBuffer>> *live;
+static NSMutableArray<id<MTLBuffer>> *live_ro;
 static id<MTLBuffer> shared_errors;
 static __unsafe_unretained id<MTLResource> *live_cache;
 static NSUInteger live_cache_cap;
+static __unsafe_unretained id<MTLResource> *live_ro_cache;
+static NSUInteger live_ro_cache_cap;
 static int live_dirty = 1;
 
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec; }
@@ -41,6 +44,7 @@ PmStatus pm_open(PmDeviceInfo *info) {
             if (!device) { note("no Metal device"); return PM_ABSENT; }
             queue = [device newCommandQueueWithMaxCommandBufferCount:64];
             live = [NSMutableArray array];
+            live_ro = [NSMutableArray array];
         }
         memset(info, 0, sizeof *info);
         snprintf(info->name, sizeof info->name, "%s", device.name.UTF8String);
@@ -89,6 +93,35 @@ PmStatus pm_compile_fast(const char *source, size_t length, const char *name, Pm
     return compile_impl(source, length, name, 1, module, seconds);
 }
 
+typedef struct {
+    void *buf; /* __bridge_retained id<MTLBuffer> */
+    uint64_t gpu_addr;
+    NSUInteger length;
+    void *contents;
+} PmBufImpl;
+
+typedef struct {
+    void *pso; /* __bridge_retained id<MTLComputePipelineState> */
+    NSUInteger max_threads;
+} PmKernelImpl;
+
+typedef void (*ImpSetPSO)(id, SEL, id<MTLComputePipelineState>);
+typedef void (*ImpSetBytes)(id, SEL, const void *, NSUInteger, NSUInteger);
+typedef void (*ImpDispatchTG)(id, SEL, MTLSize, MTLSize);
+typedef void (*ImpBarrier)(id, SEL, MTLBarrierScope);
+
+typedef struct {
+    void *commands; /* __bridge_retained id<MTLCommandBuffer> */
+    void *encoder;  /* __bridge_retained id<MTLComputeCommandEncoder> */
+    void *errors;   /* __bridge id<MTLBuffer> (shared_errors) */
+    void *last_pipeline;
+    ImpSetPSO fn_set_pso;
+    ImpSetBytes fn_set_bytes;
+    ImpDispatchTG fn_dispatch_tg;
+    ImpDispatchTG fn_dispatch_threads;
+    ImpBarrier fn_barrier;
+} PmBatchImpl;
+
 PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel) {
     @autoreleasepool {
         id<MTLLibrary> library = (__bridge id<MTLLibrary>)module;
@@ -98,21 +131,41 @@ PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel) {
         id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
         if (!pipeline) { note("%s: %s", name, error.localizedDescription.UTF8String); return PM_COMPILE; }
         if (getenv("PM_VERBOSE")) fprintf(stderr, "kernel %s: %lu threads per group, simd width %lu\n", name, (unsigned long)pipeline.maxTotalThreadsPerThreadgroup, (unsigned long)pipeline.threadExecutionWidth);
-        *kernel = (__bridge_retained void *)pipeline;
+        PmKernelImpl *k = (PmKernelImpl *)malloc(sizeof *k);
+        if (!k) return PM_MEMORY;
+        k->max_threads = pipeline.maxTotalThreadsPerThreadgroup;
+        k->pso = (__bridge_retained void *)pipeline;
+        *kernel = k;
         return PM_OK;
     }
 }
 
 PmStatus pm_kernel_free(PmKernel kernel) {
     if (!kernel) return PM_OK;
-    id<MTLComputePipelineState> object = (__bridge_transfer id<MTLComputePipelineState>)kernel;
+    PmKernelImpl *k = (PmKernelImpl *)kernel;
+    id<MTLComputePipelineState> object = (__bridge_transfer id<MTLComputePipelineState>)k->pso;
     (void)object;
+    free(k);
     return PM_OK;
 }
 PmStatus pm_unload(PmModule module) {
     if (!module) return PM_OK;
     id<MTLLibrary> object = (__bridge_transfer id<MTLLibrary>)module;
     (void)object;
+    return PM_OK;
+}
+
+static PmStatus wrap_buf_impl(id<MTLBuffer> b, int ro, PmBuffer *buffer) {
+    PmBufImpl *bi = (PmBufImpl *)malloc(sizeof *bi);
+    if (!bi) return PM_MEMORY;
+    bi->gpu_addr = b.gpuAddress;
+    bi->length = b.length;
+    bi->contents = b.contents;
+    if (ro) [live_ro addObject:b];
+    else [live addObject:b];
+    live_dirty = 1;
+    bi->buf = (__bridge_retained void *)b;
+    *buffer = bi;
     return PM_OK;
 }
 
@@ -123,10 +176,7 @@ static PmStatus alloc_buffer(size_t bytes, PmBuffer *buffer, int zero) {
         id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
         if (!b) { note("cannot allocate %zu bytes", bytes); return PM_MEMORY; }
         if (zero) memset(b.contents, 0, bytes);
-        [live addObject:b];
-        live_dirty = 1;
-        *buffer = (__bridge_retained void *)b;
-        return PM_OK;
+        return wrap_buf_impl(b, 0, buffer);
     }
 }
 PmStatus pm_alloc(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 1); }
@@ -137,59 +187,80 @@ PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer) {
         if (!bytes || length == 0 || (uintptr_t)bytes % page || length % page) { note("pm_wrap needs page-aligned memory"); return PM_ARGUMENT; }
         id<MTLBuffer> b = [device newBufferWithBytesNoCopy:bytes length:length options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked deallocator:nil];
         if (!b) { note("cannot wrap %zu bytes", length); return PM_MEMORY; }
-        [live addObject:b];
-        live_dirty = 1;
-        *buffer = (__bridge_retained void *)b;
-        return PM_OK;
+        return wrap_buf_impl(b, 1, buffer);
     }
 }
 PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 0); }
 
+void pm_mark_readonly(PmBuffer buffer) {
+    if (!buffer) return;
+    PmBufImpl *bi = (PmBufImpl *)buffer;
+    id<MTLBuffer> b = (__bridge id<MTLBuffer>)bi->buf;
+    if ([live containsObject:b]) {
+        [live removeObjectIdenticalTo:b];
+        [live_ro addObject:b];
+        live_dirty = 1;
+    }
+}
+
 PmStatus pm_free(PmBuffer buffer) {
     if (!buffer) return PM_OK;
-    id<MTLBuffer> b = (__bridge_transfer id<MTLBuffer>)buffer;
+    PmBufImpl *bi = (PmBufImpl *)buffer;
+    id<MTLBuffer> b = (__bridge_transfer id<MTLBuffer>)bi->buf;
     [live removeObjectIdenticalTo:b];
+    [live_ro removeObjectIdenticalTo:b];
     live_dirty = 1;
+    free(bi);
     return PM_OK;
 }
 
-void *pm_contents(PmBuffer buffer) { return buffer ? ((__bridge id<MTLBuffer>)buffer).contents : NULL; }
-
-@interface PmBatchObject : NSObject
-@property(strong) id<MTLCommandBuffer> commands;
-@property(strong) id<MTLComputeCommandEncoder> encoder;
-@property(strong) id<MTLBuffer> errors;
-@property(assign) void *last_pipeline;
-@end
-@implementation PmBatchObject
-@end
+void *pm_contents(PmBuffer buffer) { return buffer ? ((PmBufImpl *)buffer)->contents : NULL; }
 
 static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
-        PmBatchObject *b = [PmBatchObject new];
-        b.commands = [queue commandBufferWithUnretainedReferences];
-        b.encoder = [b.commands computeCommandEncoderWithDispatchType:dtype];
+        PmBatchImpl *b = (PmBatchImpl *)calloc(1, sizeof *b);
+        if (!b) return PM_MEMORY;
+        id<MTLCommandBuffer> cmds = [queue commandBufferWithUnretainedReferences];
+        id<MTLComputeCommandEncoder> enc = [cmds computeCommandEncoderWithDispatchType:dtype];
         if (!shared_errors) {
             shared_errors = [device newBufferWithLength:8 options:MTLResourceStorageModeShared];
         }
-        b.errors = shared_errors;
-        memset(b.errors.contents, 0, 8);
+        memset(shared_errors.contents, 0, 8);
         NSUInteger n = live.count;
-        if (n) {
-            if (live_dirty) {
-                if (n > live_cache_cap) {
-                    free(live_cache);
-                    live_cache_cap = n * 2;
-                    live_cache = (__unsafe_unretained id<MTLResource> *)malloc(live_cache_cap * sizeof(id<MTLResource>));
-                }
-                for (NSUInteger i = 0; i < n; i++) live_cache[i] = live[i];
-                live_dirty = 0;
+        NSUInteger n_ro = live_ro.count;
+        if (live_dirty) {
+            if (n > live_cache_cap) {
+                free(live_cache);
+                live_cache_cap = n * 2;
+                live_cache = (__unsafe_unretained id<MTLResource> *)malloc(live_cache_cap * sizeof(id<MTLResource>));
             }
-            [b.encoder useResources:live_cache count:n usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+            for (NSUInteger i = 0; i < n; i++) live_cache[i] = live[i];
+            if (n_ro > live_ro_cache_cap) {
+                free(live_ro_cache);
+                live_ro_cache_cap = n_ro * 2;
+                live_ro_cache = (__unsafe_unretained id<MTLResource> *)malloc(live_ro_cache_cap * sizeof(id<MTLResource>));
+            }
+            for (NSUInteger i = 0; i < n_ro; i++) live_ro_cache[i] = live_ro[i];
+            live_dirty = 0;
         }
-        [b.encoder setBuffer:b.errors offset:0 atIndex:1];
-        *batch = (__bridge_retained void *)b;
+        if (n) {
+            [enc useResources:live_cache count:n usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+        }
+        if (n_ro) {
+            [enc useResources:live_ro_cache count:n_ro usage:MTLResourceUsageRead];
+        }
+        [enc setBuffer:shared_errors offset:0 atIndex:1];
+        NSObject *enc_obj = (NSObject *)enc;
+        b->fn_set_pso = (ImpSetPSO)[enc_obj methodForSelector:@selector(setComputePipelineState:)];
+        b->fn_set_bytes = (ImpSetBytes)[enc_obj methodForSelector:@selector(setBytes:length:atIndex:)];
+        b->fn_dispatch_tg = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreadgroups:threadsPerThreadgroup:)];
+        b->fn_dispatch_threads = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreads:threadsPerThreadgroup:)];
+        b->fn_barrier = (ImpBarrier)[enc_obj methodForSelector:@selector(memoryBarrierWithScope:)];
+        b->commands = (__bridge_retained void *)cmds;
+        b->encoder = (__bridge_retained void *)enc;
+        b->errors = (__bridge void *)shared_errors;
+        *batch = b;
         return PM_OK;
     }
 }
@@ -197,130 +268,150 @@ static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype) {
 PmStatus pm_begin(PmBatch *batch) { return begin_impl(batch, MTLDispatchTypeSerial); }
 PmStatus pm_begin_concurrent(PmBatch *batch) { return begin_impl(batch, MTLDispatchTypeConcurrent); }
 void pm_barrier(PmBatch batch) {
-    PmBatchObject *b = (__bridge PmBatchObject *)batch;
-    [b.encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+    PmBatchImpl *b = (PmBatchImpl *)batch;
+    b->fn_barrier((__bridge id)b->encoder, @selector(memoryBarrierWithScope:), MTLBarrierScopeBuffers);
 }
 
 PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int block, const PmArg *args, int count) {
-    PmBatchObject *b = (__bridge PmBatchObject *)batch;
-    id<MTLComputePipelineState> pipeline = (__bridge id<MTLComputePipelineState>)kernel;
-    if (items < 0 || (lanes != 1 && (lanes % 32 != 0 || lanes > 1024)) || count < 0 || count > 16) { note("malformed launch"); return PM_ARGUMENT; }
+    PmBatchImpl *b = (PmBatchImpl *)batch;
+    PmKernelImpl *k = (PmKernelImpl *)kernel;
+    if (items < 0 || (lanes != 1 && (lanes % 32 != 0 || lanes > 1024)) || count < 0 || count > 32) { note("malformed launch"); return PM_ARGUMENT; }
     if (items == 0) return PM_OK;
-    uint8_t block_bytes[8 + 16 * 16];
-    size_t at = 0;
+    uint8_t block_bytes[8 + 32 * 16];
+    size_t at = 8;
     memcpy(block_bytes, &items, 8);
-    at = 8;
-    for (int k = 0; k < count; k++) {
-        const PmArg *a = &args[k];
-        uint8_t slot[16] = {0};
-        size_t size = 8;
+    for (int i = 0; i < count; i++) {
+        const PmArg *a = &args[i];
         switch (a->kind) {
-            case PM_ARG_INT: memcpy(slot, &a->i, 8); break;
-            case PM_ARG_U32: { uint32_t v = (uint32_t)a->i; memcpy(slot, &v, 4); break; }
-            case PM_ARG_F32: { float v = (float)a->f; memcpy(slot, &v, 4); break; }
-            case PM_ARG_F64: { float hi = (float)a->f, lo = (float)(a->f - (double)hi); memcpy(slot, &hi, 4); memcpy(slot + 4, &lo, 4); break; }
-            case PM_ARG_VIEW: {
-                if (!a->buffer) { note("argument %d: a view without a buffer", k); return PM_ARGUMENT; }
-                id<MTLBuffer> buffer = (__bridge id<MTLBuffer>)a->buffer;
-                if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > buffer.length) { note("argument %d: a view outside its buffer", k); return PM_ARGUMENT; }
-                /* Every element is at least one byte, so a count beyond the
-                   bytes after the offset cannot be a view of this buffer. The
-                   host does not know the element type; a caller still owes
-                   count * element size <= its buffer's remaining bytes. */
-                if ((NSUInteger)a->count > buffer.length - (NSUInteger)a->offset) { note("argument %d: a view longer than its buffer", k); return PM_ARGUMENT; }
-                uint64_t address = buffer.gpuAddress + (uint64_t)a->offset;
-                memcpy(slot, &address, 8);
-                memcpy(slot + 8, &a->count, 8);
-                size = 16;
+            case PM_ARG_INT:
+                memcpy(block_bytes + at, &a->i, 8);
+                at += 8;
+                break;
+            case PM_ARG_U32: {
+                uint64_t v = (uint32_t)a->i;
+                memcpy(block_bytes + at, &v, 8);
+                at += 8;
                 break;
             }
-            default: note("argument %d: unknown kind", k); return PM_ARGUMENT;
+            case PM_ARG_F32: {
+                float v = (float)a->f;
+                uint64_t z = 0;
+                memcpy(&z, &v, 4);
+                memcpy(block_bytes + at, &z, 8);
+                at += 8;
+                break;
+            }
+            case PM_ARG_F64: {
+                float hi = (float)a->f, lo = (float)(a->f - (double)hi);
+                memcpy(block_bytes + at, &hi, 4);
+                memcpy(block_bytes + at + 4, &lo, 4);
+                at += 8;
+                break;
+            }
+            case PM_ARG_VIEW: {
+                PmBufImpl *bi = (PmBufImpl *)a->buffer;
+                if (!bi) { note("argument %d: a view without a buffer", i); return PM_ARGUMENT; }
+                if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > bi->length ||
+                    (NSUInteger)a->count > bi->length - (NSUInteger)a->offset) {
+                    note("argument %d: a view outside its buffer", i); return PM_ARGUMENT;
+                }
+                uint64_t address = bi->gpu_addr + (uint64_t)a->offset;
+                memcpy(block_bytes + at, &address, 8);
+                memcpy(block_bytes + at + 8, &a->count, 8);
+                at += 16;
+                break;
+            }
+            default: note("argument %d: unknown kind", i); return PM_ARGUMENT;
         }
-        memcpy(block_bytes + at, slot, size);
-        at += size;
     }
-    NSUInteger threads = (NSUInteger)items * (NSUInteger)lanes;
-    if (b.last_pipeline != kernel) {
-        [b.encoder setComputePipelineState:pipeline];
-        b.last_pipeline = kernel;
+    id enc = (__bridge id)b->encoder;
+    if (b->last_pipeline != kernel) {
+        b->fn_set_pso(enc, @selector(setComputePipelineState:), (__bridge id<MTLComputePipelineState>)k->pso);
+        b->last_pipeline = kernel;
     }
-    [b.encoder setBytes:block_bytes length:at atIndex:0];
+    b->fn_set_bytes(enc, @selector(setBytes:length:atIndex:), block_bytes, at, 0);
     if (lanes > 32) {
-        /* A group kernel: one threadgroup of exactly `lanes` threads per item. */
-        [b.encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)items, 1, 1) threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
+        b->fn_dispatch_tg(enc, @selector(dispatchThreadgroups:threadsPerThreadgroup:),
+                          MTLSizeMake((NSUInteger)items, 1, 1), MTLSizeMake((NSUInteger)lanes, 1, 1));
         return PM_OK;
     }
-    NSUInteger limit = pipeline.maxTotalThreadsPerThreadgroup;
+    NSUInteger threads = (NSUInteger)items * (NSUInteger)lanes;
+    NSUInteger limit = k->max_threads;
     NSUInteger group = block > 0 ? (NSUInteger)block : 128;
     if (group > limit) group = limit;
     group = group / 32 * 32;
     if (group == 0) { note("pipeline allows fewer than 32 threads per group"); return PM_ARGUMENT; }
-    [b.encoder dispatchThreads:MTLSizeMake(threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(group, 1, 1)];
+    b->fn_dispatch_threads(enc, @selector(dispatchThreads:threadsPerThreadgroup:),
+                           MTLSizeMake(threads, 1, 1), MTLSizeMake(group, 1, 1));
     return PM_OK;
 }
 
 PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
                             PmBuffer indirect_buf, int64_t indirect_offset, int lanes,
                             const PmArg *args, int count) {
-    PmBatchObject *b = (__bridge PmBatchObject *)batch;
-    id<MTLComputePipelineState> pipeline = (__bridge id<MTLComputePipelineState>)kernel;
-    id<MTLBuffer> ibuf = (__bridge id<MTLBuffer>)indirect_buf;
-    if (!ibuf || max_items < 0 || lanes <= 32 || lanes % 32 != 0 || lanes > 1024 || count < 0 || count > 16) {
+    PmBatchImpl *b = (PmBatchImpl *)batch;
+    PmKernelImpl *k = (PmKernelImpl *)kernel;
+    PmBufImpl *ibi = (PmBufImpl *)indirect_buf;
+    if (!ibi || max_items < 0 || lanes <= 32 || lanes % 32 != 0 || lanes > 1024 || count < 0 || count > 16) {
         note("malformed indirect launch");
         return PM_ARGUMENT;
     }
     if (max_items == 0) return PM_OK;
+    id<MTLComputeCommandEncoder> enc = (__bridge id<MTLComputeCommandEncoder>)b->encoder;
+    id<MTLBuffer> ibuf = (__bridge id<MTLBuffer>)ibi->buf;
     uint8_t block_bytes[8 + 16 * 16];
     size_t at = 8;
     memcpy(block_bytes, &max_items, 8);
-    for (int k = 0; k < count; k++) {
-        const PmArg *a = &args[k];
-        uint8_t slot[16] = {0};
-        size_t size = 8;
+    for (int i = 0; i < count; i++) {
+        const PmArg *a = &args[i];
         switch (a->kind) {
-            case PM_ARG_INT: memcpy(slot, &a->i, 8); break;
-            case PM_ARG_U32: { uint32_t v = (uint32_t)a->i; memcpy(slot, &v, 4); break; }
-            case PM_ARG_F32: { float v = (float)a->f; memcpy(slot, &v, 4); break; }
-            case PM_ARG_F64: { float hi = (float)a->f, lo = (float)(a->f - (double)hi); memcpy(slot, &hi, 4); memcpy(slot + 4, &lo, 4); break; }
+            case PM_ARG_INT: memcpy(block_bytes + at, &a->i, 8); at += 8; break;
+            case PM_ARG_U32: { uint64_t v = (uint32_t)a->i; memcpy(block_bytes + at, &v, 8); at += 8; break; }
+            case PM_ARG_F32: { float v = (float)a->f; uint64_t z = 0; memcpy(&z, &v, 4); memcpy(block_bytes + at, &z, 8); at += 8; break; }
+            case PM_ARG_F64: { float hi = (float)a->f, lo = (float)(a->f - (double)hi); memcpy(block_bytes + at, &hi, 4); memcpy(block_bytes + at + 4, &lo, 4); at += 8; break; }
             case PM_ARG_VIEW: {
-                if (!a->buffer) { note("argument %d: a view without a buffer", k); return PM_ARGUMENT; }
-                id<MTLBuffer> buffer = (__bridge id<MTLBuffer>)a->buffer;
-                if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > buffer.length) { note("argument %d: a view outside its buffer", k); return PM_ARGUMENT; }
-                if ((NSUInteger)a->count > buffer.length - (NSUInteger)a->offset) { note("argument %d: a view longer than its buffer", k); return PM_ARGUMENT; }
-                uint64_t address = buffer.gpuAddress + (uint64_t)a->offset;
-                memcpy(slot, &address, 8);
-                memcpy(slot + 8, &a->count, 8);
-                size = 16;
+                PmBufImpl *bi = (PmBufImpl *)a->buffer;
+                if (!bi) { note("argument %d: a view without a buffer", i); return PM_ARGUMENT; }
+                if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > bi->length ||
+                    (NSUInteger)a->count > bi->length - (NSUInteger)a->offset) {
+                    note("argument %d: a view outside its buffer", i); return PM_ARGUMENT;
+                }
+                uint64_t address = bi->gpu_addr + (uint64_t)a->offset;
+                memcpy(block_bytes + at, &address, 8);
+                memcpy(block_bytes + at + 8, &a->count, 8);
+                at += 16;
                 break;
             }
-            default: note("argument %d: unknown kind", k); return PM_ARGUMENT;
+            default: note("argument %d: unknown kind", i); return PM_ARGUMENT;
         }
-        memcpy(block_bytes + at, slot, size);
-        at += size;
     }
-    if (b.last_pipeline != kernel) {
-        [b.encoder setComputePipelineState:pipeline];
-        b.last_pipeline = kernel;
+    if (b->last_pipeline != kernel) {
+        b->fn_set_pso(enc, @selector(setComputePipelineState:), (__bridge id<MTLComputePipelineState>)k->pso);
+        b->last_pipeline = kernel;
     }
-    [b.encoder setBytes:block_bytes length:at atIndex:0];
-    [b.encoder dispatchThreadgroupsWithIndirectBuffer:ibuf
-                                 indirectBufferOffset:(NSUInteger)indirect_offset
-                                threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
+    b->fn_set_bytes(enc, @selector(setBytes:length:atIndex:), block_bytes, at, 0);
+    [enc dispatchThreadgroupsWithIndirectBuffer:ibuf
+                           indirectBufferOffset:(NSUInteger)indirect_offset
+                          threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
     return PM_OK;
 }
 
 PmStatus pm_wait(PmBatch batch, double *gpu_seconds) {
     @autoreleasepool {
-        PmBatchObject *b = (__bridge_transfer PmBatchObject *)batch;
-        [b.encoder endEncoding];
-        [b.commands commit];
-        [b.commands waitUntilCompleted];
-        if (gpu_seconds) *gpu_seconds = b.commands.GPUEndTime - b.commands.GPUStartTime;
-        if (b.commands.status != MTLCommandBufferStatusCompleted) {
-            note("command buffer failed: %s", b.commands.error ? b.commands.error.localizedDescription.UTF8String : "unknown error");
+        PmBatchImpl *b = (PmBatchImpl *)batch;
+        id<MTLComputeCommandEncoder> enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
+        id<MTLCommandBuffer> cmds = (__bridge_transfer id<MTLCommandBuffer>)b->commands;
+        id<MTLBuffer> errs = (__bridge id<MTLBuffer>)b->errors;
+        free(b);
+        [enc endEncoding];
+        [cmds commit];
+        [cmds waitUntilCompleted];
+        if (gpu_seconds) *gpu_seconds = cmds.GPUEndTime - cmds.GPUStartTime;
+        if (cmds.status != MTLCommandBufferStatusCompleted) {
+            note("command buffer failed: %s", cmds.error ? cmds.error.localizedDescription.UTF8String : "unknown error");
             return PM_DEVICE;
         }
-        const uint32_t *words = b.errors.contents;
+        const uint32_t *words = errs.contents;
         if (words[0]) { note("%u Coax checks failed inside the launches (largest source line %u)", words[0], words[1]); return PM_CHECK; }
         return PM_OK;
     }

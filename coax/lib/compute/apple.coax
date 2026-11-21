@@ -90,6 +90,87 @@ am_f16 :: (h:u32)->f32 #effects(all) {
 }
 am_simd_sum :: (x:f32)->f32 #effects(all) { return x; }
 
+am_dot_iq4_lane :: (w:[]u16,base:int,x:[]f32,x_off:int,blocks:int)->f32 #effects(all) {
+    sum:f32=0.0f32;
+    for b:0..<blocks {
+        at:=base+b*9;
+        sc:=am_f16(cast(u32)w[at]);
+        xb:=x_off+b*32;
+        s:f32=0.0f32;
+        for k:0..<8 {
+            v:=cast(u32)w[at+1+k];
+            s+=am_iq4_lut(v&15)*x[xb+2*k]+am_iq4_lut((v>>4)&15)*x[xb+16+2*k]+am_iq4_lut((v>>8)&15)*x[xb+2*k+1]+am_iq4_lut((v>>12)&15)*x[xb+16+2*k+1];
+        }
+        sum+=sc*s;
+    }
+    return sum;
+}
+
+am_dot_q4_lane :: (w:[]u16,base:int,x:[]f32,x_off:int,blocks:int)->f32 #effects(all) {
+    sum:f32=0.0f32;
+    for b:0..<blocks {
+        at:=base+b*9;
+        sc:=am_f16(cast(u32)w[at]);
+        xb:=x_off+b*32;
+        s:f32=0.0f32;
+        for k:0..<8 {
+            v:=cast(u32)w[at+1+k];
+            s+=(f32(v&15)-8.0f32)*x[xb+2*k]+(f32((v>>4)&15)-8.0f32)*x[xb+16+2*k]+(f32((v>>8)&15)-8.0f32)*x[xb+2*k+1]+(f32((v>>12)&15)-8.0f32)*x[xb+16+2*k+1];
+        }
+        sum+=sc*s;
+    }
+    return sum;
+}
+
+am_tanh :: (x:f32)->f32 #effects(all) {
+    if x>=0.0f32 { // mutant: equivalent (at x==0 both branches evaluate exp(0)=1 and return 0.0f32)
+        e:=exp(-2.0f32*x);
+        return (1.0f32-e)/(1.0f32+e);
+    }
+    e:=exp(2.0f32*x);
+    return (e-1.0f32)/(e+1.0f32);
+}
+
+am_situ_act :: (g:f32,u:f32,beta:f32,lb:f32)->f32 #effects(all) {
+    t:=am_tanh(g/beta);
+    sig:=1.0f32/(1.0f32+exp(-g));
+    act:=beta*t*sig;
+    uv:=ifx lb>0.0f32 then lb*am_tanh(u/lb) else u;
+    return act*uv;
+}
+
+am_dot_iq4_situ_lane :: (w:[]u16,gb:int,ub:int,x:[]f32,x_off:int,blocks:int,beta:f32,lb:f32)->f32 #effects(all) {
+    g:=am_dot_iq4_lane(w,gb,x,x_off,blocks);
+    u:=am_dot_iq4_lane(w,ub,x,x_off,blocks);
+    return am_situ_act(g,u,beta,lb);
+}
+
+am_dot_q4_situ_lane :: (w:[]u16,gb:int,ub:int,x:[]f32,x_off:int,blocks:int,beta:f32,lb:f32)->f32 #effects(all) {
+    g:=am_dot_q4_lane(w,gb,x,x_off,blocks);
+    u:=am_dot_q4_lane(w,ub,x,x_off,blocks);
+    return am_situ_act(g,u,beta,lb);
+}
+
+am_dot_iq4_moe_lane :: (w:[]u16,ids:[]u32,wts:[]f32,x:[]f32,exp_words:int,row_off:int,cols:int,n_used:int)->f32 #effects(all) {
+    blocks:=cols/32;
+    sum:f32=0.0f32;
+    for slot:0..<n_used {
+        eid:=cast(int)ids[slot];
+        sum+=wts[slot]*am_dot_iq4_lane(w,eid*exp_words+row_off,x,slot*cols,blocks);
+    }
+    return sum;
+}
+
+am_dot_q4_moe_lane :: (w:[]u16,ids:[]u32,wts:[]f32,x:[]f32,exp_words:int,row_off:int,cols:int,n_used:int)->f32 #effects(all) {
+    blocks:=cols/32;
+    sum:f32=0.0f32;
+    for slot:0..<n_used {
+        eid:=cast(int)ids[slot];
+        sum+=wts[slot]*am_dot_q4_lane(w,eid*exp_words+row_off,x,slot*cols,blocks);
+    }
+    return sum;
+}
+
 am_matmul_iq4_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,tn:int,w:int,x:int,out:int,tg:int)->bool #effects(all) {
     if cols<64 || cols%64!=0 || r0<0 || r0>=rows || t0<0 || t0>=tokens || tg<tn*64 {return false;}
     return w>=rows*((cols/32)*9) && x>=tokens*cols && out>=tokens*rows;
@@ -124,6 +205,53 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
 #test "BF16 halves decode exactly" {
     #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
     #assert am_simd_sum(3.5f32)==3.5f32 && am_simd_sum(-1.25f32)==-1.25f32;
+    wq:[36]u16;xq:[64]f32;
+    wq[0]=0x3c00;wq[9]=0x4000;wq[18]=0x3800;wq[27]=0x3c00;
+    for k:0..<8 {
+        wq[1+k]=cast(u16)(0x9a8b+k);
+        wq[10+k]=cast(u16)(0x7654+k);
+        wq[19+k]=cast(u16)(0xa987+k);
+        wq[28+k]=cast(u16)(0x89ab+k);
+    }
+    for i:0..<64 {xq[i]=f32((i+1)*(i+1))*0.01f32;}
+    // Compute exact reference sums for 2 blocks at base=0, x_off=0
+    exp_iq4:f32=0.0f32;exp_q4:f32=0.0f32;
+    for b:0..<2 {
+        sc:=am_f16(cast(u32)wq[b*9]);
+        si:f32=0.0f32;sq:f32=0.0f32;
+        for k:0..<8 {
+            v:=cast(u32)wq[b*9+1+k];
+            xb:=b*32;
+            n0:=v&15;n1:=(v>>4)&15;n2:=(v>>8)&15;n3:=(v>>12)&15;
+            si+=am_iq4_lut(n0)*xq[xb+2*k]+am_iq4_lut(n1)*xq[xb+16+2*k]+am_iq4_lut(n2)*xq[xb+2*k+1]+am_iq4_lut(n3)*xq[xb+16+2*k+1];
+            sq+=(f32(n0)-8.0f32)*xq[xb+2*k]+(f32(n1)-8.0f32)*xq[xb+16+2*k]+(f32(n2)-8.0f32)*xq[xb+2*k+1]+(f32(n3)-8.0f32)*xq[xb+16+2*k+1];
+        }
+        exp_iq4+=sc*si;exp_q4+=sc*sq;
+    }
+    di:=am_dot_iq4_lane(wq[..],0,xq[..],0,2);
+    dq:=am_dot_q4_lane(wq[..],0,xq[..],0,2);
+    #assert abs(di-exp_iq4)<0.001f32 && abs(dq-exp_q4)<0.001f32;
+    #assert am_dot_iq4_lane(wq[..],0,xq[..],0,0)==0.0f32 && am_dot_q4_lane(wq[..],0,xq[..],0,0)==0.0f32;
+    // Exact am_tanh & am_situ_act checks (positive, zero, negative)
+    #assert abs(am_tanh(0.0f32))<0.0001f32;
+    #assert abs(am_tanh(1.0f32)-0.761594f32)<0.001f32 && abs(am_tanh(-1.0f32)+0.761594f32)<0.001f32;
+    #assert abs(am_situ_act(1.5f32,2.0f32,3.0f32,0.0f32)-2.2759f32)<0.01f32;
+    #assert abs(am_situ_act(1.5f32,4.0f32,3.0f32,2.0f32)-2.1941f32)<0.01f32;
+    #assert abs(am_situ_act(-1.5f32,2.0f32,3.0f32,0.0f32)+0.5078f32)<0.01f32;
+    // Exact situ_lane checks
+    g_i:=am_dot_iq4_lane(wq[..],0,xq[..],0,1);u_i:=am_dot_iq4_lane(wq[..],9,xq[..],0,1);
+    #assert abs(am_dot_iq4_situ_lane(wq[..],0,9,xq[..],0,1,3.0f32,2.0f32)-am_situ_act(g_i,u_i,3.0f32,2.0f32))<0.001f32;
+    g_q:=am_dot_q4_lane(wq[..],0,xq[..],0,1);u_q:=am_dot_q4_lane(wq[..],9,xq[..],0,1);
+    #assert abs(am_dot_q4_situ_lane(wq[..],0,9,xq[..],0,1,3.0f32,2.0f32)-am_situ_act(g_q,u_q,3.0f32,2.0f32))<0.001f32;
+    // Exact moe_lane checks with non-zero row_off=9 and 2 experts
+    mids:[2]u32;mwts:[2]f32;
+    mids[0]=0;mids[1]=1;mwts[0]=0.5f32;mwts[1]=0.25f32;
+    exp_mi:=0.5f32*am_dot_iq4_lane(wq[..],9,xq[..],0,1)+0.25f32*am_dot_iq4_lane(wq[..],27,xq[..],32,1);
+    exp_mq:=0.5f32*am_dot_q4_lane(wq[..],9,xq[..],0,1)+0.25f32*am_dot_q4_lane(wq[..],27,xq[..],32,1);
+    #assert abs(am_dot_iq4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,2)-exp_mi)<0.001f32;
+    #assert abs(am_dot_q4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,2)-exp_mq)<0.001f32;
+    #assert am_dot_iq4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,0)==0.0f32;
+    #assert am_dot_q4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,0)==0.0f32;
 }
 #test "am_matmul_iq4 decodes IQ4_NL weights and multiplies" {
     exp_lut:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];
