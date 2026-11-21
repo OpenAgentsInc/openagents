@@ -57,6 +57,9 @@ FILM_PHOTO_TOE :: 1.25f32;
  g:=film_photo(film_rgb(0.18,0.18,0.18));f:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(g.g-f.g)<0.0001;
  h:=film_photo(film_rgb(0.6,0.5,0.4));i:=film_rec709(film_rgb(0.6,0.5,0.4));#assert abs(h.r-i.r)<0.0001 && abs(h.b-i.b)<0.0001;
  d:=film_photo(film_rgb(0.01,0.01,0.01));e:=film_rec709(film_rgb(0.01,0.01,0.01));#assert d.g>2.5*e.g && d.g<0.01 && d.g>0.004;
+ // smoothstep blend at yi=0.045 (u=0.25): smooth w=0.15625 vs linear w=0.25 differs measurably
+ m:=film_photo(film_rgb(0.045,0.045,0.045));mf:=film_rec709(film_rgb(0.045,0.045,0.045));ms:=0.18*pow(0.25,FILM_PHOTO_TOE);
+ #assert abs(m.g-(ms+(mf.g-ms)*0.15625))<0.0005;
  z:=film_photo(film_rgb(0,0,0));#assert z.r==0 && z.g==0 && z.b==0;
 }
 #test "the photo response never falls as the light rises" {

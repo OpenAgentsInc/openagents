@@ -234,4 +234,15 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   ps := k_dock_side(t, "places");
   tr_close(t);
   #assert tr_class(t, tr_find(t, "places")) == "dock-s" && ps == tr_find(t, "places.slot") && tr_class(t, ps) == "slot" && t[0].nodes[ps].parent == tr_find(t, "places") && t[0].depth == 0;
+  // slider ends: low/high spans and optional why paragraph (#13610)
+  tr_begin(t);
+  se := k_slider_ends(t, "lim", "1 min", "60 min", "capped by host");
+  #assert se == tr_find(t, "lim") && t[0].nodes[se].tag == TG_DIV && tr_class(t, se) == "slide-ends";
+  #assert t[0].nodes[tr_find(t, "lim.lo")].tag == TG_SPAN && tr_text_of(t, tr_find(t, "lim.lo")) == "1 min";
+  #assert t[0].nodes[tr_find(t, "lim.hi")].tag == TG_SPAN && tr_text_of(t, tr_find(t, "lim.hi")) == "60 min";
+  #assert t[0].nodes[tr_find(t, "lim.why")].tag == TG_P && tr_class(t, tr_find(t, "lim.why")) == "slide-why" && tr_text_of(t, tr_find(t, "lim.why")) == "capped by host";
+  se2 := k_slider_ends(t, "bare", "0", "10", "");
+  #assert se2 == tr_find(t, "bare") && tr_find(t, "bare.why") < 0 && t[0].depth == 0;
+  se3 := k_slider_ends(t, "one", "0", "1", "!");
+  #assert se3 == tr_find(t, "one") && tr_text_of(t, tr_find(t, "one.why")) == "!" && t[0].depth == 0;
 }
