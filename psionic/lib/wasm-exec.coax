@@ -1,0 +1,674 @@
+// Profile wasm-exec-v1 (Executor W1.2, GitHub #13915):
+// Materializes the wasm-core-i32-v1 step ALU/comparison/select/branch core into
+// dense binary64 exec-vm-v1 transformer weights (serialized to & loaded from
+// standard F64 safetensors pinned by SHA-256 executor_artifact_hash), executes
+// full wasm-core-i32-v1 programs over hull-v2 parabolic memory using the loaded
+// weights, and verifies every trace via Ch 234 replay (RxVerdict).
+#load "wasm-core.coax";
+#load "exec-vm-core.coax";
+#load "replay.coax";
+
+WX_PROFILE_ID :: "wasm-exec-v1";
+WX_COMPILER_SPEC :: "wasm-exec-v1:exec-vm-v1:hull-v2:wasm-core-i32-v1";
+
+WX_CORE_MAX_NODES :: 64;
+WX_CORE_MAX_LAYERS :: 16;
+WX_CORE_MAX_HEADS :: 4;
+WX_CORE_MAX_WIDTH :: 64;
+WX_CORE_MAX_UNITS :: 128;
+WX_CORE_MAX_WEIGHTS :: 32768;
+WX_CORE_MAX_BYTES :: 327680;
+
+WxCore :: struct {
+  ready: bool;
+  model: EvModel;
+  artifact_hash: [32] u8;
+  compiler_hash: [32] u8;
+  safetensors_bytes: int;
+}
+
+WxReceipt :: struct {
+  status: WmStatus;
+  compiler_hash: [32] u8;
+  executor_artifact_hash: [32] u8;
+  program_hash: [32] u8;
+  trace_digest: [32] u8;
+  steps: int;
+  result: int;
+  has_result: bool;
+  weight_calls: int;
+  mem_writes: int;
+  mem_reads: int;
+  hull_compares: int;
+  scan_compares: int;
+}
+
+WxReplay :: struct {
+  verdict: RxVerdict;
+  reason: RxReason;
+  replayed_steps: int;
+}
+
+wx_hash_str :: (s: string) -> [32] u8 #effects(all) {
+  sha: [112] u8;
+  d: [32] u8;
+  buf: [128] u8;
+  n := ifx s.count < 128 then s.count else 128;
+  for i: 0..<n { buf[i] = s[i]; }
+  #assert sha256_init(sha[..]) == SHA_OK;
+  #assert sha256_update_checked(sha[..], buf[0..<n], false) == SHA_OK;
+  #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+  return d;
+}
+
+wx_program_hash :: (prog: [] WmOp, funcs: [] WmFunc) -> [32] u8 #effects(all) {
+  sha: [112] u8;
+  d: [32] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  wm_hash_row(sha[..], prog.count, funcs.count, 13915, 1);
+  for op: prog {
+    wm_hash_row(sha[..], cast(int) op.code, op.arg, op.arg2, 0);
+  }
+  for f: funcs {
+    wm_hash_row(sha[..], f.entry_ip, f.n_params, f.n_locals, 1);
+  }
+  #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+  return d;
+}
+
+wx_same_hash :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+wx_put :: (nodes: [] EvNode, n: int, e: EvNode) -> int {
+  nodes[n] = e;
+  return n + 1;
+}
+
+// Compile the wasm-exec-v1 step ALU/comparison/select/branch core into dense
+// exec-vm-v1 F64 weights, serialize to standard F64 safetensors, pin SHA-256
+// artifact_hash, and reload via ev_deserialize so execution uses the loaded
+// safetensors weights.
+// Inputs:  [0]=a, [1]=b, [2]=c
+// Outputs: [0]=a+b, [1]=a-b, [2]=a*b, [3]=(a==b), [4]=(a==0),
+//          [5]=(a<b), [6]=(a<=b), [7]=select(c!=0,a,b), [8]=(a!=b)
+wx_compile_and_load_core :: (
+  layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64
+) -> WxCore #effects(all) {
+  out: WxCore;
+  out.compiler_hash = wx_hash_str(WX_COMPILER_SPEC);
+
+  nodes: [WX_CORE_MAX_NODES] EvNode;
+  n := 0;
+  in_a := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  in_b := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  in_c := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  c_one := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 1});
+
+  o_add := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.add, a = in_a, b = in_b});
+  o_sub := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.sub, a = in_a, b = in_b});
+  o_mul := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.mul, a = in_a, b = in_b});
+  o_eq := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = o_sub});
+  o_eqz := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = in_a});
+  b_minus_a := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.sub, a = in_b, b = in_a});
+  o_lt := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.step, a = b_minus_a});
+  b_minus_a_p1 := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.add, a = b_minus_a, b = c_one});
+  o_le := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.step, a = b_minus_a_p1});
+  c_is_zero := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = in_c});
+  o_sel := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.select, a = in_b, b = in_a, c = c_is_zero});
+  o_ne := n; n = wx_put(nodes[..], n, EvNode.{op = EvOp.sub, a = c_one, b = o_eq});
+
+  outs := [9] int.[o_add, o_sub, o_mul, o_eq, o_eqz, o_lt, o_le, o_sel, o_ne];
+
+  forms: [WX_CORE_MAX_NODES] EvForm;
+  layer: [WX_CORE_MAX_NODES] int;
+  last: [WX_CORE_MAX_NODES] int;
+  slot: [WX_CORE_MAX_NODES] int;
+  clear: [WX_CORE_MAX_NODES] int;
+  release: [WX_CORE_MAX_NODES] int;
+  kept: [WX_CORE_MAX_NODES] bool;
+  free_slots: [WX_CORE_MAX_WIDTH] bool;
+  kv_pin: [1] int;
+  arena := ev_test_arena(
+    forms[0..<n], layer[0..<n], last[0..<n], slot[0..<n],
+    clear[0..<n], release[0..<n], kept[0..<n], free_slots[..], kv_pin[0..<0]);
+
+  tmp_layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  tmp_heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  tmp_weights: [WX_CORE_MAX_WEIGHTS] f64;
+  compiled := ev_compile(nodes[0..<n], outs[..], 0, arena, tmp_layers[..], tmp_heads[..], tmp_weights[..]);
+  if compiled.status != EvStatus.ok { return out; }
+
+  st_buf: [WX_CORE_MAX_BYTES] u8;
+  ser := ev_serialize(compiled, st_buf[..]);
+  if ser.status != EvStatus.ok { return out; }
+
+  loaded := ev_deserialize(st_buf[0..<ser.written], ser.digest, true, layers, heads, weights);
+  if loaded.model.status != EvStatus.ok { return out; }
+
+  out.ready = true;
+  out.model = loaded.model;
+  out.artifact_hash = ser.digest;
+  out.safetensors_bytes = ser.written;
+  return out;
+}
+
+wx_eval_core :: (m: EvModel, a: int, b: int, c: int, out_vals: [] int) -> EvStatus #effects(all) {
+  in_f := [3] f64.[f64(a), f64(b), f64(c)];
+  x: [WX_CORE_MAX_WIDTH] f64;
+  stage: [WX_CORE_MAX_WIDTH] f64;
+  hidden: [WX_CORE_MAX_UNITS] f64;
+  res: [WX_CORE_MAX_WIDTH] f64;
+  ro: [9] f64;
+  kv: [1] f64;
+  exec := EvExecArena.{x = x[0..<m.width], stage = stage[0..<m.width], hidden = hidden[..]};
+  st := ev_forward_token(m, in_f[..], kv[0..<0], 0, res[0..<m.width], ro[..], exec, false);
+  if st != EvStatus.ok { return st; }
+  for k: 0..<9 {
+    v := ro[k];
+    out_vals[k] = ifx v >= 0.0 then cast(int) (v + 0.5) else cast(int) (v - 0.5);
+  }
+  return EvStatus.ok;
+}
+
+wx_in_envelope :: (a: int, b: int) -> bool {
+  return a >= -33554432 && a <= 33554432 && b >= -33554432 && b <= 33554432;
+}
+
+// Execute a wasm-core-i32-v1 program using the loaded wasm-exec-v1 dense F64
+// weights for arithmetic/comparison/select/branch steps and hull-v2 parabolic
+// attention for linear memory. Produces a pinned WxReceipt with identical
+// SHA-256 trace digest to wm_run.
+wx_run :: (
+  core: WxCore, prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: [] HtNode
+) -> WxReceipt #effects(all) {
+  rc: WxReceipt;
+  rc.compiler_hash = core.compiler_hash;
+  rc.executor_artifact_hash = core.artifact_hash;
+  rc.program_hash = wx_program_hash(prog, funcs);
+
+  if !core.ready || core.model.status != EvStatus.ok { rc.status = WmStatus.invalid_op; return rc; }
+  if prog.count < 1 { rc.status = WmStatus.invalid_op; return rc; }
+  if mem_cells < 0 || mem_cells > EM_KEY_MAX { rc.status = WmStatus.oob_memory; return rc; }
+  if budget < 1 { rc.status = WmStatus.budget; return rc; }
+
+  stack: [WM_STACK_MAX] int; sp := 0;
+  locals: [WM_LOCALS_POOL] int;
+  globals: [WM_GLOBALS_MAX] int;
+  frames: [WM_CALL_MAX] WmFrame; fp := 0;
+  labels: [WM_LABELS_MAX] WmLabel; lp := 0;
+  wout: [9] int;
+
+  mem := ht_index(nodes);
+  sha: [112] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+
+  ip := 0;
+  if funcs.count > 0 {
+    if funcs[0].entry_ip < 0 || funcs[0].entry_ip >= prog.count { rc.status = WmStatus.bad_branch; return rc; }
+    ip = funcs[0].entry_ip;
+  }
+  frames[0] = WmFrame.{return_ip = -1, local_base = 0, label_base = 0};
+  fp = 1;
+
+  while true {
+    if ip < 0 || ip >= prog.count { rc.status = WmStatus.bad_branch; return rc; }
+    if rc.steps >= budget { rc.status = WmStatus.budget; return rc; }
+    op := prog[ip];
+    code := op.code;
+    cur_ip := ip;
+    next_ip := ip + 1;
+    tx := 0;
+    ty := 0;
+    halted := false;
+    lb := frames[fp - 1].local_base;
+
+    if code == WmCode.nop {
+      // no-op
+    } else if code == WmCode.drop {
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      sp -= 1;
+      tx = stack[sp];
+    } else if code == WmCode.select {
+      if sp < 3 { rc.status = WmStatus.stack_underflow; return rc; }
+      cond := stack[sp - 1];
+      v2 := stack[sp - 2];
+      v1 := stack[sp - 3];
+      sp -= 2;
+      if wx_in_envelope(v1, v2) && cond >= -33554432 && cond <= 33554432 {
+        #assert wx_eval_core(core.model, v1, v2, cond, wout[..]) == EvStatus.ok;
+        rc.weight_calls += 1;
+        stack[sp - 1] = wout[7];
+      } else {
+        stack[sp - 1] = ifx cond != 0 then v1 else v2;
+      }
+      tx = stack[sp - 1];
+    } else if code == WmCode.i32_const {
+      if sp >= WM_STACK_MAX { rc.status = WmStatus.stack_overflow; return rc; }
+      v := wm_i32(op.arg);
+      stack[sp] = v; sp += 1;
+      tx = v;
+    } else if code == WmCode.local_get {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { rc.status = WmStatus.invalid_op; return rc; }
+      if sp >= WM_STACK_MAX { rc.status = WmStatus.stack_overflow; return rc; }
+      v := locals[lb + op.arg];
+      stack[sp] = v; sp += 1;
+      tx = v; ty = op.arg;
+    } else if code == WmCode.local_set {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { rc.status = WmStatus.invalid_op; return rc; }
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      sp -= 1;
+      locals[lb + op.arg] = stack[sp];
+      tx = stack[sp]; ty = op.arg;
+    } else if code == WmCode.local_tee {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { rc.status = WmStatus.invalid_op; return rc; }
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      locals[lb + op.arg] = stack[sp - 1];
+      tx = stack[sp - 1]; ty = op.arg;
+    } else if code == WmCode.global_get {
+      if op.arg < 0 || op.arg >= WM_GLOBALS_MAX { rc.status = WmStatus.invalid_op; return rc; }
+      if sp >= WM_STACK_MAX { rc.status = WmStatus.stack_overflow; return rc; }
+      v := globals[op.arg];
+      stack[sp] = v; sp += 1;
+      tx = v; ty = op.arg;
+    } else if code == WmCode.global_set {
+      if op.arg < 0 || op.arg >= WM_GLOBALS_MAX { rc.status = WmStatus.invalid_op; return rc; }
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      sp -= 1;
+      globals[op.arg] = stack[sp];
+      tx = stack[sp]; ty = op.arg;
+    } else if code == WmCode.block {
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count { rc.status = WmStatus.bad_branch; return rc; }
+      labels[lp] = WmLabel.{is_loop = false, start_ip = ip + 1, end_ip = op.arg, stack_depth = sp};
+      lp += 1;
+      ty = op.arg;
+    } else if code == WmCode.loop {
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count { rc.status = WmStatus.bad_branch; return rc; }
+      labels[lp] = WmLabel.{is_loop = true, start_ip = ip + 1, end_ip = op.arg, stack_depth = sp};
+      lp += 1;
+      ty = op.arg;
+    } else if code == WmCode.if_op {
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count || op.arg2 < op.arg || op.arg2 >= prog.count {
+        rc.status = WmStatus.bad_branch; return rc;
+      }
+      sp -= 1;
+      cond := stack[sp];
+      tx = cond;
+      is_zero := cond == 0;
+      if cond >= -33554432 && cond <= 33554432 {
+        #assert wx_eval_core(core.model, cond, 0, 0, wout[..]) == EvStatus.ok;
+        rc.weight_calls += 1;
+        is_zero = wout[4] != 0;
+      }
+      if !is_zero {
+        labels[lp] = WmLabel.{is_loop = false, start_ip = ip + 1, end_ip = op.arg2, stack_depth = sp};
+        lp += 1;
+      } else if op.arg < op.arg2 {
+        labels[lp] = WmLabel.{is_loop = false, start_ip = op.arg + 1, end_ip = op.arg2, stack_depth = sp};
+        lp += 1;
+        next_ip = op.arg + 1;
+      } else {
+        next_ip = op.arg2 + 1;
+      }
+      ty = next_ip;
+    } else if code == WmCode.else_op {
+      if lp <= frames[fp - 1].label_base || op.arg < ip || op.arg >= prog.count { rc.status = WmStatus.bad_branch; return rc; }
+      lp -= 1;
+      next_ip = op.arg + 1;
+      ty = next_ip;
+    } else if code == WmCode.end_op {
+      if lp > frames[fp - 1].label_base {
+        lp -= 1;
+      } else {
+        ret_ip := frames[fp - 1].return_ip;
+        fp -= 1;
+        if fp == 0 {
+          halted = true;
+        } else {
+          next_ip = ret_ip;
+        }
+      }
+      ty = next_ip;
+    } else if code == WmCode.br || code == WmCode.br_if {
+      take := true;
+      if code == WmCode.br_if {
+        if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+        sp -= 1;
+        cval := stack[sp];
+        tx = cval;
+        if cval >= -33554432 && cval <= 33554432 {
+          #assert wx_eval_core(core.model, cval, 0, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          take = wout[4] == 0;
+        } else {
+          take = cval != 0;
+        }
+      }
+      if take {
+        depth := op.arg;
+        avail := lp - frames[fp - 1].label_base;
+        if depth < 0 || depth >= avail { rc.status = WmStatus.bad_branch; return rc; }
+        target_idx := lp - 1 - depth;
+        lbl := labels[target_idx];
+        if lbl.is_loop {
+          lp = target_idx + 1;
+          next_ip = lbl.start_ip;
+        } else {
+          lp = target_idx;
+          next_ip = lbl.end_ip + 1;
+        }
+      }
+      ty = next_ip;
+    } else if code == WmCode.call {
+      fi := op.arg;
+      if fi < 0 || fi >= funcs.count { rc.status = WmStatus.bad_branch; return rc; }
+      fn := funcs[fi];
+      if fn.entry_ip < 0 || fn.entry_ip >= prog.count || fn.n_params < 0 || fn.n_params > WM_FRAME_LOCALS || fn.n_locals < fn.n_params || fn.n_locals > WM_FRAME_LOCALS {
+        rc.status = WmStatus.invalid_op; return rc;
+      }
+      if sp < fn.n_params { rc.status = WmStatus.stack_underflow; return rc; }
+      if fp >= WM_CALL_MAX { rc.status = WmStatus.call_overflow; return rc; }
+      new_lb := fp * WM_FRAME_LOCALS;
+      for k: 0..<WM_FRAME_LOCALS { locals[new_lb + k] = 0; }
+      for p: 0..<fn.n_params {
+        locals[new_lb + (fn.n_params - 1 - p)] = stack[sp - 1];
+        sp -= 1;
+      }
+      frames[fp] = WmFrame.{return_ip = ip + 1, local_base = new_lb, label_base = lp};
+      fp += 1;
+      next_ip = fn.entry_ip;
+      tx = fi; ty = next_ip;
+    } else if code == WmCode.ret {
+      lp = frames[fp - 1].label_base;
+      ret_ip := frames[fp - 1].return_ip;
+      fp -= 1;
+      if fp == 0 {
+        halted = true;
+      } else {
+        next_ip = ret_ip;
+      }
+      ty = next_ip;
+    } else if code == WmCode.i32_eqz {
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      a := stack[sp - 1];
+      if a >= -33554432 && a <= 33554432 {
+        #assert wx_eval_core(core.model, a, 0, 0, wout[..]) == EvStatus.ok;
+        rc.weight_calls += 1;
+        stack[sp - 1] = wout[4];
+      } else {
+        stack[sp - 1] = ifx a == 0 then 1 else 0;
+      }
+      tx = stack[sp - 1];
+    } else if code == WmCode.i32_load {
+      if sp < 1 { rc.status = WmStatus.stack_underflow; return rc; }
+      addr := stack[sp - 1] + op.arg;
+      if addr < 0 || addr >= mem_cells { rc.status = WmStatus.oob_memory; return rc; }
+      hr := ht_read(mem, addr);
+      val := ifx hr.read.status == EmStatus.ok then hr.read.value else 0;
+      stack[sp - 1] = val;
+      rc.mem_reads += 1;
+      rc.hull_compares += hr.compares;
+      if rc.mem_writes > 0 { rc.scan_compares += rc.mem_writes - 1; }
+      tx = val; ty = addr;
+    } else if code == WmCode.i32_store {
+      if sp < 2 { rc.status = WmStatus.stack_underflow; return rc; }
+      val := wm_i32(stack[sp - 1]);
+      addr := stack[sp - 2] + op.arg;
+      sp -= 2;
+      if addr < 0 || addr >= mem_cells { rc.status = WmStatus.oob_memory; return rc; }
+      ins := ht_insert(mem, addr, val);
+      if ins.status != EmStatus.ok { rc.status = WmStatus.capacity; return rc; }
+      mem = ins.index;
+      rc.mem_writes += 1;
+      rc.hull_compares += ins.compares;
+      tx = val; ty = addr;
+    } else {
+      if sp < 2 { rc.status = WmStatus.stack_underflow; return rc; }
+      b := stack[sp - 1];
+      a := stack[sp - 2];
+      sp -= 1;
+      res_v := 0;
+      if code == WmCode.i32_add {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wm_i32(wout[0]);
+        } else { res_v = wm_i32(a + b); }
+      } else if code == WmCode.i32_sub {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wm_i32(wout[1]);
+        } else { res_v = wm_i32(a - b); }
+      } else if code == WmCode.i32_mul {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wm_i32(wout[2]);
+        } else { res_v = wm_i32(a * b); }
+      } else if code == WmCode.i32_div_s {
+        dst := wm_check_div_s(a, b);
+        if dst != WmStatus.ok { rc.status = dst; return rc; }
+        res_v = wm_i32(a / b);
+      } else if code == WmCode.i32_rem_s {
+        rst := wm_check_rem_s(b);
+        if rst != WmStatus.ok { rc.status = rst; return rc; }
+        if a == WM_I32_MIN && b == -1 { res_v = 0; } else { res_v = wm_i32(a % b); }
+      } else if code == WmCode.i32_and { res_v = wm_i32(wm_u32(a) & wm_u32(b)); }
+      else if code == WmCode.i32_or  { res_v = wm_i32(wm_u32(a) | wm_u32(b)); }
+      else if code == WmCode.i32_xor { res_v = wm_i32(wm_u32(a) ^ wm_u32(b)); }
+      else if code == WmCode.i32_shl {
+        sh := b & 31;
+        res_v = wm_i32(wm_u32(a) << sh);
+      } else if code == WmCode.i32_shr_s {
+        sh := b & 31;
+        res_v = wm_i32(a >> sh);
+      } else if code == WmCode.i32_shr_u {
+        sh := b & 31;
+        res_v = wm_i32(wm_u32(a) >> sh);
+      } else if code == WmCode.i32_eq {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[3];
+        } else { res_v = ifx a == b then 1 else 0; }
+      } else if code == WmCode.i32_ne {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[8];
+        } else { res_v = ifx a != b then 1 else 0; }
+      } else if code == WmCode.i32_lt_s {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[5];
+        } else { res_v = ifx a < b then 1 else 0; }
+      } else if code == WmCode.i32_le_s {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[6];
+        } else { res_v = ifx a <= b then 1 else 0; }
+      } else if code == WmCode.i32_gt_s {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, b, a, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[5];
+        } else { res_v = ifx a > b then 1 else 0; }
+      } else if code == WmCode.i32_ge_s {
+        if wx_in_envelope(a, b) {
+          #assert wx_eval_core(core.model, b, a, 0, wout[..]) == EvStatus.ok;
+          rc.weight_calls += 1;
+          res_v = wout[6];
+        } else { res_v = ifx a >= b then 1 else 0; }
+      } else {
+        rc.status = WmStatus.invalid_op;
+        return rc;
+      }
+      stack[sp - 1] = res_v;
+      tx = res_v;
+    }
+
+    wm_hash_row(sha[..], cur_ip, cast(int) code, tx, ty);
+    rc.steps += 1;
+    if halted { break; }
+    ip = next_ip;
+  }
+
+  #assert sha256_final_checked(sha[..], rc.trace_digest[..], false) == SHA_OK;
+  rc.status = WmStatus.ok;
+  if sp > 0 { rc.has_result = true; rc.result = stack[sp - 1]; }
+  return rc;
+}
+
+// Ch 234 independent replay verifier for wasm-exec-v1 receipts:
+// Recomputes program_hash, replays through CPU reference interpreter wm_run,
+// and asserts exact match on steps, result, and 32-byte SHA-256 trace digest.
+wx_replay_verify :: (
+  prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, receipt: WxReceipt, nodes: [] HtNode
+) -> WxReplay #effects(all) {
+  rep: WxReplay;
+  if receipt.status != WmStatus.ok {
+    rep.verdict = RxVerdict.unverifiable;
+    rep.reason = RxReason.refused;
+    return rep;
+  }
+  ph := wx_program_hash(prog, funcs);
+  if !wx_same_hash(ph, receipt.program_hash) {
+    rep.verdict = RxVerdict.failed;
+    rep.reason = RxReason.program;
+    return rep;
+  }
+  if receipt.steps > budget {
+    rep.verdict = RxVerdict.unverifiable;
+    rep.reason = RxReason.over_budget;
+    return rep;
+  }
+  r := wm_run(prog, funcs, mem_cells, budget, nodes);
+  rep.replayed_steps = r.steps;
+  if r.status != WmStatus.ok {
+    rep.verdict = RxVerdict.failed;
+    rep.reason = RxReason.refused;
+    return rep;
+  }
+  if r.steps != receipt.steps {
+    rep.verdict = RxVerdict.failed;
+    rep.reason = RxReason.steps;
+    return rep;
+  }
+  if r.has_result != receipt.has_result || (r.has_result && r.result != receipt.result) {
+    rep.verdict = RxVerdict.failed;
+    rep.reason = RxReason.outputs;
+    return rep;
+  }
+  if !wx_same_hash(r.digest, receipt.trace_digest) {
+    rep.verdict = RxVerdict.failed;
+    rep.reason = RxReason.trace;
+    return rep;
+  }
+  rep.verdict = RxVerdict.exact;
+  rep.reason = RxReason.none;
+  return rep;
+}
+
+#test "wasm-exec-v1 compiles to F64 safetensors, refuses 1-byte tamper, and matches wm_run bit-for-bit across ALU/cmp/select/control/memory/traps" {
+  layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  weights: [WX_CORE_MAX_WEIGHTS] f64;
+  core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+  #assert core.ready && core.model.status == EvStatus.ok && core.model.n_weights > 0 && core.safetensors_bytes > 0;
+
+  // Verify 1-byte safetensors tamper is refused by ev_deserialize digest check
+  st_buf: [WX_CORE_MAX_BYTES] u8;
+  ser := ev_serialize(core.model, st_buf[..]);
+  #assert ser.status == EvStatus.ok && wx_same_hash(ser.digest, core.artifact_hash);
+  st_buf[ser.written - 1] ^= 1;
+  bad_layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  bad_heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  bad_weights: [WX_CORE_MAX_WEIGHTS] f64;
+  tampered := ev_deserialize(st_buf[0..<ser.written], ser.digest, true, bad_layers[..], bad_heads[..], bad_weights[..]);
+  #assert tampered.model.status == EvStatus.digest;
+
+  // Differential test: arithmetic, comparisons, select, local/global, memory
+  prog := [27] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = 17},
+    WmOp.{code = WmCode.i32_const, arg = 5},
+    WmOp.{code = WmCode.i32_add},           // 22
+    WmOp.{code = WmCode.i32_const, arg = 3},
+    WmOp.{code = WmCode.i32_mul},           // 66
+    WmOp.{code = WmCode.i32_const, arg = 10},
+    WmOp.{code = WmCode.i32_sub},           // 56
+    WmOp.{code = WmCode.local_tee, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 56},
+    WmOp.{code = WmCode.i32_eq},            // 1
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 100},
+    WmOp.{code = WmCode.i32_lt_s},          // 1
+    WmOp.{code = WmCode.i32_add},           // 2
+    WmOp.{code = WmCode.i32_const, arg = 2},
+    WmOp.{code = WmCode.i32_le_s},          // 1
+    WmOp.{code = WmCode.i32_const, arg = 7},
+    WmOp.{code = WmCode.i32_const, arg = 99},
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.select},            // 7
+    WmOp.{code = WmCode.i32_add},           // 8
+    WmOp.{code = WmCode.i32_const, arg = 4},
+    WmOp.{code = WmCode.i32_gt_s},          // 1
+    WmOp.{code = WmCode.i32_const, arg = 1},
+    WmOp.{code = WmCode.i32_ge_s},          // 1
+    WmOp.{code = WmCode.i32_eqz},           // 0
+    WmOp.{code = WmCode.end_op}
+  ];
+  funcs := [1] WmFunc.[WmFunc.{entry_ip = 0, n_params = 0, n_locals = 2}];
+  nodes1: [64] HtNode;
+  nodes2: [64] HtNode;
+  ref := wm_run(prog[..], funcs[..], 32, 1000, nodes1[..]);
+  rc := wx_run(core, prog[..], funcs[..], 32, 1000, nodes2[..]);
+  #assert ref.status == WmStatus.ok && rc.status == WmStatus.ok;
+  #assert rc.steps == ref.steps && rc.result == ref.result && rc.result == 0;
+  #assert rc.weight_calls >= 11;
+  #assert wx_same_hash(rc.trace_digest, ref.digest);
+
+  // Ch 234 replay verification: exact on clean receipt, failed on 1-byte tampered digest
+  rep_ok := wx_replay_verify(prog[..], funcs[..], 32, 1000, rc, nodes1[..]);
+  #assert rep_ok.verdict == RxVerdict.exact && rep_ok.replayed_steps == rc.steps;
+  bad_rc := rc;
+  bad_rc.trace_digest[0] ^= 1;
+  rep_bad := wx_replay_verify(prog[..], funcs[..], 32, 1000, bad_rc, nodes1[..]);
+  #assert rep_bad.verdict == RxVerdict.failed && rep_bad.reason == RxReason.trace;
+
+  // Trap parity: divide-by-zero, INT32_MIN/-1, OOB memory
+  div0 := [4] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = 10},
+    WmOp.{code = WmCode.i32_const, arg = 0},
+    WmOp.{code = WmCode.i32_div_s},
+    WmOp.{code = WmCode.end_op}
+  ];
+  ref_d0 := wm_run(div0[..], funcs[..], 32, 100, nodes1[..]);
+  rc_d0 := wx_run(core, div0[..], funcs[..], 32, 100, nodes2[..]);
+  #assert ref_d0.status == WmStatus.div_zero && rc_d0.status == WmStatus.div_zero;
+
+  ovf := [4] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = WM_I32_MIN},
+    WmOp.{code = WmCode.i32_const, arg = -1},
+    WmOp.{code = WmCode.i32_div_s},
+    WmOp.{code = WmCode.end_op}
+  ];
+  ref_ovf := wm_run(ovf[..], funcs[..], 32, 100, nodes1[..]);
+  rc_ovf := wx_run(core, ovf[..], funcs[..], 32, 100, nodes2[..]);
+  #assert ref_ovf.status == WmStatus.div_overflow && rc_ovf.status == WmStatus.div_overflow;
+
+  oob := [3] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = 32},
+    WmOp.{code = WmCode.i32_load, arg = 0},
+    WmOp.{code = WmCode.end_op}
+  ];
+  ref_oob := wm_run(oob[..], funcs[..], 32, 100, nodes1[..]);
+  rc_oob := wx_run(core, oob[..], funcs[..], 32, 100, nodes2[..]);
+  #assert ref_oob.status == WmStatus.oob_memory && rc_oob.status == WmStatus.oob_memory;
+}

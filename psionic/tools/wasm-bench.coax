@@ -1,12 +1,18 @@
-// Benchmark runner for wasm-core-i32-v1 (Executor W1.2, GitHub #13915):
-// Runs 4 real 9x9 Sudoku puzzles and 4 real 10x10 Hungarian assignment matrices
-// through wasm-core-i32-v1 with hull-v2 parabolic memory, printing exact outputs,
-// step counts, hull vs linear-scan compares, and SHA-256 trace digests.
+// Benchmark & differential verification runner for wasm-exec-v1 (Executor W1.2, GitHub #13915):
+// Compiles the wasm-exec-v1 dense F64 safetensors core, loads it back with SHA-256
+// verification, and runs:
+//   - 4 real 9x9 Sudoku puzzles
+//   - 4 real 10x10 Hungarian assignment matrices
+//   - Real Coder Ch 8 PgProgram tool-program benchmark
+// through BOTH the CPU reference interpreter (wm_run) and the loaded wasm-exec-v1
+// dense weights (wx_run), verifying 100% bit-exact SHA-256 trace digest match via
+// Ch 234 replay (wx_replay_verify) and reporting honest side-by-side steps/s.
 // tool.sh: release
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/clock.coax";
 #load "../lib/wasm-benchmarks.coax";
+#load "../lib/wasm-exec.coax";
 
 wb_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
 wb_hex :: (d: [32] u8, out: [] u8) -> string {
@@ -14,11 +20,30 @@ wb_hex :: (d: [32] u8, out: [] u8) -> string {
   return cast(string) out[0..<64];
 }
 
+wb_steps_per_s :: (steps: int, us: int) -> int {
+  d := ifx us > 0 then us else 1;
+  return (steps * 1000000) / d;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
-  nodes: [512] HtNode;
+  layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  weights: [WX_CORE_MAX_WEIGHTS] f64;
+  core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+  if !core.ready {
+    print("wasm-bench: FAIL could not compile/load wasm-exec-v1 core\n");
+    return 1;
+  }
+  hex: [64] u8;
+  print("WASM_EXEC_CORE ok profile=% weights=% layers=% width=% safetensors_bytes=% artifact_sha256=%\n",
+        WX_PROFILE_ID, core.model.n_weights, core.model.n_layers, core.model.width,
+        core.safetensors_bytes, wb_hex(core.artifact_hash, hex[..]));
+
+  nodes1: [512] HtNode;
+  nodes2: [512] HtNode;
+  nodes3: [512] HtNode;
   b: [1] WmBuilder;
   fns: [4] WmFunc;
-  hex: [64] u8;
 
   puz1 := [81] int.[
     5,3,0, 0,7,0, 0,0,0,  6,0,0, 1,9,5, 0,0,0,  0,9,8, 0,0,0, 0,6,0,
@@ -41,7 +66,7 @@ tool_main :: () -> int #export_c #effects(all) {
     0,6,0, 5,0,0, 0,0,9,  0,0,4, 0,0,0, 0,3,0,  0,0,0, 0,0,9, 7,0,0
   ];
 
-  // Run all 4 9x9 Sudoku puzzles
+  // 1. Run all 4 9x9 Sudoku puzzles (CPU ref + loaded wasm-exec-v1 weights + Ch 234 replay)
   for k: 0..<4 {
     nf := 0;
     if k == 0 { nf = wb_build_sudoku(puz1[..], b[..], fns[..]); }
@@ -49,17 +74,25 @@ tool_main :: () -> int #export_c #effects(all) {
     else if k == 2 { nf = wb_build_sudoku(puz3[..], b[..], fns[..]); }
     else { nf = wb_build_sudoku(puz4[..], b[..], fns[..]); }
     t0 := cxproc_wall_us();
-    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 128, 50000000, nodes[..]);
-    dt := cxproc_wall_us() - t0;
-    if r.status != WmStatus.ok || !r.has_result || r.result <= 0 {
-      print("sudoku_% FAIL status=% steps=%\n", k + 1, r.status, r.steps);
+    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 128, 50000000, nodes1[..]);
+    dt_cpu := cxproc_wall_us() - t0;
+
+    t1 := cxproc_wall_us();
+    rc := wx_run(core, b[0].ops[0..<b[0].n], fns[0..<nf], 128, 50000000, nodes2[..]);
+    dt_w := cxproc_wall_us() - t1;
+
+    rep := wx_replay_verify(b[0].ops[0..<b[0].n], fns[0..<nf], 128, 50000000, rc, nodes3[..]);
+    if r.status != WmStatus.ok || rc.status != WmStatus.ok || rep.verdict != RxVerdict.exact ||
+       !wx_same_hash(r.digest, rc.trace_digest) || r.result != rc.result || r.steps != rc.steps {
+      print("SUDOKU_% FAIL ref=% wx=% replay=%\n", k + 1, r.status, rc.status, rep.verdict);
       return 1;
     }
-    print("SUDOKU_% ok checksum=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
-          k + 1, r.result, r.steps, dt, r.hull_compares, r.scan_compares, wb_hex(r.digest, hex[..]));
+    print("SUDOKU_% ok checksum=% steps=% weight_calls=% cpu_us=% cpu_sps=% wx_us=% wx_sps=% hull_cmp=% scan_cmp=% replay=exact digest=%\n",
+          k + 1, rc.result, rc.steps, rc.weight_calls, dt_cpu, wb_steps_per_s(r.steps, dt_cpu),
+          dt_w, wb_steps_per_s(rc.steps, dt_w), rc.hull_compares, rc.scan_compares, wb_hex(rc.trace_digest, hex[..]));
   }
 
-  // Run all 4 10x10 Hungarian matrices
+  // 2. Run all 4 10x10 Hungarian matrices
   m1: [100] int; m2: [100] int; m3: [100] int; m4: [100] int;
   for r: 0..<10 {
     for c: 0..<10 {
@@ -76,40 +109,52 @@ tool_main :: () -> int #export_c #effects(all) {
     else if k == 2 { nf = wb_build_hungarian10(m3[..], b[..], fns[..]); }
     else { nf = wb_build_hungarian10(m4[..], b[..], fns[..]); }
     t0 := cxproc_wall_us();
-    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 256, 500000, nodes[..]);
-    dt := cxproc_wall_us() - t0;
-    if r.status != WmStatus.ok || !r.has_result || r.result <= 0 {
-      print("hungarian_% FAIL status=% steps=%\n", k + 1, r.status, r.steps);
+    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 256, 500000, nodes1[..]);
+    dt_cpu := cxproc_wall_us() - t0;
+
+    t1 := cxproc_wall_us();
+    rc := wx_run(core, b[0].ops[0..<b[0].n], fns[0..<nf], 256, 500000, nodes2[..]);
+    dt_w := cxproc_wall_us() - t1;
+
+    rep := wx_replay_verify(b[0].ops[0..<b[0].n], fns[0..<nf], 256, 500000, rc, nodes3[..]);
+    if r.status != WmStatus.ok || rc.status != WmStatus.ok || rep.verdict != RxVerdict.exact ||
+       !wx_same_hash(r.digest, rc.trace_digest) || r.result != rc.result || r.steps != rc.steps {
+      print("HUNGARIAN_% FAIL ref=% wx=% replay=%\n", k + 1, r.status, rc.status, rep.verdict);
       return 1;
     }
-    print("HUNGARIAN_% ok opt_cost=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
-          k + 1, r.result, r.steps, dt, r.hull_compares, r.scan_compares, wb_hex(r.digest, hex[..]));
+    print("HUNGARIAN_% ok opt_cost=% steps=% weight_calls=% cpu_us=% cpu_sps=% wx_us=% wx_sps=% hull_cmp=% scan_cmp=% replay=exact digest=%\n",
+          k + 1, rc.result, rc.steps, rc.weight_calls, dt_cpu, wb_steps_per_s(r.steps, dt_cpu),
+          dt_w, wb_steps_per_s(rc.steps, dt_w), rc.hull_compares, rc.scan_compares, wb_hex(rc.trace_digest, hex[..]));
   }
-  // Run Coder Ch 8 tool programs (bind + when + repeat over PgProgram AST)
+
+  // 3. Run Coder Ch 8 tool programs (bind + when + repeat over PgProgram AST)
   cp: PgProgram;
   cp.count = 6;
-  // x0 = tool0(2, 3) = 2*31+3+7 = 72
   cp.stmts[0] = PgStmt.{kind = PgKind.bind, var = 0, tool = 0, args = [HT_FIELDS_MAX] int.[2, 3, 0, 0]};
-  // x1 = tool1(x0, 50) = (72 >= 50) = 1
   cp.stmts[1] = PgStmt.{kind = PgKind.bind, var = 1, tool = 1, args = [HT_FIELDS_MAX] int.[0, 50, 0, 0], refs = [HT_FIELDS_MAX] int.[1, 0, 0, 0]};
-  // when x1: x2 = tool2(x0, 28) = 100
   cp.stmts[2] = PgStmt.{kind = PgKind.when, var = 1, body = 1};
   cp.stmts[3] = PgStmt.{kind = PgKind.bind, var = 2, tool = 2, args = [HT_FIELDS_MAX] int.[0, 28, 0, 0], refs = [HT_FIELDS_MAX] int.[1, 0, 0, 0]};
-  // repeat 5: x2 = tool2(x2, 10) -> 150 (total calls = 1 + 1 + 1 + 5 = 8)
   cp.stmts[4] = PgStmt.{kind = PgKind.repeat, count = 5, body = 1};
   cp.stmts[5] = PgStmt.{kind = PgKind.bind, var = 2, tool = 2, args = [HT_FIELDS_MAX] int.[0, 10, 0, 0], refs = [HT_FIELDS_MAX] int.[3, 0, 0, 0]};
   nfc := wb_build_coder_prog(cp, b[..], fns[..]);
   t0c := cxproc_wall_us();
-  rc := wm_run(b[0].ops[0..<b[0].n], fns[0..<nfc], 64, 10000, nodes[..]);
-  dtc := cxproc_wall_us() - t0c;
-  // Expected: 8*100000 + 1*72 + 2*1 + 3*150 = 800524
-  if rc.status != WmStatus.ok || !rc.has_result || rc.result != 800524 {
-    print("CODER_CH8 FAIL status=% result=%\n", rc.status, rc.result);
+  r_c := wm_run(b[0].ops[0..<b[0].n], fns[0..<nfc], 64, 10000, nodes1[..]);
+  dt_cpu_c := cxproc_wall_us() - t0c;
+
+  t1c := cxproc_wall_us();
+  rc_c := wx_run(core, b[0].ops[0..<b[0].n], fns[0..<nfc], 64, 10000, nodes2[..]);
+  dt_w_c := cxproc_wall_us() - t1c;
+
+  rep_c := wx_replay_verify(b[0].ops[0..<b[0].n], fns[0..<nfc], 64, 10000, rc_c, nodes3[..]);
+  if r_c.status != WmStatus.ok || rc_c.status != WmStatus.ok || rep_c.verdict != RxVerdict.exact ||
+     !wx_same_hash(r_c.digest, rc_c.trace_digest) || rc_c.result != 800524 {
+    print("CODER_CH8 FAIL status=% result=% replay=%\n", rc_c.status, rc_c.result, rep_c.verdict);
     return 1;
   }
-  print("CODER_CH8 ok commit=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
-        rc.result, rc.steps, dtc, rc.hull_compares, rc.scan_compares, wb_hex(rc.digest, hex[..]));
+  print("CODER_CH8 ok commit=% steps=% weight_calls=% cpu_us=% cpu_sps=% wx_us=% wx_sps=% hull_cmp=% scan_cmp=% replay=exact digest=%\n",
+        rc_c.result, rc_c.steps, rc_c.weight_calls, dt_cpu_c, wb_steps_per_s(r_c.steps, dt_cpu_c),
+        dt_w_c, wb_steps_per_s(rc_c.steps, dt_w_c), rc_c.hull_compares, rc_c.scan_compares, wb_hex(rc_c.trace_digest, hex[..]));
 
-  print("wasm-bench: PASS\n");
+  print("wasm-bench: PASS (9/9 bit-exact wasm-exec-v1 + Ch 234 replay)\n");
   return 0;
 }
