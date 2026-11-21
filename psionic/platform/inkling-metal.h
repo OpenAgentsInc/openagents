@@ -61,6 +61,7 @@ int  ink_step(InkSession *s, int32_t token_id, int compute_logits);
 int  ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits);
 
 const float      *ink_logits(const InkSession *s);
+const float      *ink_hidden(const InkSession *s);
 const InkHParams *ink_hparams(const InkSession *s);
 int               ink_vocab_size(const InkSession *s);
 int               ink_vocab_unpadded(const InkSession *s);

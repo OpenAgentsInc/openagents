@@ -1,0 +1,593 @@
+// #authority Pluggable Ch 140 LoRA Routing/Interface Adapter for hybrid-exec-v1
+// (Executor W3.1, GitHub #13920).
+//
+// Computes z_k = base_logits_k + (alpha / rank) * (B * (A * u))_k where:
+//   - u is deterministically block-mean pooled from a real transformer's final
+//     RMSNormed hidden state h (e.g. Inkling-2-Mini d=2304 -> HL_DIM=64).
+//   - A has shape [rank, HL_DIM], B has shape [HL_CLASSES, rank].
+//   - Zero/identity adapter (rank == 0, or B == 0) adds exact +0.0 so logits
+//     and routing reproduce the base transformer bit-for-bit.
+//   - Every non-zero adapter is cryptographically pinned to
+//     (base_model_sha256, core_module_sha256) and self-hashed via SHA-256 over
+//     canonical IEEE-754 little-endian parameter bits; atomic hot-swap refuses
+//     any base mismatch, core mismatch, or 1-byte weight tamper.
+//   - Trains via Ch 124 AdamW on multi-class cross-entropy + Brier calibration
+//     loss exclusively on admitted rows matching base_model_sha256.
+#load "../../coax/lib/crypto/sha256.coax";
+#load "counter-rng.coax";
+#load "optim/adamw.coax";
+#load "hybrid-exec-policy.coax";
+#authority;
+
+HL_DIM :: 64;
+HL_MAX_RANK :: 8;
+HL_CLASSES :: 5; // 0: direct/no-core, 1: diff-verify, 2: json-schema, 3: dep-sched, 4: arith-budget
+HL_PARAMS_MAX :: HL_MAX_RANK * (HL_DIM + HL_CLASSES); // 552
+HL_ROWS_MAX :: 256;
+HL_STEPS_MAX :: 500;
+HL_BRIER_MAX :: 100.0;
+
+HlStatus :: enum u8 {
+  ok;
+  shape;
+  number;
+  identity;
+  empty;
+}
+
+HlAdapter :: struct {
+  rank: int; // 0 = zero/identity adapter (bit-exact base passthrough)
+  alpha: f64;
+  base_model_sha: [32] u8;
+  core_module_sha: [32] u8;
+  adapter_sha: [32] u8;
+  p: [HL_PARAMS_MAX] f64; // A [rank x HL_DIM] followed by B [HL_CLASSES x rank]
+}
+
+HlPass :: struct {
+  logits: [HL_CLASSES] f64;
+  probs: [HL_CLASSES] f64;
+  au: [HL_MAX_RANK] f64;
+  best: int;
+}
+
+HlRow :: struct {
+  base_model_sha: [32] u8;
+  label: int;
+  u: [HL_DIM] f64;
+  base_logits: [HL_CLASSES] f64;
+}
+
+HlTrainResult :: struct {
+  status: HlStatus;
+  bad_row: int = -1;
+  adapter: HlAdapter;
+  state: AwState;
+  loss: f64;
+}
+
+// ---- Helpers & digests ----
+
+hl_sha_zero :: (d: [32] u8) -> bool #effects(all) {
+  for i: 0..<32 {
+    if d[i] != 0 { return false; }
+  }
+  return true;
+}
+
+hl_sha_eq :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
+  diff := 0;
+  for i: 0..<32 {
+    if a[i] != b[i] { diff = 1; } // mutant: equivalent — diff is only compared to 0
+  }
+  return diff == 0;
+}
+
+hl_param_count :: (rank: int) -> int #effects(all) {
+  if rank < 1 || rank > HL_MAX_RANK { return 0; }
+  return rank * (HL_DIM + HL_CLASSES);
+}
+
+hl_u64_le :: (sha: [] u8, v: u64) #effects(all) {
+  b: [8] u8;
+  for i: 0..<8 { b[i] = cast(u8) ((v >> cast(u64) (i * 8)) & 255); }
+  #assert sha256_update_checked(sha, b[..], false) == SHA_OK;
+}
+
+// Canonical SHA-256 over rank, alpha IEEE-754 bits, base/core digests, and used parameters.
+hl_adapter_digest :: (a: HlAdapter) -> [32] u8 #export_c #effects(all) {
+  out: [32] u8;
+  n := hl_param_count(a.rank);
+  if n == 0 { return out; }
+  sha: [112] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  hl_u64_le(sha[..], cast(u64) a.rank);
+  hl_u64_le(sha[..], f64_bits(a.alpha));
+  bm := a.base_model_sha;
+  cm := a.core_module_sha;
+  #assert sha256_update_checked(sha[..], bm[..], false) == SHA_OK;
+  #assert sha256_update_checked(sha[..], cm[..], false) == SHA_OK;
+  for i: 0..<n { hl_u64_le(sha[..], f64_bits(a.p[i])); }
+  #assert sha256_final_checked(sha[..], out[..], false) == SHA_OK;
+  return out;
+}
+
+// Deterministic block-mean pooling of a real transformer's hidden state h -> HL_DIM features.
+hl_pool_hidden :: (h: [] f32, out: [] f64) -> HlStatus #export_c #effects(all) {
+  if out.count < HL_DIM || h.count < HL_DIM || (h.count % HL_DIM) != 0 {
+    return HlStatus.shape;
+  }
+  blk := h.count / HL_DIM;
+  inv := 1.0 / f64(blk);
+  for j: 0..<HL_DIM {
+    acc := 0.0;
+    base := j * blk;
+    for k: 0..<blk {
+      v := f64(h[base + k]);
+      if !aw_finite(v) { return HlStatus.number; }
+      acc += v;
+    }
+    out[j] = acc * inv;
+  }
+  return HlStatus.ok;
+}
+
+hl_init_zero :: () -> HlAdapter #export_c #effects(all) {
+  a: HlAdapter;
+  return a;
+}
+
+// Initialize rank-r LoRA adapter: deterministic A in [-0.1, +0.1], exact B = 0.0 (bit-exact base at step 0).
+hl_init_adapter :: (seed: u64, rank: int, alpha: f64, base_sha: [32] u8, core_sha: [32] u8) -> HlAdapter #export_c #effects(all) {
+  a: HlAdapter;
+  if rank < 1 || rank > HL_MAX_RANK || !(alpha > 0.0 && alpha <= 64.0) { return a; }
+  if hl_sha_zero(base_sha) || hl_sha_zero(core_sha) { return a; }
+  a.rank = rank;
+  a.alpha = alpha;
+  a.base_model_sha = base_sha;
+  a.core_module_sha = core_sha;
+  rng := CrSeed.{seed = seed};
+  a_len := rank * HL_DIM;
+  for i: 0..<a_len {
+    d := cr_draw(rng);
+    #assert d.ok;
+    rng = d.next;
+    a.p[i] = (d.value * 2.0 - 1.0) * 0.1;
+  }
+  // B stays exact 0.0 so step-0 forward reproduces base_logits bit-for-bit.
+  a.adapter_sha = hl_adapter_digest(a);
+  return a;
+}
+
+// Forward pass: base_logits + (alpha / rank) * B * (A * u), then numerically stable softmax.
+hl_forward :: (base_logits: [HL_CLASSES] f64, a: HlAdapter, u: [HL_DIM] f64) -> HlPass #export_c #effects(all) {
+  q: HlPass;
+  for c: 0..<HL_CLASSES { q.logits[c] = base_logits[c]; }
+  if a.rank >= 1 && a.rank <= HL_MAX_RANK {
+    s := a.alpha / f64(a.rank);
+    b_off := a.rank * HL_DIM;
+    for r: 0..<a.rank {
+      acc := 0.0;
+      row := r * HL_DIM;
+      for j: 0..<HL_DIM { acc += a.p[row + j] * u[j]; }
+      q.au[r] = acc;
+    }
+    for c: 0..<HL_CLASSES {
+      delta := 0.0;
+      brow := b_off + c * a.rank;
+      for r: 0..<a.rank { delta += a.p[brow + r] * q.au[r]; }
+      q.logits[c] = base_logits[c] + s * delta;
+    }
+  }
+  mx := q.logits[0];
+  for c: 1..<HL_CLASSES {
+    if q.logits[c] > mx {
+      mx = q.logits[c];
+      q.best = c;
+    }
+  }
+  sum := 0.0;
+  for c: 0..<HL_CLASSES {
+    e := exp(q.logits[c] - mx);
+    q.probs[c] = e;
+    sum += e;
+  }
+  for c: 0..<HL_CLASSES { q.probs[c] /= sum; }
+  return q;
+}
+
+// Atomic #authority hot-swap gate pinned to (active_base_sha, active_core_sha).
+// Any refusal leaves active[0] completely unchanged.
+hl_hotswap :: (active: [] HlAdapter, candidate: HlAdapter, active_base_sha: [32] u8, active_core_sha: [32] u8) -> HxStatus #export_c #effects(all) {
+  if active.count < 1 || hl_sha_zero(active_base_sha) || hl_sha_zero(active_core_sha) {
+    return HxStatus.core_unverified;
+  }
+  if candidate.rank == 0 && hl_sha_zero(candidate.adapter_sha) {
+    active[0] = hl_init_zero();
+    return HxStatus.ok;
+  }
+  if candidate.rank < 1 || candidate.rank > HL_MAX_RANK || !(candidate.alpha > 0.0 && candidate.alpha <= 64.0) {
+    return HxStatus.core_unverified;
+  }
+  n := hl_param_count(candidate.rank);
+  for i: 0..<n {
+    if !aw_finite(candidate.p[i]) { return HxStatus.core_unverified; }
+  }
+  if !hl_sha_eq(candidate.adapter_sha, hl_adapter_digest(candidate)) {
+    return HxStatus.core_unverified;
+  }
+  if !hl_sha_eq(candidate.base_model_sha, active_base_sha) {
+    return HxStatus.adapter_base_mismatch;
+  }
+  if !hl_sha_eq(candidate.core_module_sha, active_core_sha) {
+    return HxStatus.adapter_core_mismatch;
+  }
+  active[0] = candidate;
+  return HxStatus.ok;
+}
+
+// Mean multi-class cross-entropy + brier * sum_c (p_c - y_c)^2 and exact gradient in A, B.
+hl_gradient :: (a: HlAdapter, rows: [] HlRow, brier: f64, grad: [] f64) -> f64 #effects(all) {
+  n := hl_param_count(a.rank);
+  for i: 0..<n { grad[i] = 0.0; }
+  s := a.alpha / f64(a.rank);
+  b_off := a.rank * HL_DIM;
+  total := 0.0;
+  for row: rows {
+    q := hl_forward(row.base_logits, a, row.u);
+    p_y := q.probs[row.label];
+    if p_y < 1e-15 { p_y = 1e-15; } // mutant: equivalent — setting p_y = 1e-15 when p_y == 1e-15 is a no-op
+    ce := -log(p_y);
+    br := 0.0;
+    dot_pe := 0.0;
+    err: [HL_CLASSES] f64;
+    for c: 0..<HL_CLASSES {
+      y := ifx c == row.label then 1.0 else 0.0;
+      e := q.probs[c] - y;
+      err[c] = e;
+      br += e * e;
+      dot_pe += q.probs[c] * e;
+    }
+    total += ce + brier * br;
+    dz: [HL_CLASSES] f64;
+    for c: 0..<HL_CLASSES {
+      dz[c] = err[c] + brier * 2.0 * q.probs[c] * (err[c] - dot_pe);
+    }
+    for r: 0..<a.rank {
+      back := 0.0;
+      for c: 0..<HL_CLASSES {
+        idx := b_off + c * a.rank + r;
+        back += a.p[idx] * dz[c];
+        grad[idx] += s * dz[c] * q.au[r];
+      }
+      arow := r * HL_DIM;
+      for j: 0..<HL_DIM { grad[arow + j] += s * back * row.u[j]; }
+    }
+  }
+  inv := 1.0 / f64(rows.count);
+  for i: 0..<n { grad[i] *= inv; }
+  return total * inv;
+}
+
+// Train rank-r LoRA routing adapter via Ch 124 AdamW on admitted rows matching base_model_sha.
+// All rows and hyperparameters are admitted before step 0; any refusal returns a unchanged.
+hl_train :: (a: HlAdapter, rows: [] HlRow, brier: f64, lr: f64, decay: f64, steps: int) -> HlTrainResult #export_c #effects(all) {
+  res := HlTrainResult.{adapter = a};
+  if a.rank < 1 || a.rank > HL_MAX_RANK || !(a.alpha > 0.0 && a.alpha <= 64.0) || steps < 0 || steps > HL_STEPS_MAX {
+    res.status = HlStatus.shape;
+    return res;
+  }
+  if rows.count == 0 {
+    res.status = HlStatus.empty;
+    return res;
+  }
+  if rows.count > HL_ROWS_MAX {
+    res.status = HlStatus.shape;
+    return res;
+  }
+  if !(brier >= 0.0 && brier <= HL_BRIER_MAX) {
+    res.status = HlStatus.number;
+    return res;
+  }
+  n := hl_param_count(a.rank);
+  grp := [1] AwGroup.[AwGroup.{first = 0, count = n, lr = lr, beta1 = 0.9, beta2 = 0.999, eps = 1e-8, decay = decay}];
+  if !aw_hyper(grp[0]) {
+    res.status = HlStatus.number;
+    return res;
+  }
+  for i: 0..<n {
+    if !aw_finite(a.p[i]) { res.status = HlStatus.number; return res; }
+  }
+  for row, idx: rows {
+    if !hl_sha_eq(row.base_model_sha, a.base_model_sha) {
+      res.status = HlStatus.identity;
+      res.bad_row = idx;
+      return res;
+    }
+    if row.label < 0 || row.label >= HL_CLASSES {
+      res.status = HlStatus.shape;
+      res.bad_row = idx;
+      return res;
+    }
+    for j: 0..<HL_DIM {
+      if !aw_finite(row.u[j]) { res.status = HlStatus.number; res.bad_row = idx; return res; }
+    }
+    for c: 0..<HL_CLASSES {
+      if !aw_finite(row.base_logits[c]) { res.status = HlStatus.number; res.bad_row = idx; return res; }
+    }
+  }
+  m: [HL_PARAMS_MAX] f64;
+  v: [HL_PARAMS_MAX] f64;
+  g: [HL_PARAMS_MAX] f64;
+  none: [1] f32;
+  for _: 0..<steps {
+    _ = hl_gradient(res.adapter, rows, brier, g[..]);
+    w := aw_step(grp[..], AwPolicy.{}, res.state, res.adapter.p[0..<n], g[0..<n], m[0..<n], v[0..<n], none[0..<0], false);
+    if w.status != AwStatus.ok { res.status = HlStatus.number; return res; }
+    res.state = w.state;
+  }
+  res.loss = hl_gradient(res.adapter, rows, brier, g[..]);
+  res.adapter.adapter_sha = hl_adapter_digest(res.adapter);
+  return res;
+}
+
+// ---- Unit tests (0 surviving mutants) ----
+
+#test "hybrid-lora: digests, hidden pooling, bit-exact zero adapter, and atomic hot-swap refusals (#13920)" {
+  z: [32] u8;
+  #assert hl_sha_zero(z);
+  z1 := z; z1[31] = 1;
+  #assert !hl_sha_zero(z1);
+  #assert hl_sha_eq(z, z) && !hl_sha_eq(z, z1);
+
+  #assert hl_param_count(0) == 0 && hl_param_count(HL_MAX_RANK + 1) == 0;
+  #assert hl_param_count(1) == 69 && hl_param_count(HL_MAX_RANK) == HL_PARAMS_MAX;
+
+  // Verify hl_u64_le exact byte-level little-endian SHA-256 against independent raw bytes
+  raw8 := [8] u8.[0x78, 0x56, 0x34, 0x12, 0xf0, 0xde, 0xbc, 0x9a];
+  d_raw: [32] u8;
+  #assert sha256_hash_checked(raw8[..], d_raw[..], false) == SHA_OK;
+  s_le: [112] u8; d_le: [32] u8;
+  #assert sha256_init(s_le[..]) == SHA_OK;
+  hl_u64_le(s_le[..], cast(u64) 0x9abcdef012345678);
+  #assert sha256_final_checked(s_le[..], d_le[..], false) == SHA_OK;
+  #assert hl_sha_eq(d_raw, d_le);
+
+  // Pooling real 2304-dim hidden state AND exact 64-dim lower boundary -> 64 features
+  h64: [64] f32;
+  for j: 0..<64 { h64[j] = f32(j + 2); }
+  u: [HL_DIM] f64;
+  #assert hl_pool_hidden(h64[..], u[..]) == HlStatus.ok && u[0] == 2.0 && u[63] == 65.0;
+  h2304: [2304] f32;
+  for j: 0..<HL_DIM {
+    for k: 0..<36 { h2304[j * 36 + k] = f32(j + 1) + f32(k - 18) * 0.01f32; }
+  }
+  #assert hl_pool_hidden(h2304[..], u[..]) == HlStatus.ok;
+  #assert abs(u[0] - (1.0 - 0.005)) < 1e-5 && abs(u[63] - (64.0 - 0.005)) < 1e-5;
+  #assert hl_pool_hidden(h2304[0..<63], u[..]) == HlStatus.shape;
+  #assert hl_pool_hidden(h2304[0..<65], u[..]) == HlStatus.shape;
+  #assert hl_pool_hidden(h2304[..], u[0..<63]) == HlStatus.shape;
+  h_nan := h2304; h_nan[17] = cast(f32) (0.0 / 0.0);
+  #assert hl_pool_hidden(h_nan[..], u[..]) == HlStatus.number;
+
+  // Deterministic non-zero SHA fixtures
+  base_a: [32] u8; base_b: [32] u8; core_a: [32] u8; core_b: [32] u8;
+  for i: 0..<32 {
+    base_a[i] = cast(u8) (11 + i);
+    base_b[i] = cast(u8) (51 + i);
+    core_a[i] = cast(u8) (91 + i);
+    core_b[i] = cast(u8) (131 + i);
+  }
+
+  // Init & boundaries + exact first/last A values
+  #assert hl_init_adapter(1, 0, 8.0, base_a, core_a).rank == 0;
+  #assert hl_init_adapter(1, 9, 8.0, base_a, core_a).rank == 0;
+  #assert hl_init_adapter(1, 4, 0.0, base_a, core_a).rank == 0;
+  #assert hl_init_adapter(1, 4, 65.0, base_a, core_a).rank == 0;
+  #assert hl_init_adapter(1, 4, 8.0, z, core_a).rank == 0;
+  #assert hl_init_adapter(1, 4, 8.0, base_a, z).rank == 0;
+  ad := hl_init_adapter(42, 4, 8.0, base_a, core_a);
+  #assert ad.rank == 4 && ad.alpha == 8.0 && !hl_sha_zero(ad.adapter_sha);
+  #assert hl_sha_eq(ad.adapter_sha, hl_adapter_digest(ad));
+  d0 := cr_draw(CrSeed.{seed = 42});
+  #assert f64_bits(ad.p[0]) == f64_bits((d0.value * 2.0 - 1.0) * 0.1);
+  #assert ad.p[4 * HL_DIM - 1] != 0.0 && ad.p[4 * HL_DIM] == 0.0;
+
+  // Exact digest check: rank changes digest even when extra parameters are zero
+  ad1 := hl_init_adapter(1, 1, 64.0, base_a, core_a);
+  ad1_zero := HlAdapter.{rank = 1, alpha = 1.0, base_model_sha = base_a, core_module_sha = core_a};
+  ad2_zero := HlAdapter.{rank = 2, alpha = 1.0, base_model_sha = base_a, core_module_sha = core_a};
+  // Verify exact SHA-256 of ad1_zero against manual stream (kills hl_u64_le(rank) removal!)
+  s_man: [112] u8; d_man: [32] u8;
+  #assert sha256_init(s_man[..]) == SHA_OK;
+  hl_u64_le(s_man[..], 1);
+  hl_u64_le(s_man[..], f64_bits(1.0));
+  #assert sha256_update_checked(s_man[..], base_a[..], false) == SHA_OK;
+  #assert sha256_update_checked(s_man[..], core_a[..], false) == SHA_OK;
+  for _: 0..<69 { hl_u64_le(s_man[..], 0); }
+  #assert sha256_final_checked(s_man[..], d_man[..], false) == SHA_OK;
+  #assert hl_sha_eq(hl_adapter_digest(ad1_zero), d_man);
+  #assert !hl_sha_eq(hl_adapter_digest(ad1_zero), hl_adapter_digest(ad2_zero));
+
+  ad_al := ad; ad_al.alpha = 4.0; #assert !hl_sha_eq(hl_adapter_digest(ad_al), ad.adapter_sha);
+  ad_bs := ad; ad_bs.base_model_sha[0] ^= 1; #assert !hl_sha_eq(hl_adapter_digest(ad_bs), ad.adapter_sha);
+  ad_cs := ad; ad_cs.core_module_sha[0] ^= 1; #assert !hl_sha_eq(hl_adapter_digest(ad_cs), ad.adapter_sha);
+  ad_p := ad; ad_p.p[0] += 0.001; #assert !hl_sha_eq(hl_adapter_digest(ad_p), ad.adapter_sha);
+  #assert hl_sha_zero(hl_adapter_digest(hl_init_zero()));
+
+  // Bit-for-bit zero adapter equivalence (both rank=0 and step-0 B=0) + rank 1 & rank 8 & rank 9 boundaries
+  base_l := [HL_CLASSES] f64.[1.25, -0.5, 2.75, 0.0, -1.125];
+  p_zero := hl_forward(base_l, hl_init_zero(), u);
+  p_step0 := hl_forward(base_l, ad, u);
+  #assert p_zero.best == 2 && p_step0.best == 2;
+  for c: 0..<HL_CLASSES {
+    #assert f64_bits(p_zero.logits[c]) == f64_bits(base_l[c]);
+    #assert f64_bits(p_step0.logits[c]) == f64_bits(base_l[c]);
+    #assert f64_bits(p_zero.probs[c]) == f64_bits(p_step0.probs[c]);
+  }
+  // Rank 1 active B changes logits; rank 8 active B changes logits; rank 9 is ignored (passthrough)
+  r1 := ad1; r1.p[HL_DIM] = 1.0;
+  #assert hl_forward(base_l, r1, u).logits[0] != base_l[0];
+  r8 := hl_init_adapter(1, HL_MAX_RANK, 1.0, base_a, core_a);
+  r8.p[HL_MAX_RANK * HL_DIM] = 1.0;
+  #assert hl_forward(base_l, r8, u).logits[0] != base_l[0];
+  r9 := r8; r9.rank = HL_MAX_RANK + 1;
+  #assert f64_bits(hl_forward(base_l, r9, u).logits[0]) == f64_bits(base_l[0]);
+  // Large logits (500.0) require subtracting mx inside exp() to avoid overflow
+  big_l := [HL_CLASSES] f64.[500.0, 499.0, 498.0, 497.0, 496.0];
+  p_big := hl_forward(big_l, hl_init_zero(), u);
+  #assert p_big.best == 0 && aw_finite(p_big.probs[0]) && p_big.probs[0] > 0.6;
+  // Equal logits tie-break goes to lower index
+  eq_l := [HL_CLASSES] f64.[1.0, 1.0, 1.0, 1.0, 1.0];
+  #assert hl_forward(eq_l, hl_init_zero(), u).best == 0;
+
+  // Atomic hot-swap admission & refusals
+  slot: [1] HlAdapter;
+  slot[0] = hl_init_zero();
+  #assert hl_hotswap(slot[0..<0], ad, base_a, core_a) == HxStatus.core_unverified;
+  #assert hl_hotswap(slot[..], ad, z, core_a) == HxStatus.core_unverified;
+  #assert hl_hotswap(slot[..], ad, base_a, z) == HxStatus.core_unverified;
+  #assert hl_hotswap(slot[..], ad, base_a, core_a) == HxStatus.ok && slot[0].rank == 4;
+  // Exact alpha=64.0 and rank=1 and rank=8 boundaries succeed
+  #assert hl_hotswap(slot[..], ad1, base_a, core_a) == HxStatus.ok && slot[0].rank == 1;
+  r8_clean := hl_init_adapter(1, HL_MAX_RANK, 64.0, base_a, core_a);
+  #assert hl_hotswap(slot[..], r8_clean, base_a, core_a) == HxStatus.ok && slot[0].rank == HL_MAX_RANK;
+  // Mismatched base_sha refused atomically; slot[0] stays r8_clean
+  bad_base := hl_init_adapter(99, 2, 4.0, base_b, core_a);
+  #assert hl_hotswap(slot[..], bad_base, base_a, core_a) == HxStatus.adapter_base_mismatch;
+  #assert hl_sha_eq(slot[0].adapter_sha, r8_clean.adapter_sha);
+  // Mismatched core_sha refused atomically; slot[0] stays r8_clean
+  bad_core := hl_init_adapter(99, 2, 4.0, base_a, core_b);
+  #assert hl_hotswap(slot[..], bad_core, base_a, core_a) == HxStatus.adapter_core_mismatch;
+  #assert hl_sha_eq(slot[0].adapter_sha, r8_clean.adapter_sha);
+  // 1-byte weight tamper refused atomically
+  tampered := ad; tampered.p[10] += 1e-9;
+  #assert hl_hotswap(slot[..], tampered, base_a, core_a) == HxStatus.core_unverified;
+  // Invalid rank (with zero adapter_sha so only rank guard rejects!) / alpha / NaN at p[0] / zero-rank with nonzero sha refused
+  bad_r := HlAdapter.{rank = 9, alpha = 8.0, base_model_sha = base_a, core_module_sha = core_a};
+  #assert hl_hotswap(slot[..], bad_r, base_a, core_a) == HxStatus.core_unverified;
+  bad_r0 := HlAdapter.{rank = -1, alpha = 8.0, base_model_sha = base_a, core_module_sha = core_a};
+  #assert hl_hotswap(slot[..], bad_r0, base_a, core_a) == HxStatus.core_unverified;
+  bad_al := ad; bad_al.alpha = 0.0; bad_al.adapter_sha = hl_adapter_digest(bad_al);
+  #assert hl_hotswap(slot[..], bad_al, base_a, core_a) == HxStatus.core_unverified;
+  bad_al2 := ad; bad_al2.alpha = 65.0; bad_al2.adapter_sha = hl_adapter_digest(bad_al2);
+  #assert hl_hotswap(slot[..], bad_al2, base_a, core_a) == HxStatus.core_unverified;
+  bad_nan := ad; bad_nan.p[0] = 0.0 / 0.0; bad_nan.adapter_sha = hl_adapter_digest(bad_nan);
+  #assert hl_hotswap(slot[..], bad_nan, base_a, core_a) == HxStatus.core_unverified;
+  bad_z := hl_init_zero(); bad_z.adapter_sha[0] = 1;
+  #assert hl_hotswap(slot[..], bad_z, base_a, core_a) == HxStatus.core_unverified;
+  // Valid zero adapter hot-swap unloads active adapter back to bit-exact base
+  #assert hl_hotswap(slot[..], hl_init_zero(), base_a, core_a) == HxStatus.ok && slot[0].rank == 0;
+}
+
+#test "hybrid-lora: analytic gradient matches central finite differences and AdamW trains routing accuracy (#13920)" #steps 200000000 {
+  base_a: [32] u8; core_a: [32] u8;
+  for i: 0..<32 { base_a[i] = cast(u8) (5 + i); core_a[i] = cast(u8) (9 + i); }
+  ad := hl_init_adapter(7, 2, 4.0, base_a, core_a);
+  b_off := 2 * HL_DIM;
+  for k: 0..<HL_CLASSES * 2 { ad.p[b_off + k] = f64(k - 4) * 0.07; }
+
+  rows: [10] HlRow;
+  for i: 0..<10 {
+    cls := i % HL_CLASSES;
+    rows[i].base_model_sha = base_a;
+    rows[i].label = cls;
+    for j: 0..<HL_DIM {
+      rows[i].u[j] = ifx (j % HL_CLASSES) == cls then 1.0 else -0.25;
+    }
+    rows[i].base_logits = [HL_CLASSES] f64.[0.4, 0.0, 0.0, 0.0, 0.0];
+  }
+
+  // Pass dirty grad buffer (including grad[0] = 99.0) to verify zeroing and compare vs central differences
+  g: [HL_PARAMS_MAX] f64;
+  for i: 0..<HL_PARAMS_MAX { g[i] = 99.0; }
+  l_init := hl_gradient(ad, rows[..], 0.5, g[..]);
+  #assert l_init > 0.5 && l_init < 5.0;
+  eps := 1e-6;
+  n := hl_param_count(2);
+  check_idx := [8] int.[0, 1, 7, 63, 64, b_off, b_off + 3, n - 1];
+  for idx: check_idx {
+    ap := ad; ap.p[idx] += eps;
+    am := ad; am.p[idx] -= eps;
+    gp: [HL_PARAMS_MAX] f64; gm: [HL_PARAMS_MAX] f64;
+    lp := hl_gradient(ap, rows[..], 0.5, gp[..]);
+    lm := hl_gradient(am, rows[..], 0.5, gm[..]);
+    num := (lp - lm) / (2.0 * eps);
+    #assert abs(g[idx] - num) < 1e-6;
+  }
+
+  // Clamp tiny prob branch (p_y < 1e-15)
+  ex_rows: [1] HlRow;
+  ex_rows[0] = rows[0];
+  ex_rows[0].base_logits = [HL_CLASSES] f64.[-50.0, 50.0, 0.0, 0.0, 0.0];
+  ext_loss := hl_gradient(hl_init_adapter(7, 2, 4.0, base_a, core_a), ex_rows[..], 0.0, g[..]);
+  #assert ext_loss > 30.0 && ext_loss < 40.0;
+
+  // Train from fresh B=0 adapter via Ch 124 AdamW: routing rises from 2/10 (20%) -> 10/10 (100%)
+  fresh := hl_init_adapter(13, 4, 8.0, base_a, core_a);
+  before_ok := 0;
+  for i: 0..<10 {
+    if hl_forward(rows[i].base_logits, fresh, rows[i].u).best == rows[i].label { before_ok += 1; }
+  }
+  #assert before_ok == 2;
+  tr := hl_train(fresh, rows[..], 0.25, 0.05, 0.001, 40);
+  #assert tr.status == HlStatus.ok && tr.state.step == 40 && tr.loss > 0.0 && tr.loss < 0.05;
+  #assert hl_sha_eq(tr.adapter.adapter_sha, hl_adapter_digest(tr.adapter));
+  after_ok := 0;
+  for i: 0..<10 {
+    p := hl_forward(rows[i].base_logits, tr.adapter, rows[i].u);
+    if p.best == rows[i].label && p.probs[rows[i].label] > 0.9 { after_ok += 1; }
+  }
+  #assert after_ok == 10;
+
+  // Exact upper & lower boundaries: 1 row, 256 rows, rank=HL_MAX_RANK, alpha=64, brier=HL_BRIER_MAX, steps=0 & HL_STEPS_MAX
+  tr0 := hl_train(fresh, rows[0..<1], HL_BRIER_MAX, 0.05, 0.0, 0);
+  #assert tr0.status == HlStatus.ok && tr0.state.step == 0 && tr0.loss > 0.0;
+  a8 := hl_init_adapter(1, HL_MAX_RANK, 8.0, base_a, core_a);
+  #assert hl_train(a8, rows[0..<1], 0.0, 0.05, 0.0, 0).status == HlStatus.ok;
+  a64 := hl_init_adapter(1, 1, 64.0, base_a, core_a);
+  tr_max := hl_train(a64, rows[0..<1], 0.0, 0.01, 0.0, HL_STEPS_MAX);
+  #assert tr_max.status == HlStatus.ok && tr_max.state.step == HL_STEPS_MAX;
+  big: [HL_ROWS_MAX + 1] HlRow;
+  for i: 0..<HL_ROWS_MAX + 1 { big[i] = rows[i % 10]; }
+  #assert hl_train(a64, big[0..<HL_ROWS_MAX], 0.0, 0.05, 0.0, 0).status == HlStatus.ok;
+  #assert hl_train(a64, big[..], 0.0, 0.05, 0.0, 0).status == HlStatus.shape;
+
+  // Overflow inside AdamW step (finite forward logits since A=0, huge dA = s * B * dz * u) refuses cleanly
+  ov_rows: [1] HlRow;
+  ov_rows[0] = rows[0];
+  ov_rows[0].u[0] = 1e100;
+  ov_ad := HlAdapter.{rank = 1, alpha = 1.0, base_model_sha = base_a, core_module_sha = core_a};
+  ov_ad.p[HL_DIM] = 1e100;
+  #assert hl_train(ov_ad, ov_rows[..], 0.0, 0.5, 0.0, 1).status == HlStatus.number;
+
+  // Training admission refusals
+  #assert hl_train(hl_init_zero(), rows[..], 0.25, 0.05, 0.0, 1).status == HlStatus.shape;
+  bad_r := fresh; bad_r.rank = HL_MAX_RANK + 1;
+  #assert hl_train(bad_r, rows[..], 0.25, 0.05, 0.0, 1).status == HlStatus.shape;
+  bad_a := fresh; bad_a.alpha = 0.0; #assert hl_train(bad_a, rows[..], 0.25, 0.05, 0.0, 1).status == HlStatus.shape;
+  bad_a2 := fresh; bad_a2.alpha = 65.0; #assert hl_train(bad_a2, rows[..], 0.25, 0.05, 0.0, 1).status == HlStatus.shape;
+  #assert hl_train(fresh, rows[..], 0.25, 0.05, 0.0, -1).status == HlStatus.shape;
+  #assert hl_train(fresh, rows[..], 0.25, 0.05, 0.0, HL_STEPS_MAX + 1).status == HlStatus.shape;
+  #assert hl_train(fresh, rows[0..<0], 0.25, 0.05, 0.0, 1).status == HlStatus.empty;
+  #assert hl_train(fresh, rows[..], -0.1, 0.05, 0.0, 1).status == HlStatus.number;
+  #assert hl_train(fresh, rows[..], HL_BRIER_MAX + 1.0, 0.05, 0.0, 1).status == HlStatus.number;
+  #assert hl_train(fresh, rows[..], 0.0, 0.0, 0.0, 1).status == HlStatus.number;
+  bad_p := fresh; bad_p.p[0] = 0.0 / 0.0;
+  #assert hl_train(bad_p, rows[..], 0.0, 0.05, 0.0, 0).status == HlStatus.number;
+
+  bad_id := rows; bad_id[3].base_model_sha[0] ^= 1;
+  r_id := hl_train(fresh, bad_id[..], 0.0, 0.05, 0.0, 1);
+  #assert r_id.status == HlStatus.identity && r_id.bad_row == 3;
+  bad_lbl := rows; bad_lbl[4].label = -1;
+  #assert hl_train(fresh, bad_lbl[..], 0.0, 0.05, 0.0, 1).status == HlStatus.shape;
+  bad_lbl[4].label = HL_CLASSES;
+  r_lbl := hl_train(fresh, bad_lbl[..], 0.0, 0.05, 0.0, 1);
+  #assert r_lbl.status == HlStatus.shape && r_lbl.bad_row == 4;
+  bad_u := rows; bad_u[2].u[0] = 0.0 / 0.0;
+  r_u := hl_train(fresh, bad_u[..], 0.0, 0.05, 0.0, 1);
+  #assert r_u.status == HlStatus.number && r_u.bad_row == 2;
+  bad_bl := rows; bad_bl[1].base_logits[0] = 0.0 / 0.0;
+  r_bl := hl_train(fresh, bad_bl[..], 0.0, 0.05, 0.0, 1);
+  #assert r_bl.status == HlStatus.number && r_bl.bad_row == 1;
+}

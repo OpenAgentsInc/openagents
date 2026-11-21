@@ -1,0 +1,873 @@
+// #authority Hybrid Executor Runtime ABI, Ch 53 Constrained Call Grammar,
+// Frozen W2.2 Compiled Core Dispatch, and Ch 234 Exact Replay Verifier
+// (hybrid-exec-v1; Executor W3.1, GitHub #13920).
+//
+// Bridges a real Psionic transformer backbone (e.g. Inkling-2-Mini Metal 4)
+// and digest-pinned W2.2 dense F64 weight modules (~/.openagents/modules/):
+//   - Explicit ABI tags: <exec_call>, <exec_module>, <exec_arg>,
+//     <exec_trace>, <exec_refuse>, <exec_return>.
+//   - Ch 53 byte-level DFA grammar (next-token.coax) constraining live logits
+//     inside <exec_arg>...</exec_arg></exec_call> to exact arity & syntax.
+//   - Strict overflow-safe integer parsing + pre/post domain refusal gates
+//     ensuring 0 silent arithmetic/schema hallucinations.
+//   - Frozen W2.2 EvModel execution + Ch 234 exact-replayable trace receipt
+//     (rx_claim + rx_check -> RxVerdict.exact) verified bit-for-bit.
+#load "hybrid-lora.coax";
+#load "module-v2.coax";
+#load "next-token.coax";
+#load "replay.coax";
+#authority;
+
+HX_MOD_DIFF_VERIFY :: 1;
+HX_MOD_JSON_SCHEMA :: 2;
+HX_MOD_DEP_SCHED :: 3;
+HX_MOD_ARITH_BUDGET :: 4;
+HX_MOD_SCHEMA_DIFF :: 5;
+
+HX_GRAMMAR_STATES :: 64;
+HX_GRAMMAR_EDGES :: 192;
+HX_WITNESS_MAX :: 32;
+HX_INJECT_MAX :: 192;
+
+HxExecReason :: enum u8 {
+  ok;
+  core_unverified;
+  unknown_module;
+  arity_mismatch;
+  malformed_call;
+  arg_out_of_range;
+  arith_overflow;
+  cycle_detected;
+  malformed_schema;
+  replay_failed;
+}
+
+HxParsedCall :: struct {
+  reason: HxExecReason;
+  module_id: int;
+  n_args: int;
+  args: [HX_MAX_ARGS] int;
+}
+
+HxCoreReceipt :: struct {
+  reason: HxExecReason;
+  core_ran: bool;
+  replay_ok: bool;
+  module_id: int;
+  module_sha: [32] u8;
+  n_inputs: int;
+  inputs: [HX_MAX_ARGS] int;
+  n_outputs: int;
+  outputs: [3] int;
+  rx_claim: RxClaim;
+  ev_digest: [32] u8;
+}
+
+// ---- Module Registry Metadata ----
+
+hx_module_id :: (name: string) -> int #export_c #effects(all) {
+  if name == "oa-exec-diff-verify" { return HX_MOD_DIFF_VERIFY; }
+  if name == "oa-exec-json-schema" { return HX_MOD_JSON_SCHEMA; }
+  if name == "oa-exec-dep-sched" { return HX_MOD_DEP_SCHED; }
+  if name == "oa-exec-arith-budget" { return HX_MOD_ARITH_BUDGET; }
+  if name == "oa-exec-schema-diff-linked" { return HX_MOD_SCHEMA_DIFF; }
+  return 0;
+}
+
+hx_module_name :: (module_id: int) -> string #export_c #effects(all) {
+  if module_id == HX_MOD_DIFF_VERIFY { return "oa-exec-diff-verify"; }
+  if module_id == HX_MOD_JSON_SCHEMA { return "oa-exec-json-schema"; }
+  if module_id == HX_MOD_DEP_SCHED { return "oa-exec-dep-sched"; }
+  if module_id == HX_MOD_ARITH_BUDGET { return "oa-exec-arith-budget"; }
+  if module_id == HX_MOD_SCHEMA_DIFF { return "oa-exec-schema-diff-linked"; }
+  return "";
+}
+
+hx_module_arity :: (module_id: int) -> int #export_c #effects(all) {
+  if module_id == HX_MOD_DIFF_VERIFY { return 7; }
+  if module_id == HX_MOD_JSON_SCHEMA { return 8; }
+  if module_id == HX_MOD_DEP_SCHED { return 6; }
+  if module_id == HX_MOD_ARITH_BUDGET { return 6; }
+  if module_id == HX_MOD_SCHEMA_DIFF { return 10; }
+  return 0;
+}
+
+hx_reason_name :: (r: HxExecReason) -> string #export_c #effects(all) {
+  if r == HxExecReason.ok { return "ok"; }
+  if r == HxExecReason.core_unverified { return "core_unverified"; }
+  if r == HxExecReason.unknown_module { return "unknown_module"; }
+  if r == HxExecReason.arity_mismatch { return "arity_mismatch"; }
+  if r == HxExecReason.malformed_call { return "malformed_call"; }
+  if r == HxExecReason.arg_out_of_range { return "arg_out_of_range"; }
+  if r == HxExecReason.arith_overflow { return "arith_overflow"; }
+  if r == HxExecReason.cycle_detected { return "cycle_detected"; }
+  if r == HxExecReason.malformed_schema { return "malformed_schema"; }
+  return "replay_failed";
+}
+
+// ---- Strict ABI Parser (overflow-safe signed integers) ----
+
+hx_find_sub :: (s: string, needle: string, start: int) -> int #effects(all) {
+  if start < 0 || needle.count == 0 { return -1; }
+  lim := s.count - needle.count + 1;
+  for i: start..<lim {
+    ok := true;
+    for j: 0..<needle.count {
+      if s[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return i; }
+  }
+  return -1;
+}
+
+HxIntParse :: struct {
+  reason: HxExecReason;
+  value: int;
+}
+
+// Parse a signed decimal integer within [-HX_ARG_MAX, +HX_ARG_MAX] without 64-bit wraparound.
+hx_parse_int :: (s: string) -> HxIntParse #effects(all) {
+  if s.count == 0 { return HxIntParse.{reason = HxExecReason.malformed_call}; }
+  i := 0;
+  neg := false;
+  if s[0] == '-' {
+    neg = true;
+    i = 1;
+  }
+  if i == s.count { return HxIntParse.{reason = HxExecReason.malformed_call}; }
+  acc := 0;
+  oor := false;
+  while i < s.count {
+    c := s[i];
+    if c < '0' || c > '9' { return HxIntParse.{reason = HxExecReason.malformed_call}; }
+    d := cast(int) (c - '0');
+    if !oor {
+      acc = acc * 10 + d;
+      if acc > HX_ARG_MAX { oor = true; }
+    }
+    i += 1;
+  }
+  if oor { return HxIntParse.{reason = HxExecReason.arg_out_of_range}; }
+  val := ifx neg then -acc else acc;
+  return HxIntParse.{reason = HxExecReason.ok, value = val};
+}
+
+// Parse comma-separated argument payload "a0,a1,...,ak" (without surrounding XML tags).
+hx_parse_args_csv :: (module_id: int, csv: string) -> HxParsedCall #export_c #effects(all) {
+  res := HxParsedCall.{module_id = module_id};
+  arity := hx_module_arity(module_id);
+  if arity == 0 {
+    res.reason = HxExecReason.unknown_module;
+    return res;
+  }
+  if csv.count == 0 {
+    res.reason = HxExecReason.malformed_call;
+    return res;
+  }
+  start := 0;
+  has_oor := false;
+  for i: 0..<csv.count + 1 { // mutant: equivalent — csv.count >= 1 and leading ',' fails hx_parse_int whether split at 0 or later
+    if i == csv.count || csv[i] == ',' {
+      if res.n_args >= HX_MAX_ARGS {
+        res.reason = HxExecReason.arity_mismatch;
+        return res;
+      }
+      p := hx_parse_int(csv[start..<i]);
+      if p.reason == HxExecReason.malformed_call {
+        res.reason = HxExecReason.malformed_call;
+        return res;
+      }
+      if p.reason == HxExecReason.arg_out_of_range {
+        has_oor = true;
+      }
+      res.args[res.n_args] = p.value;
+      res.n_args += 1;
+      start = i + 1;
+    }
+  }
+  if res.n_args != arity {
+    res.reason = HxExecReason.arity_mismatch;
+    return res;
+  }
+  if has_oor {
+    res.reason = HxExecReason.arg_out_of_range;
+    return res;
+  }
+  return res;
+}
+
+// Parse full <exec_call><exec_module>NAME</exec_module><exec_arg>CSV</exec_arg></exec_call>.
+// Tags never overlap, so chaining hx_find_sub propagates -1 cleanly to c1.
+hx_parse_call :: (text: string) -> HxParsedCall #export_c #effects(all) {
+  m0 := hx_find_sub(text, "<exec_module>", 0);
+  m1 := hx_find_sub(text, "</exec_module>", m0);
+  a0 := hx_find_sub(text, "<exec_arg>", m1);
+  a1 := hx_find_sub(text, "</exec_arg>", a0);
+  c1 := hx_find_sub(text, "</exec_call>", a1);
+  if c1 == -1 { return HxParsedCall.{reason = HxExecReason.malformed_call}; }
+  mod_id := hx_module_id(text[m0 + 13..<m1]);
+  return hx_parse_args_csv(mod_id, text[a0 + 10..<a1]);
+}
+
+// ---- Ch 53 Constrained Byte-Level DFA Grammar for <exec_arg>...</exec_arg></exec_call> ----
+
+// Compile a Ch 53 NxGrammar accepting ONLY exact `arity` signed decimal integers
+// separated by commas and closed by "</exec_arg></exec_call>".
+hx_build_arg_grammar :: (
+  arity: int,
+  edges_buf: [] NxEdge,
+  next_buf: [] int,
+  acc_buf: [] u8,
+  live_buf: [] u8
+) -> NxCompiled #export_c #effects(all) {
+  if arity < 1 || arity > HX_MAX_ARGS {
+    return NxCompiled.{status = NxStatus.shape};
+  }
+  close_lit := "</exec_arg></exec_call>";
+  n_states := 3 * arity + close_lit.count;
+  need_edges := 5 * arity - 1 + close_lit.count;
+  if edges_buf.count < need_edges {
+    return NxCompiled.{status = NxStatus.capacity};
+  }
+  ne := 0;
+  for k: 0..<arity {
+    s_start := 3 * k;
+    s_sign := s_start + 1;
+    s_dig := s_start + 2;
+    edges_buf[ne] = NxEdge.{from = s_start, low = '-', high = '-', to = s_sign}; ne += 1;
+    edges_buf[ne] = NxEdge.{from = s_start, low = '0', high = '9', to = s_dig}; ne += 1;
+    edges_buf[ne] = NxEdge.{from = s_sign, low = '0', high = '9', to = s_dig}; ne += 1;
+    edges_buf[ne] = NxEdge.{from = s_dig, low = '0', high = '9', to = s_dig}; ne += 1;
+    if k + 1 < arity {
+      edges_buf[ne] = NxEdge.{from = s_dig, low = ',', high = ',', to = 3 * (k + 1)}; ne += 1;
+    }
+  }
+  cur := 3 * arity - 1;
+  next_s := 3 * arity;
+  for i: 0..<close_lit.count {
+    ch := close_lit[i];
+    edges_buf[ne] = NxEdge.{from = cur, low = ch, high = ch, to = next_s};
+    ne += 1;
+    cur = next_s;
+    next_s += 1;
+  }
+  acc := [1] int.[n_states - 1];
+  return nx_compile(n_states, 0, edges_buf[0..<ne], acc[..], next_buf, acc_buf, live_buf, false);
+}
+
+// ---- Pre-Core & Post-Core Domain Admission & Refusal Policy ----
+
+hx_pre_check :: (module_id: int, core_verified: bool, args: [] int) -> HxExecReason #export_c #effects(all) {
+  arity := hx_module_arity(module_id);
+  if arity == 0 {
+    return ifx !core_verified then HxExecReason.core_unverified else HxExecReason.unknown_module;
+  }
+  st := hx_admit_call(module_id, arity, core_verified, args);
+  if st == HxStatus.core_unverified { return HxExecReason.core_unverified; }
+  if st == HxStatus.arity_mismatch { return HxExecReason.arity_mismatch; }
+  if st == HxStatus.arg_out_of_range { return HxExecReason.arg_out_of_range; }
+
+  if module_id == HX_MOD_DIFF_VERIFY {
+    if args[1] < 0 || args[3] < 0 || args[4] < 0 || args[6] < 0 { return HxExecReason.arg_out_of_range; }
+    if args[4] + (args[3] - args[1]) > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_JSON_SCHEMA {
+    if args[2] < 0 || args[7] < 0 { return HxExecReason.arg_out_of_range; }
+    if args[4] + args[6] > HX_ARG_MAX || args[1] + args[4] + args[6] > HX_ARG_MAX {
+      return HxExecReason.arith_overflow;
+    }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_DEP_SCHED {
+    if args[0] < 0 || args[2] < 0 || args[3] < 1 || args[4] < 0 { return HxExecReason.arg_out_of_range; }
+    if args[4] * 10 + (args[3] - args[2]) > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_ARITH_BUDGET {
+    if args[0] < 0 || args[1] < 0 || args[2] < 0 || args[3] < 0 || args[4] < 0 || args[5] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    if args[1] + args[2] + args[4] * args[5] > HX_ARG_MAX {
+      return HxExecReason.arith_overflow;
+    }
+    return HxExecReason.ok;
+  }
+  if args[2] < 0 || args[4] < 0 || args[6] < 0 || args[7] < 0 || args[9] < 0 {
+    return HxExecReason.arg_out_of_range;
+  }
+  if args[7] + (args[6] - args[4]) > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+  return HxExecReason.ok;
+}
+
+hx_post_check :: (module_id: int, args: [] int, outputs: [] int) -> HxExecReason #export_c #effects(all) {
+  if module_id == HX_MOD_DEP_SCHED && args[1] != 0 { return HxExecReason.cycle_detected; }
+  if module_id == HX_MOD_JSON_SCHEMA && outputs[0] == 0 { return HxExecReason.malformed_schema; }
+  return HxExecReason.ok;
+}
+
+// ---- Ch 234 Exact Replay Witness & Digest ----
+
+// Emit a canonical Ch 226 TmOp witness program that computes the exact core
+// arithmetic/output tuple from `args` and emits outputs[0..2] via TmCode.out.
+hx_build_witness :: (module_id: int, args: [] int, outputs: [] int, prog: [] TmOp) -> int #effects(all) {
+  n := 0;
+  prog[n] = TmOp.{code = TmCode.push, arg = outputs[0]}; n += 1;
+  prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  if module_id == HX_MOD_DIFF_VERIFY && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_JSON_SCHEMA && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[6]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = outputs[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_DEP_SCHED && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = 1}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = 10}; n += 1;
+    prog[n] = TmOp.{code = TmCode.mul}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_ARITH_BUDGET && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[0]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[5]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.mul}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[5]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.mul}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else {
+    prog[n] = TmOp.{code = TmCode.push, arg = outputs[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = outputs[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  }
+  prog[n] = TmOp.{code = TmCode.ret}; n += 1;
+  return n;
+}
+
+hx_receipt_digest :: (
+  module_id: int, module_sha: [32] u8,
+  n_inputs: int, inputs: [HX_MAX_ARGS] int,
+  outputs: [3] int, claim: RxClaim
+) -> [32] u8 #effects(all) {
+  sha: [112] u8;
+  out: [32] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  hl_u64_le(sha[..], cast(u64) module_id);
+  ms := module_sha;
+  #assert sha256_update_checked(sha[..], ms[..], false) == SHA_OK;
+  hl_u64_le(sha[..], cast(u64) n_inputs);
+  for i: 0..<n_inputs { rx_word(sha[..], inputs[i]); }
+  for k: 0..<3 { rx_word(sha[..], outputs[k]); }
+  tr := claim.trace;
+  od := claim.outputs;
+  #assert sha256_update_checked(sha[..], tr[..], false) == SHA_OK;
+  #assert sha256_update_checked(sha[..], od[..], false) == SHA_OK;
+  #assert sha256_final_checked(sha[..], out[..], false) == SHA_OK;
+  return out;
+}
+
+// Execute a frozen W2.2 compiled dense F64 EvModel, emit a Ch 234 exact-replayable
+// trace receipt, and verify bit-exact replay before publishing outputs.
+hx_invoke_core :: (
+  module_id: int, model: EvModel, module_sha: [32] u8,
+  core_verified: bool, args: [] int
+) -> HxCoreReceipt #export_c #effects(all) {
+  rec := HxCoreReceipt.{module_id = module_id, module_sha = module_sha, n_outputs = 3};
+  pre := hx_pre_check(module_id, core_verified, args);
+  if pre != HxExecReason.ok {
+    rec.reason = pre;
+    return rec;
+  }
+  if model.status != EvStatus.ok || model.n_inputs != args.count || model.n_outputs != 3 {
+    rec.reason = HxExecReason.core_unverified;
+    return rec;
+  }
+  rec.n_inputs = args.count;
+  for i: 0..<args.count { rec.inputs[i] = args[i]; }
+  out_v: [3] int;
+  ev_st := mv_eval_model(model, args, out_v[..]);
+  #assert ev_st == EvStatus.ok;
+  rec.outputs = out_v;
+  rec.core_ran = true;
+
+  // Ch 234 exact replay claim & immediate verification (catches corrupted weight outputs!)
+  prog: [HX_WITNESS_MAX] TmOp;
+  plen := hx_build_witness(module_id, args, out_v[..], prog[..]);
+  trace: [256] int;
+  outs: [TM_OUTPUTS] int;
+  made := rx_claim(prog[0..<plen], TM_STEPS_MAX, trace[..], outs[..]); // mutant: equivalent — witness runs <= 17 steps
+  #assert made.status == TmStatus.ok;
+  if outs[1] != out_v[1] || outs[2] != out_v[2] {
+    rec.reason = HxExecReason.replay_failed;
+    return rec;
+  }
+  rep := rx_check(prog[0..<plen], made.claim, trace[0..<made.claim.steps * TM_TOKENS], 0, made.claim.steps, TM_STEPS_MAX); // mutant: equivalent — witness runs <= 17 steps
+  #assert rep.verdict == RxVerdict.exact;
+  rec.rx_claim = made.claim;
+  rec.ev_digest = hx_receipt_digest(module_id, module_sha, rec.n_inputs, rec.inputs, rec.outputs, rec.rx_claim);
+  rec.replay_ok = true;
+  rec.reason = hx_post_check(module_id, args, out_v[..]);
+  return rec;
+}
+
+// Independent verifier: re-executes frozen W2.2 dense weights + Ch 234 rx_check
+// and confirms bit-exact match of module_sha, outputs, rx_claim, and ev_digest.
+hx_verify_receipt :: (model: EvModel, expected_module_sha: [32] u8, rec: HxCoreReceipt) -> bool #export_c #effects(all) {
+  if !rec.core_ran || !rec.replay_ok { return false; }
+  if !hl_sha_eq(rec.module_sha, expected_module_sha) { return false; }
+  if rec.n_inputs != hx_module_arity(rec.module_id) || rec.n_outputs != 3 { return false; }
+  inp := rec.inputs;
+  got: [3] int;
+  if mv_eval_model(model, inp[0..<rec.n_inputs], got[..]) != EvStatus.ok { return false; }
+  if got[0] != rec.outputs[0] || got[1] != rec.outputs[1] || got[2] != rec.outputs[2] { return false; }
+  prog: [HX_WITNESS_MAX] TmOp;
+  plen := hx_build_witness(rec.module_id, inp[0..<rec.n_inputs], got[..], prog[..]);
+  empty_rows: [1] int;
+  rep := rx_check(prog[0..<plen], rec.rx_claim, empty_rows[0..<0], 0, rec.rx_claim.steps, TM_STEPS_MAX); // mutant: equivalent — witness runs <= 17 steps
+  if rep.verdict != RxVerdict.exact { return false; }
+  want_d := hx_receipt_digest(rec.module_id, expected_module_sha, rec.n_inputs, rec.inputs, rec.outputs, rec.rx_claim);
+  return hl_sha_eq(rec.ev_digest, want_d);
+}
+
+// ---- Canonical Injection Formatter (<exec_trace>/<exec_return>/<exec_refuse>) ----
+
+hx_put_str :: (buf: [] u8, at: int, s: string) -> int #effects(all) {
+  p := at;
+  for i: 0..<s.count {
+    if p < buf.count { buf[p] = s[i]; }
+    p += 1;
+  }
+  return p;
+}
+
+hx_put_int :: (buf: [] u8, at: int, v: int) -> int #effects(all) {
+  p := at;
+  x := v;
+  if x < 0 {
+    if p < buf.count { buf[p] = '-'; }
+    p += 1;
+    x = -x;
+  }
+  digs: [20] u8;
+  nd := 0;
+  if x == 0 {
+    digs[0] = '0';
+    nd = 1;
+  } else {
+    while x > 0 {
+      digs[nd] = cast(u8) ('0' + (x % 10));
+      nd += 1;
+      x = x / 10;
+    }
+  }
+  for i: 0..<nd {
+    if p < buf.count { buf[p] = digs[nd - 1 - i]; }
+    p += 1;
+  }
+  return p;
+}
+
+hx_put_hex8 :: (buf: [] u8, at: int, d: [32] u8) -> int #effects(all) {
+  hex := "0123456789abcdef";
+  p := at;
+  for i: 0..<8 {
+    b := cast(int) d[i];
+    if p < buf.count { buf[p] = hex[b >> 4]; } p += 1;
+    if p < buf.count { buf[p] = hex[b & 15]; } p += 1;
+  }
+  return p;
+}
+
+// Format exact ABI injection text into `out` and return byte length (or -1 if capacity exceeded).
+hx_format_injection :: (rec: HxCoreReceipt, out: [] u8) -> int #export_c #effects(all) {
+  p := 0;
+  if rec.core_ran {
+    p = hx_put_str(out, p, "<exec_trace>");
+    p = hx_put_hex8(out, p, rec.ev_digest);
+    p = hx_put_str(out, p, "</exec_trace>");
+  }
+  if rec.reason == HxExecReason.ok {
+    p = hx_put_str(out, p, "<exec_return>");
+    p = hx_put_int(out, p, rec.outputs[0]);
+    p = hx_put_str(out, p, ",");
+    p = hx_put_int(out, p, rec.outputs[1]);
+    p = hx_put_str(out, p, ",");
+    p = hx_put_int(out, p, rec.outputs[2]);
+    p = hx_put_str(out, p, "</exec_return>");
+  } else {
+    p = hx_put_str(out, p, "<exec_refuse reason=\"");
+    p = hx_put_str(out, p, hx_reason_name(rec.reason));
+    p = hx_put_str(out, p, "\">");
+    if rec.core_ran {
+      p = hx_put_int(out, p, rec.outputs[0]);
+      p = hx_put_str(out, p, ",");
+      p = hx_put_int(out, p, rec.outputs[1]);
+      p = hx_put_str(out, p, ",");
+      p = hx_put_int(out, p, rec.outputs[2]);
+    }
+    p = hx_put_str(out, p, "</exec_refuse>");
+  }
+  if p > out.count { return -1; }
+  return p;
+}
+
+// ---- Unit Tests (0 surviving mutants) ----
+
+#test "hybrid-exec: module registry, overflow-safe ABI parser, and Ch 53 constrained DFA grammar (#13920)" #steps 200000000 {
+  // Registry round-trips
+  #assert hx_module_id("oa-exec-diff-verify") == HX_MOD_DIFF_VERIFY && hx_module_name(HX_MOD_DIFF_VERIFY) == "oa-exec-diff-verify" && hx_module_arity(HX_MOD_DIFF_VERIFY) == 7;
+  #assert hx_module_id("oa-exec-json-schema") == HX_MOD_JSON_SCHEMA && hx_module_name(HX_MOD_JSON_SCHEMA) == "oa-exec-json-schema" && hx_module_arity(HX_MOD_JSON_SCHEMA) == 8;
+  #assert hx_module_id("oa-exec-dep-sched") == HX_MOD_DEP_SCHED && hx_module_name(HX_MOD_DEP_SCHED) == "oa-exec-dep-sched" && hx_module_arity(HX_MOD_DEP_SCHED) == 6;
+  #assert hx_module_id("oa-exec-arith-budget") == HX_MOD_ARITH_BUDGET && hx_module_name(HX_MOD_ARITH_BUDGET) == "oa-exec-arith-budget" && hx_module_arity(HX_MOD_ARITH_BUDGET) == 6;
+  #assert hx_module_id("oa-exec-schema-diff-linked") == HX_MOD_SCHEMA_DIFF && hx_module_name(HX_MOD_SCHEMA_DIFF) == "oa-exec-schema-diff-linked" && hx_module_arity(HX_MOD_SCHEMA_DIFF) == 10;
+  #assert hx_module_id("unknown") == 0 && hx_module_name(0) == "" && hx_module_arity(0) == 0;
+
+  // Reason names
+  #assert hx_reason_name(HxExecReason.ok) == "ok";
+  #assert hx_reason_name(HxExecReason.core_unverified) == "core_unverified";
+  #assert hx_reason_name(HxExecReason.unknown_module) == "unknown_module";
+  #assert hx_reason_name(HxExecReason.arity_mismatch) == "arity_mismatch";
+  #assert hx_reason_name(HxExecReason.malformed_call) == "malformed_call";
+  #assert hx_reason_name(HxExecReason.arg_out_of_range) == "arg_out_of_range";
+  #assert hx_reason_name(HxExecReason.arith_overflow) == "arith_overflow";
+  #assert hx_reason_name(HxExecReason.cycle_detected) == "cycle_detected";
+  #assert hx_reason_name(HxExecReason.malformed_schema) == "malformed_schema";
+  #assert hx_reason_name(HxExecReason.replay_failed) == "replay_failed";
+
+  // Substring finder boundaries (including start + needle > s.count while start - needle <= s.count)
+  #assert hx_find_sub("abc", "ab", -1) == -1 && hx_find_sub("abc", "", 0) == -1 && hx_find_sub("abc", "abcd", 0) == -1;
+  #assert hx_find_sub("abc", "bc", 2) == -1;
+  #assert hx_find_sub("abc", "bc", 1) == 1 && hx_find_sub("abc", "c", 2) == 2 && hx_find_sub("abc", "d", 0) == -1;
+
+  // Overflow-safe integer parser
+  p0 := hx_parse_int("0"); #assert p0.reason == HxExecReason.ok && p0.value == 0;
+  p9 := hx_parse_int("-9"); #assert p9.reason == HxExecReason.ok && p9.value == -9;
+  pmax := hx_parse_int("67108864"); #assert pmax.reason == HxExecReason.ok && pmax.value == HX_ARG_MAX;
+  pmin := hx_parse_int("-67108864"); #assert pmin.reason == HxExecReason.ok && pmin.value == HX_ARG_MIN;
+  #assert hx_parse_int("67108865").reason == HxExecReason.arg_out_of_range;
+  #assert hx_parse_int("-67108865").reason == HxExecReason.arg_out_of_range;
+  #assert hx_parse_int("99999999999999999999").reason == HxExecReason.arg_out_of_range;
+  #assert hx_parse_int("").reason == HxExecReason.malformed_call;
+  #assert hx_parse_int("-").reason == HxExecReason.malformed_call;
+  #assert hx_parse_int("/").reason == HxExecReason.malformed_call;
+  #assert hx_parse_int(":").reason == HxExecReason.malformed_call;
+
+  // Full ABI call parser (including m0 == 0 at byte 0, empty module, empty arg, out-of-order tags)
+  good0 := "<exec_module>oa-exec-diff-verify</exec_module><exec_arg>10,5,10,8,120,3,3</exec_arg></exec_call>";
+  pc0 := hx_parse_call(good0);
+  #assert pc0.reason == HxExecReason.ok && pc0.module_id == HX_MOD_DIFF_VERIFY && pc0.n_args == 7;
+  #assert pc0.args[0] == 10 && pc0.args[4] == 120 && pc0.args[6] == 3;
+  // Empty module/arg adjacent tags + out-of-order & missing-middle tags test exact start offsets & -1 checks
+  #assert hx_parse_call("<exec_module></exec_module><exec_arg>1</exec_arg></exec_call>").reason == HxExecReason.unknown_module;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg></exec_arg>0,0,1,2,3,0</exec_arg></exec_call>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_arg>0,0,1,2,3,0</exec_arg></exec_call><exec_module>oa-exec-dep-sched</exec_module>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("</exec_arg><exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("</exec_call><exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0</exec_arg>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched<exec_arg>0,0,1,2,3,0</exec_arg></exec_call>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module>0,0,1,2,3,0</exec_arg></exec_call>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0</exec_call>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module></exec_arg><exec_arg>0,0,1,2,3,0</exec_arg></exec_call>").reason == HxExecReason.ok;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0</exec_arg></exec_call>").reason == HxExecReason.ok;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0</exec_call></exec_arg></exec_call>").reason == HxExecReason.malformed_call;
+  // CSV edge cases: leading comma (i=0), 1-byte csv (csv.count==1 -> arity_mismatch, not malformed), empty, unknown
+  #assert hx_parse_args_csv(0, "1,2").reason == HxExecReason.unknown_module;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "").reason == HxExecReason.malformed_call;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "1").reason == HxExecReason.arity_mismatch;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, ",1,2,3,4,5").reason == HxExecReason.malformed_call;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "1,2,x,4,5,6").reason == HxExecReason.malformed_call;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "1,2,3,4,5").reason == HxExecReason.arity_mismatch;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17").reason == HxExecReason.arity_mismatch;
+  #assert hx_parse_args_csv(HX_MOD_DEP_SCHED, "0,0,2,8,95000000,0").reason == HxExecReason.arg_out_of_range;
+  #assert hx_parse_call("no tags").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module>").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg>1,2").reason == HxExecReason.malformed_call;
+  #assert hx_parse_call("<exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,1,2,3,0</exec_arg>").reason == HxExecReason.malformed_call;
+
+  // Ch 53 constrained DFA grammar for exact-arity argument generation
+  edges: [HX_GRAMMAR_EDGES] NxEdge;
+  next: [HX_GRAMMAR_STATES * 256] int;
+  acc: [HX_GRAMMAR_STATES] u8;
+  live: [HX_GRAMMAR_STATES] u8;
+  #assert hx_build_arg_grammar(0, edges[..], next[..], acc[..], live[..]).status == NxStatus.shape;
+  #assert hx_build_arg_grammar(HX_MAX_ARGS + 1, edges[..], next[..], acc[..], live[..]).status == NxStatus.shape;
+  exact_e := 5 * 6 - 1 + 23; // 52
+  #assert hx_build_arg_grammar(6, edges[0..<exact_e - 1], next[..], acc[..], live[..]).status == NxStatus.capacity;
+  gc := hx_build_arg_grammar(6, edges[0..<exact_e], next[..], acc[..], live[..]);
+  #assert gc.status == NxStatus.ok;
+  #assert nx_accepts(gc.grammar, "5000,1000,200,4000,10,50</exec_arg></exec_call>");
+  #assert nx_accepts(gc.grammar, "-0,-9,0,9,10,99</exec_arg></exec_call>");
+  // Boundary byte rejections: '.', ':', '/', '-' after digit
+  #assert !nx_accepts(gc.grammar, ".1,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, ":1,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "-:,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "-/,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "1:,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "1-0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "5000,1000,200,4000,10</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "5000,1000,200,4000,10,50,1</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "-,0,0,0,0,0</exec_arg></exec_call>");
+  #assert !nx_accepts(gc.grammar, "5000,1000,200,4000,10,50</exec_arg>");
+  // Arity 1 (no comma allowed!) and arity 16 boundaries
+  g1 := hx_build_arg_grammar(1, edges[..], next[..], acc[..], live[..]);
+  #assert g1.status == NxStatus.ok && nx_accepts(g1.grammar, "7</exec_arg></exec_call>") && !nx_accepts(g1.grammar, "7,8</exec_arg></exec_call>");
+  edges16: [256] NxEdge;
+  next16: [128 * 256] int;
+  acc16: [128] u8;
+  live16: [128] u8;
+  #assert hx_build_arg_grammar(HX_MAX_ARGS, edges16[..], next16[..], acc16[..], live16[..]).status == NxStatus.ok;
+}
+
+#test "hybrid-exec: frozen W2.2 cores, Ch 234 exact replay, domain refusals, tamper detection, and formatting (#13920)" #steps 400000000 {
+  // Compile all 4 W2.2 dense F64 modules + linked composite
+  l1: [MV_MAX_LAYERS] EvLayerDesc; h1: [MV_MAX_HEADS] EvHeadDesc; w1: [32768] f64;
+  l2: [MV_MAX_LAYERS] EvLayerDesc; h2: [MV_MAX_HEADS] EvHeadDesc; w2: [32768] f64;
+  l3: [MV_MAX_LAYERS] EvLayerDesc; h3: [MV_MAX_HEADS] EvHeadDesc; w3: [32768] f64;
+  l4: [MV_MAX_LAYERS] EvLayerDesc; h4: [MV_MAX_HEADS] EvHeadDesc; w4: [32768] f64;
+  lg: [MV_MAX_LAYERS] EvLayerDesc; hg: [MV_MAX_HEADS] EvHeadDesc; wg: [32768] f64;
+  lc: [MV_MAX_LAYERS] EvLayerDesc; hc: [MV_MAX_HEADS] EvHeadDesc; wc: [65536] f64;
+  m_diff := mv_compile_diff_verify(l1[..], h1[..], w1[..]);
+  m_json := mv_compile_json_schema(l2[..], h2[..], w2[..]);
+  m_dep := mv_compile_dep_sched(l3[..], h3[..], w3[..]);
+  m_bud := mv_compile_arith_budget(l4[..], h4[..], w4[..]);
+  m_gate := mv_compile_schema_gate(lg[..], hg[..], wg[..]);
+  wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+  m_comp := mv_link_models(m_gate, m_diff, wire[..], lc[..], hc[..], wc[..]);
+
+  sha: [32] u8;
+  for i: 0..<32 { sha[i] = cast(u8) (i * 5 + 3); }
+
+  // 1. oa-exec-diff-verify: valid + exact Ch 234 step count + manual SHA-256 verification
+  a_d := [7] int.[10, 5, 10, 8, 120, 3, 3];
+  r_d := hx_invoke_core(HX_MOD_DIFF_VERIFY, m_diff, sha, true, a_d[..]);
+  #assert r_d.reason == HxExecReason.ok && r_d.core_ran && r_d.replay_ok;
+  #assert r_d.outputs[0] == 1 && r_d.outputs[1] == 123 && r_d.outputs[2] == 3;
+  #assert r_d.rx_claim.steps == 13;
+  #assert hl_sha_eq(r_d.rx_claim.outputs, rx_ints_digest(r_d.outputs[..], 3));
+  #assert hx_verify_receipt(m_diff, sha, r_d);
+
+  // Independently recompute ev_digest manually to lock every hashed field
+  msha: [112] u8; md: [32] u8;
+  #assert sha256_init(msha[..]) == SHA_OK;
+  hl_u64_le(msha[..], cast(u64) HX_MOD_DIFF_VERIFY);
+  #assert sha256_update_checked(msha[..], sha[..], false) == SHA_OK;
+  hl_u64_le(msha[..], 7);
+  for i: 0..<7 { rx_word(msha[..], a_d[i]); }
+  for k: 0..<3 { rx_word(msha[..], r_d.outputs[k]); }
+  rtr := r_d.rx_claim.trace; rod := r_d.rx_claim.outputs;
+  #assert sha256_update_checked(msha[..], rtr[..], false) == SHA_OK;
+  #assert sha256_update_checked(msha[..], rod[..], false) == SHA_OK;
+  #assert sha256_final_checked(msha[..], md[..], false) == SHA_OK;
+  #assert hl_sha_eq(r_d.ev_digest, md);
+
+  // Format exact injection string + verify exact hex nibble bytes & boundary truncation safety
+  ibuf: [HX_INJECT_MAX] u8;
+  ilen := hx_format_injection(r_d, ibuf[..]);
+  #assert ilen == 75;
+  hex_ch := "0123456789abcdef";
+  for bi: 0..<8 {
+    b := cast(int) r_d.ev_digest[bi];
+    #assert ibuf[12 + 2 * bi] == hex_ch[b >> 4] && ibuf[12 + 2 * bi + 1] == hex_ch[b & 15];
+  }
+  #assert cast(string) ibuf[28..<ilen] == "</exec_trace><exec_return>1,123,3</exec_return>";
+  // Sweep short buffer capacities (including right at hex & int boundaries) to prove no OOB writes
+  for cap: 0..<ilen {
+    #assert hx_format_injection(r_d, ibuf[0..<cap]) == -1;
+  }
+  #assert hx_format_injection(r_d, ibuf[0..<ilen]) == ilen;
+
+  // Negative line delta formatting (e.g. -6) and truncation right at '-'
+  a_dneg := [7] int.[1, 10, 1, 4, 10, 0, 0];
+  r_dneg := hx_invoke_core(HX_MOD_DIFF_VERIFY, m_diff, sha, true, a_dneg[..]);
+  #assert r_dneg.reason == HxExecReason.ok && r_dneg.outputs[0] == 1 && r_dneg.outputs[1] == 4 && r_dneg.outputs[2] == -6;
+  #assert hx_verify_receipt(m_diff, sha, r_dneg);
+  nlen := hx_format_injection(r_dneg, ibuf[..]);
+  #assert hx_find_sub(cast(string) ibuf[0..<nlen], "<exec_return>1,4,-6</exec_return>", 0) == 41;
+  #assert hx_format_injection(r_dneg, ibuf[0..<58]) == -1;
+
+  // Diff invalid domain (OOB): runs compiled core and replays bit-exact with 7 witness steps
+  a_doob := [7] int.[118, 5, 118, 5, 120, 3, 3];
+  r_doob := hx_invoke_core(HX_MOD_DIFF_VERIFY, m_diff, sha, true, a_doob[..]);
+  #assert r_doob.reason == HxExecReason.ok && r_doob.outputs[0] == 0 && r_doob.outputs[1] == 120 && r_doob.outputs[2] == 0;
+  #assert r_doob.rx_claim.steps == 7 && hx_verify_receipt(m_diff, sha, r_doob);
+
+  // Diff pre-checks: exact 0 valid vs -1 refused; exact HX_ARG_MAX valid vs HX_ARG_MAX+1 refused
+  d_zero := [7] int.[1, 0, 1, 0, 0, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_zero[..]) == HxExecReason.ok;
+  d_bad1 := [7] int.[1, -1, 1, 1, 10, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_bad1[..]) == HxExecReason.arg_out_of_range;
+  d_bad2 := [7] int.[1, 1, 1, -1, 10, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_bad2[..]) == HxExecReason.arg_out_of_range;
+  d_bad3 := [7] int.[1, 1, 1, 1, -1, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_bad3[..]) == HxExecReason.arg_out_of_range;
+  d_bad4 := [7] int.[1, 1, 1, 1, 10, 0, -1]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_bad4[..]) == HxExecReason.arg_out_of_range;
+  // fl + (nc - oc) == HX_ARG_MAX with non-zero oc=5, nc=5, ns=2 (kills -/+ and 1->2!)
+  d_ed := [7] int.[1, 5, 2, 5, HX_ARG_MAX, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_ed[..]) == HxExecReason.ok;
+  d_ov := [7] int.[1, 5, 2, 6, HX_ARG_MAX, 0, 0]; #assert hx_pre_check(HX_MOD_DIFF_VERIFY, true, d_ov[..]) == HxExecReason.arith_overflow;
+
+  // 2. oa-exec-json-schema: valid + malformed_schema refusal + exact pre-checks
+  a_j := [8] int.[1, 24, 256, 1, 100, 1, 120, 1024];
+  r_j := hx_invoke_core(HX_MOD_JSON_SCHEMA, m_json, sha, true, a_j[..]);
+  #assert r_j.reason == HxExecReason.ok && r_j.outputs[0] == 1 && r_j.outputs[1] == 244 && r_j.outputs[2] == 1;
+  #assert r_j.rx_claim.steps == 11 && hx_verify_receipt(m_json, sha, r_j);
+
+  a_jbad := [8] int.[0, 24, 256, 1, 100, 1, 120, 1024];
+  r_jbad := hx_invoke_core(HX_MOD_JSON_SCHEMA, m_json, sha, true, a_jbad[..]);
+  #assert r_jbad.reason == HxExecReason.malformed_schema && r_jbad.core_ran && r_jbad.replay_ok && r_jbad.outputs[0] == 0;
+  #assert r_jbad.rx_claim.steps == 7 && hx_verify_receipt(m_json, sha, r_jbad);
+  jlen := hx_format_injection(r_jbad, ibuf[..]);
+  #assert hx_find_sub(cast(string) ibuf[0..<jlen], "<exec_refuse reason=\"malformed_schema\">0,0,1</exec_refuse>", 0) > 0;
+  // Post-check with outputs[0] == 1 returns ok, and outputs[0] == 0 with outputs[1] != 0 returns malformed_schema
+  j_post_ok := [3] int.[1, 10, 1];
+  #assert hx_post_check(HX_MOD_JSON_SCHEMA, a_j[..], j_post_ok[..]) == HxExecReason.ok;
+  j_post_bad := [3] int.[0, 99, 1];
+  #assert hx_post_check(HX_MOD_JSON_SCHEMA, a_j[..], j_post_bad[..]) == HxExecReason.malformed_schema;
+  // Exact hx_build_witness length check (kills trailing n += 1 -> n += 2)
+  wprog: [HX_WITNESS_MAX] TmOp;
+  #assert hx_build_witness(HX_MOD_DIFF_VERIFY, a_d[..], r_d.outputs[..], wprog[..]) == 13;
+
+  j_zero := [8] int.[1, 0, 0, 1, 0, 1, 0, 0]; #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_zero[..]) == HxExecReason.ok;
+  j_b1 := [8] int.[1, 1, -1, 1, 0, 1, 0, 10]; #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_b1[..]) == HxExecReason.arg_out_of_range;
+  j_b2 := [8] int.[1, 1, 10, 1, 0, 1, 0, -1]; #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_b2[..]) == HxExecReason.arg_out_of_range;
+  // Exact boundary: ol+nl == HX_ARG_MAX with pl=0 (ok) vs ol+nl == HX_ARG_MAX+1 (overflow) and pl+ol+nl == HX_ARG_MAX+1 (overflow)
+  j_ed1 := [8] int.[1, 0, 10, 1, 33554432, 1, 33554432, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_ed1[..]) == HxExecReason.ok;
+  j_ov1 := [8] int.[1, -10, 10, 1, 33554432, 1, 33554433, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_ov1[..]) == HxExecReason.arith_overflow;
+  j_ov2 := [8] int.[1, 1, 10, 1, 33554432, 1, 33554432, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_JSON_SCHEMA, true, j_ov2[..]) == HxExecReason.arith_overflow;
+
+  // 3. oa-exec-dep-sched: ready + cycle_detected refusal + exact pre-checks
+  a_s := [6] int.[0, 0, 2, 8, 5, 0];
+  r_s := hx_invoke_core(HX_MOD_DEP_SCHED, m_dep, sha, true, a_s[..]);
+  #assert r_s.reason == HxExecReason.ok && r_s.outputs[0] == 1 && r_s.outputs[1] == 3 && r_s.outputs[2] == 56;
+  #assert r_s.rx_claim.steps == 15 && hx_verify_receipt(m_dep, sha, r_s);
+
+  a_cyc := [6] int.[0, 1, 2, 8, 5, 0];
+  r_cyc := hx_invoke_core(HX_MOD_DEP_SCHED, m_dep, sha, true, a_cyc[..]);
+  #assert r_cyc.reason == HxExecReason.cycle_detected && r_cyc.core_ran && r_cyc.replay_ok && r_cyc.outputs[0] == 0 && r_cyc.outputs[1] == 2;
+  #assert r_cyc.rx_claim.steps == 7 && hx_verify_receipt(m_dep, sha, r_cyc);
+  clen := hx_format_injection(r_cyc, ibuf[..]);
+  #assert hx_find_sub(cast(string) ibuf[0..<clen], "<exec_refuse reason=\"cycle_detected\">0,2,0</exec_refuse>", 0) > 0;
+
+  s_zero := [6] int.[0, 0, 0, 1, 0, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_zero[..]) == HxExecReason.ok;
+  s_b1 := [6] int.[-1, 0, 0, 1, 0, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_b1[..]) == HxExecReason.arg_out_of_range;
+  s_b2 := [6] int.[0, 0, -1, 1, 0, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_b2[..]) == HxExecReason.arg_out_of_range;
+  s_b3 := [6] int.[0, 0, 0, 0, 5, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_b3[..]) == HxExecReason.arg_out_of_range;
+  s_b4 := [6] int.[0, 0, 0, 1, -1, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_b4[..]) == HxExecReason.arg_out_of_range;
+  // Exact boundary pri*10 + (cap - run) == HX_ARG_MAX (6710886*10 + (10-6) = 67108864) vs +1 (67108865)
+  s_ed := [6] int.[0, 0, 6, 10, 6710886, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_ed[..]) == HxExecReason.ok;
+  s_ov := [6] int.[0, 0, 5, 10, 6710886, 0]; #assert hx_pre_check(HX_MOD_DEP_SCHED, true, s_ov[..]) == HxExecReason.arith_overflow;
+
+  // 4. oa-exec-arith-budget: admitted + over-cap (outputs[0]==0) + overflow & negative exact boundaries
+  a_b := [6] int.[5000, 1000, 200, 4000, 10, 50];
+  r_b := hx_invoke_core(HX_MOD_ARITH_BUDGET, m_bud, sha, true, a_b[..]);
+  #assert r_b.reason == HxExecReason.ok && r_b.outputs[0] == 1 && r_b.outputs[1] == 4300 && r_b.outputs[2] == 700;
+  #assert r_b.rx_claim.steps == 17 && hx_verify_receipt(m_bud, sha, r_b);
+
+  a_bref := [6] int.[500, 1000, 200, 4000, 10, 50];
+  r_bref := hx_invoke_core(HX_MOD_ARITH_BUDGET, m_bud, sha, true, a_bref[..]);
+  #assert r_bref.reason == HxExecReason.ok && r_bref.outputs[0] == 0 && r_bref.outputs[1] == 500 && r_bref.outputs[2] == 0;
+  #assert r_bref.rx_claim.steps == 7 && hx_verify_receipt(m_bud, sha, r_bref);
+
+  b_zero := [6] int.[0, 0, 0, 0, 0, 0]; #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, b_zero[..]) == HxExecReason.ok;
+  // Exact boundary sp + req + tk * rate == HX_ARG_MAX vs HX_ARG_MAX + 1 (with non-zero sp, req, and cap=0!)
+  b_ed0 := [6] int.[0, 10, 20, 0, 1, HX_ARG_MAX - 30];
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, b_ed0[..]) == HxExecReason.ok;
+  b_ov2 := [6] int.[0, 10, 21, 0, 1, HX_ARG_MAX - 30];
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, b_ov2[..]) == HxExecReason.arith_overflow;
+  b_ov1 := [6] int.[5000, 0, 0, 5000, 1, HX_ARG_MAX + 1];
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, b_ov1[..]) == HxExecReason.arg_out_of_range;
+  b_ovp := [6] int.[5000, 0, 0, 5000, 12000, 9000];
+  r_bov := hx_invoke_core(HX_MOD_ARITH_BUDGET, m_bud, sha, true, b_ovp[..]);
+  #assert r_bov.reason == HxExecReason.arith_overflow && !r_bov.core_ran;
+  ovlen := hx_format_injection(r_bov, ibuf[..]);
+  #assert cast(string) ibuf[0..<ovlen] == "<exec_refuse reason=\"arith_overflow\"></exec_refuse>";
+  for neg_i: 0..<6 {
+    bn := [6] int.[100, 0, 0, 100, 0, 0];
+    bn[neg_i] = -1;
+    #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, bn[..]) == HxExecReason.arg_out_of_range;
+  }
+
+  // 5. oa-exec-schema-diff-linked composite module
+  a_c := [10] int.[1, 30, 256, 12, 4, 12, 7, 100, 3, 3];
+  r_c := hx_invoke_core(HX_MOD_SCHEMA_DIFF, m_comp, sha, true, a_c[..]);
+  #assert r_c.reason == HxExecReason.ok && r_c.outputs[0] == 1 && r_c.outputs[1] == 103 && r_c.outputs[2] == 3;
+  #assert r_c.rx_claim.steps == 7 && hx_verify_receipt(m_comp, sha, r_c);
+  c_zero := [10] int.[1, 0, 0, 1, 0, 1, 0, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_SCHEMA_DIFF, true, c_zero[..]) == HxExecReason.ok;
+  for ni: [5] int.[2, 4, 6, 7, 9] {
+    cn := a_c; cn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_SCHEMA_DIFF, true, cn[..]) == HxExecReason.arg_out_of_range;
+  }
+  c_ov := a_c; c_ov[7] = HX_ARG_MAX; c_ov[6] = 5; c_ov[4] = 4;
+  #assert hx_pre_check(HX_MOD_SCHEMA_DIFF, true, c_ov[..]) == HxExecReason.arith_overflow;
+  c_ed := a_c; c_ed[7] = HX_ARG_MAX; c_ed[6] = 4; c_ed[4] = 4;
+  #assert hx_pre_check(HX_MOD_SCHEMA_DIFF, true, c_ed[..]) == HxExecReason.ok;
+
+  // Corrupted weight matrix caught by BOTH hx_invoke_core (Ch 234 replay) AND hx_verify_receipt!
+  wc0 := w4;
+  wc0[m_bud.w_out_offset] += 1.0; // corrupts output 0 (admitted)
+  m_cor0 := m_bud; m_cor0.weights = wc0[0..<m_bud.n_weights];
+  wc1 := w4;
+  wc1[m_bud.w_out_offset + 1 * m_bud.width] += 1.0; // corrupts output 1 (remaining_sats)
+  m_cor1 := m_bud; m_cor1.weights = wc1[0..<m_bud.n_weights];
+  #assert hx_invoke_core(HX_MOD_ARITH_BUDGET, m_cor1, sha, true, a_b[..]).reason == HxExecReason.replay_failed;
+  wc2 := w4;
+  wc2[m_bud.w_out_offset + 2 * m_bud.width] += 1.0; // corrupts output 2 (total_cost)
+  m_cor2 := m_bud; m_cor2.weights = wc2[0..<m_bud.n_weights];
+  #assert hx_invoke_core(HX_MOD_ARITH_BUDGET, m_cor2, sha, true, a_b[..]).reason == HxExecReason.replay_failed;
+  // Clean receipt r_b verified against corrupted models fails on EACH of outputs[0], outputs[1], outputs[2]!
+  #assert !hx_verify_receipt(m_cor0, sha, r_b);
+  #assert !hx_verify_receipt(m_cor1, sha, r_b);
+  #assert !hx_verify_receipt(m_cor2, sha, r_b);
+
+  // Pre-check & invoke admission refusals
+  #assert hx_pre_check(0, false, a_b[..]) == HxExecReason.core_unverified;
+  #assert hx_pre_check(0, true, a_b[..]) == HxExecReason.unknown_module;
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, false, a_b[..]) == HxExecReason.core_unverified;
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, a_b[0..<5]) == HxExecReason.arity_mismatch;
+  b_huge := [6] int.[HX_ARG_MAX + 1, 0, 0, 100, 0, 0];
+  #assert hx_pre_check(HX_MOD_ARITH_BUDGET, true, b_huge[..]) == HxExecReason.arg_out_of_range;
+  bad_m := m_bud; bad_m.status = EvStatus.shape;
+  #assert hx_invoke_core(HX_MOD_ARITH_BUDGET, bad_m, sha, true, a_b[..]).reason == HxExecReason.core_unverified;
+  #assert hx_invoke_core(HX_MOD_ARITH_BUDGET, m_diff, sha, true, a_b[..]).reason == HxExecReason.core_unverified;
+  bad_mo := m_bud; bad_mo.n_outputs = 2;
+  #assert hx_invoke_core(HX_MOD_ARITH_BUDGET, bad_mo, sha, true, a_b[..]).reason == HxExecReason.core_unverified;
+
+  // Tamper tests on hx_verify_receipt: 1-bit tamper in EVERY field MUST fail
+  #assert !hx_verify_receipt(m_bud, sha, r_bov);
+  t0 := r_b; t0.replay_ok = false; #assert !hx_verify_receipt(m_bud, sha, t0);
+  t1 := r_b; t1.module_sha[0] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t1);
+  t2 := r_b; t2.module_id = 0; t2.n_inputs = 0; #assert !hx_verify_receipt(m_bud, sha, t2);
+  t2b := r_b; t2b.module_id = HX_MOD_SCHEMA_DIFF + 1; #assert !hx_verify_receipt(m_bud, sha, t2b);
+  t3 := r_b; t3.n_inputs = 5; #assert !hx_verify_receipt(m_bud, sha, t3);
+  t4 := r_b; t4.n_outputs = 2; #assert !hx_verify_receipt(m_bud, sha, t4);
+  t8 := r_b; t8.rx_claim.trace[0] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t8);
+  t9 := r_b; t9.ev_digest[31] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t9);
+  #assert !hx_verify_receipt(bad_m, sha, r_b);
+}

@@ -314,6 +314,7 @@ struct InkSession {
 
     int pos;
     int max_pos_written;
+    int64_t last_hidden_off;
     /* Exact cross-request KV + shortconv prefix snapshots (slot 0 = prefill end, slot 1 = backup/turn end). */
     struct {
         int valid;
@@ -936,6 +937,7 @@ void ink_reset(InkSession *s) {
     }
     s->pos = 0;
     s->max_pos_written = 0;
+    s->last_hidden_off = 0;
     s->snaps[0].valid = 0;
     s->snaps[1].valid = 0;
 }
@@ -1126,6 +1128,7 @@ static int enqueue_step(InkSession *s, PmBatch batch, int32_t token_id, int comp
             CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
                  a_f32(hp->logit_softcap), a_f32v(s->logits, 0, nv));
         }
+        s->last_hidden_off = 0;
     }
 
     s->pos++;
@@ -1946,6 +1949,7 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
             CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
                  a_f32(hp->logit_softcap), a_f32v(s->logits, 0, nv));
         }
+        s->last_hidden_off = last_off;
     }
 
     double gpu_s = 0.0;
@@ -2006,6 +2010,9 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
 
 const float *ink_logits(const InkSession *s) {
     return s ? (const float *)pm_contents(s->logits) : NULL;
+}
+const float *ink_hidden(const InkSession *s) {
+    return s ? ((const float *)pm_contents(s->norm_buf) + s->last_hidden_off) : NULL;
 }
 const InkHParams *ink_hparams(const InkSession *s) { return s ? &s->gguf.hp : NULL; }
 int ink_vocab_size(const InkSession *s) { return s ? (int)s->gguf.hp.n_vocab : 0; }
