@@ -1,0 +1,456 @@
+// Managed Google Antigravity CLI (`agy`) installer, verifier, lease manager,
+// and pruner (GitHub #13839).
+//
+// Downloads official releases from Google's Antigravity CLI manifest endpoint,
+// verifies >= 1.5.0 < 2.0.0 and streaming SHA-512 in pure Coax, installs into
+// immutable ~/.openagents/runtimes/agy/releases/<release_id>/ directories,
+// switches active.json atomically, and prunes only unleased inactive versions.
+//
+// Usage:
+//   coax/web/tool.sh coax/lib/agent/engine/agy-install.coax install [--root DIR] [--os OS] [--arch ARCH] [--musl] [--manifest FILE] [--artifact FILE]
+//   coax/web/tool.sh coax/lib/agent/engine/agy-install.coax prune [--root DIR]
+//   coax/web/tool.sh coax/lib/agent/engine/agy-install.coax status [--root DIR]
+
+#load "antigravity.coax";
+#load "../../sys/proc.coax";
+#load "../../sys/tool.coax";
+#load "../../crypto/sha512.coax";
+
+// Stream-hash a file on disk with SHA-512 (64 KiB chunks) into 128 lowercase hex chars.
+agy_sha512_file_hex :: (path: string, out_hex: [] u8) -> string {
+  if out_hex.count < 128 { return ""; }
+  sz := fs_size(path);
+  if sz < 0 { return ""; }
+  st: [208] u8;
+  if sha512_init(st[..]) != SHA512_OK { return ""; }
+  chunk: [65536] u8;
+  off := 0;
+  while off < sz {
+    n := fs_read_at(path, off, chunk[..]);
+    if n <= 0 { return ""; }
+    if sha512_update_checked(st[..], chunk[0..<n], false) != SHA512_OK { return ""; }
+    off += n;
+  }
+  dig: [64] u8;
+  if sha512_final_checked(st[..], dig[..], false) != SHA512_OK { return ""; }
+  hex := "0123456789abcdef";
+  for i: 0..<64 {
+    out_hex[i * 2] = hex[cast(int) (dig[i] >> 4)];
+    out_hex[i * 2 + 1] = hex[cast(int) (dig[i] & 15)];
+  }
+  return cast(string) out_hex[0..<128];
+}
+
+// Retry fs_remove with bounded backoff for briefly locked Windows runtime folders (#13839).
+agy_remove_retry :: (path: string) -> bool {
+  if fs_remove(path) { return true; }
+  attempt := 0;
+  while true {
+    delay := agy_win_retry_delay_ms(attempt);
+    if delay < 0 { return false; }
+    proc_sleep(delay);
+    if fs_remove(path) { return true; }
+    attempt += 1;
+  }
+  return false;
+}
+
+// Retry fs_rename with bounded backoff for briefly locked Windows runtime folders (#13839).
+agy_rename_retry :: (from: string, to: string) -> bool {
+  if fs_rename(from, to) { return true; }
+  attempt := 0;
+  while true {
+    delay := agy_win_retry_delay_ms(attempt);
+    if delay < 0 { return false; }
+    proc_sleep(delay);
+    if fs_rename(from, to) { return true; }
+    attempt += 1;
+  }
+  return false;
+}
+
+// True when a POSIX process with pid is currently alive (`kill -0 <pid>`).
+agy_pid_alive :: (pid: int) -> bool {
+  if pid <= 0 { return false; }
+  pb: [32] u8; ps := agy_int_to_str(pid, pb[..]);
+  if ps.count == 0 { return false; }
+  argv := [3] string.["kill", "-0", ps];
+  out: [64] u8; err: [64] u8;
+  r := proc_run(argv[..], 2000, out[..], err[..]);
+  return r.started == 0 && r.status == 0;
+}
+
+// Load active leases from <root>/leases/. When check_alive is true, stale leases
+// belonging to exited PIDs are removed automatically.
+agy_leases_load_disk :: (root: string, leases: [] AgyLeases, check_alive: bool) -> int {
+  leases[0] = AgyLeases.{};
+  db: [1024] u8; dir := agy_leases_dir(root, db[..]);
+  if dir.count == 0 || fs_kind(dir) != FS_DIR { return 0; }
+  list: [1] FsList;
+  if fs_list(dir, list[..]) < 0 { return 0; }
+  loaded := 0;
+  for i: 0..<list[0].n {
+    name := fs_entry(list[..], i);
+    ridb: [64] u8;
+    pid := agy_parse_lease_filename(name, ridb[..]);
+    if pid <= 0 { continue; }
+    rid := cast(string) ridb[0..<64];
+    if check_alive && !agy_pid_alive(pid) {
+      fpb: [1200] u8;
+      fp := fs_join(dir, name, fpb[..]);
+      if fp.count > 0 { _ = fs_remove(fp); }
+      continue;
+    }
+    if agy_lease_acquire(leases, rid, pid) >= 0 { loaded += 1; }
+  }
+  return loaded;
+}
+
+// Prune inactive, unleased releases under <root>/releases/. Returns count removed.
+agy_prune_disk :: (root: string, active_id: string, check_alive: bool) -> int {
+  leases: [1] AgyLeases;
+  _ = agy_leases_load_disk(root, leases[..], check_alive);
+  rb: [1024] u8; rels := fs_join(root, "releases", rb[..]);
+  if rels.count == 0 || fs_kind(rels) != FS_DIR { return 0; }
+  list: [1] FsList;
+  if fs_list(rels, list[..]) < 0 { return 0; }
+  pruned := 0;
+  for i: 0..<list[0].n {
+    cand := fs_entry(list[..], i);
+    if !agy_can_prune_release(leases[..], active_id, cand) { continue; }
+    cb: [1200] u8; cp := fs_join(rels, cand, cb[..]);
+    if cp.count > 0 && agy_remove_retry(cp) { pruned += 1; }
+  }
+  return pruned;
+}
+
+// Fetch the live Google Antigravity CLI manifest JSON for (os, arch, musl) via curl.
+agy_fetch_manifest :: (os: string, arch: string, musl: bool, out_json: [] u8) -> string {
+  ub: [256] u8; url := agy_manifest_url(os, arch, musl, ub[..]);
+  if url.count == 0 { return ""; }
+  argv := [3] string.["curl", "-fsSL", url];
+  err: [1024] u8;
+  r := proc_run(argv[..], 30000, out_json, err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return ""; }
+  return cast(string) out_json[0..<r.out_n];
+}
+
+// Locate the extracted agy executable inside extract_dir (direct or one level deep).
+agy_find_extracted_exe :: (extract_dir: string, exe_name: string, out: [] u8) -> string {
+  p := fs_join(extract_dir, exe_name, out);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  alt := ifx exe_name == "antigravity" then "agy" else "antigravity";
+  p = fs_join(extract_dir, alt, out);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  list: [1] FsList;
+  if fs_list(extract_dir, list[..]) < 0 { return ""; }
+  for i: 0..<list[0].n {
+    sub := fs_entry(list[..], i);
+    sb: [1200] u8; sp := fs_join(extract_dir, sub, sb[..]);
+    if sp.count == 0 || fs_kind(sp) != FS_DIR { continue; }
+    p = fs_join(sp, exe_name, out);
+    if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+    p = fs_join(sp, alt, out);
+    if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  }
+  return "";
+}
+
+// Install and verify a managed agy release from manifest_json into root:
+// 1. Validate manifest (>= 1.5.0 < 2.0.0, 128-hex SHA-512, pinned GCS URL).
+// 2. Download artifact (or read artifact_override) and verify streaming SHA-512.
+// 3. Extract into immutable <root>/releases/<release_id>/ and switch active.json atomically.
+// 4. Prune unleased old versions without touching active or leased releases.
+// Returns "" on success (writing installed exe path into out_exe), else an error message.
+agy_install_from_manifest :: (
+  root: string,
+  manifest_json: string,
+  os: string,
+  arch: string,
+  musl: bool,
+  artifact_override: string,
+  check_alive: bool,
+  out_exe: [] u8
+) -> string {
+  rel: [1] AgyRelease;
+  if !agy_parse_release(manifest_json, os, arch, musl, rel[..]) {
+    return "invalid Antigravity CLI release manifest (requires >= 1.5.0 < 2.0.0, 128-hex sha512, and pinned GCS URL)";
+  }
+  sha_expect := cast(string) rel[0].sha512[0..<rel[0].nsha512];
+  url := cast(string) rel[0].url[0..<rel[0].nurl];
+  exe_name := cast(string) rel[0].exe[0..<rel[0].nexe];
+  ridb: [80] u8; rid := agy_release_id_from_sha512(sha_expect, ridb[..]);
+  if rid.count != 64 { return "failed to derive release ID"; }
+
+  rel_root_b: [1024] u8; rel_root := fs_join(root, "releases", rel_root_b[..]);
+  stg_root_b: [1024] u8; stg_root := fs_join(root, "staging", stg_root_b[..]);
+  if !fs_mkdir_all(rel_root) || !fs_mkdir_all(stg_root) { return "failed to create managed agy directories"; }
+
+  rdir_b: [1200] u8; rdir := agy_release_dir(root, rid, rdir_b[..]);
+  exe_b: [1280] u8; target_exe := agy_managed_exe_path(root, rid, os == "windows", exe_b[..]);
+  if rdir.count == 0 || target_exe.count == 0 { return "managed path overflow"; }
+
+  if fs_kind(target_exe) != FS_FILE {
+    dl_b: [1280] u8;
+    dl_path := artifact_override;
+    downloaded := false;
+    if dl_path.count == 0 {
+      dnb: [96] u8; dn := cl_copy(dnb[..], rid); dn += cl_copy(dnb[dn..<dnb.count], ".download");
+      dl_path = fs_join(stg_root, cast(string) dnb[0..<dn], dl_b[..]);
+      if dl_path.count == 0 { return "staging path overflow"; }
+      _ = agy_remove_retry(dl_path);
+      argv := [5] string.["curl", "-fsSL", "-o", dl_path, url];
+      co: [1024] u8; ce: [1024] u8;
+      r := proc_run(argv[..], 300000, co[..], ce[..]);
+      if r.started != 0 || r.status != 0 {
+        _ = agy_remove_retry(dl_path);
+        return "failed to download Antigravity CLI release artifact";
+      }
+      downloaded = true;
+    }
+
+    got_hex_b: [128] u8;
+    got_hex := agy_sha512_file_hex(dl_path, got_hex_b[..]);
+    if got_hex != sha_expect {
+      if downloaded { _ = agy_remove_retry(dl_path); }
+      return "SHA-512 checksum mismatch for Antigravity CLI release artifact";
+    }
+
+    enb: [96] u8; en := cl_copy(enb[..], rid); en += cl_copy(enb[en..<enb.count], ".extract");
+    ext_b: [1280] u8; ext_dir := fs_join(stg_root, cast(string) enb[0..<en], ext_b[..]);
+    if ext_dir.count == 0 { return "extract path overflow"; }
+    _ = agy_remove_retry(ext_dir);
+    if !fs_mkdir_all(ext_dir) { return "failed to create staging extract directory"; }
+
+    if rel[0].is_tar_gz {
+      argv := [5] string.["tar", "-xzf", dl_path, "-C", ext_dir];
+      to: [1024] u8; te: [1024] u8;
+      tr := proc_run(argv[..], 120000, to[..], te[..]);
+      if tr.started != 0 || tr.status != 0 {
+        _ = agy_remove_retry(ext_dir);
+        if downloaded { _ = agy_remove_retry(dl_path); }
+        return "failed to extract Antigravity CLI tarball";
+      }
+      found_b: [1280] u8; found := agy_find_extracted_exe(ext_dir, exe_name, found_b[..]);
+      if found.count == 0 {
+        _ = agy_remove_retry(ext_dir);
+        if downloaded { _ = agy_remove_retry(dl_path); }
+        return "extracted archive does not contain Antigravity executable";
+      }
+      dest_in_ext_b: [1280] u8; dest_in_ext := fs_join(ext_dir, exe_name, dest_in_ext_b[..]);
+      if found != dest_in_ext {
+        if !agy_rename_retry(found, dest_in_ext) {
+          _ = agy_remove_retry(ext_dir);
+          if downloaded { _ = agy_remove_retry(dl_path); }
+          return "failed to place extracted executable";
+        }
+      }
+    } else {
+      dest_in_ext_b: [1280] u8; dest_in_ext := fs_join(ext_dir, exe_name, dest_in_ext_b[..]);
+      if downloaded {
+        if !agy_rename_retry(dl_path, dest_in_ext) {
+          _ = agy_remove_retry(ext_dir);
+          return "failed to stage Windows executable";
+        }
+        downloaded = false;
+      } else {
+        argv := [3] string.["cp", dl_path, dest_in_ext];
+        co: [256] u8; ce: [256] u8;
+        cr := proc_run(argv[..], 30000, co[..], ce[..]);
+        if cr.started != 0 || cr.status != 0 {
+          _ = agy_remove_retry(ext_dir);
+          return "failed to copy Windows executable";
+        }
+      }
+    }
+    if downloaded { _ = agy_remove_retry(dl_path); }
+
+    _ = agy_remove_retry(rdir);
+    if !agy_rename_retry(ext_dir, rdir) {
+      _ = agy_remove_retry(ext_dir);
+      return "failed to move release into immutable directory";
+    }
+  }
+
+  // Atomic active pointer switch via durable temp-file rename (#13839).
+  ap_b: [1200] u8; ap := agy_active_pointer_path(root, ap_b[..]);
+  af_b: [128] u8; af := agy_format_active_release(rid, af_b[..]);
+  if ap.count == 0 || af.count == 0 || !fs_replace_durable(ap, af) {
+    return "failed to switch active.json atomically";
+  }
+
+  _ = agy_prune_disk(root, rid, check_alive);
+
+  if target_exe.count <= out_exe.count {
+    _ = cl_copy(out_exe, target_exe);
+  }
+  return "";
+}
+
+agy_detect_arch :: (out: [] u8) -> string {
+  argv := [2] string.["uname", "-m"];
+  ob: [64] u8; eb: [64] u8;
+  r := proc_run(argv[..], 5000, ob[..], eb[..]);
+  if r.started == 0 && r.status == 0 && r.out_n > 0 {
+    m := cast(string) ob[0..<r.out_n];
+    if m == "arm64" || m == "aarch64" { return cast(string) out[0..<cl_copy(out, "arm64")]; }
+    if m == "x86_64" || m == "amd64" { return cast(string) out[0..<cl_copy(out, "x64")]; }
+  }
+  return cast(string) out[0..<cl_copy(out, "arm64")];
+}
+
+agy_print :: (s: string) {
+  print("%", s);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("agy-install: arguments did not fit"); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd.count == 0 {
+    tool_errln("usage: agy-install <install|prune|status> [--root DIR] [--os OS] [--arch ARCH] [--musl] [--manifest FILE] [--artifact FILE]");
+    return 2;
+  }
+
+  root := args_value(a[..], "--root", "");
+  rb: [4200] u8;
+  if root.count == 0 {
+    hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+    if home.count == 0 { home = proc_getenv("USERPROFILE", hb[..]); }
+    root = agy_managed_root(home, rb[..]);
+  }
+  if root.count == 0 { tool_errln("agy-install: could not determine managed root"); return 1; }
+
+  if cmd == "status" {
+    ap_b: [4260] u8; ap := agy_active_pointer_path(root, ap_b[..]);
+    fb: [512] u8; fn := fs_read(ap, fb[..]);
+    if fn <= 0 { agy_print("active: none\n"); return 0; }
+    idb: [80] u8; rid := agy_parse_active_release(cast(string) fb[0..<fn], idb[..]);
+    if rid.count == 0 { agy_print("active: invalid\n"); return 1; }
+    agy_print("active: "); agy_print(rid); agy_print("\n");
+    return 0;
+  }
+
+  if cmd == "prune" {
+    ap_b: [4260] u8; ap := agy_active_pointer_path(root, ap_b[..]);
+    fb: [512] u8; fn := fs_read(ap, fb[..]);
+    idb: [80] u8; active := ifx fn > 0 then agy_parse_active_release(cast(string) fb[0..<fn], idb[..]) else "";
+    pruned := agy_prune_disk(root, active, true);
+    pb: [32] u8; ps := ifx pruned == 0 then "0" else agy_int_to_str(pruned, pb[..]);
+    agy_print("pruned: "); agy_print(ps); agy_print("\n");
+    return 0;
+  }
+
+  if cmd == "install" {
+    os := args_value(a[..], "--os", ifx tool_os() == TOOL_MAC then "darwin" else "linux");
+    ab: [16] u8;
+    arch := args_value(a[..], "--arch", agy_detect_arch(ab[..]));
+    musl := args_has(a[..], "--musl");
+    manifest_file := args_value(a[..], "--manifest", "");
+    artifact_file := args_value(a[..], "--artifact", "");
+
+    mb: [8192] u8; mjson := "";
+    if manifest_file.count > 0 {
+      mn := fs_read(manifest_file, mb[..]);
+      if mn <= 0 { tool_errln("agy-install: failed to read manifest file"); return 1; }
+      mjson = cast(string) mb[0..<mn];
+    } else {
+      mjson = agy_fetch_manifest(os, arch, musl, mb[..]);
+      if mjson.count == 0 { tool_errln("agy-install: failed to fetch release manifest"); return 1; }
+    }
+
+    exeb: [4300] u8;
+    err := agy_install_from_manifest(root, mjson, os, arch, musl, artifact_file, true, exeb[..]);
+    if err.count > 0 { tool_errln(err); return 1; }
+    // Print installed path
+    ap_b: [4260] u8; ap := agy_active_pointer_path(root, ap_b[..]);
+    fb: [512] u8; fn := fs_read(ap, fb[..]);
+    idb: [80] u8; rid := agy_parse_active_release(cast(string) fb[0..<fn], idb[..]);
+    ep_b: [4300] u8; ep := agy_managed_exe_path(root, rid, os == "windows", ep_b[..]);
+    agy_print("installed: "); agy_print(ep); agy_print("\n");
+    return 0;
+  }
+
+  if cmd == "selftest" {
+    return agy_selftest();
+  }
+
+  tool_errln("agy-install: unknown command");
+  return 2;
+}
+
+agy_selftest :: () -> int {
+  tb: [1024] u8; tmp := fs_temp("agy-inst-test-", tb[..]);
+  if tmp.count == 0 { tool_errln("selftest: fs_temp failed"); return 1; }
+
+  // Build two fake release tarballs (v1.5.10 and v1.5.13) with real SHA-512 digests
+  s1b: [1200] u8; s1 := fs_join(tmp, "src1", s1b[..]);
+  s2b: [1200] u8; s2 := fs_join(tmp, "src2", s2b[..]);
+  if !fs_mkdir_all(s1) || !fs_mkdir_all(s2) { tool_errln("selftest: mkdir failed"); return 1; }
+  e1b: [1200] u8; e1 := fs_join(s1, "antigravity", e1b[..]);
+  e2b: [1200] u8; e2 := fs_join(s2, "antigravity", e2b[..]);
+  if !fs_write(e1, "#!/bin/sh\necho v1.5.10\n") || !fs_write(e2, "#!/bin/sh\necho v1.5.13\n") {
+    tool_errln("selftest: write fake exe failed"); return 1;
+  }
+
+  t1b: [1200] u8; t1 := fs_join(tmp, "r1.tar.gz", t1b[..]);
+  t2b: [1200] u8; t2 := fs_join(tmp, "r2.tar.gz", t2b[..]);
+  o: [256] u8; er: [256] u8;
+  a1 := [6] string.["tar", "-czf", t1, "-C", s1, "antigravity"];
+  a2 := [6] string.["tar", "-czf", t2, "-C", s2, "antigravity"];
+  r1 := proc_run(a1[..], 10000, o[..], er[..]);
+  r2 := proc_run(a2[..], 10000, o[..], er[..]);
+  if r1.started != 0 || r1.status != 0 || r2.started != 0 || r2.status != 0 {
+    tool_errln("selftest: tar creation failed"); return 1;
+  }
+
+  h1b: [128] u8; h1 := agy_sha512_file_hex(t1, h1b[..]);
+  h2b: [128] u8; h2 := agy_sha512_file_hex(t2, h2b[..]);
+  if h1.count != 128 || h2.count != 128 || h1 == h2 {
+    tool_errln("selftest: sha512 hashing failed"); return 1;
+  }
+
+  rootb: [1200] u8; root := fs_join(tmp, "managed", rootb[..]);
+
+  // 1. Mismatched SHA-512 is refused before touching active.json
+  bad_m := "{\"version\":\"1.5.10\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.10-100/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+  exeb: [1280] u8;
+  err_bad := agy_install_from_manifest(root, bad_m, "darwin", "arm64", false, t1, false, exeb[..]);
+  if err_bad.count == 0 { tool_errln("selftest: expected sha512 mismatch error"); return 1; }
+
+  // 2. Valid manifest 1 installs into releases/<rid1>/antigravity and writes active.json
+  m1b: [512] u8; m1n := 0;
+  m1n += cl_copy(m1b[m1n..<m1b.count], "{\"version\":\"1.5.10\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.10-100/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"");
+  m1n += cl_copy(m1b[m1n..<m1b.count], h1);
+  m1n += cl_copy(m1b[m1n..<m1b.count], "\"}");
+  err1 := agy_install_from_manifest(root, cast(string) m1b[0..<m1n], "darwin", "arm64", false, t1, false, exeb[..]);
+  if err1.count > 0 { tool_errln(err1); return 1; }
+
+  rid1b: [80] u8; rid1 := agy_release_id_from_sha512(h1, rid1b[..]);
+  rid2b: [80] u8; rid2 := agy_release_id_from_sha512(h2, rid2b[..]);
+  d1b: [1200] u8; d1 := agy_release_dir(root, rid1, d1b[..]);
+  d2b: [1200] u8; d2 := agy_release_dir(root, rid2, d2b[..]);
+  if fs_kind(d1) != FS_DIR { tool_errln("selftest: rid1 not installed"); return 1; }
+
+  // 3. Acquire a lease on rid1 (simulating a running agy session), then upgrade to rid2:
+  //    active.json switches atomically to rid2, and rid1 MUST NOT be pruned while leased!
+  if !agy_lease_acquire_file(root, rid1, 424242) { tool_errln("selftest: lease acquire failed"); return 1; }
+  m2b: [512] u8; m2n := 0;
+  m2n += cl_copy(m2b[m2n..<m2b.count], "{\"version\":\"1.5.13\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.13-200/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"");
+  m2n += cl_copy(m2b[m2n..<m2b.count], h2);
+  m2n += cl_copy(m2b[m2n..<m2b.count], "\"}");
+  err2 := agy_install_from_manifest(root, cast(string) m2b[0..<m2n], "darwin", "arm64", false, t2, false, exeb[..]);
+  if err2.count > 0 { tool_errln(err2); return 1; }
+  if fs_kind(d2) != FS_DIR { tool_errln("selftest: rid2 not installed"); return 1; }
+  if fs_kind(d1) != FS_DIR { tool_errln("selftest: leased rid1 was wrongly pruned"); return 1; }
+
+  // 4. Release the lease on rid1 and prune: rid1 is deleted while rid2 (active) stays!
+  if !agy_lease_release_file(root, rid1, 424242) { tool_errln("selftest: lease release failed"); return 1; }
+  if agy_prune_disk(root, rid2, false) != 1 { tool_errln("selftest: expected 1 pruned release"); return 1; }
+  if fs_kind(d1) != FS_NONE { tool_errln("selftest: rid1 should be deleted"); return 1; }
+  if fs_kind(d2) != FS_DIR { tool_errln("selftest: active rid2 should remain"); return 1; }
+
+  _ = fs_remove(tmp);
+  agy_print("agy-install selftest: PASS\n");
+  return 0;
+}

@@ -105,8 +105,37 @@ AgywState :: struct {
   pending_is_question: bool;
   pending_id: [AGYW_ID] u8; pending_id_n: int;
   pending_label: [AGYW_LABEL] u8; pending_label_n: int;
+  lease_root: [1024] u8; lease_root_n: int;     // active managed release lease (#13839)
+  lease_rid: [64] u8; lease_rid_n: int;
+  lease_pid: int;
   out: [AGYW_LINE] u8;
   sink: bool; log: [16384] u8; log_n: int;      // checks: lines go here instead of stdout
+}
+
+// Acquire a disk lease if program is inside ~/.openagents/runtimes/agy/releases/<id>/ (#13839).
+agyw_lease_acquire :: (s: [] AgywState, pid: int) {
+  if pid <= 0 { return; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
+  if home.count == 0 { return; }
+  rb: [1024] u8; root := agy_managed_root(home, rb[..]);
+  if root.count == 0 { return; }
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  ridb: [64] u8; rid := agy_release_id_from_exe_path(root, prog, ridb[..]);
+  if rid.count != 64 { return; }
+  if agy_lease_acquire_file(root, rid, pid) {
+    s[0].lease_root_n = agyw_copy(s[0].lease_root[..], root);
+    s[0].lease_rid_n = agyw_copy(s[0].lease_rid[..], rid);
+    s[0].lease_pid = pid;
+  }
+}
+
+agyw_lease_release :: (s: [] AgywState) {
+  if s[0].lease_pid <= 0 || s[0].lease_root_n == 0 || s[0].lease_rid_n != 64 { return; }
+  _ = agy_lease_release_file(agyw_str(s[0].lease_root[..], s[0].lease_root_n), agyw_str(s[0].lease_rid[..], s[0].lease_rid_n), s[0].lease_pid);
+  s[0].lease_pid = 0;
+  s[0].lease_rid_n = 0;
+  s[0].lease_root_n = 0;
 }
 
 // Copy src into dst, backing up to a valid UTF-8 codepoint boundary when truncating (#13836).
@@ -772,6 +801,7 @@ agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
   if cwd.count == 0 { cwd = "."; }
   why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
   if why.count > 0 { tool_errln(why); return 1; }
+  agyw_lease_acquire(s, x[0].p[0].pid);
   until := cxproc_now_ms() + AGYW_PROBE_MS;
   while x[0].live && s[0].ran_n == 0 && cxproc_now_ms() < until {
     ev: [1] CuEvent;
@@ -782,11 +812,13 @@ agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
   if s[0].ran_n == 0 {
     w := ifx x[0].live then "Antigravity opened no session in time." else cue_why(x);
     if x[0].live { cue_close(x); }
+    agyw_lease_release(s);
     tool_errln(ifx w.count > 0 then w else "Antigravity stopped before it opened a session.");
     return 1;
   }
   sid_buf: [CU_ID] u8; sid_n := agyw_copy(sid_buf[..], cu_session_id(x[0].c));
   cue_close(x);
+  agyw_lease_release(s);
   agyw_probe_cleanup(agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n), cwd, cast(string) sid_buf[0..<sid_n], cwd);
   n := agyw_copy(s[0].out[..], agyw_str(s[0].ran[..], s[0].ran_n));
   n += agyw_copy(s[0].out[n..<s[0].out.count], "\t");
@@ -808,6 +840,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     why := agy_check_version(ver);
     if why.count > 0 {
       cue_close(x);
+      agyw_lease_release(s);
       agyw_finish_turn(s, "failed", why, emit);
     }
     return;
@@ -879,11 +912,13 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
   if ev.kind == CuEventKind.question { cu_question(x[0].c, true); return; }
   if ev.kind == CuEventKind.plan { cu_plan(x[0].c, false); return; }
   if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+    agyw_lease_release(s);
     if s[0].turn_active {
       if x[0].restart_required && !s[0].respawned && s[0].last_prompt_n > 0 {
         s[0].respawned = true;
         why := agy_respawn_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), agyw_str(s[0].cwd[..], s[0].cwd_n), "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
         if why.count == 0 {
+          agyw_lease_acquire(s, x[0].p[0].pid);
           _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
           return;
         }
@@ -918,6 +953,7 @@ tool_main :: () -> int #export_c #effects(all) {
     rn := agyw_read_line(in_buf[..], in_len[..], wait_ms);
     if rn == -1 {
       if x[0].live { cue_stop(x); cue_close(x); }
+      agyw_lease_release(s);
       break;
     }
     if rn > 0 {
@@ -977,7 +1013,7 @@ tool_main :: () -> int #export_c #effects(all) {
             cwd := ifx req[0].cwd.count > 0 then req[0].cwd else ".";
             cwd_changed := s[0].cwd_n > 0 && agyw_str(s[0].cwd[..], s[0].cwd_n) != cwd;
             s[0].cwd_n = agyw_copy(s[0].cwd[..], cwd);
-            if cwd_changed && x[0].live { cue_close(x); }
+            if cwd_changed && x[0].live { cue_close(x); agyw_lease_release(s); }
 
             prompt_buf: [CUE_OWED] u8;
             prompt := req[0].task;
@@ -999,6 +1035,7 @@ tool_main :: () -> int #export_c #effects(all) {
               if why.count > 0 {
                 agyw_finish_turn(s, "failed", why, true);
               } else {
+                agyw_lease_acquire(s, x[0].p[0].pid);
                 _ = cue_send(x, prompt);
               }
             } else {

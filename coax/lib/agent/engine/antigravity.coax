@@ -51,10 +51,35 @@ agy_agent :: () -> CuAgent {
   return a[0];
 }
 
-// agy on PATH, else managed ~/.openagents/runtimes/agy/active.json, else HOME/.local/bin/agy.
+agy_on_path_sep :: (path_env: string, sep: u8, name: string, out: [] u8) -> string {
+  at := 0;
+  while at <= path_env.count {
+    e := at; while e < path_env.count && path_env[e] != sep { e += 1; }
+    if e > at {
+      dir := cast(string) path_env[at..<e];
+      joined := fs_join(dir, name, out);
+      if joined.count > 0 && fs_exists(joined) { return joined; }
+    }
+    at = e + 1;
+  }
+  return "";
+}
+
+// agy on PATH (POSIX `:` or Windows `;` with .exe/.cmd/.bat), else managed
+// ~/.openagents/runtimes/agy/active.json, else HOME/.local/bin/agy.
 agy_find :: (path_env: string, home: string, out: [] u8) -> string {
   found := cu_on_path(path_env, "agy", out);
   if found.count > 0 { return found; }
+  // Windows PATH entries separated by ';' with .exe / .cmd / .bat launchers (#13839)
+  has_semi := false;
+  for c: path_env { if c == ';' { has_semi = true; break; } }
+  if has_semi {
+    win_names := [3] string.["agy.exe", "agy.cmd", "agy.bat"];
+    for wn: win_names {
+      wf := agy_on_path_sep(path_env, ';', wn, out);
+      if wf.count > 0 { return wf; }
+    }
+  }
   if home.count == 0 || home.count > 4000 { return ""; }
   // Managed versioned installation under ~/.openagents/runtimes/agy/active.json (#13839)
   rb: [4200] u8; root := agy_managed_root(home, rb[..]);
@@ -68,6 +93,10 @@ agy_find :: (path_env: string, home: string, out: [] u8) -> string {
         if ep.count > 0 && ep.count <= out.count && fs_exists(ep) {
           return cast(string) out[0..<cl_copy(out, ep)];
         }
+        epw := agy_managed_exe_path(root, rid, true, eb[..]);
+        if epw.count > 0 && epw.count <= out.count && fs_exists(epw) {
+          return cast(string) out[0..<cl_copy(out, epw)];
+        }
       }
     }
   }
@@ -78,6 +107,7 @@ agy_find :: (path_env: string, home: string, out: [] u8) -> string {
 agy_program :: (out: [] u8) -> string {
   pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
   hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
   return agy_find(path, home, out);
 }
 
@@ -480,6 +510,107 @@ agy_lease_count :: (l: [] AgyLeases, release_id: string) -> int {
   return c;
 }
 
+// Derive a canonical 64-hex release ID from a 128-hex SHA-512 digest (#13839).
+agy_release_id_from_sha512 :: (sha512_hex: string, out: [] u8) -> string {
+  if sha512_hex.count != 128 || out.count < 64 { return ""; }
+  for i: 0..<128 { if !agy_is_hex(sha512_hex[i]) { return ""; } }
+  for i: 0..<64 {
+    c := sha512_hex[i];
+    out[i] = ifx c >= 'A' && c <= 'F' then c + 32 else c;
+  }
+  return cast(string) out[0..<64];
+}
+
+// Build the official Google Antigravity CLI manifest URL for (os, arch, musl) (#13839).
+agy_manifest_url :: (os: string, arch: string, musl: bool, out: [] u8) -> string {
+  tb: [32] u8; target := agy_cli_target(os, arch, musl, tb[..]);
+  if target.count == 0 { return ""; }
+  need := AGY_MANIFEST_BASE.count + 1 + target.count + 5;
+  if need > out.count { return ""; }
+  n := cl_copy(out, AGY_MANIFEST_BASE);
+  n += cl_copy(out[n..<out.count], "/");
+  n += cl_copy(out[n..<out.count], target);
+  n += cl_copy(out[n..<out.count], ".json");
+  return cast(string) out[0..<n];
+}
+
+// Extract the 64-hex release ID if exe_path sits inside <root>/releases/<release_id>/... (#13839).
+agy_release_id_from_exe_path :: (root: string, exe_path: string, out: [] u8) -> string {
+  if root.count == 0 || exe_path.count == 0 || out.count < 64 { return ""; }
+  rb: [1024] u8; rels := fs_join(root, "releases", rb[..]);
+  if rels.count == 0 || exe_path.count <= rels.count + 65 { return ""; }
+  if cast(string) exe_path[0..<rels.count] != rels { return ""; }
+  sep := exe_path[rels.count];
+  if sep != '/' && sep != '\\' { return ""; }
+  start := rels.count + 1;
+  rid := cast(string) exe_path[start..<start + 64];
+  if !agy_is_release_id(rid) { return ""; }
+  after := exe_path[start + 64];
+  if after != '/' && after != '\\' { return ""; }
+  return cast(string) out[0..<cl_copy(out, rid)];
+}
+
+agy_leases_dir :: (root: string, out: [] u8) -> string {
+  if root.count == 0 { return ""; }
+  return fs_join(root, "leases", out);
+}
+
+agy_int_to_str :: (v: int, out: [] u8) -> string {
+  if v <= 0 || out.count == 0 { return ""; }
+  tmp: [32] u8; k := 0; n := v;
+  while n > 0 && k < tmp.count { tmp[k] = cast(u8) ('0' + (n % 10)); k += 1; n /= 10; }
+  if k > out.count { return ""; }
+  for i: 0..<k { out[i] = tmp[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+
+agy_lease_file_path :: (root: string, release_id: string, pid: int, out: [] u8) -> string {
+  if root.count == 0 || !agy_is_release_id(release_id) || pid <= 0 { return ""; }
+  db: [1024] u8; dir := agy_leases_dir(root, db[..]);
+  if dir.count == 0 { return ""; }
+  pb: [32] u8; ps := agy_int_to_str(pid, pb[..]);
+  nb: [128] u8; nn := cl_copy(nb[..], release_id);
+  nn += cl_copy(nb[nn..<nb.count], ".");
+  nn += cl_copy(nb[nn..<nb.count], ps);
+  nn += cl_copy(nb[nn..<nb.count], ".lease");
+  return fs_join(dir, cast(string) nb[0..<nn], out);
+}
+
+// Parse "<64-hex>.<pid>.lease" into out_rid and return pid (> 0), or -1 if malformed (#13839).
+agy_parse_lease_filename :: (name: string, out_rid: [] u8) -> int {
+  if name.count < 72 || out_rid.count < 64 { return -1; }
+  if cast(string) name[name.count - 6..<name.count] != ".lease" { return -1; }
+  if name[64] != '.' { return -1; }
+  rid := cast(string) name[0..<64];
+  if !agy_is_release_id(rid) { return -1; }
+  pid_str := cast(string) name[65..<name.count - 6];
+  if pid_str.count == 0 || pid_str.count > 10 { return -1; }
+  pid := 0;
+  for c: pid_str {
+    if c < '0' || c > '9' { return -1; }
+    pid = pid * 10 + cast(int) (c - '0');
+  }
+  if pid <= 0 { return -1; }
+  _ = cl_copy(out_rid, rid);
+  return pid;
+}
+
+// Write a disk lease file for a running agy process so pruning never deletes its active version (#13839).
+agy_lease_acquire_file :: (root: string, release_id: string, pid: int) -> bool {
+  db: [1024] u8; dir := agy_leases_dir(root, db[..]);
+  if dir.count == 0 || !fs_mkdir_all(dir) { return false; }
+  fb: [1200] u8; path := agy_lease_file_path(root, release_id, pid, fb[..]);
+  if path.count == 0 { return false; }
+  pb: [32] u8; ps := agy_int_to_str(pid, pb[..]);
+  return fs_write(path, ps);
+}
+
+agy_lease_release_file :: (root: string, release_id: string, pid: int) -> bool {
+  fb: [1200] u8; path := agy_lease_file_path(root, release_id, pid, fb[..]);
+  if path.count == 0 { return false; }
+  return fs_remove(path);
+}
+
 // True only when candidate_id is a valid release ID that is neither the active release
 // nor leased by any running agy process (#13839).
 agy_can_prune_release :: (l: [] AgyLeases, active_id: string, candidate_id: string) -> bool {
@@ -499,19 +630,21 @@ agy_is_windows_cmd :: (program: string) -> bool {
   return (a == 'c' && b == 'm' && c == 'd') || (a == 'b' && b == 'a' && c == 't');
 }
 
-// Wrap a Windows .cmd/.bat launcher through cmd.exe /d /s /c <program> <args...> (#13839).
+// Wrap a Windows .cmd/.bat launcher through cmd.exe /d /s /c <program> acp <args...> (#13839).
 agy_wrap_windows_cmd :: (l: [] CuLaunch) -> bool {
   if !agy_is_windows_cmd(l[0].program) { return false; }
-  if l[0].args_n + 4 > l[0].args.count { return false; }
+  if l[0].args_n + 5 > l[0].args.count { return false; }
   orig := l[0].program;
   i := l[0].args_n - 1;
-  while i >= 0 { l[0].args[i + 4] = l[0].args[i]; i -= 1; }
+  while i >= 0 { l[0].args[i + 5] = l[0].args[i]; i -= 1; }
   l[0].program = "cmd.exe";
   l[0].args[0] = "/d";
   l[0].args[1] = "/s";
   l[0].args[2] = "/c";
   l[0].args[3] = orig;
-  l[0].args_n += 4;
+  l[0].args[4] = "acp";
+  l[0].args_n += 5;
+  l[0].raw_args = true;
   return true;
 }
 
@@ -1310,8 +1443,24 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   #assert agy_is_windows_cmd("C:\\Users\\me\\bin\\agy.cmd") && agy_is_windows_cmd("AGY.CMD") && agy_is_windows_cmd("agy.bat");
   #assert !agy_is_windows_cmd("/usr/local/bin/agy") && !agy_is_windows_cmd("agy.exe");
   e: [1] AgyEnv; l: [1] CuLaunch;
-  agy_prepare_launch(l[..], e[..], "C:\\bin\\agy.cmd", "C:\\work", "", false, false, false);
+  agy_prepare_launch(l[..], e[..], "C:\\bin\\agy.cmd", "C:\\work", "C:\\prof", false, false, false);
   #assert agy_wrap_windows_cmd(l[..]);
-  #assert l[0].program == "cmd.exe" && l[0].args_n == 4 && l[0].args[0] == "/d" && l[0].args[2] == "/c" && l[0].args[3] == "C:\\bin\\agy.cmd";
+  #assert l[0].program == "cmd.exe" && l[0].raw_args && l[0].args_n == 9;
+  #assert l[0].args[0] == "/d" && l[0].args[1] == "/s" && l[0].args[2] == "/c" && l[0].args[3] == "C:\\bin\\agy.cmd" && l[0].args[4] == "acp" && l[0].args[5] == "--gemini-dir";
   #assert agy_win_retry_delay_ms(0) == 100 && agy_win_retry_delay_ms(4) == 2000 && agy_win_retry_delay_ms(5) == -1;
+
+  // 4. Release ID derivation, manifest URL, exe-path extraction, and lease filename parsing
+  mub: [256] u8;
+  #assert agy_manifest_url("darwin", "arm64", false, mub[..]) == "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json";
+  #assert agy_manifest_url("windows", "x64", false, mub[..]) == "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json";
+  ridb: [80] u8;
+  #assert agy_release_id_from_sha512(sha, ridb[..]) == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  exeb: [256] u8;
+  exe_p := agy_managed_exe_path("/tmp/agy", rid_a, false, exeb[..]);
+  #assert agy_release_id_from_exe_path("/tmp/agy", exe_p, ridb[..]) == rid_a;
+  #assert agy_release_id_from_exe_path("/tmp/agy", "/usr/local/bin/agy", ridb[..]) == "";
+  lfb: [256] u8;
+  lf := agy_lease_file_path("/tmp/agy", rid_a, 9876, lfb[..]);
+  #assert agy_parse_lease_filename(fs_base(lf), ridb[..]) == 9876 && cast(string) ridb[0..<64] == rid_a;
+  #assert agy_parse_lease_filename("bad.lease", ridb[..]) == -1;
 }

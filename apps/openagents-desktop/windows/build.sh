@@ -51,6 +51,7 @@ mkdir -p "$work/c" "$work/res"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
 "$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
+"$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs \
   -o "$work/res/components.spv" 2> "$work/res/components.spv.bindings"
 
@@ -137,6 +138,10 @@ for arch in "${arches[@]}"; do
     "$work/c/mcworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
     -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
+  zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
+    "$work/c/agyworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/agyworker.exe"
   cp "$work/res/components.spv" "$out/resources/"
   mkdir -p "$out/resources/fonts" "$out/resources/icons"
   cp "$repo/components/fonts/"Geist* "$out/resources/fonts/"

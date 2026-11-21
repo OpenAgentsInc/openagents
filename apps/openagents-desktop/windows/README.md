@@ -21,6 +21,7 @@ one folder, `OpenAgents`, with:
 | --- | --- |
 | `OpenAgents.exe` | The app: a GUI program with the OpenAgents icon, version information and a manifest |
 | `mcworker.exe` | The Microcoder worker the app starts for each reply |
+| `agyworker.exe` | The Antigravity ACP worker (`agy.exe` / `.cmd` launchers) |
 | `resources/` | The shader (`components.spv`), fonts and icons |
 | `NOTICE` | The fonts' and icons' licenses |
 
@@ -79,7 +80,8 @@ so in a short note.
 | Chats: new, open, rename, delete, kept across restarts | Reordering pinned chats |
 | A Microcoder reply through `mcworker.exe`, steering and the follow-up queue, sub-agents | The daemon: a reply stops when the app quits |
 | Attachments through the system's file chooser, the working folder chooser | Picture previews of image attachments |
-| The file pane: open, edit, save, open in the default app | Foreman, the Gym and Antigravity |
+| The file pane: open, edit, save, open in the default app | Foreman and the Gym |
+| Antigravity via `agyworker.exe` (including `.cmd` launchers and managed `~/.openagents/runtimes/agy`) | |
 | The chat budget, the thread goal, the OpenRouter and Claude keys | A new text size after moving to a screen with another scale needs a restart to redraw the glyphs sharply |
 | Each chat in its own worktree, when the folder is a Git repository | The update feed: new versions come as a new zip for now |
 

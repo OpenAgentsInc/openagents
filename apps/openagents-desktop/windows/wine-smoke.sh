@@ -23,3 +23,16 @@ trap 'wineserver -k 2>/dev/null || true; rm -rf "$WINEPREFIX"' EXIT
 wine=wine; command -v wine64 >/dev/null && ! command -v wine >/dev/null && wine=wine64
 "$wine" wineboot -i >/dev/null 2>&1 || true
 "$wine" "$here/build/x64/OpenAgents.exe" --smoke
+# Verify Windows .cmd launcher resolution & spawning for agy acp (#13839):
+agy_cmd="$WINEPREFIX/drive_c/fake-agy.cmd"
+cat > "$agy_cmd" <<'CMDEOF'
+@echo off
+if /I not "%~1"=="acp" exit /b 91
+set /p line1=
+echo {"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"agy","version":"1.5.13"}}}
+set /p line2=
+echo {"jsonrpc":"2.0","id":2,"result":{"sessionId":"wine-smoke-1","models":{"currentModelId":"gemini-4-argon-medium","availableModels":[{"modelId":"gemini-4-argon-medium","name":"Gemini 4 Argon (Medium)"}]},"modes":{"currentModeId":"default","availableModes":[{"id":"default"}]}}}
+CMDEOF
+probe_out="$(CODER_AGY_BIN='C:\fake-agy.cmd' "$wine" "$here/build/x64/agyworker.exe" --probe)"
+printf 'agyworker .cmd wine smoke: %s\n' "$probe_out"
+printf '%s\n' "$probe_out" | grep -q "gemini-4-argon-medium"
