@@ -1,0 +1,591 @@
+// Production Composable Weight-Module Linker (module-v2) & First 4 Coding-Agent
+// Utility Weight Modules on exec-vm-v1 (Executor W2.2, GitHub #13917).
+//
+// - mv_link_models links any two compiled exec-vm-v1 EvModels (A -> B) directly
+//   at the dense F64 weight-matrix level without recompiling either source module,
+//   inserting one ReGLU glue layer that projects A's W_out rows into B's input slots.
+// - Compiles 4 real Class-E coding-agent subroutines into dense F64 safetensors:
+//     1. oa-exec-diff-verify   (unified-diff hunk bounds & context applicability)
+//     2. oa-exec-json-schema   (bounded tool-argument schema validator)
+//     3. oa-exec-dep-sched     (DAG dependency readiness & slot/priority scheduler)
+//     4. oa-exec-arith-budget  (satoshi/token budget & daily-cap admission)
+#load "exec-vm-core.coax";
+#load "module-v2-policy.coax";
+
+MV_MAX_NODES :: 128;
+MV_MAX_LAYERS :: 64;
+MV_MAX_HEADS :: 16;
+MV_MAX_WIDTH :: 256;
+MV_MAX_UNITS :: 256;
+MV_MAX_WEIGHTS :: 262144;
+
+mv_put :: (nodes: [] EvNode, n: int, e: EvNode) -> int {
+  nodes[n] = e;
+  return n + 1;
+}
+
+// Helper: compile a pure-FFN EvNode graph with caller-allocated arenas.
+mv_compile_graph :: (
+  nodes: [] EvNode, n_nodes: int, outputs: [] int,
+  layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64
+) -> EvModel {
+  forms: [MV_MAX_NODES] EvForm;
+  layer: [MV_MAX_NODES] int;
+  last: [MV_MAX_NODES] int;
+  slot: [MV_MAX_NODES] int;
+  clear: [MV_MAX_NODES] int;
+  release: [MV_MAX_NODES] int;
+  kept: [MV_MAX_NODES] bool;
+  free_slots: [MV_MAX_WIDTH] bool;
+  kv_pin: [1] int;
+  arena := ev_test_arena(
+    forms[0..<n_nodes], layer[0..<n_nodes], last[0..<n_nodes], slot[0..<n_nodes],
+    clear[0..<n_nodes], release[0..<n_nodes], kept[0..<n_nodes], free_slots[..], kv_pin[0..<0]);
+  return ev_compile(nodes[0..<n_nodes], outputs, 0, arena, layers, heads, weights);
+}
+
+// Run a compiled EvModel on integer inputs (pure FFN forward pass, zero KV context).
+mv_eval_model :: (m: EvModel, inputs: [] int, out_vals: [] int) -> EvStatus {
+  if m.status != EvStatus.ok { return m.status; }
+  if inputs.count != m.n_inputs || out_vals.count < m.n_outputs { return EvStatus.shape; }
+  in_f: [32] f64;
+  for i: 0..<m.n_inputs { in_f[i] = f64(inputs[i]); }
+  x: [MV_MAX_WIDTH] f64;
+  stage: [MV_MAX_WIDTH] f64;
+  hidden: [MV_MAX_UNITS] f64;
+  res: [MV_MAX_WIDTH] f64;
+  ro: [32] f64;
+  kv: [1] f64;
+  exec := EvExecArena.{x = x[0..<m.width], stage = stage[0..<m.width], hidden = hidden[..]};
+  st := ev_forward_token(m, in_f[0..<m.n_inputs], kv[0..<0], 0, res[0..<m.width], ro[0..<m.n_outputs], exec, false);
+  if st != EvStatus.ok { return st; }
+  for k: 0..<m.n_outputs {
+    v := ro[k];
+    out_vals[k] = ifx v >= 0.0 then cast(int) (v + 0.5) else cast(int) (v - 0.5);
+  }
+  return EvStatus.ok;
+}
+
+// Map a slot from module B into composite C (slot 0 is shared constant 1; s > 0 shifts by shift_b).
+mv_map_b :: (s: int, shift_b: int) -> int {
+  return ifx s == 0 then 0 else s + shift_b;
+}
+
+// Link two compiled exec-vm-v1 EvModels (A -> B) into one composite EvModel WITHOUT recompiling A or B.
+// wire[k] (0 <= k < B.n_inputs) selects which output row of A feeds B's input k.
+// Returns an EvModel ready for ev_serialize -> weights.safetensors and ev_forward_token.
+mv_link_models :: (
+  a: EvModel, b: EvModel, wire: [] int,
+  out_layers: [] EvLayerDesc, out_heads: [] EvHeadDesc, out_weights: [] f64
+) -> EvModel {
+  fail := EvModel.{status = EvStatus.shape};
+  if a.status != EvStatus.ok || b.status != EvStatus.ok { return fail; }
+  if mv_admit_link(a.n_outputs, b.n_inputs, wire, a.width, b.width, MV_MAX_WIDTH,
+                   a.n_layers, b.n_layers, out_layers.count, 0, 0, 64) != MvStatus.ok {
+    return EvModel.{status = EvStatus.capacity};
+  }
+  shift_b := a.width - 1;
+  wc := a.width + b.width - 1;
+  if wc > MV_MAX_WIDTH { return EvModel.{status = EvStatus.capacity}; }
+  n_layers := a.n_layers + 1 + b.n_layers;
+  if n_layers > out_layers.count { return EvModel.{status = EvStatus.capacity}; }
+
+  // Compute total weights needed (A layers + 1 glue FFN layer with B.n_inputs units + B layers + W_out_C)
+  w_off := 0;
+  h_off := 0;
+
+  // 1. Copy A's layers (slots 0..<a.width map identically into 0..<wc)
+  for L: 0..<a.n_layers {
+    ld := a.layers[L];
+    if ld.kind != EvLayerKind.ffn { return EvModel.{status = EvStatus.type}; }
+    u := ld.units;
+    need := ev_ffn_weights(wc, u);
+    if w_off + need > out_weights.count { return EvModel.{status = EvStatus.capacity}; }
+    for z: 0..<need { out_weights[w_off + z] = 0.0; }
+    // Copy W_up [u, D], W_gate [u, D], and W_down [D, u]
+    a_stride := u * a.width;
+    c_stride := u * wc;
+    for mat: 0..<2 {
+      for r: 0..<u {
+        for col: 0..<a.width {
+          out_weights[w_off + mat * c_stride + r * wc + col] =
+            a.weights[ld.w_offset + mat * a_stride + r * a.width + col];
+        }
+      }
+    }
+    for col: 0..<a.width {
+      for r: 0..<u {
+        out_weights[w_off + 2 * c_stride + col * u + r] =
+          a.weights[ld.w_offset + 2 * a_stride + col * u + r];
+      }
+    }
+    out_layers[L] = EvLayerDesc.{kind = EvLayerKind.ffn, units = u, w_offset = w_off};
+    w_off += need;
+  }
+
+  // 2. Glue FFN layer at index a.n_layers: projects A's W_out rows into B's input slots (shift_b + 1 + k)
+  //    Each unit k has W_up[k, 0..<a.width] = W_out_A[wire[k], 0..<a.width],
+  //    W_gate[k, 0] = 1.0 (since x[0] == 1), W_down[mv_map_b(k + 1, shift_b), k] = 1.0.
+  glue_u := b.n_inputs;
+  glue_need := ev_ffn_weights(wc, glue_u);
+  if w_off + glue_need > out_weights.count { return EvModel.{status = EvStatus.capacity}; }
+  for z: 0..<glue_need { out_weights[w_off + z] = 0.0; }
+  g_stride := glue_u * wc;
+  for k: 0..<glue_u {
+    src_out := wire[k];
+    for col: 0..<a.width {
+      out_weights[w_off + k * wc + col] = a.weights[a.w_out_offset + src_out * a.width + col];
+    }
+    out_weights[w_off + g_stride + k * wc + 0] = 1.0;
+    out_weights[w_off + 2 * g_stride + mv_map_b(k + 1, shift_b) * glue_u + k] = 1.0;
+  }
+  out_layers[a.n_layers] = EvLayerDesc.{kind = EvLayerKind.ffn, units = glue_u, w_offset = w_off};
+  w_off += glue_need;
+
+  // 3. Copy B's layers (slot 0 -> 0, slot s > 0 -> s + shift_b)
+  for L: 0..<b.n_layers {
+    ld := b.layers[L];
+    if ld.kind != EvLayerKind.ffn { return EvModel.{status = EvStatus.type}; }
+    u := ld.units;
+    need := ev_ffn_weights(wc, u);
+    if w_off + need > out_weights.count { return EvModel.{status = EvStatus.capacity}; }
+    for z: 0..<need { out_weights[w_off + z] = 0.0; }
+    b_stride := u * b.width;
+    c_stride := u * wc;
+    for mat: 0..<2 {
+      for r: 0..<u {
+        for col: 0..<b.width {
+          out_weights[w_off + mat * c_stride + r * wc + mv_map_b(col, shift_b)] =
+            b.weights[ld.w_offset + mat * b_stride + r * b.width + col];
+        }
+      }
+    }
+    for col: 0..<b.width {
+      for r: 0..<u {
+        out_weights[w_off + 2 * c_stride + mv_map_b(col, shift_b) * u + r] =
+          b.weights[ld.w_offset + 2 * b_stride + col * u + r];
+      }
+    }
+    out_layers[a.n_layers + 1 + L] = EvLayerDesc.{kind = EvLayerKind.ffn, units = u, w_offset = w_off};
+    w_off += need;
+  }
+
+  // 4. Composite W_out_C (b.n_outputs x wc) copied from B's W_out_B
+  w_out_off := w_off;
+  out_need := b.n_outputs * wc;
+  if w_off + out_need > out_weights.count { return EvModel.{status = EvStatus.capacity}; }
+  for z: 0..<out_need { out_weights[w_off + z] = 0.0; }
+  for r: 0..<b.n_outputs {
+    for col: 0..<b.width {
+      out_weights[w_out_off + r * wc + mv_map_b(col, shift_b)] =
+        b.weights[b.w_out_offset + r * b.width + col];
+    }
+  }
+  w_off += out_need;
+
+  return EvModel.{
+    status = EvStatus.ok,
+    width = wc,
+    n_layers = n_layers,
+    n_heads = h_off,
+    n_inputs = a.n_inputs,
+    n_outputs = b.n_outputs,
+    kv_slots = 0,
+    n_weights = w_off,
+    w_out_offset = w_out_off,
+    n_nodes = a.n_nodes + b.n_nodes,
+    layers = out_layers[0..<n_layers],
+    heads = out_heads[0..<h_off],
+    weights = out_weights[0..<w_off],
+  };
+}
+
+// ============================================================================
+// Module 1: oa-exec-diff-verify (Class E)
+// Inputs (7): [old_start, old_count, new_start, new_count, file_lines, matched_ctx, expected_ctx]
+// Outputs (3): [applicable (0/1), new_file_lines, line_delta]
+// Applicable iff: old_start >= 1 && old_count >= 0 && new_start >= 1 && new_count >= 0 &&
+//                 (old_start - 1 + old_count) <= file_lines && matched_ctx == expected_ctx && expected_ctx >= 0.
+// ============================================================================
+mv_ref_diff_verify :: (inp: [] int, out: [] int) {
+  os := inp[0]; oc := inp[1]; ns := inp[2]; nc := inp[3]; fl := inp[4]; mc := inp[5]; ec := inp[6];
+  ok := os >= 1 && oc >= 0 && ns >= 1 && nc >= 0 && (os - 1 + oc) <= fl && mc == ec && ec >= 0;
+  delta := nc - oc;
+  out[0] = ifx ok then 1 else 0;
+  out[1] = ifx ok then fl + delta else fl;
+  out[2] = ifx ok then delta else 0;
+}
+
+mv_compile_diff_verify :: (layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64) -> EvModel {
+  nodes: [MV_MAX_NODES] EvNode;
+  n := 0;
+  // Inputs 0..6
+  os := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  oc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  ns := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  nc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 3});
+  fl := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 4});
+  mc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 5});
+  ec := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 6});
+  c0 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 0});
+  c1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 1});
+  c7 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 7});
+
+  // 7 boolean conditions (each 1 if satisfied, 0 otherwise)
+  k1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = os});                       // os >= 1
+  oc1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = oc, b = c1});
+  k2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = oc1});                      // oc >= 0
+  k3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = ns});                       // ns >= 1
+  nc1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = nc, b = c1});
+  k4 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = nc1});                      // nc >= 0
+  // fl - (os - 1 + oc) >= 0  <=>  fl - os - oc + 2 >= 1
+  end_m := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = os, b = oc});
+  rem := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = fl, b = end_m});
+  rem2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = rem, b = c1});
+  rem3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = rem2, b = c1});
+  k5 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = rem3});                     // os - 1 + oc <= fl
+  cdiff := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = mc, b = ec});
+  k6 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = cdiff});                     // mc == ec
+  ec1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = ec, b = c1});
+  k7 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = ec1});                      // ec >= 0
+
+  // ok = (k1 + k2 + k3 + k4 + k5 + k6 + k7 == 7)
+  s12 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k1, b = k2});
+  s34 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k3, b = k4});
+  s56 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k5, b = k6});
+  s14 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s12, b = s34});
+  s57 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s56, b = k7});
+  sum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s14, b = s57});
+  d7  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = sum, b = c7});
+  ok  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = d7});
+
+  delta := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = nc, b = oc});
+  out_delta := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mask, a = delta, b = ok});
+  out_lines := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = fl, b = out_delta});
+  _ = c0;
+  outs := [3] int.[ok, out_lines, out_delta];
+  return mv_compile_graph(nodes[..], n, outs[..], layers, heads, weights);
+}
+
+// ============================================================================
+// Module 2: oa-exec-json-schema (Class E)
+// Inputs (8): [has_path, path_len, max_path, has_old, old_len, has_new, new_len, max_body]
+// Outputs (3): [valid (0/1), payload_bytes, within_body_cap (0/1)]
+// Valid iff: has_path==1 && path_len>=1 && path_len<=max_path && has_old==1 && has_new==1 &&
+//            old_len>=0 && new_len>=0 && (old_len + new_len) <= max_body.
+// ============================================================================
+mv_ref_json_schema :: (inp: [] int, out: [] int) {
+  hp := inp[0]; pl := inp[1]; mp := inp[2]; ho := inp[3]; ol := inp[4]; hn := inp[5]; nl := inp[6]; mb := inp[7];
+  body := ol + nl;
+  cap_ok := ol >= 0 && nl >= 0 && body <= mb;
+  ok := hp == 1 && pl >= 1 && pl <= mp && ho == 1 && hn == 1 && cap_ok;
+  out[0] = ifx ok then 1 else 0;
+  out[1] = ifx ok then pl + body else 0;
+  out[2] = ifx cap_ok then 1 else 0;
+}
+
+mv_compile_json_schema :: (layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64) -> EvModel {
+  nodes: [MV_MAX_NODES] EvNode;
+  n := 0;
+  hp := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  pl := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  mp := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  ho := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 3});
+  ol := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 4});
+  hn := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 5});
+  nl := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 6});
+  mb := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 7});
+  c1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 1});
+  c3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 3});
+  c6 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 6});
+
+  body := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = ol, b = nl});
+  ol1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = ol, b = c1});
+  b1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = ol1});                      // ol >= 0
+  nl1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = nl, b = c1});
+  b2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = nl1});                      // nl >= 0
+  mb_rem := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = mb, b = body});
+  mb_rem1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = mb_rem, b = c1});
+  b3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = mb_rem1});                  // body <= mb
+  bsum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = b1, b = b2});
+  bsum2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = bsum, b = b3});
+  bd3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = bsum2, b = c3});
+  cap_ok := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = bd3});
+
+  hp_d := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = hp, b = c1});
+  k1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = hp_d});                      // hp == 1
+  k2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = pl});                       // pl >= 1
+  mp_r := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = mp, b = pl});
+  mp_r1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = mp_r, b = c1});
+  k3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = mp_r1});                    // pl <= mp
+  ho_d := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = ho, b = c1});
+  k4 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = ho_d});                      // ho == 1
+  hn_d := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = hn, b = c1});
+  k5 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = hn_d});                      // hn == 1
+
+  t12 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k1, b = k2});
+  t34 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k3, b = k4});
+  t56 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k5, b = cap_ok});
+  t14 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = t12, b = t34});
+  tsum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = t14, b = t56});
+  td6 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = tsum, b = c6});
+  ok := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = td6});
+
+  total := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = pl, b = body});
+  payload := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mask, a = total, b = ok});
+  outs := [3] int.[ok, payload, cap_ok];
+  return mv_compile_graph(nodes[..], n, outs[..], layers, heads, weights);
+}
+
+// ============================================================================
+// Module 3: oa-exec-dep-sched (Class E)
+// Inputs (6): [remaining_deps, has_cycle, running, max_slots, priority, blocked]
+// Outputs (3): [ready (0/1), next_running, sched_score]
+// Ready iff: remaining_deps == 0 && has_cycle == 0 && blocked == 0 && running < max_slots && max_slots >= 1.
+// ============================================================================
+mv_ref_dep_sched :: (inp: [] int, out: [] int) {
+  rd := inp[0]; cyc := inp[1]; run := inp[2]; cap := inp[3]; pri := inp[4]; blk := inp[5];
+  ok := rd == 0 && cyc == 0 && blk == 0 && run < cap && cap >= 1;
+  out[0] = ifx ok then 1 else 0;
+  out[1] = ifx ok then run + 1 else run;
+  out[2] = ifx ok then pri * 10 + (cap - run) else 0;
+}
+
+mv_compile_dep_sched :: (layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64) -> EvModel {
+  nodes: [MV_MAX_NODES] EvNode;
+  n := 0;
+  rd  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  cyc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  run := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  cap := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 3});
+  pri := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 4});
+  blk := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 5});
+  c5  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 5});
+
+  k1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = rd});
+  k2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = cyc});
+  k3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = blk});
+  free := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = cap, b = run});
+  k4 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = free});                     // cap - run >= 1
+  k5 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = cap});                      // cap >= 1
+
+  s12 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k1, b = k2});
+  s34 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k3, b = k4});
+  s14 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s12, b = s34});
+  sum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s14, b = k5});
+  d5  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = sum, b = c5});
+  ok  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = d5});
+
+  next_run := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = run, b = ok});
+  p10 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.scale, a = pri, k = 10});
+  raw_sc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = p10, b = free});
+  score := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mask, a = raw_sc, b = ok});
+  outs := [3] int.[ok, next_run, score];
+  return mv_compile_graph(nodes[..], n, outs[..], layers, heads, weights);
+}
+
+// ============================================================================
+// Module 4: oa-exec-arith-budget (Class E)
+// Inputs (6): [balance_sats, spent_sats, req_sats, daily_cap, tokens_k, rate_sats]
+// Outputs (3): [admitted (0/1), remaining_sats, total_cost_sats]
+// total_cost = req_sats + tokens_k * rate_sats.
+// Admitted iff: balance_sats >= 0 && spent_sats >= 0 && req_sats >= 0 && tokens_k >= 0 && rate_sats >= 0 &&
+//               total_cost <= balance_sats && (spent_sats + total_cost) <= daily_cap.
+// ============================================================================
+mv_ref_arith_budget :: (inp: [] int, out: [] int) {
+  bal := inp[0]; sp := inp[1]; req := inp[2]; cap := inp[3]; tk := inp[4]; rate := inp[5];
+  cost := req + tk * rate;
+  ok := bal >= 0 && sp >= 0 && req >= 0 && tk >= 0 && rate >= 0 && cost <= bal && (sp + cost) <= cap;
+  out[0] = ifx ok then 1 else 0;
+  out[1] = ifx ok then bal - cost else bal;
+  out[2] = ifx ok then cost else 0;
+}
+
+mv_compile_arith_budget :: (layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64) -> EvModel {
+  nodes: [MV_MAX_NODES] EvNode;
+  n := 0;
+  bal  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  sp   := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  req  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  cap  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 3});
+  tk   := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 4});
+  rate := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 5});
+  c1   := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 1});
+  c7   := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 7});
+
+  tk_cost := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mul, a = tk, b = rate});
+  cost := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = req, b = tk_cost});
+
+  bal1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = bal, b = c1});
+  k1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = bal1});
+  sp1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = sp, b = c1});
+  k2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = sp1});
+  req1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = req, b = c1});
+  k3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = req1});
+  tk1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = tk, b = c1});
+  k4 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = tk1});
+  rt1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = rate, b = c1});
+  k5 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = rt1});
+
+  rem_bal := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = bal, b = cost});
+  rem_bal1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = rem_bal, b = c1});
+  k6 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = rem_bal1});                 // cost <= bal
+  new_sp := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = sp, b = cost});
+  rem_cap := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = cap, b = new_sp});
+  rem_cap1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = rem_cap, b = c1});
+  k7 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = rem_cap1});                 // sp + cost <= cap
+
+  s12 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k1, b = k2});
+  s34 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k3, b = k4});
+  s56 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k5, b = k6});
+  s14 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s12, b = s34});
+  s57 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s56, b = k7});
+  sum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s14, b = s57});
+  d7  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = sum, b = c7});
+  ok  := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = d7});
+
+  admitted_cost := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mask, a = cost, b = ok});
+  out_bal := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = bal, b = admitted_cost});
+  outs := [3] int.[ok, out_bal, admitted_cost];
+  return mv_compile_graph(nodes[..], n, outs[..], layers, heads, weights);
+}
+
+// ============================================================================
+// Bridge-exporting JSON-schema validator for linking directly into oa-exec-diff-verify:
+// Inputs (10): [has_path, path_len, max_path, old_start, old_count, new_start, new_count, file_lines, matched_ctx, expected_ctx]
+// Outputs (7): [gated_old_start, old_count, new_start, new_count, file_lines, matched_ctx, expected_ctx]
+// (gated_old_start = schema_ok ? old_start : 0, so invalid schema forces diff-verify to refuse!)
+// ============================================================================
+mv_compile_schema_gate :: (layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64) -> EvModel {
+  nodes: [MV_MAX_NODES] EvNode;
+  n := 0;
+  hp := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 0});
+  pl := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 1});
+  mp := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 2});
+  os := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 3});
+  oc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 4});
+  ns := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 5});
+  nc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 6});
+  fl := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 7});
+  mc := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 8});
+  ec := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.input, k = 9});
+  c1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 1});
+  c3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.constant, k = 3});
+
+  hp_d := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = hp, b = c1});
+  k1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = hp_d});
+  k2 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = pl});
+  mp_r := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = mp, b = pl});
+  mp_r1 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = mp_r, b = c1});
+  k3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.step, a = mp_r1});
+  s12 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = k1, b = k2});
+  sum := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.add, a = s12, b = k3});
+  d3 := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.sub, a = sum, b = c3});
+  ok := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.eq0, a = d3});
+
+  gated_os := n; n = mv_put(nodes[..], n, EvNode.{op = EvOp.mask, a = os, b = ok});
+  outs := [7] int.[gated_os, oc, ns, nc, fl, mc, ec];
+  return mv_compile_graph(nodes[..], n, outs[..], layers, heads, weights);
+}
+
+#test "module-v2: compile all 4 coding-agent weight modules + link schema->diff-verify bit-exact (#13917)" #steps 100000000 {
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [32768] f64;
+  lb: [MV_MAX_LAYERS] EvLayerDesc; hb: [MV_MAX_HEADS] EvHeadDesc; wb: [32768] f64;
+  lc: [MV_MAX_LAYERS] EvLayerDesc; hc: [MV_MAX_HEADS] EvHeadDesc; wc: [65536] f64;
+
+  // 1. oa-exec-diff-verify
+  m_diff := mv_compile_diff_verify(lb[..], hb[..], wb[..]);
+  #assert m_diff.status == EvStatus.ok && m_diff.n_weights > 0;
+  d_cases := [4] [7] int.[
+    [7] int.[10, 5, 10, 8, 120, 3, 3],   // valid +3 lines
+    [7] int.[118, 5, 118, 5, 120, 3, 3], // OOB past EOF -> refuse
+    [7] int.[10, 5, 10, 5, 120, 2, 3],   // context mismatch -> refuse
+    [7] int.[1, 10, 1, 4, 10, 0, 0],     // exact EOF boundary -> valid -6 lines
+  ];
+  for c: 0..<4 {
+    got: [3] int; want: [3] int;
+    #assert mv_eval_model(m_diff, d_cases[c][..], got[..]) == EvStatus.ok;
+    mv_ref_diff_verify(d_cases[c][..], want[..]);
+    #assert got[0] == want[0] && got[1] == want[1] && got[2] == want[2];
+  }
+
+  // 2. oa-exec-json-schema
+  m_json := mv_compile_json_schema(la[..], ha[..], wa[..]);
+  #assert m_json.status == EvStatus.ok && m_json.n_weights > 0;
+  j_cases := [3] [8] int.[
+    [8] int.[1, 24, 256, 1, 100, 1, 120, 1024], // valid
+    [8] int.[0, 24, 256, 1, 100, 1, 120, 1024], // missing path
+    [8] int.[1, 24, 256, 1, 600, 1, 600, 1024], // body over cap
+  ];
+  for c: 0..<3 {
+    got: [3] int; want: [3] int;
+    #assert mv_eval_model(m_json, j_cases[c][..], got[..]) == EvStatus.ok;
+    mv_ref_json_schema(j_cases[c][..], want[..]);
+    #assert got[0] == want[0] && got[1] == want[1] && got[2] == want[2];
+  }
+
+  // 3. oa-exec-dep-sched
+  m_dep := mv_compile_dep_sched(la[..], ha[..], wa[..]);
+  #assert m_dep.status == EvStatus.ok && m_dep.n_weights > 0;
+  dep_cases := [3] [6] int.[
+    [6] int.[0, 0, 2, 8, 5, 0], // ready
+    [6] int.[1, 0, 2, 8, 5, 0], // unmet dep
+    [6] int.[0, 1, 2, 8, 5, 0], // cycle detected
+  ];
+  for c: 0..<3 {
+    got: [3] int; want: [3] int;
+    #assert mv_eval_model(m_dep, dep_cases[c][..], got[..]) == EvStatus.ok;
+    mv_ref_dep_sched(dep_cases[c][..], want[..]);
+    #assert got[0] == want[0] && got[1] == want[1] && got[2] == want[2];
+  }
+
+  // 4. oa-exec-arith-budget
+  m_bud := mv_compile_arith_budget(la[..], ha[..], wa[..]);
+  #assert m_bud.status == EvStatus.ok && m_bud.n_weights > 0;
+  bud_cases := [3] [6] int.[
+    [6] int.[5000, 1000, 200, 4000, 10, 50], // cost=700 <= 5000, 1700 <= 4000 -> admitted
+    [6] int.[500, 1000, 200, 4000, 10, 50],  // cost=700 > balance 500 -> refused
+    [6] int.[5000, 3500, 200, 4000, 10, 50], // 3500+700 > daily cap 4000 -> refused
+  ];
+  for c: 0..<3 {
+    got: [3] int; want: [3] int;
+    #assert mv_eval_model(m_bud, bud_cases[c][..], got[..]) == EvStatus.ok;
+    mv_ref_arith_budget(bud_cases[c][..], want[..]);
+    #assert got[0] == want[0] && got[1] == want[1] && got[2] == want[2];
+  }
+
+  // 5. End-to-end zero-recompilation link: oa-exec-json-schema-gate -> oa-exec-diff-verify
+  m_gate := mv_compile_schema_gate(la[..], ha[..], wa[..]);
+  #assert m_gate.status == EvStatus.ok;
+  wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+  m_comp := mv_link_models(m_gate, m_diff, wire[..], lc[..], hc[..], wc[..]);
+  #assert m_comp.status == EvStatus.ok && m_comp.n_layers == m_gate.n_layers + 1 + m_diff.n_layers;
+
+  // Test composite vs sequential (run B on run A) bit-for-bit on valid and invalid schema cases
+  comp_cases := [3] [10] int.[
+    [10] int.[1, 30, 256, 12, 4, 12, 7, 100, 3, 3], // schema valid + diff valid -> (1, 103, 3)
+    [10] int.[0, 30, 256, 12, 4, 12, 7, 100, 3, 3], // schema invalid -> gated_os=0 -> diff refused (0, 100, 0)
+    [10] int.[1, 30, 256, 98, 5, 98, 5, 100, 3, 3], // schema valid + diff OOB -> refused (0, 100, 0)
+  ];
+  for c: 0..<3 {
+    mid: [7] int; seq_out: [3] int; comp_out: [3] int;
+    #assert mv_eval_model(m_gate, comp_cases[c][..], mid[..]) == EvStatus.ok;
+    #assert mv_eval_model(m_diff, mid[..], seq_out[..]) == EvStatus.ok;
+    #assert mv_eval_model(m_comp, comp_cases[c][..], comp_out[..]) == EvStatus.ok;
+    #assert comp_out[0] == seq_out[0] && comp_out[1] == seq_out[1] && comp_out[2] == seq_out[2];
+  }
+  // Also verify safetensors serialization + SHA-256 tamper-proof reload of the linked composite!
+  st_bytes: [131072] u8;
+  ser := ev_serialize(m_comp, st_bytes[..]);
+  #assert ser.status == EvStatus.ok && ser.written > 0;
+  l_re: [MV_MAX_LAYERS] EvLayerDesc; h_re: [MV_MAX_HEADS] EvHeadDesc; w_re: [65536] f64;
+  reloaded := ev_deserialize(st_bytes[0..<ser.written], ser.digest, true, l_re[..], h_re[..], w_re[..]);
+  #assert reloaded.model.status == EvStatus.ok;
+  rel_out: [3] int;
+  #assert mv_eval_model(reloaded.model, comp_cases[0][..], rel_out[..]) == EvStatus.ok;
+  #assert rel_out[0] == 1 && rel_out[1] == 103 && rel_out[2] == 3;
+  // 1-byte tamper in safetensors payload MUST be refused!
+  st_bytes[ser.written - 1] ^= 1;
+  tampered := ev_deserialize(st_bytes[0..<ser.written], ser.digest, true, l_re[..], h_re[..], w_re[..]);
+  #assert tampered.model.status == EvStatus.digest;
+}

@@ -1,0 +1,151 @@
+// #authority policy for Executor W2.2 module-v2 (GitHub #13917):
+// - Verification class propagation (E+E->E, E+D->D, E+S->S, *+N->N).
+// - Scaled module-v2 link admission (caller-admitted width/layers/seams budgets).
+// - Conformance & digest admission gate for ~/.openagents/modules/<sha256>/.
+#authority;
+
+// Verification classes, weakest first so min(a, b) conservatively downgrades.
+MvLabel :: enum u8 {
+  none;          // N: unverified
+  statistical;   // S: statistical evidence
+  tests;         // D: deterministic tests
+  exact;         // E: exact replay
+}
+
+MvStatus :: enum u8 {
+  ok;
+  bad_digest;
+  conformance_failed;
+  bad_manifest;
+  capacity;
+  seam_mismatch;
+  unverified;
+}
+
+// Conservative verification-class propagation: E+E->E, E+D->D, E+S->S, *+N->N.
+mv_label_link :: (a: MvLabel, b: MvLabel) -> MvLabel #effects(all) {
+  return ifx cast(int) a < cast(int) b then a else b; // mutant: equivalent — equal labels return same value
+}
+
+mv_label_code :: (l: MvLabel) -> string #effects(all) {
+  if l == MvLabel.exact { return "E"; }
+  if l == MvLabel.tests { return "D"; }
+  if l == MvLabel.statistical { return "S"; }
+  return "N";
+}
+
+mv_label_parse :: (s: string) -> MvLabel #effects(all) {
+  if s == "E" { return MvLabel.exact; }
+  if s == "D" { return MvLabel.tests; }
+  if s == "S" { return MvLabel.statistical; }
+  return MvLabel.none;
+}
+
+// Constant-time 64-lowercase-hex SHA-256 digest comparison.
+mv_hex64_eq :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != 64 || b.count != 64 { return false; }
+  diff := 0;
+  for i: 0..<64 {
+    ca := a[i];
+    cb := b[i];
+    valid_a := (ca >= '0' && ca <= '9') || (ca >= 'a' && ca <= 'f');
+    if !valid_a { return false; }
+    if ca != cb { diff = 1; } // mutant: equivalent — diff is only checked against 0
+  }
+  return diff == 0;
+}
+
+// Mandatory conformance & digest admission gate for installing or loading a module.
+// Refuses tampered weights, mismatched manifest digests, failing conformance cases, or N-class modules.
+mv_admit_install :: (manifest_digest: string, computed_digest: string, passed: int, total: int, label: MvLabel) -> MvStatus #effects(all) {
+  if manifest_digest.count != 64 { return MvStatus.bad_manifest; }
+  if !mv_hex64_eq(manifest_digest, computed_digest) { return MvStatus.bad_digest; }
+  if total < 1 || passed != total { return MvStatus.conformance_failed; }
+  if label == MvLabel.none { return MvStatus.unverified; }
+  return MvStatus.ok;
+}
+
+// Admit linking module A -> module B under caller-supplied capacity budgets (no 64-slot/32-layer/4-seam cap).
+mv_admit_link :: (
+  a_outputs: int, b_inputs: int, wire: [] int,
+  a_width: int, b_width: int, max_width: int,
+  a_layers: int, b_layers: int, max_layers: int,
+  a_seams: int, b_seams: int, max_seams: int
+) -> MvStatus #effects(all) {
+  if a_outputs < 1 || b_inputs < 1 || wire.count != b_inputs { return MvStatus.seam_mismatch; }
+  for k: 0..<b_inputs {
+    if wire[k] < 0 || wire[k] >= a_outputs { return MvStatus.seam_mismatch; }
+  }
+  if a_width < 1 || b_width < 1 || a_width + b_width > max_width { return MvStatus.capacity; }
+  if a_layers < 1 || b_layers < 1 || a_layers + b_layers + 1 > max_layers { return MvStatus.capacity; }
+  if a_seams < 0 || b_seams < 0 || a_seams + b_seams + 1 > max_seams { return MvStatus.capacity; }
+  return MvStatus.ok;
+}
+
+#test "module-v2-policy: label propagation, digest admission, and scaled link admission (#13917)" {
+  E := MvLabel.exact;
+  D := MvLabel.tests;
+  S := MvLabel.statistical;
+  N := MvLabel.none;
+
+  // Complete 4x4 label propagation table
+  #assert mv_label_link(E, E) == E;
+  #assert mv_label_link(E, D) == D && mv_label_link(D, E) == D;
+  #assert mv_label_link(E, S) == S && mv_label_link(S, E) == S;
+  #assert mv_label_link(E, N) == N && mv_label_link(N, E) == N;
+  #assert mv_label_link(D, D) == D && mv_label_link(D, S) == S && mv_label_link(D, N) == N;
+  #assert mv_label_link(S, S) == S && mv_label_link(S, N) == N && mv_label_link(N, N) == N;
+
+  #assert mv_label_code(E) == "E" && mv_label_parse("E") == E;
+  #assert mv_label_code(D) == "D" && mv_label_parse("D") == D;
+  #assert mv_label_code(S) == "S" && mv_label_parse("S") == S;
+  #assert mv_label_code(N) == "N" && mv_label_parse("N") == N && mv_label_parse("X") == N;
+
+  // Digest comparison boundaries ('0', '9', 'a', 'f', invalid chars, length mismatch, 1-byte tamper)
+  h_ok  := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  h_tam := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee";
+  h_bad := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg";
+  h_cap := "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef";
+  h_chr := "/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  h_col := ":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  h_btk := "`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert mv_hex64_eq(h_ok, h_ok);
+  #assert !mv_hex64_eq(h_ok, h_tam);
+  #assert !mv_hex64_eq(h_bad, h_bad);
+  #assert !mv_hex64_eq(h_cap, h_cap);
+  #assert !mv_hex64_eq(h_chr, h_chr);
+  #assert !mv_hex64_eq(h_col, h_col);
+  #assert !mv_hex64_eq(h_btk, h_btk);
+  #assert !mv_hex64_eq("abcd", h_ok) && !mv_hex64_eq(h_ok, "abcd");
+
+  // Conformance admission gate
+  #assert mv_admit_install("short", h_ok, 20, 20, E) == MvStatus.bad_manifest;
+  #assert mv_admit_install(h_ok, h_tam, 20, 20, E) == MvStatus.bad_digest;
+  #assert mv_admit_install(h_ok, h_ok, 0, 0, E) == MvStatus.conformance_failed;
+  #assert mv_admit_install(h_ok, h_ok, 19, 20, E) == MvStatus.conformance_failed;
+  #assert mv_admit_install(h_ok, h_ok, 20, 20, N) == MvStatus.unverified;
+  #assert mv_admit_install(h_ok, h_ok, 20, 20, E) == MvStatus.ok;
+  #assert mv_admit_install(h_ok, h_ok, 1, 1, S) == MvStatus.ok;
+
+  // Scaled link admission (>64 slots, >32 layers, >4 seams AND exact lower boundaries 1,1,1,1,0,0)
+  w1 := [1] int.[0];
+  #assert mv_admit_link(1, 1, w1[..], 1, 1, 2, 1, 1, 3, 0, 0, 1) == MvStatus.ok;
+  w := [2] int.[0, 2];
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 20, 41, 3, 3, 7) == MvStatus.ok;
+  #assert mv_admit_link(0, 2, w[..], 80, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.seam_mismatch;
+  #assert mv_admit_link(3, 0, w[0..<0], 80, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.seam_mismatch;
+  #assert mv_admit_link(3, 1, w[..], 80, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.seam_mismatch;
+  w_neg := [2] int.[-1, 0];
+  #assert mv_admit_link(3, 2, w_neg[..], 80, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.seam_mismatch;
+  w_oob := [2] int.[0, 3];
+  #assert mv_admit_link(3, 2, w_oob[..], 80, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.seam_mismatch;
+  #assert mv_admit_link(3, 2, w[..], 0, 80, 160, 20, 20, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 0, 160, 20, 20, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 81, 160, 20, 20, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 0, 20, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 0, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 21, 41, 0, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 20, 41, -1, 0, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 20, 41, 0, -1, 7) == MvStatus.capacity;
+  #assert mv_admit_link(3, 2, w[..], 80, 80, 160, 20, 20, 41, 3, 4, 7) == MvStatus.capacity;
+}
