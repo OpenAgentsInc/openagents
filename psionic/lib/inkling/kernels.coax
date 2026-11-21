@@ -646,11 +646,9 @@ ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]
     }
 }
 
-// ---- Router: sigmoid(logits) + optional exp_probs_b -> top-k -> normalize * scale.
-// One work item (1 threadgroup of 256 threads; n_expert <= 256).
-// Uses parallel 16-chunk argmax (each of 16 threads scans 8 experts) so thread 0 only reduces 16 values.
+// ---- Sprint 20: Parallel rank-based Router (256 threads, 2 TGEM barriers instead of 18!).
 ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32,bias:[]f32,out_ids:[]u32,out_wts:[]f32) #export_c #effects(all) {
-    probs:[256]f32;sel:[256]f32;cval:[16]f32;cidx:[16]u32;pids:[16]u32;pwts:[16]f32;
+    probs:[256]f32;sel:[256]f32;ranks:[256]int;
     for thread:0..<INK_NT {
         if thread<n_exp {
             p:=ink_sigmoid(logits[thread]);
@@ -660,92 +658,86 @@ ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32
             probs[thread]=0.0f32;
             sel[thread]=INK_NEG_INF;
         }
-        if thread<16 {pids[thread]=999999;pwts[thread]=0.0f32;}
-    }
-    n_chunks:=(n_exp+7)/8;
-    for k:0..<n_used {
-        for thread:0..<INK_NT {
-            if thread<n_chunks {
-                base:=thread*8;
-                bv:f32=INK_NEG_INF;bi:u32=0;
-                for j:0..<8 {
-                    e:=base+j;
-                    if e<n_exp {
-                        sv:=sel[e];
-                        if sv>bv {
-                            eu:=cast(u32)e;
-                            dup:u32=0;
-                            for prev:0..<k {if pids[prev]==eu {dup=1;}}
-                            if dup==0 {bv=sv;bi=eu;}
-                        }
-                    }
-                }
-                cval[thread]=bv;cidx[thread]=bi;
-            }
-        }
-        for thread:0..<INK_NT {
-            if thread==k {
-                bv:f32=INK_NEG_INF;bi:u32=0;
-                for c:0..<n_chunks {
-                    if cval[c]>bv {bv=cval[c];bi=cidx[c];}
-                }
-                pids[thread]=bi;
-                pwts[thread]=probs[cast(int)bi];
-            }
-        }
     }
     for thread:0..<INK_NT {
-        if thread<n_used {
+        rank:int=999;
+        if thread<n_exp {
+            my_s:=sel[thread];
+            rank=0;
+            for j:0..<n_exp {
+                sj:=sel[j];
+                if sj>my_s || (sj==my_s && j<thread) {rank+=1;}
+            }
+        }
+        ranks[thread]=rank;
+    }
+    for thread:0..<INK_NT {
+        if thread<n_exp && ranks[thread]<n_used {
+            r:=ranks[thread];
             wsum:f32=0;
-            for k:0..<n_used {wsum+=pwts[k];}
+            for e:0..<n_exp {if ranks[e]<n_used {wsum+=probs[e];}}
             if wsum<0.00006103515625f32 {wsum=0.00006103515625f32;}
-            out_ids[thread]=pids[thread];
-            out_wts[thread]=pwts[thread]*(scale/wsum);
+            out_ids[r]=cast(u32)thread;
+            out_wts[r]=probs[thread]*(scale/wsum);
         }
     }
 }
 
-// ---- Depth attention residual mix: mix(blocks[0..n_blocks-1] + cur, query[q_idx]).
-// blocks_buf holds n_blocks vectors of size dim, cur is 1 vector of size dim (total n_states = n_blocks + 1).
-// Launch items = n_queries (1, 3, or 4). Each item has 256 threads.
+// ---- Sprint 19A: Depth attention residual mix (256 threads, 4-state chunked -> 4x fewer barriers & query reads!).
 ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
-    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    part_ss:[1024]f32;part_dot:[1024]f32;p2_ss:[64]f32;p2_dot:[64]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
     n_states:=n_blocks+1;qbase:=item*dim;obase:=qbase;
     inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    // Pass 1: single read per state computes both ss and dot(state_s, query).
-    for s:0..<n_states {
+    steps:=(dim+255)/256;
+    n_chunks:=(n_states+3)/4;
+    for ch:0..<n_chunks {
+        s0:=ch*4;
         for thread:0..<INK_NT {
-            ss:f32=0;dot:f32=0;
-            sbase:=s*dim;
-            for k:0..<(dim+255)/256 {
+            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
+            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+            b0:=s0*dim;b1:=b0+dim;b2:=b1+dim;b3:=b2+dim;
+            for k:0..<steps {
                 i:=k*256+thread;
                 if i<dim {
-                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[i];
-                    ss+=v*v;
-                    dot+=v*query[qbase+i];
+                    qv:=query[qbase+i];
+                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
+                    ss0+=v0*v0;d0+=v0*qv;
+                    if s0+1<n_states {
+                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[i];
+                        ss1+=v1*v1;d1+=v1*qv;
+                    }
+                    if s0+2<n_states {
+                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[i];
+                        ss2+=v2*v2;d2+=v2*qv;
+                    }
+                    if s0+3<n_states {
+                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[i];
+                        ss3+=v3*v3;d3+=v3*qv;
+                    }
                 }
             }
-            part_ss[thread]=ss;
-            part_dot[thread]=dot;
+            part_ss[thread*4+0]=ss0;part_ss[thread*4+1]=ss1;part_ss[thread*4+2]=ss2;part_ss[thread*4+3]=ss3;
+            part_dot[thread*4+0]=d0;part_dot[thread*4+1]=d1;part_dot[thread*4+2]=d2;part_dot[thread*4+3]=d3;
         }
         for thread:0..<INK_NT {
-            if thread<16 {
+            if thread<64 {
+                st:=thread/16;c:=thread%16;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                for j:0..<16 {tss+=part_ss[(j*16+c)*4+st];tdot+=part_dot[(j*16+c)*4+st];}
                 p2_ss[thread]=tss;p2_dot[thread]=tdot;
             }
         }
         for thread:0..<INK_NT {
-            if thread==s {
+            if thread>=s0 && thread<s0+4 && thread<n_states {
+                st:=thread-s0;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                for j:0..<16 {tss+=p2_ss[st*16+j];tdot+=p2_dot[st*16+j];}
                 inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
                 invs[thread]=inv;
                 scores[thread]=tdot*inv*inv_sqrt_d;
             }
         }
     }
-    // Pass 2: softmax over scores[0..n_states-1] and weighted sum of RMS-normalized states.
     for thread:0..<INK_NT {
         if thread<n_states {
             mx:f32=scores[0];
@@ -759,7 +751,7 @@ ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32
         esum:f32=0;
         for s:0..<n_states {esum+=w[s];}
         inv_e:=1.0f32/esum;
-        for k:0..<(dim+255)/256 {
+        for k:0..<steps {
             i:=k*256+thread;
             if i<dim {
                 acc:f32=0;
@@ -773,38 +765,55 @@ ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32
     }
 }
 
-// ---- Sprint 10: Fused Depth-Attention Mix + RMSNorm (1 item, 256 threads).
-// Eliminates 43 dispatches + 43 GPU barriers per decode token across non-message layers and output head!
+// ---- Sprint 19A: Fused Depth-Attention Mix + RMSNorm (256 threads, 4-state chunked -> 4x fewer barriers & query reads!).
 ink_mix_rmsnorm :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[]f32,query:[]f32,norm_w:[]f32,out:[]f32) #export_c #effects(all) {
-    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    part_ss:[1024]f32;part_dot:[1024]f32;p2_ss:[64]f32;p2_dot:[64]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
     n_states:=n_blocks+1;
     inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    for s:0..<n_states {
+    steps:=(dim+255)/256;
+    n_chunks:=(n_states+3)/4;
+    for ch:0..<n_chunks {
+        s0:=ch*4;
         for thread:0..<INK_NT {
-            ss:f32=0;dot:f32=0;
-            sbase:=s*dim;
-            for k:0..<(dim+255)/256 {
+            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
+            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+            b0:=s0*dim;b1:=b0+dim;b2:=b1+dim;b3:=b2+dim;
+            for k:0..<steps {
                 i:=k*256+thread;
                 if i<dim {
-                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[i];
-                    ss+=v*v;
-                    dot+=v*query[i];
+                    qv:=query[i];
+                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
+                    ss0+=v0*v0;d0+=v0*qv;
+                    if s0+1<n_states {
+                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[i];
+                        ss1+=v1*v1;d1+=v1*qv;
+                    }
+                    if s0+2<n_states {
+                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[i];
+                        ss2+=v2*v2;d2+=v2*qv;
+                    }
+                    if s0+3<n_states {
+                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[i];
+                        ss3+=v3*v3;d3+=v3*qv;
+                    }
                 }
             }
-            part_ss[thread]=ss;
-            part_dot[thread]=dot;
+            part_ss[thread*4+0]=ss0;part_ss[thread*4+1]=ss1;part_ss[thread*4+2]=ss2;part_ss[thread*4+3]=ss3;
+            part_dot[thread*4+0]=d0;part_dot[thread*4+1]=d1;part_dot[thread*4+2]=d2;part_dot[thread*4+3]=d3;
         }
         for thread:0..<INK_NT {
-            if thread<16 {
+            if thread<64 {
+                st:=thread/16;c:=thread%16;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                for j:0..<16 {tss+=part_ss[(j*16+c)*4+st];tdot+=part_dot[(j*16+c)*4+st];}
                 p2_ss[thread]=tss;p2_dot[thread]=tdot;
             }
         }
         for thread:0..<INK_NT {
-            if thread==s {
+            if thread>=s0 && thread<s0+4 && thread<n_states {
+                st:=thread-s0;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                for j:0..<16 {tss+=p2_ss[st*16+j];tdot+=p2_dot[st*16+j];}
                 inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
                 invs[thread]=inv;
                 scores[thread]=tdot*inv*inv_sqrt_d;
@@ -825,7 +834,7 @@ ink_mix_rmsnorm :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[
         for s:0..<n_states {esum+=w[s];}
         inv_e:=1.0f32/esum;
         ss:f32=0;
-        for k:0..<(dim+255)/256 {
+        for k:0..<steps {
             i:=k*256+thread;
             if i<dim {
                 acc:f32=0;
@@ -848,7 +857,7 @@ ink_mix_rmsnorm :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[
     for thread:0..<INK_NT {
         tot:f32=0;for j:0..<16 {tot+=p2_ss[j];}
         inv:=1.0f32/sqrt(tot/f32(dim)+eps);
-        for k:0..<(dim+255)/256 {
+        for k:0..<steps {
             i:=k*256+thread;
             if i<dim {out[i]=out[i]*inv*norm_w[i];}
         }
@@ -1348,8 +1357,9 @@ ink_embed_q8_batch :: (item:int,dim:int,toks:[]u32,w:[]u16,norm_w:[]f32,eps:f32,
 // ---- Batched depth-attention residual mix.
 // blocks_buf is [n_blocks, n_tok, dim]; cur is [n_tok, dim]; query is [n_queries, dim]; out is [n_queries, n_tok, dim].
 // Launch items = n_queries * n_tok, lanes = 256.
+// ---- Sprint 20: Batched Depth-Attention Mix (256 threads, 4-state chunked -> 4x fewer barriers & query reads!).
 ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
-    part_ss:[256]f32;part_dot:[256]f32;p2_ss:[16]f32;p2_dot:[16]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    part_ss:[1024]f32;part_dot:[1024]f32;p2_ss:[64]f32;p2_dot:[64]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
     q_idx:=item/n_tok;
     t_idx:=item%n_tok;
     n_states:=n_blocks+1;
@@ -1357,31 +1367,51 @@ ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[
     obase:=item*dim;
     cbase:=t_idx*dim;
     inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    for s:0..<n_states {
-        sbase:=(s*n_tok+t_idx)*dim;
+    steps:=(dim+255)/256;
+    n_chunks:=(n_states+3)/4;
+    s_stride:=n_tok*dim;
+    for ch:0..<n_chunks {
+        s0:=ch*4;
         for thread:0..<INK_NT {
-            ss:f32=0;dot:f32=0;
-            for k:0..<(dim+255)/256 {
+            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
+            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+            b0:=(s0*n_tok+t_idx)*dim;b1:=b0+s_stride;b2:=b1+s_stride;b3:=b2+s_stride;
+            for k:0..<steps {
                 i:=k*256+thread;
                 if i<dim {
-                    v:=ifx s<n_blocks then blocks_buf[sbase+i] else cur[cbase+i];
-                    ss+=v*v;
-                    dot+=v*query[qbase+i];
+                    qv:=query[qbase+i];
+                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[cbase+i];
+                    ss0+=v0*v0;d0+=v0*qv;
+                    if s0+1<n_states {
+                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[cbase+i];
+                        ss1+=v1*v1;d1+=v1*qv;
+                    }
+                    if s0+2<n_states {
+                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[cbase+i];
+                        ss2+=v2*v2;d2+=v2*qv;
+                    }
+                    if s0+3<n_states {
+                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[cbase+i];
+                        ss3+=v3*v3;d3+=v3*qv;
+                    }
                 }
             }
-            part_ss[thread]=ss;part_dot[thread]=dot;
+            part_ss[thread*4+0]=ss0;part_ss[thread*4+1]=ss1;part_ss[thread*4+2]=ss2;part_ss[thread*4+3]=ss3;
+            part_dot[thread*4+0]=d0;part_dot[thread*4+1]=d1;part_dot[thread*4+2]=d2;part_dot[thread*4+3]=d3;
         }
         for thread:0..<INK_NT {
-            if thread<16 {
+            if thread<64 {
+                st:=thread/16;c:=thread%16;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=part_ss[j*16+thread];tdot+=part_dot[j*16+thread];}
+                for j:0..<16 {tss+=part_ss[(j*16+c)*4+st];tdot+=part_dot[(j*16+c)*4+st];}
                 p2_ss[thread]=tss;p2_dot[thread]=tdot;
             }
         }
         for thread:0..<INK_NT {
-            if thread==s {
+            if thread>=s0 && thread<s0+4 && thread<n_states {
+                st:=thread-s0;
                 tss:f32=0;tdot:f32=0;
-                for j:0..<16 {tss+=p2_ss[j];tdot+=p2_dot[j];}
+                for j:0..<16 {tss+=p2_ss[st*16+j];tdot+=p2_dot[st*16+j];}
                 inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
                 invs[thread]=inv;
                 scores[thread]=tdot*inv*inv_sqrt_d;
@@ -1401,7 +1431,7 @@ ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[
         esum:f32=0;
         for s:0..<n_states {esum+=w[s];}
         inv_e:=1.0f32/esum;
-        for k:0..<(dim+255)/256 {
+        for k:0..<steps {
             i:=k*256+thread;
             if i<dim {
                 acc:f32=0;
@@ -1596,9 +1626,9 @@ ink_kv_store_batch :: (item:int,n_kv_elem:int,pos0:int,kv_cap:int,is_swa:int,k_i
     }
 }
 
-// ---- Batched Router: launch items = n_tok, lanes = 256.
+// ---- Sprint 20: Parallel rank-based Batched Router (256 threads, 2 TGEM barriers instead of 18!).
 ink_router_batch :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32,bias:[]f32,out_ids:[]u32,out_wts:[]f32) #export_c #effects(all) {
-    probs:[256]f32;sel:[256]f32;cval:[16]f32;cidx:[16]u32;pids:[16]u32;pwts:[16]f32;
+    probs:[256]f32;sel:[256]f32;ranks:[256]int;
     lbase:=item*n_exp;
     obase:=item*n_used;
     for thread:0..<INK_NT {
@@ -1610,47 +1640,27 @@ ink_router_batch :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits
             probs[thread]=0.0f32;
             sel[thread]=INK_NEG_INF;
         }
-        if thread<16 {pids[thread]=999999;pwts[thread]=0.0f32;}
-    }
-    n_chunks:=(n_exp+7)/8;
-    for k:0..<n_used {
-        for thread:0..<INK_NT {
-            if thread<n_chunks {
-                base:=thread*8;
-                bv:f32=INK_NEG_INF;bi:u32=0;
-                for j:0..<8 {
-                    e:=base+j;
-                    if e<n_exp {
-                        sv:=sel[e];
-                        if sv>bv {
-                            eu:=cast(u32)e;
-                            dup:u32=0;
-                            for prev:0..<k {if pids[prev]==eu {dup=1;}}
-                            if dup==0 {bv=sv;bi=eu;}
-                        }
-                    }
-                }
-                cval[thread]=bv;cidx[thread]=bi;
-            }
-        }
-        for thread:0..<INK_NT {
-            if thread==k {
-                bv:f32=INK_NEG_INF;bi:u32=0;
-                for c:0..<n_chunks {
-                    if cval[c]>bv {bv=cval[c];bi=cidx[c];}
-                }
-                pids[thread]=bi;
-                pwts[thread]=probs[cast(int)bi];
-            }
-        }
     }
     for thread:0..<INK_NT {
-        if thread<n_used {
+        rank:int=999;
+        if thread<n_exp {
+            my_s:=sel[thread];
+            rank=0;
+            for j:0..<n_exp {
+                sj:=sel[j];
+                if sj>my_s || (sj==my_s && j<thread) {rank+=1;}
+            }
+        }
+        ranks[thread]=rank;
+    }
+    for thread:0..<INK_NT {
+        if thread<n_exp && ranks[thread]<n_used {
+            r:=ranks[thread];
             wsum:f32=0;
-            for k:0..<n_used {wsum+=pwts[k];}
+            for e:0..<n_exp {if ranks[e]<n_used {wsum+=probs[e];}}
             if wsum<0.00006103515625f32 {wsum=0.00006103515625f32;}
-            out_ids[obase+thread]=pids[thread];
-            out_wts[obase+thread]=pwts[thread]*(scale/wsum);
+            out_ids[obase+r]=cast(u32)thread;
+            out_wts[obase+r]=probs[thread]*(scale/wsum);
         }
     }
 }
@@ -2492,6 +2502,14 @@ ink_mm_bf16_16 :: (item:int,rows:int,cols:int,n_tok:int,w_bf16:[]u32,x:[]f32,out
     am_matmul_bf16(128,16,64,rows,cols,n_tok,r0,t0,w_bf16[..],x[..],out[..]);
 }
 
+ink_mm_bf16_32 :: (item:int,rows:int,cols:int,n_tok:int,w_bf16:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    r_tiles:=(rows+63)/64;
+    t0:=(item/r_tiles)*32;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    am_matmul_bf16(128,32,64,rows,cols,n_tok,r0,t0,w_bf16[..],x[..],out[..]);
+}
+
 // ---- Sprint 8B: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE!
 // Compute prefix sums exp_off[0..n_exp-1] from exp_cnt[0..n_exp-1]. Launch items = 1, lanes = 1.
 ink_moe_exp_off :: (item:int,n_exp:int,exp_cnt:[]u32,exp_off:[]u32) #export_c #effects(all) {
@@ -2553,6 +2571,7 @@ ink_moe_gather_x :: (item:int,dim:int,n_used:int,x:[]f32,exp_toks:[]u32,exp_slot
 
 // Dequantize IQ4_NL expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32 (8 rows/TG -> 8x fewer TGs & LUT barriers!).
 // Launch items = e_cnt * ceil(rows / 8), lanes = 128.
+// Dequantize IQ4_NL expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt * rows, cols/2] u32 (8 rows/TG, 96 threads = 12 blocks/step -> 72/12=6 & 36/12=3 exact, 0% idle!).
 ink_dequant_iq4_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
     lut:[16]f32;
     r_grps:=(rows+7)/8;
@@ -2563,10 +2582,10 @@ ink_dequant_iq4_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt
         blocks:=cols/32;
         row_words:=blocks*9;
         half_cols:=cols/2;
-        for thread:0..<128 {
+        for thread:0..<96 {
             if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
         }
-        for thread:0..<128 {
+        for thread:0..<96 {
             b_lane:=thread/8;
             k:=thread%8;
             for rr:0..<8 {
@@ -2574,8 +2593,8 @@ ink_dequant_iq4_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,w:[]u16,exp_cnt
                 if row<rows {
                     rbase:=(exp_id*rows+row)*row_words;
                     obase:=(local_e*rows+row)*half_cols;
-                    for step:0..<(blocks+15)/16 {
-                        blk:=step*16+b_lane;
+                    for step:0..<(blocks+11)/12 {
+                        blk:=step*12+b_lane;
                         if blk<blocks {
                             at:=rbase+blk*9;
                             sc:=ink_half(cast(u32)w[at]);
@@ -2736,58 +2755,87 @@ ink_moe_gu_iq4_m4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x_exp:[
                 u_row_base:=g_row_base+n_ff*row_words;
                 xb0:=r0*cols;
                 xb1:=xb0+cols;xb2:=xb1+cols;xb3:=xb2+cols;
-                for step:0..<(blocks+7)/8 {
-                    block:=step*8+blk_lane;
-                    if block<blocks {
-                        boff:=block*9;
-                        at_g:=g_row_base+boff;
-                        at_u:=u_row_base+boff;
-                        xoff:=block*32;
-                        sg0:f32=0;sg1:f32=0;sg2:f32=0;sg3:f32=0;
-                        su0:f32=0;su1:f32=0;su2:f32=0;su3:f32=0;
-                        for j:0..<2 {
-                            k:=k0+j;
-                            vg:=cast(u32)w[at_g+1+k];
-                            wg0:=lut[cast(int)(vg&15)];
-                            wg1:=lut[cast(int)((vg>>4)&15)];
-                            wg2:=lut[cast(int)((vg>>8)&15)];
-                            wg3:=lut[cast(int)(vg>>12)];
-                            vu:=cast(u32)w[at_u+1+k];
-                            wu0:=lut[cast(int)(vu&15)];
-                            wu1:=lut[cast(int)((vu>>4)&15)];
-                            wu2:=lut[cast(int)((vu>>8)&15)];
-                            wu3:=lut[cast(int)(vu>>12)];
-                            k2:=xoff+2*k;
-                            x0:=x_exp[xb0+k2];x1:=x_exp[xb0+k2+16];x2:=x_exp[xb0+k2+1];x3:=x_exp[xb0+k2+17];
-                            sg0+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;
-                            su0+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
-                            if mc>1 {
-                                x0=x_exp[xb1+k2];x1=x_exp[xb1+k2+16];x2=x_exp[xb1+k2+1];x3=x_exp[xb1+k2+17];
-                                sg1+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;
-                                su1+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                n_steps:=(blocks+7)/8;
+                if mc==1 {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;
+                            at_g:=g_row_base+boff;at_u:=u_row_base+boff;
+                            xoff:=block*32;
+                            sg0:f32=0;su0:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                x0:=x_exp[xb0+k2];x1:=x_exp[xb0+k2+16];x2:=x_exp[xb0+k2+1];x3:=x_exp[xb0+k2+17];
+                                vg:=cast(u32)w[at_g+1+k];
+                                sg0+=lut[cast(int)(vg&15)]*x0+lut[cast(int)((vg>>4)&15)]*x1+lut[cast(int)((vg>>8)&15)]*x2+lut[cast(int)(vg>>12)]*x3;
+                                vu:=cast(u32)w[at_u+1+k];
+                                su0+=lut[cast(int)(vu&15)]*x0+lut[cast(int)((vu>>4)&15)]*x1+lut[cast(int)((vu>>8)&15)]*x2+lut[cast(int)(vu>>12)]*x3;
                             }
-                            if mc>2 {
-                                x0=x_exp[xb2+k2];x1=x_exp[xb2+k2+16];x2=x_exp[xb2+k2+1];x3=x_exp[xb2+k2+17];
-                                sg2+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;
-                                su2+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
-                            }
-                            if mc>3 {
-                                x0=x_exp[xb3+k2];x1=x_exp[xb3+k2+16];x2=x_exp[xb3+k2+1];x3=x_exp[xb3+k2+17];
-                                sg3+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;
-                                su3+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
-                            }
+                            g0+=ink_half(cast(u32)w[at_g])*sg0;
+                            u0+=ink_half(cast(u32)w[at_u])*su0;
                         }
-                        dg:=ink_half(cast(u32)w[at_g]);
-                        du:=ink_half(cast(u32)w[at_u]);
-                        g0+=dg*sg0;u0+=du*su0;
-                        if mc>1 {g1+=dg*sg1;u1+=du*su1;}
-                        if mc>2 {g2+=dg*sg2;u2+=du*su2;}
-                        if mc>3 {g3+=dg*sg3;u3+=du*su3;}
+                    }
+                } else if mc==2 {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;
+                            at_g:=g_row_base+boff;at_u:=u_row_base+boff;
+                            xoff:=block*32;
+                            sg0:f32=0;sg1:f32=0;su0:f32=0;su1:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                vg:=cast(u32)w[at_g+1+k];
+                                wg0:=lut[cast(int)(vg&15)];wg1:=lut[cast(int)((vg>>4)&15)];wg2:=lut[cast(int)((vg>>8)&15)];wg3:=lut[cast(int)(vg>>12)];
+                                vu:=cast(u32)w[at_u+1+k];
+                                wu0:=lut[cast(int)(vu&15)];wu1:=lut[cast(int)((vu>>4)&15)];wu2:=lut[cast(int)((vu>>8)&15)];wu3:=lut[cast(int)(vu>>12)];
+                                x0:=x_exp[xb0+k2];x1:=x_exp[xb0+k2+16];x2:=x_exp[xb0+k2+1];x3:=x_exp[xb0+k2+17];
+                                sg0+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su0+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                                x0=x_exp[xb1+k2];x1=x_exp[xb1+k2+16];x2=x_exp[xb1+k2+1];x3=x_exp[xb1+k2+17];
+                                sg1+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su1+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                            }
+                            dg:=ink_half(cast(u32)w[at_g]);du:=ink_half(cast(u32)w[at_u]);
+                            g0+=dg*sg0;u0+=du*su0;g1+=dg*sg1;u1+=du*su1;
+                        }
+                    }
+                } else {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;
+                            at_g:=g_row_base+boff;at_u:=u_row_base+boff;
+                            xoff:=block*32;
+                            sg0:f32=0;sg1:f32=0;sg2:f32=0;sg3:f32=0;
+                            su0:f32=0;su1:f32=0;su2:f32=0;su3:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                vg:=cast(u32)w[at_g+1+k];
+                                wg0:=lut[cast(int)(vg&15)];wg1:=lut[cast(int)((vg>>4)&15)];wg2:=lut[cast(int)((vg>>8)&15)];wg3:=lut[cast(int)(vg>>12)];
+                                vu:=cast(u32)w[at_u+1+k];
+                                wu0:=lut[cast(int)(vu&15)];wu1:=lut[cast(int)((vu>>4)&15)];wu2:=lut[cast(int)((vu>>8)&15)];wu3:=lut[cast(int)(vu>>12)];
+                                x0:=x_exp[xb0+k2];x1:=x_exp[xb0+k2+16];x2:=x_exp[xb0+k2+1];x3:=x_exp[xb0+k2+17];
+                                sg0+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su0+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                                x0=x_exp[xb1+k2];x1=x_exp[xb1+k2+16];x2=x_exp[xb1+k2+1];x3=x_exp[xb1+k2+17];
+                                sg1+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su1+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                                x0=x_exp[xb2+k2];x1=x_exp[xb2+k2+16];x2=x_exp[xb2+k2+1];x3=x_exp[xb2+k2+17];
+                                sg2+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su2+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                                if mc>3 {
+                                    x0=x_exp[xb3+k2];x1=x_exp[xb3+k2+16];x2=x_exp[xb3+k2+1];x3=x_exp[xb3+k2+17];
+                                    sg3+=wg0*x0+wg1*x1+wg2*x2+wg3*x3;su3+=wu0*x0+wu1*x1+wu2*x2+wu3*x3;
+                                }
+                            }
+                            dg:=ink_half(cast(u32)w[at_g]);du:=ink_half(cast(u32)w[at_u]);
+                            g0+=dg*sg0;u0+=du*su0;g1+=dg*sg1;u1+=du*su1;g2+=dg*sg2;u2+=du*su2;
+                            if mc>3 {g3+=dg*sg3;u3+=du*su3;}
+                        }
                     }
                 }
             }
-            part[thread*8+0]=g0;part[thread*8+1]=g1;part[thread*8+2]=g2;part[thread*8+3]=g3;
-            part[thread*8+4]=u0;part[thread*8+5]=u1;part[thread*8+6]=u2;part[thread*8+7]=u3;
+            part[thread*8+0]=g0;part[thread*8+4]=u0;
+            if mc>1 {part[thread*8+1]=g1;part[thread*8+5]=u1;}
+            if mc>2 {part[thread*8+2]=g2;part[thread*8+6]=u2;}
+            if mc>3 {part[thread*8+3]=g3;part[thread*8+7]=u3;}
         }
     }
     for thread:0..<128 {
@@ -2848,70 +2896,99 @@ ink_moe_down_iq4_m4 :: (item:int,rows:int,cols:int,w:[]u16,x_hid:[]f32,exp_cnt:[
                 has_b:=ifx rb<rows then 1 else 0;
                 xb0:=r0*cols;
                 xb1:=xb0+cols;xb2:=xb1+cols;xb3:=xb2+cols;
-                for step:0..<(blocks+7)/8 {
-                    block:=step*8+blk_lane;
-                    if block<blocks {
-                        boff:=block*9;
-                        at_a:=row_a+boff;
-                        at_b:=row_b+boff;
-                        xoff:=block*32;
-                        sa0:f32=0;sa1:f32=0;sa2:f32=0;sa3:f32=0;
-                        sb0:f32=0;sb1:f32=0;sb2:f32=0;sb3:f32=0;
-                        for j:0..<2 {
-                            k:=k0+j;
-                            va:=cast(u32)w[at_a+1+k];
-                            wa0:=lut[cast(int)(va&15)];
-                            wa1:=lut[cast(int)((va>>4)&15)];
-                            wa2:=lut[cast(int)((va>>8)&15)];
-                            wa3:=lut[cast(int)(va>>12)];
-                            k2:=xoff+2*k;
-                            x0:=x_hid[xb0+k2];x1:=x_hid[xb0+k2+16];x2:=x_hid[xb0+k2+1];x3:=x_hid[xb0+k2+17];
-                            sa0+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;
-                            if has_b!=0 {
+                n_steps:=(blocks+7)/8;
+                if has_b!=0 && mc==1 {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;at_a:=row_a+boff;at_b:=row_b+boff;xoff:=block*32;
+                            sa0:f32=0;sb0:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                x0:=x_hid[xb0+k2];x1:=x_hid[xb0+k2+16];x2:=x_hid[xb0+k2+1];x3:=x_hid[xb0+k2+17];
+                                va:=cast(u32)w[at_a+1+k];
+                                sa0+=lut[cast(int)(va&15)]*x0+lut[cast(int)((va>>4)&15)]*x1+lut[cast(int)((va>>8)&15)]*x2+lut[cast(int)(va>>12)]*x3;
                                 vb:=cast(u32)w[at_b+1+k];
-                                wb0:=lut[cast(int)(vb&15)];
-                                wb1:=lut[cast(int)((vb>>4)&15)];
-                                wb2:=lut[cast(int)((vb>>8)&15)];
-                                wb3:=lut[cast(int)(vb>>12)];
-                                sb0+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
-                                if mc>1 {
-                                    x0=x_hid[xb1+k2];x1=x_hid[xb1+k2+16];x2=x_hid[xb1+k2+1];x3=x_hid[xb1+k2+17];
-                                    sa1+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;
-                                    sb1+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
-                                }
-                                if mc>2 {
-                                    x0=x_hid[xb2+k2];x1=x_hid[xb2+k2+16];x2=x_hid[xb2+k2+1];x3=x_hid[xb2+k2+17];
-                                    sa2+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;
-                                    sb2+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
-                                }
-                                if mc>3 {
-                                    x0=x_hid[xb3+k2];x1=x_hid[xb3+k2+16];x2=x_hid[xb3+k2+1];x3=x_hid[xb3+k2+17];
-                                    sa3+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;
-                                    sb3+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
-                                }
-                            } else {
-                                if mc>1 {sa1+=wa0*x_hid[xb1+k2]+wa1*x_hid[xb1+k2+16]+wa2*x_hid[xb1+k2+1]+wa3*x_hid[xb1+k2+17];}
-                                if mc>2 {sa2+=wa0*x_hid[xb2+k2]+wa1*x_hid[xb2+k2+16]+wa2*x_hid[xb2+k2+1]+wa3*x_hid[xb2+k2+17];}
-                                if mc>3 {sa3+=wa0*x_hid[xb3+k2]+wa1*x_hid[xb3+k2+16]+wa2*x_hid[xb3+k2+1]+wa3*x_hid[xb3+k2+17];}
+                                sb0+=lut[cast(int)(vb&15)]*x0+lut[cast(int)((vb>>4)&15)]*x1+lut[cast(int)((vb>>8)&15)]*x2+lut[cast(int)(vb>>12)]*x3;
                             }
+                            a0+=ink_half(cast(u32)w[at_a])*sa0;
+                            b0+=ink_half(cast(u32)w[at_b])*sb0;
                         }
-                        da:=ink_half(cast(u32)w[at_a]);
-                        a0+=da*sa0;
-                        if mc>1 {a1+=da*sa1;}
-                        if mc>2 {a2+=da*sa2;}
-                        if mc>3 {a3+=da*sa3;}
-                        if has_b!=0 {
-                            db:=ink_half(cast(u32)w[at_b]);
-                            b0+=db*sb0;
-                            if mc>1 {b1+=db*sb1;}
-                            if mc>2 {b2+=db*sb2;}
-                            if mc>3 {b3+=db*sb3;}
+                    }
+                } else if has_b!=0 && mc==2 {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;at_a:=row_a+boff;at_b:=row_b+boff;xoff:=block*32;
+                            sa0:f32=0;sa1:f32=0;sb0:f32=0;sb1:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                va:=cast(u32)w[at_a+1+k];
+                                wa0:=lut[cast(int)(va&15)];wa1:=lut[cast(int)((va>>4)&15)];wa2:=lut[cast(int)((va>>8)&15)];wa3:=lut[cast(int)(va>>12)];
+                                vb:=cast(u32)w[at_b+1+k];
+                                wb0:=lut[cast(int)(vb&15)];wb1:=lut[cast(int)((vb>>4)&15)];wb2:=lut[cast(int)((vb>>8)&15)];wb3:=lut[cast(int)(vb>>12)];
+                                x0:=x_hid[xb0+k2];x1:=x_hid[xb0+k2+16];x2:=x_hid[xb0+k2+1];x3:=x_hid[xb0+k2+17];
+                                sa0+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;sb0+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                                x0=x_hid[xb1+k2];x1=x_hid[xb1+k2+16];x2=x_hid[xb1+k2+1];x3=x_hid[xb1+k2+17];
+                                sa1+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;sb1+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                            }
+                            da:=ink_half(cast(u32)w[at_a]);db:=ink_half(cast(u32)w[at_b]);
+                            a0+=da*sa0;a1+=da*sa1;b0+=db*sb0;b1+=db*sb1;
+                        }
+                    }
+                } else {
+                    for step:0..<n_steps {
+                        block:=step*8+blk_lane;
+                        if block<blocks {
+                            boff:=block*9;at_a:=row_a+boff;at_b:=row_b+boff;xoff:=block*32;
+                            sa0:f32=0;sa1:f32=0;sa2:f32=0;sa3:f32=0;
+                            sb0:f32=0;sb1:f32=0;sb2:f32=0;sb3:f32=0;
+                            for j:0..<2 {
+                                k:=k0+j;k2:=xoff+2*k;
+                                va:=cast(u32)w[at_a+1+k];
+                                wa0:=lut[cast(int)(va&15)];wa1:=lut[cast(int)((va>>4)&15)];wa2:=lut[cast(int)((va>>8)&15)];wa3:=lut[cast(int)(va>>12)];
+                                x0:=x_hid[xb0+k2];x1:=x_hid[xb0+k2+16];x2:=x_hid[xb0+k2+1];x3:=x_hid[xb0+k2+17];
+                                sa0+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;
+                                if has_b!=0 {
+                                    vb:=cast(u32)w[at_b+1+k];
+                                    wb0:=lut[cast(int)(vb&15)];wb1:=lut[cast(int)((vb>>4)&15)];wb2:=lut[cast(int)((vb>>8)&15)];wb3:=lut[cast(int)(vb>>12)];
+                                    sb0+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                                    if mc>1 {
+                                        x0=x_hid[xb1+k2];x1=x_hid[xb1+k2+16];x2=x_hid[xb1+k2+1];x3=x_hid[xb1+k2+17];
+                                        sa1+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;sb1+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                                    }
+                                    if mc>2 {
+                                        x0=x_hid[xb2+k2];x1=x_hid[xb2+k2+16];x2=x_hid[xb2+k2+1];x3=x_hid[xb2+k2+17];
+                                        sa2+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;sb2+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                                    }
+                                    if mc>3 {
+                                        x0=x_hid[xb3+k2];x1=x_hid[xb3+k2+16];x2=x_hid[xb3+k2+1];x3=x_hid[xb3+k2+17];
+                                        sa3+=wa0*x0+wa1*x1+wa2*x2+wa3*x3;sb3+=wb0*x0+wb1*x1+wb2*x2+wb3*x3;
+                                    }
+                                } else {
+                                    if mc>1 {sa1+=wa0*x_hid[xb1+k2]+wa1*x_hid[xb1+k2+16]+wa2*x_hid[xb1+k2+1]+wa3*x_hid[xb1+k2+17];}
+                                    if mc>2 {sa2+=wa0*x_hid[xb2+k2]+wa1*x_hid[xb2+k2+16]+wa2*x_hid[xb2+k2+1]+wa3*x_hid[xb2+k2+17];}
+                                    if mc>3 {sa3+=wa0*x_hid[xb3+k2]+wa1*x_hid[xb3+k2+16]+wa2*x_hid[xb3+k2+1]+wa3*x_hid[xb3+k2+17];}
+                                }
+                            }
+                            da:=ink_half(cast(u32)w[at_a]);a0+=da*sa0;
+                            if mc>1 {a1+=da*sa1;}
+                            if mc>2 {a2+=da*sa2;}
+                            if mc>3 {a3+=da*sa3;}
+                            if has_b!=0 {
+                                db:=ink_half(cast(u32)w[at_b]);b0+=db*sb0;
+                                if mc>1 {b1+=db*sb1;}
+                                if mc>2 {b2+=db*sb2;}
+                                if mc>3 {b3+=db*sb3;}
+                            }
                         }
                     }
                 }
             }
-            part[thread*8+0]=a0;part[thread*8+1]=a1;part[thread*8+2]=a2;part[thread*8+3]=a3;
-            part[thread*8+4]=b0;part[thread*8+5]=b1;part[thread*8+6]=b2;part[thread*8+7]=b3;
+            part[thread*8+0]=a0;part[thread*8+4]=b0;
+            if mc>1 {part[thread*8+1]=a1;part[thread*8+5]=b1;}
+            if mc>2 {part[thread*8+2]=a2;part[thread*8+6]=b2;}
+            if mc>3 {part[thread*8+3]=a3;part[thread*8+7]=b3;}
         }
     }
     for thread:0..<128 {

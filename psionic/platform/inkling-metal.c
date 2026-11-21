@@ -82,6 +82,7 @@ enum {
     K_MOE_DOWN_IQ4_M4,
     K_MM_F32_M4,
     K_DEQUANT_F32_BF16,
+    K_MM_BF16_32,
     K_COUNT
 };
 
@@ -152,6 +153,7 @@ static const char *const k_names[K_COUNT] = {
     "ink_moe_down_iq4_m4",
     "ink_mm_f32_m4",
     "ink_dequant_f32_bf16",
+    "ink_mm_bf16_32",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -209,7 +211,7 @@ static const int64_t k_lanes[K_COUNT] = {
     1,      /* K_MOE_EXP_OFF */
     1,      /* K_MOE_CHUNK_TILES */
     128,    /* K_MOE_GATHER_X */
-    128,    /* K_DEQUANT_IQ4_EXP_BF16 */
+    96,     /* K_DEQUANT_IQ4_EXP_BF16 */
     128,    /* K_DEQUANT_Q8_EXP_BF16 */
     128,    /* K_MOE_MM_BF16 */
     128,    /* K_MOE_MM_BF16_16 */
@@ -221,6 +223,7 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MOE_DOWN_IQ4_M4 */
     128,    /* K_MM_F32_M4 */
     128,    /* K_DEQUANT_F32_BF16 */
+    128,    /* K_MM_BF16_32 */
 };
 
 struct InkSession {
@@ -1048,10 +1051,17 @@ static int dispatch_dequant_f32_bf16(InkSession *s, PmBatch batch, const InkTens
 
 static int dispatch_mm_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t cols, int64_t nb, int64_t bf16_off,
                             PmBuffer x_buf, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
-    if (nb >= 64) {
+    if (nb >= 33) {
         int64_t t_tiles = (nb + 63) / 64;
         int64_t r_tiles = (rows + 63) / 64;
         CALL(s, batch, K_MM_BF16, t_tiles * r_tiles, a_int(rows), a_int(cols), a_int(nb),
+             a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)),
+             a_f32v(x_buf, x_off, nb * cols),
+             a_f32v(out_buf, out_off, nb * rows));
+    } else if (nb >= 17) {
+        int64_t t_tiles = (nb + 31) / 32;
+        int64_t r_tiles = (rows + 63) / 64;
+        CALL(s, batch, K_MM_BF16_32, t_tiles * r_tiles, a_int(rows), a_int(cols), a_int(nb),
              a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)),
              a_f32v(x_buf, x_off, nb * cols),
              a_f32v(out_buf, out_off, nb * rows));
@@ -1417,7 +1427,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_u32v(s->row_dst, 0, tot_rows),
              a_f32v(s->row_wt, 0, tot_rows));
         pm_barrier(batch);
-        int64_t max_tiles = hp->n_expert + tot_rows / tm;
+        int64_t max_tiles = (tot_rows + (tm - 1) * hp->n_expert) / tm;
         if (max_tiles > tot_rows) max_tiles = tot_rows;
         if (max_tiles > tile_cap) max_tiles = tile_cap;
         CALL(s, batch, K_MOE_GU_IQ4_M4, max_tiles * ((n_ff + 3) / 4),

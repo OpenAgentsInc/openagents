@@ -159,6 +159,7 @@ void *pm_contents(PmBuffer buffer) { return buffer ? ((__bridge id<MTLBuffer>)bu
 @property(strong) id<MTLCommandBuffer> commands;
 @property(strong) id<MTLComputeCommandEncoder> encoder;
 @property(strong) id<MTLBuffer> errors;
+@property(assign) void *last_pipeline;
 @end
 @implementation PmBatchObject
 @end
@@ -239,15 +240,17 @@ PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int
         at += size;
     }
     NSUInteger threads = (NSUInteger)items * (NSUInteger)lanes;
-    NSUInteger limit = pipeline.maxTotalThreadsPerThreadgroup;
-    [b.encoder setComputePipelineState:pipeline];
+    if (b.last_pipeline != kernel) {
+        [b.encoder setComputePipelineState:pipeline];
+        b.last_pipeline = kernel;
+    }
     [b.encoder setBytes:block_bytes length:at atIndex:0];
     if (lanes > 32) {
         /* A group kernel: one threadgroup of exactly `lanes` threads per item. */
-        if ((NSUInteger)lanes > limit) { note("the pipeline allows %lu threads per group; the group kernel needs %d", (unsigned long)limit, lanes); return PM_ARGUMENT; }
         [b.encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)items, 1, 1) threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
         return PM_OK;
     }
+    NSUInteger limit = pipeline.maxTotalThreadsPerThreadgroup;
     NSUInteger group = block > 0 ? (NSUInteger)block : 128;
     if (group > limit) group = limit;
     group = group / 32 * 32;
