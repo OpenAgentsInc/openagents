@@ -867,9 +867,22 @@ final class GymBenchmarkView: NSView {
 
     // MARK: - Live Benchmark Execution Engine (Native Swift)
 
+    private func terminateServer(_ proc: Process) {
+        guard proc.isRunning else { return }
+        proc.terminate()
+        let deadline = CFAbsoluteTimeGetCurrent() + 0.4
+        while proc.isRunning && CFAbsoluteTimeGetCurrent() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if proc.isRunning {
+            kill(proc.processIdentifier, SIGKILL)
+        }
+        proc.waitUntilExit()
+    }
+
     private func stopActiveServer() {
         if let p = activeServerProcess {
-            if p.isRunning { p.terminate() }
+            terminateServer(p)
             activeServerProcess = nil
         }
     }
@@ -966,7 +979,7 @@ final class GymBenchmarkView: NSView {
         }
         activeServerProcess = proc
         defer {
-            if proc.isRunning { proc.terminate(); proc.waitUntilExit() }
+            terminateServer(proc)
             if activeServerProcess === proc { activeServerProcess = nil }
         }
 
