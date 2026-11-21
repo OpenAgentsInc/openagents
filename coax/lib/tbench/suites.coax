@@ -1,0 +1,153 @@
+// Official Terminal-Bench Suite Registry & Deterministic Train/Held-Out Partitions
+// (Epic #13950, Phase 1 #13951, Phase 3 #13953).
+//
+// Carries the exact official task lists for:
+//   - tb2-smoke         (3 tasks: 2 train, 1 held-out)
+//   - tb2-cross-section (12 tasks: 8 train, 4 held-out)
+//   - tb2-full          (89 official Terminal-Bench 2.0 tasks: 60 train, 29 held-out)
+//   - tb21-oos          (89 official Terminal-Bench 2.1 tasks: 24 dev, 65 held-out)
+//   - tb4-full          (66 official Terminal-Bench 4.0 tasks: 42 train, 24 held-out)
+//
+//   coax/bin/coax test coax/lib/tbench/suites.coax --library
+#load "policy.coax";
+
+TB_PART_TRAIN :: 0;
+TB_PART_HELDOUT :: 1;
+
+TB_SUITE_SMOKE :: 0;
+TB_SUITE_CROSS :: 1;
+TB_SUITE_TB2_FULL :: 2;
+TB_SUITE_TB21_OOS :: 3;
+TB_SUITE_TB4_FULL :: 4;
+TB_SUITE_COUNT :: 5;
+
+TB2_SMOKE_TASKS :: [3] string.[
+  "fix-git",
+  "log-summary-date-ranges",
+  "regex-log",
+];
+
+TB2_CROSS_TASKS :: [12] string.[
+  "build-cython-ext", "count-dataset-tokens", "fix-code-vulnerability", "git-leak-recovery",
+  "merge-diff-arc-agi-task", "nginx-request-logging", "openssl-selfsigned-cert", "password-recovery",
+  "regex-log", "sanitize-git-repo", "schemelike-metacircular-eval", "sqlite-with-gcov",
+];
+
+// Official 89 Terminal-Bench 2.0 / 2.1 task identifiers (sorted lexicographically).
+TB2_FULL_TASKS :: [89] string.[
+  "adaptive-rejection-sampler", "bn-fit-modify", "break-filter-js-from-html", "build-cython-ext", "build-pmars", "build-pov-ray",
+  "caffe-cifar-10", "cancel-async-tasks", "chess-best-move", "circuit-fibsqrt", "cobol-modernization", "code-from-image",
+  "compile-compcert", "configure-git-webserver", "constraints-scheduling", "count-dataset-tokens", "crack-7z-hash", "custom-memory-heap-crash",
+  "db-wal-recovery", "distribution-search", "dna-assembly", "dna-insert", "extract-elf", "extract-moves-from-video",
+  "feal-differential-cryptanalysis", "feal-linear-cryptanalysis", "filter-js-from-html", "financial-document-processor", "fix-code-vulnerability", "fix-git",
+  "fix-ocaml-gc", "gcode-to-text", "git-leak-recovery", "git-multibranch", "gpt2-codegolf", "headless-terminal",
+  "hf-model-inference", "install-windows-3.11", "kv-store-grpc", "large-scale-text-editing", "largest-eigenval", "llm-inference-batching-scheduler",
+  "log-summary-date-ranges", "mailman", "make-doom-for-mips", "make-mips-interpreter", "mcmc-sampling-stan", "merge-diff-arc-agi-task",
+  "model-extraction-relu-logits", "modernize-scientific-stack", "mteb-leaderboard", "mteb-retrieve", "multi-source-data-merger", "nginx-request-logging",
+  "openssl-selfsigned-cert", "overfull-hbox", "password-recovery", "path-tracing", "path-tracing-reverse", "polyglot-c-py",
+  "polyglot-rust-c", "portfolio-optimization", "protein-assembly", "prove-plus-comm", "pypi-server", "pytorch-model-cli",
+  "pytorch-model-recovery", "qemu-alpine-ssh", "qemu-startup", "query-optimize", "raman-fitting", "regex-chess",
+  "regex-log", "reshard-c4-data", "rstan-to-pystan", "sam-cell-seg", "sanitize-git-repo", "schemelike-metacircular-eval",
+  "sparql-university", "sqlite-db-truncate", "sqlite-with-gcov", "torch-pipeline-parallelism", "torch-tensor-parallelism", "train-fasttext",
+  "tune-mjcf", "video-processing", "vulnerable-secret", "winning-avg-corewars", "write-compressor",
+];
+
+// Official 66 Terminal-Bench 4.0 task identifiers (v4.0.0, sorted lexicographically).
+TB4_FULL_TASKS :: [66] string.[
+  "atrx-vep-crispr", "batched-eval-parity", "biped-contact-dynamics", "bun-sourcemap-leak", "cad-model", "cargo-flight-dispatch",
+  "coq-block-bound", "ctr-optimization", "cumulative-layout-shift", "data-anonymization", "distributed-dedup", "embedding-drift-monitor",
+  "fin-saccr-rwa", "foodstuff-beta-activity", "formal-crypto", "fp8-rmsnorm-gemm", "freecad-impeller", "freecad-platform-drawing",
+  "freecad-spring-clip", "freight-dispatch-shift", "glycan-ms2-elucidation", "gsea-proteomics", "heat-pump-warranty", "hof-topology-interpenetration",
+  "html-js-filter", "interleaved-vigenere", "intrastat-meldung", "jax-speedrun-gpu", "ks-solver-cpp", "kv-live-surgery",
+  "lake-temp-glm", "layout-config-recreation", "layout-config-recreation2", "legacy-utility-triage", "live-database-cutover", "math-eval-grader",
+  "medical-claims-processing", "mp-checkpoint-consolidation", "music-harmony", "mvcc-lsm-compaction", "nextjs-performance", "ontology-kg-querying",
+  "payments-pipeline-fix", "photonic-waveguide-routing", "pretrain-shard-corruption", "production-planning", "protein-autointerp-disulfide", "react-lead-form",
+  "retro-console-soc", "risk-scorer-replay", "roy-polymorph-cn", "rs-archive-clone", "satb-audio-transcription", "session-window-debug",
+  "sglang-qwen-burst", "shadow-relay", "sound-change-cascade", "takens-embedding-lean", "telecom-entity-resolution", "uefi-bootkit",
+  "vba-userform-port", "vf2-speedup-networkx", "vllm-deepseek-streaming", "vpp-loss-divergence", "wal-recovery-ordering", "wdm-design",
+];
+
+TbSuiteInfo :: struct {
+  id: int;
+  slug: string;
+  title: string;
+  dataset: string;
+  count: int;
+}
+
+tb_suite_info :: (id: int) -> TbSuiteInfo {
+  if id == TB_SUITE_SMOKE {
+    return TbSuiteInfo.{id = TB_SUITE_SMOKE, slug = "tb2-smoke", title = "Terminal-Bench 2.0 — Smoke (3 Tasks)", dataset = "terminal-bench@2.0", count = 3};
+  }
+  if id == TB_SUITE_CROSS {
+    return TbSuiteInfo.{id = TB_SUITE_CROSS, slug = "tb2-cross-section", title = "Terminal-Bench 2.0 — Cross-Section (12 Tasks)", dataset = "terminal-bench@2.0", count = 12};
+  }
+  if id == TB_SUITE_TB2_FULL {
+    return TbSuiteInfo.{id = TB_SUITE_TB2_FULL, slug = "tb2-full", title = "Terminal-Bench 2.0 — Full Official Suite (89 Tasks)", dataset = "terminal-bench@2.0", count = 89};
+  }
+  if id == TB_SUITE_TB21_OOS {
+    return TbSuiteInfo.{id = TB_SUITE_TB21_OOS, slug = "tb21-oos", title = "Terminal-Bench 2.1 — Full + OOS Split (89 Tasks)", dataset = "terminal-bench@2.1", count = 89};
+  }
+  return TbSuiteInfo.{id = TB_SUITE_TB4_FULL, slug = "tb4-full", title = "Terminal-Bench 4.0 — Full Official Suite (66 Tasks)", dataset = "terminal-bench@4.0", count = 66};
+}
+
+tb_suite_by_slug :: (slug: string) -> int {
+  if slug == "tb2-smoke" || slug == "smoke" { return TB_SUITE_SMOKE; }
+  if slug == "tb2-cross-section" || slug == "cross-section" || slug == "cross" { return TB_SUITE_CROSS; }
+  if slug == "tb2-full" || slug == "tb2" || slug == "full" { return TB_SUITE_TB2_FULL; }
+  if slug == "tb21-oos" || slug == "tb21" { return TB_SUITE_TB21_OOS; }
+  if slug == "tb4-full" || slug == "tb4" { return TB_SUITE_TB4_FULL; }
+  return -1;
+}
+
+tb_suite_task :: (suite_id: int, idx: int) -> string {
+  if idx < 0 { return ""; }
+  if suite_id == TB_SUITE_SMOKE && idx < 3 { return TB2_SMOKE_TASKS[idx]; }
+  if suite_id == TB_SUITE_CROSS && idx < 12 { return TB2_CROSS_TASKS[idx]; }
+  if (suite_id == TB_SUITE_TB2_FULL || suite_id == TB_SUITE_TB21_OOS) && idx < 89 { return TB2_FULL_TASKS[idx]; }
+  if suite_id == TB_SUITE_TB4_FULL && idx < 66 { return TB4_FULL_TASKS[idx]; }
+  return "";
+}
+
+// Deterministic train / held-out partition by task index within a suite:
+//   - tb2-smoke: 2 train (idx 0,1), 1 held-out (idx 2: regex-log)
+//   - tb2-cross-section: 8 train, 4 held-out (idx % 3 == 2)
+//   - tb2-full: 60 train, 29 held-out (idx % 3 == 2)
+//   - tb21-oos: 24 dev/train (idx < 24), 65 held-out (idx >= 24)
+//   - tb4-full: 44 train, 22 held-out (idx % 3 == 2)
+tb_suite_partition :: (suite_id: int, idx: int) -> int {
+  if suite_id == TB_SUITE_TB21_OOS {
+    return ifx idx < 24 then TB_PART_TRAIN else TB_PART_HELDOUT;
+  }
+  return ifx (idx % 3) == 2 then TB_PART_HELDOUT else TB_PART_TRAIN;
+}
+
+tb_partition_name :: (part: int) -> string {
+  return ifx part == TB_PART_HELDOUT then "heldout" else "train";
+}
+
+#test "tbench suites: official task counts, valid IDs, and train/held-out splits (#13951)" {
+  #assert tb_suite_by_slug("tb2-smoke") == TB_SUITE_SMOKE;
+  #assert tb_suite_by_slug("tb2-cross-section") == TB_SUITE_CROSS;
+  #assert tb_suite_by_slug("tb2-full") == TB_SUITE_TB2_FULL;
+  #assert tb_suite_by_slug("tb21-oos") == TB_SUITE_TB21_OOS;
+  #assert tb_suite_by_slug("tb4-full") == TB_SUITE_TB4_FULL;
+  #assert tb_suite_by_slug("nope") == -1;
+
+  for sid: 0..<TB_SUITE_COUNT {
+    info := tb_suite_info(sid);
+    #assert tb_valid_dataset(info.dataset);
+    #assert tb_valid_slug(info.slug);
+    tr := 0; ho := 0;
+    for i: 0..<info.count {
+      t := tb_suite_task(sid, i);
+      #assert tb_valid_task_id(t);
+      if tb_suite_partition(sid, i) == TB_PART_TRAIN { tr += 1; } else { ho += 1; }
+    }
+    #assert tr > 0 && ho > 0 && tr + ho == info.count;
+  }
+  #assert tb_suite_info(TB_SUITE_TB2_FULL).count == 89;
+  #assert tb_suite_info(TB_SUITE_TB4_FULL).count == 66;
+  #assert tb_suite_task(TB_SUITE_SMOKE, 0) == "fix-git";
+  #assert tb_suite_partition(TB_SUITE_SMOKE, 2) == TB_PART_HELDOUT;
+}

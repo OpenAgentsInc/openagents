@@ -1,0 +1,377 @@
+// Terminal-Bench #authority Trial Scoring, Statistical Comparison & Hillclimb Promotion Policy
+// (Epic #13950, Phase 1 #13951, Phase 3 #13953).
+//
+// This file is #authority: nothing else decides whether a Terminal-Bench trial is PASS/FAIL/INFRA
+// or whether a Microcoder + Executor Network challenger policy promotes over the current champion.
+//
+//   coax/bin/coax test coax/lib/tbench/policy.coax --library
+//   coax/bin/coax mutate coax/lib/tbench/policy.coax --root-only
+#authority;
+
+// Trial outcome classes
+TB_TRIAL_PASS :: 0;
+TB_TRIAL_FAIL :: 1;
+TB_TRIAL_INFRA :: 2;
+TB_TRIAL_TIMEOUT :: 3;
+
+// Hillclimb #authority promotion verdicts
+TB_GATE_PROMOTED :: 0;
+TB_GATE_HOLD_NO_GAIN :: 1;
+TB_GATE_NO_TRAIN :: 2;
+TB_GATE_NO_HELDOUT :: 3;
+TB_GATE_ATIF_UNVERIFIED :: 4;
+TB_GATE_CONTAMINATED :: 5;
+TB_GATE_INFRA_DOMINATED :: 6;
+TB_GATE_ZERO_PASS :: 7;
+TB_GATE_TRAIN_REGRESSED :: 8;
+TB_GATE_HELDOUT_REGRESSED :: 9;
+TB_GATE_WALL_OVER_CAP :: 10;
+TB_GATE_COST_OVER_CAP :: 11;
+
+TbTrialInput :: struct {
+  verifier_present: bool;
+  infra_error: bool;
+  timed_out: bool;
+  reward_milli: int;    // Harbor verifier reward * 1000 (1000 = 1.0 solved)
+  exit_code: int;
+}
+
+TbHillclimbEval :: struct {
+  train_total: int;
+  heldout_total: int;
+  champ_train_pass: int;
+  cand_train_pass: int;
+  champ_heldout_pass: int;
+  cand_heldout_pass: int;
+  cand_infra_errors: int;
+  champ_wall_ms: int;
+  cand_wall_ms: int;
+  max_wall_ms: int;
+  champ_tokens: int;
+  cand_tokens: int;
+  cand_cost_micros: int;
+  max_cost_micros: int;
+  atif_verified: bool;
+  heldout_contaminated: bool;
+}
+
+// Validates a slug/policy ID: [a-z0-9-], len 2..48, no leading/trailing/adjacent dashes.
+tb_valid_slug :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 2 || s.count > 48 { return false; }
+  if s[0] == '-' || s[s.count - 1] == '-' { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+    if !ok { return false; }
+    if c == '-' && s[i - 1] == '-' { return false; }   // mutant: equivalent (symmetric with i+1 because s[0] != '-' and s[n-1] != '-')
+  }
+  return true;
+}
+
+// Validates a Terminal-Bench task ID: [a-z0-9_.-], len 2..96, starts with alnum, no '..' or trailing '.'.
+tb_valid_task_id :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 2 || s.count > 96 { return false; }
+  c0 := s[0];
+  if !((c0 >= 'a' && c0 <= 'z') || (c0 >= '0' && c0 <= '9')) { return false; }
+  if s[s.count - 1] == '.' { return false; }
+  for i: 1..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    if !ok { return false; }
+    if c == '.' && s[i - 1] == '.' { return false; }   // mutant: equivalent (symmetric with i+1 since s[0] != '.' and s[n-1] != '.')
+  }
+  return true;
+}
+
+// Validates an official Harbor Terminal-Bench dataset identifier.
+tb_valid_dataset :: (ds: string) -> bool #effects(reads, traps) {
+  return ds == "terminal-bench@2.0" || ds == "terminal-bench@2.1" || ds == "terminal-bench@4.0";
+}
+
+// Classifies one Terminal-Bench trial strictly from Harbor's authoritative verifier output.
+tb_classify_trial :: (t: TbTrialInput) -> int #effects() {
+  if t.infra_error { return TB_TRIAL_INFRA; }
+  if !t.verifier_present {
+    if t.timed_out { return TB_TRIAL_TIMEOUT; }
+    return TB_TRIAL_INFRA;
+  }
+  if t.reward_milli >= 1000 { return TB_TRIAL_PASS; }
+  if t.timed_out { return TB_TRIAL_TIMEOUT; }
+  return TB_TRIAL_FAIL;
+}
+
+tb_trial_label :: (code: int) -> string #effects() {
+  if code == TB_TRIAL_PASS { return "PASS"; }
+  if code == TB_TRIAL_FAIL { return "FAIL"; }
+  if code == TB_TRIAL_INFRA { return "INFRA_ERROR"; }
+  if code == TB_TRIAL_TIMEOUT { return "TIMEOUT"; }
+  return "UNKNOWN";
+}
+
+// Integer square root floor for deterministic Wilson 95% CI math with zero float drift.
+tb_isqrt :: (n: int) -> int #effects(traps) {
+  if n < 0 { return 0; }   // mutant: equivalent (n == 0 skips loop lo=1..hi=0 and returns ans=0 either way)
+  lo := 1;
+  hi := n;
+  if hi > 1000000000 { hi = 1000000000; }   // mutant: equivalent (upper search bound for int64 square overflow guard; exact root <= 1e9 for inputs <= 1e18)
+  ans := 0;
+  while lo <= hi {
+    mid := lo + (hi - lo) / 2;   // mutant: equivalent (any interior pivot in [lo, hi] converges to floor(sqrt(n)))
+    if mid * mid <= n { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans;
+}
+
+// Computes pass rate in basis points (0..10000); returns 0 when graded <= 0 or passed <= 0.
+tb_rate_bps :: (passed: int, graded: int) -> int #effects(traps) {
+  if graded <= 0 || passed <= 0 { return 0; }   // mutant: equivalent (when graded > 0 and passed == 0, (0 * 10000) / graded == 0)
+  if passed >= graded { return 10000; }   // mutant: equivalent (when passed == graded, (passed * 10000) / graded == 10000)
+  return (passed * 10000) / graded;
+}
+
+// Computes 95% Wilson confidence interval in basis points (z = 1.96 -> z^2 = 3.8416).
+TbWilson :: struct { low_bps: int; high_bps: int; }
+
+tb_wilson_95 :: (passed: int, graded: int) -> TbWilson #effects(traps) {
+  if graded <= 0 { return TbWilson.{low_bps = 0, high_bps = 0}; }
+  k := passed;
+  if k < 0 { k = 0; }   // mutant: equivalent (k == 0 is unchanged by clamping to 0)
+  if k > graded { k = graded; }   // mutant: equivalent (k == graded is unchanged by clamping to graded)
+  z2 := 38416;
+  denom := graded * 10000 + z2;
+  center := k * 10000 + z2 / 2;
+  inner := (k * (graded - k) * 10000) / graded + 9604;
+  margin := 196 * tb_isqrt(inner);
+  lo := ((center - margin) * 10000) / denom;
+  hi := ((center + margin) * 10000) / denom;
+  return TbWilson.{low_bps = lo, high_bps = hi};
+}
+
+// #authority Two-Arm Hillclimb Promotion Gate.
+tb_admit_hillclimb :: (e: TbHillclimbEval) -> int #effects(traps) {
+  if e.train_total <= 0 { return TB_GATE_NO_TRAIN; }
+  if e.heldout_total <= 0 { return TB_GATE_NO_HELDOUT; }
+  if !e.atif_verified { return TB_GATE_ATIF_UNVERIFIED; }
+  if e.heldout_contaminated { return TB_GATE_CONTAMINATED; }
+  total := e.train_total + e.heldout_total;
+  if e.cand_infra_errors * 4 > total { return TB_GATE_INFRA_DOMINATED; }
+  cand_total := e.cand_train_pass + e.cand_heldout_pass;
+  if cand_total <= 0 { return TB_GATE_ZERO_PASS; }
+  if e.cand_train_pass < e.champ_train_pass { return TB_GATE_TRAIN_REGRESSED; }
+  if e.cand_heldout_pass < e.champ_heldout_pass { return TB_GATE_HELDOUT_REGRESSED; }
+  if e.max_wall_ms > 0 && e.cand_wall_ms > e.max_wall_ms { return TB_GATE_WALL_OVER_CAP; }
+  if e.max_cost_micros > 0 && e.cand_cost_micros > e.max_cost_micros { return TB_GATE_COST_OVER_CAP; }
+  champ_total := e.champ_train_pass + e.champ_heldout_pass;
+  if cand_total > champ_total { return TB_GATE_PROMOTED; }
+  wall_gain := e.cand_wall_ms > 0 && e.cand_wall_ms * 100 <= e.champ_wall_ms * 85;
+  tok_gain := e.cand_tokens > 0 && e.cand_tokens * 100 <= e.champ_tokens * 85;
+  if wall_gain || tok_gain { return TB_GATE_PROMOTED; }
+  return TB_GATE_HOLD_NO_GAIN;
+}
+
+tb_gate_status :: (code: int) -> string #effects() {
+  if code == TB_GATE_PROMOTED { return "PROMOTED"; }
+  if code == TB_GATE_HOLD_NO_GAIN { return "QUARANTINE_HELD"; }
+  return "REJECTED";
+}
+
+tb_gate_reason :: (code: int) -> string #effects() {
+  if code == TB_GATE_PROMOTED { return "promoted_gain_verified"; }
+  if code == TB_GATE_HOLD_NO_GAIN { return "quarantine_held_no_strict_gain"; }
+  if code == TB_GATE_NO_TRAIN { return "rejected_no_train_tasks"; }
+  if code == TB_GATE_NO_HELDOUT { return "rejected_no_heldout_tasks"; }
+  if code == TB_GATE_ATIF_UNVERIFIED { return "rejected_atif_unverified"; }
+  if code == TB_GATE_CONTAMINATED { return "rejected_heldout_contaminated"; }
+  if code == TB_GATE_INFRA_DOMINATED { return "rejected_infra_error_rate_over_25pct"; }
+  if code == TB_GATE_ZERO_PASS { return "rejected_zero_passes"; }
+  if code == TB_GATE_TRAIN_REGRESSED { return "rejected_train_regressed"; }
+  if code == TB_GATE_HELDOUT_REGRESSED { return "rejected_heldout_regressed"; }
+  if code == TB_GATE_WALL_OVER_CAP { return "rejected_wall_over_cap"; }
+  if code == TB_GATE_COST_OVER_CAP { return "rejected_cost_over_cap"; }
+  return "rejected_unknown";
+}
+
+#test "tbench policy: slug, task_id, dataset, trial classification, Wilson CI, and #authority hillclimb gate (#13951, #13953)" {
+  // Slug boundaries
+  #assert !tb_valid_slug("");
+  #assert !tb_valid_slug("a");
+  #assert tb_valid_slug("ab");
+  #assert tb_valid_slug("executor-hybrid-v1");
+  #assert tb_valid_slug("a0-9z");
+  #assert !tb_valid_slug("-abc");
+  #assert !tb_valid_slug("abc-");
+  #assert !tb_valid_slug("a--b");
+  #assert !tb_valid_slug("Bad");
+  #assert !tb_valid_slug("a_b");
+  #assert !tb_valid_slug("a{");
+  #assert !tb_valid_slug("a:");
+  #assert !tb_valid_slug("a/");
+  #assert tb_valid_slug("a12345678901234567890123456789012345678901234567");
+  #assert !tb_valid_slug("a123456789012345678901234567890123456789012345678");
+
+  // Task ID validation (all char-range & length boundaries)
+  #assert !tb_valid_task_id("");
+  #assert !tb_valid_task_id("x");
+  #assert tb_valid_task_id("z9");
+  #assert tb_valid_task_id("9z");
+  #assert !tb_valid_task_id("{a");
+  #assert !tb_valid_task_id(":a");
+  #assert tb_valid_task_id("fix-git");
+  #assert tb_valid_task_id("install-windows-3.11");
+  #assert tb_valid_task_id("0a_b-9z");
+  #assert !tb_valid_task_id("-fix-git");
+  #assert !tb_valid_task_id("_fix");
+  #assert !tb_valid_task_id(".fix");
+  #assert !tb_valid_task_id("fix.");
+  #assert !tb_valid_task_id("fix..git");
+  #assert !tb_valid_task_id("../escape");
+  #assert !tb_valid_task_id("fix git");
+  #assert !tb_valid_task_id("Fix-Git");
+  #assert !tb_valid_task_id("a{");
+  #assert !tb_valid_task_id("a:");
+  #assert !tb_valid_task_id("a/");
+  #assert !tb_valid_task_id("a012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345");
+  #assert tb_valid_task_id("a01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234");
+
+  // Dataset allowlist
+  #assert tb_valid_dataset("terminal-bench@2.0");
+  #assert tb_valid_dataset("terminal-bench@2.1");
+  #assert tb_valid_dataset("terminal-bench@4.0");
+  #assert !tb_valid_dataset("terminal-bench@1.0");
+  #assert !tb_valid_dataset("");
+
+  // Trial classification
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = true, reward_milli = 1000}) == TB_TRIAL_PASS;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = true, reward_milli = 1500, timed_out = true}) == TB_TRIAL_PASS;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = true, reward_milli = 999}) == TB_TRIAL_FAIL;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = true, reward_milli = 0, timed_out = true}) == TB_TRIAL_TIMEOUT;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = false, reward_milli = 1000}) == TB_TRIAL_INFRA;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = false, timed_out = true}) == TB_TRIAL_TIMEOUT;
+  #assert tb_classify_trial(TbTrialInput.{verifier_present = true, infra_error = true, reward_milli = 1000}) == TB_TRIAL_INFRA;
+  #assert tb_trial_label(TB_TRIAL_PASS) == "PASS";
+  #assert tb_trial_label(TB_TRIAL_FAIL) == "FAIL";
+  #assert tb_trial_label(TB_TRIAL_INFRA) == "INFRA_ERROR";
+  #assert tb_trial_label(TB_TRIAL_TIMEOUT) == "TIMEOUT";
+  #assert tb_trial_label(99) == "UNKNOWN";
+
+  // isqrt & rate & exact Wilson 95% CI
+  #assert tb_isqrt(-5) == 0;
+  #assert tb_isqrt(0) == 0;
+  #assert tb_isqrt(1) == 1;
+  #assert tb_isqrt(2) == 1;
+  #assert tb_isqrt(3) == 1;
+  #assert tb_isqrt(4) == 2;
+  #assert tb_isqrt(99) == 9;
+  #assert tb_isqrt(100) == 10;
+  #assert tb_isqrt(1000000000000) == 1000000;
+  #assert tb_rate_bps(0, 0) == 0;
+  #assert tb_rate_bps(1, 0) == 0;
+  #assert tb_rate_bps(-1, 5) == 0;
+  #assert tb_rate_bps(0, 1) == 0;
+  #assert tb_rate_bps(1, 1) == 10000;
+  #assert tb_rate_bps(1, 2) == 5000;
+  #assert tb_rate_bps(1, 10000) == 1;
+  #assert tb_rate_bps(5, 5) == 10000;
+  #assert tb_rate_bps(7, 5) == 10000;
+  #assert tb_rate_bps(2, 3) == 6666;
+  w0 := tb_wilson_95(0, 0);
+  #assert w0.low_bps == 0 && w0.high_bps == 0;
+  w1 := tb_wilson_95(0, 1);
+  #assert w1.low_bps == 0 && w1.high_bps == 7934;
+  w_neg := tb_wilson_95(-2, 10);
+  #assert w_neg.low_bps == 0 && w_neg.high_bps == 2775;
+  w_hi := tb_wilson_95(12, 10);
+  #assert w_hi.low_bps == 7224 && w_hi.high_bps == 10000;
+  w_mid := tb_wilson_95(5, 10);
+  #assert w_mid.low_bps == 2366 && w_mid.high_bps == 7633;
+  w_one := tb_wilson_95(1, 10);
+  #assert w_one.low_bps == 184 && w_one.high_bps == 4035;
+  w_edge := tb_wilson_95(19, 41);
+  #assert w_edge.low_bps == 3209 && w_edge.high_bps == 6121;
+
+  // Hillclimb promotion gate (including 1-task and 1-unit boundaries)
+  min_ok := TbHillclimbEval.{
+    train_total = 1, heldout_total = 1,
+    champ_train_pass = 0, cand_train_pass = 1,
+    champ_heldout_pass = 0, cand_heldout_pass = 0,
+    cand_infra_errors = 0,
+    champ_wall_ms = 2, cand_wall_ms = 1, max_wall_ms = 1,
+    champ_tokens = 2, cand_tokens = 1,
+    cand_cost_micros = 1, max_cost_micros = 1,
+    atif_verified = true, heldout_contaminated = false,
+  };
+  #assert tb_admit_hillclimb(min_ok) == TB_GATE_PROMOTED;
+  min_wall_over := min_ok; min_wall_over.cand_wall_ms = 2;
+  #assert tb_admit_hillclimb(min_wall_over) == TB_GATE_WALL_OVER_CAP;
+  min_cost_over := min_ok; min_cost_over.cand_cost_micros = 2;
+  #assert tb_admit_hillclimb(min_cost_over) == TB_GATE_COST_OVER_CAP;
+
+  base := TbHillclimbEval.{
+    train_total = 4, heldout_total = 4,
+    champ_train_pass = 2, cand_train_pass = 3,
+    champ_heldout_pass = 2, cand_heldout_pass = 2,
+    cand_infra_errors = 2,
+    champ_wall_ms = 10000, cand_wall_ms = 10000, max_wall_ms = 10000,
+    champ_tokens = 1000, cand_tokens = 1000,
+    cand_cost_micros = 500, max_cost_micros = 500,
+    atif_verified = true, heldout_contaminated = false,
+  };
+  #assert tb_admit_hillclimb(base) == TB_GATE_PROMOTED;
+  #assert tb_gate_status(TB_GATE_PROMOTED) == "PROMOTED";
+  #assert tb_gate_reason(TB_GATE_PROMOTED) == "promoted_gain_verified";
+
+  tie := base;
+  tie.cand_train_pass = 2;
+  #assert tb_admit_hillclimb(tie) == TB_GATE_HOLD_NO_GAIN;
+  #assert tb_gate_status(TB_GATE_HOLD_NO_GAIN) == "QUARANTINE_HELD";
+  #assert tb_gate_reason(TB_GATE_HOLD_NO_GAIN) == "quarantine_held_no_strict_gain";
+
+  fast := tie; fast.cand_wall_ms = 8500;
+  #assert tb_admit_hillclimb(fast) == TB_GATE_PROMOTED;
+  fast_1 := tie; fast_1.champ_wall_ms = 2; fast_1.cand_wall_ms = 1;
+  #assert tb_admit_hillclimb(fast_1) == TB_GATE_PROMOTED;
+  fast_miss := tie; fast_miss.cand_wall_ms = 8501;
+  #assert tb_admit_hillclimb(fast_miss) == TB_GATE_HOLD_NO_GAIN;
+  fast_zero := tie; fast_zero.cand_wall_ms = 0;
+  #assert tb_admit_hillclimb(fast_zero) == TB_GATE_HOLD_NO_GAIN;
+  fast_cz := tie; fast_cz.champ_wall_ms = 0;
+  #assert tb_admit_hillclimb(fast_cz) == TB_GATE_HOLD_NO_GAIN;
+
+  lean := tie; lean.cand_tokens = 850;
+  #assert tb_admit_hillclimb(lean) == TB_GATE_PROMOTED;
+  lean_1 := tie; lean_1.champ_tokens = 2; lean_1.cand_tokens = 1;
+  #assert tb_admit_hillclimb(lean_1) == TB_GATE_PROMOTED;
+  lean_miss := tie; lean_miss.cand_tokens = 851;
+  #assert tb_admit_hillclimb(lean_miss) == TB_GATE_HOLD_NO_GAIN;
+  lean_z := tie; lean_z.cand_tokens = 0;
+  #assert tb_admit_hillclimb(lean_z) == TB_GATE_HOLD_NO_GAIN;
+  lean_cz := tie; lean_cz.champ_tokens = 0;
+  #assert tb_admit_hillclimb(lean_cz) == TB_GATE_HOLD_NO_GAIN;
+
+  unb := base;
+  unb.max_wall_ms = 0; unb.cand_wall_ms = 999999;
+  unb.max_cost_micros = 0; unb.cand_cost_micros = 999999;
+  #assert tb_admit_hillclimb(unb) == TB_GATE_PROMOTED;
+
+  r := base; r.train_total = 0;
+  #assert tb_admit_hillclimb(r) == TB_GATE_NO_TRAIN && tb_gate_status(TB_GATE_NO_TRAIN) == "REJECTED" && tb_gate_reason(TB_GATE_NO_TRAIN) == "rejected_no_train_tasks";
+  r = base; r.heldout_total = 0;
+  #assert tb_admit_hillclimb(r) == TB_GATE_NO_HELDOUT && tb_gate_reason(TB_GATE_NO_HELDOUT) == "rejected_no_heldout_tasks";
+  r = base; r.atif_verified = false;
+  #assert tb_admit_hillclimb(r) == TB_GATE_ATIF_UNVERIFIED && tb_gate_reason(TB_GATE_ATIF_UNVERIFIED) == "rejected_atif_unverified";
+  r = base; r.heldout_contaminated = true;
+  #assert tb_admit_hillclimb(r) == TB_GATE_CONTAMINATED && tb_gate_reason(TB_GATE_CONTAMINATED) == "rejected_heldout_contaminated";
+  r = base; r.cand_infra_errors = 3;
+  #assert tb_admit_hillclimb(r) == TB_GATE_INFRA_DOMINATED && tb_gate_reason(TB_GATE_INFRA_DOMINATED) == "rejected_infra_error_rate_over_25pct";
+  r = base; r.champ_train_pass = 0; r.cand_train_pass = 0; r.champ_heldout_pass = 0; r.cand_heldout_pass = 0;
+  #assert tb_admit_hillclimb(r) == TB_GATE_ZERO_PASS && tb_gate_reason(TB_GATE_ZERO_PASS) == "rejected_zero_passes";
+  r = base; r.cand_train_pass = 1;
+  #assert tb_admit_hillclimb(r) == TB_GATE_TRAIN_REGRESSED && tb_gate_reason(TB_GATE_TRAIN_REGRESSED) == "rejected_train_regressed";
+  r = base; r.cand_heldout_pass = 1;
+  #assert tb_admit_hillclimb(r) == TB_GATE_HELDOUT_REGRESSED && tb_gate_reason(TB_GATE_HELDOUT_REGRESSED) == "rejected_heldout_regressed";
+  r = base; r.cand_wall_ms = 10001;
+  #assert tb_admit_hillclimb(r) == TB_GATE_WALL_OVER_CAP && tb_gate_reason(TB_GATE_WALL_OVER_CAP) == "rejected_wall_over_cap";
+  r = base; r.cand_cost_micros = 501;
+  #assert tb_admit_hillclimb(r) == TB_GATE_COST_OVER_CAP && tb_gate_reason(TB_GATE_COST_OVER_CAP) == "rejected_cost_over_cap";
+  #assert tb_gate_reason(99) == "rejected_unknown";
+}

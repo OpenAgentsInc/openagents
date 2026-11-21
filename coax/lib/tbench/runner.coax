@@ -1,0 +1,1060 @@
+// Pure Coax Terminal-Bench Runner, Server Lifecycle & Hillclimbing Orchestrator
+// (Epic #13950, Phase 1 #13951, Phase 2 #13952, Phase 3 #13953).
+//
+// Owns:
+//   - Host discovery (`doctor`): Colima/Docker socket, Harbor CLI, Psionic Metal
+//     (psionic-inkling-serve + inkling-kernels.metal), llama-server, Inkling-2-Mini GGUF,
+//     W2.2 compiled Executor modules, and OPENROUTER_API_KEY.
+//   - Sequential local model server lifecycle with /health polling, boot_ms, peak RSS, and warmup.
+//   - Real Harbor Docker trial execution (`harbor run -d <dataset> -i <task> -a harbor_adapter...`)
+//     always rooted under ~/.openagents/tbench/jobs (mounted by Colima; never /tmp).
+//   - Authoritative Harbor verifier/reward.txt + result.json + agent/coax-summary.json ingestion
+//     classified strictly through #authority coax/lib/tbench/policy.coax (tb_classify_trial).
+//   - Side-by-side comparison persistence (~/.openagents/gym/last-tbench.json, tbench-compare.v1)
+//     and #authority hillclimb promotion (~/.openagents/tbench/hillclimb/{champion.json,ledger.jsonl}).
+//
+//   coax/bin/coax test coax/lib/tbench/runner.coax --library
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+#load "../net/http.coax";
+#load "suites.coax";
+#load "hillclimb.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+
+TbEnv :: struct {
+  home: [512] u8; home_n: int;
+  self_path: [1024] u8; self_path_n: int;
+  self_dir: [1024] u8; self_dir_n: int;
+  cwd: [1024] u8; cwd_n: int;
+  docker_host: [512] u8; docker_host_n: int;
+  docker_ok: bool;
+  docker_ver: [64] u8; docker_ver_n: int;
+  harbor_bin: [512] u8; harbor_bin_n: int;
+  harbor_ok: bool;
+  harbor_ver: [64] u8; harbor_ver_n: int;
+  psionic_bin: [512] u8; psionic_bin_n: int;
+  psionic_metal: [512] u8; psionic_metal_n: int;
+  psionic_ok: bool;
+  llama_bin: [512] u8; llama_bin_n: int;
+  llama_ok: bool;
+  model_path: [512] u8; model_path_n: int;
+  model_ok: bool;
+  harbor_adapter_dir: [512] u8; harbor_adapter_dir_n: int;
+  adapter_ok: bool;
+  policies_dir: [512] u8; policies_dir_n: int;
+  exec_modules_count: int;
+  openrouter_key_set: bool;
+}
+
+tbr_cat :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+tbr_int_str :: (v: int, out: [] u8) -> string #effects(all) {
+  o: [1] Jo; jo_start(o[..], out); jo_int(o[..], v);
+  return jo_text(o[..]);
+}
+
+tbr_trim :: (s: string) -> string #effects(all) {
+  lo := 0;
+  hi := s.count;
+  while lo < hi && (s[lo] == ' ' || s[lo] == '\n' || s[lo] == '\r' || s[lo] == '\t') { lo += 1; }
+  while hi > lo && (s[hi - 1] == ' ' || s[hi - 1] == '\n' || s[hi - 1] == '\r' || s[hi - 1] == '\t') { hi -= 1; }
+  return s[lo..<hi];
+}
+
+tbr_starts :: (s: string, pfx: string) -> bool #effects(all) {
+  if pfx.count > s.count { return false; }
+  for i: 0..<pfx.count { if s[i] != pfx[i] { return false; } }
+  return true;
+}
+
+// Parse Harbor verifier/reward.txt decimal text ("1", "1.0", "0.0", "0.5", "0.25") into milli-units [0..10000].
+// Returns -1 when text is empty or not a non-negative decimal number.
+tbr_parse_reward_milli :: (raw: string) -> int #effects(all) {
+  s := tbr_trim(raw);
+  if s.count == 0 { return -1; }
+  whole := 0;
+  frac := 0;
+  frac_digits := 0;
+  seen_dot := false;
+  seen_digit := false;
+  for c: s {
+    if c >= '0' && c <= '9' {
+      d := cast(int) (c - '0');
+      seen_digit = true;
+      if !seen_dot {
+        if whole > 1000 { return 1000000; }
+        whole = whole * 10 + d;
+      } else if frac_digits < 3 {
+        frac = frac * 10 + d;
+        frac_digits += 1;
+      }
+    } else if c == '.' && !seen_dot {
+      seen_dot = true;
+    } else {
+      return -1;
+    }
+  }
+  if !seen_digit { return -1; }
+  while frac_digits < 3 { frac *= 10; frac_digits += 1; }
+  return whole * 1000 + frac;
+}
+
+// Parse a positive integer from trimmed text (e.g. `ps -o rss= -p PID` output in KiB).
+tbr_parse_uint :: (raw: string) -> int #effects(all) {
+  s := tbr_trim(raw);
+  if s.count == 0 { return 0; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { break; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+// UTC ISO-8601 timestamp via `/bin/date -u +%Y-%m-%dT%H:%M:%SZ` (falls back to constant on error).
+tbr_iso_now :: (out: [] u8) -> string #effects(all) {
+  argv := [3] string.["/bin/date", "-u", "+%Y-%m-%dT%H:%M:%SZ"];
+  ob: [64] u8; eb: [64] u8;
+  r := proc_run(argv[..], 3000, ob[..], eb[..]);
+  if r.started == 0 && r.status == 0 && r.out_n > 0 {
+    t := tbr_trim(cast(string) ob[0..<r.out_n]);
+    if t.count >= 19 {
+      n := tbw_put(out, t);
+      return cast(string) out[0..<n];
+    }
+  }
+  n := tbw_put(out, "2026-11-21T00:00:00Z");
+  return cast(string) out[0..<n];
+}
+
+// Compact run ID timestamp `tb-YYYYMMDD-HHMMSS`.
+tbr_make_run_id :: (pfx: string, out: [] u8) -> string #effects(all) {
+  argv := [3] string.["/bin/date", "-u", "+%Y%m%d-%H%M%S"];
+  ob: [64] u8; eb: [64] u8;
+  r := proc_run(argv[..], 3000, ob[..], eb[..]);
+  n := tbr_cat(out, 0, pfx);
+  n = tbr_cat(out, n, "-");
+  if r.started == 0 && r.status == 0 && r.out_n > 0 {
+    n = tbr_cat(out, n, tbr_trim(cast(string) ob[0..<r.out_n]));
+  } else {
+    tb: [32] u8;
+    n = tbr_cat(out, n, tbr_int_str(proc_now_ms(), tb[..]));
+  }
+  return cast(string) out[0..<n];
+}
+
+// Discover Docker/Colima, Harbor CLI, Psionic Metal, llama-server, Inkling-2-Mini GGUF, W2.2 modules, and adapter paths.
+tbr_discover :: (e: [] TbEnv) #effects(all) {
+  e[0] = TbEnv.{};
+  hb: [512] u8;
+  hs := proc_getenv("HOME", hb[..]);
+  e[0].home_n = tbw_put(e[0].home[..], hs);
+  home := cast(string) e[0].home[0..<e[0].home_n];
+
+  sn := cxproc_self_path(e[0].self_path[..]);
+  if sn > 0 {
+    e[0].self_path_n = sn;
+    sd := fs_dir(cast(string) e[0].self_path[0..<sn]);
+    e[0].self_dir_n = tbw_put(e[0].self_dir[..], sd);
+  }
+  cb: [1024] u8;
+  cs := fs_cwd(cb[..]);
+  e[0].cwd_n = tbw_put(e[0].cwd[..], cs);
+
+  self_dir := cast(string) e[0].self_dir[0..<e[0].self_dir_n];
+  cwd := cast(string) e[0].cwd[0..<e[0].cwd_n];
+
+  // 1. Docker socket (respect DOCKER_HOST if set, else probe Colima oa-agent0 -> default -> /var/run/docker.sock)
+  dhb: [512] u8;
+  dh_env := proc_getenv("DOCKER_HOST", dhb[..]);
+  if dh_env.count > 0 {
+    e[0].docker_host_n = tbw_put(e[0].docker_host[..], dh_env);
+  } else {
+    p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+    s1 := fs_join(home, ".colima/oa-agent0/docker.sock", p1[..]);
+    s2 := fs_join(home, ".colima/default/docker.sock", p2[..]);
+    sock := "";
+    if fs_exists(s1) { sock = s1; }
+    else if fs_exists(s2) { sock = s2; }
+    else if fs_exists("/var/run/docker.sock") { sock = "/var/run/docker.sock"; }
+    if sock.count > 0 {
+      n := tbr_cat(e[0].docker_host[..], 0, "unix://");
+      n = tbr_cat(e[0].docker_host[..], n, sock);
+      e[0].docker_host_n = n;
+    }
+  }
+  // Probe `docker info --format {{.ServerVersion}}`
+  {
+    h := proc_new();
+    if h >= 0 {
+      _ = proc_arg(h, "docker"); _ = proc_arg(h, "info"); _ = proc_arg(h, "--format"); _ = proc_arg(h, "{{.ServerVersion}}");
+      if e[0].docker_host_n > 0 {
+        ev: [600] u8; en := tbr_cat(ev[..], 0, "DOCKER_HOST="); en = tbr_cat(ev[..], en, cast(string) e[0].docker_host[0..<e[0].docker_host_n]);
+        _ = proc_env(h, cast(string) ev[0..<en]);
+      }
+      if proc_start(h) == 0 {
+        lb: [256] u8;
+        ln := proc_line(h, 6000, lb[..]);
+        st := proc_wait(h, 2000);
+        if st == 0 && ln > 0 {
+          e[0].docker_ok = true;
+          e[0].docker_ver_n = tbw_put(e[0].docker_ver[..], tbr_trim(cast(string) lb[0..<ln]));
+        }
+      }
+      _ = proc_release(h);
+    }
+  }
+
+  // 2. Harbor CLI
+  {
+    p1: [FS_PATH_MAX] u8;
+    h1 := fs_join(home, ".local/bin/harbor", p1[..]);
+    cands := [4] string.[h1, "/opt/homebrew/bin/harbor", "/usr/local/bin/harbor", "harbor"];
+    chosen := "";
+    for i: 0..<3 { if fs_kind(cands[i]) == FS_FILE { chosen = cands[i]; break; } }
+    if chosen.count == 0 { chosen = "harbor"; }
+    argv := [2] string.[chosen, "--version"];
+    ob: [256] u8; eb: [256] u8;
+    r := proc_run(argv[..], 5000, ob[..], eb[..]);
+    if r.started == 0 && r.status == 0 {
+      e[0].harbor_ok = true;
+      e[0].harbor_bin_n = tbw_put(e[0].harbor_bin[..], chosen);
+      e[0].harbor_ver_n = tbw_put(e[0].harbor_ver[..], tbr_trim(cast(string) ob[0..<r.out_n]));
+    }
+  }
+
+  // 3. Psionic Metal (psionic-inkling-serve + inkling-kernels.metal)
+  {
+    b0: [FS_PATH_MAX] u8; m0: [FS_PATH_MAX] u8;
+    b1: [FS_PATH_MAX] u8; m1: [FS_PATH_MAX] u8;
+    p_b0 := ifx self_dir.count > 0 then fs_join(self_dir, "psionic-inkling-serve", b0[..]) else "";
+    p_m0 := ifx self_dir.count > 0 then fs_join(self_dir, "inkling-kernels.metal", m0[..]) else "";
+    p_b1 := fs_join(home, ".openagents/bin/psionic-inkling-serve", b1[..]);
+    p_m1 := fs_join(home, ".openagents/bin/inkling-kernels.metal", m1[..]);
+    p_b2 := "/Applications/OpenAgents.app/Contents/Resources/psionic-inkling-serve";
+    p_m2 := "/Applications/OpenAgents.app/Contents/Resources/inkling-kernels.metal";
+    if p_b0.count > 0 && fs_kind(p_b0) == FS_FILE && fs_kind(p_m0) == FS_FILE {
+      e[0].psionic_bin_n = tbw_put(e[0].psionic_bin[..], p_b0);
+      e[0].psionic_metal_n = tbw_put(e[0].psionic_metal[..], p_m0);
+      e[0].psionic_ok = true;
+    } else if fs_kind(p_b2) == FS_FILE && fs_kind(p_m2) == FS_FILE {
+      e[0].psionic_bin_n = tbw_put(e[0].psionic_bin[..], p_b2);
+      e[0].psionic_metal_n = tbw_put(e[0].psionic_metal[..], p_m2);
+      e[0].psionic_ok = true;
+    } else if fs_kind(p_b1) == FS_FILE && fs_kind(p_m1) == FS_FILE {
+      e[0].psionic_bin_n = tbw_put(e[0].psionic_bin[..], p_b1);
+      e[0].psionic_metal_n = tbw_put(e[0].psionic_metal[..], p_m1);
+      e[0].psionic_ok = true;
+    }
+  }
+
+  // 4. llama-server
+  {
+    l0: [FS_PATH_MAX] u8;
+    p0 := fs_join(home, ".openagents/bin/llama-server", l0[..]);
+    cands := [3] string.[p0, "/opt/homebrew/bin/llama-server", "/usr/local/bin/llama-server"];
+    lf := fs_first_file(cands[..]);
+    if lf.count > 0 {
+      e[0].llama_bin_n = tbw_put(e[0].llama_bin[..], lf);
+      e[0].llama_ok = true;
+    }
+  }
+
+  // 5. Inkling-2-Mini GGUF
+  {
+    mp: [FS_PATH_MAX] u8;
+    m := fs_join(home, ".openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf", mp[..]);
+    e[0].model_path_n = tbw_put(e[0].model_path[..], m);
+    e[0].model_ok = fs_kind(m) == FS_FILE;
+  }
+
+  // 6. Harbor adapter dir & policies dir (bundled Resources -> cwd repo -> ~/.openagents/tbench)
+  {
+    a0: [FS_PATH_MAX] u8; a1: [FS_PATH_MAX] u8; a2: [FS_PATH_MAX] u8; c0: [FS_PATH_MAX] u8;
+    d0 := ifx self_dir.count > 0 then fs_join(self_dir, "tbench-harbor", a0[..]) else "";
+    d1 := ifx cwd.count > 0 then fs_join(cwd, "evals/terminal-bench", a1[..]) else "";
+    d2 := fs_join(home, ".openagents/tbench/harbor", a2[..]);
+    dirs := [3] string.[d0, d1, d2];
+    for dir: dirs {
+      if dir.count == 0 { continue; }
+      probe := fs_join(dir, "harbor_adapter/openagents_coax_agent.py", c0[..]);
+      if fs_kind(probe) == FS_FILE {
+        e[0].harbor_adapter_dir_n = tbw_put(e[0].harbor_adapter_dir[..], dir);
+        e[0].adapter_ok = true;
+        break;
+      }
+    }
+  }
+  {
+    p0: [FS_PATH_MAX] u8; p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+    d0 := ifx self_dir.count > 0 then fs_join(self_dir, "tbench-policies", p0[..]) else "";
+    d1 := ifx cwd.count > 0 then fs_join(cwd, "evals/terminal-bench/policies", p1[..]) else "";
+    d2 := fs_join(home, ".openagents/tbench/policies", p2[..]);
+    dirs := [3] string.[d0, d1, d2];
+    for dir: dirs {
+      if dir.count > 0 && fs_kind(dir) == FS_DIR {
+        e[0].policies_dir_n = tbw_put(e[0].policies_dir[..], dir);
+        break;
+      }
+    }
+  }
+
+  // 7. W2.2 compiled Executor modules count + OPENROUTER_API_KEY presence
+  {
+    md: [FS_PATH_MAX] u8;
+    mdir := fs_join(home, ".openagents/modules", md[..]);
+    fl: [1] FsList;
+    cnt := fs_list(mdir, fl[..]);
+    if cnt > 0 { e[0].exec_modules_count = cnt; }
+  }
+  e[0].openrouter_key_set = proc_has_env("OPENROUTER_API_KEY");
+}
+
+tbr_doctor_json :: (e: [] TbEnv, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], e[0].docker_ok && e[0].harbor_ok && e[0].adapter_ok);
+  jo_key(o[..], "docker_ok"); jo_bool(o[..], e[0].docker_ok);
+  jo_key(o[..], "docker_host"); jo_str(o[..], cast(string) e[0].docker_host[0..<e[0].docker_host_n]);
+  jo_key(o[..], "docker_version"); jo_str(o[..], cast(string) e[0].docker_ver[0..<e[0].docker_ver_n]);
+  jo_key(o[..], "harbor_ok"); jo_bool(o[..], e[0].harbor_ok);
+  jo_key(o[..], "harbor_bin"); jo_str(o[..], cast(string) e[0].harbor_bin[0..<e[0].harbor_bin_n]);
+  jo_key(o[..], "harbor_version"); jo_str(o[..], cast(string) e[0].harbor_ver[0..<e[0].harbor_ver_n]);
+  jo_key(o[..], "adapter_ok"); jo_bool(o[..], e[0].adapter_ok);
+  jo_key(o[..], "harbor_adapter_dir"); jo_str(o[..], cast(string) e[0].harbor_adapter_dir[0..<e[0].harbor_adapter_dir_n]);
+  jo_key(o[..], "psionic_ok"); jo_bool(o[..], e[0].psionic_ok);
+  jo_key(o[..], "psionic_bin"); jo_str(o[..], cast(string) e[0].psionic_bin[0..<e[0].psionic_bin_n]);
+  jo_key(o[..], "llama_ok"); jo_bool(o[..], e[0].llama_ok);
+  jo_key(o[..], "llama_bin"); jo_str(o[..], cast(string) e[0].llama_bin[0..<e[0].llama_bin_n]);
+  jo_key(o[..], "model_ok"); jo_bool(o[..], e[0].model_ok);
+  jo_key(o[..], "model_path"); jo_str(o[..], cast(string) e[0].model_path[0..<e[0].model_path_n]);
+  jo_key(o[..], "exec_modules"); jo_int(o[..], e[0].exec_modules_count);
+  jo_key(o[..], "openrouter_key_set"); jo_bool(o[..], e[0].openrouter_key_set);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Resolve a policy from a file path, policies_dir/<name>.json, or built-in preset ID.
+tbr_resolve_policy :: (e: [] TbEnv, spec: string, out: [] TbPolicy) -> bool #effects(all) {
+  buf: [16384] u8;
+  // 1. Direct file path
+  if spec.count > 0 && fs_kind(spec) == FS_FILE {
+    n := fs_read(spec, buf[..]);
+    if n > 0 && tbw_policy_parse(cast(string) buf[0..<n], out) { return true; }
+  }
+  // 2. policies_dir/<spec>.json
+  if spec.count > 0 && e[0].policies_dir_n > 0 {
+    fn: [128] u8; fnn := tbr_cat(fn[..], 0, spec); fnn = tbr_cat(fn[..], fnn, ".json");
+    pb: [FS_PATH_MAX] u8;
+    pp := fs_join(cast(string) e[0].policies_dir[0..<e[0].policies_dir_n], cast(string) fn[0..<fnn], pb[..]);
+    if fs_kind(pp) == FS_FILE {
+      n := fs_read(pp, buf[..]);
+      if n > 0 && tbw_policy_parse(cast(string) buf[0..<n], out) { return true; }
+    }
+  }
+  // 3. Built-in defaults
+  out[0] = TbPolicy.{};
+  if spec == "executor-hybrid-v1" || spec == "psionic-executor" {
+    out[0].id_n = tbw_put(out[0].id[..], "executor-hybrid-v1");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic Metal + Executor");
+    out[0].backend_n = tbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_n = tbw_put(out[0].model[..], "inkling-2-mini");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "executor-guided");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].compact_chars = 14000;
+    out[0].max_turns = 16;
+    out[0].max_tokens = 1536;
+  } else if spec == "baseline-microcoder" || spec == "psionic-base" {
+    out[0].id_n = tbw_put(out[0].id[..], "baseline-microcoder");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic Metal (Base)");
+    out[0].backend_n = tbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_n = tbw_put(out[0].model[..], "inkling-2-mini");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "minimal");
+    out[0].executor_guard = false;
+    out[0].orientation_probe = false;
+    out[0].compact_chars = 8000;
+    out[0].max_turns = 14;
+    out[0].max_tokens = 1536;
+  } else if spec == "llamacpp-microcoder" || spec == "llamacpp" {
+    out[0].id_n = tbw_put(out[0].id[..], "llamacpp-microcoder");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · llama.cpp Metal");
+    out[0].backend_n = tbw_put(out[0].backend[..], "llamacpp-metal");
+    out[0].model_n = tbw_put(out[0].model[..], "inkling-2-mini");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "minimal");
+    out[0].executor_guard = false;
+    out[0].orientation_probe = false;
+    out[0].compact_chars = 8000;
+    out[0].max_turns = 14;
+    out[0].max_tokens = 1536;
+  } else if spec == "openrouter-claude" {
+    out[0].id_n = tbw_put(out[0].id[..], "openrouter-claude");
+    out[0].label_n = tbw_put(out[0].label[..], "OpenRouter · Claude Sonnet");
+    out[0].backend_n = tbw_put(out[0].backend[..], "openrouter");
+    out[0].model_n = tbw_put(out[0].model[..], "anthropic/claude-sonnet-4.5");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "executor-guided");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].compact_chars = 16000;
+    out[0].max_turns = 20;
+    out[0].max_tokens = 2048;
+  } else {
+    return false;
+  }
+  tbw_policy_hash(out);
+  return true;
+}
+
+tbr_poll_rss_mb :: (pid: int) -> int #effects(all) {
+  if pid <= 0 { return 0; }
+  pb: [32] u8;
+  argv := [5] string.["/bin/ps", "-o", "rss=", "-p", tbr_int_str(pid, pb[..])];
+  ob: [64] u8; eb: [64] u8;
+  r := proc_run(argv[..], 3000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return 0; }
+  kib := tbr_parse_uint(cast(string) ob[0..<r.out_n]);
+  return kib / 1024;
+}
+
+tbr_wait_health :: (hw: [] HttpWork, port: int, timeout_ms: int) -> bool #effects(all) {
+  ub: [128] u8; pb: [16] u8;
+  un := tbr_cat(ub[..], 0, "http://127.0.0.1:");
+  un = tbr_cat(ub[..], un, tbr_int_str(port, pb[..]));
+  un = tbr_cat(ub[..], un, "/health");
+  url := cast(string) ub[0..<un];
+  body: [2048] u8;
+  hdrs: [1] string;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    hr := http_do(hw, "GET", url, hdrs[0..<0], "", 1000, 0, body[..]);
+    if hr.error == HTTP_OK && hr.code == 200 { return true; }
+    proc_sleep(100);
+  }
+  return false;
+}
+
+// Start the model backend for one arm (if local) and output endpoint URL, api_key_env, boot_ms, rss_mb, proc handle.
+tbr_server_start :: (
+  e: [] TbEnv,
+  hw: [] HttpWork,
+  pol: [] TbPolicy,
+  port: int,
+  custom_endpoint: string,
+  handle_out: [] int,
+  boot_ms_out: [] int,
+  rss_mb_out: [] int,
+  endpoint_out: [] u8,
+  api_env_out: [] u8,
+  api_env_n_out: [] int
+) -> int #effects(all) {
+  handle_out[0] = -1;
+  boot_ms_out[0] = 0;
+  rss_mb_out[0] = 0;
+  api_env_n_out[0] = 0;
+  backend := cast(string) pol[0].backend[0..<pol[0].backend_n];
+
+  if custom_endpoint.count > 0 {
+    return tbw_put(endpoint_out, custom_endpoint);
+  }
+  if backend == "openrouter" {
+    api_env_n_out[0] = tbw_put(api_env_out, "OPENROUTER_API_KEY");
+    return tbw_put(endpoint_out, "https://openrouter.ai/api/v1/chat/completions");
+  }
+
+  model_path := cast(string) e[0].model_path[0..<e[0].model_path_n];
+  if !e[0].model_ok { return -1; }
+  ps_b: [16] u8;
+  port_s := tbr_int_str(port, ps_b[..]);
+
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := false;
+  if backend == "psionic-metal" {
+    if !e[0].psionic_ok { _ = proc_release(h); return -1; }
+    ok = proc_arg(h, cast(string) e[0].psionic_bin[0..<e[0].psionic_bin_n])
+      && proc_arg(h, "--model") && proc_arg(h, model_path)
+      && proc_arg(h, "--metal") && proc_arg(h, cast(string) e[0].psionic_metal[0..<e[0].psionic_metal_n])
+      && proc_arg(h, "--port") && proc_arg(h, port_s)
+      && proc_arg(h, "--ctx") && proc_arg(h, "8192")
+      && proc_quiet(h);
+  } else if backend == "llamacpp-metal" {
+    if !e[0].llama_ok { _ = proc_release(h); return -1; }
+    ok = proc_arg(h, cast(string) e[0].llama_bin[0..<e[0].llama_bin_n])
+      && proc_arg(h, "-m") && proc_arg(h, model_path)
+      && proc_arg(h, "--port") && proc_arg(h, port_s)
+      && proc_arg(h, "-c") && proc_arg(h, "8192")
+      && proc_arg(h, "-ngl") && proc_arg(h, "99")
+      && proc_arg(h, "--jinja")
+      && proc_arg(h, "--cache-prompt")
+      && proc_quiet(h);
+  } else {
+    _ = proc_release(h);
+    return -1;
+  }
+  if !ok { _ = proc_release(h); return -1; }
+
+  t0 := proc_now_ms();
+  if proc_start(h) != 0 { _ = proc_release(h); return -1; }
+  if !tbr_wait_health(hw, port, 90000) {
+    _ = proc_kill(h, PROC_SIGTERM);
+    _ = proc_release(h);
+    return -1;
+  }
+  boot_ms_out[0] = proc_now_ms() - t0;
+  rss_mb_out[0] = tbr_poll_rss_mb(proc_pid(h));
+  handle_out[0] = h;
+
+  en := tbr_cat(endpoint_out, 0, "http://127.0.0.1:");
+  en = tbr_cat(endpoint_out, en, port_s);
+  en = tbr_cat(endpoint_out, en, "/v1/chat/completions");
+
+  // Quick 8-token warmup so first Terminal-Bench task timing is fair
+  {
+    wb: [2048] u8;
+    hdrs := [1] string.["Content-Type: application/json"];
+    _ = http_do(hw, "POST", cast(string) endpoint_out[0..<en], hdrs[..], "{\"model\":\"inkling-2-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":8,\"temperature\":0.0,\"stream\":false}", 30000, 0, wb[..]);
+    r2 := tbr_poll_rss_mb(proc_pid(h));
+    if r2 > rss_mb_out[0] { rss_mb_out[0] = r2; }
+  }
+  return en;
+}
+
+tbr_server_stop :: (h: int) #effects(all) {
+  if h < 0 { return; }
+  _ = proc_kill(h, PROC_SIGTERM);
+  _ = proc_wait(h, 1500);
+  _ = proc_release(h);
+}
+
+// Emit one live progress JSONL event to ~/.openagents/tbench/live-status.jsonl for OpenAgents Desktop Gym.
+tbr_emit_live :: (
+  live_path: string,
+  kind: string,
+  side: string,
+  arm_id: string,
+  task: string,
+  idx: int,
+  total: int,
+  status: string,
+  wall_ms: int,
+  turns: int,
+  exec_checks: int,
+  exec_intercepts: int,
+  events_path: string,
+  note: string
+) #effects(all) {
+  if live_path.count == 0 { return; }
+  buf: [4096] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], kind);
+  jo_key(o[..], "side"); jo_str(o[..], side);
+  jo_key(o[..], "arm_id"); jo_str(o[..], arm_id);
+  jo_key(o[..], "task"); jo_str(o[..], task);
+  jo_key(o[..], "idx"); jo_int(o[..], idx);
+  jo_key(o[..], "total"); jo_int(o[..], total);
+  jo_key(o[..], "status"); jo_str(o[..], status);
+  jo_key(o[..], "wall_ms"); jo_int(o[..], wall_ms);
+  jo_key(o[..], "turns"); jo_int(o[..], turns);
+  jo_key(o[..], "exec_checks"); jo_int(o[..], exec_checks);
+  jo_key(o[..], "exec_intercepts"); jo_int(o[..], exec_intercepts);
+  jo_key(o[..], "events_path"); jo_str(o[..], events_path);
+  jo_key(o[..], "note"); jo_str(o[..], note);
+  jo_end(o[..]);
+  if !o[0].bad {
+    _ = fs_append(live_path, jo_text(o[..]));
+    _ = fs_append(live_path, "\n");
+  }
+}
+
+// Find Harbor trial directory `<job_dir>/<task>/<task>__*` (returns path len or 0).
+tbr_find_trial_dir :: (job_dir: string, task: string, out: [] u8) -> int #effects(all) {
+  d1_b: [FS_PATH_MAX] u8;
+  d1 := fs_join(job_dir, task, d1_b[..]);
+  fl: [1] FsList;
+  n := fs_list(d1, fl[..]);
+  if n <= 0 { return 0; }
+  pfx_b: [128] u8; pn := tbr_cat(pfx_b[..], 0, task); pn = tbr_cat(pfx_b[..], pn, "__");
+  pfx := cast(string) pfx_b[0..<pn];
+  for i: 0..<n {
+    ent := fs_entry(fl[..], i);
+    if tbr_starts(ent, pfx) {
+      jb: [FS_PATH_MAX] u8;
+      full := fs_join(d1, ent, jb[..]);
+      if fs_kind(full) == FS_DIR {
+        return tbw_put(out, full);
+      }
+    }
+  }
+  return 0;
+}
+
+// Execute one real Harbor Docker Terminal-Bench trial and classify via #authority tb_classify_trial.
+tbr_run_harbor_trial :: (
+  e: [] TbEnv,
+  dataset: string,
+  task: string,
+  partition: string,
+  side: string,
+  pol: [] TbPolicy,
+  policy_file: string,
+  endpoint: string,
+  api_key_env: string,
+  jobs_arm_dir: string,
+  events_path: string,
+  max_turns_override: int,
+  out: [] TbTrialRecord,
+  idx: int
+) #effects(all) {
+  out[idx] = TbTrialRecord.{};
+  out[idx].task_n = tbw_put(out[idx].task[..], task);
+  out[idx].dataset_n = tbw_put(out[idx].dataset[..], dataset);
+  out[idx].partition_n = tbw_put(out[idx].partition[..], partition);
+  out[idx].arm_n = tbw_put(out[idx].arm[..], cast(string) pol[0].id[0..<pol[0].id_n]);
+  out[idx].events_path_n = tbw_put(out[idx].events_path[..], events_path);
+
+  _ = fs_mkdir_all(jobs_arm_dir);
+  _ = fs_remove(events_path);
+
+  t0 := proc_now_ms();
+  h := proc_new();
+  if h < 0 {
+    out[idx].status_code = TB_TRIAL_INFRA;
+    out[idx].error_note_n = tbw_put(out[idx].error_note[..], "proc_new failed");
+    return;
+  }
+
+  model_s := cast(string) pol[0].model[0..<pol[0].model_n];
+  ok := proc_arg(h, cast(string) e[0].harbor_bin[0..<e[0].harbor_bin_n])
+    && proc_arg(h, "run")
+    && proc_arg(h, "-d") && proc_arg(h, dataset)
+    && proc_arg(h, "-i") && proc_arg(h, task)
+    && proc_arg(h, "-a") && proc_arg(h, "harbor_adapter.openagents_coax_agent:OpenAgentsCoaxAgent")
+    && proc_arg(h, "-m") && proc_arg(h, model_s)
+    && proc_arg(h, "-o") && proc_arg(h, jobs_arm_dir)
+    && proc_arg(h, "--job-name") && proc_arg(h, task)
+    && proc_arg(h, "-y");
+
+  // Inject DOCKER_HOST, PYTHONPATH, and OA_TBENCH_* directly into Harbor child environment
+  if ok && e[0].docker_host_n > 0 {
+    ev: [600] u8; n := tbr_cat(ev[..], 0, "DOCKER_HOST="); n = tbr_cat(ev[..], n, cast(string) e[0].docker_host[0..<e[0].docker_host_n]);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok && e[0].harbor_adapter_dir_n > 0 {
+    ev: [1024] u8; n := tbr_cat(ev[..], 0, "PYTHONPATH="); n = tbr_cat(ev[..], n, cast(string) e[0].harbor_adapter_dir[0..<e[0].harbor_adapter_dir_n]);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok {
+    ev: [1200] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_BIN="); n = tbr_cat(ev[..], n, cast(string) e[0].self_path[0..<e[0].self_path_n]);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok {
+    ev: [600] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_ENDPOINT="); n = tbr_cat(ev[..], n, endpoint);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok && policy_file.count > 0 {
+    ev: [1200] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_POLICY="); n = tbr_cat(ev[..], n, policy_file);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok {
+    ev: [256] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_TASK="); n = tbr_cat(ev[..], n, task);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok {
+    ev: [1200] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_EVENTS="); n = tbr_cat(ev[..], n, events_path);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok && api_key_env.count > 0 {
+    ev: [256] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_API_KEY_ENV="); n = tbr_cat(ev[..], n, api_key_env);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok && max_turns_override > 0 {
+    mtb: [16] u8;
+    akb: [64] u8; an := tbr_cat(akb[..], 0, "max_turns="); an = tbr_cat(akb[..], an, tbr_int_str(max_turns_override, mtb[..]));
+    ok = proc_arg(h, "--ak") && proc_arg(h, cast(string) akb[0..<an]);
+  }
+  ok = ok && proc_quiet(h);
+
+  exit_code := -1;
+  timed_out := false;
+  if !ok || proc_start(h) != 0 {
+    _ = proc_release(h);
+    out[idx].wall_ms = proc_now_ms() - t0;
+    out[idx].status_code = TB_TRIAL_INFRA;
+    out[idx].error_note_n = tbw_put(out[idx].error_note[..], "failed to spawn harbor run");
+    return;
+  }
+
+  // Wait up to 15 minutes per task (Harbor enforces per-task container timeout inside).
+  exit_code = proc_wait(h, 900000);
+  if exit_code == PROC_RUNNING {
+    timed_out = true;
+    _ = proc_kill(h, PROC_SIGTERM);
+    exit_code = proc_wait(h, 3000);
+    if exit_code == PROC_RUNNING { _ = proc_kill(h, PROC_SIGKILL); exit_code = proc_wait(h, 2000); }
+  }
+  _ = proc_release(h);
+  out[idx].wall_ms = proc_now_ms() - t0;
+
+  // Locate Harbor's authoritative trial directory `<jobs_arm_dir>/<task>/<task>__*`
+  td_b: [FS_PATH_MAX] u8;
+  td_n := tbr_find_trial_dir(jobs_arm_dir, task, td_b[..]);
+  if td_n <= 0 {
+    out[idx].status_code = TB_TRIAL_INFRA;
+    out[idx].error_note_n = tbw_put(out[idx].error_note[..], "harbor trial directory not found");
+    return;
+  }
+  trial_dir := cast(string) td_b[0..<td_n];
+  out[idx].harbor_dir_n = tbw_put(out[idx].harbor_dir[..], trial_dir);
+
+  // Read authoritative Harbor verifier/reward.txt
+  rp_b: [FS_PATH_MAX] u8;
+  r_path := fs_join(trial_dir, "verifier/reward.txt", rp_b[..]);
+  r_buf: [256] u8;
+  rn := fs_read(r_path, r_buf[..]);
+  verifier_present := false;
+  reward_milli := 0;
+  if rn > 0 {
+    rm := tbr_parse_reward_milli(cast(string) r_buf[0..<rn]);
+    if rm >= 0 {
+      verifier_present = true;
+      reward_milli = rm;
+    }
+  }
+  out[idx].reward_milli = reward_milli;
+
+  // Read Harbor result.json to detect infra exceptions vs timeouts
+  infra_err := false;
+  {
+    res_p: [FS_PATH_MAX] u8;
+    rbuf: [32768] u8;
+    n := fs_read(fs_join(trial_dir, "result.json", res_p[..]), rbuf[..]);
+    if n > 0 {
+      nodes: [2048] JvNode; d: [1] Jv;
+      if jv_parse(d[..], cast(string) rbuf[0..<n], nodes[..]) {
+        exc := jv_get(d[0], 0, "exception_info");
+        if exc >= 0 && jv_kind(d[0], exc) == JV_OBJECT {
+          et_b: [128] u8; etn := jv_str(d[0], jv_get(d[0], exc, "exception_type"), et_b[..]);
+          if etn > 0 {
+            et := cast(string) et_b[0..<etn];
+            if et == "AgentTimeoutError" || et == "VerifierTimeoutError" {
+              timed_out = true;
+            } else {
+              infra_err = true;
+              out[idx].error_note_n = tbw_put(out[idx].error_note[..], et);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Read agent/coax-summary.json & trajectory.atif.jsonl paths
+  {
+    sp: [FS_PATH_MAX] u8; ap: [FS_PATH_MAX] u8;
+    sbuf: [16384] u8;
+    sn := fs_read(fs_join(trial_dir, "agent/coax-summary.json", sp[..]), sbuf[..]);
+    if sn > 0 {
+      nodes: [512] JvNode; d: [1] Jv;
+      if jv_parse(d[..], cast(string) sbuf[0..<sn], nodes[..]) {
+        out[idx].turns = jv_int(d[0], jv_get(d[0], 0, "turns"), 0);
+        out[idx].prompt_tokens = jv_int(d[0], jv_get(d[0], 0, "prompt_tokens"), 0);
+        out[idx].completion_tokens = jv_int(d[0], jv_get(d[0], 0, "completion_tokens"), 0);
+        out[idx].exec_checks = jv_int(d[0], jv_get(d[0], 0, "exec_checks"), 0);
+        out[idx].exec_intercepts = jv_int(d[0], jv_get(d[0], 0, "exec_intercepts"), 0);
+        out[idx].exec_replays = jv_int(d[0], jv_get(d[0], 0, "exec_replays"), 0);
+        out[idx].atif_verified = jv_bool(d[0], jv_get(d[0], 0, "atif_verified"));
+        dn := jv_str(d[0], jv_get(d[0], 0, "atif_digest"), out[idx].atif_digest[..]);
+        out[idx].atif_digest_n = ifx dn > 0 then dn else 0;
+        if out[idx].error_note_n == 0 {
+          en := jv_str(d[0], jv_get(d[0], 0, "error_note"), out[idx].error_note[..]);
+          out[idx].error_note_n = ifx en > 0 then en else 0;
+        }
+      }
+    }
+    atif_p := fs_join(trial_dir, "agent/trajectory.atif.jsonl", ap[..]);
+    if fs_kind(atif_p) == FS_FILE {
+      out[idx].atif_path_n = tbw_put(out[idx].atif_path[..], atif_p);
+    }
+  }
+
+  // Classify strictly through #authority tb_classify_trial!
+  out[idx].status_code = tb_classify_trial(TbTrialInput.{
+    verifier_present = verifier_present,
+    infra_error = infra_err,
+    timed_out = timed_out,
+    reward_milli = reward_milli,
+    exit_code = exit_code,
+  });
+
+  // Append authoritative Harbor Docker verifier verdict card to the live chat events JSONL
+  {
+    fb: [512] u8;
+    fn := tbr_cat(fb[..], 0, "\n\n---\n**Harbor Verifier: ");
+    fn = tbr_cat(fb[..], fn, tb_trial_label(out[idx].status_code));
+    fn = tbr_cat(fb[..], fn, "** · reward `");
+    rb2: [16] u8;
+    fn = tbr_cat(fb[..], fn, tbr_int_str(out[idx].reward_milli, rb2[..]));
+    fn = tbr_cat(fb[..], fn, "/1000` · `");
+    wb2: [16] u8;
+    fn = tbr_cat(fb[..], fn, tbr_int_str(out[idx].wall_ms / 1000, wb2[..]));
+    fn = tbr_cat(fb[..], fn, "s` · `");
+    tb2: [16] u8;
+    fn = tbr_cat(fb[..], fn, tbr_int_str(out[idx].turns, tb2[..]));
+    fn = tbr_cat(fb[..], fn, " turns` · Class-E guards `");
+    eb2: [16] u8;
+    fn = tbr_cat(fb[..], fn, tbr_int_str(out[idx].exec_checks, eb2[..]));
+    fn = tbr_cat(fb[..], fn, "` (");
+    ib2: [16] u8;
+    fn = tbr_cat(fb[..], fn, tbr_int_str(out[idx].exec_intercepts, ib2[..]));
+    fn = tbr_cat(fb[..], fn, " caught)");
+    ob: [1024] u8;
+    jo: [1] Jo; jo_start(jo[..], ob[..]);
+    jo_obj(jo[..]);
+    jo_key(jo[..], "kind"); jo_str(jo[..], "reply");
+    jo_key(jo[..], "text"); jo_str(jo[..], cast(string) fb[0..<fn]);
+    jo_end(jo[..]);
+    if !jo[0].bad {
+      _ = fs_append(events_path, jo_text(jo[..]));
+      _ = fs_append(events_path, "\n");
+    }
+  }
+  _ = side;
+}
+
+TbRunPlan :: struct {
+  suite_slug: [48] u8; suite_slug_n: int;
+  dataset: [48] u8; dataset_n: int;
+  tasks: [TB_MAX_TRIALS] [96] u8;
+  task_lens: [TB_MAX_TRIALS] int;
+  is_heldout: [TB_MAX_TRIALS] bool;
+  n_tasks: int;
+}
+
+tbr_plan_task :: (p: [] TbRunPlan, idx: int) -> string #effects(all) {
+  if idx < 0 || idx >= p[0].n_tasks { return ""; }
+  return cast(string) p[0].tasks[idx][0..<p[0].task_lens[idx]];
+}
+
+tbr_build_plan :: (suite_name: string, tasks_csv: string, p: [] TbRunPlan) -> bool #effects(all) {
+  p[0] = TbRunPlan.{};
+  sid := tb_suite_by_slug(suite_name);
+  if sid < 0 { return false; }
+  info := tb_suite_info(sid);
+  p[0].suite_slug_n = tbw_put(p[0].suite_slug[..], info.slug);
+  p[0].dataset_n = tbw_put(p[0].dataset[..], info.dataset);
+  if tasks_csv.count == 0 {
+    for i: 0..<info.count {
+      if i >= TB_MAX_TRIALS { break; }
+      t := tb_suite_task(sid, i);
+      p[0].task_lens[i] = tbw_put(p[0].tasks[i][..], t);
+      p[0].is_heldout[i] = tb_suite_partition(sid, i) == TB_PART_HELDOUT;
+      p[0].n_tasks += 1;
+    }
+    return p[0].n_tasks > 0;
+  }
+  pos := 0;
+  while pos < tasks_csv.count && p[0].n_tasks < TB_MAX_TRIALS {
+    end := pos;
+    while end < tasks_csv.count && tasks_csv[end] != ',' { end += 1; }
+    tok := tbr_trim(tasks_csv[pos..<end]);
+    if tok.count > 0 && tb_valid_task_id(tok) {
+      idx := p[0].n_tasks;
+      is_ho := (idx % 3) == 2;
+      for si: 0..<info.count {
+        if tb_suite_task(sid, si) == tok {
+          is_ho = tb_suite_partition(sid, si) == TB_PART_HELDOUT;
+          break;
+        }
+      }
+      p[0].task_lens[idx] = tbw_put(p[0].tasks[idx][..], tok);
+      p[0].is_heldout[idx] = is_ho;
+      p[0].n_tasks += 1;
+    }
+    pos = end + 1;
+  }
+  return p[0].n_tasks > 0;
+}
+
+TbCompareRunWork :: struct {
+  hw: [1] HttpWork;
+  plan: [1] TbRunPlan;
+  pol_a: [1] TbPolicy;
+  pol_b: [1] TbPolicy;
+  rows_a: [TB_MAX_TRIALS] TbTrialRecord;
+  rows_b: [TB_MAX_TRIALS] TbTrialRecord;
+  sum_a: [1] TbArmSummary;
+  sum_b: [1] TbArmSummary;
+  out_buf: [524288] u8;
+}
+
+// Run one arm across all selected tasks in plan (handling server start/stop cleanly).
+tbr_run_arm :: (
+  e: [] TbEnv,
+  w: [] TbCompareRunWork,
+  side: string,
+  pol: [] TbPolicy,
+  port: int,
+  custom_endpoint: string,
+  run_id: string,
+  run_dir: string,
+  live_path: string,
+  max_turns_override: int,
+  rows_out: [] TbTrialRecord,
+  sum_out: [] TbArmSummary
+) -> bool #effects(all) {
+  arm_id := cast(string) pol[0].id[0..<pol[0].id_n];
+  ds := cast(string) w[0].plan[0].dataset[0..<w[0].plan[0].dataset_n];
+  n_tasks := w[0].plan[0].n_tasks;
+
+  // Persist exact policy manifest for this arm inside run_dir
+  pf_name_b: [96] u8; pfn := tbr_cat(pf_name_b[..], 0, "policy-"); pfn = tbr_cat(pf_name_b[..], pfn, side); pfn = tbr_cat(pf_name_b[..], pfn, ".json");
+  pf_b: [FS_PATH_MAX] u8;
+  policy_file := fs_join(run_dir, cast(string) pf_name_b[0..<pfn], pf_b[..]);
+  pjson: [4096] u8;
+  pn := tbw_policy_write(pol, pjson[..]);
+  if pn > 0 { _ = fs_write(policy_file, cast(string) pjson[0..<pn]); }
+
+  tbr_emit_live(live_path, "arm_start", side, arm_id, "", 0, n_tasks, "BOOTING", 0, 0, 0, 0, "", cast(string) pol[0].label[0..<pol[0].label_n]);
+  print("[tbench] === Arm % (% · %) booting ===\n", side, arm_id, cast(string) pol[0].backend[0..<pol[0].backend_n]);
+
+  srv_h: [1] int; boot_ms: [1] int; rss_mb: [1] int; api_env_n: [1] int;
+  ep_b: [512] u8; aenv_b: [64] u8;
+  ep_n := tbr_server_start(e, w[0].hw[..], pol, port, custom_endpoint, srv_h[..], boot_ms[..], rss_mb[..], ep_b[..], aenv_b[..], api_env_n[..]);
+  if ep_n <= 0 {
+    print("[tbench] ERROR: failed to start backend for arm % (%)\n", side, arm_id);
+    tbr_emit_live(live_path, "arm_error", side, arm_id, "", 0, n_tasks, "INFRA_ERROR", 0, 0, 0, 0, "", "backend failed to start");
+    for i: 0..<n_tasks {
+      t := tbr_plan_task(w[0].plan[..], i);
+      part := ifx w[0].plan[0].is_heldout[i] then "heldout" else "train";
+      rows_out[i] = TbTrialRecord.{};
+      rows_out[i].task_n = tbw_put(rows_out[i].task[..], t);
+      rows_out[i].dataset_n = tbw_put(rows_out[i].dataset[..], ds);
+      rows_out[i].partition_n = tbw_put(rows_out[i].partition[..], part);
+      rows_out[i].arm_n = tbw_put(rows_out[i].arm[..], arm_id);
+      rows_out[i].status_code = TB_TRIAL_INFRA;
+      rows_out[i].error_note_n = tbw_put(rows_out[i].error_note[..], "backend failed to start");
+    }
+    tb_summarize_arm(pol, rows_out, n_tasks, 0, 0, sum_out);
+    return false;
+  }
+
+  endpoint := cast(string) ep_b[0..<ep_n];
+  api_env := cast(string) aenv_b[0..<api_env_n[0]];
+  print("[tbench] Arm % ready in % ms (RSS % MiB) -> %\n", side, boot_ms[0], rss_mb[0], endpoint);
+
+  // Jobs root MUST be under $HOME/.openagents/tbench/jobs/<run_id>/<side>-<arm_id> (Colima mounts $HOME, NOT /tmp)
+  jb1: [FS_PATH_MAX] u8; jb2: [FS_PATH_MAX] u8; jb3: [FS_PATH_MAX] u8;
+  jroot := fs_join(cast(string) e[0].home[0..<e[0].home_n], ".openagents/tbench/jobs", jb1[..]);
+  jrun := fs_join(jroot, run_id, jb2[..]);
+  as_b: [96] u8; asn := tbr_cat(as_b[..], 0, side); asn = tbr_cat(as_b[..], asn, "-"); asn = tbr_cat(as_b[..], asn, arm_id);
+  jobs_arm_dir := fs_join(jrun, cast(string) as_b[0..<asn], jb3[..]);
+
+  for i: 0..<n_tasks {
+    task := tbr_plan_task(w[0].plan[..], i);
+    part := ifx w[0].plan[0].is_heldout[i] then "heldout" else "train";
+    evf_name: [160] u8; en := tbr_cat(evf_name[..], 0, "events-"); en = tbr_cat(evf_name[..], en, side); en = tbr_cat(evf_name[..], en, "-"); en = tbr_cat(evf_name[..], en, task); en = tbr_cat(evf_name[..], en, ".jsonl");
+    evp_b: [FS_PATH_MAX] u8;
+    events_path := fs_join(run_dir, cast(string) evf_name[0..<en], evp_b[..]);
+
+    tbr_emit_live(live_path, "task_start", side, arm_id, task, i + 1, n_tasks, "RUNNING", 0, 0, 0, 0, events_path, part);
+    print("[tbench] [% %/%] % (%) ...\n", side, i + 1, n_tasks, task, part);
+
+    tbr_run_harbor_trial(e, ds, task, part, side, pol, policy_file, endpoint, api_env, jobs_arm_dir, events_path, max_turns_override, rows_out, i);
+
+    if srv_h[0] >= 0 {
+      r_now := tbr_poll_rss_mb(proc_pid(srv_h[0]));
+      if r_now > rss_mb[0] { rss_mb[0] = r_now; }
+    }
+    st_s := tb_trial_label(rows_out[i].status_code);
+    print("[tbench] [% %/%] % => % (reward=%/1000, % ms, % turns, guards=%/% caught)\n",
+      side, i + 1, n_tasks, task, st_s, rows_out[i].reward_milli, rows_out[i].wall_ms,
+      rows_out[i].turns, rows_out[i].exec_checks, rows_out[i].exec_intercepts);
+    tbr_emit_live(live_path, "task_done", side, arm_id, task, i + 1, n_tasks, st_s,
+      rows_out[i].wall_ms, rows_out[i].turns, rows_out[i].exec_checks, rows_out[i].exec_intercepts,
+      events_path, cast(string) rows_out[i].error_note[0..<rows_out[i].error_note_n]);
+  }
+
+  tbr_server_stop(srv_h[0]);
+  tb_summarize_arm(pol, rows_out, n_tasks, boot_ms[0], rss_mb[0], sum_out);
+  return true;
+}
+
+// Run a complete side-by-side Arm A vs Arm B Terminal-Bench evaluation and persist tbench-compare.v1.
+tbr_run_compare :: (
+  e: [] TbEnv,
+  w: [] TbCompareRunWork,
+  run_id: string,
+  run_dir: string,
+  suite_name: string,
+  tasks_csv: string,
+  endpoint_a: string,
+  endpoint_b: string,
+  max_turns_override: int,
+  out_compare_path: string
+) -> bool #effects(all) {
+  if !tbr_build_plan(suite_name, tasks_csv, w[0].plan[..]) { return false; }
+
+  _ = fs_mkdir_all(run_dir);
+  home := cast(string) e[0].home[0..<e[0].home_n];
+  lp_b: [FS_PATH_MAX] u8;
+  tb_root_b: [FS_PATH_MAX] u8;
+  tb_root := fs_join(home, ".openagents/tbench", tb_root_b[..]);
+  _ = fs_mkdir_all(tb_root);
+  live_path := fs_join(tb_root, "live-status.jsonl", lp_b[..]);
+  _ = fs_remove(live_path);
+
+  suite_slug := cast(string) w[0].plan[0].suite_slug[0..<w[0].plan[0].suite_slug_n];
+  ds := cast(string) w[0].plan[0].dataset[0..<w[0].plan[0].dataset_n];
+  tbr_emit_live(live_path, "run_start", "both", "", suite_slug, 0, w[0].plan[0].n_tasks, "RUNNING", 0, 0, 0, 0, run_dir, ds);
+
+  _ = tbr_run_arm(e, w, "a", w[0].pol_a[..], 18445, endpoint_a, run_id, run_dir, live_path, max_turns_override, w[0].rows_a[..], w[0].sum_a[..]);
+  _ = tbr_run_arm(e, w, "b", w[0].pol_b[..], 18446, endpoint_b, run_id, run_dir, live_path, max_turns_override, w[0].rows_b[..], w[0].sum_b[..]);
+
+  ts_b: [40] u8;
+  ts := tbr_iso_now(ts_b[..]);
+  cn := tbw_compare_write(
+    run_id, ts, suite_slug, ds,
+    w[0].sum_a[..], w[0].rows_a[..], w[0].plan[0].n_tasks,
+    w[0].sum_b[..], w[0].rows_b[..], w[0].plan[0].n_tasks,
+    w[0].out_buf[..]
+  );
+  if cn <= 0 { return false; }
+  cmp_str := cast(string) w[0].out_buf[0..<cn];
+
+  cp_b: [FS_PATH_MAX] u8;
+  cmp_path := fs_join(run_dir, "compare.json", cp_b[..]);
+  _ = fs_replace_durable(cmp_path, cmp_str);
+  if out_compare_path.count > 0 {
+    _ = fs_mkdir_all(fs_dir(out_compare_path));
+    _ = fs_replace_durable(out_compare_path, cmp_str);
+  }
+
+  // Atomically update ~/.openagents/gym/last-tbench.json so OpenAgents Desktop Gym immediately loads it!
+  gd_b: [FS_PATH_MAX] u8; lf_b: [FS_PATH_MAX] u8;
+  gym_dir := fs_join(home, ".openagents/gym", gd_b[..]);
+  _ = fs_mkdir_all(gym_dir);
+  _ = fs_replace_durable(fs_join(gym_dir, "last-tbench.json", lf_b[..]), cmp_str);
+
+  tbr_emit_live(live_path, "run_done", "both", "", suite_slug, w[0].plan[0].n_tasks, w[0].plan[0].n_tasks, "DONE", 0, 0, 0, 0, cmp_path, run_id);
+  return true;
+}
+
+#test "tbench runner: reward.txt parsing and uint parsing (#13951)" {
+  #assert tbr_parse_reward_milli("1.0\n") == 1000;
+  #assert tbr_parse_reward_milli("1") == 1000;
+  #assert tbr_parse_reward_milli("0.0\n") == 0;
+  #assert tbr_parse_reward_milli("0.5") == 500;
+  #assert tbr_parse_reward_milli("0.25") == 250;
+  #assert tbr_parse_reward_milli("  0.125  ") == 125;
+  #assert tbr_parse_reward_milli("") == -1;
+  #assert tbr_parse_reward_milli("NaN") == -1;
+  #assert tbr_parse_reward_milli("-1.0") == -1;
+  #assert tbr_parse_uint("  123456 \n") == 123456;
+  #assert tbr_parse_uint("") == 0;
+}

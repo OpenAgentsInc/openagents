@@ -7048,6 +7048,62 @@
         "coax/lib/lean/wire-checks.coax"
       ],
       "note": "Incremental progress snapshot written by detached lean-run bench start|status|stop sweeps (#13949)."
+    },
+    {
+      "id": "tbench-policy.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/tbench-gym-v1.json",
+      "codec": "coax/lib/tbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/tbench/wire-checks.coax proto/coder/tbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/tbench-gym-v1.json",
+        "coax/lib/tbench/wire-checks.coax"
+      ],
+      "note": "Declarative Microcoder + Executor Network policy manifest hashed by canonical SHA-256 for Terminal-Bench runs and hillclimbing (#13951, #13953)."
+    },
+    {
+      "id": "tbench-trial.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/tbench-gym-v1.json",
+      "codec": "coax/lib/tbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/tbench/wire-checks.coax proto/coder/tbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/tbench-gym-v1.json",
+        "coax/lib/tbench/wire-checks.coax"
+      ],
+      "note": "Single Harbor-verified Terminal-Bench task trial result with Executor Class-E guard telemetry and ATIF-v1.8 digest (#13951)."
+    },
+    {
+      "id": "tbench-compare.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/tbench-gym-v1.json",
+      "codec": "coax/lib/tbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/tbench/wire-checks.coax proto/coder/tbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/tbench-gym-v1.json",
+        "coax/lib/tbench/wire-checks.coax"
+      ],
+      "note": "Side-by-side Terminal-Bench Arm A vs Arm B comparison snapshot persisted to ~/.openagents/gym/last-tbench.json for OpenAgents Desktop Gym (#13951, #13952)."
+    },
+    {
+      "id": "tbench-hillclimb.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/tbench-gym-v1.json",
+      "codec": "coax/lib/tbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/tbench/wire-checks.coax proto/coder/tbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/tbench-gym-v1.json",
+        "coax/lib/tbench/wire-checks.coax"
+      ],
+      "note": "Append-only #authority hillclimbing round ledger row recording train/held-out pass counts, quarantine gate verdict, and Ch 247 redacted distillation count (#13953)."
     }
   ]
 }

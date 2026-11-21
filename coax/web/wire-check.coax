@@ -494,7 +494,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "identity" { return wc_starts(codec, "coax/web/api/auth") || wc_starts(codec,"coax/web/api/account-settings") || wc_starts(codec,"coax/native/account-") || wc_starts(codec,"coax/native/messaging-") || wc_starts(codec,"coax/native/nostr-") || wc_starts(codec,"coax/native/relay-session-") || codec == "coax/web/api/agent-wire.coax"; }   // the account's agents and devices (contexts.txt)
   if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/")
     || codec == "coax/lib/nostr/vault-wallet.coax"; }   // the wallet backup's codec stays below Nostr (docs/architecture/contexts.md)
-  if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "apps/openagents-desktop/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/boat/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/lib/lean/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
+  if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "apps/openagents-desktop/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/boat/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/lib/lean/") || wc_under(codec, "coax/lib/tbench/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
   if owner == "chat" { return wc_under(codec, "components/chat/") || wc_under(codec, "apps/openagents-web/chat.coax") || (wc_under(codec, "coax/web/api/chat.c") || wc_starts(codec, "coax/web/api/chat-history") || wc_starts(codec, "coax/web/api/account-chat") || wc_starts(codec, "coax/web/api/gamebuilder-agent")); }
   if owner == "projects" { return codec == "coax/lib/project/api-wire.coax" || codec == "coax/lib/project/api-profile.coax" || wc_starts(codec,"coax/web/api/projects") || wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c") || wc_under(codec, "coax/web/project/"); }
   if owner == "nostr" { return wc_under(codec, "nostr/") || (wc_under(codec, "coax/lib/nostr/") && codec != "coax/lib/nostr/vault-wallet.coax"); }
@@ -507,7 +507,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "protocol" { return wc_under(codec, "proto/"); }
   if owner == "toolchain" {
     return wc_under(codec, "coax/") && codec != "coax/lib/project/api-wire.coax" && codec != "coax/lib/project/api-profile.coax" && !wc_starts(codec,"coax/web/api/projects") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
-      && !wc_under(codec, "coax/lib/repo/") && !wc_under(codec, "coax/lib/lean/") && !wc_under(codec, "coax/web/repo/") && !wc_under(codec, "coax/web/agent/")
+      && !wc_under(codec, "coax/lib/repo/") && !wc_under(codec, "coax/lib/lean/") && !wc_under(codec, "coax/lib/tbench/") && !wc_under(codec, "coax/web/repo/") && !wc_under(codec, "coax/web/agent/")
       && !wc_under(codec, "coax/lib/gateway/") && !wc_under(codec, "coax/lib/nostr/") && !wc_under(codec, "coax/lib/pay/")
       && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
       && !wc_starts(codec,"coax/web/api/account-settings") && !wc_starts(codec,"coax/native/account-") && !wc_starts(codec,"coax/native/messaging-") && !wc_starts(codec,"coax/native/nostr-") && !wc_starts(codec,"coax/native/relay-session-")
@@ -533,7 +533,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   #assert wc_owner_has("payments", "pay/a") && wc_owner_has("payments", "coax/lib/pay/a") && wc_owner_has("payments", "coax/lib/bitcoin/a") && wc_owner_has("payments", "coax/lib/lightning/a");
   #assert wc_owner_has("payments", "coax/lib/lnaddr/a") && wc_owner_has("payments", "coax/lib/nostr/vault-wallet.coax") && !wc_owner_has("payments", "coax/lib/nostr/a");
   #assert wc_owner_has("coder", "coder/a") && wc_owner_has("coder", "coax/lib/agent/a") && wc_owner_has("coder", "coax/lib/boat/a") && wc_owner_has("coder", "coax/lib/microcoder/a");
-  #assert wc_owner_has("coder", "coax/lib/gateway/a") && wc_owner_has("coder", "coax/lib/repo/a") && wc_owner_has("coder", "coax/web/repo/a") && wc_owner_has("coder", "coax/web/agent/a");
+  #assert wc_owner_has("coder", "coax/lib/gateway/a") && wc_owner_has("coder", "coax/lib/repo/a") && wc_owner_has("coder", "coax/lib/tbench/a") && wc_owner_has("coder", "coax/web/repo/a") && wc_owner_has("coder", "coax/web/agent/a");
   #assert wc_owner_has("chat", "components/chat/a") && wc_owner_has("chat", "apps/openagents-web/chat.coax") && wc_owner_has("chat", "coax/web/api/chat.c");
   #assert wc_owner_has("chat", "coax/web/api/chat-history-x") && wc_owner_has("chat", "coax/web/api/account-chat-x") && !wc_owner_has("chat", "apps/openagents-web/chat-web.coax");
   #assert wc_owner_has("projects", "coax/web/api/private.c") && wc_owner_has("projects", "coax/web/api/drops.c") && wc_owner_has("projects", "coax/web/project/a");
@@ -545,7 +545,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   #assert !wc_owner_has("ops", "coax/web/api/chat.c") && !wc_owner_has("nobody", "coax/web/api/analytics.c") && !wc_owner_has("nobody", "coax/web/a");
   // toolchain: everything under coax/ except each named path, and nothing outside coax/
   #assert wc_owner_has("toolchain", "coax/web/a") && !wc_owner_has("toolchain", "rules/srd/a") && !wc_owner_has("toolchain", "coax");
-  gone := [31] string.["coax/lib/agent/a", "coax/lib/microcoder/a", "coax/lib/repo/a", "coax/web/repo/a", "coax/web/agent/a", "coax/lib/gateway/a", "coax/lib/nostr/a", "coax/lib/pay/a",
+  gone := [32] string.["coax/lib/agent/a", "coax/lib/microcoder/a", "coax/lib/repo/a", "coax/lib/tbench/a", "coax/web/repo/a", "coax/web/agent/a", "coax/lib/gateway/a", "coax/lib/nostr/a", "coax/lib/pay/a",
     "coax/lib/bitcoin/a", "coax/lib/lightning/a", "coax/lib/lnaddr/a", "coax/web/api/account-settings-x", "coax/native/account-x", "coax/lib/systemone/a", "coax/web/room/a",
     "coax/web/api/auth-x", "coax/web/api/agent-wire.coax", "coax/web/api/worldbuilder.c", "coax/web/api/realms.c", "coax/web/api/chat.c", "coax/web/api/chat-history-x",
     "coax/web/api/account-chat-x", "coax/web/api/private.c", "coax/web/api/drops.c", "coax/web/project/a", "coax/web/api/inference.c", "coax/web/api/mesh-x",

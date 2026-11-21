@@ -1,0 +1,726 @@
+// Pure Coax Microcoder Terminal-Bench Agent Loop (Epic #13950, Phase 1 #13951, Phase 3 #13953).
+//
+// Runs inside `tbench-run agent-loop` (spawned by the thin Harbor Python BaseAgent bridge):
+//   - Talks OpenAI-compatible HTTP/HTTPS (/v1/chat/completions) via coax/lib/net/http.coax
+//     to local Psionic Metal (psionic-inkling-serve), llama.cpp Metal (llama-server), or cloud APIs.
+//   - Drives real Harbor Docker containers via stdin/stdout JSONL ops (exec/read/write/done).
+//   - Enforces Microcoder W2.2 Class-E compiled weight guards (coax/lib/microcoder/executor-guard.coax)
+//     with Ch 234 LE32 SHA-256 replay receipts when policy.executor_guard is enabled.
+//   - Streams live mcworker-wire GPU chat JSONL events for OpenAgents Desktop GymTerminalBenchView.
+//   - Exports and self-verifies canonical Harbor ATIF-v1.8 trajectories via coax/lib/nostr/atif/.
+//
+//   coax/bin/coax test coax/lib/tbench/agent.coax --library
+#load "../net/http.coax";
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+#load "../nostr/atif/log.coax";
+#load "../microcoder/executor-guard.coax";
+#load "wire.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+TB_MAX_MSGS :: 64;
+TB_MSG_ARENA :: 262144;
+TB_HTTP_BODY :: 262144;
+TB_LINE_BUF :: 131072;
+TB_ATIF_LOG_CAP :: 524288;
+TB_ATIF_DOC_CAP :: 524288;
+
+TbAgentResult :: struct {
+  ok: bool;
+  turns: int;
+  prompt_tokens: int;
+  completion_tokens: int;
+  wall_ms: int;
+  exec_checks: int;
+  exec_intercepts: int;
+  exec_replays: int;
+  atif_verified: bool;
+  atif_digest: [64] u8; atif_digest_n: int;
+  error_note: [160] u8; error_note_n: int;
+}
+
+TbAgentWork :: struct {
+  http: [1] HttpWork;
+  req_body: [262144] u8;
+  resp_body: [262144] u8;
+  nodes: [16384] JvNode;
+  sub_nodes: [4096] JvNode;
+  line: [131072] u8;
+  out_line: [131072] u8;
+  tool_arg: [65536] u8;
+  tool_out: [32768] u8;
+  file_buf: [65536] u8;
+  edit_buf: [65536] u8;
+  msg_arena: [262144] u8;
+  msg_from: [64] int;
+  msg_len: [64] int;
+  msg_n: int;
+  arena_used: int;
+  // ATIF-v1.8 accumulation
+  atif_log: [524288] u8;
+  atif_log_n: int;
+  atif_doc_steps: [524288] u8;
+  atif_doc_steps_n: int;
+  atif_doc: [524288] u8;
+  atif_step_buf: [65536] u8;
+  atif_line_buf: [65536] u8;
+  atif_tc_buf: [32768] u8;
+  atif_obs_buf: [32768] u8;
+  atif_scratch: [65536] u8;
+  atif_hasher: [1] AtifStepsHasher;
+  atif_steps: int;
+}
+
+tba_cat :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+tba_find_substr :: (hay: string, needle: string, start: int) -> int #effects(all) {
+  if needle.count == 0 || start < 0 || start + needle.count > hay.count { return -1; }
+  for i: start..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return i; }
+  }
+  return -1;
+}
+
+// Count occurrences of needle in hay (returns 0, 1, or >=2) and records first match offset.
+tba_count_substr :: (hay: string, needle: string, first_out: [] int) -> int #effects(all) {
+  first_out[0] = -1;
+  if needle.count == 0 || needle.count > hay.count { return 0; }
+  p1 := tba_find_substr(hay, needle, 0);
+  if p1 < 0 { return 0; }
+  first_out[0] = p1;
+  p2 := tba_find_substr(hay, needle, p1 + 1);
+  return ifx p2 >= 0 then 2 else 1;
+}
+
+tba_system_prompt :: (profile: string, exec_guard: bool) -> string #effects(all) {
+  if profile == "verify-first" {
+    return "You are OpenAgents Microcoder solving a Linux Terminal-Bench task inside a real Docker container. Inspect the workspace and task requirements carefully, formulate a verification command first, apply minimal clean edits with Read/Write/Edit/Bash, run your verification check until every requirement holds, and finish concisely when done. Never fabricate output.";
+  }
+  if profile == "executor-guided" || exec_guard {
+    return "You are OpenAgents Microcoder with Executor Network Class-E deterministic pre-edit guards active inside a Linux Terminal-Bench Docker container. Work methodically: inspect files with Read/Bash, make exact targeted edits with Edit or Write (every edit is pre-checked by compiled W2.2 Class-E guards before touching disk; if a guard reports context_mismatch or ambiguous_match, re-read and supply an exact unique anchor), verify your fix with Bash tests, then give a brief final summary.";
+  }
+  return "You are OpenAgents Microcoder solving a Linux terminal task inside a Docker container. Use Read, Write, Edit, and Bash tools to inspect the environment, solve the task completely, verify your solution works, and provide a concise final answer.";
+}
+
+// Append a pre-serialized OpenAI chat message JSON object into the conversation ring.
+tba_push_msg :: (w: [] TbAgentWork, msg_json: string) -> bool #effects(all) {
+  if w[0].msg_n >= TB_MAX_MSGS { return false; }
+  if w[0].arena_used + msg_json.count > TB_MSG_ARENA { return false; }
+  at := w[0].arena_used;
+  for i: 0..<msg_json.count { w[0].msg_arena[at + i] = msg_json[i]; }
+  idx := w[0].msg_n;
+  w[0].msg_from[idx] = at;
+  w[0].msg_len[idx] = msg_json.count;
+  w[0].msg_n += 1;
+  w[0].arena_used += msg_json.count;
+  return true;
+}
+
+tba_emit_event :: (events_path: string, json_line: string) #effects(all) {
+  if events_path.count == 0 || json_line.count == 0 { return; }
+  _ = fs_append(events_path, json_line);
+  _ = fs_append(events_path, "\n");
+}
+
+tba_emit_chat_prompt :: (events_path: string, task: string, text: string) #effects(all) {
+  if events_path.count == 0 { return; }
+  buf: [32768] u8;
+  cut_n := ifx text.count > 16000 then 16000 else text.count;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], "prompt");
+  jo_key(o[..], "task"); jo_str(o[..], task);
+  jo_key(o[..], "text"); jo_str(o[..], text[0..<cut_n]);
+  jo_end(o[..]);
+  if !o[0].bad { tba_emit_event(events_path, jo_text(o[..])); }
+}
+
+tba_emit_chat_kind :: (events_path: string, kind: string, text: string) #effects(all) {
+  if events_path.count == 0 { return; }
+  buf: [32768] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], kind);
+  jo_key(o[..], "text"); jo_str(o[..], text);
+  jo_end(o[..]);
+  if !o[0].bad { tba_emit_event(events_path, jo_text(o[..])); }
+}
+
+tba_emit_chat_view :: (events_path: string, path: string, found: bool) #effects(all) {
+  if events_path.count == 0 { return; }
+  buf: [4096] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], "view");
+  jo_key(o[..], "path"); jo_str(o[..], path);
+  jo_key(o[..], "found"); jo_bool(o[..], found);
+  jo_end(o[..]);
+  if !o[0].bad { tba_emit_event(events_path, jo_text(o[..])); }
+}
+
+tba_emit_chat_cmd :: (events_path: string, cmd: string, exit_code: int, output: string) #effects(all) {
+  if events_path.count == 0 { return; }
+  buf: [16384] u8;
+  cut_n := ifx output.count > 2000 then 2000 else output.count;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], "command");
+  jo_key(o[..], "command"); jo_str(o[..], cmd);
+  jo_key(o[..], "exit"); jo_int(o[..], exit_code);
+  jo_key(o[..], "timed_out"); jo_bool(o[..], exit_code == 124);
+  jo_key(o[..], "output"); jo_str(o[..], output[0..<cut_n]);
+  jo_end(o[..]);
+  if !o[0].bad { tba_emit_event(events_path, jo_text(o[..])); }
+}
+
+tba_emit_chat_ended :: (events_path: string, ending: string, text: string) #effects(all) {
+  if events_path.count == 0 { return; }
+  buf: [32768] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], "ended");
+  jo_key(o[..], "ending"); jo_str(o[..], ending);
+  jo_key(o[..], "text"); jo_str(o[..], text);
+  jo_end(o[..]);
+  if !o[0].bad { tba_emit_event(events_path, jo_text(o[..])); }
+}
+
+// Send one JSONL line to the Harbor Python BaseAgent stdout pipe and read one JSONL reply line from stdin.
+tba_bridge_rpc :: (w: [] TbAgentWork, req_json: string, exit_out: [] int) -> string #effects(all) {
+  exit_out[0] = 1;
+  n := tba_cat(w[0].out_line[..], 0, req_json);
+  if n >= w[0].out_line.count { return "[bridge request too large]"; }
+  w[0].out_line[n] = 10;
+  _ = cxterm_write(w[0].out_line[0..<n + 1]);
+
+  // Read reply line from stdin byte-by-byte until '\n' or EOF (timeout 180s per command).
+  rn := 0;
+  while rn < w[0].line.count - 1 {
+    b := cxterm_byte(180000);
+    if b < 0 { break; }
+    if b == 10 { break; }
+    if b == 13 { continue; }
+    w[0].line[rn] = cast,trunc(u8) b;
+    rn += 1;
+  }
+  if rn == 0 { return "[bridge EOF]"; }
+  d: [1] Jv;
+  if !jv_parse(d[..], cast(string) w[0].line[0..<rn], w[0].sub_nodes[..]) {
+    return "[bridge invalid JSON]";
+  }
+  exit_out[0] = jv_int(d[0], jv_get(d[0], 0, "exit"), 1);
+  on := jv_str(d[0], jv_get(d[0], 0, "output"), w[0].tool_out[..]);
+  if on < 0 { return ""; }
+  return cast(string) w[0].tool_out[0..<on];
+}
+
+tba_bridge_exec :: (w: [] TbAgentWork, cmd: string, timeout_sec: int, exit_out: [] int) -> string #effects(all) {
+  buf: [32768] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], "exec");
+  jo_key(o[..], "command"); jo_str(o[..], cmd);
+  jo_key(o[..], "timeout_sec"); jo_int(o[..], timeout_sec);
+  jo_end(o[..]);
+  return tba_bridge_rpc(w, jo_text(o[..]), exit_out);
+}
+
+tba_bridge_read :: (w: [] TbAgentWork, path: string, exit_out: [] int) -> string #effects(all) {
+  buf: [4096] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], "read");
+  jo_key(o[..], "path"); jo_str(o[..], path);
+  jo_end(o[..]);
+  return tba_bridge_rpc(w, jo_text(o[..]), exit_out);
+}
+
+tba_bridge_write :: (w: [] TbAgentWork, path: string, content: string, exit_out: [] int) -> string #effects(all) {
+  buf: [98304] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], "write");
+  jo_key(o[..], "path"); jo_str(o[..], path);
+  jo_key(o[..], "content"); jo_str(o[..], content);
+  jo_end(o[..]);
+  return tba_bridge_rpc(w, jo_text(o[..]), exit_out);
+}
+
+tba_atif_append_step :: (w: [] TbAgentWork, step: AtifStep) #effects(all) {
+  sn := atif_write_step_json(step, w[0].atif_step_buf[..]);
+  if sn <= 0 { return; }
+  sj := cast(string) w[0].atif_step_buf[0..<sn];
+  _ = atif_steps_hash_step(w[0].atif_hasher[..], sj, w[0].atif_scratch[..]);
+
+  ln := atif_write_step_line(sj, w[0].atif_line_buf[..]);
+  if ln > 0 && w[0].atif_log_n + ln <= TB_ATIF_LOG_CAP {
+    for i: 0..<ln { w[0].atif_log[w[0].atif_log_n + i] = w[0].atif_line_buf[i]; }
+    w[0].atif_log_n += ln;
+  }
+  if w[0].atif_doc_steps_n > 0 && w[0].atif_doc_steps_n + 1 < TB_ATIF_DOC_CAP {
+    w[0].atif_doc_steps[w[0].atif_doc_steps_n] = ',';
+    w[0].atif_doc_steps_n += 1;
+  }
+  if w[0].atif_doc_steps_n + sn < TB_ATIF_DOC_CAP {
+    for i: 0..<sn { w[0].atif_doc_steps[w[0].atif_doc_steps_n + i] = w[0].atif_step_buf[i]; }
+    w[0].atif_doc_steps_n += sn;
+  }
+  w[0].atif_steps += 1;
+}
+
+tba_tools_json :: () -> string #effects(all) {
+  return "[{\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"description\":\"Run a bash command inside the task container.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"Read\",\"description\":\"Read a file inside the task container.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"Write\",\"description\":\"Write full contents to a file inside the task container.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"Edit\",\"description\":\"Replace an exact unique substring old_text with new_text in a file inside the task container.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old_text\":{\"type\":\"string\"},\"new_text\":{\"type\":\"string\"}},\"required\":[\"path\",\"old_text\",\"new_text\"]}}}]";
+}
+
+// Build OpenAI /v1/chat/completions request JSON from message history + tools + policy.
+tba_build_request :: (w: [] TbAgentWork, model: string, max_tokens: int, temp_milli: int) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], w[0].req_body[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "messages"); jo_arr(o[..]);
+  for i: 0..<w[0].msg_n {
+    f := w[0].msg_from[i];
+    l := w[0].msg_len[i];
+    jo_raw(o[..], cast(string) w[0].msg_arena[f..<f + l]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "tools"); jo_raw(o[..], tba_tools_json());
+  jo_key(o[..], "max_tokens"); jo_int(o[..], max_tokens);
+  jo_key(o[..], "temperature");
+  if temp_milli <= 0 { jo_raw(o[..], "0.0"); } else if temp_milli >= 1000 { jo_raw(o[..], "1.0"); } else {
+    tb: [16] u8; tn := tba_cat(tb[..], 0, "0.");
+    d1 := (temp_milli / 100) % 10; d2 := (temp_milli / 10) % 10;
+    tb[tn] = cast,trunc(u8) ('0' + d1); tn += 1;
+    tb[tn] = cast,trunc(u8) ('0' + d2); tn += 1;
+    jo_raw(o[..], cast(string) tb[0..<tn]);
+  }
+  jo_key(o[..], "stream"); jo_bool(o[..], false);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Run a full Microcoder Terminal-Bench episode via the Harbor BaseAgent stdin/stdout bridge.
+tb_agent_loop :: (
+  w: [] TbAgentWork,
+  endpoint: string,
+  api_key: string,
+  model: string,
+  task_id: string,
+  instruction: string,
+  policy: [] TbPolicy,
+  events_path: string,
+  atif_dir: string,
+  res: [] TbAgentResult
+) #effects(all) {
+  t0_ms := proc_now_ms();
+  res[0] = TbAgentResult.{};
+  w[0].msg_n = 0;
+  w[0].arena_used = 0;
+  w[0].atif_log_n = 0;
+  w[0].atif_doc_steps_n = 0;
+  w[0].atif_steps = 0;
+  atif_steps_hash_init(w[0].atif_hasher[..]);
+
+  // Write ATIF-v1.8 session header
+  hdr := AtifSessionHeader.{
+    trajectory_id = task_id,
+    session_id = task_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "openagents-microcoder-coax",
+    model_name = model,
+    cwd = "/app",
+    git_branch = "",
+    source_harness = "harbor-tbench-coax",
+    created_at = "2026-11-21T00:00:00Z",
+  };
+  sh_n := atif_write_session_line(hdr, w[0].atif_line_buf[..]);
+  if sh_n > 0 {
+    for i: 0..<sh_n { w[0].atif_log[i] = w[0].atif_line_buf[i]; }
+    w[0].atif_log_n = sh_n;
+  }
+
+  // Emit prompt header to live GPU chat transcript file first
+  tba_emit_chat_prompt(events_path, task_id, instruction);
+
+  // Optional deterministic read-only orientation probe before Turn 1
+  probe_note: [4096] u8;
+  probe_n := 0;
+  if policy[0].orientation_probe {
+    ex: [1] int;
+    po := tba_bridge_exec(w, "pwd && ls -la | head -n 40", 20, ex[..]);
+    if ex[0] == 0 && po.count > 0 {
+      probe_n = tba_cat(probe_note[..], 0, "\n\n[Deterministic Workspace Orientation Probe (pwd && ls -la)]:\n");
+      cap := ifx po.count > 3000 then 3000 else po.count;
+      probe_n = tba_cat(probe_note[..], probe_n, po[0..<cap]);
+      tba_emit_chat_cmd(events_path, "[probe] pwd && ls -la", ex[0], po[0..<cap]);
+    }
+  }
+
+  // System message
+  sys_txt := tba_system_prompt(cast(string) policy[0].prompt_profile[0..<policy[0].prompt_profile_n], policy[0].executor_guard);
+  {
+    mb: [4096] u8; o: [1] Jo; jo_start(o[..], mb[..]);
+    jo_obj(o[..]); jo_key(o[..], "role"); jo_str(o[..], "system"); jo_key(o[..], "content"); jo_str(o[..], sys_txt); jo_end(o[..]);
+    _ = tba_push_msg(w, jo_text(o[..]));
+  }
+  // User message (instruction + optional orientation probe)
+  {
+    ub: [65536] u8; un := tba_cat(ub[..], 0, instruction);
+    if probe_n > 0 { un = tba_cat(ub[..], un, cast(string) probe_note[0..<probe_n]); }
+    mb: [70000] u8; o: [1] Jo; jo_start(o[..], mb[..]);
+    jo_obj(o[..]); jo_key(o[..], "role"); jo_str(o[..], "user"); jo_key(o[..], "content"); jo_str(o[..], cast(string) ub[0..<un]); jo_end(o[..]);
+    _ = tba_push_msg(w, jo_text(o[..]));
+
+    // ATIF step 1: user instruction
+    u_step := AtifStep.{
+      step_id = 1, timestamp = "2026-11-21T00:00:00Z", source = ATIF_SOURCE_USER,
+      message = cast(string) ub[0..<un], model_name = model,
+    };
+    tba_atif_append_step(w, u_step);
+  }
+
+  max_turns := ifx policy[0].max_turns > 0 && policy[0].max_turns <= 32 then policy[0].max_turns else 16;
+  max_tokens := ifx policy[0].max_tokens > 0 && policy[0].max_tokens <= 8192 then policy[0].max_tokens else 1536;
+  compact_lim := ifx policy[0].compact_chars > 512 then policy[0].compact_chars else 8000;
+  last_reply: [16384] u8;
+  last_reply_n := 0;
+
+  for turn: 1..<(max_turns + 1) {
+    res[0].turns = turn;
+    req_n := tba_build_request(w, model, max_tokens, policy[0].temp_milli);
+    if req_n <= 0 {
+      res[0].error_note_n = tbw_put(res[0].error_note[..], "request buffer exceeded");
+      break;
+    }
+
+    // Build HTTP headers (Content-Type + optional Authorization: Bearer ...)
+    auth_hdr: [512] u8;
+    hdrs: [2] string;
+    hdr_n := 1;
+    hdrs[0] = "Content-Type: application/json";
+    if api_key.count > 0 {
+      an := tba_cat(auth_hdr[..], 0, "Authorization: Bearer ");
+      an = tba_cat(auth_hdr[..], an, api_key);
+      hdrs[1] = cast(string) auth_hdr[0..<an];
+      hdr_n = 2;
+    }
+    hr := http_do(w[0].http[..], "POST", endpoint, hdrs[0..<hdr_n], cast(string) w[0].req_body[0..<req_n], 180000, 3, w[0].resp_body[..]);
+    if hr.error != HTTP_OK || hr.code < 200 || hr.code >= 300 {
+      eb: [160] u8; en := tba_cat(eb[..], 0, "http error: ");
+      en = tba_cat(eb[..], en, http_error_text(hr.error));
+      res[0].error_note_n = tbw_put(res[0].error_note[..], cast(string) eb[0..<en]);
+      tba_emit_chat_ended(events_path, "error", cast(string) eb[0..<en]);
+      break;
+    }
+
+    // Parse OpenAI JSON response
+    d: [1] Jv;
+    if !jv_parse(d[..], cast(string) w[0].resp_body[0..<hr.n], w[0].nodes[..]) {
+      res[0].error_note_n = tbw_put(res[0].error_note[..], "invalid LLM JSON response");
+      break;
+    }
+    u_node := jv_get(d[0], 0, "usage");
+    pt := jv_int(d[0], jv_get(d[0], u_node, "prompt_tokens"), 0);
+    ct := jv_int(d[0], jv_get(d[0], u_node, "completion_tokens"), 0);
+    res[0].prompt_tokens += pt;
+    res[0].completion_tokens += ct;
+
+    ch0 := jv_at(d[0], jv_get(d[0], 0, "choices"), 0);
+    msg := jv_get(d[0], ch0, "message");
+    if msg < 0 {
+      res[0].error_note_n = tbw_put(res[0].error_note[..], "missing choices[0].message");
+      break;
+    }
+
+    content_buf: [16384] u8;
+    reason_buf: [16384] u8;
+    cn := jv_str(d[0], jv_get(d[0], msg, "content"), content_buf[..]);
+    if cn < 0 { cn = 0; }
+    rn := jv_str(d[0], jv_get(d[0], msg, "reasoning_content"), reason_buf[..]);
+    if rn < 0 { rn = 0; }
+
+    content_s := cast(string) content_buf[0..<cn];
+    reason_s := cast(string) reason_buf[0..<rn];
+    if rn > 0 { tba_emit_chat_kind(events_path, "thought", reason_s); }
+    if cn > 0 {
+      last_reply_n = tbw_put(last_reply[..], content_s);
+      tba_emit_chat_kind(events_path, "reply", content_s);
+    }
+
+    tcs := jv_get(d[0], msg, "tool_calls");
+    tc_count := ifx tcs >= 0 then jv_len(d[0], tcs) else 0;
+
+    // Push assistant message verbatim into history
+    {
+      ab: [32768] u8; o: [1] Jo; jo_start(o[..], ab[..]);
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "assistant");
+      jo_key(o[..], "content"); jo_str(o[..], content_s);
+      if tc_count > 0 {
+        jo_key(o[..], "tool_calls"); jv_write(d[0], tcs, o[..]);
+      }
+      jo_end(o[..]);
+      _ = tba_push_msg(w, jo_text(o[..]));
+    }
+
+    if tc_count <= 0 {
+      // Agent finished! Record final ATIF step and stop.
+      a_step := AtifStep.{
+        step_id = w[0].atif_steps + 1, timestamp = "2026-11-21T00:00:00Z", source = ATIF_SOURCE_AGENT,
+        message = content_s, reasoning_content = reason_s, model_name = model,
+        metrics = AtifMetrics.{has_prompt = pt > 0, prompt_tokens = pt, has_completion = ct > 0, completion_tokens = ct},
+      };
+      tba_atif_append_step(w, a_step);
+      res[0].ok = true;
+      break;
+    }
+
+    // Build ATIF tool_calls & observation arrays while executing each tool call in the container
+    tco: [1] Jo; jo_start(tco[..], w[0].atif_tc_buf[..]); jo_arr(tco[..]);
+    obo: [1] Jo; jo_start(obo[..], w[0].atif_obs_buf[..]); jo_obj(obo[..]); jo_key(obo[..], "results"); jo_arr(obo[..]);
+
+    for ti: 0..<tc_count {
+      tc := jv_at(d[0], tcs, ti);
+      tc_id_b: [128] u8; tc_id_n := jv_str(d[0], jv_get(d[0], tc, "id"), tc_id_b[..]);
+      tc_id := ifx tc_id_n > 0 then cast(string) tc_id_b[0..<tc_id_n] else "call_0";
+      fn := jv_get(d[0], tc, "function");
+      fn_b: [64] u8; fn_n := jv_str(d[0], jv_get(d[0], fn, "name"), fn_b[..]);
+      fn_name := ifx fn_n > 0 then cast(string) fn_b[0..<fn_n] else "";
+      arg_node := jv_get(d[0], fn, "arguments");
+      arg_n := jv_str(d[0], arg_node, w[0].tool_arg[..]);
+      arg_s := ifx arg_n > 0 then cast(string) w[0].tool_arg[0..<arg_n] else (ifx arg_node >= 0 && jv_kind(d[0], arg_node) == JV_OBJECT then jv_raw(d[0], arg_node) else "{}");
+
+      atif_jo_tool_call(tco[..], tc_id, fn_name, arg_s);
+
+      // Parse tool arguments
+      ad: [1] Jv;
+      _ = jv_parse(ad[..], arg_s, w[0].sub_nodes[..]);
+
+      ex: [1] int; ex[0] = 0;
+      t_out_b: [24576] u8;
+      t_out_n := 0;
+
+      if fn_name == "Bash" {
+        cb: [8192] u8; cn2 := jv_str(ad[0], jv_get(ad[0], 0, "command"), cb[..]);
+        cmd := ifx cn2 > 0 then cast(string) cb[0..<cn2] else "";
+        // Optional Executor Network Class-E budget guard on turn count
+        if policy[0].executor_guard {
+          bv := mc_exec_check_budget(turn, 1, max_turns, 100000, 1, 100000);
+          bgi := [6] int.[turn, 1, max_turns, 100000, 1, 100000];
+          rep_ok := mc_exec_verify_replay(MC_EXEC_MOD_BUDGET, bgi[..], bv.digest);
+          res[0].exec_checks += 1;
+          if rep_ok { res[0].exec_replays += 1; }
+        }
+        out_s := tba_bridge_exec(w, cmd, 90, ex[..]);
+        t_out_n = tba_cat(t_out_b[..], 0, out_s);
+        tba_emit_chat_cmd(events_path, cmd, ex[0], out_s);
+      } else if fn_name == "Read" {
+        pb: [1024] u8; pn2 := jv_str(ad[0], jv_get(ad[0], 0, "path"), pb[..]);
+        path := ifx pn2 > 0 then cast(string) pb[0..<pn2] else "";
+        out_s := tba_bridge_read(w, path, ex[..]);
+        t_out_n = tba_cat(t_out_b[..], 0, out_s);
+        tba_emit_chat_view(events_path, path, ex[0] == 0);
+      } else if fn_name == "Write" {
+        pb: [1024] u8; pn2 := jv_str(ad[0], jv_get(ad[0], 0, "path"), pb[..]);
+        path := ifx pn2 > 0 then cast(string) pb[0..<pn2] else "";
+        wb: [49152] u8; wn2 := jv_str(ad[0], jv_get(ad[0], 0, "content"), wb[..]);
+        body := ifx wn2 > 0 then cast(string) wb[0..<wn2] else "";
+        blocked := false;
+        pill_b: [128] u8; pill_s := "";
+        if policy[0].executor_guard {
+          sv := mc_exec_check_schema(ifx path.count > 0 then 1 else 0, path.count, MC_EXEC_MAX_PATH, 1, 1, 1, body.count, 49152);
+          si := [8] int.[ifx path.count > 0 then 1 else 0, path.count, MC_EXEC_MAX_PATH, 1, 1, 1, body.count, 49152];
+          rep_ok := mc_exec_verify_replay(MC_EXEC_MOD_SCHEMA, si[..], sv.digest);
+          res[0].exec_checks += 1;
+          if rep_ok { res[0].exec_replays += 1; }
+          pill_s = mc_exec_format_pill(rep_ok && sv.ok, sv.label, sv.digest, pill_b[..]);
+          if !sv.ok {
+            blocked = true;
+            res[0].exec_intercepts += 1;
+            ex[0] = 1;
+            t_out_n = tba_cat(t_out_b[..], 0, "Executor Class-E guard refused Write: ");
+            t_out_n = tba_cat(t_out_b[..], t_out_n, mc_exec_code_text(sv.code));
+            t_out_n = tba_cat(t_out_b[..], t_out_n, " · ");
+            t_out_n = tba_cat(t_out_b[..], t_out_n, pill_s);
+          }
+        }
+        if !blocked {
+          out_s := tba_bridge_write(w, path, body, ex[..]);
+          t_out_n = tba_cat(t_out_b[..], 0, out_s);
+          if pill_s.count > 0 {
+            t_out_n = tba_cat(t_out_b[..], t_out_n, "\n");
+            t_out_n = tba_cat(t_out_b[..], t_out_n, pill_s);
+          }
+        }
+        cb2: [1200] u8; c2n := tba_cat(cb2[..], 0, "Write "); c2n = tba_cat(cb2[..], c2n, path);
+        tba_emit_chat_cmd(events_path, cast(string) cb2[0..<c2n], ex[0], cast(string) t_out_b[0..<t_out_n]);
+      } else if fn_name == "Edit" {
+        pb: [1024] u8; pn2 := jv_str(ad[0], jv_get(ad[0], 0, "path"), pb[..]);
+        path := ifx pn2 > 0 then cast(string) pb[0..<pn2] else "";
+        ob: [16384] u8; on2 := jv_str(ad[0], jv_get(ad[0], 0, "old_text"), ob[..]);
+        old_s := ifx on2 > 0 then cast(string) ob[0..<on2] else "";
+        nb: [16384] u8; nn2 := jv_str(ad[0], jv_get(ad[0], 0, "new_text"), nb[..]);
+        new_s := ifx nn2 > 0 then cast(string) nb[0..<nn2] else "";
+
+        rex: [1] int;
+        cur_s := tba_bridge_read(w, path, rex[..]);
+        if rex[0] != 0 {
+          ex[0] = 1;
+          t_out_n = tba_cat(t_out_b[..], 0, "Edit failed: could not read ");
+          t_out_n = tba_cat(t_out_b[..], t_out_n, path);
+        } else {
+          // Copy cur_s into w[0].file_buf so bridge_write won't alias tool_out
+          fn_len := ifx cur_s.count < w[0].file_buf.count then cur_s.count else w[0].file_buf.count;
+          for i: 0..<fn_len { w[0].file_buf[i] = cur_s[i]; }
+          cur_copy := cast(string) w[0].file_buf[0..<fn_len];
+          first_pos: [1] int;
+          matches := tba_count_substr(cur_copy, old_s, first_pos[..]);
+          pill_b: [128] u8; pill_s := "";
+          guard_ok := matches == 1;
+          if policy[0].executor_guard {
+            // Run W2.2 Class-E oa-exec-diff-verify compiled weight module + Ch 234 LE32 replay check!
+            old_m := ifx matches == 1 then 1 else 0;
+            uniq := ifx matches == 1 then 1 else 0;
+            dv := mc_exec_check_diff(1, 1, 1, 1, ifx fn_len > 0 then fn_len else 1, old_m, uniq);
+            di := [7] int.[1, 1, 1, 1, ifx fn_len > 0 then fn_len else 1, old_m, uniq];
+            rep_ok := mc_exec_verify_replay(MC_EXEC_MOD_DIFF, di[..], dv.digest);
+            res[0].exec_checks += 1;
+            if rep_ok { res[0].exec_replays += 1; }
+            pill_s = mc_exec_format_pill(rep_ok && dv.ok, dv.label, dv.digest, pill_b[..]);
+            if !dv.ok || !guard_ok {
+              guard_ok = false;
+              res[0].exec_intercepts += 1;
+              ex[0] = 1;
+              t_out_n = tba_cat(t_out_b[..], 0, "Executor Class-E guard intercepted Edit (");
+              t_out_n = tba_cat(t_out_b[..], t_out_n, ifx matches == 0 then "context_mismatch: old_text not found" else "ambiguous_match: old_text matched multiple times");
+              t_out_n = tba_cat(t_out_b[..], t_out_n, ") · ");
+              t_out_n = tba_cat(t_out_b[..], t_out_n, pill_s);
+            }
+          } else if !guard_ok {
+            ex[0] = 1;
+            t_out_n = tba_cat(t_out_b[..], 0, ifx matches == 0 then "Edit failed: old_text not found" else "Edit failed: old_text matched multiple locations");
+          }
+
+          if guard_ok {
+            p := first_pos[0];
+            en := tba_cat(w[0].edit_buf[..], 0, cur_copy[0..<p]);
+            en = tba_cat(w[0].edit_buf[..], en, new_s);
+            en = tba_cat(w[0].edit_buf[..], en, cur_copy[p + old_s.count..<fn_len]);
+            w_out := tba_bridge_write(w, path, cast(string) w[0].edit_buf[0..<en], ex[..]);
+            t_out_n = tba_cat(t_out_b[..], 0, w_out);
+            if pill_s.count > 0 {
+              t_out_n = tba_cat(t_out_b[..], t_out_n, "\n");
+              t_out_n = tba_cat(t_out_b[..], t_out_n, pill_s);
+            }
+          }
+        }
+        cb3: [1200] u8; c3n := tba_cat(cb3[..], 0, "Edit "); c3n = tba_cat(cb3[..], c3n, path);
+        tba_emit_chat_cmd(events_path, cast(string) cb3[0..<c3n], ex[0], cast(string) t_out_b[0..<t_out_n]);
+      } else {
+        ex[0] = 1;
+        t_out_n = tba_cat(t_out_b[..], 0, "unknown tool: ");
+        t_out_n = tba_cat(t_out_b[..], t_out_n, fn_name);
+      }
+
+      // Compact oversized tool output to respect policy.compact_chars
+      comp_n := ifx t_out_n > compact_lim then compact_lim else t_out_n;
+      tool_str := cast(string) t_out_b[0..<comp_n];
+      atif_jo_obs_result(obo[..], tc_id, tool_str, ex[0] != 0);
+
+      // Push tool response message into conversation
+      {
+        tb2: [32768] u8; o: [1] Jo; jo_start(o[..], tb2[..]);
+        jo_obj(o[..]);
+        jo_key(o[..], "role"); jo_str(o[..], "tool");
+        jo_key(o[..], "tool_call_id"); jo_str(o[..], tc_id);
+        jo_key(o[..], "content"); jo_str(o[..], tool_str);
+        jo_end(o[..]);
+        _ = tba_push_msg(w, jo_text(o[..]));
+      }
+    }
+
+    jo_end(tco[..]);
+    jo_end(obo[..]); jo_end(obo[..]);
+
+    a_step := AtifStep.{
+      step_id = w[0].atif_steps + 1, timestamp = "2026-11-21T00:00:00Z", source = ATIF_SOURCE_AGENT,
+      message = content_s, reasoning_content = reason_s, model_name = model,
+      tool_calls_json = jo_text(tco[..]), observation_json = jo_text(obo[..]),
+      metrics = AtifMetrics.{has_prompt = pt > 0, prompt_tokens = pt, has_completion = ct > 0, completion_tokens = ct},
+    };
+    tba_atif_append_step(w, a_step);
+  }
+
+  // Finalize ATIF-v1.8 log, Harbor single-doc trajectory.json, and verify digest!
+  end_n := atif_write_end_line("2026-11-21T00:00:00Z", ATIF_STATE_ENDED, w[0].atif_line_buf[..]);
+  if end_n > 0 && w[0].atif_log_n + end_n <= TB_ATIF_LOG_CAP {
+    for i: 0..<end_n { w[0].atif_log[w[0].atif_log_n + i] = w[0].atif_line_buf[i]; }
+    w[0].atif_log_n += end_n;
+  }
+  steps_hex_b: [64] u8;
+  _ = atif_steps_hash_final(w[0].atif_hasher[..], steps_hex_b[..]);
+  steps_hex := cast(string) steps_hex_b[0..<64];
+  log_text := cast(string) w[0].atif_log[0..<w[0].atif_log_n];
+  ver := atif_verify_log(log_text, steps_hex);
+  res[0].atif_verified = ver.ok && ver.ended;
+  res[0].atif_digest_n = tbw_put(res[0].atif_digest[..], steps_hex);
+
+  if atif_dir.count > 0 {
+    _ = fs_mkdir_all(atif_dir);
+    p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+    _ = fs_write(fs_join(atif_dir, "trajectory.atif.jsonl", p1[..]), log_text);
+
+    // Also emit Harbor-native ATIF-v1.8 single-document trajectory.json
+    do: [1] Jo; jo_start(do[..], w[0].atif_doc[..]);
+    jo_obj(do[..]);
+    jo_key(do[..], "schema_version"); jo_str(do[..], ATIF_SCHEMA_VERSION);
+    jo_key(do[..], "session_id"); jo_str(do[..], task_id);
+    jo_key(do[..], "agent");
+    jo_obj(do[..]);
+    jo_key(do[..], "name"); jo_str(do[..], "openagents-microcoder-coax");
+    jo_key(do[..], "version"); jo_str(do[..], "0.1.0");
+    jo_key(do[..], "model_name"); jo_str(do[..], model);
+    jo_end(do[..]);
+    jo_key(do[..], "steps"); jo_arr(do[..]);
+    if w[0].atif_doc_steps_n > 0 { jo_raw(do[..], cast(string) w[0].atif_doc_steps[0..<w[0].atif_doc_steps_n]); }
+    jo_end(do[..]);
+    jo_key(do[..], "final_metrics");
+    jo_obj(do[..]);
+    jo_key(do[..], "total_prompt_tokens"); jo_int(do[..], res[0].prompt_tokens);
+    jo_key(do[..], "total_completion_tokens"); jo_int(do[..], res[0].completion_tokens);
+    jo_key(do[..], "total_steps"); jo_int(do[..], w[0].atif_steps);
+    jo_end(do[..]);
+    jo_end(do[..]);
+    if !do[0].bad {
+      _ = fs_write(fs_join(atif_dir, "trajectory.json", p2[..]), jo_text(do[..]));
+    }
+  }
+
+  res[0].wall_ms = proc_now_ms() - t0_ms;
+  if res[0].ok {
+    tba_emit_chat_ended(events_path, "finished", ifx last_reply_n > 0 then cast(string) last_reply[0..<last_reply_n] else "Completed.");
+  } else if res[0].error_note_n == 0 {
+    tba_emit_chat_ended(events_path, "stopped", "Reached max turn budget.");
+  }
+}
+
+#test "tbench agent: substring counter, system prompt profiles, and request serialization (#13951)" {
+  first: [1] int;
+  #assert tba_count_substr("hello world hello", "world", first[..]) == 1 && first[0] == 6;
+  #assert tba_count_substr("hello world hello", "hello", first[..]) == 2 && first[0] == 0;
+  #assert tba_count_substr("hello world", "nope", first[..]) == 0 && first[0] == -1;
+  #assert tba_system_prompt("minimal", false).count > 40;
+  #assert tba_system_prompt("executor-guided", true).count > 80;
+  #assert tba_system_prompt("verify-first", true).count > 80;
+  #assert tba_tools_json().count > 200;
+}

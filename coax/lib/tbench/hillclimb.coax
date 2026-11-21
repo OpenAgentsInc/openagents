@@ -1,0 +1,230 @@
+// Pure Coax Microcoder + Executor Network Hillclimbing Engine (Epic #13950, Phase 3 #13953).
+//
+// Manages:
+//   - Bounded challenger policy mutation over Microcoder + Executor Network axes
+//     (W2.2 Class-E guards, orientation probe, prompt profile, compaction budget, turn cap).
+//   - #authority two-arm promotion verdicts via coax/lib/tbench/policy.coax (tb_admit_hillclimb).
+//   - Immutable append-only round ledger (~/.openagents/tbench/hillclimb/ledger.jsonl) and atomic
+//     champion.json promotion (held unchanged on QUARANTINE_HELD or REJECTED).
+//   - Ch 247 decontaminated, secret-redacted (coax/lib/agent/redact-trajectory.coax) train-only
+//     ATIF-v1.8 export into ~/.openagents/tbench/distill/ for Psionic W3.2 LoRA / W5 DiLoCo.
+//
+//   coax/bin/coax test coax/lib/tbench/hillclimb.coax --library
+#load "../sys/fs.coax";
+#load "../agent/redact-trajectory.coax";
+#load "wire.coax";
+
+// Generate a deterministic challenger policy manifest for `round_num` mutating from `champion`.
+tb_propose_challenger :: (champ: [] TbPolicy, round_num: int, out: [] TbPolicy, note_out: [] u8) -> int #effects(all) {
+  out[0] = champ[0];
+  out[0].manifest_sha_n = 0;
+  step := (round_num - 1) % 4;
+  if step < 0 { step = 0; }
+
+  note := "";
+  if step == 0 {
+    // Axis 1: Enable W2.2 Class-E Executor Network pre-edit guards + orientation probe + executor-guided prompt.
+    out[0].id_n = tbw_put(out[0].id[..], "executor-hybrid-r1");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic + Executor R1");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "executor-guided");
+    if out[0].compact_chars < 14000 { out[0].compact_chars = 14000; }
+    if out[0].max_turns < 16 { out[0].max_turns = 16; }
+    note = "enable W2.2 Class-E executor_guard + orientation_probe + executor-guided prompt";
+  } else if step == 1 {
+    // Axis 2: Verify-first discipline + wider compaction window + 20-turn horizon.
+    out[0].id_n = tbw_put(out[0].id[..], "executor-verify-r2");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic + Verify-First R2");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "verify-first");
+    out[0].compact_chars = 18000;
+    out[0].max_turns = 20;
+    note = "switch prompt_profile=verify-first + compact_chars=18000 + max_turns=20";
+  } else if step == 2 {
+    // Axis 3: Longer completion budget (2048 tok/turn) + 24 turns for complex multi-step TB tasks.
+    out[0].id_n = tbw_put(out[0].id[..], "executor-deep-r3");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic + Deep R3");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].max_tokens = 2048;
+    out[0].max_turns = 24;
+    note = "expand max_tokens=2048 + max_turns=24 with Class-E guards";
+  } else {
+    // Axis 4: Lean fast-turn profile (10000 compact, 12 turns) testing efficiency gain (>=15% wall/tok win).
+    out[0].id_n = tbw_put(out[0].id[..], "executor-lean-r4");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic + Lean R4");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "executor-guided");
+    out[0].compact_chars = 10000;
+    out[0].max_turns = 12;
+    out[0].max_tokens = 1280;
+    note = "lean budget compact_chars=10000 + max_turns=12 + max_tokens=1280";
+  }
+  tbw_policy_hash(out);
+  return tbw_put(note_out, note);
+}
+
+// Compute arm summary + train/held-out counts from an array of trial records.
+tb_summarize_arm :: (
+  p: [] TbPolicy,
+  trials: [] TbTrialRecord,
+  n_trials: int,
+  boot_ms: int,
+  peak_rss_mb: int,
+  out: [] TbArmSummary
+) #effects(all) {
+  out[0] = TbArmSummary.{};
+  out[0].id_n = tbw_put(out[0].id[..], cast(string) p[0].id[0..<p[0].id_n]);
+  out[0].label_n = tbw_put(out[0].label[..], cast(string) p[0].label[0..<p[0].label_n]);
+  out[0].backend_n = tbw_put(out[0].backend[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  out[0].model_n = tbw_put(out[0].model[..], cast(string) p[0].model[0..<p[0].model_n]);
+  if p[0].manifest_sha_n == 0 { tbw_policy_hash(p); }
+  out[0].policy_sha_n = tbw_put(out[0].policy_sha[..], cast(string) p[0].manifest_sha[0..<p[0].manifest_sha_n]);
+  out[0].executor_guard = p[0].executor_guard;
+  out[0].boot_ms = boot_ms;
+  out[0].peak_rss_mb = peak_rss_mb;
+  out[0].total = n_trials;
+  out[0].atif_all_verified = n_trials > 0;
+
+  walls: [128] int;
+  wn := 0;
+  for i: 0..<n_trials {
+    st := trials[i].status_code;
+    part := cast(string) trials[i].partition[0..<trials[i].partition_n];
+    is_ho := part == "heldout";
+    if is_ho { out[0].heldout_total += 1; } else { out[0].train_total += 1; }
+    if st == TB_TRIAL_PASS {
+      out[0].passed += 1;
+      out[0].graded += 1;
+      if is_ho { out[0].heldout_passed += 1; } else { out[0].train_passed += 1; }
+    } else if st == TB_TRIAL_FAIL {
+      out[0].failed += 1;
+      out[0].graded += 1;
+    } else if st == TB_TRIAL_TIMEOUT {
+      out[0].timeouts += 1;
+      out[0].graded += 1;
+    } else {
+      out[0].infra_errors += 1;
+    }
+    out[0].total_wall_ms += trials[i].wall_ms;
+    out[0].total_tokens += trials[i].prompt_tokens + trials[i].completion_tokens;
+    out[0].cost_micros += trials[i].cost_micros;
+    out[0].exec_checks += trials[i].exec_checks;
+    out[0].exec_intercepts += trials[i].exec_intercepts;
+    out[0].exec_replays += trials[i].exec_replays;
+    if !trials[i].atif_verified { out[0].atif_all_verified = false; }
+    if wn < 128 && trials[i].wall_ms > 0 { walls[wn] = trials[i].wall_ms; wn += 1; }
+  }
+  // Insertion sort for median wall_ms
+  for i: 1..<wn {
+    at := i;
+    while at > 0 && walls[at] < walls[at - 1] {
+      tmp := walls[at]; walls[at] = walls[at - 1]; walls[at - 1] = tmp;
+      at -= 1;
+    }
+  }
+  if wn > 0 {
+    out[0].median_wall_ms = ifx (wn % 2) == 1 then walls[wn / 2] else (walls[wn / 2 - 1] + walls[wn / 2]) / 2;
+  }
+  wil := tb_wilson_95(out[0].passed, out[0].graded);
+  out[0].wilson_low_bps = wil.low_bps;
+  out[0].wilson_high_bps = wil.high_bps;
+}
+
+// Ch 247 Decontaminated & Secret-Redacted Train-Only ATIF-v1.8 Export for Psionic W3.2/W5 Distillation.
+// Strictly refuses held-out trajectories (RT_REFUSE_HELD_OUT) and any trajectory with surviving secrets.
+tb_distill_train_atif :: (
+  trials: [] TbTrialRecord,
+  n_trials: int,
+  distill_dir: string,
+  run_id: string
+) -> int #effects(all) {
+  _ = fs_mkdir_all(distill_dir);
+  exported := 0;
+  raw_buf: [262144] u8;
+  red_buf: [262144] u8;
+  for i: 0..<n_trials {
+    if trials[i].status_code != TB_TRIAL_PASS || !trials[i].atif_verified { continue; }
+    part := cast(string) trials[i].partition[0..<trials[i].partition_n];
+    is_heldout := part == "heldout";
+    atif_src := cast(string) trials[i].atif_path[0..<trials[i].atif_path_n];
+    if atif_src.count == 0 { continue; }
+    rn := fs_read(atif_src, raw_buf[..]);
+    if rn <= 0 { continue; }
+    red_n := rt_redact(cast(string) raw_buf[0..<rn], red_buf[..]);
+    if red_n <= 0 { continue; }
+    red_str := cast(string) red_buf[0..<red_n];
+    adm := rt_admit_trajectory(RtAdmission.{
+      global_opt_in = true,
+      workspace_opt_in = true,
+      secret_clean = rt_find_secret(red_str) == -1,
+      has_test_verdict = true,
+      held_out_contaminated = is_heldout,
+      atif_verified = trials[i].atif_verified,
+    });
+    if adm != RT_ADMIT { continue; }
+    fn_b: [256] u8;
+    fn_n := tbw_put(fn_b[..], run_id);
+    if fn_n < fn_b.count { fn_b[fn_n] = '-'; fn_n += 1; }
+    task_s := cast(string) trials[i].task[0..<trials[i].task_n];
+    for c: task_s { if fn_n < fn_b.count { fn_b[fn_n] = c; fn_n += 1; } }
+    suf := ".atif.jsonl";
+    for c: suf { if fn_n < fn_b.count { fn_b[fn_n] = c; fn_n += 1; } }
+    dst_b: [FS_PATH_MAX] u8;
+    if fs_write(fs_join(distill_dir, cast(string) fn_b[0..<fn_n], dst_b[..]), red_str) {
+      exported += 1;
+    }
+  }
+  return exported;
+}
+
+#test "tbench hillclimb: challenger proposal, arm summary, #authority promotion, and Ch 247 train-only distillation (#13953)" {
+  champ: [1] TbPolicy;
+  champ[0].id_n = tbw_put(champ[0].id[..], "baseline-microcoder");
+  champ[0].backend_n = tbw_put(champ[0].backend[..], "psionic-metal");
+  champ[0].model_n = tbw_put(champ[0].model[..], "inkling-2-mini");
+  champ[0].prompt_profile_n = tbw_put(champ[0].prompt_profile[..], "minimal");
+  champ[0].executor_guard = false;
+  champ[0].orientation_probe = false;
+  champ[0].compact_chars = 8000;
+  champ[0].max_turns = 14;
+  champ[0].max_tokens = 1536;
+  tbw_policy_hash(champ[..]);
+
+  cand: [1] TbPolicy;
+  note: [160] u8;
+  nn := tb_propose_challenger(champ[..], 1, cand[..], note[..]);
+  #assert nn > 0 && cand[0].executor_guard && cand[0].orientation_probe;
+  #assert cast(string) cand[0].manifest_sha[0..<64] != cast(string) champ[0].manifest_sha[0..<64];
+
+  // Summarize paired trials and run #authority gate
+  tr_a: [3] TbTrialRecord;
+  tr_b: [3] TbTrialRecord;
+  tr_a[0].partition_n = tbw_put(tr_a[0].partition[..], "train"); tr_a[0].status_code = TB_TRIAL_PASS; tr_a[0].wall_ms = 20000; tr_a[0].atif_verified = true;
+  tr_a[1].partition_n = tbw_put(tr_a[1].partition[..], "train"); tr_a[1].status_code = TB_TRIAL_FAIL; tr_a[1].wall_ms = 30000; tr_a[1].atif_verified = true;
+  tr_a[2].partition_n = tbw_put(tr_a[2].partition[..], "heldout"); tr_a[2].status_code = TB_TRIAL_FAIL; tr_a[2].wall_ms = 25000; tr_a[2].atif_verified = true;
+
+  tr_b[0].partition_n = tbw_put(tr_b[0].partition[..], "train"); tr_b[0].status_code = TB_TRIAL_PASS; tr_b[0].wall_ms = 18000; tr_b[0].atif_verified = true;
+  tr_b[1].partition_n = tbw_put(tr_b[1].partition[..], "train"); tr_b[1].status_code = TB_TRIAL_PASS; tr_b[1].wall_ms = 22000; tr_b[1].atif_verified = true;
+  tr_b[2].partition_n = tbw_put(tr_b[2].partition[..], "heldout"); tr_b[2].status_code = TB_TRIAL_PASS; tr_b[2].wall_ms = 21000; tr_b[2].atif_verified = true;
+
+  sa: [1] TbArmSummary; sb: [1] TbArmSummary;
+  tb_summarize_arm(champ[..], tr_a[..], 3, 1200, 12000, sa[..]);
+  tb_summarize_arm(cand[..], tr_b[..], 3, 1100, 12000, sb[..]);
+  #assert sa[0].passed == 1 && sa[0].train_passed == 1 && sa[0].heldout_passed == 0;
+  #assert sb[0].passed == 3 && sb[0].train_passed == 2 && sb[0].heldout_passed == 1;
+
+  ev := TbHillclimbEval.{
+    train_total = sb[0].train_total, heldout_total = sb[0].heldout_total,
+    champ_train_pass = sa[0].train_passed, cand_train_pass = sb[0].train_passed,
+    champ_heldout_pass = sa[0].heldout_passed, cand_heldout_pass = sb[0].heldout_passed,
+    cand_infra_errors = sb[0].infra_errors,
+    champ_wall_ms = sa[0].total_wall_ms, cand_wall_ms = sb[0].total_wall_ms,
+    champ_tokens = sa[0].total_tokens, cand_tokens = sb[0].total_tokens,
+    atif_verified = sb[0].atif_all_verified, heldout_contaminated = false,
+  };
+  #assert tb_admit_hillclimb(ev) == TB_GATE_PROMOTED;
+}

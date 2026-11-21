@@ -1,0 +1,463 @@
+// tool.sh: tls
+// tbench-run: Pure Coax Terminal-Bench Runner, Side-by-Side Evaluator &
+// Microcoder Executor-Network Hillclimbing CLI (Epic #13950, #13951, #13952, #13953).
+//
+// Bundled beside lean-run and ple-run inside OpenAgents.app/Contents/Resources/tbench-run.
+//
+// Verbs:
+//   tbench-run doctor [--json]
+//   tbench-run suites [--json]
+//   tbench-run agent-loop --endpoint URL --model M --task ID --instruction-file F
+//                         --events F --atif-dir D [--policy F] [--api-key-env E] [--max-turns N]
+//   tbench-run run [--suite tb2-smoke|tb2-cross-section|tb2-full|tb21-oos|tb4-full]
+//                  [--tasks t1,t2,...] [--arm-a POLICY] [--arm-b POLICY]
+//                  [--endpoint-a URL] [--endpoint-b URL] [--max-turns N] [--out FILE]
+//   tbench-run hillclimb [--suite tb2-smoke|tb2-cross-section|tb2-full|tb21-oos|tb4-full]
+//                        [--tasks t1,t2,...] [--champion FILE_OR_PRESET]
+//                        [--challenger FILE_OR_PRESET] [--propose] [--max-turns N]
+//   tbench-run status [--json]
+//   tbench-run stop
+//
+//   coax/web/tool.sh coder/tui/tbench-run.coax doctor --json
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/tbench/agent.coax";
+#load "../../coax/lib/tbench/runner.coax";
+
+tbc_usage :: () -> int #effects(all) {
+  print("tbench-run — OpenAgents Coax Terminal-Bench Runner & Microcoder Hillclimber\n\n");
+  print("Usage:\n");
+  print("  tbench-run doctor [--json]\n");
+  print("  tbench-run suites [--json]\n");
+  print("  tbench-run run [--suite tb2-smoke|tb2-cross-section|tb2-full|tb21-oos|tb4-full]\n");
+  print("                 [--tasks t1,t2] [--arm-a POLICY] [--arm-b POLICY]\n");
+  print("                 [--endpoint-a URL] [--endpoint-b URL] [--max-turns N] [--out FILE]\n");
+  print("  tbench-run hillclimb [--suite tb2-smoke|tb2-cross-section|tb2-full|tb21-oos|tb4-full]\n");
+  print("                       [--tasks t1,t2] [--champion POLICY] [--challenger POLICY]\n");
+  print("                       [--propose] [--max-turns N]\n");
+  print("  tbench-run status [--json]\n");
+  print("  tbench-run stop\n");
+  print("  tbench-run agent-loop --endpoint URL --model M --task ID --instruction-file F\n");
+  print("                        --events F --atif-dir D [--policy F] [--api-key-env E] [--max-turns N]\n");
+  return 0;
+}
+
+tbc_cmd_doctor :: (a: [] Args) -> int #effects(all) {
+  env: [1] TbEnv;
+  tbr_discover(env[..]);
+  if args_has(a, "--json") {
+    buf: [8192] u8;
+    n := tbr_doctor_json(env[..], buf[..]);
+    if n <= 0 { tool_errln("tbench-run doctor: JSON encode failed"); return 1; }
+    print("%\n", cast(string) buf[0..<n]);
+    return ifx env[0].docker_ok && env[0].harbor_ok && env[0].adapter_ok then 0 else 1;
+  }
+  print("OpenAgents Terminal-Bench Doctor\n");
+  print("  docker:    % (% · %)\n", ifx env[0].docker_ok then "OK" else "MISSING",
+    cast(string) env[0].docker_ver[0..<env[0].docker_ver_n],
+    cast(string) env[0].docker_host[0..<env[0].docker_host_n]);
+  print("  harbor:    % (% · %)\n", ifx env[0].harbor_ok then "OK" else "MISSING",
+    cast(string) env[0].harbor_ver[0..<env[0].harbor_ver_n],
+    cast(string) env[0].harbor_bin[0..<env[0].harbor_bin_n]);
+  print("  adapter:   % (%)\n", ifx env[0].adapter_ok then "OK" else "MISSING",
+    cast(string) env[0].harbor_adapter_dir[0..<env[0].harbor_adapter_dir_n]);
+  print("  psionic:   % (%)\n", ifx env[0].psionic_ok then "OK" else "MISSING",
+    cast(string) env[0].psionic_bin[0..<env[0].psionic_bin_n]);
+  print("  llama.cpp: % (%)\n", ifx env[0].llama_ok then "OK" else "MISSING",
+    cast(string) env[0].llama_bin[0..<env[0].llama_bin_n]);
+  print("  model:     % (%)\n", ifx env[0].model_ok then "OK" else "MISSING",
+    cast(string) env[0].model_path[0..<env[0].model_path_n]);
+  print("  executor:  % W2.2 module(s) in ~/.openagents/modules\n", env[0].exec_modules_count);
+  print("  openrouter: %\n", ifx env[0].openrouter_key_set then "OPENROUTER_API_KEY set" else "not set");
+  return ifx env[0].docker_ok && env[0].harbor_ok && env[0].adapter_ok then 0 else 1;
+}
+
+tbc_cmd_suites :: (a: [] Args) -> int #effects(all) {
+  if args_has(a, "--json") {
+    buf: [65536] u8;
+    o: [1] Jo; jo_start(o[..], buf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "suites"); jo_arr(o[..]);
+    for sid: 0..<TB_SUITE_COUNT {
+      info := tb_suite_info(sid);
+      tr := 0; ho := 0;
+      for i: 0..<info.count {
+        if tb_suite_partition(sid, i) == TB_PART_HELDOUT { ho += 1; } else { tr += 1; }
+      }
+      jo_obj(o[..]);
+      jo_key(o[..], "slug"); jo_str(o[..], info.slug);
+      jo_key(o[..], "title"); jo_str(o[..], info.title);
+      jo_key(o[..], "dataset"); jo_str(o[..], info.dataset);
+      jo_key(o[..], "count"); jo_int(o[..], info.count);
+      jo_key(o[..], "train_count"); jo_int(o[..], tr);
+      jo_key(o[..], "heldout_count"); jo_int(o[..], ho);
+      jo_key(o[..], "tasks"); jo_arr(o[..]);
+      for i: 0..<info.count {
+        jo_obj(o[..]);
+        jo_key(o[..], "id"); jo_str(o[..], tb_suite_task(sid, i));
+        jo_key(o[..], "partition"); jo_str(o[..], tb_partition_name(tb_suite_partition(sid, i)));
+        jo_end(o[..]);
+      }
+      jo_end(o[..]);
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    jo_end(o[..]);
+    if o[0].bad { tool_errln("tbench-run suites: JSON buffer overflow"); return 1; }
+    print("%\n", jo_text(o[..]));
+    return 0;
+  }
+  print("Official Terminal-Bench Suites:\n");
+  for sid: 0..<TB_SUITE_COUNT {
+    info := tb_suite_info(sid);
+    tr := 0; ho := 0;
+    for i: 0..<info.count {
+      if tb_suite_partition(sid, i) == TB_PART_HELDOUT { ho += 1; } else { tr += 1; }
+    }
+    print("  %  (%)  % tasks (% train / % held-out)  — %\n", info.slug, info.dataset, info.count, tr, ho, info.title);
+  }
+  return 0;
+}
+
+tbc_cmd_agent_loop :: (a: [] Args) -> int #effects(all) {
+  endpoint := args_value(a, "--endpoint", "");
+  model := args_value(a, "--model", "inkling-2-mini");
+  task_id := args_value(a, "--task", "task");
+  instr_file := args_value(a, "--instruction-file", "");
+  events_path := args_value(a, "--events", "");
+  atif_dir := args_value(a, "--atif-dir", "");
+  policy_path := args_value(a, "--policy", "");
+  api_key_env := args_value(a, "--api-key-env", "");
+  max_turns_s := args_value(a, "--max-turns", "");
+
+  if endpoint.count == 0 || instr_file.count == 0 {
+    tool_errln("tbench-run agent-loop: --endpoint and --instruction-file are required");
+    return 2;
+  }
+
+  instr_buf: [65536] u8;
+  in_n := fs_read(instr_file, instr_buf[..]);
+  if in_n <= 0 {
+    tool_errln("tbench-run agent-loop: could not read instruction file");
+    return 1;
+  }
+  instruction := cast(string) instr_buf[0..<in_n];
+
+  pol: [1] TbPolicy;
+  pol[0].id_n = tbw_put(pol[0].id[..], "default");
+  pol[0].backend_n = tbw_put(pol[0].backend[..], "psionic-metal");
+  pol[0].model_n = tbw_put(pol[0].model[..], model);
+  pol[0].prompt_profile_n = tbw_put(pol[0].prompt_profile[..], "executor-guided");
+  pol[0].executor_guard = true;
+  pol[0].orientation_probe = true;
+  pol[0].compact_chars = 14000;
+  pol[0].max_turns = 16;
+  pol[0].max_tokens = 1536;
+  if policy_path.count > 0 {
+    pbuf: [16384] u8;
+    pn := fs_read(policy_path, pbuf[..]);
+    if pn > 0 { _ = tbw_policy_parse(cast(string) pbuf[0..<pn], pol[..]); }
+  }
+  if max_turns_s.count > 0 {
+    mt := tbr_parse_uint(max_turns_s);
+    if mt > 0 && mt <= 32 { pol[0].max_turns = mt; }
+  }
+
+  key_buf: [512] u8;
+  api_key := ifx api_key_env.count > 0 then proc_getenv(api_key_env, key_buf[..]) else "";
+
+  work: [1] TbAgentWork;
+  res: [1] TbAgentResult;
+  tb_agent_loop(work[..], endpoint, api_key, model, task_id, instruction, pol[..], events_path, atif_dir, res[..]);
+
+  // Emit final {"op":"done", ...} JSON line to stdout for openagents_coax_agent.py
+  done_b: [4096] u8;
+  o: [1] Jo; jo_start(o[..], done_b[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], "done");
+  jo_key(o[..], "ok"); jo_bool(o[..], res[0].ok);
+  jo_key(o[..], "turns"); jo_int(o[..], res[0].turns);
+  jo_key(o[..], "prompt_tokens"); jo_int(o[..], res[0].prompt_tokens);
+  jo_key(o[..], "completion_tokens"); jo_int(o[..], res[0].completion_tokens);
+  jo_key(o[..], "wall_ms"); jo_int(o[..], res[0].wall_ms);
+  jo_key(o[..], "exec_checks"); jo_int(o[..], res[0].exec_checks);
+  jo_key(o[..], "exec_intercepts"); jo_int(o[..], res[0].exec_intercepts);
+  jo_key(o[..], "exec_replays"); jo_int(o[..], res[0].exec_replays);
+  jo_key(o[..], "atif_verified"); jo_bool(o[..], res[0].atif_verified);
+  jo_key(o[..], "atif_digest"); jo_str(o[..], cast(string) res[0].atif_digest[0..<res[0].atif_digest_n]);
+  jo_key(o[..], "error_note"); jo_str(o[..], cast(string) res[0].error_note[0..<res[0].error_note_n]);
+  jo_end(o[..]);
+  if !o[0].bad {
+    ln := o[0].n;
+    if ln < done_b.count { done_b[ln] = 10; ln += 1; }
+    _ = cxterm_write(done_b[0..<ln]);
+  }
+  return 0;
+}
+
+tbc_count_ledger_rounds :: (ledger_path: string) -> int #effects(all) {
+  buf: [131072] u8;
+  n := fs_read(ledger_path, buf[..]);
+  if n <= 0 { return 0; }
+  lines := 0;
+  for i: 0..<n { if buf[i] == '\n' { lines += 1; } }
+  return lines;
+}
+
+tbc_cmd_run :: (a: [] Args) -> int #effects(all) {
+  env: [1] TbEnv;
+  tbr_discover(env[..]);
+  if !env[0].docker_ok || !env[0].harbor_ok || !env[0].adapter_ok {
+    tool_errln("tbench-run run: environment check failed — run `tbench-run doctor` to see missing Docker/Harbor/adapter.");
+    return 1;
+  }
+
+  suite := args_value(a, "--suite", "tb2-smoke");
+  tasks_csv := args_value(a, "--tasks", "");
+  arm_a_spec := args_value(a, "--arm-a", "executor-hybrid-v1");
+  arm_b_spec := args_value(a, "--arm-b", "llamacpp-microcoder");
+  ep_a := args_value(a, "--endpoint-a", "");
+  ep_b := args_value(a, "--endpoint-b", "");
+  out_file := args_value(a, "--out", "");
+  max_turns := tbr_parse_uint(args_value(a, "--max-turns", ""));
+
+  w: [1] TbCompareRunWork;
+  if !tbr_resolve_policy(env[..], arm_a_spec, w[0].pol_a[..]) {
+    tool_err("tbench-run run: unknown --arm-a policy: "); tool_errln(arm_a_spec);
+    return 2;
+  }
+  if !tbr_resolve_policy(env[..], arm_b_spec, w[0].pol_b[..]) {
+    tool_err("tbench-run run: unknown --arm-b policy: "); tool_errln(arm_b_spec);
+    return 2;
+  }
+
+  rid_b: [64] u8;
+  run_id := tbr_make_run_id("tb", rid_b[..]);
+  rd1: [FS_PATH_MAX] u8; rd2: [FS_PATH_MAX] u8;
+  home := cast(string) env[0].home[0..<env[0].home_n];
+  runs_root := fs_join(home, ".openagents/tbench/runs", rd1[..]);
+  run_dir := fs_join(runs_root, run_id, rd2[..]);
+
+  if !tbr_run_compare(env[..], w[..], run_id, run_dir, suite, tasks_csv, ep_a, ep_b, max_turns, out_file) {
+    tool_errln("tbench-run run: failed to execute or serialize suite comparison");
+    return 1;
+  }
+
+  sa := w[0].sum_a[0];
+  sb := w[0].sum_b[0];
+  print("\n=== Terminal-Bench Side-by-Side Complete (%) ===\n", run_id);
+  print("  Arm A (%): %/% PASS (%/% train, %/% heldout) | Wilson [%..% bps] | wall % ms | % tok | guards %/% caught\n",
+    cast(string) sa.id[0..<sa.id_n], sa.passed, sa.graded, sa.train_passed, sa.train_total,
+    sa.heldout_passed, sa.heldout_total, sa.wilson_low_bps, sa.wilson_high_bps,
+    sa.total_wall_ms, sa.total_tokens, sa.exec_checks, sa.exec_intercepts);
+  print("  Arm B (%): %/% PASS (%/% train, %/% heldout) | Wilson [%..% bps] | wall % ms | % tok | guards %/% caught\n",
+    cast(string) sb.id[0..<sb.id_n], sb.passed, sb.graded, sb.train_passed, sb.train_total,
+    sb.heldout_passed, sb.heldout_total, sb.wilson_low_bps, sb.wilson_high_bps,
+    sb.total_wall_ms, sb.total_tokens, sb.exec_checks, sb.exec_intercepts);
+  print("  Saved: %/compare.json and ~/.openagents/gym/last-tbench.json\n", run_dir);
+  return 0;
+}
+
+tbc_cmd_hillclimb :: (a: [] Args) -> int #effects(all) {
+  env: [1] TbEnv;
+  tbr_discover(env[..]);
+  if !env[0].docker_ok || !env[0].harbor_ok || !env[0].adapter_ok {
+    tool_errln("tbench-run hillclimb: environment check failed — run `tbench-run doctor` first.");
+    return 1;
+  }
+
+  suite := args_value(a, "--suite", "tb2-smoke");
+  tasks_csv := args_value(a, "--tasks", "");
+  champ_spec := args_value(a, "--champion", "");
+  cand_spec := args_value(a, "--challenger", "");
+  ep_a := args_value(a, "--endpoint-a", "");
+  ep_b := args_value(a, "--endpoint-b", "");
+  max_turns := tbr_parse_uint(args_value(a, "--max-turns", ""));
+
+  home := cast(string) env[0].home[0..<env[0].home_n];
+  hd_b: [FS_PATH_MAX] u8; ch_b: [FS_PATH_MAX] u8; ld_b: [FS_PATH_MAX] u8;
+  hc_dir := fs_join(home, ".openagents/tbench/hillclimb", hd_b[..]);
+  _ = fs_mkdir_all(hc_dir);
+  champ_file := fs_join(hc_dir, "champion.json", ch_b[..]);
+  ledger_file := fs_join(hc_dir, "ledger.jsonl", ld_b[..]);
+
+  round_num := tbc_count_ledger_rounds(ledger_file) + 1;
+
+  w: [1] TbCompareRunWork;
+  // Resolve champion (explicit flag -> existing champion.json -> baseline-microcoder)
+  if champ_spec.count > 0 {
+    if !tbr_resolve_policy(env[..], champ_spec, w[0].pol_a[..]) {
+      tool_err("tbench-run hillclimb: unknown --champion: "); tool_errln(champ_spec);
+      return 2;
+    }
+  } else if fs_kind(champ_file) == FS_FILE {
+    if !tbr_resolve_policy(env[..], champ_file, w[0].pol_a[..]) {
+      _ = tbr_resolve_policy(env[..], "baseline-microcoder", w[0].pol_a[..]);
+    }
+  } else {
+    _ = tbr_resolve_policy(env[..], "baseline-microcoder", w[0].pol_a[..]);
+  }
+  // Persist initial champion.json if none existed yet
+  if fs_kind(champ_file) != FS_FILE {
+    pb: [4096] u8; pn := tbw_policy_write(w[0].pol_a[..], pb[..]);
+    if pn > 0 { _ = fs_replace_durable(champ_file, cast(string) pb[0..<pn]); }
+  }
+
+  mut_note: [160] u8;
+  mut_n := 0;
+  if cand_spec.count > 0 && !args_has(a, "--propose") {
+    if !tbr_resolve_policy(env[..], cand_spec, w[0].pol_b[..]) {
+      tool_err("tbench-run hillclimb: unknown --challenger: "); tool_errln(cand_spec);
+      return 2;
+    }
+    mut_n = tbw_put(mut_note[..], "explicit challenger policy manifest");
+  } else {
+    mut_n = tb_propose_challenger(w[0].pol_a[..], round_num, w[0].pol_b[..], mut_note[..]);
+  }
+
+  rid_b: [64] u8;
+  run_id := tbr_make_run_id("hc", rid_b[..]);
+  rd1: [FS_PATH_MAX] u8; rd2: [FS_PATH_MAX] u8;
+  runs_root := fs_join(home, ".openagents/tbench/runs", rd1[..]);
+  run_dir := fs_join(runs_root, run_id, rd2[..]);
+
+  print("[hillclimb] Round %: Champion (%) vs Challenger (%)\n", round_num,
+    cast(string) w[0].pol_a[0].id[0..<w[0].pol_a[0].id_n],
+    cast(string) w[0].pol_b[0].id[0..<w[0].pol_b[0].id_n]);
+  print("[hillclimb] Mutation: %\n", cast(string) mut_note[0..<mut_n]);
+
+  if !tbr_run_compare(env[..], w[..], run_id, run_dir, suite, tasks_csv, ep_a, ep_b, max_turns, "") {
+    tool_errln("tbench-run hillclimb: paired evaluation failed");
+    return 1;
+  }
+
+  sa := w[0].sum_a[0];
+  sb := w[0].sum_b[0];
+
+  // Judge strictly through #authority tb_admit_hillclimb!
+  ev := TbHillclimbEval.{
+    train_total = sb.train_total,
+    heldout_total = sb.heldout_total,
+    champ_train_pass = sa.train_passed,
+    cand_train_pass = sb.train_passed,
+    champ_heldout_pass = sa.heldout_passed,
+    cand_heldout_pass = sb.heldout_passed,
+    cand_infra_errors = sb.infra_errors,
+    champ_wall_ms = sa.total_wall_ms,
+    cand_wall_ms = sb.total_wall_ms,
+    max_wall_ms = 0,
+    champ_tokens = sa.total_tokens,
+    cand_tokens = sb.total_tokens,
+    cand_cost_micros = sb.cost_micros,
+    max_cost_micros = 0,
+    atif_verified = sb.atif_all_verified,
+    heldout_contaminated = false,
+  };
+  gate := tb_admit_hillclimb(ev);
+
+  // Ch 247 decontaminated, secret-redacted TRAIN-ONLY ATIF-v1.8 export for Psionic W3.2/W5 distillation
+  dd1: [FS_PATH_MAX] u8; dd2: [FS_PATH_MAX] u8;
+  distill_root := fs_join(home, ".openagents/tbench/distill", dd1[..]);
+  distill_dir := fs_join(distill_root, run_id, dd2[..]);
+  distilled_a := tb_distill_train_atif(w[0].rows_a[..], w[0].plan[0].n_tasks, distill_dir, "champ");
+  distilled_b := tb_distill_train_atif(w[0].rows_b[..], w[0].plan[0].n_tasks, distill_dir, "cand");
+  distilled := distilled_a + distilled_b;
+
+  // Record immutable round ledger row (tbench-hillclimb.v1)
+  ts_b: [40] u8;
+  ts := tbr_iso_now(ts_b[..]);
+  rec: [1] TbHillclimbRound;
+  rec[0].round_num = round_num;
+  rec[0].timestamp_n = tbw_put(rec[0].timestamp[..], ts);
+  rec[0].suite_n = tbw_put(rec[0].suite[..], cast(string) w[0].plan[0].suite_slug[0..<w[0].plan[0].suite_slug_n]);
+  rec[0].dataset_n = tbw_put(rec[0].dataset[..], cast(string) w[0].plan[0].dataset[0..<w[0].plan[0].dataset_n]);
+  rec[0].champion_id_n = tbw_put(rec[0].champion_id[..], cast(string) w[0].pol_a[0].id[0..<w[0].pol_a[0].id_n]);
+  rec[0].champion_sha_n = tbw_put(rec[0].champion_sha[..], cast(string) w[0].pol_a[0].manifest_sha[0..<w[0].pol_a[0].manifest_sha_n]);
+  rec[0].challenger_id_n = tbw_put(rec[0].challenger_id[..], cast(string) w[0].pol_b[0].id[0..<w[0].pol_b[0].id_n]);
+  rec[0].challenger_sha_n = tbw_put(rec[0].challenger_sha[..], cast(string) w[0].pol_b[0].manifest_sha[0..<w[0].pol_b[0].manifest_sha_n]);
+  rec[0].mutation_note_n = tbw_put(rec[0].mutation_note[..], cast(string) mut_note[0..<mut_n]);
+  rec[0].train_total = sb.train_total;
+  rec[0].heldout_total = sb.heldout_total;
+  rec[0].champ_train_pass = sa.train_passed;
+  rec[0].cand_train_pass = sb.train_passed;
+  rec[0].champ_heldout_pass = sa.heldout_passed;
+  rec[0].cand_heldout_pass = sb.heldout_passed;
+  rec[0].cand_infra_errors = sb.infra_errors;
+  rec[0].champ_wall_ms = sa.total_wall_ms;
+  rec[0].cand_wall_ms = sb.total_wall_ms;
+  rec[0].champ_tokens = sa.total_tokens;
+  rec[0].cand_tokens = sb.total_tokens;
+  rec[0].gate_code = gate;
+  rec[0].distilled_train_atif = distilled;
+  rec[0].run_dir_n = tbw_put(rec[0].run_dir[..], run_dir);
+
+  lbuf: [4096] u8;
+  ln := tbw_hillclimb_write(rec[..], lbuf[..]);
+  if ln > 0 {
+    _ = fs_append_durable(ledger_file, cast(string) lbuf[0..<ln]);
+    _ = fs_append_durable(ledger_file, "\n");
+  }
+
+  if gate == TB_GATE_PROMOTED {
+    pb: [4096] u8; pn := tbw_policy_write(w[0].pol_b[..], pb[..]);
+    if pn > 0 { _ = fs_replace_durable(champ_file, cast(string) pb[0..<pn]); }
+  }
+
+  print("\n=== Hillclimb Round % Verdict: % (%) ===\n", round_num, tb_gate_status(gate), tb_gate_reason(gate));
+  print("  Train:   Champion %/% -> Challenger %/%\n", sa.train_passed, sb.train_total, sb.train_passed, sb.train_total);
+  print("  Heldout: Champion %/% -> Challenger %/%\n", sa.heldout_passed, sb.heldout_total, sb.heldout_passed, sb.heldout_total);
+  print("  Distilled train-only ATIF-v1.8: % trajectory(ies) -> %\n", distilled, distill_dir);
+  print("  Ledger: % | Champion: %\n", ledger_file, champ_file);
+  return 0;
+}
+
+tbc_cmd_status :: (a: [] Args) -> int #effects(all) {
+  env: [1] TbEnv;
+  tbr_discover(env[..]);
+  home := cast(string) env[0].home[0..<env[0].home_n];
+  ch_b: [FS_PATH_MAX] u8; ld_b: [FS_PATH_MAX] u8; cm_b: [FS_PATH_MAX] u8;
+  champ_file := fs_join(home, ".openagents/tbench/hillclimb/champion.json", ch_b[..]);
+  ledger_file := fs_join(home, ".openagents/tbench/hillclimb/ledger.jsonl", ld_b[..]);
+  last_cmp := fs_join(home, ".openagents/gym/last-tbench.json", cm_b[..]);
+
+  rounds := tbc_count_ledger_rounds(ledger_file);
+  champ_id := "baseline-microcoder";
+  pol: [1] TbPolicy;
+  if fs_kind(champ_file) == FS_FILE && tbr_resolve_policy(env[..], champ_file, pol[..]) {
+    champ_id = cast(string) pol[0].id[0..<pol[0].id_n];
+  }
+  if args_has(a, "--json") {
+    buf: [4096] u8;
+    o: [1] Jo; jo_start(o[..], buf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "champion_id"); jo_str(o[..], champ_id);
+    jo_key(o[..], "champion_path"); jo_str(o[..], champ_file);
+    jo_key(o[..], "ledger_path"); jo_str(o[..], ledger_file);
+    jo_key(o[..], "rounds"); jo_int(o[..], rounds);
+    jo_key(o[..], "last_compare_exists"); jo_bool(o[..], fs_kind(last_cmp) == FS_FILE);
+    jo_key(o[..], "last_compare_path"); jo_str(o[..], last_cmp);
+    jo_end(o[..]);
+    print("%\n", jo_text(o[..]));
+    return 0;
+  }
+  print("OpenAgents Terminal-Bench Status\n");
+  print("  Champion: % (%)\n", champ_id, champ_file);
+  print("  Rounds:   % (%)\n", rounds, ledger_file);
+  print("  Last Run: % (%)\n", ifx fs_kind(last_cmp) == FS_FILE then "present" else "none", last_cmp);
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; _ = args_load(a[..]);
+  cmd := args_at(a[..], 0);
+  if cmd.count == 0 || cmd == "help" || cmd == "--help" || cmd == "-h" { return tbc_usage(); }
+  if cmd == "doctor" { return tbc_cmd_doctor(a[..]); }
+  if cmd == "suites" { return tbc_cmd_suites(a[..]); }
+  if cmd == "agent-loop" { return tbc_cmd_agent_loop(a[..]); }
+  if cmd == "run" { return tbc_cmd_run(a[..]); }
+  if cmd == "hillclimb" { return tbc_cmd_hillclimb(a[..]); }
+  if cmd == "status" { return tbc_cmd_status(a[..]); }
+  tool_err("tbench-run: unknown command: "); tool_errln(cmd);
+  return 2;
+}

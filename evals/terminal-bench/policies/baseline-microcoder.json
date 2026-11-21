@@ -1,0 +1,16 @@
+{
+  "schema": "tbench-policy.v1",
+  "id": "baseline-microcoder",
+  "label": "Microcoder · Psionic Metal (Base)",
+  "backend": "psionic-metal",
+  "model": "inkling-2-mini",
+  "prompt_profile": "minimal",
+  "executor_guard": false,
+  "orientation_probe": false,
+  "compact_chars": 8000,
+  "max_turns": 14,
+  "max_tokens": 1536,
+  "temp_milli": 0,
+  "checkpoint_sha": "",
+  "manifest_sha": ""
+}

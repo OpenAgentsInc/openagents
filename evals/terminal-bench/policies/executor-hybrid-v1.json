@@ -1,0 +1,16 @@
+{
+  "schema": "tbench-policy.v1",
+  "id": "executor-hybrid-v1",
+  "label": "Microcoder · Psionic Metal + Executor",
+  "backend": "psionic-metal",
+  "model": "inkling-2-mini",
+  "prompt_profile": "executor-guided",
+  "executor_guard": true,
+  "orientation_probe": true,
+  "compact_chars": 14000,
+  "max_turns": 16,
+  "max_tokens": 1536,
+  "temp_milli": 0,
+  "checkpoint_sha": "",
+  "manifest_sha": ""
+}

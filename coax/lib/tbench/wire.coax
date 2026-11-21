@@ -1,0 +1,583 @@
+// Registered wire & stored JSON codecs for Terminal-Bench Gym & Hillclimbing
+// (Epic #13950, Phase 1 #13951, Phase 3 #13953; proto/coder/tbench-gym-v1.json).
+//
+// Shapes owned here (single writer/reader in repo per proto/registry.json):
+//   - tbench-policy.v1      Microcoder + Executor Network policy manifest
+//   - tbench-trial.v1       Single Harbor-verified Terminal-Bench trial record
+//   - tbench-compare.v1     Side-by-side Arm A vs Arm B comparison snapshot (~/.openagents/gym/last-tbench.json)
+//   - tbench-hillclimb.v1   Append-only #authority hillclimbing round ledger row
+//
+//   coax/bin/coax test coax/lib/tbench/wire.coax --library
+#load "../json/json.coax";
+#load "../crypto/sha256.coax";
+#load "policy.coax";
+
+TB_SCHEMA_POLICY :: "tbench-policy.v1";
+TB_SCHEMA_TRIAL :: "tbench-trial.v1";
+TB_SCHEMA_COMPARE :: "tbench-compare.v1";
+TB_SCHEMA_HILLCLIMB :: "tbench-hillclimb.v1";
+
+TB_MAX_TRIALS :: 128;
+
+TbPolicy :: struct {
+  id: [64] u8; id_n: int;
+  label: [96] u8; label_n: int;
+  backend: [48] u8; backend_n: int;               // "psionic-metal" | "llamacpp-metal" | "openrouter" | "custom-http"
+  model: [96] u8; model_n: int;                   // e.g. "inkling-2-mini"
+  prompt_profile: [48] u8; prompt_profile_n: int; // "minimal" | "executor-guided" | "verify-first"
+  executor_guard: bool;                           // enable W2.2 Class-E compiled weight guards (executor-guard.coax)
+  orientation_probe: bool;                        // run read-only workspace snapshot before Turn 1
+  compact_chars: int;                             // compaction budget for prior tool output (e.g. 12000)
+  max_turns: int;                                 // max agent turns per task (e.g. 12..30)
+  max_tokens: int;                                // max completion tokens per turn (e.g. 1536)
+  temp_milli: int;                                // temperature * 1000 (0 = greedy)
+  checkpoint_sha: [72] u8; checkpoint_sha_n: int; // optional W3.2/W5 Executor checkpoint digest
+  manifest_sha: [64] u8; manifest_sha_n: int;     // SHA-256 hex of canonical policy fields
+}
+
+TbTrialRecord :: struct {
+  task: [96] u8; task_n: int;
+  dataset: [48] u8; dataset_n: int;
+  partition: [16] u8; partition_n: int;     // "train" | "heldout"
+  arm: [64] u8; arm_n: int;
+  status_code: int;                         // TB_TRIAL_PASS/FAIL/INFRA/TIMEOUT
+  reward_milli: int;                        // Harbor verifier reward * 1000
+  wall_ms: int;
+  turns: int;
+  prompt_tokens: int;
+  completion_tokens: int;
+  cost_micros: int;
+  exec_checks: int;                         // W2.2 Class-E Executor guard invocations
+  exec_intercepts: int;                     // pre-disk/pre-exec bad edits/args caught by Class-E guard
+  exec_replays: int;                        // Ch 234 exact LE32 SHA-256 replay verifications
+  atif_verified: bool;
+  atif_digest: [64] u8; atif_digest_n: int;
+  atif_path: [256] u8; atif_path_n: int;
+  events_path: [256] u8; events_path_n: int;
+  harbor_dir: [256] u8; harbor_dir_n: int;
+  error_note: [160] u8; error_note_n: int;
+}
+
+TbArmSummary :: struct {
+  id: [64] u8; id_n: int;
+  label: [96] u8; label_n: int;
+  backend: [48] u8; backend_n: int;
+  model: [96] u8; model_n: int;
+  policy_sha: [64] u8; policy_sha_n: int;
+  executor_guard: bool;
+  boot_ms: int;
+  peak_rss_mb: int;
+  total: int;
+  graded: int;
+  passed: int;
+  failed: int;
+  infra_errors: int;
+  timeouts: int;
+  train_total: int;
+  train_passed: int;
+  heldout_total: int;
+  heldout_passed: int;
+  wilson_low_bps: int;
+  wilson_high_bps: int;
+  total_wall_ms: int;
+  median_wall_ms: int;
+  total_tokens: int;
+  cost_micros: int;
+  exec_checks: int;
+  exec_intercepts: int;
+  exec_replays: int;
+  atif_all_verified: bool;
+}
+
+TbHillclimbRound :: struct {
+  round_num: int;
+  timestamp: [40] u8; timestamp_n: int;
+  suite: [48] u8; suite_n: int;
+  dataset: [48] u8; dataset_n: int;
+  champion_id: [64] u8; champion_id_n: int;
+  champion_sha: [64] u8; champion_sha_n: int;
+  challenger_id: [64] u8; challenger_id_n: int;
+  challenger_sha: [64] u8; challenger_sha_n: int;
+  mutation_note: [160] u8; mutation_note_n: int;
+  train_total: int;
+  heldout_total: int;
+  champ_train_pass: int;
+  cand_train_pass: int;
+  champ_heldout_pass: int;
+  cand_heldout_pass: int;
+  cand_infra_errors: int;
+  champ_wall_ms: int;
+  cand_wall_ms: int;
+  champ_tokens: int;
+  cand_tokens: int;
+  gate_code: int;
+  distilled_train_atif: int;
+  run_dir: [256] u8; run_dir_n: int;
+}
+
+tbw_put :: (dst: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+tbw_hex32 :: (d: [32] u8, out: [] u8) -> int #effects(all) {
+  hex := "0123456789abcdef";
+  n := 0;
+  for i: 0..<32 {
+    if n + 1 >= out.count { break; }
+    b := cast(int) d[i];
+    out[n] = hex[(b >> 4) & 15];
+    out[n + 1] = hex[b & 15];
+    n += 2;
+  }
+  return n;
+}
+
+// Compute canonical SHA-256 hex digest of a policy manifest (excluding manifest_sha itself).
+tbw_policy_hash :: (p: [] TbPolicy) #effects(all) {
+  buf: [2048] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "backend"); jo_str(o[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  jo_key(o[..], "checkpoint_sha"); jo_str(o[..], cast(string) p[0].checkpoint_sha[0..<p[0].checkpoint_sha_n]);
+  jo_key(o[..], "compact_chars"); jo_int(o[..], p[0].compact_chars);
+  jo_key(o[..], "executor_guard"); jo_bool(o[..], p[0].executor_guard);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) p[0].id[0..<p[0].id_n]);
+  jo_key(o[..], "max_tokens"); jo_int(o[..], p[0].max_tokens);
+  jo_key(o[..], "max_turns"); jo_int(o[..], p[0].max_turns);
+  jo_key(o[..], "model"); jo_str(o[..], cast(string) p[0].model[0..<p[0].model_n]);
+  jo_key(o[..], "orientation_probe"); jo_bool(o[..], p[0].orientation_probe);
+  jo_key(o[..], "prompt_profile"); jo_str(o[..], cast(string) p[0].prompt_profile[0..<p[0].prompt_profile_n]);
+  jo_key(o[..], "temp_milli"); jo_int(o[..], p[0].temp_milli);
+  jo_end(o[..]);
+  sha: [112] u8; d: [32] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  #assert sha256_update_checked(sha[..], buf[0..<o[0].n], false) == SHA_OK;
+  #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+  p[0].manifest_sha_n = tbw_hex32(d, p[0].manifest_sha[..]);
+}
+
+tbw_policy_write :: (p: [] TbPolicy, out: [] u8) -> int #effects(all) {
+  if p[0].manifest_sha_n == 0 { tbw_policy_hash(p); }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], TB_SCHEMA_POLICY);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) p[0].id[0..<p[0].id_n]);
+  jo_key(o[..], "label"); jo_str(o[..], cast(string) p[0].label[0..<p[0].label_n]);
+  jo_key(o[..], "backend"); jo_str(o[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  jo_key(o[..], "model"); jo_str(o[..], cast(string) p[0].model[0..<p[0].model_n]);
+  jo_key(o[..], "prompt_profile"); jo_str(o[..], cast(string) p[0].prompt_profile[0..<p[0].prompt_profile_n]);
+  jo_key(o[..], "executor_guard"); jo_bool(o[..], p[0].executor_guard);
+  jo_key(o[..], "orientation_probe"); jo_bool(o[..], p[0].orientation_probe);
+  jo_key(o[..], "compact_chars"); jo_int(o[..], p[0].compact_chars);
+  jo_key(o[..], "max_turns"); jo_int(o[..], p[0].max_turns);
+  jo_key(o[..], "max_tokens"); jo_int(o[..], p[0].max_tokens);
+  jo_key(o[..], "temp_milli"); jo_int(o[..], p[0].temp_milli);
+  jo_key(o[..], "checkpoint_sha"); jo_str(o[..], cast(string) p[0].checkpoint_sha[0..<p[0].checkpoint_sha_n]);
+  jo_key(o[..], "manifest_sha"); jo_str(o[..], cast(string) p[0].manifest_sha[0..<p[0].manifest_sha_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+tbw_policy_parse :: (text: string, p: [] TbPolicy) -> bool #effects(all) {
+  p[0] = TbPolicy.{};
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  sb: [32] u8; sn := jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != TB_SCHEMA_POLICY { return false; }
+  idn := jv_str(d[0], jv_get(d[0], 0, "id"), p[0].id[..]);
+  if idn <= 0 || !tb_valid_slug(cast(string) p[0].id[0..<idn]) { return false; }
+  p[0].id_n = idn;
+  ln := jv_str(d[0], jv_get(d[0], 0, "label"), p[0].label[..]);
+  p[0].label_n = ifx ln > 0 then ln else tbw_put(p[0].label[..], cast(string) p[0].id[0..<idn]);
+  bn := jv_str(d[0], jv_get(d[0], 0, "backend"), p[0].backend[..]);
+  p[0].backend_n = ifx bn > 0 then bn else tbw_put(p[0].backend[..], "psionic-metal");
+  mn := jv_str(d[0], jv_get(d[0], 0, "model"), p[0].model[..]);
+  p[0].model_n = ifx mn > 0 then mn else tbw_put(p[0].model[..], "inkling-2-mini");
+  pn := jv_str(d[0], jv_get(d[0], 0, "prompt_profile"), p[0].prompt_profile[..]);
+  p[0].prompt_profile_n = ifx pn > 0 then pn else tbw_put(p[0].prompt_profile[..], "minimal");
+  p[0].executor_guard = jv_bool(d[0], jv_get(d[0], 0, "executor_guard"));
+  p[0].orientation_probe = jv_bool(d[0], jv_get(d[0], 0, "orientation_probe"));
+  p[0].compact_chars = jv_int(d[0], jv_get(d[0], 0, "compact_chars"), 12000);
+  p[0].max_turns = jv_int(d[0], jv_get(d[0], 0, "max_turns"), 16);
+  p[0].max_tokens = jv_int(d[0], jv_get(d[0], 0, "max_tokens"), 1536);
+  p[0].temp_milli = jv_int(d[0], jv_get(d[0], 0, "temp_milli"), 0);
+  if p[0].compact_chars < 0 || p[0].max_turns <= 0 || p[0].max_tokens <= 0 || p[0].temp_milli < 0 { return false; }
+  cn := jv_str(d[0], jv_get(d[0], 0, "checkpoint_sha"), p[0].checkpoint_sha[..]);
+  p[0].checkpoint_sha_n = ifx cn > 0 then cn else 0;
+  tbw_policy_hash(p);
+  msha: [72] u8; mn2 := jv_str(d[0], jv_get(d[0], 0, "manifest_sha"), msha[..]);
+  if mn2 > 0 && cast(string) msha[0..<mn2] != cast(string) p[0].manifest_sha[0..<p[0].manifest_sha_n] {
+    return false;
+  }
+  return true;
+}
+
+tbw_status_code :: (s: string) -> int #effects(all) {
+  for c: 0..<4 {
+    if tb_trial_label(c) == s { return c; }
+  }
+  return -1;
+}
+
+tbw_gate_code :: (verdict: string, reason: string) -> int #effects(all) {
+  for c: 0..<12 {
+    if tb_gate_status(c) == verdict && tb_gate_reason(c) == reason { return c; }
+  }
+  return -1;
+}
+
+tbw_trial_read_node :: (d: Jv, obj: int, t: [] TbTrialRecord, idx: int) -> bool #effects(all) {
+  if obj < 0 || d.nodes[obj].kind != JV_OBJECT { return false; }
+  t[idx] = TbTrialRecord.{};
+  sb: [32] u8; sn := jv_str(d, jv_get(d, obj, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != TB_SCHEMA_TRIAL { return false; }
+  tn := jv_str(d, jv_get(d, obj, "task"), t[idx].task[..]);
+  if tn <= 0 || !tb_valid_task_id(cast(string) t[idx].task[0..<tn]) { return false; }
+  t[idx].task_n = tn;
+  dn := jv_str(d, jv_get(d, obj, "dataset"), t[idx].dataset[..]);
+  if dn <= 0 || !tb_valid_dataset(cast(string) t[idx].dataset[0..<dn]) { return false; }
+  t[idx].dataset_n = dn;
+  pn := jv_str(d, jv_get(d, obj, "partition"), t[idx].partition[..]);
+  if pn <= 0 { return false; }
+  part := cast(string) t[idx].partition[0..<pn];
+  if part != "train" && part != "heldout" { return false; }
+  t[idx].partition_n = pn;
+  an := jv_str(d, jv_get(d, obj, "arm"), t[idx].arm[..]);
+  if an <= 0 || !tb_valid_slug(cast(string) t[idx].arm[0..<an]) { return false; }
+  t[idx].arm_n = an;
+  stb: [24] u8; stn := jv_str(d, jv_get(d, obj, "status"), stb[..]);
+  sc := ifx stn > 0 then tbw_status_code(cast(string) stb[0..<stn]) else -1;
+  if sc < 0 { return false; }
+  t[idx].status_code = sc;
+  passed_n := jv_get(d, obj, "passed");
+  if passed_n < 0 || (d.nodes[passed_n].kind != JV_TRUE && d.nodes[passed_n].kind != JV_FALSE) { return false; }
+  if jv_bool(d, passed_n) != (sc == TB_TRIAL_PASS) { return false; }
+  t[idx].reward_milli = jv_int(d, jv_get(d, obj, "reward_milli"), -1);
+  t[idx].wall_ms = jv_int(d, jv_get(d, obj, "wall_ms"), -1);
+  t[idx].turns = jv_int(d, jv_get(d, obj, "turns"), -1);
+  t[idx].prompt_tokens = jv_int(d, jv_get(d, obj, "prompt_tokens"), -1);
+  t[idx].completion_tokens = jv_int(d, jv_get(d, obj, "completion_tokens"), -1);
+  t[idx].cost_micros = jv_int(d, jv_get(d, obj, "cost_micros"), -1);
+  t[idx].exec_checks = jv_int(d, jv_get(d, obj, "exec_checks"), -1);
+  t[idx].exec_intercepts = jv_int(d, jv_get(d, obj, "exec_intercepts"), -1);
+  t[idx].exec_replays = jv_int(d, jv_get(d, obj, "exec_replays"), -1);
+  if t[idx].reward_milli < 0 || t[idx].wall_ms < 0 || t[idx].turns < 0 || t[idx].prompt_tokens < 0 || t[idx].completion_tokens < 0 || t[idx].cost_micros < 0 || t[idx].exec_checks < 0 || t[idx].exec_intercepts < 0 || t[idx].exec_replays < 0 { return false; }
+  t[idx].atif_verified = jv_bool(d, jv_get(d, obj, "atif_verified"));
+  n1 := jv_str(d, jv_get(d, obj, "atif_digest"), t[idx].atif_digest[..]); t[idx].atif_digest_n = ifx n1 > 0 then n1 else 0;
+  n2 := jv_str(d, jv_get(d, obj, "atif_path"), t[idx].atif_path[..]); t[idx].atif_path_n = ifx n2 > 0 then n2 else 0;
+  n3 := jv_str(d, jv_get(d, obj, "events_path"), t[idx].events_path[..]); t[idx].events_path_n = ifx n3 > 0 then n3 else 0;
+  n4 := jv_str(d, jv_get(d, obj, "harbor_dir"), t[idx].harbor_dir[..]); t[idx].harbor_dir_n = ifx n4 > 0 then n4 else 0;
+  n5 := jv_str(d, jv_get(d, obj, "error_note"), t[idx].error_note[..]); t[idx].error_note_n = ifx n5 > 0 then n5 else 0;
+  return true;
+}
+
+tbw_trial_parse :: (text: string, t: [] TbTrialRecord) -> bool #effects(all) {
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  return tbw_trial_read_node(d[0], 0, t, 0);
+}
+
+tbw_arm_read_node :: (d: Jv, obj: int, a: [] TbArmSummary) -> bool #effects(all) {
+  if obj < 0 || d.nodes[obj].kind != JV_OBJECT { return false; }
+  a[0] = TbArmSummary.{};
+  idn := jv_str(d, jv_get(d, obj, "id"), a[0].id[..]);
+  if idn <= 0 || !tb_valid_slug(cast(string) a[0].id[0..<idn]) { return false; }
+  a[0].id_n = idn;
+  n := jv_str(d, jv_get(d, obj, "label"), a[0].label[..]); a[0].label_n = ifx n > 0 then n else 0;
+  n = jv_str(d, jv_get(d, obj, "backend"), a[0].backend[..]); a[0].backend_n = ifx n > 0 then n else 0;
+  n = jv_str(d, jv_get(d, obj, "model"), a[0].model[..]); a[0].model_n = ifx n > 0 then n else 0;
+  n = jv_str(d, jv_get(d, obj, "policy_sha"), a[0].policy_sha[..]); a[0].policy_sha_n = ifx n > 0 then n else 0;
+  a[0].executor_guard = jv_bool(d, jv_get(d, obj, "executor_guard"));
+  a[0].boot_ms = jv_int(d, jv_get(d, obj, "boot_ms"), -1);
+  a[0].peak_rss_mb = jv_int(d, jv_get(d, obj, "peak_rss_mb"), -1);
+  a[0].total = jv_int(d, jv_get(d, obj, "total"), -1);
+  a[0].graded = jv_int(d, jv_get(d, obj, "graded"), -1);
+  a[0].passed = jv_int(d, jv_get(d, obj, "passed"), -1);
+  a[0].failed = jv_int(d, jv_get(d, obj, "failed"), -1);
+  a[0].infra_errors = jv_int(d, jv_get(d, obj, "infra_errors"), -1);
+  a[0].timeouts = jv_int(d, jv_get(d, obj, "timeouts"), -1);
+  a[0].train_total = jv_int(d, jv_get(d, obj, "train_total"), -1);
+  a[0].train_passed = jv_int(d, jv_get(d, obj, "train_passed"), -1);
+  a[0].heldout_total = jv_int(d, jv_get(d, obj, "heldout_total"), -1);
+  a[0].heldout_passed = jv_int(d, jv_get(d, obj, "heldout_passed"), -1);
+  a[0].wilson_low_bps = jv_int(d, jv_get(d, obj, "wilson_low_bps"), -1);
+  a[0].wilson_high_bps = jv_int(d, jv_get(d, obj, "wilson_high_bps"), -1);
+  a[0].total_wall_ms = jv_int(d, jv_get(d, obj, "total_wall_ms"), -1);
+  a[0].median_wall_ms = jv_int(d, jv_get(d, obj, "median_wall_ms"), -1);
+  a[0].total_tokens = jv_int(d, jv_get(d, obj, "total_tokens"), -1);
+  a[0].cost_micros = jv_int(d, jv_get(d, obj, "cost_micros"), -1);
+  a[0].exec_checks = jv_int(d, jv_get(d, obj, "exec_checks"), -1);
+  a[0].exec_intercepts = jv_int(d, jv_get(d, obj, "exec_intercepts"), -1);
+  a[0].exec_replays = jv_int(d, jv_get(d, obj, "exec_replays"), -1);
+  a[0].atif_all_verified = jv_bool(d, jv_get(d, obj, "atif_all_verified"));
+  if a[0].boot_ms < 0 || a[0].peak_rss_mb < 0 || a[0].total < 0 || a[0].graded < 0 || a[0].passed < 0 || a[0].failed < 0 || a[0].infra_errors < 0 || a[0].timeouts < 0 || a[0].train_total < 0 || a[0].train_passed < 0 || a[0].heldout_total < 0 || a[0].heldout_passed < 0 || a[0].wilson_low_bps < 0 || a[0].wilson_high_bps < 0 || a[0].total_wall_ms < 0 || a[0].median_wall_ms < 0 || a[0].total_tokens < 0 || a[0].cost_micros < 0 || a[0].exec_checks < 0 || a[0].exec_intercepts < 0 || a[0].exec_replays < 0 { return false; }
+  return true;
+}
+
+TbCompareDoc :: struct {
+  run_id: [64] u8; run_id_n: int;
+  timestamp: [40] u8; timestamp_n: int;
+  suite: [48] u8; suite_n: int;
+  dataset: [48] u8; dataset_n: int;
+  arm_a: [1] TbArmSummary;
+  arm_b: [1] TbArmSummary;
+  rows_a: [TB_MAX_TRIALS] TbTrialRecord;
+  n_a: int;
+  rows_b: [TB_MAX_TRIALS] TbTrialRecord;
+  n_b: int;
+}
+
+tbw_compare_parse :: (text: string, c: [] TbCompareDoc, nodes: [] JvNode) -> bool #effects(all) {
+  c[0] = TbCompareDoc.{};
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) { return false; }
+  sb: [32] u8; sn := jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != TB_SCHEMA_COMPARE { return false; }
+  rn := jv_str(d[0], jv_get(d[0], 0, "run_id"), c[0].run_id[..]);
+  if rn <= 0 { return false; }
+  c[0].run_id_n = rn;
+  tsn := jv_str(d[0], jv_get(d[0], 0, "timestamp"), c[0].timestamp[..]);
+  if tsn <= 0 { return false; }
+  c[0].timestamp_n = tsn;
+  sun := jv_str(d[0], jv_get(d[0], 0, "suite"), c[0].suite[..]);
+  if sun <= 0 { return false; }
+  c[0].suite_n = sun;
+  dsn := jv_str(d[0], jv_get(d[0], 0, "dataset"), c[0].dataset[..]);
+  if dsn <= 0 || !tb_valid_dataset(cast(string) c[0].dataset[0..<dsn]) { return false; }
+  c[0].dataset_n = dsn;
+  if !tbw_arm_read_node(d[0], jv_get(d[0], 0, "arm_a"), c[0].arm_a[..]) { return false; }
+  if !tbw_arm_read_node(d[0], jv_get(d[0], 0, "arm_b"), c[0].arm_b[..]) { return false; }
+  ra := jv_get(d[0], 0, "rows_a");
+  rb := jv_get(d[0], 0, "rows_b");
+  if ra < 0 || d[0].nodes[ra].kind != JV_ARRAY || rb < 0 || d[0].nodes[rb].kind != JV_ARRAY { return false; }
+  la := jv_len(d[0], ra);
+  lb := jv_len(d[0], rb);
+  if la > TB_MAX_TRIALS || lb > TB_MAX_TRIALS { return false; }
+  for i: 0..<la {
+    if !tbw_trial_read_node(d[0], jv_at(d[0], ra, i), c[0].rows_a[..], i) { return false; }
+  }
+  c[0].n_a = la;
+  for i: 0..<lb {
+    if !tbw_trial_read_node(d[0], jv_at(d[0], rb, i), c[0].rows_b[..], i) { return false; }
+  }
+  c[0].n_b = lb;
+  return true;
+}
+
+tbw_hillclimb_parse :: (text: string, r: [] TbHillclimbRound) -> bool #effects(all) {
+  r[0] = TbHillclimbRound.{};
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  sb: [32] u8; sn := jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != TB_SCHEMA_HILLCLIMB { return false; }
+  r[0].round_num = jv_int(d[0], jv_get(d[0], 0, "round"), -1);
+  if r[0].round_num < 1 { return false; }
+  n := jv_str(d[0], jv_get(d[0], 0, "timestamp"), r[0].timestamp[..]); if n <= 0 { return false; } r[0].timestamp_n = n;
+  n = jv_str(d[0], jv_get(d[0], 0, "suite"), r[0].suite[..]); if n <= 0 { return false; } r[0].suite_n = n;
+  n = jv_str(d[0], jv_get(d[0], 0, "dataset"), r[0].dataset[..]); if n <= 0 || !tb_valid_dataset(cast(string) r[0].dataset[0..<n]) { return false; } r[0].dataset_n = n;
+  n = jv_str(d[0], jv_get(d[0], 0, "champion_id"), r[0].champion_id[..]); if n <= 0 || !tb_valid_slug(cast(string) r[0].champion_id[0..<n]) { return false; } r[0].champion_id_n = n;
+  n = jv_str(d[0], jv_get(d[0], 0, "champion_sha"), r[0].champion_sha[..]); r[0].champion_sha_n = ifx n > 0 then n else 0;
+  n = jv_str(d[0], jv_get(d[0], 0, "challenger_id"), r[0].challenger_id[..]); if n <= 0 || !tb_valid_slug(cast(string) r[0].challenger_id[0..<n]) { return false; } r[0].challenger_id_n = n;
+  n = jv_str(d[0], jv_get(d[0], 0, "challenger_sha"), r[0].challenger_sha[..]); r[0].challenger_sha_n = ifx n > 0 then n else 0;
+  n = jv_str(d[0], jv_get(d[0], 0, "mutation_note"), r[0].mutation_note[..]); r[0].mutation_note_n = ifx n > 0 then n else 0;
+  r[0].train_total = jv_int(d[0], jv_get(d[0], 0, "train_total"), -1);
+  r[0].heldout_total = jv_int(d[0], jv_get(d[0], 0, "heldout_total"), -1);
+  r[0].champ_train_pass = jv_int(d[0], jv_get(d[0], 0, "champ_train_pass"), -1);
+  r[0].cand_train_pass = jv_int(d[0], jv_get(d[0], 0, "cand_train_pass"), -1);
+  r[0].champ_heldout_pass = jv_int(d[0], jv_get(d[0], 0, "champ_heldout_pass"), -1);
+  r[0].cand_heldout_pass = jv_int(d[0], jv_get(d[0], 0, "cand_heldout_pass"), -1);
+  r[0].cand_infra_errors = jv_int(d[0], jv_get(d[0], 0, "cand_infra_errors"), -1);
+  r[0].champ_wall_ms = jv_int(d[0], jv_get(d[0], 0, "champ_wall_ms"), -1);
+  r[0].cand_wall_ms = jv_int(d[0], jv_get(d[0], 0, "cand_wall_ms"), -1);
+  r[0].champ_tokens = jv_int(d[0], jv_get(d[0], 0, "champ_tokens"), -1);
+  r[0].cand_tokens = jv_int(d[0], jv_get(d[0], 0, "cand_tokens"), -1);
+  r[0].distilled_train_atif = jv_int(d[0], jv_get(d[0], 0, "distilled_train_atif"), -1);
+  if r[0].train_total < 0 || r[0].heldout_total < 0 || r[0].champ_train_pass < 0 || r[0].cand_train_pass < 0 || r[0].champ_heldout_pass < 0 || r[0].cand_heldout_pass < 0 || r[0].cand_infra_errors < 0 || r[0].champ_wall_ms < 0 || r[0].cand_wall_ms < 0 || r[0].champ_tokens < 0 || r[0].cand_tokens < 0 || r[0].distilled_train_atif < 0 { return false; }
+  vb: [32] u8; vn := jv_str(d[0], jv_get(d[0], 0, "verdict"), vb[..]);
+  rb: [64] u8; rbn := jv_str(d[0], jv_get(d[0], 0, "reason"), rb[..]);
+  gc := ifx vn > 0 && rbn > 0 then tbw_gate_code(cast(string) vb[0..<vn], cast(string) rb[0..<rbn]) else -1;
+  if gc < 0 { return false; }
+  r[0].gate_code = gc;
+  n = jv_str(d[0], jv_get(d[0], 0, "run_dir"), r[0].run_dir[..]); r[0].run_dir_n = ifx n > 0 then n else 0;
+  return true;
+}
+
+tbw_trial_emit :: (o: [] Jo, t: [] TbTrialRecord, idx: int) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, TB_SCHEMA_TRIAL);
+  jo_key(o, "task"); jo_str(o, cast(string) t[idx].task[0..<t[idx].task_n]);
+  jo_key(o, "dataset"); jo_str(o, cast(string) t[idx].dataset[0..<t[idx].dataset_n]);
+  jo_key(o, "partition"); jo_str(o, cast(string) t[idx].partition[0..<t[idx].partition_n]);
+  jo_key(o, "arm"); jo_str(o, cast(string) t[idx].arm[0..<t[idx].arm_n]);
+  jo_key(o, "status"); jo_str(o, tb_trial_label(t[idx].status_code));
+  jo_key(o, "passed"); jo_bool(o, t[idx].status_code == TB_TRIAL_PASS);
+  jo_key(o, "reward_milli"); jo_int(o, t[idx].reward_milli);
+  jo_key(o, "wall_ms"); jo_int(o, t[idx].wall_ms);
+  jo_key(o, "turns"); jo_int(o, t[idx].turns);
+  jo_key(o, "prompt_tokens"); jo_int(o, t[idx].prompt_tokens);
+  jo_key(o, "completion_tokens"); jo_int(o, t[idx].completion_tokens);
+  jo_key(o, "cost_micros"); jo_int(o, t[idx].cost_micros);
+  jo_key(o, "exec_checks"); jo_int(o, t[idx].exec_checks);
+  jo_key(o, "exec_intercepts"); jo_int(o, t[idx].exec_intercepts);
+  jo_key(o, "exec_replays"); jo_int(o, t[idx].exec_replays);
+  jo_key(o, "atif_verified"); jo_bool(o, t[idx].atif_verified);
+  jo_key(o, "atif_digest"); jo_str(o, cast(string) t[idx].atif_digest[0..<t[idx].atif_digest_n]);
+  jo_key(o, "atif_path"); jo_str(o, cast(string) t[idx].atif_path[0..<t[idx].atif_path_n]);
+  jo_key(o, "events_path"); jo_str(o, cast(string) t[idx].events_path[0..<t[idx].events_path_n]);
+  jo_key(o, "harbor_dir"); jo_str(o, cast(string) t[idx].harbor_dir[0..<t[idx].harbor_dir_n]);
+  jo_key(o, "error_note"); jo_str(o, cast(string) t[idx].error_note[0..<t[idx].error_note_n]);
+  jo_end(o);
+}
+
+tbw_trial_write :: (t: [] TbTrialRecord, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  tbw_trial_emit(o[..], t, 0);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+tbw_arm_emit :: (o: [] Jo, a: [] TbArmSummary) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "id"); jo_str(o, cast(string) a[0].id[0..<a[0].id_n]);
+  jo_key(o, "label"); jo_str(o, cast(string) a[0].label[0..<a[0].label_n]);
+  jo_key(o, "backend"); jo_str(o, cast(string) a[0].backend[0..<a[0].backend_n]);
+  jo_key(o, "model"); jo_str(o, cast(string) a[0].model[0..<a[0].model_n]);
+  jo_key(o, "policy_sha"); jo_str(o, cast(string) a[0].policy_sha[0..<a[0].policy_sha_n]);
+  jo_key(o, "executor_guard"); jo_bool(o, a[0].executor_guard);
+  jo_key(o, "boot_ms"); jo_int(o, a[0].boot_ms);
+  jo_key(o, "peak_rss_mb"); jo_int(o, a[0].peak_rss_mb);
+  jo_key(o, "total"); jo_int(o, a[0].total);
+  jo_key(o, "graded"); jo_int(o, a[0].graded);
+  jo_key(o, "passed"); jo_int(o, a[0].passed);
+  jo_key(o, "failed"); jo_int(o, a[0].failed);
+  jo_key(o, "infra_errors"); jo_int(o, a[0].infra_errors);
+  jo_key(o, "timeouts"); jo_int(o, a[0].timeouts);
+  jo_key(o, "train_total"); jo_int(o, a[0].train_total);
+  jo_key(o, "train_passed"); jo_int(o, a[0].train_passed);
+  jo_key(o, "heldout_total"); jo_int(o, a[0].heldout_total);
+  jo_key(o, "heldout_passed"); jo_int(o, a[0].heldout_passed);
+  jo_key(o, "wilson_low_bps"); jo_int(o, a[0].wilson_low_bps);
+  jo_key(o, "wilson_high_bps"); jo_int(o, a[0].wilson_high_bps);
+  jo_key(o, "total_wall_ms"); jo_int(o, a[0].total_wall_ms);
+  jo_key(o, "median_wall_ms"); jo_int(o, a[0].median_wall_ms);
+  jo_key(o, "total_tokens"); jo_int(o, a[0].total_tokens);
+  jo_key(o, "cost_micros"); jo_int(o, a[0].cost_micros);
+  jo_key(o, "exec_checks"); jo_int(o, a[0].exec_checks);
+  jo_key(o, "exec_intercepts"); jo_int(o, a[0].exec_intercepts);
+  jo_key(o, "exec_replays"); jo_int(o, a[0].exec_replays);
+  jo_key(o, "atif_all_verified"); jo_bool(o, a[0].atif_all_verified);
+  jo_end(o);
+}
+
+tbw_compare_write :: (
+  run_id: string, timestamp: string, suite: string, dataset: string,
+  arm_a: [] TbArmSummary, rows_a: [] TbTrialRecord, n_a: int,
+  arm_b: [] TbArmSummary, rows_b: [] TbTrialRecord, n_b: int,
+  out: [] u8
+) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], TB_SCHEMA_COMPARE);
+  jo_key(o[..], "run_id"); jo_str(o[..], run_id);
+  jo_key(o[..], "timestamp"); jo_str(o[..], timestamp);
+  jo_key(o[..], "suite"); jo_str(o[..], suite);
+  jo_key(o[..], "dataset"); jo_str(o[..], dataset);
+  jo_key(o[..], "arm_a"); tbw_arm_emit(o[..], arm_a);
+  jo_key(o[..], "arm_b"); tbw_arm_emit(o[..], arm_b);
+  jo_key(o[..], "rows_a"); jo_arr(o[..]);
+  for i: 0..<n_a { tbw_trial_emit(o[..], rows_a, i); }
+  jo_end(o[..]);
+  jo_key(o[..], "rows_b"); jo_arr(o[..]);
+  for i: 0..<n_b { tbw_trial_emit(o[..], rows_b, i); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+tbw_hillclimb_write :: (r: [] TbHillclimbRound, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], TB_SCHEMA_HILLCLIMB);
+  jo_key(o[..], "round"); jo_int(o[..], r[0].round_num);
+  jo_key(o[..], "timestamp"); jo_str(o[..], cast(string) r[0].timestamp[0..<r[0].timestamp_n]);
+  jo_key(o[..], "suite"); jo_str(o[..], cast(string) r[0].suite[0..<r[0].suite_n]);
+  jo_key(o[..], "dataset"); jo_str(o[..], cast(string) r[0].dataset[0..<r[0].dataset_n]);
+  jo_key(o[..], "champion_id"); jo_str(o[..], cast(string) r[0].champion_id[0..<r[0].champion_id_n]);
+  jo_key(o[..], "champion_sha"); jo_str(o[..], cast(string) r[0].champion_sha[0..<r[0].champion_sha_n]);
+  jo_key(o[..], "challenger_id"); jo_str(o[..], cast(string) r[0].challenger_id[0..<r[0].challenger_id_n]);
+  jo_key(o[..], "challenger_sha"); jo_str(o[..], cast(string) r[0].challenger_sha[0..<r[0].challenger_sha_n]);
+  jo_key(o[..], "mutation_note"); jo_str(o[..], cast(string) r[0].mutation_note[0..<r[0].mutation_note_n]);
+  jo_key(o[..], "train_total"); jo_int(o[..], r[0].train_total);
+  jo_key(o[..], "heldout_total"); jo_int(o[..], r[0].heldout_total);
+  jo_key(o[..], "champ_train_pass"); jo_int(o[..], r[0].champ_train_pass);
+  jo_key(o[..], "cand_train_pass"); jo_int(o[..], r[0].cand_train_pass);
+  jo_key(o[..], "champ_heldout_pass"); jo_int(o[..], r[0].champ_heldout_pass);
+  jo_key(o[..], "cand_heldout_pass"); jo_int(o[..], r[0].cand_heldout_pass);
+  jo_key(o[..], "cand_infra_errors"); jo_int(o[..], r[0].cand_infra_errors);
+  jo_key(o[..], "champ_wall_ms"); jo_int(o[..], r[0].champ_wall_ms);
+  jo_key(o[..], "cand_wall_ms"); jo_int(o[..], r[0].cand_wall_ms);
+  jo_key(o[..], "champ_tokens"); jo_int(o[..], r[0].champ_tokens);
+  jo_key(o[..], "cand_tokens"); jo_int(o[..], r[0].cand_tokens);
+  jo_key(o[..], "verdict"); jo_str(o[..], tb_gate_status(r[0].gate_code));
+  jo_key(o[..], "reason"); jo_str(o[..], tb_gate_reason(r[0].gate_code));
+  jo_key(o[..], "distilled_train_atif"); jo_int(o[..], r[0].distilled_train_atif);
+  jo_key(o[..], "run_dir"); jo_str(o[..], cast(string) r[0].run_dir[0..<r[0].run_dir_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "tbench wire: policy hash & round-trip, trial, compare, and hillclimb codecs (#13951)" {
+  p: [1] TbPolicy;
+  p[0].id_n = tbw_put(p[0].id[..], "executor-hybrid-v1");
+  p[0].label_n = tbw_put(p[0].label[..], "Microcoder · Psionic Metal + Executor");
+  p[0].backend_n = tbw_put(p[0].backend[..], "psionic-metal");
+  p[0].model_n = tbw_put(p[0].model[..], "inkling-2-mini");
+  p[0].prompt_profile_n = tbw_put(p[0].prompt_profile[..], "executor-guided");
+  p[0].executor_guard = true;
+  p[0].orientation_probe = true;
+  p[0].compact_chars = 12000;
+  p[0].max_turns = 16;
+  p[0].max_tokens = 1536;
+  p[0].temp_milli = 0;
+
+  buf: [4096] u8;
+  n := tbw_policy_write(p[..], buf[..]);
+  #assert n > 0 && p[0].manifest_sha_n == 64;
+
+  p2: [1] TbPolicy;
+  #assert tbw_policy_parse(cast(string) buf[0..<n], p2[..]);
+  #assert cast(string) p2[0].id[0..<p2[0].id_n] == "executor-hybrid-v1";
+  #assert p2[0].executor_guard && p2[0].orientation_probe && p2[0].max_turns == 16;
+  #assert cast(string) p2[0].manifest_sha[0..<64] == cast(string) p[0].manifest_sha[0..<64];
+  #assert !tbw_policy_parse("{\"schema\":\"wrong\"}", p2[..]);
+
+  tr: [1] TbTrialRecord;
+  tr[0].task_n = tbw_put(tr[0].task[..], "fix-git");
+  tr[0].dataset_n = tbw_put(tr[0].dataset[..], "terminal-bench@2.0");
+  tr[0].partition_n = tbw_put(tr[0].partition[..], "train");
+  tr[0].arm_n = tbw_put(tr[0].arm[..], "executor-hybrid-v1");
+  tr[0].status_code = TB_TRIAL_PASS;
+  tr[0].reward_milli = 1000;
+  tr[0].wall_ms = 18400;
+  tr[0].turns = 4;
+  tr[0].exec_checks = 3;
+  tr[0].exec_replays = 3;
+  tr[0].atif_verified = true;
+  tn := tbw_trial_write(tr[..], buf[..]);
+  #assert tn > 0;
+
+  a: [1] TbArmSummary;
+  a[0].id_n = tbw_put(a[0].id[..], "executor-hybrid-v1");
+  a[0].total = 1; a[0].graded = 1; a[0].passed = 1;
+  cbuf: [8192] u8;
+  cn := tbw_compare_write("run-1", "2026-11-21T16:30:00Z", "tb2-smoke", "terminal-bench@2.0", a[..], tr[..], 1, a[..], tr[..], 1, cbuf[..]);
+  #assert cn > 0;
+
+  hc: [1] TbHillclimbRound;
+  hc[0].round_num = 1;
+  hc[0].suite_n = tbw_put(hc[0].suite[..], "tb2-smoke");
+  hc[0].gate_code = TB_GATE_PROMOTED;
+  hn := tbw_hillclimb_write(hc[..], buf[..]);
+  #assert hn > 0;
+}

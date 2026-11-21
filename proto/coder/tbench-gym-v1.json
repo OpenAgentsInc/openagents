@@ -1,0 +1,43 @@
+{
+  "profile": "tbench-gym-v1",
+  "description": "Canonical JSON wire goldens and adversarial refusals for Terminal-Bench Coax Runner, OpenAgents Desktop Gym Workbench, and Microcoder Executor-Network Hillclimbing (Epic #13950, #13951, #13952, #13953).",
+  "schemas": [
+    "tbench-policy.v1",
+    "tbench-trial.v1",
+    "tbench-compare.v1",
+    "tbench-hillclimb.v1"
+  ],
+  "goldens": [
+    {
+      "schema": "tbench-policy.v1",
+      "line": "{\"schema\":\"tbench-policy.v1\",\"id\":\"executor-hybrid-v1\",\"label\":\"Microcoder · Psionic Metal + Executor\",\"backend\":\"psionic-metal\",\"model\":\"inkling-2-mini\",\"prompt_profile\":\"executor-guided\",\"executor_guard\":true,\"orientation_probe\":true,\"compact_chars\":14000,\"max_turns\":16,\"max_tokens\":1536,\"temp_milli\":0,\"checkpoint_sha\":\"\",\"manifest_sha\":\"29593a0622b68f4bf770b0e0bea6f705694ae15bffc23581a4c2ad9434492647\"}"
+    },
+    {
+      "schema": "tbench-trial.v1",
+      "line": "{\"schema\":\"tbench-trial.v1\",\"task\":\"fix-git\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"train\",\"arm\":\"executor-hybrid-v1\",\"status\":\"PASS\",\"passed\":true,\"reward_milli\":1000,\"wall_ms\":18400,\"turns\":4,\"prompt_tokens\":2100,\"completion_tokens\":480,\"cost_micros\":0,\"exec_checks\":3,\"exec_intercepts\":1,\"exec_replays\":3,\"atif_verified\":true,\"atif_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_path\":\"/Users/test/.openagents/tbench/jobs/run-1/executor-hybrid-v1/fix-git/agent/trajectory.json\",\"events_path\":\"/Users/test/.openagents/tbench/runs/run-1/events-a-fix-git.jsonl\",\"harbor_dir\":\"/Users/test/.openagents/tbench/jobs/run-1/executor-hybrid-v1/fix-git\",\"error_note\":\"\"}"
+    },
+    {
+      "schema": "tbench-compare.v1",
+      "line": "{\"schema\":\"tbench-compare.v1\",\"run_id\":\"tb-run-001\",\"timestamp\":\"2026-11-21T16:45:00Z\",\"suite\":\"tb2-smoke\",\"dataset\":\"terminal-bench@2.0\",\"arm_a\":{\"id\":\"executor-hybrid-v1\",\"label\":\"Microcoder · Psionic Metal + Executor\",\"backend\":\"psionic-metal\",\"model\":\"inkling-2-mini\",\"policy_sha\":\"29593a0622b68f4bf770b0e0bea6f705694ae15bffc23581a4c2ad9434492647\",\"executor_guard\":true,\"boot_ms\":1420,\"peak_rss_mb\":11200,\"total\":1,\"graded\":1,\"passed\":1,\"failed\":0,\"infra_errors\":0,\"timeouts\":0,\"train_total\":1,\"train_passed\":1,\"heldout_total\":0,\"heldout_passed\":0,\"wilson_low_bps\":2065,\"wilson_high_bps\":10000,\"total_wall_ms\":18400,\"median_wall_ms\":18400,\"total_tokens\":2580,\"cost_micros\":0,\"exec_checks\":3,\"exec_intercepts\":1,\"exec_replays\":3,\"atif_all_verified\":true},\"arm_b\":{\"id\":\"llamacpp-microcoder\",\"label\":\"Microcoder · llama.cpp Metal\",\"backend\":\"llamacpp-metal\",\"model\":\"inkling-2-mini\",\"policy_sha\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"executor_guard\":false,\"boot_ms\":2150,\"peak_rss_mb\":12400,\"total\":1,\"graded\":1,\"passed\":0,\"failed\":1,\"infra_errors\":0,\"timeouts\":0,\"train_total\":1,\"train_passed\":0,\"heldout_total\":0,\"heldout_passed\":0,\"wilson_low_bps\":0,\"wilson_high_bps\":7935,\"total_wall_ms\":24100,\"median_wall_ms\":24100,\"total_tokens\":3100,\"cost_micros\":0,\"exec_checks\":0,\"exec_intercepts\":0,\"exec_replays\":0,\"atif_all_verified\":true},\"rows_a\":[{\"schema\":\"tbench-trial.v1\",\"task\":\"fix-git\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"train\",\"arm\":\"executor-hybrid-v1\",\"status\":\"PASS\",\"passed\":true,\"reward_milli\":1000,\"wall_ms\":18400,\"turns\":4,\"prompt_tokens\":2100,\"completion_tokens\":480,\"cost_micros\":0,\"exec_checks\":3,\"exec_intercepts\":1,\"exec_replays\":3,\"atif_verified\":true,\"atif_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_path\":\"\",\"events_path\":\"\",\"harbor_dir\":\"\",\"error_note\":\"\"}],\"rows_b\":[{\"schema\":\"tbench-trial.v1\",\"task\":\"fix-git\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"train\",\"arm\":\"llamacpp-microcoder\",\"status\":\"FAIL\",\"passed\":false,\"reward_milli\":0,\"wall_ms\":24100,\"turns\":6,\"prompt_tokens\":2500,\"completion_tokens\":600,\"cost_micros\":0,\"exec_checks\":0,\"exec_intercepts\":0,\"exec_replays\":0,\"atif_verified\":true,\"atif_digest\":\"4bd4ece64da89102a965f79975fafe56a24b3a7d8d7eeb4cbaec3244824efecf\",\"atif_path\":\"\",\"events_path\":\"\",\"harbor_dir\":\"\",\"error_note\":\"\"}]}"
+    },
+    {
+      "schema": "tbench-hillclimb.v1",
+      "line": "{\"schema\":\"tbench-hillclimb.v1\",\"round\":1,\"timestamp\":\"2026-11-21T16:50:00Z\",\"suite\":\"tb2-smoke\",\"dataset\":\"terminal-bench@2.0\",\"champion_id\":\"baseline-microcoder\",\"champion_sha\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"challenger_id\":\"executor-hybrid-v1\",\"challenger_sha\":\"29593a0622b68f4bf770b0e0bea6f705694ae15bffc23581a4c2ad9434492647\",\"mutation_note\":\"enable W2.2 Class-E Executor guard and orientation probe\",\"train_total\":2,\"heldout_total\":1,\"champ_train_pass\":1,\"cand_train_pass\":2,\"champ_heldout_pass\":0,\"cand_heldout_pass\":1,\"cand_infra_errors\":0,\"champ_wall_ms\":55000,\"cand_wall_ms\":48000,\"champ_tokens\":7200,\"cand_tokens\":6500,\"verdict\":\"PROMOTED\",\"reason\":\"promoted_gain_verified\",\"distilled_train_atif\":2,\"run_dir\":\"/Users/test/.openagents/tbench/runs/hc-round-1\"}"
+    }
+  ],
+  "refused": [
+    "",
+    "[]",
+    "{}",
+    "{\"schema\":\"unknown.v1\"}",
+    "{\"schema\":\"tbench-policy.v1\",\"id\":\"BAD SLUG!\",\"max_turns\":16,\"max_tokens\":1536}",
+    "{\"schema\":\"tbench-policy.v1\",\"id\":\"ok-id\",\"max_turns\":0,\"max_tokens\":1536}",
+    "{\"schema\":\"tbench-policy.v1\",\"id\":\"executor-hybrid-v1\",\"label\":\"x\",\"backend\":\"psionic-metal\",\"model\":\"inkling-2-mini\",\"prompt_profile\":\"executor-guided\",\"executor_guard\":true,\"orientation_probe\":true,\"compact_chars\":14000,\"max_turns\":16,\"max_tokens\":1536,\"temp_milli\":0,\"checkpoint_sha\":\"\",\"manifest_sha\":\"deadbeef\"}",
+    "{\"schema\":\"tbench-trial.v1\",\"task\":\"fix-git\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"train\",\"arm\":\"a\",\"status\":\"pass\",\"passed\":false,\"reward_milli\":1000,\"wall_ms\":10,\"turns\":1,\"prompt_tokens\":1,\"completion_tokens\":1,\"cost_micros\":0,\"exec_checks\":0,\"exec_intercepts\":0,\"exec_replays\":0}",
+    "{\"schema\":\"tbench-trial.v1\",\"task\":\"../escape\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"train\",\"arm\":\"a\",\"status\":\"pass\",\"passed\":true,\"reward_milli\":1000,\"wall_ms\":10,\"turns\":1,\"prompt_tokens\":1,\"completion_tokens\":1,\"cost_micros\":0,\"exec_checks\":0,\"exec_intercepts\":0,\"exec_replays\":0}",
+    "{\"schema\":\"tbench-trial.v1\",\"task\":\"fix-git\",\"dataset\":\"terminal-bench@2.0\",\"partition\":\"leak\",\"arm\":\"a\",\"status\":\"pass\",\"passed\":true,\"reward_milli\":1000,\"wall_ms\":10,\"turns\":1,\"prompt_tokens\":1,\"completion_tokens\":1,\"cost_micros\":0,\"exec_checks\":0,\"exec_intercepts\":0,\"exec_replays\":0}",
+    "{\"schema\":\"tbench-compare.v1\",\"run_id\":\"\",\"timestamp\":\"t\",\"suite\":\"s\",\"dataset\":\"terminal-bench@2.0\"}",
+    "{\"schema\":\"tbench-hillclimb.v1\",\"round\":0,\"timestamp\":\"t\",\"suite\":\"s\",\"dataset\":\"terminal-bench@2.0\",\"champion_id\":\"a\",\"challenger_id\":\"b\",\"train_total\":2,\"heldout_total\":1,\"champ_train_pass\":1,\"cand_train_pass\":2,\"champ_heldout_pass\":0,\"cand_heldout_pass\":1,\"cand_infra_errors\":0,\"champ_wall_ms\":10,\"cand_wall_ms\":10,\"champ_tokens\":10,\"cand_tokens\":10,\"verdict\":\"PROMOTED\",\"reason\":\"ok\",\"distilled_train_atif\":1}",
+    "{\"schema\":\"tbench-hillclimb.v1\",\"round\":1,\"timestamp\":\"t\",\"suite\":\"s\",\"dataset\":\"terminal-bench@2.0\",\"champion_id\":\"a\",\"challenger_id\":\"b\",\"train_total\":2,\"heldout_total\":1,\"champ_train_pass\":1,\"cand_train_pass\":2,\"champ_heldout_pass\":0,\"cand_heldout_pass\":1,\"cand_infra_errors\":0,\"champ_wall_ms\":10,\"cand_wall_ms\":10,\"champ_tokens\":10,\"cand_tokens\":10,\"verdict\":\"PROMOTED\",\"reason\":\"infra_error\",\"distilled_train_atif\":1}"
+  ]
+}
