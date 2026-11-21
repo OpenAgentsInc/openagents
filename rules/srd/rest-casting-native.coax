@@ -1,4 +1,5 @@
-#load "../../apps/openagents-web/old/v1/fivebar-test.coax";
+#load "battle.coax";
+#load "../../everglade/shared/fivebar.coax";
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
   for level:1..<7 { for path:0..<4 {

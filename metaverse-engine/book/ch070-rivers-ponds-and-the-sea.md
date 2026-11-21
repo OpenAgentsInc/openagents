@@ -88,7 +88,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 - [metaverse/water.coax](../../metaverse/water.coax) and
   [metaverse-engine/physics/sim/rigid.coax](../physics/sim/rigid.coax): the W1 physics, with all
   fifteen of the old tests as `#test` checks.
-- [everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax): Everglade's
+- [everglade/world/river.coax](../../everglade/world/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.
 - [metaverse-engine/world/water-weather.coax](../world/water-weather.coax) and
   [everglade/legacy/v1/water-spells.coax](../../everglade/legacy/v1/water-spells.coax): rising water in

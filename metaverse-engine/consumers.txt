@@ -68,3 +68,5 @@ adopt metaverse-engine/audio/host-opus.coax #13857
 adopt metaverse-engine/audio/host-pcm-asset.coax #13857
 adopt metaverse-engine/audio/host-pcm.coax #13857
 adopt metaverse-engine/audio/host-voice.coax #13857
+book metaverse-engine/fx/flat.coax metaverse-engine/book/ch072-effects-made-of-particles.md
+book metaverse-engine/ui/settings.coax metaverse-engine/book/ch085-everyone-can-play.md

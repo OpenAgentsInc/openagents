@@ -1,7 +1,7 @@
 // Compile the registered Nature meshes and Coax glade composition into the existing
 // Character Create people pack. Product scene arithmetic is metaverse/character-glade.coax.
 // With a fourth argument, zone, it compiles the glade as Everglade's own region south of the South
-// Gate (#13018, everglade/legacy/v1/glade-zone.coax) into Everglade's pack: a wider ground that rises
+// Gate (#13018, everglade/world/glade-zone.coax) into Everglade's pack: a wider ground that rises
 // into hills past the composed glade, no sky of its own (Everglade's) and no stand-in town (the
 // real one is up the road), in the VPK2 table its entries need (docs/protocol/asset-pack-v2.md).
 //   SRC=$(coax/web/tool.sh metaverse/tools/assets/registry.coax source nature "$HOME/.openagents/assets" | tail -1)
@@ -38,7 +38,7 @@
 #load "../../../everglade/range/layout.coax" as rangel;   // where its pieces stand (#13507)
 #load "../../../everglade/range/place.coax" as range;   // the Archery Range's butts, faces, posts and chalk (--append-range)
 #load "../../../everglade/world/forest.coax";   // Everglade's land, which the range stands on in Everglade II's pack (--append-range-e2, #13507)
-#load "../../../everglade/legacy/v1/glade-zone.coax";
+#load "../../../everglade/world/glade-zone.coax";
 
 #test "glade static vertices retain positions beyond the people quantization box" {
  b:[32]u8;gp_vertex(b[..],0,[3]f32.[-18,6,-24],[3]f32.[0,1,0],[2]f32.[0,1],[3]f32.[1,0.5,0.1],3,4);

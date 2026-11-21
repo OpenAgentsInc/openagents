@@ -562,7 +562,7 @@ were. Grass takes a low sun through its blades toward the eye
   keep-outs.
 - [metaverse-engine/core/rand.coax](../core/rand.coax): the counter-based draw, with
   its Python oracle.
-- [everglade/legacy/v1/plan.coax](../../everglade/legacy/v1/plan.coax): Everglade's
+- [everglade/world/plan.coax](../../everglade/world/plan.coax): Everglade's
   ground, bounds, streets and clearings.
 - [apps/openagents-web/everglade.coax](../../apps/openagents-web/everglade.coax):
   Everglade's forest scatter (`TREE_SPACING`, 4.2 m).

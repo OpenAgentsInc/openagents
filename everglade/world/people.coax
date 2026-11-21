@@ -1,0 +1,84 @@
+// Everglade's people (eg-people): who stands at each of the plan's spots
+// (plan.coax EG_SPOT), by name, what they do, how they greet you and what
+// they know of the city, for the character chat (POST
+// /api/playtest/npc/ask). The server remembers a player for each of them
+// (coax/web/api/migrations/0031_npc_memory.sql): what you told one of them
+// on an earlier visit, it can recall. The cats talk too, as cats would.
+// The question's body is written here, through the NPC ask's codec (metaverse-engine/talk/wire.coax):
+// eg_ask_body.
+//   coax/bin/coax test --library everglade/world/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
+
+#load "plan.coax";
+#load "../npc/people-words.coax";   // who they are, as words (the server reads the same)
+#load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
+
+eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }
+eg_role :: (i: int) -> string { return ifx eg_is_cat(i) then EG_CAT_ROLE else EG_ROLE[i]; }
+
+// One line of the conversation so far: who said it (true: the character) and what.
+EgLine :: struct { npc: bool; text: string; }
+
+// Copies text into out from at, as much as fits (edits.coax writes with it too).
+raw_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+
+// The body for /api/playtest/npc/ask (#13261): the id of the person at spot i, the world, this
+// visit's stamp, the conversation so far (oldest first) and the question, written by the NPC ask's
+// one codec (metaverse-engine/talk/wire.coax). Who they are, what they know and the city's controls are the
+// server's (people-words.coax, which it reads too), never the page's. The number of bytes written,
+// or 0 when it didn't fit.
+eg_ask_body :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string) -> int {
+  return eg_ask_body_note(out, i, lines, question, visit, "");
+}
+// The same with a note on what brought the player to them (a quest) and the talk going round town,
+// as the scene: the server quotes it in the player's turn, never in who the person is.
+eg_ask_body_note :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string, note: string) -> int {
+  if i < 0 || i >= EG_SPOTS || lines.count > NPC_HISTORY { return 0; }
+  id: [64] u8;
+  idn := eg_person_id(i, id[..]);
+  turns: [NPC_HISTORY] NpcTurn;
+  for k: 0..<lines.count { turns[k] = NpcTurn.{npc = lines[k].npc, text = lines[k].text}; }
+  n := npc_ask_write(NpcAsk.{npc = cast(string) id[0..<idn], world = EG_WORLD_ID, has_visit = true, visit = visit, scene = note,
+                             history = turns[0..<lines.count], question = question}, out);
+  return ifx n > 0 then n else 0;
+}
+
+// ---- checks
+
+#test "everyone at a spot has a name, a role and a greeting; the cats are cats" {
+  #assert EG_PEOPLE == EG_SPOTS;   // people-words.coax's count is the plan's
+  for i: 0..<EG_SPOTS {
+    #assert EG_PERSON[i].count > 0 && EG_GREET[i].count > 0 && eg_role(i).count > 0;
+    #assert eg_is_cat(i) == (EG_ROLE[i].count == 0) && eg_role(i) == eg_words_role(i);
+    for k: 0..<i { #assert EG_PERSON[k] != EG_PERSON[i]; }   // the server remembers you per name
+  }
+  #assert eg_is_cat(4) && EG_SPOT_NAME[4] == "ERRAND CAT" && EG_PERSON[5] == "Marta" && EG_SPOT_NAME[5] == "INNKEEPER";
+}
+
+#test "the question's body is JSON with every text escaped, and names the person only by id" {
+  out: [4096] u8;
+  lines := [2] EgLine.[EgLine.{npc = true, text = "Come in."}, EgLine.{npc = false, text = "I'm \"Wren\"\nhi \\ there"}];
+  n := eg_ask_body(out[..], 5, lines[..], "Remember me?", "1730000000000");
+  body := cast(string) out[0..<n];
+  want := "{\"npc\":\"marta\",\"world\":\"everglade\",\"visit\":\"1730000000000\",\"history\":[{\"from\":\"npc\",\"text\":\"Come in.\"},{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi \\\\ there\"}],\"question\":\"Remember me?\"}";
+  #assert body == want;
+  #assert !contains_text(body, "innkeeper") && !contains_text(body, "knowledge");   // who she is is the server's
+  // too small a buffer writes nothing
+  small: [64] u8;
+  #assert eg_ask_body(small[..], 5, lines[..], "Remember me?", "1") == 0;
+  #assert eg_ask_body(out[..], -1, lines[..], "x", "1") == 0 && eg_ask_body(out[..], EG_SPOTS, lines[..], "x", "1") == 0;
+  // a note goes as the scene, escaped as the rest
+  noted_buf: [4096] u8;
+  m := eg_ask_body_note(noted_buf[..], 17, lines[..], "Well?", "1", "They came from the \"board\".");
+  noted := cast(string) noted_buf[0..<m];
+  #assert contains_text(noted, "{\"npc\":\"brother-anselm\",") && contains_text(noted, ",\"scene\":\"They came from the \\\"board\\\".\",\"history\"");
+}
+
+contains_text :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}

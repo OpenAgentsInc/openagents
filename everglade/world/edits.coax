@@ -25,7 +25,7 @@
 // named person, or a whole group ("these crates": eg_remove_pick).
 //   coax/bin/coax test --library everglade/world/edits.coax --steps 3000000000
 
-#load "../legacy/v1/people.coax";
+#load "people.coax";
 
 // The catalogue (eg-voice-verbs): every thing an admin may place, by its
 // index. The server's selector names them the same way, in the same order

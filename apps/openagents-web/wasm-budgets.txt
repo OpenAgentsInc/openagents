@@ -106,9 +106,7 @@ deadgears 520000
 droprealm 190000
 # everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
 # The jump clips in everglade/scene/people-rig.coax (da98ab3915): 1,909,780 bytes measured 2026-11-07; about 5% headroom.
-everglade 2000000
 # /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; 2,166,756 on 2026-11-05 before the PARTY pane, 2,175,433 with it (#12852); 2,181,339 before the page's own raid battle and rules battle went (#12908), 2,041,247 after; about 5% room; 2,165,018 on 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd)
-everglade5e 2250000
 # the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131); 1,257,728 after #12837; 1,002,703 once the rigs' clips load at the first pose (the room poses no one); about 5% room
 # The shared movement step and versioned J1 input: 1,067,794 measured 2026-11-06; about 5% room.
 # 1,123,731 on 2026-11-08 after the engine's spell access and prepared-spell checks; about 5% room.
@@ -164,7 +162,6 @@ fairy 695000
 # The testui HUD harvest (#13147: unit and target frames, health trails, slot sweeps, the red edges):
 # 3,013,263 bytes measured on the remote hosts; about 1% headroom.
 # Mount collision and driver diagnostics (#13491): retain about 3% headroom.
-fivelab 3200000
 # Bitcoin Lab's walk (bitcoin-lab-walk.coax): an Everglade zone as the range's, bare and level, with the
 # lesson (the book's SHA-256, hex and base64), the pixel face and the stations' quads. Measured below.
 bitcoin-lab-walk 2950000
@@ -242,7 +239,6 @@ everglade2 1260000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 # 1,757,350 bytes measured 2026-11-09 at 1f648c6a67 after the day's shared rules, visibility, sprint and HUD work; about 4% headroom.
-fivemmo 1830000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room
 fixture 210000
 # The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 302,932 bytes.

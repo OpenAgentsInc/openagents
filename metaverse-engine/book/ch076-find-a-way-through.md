@@ -394,7 +394,7 @@ the costs a search lowers.
   Gears' own walking grid (`NAV_CELL` 0.5 m, 64 × 76 cells, `NAV_CLEAR`
   0.38 m) and its three flow fields: to you, to where the support engineer
   heads, and to the reactor.
-- [everglade/legacy/v1/plan.coax](../../everglade/legacy/v1/plan.coax),
+- [everglade/world/plan.coax](../../everglade/world/plan.coax),
   [routines.coax](../../everglade/legacy/v1/routines.coax) and
   [guide-route.coax](../../everglade/npc/guide-route.coax): Everglade's
   street graph, daily walks at `FOLK_WALK` (1.2 m/s), and the route a

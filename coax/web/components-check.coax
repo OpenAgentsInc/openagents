@@ -50,12 +50,9 @@ CcMove :: struct { path: string; does: int; }
 // Still to move, as of 2026-11-10. Each reads Markdown's marks itself, wraps
 // text itself or keeps its own edit buffer. Take a line out when its file
 // uses components/ instead.
-CC_TO_MOVE :: [21] CcMove.[
+CC_TO_MOVE :: [18] CcMove.[
   CcMove.{path = "metaverse-engine/ui/hud-menu.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/builder.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/old/v1/everglade-events.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/old/v1/everglade-room.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/old/v1/everglade-voice.coax", does = CC_WRAP},
   CcMove.{path = "metaverse-engine/ui/font.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/memorial.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/myrealm.coax", does = CC_WRAP},

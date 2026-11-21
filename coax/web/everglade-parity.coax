@@ -213,12 +213,12 @@ ep_row :: (row: string, a: string, b: string, c: string) -> bool {
 }
 // The burn-down row for a zone-local copy (feature, file, symbol; "-" for a file's name), or -1.
 ep_known :: (feature: string, file: string, symbol: string) -> int {
-  for d, i: EF_KNOWN { if ep_row(d, feature, file, symbol) { return i; } }
+  for d, i: EF_KNOWN { if d.count > 0 && ep_row(d, feature, file, symbol) { return i; } }
   return -1;
 }
 // The gap row for a zone lacking a required feature, or -1.
 ep_gap :: (zone: string, feature: string) -> int {
-  for g, i: EF_GAPS { if ep_row(g, zone, feature, "") { return i; } }
+  for g, i: EF_GAPS { if g.count > 0 && ep_row(g, zone, feature, "") { return i; } }
   return -1;
 }
 EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
@@ -230,8 +230,9 @@ EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
     while ep_word(z.uses, k).count > 0 { #assert ep_feature(ep_word(z.uses, k)) >= 0; k += 1; }
   }
   #assert EF_KNOWN.count <= EP_KNOWN_MAX;
-  for d: EF_KNOWN { #assert ep_feature(ep_word(d, 0)) >= 0 && EF_FEATURES[ep_feature(ep_word(d, 0))].issue > 0 && ep_word(d, 2).count > 0 && ep_word(d, 3).count == 0; }
+  for d: EF_KNOWN { if d.count > 0 { #assert ep_feature(ep_word(d, 0)) >= 0 && EF_FEATURES[ep_feature(ep_word(d, 0))].issue > 0 && ep_word(d, 2).count > 0 && ep_word(d, 3).count == 0; } }
   for g: EF_GAPS {
+    if g.count == 0 { continue; }
     f := ep_feature(ep_word(g, 1));
     #assert f >= 0 && EF_FEATURES[f].required && EF_FEATURES[f].issue > 0;
     zone_ok := false; for z: EF_ZONES { if z.name == ep_word(g, 0) { zone_ok = true; #assert !ep_has_word(z.uses, ep_word(g, 1)); } }
@@ -247,8 +248,8 @@ EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
   #assert !ep_row("dash a/b.coax AB_DASH x", "dash", "a/b.coax", "AB_DASH") && !ep_row("dash a/b.coax", "dash", "a/b.coax", "-");
   #assert ep_row("everglade-v1 bow", "everglade-v1", "bow", "") && !ep_row("everglade-v1 bow x", "everglade-v1", "bow", "") && !ep_row("everglade-v1 bo", "everglade-v1", "bow", "");
   // every row is found as itself: no row twice
-  for d, i: EF_KNOWN { #assert ep_known(ep_word(d, 0), ep_word(d, 1), ep_word(d, 2)) == i; }
-  for g, i: EF_GAPS { #assert ep_gap(ep_word(g, 0), ep_word(g, 1)) == i; }
+  for d, i: EF_KNOWN { if d.count > 0 { #assert ep_known(ep_word(d, 0), ep_word(d, 1), ep_word(d, 2)) == i; } }
+  for g, i: EF_GAPS { if g.count > 0 { #assert ep_gap(ep_word(g, 0), ep_word(g, 1)) == i; } }
 }
 #test "zones and owners by path" {
   z := EfZone.{name = "t", paths = "everglade/client/ everglade/server/", entries = "everglade/client/client.coax", uses = ""};
@@ -386,7 +387,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("FAIL content: everglade/content/previous.coax is not everglade/content/everglade.previous.content's bytes; write it again: coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n");
   }
   for d, k: EF_KNOWN {
-    if !seen[k] { print("burned down: \"%\" is no longer found; take it off EF_KNOWN (everglade/features.coax)\n", d); }
+    if d.count > 0 && !seen[k] { print("burned down: \"%\" is no longer found; take it off EF_KNOWN (everglade/features.coax)\n", d); }
   }
   print("everglade-parity: % zones, % features: % new problem%; burn-down % zone-local cop%, % gap%\n", EF_ZONES.count, EF_FEATURES.count,
     fails, ifx fails == 1 then "" else "s", burn, ifx burn == 1 then "y" else "ies", gaps, ifx gaps == 1 then "" else "s");

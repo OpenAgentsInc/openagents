@@ -54,7 +54,7 @@
 // each lamp: x, y, z, reach; r, g, b, strength
 // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, deck top (m), buildings in solid (everglade.coax weather_frame)
 // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
-// W6 (everglade/legacy/v1/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
+// W6 (everglade/world/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
 // above, below, the water's speed over the sill), the rowboats' hulls (x, z, yaw, on), the wakes'
 // trails (2 movers, 8 points each: x, z, when, speed; the newest first), then 64 particles (x, y, z,
 // size; kind, alpha, age's share)
@@ -2423,7 +2423,7 @@ eg_fountain_fall :: (k:u32,jet:bool,v:f32,u:[]f32)->EgFall {
   f.radius=mix(0.075f32,0.05f32,v);
   return f;
 }
-// ---- the ponds (everglade/legacy/v1/plan.coax EG_POND; docs/metaverse/water.md, W3): still water at each one's
+// ---- the ponds (everglade/world/plan.coax EG_POND; docs/metaverse/water.md, W3): still water at each one's
 // level over its carved bowl, 8 wedges an instance of rings and sectors out to 0.3 m past its rim; a
 // quad whose corners all stand on dry ground is not drawn. Part 6, in the painted look.
 EG_POND_PART :: cast(u32)6;
@@ -2636,7 +2636,7 @@ eg_fountain_fall_shade :: (i:EgWaterOut,part:u32,u:[]f32,shadow_map:TexDepth,sha
   o.transmit=wg_make_f3_f(1.0f32-alpha);
   return o;
 }
-// ---- W6: the weir's falling sheet and the water's particles (everglade/legacy/v1/river.coax)
+// ---- W6: the weir's falling sheet and the water's particles (everglade/world/river.coax)
 EG_WEIR_PART :: cast(u32)7;
 EG_FX_PART :: cast(u32)8;
 // The sheet over the weir's sill: across the water's width, falling as thrown water does from the level

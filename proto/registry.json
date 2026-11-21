@@ -3402,7 +3402,7 @@
       "sql": [
         "coax/web/api/migrations/0157_npc_ask_keyed.sql"
       ],
-      "note": "The NPC ask, POST /api/playtest/npc/ask, and its answer (#13261). wire.coax writes and reads both; Everglade (everglade/legacy/v1/people.coax), Fairy Forest (metaverse/fairy-forest/talk.coax), the Haunted House (apps/openagents-web/realm.coax) and made realms (apps/openagents-web/myrealm.coax) call it. A hand codec: history is written even when empty and a control byte is written as a space. test_npc.py posts every fixture to the API and gets its status."
+      "note": "The NPC ask, POST /api/playtest/npc/ask, and its answer (#13261). wire.coax writes and reads both; Everglade (everglade/world/people.coax), Fairy Forest (metaverse/fairy-forest/talk.coax), the Haunted House (apps/openagents-web/realm.coax) and made realms (apps/openagents-web/myrealm.coax) call it. A hand codec: history is written even when empty and a control byte is written as a space. test_npc.py posts every fixture to the API and gets its status."
     },
     {
       "id": "npc-ask-v1",
@@ -3573,8 +3573,7 @@
         "proto/verse/realm-made-v1.json",
         "apps/openagents-web/builder.coax",
         "apps/openagents-web/myrealm.coax",
-        "apps/openagents-cli/realm.coax",
-        "apps/openagents-web/old/v1/everglade-fork.coax"
+        "apps/openagents-cli/realm.coax"
       ],
       "tests": [
         "proto/verse/realm-made-v1.json",
@@ -4231,13 +4230,13 @@
         "metaverse-engine/anim/direction.coax",
         "apps/openagents-cli/labs-anim-direct.coax",
         "metaverse/animlab/direct.coax",
-        "apps/openagents-web/old/labs/animationlab-face.c"
+        "apps/openagents-web/labs/animationlab-face.c"
       ],
       "tests": [
         "coax/web/api/anime-director-profile.coax",
         "metaverse-engine/anim/direction-select-checks.coax"
       ],
-      "note": "The animation director, POST /api/playtest/labs/anim/direct (#13250): anim.direct.request.v1 and anim.direct.reply.v1 (AnimeLabsAnimDirectPostRequest, AnimeLabsAnimDirectPost and AnimDirection in proto/openagents/api/v1alpha1/anime.proto). direction-select.coax reads the request (ads_input), writes the reply (ads_finish) and reads it (ads_reply_read); the CLI (openagents labs anim direct) and the old Animation Lab page (old/labs/animationlab-face.c, through al_direct_* and ads_reply) read through it. The fixture file also holds the anime director's real answers and requests. The request is still written in direction.coax (ad_request), which needs the scene project."
+      "note": "The animation director, POST /api/playtest/labs/anim/direct (#13250): anim.direct.request.v1 and anim.direct.reply.v1 (AnimeLabsAnimDirectPostRequest, AnimeLabsAnimDirectPost and AnimDirection in proto/openagents/api/v1alpha1/anime.proto). direction-select.coax reads the request (ads_input), writes the reply (ads_finish) and reads it (ads_reply_read); the CLI (openagents labs anim direct) and the old Animation Lab page (labs/animationlab-face.c, through al_direct_* and ads_reply) read through it. The fixture file also holds the anime director's real answers and requests. The request is still written in direction.coax (ad_request), which needs the scene project."
     },
     {
       "id": "systemone-request-json",

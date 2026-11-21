@@ -484,7 +484,7 @@ Before this module, each realm kept its own accumulator:
   ([apps/openagents-web/verse.coax](../../apps/openagents-web/verse.coax)):
   f32, 1/60 s, at most 0.1 s owed.
 - The floats on Everglade's river
-  ([everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax)) and Fairy
+  ([everglade/world/river.coax](../../everglade/world/river.coax)) and Fairy
   Forest's lily pads
   ([metaverse/fairy-forest/stream.coax](../../metaverse/fairy-forest/stream.coax)):
   f64, 1/120 s, 0.25 s, eight steps, and the whole backlog thrown away at

@@ -31,7 +31,12 @@ CN_FILES=(everglade/features.coax coax/web/components-check.coax proto/wire-allo
 CN_NAMES="parity-known parity-gaps components-to-move wire-allowlist tools-port layer-engine-up layer-everglade-up layer-tests layer-context sql-rules-routes"
 cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is left out)
   local r="$1"
-  git show "$r:everglade/features.coax" 2> /dev/null | sed -nE 's/^EF_KNOWN :: \[([0-9]+)\].*/parity-known \1/p; s/^EF_GAPS :: \[([0-9]+)\].*/parity-gaps \1/p'
+  git show "$r:everglade/features.coax" 2> /dev/null | awk '
+    /^EF_KNOWN_COUNT :: [0-9]+/ { sub(/^EF_KNOWN_COUNT :: /, ""); sub(/;.*/, ""); pk = $0; next }
+    /^EF_GAPS_COUNT :: [0-9]+/  { sub(/^EF_GAPS_COUNT :: /, "");  sub(/;.*/, ""); pg = $0; next }
+    /^EF_KNOWN :: \[[0-9]+\]/ && pk == "" { sub(/^EF_KNOWN :: \[/, ""); sub(/\].*/, ""); pk = $0 }
+    /^EF_GAPS :: \[[0-9]+\]/  && pg == "" { sub(/^EF_GAPS :: \[/, "");  sub(/\].*/, ""); pg = $0 }
+    END { if (pk != "") print "parity-known " pk; if (pg != "") print "parity-gaps " pg }'
   git show "$r:coax/web/components-check.coax" 2> /dev/null | sed -nE 's/^CC_TO_MOVE :: \[([0-9]+)\].*/components-to-move \1/p'
   local f n
   for f in wire-allowlist:proto/wire-allowlist.txt tools-port:coax/tools-port.txt; do

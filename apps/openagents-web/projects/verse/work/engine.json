@@ -363,10 +363,10 @@
         "everglade",
         "water"
       ],
-      "body": "Phase W3 of verse-water (#c278), adapted to today's Everglade (everglade/legacy/v1/plan.coax: a 4 m river the length of the world, one bridge at the river crossing). The river becomes a W1 river body with its level profile and generated flow field (water_flow_river), drawn with W2; its bed is carved into the ground; the player wades and swims (metaverse-engine/move/player.coax keeps its land speeds), holds breath under water, and ducks and lily pads float on it by buoyancy. plan.coax's reachability checks say deliberately what the river now allows.",
+      "body": "Phase W3 of verse-water (#c278), adapted to today's Everglade (everglade/world/plan.coax: a 4 m river the length of the world, one bridge at the river crossing). The river becomes a W1 river body with its level profile and generated flow field (water_flow_river), drawn with W2; its bed is carved into the ground; the player wades and swims (metaverse-engine/move/player.coax keeps its land speeds), holds breath under water, and ducks and lily pads float on it by buoyancy. plan.coax's reachability checks say deliberately what the river now allows.",
       "files": [
-        "everglade/legacy/v1/plan.coax",
-        "everglade/legacy/v1/river.coax",
+        "everglade/world/plan.coax",
+        "everglade/world/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "docs/metaverse/everglade.md",
@@ -530,7 +530,7 @@
       "files": [
         "metaverse/water.coax",
         "metaverse/water-look.coax",
-        "everglade/legacy/v1/river.coax",
+        "everglade/world/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
         "docs/metaverse/water.md"
@@ -557,8 +557,8 @@
       ],
       "body": "The rest of phase W3 of verse-water (#c278) as verse/everglade/previous/water.md has it (its W3 row, \"Swimming and wading\", \"Breath and suffocation\", \"Rowboats\"), past the river already shipped: Everglade's four ponds swimmable with carved beds, Glade Run's level profile and generated flow field, the weir as a cascade with a plunge pool, swimming and wading for players and NPCs under SRD 5.2.1 (metaverse/rules/srd5.coax), breath and suffocation, every bank blocker removed, floating ducks and lily pads, and rowboat props.",
       "files": [
-        "everglade/legacy/v1/plan.coax",
-        "everglade/legacy/v1/river.coax",
+        "everglade/world/plan.coax",
+        "everglade/world/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
@@ -611,7 +611,7 @@
       "body": "Phase W8 of verse-water (#c278) by previous/water.md \"Spells and water\": the ice states and freezing table, the other spells' effects on water, Control Water's four modes, Create or Destroy Water, Water Walk, Water Breathing, the lightning conduction rule, and fire meets water. Built against the spell definitions of the spells worker (metaverse/rules/srd5.coax, the spell bar).",
       "files": [
         "metaverse/water.coax",
-        "everglade/legacy/v1/river.coax",
+        "everglade/world/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
         "docs/metaverse/water.md"

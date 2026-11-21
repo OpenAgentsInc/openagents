@@ -67,7 +67,7 @@ fi
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
-    libraries=("$root/metaverse-engine/move/player.coax" "$root/metaverse/grid.coax" "$root/everglade/legacy/v1/river.coax" "$root/everglade/npc/guard-guide-policy.coax") ;;
+    libraries=("$root/metaverse-engine/move/player.coax" "$root/metaverse/grid.coax" "$root/everglade/world/river.coax" "$root/everglade/npc/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
   # the Grid (/realms/the-grid, the homepage's module): its session (metaverse/gridwalk.coax, which
@@ -144,7 +144,7 @@ if [[ -x "$coax" ]]; then
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
-  # A face kept in a folder (old/labs/, #13269) names the site's flat headers as ../../X.h, and a
+  # A face kept in a folder (labs/, #13269) names the site's flat headers as ../../X.h, and a
   # realm's face outside the site (metaverse/splice-bots/) as ../../apps/openagents-web/X.h; here
   # they sit beside it.
   sed -i.bak -E 's|^#include "(\.\./)+(apps/openagents-web/)?([^/"]+\.h)"|#include "\3"|' "$out/$(basename "$face")" && rm -f "$out/$(basename "$face").bak"

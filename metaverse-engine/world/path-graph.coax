@@ -15,7 +15,7 @@
 #load "route-graph.coax";   // the search over the links, and the way round walls (metaverse_route_seen)
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden
-// moves it out and eases it (everglade/legacy/v1/plan.coax).
+// moves it out and eases it (everglade/world/plan.coax).
 // rows, when set, makes the ground a rectangle: n cells west to east and
 // rows south to north ((n + 1) * (rows + 1) heights, still by rows from the
 // south); 0 keeps it square.

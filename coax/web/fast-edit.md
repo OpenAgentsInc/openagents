@@ -26,7 +26,7 @@ COAX_FAST_EDIT="$session" COAXIAL_MODE=dev \
   apps/openagents-web/everglade5e-face.c \
   apps/openagents-web/build/everglade5e.wasm \
   everglade/shared/everglade-step.coax metaverse/grid.coax \
-  everglade/legacy/v1/river.coax everglade/npc/guard-guide-policy.coax \
+  everglade/world/river.coax everglade/npc/guard-guide-policy.coax \
   apps/openagents-web/old/v1/everglade5e-rules.coax
 ```
 

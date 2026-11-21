@@ -34,7 +34,7 @@ A page is one line of `build.sh`: its entry (`NAME.coax`), its face
   `speedrunhud/`, `stair/`, `villa/`, `worldbuilder/`. Put a new part there.
 - **The old set is under `old/`** (#13269): `old/v1/` is v1 Everglade and the
   5E pages on it, `old/experimental/` is Experimental and the 5E Lab,
-  `old/labs/` is the lab pages and the engine fixtures. The default build
+  `labs/` is the lab pages and the engine fixtures. The default build
   makes none of them; `COAXIAL_PAGES=all` (a release) makes them all, and
   `coax/remote/check.sh module NAME` makes one. Three entries stay flat
   because a renderer carrier or a native build finds them by name:
