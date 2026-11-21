@@ -295,14 +295,17 @@ cp_git_toolbar :: (s: [] CoderPage, f: [] UiFrame, min_x: f32, right_x: f32, cy:
   busy_text := ifx g[0].busy_label_n > 0 then cast(string) g[0].busy_label[0..<g[0].busy_label_n] else "Git…";
   w_busy := ifx g[0].busy then cp_foot_chip_width(f, -1, busy_text, false) else 0.0f32;
 
-  // Decide whether full inline action buttons fit or collapse to the compact Git menu chip
+  // Decide whether full inline action buttons fit, keep Commit visible on medium widths
+  // (e.g., worktree branch + right-hand pane open), or collapse to the compact Git menu chip (#13904).
   full_w := w_br + gap + w_mode + gap + (ifx g[0].busy then w_busy else w_commit + gap + w_push + gap + w_pull + gap + w_pr + gap + w_more);
+  commit_w := w_br + gap + w_mode + gap + (ifx g[0].busy then w_busy else w_commit + gap + w_more);
   compact_w := w_br + gap + w_mode + gap + (ifx g[0].busy then w_busy else w_more);
   show_inline := full_w <= avail;
-  show_mode := compact_w <= avail;
+  show_commit := !show_inline && commit_w <= avail;
+  show_mode := show_inline || show_commit || compact_w <= avail;
 
   // Lay out from right_x leftward so it hugs the right-side review/copy icons cleanly
-  total := ifx show_inline then full_w else ifx show_mode then compact_w else w_br + gap + (ifx g[0].busy then w_busy else w_more);
+  total := ifx show_inline then full_w else ifx show_commit then commit_w else ifx show_mode then compact_w else w_br + gap + (ifx g[0].busy then w_busy else w_more);
   if total > avail { total = avail; }
   x := right_x - total;
   if x < min_x { x = min_x; }
@@ -329,9 +332,11 @@ cp_git_toolbar :: (s: [] CoderPage, f: [] UiFrame, min_x: f32, right_x: f32, cy:
     }
     return;
   }
-  if show_inline {
+  if show_inline || show_commit {
     _ := cp_foot_chip(f, "coder.git.commit", "Stage and commit changes", x, ty, w_commit, -1, "Commit", false, 0, CP_GIT_COMMIT);
     x += w_commit + gap;
+  }
+  if show_inline {
     _ := cp_foot_chip(f, "coder.git.push", "Push branch to remote", x, ty, w_push, -1, "Push", false, 0, CP_GIT_PUSH);
     x += w_push + gap;
     _ := cp_foot_chip(f, "coder.git.pull", "Pull from remote", x, ty, w_pull, -1, "Pull", false, 0, CP_GIT_PULL);

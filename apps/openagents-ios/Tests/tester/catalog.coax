@@ -1,0 +1,57 @@
+// iOS Mobile Surface Register & Built-in Simulator Tester Agent Definition
+// (docs/apps/2026-11-20-simulated-tester-spec.md §7.2, §8.2; GitHub #13905).
+#load "../../../../coax/lib/agent/tester/schema.coax";
+
+IOS_SCENARIO_COUNT :: 7;
+
+IosScenario :: struct {
+  id: string;
+  area: string;
+  title: string;
+  required: bool;
+}
+
+ios_scenarios :: () -> [IOS_SCENARIO_COUNT] IosScenario {
+  return [IOS_SCENARIO_COUNT] IosScenario.[
+    IosScenario.{id = "ios.launch.cold", area = "launch", title = "Install and launch OpenAgents iOS on headless simulator, capture non-blank frame", required = true},
+    IosScenario.{id = "ios.nav.sidebar-drawer", area = "navigation", title = "Tap nav button to open sidebar drawer, swipe to dismiss", required = true},
+    IosScenario.{id = "ios.input.composer-type", area = "input", title = "Tap composer, type message via HID text, verify keyboard & draft", required = true},
+    IosScenario.{id = "ios.appearance.light-dark", area = "appearance", title = "Switch light and dark appearance via oasim and verify render stability", required = true},
+    IosScenario.{id = "ios.lifecycle.rotate", area = "lifecycle", title = "Rotate portrait -> landscape -> portrait via oasim", required = true},
+    IosScenario.{id = "ios.lifecycle.background-resume", area = "lifecycle", title = "Press Home to background, relaunch app, verify clean resume", required = true},
+    IosScenario.{id = "ios.accessibility.describe", area = "accessibility", title = "Query oasim describe accessibility tree for interactive UI elements", required = true}
+  ];
+}
+
+ios_agent_definition :: () -> ArDefRecord {
+  return ArDefRecord.{
+    agent_id = "ios-sim-tester",
+    name = "iOS Simulator Tester",
+    description = "Deterministic Coax agent driving compiled OpenAgents iOS on headless CoreSimulator via oasim",
+    version = 1,
+    kind = "tester",
+    execution_mode = "deterministic",
+    runtime = "coax-tool:apps/shared/tester/cli.coax",
+    input_contract = "tester.run_request.v1",
+    output_contract = "tester.result.v1",
+    max_depth = 2,
+    max_concurrency = 4,
+    budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+    model_hint = ""
+  };
+}
+
+#test "ios surface register has unique non-empty ids and valid agent definition" {
+  sc := ios_scenarios();
+  for i: 0..<IOS_SCENARIO_COUNT {
+    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].title.count > 0 && sc[i].required;
+    for j: i + 1..<IOS_SCENARIO_COUNT {
+      #assert sc[i].id != sc[j].id;
+    }
+  }
+  d := ios_agent_definition();
+  #assert ar_kind_of(d.kind) == AR_KIND_TESTER;
+  #assert ar_mode_of(d.execution_mode) == AR_MODE_DETERMINISTIC;
+  #assert d.version == 1 && d.max_depth == 2 && d.max_concurrency == 4;
+  #assert d.budget.wall_ms == 300000 && d.budget.turns == 0 && d.budget.tokens == 0 && d.budget.cost_usd_e6 == 0;
+}

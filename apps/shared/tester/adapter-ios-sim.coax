@@ -1,0 +1,262 @@
+// iOS Simulator Adapter for the Simulated App Tester (Phase 2A)
+// (docs/apps/2026-11-20-simulated-tester-spec.md §7.2; GitHub #13905).
+//
+// Starts an isolated `oasim serve` helper with its own throwaway OA_SIM_HOME and AF_UNIX socket
+// (never touching the owner's ~/.openagents/sim or Simulator.app) and speaks `simhost-lines-v1`
+// directly as client "app".
+#load "adapter-desktop.coax";
+
+IosSession :: struct {
+  repo_dir: [DA_PATH] u8; repo_n: int;
+  out_dir: [DA_PATH] u8; out_n: int;
+  sim_home: [DA_PATH] u8; sim_home_n: int;
+  sock_path: [DA_PATH] u8; sock_n: int;
+  app_path: [DA_PATH] u8; app_n: int;
+  device: [128] u8; device_n: int;
+  udid: [64] u8; udid_n: int;
+  bundle_id: [128] u8; bundle_n: int;
+  obs_file: [DA_PATH] u8; obs_n: int;
+  act_file: [DA_PATH] u8; act_n: int;
+  res_file: [DA_PATH] u8; res_n: int;
+  last_shot: [256] u8; last_shot_n: int;
+  helper_h: int;
+  conn_h: int;
+  rx_buf: [65536] u8;
+  rx_n: int;
+  req_id: int;
+  seq: int;
+  act_seq: int;
+  started_ms: int;
+}
+
+// Read one newline-delimited JSON line from s.conn_h, preserving any trailing bytes in s.rx_buf.
+ios_next_line :: (s: [] IosSession, out: [] u8, timeout_ms: int) -> int {
+  deadline := proc_now_ms() + timeout_ms;
+  while true {
+    for i: 0..<s[0].rx_n {
+      if s[0].rx_buf[i] != 10 { continue; }
+      n := ifx i < out.count then i else out.count;
+      for k: 0..<n { out[k] = s[0].rx_buf[k]; }
+      rest := s[0].rx_n - i - 1;
+      for j: 0..<rest { s[0].rx_buf[j] = s[0].rx_buf[i + 1 + j]; }
+      s[0].rx_n = rest;
+      return n;
+    }
+    left := deadline - proc_now_ms();
+    if left <= 0 { return -1; }
+    got := cxsock_read(s[0].conn_h, ifx left > 500 then 500 else left);
+    if got == -2 { continue; }
+    if got <= 0 { return -1; }
+    for i: 0..<got {
+      if s[0].rx_n < s[0].rx_buf.count {
+        s[0].rx_buf[s[0].rx_n] = cast(u8) cxsock_byte(s[0].conn_h, i);
+        s[0].rx_n += 1;
+      }
+    }
+  }
+  return -1;
+}
+
+// Send a simhost-lines-v1 JSON request, skipping async event lines until we get the reply with matching id.
+ios_rpc :: (s: [] IosSession, op: string, extra_json: string, out: [] u8, timeout_ms: int) -> int {
+  if s[0].conn_h < 0 { return -1; }
+  s[0].req_id += 1;
+  want_id := s[0].req_id;
+  req: [4096] u8;
+  j: [1] Jo;
+  jo_start(j[..], req[..]);
+  jo_put(j[..], "{\"id\":");
+  jo_int(j[..], want_id);
+  jo_put(j[..], ",\"op\":");
+  jo_str(j[..], op);
+  if extra_json.count > 0 {
+    jo_put(j[..], ",");
+    jo_put(j[..], extra_json);
+  }
+  jo_put(j[..], "}");
+
+  for c: cast(string) req[0..<j[0].n] { _ = cxsock_write(s[0].conn_h, cast(int) c); }
+  _ = cxsock_write(s[0].conn_h, 10);
+  if cxsock_flush(s[0].conn_h, timeout_ms) < 0 { return -1; }
+
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left <= 0 { break; }
+    total := ios_next_line(s, out, left);
+    if total < 0 { return -1; }
+    if total == 0 { continue; }
+    nodes: [512] JvNode;
+    doc: [1] Jv;
+    if jv_parse(doc[..], cast(string) out[0..<total], nodes[..]) {
+      rid := jv_int(doc[0], jv_get(doc[0], 0, "id"), -1);
+      if rid == want_id { return total; }
+    }
+  }
+  return -1;
+}
+
+ios_start :: (s: [] IosSession, repo: string, app_path: string, device: string, bundle_id: string, out_dir: string) -> bool {
+  s[0].repo_n = da_copy_into(s[0].repo_dir[..], repo);
+  s[0].out_n = da_copy_into(s[0].out_dir[..], out_dir);
+  s[0].app_n = da_copy_into(s[0].app_path[..], app_path);
+  s[0].device_n = da_copy_into(s[0].device[..], device);
+  s[0].bundle_n = da_copy_into(s[0].bundle_id[..], bundle_id);
+  s[0].udid_n = 0;
+  s[0].helper_h = -1;
+  s[0].conn_h = -1;
+  s[0].rx_n = 0;
+  s[0].req_id = 0;
+  s[0].seq = 0;
+  s[0].act_seq = 0;
+  s[0].started_ms = proc_now_ms();
+
+  b1: [1] DaBuf;
+  _ = fs_mkdir_all(out_dir);
+  _ = fs_mkdir_all(da_cat(b1[..], out_dir, "/screenshots"));
+  shome := da_cat(b1[..], out_dir, "/simhome");
+  _ = fs_mkdir_all(shome);
+  s[0].sim_home_n = da_copy_into(s[0].sim_home[..], shome);
+
+  ib: [32] u8;
+  sock := da_cat3(b1[..], "/tmp/oa-sim-", da_int_str(proc_now_ms() % 1000000, ib[..]), ".sock");
+  s[0].sock_n = da_copy_into(s[0].sock_path[..], sock);
+  _ = fs_remove(sock);
+
+  s[0].obs_n = da_copy_into(s[0].obs_file[..], da_cat(b1[..], out_dir, "/observations.jsonl"));
+  s[0].act_n = da_copy_into(s[0].act_file[..], da_cat(b1[..], out_dir, "/actions.jsonl"));
+  s[0].res_n = da_copy_into(s[0].res_file[..], da_cat(b1[..], out_dir, "/results.jsonl"));
+
+  // Ensure oasim is built, then launch isolated `oasim serve` with our throwaway OA_SIM_HOME & OA_SIM_SOCKET.
+  build_cmd: [1024] u8;
+  bj: [1] Jo;
+  jo_start(bj[..], build_cmd[..]);
+  jo_put(bj[..], "'"); jo_put(bj[..], repo); jo_put(bj[..], "/coax/web/tool.sh' '");
+  jo_put(bj[..], repo); jo_put(bj[..], "/coder/tui/oasim.coax' help >/dev/null 2>&1 || true");
+  _ = da_run_sh(cast(string) build_cmd[0..<bj[0].n], 30000);
+
+  h := proc_new();
+  if h < 0 { return false; }
+  _ = proc_arg(h, da_cat(b1[..], repo, "/coax/web/tool.sh"));
+  _ = proc_arg(h, da_cat(b1[..], repo, "/coder/tui/oasim.coax"));
+  _ = proc_arg(h, "serve");
+  _ = proc_env(h, da_cat(b1[..], "OA_SIM_HOME=", da_slice(s[0].sim_home[..], s[0].sim_home_n)));
+  _ = proc_env(h, da_cat(b1[..], "OA_SIM_SOCKET=", da_slice(s[0].sock_path[..], s[0].sock_n)));
+  _ = proc_quiet(h);
+  if proc_start(h) != 0 { _ = proc_release(h); return false; }
+  s[0].helper_h = h;
+
+  // Poll until isolated simhost.sock accepts connection.
+  deadline := proc_now_ms() + 10000;
+  sock_s := da_slice(s[0].sock_path[..], s[0].sock_n);
+  while proc_now_ms() < deadline {
+    for c: sock_s { _ = cxsock_host_push(cast(int) c); }
+    ch := cxsock_connect_unix(500);
+    if ch >= 0 { s[0].conn_h = ch; break; }
+    proc_sleep(150);
+  }
+  if s[0].conn_h < 0 {
+    tool_errln("ios-sim-adapter: isolated oasim serve did not bind socket within 10s");
+    return false;
+  }
+
+  hex: [2048] u8;
+  hj: [1] Jo;
+  jo_start(hj[..], hex[..]);
+  jo_put(hj[..], "\"client\":\"app\",\"version\":1,\"folder\":");
+  jo_str(hj[..], repo);
+  rep: [DA_REPLY] u8;
+  hn := ios_rpc(s, "hello", cast(string) hex[0..<hj[0].n], rep[..], 20000);
+  if hn <= 0 || !da_json_ok(cast(string) rep[0..<hn]) {
+    tool_errln("ios-sim-adapter: hello failed");
+    if hn > 0 { tool_errln(cast(string) rep[0..<hn]); }
+    return false;
+  }
+  return true;
+}
+
+ios_stop :: (s: [] IosSession) {
+  if s[0].conn_h >= 0 {
+    rep: [1024] u8;
+    _ = ios_rpc(s, "quit", "", rep[..], 1500);
+    _ = cxsock_close(s[0].conn_h);
+    s[0].conn_h = -1;
+  }
+  if s[0].helper_h >= 0 {
+    st := proc_wait(s[0].helper_h, 2000);
+    if st == PROC_RUNNING {
+      _ = proc_kill(s[0].helper_h, PROC_SIGTERM);
+      _ = proc_wait(s[0].helper_h, 1500);
+    }
+    _ = proc_release(s[0].helper_h);
+    s[0].helper_h = -1;
+  }
+  if s[0].sock_n > 0 { _ = fs_remove(da_slice(s[0].sock_path[..], s[0].sock_n)); }
+}
+
+ios_act :: (s: [] IosSession, op: string, target: string, extra_json: string, lease_ms: int, reply_out: [] u8) -> bool {
+  s[0].act_seq += 1;
+  // Inject "device":"..." automatically for device ops.
+  full_extra: [2048] u8;
+  ej: [1] Jo;
+  jo_start(ej[..], full_extra[..]);
+  if s[0].device_n > 0 && op != "list" && op != "hello" && op != "quit" {
+    jo_put(ej[..], "\"device\":");
+    jo_str(ej[..], da_slice(s[0].device[..], s[0].device_n));
+    if extra_json.count > 0 { jo_put(ej[..], ","); }
+  }
+  if extra_json.count > 0 { jo_put(ej[..], extra_json); }
+
+  n := ios_rpc(s, op, cast(string) full_extra[0..<ej[0].n], reply_out, 30000);
+  ok := n > 0 && da_json_ok(cast(string) reply_out[0..<n]);
+  ib: [32] u8;
+  aid_buf: [1] DaBuf;
+  aid := da_cat(aid_buf[..], "ios-act-", da_int_str(s[0].act_seq, ib[..]));
+  detail := ifx n > 0 then cast(string) reply_out[0..<(ifx n > 240 then 240 else n)] else "simhost_no_reply";
+  a := TsAction.{
+    action_id = aid, source_seq = s[0].seq, op = op, target = target,
+    text = cast(string) full_extra[0..<ej[0].n], x = 0, y = 0, lease_ms = lease_ms,
+    ts_ms = proc_now_ms() - s[0].started_ms, ok = ok, detail = detail
+  };
+  jb: [TS_BUF] u8;
+  jn := ts_write_action(a, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].act_file[..], s[0].act_n), cast(string) jb[0..<jn]); }
+  return ok;
+}
+
+ios_observe :: (s: [] IosSession, shot_name: string, note: string, obs_out: [] TsObservation) -> bool {
+  s[0].seq += 1;
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  rel := da_cat3(b1[..], "screenshots/", shot_name, ".png");
+  full := da_cat3(b2[..], da_slice(s[0].out_dir[..], s[0].out_n), "/", rel);
+  ex: [1024] u8;
+  ej: [1] Jo;
+  jo_start(ej[..], ex[..]);
+  jo_put(ej[..], "\"device\":"); jo_str(ej[..], da_slice(s[0].device[..], s[0].device_n));
+  jo_put(ej[..], ",\"out\":"); jo_str(ej[..], full);
+  rep: [4096] u8;
+  n := ios_rpc(s, "screenshot", cast(string) ex[0..<ej[0].n], rep[..], 15000);
+  shot_ok := n > 0 && da_json_ok(cast(string) rep[0..<n]) && fs_exists(full) && fs_size(full) > 1000;
+  s[0].last_shot_n = ifx shot_ok then da_copy_into(s[0].last_shot[..], rel) else 0;
+
+  o := TsObservation.{
+    client_id = "ios-sim-1", target = "ios-sim", mode = "local",
+    seq = s[0].seq, ts_ms = proc_now_ms() - s[0].started_ms,
+    width = 393, height = 852, scale_x100 = 300,
+    screenshot_ref = da_slice(s[0].last_shot[..], s[0].last_shot_n),
+    running = true, settings_page = -1, composer_focused = false,
+    composer_text = "", window_title = "OpenAgents iOS", summary = note
+  };
+  obs_out[0] = o;
+  jb: [TS_BUF] u8;
+  jn := ts_write_obs(o, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].obs_file[..], s[0].obs_n), cast(string) jb[0..<jn]); }
+  return shot_ok;
+}
+
+ios_record_result :: (s: [] IosSession, r: TsResult) {
+  jb: [TS_BUF] u8;
+  jn := ts_write_result(r, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
+}
