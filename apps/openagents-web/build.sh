@@ -475,6 +475,8 @@ timed oneshot "$here/../../coax/web/wasm.sh" "$here/oneshot.coax" "$here/oneshot
 oneshot=$!
 # /demos/grid-crowd: the Grid's art (metaverse/tools/pack_grid.py) with a staged crowd of players (metaverse/cast.coax)
 # and agents running into the Everglade gate, for clips (?stage=crowd, docs/metaverse/clips.md).
+mkdir -p "$here/demos/grid-crowd/assets/cast"
+cp -f "$m/stage-resources/Cast.bin" "$here/demos/grid-crowd/assets/cast/Cast.bin"
 timed gridcrowd "$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
   "$m/cast.coax" &
 gridcrowd=$!

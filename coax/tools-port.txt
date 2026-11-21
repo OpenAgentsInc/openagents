@@ -14,8 +14,6 @@
 # moved: aethyr/forge/ -> metaverse-engine/editor/
 # moved: aethyr/ -> metaverse-engine/
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
-apps/openagents-desktop/zeron/fixtures/fixture.py
-apps/openagents-desktop/zeron/fixtures/psionic.py
 apps/openagents-ios/tools/app_store.py
 apps/openagents-web/.dev/nostr/build.sh
 apps/openagents-web/.dev/nostr/probe-test.cjs
@@ -776,10 +774,6 @@ metaverse-engine/tests/rand_oracle.py
 metaverse-engine/tests/test_follower_hosts_tooling.py
 metaverse-engine/tests/test_native_gameplay_runner.py
 metaverse-engine/tests/test_qualify_book.py
-apps/openagents-desktop/check.sh
-apps/openagents-desktop/tests/check_zeron_defaults.py
-apps/openagents-desktop/tests/lab-owner.py
-apps/openagents-desktop/tests/zeron_source_extract.py
 coax/book/capability-claims.py
 coax/lib/text/fixtures/regex_suite.py
 coax/tests/authoring.py
