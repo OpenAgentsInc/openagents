@@ -1,6 +1,6 @@
 # Paths through the books
 
-There are seven books. [The OpenAgents books](README.md) introduces them,
+There are eight books. [The OpenAgents books](README.md) introduces them,
 the argument they share and the order to read them in. This page gives a
 short core path in each book, and then the routes you can run from a
 terminal today.
@@ -15,19 +15,21 @@ chapters to read first. Chapter numbers are each book's own.
 | [Coax](../../coax/book/README.md) | Parts I–II (chapters 1–12), then 16, 18, 20, 24 and 41 | Write checked Coax, cross a C boundary and keep a unit inside its compile limits. |
 | [the Metaverse Engine](../../metaverse-engine/book/README.md) | Parts I–III (1–17), then 51–55, 86–101 and 102 | Build a playable realm, publish it and run it for many players. |
 | [Everglade](../../everglade/book/README.md) | 1, 3, 4, 8, 12, 14 and 18 | Follow one game from a reference picture to a shared world with rules. |
-| [Psionic](../../psionic/book/README.md) | 1–7, 9, 12–20, 24, 28, 29, 103, 104, 112, 115 and 238 | Run a decision model from original weights, serve it, and train a tiny decoder. |
-| [Coder](../../coder/book/README.md) | 1, 2, 4, 5, 9–11, 14, 17, 20, 21 and 23 | Build a harness and drive a coding agent from the command line. |
-| [Bitcoin](../../bitcoin/book/README.md) | 1–4, 13–16, 23, 24, 27–29, 34–36, 41, 43, 104–106, 108, 109, 113 and 114 | Go from a signature to a Lightning payment. |
-| [Nostr](../../nostr/book/README.md) | Parts I–V (14–44), then 80, 82, 86 and 102 | Sign and verify events, run a client and a relay, and follow one agent's job. |
+| [Psionic](../../psionic/book/README.md) | 1–7, 9, 12–20, 24, 28, 29, 103, 104, 112, 115 and 226–238 | Run a decision model from original weights, serve it, train a tiny decoder, and compile/verify/pay exact weight executors. |
+| [Coder](../../coder/book/README.md) | 1, 2, 4, 5, 8–12, 14, 17, 18, 20, 21 and 23 | Build a harness, invoke compiled weight modules, and drive a coding agent from the command line. |
+| [Bitcoin](../../bitcoin/book/README.md) | 1–4, 13–16, 23, 24, 27–29, 34–36, 41, 43, 104–106, 108, 109, 113, 114 and 121 | Go from a signature to a Lightning/Spark payment under one seed. |
+| [Nostr](../../nostr/book/README.md) | Parts I–V (14–44), then 80, 82, 86, 100 and 102 | Sign and verify events, run a client and a relay, and follow one agent's or Pylon's job. |
+| [OpenAgents](../../openagents/book/README.md) | 1–6, 12–18, 32–33, 52, 54–55, 69–70 and 78 | Follow the product apps, Spark wallet, Gym, signed releases and the Pylon Executor Network (design drafts catching up to `main`). |
 
 Paths by what you want to do:
 
 | You want to | Read |
 | --- | --- |
 | Make a realm | Coax Parts I–II, then the OpenAgents Metaverse Engine's core path. Everglade shows each piece in use. |
-| Build or drive an agent | Coax Parts I–II, then Coder's core path, then Psionic 12–20 for decisions. |
-| Run a Pylon | Psionic 7, 12–20 and 24–27, then Nostr 82 and 100. |
-| Understand how agents are paid | Bitcoin's core path, Nostr 80, 86 and 102, Psionic 238, and the capstone [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md). |
+| Build or drive an agent | Coax Parts I–II, then Coder's core path, then Psionic 12–20 for decisions and 236–237 for hybrid exact cores. |
+| Run a Pylon | Psionic 7, 12–20, 24–27 and 234–238, then Nostr 82 and 100. |
+| Understand how agents are paid | Bitcoin's core path, Nostr 80, 82, 86 and 102, Psionic 238, and the capstones [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md) and [Coder takes a job and gets paid](capstones/coder-takes-a-job-and-gets-paid.md). |
+| Understand the Executor Network flywheel | Coax 16–18 and 23, Psionic Part XXIII (226–238) and Part XXIV (239–241, 247), Nostr 82 and 100, Bitcoin 121–123, Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70, and the master capstone [The Executor Network closes the loop](capstones/executor-network-flywheel.md). |
 | Read as an agent | Start with the [glossary](glossary.md) and each book's `chapters.json`, which names every chapter's source files and status. |
 
 ## Runnable routes

@@ -408,3 +408,8 @@ each gadget's forms before scheduling.
 [chapter 230](ch230-a-harness-that-catches-the-compiler.md)'s extended harness
 tests and [chapter 231](ch231-an-interpreter-in-weights-or-one-program-in-weights.md)
 uses to compile chapter 226's full stack+memory machine into weights.
+
+For the W1.3 optimal liveness/slot-reuse scheduler (26.4% weight reduction over
+the greedy baseline) and single-source Metal 4 / CUDA bit-exact GPU kernels
+(`exec-gpu-v1`), see [`examples/exec-vm-gpu.coax`](../examples/exec-vm-gpu.coax)
+and [the W1.3 GPU & scheduler verification record](../../docs/verification/executor-w13-gpu-sched.md).

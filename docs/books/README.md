@@ -30,14 +30,19 @@ steps.
    trusting the worker.
 5. **Ownable.** Keys say who did the work and who is paid. No account
    holder stands in between.
+6. **Compounding.** Because verified work produces provably correct traces and
+   redacted trajectories, Pylons can run bounded decentralized training windows
+   that pass Byzantine verification and quarantine gates before shipping back
+   to every user's agent.
 
 | Step | Where each book teaches it |
 | --- | --- |
 | Bounded | Coax 9 and 41, the Metaverse Engine 16, Psionic 116, Coder 1, Bitcoin 71, Nostr 44 |
-| Deterministic | Coax 16 and 33, the Metaverse Engine 5 and 36, Psionic 70, Coder 2, Bitcoin 35, Nostr 21 |
+| Deterministic | Coax 16 and 33, the Metaverse Engine 5 and 36, Psionic 70 and 226–233, Coder 2, Bitcoin 35, Nostr 21 |
 | Checkable | Coax 11 and 23, the Metaverse Engine 37, Psionic 17 and 234, Coder 21, Bitcoin 116–120, Nostr 93–97 |
-| Payable | Psionic 238, Nostr 80 and 86, Bitcoin 104–115 |
+| Payable | Psionic 238, Nostr 80, 82 and 86, Bitcoin 104–115 and 123 |
 | Ownable | The Metaverse Engine 54, 55 and 88, Coder 18, Bitcoin 121 and 122, Nostr 104 |
+| Compounding | Psionic 224, 235–241, 247 and planned Part XXVIII (DiLoCo & Quarantine Optimizer), Coder 8, 12 and 18, OpenAgents 52, 54–55 and 70 |
 
 ### Why from scratch
 
@@ -116,14 +121,16 @@ Coder, and the shared cryptography moved from Nostr to Bitcoin.
 | Agent treasuries | Bitcoin 122 for signing, Nostr 104 for the network of keys | Coder |
 | Tensors, models, serving, training | Psionic | The Metaverse Engine, Coder |
 | Decision models | Psionic Parts II–IV and XXII | Coder 13, Everglade, the Metaverse Engine 77 |
-| Pylons | Psionic 24–27 for the service, Nostr 82 and 100 for the events | Everglade |
+| Pylons | Psionic 24–27 and 234–238 for the service, Nostr 82 and 100 for the events | Everglade, OpenAgents 70 |
+| Compiled weight modules & hybrid executors | Psionic Part XXIII (226–237) | Coder 8 and 12, OpenAgents 69 |
+| Decentralized training & Quarantine Optimizer | Psionic planned Part XXVIII (272–274) and Part XXIV (239–241, 247) | Nostr 82, Coder 18, OpenAgents 52 and 70 |
 | The frame loop, rendering, physics | Metaverse Engine | Everglade, Coax |
 | Rooms and multiplayer | Metaverse Engine Part XII | Everglade Part IV |
 | Actions, conditions and their presentation | The Metaverse Engine 102 | Everglade Parts V–VII |
 | SRD rules as code | Everglade Part V | Metaverse Engine |
 | Everglade, the game | Everglade | The Metaverse Engine 58 and 101, Psionic 28–32 |
 | Robots and spacecraft | Metaverse Engine Parts IV–V | Coax 34–39, Psionic XVIII |
-| The agent harness | Coder | Psionic XXI |
+| The agent harness | Coder | Psionic XXI, OpenAgents 24–28 |
 | Language features and compile limits | Coax | every book |
 
 ## Capstones
@@ -132,6 +139,8 @@ A capstone is a route across several books that ends in something a person
 can see. Capstones connect the money and identity books to the world and
 model books.
 
+- [The Executor Network closes the loop](capstones/executor-network-flywheel.md):
+  **Master capstone** across Coax, Psionic, Nostr, Bitcoin, Coder and OpenAgents. Verified on real Metal 4 + RTX 4080 CUDA GPUs and live Bitcoin mainnet Spark (`#13912`–`#13928`); book chapters catching up.
 - [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md):
   Everglade, the Metaverse Engine, Psionic, Nostr and Bitcoin. Design draft.
 - A maker is paid: Metaverse Engine Part VI, Nostr and Bitcoin. Not drafted.
@@ -145,5 +154,8 @@ model books.
 - [Completion milestones](completion.md): what each book still needs.
 - [Delivery and publication](DELIVERY.md): how routes and publications are
   checked.
-- [Reviews](audits/2026-11-09-holistic-review.md): the 2026-11-09 review
-  that this page came from, with [per-book notes](audits/2026-11-09-per-book-notes.md).
+- [Reviews & audits](audits/2026-11-21-executor-network-flow-audit.md): the
+  2026-11-21 Executor Network flow audit across all eight books, the
+  [2026-11-20 holistic books audit](audits/2026-11-20-holistic-books-audit.md),
+  and the [2026-11-09 review](audits/2026-11-09-holistic-review.md) with
+  [per-book notes](audits/2026-11-09-per-book-notes.md).

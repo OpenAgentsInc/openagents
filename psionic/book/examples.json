@@ -3803,6 +3803,34 @@
         "psionic/tests/exec_vm_oracle.py",
         "psionic/tools/exec-vm-artifact.coax"
       ]
+    },
+    {
+      "source": "psionic/examples/exec-vm-gpu.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch229-compile-a-gate-graph-into-a-block.md",
+      "consumer": "psionic/platform/exec-vm-gpu-bridge.coax",
+      "evidence": [
+        "docs/verification/executor-w13-gpu-sched.md"
+      ]
+    },
+    {
+      "source": "psionic/examples/wasm-exec.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch231-an-interpreter-in-weights-or-one-program-in-weights.md",
+      "consumer": "coax/platform/tool-native.c",
+      "evidence": [
+        "docs/verification/executor-w12-wasm-exec.md",
+        "docs/verification/2026-11-21-wasm-exec-v1.md"
+      ]
+    },
+    {
+      "source": "psionic/examples/hybrid-exec.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md",
+      "consumer": "coax/platform/tool-native.c",
+      "evidence": [
+        "docs/verification/executor-w31-hybrid-exec.md"
+      ]
     }
   ]
 }

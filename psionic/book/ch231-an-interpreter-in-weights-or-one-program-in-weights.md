@@ -418,7 +418,11 @@ python3 -I psionic/tests/exec_vm_oracle.py
 - **GPU timings and logarithmic decoding.** These are CPU `binary64` forward
   passes with linear causal attention over the trace. Device execution and
   logarithmic-time decoding belong in [chapter 232](ch232-decode-in-logarithmic-time.md)
-  and fused GPU replay.
+  and fused GPU replay. For the full W1.2 93-layer, 784k-weight zero-fallback
+  dense `binary64` WASM transformer (`wasm-core-i32-v1`, 9×9 Sudoku, 10×10
+  Hungarian, and Coder Ch 8 programs across 398,722 steps with 0 divergences)
+  over balanced-tree `hull-v2`, see [`examples/wasm-exec.coax`](../examples/wasm-exec.coax)
+  and [the W1.2 verification record](../../docs/verification/executor-w12-wasm-exec.md).
 - **The second projection.** Specializing the specializer to the interpreter
   would give a compiler from programs to blocks. Here the specializer is
   general and runs each time.

@@ -109,8 +109,13 @@ that already touches the file (#13267 to #13269, #13280).
 | Decision model | A model that returns one choice from a typed set, with a probability, instead of text. | Psionic 12–17 |
 | Elephant, Mammoth | The two decision models the Psionic book executes from their original weights. | Psionic 14 and 15 |
 | System One | The typed decision interface that Psionic serves at `/v1/systemone`. | Psionic 20 |
-| Pylon | A machine that sells spare compute. It announces itself with a Nostr key and answers decision jobs. | Psionic 24 |
+| Pylon | A machine that sells spare compute. It announces itself with a Nostr key and answers decision, executor, validation and training-window jobs. | Psionic 24 and 238, Nostr 82 |
 | Mesh | Many Pylons behind one API. | Psionic 25–27 |
+| Compiled weight module | A digest-pinned exact program compiled into transformer weights (`exec-vm-v1` / `module-v2`) that links without recompilation and verifies by exact replay. | Psionic 231 and 237 |
+| Hybrid executor | A neural language model paired with a learned routing adapter (such as a rank-8 LoRA) that invokes frozen compiled weight modules with zero silent hallucinations. | Psionic 236 |
+| Training window | A bounded, digest-pinned decentralized training job (Local-SGD / DiLoCo) over an assigned verified shard whose delta must pass Byzantine verification before entering quarantine. | [Executor Network Master Spec](../../psionic/docs/executor-network-master-spec.md), planned Psionic Part XXVIII |
+| Quarantine optimizer | The three-checkpoint state machine (`canonical -> quarantine -> promoted`) that prevents public updates from mutating production weights until they beat held-out gates. | [Executor Network Master Spec](../../psionic/docs/executor-network-master-spec.md), planned Psionic Part XXVIII |
+| Two-leg settlement | Receipt-first Bitcoin/Spark payout that settles both the worker and the independent replay validator (`worker != validator`, distinct devices) under rolling daily caps. | Psionic 238, `pay/executor-settlement.coax` |
 | Harness | The program around a model that sends requests, runs tools and decides when to stop. | Coder 1 |
 | Engine (Coder) | What runs a Coder task: Microcoder, a Psionic-served model, Claude Code or Codex. | Coder 9–13 |
 | Microcoder | Coder's own loop, on any model it can reach. | Coder 9 |

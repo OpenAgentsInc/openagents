@@ -396,3 +396,12 @@ main :: () {
   line is the example's report of chapter 237's checks, which the Coax tests
   cover.
 - **Mutation:** 3,687 mutants, all killed.
+
+## Production hybrid runtime (`hybrid-exec-v1`)
+
+For the live W3.1 hybrid runtime wiring the real 16.38 GB `Inkling-2-Mini` GGUF
+on Metal 4 with a rank-8 LoRA routing adapter (`11/48 → 48/48` on held-out
+tasks, `0` silent hallucinations, KV cache reused across exact calls) and the
+four W2.2 Class-E compiled weight modules, see
+[`examples/hybrid-exec.coax`](../examples/hybrid-exec.coax) and
+[the W3.1 hybrid executor verification record](../../docs/verification/executor-w31-hybrid-exec.md).
