@@ -1315,3 +1315,101 @@ void cd_voice_status_set(void *page, const char *mic, const char *whisper, int a
   coder_page_voice_status_set(cd_state(c), cd_string(mic), cd_string(whisper), apple_ready != 0, whisper_ready != 0);
   cd_woke(c);
 }
+// Remote SSH environments, Boats, WSL2 path translation, Server Exposure & Keep-Awake (page/environments.coax; #13883).
+int cd_env_load_ssh_config(void *page, const char *config) {
+  CoderHost *c = page; if (!c) return 0;
+  int n = (int)coder_page_env_load_ssh_config(cd_state(c), cd_string(config));
+  if (n > 0) cd_woke(c);
+  return n;
+}
+void cd_env_clear_remote(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_clear_remote(cd_state(c));
+  cd_woke(c);
+}
+int cd_env_add(void *page, int kind, const char *name, const char *hostname, const char *user, int port, const char *remote_folder) {
+  CoderHost *c = page; if (!c) return -1;
+  int idx = (int)coder_page_env_add(cd_state(c), kind, cd_string(name), cd_string(hostname), cd_string(user), port, cd_string(remote_folder));
+  if (idx >= 0) cd_woke(c);
+  return idx;
+}
+int cd_env_set_state(void *page, int idx, int state, const char *error_msg) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_env_set_state(cd_state(c), idx, state, cd_string(error_msg)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_env_select(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_env_select(cd_state(c), idx) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_env_active(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_active(cd_state(c)) : 0; }
+int cd_env_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_target(cd_state(c)) : -1; }
+int cd_env_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_count(cd_state(c)) : 0; }
+int cd_env_kind(void *page, int idx) { CoderHost *c = page; return c ? (int)coder_page_env_kind(cd_state(c), idx) : 0; }
+int cd_env_name(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_env_name(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_env_host(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_env_host(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_env_expose_set(void *page, int mode, const char *status) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_expose_set(cd_state(c), mode, cd_string(status));
+  cd_woke(c);
+}
+int cd_env_expose_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_expose_mode(cd_state(c)) : 0; }
+void cd_env_pair_code_set(void *page, const char *code) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_pair_code_set(cd_state(c), cd_string(code));
+  cd_woke(c);
+}
+void cd_env_device_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_device_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_env_device_add(void *page, const char *id, const char *name, const char *detail) {
+  CoderHost *c = page; if (!c) return -1;
+  int idx = (int)coder_page_env_device_add(cd_state(c), cd_string(id), cd_string(name), cd_string(detail));
+  if (idx >= 0) cd_woke(c);
+  return idx;
+}
+int cd_env_device_revoke(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_env_device_revoke(cd_state(c), idx) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_env_device_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_device_target(cd_state(c)) : -1; }
+int cd_env_device_id(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_env_device_id(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_env_device_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_env_device_count(cd_state(c)) : 0; }
+void cd_env_keep_awake_set(void *page, int enabled) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_keep_awake_set(cd_state(c), enabled != 0);
+  cd_woke(c);
+}
+int cd_env_keep_awake(void *page) { CoderHost *c = page; return c && coder_page_env_keep_awake(cd_state(c)) ? 1 : 0; }
+void cd_env_awake_active_set(void *page, int active) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_env_awake_active_set(cd_state(c), active != 0);
+  cd_woke(c);
+}
+int cd_env_should_keep_awake(void *page, int bg_running) {
+  CoderHost *c = page; return c && coder_page_env_should_keep_awake(cd_state(c), bg_running) ? 1 : 0;
+}
+int cd_env_win_to_wsl(const char *path, char *out, int cap) {
+  if (!out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_env_win_to_wsl(cd_string(path), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_env_wsl_to_win(const char *path, const char *distro, char *out, int cap) {
+  if (!out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_env_wsl_to_win(cd_string(path), cd_string(distro), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}

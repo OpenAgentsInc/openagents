@@ -293,7 +293,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if CommandLine.arguments.contains("--gym") { openGym() }
         // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -461,6 +461,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 84: chooseVoiceMicrophone()
         case 85: voicePrefsChanged()
         case 86...89: fileTreeAsked(what)
+        case 90: envSelectChanged()
+        case 91: syncEnvironments()
+        case 92: envConnectOrFolder()
+        case 93: envExposureChanged()
+        case 94: envPairMobileDevice()
+        case 95: envRevokeDevice()
+        case 96: envKeepAwakeChanged()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -539,6 +546,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncGymPanelFrame()
         syncSimulatorFrame()
         syncTerminalFrame()
+        syncKeepAwake()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.
@@ -596,6 +604,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         updater.stop()
         usageTimer?.invalidate(); usageTimer = nil
         stopAllTerminals()
+        retireEnvironments()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
         if chat != nil { keep(closing: true) }

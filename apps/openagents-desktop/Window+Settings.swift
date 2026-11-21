@@ -204,6 +204,7 @@ extension CoderWindow {
         syncWalletSettings()
         if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         syncMcpSkills()
+        syncEnvironments()
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }

@@ -1,0 +1,177 @@
+// Checks for page/environments.coax: ~/.ssh/config parser, Boats & WSL2 catalog,
+// Windows <-> WSL2 path translation, Server Exposure modes, authorized mobile device
+// revocation, Keep-Awake active-run decision, and Settings -> Connections UI (GitHub #13883).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_env_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+#test "env: parse ~/.ssh/config skips wildcards and extracts HostName, User, Port" {
+  cfg := "# comment line\nHost *\n  ServerAliveInterval 60\n\nHost gpu-box gpu-alt *.internal !bastion\n  HostName 100.88.1.42 # inline comment\n  User \"chris\"\n  Port=2222\n\nHost boat-bx_fwh3xnws\n  HostName 34.12.99.10\n  User coder\n\nMatch host gpu-box\n  Port 9999\n";
+  hosts: [CP_ENV_MAX] CpEnv;
+  n := cp_env_parse_ssh_config(cfg, hosts[..]);
+  #assert n == 3;
+  // First alias: gpu-box
+  #assert hosts[0].kind == CP_ENV_SSH;
+  #assert cp_env_str(hosts[0].name[..], hosts[0].name_n) == "gpu-box";
+  #assert cp_env_str(hosts[0].hostname[..], hosts[0].hostname_n) == "100.88.1.42";
+  #assert cp_env_str(hosts[0].user[..], hosts[0].user_n) == "chris";
+  #assert hosts[0].port == 2222;
+  // Second alias on same Host line inherits HostName, User, Port
+  #assert hosts[1].kind == CP_ENV_SSH;
+  #assert cp_env_str(hosts[1].name[..], hosts[1].name_n) == "gpu-alt";
+  #assert cp_env_str(hosts[1].hostname[..], hosts[1].hostname_n) == "100.88.1.42";
+  #assert cp_env_str(hosts[1].user[..], hosts[1].user_n) == "chris";
+  #assert hosts[1].port == 2222;
+  // Boat entry detected by boat- prefix, default port 22, Match block did not overwrite port
+  #assert hosts[2].kind == CP_ENV_BOAT;
+  #assert cp_env_str(hosts[2].name[..], hosts[2].name_n) == "boat-bx_fwh3xnws";
+  #assert cp_env_str(hosts[2].hostname[..], hosts[2].hostname_n) == "34.12.99.10";
+  #assert cp_env_str(hosts[2].user[..], hosts[2].user_n) == "coder";
+  #assert hosts[2].port == 22;
+}
+
+#test "env: Windows <-> WSL2 path translation" {
+  buf: [256] u8;
+  n := coder_page_env_win_to_wsl("C:\\Users\\me\\repo", buf[..]);
+  #assert cast(string) buf[0..<n] == "/mnt/c/Users/me/repo";
+
+  n = coder_page_env_win_to_wsl("d:/Work/OpenAgents/", buf[..]);
+  #assert cast(string) buf[0..<n] == "/mnt/d/Work/OpenAgents";
+
+  n = coder_page_env_win_to_wsl("\\\\wsl$\\Ubuntu-24.04\\home\\me\\repo", buf[..]);
+  #assert cast(string) buf[0..<n] == "/home/me/repo";
+
+  n = coder_page_env_win_to_wsl("\\\\wsl.localhost\\Ubuntu\\var\\log", buf[..]);
+  #assert cast(string) buf[0..<n] == "/var/log";
+
+  n = coder_page_env_win_to_wsl("/home/already/posix", buf[..]);
+  #assert cast(string) buf[0..<n] == "/home/already/posix";
+
+  n = coder_page_env_wsl_to_win("/mnt/c/Users/me/repo", "Ubuntu", buf[..]);
+  #assert cast(string) buf[0..<n] == "C:\\Users\\me\\repo";
+
+  n = coder_page_env_wsl_to_win("/mnt/e", "Ubuntu", buf[..]);
+  #assert cast(string) buf[0..<n] == "E:\\";
+
+  n = coder_page_env_wsl_to_win("/home/me/repo", "Ubuntu-24.04", buf[..]);
+  #assert cast(string) buf[0..<n] == "\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\repo";
+
+  n = coder_page_env_wsl_to_win("C:\\already\\win", "Ubuntu", buf[..]);
+  #assert cast(string) buf[0..<n] == "C:\\already\\win";
+}
+
+#test "env: catalog, Server Exposure modes, and authorized mobile device revocation" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+
+  // Starts with Local at slot 0.
+  #assert coder_page_env_count(s) == 1 && coder_page_env_active(s) == 0;
+  #assert coder_page_env_kind(s, 0) == CP_ENV_LOCAL;
+
+  // Load SSH config + add WSL2 distro.
+  loaded := coder_page_env_load_ssh_config(s, "Host dev-linux\n  HostName 10.0.0.5\n  User dev\n");
+  #assert loaded == 1 && coder_page_env_count(s) == 2;
+  wsl_idx := coder_page_env_add(s, CP_ENV_WSL, "Ubuntu-24.04", "Ubuntu-24.04", "", 0, "/home/dev/repo");
+  #assert wsl_idx == 2 && coder_page_env_count(s) == 3 && coder_page_env_kind(s, wsl_idx) == CP_ENV_WSL;
+
+  #assert coder_page_env_select(s, 1) && coder_page_env_active(s) == 1;
+  #assert coder_page_env_set_state(s, 1, CP_ENV_ST_CONNECTED, "");
+  #assert s[0].env[0].envs[1].state == CP_ENV_ST_CONNECTED;
+
+  // Server exposure modes.
+  coder_page_env_expose_set(s, CP_EXPOSE_LAN, "LAN · 192.168.1.10:47109");
+  #assert coder_page_env_expose_mode(s) == CP_EXPOSE_LAN;
+  coder_page_env_expose_set(s, CP_EXPOSE_LOCAL, "Local-only");
+  #assert coder_page_env_expose_mode(s) == CP_EXPOSE_LOCAL;
+  // Pairing is disabled when exposure is Local-only.
+  #assert !cp_env_settings_press(s, "set.env.pair.a");
+  coder_page_env_expose_set(s, CP_EXPOSE_TAILSCALE, "Tailscale · 100.64.0.1:47109");
+  #assert cp_env_settings_press(s, "set.env.pair.a") && s[0].ask == CP_ASK_ENV_PAIR;
+
+  // Authorized mobile devices & revocation.
+  d0 := coder_page_env_device_add(s, "npub1phonealpha", "Chris iPhone", "Tailscale · 100.64.0.2");
+  d1 := coder_page_env_device_add(s, "npub1ipadbeta", "Chris iPad", "Tailscale · 100.64.0.3");
+  #assert d0 == 0 && d1 == 1 && coder_page_env_device_count(s) == 2;
+  idbuf: [64] u8;
+  idn := coder_page_env_device_id(s, 0, idbuf[..]);
+  #assert cast(string) idbuf[0..<idn] == "npub1phonealpha";
+  #assert coder_page_env_device_revoke(s, 0);
+  #assert coder_page_env_device_count(s) == 1;
+  idn = coder_page_env_device_id(s, 0, idbuf[..]);
+  #assert cast(string) idbuf[0..<idn] == "npub1ipadbeta";
+
+  // Clear remote resets active back to Local.
+  coder_page_env_clear_remote(s);
+  #assert coder_page_env_count(s) == 1 && coder_page_env_active(s) == 0;
+}
+
+#test "env: Keep-Awake decision inhibits sleep only during active runs or /goal" {
+  // Pure decision checks.
+  #assert !cp_env_should_keep_awake(true, 0, false);
+  #assert cp_env_should_keep_awake(true, 1, false);
+  #assert cp_env_should_keep_awake(true, 0, true);
+  #assert !cp_env_should_keep_awake(false, 2, true);
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  // Default enabled, idle -> false.
+  #assert coder_page_env_keep_awake(s);
+  #assert !coder_page_env_should_keep_awake(s, 0);
+  // Background run active -> true.
+  #assert coder_page_env_should_keep_awake(s, 1);
+  // Foreground turn running -> true.
+  s[0].nturns = 1;
+  s[0].turns[0].state = CP_RUNNING;
+  #assert coder_page_env_should_keep_awake(s, 0);
+  // Turn settles -> false immediately.
+  s[0].turns[0].state = CP_DONE;
+  #assert !coder_page_env_should_keep_awake(s, 0);
+  // Active /goal -> true; completed /goal -> false.
+  s[0].goal_status = CP_GOAL_ACTIVE;
+  #assert coder_page_env_should_keep_awake(s, 0);
+  s[0].goal_status = CP_GOAL_COMPLETE;
+  #assert !coder_page_env_should_keep_awake(s, 0);
+  // Toggle off -> false even with active runs.
+  coder_page_env_keep_awake_set(s, false);
+  #assert !coder_page_env_keep_awake(s);
+  #assert !coder_page_env_should_keep_awake(s, 3);
+}
+
+#test "env: Settings -> Connections rows, search hits, and press actions" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  _ = coder_page_env_load_ssh_config(s, "Host studio-mac\n  HostName 100.90.0.10\n  User chris\n");
+  _ = coder_page_env_device_add(s, "npub1iphone", "iPhone 16 Pro", "Tailscale · 100.90.0.20");
+  coder_page_env_pair_code_set(s, "PAIR-9942");
+
+  // Search finds Connections and Keep-Awake even with experimental off.
+  hits: [CP_SET_HITS] int;
+  es := cp_set_entries();
+  hn := cp_set_hits_in("connections", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
+  hn = cp_set_hits_in("tailscale", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
+  hn = cp_set_hits_in("keep awake", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS && es[hits[0]].id == "set.env.awake";
+  #assert cp_set_page_ok(false, CP_PG_CONNECTIONS);
+
+  // Open Settings -> Connections and render a frame cleanly.
+  coder_page_settings_open(s, CP_PG_CONNECTIONS, "");
+  #assert coder_page_settings_page(s) == CP_PG_CONNECTIONS;
+  f: [1] UiFrame;
+  #assert cp_env_test_frame(s, f[..], 1200, 800);
+
+  // Press actions dispatch expected CP_ASK_ENV_* asks.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.active.a") && s[0].ask == CP_ASK_ENV_REFRESH;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.item.1.0") && s[0].ask == CP_ASK_ENV_SELECT && coder_page_env_active(s) == 1;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.item.1.1") && s[0].ask == CP_ASK_ENV_CONNECT && coder_page_env_target(s) == 1;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.expose.1") && s[0].ask == CP_ASK_ENV_EXPOSE && coder_page_env_expose_mode(s) == CP_EXPOSE_LAN;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.dev.0.a") && s[0].ask == CP_ASK_ENV_REVOKE && coder_page_env_device_target(s) == 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.awake.0") && s[0].ask == CP_ASK_ENV_KEEP_AWAKE && !coder_page_env_keep_awake(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.awake.1") && s[0].ask == CP_ASK_ENV_KEEP_AWAKE && coder_page_env_keep_awake(s);
+}

@@ -63,3 +63,4 @@
 #load "usage.coax";
 #load "mcpskills.coax";
 #load "voice.coax";
+#load "environments.coax";

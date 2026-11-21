@@ -44,6 +44,52 @@ final class CoderTailnet: NSObject {
         }
     }
 
+    /// Re-evaluates Tailscale listener state immediately after Settings -> Connections changes exposure mode.
+    func reload() {
+        queue.async { [self] in
+            if !CoderTailnet.enabled {
+                stop()
+                timer?.cancel(); timer = nil
+            } else {
+                if timer == nil && !TestLaunch.active {
+                    let t = DispatchSource.makeTimerSource(queue: queue)
+                    t.schedule(deadline: .now() + 120, repeating: .seconds(120), leeway: .seconds(10))
+                    t.setEventHandler { [weak self] in self?.check() }
+                    t.resume(); timer = t
+                }
+                check()
+            }
+        }
+    }
+
+    /// Snapshot of current Tailscale listener status for Settings -> Connections.
+    func statusSnapshot(completion: @escaping (String) -> Void) {
+        queue.async { [self] in
+            let text: String
+            if !CoderTailnet.enabled {
+                text = "Local-only (127.0.0.1)"
+            } else if let s = serving {
+                let dns = s.owner.dns.isEmpty ? s.owner.ip : s.owner.dns
+                text = "Tailscale · \(dns):\(s.port)"
+            } else if CoderTailnet.cli == nil {
+                text = "Tailscale CLI not installed"
+            } else {
+                text = "Tailscale · waiting for tailnet"
+            }
+            DispatchQueue.main.async { completion(text) }
+        }
+    }
+
+    /// Generates a pairing invitation link on demand for Settings -> Connections -> Pair….
+    func createPairingLink(completion: @escaping (String?) -> Void) {
+        queue.async { [self] in
+            let owner = CoderTailnet.cli.flatMap { CoderTailnet.output($0, ["status", "--json"]) }.flatMap(AppTailnet.owner(status:))
+            let label = owner.map { CoderTailnet.label($0) } ?? (Host.current().localizedName ?? "My Mac")
+            let link = invitation(label: label)
+            DispatchQueue.main.async { completion(link) }
+        }
+    }
+
     // ------------------------------------------------------------------ Tailscale
 
     /// The tailscale command line: the Mac app's own binary, or a Homebrew or standalone install.
