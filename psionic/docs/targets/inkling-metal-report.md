@@ -9,7 +9,7 @@
 ### OpenAgents, Coax, and Psionic
 - **Coax** (`coax/`) is OpenAgents' systems and shader language. It compiles both host code (to C11 / WebAssembly) and GPU compute kernels (to Apple Metal 4, WGSL, and CUDA) from a single typed source language, including direct access to **Apple Metal 4 Neural Accelerators** (`am_matmul_bf16` → `MetalPerformancePrimitives::matmul2d`).
 - **Psionic** (`psionic/`) is OpenAgents' native machine-learning library written in Coax. Instead of wrapping external inference engines (`llama.cpp`, MLX, PyTorch, or vendor GEMM libraries), Psionic compiles every quantized dequantization, attention, MoE routing, matrix multiplication, and normalization kernel directly from Coax source.
-- **Zeron & OpenAgents Desktop** (`components/zeron/`, `apps/openagents-desktop/`, `apps/openagents-web/`): OpenAgents' native WebGPU chat UI and desktop application previously launched `llama-server` (`llama.cpp`) as a local inference subprocess. Replacing it with `psionic-inkling-serve` puts the entire inference stack — tokenizer, chat template, tool calling, KV cache, GPU kernels, and HTTP/SSE server — under our own Coax codebase.
+- **OpenAgents Desktop & WebGPU Chat** (`components/`, `apps/openagents-desktop/`, `apps/openagents-web/`): OpenAgents' native WebGPU chat UI and desktop application previously launched `llama-server` (`llama.cpp`) as a local inference subprocess. Replacing it with `psionic-inkling-serve` puts the entire inference stack — tokenizer, chat template, tool calling, KV cache, GPU kernels, and HTTP/SSE server — under our own Coax codebase.
 
 ### Target Model: Inkling 2 Mini (`inkling2_loop`)
 - **Checkpoint:** `Inkling-2-Mini-IQ4_NL.gguf` (16.4 GB on disk)
@@ -27,7 +27,7 @@ Every piece of the Inkling 2 Mini runtime lives in four files:
 | **GPU Kernels (Coax → Metal 4)** | [`psionic/lib/inkling/kernels.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/inkling/kernels.coax) | All Metal 4 compute kernels (quantized GEMV/GEMM, Metal 4 `am_matmul_bf16`, GQA Flash-Decoding & 3-stage MMA Flash-Prefill, 4-state residual mixing, 2-barrier parallel top-6 router, expert grouping/gather, fused KV-store/RMSNorm). Compiled to `inkling-kernels.metal` by `coax`. |
 | **Metal Runtime Orchestrator (C)** | [`psionic/platform/inkling-metal.c`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/platform/inkling-metal.c) | Zero-copy GGUF `mmap`, dynamic prefill chunking (`prefill_b`), KV cache allocation, per-layer kernel dispatch, and greedy/sampled decoding. |
 | **Metal 4 Host Bridge (Obj-C)** | [`psionic/platform/metal-host.m`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/platform/metal-host.m) | Thin Metal 4 command-buffer wrapper with zero-copy `newBufferWithBytesNoCopy` weight mapping and cached `MTLComputePipelineState` binding. |
-| **OpenAI-Compatible Server (C)** | [`psionic/platform/inkling-serve.c`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/platform/inkling-serve.c) | Local HTTP/SSE server (`psionic-inkling-serve`) with `/v1/chat/completions`, tool-call parsing, and `/health`, wired directly into OpenAgents Desktop and our Zeron WebGPU chat UI. |
+| **OpenAI-Compatible Server (C)** | [`psionic/platform/inkling-serve.c`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/platform/inkling-serve.c) | Local HTTP/SSE server (`psionic-inkling-serve`) with `/v1/chat/completions`, tool-call parsing, prefix caching, and `/health`, wired directly into OpenAgents Desktop and our OpenAgents WebGPU chat UI. |
 
 ---
 
@@ -37,9 +37,9 @@ All measurements were taken on the same machine (**Apple M5 Max, 128 GB unified 
 
 Baseline `llama.cpp` binary: `~/.openagents/bin/llama-server` (`1.0.0-dev`, build 1, commit `29b52d3`, Metal backend).
 
-### A. Real 3-Turn Tool-Calling Agent Session (Side-by-Side Zeron Chat)
+### A. Real 3-Turn Tool-Calling Agent Session (Side-by-Side OpenAgents Chat)
 
-To test real-world agent responsiveness — not just synthetic single-turn benchmarks — we ran an identical 3-turn coding-agent conversation against both servers separately (no GPU contention) and rendered both live streams side-by-side through our Zeron WebGPU chat UI:
+To test real-world agent responsiveness — not just synthetic single-turn benchmarks — we ran an identical 3-turn coding-agent conversation against both servers separately (no GPU contention) and rendered both live streams side-by-side through our OpenAgents WebGPU chat UI:
 - **Turn 1 (`1,048` prompt tok):** User asks the agent to inspect `psionic/lib/inkling/kernels.coax` → model emits a `Grep` tool call.
 - **Turn 2 (`1,415` prompt tok):** `Grep` result fed back → model emits a `Read` tool call (`kernels.coax:2556-2595`).
 - **Turn 3 (`2,296` prompt tok):** `Read` result fed back → model streams a complete ~1,710-character technical Markdown explanation + Coax snippet to natural EOS (`max_tokens=2048`).
