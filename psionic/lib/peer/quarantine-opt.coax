@@ -1,0 +1,193 @@
+// #authority Quarantine Optimizer (canonical -> quarantine -> promoted),
+// 4-Gate Promotion Engine (decision-v1, probability-v2, Ch 234 exactness,
+// ext-eval-v2 cost/latency), and Atomic Checkpoint Lineage Rollback
+// (Executor W5.3, GitHub #13927).
+#authority;
+
+QO_EXCLUDED_MAX :: 32;
+
+QoStatus :: enum u8 {
+  promoted;
+  no_candidate;
+  decision_gate_failed;
+  probability_gate_failed;
+  exactness_gate_failed;
+  cost_gate_failed;
+  bad_rollback_target;
+  window_excluded;
+  capacity;
+}
+
+QoState :: struct {
+  canonical_sha: int;
+  prior_canonical_sha: int;
+  quarantine_sha: int;
+  generation: int;
+  rollbacks: int;
+  excluded_windows: [QO_EXCLUDED_MAX] int;
+  n_excluded: int;
+}
+
+QoMetrics :: struct {
+  base_pass_bps: int;
+  cand_pass_bps: int;
+  noise_2sigma_bps: int;
+  retained_drop_bps: int;
+  base_logloss_milli: int;
+  cand_logloss_milli: int;
+  base_conferr_bps: int;
+  cand_conferr_bps: int;
+  exact_replay_ok: bool;
+  typed_refusal_ok: bool;
+  cand_latency_us: int;
+  max_latency_us: int;
+  cand_mem_mb: int;
+  max_mem_mb: int;
+}
+
+qo_init :: (initial_canonical_sha: int) -> QoState #effects(all) {
+  return QoState.{canonical_sha = initial_canonical_sha, generation = 1};
+}
+
+qo_window_is_excluded :: (s: [] QoState, win_id: int) -> bool #effects(all) {
+  for i: 0..<s[0].n_excluded {
+    if s[0].excluded_windows[i] == win_id { return true; }
+  }
+  return false;
+}
+
+// Stage a candidate checkpoint in quarantine (NEVER mutates canonical_sha).
+qo_stage_quarantine :: (s: [] QoState, candidate_sha: int, window_id: int) -> QoStatus #effects(all) {
+  if candidate_sha == 0 || candidate_sha == s[0].canonical_sha { return QoStatus.no_candidate; }
+  if qo_window_is_excluded(s, window_id) { return QoStatus.window_excluded; }
+  s[0].quarantine_sha = candidate_sha;
+  return QoStatus.promoted;
+}
+
+// Multi-gate promotion: canonical <- quarantine ONLY when all 4 gates pass.
+// Any failing gate discards quarantine and leaves canonical byte-identical.
+qo_try_promote :: (s: [] QoState, m: QoMetrics) -> QoStatus #effects(all) {
+  if s[0].quarantine_sha == 0 { return QoStatus.no_candidate; }
+  // Gate 1 (decision-v1): improvement strictly exceeds 2-sigma noise floor & zero retained regression
+  if (m.cand_pass_bps - m.base_pass_bps) <= m.noise_2sigma_bps || m.retained_drop_bps > 0 {
+    s[0].quarantine_sha = 0;
+    return QoStatus.decision_gate_failed;
+  }
+  // Gate 2 (probability-v2): log loss and confident-error rate must not regress
+  if m.cand_logloss_milli > m.base_logloss_milli || m.cand_conferr_bps > m.base_conferr_bps {
+    s[0].quarantine_sha = 0;
+    return QoStatus.probability_gate_failed;
+  }
+  // Gate 3 (Ch 234 Exactness): 100% bit-exact replay + 100% typed <exec_refuse> preservation
+  if !m.exact_replay_ok || !m.typed_refusal_ok {
+    s[0].quarantine_sha = 0;
+    return QoStatus.exactness_gate_failed;
+  }
+  // Gate 4 (ext-eval-v2 Cost & Latency): within latency and memory budget
+  if m.cand_latency_us > m.max_latency_us || m.cand_mem_mb > m.max_mem_mb {
+    s[0].quarantine_sha = 0;
+    return QoStatus.cost_gate_failed;
+  }
+
+  s[0].prior_canonical_sha = s[0].canonical_sha;
+  s[0].canonical_sha = s[0].quarantine_sha;
+  s[0].quarantine_sha = 0;
+  s[0].generation += 1;
+  return QoStatus.promoted;
+}
+
+// Atomic rollback to prior canonical SHA, excluding suspect window IDs from future rounds.
+qo_rollback :: (s: [] QoState, target_sha: int, suspect_window_id: int) -> QoStatus #effects(all) {
+  if target_sha == 0 || target_sha != s[0].prior_canonical_sha { return QoStatus.bad_rollback_target; }
+  if suspect_window_id != 0 && !qo_window_is_excluded(s, suspect_window_id) {
+    if s[0].n_excluded >= QO_EXCLUDED_MAX { return QoStatus.capacity; }
+    s[0].excluded_windows[s[0].n_excluded] = suspect_window_id;
+    s[0].n_excluded += 1;
+  }
+  s[0].canonical_sha = target_sha;
+  s[0].quarantine_sha = 0;
+  s[0].rollbacks += 1;
+  return QoStatus.promoted;
+}
+
+#test "quarantine-opt: 3-checkpoint promotion, all 3 regression falsifiers, and atomic rollback (#13927)" {
+  s: [1] QoState;
+  s[0] = qo_init(1001);
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0 && s[0].generation == 1;
+
+  good := QoMetrics.{
+    base_pass_bps = 7500, cand_pass_bps = 7900, noise_2sigma_bps = 150, retained_drop_bps = 0,
+    base_logloss_milli = 1950, cand_logloss_milli = 1880, base_conferr_bps = 200, cand_conferr_bps = 180,
+    exact_replay_ok = true, typed_refusal_ok = true,
+    cand_latency_us = 1200, max_latency_us = 1500, cand_mem_mb = 512, max_mem_mb = 1024,
+  };
+  #assert qo_try_promote(s[..], good) == QoStatus.no_candidate;
+  #assert qo_stage_quarantine(s[..], 0, 1) == QoStatus.no_candidate;
+  #assert qo_stage_quarantine(s[..], 1001, 1) == QoStatus.no_candidate;
+
+  // Falsifier 1: degraded held-out pass rate (fails decision-v1; canonical untouched)
+  #assert qo_stage_quarantine(s[..], 2001, 1) == QoStatus.promoted;
+  f1 := good; f1.cand_pass_bps = 7650; // delta 150 <= 2sigma 150
+  #assert qo_try_promote(s[..], f1) == QoStatus.decision_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+  #assert qo_stage_quarantine(s[..], 2001, 1) == QoStatus.promoted;
+  f1b := good; f1b.retained_drop_bps = 1;
+  #assert qo_try_promote(s[..], f1b) == QoStatus.decision_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+
+  // Falsifier 2: higher accuracy (9000 bps) but worse log loss (1950 -> 2323) or confident error (fails probability-v2)
+  #assert qo_stage_quarantine(s[..], 2002, 2) == QoStatus.promoted;
+  f2 := good; f2.cand_pass_bps = 9000; f2.cand_logloss_milli = 2323;
+  #assert qo_try_promote(s[..], f2) == QoStatus.probability_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+  #assert qo_stage_quarantine(s[..], 2002, 2) == QoStatus.promoted;
+  f2b := good; f2b.cand_conferr_bps = 201;
+  #assert qo_try_promote(s[..], f2b) == QoStatus.probability_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+
+  // Falsifier 3: silently guesses instead of <exec_refuse> (or breaks replay) -> fails Ch 234 Exactness Gate
+  #assert qo_stage_quarantine(s[..], 2003, 3) == QoStatus.promoted;
+  f3a := good; f3a.typed_refusal_ok = false;
+  #assert qo_try_promote(s[..], f3a) == QoStatus.exactness_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+  #assert qo_stage_quarantine(s[..], 2003, 3) == QoStatus.promoted;
+  f3b := good; f3b.exact_replay_ok = false;
+  #assert qo_try_promote(s[..], f3b) == QoStatus.exactness_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+
+  // Gate 4: cost/latency budget exceeded
+  #assert qo_stage_quarantine(s[..], 2004, 4) == QoStatus.promoted;
+  f4a := good; f4a.cand_latency_us = 1501;
+  #assert qo_try_promote(s[..], f4a) == QoStatus.cost_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+  #assert qo_stage_quarantine(s[..], 2004, 4) == QoStatus.promoted;
+  f4b := good; f4b.cand_mem_mb = 1025;
+  #assert qo_try_promote(s[..], f4b) == QoStatus.cost_gate_failed;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0;
+
+  // All 4 gates pass (including exact boundary on logloss/conferr/latency/mem) -> atomic canonical advance
+  #assert qo_stage_quarantine(s[..], 2005, 5) == QoStatus.promoted;
+  edge := good; edge.cand_logloss_milli = 1950; edge.cand_conferr_bps = 200; edge.cand_latency_us = 1500; edge.cand_mem_mb = 1024;
+  #assert qo_try_promote(s[..], edge) == QoStatus.promoted;
+  #assert s[0].canonical_sha == 2005 && s[0].prior_canonical_sha == 1001 && s[0].generation == 2 && s[0].quarantine_sha == 0;
+
+  // Atomic rollback restores exact prior canonical SHA and excludes suspect window 5
+  #assert qo_rollback(s[..], 0, 5) == QoStatus.bad_rollback_target;
+  #assert qo_rollback(s[..], 9999, 5) == QoStatus.bad_rollback_target;
+  #assert qo_stage_quarantine(s[..], 2006, 6) == QoStatus.promoted;
+  #assert qo_rollback(s[..], 1001, 5) == QoStatus.promoted;
+  #assert s[0].canonical_sha == 1001 && s[0].quarantine_sha == 0 && s[0].rollbacks == 1 && s[0].n_excluded == 1;
+  #assert qo_stage_quarantine(s[..], 2007, 5) == QoStatus.window_excluded;
+  // Duplicate suspect window on second rollback doesn't double-insert
+  #assert qo_rollback(s[..], 1001, 5) == QoStatus.promoted && s[0].n_excluded == 1;
+  #assert qo_rollback(s[..], 1001, 0) == QoStatus.promoted && s[0].n_excluded == 1;
+
+  // Exclusion capacity boundary + rollback to sha==1 boundary
+  s1: [1] QoState; s1[0] = qo_init(1);
+  #assert qo_stage_quarantine(s1[..], 2, 1) == QoStatus.promoted && qo_try_promote(s1[..], edge) == QoStatus.promoted;
+  #assert qo_rollback(s1[..], 1, 0) == QoStatus.promoted && s1[0].canonical_sha == 1;
+  for k: 100..<100 + QO_EXCLUDED_MAX - 1 {
+    #assert qo_rollback(s[..], 1001, k) == QoStatus.promoted;
+  }
+  #assert qo_rollback(s[..], 1001, 9999) == QoStatus.capacity;
+}

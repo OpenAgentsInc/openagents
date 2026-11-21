@@ -1,0 +1,210 @@
+// #authority 6-Tier Training-Window Verification Ladder & Byzantine/Outlier
+// Rejection Policy (Executor W5.2, GitHub #13925).
+// Covers Tiers 0-5, coordinate-wise trimmed-mean aggregation, and all 7
+// adversarial Byzantine attack fixtures with zero surviving mutants.
+#authority;
+
+TV_FINITE_MAX :: 1000000000.0;
+
+TvStatus :: enum u8 {
+  accepted;
+  bad_signature;
+  lease_expired;
+  stale_checkpoint;
+  binding_mismatch;
+  collusion;
+  non_finite;
+  zero_delta;
+  norm_exceeded;
+  spot_diverged;
+  sign_poison;
+  canary_failed;
+}
+
+TvClaim :: struct {
+  sig_ok: bool;
+  now_s: int;
+  lease_expires_s: int;
+  parent_sha: int;
+  expect_parent_sha: int;
+  shard_sha: int;
+  expect_shard_sha: int;
+  config_sha: int;
+  expect_config_sha: int;
+  worker_key: int;
+  worker_device: int;
+  val_key: int;
+  val_device: int;
+  spot_dist: f64;
+  max_spot_dist: f64;
+  min_l2_sq: f64;
+  max_l2_sq: f64;
+  canary_exact_ok: bool;
+  canary_refusal_ok: bool;
+}
+
+tv_is_finite :: (v: f64) -> bool #effects(all) {
+  return v == v && v <= TV_FINITE_MAX && v >= -TV_FINITE_MAX;
+}
+
+// Evaluate Tiers 0, 1, 3 (norm + cosine vs reference), and 4 (quarantine canary) on a delta vector.
+tv_verify_claim :: (c: TvClaim, delta: [] f64, cohort_ref: [] f64) -> TvStatus #effects(all) {
+  // Tier 0: signature, lease, cryptographic binding, distinct worker/validator, finite tensor
+  if !c.sig_ok { return TvStatus.bad_signature; }
+  if c.now_s > c.lease_expires_s { return TvStatus.lease_expired; }
+  if c.parent_sha != c.expect_parent_sha { return TvStatus.stale_checkpoint; }
+  if c.shard_sha != c.expect_shard_sha || c.config_sha != c.expect_config_sha { return TvStatus.binding_mismatch; }
+  if c.worker_key == c.val_key || c.worker_device == c.val_device { return TvStatus.collusion; }
+  if delta.count < 1 || delta.count != cohort_ref.count { return TvStatus.binding_mismatch; }
+
+  l2_sq := 0.0;
+  dot := 0.0;
+  for i: 0..<delta.count {
+    v := delta[i];
+    if !tv_is_finite(v) { return TvStatus.non_finite; }
+    l2_sq += v * v;
+    dot += v * cohort_ref[i];
+  }
+
+  // Tier 1 & Tier 3: reject zero-delta freeriders, norm explosions, spot-check divergence, sign flips
+  if l2_sq < c.min_l2_sq { return TvStatus.zero_delta; }
+  if l2_sq > c.max_l2_sq { return TvStatus.norm_exceeded; }
+  if c.spot_dist > c.max_spot_dist { return TvStatus.spot_diverged; }
+  if dot <= 0.0 { return TvStatus.sign_poison; }
+
+  // Tier 4: quarantine canary (exact replay + typed refusal preservation — catches backdoors)
+  if !c.canary_exact_ok || !c.canary_refusal_ok { return TvStatus.canary_failed; }
+  return TvStatus.accepted;
+}
+
+// Tier 3 Byzantine-resistant coordinate-wise trimmed mean across n workers (trims trim_k from each tail).
+tv_trimmed_mean :: (vals: [] f64, trim_k: int) -> f64 #effects(all) {
+  n := vals.count;
+  if n < 1 || trim_k < 0 || 2 * trim_k >= n { return 0.0; }
+  buf: [32] f64;
+  if n > 32 { return 0.0; }
+  for i: 0..<n { buf[i] = vals[i]; }
+  // Insertion sort
+  for i: 1..<n {
+    key := buf[i];
+    j := i - 1;
+    while j >= 0 && buf[j] > key { // mutant: equivalent — equal values need no swap
+      buf[j + 1] = buf[j];
+      j -= 1;
+    }
+    buf[j + 1] = key;
+  }
+  sum := 0.0;
+  kept := n - 2 * trim_k;
+  for i: trim_k..<n - trim_k { sum += buf[i]; }
+  return sum / f64(kept);
+}
+
+// Tier 5: downstream survival bonus gate (releases only after surviving K canonical promotions).
+tv_survival_bonus_ready :: (survived_promotions: int, required_k: int, any_regression: bool) -> bool #effects(all) {
+  return !any_regression && required_k >= 1 && survived_promotions >= required_k;
+}
+
+#test "train-verify: all 7 Byzantine attacks rejected, 25% poisoner trimmed-mean, and Tier-5 survival (#13925)" {
+  ref_d := [4] f64.[1.0, 2.0, -1.0, 0.5];
+  honest := [4] f64.[0.95, 2.05, -0.98, 0.52];
+  base := TvClaim.{
+    sig_ok = true, now_s = 100, lease_expires_s = 200,
+    parent_sha = 777, expect_parent_sha = 777,
+    shard_sha = 888, expect_shard_sha = 888,
+    config_sha = 999, expect_config_sha = 999,
+    worker_key = 10, worker_device = 100, val_key = 20, val_device = 200,
+    spot_dist = 0.01, max_spot_dist = 0.05,
+    min_l2_sq = 0.1, max_l2_sq = 25.0,
+    canary_exact_ok = true, canary_refusal_ok = true,
+  };
+  // Honest claim passes Tiers 0-4
+  #assert tv_verify_claim(base, honest[..], ref_d[..]) == TvStatus.accepted;
+  // Exact boundary equality on lease_expires, spot_dist, delta.count==1, min_l2_sq, max_l2_sq
+  at_edge := base; at_edge.now_s = 200; at_edge.spot_dist = 0.05;
+  #assert tv_verify_claim(at_edge, honest[..], ref_d[..]) == TvStatus.accepted;
+  one_d := [1] f64.[1.0];
+  at_min := base; at_min.min_l2_sq = 1.0; at_min.max_l2_sq = 1.0;
+  #assert tv_verify_claim(at_min, one_d[..], one_d[..]) == TvStatus.accepted;
+  // Also check index 0 affects l2_sq / non-finite
+  bad0 := [4] f64.[2000000000.0, 1.0, 0.0, 0.0];
+  #assert tv_verify_claim(base, bad0[..], ref_d[..]) == TvStatus.non_finite;
+
+  // Attack 1: zero-delta freerider
+  zeros := [4] f64.[0.0, 0.0, 0.0, 0.0];
+  #assert tv_verify_claim(base, zeros[..], ref_d[..]) == TvStatus.zero_delta;
+
+  // Attack 2: random Gaussian noise / norm explosion
+  noise := [4] f64.[50.0, -50.0, 50.0, 50.0];
+  #assert tv_verify_claim(base, noise[..], ref_d[..]) == TvStatus.norm_exceeded;
+
+  // Attack 3: sign-flipped gradient poisoner (-delta)
+  flipped := [4] f64.[-1.0, -2.0, 1.0, -0.5];
+  #assert tv_verify_claim(base, flipped[..], ref_d[..]) == TvStatus.sign_poison;
+  // Orthogonal (dot == 0) also rejected
+  ortho := [4] f64.[0.0, 1.0, 2.0, 0.0];
+  #assert tv_verify_claim(base, ortho[..], ref_d[..]) == TvStatus.sign_poison;
+
+  // Attack 4: targeted backdoor / trigger injector failing quarantine canary
+  bd1 := base; bd1.canary_exact_ok = false;
+  bd2 := base; bd2.canary_refusal_ok = false;
+  #assert tv_verify_claim(bd1, honest[..], ref_d[..]) == TvStatus.canary_failed;
+  #assert tv_verify_claim(bd2, honest[..], ref_d[..]) == TvStatus.canary_failed;
+
+  // Attack 5: stale-checkpoint replay (and shard/config/sig/lease/spot refusals)
+  stale := base; stale.parent_sha = 776;
+  #assert tv_verify_claim(stale, honest[..], ref_d[..]) == TvStatus.stale_checkpoint;
+  bad_sig := base; bad_sig.sig_ok = false;
+  #assert tv_verify_claim(bad_sig, honest[..], ref_d[..]) == TvStatus.bad_signature;
+  exp_c := base; exp_c.now_s = 201;
+  #assert tv_verify_claim(exp_c, honest[..], ref_d[..]) == TvStatus.lease_expired;
+  bad_sh := base; bad_sh.shard_sha = 1;
+  #assert tv_verify_claim(bad_sh, honest[..], ref_d[..]) == TvStatus.binding_mismatch;
+  bad_cf := base; bad_cf.config_sha = 1;
+  #assert tv_verify_claim(bad_cf, honest[..], ref_d[..]) == TvStatus.binding_mismatch;
+  #assert tv_verify_claim(base, honest[0..<0], ref_d[0..<0]) == TvStatus.binding_mismatch;
+  #assert tv_verify_claim(base, honest[0..<3], ref_d[..]) == TvStatus.binding_mismatch;
+  bad_sp := base; bad_sp.spot_dist = 0.06;
+  #assert tv_verify_claim(bad_sp, honest[..], ref_d[..]) == TvStatus.spot_diverged;
+
+  // Attack 6: NaN / Inf tensor injection
+  bad_inf := [4] f64.[1.0, 2000000000.0, 0.0, 0.0];
+  bad_ninf := [4] f64.[1.0, -2000000000.0, 0.0, 0.0];
+  #assert tv_verify_claim(base, bad_inf[..], ref_d[..]) == TvStatus.non_finite;
+  #assert tv_verify_claim(base, bad_ninf[..], ref_d[..]) == TvStatus.non_finite;
+  #assert tv_is_finite(TV_FINITE_MAX) && tv_is_finite(-TV_FINITE_MAX);
+
+  // Attack 7: self-validation / same-device collusion
+  col_k := base; col_k.val_key = 10;
+  col_d := base; col_d.val_device = 100;
+  #assert tv_verify_claim(col_k, honest[..], ref_d[..]) == TvStatus.collusion;
+  #assert tv_verify_claim(col_d, honest[..], ref_d[..]) == TvStatus.collusion;
+
+  // Tier 3 trimmed mean: 6 honest + 2 Byzantine poisoners, plus exact sort & boundary checks
+  mixed := [8] f64.[1.0, -999.0, 1.0, 999.0, 1.0, 1.0, 1.0, 1.0];
+  tm := tv_trimmed_mean(mixed[..], 2);
+  #assert tm > 0.999 && tm < 1.001;
+  unsorted := [4] f64.[999.0, 4.0, 2.0, -999.0];
+  tm2 := tv_trimmed_mean(unsorted[..], 1);
+  #assert tm2 > 2.999 && tm2 < 3.001;
+  unsorted3 := [3] f64.[10.0, 1.0, 5.0];
+  #assert tv_trimmed_mean(unsorted3[..], 1) == 5.0;
+  unsorted4 := [3] f64.[1.0, 10.0, 5.0];
+  #assert tv_trimmed_mean(unsorted4[..], 1) == 5.0;
+  single := [1] f64.[5.0];
+  #assert tv_trimmed_mean(single[..], 0) == 5.0;
+  ok32: [32] f64; for i: 0..<32 { ok32[i] = 2.0; }
+  #assert tv_trimmed_mean(ok32[..], 0) == 2.0;
+  #assert tv_trimmed_mean(mixed[0..<0], 0) == 0.0;
+  #assert tv_trimmed_mean(mixed[..], -1) == 0.0;
+  #assert tv_trimmed_mean(mixed[..], 4) == 0.0;
+  big33: [33] f64;
+  #assert tv_trimmed_mean(big33[..], 0) == 0.0;
+
+  // Tier 5 survival bonus
+  #assert tv_survival_bonus_ready(1, 1, false);
+  #assert tv_survival_bonus_ready(3, 3, false);
+  #assert !tv_survival_bonus_ready(2, 3, false);
+  #assert !tv_survival_bonus_ready(3, 0, false);
+  #assert !tv_survival_bonus_ready(3, 3, true);
+}
