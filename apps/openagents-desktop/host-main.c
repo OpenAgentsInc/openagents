@@ -52,6 +52,7 @@ typedef struct {
   char update_sha[65];
   int64_t update_size;
   int dialog, dialog_status;
+  int interactive;
   int sub_agent_id[OA_SUBAGENTS];
   int sub_active[OA_SUBAGENTS];
   char *line_buf;
@@ -879,7 +880,7 @@ static void pump_host(DesktopApp *a) {
   }
   pump_subagents(a);
   if (cd_save_due(a->page)) save_current_chat(a);
-  if (a->host) {
+  if (a->interactive) {
     static int oa_last_running = 0;
     int now_running = cd_running(a->page) ? 1 : 0;
     if (now_running != oa_last_running) {
@@ -1326,10 +1327,12 @@ static int oa_main(int argc, char **argv) {
       status = 1;
     }
   } else {
+    app.interactive = 1;
     while (cd_step(app.page)) {
       cd_env(app.page, cd_focused(app.page), 0);
       pump_host(&app);
     }
+    oa_keep_awake(0);
   }
 
   stop_all_subagents(&app);
