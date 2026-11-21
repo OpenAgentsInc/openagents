@@ -102,7 +102,7 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], mode);
     return cast(string) s[0].agy_desc[0..<n];
   }
-  if cp_is_inkling(s, idx) { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if cp_is_inkling(s, idx) { return "llama.cpp Metal · Local · 26.4B/3.4B MoE"; }
   if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy) or download a Local Model"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
@@ -154,7 +154,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) {
     return cp_agy_meta(s, cp_agy_shown(s));
   }
-  if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
+  if cp_is_inkling(s, idx) { return "llama.cpp Metal · Inkling 2 Mini"; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");

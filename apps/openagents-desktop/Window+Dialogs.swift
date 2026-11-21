@@ -159,7 +159,7 @@ final class CoderOverlay: NSObject {
 
 private var coderOverlays: [ObjectIdentifier: CoderOverlay] = [:]
 
-/// Local Psionic Metal checkpoint store (~/.openagents/models) for OpenAgents Desktop (#13825, #13826).
+/// Local GGUF checkpoint store (~/.openagents/models) for OpenAgents Desktop (#13825, #13826).
 enum LocalModelStore {
     static var rootDir: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -462,7 +462,7 @@ extension CoderWindow {
             self.refocus()
         }
     }
-    /// Settings > Models > Local Models (#13826): download, verify, or remove local Psionic Metal checkpoints.
+    /// Settings > Models > Local Models (#13826): download, verify, or remove local GGUF checkpoints.
     func manageLocalModels() {
         let ramGB = LocalModelStore.physicalMemoryGB
         let supported = LocalModelStore.hardwareSupported
