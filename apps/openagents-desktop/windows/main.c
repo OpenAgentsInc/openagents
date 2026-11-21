@@ -162,6 +162,25 @@ static int oa_swap_self(const char *staged) {
   return 1;
 }
 
+// Windows taskbar attention flash (#13874) and SetThreadExecutionState keep-awake (#13883).
+static void oa_notify_os(const char *title, const char *body) {
+  (void)title; (void)body;
+  HWND hw = GetActiveWindow();
+  if (!hw) hw = GetForegroundWindow();
+  if (hw) {
+    FLASHWINFO fi;
+    memset(&fi, 0, sizeof fi);
+    fi.cbSize = sizeof fi;
+    fi.hwnd = hw;
+    fi.dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG;
+    fi.uCount = 3;
+    FlashWindowEx(&fi);
+  }
+}
+static void oa_keep_awake(int active) {
+  SetThreadExecutionState(active ? (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) : ES_CONTINUOUS);
+}
+
 #include "../host-main.c"
 
 // stderr (and stdout) into the log file beside the app's other data:

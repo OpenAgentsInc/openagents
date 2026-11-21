@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,6 +74,33 @@ static int oa_swap_self(const char *staged) {
   self[n] = '\0';
   if (chmod(staged, 0755) != 0) return 0;
   return rename(staged, self) == 0;
+}
+
+// Linux freedesktop OS notification (notify-send; #13874) and systemd-inhibit keep-awake (#13883).
+static pid_t oa_inhibit_pid = -1;
+static void oa_notify_os(const char *title, const char *body) {
+  if (!title || !body) return;
+  pid_t pid = fork();
+  if (pid == 0) {
+    execlp("notify-send", "notify-send", "-a", "OpenAgents", title, body, (char *)NULL);
+    _exit(127);
+  }
+}
+static void oa_keep_awake(int active) {
+  if (active) {
+    if (oa_inhibit_pid > 0) return;
+    pid_t pid = fork();
+    if (pid == 0) {
+      execlp("systemd-inhibit", "systemd-inhibit", "--what=idle:sleep", "--who=OpenAgents",
+             "--why=Active agent runs", "sleep", "infinity", (char *)NULL);
+      _exit(127);
+    }
+    if (pid > 0) oa_inhibit_pid = pid;
+  } else if (oa_inhibit_pid > 0) {
+    kill(oa_inhibit_pid, SIGTERM);
+    waitpid(oa_inhibit_pid, NULL, WNOHANG);
+    oa_inhibit_pid = -1;
+  }
 }
 
 #include "../host-main.c"

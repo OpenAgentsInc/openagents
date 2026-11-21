@@ -879,6 +879,17 @@ static void pump_host(DesktopApp *a) {
   }
   pump_subagents(a);
   if (cd_save_due(a->page)) save_current_chat(a);
+  if (a->host) {
+    static int oa_last_running = 0;
+    int now_running = cd_running(a->page) ? 1 : 0;
+    if (now_running != oa_last_running) {
+      oa_keep_awake(now_running);
+      if (oa_last_running && !now_running) {
+        oa_notify_os("OpenAgents", "Agent turn completed");
+      }
+      oa_last_running = now_running;
+    }
+  }
 }
 
 static int run_update_cli(const char *path) {
