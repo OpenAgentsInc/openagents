@@ -1,0 +1,102 @@
+// #authority Hybrid Executor ABI & LoRA Adapter Pinning Policy (hybrid-exec-v1;
+// Executor W3.1, GitHub #13920).
+// Enforces:
+//   - Strict (base_model_sha, core_module_sha) compatibility gate for hot-swapping
+//     pluggable LoRA routing/interface adapters (zero adapter reproduces base bit-for-bit).
+//   - Bounded <exec_call> dispatch admission & typed <exec_refuse> emission on
+//     out-of-range operands, unknown modules, or arity mismatch (0 silent guesses).
+//   - Canonical <exec_return> / <exec_refuse> token formatting.
+#authority;
+
+HX_PROFILE_ID :: "hybrid-exec-v1";
+HX_ARG_MIN :: -67108864; // -2^26 (exec-vm-v1 exact binary64 envelope)
+HX_ARG_MAX :: 67108864;  // +2^26
+HX_MAX_ARGS :: 16;
+
+HxStatus :: enum u8 {
+  ok;
+  adapter_base_mismatch;
+  adapter_core_mismatch;
+  unknown_module;
+  arity_mismatch;
+  arg_out_of_range;
+  core_unverified;
+}
+
+HxAdapterPin :: struct {
+  adapter_sha: int;       // 0 = zero/identity adapter (reproduces base bit-for-bit)
+  base_model_sha: int;
+  core_module_sha: int;
+}
+
+// Verify that a pluggable LoRA routing adapter is pinned to the active (base_model_sha, core_module_sha).
+// adapter_sha == 0 is the identity/zero adapter (always admitted when base & core are non-zero).
+hx_admit_adapter :: (pin: HxAdapterPin, active_base_sha: int, active_core_sha: int) -> HxStatus #effects(all) {
+  if active_base_sha == 0 || active_core_sha == 0 { return HxStatus.core_unverified; }
+  if pin.adapter_sha == 0 { return HxStatus.ok; }
+  if pin.base_model_sha != active_base_sha { return HxStatus.adapter_base_mismatch; }
+  if pin.core_module_sha != active_core_sha { return HxStatus.adapter_core_mismatch; }
+  return HxStatus.ok;
+}
+
+// Admit an <exec_call> invocation before pausing neural decode and entering the frozen compiled core.
+// Any refusal emits <exec_refuse> cleanly rather than silently guessing.
+hx_admit_call :: (module_id: int, expected_arity: int, core_verified: bool, args: [] int) -> HxStatus #effects(all) {
+  if !core_verified { return HxStatus.core_unverified; }
+  if module_id < 1 { return HxStatus.unknown_module; }
+  if expected_arity < 1 || expected_arity > HX_MAX_ARGS || args.count != expected_arity {
+    return HxStatus.arity_mismatch;
+  }
+  for i: 0..<args.count {
+    if args[i] < HX_ARG_MIN || args[i] > HX_ARG_MAX { return HxStatus.arg_out_of_range; }
+  }
+  return HxStatus.ok;
+}
+
+hx_refuse_tag :: (st: HxStatus) -> string #effects(all) {
+  if st == HxStatus.ok { return "<exec_return>"; }
+  if st == HxStatus.arg_out_of_range { return "<exec_refuse reason=\"arg_out_of_range\">"; }
+  if st == HxStatus.arity_mismatch { return "<exec_refuse reason=\"arity_mismatch\">"; }
+  if st == HxStatus.unknown_module { return "<exec_refuse reason=\"unknown_module\">"; }
+  if st == HxStatus.adapter_base_mismatch { return "<exec_refuse reason=\"adapter_base_mismatch\">"; }
+  if st == HxStatus.adapter_core_mismatch { return "<exec_refuse reason=\"adapter_core_mismatch\">"; }
+  return "<exec_refuse reason=\"core_unverified\">";
+}
+
+#test "hybrid-exec-policy: adapter pinning, call admission, exact bounds, and <exec_refuse> tags (#13920)" {
+  // Adapter pinning
+  zero_pin := HxAdapterPin.{adapter_sha = 0, base_model_sha = 0, core_module_sha = 0};
+  #assert hx_admit_adapter(zero_pin, 0, 200) == HxStatus.core_unverified;
+  #assert hx_admit_adapter(zero_pin, 100, 0) == HxStatus.core_unverified;
+  #assert hx_admit_adapter(zero_pin, 100, 200) == HxStatus.ok;
+
+  pin := HxAdapterPin.{adapter_sha = 555, base_model_sha = 100, core_module_sha = 200};
+  #assert hx_admit_adapter(pin, 100, 200) == HxStatus.ok;
+  #assert hx_admit_adapter(pin, 101, 200) == HxStatus.adapter_base_mismatch;
+  #assert hx_admit_adapter(pin, 100, 201) == HxStatus.adapter_core_mismatch;
+
+  // Call admission & exact operand bounds [-2^26, +2^26]
+  a_ok := [2] int.[HX_ARG_MIN, HX_ARG_MAX];
+  a_lo := [1] int.[HX_ARG_MIN - 1];
+  a_hi := [1] int.[HX_ARG_MAX + 1];
+  a16: [16] int;
+  a17: [17] int;
+  #assert hx_admit_call(1, 2, false, a_ok[..]) == HxStatus.core_unverified;
+  #assert hx_admit_call(0, 2, true, a_ok[..]) == HxStatus.unknown_module;
+  #assert hx_admit_call(1, 0, true, a_ok[0..<0]) == HxStatus.arity_mismatch;
+  #assert hx_admit_call(1, 17, true, a17[..]) == HxStatus.arity_mismatch;
+  #assert hx_admit_call(1, 3, true, a_ok[..]) == HxStatus.arity_mismatch;
+  #assert hx_admit_call(1, 1, true, a_lo[..]) == HxStatus.arg_out_of_range;
+  #assert hx_admit_call(1, 1, true, a_hi[..]) == HxStatus.arg_out_of_range;
+  #assert hx_admit_call(1, 2, true, a_ok[..]) == HxStatus.ok;
+  #assert hx_admit_call(1, 16, true, a16[..]) == HxStatus.ok;
+
+  // Refusal & return tags
+  #assert hx_refuse_tag(HxStatus.ok) == "<exec_return>";
+  #assert hx_refuse_tag(HxStatus.arg_out_of_range) == "<exec_refuse reason=\"arg_out_of_range\">";
+  #assert hx_refuse_tag(HxStatus.arity_mismatch) == "<exec_refuse reason=\"arity_mismatch\">";
+  #assert hx_refuse_tag(HxStatus.unknown_module) == "<exec_refuse reason=\"unknown_module\">";
+  #assert hx_refuse_tag(HxStatus.adapter_base_mismatch) == "<exec_refuse reason=\"adapter_base_mismatch\">";
+  #assert hx_refuse_tag(HxStatus.adapter_core_mismatch) == "<exec_refuse reason=\"adapter_core_mismatch\">";
+  #assert hx_refuse_tag(HxStatus.core_unverified) == "<exec_refuse reason=\"core_unverified\">";
+}
