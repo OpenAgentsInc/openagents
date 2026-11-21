@@ -36,6 +36,7 @@
 #load "layout/titlebar.coax";
 #load "layout/sidebar.coax";
 #load "layout/pane.coax";
+#load "gitdiff.coax";
 #load "layout/review.coax";
 #load "filepane.coax";
 #load "simpane.coax";

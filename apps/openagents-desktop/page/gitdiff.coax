@@ -1,0 +1,747 @@
+// Coder Desktop page (../page.coax): live Git working-tree diff, collapsible changed-files tree,
+// hide-test-files filter, syntax-highlighted unified/split diff rendering, and inline review
+// comments that attach back to the active chat composer (GitHub #13870).
+
+CP_GD_MAX_BYTES :: 1048576;     // max bytes of live git status + diff text kept by the host
+CP_GD_FILES :: 64;              // changed files tracked from live git diff
+CP_GD_COMMENTS :: 32;           // pending inline review comments
+CP_GD_COMMENT_PATH :: 256;
+CP_GD_COMMENT_BODY :: 512;
+CP_GD_COMMENT_SNIP :: 160;
+
+// Diff source & view mode.
+CP_GD_SRC_GIT :: 0;             // live working-tree git diff (staged + unstaged + untracked)
+CP_GD_SRC_CHAT :: 1;            // per-turn checkpoint diffs recorded from agent edit tool calls
+CP_GD_UNTRACKED :: 3;           // file status beyond APP_DIFF_MODIFIED/ADDED/DELETED
+CP_GD_SIDE_NEW :: 0;            // comment on new/added/context line
+CP_GD_SIDE_OLD :: 1;            // comment on old/removed line
+
+// Host asks (coder_page_action).
+CP_ASK_GIT_DIFF :: 50;          // host should run git status + git diff and call coder_page_git_diff_set
+CP_ASK_REVIEW_COMMENT :: 51;    // host should open the inline review comment dialog for the picked line/comment
+
+// UI actions dispatched from the Changes pane (disjoint from state.coax, filepane.coax 80-82, simpane.coax 90-125).
+CP_REVIEW_REFRESH :: 150;
+CP_REVIEW_SOURCE :: 151;
+CP_REVIEW_SPLIT :: 152;
+CP_REVIEW_HIDE_TESTS :: 153;
+CP_REVIEW_TREE :: 154;
+CP_REVIEW_TREE_FILE :: 155;
+CP_REVIEW_LINE :: 156;
+CP_REVIEW_CMT_EDIT :: 157;
+CP_REVIEW_CMT_DEL :: 158;
+CP_REVIEW_SUBMIT :: 159;
+CP_REVIEW_CLEAR :: 160;
+
+CpGitFile :: struct {
+  path_at: int; path_n: int;    // slice into CpGitDiff.raw
+  body_at: int; body_n: int;    // slice into CpGitDiff.raw (its unified diff block, 0 if none)
+  added: int; removed: int;
+  status: int;                  // APP_DIFF_MODIFIED, APP_DIFF_ADDED, APP_DIFF_DELETED, CP_GD_UNTRACKED
+  staged: bool; unstaged: bool; untracked: bool;
+  is_test: bool;
+}
+
+CpReviewComment :: struct {
+  id: int;
+  path: [CP_GD_COMMENT_PATH] u8; path_n: int;
+  start_line: int; end_line: int;
+  side: int;                    // CP_GD_SIDE_NEW or CP_GD_SIDE_OLD
+  snippet: [CP_GD_COMMENT_SNIP] u8; snippet_n: int;
+  body: [CP_GD_COMMENT_BODY] u8; body_n: int;
+}
+
+CpGitDiff :: struct {
+  raw: [] u8; raw_n: int;       // host-owned buffer of "# status: ..." + unified git diff
+  files: [CP_GD_FILES] CpGitFile; nfiles: int;
+  total_added: int; total_removed: int;
+  source: int;                  // CP_GD_SRC_GIT or CP_GD_SRC_CHAT
+  split: bool;                  // false = unified, true = split side-by-side
+  tree_open: bool;              // collapsible changed-files tree
+  hide_tests: bool;             // "Hide test files" filter
+  jump_file: int;               // >= 0: scroll to this file's section on next draw
+  file_y: [CP_GD_FILES] f32;    // last drawn content-relative y of each file section
+  comments: [CP_GD_COMMENTS] CpReviewComment; ncomments: int; next_id: int;
+  // Picked line or comment awaiting the host's comment dialog (CP_ASK_REVIEW_COMMENT).
+  pick_edit_id: int;            // > 0 when editing an existing comment, 0 when adding a new one
+  pick_path: [CP_GD_COMMENT_PATH] u8; pick_path_n: int;
+  pick_start: int; pick_end: int; pick_side: int;
+  pick_snippet: [CP_GD_COMMENT_SNIP] u8; pick_snippet_n: int;
+  pick_body: [CP_GD_COMMENT_BODY] u8; pick_body_n: int;
+}
+
+cp_gd_init :: (s: [] CoderPage) {
+  s[0].gd[0].tree_open = true;
+  s[0].gd[0].jump_file = -1;
+}
+
+cp_gd_starts :: (s: string, prefix: string) -> bool {
+  return s.count >= prefix.count && cast(string) s[0..<prefix.count] == prefix;
+}
+
+cp_gd_ends :: (s: string, suffix: string) -> bool {
+  return s.count >= suffix.count && cast(string) s[s.count - suffix.count..<s.count] == suffix;
+}
+
+// Whether a repository-relative path looks like a test or check file.
+cp_gd_is_test_path :: (path: string) -> bool {
+  if path.count == 0 { return false; }
+  if cp_gd_starts(path, "tests/") || cp_gd_starts(path, "test/") || cp_gd_starts(path, "__tests__/") || cp_gd_starts(path, "checks/") || cp_gd_starts(path, "spec/") { return true; }
+  if cp_contains(path, "/tests/") || cp_contains(path, "/test/") || cp_contains(path, "/__tests__/") || cp_contains(path, "/checks/") || cp_contains(path, "/spec/") { return true; }
+  base := app_diff_base(path);
+  if cp_gd_starts(base, "test_") { return true; }
+  if cp_gd_ends(base, "-checks.coax") || cp_gd_ends(base, "_checks.coax") || cp_gd_ends(base, "-test.coax") || cp_gd_ends(base, "_test.coax") { return true; }
+  if cp_gd_ends(base, "_test.go") || cp_gd_ends(base, "_test.rs") || cp_gd_ends(base, "_test.py") || cp_gd_ends(base, "_test.c") { return true; }
+  if cp_gd_ends(base, ".test.ts") || cp_gd_ends(base, ".test.tsx") || cp_gd_ends(base, ".test.js") || cp_gd_ends(base, ".test.jsx") { return true; }
+  if cp_gd_ends(base, ".spec.ts") || cp_gd_ends(base, ".spec.tsx") || cp_gd_ends(base, ".spec.js") { return true; }
+  if cp_gd_ends(base, "Tests.swift") || cp_gd_ends(base, "Test.swift") || cp_gd_ends(base, "-test.swift") || cp_gd_ends(base, "-test.sh") { return true; }
+  return false;
+}
+
+cp_gd_file_path :: (gd: [] CpGitDiff, i: int) -> string {
+  if i < 0 || i >= gd[0].nfiles { return ""; }
+  f := gd[0].files[i];
+  if f.path_at < 0 || f.path_at + f.path_n > gd[0].raw_n { return ""; }
+  return cast(string) gd[0].raw[f.path_at..<f.path_at + f.path_n];
+}
+
+cp_gd_file_body :: (gd: [] CpGitDiff, i: int) -> string {
+  if i < 0 || i >= gd[0].nfiles { return ""; }
+  f := gd[0].files[i];
+  if f.body_n <= 0 || f.body_at < 0 || f.body_at + f.body_n > gd[0].raw_n { return ""; }
+  return cast(string) gd[0].raw[f.body_at..<f.body_at + f.body_n];
+}
+
+cp_gd_file_visible :: (gd: [] CpGitDiff, i: int) -> bool {
+  if i < 0 || i >= gd[0].nfiles { return false; }
+  return !gd[0].hide_tests || !gd[0].files[i].is_test;
+}
+
+cp_gd_find_file :: (gd: [] CpGitDiff, path: string) -> int {
+  for i: 0..<gd[0].nfiles {
+    if cp_gd_file_path(gd, i) == path { return i; }
+  }
+  return -1;
+}
+
+// Parses optional "# status: XY <path>" lines (from git status --porcelain) followed by unified
+// "diff --git ..." sections into gd[0].files without copying any diff text.
+cp_gd_parse :: (gd: [] CpGitDiff, bytes: [] u8) {
+  gd[0].raw = bytes; gd[0].raw_n = bytes.count;
+  gd[0].nfiles = 0; gd[0].total_added = 0; gd[0].total_removed = 0;
+  text := cast(string) bytes;
+  at := 0; cur := -1; old_left := 0; new_left := 0;
+  oa: [1] int; on: [1] int; na: [1] int; nn: [1] int;
+  while at < text.count {
+    e := app_diff_eol(text, at);
+    ln := cast(string) text[at..<e];
+    next_at := ifx e < text.count then e + 1 else e;
+    // Status header lines before diff sections: "# status: XY path"
+    if cur < 0 && cp_gd_starts(ln, "# status: ") && ln.count >= 13 {
+      x := ln[10]; y := ln[11];
+      p_at := at + 13; p_end := e;
+      // Strip optional surrounding quotes from git status -z/porcelain
+      if p_end - p_at >= 2 && text[p_at] == '"' && text[p_end - 1] == '"' { p_at += 1; p_end -= 1; }
+      // Rename format: "old -> new"
+      k := p_at;
+      while k + 4 <= p_end {
+        if cast(string) text[k..<k + 4] == " -> " { p_at = k + 4; break; }
+        k += 1;
+      }
+      if p_end > p_at && gd[0].nfiles < CP_GD_FILES {
+        p := cast(string) text[p_at..<p_end];
+        idx := cp_gd_find_file(gd, p);
+        if idx < 0 {
+          idx = gd[0].nfiles; gd[0].nfiles += 1;
+          gd[0].files[idx] = CpGitFile.{path_at = p_at, path_n = p_end - p_at, is_test = cp_gd_is_test_path(p)};
+        }
+        untracked := x == '?' && y == '?';
+        if untracked { gd[0].files[idx].untracked = true; gd[0].files[idx].status = CP_GD_UNTRACKED; }
+        else {
+          if x != ' ' { gd[0].files[idx].staged = true; }
+          if y != ' ' { gd[0].files[idx].unstaged = true; }
+          if x == 'A' || y == 'A' { gd[0].files[idx].status = APP_DIFF_ADDED; }
+          else if x == 'D' || y == 'D' { gd[0].files[idx].status = APP_DIFF_DELETED; }
+        }
+      }
+      at = next_at; continue;
+    }
+    // New file diff section: "diff --git a/... b/..."
+    if old_left <= 0 && new_left <= 0 && cp_gd_starts(ln, "diff --git ") {
+      if cur >= 0 { gd[0].files[cur].body_n = at - gd[0].files[cur].body_at; }
+      // Extract b/<path>
+      b_pos := -1; i := 11;
+      while i + 3 <= ln.count {
+        if cast(string) ln[i..<i + 3] == " b/" { b_pos = i + 3; }
+        i += 1;
+      }
+      p_at := ifx b_pos >= 0 then at + b_pos else at + 11;
+      p_end := e;
+      if p_end > p_at && text[p_end - 1] == 13 { p_end -= 1; }
+      p := cast(string) text[p_at..<p_end];
+      idx := cp_gd_find_file(gd, p);
+      if idx >= 0 && gd[0].files[idx].body_n == 0 {
+        cur = idx;
+        gd[0].files[cur].body_at = at;
+      } else if gd[0].nfiles < CP_GD_FILES {
+        cur = gd[0].nfiles; gd[0].nfiles += 1;
+        gd[0].files[cur] = CpGitFile.{path_at = p_at, path_n = p_end - p_at, body_at = at, unstaged = true, is_test = cp_gd_is_test_path(p)};
+      } else { cur = -1; }
+      at = next_at; continue;
+    }
+    if cur >= 0 {
+      if app_diff_hunk_of(ln, oa[..], on[..], na[..], nn[..]) {
+        old_left = on[0]; new_left = nn[0];
+      } else if old_left <= 0 && new_left <= 0 {
+        if cp_gd_starts(ln, "new file mode") {
+          if gd[0].files[cur].status != CP_GD_UNTRACKED { gd[0].files[cur].status = APP_DIFF_ADDED; }
+        } else if cp_gd_starts(ln, "deleted file mode") {
+          gd[0].files[cur].status = APP_DIFF_DELETED;
+        } else if cp_gd_starts(ln, "+++ /dev/null") {
+          gd[0].files[cur].status = APP_DIFF_DELETED;
+        } else if cp_gd_starts(ln, "--- /dev/null") {
+          if gd[0].files[cur].status != CP_GD_UNTRACKED { gd[0].files[cur].status = APP_DIFF_ADDED; }
+        } else if cp_gd_starts(ln, "+++ b/") && ln.count > 6 {
+          gd[0].files[cur].path_at = at + 6; gd[0].files[cur].path_n = e - (at + 6);
+          gd[0].files[cur].is_test = cp_gd_is_test_path(cp_gd_file_path(gd, cur));
+        }
+      } else {
+        c: u8 = ifx ln.count > 0 then ln[0] else ' ';
+        if c == '+' && new_left > 0 { gd[0].files[cur].added += 1; new_left -= 1; }
+        else if c == '-' && old_left > 0 { gd[0].files[cur].removed += 1; old_left -= 1; }
+        else if c == ' ' && old_left > 0 && new_left > 0 { old_left -= 1; new_left -= 1; }
+      }
+    }
+    at = next_at;
+  }
+  if cur >= 0 { gd[0].files[cur].body_n = text.count - gd[0].files[cur].body_at; }
+  for i: 0..<gd[0].nfiles {
+    gd[0].total_added += gd[0].files[i].added;
+    gd[0].total_removed += gd[0].files[i].removed;
+  }
+}
+
+// ---------------------------------------------------------------- inline review comments
+
+cp_gd_comment_find :: (s: [] CoderPage, id: int) -> int {
+  if id <= 0 { return -1; }
+  for i: 0..<s[0].gd[0].ncomments {
+    if s[0].gd[0].comments[i].id == id { return i; }
+  }
+  return -1;
+}
+
+cp_gd_comment_add :: (s: [] CoderPage, path: string, start_line: int, end_line: int, side: int, snippet: string, body: string) -> int {
+  trimmed := cp_trim(body);
+  if trimmed.count == 0 || path.count == 0 || s[0].gd[0].ncomments >= CP_GD_COMMENTS { return 0; }
+  sl := ifx start_line > 0 then start_line else 1;
+  el := ifx end_line >= sl then end_line else sl;
+  gd := s[0].gd[..];
+  gd[0].next_id += 1;
+  id := gd[0].next_id;
+  idx := gd[0].ncomments;
+  gd[0].ncomments += 1;
+  gd[0].comments[idx] = CpReviewComment.{id = id, start_line = sl, end_line = el, side = ifx side == CP_GD_SIDE_OLD then CP_GD_SIDE_OLD else CP_GD_SIDE_NEW};
+  gd[0].comments[idx].path_n = cp_out(gd[0].comments[idx].path[..], path);
+  gd[0].comments[idx].snippet_n = cp_out(gd[0].comments[idx].snippet[..], cp_trim(snippet));
+  gd[0].comments[idx].body_n = cp_out(gd[0].comments[idx].body[..], trimmed);
+  return id;
+}
+
+cp_gd_comment_edit :: (s: [] CoderPage, id: int, body: string) -> bool {
+  idx := cp_gd_comment_find(s, id);
+  trimmed := cp_trim(body);
+  if idx < 0 || trimmed.count == 0 { return false; }
+  s[0].gd[0].comments[idx].body_n = cp_out(s[0].gd[0].comments[idx].body[..], trimmed);
+  return true;
+}
+
+cp_gd_comment_delete :: (s: [] CoderPage, id: int) -> bool {
+  idx := cp_gd_comment_find(s, id);
+  if idx < 0 { return false; }
+  gd := s[0].gd[..];
+  for k: idx + 1..<gd[0].ncomments { gd[0].comments[k - 1] = gd[0].comments[k]; }
+  gd[0].ncomments -= 1;
+  return true;
+}
+
+cp_gd_comment_clear :: (s: [] CoderPage) { s[0].gd[0].ncomments = 0; }
+
+// Formats all pending inline review comments as structured markdown context for the chat composer.
+cp_gd_comments_format :: (s: [] CoderPage, out: [] u8) -> int {
+  gd := s[0].gd[..];
+  if gd[0].ncomments == 0 { return 0; }
+  n := cp_out(out, "Review comments:\n");
+  for i: 0..<gd[0].ncomments {
+    c := gd[0].comments[i];
+    p := cast(string) c.path[0..<c.path_n];
+    b := cast(string) c.body[0..<c.body_n];
+    sn := cast(string) c.snippet[0..<c.snippet_n];
+    n += cp_out(out[n..<out.count], "\n- `");
+    n += cp_out(out[n..<out.count], p);
+    n += cp_out(out[n..<out.count], ":");
+    nb: [16] u8;
+    n += cp_out(out[n..<out.count], cast(string) nb[0..<el_put_i(nb[..], 0, c.start_line)]);
+    if c.end_line > c.start_line {
+      n += cp_out(out[n..<out.count], "-");
+      n += cp_out(out[n..<out.count], cast(string) nb[0..<el_put_i(nb[..], 0, c.end_line)]);
+    }
+    n += cp_out(out[n..<out.count], ifx c.side == CP_GD_SIDE_OLD then "` (removed):\n" else "`:\n");
+    if sn.count > 0 {
+      n += cp_out(out[n..<out.count], "  > `");
+      n += cp_out(out[n..<out.count], sn);
+      n += cp_out(out[n..<out.count], "`\n");
+    }
+    n += cp_out(out[n..<out.count], "  ");
+    n += cp_out(out[n..<out.count], b);
+    n += cp_out(out[n..<out.count], "\n");
+  }
+  return n;
+}
+
+// Appends all pending review comments into the active chat composer draft, clears them, and focuses the composer.
+cp_gd_comments_submit :: (s: [] CoderPage) -> bool {
+  if s[0].gd[0].ncomments == 0 { return false; }
+  fmt: [EB_TEXT] u8;
+  fn := cp_gd_comments_format(s, fmt[..]);
+  if fn == 0 { return false; }
+  cur := eb_text(s[0].draft[..]);
+  whole: [EB_TEXT] u8; n := 0;
+  if cur.count > 0 {
+    n += cp_out(whole[n..<whole.count], cur);
+    n += cp_out(whole[n..<whole.count], "\n\n");
+  }
+  n += cp_out(whole[n..<whole.count], cast(string) fmt[0..<fn]);
+  eb_set(s[0].draft[..], cast(string) whole[0..<n]);
+  s[0].gd[0].ncomments = 0;
+  cp_ed_focus(s, CP_KB_COMPOSER);
+  return true;
+}
+
+// Sets the picked line target for CP_ASK_REVIEW_COMMENT from a file's unified diff body and row index.
+cp_gd_pick_from_body :: (s: [] CoderPage, path: string, body: string, target_row: int, side_hint: int) -> bool {
+  wk := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; nw: [1] int;
+  row := 0;
+  while true {
+    kind := app_diff_step(body, wk[..], ln[..], o[..], nw[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    if row == target_row {
+      if kind == APP_DIFF_HUNK || kind == APP_DIFF_NOTE { return false; }
+      side := ifx kind == APP_DIFF_DEL || (kind == APP_DIFF_CONTEXT && side_hint == CP_GD_SIDE_OLD) then CP_GD_SIDE_OLD else CP_GD_SIDE_NEW;
+      line_no := ifx side == CP_GD_SIDE_OLD then o[0] else nw[0];
+      if line_no <= 0 { line_no = ifx nw[0] > 0 then nw[0] else ifx o[0] > 0 then o[0] else 1; }
+      snip := ifx ln[0].count > 0 then cast(string) ln[0][1..<ln[0].count] else "";
+      gd := s[0].gd[..];
+      gd[0].pick_edit_id = 0;
+      gd[0].pick_path_n = cp_out(gd[0].pick_path[..], path);
+      gd[0].pick_start = line_no; gd[0].pick_end = line_no; gd[0].pick_side = side;
+      gd[0].pick_snippet_n = cp_out(gd[0].pick_snippet[..], cp_trim(snip));
+      gd[0].pick_body_n = 0;
+      s[0].ask = CP_ASK_REVIEW_COMMENT;
+      return true;
+    }
+    row += 1;
+  }
+  return false;
+}
+
+cp_gd_pick_edit :: (s: [] CoderPage, id: int) -> bool {
+  idx := cp_gd_comment_find(s, id);
+  if idx < 0 { return false; }
+  gd := s[0].gd[..]; c := gd[0].comments[idx];
+  gd[0].pick_edit_id = c.id;
+  gd[0].pick_path_n = cp_out(gd[0].pick_path[..], cast(string) c.path[0..<c.path_n]);
+  gd[0].pick_start = c.start_line; gd[0].pick_end = c.end_line; gd[0].pick_side = c.side;
+  gd[0].pick_snippet_n = cp_out(gd[0].pick_snippet[..], cast(string) c.snippet[0..<c.snippet_n]);
+  gd[0].pick_body_n = cp_out(gd[0].pick_body[..], cast(string) c.body[0..<c.body_n]);
+  s[0].ask = CP_ASK_REVIEW_COMMENT;
+  return true;
+}
+
+// ---------------------------------------------------------------- syntax-highlighted diff paint
+
+// Paints one line of diff code using components/core/syntax.coax roles and the active skin's syntax palette.
+cp_gd_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, max_w: f32) {
+  if max_w <= 0 || code.count == 0 { return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  fitted := app_fit(f, face, app_diff_detab(sh, code), max_w);
+  if fitted.count == 0 { return; }
+  runs: [96] MdRun;
+  nr := syn_rust(fitted, runs[..]);
+  ln := sheet_line(sh, x, y, lh, true);
+  pen := x; i := 0;
+  for r: 0..<nr {
+    if runs[r].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<runs[r].from]); }
+    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(k, runs[r].style, plain), cast(string) fitted[runs[r].from..<runs[r].to]);
+    i = runs[r].to;
+  }
+  if i < fitted.count { _ := sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<fitted.count]); }
+}
+
+// Height of any inline review comments attached to (path, line_no, side).
+cp_gd_line_comments_h :: (s: [] CoderPage, f: [] UiFrame, path: string, line_no: int, side: int) -> f32 {
+  if line_no <= 0 || s[0].gd[0].ncomments == 0 { return 0; }
+  d := app_diff_look(f[0].skin);
+  h: f32 = 0;
+  for i: 0..<s[0].gd[0].ncomments {
+    c := s[0].gd[0].comments[i];
+    if c.side == side && c.start_line == line_no && cast(string) c.path[0..<c.path_n] == path {
+      h += d.line * 2.2f32 + d.gap / 2;
+    }
+  }
+  return h;
+}
+
+// Paints inline review comment cards attached to (path, line_no, side). Returns height drawn.
+cp_gd_draw_line_comments :: (s: [] CoderPage, f: [] UiFrame, path: string, line_no: int, side: int, x: f32, y: f32, w: f32, top: f32, bottom: f32) -> f32 {
+  if line_no <= 0 || s[0].gd[0].ncomments == 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(k);
+  face := k.mono_small.face; tl := k.mono_small.line;
+  card_h := d.line * 2.2f32;
+  h: f32 = 0;
+  ib: [EL_ID] u8; lb: [32] u8;
+  for i: 0..<s[0].gd[0].ncomments {
+    c := s[0].gd[0].comments[i];
+    if c.side != side || c.start_line != line_no || cast(string) c.path[0..<c.path_n] != path { continue; }
+    cy := y + h + d.gap / 4;
+    if cy + card_h >= top && cy <= bottom {
+      sheet_fill(sh, x + d.gap, cy, w - 2 * d.gap, card_h, k.app.tool_radius, k.surface);
+      sheet_fill(sh, x + d.gap, cy, 3.0f32, card_h, 0, k.accent);
+      // Header row: line badge + Edit / Delete actions
+      ln_n := el_put(lb[..], 0, "L"); ln_n = el_put_i(lb[..], ln_n, c.start_line);
+      if c.end_line > c.start_line { ln_n = el_put(lb[..], ln_n, "-"); ln_n = el_put_i(lb[..], ln_n, c.end_line); }
+      if c.side == CP_GD_SIDE_OLD { ln_n = el_put(lb[..], ln_n, " (old)"); }
+      badge := sheet_pool(sh, cast(string) lb[0..<ln_n]);
+      _ := sheet_text(sh, m, -1, x + d.gap + 10.0f32, cy + 4.0f32, tl, face, k.accent, badge);
+      // Delete and Edit compact text buttons on the right
+      del_w := measure_width(m, face, "Delete") + 10.0f32;
+      ed_w := measure_width(m, face, "Edit") + 10.0f32;
+      del_x := x + w - d.gap - del_w - 4.0f32;
+      ed_x := del_x - ed_w - 4.0f32;
+      dn := el_put_i(ib[..], el_put(ib[..], 0, "coder.review.cd."), c.id);
+      did := sheet_pool(sh, cast(string) ib[0..<dn]);
+      _ := sheet_text(sh, m, -1, del_x + 5.0f32, cy + 4.0f32, tl, face, k.danger, "Delete");
+      drow := uiframe_semantic(f, did, EL_BUTTON, "Delete comment", del_x, cy + 2.0f32, del_w, tl + 4.0f32, 0, CP_REVIEW_CMT_DEL);
+      sheet_hit(sh, UIFRAME_HIT, drow, 0, del_x, cy + 2.0f32, del_w, tl + 4.0f32);
+      en := el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ce."), c.id);
+      eid := sheet_pool(sh, cast(string) ib[0..<en]);
+      _ := sheet_text(sh, m, -1, ed_x + 5.0f32, cy + 4.0f32, tl, face, k.muted, "Edit");
+      erow := uiframe_semantic(f, eid, EL_BUTTON, "Edit comment", ed_x, cy + 2.0f32, ed_w, tl + 4.0f32, 0, CP_REVIEW_CMT_EDIT);
+      sheet_hit(sh, UIFRAME_HIT, erow, 0, ed_x, cy + 2.0f32, ed_w, tl + 4.0f32);
+      // Comment body on second line
+      body := sheet_pool(sh, cast(string) c.body[0..<c.body_n]);
+      _ := sheet_text(sh, m, -1, x + d.gap + 10.0f32, cy + d.line + 2.0f32, k.tool.line, k.tool.face, k.ink, app_fit(f, k.tool.face, body, w - 2 * d.gap - 20.0f32));
+    }
+    h += card_h + d.gap / 2;
+  }
+  return h;
+}
+
+// Syntax-highlighted unified diff with clickable lines for inline review comments.
+cp_gd_hunks_unified :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int, path: string, body: string, x: f32, y: f32, w: f32, top: f32, bottom: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(k);
+  face := k.mono_small.face; tl := k.mono_small.line;
+  // Pre-compute height including any inline review comment cards
+  h := d.gap; rows := 0;
+  w0 := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; nw: [1] int;
+  while true {
+    kind := app_diff_step(body, w0[..], ln[..], o[..], nw[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    if rows == APP_DIFF_KEEP { h += d.line; break; }
+    rows += 1;
+    h += ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
+    if kind == APP_DIFF_DEL { h += cp_gd_line_comments_h(s, f, path, o[0], CP_GD_SIDE_OLD); }
+    else if kind == APP_DIFF_ADD || kind == APP_DIFF_CONTEXT { h += cp_gd_line_comments_h(s, f, path, nw[0], CP_GD_SIDE_NEW); }
+  }
+  if y + h < top || y > bottom { return h; }
+  sheet_fill(sh, x, y, w, h, k.app.tool_radius, k.code_wash);
+  ib: [EL_ID] u8;
+  drow := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Diff", x, y, w, h, 0, 0);
+  elt_value(f[0].rows, drow, body);
+  wk := [1] AppDiffWalk.[AppDiffWalk.{}];
+  ry := y + d.gap / 2; drawn := 0;
+  code_x := x + 2 * d.num + d.sign; code_w := x + w - d.pad - code_x;
+  while true {
+    kind := app_diff_step(body, wk[..], ln[..], o[..], nw[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    if drawn == APP_DIFF_KEEP {
+      mb: [48] u8; mn := el_put_i(mb[..], el_put(mb[..], 0, "… "), app_diff_more(body)); mn = el_put(mb[..], mn, " more lines");
+      if ry + d.line >= top && ry <= bottom { _ := sheet_text(sh, m, -1, x + d.pad, ry + (d.line - tl) / 2, tl, face, k.faint, sheet_pool(sh, cast(string) mb[0..<mn])); }
+      break;
+    }
+    row_idx := drawn;
+    drawn += 1;
+    rh := ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
+    if ry + rh >= top && ry <= bottom {
+      ty := ry + (rh - tl) / 2; l := ln[0];
+      if kind == APP_DIFF_HUNK {
+        _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, k.faint, app_fit(f, face, l, w - 2 * d.pad));
+      } else {
+        if kind == APP_DIFF_ADD { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.success, 0.12)); }
+        else if kind == APP_DIFF_DEL { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.danger, 0.12)); }
+        // Clickable line hit target for adding an inline review comment
+        if kind != APP_DIFF_NOTE {
+          ln_n := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ln."), file_idx), "."), row_idx);
+          lid := sheet_pool(sh, cast(string) ib[0..<ln_n]);
+          if uiframe_hovered(f, lid) { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.accent, 0.08)); }
+          lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, w, rh, 0, CP_REVIEW_LINE);
+          sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, w, rh);
+        }
+        app_diff_num(f, x + d.num - d.gap / 2, ty, tl, o[0]);
+        app_diff_num(f, x + 2 * d.num - d.gap / 2, ty, tl, nw[0]);
+        if kind == APP_DIFF_NOTE {
+          _ := sheet_text(sh, m, -1, code_x, ty, tl, face, k.faint, app_fit(f, face, l, code_w));
+        } else {
+          sign := ifx kind == APP_DIFF_ADD then "+" else ifx kind == APP_DIFF_DEL then "−" else "";
+          if sign.count > 0 {
+            ink := ifx kind == APP_DIFF_ADD then k.success else k.danger;
+            _ := sheet_text(sh, m, -1, code_x - d.sign + (d.sign - measure_width(m, face, sign)) / 2, ty, tl, face, ink, sign);
+          }
+          words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
+          cp_gd_syntax_line(f, code_x, ty, tl, face, k.ink, words, code_w);
+        }
+      }
+    }
+    ry += rh;
+    if kind == APP_DIFF_DEL { ry += cp_gd_draw_line_comments(s, f, path, o[0], CP_GD_SIDE_OLD, x, ry, w, top, bottom); }
+    else if kind == APP_DIFF_ADD || kind == APP_DIFF_CONTEXT { ry += cp_gd_draw_line_comments(s, f, path, nw[0], CP_GD_SIDE_NEW, x, ry, w, top, bottom); }
+  }
+  return h;
+}
+
+// Syntax-highlighted side-by-side split diff with clickable old/new lines for inline review comments.
+cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int, path: string, body: string, x: f32, y: f32, w: f32, top: f32, bottom: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(k);
+  face := k.mono_small.face; tl := k.mono_small.line;
+  half := w / 2.0f32;
+  // Collect up to APP_DIFF_KEEP diff rows so consecutive -/+ runs pair side-by-side.
+  kinds: [APP_DIFF_KEEP] int; lines: [APP_DIFF_KEEP] string; olds: [APP_DIFF_KEEP] int; news: [APP_DIFF_KEEP] int;
+  nr := 0;
+  w0 := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; nw: [1] int;
+  while nr < APP_DIFF_KEEP {
+    kind := app_diff_step(body, w0[..], ln[..], o[..], nw[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    kinds[nr] = kind; lines[nr] = ln[0]; olds[nr] = o[0]; news[nr] = nw[0]; nr += 1;
+  }
+  // Measure height
+  h := d.gap; i := 0;
+  while i < nr {
+    if kinds[i] == APP_DIFF_HUNK { h += d.hunk; i += 1; continue; }
+    if kinds[i] == APP_DIFF_DEL {
+      d0 := i; while i < nr && kinds[i] == APP_DIFF_DEL { i += 1; }
+      a0 := i; while i < nr && kinds[i] == APP_DIFF_ADD { i += 1; }
+      nd := a0 - d0; na := i - a0; pairs := ifx nd > na then nd else na;
+      for p: 0..<pairs {
+        h += d.line;
+        if p < nd { h += cp_gd_line_comments_h(s, f, path, olds[d0 + p], CP_GD_SIDE_OLD); }
+        if p < na { h += cp_gd_line_comments_h(s, f, path, news[a0 + p], CP_GD_SIDE_NEW); }
+      }
+      continue;
+    }
+    h += d.line;
+    if kinds[i] == APP_DIFF_ADD || kinds[i] == APP_DIFF_CONTEXT { h += cp_gd_line_comments_h(s, f, path, news[i], CP_GD_SIDE_NEW); }
+    i += 1;
+  }
+  if y + h < top || y > bottom { return h; }
+  sheet_fill(sh, x, y, w, h, k.app.tool_radius, k.code_wash);
+  sheet_fill(sh, x + half, y, k.border, h, 0, k.menu_divider);
+  ib: [EL_ID] u8;
+  drow := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Split Diff", x, y, w, h, 0, 0);
+  elt_value(f[0].rows, drow, body);
+  ry := y + d.gap / 2;
+  lcode_x := x + d.num + d.sign; rcode_x := x + half + d.num + d.sign;
+  code_w := half - d.num - d.sign - d.gap;
+  i = 0;
+  while i < nr {
+    if kinds[i] == APP_DIFF_HUNK {
+      if ry + d.hunk >= top && ry <= bottom {
+        _ := sheet_text(sh, m, -1, x + d.pad, ry + (d.hunk - tl) / 2, tl, face, k.faint, app_fit(f, face, lines[i], w - 2 * d.pad));
+      }
+      ry += d.hunk; i += 1; continue;
+    }
+    if kinds[i] == APP_DIFF_DEL {
+      d0 := i; while i < nr && kinds[i] == APP_DIFF_DEL { i += 1; }
+      a0 := i; while i < nr && kinds[i] == APP_DIFF_ADD { i += 1; }
+      nd := a0 - d0; na := i - a0; pairs := ifx nd > na then nd else na;
+      for p: 0..<pairs {
+        ty := ry + (d.line - tl) / 2;
+        if ry + d.line >= top && ry <= bottom {
+          if p < nd {
+            sheet_fill(sh, x, ry, half, d.line, 0, opacity(k.danger, 0.12));
+            rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ls."), file_idx), "."), d0 + p);
+            lid := sheet_pool(sh, cast(string) ib[0..<rn]);
+            lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, half, d.line, 0, CP_REVIEW_LINE);
+            sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, half, d.line);
+            app_diff_num(f, x + d.num - d.gap / 2, ty, tl, olds[d0 + p]);
+            _ := sheet_text(sh, m, -1, x + d.num, ty, tl, face, k.danger, "−");
+            w_old := ifx lines[d0 + p].count > 0 then cast(string) lines[d0 + p][1..<lines[d0 + p].count] else "";
+            cp_gd_syntax_line(f, lcode_x, ty, tl, face, k.ink, w_old, code_w);
+          }
+          if p < na {
+            sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.12));
+            rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.rs."), file_idx), "."), a0 + p);
+            rid := sheet_pool(sh, cast(string) ib[0..<rn]);
+            rrow := uiframe_semantic(f, rid, EL_BUTTON, "Add review comment", x + half, ry, half, d.line, 0, CP_REVIEW_LINE);
+            sheet_hit(sh, UIFRAME_HIT, rrow, 0, x + half, ry, half, d.line);
+            app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[a0 + p]);
+            _ := sheet_text(sh, m, -1, x + half + d.num, ty, tl, face, k.success, "+");
+            w_new := ifx lines[a0 + p].count > 0 then cast(string) lines[a0 + p][1..<lines[a0 + p].count] else "";
+            cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, w_new, code_w);
+          }
+        }
+        ry += d.line;
+        if p < nd { ry += cp_gd_draw_line_comments(s, f, path, olds[d0 + p], CP_GD_SIDE_OLD, x, ry, w, top, bottom); }
+        if p < na { ry += cp_gd_draw_line_comments(s, f, path, news[a0 + p], CP_GD_SIDE_NEW, x, ry, w, top, bottom); }
+      }
+      continue;
+    }
+    ty := ry + (d.line - tl) / 2;
+    if ry + d.line >= top && ry <= bottom {
+      if kinds[i] == APP_DIFF_ADD {
+        sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.12));
+        rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.rs."), file_idx), "."), i);
+        rid := sheet_pool(sh, cast(string) ib[0..<rn]);
+        rrow := uiframe_semantic(f, rid, EL_BUTTON, "Add review comment", x + half, ry, half, d.line, 0, CP_REVIEW_LINE);
+        sheet_hit(sh, UIFRAME_HIT, rrow, 0, x + half, ry, half, d.line);
+        app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[i]);
+        _ := sheet_text(sh, m, -1, x + half + d.num, ty, tl, face, k.success, "+");
+        w_new := ifx lines[i].count > 0 then cast(string) lines[i][1..<lines[i].count] else "";
+        cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, w_new, code_w);
+      } else if kinds[i] == APP_DIFF_CONTEXT {
+        rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ln."), file_idx), "."), i);
+        lid := sheet_pool(sh, cast(string) ib[0..<rn]);
+        lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, w, d.line, 0, CP_REVIEW_LINE);
+        sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, w, d.line);
+        app_diff_num(f, x + d.num - d.gap / 2, ty, tl, olds[i]);
+        app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[i]);
+        words := ifx lines[i].count > 0 then cast(string) lines[i][1..<lines[i].count] else "";
+        cp_gd_syntax_line(f, lcode_x, ty, tl, face, k.ink, words, code_w);
+        cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, words, code_w);
+      }
+    }
+    ry += d.line;
+    if kinds[i] == APP_DIFF_ADD || kinds[i] == APP_DIFF_CONTEXT { ry += cp_gd_draw_line_comments(s, f, path, news[i], CP_GD_SIDE_NEW, x, ry, w, top, bottom); }
+    i += 1;
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- press dispatch
+
+cp_gd_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  gd := s[0].gd[..];
+  if act == CP_REVIEW_REFRESH { s[0].ask = CP_ASK_GIT_DIFF; return true; }
+  if act == CP_REVIEW_SOURCE {
+    gd[0].source = ifx gd[0].source == CP_GD_SRC_GIT then CP_GD_SRC_CHAT else CP_GD_SRC_GIT;
+    s[0].review_scroll = 0;
+    return true;
+  }
+  if act == CP_REVIEW_SPLIT { gd[0].split = !gd[0].split; return true; }
+  if act == CP_REVIEW_HIDE_TESTS { gd[0].hide_tests = !gd[0].hide_tests; s[0].review_scroll = 0; return true; }
+  if act == CP_REVIEW_TREE { gd[0].tree_open = !gd[0].tree_open; return true; }
+  if act == CP_REVIEW_TREE_FILE {
+    idx := cp_number(id, "coder.review.tf.");
+    if idx < 0 || idx >= CP_GD_FILES { return false; }
+    // Ensure the target file's diff section is expanded and jump scroll to it
+    fb: [EL_ID] u8; fid := app_diff_file_id(fb[..], "coder.review", idx);
+    k := keyed_find(s[0].keyed[..], fid);
+    if k >= 0 { keyed_slot_set(s[0].keyed[..], k, APP_DIFF_OPEN, 1.0f32); }
+    gd[0].jump_file = idx;
+    if gd[0].file_y[idx] > 0 { s[0].review_scroll = scroll_clamp(gd[0].file_y[idx], s[0].review_content, s[0].pane_view); }
+    return true;
+  }
+  if act == CP_REVIEW_LINE {
+    side_hint := CP_GD_SIDE_NEW;
+    prefix := "coder.review.ln.";
+    if cp_gd_starts(id, "coder.review.ls.") { prefix = "coder.review.ls."; side_hint = CP_GD_SIDE_OLD; }
+    else if cp_gd_starts(id, "coder.review.rs.") { prefix = "coder.review.rs."; side_hint = CP_GD_SIDE_NEW; }
+    fi := cp_number(id, prefix);
+    if fi < 0 { return false; }
+    // Find the second number after "."
+    dot := -1;
+    for k: prefix.count..<id.count { if id[k] == '.' { dot = k; break; } }
+    if dot < 0 || dot + 1 >= id.count { return false; }
+    ri := 0; any := false;
+    for k: dot + 1..<id.count {
+      if id[k] >= '0' && id[k] <= '9' { ri = ri * 10 + cast(int) (id[k] - '0'); any = true; } else { break; }
+    }
+    if !any { return false; }
+    // Live git diff file
+    if gd[0].source == CP_GD_SRC_GIT && gd[0].nfiles > 0 && fi < gd[0].nfiles {
+      return cp_gd_pick_from_body(s, cp_gd_file_path(gd, fi), cp_gd_file_body(gd, fi), ri, side_hint);
+    }
+    // Chat edits fallback: fi is the edit's call index
+    if fi < s[0].calls_n && cp_edit_diff(s, fi) > 0 {
+      t := cast(string) s[0].calls[fi].text[0..<s[0].calls[fi].text_n];
+      path := cast(string) t[cp_edit_at(t)..<t.count];
+      return cp_gd_pick_from_body(s, path, cp_call_text(s, fi), ri, side_hint);
+    }
+    return false;
+  }
+  if act == CP_REVIEW_CMT_EDIT {
+    cid := cp_number(id, "coder.review.ce.");
+    return cp_gd_pick_edit(s, cid);
+  }
+  if act == CP_REVIEW_CMT_DEL {
+    cid := cp_number(id, "coder.review.cd.");
+    return cp_gd_comment_delete(s, cid);
+  }
+  if act == CP_REVIEW_SUBMIT { return cp_gd_comments_submit(s); }
+  if act == CP_REVIEW_CLEAR { cp_gd_comment_clear(s); return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- host C exports
+
+coder_page_git_diff_max :: () -> int #export_c #effects(all) { return CP_GD_MAX_BYTES; }
+
+coder_page_git_diff_set :: (s: [] CoderPage, bytes: [] u8) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_gd_parse(s[0].gd[..], bytes);
+}
+
+coder_page_git_diff_files :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].gd[0].nfiles else 0;
+}
+
+// Reads the picked line or comment for CP_ASK_REVIEW_COMMENT:
+// meta[0]=edit_id (0=new), meta[1]=start_line, meta[2]=end_line, meta[3]=side (0=new, 1=old).
+// Returns path length, 0 when none.
+coder_page_review_pick :: (s: [] CoderPage, path: [] u8, snippet: [] u8, body: [] u8, meta: [] int) -> int #export_c #effects(all) {
+  if s.count < 1 || meta.count < 4 { return 0; }
+  gd := s[0].gd[..];
+  if gd[0].pick_path_n == 0 { return 0; }
+  meta[0] = gd[0].pick_edit_id; meta[1] = gd[0].pick_start; meta[2] = gd[0].pick_end; meta[3] = gd[0].pick_side;
+  pn := cp_out(path, cast(string) gd[0].pick_path[0..<gd[0].pick_path_n]);
+  _ = cp_out(snippet, cast(string) gd[0].pick_snippet[0..<gd[0].pick_snippet_n]);
+  _ = cp_out(body, cast(string) gd[0].pick_body[0..<gd[0].pick_body_n]);
+  return pn;
+}
+
+coder_page_review_comment_add :: (s: [] CoderPage, path: string, start_line: int, end_line: int, side: int, snippet: string, body: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_gd_comment_add(s, path, start_line, end_line, side, snippet, body);
+}
+
+coder_page_review_comment_edit :: (s: [] CoderPage, id: int, body: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_gd_comment_edit(s, id, body);
+}
+
+coder_page_review_comment_delete :: (s: [] CoderPage, id: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_gd_comment_delete(s, id);
+}
+
+coder_page_review_comments_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_gd_comments_submit(s);
+}
+
+coder_page_review_comments_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].gd[0].ncomments else 0;
+}

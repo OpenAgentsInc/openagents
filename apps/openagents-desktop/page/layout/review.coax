@@ -1,13 +1,14 @@
-// Coder Desktop page (../../page.coax): the code review in the pane (GitHub #13696). The files the
-// chat's edits changed, as Zeron's Changes card lists them: how many and their lines at the top,
-// then each file's row (its lines added and removed) over the hunks of each of its edits in the
-// order they came, all drawn by the app set's diffs (components/app/diff.coax). It shares the pane
-// with a sub-agent's transcript: with both open, the pane's tabs choose (app_pane_tabs).
+// Coder Desktop page (../../page.coax): the code review in the pane (GitHub #13696, #13870).
+// Shows live working-tree Git diff (staged + unstaged + untracked files) in addition to per-turn
+// checkpoint diffs from agent edit tool calls, with a collapsible changed-files tree, hide-test-files
+// filter, syntax-highlighted unified/split diff rendering, and inline review comments attached back
+// to the active chat composer.
 
 // Whether the pane shows the review: it is open, and its tab is in front or the only one.
 cp_review_shown :: (s: [] CoderPage) -> bool { return s[0].review && (s[0].pane_tab == CP_TAB_CHANGES || !s[0].pane_open); }
-// Whether the chat has an edit that changed a file: the corner's Review button shows then.
+// Whether the chat has an edit that changed a file or the working tree has live git changes.
 cp_has_edits :: (s: [] CoderPage) -> bool {
+  if s[0].gd[0].nfiles > 0 { return true; }
   for q: 0..<s[0].calls_n { if cp_edit_diff(s, q) > 0 { return true; } }
   return false;
 }
@@ -44,41 +45,198 @@ cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f
   if changes { return app_pane_tab_shell(f, px, top, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, 1.0f32); }
   return app_pane_tab_shell(f, px, top, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, 1.0f32);
 }
-// The review from px, pw wide, the window's height: the header, then, scrolling, the card's head
-// and each changed file's row over its edits' hunks while it is open. Rows out of view are not drawn.
+
+// Status badge text and color for a git diff file.
+cp_review_status_tag :: (status: int, staged: bool, unstaged: bool, untracked: bool) -> string {
+  if untracked || status == CP_GD_UNTRACKED { return "?"; }
+  if status == APP_DIFF_ADDED { return "A"; }
+  if status == APP_DIFF_DELETED { return "D"; }
+  if staged && unstaged { return "MM"; }
+  return "M";
+}
+
+// Compact toolbar at the top of the Changes pane: source switcher, unified/split, hide tests, refresh.
+cp_review_toolbar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, has_git: bool, has_chat: bool) -> f32 {
+  k := f[0].skin; a := k.app; gd := s[0].gd[..];
+  cx := x; cy := y; gap := a.gap_small; ch := k.control_h;
+  if has_git && has_chat {
+    lbl := ifx gd[0].source == CP_GD_SRC_GIT then "Working Tree" else "Chat Edits";
+    bw := app_button_width(f, -1, lbl);
+    _ := app_button(f, "coder.review.source", cx, cy, bw, -1, lbl, APP_BUTTON_DEFAULT, 0, CP_REVIEW_SOURCE);
+    cx += bw + gap;
+  }
+  view_lbl := ifx gd[0].split then "Split" else "Unified";
+  vw := app_button_width(f, -1, view_lbl);
+  if cx + vw > x + cw { cx = x; cy += ch + gap; }
+  _ := app_button(f, "coder.review.split", cx, cy, vw, -1, view_lbl, APP_BUTTON_DEFAULT, ifx gd[0].split then EL_S_CURRENT else 0, CP_REVIEW_SPLIT);
+  cx += vw + gap;
+  ht_lbl := ifx gd[0].hide_tests then "Tests hidden" else "Hide tests";
+  hw := app_button_width(f, -1, ht_lbl);
+  if cx + hw > x + cw { cx = x; cy += ch + gap; }
+  _ := app_button(f, "coder.review.hidetests", cx, cy, hw, -1, ht_lbl, APP_BUTTON_DEFAULT, ifx gd[0].hide_tests then EL_S_CURRENT else 0, CP_REVIEW_HIDE_TESTS);
+  cx += hw + gap;
+  rw := app_button_width(f, -1, "Refresh");
+  if cx + rw > x + cw { cx = x; cy += ch + gap; }
+  _ := app_button(f, "coder.review.refresh", cx, cy, rw, -1, "Refresh", APP_BUTTON_QUIET, 0, CP_REVIEW_REFRESH);
+  return (cy - y) + ch + gap;
+}
+
+// Pending inline review comments banner: count + "Send to composer" + "Clear".
+cp_review_comments_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32) -> f32 {
+  nc := s[0].gd[0].ncomments;
+  if nc == 0 { return 0; }
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  bh := k.control_h + 2 * a.gap_small;
+  sheet_fill(sh, x, y, cw, bh, k.app.tool_radius, opacity(k.accent, 0.10));
+  sheet_fill(sh, x, y, 3.0f32, bh, 0, k.accent);
+  lb: [48] u8; ln := el_put_i(lb[..], 0, nc);
+  ln = el_put(lb[..], ln, ifx nc == 1 then " review comment" else " review comments");
+  words := sheet_pool(sh, cast(string) lb[0..<ln]);
+  by := y + (bh - k.control_h) / 2;
+  _ := sheet_text(sh, m, -1, x + a.gap, y + (bh - k.tool.line) / 2, k.tool.line, k.tool.face, k.ink, words);
+  clr_w := app_button_width(f, -1, "Clear");
+  sub_w := app_button_width(f, -1, "Send to composer");
+  clr_x := x + cw - a.gap_small - clr_w;
+  sub_x := clr_x - a.gap_small - sub_w;
+  _ := app_button(f, "coder.review.submit", sub_x, by, sub_w, -1, "Send to composer", APP_BUTTON_PRIMARY, 0, CP_REVIEW_SUBMIT);
+  _ := app_button(f, "coder.review.clear", clr_x, by, clr_w, -1, "Clear", APP_BUTTON_QUIET, 0, CP_REVIEW_CLEAR);
+  return bh + a.gap_small;
+}
+
+// Collapsible changed-files tree: header + one clickable row per visible file that jumps to its diff.
+cp_review_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, files: [] AppDiffFile, nf: int, hidden_tests: int, use_git: bool, top: f32, bottom: f32) -> f32 {
+  if nf == 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(k); gd := s[0].gd[..];
+  h: f32 = 0;
+  // Tree header row
+  hh := d.file;
+  if y + hh >= top && y <= bottom {
+    if uiframe_hovered(f, "coder.review.tree") { sheet_fill(sh, x, y, cw, hh, k.app.tool_radius, k.row_hover); }
+    sheet_icon(sh, ifx gd[0].tree_open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, x + d.gap, y + (hh - d.chevron) / 2, d.chevron, k.muted);
+    hb: [64] u8; hn := el_put(hb[..], 0, "Changed files");
+    if hidden_tests > 0 {
+      hn = el_put(hb[..], hn, " ("); hn = el_put_i(hb[..], hn, hidden_tests);
+      hn = el_put(hb[..], hn, ifx hidden_tests == 1 then " test hidden)" else " tests hidden)");
+    }
+    lbl := sheet_pool(sh, cast(string) hb[0..<hn]);
+    _ := sheet_text(sh, m, -1, x + 2 * d.gap + d.chevron, y + (hh - k.tool.line) / 2, k.tool.line, k.tool.face, k.muted, lbl);
+    trow := uiframe_semantic(f, "coder.review.tree", EL_BUTTON, lbl, x, y, cw, hh, EL_S_EXPANDS | (ifx gd[0].tree_open then EL_S_EXPANDED else 0), CP_REVIEW_TREE);
+    sheet_hit(sh, UIFRAME_HIT, trow, 0, x, y, cw, hh);
+  }
+  h += hh;
+  if !gd[0].tree_open { return h + d.gap / 2; }
+  ib: [EL_ID] u8; face := k.mono_small.face; tl := k.mono_small.line;
+  row_h := d.line + 4.0f32;
+  for i: 0..<nf {
+    if use_git && !cp_gd_file_visible(gd, i) { continue; }
+    if !use_git && gd[0].hide_tests && cp_gd_is_test_path(files[i].path) { continue; }
+    ry := y + h;
+    if ry + row_h >= top && ry <= bottom {
+      rn := el_put_i(ib[..], el_put(ib[..], 0, "coder.review.tf."), i);
+      rid := sheet_pool(sh, cast(string) ib[0..<rn]);
+      if uiframe_hovered(f, rid) { sheet_fill(sh, x, ry, cw, row_h, k.app.tool_radius, k.row_hover); }
+      ly := ry + (row_h - tl) / 2;
+      tag := ifx use_git then cp_review_status_tag(gd[0].files[i].status, gd[0].files[i].staged, gd[0].files[i].unstaged, gd[0].files[i].untracked)
+             else ifx files[i].status == APP_DIFF_ADDED then "A" else ifx files[i].status == APP_DIFF_DELETED then "D" else "M";
+      tag_ink := ifx tag == "A" || tag == "?" then k.success else ifx tag == "D" then k.danger else k.accent;
+      tx := x + 2 * d.gap + d.chevron;
+      _ := sheet_text(sh, m, -1, tx, ly, tl, face, tag_ink, tag);
+      tx += measure_width(m, face, "MM") + d.gap;
+      right := x + cw - d.gap;
+      right -= app_diff_counts(f, right, ly, tl, files[i].added, files[i].removed) + d.gap;
+      name := app_diff_base(files[i].path); dir := app_diff_dir(files[i].path);
+      nm := app_fit(f, face, ifx name.count > 0 then name else files[i].path, right - tx);
+      tx += sheet_text(sh, m, -1, tx, ly, tl, face, k.ink, nm);
+      if dir.count > 0 && right - tx - d.gap > measure_width(m, face, "…") * 2 {
+        _ := sheet_text(sh, m, -1, tx + d.gap, ly, tl, face, k.faint, app_fit(f, face, dir, right - tx - d.gap));
+      }
+      frow := uiframe_semantic(f, rid, EL_BUTTON, files[i].path, x, ry, cw, row_h, 0, CP_REVIEW_TREE_FILE);
+      sheet_hit(sh, UIFRAME_HIT, frow, 0, x, ry, cw, row_h);
+    }
+    h += row_h;
+  }
+  return h + d.gap;
+}
+
+// The review from px, pw wide, the window's height: the header, then, scrolling, the toolbar,
+// pending review comments bar, summary head, collapsible changed-files tree, and each changed file's
+// row over its syntax-highlighted unified or split hunks. Rows out of view are not drawn.
 cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  k := f[0].skin; a := k.app; d := app_diff_look(k);
+  k := f[0].skin; a := k.app; d := app_diff_look(k); gd := s[0].gd[..];
   stop := cp_pane_head(s, f, px, 0.0f32, pw, h, "");
   s[0].pane_view = h - stop;
   s[0].review_scroll = scroll_clamp(s[0].review_scroll, s[0].review_content, s[0].pane_view);
   edits: [CP_REVIEW_EDITS] int; ne := cp_review_edits(s, edits[..]);
-  // the files, each once, in the order they were first changed, and each edit's file
+  has_git := gd[0].nfiles > 0;
+  has_chat := ne > 0;
+  use_git := has_git && (gd[0].source == CP_GD_SRC_GIT || !has_chat);
   files: [CP_REVIEW_FILES] AppDiffFile; nf := 0; which: [CP_REVIEW_EDITS] int;
-  added := 0; removed := 0;
-  for e: 0..<ne {
-    q := edits[e]; t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; path := cast(string) t[cp_edit_at(t)..<t.count];
-    at := -1; for i: 0..<nf { if files[i].path == path { at = i; break; } }
-    if at < 0 && nf < files.count { at = nf; files[nf] = AppDiffFile.{path = path}; nf += 1; }
-    which[e] = at;
-    if at < 0 { continue; }
-    da: [1] int; dr: [1] int; app_diff_stats(cp_call_text(s, q), da[..], dr[..]);
-    files[at].added += da[0]; files[at].removed += dr[0]; added += da[0]; removed += dr[0];
+  vis_files := 0; added := 0; removed := 0; hidden_tests := 0;
+  if use_git {
+    nf = ifx gd[0].nfiles < files.count then gd[0].nfiles else files.count;
+    for i: 0..<nf {
+      files[i] = AppDiffFile.{path = cp_gd_file_path(gd, i), body = cp_gd_file_body(gd, i),
+                              added = gd[0].files[i].added, removed = gd[0].files[i].removed,
+                              status = gd[0].files[i].status};
+      if cp_gd_file_visible(gd, i) { vis_files += 1; added += files[i].added; removed += files[i].removed; }
+      else { hidden_tests += 1; }
+    }
+  } else {
+    for e: 0..<ne {
+      q := edits[e]; t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; path := cast(string) t[cp_edit_at(t)..<t.count];
+      at := -1; for i: 0..<nf { if files[i].path == path { at = i; break; } }
+      if at < 0 && nf < files.count { at = nf; files[nf] = AppDiffFile.{path = path}; nf += 1; }
+      which[e] = at;
+      if at < 0 { continue; }
+      da: [1] int; dr: [1] int; app_diff_stats(cp_call_text(s, q), da[..], dr[..]);
+      files[at].added += da[0]; files[at].removed += dr[0];
+    }
+    for i: 0..<nf {
+      if gd[0].hide_tests && cp_gd_is_test_path(files[i].path) { hidden_tests += 1; continue; }
+      vis_files += 1; added += files[i].added; removed += files[i].removed;
+    }
   }
   uiframe_clip(f, px, stop, px + pw, h);
   x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].review_scroll;
-  if nf == 0 { y += app_meta(f, "coder.review.none", x, y + a.gap, cw, "No file has changed in this chat yet.", false) + 2 * a.gap; }
-  else {
-    y += app_diff_head(f, "coder.review.head", x, y, cw, nf, added, removed);
+  y += a.gap_small;
+  y += cp_review_toolbar(s, f, x, y, cw, has_git, has_chat);
+  y += cp_review_comments_bar(s, f, x, y, cw);
+  if nf == 0 {
+    y += app_meta(f, "coder.review.none", x, y + a.gap, cw, "No file has changed in this workspace yet.", false) + 2 * a.gap;
+  } else {
+    y += app_diff_head(f, "coder.review.head", x, y, cw, vis_files, added, removed);
+    y += cp_review_tree(s, f, x, y, cw, files[..], nf, hidden_tests, use_git, stop, h);
     fb: [EL_ID] u8; eb: [EL_ID] u8;
     for i: 0..<nf {
+      if use_git && !cp_gd_file_visible(gd, i) { continue; }
+      if !use_git && gd[0].hide_tests && cp_gd_is_test_path(files[i].path) { continue; }
+      gd[0].file_y[i] = y + s[0].review_scroll - stop;
+      if gd[0].jump_file == i {
+        s[0].review_scroll = scroll_clamp(gd[0].file_y[i], s[0].review_content, s[0].pane_view);
+        gd[0].jump_file = -1;
+      }
       fid := app_diff_file_id(fb[..], "coder.review", i);
       open := app_diff_is_open(f, fid, true);
       y += app_diff_file_row(f, fid, x, y, cw, files[i], open, CP_REVIEW_FILE);
       if !open { continue; }
-      for e: 0..<ne {
-        if which[e] != i { continue; }
-        n := el_put_i(eb[..], el_put(eb[..], el_put(eb[..], 0, fid), ".e"), e); eid := cast(string) eb[0..<n];   // "coder.review.f0.e3"
-        y += app_diff_hunks(f, eid, x, y, cw, cp_call_text(s, edits[e]), stop, h) + d.gap;
+      if use_git {
+        if files[i].body.count == 0 {
+          y += app_meta(f, app_id(eb[..], fid, ".empty"), x, y, cw, "No text diff (binary or empty file).", false) + d.gap;
+        } else if gd[0].split {
+          y += cp_gd_hunks_split(s, f, fid, i, files[i].path, files[i].body, x, y, cw, stop, h) + d.gap;
+        } else {
+          y += cp_gd_hunks_unified(s, f, fid, i, files[i].path, files[i].body, x, y, cw, stop, h) + d.gap;
+        }
+      } else {
+        for e: 0..<ne {
+          if which[e] != i { continue; }
+          n := el_put_i(eb[..], el_put(eb[..], el_put(eb[..], 0, fid), ".e"), e); eid := cast(string) eb[0..<n];   // "coder.review.f0.e3"
+          if gd[0].split {
+            y += cp_gd_hunks_split(s, f, eid, edits[e], files[i].path, cp_call_text(s, edits[e]), x, y, cw, stop, h) + d.gap;
+          } else {
+            y += cp_gd_hunks_unified(s, f, eid, edits[e], files[i].path, cp_call_text(s, edits[e]), x, y, cw, stop, h) + d.gap;
+          }
+        }
       }
     }
     y += a.gap;

@@ -381,6 +381,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 47: manageLocalModels()
         case 48: pump(run)
         case 49: gitAsked()
+        case 50: refreshGitDiff()
+        case 51: openReviewCommentDialog()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -414,7 +416,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
-            if !fgRunning { run.endTurn(); refreshBranch() }
+            if !fgRunning { run.endTurn(); refreshBranch(); refreshGitDiff() }
             if let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
                     "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),

@@ -79,3 +79,87 @@ cp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_test_find(s, id
   q = s[0].turns[0].head - 1; app_diff_stats(cp_call_text(s, q), a[..], r[..]);
   #assert q >= 0 && a[0] == 400 && cp_edit_diff(s, q) == 5;
 }
+
+#test "live git diff parses staged, unstaged, and untracked files, filters test files, and tree jumps to diff" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  sample := "# status: M  src/core.coax\n# status:  M apps/page/checks/core-checks.coax\n# status: ?? notes/new.md\ndiff --git a/src/core.coax b/src/core.coax\nindex 111..222 100644\n--- a/src/core.coax\n+++ b/src/core.coax\n@@ -10,2 +10,3 @@\n fn run() {\n-  let old = 1;\n+  let next = 2;\n+  return next;\ndiff --git a/apps/page/checks/core-checks.coax b/apps/page/checks/core-checks.coax\n--- a/apps/page/checks/core-checks.coax\n+++ b/apps/page/checks/core-checks.coax\n@@ -1,1 +1,2 @@\n #test \"a\" {}\n+#test \"b\" {}\ndiff --git a/notes/new.md b/notes/new.md\nnew file mode 100644\n--- /dev/null\n+++ b/notes/new.md\n@@ -0,0 +1,2 @@\n+# Notes\n+hello\n";
+  buf: [2048] u8; n := cp_out(buf[..], sample);
+  coder_page_git_diff_set(s, buf[0..<n]);
+  #assert coder_page_git_diff_files(s) == 3 && cp_has_edits(s);
+  #assert s[0].gd[0].files[0].staged && !s[0].gd[0].files[0].is_test && s[0].gd[0].files[0].added == 2 && s[0].gd[0].files[0].removed == 1;
+  #assert s[0].gd[0].files[1].unstaged && s[0].gd[0].files[1].is_test && s[0].gd[0].files[1].added == 1 && s[0].gd[0].files[1].removed == 0;
+  #assert s[0].gd[0].files[2].untracked && s[0].gd[0].files[2].status == CP_GD_UNTRACKED && s[0].gd[0].files[2].added == 2;
+  #assert s[0].gd[0].total_added == 5 && s[0].gd[0].total_removed == 1;
+  // Open review pane: all 3 files appear in tree and diff list
+  s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_test_find(s, "coder.review.tree") >= 0;
+  #assert cp_test_find(s, "coder.review.tf.0") >= 0 && cp_test_find(s, "coder.review.tf.1") >= 0 && cp_test_find(s, "coder.review.tf.2") >= 0;
+  #assert cp_test_find(s, "coder.review.f0.diff") >= 0 && cp_test_find(s, "coder.review.f1.diff") >= 0 && cp_test_find(s, "coder.review.f2.diff") >= 0;
+  // Hide test files filters out core-checks.coax (index 1) from both tree and diff list, updating summary stats
+  #assert cp_test_press(s, "coder.review.hidetests") && s[0].gd[0].hide_tests;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_test_find(s, "coder.review.tf.0") >= 0 && cp_test_find(s, "coder.review.tf.1") < 0 && cp_test_find(s, "coder.review.tf.2") >= 0;
+  #assert cp_test_find(s, "coder.review.f1") < 0;
+  rows := surface_rows(s[0].surface[..]);
+  head := rows.rows[cp_test_find(s, "coder.review.head")];
+  #assert cast(string) head.label[0..<head.label_n] == "2 files changed" && cast(string) head.value[0..<head.value_n] == "+4 −1";
+  // Collapsing the tree hides tree file rows; reopening restores them
+  #assert cp_test_press(s, "coder.review.tree") && !s[0].gd[0].tree_open && cp_test_draw_side(s, f[..]) && cp_test_find(s, "coder.review.tf.0") < 0;
+  #assert cp_test_press(s, "coder.review.tree") && s[0].gd[0].tree_open && cp_test_draw_side(s, f[..]) && cp_test_find(s, "coder.review.tf.2") >= 0;
+  // Folding file 2 then clicking it in the tree re-expands it and records jump
+  #assert cp_test_press(s, "coder.review.f2") && cp_test_draw_side(s, f[..]) && cp_test_find(s, "coder.review.f2.diff") < 0;
+  #assert cp_test_press(s, "coder.review.tf.2") && cp_test_draw_side(s, f[..]) && cp_test_find(s, "coder.review.f2.diff") >= 0;
+  // Toggle split view renders cleanly
+  #assert cp_test_press(s, "coder.review.split") && s[0].gd[0].split && cp_test_draw_side(s, f[..]) && cp_test_find(s, "coder.review.f0.diff") >= 0;
+}
+
+#test "test path detector recognizes coax, rust, go, ts, swift, and python test files" {
+  #assert cp_gd_is_test_path("apps/openagents-desktop/page/checks/review-checks.coax");
+  #assert cp_gd_is_test_path("tests/unit.coax");
+  #assert cp_gd_is_test_path("src/foo_test.rs");
+  #assert cp_gd_is_test_path("pkg/bar_test.go");
+  #assert cp_gd_is_test_path("web/DiffPanel.test.tsx");
+  #assert cp_gd_is_test_path("ios/AppTests.swift");
+  #assert cp_gd_is_test_path("scripts/test_parser.py");
+  #assert !cp_gd_is_test_path("apps/openagents-desktop/page/gitdiff.coax");
+  #assert !cp_gd_is_test_path("src/contest.rs");
+}
+
+#test "clicking a diff line picks it, and inline review comments add, edit, delete, and submit to composer" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  sample := "diff --git a/src/app.coax b/src/app.coax\n--- a/src/app.coax\n+++ b/src/app.coax\n@@ -20,2 +20,2 @@\n-  x := a / b;\n+  x := a / c;\n   return x;\n";
+  buf: [1024] u8; n := cp_out(buf[..], sample);
+  coder_page_git_diff_set(s, buf[0..<n]);
+  s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
+  #assert cp_test_draw_side(s, f[..]);
+  // Row 0 is hunk header, row 1 is "-  x := a / b;" (old line 20), row 2 is "+  x := a / c;" (new line 20)
+  #assert cp_test_find(s, "coder.review.ln.0.2") >= 0;
+  #assert cp_test_press(s, "coder.review.ln.0.2");
+  #assert coder_page_action(s) == CP_ASK_REVIEW_COMMENT;
+  pbuf: [256] u8; sbuf: [160] u8; bbuf: [512] u8; meta: [4] int;
+  pn := coder_page_review_pick(s, pbuf[..], sbuf[..], bbuf[..], meta[..]);
+  #assert cast(string) pbuf[0..<pn] == "src/app.coax" && meta[0] == 0 && meta[1] == 20 && meta[2] == 20 && meta[3] == CP_GD_SIDE_NEW;
+  // Add two comments: one on new line 20, one on old line 20
+  c1 := coder_page_review_comment_add(s, "src/app.coax", 20, 20, CP_GD_SIDE_NEW, "x := a / c;", "Guard against c == 0");
+  c2 := coder_page_review_comment_add(s, "src/app.coax", 20, 22, CP_GD_SIDE_OLD, "x := a / b;", "Keep old fallback?");
+  #assert c1 > 0 && c2 > c1 && coder_page_review_comments_count(s) == 2;
+  // Draw shows inline comment cards with Edit/Delete buttons and the Send to composer bar
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_test_find(s, "coder.review.submit") >= 0 && cp_test_find(s, "coder.review.ce.1") >= 0 && cp_test_find(s, "coder.review.cd.2") >= 0;
+  // Edit comment 1 via UI pick + edit API
+  #assert cp_test_press(s, "coder.review.ce.1") && coder_page_action(s) == CP_ASK_REVIEW_COMMENT;
+  pn = coder_page_review_pick(s, pbuf[..], sbuf[..], bbuf[..], meta[..]);
+  #assert meta[0] == c1 && cast(string) pbuf[0..<pn] == "src/app.coax";
+  #assert coder_page_review_comment_edit(s, c1, "Guard against c == 0 before dividing");
+  // Delete comment 2 via UI button
+  #assert cp_test_press(s, "coder.review.cd.2") && coder_page_review_comments_count(s) == 1;
+  // Submit appends formatted review comment to existing composer draft and clears pending comments
+  #assert coder_page_set_text(s, "Please address:");
+  #assert cp_test_press(s, "coder.review.submit");
+  #assert coder_page_review_comments_count(s) == 0;
+  draft := eb_text(s[0].draft[..]);
+  #assert cp_contains(draft, "Please address:") && cp_contains(draft, "Review comments:") && cp_contains(draft, "`src/app.coax:20`:") && cp_contains(draft, "Guard against c == 0 before dividing");
+}

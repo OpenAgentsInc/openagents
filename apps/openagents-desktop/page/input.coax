@@ -129,6 +129,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     // the code review opens in the pane, its tab in front; a press while it shows closes it
     if s[0].review && cp_review_shown(s) { s[0].review = false; return true; }
     s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
+    s[0].ask = CP_ASK_GIT_DIFF;
     return true;
   }
   if act == CP_PANE_TAB {
@@ -138,6 +139,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_REVIEW_FILE { return app_diff_press(s[0].keyed[..], "coder.review", surface_id(s[0].surface[..], row)); }
+  if act >= CP_REVIEW_REFRESH && act <= CP_REVIEW_CLEAR { return cp_gd_press(s, act, surface_id(s[0].surface[..], row)); }
   if act == CP_PANE_TOOL {
     // a row of the open sub-agent's activity group (#13744): it opens, or its file opens
     id := surface_id(s[0].surface[..], row);

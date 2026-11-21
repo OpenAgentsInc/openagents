@@ -380,4 +380,14 @@ int cd_git_anchor(void *page, float out[2]);
 int cd_git_needs_guard(const char *branch, int op);
 int cd_git_valid_branch(const char *name);
 int cd_git_valid_commit(const char *msg);
+// Live Git diff viewer, changed-files tree, and inline review comments (page/gitdiff.coax, GitHub #13870).
+int cd_git_diff_max(void);
+void cd_git_diff_set(void *page, const char *bytes, int len);
+int cd_git_diff_files(void *page);
+int cd_review_pick(void *page, char *path, int path_cap, char *snippet, int snip_cap, char *body, int body_cap, int meta[4]);
+int cd_review_comment_add(void *page, const char *path, int start_line, int end_line, int side, const char *snippet, const char *body);
+int cd_review_comment_edit(void *page, int id, const char *body);
+int cd_review_comment_delete(void *page, int id);
+int cd_review_comments_submit(void *page);
+int cd_review_comments_count(void *page);
 #endif

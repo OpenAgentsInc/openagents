@@ -44,6 +44,7 @@ typedef struct {
   void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
   char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
   char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
+  char *gitdiff; // live working-tree git status + diff buffer (cd_git_diff_set): the page reads it here
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -547,7 +548,7 @@ void cd_close(void *page) {
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
   for (int i = 0; i < CD_IMAGES; i++) free(c->images[i].rgba);
-  free(c->files); free(c->file); free(c->s); free(c->st); free(c);
+  free(c->files); free(c->file); free(c->gitdiff); free(c->s); free(c->st); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.
@@ -616,3 +617,67 @@ int cd_git_anchor(void *page, float out[2]) { CoderHost *c = page; return c && o
 int cd_git_needs_guard(const char *branch, int op) { return coder_page_git_needs_guard(cd_string(branch), op) ? 1 : 0; }
 int cd_git_valid_branch(const char *name) { return coder_page_git_valid_branch(cd_string(name)) ? 1 : 0; }
 int cd_git_valid_commit(const char *msg) { return coder_page_git_valid_commit(cd_string(msg)) ? 1 : 0; }
+// Live Git diff viewer and inline review comments (page/gitdiff.coax, GitHub #13870).
+int cd_git_diff_max(void) { return (int)coder_page_git_diff_max(); }
+void cd_git_diff_set(void *page, const char *bytes, int len) {
+  CoderHost *c = page;
+  if (!c) return;
+  if (!bytes || len <= 0) {
+    coder_page_git_diff_set(cd_state(c), (coax_v_u8){NULL, 0});
+    free(c->gitdiff); c->gitdiff = NULL;
+    cd_woke(c);
+    return;
+  }
+  int cap = cd_git_diff_max();
+  if (len > cap) len = cap;
+  char *keep = malloc((size_t)len + 1);
+  if (!keep) return;
+  memcpy(keep, bytes, (size_t)len); keep[len] = 0;
+  coder_page_git_diff_set(cd_state(c), (coax_v_u8){(uint8_t *)keep, len});
+  free(c->gitdiff); c->gitdiff = keep;
+  cd_woke(c);
+}
+int cd_git_diff_files(void *page) { CoderHost *c = page; return c ? (int)coder_page_git_diff_files(cd_state(c)) : 0; }
+int cd_review_pick(void *page, char *path, int path_cap, char *snippet, int snip_cap, char *body, int body_cap, int meta[4]) {
+  CoderHost *c = page;
+  if (!c || !path || path_cap < 2 || !snippet || snip_cap < 2 || !body || body_cap < 2 || !meta) return 0;
+  int64_t m64[4] = {0, 0, 0, 0};
+  memset(path, 0, (size_t)path_cap);
+  memset(snippet, 0, (size_t)snip_cap);
+  memset(body, 0, (size_t)body_cap);
+  int pn = (int)coder_page_review_pick(cd_state(c), (coax_v_u8){(uint8_t *)path, path_cap - 1},
+                                       (coax_v_u8){(uint8_t *)snippet, snip_cap - 1},
+                                       (coax_v_u8){(uint8_t *)body, body_cap - 1},
+                                       (coax_v_s64){m64, 4});
+  for (int i = 0; i < 4; i++) meta[i] = (int)m64[i];
+  return pn;
+}
+int cd_review_comment_add(void *page, const char *path, int start_line, int end_line, int side, const char *snippet, const char *body) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int id = (int)coder_page_review_comment_add(cd_state(c), cd_string(path), start_line, end_line, side, cd_string(snippet), cd_string(body));
+  cd_woke(c);
+  return id;
+}
+int cd_review_comment_edit(void *page, int id, const char *body) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_review_comment_edit(cd_state(c), id, cd_string(body));
+  cd_woke(c);
+  return ok;
+}
+int cd_review_comment_delete(void *page, int id) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_review_comment_delete(cd_state(c), id);
+  cd_woke(c);
+  return ok;
+}
+int cd_review_comments_submit(void *page) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_review_comments_submit(cd_state(c));
+  cd_woke(c);
+  return ok;
+}
+int cd_review_comments_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_review_comments_count(cd_state(c)) : 0; }
