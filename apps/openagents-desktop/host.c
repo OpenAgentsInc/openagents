@@ -293,6 +293,25 @@ static int cd_ime_text(void *user, int from, int to, char *out, int cap) { retur
 static int cd_ime_rect(void *user, int at, float rect[4]) { return coder_page_ime_rect(cd_state((CoderHost *)user), at, (coax_v_f32){rect, 4}) ? 1 : 0; }
 static int cd_ime_index(void *user, float x, float y) { return (int)coder_page_ime_index(cd_state((CoderHost *)user), x, y); }
 static const UiIme cd_ime = {cd_ime_replace, cd_ime_mark, cd_ime_unmark, cd_ime_range, cd_ime_text, cd_ime_rect, cd_ime_index};
+#if !defined(__APPLE__) && !defined(_WIN32)
+// Wayland's keyboard and text-input (ui-host.h text, text_edit, text_paste): typed and composed text and
+// the clipboard reach the field with the keyboard here, since the Linux host has no UiIme of its own.
+static void cd_on_text(void *user, const char *bytes, size_t n) { cd_ime_replace(user, -1, -1, bytes, n); }
+static void cd_on_text_edit(void *user, const char *commit, size_t n, const char *preedit, size_t m, int begin, int end) {
+  CoderHost *c = user;
+  if (coder_page_text_edit(cd_state(c), (coax_string){commit, (int64_t)n}, (coax_string){preedit, (int64_t)m}, begin, end)) cd_woke(c);
+}
+static void cd_on_text_cancel(void *user) { CoderHost *c = user; coder_page_text_cancel(cd_state(c)); cd_woke(c); }
+static void cd_on_text_paste(void *user, const char *bytes, size_t n) { CoderHost *c = user; if (coder_page_paste(cd_state(c), (coax_string){bytes, (int64_t)n})) cd_woke(c); }
+// The caret, for the input method's candidates: surface points from the window's top left.
+static int cd_on_text_rect(void *user, float rect[4]) {
+  CoderHost *c = user;
+  if (!coder_page_ime_rect(cd_state(c), (int)coder_page_ime_range(cd_state(c), 1), (coax_v_f32){rect, 4})) return 0;
+  float d = ui_dpr(c->app.host); if (d < 1) d = 1;
+  for (int i = 0; i < 4; i++) rect[i] /= d;
+  return 1;
+}
+#endif
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, 0, 1); cd_woke(c); return; } coder_page_wheel(cd_state(c), dy); cd_woke(c); }
 static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, precise != 0, 0); cd_woke(c); return; } coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
@@ -320,6 +339,10 @@ void *cd_open_ex(const char *resources, int offscreen, int width, int height) {
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
                .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .image = composition ? cd_image : NULL, .presented = cd_presented};
+#if !defined(__APPLE__) && !defined(_WIN32)
+  app.text = cd_on_text; app.text_edit = cd_on_text_edit; app.text_cancel = cd_on_text_cancel;
+  app.text_paste = cd_on_text_paste; app.text_rect = cd_on_text_rect;
+#endif
   a->host = ui_open(&app, offscreen != 0);
   if (!a->host) { free(c->s); free(c->st); free(c); return NULL; }
   c->composition = composition != NULL;

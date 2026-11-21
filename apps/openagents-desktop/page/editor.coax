@@ -300,6 +300,24 @@ coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #ef
   if cut { composer_cut_selection(c); ue_committed(e); cp_ed_publish(s, which); }
   return n;
 }
+// Wayland text-input (ui-host.h text_edit, text_cancel): one transaction, the text it commits and the
+// preedit it shows next with its cursor in the preedit's bytes, through the shared editor's
+// ue_transaction. A terminal takes the committed text as input. False when no field has the keyboard
+// or the transaction does not fit.
+coder_page_text_edit :: (s: [] CoderPage, commit: string, preedit: string, begin: int, end: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return false; }
+  if cp_term_focused(s) { return commit.count == 0 || cp_term_queue_input(s, commit); }
+  which := cp_ed_which(s);
+  if which < 0 { return false; }
+  if which == CP_ED_FILE && s[0].fp[0].large_edit { return commit.count == 0 || cp_fp_large_insert(s, commit); }
+  if !ue_transaction(cp_ed(s, which), commit, preedit, begin, end) { return false; }
+  cp_ed_publish(s, which); return true;
+}
+coder_page_text_cancel :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return; }
+  which := cp_ed_which(s);
+  if which >= 0 { ue_cancel(cp_ed(s, which)); cp_ed_publish(s, which); }
+}
 // NSTextInputClient (ui-host.h UiIme) over the field with the keyboard, in UTF-16 units; points in device pixels.
 coder_page_ime_replace :: (s: [] CoderPage, from16: int, to16: int, text: string) #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return; }
