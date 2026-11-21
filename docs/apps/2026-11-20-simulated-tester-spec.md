@@ -1,8 +1,8 @@
 # Simulated App Tester Specification (Desktop, Mobile, and Web)
 
-**Date:** 2026-11-20  
+**Date:** 2026-11-20 (updated 2026-11-20: proto-first custom agents, Agents sidebar page, composable & multiplayer testers)  
 **Status:** Proposed specification (ready for Phase 0/1 implementation)  
-**Scope:** `apps/openagents-desktop/`, `apps/openagents-ios/`, `apps/openagents-web/` (Phase 3), `apps/shared/tester/`, `coax/lib/agent/device/`, `proto/tester/`  
+**Scope:** `proto/openagents/agent/v1alpha1/`, `proto/openagents/tester/v1alpha1/`, `apps/openagents-desktop/`, `apps/openagents-ios/`, `apps/openagents-web/` (Phase 3), `apps/shared/tester/`, `coax/lib/agent/device/`  
 **Related docs:**
 - [`../audits/2026-11-20-gamebuilder-monorepo-migration-audit.md`](../audits/2026-11-20-gamebuilder-monorepo-migration-audit.md) (one Desktop app, one Mobile app, one Web app)
 - [`../desktop/2026-11-20-gamebuilder-3d-worlds-audit.md`](../desktop/2026-11-20-gamebuilder-3d-worlds-audit.md) (GameBuilder CLI/MCP and 3D views in OpenAgents Desktop)
@@ -67,20 +67,205 @@ Per `docs/reuse.md`, the simulated tester builds on existing OpenAgents and migr
 
 ---
 
-## 3. Architecture and Ownership
+## 3. Tester as a Composable Agent & the Agents Page
+
+Rather than treating the simulated tester purely as an external CI script, **a Tester is a first-class OpenAgents Agent** that lives in the upcoming **Agents** page (top of the left sidebar menu in OpenAgents Desktop and Mobile) alongside Coder, Builder, and custom user-defined agents.
+
+### 3.1 Deterministic, Hybrid, and Model-Backed Agents
+
+An agent in OpenAgents is defined by **what contract it fulfills and how it can be invoked**, not by whether every step calls an LLM. The agent model explicitly supports three execution modes:
+
+| Execution Mode | Description | Tester Examples |
+| --- | --- | --- |
+| **Deterministic** (`EXECUTION_MODE_DETERMINISTIC`) | Pure Coax state machine, journey script, or rule-based controller. Zero LLM calls, reproducible from a seed, fast and cheap. | `desktop-journey-tester`, `ios-smoke-tester`, `crates-solver` |
+| **Hybrid** (`EXECUTION_MODE_HYBRID`) | Deterministic Coax controller for timing, input leases, assertions, and hard verification, paired with a bounded LLM or vision/decision model for non-deterministic navigation, free-form input, or visual anomaly spotting. | `hybrid-scenario-tester` (scripted setup + model-driven task completion + hard Coax verdict), `multiplayer-bot-tester` |
+| **Model-backed** (`EXECUTION_MODE_MODEL`) | LLM or vision/decision model drives goal selection and planning within strict token/turn/cost/tool caps; Coax still enforces safety, leases, and verdicts. | `vision-explorer`, `ux-auditor` |
+
+This lets teams mix deterministic reliability with realistic nondeterministic user behavior inside one unified agent abstraction, and inspect/run all of them from the same UI and CLI.
+
+### 3.2 Composable Agents, Delegation, and Concurrent Multi-Tester Simulations
+
+Agents are **composable**: any agent with the required delegation capability can invoke other agents (subject to `allowed_callees`, `max_depth`, `max_concurrency`, and budget caps), forming an explicit invocation tree (`parent_invocation_id`, `root_session_id`).
+
+This unlocks four high-value testing workflows out of the box:
+
+1. **Code → Verify delegation:** A coding agent (e.g., Microcoder or a Claude sub-agent) finishes a UI or protocol edit and delegates to `desktop-journey-tester` or `ios-sim-tester` as a sub-agent; the tester boots an isolated build, runs the scenario, and returns a typed `tester.result.v1` + screenshots/video directly into the parent conversation.
+2. **Parallel multi-area testing:** A `release-coordinator` agent fans out multiple different tester agents simultaneously — e.g., a deterministic `desktop-layout-tester`, an `ios-sim-tester`, and a hybrid `vision-explorer` — each bound to its own isolated workspace, simulator UDID, or browser profile, merging their results into one matrix.
+3. **Multiplayer & multi-client simulations:** A `multiplayer-sim` coordinator spawns $N$ tester agents (e.g., 2–4 seats: `host-player`, `guest-player-1..3`, or `desktop-client` + `mobile-client`) running concurrently against isolated accounts/clients/simulators, synchronized through explicit **`AgentBarrier`** checkpoints (e.g., `"all_joined_lobby"`, `"match_started"`, `"edit_synced"`). Each seat can run a different agent definition (e.g., one deterministic host, one hybrid goal-seeking player, one chaos/disconnect tester).
+4. **Builder + Tester adversarial loops:** A `world-builder` agent edits a GameBuilder level or realm while a `playtester` agent concurrently plays pinned revisions and reports stuck spots or broken objectives back to the builder.
+
+### 3.3 The Agents Page (Left Sidebar Top Menu)
+
+The **Agents** page in the top-left sidebar menu provides the human-facing control surface for custom and built-in agents:
+
+- **Agent Catalog:** Lists built-in agents (`Desktop Tester`, `iOS Simulator Tester`, `Paired Sync Tester`, `Vision Explorer`, `Multiplayer Coordinator`, `Coder`, `GameBuilder`) and user-defined custom agents, showing each agent's `kind`, `execution_mode` (`Deterministic` / `Hybrid` / `Model`), required capabilities/grants, and default budget.
+- **Create / Customize Agent:** Lets a person define a custom agent (e.g., `"Wallet & Checkout Tester"` or `"2v2 Arena Simulator"`) by picking a runtime/journey pack, optional decision model + prompt, target binding, budget, and which sub-agents it may compose (`allowed_callees`).
+- **Invoke & Inspect Active Runs:** One-click Run (or `@agent` invocation from chat) opens a live invocation tree showing every active agent and delegated sub-agent (including parallel testers active in different parts of the app or across Desktop + Mobile), their current state (`RUNNING`, `WAITING_BARRIER`, `COMPLETED`, `FAILED`), live screenshots/recordings, and typed verdicts.
+- **Cascading Stop & Safety:** Pressing **Stop** on a root run cancels the entire delegation subtree and trips every child adapter's `300 ms` input-release watchdog.
+
+---
+
+## 4. Proto-First Audit & Schema Extensions
+
+Per `AGENTS.md` ("Protocol changes start in `proto/` and the spec. Published contracts keep their identity: change one only with a new version, never in place"), all agent definitions, delegations, barriers, and tester records must be specified in `proto/` first and registered in `proto/registry.json` with one Coax codec.
+
+### 4.1 What Already Exists in `proto/`
+
+| Existing Proto / Contract | What It Covers Today | Why It Is Not Enough Alone |
+| --- | --- | --- |
+| `proto/openagents/account/v1alpha1/agents.proto` | **Agent identity & authorization:** `Agent`, `Grant`, `GrantRequest`, `Scope` (`profile:read`, `wallet:spend`), `SpendCaps`, `AgentKey`, `OwnerAttestation` | Models *who an agent account is and what it may spend*, not what an agent *does*, its execution mode, runtime, or how agents invoke each other |
+| `proto/openagents/agent/managed/v1alpha1/session.proto` | **Hosted runner wire:** `ChatTurnLine`, `ProjectTurnLine`, `EventLine`, `CallLine`, `TurnEnd`, `NextTurn` | Scoped to single-turn hosted chat/project execution; no custom agent manifests, deterministic/hybrid runtimes, or multi-agent barriers |
+| `proto/openagents/engine/v1/agent.proto` | **Local phone-agent dispatch:** `AgentTask`, `AgentOperation`, `AgentDispatch`, `AgentProgress`, `AgentEvent`, `ToolActivity` | Good event/progress vocabulary to reuse, but scoped to phone-to-host single-task dispatch without typed definitions or delegation trees |
+| `proto/coder/microcoder-worker-lines-v1.json` | **Worker sub-agent delegation:** `MWW_DELEGATE` / `mww_results` | Hardcoded to Gemini/Claude coding worker levels, not arbitrary user-defined or deterministic/tester agents |
+| `proto/coder/gamebuilder-agent-v1.json` | **GameBuilder single-turn job:** `gamebuilder.agent.start.v1` | One-shot build-agent turn submission; no reusable manifest or multi-seat simulation |
+| `proto/openagents/coder/qualification/v1/evidence.proto` | **Qualification seals:** `FileSeal`, `Seal`, `Checkpoints`, `Execution`, `Qualification` | Useful precedent for bounded `openagents.options.v1alpha1` evidence records; reuse its sealing pattern for tester provenance |
+
+### 4.2 Proposed New Protobuf Packages
+
+Add two new versioned packages without modifying any existing published contract in place:
+
+1. **`proto/openagents/agent/v1alpha1/`** — general composable custom agents (powering the **Agents** sidebar page, chat delegation, and multi-agent coordination):
+   - **`definition.proto`** (`openagents.agent.v1alpha1.AgentDefinition`):
+     ```protobuf
+     syntax = "proto3";
+     package openagents.agent.v1alpha1;
+     import "openagents/options/v1alpha1/options.proto";
+
+     enum AgentKind {
+       AGENT_KIND_UNSPECIFIED = 0;
+       AGENT_KIND_CODER = 1;
+       AGENT_KIND_TESTER = 2;
+       AGENT_KIND_PLAYTESTER = 3;
+       AGENT_KIND_BUILDER = 4;
+       AGENT_KIND_COORDINATOR = 5;
+       AGENT_KIND_CUSTOM = 6;
+     }
+
+     enum ExecutionMode {
+       EXECUTION_MODE_UNSPECIFIED = 0;
+       EXECUTION_MODE_DETERMINISTIC = 1; // pure Coax/scripted, zero LLM calls
+       EXECUTION_MODE_HYBRID = 2;        // deterministic controller + bounded model decisions
+       EXECUTION_MODE_MODEL = 3;         // LLM / vision-model driven within caps
+     }
+
+     enum Capability {
+       CAPABILITY_UNSPECIFIED = 0;
+       CAPABILITY_DESKTOP_DRIVE = 1;
+       CAPABILITY_IOS_SIM = 2;
+       CAPABILITY_IOS_DEVICE = 3;
+       CAPABILITY_WEB_CDP = 4;
+       CAPABILITY_SPAWN_AGENT = 5;       // may delegate to allowed_callees
+       CAPABILITY_WORKSPACE_READ = 6;
+       CAPABILITY_WORKSPACE_WRITE = 7;
+     }
+
+     message Budget {
+       optional uint64 max_wall_ms = 1 [(openagents.options.v1alpha1.unit) = "ms"];
+       optional uint32 max_turns = 2;
+       optional uint64 max_tokens = 3;
+       optional uint64 max_cost_usd_e6 = 4; // micro-USD (integer, JSON-mapper safe)
+     }
+
+     message CompositionPolicy {
+       repeated string allowed_callees = 1 [(openagents.options.v1alpha1.max_count) = 32, (openagents.options.v1alpha1.max_bytes) = 64];
+       optional uint32 max_depth = 2;       // hard cap (e.g. <= 4) enforced by #authority policy
+       optional uint32 max_concurrency = 3; // max simultaneous active child invocations
+     }
+
+     message AgentDefinition {
+       option (openagents.options.v1alpha1.contract) = "openagents.agent.definition.v1";
+       optional string agent_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional string name = 2 [(openagents.options.v1alpha1.max_bytes) = 80];
+       optional string description = 3 [(openagents.options.v1alpha1.max_bytes) = 400];
+       optional uint32 version = 4;
+       AgentKind kind = 5;
+       ExecutionMode execution_mode = 6;
+       // Runtime binding: "coax-tool:<path>", "mcp:<server>", "worker:<kind>", or "composite"
+       optional string runtime = 7 [(openagents.options.v1alpha1.max_bytes) = 160];
+       optional string input_contract = 8 [(openagents.options.v1alpha1.max_bytes) = 80];
+       optional string output_contract = 9 [(openagents.options.v1alpha1.max_bytes) = 80];
+       repeated Capability capabilities = 10 [(openagents.options.v1alpha1.max_count) = 16];
+       CompositionPolicy composition = 11;
+       Budget default_budget = 12;
+       optional string model_hint = 13 [(openagents.options.v1alpha1.max_bytes) = 64]; // empty when deterministic
+     }
+     ```
+   - **`invocation.proto`** (`openagents.agent.v1alpha1.AgentInvocation`, `TargetBinding`, `AgentBarrier`):
+     ```protobuf
+     syntax = "proto3";
+     package openagents.agent.v1alpha1;
+     import "openagents/options/v1alpha1/options.proto";
+     import "openagents/agent/v1alpha1/definition.proto";
+
+     enum InvocationState {
+       INVOCATION_STATE_UNSPECIFIED = 0;
+       INVOCATION_STATE_QUEUED = 1;
+       INVOCATION_STATE_RUNNING = 2;
+       INVOCATION_STATE_WAITING_BARRIER = 3;
+       INVOCATION_STATE_PAUSED = 4;
+       INVOCATION_STATE_COMPLETED = 5;
+       INVOCATION_STATE_FAILED = 6;
+       INVOCATION_STATE_CANCELLED = 7;
+       INVOCATION_STATE_TIMED_OUT = 8;
+     }
+
+     // Exclusive resource lease owned by one agent invocation so concurrent testers never collide.
+     message TargetBinding {
+       optional string target_kind = 1 [(openagents.options.v1alpha1.max_bytes) = 32]; // desktop-mac, ios-sim, ios-device, web-chrome-mac, ...
+       optional string seat = 2 [(openagents.options.v1alpha1.max_bytes) = 40];        // e.g. "host-player", "guest-1", "mobile-client"
+       optional string device_lease = 3 [(openagents.options.v1alpha1.max_bytes) = 80];
+       optional string account_lease = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional string workspace_dir = 5 [(openagents.options.v1alpha1.max_bytes) = 256];
+     }
+
+     message AgentInvocation {
+       option (openagents.options.v1alpha1.contract) = "openagents.agent.invocation.v1";
+       optional string invocation_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional string root_session_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional string parent_invocation_id = 3 [(openagents.options.v1alpha1.max_bytes) = 64]; // empty for root
+       optional string agent_id = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional uint32 depth = 5;
+       TargetBinding binding = 6;
+       Budget budget = 7;
+       optional uint64 seed = 8; // deterministic seed for scripted/hybrid runs
+       optional string input_json = 9 [(openagents.options.v1alpha1.max_bytes) = 16384];
+       InvocationState state = 10;
+       optional string output_json = 11 [(openagents.options.v1alpha1.max_bytes) = 32768];
+       optional string evidence_dir = 12 [(openagents.options.v1alpha1.max_bytes) = 256];
+     }
+
+     // Multi-agent / multiplayer synchronization checkpoint (never freezes live clocks).
+     message AgentBarrier {
+       option (openagents.options.v1alpha1.contract) = "openagents.agent.barrier.v1";
+       optional string barrier_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+       optional string root_session_id = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+       repeated string participant_ids = 3 [(openagents.options.v1alpha1.max_count) = 16, (openagents.options.v1alpha1.max_bytes) = 64];
+       repeated string arrived_ids = 4 [(openagents.options.v1alpha1.max_count) = 16, (openagents.options.v1alpha1.max_bytes) = 64];
+       optional uint64 deadline_ms = 5 [(openagents.options.v1alpha1.unit) = "ms"];
+       optional bool released = 6;
+     }
+     ```
+2. **`proto/openagents/tester/v1alpha1/tester.proto`** — the Tester-specific input/output/evidence contracts (`tester.run_request.v1`, `tester.observation.v1`, `tester.action.v1`, `tester.result.v1`, `tester.matrix.v1`), bound as `input_contract` / `output_contract` on `AgentDefinition` when `kind == AGENT_KIND_TESTER` or `AGENT_KIND_PLAYTESTER`.
+3. **Admission & `#authority` policy (`coax/lib/agent/registry/policy.coax`):** enforces delegation depth caps, `allowed_callees` checks, capability/grant admission (linking to `openagents.account.v1alpha1.Grant` when an agent touches a real account or spends money), non-overlapping `TargetBinding` leases across concurrent invocations, and budget monotonicity (a child's budget cannot exceed its parent's remaining budget). Zero surviving mutants required.
+
+---
+
+## 5. Architecture and Ownership
 
 ```mermaid
 flowchart TD
-    Reg["Surface Registers (catalog.coax per app)"] --> Coord["Coax Run Coordinator"]
-    Coord --> JPol["Journey Policy (typed scenarios)"]
-    Coord --> EPol["Exploration Policy (bounded vision model)"]
-    JPol --> Ctrl["Bounded Controller & Lease Watchdog"]
-    EPol --> Ctrl
+    AgentsUI["Agents Sidebar Page & Chat Delegation"] --> Reg["Agent Registry (openagents.agent.v1alpha1)"]
+    Surf["Surface Registers (catalog.coax per app)"] --> Coord["Coax Agent / Tester Coordinator"]
+    Reg --> Coord
+    Coord -->|"parent -> child invocations & AgentBarriers"| SeatA["Tester Agent A (Deterministic / Hybrid)"]
+    Coord -->|"concurrent seat / device lease"| SeatB["Tester Agent B (Hybrid / Vision Explorer)"]
+    SeatA --> CtrlA["Bounded Controller & Lease Watchdog"]
+    SeatB --> CtrlB["Bounded Controller & Lease Watchdog"]
 
-    Ctrl --> MacAd["Desktop Adapter (AF_UNIX drive + AppKit/Metal)"]
-    Ctrl --> SimAd["iOS Simulator Adapter (oasim / simhost-lines-v1)"]
-    Ctrl --> DevAd["Physical iOS Adapter (WDA / XCUITest HTTP)"]
-    Ctrl --> WebAd["Web Adapter (Phase 3: CDP / player-browser)"]
+    CtrlA --> MacAd["Desktop Adapter (AF_UNIX drive + AppKit/Metal)"]
+    CtrlB --> SimAd["iOS Simulator Adapter (oasim / simhost-lines-v1)"]
+    CtrlB --> DevAd["Physical iOS Adapter (WDA / XCUITest HTTP)"]
+    CtrlA --> WebAd["Web Adapter (Phase 3: CDP / player-browser)"]
 
     MacAd --> DeskApp["OpenAgents Desktop (real .app + daemon)"]
     SimAd --> MobApp["OpenAgents iOS (real .app on Sim / Device)"]
@@ -95,29 +280,32 @@ flowchart TD
     MobApp --> Diag
     WebApp --> Diag
 
-    Perc --> JPol
-    Perc --> EPol
+    Perc --> SeatA
+    Perc --> SeatB
     Perc --> Judge["Judge, Assertions & Evidence Recorder"]
     Diag --> Judge
     Coord --> Judge
 ```
 
-### 3.1 Coordinator & Multi-Client Synchronization
+### 5.1 Coordinator, Delegation & Multi-Client Synchronization
 
-- The **Coax Run Coordinator** owns device/account/profile leases, target preflight, scenario scheduling, time/cost/token budgets, barrier synchronization, cleanup verification, and final report emission.
-- Each app instance under test has its own adapter, observation stream, action ledger, and input lease.
-- **Paired Desktop ↔ Mobile scenarios** launch both clients simultaneously in isolated workspaces/simulators and synchronize via explicit observable barriers (e.g., `barrier("desktop_paired")`, `barrier("ios_sees_reply")`) with bounded deadlines — never by freezing app clocks in live mode.
+- The **Coax Run Coordinator** resolves `AgentDefinition` manifests, admits delegations via `#authority` policy, leases exclusive `TargetBinding` resources (devices, simulators, accounts, workspaces, browser profiles), manages `AgentBarrier` synchronization, enforces cascading cancellation and budgets, and collects `tester.result.v1` artifacts.
+- Each active tester agent has its own adapter, observation stream, action ledger, and input lease — whether running solo, paired (Desktop ↔ iOS), or in a multi-seat multiplayer simulation (2–4+ concurrent clients).
+- **Multi-agent & multiplayer synchronization** uses explicit observable `AgentBarrier` checkpoints (e.g., `barrier("desktop_paired")`, `barrier("lobby_full")`, `barrier("ios_sees_reply")`) with bounded deadlines — never by freezing app clocks in live mode.
 
-### 3.2 Proposed Repository Layout
+### 5.2 Proposed Repository Layout
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/shared/tester/schema.coax` | Single codec for `tester.observation.v1`, `tester.action.v1`, `tester.result.v1` |
-| `apps/shared/tester/coordinator.coax` | Run loop, target matrix, leases, barriers, budgets, cleanup |
+| `proto/openagents/agent/v1alpha1/` | `definition.proto`, `invocation.proto` (composable custom agents, execution modes, bindings, barriers) |
+| `proto/openagents/tester/v1alpha1/` | `tester.proto` (`tester.{run_request,observation,action,result,matrix}.v1`) + `proto/registry.json` entries |
+| `coax/lib/agent/registry/` | Shared `AgentDefinition` / `AgentInvocation` codec, `#authority` delegation/budget/lease policy, barrier coordinator |
+| `apps/shared/tester/schema.coax` | Single codec for `tester.*.v1` records |
+| `apps/shared/tester/coordinator.coax` | Tester agent runtime, target matrix, multi-seat launcher, cleanup |
 | `apps/shared/tester/controller.coax` | Action resolution, hit-test/occlusion guards, input leases, watchdog |
 | `apps/shared/tester/judge.coax` | Hard assertions, relational/visual predicates, verdict classification |
 | `apps/shared/tester/evidence.coax` | JSONL writers, screenshot/video capture hooks, redaction, `report.json`, `report.html`, JUnit XML |
-| `apps/shared/tester/explore.coax` | Bounded vision-exploration policy adapter (extracted from `gamebuilder/tests/player/policy.coax`) |
+| `apps/shared/tester/explore.coax` | Bounded vision-exploration & hybrid decision policy adapter (extracted from `gamebuilder/tests/player/policy.coax`) |
 | `apps/shared/tester/mail.coax` | Dedicated test-inbox reader & persistent code-request pacing lease |
 | `apps/shared/tester/adapter-desktop.coax` | macOS Desktop adapter (`--drive SOCKET`, process/daemon lifecycle, Tier 1 composite capture) |
 | `apps/shared/tester/adapter-ios-sim.coax` | iOS Simulator adapter over `oasim` (`simhost-lines-v1`) |
@@ -125,19 +313,18 @@ flowchart TD
 | `apps/shared/tester/adapter-web.coax` | Phase 3 Web adapter over `coax/web/player-browser.coax` |
 | `apps/shared/tester/cli.coax` | CLI entrypoint (`coax/web/tool.sh apps/shared/tester/cli.coax ...`) |
 | `apps/openagents-desktop/tests/tester/` | Desktop `catalog.coax`, `journeys/*.coax`, local scripted-worker fixtures |
-| `apps/openagents-ios/tests/tester/` | iOS `catalog.coax`, `journeys/*.coax`, paired Desktop↔iOS journeys |
+| `apps/openagents-ios/tests/tester/` | iOS `catalog.coax`, `journeys/*.coax`, paired Desktop↔iOS & multiplayer journeys |
 | `apps/openagents-web/tests/tester/` | Phase 3 Web `catalog.coax`, `journeys/*.coax` |
-| `proto/tester/` | JSON schema fixtures + `proto/registry.json` entries for `tester.*.v1` |
 
-`contexts.txt` permits `apps/shared/tester/` to load `coax/lib/`, `coax/lib/agent/device/`, `coax/web/` (browser/webdriver), and `proto/`; it never loads app-private mutation internals.
+`contexts.txt` permits `apps/shared/tester/` to load `coax/lib/`, `coax/lib/agent/registry/`, `coax/lib/agent/device/`, `coax/web/` (browser/webdriver), and `proto/`; it never loads app-private mutation internals.
 
 ---
 
-## 4. Observe, Act, Verify
+## 6. Observe, Act, Verify
 
-All adapters speak three versioned records, registered in `proto/registry.json` with one Coax codec (`apps/shared/tester/schema.coax`), serialized as bounded JSON and retained chronologically as JSONL. Schema mismatches or silent truncation fail the run immediately (`infrastructure-fail`).
+All adapters speak the versioned records in `proto/openagents/tester/v1alpha1/tester.proto`, registered in `proto/registry.json` with one Coax codec (`apps/shared/tester/schema.coax`), serialized as bounded JSON and retained chronologically as JSONL. Schema mismatches or silent truncation fail the run immediately (`infrastructure-fail`).
 
-### 4.1 `tester.observation.v1`
+### 6.1 `tester.observation.v1`
 
 - `client_id`, `target` (`desktop-mac`, `ios-sim`, `ios-device`, `web-chrome-mac`, `web-chrome-phone`, `web-chrome-tablet`), `mode` (`local` | `live`)
 - `seq` (monotonic observation sequence), `ts_ms` (monotonic wall clock), `frame_id` (when available)
@@ -149,7 +336,7 @@ All adapters speak three versioned records, registered in `proto/registry.json` 
 - `focus`: currently focused element ID and input owner (composer, search, modal, file pane, simulator pane, 3D view)
 - `active_sheet_or_modal`: open sheet/dialog/alert identifier, if any
 
-### 4.2 `tester.action.v1`
+### 6.2 `tester.action.v1`
 
 - `action_id`, `source_seq` (the observation sequence this action was decided from)
 - `intent`: human-readable description (e.g. `"tap send button"`, `"swipe open sidebar"`, `"type prompt in composer"`)
@@ -166,7 +353,7 @@ All adapters speak three versioned records, registered in `proto/registry.json` 
 - If a target moved, became disabled, or is covered (e.g., by a transient banner or the iOS keyboard), the controller **re-observes or fails** — it never forces a click through an occluding layer.
 - Actions against stale observations (older than `500 ms` for interactive/animated states, or after a layout shift) are rejected and re-observed.
 
-### 4.3 `tester.result.v1`
+### 6.3 `tester.result.v1`
 
 - `scenario_id`, `client_id`, `target`, `mode`, `verdict` (`pass`, `product-fail`, `infrastructure-fail`, `blocked`, `inconclusive`, `not-applicable`, `unqualified`)
 - `duration_ms`, `steps_run`, `first_failure_step`, `summary` (plain-English description of what a person would see go wrong)
@@ -175,12 +362,12 @@ All adapters speak three versioned records, registered in `proto/registry.json` 
 - `metrics`: launch latency, p50/p95 frame/capture interval, model turns, token usage, estimated spend
 - `cleanup`: explicit cleanup status (`ok` | `failed` | `quarantined`)
 
-### 4.4 Two Strictly Separate Channels
+### 6.4 Two Strictly Separate Channels
 
 1. **Tester Perception Channel:** screenshots, visible AX/element tree, rendered text, focus, safe-area/keyboard bounds, audio cues. This is the **only** channel the Exploration Policy sees, and every core journey must have visible consequences verifiable on this channel alone.
 2. **Read-Only Diagnostics Channel:** allowlisted, redacted telemetry from the app host, `openagents-environment` daemon, worker wire (`mcworker-wire` event counts/states, exit codes), iOS device logs (`oasim logs`), and web console/network status codes. The Judge uses diagnostics to corroborate and explain failures (e.g., distinguishing a UI render freeze from a worker crash or network 503). Diagnostics never mutate state and never grant a pass when the visible UI is broken or blank.
 
-### 4.5 Input Leases and Watchdog
+### 6.5 Input Leases and Watchdog
 
 - Every held key, drag, or touch contact carries an explicit lease (`<= 1000 ms`).
 - A separate watchdog releases all held inputs within `300 ms` of lease expiry, policy crash, or scenario cancellation.
@@ -188,9 +375,9 @@ All adapters speak three versioned records, registered in `proto/registry.json` 
 
 ---
 
-## 5. Platform Adapters
+## 7. Platform Adapters
 
-### 5.1 Phase 1 — Desktop Adapter (`apps/openagents-desktop/`, `com.openagents.desktop`)
+### 7.1 Phase 1 — Desktop Adapter (`apps/openagents-desktop/`, `com.openagents.desktop`)
 
 Builds directly on [`docs/desktop/macos-drive-and-screenshots.md`](../desktop/macos-drive-and-screenshots.md):
 
@@ -207,7 +394,7 @@ Builds directly on [`docs/desktop/macos-drive-and-screenshots.md`](../desktop/ma
   4. killing the controller mid-drag releases the drag within `300 ms`;
   5. Tier 1 capture produces non-blank pixels for both Metal and native sibling views.
 
-### 5.2 Phase 2 — Mobile Adapter (`apps/openagents-ios/`, `com.openagents.app`)
+### 7.2 Phase 2 — Mobile Adapter (`apps/openagents-ios/`, `com.openagents.app`)
 
 Mobile has two explicit sub-lanes with distinct qualification roles:
 
@@ -226,18 +413,18 @@ Mobile has two explicit sub-lanes with distinct qualification roles:
 - **Coverage:** Real Apple GPU Metal rendering, genuine multi-touch concurrency, real iOS software keyboard & dictation/IME behavior, notch/Dynamic Island safe areas, real background/foreground suspension, real Tailscale pairing to a Mac running `openagents-desktop`, and real TestFlight/signed-build provenance.
 - **Android path:** When Android support lands (`docs/desktop/android-emulator-vision.md`), it plugs into the same `coax/lib/agent/device/` wire and `adapter-ios-sim.coax` pattern as `android-emu` / `android-device` with zero changes to the coordinator or scenarios.
 
-### 5.3 Phase 3 — Web Adapter (`apps/openagents-web/` & `gamebuilder/web/`)
+### 7.3 Phase 3 — Web Adapter (`apps/openagents-web/` & `gamebuilder/web/`)
 
 - Reuses `coax/web/player-browser.coax` (headless hardware-GPU Chrome over CDP, muted audio, no visible window) across `web-chrome-mac` (`1440×900`), `web-chrome-phone` (`412×915`, DPR 2, touch), and `web-chrome-tablet` (`1024×1366`, DPR 2, touch).
 - Migrates GameBuilder's existing `gamebuilder/tests/player/` and `gamebuilder/tests/user/` onto the shared `apps/shared/tester/` coordinator and `tester.*.v1` schema so there is one runner, one report format, and one coverage matrix across Desktop, Mobile, and Web.
 
 ---
 
-## 6. Surface Registers and Required Scenarios
+## 8. Surface Registers and Required Scenarios
 
 Every app maintains a `catalog.coax` surface register enumerating its screens, panes, sheets, routes, roles/modes, and required scenarios. A drift check (`coax/web/tool.sh apps/shared/tester/cli.coax --checks`) verifies that every screen/action in the app's source tables maps to a register entry and that every registered required scenario is present. Features not yet shipped are explicitly marked `planned` or `not-applicable`, never silently skipped.
 
-### 6.1 Desktop Surface Register & Required Scenarios (`apps/openagents-desktop/`)
+### 8.1 Desktop Surface Register & Required Scenarios (`apps/openagents-desktop/`)
 
 | Area | Scenario ID(s) | What the Simulated Tester Does & Verifies |
 | --- | --- | --- |
@@ -255,8 +442,9 @@ Every app maintains a `catalog.coax` surface register enumerating its screens, p
 | **Layout, zoom & narrow windows** | `desktop.layout.responsive-zoom` | Steps through `Cmd+`/`Cmd-`/`Cmd+0` zoom levels and resizes from `1440×900` down to `760×640`; verifies no clipped/overlapping controls, sidebar auto-hide `< 900 pt`, and readable composer |
 | **Persistence & relaunch recall** | `desktop.persist.relaunch-recall` | Creates chats, pins & drag-reorders them, sets zoom/sidebar widths, quits cleanly, relaunches; verifies exact sidebar order, persisted chat history, and recall continuity on the next turn |
 | **Experimental features & recovery** | `desktop.experimental.and-crash` | Toggles `experimentalFeatures` off (verifies zero login/Foreman/Gym surfaces) vs on (verifies Foreman `Cmd+\`` and account flow); simulates worker EOF/crash and verifies graceful UI error + retry without app crash |
+| **Agents page & composable delegation** | `desktop.agents.page-and-delegate` | Opens the **Agents** page from the top-left sidebar; inspects deterministic, hybrid, and model-backed agent definitions; launches a tester agent (and a multi-seat coordinator) from the page; verifies live delegation tree, barrier status, evidence links, and cascading Stop (marked `planned` until the Agents page lands) |
 
-### 6.2 Mobile Surface Register & Required Scenarios (`apps/openagents-ios/`)
+### 8.2 Mobile Surface Register & Required Scenarios (`apps/openagents-ios/`)
 
 | Area | Scenario ID(s) | What the Simulated Tester Does & Verifies |
 | --- | --- | --- |
@@ -270,7 +458,7 @@ Every app maintains a `catalog.coax` surface register enumerating its screens, p
 | **Orientation & lifecycle** | `ios.lifecycle.rotate-background` | Rotates portrait ↔ landscape mid-chat, backgrounds app for 5 s, foregrounds, and force-relaunches; verifies session resume, no stuck input, and intact transcript |
 | **Paired Desktop ↔ iOS sync** | `paired.desktop-ios.live-chat` | Coordinator launches Desktop + iOS Simulator together against one isolated local daemon: Desktop starts a chat and streams a reply → barrier → iOS opens that chat, sees the exact reply and activity group → iOS sends a follow-up → barrier → Desktop renders the follow-up and replies → Pin/Rename on iOS reflects on Desktop |
 
-### 6.3 First Concrete Journeys (Vertical Slice Targets)
+### 8.3 First Concrete Journeys (Vertical Slice Targets)
 
 #### Desktop Vertical Slice: `desktop.chat.edit-and-verify`
 - **Preconditions:** Fresh temp `HOME`, temp data dir, temp git repo containing `hello.txt` (`"hello\n"`), isolated `--drive` socket. Runs in `--mode local` (scripted mock worker) and `--mode live` (real worker, 5-minute wall cap, `$0.25` budget cap).
@@ -295,7 +483,7 @@ Every app maintains a `catalog.coax` surface register enumerating its screens, p
 
 ---
 
-## 7. Bounded Exploration Policy
+## 9. Bounded Exploration Policy
 
 Alongside deterministic journeys, the **Exploration Tester** (`apps/shared/tester/explore.coax`, ported from `gamebuilder/tests/player/policy.coax`) catches unforeseen UX bugs:
 
@@ -306,15 +494,15 @@ Alongside deterministic journeys, the **Exploration Tester** (`apps/shared/teste
 
 ---
 
-## 8. Accounts, Secrets, Verdicts, and Evidence
+## 10. Accounts, Secrets, Verdicts, and Evidence
 
-### 8.1 Account & Secret Isolation
+### 10.1 Account & Secret Isolation
 - `--mode local` requires zero credentials and zero network access.
 - `--mode live` uses only dedicated test credentials loaded from `OA_TESTER_SECRETS` (never personal accounts, never committed to git). Email-code login reuses `apps/shared/tester/mail.coax` with an atomic single-run lease and persistent 13-minute pacing across restarts.
 - Video recording automatically pauses or masks over credential entry and account/key sheets; all JSONL logs scrub tokens, cookies, authorization headers, and Nostr private keys before writing to disk.
 - Every run creates a fresh output directory (refusing to overwrite an existing one) and destroys temporary profiles/worktrees on exit; cleanup failure marks the run's cleanup state `failed` and quarantines the account/device lease.
 
-### 8.2 Machine Verdicts & Matrix Qualification
+### 10.2 Machine Verdicts & Matrix Qualification
 
 | Verdict | Meaning | Counts Toward Green Matrix? |
 | --- | --- | --- |
@@ -328,7 +516,7 @@ Alongside deterministic journeys, the **Exploration Tester** (`apps/shared/teste
 
 **Release qualification rule** (carried from `player-testing.md`): A single passing run is diagnostic evidence. Qualifying a release matrix requires **3 consecutive clean full runs** per required target (`desktop-mac`, `ios-sim`, plus `ios-device` for TestFlight releases), with identical build provenance across the batch, zero missing recordings, and zero `unqualified` surfaces.
 
-### 8.3 Evidence Bundle
+### 10.3 Evidence Bundle
 
 Every run writes a self-contained private directory (`build/tester-runs/<run-id>/`, gitignored):
 - `report.json` — machine-readable summary, provenance, coverage table (`required` / `attempted` / `passed`), verdicts, timings, budgets, cleanup status
@@ -340,12 +528,12 @@ Every run writes a self-contained private directory (`build/tester-runs/<run-id>
 
 ---
 
-## 9. CLI Surface
+## 11. CLI Surface
 
-One Coax CLI drives all targets (`coax/web/tool.sh apps/shared/tester/cli.coax ...`, later exposed as `openagents tester ...` in `apps/openagents-cli/`):
+One Coax CLI drives all targets and registered tester agents (`coax/web/tool.sh apps/shared/tester/cli.coax ...`, later exposed as `openagents tester ...` and `openagents agent run <agent-id> ...` in `apps/openagents-cli/`):
 
 ```sh
-# 1. Static checks: schema round-trips, surface-register drift, controller/judge #tests
+# 1. Static checks: proto/codec round-trips, surface-register drift, #authority delegation & lease policy
 coax/web/tool.sh apps/shared/tester/cli.coax --checks
 
 # 2. Adapter conformance self-tests (must pass before any run qualifies)
@@ -360,33 +548,37 @@ coax/web/tool.sh apps/shared/tester/cli.coax --target ios-sim --mode local --sui
 coax/web/tool.sh apps/shared/tester/cli.coax --target desktop --mode live --only desktop.chat.edit-and-verify --out build/tester-runs/desk-live-001
 coax/web/tool.sh apps/shared/tester/cli.coax --target paired --mode live --only paired.desktop-ios.live-chat --out build/tester-runs/paired-001
 
-# 5. Bounded vision exploration
+# 5. Composable / multi-seat agent invocation (e.g. hybrid multiplayer simulation)
+coax/web/tool.sh apps/shared/tester/cli.coax --agent multiplayer-sim --seats 4 --mode live --budget-usd 1.00 --out build/tester-runs/mp-001
+
+# 6. Bounded vision exploration
 coax/web/tool.sh apps/shared/tester/cli.coax --target desktop --mode live --suite explore --budget-usd 0.50 --out build/tester-runs/explore-001
 
-# 6. Merge runs into a release qualification matrix
+# 7. Merge runs into a release qualification matrix
 coax/web/tool.sh apps/shared/tester/cli.coax --merge build/tester-runs/run-1 build/tester-runs/run-2 build/tester-runs/run-3 --out build/tester-runs/matrix-001
 ```
 
 ---
 
-## 10. Phased Implementation Plan
+## 12. Phased Implementation Plan
 
-Build in small vertical slices, landing Coax `#test` checks and `#authority` mutation coverage (zero surviving mutants on verdict/policy/lease rules) in each phase:
+Build in small vertical slices, starting **proto-first** and landing Coax `#test` checks and `#authority` mutation coverage (zero surviving mutants on delegation/verdict/policy/lease rules) in each phase:
 
 | Phase | Scope | Deliverables | Done When |
 | --- | --- | --- | --- |
-| **Phase 0: Core & Schemas** | `proto/tester/`, `apps/shared/tester/` | `tester.{observation,action,result}.v1` codecs registered in `proto/registry.json`; coordinator, bounded controller, lease watchdog, judge, JSONL/HTML/JUnit evidence writer; `wire-check` & `tools-check` clean | `--checks` passes; watchdog unit test proves held-input release within `300 ms` on killed policy |
-| **Phase 1A: Desktop Foundation** | `apps/openagents-desktop/`, `adapter-desktop.coax` | Wire `--drive SOCKET`, `--real-time`, Tier 1 composite capture, and `tree`+`ax` fusion in `apps/openagents-desktop/`; Desktop `catalog.coax`; first journey `desktop.chat.edit-and-verify` in `--mode local` and `--mode live` | `--selftest --target desktop` passes with zero focus stealing; `desktop.chat.edit-and-verify` produces a valid `report.html`, `tester.mp4`, and `pass` verdict in both local and live modes |
-| **Phase 1B: Full Desktop Matrix** | `apps/openagents-desktop/tests/tester/` | All 14 required Desktop scenarios (streaming, steer/queue/stop, background chats, worktrees, sub-agents, file pane, `/goal`/budget, local Inkling model, embedded iOS Simulator pane, zoom/resize, relaunch recall, crash recovery) | Full local suite passes in `< 3 min`; 3 consecutive clean live critical runs pass on a dedicated Mac |
-| **Phase 2A: iOS Simulator & Paired** | `coax/lib/agent/device/`, `apps/openagents-ios/`, `adapter-ios-sim.coax` | Dedicated tester simulator lease over `oasim`; `describe` AX tree + `IOSurface` capture + video; iOS `catalog.coax`; all 9 iOS scenarios including `paired.desktop-ios.live-chat` | `--selftest --target ios-sim` passes without opening `Simulator.app`; `ios.paired.send-and-observe` and `paired.desktop-ios.live-chat` pass end-to-end with recordings |
+| **Phase 0: Proto-First Core & Agent Registry** | `proto/openagents/agent/v1alpha1/`, `proto/openagents/tester/v1alpha1/`, `coax/lib/agent/registry/`, `apps/shared/tester/` | `AgentDefinition`, `AgentInvocation`, `TargetBinding`, `AgentBarrier`, and `tester.*.v1` protos registered in `proto/registry.json`; single Coax codecs; `#authority` delegation/budget/lease policy; coordinator, bounded controller, lease watchdog, judge, evidence writer; `wire-check` & `tools-check` clean | `--checks` passes; zero mutation survivors in `coax/lib/agent/registry/policy.coax`; watchdog unit test proves cascading held-input release within `300 ms` across a parent→child invocation tree |
+| **Phase 1A: Desktop Foundation** | `apps/openagents-desktop/`, `adapter-desktop.coax` | Wire `--drive SOCKET`, `--real-time`, Tier 1 composite capture, and `tree`+`ax` fusion in `apps/openagents-desktop/`; Desktop `catalog.coax`; built-in `desktop-journey-tester` `AgentDefinition`; first journey `desktop.chat.edit-and-verify` in `--mode local` and `--mode live` | `--selftest --target desktop` passes with zero focus stealing; `desktop.chat.edit-and-verify` produces a valid `report.html`, `tester.mp4`, and `pass` verdict in both local and live modes |
+| **Phase 1B: Full Desktop Matrix & Agents Page Integration** | `apps/openagents-desktop/tests/tester/`, Desktop **Agents** sidebar page | All required Desktop scenarios (streaming, steer/queue/stop, background chats, worktrees, sub-agents, file pane, `/goal`/budget, local Inkling model, embedded iOS Simulator pane, zoom/resize, relaunch recall, crash recovery); expose built-in & custom Tester agents on the top-left **Agents** page and allow chat/Microcoder delegation to them | Full local suite passes in `< 3 min`; 3 consecutive clean live critical runs pass on a dedicated Mac; invoking `desktop-journey-tester` from the Agents page or chat displays live status & verdict |
+| **Phase 2A: iOS Simulator, Paired & Multi-Seat** | `coax/lib/agent/device/`, `apps/openagents-ios/`, `adapter-ios-sim.coax` | Dedicated tester simulator lease over `oasim`; `describe` AX tree + `IOSurface` capture + video; iOS `catalog.coax`; `AgentBarrier`-coordinated paired Desktop↔iOS and multi-seat concurrent tester scenarios | `--selftest --target ios-sim` passes without opening `Simulator.app`; `ios.paired.send-and-observe` and `paired.desktop-ios.live-chat` pass end-to-end with recordings |
 | **Phase 2B: Physical iOS Devices** | `adapter-ios-device.coax` | WDA / XCUITest HTTP adapter reusing `coax/web/player-webdriver.coax`; tethered iPhone/iPad preflight, signed TestFlight provenance, real keyboard/safe-area/Metal/Tailscale pairing scenarios | Physical iPhone completes the critical & paired journeys against a signed build with non-blank capture and verified provenance |
-| **Phase 3: Web & Exploration** | `apps/openagents-web/`, `gamebuilder/tests/`, `explore.coax` | Unify `coax/web/player-browser.coax` and GameBuilder's `tests/player/` + `tests/user/` under `apps/shared/tester/`; enable bounded vision exploration across Desktop, iOS, and Web; optional Android emulator adapter | One `openagents tester` CLI runs Desktop, Mobile, and Web into one merged qualification matrix |
+| **Phase 3: Web, Multiplayer & Exploration** | `apps/openagents-web/`, `gamebuilder/tests/`, `explore.coax` | Unify `coax/web/player-browser.coax` and GameBuilder's `tests/player/` + `tests/user/` under `apps/shared/tester/`; multi-seat multiplayer simulation coordinators (2–4 concurrent mixed deterministic/hybrid testers across Desktop, iOS, and Web); bounded vision exploration; optional Android emulator adapter | One `openagents tester` / Agents-page runtime drives Desktop, Mobile, Web, and multiplayer simulations into one merged qualification matrix |
 
 ---
 
-## 11. Open Risks and Dependencies
+## 13. Open Risks and Dependencies
 
 - **Desktop Tier 1 composite capture with Metal overlays:** `apps/openagents-desktop/` composites a Coax Metal page with native AppKit editors, `SimulatorPaneView`, and `PleScenePanelView`. Phase 1A must verify that `CAMetalLayer.framebufferOnly = NO` plus `IOSurface` readback captures all layers without Screen Recording TCC and without dropping frames.
 - **iOS `oasim describe` latency & GPU element coverage:** `apps/openagents-ios/` renders its main UI via GPU components with VoiceOver bindings in `App.swift`. Any interactive GPU control missing a stable accessibility identifier must be fixed in `apps/openagents-ios/` rather than worked around with hardcoded coordinates.
+- **Resource contention in concurrent multi-tester runs:** Running multiple testers simultaneously (e.g., 2–4 multiplayer seats or parallel Desktop + iOS Simulator testers) requires strict non-overlapping `TargetBinding` leases (unique simulator UDIDs, temp `HOME`/worktree dirs, isolated ports, separate test accounts) and host CPU/GPU slot awareness so parallel seats do not starve each other's frame rates.
 - **Physical iOS device provisioning:** Phase 2B requires a dedicated tethered test iPhone/iPad with WebDriverAgent signing (tracked in `NEEDS_OWNER.md` when Phase 2B starts). Until provisioned, `ios-device` cells report `blocked` honestly.
-- **Model cost & flakiness in live runs:** Live runs enforce strict per-scenario wall-time, turn, and USD caps. A failed live run allows at most one diagnostic rerun while preserving the first failure as a flake — never overwriting a failure into a clean pass.
+- **Model cost & flakiness in live runs:** Live and hybrid runs enforce strict per-invocation wall-time, turn, and USD caps, with monotonic child-budget enforcement. A failed live run allows at most one diagnostic rerun while preserving the first failure as a flake — never overwriting a failure into a clean pass.
