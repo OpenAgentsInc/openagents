@@ -343,6 +343,34 @@ openagents vault rm ID --yes
 - Not built yet: sharing with other keys, and an openagents.com API so it
   works without gcloud.
 
+## Traces
+
+Encrypted backup and incremental sync of local agent histories across Claude
+Code (`~/.claude/projects/`), Codex (`~/.codex/sessions/`), OpenAgents Desktop
+(`~/.openagents/coder/sessions/`), Antigravity (`~/.gemini/antigravity/brain/`
+and `~/.gemini/antigravity-cli/brain/`), and OpenCode
+(`~/.local/share/opencode/`). Reuses `vault.coax` (NIP-44 v2 local encryption
+to your Nostr key, ciphertext-only upload to GCS) and
+`coax/lib/agent/observe/transcripts.coax`.
+
+```sh
+openagents traces inventory [--source all|claude|codex|openagents|antigravity|opencode]
+openagents traces backup [--source ...] [--dry-run] [--limit N]
+openagents traces status
+openagents traces restore ID [--out PATH] [--force]
+```
+
+- Backed-up sessions are tracked in
+  `~/.openagents/evals/session-history/backup-ledger.jsonl` keyed by
+  `(source, session_id, sha256, bytes)` (`OPENAGENTS_TRACES_LEDGER` overrides
+  the path). Unchanged sessions are skipped; grown or new sessions are
+  encrypted and uploaded incrementally.
+- `traces status` flags Claude Code sessions older than 25 days (approaching
+  Claude's 30-day automatic deletion cutoff).
+- `traces restore ID` accepts either a 32-hex vault object ID or a backed-up
+  `session_id`, verifies the NIP-44 MAC and SHA-256, and writes the decrypted
+  file with mode `0600`.
+
 ## Shared local models and agents
 
 ```sh

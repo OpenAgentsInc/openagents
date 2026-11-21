@@ -1,0 +1,940 @@
+// The traces domain: encrypted GCS backup & sync of local agent histories
+// (Claude Code, Codex, OpenAgents Desktop, Antigravity, OpenCode) built on
+// coax/lib/agent/observe/transcripts.coax and apps/openagents-cli/vault.coax.
+//
+//   traces inventory [--source all|claude|codex|openagents|antigravity|opencode]
+//   traces backup [--source ...] [--dry-run] [--limit N]
+//   traces status
+//   traces restore ID [--out PATH] [--force]
+//
+// Nothing but NIP-44 v2 ciphertext leaves this computer.
+#load "../../coax/lib/agent/observe/transcripts.coax";
+
+TR_CLAUDE_WARN_DAYS :: 25;
+TR_CLAUDE_WARN_S :: 2160000;   // 25 * 86400 seconds (5 days before Claude's 30-day cutoff)
+TR_LEDGER_MAX :: 16384;
+TR_SOURCES :: [5] string.["claude", "codex", "openagents", "antigravity", "opencode"];
+TR_BATCH_MAX :: 16;
+TR_BATCH_BYTES :: 16777216;   // 16 MiB staging cap per gcloud storage cp batch
+
+traces_usage :: () {
+  print("%\n", "Traces (encrypted backup & sync of local agent histories to GCS via vault):");
+  print("%\n", "  traces inventory [--source all|claude|codex|openagents|antigravity|opencode]  local session counts and bytes");
+  print("%\n", "  traces backup [--source ...] [--dry-run] [--limit N]  incrementally encrypt (NIP-44) and upload to GCS");
+  print("%\n", "  traces status                              local vs backed-up counts, last sync, Claude 30-day cutoff warning");
+  print("%\n", "  traces restore ID [--out PATH] [--force]   download, verify MAC + SHA-256, decrypt to mode 0600");
+  print("%\n", "");
+}
+
+traces_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "inventory" { return traces_inventory(a, r); }
+  if verb == "status" { return traces_status(a, r); }
+  if verb == "backup" { return traces_backup(a, r, profile); }
+  if verb == "restore" { return traces_restore(a, r, profile); }
+  return fail(r, EXIT_USAGE, "traces: inventory, backup, status or restore (openagents help)");
+}
+
+// ---- pure rules & ledger helpers --------------------------------------------
+
+tr_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+tr_put_byte :: (out: [] u8, at: int, c: u8) -> int {
+  if at < 0 || at >= out.count { return -1; }
+  out[at] = c;
+  return at + 1;
+}
+
+tr_put_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  if v == 0 { return tr_put_byte(out, at, '0'); }
+  t: [24] u8; n := 0;
+  x := ifx v < 0 then -v else v;
+  while x > 0 && n < 20 { t[n] = cast(u8) (x % 10) + '0'; x = x / 10; n += 1; }
+  k := at;
+  if v < 0 { k = tr_put_byte(out, k, '-'); }
+  for i: 0..<n { k = tr_put_byte(out, k, t[n - 1 - i]); }
+  return k;
+}
+
+tr_put_json_str :: (out: [] u8, at: int, s: string) -> int {
+  digits := "0123456789abcdef";
+  k := tr_put_byte(out, at, '"');
+  for c: s {
+    if k < 0 { return -1; }
+    if c == '"' || c == '\\' {
+      k = tr_put_byte(out, k, '\\');
+      k = tr_put_byte(out, k, c);
+      continue;
+    }
+    if c < 32 {
+      k = tr_put(out, k, "\\u00");
+      k = tr_put_byte(out, k, digits[cast(int) (c >> 4)]);
+      k = tr_put_byte(out, k, digits[cast(int) (c & 15)]);
+      continue;
+    }
+    k = tr_put_byte(out, k, c);
+  }
+  return tr_put_byte(out, k, '"');
+}
+
+tr_is_hex :: (s: string, want_len: int) -> bool {
+  if s.count != want_len { return false; }
+  for c: s {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+tr_uint :: (s: string) -> int {
+  if s.count < 1 || s.count > 15 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+tr_hex_encode :: (raw: [] u8, out: [] u8) -> bool {
+  if out.count < raw.count * 2 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<raw.count {
+    b := raw[i];
+    out[i * 2] = digits[cast(int) (b >> 4)];
+    out[i * 2 + 1] = digits[cast(int) (b & 15)];
+  }
+  return true;
+}
+
+tr_source_name :: (kind: int) -> string {
+  if kind < 0 || kind >= 5 { return ""; }
+  s := TR_SOURCES;
+  return s[kind];
+}
+
+tr_source_kind :: (name: string) -> int {
+  if name == "claude" { return OB_CLAUDE; }
+  if name == "codex" { return OB_CODEX; }
+  if name == "openagents" || name == "coder" { return OB_CODER; }
+  if name == "antigravity" { return OB_AGY; }
+  if name == "opencode" { return OB_OPENCODE; }
+  return -1;
+}
+
+tr_source_mask :: (name: string) -> int {
+  if name == "" || name == "all" { return 31; }
+  k := tr_source_kind(name);
+  if k < 0 { return 0; }
+  return 1 << k;
+}
+
+tr_mask_has :: (mask: int, kind: int) -> bool {
+  if kind < 0 || kind >= 5 { return false; }
+  return (mask & (1 << kind)) != 0;
+}
+
+tr_strip_jsonl :: (name: string) -> string {
+  if ob_jsonl(name) { return name[0..<name.count - 6]; }
+  return name;
+}
+
+tr_session_id :: (kind: int, sub: bool, sub_phase: int, project: string, parent: string, path: string, out: [] u8) -> string {
+  base := fs_base(path);
+  n := 0;
+  if kind == OB_CLAUDE {
+    stem := tr_strip_jsonl(base);
+    if project.count > 0 { n = tr_put(out, n, project); n = tr_put_byte(out, n, '/'); }
+    if sub {
+      if parent.count > 0 { n = tr_put(out, n, parent); n = tr_put(out, n, "/subagents/"); }
+      else { n = tr_put(out, n, "subagents/"); }
+    }
+    n = tr_put(out, n, stem);
+  } else if kind == OB_CODEX {
+    n = tr_put(out, n, tr_strip_jsonl(base));
+  } else if kind == OB_CODER {
+    n = tr_put(out, n, base);
+  } else if kind == OB_AGY {
+    if sub_phase == 0 { n = tr_put(out, n, "cli/"); }
+    if parent.count > 0 { n = tr_put(out, n, parent); } else { n = tr_put(out, n, base); }
+  } else if kind == OB_OPENCODE {
+    if sub_phase == 1 { n = tr_put(out, n, "session_diff/"); }
+    n = tr_put(out, n, base);
+  } else {
+    n = tr_put(out, n, base);
+  }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+tr_vault_name :: (source: string, session_id: string, out: [] u8) -> string {
+  limit := ifx out.count < 255 then out.count else 255;
+  k := 0;
+  prefix := "trace.";
+  for c: prefix { if k < limit { out[k] = c; k += 1; } }
+  for c: source {
+    if k >= limit { break; }
+    out[k] = ifx c < 32 || c == '/' || c >= 127 then '_' else c;
+    k += 1;
+  }
+  if k < limit { out[k] = '.'; k += 1; }
+  for c: session_id {
+    if k >= limit { break; }
+    out[k] = ifx c < 32 || c == '/' || c >= 127 then '_' else c;
+    k += 1;
+  }
+  return cast(string) out[0..<k];
+}
+
+tr_claude_at_risk :: (mtime: int, now_s: int) -> bool {
+  if mtime <= 0 || now_s <= mtime { return false; }
+  return (now_s - mtime) >= TR_CLAUDE_WARN_S;
+}
+
+TrLedgerRow :: struct {
+  ok: bool;
+  kind: int;
+  source: [24] u8; source_n: int;
+  session_id: [320] u8; sid_n: int;
+  bytes: int;
+  sha: [64] u8; sha_n: int;
+  vault_id: [32] u8; vid_n: int;
+  backed_up_at: int;
+}
+
+tr_row_source :: (row: [] TrLedgerRow) -> string { return cast(string) row[0].source[0..<row[0].source_n]; }
+tr_row_sid :: (row: [] TrLedgerRow) -> string { return cast(string) row[0].session_id[0..<row[0].sid_n]; }
+tr_row_sha :: (row: [] TrLedgerRow) -> string { return cast(string) row[0].sha[0..<row[0].sha_n]; }
+tr_row_vid :: (row: [] TrLedgerRow) -> string { return cast(string) row[0].vault_id[0..<row[0].vid_n]; }
+
+tr_ledger_format_line :: (source: string, session_id: string, path: string, bytes: int, sha: string, vault_id: string, backed_up_at: int, out: [] u8) -> int {
+  k := 0;
+  k = tr_put(out, k, "{\"source\":"); k = tr_put_json_str(out, k, source);
+  k = tr_put(out, k, ",\"session_id\":"); k = tr_put_json_str(out, k, session_id);
+  k = tr_put(out, k, ",\"path\":"); k = tr_put_json_str(out, k, path);
+  k = tr_put(out, k, ",\"bytes\":"); k = tr_put_int(out, k, bytes);
+  k = tr_put(out, k, ",\"sha256\":"); k = tr_put_json_str(out, k, sha);
+  k = tr_put(out, k, ",\"vault_id\":"); k = tr_put_json_str(out, k, vault_id);
+  k = tr_put(out, k, ",\"backed_up_at\":"); k = tr_put_int(out, k, backed_up_at);
+  k = tr_put(out, k, "}\n");
+  return k;
+}
+
+tr_ledger_parse_line :: (line: string, row: [] TrLedgerRow) -> bool {
+  row[0] = TrLedgerRow.{};
+  end := line.count;
+  while end > 0 && (line[end - 1] == '\n' || line[end - 1] == '\r' || line[end - 1] == ' ') { end -= 1; }
+  if end < 2 { return false; }
+  trimmed := line[0..<end];
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], trimmed, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  sn := jv_get(d[0], 0, "source");
+  idn := jv_get(d[0], 0, "session_id");
+  bn := jv_get(d[0], 0, "bytes");
+  shn := jv_get(d[0], 0, "sha256");
+  vn := jv_get(d[0], 0, "vault_id");
+  tn := jv_get(d[0], 0, "backed_up_at");
+  if jv_kind(d[0], sn) != JV_STRING || jv_kind(d[0], idn) != JV_STRING || jv_kind(d[0], bn) != JV_NUMBER || jv_kind(d[0], shn) != JV_STRING || jv_kind(d[0], vn) != JV_STRING {
+    return false;
+  }
+  row[0].source_n = jv_str(d[0], sn, row[0].source[..]);
+  row[0].sid_n = jv_str(d[0], idn, row[0].session_id[..]);
+  row[0].sha_n = jv_str(d[0], shn, row[0].sha[..]);
+  row[0].vid_n = jv_str(d[0], vn, row[0].vault_id[..]);
+  if row[0].source_n <= 0 || row[0].sid_n <= 0 || row[0].sha_n != 64 || row[0].vid_n != 32 { return false; }
+  row[0].kind = tr_source_kind(tr_row_source(row));
+  row[0].bytes = tr_uint(jv_raw(d[0], bn));
+  row[0].backed_up_at = ifx jv_kind(d[0], tn) == JV_NUMBER then tr_uint(jv_raw(d[0], tn)) else 0;
+  if row[0].kind < 0 || row[0].bytes < 0 || row[0].backed_up_at < 0 { return false; }
+  if !tr_is_hex(tr_row_sha(row), 64) || !tr_is_hex(tr_row_vid(row), 32) { return false; }
+  row[0].ok = true;
+  return true;
+}
+
+TrLedger :: struct {
+  sid_hash: [TR_LEDGER_MAX] [16] u8;
+  exact_hash: [TR_LEDGER_MAX] [16] u8;
+  kind: [TR_LEDGER_MAX] u8;
+  bytes: [TR_LEDGER_MAX] int;
+  n: int;
+  full: bool;
+  last_sync: int;
+  per_source: [5] int;
+  per_source_bytes: [5] int;
+}
+
+tr_sha_str :: (st: [] u8, s: string) -> bool {
+  b: [256] u8;
+  off := 0;
+  while off < s.count {
+    n := ifx s.count - off < b.count then s.count - off else b.count;
+    for i: 0..<n { b[i] = s[off + i]; }
+    if sha256_update_checked(st, b[0..<n], false) != 0 { return false; }
+    off += n;
+  }
+  return true;
+}
+
+tr_hash_sid :: (source: string, session_id: string, out16: [] u8) -> bool {
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8; sep := [1] u8.['\t'];
+  if sha256_init(st[..]) != 0 { return false; }
+  if !tr_sha_str(st[..], source) { return false; }
+  if sha256_update_checked(st[..], sep[..], false) != 0 { return false; }
+  if !tr_sha_str(st[..], session_id) { return false; }
+  if sha256_final_checked(st[..], digest[..], false) != 0 { return false; }
+  for i: 0..<16 { out16[i] = digest[i]; }
+  return true;
+}
+
+tr_hash_exact :: (source: string, session_id: string, bytes: int, sha: string, out16: [] u8) -> bool {
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8; sep := [1] u8.['\t'];
+  nb: [24] u8; nn := tr_put_int(nb[..], 0, bytes);
+  if nn <= 0 || sha256_init(st[..]) != 0 { return false; }
+  if !tr_sha_str(st[..], source) { return false; }
+  if sha256_update_checked(st[..], sep[..], false) != 0 { return false; }
+  if !tr_sha_str(st[..], session_id) { return false; }
+  if sha256_update_checked(st[..], sep[..], false) != 0 { return false; }
+  if !tr_sha_str(st[..], sha) { return false; }
+  if sha256_update_checked(st[..], sep[..], false) != 0 { return false; }
+  if sha256_update_checked(st[..], nb[0..<nn], false) != 0 { return false; }
+  if sha256_final_checked(st[..], digest[..], false) != 0 { return false; }
+  for i: 0..<16 { out16[i] = digest[i]; }
+  return true;
+}
+
+tr_eq16 :: (a: [] u8, b: [] u8) -> bool {
+  for i: 0..<16 { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+tr_ledger_find_sid :: (l: [] TrLedger, sid16: [] u8) -> int {
+  for i: 0..<l[0].n {
+    if tr_eq16(l[0].sid_hash[i][..], sid16) { return i; }
+  }
+  return -1;
+}
+
+tr_ledger_put :: (l: [] TrLedger, source: string, session_id: string, bytes: int, sha: string, backed_up_at: int) -> bool {
+  k := tr_source_kind(source);
+  if k < 0 || bytes < 0 || !tr_is_hex(sha, 64) { return false; }
+  sh: [16] u8; eh: [16] u8;
+  if !tr_hash_sid(source, session_id, sh[..]) || !tr_hash_exact(source, session_id, bytes, sha, eh[..]) { return false; }
+  if backed_up_at > l[0].last_sync { l[0].last_sync = backed_up_at; }
+  idx := tr_ledger_find_sid(l, sh[..]);
+  if idx >= 0 {
+    old_k := cast(int) l[0].kind[idx];
+    l[0].per_source_bytes[old_k] -= l[0].bytes[idx];
+    l[0].bytes[idx] = bytes;
+    l[0].kind[idx] = cast,trunc(u8) k;
+    l[0].per_source_bytes[k] += bytes;
+    for i: 0..<16 { l[0].exact_hash[idx][i] = eh[i]; }
+    return true;
+  }
+  if l[0].n >= TR_LEDGER_MAX { l[0].full = true; return false; }
+  slot := l[0].n;
+  for i: 0..<16 { l[0].sid_hash[slot][i] = sh[i]; l[0].exact_hash[slot][i] = eh[i]; }
+  l[0].kind[slot] = cast,trunc(u8) k;
+  l[0].bytes[slot] = bytes;
+  l[0].n += 1;
+  l[0].per_source[k] += 1;
+  l[0].per_source_bytes[k] += bytes;
+  return true;
+}
+
+tr_ledger_has_exact :: (l: [] TrLedger, source: string, session_id: string, bytes: int, sha: string) -> bool {
+  sh: [16] u8; eh: [16] u8;
+  if !tr_hash_sid(source, session_id, sh[..]) || !tr_hash_exact(source, session_id, bytes, sha, eh[..]) { return false; }
+  idx := tr_ledger_find_sid(l, sh[..]);
+  if idx < 0 { return false; }
+  return tr_eq16(l[0].exact_hash[idx][..], eh[..]);
+}
+
+tr_ledger_has_session :: (l: [] TrLedger, source: string, session_id: string) -> bool {
+  sh: [16] u8;
+  if !tr_hash_sid(source, session_id, sh[..]) { return false; }
+  return tr_ledger_find_sid(l, sh[..]) >= 0;
+}
+
+tr_ledger_feed_line :: (l: [] TrLedger, line: string) -> bool {
+  row: [1] TrLedgerRow;
+  if !tr_ledger_parse_line(line, row[..]) { return false; }
+  return tr_ledger_put(l, tr_row_source(row[..]), tr_row_sid(row[..]), row[0].bytes, tr_row_sha(row[..]), row[0].backed_up_at);
+}
+
+// ---- paths & host helpers ---------------------------------------------------
+
+tr_home :: (out: [] u8) -> string {
+  h := proc_getenv("OPENAGENTS_TRACES_HOME", out);
+  if h.count > 0 { return h; }
+  return home(out);
+}
+
+tr_ledger_path :: (out: [] u8) -> string {
+  p := proc_getenv("OPENAGENTS_TRACES_LEDGER", out);
+  if p.count > 0 { return p; }
+  hb: [1024] u8;
+  return fs_join(home(hb[..]), ".openagents/evals/session-history/backup-ledger.jsonl", out);
+}
+
+tr_walk_init :: (w: [] ObWalk, root_home: string, mask: int) {
+  w[0] = ObWalk.{};
+  w[0].claude = tr_mask_has(mask, OB_CLAUDE);
+  w[0].codex = tr_mask_has(mask, OB_CODEX);
+  w[0].coder = tr_mask_has(mask, OB_CODER);
+  w[0].agy = tr_mask_has(mask, OB_AGY);
+  w[0].opencode = tr_mask_has(mask, OB_OPENCODE);
+  w[0].subagents = true;
+  w[0].since = 0;
+  w[0].prune = false;
+  ob_start(w, root_home);
+}
+
+tr_file_sha256 :: (path: string, size: int, sha_hex: [] u8) -> bool {
+  if size < 0 || sha_hex.count < 64 { return false; }
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8;
+  if sha256_init(st[..]) != 0 { return false; }
+  buf: [65535] u8;
+  off := 0;
+  while off < size {
+    want := ifx size - off < buf.count then size - off else buf.count;
+    got := fs_read_at(path, off, buf[0..<want]);
+    if got <= 0 { return false; }
+    if sha256_update_checked(st[..], buf[0..<got], false) != 0 { return false; }
+    off += got;
+  }
+  if sha256_final_checked(st[..], digest[..], false) != 0 { return false; }
+  return tr_hex_encode(digest[..], sha_hex);
+}
+
+tr_ledger_load :: (path: string, l: [] TrLedger) -> int {
+  l[0] = TrLedger.{};
+  size := fs_size(path);
+  if size <= 0 { return 0; }
+  chunk: [16384] u8;
+  line: [4096] u8;
+  line_n := 0;
+  loaded := 0;
+  off := 0;
+  while off < size {
+    got := fs_read_at(path, off, chunk[..]);
+    if got <= 0 { break; }
+    for i: 0..<got {
+      c := chunk[i];
+      if c == 10 {
+        if line_n > 0 && tr_ledger_feed_line(l, cast(string) line[0..<line_n]) { loaded += 1; }
+        line_n = 0;
+      } else if line_n < line.count {
+        line[line_n] = c;
+        line_n += 1;
+      }
+    }
+    off += got;
+  }
+  if line_n > 0 && tr_ledger_feed_line(l, cast(string) line[0..<line_n]) { loaded += 1; }
+  return loaded;
+}
+
+tr_ledger_find_vault_id :: (path: string, session_id: string, out_vid: [] u8) -> bool {
+  if out_vid.count < 32 { return false; }
+  size := fs_size(path);
+  if size <= 0 { return false; }
+  chunk: [16384] u8;
+  line: [4096] u8;
+  line_n := 0;
+  found := false;
+  off := 0;
+  row: [1] TrLedgerRow;
+  while off < size {
+    got := fs_read_at(path, off, chunk[..]);
+    if got <= 0 { break; }
+    for i: 0..<got {
+      c := chunk[i];
+      if c == 10 {
+        if line_n > 0 && tr_ledger_parse_line(cast(string) line[0..<line_n], row[..]) && tr_row_sid(row[..]) == session_id {
+          for j: 0..<32 { out_vid[j] = row[0].vault_id[j]; }
+          found = true;
+        }
+        line_n = 0;
+      } else if line_n < line.count {
+        line[line_n] = c;
+        line_n += 1;
+      }
+    }
+    off += got;
+  }
+  if line_n > 0 && tr_ledger_parse_line(cast(string) line[0..<line_n], row[..]) && tr_row_sid(row[..]) == session_id {
+    for j: 0..<32 { out_vid[j] = row[0].vault_id[j]; }
+    found = true;
+  }
+  return found;
+}
+
+// ---- inventory --------------------------------------------------------------
+
+traces_inventory :: (a: [] Args, r: [] Rep) -> int {
+  src := args_value(a, "--source", "all");
+  mask := tr_source_mask(src);
+  if mask == 0 { return fail(r, EXIT_USAGE, "traces inventory: --source must be all, claude, codex, openagents, antigravity or opencode"); }
+  hb: [1024] u8;
+  root := tr_home(hb[..]);
+  if root.count == 0 { return fail(r, EXIT_FAIL, "traces inventory: HOME is not set"); }
+
+  w: [1] ObWalk;
+  tr_walk_init(w[..], root, mask);
+  counts: [5] int;
+  bytes: [5] int;
+  total_n := 0;
+  total_b := 0;
+  while ob_next(w[..]) {
+    k := w[0].kind;
+    if k < 0 || k >= 5 { continue; }
+    sz := fs_size(ob_path(w[..]));
+    if sz < 0 { sz = 0; }
+    counts[k] += 1;
+    bytes[k] += sz;
+    total_n += 1;
+    total_b += sz;
+  }
+
+  if r[0].json {
+    j: [1] Ln;
+    ln_s(j[..], "[");
+    emitted := 0;
+    for k: 0..<5 {
+      if !tr_mask_has(mask, k) { continue; }
+      if emitted > 0 { ln_s(j[..], ","); }
+      ln_s(j[..], "{\"source\":\""); ln_s(j[..], tr_source_name(k));
+      ln_s(j[..], "\",\"sessions\":"); ln_i(j[..], counts[k]);
+      ln_s(j[..], ",\"bytes\":"); ln_i(j[..], bytes[k]);
+      ln_s(j[..], "}");
+      emitted += 1;
+    }
+    ln_s(j[..], "]");
+    rep_raw(r, "sources", ln_text(j[..]));
+    rep_int(r, "total_sessions", total_n);
+    rep_int(r, "total_bytes", total_b);
+    return rep_done(r, EXIT_OK);
+  }
+
+  for k: 0..<5 {
+    if !tr_mask_has(mask, k) { continue; }
+    print("% % sessions % bytes\n", tr_source_name(k), counts[k], bytes[k]);
+  }
+  print("total % sessions % bytes\n", total_n, total_b);
+  return EXIT_OK;
+}
+
+// ---- status -----------------------------------------------------------------
+
+traces_status :: (a: [] Args, r: [] Rep) -> int {
+  src := args_value(a, "--source", "all");
+  mask := tr_source_mask(src);
+  if mask == 0 { return fail(r, EXIT_USAGE, "traces status: --source must be all, claude, codex, openagents, antigravity or opencode"); }
+  hb: [1024] u8; lb: [1024] u8;
+  root := tr_home(hb[..]);
+  if root.count == 0 { return fail(r, EXIT_FAIL, "traces status: HOME is not set"); }
+  lpath := tr_ledger_path(lb[..]);
+
+  ledger: [1] TrLedger;
+  _ = tr_ledger_load(lpath, ledger[..]);
+  now_s := cxcli_now_s();
+
+  w: [1] ObWalk;
+  tr_walk_init(w[..], root, mask);
+  local_n: [5] int;
+  local_b: [5] int;
+  synced_n: [5] int;
+  claude_at_risk := 0;
+  claude_at_risk_unbacked := 0;
+  sid_buf: [512] u8;
+  while ob_next(w[..]) {
+    k := w[0].kind;
+    if k < 0 || k >= 5 { continue; }
+    p := ob_path(w[..]);
+    sz := fs_size(p);
+    if sz < 0 { sz = 0; }
+    local_n[k] += 1;
+    local_b[k] += sz;
+    sname := tr_source_name(k);
+    sid := tr_session_id(k, w[0].sub, w[0].sub_phase, ob_project(w[..]), ob_parent(w[..]), p, sid_buf[..]);
+    in_ledger := tr_ledger_has_session(ledger[..], sname, sid);
+    if in_ledger { synced_n[k] += 1; }
+    if k == OB_CLAUDE && tr_claude_at_risk(w[0].mtime, now_s) {
+      claude_at_risk += 1;
+      if !in_ledger { claude_at_risk_unbacked += 1; }
+    }
+  }
+
+  total_local := 0; total_local_b := 0; total_synced := 0;
+  for k: 0..<5 {
+    if !tr_mask_has(mask, k) { continue; }
+    total_local += local_n[k];
+    total_local_b += local_b[k];
+    total_synced += synced_n[k];
+  }
+
+  if r[0].json {
+    j: [1] Ln;
+    ln_s(j[..], "[");
+    emitted := 0;
+    for k: 0..<5 {
+      if !tr_mask_has(mask, k) { continue; }
+      if emitted > 0 { ln_s(j[..], ","); }
+      ln_s(j[..], "{\"source\":\""); ln_s(j[..], tr_source_name(k));
+      ln_s(j[..], "\",\"local_sessions\":"); ln_i(j[..], local_n[k]);
+      ln_s(j[..], ",\"local_bytes\":"); ln_i(j[..], local_b[k]);
+      ln_s(j[..], ",\"backed_up_local\":"); ln_i(j[..], synced_n[k]);
+      ln_s(j[..], ",\"ledger_sessions\":"); ln_i(j[..], ledger[0].per_source[k]);
+      ln_s(j[..], ",\"ledger_bytes\":"); ln_i(j[..], ledger[0].per_source_bytes[k]);
+      ln_s(j[..], "}");
+      emitted += 1;
+    }
+    ln_s(j[..], "]");
+    rep_raw(r, "sources", ln_text(j[..]));
+    rep_int(r, "total_local", total_local);
+    rep_int(r, "total_local_bytes", total_local_b);
+    rep_int(r, "total_backed_up_local", total_synced);
+    rep_int(r, "ledger_sessions", ledger[0].n);
+    rep_int(r, "last_sync", ledger[0].last_sync);
+    rep_int(r, "claude_at_risk_25d", claude_at_risk);
+    rep_int(r, "claude_at_risk_unbacked", claude_at_risk_unbacked);
+    rep_str(r, "ledger", lpath);
+    return rep_done(r, EXIT_OK);
+  }
+
+  for k: 0..<5 {
+    if !tr_mask_has(mask, k) { continue; }
+    print("% local=% (% bytes) backed_up=% ledger=%\n", tr_source_name(k), local_n[k], local_b[k], synced_n[k], ledger[0].per_source[k]);
+  }
+  print("total local=% (% bytes) backed_up=% ledger=%\n", total_local, total_local_b, total_synced, ledger[0].n);
+  if ledger[0].last_sync > 0 { print("last_sync %\n", ledger[0].last_sync); }
+  else { print("last_sync never\n"); }
+  print("ledger %\n", lpath);
+  if claude_at_risk > 0 {
+    print("WARNING: % Claude Code session(s) are >= 25 days old (% unbacked) — approaching Claude's 30-day auto-deletion cutoff! Run `openagents traces backup --source claude`.\n", claude_at_risk, claude_at_risk_unbacked);
+  }
+  return EXIT_OK;
+}
+
+// ---- backup -----------------------------------------------------------------
+
+TrBatchItem :: struct {
+  kind: int;
+  sid: [320] u8; sid_n: int;
+  path: [OB_DIR] u8; path_n: int;
+  bytes: int;
+  sha: [64] u8;
+  vid: [32] u8;
+}
+
+tr_flush_batch :: (r: [] Rep, me: [] VtMe, dir: string, ledger_path: string, ledger: [] TrLedger, items: [] TrBatchItem, count: int, now_s: int) -> int {
+  if count <= 0 { return EXIT_OK; }
+  src: [1] Ln; ln_s(src[..], dir); ln_s(src[..], "/*");
+  ul: [1] Ln; folder := vt_url(me, "", ul[..]);
+  args := [6] string.["storage", "cp", "--quiet", "--content-type=application/octet-stream", ln_text(src[..]), folder];
+  o: [4096] u8; on: [1] int;
+  if vt_gcloud(args[..], o[..], on[..], false) != 0 {
+    vt_clear(dir);
+    return fail(r, EXIT_FAIL, "traces backup: the upload failed (gcloud storage cp)");
+  }
+  vt_clear(dir);
+
+  line: [4096] u8;
+  for i: 0..<count {
+    sname := tr_source_name(items[i].kind);
+    sid := cast(string) items[i].sid[0..<items[i].sid_n];
+    p := cast(string) items[i].path[0..<items[i].path_n];
+    sha := cast(string) items[i].sha[..];
+    vid := cast(string) items[i].vid[..];
+    ln := tr_ledger_format_line(sname, sid, p, items[i].bytes, sha, vid, now_s, line[..]);
+    if ln <= 0 || !fs_append_durable(ledger_path, cast(string) line[0..<ln]) {
+      return fail(r, EXIT_FAIL, "traces backup: uploaded to GCS but failed to append to backup-ledger.jsonl");
+    }
+    _ = tr_ledger_put(ledger, sname, sid, items[i].bytes, sha, now_s);
+  }
+  return EXIT_OK;
+}
+
+traces_backup :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if args_has(a, "--atif") {
+    return fail(r, EXIT_USAGE, "traces backup: --atif conversion is Phase 1 (#13830); omit --atif or pass --raw for lossless encrypted backup");
+  }
+  src := args_value(a, "--source", "all");
+  mask := tr_source_mask(src);
+  if mask == 0 { return fail(r, EXIT_USAGE, "traces backup: --source must be all, claude, codex, openagents, antigravity or opencode"); }
+  dry_run := args_has(a, "--dry-run");
+  limit := 0;
+  if args_has(a, "--limit") {
+    limit = tr_uint(args_value(a, "--limit", ""));
+    if limit <= 0 { return fail(r, EXIT_USAGE, "traces backup: --limit N must be a positive integer"); }
+  }
+
+  hb: [1024] u8; lb: [1024] u8;
+  root := tr_home(hb[..]);
+  if root.count == 0 { return fail(r, EXIT_FAIL, "traces backup: HOME is not set"); }
+  lpath := tr_ledger_path(lb[..]);
+
+  me: [1] VtMe;
+  if !dry_run {
+    k: [1] Key;
+    if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import --words`"); }
+    if !vt_me(k[0].secret[..], me[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "traces backup: this key can't make a NIP-44 key"); }
+    wipe(k[0].secret[..]);
+    if !fs_mkdir_all(fs_dir(lpath)) { wipe(me[0].ck[..]); return fail(r, EXIT_FAIL, "traces backup: can't create ledger directory"); }
+  }
+
+  ledger: [1] TrLedger;
+  _ = tr_ledger_load(lpath, ledger[..]);
+
+  w: [1] ObWalk;
+  tr_walk_init(w[..], root, mask);
+
+  batch: [TR_BATCH_MAX] TrBatchItem;
+  batch_n := 0;
+  batch_b := 0;
+  tb: [2048] u8;
+  dir := "";
+
+  uploaded := 0;
+  uploaded_b := 0;
+  skipped := 0;
+  skipped_b := 0;
+  last_vid: [32] u8;
+  has_last_vid := false;
+
+  sid_buf: [320] u8;
+  vn_buf: [260] u8;
+  sha_hex: [64] u8;
+  code := EXIT_OK;
+
+  while ob_next(w[..]) {
+    k := w[0].kind;
+    if k < 0 || k >= 5 { continue; }
+    p := ob_path(w[..]);
+    sz := fs_size(p);
+    if sz < 0 { continue; }
+    if !tr_file_sha256(p, sz, sha_hex[..]) { continue; }
+    sname := tr_source_name(k);
+    sid := tr_session_id(k, w[0].sub, w[0].sub_phase, ob_project(w[..]), ob_parent(w[..]), p, sid_buf[..]);
+    sha := cast(string) sha_hex[..];
+
+    if tr_ledger_has_exact(ledger[..], sname, sid, sz, sha) {
+      skipped += 1;
+      skipped_b += sz;
+      continue;
+    }
+
+    if limit > 0 && (uploaded + batch_n) >= limit { break; }
+
+    if dry_run {
+      uploaded += 1;
+      uploaded_b += sz;
+      if !r[0].json && uploaded <= 50 {
+        print("would-backup % % (% bytes)\n", sname, sid, sz);
+      }
+      continue;
+    }
+
+    if dir == "" {
+      dir = fs_temp("openagents-traces", tb[..]);
+      if dir == "" { code = fail(r, EXIT_FAIL, "traces backup: can't make a temporary folder"); break; }
+    }
+
+    vname := tr_vault_name(sname, sid, vn_buf[..]);
+    idl: [1] Ln;
+    code = vt_put_one(r, me[..], p, vname, dir, idl[..]);
+    if code != EXIT_OK { vt_clear(dir); dir = ""; break; }
+    vid := ln_text(idl[..]);
+    if vid.count != 32 { vt_clear(dir); dir = ""; code = fail(r, EXIT_FAIL, "traces backup: unexpected vault id length"); break; }
+
+    batch[batch_n].kind = k;
+    batch[batch_n].sid_n = tr_put(batch[batch_n].sid[..], 0, sid);
+    batch[batch_n].path_n = tr_put(batch[batch_n].path[..], 0, p);
+    batch[batch_n].bytes = sz;
+    for j: 0..<64 { batch[batch_n].sha[j] = sha_hex[j]; }
+    for j: 0..<32 { batch[batch_n].vid[j] = vid[j]; last_vid[j] = vid[j]; }
+    has_last_vid = true;
+    batch_n += 1;
+    batch_b += sz;
+
+    if batch_n >= TR_BATCH_MAX || batch_b >= TR_BATCH_BYTES {
+      code = tr_flush_batch(r, me[..], dir, lpath, ledger[..], batch[..], batch_n, cxcli_now_s());
+      dir = "";
+      if code != EXIT_OK { break; }
+      uploaded += batch_n;
+      uploaded_b += batch_b;
+      batch_n = 0;
+      batch_b = 0;
+    }
+  }
+
+  if code == EXIT_OK && batch_n > 0 {
+    code = tr_flush_batch(r, me[..], dir, lpath, ledger[..], batch[..], batch_n, cxcli_now_s());
+    dir = "";
+    if code == EXIT_OK {
+      uploaded += batch_n;
+      uploaded_b += batch_b;
+    }
+  }
+  if dir != "" { vt_clear(dir); }
+  if !dry_run { wipe(me[0].ck[..]); }
+  if code != EXIT_OK { return code; }
+
+  if r[0].json {
+    rep_str(r, "source", src);
+    rep_bool(r, "dry_run", dry_run);
+    rep_int(r, ifx dry_run then "would_upload" else "uploaded", uploaded);
+    rep_int(r, ifx dry_run then "would_upload_bytes" else "uploaded_bytes", uploaded_b);
+    rep_int(r, "skipped", skipped);
+    rep_int(r, "skipped_bytes", skipped_b);
+    if has_last_vid { rep_str(r, "last_vault_id", cast(string) last_vid[..]); }
+    rep_str(r, "ledger", lpath);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if dry_run {
+    if uploaded > 50 { print("... (% more)\n", uploaded - 50); }
+    print("dry-run: would upload % sessions (% bytes), skipped % unchanged (% bytes)\n", uploaded, uploaded_b, skipped, skipped_b);
+  } else {
+    print("backed up % sessions (% bytes), skipped % unchanged (% bytes)\n", uploaded, uploaded_b, skipped, skipped_b);
+    if has_last_vid { print("last_vault_id %\n", cast(string) last_vid[..]); }
+    print("ledger %\n", lpath);
+  }
+  return EXIT_OK;
+}
+
+// ---- restore ----------------------------------------------------------------
+
+traces_restore :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  id := positional(a, 2);
+  if id == "" { return fail(r, EXIT_USAGE, "traces restore ID [--out PATH] [--force]"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import --words`"); }
+  me: [1] VtMe;
+  if !vt_me(k[0].secret[..], me[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "traces restore: this key can't make a NIP-44 key"); }
+  wipe(k[0].secret[..]);
+
+  code := EXIT_OK;
+  if vt_id_ok(id) {
+    code = vault_get(a, r, me[..]);
+  } else {
+    lb: [1024] u8; vid: [32] u8;
+    lpath := tr_ledger_path(lb[..]);
+    if !tr_ledger_find_vault_id(lpath, id, vid[..]) {
+      wipe(me[0].ck[..]);
+      return fail(r, EXIT_NOT_FOUND, "traces restore: id is neither a 32-hex vault id nor a session_id in the backup ledger");
+    }
+    tb: [2048] u8;
+    dir := fs_temp("openagents-traces", tb[..]);
+    if dir == "" { wipe(me[0].ck[..]); return fail(r, EXIT_FAIL, "traces restore: can't make a temporary folder"); }
+    tp: [2100] u8; sealed := fs_join(dir, "sealed", tp[..]);
+    code = vt_get_from(a, r, me[..], cast(string) vid[..], sealed);
+    gone := fs_remove(sealed); gone = fs_remove(dir);
+  }
+  wipe(me[0].ck[..]);
+  return code;
+}
+
+// ---- #test checks -----------------------------------------------------------
+
+#test "traces: source classification and masks" {
+  #assert tr_source_name(OB_CLAUDE) == "claude" && tr_source_name(OB_CODEX) == "codex";
+  #assert tr_source_name(OB_CODER) == "openagents" && tr_source_name(OB_AGY) == "antigravity" && tr_source_name(OB_OPENCODE) == "opencode";
+  #assert tr_source_name(-1) == "" && tr_source_name(5) == "";
+  #assert tr_source_kind("claude") == OB_CLAUDE && tr_source_kind("codex") == OB_CODEX;
+  #assert tr_source_kind("openagents") == OB_CODER && tr_source_kind("coder") == OB_CODER;
+  #assert tr_source_kind("antigravity") == OB_AGY && tr_source_kind("opencode") == OB_OPENCODE;
+  #assert tr_source_kind("unknown") == -1 && tr_source_kind("") == -1;
+  #assert tr_source_mask("") == 31 && tr_source_mask("all") == 31;
+  #assert tr_source_mask("claude") == 1 && tr_source_mask("antigravity") == 8 && tr_source_mask("opencode") == 16;
+  #assert tr_source_mask("bogus") == 0;
+  #assert tr_mask_has(31, OB_CLAUDE) && tr_mask_has(31, OB_OPENCODE) && !tr_mask_has(8, OB_CLAUDE) && tr_mask_has(8, OB_AGY);
+}
+
+#test "traces: session ids and vault names across all 5 sources" {
+  b: [512] u8; v: [300] u8;
+  #assert tr_session_id(OB_CLAUDE, false, 0, "-Users-c-openagents", "sess-1", "/h/.claude/projects/-Users-c-openagents/sess-1.jsonl", b[..]) == "-Users-c-openagents/sess-1";
+  #assert tr_session_id(OB_CLAUDE, true, 0, "-Users-c-openagents", "sess-1", "/h/.claude/projects/-Users-c-openagents/sess-1/subagents/sub-9.jsonl", b[..]) == "-Users-c-openagents/sess-1/subagents/sub-9";
+  #assert tr_session_id(OB_CODEX, false, 0, "codex", "", "/h/.codex/sessions/2026/11/20/rollout-abc.jsonl", b[..]) == "rollout-abc";
+  #assert tr_session_id(OB_CODER, false, 0, "coder", "", "/h/.openagents/coder/sessions/worker-1.ajr", b[..]) == "worker-1.ajr";
+  #assert tr_session_id(OB_AGY, false, 0, "antigravity", "uuid-1", "/h/.gemini/antigravity-cli/brain/uuid-1/.system_generated/logs/transcript.jsonl", b[..]) == "cli/uuid-1";
+  #assert tr_session_id(OB_AGY, false, 1, "antigravity", "uuid-1", "/h/.gemini/antigravity/brain/uuid-1/.system_generated/logs/transcript.jsonl", b[..]) == "uuid-1";
+  #assert tr_session_id(OB_OPENCODE, false, 0, "opencode", "opencode.db", "/h/.local/share/opencode/opencode.db", b[..]) == "opencode.db";
+  #assert tr_session_id(OB_OPENCODE, false, 1, "opencode", "ses_1.json", "/h/.local/share/opencode/storage/session_diff/ses_1.json", b[..]) == "session_diff/ses_1.json";
+
+  vn := tr_vault_name("claude", "-Users-c/sess-1", v[..]);
+  #assert vn == "trace.claude.-Users-c_sess-1";
+  long_id: [300] u8; for i: 0..<300 { long_id[i] = ifx i % 10 == 0 then '/' else 'a'; }
+  vn2 := tr_vault_name("claude", cast(string) long_id[..], v[..]);
+  #assert vn2.count == 255;
+  for c: vn2 { #assert c != '/' && c >= 32 && c < 127; }
+}
+
+#test "traces: Claude 25-day retention cutoff warning" {
+  now := 1795146000;
+  #assert !tr_claude_at_risk(now - (TR_CLAUDE_WARN_S - 1), now);
+  #assert tr_claude_at_risk(now - TR_CLAUDE_WARN_S, now);
+  #assert tr_claude_at_risk(now - 30 * 86400, now);
+  #assert !tr_claude_at_risk(0, now);
+  #assert !tr_claude_at_risk(now + 100, now);
+}
+
+#test "traces: ledger JSONL format, parse and deduplication" {
+  sha1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  sha2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  vid1 := "0123456789abcdef0123456789abcdef";
+  vid2 := "fedcba9876543210fedcba9876543210";
+
+  buf: [1024] u8;
+  n := tr_ledger_format_line("antigravity", "uuid-1", "/Users/c/\"quoted\"/transcript.jsonl", 4096, sha1, vid1, 1795100000, buf[..]);
+  #assert n > 0;
+  line := cast(string) buf[0..<n];
+  row: [1] TrLedgerRow;
+  #assert tr_ledger_parse_line(line, row[..]);
+  #assert row[0].ok && row[0].kind == OB_AGY && tr_row_source(row[..]) == "antigravity";
+  #assert tr_row_sid(row[..]) == "uuid-1" && row[0].bytes == 4096 && tr_row_sha(row[..]) == sha1 && tr_row_vid(row[..]) == vid1 && row[0].backed_up_at == 1795100000;
+
+  #assert !tr_ledger_parse_line("", row[..]);
+  #assert !tr_ledger_parse_line("not json", row[..]);
+  #assert !tr_ledger_parse_line("{\"source\":\"bogus\",\"session_id\":\"a\",\"bytes\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"vault_id\":\"0123456789abcdef0123456789abcdef\"}", row[..]);
+  #assert !tr_ledger_parse_line("{\"source\":\"claude\",\"session_id\":\"a\",\"bytes\":1,\"sha256\":\"short\",\"vault_id\":\"0123456789abcdef0123456789abcdef\"}", row[..]);
+
+  l: [1] TrLedger;
+  #assert tr_ledger_feed_line(l[..], line);
+  #assert l[0].n == 1 && l[0].per_source[OB_AGY] == 1 && l[0].per_source_bytes[OB_AGY] == 4096 && l[0].last_sync == 1795100000;
+  #assert tr_ledger_has_session(l[..], "antigravity", "uuid-1");
+  #assert tr_ledger_has_exact(l[..], "antigravity", "uuid-1", 4096, sha1);
+  #assert !tr_ledger_has_exact(l[..], "antigravity", "uuid-1", 8192, sha2);
+  #assert !tr_ledger_has_exact(l[..], "antigravity", "uuid-1", 4096, sha2);
+
+  n2 := tr_ledger_format_line("antigravity", "uuid-1", "/Users/c/transcript.jsonl", 8192, sha2, vid2, 1795100500, buf[..]);
+  #assert n2 > 0 && tr_ledger_feed_line(l[..], cast(string) buf[0..<n2]);
+  #assert l[0].n == 1 && l[0].per_source[OB_AGY] == 1 && l[0].per_source_bytes[OB_AGY] == 8192 && l[0].last_sync == 1795100500;
+  #assert tr_ledger_has_exact(l[..], "antigravity", "uuid-1", 8192, sha2);
+  #assert !tr_ledger_has_exact(l[..], "antigravity", "uuid-1", 4096, sha1);
+}
+
+#test "traces: NIP-44 v2 encrypt/decrypt round-trip with SHA-256 and tamper refusal" {
+  ck: [32] u8; nonce: [32] u8;
+  for i: 0..<32 { ck[i] = cast,trunc(u8) (i + 1); nonce[i] = cast,trunc(u8) (i + 33); }
+  plain := "{\"step_id\":1,\"source\":\"user\",\"message\":\"preserve local traces\"}\n";
+  pbytes: [256] u8; pn := tr_put(pbytes[..], 0, plain);
+  #assert pn == plain.count;
+  work: [2048] u8; cipher: [2048] u8; out: [2048] u8;
+  enc := nip44_encrypt_checked(NIP44_COMPAT, ck[..], nonce[..], pbytes[0..<pn], work[..], cipher[..], false);
+  #assert enc.error == NIP44_OK && enc.written > 0;
+  dec := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) cipher[0..<enc.written], work[..], out[..], false);
+  #assert dec.error == NIP44_OK && cast(string) out[0..<dec.written] == plain;
+
+  d1: [32] u8; d2: [32] u8; h1: [64] u8; h2: [64] u8;
+  st1: [SHA_STATE_BYTES] u8; st2: [SHA_STATE_BYTES] u8;
+  #assert sha256_init(st1[..]) == 0 && sha256_update_checked(st1[..], pbytes[0..<pn], false) == 0 && sha256_final_checked(st1[..], d1[..], false) == 0;
+  #assert sha256_init(st2[..]) == 0 && sha256_update_checked(st2[..], out[0..<dec.written], false) == 0 && sha256_final_checked(st2[..], d2[..], false) == 0;
+  #assert tr_hex_encode(d1[..], h1[..]) && tr_hex_encode(d2[..], h2[..]) && cast(string) h1[..] == cast(string) h2[..];
+
+  cipher[enc.written - 2] = ifx cipher[enc.written - 2] == 'A' then 'B' else 'A';
+  bad := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) cipher[0..<enc.written], work[..], out[..], false);
+  #assert bad.error != NIP44_OK;
+}
