@@ -35,6 +35,9 @@ sign_bundle() {
     if [[ "$OA_MAC_SIGN_IDENTITY" == *"Developer ID"* || "${OA_MAC_NOTARIZE:-0}" == "1" ]]; then
       extra+=(--timestamp)
     fi
+    if [[ -d "$1/Contents/Frameworks/breez_sdk_sparkFFI.framework" ]]; then
+      codesign --force --options runtime "${extra[@]}" --sign "$OA_MAC_SIGN_IDENTITY" "$1/Contents/Frameworks/breez_sdk_sparkFFI.framework" >/dev/null
+    fi
     codesign --force --options runtime "${extra[@]}" --entitlements "$2/OpenAgents.entitlements" --sign "$OA_MAC_SIGN_IDENTITY" "$1" >/dev/null
     echo "signed for push ($push_env) with $OA_MAC_SIGN_IDENTITY"
     if [[ "${OA_MAC_NOTARIZE:-0}" == "1" ]]; then
@@ -42,6 +45,9 @@ sign_bundle() {
     fi
   else
     rm -f "$1/Contents/embedded.provisionprofile"
+    if [[ -d "$1/Contents/Frameworks/breez_sdk_sparkFFI.framework" ]]; then
+      codesign --force --sign - "$1/Contents/Frameworks/breez_sdk_sparkFFI.framework" >/dev/null
+    fi
     codesign --force --sign - "$1" >/dev/null
   fi
 }
