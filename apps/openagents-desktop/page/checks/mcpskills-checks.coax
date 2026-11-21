@@ -1,0 +1,176 @@
+// Checks for page/mcpskills.coax: MCP server CRUD/JSON persistence, token redaction,
+// OAuth PKCE + inline auth_required action card, Skills discovery/toggle, Settings -> MCP & Skills,
+// and composer /skill fuzzy matching (GitHub #13879).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_ms_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+#test "mcp: CRUD, status labels, JSON round-trip, and strict token redaction" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+
+  // Add HTTP and stdio servers.
+  i0 := coder_page_mcp_add(s, "github", CP_MCP_HTTP, "https://api.githubcopilot.com/mcp/", true);
+  i1 := coder_page_mcp_add(s, "local-fs", CP_MCP_STDIO, "npx -y @modelcontextprotocol/server-filesystem /tmp", true);
+  #assert i0 == 0 && i1 == 1 && coder_page_mcp_count(s) == 2;
+
+  // Reject empty name or endpoint.
+  #assert coder_page_mcp_add(s, "", CP_MCP_HTTP, "https://x.test", true) < 0;
+  #assert coder_page_mcp_add(s, "empty-ep", CP_MCP_HTTP, "", true) < 0;
+
+  // Status + tool count formatting.
+  #assert coder_page_mcp_set_status(s, 0, CP_MCP_ST_CONNECTED, 14, "");
+  sb: [128] u8;
+  #assert cp_mcp_status_label(s[0].mcp_skills[0].servers[0], sb[..]) == "Connected · 14 tools";
+
+  // Token redaction in endpoints and error messages.
+  i2 := coder_page_mcp_add(s, "secret-srv", CP_MCP_HTTP, "https://mcp.example.com?token=supersecret123&mode=1", true);
+  #assert i2 == 2;
+  ep2 := cp_mcp_str(s[0].mcp_skills[0].servers[2].endpoint[..], s[0].mcp_skills[0].servers[2].endpoint_n);
+  #assert cp_find_ci(ep2, "supersecret123") < 0 && cp_find_ci(ep2, "token=[redacted]") >= 0;
+
+  #assert coder_page_mcp_set_status(s, 2, CP_MCP_ST_ERROR, 0, "401 Unauthorized: Bearer eyJhbGciOi.secret.sig and sk-live-99999");
+  err2 := cp_mcp_str(s[0].mcp_skills[0].servers[2].error_msg[..], s[0].mcp_skills[0].servers[2].error_msg_n);
+  #assert cp_find_ci(err2, "eyJhbGciOi") < 0 && cp_find_ci(err2, "sk-live-99999") < 0 && cp_find_ci(err2, "[redacted]") >= 0;
+
+  // Toggle disables and updates status.
+  #assert coder_page_mcp_toggle(s, 1);
+  #assert !s[0].mcp_skills[0].servers[1].enabled && s[0].mcp_skills[0].servers[1].status == CP_MCP_ST_DISABLED;
+  #assert cp_mcp_status_label(s[0].mcp_skills[0].servers[1], sb[..]) == "Disabled";
+
+  // Save JSON -> load JSON into fresh page; tokens are never serialized.
+  jbuf: [4096] u8;
+  jn := coder_page_mcp_save_json(s, jbuf[..]);
+  #assert jn > 0;
+  js := cast(string) jbuf[0..<jn];
+  #assert cp_find_ci(js, "supersecret123") < 0 && cp_find_ci(js, "eyJhbGciOi") < 0;
+  #assert cp_find_ci(js, "\"github\"") >= 0 && cp_find_ci(js, "\"stdio\"") >= 0;
+
+  p2: [1] CoderPage; st2: [1] CpCheckStore; s2 := cp_check_page(p2[..], st2[..]);
+  cp_init(s2);
+  loaded := coder_page_mcp_load_json(s2, js);
+  #assert loaded == 3 && coder_page_mcp_count(s2) == 3;
+  #assert s2[0].mcp_skills[0].servers[0].tool_count == 14;
+  #assert s2[0].mcp_skills[0].servers[1].transport == CP_MCP_STDIO && !s2[0].mcp_skills[0].servers[1].enabled;
+
+  // Remove shifts remaining servers cleanly.
+  #assert coder_page_mcp_remove(s2, 1) && coder_page_mcp_count(s2) == 2;
+  #assert cp_mcp_str(s2[0].mcp_skills[0].servers[1].name[..], s2[0].mcp_skills[0].servers[1].name_n) == "secret-srv";
+}
+
+#test "mcp oauth: 401 auth_required inline card, PKCE nonce check, and completion" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  f: [1] UiFrame;
+  cp_init(s); s[0].d = 1.0f32;
+  _ = coder_page_mcp_add(s, "linear", CP_MCP_HTTP, "https://mcp.linear.app/sse", true);
+
+  // Server returns 401 -> inline sign-in card appears.
+  #assert coder_page_mcp_oauth_require(s, "linear", "https://linear.app/oauth/authorize", "linear.list_issues");
+  #assert s[0].mcp_skills[0].servers[0].status == CP_MCP_ST_AUTH_REQUIRED;
+  #assert s[0].mcp_skills[0].oauth_state == CP_OAUTH_REQUIRED;
+  #assert cp_ms_test_frame(s, f[..], 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.mcp.oauth.card") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.mcp.oauth.signin") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.mcp.oauth.dismiss") >= 0;
+
+  // Pressing "Sign in…" asks host CP_ASK_MCP_OAUTH.
+  #assert cp_mcp_oauth_press(s, CP_MCP_OAUTH_SIGNIN);
+  #assert coder_page_action(s) == CP_ASK_MCP_OAUTH;
+  #assert s[0].mcp_skills[0].oauth_state == CP_OAUTH_PENDING;
+
+  // Host starts PKCE with verifier/challenge/nonce.
+  #assert cp_mcp_oauth_begin(s, "linear", "verifier_0123456789abcdef", "challenge_0123456789abcdef", "nonce_98765432");
+  #assert coder_page_action(s) == CP_ASK_MCP_OAUTH;
+
+  // Wrong CSRF nonce is rejected and clears verifier.
+  #assert !coder_page_mcp_oauth_complete(s, "linear", "wrong_nonce", true);
+  #assert s[0].mcp_skills[0].oauth_state == CP_OAUTH_ERROR;
+  #assert s[0].mcp_skills[0].oauth_verifier_n == 0;
+
+  // Valid PKCE completion marks server connected + has_token=true and hides card.
+  #assert cp_mcp_oauth_begin(s, "linear", "verifier_abcdef0123456789", "challenge_abcdef0123456789", "nonce_good_1234");
+  _ = coder_page_action(s);
+  #assert coder_page_mcp_oauth_complete(s, "linear", "nonce_good_1234", true);
+  #assert s[0].mcp_skills[0].oauth_state == CP_OAUTH_COMPLETE;
+  #assert s[0].mcp_skills[0].servers[0].status == CP_MCP_ST_CONNECTED && s[0].mcp_skills[0].servers[0].has_token;
+  #assert s[0].mcp_skills[0].oauth_verifier_n == 0 && s[0].mcp_skills[0].oauth_nonce_n == 0;
+  #assert cp_ms_test_frame(s, f[..], 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.mcp.oauth.card") < 0;
+}
+
+#test "skills: discovery, toggle, ranked fuzzy search, and composer /skill insertion" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  f: [1] UiFrame;
+  cp_init(s); s[0].d = 1.0f32;
+
+  payload := "pr-review\tuser\t1\tReview pull requests for regressions\t/Users/u/.claude/skills/pr-review/SKILL.md\ndeploy-prod\tproject\t1\tDeploy release artifacts safely\t/repo/.claude/skills/deploy-prod/SKILL.md\ndisabled-skill\tuser\t0\tShould not appear in composer\t/Users/u/.claude/skills/disabled-skill/SKILL.md\nreview-docs\tjson\t1\tAudit markdown documentation\t/repo/skills.json\n";
+  n := coder_page_skills_load(s, payload);
+  #assert n == 4 && coder_page_skills_count(s) == 4;
+
+  // Fuzzy search ranks exact/prefix/word-start/subsequence and excludes disabled skills.
+  hits: [8] int;
+  m := cp_skills_search(s, "pr-review", hits[..]);
+  #assert m == 1 && hits[0] == 0;
+  m = cp_skills_search(s, "prrev", hits[..]);
+  #assert m >= 1 && hits[0] == 0;
+  m = cp_skills_search(s, "review", hits[..]);
+  #assert m == 2 && hits[0] == 3 && hits[1] == 0;   // "review-docs" (prefix) > "pr-review" (word-start)
+  m = cp_skills_search(s, "disabled", hits[..]);
+  #assert m == 0;
+
+  // Toggle enables disabled-skill.
+  #assert coder_page_skills_toggle(s, 2);
+  m = cp_skills_search(s, "disabled", hits[..]);
+  #assert m == 1 && hits[0] == 2;
+  // Toggle back off.
+  #assert coder_page_skills_toggle(s, 2);
+
+  // Composer / popover lists enabled skills and inserts "/deploy-prod " on Return.
+  coder_page_focus(s, CP_KB_COMPOSER);
+  #assert coder_page_set_text(s, "/depl");
+  #assert cp_ms_test_frame(s, f[..], 1200, 800);
+  #assert s[0].mn[0].open && s[0].mn[0].n == 1;
+  #assert s[0].mn[0].hits[0] == CP_MN_SKILL_BASE + 1;
+  #assert coder_page_key(s, -2, 0);   // Return picks top hit
+  dbuf: [128] u8; dn := coder_page_draft(s, dbuf[..]);
+  #assert cast(string) dbuf[0..<dn] == "/deploy-prod ";
+}
+
+#test "settings: MCP and Skills pages render, match search, and dispatch host asks" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  f: [1] UiFrame;
+  cp_init(s); s[0].d = 1.0f32;
+
+  _ = coder_page_mcp_add(s, "context7", CP_MCP_HTTP, "https://mcp.context7.com/mcp", true);
+  _ = coder_page_skills_load(s, "rust-audit\tproject\t1\tAudit unsafe Rust blocks\t/repo/.claude/skills/rust-audit/SKILL.md\n");
+
+  // Search finds MCP and Skills pages.
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  n := cp_set_hits_in("mcp", hits[..], false);
+  #assert n >= 2 && es[hits[0]].page == CP_PG_MCP;
+  n = cp_set_hits_in("skills", hits[..], false);
+  #assert n >= 2 && es[hits[0]].page == CP_PG_SKILLS;
+
+  // Open Settings -> MCP and dispatch Add, Toggle, OAuth, Remove.
+  coder_page_settings_open(s, CP_PG_MCP, "");
+  #assert coder_page_settings_page(s) == CP_PG_MCP;
+  #assert cp_ms_test_frame(s, f[..], 1200, 800);
+  #assert surface_find(s[0].surface[..], "set.mcp.add.a") >= 0;
+  #assert surface_find(s[0].surface[..], "set.mcp.srv.0.0") >= 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.mcp.add.a") && coder_page_action(s) == CP_ASK_MCP_ADD;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.mcp.srv.0.0") && coder_page_action(s) == CP_ASK_MCP_TOGGLE && coder_page_mcp_target(s) == 0 && !s[0].mcp_skills[0].servers[0].enabled;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.mcp.srv.0.2") && coder_page_action(s) == CP_ASK_MCP_OAUTH && coder_page_mcp_target(s) == 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.mcp.srv.0.3") && coder_page_action(s) == CP_ASK_MCP_REMOVE && coder_page_mcp_target(s) == 0;
+
+  // Open Settings -> Skills and toggle skill 0 off.
+  coder_page_settings_open(s, CP_PG_SKILLS, "");
+  #assert coder_page_settings_page(s) == CP_PG_SKILLS;
+  #assert cp_ms_test_frame(s, f[..], 1200, 800);
+  #assert surface_find(s[0].surface[..], "set.skill.0.0") >= 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.skill.0.0") && coder_page_action(s) == CP_ASK_SKILL_TOGGLE && coder_page_skills_target(s) == 0 && !s[0].mcp_skills[0].skills[0].enabled;
+}

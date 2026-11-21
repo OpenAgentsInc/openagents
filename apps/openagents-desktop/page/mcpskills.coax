@@ -1,0 +1,677 @@
+// Coder Desktop page (../page.coax): MCP server management, MCP OAuth PKCE state + inline
+// sign-in action card, and Skills catalog + ranked fuzzy /skill picker (GitHub #13879).
+
+// Host asks (CP_ASK_* in state.coax; 70..75 are free after CP_ASK_USAGE_RECOVERY :: 69).
+CP_ASK_MCP_ADD :: 70;       // Settings -> MCP -> Add MCP server dialog
+CP_ASK_MCP_TOGGLE :: 71;    // Settings -> MCP -> Enable/Disable server at mcp_target
+CP_ASK_MCP_REMOVE :: 72;    // Settings -> MCP -> Remove server at mcp_target
+CP_ASK_MCP_OAUTH :: 73;     // MCP OAuth sign-in (from Settings or inline auth_required card)
+CP_ASK_SKILL_TOGGLE :: 74;  // Settings -> Skills -> Enable/Disable skill at skill_target
+CP_ASK_MCP_INSPECT :: 75;   // Settings -> MCP -> Edit/Inspect server at mcp_target
+
+// Row action IDs (245..246, free after CP_USAGE_REFRESH :: 242).
+CP_MCP_OAUTH_SIGNIN :: 245;
+CP_MCP_OAUTH_DISMISS :: 246;
+
+// Mention popover item code base for enabled skills (page/mention.coax).
+CP_MN_SKILL_BASE :: 1000;
+
+// MCP server model limits and enums.
+CP_MCP_MAX :: 16;
+CP_MCP_NAME :: 64;
+CP_MCP_ENDPOINT :: 256;
+CP_MCP_ERR :: 128;
+
+CP_MCP_HTTP :: 0;
+CP_MCP_STDIO :: 1;
+
+CP_MCP_ST_DISABLED :: 0;
+CP_MCP_ST_CONNECTED :: 1;
+CP_MCP_ST_AUTH_REQUIRED :: 2;
+CP_MCP_ST_ERROR :: 3;
+
+// MCP OAuth PKCE flow states.
+CP_OAUTH_IDLE :: 0;
+CP_OAUTH_REQUIRED :: 1;
+CP_OAUTH_PENDING :: 2;
+CP_OAUTH_COMPLETE :: 3;
+CP_OAUTH_ERROR :: 4;
+
+// Skills catalog limits and sources.
+CP_SKILLS_MAX :: 64;
+CP_SKILL_NAME :: 64;
+CP_SKILL_DESC :: 192;
+CP_SKILL_PATH :: 256;
+
+CP_SKILL_USER :: 0;      // ~/.claude/skills
+CP_SKILL_PROJECT :: 1;   // <repo>/.claude/skills
+CP_SKILL_JSON :: 2;      // skills.json
+
+CpMcpServer :: struct {
+  name: [CP_MCP_NAME] u8; name_n: int;
+  transport: int;                                 // CP_MCP_HTTP or CP_MCP_STDIO
+  endpoint: [CP_MCP_ENDPOINT] u8; endpoint_n: int;// URL (http) or command (stdio)
+  enabled: bool;
+  status: int;                                    // CP_MCP_ST_*
+  tool_count: int;
+  has_token: bool;                                // indicator only; bearer tokens are NEVER stored here
+  auth_url: [CP_MCP_ENDPOINT] u8; auth_url_n: int;
+  error_msg: [CP_MCP_ERR] u8; error_msg_n: int;
+}
+
+CpSkill :: struct {
+  name: [CP_SKILL_NAME] u8; name_n: int;
+  desc: [CP_SKILL_DESC] u8; desc_n: int;
+  path: [CP_SKILL_PATH] u8; path_n: int;
+  source: int;                                    // CP_SKILL_USER, CP_SKILL_PROJECT, CP_SKILL_JSON
+  enabled: bool;
+}
+
+CpMcpSkills :: struct {
+  servers: [CP_MCP_MAX] CpMcpServer;
+  nservers: int;
+  mcp_target: int;                                // server index for CP_ASK_MCP_*
+
+  // OAuth PKCE state & inline auth_required action card.
+  oauth_state: int;
+  oauth_server: [CP_MCP_NAME] u8; oauth_server_n: int;
+  oauth_url: [CP_MCP_ENDPOINT] u8; oauth_url_n: int;
+  oauth_verifier: [128] u8; oauth_verifier_n: int;
+  oauth_challenge: [128] u8; oauth_challenge_n: int;
+  oauth_nonce: [64] u8; oauth_nonce_n: int;
+  oauth_pending_tool: [128] u8; oauth_pending_tool_n: int;
+  oauth_tray_h: f32;
+
+  // Skills catalog.
+  skills: [CP_SKILLS_MAX] CpSkill;
+  nskills: int;
+  skill_target: int;                              // skill index for CP_ASK_SKILL_TOGGLE
+  skills_gen: int;                                // bumped on load/toggle so mention popover refreshes
+}
+
+// ---------------------------------------------------------------- string & redaction helpers
+
+cp_mcp_str :: (buf: [] const u8, n: int) -> string {
+  k := n;
+  if k < 0 { k = 0; }
+  if k > buf.count { k = buf.count; }
+  return cast(string) buf[0..<k];
+}
+
+cp_mcp_is_tok_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '+' || c == '/' || c == '=' || c == ':';
+}
+
+// Redacts bearer tokens, authorization headers, and secret-like query params so they are never
+// exposed in UI strings, status lines, or serialized MCP config.
+cp_mcp_redact :: (text: string, out: [] u8) -> int {
+  n := 0;
+  i := 0;
+  while i < text.count && n < out.count {
+    // "Bearer <token>" (case-insensitive)
+    if cp_starts_ci(text, i, "bearer ") {
+      n = el_put(out, n, "Bearer [redacted]");
+      i += 7;
+      while i < text.count && text[i] == ' ' { i += 1; }
+      while i < text.count && cp_mcp_is_tok_char(text[i]) { i += 1; }
+      continue;
+    }
+    // "token=<value>" or "access_token=<value>" or "api_key=<value>"
+    if cp_starts_ci(text, i, "access_token=") {
+      n = el_put(out, n, "access_token=[redacted]");
+      i += 13;
+      while i < text.count && text[i] != '&' && text[i] != ' ' && text[i] != '\n' { i += 1; }
+      continue;
+    }
+    if cp_starts_ci(text, i, "token=") {
+      n = el_put(out, n, "token=[redacted]");
+      i += 6;
+      while i < text.count && text[i] != '&' && text[i] != ' ' && text[i] != '\n' { i += 1; }
+      continue;
+    }
+    if cp_starts_ci(text, i, "api_key=") {
+      n = el_put(out, n, "api_key=[redacted]");
+      i += 8;
+      while i < text.count && text[i] != '&' && text[i] != ' ' && text[i] != '\n' { i += 1; }
+      continue;
+    }
+    // Common secret prefixes: sk-, ghp_, gho_, xoxb-
+    if (cp_starts_ci(text, i, "sk-") || cp_starts_ci(text, i, "ghp_") || cp_starts_ci(text, i, "gho_") || cp_starts_ci(text, i, "xoxb-")) && (i == 0 || !cp_mcp_is_tok_char(text[i - 1])) {
+      n = el_put(out, n, "[redacted]");
+      while i < text.count && cp_mcp_is_tok_char(text[i]) { i += 1; }
+      continue;
+    }
+    out[n] = text[i];
+    n += 1;
+    i += 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- MCP server CRUD & JSON
+
+cp_mcp_find :: (s: [] CoderPage, name: string) -> int {
+  if s.count < 1 || name.count == 0 { return -1; }
+  ms := s[0].mcp_skills[..];
+  for i: 0..<ms[0].nservers {
+    if cp_mcp_str(ms[0].servers[i].name[..], ms[0].servers[i].name_n) == name { return i; }
+  }
+  return -1;
+}
+
+cp_mcp_add :: (s: [] CoderPage, name: string, transport: int, endpoint: string, enabled: bool) -> int {
+  if s.count < 1 || name.count == 0 || endpoint.count == 0 { return -1; }
+  ms := s[0].mcp_skills[..];
+  idx := cp_mcp_find(s, name);
+  if idx < 0 {
+    if ms[0].nservers >= CP_MCP_MAX { return -1; }
+    idx = ms[0].nservers;
+    ms[0].servers[idx] = CpMcpServer.{};
+    ms[0].nservers += 1;
+  }
+  ms[0].servers[idx].name_n = cp_out(ms[0].servers[idx].name[..], name);
+  ms[0].servers[idx].transport = ifx transport == CP_MCP_STDIO then CP_MCP_STDIO else CP_MCP_HTTP;
+  ms[0].servers[idx].endpoint_n = cp_mcp_redact(endpoint, ms[0].servers[idx].endpoint[..]);
+  ms[0].servers[idx].enabled = enabled;
+  ms[0].servers[idx].status = ifx enabled then CP_MCP_ST_CONNECTED else CP_MCP_ST_DISABLED;
+  return idx;
+}
+
+cp_mcp_remove :: (s: [] CoderPage, idx: int) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if idx < 0 || idx >= ms[0].nservers { return false; }
+  for i: idx..<ms[0].nservers - 1 {
+    ms[0].servers[i] = ms[0].servers[i + 1];
+  }
+  ms[0].nservers -= 1;
+  ms[0].servers[ms[0].nservers] = CpMcpServer.{};
+  return true;
+}
+
+cp_mcp_toggle :: (s: [] CoderPage, idx: int) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if idx < 0 || idx >= ms[0].nservers { return false; }
+  ms[0].servers[idx].enabled = !ms[0].servers[idx].enabled;
+  if !ms[0].servers[idx].enabled {
+    ms[0].servers[idx].status = CP_MCP_ST_DISABLED;
+  } else if ms[0].servers[idx].status == CP_MCP_ST_DISABLED {
+    ms[0].servers[idx].status = CP_MCP_ST_CONNECTED;
+  }
+  return true;
+}
+
+cp_mcp_set_status :: (s: [] CoderPage, idx: int, status: int, tool_count: int, error_msg: string) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if idx < 0 || idx >= ms[0].nservers { return false; }
+  st := status;
+  if st < CP_MCP_ST_DISABLED || st > CP_MCP_ST_ERROR { st = CP_MCP_ST_ERROR; }
+  ms[0].servers[idx].status = st;
+  ms[0].servers[idx].tool_count = ifx tool_count > 0 then tool_count else 0;
+  ms[0].servers[idx].error_msg_n = cp_mcp_redact(error_msg, ms[0].servers[idx].error_msg[..]);
+  return true;
+}
+
+cp_mcp_transport_name :: (t: int) -> string {
+  return ifx t == CP_MCP_STDIO then "stdio" else "http";
+}
+
+cp_mcp_status_label :: (srv: CpMcpServer, out: [] u8) -> string {
+  n := 0;
+  if !srv.enabled || srv.status == CP_MCP_ST_DISABLED {
+    n = el_put(out, n, "Disabled");
+  } else if srv.status == CP_MCP_ST_AUTH_REQUIRED {
+    n = el_put(out, n, "Sign-in required");
+  } else if srv.status == CP_MCP_ST_ERROR {
+    n = el_put(out, n, "Error");
+    if srv.error_msg_n > 0 {
+      n = el_put(out, n, ": ");
+      n = el_put(out, n, cp_mcp_str(srv.error_msg[..], srv.error_msg_n));
+    }
+  } else {
+    n = el_put(out, n, "Connected");
+    if srv.tool_count > 0 {
+      n = el_put(out, n, " · ");
+      n = el_put_i(out, n, srv.tool_count);
+      n = el_put(out, n, ifx srv.tool_count == 1 then " tool" else " tools");
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+// Serializes MCP servers to JSON. Bearer tokens and secrets are NEVER serialized here.
+cp_mcp_save_json :: (s: [] CoderPage, out: [] u8) -> int {
+  if s.count < 1 || out.count < 16 { return 0; }
+  ms := s[0].mcp_skills[..];
+  n := json_raw(out, 0, "{\"v\":1,\"servers\":[");
+  for i: 0..<ms[0].nservers {
+    srv := ms[0].servers[i];
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "{\"name\":");
+    n = json_write_string(out, n, cp_mcp_str(srv.name[..], srv.name_n));
+    n = json_raw(out, n, ",\"transport\":");
+    n = json_write_string(out, n, cp_mcp_transport_name(srv.transport));
+    n = json_raw(out, n, ",\"endpoint\":");
+    n = json_write_string(out, n, cp_mcp_str(srv.endpoint[..], srv.endpoint_n));
+    n = json_raw(out, n, ifx srv.enabled then ",\"enabled\":true" else ",\"enabled\":false");
+    n = json_raw(out, n, ",\"status\":");
+    n = json_write_int(out, n, srv.status);
+    n = json_raw(out, n, ",\"tool_count\":");
+    n = json_write_int(out, n, srv.tool_count);
+    if srv.has_token { n = json_raw(out, n, ",\"has_token\":true"); }
+    n = json_raw(out, n, "}");
+  }
+  n = json_raw(out, n, "]}");
+  return n;
+}
+
+// Loads MCP servers from JSON (ignores any token/secret fields if present in untrusted input).
+cp_mcp_load_json :: (s: [] CoderPage, text: string) -> int {
+  if s.count < 1 { return 0; }
+  ms := s[0].mcp_skills[..];
+  ms[0].nservers = 0;
+  if text.count == 0 { return 0; }
+  arr := cl_raw(text, "servers");
+  cnt := ifx arr.count > 0 then cl_count(arr) else 0;
+  if cnt > CP_MCP_MAX { cnt = CP_MCP_MAX; }
+  scratch: [2048] u8;
+  ar := [1] ClArena.[ClArena.{buf = scratch[..]}];
+  loaded := 0;
+  for i: 0..<cnt {
+    obj := cl_json(arr, cl_item(arr, i));
+    if obj.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    name := cl_str(ar[..], obj, "name");
+    tr_s := cl_str(ar[..], obj, "transport");
+    ep := cl_str(ar[..], obj, "endpoint");
+    if ep.count == 0 { ep = cl_str(ar[..], obj, "url"); }
+    if ep.count == 0 { ep = cl_str(ar[..], obj, "command"); }
+    if name.count == 0 || ep.count == 0 { continue; }
+    en := cl_bool(obj, "enabled");
+    enabled := ifx en.ok then en.value else true;
+    tr := ifx tr_s == "stdio" then CP_MCP_STDIO else CP_MCP_HTTP;
+    idx := cp_mcp_add(s, name, tr, ep, enabled);
+    if idx >= 0 {
+      st := cl_int(obj, "status");
+      tc := cl_int(obj, "tool_count");
+      ht := cl_bool(obj, "has_token");
+      if st.ok && st.value >= CP_MCP_ST_DISABLED && st.value <= CP_MCP_ST_ERROR {
+        ms[0].servers[idx].status = ifx enabled then st.value else CP_MCP_ST_DISABLED;
+      }
+      if tc.ok && tc.value >= 0 { ms[0].servers[idx].tool_count = tc.value; }
+      ms[0].servers[idx].has_token = ht.ok && ht.value;
+      loaded += 1;
+    }
+  }
+  return loaded;
+}
+
+// ---------------------------------------------------------------- MCP OAuth PKCE & inline card
+
+// Called when an MCP server returns 401 / auth_required: marks the server and shows the inline
+// "Sign in to MCP server" action card in chat.
+cp_mcp_oauth_require :: (s: [] CoderPage, server_name: string, auth_url: string, pending_tool: string) -> bool {
+  if s.count < 1 || server_name.count == 0 { return false; }
+  ms := s[0].mcp_skills[..];
+  idx := cp_mcp_find(s, server_name);
+  if idx >= 0 {
+    ms[0].servers[idx].status = CP_MCP_ST_AUTH_REQUIRED;
+    ms[0].servers[idx].auth_url_n = cp_mcp_redact(auth_url, ms[0].servers[idx].auth_url[..]);
+    ms[0].mcp_target = idx;
+  }
+  ms[0].oauth_state = CP_OAUTH_REQUIRED;
+  ms[0].oauth_server_n = cp_out(ms[0].oauth_server[..], server_name);
+  ms[0].oauth_url_n = cp_mcp_redact(auth_url, ms[0].oauth_url[..]);
+  ms[0].oauth_pending_tool_n = cp_out(ms[0].oauth_pending_tool[..], pending_tool);
+  return true;
+}
+
+// Records PKCE parameters (verifier, S256 challenge, CSRF state nonce) and requests the host to
+// open the browser loopback OAuth flow (CP_ASK_MCP_OAUTH).
+cp_mcp_oauth_begin :: (s: [] CoderPage, server_name: string, verifier: string, challenge: string, nonce: string) -> bool {
+  if s.count < 1 || server_name.count == 0 || verifier.count < 16 || challenge.count < 16 || nonce.count < 8 { return false; }
+  ms := s[0].mcp_skills[..];
+  ms[0].oauth_server_n = cp_out(ms[0].oauth_server[..], server_name);
+  ms[0].oauth_verifier_n = cp_out(ms[0].oauth_verifier[..], verifier);
+  ms[0].oauth_challenge_n = cp_out(ms[0].oauth_challenge[..], challenge);
+  ms[0].oauth_nonce_n = cp_out(ms[0].oauth_nonce[..], nonce);
+  ms[0].oauth_state = CP_OAUTH_PENDING;
+  idx := cp_mcp_find(s, server_name);
+  if idx >= 0 { ms[0].mcp_target = idx; }
+  s[0].ask = CP_ASK_MCP_OAUTH;
+  return true;
+}
+
+// Completes the OAuth flow after loopback callback. Validates the CSRF state nonce when one was
+// set; clears PKCE secrets from memory; updates server status to connected + has_token=true on ok.
+cp_mcp_oauth_complete :: (s: [] CoderPage, server_name: string, nonce: string, ok: bool) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if ms[0].oauth_nonce_n > 0 && nonce != cp_mcp_str(ms[0].oauth_nonce[..], ms[0].oauth_nonce_n) {
+    // CSRF nonce mismatch: reject and mark error.
+    ms[0].oauth_state = CP_OAUTH_ERROR;
+    ms[0].oauth_verifier_n = 0;
+    ms[0].oauth_nonce_n = 0;
+    return false;
+  }
+  ms[0].oauth_verifier_n = 0;
+  ms[0].oauth_challenge_n = 0;
+  ms[0].oauth_nonce_n = 0;
+  idx := cp_mcp_find(s, server_name);
+  if ok {
+    ms[0].oauth_state = CP_OAUTH_COMPLETE;
+    if idx >= 0 {
+      ms[0].servers[idx].status = CP_MCP_ST_CONNECTED;
+      ms[0].servers[idx].has_token = true;
+      ms[0].servers[idx].error_msg_n = 0;
+    }
+  } else {
+    ms[0].oauth_state = CP_OAUTH_ERROR;
+    if idx >= 0 {
+      ms[0].servers[idx].status = CP_MCP_ST_AUTH_REQUIRED;
+    }
+  }
+  return true;
+}
+
+cp_mcp_oauth_dismiss :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  ms := s[0].mcp_skills[..];
+  ms[0].oauth_state = CP_OAUTH_IDLE;
+  ms[0].oauth_verifier_n = 0;
+  ms[0].oauth_challenge_n = 0;
+  ms[0].oauth_nonce_n = 0;
+  ms[0].oauth_pending_tool_n = 0;
+  ms[0].oauth_tray_h = 0.0f32;
+}
+
+// Inline "Sign in to MCP server" action card rendered above the composer when an MCP server
+// requires OAuth authentication (401).
+cp_mcp_oauth_card :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f32) -> f32 {
+  if s.count < 1 { return 0.0f32; }
+  ms := s[0].mcp_skills[..];
+  if ms[0].oauth_state != CP_OAUTH_REQUIRED && ms[0].oauth_state != CP_OAUTH_PENDING {
+    ms[0].oauth_tray_h = 0.0f32;
+    return 0.0f32;
+  }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  pad := cast(f32) CP_CARD_PAD;
+  btn_h := 28.0f32;
+  has_tool := ms[0].oauth_pending_tool_n > 0;
+  h := pad * 2 + k.small.line + 4.0f32 + k.label.line + 8.0f32 + btn_h;
+  if has_tool { h += k.small.line + 4.0f32; }
+  y := bottom_y - h;
+  ms[0].oauth_tray_h = h + k.app.gap_small;
+  _ = sheet_box(sh, x, y, cw, h, 10.0f32, 1.0f32, th.menu, th.line);
+  srv_name := cp_mcp_str(ms[0].oauth_server[..], ms[0].oauth_server_n);
+  tb: [128] u8; tn := el_put(tb[..], 0, "Sign in to MCP server: "); tn = el_put(tb[..], tn, srv_name);
+  title := sheet_pool(sh, cast(string) tb[0..<tn]);
+  _ := uiframe_semantic(f, "coder.mcp.oauth.card", EL_REGION, title, x, y, cw, h, 0, 0);
+  cy := y + pad;
+  badge := ifx ms[0].oauth_state == CP_OAUTH_PENDING then "MCP OAuth · Waiting for browser callback…" else "MCP Authentication Required (401)";
+  _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, badge, cw - 2 * pad));
+  cy += k.small.line + 4.0f32;
+  _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, title, cw - 2 * pad));
+  cy += k.label.line + 4.0f32;
+  if has_tool {
+    pb: [160] u8; pn := el_put(pb[..], 0, "Will retry tool: "); pn = el_put(pb[..], pn, cp_mcp_str(ms[0].oauth_pending_tool[..], ms[0].oauth_pending_tool_n));
+    pstr := sheet_pool(sh, cast(string) pb[0..<pn]);
+    _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, pstr, cw - 2 * pad));
+    cy += k.small.line + 4.0f32;
+  }
+  by := cy + 4.0f32;
+  bx := x + pad;
+  // Primary "Sign in…" button
+  s_lbl := ifx ms[0].oauth_state == CP_OAUTH_PENDING then "Re-open browser…" else "Sign in…";
+  sw := measure_width(f[0].m, k.label.face, s_lbl) + 24.0f32;
+  srow := uiframe_semantic(f, "coder.mcp.oauth.signin", EL_BUTTON, s_lbl, bx, by, sw, btn_h, 0, CP_MCP_OAUTH_SIGNIN);
+  _ = sheet_box(sh, bx, by, sw, btn_h, 6.0f32, 0.0f32, k.accent, Rgba.{});
+  _ := sheet_text(sh, f[0].m, -1, bx + 12.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, k.on_accent, s_lbl);
+  sheet_hit(sh, UIFRAME_HIT, srow, 0, bx, by, sw, btn_h);
+  bx += sw + 8.0f32;
+  // Secondary "Dismiss" button
+  d_lbl := "Dismiss";
+  dw := measure_width(f[0].m, k.label.face, d_lbl) + 20.0f32;
+  drow := uiframe_semantic(f, "coder.mcp.oauth.dismiss", EL_BUTTON, d_lbl, bx, by, dw, btn_h, 0, CP_MCP_OAUTH_DISMISS);
+  _ = sheet_box(sh, bx, by, dw, btn_h, 6.0f32, 1.0f32, th.hover, th.line);
+  _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, th.text, d_lbl);
+  sheet_hit(sh, UIFRAME_HIT, drow, 0, bx, by, dw, btn_h);
+  return ms[0].oauth_tray_h;
+}
+
+cp_mcp_oauth_press :: (s: [] CoderPage, act: int) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if act == CP_MCP_OAUTH_SIGNIN {
+    ms[0].oauth_state = CP_OAUTH_PENDING;
+    s[0].ask = CP_ASK_MCP_OAUTH;
+    return true;
+  }
+  if act == CP_MCP_OAUTH_DISMISS {
+    cp_mcp_oauth_dismiss(s);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- Skills catalog & fuzzy search
+
+cp_skills_clear :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  ms := s[0].mcp_skills[..];
+  ms[0].nskills = 0;
+  ms[0].skills_gen += 1;
+}
+
+cp_skills_add :: (s: [] CoderPage, name: string, desc: string, path: string, source: int, enabled: bool) -> int {
+  if s.count < 1 || name.count == 0 { return -1; }
+  ms := s[0].mcp_skills[..];
+  idx := -1;
+  for i: 0..<ms[0].nskills {
+    if cp_mcp_str(ms[0].skills[i].name[..], ms[0].skills[i].name_n) == name && ms[0].skills[i].source == source {
+      idx = i;
+      break;
+    }
+  }
+  if idx < 0 {
+    if ms[0].nskills >= CP_SKILLS_MAX { return -1; }
+    idx = ms[0].nskills;
+    ms[0].skills[idx] = CpSkill.{};
+    ms[0].nskills += 1;
+  }
+  ms[0].skills[idx].name_n = cp_out(ms[0].skills[idx].name[..], name);
+  ms[0].skills[idx].desc_n = cp_out(ms[0].skills[idx].desc[..], desc);
+  ms[0].skills[idx].path_n = cp_out(ms[0].skills[idx].path[..], path);
+  ms[0].skills[idx].source = ifx source >= CP_SKILL_USER && source <= CP_SKILL_JSON then source else CP_SKILL_USER;
+  ms[0].skills[idx].enabled = enabled;
+  ms[0].skills_gen += 1;
+  return idx;
+}
+
+cp_skills_toggle :: (s: [] CoderPage, idx: int) -> bool {
+  if s.count < 1 { return false; }
+  ms := s[0].mcp_skills[..];
+  if idx < 0 || idx >= ms[0].nskills { return false; }
+  ms[0].skills[idx].enabled = !ms[0].skills[idx].enabled;
+  ms[0].skills_gen += 1;
+  return true;
+}
+
+cp_skill_source_label :: (src: int) -> string {
+  if src == CP_SKILL_PROJECT { return "Project"; }
+  if src == CP_SKILL_JSON { return "Catalog"; }
+  return "User";
+}
+
+// Loads skills from host payload: lines of "name\tsource\tenabled\tdesc\tpath\n"
+// where source is "user", "project", or "json" and enabled is "1" or "0".
+cp_skills_load_lines :: (s: [] CoderPage, lines: string) -> int {
+  if s.count < 1 { return 0; }
+  cp_skills_clear(s);
+  at := 0;
+  loaded := 0;
+  while at < lines.count && loaded < CP_SKILLS_MAX {
+    end := at;
+    while end < lines.count && lines[end] != 10 { end += 1; }
+    line := cast(string) lines[at..<end];
+    at = ifx end < lines.count then end + 1 else end;
+    if line.count == 0 { continue; }
+    // Split up to 5 tab-separated fields.
+    fstart: [5] int; fend: [5] int; nf := 0;
+    pos := 0;
+    while nf < 5 {
+      fstart[nf] = pos;
+      while pos < line.count && line[pos] != 9 { pos += 1; }
+      fend[nf] = pos;
+      nf += 1;
+      if pos >= line.count { break; }
+      pos += 1;
+    }
+    name := cast(string) line[fstart[0]..<fend[0]];
+    if name.count == 0 { continue; }
+    src_s := ifx nf > 1 then cast(string) line[fstart[1]..<fend[1]] else "user";
+    en_s := ifx nf > 2 then cast(string) line[fstart[2]..<fend[2]] else "1";
+    desc := ifx nf > 3 then cast(string) line[fstart[3]..<fend[3]] else "";
+    path := ifx nf > 4 then cast(string) line[fstart[4]..<fend[4]] else "";
+    src := ifx src_s == "project" then CP_SKILL_PROJECT else ifx src_s == "json" then CP_SKILL_JSON else CP_SKILL_USER;
+    en := en_s != "0" && en_s != "false";
+    if cp_skills_add(s, name, desc, path, src, en) >= 0 { loaded += 1; }
+  }
+  return loaded;
+}
+
+// Case-insensitive subsequence check for fuzzy skill matching (e.g. "prrev" matches "pr-review").
+cp_subseq_ci :: (text: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > text.count { return false; }
+  j := 0;
+  for i: 0..<text.count {
+    if cp_lower(text[i]) == cp_lower(needle[j]) {
+      j += 1;
+      if j >= needle.count { return true; }
+    }
+  }
+  return false;
+}
+
+// Ranked fuzzy match score for a skill against query q (0 = no match, higher = better).
+cp_skill_match_score :: (sk: CpSkill, q: string) -> int {
+  name := cp_mcp_str(sk.name[..], sk.name_n);
+  desc := cp_mcp_str(sk.desc[..], sk.desc_n);
+  if q.count == 0 { return 10; }
+  if name.count == q.count && cp_starts_ci(name, 0, q) { return 100; }   // exact match
+  if cp_starts_ci(name, 0, q) { return 80; }                              // prefix match
+  for i: 1..<name.count {
+    if (name[i - 1] == '-' || name[i - 1] == '_' || name[i - 1] == ' ') && cp_starts_ci(name, i, q) { return 60; }
+  }
+  if cp_find_ci(name, q) >= 0 { return 40; }                              // substring in name
+  if cp_subseq_ci(name, q) { return 30; }                                 // fuzzy subsequence in name
+  if cp_find_ci(desc, q) >= 0 { return 20; }                              // substring in description
+  return 0;
+}
+
+// Searches enabled skills ranked best-first into `out` (skill indices). Returns count written.
+cp_skills_search :: (s: [] CoderPage, q: string, out: [] int) -> int {
+  if s.count < 1 || out.count == 0 { return 0; }
+  ms := s[0].mcp_skills[..];
+  scores: [CP_SKILLS_MAX] int;
+  idxs: [CP_SKILLS_MAX] int;
+  m := 0;
+  for i: 0..<ms[0].nskills {
+    if !ms[0].skills[i].enabled { continue; }
+    sc := cp_skill_match_score(ms[0].skills[i], q);
+    if sc > 0 {
+      scores[m] = sc;
+      idxs[m] = i;
+      m += 1;
+    }
+  }
+  // Simple insertion sort descending by score (stable order on ties).
+  for i: 1..<m {
+    key_sc := scores[i];
+    key_idx := idxs[i];
+    j := i - 1;
+    while j >= 0 && scores[j] < key_sc {
+      scores[j + 1] = scores[j];
+      idxs[j + 1] = idxs[j];
+      j -= 1;
+    }
+    scores[j + 1] = key_sc;
+    idxs[j + 1] = key_idx;
+  }
+  n := ifx m < out.count then m else out.count;
+  for i: 0..<n { out[i] = idxs[i]; }
+  return n;
+}
+
+// ---------------------------------------------------------------- C exports
+
+coder_page_mcp_load_json :: (s: [] CoderPage, text: string) -> int #export_c #effects(all) {
+  return cp_mcp_load_json(s, text);
+}
+
+coder_page_mcp_save_json :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  return cp_mcp_save_json(s, out);
+}
+
+coder_page_mcp_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].mcp_skills[0].nservers else 0;
+}
+
+coder_page_mcp_target :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].mcp_skills[0].mcp_target else -1;
+}
+
+coder_page_mcp_add :: (s: [] CoderPage, name: string, transport: int, endpoint: string, enabled: bool) -> int #export_c #effects(all) {
+  return cp_mcp_add(s, name, transport, endpoint, enabled);
+}
+
+coder_page_mcp_remove :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  return cp_mcp_remove(s, idx);
+}
+
+coder_page_mcp_toggle :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  return cp_mcp_toggle(s, idx);
+}
+
+coder_page_mcp_set_status :: (s: [] CoderPage, idx: int, status: int, tool_count: int, error_msg: string) -> bool #export_c #effects(all) {
+  return cp_mcp_set_status(s, idx, status, tool_count, error_msg);
+}
+
+coder_page_mcp_oauth_require :: (s: [] CoderPage, server_name: string, auth_url: string, pending_tool: string) -> bool #export_c #effects(all) {
+  return cp_mcp_oauth_require(s, server_name, auth_url, pending_tool);
+}
+
+coder_page_mcp_oauth_complete :: (s: [] CoderPage, server_name: string, nonce: string, ok: bool) -> bool #export_c #effects(all) {
+  return cp_mcp_oauth_complete(s, server_name, nonce, ok);
+}
+
+coder_page_mcp_oauth_server :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  ms := s[0].mcp_skills[..];
+  return cp_out(out, cp_mcp_str(ms[0].oauth_server[..], ms[0].oauth_server_n));
+}
+
+coder_page_skills_load :: (s: [] CoderPage, lines: string) -> int #export_c #effects(all) {
+  return cp_skills_load_lines(s, lines);
+}
+
+coder_page_skills_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].mcp_skills[0].nskills else 0;
+}
+
+coder_page_skills_target :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].mcp_skills[0].skill_target else -1;
+}
+
+coder_page_skills_toggle :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  return cp_skills_toggle(s, idx);
+}
+
+coder_page_skill_name :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].mcp_skills[0].nskills { return 0; }
+  sk := s[0].mcp_skills[0].skills[idx];
+  return cp_out(out, cp_mcp_str(sk.name[..], sk.name_n));
+}

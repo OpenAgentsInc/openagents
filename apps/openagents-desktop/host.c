@@ -1028,3 +1028,92 @@ void cd_usage_refreshing_set(void *page, int on) { CoderHost *c = page; if (!c) 
 int cd_usage_is_index_db(const char *path) { return coder_page_usage_is_index_db(cd_string(path)) ? 1 : 0; }
 int64_t cd_usage_total_cost_micros(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_cost_micros(cd_state(c)) : 0; }
 int64_t cd_usage_total_tokens(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_tokens(cd_state(c)) : 0; }
+// MCP server management, OAuth PKCE card, and Skills catalog (page/mcpskills.coax, GitHub #13879).
+int cd_mcp_load_json(void *page, const char *json) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int n = (int)coder_page_mcp_load_json(cd_state(c), cd_string(json));
+  cd_woke(c);
+  return n;
+}
+int cd_mcp_save_json(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_mcp_save_json(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_mcp_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_mcp_count(cd_state(c)) : 0; }
+int cd_mcp_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_mcp_target(cd_state(c)) : -1; }
+int cd_mcp_add(void *page, const char *name, int transport, const char *endpoint, int enabled) {
+  CoderHost *c = page;
+  if (!c) return -1;
+  int idx = (int)coder_page_mcp_add(cd_state(c), cd_string(name), transport, cd_string(endpoint), enabled != 0);
+  cd_woke(c);
+  return idx;
+}
+int cd_mcp_remove(void *page, int idx) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_mcp_remove(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_mcp_toggle(void *page, int idx) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_mcp_toggle(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_mcp_set_status(void *page, int idx, int status, int tool_count, const char *error_msg) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_mcp_set_status(cd_state(c), idx, status, tool_count, cd_string(error_msg)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_mcp_oauth_require(void *page, const char *server_name, const char *auth_url, const char *pending_tool) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_mcp_oauth_require(cd_state(c), cd_string(server_name), cd_string(auth_url), cd_string(pending_tool)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_mcp_oauth_complete(void *page, const char *server_name, const char *nonce, int ok_flag) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_mcp_oauth_complete(cd_state(c), cd_string(server_name), cd_string(nonce), ok_flag != 0) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_mcp_oauth_server(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_mcp_oauth_server(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}
+int cd_skills_load(void *page, const char *lines) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int n = (int)coder_page_skills_load(cd_state(c), cd_string(lines));
+  cd_woke(c);
+  return n;
+}
+int cd_skills_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_skills_count(cd_state(c)) : 0; }
+int cd_skills_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_skills_target(cd_state(c)) : -1; }
+int cd_skills_toggle(void *page, int idx) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_skills_toggle(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_skill_name(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_skill_name(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n;
+}

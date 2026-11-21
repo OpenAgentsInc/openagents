@@ -15,22 +15,22 @@
 
 #load "../../components/app/settings.coax";
 
-CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6;
-CP_SET_PAGES :: 7;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage"];
-CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN];
+CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8;
+CP_SET_PAGES :: 9;
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills"];
+CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
 CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
-CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_FOREMAN, CP_PG_ABOUT];
-CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 1, 1, 2];   // the group of each place in CP_SET_ORDER
+CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_FOREMAN, CP_PG_ABOUT];
+CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 1, 1, 1, 1, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 39;
+CP_SET_ENTRIES :: 43;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -71,7 +71,11 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.spend", name = "Total local spend", terms = "spend cost usd tokens history chart breakdown"},
     CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.prices", name = "Model price overrides", terms = "price pricing override rates cost per million tokens"},
     CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.pool", name = "Provider profile pooling", terms = "pool pooling profiles least-used quota"},
-    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.recovery", name = "Limit-recovery alerts", terms = "recovery rate limit reset resume notification"}];
+    CpSetEntry.{page = CP_PG_USAGE, id = "set.usage.recovery", name = "Limit-recovery alerts", terms = "recovery rate limit reset resume notification"},
+    CpSetEntry.{page = CP_PG_MCP, id = "", name = "MCP", terms = "mcp model context protocol servers http stdio tools oauth"},
+    CpSetEntry.{page = CP_PG_MCP, id = "set.mcp.add", name = "Add MCP server", terms = "mcp server add http stdio connect oauth"},
+    CpSetEntry.{page = CP_PG_SKILLS, id = "", name = "Skills", terms = "skills slash composer claude user project"},
+    CpSetEntry.{page = CP_PG_SKILLS, id = "set.skills.head", name = "Installed skills", terms = "skills enable disable toggle catalog"}];
 }
 // Whether a page shows: Foreman's and Account's are experimental features (General's last row).
 cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
@@ -171,6 +175,33 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   amode := cp_number(id, "set.agy.mode.");
   if amode >= 0 && amode <= 2 { s[0].set_agy_mode = amode; s[0].ask = CP_ASK_AGY_MODE; return true; }
   if id == "set.agy.auth.a" || id == "set.agy.auth" { s[0].ask = CP_ASK_AGY_AUTH; return true; }
+  // Settings -> MCP (#13879)
+  if id == "set.mcp.add.a" { s[0].ask = CP_ASK_MCP_ADD; return true; }
+  msrv := cp_number(id, "set.mcp.srv.");
+  if msrv >= 0 && msrv < s[0].mcp_skills[0].nservers && id.count >= 2 && id[id.count - 2] == '.' {
+    opt := cast(int) (id[id.count - 1] - '0');
+    s[0].mcp_skills[0].mcp_target = msrv;
+    if opt == 0 || opt == 1 {
+      want := opt == 1;
+      if s[0].mcp_skills[0].servers[msrv].enabled != want { _ = cp_mcp_toggle(s, msrv); }
+      s[0].ask = CP_ASK_MCP_TOGGLE;
+      return true;
+    }
+    if opt == 2 { s[0].ask = CP_ASK_MCP_OAUTH; return true; }
+    if opt == 3 { s[0].ask = CP_ASK_MCP_REMOVE; return true; }
+  }
+  // Settings -> Skills (#13879)
+  mskill := cp_number(id, "set.skill.");
+  if mskill >= 0 && mskill < s[0].mcp_skills[0].nskills && id.count >= 2 && id[id.count - 2] == '.' {
+    opt := cast(int) (id[id.count - 1] - '0');
+    if opt == 0 || opt == 1 {
+      s[0].mcp_skills[0].skill_target = mskill;
+      want := opt == 1;
+      if s[0].mcp_skills[0].skills[mskill].enabled != want { _ = cp_skills_toggle(s, mskill); }
+      s[0].ask = CP_ASK_SKILL_TOGGLE;
+      return true;
+    }
+  }
   if id == "set.update.a" {
     st := s[0].update_state;
     s[0].ask = ifx st == CP_UPD_AVAILABLE || st == CP_UPD_READY then CP_ASK_UPDATE else CP_ASK_CHECK_UPDATES;
@@ -423,6 +454,62 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.wallet.custody.group", x, y, w, crows[..]);
   } else if page == CP_PG_USAGE {
     y += cp_settings_usage(s, f, x, y, w);
+  } else if page == CP_PG_MCP {
+    y += set_page_head(f, "set.title", x, y, w, names[page], "Configure HTTP and stdio Model Context Protocol servers for Microcoder, Claude, and Antigravity. Bearer tokens are stored in 0600 files and never logged.") + t.block_gap;
+    add_one: [1] SetRow;
+    add_one[0] = SetRow.{id = "set.mcp.add", name = "Add MCP server", desc = "Connect an HTTP URL or local stdio command. Enabled servers are injected into active workers.",
+      kind = SET_ROW_BUTTON, button = "Add server…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.mcp.add.group", x, y, w, add_one[..]) + t.block_gap;
+    ms := s[0].mcp_skills[..];
+    y += set_section_head(f, "set.mcp.list.head", x, y, w, "Configured servers", ifx ms[0].nservers > 0 then "Toggle servers on or off, sign in via OAuth, or remove them." else "No MCP servers configured yet.") + t.section_gap;
+    if ms[0].nservers > 0 {
+      mrows: [CP_MCP_MAX] SetRow;
+      for i: 0..<ms[0].nservers {
+        srv := ms[0].servers[i];
+        ib: [32] u8; in_n := el_put(ib[..], 0, "set.mcp.srv."); in_n = el_put_i(ib[..], in_n, i);
+        db: [320] u8; dn := 0;
+        dn = el_put(db[..], dn, cp_mcp_transport_name(srv.transport));
+        dn = el_put(db[..], dn, " · ");
+        dn = el_put(db[..], dn, cp_mcp_str(srv.endpoint[..], srv.endpoint_n));
+        sb: [160] u8;
+        st_lbl := cp_mcp_status_label(srv, sb[..]);
+        dn = el_put(db[..], dn, " · ");
+        dn = el_put(db[..], dn, st_lbl);
+        mrows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+          name = sheet_pool(sh, cp_mcp_str(srv.name[..], srv.name_n)),
+          desc = sheet_pool(sh, cast(string) db[0..<dn]),
+          kind = SET_ROW_CHOICE, noptions = 4, chosen = ifx srv.enabled then 1 else 0, action = CP_SET_ACT};
+        mrows[i].options[0] = "Off";
+        mrows[i].options[1] = "On";
+        mrows[i].options[2] = "Sign in";
+        mrows[i].options[3] = "Remove";
+      }
+      y += cp_set_group(s, f, "set.mcp.servers.group", x, y, w, mrows[0..<ms[0].nservers]);
+    }
+  } else if page == CP_PG_SKILLS {
+    y += set_page_head(f, "set.title", x, y, w, names[page], "Browse and toggle user (~/.claude/skills) and project (.claude/skills) skills. Type / in the composer to search and insert enabled skills.") + t.block_gap;
+    ms := s[0].mcp_skills[..];
+    y += set_section_head(f, "set.skills.head", x, y, w, "Installed skills", ifx ms[0].nskills > 0 then "Enabled skills are injected into worker prompts and searchable via / in the composer." else "No skills found in ~/.claude/skills or this repository's .claude/skills.") + t.section_gap;
+    if ms[0].nskills > 0 {
+      srows: [CP_SKILLS_MAX] SetRow;
+      for i: 0..<ms[0].nskills {
+        sk := ms[0].skills[i];
+        ib: [32] u8; in_n := el_put(ib[..], 0, "set.skill."); in_n = el_put_i(ib[..], in_n, i);
+        db: [256] u8; dn := 0;
+        dn = el_put(db[..], dn, cp_skill_source_label(sk.source));
+        if sk.desc_n > 0 {
+          dn = el_put(db[..], dn, " · ");
+          dn = el_put(db[..], dn, cp_mcp_str(sk.desc[..], sk.desc_n));
+        }
+        srows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+          name = sheet_pool(sh, cp_mcp_str(sk.name[..], sk.name_n)),
+          desc = sheet_pool(sh, cast(string) db[0..<dn]),
+          kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx sk.enabled then 1 else 0, action = CP_SET_ACT};
+        srows[i].options[0] = "Off";
+        srows[i].options[1] = "On";
+      }
+      y += cp_set_group(s, f, "set.skills.group", x, y, w, srows[0..<ms[0].nskills]);
+    }
   } else {
     y += set_page_head(f, "set.title", x, y, w, names[CP_PG_ABOUT], "Coder's version and its updates.") + t.block_gap;
     ver := ifx s[0].set_version_n > 0 then sheet_pool(sh, cast(string) s[0].set_version[0..<s[0].set_version_n]) else "";

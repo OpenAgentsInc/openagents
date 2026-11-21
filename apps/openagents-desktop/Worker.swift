@@ -790,21 +790,6 @@ func coderToolsNote() -> String {
     return DesktopCore.withCoaxString(tool) { t in DesktopCore.callString(4096) { oa_dc_tools_note(t, $0) } }
 }
 
-func coderSkillsNote() -> String {
-    let tools = coderToolsNote()
-    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")
-    let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
-    var rows: [String] = []
-    for name in names where rows.count < 16 {
-        let file = root.appendingPathComponent(name).appendingPathComponent("SKILL.md")
-        guard let text = try? String(contentsOf: file, encoding: .utf8), text.hasPrefix("---") else { continue }
-        var description = ""
-        for line in text.split(separator: "\n").dropFirst() {
-            if line.hasPrefix("---") { break }
-            if line.hasPrefix("description:") { description = String(line.dropFirst(12)).trimmingCharacters(in: .whitespaces) }
-        }
-        rows.append("- \(name) (\(file.path)): \(description.prefix(300))")
-    }
-    if rows.isEmpty { return tools.isEmpty ? "" : tools + "The message:\n" }
-    return tools + "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
+func coderSkillsNote(repoFolder: URL? = nil) -> String {
+    return SkillsCatalog.enabledSkillsNote(repoFolder: repoFolder)
 }

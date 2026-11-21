@@ -214,7 +214,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h;   // what scrolls runs up to the trays and the bar
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h;   // what scrolls runs up to the trays and the bar
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -494,7 +494,8 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   todos_h: f32 = 0.0f32;
   if !s[0].todos[0].docked { todos_h = cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
   git_h := cp_git_output_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw);
-  _ := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h, cw);
+  permit_h := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h, cw);
+  _ := cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw);
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }

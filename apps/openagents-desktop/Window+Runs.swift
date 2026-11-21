@@ -349,7 +349,7 @@ extension CoderWindow {
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
     }
     func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
-        let base = coderSkillsNote()
+        let base = coderSkillsNote(repoFolder: folder)
         if isForeman {
             let note = Foreman.systemPrompt(tier: foremanTier, workspace: folder.path, chatCount: store.orderedList.count, runningCount: runningCount, baseSkills: base)
             cd_skills(pagePtr, note)
@@ -359,6 +359,7 @@ extension CoderWindow {
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
         var env = CoderAntigravity.workerEnv()
+        for (k, v) in McpServerStore.workerEnv() { env[k] = v }
         if isForeman && foremanServer.port > 0 {
             env["CODER_FOREMAN_URL"] = foremanServer.baseURL
             env["CODER_FOREMAN_TOKEN"] = foremanServer.token

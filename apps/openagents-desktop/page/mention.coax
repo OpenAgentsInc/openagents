@@ -19,8 +19,8 @@ cp_mn_sync :: (s: [] CoderPage) {
   mn := s[0].mn[..];
   if cp_ed_which(s) != CP_ED_COMPOSER { mn[0].open = false; return; }
   e := cp_ed(s, CP_ED_COMPOSER); b := e[0].body[0].ed[..];
-  if ue_owner(e) == s[0].mn_owner && b[0].gen == s[0].mn_gen && s[0].files_gen == s[0].mn_files { return; }
-  s[0].mn_owner = ue_owner(e); s[0].mn_gen = b[0].gen; s[0].mn_files = s[0].files_gen;
+  if ue_owner(e) == s[0].mn_owner && b[0].gen == s[0].mn_gen && s[0].files_gen == s[0].mn_files && s[0].mcp_skills[0].skills_gen == s[0].mn_skills { return; }
+  s[0].mn_owner = ue_owner(e); s[0].mn_gen = b[0].gen; s[0].mn_files = s[0].files_gen; s[0].mn_skills = s[0].mcp_skills[0].skills_gen;
   tok := AppMnToken.{};
   if !b[0].marked && b[0].anchor == b[0].caret { tok = app_mn_token(ue_value(e), b[0].caret); }
   was := mn[0].open && mn[0].trigger == tok.trigger && mn[0].from == tok.from;
@@ -43,6 +43,14 @@ cp_mn_sync :: (s: [] CoderPage) {
     for c: 0..<CP_CMDS {
       fs := [2] MatchField.[MatchField.{text = CP_CMD_NAME[c], weight = 100, title = true}, MatchField.{text = CP_CMD_DESC[c], weight = 50, title = false}];
       app_mn_offer(mn, c, fs[..]);
+    }
+    ms := s[0].mcp_skills[..];
+    for si: 0..<ms[0].nskills {
+      if !ms[0].skills[si].enabled { continue; }
+      sname := cp_mcp_str(ms[0].skills[si].name[..], ms[0].skills[si].name_n);
+      sdesc := cp_mcp_str(ms[0].skills[si].desc[..], ms[0].skills[si].desc_n);
+      fs := [2] MatchField.[MatchField.{text = sname, weight = 95, title = true}, MatchField.{text = sdesc, weight = 45, title = false}];
+      app_mn_offer(mn, CP_MN_SKILL_BASE + si, fs[..]);
     }
   }
   app_mn_end(mn);
@@ -68,6 +76,19 @@ cp_mn_paint :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32) {
     if mn[0].trigger == '@' {
       path := cp_file(s, hit);
       labels[v] = sheet_pool(sh, cp_file_base(path)); details[v] = sheet_pool(sh, cp_file_dir(path)); icons[v] = ICON_FILE;
+    } else if hit >= CP_MN_SKILL_BASE {
+      si := hit - CP_MN_SKILL_BASE;
+      ms := s[0].mcp_skills[..];
+      if si >= 0 && si < ms[0].nskills {
+        sk := ms[0].skills[si];
+        m := el_put(nb[..], 0, "/"); m = el_put(nb[..], m, cp_mcp_str(sk.name[..], sk.name_n));
+        labels[v] = sheet_pool(sh, cast(string) nb[0..<m]);
+        db: [224] u8; dn := 0;
+        dn = el_put(db[..], dn, cp_skill_source_label(sk.source));
+        if sk.desc_n > 0 { dn = el_put(db[..], dn, " · "); dn = el_put(db[..], dn, cp_mcp_str(sk.desc[..], sk.desc_n)); }
+        details[v] = sheet_pool(sh, cast(string) db[0..<dn]);
+        icons[v] = ICON_SET_TAG;
+      }
     } else {
       m := el_put(nb[..], 0, "/"); m = el_put(nb[..], m, CP_CMD_NAME[hit]);
       labels[v] = sheet_pool(sh, cast(string) nb[0..<m]); details[v] = CP_CMD_DESC[hit]; icons[v] = -1;
@@ -95,6 +116,12 @@ cp_mn_pick :: (s: [] CoderPage, k: int) -> bool {
   if mn[0].trigger == '@' {
     if cp_file(s, hit).count == 0 { return false; }
     done = ue_replace(e, from, to, cast(string) buf[0..<app_mn_insert(text, mn, cp_file(s, hit), buf[..])]);
+  } else if hit >= CP_MN_SKILL_BASE {
+    si := hit - CP_MN_SKILL_BASE;
+    ms := s[0].mcp_skills[..];
+    if si < 0 || si >= ms[0].nskills { return false; }
+    sname := cp_mcp_str(ms[0].skills[si].name[..], ms[0].skills[si].name_n);
+    done = ue_replace(e, from, to, cast(string) buf[0..<app_mn_insert(text, mn, sname, buf[..])]);
   } else if hit == CP_CMD_GOAL {
     done = ue_replace(e, from, to, cast(string) buf[0..<app_mn_insert(text, mn, CP_CMD_NAME[hit], buf[..])]);
   } else {

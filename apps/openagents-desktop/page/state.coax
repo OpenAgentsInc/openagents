@@ -372,6 +372,7 @@ CoderPage :: struct {
   ckpt: [1] CpCheckpoints;     // Git-backed per-turn checkpoints, turn diff & rewind (checkpoint.coax; #13872)
   sb: [1] CpSidebar;           // project-grouped sidebar, archive/snooze, bulk select & undo toast (sidebar_groups.coax; #13875)
   find: [1] CpFind;            // in-thread Find (⌘F), transcript minimap, and 3-mode Command Palette (find.coax; #13876)
+  mcp_skills: [1] CpMcpSkills; // MCP server management, OAuth PKCE card, and Skills catalog (mcpskills.coax; #13879)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
@@ -385,7 +386,7 @@ CoderPage :: struct {
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
   cargo: [1] Attachments; open_cargo: int; add_x: f32; add_y: f32; carrying: bool;
   open_show: int;             // the picture of open_turn a press asked to open (shows.coax), -1 none
-  mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int;
+  mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int; mn_skills: int;
   files: [] u8; nfiles: int; files_gen: int; files_got: bool; files_due: bool;   // one path a line, in the host's buffer (it keeps it until it lists again)
   arena: [] u8;               // CP_ARENA bytes in the page's store
 }

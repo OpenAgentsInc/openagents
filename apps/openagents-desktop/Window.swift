@@ -275,9 +275,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         if CommandLine.arguments.contains("--gym") { openGym() }
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage).
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -428,6 +428,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 67: editUsagePriceOverrides()
         case 68: handleUsagePoolChanged()
         case 69: handleUsageRecoveryAction()
+        case 70: mcpAddDialog()
+        case 71: mcpToggleSelected()
+        case 72: mcpRemoveSelected()
+        case 73: mcpStartOAuth()
+        case 74: skillToggleSelected()
         case 40...43: fileAsked(what)
         default: break
         }

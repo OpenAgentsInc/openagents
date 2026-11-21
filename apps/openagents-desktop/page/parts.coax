@@ -58,3 +58,4 @@
 #load "notify.coax";
 #load "find.coax";
 #load "usage.coax";
+#load "mcpskills.coax";

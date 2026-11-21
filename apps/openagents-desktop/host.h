@@ -493,4 +493,21 @@ void cd_usage_refreshing_set(void *page, int on);
 int cd_usage_is_index_db(const char *path);
 int64_t cd_usage_total_cost_micros(void *page);
 int64_t cd_usage_total_tokens(void *page);
+// MCP server management, OAuth PKCE card, and Skills catalog (page/mcpskills.coax, GitHub #13879).
+int cd_mcp_load_json(void *page, const char *json);
+int cd_mcp_save_json(void *page, char *out, int cap);
+int cd_mcp_count(void *page);
+int cd_mcp_target(void *page);
+int cd_mcp_add(void *page, const char *name, int transport, const char *endpoint, int enabled);
+int cd_mcp_remove(void *page, int idx);
+int cd_mcp_toggle(void *page, int idx);
+int cd_mcp_set_status(void *page, int idx, int status, int tool_count, const char *error_msg);
+int cd_mcp_oauth_require(void *page, const char *server_name, const char *auth_url, const char *pending_tool);
+int cd_mcp_oauth_complete(void *page, const char *server_name, const char *nonce, int ok);
+int cd_mcp_oauth_server(void *page, char *out, int cap);
+int cd_skills_load(void *page, const char *lines);
+int cd_skills_count(void *page);
+int cd_skills_target(void *page);
+int cd_skills_toggle(void *page, int idx);
+int cd_skill_name(void *page, int idx, char *out, int cap);
 #endif

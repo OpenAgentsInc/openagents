@@ -189,6 +189,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_PERMIT_DENY { return cp_permit_choose(s, false, -1); }
   if act == CP_PERMIT_PLAN_APPROVE || act == CP_PERMIT_PLAN_REVISE { return cp_permit_plan_action(s, act); }
   if act == CP_PERMIT_SECRET_ENTER { return cp_permit_secret_enter(s); }
+  if act == CP_MCP_OAUTH_SIGNIN || act == CP_MCP_OAUTH_DISMISS { return cp_mcp_oauth_press(s, act); }
   if act == CP_FIELD { cp_ed_focus(s, CP_KB_COMPOSER); return true; }
   if act == CP_SEND {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
