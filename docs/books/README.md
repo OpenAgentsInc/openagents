@@ -94,8 +94,12 @@ facts about a chapter. The books use these words in one sense only:
 | Adopted | Code outside the book uses the chapter's code today. | That a whole application depends on it or is deployed. |
 
 A chapter marked *partly implemented*, *design draft* or *planned* says
-what runs and what does not. When a book and the code disagree, one of them
-has a bug.
+what runs and what does not. Two additional registry statuses appear where
+needed: *written* (for external-system study chapters, such as Coder's
+third-party harness teardowns, which cite pinned external revisions rather
+than shipping Coax code) and *moved* (for chapters relocated to another book
+while keeping legacy numbers traceable). When a book and the code disagree,
+one of them has a bug.
 
 ## Which book owns a topic
 
