@@ -47,7 +47,7 @@ eg_talk_layout :: (w: f32, h: f32, k: f32, line: string, choices: [] TalkTreeCho
   wide := 620 * k; if wide > w - 32 * k { wide = w - 32 * k; }
   x0 := (w - wide) * 0.5; x1 := x0 + wide;
   adv: [700] f32; a := cc.face_advances(line, g.cap, cc.HUD_FACE_BODY, adv[..]);
-  wd: [12] f32; g.rows = cc.hud_tip_wrap(line, a, wide - 2 * g.pad, g.row_at[..], g.row_n[..], wd[..]);
+  wd: [12] f32; g.rows = cc.hud_tip_lines(line, a, wide - 2 * g.pad, g.row_at[..], g.row_n[..], wd[..]);
   g.answers = talk_tree_offered(choices, at, g.choice[..]);
   ah := 36 * k; gap := 8 * k;
   tall := g.pad + g.title_cap * 1.4 + 10 * k + f32(g.rows) * g.row_h + 14 * k + f32(g.answers) * (ah + gap) - gap + g.pad;
@@ -84,14 +84,14 @@ eg_talk :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgTalk, k: f32, name: s
 // Words wrapped to room, a row every 1.5 caps from the baseline y; rows[0] the rows written.
 eg_para :: (out: [] f32, at: int, t: string, x: f32, y: f32, room: f32, cap: f32, r: cc.HudText, k: f32, rows: [] int) -> int {
   adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
-  ra: [10] int; rn: [10] int; rw: [10] f32; n := cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; n := cc.hud_tip_lines(t, a, room, ra[..], rn[..], rw[..]);
   v := at; for i: 0..<n { v = cc.hud_say(out, v, t[ra[i]..<ra[i] + rn[i]], x, y + f32(i) * cap * 1.5, cap, r, 1, k, false); }
   rows[0] = n; return v;
 }
 // The rows eg_para would write.
 eg_para_rows :: (t: string, room: f32, cap: f32, r: cc.HudText) -> int {
   adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
-  ra: [10] int; rn: [10] int; rw: [10] f32; return cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; return cc.hud_tip_lines(t, a, room, ra[..], rn[..], rw[..]);
 }
 // Words along a well's foot, a gap between each, smaller when they wouldn't fit across it.
 eg_word_row :: (out: [] f32, at: int, words: [] string, b: cc.HudPrim, cap: f32, r: cc.HudText, k: f32) -> int {

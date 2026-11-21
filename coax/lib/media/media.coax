@@ -18,6 +18,7 @@
 // (prefers-color-scheme: dark). The page's build (the hashed Wasm name of a
 // Coaxial page, or "") goes in build.
 #load "../net/cdp.coax";
+#load "../../../components/layout/text.coax";
 #load "../../../metaverse-engine/ui/font.coax";
 
 MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
@@ -743,27 +744,34 @@ dk_sans :: (o: [] DkCs, text: string, x: f32, base: f32, size: f32, c: DkRgb) {
   }
   dk_put(o, ") Tj ET\n");
 }
-// The end of the line of text that starts at from, wrapped to width at spaces;
-// next[0] gets where the next line starts.
-dk_sans_wrap :: (text: string, from: int, width: f32, size: f32, next: [] int) -> int {
-  i := from; last := -1; w := 0.0f32;
-  while i < text.count {
-    d := decode(text, i);
-    if d.code == ' ' { last = i; }
-    w += cast(f32) dk_h_em(d.code) * size / 1000;
-    if w > width && i > from {
-      if last > from { e := last; n := last; while n < text.count && text[n] == ' ' { n += 1; } next[0] = n; return e; }
-      next[0] = i; return i;
-    }
+// The end of the line of text that starts at from, wrapped to width via
+// components/layout/text.coax (text_wrap_advances); next[0] gets where the next line starts.
+dk_sans_line :: (text: string, from: int, width: f32, size: f32, next: [] int) -> int {
+  sub := cast(string) text[from..<text.count];
+  if sub.count == 0 { next[0] = text.count; return text.count; }
+  adv: [4096] f32;
+  lim := sub.count; if lim > adv.count { lim = adv.count; }
+  i := 0;
+  while i < lim {
+    d := decode(sub, i);
+    adv[i] = cast(f32) dk_h_em(d.code) * size / 1000;
+    for k: 1..<d.len { if i + k < lim { adv[i + k] = 0.0f32; } }
     i += d.len;
   }
-  next[0] = text.count; return text.count;
+  lines: [2] TextLine;
+  k := text_wrap_advances(cast(string) sub[0..<lim], adv[0..<lim], width, lines[..]);
+  if k == 0 { next[0] = text.count; return text.count; }
+  stop := from + lines[0].to;
+  n := stop; while n < text.count && text[n] == ' ' { n += 1; }
+  e := stop; while e > from && text[e - 1] == ' ' { e -= 1; }
+  next[0] = n;
+  return e;
 }
 // Wrapped text from x, top; its lines' count (drawn only when draw).
 dk_sans_block :: (o: [] DkCs, text: string, x: f32, top: f32, width: f32, size: f32, lead: f32, c: DkRgb, draw: bool) -> int {
   from := 0; lines := 0; next: [1] int;
   while from < text.count {
-    e := dk_sans_wrap(text, from, width, size, next[..]);
+    e := dk_sans_line(text, from, width, size, next[..]);
     if draw { dk_sans(o, text[from..<e], x, top + size * 0.8 + cast(f32) lines * lead, size, c); }
     lines += 1;
     if next[0] <= from { break; }
@@ -775,7 +783,7 @@ dk_sans_block :: (o: [] DkCs, text: string, x: f32, top: f32, width: f32, size: 
 #test "Helvetica widths and wrapping" {
   #assert dk_h_width("Wi", 10) == (944 + 222) * 10 / 1000.0;
   next: [1] int;
-  e := dk_sans_wrap("one two three", 0, dk_h_width("one two", 10) + 0.5, 10, next[..]);
+  e := dk_sans_line("one two three", 0, dk_h_width("one two", 10) + 0.5, 10, next[..]);
   #assert e == 7 && next[0] == 8;
   #assert dk_ansi(8212) == 151 && dk_ansi('A') == 65 && dk_ansi(20013) == '?';
 }

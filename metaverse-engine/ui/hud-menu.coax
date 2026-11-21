@@ -11,6 +11,7 @@
 #load "hud-sight.coax";   // what floats over a body shows while the body does
 #load "hud-plates.coax";  // where the plates over bodies go
 #load "trace.coax";        // the layout trace the HUD overlap check attaches (#13076)
+#load "../../components/layout/text.coax";
 
 // Words for the realm's renderer to set: each a run of text in a role at a baseline, its left end or
 // its centre, optionally in its own ink. The text lives in one buffer. With a layout trace attached
@@ -166,26 +167,24 @@ hud_menu_draw :: (l: [] HudList, ws: [] HudWords, t: HudTokens, m: HudMenu, titl
   }
   ws[0].parent = UIT_NONE;
 }
-// A tip's lines: line wrapped at its spaces so no line is wider than room, given each byte's advance
-// (adv). A word wider than room alone breaks between letters. Each line's start, length and width go
-// in at, cnt and wide; returns how many (at most at.count).
-hud_tip_wrap :: (line: string, adv: [] f32, room: f32, at: [] int, cnt: [] int, wide: [] f32) -> int {
-  n := 0; i := 0; count := line.count; if adv.count < count { count = adv.count; }
-  while i < count && n < at.count {
-    while i < count && line[i] == ' ' { i += 1; }
-    if i >= count { break; }
-    s := i; w := 0.0f32; end := i; j := i;
-    while j < count {
-      e := j; ww := 0.0f32; while e < count && line[e] != ' ' { ww += adv[e]; e += 1; }
-      sp := 0.0f32; for q: end..<j { sp += adv[q]; }
-      if end > s && w + sp + ww > room { break; }   // the word starts the next line
-      if end == s && ww > room {                   // a word wider than the room: as much as fits
-        e = j + 1; ww = adv[j]; while e < count && line[e] != ' ' && ww + adv[e] <= room { ww += adv[e]; e += 1; }
-        w = ww; end = e; break;
-      }
-      w += sp + ww; end = e; j = e; while j < count && line[j] == ' ' { j += 1; }
-    }
-    at[n] = s; cnt[n] = end - s; wide[n] = w; n += 1; i = end;
+// A tip's lines: delegates wrapping to components/layout/text.coax (text_wrap_advances),
+// trimming leading/trailing spaces per line and recording each line's start, length and width.
+hud_tip_lines :: (line: string, adv: [] f32, room: f32, at: [] int, cnt: [] int, wide: [] f32) -> int {
+  count := line.count; if adv.count < count { count = adv.count; }
+  first := 0; while first < count && line[first] == ' ' { first += 1; }
+  if first >= count || at.count == 0 { return 0; }
+  raw: [64] TextLine;
+  cap := at.count; if cap > raw.count { cap = raw.count; }
+  k := text_wrap_advances(cast(string) line[first..<count], adv[first..<count], room, raw[0..<cap]);
+  n := 0;
+  for j: 0..<k {
+    s := first + raw[j].from;
+    e := first + raw[j].to;
+    while s < e && line[s] == ' ' { s += 1; }
+    while e > s && line[e - 1] == ' ' { e -= 1; }
+    if s >= e { continue; }
+    w := 0.0f32; for q: s..<e { w += adv[q]; }
+    at[n] = s; cnt[n] = e - s; wide[n] = w; n += 1;
   }
   return n;
 }
@@ -198,7 +197,7 @@ HUD_TIP_LINES :: 8;
 hud_tip_box :: (line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) -> HudPrim {
   if line.count == 0 { return HudPrim.{}; }
   pad := 10 * k; at: [HUD_TIP_LINES] int; cnt: [HUD_TIP_LINES] int; wide: [HUD_TIP_LINES] f32;
-  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]); if lines == 0 { return HudPrim.{}; }
+  lines := hud_tip_lines(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]); if lines == 0 { return HudPrim.{}; }
   tw := 0.0f32; for q: 0..<lines { if wide[q] > tw { tw = wide[q]; } }
   w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
   if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
@@ -207,7 +206,7 @@ hud_tip_box :: (line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x
 hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
   b := hud_tip_box(line, adv, anchor, cap, x0, x1, k); if b.x1 <= b.x0 { return; }
   pad := 10 * k; at: [HUD_TIP_LINES] int; cnt: [HUD_TIP_LINES] int; wide: [HUD_TIP_LINES] f32;
-  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]);
+  lines := hud_tip_lines(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]);
   hud_fill(l, b, 6 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
   hud_ring(l, b, 6 * k, 1 * k, hud_fade(t.frame_light, 0.7), hud_fade(t.frame_mid, 0.7));
   ws[0].parent = uit_put(ws[0].ui, UIT_NONE, UIT_PANEL, b.x0, b.y0, b.x1, b.y1, "tip");
@@ -244,18 +243,18 @@ hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] 
 #test "hud tip: a long line wraps to the room and the plaque holds every line; a word too wide breaks" {
   line := "Take a short or a long rest here"; adv: [32] f32; for q: 0..<32 { adv[q] = 10; }
   at: [8] int; cnt: [8] int; wide: [8] f32;
-  n := hud_tip_wrap(line, adv[..], 120, at[..], cnt[..], wide[..]);
+  n := hud_tip_lines(line, adv[..], 120, at[..], cnt[..], wide[..]);
   #assert n >= 3; total := 0;
   for q: 0..<n { #assert wide[q] <= 120 && cnt[q] > 0 && line[at[q]] != ' ' && line[at[q] + cnt[q] - 1] != ' '; total += cnt[q]; }
   #assert total + n - 1 == line.count;   // every letter on a line, one space between lines
-  #assert hud_tip_wrap(line, adv[..], 1000, at[..], cnt[..], wide[..]) == 1 && wide[0] == 320;
-  #assert hud_tip_wrap("ABCDEFGHIJ", adv[..], 35, at[..], cnt[..], wide[..]) == 4 && cnt[0] == 3 && wide[0] <= 35;
+  #assert hud_tip_lines(line, adv[..], 1000, at[..], cnt[..], wide[..]) == 1 && wide[0] == 320;
+  #assert hud_tip_lines("ABCDEFGHIJ", adv[..], 35, at[..], cnt[..], wide[..]) == 4 && cnt[0] == 3 && wide[0] <= 35;
   // the plaque (the tip's first fill): inside x0..x1 and round each line
   l: [1] HudList; ws: [1] HudWords; t := hud_tokens(HUD_FANTASY);
   anchor := hud_box(300, 700, 380, 744);
   hud_tip(l[..], ws[..], t, line, adv[..], anchor, 9, 12, 200, 1);
   p := l[0].p[0]; tb := hud_tip_box(line, adv[..], anchor, 9, 12, 200, 1); #assert tb.x0 == p.x0 && tb.y0 == p.y0 && tb.x1 == p.x1 && tb.y1 == p.y1;
-  #assert p.x0 >= 12 && p.x1 <= 200 && p.y1 <= 700 && ws[0].n == hud_tip_wrap(line, adv[..], 200 - 12 - 20, at[..], cnt[..], wide[..]) && ws[0].n >= 2;
+  #assert p.x0 >= 12 && p.x1 <= 200 && p.y1 <= 700 && ws[0].n == hud_tip_lines(line, adv[..], 200 - 12 - 20, at[..], cnt[..], wide[..]) && ws[0].n >= 2;
   for q: 0..<ws[0].n { w := ws[0].w[q]; #assert w.x >= p.x0 && w.x + f32(w.len) * 10 <= p.x1 && w.y < p.y1 && w.y - w.cap > p.y0; }
 }
 #test "hud menu: labels keep their width; a short wide page gets fewer columns and a taller menu" {
