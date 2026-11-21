@@ -1,4 +1,4 @@
-// Single JSON codec for openagents.agent.v1alpha1 (definition, invocation, barrier)
+// Single JSON codec for openagents.agent.v1alpha1 (spec, invocation, barrier)
 // (docs/apps/2026-11-20-simulated-tester-spec.md §4.2, GitHub #13891).
 #load "../../json/json.coax";
 #load "policy.coax";
@@ -47,126 +47,72 @@ ArBarrierRecord :: struct {
   released: bool;
 }
 
-ar_w_byte :: (out: [] u8, pos: [] int, b: u8) -> bool {
-  if pos[0] >= out.count { return false; }
-  out[pos[0]] = b;
-  pos[0] += 1;
-  return true;
-}
-
-ar_w_raw :: (out: [] u8, pos: [] int, s: string) -> bool {
-  for c: s { if !ar_w_byte(out, pos, c) { return false; } }
-  return true;
-}
-
-ar_w_hex :: (n: int) -> u8 {
-  if n < 10 { return cast(u8) (48 + n); }
-  return cast(u8) (87 + n);
-}
-
-ar_w_str :: (out: [] u8, pos: [] int, s: string) -> bool {
-  if !ar_w_byte(out, pos, cast(u8) 34) { return false; }
-  for c: s {
-    if c == 34 { if !ar_w_raw(out, pos, "\\\"") { return false; } }
-    else if c == 92 { if !ar_w_raw(out, pos, "\\\\") { return false; } }
-    else if c == 10 { if !ar_w_raw(out, pos, "\\n") { return false; } }
-    else if c == 13 { if !ar_w_raw(out, pos, "\\r") { return false; } }
-    else if c == 9 { if !ar_w_raw(out, pos, "\\t") { return false; } }
-    else if c < 32 {
-      if !ar_w_raw(out, pos, "\\u00") { return false; }
-      if !ar_w_byte(out, pos, ar_w_hex(cast(int) (c / 16))) { return false; }
-      if !ar_w_byte(out, pos, ar_w_hex(cast(int) (c % 16))) { return false; }
-    } else {
-      if !ar_w_byte(out, pos, c) { return false; }
-    }
-  }
-  return ar_w_byte(out, pos, cast(u8) 34);
-}
-
-ar_w_int :: (out: [] u8, pos: [] int, v: int) -> bool {
-  n := v;
-  if n == 0 { return ar_w_byte(out, pos, cast(u8) 48); }
-  if n < 0 {
-    if !ar_w_byte(out, pos, cast(u8) 45) { return false; }
-    n = -n;
-  }
-  digits: [24] u8;
-  k := 0;
-  while n > 0 && k < 24 {
-    digits[k] = cast(u8) (48 + (n % 10));
-    n = n / 10;
-    k += 1;
-  }
-  while k > 0 {
-    k -= 1;
-    if !ar_w_byte(out, pos, digits[k]) { return false; }
-  }
-  return true;
-}
-
-ar_w_bool :: (out: [] u8, pos: [] int, v: bool) -> bool {
-  return ar_w_raw(out, pos, ifx v then "true" else "false");
-}
-
 ar_write_def :: (d: ArDefRecord, out: [] u8) -> int {
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"openagents.agent.spec.v1\",\"agent_id\":")
-    && ar_w_str(out, pos[..], d.agent_id)
-    && ar_w_raw(out, pos[..], ",\"name\":") && ar_w_str(out, pos[..], d.name)
-    && ar_w_raw(out, pos[..], ",\"description\":") && ar_w_str(out, pos[..], d.description)
-    && ar_w_raw(out, pos[..], ",\"version\":") && ar_w_int(out, pos[..], d.version)
-    && ar_w_raw(out, pos[..], ",\"kind\":") && ar_w_str(out, pos[..], d.kind)
-    && ar_w_raw(out, pos[..], ",\"execution_mode\":") && ar_w_str(out, pos[..], d.execution_mode)
-    && ar_w_raw(out, pos[..], ",\"runtime\":") && ar_w_str(out, pos[..], d.runtime)
-    && ar_w_raw(out, pos[..], ",\"input_contract\":") && ar_w_str(out, pos[..], d.input_contract)
-    && ar_w_raw(out, pos[..], ",\"output_contract\":") && ar_w_str(out, pos[..], d.output_contract)
-    && ar_w_raw(out, pos[..], ",\"max_depth\":") && ar_w_int(out, pos[..], d.max_depth)
-    && ar_w_raw(out, pos[..], ",\"max_concurrency\":") && ar_w_int(out, pos[..], d.max_concurrency)
-    && ar_w_raw(out, pos[..], ",\"max_wall_ms\":") && ar_w_int(out, pos[..], d.budget.wall_ms)
-    && ar_w_raw(out, pos[..], ",\"max_turns\":") && ar_w_int(out, pos[..], d.budget.turns)
-    && ar_w_raw(out, pos[..], ",\"max_tokens\":") && ar_w_int(out, pos[..], d.budget.tokens)
-    && ar_w_raw(out, pos[..], ",\"max_cost_usd_e6\":") && ar_w_int(out, pos[..], d.budget.cost_usd_e6)
-    && ar_w_raw(out, pos[..], ",\"model_hint\":") && ar_w_str(out, pos[..], d.model_hint)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "openagents.agent.spec.v1");
+  jo_key(j[..], "agent_id"); jo_str(j[..], d.agent_id);
+  jo_key(j[..], "name"); jo_str(j[..], d.name);
+  jo_key(j[..], "description"); jo_str(j[..], d.description);
+  jo_key(j[..], "version"); jo_int(j[..], d.version);
+  jo_key(j[..], "kind"); jo_str(j[..], d.kind);
+  jo_key(j[..], "execution_mode"); jo_str(j[..], d.execution_mode);
+  jo_key(j[..], "runtime"); jo_str(j[..], d.runtime);
+  jo_key(j[..], "input_contract"); jo_str(j[..], d.input_contract);
+  jo_key(j[..], "output_contract"); jo_str(j[..], d.output_contract);
+  jo_key(j[..], "max_depth"); jo_int(j[..], d.max_depth);
+  jo_key(j[..], "max_concurrency"); jo_int(j[..], d.max_concurrency);
+  jo_key(j[..], "max_wall_ms"); jo_int(j[..], d.budget.wall_ms);
+  jo_key(j[..], "max_turns"); jo_int(j[..], d.budget.turns);
+  jo_key(j[..], "max_tokens"); jo_int(j[..], d.budget.tokens);
+  jo_key(j[..], "max_cost_usd_e6"); jo_int(j[..], d.budget.cost_usd_e6);
+  jo_key(j[..], "model_hint"); jo_str(j[..], d.model_hint);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
 ar_write_inv :: (v: ArInvRecord, out: [] u8) -> int {
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"openagents.agent.invocation.v1\",\"invocation_id\":")
-    && ar_w_str(out, pos[..], v.invocation_id)
-    && ar_w_raw(out, pos[..], ",\"root_session_id\":") && ar_w_str(out, pos[..], v.root_session_id)
-    && ar_w_raw(out, pos[..], ",\"parent_invocation_id\":") && ar_w_str(out, pos[..], v.parent_invocation_id)
-    && ar_w_raw(out, pos[..], ",\"agent_id\":") && ar_w_str(out, pos[..], v.agent_id)
-    && ar_w_raw(out, pos[..], ",\"depth\":") && ar_w_int(out, pos[..], v.depth)
-    && ar_w_raw(out, pos[..], ",\"target_kind\":") && ar_w_str(out, pos[..], v.target_kind)
-    && ar_w_raw(out, pos[..], ",\"seat\":") && ar_w_str(out, pos[..], v.seat)
-    && ar_w_raw(out, pos[..], ",\"device_lease\":") && ar_w_str(out, pos[..], v.device_lease)
-    && ar_w_raw(out, pos[..], ",\"account_lease\":") && ar_w_str(out, pos[..], v.account_lease)
-    && ar_w_raw(out, pos[..], ",\"workspace_dir\":") && ar_w_str(out, pos[..], v.workspace_dir)
-    && ar_w_raw(out, pos[..], ",\"max_wall_ms\":") && ar_w_int(out, pos[..], v.budget.wall_ms)
-    && ar_w_raw(out, pos[..], ",\"seed\":") && ar_w_int(out, pos[..], v.seed)
-    && ar_w_raw(out, pos[..], ",\"state\":") && ar_w_str(out, pos[..], v.state)
-    && ar_w_raw(out, pos[..], ",\"evidence_dir\":") && ar_w_str(out, pos[..], v.evidence_dir)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "openagents.agent.invocation.v1");
+  jo_key(j[..], "invocation_id"); jo_str(j[..], v.invocation_id);
+  jo_key(j[..], "root_session_id"); jo_str(j[..], v.root_session_id);
+  jo_key(j[..], "parent_invocation_id"); jo_str(j[..], v.parent_invocation_id);
+  jo_key(j[..], "agent_id"); jo_str(j[..], v.agent_id);
+  jo_key(j[..], "depth"); jo_int(j[..], v.depth);
+  jo_key(j[..], "target_kind"); jo_str(j[..], v.target_kind);
+  jo_key(j[..], "seat"); jo_str(j[..], v.seat);
+  jo_key(j[..], "device_lease"); jo_str(j[..], v.device_lease);
+  jo_key(j[..], "account_lease"); jo_str(j[..], v.account_lease);
+  jo_key(j[..], "workspace_dir"); jo_str(j[..], v.workspace_dir);
+  jo_key(j[..], "max_wall_ms"); jo_int(j[..], v.budget.wall_ms);
+  jo_key(j[..], "seed"); jo_int(j[..], v.seed);
+  jo_key(j[..], "state"); jo_str(j[..], v.state);
+  jo_key(j[..], "evidence_dir"); jo_str(j[..], v.evidence_dir);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
 ar_write_barrier :: (b: ArBarrierRecord, out: [] u8) -> int {
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"openagents.agent.barrier.v1\",\"barrier_id\":")
-    && ar_w_str(out, pos[..], b.barrier_id)
-    && ar_w_raw(out, pos[..], ",\"root_session_id\":") && ar_w_str(out, pos[..], b.root_session_id)
-    && ar_w_raw(out, pos[..], ",\"expected\":") && ar_w_int(out, pos[..], b.expected)
-    && ar_w_raw(out, pos[..], ",\"arrived\":") && ar_w_int(out, pos[..], b.arrived)
-    && ar_w_raw(out, pos[..], ",\"deadline_ms\":") && ar_w_int(out, pos[..], b.deadline_ms)
-    && ar_w_raw(out, pos[..], ",\"released\":") && ar_w_bool(out, pos[..], b.released)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "openagents.agent.barrier.v1");
+  jo_key(j[..], "barrier_id"); jo_str(j[..], b.barrier_id);
+  jo_key(j[..], "root_session_id"); jo_str(j[..], b.root_session_id);
+  jo_key(j[..], "expected"); jo_int(j[..], b.expected);
+  jo_key(j[..], "arrived"); jo_int(j[..], b.arrived);
+  jo_key(j[..], "deadline_ms"); jo_int(j[..], b.deadline_ms);
+  jo_key(j[..], "released"); jo_bool(j[..], b.released);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
-#test "agent registry wire writes valid JSON for definition, invocation, and barrier" {
+#test "agent registry wire writes valid JSON and refuses overflow" {
   buf: [AR_WIRE_BUF] u8;
+  tiny: [8] u8;
   sb: [256] u8;
   nodes: [128] JvNode;
   doc: [1] Jv;
@@ -181,6 +127,7 @@ ar_write_barrier :: (b: ArBarrierRecord, out: [] u8) -> int {
     budget = ArBudget.{wall_ms = 180000, turns = 0, tokens = 0, cost_usd_e6 = 0},
     model_hint = ""
   };
+  #assert ar_write_def(d, tiny[..]) == -1;
   n := ar_write_def(d, buf[..]);
   #assert n > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<n], nodes[..]);
@@ -198,6 +145,7 @@ ar_write_barrier :: (b: ArBarrierRecord, out: [] u8) -> int {
     workspace_dir = "/tmp/oa-test", budget = d.budget, seed = 42, state = "running",
     evidence_dir = "/tmp/oa-test/out"
   };
+  #assert ar_write_inv(inv, tiny[..]) == -1;
   ni := ar_write_inv(inv, buf[..]);
   #assert ni > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<ni], nodes[..]);
@@ -208,6 +156,7 @@ ar_write_barrier :: (b: ArBarrierRecord, out: [] u8) -> int {
     barrier_id = "bar-1", root_session_id = "sess-1", expected = 2, arrived = 2,
     deadline_ms = 10000, released = true
   };
+  #assert ar_write_barrier(bar, tiny[..]) == -1;
   nb := ar_write_barrier(bar, buf[..]);
   #assert nb > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<nb], nodes[..]);

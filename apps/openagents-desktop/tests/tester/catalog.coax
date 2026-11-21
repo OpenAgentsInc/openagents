@@ -48,7 +48,7 @@ dt_agent_definition :: () -> ArDefRecord {
 #test "desktop surface register has unique non-empty ids and valid agent definition" {
   sc := dt_scenarios();
   for i: 0..<DT_SCENARIO_COUNT {
-    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].title.count > 0;
+    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].title.count > 0 && sc[i].required;
     for j: i + 1..<DT_SCENARIO_COUNT {
       #assert sc[i].id != sc[j].id;
     }
@@ -56,4 +56,6 @@ dt_agent_definition :: () -> ArDefRecord {
   d := dt_agent_definition();
   #assert ar_kind_of(d.kind) == AR_KIND_TESTER;
   #assert ar_mode_of(d.execution_mode) == AR_MODE_DETERMINISTIC;
+  #assert d.version == 1 && d.max_depth == 2 && d.max_concurrency == 4;
+  #assert d.budget.wall_ms == 300000 && d.budget.turns == 0 && d.budget.tokens == 0 && d.budget.cost_usd_e6 == 0;
 }

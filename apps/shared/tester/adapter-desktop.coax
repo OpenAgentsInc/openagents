@@ -34,9 +34,10 @@ da_cat3 :: (d: [] DaBuf, a: string, b: string, c: string) -> string {
 }
 
 da_int_str :: (v: int, out: [] u8) -> string {
-  pos := [1] int.[0];
-  _ = ar_w_int(out, pos[..], v);
-  return cast(string) out[0..<pos[0]];
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_int(j[..], v);
+  return cast(string) out[0..<j[0].n];
 }
 
 DaSession :: struct {
@@ -166,40 +167,41 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
 
   // Copy app bundle, set isolated bundle id, install mock workers in local mode, ad-hoc sign, build probe.dylib.
   cmd_buf: [4096] u8;
-  p := [1] int.[0];
-  _ = ar_w_raw(cmd_buf[..], p[..], "rm -rf '");
-  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-  _ = ar_w_raw(cmd_buf[..], p[..], "' && cp -cR '");
-  _ = ar_w_raw(cmd_buf[..], p[..], built_app);
-  _ = ar_w_raw(cmd_buf[..], p[..], "' '");
-  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-  _ = ar_w_raw(cmd_buf[..], p[..], "' && /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.openagents.desktop.tester' '");
-  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-  _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Info.plist'");
+  cj: [1] Jo;
+  jo_start(cj[..], cmd_buf[..]);
+  jo_put(cj[..], "rm -rf '");
+  jo_put(cj[..], staged_app);
+  jo_put(cj[..], "' && cp -cR '");
+  jo_put(cj[..], built_app);
+  jo_put(cj[..], "' '");
+  jo_put(cj[..], staged_app);
+  jo_put(cj[..], "' && /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.openagents.desktop.tester' '");
+  jo_put(cj[..], staged_app);
+  jo_put(cj[..], "/Contents/Info.plist'");
   if mode == "local" {
     router := da_cat(b3[..], repo, "/evals/openagents-desktop/tier3/mock_router.py");
-    _ = ar_w_raw(cmd_buf[..], p[..], " && cp '");
-    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker' '");
-    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker-real'");
-    _ = ar_w_raw(cmd_buf[..], p[..], " && printf '#!/bin/sh\\nexec /usr/bin/python3 -I \"");
-    _ = ar_w_raw(cmd_buf[..], p[..], router);
-    _ = ar_w_raw(cmd_buf[..], p[..], "\" \"$@\"\\n' > '");
-    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker' && chmod +x '");
-    _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-    _ = ar_w_raw(cmd_buf[..], p[..], "/Contents/Resources/mcworker'");
+    jo_put(cj[..], " && cp '");
+    jo_put(cj[..], staged_app);
+    jo_put(cj[..], "/Contents/Resources/mcworker' '");
+    jo_put(cj[..], staged_app);
+    jo_put(cj[..], "/Contents/Resources/mcworker-real'");
+    jo_put(cj[..], " && printf '#!/bin/sh\\nexec /usr/bin/python3 -I \"");
+    jo_put(cj[..], router);
+    jo_put(cj[..], "\" \"$@\"\\n' > '");
+    jo_put(cj[..], staged_app);
+    jo_put(cj[..], "/Contents/Resources/mcworker' && chmod +x '");
+    jo_put(cj[..], staged_app);
+    jo_put(cj[..], "/Contents/Resources/mcworker'");
   }
-  _ = ar_w_raw(cmd_buf[..], p[..], " && codesign --force --sign - '");
-  _ = ar_w_raw(cmd_buf[..], p[..], staged_app);
-  _ = ar_w_raw(cmd_buf[..], p[..], "' >/dev/null 2>&1 && clang -dynamiclib -fobjc-arc -mmacosx-version-min=14.0 -framework AppKit -o '");
-  _ = ar_w_raw(cmd_buf[..], p[..], dylib);
-  _ = ar_w_raw(cmd_buf[..], p[..], "' '");
-  _ = ar_w_raw(cmd_buf[..], p[..], repo);
-  _ = ar_w_raw(cmd_buf[..], p[..], "/evals/openagents-desktop/tier3/probe/probe.m'");
-  _ = ar_w_raw(cmd_buf[..], p[..], " && defaults delete com.openagents.desktop.tester >/dev/null 2>&1 || true");
-  if !da_run_sh(cast(string) cmd_buf[0..<p[0]], 60000) {
+  jo_put(cj[..], " && codesign --force --sign - '");
+  jo_put(cj[..], staged_app);
+  jo_put(cj[..], "' >/dev/null 2>&1 && clang -dynamiclib -fobjc-arc -mmacosx-version-min=14.0 -framework AppKit -o '");
+  jo_put(cj[..], dylib);
+  jo_put(cj[..], "' '");
+  jo_put(cj[..], repo);
+  jo_put(cj[..], "/evals/openagents-desktop/tier3/probe/probe.m'");
+  jo_put(cj[..], " && defaults delete com.openagents.desktop.tester >/dev/null 2>&1 || true");
+  if !da_run_sh(cast(string) cmd_buf[0..<cj[0].n], 60000) {
     tool_errln("desktop-adapter: staging failed");
     return false;
   }

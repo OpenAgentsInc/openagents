@@ -331,61 +331,67 @@ t_write_reports :: (s: [] DaSession, results: [] TsResult, count: int) {
 
   // Write report.json
   rj: [65536] u8;
-  p := [1] int.[0];
-  _ = ar_w_raw(rj[..], p[..], "{\"schema\":\"tester.report.v1\",\"target\":\"desktop-mac\",\"mode\":");
-  _ = ar_w_str(rj[..], p[..], da_slice(s[0].mode[..], s[0].mode_n));
-  _ = ar_w_raw(rj[..], p[..], ",\"total\":"); _ = ar_w_int(rj[..], p[..], count);
-  _ = ar_w_raw(rj[..], p[..], ",\"passed\":"); _ = ar_w_int(rj[..], p[..], passed);
-  _ = ar_w_raw(rj[..], p[..], ",\"product_failed\":"); _ = ar_w_int(rj[..], p[..], failed);
-  _ = ar_w_raw(rj[..], p[..], ",\"other_failed\":"); _ = ar_w_int(rj[..], p[..], infra);
-  _ = ar_w_raw(rj[..], p[..], ",\"results\":[");
+  j: [1] Jo;
+  jo_start(j[..], rj[..]);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "tester.report.v1");
+  jo_key(j[..], "target"); jo_str(j[..], "desktop-mac");
+  jo_key(j[..], "mode"); jo_str(j[..], da_slice(s[0].mode[..], s[0].mode_n));
+  jo_key(j[..], "total"); jo_int(j[..], count);
+  jo_key(j[..], "passed"); jo_int(j[..], passed);
+  jo_key(j[..], "product_failed"); jo_int(j[..], failed);
+  jo_key(j[..], "other_failed"); jo_int(j[..], infra);
+  jo_key(j[..], "results"); jo_arr(j[..]);
   rb: [TS_BUF] u8;
   for i: 0..<count {
-    if i > 0 { _ = ar_w_raw(rj[..], p[..], ","); }
     rn := ts_write_result(results[i], rb[..]);
-    if rn > 0 { _ = ar_w_raw(rj[..], p[..], cast(string) rb[0..<rn]); }
+    if rn > 0 { jo_raw(j[..], cast(string) rb[0..<rn]); }
   }
-  _ = ar_w_raw(rj[..], p[..], "]}\n");
-  _ = fs_write(da_cat(b[..], out_dir, "/report.json"), cast(string) rj[0..<p[0]]);
+  jo_end(j[..]);
+  jo_end(j[..]);
+  jo_put(j[..], "\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.json"), cast(string) rj[0..<j[0].n]);
 
   // Write report.html
   rh: [65536] u8;
-  hp := [1] int.[0];
-  _ = ar_w_raw(rh[..], hp[..], "<!doctype html><html><head><meta charset='utf-8'><title>OpenAgents Desktop Simulated Tester Report</title>");
-  _ = ar_w_raw(rh[..], hp[..], "<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px;background:#111;color:#eee}table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid #333;text-align:left}.pass{color:#4ade80;font-weight:600}.fail{color:#f87171;font-weight:600}.meta{color:#9ca3af}</style></head><body>");
-  _ = ar_w_raw(rh[..], hp[..], "<h1>OpenAgents Desktop Simulated Tester Report</h1><p class='meta'>Passed: ");
-  _ = ar_w_int(rh[..], hp[..], passed);
-  _ = ar_w_raw(rh[..], hp[..], " / ");
-  _ = ar_w_int(rh[..], hp[..], count);
-  _ = ar_w_raw(rh[..], hp[..], " | Product failures: ");
-  _ = ar_w_int(rh[..], hp[..], failed);
-  _ = ar_w_raw(rh[..], hp[..], " | Infra/other: ");
-  _ = ar_w_int(rh[..], hp[..], infra);
-  _ = ar_w_raw(rh[..], hp[..], "</p><table><thead><tr><th>Scenario</th><th>Verdict</th><th>Duration</th><th>Summary</th><th>Screenshot</th></tr></thead><tbody>");
+  hj: [1] Jo;
+  jo_start(hj[..], rh[..]);
+  jo_put(hj[..], "<!doctype html><html><head><meta charset='utf-8'><title>OpenAgents Desktop Simulated Tester Report</title>");
+  jo_put(hj[..], "<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px;background:#111;color:#eee}table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid #333;text-align:left}.pass{color:#4ade80;font-weight:600}.fail{color:#f87171;font-weight:600}.meta{color:#9ca3af}</style></head><body>");
+  jo_put(hj[..], "<h1>OpenAgents Desktop Simulated Tester Report</h1><p class='meta'>Passed: ");
+  ib_h: [32] u8;
+  jo_put(hj[..], da_int_str(passed, ib_h[..]));
+  jo_put(hj[..], " / ");
+  jo_put(hj[..], da_int_str(count, ib_h[..]));
+  jo_put(hj[..], " | Product failures: ");
+  jo_put(hj[..], da_int_str(failed, ib_h[..]));
+  jo_put(hj[..], " | Infra/other: ");
+  jo_put(hj[..], da_int_str(infra, ib_h[..]));
+  jo_put(hj[..], "</p><table><thead><tr><th>Scenario</th><th>Verdict</th><th>Duration</th><th>Summary</th><th>Screenshot</th></tr></thead><tbody>");
   for i: 0..<count {
     cls := ifx results[i].verdict == "pass" then "pass" else "fail";
-    _ = ar_w_raw(rh[..], hp[..], "<tr><td><code>");
-    _ = ar_w_raw(rh[..], hp[..], results[i].scenario_id);
-    _ = ar_w_raw(rh[..], hp[..], "</code></td><td class='");
-    _ = ar_w_raw(rh[..], hp[..], cls);
-    _ = ar_w_raw(rh[..], hp[..], "'>");
-    _ = ar_w_raw(rh[..], hp[..], results[i].verdict);
-    _ = ar_w_raw(rh[..], hp[..], "</td><td>");
-    _ = ar_w_int(rh[..], hp[..], results[i].duration_ms);
-    _ = ar_w_raw(rh[..], hp[..], " ms</td><td>");
-    _ = ar_w_raw(rh[..], hp[..], results[i].summary);
-    _ = ar_w_raw(rh[..], hp[..], "</td><td>");
+    jo_put(hj[..], "<tr><td><code>");
+    jo_put(hj[..], results[i].scenario_id);
+    jo_put(hj[..], "</code></td><td class='");
+    jo_put(hj[..], cls);
+    jo_put(hj[..], "'>");
+    jo_put(hj[..], results[i].verdict);
+    jo_put(hj[..], "</td><td>");
+    jo_put(hj[..], da_int_str(results[i].duration_ms, ib_h[..]));
+    jo_put(hj[..], " ms</td><td>");
+    jo_put(hj[..], results[i].summary);
+    jo_put(hj[..], "</td><td>");
     if results[i].screenshot_ref.count > 0 {
-      _ = ar_w_raw(rh[..], hp[..], "<a href='");
-      _ = ar_w_raw(rh[..], hp[..], results[i].screenshot_ref);
-      _ = ar_w_raw(rh[..], hp[..], "'>view</a>");
+      jo_put(hj[..], "<a href='");
+      jo_put(hj[..], results[i].screenshot_ref);
+      jo_put(hj[..], "'>view</a>");
     } else {
-      _ = ar_w_raw(rh[..], hp[..], "-");
+      jo_put(hj[..], "-");
     }
-    _ = ar_w_raw(rh[..], hp[..], "</td></tr>");
+    jo_put(hj[..], "</td></tr>");
   }
-  _ = ar_w_raw(rh[..], hp[..], "</tbody></table></body></html>\n");
-  _ = fs_write(da_cat(b[..], out_dir, "/report.html"), cast(string) rh[0..<hp[0]]);
+  jo_put(hj[..], "</tbody></table></body></html>\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.html"), cast(string) rh[0..<hj[0].n]);
 }
 
 tool_main :: () -> int #export_c #effects(all) {

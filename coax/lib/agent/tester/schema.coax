@@ -56,70 +56,81 @@ ts_verdict_valid :: (v: string) -> bool {
 }
 
 ts_write_obs :: (o: TsObservation, out: [] u8) -> int {
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.observation.v1\",\"client_id\":")
-    && ar_w_str(out, pos[..], o.client_id)
-    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], o.target)
-    && ar_w_raw(out, pos[..], ",\"mode\":") && ar_w_str(out, pos[..], o.mode)
-    && ar_w_raw(out, pos[..], ",\"seq\":") && ar_w_int(out, pos[..], o.seq)
-    && ar_w_raw(out, pos[..], ",\"ts_ms\":") && ar_w_int(out, pos[..], o.ts_ms)
-    && ar_w_raw(out, pos[..], ",\"width\":") && ar_w_int(out, pos[..], o.width)
-    && ar_w_raw(out, pos[..], ",\"height\":") && ar_w_int(out, pos[..], o.height)
-    && ar_w_raw(out, pos[..], ",\"scale_x100\":") && ar_w_int(out, pos[..], o.scale_x100)
-    && ar_w_raw(out, pos[..], ",\"screenshot_ref\":") && ar_w_str(out, pos[..], o.screenshot_ref)
-    && ar_w_raw(out, pos[..], ",\"running\":") && ar_w_bool(out, pos[..], o.running)
-    && ar_w_raw(out, pos[..], ",\"settings_page\":") && ar_w_int(out, pos[..], o.settings_page)
-    && ar_w_raw(out, pos[..], ",\"composer_focused\":") && ar_w_bool(out, pos[..], o.composer_focused)
-    && ar_w_raw(out, pos[..], ",\"composer_text\":") && ar_w_str(out, pos[..], o.composer_text)
-    && ar_w_raw(out, pos[..], ",\"window_title\":") && ar_w_str(out, pos[..], o.window_title)
-    && ar_w_raw(out, pos[..], ",\"summary\":") && ar_w_str(out, pos[..], o.summary)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "tester.observation.v1");
+  jo_key(j[..], "client_id"); jo_str(j[..], o.client_id);
+  jo_key(j[..], "target"); jo_str(j[..], o.target);
+  jo_key(j[..], "mode"); jo_str(j[..], o.mode);
+  jo_key(j[..], "seq"); jo_int(j[..], o.seq);
+  jo_key(j[..], "ts_ms"); jo_int(j[..], o.ts_ms);
+  jo_key(j[..], "width"); jo_int(j[..], o.width);
+  jo_key(j[..], "height"); jo_int(j[..], o.height);
+  jo_key(j[..], "scale_x100"); jo_int(j[..], o.scale_x100);
+  jo_key(j[..], "screenshot_ref"); jo_str(j[..], o.screenshot_ref);
+  jo_key(j[..], "running"); jo_bool(j[..], o.running);
+  jo_key(j[..], "settings_page"); jo_int(j[..], o.settings_page);
+  jo_key(j[..], "composer_focused"); jo_bool(j[..], o.composer_focused);
+  jo_key(j[..], "composer_text"); jo_str(j[..], o.composer_text);
+  jo_key(j[..], "window_title"); jo_str(j[..], o.window_title);
+  jo_key(j[..], "summary"); jo_str(j[..], o.summary);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
 ts_write_action :: (a: TsAction, out: [] u8) -> int {
   if !ar_lease_ok(a.lease_ms) { return -1; }
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.action.v1\",\"action_id\":")
-    && ar_w_str(out, pos[..], a.action_id)
-    && ar_w_raw(out, pos[..], ",\"source_seq\":") && ar_w_int(out, pos[..], a.source_seq)
-    && ar_w_raw(out, pos[..], ",\"op\":") && ar_w_str(out, pos[..], a.op)
-    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], a.target)
-    && ar_w_raw(out, pos[..], ",\"text\":") && ar_w_str(out, pos[..], a.text)
-    && ar_w_raw(out, pos[..], ",\"x\":") && ar_w_int(out, pos[..], a.x)
-    && ar_w_raw(out, pos[..], ",\"y\":") && ar_w_int(out, pos[..], a.y)
-    && ar_w_raw(out, pos[..], ",\"lease_ms\":") && ar_w_int(out, pos[..], a.lease_ms)
-    && ar_w_raw(out, pos[..], ",\"ts_ms\":") && ar_w_int(out, pos[..], a.ts_ms)
-    && ar_w_raw(out, pos[..], ",\"ok\":") && ar_w_bool(out, pos[..], a.ok)
-    && ar_w_raw(out, pos[..], ",\"detail\":") && ar_w_str(out, pos[..], a.detail)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "tester.action.v1");
+  jo_key(j[..], "action_id"); jo_str(j[..], a.action_id);
+  jo_key(j[..], "source_seq"); jo_int(j[..], a.source_seq);
+  jo_key(j[..], "op"); jo_str(j[..], a.op);
+  jo_key(j[..], "target"); jo_str(j[..], a.target);
+  jo_key(j[..], "text"); jo_str(j[..], a.text);
+  jo_key(j[..], "x"); jo_int(j[..], a.x);
+  jo_key(j[..], "y"); jo_int(j[..], a.y);
+  jo_key(j[..], "lease_ms"); jo_int(j[..], a.lease_ms);
+  jo_key(j[..], "ts_ms"); jo_int(j[..], a.ts_ms);
+  jo_key(j[..], "ok"); jo_bool(j[..], a.ok);
+  jo_key(j[..], "detail"); jo_str(j[..], a.detail);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
 ts_write_result :: (r: TsResult, out: [] u8) -> int {
   if !ts_verdict_valid(r.verdict) { return -1; }
-  pos := [1] int.[0];
-  ok := ar_w_raw(out, pos[..], "{\"schema\":\"tester.result.v1\",\"scenario_id\":")
-    && ar_w_str(out, pos[..], r.scenario_id)
-    && ar_w_raw(out, pos[..], ",\"client_id\":") && ar_w_str(out, pos[..], r.client_id)
-    && ar_w_raw(out, pos[..], ",\"target\":") && ar_w_str(out, pos[..], r.target)
-    && ar_w_raw(out, pos[..], ",\"mode\":") && ar_w_str(out, pos[..], r.mode)
-    && ar_w_raw(out, pos[..], ",\"verdict\":") && ar_w_str(out, pos[..], r.verdict)
-    && ar_w_raw(out, pos[..], ",\"duration_ms\":") && ar_w_int(out, pos[..], r.duration_ms)
-    && ar_w_raw(out, pos[..], ",\"steps_run\":") && ar_w_int(out, pos[..], r.steps_run)
-    && ar_w_raw(out, pos[..], ",\"first_failure\":") && ar_w_str(out, pos[..], r.first_failure)
-    && ar_w_raw(out, pos[..], ",\"summary\":") && ar_w_str(out, pos[..], r.summary)
-    && ar_w_raw(out, pos[..], ",\"screenshot_ref\":") && ar_w_str(out, pos[..], r.screenshot_ref)
-    && ar_w_raw(out, pos[..], ",\"cleanup\":") && ar_w_str(out, pos[..], r.cleanup)
-    && ar_w_raw(out, pos[..], "}");
-  return ifx ok then pos[0] else -1;
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "tester.result.v1");
+  jo_key(j[..], "scenario_id"); jo_str(j[..], r.scenario_id);
+  jo_key(j[..], "client_id"); jo_str(j[..], r.client_id);
+  jo_key(j[..], "target"); jo_str(j[..], r.target);
+  jo_key(j[..], "mode"); jo_str(j[..], r.mode);
+  jo_key(j[..], "verdict"); jo_str(j[..], r.verdict);
+  jo_key(j[..], "duration_ms"); jo_int(j[..], r.duration_ms);
+  jo_key(j[..], "steps_run"); jo_int(j[..], r.steps_run);
+  jo_key(j[..], "first_failure"); jo_str(j[..], r.first_failure);
+  jo_key(j[..], "summary"); jo_str(j[..], r.summary);
+  jo_key(j[..], "screenshot_ref"); jo_str(j[..], r.screenshot_ref);
+  jo_key(j[..], "cleanup"); jo_str(j[..], r.cleanup);
+  jo_end(j[..]);
+  return ifx j[0].bad then -1 else j[0].n;
 }
 
-#test "tester schema encodes valid observation, action, and result JSON" {
+#test "tester schema encodes valid observation, action, and result JSON and refuses bad inputs" {
   buf: [TS_BUF] u8;
+  tiny: [8] u8;
   sb: [256] u8;
   nodes: [128] JvNode;
   doc: [1] Jv;
+
+  #assert ts_verdict_valid("pass") && ts_verdict_valid("product-fail") && ts_verdict_valid("infrastructure-fail");
+  #assert ts_verdict_valid("blocked") && ts_verdict_valid("inconclusive") && ts_verdict_valid("not-applicable") && ts_verdict_valid("unqualified");
+  #assert !ts_verdict_valid("") && !ts_verdict_valid("bogus");
 
   o := TsObservation.{
     client_id = "desk-1", target = "desktop-mac", mode = "local", seq = 1, ts_ms = 1234,
@@ -127,6 +138,7 @@ ts_write_result :: (r: TsResult, out: [] u8) -> int {
     running = false, settings_page = -1, composer_focused = true, composer_text = "hi",
     window_title = "Coder", summary = "ready"
   };
+  #assert ts_write_obs(o, tiny[..]) == -1;
   no := ts_write_obs(o, buf[..]);
   #assert no > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<no], nodes[..]);
@@ -137,6 +149,7 @@ ts_write_result :: (r: TsResult, out: [] u8) -> int {
     action_id = "act-1", source_seq = 1, op = "type", target = "composer",
     text = "hello", x = 0, y = 0, lease_ms = 250, ts_ms = 1250, ok = true, detail = ""
   };
+  #assert ts_write_action(a, tiny[..]) == -1;
   na := ts_write_action(a, buf[..]);
   #assert na > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<na], nodes[..]);
@@ -151,6 +164,7 @@ ts_write_result :: (r: TsResult, out: [] u8) -> int {
     first_failure = "", summary = "window opened and composer focused",
     screenshot_ref = "screenshots/cold.png", cleanup = "ok"
   };
+  #assert ts_write_result(r, tiny[..]) == -1;
   nr := ts_write_result(r, buf[..]);
   #assert nr > 0;
   #assert jv_parse(doc[..], cast(string) buf[0..<nr], nodes[..]);
