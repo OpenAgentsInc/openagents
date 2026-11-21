@@ -7,7 +7,12 @@ import AppKit
 /// Off, Coder is local: chats, runs and pairing a phone over Tailscale need no login.
 enum Experimental {
     static let key = "experimentalFeatures"
-    static var on: Bool { UserDefaults.standard.bool(forKey: key) }
+    static var on: Bool {
+        if UserDefaults.standard.bool(forKey: key) { return true }
+        if ProcessInfo.processInfo.arguments.contains("--experimental") { return true }
+        if ProcessInfo.processInfo.environment["OA_EXPERIMENTAL"] == "1" { return true }
+        return false
+    }
 }
 
 /// The person's agent instructions (~/.openagents/instructions.md, GitHub #13808), told to Microcoder,

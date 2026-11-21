@@ -280,7 +280,7 @@ struct InkSession {
     PmBuffer tile_exp;     /* [n_expert + INK_PREFILL_B / 8] u32 */
     PmBuffer tile_m0;      /* [n_expert + INK_PREFILL_B / 8] u32 */
     PmBuffer tile_cnt;     /* [16] u32 */
-    PmBuffer w_bf16;       /* [44M] u32 (BF16 pairs for Metal 4 am_matmul_bf16) */
+    PmBuffer w_bf16;       /* [220M] u32 (BF16 pairs for Metal 4 am_matmul_bf16: 64-exp GU = 2 chunks, 128-exp Down = 1 chunk) */
     PmBuffer tok_ids_buf;  /* [INK_PREFILL_B] u32 */
     PmBuffer logits;       /* [vocab_size] f32 */
     PmBuffer dummy_f32;    /* [64] zero f32 */
@@ -841,7 +841,7 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
-        alloc_buf(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
+        alloc_buf(s, &s->w_bf16, (size_t)220 * 1024 * 1024 * 4) ||
         alloc_buf(s, &s->tok_ids_buf, B * 4) ||
         alloc_buf(s, &s->logits, (size_t)hp->n_vocab * 4) ||
         alloc_buf(s, &s->dummy_f32, 64 * 4)) {
@@ -1512,10 +1512,15 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
 
     int64_t n_ff = hp->n_ff_exp;
     int64_t tile_cap = hp->n_expert + INK_PREFILL_B / 2 + 16;
-    if (nb <= 48 &&
+    int64_t direct_thresh = 16;
+    {
+        const char *env_t = getenv("INK_DIRECT_THRESH");
+        if (env_t && env_t[0]) direct_thresh = strtoll(env_t, NULL, 10);
+    }
+    if (nb <= direct_thresh &&
         L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL &&
         L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
-        /* Direct IQ4_NL small-batch MoE (tile_m=4, indirect dispatch = zero empty tiles, zero BF16 staging!) */
+        /* Direct IQ4_NL tiny-batch MoE (tile_m=4, zero BF16 staging!) */
         int64_t tot_rows = nb * hp->n_expert_used;
         int64_t tm = 4;
         int64_t gu_rg = (n_ff + 3) / 4;
@@ -1584,7 +1589,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_f32v(s->row_wt, 0, tot_rows));
         pm_barrier(batch);
 
-        int64_t e_chunk_gu = 16;
+        int64_t e_chunk_gu = 64;
         int64_t gu_rows = 2 * n_ff;
         int64_t gu_w_u32 = gu_rows * (d / 2);
         int64_t gu_r_tiles = (gu_rows + tn - 1) / tn;
@@ -1618,8 +1623,8 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_f32v(s->moe_hid, 0, tot_rows * n_ff));
         pm_barrier(batch);
 
-        /* Down projection (32 experts/chunk fits in same 44M u32 w_bf16 buffer -> 4 chunks instead of 8!) */
-        int64_t e_chunk_dn = 32;
+        /* Down projection (128 experts = 1 single chunk in 220M u32 w_bf16!) */
+        int64_t e_chunk_dn = 128;
         int64_t dn_w_u32 = d * (n_ff / 2);
         int64_t dn_r_tiles = (d + tn - 1) / tn;
         int64_t dn_deq_rgrps = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? ((d + 7) / 8) : ((d + 3) / 4);

@@ -52,6 +52,7 @@ extension GymWorkbenchView {
     /// the camera, layers, element and Live. done hears nil, or what went wrong, once it is over.
     func applyPlan(_ plan: PleGymPlan, done: @escaping (String?) -> Void) {
         if pendingPlan != nil { planFinished("another request came first") }
+        setModeBenchmarks(false)
         pendingPlan = plan
         pendingPlanDone = done
         guard !plan.run.isEmpty else {

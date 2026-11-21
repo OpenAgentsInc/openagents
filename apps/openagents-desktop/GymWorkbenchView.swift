@@ -260,11 +260,20 @@ final class GymWorkbenchView: NSView {
     var pendingPlan: PleGymPlan?
     var pendingPlanDone: ((String?) -> Void)?
 
+    // Top mode switcher: Benchmarks (Psionic vs llama.cpp live runner) | PLE 3D Workbench
+    private let modeBar = NSView()
+    private let modeBarDivider = NSView()
+    private let modeTitleLabel = NSTextField(labelWithString: "GYM")
+    private let modeControl = NSSegmentedControl(labels: ["Benchmarks", "PLE 3D"], trackingMode: .selectOne, target: nil, action: nil)
+    let benchmarkView = GymBenchmarkView(frame: .zero)
+    private var showingBenchmarks = true
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor(red: 0.06, green: 0.065, blue: 0.08, alpha: 1).cgColor
         setupUI()
+        applyModeVisibility()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -285,6 +294,33 @@ final class GymWorkbenchView: NSView {
     }
 
     private func setupUI() {
+        modeBar.translatesAutoresizingMaskIntoConstraints = false
+        modeBar.wantsLayer = true
+        modeBar.layer?.backgroundColor = NSColor(red: 0.068, green: 0.072, blue: 0.090, alpha: 1).cgColor
+        addSubview(modeBar)
+
+        modeBarDivider.translatesAutoresizingMaskIntoConstraints = false
+        modeBarDivider.wantsLayer = true
+        modeBarDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        addSubview(modeBarDivider)
+
+        modeTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        modeTitleLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .bold)
+        modeTitleLabel.textColor = NSColor(white: 0.56, alpha: 1)
+        modeBar.addSubview(modeTitleLabel)
+
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeControl.controlSize = .small
+        modeControl.segmentStyle = .rounded
+        modeControl.selectedSegment = 0
+        modeControl.target = self
+        modeControl.action = #selector(modeSegmentChanged)
+        modeBar.addSubview(modeControl)
+
+        benchmarkView.translatesAutoresizingMaskIntoConstraints = false
+        benchmarkView.workingFolderProvider = { [weak self] in self?.workingFolderProvider?() }
+        addSubview(benchmarkView)
+
         railView.translatesAutoresizingMaskIntoConstraints = false
         railView.wantsLayer = true
         railView.layer?.backgroundColor = NSColor(red: 0.075, green: 0.08, blue: 0.10, alpha: 1).cgColor
@@ -599,17 +635,38 @@ final class GymWorkbenchView: NSView {
         railView.addSubview(statusLabel)
 
         NSLayoutConstraint.activate([
-            railView.topAnchor.constraint(equalTo: topAnchor),
+            modeBar.topAnchor.constraint(equalTo: topAnchor),
+            modeBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            modeBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            modeBar.heightAnchor.constraint(equalToConstant: 36),
+
+            modeTitleLabel.centerYAnchor.constraint(equalTo: modeBar.centerYAnchor),
+            modeTitleLabel.leadingAnchor.constraint(equalTo: modeBar.leadingAnchor, constant: 14),
+
+            modeControl.centerYAnchor.constraint(equalTo: modeBar.centerYAnchor),
+            modeControl.leadingAnchor.constraint(equalTo: modeTitleLabel.trailingAnchor, constant: 10),
+
+            modeBarDivider.topAnchor.constraint(equalTo: modeBar.bottomAnchor),
+            modeBarDivider.leadingAnchor.constraint(equalTo: leadingAnchor),
+            modeBarDivider.trailingAnchor.constraint(equalTo: trailingAnchor),
+            modeBarDivider.heightAnchor.constraint(equalToConstant: 1),
+
+            benchmarkView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
+            benchmarkView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            benchmarkView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            benchmarkView.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            railView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             railView.bottomAnchor.constraint(equalTo: bottomAnchor),
             railView.leadingAnchor.constraint(equalTo: leadingAnchor),
             railView.widthAnchor.constraint(equalToConstant: 268),
 
-            dividerView.topAnchor.constraint(equalTo: topAnchor),
+            dividerView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             dividerView.bottomAnchor.constraint(equalTo: bottomAnchor),
             dividerView.leadingAnchor.constraint(equalTo: railView.trailingAnchor),
             dividerView.widthAnchor.constraint(equalToConstant: 1),
 
-            scenePanel.topAnchor.constraint(equalTo: topAnchor),
+            scenePanel.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             scenePanel.bottomAnchor.constraint(equalTo: timelineBar.topAnchor),
             scenePanel.leadingAnchor.constraint(equalTo: dividerView.trailingAnchor),
             scenePanel.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -694,6 +751,29 @@ final class GymWorkbenchView: NSView {
         ])
 
         rebuildCompareMenu()
+    }
+
+    @objc private func modeSegmentChanged() {
+        setModeBenchmarks(modeControl.selectedSegment == 0)
+    }
+
+    func setModeBenchmarks(_ benchmarks: Bool) {
+        showingBenchmarks = benchmarks
+        modeControl.selectedSegment = benchmarks ? 0 : 1
+        applyModeVisibility()
+    }
+
+    private func applyModeVisibility() {
+        benchmarkView.isHidden = !showingBenchmarks
+        railView.isHidden = showingBenchmarks
+        dividerView.isHidden = showingBenchmarks
+        scenePanel.isHidden = showingBenchmarks
+        timelineBar.isHidden = showingBenchmarks
+        if showingBenchmarks {
+            emptyLabel.isHidden = true
+        } else {
+            emptyLabel.isHidden = !items.isEmpty
+        }
     }
 
     // MARK: - Discovery & Run Selection
