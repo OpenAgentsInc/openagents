@@ -123,3 +123,22 @@
   #assert cp_lean_press(s, CP_LEAN_PROVER_PRESET, "coder.lean.pp.1") && cp_lean_press(s, CP_LEAN_PROVER_RUN, "coder.lean.prover.run") && coder_page_action(s) == CP_ASK_LEAN_VERIFY;
   #assert cp_lean_wheel(s, -60.0f32) && s[0].lean[0].inspect_scroll > 0;
 }
+
+#test "lean file pane goal strip: renders live tactic goal for .lean files and dispatches refresh" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  verts: [CP_MAX_VERTICES] f32;
+
+  src := "theorem add_zero_right (n : Nat) : n + 0 = n := by\n  rfl\n";
+  sb: [128] u8;
+  for i: 0..<src.count { sb[i] = src[i]; }
+  #assert coder_page_file_open(s, "~/work/AddZeroRight.lean", sb[0..<src.count], src.count);
+  #assert cp_fp_is_lean(s);
+  coder_page_file_lean_goal(s, 2, true, false, "case zero · ⊢ a + 0 = 0 + a");
+  _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+  #assert s[0].refused == 0 && s[0].fp[0].lean_goal_line == 2 && s[0].fp[0].lean_goal_ok;
+  #assert cp_fp_press(s, CP_FP_LEAN_GOAL) && coder_page_action(s) == CP_ASK_FILE_LEAN_GOAL && s[0].fp[0].lean_goal_busy;
+}

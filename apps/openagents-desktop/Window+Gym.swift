@@ -230,6 +230,8 @@ extension CoderWindow {
             closeGym()
             openNamedFile(URL(fileURLWithPath: path))
             wake()
+        case 157: // CP_ASK_FILE_LEAN_GOAL
+            refreshFilePaneLeanGoal()
         default:
             break
         }

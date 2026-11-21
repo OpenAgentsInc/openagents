@@ -20,6 +20,12 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/lean/rh-index.coax";
 #load "../../coax/lib/lean/gym.coax";
+#load "../../coax/lib/lean/host.coax";
+#load "lean-run-mcp.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 
 LR_GYM_WAIT_S :: 15;
 
@@ -33,6 +39,12 @@ lr_usage :: () -> int {
   print("Usage:\n");
   print("  lean-run doctor [--json]\n");
   print("  lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]\n");
+  print("  lean-run goal FILE LINE COL [--json]\n");
+  print("  lean-run try FILE LINE COL TACTIC [--json]\n");
+  print("  lean-run hover FILE LINE COL [--json]\n");
+  print("  lean-run diagnostics FILE [--json]\n");
+  print("  lean-run host status|stop|serve\n");
+  print("  lean-run mcp\n");
   print("  lean-run sample [--out DIR]\n");
   print("  lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD]\n");
   print("               [--decl DECL] [--tour-step N] [--search Q] [--math-tab strip|robin|theta]\n");
@@ -497,10 +509,14 @@ lr_cmd_rh :: (a: [] Args, home: string) -> int {
       if w[0].m_depth[id] != RH_NO_ID { reachable += 1; }
     }
     if want_json {
+      ob: [FS_PATH_MAX] u8;
+      has_tier_b := fs_exists(fs_join(corp, ".lake/build/lib/lean/Main.olean", ob[..]));
       o: [1] Jo; jo_start(o[..], w[0].iobuf[..]); jo_obj(o[..]);
       jo_key(o[..], "modules"); jo_int(o[..], w[0].n_mods);
       jo_key(o[..], "reachable_from_main"); jo_int(o[..], reachable);
       jo_key(o[..], "metaprog_count"); jo_int(o[..], w[0].total_metaprog);
+      jo_key(o[..], "tier_b_olean_cache"); jo_bool(o[..], has_tier_b);
+      jo_key(o[..], "tier_b_note"); jo_str(o[..], "Tier B Interactive Cache (cached .olean Infoview — NOT independent kernel verification)");
       jo_key(o[..], "metaprog_modules"); jo_arr(o[..]);
       for id: 0..<w[0].n_mods {
         if (w[0].m_flags[id] & cast(u32) RH_FLAG_METAPROG) != 0 { jo_str(o[..], rhi_mod_name(w[..], id)); }
@@ -535,6 +551,82 @@ lr_cmd_rh :: (a: [] Args, home: string) -> int {
   return 2;
 }
 
+lr_self_exe :: (out: [] u8) -> string #effects(all) {
+  n := cxproc_self_path(out);
+  return ifx n > 0 && n <= out.count then cast(string) out[0..<n] else "";
+}
+
+lr_parse_int :: (s: string, fallback: int) -> int {
+  if s.count == 0 { return fallback; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+lr_cmd_lsp_op :: (op: string, a: [] Args, home: string) -> int #effects(all) {
+  file := args_at(a, 1);
+  if file.count == 0 {
+    tool_err("usage: lean-run "); tool_err(op);
+    if op == "diagnostics" { tool_errln(" FILE [--json]"); }
+    else if op == "try" { tool_errln(" FILE LINE COL TACTIC [--json]"); }
+    else { tool_errln(" FILE LINE COL [--json]"); }
+    return 2;
+  }
+  line_1 := lr_parse_int(args_at(a, 2), 1);
+  col_1 := lr_parse_int(args_at(a, 3), 1);
+  tactic := args_at(a, 4);
+  if op == "try" && tactic.count == 0 {
+    tool_errln("usage: lean-run try FILE LINE COL TACTIC [--json]");
+    return 2;
+  }
+  req_b: [8192] u8; o: [1] Jo; jo_start(o[..], req_b[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], op);
+  jo_key(o[..], "file"); jo_str(o[..], file);
+  jo_key(o[..], "line"); jo_int(o[..], line_1);
+  jo_key(o[..], "col"); jo_int(o[..], col_1);
+  if tactic.count > 0 { jo_key(o[..], "tactic"); jo_str(o[..], tactic); }
+  jo_end(o[..]);
+
+  sb: [FS_PATH_MAX] u8;
+  self := lr_self_exe(sb[..]);
+  rep: [131072] u8;
+  rn := lh_client_call(home, self, jo_text(o[..]), true, rep[..]);
+  if rn <= 0 {
+    tool_errln("lean-run: could not reach oa-leanhost daemon");
+    return 1;
+  }
+  print("%\n", cast(string) rep[0..<rn]);
+  return 0;
+}
+
+lr_cmd_host :: (a: [] Args, home: string) -> int #effects(all) {
+  sub := args_at(a, 1);
+  if sub == "serve" { return lh_serve_daemon(home); }
+  sb: [FS_PATH_MAX] u8;
+  self := lr_self_exe(sb[..]);
+  rep: [16384] u8;
+  if sub == "stop" {
+    rn := lh_client_call(home, self, "{\"op\":\"stop\"}", false, rep[..]);
+    if rn > 0 { print("%\n", cast(string) rep[0..<rn]); return 0; }
+    print("{\"ok\":true,\"running\":false,\"note\":\"oa-leanhost was not running\"}\n");
+    return 0;
+  }
+  rn := lh_client_call(home, self, "{\"op\":\"status\"}", false, rep[..]);
+  if rn > 0 { print("%\n", cast(string) rep[0..<rn]); return 0; }
+  print("{\"ok\":true,\"running\":false}\n");
+  return 0;
+}
+
+lr_cmd_mcp :: () -> int #effects(all) {
+  sb: [FS_PATH_MAX] u8;
+  self := lr_self_exe(sb[..]);
+  return lm_main(ifx self.count > 0 then self else "lean-run");
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; _ = args_load(a[..]);
   verb := args_at(a[..], 0);
@@ -543,6 +635,9 @@ tool_main :: () -> int #export_c #effects(all) {
   home := proc_getenv("HOME", hb[..]);
   if verb == "doctor" { return lr_cmd_doctor(a[..], home); }
   if verb == "verify" { return lr_cmd_verify(a[..], home); }
+  if verb == "goal" || verb == "try" || verb == "hover" || verb == "diagnostics" { return lr_cmd_lsp_op(verb, a[..], home); }
+  if verb == "host" { return lr_cmd_host(a[..], home); }
+  if verb == "mcp" { return lr_cmd_mcp(); }
   if verb == "sample" { return lr_cmd_sample(a[..], home); }
   if verb == "gym" { return lr_cmd_gym(a[..], home); }
   if verb == "card" { return lr_cmd_card(a[..]); }

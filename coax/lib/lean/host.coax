@@ -1,0 +1,594 @@
+// Warm resident Lean 4 LSP host daemon & Unix-socket client (oa-leanhost;
+// Epic #13943, #13947; docs/lean/spec.md §3).
+//
+// Keeps a long-lived `lean --server` process warm behind an owner-only Unix domain socket
+// (~/.openagents/lean/host.sock, authenticated via cxsock_peer_self) with 15-minute idle TTL.
+// Imperative OS-effect shell: tested end-to-end via `lean-run goal|try|hover|diagnostics|host`.
+#load "../sys/proc-raw.coax";
+#load "../sys/fs.coax";
+#load "../net/socket_foreign.coax";
+#load "lsp.coax";
+#load "verify.coax";
+
+LH_IDLE_TTL_MS :: 900000;   // 15 minutes idle shutdown
+LH_RECV_CAP :: 524288;      // 512 KiB LSP stream ring buffer
+LH_FILE_CAP :: 262144;      // 256 KiB per .lean file
+LH_MAX_DOCS :: 16;
+LH_MAX_DIAGS :: 32;
+
+LhDoc :: struct {
+  uri: [1024] u8; uri_n: int;
+  path: [1024] u8; path_n: int;
+  version: int;
+  hash: u64;
+  diag_count: int;
+  diags: [LH_MAX_DIAGS] LlspDiag;
+}
+
+LhDaemon :: struct {
+  home: [FS_PATH_MAX] u8; home_n: int;
+  sock_path: [FS_PATH_MAX] u8; sock_n: int;
+  root: [FS_PATH_MAX] u8; root_n: int;
+  lean_h: int;          // proc handle for `lean --server`, -1 if not running
+  lean_pid: int;
+  next_id: int;
+  queries: int;
+  last_active_ms: int;
+  recv_buf: [LH_RECV_CAP] u8;
+  recv_n: int;
+  doc_count: int;
+  docs: [LH_MAX_DOCS] LhDoc;
+}
+
+lh_hash_bytes :: (s: string) -> u64 {
+  h: u64 = 2166136261;
+  for c: s {
+    h = ((h ^ cast(u64) c) & 0xFFFFFFFF) * 16777619;
+    h = h & 0xFFFFFFFF;
+  }
+  return h;
+}
+
+lh_sock_path :: (home: string, out: [] u8) -> string {
+  b0: [FS_PATH_MAX] u8;
+  dir := fs_join(home, ".openagents/lean", b0[..]);
+  _ = fs_mkdir_all(dir);
+  return fs_join(dir, "host.sock", out);
+}
+
+lh_find_project_root :: (file_path: string, out: [] u8) -> string {
+  cur: [FS_PATH_MAX] u8;
+  cn := lg_put(cur[..], fs_dir(file_path));
+  for step: 0..<12 {
+    if cn <= 0 { break; }
+    dir := cast(string) cur[0..<cn];
+    t0: [FS_PATH_MAX] u8; t1: [FS_PATH_MAX] u8; t2: [FS_PATH_MAX] u8;
+    if fs_exists(fs_join(dir, "lakefile.toml", t0[..]))
+      || fs_exists(fs_join(dir, "lakefile.lean", t1[..]))
+      || fs_exists(fs_join(dir, "lean-toolchain", t2[..])) {
+      rn := lg_put(out, dir);
+      return cast(string) out[0..<rn];
+    }
+    parent := fs_dir(dir);
+    if parent == dir || parent.count == 0 { break; }
+    cn = lg_put(cur[..], parent);
+  }
+  rn := lg_put(out, fs_dir(file_path));
+  return cast(string) out[0..<rn];
+}
+
+lh_send_lsp :: (d: [] LhDaemon, json_body: string) -> bool #effects(all) {
+  if d[0].lean_h < 0 { return false; }
+  wire: [LH_FILE_CAP + 4096] u8;
+  wn := llsp_frame_write(json_body, wire[..]);
+  if wn <= 0 { return false; }
+  return proc_send(d[0].lean_h, cast(string) wire[0..<wn]);
+}
+
+lh_drop_recv :: (d: [] LhDaemon, count: int) {
+  if count <= 0 { return; }
+  if count >= d[0].recv_n { d[0].recv_n = 0; return; }
+  rem := d[0].recv_n - count;
+  for i: 0..<rem { d[0].recv_buf[i] = d[0].recv_buf[count + i]; }
+  d[0].recv_n = rem;
+}
+
+// Reads one complete Content-Length framed JSON message from `lean --server` into `out`.
+// Returns message length (>0), 0 on timeout, or -1 on EOF/error.
+lh_read_lsp :: (d: [] LhDaemon, timeout_ms: int, out: [] u8) -> int #effects(all) {
+  if d[0].lean_h < 0 { return -1; }
+  deadline := proc_now_ms() + timeout_ms;
+  while true {
+    if d[0].recv_n > 0 {
+      fr := llsp_frame_parse(d[0].recv_buf[..], d[0].recv_n);
+      if fr.status == LLSP_FRAME_OK {
+        blen := fr.body_to - fr.body_from;
+        copy_n := ifx blen < out.count then blen else out.count;
+        for i: 0..<copy_n { out[i] = d[0].recv_buf[fr.body_from + i]; }
+        lh_drop_recv(d, fr.consumed);
+        return copy_n;
+      }
+      if fr.status == LLSP_FRAME_BAD {
+        d[0].recv_n = 0;
+        return -1;
+      }
+    }
+    now := proc_now_ms();
+    left := deadline - now;
+    if left <= 0 { return 0; }
+    if d[0].recv_n >= LH_RECV_CAP { d[0].recv_n = 0; return -1; }
+    got := cxproc_read_bytes(d[0].lean_h, ifx left > 250 then 250 else left, d[0].recv_buf[d[0].recv_n..<LH_RECV_CAP]);
+    if got == PROC_EOF || got == PROC_ERROR { return -1; }
+    if got > 0 { d[0].recv_n += got; }
+  }
+  return 0;
+}
+
+lh_find_doc :: (d: [] LhDaemon, uri: string) -> int {
+  for i: 0..<d[0].doc_count {
+    if cast(string) d[0].docs[i].uri[0..<d[0].docs[i].uri_n] == uri { return i; }
+  }
+  return -1;
+}
+
+lh_record_diags :: (d: [] LhDaemon, msg: string) {
+  for i: 0..<d[0].doc_count {
+    uri := cast(string) d[0].docs[i].uri[0..<d[0].docs[i].uri_n];
+    n := llsp_decode_diags(msg, uri, d[0].docs[i].diags[..]);
+    if n >= 0 {
+      d[0].docs[i].diag_count = n;
+      return;
+    }
+  }
+}
+
+lh_stop_lean :: (d: [] LhDaemon) #effects(all) {
+  if d[0].lean_h >= 0 {
+    _ = proc_kill(d[0].lean_h, PROC_SIGTERM);
+    _ = proc_wait(d[0].lean_h, 500);
+    _ = proc_release(d[0].lean_h);
+  }
+  d[0].lean_h = -1;
+  d[0].lean_pid = 0;
+  d[0].recv_n = 0;
+  d[0].doc_count = 0;
+  d[0].root_n = 0;
+}
+
+// Ensures `lean --server` (or `lake env lean --server`) is alive for `root_dir`.
+lh_ensure_lean :: (d: [] LhDaemon, root_dir: string) -> bool #effects(all) {
+  if d[0].lean_h >= 0 {
+    if cast(string) d[0].root[0..<d[0].root_n] == root_dir { return true; }
+    lh_stop_lean(d);
+  }
+  home := cast(string) d[0].home[0..<d[0].home_n];
+  lb: [FS_PATH_MAX] u8;
+  lean_bin := lv_find_bin("lean", home, lb[..]);
+  if lean_bin.count == 0 { return false; }
+
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := proc_arg(h, lean_bin) && proc_arg(h, "--server");
+  if root_dir.count > 0 { ok = ok && proc_cwd(h, root_dir); }
+  // Preserve PATH with ~/.elan/bin and /opt/homebrew/bin
+  pb: [2048] u8; eb: [4096] u8;
+  cur_path := proc_getenv("PATH", pb[..]);
+  eo: [1] Jo; jo_start(eo[..], eb[..]);
+  jo_put(eo[..], "PATH="); jo_put(eo[..], home); jo_put(eo[..], "/.elan/bin:/opt/homebrew/bin:");
+  jo_put(eo[..], cur_path);
+  ok = ok && proc_env(h, jo_text(eo[..]));
+  if !ok || proc_start(h) != 0 {
+    _ = proc_release(h);
+    return false;
+  }
+  d[0].lean_h = h;
+  d[0].lean_pid = proc_pid(h);
+  d[0].root_n = lg_put(d[0].root[..], root_dir);
+  d[0].recv_n = 0;
+  d[0].doc_count = 0;
+  d[0].next_id = 1;
+
+  // Send initialize -> wait for id=1 -> send initialized
+  ub: [FS_PATH_MAX + 16] u8;
+  ruri := ifx root_dir.count > 0 then llsp_file_uri(root_dir, ub[..]) else "";
+  ib: [2048] u8;
+  init_id := d[0].next_id; d[0].next_id += 1;
+  if !lh_send_lsp(d, llsp_req_initialize(init_id, ruri, ib[..])) { lh_stop_lean(d); return false; }
+  msg: [131072] u8;
+  deadline := proc_now_ms() + 10000;
+  got_init := false;
+  while proc_now_ms() < deadline {
+    n := lh_read_lsp(d, 2000, msg[..]);
+    if n < 0 { lh_stop_lean(d); return false; }
+    if n == 0 { continue; }
+    s := cast(string) msg[0..<n];
+    nodes: [2048] JvNode; jv: [1] Jv;
+    if jv_parse(jv[..], s, nodes[..]) && jv_int(jv[0], jv_get(jv[0], 0, "id"), -1) == init_id {
+      got_init = true;
+      break;
+    }
+  }
+  if !got_init { lh_stop_lean(d); return false; }
+  _ = lh_send_lsp(d, llsp_notif_initialized(ib[..]));
+  return true;
+}
+
+lh_wait_progress :: (d: [] LhDaemon, uri: string, timeout_ms: int) -> bool #effects(all) {
+  msg: [131072] u8;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    n := lh_read_lsp(d, 200, msg[..]);
+    if n < 0 { return false; }
+    if n == 0 { continue; }
+    s := cast(string) msg[0..<n];
+    lh_record_diags(d, s);
+    if llsp_is_progress_done(s, uri) { return true; }
+  }
+  return false;
+}
+
+lh_wait_response :: (d: [] LhDaemon, want_id: int, timeout_ms: int, out: [] u8) -> int #effects(all) {
+  msg: [131072] u8;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    n := lh_read_lsp(d, 200, msg[..]);
+    if n < 0 { return -1; }
+    if n == 0 { continue; }
+    s := cast(string) msg[0..<n];
+    lh_record_diags(d, s);
+    nodes: [4096] JvNode; jv: [1] Jv;
+    if jv_parse(jv[..], s, nodes[..]) && jv_int(jv[0], jv_get(jv[0], 0, "id"), -1) == want_id {
+      cn := ifx n < out.count then n else out.count;
+      for i: 0..<cn { out[i] = msg[i]; }
+      return cn;
+    }
+  }
+  return 0;
+}
+
+// Ensures `file_path` is opened and synchronized with its latest disk text. Returns doc index or -1.
+lh_sync_doc :: (d: [] LhDaemon, file_path: string, src_buf: [] u8, src_len_out: [] int, warm_out: [] bool) -> int #effects(all) {
+  sn := fs_read(file_path, src_buf);
+  if sn < 0 { return -1; }
+  src_len_out[0] = sn;
+  src := cast(string) src_buf[0..<sn];
+  h := lh_hash_bytes(src);
+
+  rb: [FS_PATH_MAX] u8;
+  root := lh_find_project_root(file_path, rb[..]);
+  if !lh_ensure_lean(d, root) { return -1; }
+
+  ub: [1024] u8;
+  uri := llsp_file_uri(file_path, ub[..]);
+  idx := lh_find_doc(d, uri);
+  req: [LH_FILE_CAP + 4096] u8;
+  if idx >= 0 {
+    if d[0].docs[idx].hash == h {
+      warm_out[0] = true;
+      return idx;
+    }
+    d[0].docs[idx].version += 1;
+    d[0].docs[idx].hash = h;
+    d[0].docs[idx].diag_count = 0;
+    warm_out[0] = true;
+    _ = lh_send_lsp(d, llsp_notif_did_change(uri, d[0].docs[idx].version, src, req[..]));
+    _ = lh_wait_progress(d, uri, 8000);
+    return idx;
+  }
+  if d[0].doc_count >= LH_MAX_DOCS {
+    // Evict slot 0
+    for k: 1..<LH_MAX_DOCS { d[0].docs[k - 1] = d[0].docs[k]; }
+    d[0].doc_count = LH_MAX_DOCS - 1;
+  }
+  idx = d[0].doc_count;
+  d[0].doc_count += 1;
+  d[0].docs[idx] = LhDoc.{version = 1, hash = h};
+  d[0].docs[idx].uri_n = lg_put(d[0].docs[idx].uri[..], uri);
+  d[0].docs[idx].path_n = lg_put(d[0].docs[idx].path[..], file_path);
+  warm_out[0] = false;
+  _ = lh_send_lsp(d, llsp_notif_did_open(uri, 1, src, req[..]));
+  _ = lh_wait_progress(d, uri, 10000);
+  return idx;
+}
+
+lh_write_goal_fields :: (o: [] Jo, st: [] LgState) {
+  jo_key(o, "has_goal"); jo_bool(o, st[0].has_goal);
+  jo_key(o, "accomplished"); jo_bool(o, st[0].accomplished);
+  jo_key(o, "has_sorry"); jo_bool(o, st[0].has_sorry);
+  jo_key(o, "goal_count"); jo_int(o, st[0].goal_count);
+  jo_key(o, "summary"); jo_str(o, cast(string) st[0].summary[0..<st[0].summary_n]);
+  jo_key(o, "goals"); jo_arr(o);
+  for gi: 0..<st[0].goal_count {
+    jo_obj(o);
+    jo_key(o, "case"); jo_str(o, cast(string) st[0].goals[gi].case_name[0..<st[0].goals[gi].case_n]);
+    jo_key(o, "hyps"); jo_arr(o);
+    for hi: 0..<st[0].goals[gi].hyp_count {
+      jo_str(o, cast(string) st[0].goals[gi].hyps[hi][0..<st[0].goals[gi].hyps_n[hi]]);
+    }
+    jo_end(o);
+    jo_key(o, "target"); jo_str(o, cast(string) st[0].goals[gi].target[0..<st[0].goals[gi].target_n]);
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+lh_write_diags :: (o: [] Jo, doc: [] LhDoc) {
+  jo_key(o, "diagnostics"); jo_arr(o);
+  for i: 0..<doc[0].diag_count {
+    jo_obj(o);
+    jo_key(o, "line"); jo_int(o, doc[0].diags[i].line);
+    jo_key(o, "col"); jo_int(o, doc[0].diags[i].col);
+    jo_key(o, "severity"); jo_int(o, doc[0].diags[i].severity);
+    jo_key(o, "message"); jo_str(o, cast(string) doc[0].diags[i].msg[0..<doc[0].diags[i].msg_n]);
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+// Handles one JSON request line inside the warm daemon and writes one JSON response line into `out`.
+lh_handle_req :: (d: [] LhDaemon, req_line: string, out: [] u8, should_stop: [] bool) -> int #effects(all) {
+  t0 := proc_now_ms();
+  d[0].last_active_ms = t0;
+  o: [1] Jo; jo_start(o[..], out);
+  nodes: [2048] JvNode; jv: [1] Jv;
+  if !jv_parse(jv[..], req_line, nodes[..]) || jv_kind(jv[0], 0) != JV_OBJECT {
+    jo_put(o[..], "{\"ok\":false,\"error\":\"invalid JSON request\"}");
+    return jo_text(o[..]).count;
+  }
+  op_b: [32] u8; opn := jv_str(jv[0], jv_get(jv[0], 0, "op"), op_b[..]);
+  op := ifx opn > 0 then cast(string) op_b[0..<opn] else "";
+
+  if op == "status" {
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], true);
+    jo_key(o[..], "running"); jo_bool(o[..], true);
+    jo_key(o[..], "lean_running"); jo_bool(o[..], d[0].lean_h >= 0);
+    jo_key(o[..], "lean_pid"); jo_int(o[..], d[0].lean_pid);
+    jo_key(o[..], "root"); jo_str(o[..], cast(string) d[0].root[0..<d[0].root_n]);
+    jo_key(o[..], "open_docs"); jo_int(o[..], d[0].doc_count);
+    jo_key(o[..], "queries"); jo_int(o[..], d[0].queries);
+    jo_end(o[..]);
+    return jo_text(o[..]).count;
+  }
+  if op == "stop" {
+    should_stop[0] = true;
+    jo_put(o[..], "{\"ok\":true,\"stopped\":true}");
+    return jo_text(o[..]).count;
+  }
+
+  d[0].queries += 1;
+  fb: [FS_PATH_MAX] u8; fn := jv_str(jv[0], jv_get(jv[0], 0, "file"), fb[..]);
+  file := ifx fn > 0 then cast(string) fb[0..<fn] else "";
+  line_1 := jv_int(jv[0], jv_get(jv[0], 0, "line"), 1);
+  col_1 := jv_int(jv[0], jv_get(jv[0], 0, "col"), 1);
+  if file.count == 0 {
+    jo_put(o[..], "{\"ok\":false,\"error\":\"missing file path\"}");
+    return jo_text(o[..]).count;
+  }
+
+  src_buf: [LH_FILE_CAP] u8;
+  src_len: [1] int;
+  warm: [1] bool;
+  idx := lh_sync_doc(d, file, src_buf[..], src_len[..], warm[..]);
+  if idx < 0 {
+    jo_put(o[..], "{\"ok\":false,\"error\":\"could not open file or start lean --server (check `lean-run doctor`)\"}");
+    return jo_text(o[..]).count;
+  }
+  uri := cast(string) d[0].docs[idx].uri[0..<d[0].docs[idx].uri_n];
+
+  if op == "diagnostics" {
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], true);
+    jo_key(o[..], "file"); jo_str(o[..], file);
+    jo_key(o[..], "warm"); jo_bool(o[..], warm[0]);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], proc_now_ms() - t0);
+    lh_write_diags(o[..], d[0].docs[idx..<idx + 1]);
+    jo_end(o[..]);
+    return jo_text(o[..]).count;
+  }
+
+  if op == "hover" {
+    rb: [2048] u8; resp: [65536] u8;
+    qid := d[0].next_id; d[0].next_id += 1;
+    _ = lh_send_lsp(d, llsp_req_pos(qid, "textDocument/hover", uri, line_1 - 1, col_1 - 1, rb[..]));
+    rn := lh_wait_response(d, qid, 4000, resp[..]);
+    hb: [16384] u8;
+    hn := ifx rn > 0 then llsp_decode_hover(cast(string) resp[0..<rn], hb[..]) else 0;
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], rn > 0);
+    jo_key(o[..], "file"); jo_str(o[..], file);
+    jo_key(o[..], "line"); jo_int(o[..], line_1);
+    jo_key(o[..], "col"); jo_int(o[..], col_1);
+    jo_key(o[..], "warm"); jo_bool(o[..], warm[0]);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], proc_now_ms() - t0);
+    jo_key(o[..], "hover"); jo_str(o[..], cast(string) hb[0..<hn]);
+    jo_end(o[..]);
+    return jo_text(o[..]).count;
+  }
+
+  if op == "goal" {
+    rb: [2048] u8; resp: [65536] u8;
+    qid := d[0].next_id; d[0].next_id += 1;
+    _ = lh_send_lsp(d, llsp_req_pos(qid, "$/lean/plainGoal", uri, line_1 - 1, col_1 - 1, rb[..]));
+    rn := lh_wait_response(d, qid, 4000, resp[..]);
+    st: [1] LgState;
+    ok := rn > 0 && llsp_decode_plain_goal(cast(string) resp[0..<rn], st[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], ok);
+    jo_key(o[..], "file"); jo_str(o[..], file);
+    jo_key(o[..], "line"); jo_int(o[..], line_1);
+    jo_key(o[..], "col"); jo_int(o[..], col_1);
+    jo_key(o[..], "warm"); jo_bool(o[..], warm[0]);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], proc_now_ms() - t0);
+    lh_write_goal_fields(o[..], st[..]);
+    lh_write_diags(o[..], d[0].docs[idx..<idx + 1]);
+    jo_end(o[..]);
+    return jo_text(o[..]).count;
+  }
+
+  if op == "try" {
+    tb: [4096] u8; tn := jv_str(jv[0], jv_get(jv[0], 0, "tactic"), tb[..]);
+    tactic := ifx tn > 0 then cast(string) tb[0..<tn] else "";
+    if tactic.count == 0 {
+      jo_put(o[..], "{\"ok\":false,\"error\":\"missing tactic\"}");
+      return jo_text(o[..]).count;
+    }
+    // 1. Capture goal before applying tactic
+    rb: [2048] u8; resp: [65536] u8;
+    qid1 := d[0].next_id; d[0].next_id += 1;
+    _ = lh_send_lsp(d, llsp_req_pos(qid1, "$/lean/plainGoal", uri, line_1 - 1, col_1 - 1, rb[..]));
+    rn1 := lh_wait_response(d, qid1, 4000, resp[..]);
+    before_st: [1] LgState;
+    if rn1 > 0 { _ = llsp_decode_plain_goal(cast(string) resp[0..<rn1], before_st[..]); }
+
+    // 2. Inject tactic strictly in memory via didChange (NEVER writes to disk!)
+    orig := cast(string) src_buf[0..<src_len[0]];
+    inj_buf: [LH_FILE_CAP] u8;
+    inj_n := llsp_inject_tactic(orig, line_1, col_1, tactic, inj_buf[..]);
+    if inj_n <= 0 {
+      jo_put(o[..], "{\"ok\":false,\"error\":\"file too large for scratch tactic overlay\"}");
+      return jo_text(o[..]).count;
+    }
+    chg_buf: [LH_FILE_CAP + 4096] u8;
+    d[0].docs[idx].version += 1;
+    d[0].docs[idx].diag_count = 0;
+    _ = lh_send_lsp(d, llsp_notif_did_change(uri, d[0].docs[idx].version, cast(string) inj_buf[0..<inj_n], chg_buf[..]));
+    _ = lh_wait_progress(d, uri, 6000);
+
+    // 3. Query goal immediately after the injected tactic (next line at same indentation)
+    qid2 := d[0].next_id; d[0].next_id += 1;
+    _ = lh_send_lsp(d, llsp_req_pos(qid2, "$/lean/plainGoal", uri, line_1, col_1 - 1, rb[..]));
+    rn2 := lh_wait_response(d, qid2, 4000, resp[..]);
+    after_st: [1] LgState;
+    if rn2 > 0 { _ = llsp_decode_plain_goal(cast(string) resp[0..<rn2], after_st[..]); }
+    snap_doc: [1] LhDoc; snap_doc[0] = d[0].docs[idx];
+    has_err := false;
+    for di: 0..<snap_doc[0].diag_count {
+      if snap_doc[0].diags[di].severity == 1 && snap_doc[0].diags[di].line == line_1 { has_err = true; }
+    }
+
+    // 4. Send restore notification cleanly right after capturing result (server processes it before next query)
+    elapsed := proc_now_ms() - t0;
+    d[0].docs[idx].version += 1;
+    d[0].docs[idx].diag_count = 0;
+    _ = lh_send_lsp(d, llsp_notif_did_change(uri, d[0].docs[idx].version, orig, chg_buf[..]));
+
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], !has_err);
+    jo_key(o[..], "file"); jo_str(o[..], file);
+    jo_key(o[..], "line"); jo_int(o[..], line_1);
+    jo_key(o[..], "col"); jo_int(o[..], col_1);
+    jo_key(o[..], "tactic"); jo_str(o[..], tactic);
+    jo_key(o[..], "disk_mutated"); jo_bool(o[..], false);
+    jo_key(o[..], "warm"); jo_bool(o[..], warm[0]);
+    jo_key(o[..], "elapsed_ms"); jo_int(o[..], elapsed);
+    jo_key(o[..], "before_summary"); jo_str(o[..], cast(string) before_st[0].summary[0..<before_st[0].summary_n]);
+    lh_write_goal_fields(o[..], after_st[..]);
+    lh_write_diags(o[..], snap_doc[..]);
+    jo_end(o[..]);
+    return jo_text(o[..]).count;
+  }
+
+  jo_put(o[..], "{\"ok\":false,\"error\":\"unknown leanhost op\"}");
+  return jo_text(o[..]).count;
+}
+
+// Runs the resident oa-leanhost daemon until stopped or idle for LH_IDLE_TTL_MS.
+lh_serve_daemon :: (home: string) -> int #effects(all) {
+  d: [1] LhDaemon;
+  d[0].lean_h = -1;
+  d[0].home_n = lg_put(d[0].home[..], home);
+  sp := lh_sock_path(home, d[0].sock_path[..]);
+  d[0].sock_n = sp.count;
+  _ = fs_remove(sp);
+
+  for c: sp { _ = cxsock_host_push(cast(int) c); }
+  listener := cxsock_listen_unix();
+  if listener < 0 { return 1; }
+  defer {
+    lh_stop_lean(d[..]);
+    _ = cxsock_close(listener);
+    _ = fs_remove(sp);
+  }
+  d[0].last_active_ms = proc_now_ms();
+  req_buf: [65536] u8;
+  rep_buf: [131072] u8;
+  stop_flag: [1] bool;
+
+  while !stop_flag[0] {
+    conn := cxsock_accept(listener, 250);
+    if conn < 0 {
+      if proc_now_ms() - d[0].last_active_ms >= LH_IDLE_TTL_MS { break; }
+      continue;
+    }
+    if cxsock_peer_self(conn) == 1 {
+      n := 0; done := false;
+      dl := cxsock_now_ms() + 2000;
+      while cxsock_now_ms() < dl && !done {
+        got := cxsock_read(conn, 100);
+        if got == -2 { continue; }
+        if got < 0 { break; }
+        for i: 0..<got {
+          b := cxsock_byte(conn, i);
+          if b == 10 { done = true; break; }
+          if n < req_buf.count { req_buf[n] = cast(u8) b; n += 1; }
+        }
+      }
+      if done && n > 0 {
+        rn := lh_handle_req(d[..], cast(string) req_buf[0..<n], rep_buf[..], stop_flag[..]);
+        for i: 0..<rn { _ = cxsock_write(conn, cast(int) rep_buf[i]); }
+        _ = cxsock_write(conn, 10);
+        _ = cxsock_flush(conn, 3000);
+      }
+    }
+    _ = cxsock_close(conn);
+  }
+  return 0;
+}
+
+lh_unix_exchange :: (sock_path: string, req_json: string, out: [] u8, timeout_ms: int) -> int #effects(all) {
+  for c: sock_path { _ = cxsock_host_push(cast(int) c); }
+  s := cxsock_connect_unix(1500);
+  if s < 0 { return -1; }
+  defer { _ = cxsock_close(s); }
+  if cxsock_peer_self(s) != 1 { return -1; }
+  for c: req_json { if cxsock_write(s, cast(int) c) < 0 { return -1; } }
+  if cxsock_write(s, 10) < 0 || cxsock_flush(s, 2000) < 0 { return -1; }
+  dl := cxsock_now_ms() + timeout_ms;
+  at := 0;
+  while cxsock_now_ms() < dl {
+    got := cxsock_read(s, 150);
+    if got == -2 { continue; }
+    if got < 0 { break; }
+    for i: 0..<got {
+      b := cxsock_byte(s, i);
+      if b == 10 { return at; }
+      if at < out.count { out[at] = cast(u8) b; at += 1; }
+    }
+  }
+  return -1;
+}
+
+// Sends a request to the resident oa-leanhost daemon, auto-spawning it detached if needed.
+lh_client_call :: (home: string, self_exe: string, req_json: string, auto_start: bool, out: [] u8) -> int #effects(all) {
+  sb: [FS_PATH_MAX] u8;
+  sp := lh_sock_path(home, sb[..]);
+  n := lh_unix_exchange(sp, req_json, out, 15000);
+  if n > 0 { return n; }
+  if !auto_start || self_exe.count == 0 { return -1; }
+
+  // Spawn detached `lean-run host serve`
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, self_exe) && proc_arg(h, "host") && proc_arg(h, "serve") && proc_detach(h) && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return -1; }
+  _ = proc_release(h);
+
+  // Wait up to 3 s for daemon socket to come online
+  for attempt: 0..<30 {
+    proc_sleep(100);
+    n = lh_unix_exchange(sp, req_json, out, 15000);
+    if n > 0 { return n; }
+  }
+  return -1;
+}

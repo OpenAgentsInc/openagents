@@ -63,8 +63,31 @@ extension CoderWindow {
             cd_file_open(page, shown, raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), Int64(size))
         }
         if ok == 0 { cd_file_failed(page, shown, "Coder couldn't show \(name) here.") }
-        else if cd_file_mode(page) == 1 { window.makeFirstResponder(canvas) }
+        else {
+            if cd_file_mode(page) == 1 { window.makeFirstResponder(canvas) }
+            if url.pathExtension.lowercased() == "lean" { refreshFilePaneLeanGoal() }
+        }
         wake()
+    }
+
+    /// Asynchronously queries oa-leanhost (`lean-run goal`) for the open .lean file at cursor line (#13947).
+    func refreshFilePaneLeanGoal() {
+        guard let url = fileURL, url.pathExtension.lowercased() == "lean" else { return }
+        let line = max(1, Int(cd_file_line(page)))
+        runLeanTool(["goal", url.path, "\(line)", "5", "--json"]) { [weak self] out in
+            guard let self, self.fileURL == url else { return }
+            guard let out, let data = out.data(using: .utf8),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                cd_file_lean_goal(self.page, Int32(line), 0, 0, "oa-leanhost unavailable (install elan / Lean 4)")
+                self.wake()
+                return
+            }
+            let ok: Int32 = (obj["ok"] as? Bool) == true ? 1 : 0
+            let done: Int32 = (obj["accomplished"] as? Bool) == true ? 1 : 0
+            let summary = (obj["summary"] as? String) ?? ((obj["error"] as? String) ?? "No tactic goal at cursor")
+            cd_file_lean_goal(self.page, Int32(line), ok, done, summary)
+            self.wake()
+        }
     }
 
     /// What the pane asked (cd_action 40 to 43).

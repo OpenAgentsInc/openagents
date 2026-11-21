@@ -2030,3 +2030,8 @@ void cd_lean_atlas_lod_set(void *page, int lod) {
   coder_page_lean_atlas_lod_set(cd_state(c), lod);
   cd_woke(c);
 }
+void cd_file_lean_goal(void *page, int line, int ok, int accomplished, const char *summary) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_file_lean_goal(cd_state(c), line, ok != 0, accomplished != 0, cd_string(summary));
+  cd_woke(c);
+}

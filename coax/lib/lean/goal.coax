@@ -1,0 +1,181 @@
+// Structured Lean 4 tactic-state parser (Epic #13943, #13947; docs/lean/spec.md §3).
+// Parses the strings returned by Lean 4's `$/lean/plainGoal` LSP request into structured
+// cases, hypotheses, turnstile targets (`⊢`), and compact single-line summaries for the
+// Desktop File Pane Goal Strip and `lean-run goal` / `lean-run try` CLI/MCP outputs.
+//
+//   coax/bin/coax test coax/lib/lean/goal.coax --library
+
+LG_MAX_GOALS :: 8;
+LG_MAX_HYPS :: 24;
+LG_LINE_CAP :: 256;
+LG_TARGET_CAP :: 512;
+
+LgGoal :: struct {
+  case_name: [96] u8; case_n: int;
+  hyps: [LG_MAX_HYPS] [LG_LINE_CAP] u8;
+  hyps_n: [LG_MAX_HYPS] int;
+  hyp_count: int;
+  target: [LG_TARGET_CAP] u8; target_n: int;
+}
+
+LgState :: struct {
+  has_goal: bool;
+  accomplished: bool;
+  has_sorry: bool;
+  goal_count: int;
+  goals: [LG_MAX_GOALS] LgGoal;
+  summary: [256] u8; summary_n: int;
+}
+
+lg_put :: (dst: [] u8, src: string) -> int {
+  n := 0;
+  for c: src {
+    if n >= dst.count { break; }
+    dst[n] = c; n += 1;
+  }
+  return n;
+}
+
+lg_append :: (dst: [] u8, at: int, src: string) -> int {
+  n := at;
+  for c: src {
+    if n >= dst.count { break; }
+    dst[n] = c; n += 1;
+  }
+  return n;
+}
+
+lg_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+lg_starts :: (s: string, pfx: string) -> bool {
+  if s.count < pfx.count { return false; }
+  for i: 0..<pfx.count { if s[i] != pfx[i] { return false; } }
+  return true;
+}
+
+lg_contains :: (s: string, sub: string) -> bool {
+  if sub.count == 0 { return true; }
+  if s.count < sub.count { return false; }
+  i := 0;
+  while i + sub.count <= s.count {
+    ok := true;
+    for j: 0..<sub.count { if s[i + j] != sub[j] { ok = false; break; } }
+    if ok { return true; }
+    i += 1;
+  }
+  return false;
+}
+
+// Parses a single Lean 4 goal block (e.g. "case zero\na : Nat\n⊢ a + 0 = 0 + a").
+lg_parse_one :: (raw: string, out: [] LgGoal) {
+  out[0] = LgGoal.{};
+  pos := 0;
+  in_target := false;
+  while pos < raw.count {
+    end := pos;
+    while end < raw.count && raw[end] != '\n' { end += 1; }
+    line := lg_trim(cast(string) raw[pos..<end]);
+    pos = end + 1;
+    if line.count == 0 { continue; }
+    if lg_starts(line, "```") { continue; }
+    if !in_target && lg_starts(line, "case ") && out[0].case_n == 0 {
+      out[0].case_n = lg_put(out[0].case_name[..], lg_trim(cast(string) line[5..<line.count]));
+      continue;
+    }
+    // UTF-8 turnstile "⊢" is 0xE2 0x8A 0xA2 (3 bytes), or ASCII "|-"
+    if !in_target && ((line.count >= 3 && line[0] == 0xE2 && line[1] == 0x8A && line[2] == 0xA2) || lg_starts(line, "|-")) {
+      in_target = true;
+      off := ifx line[0] == 0xE2 then 3 else 2;
+      rest := lg_trim(cast(string) line[off..<line.count]);
+      out[0].target_n = lg_put(out[0].target[..], rest);
+      continue;
+    }
+    if in_target {
+      out[0].target_n = lg_append(out[0].target[..], out[0].target_n, " ");
+      out[0].target_n = lg_append(out[0].target[..], out[0].target_n, line);
+    } else if out[0].hyp_count < LG_MAX_HYPS {
+      hi := out[0].hyp_count;
+      out[0].hyps_n[hi] = lg_put(out[0].hyps[hi][..], line);
+      out[0].hyp_count += 1;
+    }
+  }
+}
+
+// Parses the rendered string or array of goal strings from `$/lean/plainGoal`.
+lg_parse_goals :: (goal_texts: [] string, rendered: string, out: [] LgState) {
+  out[0] = LgState.{};
+  if lg_contains(rendered, "no goals") {
+    out[0].has_goal = true;
+    out[0].accomplished = true;
+    out[0].summary_n = lg_put(out[0].summary[..], "Goals accomplished");
+    return;
+  }
+  if lg_contains(rendered, "sorry") { out[0].has_sorry = true; }
+  for gi: 0..<goal_texts.count {
+    if out[0].goal_count >= LG_MAX_GOALS { break; }
+    t := lg_trim(goal_texts[gi]);
+    if t.count == 0 { continue; }
+    if lg_contains(t, "sorry") { out[0].has_sorry = true; }
+    g: [1] LgGoal;
+    lg_parse_one(t, g[..]);
+    if g[0].target_n > 0 || g[0].hyp_count > 0 {
+      out[0].goals[out[0].goal_count] = g[0];
+      out[0].goal_count += 1;
+    }
+  }
+  if out[0].goal_count == 0 && rendered.count > 0 {
+    g: [1] LgGoal;
+    lg_parse_one(rendered, g[..]);
+    if g[0].target_n > 0 || g[0].hyp_count > 0 {
+      out[0].goals[0] = g[0];
+      out[0].goal_count = 1;
+    }
+  }
+  if out[0].goal_count > 0 {
+    out[0].has_goal = true;
+    n := 0;
+    if out[0].goal_count > 1 {
+      buf: [16] u8;
+      // format count prefix "[N goals] "
+      n = lg_append(out[0].summary[..], n, "[");
+      c := out[0].goal_count;
+      if c >= 10 { buf[0] = cast(u8) ('0' + (c / 10) % 10); buf[1] = cast(u8) ('0' + c % 10); n = lg_append(out[0].summary[..], n, cast(string) buf[0..<2]); }
+      else { buf[0] = cast(u8) ('0' + c); n = lg_append(out[0].summary[..], n, cast(string) buf[0..<1]); }
+      n = lg_append(out[0].summary[..], n, " goals] ");
+    }
+    if out[0].goals[0].case_n > 0 {
+      n = lg_append(out[0].summary[..], n, "case ");
+      n = lg_append(out[0].summary[..], n, cast(string) out[0].goals[0].case_name[0..<out[0].goals[0].case_n]);
+      n = lg_append(out[0].summary[..], n, " · ");
+    }
+    n = lg_append(out[0].summary[..], n, "⊢ ");
+    n = lg_append(out[0].summary[..], n, cast(string) out[0].goals[0].target[0..<out[0].goals[0].target_n]);
+    out[0].summary_n = n;
+  } else {
+    out[0].summary_n = lg_put(out[0].summary[..], "No tactic goal at cursor");
+  }
+}
+
+#test "lean goal parser: extracts case, hypotheses, turnstile target, multi-goal count, and accomplished state" {
+  st: [1] LgState;
+  g1 := [2] string.[
+    "case zero\na : Nat\n⊢ a + 0 = 0 + a",
+    "case succ\na k : Nat\nih : a + k = k + a\n⊢ a + (k + 1) = k + 1 + a"
+  ];
+  lg_parse_goals(g1[..], "", st[..]);
+  #assert st[0].has_goal && !st[0].accomplished && st[0].goal_count == 2;
+  #assert cast(string) st[0].goals[0].case_name[0..<st[0].goals[0].case_n] == "zero";
+  #assert st[0].goals[0].hyp_count == 1 && cast(string) st[0].goals[0].hyps[0][0..<st[0].goals[0].hyps_n[0]] == "a : Nat";
+  #assert cast(string) st[0].goals[0].target[0..<st[0].goals[0].target_n] == "a + 0 = 0 + a";
+  #assert st[0].goals[1].hyp_count == 2 && cast(string) st[0].goals[1].case_name[0..<st[0].goals[1].case_n] == "succ";
+  #assert lg_contains(cast(string) st[0].summary[0..<st[0].summary_n], "[2 goals] case zero · ⊢ a + 0 = 0 + a");
+
+  empty: [1] string;
+  lg_parse_goals(empty[0..<0], "no goals", st[..]);
+  #assert st[0].has_goal && st[0].accomplished && cast(string) st[0].summary[0..<st[0].summary_n] == "Goals accomplished";
+}

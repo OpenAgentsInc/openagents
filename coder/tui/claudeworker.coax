@@ -173,21 +173,47 @@ cw_beside :: (self: string, name: string, out: [] u8) -> string {
   n = json_raw(out, n, name);
   return ifx n < 0 || base.count == self.count then "" else cast(string) out[0..<n];
 }
+cw_valid_abs_mcp :: (path: string) -> bool {
+  if path.count == 0 || path[0] != '/' { return false; }
+  for b: path { if b == '"' || b == '\\' || b < 32 || b == 127 { return false; } }
+  return true;
+}
 // The simulator's MCP server for --mcp-config (`oasim mcp`, its tools named simulator_*), as the
 // mcpServers object's members; "" when path is not absolute or holds a byte JSON would read as more.
 cw_sim_servers :: (oasim: string, out: [] u8) -> string {
-  if oasim.count == 0 || oasim[0] != '/' { return ""; }
-  for b: oasim { if b == '"' || b == '\\' || b < 32 || b == 127 { return ""; } }
+  if !cw_valid_abs_mcp(oasim) { return ""; }
   n := json_raw(out, 0, "{\"simulator\":{\"type\":\"stdio\",\"command\":\"");
   n = json_raw(out, n, oasim);
   n = json_raw(out, n, "\",\"args\":[\"mcp\"]}}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
+// Combines optional simulator (`oasim mcp`) and Lean 4 / RH (`lean-run mcp`, #13947) stdio MCP servers.
+cw_mcp_servers :: (oasim: string, lean_run: string, out: [] u8) -> string {
+  has_sim := cw_valid_abs_mcp(oasim);
+  has_lean := cw_valid_abs_mcp(lean_run);
+  if !has_sim && !has_lean { return ""; }
+  n := json_raw(out, 0, "{");
+  if has_sim {
+    n = json_raw(out, n, "\"simulator\":{\"type\":\"stdio\",\"command\":\"");
+    n = json_raw(out, n, oasim);
+    n = json_raw(out, n, "\",\"args\":[\"mcp\"]}");
+  }
+  if has_lean {
+    if has_sim { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "\"lean\":{\"type\":\"stdio\",\"command\":\"");
+    n = json_raw(out, n, lean_run);
+    n = json_raw(out, n, "\",\"args\":[\"mcp\"]}");
+  }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
 #test "the simulator's MCP server is oasim beside the worker" {
-  b: [512] u8; s: [640] u8;
+  b: [512] u8; s: [1024] u8;
   #assert cw_beside("/A/OpenAgents.app/Contents/Resources/claudeworker", "oasim", b[..]) == "/A/OpenAgents.app/Contents/Resources/oasim";
   #assert cw_beside("claudeworker", "oasim", b[..]) == "";
   #assert cw_sim_servers("/A/Contents/Resources/oasim", s[..]) == "{\"simulator\":{\"type\":\"stdio\",\"command\":\"/A/Contents/Resources/oasim\",\"args\":[\"mcp\"]}}";
+  #assert cw_mcp_servers("/A/oasim", "/A/lean-run", s[..]) == "{\"simulator\":{\"type\":\"stdio\",\"command\":\"/A/oasim\",\"args\":[\"mcp\"]},\"lean\":{\"type\":\"stdio\",\"command\":\"/A/lean-run\",\"args\":[\"mcp\"]}}";
+  #assert cw_mcp_servers("", "/A/lean-run", s[..]) == "{\"lean\":{\"type\":\"stdio\",\"command\":\"/A/lean-run\",\"args\":[\"mcp\"]}}";
   #assert cw_sim_servers("oasim", s[..]) == "" && cw_sim_servers("", s[..]) == "" && cw_sim_servers("/a\"b", s[..]) == "" && cw_sim_servers("/a\\b", s[..]) == "" && cw_sim_servers("/a\nb", s[..]) == "";
   #assert cw_sim_servers("/a b/oasim", s[..]).count > 0;
   small: [8] u8; #assert cw_sim_servers("/A/oasim", small[..]) == "";
@@ -457,11 +483,15 @@ tool_main :: () -> int #export_c #effects(all) {
       return 0;
     }
     o[0].settings = hooks;
-    // the iOS Simulator's tools (oasim mcp, GitHub #13811) when oasim is beside the worker
-    simb: [FS_PATH_MAX] u8; simsv: [FS_PATH_MAX + 128] u8;
+    // the iOS Simulator's tools (oasim mcp, #13811) and Lean 4 / RH tools (lean-run mcp, #13947)
+    simb: [FS_PATH_MAX] u8; leanb: [FS_PATH_MAX] u8; simsv: [FS_PATH_MAX * 2 + 256] u8;
     sim := cl_getenv("OA_SIMHOST", simb[..]);
     if sim.count == 0 { sim = cw_beside(tool_self(selfb[..]), "oasim", simb[..]); }
-    if sim.count > 0 && fs_kind(sim) == FS_FILE { o[0].mcp_servers = cw_sim_servers(sim, simsv[..]); }
+    if sim.count > 0 && fs_kind(sim) != FS_FILE { sim = ""; }
+    lean_mcp := cl_getenv("OA_LEANRUN", leanb[..]);
+    if lean_mcp.count == 0 { lean_mcp = cw_beside(tool_self(selfb[..]), "lean-run", leanb[..]); }
+    if lean_mcp.count > 0 && fs_kind(lean_mcp) != FS_FILE { lean_mcp = ""; }
+    o[0].mcp_servers = cw_mcp_servers(sim, lean_mcp, simsv[..]);
     uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
     cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
     q[0].options = o[0];

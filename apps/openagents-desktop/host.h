@@ -701,4 +701,5 @@ int cd_lean_apply_plan(void *page, const char *plan_json);
 int cd_lean_state_json(void *page, const char *req_id, char *out, int cap);
 int cd_lean_req_str(void *page, char *out, int cap);
 void cd_lean_atlas_lod_set(void *page, int lod);
+void cd_file_lean_goal(void *page, int line, int ok, int accomplished, const char *summary);
 #endif

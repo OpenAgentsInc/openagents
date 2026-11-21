@@ -17,6 +17,7 @@
 // Not here: Anime Lab tools (#12634), resources, prompts and paging.
 
 #load "../../coder/tui/oasim-mcp.coax";
+#load "../../coder/tui/lean-run-mcp.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -648,6 +649,21 @@ mcp_oasim :: (named: string, self: string, path: string, out: [] u8) -> string {
   }
   return "";
 }
+mcp_lean_run :: (named: string, self: string, path: string, out: [] u8) -> string {
+  if named.count > 0 { return ifx fs_kind(named) == FS_FILE then named else ""; }
+  n := copy(fs_dir(self), out); n += copy("/lean-run", out[n..<out.count]);
+  if n < out.count && fs_kind(cast(string) out[0..<n]) == FS_FILE { return cast(string) out[0..<n]; }
+  i := 0;
+  while i < path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    if j > i {
+      n = copy(path[i..<j], out); n += copy("/lean-run", out[n..<out.count]);
+      if n < out.count && fs_kind(cast(string) out[0..<n]) == FS_FILE { return cast(string) out[0..<n]; }
+    }
+    i = j + 1;
+  }
+  return "";
+}
 // The server: one request a line on stdin, one answer a line on stdout, until stdin ends.
 mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   domains := args_value(a, "--domains", "realm");
@@ -660,8 +676,14 @@ mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if oasim.count == 0 { return fail(r, EXIT_FAIL, "mcp --domains device needs oasim (OpenAgents for Mac with Xcode): it is not beside this program or on PATH"); }
     return om_main(oasim);
   }
+  if domains == "lean" {
+    pb: [4096] u8; eb: [8192] u8;
+    lr := mcp_lean_run(proc_getenv("OA_LEANRUN", pb[..]), cast(string) exe[0..<en], proc_getenv("PATH", eb[..]), pb[..]);
+    if lr.count == 0 { return fail(r, EXIT_FAIL, "mcp --domains lean needs lean-run (OpenAgents Desktop): it is not beside this program or on PATH"); }
+    return lm_main(lr);
+  }
   if domains == "executor" { return ex_mcp_main(); }
-  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm|device|executor (labs tools come with #12634)"); }
+  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm|device|lean|executor (labs tools come with #12634)"); }
   cfg := McpCfg.{read_only = args_has(a, "--read-only"), all = args_has(a, "--all"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
   if args_has(a, "--profile") || profile != "default" { cfg.profile = profile; }
   line: [MCP_LINE] u8; out: [MCP_OUT] u8; wb: [MCP_OUT + 1] u8;

@@ -10,8 +10,10 @@ CP_FP_SMALL_LINES :: 512;    // lines fitting in the shared UiEditor; larger fil
 CP_FP_PATH :: 1024;          // bytes of the path it shows
 CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3; CP_FP_SCENE :: 4;   // what the pane holds
 // what its controls dispatch, and what it asks of the host (coder_page_action)
-CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82;
+CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82; CP_FP_LEAN_GOAL :: 83;
 CP_ASK_FILE_SAVE :: 40; CP_ASK_FILE_EXTERNAL :: 41; CP_ASK_FILE_CLOSE :: 42; CP_ASK_FILE_FOCUS :: 43;
+CP_ASK_FILE_LEAN_GOAL :: 157;
+CP_FP_LEAN_STRIP_H :: 54.0f32;
 CP_KB_FILE :: 3;             // the file's editor has the keyboard (editor.coax's CP_KB_*)
 CP_SCR_FILE :: 5;            // the wheel over the pane (input.coax's CP_SCR_*)
 
@@ -31,6 +33,19 @@ CpFilePane :: struct {
   saved: bool;                // saved since it opened, with no change after
   scroll: f32; content: f32; view: f32;   // the read-only / large-edit view's scroll
   body_x: f32; body_y: f32; body_w: f32; body_h: f32; cell_w: f32;   // the pane body rect and mono cell width in logical points
+  // Live Lean 4 Goal Strip state (#13947: populated asynchronously via oa-leanhost)
+  lean_goal: [256] u8; lean_goal_n: int;
+  lean_goal_line: int;
+  lean_goal_ok: bool;
+  lean_goal_done: bool;
+  lean_goal_busy: bool;
+}
+
+cp_fp_is_lean :: (s: [] CoderPage) -> bool {
+  n := s[0].fp[0].path_n;
+  if n < 5 { return false; }
+  p := cast(string) s[0].fp[0].path[0..<n];
+  return p[n - 5] == '.' && p[n - 4] == 'l' && p[n - 3] == 'e' && p[n - 2] == 'a' && p[n - 1] == 'n';
 }
 
 // ---------------------------------------------------------------- what the rest of the page asks
@@ -114,6 +129,7 @@ cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_FP_CLOSE { s[0].ask = CP_ASK_FILE_CLOSE; return true; }
   if act == CP_FP_SAVE { if !s[0].fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
   if act == CP_FP_EXTERNAL { s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
+  if act == CP_FP_LEAN_GOAL { s[0].fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
   return false;
 }
 // The wheel over the pane: the editor's rows move, or the read-only / large-edit view does.
@@ -388,7 +404,9 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   digits := 2; d := cp_fp_lines(src); while d >= 100 { digits += 1; d /= 10; }
   gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
   gx := x + gw; tx := gx + a.gap; tw := fx + fw - a.gap - tx;
-  body := y; bh := h - a.gap_small - body;
+  body := y;
+  show_lean_strip := cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
+  bh := h - a.gap_small - body - (ifx show_lean_strip then CP_FP_LEAN_STRIP_H + 6.0f32 else 0.0f32);
   if !(bh > 0) || !(tw > 0) { cp_ft_draw_editor_menu(s, f); return; }
   fp[0].body_x = tx; fp[0].body_y = body; fp[0].body_w = tw; fp[0].body_h = bh;
   _ := uiframe_semantic(f, "coder.file.body", EL_TEXT, cp_fp_name(s), tx, body, tw, bh, 0, 0);
@@ -398,7 +416,37 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   } else {
     cp_fp_read_view(s, f, src, fx, gx, tx, body, tw, bh);
   }
+  if show_lean_strip {
+    cp_fp_draw_lean_strip(s, f, fx + a.gap, body + bh + 4.0f32, fw - 2 * a.gap, CP_FP_LEAN_STRIP_H);
+  }
   cp_ft_draw_editor_menu(s, f);
+}
+
+// Collapsible bottom Lean 4 Goal Strip inside the File Pane whenever a .lean file is open (#13947).
+cp_fp_draw_lean_strip :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  fp := s[0].fp[..];
+  tone := ifx fp[0].lean_goal_done then k.success else ifx fp[0].lean_goal_ok then k.syntax[4] else k.warning;
+  _ := sheet_box(sh, x, y, w, h, 8.0f32, k.border, k.sunk, opacity(tone, 0.55f32));
+  sheet_fill(sh, x, y + 8.0f32, 3.0f32, h - 16.0f32, 1.5f32, tone);
+
+  line_no := ifx fp[0].lean_goal_line > 0 then fp[0].lean_goal_line else cp_fp_caret_line(s);
+  hb: [96] u8; hn := el_put(hb[..], 0, "LEAN 4 GOAL · Line ");
+  hn = el_put_i(hb[..], hn, line_no);
+  if rh_contains_ci(cast(string) fp[0].path[0..<fp[0].path_n], "riemann-hypothesis") {
+    hn = el_put(hb[..], hn, "  ·  RH Corpus (Tier B Infoview)");
+  }
+  _ := sheet_text(sh, m, -1, x + 12.0f32, y + 6.0f32, k.small.line, k.small.face, tone, app_fit(f, k.small.face, sheet_pool(sh, cast(string) hb[0..<hn]), w - 126.0f32));
+
+  btn_lbl := ifx fp[0].lean_goal_busy then "Querying..." else "Refresh Goal";
+  bw := measure_width(m, k.small.face, btn_lbl) + 16.0f32;
+  if w > bw + 140.0f32 {
+    _ := cp_lr_pill(f, "coder.file.lean.refresh", x + w - bw - 8.0f32, y + 5.0f32, btn_lbl, fp[0].lean_goal_busy, tone, CP_FP_LEAN_GOAL);
+  }
+
+  gtext := ifx fp[0].lean_goal_n > 0 then cast(string) fp[0].lean_goal[0..<fp[0].lean_goal_n]
+           else "Click Refresh Goal (or save) to query live $/lean/plainGoal via oa-leanhost";
+  _ := sheet_text(sh, m, -1, x + 12.0f32, y + 28.0f32, k.mono_small.line, k.mono_small.face, k.ink, app_fit(f, k.mono_small.face, gtext, w - 24.0f32));
 }
 
 // The file in its shared UiEditor (<= 16 KB, <= 512 lines): selection & caret from UiEditor,
@@ -628,3 +676,13 @@ coder_page_file_dirty :: (s: [] CoderPage) -> bool #export_c #effects(all) { ret
 coder_page_file_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_fp_shown(s); }
 // The open file's name, its length in out.
 coder_page_file_name :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then cp_out(out, cp_fp_name(s)) else 0; }
+// Updates the File Pane's live Lean 4 Goal Strip from oa-leanhost (#13947).
+coder_page_file_lean_goal :: (s: [] CoderPage, line: int, ok: bool, accomplished: bool, summary: string) #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open { return; }
+  fp := s[0].fp[..];
+  fp[0].lean_goal_line = line;
+  fp[0].lean_goal_ok = ok;
+  fp[0].lean_goal_done = accomplished;
+  fp[0].lean_goal_busy = false;
+  fp[0].lean_goal_n = cp_out(fp[0].lean_goal[..], summary);
+}

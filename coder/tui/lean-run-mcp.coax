@@ -1,0 +1,231 @@
+// lean-run mcp: Lean 4 & Riemann Hypothesis Gym MCP server over stdio JSON-RPC 2.0
+// (Epic #13943, #13947; docs/lean/spec.md §6, mirroring coder/tui/oasim-mcp.coax).
+//
+// Loaded by coder/tui/lean-run.coax (`lean-run mcp`) and apps/openagents-cli/mcp.coax
+// (`openagents mcp --domains lean`), and auto-registered by coder/tui/claudeworker.coax
+// so desktop Chat agents can query live tactic goals, verify proofs, and inspect all
+// 175,182 modules of the Nov 2026 Riemann Hypothesis proof natively.
+
+LM_LINE :: 262144;
+LM_OUT :: 1048576;
+LM_PROTOCOL :: "2025-06-18";
+
+LmTool :: struct { name: string; sub1: string; sub2: string; about: string; args: string; }
+
+LM_TOOLS :: [11] LmTool.[
+  LmTool.{name = "lean_doctor", sub1 = "doctor", sub2 = "", about = "Inspect local Lean 4 / elan / lake toolchain and 175k-module Riemann Hypothesis index status.", args = ""},
+  LmTool.{name = "lean_verify", sub1 = "verify", sub2 = "", about = "Run real Lean 4 kernel verification + #authority axiom/anti-cheat policy on a .lean file and theorem target.", args = "file:s:p! target:s:p! statement:s:f card:s:f"},
+  LmTool.{name = "lean_goal", sub1 = "goal", sub2 = "", about = "Query live Lean 4 tactic state ($/lean/plainGoal) at 1-based line and col via the warm oa-leanhost LSP daemon.", args = "file:s:p! line:i:p! col:i:p!"},
+  LmTool.{name = "lean_try", sub1 = "try", sub2 = "", about = "Test a candidate tactic at 1-based line and col in memory via didChange without mutating the disk file; returns before/after goals and diagnostics.", args = "file:s:p! line:i:p! col:i:p! tactic:s:p!"},
+  LmTool.{name = "lean_hover", sub1 = "hover", sub2 = "", about = "Get Lean 4 type signature and docstring hover information at 1-based line and col.", args = "file:s:p! line:i:p! col:i:p!"},
+  LmTool.{name = "lean_diagnostics", sub1 = "diagnostics", sub2 = "", about = "Return current Lean 4 compiler diagnostics (errors/warnings) for a .lean file.", args = "file:s:p!"},
+  LmTool.{name = "lean_rh_search", sub1 = "rh", sub2 = "search", about = "Search across all 175,182 modules and 813,182 theorems of Levent Alpöge's Nov 2026 Lean 4 proof of the Riemann Hypothesis.", args = "query:s:p! limit:i:f"},
+  LmTool.{name = "lean_rh_path", sub1 = "rh", sub2 = "path", about = "Compute the exact shortest dependency import path from any Riemann Hypothesis module to Main.riemannHypothesis.", args = "module:s:p!"},
+  LmTool.{name = "lean_rh_cone", sub1 = "rh", sub2 = "cone", about = "Return the upstream imports and downstream dependents of a Riemann Hypothesis module.", args = "module:s:p! limit:i:f"},
+  LmTool.{name = "lean_rh_module", sub1 = "rh", sub2 = "module", about = "Inspect a Riemann Hypothesis module: metadata, depth, theorem count, shortest path to Main, imports, dependents, and real Lean 4 source.", args = "module:s:p! lines:i:f"},
+  LmTool.{name = "lean_rh_explain_context", sub1 = "rh", sub2 = "module", about = "Fetch grounded citation context (exact module path, declarations, dependency chain to Main.riemannHypothesis, and real source) for explaining an RH module.", args = "module:s:p!"},
+];
+
+lm_find :: (name: string) -> int { for t, i: LM_TOOLS { if t.name == name { return i; } } return -1; }
+lm_copy :: (s: string, out: [] u8) -> int { n := 0; for c: s { if n < out.count { out[n] = c; n += 1; } } return n; }
+
+lm_word :: (t: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < t.count {
+    while i < t.count && t[i] == ' ' { i += 1; }
+    if i >= t.count { break; }
+    j := i; while j < t.count && t[j] != ' ' { j += 1; }
+    if n == k { return cast(string) t[i..<j]; }
+    n += 1; i = j;
+  }
+  return "";
+}
+
+lm_part :: (spec: string, k: int) -> string {
+  i := 0; n := 0; s := 0;
+  while i <= spec.count {
+    if i == spec.count || spec[i] == ':' {
+      if n == k {
+        e := i;
+        if e > s && spec[e - 1] == '!' { e -= 1; }
+        return cast(string) spec[s..<e];
+      }
+      n += 1; s = i + 1;
+    }
+    i += 1;
+  }
+  return "";
+}
+
+lm_required :: (spec: string) -> bool { return spec.count > 0 && spec[spec.count - 1] == '!'; }
+
+lm_schema :: (o: [] Jo, t: LmTool) {
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  i := 0;
+  while lm_word(t.args, i).count > 0 {
+    sp := lm_word(t.args, i); k := lm_part(sp, 1);
+    jo_key(o, lm_part(sp, 0)); jo_obj(o); jo_key(o, "type"); jo_str(o, ifx k == "i" then "integer" else "string"); jo_end(o);
+    i += 1;
+  }
+  jo_end(o);
+  jo_key(o, "required"); jo_arr(o);
+  i = 0;
+  while lm_word(t.args, i).count > 0 { sp := lm_word(t.args, i); if lm_required(sp) { jo_str(o, lm_part(sp, 0)); } i += 1; }
+  jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+}
+
+LM_WORDS :: 16;
+lm_argv :: (d: Jv, args: int, t: LmTool, words: [] [1024] u8, wn: [] int, why: [] string) -> int {
+  n := 0;
+  wn[n] = lm_copy(t.sub1, words[n][..]); n += 1;
+  if t.sub2.count > 0 { wn[n] = lm_copy(t.sub2, words[n][..]); n += 1; }
+  if args >= 0 && jv_kind(d, args) != JV_OBJECT { why[0] = "arguments must be an object"; return -1; }
+  for pass: 0..<2 {
+    i := 0;
+    while lm_word(t.args, i).count > 0 {
+      sp := lm_word(t.args, i); i += 1;
+      name := lm_part(sp, 0); kind := lm_part(sp, 1); place := lm_part(sp, 2);
+      if (pass == 0) != (place == "p") { continue; }
+      v := ifx args >= 0 then jv_get(d, args, name) else -1;
+      if v < 0 { if lm_required(sp) { why[0] = "a required argument is missing"; return -1; } continue; }
+      vk := jv_kind(d, v);
+      if (kind == "s" && vk != JV_STRING) || (kind == "i" && vk != JV_NUMBER) { why[0] = "argument has wrong type"; return -1; }
+      if n + 2 > words.count { why[0] = "too many arguments"; return -1; }
+      if place == "f" {
+        k := lm_copy("--", words[n][..]);
+        for c: name { if k < 1024 { words[n][k] = c; k += 1; } }
+        wn[n] = k; n += 1;
+      }
+      if kind == "s" {
+        k := jv_str(d, v, words[n][..]);
+        if k < 0 { why[0] = "argument too long"; return -1; }
+        wn[n] = k;
+      } else {
+        wn[n] = lm_copy(jv_raw(d, v), words[n][..]);
+      }
+      n += 1;
+    }
+  }
+  if n < words.count { wn[n] = lm_copy("--json", words[n][..]); n += 1; }
+  return n;
+}
+
+lm_handle :: (line: string, exe: string, out: [] u8, run: bool) -> string #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  nodes: [4096] JvNode; dd: [1] Jv;
+  if !jv_parse(dd[..], line, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT {
+    jo_put(o[..], "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"not JSON\"}}");
+    return jo_text(o[..]);
+  }
+  d := dd[0];
+  id := jv_get(d, 0, "id");
+  mb: [64] u8; mn := jv_str(d, jv_get(d, 0, "method"), mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  if id < 0 { return ""; }
+
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0"); jo_key(o[..], "id");
+  if jv_kind(d, id) == JV_STRING {
+    ib: [256] u8; k := jv_str(d, id, ib[..]);
+    jo_str(o[..], ifx k > 0 then cast(string) ib[0..<k] else "");
+  } else {
+    jo_raw(o[..], jv_raw(d, id));
+  }
+
+  if method == "initialize" {
+    jo_key(o[..], "result"); jo_obj(o[..]);
+    jo_key(o[..], "protocolVersion"); jo_str(o[..], LM_PROTOCOL);
+    jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
+    jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "lean-run"); jo_key(o[..], "version"); jo_str(o[..], "1"); jo_end(o[..]);
+    jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "ping" {
+    jo_key(o[..], "result"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "tools/list" {
+    jo_key(o[..], "result"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_arr(o[..]);
+    for t: LM_TOOLS {
+      jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], t.name); jo_key(o[..], "description"); jo_str(o[..], t.about);
+      jo_key(o[..], "inputSchema"); lm_schema(o[..], t); jo_end(o[..]);
+    }
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method != "tools/call" {
+    jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "code"); jo_int(o[..], -32601); jo_key(o[..], "message"); jo_str(o[..], "unknown method"); jo_end(o[..]);
+    jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+
+  params := jv_get(d, 0, "params");
+  nb: [64] u8; nn := jv_str(d, jv_get(d, params, "name"), nb[..]);
+  ti := ifx nn > 0 then lm_find(cast(string) nb[0..<nn]) else -1;
+  if ti < 0 {
+    jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "code"); jo_int(o[..], -32602); jo_key(o[..], "message"); jo_str(o[..], "unknown tool"); jo_end(o[..]);
+    jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  words: [LM_WORDS] [1024] u8; wn: [LM_WORDS] int; why: [1] string;
+  n := lm_argv(d, jv_get(d, params, "arguments"), LM_TOOLS[ti], words[..], wn[..], why[..]);
+  if n < 0 {
+    jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "code"); jo_int(o[..], -32602); jo_key(o[..], "message"); jo_str(o[..], why[0]); jo_end(o[..]);
+    jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+
+  if !run {
+    cb: [2048] u8; co: [1] Jo; jo_start(co[..], cb[..]);
+    for i: 0..<n { if i > 0 { jo_put(co[..], " "); } jo_put(co[..], cast(string) words[i][0..<wn[i]]); }
+    jo_key(o[..], "result"); jo_obj(o[..]); jo_key(o[..], "content"); jo_arr(o[..]);
+    jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], jo_text(co[..])); jo_end(o[..]);
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+
+  argv: [LM_WORDS + 1] string;
+  argv[0] = exe;
+  for i: 0..<n { argv[i + 1] = cast(string) words[i][0..<wn[i]]; }
+  sout: [LM_OUT] u8; serr: [4096] u8;
+  r := proc_run(argv[0..<n + 1], 30000, sout[..], serr[..]);
+  txt := ifx r.out_n > 0 then cast(string) sout[0..<r.out_n] else cast(string) serr[0..<r.err_n];
+  is_err := r.started != 0 || r.timed_out || (r.status != 0 && r.out_n == 0);
+
+  jo_key(o[..], "result"); jo_obj(o[..]);
+  jo_key(o[..], "content"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], txt); jo_end(o[..]);
+  jo_end(o[..]);
+  if is_err { jo_key(o[..], "isError"); jo_bool(o[..], true); }
+  jo_end(o[..]); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+
+lm_main :: (exe: string) -> int #effects(all) {
+  line: [LM_LINE] u8;
+  out: [LM_OUT + 4096] u8;
+  wb: [LM_OUT + 4097] u8;
+  n := 0; quiet := 0; long := false;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { break; }
+    if b == -1 { quiet += 1; if quiet > 1000 { break; } continue; }
+    quiet = 0;
+    if b != '\n' {
+      if n < line.count { line[n] = cast(u8) b; n += 1; } else { long = true; }
+      continue;
+    }
+    text := cast(string) line[0..<n];
+    rep := ifx long then "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"request too long\"}}"
+           else lm_handle(text, exe, out[..], true);
+    n = 0; long = false;
+    if rep.count == 0 { continue; }
+    m := lm_copy(rep, wb[..]);
+    if m >= wb.count { continue; }
+    wb[m] = '\n';
+    if cxterm_write(wb[0..<m + 1]) != 0 { break; }
+  }
+  return 0;
+}

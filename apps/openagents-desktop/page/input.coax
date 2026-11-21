@@ -42,7 +42,7 @@ cp_turn_call :: (s: [] CoderPage, i: int, k: int) -> int {
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
-  if act >= CP_FP_CLOSE && act <= CP_FP_EXTERNAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
+  if act >= CP_FP_CLOSE && act <= CP_FP_LEAN_GOAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
   if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
