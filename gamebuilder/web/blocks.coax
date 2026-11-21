@@ -1,0 +1,1112 @@
+// gamebuilder.org's blocks: what stands on the grid in the world, and the plan lines that change
+// it (docs/web-world.md, "Blocks"). The chat's build route answers with words and, under them,
+// plan lines; each line is one edit, read here. Nothing here chooses what to build: the model
+// does, and this file only reads the bounded fields of the edit it named.
+//
+// A thing is a block (a box) or a ball. Each is a rigid body in the HUD (web/hud.coax, the
+// engine's physics): it falls to where it is put, can be pushed, and may turn or tip. This list
+// says where each was put; the HUD says where each came to rest (bl_things), and that is what the
+// model is told.
+//
+// Every length is a whole number of hundredths of a grid square (a square is 48 floor units), so
+// what is kept, what the model is told and what the HUD draws are the same numbers exactly.
+// x is to the right, z is ahead (the way W runs), y is up.
+//
+// A plan line, after its "+ ":
+//   place X Z W D H [Y] [rest] [KIND]   a new block: its footprint's centre, its size along x and z, its height,
+//                          and how far its bottom is off the floor (0 when not given). It appears
+//                          there, not above it (left in the air by its height, it falls from there);
+//                          with the word `rest` last it is set down exactly there, still, asleep. In a
+//                          game type with kinds of its own (bl_roles: the platformer's pad, spikes,
+//                          shard, checkpoint, mover, lift; crates' wall, goal, gate, start; racing's boost, cone) the last word
+//                          may be one: the block is that kind there (every game type is built in, and
+//                          a type adds kinds, it never takes building away)
+//   kind ID KIND           a block made that kind (`block`: a plain one again)
+//   goes ID DISTANCE SECONDS   how far a moving platform (`mover`) or a lift goes, squares (0 to 50), and how many
+//                          seconds there and back takes (1 to 60). A new one goes 8 (a lift 6) in 6 seconds
+//   ball X Z R [Y] [rest]  a new ball: where it is over the floor, its radius, and how far its
+//                          bottom is off the floor (0 when not given); `rest` as for a block
+//   size ID W D H          a block's new size (a ball's: W is its new width, D and H are not used)
+//   move ID X Z [Y]        a thing's new place: it is put there upright, not lifted first
+//   put MODEL X Z [TURN] [SCALE]   a building of the village's (shared/buildings.coax: britons_house, gauls_house,
+//                          market, mossy_rock, rock) with its footprint's middle at (X, Z), turned TURN degrees (0, 90,
+//                          180 or 270; 0 when not given), at SCALE times its model (0.5 to 3; the model's usual scale
+//                          when not given). Only in the medieval village; never where it would stand in another
+//                          building or the person. The green a village opens with is nine of these
+//   turn ID TURN           a building turned to TURN degrees where it stands
+//   remove ID              one thing gone
+//   clear                  all of them gone
+//   set PATH VALUE         a property of the world, the player, the camera, a thing or the grass (web/props.coax: the
+//                          engine's registry): `set world.gravity 0.3`, `set player.air_jumps 0`, `set b3.bounce 0.9`,
+//                          `set balls.friction 0.2`, `set things.density 400`. An unknown path, a value out of the
+//                          property's range or a thing that is not there changes nothing, and why is kept for the answer
+//   reset PATH             that property back as the world starts with it
+//   gravity N              the same as `set world.gravity N` (kept for answers written before `set`)
+//
+// The hotbar's tools and edit mode (docs/web-world.md, "The hotbar") make the same edits, in the
+// same words (bl_edit): the HUD says where a tool was used, the page's buttons what to do to the
+// selected thing. So there is one list, one set of limits and one thing the model is told.
+// Numbers are in squares with at most two decimals ("2", "-1.5", "0.25"). ID is "b" and a number.
+//   coax/bin/coax test web/blocks.coax --library
+
+#load "../shared/game-types.coax";   // the game types and what a new one starts with: the app's too
+#load "props.coax";
+
+BL_MAX :: 1000;          // things at once, blocks and balls alike (one cap: the engine's bodies hold 1,024)
+BL_SHOWN :: 24;          // things the model is told of by name: past this, the nearest, the selected one and any its message names
+BL_BLOCK :: 0; BL_BALL :: 1; BL_BUILDING :: 2;   // a building stands still: it is no rigid body but walls (web/world-village.coax)
+BL_NO_ID :: 999999;      // an id no thing has: a property asked for it is its kind's (ids count up from 1)
+BL_BALL_SMALL :: GT_BALL_SMALL;     // a ball's radius is at least 0.15 of a square (shared/game-types.coax, the app's too)
+BL_BALL_BIG :: GT_BALL_BIG;      // and at most one and a half
+BL_FAR :: GT_FAR_MEADOW;         // a block's centre is within 200 squares of the middle (the haze hides the ground at 200 m; the physics keeps its places in f64)
+BL_M_SNAP :: 0; BL_M_FREE :: 1;   // how a placing tool places: on the grid, or exactly where it is pointed; either way set down at rest (nothing a person places drops in from above)
+BL_SMALL :: GT_SIDE_SMALL;          // a side is at least a quarter square (shared/game-types.coax, the app's too)
+BL_BIG :: GT_SIDE_BIG;          // and at most twelve
+BL_HIGH :: GT_HIGH_MEADOW;         // its bottom is at most twelve squares up
+BL_TEXT :: 65536;        // the list as text, either way it is written (a thousand things' lines fit)
+BL_GRAV_LOW :: 0;        // gravity, in tenths of the normal: none at the least (nothing falls)
+BL_GRAV_HIGH :: 50;      // five times at most
+BL_GRAV :: 10;           // and the normal, which it starts at
+BL_T_NONE :: -1; BL_T_BLOCK :: 0; BL_T_BALL :: 1; BL_T_SLAB :: 2; BL_T_PILLAR :: 3;   // the shape the hotbar's one shapes tool places: a cube, a sphere, a slab, a pillar (no tool: none)
+BL_SHAPES :: 4;
+BL_T_MODEL :: 10;        // the tool that places one of the village's buildings: BL_T_MODEL and the model (VL_KINDS of them)
+BL_STEP :: 25;           // a press of one of the selection's size buttons: a quarter square
+// Why an edit was refused, when it was a limit a person can hit (AGENTS.md: such a limit is said on screen, in words,
+// with its number: bl_why writes them). BL_WHY_NONE: it was no limit (a line that is not an edit, a thing that is not there).
+BL_WHY_NONE :: 0; BL_WHY_FULL :: 1; BL_WHY_FAR :: 3; BL_WHY_SIZE :: 4; BL_WHY_RADIUS :: 5; BL_WHY_HIGH :: 6;
+BL_WHY_ROOM :: 7;        // (the HUD's: something stands where the thing would go)
+BL_WHY_SKY :: 8;         // (the HUD's: the character is as high as the sky goes)
+BL_WHY_BOXES :: 9;       // the buildings' solid boxes are all used (VL_WALLS), or VL_PUT buildings stand
+BL_WHY_VILLAGE :: 10;    // a building put anywhere but the medieval village
+BL_WHY_KIND :: 11;       // a kind this game type does not have
+BL_WHY_TRAVEL :: 12;     // a moving platform's or a lift's distance or period past what it may be (GK_GO_MOST, GK_EVERY_LEAST, GK_EVERY_MOST)
+BL_WHY_SCALE :: 13;      // a building's scale past VL_SCALE_SMALL to VL_SCALE_BIG
+BL_WHY_STILL :: 14;      // a distance and a period for a thing that does not move
+BL_WHYS :: 15;
+BL_SKY :: 60;            // metres over the ground the character rises to at most (web/hud.coax's HUD_SKY)
+BL_NEAR :: 90;           // percent of the things the world holds at which a person is warned it is nearly full
+
+Block :: struct {
+  id: int; kind: int;                // BL_BLOCK or BL_BALL
+  x: int; y: int; z: int;            // the middle of its footprint, and its lowest point's height
+  w: int; h: int; d: int;            // its size across, up and along (a ball's: its width, three times)
+  turn: int;                         // degrees it has turned about the upright, as the HUD found it at rest
+  tipped: bool;                      // it rests leaning: neither on a face nor upright
+  moves: int; sizes: int;            // go up when the page moves or sizes it, so the HUD knows to
+  rest: bool;                        // it was set down at rest: the HUD makes it where it is, asleep
+  starts: bool;                      // one of the things the world opens with: it alone appears above its place and falls in (the entrance)
+  model: int;                        // a building's model (shared/buildings.coax); its turn is `turn`, a multiple of 90
+  scale: int;                        // a building's scale, percent of its model (VL_SCALE_SMALL to VL_SCALE_BIG): its w, d and h follow it
+  role: int;                         // its kind in this game type (BL_R_*; none: a plain block)
+  go: int; every: int;               // a moving platform's or a lift's: how far it goes, hundredths, and how long there and back takes, milliseconds (0 for any other)
+}
+Blocks :: struct {
+  n: int; next: int;                 // how many, and the next block's number
+  b: [BL_MAX] Block;
+  here: bool;                        // the HUD has said where you stand
+  you_x: int; you_z: int; face_x: int; face_z: int;
+  flying: bool;                      // the HUD says the character flies (fly mode: Space twice)
+  rev: int;                          // goes up with every change, for the page to notice
+  tool: int = BL_T_NONE;             // the shape being placed (BL_T_*), while the hotbar's shapes tool is picked
+  shape: int;                        // the shape that tool was last set to: what it places when it is picked again
+  editing: bool;                     // edit mode: a press on a thing selects it
+  sel: int;                          // the selected thing's id (0: none); only in edit mode
+  grav: int = BL_GRAV;               // the world's gravity, in tenths of the normal: what the registry says (bl_tuned), kept for the HUD's line
+  why: int;                          // why the last edit was refused, when it was a limit (BL_WHY_*): the page says it in words
+  props: [1] Props;                  // the world's properties that differ (web/props.coax): `set` and `reset` change them
+  mode: [2] int = [2] int.[BL_M_FREE, BL_M_FREE];   // the shapes tool's mode (BL_M_*) in the first, the building tools' in the second, kept while logged in
+  models: bool;                      // buildings may be placed: the medieval village
+  quarter: int;                      // the building tools' turn, quarter turns (R and Shift+R, the wheel)
+  // the game type's bounds (bl_bounds): how far from the middle a thing may stand and how high its bottom may be.
+  // Every game type is built in; one whose world is larger than the meadow (the platformer's course) has larger ones
+  far: int = BL_FAR; high: int = BL_HIGH;
+  low: int;                          // and how low a bottom may be: the floor, but for drift's open space (bl_low)
+  you_y: int;                        // the character's feet over the floor, when the HUD says it (the platformer's course is high up)
+  roles: int;                        // the kinds this game type has, a bit each (BL_R_*: bl_roles)
+  brush: int;                        // the kind the shapes tool places now (BL_R_*: a hotbar kind item's); none: a plain shape
+}
+
+bl_put :: (out: [] u8, n: int, s: string) -> int { return gt_say(out, n, s); }
+// A whole number as text.
+bl_int :: (out: [] u8, n: int, v: int) -> int { return gt_say_int(out, n, v); }
+// Hundredths as squares: 250 is "2.5", -100 is "-1", 5 is "0.05".
+bl_num :: (out: [] u8, n: int, v: int) -> int { return gt_say_m(out, n, v); }
+// The next word of a line from `at`: where it begins and ends. An empty word at the line's end.
+BlWord :: struct { lo: int; hi: int; }
+bl_word :: (s: string, at: int) -> BlWord {
+  lo := at; while lo < s.count && s[lo] == ' ' { lo += 1; }
+  hi := lo; while hi < s.count && s[hi] != ' ' { hi += 1; }
+  return BlWord.{lo = lo, hi = hi};
+}
+// Squares as hundredths, from a word like "-1.5". `ok` false when it is not a number of that shape.
+BlNum :: struct { v: int; ok: bool; }
+bl_read :: (s: string) -> BlNum {
+  i := 0; neg := false;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  whole := 0; seen := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { whole = whole * 10 + cast(int) (s[i] - '0'); seen += 1; i += 1; if whole > 100000 { return BlNum.{v = 0, ok = false}; } }
+  part := 0; places := 0;
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { if places < 2 { part = part * 10 + cast(int) (s[i] - '0'); places += 1; } seen += 1; i += 1; }
+    if places == 1 { part *= 10; }
+  }
+  if seen == 0 || i != s.count { return BlNum.{v = 0, ok = false}; }
+  v := whole * 100 + part;
+  return BlNum.{v = ifx neg then -v else v, ok = true};
+}
+// A block's number from "b7"; -1 when it is not one.
+bl_id :: (s: string) -> int {
+  if s.count < 2 || s.count > 5 || s[0] != 'b' { return -1; }
+  v := 0;
+  for i: 1..<s.count { if s[i] < '0' || s[i] > '9' { return -1; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return v;
+}
+bl_at :: (b: [] Blocks, id: int) -> int { for i: 0..<b[0].n { if b[0].b[i].id == id { return i; } } return -1; }
+bl_side_ok :: (v: int) -> bool { return v >= BL_SMALL && v <= BL_BIG; }
+bl_place_ok :: (b: [] Blocks, x: int, z: int, y: int) -> bool { return bl_place_why(b, x, z, y) == BL_WHY_NONE; }
+// The game type's bounds, in hundredths: how far from the middle, and how high a bottom (bl_bounds_of: each game type's).
+bl_bounds :: (b: [] Blocks, far: int, high: int) { b[0].far = far; b[0].high = high; b[0].low = 0; }
+// How low a bottom may be, in hundredths (0: the floor; under it, in open space with no floor).
+bl_low :: (b: [] Blocks, low: int) { b[0].low = low; }
+// The kinds a game type has (BL_PF_ROLES and the like; 0: none, blocks and balls alone).
+bl_roles :: (b: [] Blocks, roles: int) { b[0].roles = roles; if !bl_role_ok(b, b[0].brush) { b[0].brush = BL_R_NONE; if b[0].tool >= 0 && b[0].tool < BL_T_MODEL { b[0].tool = BL_T_NONE; } } }
+bl_role_ok :: (b: [] Blocks, r: int) -> bool { return r == BL_R_NONE || (r > 0 && r < BL_ROLES && (b[0].roles & (1 << r)) != 0); }
+// A block's kind set (a new one's, or `kind`): one that moves gets a new one's distance and period, any other has none.
+bl_set_role :: (b: [] Blocks, i: int, r: int) {
+  k := ifx r > 0 && r < BL_ROLES then GK_ROLE[r] else GK_BLOCK;
+  if gk_moves(k) && !gk_moves(GK_ROLE[b[0].b[i].role]) { b[0].b[i].go = gk_go(k); b[0].b[i].every = gk_every(k); }
+  if !gk_moves(k) { b[0].b[i].go = 0; b[0].b[i].every = 0; }
+  b[0].b[i].role = r;
+}
+// The shape a kind is placed as from the hotbar (its own size, as a person would want it first): a pad, spikes, a
+// checkpoint, a goal, a boost, a moving platform and a lift are slabs, a wall a pillar, a shard and a cone cubes.
+bl_role_shape :: (r: int) -> int { return ifx r == BL_R_WALL then BL_T_PILLAR else ifx r == BL_R_SHARD || r == BL_R_CONE then BL_T_BLOCK else BL_T_SLAB; }
+// The shapes tool picked to place kind r (a hotbar kind item: its shape, and the kind given to what it places), or put
+// down; a plain shape picked forgets the kind (bl_pick). False when this game type has no such kind.
+bl_pick_kind :: (b: [] Blocks, r: int, on: bool) -> bool {
+  if r <= BL_R_NONE || !bl_role_ok(b, r) { return false; }
+  if !on { if b[0].brush == r { b[0].brush = BL_R_NONE; b[0].tool = BL_T_NONE; b[0].rev += 1; } return true; }
+  b[0].brush = r; b[0].shape = bl_role_shape(r); b[0].tool = b[0].shape; b[0].rev += 1;
+  return true;
+}
+
+bl_radius_ok :: (r: int) -> bool { return r >= BL_BALL_SMALL && r <= BL_BALL_BIG; }
+bl_balls :: (b: [] Blocks) -> int { n := 0; for i: 0..<b[0].n { if b[0].b[i].kind == BL_BALL { n += 1; } } return n; }
+// Why a place is none: too far out, or its bottom too high (BL_WHY_NONE: it is one).
+bl_place_why :: (b: [] Blocks, x: int, z: int, y: int) -> int { return ifx x < -b[0].far || x > b[0].far || z < -b[0].far || z > b[0].far then BL_WHY_FAR else ifx y < b[0].low || y > b[0].high then BL_WHY_HIGH else BL_WHY_NONE; }
+bl_add :: (b: [] Blocks, x: int, z: int, w: int, d: int, h: int, y: int) -> bool {
+  b[0].why = ifx !bl_side_ok(w) || !bl_side_ok(d) || !bl_side_ok(h) then BL_WHY_SIZE else ifx bl_place_why(b, x, z, y) != BL_WHY_NONE then bl_place_why(b, x, z, y) else ifx b[0].n >= BL_MAX then BL_WHY_FULL else BL_WHY_NONE;
+  if b[0].n >= BL_MAX || !bl_side_ok(w) || !bl_side_ok(d) || !bl_side_ok(h) || !bl_place_ok(b, x, z, y) { return false; }
+  b[0].next += 1;
+  b[0].b[b[0].n] = Block.{id = b[0].next, kind = BL_BLOCK, x = x, y = y, z = z, w = w, h = h, d = d, moves = 1, sizes = 1};
+  b[0].n += 1; b[0].rev += 1;
+  return true;
+}
+// A new ball of radius r over (x, z), its bottom y off the floor.
+bl_add_ball :: (b: [] Blocks, x: int, z: int, r: int, y: int) -> bool {
+  b[0].why = ifx !bl_radius_ok(r) then BL_WHY_RADIUS else ifx bl_place_why(b, x, z, y) != BL_WHY_NONE then bl_place_why(b, x, z, y) else ifx b[0].n >= BL_MAX then BL_WHY_FULL else BL_WHY_NONE;
+  if b[0].n >= BL_MAX || !bl_radius_ok(r) || !bl_place_ok(b, x, z, y) { return false; }
+  b[0].next += 1;
+  b[0].b[b[0].n] = Block.{id = b[0].next, kind = BL_BALL, x = x, y = y, z = z, w = r * 2, h = r * 2, d = r * 2, moves = 1, sizes = 1};
+  b[0].n += 1; b[0].rev += 1;
+  return true;
+}
+// The buildings standing, and the solid boxes they have between them.
+bl_buildings :: (b: [] Blocks) -> [2] int {
+  boxes := VL_KIND_BOXES; out: [2] int;
+  for i: 0..<b[0].n { if b[0].b[i].kind == BL_BUILDING { out[0] += 1; out[1] += boxes[b[0].b[i].model]; } }
+  return out;
+}
+// Why building `m` may not stand at (x, z), turned `deg` degrees, at `scale` percent of its model
+// (BL_WHY_NONE: it may). `self` is a building being moved or turned (it is not in its own way). Only
+// the village has buildings; they count among the BL_MAX things, VL_PUT stand at most and their solid
+// boxes are VL_WALLS at most between them (shared/buildings.coax: the app's rules too); and one never
+// stands in another or in the person.
+bl_building_why :: (b: [] Blocks, m: int, x: int, z: int, deg: int, scale: int, self: int) -> int {
+  if !b[0].models { return BL_WHY_VILLAGE; }
+  if bl_place_why(b, x, z, 0) != BL_WHY_NONE { return bl_place_why(b, x, z, 0); }
+  if vl_own_why(deg, 0, scale) == VL_WHY_SCALE { return BL_WHY_SCALE; }
+  if self == 0 {
+    if b[0].n >= BL_MAX { return BL_WHY_FULL; }
+    now := bl_buildings(b);
+    if !vl_fits(m, now[0], now[1]) { return BL_WHY_BOXES; }
+  }
+  f := vl_foot(m, x, z, deg / 90, scale);
+  for i: 0..<b[0].n {
+    k := b[0].b[i];
+    if k.kind == BL_BUILDING && k.id != self && vl_feet_meet(f, vl_foot(k.model, k.x, k.z, k.turn / 90, k.scale), VL_SLACK) { return BL_WHY_ROOM; }
+  }
+  // (the person: a body's width round where they stand)
+  if b[0].here && vl_feet_meet(f, VlFoot.{x = b[0].you_x, z = b[0].you_z, hx = 40, hz = 40}, 0) { return BL_WHY_ROOM; }
+  return BL_WHY_NONE;
+}
+// A building of model `m` at (x, z), turned `deg` (a multiple of 90, any sign), at `scale` percent of
+// its model (0: the model's usual scale), if it may stand there. Its size is its model's at that scale.
+bl_add_building :: (b: [] Blocks, m: int, x: int, z: int, deg: int, scale: int) -> bool {
+  b[0].why = BL_WHY_NONE;
+  if m < 0 || m >= VL_KINDS || deg % 90 != 0 { return false; }
+  turn := ((deg % 360) + 360) % 360; usual := VL_SCALE; sc := ifx scale == 0 then usual[m] else scale;
+  b[0].why = bl_building_why(b, m, x, z, turn, sc, 0);
+  if b[0].why != BL_WHY_NONE { return false; }
+  size := vl_size(m, sc);
+  b[0].next += 1;
+  b[0].b[b[0].n] = Block.{id = b[0].next, kind = BL_BUILDING, model = m, scale = sc, x = x, z = z, turn = turn, w = size[0], h = size[1], d = size[2], moves = 1, sizes = 1, rest = true};
+  b[0].n += 1; b[0].rev += 1;
+  return true;
+}
+// The world as a new game of type t opens (shared/game-types.coax gt_starter, as the app's new level
+// holds them, thing for thing): the meadow's blocks and ball, the village green's ball and its nine buildings, racing's
+// circuit (a track point each), crates' first room (walls, crates, goals, a gate and where
+// you start: ordinary things, edited like any others). What it opens with falls in from above; nothing placed later does.
+bl_new :: (b: [] Blocks, t: int) { bl_new_level(b, t, 0); }
+// Level `level` (from 0) of a new game of the type: a type's game is gt_levels levels (crates: three rooms, one each).
+bl_new_level :: (b: [] Blocks, t: int, level: int) {
+  b[0].n = 0; b[0].next = 0; b[0].here = false; b[0].rev += 1; pr_forget(b[0].props[..], 0); b[0].models = t == GT_VILLAGE;
+  if !b[0].models && b[0].tool >= BL_T_MODEL { b[0].tool = BL_T_NONE; }
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter_level(t, level, s[..]);
+  // (what a type starts with is within the type's own reach, whatever the last world's was: drift's rings are far out and under the floor)
+  far := b[0].far; high := b[0].high; low := b[0].low;
+  if t >= 0 && t < GT_TYPES { b[0].far = GT_FAR[t]; b[0].high = GT_HIGH[t]; b[0].low = GT_LOW[t]; }
+  for i: 0..<n {
+    k := s[i];
+    if k.kind == GK_BALL { _ = bl_add_ball(b, k.x, k.z, k.w / 2, k.y); }
+    else if k.kind == GK_BLOCK { _ = bl_add(b, k.x, k.z, k.w, k.d, k.h, k.y); }
+    // (a building of the village green: its model, its turn and its own scale)
+    else if gk_building(k.kind) >= 0 { _ = bl_add_building(b, gk_building(k.kind), k.x, k.z, k.turn, k.scale); }
+    // (a thing of the type's own kind: a world of its own's course, the racing circuit's track points, drift's rings)
+    else if gk_role(k.kind) > 0 && bl_add(b, k.x, k.z, k.w, k.d, k.h, k.y) { b[0].b[b[0].n - 1].role = gk_role(k.kind); b[0].b[b[0].n - 1].turn = k.turn; b[0].b[b[0].n - 1].go = k.go; b[0].b[b[0].n - 1].every = k.every; }
+  }
+  for i: 0..<b[0].n { b[0].b[i].starts = true; }
+  b[0].far = far; b[0].high = high; b[0].low = low;
+}
+// A world of type t with nothing in it (a check of what is built, apart from what the type starts with).
+bl_bare :: (b: [] Blocks, t: int) { bl_new(b, t); b[0].n = 0; b[0].next = 0; }
+// The meadow's (the first four types'), the village green's, and a world of its own's.
+bl_start :: (b: [] Blocks) { bl_new(b, GT_THIRD); }
+bl_green :: (b: [] Blocks) { bl_new(b, GT_VILLAGE); }
+bl_none :: (b: [] Blocks) { bl_bare(b, GT_CRATES); }
+// One plan line (its "+ " already off). True when it was an edit this file knows and it was made.
+bl_plan :: (b: [] Blocks, line: string) -> bool {
+  b[0].why = BL_WHY_NONE;
+  w0 := bl_word(line, 0);
+  verb := cast(string) line[w0.lo..<w0.hi];
+  // the numbers and names after the verb, as they stand
+  v: [8] BlNum; words: [8] BlWord; count := 0; at := w0.hi;
+  for k: 0..<8 {
+    w := bl_word(line, at);
+    if w.hi == w.lo { break; }
+    words[k] = w; v[k] = bl_read(cast(string) line[w.lo..<w.hi]); count += 1; at = w.hi;
+  }
+  if bl_word(line, at).hi != bl_word(line, at).lo { return false; }   // more words than any edit takes
+  // a new thing's last word may be `rest`: set down still, not dropped
+  // and a block's, its kind (this game type's: either order)
+  rest := false; role := BL_R_NONE; named := false;
+  for k: 0..<2 {
+    if count == 0 || (verb != "place" && verb != "ball") { break; }
+    last := cast(string) line[words[count - 1].lo..<words[count - 1].hi];
+    if last == "rest" && !rest { rest = true; count -= 1; continue; }
+    r := bl_role_of(last);
+    if verb == "place" && r > 0 && !named {
+      if !bl_role_ok(b, r) { b[0].why = BL_WHY_KIND; return false; }
+      role = r; named = true; count -= 1;
+    }
+  }
+  if verb == "clear" {
+    if count != 0 { return false; }
+    b[0].n = 0; b[0].sel = 0; b[0].rev += 1;
+    pr_forget(b[0].props[..], 0);   // (what was set for single things goes with them)
+    return true;
+  }
+  if verb == "set" || verb == "reset" {
+    // a property set or put back: its path as written, and for `set` its value as written. A thing named by its id must be there
+    if count != (ifx verb == "set" then 2 else 1) { return false; }
+    path := cast(string) line[words[0].lo..<words[0].hi]; value := ifx count == 2 then cast(string) line[words[1].lo..<words[1].hi] else "";
+    who := pr_at(path);
+    if who.prop >= 0 && who.target > 0 && bl_at(b, who.target) < 0 { pr_refused(b[0].props[..], path, value, PR_NO_THING); return false; }
+    status := ifx verb == "set" then pr_set(b[0].props[..], path, value) else pr_reset(b[0].props[..], path);
+    if status != TUN_OK { return false; }
+    bl_tuned(b);
+    return true;
+  }
+  if verb == "gravity" {
+    // a multiple of the normal, kept in tenths: 0 to 5
+    if count != 1 || !v[0].ok || v[0].v < BL_GRAV_LOW * 10 || v[0].v > BL_GRAV_HIGH * 10 { return false; }
+    // (the registry's world.gravity, by the same door as `set`)
+    if pr_set(b[0].props[..], "world.gravity", cast(string) line[words[0].lo..<words[0].hi]) != TUN_OK { return false; }
+    bl_tuned(b);
+    return true;
+  }
+  if verb == "place" {
+    if count != 5 && count != 6 { return false; }
+    for k: 0..<count { if !v[k].ok { return false; } }
+    if !bl_add(b, v[0].v, v[1].v, v[2].v, v[3].v, v[4].v, ifx count == 6 then v[5].v else 0) { return false; }
+    b[0].b[b[0].n - 1].rest = rest; bl_set_role(b, b[0].n - 1, role);
+    return true;
+  }
+  if verb == "ball" {
+    if count != 3 && count != 4 { return false; }
+    for k: 0..<count { if !v[k].ok { return false; } }
+    if !bl_add_ball(b, v[0].v, v[1].v, v[2].v, ifx count == 4 then v[3].v else 0) { return false; }
+    b[0].b[b[0].n - 1].rest = rest;
+    return true;
+  }
+  if verb == "put" {
+    // a building: its model's word, where, its turn in degrees and its scale (1.45: 145 percent of its model)
+    if count < 3 || count > 5 { return false; }
+    m := vl_kind_of(cast(string) line[words[0].lo..<words[0].hi]);
+    if m < 0 || !v[1].ok || !v[2].ok || (count >= 4 && (!v[3].ok || v[3].v % 100 != 0)) || (count == 5 && (!v[4].ok || v[4].v == 0)) { return false; }
+    return bl_add_building(b, m, v[1].v, v[2].v, ifx count >= 4 then v[3].v / 100 else 0, ifx count == 5 then v[4].v else 0);
+  }
+  if count < 1 { return false; }
+  i := bl_at(b, bl_id(cast(string) line[words[0].lo..<words[0].hi]));
+  if verb == "turn" {
+    // a building turned where it stands (a block or a ball is turned by what it meets, not by a line)
+    if i < 0 || count != 2 || !v[1].ok || v[1].v % 9000 != 0 || b[0].b[i].kind != BL_BUILDING { return false; }
+    turn := ((v[1].v / 100 % 360) + 360) % 360; k := b[0].b[i];
+    b[0].why = bl_building_why(b, k.model, k.x, k.z, turn, k.scale, k.id);
+    if b[0].why != BL_WHY_NONE { return false; }
+    if turn == k.turn { return true; }
+    b[0].b[i].turn = turn; b[0].b[i].moves += 1; b[0].rev += 1;
+    return true;
+  }
+  if i < 0 { return false; }
+  if verb == "kind" {
+    // a block made one of this game type's kinds, or plain again (a ball or a building has none)
+    if count != 2 || b[0].b[i].kind != BL_BLOCK { return false; }
+    r := bl_role_of(cast(string) line[words[1].lo..<words[1].hi]);
+    if r < 0 { return false; }
+    if !bl_role_ok(b, r) { b[0].why = BL_WHY_KIND; return false; }
+    if r == b[0].b[i].role { return true; }
+    bl_set_role(b, i, r); b[0].b[i].sizes += 1; b[0].rev += 1;
+    return true;
+  }
+  if verb == "goes" {
+    // how far a moving platform or a lift goes, and how many seconds there and back takes (kept in milliseconds)
+    if count != 3 || !v[1].ok || !v[2].ok { return false; }
+    k := GK_ROLE[b[0].b[i].role];
+    if b[0].b[i].kind != BL_BLOCK || !gk_moves(k) { b[0].why = BL_WHY_STILL; return false; }
+    if !gk_travel_ok(k, v[1].v, v[2].v * 10) { b[0].why = BL_WHY_TRAVEL; return false; }
+    if b[0].b[i].go == v[1].v && b[0].b[i].every == v[2].v * 10 { return true; }
+    b[0].b[i].go = v[1].v; b[0].b[i].every = v[2].v * 10; b[0].b[i].sizes += 1; b[0].rev += 1;
+    return true;
+  }
+  if verb == "remove" {
+    if count != 1 { return false; }
+    if b[0].sel == b[0].b[i].id { b[0].sel = 0; }
+    pr_forget(b[0].props[..], b[0].b[i].id);
+    for k: i..<b[0].n - 1 { b[0].b[k] = b[0].b[k + 1]; }
+    b[0].n -= 1; b[0].rev += 1;
+    return true;
+  }
+  if verb == "size" {
+    if count != 4 || !v[1].ok || !v[2].ok || !v[3].ok || b[0].b[i].kind == BL_BUILDING { return false; }
+    ball := b[0].b[i].kind == BL_BALL;
+    if ball && !bl_radius_ok(v[1].v / 2) { b[0].why = BL_WHY_RADIUS; return false; }
+    if !bl_side_ok(v[1].v) || !bl_side_ok(v[2].v) || !bl_side_ok(v[3].v) { b[0].why = ifx ball then BL_WHY_RADIUS else BL_WHY_SIZE; return false; }
+    if ball {
+      // a ball is as wide as it is high: its width is the one number it takes
+      b[0].b[i].w = v[1].v; b[0].b[i].d = v[1].v; b[0].b[i].h = v[1].v;
+    } else { b[0].b[i].w = v[1].v; b[0].b[i].d = v[2].v; b[0].b[i].h = v[3].v; }
+    b[0].b[i].sizes += 1; b[0].rev += 1;
+    return true;
+  }
+  if verb == "move" {
+    if (count != 3 && count != 4) || !v[1].ok || !v[2].ok || (count == 4 && !v[3].ok) { return false; }
+    y := ifx count == 4 then v[3].v else b[0].b[i].y;
+    if !bl_place_ok(b, v[1].v, v[2].v, y) { b[0].why = bl_place_why(b, v[1].v, v[2].v, y); return false; }
+    // (a building stays on the ground, turned as it was, and never moves into another or the person)
+    if b[0].b[i].kind == BL_BUILDING {
+      k := b[0].b[i];
+      b[0].why = bl_building_why(b, k.model, v[1].v, v[2].v, k.turn, k.scale, k.id);
+      if count == 4 || b[0].why != BL_WHY_NONE { return false; }
+      b[0].b[i].x = v[1].v; b[0].b[i].z = v[2].v; b[0].b[i].moves += 1; b[0].rev += 1;
+      return true;
+    }
+    // put there, it stands upright again
+    b[0].b[i].x = v[1].v; b[0].b[i].z = v[2].v; b[0].b[i].y = y; b[0].b[i].turn = 0; b[0].b[i].tipped = false;
+    b[0].b[i].moves += 1; b[0].rev += 1;
+    return true;
+  }
+  return false;
+}
+// The registry changed: the list's own copy of the gravity follows it, and the page notices.
+bl_tuned :: (b: [] Blocks) { b[0].grav = pr_value(b[0].props[..], TW_GRAVITY) / 10; b[0].rev += 1; }
+// An edit from the hotbar's tools or edit mode: a plan line (the same words the model writes), or
+// "select bN" and "select none". A thing is selected only in edit mode, and one placed in edit mode
+// is selected. True when it changed something.
+bl_edit :: (b: [] Blocks, line: string) -> bool {
+  w0 := bl_word(line, 0); verb := cast(string) line[w0.lo..<w0.hi];
+  b[0].why = BL_WHY_NONE;
+  // (a limit the HUD met where its tool was used: nothing changes, and the page says why)
+  if verb == "limit" { w1 := bl_word(line, w0.hi); b[0].why = bl_why_of(cast(string) line[w1.lo..<w1.hi]); return false; }
+  if verb == "select" {
+    w1 := bl_word(line, w0.hi); name := cast(string) line[w1.lo..<w1.hi];
+    if bl_word(line, w1.hi).hi != bl_word(line, w1.hi).lo { return false; }
+    id := ifx name == "none" then 0 else bl_id(name);
+    if name != "none" && (!b[0].editing || bl_at(b, id) < 0) { return false; }
+    if b[0].sel == id { return false; }
+    b[0].sel = id; b[0].rev += 1;
+    return true;
+  }
+  // (the building tools' turn, a quarter turn on: the wheel over the world while one is picked)
+  if verb == "spin" { w1 := bl_word(line, w0.hi); r := bl_read(cast(string) line[w1.lo..<w1.hi]); if !r.ok || b[0].tool < BL_T_MODEL { return false; } bl_spin(b, ifx r.v < 0 then -1 else 1); return true; }
+  if !bl_plan(b, line) { return false; }
+  // (placed by the shapes tool while a kind item is picked: it is of that kind, unless its line named one)
+  if verb == "place" && b[0].brush != BL_R_NONE && b[0].tool != BL_T_NONE && b[0].tool < BL_T_MODEL && b[0].b[b[0].n - 1].role == BL_R_NONE && bl_role_ok(b, b[0].brush) { bl_set_role(b, b[0].n - 1, b[0].brush); }
+  if b[0].editing && (verb == "place" || verb == "ball" || verb == "put") { b[0].sel = b[0].b[b[0].n - 1].id; }
+  return true;
+}
+// A limit in words, with its number, in the page's voice (lowercase, clipped), written to out from n: what a person is
+// shown when an edit is refused for it, and what the chat's model is told. Nothing for BL_WHY_NONE.
+bl_why :: (b: [] Blocks, why: int, out: [] u8, from: int) -> int {
+  n := from;
+  if why == BL_WHY_FULL { n = bl_put(out, n, "world is full: "); n = bl_int(out, n, b[0].n); n = bl_put(out, n, " of "); n = bl_int(out, n, BL_MAX); n = bl_put(out, n, " things. delete some to place more."); }
+  // where and how big: the words are shared/game-types.coax's, the app's too
+  shared := ifx why == BL_WHY_FAR then GT_WHY_FAR else ifx why == BL_WHY_SIZE then GT_WHY_SIZE else ifx why == BL_WHY_RADIUS then GT_WHY_RADIUS else ifx why == BL_WHY_HIGH then GT_WHY_HIGH else ifx why == BL_WHY_TRAVEL then GT_WHY_TRAVEL else ifx why == BL_WHY_STILL then GT_WHY_STILL else GT_WHY_NONE;
+  n = gt_why_words(shared, b[0].far, b[0].low, b[0].high, out, n);
+  if why == BL_WHY_ROOM { n = bl_put(out, n, "no room there: something is standing in that place."); }
+  // (a building's rules: the words are shared/buildings.coax's, the app's too)
+  if why == BL_WHY_BOXES { n = vl_why_words(VL_WHY_BOXES, bl_buildings(b)[1], out, n); }
+  if why == BL_WHY_SCALE { n = vl_why_words(VL_WHY_SCALE, 0, out, n); }
+  if why == BL_WHY_VILLAGE { n = bl_put(out, n, "buildings stand only in the medieval village."); }
+  if why == BL_WHY_SKY { n = bl_put(out, n, "as high as it goes: the sky stops at "); n = bl_int(out, n, BL_SKY); n = bl_put(out, n, " m."); }
+  if why == BL_WHY_KIND {
+    if b[0].roles == 0 { n = bl_put(out, n, "that kind is not built here: this game type has blocks and balls only."); }
+    else {
+      n = bl_put(out, n, "that kind is not built here: this game type's are "); first := true;
+      for r: 1..<BL_ROLES { if bl_role_ok(b, r) { if !first { n = bl_put(out, n, ", "); } n = bl_put(out, n, bl_role_word(r)); first = false; } }
+      n = bl_put(out, n, ", and plain blocks and balls.");
+    }
+  }
+  return n;
+}
+// A limit the HUD met, by the word it says it with (its "limit WORD" edit): BL_WHY_NONE when it is none.
+bl_why_of :: (word: string) -> int {
+  if word == "full" { return BL_WHY_FULL; } if word == "far" { return BL_WHY_FAR; }
+  if word == "boxes" { return BL_WHY_BOXES; }
+  if word == "size" { return BL_WHY_SIZE; } if word == "radius" { return BL_WHY_RADIUS; } if word == "room" { return BL_WHY_ROOM; } if word == "sky" { return BL_WHY_SKY; }
+  return BL_WHY_NONE;
+}
+// How full the world is, in words: "things: 12 of 1000".
+bl_count :: (b: [] Blocks, out: [] u8, from: int) -> int { n := bl_put(out, from, "things: "); n = bl_int(out, n, b[0].n); n = bl_put(out, n, " of "); return bl_int(out, n, BL_MAX); }
+// Whether the world is nearly full: BL_NEAR percent of its things or more, and not yet all of them.
+bl_nearly :: (b: [] Blocks) -> bool { return b[0].n * 100 >= BL_MAX * BL_NEAR && b[0].n < BL_MAX; }
+// The selected thing's place in the list: -1, none.
+bl_chosen :: (b: [] Blocks) -> int { return ifx b[0].sel > 0 then bl_at(b, b[0].sel) else -1; }
+// Edit mode on or off; off, nothing is selected.
+bl_mode :: (b: [] Blocks, on: bool) { if b[0].editing != on { b[0].editing = on; b[0].rev += 1; } if !on && b[0].sel != 0 { b[0].sel = 0; b[0].rev += 1; } }
+// A plan line about one thing, written and read: `verb`, its id, then lengths.
+bl_line :: (b: [] Blocks, verb: string, id: int, v: [] int) -> bool {
+  t: [96] u8; n := bl_put(t[..], 0, verb);
+  if id > 0 { n = bl_put(t[..], n, " b"); n = bl_int(t[..], n, id); }
+  for k: 0..<v.count { n = bl_put(t[..], n, " "); n = bl_num(t[..], n, v[k]); }
+  return bl_edit(b, cast(string) t[0..<n]);
+}
+// The selected thing a step bigger (more: true) or smaller along one side: 0 across, 1 along, 2
+// up. A ball has one size: any side is its width. Within the limits, or nothing changes.
+bl_grow :: (b: [] Blocks, side: int, more: bool) -> bool {
+  i := bl_chosen(b);
+  if i < 0 || b[0].b[i].kind == BL_BUILDING { return false; }
+  k := b[0].b[i]; by := ifx more then BL_STEP else -BL_STEP;
+  now := [3] int.[k.w + (ifx side == 0 || k.kind == BL_BALL then by else 0), k.d + (ifx side == 1 then by else 0), k.h + (ifx side == 2 then by else 0)];
+  if k.kind == BL_BALL { now[1] = now[0]; now[2] = now[0]; }
+  return bl_line(b, "size", k.id, now[..]);
+}
+// The selected thing gone.
+bl_delete :: (b: [] Blocks) -> bool { none: [1] int; i := bl_chosen(b); return i >= 0 && bl_line(b, "remove", b[0].b[i].id, none[0..<0]); }
+// Another like the selected thing, beside it (to its right; to its left when that is too far out), and selected.
+bl_twin :: (b: [] Blocks) -> bool {
+  i := bl_chosen(b);
+  if i < 0 { return false; }
+  k := b[0].b[i]; gap := k.w + 25;
+  for dir: [2] int.[1, -1] {
+    box := [5] int.[k.x + dir * gap, k.z, k.w, k.d, k.h]; ball := [3] int.[k.x + dir * gap, k.z, k.w / 2];
+    // (a building beside it, as wide as it stands turned, and turned the same)
+    if k.kind == BL_BUILDING { side := ifx k.turn % 180 == 0 then k.w else k.d; if bl_add_building(b, k.model, k.x + dir * (side + 25), k.z, k.turn, k.scale) { if b[0].editing { b[0].sel = b[0].b[b[0].n - 1].id; } return true; } continue; }
+    if k.kind == BL_BALL { if bl_line(b, "ball", 0, ball[..]) { return true; } } else if bl_line(b, "place", 0, box[..]) { return true; }
+  }
+  return false;
+}
+// The tool, the mode, the selection and the gravity, for the HUD (its message 113): "TOOL EDIT ID GRAVITY".
+bl_state :: (b: [] Blocks, out: [] u8) -> int {
+  n := bl_int(out, 0, b[0].tool); n = bl_put(out, n, ifx b[0].editing then " 1 " else " 0 ");
+  n = bl_int(out, n, ifx bl_chosen(b) >= 0 then b[0].sel else 0); n = bl_put(out, n, " "); n = bl_int(out, n, b[0].grav);
+  return n;
+}
+// Everything the hotbar set back to how the world opens: no tool, no edit mode, nothing selected, normal gravity.
+bl_reset :: (b: [] Blocks) { b[0].tool = BL_T_NONE; b[0].shape = BL_T_BLOCK; b[0].brush = BL_R_NONE; b[0].editing = false; b[0].sel = 0; b[0].grav = BL_GRAV; pr_clear(b[0].props[..]); b[0].mode[0] = BL_M_FREE; b[0].mode[1] = BL_M_FREE; b[0].rev += 1; }
+// The shapes tool's shape set (BL_T_BLOCK up to BL_SHAPES): kept, and what is being placed if the tool is picked. False when it is none.
+bl_set_shape :: (b: [] Blocks, shape: int) -> bool {
+  if shape < 0 || shape >= BL_SHAPES { return false; }
+  if b[0].brush != BL_R_NONE { b[0].brush = BL_R_NONE; b[0].rev += 1; }
+  if b[0].shape != shape || (b[0].tool != BL_T_NONE && b[0].tool != shape) { b[0].shape = shape; if b[0].tool != BL_T_NONE { b[0].tool = shape; } b[0].rev += 1; }
+  return true;
+}
+// A building tool picked (model m) or put down. Only where buildings may stand.
+bl_pick_building :: (b: [] Blocks, m: int, on: bool) {
+  if on && (m < 0 || m >= VL_KINDS || !b[0].models) { return; }
+  b[0].tool = ifx on then BL_T_MODEL + m else BL_T_NONE; b[0].rev += 1;
+}
+// The building tools' turn a quarter on (1) or back (-1).
+bl_spin :: (b: [] Blocks, by: int) { b[0].quarter = ((b[0].quarter + by) % 4 + 4) % 4; b[0].rev += 1; }
+// The shapes tool picked (it places the shape it was last set to) or put down.
+bl_pick :: (b: [] Blocks, on: bool) { b[0].tool = ifx on then b[0].shape else BL_T_NONE; b[0].brush = BL_R_NONE; b[0].rev += 1; }
+// A placing tool's mode set (tool BL_T_BLOCK or BL_T_BALL; mode BL_M_*). False when either is none.
+bl_set_mode :: (b: [] Blocks, tool: int, mode: int) -> bool {
+  if tool < 0 || tool > BL_T_BALL || mode < BL_M_SNAP || mode > BL_M_FREE { return false; }
+  if b[0].mode[tool] != mode { b[0].mode[tool] = mode; b[0].rev += 1; }
+  return true;
+}
+// The mode the HUD places in now: the picked tool's (free, with no tool).
+bl_mode_now :: (b: [] Blocks) -> int { return ifx b[0].tool >= BL_T_MODEL then b[0].mode[1] else ifx b[0].tool >= 0 then b[0].mode[0] else BL_M_FREE; }
+// Where you stand, as the HUD says it: "X Z FX FZ" in hundredths, and " 1" more while you fly.
+bl_you :: (b: [] Blocks, text: string) {
+  at := 0; got: [4] int;
+  for k: 0..<4 {
+    w := bl_word(text, at);
+    if w.hi == w.lo { return; }
+    neg := text[w.lo] == '-'; v := 0;
+    for i: (ifx neg then w.lo + 1 else w.lo)..<w.hi { if text[i] < '0' || text[i] > '9' || v > 10000000 { return; } v = v * 10 + cast(int) (text[i] - '0'); }
+    got[k] = ifx neg then -v else v; at = w.hi;
+  }
+  b[0].here = true; b[0].you_x = got[0]; b[0].you_z = got[1]; b[0].face_x = got[2]; b[0].face_z = got[3];
+  last := bl_word(text, at);
+  b[0].flying = last.hi == last.lo + 1 && text[last.lo] == '1';
+  // (and, where the course is up in the air, one word more: the feet's height, in hundredths)
+  b[0].you_y = 0;
+  high := bl_word(text, last.hi);
+  if high.hi > high.lo { y := bl_read(cast(string) text[high.lo..<high.hi]); if y.ok { b[0].you_y = y.v / 100; } }
+}
+// Where things came to rest, as the HUD says it: "ID X Y Z W H D TURN TIP" for each, one after
+// another, lengths in hundredths, TURN in degrees, TIP 1 when it leans. A thing the page has not
+// got is passed over; a number that is not one ends the reading. True when anything changed.
+bl_things :: (b: [] Blocks, text: string) -> bool {
+  at := 0; changed := false;
+  while true {
+    got: [9] int;
+    for k: 0..<9 {
+      w := bl_word(text, at);
+      if w.hi == w.lo { if changed { b[0].rev += 1; } return changed; }
+      neg := text[w.lo] == '-'; v := 0;
+      if neg && w.hi == w.lo + 1 { if changed { b[0].rev += 1; } return changed; }
+      for i: (ifx neg then w.lo + 1 else w.lo)..<w.hi { if text[i] < '0' || text[i] > '9' || v > 10000000 { if changed { b[0].rev += 1; } return changed; } v = v * 10 + cast(int) (text[i] - '0'); }
+      got[k] = ifx neg then -v else v; at = w.hi;
+    }
+    i := bl_at(b, got[0]);
+    if i < 0 || got[4] < 1 || got[5] < 1 || got[6] < 1 { continue; }
+    k := b[0].b[i];
+    now := k;
+    if got[2] < 0 { got[2] = 0; }   // (the floor is the lowest a thing stands)
+    now.x = got[1]; now.y = got[2]; now.z = got[3]; now.w = got[4]; now.h = got[5]; now.d = got[6]; now.turn = got[7]; now.tipped = got[8] != 0;
+    if now.x != k.x || now.y != k.y || now.z != k.z || now.w != k.w || now.h != k.h || now.d != k.d || now.turn != k.turn || now.tipped != k.tipped { b[0].b[i] = now; changed = true; }
+  }
+  return changed;
+}
+// The world in words, for the model: where the person is, and every thing with its name, where it
+// rests, and how it has turned (in a world of more than BL_SHOWN things, the nearest and those `said` names).
+bl_describe :: (b: [] Blocks, out: [] u8, from: int) -> int { return bl_describe_for(b, out, from, ""); }
+bl_trim :: (s: string) -> string { e := s.count; while e > 0 && (s[e - 1] == ',' || s[e - 1] == '.' || s[e - 1] == '?' || s[e - 1] == '!' || s[e - 1] == ':' || s[e - 1] == ';') { e -= 1; } return cast(string) s[0..<e]; }
+bl_describe_for :: (b: [] Blocks, out: [] u8, from: int, said: string) -> int {
+  n := from;
+  if b[0].here {
+    n = bl_put(out, n, "person: at x "); n = bl_num(out, n, b[0].you_x); n = bl_put(out, n, " z "); n = bl_num(out, n, b[0].you_z);
+    if b[0].you_y != 0 { n = bl_put(out, n, ", feet at height "); n = bl_num(out, n, b[0].you_y); }
+    n = bl_put(out, n, ", facing x "); n = bl_num(out, n, b[0].face_x); n = bl_put(out, n, " z "); n = bl_num(out, n, b[0].face_z); n = bl_put(out, n, "\n");
+    if b[0].flying { n = bl_put(out, n, "moving: flying\n"); }
+  }
+  // what has been set: the properties that differ (the gravity among them), edit mode, and the thing selected in it
+  n = pr_describe(b[0].props[..], out, n);
+  if b[0].editing { n = bl_put(out, n, "mode: edit\n"); }
+  if bl_chosen(b) >= 0 { n = bl_put(out, n, "selected: b"); n = bl_int(out, n, b[0].sel); n = bl_put(out, n, "\n"); }
+  if b[0].n == 0 { return bl_put(out, n, "blocks: none"); }
+  // a world of more than BL_SHOWN things: its count, then the nearest to the person, the selected one
+  // and any the message names (bN), nearest first; the rest by count alone (an edit by id still reaches them)
+  shown: [BL_MAX] bool; order: [BL_SHOWN + 8] int; m := 0;
+  if b[0].n > BL_SHOWN {
+    for i: 0..<b[0].n { shown[i] = false; }
+    // (the named ones first, so the nearest never crowd them out; at most eight)
+    s := bl_chosen(b); if s >= 0 { shown[s] = true; order[m] = s; m += 1; }
+    at := 0;
+    while at < said.count && m < 8 {
+      w := bl_word(said, at); if w.hi == w.lo { break; } at = w.hi;
+      id := bl_id(bl_trim(cast(string) said[w.lo..<w.hi]));
+      i := ifx id > 0 then bl_at(b, id) else -1;
+      if i >= 0 && !shown[i] { shown[i] = true; order[m] = i; m += 1; }
+    }
+    named := m;
+    for k: 0..<BL_SHOWN {
+      best := -1; far := 0;
+      for i: 0..<b[0].n {
+        if shown[i] { continue; }
+        dx := b[0].b[i].x - b[0].you_x; dz := b[0].b[i].z - b[0].you_z; d := dx * dx + dz * dz;
+        if best < 0 || d < far { best = i; far = d; }
+      }
+      if best < 0 { break; }
+      shown[best] = true; order[m] = best; m += 1;
+    }
+    balls := bl_balls(b); built := bl_buildings(b)[0];
+    n = bl_put(out, n, "things: "); n = bl_int(out, n, b[0].n); n = bl_put(out, n, " of "); n = bl_int(out, n, BL_MAX); n = bl_put(out, n, " ("); n = bl_int(out, n, b[0].n - balls - built); n = bl_put(out, n, " blocks, "); n = bl_int(out, n, balls); n = bl_put(out, n, " balls");
+    if built > 0 { n = bl_put(out, n, ", "); n = bl_int(out, n, built); n = bl_put(out, n, " buildings"); }
+    n = bl_put(out, n, ")\n");
+    n = bl_put(out, n, "shown: "); n = bl_int(out, n, m - named); n = bl_put(out, n, " nearest the person");
+    if named > 0 { n = bl_put(out, n, ", and "); n = bl_int(out, n, named); n = bl_put(out, n, " selected or named"); }
+    n = bl_put(out, n, "; the rest by id only (b1 to b"); n = bl_int(out, n, b[0].next); n = bl_put(out, n, ")\n");
+  }
+  n = bl_put(out, n, "blocks (id: x z, size w d h, bottom y):");
+  for e: 0..<(ifx b[0].n > BL_SHOWN then m else b[0].n) {
+    i := ifx b[0].n > BL_SHOWN then order[e] else e;
+    k := b[0].b[i];
+    if k.kind == BL_BUILDING {
+      n = bl_put(out, n, "\nb"); n = bl_int(out, n, k.id); n = bl_put(out, n, ": building "); n = bl_put(out, n, vl_word(k.model)); n = bl_put(out, n, " "); n = bl_num(out, n, k.x); n = bl_put(out, n, " "); n = bl_num(out, n, k.z);
+      n = bl_put(out, n, ", footprint "); n = bl_num(out, n, ifx k.turn % 180 == 0 then k.w else k.d); n = bl_put(out, n, " "); n = bl_num(out, n, ifx k.turn % 180 == 0 then k.d else k.w); n = bl_put(out, n, ", turned "); n = bl_int(out, n, k.turn); n = bl_put(out, n, ", scale "); n = bl_num(out, n, k.scale);
+      continue;
+    }
+    n = bl_put(out, n, "\nb"); n = bl_int(out, n, k.id); n = bl_put(out, n, ifx k.kind == BL_BALL then ": ball " else ": ");
+    if k.role > 0 { n = bl_put(out, n, bl_role_word(k.role)); n = bl_put(out, n, " "); }
+    n = bl_num(out, n, k.x); n = bl_put(out, n, " "); n = bl_num(out, n, k.z);
+    if k.kind == BL_BALL { n = bl_put(out, n, ", radius "); n = bl_num(out, n, k.w / 2); }
+    else { n = bl_put(out, n, ", size "); n = bl_num(out, n, k.w); n = bl_put(out, n, " "); n = bl_num(out, n, k.d); n = bl_put(out, n, " "); n = bl_num(out, n, k.h); }
+    n = bl_put(out, n, ", bottom "); n = bl_num(out, n, k.y);
+    if k.every > 0 { n = bl_put(out, n, ", goes "); n = bl_num(out, n, k.go); n = bl_put(out, n, " every "); n = bl_num(out, n, k.every / 10); n = bl_put(out, n, " s"); }
+    if k.turn != 0 { n = bl_put(out, n, ", turned "); n = bl_int(out, n, k.turn); }
+    if k.tipped { n = bl_put(out, n, ", tipped"); }
+  }
+  return n;
+}
+// The list for the HUD (its message 105): a count, then "ID KIND MOVES SIZES X Y Z W H D [REST [TURN [GO EVERY]]]" a line (KIND 0 a block,
+// 1 a ball, BL_ROLE_WIRE and up a block of a game type's kind),
+// lengths in hundredths; then nothing more on the line of a thing the world opened with (it alone appears above its
+// place and falls in), " 1" on one set down at rest (made asleep) and " 2" on any other (made at its place). The HUD takes a thing's place when it is new or MOVES has changed, and its
+// size when SIZES has: otherwise where the thing is is the HUD's to say.
+bl_wire :: (b: [] Blocks, out: [] u8) -> int {
+  n := bl_int(out, 0, b[0].n); n = bl_put(out, n, "\n");
+  for i: 0..<b[0].n {
+    k := b[0].b[i];
+    // (a building: "ID 2 MOVES SIZES X 0 Z MODEL QUARTER SCALE": its model, its quarter turns and how big, hundredths)
+    if k.kind == BL_BUILDING {
+      n = bl_int(out, n, k.id); n = bl_put(out, n, " 2 "); n = bl_int(out, n, k.moves); n = bl_put(out, n, " "); n = bl_int(out, n, k.sizes); n = bl_put(out, n, " ");
+      n = bl_int(out, n, k.x); n = bl_put(out, n, " 0 "); n = bl_int(out, n, k.z); n = bl_put(out, n, " "); n = bl_int(out, n, k.model); n = bl_put(out, n, " "); n = bl_int(out, n, k.turn / 90); n = bl_put(out, n, " "); n = bl_int(out, n, k.scale); n = bl_put(out, n, " 1\n");
+      continue;
+    }
+    n = bl_int(out, n, k.id); n = bl_put(out, n, " "); n = bl_int(out, n, ifx k.role > 0 then BL_ROLE_WIRE + k.role else k.kind); n = bl_put(out, n, " "); n = bl_int(out, n, k.moves); n = bl_put(out, n, " "); n = bl_int(out, n, k.sizes); n = bl_put(out, n, " ");
+    n = bl_int(out, n, k.x); n = bl_put(out, n, " "); n = bl_int(out, n, k.y); n = bl_put(out, n, " "); n = bl_int(out, n, k.z); n = bl_put(out, n, " ");
+    n = bl_int(out, n, k.w); n = bl_put(out, n, " "); n = bl_int(out, n, k.h); n = bl_put(out, n, " "); n = bl_int(out, n, k.d);
+    // (a track point's turn is its bank: said after the rest's number)
+    if k.role == BL_R_TRACK { n = bl_put(out, n, " 2 "); n = bl_int(out, n, k.turn); n = bl_put(out, n, "\n"); continue; }
+    // (a moving platform's or a lift's way: after the rest's number and a turn of 0, how far it goes and how long there and back takes)
+    if k.every > 0 { n = bl_put(out, n, ifx k.starts then " 0 0 " else ifx k.rest then " 1 0 " else " 2 0 "); n = bl_int(out, n, k.go); n = bl_put(out, n, " "); n = bl_int(out, n, k.every); n = bl_put(out, n, "\n"); continue; }
+    n = bl_put(out, n, ifx k.starts then "\n" else ifx k.rest then " 1\n" else " 2\n");
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+BL_TEST_START :: "4\n1 0 1 1 -300 0 400 200 100 200\n2 0 1 1 300 0 500 100 300 100\n3 0 1 1 0 0 800 600 200 100\n4 1 1 1 80 0 300 120 120 120\n";
+
+BlTest :: struct { b: [1] Blocks; out: [BL_TEXT] u8; }
+gs_text_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+bl_test_words :: (t: [] BlTest) -> string { n := bl_describe(t[0].b[..], t[0].out[..], 0); return cast(string) t[0].out[0..<n]; }
+bl_test_wire :: (t: [] BlTest) -> string { n := bl_wire(t[0].b[..], t[0].out[..]); return cast(string) t[0].out[0..<n]; }
+
+#test "numbers are squares with two decimals at most, and anything else is not a number" #steps 20000000 {
+  #assert bl_read("2").v == 200 && bl_read("-1.5").v == -150 && bl_read("0.25").v == 25 && bl_read("3.") .v == 300 && bl_read(".5").v == 50 && bl_read("1.239").v == 123;
+  #assert bl_read("2").ok && !bl_read("").ok && !bl_read("-").ok && !bl_read("two").ok && !bl_read("1,5").ok && !bl_read("1e3").ok && !bl_read("b2").ok && !bl_read("99999999").ok;
+  out: [32] u8;
+  n := bl_num(out[..], 0, 250); #assert cast(string) out[0..<n] == "2.5";
+  n = bl_num(out[..], 0, -100); #assert cast(string) out[0..<n] == "-1";
+  n = bl_num(out[..], 0, 5); #assert cast(string) out[0..<n] == "0.05";
+  n = bl_num(out[..], 0, -125); #assert cast(string) out[0..<n] == "-1.25";
+  n = bl_num(out[..], 0, 0); #assert cast(string) out[0..<n] == "0";
+  #assert bl_id("b1") == 1 && bl_id("b12") == 12 && bl_id("b") == -1 && bl_id("1") == -1 && bl_id("bx") == -1 && bl_id("B1") == -1;
+}
+#test "the world opens with three blocks and a ball, named in order, and says so to the model and to the HUD" #steps 20000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_start(b);
+  #assert b[0].n == 4 && b[0].b[0].id == 1 && b[0].b[2].id == 3 && b[0].b[3].id == 4 && b[0].b[3].kind == BL_BALL && b[0].b[0].kind == BL_BLOCK && bl_balls(b) == 1;
+  #assert bl_test_words(t[..]) == "blocks (id: x z, size w d h, bottom y):\nb1: -3 4, size 2 2 1, bottom 0\nb2: 3 5, size 1 1 3, bottom 0\nb3: 0 8, size 6 1 2, bottom 0\nb4: ball 0.8 3, radius 0.6, bottom 0";
+  // to the HUD: its name, its kind, how often it has been moved and sized, then its place and size
+  #assert bl_test_wire(t[..]) == BL_TEST_START;
+  // where you stand goes first once the HUD has said it; a broken report changes nothing
+  bl_you(b, "150 -225 0 100");
+  bl_you(b, "1 2 three 4"); bl_you(b, "1 2 3");
+  #assert b[0].here && b[0].you_x == 150 && b[0].you_z == -225 && b[0].face_z == 100;
+  n := bl_describe(b, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<41] == "person: at x 1.5 z -2.25, facing x 0 z 1\n" && !b[0].flying;
+  // flying, the HUD says one word more, and the model is told; on foot again it is not
+  bl_you(b, "150 -225 0 100 1"); #assert b[0].flying && gs_text_has(bl_test_words(t[..]), "facing x 0 z 1\nmoving: flying\nblocks");
+  bl_you(b, "150 -225 0 100 0"); #assert !b[0].flying; bl_you(b, "150 -225 0 100 1"); bl_you(b, "150 -225 0 100"); #assert !b[0].flying && !gs_text_has(bl_test_words(t[..]), "flying");
+}
+#test "a plan line places, sizes, moves and removes; names stay with their blocks and are never used twice" #steps 40000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  #assert bl_plan(b, "place 2 3 1 1 2") && bl_plan(b, "place -1.5 0 4 0.5 1 2");
+  #assert b[0].n == 2 && b[0].b[0].x == 200 && b[0].b[0].z == 300 && b[0].b[0].w == 100 && b[0].b[0].d == 100 && b[0].b[0].h == 200 && b[0].b[0].y == 0;
+  #assert b[0].b[1].x == -150 && b[0].b[1].w == 400 && b[0].b[1].d == 50 && b[0].b[1].h == 100 && b[0].b[1].y == 200;
+  #assert bl_plan(b, "size b1 3 3 0.5") && b[0].b[0].w == 300 && b[0].b[0].h == 50 && b[0].b[0].x == 200;
+  #assert bl_plan(b, "move b2 5 -5") && b[0].b[1].x == 500 && b[0].b[1].z == -500 && b[0].b[1].y == 200;
+  #assert bl_plan(b, "move b2 5 -5 0") && b[0].b[1].y == 0;
+  #assert bl_plan(b, "  remove   b1 ") && b[0].n == 1 && b[0].b[0].id == 2;
+  // the next block is b3, not b1 again
+  #assert bl_plan(b, "place 0 0 1 1 1") && b[0].b[1].id == 3 && bl_at(b, 1) < 0;
+  rev := b[0].rev;
+  #assert bl_plan(b, "clear") && b[0].n == 0 && b[0].rev == rev + 1;
+}
+#test "a line that is not an edit, names no block, or is out of bounds changes nothing" #steps 60000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_start(b); rev := b[0].rev;
+  bad := [32] string.["", "build a castle", "place", "place 1 2 3 4", "place 1 2 3 4 5 6 7", "place a 2 1 1 1", "place 0 0 0 1 1", "place 0 0 0.1 1 1", "place 0 0 13 1 1",
+                      "place 201 0 1 1 1", "place 0 -201 1 1 1", "place 0 0 1 1 1 -1", "place 0 0 1 1 1 13", "size b9 1 1 1", "size b1 1 1", "size b1 0 1 1", "size b1 1 1 20",
+                      "move b1 299 0", "move b1 1", "remove", "remove b1 b2", "clear all",
+                      "ball", "ball 0 0", "ball 0 0 0.1", "ball 0 0 1.6", "ball 0 0 0.3 1 2", "ball x 0 0.3", "ball 201 0 0.3", "ball 0 0 0.3 13", "size b4 0.2 0.2 0.2", "size b4 4 4 4"];
+  for line: bad { #assert !bl_plan(b, line); }
+  #assert b[0].n == 4 && b[0].rev == rev && bl_test_wire(t[..]) == BL_TEST_START;
+  // no more than a thousand
+  for k: 0..<BL_MAX + 12 { ok := bl_plan(b, "place 0 0 1 1 1"); }
+  #assert b[0].n == BL_MAX && !bl_plan(b, "place 0 0 1 1 1");
+}
+#test "a ball is a thing like a block: placed by its radius, sized by its width, moved, removed, and counted with the blocks: one cap for both" #steps 200000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  #assert bl_plan(b, "ball 2 3 0.5") && bl_plan(b, "ball -1 0 0.15 2") && b[0].n == 2 && bl_balls(b) == 2;
+  #assert b[0].b[0].kind == BL_BALL && b[0].b[0].x == 200 && b[0].b[0].z == 300 && b[0].b[0].w == 100 && b[0].b[0].h == 100 && b[0].b[0].d == 100 && b[0].b[0].y == 0 && b[0].b[1].w == 30 && b[0].b[1].y == 200;
+  #assert bl_test_words(t[..]) == "blocks (id: x z, size w d h, bottom y):\nb1: ball 2 3, radius 0.5, bottom 0\nb2: ball -1 0, radius 0.15, bottom 2";
+  #assert bl_test_wire(t[..]) == "2\n1 1 1 1 200 0 300 100 100 100 2\n2 1 1 1 -100 200 0 30 30 30 2\n";
+  // sized: its width is its new width all round; the HUD is told it was sized, not that it was moved
+  #assert bl_plan(b, "size b1 2 9 9") && b[0].b[0].w == 200 && b[0].b[0].d == 200 && b[0].b[0].h == 200 && b[0].b[0].sizes == 2 && b[0].b[0].moves == 1;
+  #assert bl_plan(b, "move b1 5 5") && b[0].b[0].x == 500 && b[0].b[0].moves == 2 && b[0].b[0].sizes == 2;
+  #assert bl_test_wire(t[..]) == "2\n1 1 2 2 500 0 500 200 200 200 2\n2 1 1 1 -100 200 0 30 30 30 2\n";
+  // a block's size and move count the same way
+  #assert bl_plan(b, "place 0 0 1 1 1") && bl_plan(b, "size b3 2 1 1") && bl_plan(b, "size b3 2 1 3") && bl_plan(b, "move b3 1 1 4") && b[0].b[2].sizes == 3 && b[0].b[2].moves == 2 && b[0].b[2].kind == BL_BLOCK;
+  #assert bl_plan(b, "remove b2") && bl_balls(b) == 1 && b[0].n == 2;
+  // balls up to the one cap, the blocks with them: at a thousand neither goes
+  for k: 0..<BL_MAX { ok := bl_plan(b, ifx k % 2 == 0 then "ball 0 0 0.3" else "place 0 0 1 1 1"); }
+  #assert b[0].n == BL_MAX && bl_balls(b) == 500 && !bl_plan(b, "ball 0 0 0.3") && b[0].why == BL_WHY_FULL && !bl_plan(b, "place 0 0 1 1 1") && b[0].why == BL_WHY_FULL;
+}
+#test "the HUD says where things came to rest: the list takes it, tells the model, and tells the HUD nothing new" #steps 60000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_start(b); rev := b[0].rev;
+  // the pillar was pushed over and lies along x; the ball rolled off; the wall was turned a little and shoved
+  #assert bl_things(b, "2 250 0 510 300 100 100 0 0 4 -730 0 1250 60 60 60 0 0 3 12 0 815 600 200 100 -7 0");
+  #assert b[0].rev == rev + 1 && b[0].b[1].w == 300 && b[0].b[1].h == 100 && b[0].b[3].x == -730 && b[0].b[3].z == 1250 && b[0].b[2].turn == -7;
+  #assert bl_test_words(t[..]) == "blocks (id: x z, size w d h, bottom y):\nb1: -3 4, size 2 2 1, bottom 0\nb2: 2.5 5.1, size 3 1 1, bottom 0\nb3: 0.12 8.15, size 6 1 2, bottom 0, turned -7\nb4: ball -7.3 12.5, radius 0.3, bottom 0";
+  // nothing was moved or sized by the page: the counts the HUD reads are as they were
+  #assert bl_test_wire(t[..]) == "4\n1 0 1 1 -300 0 400 200 100 200\n2 0 1 1 250 0 510 300 100 100\n3 0 1 1 12 0 815 600 200 100\n4 1 1 1 -730 0 1250 60 60 60\n";
+  // the same again changes nothing; a thing that leans is said to be tipped; one resting on another has its bottom up
+  #assert !bl_things(b, "2 250 0 510 300 100 100 0 0") && b[0].rev == rev + 1;
+  #assert bl_things(b, "1 -300 37 400 200 100 200 15 1") && b[0].b[0].tipped && b[0].b[0].y == 37 && b[0].rev == rev + 2;
+  n := bl_describe(b, t[0].out[..], 0);
+  #assert cast(string) t[0].out[39..<92] == "\nb1: -3 4, size 2 2 1, bottom 0.37, turned 15, tipped";
+  // moved by the chat, it stands upright again
+  #assert bl_plan(b, "move b1 0 2") && !b[0].b[0].tipped && b[0].b[0].turn == 0 && b[0].b[0].y == 37;
+  // a bottom said under the floor is the floor: the list never keeps a place it would itself refuse
+  #assert bl_things(b, "2 250 -1 510 300 100 100 0 0") == false && b[0].b[1].y == 0 && bl_things(b, "1 0 -3 200 200 100 200 0 0") && b[0].b[0].y == 0;
+  // a thing the page has not got, a size that is none, a broken number and a short tail change nothing
+  rev = b[0].rev;
+  #assert !bl_things(b, "9 0 0 0 100 100 100 0 0") && !bl_things(b, "2 0 0 0 0 100 100 0 0") && !bl_things(b, "2 0 0 x 100 100 100 0 0") && !bl_things(b, "2 1 2 3") && !bl_things(b, "") && !bl_things(b, "2 - 0 0 100 100 100 0 0");
+  #assert b[0].rev == rev && b[0].b[1].x == 250;
+  // what stands before a broken one is taken
+  #assert bl_things(b, "2 260 0 510 300 100 100 0 0 3 oops") && b[0].b[1].x == 260 && b[0].rev == rev + 1;
+}
+
+#test "the hotbar's edits are the model's own words: a tool's place, edit mode's select, move, size, delete and twin, and gravity, all within the limits" #steps 400000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  #assert b[0].tool == BL_T_NONE && !b[0].editing && b[0].sel == 0 && b[0].grav == BL_GRAV && b[0].n == 0;
+  // the block tool's press and the ball tool's: plan lines, ids as ever
+  #assert bl_edit(b, "place 1.50 2.00 1.00 1.00 1.00") && bl_edit(b, "ball -2.00 3.50 0.60") && b[0].n == 2 && b[0].b[0].id == 1 && b[0].b[0].x == 150 && b[0].b[1].kind == BL_BALL && b[0].b[1].w == 120;
+  // out of edit mode nothing is selected, by a press or by placing
+  #assert !bl_edit(b, "select b1") && b[0].sel == 0 && bl_chosen(b) == -1 && !bl_delete(b) && !bl_grow(b, 0, true) && !bl_twin(b);
+  bl_mode(b, true);
+  #assert b[0].editing && bl_edit(b, "select b1") && b[0].sel == 1 && bl_chosen(b) == 0 && !bl_edit(b, "select b1") && !bl_edit(b, "select b9") && !bl_edit(b, "select b1 2") && b[0].sel == 1;
+  // its sizes a quarter at a time, one side each; a ball's as one; never past the limits
+  s0 := b[0].b[0].sizes;
+  #assert bl_grow(b, 0, true) && b[0].b[0].w == 125 && b[0].b[0].d == 100 && bl_grow(b, 1, false) && b[0].b[0].d == 75 && bl_grow(b, 2, true) && b[0].b[0].h == 125 && b[0].b[0].sizes == s0 + 3;
+  for k: 0..<8 { g := bl_grow(b, 1, false); } #assert b[0].b[0].d == BL_SMALL && !bl_grow(b, 1, false);
+  for k: 0..<60 { g := bl_grow(b, 2, true); } #assert b[0].b[0].h == BL_BIG && !bl_grow(b, 2, true);
+  #assert bl_edit(b, "select b2") && bl_grow(b, 2, true) && b[0].b[1].w == 145 && b[0].b[1].h == 145 && b[0].b[1].d == 145;
+  for k: 0..<20 { g := bl_grow(b, 0, false); } #assert b[0].b[1].w == 45 && !bl_grow(b, 0, false);
+  // a move: where the drag ended; a twin beside it, selected; one placed in edit mode is selected
+  #assert bl_edit(b, "move b2 4.00 -1.50") && b[0].b[1].x == 400 && b[0].b[1].z == -150 && b[0].sel == 2;
+  #assert bl_twin(b) && b[0].n == 3 && b[0].b[2].kind == BL_BALL && b[0].b[2].x == 400 + 45 + 25 && b[0].b[2].w == 44 && b[0].sel == 3;
+  #assert bl_edit(b, "select b1") && bl_twin(b) && b[0].n == 4 && b[0].b[3].x == 150 + 125 + 25 && b[0].b[3].h == BL_BIG && b[0].sel == 4;
+  #assert bl_edit(b, "place 0.00 0.00 1.00 1.00 1.00") && b[0].sel == 5;
+  // at the edge of the world the twin goes to the other side
+  #assert bl_edit(b, "move b5 199.50 0.00") && bl_twin(b) && b[0].b[b[0].n - 1].x == 19950 - 125;
+  // the model is told the mode and the selection
+  #assert gs_text_has(bl_test_words(t[..]), "mode: edit\nselected: b6\n");
+  // delete: the selected thing, and nothing is selected; "select none"; a delete with nothing selected does nothing
+  n := b[0].n;
+  #assert bl_delete(b) && b[0].n == n - 1 && b[0].sel == 0 && bl_at(b, 6) < 0 && !bl_delete(b) && !bl_edit(b, "select none");
+  #assert bl_edit(b, "select b5") && bl_edit(b, "select none") && b[0].sel == 0 && !gs_text_has(bl_test_words(t[..]), "selected");
+  // a plan line that removes the selected thing, or clears, leaves nothing selected
+  #assert bl_edit(b, "select b5") && bl_plan(b, "remove b5") && b[0].sel == 0 && bl_edit(b, "select b1") && bl_plan(b, "clear") && b[0].sel == 0 && bl_chosen(b) == -1;
+  // leaving edit mode clears the selection
+  #assert bl_edit(b, "place 0 0 1 1 1") && b[0].sel > 0;
+  bl_mode(b, false); #assert !b[0].editing && b[0].sel == 0 && !gs_text_has(bl_test_words(t[..]), "mode: edit");
+  // gravity: none to five times, in tenths; the model is told it when it is not the normal
+  #assert !gs_text_has(bl_test_words(t[..]), "gravity");
+  #assert bl_plan(b, "gravity 0.3") && b[0].grav == 3 && gs_text_has(bl_test_words(t[..]), "settings changed: world.gravity 0.3\n");
+  #assert bl_plan(b, "gravity 5") && b[0].grav == 50 && bl_plan(b, "gravity 0.1") && b[0].grav == 1 && bl_plan(b, "gravity 0") && b[0].grav == 0 && gs_text_has(bl_test_words(t[..]), "settings changed: world.gravity 0\n");
+  #assert bl_plan(b, "gravity 0.04") && b[0].grav == 0 && bl_plan(b, "gravity 0.05") && b[0].grav == 1 && bl_plan(b, "gravity 2.26") && b[0].grav == 23;
+  #assert !bl_plan(b, "gravity -0.1") && !bl_plan(b, "gravity 5.01") && !bl_plan(b, "gravity") && !bl_plan(b, "gravity 1 2") && !bl_plan(b, "gravity x") && !bl_plan(b, "gravity -1") && b[0].grav == 23;
+  // a thing set down at rest: the plan line's last word, for a block and a ball, with a height or without; the HUD is told so on its line, and of no other
+  r: [1] BlTest; q := r[0].b[..];
+  #assert bl_edit(q, "place 1.50 2.50 1.00 1.00 1.00 0.00 rest") && q[0].b[0].rest && q[0].b[0].x == 150 && q[0].b[0].y == 0 && bl_edit(q, "place 3 3 1 1 1 2 rest") && q[0].b[1].rest && q[0].b[1].y == 200;
+  #assert bl_edit(q, "place 5 5 1 1 1 rest") && q[0].b[2].rest && q[0].b[2].y == 0 && bl_edit(q, "ball 7 7 0.6 1 rest") && q[0].b[3].rest && q[0].b[3].y == 100 && bl_edit(q, "ball 9 9 0.6 rest") && q[0].b[4].rest;
+  #assert bl_edit(q, "place 11 11 1 1 1") && !q[0].b[5].rest && bl_edit(q, "ball 12 12 0.3 2") && !q[0].b[6].rest;
+  #assert bl_test_wire(r[..]) == "7\n1 0 1 1 150 0 250 100 100 100 1\n2 0 1 1 300 200 300 100 100 100 1\n3 0 1 1 500 0 500 100 100 100 1\n4 1 1 1 700 100 700 120 120 120 1\n5 1 1 1 900 0 900 120 120 120 1\n6 0 1 1 1100 0 1100 100 100 100 2\n7 1 1 1 1200 200 1200 60 60 60 2\n";
+  // `rest` is a new thing's last word and nothing else's
+  n7 := q[0].n;
+  #assert !bl_edit(q, "place rest 1 1 1 1 1") && !bl_edit(q, "place 1 1 1 1 rest") && !bl_edit(q, "place 1 1 1 1 1 1 1 rest") && !bl_edit(q, "place 1 1 1 1 1 rest rest") && !bl_edit(q, "move b1 2 2 rest") && !bl_edit(q, "remove b1 rest") && !bl_edit(q, "clear rest") && !bl_edit(q, "ball rest") && !bl_edit(q, "place 1 1 1 1 1 0 still") && q[0].n == n7;
+  // far out: a thing may stand up to 200 squares from the middle
+  #assert bl_edit(q, "place 200 -200 1 1 1 rest") && bl_edit(q, "ball -200 200 0.6") && !bl_edit(q, "place 200.01 0 1 1 1") && !bl_edit(q, "ball 0 -200.01 0.6 rest");
+  // each placing tool keeps its own mode; a mode or a tool that is none is not taken; a reset is free again (there is no dropping mode)
+  #assert bl_mode_now(q) == BL_M_FREE && BL_M_SNAP == 0 && BL_M_FREE == 1 && bl_set_mode(q, BL_T_BLOCK, BL_M_SNAP) && bl_set_mode(q, BL_T_BALL, BL_M_FREE) && q[0].mode[0] == BL_M_SNAP && q[0].mode[1] == BL_M_FREE && bl_mode_now(q) == BL_M_FREE;
+  q[0].tool = BL_T_BLOCK; #assert bl_mode_now(q) == BL_M_SNAP; q[0].tool = BL_T_BALL; #assert bl_mode_now(q) == BL_M_SNAP; q[0].tool = BL_T_NONE;
+  // the shapes tool: picked, it places the shape it was last set to; a shape set while it is picked is placed at once; a shape that is none is not taken
+  #assert q[0].shape == BL_T_BLOCK && bl_set_shape(q, BL_T_SLAB) && q[0].shape == BL_T_SLAB && q[0].tool == BL_T_NONE;
+  bl_pick(q, true); #assert q[0].tool == BL_T_SLAB && bl_set_shape(q, BL_T_BALL) && q[0].tool == BL_T_BALL && q[0].shape == BL_T_BALL;
+  rs := q[0].rev; #assert bl_set_shape(q, BL_T_BALL) && q[0].rev == rs && !bl_set_shape(q, BL_SHAPES) && !bl_set_shape(q, -1) && q[0].tool == BL_T_BALL && bl_set_shape(q, BL_T_PILLAR) && q[0].rev == rs + 1;
+  bl_pick(q, false); #assert q[0].tool == BL_T_NONE && q[0].shape == BL_T_PILLAR; bl_pick(q, true); #assert q[0].tool == BL_T_PILLAR; bl_pick(q, false);
+  q[0].tool = BL_T_BALL;
+  rv := q[0].rev;
+  #assert !bl_set_mode(q, 2, BL_M_SNAP) && !bl_set_mode(q, -1, BL_M_SNAP) && !bl_set_mode(q, 0, 2) && !bl_set_mode(q, 0, -1) && q[0].rev == rv && bl_set_mode(q, 0, BL_M_SNAP) && q[0].rev == rv && bl_set_mode(q, 0, BL_M_FREE) && q[0].rev == rv + 1;
+  ok0 := bl_set_mode(q, 0, BL_M_SNAP); ok1 := bl_set_mode(q, 1, BL_M_SNAP); bl_reset(q); #assert q[0].mode[0] == BL_M_FREE && q[0].mode[1] == BL_M_FREE && q[0].shape == BL_T_BLOCK && q[0].tool == BL_T_NONE;
+  // what the HUD is told: the tool, the mode, the selection, the gravity
+  b[0].tool = BL_T_BALL; bl_mode(b, true); ok := bl_edit(b, "select b7");
+  w: [64] u8; m := bl_state(b, w[..]); #assert cast(string) w[0..<m] == "1 1 7 23";
+  bl_reset(b); m = bl_state(b, w[..]); #assert cast(string) w[0..<m] == "-1 0 0 10";
+}
+
+#test "a limit an edit meets is known, and said in words with its number: full, too far, a size or a radius out of range, too high; what is no limit says nothing" #steps 400000000 {
+  t: [1] BlTest; b := t[0].b[..]; o := t[0].out[..];
+  bl_start(b);
+  // each refusal names its limit; an edit that is made, or is no edit at all, names none
+  #assert bl_edit(b, "place 1 1 1 1 1") && b[0].why == BL_WHY_NONE && !bl_edit(b, "hello there") && b[0].why == BL_WHY_NONE && !bl_edit(b, "remove b99") && b[0].why == BL_WHY_NONE;
+  #assert !bl_edit(b, "place 200.01 0 1 1 1") && b[0].why == BL_WHY_FAR && !bl_edit(b, "place 0 -200.01 1 1 1") && b[0].why == BL_WHY_FAR && !bl_edit(b, "place -200.01 0 1 1 1") && b[0].why == BL_WHY_FAR && !bl_edit(b, "place 0 200.01 1 1 1") && b[0].why == BL_WHY_FAR;
+  #assert !bl_edit(b, "place 0 0 12.01 1 1") && b[0].why == BL_WHY_SIZE && !bl_edit(b, "place 0 0 1 0.24 1") && b[0].why == BL_WHY_SIZE && !bl_edit(b, "place 0 0 1 1 13") && b[0].why == BL_WHY_SIZE;
+  #assert !bl_edit(b, "place 0 0 1 1 1 12.01") && b[0].why == BL_WHY_HIGH && !bl_edit(b, "place 0 0 1 1 1 -1") && b[0].why == BL_WHY_HIGH && bl_edit(b, "place 0 0 1 1 1 12") && b[0].why == BL_WHY_NONE;
+  #assert !bl_edit(b, "ball 0 0 1.51") && b[0].why == BL_WHY_RADIUS && !bl_edit(b, "ball 0 0 0.14") && b[0].why == BL_WHY_RADIUS && !bl_edit(b, "ball 300 0 0.6") && b[0].why == BL_WHY_FAR && !bl_edit(b, "ball 0 0 0.6 13") && b[0].why == BL_WHY_HIGH;
+  // (a size is told before a place, a place before a count)
+  #assert !bl_edit(b, "place 300 0 20 1 1") && b[0].why == BL_WHY_SIZE && !bl_edit(b, "ball 300 0 9") && b[0].why == BL_WHY_RADIUS;
+  // sizing and moving a thing: the same limits
+  #assert !bl_edit(b, "size b1 13 1 1") && b[0].why == BL_WHY_SIZE && !bl_edit(b, "size b1 1 1 0.1") && b[0].why == BL_WHY_SIZE && !bl_edit(b, "size b4 3.2 1 1") && b[0].why == BL_WHY_RADIUS && !bl_edit(b, "size b4 0.1 1 1") && b[0].why == BL_WHY_RADIUS && !bl_edit(b, "size b4 13 1 1") && b[0].why == BL_WHY_RADIUS;
+  #assert !bl_edit(b, "move b1 201 0") && b[0].why == BL_WHY_FAR && !bl_edit(b, "move b1 0 0 12.5") && b[0].why == BL_WHY_HIGH && bl_edit(b, "move b1 2 2") && b[0].why == BL_WHY_NONE && !bl_edit(b, "size b1 x 1 1") && b[0].why == BL_WHY_NONE;
+  // full: the count goes into the words (balls are things like any other: no cap of their own)
+  for k: 0..<20 { #assert bl_edit(b, "ball 4 4 0.3"); }
+  #assert !bl_nearly(b);
+  while b[0].n < BL_MAX { before := b[0].n; ok := bl_edit(b, "place 5 5 1 1 1"); #assert bl_nearly(b) == (b[0].n >= 900 && b[0].n < 1000) && b[0].n == before + 1; }
+  #assert !bl_edit(b, "place 5 5 1 1 1") && b[0].why == BL_WHY_FULL && !bl_edit(b, "ball 5 5 0.3") && b[0].why == BL_WHY_FULL && b[0].n == BL_MAX && BL_NEAR == 90;
+  n := bl_why(b, BL_WHY_FULL, o, 0); #assert cast(string) o[0..<n] == "world is full: 1000 of 1000 things. delete some to place more.";
+  n = bl_count(b, o, 0); #assert cast(string) o[0..<n] == "things: 1000 of 1000"; n = bl_count(b, o, 3); #assert n == 23 && o[3] == 't';
+  // the other limits' words, each with its number; none for no limit, or for a number that is no reason
+  n = bl_why(b, BL_WHY_FAR, o, 0); #assert cast(string) o[0..<n] == "too far: things stay within 200 m of the middle.";
+  n = bl_why(b, BL_WHY_SIZE, o, 0); #assert cast(string) o[0..<n] == "that size is out of range: sides are 0.25 to 12 m.";
+  n = bl_why(b, BL_WHY_RADIUS, o, 0); #assert cast(string) o[0..<n] == "that size is out of range: a ball's radius is 0.15 to 1.5 m.";
+  n = bl_why(b, BL_WHY_HIGH, o, 0); #assert cast(string) o[0..<n] == "too high: a thing's bottom is at most 12 m up.";
+  n = bl_why(b, BL_WHY_ROOM, o, 0); #assert cast(string) o[0..<n] == "no room there: something is standing in that place.";
+  n = bl_why(b, BL_WHY_SKY, o, 2); #assert cast(string) o[2..<n] == "as high as it goes: the sky stops at 60 m.";
+  #assert bl_why(b, BL_WHY_NONE, o, 0) == 0 && bl_why(b, BL_WHYS, o, 5) == 5 && bl_why(b, -1, o, 0) == 0;
+  // what the HUD says it met, by its word: the limit, and nothing changes; a word that is none is no limit
+  words := [6] string.["full", "far", "size", "radius", "room", "sky"]; whys := [6] int.[BL_WHY_FULL, BL_WHY_FAR, BL_WHY_SIZE, BL_WHY_RADIUS, BL_WHY_ROOM, BL_WHY_SKY];
+  rv := b[0].rev;
+  for q: 0..<6 { line: [24] u8; m := bl_put(line[..], 0, "limit "); m = bl_put(line[..], m, words[q]); #assert !bl_edit(b, cast(string) line[0..<m]) && b[0].why == whys[q] && bl_why_of(words[q]) == whys[q]; }
+  #assert !bl_edit(b, "limit") && b[0].why == BL_WHY_NONE && !bl_edit(b, "limit balls") && b[0].why == BL_WHY_NONE && !bl_edit(b, "limit what") && b[0].why == BL_WHY_NONE && bl_why_of("") == BL_WHY_NONE && b[0].rev == rv && b[0].n == BL_MAX;
+}
+#test "a game type's own bounds: the platformer's course reaches 700 m along and 60 m up; its limits say those numbers; the feet's height is told where the HUD says it" #steps 400000000 {
+  t: [1] BlTest; b := t[0].b[..]; o := t[0].out[..];
+  bl_none(b);
+  #assert b[0].far == BL_FAR && b[0].high == BL_HIGH && !bl_edit(b, "place 0 300 3 3 0.5 20 rest") && b[0].why == BL_WHY_FAR;
+  bl_bounds(b, 70000, 6000);
+  #assert bl_edit(b, "place 0 300 3 3 0.5 20 rest") && b[0].b[0].z == 30000 && b[0].b[0].y == 2000 && b[0].b[0].rest;
+  #assert bl_edit(b, "place 0 -700 1 1 1 60") && !bl_edit(b, "place 0 700.01 1 1 1") && b[0].why == BL_WHY_FAR && !bl_edit(b, "place 0 0 1 1 1 60.01") && b[0].why == BL_WHY_HIGH;
+  #assert bl_edit(b, "move b1 0 699 59") && !bl_edit(b, "move b1 0 701") && b[0].why == BL_WHY_FAR;
+  n := bl_why(b, BL_WHY_FAR, o, 0); #assert cast(string) o[0..<n] == "too far: things stay within 700 m of the middle.";
+  n = bl_why(b, BL_WHY_HIGH, o, 0); #assert cast(string) o[0..<n] == "too high: a thing's bottom is at most 60 m up.";
+  // open space (drift): bottoms under the floor too, down to the low bound; bounds set again are the floor again
+  bl_low(b, -10000); #assert bl_edit(b, "place 0 -5 1 1 1 -100") && !bl_edit(b, "place 0 -5 1 1 1 -100.01") && b[0].why == BL_WHY_HIGH;
+  n = bl_why(b, BL_WHY_HIGH, o, 0); #assert cast(string) o[0..<n] == "out of reach: a thing's bottom is from -100 to 60 m up.";
+  bl_bounds(b, 70000, 6000); #assert b[0].low == 0 && !bl_edit(b, "place 0 -6 1 1 1 -1");
+  // the HUD's word for where you stand, with the feet's height after the word for flying: the model is told it
+  bl_you(b, "0 1250 0 100 0 845"); #assert b[0].you_y == 845 && !b[0].flying && gs_text_has(bl_test_words(t[..]), "person: at x 0 z 12.5, feet at height 8.45, facing x 0 z 1\n");
+  bl_you(b, "0 1250 0 100 0 -120"); #assert b[0].you_y == -120;
+  bl_you(b, "0 1250 0 100 0 x"); #assert b[0].you_y == 0;
+  bl_you(b, "0 1250 0 100"); #assert b[0].you_y == 0 && !gs_text_has(bl_test_words(t[..]), "feet");
+  bl_bounds(b, BL_FAR, BL_HIGH); #assert !bl_edit(b, "move b1 0 201") && b[0].why == BL_WHY_FAR;
+}
+#test "a game type's kinds: placed with the kind's word last (before or after rest), changed with kind, told to the model and the HUD; a kind another type has is refused, said in words" #steps 200000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_none(b); bl_bounds(b, 70000, 6000);
+  // the meadow has none: the word is refused, and why is said
+  #assert !bl_plan(b, "place 0 3 3 3 0.5 2 rest pad") && b[0].why == BL_WHY_KIND && b[0].n == 0;
+  n := bl_why(b, BL_WHY_KIND, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<n] == "that kind is not built here: this game type has blocks and balls only.";
+  // the platformer's
+  bl_roles(b, BL_PF_ROLES);
+  #assert bl_plan(b, "place 0 3 3 3 0.5 2 rest pad") && b[0].b[0].role == BL_R_PAD && b[0].b[0].rest && b[0].b[0].y == 200;
+  #assert bl_plan(b, "place 0 6 3 3 0.5 2 spikes rest") && b[0].b[1].role == BL_R_SPIKES && b[0].b[1].rest;
+  #assert bl_plan(b, "place 0 9 0.5 0.5 0.5 4 shard") && b[0].b[2].role == BL_R_SHARD && !b[0].b[2].rest;
+  #assert bl_plan(b, "place 0 12 3 3 0.5 checkpoint") && b[0].b[3].role == BL_R_CHECKPOINT && b[0].b[3].y == 0;
+  #assert bl_plan(b, "place 0 15 3 3 0.5 2 rest") && b[0].b[4].role == BL_R_NONE;
+  #assert !bl_plan(b, "place 0 3 3 3 0.5 2 rest wall") && b[0].why == BL_WHY_KIND && b[0].n == 5;
+  n = bl_why(b, BL_WHY_KIND, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<n] == "that kind is not built here: this game type's are pad, spikes, shard, checkpoint, mover, lift, and plain blocks and balls.";
+  // a ball has no kind; two kinds, or a kind not last, are no line; nor is a ninth word
+  #assert !bl_plan(b, "ball 0 3 0.5 pad") && !bl_plan(b, "place 0 3 3 3 0.5 pad spikes") && !bl_plan(b, "place 0 3 pad 3 3 0.5") && !bl_plan(b, "place 0 3 3 3 0.5 2 rest pad 1") && b[0].n == 5;
+  // kind: made a kind, or plain again; a refused kind changes nothing; the HUD is told by its size count
+  s := b[0].b[4].sizes;
+  #assert bl_plan(b, "kind b5 checkpoint") && b[0].b[4].role == BL_R_CHECKPOINT && b[0].b[4].sizes == s + 1;
+  #assert bl_plan(b, "kind b5 checkpoint") && b[0].b[4].sizes == s + 1;
+  #assert bl_plan(b, "kind b5 block") && b[0].b[4].role == BL_R_NONE;
+  #assert !bl_plan(b, "kind b5 goal") && b[0].why == BL_WHY_KIND && b[0].b[4].role == BL_R_NONE && !bl_plan(b, "kind b5 dance") && !bl_plan(b, "kind b5") && !bl_plan(b, "kind b99 pad");
+  #assert bl_plan(b, "ball 0 20 0.5 3 rest") && !bl_plan(b, "kind b6 pad");
+  // the model is told each thing's kind; the HUD gets it as its KIND
+  n = bl_describe(b, t[0].out[..], 0); words := cast(string) t[0].out[0..<n];
+  #assert gs_text_has(words, "\nb1: pad 0 3, size 3 3 0.5, bottom 2") && gs_text_has(words, "\nb3: shard 0 9,") && gs_text_has(words, "\nb5: 0 15,") && gs_text_has(words, "\nb4: checkpoint 0 12,");
+  w := bl_test_wire(t[..]);
+  #assert gs_text_has(w, "\n1 11 1 1 0 200 300 300 50 300 1\n") && gs_text_has(w, "\n2 12 ") && gs_text_has(w, "\n3 13 ") && gs_text_has(w, "\n4 14 ") && gs_text_has(w, "\n5 0 1 3 ") && gs_text_has(w, "\n6 1 ");
+  // crates' and racing's
+  bl_roles(b, BL_CR_ROLES);
+  #assert bl_plan(b, "place 2 2 1 1 2 wall") && b[0].b[6].role == BL_R_WALL && bl_plan(b, "place 3 3 1 1 0.25 goal") && !bl_plan(b, "place 3 3 1 1 0.25 boost");
+  bl_roles(b, BL_RC_ROLES);
+  #assert bl_plan(b, "place 2 2 2 4 0.25 boost") && bl_plan(b, "place 3 3 0.4 0.4 0.6 cone") && !bl_plan(b, "place 3 3 1 1 1 pad");
+  #assert bl_role_word(BL_R_CONE) == "cone" && bl_role_word(BL_R_TRACK) == "track" && bl_role_word(BL_ROLES) == "" && bl_role_of("goal") == BL_R_GOAL && bl_role_of("block") == 0 && bl_role_of("rest") == -1;
+  // the hotbar's kind items: the shapes tool picked with the kind's own shape, and what the HUD places with it is of that kind
+  m := b[0].n;
+  #assert !bl_pick_kind(b, BL_R_PAD, true) && !bl_pick_kind(b, BL_R_NONE, true) && b[0].tool == BL_T_NONE && b[0].brush == BL_R_NONE;
+  #assert bl_pick_kind(b, BL_R_CONE, true) && b[0].tool == BL_T_BLOCK && b[0].brush == BL_R_CONE;
+  #assert bl_pick_kind(b, BL_R_BOOST, true) && b[0].tool == BL_T_SLAB && b[0].shape == BL_T_SLAB && b[0].brush == BL_R_BOOST;
+  #assert bl_edit(b, "place 5 5 2 2 0.25 0 rest") && b[0].b[m].role == BL_R_BOOST;
+  #assert bl_edit(b, "place 6 6 2 2 0.25 0 rest cone") && b[0].b[m + 1].role == BL_R_CONE;
+  #assert bl_edit(b, "ball 7 7 0.5 rest") && b[0].b[m + 2].role == BL_R_NONE;
+  // put down by another kind's item: still picked; by its own, down; a plain shape picked forgets it
+  #assert bl_pick_kind(b, BL_R_CONE, false) && b[0].brush == BL_R_BOOST && bl_pick_kind(b, BL_R_BOOST, false) && b[0].tool == BL_T_NONE && b[0].brush == BL_R_NONE;
+  #assert bl_pick_kind(b, BL_R_BOOST, true) && bl_set_shape(b, BL_T_PILLAR) && b[0].brush == BL_R_NONE && b[0].tool == BL_T_PILLAR;
+  #assert bl_pick_kind(b, BL_R_BOOST, true); bl_pick(b, true); #assert b[0].brush == BL_R_NONE && b[0].tool == BL_T_SLAB;
+  #assert bl_edit(b, "place 8 8 2 2 0.25 0 rest") && b[0].b[m + 3].role == BL_R_NONE;
+  // another game type: a kind it has not is forgotten, and the tool put down
+  #assert bl_pick_kind(b, BL_R_CONE, true); bl_roles(b, BL_CR_ROLES); #assert b[0].brush == BL_R_NONE && b[0].tool == BL_T_NONE;
+  #assert bl_pick_kind(b, BL_R_WALL, true) && b[0].tool == BL_T_PILLAR; bl_roles(b, BL_CR_ROLES); #assert b[0].brush == BL_R_WALL && b[0].tool == BL_T_PILLAR;
+  bl_reset(b); #assert b[0].brush == BL_R_NONE;
+}
+
+#test "a moving platform and a lift: a new one goes as a new one does, goes sets how far and how long (0 to 50 squares, 1 to 60 seconds), the model and the HUD are told; any other thing has neither, said in words" #steps 200000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_none(b); bl_bounds(b, 70000, 6000); bl_roles(b, BL_PF_ROLES);
+  #assert bl_plan(b, "place 0 10 3.2 4 0.9 4 rest mover") && b[0].b[0].role == BL_R_SLIDER && b[0].b[0].go == 800 && b[0].b[0].every == 6000;
+  #assert bl_plan(b, "place 0 30 3.2 4 0.9 4 rest lift") && b[0].b[1].role == BL_R_LIFT && b[0].b[1].go == 600 && b[0].b[1].every == 6000;
+  #assert bl_plan(b, "place 0 50 3.2 4 0.9 4 rest") && b[0].b[2].go == 0 && b[0].b[2].every == 0;
+  // goes: its distance and its seconds there and back; the same again changes nothing
+  s := b[0].b[0].sizes;
+  #assert bl_plan(b, "goes b1 12 4.5") && b[0].b[0].go == 1200 && b[0].b[0].every == 4500 && b[0].b[0].sizes == s + 1;
+  #assert bl_plan(b, "goes b1 12 4.5") && b[0].b[0].sizes == s + 1;
+  #assert bl_plan(b, "goes b2 0 1") && b[0].b[1].go == 0 && b[0].b[1].every == 1000 && bl_plan(b, "goes b2 50 60");
+  // past the limits: nothing changes, and why is said with the numbers
+  #assert !bl_plan(b, "goes b1 50.01 4") && b[0].why == BL_WHY_TRAVEL && !bl_plan(b, "goes b1 12 0.99") && !bl_plan(b, "goes b1 12 60.01") && !bl_plan(b, "goes b1 -1 4") && b[0].b[0].go == 1200 && b[0].b[0].every == 4500;
+  n := bl_why(b, BL_WHY_TRAVEL, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<n] == "out of range: a moving platform or a lift goes 0 to 50 m, there and back in 1 to 60 seconds.";
+  // a thing that does not move has neither; nor is a line short or long one
+  #assert !bl_plan(b, "goes b3 8 6") && b[0].why == BL_WHY_STILL && !bl_plan(b, "goes b1 12") && !bl_plan(b, "goes b1 12 4 1") && !bl_plan(b, "goes b9 12 4");
+  n = bl_why(b, BL_WHY_STILL, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<n] == "only a moving platform or a lift has a distance and a period.";
+  // made another kind, its way goes; made one that moves, it has a new one's; a mover made a lift keeps its own
+  #assert bl_plan(b, "kind b1 lift") && b[0].b[0].go == 1200 && b[0].b[0].every == 4500;
+  #assert bl_plan(b, "kind b1 pad") && b[0].b[0].go == 0 && b[0].b[0].every == 0 && bl_plan(b, "kind b3 mover") && b[0].b[2].go == 800 && b[0].b[2].every == 6000;
+  // the model is told, and the HUD: after the rest's number and a turn of 0
+  n = bl_describe(b, t[0].out[..], 0); words := cast(string) t[0].out[0..<n];
+  #assert gs_text_has(words, "\nb2: lift 0 30, size 3.2 4 0.9, bottom 4, goes 50 every 60 s") && gs_text_has(words, "\nb3: mover 0 50, size 3.2 4 0.9, bottom 4, goes 8 every 6 s") && gs_text_has(words, "\nb1: pad 0 10, size 3.2 4 0.9, bottom 4\n");
+  w := bl_test_wire(t[..]);
+  #assert gs_text_has(w, "\n2 22 1 3 0 400 3000 320 90 400 1 0 5000 60000\n") && gs_text_has(w, "\n3 21 1 2 0 400 5000 320 90 400 1 0 800 6000\n") && gs_text_has(w, "320 90 400 1\n");
+  // the hotbar's item: a slab that is one
+  #assert bl_pick_kind(b, BL_R_LIFT, true) && b[0].tool == BL_T_SLAB && bl_edit(b, "place 5 5 2 2 0.25 0 rest") && b[0].b[3].role == BL_R_LIFT && b[0].b[3].go == 600 && b[0].b[3].every == 6000;
+}
+#test "a world of a thousand things: the model is told the count, the 24 nearest the person, the selected one and those its message names; an edit by id reaches any" #steps 2000000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  // 24 things or fewer: every one, as ever
+  for k: 0..<BL_SHOWN { ok := bl_plan(b, "place 0 0 1 1 1"); }
+  #assert !gs_text_has(bl_test_words(t[..]), "things: ") && gs_text_has(bl_test_words(t[..]), "\nb24: ");
+  bl_none(b);
+  // a thousand in a row along x, a metre apart; the person stands at x 500, facing along it
+  for k: 0..<BL_MAX { line: [40] u8; m := bl_put(line[..], 0, "place "); m = bl_num(line[..], m, (k % 400) * 100 - 20000 + 100 * (k / 400)); m = bl_put(line[..], m, " "); m = bl_num(line[..], m, (k / 400) * 300); m = bl_put(line[..], m, " 0.5 0.5 0.5"); #assert bl_plan(b, cast(string) line[0..<m]); }
+  #assert b[0].n == BL_MAX && !bl_plan(b, "place 0 0 1 1 1");
+  bl_you(b, "-15000 0 100 0");
+  words := bl_test_words(t[..]);
+  #assert gs_text_has(words, "things: 1000 of 1000 (1000 blocks, 0 balls)\nshown: 24 nearest the person; the rest by id only (b1 to b1000)\n");
+  // the nearest is b51 (at x -150), then its neighbours; b1 (at -200) is not near enough, b1000 is far
+  #assert gs_text_has(words, ":\nb51: -150 0,") && gs_text_has(words, "\nb52: ") && !gs_text_has(words, "\nb1: ") && !gs_text_has(words, "\nb1000: ");
+  lines := 0; for i: 0..<words.count { if words[i] == '\n' { lines += 1; } } #assert lines == 3 + 24;
+  // selected, and named in the message (with a comma after it): told too, first, and said to be
+  bl_mode(b, true); ok := bl_edit(b, "select b1000");
+  n := bl_describe_for(b, t[0].out[..], 0, "move b7, and b999 too, b7 again, b5000"); w2 := cast(string) t[0].out[0..<n];
+  #assert gs_text_has(w2, "shown: 24 nearest the person, and 3 selected or named;") && gs_text_has(w2, ":\nb1000: ") && gs_text_has(w2, "\nb7: ") && gs_text_has(w2, "\nb999: ") && !gs_text_has(w2, "b5000");
+  // an edit by id reaches a thing far from the person, not told of by name
+  #assert bl_plan(b, "move b400 3 3") && b[0].b[bl_at(b, 400)].x == 300 && bl_plan(b, "size b401 2 2 2") && bl_plan(b, "remove b402") && b[0].n == BL_MAX - 1 && bl_plan(b, "ball 0 0 0.3") && b[0].b[BL_MAX - 1].id == 1001 && b[0].n == BL_MAX;
+  // the list for the HUD holds all of them
+  #assert bl_wire(b, t[0].out[..]) < BL_TEXT && cast(string) t[0].out[0..<5] == "1000\n";
+}
+
+#test "a property is set and put back by a plan line: the world's, the player's, one thing's, a kind's, every thing's; what is refused changes nothing and says why; gravity's old line is the same door; a thing that goes takes its own with it" #steps 400000000 {
+  t: [1] BlTest; b := t[0].b[..]; p := b[0].props[..];
+  bl_start(b); rev := b[0].rev;
+  // "disable double jump": the player's air jumps, none
+  #assert bl_plan(b, "set player.air_jumps 0") && pr_value(p, TW_AIR_JUMPS) == 0 && b[0].rev == rev + 1;
+  #assert bl_plan(b, "set world.gravity 0.5") && b[0].grav == 5 && pr_value(p, TW_GRAVITY) == 50 && bl_plan(b, "gravity 0.3") && b[0].grav == 3 && pr_value(p, TW_GRAVITY) == 30;
+  #assert bl_plan(b, "set b4.bounce 0.9") && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 90 && bl_plan(b, "set b2.density 2000") && pr_thing(p, TW_DENSITY, 2, PR_BLOCK) == 2000 && bl_plan(b, "set balls.friction 0.1") && bl_plan(b, "set things.fixed off") && bl_plan(b, "set player.fly off") && bl_plan(b, "  set   camera.view   follow ");
+  // the model is told what differs, in the paths it writes; the HUD in the registry's own text
+  #assert gs_text_has(bl_test_words(t[..]), "settings changed: world.gravity 0.3, player.air_jumps 0, player.fly off, camera.view follow, b4.bounce 0.9, balls.friction 0.1, b2.density 2000, things.fixed off\nblocks (id");
+  n := pr_wire(p, t[0].out[..], 0); #assert cast(string) t[0].out[0..<n] == "world.gravity=0.3\nplayer.air_jumps=0\nplayer.fly=off\ncamera.view=follow\nthing.bounce@4=0.9\nthing.friction@-2=0.1\nthing.density@2=2000\nthing.fixed=off\n";
+  // refused: an unknown path, a value out of range or of the wrong kind, a thing that is not there, the wrong number of words. Nothing changes, and why is kept
+  rev = b[0].rev;
+  bad := [10] string.["set world.weather rain", "set world.gravity 9", "set player.fly maybe", "set b9.bounce 0.5", "set world.gravity", "set", "set world.gravity 1 2", "reset", "reset world.weather", "reset world.gravity 1"];
+  for line: bad { #assert !bl_plan(b, line); }
+  #assert b[0].rev == rev && cast(string) p[0].why[0..<p[0].why_n] == "there is no property world.weather. world.gravity takes 0 to 5, not 9. player.fly takes on or off, not maybe. there is no b9. there is no property world.weather.";
+  p[0].why_n = 0;
+  // put back; and the hotbar's edits take the same lines
+  #assert bl_plan(b, "reset world.gravity") && b[0].grav == BL_GRAV && bl_plan(b, "reset player.air_jumps") && pr_value(p, TW_AIR_JUMPS) == 1 && bl_edit(b, "set world.time_scale 0.5") && pr_value(p, TW_TIME_SCALE) == 50 && bl_edit(b, "reset b4.bounce") && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 55;
+  // a thing removed takes what was set for it; a cleared world, every single thing's; the hotbar's reset, everything
+  #assert bl_plan(b, "set b2.fixed on") && bl_plan(b, "remove b2") && pr_thing(p, TW_DENSITY, 2, PR_BLOCK) == 200 && pr_thing(p, TW_FIXED, 2, PR_BLOCK) == 0;
+  #assert bl_plan(b, "set b4.bounce 1") && bl_plan(b, "clear") && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 55 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 10 && pr_value(p, TW_TIME_SCALE) == 50;
+  #assert bl_plan(b, "place 0 0 1 1 1") && bl_plan(b, "set b5.bounce 1"); bl_start(b); #assert pr_thing(p, TW_BOUNCE, 5, PR_BLOCK) == 15;
+  bl_reset(b); #assert p[0].over[0].n == 0 && b[0].grav == BL_GRAV && !gs_text_has(bl_test_words(t[..]), "settings changed");
+}
+#test "a building: the green's nine are things of the list; one more is put by its word where it may stand, at its model's usual scale or its own, turned by quarter turns, moved, twinned and removed; never outside the village, in another or the person; its boxes are counted and the limit said" #steps 900000000 {
+  t: [1] BlTest; b := t[0].b[..];
+  bl_start(b); #assert !bl_plan(b, "put britons_house 0 -10") && b[0].why == BL_WHY_VILLAGE && b[0].n == 4;
+  // the village opens with its ball and the green's nine (shared/game-types.coax gt_starter): each a building with its own scale
+  bl_green(b); #assert b[0].models && b[0].n == 1 + GT_GREEN && bl_buildings(b)[0] == GT_GREEN && bl_buildings(b)[1] == 209;
+  #assert b[0].b[1].kind == BL_BUILDING && b[0].b[1].model == 0 && b[0].b[1].turn == 90 && b[0].b[1].scale == 145 && b[0].b[1].starts && b[0].b[4].model == 1 && b[0].b[4].scale == 130 && b[0].b[9].scale == 260 && b[0].b[2].turn == 270;
+  // put: its word, where, and its turn in degrees; a building is a thing among the others, on the ground, at rest
+  h := b[0].n;
+  #assert bl_plan(b, "put britons_house 0 -10 90") && b[0].n == h + 1 && b[0].b[h].kind == BL_BUILDING && b[0].b[h].model == 0 && b[0].b[h].turn == 90 && b[0].b[h].x == 0 && b[0].b[h].z == -1000 && b[0].b[h].y == 0 && b[0].b[h].rest && b[0].b[h].scale == 145 && b[0].b[h].id == 11;
+  #assert gs_text_has(bl_test_wire(t[..]), "11\n1 1 1 1 150 0 450 120 120 120\n2 2 1 1 -1150 0 1100 0 1 145 1\n") && gs_text_has(bl_test_wire(t[..]), "\n11 2 1 1 0 0 -1000 0 1 145 1\n");
+  #assert gs_text_has(bl_test_words(t[..]), "b11: building britons_house 0 -10, footprint 7.82 6.63, turned 90, scale 1.45");
+  // what it may not be: an unknown word, a turn that is no quarter, a number that is none, a scale past 50 to 300 percent
+  #assert !bl_plan(b, "put castle 0 20") && !bl_plan(b, "put rock 0 20 45") && !bl_plan(b, "put rock x 20") && !bl_plan(b, "put rock 0") && b[0].n == h + 1;
+  #assert !bl_plan(b, "put rock 20 -20 0 0.4") && b[0].why == BL_WHY_SCALE && !bl_plan(b, "put rock 20 -20 0 3.01") && b[0].why == BL_WHY_SCALE && b[0].n == h + 1;
+  w := bl_why(b, BL_WHY_SCALE, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<w] == "that scale is out of range: a building stands at 50 to 300 percent of its model.";
+  // its own scale: its size is its model's at that scale
+  #assert bl_plan(b, "put rock 20 -20 0 2.5") && b[0].b[h + 1].scale == 250 && b[0].b[h + 1].w == vl_size(4, 250)[0] && bl_plan(b, "remove b12") && b[0].n == h + 1;
+  // in another building (its footprint, turned), in one of the green's (the market at 0 29), in the person
+  #assert !bl_plan(b, "put rock 3 -10") && b[0].why == BL_WHY_ROOM && !bl_plan(b, "put rock 0 28") && b[0].why == BL_WHY_ROOM;
+  bl_you(b, "500 -2000 0 100"); #assert !bl_plan(b, "put rock 5 -20") && b[0].why == BL_WHY_ROOM && bl_plan(b, "put rock 7 -20") && b[0].n == h + 2;
+  // turned where it stands: a quarter turn swaps its footprint's sides; one that would meet another is refused
+  #assert bl_plan(b, "turn b11 0") && b[0].b[h].turn == 0 && b[0].b[h].moves == 2 && bl_plan(b, "turn b11 -90") && b[0].b[h].turn == 270 && !bl_plan(b, "turn b11 45") && !bl_plan(b, "turn b1 90");
+  // moved: on the ground, never up, never into another; sized: never. One of the green's moves and goes as any does
+  #assert bl_plan(b, "move b11 -2 -10") && b[0].b[h].x == -200 && !bl_plan(b, "move b11 -2 -10 1") && !bl_plan(b, "move b11 5 -20") && b[0].why == BL_WHY_ROOM && !bl_plan(b, "size b11 1 1 1");
+  #assert bl_plan(b, "move b6 -6.5 -30") && b[0].b[5].z == -3000 && bl_plan(b, "move b6 -6.5 3.5");
+  // twinned beside it (its scale with it), and removed as any thing is
+  bl_mode(b, true); b[0].sel = 11; #assert bl_twin(b) && b[0].n == h + 3 && b[0].b[h + 2].kind == BL_BUILDING && b[0].b[h + 2].turn == 270 && b[0].b[h + 2].scale == 145 && b[0].sel == b[0].b[h + 2].id && !bl_grow(b, 0, true);
+  #assert bl_delete(b) && b[0].n == h + 2;
+  // the boxes: a level's buildings share 512 (the green's nine are 209, a market is 117): the third market is refused, said with its numbers
+  #assert bl_plan(b, "put market -30 -30") && bl_plan(b, "put market 30 -30") && !bl_plan(b, "put market 0 -50") && b[0].why == BL_WHY_BOXES;
+  w = bl_why(b, b[0].why, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<w] == "no more buildings: a level's buildings share 512 solid boxes (492 used) and at most 33 stand. delete one to place another." && bl_why_of("boxes") == BL_WHY_BOXES;
+  // the tool: picked only where buildings stand, turned by quarter turns, placing in its own mode
+  bl_pick_building(b, 2, true); #assert b[0].tool == BL_T_MODEL + 2; bl_spin(b, -1); #assert b[0].quarter == 3; bl_spin(b, 2); #assert b[0].quarter == 1;
+  #assert bl_set_mode(b, 1, BL_M_SNAP) && bl_mode_now(b) == BL_M_SNAP && bl_edit(b, "spin 1") && b[0].quarter == 2 && bl_edit(b, "put rock -20 20 180") && b[0].sel == b[0].b[b[0].n - 1].id;
+  bl_start(b); #assert b[0].tool == BL_T_NONE && !b[0].models; bl_pick_building(b, 0, true); #assert b[0].tool == BL_T_NONE && !bl_edit(b, "spin 1");
+}

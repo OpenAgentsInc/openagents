@@ -1,0 +1,12 @@
+// gamebuilder.org's module for every page but /agents (issue 30): the page (web/page.coax: the home
+// page's ring of game types, the login, the world and the builder, a published game's link, the
+// credits) with /agents left out (web/agents-off.coax), so the home page's first load is the page and
+// nothing more. /agents is web/site-agents.coax's module: the same page with the chat with your agents
+// (web/agents.coax). web/build.sh makes this build/site.wasm, the module the page's script loads
+// (web/app.js; web/keep.js gives /agents its own).
+//   scripts/web.sh           dev server with hot reload, http://127.0.0.1:8810/
+//   scripts/web.sh check     this module's checks (the page's) and /agents' (web/site-agents.coax)
+//   coax/bin/coax test web/site.coax --library
+
+#load "page.coax";
+#load "agents-off.coax";

@@ -1,0 +1,346 @@
+// gamebuilder.org keeps what you build in this browser (docs/web-world.md, "Kept in this browser";
+// issue 13): with no account, the game a person is building comes back on a reload, on the type
+// they picked. What is kept is the app's own files (web/level.coax): the game's document, each
+// game type's level file, and beside a level the settings that differ, as the engine's own text.
+//
+// The bytes go through the browser host's byte storage (coax/web/STORAGE.md: IndexedDB, opaque
+// records of at most 1 MiB, a reply an event 768 + slot with a 16-byte header). This file decides
+// the rest: the namespace and the keys, what is asked for and when, what a reply means, and what a
+// person is told when the browser keeps nothing or has no room (AGENTS.md: a limit is said in
+// words, with its number).
+//
+//   namespace gamebuilder.game, version 1
+//   game            the game being built: its type and its level (aethyr.content.v1 `game`)
+//   level-N         game type N - 1's level file (world.doc.v1, then aethyr.content.v1 `shape`)
+//   settings-N      that level's settings that differ ("path=value" a line)
+//   account         which game on the account each type's level is, and what both sides last agreed on
+//                   (web/account.coax decides its lines; this file only carries its bytes)
+//
+// Each game type keeps its own level, so picking another type never writes over what was built
+// in the first; "reset world" is how a level is started over.
+//   coax/bin/coax test web/keep.coax --library
+
+#load "level.coax";
+
+KP_NS :: "gamebuilder.game";
+KP_VERSION :: 1;
+KP_EVENT :: 768;         // a storage reply's event kind is KP_EVENT + its slot (the host's STORAGE_KIND)
+KP_HEADER :: 16;         // bytes of a reply's header: token, status, length, needed (u32 each, little-endian)
+// The slots: one a record and a direction, so a level being written never waits on one being read.
+KP_GAME_GET :: 0; KP_GAME_PUT :: 1; KP_LEVEL_PUT :: 2; KP_SET_PUT :: 3; KP_LEVEL_GET :: 4; KP_SET_GET :: 5; KP_LINK_GET :: 6; KP_LINK_PUT :: 7; KP_SLOTS :: 8;
+KP_LINK :: 2048;         // bytes the account's record takes at most (a line a level kept here: KP_KINDS of them)
+KP_GET :: 1; KP_PUT :: 2;   // what the face is to ask (kp_next)
+// The host's statuses (coax/web/STORAGE.md).
+KP_OK :: 0; KP_MISSING :: 1; KP_UNAVAILABLE :: 2; KP_QUOTA :: 3; KP_LIMIT :: 4; KP_TIMEOUT :: 8; KP_CAPACITY :: 9;
+// Whether this browser keeps anything: not known until its first answer.
+KP_UNKNOWN :: 0; KP_ON :: 1; KP_OFF :: 2;
+// What a reply came to, for the page (kp_reply).
+KP_E_NONE :: 0;
+KP_E_GAME :: 1;          // the first answer: Keep.kept is the game type of the game kept here, or -1 for none
+KP_E_OPEN :: 2;          // a game type's level and settings have both answered: Keep.opened is the type, Keep.got_n and Keep.got_set_n what was kept (0: nothing)
+KP_E_FAILED :: 3;        // a write was refused: kp_words says why, with the number
+KP_E_KEPT :: 4;          // a write is done
+KP_E_LINK :: 5;          // the account's record has answered: Keep.got_link and Keep.got_link_n (0: none is kept)
+KP_E_LINKED :: 6;        // the account's record's write has ended (kept or not: it is small, and the level's own write says when there is no room)
+KP_WAIT :: 0.7;          // seconds from a change to its write: what is built is kept within a second
+KP_BOOT_WAIT :: 2.0;     // seconds the page waits for the first answer before it stops waiting (the picker shows)
+
+Keep :: struct {
+  state: int;                          // KP_UNKNOWN, KP_ON or KP_OFF
+  asked: bool;                         // the game has been asked for
+  want: [KP_SLOTS] bool; busy: [KP_SLOTS] bool; token: [KP_SLOTS] int; tokens: int;
+  key: [16] u8; key_n: int;            // the key of the request kp_next gave the face
+  kept: int = -1;                      // the game type of the game kept here (-1: none, or not known yet)
+  opening: int = -1;                   // the game type whose level and settings are being read (-1: none)
+  opened: int = -1;                    // the game type whose level and settings were last read (KP_E_OPEN is of it)
+  level_in: bool; set_in: bool;        // their answers are in
+  put_level: int;                      // the level number the waiting or last write is of
+  game: [LV_GAME] u8; game_n: int;     // the records to write
+  doc: [LV_DOC] u8; doc_n: int;
+  set: [LV_SETTINGS] u8; set_n: int;
+  got: [LV_DOC] u8; got_n: int;        // the records read
+  got_set: [LV_SETTINGS] u8; got_set_n: int;
+  link: [KP_LINK] u8; link_n: int;     // the account's record to write, and as it was read
+  got_link: [KP_LINK] u8; got_link_n: int;
+  sum: [KP_SLOTS] int;                 // what was last written to each record, so the same bytes are not written twice
+  seen: int = -1; pending: bool; due: f32;   // the list's revision last seen, a write is due, and when
+  why: int; bytes: int;                // why the last write was refused, and how big it was
+  full: bool;                          // the last write found no room: said until one is kept
+  restored: bool;                      // the world shown was read back from this browser (the HUD need not play its whole entrance)
+  st: [1] LvStore;
+}
+
+kp_sum :: (bytes: [] u8) -> int { h := 2166136261; for c: bytes { h = ((h ^ cast(int) c) * 16777619) & 0xffffffff; } return h + 1; }
+kp_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+kp_ask :: (k: [] Keep, slot: int) { k[0].want[slot] = true; }
+// The game is asked for, once: the first thing the page does.
+kp_boot :: (k: [] Keep) { if !k[0].asked { k[0].asked = true; kp_ask(k, KP_GAME_GET); kp_ask(k, KP_LINK_GET); } }
+// Whether the first answer is still awaited.
+kp_booting :: (k: [] Keep) -> bool { return k[0].asked && k[0].state == KP_UNKNOWN; }
+// The levels this browser keeps: one a game type, and the crates game's other rooms after them (its game is three
+// levels: shared/game-types.coax gt_levels). A "slot" is which: a type's own number for its first level, then
+// GT_WEB_TYPES and on for crates' second and third rooms (their records are level-10 and level-11, settings the same).
+KP_KINDS :: GT_WEB_TYPES + GT_LEVELS_MOST - 1;
+KP_CRATES :: GT_CRATES - GT_WEB_FIRST;
+kp_rooms :: (kind: int) -> int { return ifx kind >= 0 && kind < GT_WEB_TYPES then gt_levels(gt_web_type(kind)) else 1; }
+kp_slot :: (kind: int, room: int) -> int { return ifx room > 0 && room < kp_rooms(kind) then GT_WEB_TYPES + room - 1 else kind; }
+kp_slot_kind :: (slot: int) -> int { return ifx slot >= GT_WEB_TYPES && slot < KP_KINDS then KP_CRATES else slot; }
+kp_slot_room :: (slot: int) -> int { return ifx slot >= GT_WEB_TYPES && slot < KP_KINDS then slot - GT_WEB_TYPES + 1 else 0; }
+// A slot's level and settings are asked for. False when this browser keeps nothing (or is not yet known to): there is nothing to wait for.
+kp_open :: (k: [] Keep, kind: int) -> bool {
+  if k[0].state != KP_ON || kind < 0 || kind >= KP_KINDS { return false; }
+  k[0].opening = kind; k[0].level_in = false; k[0].set_in = false; k[0].got_n = 0; k[0].got_set_n = 0;
+  kp_ask(k, KP_LEVEL_GET); kp_ask(k, KP_SET_GET);
+  return true;
+}
+// The page stopped waiting for an answer (it took too long): what comes later is not used.
+kp_give_up :: (k: [] Keep) { k[0].opening = -1; if k[0].state == KP_UNKNOWN { k[0].state = KP_OFF; k[0].why = KP_TIMEOUT; } }
+
+// The next request for the face: KP_GET or KP_PUT (0: none), its slot and token in `out` (two ints), its key in
+// Keep.key. A write's bytes are Keep.game, Keep.doc or Keep.set, by its slot (kp_len). One request a slot at a time.
+kp_next :: (k: [] Keep, out: [] int) -> int {
+  for slot: 0..<KP_SLOTS {
+    if !k[0].want[slot] || k[0].busy[slot] { continue; }
+    k[0].want[slot] = false; k[0].busy[slot] = true;
+    k[0].tokens += 1; k[0].token[slot] = k[0].tokens;
+    out[0] = slot; out[1] = k[0].tokens;
+    level := ifx slot == KP_LEVEL_GET || slot == KP_SET_GET then k[0].opening + 1 else k[0].put_level;
+    n := 0;
+    if slot == KP_GAME_GET || slot == KP_GAME_PUT { n = bl_put(k[0].key[..], 0, "game"); }
+    else if slot == KP_LINK_GET || slot == KP_LINK_PUT { n = bl_put(k[0].key[..], 0, "account"); }
+    else { n = bl_put(k[0].key[..], 0, ifx slot == KP_LEVEL_GET || slot == KP_LEVEL_PUT then "level-" else "settings-"); n = bl_int(k[0].key[..], n, level); }
+    k[0].key_n = n;
+    return ifx slot == KP_GAME_GET || slot == KP_LEVEL_GET || slot == KP_SET_GET || slot == KP_LINK_GET then KP_GET else KP_PUT;
+  }
+  return 0;
+}
+// The bytes a write's slot writes.
+kp_len :: (k: [] Keep, slot: int) -> int { return ifx slot == KP_GAME_PUT then k[0].game_n else ifx slot == KP_LEVEL_PUT then k[0].doc_n else ifx slot == KP_SET_PUT then k[0].set_n else ifx slot == KP_LINK_PUT then k[0].link_n else 0; }
+
+// What a status means for whether this browser keeps: a refusal turns it off, an answer turns it on.
+kp_status :: (k: [] Keep, status: int) {
+  // (an answer that came after the page stopped waiting for it is still an answer: this browser keeps)
+  if status == KP_OK || status == KP_MISSING { if k[0].state == KP_UNKNOWN || (k[0].state == KP_OFF && k[0].why == KP_TIMEOUT) { k[0].state = KP_ON; } }
+  else if status != KP_QUOTA && status != KP_LIMIT && status != KP_CAPACITY { k[0].state = KP_OFF; k[0].why = status; }
+}
+// A slot's request answered with `status` and (a read's) its record: what it came to (KP_E_*).
+kp_done :: (k: [] Keep, slot: int, status: int, payload: [] u8) -> int {
+  k[0].busy[slot] = false;
+  kp_status(k, status);
+  if slot == KP_GAME_GET {
+    k[0].kept = ifx status == KP_OK then lv_game_read(k[0].st[..], cast(string) payload) else -1;
+    return KP_E_GAME;
+  }
+  if slot == KP_LINK_GET {
+    k[0].got_link_n = 0;
+    if status == KP_OK && payload.count <= KP_LINK { for i: 0..<payload.count { k[0].got_link[i] = payload[i]; } k[0].got_link_n = payload.count; }
+    return KP_E_LINK;
+  }
+  if slot == KP_LINK_PUT { if status != KP_OK { k[0].sum[slot] = 0; } return KP_E_LINKED; }
+  if slot == KP_LEVEL_GET || slot == KP_SET_GET {
+    if k[0].opening < 0 { return KP_E_NONE; }
+    if slot == KP_LEVEL_GET {
+      k[0].level_in = true; k[0].got_n = 0;
+      if status == KP_OK && payload.count <= LV_DOC { for i: 0..<payload.count { k[0].got[i] = payload[i]; } k[0].got_n = payload.count; }
+    } else {
+      k[0].set_in = true; k[0].got_set_n = 0;
+      if status == KP_OK && payload.count <= LV_SETTINGS { for i: 0..<payload.count { k[0].got_set[i] = payload[i]; } k[0].got_set_n = payload.count; }
+    }
+    if !(k[0].level_in && k[0].set_in) { return KP_E_NONE; }
+    k[0].opened = k[0].opening; k[0].opening = -1;
+    return KP_E_OPEN;
+  }
+  // a write
+  if status == KP_OK { if slot == KP_LEVEL_PUT { k[0].full = false; } return KP_E_KEPT; }
+  k[0].sum[slot] = 0;   // (not kept: the same bytes are tried again at the next change)
+  k[0].why = status; k[0].bytes = kp_len(k, slot);
+  if status == KP_QUOTA || status == KP_LIMIT { k[0].full = true; }
+  return KP_E_FAILED;
+}
+// A storage reply as the host gives it (the inbox's bytes: a 16-byte header, then the record): what it came to.
+// A reply to a request that is no longer this slot's (another token) is nothing.
+kp_reply :: (k: [] Keep, slot: int, inbox: [] u8) -> int {
+  if slot < 0 || slot >= KP_SLOTS || inbox.count < KP_HEADER || !k[0].busy[slot] { return KP_E_NONE; }
+  if kp_u32(inbox, 0) != (k[0].token[slot] & 0xffffffff) { return KP_E_NONE; }
+  status := kp_u32(inbox, 4); length := kp_u32(inbox, 8);
+  if length > inbox.count - KP_HEADER { length = 0; status = KP_CAPACITY; }
+  return kp_done(k, slot, status, inbox[KP_HEADER..<KP_HEADER + length]);
+}
+// The host refused a request as it was asked (its import's answer, not 0): the same as that status in a reply.
+kp_refused :: (k: [] Keep, slot: int, status: int) -> int {
+  none: [1] u8;
+  if slot < 0 || slot >= KP_SLOTS || !k[0].busy[slot] { return KP_E_NONE; }
+  return kp_done(k, slot, status, none[0..<0]);
+}
+
+// The game of type `kind` written as the game being built (when it is not the one kept already).
+kp_game :: (k: [] Keep, kind: int) {
+  if k[0].state != KP_ON { return; }
+  n := lv_game_write(kind, k[0].game[..]);
+  if n == 0 { return; }
+  sum := kp_sum(k[0].game[0..<n]);
+  k[0].game_n = n; k[0].kept = kind;
+  if sum != k[0].sum[KP_GAME_PUT] { k[0].sum[KP_GAME_PUT] = sum; kp_ask(k, KP_GAME_PUT); }
+}
+// The account's record written (when it is not what is kept already). True when a write was asked for: its end is
+// KP_E_LINKED. False when this browser keeps nothing, the bytes do not fit, or they are the ones kept.
+kp_link :: (k: [] Keep, bytes: [] u8) -> bool {
+  if k[0].state != KP_ON || bytes.count > KP_LINK { return false; }
+  sum := kp_sum(bytes);
+  if sum == k[0].sum[KP_LINK_PUT] { return false; }
+  for i: 0..<bytes.count { k[0].link[i] = bytes[i]; }
+  k[0].link_n = bytes.count; k[0].sum[KP_LINK_PUT] = sum;
+  kp_ask(k, KP_LINK_PUT);
+  return true;
+}
+// The world of game type `kind` written now, if it differs from what was last written: its level
+// file and its settings. Nothing while this browser keeps nothing, or while a write of the level is still with the host.
+kp_write :: (k: [] Keep, b: [] Blocks, kind: int) {
+  k[0].pending = false; k[0].seen = b[0].rev;
+  if k[0].state != KP_ON || kind < 0 || kind >= KP_KINDS { return; }
+  if k[0].busy[KP_LEVEL_PUT] || k[0].busy[KP_SET_PUT] { k[0].pending = true; return; }
+  n := lv_write(b, k[0].st[..], kind + 1, k[0].doc[..]);
+  if n == 0 { return; }
+  k[0].doc_n = n; k[0].put_level = kind + 1;
+  sum := kp_sum(k[0].doc[0..<n]) + kind;
+  if sum != k[0].sum[KP_LEVEL_PUT] { k[0].sum[KP_LEVEL_PUT] = sum; kp_ask(k, KP_LEVEL_PUT); }
+  m := lv_settings_write(b, k[0].st[..], k[0].set[..]);
+  k[0].set_n = m;
+  sum = kp_sum(k[0].set[0..<m]) + kind;
+  if sum != k[0].sum[KP_SET_PUT] { k[0].sum[KP_SET_PUT] = sum; kp_ask(k, KP_SET_PUT); }
+  kp_game(k, kp_slot_kind(kind));
+}
+// Each frame the world is up: a change to the list is written KP_WAIT seconds on (so a burst of changes is one write).
+kp_tick :: (k: [] Keep, b: [] Blocks, kind: int, time: f32) {
+  if k[0].state != KP_ON || k[0].opening >= 0 { return; }   // (nothing is written over a level that is still being read)
+  if b[0].rev != k[0].seen && !k[0].pending { k[0].pending = true; k[0].due = time + KP_WAIT; }
+  k[0].seen = b[0].rev;
+  if k[0].pending && time >= k[0].due { k[0].due = time + KP_WAIT; kp_write(k, b, kind); }
+}
+
+// Why the last write was refused, in the page's voice, with the number: shown over the hotbar.
+kp_words :: (k: [] Keep, out: [] u8, from: int) -> int {
+  n := from; kb := (k[0].bytes + 1023) / 1024;
+  if k[0].why == KP_QUOTA { n = bl_put(out, n, "this browser's storage is full: your game ("); n = bl_int(out, n, kb); n = bl_put(out, n, " kb) is not kept. free some space and it will be."); }
+  else if k[0].why == KP_LIMIT { n = bl_put(out, n, "this game is too big to keep: "); n = bl_int(out, n, kb); n = bl_put(out, n, " kb, and a kept game is "); n = bl_int(out, n, LV_KEEP_MAX / 1024); n = bl_put(out, n, " kb at most. delete some things."); }
+  else { n = bl_put(out, n, "this browser keeps nothing (its storage is off): build on, but your game will not be kept past this page."); }
+  return n;
+}
+// The corner's standing note: whether what is built is kept.
+kp_note :: (k: [] Keep) -> string {
+  return ifx k[0].state == KP_OFF then "not kept: this browser's storage is off" else ifx k[0].full then "not kept: this browser's storage is full" else ifx k[0].state == KP_ON then "kept in this browser" else "";
+}
+
+// ---------------------------------------------------------------- checks
+
+KpTest :: struct { k: [1] Keep; b: [1] Blocks; inbox: [LV_DOC + KP_HEADER] u8; words: [256] u8; }
+// The host's part: the next request taken, and its reply given with `status` and a record.
+kp_test_take :: (t: [] KpTest, op: int, slot: int, key: string) -> bool { got: [2] int; o := kp_next(t[0].k[..], got[..]); return o == op && got[0] == slot && cast(string) t[0].k[0].key[0..<t[0].k[0].key_n] == key; }
+kp_test_reply :: (t: [] KpTest, slot: int, status: int, record: [] u8) -> int {
+  tok := t[0].k[0].token[slot]; h := [4] int.[tok, status, record.count, 0];
+  for w: 0..<4 { for q: 0..<4 { t[0].inbox[w * 4 + q] = cast(u8) ((h[w] >> (q * 8)) & 255); } }
+  for i: 0..<record.count { t[0].inbox[KP_HEADER + i] = record[i]; }
+  return kp_reply(t[0].k[..], slot, t[0].inbox[0..<KP_HEADER + record.count]);
+}
+// The account's record, asked for with the game as the page opens: answered (none is kept).
+kp_test_link :: (t: [] KpTest) -> bool { none: [1] u8; return kp_test_take(t, KP_GET, KP_LINK_GET, "account") && kp_test_reply(t, KP_LINK_GET, KP_MISSING, none[0..<0]) == KP_E_LINK && t[0].k[0].got_link_n == 0; }
+kp_test_words :: (t: [] KpTest) -> string { n := kp_words(t[0].k[..], t[0].words[..], 0); return cast(string) t[0].words[0..<n]; }
+
+#test "a first visit: the game is asked for, none is kept, and what is built is written within a second as the app's files: the level, its settings, the game" #steps 600000000 {
+  t: [1] KpTest; k := t[0].k[..]; b := t[0].b[..]; none: [1] u8;
+  kp_boot(k); kp_boot(k);
+  // (with the game, the account's record is asked for: web/account.coax's, none kept here yet)
+  #assert kp_booting(k) && kp_test_take(t[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(t[..]) && !kp_test_take(t[..], KP_GET, KP_GAME_GET, "game");
+  #assert kp_test_reply(t[..], KP_GAME_GET, KP_MISSING, none[0..<0]) == KP_E_GAME && k[0].kept == -1 && k[0].state == KP_ON && !kp_booting(k) && kp_note(k) == "kept in this browser";
+  // racing picked, a boost placed
+  bl_bare(b, GT_RACING); bl_roles(b, gt_roles(GT_RACING));
+  kp_tick(k, b, 7, 1.0);
+  #assert bl_plan(b, "place 10 20 4 4 0.25 boost");
+  kp_tick(k, b, 7, 1.1); kp_tick(k, b, 7, 1.5);
+  g: [2] int; #assert kp_next(k, g[..]) == 0;          // not yet: within the wait
+  kp_tick(k, b, 7, 1.9);
+  #assert kp_test_take(t[..], KP_PUT, KP_GAME_PUT, "game") && cast(string) k[0].game[0..<kp_len(k, KP_GAME_PUT)] == "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Game 8|racing\ntable levels id level:int\n1|8\n";
+  #assert kp_test_take(t[..], KP_PUT, KP_LEVEL_PUT, "level-8") && lv_test_find(cast(string) k[0].doc[0..<kp_len(k, KP_LEVEL_PUT)], "1|boost|400|25|400\n") > 0;
+  #assert kp_test_take(t[..], KP_PUT, KP_SET_PUT, "settings-8") && kp_len(k, KP_SET_PUT) == 0 && kp_next(k, g[..]) == 0;
+  #assert kp_test_reply(t[..], KP_LEVEL_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && kp_test_reply(t[..], KP_SET_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && kp_test_reply(t[..], KP_GAME_PUT, KP_OK, none[0..<0]) == KP_E_KEPT;
+  // nothing changed: nothing is written again; a tool picked (the list's revision goes up) writes nothing either
+  kp_tick(k, b, 7, 3.0); bl_pick(b, true); kp_tick(k, b, 7, 3.1); kp_tick(k, b, 7, 4.0);
+  #assert kp_next(k, g[..]) == 0;
+  // a setting changed: its record alone
+  #assert bl_plan(b, "set world.gravity 0.3"); kp_tick(k, b, 7, 5.0); kp_tick(k, b, 7, 5.8);
+  #assert kp_test_take(t[..], KP_PUT, KP_SET_PUT, "settings-8") && cast(string) k[0].set[0..<kp_len(k, KP_SET_PUT)] == "world.gravity=0.3\n" && kp_next(k, g[..]) == 0;
+}
+
+#test "a reload: the game kept names its type, and that type's level and settings are read back" #steps 600000000 {
+  t: [1] KpTest; k := t[0].k[..]; b := t[0].b[..]; none: [1] u8;
+  u: [1] KpTest; game: [LV_GAME] u8; gn := lv_game_write(7, game[..]);
+  bl_bare(u[0].b[..], GT_RACING); bl_roles(u[0].b[..], gt_roles(GT_RACING));
+  #assert bl_plan(u[0].b[..], "place 10 20 4 4 0.25 boost") && bl_plan(u[0].b[..], "place 3 3 0.4 0.4 0.6 cone");
+  dn := lv_write(u[0].b[..], u[0].k[0].st[..], 8, u[0].k[0].doc[..]);
+  kp_boot(k);
+  #assert kp_test_take(t[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(t[..]) && kp_test_reply(t[..], KP_GAME_GET, KP_OK, game[0..<gn]) == KP_E_GAME && k[0].kept == 7;
+  #assert kp_open(k, 7) && kp_test_take(t[..], KP_GET, KP_LEVEL_GET, "level-8") && kp_test_take(t[..], KP_GET, KP_SET_GET, "settings-8");
+  #assert kp_test_reply(t[..], KP_SET_GET, KP_MISSING, none[0..<0]) == KP_E_NONE && kp_test_reply(t[..], KP_LEVEL_GET, KP_OK, u[0].k[0].doc[0..<dn]) == KP_E_OPEN;
+  bl_roles(b, gt_roles(GT_RACING));
+  #assert k[0].got_n == dn && k[0].got_set_n == 0 && lv_read(b, k[0].st[..], cast(string) k[0].got[0..<k[0].got_n]) && b[0].n == 2 && b[0].b[0].role == BL_R_BOOST && b[0].b[1].role == BL_R_CONE;
+  // a reply for another request (an old token) is nothing; a record that is no game is no game
+  k[0].busy[KP_LEVEL_GET] = true; k[0].token[KP_LEVEL_GET] = 99;
+  for i: 0..<16 { t[0].inbox[i] = 0; } t[0].inbox[0] = 5;
+  #assert kp_reply(k, KP_LEVEL_GET, t[0].inbox[0..<16]) == KP_E_NONE && kp_reply(k, KP_SLOTS, t[0].inbox[0..<16]) == KP_E_NONE && kp_reply(k, KP_LEVEL_GET, t[0].inbox[0..<8]) == KP_E_NONE;
+  v: [1] KpTest; kp_boot(v[0].k[..]);
+  #assert kp_test_take(v[..], KP_GET, KP_GAME_GET, "game") && kp_test_reply(v[..], KP_GAME_GET, KP_OK, u[0].k[0].doc[0..<dn]) == KP_E_GAME && v[0].k[0].kept == -1 && v[0].k[0].state == KP_ON;
+}
+
+#test "a browser with its storage off still builds: nothing is asked again, and it is said that the game will not be kept" #steps 200000000 {
+  t: [1] KpTest; k := t[0].k[..]; b := t[0].b[..]; none: [1] u8; g: [2] int;
+  kp_boot(k);
+  #assert kp_test_take(t[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(t[..]) && kp_test_reply(t[..], KP_GAME_GET, KP_UNAVAILABLE, none[0..<0]) == KP_E_GAME && k[0].state == KP_OFF && k[0].kept == -1;
+  #assert kp_note(k) == "not kept: this browser's storage is off" && kp_test_words(t[..]) == "this browser keeps nothing (its storage is off): build on, but your game will not be kept past this page.";
+  bl_new(b, GT_THIRD);
+  #assert !kp_open(k, 0) && bl_plan(b, "place 1 1 1 1 1");
+  kp_tick(k, b, 0, 1.0); kp_tick(k, b, 0, 2.0); kp_write(k, b, 0);
+  #assert kp_next(k, g[..]) == 0;
+  // a host that refuses the request as it is asked is the same
+  v: [1] KpTest; kp_boot(v[0].k[..]);
+  #assert kp_test_take(v[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(v[..]) && kp_refused(v[0].k[..], KP_GAME_GET, KP_UNAVAILABLE) == KP_E_GAME && v[0].k[0].state == KP_OFF;
+  // and one that never answers: the page stops waiting
+  w: [1] KpTest; kp_boot(w[0].k[..]); kp_give_up(w[0].k[..]);
+  #assert !kp_booting(w[0].k[..]) && w[0].k[0].state == KP_OFF;
+  // (its answer, late: it keeps after all)
+  #assert kp_test_take(w[..], KP_GET, KP_GAME_GET, "game") && kp_test_reply(w[..], KP_GAME_GET, KP_MISSING, none[0..<0]) == KP_E_GAME && w[0].k[0].state == KP_ON;
+}
+
+#test "storage full is said in words with the game's size, the game stays up, and the next change is tried again; a kept write clears it" #steps 600000000 {
+  t: [1] KpTest; k := t[0].k[..]; b := t[0].b[..]; none: [1] u8; g: [2] int;
+  kp_boot(k);
+  #assert kp_test_take(t[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(t[..]) && kp_test_reply(t[..], KP_GAME_GET, KP_MISSING, none[0..<0]) == KP_E_GAME;
+  bl_new(b, GT_THIRD); kp_write(k, b, 0);
+  #assert kp_test_take(t[..], KP_PUT, KP_GAME_PUT, "game") && kp_test_take(t[..], KP_PUT, KP_LEVEL_PUT, "level-1") && kp_test_take(t[..], KP_PUT, KP_SET_PUT, "settings-1");
+  size := kp_len(k, KP_LEVEL_PUT);
+  #assert kp_test_reply(t[..], KP_LEVEL_PUT, KP_QUOTA, none[0..<0]) == KP_E_FAILED && k[0].full && k[0].state == KP_ON && k[0].bytes == size && size > 512 && size < 1024;
+  #assert kp_test_words(t[..]) == "this browser's storage is full: your game (1 kb) is not kept. free some space and it will be." && kp_note(k) == "not kept: this browser's storage is full";
+  #assert kp_test_reply(t[..], KP_SET_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && kp_test_reply(t[..], KP_GAME_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && k[0].full;
+  // the next change writes the level again, and this time it is kept
+  #assert bl_plan(b, "place 1 1 1 1 1"); kp_write(k, b, 0);
+  #assert kp_test_take(t[..], KP_PUT, KP_LEVEL_PUT, "level-1") && kp_next(k, g[..]) == 0 && kp_test_reply(t[..], KP_LEVEL_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && !k[0].full && kp_note(k) == "kept in this browser";
+  // a record over the host's limit: said with both numbers
+  k[0].why = KP_LIMIT; k[0].bytes = 1200000;
+  #assert kp_test_words(t[..]) == "this game is too big to keep: 1172 kb, and a kept game is 1024 kb at most. delete some things.";
+}
+
+#test "each game type keeps its own level: another type picked reads its own, and the first is still there under its own key" #steps 600000000 {
+  t: [1] KpTest; k := t[0].k[..]; b := t[0].b[..]; none: [1] u8; g: [2] int;
+  kp_boot(k);
+  #assert kp_test_take(t[..], KP_GET, KP_GAME_GET, "game") && kp_test_link(t[..]) && kp_test_reply(t[..], KP_GAME_GET, KP_MISSING, none[0..<0]) == KP_E_GAME;
+  bl_new(b, GT_RACING); kp_write(k, b, 7);
+  #assert kp_test_take(t[..], KP_PUT, KP_GAME_PUT, "game") && kp_test_take(t[..], KP_PUT, KP_LEVEL_PUT, "level-8") && kp_test_take(t[..], KP_PUT, KP_SET_PUT, "settings-8");
+  // crates picked while the racing level's write is still with the host: its read is asked at once, on its own slots
+  #assert kp_open(k, 5) && kp_test_take(t[..], KP_GET, KP_LEVEL_GET, "level-6") && kp_test_take(t[..], KP_GET, KP_SET_GET, "settings-6");
+  #assert kp_test_reply(t[..], KP_LEVEL_GET, KP_MISSING, none[0..<0]) == KP_E_NONE && kp_test_reply(t[..], KP_SET_GET, KP_MISSING, none[0..<0]) == KP_E_OPEN && k[0].got_n == 0;
+  bl_new(b, GT_CRATES); kp_write(k, b, 5);
+  // (the level's slot is busy: the write waits, and goes when the racing one is done)
+  #assert kp_next(k, g[..]) == 0 && k[0].pending;
+  #assert kp_test_reply(t[..], KP_LEVEL_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && kp_test_reply(t[..], KP_SET_PUT, KP_OK, none[0..<0]) == KP_E_KEPT && kp_test_reply(t[..], KP_GAME_PUT, KP_OK, none[0..<0]) == KP_E_KEPT;
+  kp_tick(k, b, 5, 9.0); kp_tick(k, b, 5, 10.0);
+  #assert kp_test_take(t[..], KP_PUT, KP_GAME_PUT, "game") && lv_game_read(k[0].st[..], cast(string) k[0].game[0..<k[0].game_n]) == 5 && kp_test_take(t[..], KP_PUT, KP_LEVEL_PUT, "level-6") && kp_test_take(t[..], KP_PUT, KP_SET_PUT, "settings-6");
+}

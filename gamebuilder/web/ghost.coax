@@ -1,0 +1,333 @@
+// The web world's character as a model (docs/web-world.md): a Quaternius outfit (Modular Character
+// Outfits - Fantasy, CC0 1.0) on the Quaternius people rig's 65 joints, with clips from Quaternius'
+// Universal Animation Library (CC0 1.0), baked by tools/ghost-bake.coax into ghost-data.coax. This
+// reads those bytes, plays a clip (a change of clip blends from the pose it left, as
+// metaverse-engine/anim/skin.coax does, with the engine's own pose arithmetic) and skins the
+// vertices on the CPU each frame. hud.coax moves the character and draws what this poses; no
+// texture is read: it is drawn as a ghost, or (the platformer's hero) solid in a livery, each part
+// its colour and the head, hands and feet swollen (metaverse-engine/render/livery.coax, ghost_paint
+// and ghost_swell).
+//   coax/bin/coax test web/ghost.coax --library
+
+#load "../../metaverse-engine/anim/pose.coax";
+#load "ghost-data.coax";
+#load "../../metaverse-engine/render/livery.coax";
+
+GHOST_J :: 65;
+GHOST_V :: 6144;           // vertices at most
+GHOST_T :: 16384;          // triangles at most
+GHOST_BYTES :: 393216;     // the baked bytes at most
+GHOST_CLIPS :: 4;
+// The clips, in the file's order.
+GHOST_IDLE :: 0; GHOST_RUN :: 1; GHOST_AIR :: 2; GHOST_LAND :: 3;
+GHOST_POS :: 0.0001220703125;   // a position's unit: 1/8192 m
+GHOST_VERTEX :: 17;             // bytes a vertex
+
+Ghost :: struct {
+  ready: bool; tried: bool;
+  data: [GHOST_BYTES] u8;
+  nv: int; nt: int; nm: int; fps: int;
+  parent: [GHOST_J] int; rest: [GHOST_J * 3] f32; bind: [GHOST_J * 12] f32;
+  moved: [GHOST_J] int;                 // which of a sample's translations is this joint's; -1 it rests
+  frames: [GHOST_CLIPS] int; seconds: [GHOST_CLIPS] f32; metres: [GHOST_CLIPS] f32; clip_at: [GHOST_CLIPS] int;
+  verts_at: int; tris_at: int;
+  // what plays
+  clip: int = -1;                       // -1 before the first
+  time: f32;                            // seconds into it
+  clock: f32; changed: f32; fade: f32;  // a change of clip blends from `from` over `fade` seconds
+  from: [GHOST_J] SkinLocal; now: [GHOST_J] SkinLocal;
+  palette: [GHOST_J * 12] f32;
+  pos: [GHOST_V * 3] f32; nor: [GHOST_V * 3] f32;   // the skinned vertices: metres, +y up, +z its front, its left +x
+  // painted in a livery (ghost_paint): each vertex's part, its colour (display values), its swell
+  // group (livery_group) and how much of it that group carries
+  livery: int = -1;
+  part: [GHOST_V] int; paint: [GHOST_V * 3] f32; group: [GHOST_V] int; share: [GHOST_V] f32;
+}
+
+gh_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+gh_u32 :: (b: [] u8, at: int) -> int { return gh_u16(b, at) | (gh_u16(b, at + 2) << 16); }
+gh_i16 :: (b: [] u8, at: int) -> f32 { u := gh_u16(b, at); if u >= 32768 { u -= 65536; } return cast(f32) u; }
+gh_i8 :: (b: [] u8, at: int) -> f32 { u := cast(int) b[at]; if u >= 128 { u -= 256; } return cast(f32) u; }
+gh_f32 :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) gh_u32(b, at)); }
+gh_b64 :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
+  if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; }
+  return ifx c == '+' then 62 else 63;
+}
+
+// The baked bytes read into g: once, on the first call. False when they are not what this reads.
+ghost_load :: (g: [] Ghost) -> bool {
+  if g[0].tried { return g[0].ready; }
+  g[0].tried = true;
+  if GHOST_DATA_BYTES > GHOST_BYTES { return false; }
+  n := 0;
+  for c: 0..<GHOST_DATA_CHUNKS {
+    t := ghost_data_chunk(c);
+    k := 0;
+    while k + 1 < t.count {
+      x := (gh_b64(t[k]) << 18) | (gh_b64(t[k + 1]) << 12);
+      if k + 2 < t.count { x = x | (gh_b64(t[k + 2]) << 6); }
+      if k + 3 < t.count { x = x | gh_b64(t[k + 3]); }
+      if n < GHOST_BYTES { g[0].data[n] = cast,trunc(u8) (x >> 16); n += 1; }
+      if k + 2 < t.count && n < GHOST_BYTES { g[0].data[n] = cast,trunc(u8) (x >> 8); n += 1; }
+      if k + 3 < t.count && n < GHOST_BYTES { g[0].data[n] = cast,trunc(u8) x; n += 1; }
+      k += 4;
+    }
+  }
+  b := g[0].data[..];
+  if n != GHOST_DATA_BYTES || n < 28 || b[0] != 'G' || b[1] != 'B' || b[2] != 'G' || b[3] != '1' { return false; }
+  nv := gh_u32(b, 4); nt := gh_u32(b, 8); nm := gh_u32(b, 24);
+  if nv < 1 || nv > GHOST_V || nt < 1 || nt > GHOST_T || gh_u32(b, 12) != GHOST_J || gh_u32(b, 16) != GHOST_CLIPS || nm > GHOST_J { return false; }
+  g[0].nv = nv; g[0].nt = nt; g[0].nm = nm; g[0].fps = gh_u32(b, 20);
+  at := 28;
+  if at + GHOST_J * 61 + nm + GHOST_CLIPS * 12 + nv * GHOST_VERTEX + nt * 6 > n || g[0].fps < 1 { return false; }
+  for j: 0..<GHOST_J { p := cast(int) b[at + j]; g[0].parent[j] = ifx p == 255 then -1 else p; g[0].moved[j] = -1; if g[0].parent[j] >= j { return false; } }
+  at += GHOST_J;
+  for i: 0..<GHOST_J * 3 { g[0].rest[i] = gh_f32(b, at + i * 4); }
+  at += GHOST_J * 12;
+  for i: 0..<GHOST_J * 12 { g[0].bind[i] = gh_f32(b, at + i * 4); }
+  at += GHOST_J * 48;
+  for i: 0..<nm { j := cast(int) b[at + i]; if j >= GHOST_J { return false; } g[0].moved[j] = i; }
+  at += nm;
+  for c: 0..<GHOST_CLIPS {
+    g[0].frames[c] = gh_u32(b, at); g[0].seconds[c] = gh_f32(b, at + 4); g[0].metres[c] = gh_f32(b, at + 8);
+    if g[0].frames[c] < 2 || !(g[0].seconds[c] > 0) { return false; }
+    at += 12;
+  }
+  g[0].verts_at = at; at += nv * GHOST_VERTEX;
+  g[0].tris_at = at; at += nt * 6;
+  for i: 0..<nt * 3 { if gh_u16(b, g[0].tris_at + i * 2) >= nv { return false; } }
+  for i: 0..<nv { for k: 0..<4 { if cast(int) b[g[0].verts_at + i * GHOST_VERTEX + 9 + k] >= GHOST_J { return false; } } }
+  for c: 0..<GHOST_CLIPS { g[0].clip_at[c] = at; at += g[0].frames[c] * (GHOST_J * 8 + nm * 6); }
+  if at != n { return false; }
+  g[0].ready = true;
+  return true;
+}
+
+// Triangle i's three vertices.
+ghost_corner :: (g: [] Ghost, i: int, k: int) -> int { return gh_u16(g[0].data[..], g[0].tris_at + (i * 3 + k) * 2); }
+
+// Joint j's pose `time` seconds into clip c, held at the clip's end.
+ghost_sample :: (g: [] Ghost, c: int, j: int, time: f32) -> SkinLocal {
+  b := g[0].data[..];
+  last := g[0].frames[c] - 1;
+  at := clamp01(time / g[0].seconds[c]) * cast(f32) last;
+  i := cast(int) floor(at); if i >= last { i = last - 1; }
+  f := at - cast(f32) i;
+  wide := GHOST_J * 8 + g[0].nm * 6;
+  a := g[0].clip_at[c] + i * wide; e := a + wide;
+  qa := Quat.{x = gh_i16(b, a + j * 8), y = gh_i16(b, a + j * 8 + 2), z = gh_i16(b, a + j * 8 + 4), w = gh_i16(b, a + j * 8 + 6)};
+  qb := Quat.{x = gh_i16(b, e + j * 8), y = gh_i16(b, e + j * 8 + 2), z = gh_i16(b, e + j * 8 + 4), w = gh_i16(b, e + j * 8 + 6)};
+  l := SkinLocal.{t = v3(g[0].rest[j * 3], g[0].rest[j * 3 + 1], g[0].rest[j * 3 + 2]), q = slerp(quat_unit(qa), quat_unit(qb), f)};
+  m := g[0].moved[j];
+  if m >= 0 {
+    o := GHOST_J * 8 + m * 6;
+    ta := v3(gh_i16(b, a + o), gh_i16(b, a + o + 2), gh_i16(b, a + o + 4));
+    tb := v3(gh_i16(b, e + o), gh_i16(b, e + o + 2), gh_i16(b, e + o + 4));
+    l.t = times(mix(ta, tb, f), GHOST_POS);
+  }
+  return l;
+}
+
+// Plays clip c on by `seconds` of its own time (a gait's caller turns ground covered into that).
+// A looping clip wraps; another holds its last pose. A new clip starts at its beginning and blends
+// in from the pose it left over `fade` seconds; the first shows at once.
+ghost_play :: (g: [] Ghost, c: int, seconds: f32, dt: f32, fade: f32, loops: bool) {
+  if !g[0].ready || c < 0 || c >= GHOST_CLIPS { return; }
+  first := g[0].clip < 0;
+  if c != g[0].clip {
+    for j: 0..<GHOST_J { g[0].from[j] = g[0].now[j]; }
+    g[0].time = 0; g[0].changed = g[0].clock; g[0].fade = ifx first then 0.0f32 else fade; g[0].clip = c;
+  }
+  d := g[0].seconds[c];
+  g[0].time += ifx finite(seconds) && seconds > 0 then seconds else 0.0f32;
+  if loops { g[0].time -= d * floor(g[0].time / d); } else if g[0].time > d { g[0].time = d; }
+  g[0].clock += ifx finite(dt) && dt > 0 then dt else 0.0f32;
+  f := ifx g[0].fade > 0 then pose_fade(g[0].clock - g[0].changed, g[0].fade) else 1.0f32;
+  for j: 0..<GHOST_J {
+    target := ghost_sample(g, c, j, g[0].time);
+    g[0].now[j] = ifx f >= 1 then target else pose_blend(g[0].from[j], target, f);
+  }
+}
+
+// The pose now, skinned: every vertex's place and normal in the figure's own space.
+ghost_skin :: (g: [] Ghost) {
+  if !g[0].ready { return; }
+  gq: [GHOST_J] Quat; gt: [GHOST_J] Point;
+  for j: 0..<GHOST_J {
+    pose_chain(gq[..], gt[..], g[0].parent[j], j, g[0].now[j]);
+    pose_palette(gq[j], gt[j], g[0].bind[..], j, g[0].palette[..]);
+  }
+  b := g[0].data[..];
+  for i: 0..<g[0].nv {
+    at := g[0].verts_at + i * GHOST_VERTEX;
+    x := gh_i16(b, at) * GHOST_POS; y := gh_i16(b, at + 2) * GHOST_POS; z := gh_i16(b, at + 4) * GHOST_POS;
+    nx := gh_i8(b, at + 6); ny := gh_i8(b, at + 7); nz := gh_i8(b, at + 8);
+    px: f32 = 0; py: f32 = 0; pz: f32 = 0; qx: f32 = 0; qy: f32 = 0; qz: f32 = 0;
+    for k: 0..<4 {
+      w := cast(f32) b[at + 13 + k];
+      if !(w > 0) { continue; }
+      w /= 255;
+      m := cast(int) b[at + 9 + k] * 12;
+      p := g[0].palette[..];
+      px += w * (p[m] * x + p[m + 1] * y + p[m + 2] * z + p[m + 3]);
+      py += w * (p[m + 4] * x + p[m + 5] * y + p[m + 6] * z + p[m + 7]);
+      pz += w * (p[m + 8] * x + p[m + 9] * y + p[m + 10] * z + p[m + 11]);
+      qx += w * (p[m] * nx + p[m + 1] * ny + p[m + 2] * nz);
+      qy += w * (p[m + 4] * nx + p[m + 5] * ny + p[m + 6] * nz);
+      qz += w * (p[m + 8] * nx + p[m + 9] * ny + p[m + 10] * nz);
+    }
+    l := sqrt(qx * qx + qy * qy + qz * qz); if !(l > 0.0001) { l = 1; qy = 1; }
+    g[0].pos[i * 3] = px; g[0].pos[i * 3 + 1] = py; g[0].pos[i * 3 + 2] = pz;
+    g[0].nor[i * 3] = qx / l; g[0].nor[i * 3 + 1] = qy / l; g[0].nor[i * 3 + 2] = qz / l;
+  }
+}
+
+// The figure painted in `livery` (metaverse-engine/render/livery.coax), once: each vertex takes the
+// part of the joint carrying most of it, refined by where it sits round its part's middle in the
+// rest pose, coloured with the cloth's grain; and the swell group its joints carry most of, with that share.
+ghost_paint :: (g: [] Ghost, livery: int) {
+  if !g[0].ready || g[0].livery == livery { return; }
+  b := g[0].data[..];
+  mid: [LIVERY_PARTS * 4] f32;
+  for k: 0..<LIVERY_PARTS * 4 { mid[k] = 0; }
+  for pass: 0..<2 {
+    for i: 0..<g[0].nv {
+      at := g[0].verts_at + i * GHOST_VERTEX;
+      x := gh_i16(b, at) * GHOST_POS; y := gh_i16(b, at + 2) * GHOST_POS; z := gh_i16(b, at + 4) * GHOST_POS;
+      if pass == 0 {
+        top := 0; gw: [LIVERY_GROUPS] f32;
+        for q: 0..<LIVERY_GROUPS { gw[q] = 0; }
+        for k: 0..<4 {
+          if b[at + 13 + k] > b[at + 13 + top] { top = k; }
+          gw[livery_group(cast(int) b[at + 9 + k])] += cast(f32) b[at + 13 + k] / 255;
+        }
+        part := livery_part(cast(int) b[at + 9 + top]);
+        g[0].part[i] = part;
+        o := part * 4; mid[o] += x; mid[o + 1] += y; mid[o + 2] += z; mid[o + 3] += 1;
+        best := 0; for q: 1..<LIVERY_GROUPS { if gw[q] > gw[best] { best = q; } }
+        g[0].group[i] = best; g[0].share[i] = ifx best == 0 then 0.0f32 else gw[best];
+      } else {
+        part := g[0].part[i]; o := part * 4; c: f32 = ifx mid[o + 3] > 1 then mid[o + 3] else 1.0f32;
+        part = livery_refine(part, x - mid[o] / c, y - mid[o + 1] / c, z - mid[o + 2] / c);
+        g[0].part[i] = part;
+        grain := livery_grain(x, y, z);
+        for k: 0..<3 { g[0].paint[i * 3 + k] = livery_colour(livery, part, k) * grain; }
+      }
+    }
+  }
+  g[0].livery = livery;
+}
+
+// The skinned pose swollen as its livery says (after ghost_skin): each swell group's vertices move
+// out from the group's middle, each by its share, so the head, hands and feet read chunky.
+ghost_swell :: (g: [] Ghost) {
+  if !g[0].ready || g[0].livery < 0 { return; }
+  mid: [LIVERY_GROUPS * 4] f32;
+  for k: 0..<LIVERY_GROUPS * 4 { mid[k] = 0; }
+  for i: 0..<g[0].nv {
+    q := g[0].group[i]; if q == 0 { continue; }
+    w := g[0].share[i]; o := q * 4;
+    for k: 0..<3 { mid[o + k] += w * g[0].pos[i * 3 + k]; }
+    mid[o + 3] += w;
+  }
+  for i: 0..<g[0].nv {
+    q := g[0].group[i]; if q == 0 || !(mid[q * 4 + 3] > 0) { continue; }
+    s := 1.0f32 + (livery_swell(g[0].part[i]) - 1.0f32) * g[0].share[i];
+    for k: 0..<3 { c := mid[q * 4 + k] / mid[q * 4 + 3]; g[0].pos[i * 3 + k] = c + (g[0].pos[i * 3 + k] - c) * s; }
+  }
+}
+
+// The skinned figure's box: low x y z, then high.
+ghost_box :: (g: [] Ghost, box: [] f32) {
+  for k: 0..<3 { box[k] = 1000; box[k + 3] = -1000; }
+  for i: 0..<g[0].nv { for k: 0..<3 { v := g[0].pos[i * 3 + k]; if v < box[k] { box[k] = v; } if v > box[k + 3] { box[k + 3] = v; } } }
+}
+
+GhostTest :: struct { g: [1] Ghost; }
+
+#test "the baked figure loads: a few thousand vertices on 65 joints, every triangle and joint in range, four clips" #steps 400000000 {
+  t: [1] GhostTest; g := t[0].g[..];
+  #assert ghost_load(g) && g[0].ready && ghost_load(g);
+  #assert g[0].nv > 2000 && g[0].nv <= GHOST_V && g[0].nt > 3000 && g[0].nt <= GHOST_T && g[0].fps == 24;
+  #assert g[0].parent[0] == -1 && g[0].parent[1] == 0 && g[0].parent[6] == 5;
+  // idle and the air loop are 2.5 s, the run 0.93 s and 3.4 m a loop, the landing 1.27 s
+  #assert near(g[0].seconds[GHOST_IDLE], 2.5, 0.01) && near(g[0].seconds[GHOST_RUN], 0.9333, 0.01) && near(g[0].metres[GHOST_RUN], 3.4, 0.01);
+  #assert near(g[0].seconds[GHOST_AIR], 2.5, 0.01) && near(g[0].seconds[GHOST_LAND], 1.2667, 0.01);
+  for i: 0..<g[0].nt { for k: 0..<3 { #assert ghost_corner(g, i, k) < g[0].nv; } }
+}
+
+#test "every clip, all the way through, keeps the skinned figure a person's size, standing on the floor, with unit normals" #steps 2000000000 {
+  t: [1] GhostTest; g := t[0].g[..];
+  #assert ghost_load(g);
+  box: [6] f32;
+  for c: 0..<GHOST_CLIPS {
+    for s: 0..<12 {
+      ghost_play(g, c, ifx s == 0 then 0.0f32 else g[0].seconds[c] / 12, 0.05, 0.1, true);
+      ghost_skin(g); ghost_box(g, box[..]);
+      // within a metre and a quarter of its middle every way, feet near the floor (a jump's pose tucks them up), under 2.3 m
+      #assert box[0] > -1.25 && box[3] < 1.25 && box[2] > -1.25 && box[5] < 1.25;
+      #assert box[1] > -0.25 && box[1] < 0.6 && box[4] > 1.2 && box[4] < 2.3;
+      for i: 0..<g[0].nv { n := g[0].nor[i * 3] * g[0].nor[i * 3] + g[0].nor[i * 3 + 1] * g[0].nor[i * 3 + 1] + g[0].nor[i * 3 + 2] * g[0].nor[i * 3 + 2]; #assert n > 0.98 && n < 1.02; }
+    }
+  }
+  // standing, its feet are on the floor and its head 1.8 m up
+  ghost_play(g, GHOST_IDLE, 0, 1, 0.1, true); ghost_skin(g); ghost_box(g, box[..]);
+  #assert abs(box[1]) < 0.06 && box[4] > 1.7 && box[4] < 1.95 && box[3] - box[0] < 1.3;
+}
+
+#test "a clip loops or holds its end, and a change of clip blends from the pose it left" #steps 400000000 {
+  t: [1] GhostTest; g := t[0].g[..];
+  #assert ghost_load(g);
+  ghost_play(g, GHOST_RUN, 0.5, 0.5, 0.2, true);
+  #assert g[0].clip == GHOST_RUN && near(g[0].time, 0.5, 0.0001);
+  ghost_play(g, GHOST_RUN, 0.5, 0.5, 0.2, true);                      // past its end: round again
+  #assert near(g[0].time, 1.0 - g[0].seconds[GHOST_RUN], 0.0001);
+  was := g[0].now[8].q;                                               // an upper arm, mid stride
+  ghost_play(g, GHOST_LAND, 0, 0, 0.2, false);                        // the frame it changes still shows the pose it left
+  #assert g[0].clip == GHOST_LAND && g[0].time == 0 && near(quat_dot(g[0].now[8].q, was), 1, 0.0001);
+  ghost_play(g, GHOST_LAND, 0.1, 0.1, 0.2, false);                    // half the fade: between the two
+  half := abs(quat_dot(g[0].now[8].q, was));
+  ghost_play(g, GHOST_LAND, 5, 0.3, 0.2, false);                      // and a clip that doesn't loop holds its end
+  #assert near(g[0].time, g[0].seconds[GHOST_LAND], 0.0001);
+  there := ghost_sample(g, GHOST_LAND, 8, 99).q;
+  #assert near(abs(quat_dot(g[0].now[8].q, there)), 1, 0.0001) && half < 0.99999 && half > abs(quat_dot(there, was));
+}
+
+#test "painted as the runner: every part of the livery is on the figure, the head, hands and feet swell, the rest keeps its place" #steps 2000000000 {
+  t: [1] GhostTest; g := t[0].g[..];
+  #assert ghost_load(g);
+  ghost_paint(g, LIVERY_RUNNER);
+  #assert g[0].livery == LIVERY_RUNNER;
+  seen: [LIVERY_PARTS] int;
+  for p: 0..<LIVERY_PARTS { seen[p] = 0; }
+  for i: 0..<g[0].nv { seen[g[0].part[i]] += 1; }
+  // no vertex unpainted; the cap, its stripe and the face, the scarf, jacket, pack, sleeves, gloves, trousers and boots all there
+  #assert seen[LIVERY_NONE] == 0;
+  for p: 1..<LIVERY_PARTS { #assert seen[p] > 3; }
+  // a face's vertex is skin-coloured times its grain; a stripe's is white
+  for i: 0..<g[0].nv {
+    p := g[0].part[i];
+    for k: 0..<3 { c := g[0].paint[i * 3 + k] / livery_colour(LIVERY_RUNNER, p, k); #assert c >= 0.93 && c <= 1.05; }
+    #assert (g[0].group[i] == 0) == (g[0].share[i] == 0) && g[0].share[i] <= 1.001;
+  }
+  // the second paint in the same livery does nothing; another repaints
+  ghost_paint(g, LIVERY_RUNNER); #assert g[0].livery == LIVERY_RUNNER;
+  ghost_paint(g, LIVERY_PILOT); #assert g[0].livery == LIVERY_PILOT;
+  // swollen: the head grows taller, a vertex of no group stays where it was, and the figure still stands on the floor
+  ghost_paint(g, LIVERY_RUNNER);
+  ghost_play(g, GHOST_IDLE, 0, 1, 0.1, true); ghost_skin(g);
+  before: [GHOST_V * 3] f32; for k: 0..<g[0].nv * 3 { before[k] = g[0].pos[k]; }
+  hl: f32 = 9; hh: f32 = -9; for i: 0..<g[0].nv { if g[0].group[i] == 1 && g[0].share[i] > 0.99 { y := g[0].pos[i * 3 + 1]; if y < hl { hl = y; } if y > hh { hh = y; } } }
+  ghost_swell(g);
+  sl: f32 = 9; sh: f32 = -9; moved := 0;
+  for i: 0..<g[0].nv {
+    if g[0].group[i] == 1 && g[0].share[i] > 0.99 { y := g[0].pos[i * 3 + 1]; if y < sl { sl = y; } if y > sh { sh = y; } }
+    if g[0].group[i] == 0 { for k: 0..<3 { #assert g[0].pos[i * 3 + k] == before[i * 3 + k]; } }
+    else if g[0].pos[i * 3] != before[i * 3] { moved += 1; }
+  }
+  #assert sh - sl > (hh - hl) * 1.25 && sh - sl < (hh - hl) * 1.4 && moved > 50;
+  box: [6] f32; ghost_box(g, box[..]);
+  #assert abs(box[1]) < 0.08 && box[4] > 1.75 && box[4] < 2.05;
+}

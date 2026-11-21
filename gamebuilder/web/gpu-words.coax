@@ -1,0 +1,61 @@
+// A browser that cannot run the builder is told so, in words (issue 14; docs/web-world.md, "No WebGPU").
+// The world is drawn with WebGPU. A browser can lack it three ways, and each has its own words and
+// its own way on: no WebGPU at all, WebGPU with no graphics adapter behind it (hardware acceleration
+// off, a blocked driver), and a device that would not start (refused, its shaders failed, lost and
+// not got back). The glue (web/hud-glue.js) only finds out which, by asking the browser, and tells
+// the page the way's number; what is said, and where, is the page's (web/page.coax, gs_nogpu).
+// The one copy of the words: the page draws them and tools/entrance-check.coax holds the page to them.
+GW_FINE :: 0;       // WebGPU is there, or nothing is known yet: nothing is said
+GW_NONE :: 1;       // the browser has no WebGPU
+GW_ADAPTER :: 2;    // it has WebGPU, and no adapter for it
+GW_FAILED :: 3;     // it has both, and the device did not start
+GW_WAYS :: 4;
+GW_HEAD :: "the builder can't run in this browser.";
+// The way the glue's word names: one digit, 0 to 3. Anything else is nothing known.
+gw_way :: (text: string) -> int {
+  if text.count != 1 || text[0] < '0' || text[0] > '3' { return GW_FINE; }
+  return cast(int) (text[0] - '0');
+}
+// A way's short name (for a check's report).
+gw_name :: (way: int) -> string {
+  return ifx way == GW_NONE then "no webgpu" else ifx way == GW_ADAPTER then "no adapter" else ifx way == GW_FAILED then "did not start" else "fine";
+}
+// What is wrong, in the site's voice. Nothing for a way that is fine.
+gw_words :: (way: int) -> string {
+  if way == GW_NONE { return "it is drawn with webgpu, and this browser has none."; }
+  if way == GW_ADAPTER { return "it is drawn with webgpu. this browser has it, but no graphics adapter behind it: hardware acceleration is off or blocked."; }
+  if way == GW_FAILED { return "it is drawn with webgpu. this browser has it, but it would not start on this device."; }
+  return "";
+}
+// What to do about it: a browser that has it, or the app.
+gw_do :: (way: int) -> string {
+  if way == GW_NONE { return "open gamebuilder.org in a current chrome, edge or safari. or build in the gamebuilder app on iphone, ipad and mac."; }
+  if way == GW_ADAPTER { return "turn on hardware acceleration in the browser's settings and reload, or open gamebuilder.org in a current chrome, edge or safari. or build in the gamebuilder app on iphone, ipad and mac."; }
+  if way == GW_FAILED { return "reload to try again. if it still won't start, update the browser, or build in the gamebuilder app on iphone, ipad and mac."; }
+  return "";
+}
+gw_test_has :: (hay: string, needle: string) -> bool {
+  if hay.count < needle.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { ok := true; for j: 0..<needle.count { if hay[i + j] != needle[j] { ok = false; break; } } if ok { return true; } }
+  return false;
+}
+#test "the words for each way WebGPU can be missing: what is wrong, and a browser that has it or the app; nothing when it is fine" {
+  #assert gw_words(GW_FINE) == "" && gw_do(GW_FINE) == "" && gw_words(7) == "" && gw_do(-1) == "";
+  for way: GW_NONE..<GW_WAYS {
+    w := gw_words(way); d := gw_do(way);
+    // each says webgpu by name, what to do names the app, and none shouts (the site's voice is lowercase)
+    #assert w.count > 20 && d.count > 20 && gw_test_has(w, "webgpu") && gw_test_has(d, "the gamebuilder app on iphone, ipad and mac");
+    for ch: w { #assert !(ch >= 'A' && ch <= 'Z'); }
+    for ch: d { #assert !(ch >= 'A' && ch <= 'Z'); }
+    for other: GW_NONE..<GW_WAYS { if other != way { #assert gw_words(other) != w && gw_name(other) != gw_name(way); } }
+  }
+  // no webgpu at all, and no adapter: a browser that has it; a device that would not start: try again first
+  #assert gw_test_has(gw_words(GW_NONE), "this browser has none") && gw_test_has(gw_do(GW_NONE), "a current chrome, edge or safari");
+  #assert gw_test_has(gw_words(GW_ADAPTER), "no graphics adapter") && gw_test_has(gw_do(GW_ADAPTER), "hardware acceleration") && gw_test_has(gw_do(GW_ADAPTER), "a current chrome, edge or safari");
+  #assert gw_test_has(gw_words(GW_FAILED), "would not start") && gw_test_has(gw_do(GW_FAILED), "reload to try again");
+  #assert gw_test_has(GW_HEAD, "can't run");
+}
+#test "the glue's word is one digit, 0 to 3: anything else says nothing is known" {
+  #assert gw_way("0") == GW_FINE && gw_way("1") == GW_NONE && gw_way("2") == GW_ADAPTER && gw_way("3") == GW_FAILED;
+  #assert gw_way("") == GW_FINE && gw_way("4") == GW_FINE && gw_way("12") == GW_FINE && gw_way("x") == GW_FINE && gw_way("-1") == GW_FINE;
+}

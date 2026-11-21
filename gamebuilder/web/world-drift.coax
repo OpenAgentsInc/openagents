@@ -1,0 +1,700 @@
+// Drift: a world of its own (docs/web-world.md, "Drift"). A small ship in zero g among drifting,
+// tumbling rocks, a lit planet and a sun far off, the stars and a galaxy's band all round; glowing
+// rings to fly through in order against the clock, the course laid from a seed.
+//
+//   W and S thrust ahead and back, A and D strafe, Space rises and Shift sinks; the mouse (and the
+//   arrows) aim: the ship turns to look where the camera looks. R puts the ship back at the last
+//   ring passed (after the last ring, R flies the course again).
+//
+// The ship is a rigid body (metaverse-engine/physics/sim/rigid.coax) pushed by thrusters and turned by
+// RCS (physics/thrust.coax), in no gravity (physics/gravity.coax: gravity_step in the field none);
+// a gentle drag lets it come to rest. The rocks are rigid bodies too: the ship nudges them and they
+// nudge each other. The rings are the engine's ring course (world/rings.coax), passed in order by
+// course.coax's run and its course_through; the sky is world/starfield.coax's; the moon goes round the
+// planet at the speed gravity.coax gives (physics/orbit.coax's Orbit cannot be loaded beside the camera's
+// Orbit: the names clash). Stepped at a fixed 120 a second.
+//
+// The entrance: the grid floor falls away, its tiles breaking off and rising as the rocks, while the
+// stars come out and the sun comes up, all within a second (DR_GO). Nothing is held for it: the ship
+// flies and the clock runs from the world's first frame (a person moves within a second of picking a type).
+//
+// Everything is in the engine's axes (y up; the page's z turned). The HUD keeps the camera (a chase,
+// its yaw and pitch the ship's aim; zoomed in, first person) and draws what dr_mesh writes.
+//   coax/bin/coax test web/world-drift.coax --library
+
+#load "world-racing.coax";   // (its words, its clock and its digits of light: rc_put, rc_clock, rc_digit, rc_row, rc_ease)
+#load "../../metaverse-engine/world/rings.coax";
+#load "../../metaverse-engine/world/starfield.coax";
+#load "../../metaverse-engine/physics/thrust.coax";
+#load "../../metaverse-engine/physics/gravity.coax";
+
+DR_SEED :: 2207;           // the rocks and the sky (and the course a new game starts with came of it: shared/game-types.coax GT_RING_*)
+DR_RINGS :: RINGS_MAX;    // rings a course may have (a level's ring things; a new game's has GT_RINGS)
+DR_RING_R :: 6.5;          // a ring's radius, metres (the ship is 1.7 round)
+DR_STEP :: 62.0;           // metres between rings, give or take a fifth
+DR_ROCKS :: 34;
+DR_STARS :: 1800;
+DR_DT :: 0.0083333333;     // the step: 120 a second
+DR_FALL_AT :: 0.15; DR_FALL :: 0.85;   // the floor falls away
+DR_RISE :: 0.6;            // a tile takes this long to rise as its rock
+DR_STARS_AT :: 0.2; DR_STARS_IN :: 0.8;   // the stars come out
+DR_SKY :: 1.2;             // the sun comes up over this long
+DR_GO :: 1.0;              // the floor gone: the entrance is over (the ship has been live, and the clock running, since the first frame)
+DR_SHIP_MASS :: 1200.0;
+DR_SHIP_R :: 1.7;          // the ship as a ball, for what it meets
+DR_MAIN :: 15000.0;        // N: ahead; back, the sides, up and down less
+DR_SIDE :: 7000.0;
+DR_DRAG :: 0.28;           // a share of the speed lost a second: full thrust tops out near 45 m/s
+DR_TURN :: 2.6;            // how fast the ship turns to its aim (1/s)
+DR_CLEAR :: 12.0;          // metres every rock keeps from the line through the rings (past its own size)
+DR_MESH :: 48000;          // vertices the whole of it may take
+DR_SKY_R :: 2500.0;        // the stars this far off, round the ship (the camera's far is 3000)
+DR_BOXES :: 64;           // built boxes the ship can meet (the HUD gives the nearest)
+DR_SKY_CELL :: 60.0;       // the stars are put round the ship again when it has moved this far
+
+// The planet, the sun and the moon: where they are, the engine's axes.
+DR_PLANET :: [3] f32.[-1350, 380, 1550]; DR_PLANET_R :: 430.0;
+DR_SUN :: [3] f32.[1650, 650, 1350]; DR_SUN_R :: 60.0;
+DR_MOON_R :: 46.0;
+
+Drift :: struct {
+  ok: bool;
+  clock: f32;                 // seconds since the world came up
+  acc: f32;                   // time not yet stepped
+  course: [1] RingCourse;
+  sky: [1] StarField;
+  ship: RigidBody; tank: Tank;
+  rock: [DR_ROCKS] RigidBody; size: [DR_ROCKS] f32; home: [DR_ROCKS] [3] f32; touch: [DR_ROCKS] bool;
+  run: Run;
+  backs: int;                 // times put back
+  bumps: int;                 // rocks met
+  burn: f32;                  // the main engine now, 0 to 1 (its flame)
+  nbx: int; bx: [DR_BOXES * 6] f32;   // what the page built here, as boxes in the engine's axes (low corner, high corner): held in space, the ship bumps off them
+  hits: int;                  // built things met
+  hit: [DR_BOXES] bool;
+  baked: int; baked_at: int; baked_x: int; baked_y: int; baked_z: int;   // the sky as last written (0: not kept), and round which cell
+}
+
+dr_f :: (a: D3) -> [3] f32 { return [3] f32.[cast(f32) a.x, cast(f32) a.y, cast(f32) a.z]; }
+dr_d :: (a: [3] f32) -> D3 { return d3(cast(f64) a[0], cast(f64) a[1], cast(f64) a[2]); }
+dr_hash :: (k: int) -> f32 { return star_hash(DR_SEED + 17, k); }
+dr_ring_at :: (d: [] Drift, k: int) -> [3] f32 { g := d[0].course[0].ring[k]; return [3] f32.[g.x, g.y, g.z]; }
+dr_ring_way :: (d: [] Drift, k: int) -> [3] f32 { g := d[0].course[0].ring[k]; return [3] f32.[g.nx, g.ny, g.nz]; }
+
+// How far p is from the segment a to b.
+dr_off_segment :: (p: [3] f32, a: [3] f32, b: [3] f32) -> f32 {
+  ab := arch_vsub(b, a); l2 := arch_vdot(ab, ab);
+  t := ifx l2 > 0.0001 then arch_vdot(arch_vsub(p, a), ab) / l2 else 0.0f32;
+  if t < 0 { t = 0; } if t > 1 { t = 1; }
+  return arch_vlen(arch_vsub(p, arch_vadd(a, arch_vmul(ab, t))));
+}
+// How far p is from the line through the rings (from the start).
+dr_off_course :: (d: [] Drift, p: [3] f32) -> f32 {
+  best: f32 = 100000; from := d[0].course[0].start;
+  for k: 0..<d[0].course[0].n { to := dr_ring_at(d, k); o := dr_off_segment(p, from, to); if o < best { best = o; } from = to; }
+  return best;
+}
+
+// A ring of the course: its middle (the engine's axes, metres) and how far round it is. Which way it
+// faces is the course's (dr_course): along the line through it.
+dr_ring :: (x: f32, y: f32, z: f32, r: f32) -> Ring { return Ring.{x = x, y = y, z = z, nx = 0, ny = 0, nz = 1, r = r}; }
+// The ring a thing of the level is (the page's axes, metres: where its foot's middle is, its bottom, how
+// wide and how high): its middle the ring's, and the ring as much wider than DR_RING_R as it is than its made size.
+dr_ring_of :: (x: f32, y: f32, z: f32, w: f32, h: f32) -> Ring { return dr_ring(x, y + h * 0.5, -z, DR_RING_R * w / (cast(f32) GK_SX[GK_RING] * 0.01)); }
+// The rings a new game starts with (shared/game-types.coax gt_starter: each thing a ring's middle, as
+// wide as the thing is against the made size), into out: how many.
+dr_rings :: (out: [] Ring) -> int {
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter(GT_DRIFT, s[..]); m := 0;
+  for i: 0..<n {
+    if s[i].kind != GK_RING || m >= out.count { continue; }
+    out[m] = dr_ring_of(cast(f32) s[i].x * 0.01, cast(f32) s[i].y * 0.01, cast(f32) s[i].z * 0.01, cast(f32) s[i].w * 0.01, cast(f32) s[i].h * 0.01);
+    m += 1;
+  }
+  return m;
+}
+DR_START :: [3] f32.[0, 4, 0];
+// The course through these rings, in their order from the start: each faces along the line through it
+// (between the way in and the way out; the last, the way in). False with none, or more than a course holds.
+dr_course :: (rings: [] Ring, out: [] RingCourse) -> bool {
+  n := rings.count;
+  if n < 1 || n > DR_RINGS { return false; }
+  out[0] = RingCourse.{}; out[0].n = n; out[0].start = DR_START;
+  at := DR_START;
+  for k: 0..<n {
+    g := rings[k];
+    if !(g.r > 0) { return false; }
+    in := rings_unit(g.x - at[0], g.y - at[1], g.z - at[2]);
+    w := in;
+    if k + 1 < n { h := rings[k + 1]; o := rings_unit(h.x - g.x, h.y - g.y, h.z - g.z); w = rings_unit(in[0] + o[0], in[1] + o[1], in[2] + o[2]); }
+    out[0].ring[k] = Ring.{x = g.x, y = g.y, z = g.z, nx = w[0], ny = w[1], nz = w[2], r = g.r};
+    at = [3] f32.[g.x, g.y, g.z];
+  }
+  return true;
+}
+// The world made: the course a new game starts with and the sky from the seed, the ship on the floor
+// at the start, the rocks where they drift (each clear of the line through the rings), the clock at 0.
+dr_in :: (d: [] Drift) { g: [DR_RINGS] Ring; n := dr_rings(g[..]); dr_make(d, g[0..<n]); }
+// The same through these rings (a level's: the HUD gives them).
+dr_make :: (d: [] Drift, rings: [] Ring) {
+  d[0] = Drift.{};
+  if !dr_course(rings, d[0].course[..]) { return; }
+  if !star_field(DR_SEED, DR_STARS, [3] f32.[0.35, 0.8, -0.5], 0.55, 0.19, d[0].sky[..]) { return; }
+  d[0].ok = true;
+  d[0].tank = tank(1, 1, false);
+  dr_place(d, [3] f32.[0, 1.1, 0], [3] f32.[0, 0, 1]);
+  d[0].run = course_run(d[0].course[0].n, 1);
+  if !dr_rocks(d) { d[0].ok = false; }
+}
+// Whether the course is through exactly these rings.
+dr_laid :: (d: [] Drift, rings: [] Ring) -> bool {
+  if !d[0].ok || d[0].course[0].n != rings.count { return false; }
+  for k: 0..<rings.count { g := d[0].course[0].ring[k]; h := rings[k]; if g.x != h.x || g.y != h.y || g.z != h.z || g.r != h.r { return false; } }
+  return true;
+}
+// The course laid through these rings instead (one moved, added or removed): the rocks drift round the
+// new line, the ship is at the start and the run from nothing; the clock, the sky and what was built
+// here stay as they are. False (and nothing changed) when they make no course, or one the rocks have no room round.
+dr_lay :: (d: [] Drift, rings: [] Ring) -> bool {
+  c: [1] RingCourse;
+  if !d[0].ok || !dr_course(rings, c[..]) { return false; }
+  was := d[0].course[0];
+  d[0].course[0] = c[0];
+  if !dr_rocks(d) { d[0].course[0] = was; _ = dr_rocks(d); return false; }   // (no room for the rocks round it: the course stays)
+  going := d[0].run.going;
+  d[0].run = course_run(c[0].n, 1); if going { d[0].run = course_go(d[0].run); }
+  dr_place(d, ifx d[0].clock > 0 then DR_START else [3] f32.[0, 1.1, 0], [3] f32.[0, 0, 1]);
+  return true;
+}
+// The rocks, where they drift round this course.
+dr_rocks :: (d: [] Drift) -> bool {
+  rings := d[0].course[0].n;
+  for i: 0..<DR_ROCKS { d[0].touch[i] = false; }
+  // the rocks: round the rings, each tried where the seed says until it is clear of the line and of the others
+  n := 0; k := 0;
+  while n < DR_ROCKS && k < DR_ROCKS * 40 {
+    seg := cast(int) (dr_hash(k * 7) * cast(f32) rings); if seg >= rings { seg = rings - 1; }
+    a := ifx seg == 0 then d[0].course[0].start else dr_ring_at(d, seg - 1); b := dr_ring_at(d, seg);
+    along := arch_vmix(a, b, dr_hash(k * 7 + 1));
+    u := dr_hash(k * 7 + 2) * 2 - 1; th := dr_hash(k * 7 + 3) * 6.2831853; rr := sqrt(1 - u * u);
+    far := 16 + 46 * dr_hash(k * 7 + 4);
+    p := arch_vadd(along, arch_vmul([3] f32.[rr * cos(th), u, rr * sin(th)], far));
+    g := dr_hash(k * 7 + 5); size := 1.6 + 4.2 * g * g;
+    k += 1;
+    if dr_off_course(d, p) < size + DR_CLEAR || p[1] < size + 2 { continue; }
+    near := false;
+    for j: 0..<n { if arch_vlen(arch_vsub(p, d[0].home[j])) < size + d[0].size[j] + 3 { near = true; } }
+    if near { continue; }
+    m := cast(f64) (380 * size * size * size);
+    q := dq_mul(dq_y(cast(f64) (dr_hash(k * 7 + 6) * 6.2831853)), dq_x(cast(f64) (dr_hash(k * 7 + 6 + 1000) * 3.1)));
+    i := cast(f64) (0.4 * size * size); body := rigid_body(m, d3_scale(d3(1.0, 1.0, 1.0), m * i), dr_d(p), q);
+    // a slow drift and a slow tumble
+    s := 0.06 + 0.2 * dr_hash(k * 7 + 2000);
+    way := arch_vnorm([3] f32.[dr_hash(k * 7 + 2001) * 2 - 1, dr_hash(k * 7 + 2002) * 2 - 1, dr_hash(k * 7 + 2003) * 2 - 1]);
+    body.vel = dr_d(arch_vmul(way, s));
+    body.omega = d3(cast(f64) ((dr_hash(k * 7 + 2004) * 2 - 1) * 0.35), cast(f64) ((dr_hash(k * 7 + 2005) * 2 - 1) * 0.35), cast(f64) ((dr_hash(k * 7 + 2006) * 2 - 1) * 0.35));
+    d[0].rock[n] = body; d[0].size[n] = size; d[0].home[n] = p;
+    n += 1;
+  }
+  return n == DR_ROCKS;
+}
+// The ship at p, facing `way`, level and still.
+dr_place :: (d: [] Drift, p: [3] f32, way: [3] f32) {
+  w := arch_vnorm(way);
+  yaw := atan2(w[0], w[2]); down := -atan2(w[1], sqrt(w[0] * w[0] + w[2] * w[2]));
+  d[0].ship = rigid_body(DR_SHIP_MASS, rigid_box_inertia(DR_SHIP_MASS, d3(3.0, 1.2, 4.6)), dr_d(p), dq_mul(dq_y(cast(f64) yaw), dq_x(cast(f64) down)));
+  d[0].burn = 0;
+}
+// The course again (after the last ring): the ship at the start, the clock from nothing, going at once.
+dr_again :: (d: [] Drift) {
+  if !d[0].ok { return; }
+  d[0].run = course_go(course_run(d[0].course[0].n, 1));
+  dr_place(d, d[0].course[0].start, [3] f32.[0, 0, 1]);
+}
+// Back: at the last ring passed (before the first, the start), facing on through it, still.
+dr_back :: (d: [] Drift) {
+  if !d[0].ok { return; }
+  g := course_back(d[0].run);
+  if g < 0 { dr_place(d, d[0].course[0].start, [3] f32.[0, 0, 1]); } else { dr_place(d, dr_ring_at(d, g), dr_ring_way(d, g)); }
+  d[0].backs += 1;
+}
+// The world's own action (R): back, or after the last ring the course again.
+dr_act :: (d: [] Drift) { if d[0].run.done { dr_again(d); } else { dr_back(d); } }
+// What was built, as boxes in the engine's axes (six floats each: low corner, high corner); past DR_BOXES are not met.
+dr_built :: (d: [] Drift, boxes: [] f32) {
+  n := boxes.count / 6; if n > DR_BOXES { n = DR_BOXES; }
+  for k: 0..<n * 6 { d[0].bx[k] = boxes[k]; }
+  for k: n..<DR_BOXES { d[0].hit[k] = false; }
+  d[0].nbx = n;
+}
+// Whether the entrance is over (the floor gone).
+dr_up :: (d: [] Drift) -> bool { return d[0].ok && d[0].clock >= DR_GO; }
+
+// What the keys and the aim ask: ahead (1) or back (-1), to the right (1) or left, up (1) or down; and
+// the way to look (a yaw round y from +z, and how far down from level, radians).
+DrIn :: struct { fore: f32; side: f32; lift: f32; yaw: f32; down: f32; }
+DrStep :: struct { ring: int = -1; what: int; }
+
+// The world over `step` seconds, live from the first: the ship flies and the clock runs while the
+// entrance goes on round them. After the last ring the ship drifts to rest.
+dr_step :: (d: [] Drift, in: DrIn, step: f32) -> DrStep {
+  out: DrStep;
+  if !d[0].ok { return out; }
+  d[0].clock += step;
+  if !d[0].run.going && !d[0].run.done && d[0].run.next == 0 && d[0].run.clock == 0 { d[0].run = course_go(d[0].run); }
+  d[0].acc += step; if d[0].acc > DR_DT * 8 { d[0].acc = DR_DT * 8; }
+  while d[0].acc >= DR_DT {
+    d[0].acc -= DR_DT;
+    s := dr_sub(d, in);
+    if s.what != COURSE_NOTHING { out = s; }
+  }
+  d[0].run = course_tick(d[0].run, step);
+  return out;
+}
+dr_clampf :: (x: f32, lo: f32, hi: f32) -> f32 { if x < lo { return lo; } if x > hi { return hi; } return x; }
+dr_sub :: (d: [] Drift, in: DrIn) -> DrStep {
+  out: DrStep;
+  live := d[0].run.going && !d[0].run.done;
+  b := d[0].ship; from := dr_f(b.pos);
+  // the thrusters: ahead, back, each side, up and down, at the middle (no turn of their own)
+  fore := ifx live then dr_clampf(in.fore, -1, 1) else 0.0f32;
+  side := ifx live then dr_clampf(in.side, -1, 1) else 0.0f32;
+  lift := ifx live then dr_clampf(in.lift, -1, 1) else 0.0f32;
+  jets := [6] Thruster.[thruster_budget(D3_ZERO, D3_Z, DR_MAIN, 0.0), thruster_budget(D3_ZERO, d3_neg(D3_Z), DR_SIDE, 0.0), thruster_budget(D3_ZERO, d3_neg(D3_X), DR_SIDE, 0.0), thruster_budget(D3_ZERO, D3_X, DR_SIDE, 0.0), thruster_budget(D3_ZERO, D3_Y, DR_SIDE, 0.0), thruster_budget(D3_ZERO, d3_neg(D3_Y), DR_SIDE, 0.0)];
+  how := [6] f32.[fore, -fore, side, -side, lift, -lift];
+  for j: 0..<6 { if how[j] > 0 { burn := thrust_apply(b, jets[j], d[0].tank, cast(f64) how[j], DR_DT); b = burn.body; } }
+  d[0].burn = ifx fore > 0 then fore else 0.0f32;
+  // the aim: the RCS turns the ship's nose to it and keeps its top up
+  want := dr_aim(in.yaw, in.down);
+  ahead := rigid_axis(b, D3_Z); up := rigid_axis(b, D3_Y);
+  turn := d3_scale(d3_cross(ahead, dr_d(want)), DR_TURN);
+  level := d3_unit_or(d3_sub(D3_Y, d3_scale(dr_d(want), d3_dot(dr_d(want), D3_Y))), up);
+  roll := d3_scale(ahead, d3_dot(d3_cross(up, level), ahead) * DR_TURN);
+  rcs := rcs_apply(b, d[0].tank, rcs_hold(b, d3_add(turn, roll), 0.12), d3(60000.0, 60000.0, 60000.0), 0.0, DR_DT);
+  b = rcs.body;
+  b.vel = d3_scale(b.vel, 1.0 - DR_DRAG * DR_DT);
+  // one step of them all, in no gravity
+  store: [DR_ROCKS + 1] RigidBody; store[0] = b;
+  for i: 0..<DR_ROCKS { store[i + 1] = d[0].rock[i]; }
+  w := rigid_world(DR_DT, store[..]); w = gravity_step(w, gravity_none());
+  // what meets: the ship and a rock (a bump when they first touch), a rock and a rock
+  for i: 0..<DR_ROCKS {
+    ct := contact_sphere_sphere(store[0].pos, DR_SHIP_R, store[i + 1].pos, cast(f64) d[0].size[i]);
+    if ct.hit && !d[0].touch[i] { d[0].bumps += 1; }
+    d[0].touch[i] = ct.hit;
+    pr := contact_resolve(store[0], store[i + 1], ct, 0.35, 0.3); store[0] = pr.a; store[i + 1] = pr.b;
+  }
+  for i: 0..<DR_ROCKS {
+    for j: i + 1..<DR_ROCKS {
+      cr := contact_sphere_sphere(store[i + 1].pos, cast(f64) d[0].size[i], store[j + 1].pos, cast(f64) d[0].size[j]);
+      if cr.hit { pq := contact_resolve(store[i + 1], store[j + 1], cr, 0.5, 0.2); store[i + 1] = pq.a; store[j + 1] = pq.b; }
+    }
+  }
+  // what was built: held where it is, the ship bumps off it (a bump when it first touches)
+  for k: 0..<d[0].nbx {
+    o := k * 6; lo := dr_d([3] f32.[d[0].bx[o], d[0].bx[o + 1], d[0].bx[o + 2]]); hi := dr_d([3] f32.[d[0].bx[o + 3], d[0].bx[o + 4], d[0].bx[o + 5]]);
+    cb := contact_sphere_box(store[0].pos, DR_SHIP_R, d3_scale(d3_add(lo, hi), 0.5), DQ.{}, d3_scale(d3_sub(hi, lo), 0.5));
+    if cb.hit && !d[0].hit[k] { d[0].hits += 1; }
+    d[0].hit[k] = cb.hit;
+    if cb.hit { store[0] = contact_resolve_static(store[0], cb, 0.35, 0.3); }
+  }
+  d[0].ship = store[0];
+  for i: 0..<DR_ROCKS { d[0].rock[i] = store[i + 1]; }
+  // a ring passed: it counts only as the next
+  if live {
+    g := d[0].run.next;
+    if course_through(from, dr_f(d[0].ship.pos), dr_ring_at(d, g), dr_ring_way(d, g), DR_RING_R) {
+      p := course_pass(d[0].run, g); d[0].run = p.run; out = DrStep.{ring = g, what = p.what};
+    }
+  }
+  return out;
+}
+// The way a yaw and a look down point (the engine's axes): yaw 0 is +z, a quarter turn +x.
+dr_aim :: (yaw: f32, down: f32) -> [3] f32 { return [3] f32.[sin(yaw) * cos(down), -sin(down), cos(yaw) * cos(down)]; }
+
+// Where the ship is, the way it faces and its speed.
+dr_at :: (d: [] Drift) -> [3] f32 { return dr_f(d[0].ship.pos); }
+dr_ahead :: (d: [] Drift) -> [3] f32 { return dr_f(rigid_axis(d[0].ship, D3_Z)); }
+dr_speed :: (d: [] Drift) -> f32 { return cast(f32) d3_len(d[0].ship.vel); }
+
+// An autopilot, for the checks: point and burn. It wants a speed toward the next ring (slower near
+// it, and aimed a little short of it along its way so it comes through square), turns to the
+// difference between that and what it has, burns when it faces it, and trims with the side jets.
+dr_pilot :: (d: [] Drift) -> DrIn {
+  if d[0].run.done { return DrIn.{}; }
+  g := d[0].run.next; at := dr_at(d);
+  c := dr_ring_at(d, g); way := dr_ring_way(d, g);
+  before := arch_vdot(arch_vsub(at, c), way);
+  aim := ifx before < -12 then arch_vadd(c, arch_vmul(way, -8)) else arch_vadd(c, arch_vmul(way, 6));
+  to := arch_vsub(aim, at); dist := arch_vlen(to);
+  speed := dr_clampf(dist * 0.55 + 6, 6, 30);
+  e := arch_vsub(arch_vmul(arch_vnorm(to), speed), dr_f(d[0].ship.vel));
+  dir := ifx arch_vlen(e) > 0.5 then arch_vnorm(e) else arch_vnorm(to);
+  f := dr_ahead(d); up := dr_f(rigid_axis(d[0].ship, D3_Y)); right := dr_f(rigid_axis(d[0].ship, d3_neg(D3_X)));
+  face := arch_vdot(f, dir);
+  return DrIn.{fore = ifx face > 0.85 then dr_clampf(arch_vlen(e) * 0.3, 0, 1) else 0.0f32, side = dr_clampf(arch_vdot(e, right) * 0.4, -1, 1), lift = dr_clampf(arch_vdot(e, up) * 0.4, -1, 1),
+    yaw = atan2(dir[0], dir[2]), down = -atan2(dir[1], sqrt(dir[0] * dir[0] + dir[2] * dir[2]))};
+}
+
+// ---------------------------------------------------------------- the entrance
+// How far the floor has fallen (metres), how much of its grid is still drawn, how far the stars are out.
+dr_floor :: (d: [] Drift) -> f32 { return -320 * rc_ease((d[0].clock - DR_FALL_AT) / DR_FALL); }
+dr_grid :: (d: [] Drift) -> f32 { return ifx d[0].ok then 1 - rc_ease((d[0].clock - DR_FALL_AT) / 0.6) else 1.0f32; }
+dr_stars :: (d: [] Drift) -> f32 { return ifx d[0].ok then rc_ease((d[0].clock - DR_STARS_AT) / DR_STARS_IN) else 0.0f32; }
+// How far rock i has risen from its tile in the floor (0 to 1): the nearer the start, the sooner.
+dr_risen :: (d: [] Drift, i: int) -> f32 {
+  h := d[0].home[i]; delay := 0.1 + 0.3 * dr_clampf(sqrt(h[0] * h[0] + h[2] * h[2]) / 700, 0, 1);
+  return rc_ease((d[0].clock - delay) / DR_RISE);
+}
+
+// ---------------------------------------------------------------- what is drawn
+// The sky round the ship: the stars (small glowing quads, facing it), the sun, the planet and its moon.
+dr_sky :: (d: [] Drift, p: [] ArchPen, cx: f32, cy: f32, cz: f32) {
+  out := dr_stars(d);
+  if out <= 0 { return; }
+  o := [3] f32.[cx, cy, cz];
+  for k: 0..<d[0].sky[0].n {
+    s := d[0].sky[0].star[k];
+    dir := [3] f32.[s.x, s.y, s.z];
+    c := arch_vadd(o, arch_vmul(dir, DR_SKY_R));
+    e1 := arch_vnorm(arch_vcross(dir, ifx abs(s.y) < 0.9 then [3] f32.[0, 1, 0] else [3] f32.[1, 0, 0]));
+    e2 := arch_vcross(e1, dir);
+    half := s.size * DR_SKY_R * 0.5 * (0.8 + 0.4 * out);
+    a1 := arch_vmul(e1, half); a2 := arch_vmul(e2, half);
+    light := (0.5 + 3.2 * s.bright) * out;
+    arch_material(p, ARCH_M_GLOW, light * (0.82 + 0.25 * s.warm), light * (0.86 + 0.08 * s.warm), light * (1.05 - 0.35 * s.warm));
+    arch_face(p, arch_vsub(arch_vsub(c, a1), a2), arch_vsub(arch_vadd(c, a1), a2), arch_vadd(arch_vadd(c, a1), a2), arch_vadd(arch_vsub(c, a1), a2));
+  }
+  // the sun: a white-hot ball, bloomed
+  arch_material(p, ARCH_M_GLOW, 6.0 * out, 5.2 * out, 4.0 * out);
+  arch_ellipsoid(p, DR_SUN[0], DR_SUN[1], DR_SUN[2], DR_SUN_R, DR_SUN_R, DR_SUN_R, 16, 8);
+  // the planet: lit by the sun (the frame's own light), a band of cloud round it
+  arch_material(p, ARCH_M_SMOOTH, 0.3, 0.46, 0.72);
+  arch_ellipsoid(p, DR_PLANET[0], DR_PLANET[1], DR_PLANET[2], DR_PLANET_R, DR_PLANET_R, DR_PLANET_R, 40, 20);
+  arch_material(p, ARCH_M_SMOOTH, 0.86, 0.88, 0.9);
+  arch_ellipsoid(p, DR_PLANET[0], DR_PLANET[1], DR_PLANET[2], DR_PLANET_R * 1.012, DR_PLANET_R * 0.18, DR_PLANET_R * 1.012, 40, 6);
+}
+// The moon, where its circular orbit round the planet has it now (gravity.coax's period for the
+// planet's pull at its distance), its plane tilted a little.
+DR_MOON_MU :: 230000.0; DR_MOON_A :: 820.0;
+dr_moon :: (d: [] Drift) -> [3] f32 {
+  t := 1.0 + 6.2831853 * cast(f64) d[0].clock / circular_period(DR_MOON_MU, DR_MOON_A);
+  x := cast(f32) (DR_MOON_A * cos(t)); z := cast(f32) (DR_MOON_A * sin(t));
+  return [3] f32.[DR_PLANET[0] + x, DR_PLANET[1] + z * 0.34, DR_PLANET[2] + z * 0.94];
+}
+// A ring: a hoop of short glowing bars round its middle, square to its way through.
+dr_hoop :: (p: [] ArchPen, c: [3] f32, way: [3] f32, r: f32, thick: f32) {
+  e1 := arch_vnorm(arch_vcross(way, ifx abs(way[1]) < 0.9 then [3] f32.[0, 1, 0] else [3] f32.[1, 0, 0]));
+  e2 := arch_vcross(way, e1);
+  for k: 0..<24 {
+    t := cast(f32) k * 6.2831853 / 24; tn := t + 6.2831853 / 24;
+    a := arch_vadd(c, arch_vadd(arch_vmul(e1, r * cos(t)), arch_vmul(e2, r * sin(t))));
+    b := arch_vadd(c, arch_vadd(arch_vmul(e1, r * cos(tn)), arch_vmul(e2, r * sin(tn))));
+    arch_beam(p, a, b, thick);
+  }
+}
+// A rock: a lumpy ball (its points pushed in and out by the seed), turned as it has tumbled; in the
+// entrance a flat tile of the floor rising to it.
+dr_rock :: (d: [] Drift, p: [] ArchPen, i: int) {
+  b := d[0].rock[i]; r := d[0].size[i]; u := dr_risen(d, i);
+  if u <= 0 { return; }
+  h := d[0].home[i];
+  at := ifx u >= 1 then dr_f(b.pos) else arch_vmix([3] f32.[h[0], dr_floor(d), h[2]], h, u);
+  flat := 0.12 + 0.88 * u;
+  from := p[0].n;
+  arch_material(p, ARCH_M_ROCK, 0.42 + 0.1 * dr_hash(i * 3 + 500), 0.38 + 0.06 * dr_hash(i * 3 + 501), 0.34);
+  arch_ellipsoid(p, 0, 0, 0, r, r, r, 9, 6);
+  m := p[0].out;
+  for v: from..<p[0].n {
+    o := v * ARCH_VERTEX_FLOATS;
+    // the lump where this point is: the same for every face that shares it
+    lx := cast(int) floor(m[o] / r * 2.5 + 0.5); ly := cast(int) floor(m[o + 1] / r * 2.5 + 0.5); lz := cast(int) floor(m[o + 2] / r * 2.5 + 0.5);
+    k := 0.82 + 0.3 * star_hash(DR_SEED + i, lx * 97 + ly * 13 + lz * 5 + 400);
+    q := dq_rotate(b.orientation, d3(cast(f64) (m[o] * k), cast(f64) (m[o + 1] * k * flat), cast(f64) (m[o + 2] * k)));
+    n := dq_rotate(b.orientation, d3(cast(f64) m[o + 3], cast(f64) m[o + 4], cast(f64) m[o + 5]));
+    m[o] = at[0] + cast(f32) q.x; m[o + 1] = at[1] + cast(f32) q.y; m[o + 2] = at[2] + cast(f32) q.z;
+    m[o + 3] = cast(f32) n.x; m[o + 4] = cast(f32) n.y; m[o + 5] = cast(f32) n.z;
+  }
+}
+// The ship: a pale hull, a dark canopy, two swept wings, and the engine's glow behind (a flame as it burns).
+dr_ship :: (d: [] Drift, p: [] ArchPen) {
+  b := d[0].ship; c := dr_f(b.pos);
+  x := dr_f(rigid_axis(b, D3_X)); y := dr_f(rigid_axis(b, D3_Y)); z := dr_f(rigid_axis(b, D3_Z));
+  arch_material(p, ARCH_M_SMOOTH, 0.86, 0.87, 0.9);
+  arch_obox(p, c, arch_vmul(x, 0.55), arch_vmul(y, 0.38), arch_vmul(z, 2.0));
+  arch_obox(p, arch_vadd(c, arch_vmul(z, 2.3)), arch_vmul(x, 0.32), arch_vmul(y, 0.25), arch_vmul(z, 0.4));
+  arch_material(p, ARCH_M_SMOOTH, 0.08, 0.1, 0.14);
+  arch_obox(p, arch_vadd(arch_vadd(c, arch_vmul(y, 0.38)), arch_vmul(z, 0.7)), arch_vmul(x, 0.36), arch_vmul(y, 0.18), arch_vmul(z, 0.75));
+  arch_material(p, ARCH_M_SMOOTH, 0.72, 0.3, 0.18);
+  for s: 0..<2 {
+    sg: f32 = ifx s == 0 then 1 else -1;
+    arch_obox(p, arch_vadd(arch_vadd(c, arch_vmul(x, sg * 1.45)), arch_vmul(z, -0.7)), arch_vmul(x, 0.95), arch_vmul(y, 0.07), arch_vmul(z, 0.9));
+    arch_obox(p, arch_vadd(arch_vadd(arch_vadd(c, arch_vmul(x, sg * 2.35)), arch_vmul(y, 0.3)), arch_vmul(z, -1.2)), arch_vmul(x, 0.06), arch_vmul(y, 0.38), arch_vmul(z, 0.4));
+  }
+  // the engine: always lit a little, and a flame back from it as it burns
+  glow := 1.2 + 3.0 * d[0].burn;
+  arch_material(p, ARCH_M_GLOW, 0.5 * glow, 0.9 * glow, 2.4 * glow);
+  arch_obox(p, arch_vadd(c, arch_vmul(z, -2.05)), arch_vmul(x, 0.4), arch_vmul(y, 0.28), arch_vmul(z, 0.06));
+  if d[0].burn > 0.05 {
+    l := 0.5 + 2.2 * d[0].burn;
+    arch_material(p, ARCH_M_GLOW, 0.8 * glow, 1.3 * glow, 3.0 * glow);
+    arch_obox(p, arch_vadd(c, arch_vmul(z, -2.1 - l * 0.5)), arch_vmul(x, 0.22), arch_vmul(y, 0.15), arch_vmul(z, l * 0.5));
+  }
+}
+// The board over the ship, facing the camera behind it: the ring next of all and the time; after the last, the time it took.
+dr_board :: (d: [] Drift, p: [] ArchPen, side: [3] f32, up: [3] f32) {
+  if !dr_up(d) { return; }
+  c := arch_vadd(dr_at(d), arch_vmul(up, 2.0));
+  g: [12] int; n := 0;
+  if d[0].run.done {
+    arch_material(p, ARCH_M_GLOW, 0.5, 1.6, 0.8);
+    n = rc_clock(d[0].run.clock, true, g[..]);
+  } else {
+    arch_material(p, ARCH_M_GLOW, 1.7, 1.25, 0.55);
+    nx := d[0].run.next + 1;
+    if nx >= 10 { g[n] = nx / 10; n += 1; }
+    g[n] = nx % 10; g[n + 1] = 12; g[n + 2] = d[0].course[0].n / 10; g[n + 3] = d[0].course[0].n % 10; g[n + 4] = -1; n += 5;
+    n += rc_clock(d[0].run.clock, false, g[n..<12]);
+  }
+  w := cast(f32) n * 0.15;
+  _ = rc_row(p, arch_vadd(c, arch_vmul(side, -w * 0.5)), side, up, 0.24, g[0..<n]);
+}
+
+// The whole of it into the pen: the sky round the ship (kept while the ship stays in its cell, once
+// the stars are all out), then what moves. `cam` is where the camera's feet are (the ship), `first`
+// whether the view is from inside it (the ship not drawn), `side` the camera's right on the level.
+dr_mesh :: (d: [] Drift, p: [] ArchPen, first: bool, side: [3] f32) {
+  if !d[0].ok { return; }
+  at := dr_at(d);
+  cx := cast(int) floor(at[0] / DR_SKY_CELL); cy := cast(int) floor(at[1] / DR_SKY_CELL); cz := cast(int) floor(at[2] / DR_SKY_CELL);
+  if dr_stars(d) >= 1 && d[0].baked > 0 && d[0].baked_at == p[0].n && d[0].baked_x == cx && d[0].baked_y == cy && d[0].baked_z == cz && d[0].baked <= p[0].out.count / ARCH_VERTEX_FLOATS {
+    p[0].n = d[0].baked;   // (the sky is in the mesh already, as it was written last)
+  } else {
+    from := p[0].n;
+    dr_sky(d, p, (cast(f32) cx + 0.5) * DR_SKY_CELL, (cast(f32) cy + 0.5) * DR_SKY_CELL, (cast(f32) cz + 0.5) * DR_SKY_CELL);
+    d[0].baked = ifx dr_stars(d) >= 1 && !p[0].full then p[0].n else 0; d[0].baked_at = from; d[0].baked_x = cx; d[0].baked_y = cy; d[0].baked_z = cz;
+  }
+  // the moon goes round
+  out := dr_stars(d);
+  if out > 0 { mo := dr_moon(d); arch_material(p, ARCH_M_SMOOTH, 0.7, 0.68, 0.64); arch_ellipsoid(p, mo[0], mo[1], mo[2], DR_MOON_R, DR_MOON_R, DR_MOON_R, 16, 8); }
+  // the rings: the next bright, those after it dimmer, those passed faint
+  for k: 0..<d[0].course[0].n {
+    next := d[0].run.done || k == d[0].run.next;
+    passed := !d[0].run.done && k < d[0].run.next || d[0].run.done;
+    rise := rc_ease((d[0].clock - 0.1 - cast(f32) k * 0.04) / 0.4);
+    if rise <= 0 { continue; }
+    if passed { arch_material(p, ARCH_M_GLOW, 0.25, 0.6, 0.45); }
+    else if next { arch_material(p, ARCH_M_GLOW, 3.4 * rise, 2.1 * rise, 0.6 * rise); }
+    else { arch_material(p, ARCH_M_GLOW, 0.5 * rise, 1.4 * rise, 2.4 * rise); }
+    dr_hoop(p, dr_ring_at(d, k), dr_ring_way(d, k), DR_RING_R * (0.6 + 0.4 * rise), ifx next then 0.32 else 0.22);
+  }
+  for i: 0..<DR_ROCKS { dr_rock(d, p, i); }
+  if !first { dr_ship(d, p); }
+  dr_board(d, p, side, [3] f32.[0, 1, 0]);
+}
+
+// ---------------------------------------------------------------- the light
+// Space: no air, no ground light, a black sky; a white sun low to the right, a little blue light from
+// everywhere so the dark sides are not quite black. It comes up from black with the stars.
+dr_look :: (d: [] Drift) -> StyLook {
+  night: StyLook;
+  night.sun_r = 0; night.sun_g = 0; night.sun_b = 0; night.sky_r = 0; night.sky_g = 0; night.sky_b = 0;
+  night.ground_r = 0; night.ground_g = 0; night.ground_b = 0; night.zenith_r = 0; night.zenith_g = 0; night.zenith_b = 0;
+  night.horizon_r = 0; night.horizon_g = 0; night.horizon_b = 0; night.haze_r = 0; night.haze_g = 0; night.haze_b = 0; night.haze = 0;
+  night.cloud = 0; night.air = 0; night.lush = 0;
+  day := night;
+  s := arch_vnorm(DR_SUN);
+  day.sun_x = s[0]; day.sun_y = s[1]; day.sun_z = s[2];
+  day.sun_r = 1.35; day.sun_g = 1.24; day.sun_b = 1.08; day.shadow = 0.85;
+  day.sky_r = 0.05; day.sky_g = 0.06; day.sky_b = 0.1;
+  day.ground_r = 0.02; day.ground_g = 0.02; day.ground_b = 0.035;
+  f := ifx d[0].ok then rc_ease((d[0].clock - 0.1) / DR_SKY) else 0.0f32;
+  return sty_look_mix(night, day, f);
+}
+
+// ---------------------------------------------------------------- what the page is told
+dr_state :: (d: [] Drift) -> int {
+  if !d[0].ok { return 1; }
+  return ((d[0].run.next & 63) << 22) | ((d[0].backs & 1023) << 4) | (ifx d[0].run.done then 2 else 0) | (ifx dr_up(d) then 8 else 0) | 1;
+}
+dr_describe :: (d: [] Drift, out: [] u8) -> int {
+  n := rc_put(out, 0, "drift: a small ship in zero g among drifting rocks, a planet and a sun far off; twelve glowing rings to fly through in order against the clock (a ring counts only as the next). W and S thrust ahead and back, A and D strafe, Space rises and Shift sinks, the mouse aims, R puts the ship back at the last ring.");
+  if !d[0].ok { return n; }
+  if !dr_up(d) { return rc_put(out, n, " coming in."); }
+  if d[0].run.done {
+    n = rc_put(out, n, " finished: twelve rings in "); n = rc_put_time(out, n, d[0].run.clock); n = rc_put(out, n, ". R flies it again.");
+    return n;
+  }
+  n = rc_put(out, n, " ring "); n = rc_put_int(out, n, d[0].run.next + 1); n = rc_put(out, n, " of 12 next. time ");
+  n = rc_put_time(out, n, d[0].run.clock); n = rc_put(out, n, ".");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+dr_test_fly :: (d: [] Drift, frames: int) -> int {
+  passes := 0;
+  for f: 0..<frames { s := dr_step(d, dr_pilot(d), 1.0 / 60); if s.what != COURSE_NOTHING { passes += 1; } if d[0].run.done { return passes; } }
+  return passes;
+}
+
+#test "the course, the rocks and the sky: twelve rings a step apart, every rock clear of the line through them, the stars out" #steps 4000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  #assert d[0].ok && d[0].course[0].n == GT_RINGS && d[0].sky[0].n == DR_STARS;
+  L := rings_length(d[0].course[..]); #assert L > GT_RINGS * DR_STEP * 0.8 && L < GT_RINGS * DR_STEP * 1.2;
+  for i: 0..<DR_ROCKS {
+    #assert dr_off_course(d[..], d[0].home[i]) >= d[0].size[i] + DR_CLEAR && d[0].size[i] >= 1.6 && d[0].size[i] <= 5.8;
+    for j: i + 1..<DR_ROCKS { #assert arch_vlen(arch_vsub(d[0].home[i], d[0].home[j])) >= d[0].size[i] + d[0].size[j] + 3; }
+    #assert d3_len(d[0].rock[i].vel) > 0.059 && d3_len(d[0].rock[i].vel) < 0.261;
+  }
+  // the same seed, the same world
+  e: [1] Drift; dr_in(e[..]);
+  #assert e[0].rock[5].pos.x == d[0].rock[5].pos.x && e[0].course[0].ring[7].z == d[0].course[0].ring[7].z;
+  // the moon goes round the planet on its orbit, about its own distance off
+  m0 := dr_moon(d[..]); d[0].clock = 60; m1 := dr_moon(d[..]);
+  #assert arch_vlen(arch_vsub(m0, m1)) > 50 && arch_vlen(arch_vsub(m0, DR_PLANET)) > 700 && arch_vlen(arch_vsub(m0, DR_PLANET)) < 950;
+}
+
+#test "the entrance: the floor falls away and its tiles rise as the rocks, the stars come out, all within a second; the ship flies and the clock runs from the first frame" #steps 4000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  #assert dr_floor(d[..]) == 0 && dr_grid(d[..]) == 1 && dr_stars(d[..]) == 0 && dr_risen(d[..], 0) == 0 && !dr_up(d[..]);
+  dark := dr_look(d[..]); #assert dark.sun_r == 0 && dark.air == 0 && dark.zenith_b == 0;
+  pin := DrIn.{fore = 1};
+  _ = dr_step(d[..], pin, 1.0 / 60);
+  #assert d[0].run.going && d3_len(d[0].ship.vel) > 0 && !dr_up(d[..]);   // (nothing is held for the entrance)
+  for f: 0..<29 { _ = dr_step(d[..], pin, 1.0 / 60); }
+  #assert d[0].clock > 0.45 && !dr_up(d[..]) && dr_speed(d[..]) > 0.5 && d[0].run.clock > 0.4 && dr_floor(d[..]) < 0 && dr_stars(d[..]) > 0;
+  for f: 0..<40 { _ = dr_step(d[..], pin, 1.0 / 60); }
+  #assert DR_GO <= 1.0;
+  #assert dr_up(d[..]) && d[0].run.going && dr_speed(d[..]) > 2 && dr_floor(d[..]) < -300 && dr_grid(d[..]) < 0.01 && dr_stars(d[..]) == 1;
+  for i: 0..<DR_ROCKS { #assert dr_risen(d[..], i) == 1; }
+  l := dr_look(d[..]); #assert l.sun_r > 1.3 && l.zenith_b == 0 && l.air == 0 && l.lush == 0;
+}
+
+#test "the twelve rings by an autopilot: every ring in order, the clock stopped at the last; R flies it again" #steps 4000000000000 #traversal 1000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  for f: 0..<220 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  #assert dr_up(d[..]);
+  passes := dr_test_fly(d[..], 60 * 150);
+  #assert d[0].run.done && passes == GT_RINGS && d[0].run.clock > 20 && d[0].run.clock < 150;
+  done := d[0].run.clock;
+  for f: 0..<60 { _ = dr_step(d[..], DrIn.{fore = 1}, 1.0 / 60); }
+  #assert d[0].run.clock == done && d[0].burn == 0;
+  dr_act(d[..]); #assert d[0].run.going && !d[0].run.done && d[0].run.next == 0 && arch_vlen(arch_vsub(dr_at(d[..]), d[0].course[0].start)) < 0.01;
+}
+
+#test "the keys: W thrusts ahead, A and D strafe, Space and Shift rise and sink, the aim turns the nose; a ring out of turn counts for nothing; R back at the last ring" #steps 400000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  for f: 0..<220 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  p0 := dr_at(d[..]);
+  for f: 0..<60 { _ = dr_step(d[..], DrIn.{fore = 1}, 1.0 / 60); }
+  p1 := dr_at(d[..]); #assert p1[2] - p0[2] > 3 && abs(p1[0] - p0[0]) < 0.3 && d[0].burn == 1;
+  // D: to the right (looking along +z, -x); Space: up
+  for f: 0..<60 { _ = dr_step(d[..], DrIn.{side = 1}, 1.0 / 60); }
+  p2 := dr_at(d[..]); #assert p2[0] < p1[0] - 1;
+  for f: 0..<60 { _ = dr_step(d[..], DrIn.{lift = 1}, 1.0 / 60); }
+  p3 := dr_at(d[..]); #assert p3[1] > p2[1] + 1;
+  // the drag: let go, it slows
+  v := dr_speed(d[..]); for f: 0..<120 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); } #assert dr_speed(d[..]) < v * 0.65;
+  // the aim: a quarter turn to the right of +z is +x; the nose comes round, its top kept up
+  for f: 0..<180 { _ = dr_step(d[..], DrIn.{yaw = 1.5707963}, 1.0 / 60); }
+  a := dr_ahead(d[..]); #assert a[0] > 0.97 && dr_f(rigid_axis(d[0].ship, D3_Y))[1] > 0.97;
+  // and down
+  for f: 0..<180 { _ = dr_step(d[..], DrIn.{yaw = 0, down = 0.6}, 1.0 / 60); }
+  b := dr_ahead(d[..]); #assert b[1] < -0.5 && b[2] > 0.7;
+  // a ring out of turn: the ship put through the third ring first gains nothing
+  c := dr_ring_at(d[..], 2); w := dr_ring_way(d[..], 2);
+  dr_place(d[..], arch_vsub(c, arch_vmul(w, 3)), w); d[0].ship.vel = dr_d(arch_vmul(w, 20));
+  for f: 0..<30 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  #assert d[0].run.next == 0;
+  // the first ring, then R: back at it, still, facing on through it
+  c = dr_ring_at(d[..], 0); w = dr_ring_way(d[..], 0);
+  dr_place(d[..], arch_vsub(c, arch_vmul(w, 3)), w); d[0].ship.vel = dr_d(arch_vmul(w, 20));
+  for f: 0..<30 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  #assert d[0].run.next == 1;
+  dr_act(d[..]);
+  #assert d[0].backs == 1 && arch_vlen(arch_vsub(dr_at(d[..]), c)) < 0.01 && d3_len(d[0].ship.vel) == 0 && arch_vdot(dr_ahead(d[..]), w) > 0.999;
+}
+
+#test "the rocks drift and tumble in no gravity, and the ship nudges one: it moves off, and the meeting is counted" #steps 400000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  for f: 0..<220 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  r0 := d[0].rock[3]; for f: 0..<120 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  r1 := d[0].rock[3];
+  // no gravity: its speed as it was (it met nothing); it has moved and turned
+  #assert abs(d3_len(r1.vel) - d3_len(r0.vel)) < 0.0001 && d3_dist(r1.pos, r0.pos) > 0.05 && !(r1.orientation.w == r0.orientation.w);
+  // the ship flung at it: it moves off along the blow, and a bump is counted
+  at := dr_f(r1.pos); way := [3] f32.[0, 0, 1]; size := d[0].size[3];
+  dr_place(d[..], arch_vsub(at, arch_vmul(way, size + 4)), way); d[0].ship.vel = dr_d(arch_vmul(way, 12));
+  for f: 0..<40 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  #assert d[0].bumps >= 1 && d[0].rock[3].vel.z > r1.vel.z + 0.01;
+}
+
+#test "the mesh: the sky, the rings, the rocks and the ship fit at every moment, and the sky is kept while the ship stays in its cell" #steps 4000000000000 #traversal 1000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  mesh: [DR_MESH * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen;
+  most := 0;
+  for f: 0..<260 {
+    _ = dr_step(d[..], DrIn.{}, 1.0 / 60);
+    if f % 10 != 9 { continue; }
+    arch_pen(p[..], mesh[..]); dr_mesh(d[..], p[..], false, [3] f32.[-1, 0, 0]);
+    #assert !p[0].full; if p[0].n > most { most = p[0].n; }
+  }
+  #assert most > DR_STARS * 6 && d[0].baked > DR_STARS * 6;
+  // kept: written again into the same place, the sky is taken as it is
+  arch_pen(p[..], mesh[..]); mesh[0] = 12345; dr_mesh(d[..], p[..], false, [3] f32.[-1, 0, 0]); #assert mesh[0] == 12345;
+  // moved to another cell, it is written again
+  dr_place(d[..], [3] f32.[200, 50, 200], [3] f32.[0, 0, 1]);
+  arch_pen(p[..], mesh[..]); dr_mesh(d[..], p[..], true, [3] f32.[-1, 0, 0]); #assert mesh[0] != 12345 && d[0].baked_x == 3;
+}
+
+#test "the page is told the drift: coming in, the next ring and the time, and the finish" #steps 4000000000000 #traversal 1000000000 {
+  d: [1] Drift; dr_in(d[..]); out: [600] u8;
+  n := dr_describe(d[..], out[..]); s := cast(string) out[0..<n];
+  #assert rc_test_has(s, "drift: a small ship in zero g") && rc_test_has(s, " coming in.");
+  st := dr_state(d[..]);
+  for f: 0..<64 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  #assert dr_state(d[..]) != st;
+  for f: 0..<6 { _ = dr_step(d[..], DrIn.{}, 1.0 / 60); }
+  n = dr_describe(d[..], out[..]); s = cast(string) out[0..<n]; #assert rc_test_has(s, " ring 1 of 12 next. time 0:01.");
+  _ = dr_test_fly(d[..], 60 * 150);
+  n = dr_describe(d[..], out[..]); s = cast(string) out[0..<n]; #assert d[0].run.done && rc_test_has(s, " finished: twelve rings in ") && rc_test_has(s, ". R flies it again.");
+}
+#test "what is built is met: a box held in the ship's way stops it and it bumps off (a bump counted at each new touch); taken away, it flies on through" #steps 4000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  #assert d[0].ok;
+  d[0].clock = DR_GO;
+  // a wall 6 m ahead of the ship (it faces +z), 10 m square and 1 m thick
+  a := dr_at(d[..]);
+  wall := [6] f32.[a[0] - 5, a[1] - 5, a[2] + 6, a[0] + 5, a[1] + 5, a[2] + 7];
+  dr_built(d[..], wall[..]);
+  in: DrIn; in.fore = 1;
+  for k: 0..<240 { _ = dr_step(d[..], in, 0.016666668); }
+  b := dr_at(d[..]);
+  #assert d[0].nbx == 1;
+  #assert d[0].hits >= 1;
+  #assert b[2] < a[2] + 6;
+  #assert b[2] > a[2] + 3;
+  // taken away: it flies on through where it was
+  hits := d[0].hits;
+  dr_built(d[..], wall[0..<0]);
+  for k: 0..<120 { _ = dr_step(d[..], in, 0.016666668); }
+  #assert d[0].nbx == 0 && dr_at(d[..])[2] > a[2] + 10 && d[0].hits == hits;
+}
+
+#test "the course is the rings it is given: a new game's twelve, each facing along the line; one moved and the course is laid again with the rocks clear of it, the clock kept; none is no course" #steps 4000000000 {
+  d: [1] Drift; dr_in(d[..]);
+  g: [DR_RINGS] Ring; n := dr_rings(g[..]);
+  #assert n == GT_RINGS && dr_laid(d[..], g[0..<n]) && g[0].x == 0 && g[0].y == 4 && abs(g[0].z - 52.84) < 0.001 && g[0].r == DR_RING_R;
+  // each faces along the line: the first straight on from the start, the rest between the way in and the way out
+  r0 := d[0].course[0].ring[0]; #assert r0.nz > 0.99;
+  for k: 0..<n { r := d[0].course[0].ring[k]; #assert abs(r.nx * r.nx + r.ny * r.ny + r.nz * r.nz - 1) < 0.001; }
+  for f: 0..<90 { _ = dr_step(d[..], DrIn.{fore = 1}, 1.0 / 60); }
+  clock := d[0].clock; #assert d[0].run.going && clock > 1;
+  // the fourth moved 30 m aside and made half as wide again
+  g[3].x += 30; g[3].r = DR_RING_R * 1.5;
+  #assert !dr_laid(d[..], g[0..<n]) && dr_lay(d[..], g[0..<n]) && dr_laid(d[..], g[0..<n]) && d[0].ok && d[0].clock == clock;
+  #assert d[0].run.going && d[0].run.next == 0 && arch_vlen(arch_vsub(dr_at(d[..]), DR_START)) < 0.01 && d[0].course[0].ring[3].r == DR_RING_R * 1.5;
+  for i: 0..<DR_ROCKS { #assert dr_off_course(d[..], d[0].home[i]) >= d[0].size[i] + DR_CLEAR; }
+  // three rings alone are a course; none, or more than a course holds, is not, and the course stays
+  #assert dr_lay(d[..], g[0..<3]) && d[0].course[0].n == 3 && d[0].run.gates == 3;
+  #assert !dr_lay(d[..], g[0..<0]) && d[0].course[0].n == 3 && d[0].ok;
+}

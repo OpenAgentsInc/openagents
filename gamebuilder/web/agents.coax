@@ -1,0 +1,924 @@
+// gamebuilder.org/agents: a chat with your agents (GitHub issues 4, 7, 11 and 29; docs/agents.md,
+// "The page: a chat with your agents"). web/site-agents.coax loads this file with the page
+// (web/page.coax), as the module /agents alone loads, and it is drawn there for someone logged in.
+// The home page's module (web/page.coax) has web/agents-off.coax in its place: the same names, doing
+// nothing, so the home page's first load carries none of this (issue 30). It is laid out as Coder for desktop is (the pinned tree's
+// apps/coder-desktop): the chats down the left, the conversation, and the message box at its foot.
+//
+// A message box is always there. Sending in an empty conversation starts a cloud Builder with
+// those words as its job: on one of your games, or on a new game of the type the control beside
+// the box says (shared/game-types.coax's nine on the site; third person first), made on the
+// account first. So an account with nothing on it types a sentence, presses Return, and has a
+// game and a Builder on it. Sending in an open conversation messages that agent.
+//
+// The conversation is the agent's log (coax/agent-record.coax), its newest GS_AG_SHOWN events:
+// your messages, each command it ran as a row that opens onto what it sent and what came back (a
+// refused one says so, with why), its changes (the newest carries "take back its last change"),
+// and its answers as Markdown. While it works its one-line step and how long it has been at it
+// show under them, and Stop stands where Send does. The agents are down the left, grouped by
+// game under the game's newest picture, those waiting for you first; on a narrow screen that list
+// is a drawer. Your computers (issue 11) are a fold at its foot.
+//
+// Every action is a row of the command table's, asked of the hosted API with this page's login:
+//   agents, agent-events, list-games, computers        what is read
+//   new-game, then agent-new (or agent-new-on)          a send in an empty conversation
+//   agent-message, agent-stop, agent-undo               an open cloud agent's
+// An agent on one of your computers is read here and told things there (AGR_THERE).
+// Every word of an agent's and a computer's is coax/agent-record.coax's
+// (tools/agents-drift.coax holds it); a game type's are shared/game-types.coax's.
+//
+// The pieces are the component kit's (components/kit/frames.coax: the
+// composer, the person's message, the agent's message as Markdown, the tool line, the select, the
+// side and its rows), the same the app set (components/app/) draws on the GPU for Coder; their
+// look here is this site's (web/look.coax, gs_css_agents).
+//   scripts/web.sh check     (its checks are web/site-agents.coax's)
+
+GS_AG_ANSWER :: 524288;   // bytes of one answer read (the agents, or a page of events)
+GS_AG_FOR :: 16;
+GS_AG_GAMES :: 32;        // games of yours offered for a new agent (MINE_MAX)
+GS_AG_POLL :: 3.0;        // seconds between reads while an agent works
+GS_AG_WORDS :: 200;       // bytes of a computer's words as the page shows them
+GS_AG_PIC :: 64;          // bytes of a picture's path on this site (/api/pictures/ADDRESS.jpg)
+GS_AG_SHOWN :: 200;       // events of a conversation kept here: its newest
+GS_AG_TEXT :: 131072;     // bytes of their words kept
+GS_AG_OPENED :: 16;       // rows of a conversation open at once: opening another shuts the oldest
+GS_AG_KEY :: 40;          // bytes of a new game's key
+GS_AG_NODES :: 2600;      // nodes of the page's tree a conversation may take (TR_NODES is 4096)
+GS_AG_BYTES :: 150000;    // and bytes of its pool (TR_POOL is 262144)
+// What a request of the page's is: the list, an agent's events, your games, your computers, or one of the rows that change something.
+GA_LIST :: 0; GA_EVENTS :: 1; GA_GAMES :: 2; GA_NEW :: 3; GA_TELL :: 4; GA_STOP :: 5; GA_UNDO :: 6; GA_COMPUTERS :: 7; GA_NEW_ON :: 8; GA_GAME :: 9;
+GA_DOORS :: [10] string.["/api/rows/agents", "/api/rows/agent-events", "/api/rows/list-games", "/api/rows/agent-new", "/api/rows/agent-message", "/api/rows/agent-stop", "/api/rows/agent-undo", "/api/rows/computers", "/api/rows/agent-new-on", "/api/rows/new-game"];
+// Whether a request is a row that changes something (its refusal is said in the row's words, and the list read again).
+// Whether a row that changes something is with the server, or waits to go: another is not sent over it. (A read in flight holds nothing up: what is pressed goes when it ends.)
+ga_held :: (g: [] GsAgents) -> bool { return g[0].act >= 0 || (g[0].busy && ga_acts(g[0].ask)); }
+ga_acts :: (ask: int) -> bool { return ask == GA_NEW || ask == GA_TELL || ask == GA_STOP || ask == GA_UNDO || ask == GA_NEW_ON || ask == GA_GAME; }
+// The words of the computers fold when there are none: how a computer is paired.
+GA_PAIR_WORDS :: "no computers yet. to run agents on your mac with your own claude code: install the gamebuilder command (gamebuilder login, signed in as you are here), then gamebuilder resident install. it shows here once it is on, and runs agents with the app open or not.";
+// The game type a new game is until another is picked: third person.
+GA_KIND_FIRST :: GT_THIRD - GT_WEB_FIRST;
+
+// One event of the open conversation, as the page shows it: its words are in GsAgents.text.
+GaItem :: struct {
+  n: s32; type: int; from: int; ok: bool; things: int; state: int;
+  at: int;                          // where its bytes start in the text (they run to the next item's)
+  text_at: int; text_n: int;        // a message's words; any other event's line (agr_event_line)
+  tool_at: int; tool_n: int;        // a tool call's name
+  in_at: int; in_n: int;            // what it sent: its command line, or its arguments as it sent them
+  out_at: int; out_n: int;          // what came back, as the log keeps it (AGR_RESULT)
+  note_at: int; note_n: int;        // the row's own line: the command; refused, why
+}
+GsAgents :: struct {
+  want: bool; listed: bool;
+  why: [200] u8; why_n: int;
+  answer: [GS_AG_ANSWER] u8; answer_n: int; over: bool;
+  store: [1] AgrStore;
+  shown: [AGR_RECORDS] int; age: [AGR_RECORDS * GS_AG_FOR] u8; age_n: [AGR_RECORDS] int;
+  order: [AGR_RECORDS] int; n: int;                 // the answer's order: waiting first, then newest
+  // each agent's newest picture on the account, when it has one (issue 9; coax/agent-pictures.coax):
+  // its path on this site and when it was made. A game's group shows its agents' newest
+  pic: [AGR_RECORDS * GS_AG_PIC] u8; pic_n: [AGR_RECORDS] int; pic_made: [AGR_RECORDS] s64;
+  open: int = -1;                                   // the agent whose conversation is up (-1: none read yet, or a new one)
+  open_id: [AGR_ID] u8; open_id_n: int;             // and its id, kept across the list read again ("": a new conversation)
+  events: bool;                                     // its events are to be read (on from after)
+  after: int; more: bool; read: bool;               // the cursor, whether there are more, and whether a page has come
+  cut: int;                                         // its events before the ones kept here
+  items: [GS_AG_SHOWN] GaItem; items_n: int;
+  text: [GS_AG_TEXT] u8; text_n: int;
+  opened: [GS_AG_OPENED] s32; opened_n: int;        // the rows that are open, by their event's number
+  doc: [1] MdDoc;                                   // an answer's Markdown, as it is drawn
+  nodes: [32768] JvNode;
+  ask: int;                                         // the request in flight (GA_*)
+  // a new agent: your games, the one picked (0: a new game) and its type, and where it runs
+  games_want: bool; games_read: bool;
+  games: [GS_AG_GAMES] s32; titles: [GS_AG_GAMES * AGR_TITLE] u8; titles_n: [GS_AG_GAMES] int; types: [GS_AG_GAMES] int; games_n: int;
+  pick: s32; kind: int = GA_KIND_FIRST;
+  sel: bool;                                        // the game control's menu is open
+  key: [GS_AG_KEY] u8; key_n: int; keys: int;       // a new game's key, the same until it is made
+  ent: [3] int;                                     // the host's random bytes, as the account keeps them (a key is made of them)
+  made: s32;                                        // the game this send made, while its Builder is started
+  draft: [AGR_MESSAGE_MAX] u8; draft_n: int;        // what is in the message box
+  pend: [AGR_MESSAGE_MAX] u8; pend_n: int;          // what was sent, shown until the log has it
+  act: int = -1;                                    // a row to send (GA_NEW and on), -1: none
+  busy: bool;                                       // one is with the server
+  said: [AGR_TEXT] u8; said_n: int; no: bool;       // what the last one came to, in words; and whether it was a refusal
+  logged: bool;                                     // and whether its log says it too once read (Stop, take back): then said until then
+  box: bool; focus: bool;                           // the message box is to be set to the draft, and given the caret (the site does both)
+  carry: bool;                                      // the Builder being started carries one of your computers' on (said once it has)
+  copy: s32;                                        // a row's "copy what came back" was pressed: its event's number, once
+  drawer: bool;                                     // the list of agents is out over the conversation (a narrow screen)
+  now: f32; poll_at: f32;
+  // your computers, as their resident services last said (computers), and where a new agent runs
+  comps_want: bool; comps_read: bool; comps_open: bool;
+  comp_name: [AGR_COMPUTERS * AGR_COMPUTER] u8; comp_name_n: [AGR_COMPUTERS] int;
+  comp_on: [AGR_COMPUTERS] bool;
+  comp_words: [AGR_COMPUTERS * GS_AG_WORDS] u8; comp_words_n: [AGR_COMPUTERS] int; comp_n: int;
+  where: int = -1;                                  // the computer a new agent is queued on, -1: the cloud
+  goes_on: [AGR_RECORDS * GS_AG_FOR] u8; goes_on_n: [AGR_RECORDS] int;   // a paused one's: when it goes on
+}
+ga_comp_name :: (g: [] GsAgents, i: int) -> string { return cast(string) g[0].comp_name[i * AGR_COMPUTER..<i * AGR_COMPUTER + g[0].comp_name_n[i]]; }
+ga_title :: (g: [] GsAgents, i: int) -> string { return cast(string) g[0].titles[i * AGR_TITLE..<i * AGR_TITLE + g[0].titles_n[i]]; }
+ga_span :: (g: [] GsAgents, at: int, n: int) -> string { return cast(string) g[0].text[at..<at + n]; }
+ga_draft :: (g: [] GsAgents) -> string { return cast(string) g[0].draft[0..<g[0].draft_n]; }
+// The page is shown: everything is read afresh. The conversation that was up stays up (its id and what was read of it), and so does what is typed.
+ga_fresh :: (g: [] GsAgents) {
+  g[0].want = true; g[0].listed = false; g[0].why_n = 0; g[0].open = -1; g[0].events = false; g[0].store[0].n = 0; g[0].n = 0;
+  g[0].games_want = true; g[0].games_read = false; g[0].games_n = 0; g[0].act = -1; g[0].busy = false; g[0].said_n = 0; g[0].no = false; g[0].poll_at = g[0].now + GS_AG_POLL;
+  g[0].comps_want = true; g[0].comps_read = false; g[0].comp_n = 0; g[0].where = -1; g[0].sel = false; g[0].drawer = false; g[0].pend_n = 0; g[0].made = 0;
+  g[0].box = true;
+}
+// A conversation's events are forgotten: another is opened, or a new one begun.
+ga_forget :: (g: [] GsAgents) { g[0].items_n = 0; g[0].text_n = 0; g[0].opened_n = 0; g[0].after = 0; g[0].cut = 0; g[0].more = false; g[0].read = false; g[0].events = false; g[0].pend_n = 0; }
+ga_wants :: (g: [] GsAgents) -> bool { return !g[0].busy && (g[0].act >= 0 || g[0].want || g[0].games_want || g[0].comps_want || g[0].events); }
+// The next request's: a row an action sends first, then the list, your games, your computers, and the open agent's events.
+ga_next :: (g: [] GsAgents) -> int {
+  if g[0].act >= 0 { return g[0].act; }
+  if g[0].want { return GA_LIST; }
+  if g[0].games_want { return GA_GAMES; }
+  if g[0].comps_want { return GA_COMPUTERS; }
+  return GA_EVENTS;
+}
+ga_door :: (g: [] GsAgents) -> string { return GA_DOORS[ga_next(g)]; }
+ga_open_id :: (g: [] GsAgents) -> string { return cast(string) g[0].open_id[0..<g[0].open_id_n]; }
+ga_hex :: (out: [] u8, n: int, v: int) -> int { k := n; d := "0123456789abcdef"; for q: 0..<8 { if k < out.count { out[k] = d[(v >> ((7 - q) * 4)) & 15]; k += 1; } } return k; }
+ga_body :: (g: [] GsAgents, out: [] u8) -> string {
+  g[0].ask = ga_next(g); g[0].busy = true; g[0].answer_n = 0; g[0].over = false;
+  if g[0].ask == GA_LIST { g[0].want = false; } else if g[0].ask == GA_GAMES { g[0].games_want = false; } else if g[0].ask == GA_EVENTS { g[0].events = false; } else if g[0].ask == GA_COMPUTERS { g[0].comps_want = false; } else { g[0].act = -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  if g[0].ask == GA_EVENTS { jo_key(o[..], "agent"); jo_str(o[..], ga_open_id(g)); jo_key(o[..], "after"); jo_int(o[..], g[0].after); }
+  // a new game of the type picked: its key says which send it is, so one sent twice is made once
+  if g[0].ask == GA_GAME { ids := GT_ID; jo_key(o[..], "template"); jo_str(o[..], ids[gt_web_type(g[0].kind)]); jo_key(o[..], "key"); jo_str(o[..], cast(string) g[0].key[0..<g[0].key_n]); }
+  if g[0].ask == GA_NEW_ON && g[0].where >= 0 && g[0].where < g[0].comp_n { jo_key(o[..], "computer"); jo_str(o[..], ga_comp_name(g, g[0].where)); }
+  if g[0].ask == GA_NEW || g[0].ask == GA_NEW_ON { jo_key(o[..], "game"); jo_int(o[..], cast(int) g[0].pick); jo_key(o[..], "role"); jo_str(o[..], AGR_KIND_ID[AGR_BUILD]); jo_key(o[..], "job"); jo_str(o[..], cast(string) g[0].pend[0..<g[0].pend_n]); }
+  if g[0].ask == GA_TELL || g[0].ask == GA_STOP || g[0].ask == GA_UNDO { jo_key(o[..], "agent"); jo_str(o[..], ga_open_id(g)); }
+  if g[0].ask == GA_TELL { jo_key(o[..], "message"); jo_str(o[..], cast(string) g[0].pend[0..<g[0].pend_n]); }
+  jo_end(o[..]);
+  return jo_text(o[..]);
+}
+ga_piece :: (g: [] GsAgents, bytes: [] u8) {
+  for b: bytes { if g[0].answer_n < GS_AG_ANSWER { g[0].answer[g[0].answer_n] = b; g[0].answer_n += 1; } else { g[0].over = true; } }
+}
+ga_say :: (g: [] GsAgents, why: string) { g[0].why_n = agr_put(g[0].why[..], 0, agr_cut(why, 200)); }
+ga_said :: (g: [] GsAgents, words: string, no: bool) { g[0].said_n = agr_set(g[0].said[..], words); g[0].no = no; g[0].logged = false; }
+// Whether agent k is a cloud agent this account runs, still at work (its page reads it again).
+ga_live :: (g: [] GsAgents, k: int) -> bool {
+  st := g[0].store[0].r[k].state;
+  return g[0].store[0].r[k].place == AGR_CLOUD && (st == AGR_WORKING || st == AGR_QUEUED);
+}
+// Whether the conversation that is up is of a cloud agent of yours (it is told things, stopped and taken back here).
+ga_cloud_open :: (g: [] GsAgents) -> bool { return g[0].open >= 0 && g[0].open < g[0].store[0].n && g[0].store[0].r[g[0].open].place == AGR_CLOUD; }
+// Whether it is at work: Stop stands where Send does.
+ga_working :: (g: [] GsAgents) -> bool { return ga_cloud_open(g) && ga_live(g, g[0].open); }
+// A send that did not go through: what was typed is back in the box.
+ga_back :: (g: [] GsAgents) {
+  g[0].draft_n = agr_put(g[0].draft[..], 0, cast(string) g[0].pend[0..<g[0].pend_n]); g[0].pend_n = 0; g[0].box = true; g[0].made = 0;
+}
+
+// ---- the conversation's events, as they are kept
+
+// The oldest event kept is let go (the conversation keeps its newest).
+ga_drop :: (g: [] GsAgents) {
+  if g[0].items_n == 0 { return; }
+  by := ifx g[0].items_n > 1 then g[0].items[1].at else g[0].text_n;
+  for i: by..<g[0].text_n { g[0].text[i - by] = g[0].text[i]; }
+  g[0].text_n -= by;
+  for i: 1..<g[0].items_n {
+    e := g[0].items[i];
+    e.at -= by; e.text_at -= by; e.tool_at -= by; e.in_at -= by; e.out_at -= by; e.note_at -= by;
+    g[0].items[i - 1] = e;
+  }
+  g[0].items_n -= 1; g[0].cut += 1;
+}
+ga_keep :: (g: [] GsAgents, s: string) -> int { at := g[0].text_n; g[0].text_n = agr_put(g[0].text[..], g[0].text_n, s); return at; }
+// One event read from the log, kept as the page shows it. kind is the agent's (its name says its lines).
+ga_item_add :: (g: [] GsAgents, ev: [] AgrEvent, kind: int) {
+  t := ev[0].type;
+  // (a state that only says it went on is no line of a conversation: the rows and the step say it)
+  if t == AGR_STATE && (ev[0].state == AGR_WORKING || ev[0].state == AGR_QUEUED || (ev[0].state == AGR_DONE && ev[0].text_n == 0)) { return; }
+  need := ev[0].text_n + ev[0].tool_n + 2 * ev[0].args_n + 2 * ev[0].result_n + 1024;
+  while g[0].items_n > 0 && (g[0].items_n >= GS_AG_SHOWN || g[0].text_n + need > GS_AG_TEXT) { ga_drop(g); }
+  e: GaItem; e.n = ev[0].n; e.type = t; e.from = ev[0].from; e.ok = ev[0].ok; e.things = ev[0].things_n; e.state = ev[0].state; e.at = g[0].text_n;
+  text := cast(string) ev[0].text[0..<ev[0].text_n];
+  if t == AGR_MESSAGE { e.text_at = ga_keep(g, text); e.text_n = text.count; }
+  else if t == AGR_TOOL {
+    name := cast(string) ev[0].tool[0..<ev[0].tool_n]; args := cast(string) ev[0].args[0..<ev[0].args_n]; res := cast(string) ev[0].result[0..<ev[0].result_n];
+    e.tool_at = ga_keep(g, name); e.tool_n = name.count;
+    // what it sent, said plainly: a command's line ({"command": LINE}); a row's few arguments as "name value"; anything deeper as it sent it
+    nodes: [64] JvNode; d: [1] Jv; cb: [AGR_ARGS] u8; wb: [AGR_RESULT] u8; vb: [AGR_ARGS] u8;
+    cn := 0;
+    if jv_parse(d[..], args, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+      cn = jv_str(d[0], jv_get(d[0], 0, "command"), cb[..]); if cn < 0 { cn = 0; }
+      if cn == 0 {
+        flat := true;
+        for i: 0..<jv_len(d[0], 0) { kd := jv_kind(d[0], jv_at(d[0], 0, i)); if kd == JV_ARRAY || kd == JV_OBJECT { flat = false; } }
+        if flat {
+          for i: 0..<jv_len(d[0], 0) {
+            m := jv_at(d[0], 0, i);
+            if i > 0 { cn = agr_put(cb[..], cn, ", "); }
+            cn = agr_put(cb[..], cn, jv_key(d[0], m)); cn = agr_put(cb[..], cn, " ");
+            if jv_kind(d[0], m) == JV_STRING { vn := jv_str(d[0], m, vb[..]); cn = agr_put(cb[..], cn, cast(string) vb[0..<ifx vn > 0 then vn else 0]); } else { cn = agr_put(cb[..], cn, jv_raw(d[0], m)); }
+          }
+        }
+      }
+    }
+    sent := ifx cn > 0 then cast(string) cb[0..<cn] else args;
+    e.in_at = ga_keep(g, sent); e.in_n = sent.count;
+    e.out_at = ga_keep(g, res); e.out_n = res.count;
+    e.note_at = g[0].text_n;
+    if !ev[0].ok {
+      // refused: why, in the row's own words when its answer reads
+      wn := 0;
+      if jv_parse(d[..], res, nodes[..]) { wn = jv_str(d[0], jv_get(d[0], 0, "why"), wb[..]); if wn < 0 { wn = 0; } }
+      _ := ga_keep(g, "refused: "); _ = ga_keep(g, ifx wn > 0 then cast(string) wb[0..<wn] else res);
+    } else { _ := ga_keep(g, sent); }
+    e.note_n = g[0].text_n - e.note_at;
+  } else {
+    lb: [AGR_TEXT + 512] u8;
+    line := agr_event_line(ev, kind, lb[..]);
+    e.text_at = ga_keep(g, line); e.text_n = line.count;
+  }
+  g[0].items[g[0].items_n] = e; g[0].items_n += 1;
+}
+// Whether the row of event n is open.
+ga_is_open :: (g: [] GsAgents, n: s32) -> bool { for i: 0..<g[0].opened_n { if g[0].opened[i] == n { return true; } } return false; }
+// The row of event n opened, or shut when it is open.
+ga_toggle :: (g: [] GsAgents, n: s32) {
+  for i: 0..<g[0].opened_n {
+    if g[0].opened[i] != n { continue; }
+    for j: i + 1..<g[0].opened_n { g[0].opened[j - 1] = g[0].opened[j]; }
+    g[0].opened_n -= 1; return;
+  }
+  if g[0].opened_n >= GS_AG_OPENED { for j: 1..<g[0].opened_n { g[0].opened[j - 1] = g[0].opened[j]; } g[0].opened_n -= 1; }
+  g[0].opened[g[0].opened_n] = n; g[0].opened_n += 1;
+}
+// The change "take back its last change" stands on: the newest change not yet taken back (a
+// change taken back is an edit event that names no thing), or -1.
+ga_last_change :: (g: [] GsAgents) -> int {
+  stack: [GS_AG_SHOWN] int; n := 0;
+  for i: 0..<g[0].items_n {
+    if g[0].items[i].type != AGR_EDIT { continue; }
+    if g[0].items[i].things > 0 { stack[n] = i; n += 1; } else if n > 0 { n -= 1; }
+  }
+  return ifx n > 0 then stack[n - 1] else -1;
+}
+// Whether hay has needle in it.
+ga_within :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+// What came back to the row of event n, for the clipboard ("": no such row).
+ga_copy_text :: (g: [] GsAgents, n: s32) -> string {
+  for i: 0..<g[0].items_n { if g[0].items[i].n == n && g[0].items[i].type == AGR_TOOL { return ga_span(g, g[0].items[i].out_at, g[0].items[i].out_n); } }
+  return "";
+}
+
+// An answer ended: status is its HTTP status (0: none).
+ga_end :: (g: [] GsAgents, status: int) {
+  g[0].busy = false;
+  text := cast(string) g[0].answer[0..<g[0].answer_n];
+  d: [1] Jv;
+  if status == 401 {
+    ga_say(g, "your login has ended: log in again."); g[0].listed = true; g[0].act = -1; g[0].events = false; g[0].want = false; g[0].games_want = false; g[0].comps_want = false;
+    if ga_acts(g[0].ask) && g[0].ask != GA_STOP && g[0].ask != GA_UNDO { ga_back(g); }
+    return;
+  }
+  read := !g[0].over && jv_parse(d[..], text, g[0].nodes[..]);
+  // a row that changes something: a refusal in its own words, and the list read again
+  if ga_acts(g[0].ask) {
+    wb: [AGR_TEXT] u8;
+    sends := g[0].ask != GA_STOP && g[0].ask != GA_UNDO;
+    why := "";
+    if !read { why = ifx status == 0 then "can't reach your account just now: try again." else "that didn't work just now: try again."; }
+    else if !jv_bool(d[0], jv_get(d[0], 0, "ok")) {
+      n := jv_str(d[0], jv_get(d[0], 0, "why"), wb[..]);
+      why = ifx n > 0 then cast(string) wb[0..<n] else "that didn't work just now: try again.";
+    }
+    if why.count > 0 {
+      // (a game this send made stays: it is the one picked now, and the next send is on it)
+      if g[0].made > 0 && g[0].ask != GA_GAME {
+        ob: [AGR_TEXT] u8; on := agr_put(ob[..], 0, "the game is made, and its builder didn't start: "); on = agr_put(ob[..], on, why);
+        ga_said(g, cast(string) ob[0..<on], true);
+      } else { ga_said(g, why, true); }
+      if sends { if g[0].carry { g[0].carry = false; g[0].pend_n = 0; } else { ga_back(g); } }
+      return;
+    }
+    if g[0].ask == GA_GAME {
+      // the game is made: it is the one picked, and its Builder is started on it with the same words
+      game := jv_int(d[0], jv_get(d[0], 0, "game"), 0);
+      if game <= 0 { ga_said(g, "that didn't work just now: try again.", true); ga_back(g); return; }
+      g[0].pick = cast(s32) game; g[0].made = cast(s32) game; g[0].key_n = 0; g[0].games_want = true;
+      g[0].act = ifx g[0].where >= 0 then GA_NEW_ON else GA_NEW;
+      return;
+    }
+    if g[0].ask == GA_NEW || g[0].ask == GA_NEW_ON {
+      ib: [AGR_ID] u8; idn := jv_str(d[0], jv_get(d[0], 0, "agent"), ib[..]);
+      keep: [AGR_MESSAGE_MAX] u8; kn := agr_put(keep[..], 0, cast(string) g[0].pend[0..<g[0].pend_n]);
+      if idn > 0 { ga_forget(g); g[0].open_id_n = agr_put(g[0].open_id[..], 0, cast(string) ib[0..<idn]); g[0].open = -1; }
+      g[0].pend_n = agr_put(g[0].pend[..], 0, cast(string) keep[0..<kn]);
+      g[0].made = 0; g[0].said_n = 0;
+      if g[0].carry { g[0].carry = false; lw: [512] u8; ln := agr_put(wb[..], 0, "carried on in the cloud, as a new builder on the same game and job. "); ln = agr_put(wb[..], ln, ga_cloud_line(lw[..])); ga_said(g, cast(string) wb[0..<ln], false); }
+      if g[0].ask == GA_NEW_ON {
+        lb: [AGR_COMPUTER] u8; cn := jv_str(d[0], jv_get(d[0], 0, "computer"), lb[..]);
+        wn := agr_put(wb[..], 0, "queued on "); wn = agr_put(wb[..], wn, cast(string) lb[0..<ifx cn > 0 then cn else 0]);
+        wn = agr_put(wb[..], wn, ": its resident service takes it when a slot is free, with the app open or not. "); wn = agr_put(wb[..], wn, AGR_LOCAL_COST);
+        ga_said(g, cast(string) wb[0..<wn], false);
+        g[0].comps_want = true;
+      }
+    }
+    else if g[0].ask == GA_STOP { ga_said(g, "stopped. what it changed stays.", false); g[0].logged = true; }
+    else if g[0].ask == GA_UNDO { ga_said(g, "its last change is taken back.", false); g[0].logged = true; }
+    else { g[0].said_n = 0; }
+    g[0].want = true;
+    return;
+  }
+  if g[0].ask == GA_GAMES {
+    if status != 200 || !read { return; }
+    g[0].games_n = 0; g[0].games_read = true;
+    arr := jv_get(d[0], 0, "games");
+    for i: 0..<jv_len(d[0], arr) {
+      if g[0].games_n >= GS_AG_GAMES { break; }
+      m := jv_at(d[0], arr, i);
+      if jv_len(d[0], jv_get(d[0], m, "levels")) == 0 { continue; }
+      k := g[0].games_n;
+      g[0].games[k] = cast(s32) jv_int(d[0], jv_get(d[0], m, "game"), 0);
+      n := jv_str(d[0], jv_get(d[0], m, "title"), g[0].titles[k * AGR_TITLE..<(k + 1) * AGR_TITLE]);
+      g[0].titles_n[k] = ifx n > 0 then n else 0;
+      tb: [32] u8; tn := jv_str(d[0], jv_get(d[0], m, "template"), tb[..]);
+      g[0].types[k] = gt_of(cast(string) tb[0..<ifx tn > 0 then tn else 0]);
+      if g[0].games[k] > 0 { g[0].games_n += 1; }
+    }
+    // (a game picked that the account no longer has: a new game again)
+    if g[0].pick > 0 && ga_game_at(g, g[0].pick) < 0 { g[0].pick = 0; }
+    return;
+  }
+  if g[0].ask == GA_COMPUTERS {
+    g[0].comps_read = true;
+    if status != 200 || !read { return; }
+    g[0].comp_n = 0;
+    arr := jv_get(d[0], 0, "computers");
+    one: [1] AgrComputer;
+    for i: 0..<jv_len(d[0], arr) {
+      if g[0].comp_n >= AGR_COMPUTERS { break; }
+      m := jv_at(d[0], arr, i);
+      if agr_computer_read(jv_raw(d[0], jv_get(d[0], m, "computer")), one[..]).count > 0 { continue; }
+      k := g[0].comp_n;
+      g[0].comp_name_n[k] = agr_put(g[0].comp_name[k * AGR_COMPUTER..<(k + 1) * AGR_COMPUTER], 0, cast(string) one[0].name[0..<one[0].name_n]);
+      sb: [16] u8; sn := jv_str(d[0], jv_get(d[0], m, "shown"), sb[..]);
+      g[0].comp_on[k] = sn > 0 && cast(string) sb[0..<sn] == AGR_SHOWN_ID[AGR_ON];
+      wn := jv_str(d[0], jv_get(d[0], m, "words"), g[0].comp_words[k * GS_AG_WORDS..<(k + 1) * GS_AG_WORDS]);
+      g[0].comp_words_n[k] = ifx wn > 0 then wn else 0;
+      g[0].comp_n += 1;
+    }
+    if g[0].where >= g[0].comp_n { g[0].where = -1; }
+    return;
+  }
+  if status != 200 || !read {
+    ga_say(g, ifx g[0].ask == GA_EVENTS then "this conversation couldn't be read just now: open it again." else "your agents couldn't be read just now: open this page again.");
+    g[0].listed = true; return;
+  }
+  if g[0].ask == GA_LIST {
+    g[0].store[0].n = 0; g[0].n = 0; g[0].open = -1;
+    arr := jv_get(d[0], 0, "agents");
+    for i: 0..<jv_len(d[0], arr) {
+      m := jv_at(d[0], arr, i);
+      if agr_store_add(g[0].store[..], jv_raw(d[0], jv_get(d[0], m, "agent"))).count > 0 { continue; }
+      k := g[0].store[0].n - 1;
+      sb: [24] u8; sn := jv_str(d[0], jv_get(d[0], m, "shown"), sb[..]);
+      st := agr_index(AGR_STATE_ID[..], cast(string) sb[0..<ifx sn > 0 then sn else 0]);
+      g[0].shown[k] = ifx st >= 0 then st else g[0].store[0].r[k].state;
+      g[0].age_n[k] = jv_str(d[0], jv_get(d[0], m, "for"), g[0].age[k * GS_AG_FOR..<(k + 1) * GS_AG_FOR]);
+      if g[0].age_n[k] < 0 { g[0].age_n[k] = 0; }
+      // its picture: a path here and when it was made, or none (nothing is shown for none)
+      pic := jv_get(d[0], m, "picture");
+      pn := ifx pic >= 0 then jv_str(d[0], jv_get(d[0], pic, "at"), g[0].pic[k * GS_AG_PIC..<(k + 1) * GS_AG_PIC]) else -1;
+      g[0].pic_made[k] = ifx pic >= 0 then cast(s64) jv_int(d[0], jv_get(d[0], pic, "made"), 0) else 0;
+      g[0].pic_n[k] = ifx pn > 0 && g[0].pic_made[k] > 0 && k_here(cast(string) g[0].pic[k * GS_AG_PIC..<k * GS_AG_PIC + pn]) then pn else 0;
+      g[0].goes_on_n[k] = jv_str(d[0], jv_get(d[0], m, "goes_on"), g[0].goes_on[k * GS_AG_FOR..<(k + 1) * GS_AG_FOR]);
+      if g[0].goes_on_n[k] < 0 { g[0].goes_on_n[k] = 0; }
+      g[0].order[g[0].n] = k; g[0].n += 1;
+    }
+    g[0].listed = true;
+    // the one that is up, found again by its id: its events read on from where they stand (a new one from its newest)
+    if g[0].open_id_n > 0 {
+      g[0].open = agr_find(g[0].store[..], ga_open_id(g));
+      if g[0].open < 0 { g[0].open_id_n = 0; ga_forget(g); }
+      else {
+        if !g[0].read && g[0].after == 0 { ev := cast(int) g[0].store[0].r[g[0].open].events; if ev > GS_AG_SHOWN { g[0].after = ev - GS_AG_SHOWN; g[0].cut = g[0].after; } }
+        g[0].events = true;
+      }
+    }
+    return;
+  }
+  // a page of the open agent's events, and the next page while there is one
+  k := g[0].open; if k < 0 { return; }
+  id := agr_id(g[0].store[0].r[k..<k + 1]);
+  arr := jv_get(d[0], 0, "events");
+  ev: [1] AgrEvent; came := 0;
+  for i: 0..<jv_len(d[0], arr) {
+    if agr_event_read(jv_raw(d[0], jv_at(d[0], arr, i)), id, ev[..]).count > 0 { continue; }
+    ga_item_add(g, ev[..], g[0].store[0].r[k].kind); came += 1;
+  }
+  // (what a Stop or a take back came to is in its log now, in its own line: said once, not twice; a refusal stays)
+  if came > 0 && g[0].logged && !ga_held(g) { g[0].said_n = 0; g[0].logged = false; }
+  g[0].after = jv_int(d[0], jv_get(d[0], 0, "next"), g[0].after);
+  g[0].more = jv_bool(d[0], jv_get(d[0], 0, "more"));
+  g[0].read = true;
+  if !ga_held(g) { g[0].pend_n = 0; }   // (what was sent is in its log now; a send made while this was read still shows)
+  if g[0].more { g[0].events = true; }
+}
+// Whether the page's clock is wanted: an agent of yours works in the cloud, or waits on or runs on a computer of
+// yours, so the page is read again as time passes (the host asks for frames only while something is; gs_busy).
+ga_ticks :: (g: [] GsAgents) -> bool {
+  if !g[0].listed { return false; }
+  for i: 0..<g[0].store[0].n {
+    r := g[0].store[0].r[i];
+    if ga_live(g, i) || (r.place == AGR_LOCAL && cast(string) r.runner[0..<r.runner_n] == AGR_RESIDENT && (r.state == AGR_QUEUED || r.state == AGR_WORKING)) { return true; }
+  }
+  return false;
+}
+// The page's clock, each frame: while an agent of yours works here, or waits on a computer, the
+// list (and the open one's events) are read again every GS_AG_POLL seconds.
+ga_tick :: (g: [] GsAgents, now: f32) {
+  g[0].now = now;
+  if !g[0].listed || g[0].busy || ga_wants(g) || now < g[0].poll_at { return; }
+  g[0].poll_at = now + GS_AG_POLL;
+  for i: 0..<g[0].store[0].n {
+    r := g[0].store[0].r[i];
+    waits := r.place == AGR_LOCAL && cast(string) r.runner[0..<r.runner_n] == AGR_RESIDENT && (r.state == AGR_QUEUED || r.state == AGR_WORKING);
+    if ga_live(g, i) || waits { g[0].want = true; if waits { g[0].comps_want = true; } return; }
+  }
+}
+// The number at the end of an id after its first `from` bytes ("agent.12" from 6), or -1.
+ga_no :: (id: string, from: int) -> int {
+  if id.count <= from { return -1; }
+  v := 0; for c: id[from..<id.count] { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v > 1000000000 { return -1; } }
+  return v;
+}
+ga_starts :: (id: string, with: string) -> bool { return id.count > with.count && cast(string) id[0..<with.count] == with; }
+// The row's index for a press on agent.K, or -1.
+ga_row_of :: (id: string) -> int {
+  if !ga_starts(id, "agent.") { return -1; }
+  v := ga_no(id, 6);
+  return ifx v >= 0 && v < AGR_RECORDS then v else -1;
+}
+// Where game is among your games, or -1.
+ga_game_at :: (g: [] GsAgents, game: s32) -> int { for i: 0..<g[0].games_n { if g[0].games[i] == game { return i; } } return -1; }
+// Agent k's conversation comes up (the one that is up stays as it is).
+ga_open :: (g: [] GsAgents, k: int) {
+  if k < 0 || k >= g[0].store[0].n { return; }
+  g[0].said_n = 0; g[0].drawer = false; g[0].sel = false;
+  if g[0].open == k { return; }
+  ga_forget(g);
+  g[0].open = k; g[0].open_id_n = agr_put(g[0].open_id[..], 0, agr_id(g[0].store[0].r[k..<k + 1]));
+  ev := cast(int) g[0].store[0].r[k].events;
+  if ev > GS_AG_SHOWN { g[0].after = ev - GS_AG_SHOWN; g[0].cut = g[0].after; }
+  g[0].events = true; g[0].why_n = 0;
+}
+// A new conversation: empty, the box ready.
+ga_new :: (g: [] GsAgents) {
+  ga_forget(g);
+  g[0].open = -1; g[0].open_id_n = 0; g[0].said_n = 0; g[0].drawer = false; g[0].sel = false; g[0].focus = true; g[0].why_n = 0;
+}
+// What is typed in the message box. True when it was the box.
+ga_input :: (g: [] GsAgents, id: string, text: [] u8) -> bool {
+  if id != "ga.say" { return false; }
+  m := ifx text.count > AGR_MESSAGE_MAX then AGR_MESSAGE_MAX else text.count;
+  for i: 0..<m { g[0].draft[i] = text[i]; }
+  g[0].draft_n = m;
+  return true;
+}
+// Whether agent k can carry on in the cloud: a Builder on your computer that is paused, offline or
+// unknown, on a game your account keeps (a cloud agent works on those).
+ga_carries :: (g: [] GsAgents, k: int) -> bool {
+  r := g[0].store[0].r[k];
+  st := g[0].shown[k];
+  if r.place != AGR_LOCAL || r.kind != AGR_BUILD || (st != AGR_PAUSED && st != AGR_OFFLINE && st != AGR_UNKNOWN) { return false; }
+  return ga_game_at(g, r.game) >= 0;
+}
+// What is typed, with nothing but spaces and line breaks at its ends.
+ga_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\n' || s[a] == '\r' || s[a] == '\t') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\n' || s[b - 1] == '\r' || s[b - 1] == '\t') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+// A job is one line (agr_job_why): a first message's line breaks are spaces.
+ga_one_line :: (out: [] u8, s: string) -> int { n := 0; for c: s { if n < out.count { out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1; } } return n; }
+// Send: in a new conversation a Builder is started with what is typed as its job, on the game
+// picked or on a new one made first; in an open one the agent is sent it. A limit is said in
+// words with its number, and nothing is sent.
+ga_send :: (g: [] GsAgents) {
+  if ga_held(g) { return; }
+  words := ga_trim(ga_draft(g));
+  if words.count == 0 { return; }
+  nb: [16] u8; wb: [256] u8;
+  if g[0].open_id_n > 0 {
+    if !ga_cloud_open(g) { ga_said(g, AGR_THERE, true); return; }
+    g[0].pend_n = agr_put(g[0].pend[..], 0, words);
+    g[0].act = GA_TELL;
+  } else {
+    if words.count > AGR_JOB {
+      n := agr_put(wb[..], 0, "a first message is at most "); n = agr_int(wb[..], n, AGR_JOB); n = agr_put(wb[..], n, " bytes, and this is "); n = agr_int(wb[..], n, cast(s64) words.count);
+      n = agr_put(wb[..], n, ": say it shorter, and the rest once it has started.");
+      ga_said(g, cast(string) wb[0..<n], true); return;
+    }
+    g[0].pend_n = ga_one_line(g[0].pend[..], words);
+    if g[0].pick <= 0 {
+      if g[0].key_n == 0 {
+        g[0].keys += 1; t := cast(int) (g[0].now * 1000000.0);
+        n := agr_put(g[0].key[..], 0, "agents-");
+        n = ga_hex(g[0].key[..], n, g[0].ent[0]); n = ga_hex(g[0].key[..], n, (g[0].ent[1] + g[0].keys * 40503) & 0xffffffff); n = ga_hex(g[0].key[..], n, (g[0].ent[2] ^ t) & 0xffffffff);
+        g[0].key_n = n;
+      }
+      g[0].act = GA_GAME;
+    } else { g[0].act = ifx g[0].where >= 0 then GA_NEW_ON else GA_NEW; }
+  }
+  g[0].draft_n = 0; g[0].box = true; g[0].said_n = 0; g[0].sel = false;
+}
+// A press or a Return of the page's own. True when it was one of them.
+ga_press :: (g: [] GsAgents, id: string) -> bool {
+  // the game control's menu shuts on any press but its own button's
+  was := g[0].sel;
+  if id != "ga.for" { g[0].sel = false; }
+  if id == "ga.for" { if g[0].open_id_n == 0 { g[0].sel = !g[0].sel; } return true; }
+  if id == "ga.say" || id == "ga.send" { ga_send(g); return true; }
+  if id == "ga.new" { ga_new(g); return true; }
+  if id == "ga.drawer" { g[0].drawer = !g[0].drawer; return true; }
+  if id == "ga.shut" { g[0].drawer = false; return true; }
+  if id == "ga.comps" { g[0].comps_open = !g[0].comps_open; return true; }
+  // the game a new agent works on: one of yours, or a new one of a type
+  if ga_starts(id, "ga.game.") {
+    v := ga_no(id, 8);
+    if v > 0 && ga_game_at(g, cast(s32) v) >= 0 { g[0].pick = cast(s32) v; }
+    g[0].said_n = 0; g[0].focus = true;
+    return true;
+  }
+  if ga_starts(id, "ga.kind.") {
+    v := ga_no(id, 8);
+    if v >= 0 && v < GT_WEB_TYPES { g[0].kind = v; g[0].pick = 0; }
+    g[0].said_n = 0; g[0].focus = true;
+    return true;
+  }
+  // where a new agent runs: the cloud, or one of your computers
+  if id == "ga.where.cloud" { g[0].where = -1; g[0].said_n = 0; return true; }
+  if ga_starts(id, "ga.where.") {
+    v := ga_no(id, 9);
+    if v >= 0 && v < g[0].comp_n { g[0].where = v; } g[0].said_n = 0;
+    return true;
+  }
+  // a row of the conversation: opened onto what it sent and what came back, or shut; and what came back copied
+  if ga_starts(id, "ev.") {
+    if id.count > 8 && cast(string) id[id.count - 5..<id.count] == ".copy" { v := ga_no(cast(string) id[0..<id.count - 5], 3); if v > 0 { g[0].copy = cast(s32) v; } return true; }
+    v := ga_no(id, 3);
+    if v > 0 { ga_toggle(g, cast(s32) v); }
+    return v > 0;
+  }
+  // carry on in the cloud: the person's choice, never the page's; a new cloud Builder on the same game and job
+  if id == "ga.cloud" {
+    k := g[0].open;
+    if k < 0 || !ga_carries(g, k) || ga_held(g) { return true; }
+    g[0].pick = g[0].store[0].r[k].game; g[0].where = -1;
+    g[0].pend_n = agr_put(g[0].pend[..], 0, agr_job_of(g[0].store[..], k));
+    g[0].act = GA_NEW; g[0].carry = true;
+    return true;
+  }
+  if id == "ga.stop" || id == "ga.undo" {
+    if !ga_cloud_open(g) || ga_held(g) { return true; }
+    g[0].act = ifx id == "ga.stop" then GA_STOP else GA_UNDO; g[0].said_n = 0;
+    return true;
+  }
+  return was;
+}
+
+// ---- what is drawn
+
+// An agent's line in the list: its state, for how long, and where.
+ga_detail :: (g: [] GsAgents, k: int, out: [] u8) -> string {
+  r := g[0].store[0].r[k..<k + 1]; st := g[0].shown[k];
+  n := agr_put(out, 0, AGR_STATE_WORDS[st]);
+  n = agr_put(out, n, " for "); n = agr_put(out, n, cast(string) g[0].age[k * GS_AG_FOR..<k * GS_AG_FOR + g[0].age_n[k]]);
+  if st == AGR_PAUSED && g[0].goes_on_n[k] > 0 { n = agr_put(out, n, ", it goes on in "); n = agr_put(out, n, cast(string) g[0].goes_on[k * GS_AG_FOR..<k * GS_AG_FOR + g[0].goes_on_n[k]]); }
+  if st == AGR_OFFLINE { n = agr_put(out, n, ": what is shown is as it was then"); }
+  n = agr_put(out, n, " - "); n = agr_put(out, n, agr_place_words(r));
+  return cast(string) out[0..<n];
+}
+// What a new cloud Builder may use, once, in one line: free, and its limits with their numbers.
+ga_cloud_line :: (out: [] u8) -> string {
+  n := agr_put(out, 0, "free. each message runs at most "); n = agr_int(out, n, AGR_CLOUD_STEPS); n = agr_put(out, n, " model steps of up to "); n = agr_int(out, n, AGR_CLOUD_COMMANDS);
+  n = agr_put(out, n, " commands, "); n = agr_thousands(out, n, AGR_CLOUD_TOKENS); n = agr_put(out, n, " tokens, "); n = agr_int(out, n, AGR_CLOUD_EDITS); n = agr_put(out, n, " changes and ");
+  n = agr_int(out, n, AGR_CLOUD_MINUTES); n = agr_put(out, n, " minutes; your account, "); n = agr_int(out, n, AGR_CLOUD_DAY); n = agr_put(out, n, " model steps a day.");
+  return cast(string) out[0..<n];
+}
+// On a computer of yours: no charge from us, and the limits the resident service holds it to.
+ga_local_words :: (out: [] u8) -> string {
+  lb: [16] u8;
+  n := agr_put(out, 0, AGR_LOCAL_COST); n = agr_put(out, n, ". it runs on your own claude plan, at most ");
+  n = agr_put(out, n, cast(string) lb[0..<agr_int(lb[..], 0, cast(s64) AGR_TURNS)]); n = agr_put(out, n, " model steps a message, one agent at a time on each computer.");
+  return cast(string) out[0..<n];
+}
+// What the game control says: the game picked, or a new game and its type.
+ga_for_words :: (g: [] GsAgents, out: [] u8) -> string {
+  at := ifx g[0].pick > 0 then ga_game_at(g, g[0].pick) else -1;
+  names := GT_NAME; n := 0;
+  if at >= 0 { n = agr_put(out, 0, ga_title(g, at)); } else { n = agr_put(out, 0, "a new game: "); n = agr_put(out, n, names[gt_web_type(g[0].kind)]); }
+  // (in the cloud unless a computer of yours is picked: then it says which)
+  if g[0].where >= 0 && g[0].where < g[0].comp_n { n = agr_put(out, n, ", on "); n = agr_put(out, n, ga_comp_name(g, g[0].where)); }
+  return cast(string) out[0..<n];
+}
+
+// What the page (web/page.coax) asks of /agents; web/agents-off.coax answers the same for the home page's module.
+// This module holds /agents.
+ga_here :: () -> bool { return true; }
+// The game of the agent whose conversation is open (its link opens it in the builder); -1: none open.
+ga_open_game :: (g: [] GsAgents) -> int { return ifx g[0].open >= 0 then cast(int) g[0].store[0].r[g[0].open].game else -1; }
+// Each frame on /agents: its agents at work read every three seconds, its message box set to what it should hold, and given the caret.
+gs_agents_tick :: (s: [] Site) {
+  g := s[0].ag[..]; ga_tick(g, s[0].time);
+  for q: 0..<3 { g[0].ent[q] = s[0].acct[0].ent[q]; }
+  if s[0].login[0].step == LG_IN {
+    if g[0].box { g[0].box = false; dm_value(s[0].dom[..], "ga.say", ga_draft(g)); s[0].dirty = true; }
+    if g[0].focus { g[0].focus = false; dm_focus(s[0].dom[..], "ga.say"); s[0].dirty = true; }
+  }
+}
+// A press on /agents: a send, the game control, Stop and take back (each a row of the table's), a row opened, and what came
+// back to one copied (onto the page's clipboard). False when it was none of them.
+gs_agents_press :: (s: [] Site, id: string) -> bool {
+  g := s[0].ag[..];
+  if !ga_press(g, id) { return false; }
+  if g[0].copy > 0 {
+    out := ga_copy_text(g, g[0].copy); g[0].copy = 0;
+    if out.count > 0 && out.count <= GS_CLIP { s[0].clip_n = 0; for b: out { s[0].clip[s[0].clip_n] = b; s[0].clip_n += 1; } }
+  }
+  return true;
+}
+
+gs_agents :: (s: [] Site, t: [] Tree) {
+  g := s[0].ag[..];
+  box := tr_open(t, "agents", TG_SECTION, ifx g[0].drawer then "ag out" else "ag");
+  gs_agents_side(s, t);
+  if g[0].drawer { shut := tr_leaf(t, "ga.shut", TG_BUTTON, "ag-scrim", ""); tr_attr(t, shut, AT_LABEL, "close the list of agents"); }
+  main := tr_open(t, "ga.main", TG_DIV, "ag-main");
+  gs_agents_bar(s, t);
+  lg := tr_open(t, "ga.log", TG_DIV, "ag-log");
+  gs_agents_thread(s, t);
+  tr_close(t);
+  gs_agents_dock(s, t);
+  tr_close(t);
+  tr_close(t);
+}
+// The list down the left: New agent, your agents by game (the game's newest picture over them),
+// those waiting for you first; at its foot your computers, and the way back to the world.
+gs_agents_side :: (s: [] Site, t: [] Tree) {
+  g := s[0].ag[..]; u := s[0].ui[..];
+  a: [UI_ID] u8; b: [UI_ID] u8; nb: [16] u8;
+  side := k_side(t, "ga.side", "your agents");
+  head := tr_open(t, "ga.side.h", TG_DIV, "side-h");
+  name := tr_leaf(t, "ga.side.n", TG_H2, "side-n", "your agents");
+  fresh := k_button(t, u, "ga.new", "new agent", BS_PLAIN);
+  tr_close(t);
+  list := k_side_folds(t, "ga.side");
+  if g[0].why_n > 0 { why := tr_leaf(t, "agents.why", TG_P, "ag-fine", cast(string) g[0].why[0..<g[0].why_n]); tr_attr(t, why, AT_LIVE, "polite"); }
+  if !g[0].listed { wait := tr_leaf(t, "agents.wait", TG_P, "ag-fine", "reading your agents..."); }
+  else if g[0].n == 0 && g[0].why_n == 0 { none := tr_leaf(t, "agents.none", TG_P, "ag-fine", "no agents yet. say what to build, and one starts."); }
+  // grouped by game, in the answer's order: a game with an agent waiting for you comes first
+  done: [AGR_RECORDS] bool;
+  for i: 0..<g[0].n {
+    k0 := g[0].order[i];
+    if done[k0] { continue; }
+    r0 := g[0].store[0].r[k0];
+    gn := bl_int(nb[..], 0, cast(int) r0.game);
+    title := cast(string) r0.title[0..<r0.title_n];
+    count := 0; best := -1;
+    for j: i..<g[0].n {
+      k := g[0].order[j];
+      if done[k] || g[0].store[0].r[k].game != r0.game { continue; }
+      count += 1;
+      // the game's picture: its agents' newest, drawn by the app (none: nothing is shown)
+      if g[0].pic_n[k] > 0 && (best < 0 || g[0].pic_made[k] > g[0].pic_made[best]) { best = k; }
+    }
+    grp := k_side_mark(t, tr_cat(a[..], "game.", cast(string) nb[0..<gn]), ifx title.count > 0 then title else "a level in no game", count);
+    if best >= 0 {
+      pw := tr_open(t, tr_cat(b[..], "game.pw.", cast(string) nb[0..<gn]), TG_DIV, "agpic");
+      pa: [AGR_TITLE + 32] u8; pan := agr_put(pa[..], 0, "the newest picture of ");
+      pan = agr_put(pa[..], pan, ifx title.count > 0 then title else "the level");
+      _ := k_image(t, tr_cat(b[..], "game.p.", cast(string) nb[0..<gn]), cast(string) g[0].pic[best * GS_AG_PIC..<best * GS_AG_PIC + g[0].pic_n[best]], cast(string) pa[0..<pan], false);
+      tr_close(t);
+    }
+    for j: i..<g[0].n {
+      k := g[0].order[j];
+      if done[k] || g[0].store[0].r[k].game != r0.game { continue; }
+      done[k] = true;
+      r := g[0].store[0].r[k..<k + 1];
+      kn := bl_int(nb[..], 0, k);
+      hb: [AGR_JOB + 64] u8; hn := agr_put(hb[..], 0, AGR_KIND_NAME[r[0].kind]); hn = agr_put(hb[..], hn, " - "); hn = agr_put(hb[..], hn, agr_job_of(g[0].store[..], k));
+      db: [256] u8;
+      row := k_row_busy(t, u, tr_cat(a[..], "agent.", cast(string) nb[0..<kn]), cast(string) hb[0..<hn], ga_detail(g, k, db[..]), g[0].open == k, ga_live(g, k));
+      if g[0].shown[k] == AGR_WAITING { tr_attr(t, row, AT_TITLE, AGR_STATE_WORDS[AGR_WAITING]); }
+    }
+  }
+  k_side_end(t);
+  // the foot: your computers, out of the way until they are asked for; and the way back
+  foot := tr_open(t, "ga.side.f", TG_DIV, "side-f");
+  cw: [64] u8; cn := 0;
+  if !g[0].comps_read { cn = agr_put(cw[..], 0, "reading..."); }
+  else if g[0].comp_n == 0 { cn = agr_put(cw[..], 0, "none yet: how to add one"); }
+  else {
+    on := 0; for i: 0..<g[0].comp_n { if g[0].comp_on[i] { on += 1; } }
+    cn = agr_int(cw[..], 0, cast(s64) g[0].comp_n); cn = agr_put(cw[..], cn, ", "); cn = agr_int(cw[..], cn, cast(s64) on); cn = agr_put(cw[..], cn, " on");
+  }
+  comps := k_row(t, u, "ga.comps", "your computers", cast(string) cw[0..<cn], false);
+  tr_attr(t, comps, AT_EXPANDED, ifx g[0].comps_open then "true" else "false");
+  if g[0].comps_open && g[0].comps_read {
+    cb := tr_open(t, "ga.comps.b", TG_DIV, "ag-comps");
+    if g[0].comp_n == 0 { w := tr_leaf(t, "ga.comps.w", TG_P, "ag-fine", GA_PAIR_WORDS); }
+    for i: 0..<g[0].comp_n {
+      in := bl_int(nb[..], 0, i);
+      lb: [AGR_COMPUTER + GS_AG_WORDS + 8] u8; ln := agr_put(lb[..], agr_put(lb[..], 0, ga_comp_name(g, i)), " - ");
+      ln = agr_put(lb[..], ln, cast(string) g[0].comp_words[i * GS_AG_WORDS..<i * GS_AG_WORDS + g[0].comp_words_n[i]]);
+      one := tr_leaf(t, tr_cat(a[..], "ga.comp.", cast(string) nb[0..<in]), TG_P, "ag-fine", cast(string) lb[0..<ln]);
+    }
+    tr_close(t);
+  }
+  back := k_sub_place(t, u, "home", "back to the world", "/");
+  tr_close(t);
+  tr_close(t);
+}
+// Over the conversation: the list's button (a narrow screen), whose conversation it is and how it
+// stands, and the link that opens its game in the builder.
+gs_agents_bar :: (s: [] Site, t: [] Tree) {
+  g := s[0].ag[..];
+  bar := tr_open(t, "ga.bar", TG_DIV, "ag-bar");
+  drawer := k_side_open(t, "ga.drawer", "your agents");
+  tr_attr(t, drawer, AT_EXPANDED, ifx g[0].drawer then "true" else "false");
+  who := tr_open(t, "ga.who", TG_DIV, "ag-who");
+  k := g[0].open;
+  if k >= 0 {
+    r := g[0].store[0].r[k..<k + 1];
+    h := tr_leaf(t, "ga.title", TG_H1, "", agr_job_of(g[0].store[..], k));
+    db: [256 + 64] u8; dn := agr_put(db[..], 0, AGR_KIND_NAME[r[0].kind]); dn = agr_put(db[..], dn, ", ");
+    lb: [256] u8; dn = agr_put(db[..], dn, ga_detail(g, k, lb[..]));
+    sub := tr_leaf(t, "ga.sub", TG_P, "", cast(string) db[0..<dn]);
+  } else if g[0].open_id_n > 0 || g[0].pend_n > 0 {
+    h := tr_leaf(t, "ga.title", TG_H1, "", ifx g[0].pend_n > 0 then cast(string) g[0].pend[0..<g[0].pend_n] else "one moment.");
+  } else { h := tr_leaf(t, "ga.title", TG_H1, "", "new agent"); }
+  tr_close(t);
+  if k >= 0 {
+    // its game, opened in the builder: what the agent built, to see and to play
+    r := g[0].store[0].r[k];
+    at := ga_game_at(g, r.game);
+    if at >= 0 && gt_web_kind(g[0].types[at]) >= 0 {
+      ob: [AGR_TITLE + 32] u8; on := agr_put(ob[..], 0, "open "); on = agr_put(ob[..], on, ga_title(g, at)); on = agr_put(ob[..], on, " in the builder");
+      go := tr_leaf(t, "ga.open", TG_A, "ag-go", "open in the builder"); tr_attr(t, go, AT_HREF, "/"); tr_attr(t, go, AT_TITLE, cast(string) ob[0..<on]);
+    }
+  }
+  tr_close(t);
+}
+// The conversation: the open agent's events, the newest that fit the page, then what was just
+// sent and is not in its log yet, and while it works its step and how long it has been at it.
+gs_agents_thread :: (s: [] Site, t: [] Tree) {
+  g := s[0].ag[..]; u := s[0].ui[..];
+  a: [UI_ID] u8; b: [UI_ID] u8; nb: [16] u8;
+  thread := tr_open(t, "ga.thread", TG_DIV, "ag-thread");
+  k := g[0].open;
+  if g[0].open_id_n == 0 && g[0].pend_n == 0 {
+    // a new conversation: one heading and one line, and the box under them
+    em := tr_open(t, "ga.empty", TG_DIV, "ag-empty");
+    h := tr_leaf(t, "ga.empty.h", TG_H2, "", "what should a builder make?");
+    p := tr_leaf(t, "ga.empty.p", TG_P, "", ifx g[0].pick > 0 then "say it below. a builder starts on the game you picked and builds it there." else "say it below. a builder makes a new game on your account and builds it there.");
+    tr_close(t);
+    tr_close(t);
+    return;
+  }
+  // the newest events that fit: an earlier one is not drawn, and the page says how many
+  first := g[0].items_n; nodes := 0; bytes := 0;
+  while first > 0 {
+    e := g[0].items[first - 1];
+    nodes += ifx e.type == AGR_TOOL then 18 else ifx e.type == AGR_MESSAGE then 12 + e.text_n / 6 else 4;
+    bytes += e.text_n + e.tool_n + e.in_n + e.out_n + e.note_n + 700;
+    if nodes > GS_AG_NODES || bytes > GS_AG_BYTES { break; }
+    first -= 1;
+  }
+  earlier := g[0].cut + first;
+  if earlier > 0 {
+    eb: [200] u8; en := agr_int(eb[..], 0, cast(s64) earlier); en = agr_put(eb[..], en, ifx earlier == 1 then " earlier event is not shown: this page shows a conversation's newest " else " earlier events are not shown: this page shows a conversation's newest ");
+    en = agr_int(eb[..], en, GS_AG_SHOWN); en = agr_put(eb[..], en, ". gamebuilder agent-events reads them all.");
+    cut := tr_leaf(t, "ga.cut", TG_P, "ag-fine", cast(string) eb[0..<en]);
+  }
+  if g[0].open_id_n > 0 && !g[0].read && g[0].pend_n == 0 { w := tr_leaf(t, "agent.wait", TG_P, "ag-fine", "reading this conversation..."); }
+  change := ifx ga_cloud_open(g) then ga_last_change(g) else -1;
+  for i: first..<g[0].items_n {
+    e := g[0].items[i];
+    en := bl_int(nb[..], 0, cast(int) e.n);
+    id := tr_cat(a[..], "ev.", cast(string) nb[0..<en]);
+    words := ga_span(g, e.text_at, e.text_n);
+    if e.type == AGR_MESSAGE && e.from == AGR_PERSON { you := k_user(t, u, id, words); }
+    else if e.type == AGR_MESSAGE {
+      // its answer, as Markdown
+      m := k_reply_open(t, id, false, false);
+      md := k_agent_text(t, u, tr_cat(b[..], id, ".md"), g[0].doc[..], words);
+      tr_close(t);
+    } else if e.type == AGR_TOOL {
+      line := k_tool_line(t, u, id, ga_span(g, e.tool_at, e.tool_n), ga_span(g, e.note_at, e.note_n), ifx e.ok then TL_OK else TL_NO, ga_is_open(g, e.n), ga_span(g, e.in_at, e.in_n), ga_span(g, e.out_at, e.out_n));
+    } else if e.type == AGR_EDIT {
+      // a change it made; the newest not yet taken back carries the way to take it back
+      c := tr_open(t, id, TG_DIV, "ag-change");
+      w := tr_leaf(t, tr_cat(b[..], id, ".w"), TG_P, "", words);
+      if i == change { undo := k_button(t, u, "ga.undo", "take back its last change", ifx ga_held(g) then BS_DISABLED else BS_PLAIN); }
+      tr_close(t);
+    } else if e.type == AGR_ERROR || (e.type == AGR_STATE && e.state == AGR_FAILED) {
+      no := k_notice(t, u, id, AGR_STATE_WORDS[AGR_FAILED], words); tr_close(t);
+    } else { line := tr_leaf(t, id, TG_P, "ag-line", words); }
+  }
+  // why it stopped, failed or waits, in its record's own words
+  // (once: a line of its log that says the same stands for it)
+  if k >= 0 && g[0].store[0].r[k].why_n > 0 && !ga_live(g, k) {
+    words := cast(string) g[0].store[0].r[k].why[0..<g[0].store[0].r[k].why_n]; told := false;
+    for i: first..<g[0].items_n { e := g[0].items[i]; if e.type != AGR_MESSAGE && e.type != AGR_TOOL && ga_within(ga_span(g, e.text_at, e.text_n), words) { told = true; } }
+    if !told { why := tr_leaf(t, "ga.why", TG_P, "ag-line", words); }
+  }
+  // what was just sent, until the log has it
+  if g[0].pend_n > 0 { mine := k_user(t, u, "ga.pend", cast(string) g[0].pend[0..<g[0].pend_n]); }
+  // at work: its step (how far it is against its limits, and the command it runs), and for how long
+  live := (k >= 0 && ga_live(g, k)) || (g[0].pend_n > 0 && k < 0);
+  if live {
+    lv := tr_open(t, "ga.live", TG_DIV, "ag-live");
+    gl := k_glyph(t, "ga.live.g", TL_RUN);
+    lb: [AGR_STEP + 96] u8; ln := 0;
+    if k >= 0 {
+      r := g[0].store[0].r[k];
+      if r.step_n > 0 { ln = agr_put(lb[..], ln, cast(string) r.step[0..<r.step_n]); ln = agr_put(lb[..], ln, " - "); }
+      ln = agr_put(lb[..], ln, AGR_STATE_WORDS[g[0].shown[k]]); ln = agr_put(lb[..], ln, " for "); ln = agr_put(lb[..], ln, cast(string) g[0].age[k * GS_AG_FOR..<k * GS_AG_FOR + g[0].age_n[k]]);
+    } else { ln = agr_put(lb[..], ln, ifx g[0].ask == GA_GAME && g[0].busy then "making the game..." else "starting a builder..."); }
+    now := tr_leaf(t, "ga.live.w", TG_SPAN, "", cast(string) lb[0..<ln]);
+    tr_close(t);
+  }
+  tr_close(t);
+}
+// The foot: what the last press came to, then the message box with the game control and Send
+// (Stop while the agent works) under it; before the first send, its limits in one line. An agent
+// on one of your computers is read here and told things there, and the foot says so.
+gs_agents_dock :: (s: [] Site, t: [] Tree) {
+  g := s[0].ag[..]; u := s[0].ui[..];
+  a: [UI_ID] u8; nb: [16] u8; wb: [1024] u8;
+  dock := tr_open(t, "ga.dock", TG_DIV, "ag-dock");
+  if g[0].said_n > 0 { said := tr_leaf(t, "ga.said", TG_P, ifx g[0].no then "ag-said no" else "ag-said", cast(string) g[0].said[0..<g[0].said_n]); tr_attr(t, said, AT_LIVE, "polite"); }
+  k := g[0].open;
+  if k >= 0 && g[0].store[0].r[k].place != AGR_CLOUD {
+    there := k_notice(t, u, "ga.there", agr_place_words(g[0].store[0].r[k..<k + 1]), AGR_THERE);
+    if ga_carries(g, k) { carry := k_button(t, u, "ga.cloud", "carry on in the cloud", ifx ga_held(g) then BS_DISABLED else BS_PLAIN); }
+    tr_close(t);
+    tr_close(t);
+    return;
+  }
+  fresh := g[0].open_id_n == 0;
+  working := ga_working(g);
+  f := k_composer_begin(t, u, "ga.say", ifx fresh then "say what to build" else ifx working then "tell it something: it takes it on its next step" else "tell it what next: it goes on");
+  tr_attr(t, f, AT_FOCUS, "true");
+  if fresh {
+    // which game it works on: one of yours, or a new one of a type; and, with a computer of yours, where it runs
+    k_select_begin(t, u, "ga.for", ga_for_words(g, wb[..]), "the game it works on", g[0].sel);
+    if g[0].sel {
+      names := GT_NAME; lines := GT_LINE;
+      if g[0].games_n > 0 { m := k_meta(t, "ga.for.mine", "one of your games"); }
+      for i: 0..<g[0].games_n {
+        gn := bl_int(nb[..], 0, cast(int) g[0].games[i]);
+        ty := g[0].types[i];
+        one := k_row(t, u, tr_cat(a[..], "ga.game.", cast(string) nb[0..<gn]), ga_title(g, i), ifx ty >= 0 then names[ty] else "", g[0].pick == g[0].games[i]);
+      }
+      m2 := k_meta(t, "ga.for.new", "a new game");
+      order: [GT_TYPES] int; shown := gt_picker(GT_ON_SITE, order[..]);
+      for i: 0..<shown {
+        ty := order[i]; kd := gt_web_kind(ty);
+        if kd < 0 { continue; }
+        kn := bl_int(nb[..], 0, kd);
+        one := k_row(t, u, tr_cat(a[..], "ga.kind.", cast(string) nb[0..<kn]), names[ty], lines[ty], g[0].pick <= 0 && g[0].kind == kd);
+      }
+      if g[0].comp_n > 0 {
+        m3 := k_meta(t, "ga.for.where", "where it runs");
+        cl := k_row(t, u, "ga.where.cloud", "in the cloud", "", g[0].where < 0);
+        for i: 0..<g[0].comp_n {
+          cn := bl_int(nb[..], 0, i);
+          lb: [AGR_COMPUTER + 32] u8; ln := agr_put(lb[..], agr_put(lb[..], 0, "on "), ga_comp_name(g, i));
+          one := k_row(t, u, tr_cat(a[..], "ga.where.", cast(string) nb[0..<cn]), cast(string) lb[0..<ln], ifx g[0].comp_on[i] then "" else "not on now: it waits", g[0].where == i);
+        }
+      }
+    }
+    k_select_end(t, g[0].sel);
+    // a first message is a job of at most AGR_JOB bytes: counted where it is typed, once it is near
+    if g[0].draft_n * 5 >= AGR_JOB * 4 {
+      cb: [48] u8; cn := agr_int(cb[..], 0, cast(s64) g[0].draft_n); cn = agr_put(cb[..], cn, " of "); cn = agr_int(cb[..], cn, AGR_JOB); cn = agr_put(cb[..], cn, " bytes");
+      count := tr_leaf(t, "ga.count", TG_SPAN, ifx g[0].draft_n > AGR_JOB then "meta over" else "meta", cast(string) cb[0..<cn]);
+    }
+  } else if k >= 0 {
+    r := g[0].store[0].r[k];
+    ob: [AGR_TITLE + 16] u8; on := agr_put(ob[..], 0, "on "); on = agr_put(ob[..], on, ifx r.title_n > 0 then cast(string) r.title[0..<r.title_n] else "a level in no game");
+    onb := tr_leaf(t, "ga.on", TG_SPAN, "meta", cast(string) ob[0..<on]);
+  }
+  if working { stop := k_button(t, u, "ga.stop", "stop", ifx ga_held(g) then BS_DISABLED else BS_PLAIN); }
+  else { send := k_button(t, u, "ga.send", "send", ifx ga_held(g) then BS_BUSY else ifx g[0].draft_n > 0 then BS_PRIMARY else BS_DISABLED); }
+  tr_close(t);
+  tr_close(t);
+  if fresh { lim := tr_leaf(t, "ga.limits", TG_P, "ag-fine", ifx g[0].where >= 0 then ga_local_words(wb[..]) else ga_cloud_line(wb[..])); }
+  tr_close(t);
+}

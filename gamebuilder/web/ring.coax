@@ -1,0 +1,186 @@
+// The home page's ring of portals (issue 30; docs/web-world.md, "The ring"): the game types stand
+// round the character on the meadow, one portal each, evenly round a circle and facing its middle.
+// A portal is an upright frame of the engine's architecture kit (arch/solid.coax: two posts, a
+// lintel, a sill and a dark back) with the type's picture on it. Which portal the character stands
+// at is the engine's rule for portals (world/portal.coax: a row a portal, FROM a point, a reach).
+//
+// This file is the ring's own part and nothing of the page's: where each portal stands, how far
+// back the camera sits so one is whole in the window, the mesh, and the rows. web/hud.coax owns the
+// frame, the camera, the character, the pictures' texels and what the page is told, and calls in here.
+// Axes: the page's (x east, z north, y up); what is drawn is turned to the engine's (x, y, -z).
+//
+// THE PICTURE IS A STAND-IN. The engine has no surface that shows a page's own picture: the host
+// binds one array of texture layers, and the village's pack has it. So a portal's picture is drawn
+// by the page's own branch of the scene's fragment (web/gpu/hud.coax hud_scene_fs) from a store of
+// texels the glue fills from the type's picture (hud.coax, `pics`): a quad whose material is
+// RG_M_PICTURE and up, its uv the picture's. It goes when the engine has a picture surface.
+//   coax test web/ring.coax --library
+#load "../../metaverse-engine/core/points.coax";
+#load "../../metaverse-engine/arch/solid.coax";
+#load "../../metaverse-engine/world/portal.coax";
+#load "../../metaverse-engine/render/shade/stylized-layout.coax";
+#load "hud-layout.coax";
+
+RG_MAX :: PRT_MAX;        // portals a ring holds: the engine's limit of portals in a world (16)
+RG_WIDE :: 8.0;           // metres: a picture's width; 16 to 9, as the types' pictures are
+RG_TALL :: 4.5;
+RG_SILL :: 0.9;           // metres over the ground a picture's foot is
+RG_POST :: 0.4;           // metres: how thick the frame is
+RG_DEEP :: 0.5;           // and how deep
+RG_RADIUS :: 15.0;        // metres from the middle to a portal, at least
+RG_ROOM :: 1.7;           // metres of radius a portal needs (its width and a gap, over 2 pi): nine stand 15.3 m out
+RG_FAR :: 11.5;           // metres behind the character the camera sits (the engine's third person camera stops at 12)
+RG_EDGE :: 0.3;           // metres of meadow left either side of the frame in a narrow window
+RG_REACH :: 350;          // centimetres from a portal's middle the character takes it from (the engine's R)
+RG_PIC_W :: 256;          // a picture's texels across and down, as the store holds them
+RG_PIC_H :: 144;
+RG_PI :: 3.14159265;
+
+// How far from the middle the portals stand, n of them: none overlaps its neighbour.
+rg_radius :: (n: int) -> f32 { return hi(RG_RADIUS, cast(f32) n * RG_ROOM); }
+// The angle portal i of n stands at, from ahead (the page's +z) round to the right, radians.
+rg_angle :: (i: int, n: int) -> f32 { return ifx n < 1 then 0.0f32 else cast(f32) i * 2 * RG_PI / cast(f32) n; }
+// Where portal i of n stands, the page's axes: x and z.
+rg_at :: (i: int, n: int) -> [2] f32 { a := rg_angle(i, n); r := rg_radius(n); return [2] f32.[sin(a) * r, cos(a) * r]; }
+// How far behind the character the camera sits: as far as the camera reaches, so the ring reads as a
+// ring (the portal across the meadow ahead, and its neighbours either side of it in a wide window),
+// and further still only if a window `aspect` wide for its height, through a lens of `fov` radians top
+// to bottom, would not hold the portal ahead whole (it never is so narrow: a check holds a phone's).
+rg_back :: (n: int, aspect: f32, fov: f32) -> f32 {
+  half: f32 = RG_WIDE * 0.5 + RG_POST + RG_EDGE;
+  need := half / (tan(fov * 0.5) * hi(aspect, 0.2));
+  return clamp(need - rg_radius(n), RG_FAR, RG_FAR);
+}
+// The next portal from `at`, one to the right (1) or the left (-1), round the ring.
+rg_step :: (at: int, by: int, n: int) -> int { if n < 1 { return 0; } return ((at + by) % n + n) % n; }
+// Which portal a view from (x, z) along `yaw` (the page's: 0 ahead, turning right) looks most
+// nearly at: -1 with none.
+rg_ahead :: (n: int, x: f32, z: f32, yaw: f32) -> int {
+  best := -1; near: f32 = 0;
+  for i: 0..<n {
+    p := rg_at(i, n);
+    off := abs(wrap_angle(atan2(p[0] - x, p[1] - z) - yaw));
+    if best < 0 || off < near { best = i; near = off; }
+  }
+  return best;
+}
+// The yaw from (x, z) to portal i: the way to look to have it ahead.
+rg_toward :: (i: int, n: int, x: f32, z: f32) -> f32 { p := rg_at(i, n); return atan2(p[0] - x, p[1] - z); }
+
+// A corner of portal i's picture, the engine's axes: u 0 its left as seen from the middle and 1 its
+// right, v 0 its top and 1 its foot; `out` metres further from the middle than the picture is.
+rg_corner :: (i: int, n: int, u: f32, v: f32, out: f32) -> [3] f32 {
+  a := rg_angle(i, n); r := rg_radius(n) + out; side := (u - 0.5) * RG_WIDE;
+  return [3] f32.[sin(a) * r + cos(a) * side, RG_SILL + (1 - v) * RG_TALL, -cos(a) * r + sin(a) * side];
+}
+// Vertices a portal's mesh is: five boxes and the picture.
+RG_VERTICES :: 5 * 36 + 6;
+// The ring's mesh, after what the pen holds: each portal's frame (lit when it is `lit`, the one
+// pointed at or nearest), its dark back, and its picture, a quad of material RG_M_PICTURE + i.
+rg_mesh :: (p: [] ArchPen, n: int, lit: int) {
+  for i: 0..<n {
+    a := rg_angle(i, n); r := rg_radius(n);
+    // the portal's own directions, the engine's axes: to its right as seen from the middle, up, and out from the middle
+    rt := [3] f32.[cos(a), 0, sin(a)]; up := [3] f32.[0, 1, 0]; ot := [3] f32.[sin(a), 0, -cos(a)];
+    c := [3] f32.[sin(a) * r, 0, -cos(a) * r];
+    if i == lit { arch_material(p, ARCH_M_GLOW, 0.8, 0.8, 0.84); } else { arch_material(p, ARCH_M_SMOOTH, 0.74, 0.76, 0.8); }
+    wide: f32 = RG_WIDE * 0.5; post: f32 = RG_POST * 0.5; deep: f32 = RG_DEEP * 0.5; top: f32 = RG_SILL + RG_TALL;
+    // the posts, from the ground to over the lintel; the lintel and the sill between them
+    for s: 0..<2 {
+      k: f32 = ifx s == 0 then -1 else 1;
+      arch_obox(p, rg_add(c, rg_mul(rt, k * (wide + post)), rg_mul(up, (top + RG_POST) * 0.5)), rg_mul(rt, post), rg_mul(up, (top + RG_POST) * 0.5), rg_mul(ot, deep));
+    }
+    arch_obox(p, rg_add(c, rg_mul(up, top + post), rg_mul(rt, 0)), rg_mul(rt, wide), rg_mul(up, post), rg_mul(ot, deep));
+    arch_obox(p, rg_add(c, rg_mul(up, RG_SILL - post), rg_mul(rt, 0)), rg_mul(rt, wide), rg_mul(up, post), rg_mul(ot, deep));
+    // the back: dark, so the portal is no window from behind
+    arch_material(p, ARCH_M_SMOOTH, 0.05, 0.05, 0.06);
+    arch_obox(p, rg_add(c, rg_mul(up, RG_SILL + RG_TALL * 0.5), rg_mul(ot, 0.1)), rg_mul(rt, wide), rg_mul(up, RG_TALL * 0.5), rg_mul(ot, 0.06));
+    // the picture, facing the middle: its foot's left, its foot's right, its top's right, its top's left
+    arch_material(p, RG_M_PICTURE + i, 0, 0, 0);
+    bl := rg_corner(i, n, 0, 1, 0); br := rg_corner(i, n, 1, 1, 0); tr := rg_corner(i, n, 1, 0, 0); tl := rg_corner(i, n, 0, 0, 0);
+    arch_quad(p, arch_at(bl[0], bl[1], bl[2], -ot[0], 0, -ot[2], 0, 1), arch_at(br[0], br[1], br[2], -ot[0], 0, -ot[2], 1, 1),
+      arch_at(tr[0], tr[1], tr[2], -ot[0], 0, -ot[2], 1, 0), arch_at(tl[0], tl[1], tl[2], -ot[0], 0, -ot[2], 0, 0));
+  }
+}
+rg_mul :: (a: [3] f32, s: f32) -> [3] f32 { return [3] f32.[a[0] * s, a[1] * s, a[2] * s]; }
+rg_add :: (a: [3] f32, b: [3] f32, c: [3] f32) -> [3] f32 { return [3] f32.[a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]]; }
+
+// The ring as the engine's portals: a row each, FROM the point the portal stands at, R the reach.
+// How many read (n, unless a row does not read: then fewer).
+rg_rows :: (out: [] Portal, n: int) -> int {
+  from: [32] u8; m := 0;
+  for i: 0..<n {
+    if i >= out.count { break; }
+    at := rg_at(i, n);
+    k := rg_put(from[..], 0, "at "); k = rg_int(from[..], k, cast(int) floor(at[0] * 100 + 0.5)); k = rg_put(from[..], k, " "); k = rg_int(from[..], k, cast(int) floor(at[1] * 100 + 0.5));
+    if prt_read(i + 1, "enter", cast(string) from[0..<k], "0 0", 0, RG_REACH, out[i..<i + 1]) != PRT_OK { break; }
+    m += 1;
+  }
+  return m;
+}
+// Which portal the character takes standing at (x, z), the page's axes, metres: -1, none.
+rg_stands :: (rows: [] Portal, n: int, x: f32, z: f32) -> int { none: [1] PortalThing; return prt_pick(rows, n, none[0..<0], x, z); }
+rg_put :: (out: [] u8, n: int, text: string) -> int { k := n; for c: text { if k < out.count { out[k] = c; k += 1; } } return k; }
+rg_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { if k < out.count { out[k] = '-'; k += 1; } a = -a; }
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+
+#test "the ring: its portals evenly round the middle, the first ahead and the next to its right, none on its neighbour, however many" {
+  for n: 1..<RG_MAX + 1 {
+    r := rg_radius(n);
+    for i: 0..<n {
+      p := rg_at(i, n); q := rg_at(rg_step(i, 1, n), n);
+      #assert abs(sqrt(p[0] * p[0] + p[1] * p[1]) - r) < 0.001;
+      // (neighbours' middles are further apart than a portal and its frame are wide)
+      if n > 1 { #assert sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1])) > RG_WIDE + 2 * RG_POST || n == 2; }
+    }
+  }
+  a := rg_at(0, 9); b := rg_at(1, 9);
+  #assert abs(a[0]) < 0.001 && abs(a[1] - rg_radius(9)) < 0.001 && b[0] > 9 && b[1] > 11 && rg_radius(3) == RG_RADIUS && rg_radius(12) > rg_radius(9);
+  #assert rg_step(8, 1, 9) == 0 && rg_step(0, -1, 9) == 8 && rg_step(3, 1, 9) == 4 && rg_step(0, 1, 10) == 1 && rg_step(9, 1, 10) == 0;
+  #assert rg_ahead(9, 0, 0, 0) == 0 && rg_ahead(9, 0, 0, rg_angle(4, 9)) == 4 && rg_ahead(9, 0, 0, -rg_angle(1, 9)) == 8 && rg_ahead(0, 0, 0, 0) == -1;
+  #assert abs(rg_toward(2, 9, 0, 0) - rg_angle(2, 9)) < 0.001;
+}
+#test "the camera sits as far back as it reaches: a whole portal ahead even upright on a phone, and its neighbours too in a wide window" {
+  fov: f32 = 0.7895822;
+  wide := rg_back(9, 1280.0 / 720.0, fov); tall := rg_back(9, 412.0 / 915.0, fov); pad := rg_back(9, 1024.0 / 1366.0, fov);
+  #assert wide == RG_FAR && tall == RG_FAR && pad == RG_FAR;
+  // (upright on a phone the frame is in the window, with meadow either side: half its width and the edge is under the half window's at that distance)
+  #assert (RG_WIDE * 0.5 + RG_POST + RG_EDGE) <= (rg_radius(9) + tall) * tan(fov * 0.5) * 412.0 / 915.0;
+  // (and the portals either side of the one ahead are in a wide window: their middles are inside its half width)
+  side := rg_at(1, 9); #assert atan2(side[0], side[1] + wide) < atan2(tan(fov * 0.5) * 1280.0 / 720.0, 1.0);
+}
+#test "a portal's mesh: its picture faces the middle the right way round, its left at the viewer's left and its top up; five boxes and a quad each" {
+  out: [RG_MAX * RG_VERTICES * ARCH_VERTEX_FLOATS] f32; w: [1] ArchPen; p := w[..];
+  arch_pen(p, out[..]);
+  rg_mesh(p, 9, 2);
+  #assert !p[0].full && p[0].n == 9 * RG_VERTICES;
+  for i: 0..<9 {
+    // the picture is the portal's last six vertices; its material names the portal
+    o := ((i + 1) * RG_VERTICES - 6) * ARCH_VERTEX_FLOATS;
+    #assert out[o + 6] == cast(f32) (RG_M_PICTURE + i);
+    // (seen from the middle, looking out along the portal's angle: right is (cos a, sin a) in the engine's x and z)
+    a := rg_angle(i, 9);
+    left := out[o] * cos(a) + out[o + 2] * sin(a); right := out[o + ARCH_VERTEX_FLOATS] * cos(a) + out[o + ARCH_VERTEX_FLOATS + 2] * sin(a);
+    #assert left < -3.9 && right > 3.9 && out[o + 7] == 0 && out[o + ARCH_VERTEX_FLOATS + 7] == 1;   // u 0 at the left, 1 at the right
+    #assert out[o + 1] == RG_SILL && out[o + 8] == 1 && out[o + 2 * ARCH_VERTEX_FLOATS + 1] == RG_SILL + RG_TALL && out[o + 2 * ARCH_VERTEX_FLOATS + 8] == 0;   // v 1 at the foot, 0 at the top
+    // its normal points at the middle, and its corners go round counter-clockwise seen from there
+    #assert out[o + 3] * out[o] + out[o + 5] * out[o + 2] < 0;
+    // the lit portal's frame glows; the others' is stone
+    f := i * RG_VERTICES * ARCH_VERTEX_FLOATS;
+    #assert out[f + 6] == cast(f32) (ifx i == 2 then ARCH_M_GLOW else ARCH_M_SMOOTH);
+  }
+}
+#test "the ring's rows are the engine's portals: standing at one takes it, in the middle none, and between two the nearer" {
+  rows: [RG_MAX] Portal;
+  for n: 1..<RG_MAX + 1 { #assert rg_rows(rows[..], n) == n; }
+  n := rg_rows(rows[..], 9);
+  #assert rg_stands(rows[..], n, 0, 0) == -1 && rg_stands(rows[..], n, 0, 8) == -1;
+  for i: 0..<9 { p := rg_at(i, 9); #assert rg_stands(rows[..], n, p[0] * 0.9, p[1] * 0.9) == i && rg_stands(rows[..], n, p[0] * 0.7, p[1] * 0.7) == -1; }
+}

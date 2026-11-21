@@ -1,0 +1,277 @@
+// gamebuilder.org's undo and redo (docs/web-world.md, "Undo and redo"): every edit of the world's
+// one list (web/blocks.coax) is a step that can be taken back and made again, whoever made it: a
+// hotbar tool, edit mode, a setting's slider, the world's reset, or the plan lines of one of the
+// agent's answers (one answer, however many lines, is one step, as an agent's batch is in the app).
+//
+// Nothing here knows the edits: the page marks the list before an event that may edit (un_begin)
+// and after it (un_end), and the step is what differs between the two: things that came, went or
+// changed, and settings that changed. Taking a step back puts each thing as it was before; where
+// things came to rest since (the HUD's reports) is not an edit and is no step.
+//
+// The history holds UN_STEPS steps and UN_THINGS changed things between them; the oldest steps go
+// when either fills (a person is told how far back undo goes when they reach its end: un_words).
+// It is the page's, for this visit: a reload starts with none, as a level opened in the app does.
+//   coax/bin/coax test web/undo.coax --library
+
+#load "blocks.coax";
+
+UN_STEPS :: 100;         // steps kept
+UN_THINGS :: 2048;       // things those steps changed, between them
+UN_PROPS :: 512;         // settings they changed
+UN_MERGE :: 0.6;         // seconds within which the wheel's next size of the same thing is the same step
+
+UnThing :: struct { had_a: bool; had_b: bool; at: int; a: Block; b: Block; }   // a thing before (a) and after (b) the step, and its place in the list
+UnProp :: struct { prop: int; target: int; had_a: bool; a: int; had_b: bool; b: int; }
+UnStep :: struct { t0: int; tn: int; p0: int; pn: int; time: f32; one: int; }   // its things and settings; when; the one thing it sized (for the wheel)
+Undo :: struct {
+  steps: [UN_STEPS] UnStep; n: int;      // the steps kept, oldest first
+  at: int;                               // how many of them stand: the next undo takes back step at - 1, the next redo makes step at
+  things: [UN_THINGS] UnThing; things_n: int;
+  props: [UN_PROPS] UnProp; props_n: int;
+  open: bool;                            // the list is marked (un_begin)
+  was: [BL_MAX] Block; was_n: int;       // the list as it was marked
+  was_props: [1] TunStore;
+}
+
+un_same :: (p: Block, q: Block) -> bool {
+  return p.id == q.id && p.kind == q.kind && p.x == q.x && p.y == q.y && p.z == q.z && p.w == q.w && p.h == q.h && p.d == q.d && p.turn == q.turn && p.tipped == q.tipped && p.model == q.model && p.scale == q.scale && p.role == q.role && p.go == q.go && p.every == q.every;
+}
+// Whether there is a step to take back, and one to make again.
+un_can_undo :: (u: [] Undo) -> bool { return u[0].at > 0; }
+un_can_redo :: (u: [] Undo) -> bool { return u[0].at < u[0].n; }
+// Forgets everything: a new world, or one read back, starts with no history.
+un_forget :: (u: [] Undo) { u[0].n = 0; u[0].at = 0; u[0].things_n = 0; u[0].props_n = 0; u[0].open = false; }
+
+// Marks the list as it stands, before an event that may edit it.
+un_begin :: (u: [] Undo, b: [] Blocks) {
+  for i: 0..<b[0].n { u[0].was[i] = b[0].b[i]; }
+  u[0].was_n = b[0].n;
+  pr_ready(b[0].props[..]);
+  u[0].was_props[0] = b[0].props[0].over[0];
+  u[0].open = true;
+}
+// The oldest step let go, and its things and settings with it.
+un_drop_oldest :: (u: [] Undo) {
+  if u[0].n == 0 { return; }
+  t := u[0].steps[0].tn; p := u[0].steps[0].pn;
+  for i: t..<u[0].things_n { u[0].things[i - t] = u[0].things[i]; }
+  for i: p..<u[0].props_n { u[0].props[i - p] = u[0].props[i]; }
+  u[0].things_n -= t; u[0].props_n -= p;
+  for i: 1..<u[0].n { s := u[0].steps[i]; s.t0 -= t; s.p0 -= p; u[0].steps[i - 1] = s; }
+  u[0].n -= 1; if u[0].at > 0 { u[0].at -= 1; }
+}
+// After the event: what differs from the mark is a step. `wheel`: the event was the wheel sizing a
+// thing, whose notches within UN_MERGE seconds are one step. True when a step was kept or grown.
+un_end :: (u: [] Undo, b: [] Blocks, time: f32, wheel: bool) -> bool {
+  if !u[0].open { return false; }
+  u[0].open = false;
+  // what the steps taken back would have made again is gone once something new is done: counted first, kept only if anything differs
+  keep_n := u[0].at;
+  t0 := ifx keep_n < u[0].n then u[0].steps[keep_n].t0 else u[0].things_n;
+  p0 := ifx keep_n < u[0].n then u[0].steps[keep_n].p0 else u[0].props_n;
+  // the things that went or changed, then those that came, each in the list's order
+  tn := 0; over := false;
+  for i: 0..<u[0].was_n {
+    a := u[0].was[i];
+    j := ifx i < b[0].n && b[0].b[i].id == a.id then i else bl_at(b, a.id);
+    if j >= 0 && un_same(a, b[0].b[j]) { continue; }
+    if t0 + tn >= UN_THINGS { over = true; break; }
+    u[0].things[t0 + tn] = ifx j < 0 then UnThing.{had_a = true, at = i, a = a} else UnThing.{had_a = true, had_b = true, at = j, a = a, b = b[0].b[j]};
+    tn += 1;
+  }
+  for j: 0..<b[0].n {
+    if over { break; }
+    k := b[0].b[j]; had := j < u[0].was_n && u[0].was[j].id == k.id;
+    if !had { for i: 0..<u[0].was_n { if u[0].was[i].id == k.id { had = true; break; } } }
+    if had { continue; }
+    if t0 + tn >= UN_THINGS { over = true; break; }
+    u[0].things[t0 + tn] = UnThing.{had_b = true, at = j, b = k};
+    tn += 1;
+  }
+  // the settings that differ
+  pn := 0; now := b[0].props[0].over[..]; was := u[0].was_props[..];
+  for i: 0..<was[0].n {
+    j := tun_find(now, was[0].prop[i], was[0].target[i]);
+    if j >= 0 && now[0].value[j] == was[0].value[i] { continue; }
+    if p0 + pn >= UN_PROPS { over = true; break; }
+    u[0].props[p0 + pn] = UnProp.{prop = was[0].prop[i], target = was[0].target[i], had_a = true, a = was[0].value[i], had_b = j >= 0, b = ifx j >= 0 then now[0].value[j] else 0};
+    pn += 1;
+  }
+  for j: 0..<now[0].n {
+    if over { break; }
+    if tun_find(was, now[0].prop[j], now[0].target[j]) >= 0 { continue; }
+    if p0 + pn >= UN_PROPS { over = true; break; }
+    u[0].props[p0 + pn] = UnProp.{prop = now[0].prop[j], target = now[0].target[j], had_b = true, b = now[0].value[j]};
+    pn += 1;
+  }
+  if tn == 0 && pn == 0 && !over { return false; }
+  // something new was done: the steps taken back are gone
+  u[0].n = keep_n; u[0].things_n = t0; u[0].props_n = p0;
+  if over {
+    // a step too big for what is left: the older steps go to make room, and it is tried once more from an empty
+    // history; one too big even then is no step, and the history starts after it
+    if keep_n == 0 { un_forget(u); return false; }
+    un_forget(u); u[0].open = true;
+    return un_end(u, b, time, wheel);
+  }
+  // the wheel's next notch on the same thing: the step before grows
+  one := ifx tn == 1 && pn == 0 && u[0].things[t0].had_a && u[0].things[t0].had_b then u[0].things[t0].a.id else 0;
+  if wheel && one != 0 && keep_n > 0 && u[0].steps[keep_n - 1].one == one && time - u[0].steps[keep_n - 1].time < UN_MERGE {
+    s := u[0].steps[keep_n - 1];
+    u[0].things[s.t0].b = u[0].things[t0].b; u[0].things[s.t0].at = u[0].things[t0].at;
+    u[0].steps[keep_n - 1].time = time;
+    return true;
+  }
+  // (the history is full: the oldest step goes, and the new step's entries, written past the kept ones, move down with the rest)
+  if u[0].n >= UN_STEPS { dt := u[0].steps[0].tn; dp := u[0].steps[0].pn; u[0].things_n = t0 + tn; u[0].props_n = p0 + pn; un_drop_oldest(u); t0 -= dt; p0 -= dp; }
+  u[0].steps[u[0].n] = UnStep.{t0 = t0, tn = tn, p0 = p0, pn = pn, time = time, one = ifx wheel then one else 0};
+  u[0].n += 1; u[0].at = u[0].n; u[0].things_n = t0 + tn; u[0].props_n = p0 + pn;
+  return true;
+}
+
+// A thing taken out of the list by its id.
+un_take :: (b: [] Blocks, id: int) {
+  i := bl_at(b, id);
+  if i < 0 { return; }
+  if b[0].sel == id { b[0].sel = 0; }
+  for k: i..<b[0].n - 1 { b[0].b[k] = b[0].b[k + 1]; }
+  b[0].n -= 1;
+}
+// A thing put into the list at a place (its end, when the list is shorter), as it was: made where it stood, not above it.
+un_give :: (b: [] Blocks, at: int, k: Block) {
+  if b[0].n >= BL_MAX || bl_at(b, k.id) >= 0 { return; }
+  to := ifx at > b[0].n then b[0].n else ifx at < 0 then 0 else at;
+  i := b[0].n; while i > to { b[0].b[i] = b[0].b[i - 1]; i -= 1; }
+  one := k; one.starts = false; one.moves += 1; one.sizes += 1;
+  b[0].b[to] = one; b[0].n += 1;
+  if b[0].next < k.id { b[0].next = k.id; }
+}
+// A thing that is there put as it was: the HUD takes its place and its size again (its counts go up).
+un_set :: (b: [] Blocks, k: Block) {
+  i := bl_at(b, k.id);
+  if i < 0 { return; }
+  one := k; one.starts = false; one.moves = b[0].b[i].moves + 1; one.sizes = b[0].b[i].sizes + 1;
+  b[0].b[i] = one;
+}
+// One step applied to the list: back (the things and settings as before it) or again (as after it).
+un_apply :: (u: [] Undo, b: [] Blocks, s: UnStep, back: bool) {
+  // what the step brought goes (back) or what it took goes (again); then what it took comes back, in the list's order; then what it changed
+  for i: 0..<s.tn { e := u[0].things[s.t0 + i]; if ifx back then !e.had_a else !e.had_b { un_take(b, ifx back then e.b.id else e.a.id); } }
+  for i: 0..<s.tn { e := u[0].things[s.t0 + i]; if ifx back then (e.had_a && !e.had_b) else (e.had_b && !e.had_a) { un_give(b, e.at, ifx back then e.a else e.b); } }
+  for i: 0..<s.tn { e := u[0].things[s.t0 + i]; if e.had_a && e.had_b { un_set(b, ifx back then e.a else e.b); } }
+  pr_ready(b[0].props[..]); over := b[0].props[0].over[..];
+  for i: 0..<s.pn {
+    e := u[0].props[s.p0 + i]; has := ifx back then e.had_a else e.had_b; v := ifx back then e.a else e.b;
+    if has { _ = tun_keep(over, e.prop, e.target, v); } else { _ = tun_drop(over, e.prop, e.target); }
+  }
+  bl_tuned(b);
+}
+// The last step taken back. False when there is none.
+un_undo :: (u: [] Undo, b: [] Blocks) -> bool {
+  if u[0].at <= 0 { return false; }
+  u[0].at -= 1; u[0].open = false;
+  un_apply(u, b, u[0].steps[u[0].at], true);
+  return true;
+}
+// The step last taken back made again. False when there is none.
+un_redo :: (u: [] Undo, b: [] Blocks) -> bool {
+  if u[0].at >= u[0].n { return false; }
+  un_apply(u, b, u[0].steps[u[0].at], false);
+  u[0].at += 1; u[0].open = false;
+  return true;
+}
+// What a person is told when there is nothing to take back or to make again, in words with the number (AGENTS.md).
+un_words :: (u: [] Undo, redo: bool, out: [] u8, from: int) -> int {
+  if redo { return bl_put(out, from, "nothing to redo."); }
+  n := bl_put(out, from, "nothing to undo: undo goes back ");
+  n = bl_int(out, n, UN_STEPS); return bl_put(out, n, " steps, from when this page opened.");
+}
+
+// ---------------------------------------------------------------- checks
+
+UnTest :: struct { u: [1] Undo; b: [1] Blocks; out: [BL_TEXT] u8; }
+un_test_edit :: (t: [] UnTest, line: string) -> bool { un_begin(t[0].u[..], t[0].b[..]); ok := bl_edit(t[0].b[..], line); _ = un_end(t[0].u[..], t[0].b[..], 0, false); return ok; }
+
+#test "an edit is a step: a thing placed is taken back and made again, with its number; a new edit after an undo ends what could be redone" #steps 200000000 {
+  t: [1] UnTest; u := t[0].u[..]; b := t[0].b[..];
+  bl_new(b, GT_THIRD);
+  #assert !un_can_undo(u) && !un_undo(u, b) && !un_redo(u, b);
+  #assert un_test_edit(t[..], "place 5 5 1 1 1") && un_test_edit(t[..], "ball 2 2 0.5") && b[0].n == 6 && u[0].n == 2;
+  #assert un_undo(u, b) && b[0].n == 5 && bl_at(b, 6) < 0 && un_can_redo(u);
+  #assert un_undo(u, b) && b[0].n == 4 && bl_at(b, 5) < 0 && !un_can_undo(u) && !un_undo(u, b);
+  #assert un_redo(u, b) && b[0].n == 5 && b[0].b[4].id == 5 && b[0].b[4].x == 500 && !b[0].b[4].starts;
+  // something new: the ball can no longer be made again, and the new thing takes the next number
+  #assert un_test_edit(t[..], "place -5 5 2 2 2") && !un_can_redo(u) && u[0].n == 2 && b[0].b[5].id == 7;
+  // an event that edits nothing is no step, and a refused edit neither
+  #assert !un_test_edit(t[..], "select b1") && !un_test_edit(t[..], "place 5 5 99 1 1") && u[0].n == 2;
+}
+
+#test "a move, a size, a kind and a removal are each taken back to exactly what was; the HUD is told to take the place and size again" #steps 200000000 {
+  t: [1] UnTest; u := t[0].u[..]; b := t[0].b[..];
+  bl_bare(b, GT_RACING); bl_roles(b, gt_roles(GT_RACING));
+  #assert un_test_edit(t[..], "place 1 2 4 4 0.25 boost") && un_test_edit(t[..], "place 3 3 0.4 0.4 0.6 cone") && un_test_edit(t[..], "place 6 6 1 1 1");
+  was := b[0].b[0];
+  #assert un_test_edit(t[..], "move b1 9 9") && un_test_edit(t[..], "size b1 2 2 1") && un_test_edit(t[..], "kind b1 block") && un_test_edit(t[..], "remove b2");
+  #assert b[0].n == 2 && b[0].b[0].x == 900 && b[0].b[0].role == BL_R_NONE;
+  #assert un_undo(u, b) && b[0].n == 3 && b[0].b[1].id == 2 && b[0].b[1].role == BL_R_CONE && b[0].b[2].id == 3;   // back in its place in the list
+  #assert un_undo(u, b) && b[0].b[0].role == BL_R_BOOST && un_undo(u, b) && b[0].b[0].w == 400 && b[0].b[0].h == 25;
+  moves := b[0].b[0].moves;
+  #assert un_undo(u, b) && b[0].b[0].x == was.x && b[0].b[0].z == was.z && b[0].b[0].moves == moves + 1 && un_same(b[0].b[0], was);
+  #assert un_redo(u, b) && un_redo(u, b) && un_redo(u, b) && un_redo(u, b) && !un_redo(u, b) && b[0].n == 2 && b[0].b[0].x == 900 && b[0].b[0].w == 200 && b[0].b[0].role == BL_R_NONE && bl_at(b, 2) < 0;
+  // a selected thing taken back out of the world is no longer selected
+  bl_mode(b, true);
+  #assert un_test_edit(t[..], "place 0 0 1 1 1") && b[0].sel == 4 && un_undo(u, b) && b[0].sel == 0;
+}
+
+#test "an answer's plan lines are one step; so is clear, and the reset of a world; a setting is a step too" #steps 400000000 {
+  t: [1] UnTest; u := t[0].u[..]; b := t[0].b[..];
+  bl_new(b, GT_THIRD);
+  // (an answer: its lines made between one mark and the next)
+  un_begin(u, b);
+  #assert bl_plan(b, "place 1 1 1 1 1") && bl_plan(b, "place 2 1 1 1 1") && bl_plan(b, "move b1 -9 -9") && bl_plan(b, "set world.gravity 0.3");
+  #assert un_end(u, b, 0, false) && u[0].n == 1 && b[0].n == 6 && b[0].grav == 3;
+  #assert un_undo(u, b) && b[0].n == 4 && b[0].b[0].x == -300 && b[0].grav == 10 && pr_value(b[0].props[..], TW_GRAVITY) == 100;
+  #assert un_redo(u, b) && b[0].n == 6 && b[0].b[0].x == -900 && b[0].grav == 3;
+  #assert un_test_edit(t[..], "set b4.bounce 0.9") && un_test_edit(t[..], "clear") && b[0].n == 0 && pr_thing(b[0].props[..], TW_BOUNCE, 4, PR_BALL) == 55;
+  // clear taken back: every thing where it was in the list, and what was set for one of them
+  #assert un_undo(u, b) && b[0].n == 6 && b[0].b[3].id == 4 && b[0].b[5].id == 6 && pr_thing(b[0].props[..], TW_BOUNCE, 4, PR_BALL) == 90;
+  #assert un_undo(u, b) && pr_thing(b[0].props[..], TW_BOUNCE, 4, PR_BALL) == 55;
+  // the world's reset
+  un_begin(u, b); bl_new(b, GT_THIRD); #assert un_end(u, b, 0, false) && b[0].n == 4 && b[0].b[0].x == -300;
+  #assert un_undo(u, b) && b[0].n == 6 && b[0].b[0].x == -900 && b[0].b[4].id == 5 && b[0].next == 6;
+}
+
+#test "the wheel's notches on one thing within a moment are one step; a button's presses are a step each" #steps 200000000 {
+  t: [1] UnTest; u := t[0].u[..]; b := t[0].b[..];
+  bl_new(b, GT_THIRD);
+  for k: 0..<3 { un_begin(u, b); #assert bl_edit(b, ifx k == 0 then "size b1 2.2 2.2 1.1" else ifx k == 1 then "size b1 2.4 2.4 1.2" else "size b1 2.6 2.6 1.3"); #assert un_end(u, b, 1.0 + cast(f32) k * 0.2, true); }
+  #assert u[0].n == 1 && b[0].b[0].w == 260;
+  un_begin(u, b); #assert bl_edit(b, "size b1 3 3 1.5") && un_end(u, b, 5.0, true) && u[0].n == 2;   // later: its own step
+  un_begin(u, b); #assert bl_edit(b, "size b2 2 2 2") && un_end(u, b, 5.1, true) && u[0].n == 3;     // another thing
+  un_begin(u, b); #assert bl_edit(b, "size b2 2.5 2.5 2") && un_end(u, b, 5.2, false) && u[0].n == 4; // a button, not the wheel
+  #assert un_undo(u, b) && un_undo(u, b) && un_undo(u, b) && b[0].b[0].w == 260 && un_undo(u, b) && b[0].b[0].w == 200 && b[0].b[0].h == 100 && !un_undo(u, b);
+}
+
+#test "the history keeps its last hundred steps, and lets the oldest go when its things fill; what is said at its end has the number" #steps 2000000000 {
+  t: [1] UnTest; u := t[0].u[..]; b := t[0].b[..];
+  bl_bare(b, GT_CRATES);
+  line: [64] u8;
+  for i: 0..<UN_STEPS + 20 { n := bl_put(line[..], 0, "place "); n = bl_int(line[..], n, i - 60); n = bl_put(line[..], n, " 0 1 1 1"); #assert un_test_edit(t[..], cast(string) line[0..<n]); }
+  #assert u[0].n == UN_STEPS && u[0].things_n == UN_STEPS && b[0].n == UN_STEPS + 20;
+  for i: 0..<UN_STEPS { #assert un_undo(u, b); }
+  #assert !un_undo(u, b) && b[0].n == 20 && b[0].b[19].id == 20;
+  n := un_words(u, false, t[0].out[..], 0);
+  #assert cast(string) t[0].out[0..<n] == "nothing to undo: undo goes back 100 steps, from when this page opened.";
+  n = un_words(u, true, t[0].out[..], 0); #assert cast(string) t[0].out[0..<n] == "nothing to redo.";
+  for i: 0..<UN_STEPS { #assert un_redo(u, b); }
+  #assert b[0].n == UN_STEPS + 20;
+  // a full world cleared, twice over: more things than the history holds between its steps. The older steps go; the last clear is still taken back
+  un_forget(u); b[0].n = 0; b[0].next = 0;
+  for i: 0..<BL_MAX { #assert bl_add(b, (i % 40) * 300 - 6000, (i / 40) * 300 - 3000, 100, 100, 100, 0); }
+  #assert un_test_edit(t[..], "clear") && u[0].n == 1 && un_undo(u, b) && b[0].n == BL_MAX && un_redo(u, b) && b[0].n == 0;
+  #assert un_undo(u, b) && un_test_edit(t[..], "remove b1") && un_test_edit(t[..], "remove b2") && u[0].n == 2;
+  #assert un_test_edit(t[..], "clear") && u[0].n == 3 && u[0].things_n == 1000;
+  un_begin(u, b); for i: 0..<BL_MAX { #assert bl_add(b, (i % 40) * 300 - 6000, (i / 40) * 300 - 3000, 100, 100, 100, 0); } #assert un_end(u, b, 0, false);
+  #assert u[0].n == 4 && u[0].things_n == 2000;
+  #assert un_test_edit(t[..], "clear") && u[0].n == 1 && u[0].things_n == 1000 && un_undo(u, b) && b[0].n == BL_MAX && !un_undo(u, b);
+}

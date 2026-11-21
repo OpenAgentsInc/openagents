@@ -1,0 +1,16 @@
+// Read-only diagnostics of this client's own frame. No credentials or opponent state.
+#load "../../coax/lib/json/json.coax";
+GB_OBSERVE :: 119; // 115 is the world's descriptive note for chat
+GB_OBSERVE_FIELDS :: 55;
+gb_observation :: (v:[]int,out:[]u8)->int {
+  if v.count!=GB_OBSERVE_FIELDS {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"gamebuilder.observation.v1");
+  names:=[GB_OBSERVE_FIELDS]string.["sequence","time_ms","x_cm","y_cm","z_cm","ground_cm","yaw_mrad","pitch_mrad","distance_cm","kind","gravity_tenths","keys","selection","flying","game_type","placement_mode","room","pads_lit","pads_total","gate_open","rooms_cleared","room_resets","crate0_x_cm","crate0_z_cm","crate0_vx_cm","crate0_vz_cm","crate1_x_cm","crate1_z_cm","crate1_vx_cm","crate1_vz_cm","crate2_x_cm","crate2_z_cm","crate2_vx_cm","crate2_vz_cm","on_ground","vy_cm","vz_cm","air_jumps","course_ms","checkpoints","falls","finished","shards","race_s_cm","race_hint","race_fx_milli","race_fz_milli","race_speed_cm","race_lap","race_gate","race_done","race_backs","race_clock_ms","race_best_ms","race_light"];
+  for i:0..<GB_OBSERVE_FIELDS {jo_key(o[..],names[i]);jo_int(o[..],v[i]);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "the observer emits only its own allowlisted frame and refuses truncation" {
+  v:[GB_OBSERVE_FIELDS]int;v[3]=50;v[11]=16;b:[2048]u8;n:=gb_observation(v[..],b[..]);d:[1]Jv;nodes:[160]JvNode;
+  #assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_int(d[0],jv_get(d[0],0,"y_cm"),-1)==50;
+  #assert jv_get(d[0],0,"credentials")==-1 && jv_len(d[0],0)==GB_OBSERVE_FIELDS+1;
+  #assert gb_observation(v[0..<12],b[..])==-1 && gb_observation(v[..],b[0..<20])==-1;
+}

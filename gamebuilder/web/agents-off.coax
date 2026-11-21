@@ -1,0 +1,32 @@
+// /agents' place in the home page's module (web/site.coax; issue 30): the names web/page.coax asks of
+// web/agents.coax, each doing nothing. /agents is a page of its own module (web/site-agents.coax,
+// build/site-agents.wasm), which the browser loads only there, so the home page's first load carries
+// none of the chat with your agents. Here the link to /agents is followed as a link (gs_event: ga_here),
+// and /agents' address, if it ever comes, draws a link that loads it.
+//   scripts/web.sh check     (its checks are web/site.coax's)
+
+GsAgents :: struct { open: int = -1; }
+ga_here :: () -> bool { return false; }
+ga_open_game :: (g: [] GsAgents) -> int { return -1; }
+ga_ticks :: (g: [] GsAgents) -> bool { return false; }
+ga_fresh :: (g: [] GsAgents) { }
+ga_wants :: (g: [] GsAgents) -> bool { return false; }
+ga_door :: (g: [] GsAgents) -> string { return ""; }
+ga_body :: (g: [] GsAgents, out: [] u8) -> string { return ""; }
+ga_piece :: (g: [] GsAgents, bytes: [] u8) { }
+ga_end :: (g: [] GsAgents, status: int) { }
+ga_input :: (g: [] GsAgents, id: string, text: [] u8) -> bool { return false; }
+ga_press :: (g: [] GsAgents, id: string) -> bool { return false; }
+ga_row_of :: (id: string) -> int { return -1; }
+ga_open :: (g: [] GsAgents, k: int) { }
+gs_agents_tick :: (s: [] Site) { }
+gs_agents_press :: (s: [] Site, id: string) -> bool { return false; }
+gs_agents :: (s: [] Site, t: [] Tree) { go := tr_leaf(t, "agents.load", TG_A, "quiet", "agents"); tr_attr(t, go, AT_HREF, "/agents"); }
+
+#test "the home page's module holds no /agents: its link is followed, and nothing is asked for it" {
+  g: [1] GsAgents; b: [8] u8;
+  #assert !ga_here() && ga_open_game(g[..]) == -1 && !ga_ticks(g[..]) && !ga_wants(g[..]) && ga_door(g[..]) == "" && ga_body(g[..], b[..]) == "";
+  #assert !ga_input(g[..], "ga.say", b[..]) && !ga_press(g[..], "ga.send") && ga_row_of("ga.row.1") == -1;
+  ga_fresh(g[..]); ga_piece(g[..], b[..]); ga_end(g[..], 200); ga_open(g[..], 0);
+  #assert g[0].open == -1;
+}

@@ -1,0 +1,484 @@
+// Crates (docs/web-world.md, "Crates"): a game type that is its own world. A small walled lab room
+// seen from above (the engine's top-down camera kind): a dark floor of large tiles with lit seams,
+// walls, heavy crates, glowing pressure pads and a gate. Push every crate onto a pad (a crate at
+// rest on a pad lights it); every pad lit opens the gate; walking out through it is the next level
+// of the game. No sky: indoors, a soft light from overhead, the pads and the gate glowing (the
+// stylized look's glow, bloomed by the film passes).
+//
+// A room is the things of a level (AGENTS.md, "One way to make a game"; issue 2): its walls (the kind
+// wall: fixed blocks), its crates (plain blocks: here a block is a crate the person pushes), its pads
+// (the kind goal), its gate and where you start, which a person moves, sizes, adds and removes as
+// any other thing, on the website and in the app's editor. A new crates game has three levels, a
+// room each, from shared/game-types.coax gt_starter_level; nothing here holds a room of its own.
+// Each of those has a recorded solution (cr_solutions: the keys held, frame by frame at 60 a
+// second), which web/hud.coax replays through the real character and the real bodies in a check,
+// so every room a game starts with is known to be solvable. The crates and the walls are rigid
+// bodies of the engine's (physics/sim/bodies.coax), made by the HUD from the level's things as any
+// thing is, the crates pushed by the character as mover 1; the shut gate is the bodies' wall and
+// the character's collider.
+//
+// This file is the puzzle's own part: what the level's things make the room (cr_lay), a room
+// entered, what is lit and solved, the gate, the entrance (the walls rise out of the floor's grid
+// round you), the room's floor, pads and gate as a mesh (the engine's architecture kit), its light,
+// and what the page is told is here. web/hud.coax owns the frame, the camera, the character, the
+// bodies and the things' own meshes, and calls in here.
+// Axes: the page's (x east, z north, y up); what is drawn is turned to the engine's (x, y, -z).
+//   coax/bin/coax test web/world-crates.coax --library
+
+#load "../../metaverse-engine/physics/sim/bodies.coax";
+#load "../../metaverse-engine/render/shade/stylized-frame.coax";
+#load "../../metaverse-engine/arch/solid.coax";
+#load "../shared/game-types.coax";   // a new game's rooms (gt_starter_level), a tile and a crate's size
+
+CR_ROOMS :: GT_ROOMS;      // the rooms a new game starts with, a level each: the ones with a recorded solution
+CR_CELL :: 1.5;            // metres: a tile of the floor (the biggest starter room, 9 by 7, is in the top-down camera's view from its furthest)
+CR_WALL :: 2.4;            // metres: how high the gate stands, and a wall as it is made (over a jump's 1.67)
+CR_HALF :: 0.45;           // metres: half a crate's side, as it is made
+CR_DENSITY :: 400.0;       // kg a cubic metre: a crate is 292 kg, pushed along at about 2 m/s
+CR_FRICTION :: 0.5;
+CR_BOUNCE :: 0.05;
+CR_DROP :: 2.0;            // metres over the floor the first crate is put when the room is reset, to drop in
+CR_DROP_NEXT :: 0.6;       // and each one after it this much higher, so they land in turn
+CR_REACH :: 0.45;          // metres: a crate's middle this near a pad's, along both axes, is on it
+CR_REST :: 0.12;           // metres over its resting height a crate's middle may be and still be on the floor
+CR_SLOW :: 0.35;           // m/s: a crate going faster than this is passing over a pad, not resting on it
+CR_OPEN :: 0.8;            // seconds the gate takes to sink
+CR_RISE_AT :: 0.05;        // seconds into a room the first wall starts to rise
+CR_RISE_NEXT :: 0.015;     // seconds between one wall's start and the next's
+CR_RISE :: 0.5;            // seconds a wall takes to come up
+CR_LIGHTS :: 0.8;          // seconds the room's light takes to come on
+CR_FLASH :: 1.4;           // seconds the room's seams flash when it is solved (and, in a room with no gate, how long before the next level)
+CR_SEAM :: 0.05;           // metres: half a seam's width between two tiles
+CR_FLOOR :: 0.04;          // metres over the ground the floor's light lies (the tiles a little over it): clear of the ground part under it, whose two triangles are kilometres wide and a centimetre uncertain in depth
+CR_BARE :: 3.0;            // metres each way from the middle the floor is laid in a room with no wall, gate, pad or start
+CR_TILES :: 40;            // tiles the floor is laid across and along, at most (60 m: a room wider keeps its walls and loses its far floor)
+CR_GOALS :: 60;            // pads a room's rule reads (each a bit)
+// What a step of the rules says happened.
+CR_NONE :: 0; CR_SOLVED :: 1; CR_NEXT :: 2;
+
+// Each starter room's recorded solution: the keys held, as runs of frames at 60 a second (w north, s south,
+// a west, d east, two letters together a diagonal, x nothing), from the moment the crates have
+// landed, ending outside the gate. Recorded by walking the rooms (tools/crates-record.coax) and
+// replayed in web/hud.coax's check.
+cr_solutions :: () -> [CR_ROOMS] string {
+  return [CR_ROOMS] string.[CR_SOLUTION_0, CR_SOLUTION_1, CR_SOLUTION_2];
+}
+CR_SOLUTION_0 :: "d54x40sa1s11x6sa1x1sa1x2sa1x1sa1x2s1x2d11x6d1x1d1x2d1x1d1x2w41x40wd1d11x6wd1x1wd1x2wd1x1wd1x2wd1x1wd1x2wd1x1w1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2d17";
+CR_SOLUTION_1 :: "w24x6w1x1w1x2w1x1w1x2w1x1w1x2d11x6d1x1d1x2d1x1d1x2d1x1d1x2s76x40sa4a8x6sa1x1sa1x2sa1x1sa1x2sa1x1sa1x2s1x1s1x2s1x1s1x2s18x6s1x1s1x2s1x1s1x2s1x2d50x6d1x1d1x2d1x1d1x2d1x2w76x40sd1d11x6d1x1d1x2d1x1d1x2d1x2d17";
+CR_SOLUTION_2 :: "d125x40s11x6s1x1s1x2s1x1s1x2s1x1s1x2d11x6d1x1d1x2d1x1d1x2w76x40a11x6a1x1a1x2a1x1a1x2a1x2s12x6s1x1s1x2s1x1s1x2s1x2a25x6a1x1a1x2a1x1a1x2a1x2w24x6w1x1w1x2w1x1w1x2w1x2a12x6a1x1a1x2a1x1a1x2s41x40sa1a11x6sa1x1sa1x2sa1x1sa1x2sa1x1sa1x2sa1x1s1x2s1x1s1x2s1x1s1x2s1x2s5x5s1x2s1x1s1x2s1x1s1x2s1x1s1x2s1x1s1x2d148x40w11x6w1x1w1x2w1x1w1x2d11x6d1x1d1x2d1x1d1x2s76x40a11x6a1x1a1x2a1x1a1x2w12x6w1x1w1x2w1x1w1x2w1x2a25x6a1x1a1x2a1x1a1x2a1x2s24x6s1x1s1x2s1x1s1x2s1x2a12x6a1x1a1x2a1x1a1x2w41x40wa1a11x6wa1x1wa1x2wa1x1wa1x2wa1x1wa1x2wa1x1w1x2w1x1w1x2w1x1w1x2w1x2w5x5w1x2w1x1w1x2w1x1w1x2w1x1w1x2w1x1w1x2d148x40w12x6w1x1w1x2w1x1w1x2w1x2d24x6d1x1d1x2d1x1d1x2d1x2s11x6s1x1s1x2s1x1s1x2s1x2d17";
+
+
+// What a level's things make the room: where its walls and its gate reach (the floor is laid under
+// that), its pads' middles, its gate's foot and where you start. The HUD fills it from the level's
+// things (web/hud.coax hud_crates_lay); cr_room_of makes it of a starter's.
+CrRoom :: struct {
+  walled: bool; x0: f32; z0: f32; x1: f32; z1: f32;   // a wall or a gate stands: the least and most of their feet
+  goals: [CR_GOALS * 2] f32; ng: int;                 // each pad's middle, x then z
+  gated: bool; gate: [4] f32;                         // the gate's foot: low x, low z, high x, high z
+  started: bool; sx: f32; sz: f32;                    // where you start
+}
+CrPoint :: struct { x: f32; z: f32; }
+// A wall's or a gate's foot taken into where the room reaches.
+cr_reach :: (r: [] CrRoom, x0: f32, z0: f32, x1: f32, z1: f32) {
+  if !r[0].walled { r[0].walled = true; r[0].x0 = x0; r[0].z0 = z0; r[0].x1 = x1; r[0].z1 = z1; return; }
+  if x0 < r[0].x0 { r[0].x0 = x0; } if z0 < r[0].z0 { r[0].z0 = z0; } if x1 > r[0].x1 { r[0].x1 = x1; } if z1 > r[0].z1 { r[0].z1 = z1; }
+}
+// The room these things make (a level's, centimetres: shared/game-types.coax GtThing).
+cr_room_of :: (s: [] GtThing) -> CrRoom {
+  r: [1] CrRoom;
+  for g: s {
+    x := cast(f32) g.x * 0.01; z := cast(f32) g.z * 0.01; hw := cast(f32) g.w * 0.005; hd := cast(f32) g.d * 0.005;
+    if g.kind == GK_WALL { cr_reach(r[..], x - hw, z - hd, x + hw, z + hd); }
+    if g.kind == GK_GATE && !r[0].gated { r[0].gated = true; r[0].gate = [4] f32.[x - hw, z - hd, x + hw, z + hd]; cr_reach(r[..], x - hw, z - hd, x + hw, z + hd); }
+    if g.kind == GK_CRATE_GOAL && r[0].ng < CR_GOALS { r[0].goals[r[0].ng * 2] = x; r[0].goals[r[0].ng * 2 + 1] = z; r[0].ng += 1; }
+    if g.kind == GK_START && !r[0].started { r[0].started = true; r[0].sx = x; r[0].sz = z; }
+  }
+  return r[0];
+}
+// Level k (from 0) of a new game, as a room.
+cr_starter :: (k: int) -> CrRoom { s: [GT_STARTER_MAX] GtThing; n := gt_starter_level(GT_CRATES, k, s[..]); return cr_room_of(s[0..<n]); }
+
+Crates :: struct {
+  ok: bool;                  // a room is in
+  room: int; rooms: int;     // which level of its game it is, and of how many (the page or the app says: web/hud.coax HUD_ROOM_MSG)
+  r: [1] CrRoom;             // what the level's things make it
+  x0: f32; z0: f32; x1: f32; z1: f32;   // where its floor lies
+  out_x: f32; out_z: f32;    // the way out through the gate: one step east, west, north or south
+  clock: f32;                // seconds since it was entered: the entrance
+  lit: int;                  // the pads that hold a crate, as bits
+  solved: bool;              // every pad has been lit at once: the gate is open, and stays open
+  open: f32;                 // how far the gate has sunk, 0 to 1
+  won: f32;                  // seconds since it was solved
+  through: bool;             // you are out through the open gate: the next level is wanted (until a room is entered)
+  cleared: int;              // rooms solved and left since the world came up
+  resets: int;               // times this room was reset
+}
+
+cr_ease :: (t: f32) -> f32 { if t <= 0 { return 0; } if t >= 1 { return 1; } return t * t * (3 - 2 * t); }
+cr_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
+// A room entered: its clock at nothing, nothing lit, the gate shut. What it is made of is laid by cr_lay.
+cr_enter :: (c: [] Crates) {
+  c[0].ok = true; c[0].clock = 0; c[0].lit = 0; c[0].solved = false; c[0].open = 0; c[0].won = 0; c[0].through = false;
+  cr_lay(c, c[0].r[0]);
+}
+// The room is what these things make it (the level's things changed, or a room was entered): where
+// its floor lies and which way its gate leads out. What is lit and solved stays as it is.
+cr_lay :: (c: [] Crates, r: CrRoom) {
+  c[0].r[0] = r;
+  if r.walled { c[0].x0 = r.x0; c[0].z0 = r.z0; c[0].x1 = r.x1; c[0].z1 = r.z1; }
+  else {
+    // no wall and no gate: the floor lies under the pads and the start, and a little round them
+    mx: f32 = 0; mz: f32 = 0;
+    if r.started { mx = r.sx; mz = r.sz; } else if r.ng > 0 { mx = r.goals[0]; mz = r.goals[1]; }
+    c[0].x0 = mx - CR_BARE; c[0].x1 = mx + CR_BARE; c[0].z0 = mz - CR_BARE; c[0].z1 = mz + CR_BARE;
+    for g: 0..<r.ng {
+      if r.goals[g * 2] - CR_BARE < c[0].x0 { c[0].x0 = r.goals[g * 2] - CR_BARE; } if r.goals[g * 2] + CR_BARE > c[0].x1 { c[0].x1 = r.goals[g * 2] + CR_BARE; }
+      if r.goals[g * 2 + 1] - CR_BARE < c[0].z0 { c[0].z0 = r.goals[g * 2 + 1] - CR_BARE; } if r.goals[g * 2 + 1] + CR_BARE > c[0].z1 { c[0].z1 = r.goals[g * 2 + 1] + CR_BARE; }
+    }
+  }
+  // the way out: from the middle of the room towards the gate, along the side it is nearer
+  c[0].out_x = 0; c[0].out_z = 0;
+  if r.gated {
+    gx := (r.gate[0] + r.gate[2]) * 0.5 - (c[0].x0 + c[0].x1) * 0.5; gz := (r.gate[1] + r.gate[3]) * 0.5 - (c[0].z0 + c[0].z1) * 0.5;
+    hx := (c[0].x1 - c[0].x0) * 0.5; hz := (c[0].z1 - c[0].z0) * 0.5;
+    if cr_abs(gx) * hz >= cr_abs(gz) * hx { c[0].out_x = ifx gx < 0 then -1.0f32 else 1.0f32; } else { c[0].out_z = ifx gz < 0 then -1.0f32 else 1.0f32; }
+  }
+}
+// The room settled, with no entrance (a person who prefers reduced motion, a kept world come back):
+// its walls up, its light on.
+cr_settle :: (c: [] Crates) { if c[0].ok { c[0].clock = CR_RISE_AT + CR_RISE_NEXT * 256 + CR_RISE + CR_LIGHTS; } }
+// Where you start in the room: its start, or with none the middle of its floor.
+cr_start :: (c: [] Crates) -> CrPoint {
+  if c[0].r[0].started { return CrPoint.{x = c[0].r[0].sx, z = c[0].r[0].sz}; }
+  return CrPoint.{x = (c[0].x0 + c[0].x1) * 0.5, z = (c[0].z0 + c[0].z1) * 0.5};
+}
+// The middle of the room's floor, and half its size across and along: what the camera frames.
+cr_mid :: (c: [] Crates) -> CrPoint { return CrPoint.{x = (c[0].x0 + c[0].x1) * 0.5, z = (c[0].z0 + c[0].z1) * 0.5}; }
+cr_half :: (c: [] Crates) -> CrPoint { return CrPoint.{x = (c[0].x1 - c[0].x0) * 0.5, z = (c[0].z1 - c[0].z0) * 0.5}; }
+// Whether a body is a crate: a box that is not fixed (a plain block of the level's; a wall is fixed).
+cr_is :: (b: [] Bodies, i: int) -> bool { return b[0].kind[i] == Bd_Kind.box && !bd_fixed(b, i); }
+// How many pads are lit.
+cr_count :: (bits: int) -> int { n := 0; for k: 0..<CR_GOALS { if (bits & (1 << k)) != 0 { n += 1; } } return n; }
+// Whether you, at (x, z), have gone out through the gate: beyond its middle, the way out, within its width.
+cr_through :: (c: [] Crates, x: f32, z: f32) -> bool {
+  r := c[0].r[0];
+  if !r.gated { return false; }
+  gx := (r.gate[0] + r.gate[2]) * 0.5; gz := (r.gate[1] + r.gate[3]) * 0.5;
+  deep := ifx c[0].out_x != 0 then r.gate[2] - r.gate[0] else r.gate[3] - r.gate[1];
+  wide := ifx c[0].out_x != 0 then r.gate[3] - r.gate[1] else r.gate[2] - r.gate[0];
+  along := (x - gx) * c[0].out_x + (z - gz) * c[0].out_z;
+  across := (x - gx) * c[0].out_z + (z - gz) * c[0].out_x;
+  return along > 0 && along < deep * 1.5 && cr_abs(across) < wide * 0.5;
+}
+// The room's rules for one frame: which pads hold a crate at rest (on the floor, and slow), whether
+// that solves it (the gate opens and stays open), and whether you, at (px, pz), have gone out
+// through the open gate. What happened: CR_SOLVED the frame it is solved, CR_NEXT once you are
+// through (a room with no gate: CR_FLASH seconds after it is solved). A room with no pad is never solved.
+cr_step :: (c: [] Crates, b: [] Bodies, px: f32, pz: f32, step: f32) -> int {
+  if !c[0].ok { return CR_NONE; }
+  c[0].clock += step;
+  r := c[0].r[0];
+  lit := 0;
+  for i: 0..<bd_count(b) {
+    if !cr_is(b, i) { continue; }
+    p := b[0].set[0].pos[i]; v := b[0].set[0].vel[i];
+    if p.y > b[0].half[i].y + CR_REST || v.x * v.x + v.y * v.y + v.z * v.z > CR_SLOW * CR_SLOW { continue; }
+    for g: 0..<r.ng { if cr_abs(cast(f32) p.x - r.goals[g * 2]) <= CR_REACH && cr_abs(cast(f32) p.z - r.goals[g * 2 + 1]) <= CR_REACH { lit = lit | (1 << g); } }
+  }
+  c[0].lit = lit;
+  what := CR_NONE;
+  if !c[0].solved && r.ng > 0 && lit == (1 << r.ng) - 1 { c[0].solved = true; c[0].won = 0; what = CR_SOLVED; }
+  if c[0].solved {
+    c[0].won += step; c[0].open += step / CR_OPEN; if c[0].open > 1 { c[0].open = 1; }
+    if !c[0].through && (cr_through(c, px, pz) || (!r.gated && c[0].won > CR_FLASH)) { c[0].through = true; return CR_NEXT; }
+  }
+  return what;
+}
+// The room's own solid, as the engine's colliders want it (low x y z, high x y z, six floats a box,
+// the page's axes): its gate while it is shut. Its walls are the level's things, bodies as any. How many.
+cr_solids :: (c: [] Crates, out: [] f32) -> int {
+  if !c[0].ok || !c[0].r[0].gated || c[0].solved || out.count < 6 { return 0; }
+  g := c[0].r[0].gate;
+  out[0] = g[0]; out[1] = 0; out[2] = g[1]; out[3] = g[2]; out[4] = CR_WALL; out[5] = g[3];
+  return 1;
+}
+// How far wall `i` has risen, `seconds` into the room: one after another, each easing up.
+cr_risen :: (seconds: f32, i: int) -> f32 { return cr_ease((seconds - (CR_RISE_AT + CR_RISE_NEXT * cast(f32) i)) / CR_RISE); }
+// How bright the room's light is, `seconds` in: it comes on with the walls.
+cr_lights :: (seconds: f32) -> f32 { return cr_ease(seconds / CR_LIGHTS); }
+// How far the bare grid outside the room has gone: the picker's floor fades to nothing as the room comes up.
+cr_grid :: (c: [] Crates) -> f32 { return ifx c[0].ok then 1 - cr_lights(c[0].clock) else 1.0f32; }
+
+// A flat rectangle on the floor (the engine's axes), facing up.
+cr_sheet :: (p: [] ArchPen, x0: f32, z0: f32, x1: f32, z1: f32, y: f32) {
+  arch_quad(p, arch_at(x0, y, z1, 0, 1, 0, 0, 0), arch_at(x1, y, z1, 0, 1, 0, 1, 0), arch_at(x1, y, z0, 0, 1, 0, 1, 1), arch_at(x0, y, z0, 0, 1, 0, 0, 1));
+}
+cr_plate :: (p: [] ArchPen, x: f32, z: f32, half: f32, y: f32) { cr_sheet(p, x - half, z - half, x + half, z + half, y); }
+// The room's own mesh, with the engine's architecture kit, in the engine's axes: the floor (under each
+// tile a glowing sheet, and over it the tile itself a little smaller, so the seams between tiles
+// are lines of light: brighter for a moment when the room is solved), laid from the room's north
+// west corner under all its walls reach; the pads (a glowing ring: amber waiting, bright green
+// holding a crate, breathing); and the gate (a red bar across the way out, green and sinking once
+// the room is solved). The walls and the crates are the level's things: the HUD draws them
+// (web/hud.coax hud_build), a wall as far up as cr_risen says. `time` is the frame's clock, for the breathing.
+cr_mesh :: (c: [] Crates, p: [] ArchPen, time: f32) {
+  if !c[0].ok { return; }
+  r := c[0].r[0];
+  on := cr_lights(c[0].clock);
+  flash := ifx c[0].solved && c[0].won < CR_FLASH then 1 - c[0].won / CR_FLASH else 0.0f32;
+  breath := 0.5 + 0.5 * sin(time * 3.2);
+  // the floor: the light under the tiles, then the tiles
+  seam := on * (0.24 + 1.5 * flash);
+  cell := f32(CR_CELL);
+  for row: 0..<CR_TILES {
+    n1 := c[0].z1 - cast(f32) row * cell; n0 := n1 - cell;
+    if n1 <= c[0].z0 + 0.01 { break; }
+    if n0 < c[0].z0 { n0 = c[0].z0; }
+    for col: 0..<CR_TILES {
+      w0 := c[0].x0 + cast(f32) col * cell; w1 := w0 + cell;
+      if w0 >= c[0].x1 - 0.01 { break; }
+      if w1 > c[0].x1 { w1 = c[0].x1; }
+      arch_material(p, ARCH_M_GLOW, 0.25 * seam, 0.85 * seam, 1.0 * seam);
+      cr_sheet(p, w0, -n1, w1, -n0, CR_FLOOR);
+      if w1 - w0 > 2 * CR_SEAM && n1 - n0 > 2 * CR_SEAM {
+        arch_material(p, ARCH_M_SMOOTH, 0.085, 0.095, 0.115);
+        cr_sheet(p, w0 + CR_SEAM, -n1 + CR_SEAM, w1 - CR_SEAM, -n0 - CR_SEAM, CR_FLOOR + 0.02);
+      }
+    }
+  }
+  // the pads: a ring of light round a dark middle, and the middle lit too while a crate is on it
+  for k: 0..<r.ng {
+    held := (c[0].lit & (1 << k)) != 0;
+    g := on * (ifx held then 1.5f32 + 0.5 * breath else 0.75f32 + 0.25 * breath);
+    if held { arch_material(p, ARCH_M_GLOW, 0.2 * g, 1.0 * g, 0.55 * g); } else { arch_material(p, ARCH_M_GLOW, 1.0 * g, 0.55 * g, 0.1 * g); }
+    cr_plate(p, r.goals[k * 2], -r.goals[k * 2 + 1], 0.6, CR_FLOOR + 0.035);
+    if held { arch_material(p, ARCH_M_GLOW, 0.06 * g, 0.3 * g, 0.16 * g); } else { arch_material(p, ARCH_M_SMOOTH, 0.05, 0.05, 0.06); }
+    cr_plate(p, r.goals[k * 2], -r.goals[k * 2 + 1], 0.47, CR_FLOOR + 0.045);
+  }
+  // the gate: a bar of light across the way out, as high as the walls; open, it is green and sinks
+  if r.gated {
+    gate := r.gate;
+    tall := f32(CR_WALL) * cr_risen(c[0].clock, 0) * (1 - cr_ease(c[0].open));
+    if c[0].solved { arch_material(p, ARCH_M_GLOW, 0.15 * on, 1.3 * on, 0.5 * on); } else { arch_material(p, ARCH_M_GLOW, (1.0 + 0.3 * breath) * on, 0.16 * on, 0.1 * on); }
+    // (a bar a third of the gate thick, across the way out)
+    gx := ifx c[0].out_x != 0 then (gate[2] - gate[0]) / 3 else 0.0f32; gz := ifx c[0].out_z != 0 then (gate[3] - gate[1]) / 3 else 0.0f32;
+    if tall > 0.02 { arch_slab(p, gate[0] + gx, 0, -gate[3] + gz, gate[2] - gx, tall, -gate[1] - gz); }
+    // (the sill it stood on stays lit, so the way out is plain once it is open)
+    cr_sheet(p, gate[0] + 0.25, -gate[3] + 0.25, gate[2] - 0.25, -gate[1] - 0.25, CR_FLOOR + 0.035);
+  }
+}
+// The room's light: indoors. No air, no sky (black), no cloud, no haze, no grass; a soft cool light
+// from nearly overhead with soft shadows, and a little from all round, coming on as the room does.
+cr_look :: (c: [] Crates) -> StyLook {
+  l: StyLook; f := ifx c[0].ok then cr_lights(c[0].clock) else 0.0f32;
+  l.sun_x = 0.22; l.sun_y = 0.94; l.sun_z = -0.26; l.shadow = 0.7; l.band = 0.7;
+  l.sun_r = 0.62 * f; l.sun_g = 0.66 * f; l.sun_b = 0.74 * f;
+  l.sky_r = 0.2 * f; l.sky_g = 0.24 * f; l.sky_b = 0.32 * f;
+  l.ground_r = 0.06 * f; l.ground_g = 0.07 * f; l.ground_b = 0.1 * f;
+  l.haze_r = 0; l.haze_g = 0; l.haze_b = 0; l.haze = 0; l.haze_most = 0;
+  l.zenith_r = 0; l.zenith_g = 0; l.zenith_b = 0; l.horizon_r = 0; l.horizon_g = 0; l.horizon_b = 0;
+  l.cloud = 0; l.air = 0; l.lush = 0; l.sun_disc = 0;
+  return l;
+}
+// A number that changes whenever what the page is told of the room would: the room, its lit pads, whether it is solved.
+cr_state :: (c: [] Crates) -> int { return ifx !c[0].ok then 1 else ((c[0].room + 1) << 40) | ((c[0].r[0].ng + 1) << 32) | ((cr_count(c[0].lit) + 1) << 2) | (ifx c[0].solved then 2 else 0) | 1; }
+cr_put :: (out: [] u8, n: int, s: string) -> int { k := n; for ch: s { if k < out.count { out[k] = ch; k += 1; } } return k; }
+cr_put_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := ifx v < 0 then 0 else v;
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+// What is here, for the page's chat (the HUD tells the page; the model is told it with the world).
+cr_describe :: (c: [] Crates, out: [] u8) -> int {
+  rooms := ifx c[0].rooms > 0 then c[0].rooms else CR_ROOMS;
+  n := cr_put(out, 0, "a crate puzzle, seen from above. room ");
+  n = cr_put_int(out, n, c[0].room + 1); n = cr_put(out, n, " of "); n = cr_put_int(out, n, rooms);
+  n = cr_put(out, n, ". pads lit: "); n = cr_put_int(out, n, cr_count(c[0].lit)); n = cr_put(out, n, " of "); n = cr_put_int(out, n, c[0].r[0].ng);
+  if c[0].solved { n = cr_put(out, n, ifx c[0].r[0].gated then ". solved: the gate is open, walk out through it." else ". solved: there is no gate, the next room comes by itself."); }
+  else { n = cr_put(out, n, ifx c[0].ok && c[0].r[0].ng == 0 then ". this room has no pad: place a goal and it can be solved. R resets the room." else ". the gate is shut: push every crate onto a pad. R resets the room."); }
+  n = cr_put(out, n, " rooms cleared: "); n = cr_put_int(out, n, c[0].cleared); n = cr_put(out, n, ".");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks (the recorded solutions are replayed in web/hud.coax)
+
+cr_test_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+CrTest :: struct { c: [1] Crates; b: [1] Bodies; mesh: [4000 * ARCH_VERTEX_FLOATS] f32; }
+// Level k of a new game entered, its crates among the bodies as the HUD makes them (ids from 1, in the level's order), at rest.
+cr_test_in :: (t: [] CrTest, k: int) {
+  c := t[0].c[..]; b := t[0].b[..];
+  while bd_count(b) > 0 { gone := bd_remove(b, 0); }
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter_level(GT_CRATES, k, s[..]);
+  c[0].room = k; c[0].rooms = CR_ROOMS; c[0].r[0] = cr_room_of(s[0..<n]); cr_enter(c);
+  for i: 0..<n {
+    if s[i].kind != GK_BLOCK { continue; }
+    slot := bd_box(b, i + 1, d3(cast(f64) s[i].x * 0.01, CR_HALF, cast(f64) s[i].z * 0.01), DQ.{}, d3(CR_HALF, CR_HALF, CR_HALF), CR_DENSITY, CR_FRICTION, CR_BOUNCE);
+    bd_still(b, slot);
+  }
+}
+// Crate `i` (among the bodies) set down at rest at (x, z).
+cr_test_set :: (t: [] CrTest, i: int, x: f32, z: f32) { b := t[0].b[..]; bd_place(b, i, d3(cast(f64) x, CR_HALF, cast(f64) z), DQ.{}); bd_still(b, i); }
+
+#test "a new game's three levels are rooms: as many pads as crates, no room easier than the one before, a gate in the outer wall leading out, a start inside, nothing starting on a pad" {
+  last := 0;
+  for k: 0..<CR_ROOMS {
+    s: [GT_STARTER_MAX] GtThing; n := gt_starter_level(GT_CRATES, k, s[..]);
+    r := cr_room_of(s[0..<n]);
+    crates := 0; for i: 0..<n { if s[i].kind == GK_BLOCK { crates += 1; for g: 0..<r.ng { #assert cast(f32) s[i].x * 0.01 != r.goals[g * 2] || cast(f32) s[i].z * 0.01 != r.goals[g * 2 + 1]; } } }
+    #assert r.walled && r.gated && r.started && r.ng == crates && crates >= last && r.x1 - r.x0 <= 12 * CR_CELL && r.z1 - r.z0 <= 12 * CR_CELL;
+    last = crates;
+    // the room is centred on the middle of the level, the start inside it, the gate on its east side
+    #assert r.x0 == -r.x1 && r.z0 == -r.z1 && r.sx > r.x0 + CR_CELL && r.sx < r.x1 - CR_CELL && r.gate[2] == r.x1;
+    c: [1] Crates; c[0].r[0] = r; cr_enter(c[..]);
+    #assert c[0].ok && c[0].out_x == 1 && c[0].out_z == 0 && c[0].x0 == r.x0 && c[0].z1 == r.z1 && cr_start(c[..]).x == r.sx && cr_mid(c[..]).x == 0 && cr_half(c[..]).x == r.x1;
+  }
+  #assert last == 3 && cr_starter(0).ng == 1 && cr_starter(2).ng == 3;
+}
+#test "a room is what its things make it: a gate on any side leads out that way; with no start you start in the middle; with no wall the floor lies round the pads" {
+  c: [1] Crates; r := cr_starter(0);
+  // the gate moved to the north side
+  r.gate = [4] f32.[-0.75, r.z1 - 1.5, 0.75, r.z1]; cr_lay(c[..], r);
+  #assert c[0].out_x == 0 && c[0].out_z == 1;
+  r.gate = [4] f32.[r.x0, -0.75, r.x0 + 1.5, 0.75]; cr_lay(c[..], r); #assert c[0].out_x == -1 && c[0].out_z == 0;
+  r.gate = [4] f32.[-0.75, r.z0, 0.75, r.z0 + 1.5]; cr_lay(c[..], r); #assert c[0].out_x == 0 && c[0].out_z == -1;
+  r.started = false; cr_lay(c[..], r); #assert cr_start(c[..]).x == 0 && cr_start(c[..]).z == 0;
+  bare: CrRoom; bare.ng = 2; bare.goals[0] = 10; bare.goals[1] = 4; bare.goals[2] = 16; bare.goals[3] = 4;
+  cr_lay(c[..], bare);
+  #assert c[0].x0 == 10 - CR_BARE && c[0].x1 == 16 + CR_BARE && c[0].z0 == 4 - CR_BARE && c[0].z1 == 4 + CR_BARE && c[0].out_x == 0 && c[0].out_z == 0;
+  none: CrRoom; cr_lay(c[..], none); #assert c[0].x0 == -CR_BARE && c[0].x1 == CR_BARE;
+}
+#test "a crate at rest on a pad lights it; one passing over, or still in the air, does not; every pad lit opens the gate for good; then out through it the next level is wanted, once" #steps 400000000 {
+  t: [1] CrTest; c := t[0].c[..]; b := t[0].b[..];
+  cr_test_in(t[..], 1);
+  r := c[0].r[0];
+  #assert bd_count(b) == 2 && r.ng == 2 && cr_is(b, 0) && cr_is(b, 1);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 0 && !c[0].solved;
+  cr_test_set(t[..], 0, r.goals[2], r.goals[3]);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 2 && cr_count(c[0].lit) == 1;
+  // the other over its pad but still in the air, then on it but sliding fast: not lit
+  bd_place(b, 1, d3(cast(f64) r.goals[0], CR_HALF + 0.5, cast(f64) r.goals[1]), DQ.{});
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 2;
+  bd_place(b, 1, d3(cast(f64) r.goals[0], CR_HALF, cast(f64) r.goals[1]), DQ.{}); b[0].set[0].vel[1] = d3(1.0, 0, 0);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 2;
+  // at rest, a little off the pad's middle: lit, and that solves it, once
+  cr_test_set(t[..], 1, r.goals[0] + 0.4, r.goals[1] - 0.4);
+  out_x := r.gate[2] + 0.5; out_z := (r.gate[1] + r.gate[3]) * 0.5;
+  s: [12] f32;
+  #assert cr_solids(c, s[..]) == 1 && s[0] == r.gate[0] && s[2] == r.gate[1] && s[3] == r.gate[2] && s[5] == r.gate[3] && s[1] == 0 && s[4] == CR_WALL && cr_solids(c, s[0..<5]) == 0;
+  #assert cr_step(c, b, out_x - 4, out_z, 0.016) == CR_SOLVED && c[0].lit == 3 && c[0].solved && c[0].open > 0;
+  #assert cr_step(c, b, out_x - 4, out_z, 0.016) == CR_NONE && cr_solids(c, s[..]) == 0;
+  // a crate knocked off its pad afterwards: the pad goes dark, the gate stays open
+  cr_test_set(t[..], 1, 0, 3);
+  #assert cr_step(c, b, 0, 0, 0.5) == CR_NONE && c[0].lit == 2 && c[0].solved;
+  #assert cr_step(c, b, 0, 0, 0.5) == CR_NONE && c[0].open == 1 && !c[0].through;
+  // out through the gate: wanted once, and it stays wanted until a room is entered
+  #assert cr_step(c, b, out_x, out_z, 0.016) == CR_NEXT && c[0].through && cr_step(c, b, out_x, out_z, 0.016) == CR_NONE && c[0].through;
+  // beside the gate, or far beyond it, is not through it
+  #assert !cr_through(c, out_x, out_z + 1.0) && !cr_through(c, out_x + 3, out_z) && cr_through(c, out_x, out_z + 0.7);
+  // unsolved, standing outside the gate is nothing
+  cr_test_in(t[..], 1); #assert !c[0].through && cr_step(c, b, out_x, out_z, 0.016) == CR_NONE;
+  e: [1] Crates; #assert cr_step(e[..], b, 0, 0, 0.016) == CR_NONE && cr_solids(e[..], s[..]) == 0;
+}
+#test "a room is its things: a block built there is a crate that lights a pad; a pad added must hold a crate too; a fixed box (a wall) is no crate; a room with no pad is never solved; with no gate the next level comes by itself" #steps 400000000 {
+  t: [1] CrTest; c := t[0].c[..]; b := t[0].b[..];
+  cr_test_in(t[..], 1);
+  r := c[0].r[0];
+  cr_test_set(t[..], 0, r.goals[0], r.goals[1]); cr_test_set(t[..], 1, r.goals[2], r.goals[3]);
+  // a pad added at the north west tile: nothing on it, so the room is not solved
+  r.goals[4] = r.x0 + 2.25; r.goals[5] = r.z1 - 2.25; r.ng = 3; cr_lay(c, r);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 3 && !c[0].solved;
+  // a wall on it (fixed): still not; then a block built there, at rest on it: solved
+  w := bd_box(b, 77, d3(cast(f64) r.goals[4], 0.5, cast(f64) r.goals[5]), DQ.{}, d3(0.5, 0.5, 0.5), 0.0, 0.5, 0.0);
+  #assert !cr_is(b, w) && cr_step(c, b, 0, 0, 0.016) == CR_NONE && c[0].lit == 3;
+  gone := bd_remove(b, w);
+  k := bd_box(b, 78, d3(cast(f64) r.goals[4] + 0.3, 0.5, cast(f64) r.goals[5]), DQ.{}, d3(0.5, 0.5, 0.5), 400.0, 0.5, 0.0); bd_still(b, k);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_SOLVED && c[0].lit == 7 && c[0].solved;
+  o: [512] u8; n := cr_describe(c, o[..]);
+  #assert cr_test_has(cast(string) o[0..<n], "room 2 of 3. pads lit: 3 of 3. solved: the gate is open");
+  // no pad: never solved, and the words say why
+  cr_test_in(t[..], 0); r = c[0].r[0]; r.ng = 0; cr_lay(c, r);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_NONE && !c[0].solved;
+  n = cr_describe(c, o[..]); #assert cr_test_has(cast(string) o[0..<n], "pads lit: 0 of 0. this room has no pad: place a goal");
+  // no gate: solved, the next level is wanted once the flash is over, wherever you stand
+  cr_test_in(t[..], 0); r = c[0].r[0]; r.gated = false; cr_lay(c, r);
+  cr_test_set(t[..], 0, r.goals[0], r.goals[1]);
+  #assert cr_solids(c, o_f(t[..])) == 0 && cr_step(c, b, 0, 0, 0.016) == CR_SOLVED && cr_step(c, b, 0, 0, CR_FLASH * 0.5) == CR_NONE && cr_step(c, b, 0, 0, CR_FLASH) == CR_NEXT && c[0].through;
+  n = cr_describe(c, o[..]); #assert cr_test_has(cast(string) o[0..<n], "solved: there is no gate, the next room comes by itself.");
+}
+o_f :: (t: [] CrTest) -> [] f32 { return t[0].mesh[0..<12]; }
+#test "the entrance: the walls rise one after another and the light comes on; the grid outside goes as it does" {
+  #assert cr_risen(0, 0) == 0 && cr_risen(CR_RISE_AT, 0) == 0 && abs(cr_risen(CR_RISE_AT + CR_RISE * 0.5, 0) - 0.5) < 0.001 && cr_risen(CR_RISE_AT + CR_RISE, 0) == 1;
+  #assert cr_risen(CR_RISE_AT + CR_RISE_NEXT * 3, 3) == 0 && cr_risen(0.3, 3) < cr_risen(0.3, 2) && cr_risen(9, 20) == 1;
+  #assert cr_lights(0) == 0 && cr_lights(CR_LIGHTS) == 1 && cr_lights(CR_LIGHTS * 0.5) == 0.5;
+  t: [1] CrTest; c := t[0].c[..];
+  #assert cr_grid(c) == 1;
+  cr_test_in(t[..], 0);
+  dark := cr_look(c); #assert dark.sun_r == 0 && dark.sky_b == 0 && dark.air == 0 && dark.lush == 0 && dark.cloud == 0 && cr_grid(c) == 1;
+  c[0].clock = CR_LIGHTS;
+  lit := cr_look(c); #assert lit.sun_r > 0.5 && lit.sun_y > 0.9 && lit.sky_b > lit.sky_r && lit.zenith_b == 0 && lit.horizon_r == 0 && lit.haze == 0 && lit.air == 0 && lit.lush == 0 && cr_grid(c) == 0;
+  cr_settle(c); #assert cr_lights(c[0].clock) == 1 && cr_risen(c[0].clock, 200) == 1;
+}
+// How many of a mesh's vertices are of a material, and the brightest red, green and blue among them.
+CrSeen :: struct { n: int; r: f32; g: f32; b: f32; top: f32; }
+cr_test_seen :: (m: [] f32, n: int, material: int) -> CrSeen {
+  s: CrSeen;
+  for v: 0..<n { o := v * ARCH_VERTEX_FLOATS; if m[o + 6] != cast(f32) material { continue; } s.n += 1; if m[o + 9] > s.r { s.r = m[o + 9]; } if m[o + 10] > s.g { s.g = m[o + 10]; } if m[o + 11] > s.b { s.b = m[o + 11]; } if m[o + 1] > s.top { s.top = m[o + 1]; } }
+  return s;
+}
+#test "the room's mesh: tiles over their light under all the walls reach, pads that turn green and brighter under a crate, a red gate that turns green and sinks" #steps 400000000 {
+  t: [1] CrTest; c := t[0].c[..]; b := t[0].b[..]; m := t[0].mesh[..];
+  p: [1] ArchPen; arch_pen(p[..], m);
+  cr_mesh(c, p[..], 0); #assert p[0].n == 0;      // no room: nothing
+  cr_test_in(t[..], 0);
+  r := c[0].r[0]; tiles := 7 * 5;
+  // the moment it is entered: no light, the gate not up yet
+  arch_pen(p[..], m); cr_mesh(c, p[..], 0);
+  dark := cr_test_seen(m, p[0].n, ARCH_M_GLOW); stone := cr_test_seen(m, p[0].n, ARCH_M_SMOOTH);
+  #assert !p[0].full && dark.n == tiles * 6 + 6 + 6 && dark.g == 0 && stone.n == tiles * 6 + 6 && stone.top < 0.1;
+  // the room up: a waiting pad amber (more red than green), the gate red and as high as a wall
+  c[0].clock = 5;
+  arch_pen(p[..], m); cr_mesh(c, p[..], 0);
+  glow := cr_test_seen(m, p[0].n, ARCH_M_GLOW);
+  #assert !p[0].full && glow.n == tiles * 6 + 6 + 36 + 6 && glow.r >= 1.0 && glow.g < 1.0 && glow.top == CR_WALL;
+  waiting := p[0].n;
+  // the crate on the pad: the pad is green and brighter, and its middle glows too
+  cr_test_set(t[..], 0, r.goals[0], r.goals[1]);
+  #assert cr_step(c, b, 0, 0, 0.016) == CR_SOLVED;
+  arch_pen(p[..], m); cr_mesh(c, p[..], 0);
+  held := cr_test_seen(m, p[0].n, ARCH_M_GLOW);
+  #assert held.g > 1.2 && held.g > held.r && p[0].n == waiting;
+  // solved: the seams flash, then settle; the gate has sunk away (its bar is gone from the mesh)
+  flash := held.b;
+  for k: 0..<200 { e := cr_step(c, b, 0, 0, 0.016); }
+  arch_pen(p[..], m); cr_mesh(c, p[..], 0);
+  #assert c[0].open == 1 && c[0].won > CR_FLASH && p[0].n == waiting - 36 && cr_test_seen(m, p[0].n, ARCH_M_GLOW).b < flash;
+  // everything is drawn in the engine's axes: the page's north (z) is the engine's -z
+  far: f32 = 0;
+  for v: 0..<p[0].n { if m[v * ARCH_VERTEX_FLOATS + 2] < far { far = m[v * ARCH_VERTEX_FLOATS + 2]; } }
+  #assert far == -r.z1;
+  // a room a wall was moved out of by half a tile: the floor reaches it, its last tiles cut to fit
+  r.x1 += 0.75; cr_lay(c, r);
+  arch_pen(p[..], m); cr_mesh(c, p[..], 0);
+  east: f32 = 0; for v: 0..<p[0].n { if m[v * ARCH_VERTEX_FLOATS] > east { east = m[v * ARCH_VERTEX_FLOATS]; } }
+  #assert east == r.x1;
+}
+#test "what the page is told is here: the room of its game, its pads, the gate, and how to reset; and the state's number changes with each" {
+  t: [1] CrTest; c := t[0].c[..]; out: [512] u8;
+  #assert cr_state(c) == 1;
+  cr_test_in(t[..], 2);
+  n := cr_describe(c, out[..]); s := cast(string) out[0..<n]; a := cr_state(c);
+  #assert cr_test_has(s, "room 3 of 3") && cr_test_has(s, "pads lit: 0 of 3") && cr_test_has(s, "the gate is shut") && cr_test_has(s, "R resets the room") && cr_test_has(s, "rooms cleared: 0.") && n < 300;
+  c[0].lit = 5; d := cr_state(c); n = cr_describe(c, out[..]); #assert d != a && cr_test_has(cast(string) out[0..<n], "pads lit: 2 of 3");
+  c[0].lit = 7; c[0].solved = true; c[0].cleared = 2; n = cr_describe(c, out[..]); s = cast(string) out[0..<n];
+  #assert cr_state(c) != d && cr_test_has(s, "pads lit: 3 of 3") && cr_test_has(s, "the gate is open") && cr_test_has(s, "rooms cleared: 2.");
+  // a game of five levels, at its fourth
+  c[0].room = 3; c[0].rooms = 5; n = cr_describe(c, out[..]); #assert cr_test_has(cast(string) out[0..<n], "room 4 of 5");
+  cr_test_in(t[..], 0); #assert cr_state(c) != a && cr_state(c) != 1;
+}
