@@ -77,9 +77,20 @@ Psionic beats `llama.cpp` on **every single turn** — first tool call, second t
 
 \* *Memory accounting note:* `psionic-inkling-serve` maps the 16.4 GB GGUF read-only via `mmap` and wraps it directly in Metal with `newBufferWithBytesNoCopy` (`psionic/platform/metal-host.m`). macOS accounts file-backed pages in the unified page cache / GPU wired pool rather than private process RSS, so `ps -o rss=` reflects KV cache, batched prefill scratch buffers, and the reusable 176 MB BF16 staging buffer (~2.1 GiB at `B=1024`, ~5.0 GiB at `B=3072`). Both runtimes read from the same 16.4 GB checkpoint in unified memory.
 
+### C. Real Tier 2 Coding-Agent Evals (`evals/openagents-desktop/tier2/`)
+
+To verify end-to-end coding-agent correctness — not just speed — we ran all three single-turn coding tasks from `evals/openagents-desktop/tier2/tasks/` (`a1_fix_mean_off_by_one`, `a2_fix_slugify`, `a3_add_restock`) against both **Psionic Metal (`aec4315194`)** and **`llama.cpp` Metal (`29b52d3`, `--jinja`)** with real `Read`, `Write`, and `Bash` tool execution, prompt caching enabled on both backends, and the exact Tier 2 deterministic graders (restoring `test_*.py`, running `python3 -m unittest -q`, hidden edge-case assertions, and checking `test_*.py` unchanged). Both runs executed back-to-back under shared M5 Max GPU load:
+
+| Tier 2 Eval Task | Deterministic Graders | Psionic Metal (`aec4315194`) | `llama.cpp` Metal (`29b52d3`) | Result |
+| --- | --- | --- | --- | --- |
+| **`a1_fix_mean_off_by_one`** (`calc.py`) | `unittest` + `test_*.py` unchanged | **PASS** · **32.35 s** (3 turns, 278 tok) | PASS · 51.31 s (4 turns, 369 tok) | **Psionic 1.59× faster (-18.96 s)** |
+| **`a2_fix_slugify`** (`textutil.py`) | `unittest` + hidden `A  B--C?` case | **PASS** · **52.89 s** (3 turns, 386 tok) | PASS · 64.96 s (4 turns, 420 tok) | **Psionic 1.23× faster (-12.07 s)** |
+| **`a3_add_restock`** (`inventory.py`) | `unittest` + hidden `ValueError(-2)` | **PASS** · **29.93 s** (3 turns, 329 tok) | PASS · 64.17 s (5 turns, 708 tok) | **Psionic 2.14× faster (-34.24 s)** |
+| **Total (all 3 Tier 2 coding evals)** | **All public + hidden tests** | **3/3 PASS · 115.17 s** (993 tok) | **3/3 PASS · 180.44 s** (1,497 tok) | **Psionic 1.57× faster (-65.27 s)** |
+
 ---
 
-## 3. The 22-Sprint Optimization Journey (Commit by Commit)
+## 3. The 24-Sprint Optimization Journey (Commit by Commit)
 
 Every optimization was hypothesis-driven, profiled with GPU stage timings, and verified for exact greedy token parity before landing on `main`.
 
@@ -122,6 +133,12 @@ The initial native Metal runtime worked end-to-end and wired Inkling 2 Mini into
 - **Fix:** Raised the dynamic prefill chunk ceiling to `3072` for `max_ctx <= 8192` (`2048` up to `16384`, `1024` above) in `kernels.coax`, `inkling-metal.c`, and `inkling-serve.c` (`ac561624d4`), and sized SWA KV ring buffers to `min(max_ctx, hp->swa + s->prefill_b)` (`5e6b109baf`) so `K_KV_STORE_BATCH` never overwrites earlier keys in `[k_start, pos + nb)` before MMA prefill attention reads them.
 - **Impact:** Turn 3 prefill (2,296 tokens) jumped to **677–792 tok/s** (2.898–3.391 s vs `llama.cpp`'s 3.515–3.898 s / 589–653 tok/s), and the 3-turn agent session flipped to **30.67 s vs 44.16 s** to natural EOS (and **29.75 s vs 33.89 s**, **4.14 s faster** at matched token counts) with identical prompt token counts and identical tool calls.
 
+### Sprints 23–24 — `fca065f321`, `335225b5c4` & `aec4315194` (*Exact KV + Shortconv Prefix Caching, 96-Barrier Q8 Overlap & Fused Post-MoE Shortconv*)
+- **Exact cross-request KV + shortconv prefix caching (`fca065f321`):** Added `ink_prefix_save` / `ink_prefix_restore` in `inkling-metal.c` (snapshotting the 3.8 MB recurrent shortconv state + logits with an SWA ring-buffer wrap-safety check) and `cache_prompt` in `inkling-serve.c`. Verified **bit-for-bit exact** on both `reasoning_content` and `content`, cutting cached Turn 2 prefill **7.6×–9.1×** (`345 ms` vs `3,141 ms`).
+- **96-barrier dense Q8 BF16 dequant overlap (`fca065f321`):** Overlapped `Q/K/V/R/Gate` Q8→BF16 dequantization with `K_RMSNORM` (-48 barriers) and `attn_output` Q8→BF16 dequantization with `K_ATTN_VALUES_MMA` (-48 barriers).
+- **Fused post-MoE shortconv + residual (`335225b5c4`):** Fused `K_CONVOLVE_ADD` directly into `ink_moe_down_iq4`/`q8` (-48 dispatches & barriers/token on decode) and `K_CONVOLVE_ADD_BATCH` into `ink_moe_reduce_batch` (-48 dispatches, -48 barriers, and ~2.0 GB of `moe_out` traffic on 2.3K prefill).
+- **Reverted indirect MoE dispatch (`aec4315194`):** `dispatchThreadgroupsWithIndirectBuffer` stalled Metal's concurrent command encoder on Apple Silicon (~350 ms regression on short prompts); reverted to direct `CALL`.
+
 ---
 
 ## 4. What Didn't Work (M5 Max Hardware Lessons)
@@ -132,6 +149,7 @@ Not every hypothesis won. We benchmarked and reverted the following regressions 
 2. **Removing threadgroup `lut[16]` in `IQ4_NL` kernels:** Replacing the 16-entry TGEM lookup table with branchy scalar `ink_iq4_val` arithmetic was **~2× slower** on M5 Max. Keeping `lut[16]` in TGEM won decisively.
 3. **4-lane `ink_moe_down_iq4`:** While 4-lane coalescing sped up `ink_moe_gu_iq4` by +6.6%, applying it to `ink_moe_down_iq4` regressed decode from **3.78 ms → 6.01 ms** due to 4× `idx / blocks` divisions and `ink_half` conversions. Keeping 1-lane for `down` and 4-lane for `gu` + `m4` was optimal.
 4. **Larger Metal 4 tile `am_matmul_bf16(256, 64, 128)` & 16-row flattened `ink_dequant_iq4_exp_bf16`:** Both regressed prefill throughput compared to `(128, 64, 64)` and 8-row/TG 96-thread (`72/12=6`, `36/12=3` exact).
+5. **Metal indirect dispatch (`dispatchThreadgroupsWithIndirectBuffer`) inside `MTLDispatchTypeConcurrent`:** Intended to skip empty MoE tiles, but stalled Metal's concurrent command encoder on Apple Silicon (~350 ms regression on short prompts); reverted in `aec4315194`.
 
 ---
 
