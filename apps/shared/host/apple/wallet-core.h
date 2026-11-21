@@ -48,6 +48,8 @@ coax_t_WrpcVerdict wallet_rpc_spend_admit(
     int64_t fee_cap, int64_t daily_remaining, int64_t now, int64_t expires);
 int64_t wallet_rpc_http_status(coax_t_WrpcVerdict v);
 bool wallet_rpc_writes_receipt(coax_t_WrpcVerdict v);
+typedef struct oa_wallet_string { const uint8_t *data; int64_t count; } oa_wallet_string;
+oa_wallet_string wallet_rpc_schema_version(void);
 
 #ifdef __cplusplus
 }
