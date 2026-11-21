@@ -1,0 +1,210 @@
+// openagents mcp --domains executor (Executor W6.1, GitHub #13924):
+// Serves W2.2 Class-E compiled weight modules over standard MCP JSON-RPC 2.0 stdio
+// for Claude Code, Codex, Cursor, and Antigravity:
+//   - executor_run_module
+//   - executor_verify_diff
+//   - executor_validate_schema
+//   - executor_schedule_dag
+//   - executor_verify_trace
+
+ex_mcp_jint :: (text: string, key: string, fallback: int) -> int {
+  nb: [64] u8;
+  nn := mod_cat(nb[..], 0, "\""); nn = mod_cat(nb[..], nn, key); nn = mod_cat(nb[..], nn, "\":");
+  if nn > text.count { return fallback; }
+  pos := -1;
+  for i: 0..<text.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if text[i + j] != nb[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 || pos >= text.count { return fallback; }
+  i := pos;
+  while i < text.count && (text[i] == ' ' || text[i] == '\t') { i += 1; }
+  neg := false;
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  v := 0; seen := false;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); seen = true; i += 1; }
+  if !seen { return fallback; }
+  return ifx neg then -v else v;
+}
+
+ex_mcp_reply_ok :: (id_raw: string, result_json: string, out: [] u8) -> string {
+  n := mod_cat(out, 0, "{\"jsonrpc\":\"2.0\",\"id\":");
+  n = mod_cat(out, n, ifx id_raw.count > 0 then id_raw else "null");
+  n = mod_cat(out, n, ",\"result\":");
+  n = mod_cat(out, n, result_json);
+  n = mod_cat(out, n, "}");
+  return cast(string) out[0..<n];
+}
+
+ex_mcp_tool_text :: (id_raw: string, text_json_escaped: string, is_err: bool, out: [] u8) -> string {
+  n := mod_cat(out, 0, "{\"jsonrpc\":\"2.0\",\"id\":");
+  n = mod_cat(out, n, ifx id_raw.count > 0 then id_raw else "null");
+  n = mod_cat(out, n, ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"");
+  n = mod_cat(out, n, text_json_escaped);
+  n = mod_cat(out, n, "\"}],\"isError\":");
+  n = mod_cat(out, n, ifx is_err then "true" else "false");
+  n = mod_cat(out, n, "}}");
+  return cast(string) out[0..<n];
+}
+
+ex_mcp_id :: (line: string, out: [] u8) -> string {
+  nb := "\"id\":";
+  pos := -1;
+  if nb.count <= line.count {
+    for i: 0..<line.count - nb.count + 1 {
+      ok := true;
+      for j: 0..<nb.count { if line[i + j] != nb[j] { ok = false; break; } }
+      if ok { pos = i + nb.count; break; }
+    }
+  }
+  if pos < 0 { return ""; }
+  i := pos;
+  while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+  n := 0;
+  if i < line.count && line[i] == '"' {
+    out[n] = '"'; n += 1; i += 1;
+    while i < line.count && line[i] != '"' && n + 1 < out.count { out[n] = line[i]; n += 1; i += 1; }
+    if i < line.count && line[i] == '"' { out[n] = '"'; n += 1; }
+    return cast(string) out[0..<n];
+  }
+  while i < line.count && line[i] != ',' && line[i] != '}' && line[i] != ' ' && n < out.count { out[n] = line[i]; n += 1; i += 1; }
+  return cast(string) out[0..<n];
+}
+
+ex_mcp_tools_list :: (id_raw: string, out: [] u8) -> string {
+  b: [4096] u8;
+  n := mod_cat(b[..], 0, "{\"tools\":[");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_verify_diff\",\"description\":\"Verify unified-diff hunk bounds and context via compiled Class-E oa-exec-diff-verify weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"old_start\":{\"type\":\"integer\"},\"old_count\":{\"type\":\"integer\"},\"new_start\":{\"type\":\"integer\"},\"new_count\":{\"type\":\"integer\"},\"file_lines\":{\"type\":\"integer\"},\"matched_ctx\":{\"type\":\"integer\"},\"expected_ctx\":{\"type\":\"integer\"}},\"required\":[\"old_start\",\"old_count\",\"new_start\",\"new_count\",\"file_lines\",\"matched_ctx\",\"expected_ctx\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_validate_schema\",\"description\":\"Validate bounded tool-call arguments via compiled Class-E oa-exec-json-schema weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"has_path\":{\"type\":\"integer\"},\"path_len\":{\"type\":\"integer\"},\"max_path\":{\"type\":\"integer\"},\"has_old\":{\"type\":\"integer\"},\"old_len\":{\"type\":\"integer\"},\"has_new\":{\"type\":\"integer\"},\"new_len\":{\"type\":\"integer\"},\"max_body\":{\"type\":\"integer\"}},\"required\":[\"has_path\",\"path_len\",\"max_path\",\"has_old\",\"old_len\",\"has_new\",\"new_len\",\"max_body\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_schedule_dag\",\"description\":\"Evaluate DAG task readiness, cycle refusal, and slot score via compiled Class-E oa-exec-dep-sched weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"remaining_deps\":{\"type\":\"integer\"},\"has_cycle\":{\"type\":\"integer\"},\"running\":{\"type\":\"integer\"},\"max_slots\":{\"type\":\"integer\"},\"priority\":{\"type\":\"integer\"},\"blocked\":{\"type\":\"integer\"}},\"required\":[\"remaining_deps\",\"has_cycle\",\"running\",\"max_slots\",\"priority\",\"blocked\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_run_module\",\"description\":\"Verify and execute any digest-pinned module in ~/.openagents/modules/.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"module_id\":{\"type\":\"string\"},\"inputs\":{\"type\":\"string\"}},\"required\":[\"module_id\",\"inputs\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_verify_trace\",\"description\":\"Verify SHA-256 weight digest and conformance admission gate for an installed executor module.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"module_id\":{\"type\":\"string\"}},\"required\":[\"module_id\"]}}");
+  n = mod_cat(b[..], n, "]}");
+  return ex_mcp_reply_ok(id_raw, cast(string) b[0..<n], out);
+}
+
+ex_mcp_handle :: (line: string, out: [] u8) -> string {
+  idb: [64] u8; id_raw := ex_mcp_id(line, idb[..]);
+  mb: [64] u8; method := mod_jstr(line, "method", mb[..]);
+  if method == "notifications/initialized" || method == "notifications/cancelled" { return ""; }
+  if method == "initialize" {
+    return ex_mcp_reply_ok(id_raw, "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"openagents-executor\",\"version\":\"1.0.0-dev\"}}", out);
+  }
+  if method == "tools/list" {
+    return ex_mcp_tools_list(id_raw, out);
+  }
+  if method != "tools/call" {
+    return ex_mcp_tool_text(id_raw, "unsupported method", true, out);
+  }
+
+  nb: [64] u8; name := mod_jstr(line, "name", nb[..]);
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [131072] f64;
+  tb: [512] u8;
+
+  if name == "executor_verify_diff" {
+    m := mv_compile_diff_verify(la[..], ha[..], wa[..]);
+    inp := [7] int.[
+      ex_mcp_jint(line, "old_start", 0), ex_mcp_jint(line, "old_count", 0),
+      ex_mcp_jint(line, "new_start", 0), ex_mcp_jint(line, "new_count", 0),
+      ex_mcp_jint(line, "file_lines", 0), ex_mcp_jint(line, "matched_ctx", 0),
+      ex_mcp_jint(line, "expected_ctx", 0),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-diff-verify\\\",\\\"class\\\":\\\"E\\\",\\\"applicable\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"new_file_lines\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"delta\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_validate_schema" {
+    m := mv_compile_json_schema(la[..], ha[..], wa[..]);
+    inp := [8] int.[
+      ex_mcp_jint(line, "has_path", 0), ex_mcp_jint(line, "path_len", 0),
+      ex_mcp_jint(line, "max_path", 256), ex_mcp_jint(line, "has_old", 0),
+      ex_mcp_jint(line, "old_len", 0), ex_mcp_jint(line, "has_new", 0),
+      ex_mcp_jint(line, "new_len", 0), ex_mcp_jint(line, "max_body", 1024),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-json-schema\\\",\\\"class\\\":\\\"E\\\",\\\"valid\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"payload_bytes\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"within_cap\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_schedule_dag" {
+    m := mv_compile_dep_sched(la[..], ha[..], wa[..]);
+    inp := [6] int.[
+      ex_mcp_jint(line, "remaining_deps", 0), ex_mcp_jint(line, "has_cycle", 0),
+      ex_mcp_jint(line, "running", 0), ex_mcp_jint(line, "max_slots", 1),
+      ex_mcp_jint(line, "priority", 0), ex_mcp_jint(line, "blocked", 0),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-dep-sched\\\",\\\"class\\\":\\\"E\\\",\\\"ready\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"next_running\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"score\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_run_module" || name == "executor_verify_trace" {
+    rb: [1200] u8; root := mod_root(rb[..]);
+    mid_b: [128] u8; mid := mod_jstr(line, "module_id", mid_b[..]);
+    db: [1400] u8; dir := mod_resolve(root, mid, db[..]);
+    if dir.count == 0 { return ex_mcp_tool_text(id_raw, "module not found in ~/.openagents/modules/", true, out); }
+    m_out: [1] EvModel;
+    st := mod_verify_dir(dir, la[..], ha[..], wa[..], m_out[..]);
+    if st != MvStatus.ok { return ex_mcp_tool_text(id_raw, "admission gate refused module (tampered digest or failed conformance)", true, out); }
+    if name == "executor_verify_trace" {
+      n := mod_cat(tb[..], 0, "{\\\"verified\\\":true,\\\"weights\\\":");
+      n = mod_put_int(tb[..], n, m_out[0].n_weights);
+      n = mod_cat(tb[..], n, ",\\\"layers\\\":"); n = mod_put_int(tb[..], n, m_out[0].n_layers);
+      n = mod_cat(tb[..], n, "}");
+      return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+    }
+    ib: [256] u8; csv := mod_jstr(line, "inputs", ib[..]);
+    inps: [32] int; ni := mod_parse_csv_ints(csv, inps[..]);
+    if ni != m_out[0].n_inputs { return ex_mcp_tool_text(id_raw, "input count mismatch", true, out); }
+    outs: [32] int;
+    if mv_eval_model(m_out[0], inps[0..<ni], outs[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "forward pass failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"verified\\\":true,\\\"outputs\\\":[");
+    for k: 0..<m_out[0].n_outputs { if k > 0 { n = mod_cat(tb[..], n, ","); } n = mod_put_int(tb[..], n, outs[k]); }
+    n = mod_cat(tb[..], n, "]}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  return ex_mcp_tool_text(id_raw, "unknown executor tool", true, out);
+}
+
+ex_mcp_main :: () -> int {
+  line: [65536] u8; out: [65536] u8; wb: [65537] u8;
+  n := 0; quiet := 0;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { break; }
+    if b == -1 { quiet += 1; if quiet > 1000 { break; } continue; }
+    quiet = 0;
+    if b != '\n' {
+      if n < line.count { line[n] = cast(u8) b; n += 1; }
+      continue;
+    }
+    text := cast(string) line[0..<n];
+    n = 0;
+    if text.count == 0 { continue; }
+    ans := ex_mcp_handle(text, out[..]);
+    if ans.count == 0 { continue; }
+    m := copy(ans, wb[..]);
+    if m >= wb.count { continue; }
+    wb[m] = '\n';
+    if cxterm_write(wb[0..<m + 1]) != 0 { break; }
+  }
+  return EXIT_OK;
+}

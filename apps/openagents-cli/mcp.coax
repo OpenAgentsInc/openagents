@@ -660,7 +660,8 @@ mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if oasim.count == 0 { return fail(r, EXIT_FAIL, "mcp --domains device needs oasim (OpenAgents for Mac with Xcode): it is not beside this program or on PATH"); }
     return om_main(oasim);
   }
-  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm|device (labs tools come with #12634)"); }
+  if domains == "executor" { return ex_mcp_main(); }
+  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm|device|executor (labs tools come with #12634)"); }
   cfg := McpCfg.{read_only = args_has(a, "--read-only"), all = args_has(a, "--all"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
   if args_has(a, "--profile") || profile != "default" { cfg.profile = profile; }
   line: [MCP_LINE] u8; out: [MCP_OUT] u8; wb: [MCP_OUT + 1] u8;
@@ -690,6 +691,7 @@ mcp_usage :: () {
   print("%\n", "Agents:");
   print("%\n", "  mcp [--read-only] [--all] [--domains realm] [--origin URL]  the realm commands as MCP tools on stdio: the common ones, realm_find and realm_call (--all: every one)");
   print("%\n", "  mcp --domains device                                the iOS Simulator's tools (simulator_*) on stdio, as oasim mcp serves them");
+  print("%\n", "  mcp --domains executor                              the W2.2 compiled weight-module executor tools (executor_*) on stdio");
   print("%\n", "  skill realm [--install]                             the realm commands as a Claude skill (.claude/skills)");
   print("%\n", "");
 }
