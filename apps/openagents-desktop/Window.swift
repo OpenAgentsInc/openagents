@@ -387,6 +387,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 50: refreshGitDiff()
         case 51: openReviewCommentDialog()
         case 52: termAsked()
+        case 55: walletConnectOrCreate()
+        case 56: walletReceiveDialog()
+        case 57: walletSendDialog()
+        case 58: walletLimitDialog()
+        case 59: walletBackupDialog()
+        case 60: walletRefresh()
         case 40...43: fileAsked(what)
         default: break
         }

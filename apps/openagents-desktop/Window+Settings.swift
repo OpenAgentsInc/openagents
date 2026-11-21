@@ -189,6 +189,7 @@ extension CoderWindow {
         cd_settings_instructions(page, AgentInstructions.words)
         syncLocalModels()
         syncAntigravitySettings()
+        syncWalletSettings()
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }
