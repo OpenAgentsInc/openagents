@@ -820,6 +820,123 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
     }
 }
 
+// MARK: - Executor Release Auto-Distribution & Pylon Dashboard (W6.3, #13928)
+
+/// Signed `openagents.executor-release.v1` auto-distribution & local Pylon/settlement
+/// snapshot backed strictly by Coax `#authority` rules (`oa_dc_pylon_dashboard`,
+/// `oa_dc_exec_release_stage`, `oa_dc_exec_release_promote`, `oa_dc_exec_release_rollback`).
+enum ExecutorReleaseUpdater {
+    struct Snapshot {
+        let pylonState: String
+        let contributed: String
+        let settledSats: String
+        let releaseSummary: String
+        let details: String
+        let settledCount: Int
+        let verifiedTraces: Int
+        let trainingWindows: Int
+        let canPromote: Bool
+        let canRollback: Bool
+        let activeOnDisk: Bool
+    }
+
+    static var lastMessage: String?
+
+    static func snapshot(home: String = "") -> Snapshot {
+        var pyBuf = [UInt8](repeating: 0, count: 64)
+        var coBuf = [UInt8](repeating: 0, count: 128)
+        var saBuf = [UInt8](repeating: 0, count: 160)
+        var rlBuf = [UInt8](repeating: 0, count: 160)
+        var detBuf = [UInt8](repeating: 0, count: 2048)
+        var counts = [Int64](repeating: 0, count: 5)
+        let rc: Int64 = DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(home) { hStr in
+                DesktopCore.withByteBuf(&pyBuf) { pyV in
+                    DesktopCore.withByteBuf(&coBuf) { coV in
+                        DesktopCore.withByteBuf(&saBuf) { saV in
+                            DesktopCore.withByteBuf(&rlBuf) { rlV in
+                                DesktopCore.withByteBuf(&detBuf) { detV in
+                                    DesktopCore.withS64Buf(&counts) { cntV in
+                                        oa_dc_pylon_dashboard(hStr, pyV, coV, saV, rlV, detV, cntV)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        func cstr(_ b: [UInt8]) -> String {
+            let n = b.firstIndex(of: 0) ?? b.count
+            return String(decoding: b[0..<n], as: UTF8.self)
+        }
+        return Snapshot(
+            pylonState: cstr(pyBuf),
+            contributed: cstr(coBuf),
+            settledSats: cstr(saBuf),
+            releaseSummary: cstr(rlBuf),
+            details: cstr(detBuf),
+            settledCount: Int(counts[0]),
+            verifiedTraces: Int(counts[1]),
+            trainingWindows: Int(counts[2]),
+            canPromote: counts[3] == 1,
+            canRollback: counts[4] == 1,
+            activeOnDisk: rc == 1
+        )
+    }
+
+    static func stageSignedRelease(home: String = "", manifestPath: String, payloadPath: String, trustedPubkey: String) -> String? {
+        var errBuf = [UInt8](repeating: 0, count: 256)
+        let rc: Int64 = DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(home) { hStr in
+                DesktopCore.withCoaxString(manifestPath) { mStr in
+                    DesktopCore.withCoaxString(payloadPath) { pStr in
+                        DesktopCore.withCoaxString(trustedPubkey) { kStr in
+                            DesktopCore.withByteBuf(&errBuf) { eV in
+                                oa_dc_exec_release_stage(hStr, mStr, pStr, kStr, eV)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if rc == 0 { lastMessage = "Signed release verified & staged into Ch 224 shadow mode."; return nil }
+        let msg = DesktopCore.cString(from: errBuf)
+        lastMessage = "Refused: \(msg.isEmpty ? "code \(rc)" : msg)"
+        return lastMessage
+    }
+
+    static func promoteStaged(home: String = "") -> String? {
+        var errBuf = [UInt8](repeating: 0, count: 256)
+        let rc: Int64 = DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(home) { hStr in
+                DesktopCore.withByteBuf(&errBuf) { eV in
+                    oa_dc_exec_release_promote(hStr, eV)
+                }
+            }
+        }
+        if rc == 0 { lastMessage = "Promoted shadow-verified executor checkpoint atomically."; return nil }
+        let msg = DesktopCore.cString(from: errBuf)
+        lastMessage = "Promote refused: \(msg.isEmpty ? "code \(rc)" : msg)"
+        return lastMessage
+    }
+
+    static func rollbackActive(home: String = "") -> String? {
+        var errBuf = [UInt8](repeating: 0, count: 256)
+        let rc: Int64 = DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(home) { hStr in
+                DesktopCore.withByteBuf(&errBuf) { eV in
+                    oa_dc_exec_release_rollback(hStr, eV)
+                }
+            }
+        }
+        if rc == 0 { lastMessage = "Rolled back executor checkpoint atomically to pinned rollback target."; return nil }
+        let msg = DesktopCore.cString(from: errBuf)
+        lastMessage = "Rollback refused: \(msg.isEmpty ? "code \(rc)" : msg)"
+        return lastMessage
+    }
+}
+
 // MARK: - Hex Helpers
 
 extension Data {

@@ -1,0 +1,500 @@
+// #authority Signed Executor Release Verification & Ch 224 Shadow-to-Promote Policy
+// (Executor W6.3, GitHub #13928).
+//
+// Enforces end-to-end cryptographic and statistical admission for signed
+// `openagents.executor-release.v1` manifests (`ExwRelease`):
+// - Strict closed-schema JCS manifest validation (`exw_release_read`)
+// - Trusted release-signer allowlist (fail closed on empty/unknown signer)
+// - Real BIP-340 secp256k1 Schnorr signature verification over the canonical
+//   domain-separated signing digest (`openagents.executor-release.v1\n` + JCS)
+// - Real SHA-256 and exact byte-length verification over downloaded compact
+//   delta / adapter / module payloads
+// - Exact Ch 224 shadow-mode statistical gate (disagreement + 2-SE error margin,
+//   bit-identical to `psionic/lib/shadow.coax` and `psionic/tests/shadow_oracle.py`)
+//   paired with `release-promote.coax` atomic promotion & auto-rollback
+//
+//   coax/bin/coax test psionic/lib/peer/executor-release.coax
+//   coax/bin/coax mutate psionic/lib/peer/executor-release.coax --root-only
+#load "../executor-wire.coax";
+#load "release-promote.coax";
+#load "../../../coax/lib/crypto/schnorr_fast.coax";
+#authority;
+
+ErStatus :: enum u8 {
+  ok;
+  bad_manifest;
+  untrusted_signer;
+  bad_signature;
+  bad_payload_size;
+  bad_payload_sha256;
+  shadow_wait;
+  shadow_disagreement;
+  shadow_regression;
+  h7_not_qualified;
+  exactness_failed;
+}
+
+ErAction :: enum u8 {
+  hold;
+  promote;
+  rollback;
+}
+
+ErShadowVerdict :: enum u8 {
+  wait;
+  promote;
+  disagreement;
+  regression;
+}
+
+ErShadowRecord :: struct {
+  request: int;
+  active: u8;
+  candidate: u8;
+  outcome: int;
+}
+
+ErShadowReport :: struct {
+  ok: bool;
+  active: [32] u8;
+  candidate: [32] u8;
+  requests: int;
+  joined: int;
+  disagree: int;
+  active_wrong: int;
+  candidate_wrong: int;
+  rate: f64;
+  rate_bound: f64;
+  difference: f64;
+  difference_bound: f64;
+  verdict: ErShadowVerdict;
+}
+
+ErShadowResult :: struct {
+  status: ErStatus;
+  action: ErAction;
+  active_sha_id: int;
+  report: ErShadowReport;
+  report_digest: [32] u8;
+}
+
+er_hex_val :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return 10 + cast(int) (c - 'a'); }
+  return -1;
+}
+
+er_unhex :: (s: string, out: [] u8) -> bool #effects(all) {
+  if s.count != out.count * 2 { return false; }
+  for i: 0..<out.count {
+    hi := er_hex_val(s[2 * i]);
+    lo := er_hex_val(s[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) ((hi << 4) | lo);
+  }
+  return true;
+}
+
+er_sha256 :: (bytes: [] u8) -> [32] u8 #effects(all) {
+  out: [32] u8;
+  #assert sha256_hash_checked(bytes, out[..], false) == SHA_OK;
+  return out;
+}
+
+er_same32 :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
+  for i: 0..<32 {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+// Compute the canonical 32-byte SHA-256 signing digest covering every field of
+// ExwRelease except `signature`, prefixed by `EXW_SCHEMA_RELEASE` + "\n".
+er_signing_digest :: (r: [] ExwRelease, out_msg: [] u8) -> bool #export_c #effects(all) {
+  if r.count < 1 || out_msg.count < 32 { return false; }
+  if exw_release_valid(r) != ExwErr.ok { return false; }
+  x := r[0];
+  snames := EXW_STAGE_NAMES;
+  buf: [8192] u8;
+  n := 0;
+  for c: EXW_SCHEMA_RELEASE { buf[n] = c; n += 1; }
+  buf[n] = '\n'; n += 1;
+  o: [1] Jo;
+  jo_start(o[..], buf[n..<buf.count]);
+  jo_obj(o[..]);
+  jo_key(o[..], "artifacts"); jo_arr(o[..]);
+  for i: 0..<x.n_artifacts {
+    art := x.artifacts[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "artifact_id"); jo_str(o[..], art.artifact_id);
+    jo_key(o[..], "byte_count"); jo_int(o[..], art.byte_count);
+    jo_key(o[..], "sha256"); jo_str(o[..], art.sha256);
+    jo_key(o[..], "target_platform"); jo_str(o[..], art.target_platform);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "channel"); jo_str(o[..], x.channel);
+  jo_key(o[..], "checkpoint_sha256"); jo_str(o[..], x.checkpoint_sha256);
+  jo_key(o[..], "lineage_sha256"); jo_str(o[..], x.lineage_sha256);
+  jo_key(o[..], "max_shadow_disagree_ppm"); jo_int(o[..], x.max_shadow_disagree_ppm);
+  jo_key(o[..], "min_client_version"); jo_str(o[..], x.min_client_version);
+  jo_key(o[..], "published_at"); jo_int(o[..], x.published_at);
+  jo_key(o[..], "release_id"); jo_str(o[..], x.release_id);
+  jo_key(o[..], "rollback_target_sha256"); jo_str(o[..], x.rollback_target_sha256);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_RELEASE);
+  jo_key(o[..], "signer_pubkey"); jo_str(o[..], x.signer_pubkey);
+  jo_key(o[..], "stage"); jo_str(o[..], exw_enum_name(cast(int) x.stage, snames[..]));
+  jo_end(o[..]);
+  if o[0].bad { return false; } // mutant: equivalent (valid ExwRelease JCS <= 4.5 KiB always fits 8192-byte buffer)
+  return sha256_hash_checked(buf[0..<n + o[0].n], out_msg[0..<32], false) == SHA_OK;
+}
+
+er_signer_trusted :: (pubkey: string, trusted: [] string) -> bool #effects(all) {
+  if trusted.count < 1 || !exw_hex(pubkey, 64) { return false; }
+  for k: trusted {
+    if k == pubkey { return true; }
+  }
+  return false;
+}
+
+// Verify a signed `openagents.executor-release.v1` JSON manifest:
+// 1. Parse and validate closed schema via exw_release_read.
+// 2. Require signer_pubkey in trusted allowlist (fail closed).
+// 3. Verify real BIP-340 Schnorr signature over canonical signing digest.
+er_verify_release :: (
+  raw_manifest: string,
+  trusted: [] string,
+  out_rel: [] ExwRelease,
+  arena: [] u8
+) -> ErStatus #export_c #effects(all) {
+  if out_rel.count < 1 { return ErStatus.bad_manifest; }
+  e := exw_release_read(raw_manifest, out_rel, arena);
+  if e != ExwErr.ok { return ErStatus.bad_manifest; }
+  if !er_signer_trusted(out_rel[0].signer_pubkey, trusted) { return ErStatus.untrusted_signer; }
+  msg: [32] u8;
+  if !er_signing_digest(out_rel, msg[..]) { return ErStatus.bad_manifest; }
+  pub: [32] u8;
+  sig: [64] u8;
+  if !er_unhex(out_rel[0].signer_pubkey, pub[..]) || !er_unhex(out_rel[0].signature, sig[..]) {
+    return ErStatus.bad_signature;
+  }
+  if !schnorr_fast_verify_vartime(msg[..], pub[..], sig[..]) {
+    return ErStatus.bad_signature;
+  }
+  return ErStatus.ok;
+}
+
+// Verify downloaded compact delta / adapter / module payload bytes against
+// the signed ExwArtifact size and SHA-256 digest before staging or activation.
+er_verify_payload :: (art: ExwArtifact, payload: [] u8) -> ErStatus #export_c #effects(all) {
+  if exw_artifact_valid(art) != ExwErr.ok { return ErStatus.bad_manifest; }
+  if payload.count != art.byte_count { return ErStatus.bad_payload_size; }
+  want: [32] u8;
+  if !er_unhex(art.sha256, want[..]) { return ErStatus.bad_manifest; }
+  got := er_sha256(payload);
+  if !er_same32(got, want) { return ErStatus.bad_payload_sha256; }
+  return ErStatus.ok;
+}
+
+// Exact Ch 224 shadow-mode report (bit-identical to psionic/lib/shadow.coax sh_report):
+// disagreement over all requests, paired error difference over joined outcomes with
+// two-standard-error upper bounds.
+er_shadow_report :: (
+  active: [32] u8,
+  candidate: [32] u8,
+  records: [] ErShadowRecord,
+  max_disagree: f64,
+  max_margin: f64,
+  min_joined: int
+) -> ErShadowReport #effects(all) {
+  r := ErShadowReport.{active = active, candidate = candidate, requests = records.count};
+  if records.count == 0 || min_joined < 2 { return r; }
+  r.ok = true;
+  for x: records {
+    if x.active != x.candidate { r.disagree += 1; }
+    if x.outcome == -1 { continue; }
+    r.joined += 1;
+    if cast(int) x.active != x.outcome { r.active_wrong += 1; }
+    if cast(int) x.candidate != x.outcome { r.candidate_wrong += 1; }
+  }
+  n := f64(records.count);
+  r.rate = f64(r.disagree) / n;
+  r.rate_bound = r.rate + 2.0 * sqrt(r.rate * (1.0 - r.rate) / n);
+  if r.joined < min_joined { return r; }
+  j := f64(r.joined);
+  sum := 0.0;
+  squares := 0.0;
+  for x: records {
+    if x.outcome == -1 { continue; }
+    d := f64(ifx cast(int) x.candidate != x.outcome then 1 else 0) - f64(ifx cast(int) x.active != x.outcome then 1 else 0);
+    sum += d;
+    squares += d * d;
+  }
+  r.difference = sum / j;
+  r.difference_bound = r.difference + 2.0 * sqrt((squares - sum * sum / j) / (j - 1.0) / j);
+  if r.rate_bound > max_disagree { r.verdict = ErShadowVerdict.disagreement; }
+  else if r.difference_bound > max_margin { r.verdict = ErShadowVerdict.regression; }
+  else { r.verdict = ErShadowVerdict.promote; }
+  return r;
+}
+
+// Exact Ch 224 report digest (105 bytes: active[32] || candidate[32] || 5*LE64 || verdict[1]).
+er_shadow_report_digest :: (r: ErShadowReport) -> [32] u8 #effects(all) {
+  bytes: [105] u8;
+  for i: 0..<32 { bytes[i] = r.active[i]; bytes[32 + i] = r.candidate[i]; }
+  counts := [5] int.[r.requests, r.joined, r.disagree, r.active_wrong, r.candidate_wrong];
+  for c, k: counts {
+    for b: 0..<8 { bytes[64 + 8 * k + b] = cast,trunc(u8) (cast(u64) c >> cast(u64) (8 * b)); }
+  }
+  bytes[104] = cast(u8) r.verdict;
+  return er_sha256(bytes[..]);
+}
+
+// Evaluate a staged signed candidate in Ch 224 shadow mode beside the active
+// checkpoint, combining er_shadow_report bounds with release-promote.coax atomic
+// promotion and automatic rollback to rollback_target_sha.
+er_evaluate_shadow :: (
+  rel: [] ExwRelease,
+  active_sha_id: int,
+  cand_sha_id: int,
+  rollback_sha_id: int,
+  active_sha32: [32] u8,
+  cand_sha32: [32] u8,
+  records: [] ErShadowRecord,
+  qual: RpQual,
+  min_joined: int,
+  max_error_margin: f64,
+  canary_pct: int,
+  crash_bps: int,
+  max_crash_bps: int
+) -> ErShadowResult #export_c #effects(all) {
+  res := ErShadowResult.{status = ErStatus.bad_manifest, action = ErAction.hold, active_sha_id = active_sha_id};
+  if rel.count < 1 || exw_release_valid(rel) != ExwErr.ok { return res; }
+  max_dis := f64(rel[0].max_shadow_disagree_ppm) / 1000000.0;
+  rep := er_shadow_report(active_sha32, cand_sha32, records, max_dis, max_error_margin, min_joined);
+  if !rep.ok { return res; }
+  res.report = rep;
+  res.report_digest = er_shadow_report_digest(rep);
+
+  rp := [1] RpRelease.[rp_init(active_sha_id)];
+  st := rp_enter_canary(rp[..], cand_sha_id, rollback_sha_id, canary_pct, qual);
+  if st != RpStatus.ok {
+    if st == RpStatus.bad_signature { res.status = ErStatus.bad_signature; }
+    else if st == RpStatus.exactness_failed { res.status = ErStatus.exactness_failed; }
+    else if st == RpStatus.h7_not_qualified { res.status = ErStatus.h7_not_qualified; }
+    return res;
+  }
+
+  if rep.verdict == ErShadowVerdict.wait {
+    res.status = ErStatus.shadow_wait;
+    return res;
+  }
+
+  divs := ifx rep.verdict == ErShadowVerdict.promote then 0 else rep.disagree;
+  fst := rp_finalize_canary(rp[..], rep.joined, min_joined, divs, crash_bps, max_crash_bps);
+  if fst != RpStatus.ok {
+    res.status = ifx rep.verdict == ErShadowVerdict.disagreement then ErStatus.shadow_disagreement else ErStatus.shadow_regression;
+    res.action = ErAction.rollback;
+    res.active_sha_id = rp[0].active_sha;
+    return res;
+  }
+
+  res.status = ErStatus.ok;
+  res.action = ErAction.promote;
+  res.active_sha_id = rp[0].active_sha;
+  return res;
+}
+
+// ---- Checks (#test) ----
+// Independent Python BIP-340 oracle vector (d=3, aux=0^32) over canonical signing digest.
+ERT_PAYLOAD :: "openagents-executor-adapter-r3-payload-v1";
+ERT_PAYLOAD_SHA :: "5a03a076c47bcd164eb6f65dda14fcdd7d05eadd7fc06fcf95f23d54b82c0977";
+ERT_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+ERT_MSG :: "b1be444b2ccd3b940104e713e393f1c121829d1cd88c5affe52c22e9f16016b9";
+ERT_SIG :: "a1025d54d889f0886441b18b3afc177d2a1a765c26152723cb3865243631c46973105851a48acee641f0b85c6b7ec677f9ef3a62d852c829b8e6695e945b5fd6";
+ERT_CKPT :: "2222222222222222222222222222222222222222222222222222222222222222";
+ERT_LIN :: "3333333333333333333333333333333333333333333333333333333333333333";
+ERT_ROLL :: "1111111111111111111111111111111111111111111111111111111111111111";
+
+ert_sample_release :: () -> ExwRelease #effects(all) {
+  r := ExwRelease.{
+    n_artifacts = 1,
+    channel = "shadow",
+    checkpoint_sha256 = ERT_CKPT,
+    lineage_sha256 = ERT_LIN,
+    max_shadow_disagree_ppm = 250000,
+    min_client_version = "1.0.0",
+    published_at = 1795200000,
+    release_id = "exec-r3-v1",
+    rollback_target_sha256 = ERT_ROLL,
+    signature = ERT_SIG,
+    signer_pubkey = ERT_PUB,
+    stage = ExwRolloutStage.shadow,
+  };
+  r.artifacts[0] = ExwArtifact.{
+    artifact_id = "adapter-r3",
+    byte_count = 41,
+    sha256 = ERT_PAYLOAD_SHA,
+    target_platform = "macos-arm64",
+  };
+  return r;
+}
+
+#test "executor-release: hex helpers, canonical signing digest, BIP-340 verify, and tamper refusal (#13928)" #steps 100000000 {
+  #assert er_hex_val('0') == 0 && er_hex_val('9') == 9 && er_hex_val('a') == 10 && er_hex_val('f') == 15;
+  #assert er_hex_val('/') == -1 && er_hex_val(':') == -1 && er_hex_val('A') == -1 && er_hex_val('`') == -1 && er_hex_val('g') == -1;
+  out2: [2] u8;
+  #assert er_unhex("09af", out2[..]) && out2[0] == 9 && out2[1] == 0xaf;
+  #assert !er_unhex("09a", out2[..]) && !er_unhex("09ag", out2[..]) && !er_unhex("0gaf", out2[..]);
+
+  trusted := [1] string.[ERT_PUB];
+  other := [1] string.[ERT_ROLL];
+  bad_trusted := [1] string.["bad"];
+  #assert er_signer_trusted(ERT_PUB, trusted[..]);
+  #assert !er_signer_trusted(ERT_PUB, trusted[0..<0]);
+  #assert !er_signer_trusted(ERT_PUB, other[..]);
+  #assert !er_signer_trusted("bad", trusted[..]);
+  #assert !er_signer_trusted("bad", bad_trusted[..]);
+
+  r: [1] ExwRelease; r[0] = ert_sample_release();
+  msg: [32] u8;
+  #assert !er_signing_digest(r[0..<0], msg[..]);
+  #assert !er_signing_digest(r[..], msg[0..<31]);
+  bad_r := r; bad_r[0].release_id = "";
+  #assert !er_signing_digest(bad_r[..], msg[..]);
+  #assert er_signing_digest(r[..], msg[..]);
+  want_msg: [32] u8;
+  #assert er_unhex(ERT_MSG, want_msg[..]) && er_same32(msg, want_msg);
+  want_msg_bad := want_msg; want_msg_bad[31] ^= 1;
+  #assert !er_same32(msg, want_msg_bad);
+  want_msg_bad0 := want_msg; want_msg_bad0[0] ^= 1;
+  #assert !er_same32(msg, want_msg_bad0);
+
+  jbuf: [4096] u8;
+  wo := exw_release_write(r[..], jbuf[..]);
+  #assert wo.err == ExwErr.ok;
+  raw := cast(string) jbuf[0..<wo.len];
+  parsed: [1] ExwRelease; arena: [4096] u8;
+  #assert er_verify_release(raw, trusted[..], parsed[0..<0], arena[..]) == ErStatus.bad_manifest;
+  #assert er_verify_release("{}", trusted[..], parsed[..], arena[..]) == ErStatus.bad_manifest;
+  #assert er_verify_release(raw, trusted[0..<0], parsed[..], arena[..]) == ErStatus.untrusted_signer;
+  #assert er_verify_release(raw, other[..], parsed[..], arena[..]) == ErStatus.untrusted_signer;
+  #assert er_verify_release(raw, trusted[..], parsed[..], arena[..]) == ErStatus.ok;
+  #assert parsed[0].release_id == "exec-r3-v1" && parsed[0].checkpoint_sha256 == ERT_CKPT;
+
+  r_badsig := r;
+  r_badsig[0].signature = "b1025d54d889f0886441b18b3afc177d2a1a765c26152723cb3865243631c46973105851a48acee641f0b85c6b7ec677f9ef3a62d852c829b8e6695e945b5fd6";
+  wo2 := exw_release_write(r_badsig[..], jbuf[..]);
+  #assert wo2.err == ExwErr.ok;
+  #assert er_verify_release(cast(string) jbuf[0..<wo2.len], trusted[..], parsed[..], arena[..]) == ErStatus.bad_signature;
+
+  r_tam := r; r_tam[0].channel = "stable";
+  wo3 := exw_release_write(r_tam[..], jbuf[..]);
+  #assert wo3.err == ExwErr.ok;
+  #assert er_verify_release(cast(string) jbuf[0..<wo3.len], trusted[..], parsed[..], arena[..]) == ErStatus.bad_signature;
+
+  pl: [41] u8;
+  for i: 0..<41 { pl[i] = ERT_PAYLOAD[i]; }
+  #assert er_verify_payload(r[0].artifacts[0], pl[..]) == ErStatus.ok;
+  #assert er_verify_payload(r[0].artifacts[0], pl[0..<40]) == ErStatus.bad_payload_size;
+  bad_art := r[0].artifacts[0]; bad_art.artifact_id = "";
+  #assert er_verify_payload(bad_art, pl[..]) == ErStatus.bad_manifest;
+  pl_tam := pl; pl_tam[40] ^= 1;
+  #assert er_verify_payload(r[0].artifacts[0], pl_tam[..]) == ErStatus.bad_payload_sha256;
+}
+
+#test "executor-release: Ch 224 shadow report oracle parity, promote, wait & auto-rollback (#13928)" {
+  // Exact Ch 224 shadow_oracle.py golden check (psionic/lib/shadow.coax line 125-136)
+  a0: [32] u8; c0: [32] u8;
+  for i: 0..<32 { a0[i] = cast(u8) i; c0[i] = cast(u8) (32 + i); }
+  rows := [18] int.[0, 0, 0,  1, 2, 1,  2, 2, -1,  0, 1, 2,  1, 1, 1,  2, 0, 0];
+  orecs: [6] ErShadowRecord;
+  for k: 0..<6 {
+    orecs[k] = ErShadowRecord.{request = 10 + k, active = cast(u8) rows[3 * k], candidate = cast(u8) rows[3 * k + 1], outcome = rows[3 * k + 2]};
+  }
+  orep := er_shadow_report(a0, c0, orecs[..], 0.9, 0.5, 5);
+  #assert orep.ok && orep.requests == 6 && orep.joined == 5 && orep.disagree == 3 && orep.active_wrong == 2 && orep.candidate_wrong == 2;
+  #assert orep.rate == 0.5 && orep.rate_bound == 0.908248290463863 && orep.difference == 0.0 && orep.difference_bound == 0.6324555320336759;
+  #assert orep.verdict == ErShadowVerdict.disagreement;
+  want_dig: [32] u8;
+  #assert er_unhex("c2e74e0345095b618f6b3885dda50cc1406f3dc111dc6f026344f3019d5c0512", want_dig[..]);
+  #assert er_same32(er_shadow_report_digest(orep), want_dig);
+  #assert !er_shadow_report(a0, c0, orecs[..], 0.9, 0.5, 1).ok;
+  #assert er_shadow_report(a0, c0, orecs[..], 0.9, 0.5, 2).ok;
+  #assert er_shadow_report(a0, c0, orecs[..], 0.9, 0.5, 6).verdict == ErShadowVerdict.wait;
+  #assert er_shadow_report(a0, c0, orecs[..], 0.908248290463863, 0.6324555320336759, 5).verdict == ErShadowVerdict.promote;
+  #assert er_shadow_report(a0, c0, orecs[..], 1.0, 0.6324, 5).verdict == ErShadowVerdict.regression;
+  // Non-zero paired difference (candidate fixes 1 error out of 4 -> diff = -0.25, bound = 0.25)
+  better := [4] ErShadowRecord.[
+    ErShadowRecord.{active = 1, candidate = 0, outcome = 0},
+    ErShadowRecord.{active = 0, candidate = 0, outcome = 0},
+    ErShadowRecord.{active = 1, candidate = 1, outcome = 1},
+    ErShadowRecord.{active = 2, candidate = 2, outcome = 2},
+  ];
+  brep := er_shadow_report(a0, c0, better[..], 1.0, 0.25, 2);
+  #assert brep.verdict == ErShadowVerdict.promote && brep.difference == -0.25 && brep.difference_bound == 0.25 && brep.rate == 0.25;
+  #assert er_shadow_report(a0, c0, better[..], 1.0, 0.2499, 2).verdict == ErShadowVerdict.regression;
+  // Non-zero negative sum with |sum| = 2 so sum*sum != sum+sum (kills '*' -> '+' and '-' -> '+')
+  better2 := [4] ErShadowRecord.[
+    ErShadowRecord.{active = 1, candidate = 0, outcome = 0},
+    ErShadowRecord.{active = 1, candidate = 0, outcome = 0},
+    ErShadowRecord.{active = 1, candidate = 1, outcome = 1},
+    ErShadowRecord.{active = 2, candidate = 2, outcome = 2},
+  ];
+  brep2 := er_shadow_report(a0, c0, better2[..], 1.0, 0.08, 2);
+  #assert brep2.difference == -0.5 && brep2.difference_bound > 0.07 && brep2.difference_bound < 0.08;
+  big := ErShadowReport.{active = a0, candidate = c0, requests = 70000, joined = 65537, disagree = 300, active_wrong = 258, candidate_wrong = 1, verdict = ErShadowVerdict.regression};
+  want_big: [32] u8;
+  #assert er_unhex("5087a7ddaa41e4b572ef127f72623efb3ab1b171d688c907810eec147234c058", want_big[..]);
+  #assert er_same32(er_shadow_report_digest(big), want_big);
+
+  // Full shadow-to-promote & auto-rollback integration with release-promote.coax
+  r: [1] ExwRelease; r[0] = ert_sample_release();
+  a32: [32] u8; c32: [32] u8;
+  #assert er_unhex(ERT_ROLL, a32[..]) && er_unhex(ERT_CKPT, c32[..]);
+  q := RpQual.{
+    sig_ok = true, digest_ok = true,
+    base_pass_bps = 6800, cand_pass_bps = 7500, min_lift_bps = 500,
+    exact_replay_bps = 10000, crash_rate_bps = 0, max_crash_bps = 10,
+  };
+
+  clean: [20] ErShadowRecord;
+  for i: 0..<20 {
+    clean[i] = ErShadowRecord.{request = i, active = 1, candidate = 1, outcome = 1};
+  }
+  clean[0] = ErShadowRecord.{request = 0, active = 0, candidate = 1, outcome = 1};
+  ok_res := er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[..], q, 10, 0.10, 10, 0, 10);
+  #assert ok_res.status == ErStatus.ok && ok_res.action == ErAction.promote && ok_res.active_sha_id == 2000;
+  #assert ok_res.report.verdict == ErShadowVerdict.promote && er_same32(ok_res.report_digest, er_shadow_report_digest(ok_res.report));
+
+  #assert er_evaluate_shadow(r[0..<0], 1000, 2000, 1000, a32, c32, clean[..], q, 10, 0.10, 10, 0, 10).status == ErStatus.bad_manifest;
+  bad_r := r; bad_r[0].release_id = "";
+  #assert er_evaluate_shadow(bad_r[..], 1000, 2000, 1000, a32, c32, clean[..], q, 10, 0.10, 10, 0, 10).status == ErStatus.bad_manifest;
+  #assert er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[0..<0], q, 10, 0.10, 10, 0, 10).status == ErStatus.bad_manifest;
+
+  q_sig := q; q_sig.sig_ok = false;
+  rs := er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[..], q_sig, 10, 0.10, 10, 0, 10);
+  #assert rs.status == ErStatus.bad_signature && rs.action == ErAction.hold && rs.active_sha_id == 1000;
+  q_ex := q; q_ex.exact_replay_bps = 9999;
+  #assert er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[..], q_ex, 10, 0.10, 10, 0, 10).status == ErStatus.exactness_failed;
+  q_h7 := q; q_h7.cand_pass_bps = 7000;
+  #assert er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[..], q_h7, 10, 0.10, 10, 0, 10).status == ErStatus.h7_not_qualified;
+  #assert er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[..], q, 10, 0.10, 0, 0, 10).status == ErStatus.bad_manifest;
+
+  wait_res := er_evaluate_shadow(r[..], 1000, 2000, 1000, a32, c32, clean[0..<5], q, 10, 0.10, 10, 0, 10);
+  #assert wait_res.status == ErStatus.shadow_wait && wait_res.action == ErAction.hold && wait_res.active_sha_id == 1000;
+
+  disagree: [20] ErShadowRecord;
+  for i: 0..<20 {
+    disagree[i] = ErShadowRecord.{request = i, active = 1, candidate = ifx i < 10 then cast(u8) 2 else cast(u8) 1, outcome = 1};
+  }
+  dis_res := er_evaluate_shadow(r[..], 1000, 2000, 900, a32, c32, disagree[..], q, 10, 0.10, 10, 0, 10);
+  #assert dis_res.status == ErStatus.shadow_disagreement && dis_res.action == ErAction.rollback && dis_res.active_sha_id == 900;
+
+  r_wide := r; r_wide[0].max_shadow_disagree_ppm = 1000000;
+  reg_res := er_evaluate_shadow(r_wide[..], 1000, 2000, 900, a32, c32, disagree[..], q, 10, 0.05, 10, 0, 10);
+  #assert reg_res.status == ErStatus.shadow_regression && reg_res.action == ErAction.rollback && reg_res.active_sha_id == 900;
+
+  cr_res := er_evaluate_shadow(r[..], 1000, 2000, 900, a32, c32, clean[..], q, 10, 0.10, 10, 11, 10);
+  #assert cr_res.status == ErStatus.shadow_regression && cr_res.action == ErAction.rollback && cr_res.active_sha_id == 900;
+}

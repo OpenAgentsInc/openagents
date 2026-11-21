@@ -7,6 +7,19 @@ pl_live_time :: (created:int,opened:int,now:int)->bool #effects(all) {
   return created>=opened && created<=now+30;
 }
 pl_current :: (until:int,now:int,status:string)->bool #effects(all) {return until>now && status=="online";}
+pl_pool_newer :: (generated:int,held_generated:int,valid_until:int,now:int)->bool #effects(all) {
+  return generated>held_generated && valid_until>now && valid_until>=generated;
+}
+pl_sats_from_msat :: (msat:int)->int #effects(all) {
+  return ifx msat>=1000 then msat/1000 else 0;
+}
+pl_hex64 :: (s:string)->bool #effects(all) {
+  if s.count!=64 {return false;}
+  for c:s {
+    if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+  }
+  return true;
+}
 #test "beacon replacements never roll a generation or observation back" {
   #assert pl_newer(2,0,1,9);
   #assert pl_newer(1,2,1,1);
@@ -27,4 +40,21 @@ pl_current :: (until:int,now:int,status:string)->bool #effects(all) {return unti
   #assert !pl_current(99,100,"online");
   #assert !pl_current(101,100,"draining");
   #assert !pl_current(101,100,"");
+}
+#test "pool 30201 freshness, sat conversion and checkpoint hex64 checks (#13928)" {
+  #assert pl_pool_newer(100,99,101,100);
+  #assert pl_pool_newer(101,100,101,100);
+  #assert !pl_pool_newer(100,100,101,100);
+  #assert !pl_pool_newer(99,100,101,100);
+  #assert !pl_pool_newer(100,99,100,100);
+  #assert !pl_pool_newer(102,99,101,100);
+  #assert pl_sats_from_msat(0)==0 && pl_sats_from_msat(-1000)==0 && pl_sats_from_msat(999)==0 && pl_sats_from_msat(1000)==1 && pl_sats_from_msat(2500)==2;
+  ok64:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert pl_hex64(ok64);
+  #assert !pl_hex64(ok64[0..<63]);
+  #assert !pl_hex64("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !pl_hex64("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !pl_hex64("/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !pl_hex64(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !pl_hex64("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 }

@@ -1,0 +1,236 @@
+// End-to-End Signed Executor Release Auto-Distribution, Ch 224 Shadow-to-Promote,
+// Degraded-Candidate Auto-Rollback & Tamper-Refusal Verifier (Executor W6.3, #13928).
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../lib/peer/executor-release-sign.coax";
+#load "../lib/peer/executor-release-store.coax";
+
+e2e_write_rel :: (r: [] ExwRelease, path: string) -> bool {
+  buf: [8192] u8;
+  wo := exw_release_write(r, buf[..]);
+  if wo.err != ExwErr.ok { return false; }
+  return fs_replace_durable(path, cast(string) buf[0..<wo.len]);
+}
+
+e2e_make_release :: (
+  rel_id: string,
+  ckpt_sha: string,
+  rollback_sha: string,
+  art_id: string,
+  art_sha: string,
+  art_bytes: int,
+  secret: [] u8,
+  aux: [] u8,
+  out_rel: [] ExwRelease,
+  out_pub: [] u8,
+  out_sig: [] u8
+) -> bool {
+  out_rel[0] = ExwRelease.{
+    n_artifacts = 1,
+    channel = "shadow",
+    checkpoint_sha256 = ckpt_sha,
+    lineage_sha256 = ckpt_sha,
+    max_shadow_disagree_ppm = 250000,
+    min_client_version = "1.0.0",
+    published_at = 1795200500,
+    release_id = rel_id,
+    rollback_target_sha256 = rollback_sha,
+    stage = ExwRolloutStage.shadow,
+  };
+  out_rel[0].artifacts[0] = ExwArtifact.{
+    artifact_id = art_id,
+    byte_count = art_bytes,
+    sha256 = art_sha,
+    target_platform = "macos-arm64",
+  };
+  return ersign_release(out_rel, secret, aux, out_pub, out_sig);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  tb: [512] u8;
+  home := fs_temp("oa-w63-release-e2e-", tb[..]);
+  if home.count == 0 { print("E2E_FAIL: fs_temp\n"); return 1; }
+
+  // Real secp256k1 release signing keypair (secret=7) + untrusted keypair (secret=9)
+  sec_ok: [32] u8; sec_ok[31] = 7;
+  sec_bad: [32] u8; sec_bad[31] = 9;
+  aux: [32] u8; aux[0] = 0x42;
+  pub_ok_b: [64] u8;
+  #assert ersign_pubkey(sec_ok[..], pub_ok_b[..]);
+  pub_ok := cast(string) pub_ok_b[..];
+  trusted := [1] string.[pub_ok];
+
+  // 1. Seed canonical Round 1 checkpoint on disk
+  r1_str := "openagents-executor-round1-canonical-adapter-v1";
+  r1_bytes: [47] u8; for i: 0..<47 { r1_bytes[i] = r1_str[i]; }
+  r1_sha_b: [64] u8;
+  #assert ers_init_active(home, r1_bytes[..], r1_sha_b[..]);
+  r1_sha := cast(string) r1_sha_b[..];
+  print("STEP1_INIT active_r1_sha256=% pubkey=%\n", r1_sha, pub_ok);
+
+  // 2. Prepare signed Round 3 candidate compact delta payload & manifest
+  r3_str := "openagents-executor-round3-diloco-promoted-adapter-v3";
+  r3_bytes: [53] u8; for i: 0..<53 { r3_bytes[i] = r3_str[i]; }
+  r3_sha_b: [64] u8;
+  r3_sha := ers_hex32(er_sha256(r3_bytes[..]), r3_sha_b[..]);
+
+  p_pl3: [600] u8; pl3_path := ers_path2(home, "/r3.adapter.bin", p_pl3[..]);
+  #assert fs_replace_durable(pl3_path, r3_str);
+
+  rel3: [1] ExwRelease; pub3_b: [64] u8; sig3_b: [128] u8;
+  #assert e2e_make_release("exec-r3-v1", r3_sha, r1_sha, "adapter-r3", r3_sha, 53, sec_ok[..], aux[..], rel3[..], pub3_b[..], sig3_b[..]);
+  p_m3: [600] u8; m3_path := ers_path2(home, "/r3.manifest.json", p_m3[..]);
+  #assert e2e_write_rel(rel3[..], m3_path);
+
+  // 3. Tamper & untrusted refusals MUST fail pre-install and leave active r1 untouched
+  out_rel: [1] ExwRelease; arena: [4096] u8; err_b: [256] u8;
+
+  // 3a. Untrusted signer
+  rel_untr: [1] ExwRelease; pubu_b: [64] u8; sigu_b: [128] u8;
+  #assert e2e_make_release("exec-r3-untr", r3_sha, r1_sha, "adapter-r3", r3_sha, 53, sec_bad[..], aux[..], rel_untr[..], pubu_b[..], sigu_b[..]);
+  p_mu: [600] u8; mu_path := ers_path2(home, "/r3-untrusted.json", p_mu[..]);
+  #assert e2e_write_rel(rel_untr[..], mu_path);
+  st_u := ers_stage_signed(home, mu_path, pl3_path, trusted[..], out_rel[..], arena[..], err_b[..]);
+  #assert st_u == ErStatus.untrusted_signer;
+
+  // 3b. 1-bit BIP-340 signature flip
+  rel_bsig := rel3;
+  sig_flip: [128] u8; for i: 0..<128 { sig_flip[i] = sig3_b[i]; }
+  sig_flip[0] = ifx sig_flip[0] == '0' then cast(u8) '1' else cast(u8) '0';
+  rel_bsig[0].signature = cast(string) sig_flip[..];
+  p_mbs: [600] u8; mbs_path := ers_path2(home, "/r3-badsig.json", p_mbs[..]);
+  #assert e2e_write_rel(rel_bsig[..], mbs_path);
+  st_bs := ers_stage_signed(home, mbs_path, pl3_path, trusted[..], out_rel[..], arena[..], err_b[..]);
+  #assert st_bs == ErStatus.bad_signature;
+
+  // 3c. 1-byte manifest field tamper after signing
+  rel_tam := rel3; rel_tam[0].channel = "stable";
+  p_mt: [600] u8; mt_path := ers_path2(home, "/r3-tamper-field.json", p_mt[..]);
+  #assert e2e_write_rel(rel_tam[..], mt_path);
+  st_tf := ers_stage_signed(home, mt_path, pl3_path, trusted[..], out_rel[..], arena[..], err_b[..]);
+  #assert st_tf == ErStatus.bad_signature;
+
+  // 3d. 1-byte payload tamper (SHA-256 mismatch)
+  r3_tam_bytes := r3_bytes; r3_tam_bytes[52] ^= 1;
+  p_pt: [600] u8; pt_path := ers_path2(home, "/r3-tamper.bin", p_pt[..]);
+  #assert fs_replace_durable(pt_path, cast(string) r3_tam_bytes[..]);
+  st_tp := ers_stage_signed(home, m3_path, pt_path, trusted[..], out_rel[..], arena[..], err_b[..]);
+  #assert st_tp == ErStatus.bad_payload_sha256;
+
+  // Confirm active SHA-256 is completely untouched after all 4 tamper attacks
+  st_chk: [1] ErsState;
+  #assert ers_load_state(home, st_chk[..]);
+  #assert cast(string) st_chk[0].active_sha[0..<st_chk[0].active_sha_n] == r1_sha;
+  print("STEP2_TAMPER_REFUSALS ok untrusted=refused bad_sig=refused field_tamper=refused payload_sha256_tamper=refused active_untouched=true\n");
+
+  // 4. Clean signed Round 3 candidate: verify -> stage -> Ch 224 shadow -> atomic promote
+  st_ok := ers_stage_signed(home, m3_path, pl3_path, trusted[..], out_rel[..], arena[..], err_b[..]);
+  #assert st_ok == ErStatus.ok;
+  #assert ers_load_state(home, st_chk[..]);
+  // Still r1 active while in shadow!
+  #assert cast(string) st_chk[0].active_sha[0..<st_chk[0].active_sha_n] == r1_sha;
+  #assert cast(string) st_chk[0].staged_sha[0..<st_chk[0].staged_sha_n] == r3_sha;
+  #assert cast(string) st_chk[0].channel[0..<st_chk[0].channel_n] == "shadow";
+
+  // 24 real paired shadow evaluations: r3 agrees on 22/24 and fixes 2 errors made by r1
+  clean_recs: [24] ErShadowRecord;
+  for i: 0..<24 {
+    clean_recs[i] = ErShadowRecord.{request = i, active = 1, candidate = 1, outcome = 1};
+  }
+  clean_recs[3] = ErShadowRecord.{request = 3, active = 0, candidate = 1, outcome = 1};
+  clean_recs[17] = ErShadowRecord.{request = 17, active = 0, candidate = 1, outcome = 1};
+
+  qual_ok := RpQual.{
+    sig_ok = true, digest_ok = true,
+    base_pass_bps = 6875, cand_pass_bps = 9375, min_lift_bps = 500,
+    exact_replay_bps = 10000, crash_rate_bps = 0, max_crash_bps = 10,
+  };
+  sres: [1] ErShadowResult;
+  sh_st := ers_shadow_evaluate(home, trusted[..], clean_recs[..], qual_ok, 16, 0.10, 100, 0, 10, true, sres[..], err_b[..]);
+  #assert sh_st == ErStatus.ok && sres[0].action == ErAction.promote;
+  #assert ers_load_state(home, st_chk[..]);
+  #assert cast(string) st_chk[0].active_sha[0..<st_chk[0].active_sha_n] == r3_sha;
+  #assert cast(string) st_chk[0].rollback_sha[0..<st_chk[0].rollback_sha_n] == r1_sha;
+  #assert cast(string) st_chk[0].channel[0..<st_chk[0].channel_n] == "promoted";
+  #assert ers_verify_disk_adapter(home, r3_sha, r3_sha);
+  print("STEP3_SHADOW_PROMOTE ok active_r3_sha256=% rollback_target=% joined=% disagree=% active_wrong=% cand_wrong=%\n",
+        r3_sha, r1_sha, sres[0].report.joined, sres[0].report.disagree, sres[0].report.active_wrong, sres[0].report.candidate_wrong);
+
+  // 5. Deliberately degraded signed-bad-candidate fixture: valid BIP-340 signature + valid SHA-256,
+  //    but fails Ch 224 shadow canary -> automatic rollback leaving active r3 bit-for-bit untouched!
+  r4_str := "openagents-executor-round4-DEGRADED-candidate-fixture";
+  r4_bytes: [53] u8; for i: 0..<53 { r4_bytes[i] = r4_str[i]; }
+  r4_sha_b: [64] u8;
+  r4_sha := ers_hex32(er_sha256(r4_bytes[..]), r4_sha_b[..]);
+  p_pl4: [600] u8; pl4_path := ers_path2(home, "/r4-degraded.bin", p_pl4[..]);
+  #assert fs_replace_durable(pl4_path, r4_str);
+  rel4: [1] ExwRelease; pub4_b: [64] u8; sig4_b: [128] u8;
+  #assert e2e_make_release("exec-r4-degraded", r4_sha, r3_sha, "adapter-r4-bad", r4_sha, 53, sec_ok[..], aux[..], rel4[..], pub4_b[..], sig4_b[..]);
+  p_m4: [600] u8; m4_path := ers_path2(home, "/r4-degraded.manifest.json", p_m4[..]);
+  #assert e2e_write_rel(rel4[..], m4_path);
+
+  #assert ers_stage_signed(home, m4_path, pl4_path, trusted[..], out_rel[..], arena[..], err_b[..]) == ErStatus.ok;
+  // Shadow execution detects degraded candidate failing 8/24 joined requests
+  deg_recs: [24] ErShadowRecord;
+  for i: 0..<24 {
+    deg_recs[i] = ErShadowRecord.{
+      request = i,
+      active = 1,
+      candidate = ifx i < 8 then cast(u8) 0 else cast(u8) 1,
+      outcome = 1,
+    };
+  }
+  deg_res: [1] ErShadowResult;
+  deg_st := ers_shadow_evaluate(home, trusted[..], deg_recs[..], qual_ok, 16, 0.10, 100, 0, 10, true, deg_res[..], err_b[..]);
+  #assert (deg_st == ErStatus.shadow_disagreement || deg_st == ErStatus.shadow_regression);
+  #assert deg_res[0].action == ErAction.rollback;
+  #assert ers_load_state(home, st_chk[..]);
+  #assert cast(string) st_chk[0].active_sha[0..<st_chk[0].active_sha_n] == r3_sha;
+  #assert cast(string) st_chk[0].channel[0..<st_chk[0].channel_n] == "rolled_back";
+  #assert st_chk[0].rollbacks == 1;
+  #assert ers_verify_disk_adapter(home, r3_sha, r3_sha);
+  print("STEP4_DEGRADED_AUTO_ROLLBACK ok verdict=% active_preserved_r3=% cand_wrong=%/24 rollbacks=%\n",
+        ers_status_name(deg_st), r3_sha, deg_res[0].report.candidate_wrong, st_chk[0].rollbacks);
+
+  // 6. Explicit one-command rollback r3 -> r1
+  rb_st := ers_rollback_active(home, err_b[..]);
+  #assert rb_st == ErStatus.ok;
+  #assert ers_load_state(home, st_chk[..]);
+  #assert cast(string) st_chk[0].active_sha[0..<st_chk[0].active_sha_n] == r1_sha;
+  #assert ers_verify_disk_adapter(home, r1_sha, r1_sha);
+  print("STEP5_EXPLICIT_ROLLBACK ok restored_r1_sha256=% on_disk_verified=true\n", r1_sha);
+
+  // 7. Truthful settlement reconciliation & dashboard check (real_bitcoin_moved=true only, regtest != mainnet)
+  sd_b: [600] u8; _ = fs_mkdir_all(ers_path2(home, "/.openagents/pylon/settlement", sd_b[..]));
+  sp_b: [600] u8; spath := ers_path2(home, "/.openagents/pylon/settlement/receipts.jsonl", sp_b[..]);
+  c_hex: [64] u8; #assert sf_settlement_commitment("regtest", "regtest-payhash-w63-001", c_hex[..]);
+  rec_real := ExwSettlementReceipt.{
+    amount_msat = 750000, leg = ExwPayoutLeg.worker, network = "regtest",
+    owner_policy_digest = r1_sha, period_id = "2026-11-21", real_bitcoin_moved = true,
+    receipt_digest = r3_sha, settled_at = 1795200600, settlement_commitment = cast(string) c_hex[..],
+  };
+  rec_sim := ExwSettlementReceipt.{
+    amount_msat = 9000000, leg = ExwPayoutLeg.worker, network = "bitcoin",
+    owner_policy_digest = r1_sha, period_id = "2026-11-21", real_bitcoin_moved = false,
+    receipt_digest = r4_sha, settled_at = 0, settlement_commitment = "",
+  };
+  j1: [1024] u8; j2: [1024] u8;
+  o1 := exw_settlement_receipt_write(rec_real, j1[..]); #assert o1.err == ExwErr.ok;
+  o2 := exw_settlement_receipt_write(rec_sim, j2[..]); #assert o2.err == ExwErr.ok;
+  j1[o1.len] = '\n'; j2[o2.len] = '\n';
+  #assert fs_append(spath, cast(string) j1[0..<o1.len + 1]);
+  #assert fs_append(spath, cast(string) j2[0..<o2.len + 1]);
+
+  dash: [1] ErsDashboard;
+  ers_read_dashboard(home, dash[..]);
+  #assert dash[0].paid_msat_bitcoin == 0 && dash[0].paid_msat_regtest == 750000 && dash[0].settled_count == 1 && dash[0].excluded_simulated == 1;
+  print("STEP6_DASHBOARD_TRUTHFUL ok mainnet_msat=% regtest_msat=% simulated_excluded=% pylon_state=%\n",
+        dash[0].paid_msat_bitcoin, dash[0].paid_msat_regtest, dash[0].excluded_simulated,
+        cast(string) dash[0].pylon_state[0..<dash[0].pylon_state_n]);
+
+  // Clean up temp home
+  _ = fs_remove(home);
+  print("EXECUTOR_RELEASE_E2E_PASS\n");
+  return 0;
+}

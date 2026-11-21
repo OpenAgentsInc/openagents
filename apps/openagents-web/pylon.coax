@@ -1,6 +1,7 @@
-// A read-only Pylon board. Coax owns layout, sockets and projection. The
-// private C effects bridge runs the same immutable event through the shared
-// Coax verifier before delivering admitted beacon bytes or activity here.
+// A read-only Pylon & Executor Network board. Coax owns layout, sockets and projection.
+// The private C effects bridge runs every immutable event through the shared #authority
+// Coax verifier (landing-nostr.coax) before delivering admitted beacons, activity,
+// NIP-PYLON kind 30201 pool aggregates, or signed executor lineage events here.
 #load "splash.coax";
 #load "../../metaverse/hud.coax";
 #load "../../coax/lib/nostr/json.coax";
@@ -8,8 +9,10 @@
 #load "pylon-policy.coax";
 #load "connect-pylon-content.coax";
 PL_MAX :: 64;
+PL_INBOX_CAP :: 270336;
 PL_JOIN :: CP_JOIN;
 PL_REQ :: "[\"REQ\",\"pylons\",{\"kinds\":[30200],\"limit\":200},{\"kinds\":[26910,27010],\"since\":";
+PL_EXEC_REQ :: "[\"REQ\",\"pylons-exec\",{\"kinds\":[30201],\"#t\":[\"oa:pylon-pool:v2\"],\"limit\":64},{\"kinds\":[30210,30211,30212],\"limit\":64}]";
 PlRow :: struct {
   key:[64]u8;slug:[64]u8;slug_n:int;label:[64]u8;label_n:int;model:[128]u8;model_n:int;
   npub:[63]u8;npub_n:int;status:[16]u8;status_n:int;generation:int;observed:int;until:int;free:int;total:int;
@@ -17,8 +20,14 @@ PlRow :: struct {
 }
 Pylon :: struct {
   pipe:[1]Pipe;socket:int;connection:int;started:bool;epoch:int;opened:int;time:f32;retry:f32;
-  inbox:[270336]u8;pending_from:int;pending_n:int;pending_kind:int;
+  inbox:[PL_INBOX_CAP]u8;pending_from:int;pending_n:int;pending_kind:int;
   rows:[PL_MAX]PlRow;count:int;capacity:bool;refused:int;ids:[4096]u8;seen:int;answers:int;statuses:int;full:bool;
+  // Verified NIP-PYLON 30201 pool aggregate + reconciled Bitcoin totals (test networks strictly separated)
+  pool_count:int;pool_generated:int;pool_pylons:int;pool_jobs:int;pool_checks_pass:int;pool_checks_fail:int;
+  paid_msat_bitcoin:int;paid_msat_testnet:int;paid_msat_signet:int;paid_msat_regtest:int;
+  // Verified signed executor traces (30210), replay verdicts (30211), and checkpoint lineage (30212)
+  exec_seen:int;exec_ids:[4096]u8;exec_traces:int;exec_verdicts:int;
+  lineage_sha:[64]u8;lineage_sha_n:int;lineage_gen:int;h7_pass_bps:int;
   width:f32;height:f32;dpr:f32;scroll:f32;scroll_max:f32;down_y:f32;drag_y:f32;dragged:bool;down:bool;pressed:int;
   action:int;route:[1024]u8;route_n:int;copied:bool;
 }
@@ -62,6 +71,50 @@ pl_observed :: (p:[]Pylon,content:string,npub:string) #export_c #effects(all) {
   services:=pl_field(content,"services");j:[1]Json;json_start(j[..],services);begin:=json_next(j[..]);t:=json_next(j[..]);
   if t==JSON_OBJECT {a:=j[0].from;_:=json_skip(j[..]);r[0].model_n=pl_copy(r[0].model[..],pl_field(services[a..<j[0].at],"model"));}
 }
+// Called only after lr_pool_30201 verified BIP-340 signature + SHA-256 `x` tag.
+pl_pool_observed :: (p:[]Pylon,content:string) #export_c #effects(all) {
+  if pl_field(content,"v")!="openagents.pylon-pool.v2" {return;}
+  gen:=pl_number(pl_field(content,"generated_at"));
+  until:=pl_number(pl_field(content,"valid_until"));
+  if !pl_pool_newer(gen,p[0].pool_generated,until,pl_now(p)) {return;}
+  totals:=pl_field(content,"totals");
+  if totals.count<2 {return;}
+  p[0].pool_count+=1;
+  p[0].pool_generated=gen;
+  p[0].pool_pylons=pl_number(pl_field(totals,"pylons_online"));
+  jobs:=pl_field(totals,"jobs");
+  p[0].pool_jobs=pl_number(pl_field(jobs,"accepted"));
+  checks:=pl_field(totals,"checks");
+  p[0].pool_checks_pass=pl_number(pl_field(checks,"pass"));
+  p[0].pool_checks_fail=pl_number(pl_field(checks,"fail"));
+  paid:=pl_field(totals,"paid_msat");
+  p[0].paid_msat_bitcoin=pl_number(pl_field(paid,"bitcoin"));
+  p[0].paid_msat_testnet=pl_number(pl_field(paid,"testnet"));
+  p[0].paid_msat_signet=pl_number(pl_field(paid,"signet"));
+  p[0].paid_msat_regtest=pl_number(pl_field(paid,"regtest"));
+}
+// Called only after lr_verified_kind verified BIP-340 signature on the original event.
+pl_executor_observed :: (p:[]Pylon,kind:int,content:string,raw_event:string) #export_c #effects(all) {
+  id:=pl_field(raw_event,"id");
+  if id.count!=64 {return;}
+  for i:0..<p[0].exec_seen {if cast(string)p[0].exec_ids[i*64..<i*64+64]==id {return;}}
+  if p[0].exec_seen>=64 {return;}
+  for i:0..<64 {p[0].exec_ids[p[0].exec_seen*64+i]=id[i];}
+  p[0].exec_seen+=1;
+  if kind==30210 {p[0].exec_traces+=1;return;}
+  if kind==30211 {p[0].exec_verdicts+=1;return;}
+  if kind==30212 {
+    sha:=pl_field(content,"checkpoint_sha256");
+    if pl_hex64(sha) {
+      for i:0..<64 {p[0].lineage_sha[i]=sha[i];}
+      p[0].lineage_sha_n=64;
+      g:=pl_number(pl_field(content,"generation"));
+      if g>p[0].lineage_gen {p[0].lineage_gen=g;} // mutant: equivalent (re-assigning g when g == lineage_gen is a no-op)
+      h7:=pl_number(pl_field(content,"h7_pass_bps"));
+      if h7>0 && h7<=10000 {p[0].h7_pass_bps=h7;}
+    }
+  }
+}
 // Called only after lr_verify_public on the identical original. No public
 // Wasm export accepts a verified bit, key, count, or replacement row.
 pl_activity :: (p:[]Pylon,text:string) #export_c #effects(all) {
@@ -76,7 +129,7 @@ pl_activity :: (p:[]Pylon,text:string) #export_c #effects(all) {
   for i:0..<p[0].count {if cast(string)p[0].rows[i].key[..]==key {if kind==26910 {p[0].rows[i].answers+=1;}else {p[0].rows[i].statuses+=1;}}}
 }
 pl_receive :: (p:[]Pylon,kind:int,n:int)->int #export_c #effects(all) {
-  p[0].pending_kind=0;if n<0 || n>p[0].inbox.count {return 0;}text:=cast(string)p[0].inbox[0..<n];
+  p[0].pending_kind=0;if n<0 || n>PL_INBOX_CAP {return 0;}text:=cast(string)p[0].inbox[0..<n];
   if kind==600 && !p[0].started {
     p[0].epoch=cast(int)(fact_num(fact_of(text,"now"))/1000);p[0].opened=p[0].epoch;p[0].started=true;p[0].socket= -1;
     _:=pipe_open(p[0].pipe[..],"wss://relay.openagents.com");return 0;
@@ -84,14 +137,18 @@ pl_receive :: (p:[]Pylon,kind:int,n:int)->int #export_c #effects(all) {
   e:=socket_event(kind);if e.id!=p[0].socket {return 0;}
   if e.event==SOCKET_OPENED {
     p[0].connection=1;out:[256]u8;a:=json_raw(out[..],0,PL_REQ);a=json_write_int(out[..],a,p[0].opened);a=json_raw(out[..],a,"}]");
-    _:=pipe_send(p[0].pipe[..],e.id,cast(string)out[0..<a]);return 0;
+    _:=pipe_send(p[0].pipe[..],e.id,cast(string)out[0..<a]);
+    _:=pipe_send(p[0].pipe[..],e.id,PL_EXEC_REQ);
+    return 0;
   }
   if e.event==SOCKET_CLOSED || e.event==SOCKET_ERROR {p[0].connection= -1;p[0].retry=3;return 0;}
   if e.event!=SOCKET_FRAME || !json_valid(text) {return 0;}
   j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING {return 0;}
   command:=json_text(j[..]);if json_is(command,"CLOSED") {p[0].connection= -2;return 0;}
-  if !json_is(command,"EVENT") || json_next(j[..])!=JSON_STRING || !json_is(json_text(j[..]),"pylons") || json_next(j[..])!=JSON_OBJECT {return 0;}
-  a:=j[0].from;_:=json_skip(j[..]);b:=j[0].at;if json_next(j[..])!=JSON_ARRAY_END || json_next(j[..])!=JSON_END {return 0;}
+  if !json_is(command,"EVENT") || json_next(j[..])!=JSON_STRING {return 0;}
+  sub:=json_text(j[..]);
+  if (!json_is(sub,"pylons") && !json_is(sub,"pylons-exec")) || json_next(j[..])!=JSON_OBJECT {return 0;}
+  a:=j[0].from;_:=json_skip(j[..]);b:=j[0].at;if json_next(j[..])!=JSON_ARRAY_END {return 0;}
   p[0].pending_from=a;p[0].pending_n=b-a;p[0].pending_kind=pl_number(pl_field(text[a..<b],"kind"));return p[0].pending_kind;
 }
 pl_button :: (p:[]Pylon,i:int)->Box {d:=p[0].dpr;return Box.{x0=(24+cast(f32)i*150)*d,y0=188*d,x1=(164+cast(f32)i*150)*d,y1=230*d};}
@@ -103,59 +160,105 @@ pl_pointer :: (p:[]Pylon,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
   if phase==2 && p[0].down {p[0].down=false;if !p[0].dragged && p[0].pressed>=0 && inside(pl_button(p,p[0].pressed),x,y) {if p[0].pressed==0 {pl_route(p,PL_JOIN,2);p[0].copied=true;}else {pl_route(p,"/docs/connect-a-pylon",1);}}return true;}return false;
 }
 pl_wheel :: (p:[]Pylon,dy:f32) #export_c #effects(all) {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}
-pl_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,d:f32,k:Ink)->int {
-  at:=v;start:=0;line:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
-  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);at=write(d,out,at,text[start..<n],x,y+cast(f32)line*18*d,10*d,0.15,0.55,k2,false,false);if next[0]<=start {break;}start=next[0];line+=1;}return at;
-}
-pl_text_lines :: (text:string,width:f32,d:f32,k:Ink)->int {
-  start:=0;lines:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
-  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);lines+=1;if next[0]<=start {break;}start=next[0];}
-  return ifx lines>0 then lines else 1;
-}
-pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
-  p[0].width=w;p[0].height=h;p[0].dpr=d;if dt>0 {p[0].time+=dt;}
-  if p[0].connection== -1 {p[0].retry-=dt;if p[0].retry<=0 {p[0].connection=0;closed:=pipe_close(p[0].pipe[..],p[0].socket);_:=pipe_open(p[0].pipe[..],"wss://relay.openagents.com");}}
-  for i:0..<16 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[4]=1;v:=0;
-  white:=ink(0.6*d,0.95,3*d,0.95,0.95,0.95);muted:=ink(0.5*d,0.6,2*d,0.7,0.7,0.7);amber:=ink(0.6*d,0.95,3*d,1,0.62,0.16);left:=24*d;room:=w-48*d;
-  v=write(d,out,v,"PYLON",left,52*d,24*d,0.4,0.7,white,false,false);
-  status:=ifx still then "PYLON NETWORK" else ifx p[0].connection==1 then "LIVE RELAY" else ifx p[0].connection== -2 then "RELAY REFUSED / RELOAD" else "CONNECTING";
-  v=write(d,out,v,status,left,82*d,8*d,0.2,0.6,amber,false,false);
-  v=pl_text(out,v,"Lend a computer. Serve a native model.",left,116*d,room,d,white);
-  v=pl_text(out,v,"Elephant / 18.8 GB / GPU required",left,153*d,room,d,muted);
-  for i:0..<2 {b:=pl_button(p,i);v=hud(out,v,b,d,0,0,0.75,0.95,0.65,0.22);v=write(d,out,v,ifx i==0 then (ifx p[0].copied then "COPIED" else "COPY COMMAND") else "AGENT GUIDE",b.x0+12*d,b.y0+26*d,8*d,0.15,0.55,white,false,false);}
-  now:=pl_now(p);online:=0;for i:0..<p[0].count {r:=p[0].rows[i..<i+1];if pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]) {online+=1;}}
-  buf:[160]u8;n:=put_int(buf[..],0,online);n=put(buf[..],n," ONLINE     ");n=put_int(buf[..],n,p[0].answers);n=put(buf[..],n," ANSWERS     ");n=put_int(buf[..],n,p[0].statuses);n=put(buf[..],n," STATUS");
-  v=write(d,out,v,cast(string)buf[0..<n],left,270*d,8*d,0.15,0.55,amber,false,false);
-  v=pl_text(out,v,"Signed live activity since this page opened",left,296*d,room,d,muted);
-  y:=(336-p[0].scroll)*d;first:=v;
-  if p[0].count==0 {v=pl_text(out,v,"Waiting for a verified Pylon beacon",left,y+20*d,room,d,white);}
-  for i:0..<p[0].count {
-    r:=p[0].rows[i..<i+1];current:=pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]);tone:=ifx current then white else muted;
-    identity:=pl_display_identity(p,i);extra:=18*cast(f32)(pl_text_lines(identity,room,d,tone)-1)*d;row_height:=136*d+extra;
-    if y+row_height<316*d || y>h-120*d {y+=row_height;continue;}
-    name:=ifx r[0].label_n>0 then cast(string)r[0].label[0..<r[0].label_n] else cast(string)r[0].slug[0..<r[0].slug_n];
-    v=write(d,out,v,name,left,y+18*d,11*d,0.15,0.55,tone,false,false);
-    n=put_int(buf[..],0,r[0].free);n=put(buf[..],n,"/");n=put_int(buf[..],n,r[0].total);n=put(buf[..],n," slots   ");n=put_int(buf[..],n,ifx now>=r[0].observed then now-r[0].observed else 0);n=put(buf[..],n,"s ago");if !current {n=put(buf[..],n," / offline");}
-    v=pl_text(out,v,cast(string)buf[0..<n],left,y+46*d,room,d,muted);
-    v=pl_text(out,v,identity,left,y+69*d,room,d,tone);
-    keytone:=muted;keytone.sans=true;keytone.scale=d;
-    split:=ifx r[0].npub_n>32 then 32 else r[0].npub_n;
-    v=write(d,out,v,cast(string)r[0].npub[0..<split],left,y+102*d+extra,7*d,0.1,0.5,keytone,false,false);
-    if r[0].npub_n>split {v=write(d,out,v,cast(string)r[0].npub[split..<r[0].npub_n],left,y+116*d+extra,7*d,0.1,0.5,keytone,false,false);}
-    y+=row_height;
-  }
-  p[0].scroll_max=hi(0,(y+p[0].scroll*d-(h-125*d))/d);p[0].scroll=clamp(p[0].scroll,0,p[0].scroll_max);
-  // Clip the scrolling table, keeping the header and limitations visible.
-  for i:first..<v {at:=i*16;if out[at+1]<316*d || out[at+1]>h-120*d {out[at+6]=0;}}
-  caveat:=ifx p[0].full then "64-event live window full. Reload to reset." else ifx p[0].capacity then "64-machine view full." else "Demo network / no payments / demo keys";
-  v=pl_text(out,v,caveat,left,h-89*d,room,d,amber);
-  v=pl_text(out,v,"Pylons read requests. No private prompts or real keys.",left,h-53*d,room,d,muted);return v;
-}
-#test "display projection preserves original spans and does not accept another subscription" {
+#load "pylon-view.coax";
+#test "display projection preserves original spans, pool 30201 separation, and full receive state machine" {
   #assert pl_field("{\"x\":{\"a\":2},\"s\":\"hello\"}","x")=="{\"a\":2}";
   #assert pl_field("{\"x\":1}","missing")=="" && pl_number("31")==31;
-  p:[1]Pylon;p[0].socket=0;
-  sample:="[\"EVENT\",\"other\",{\"kind\":30200}]";for i:0..<sample.count {p[0].inbox[i]=sample[i];}
-  #assert pl_receive(p[..],257,sample.count)==0;
-  p[0].dpr=1;p[0].down=true;cancelled:=pl_pointer(p[..],40,200,POINTER_CANCEL);#assert !cancelled && !p[0].down;
+  // Pool 30201 projection & rejection paths
+  p:[1]Pylon;p[0].epoch=1795200000;
+  pl_pool_observed(p[..],"{\"v\":\"wrong\",\"generated_at\":1795200010,\"valid_until\":1795200300,\"totals\":{}}");
+  pl_pool_observed(p[..],"{\"v\":\"openagents.pylon-pool.v2\",\"generated_at\":1795200010,\"valid_until\":1795200300,\"totals\":1}");
+  #assert p[0].pool_count==0;
+  pl_pool_observed(p[..],"{\"v\":\"openagents.pylon-pool.v2\",\"generated_at\":1795200005,\"valid_until\":1795200300,\"totals\":{}}");
+  #assert p[0].pool_count==1 && p[0].pool_generated==1795200005;
+  pool_json:="{\"v\":\"openagents.pylon-pool.v2\",\"generated_at\":1795200010,\"valid_until\":1795200300,\"totals\":{\"pylons_online\":4,\"jobs\":{\"accepted\":12},\"checks\":{\"pass\":11,\"fail\":1},\"paid_msat\":{\"bitcoin\":1000,\"testnet\":2000,\"signet\":3000,\"regtest\":750000}}}";
+  pl_pool_observed(p[..],pool_json);
+  #assert p[0].pool_count==2 && p[0].pool_generated==1795200010 && p[0].pool_pylons==4 && p[0].pool_jobs==12;
+  #assert p[0].pool_checks_pass==11 && p[0].pool_checks_fail==1;
+  #assert p[0].paid_msat_bitcoin==1000 && p[0].paid_msat_testnet==2000 && p[0].paid_msat_signet==3000 && p[0].paid_msat_regtest==750000;
+  // Stale generation is ignored
+  pl_pool_observed(p[..],pool_json);
+  #assert p[0].pool_count==2;
+
+  // pl_receive full state machine
+  r:[1]Pylon;
+  // Out-of-bounds lengths
+  #assert pl_receive(r[..],600,-1)==0 && pl_receive(r[..],600,r[0].inbox.count+1)==0;
+  // kind 600 boot opens relay socket once
+  boot:="now=1795200000000";for i:0..<boot.count {r[0].inbox[i]=boot[i];}
+  #assert pl_receive(r[..],600,boot.count)==0 && r[0].started && r[0].epoch==1795200000 && r[0].opened==1795200000 && r[0].socket== -1 && r[0].pipe[0].n==1;
+  // Second kind 600 is ignored (does not reopen)
+  #assert pl_receive(r[..],600,boot.count)==0 && r[0].pipe[0].n==1;
+  // Wrong socket id ignored
+  r[0].socket=0;r[0].pipe[0].n=0;r[0].pipe[0].used=0;
+  #assert pl_receive(r[..],256+16,0)==0 && r[0].connection==0;
+  // SOCKET_OPENED sends BOTH PL_REQ and PL_EXEC_REQ
+  #assert pl_receive(r[..],256,0)==0 && r[0].connection==1 && r[0].pipe[0].n==2;
+  req0:=cast(string)r[0].pipe[0].buf[r[0].pipe[0].from[0]..<r[0].pipe[0].from[0]+r[0].pipe[0].len[0]];
+  req1:=cast(string)r[0].pipe[0].buf[r[0].pipe[0].from[1]..<r[0].pipe[0].from[1]+r[0].pipe[0].len[1]];
+  #assert req0=="[\"REQ\",\"pylons\",{\"kinds\":[30200],\"limit\":200},{\"kinds\":[26910,27010],\"since\":1795200000}]";
+  #assert req1==PL_EXEC_REQ;
+  // Exact inbox.count boundary accepted
+  r[0].connection=0;r[0].pipe[0].n=0;r[0].pipe[0].used=0;
+  #assert pl_receive(r[..],256,r[0].inbox.count)==0 && r[0].connection==1;
+  // SOCKET_CLOSED and SOCKET_ERROR schedule retry
+  #assert pl_receive(r[..],258,0)==0 && r[0].connection== -1 && r[0].retry==3;
+  r[0].connection=1;r[0].retry=0;
+  #assert pl_receive(r[..],259,0)==0 && r[0].connection== -1 && r[0].retry==3;
+  // SOCKET_FRAME parsing, CLOSED, unknown subs, malformed inputs, valid pylons & pylons-exec frames
+  bad_frames:=[10]string.["","{bad","{}","[1]","[\"NOTICE\",\"x\"]","[\"EVENT\",1]","[\"EVENT\",\"other\",{\"kind\":30200}]","[\"EVENT\",\"pylons\",1]","[\"EVENT\",\"pylons\",{\"kind\":30200},1]","[\"EVENT\",\"pylons\",{\"kind\":30200}]x"];
+  for bf: bad_frames {
+    for i:0..<bf.count {r[0].inbox[i]=bf[i];}
+    #assert pl_receive(r[..],257,bf.count)==0 && r[0].pending_kind==0;
+  }
+  closed_f:="[\"CLOSED\",\"pylons\",\"bye\"]";for i:0..<closed_f.count {r[0].inbox[i]=closed_f[i];}
+  #assert pl_receive(r[..],257,closed_f.count)==0 && r[0].connection== -2;
+  ev0:="[\"EVENT\",\"pylons\",{\"kind\":30200}]";for i:0..<ev0.count {r[0].inbox[i]=ev0[i];}
+  // Non-frame socket event with valid EVENT JSON in inbox must not parse as a frame
+  #assert pl_receive(r[..],260,ev0.count)==0 && r[0].pending_kind==0;
+  #assert pl_receive(r[..],257,ev0.count)==30200 && r[0].pending_kind==30200 && r[0].pending_from==18 && r[0].pending_n==14;
+  // Subsequent non-event call resets pending_kind to 0
+  #assert pl_receive(r[..],257,0)==0 && r[0].pending_kind==0;
+  ev1:="[\"EVENT\",\"pylons-exec\",{\"kind\":30201}]";for i:0..<ev1.count {r[0].inbox[i]=ev1[i];}
+  #assert pl_receive(r[..],257,ev1.count)==30201 && r[0].pending_kind==30201 && r[0].pending_from==23 && r[0].pending_n==14;
+  // Pointer cancel resets drag state
+  r[0].dpr=1;r[0].down=true;cancelled:=pl_pointer(r[..],40,200,POINTER_CANCEL);#assert !cancelled && !r[0].down;
+
+  // pl_executor_observed: deduplication, kind 30210/30211/30212, lineage bounds, and 64-entry cap
+  ex:[1]Pylon;
+  pl_executor_observed(ex[..],30210,"{}","{\"id\":\"short\"}");
+  #assert ex[0].exec_seen==0 && ex[0].exec_traces==0;
+  id1:="{\"id\":\"1111111111111111111111111111111111111111111111111111111111111111\"}";
+  id2:="{\"id\":\"2222222222222222222222222222222222222222222222222222222222222222\"}";
+  id3:="{\"id\":\"3333333333333333333333333333333333333333333333333333333333333333\"}";
+  id4:="{\"id\":\"4444444444444444444444444444444444444444444444444444444444444444\"}";
+  id5:="{\"id\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  id6:="{\"id\":\"6666666666666666666666666666666666666666666666666666666666666666\"}";
+  sha_a:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  sha_b:="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  pl_executor_observed(ex[..],30210,"{}",id1);
+  pl_executor_observed(ex[..],30210,"{}",id1); // duplicate ignored
+  #assert ex[0].exec_seen==1 && ex[0].exec_traces==1 && ex[0].exec_verdicts==0;
+  pl_executor_observed(ex[..],30211,"{}",id2);
+  pl_executor_observed(ex[..],30211,"{}",id2); // second-slot duplicate ignored (kills stride 64->65)
+  #assert ex[0].exec_seen==2 && ex[0].exec_verdicts==1;
+  // Invalid sha on 30212 leaves lineage unset
+  pl_executor_observed(ex[..],30212,"{\"checkpoint_sha256\":\"bad\",\"generation\":2,\"h7_pass_bps\":8000}",id3);
+  #assert ex[0].lineage_sha_n==0 && ex[0].lineage_gen==0 && ex[0].h7_pass_bps==0;
+  // Valid 30212 with h7_pass_bps=10000 boundary
+  pl_executor_observed(ex[..],30212,"{\"checkpoint_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"generation\":3,\"h7_pass_bps\":10000}",id4);
+  #assert ex[0].lineage_sha_n==64 && cast(string)ex[0].lineage_sha[..]==sha_a && ex[0].lineage_gen==3 && ex[0].h7_pass_bps==10000;
+  // Lower generation (2) does not overwrite gen, out-of-range h7 (10001) does not overwrite h7_pass_bps
+  pl_executor_observed(ex[..],30212,"{\"checkpoint_sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"generation\":2,\"h7_pass_bps\":10001}",id5);
+  #assert cast(string)ex[0].lineage_sha[..]==sha_b && ex[0].lineage_gen==3 && ex[0].h7_pass_bps==10000;
+  // h7_pass_bps=0 ignored, h7_pass_bps=1 accepted
+  pl_executor_observed(ex[..],30212,"{\"checkpoint_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"generation\":4,\"h7_pass_bps\":0}",id6);
+  #assert ex[0].lineage_gen==4 && ex[0].h7_pass_bps==10000;
+  id7:="{\"id\":\"7777777777777777777777777777777777777777777777777777777777777777\"}";
+  pl_executor_observed(ex[..],30212,"{\"checkpoint_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"generation\":5,\"h7_pass_bps\":1}",id7);
+  #assert ex[0].lineage_gen==5 && ex[0].h7_pass_bps==1;
+  // 64-entry cap refuses new event when full
+  ex[0].exec_seen=64;
+  pl_executor_observed(ex[..],30210,"{}","{\"id\":\"8888888888888888888888888888888888888888888888888888888888888888\"}");
+  #assert ex[0].exec_seen==64 && ex[0].exec_traces==1;
 }

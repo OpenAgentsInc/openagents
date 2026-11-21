@@ -22,10 +22,10 @@
 
 #load "action.coax";
 
-MC_TEXT_REMINDER :: "\n\n# Reply format\n\nReply with exactly one JSON object and nothing else (no prose, no code fences), with these members: rationale (string), commands (array of shell commands as strings), view (array of file paths), finished (boolean), reply (string), ask (\"none\" or \"question\"). Example: {\"rationale\": \"See what is here.\", \"commands\": [\"ls -la\"], \"view\": [], \"finished\": false, \"reply\": \"\", \"ask\": \"none\"}\n";
+MC_TEXT_REMINDER :: "\n\n# Reply format\n\nReply with exactly one JSON object and nothing else (no prose, no code fences), with these members: rationale (string), edits (array of exact-replacement objects with string fields path, old, and new), commands (array of shell commands as strings), view (array of file paths), finished (boolean), reply (string), ask (\"none\" or \"question\"). Example: {\"rationale\": \"See what is here.\", \"edits\": [], \"commands\": [\"ls -la\"], \"view\": [], \"finished\": false, \"reply\": \"\", \"ask\": \"none\"}\n";
 
 MC_SCRIPT_KEYS :: [5] string.["bash", "command", "cmd", "script", "run"];
-MC_ACTION_KEYS :: [4] string.["commands", "finished", "rationale", "reply"];
+MC_ACTION_KEYS :: [5] string.["edits", "commands", "finished", "rationale", "reply"];
 
 // text after the last </think>, or all of it.
 mc_without_reasoning :: (text: string) -> string {
@@ -106,6 +106,7 @@ mc_normalize :: (ar: [] ClArena, obj: string, out: [] u8, why: [] string) -> str
   if c.ok { n[0] = mc_flatten(cl_json(obj, c), out, n[0], count[..]); }
   n[0] = json_raw(out, n[0], "]");
   if !mc_member(obj, "rationale", JSON_STRING, "\"\"", out, n[..]) { why[0] = "rationale is not a string"; return ""; }
+  if !mc_member(obj, "edits", JSON_ARRAY, "[]", out, n[..]) { why[0] = "edits is not an array"; return ""; }
   if !mc_member(obj, "reply", JSON_STRING, "\"\"", out, n[..]) { why[0] = "reply is not a string"; return ""; }
   if !mc_member(obj, "view", JSON_ARRAY, "[]", out, n[..]) { why[0] = "view is not an array"; return ""; }
   if !mc_member(obj, "finished", JSON_TRUE, "false", out, n[..]) { why[0] = "finished is not a boolean"; return ""; }
@@ -191,4 +192,12 @@ mc_text_action :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction) -> 
   at := 0;
   for i: 0..<r.count { if r[i] == '{' { at = i; break; } }
   #assert mc_text_action(ar[..], cast(string) r[at..<r.count], norm[..], a[..]) == "" && a[0].nc == 1 && a[0].commands[0] == "ls -la";
+}
+
+#test "structured edits survive plain-text local action normalization (#13928)" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  raw := "{\"rationale\": \"Apply edits.\", \"edits\": [{\"path\": \"a.coax\", \"old\": \"x\", \"new\": \"y\"}], \"finished\": false}";
+  #assert mc_text_action(ar[..], raw, norm[..], a[..]) == "";
+  #assert a[0].ne == 1 && a[0].edits[0].path == "a.coax" && a[0].edits[0].old == "x" && a[0].edits[0].text == "y";
 }

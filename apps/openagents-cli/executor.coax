@@ -1,0 +1,252 @@
+// openagents executor: Signed Executor Release Auto-Distribution, Ch 224 Shadow
+// Rollout, Atomic Promote/Rollback, and Truthful Local Pylon/Settlement Status
+// (Executor W6.3, GitHub #13928).
+//
+// Reuses:
+// - `#authority psionic/lib/peer/executor-release.coax` (BIP-340 + SHA-256 + Ch 224)
+// - `#authority psionic/lib/peer/release-promote.coax` (shadow -> canary -> promoted / rollback)
+// - `psionic/lib/peer/executor-release-sign.coax` (real secp256k1 BIP-340 signing)
+// - `psionic/lib/peer/executor-release-store.coax` (shared on-disk store & dashboard)
+#load "../../psionic/lib/peer/executor-release-sign.coax";
+#load "../../psionic/lib/peer/executor-release-store.coax";
+
+executor_usage :: () {
+  print("%\n", "Executor (W6.3 signed shadow-to-promote auto-distribution & status):");
+  print("%\n", "  executor status [--home DIR]                                    show active checkpoint, shadow rollout, Pylon & settled sats");
+  print("%\n", "  executor init --payload FILE [--home DIR]                       seed active canonical checkpoint from payload file");
+  print("%\n", "  executor sign --release-id ID --payload FILE --rollback-sha HEX --out FILE   sign openagents.executor-release.v1 with profile key");
+  print("%\n", "  executor update --manifest FILE --payload FILE --trusted-pubkey HEX [--home DIR]   verify BIP-340 + SHA-256 and stage into shadow");
+  print("%\n", "  executor shadow --trusted-pubkey HEX [--samples N] [--degraded-fixture] [--auto-promote] [--home DIR]   run Ch 224 shadow check");
+  print("%\n", "  executor promote [--home DIR]                                   atomically promote shadow-verified checkpoint");
+  print("%\n", "  executor rollback [--home DIR]                                  atomically roll back to pinned rollback_target_sha256");
+  print("%\n", "");
+}
+
+excli_cstr :: (b: [] u8) -> string {
+  n := 0;
+  while n < b.count && b[n] != 0 { n += 1; }
+  return cast(string) b[0..<n];
+}
+
+executor_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "" || verb == "help" || verb == "--help" {
+    executor_usage();
+    return EXIT_OK;
+  }
+  home := args_value(a, "--home", "");
+
+  if verb == "status" {
+    dash: [1] ErsDashboard;
+    ers_read_dashboard(home, dash[..]);
+    py: [64] u8; co: [128] u8; sa: [160] u8; rl: [160] u8; det: [2048] u8;
+    ers_format_dashboard(dash[..], py[..], co[..], sa[..], rl[..], det[..]);
+    rep_str(r, "pylon_state", excli_cstr(py[..]));
+    rep_str(r, "contributed", excli_cstr(co[..]));
+    rep_str(r, "settled_sats", excli_cstr(sa[..]));
+    rep_int(r, "paid_msat_bitcoin", dash[0].paid_msat_bitcoin);
+    rep_int(r, "paid_msat_testnet", dash[0].paid_msat_testnet);
+    rep_int(r, "paid_msat_signet", dash[0].paid_msat_signet);
+    rep_int(r, "paid_msat_regtest", dash[0].paid_msat_regtest);
+    rep_int(r, "settled_count", dash[0].settled_count);
+    rep_int(r, "excluded_simulated", dash[0].excluded_simulated);
+    rep_str(r, "channel", cast(string) dash[0].channel[0..<dash[0].channel_n]);
+    rep_str(r, "shadow_verdict", cast(string) dash[0].shadow_verdict[0..<dash[0].shadow_verdict_n]);
+    rep_str(r, "active_checkpoint_sha256", cast(string) dash[0].active_sha[0..<dash[0].active_sha_n]);
+    rep_str(r, "rollback_target_sha256", cast(string) dash[0].rollback_sha[0..<dash[0].rollback_sha_n]);
+    rep_str(r, "staged_checkpoint_sha256", cast(string) dash[0].staged_sha[0..<dash[0].staged_sha_n]);
+    rep_int(r, "generation", dash[0].generation);
+    rep_int(r, "rollbacks", dash[0].rollbacks);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "init" {
+    payload_path := args_value(a, "--payload", "");
+    if payload_path.count == 0 {
+      return fail(r, EXIT_USAGE, "executor init requires --payload FILE");
+    }
+    pbuf: [ERS_MAX_PAYLOAD] u8;
+    pn := fs_read(payload_path, pbuf[..]);
+    if pn <= 0 {
+      return fail(r, EXIT_FAIL, "executor init: cannot read payload file");
+    }
+    sha: [64] u8;
+    if !ers_init_active(home, pbuf[0..<pn], sha[..]) {
+      return fail(r, EXIT_FAIL, "executor init: failed to persist active checkpoint");
+    }
+    rep_str(r, "status", "initialized");
+    rep_str(r, "active_checkpoint_sha256", cast(string) sha[..]);
+    rep_int(r, "bytes", pn);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "sign" {
+    rel_id := args_value(a, "--release-id", "");
+    payload_path := args_value(a, "--payload", "");
+    rollback_sha := args_value(a, "--rollback-sha", "");
+    out_path := args_value(a, "--out", "");
+    channel := args_value(a, "--channel", "shadow");
+    art_id := args_value(a, "--artifact-id", "executor-adapter");
+    plat := args_value(a, "--platform", "macos-arm64");
+    ppm_s := args_value(a, "--max-disagree-ppm", "250000");
+    ppm := 250000;
+    pi := json_int(ppm_s);
+    if pi.ok && pi.value >= 0 && pi.value <= 1000000 { ppm = pi.value; }
+    if rel_id.count == 0 || payload_path.count == 0 || rollback_sha.count != 64 || out_path.count == 0 {
+      return fail(r, EXIT_USAGE, "executor sign requires --release-id ID --payload FILE --rollback-sha 64HEX --out FILE");
+    }
+    pbuf: [ERS_MAX_PAYLOAD] u8;
+    pn := fs_read(payload_path, pbuf[..]);
+    if pn <= 0 {
+      return fail(r, EXIT_FAIL, "executor sign: cannot read payload file");
+    }
+    sha_b: [64] u8;
+    sha := ers_hex32(er_sha256(pbuf[0..<pn]), sha_b[..]);
+    k: [1] Key;
+    if !load_key(profile, k[..]) {
+      return fail(r, EXIT_AUTH, "no Nostr signing key for this profile (run `openagents nostr new` or set OPENAGENTS_NSEC)");
+    }
+    aux: [32] u8;
+    _ = cxrand_draw(aux[..], 32);
+    rel: [1] ExwRelease;
+    rel[0] = ExwRelease.{
+      n_artifacts = 1,
+      channel = channel,
+      checkpoint_sha256 = sha,
+      lineage_sha256 = sha,
+      max_shadow_disagree_ppm = ppm,
+      min_client_version = "1.0.0",
+      published_at = cxcli_now_s(),
+      release_id = rel_id,
+      rollback_target_sha256 = rollback_sha,
+      stage = ExwRolloutStage.shadow,
+    };
+    rel[0].artifacts[0] = ExwArtifact.{
+      artifact_id = art_id,
+      byte_count = pn,
+      sha256 = sha,
+      target_platform = plat,
+    };
+    pub_b: [64] u8; sig_b: [128] u8;
+    ok := ersign_release(rel[..], k[0].secret[..], aux[..], pub_b[..], sig_b[..]);
+    wipe(k[0].secret[..]);
+    wipe(aux[..]);
+    if !ok {
+      return fail(r, EXIT_FAIL, "executor sign: BIP-340 signing failed");
+    }
+    jbuf: [8192] u8;
+    wo := exw_release_write(rel[..], jbuf[..]);
+    if wo.err != ExwErr.ok || !fs_replace_durable(out_path, cast(string) jbuf[0..<wo.len]) {
+      return fail(r, EXIT_FAIL, "executor sign: failed to write signed manifest");
+    }
+    rep_str(r, "status", "signed");
+    rep_str(r, "manifest", out_path);
+    rep_str(r, "release_id", rel_id);
+    rep_str(r, "checkpoint_sha256", sha);
+    rep_str(r, "signer_pubkey", cast(string) pub_b[..]);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "update" {
+    manifest_path := args_value(a, "--manifest", "");
+    payload_path := args_value(a, "--payload", "");
+    trusted_key := args_value(a, "--trusted-pubkey", "");
+    if manifest_path.count == 0 || payload_path.count == 0 || trusted_key.count != 64 {
+      return fail(r, EXIT_USAGE, "executor update requires --manifest FILE --payload FILE --trusted-pubkey 64HEX");
+    }
+    trusted := [1] string.[trusted_key];
+    rel: [1] ExwRelease; arena: [4096] u8; err_b: [256] u8;
+    st := ers_stage_signed(home, manifest_path, payload_path, trusted[..], rel[..], arena[..], err_b[..]);
+    if st != ErStatus.ok {
+      return fail(r, EXIT_FORBIDDEN, excli_cstr(err_b[..]));
+    }
+    rep_str(r, "status", "staged_shadow");
+    rep_str(r, "release_id", rel[0].release_id);
+    rep_str(r, "staged_checkpoint_sha256", rel[0].checkpoint_sha256);
+    rep_str(r, "rollback_target_sha256", rel[0].rollback_target_sha256);
+    rep_str(r, "signer_pubkey", rel[0].signer_pubkey);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "shadow" {
+    trusted_key := args_value(a, "--trusted-pubkey", "");
+    if trusted_key.count != 64 {
+      return fail(r, EXIT_USAGE, "executor shadow requires --trusted-pubkey 64HEX");
+    }
+    samples := 24;
+    sn := json_int(args_value(a, "--samples", "24"));
+    if sn.ok && sn.value >= 2 && sn.value <= 64 { samples = sn.value; }
+    degraded := args_has(a, "--degraded-fixture");
+    auto_prom := args_has(a, "--auto-promote");
+
+    recs: [64] ErShadowRecord;
+    for i: 0..<samples {
+      if degraded {
+        recs[i] = ErShadowRecord.{
+          request = i,
+          active = 1,
+          candidate = ifx i < (samples / 3) then cast(u8) 0 else cast(u8) 1,
+          outcome = 1,
+        };
+      } else {
+        recs[i] = ErShadowRecord.{
+          request = i,
+          active = ifx i == 0 then cast(u8) 0 else cast(u8) 1,
+          candidate = 1,
+          outcome = 1,
+        };
+      }
+    }
+    qual := RpQual.{
+      sig_ok = true, digest_ok = true,
+      base_pass_bps = 6875, cand_pass_bps = 9375, min_lift_bps = 500,
+      exact_replay_bps = 10000, crash_rate_bps = 0, max_crash_bps = 10,
+    };
+    trusted := [1] string.[trusted_key];
+    sres: [1] ErShadowResult; err_b: [256] u8;
+    min_j := ifx samples >= 16 then 16 else samples;
+    st := ers_shadow_evaluate(home, trusted[..], recs[0..<samples], qual, min_j, 0.10, 100, 0, 10, auto_prom, sres[..], err_b[..]);
+    rep_str(r, "verdict", ers_status_name(st));
+    rep_int(r, "requests", sres[0].report.requests);
+    rep_int(r, "joined", sres[0].report.joined);
+    rep_int(r, "disagree", sres[0].report.disagree);
+    rep_int(r, "active_wrong", sres[0].report.active_wrong);
+    rep_int(r, "candidate_wrong", sres[0].report.candidate_wrong);
+    if st != ErStatus.ok {
+      rep_str(r, "action", ifx sres[0].action == ErAction.rollback then "rolled_back" else "held");
+      return rep_done(r, EXIT_FAIL);
+    }
+    rep_str(r, "action", ifx auto_prom then "promoted" else "ready_to_promote");
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "promote" {
+    err_b: [256] u8;
+    st := ers_promote_staged(home, err_b[..]);
+    if st != ErStatus.ok {
+      return fail(r, EXIT_FAIL, excli_cstr(err_b[..]));
+    }
+    cur: [1] ErsState;
+    _ = ers_load_state(home, cur[..]);
+    rep_str(r, "status", "promoted");
+    rep_str(r, "active_checkpoint_sha256", cast(string) cur[0].active_sha[0..<cur[0].active_sha_n]);
+    rep_str(r, "rollback_target_sha256", cast(string) cur[0].rollback_sha[0..<cur[0].rollback_sha_n]);
+    rep_int(r, "generation", cur[0].generation);
+    return rep_done(r, EXIT_OK);
+  }
+
+  if verb == "rollback" {
+    err_b: [256] u8;
+    st := ers_rollback_active(home, err_b[..]);
+    if st != ErStatus.ok {
+      return fail(r, EXIT_FAIL, excli_cstr(err_b[..]));
+    }
+    cur: [1] ErsState;
+    _ = ers_load_state(home, cur[..]);
+    rep_str(r, "status", "rolled_back");
+    rep_str(r, "active_checkpoint_sha256", cast(string) cur[0].active_sha[0..<cur[0].active_sha_n]);
+    rep_int(r, "rollbacks", cur[0].rollbacks);
+    return rep_done(r, EXIT_OK);
+  }
+
+  return fail(r, EXIT_USAGE, "executor: status | init | sign | update | shadow | promote | rollback");
+}

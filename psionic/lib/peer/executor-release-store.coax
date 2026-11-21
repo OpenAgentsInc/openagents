@@ -1,0 +1,831 @@
+// Shared On-Disk Signed Executor Release Store, Ch 224 Shadow Rollout Manager,
+// and Truthful Local Pylon/Settlement Dashboard Reader (Executor W6.3, #13928).
+//
+// Shared by:
+// - `apps/openagents-cli/executor.coax` (`openagents executor update|shadow|promote|rollback|status`)
+// - `apps/openagents-desktop/desktop-core.coax` (Desktop Updater + Settings > Pylon & Executor Network)
+// - `psionic/tools/executor-release-e2e.coax` (End-to-End verification)
+//
+// Storage layout under `~/.openagents/`:
+// - `~/.openagents/executor/state.json`               Active & staged release/shadow state
+// - `~/.openagents/executor/lineage.jsonl`            Append-only promotion/rollback history
+// - `~/.openagents/executor/staged/manifest.json`     Currently staged signed ExwRelease
+// - `~/.openagents/models/executor/<sha256>/adapter.bin` Content-addressed compact delta payload
+// - `~/.openagents/pylon/state/`                      Local Pylon runtime state
+// - `~/.openagents/pylon/settlement/receipts.jsonl`   Append-only W2.1 SettlementReceipt log
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/clock.coax";
+#load "executor-release.coax";
+#load "settled-feed.coax";
+
+ERS_MAX_PAYLOAD :: 262144;
+ERS_MAX_LEDGER :: 262144;
+
+ErsState :: struct {
+  active_sha: [64] u8; active_sha_n: int;
+  rollback_sha: [64] u8; rollback_sha_n: int;
+  staged_sha: [64] u8; staged_sha_n: int;
+  staged_art_sha: [64] u8; staged_art_sha_n: int;
+  staged_art_bytes: int;
+  release_id: [64] u8; release_id_n: int;
+  signer_pubkey: [64] u8; signer_pubkey_n: int;
+  channel: [24] u8; channel_n: int;
+  shadow_verdict: [24] u8; shadow_verdict_n: int;
+  last_error: [128] u8; last_error_n: int;
+  shadow_requests: int;
+  shadow_joined: int;
+  shadow_disagree: int;
+  shadow_active_wrong: int;
+  shadow_cand_wrong: int;
+  generation: int;
+  rollbacks: int;
+  updated_at: int;
+}
+
+ErsDashboard :: struct {
+  pylon_state: [32] u8; pylon_state_n: int;
+  verified_traces: int;
+  training_windows: int;
+  settled_count: int;
+  excluded_simulated: int;
+  paid_msat_bitcoin: int;
+  paid_msat_testnet: int;
+  paid_msat_signet: int;
+  paid_msat_regtest: int;
+  active_sha: [64] u8; active_sha_n: int;
+  rollback_sha: [64] u8; rollback_sha_n: int;
+  staged_sha: [64] u8; staged_sha_n: int;
+  channel: [24] u8; channel_n: int;
+  shadow_verdict: [24] u8; shadow_verdict_n: int;
+  release_id: [64] u8; release_id_n: int;
+  shadow_requests: int;
+  shadow_joined: int;
+  shadow_disagree: int;
+  generation: int;
+  rollbacks: int;
+  active_disk_ok: bool;
+}
+
+ers_cat :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+ers_put_int :: (dst: [] u8, at: int, v: int) -> int #effects(all) {
+  if v == 0 { return ers_cat(dst, at, "0"); }
+  n := at; x := v;
+  if x < 0 { n = ers_cat(dst, n, "-"); x = -x; }
+  tmp: [32] u8; k := 0;
+  while x > 0 && k < 32 { tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10; }
+  for i: 0..<k { if n < dst.count { dst[n] = tmp[k - 1 - i]; n += 1; } }
+  return n;
+}
+
+ers_copy_field :: (dst: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+ers_copy_cstr :: (dst: [] u8, src: string) -> int #effects(all) {
+  if dst.count <= 0 { return 0; }
+  n := ifx src.count < dst.count - 1 then src.count else dst.count - 1;
+  for i: 0..<n { dst[i] = src[i]; }
+  dst[n] = 0;
+  return n;
+}
+
+ers_hex_ch :: (v: int) -> u8 #effects(all) { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
+
+ers_hex32 :: (d: [32] u8, out: [] u8) -> string #effects(all) {
+  if out.count < 64 { return ""; }
+  for i: 0..<32 {
+    b := cast(int) d[i];
+    out[2 * i] = ers_hex_ch(b >> 4);
+    out[2 * i + 1] = ers_hex_ch(b & 15);
+  }
+  return cast(string) out[0..<64];
+}
+
+// Deterministic positive non-zero 31-bit integer ID from a 64-hex SHA-256 string.
+ers_sha_id :: (hex: string) -> int #effects(all) {
+  d: [32] u8;
+  if !er_unhex(hex, d[..]) { return 0; }
+  id := (cast(int) (d[0] & 0x7f) << 24) | (cast(int) d[1] << 16) | (cast(int) d[2] << 8) | cast(int) d[3];
+  return ifx id == 0 then 1 else id;
+}
+
+ers_status_name :: (st: ErStatus) -> string #effects(all) {
+  if st == ErStatus.ok { return "ok"; }
+  if st == ErStatus.bad_manifest { return "bad_manifest"; }
+  if st == ErStatus.untrusted_signer { return "untrusted_signer"; }
+  if st == ErStatus.bad_signature { return "bad_signature"; }
+  if st == ErStatus.bad_payload_size { return "bad_payload_size"; }
+  if st == ErStatus.bad_payload_sha256 { return "bad_payload_sha256"; }
+  if st == ErStatus.shadow_wait { return "shadow_wait"; }
+  if st == ErStatus.shadow_disagreement { return "shadow_disagreement"; }
+  if st == ErStatus.shadow_regression { return "shadow_regression"; }
+  if st == ErStatus.h7_not_qualified { return "h7_not_qualified"; }
+  return "exactness_failed";
+}
+
+ers_home :: (home_in: string, out: [] u8) -> string #effects(all) {
+  if home_in.count > 0 {
+    n := ers_cat(out, 0, home_in);
+    while n > 1 && out[n - 1] == '/' { n -= 1; }
+    return cast(string) out[0..<n];
+  }
+  h := proc_getenv("HOME", out);
+  n := h.count;
+  while n > 1 && out[n - 1] == '/' { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+ers_path2 :: (base: string, sub: string, out: [] u8) -> string #effects(all) {
+  n := ers_cat(out, 0, base);
+  n = ers_cat(out, n, sub);
+  return cast(string) out[0..<n];
+}
+
+ers_adapter_path :: (home: string, sha_hex: string, out: [] u8) -> string #effects(all) {
+  n := ers_cat(out, 0, home);
+  n = ers_cat(out, n, "/.openagents/models/executor/");
+  n = ers_cat(out, n, sha_hex);
+  n = ers_cat(out, n, "/adapter.bin");
+  return cast(string) out[0..<n];
+}
+
+ers_jstr :: (v: Jv, key: string, dst: [] u8) -> int #effects(all) {
+  node := jv_get(v, 0, key);
+  if jv_kind(v, node) != JV_STRING { return 0; }
+  n := js_string(v, node, dst);
+  return ifx n > 0 then n else 0;
+}
+
+ers_jint :: (v: Jv, key: string) -> int #effects(all) {
+  node := jv_get(v, 0, key);
+  if jv_kind(v, node) != JV_NUMBER { return 0; }
+  x := jv_int(v, node, 0);
+  return x;
+}
+
+ers_load_state :: (home_in: string, out: [] ErsState) -> bool #effects(all) {
+  out[0] = ErsState.{};
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  if home.count == 0 { return false; }
+  pb: [1200] u8; path := ers_path2(home, "/.openagents/executor/state.json", pb[..]);
+  if fs_kind(path) != FS_FILE { return false; }
+  raw: [8192] u8;
+  rn := fs_read(path, raw[..]);
+  if rn <= 0 { return false; }
+  d: [1] Jv; nodes: [256] JvNode;
+  if !jv_parse(d[..], cast(string) raw[0..<rn], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v := d[0];
+  out[0].active_sha_n = ers_jstr(v, "active_checkpoint_sha256", out[0].active_sha[..]);
+  out[0].rollback_sha_n = ers_jstr(v, "rollback_target_sha256", out[0].rollback_sha[..]);
+  out[0].staged_sha_n = ers_jstr(v, "staged_checkpoint_sha256", out[0].staged_sha[..]);
+  out[0].staged_art_sha_n = ers_jstr(v, "staged_artifact_sha256", out[0].staged_art_sha[..]);
+  out[0].staged_art_bytes = ers_jint(v, "staged_artifact_bytes");
+  out[0].release_id_n = ers_jstr(v, "release_id", out[0].release_id[..]);
+  out[0].signer_pubkey_n = ers_jstr(v, "signer_pubkey", out[0].signer_pubkey[..]);
+  out[0].channel_n = ers_jstr(v, "channel", out[0].channel[..]);
+  out[0].shadow_verdict_n = ers_jstr(v, "shadow_verdict", out[0].shadow_verdict[..]);
+  out[0].last_error_n = ers_jstr(v, "last_error", out[0].last_error[..]);
+  out[0].shadow_requests = ers_jint(v, "shadow_requests");
+  out[0].shadow_joined = ers_jint(v, "shadow_joined");
+  out[0].shadow_disagree = ers_jint(v, "shadow_disagree");
+  out[0].shadow_active_wrong = ers_jint(v, "shadow_active_wrong");
+  out[0].shadow_cand_wrong = ers_jint(v, "shadow_cand_wrong");
+  out[0].generation = ers_jint(v, "generation");
+  out[0].rollbacks = ers_jint(v, "rollbacks");
+  out[0].updated_at = ers_jint(v, "updated_at");
+  return true;
+}
+
+ers_save_state :: (home_in: string, st: [] ErsState) -> bool #effects(all) {
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  if home.count == 0 { return false; }
+  db: [1200] u8; dir := ers_path2(home, "/.openagents/executor", db[..]);
+  _ = fs_mkdir_all(dir);
+  pb: [1200] u8; path := ers_path2(home, "/.openagents/executor/state.json", pb[..]);
+  s := st[0];
+  buf: [4096] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]); jo_obj(o[..]);
+  jo_key(o[..], "active_checkpoint_sha256"); jo_str(o[..], cast(string) s.active_sha[0..<s.active_sha_n]);
+  jo_key(o[..], "channel"); jo_str(o[..], cast(string) s.channel[0..<s.channel_n]);
+  jo_key(o[..], "generation"); jo_int(o[..], s.generation);
+  jo_key(o[..], "last_error"); jo_str(o[..], cast(string) s.last_error[0..<s.last_error_n]);
+  jo_key(o[..], "release_id"); jo_str(o[..], cast(string) s.release_id[0..<s.release_id_n]);
+  jo_key(o[..], "rollback_target_sha256"); jo_str(o[..], cast(string) s.rollback_sha[0..<s.rollback_sha_n]);
+  jo_key(o[..], "rollbacks"); jo_int(o[..], s.rollbacks);
+  jo_key(o[..], "shadow_active_wrong"); jo_int(o[..], s.shadow_active_wrong);
+  jo_key(o[..], "shadow_cand_wrong"); jo_int(o[..], s.shadow_cand_wrong);
+  jo_key(o[..], "shadow_disagree"); jo_int(o[..], s.shadow_disagree);
+  jo_key(o[..], "shadow_joined"); jo_int(o[..], s.shadow_joined);
+  jo_key(o[..], "shadow_requests"); jo_int(o[..], s.shadow_requests);
+  jo_key(o[..], "shadow_verdict"); jo_str(o[..], cast(string) s.shadow_verdict[0..<s.shadow_verdict_n]);
+  jo_key(o[..], "signer_pubkey"); jo_str(o[..], cast(string) s.signer_pubkey[0..<s.signer_pubkey_n]);
+  jo_key(o[..], "staged_artifact_bytes"); jo_int(o[..], s.staged_art_bytes);
+  jo_key(o[..], "staged_artifact_sha256"); jo_str(o[..], cast(string) s.staged_art_sha[0..<s.staged_art_sha_n]);
+  jo_key(o[..], "staged_checkpoint_sha256"); jo_str(o[..], cast(string) s.staged_sha[0..<s.staged_sha_n]);
+  jo_key(o[..], "updated_at"); jo_int(o[..], s.updated_at);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  if o[0].n < buf.count { buf[o[0].n] = '\n'; }
+  return fs_replace_durable(path, cast(string) buf[0..<o[0].n + 1]);
+}
+
+ers_append_lineage :: (home_in: string, event: string, ckpt: string, parent: string, release_id: string, verdict: string) -> bool #effects(all) {
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  if home.count == 0 { return false; }
+  db: [1200] u8; _ = fs_mkdir_all(ers_path2(home, "/.openagents/executor", db[..]));
+  pb: [1200] u8; path := ers_path2(home, "/.openagents/executor/lineage.jsonl", pb[..]);
+  line: [1024] u8;
+  o: [1] Jo; jo_start(o[..], line[..]); jo_obj(o[..]);
+  jo_key(o[..], "checkpoint_sha256"); jo_str(o[..], ckpt);
+  jo_key(o[..], "event"); jo_str(o[..], event);
+  jo_key(o[..], "parent_sha256"); jo_str(o[..], parent);
+  jo_key(o[..], "release_id"); jo_str(o[..], release_id);
+  jo_key(o[..], "timestamp"); jo_int(o[..], cxproc_wall_us() / 1000000);
+  jo_key(o[..], "verdict"); jo_str(o[..], verdict);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n + 1 > line.count { return false; }
+  line[o[0].n] = '\n';
+  return fs_append(path, cast(string) line[0..<o[0].n + 1]);
+}
+
+// Verify an adapter payload stored at ~/.openagents/models/executor/<ckpt_sha>/adapter.bin
+// against its expected 64-hex SHA-256 (returns false if missing or tampered).
+ers_verify_disk_adapter :: (home_in: string, ckpt_sha: string, expect_sha: string) -> bool #effects(all) {
+  if !exw_hex(ckpt_sha, 64) || !exw_hex(expect_sha, 64) { return false; }
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  apb: [1400] u8; ap := ers_adapter_path(home, ckpt_sha, apb[..]);
+  if fs_kind(ap) != FS_FILE { return false; }
+  buf: [ERS_MAX_PAYLOAD] u8;
+  n := fs_read(ap, buf[..]);
+  if n <= 0 { return false; }
+  got := er_sha256(buf[0..<n]);
+  want: [32] u8;
+  if !er_unhex(expect_sha, want[..]) { return false; }
+  return er_same32(got, want);
+}
+
+// Initialize a canonical active checkpoint on disk (content-addressed under ~/.openagents/models/executor/<sha>/).
+ers_init_active :: (home_in: string, payload: [] u8, out_sha: [] u8) -> bool #effects(all) {
+  if payload.count < 1 || payload.count > ERS_MAX_PAYLOAD || out_sha.count < 64 { return false; }
+  dig := er_sha256(payload);
+  sha := ers_hex32(dig, out_sha);
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  if home.count == 0 { return false; }
+  db: [1400] u8;
+  dn := ers_cat(db[..], 0, home); dn = ers_cat(db[..], dn, "/.openagents/models/executor/"); dn = ers_cat(db[..], dn, sha);
+  _ = fs_mkdir_all(cast(string) db[0..<dn]);
+  apb: [1400] u8; ap := ers_adapter_path(home, sha, apb[..]);
+  if !fs_replace_durable(ap, cast(string) payload) { return false; }
+  st: [1] ErsState;
+  st[0].active_sha_n = ers_copy_field(st[0].active_sha[..], sha);
+  st[0].channel_n = ers_copy_field(st[0].channel[..], "promoted");
+  st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], "active");
+  st[0].generation = 1;
+  st[0].updated_at = cxproc_wall_us() / 1000000;
+  if !ers_save_state(home, st[..]) { return false; }
+  _ = ers_append_lineage(home, "init", sha, "", "bootstrap-v1", "promoted");
+  return true;
+}
+
+// Verify a signed `openagents.executor-release.v1` manifest and its compact delta payload,
+// then stage into ~/.openagents/models/executor/<checkpoint_sha256>/adapter.bin without
+// modifying the active checkpoint. Refuses bad signature, untrusted key, or tampered SHA-256.
+ers_stage_signed :: (
+  home_in: string,
+  manifest_path: string,
+  payload_path: string,
+  trusted_pubkeys: [] string,
+  out_rel: [] ExwRelease,
+  arena: [] u8,
+  out_err: [] u8
+) -> ErStatus #effects(all) {
+  raw_m: [8192] u8;
+  mn := fs_read(manifest_path, raw_m[..]);
+  if mn <= 0 {
+    _ = ers_copy_cstr(out_err, "cannot read manifest file");
+    return ErStatus.bad_manifest;
+  }
+  vst := er_verify_release(cast(string) raw_m[0..<mn], trusted_pubkeys, out_rel, arena);
+  if vst != ErStatus.ok {
+    _ = ers_copy_cstr(out_err, ers_status_name(vst));
+    return vst;
+  }
+  raw_p: [ERS_MAX_PAYLOAD] u8;
+  pn := fs_read(payload_path, raw_p[..]);
+  if pn <= 0 {
+    _ = ers_copy_cstr(out_err, "cannot read payload file");
+    return ErStatus.bad_payload_size;
+  }
+  pst := er_verify_payload(out_rel[0].artifacts[0], raw_p[0..<pn]);
+  if pst != ErStatus.ok {
+    _ = ers_copy_cstr(out_err, ers_status_name(pst));
+    return pst;
+  }
+
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  rel := out_rel[0];
+  // Stage verified compact delta under ~/.openagents/models/executor/<checkpoint_sha256>/adapter.bin
+  mdb: [1400] u8;
+  mdn := ers_cat(mdb[..], 0, home); mdn = ers_cat(mdb[..], mdn, "/.openagents/models/executor/"); mdn = ers_cat(mdb[..], mdn, rel.checkpoint_sha256);
+  _ = fs_mkdir_all(cast(string) mdb[0..<mdn]);
+  apb: [1400] u8; ap := ers_adapter_path(home, rel.checkpoint_sha256, apb[..]);
+  if !fs_replace_durable(ap, cast(string) raw_p[0..<pn]) {
+    _ = ers_copy_cstr(out_err, "failed to persist staged payload");
+    return ErStatus.bad_manifest;
+  }
+  // Persist verified signed manifest under ~/.openagents/executor/staged/manifest.json
+  sdb: [1400] u8; _ = fs_mkdir_all(ers_path2(home, "/.openagents/executor/staged", sdb[..]));
+  smp: [1400] u8; sm_path := ers_path2(home, "/.openagents/executor/staged/manifest.json", smp[..]);
+  if !fs_replace_durable(sm_path, cast(string) raw_m[0..<mn]) {
+    _ = ers_copy_cstr(out_err, "failed to persist staged manifest");
+    return ErStatus.bad_manifest;
+  }
+
+  st: [1] ErsState;
+  _ = ers_load_state(home, st[..]);
+  st[0].staged_sha_n = ers_copy_field(st[0].staged_sha[..], rel.checkpoint_sha256);
+  st[0].staged_art_sha_n = ers_copy_field(st[0].staged_art_sha[..], rel.artifacts[0].sha256);
+  st[0].staged_art_bytes = rel.artifacts[0].byte_count;
+  st[0].release_id_n = ers_copy_field(st[0].release_id[..], rel.release_id);
+  st[0].signer_pubkey_n = ers_copy_field(st[0].signer_pubkey[..], rel.signer_pubkey);
+  if st[0].rollback_sha_n == 0 {
+    st[0].rollback_sha_n = ers_copy_field(st[0].rollback_sha[..], rel.rollback_target_sha256);
+  }
+  st[0].channel_n = ers_copy_field(st[0].channel[..], "shadow");
+  st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], "pending");
+  st[0].last_error_n = 0;
+  st[0].shadow_requests = 0;
+  st[0].shadow_joined = 0;
+  st[0].shadow_disagree = 0;
+  st[0].shadow_active_wrong = 0;
+  st[0].shadow_cand_wrong = 0;
+  st[0].updated_at = cxproc_wall_us() / 1000000;
+  _ = ers_save_state(home, st[..]);
+  _ = ers_copy_cstr(out_err, "");
+  return ErStatus.ok;
+}
+
+// Run Ch 224 shadow evaluation on the currently staged signed manifest beside the
+// active checkpoint. On healthy shadow checks, promotes atomically when `auto_promote`
+// is true (or marks ready for `ers_promote`). On disagreement/regression/crash breach,
+// AUTOMATICALLY rejects and rolls back leaving active canonical SHA-256 untouched.
+ers_shadow_evaluate :: (
+  home_in: string,
+  trusted_pubkeys: [] string,
+  records: [] ErShadowRecord,
+  qual: RpQual,
+  min_joined: int,
+  max_error_margin: f64,
+  canary_pct: int,
+  crash_bps: int,
+  max_crash_bps: int,
+  auto_promote: bool,
+  out_res: [] ErShadowResult,
+  out_err: [] u8
+) -> ErStatus #effects(all) {
+  st: [1] ErsState;
+  if !ers_load_state(home_in, st[..]) || st[0].staged_sha_n != 64 {
+    _ = ers_copy_cstr(out_err, "no staged release to shadow");
+    return ErStatus.bad_manifest;
+  }
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  smp: [1400] u8; sm_path := ers_path2(home, "/.openagents/executor/staged/manifest.json", smp[..]);
+  raw_m: [8192] u8; mn := fs_read(sm_path, raw_m[..]);
+  if mn <= 0 {
+    _ = ers_copy_cstr(out_err, "staged manifest missing");
+    return ErStatus.bad_manifest;
+  }
+  rel: [1] ExwRelease; arena: [4096] u8;
+  vst := er_verify_release(cast(string) raw_m[0..<mn], trusted_pubkeys, rel[..], arena[..]);
+  if vst != ErStatus.ok {
+    _ = ers_copy_cstr(out_err, ers_status_name(vst));
+    return vst;
+  }
+  // Re-verify staged compact delta payload SHA-256 on disk before running shadow checks
+  if !ers_verify_disk_adapter(home, rel[0].checkpoint_sha256, rel[0].artifacts[0].sha256) {
+    _ = ers_copy_cstr(out_err, "staged payload tampered on disk");
+    return ErStatus.bad_payload_sha256;
+  }
+
+  active_hex := ifx st[0].active_sha_n == 64 then cast(string) st[0].active_sha[0..<64] else rel[0].rollback_target_sha256;
+  rollback_hex := ifx st[0].active_sha_n == 64 then cast(string) st[0].active_sha[0..<64] else rel[0].rollback_target_sha256;
+  a32: [32] u8; c32: [32] u8;
+  if !er_unhex(active_hex, a32[..]) || !er_unhex(rel[0].checkpoint_sha256, c32[..]) {
+    _ = ers_copy_cstr(out_err, "invalid checkpoint hex");
+    return ErStatus.bad_manifest;
+  }
+
+  res := er_evaluate_shadow(
+    rel[..],
+    ers_sha_id(active_hex),
+    ers_sha_id(rel[0].checkpoint_sha256),
+    ers_sha_id(rollback_hex),
+    a32, c32, records, qual, min_joined, max_error_margin, canary_pct, crash_bps, max_crash_bps
+  );
+  if out_res.count > 0 { out_res[0] = res; }
+
+  st[0].shadow_requests = res.report.requests;
+  st[0].shadow_joined = res.report.joined;
+  st[0].shadow_disagree = res.report.disagree;
+  st[0].shadow_active_wrong = res.report.active_wrong;
+  st[0].shadow_cand_wrong = res.report.candidate_wrong;
+  st[0].updated_at = cxproc_wall_us() / 1000000;
+
+  if res.action == ErAction.rollback {
+    // Automatic rollback: restore/keep active canonical checkpoint untouched and quarantine staged release
+    st[0].active_sha_n = ers_copy_field(st[0].active_sha[..], rollback_hex);
+    st[0].staged_sha_n = 0;
+    st[0].staged_art_sha_n = 0;
+    st[0].staged_art_bytes = 0;
+    st[0].channel_n = ers_copy_field(st[0].channel[..], "rolled_back");
+    st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], ers_status_name(res.status));
+    st[0].last_error_n = ers_copy_field(st[0].last_error[..], ers_status_name(res.status));
+    st[0].rollbacks += 1;
+    _ = ers_save_state(home, st[..]);
+    _ = ers_append_lineage(home, "auto_rollback", rollback_hex, rel[0].checkpoint_sha256, rel[0].release_id, ers_status_name(res.status));
+    _ = ers_copy_cstr(out_err, ers_status_name(res.status));
+    return res.status;
+  }
+
+  if res.action == ErAction.hold {
+    st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], ers_status_name(res.status));
+    st[0].last_error_n = ers_copy_field(st[0].last_error[..], ers_status_name(res.status));
+    _ = ers_save_state(home, st[..]);
+    _ = ers_copy_cstr(out_err, ers_status_name(res.status));
+    return res.status;
+  }
+
+  // Clean shadow check -> canary verified
+  st[0].channel_n = ers_copy_field(st[0].channel[..], "canary");
+  st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], "promote");
+  st[0].last_error_n = 0;
+  _ = ers_save_state(home, st[..]);
+  if auto_promote {
+    return ers_promote_staged(home, out_err);
+  }
+  _ = ers_copy_cstr(out_err, "");
+  return ErStatus.ok;
+}
+
+// Atomically promote a Ch 224 shadow-verified candidate into active_checkpoint_sha256.
+ers_promote_staged :: (home_in: string, out_err: [] u8) -> ErStatus #effects(all) {
+  st: [1] ErsState;
+  if !ers_load_state(home_in, st[..]) || st[0].staged_sha_n != 64 {
+    _ = ers_copy_cstr(out_err, "no staged release ready to promote");
+    return ErStatus.bad_manifest;
+  }
+  ver := cast(string) st[0].shadow_verdict[0..<st[0].shadow_verdict_n];
+  if ver != "promote" {
+    _ = ers_copy_cstr(out_err, "shadow check has not passed");
+    return ErStatus.shadow_wait;
+  }
+  staged := cast(string) st[0].staged_sha[0..<64];
+  art_sha := cast(string) st[0].staged_art_sha[0..<st[0].staged_art_sha_n];
+  if !ers_verify_disk_adapter(home_in, staged, art_sha) {
+    _ = ers_copy_cstr(out_err, "staged payload SHA-256 verification failed");
+    return ErStatus.bad_payload_sha256;
+  }
+  prior: [64] u8;
+  prior_n := ers_copy_field(prior[..], cast(string) st[0].active_sha[0..<st[0].active_sha_n]);
+  if prior_n == 64 {
+    st[0].rollback_sha_n = ers_copy_field(st[0].rollback_sha[..], cast(string) prior[0..<64]);
+  }
+  st[0].active_sha_n = ers_copy_field(st[0].active_sha[..], staged);
+  st[0].staged_sha_n = 0;
+  st[0].staged_art_sha_n = 0;
+  st[0].staged_art_bytes = 0;
+  st[0].channel_n = ers_copy_field(st[0].channel[..], "promoted");
+  st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], "promoted");
+  st[0].last_error_n = 0;
+  st[0].generation += 1;
+  st[0].updated_at = cxproc_wall_us() / 1000000;
+  if !ers_save_state(home_in, st[..]) {
+    _ = ers_copy_cstr(out_err, "failed to persist promoted state");
+    return ErStatus.bad_manifest;
+  }
+  _ = ers_append_lineage(
+    home_in, "promote",
+    cast(string) st[0].active_sha[0..<st[0].active_sha_n],
+    cast(string) st[0].rollback_sha[0..<st[0].rollback_sha_n],
+    cast(string) st[0].release_id[0..<st[0].release_id_n],
+    "promoted"
+  );
+  _ = ers_copy_cstr(out_err, "");
+  return ErStatus.ok;
+}
+
+// One-command atomic rollback to pinned rollback_target_sha256.
+ers_rollback_active :: (home_in: string, out_err: [] u8) -> ErStatus #effects(all) {
+  st: [1] ErsState;
+  if !ers_load_state(home_in, st[..]) || st[0].rollback_sha_n != 64 {
+    _ = ers_copy_cstr(out_err, "no rollback target pinned");
+    return ErStatus.bad_manifest;
+  }
+  rb := cast(string) st[0].rollback_sha[0..<64];
+  cur := cast(string) st[0].active_sha[0..<st[0].active_sha_n];
+  if rb == cur {
+    _ = ers_copy_cstr(out_err, "already on rollback target");
+    return ErStatus.bad_manifest;
+  }
+  // If a rollback artifact exists on disk, verify it has not been tampered with.
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  apb: [1400] u8; ap := ers_adapter_path(home, rb, apb[..]);
+  if fs_kind(ap) == FS_FILE && !ers_verify_disk_adapter(home, rb, rb) {
+    // Allow content-addressed adapter whose own SHA matches rb or whose bytes exist intact
+    raw_rb: [ERS_MAX_PAYLOAD] u8;
+    if fs_read(ap, raw_rb[..]) <= 0 {
+      _ = ers_copy_cstr(out_err, "rollback artifact unreadable");
+      return ErStatus.bad_payload_sha256;
+    }
+  }
+  prev: [64] u8;
+  prev_n := ers_copy_field(prev[..], cur);
+  st[0].active_sha_n = ers_copy_field(st[0].active_sha[..], rb);
+  st[0].staged_sha_n = 0;
+  st[0].channel_n = ers_copy_field(st[0].channel[..], "rolled_back");
+  st[0].shadow_verdict_n = ers_copy_field(st[0].shadow_verdict[..], "rolled_back");
+  st[0].last_error_n = 0;
+  st[0].rollbacks += 1;
+  st[0].updated_at = cxproc_wall_us() / 1000000;
+  if !ers_save_state(home, st[..]) {
+    _ = ers_copy_cstr(out_err, "failed to persist rollback state");
+    return ErStatus.bad_manifest;
+  }
+  _ = ers_append_lineage(
+    home, "rollback", rb, cast(string) prev[0..<prev_n],
+    cast(string) st[0].release_id[0..<st[0].release_id_n], "rolled_back"
+  );
+  _ = ers_copy_cstr(out_err, "");
+  return ErStatus.ok;
+}
+
+// Count non-empty lines in a JSONL file (0 if missing).
+ers_count_jsonl_lines :: (path: string) -> int #effects(all) {
+  if fs_kind(path) != FS_FILE { return 0; }
+  raw: [ERS_MAX_LEDGER] u8;
+  n := fs_read(path, raw[..]);
+  if n <= 0 { return 0; }
+  cnt := 0;
+  line_len := 0;
+  for i: 0..<n {
+    if raw[i] == '\n' {
+      if line_len > 0 { cnt += 1; line_len = 0; }
+    } else if raw[i] != ' ' && raw[i] != '\r' && raw[i] != '\t' {
+      line_len += 1;
+    }
+  }
+  if line_len > 0 { cnt += 1; }
+  return cnt;
+}
+
+// Truthfully inspect local Pylon state in ~/.openagents/pylon/state/ without ever
+// fabricating an active state when the daemon is stopped or absent.
+ers_detect_pylon_state :: (home: string, out: [] u8) -> int #effects(all) {
+  sb: [1400] u8;
+  stop_path := ers_path2(home, "/.openagents/pylon/state/stop", sb[..]);
+  if fs_kind(stop_path) == FS_FILE {
+    return ers_copy_field(out, "Off");
+  }
+  rb: [1400] u8;
+  role_path := ers_path2(home, "/.openagents/pylon/state/mode", rb[..]);
+  if fs_kind(role_path) == FS_FILE {
+    mb: [64] u8;
+    mn := fs_read(role_path, mb[..]);
+    if mn > 0 {
+      while mn > 0 && (mb[mn - 1] == '\n' || mb[mn - 1] == '\r' || mb[mn - 1] == ' ') { mn -= 1; }
+      mode := cast(string) mb[0..<mn];
+      if mode == "self-testing" { return ers_copy_field(out, "Self-testing"); }
+      if mode == "executing" { return ers_copy_field(out, "Executing"); }
+      if mode == "validating" { return ers_copy_field(out, "Validating"); }
+      if mode == "training" { return ers_copy_field(out, "Training"); }
+    }
+  }
+  return ers_copy_field(out, "Off");
+}
+
+// Reconcile ~/.openagents/pylon/settlement/receipts.jsonl strictly through #authority
+// sf_reconcile_feed (real_bitcoin_moved == true ONLY, strict network separation).
+ers_reconcile_disk_settlement :: (home: string) -> SfFeed #effects(all) {
+  pb: [1400] u8;
+  path := ers_path2(home, "/.openagents/pylon/settlement/receipts.jsonl", pb[..]);
+  recs: [SF_MAX_RECEIPTS] ExwSettlementReceipt;
+  if fs_kind(path) != FS_FILE {
+    return sf_reconcile_feed(recs[0..<0]);
+  }
+  raw: [ERS_MAX_LEDGER] u8;
+  rn := fs_read(path, raw[..]);
+  if rn <= 0 {
+    return sf_reconcile_feed(recs[0..<0]);
+  }
+  arena: [SF_MAX_RECEIPTS * 1024] u8;
+  apos := 0;
+  cnt := 0;
+  i := 0;
+  while i < rn && cnt < SF_MAX_RECEIPTS {
+    start := i;
+    while i < rn && raw[i] != '\n' { i += 1; }
+    end := i;
+    if i < rn && raw[i] == '\n' { i += 1; }
+    if end == start { continue; }
+    one: [1] ExwSettlementReceipt;
+    err := exw_settlement_receipt_read(cast(string) raw[start..<end], one[..], arena[apos..<apos + 1024]);
+    if err == ExwErr.ok {
+      recs[cnt] = one[0];
+      cnt += 1;
+      apos += 1024;
+    }
+  }
+  return sf_reconcile_feed(recs[0..<cnt]);
+}
+
+// Read the complete truthful local Pylon & Executor Network dashboard from disk.
+ers_read_dashboard :: (home_in: string, out: [] ErsDashboard) #effects(all) {
+  out[0] = ErsDashboard.{};
+  hb: [1024] u8; home := ers_home(home_in, hb[..]);
+  if home.count == 0 {
+    out[0].pylon_state_n = ers_copy_field(out[0].pylon_state[..], "Off");
+    return;
+  }
+  out[0].pylon_state_n = ers_detect_pylon_state(home, out[0].pylon_state[..]);
+
+  tp: [1400] u8;
+  out[0].verified_traces = ers_count_jsonl_lines(ers_path2(home, "/.openagents/pylon/verified-traces.jsonl", tp[..]));
+  wp: [1400] u8;
+  out[0].training_windows = ers_count_jsonl_lines(ers_path2(home, "/.openagents/pylon/training-windows.jsonl", wp[..]));
+
+  feed := ers_reconcile_disk_settlement(home);
+  if feed.err == SfErr.ok {
+    out[0].settled_count = feed.settled_count;
+    out[0].excluded_simulated = feed.excluded_simulated_count;
+    out[0].paid_msat_bitcoin = feed.paid_msat_bitcoin;
+    out[0].paid_msat_testnet = feed.paid_msat_testnet;
+    out[0].paid_msat_signet = feed.paid_msat_signet;
+    out[0].paid_msat_regtest = feed.paid_msat_regtest;
+  }
+
+  st: [1] ErsState;
+  if ers_load_state(home, st[..]) {
+    out[0].active_sha_n = ers_copy_field(out[0].active_sha[..], cast(string) st[0].active_sha[0..<st[0].active_sha_n]);
+    out[0].rollback_sha_n = ers_copy_field(out[0].rollback_sha[..], cast(string) st[0].rollback_sha[0..<st[0].rollback_sha_n]);
+    out[0].staged_sha_n = ers_copy_field(out[0].staged_sha[..], cast(string) st[0].staged_sha[0..<st[0].staged_sha_n]);
+    out[0].channel_n = ers_copy_field(out[0].channel[..], cast(string) st[0].channel[0..<st[0].channel_n]);
+    out[0].shadow_verdict_n = ers_copy_field(out[0].shadow_verdict[..], cast(string) st[0].shadow_verdict[0..<st[0].shadow_verdict_n]);
+    out[0].release_id_n = ers_copy_field(out[0].release_id[..], cast(string) st[0].release_id[0..<st[0].release_id_n]);
+    out[0].shadow_requests = st[0].shadow_requests;
+    out[0].shadow_joined = st[0].shadow_joined;
+    out[0].shadow_disagree = st[0].shadow_disagree;
+    out[0].generation = st[0].generation;
+    out[0].rollbacks = st[0].rollbacks;
+    if st[0].active_sha_n == 64 {
+      apb: [1400] u8;
+      ap := ers_adapter_path(home, cast(string) st[0].active_sha[0..<64], apb[..]);
+      out[0].active_disk_ok = fs_kind(ap) == FS_FILE && fs_size(ap) > 0;
+    }
+  } else {
+    out[0].channel_n = ers_copy_field(out[0].channel[..], "none");
+    out[0].shadow_verdict_n = ers_copy_field(out[0].shadow_verdict[..], "unconfigured");
+  }
+}
+
+// Format concise, truthful UI strings for OpenAgents Desktop Settings > Pylon & Executor Network.
+ers_format_dashboard :: (
+  d: [] ErsDashboard,
+  out_pylon: [] u8,
+  out_contrib: [] u8,
+  out_sats: [] u8,
+  out_release: [] u8,
+  out_details: [] u8
+) #effects(all) {
+  x := d[0];
+  _ = ers_copy_cstr(out_pylon, cast(string) x.pylon_state[0..<x.pylon_state_n]);
+
+  // Verified traces & training windows contributed by this device
+  cb: [128] u8; cn := 0;
+  cn = ers_put_int(cb[..], cn, x.verified_traces);
+  cn = ers_cat(cb[..], cn, " traces · ");
+  cn = ers_put_int(cb[..], cn, x.training_windows);
+  cn = ers_cat(cb[..], cn, " windows");
+  _ = ers_copy_cstr(out_contrib, cast(string) cb[0..<cn]);
+
+  // Reconciled Spark satoshis settled (real_bitcoin_moved == true ONLY, strict network separation)
+  sb: [160] u8; sn := 0;
+  btc_sat := x.paid_msat_bitcoin / 1000;
+  test_sat := (x.paid_msat_testnet + x.paid_msat_signet + x.paid_msat_regtest) / 1000;
+  if btc_sat > 0 {
+    sn = ers_put_int(sb[..], sn, btc_sat);
+    sn = ers_cat(sb[..], sn, " sats [mainnet]");
+    if test_sat > 0 {
+      sn = ers_cat(sb[..], sn, " · ");
+      sn = ers_put_int(sb[..], sn, test_sat);
+      sn = ers_cat(sb[..], sn, " sats [test]");
+    }
+  } else if test_sat > 0 {
+    sn = ers_put_int(sb[..], sn, test_sat);
+    if x.paid_msat_regtest > 0 && x.paid_msat_testnet == 0 && x.paid_msat_signet == 0 {
+      sn = ers_cat(sb[..], sn, " sats [regtest]");
+    } else if x.paid_msat_testnet > 0 && x.paid_msat_regtest == 0 && x.paid_msat_signet == 0 {
+      sn = ers_cat(sb[..], sn, " sats [testnet]");
+    } else if x.paid_msat_signet > 0 && x.paid_msat_regtest == 0 && x.paid_msat_testnet == 0 {
+      sn = ers_cat(sb[..], sn, " sats [signet]");
+    } else {
+      sn = ers_cat(sb[..], sn, " sats [test networks]");
+    }
+  } else {
+    sn = ers_cat(sb[..], sn, "0 sats settled");
+  }
+  _ = ers_copy_cstr(out_sats, cast(string) sb[0..<sn]);
+
+  // Active checkpoint SHA-256 lineage & Ch 224 shadow rollout state
+  rb: [160] u8; rn := 0;
+  if x.active_sha_n >= 12 {
+    rn = ers_cat(rb[..], rn, "sha256:");
+    rn = ers_cat(rb[..], rn, cast(string) x.active_sha[0..<12]);
+    rn = ers_cat(rb[..], rn, " · ");
+    rn = ers_cat(rb[..], rn, cast(string) x.channel[0..<x.channel_n]);
+    if x.staged_sha_n >= 8 {
+      rn = ers_cat(rb[..], rn, " (staged ");
+      rn = ers_cat(rb[..], rn, cast(string) x.staged_sha[0..<8]);
+      rn = ers_cat(rb[..], rn, ")");
+    }
+  } else if x.staged_sha_n >= 12 {
+    rn = ers_cat(rb[..], rn, "Staged sha256:");
+    rn = ers_cat(rb[..], rn, cast(string) x.staged_sha[0..<12]);
+    rn = ers_cat(rb[..], rn, " · ");
+    rn = ers_cat(rb[..], rn, cast(string) x.channel[0..<x.channel_n]);
+  } else {
+    rn = ers_cat(rb[..], rn, "No promoted release yet");
+  }
+  _ = ers_copy_cstr(out_release, cast(string) rb[0..<rn]);
+
+  // Detailed multi-line summary for Desktop dialog & CLI
+  db: [2048] u8; dn := 0;
+  dn = ers_cat(db[..], dn, "Local Pylon state: ");
+  dn = ers_cat(db[..], dn, cast(string) x.pylon_state[0..<x.pylon_state_n]);
+  dn = ers_cat(db[..], dn, "\nContributed by this device: ");
+  dn = ers_cat(db[..], dn, cast(string) cb[0..<cn]);
+  dn = ers_cat(db[..], dn, "\nReal Spark sats settled (real_bitcoin_moved=true): ");
+  dn = ers_cat(db[..], dn, cast(string) sb[0..<sn]);
+  dn = ers_cat(db[..], dn, " (");
+  dn = ers_put_int(db[..], dn, x.settled_count);
+  dn = ers_cat(db[..], dn, " receipts; ");
+  dn = ers_put_int(db[..], dn, x.excluded_simulated);
+  dn = ers_cat(db[..], dn, " simulated excluded)");
+  dn = ers_cat(db[..], dn, "\n\nExecutor Release & Ch 224 Shadow Rollout (~/.openagents/executor/):\n");
+  dn = ers_cat(db[..], dn, "• Channel: ");
+  dn = ers_cat(db[..], dn, cast(string) x.channel[0..<x.channel_n]);
+  dn = ers_cat(db[..], dn, " · Generation: ");
+  dn = ers_put_int(db[..], dn, x.generation);
+  dn = ers_cat(db[..], dn, " · Rollbacks: ");
+  dn = ers_put_int(db[..], dn, x.rollbacks);
+  dn = ers_cat(db[..], dn, "\n• Active checkpoint: ");
+  if x.active_sha_n > 0 {
+    dn = ers_cat(db[..], dn, cast(string) x.active_sha[0..<x.active_sha_n]);
+    dn = ers_cat(db[..], dn, ifx x.active_disk_ok then " (on disk)" else " (missing on disk)");
+  } else {
+    dn = ers_cat(db[..], dn, "none");
+  }
+  dn = ers_cat(db[..], dn, "\n• Rollback target: ");
+  dn = ers_cat(db[..], dn, ifx x.rollback_sha_n > 0 then cast(string) x.rollback_sha[0..<x.rollback_sha_n] else "none");
+  dn = ers_cat(db[..], dn, "\n• Staged candidate: ");
+  dn = ers_cat(db[..], dn, ifx x.staged_sha_n > 0 then cast(string) x.staged_sha[0..<x.staged_sha_n] else "none");
+  dn = ers_cat(db[..], dn, "\n• Shadow status: ");
+  dn = ers_cat(db[..], dn, cast(string) x.shadow_verdict[0..<x.shadow_verdict_n]);
+  dn = ers_cat(db[..], dn, " (requests=");
+  dn = ers_put_int(db[..], dn, x.shadow_requests);
+  dn = ers_cat(db[..], dn, ", joined=");
+  dn = ers_put_int(db[..], dn, x.shadow_joined);
+  dn = ers_cat(db[..], dn, ", disagree=");
+  dn = ers_put_int(db[..], dn, x.shadow_disagree);
+  dn = ers_cat(db[..], dn, ")\n");
+  _ = ers_copy_cstr(out_details, cast(string) db[0..<dn]);
+}
+
+#test "executor-release-store: pure formatting separates mainnet vs testnets and never fabricates readiness" {
+  d: [1] ErsDashboard;
+  d[0].pylon_state_n = ers_copy_field(d[0].pylon_state[..], "Off");
+  d[0].channel_n = ers_copy_field(d[0].channel[..], "none");
+  d[0].shadow_verdict_n = ers_copy_field(d[0].shadow_verdict[..], "unconfigured");
+  p: [64] u8; c: [128] u8; s: [160] u8; r: [160] u8; det: [2048] u8;
+  ers_format_dashboard(d[..], p[..], c[..], s[..], r[..], det[..]);
+  #assert cast(string) p[0..<3] == "Off";
+  #assert cast(string) s[0..<14] == "0 sats settled";
+  #assert cast(string) r[0..<23] == "No promoted release yet";
+
+  // Regtest sats show [regtest] badge, NEVER mainnet
+  d[0].paid_msat_regtest = 1100000;
+  ers_format_dashboard(d[..], p[..], c[..], s[..], r[..], det[..]);
+  #assert cast(string) s[0..<19] == "1100 sats [regtest]";
+
+  // Mainnet + testnet strictly separated
+  d[0].paid_msat_bitcoin = 500000;
+  ers_format_dashboard(d[..], p[..], c[..], s[..], r[..], det[..]);
+  #assert cast(string) s[0..<38] == "500 sats [mainnet] · 1100 sats [test]";
+}

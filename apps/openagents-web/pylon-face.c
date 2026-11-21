@@ -8,6 +8,8 @@ IMPORT("coaxial_socket_open") int32_t socket_open(uint32_t p,uint32_t n);
 IMPORT("coaxial_socket_send") void socket_send(int32_t id,uint32_t p,uint32_t n);
 IMPORT("coaxial_socket_close") void socket_close(int32_t id);
 extern int64_t lr_beacon(coax_string,int64_t,coax_v_u8);
+extern int64_t lr_pool_30201(coax_string,coax_v_u8);
+extern int64_t lr_verified_kind(coax_string,int64_t,coax_v_u8);
 extern _Bool lr_verify_public(coax_string);
 extern int64_t lr_npub(coax_string,coax_v_u8);
 static uint32_t golden_mode;
@@ -49,6 +51,18 @@ EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,int32_t n){
       int64_t nn=lr_npub(pl_provider(content),(coax_v_u8){npub,sizeof npub});
       if(nn>=0)pl_observed(at(p),content,(coax_string){(const char *)npub,nn});
     }else s(p)->refused++;
+  }else if(k==30201){
+    int64_t count=lr_pool_30201(original,(coax_v_u8){admitted,sizeof admitted});
+    if(count>0){
+      coax_string content={(const char *)admitted,count};
+      pl_pool_observed(at(p),content);
+    }else s(p)->refused++;
+  }else if(k==30210||k==30211||k==30212){
+    int64_t count=lr_verified_kind(original,k,(coax_v_u8){admitted,sizeof admitted});
+    if(count>0){
+      coax_string content={(const char *)admitted,count};
+      pl_executor_observed(at(p),k,content,original);
+    }else s(p)->refused++;
   }else if(k==26910||k==27010){
     if(lr_verify_public(original))pl_activity(at(p),original);else s(p)->refused++;
   }
@@ -67,6 +81,11 @@ EXPORT("coaxial_pylon_count") int32_t count(uint32_t p){return (int32_t)s(p)->co
 EXPORT("coaxial_pylon_answers") int32_t answers(uint32_t p){return (int32_t)s(p)->answers;}
 EXPORT("coaxial_pylon_statuses") int32_t statuses(uint32_t p){return (int32_t)s(p)->statuses;}
 EXPORT("coaxial_pylon_refused") int32_t refused(uint32_t p){return (int32_t)s(p)->refused;}
+EXPORT("coaxial_pylon_pools") int32_t pools(uint32_t p){return (int32_t)s(p)->pool_count;}
+EXPORT("coaxial_pylon_paid_bitcoin_msat") int64_t paid_btc(uint32_t p){return s(p)->paid_msat_bitcoin;}
+EXPORT("coaxial_pylon_paid_test_msat") int64_t paid_test(uint32_t p){return s(p)->paid_msat_testnet+s(p)->paid_msat_signet+s(p)->paid_msat_regtest;}
+EXPORT("coaxial_pylon_exec_traces") int32_t exec_traces(uint32_t p){return (int32_t)s(p)->exec_traces;}
+EXPORT("coaxial_pylon_exec_verdicts") int32_t exec_verdicts(uint32_t p){return (int32_t)s(p)->exec_verdicts;}
 EXPORT("coaxial_pylon_slug") uint32_t slug(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(uint32_t)(uintptr_t)s(p)->rows.e[i].slug.e:0;}
 EXPORT("coaxial_pylon_slug_len") int32_t slug_len(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].slug_n:0;}
 EXPORT("coaxial_pylon_row_answers") int32_t row_answers(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].answers:0;}

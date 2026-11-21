@@ -1,0 +1,84 @@
+// GPU presentation layer for the /pylon network & Executor Network board.
+// Loaded by apps/openagents-web/pylon.coax after state and protocol rules.
+
+pl_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,d:f32,k:Ink)->int {
+  at:=v;start:=0;line:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
+  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);at=write(d,out,at,text[start..<n],x,y+cast(f32)line*18*d,10*d,0.15,0.55,k2,false,false);if next[0]<=start {break;}start=next[0];line+=1;}return at;
+}
+pl_text_lines :: (text:string,width:f32,d:f32,k:Ink)->int {
+  start:=0;lines:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
+  while start<text.count {n:=font_ink_line(text,start,width,10*d,0.15,0.55,k2,next[..]);lines+=1;if next[0]<=start {break;}start=next[0];}
+  return ifx lines>0 then lines else 1;
+}
+pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
+  p[0].width=w;p[0].height=h;p[0].dpr=d;if dt>0 {p[0].time+=dt;}
+  if p[0].connection== -1 {p[0].retry-=dt;if p[0].retry<=0 {p[0].connection=0;closed:=pipe_close(p[0].pipe[..],p[0].socket);_:=pipe_open(p[0].pipe[..],"wss://relay.openagents.com");}}
+  for i:0..<16 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[4]=1;v:=0;
+  white:=ink(0.6*d,0.95,3*d,0.95,0.95,0.95);muted:=ink(0.5*d,0.6,2*d,0.7,0.7,0.7);amber:=ink(0.6*d,0.95,3*d,1,0.62,0.16);left:=24*d;room:=w-48*d;
+  v=write(d,out,v,"PYLON",left,52*d,24*d,0.4,0.7,white,false,false);
+  status:=ifx still then "PYLON NETWORK" else ifx p[0].connection==1 then "LIVE RELAY" else ifx p[0].connection== -2 then "RELAY REFUSED / RELOAD" else "CONNECTING";
+  v=write(d,out,v,status,left,82*d,8*d,0.2,0.6,amber,false,false);
+  v=pl_text(out,v,"Lend a computer. Serve a native model. Train the Executor Network.",left,116*d,room,d,white);
+  v=pl_text(out,v,"Inkling 2 Mini / Elephant / Executor W2.2-W6.3 · GPU required",left,153*d,room,d,muted);
+  for i:0..<2 {b:=pl_button(p,i);v=hud(out,v,b,d,0,0,0.75,0.95,0.65,0.22);v=write(d,out,v,ifx i==0 then (ifx p[0].copied then "COPIED" else "COPY COMMAND") else "AGENT GUIDE",b.x0+12*d,b.y0+26*d,8*d,0.15,0.55,white,false,false);}
+  now:=pl_now(p);online:=0;for i:0..<p[0].count {r:=p[0].rows[i..<i+1];if pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]) {online+=1;}}
+  buf:[256]u8;n:=put_int(buf[..],0,online);n=put(buf[..],n," ONLINE    ");n=put_int(buf[..],n,p[0].answers);n=put(buf[..],n," ANSWERS    ");n=put_int(buf[..],n,p[0].statuses);n=put(buf[..],n," STATUS    ");n=put_int(buf[..],n,p[0].pool_count);n=put(buf[..],n," POOLS");
+  v=write(d,out,v,cast(string)buf[0..<n],left,264*d,8*d,0.15,0.55,amber,false,false);
+
+  // Executor Network & Decentralized Training panel (strictly from signed 30201/30210/30211/30212 relay events)
+  card_w:=ifx room>820*d then 820*d else room;
+  in_x:=left+14*d;in_w:=card_w-28*d;
+  btc_sat:=pl_sats_from_msat(p[0].paid_msat_bitcoin);
+  test_sat:=pl_sats_from_msat(p[0].paid_msat_testnet)+pl_sats_from_msat(p[0].paid_msat_signet)+pl_sats_from_msat(p[0].paid_msat_regtest);
+  b1:[256]u8;n1:=put(b1[..],0,"Settled BTC (real_bitcoin_moved): ");n1=put_int(b1[..],n1,btc_sat);n1=put(b1[..],n1," sats mainnet  |  ");n1=put_int(b1[..],n1,test_sat);n1=put(b1[..],n1," sats testnets");
+  s1:=cast(string)b1[0..<n1];
+  b2:[256]u8;n2:=put(b2[..],0,"Verified pools: ");n2=put_int(b2[..],n2,p[0].pool_count);n2=put(b2[..],n2,"  ·  Jobs: ");n2=put_int(b2[..],n2,p[0].pool_jobs);n2=put(b2[..],n2,"  ·  Checks: ");n2=put_int(b2[..],n2,p[0].pool_checks_pass);n2=put(b2[..],n2," pass / ");n2=put_int(b2[..],n2,p[0].pool_checks_fail);n2=put(b2[..],n2," fail  ·  Traces: ");n2=put_int(b2[..],n2,p[0].exec_traces);n2=put(b2[..],n2,"  ·  Verdicts: ");n2=put_int(b2[..],n2,p[0].exec_verdicts);
+  s2:=cast(string)b2[0..<n2];
+  b3:[256]u8;n3:=0;
+  if p[0].lineage_sha_n==64 {
+    n3=put(b3[..],0,"Checkpoint lineage: sha256:");n3=put(b3[..],n3,cast(string)p[0].lineage_sha[0..<12]);n3=put(b3[..],n3,"  ·  Gen ");n3=put_int(b3[..],n3,p[0].lineage_gen);
+    if p[0].h7_pass_bps>0 {n3=put(b3[..],n3,"  ·  H7 pass ");n3=put_int(b3[..],n3,p[0].h7_pass_bps/100);n3=put(b3[..],n3,"%");}
+  }else {
+    n3=put(b3[..],0,"Checkpoint lineage: waiting for signed relay events (0 observed)");
+  }
+  s3:=cast(string)b3[0..<n3];
+  l1:=pl_text_lines(s1,in_w,d,white);
+  l2:=pl_text_lines(s2,in_w,d,muted);
+  l3:=pl_text_lines(s3,in_w,d,white);
+  cy1:=326*d;
+  cy2:=cy1+cast(f32)l1*18*d+6*d;
+  cy3:=cy2+cast(f32)l2*18*d+6*d;
+  card_y1:=cy3+cast(f32)l3*18*d+14*d;
+  card:=Box.{x0=left,y0=282*d,x1=left+card_w,y1=card_y1};
+  v=hud(out,v,card,d,0,0,0.7,0.9,0.55,0.16);
+  v=write(d,out,v,"EXECUTOR NETWORK · DECENTRALIZED TRAINING (NIP-PYLON 30201)",in_x,304*d,7.5*d,0.15,0.55,amber,false,false);
+  v=pl_text(out,v,s1,in_x,cy1,in_w,d,white);
+  v=pl_text(out,v,s2,in_x,cy2,in_w,d,muted);
+  v=pl_text(out,v,s3,in_x,cy3,in_w,d,white);
+
+  v=pl_text(out,v,"Signed live beacons & activity since this page opened",left,card_y1+22*d,room,d,muted);
+  clip_top:=card_y1+36*d;
+  y:=card_y1+54*d-p[0].scroll*d;first:=v;
+  if p[0].count==0 {v=pl_text(out,v,"Waiting for a verified Pylon beacon",left,y+16*d,room,d,white);}
+  for i:0..<p[0].count {
+    r:=p[0].rows[i..<i+1];current:=pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]);tone:=ifx current then white else muted;
+    identity:=pl_display_identity(p,i);extra:=18*cast(f32)(pl_text_lines(identity,room,d,tone)-1)*d;row_height:=136*d+extra;
+    if y+row_height<clip_top || y>h-104*d {y+=row_height;continue;}
+    name:=ifx r[0].label_n>0 then cast(string)r[0].label[0..<r[0].label_n] else cast(string)r[0].slug[0..<r[0].slug_n];
+    v=write(d,out,v,name,left,y+18*d,11*d,0.15,0.55,tone,false,false);
+    n=put_int(buf[..],0,r[0].free);n=put(buf[..],n,"/");n=put_int(buf[..],n,r[0].total);n=put(buf[..],n," slots   ");n=put_int(buf[..],n,ifx now>=r[0].observed then now-r[0].observed else 0);n=put(buf[..],n,"s ago");if !current {n=put(buf[..],n," / offline");}
+    v=pl_text(out,v,cast(string)buf[0..<n],left,y+46*d,room,d,muted);
+    v=pl_text(out,v,identity,left,y+69*d,room,d,tone);
+    keytone:=muted;keytone.sans=true;keytone.scale=d;
+    split:=ifx r[0].npub_n>32 then 32 else r[0].npub_n;
+    v=write(d,out,v,cast(string)r[0].npub[0..<split],left,y+102*d+extra,7*d,0.1,0.5,keytone,false,false);
+    if r[0].npub_n>split {v=write(d,out,v,cast(string)r[0].npub[split..<r[0].npub_n],left,y+116*d+extra,7*d,0.1,0.5,keytone,false,false);}
+    y+=row_height;
+  }
+  p[0].scroll_max=hi(0,(y+p[0].scroll*d-(h-110*d))/d);p[0].scroll=clamp(p[0].scroll,0,p[0].scroll_max);
+  // Clip the scrolling table, keeping the header, Executor panel and limitations visible.
+  for i:first..<v {at:=i*16;if out[at+1]<clip_top || out[at+1]>h-104*d {out[at+6]=0;}}
+  caveat:=ifx p[0].full then "64-event live window full. Reload to reset." else ifx p[0].capacity then "64-machine view full." else "Event-derived totals only · Test networks strictly separated from mainnet";
+  v=pl_text(out,v,caveat,left,h-76*d,room,d,amber);
+  v=pl_text(out,v,"Pylons read requests. No private prompts or unredacted trajectories.",left,h-42*d,room,d,muted);return v;
+}

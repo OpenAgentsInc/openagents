@@ -496,6 +496,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 130...137: previewAsked(what)
         case 140...145: forgeAsked(what)
         case 146: manageExecutorModels()
+        case 147: managePylonExecutorNetwork()
         case 40...43: fileAsked(what)
         default: break
         }

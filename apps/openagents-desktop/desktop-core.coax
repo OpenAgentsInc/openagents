@@ -1,6 +1,7 @@
 // macOS host bridge to the portable desktop core (GitHub #13794, #13787).
 // All store, settings, worktree, daemon, worker and signed update logic lives in
 // coax/lib/agent/desktop/; this file exports a flat C ABI for Swift.
+#run_steps 200000;
 #load "../../coax/lib/agent/desktop/os-posix.coax";
 #load "../../coax/lib/agent/desktop/paths.coax";
 #load "../../coax/lib/agent/desktop/store.coax";
@@ -11,6 +12,7 @@
 #load "../../coax/lib/agent/desktop/gym.coax";
 #load "../../coax/lib/agent/desktop/executor-store.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
+#load "../../psionic/lib/peer/executor-release-store.coax";
 
 oa_dc_copy :: (s: string, out: [] u8) -> int {
   if out.count <= 0 { return 0; }
@@ -604,4 +606,42 @@ oa_dc_exec_scan :: (
   out_status: [] u8, out_lineage: [] u8, out_badge: [] u8, out_details: [] u8, out_counts: [] int
 ) -> int #export_c #effects(all) {
   return dce_scan(home, ram_mb, out_status, out_lineage, out_badge, out_details, out_counts);
+}
+
+// --- Pylon & Executor Network Dashboard + Signed Release Auto-Distribution (GitHub #13928) ---
+// Reads real ~/.openagents/pylon/, reconciled settlement receipts (real_bitcoin_moved=true),
+// and ~/.openagents/executor/state.json. Zero hardcoded or synthetic counters.
+oa_dc_pylon_dashboard :: (
+  home: string,
+  out_pylon: [] u8, out_contrib: [] u8, out_sats: [] u8, out_release: [] u8, out_details: [] u8,
+  out_counts: [] int
+) -> int #export_c #effects(all) {
+  d: [1] ErsDashboard;
+  ers_read_dashboard(home, d[..]);
+  ers_format_dashboard(d[..], out_pylon, out_contrib, out_sats, out_release, out_details);
+  if out_counts.count >= 5 {
+    out_counts[0] = d[0].settled_count;
+    out_counts[1] = d[0].verified_traces;
+    out_counts[2] = d[0].training_windows;
+    out_counts[3] = ifx d[0].staged_sha_n == 64 && cast(string) d[0].shadow_verdict[0..<d[0].shadow_verdict_n] == "promote" then 1 else 0;
+    out_counts[4] = ifx d[0].rollback_sha_n == 64 && cast(string) d[0].rollback_sha[0..<64] != cast(string) d[0].active_sha[0..<d[0].active_sha_n] then 1 else 0;
+  }
+  return ifx d[0].active_disk_ok then 1 else 0;
+}
+
+oa_dc_exec_release_stage :: (
+  home: string, manifest_path: string, payload_path: string, trusted_pubkey: string, out_err: [] u8
+) -> int #export_c #effects(all) {
+  trusted := [1] string.[trusted_pubkey];
+  rel: [1] ExwRelease; arena: [4096] u8;
+  st := ers_stage_signed(home, manifest_path, payload_path, trusted[..], rel[..], arena[..], out_err);
+  return cast(int) st;
+}
+
+oa_dc_exec_release_promote :: (home: string, out_err: [] u8) -> int #export_c #effects(all) {
+  return cast(int) ers_promote_staged(home, out_err);
+}
+
+oa_dc_exec_release_rollback :: (home: string, out_err: [] u8) -> int #export_c #effects(all) {
+  return cast(int) ers_rollback_active(home, out_err);
 }

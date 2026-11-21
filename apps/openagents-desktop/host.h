@@ -339,6 +339,7 @@ void cd_settings_info(void *page, const char *claude, const char *openrouter, co
 void cd_settings_gemini(void *page, const char *gemini);
 void cd_settings_local(void *page, const char *status);
 void cd_settings_executor(void *page, const char *status, const char *lineage, const char *badge);
+void cd_settings_pylon(void *page, const char *state, const char *contrib, const char *sats, const char *release);
 void cd_settings_wallet(void *page, const char *status, const char *balance, const char *addr, const char *npub, const char *limit, const char *backup, const char *history, int ready);
 void cd_inkling(void *page, int on);
 void cd_hybrid_exec(void *page, int on);

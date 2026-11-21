@@ -274,7 +274,8 @@ project 2450000
 # here from drop.js: 92,453 -> 113,505 bytes measured 2026-11-14 (macOS build); about 15% room.
 projects 130000
 # #13454: width-10 G table and public divsteps; 117,297 bytes measured 2026-11-13, about 5% room.
-pylon 124000
+# #13928: Executor Network & Decentralized Training panel + signed NIP-PYLON 30201 / 30210-30212 verification; 125,414 bytes measured 2026-11-21, about 5% room.
+pylon 132000
 # The Haunted House links its renderer carrier again (carriers/realm.coax loads metaverse/haunt.coax, #13513): 584,383 bytes measured on Linux; about 5% room.
 realm 615000
 speedrunhud 120000

@@ -234,6 +234,14 @@ extension CoderWindow {
             cd_settings_executor(r.page, snap.status, snap.lineage, snap.badge)
             cd_hybrid_exec(r.page, on)
         }
+        syncPylonExecutorDashboard()
+    }
+    func syncPylonExecutorDashboard() {
+        let p = ExecutorReleaseUpdater.snapshot()
+        cd_settings_pylon(page, p.pylonState, p.contributed, p.settledSats, p.releaseSummary)
+        for r in runs.values where r.page != page {
+            cd_settings_pylon(r.page, p.pylonState, p.contributed, p.settledSats, p.releaseSummary)
+        }
     }
     func syncAntigravitySettings() {
         cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())

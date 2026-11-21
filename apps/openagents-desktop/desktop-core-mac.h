@@ -79,3 +79,7 @@ int64_t oa_dc_instructions_write(coax_string text);
 int64_t oa_dc_instructions_words(coax_v_u8 out);
 int64_t oa_dc_instructions_max(void);
 int64_t oa_dc_exec_scan(coax_string home, int64_t ram_mb, coax_v_u8 out_status, coax_v_u8 out_lineage, coax_v_u8 out_badge, coax_v_u8 out_details, coax_v_s64 out_counts);
+int64_t oa_dc_pylon_dashboard(coax_string home, coax_v_u8 out_pylon, coax_v_u8 out_contrib, coax_v_u8 out_sats, coax_v_u8 out_release, coax_v_u8 out_details, coax_v_s64 out_counts);
+int64_t oa_dc_exec_release_stage(coax_string home, coax_string manifest_path, coax_string payload_path, coax_string trusted_pubkey, coax_v_u8 out_err);
+int64_t oa_dc_exec_release_promote(coax_string home, coax_v_u8 out_err);
+int64_t oa_dc_exec_release_rollback(coax_string home, coax_v_u8 out_err);

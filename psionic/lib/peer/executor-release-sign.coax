@@ -1,0 +1,67 @@
+// BIP-340 Schnorr signing helper for `openagents.executor-release.v1` manifests
+// (Executor W6.3, GitHub #13928).
+// Kept outside `#authority executor-release.coax` so verification & mutation
+// sweeps stay lightweight while CLI and E2E tools sign real secp256k1 releases.
+#load "executor-release.coax";
+#load "../../../coax/lib/crypto/schnorr_sign.coax";
+
+ersign_hex_ch :: (v: int) -> u8 #effects(all) {
+  return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10));
+}
+
+ersign_hex :: (src: [] u8, out: [] u8) -> bool #effects(all) {
+  if out.count < src.count * 2 { return false; }
+  for i: 0..<src.count {
+    b := cast(int) src[i];
+    out[2 * i] = ersign_hex_ch(b >> 4);
+    out[2 * i + 1] = ersign_hex_ch(b & 15);
+  }
+  return true;
+}
+
+// Derive the 32-byte x-only secp256k1 public key (64 lowercase hex chars) from a 32-byte secret.
+ersign_pubkey :: (secret: [] u8, out_pub_hex: [] u8) -> bool #effects(all) {
+  if secret.count != 32 || out_pub_hex.count < 64 { return false; }
+  aux: [32] u8;
+  msg: [32] u8;
+  sig: [64] u8;
+  work: [1] SignWork;
+  st := schnorr_sign_step(secret, aux[..], msg[..], work[..], sig[..], false);
+  if st != SIGN_MORE || work[0].prep[0].valid != 1 { return false; }
+  ok := ersign_hex(work[0].prep[0].public_key[..], out_pub_hex[0..<64]);
+  work[0] = SignWork.{};
+  return ok;
+}
+
+// Sign an ExwRelease in place with real BIP-340 Schnorr using `secret` and `aux`.
+// Populates `out_pub_hex` (64 bytes), `out_sig_hex` (128 bytes), and binds
+// `r[0].signer_pubkey` and `r[0].signature` to those buffers.
+ersign_release :: (
+  r: [] ExwRelease,
+  secret: [] u8,
+  aux: [] u8,
+  out_pub_hex: [] u8,
+  out_sig_hex: [] u8
+) -> bool #effects(all) {
+  if r.count < 1 || secret.count != 32 || aux.count != 32 || out_pub_hex.count < 64 || out_sig_hex.count < 128 {
+    return false;
+  }
+  if !ersign_pubkey(secret, out_pub_hex[0..<64]) { return false; }
+  r[0].signer_pubkey = cast(string) out_pub_hex[0..<64];
+  // Temporary valid 128-hex placeholder while hashing non-signature fields.
+  for i: 0..<128 { out_sig_hex[i] = '0'; }
+  r[0].signature = cast(string) out_sig_hex[0..<128];
+  msg: [32] u8;
+  if !er_signing_digest(r, msg[..]) { return false; }
+  work: [1] SignWork;
+  sig: [64] u8;
+  st := SIGN_MORE;
+  for _: 0..<16 {
+    st = schnorr_sign_step(secret, aux, msg[..], work[..], sig[..], false);
+    if st != SIGN_MORE { break; }
+  }
+  if st != SIGN_DONE { return false; }
+  if !ersign_hex(sig[..], out_sig_hex[0..<128]) { return false; }
+  r[0].signature = cast(string) out_sig_hex[0..<128];
+  return true;
+}

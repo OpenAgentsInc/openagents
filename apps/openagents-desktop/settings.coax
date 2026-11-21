@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 71;
+CP_SET_ENTRIES :: 75;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -59,6 +59,10 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.acp", name = "ACP Registry", terms = "acp registry custom agent opencode kiro cli binary provider"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.hybrid", name = "Hybrid Executor (hybrid-exec-v1)", terms = "executor hybrid replay exact sha256 psionic local deterministic"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.modules", name = "Compiled Weight Modules", terms = "executor weight modules safetensors diff schema dep budget sha256 verify"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.state", name = "Local Pylon", terms = "pylon local state executing validating training off self-testing network"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.contrib", name = "Verified Traces & Training Windows", terms = "pylon traces training windows diloco contributed decentralized"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.sats", name = "Spark Satoshis Settled", terms = "pylon spark sats bitcoin mainnet testnet regtest signet settled"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.release", name = "Executor Checkpoint & Shadow Rollout", terms = "executor checkpoint lineage shadow canary promote rollback signed release"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "", name = "Foreman", terms = "manager"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "set.tier", name = "Permission tier", terms = "observe managed auto autonomous read-only"},
     CpSetEntry.{page = CP_PG_FOREMAN, id = "set.audit", name = "Audit log", terms = "history actions"},
@@ -187,6 +191,7 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.gemini.a" { s[0].ask = CP_ASK_GEMINI_KEY; return true; }
   if id == "set.local.a" { s[0].ask = CP_ASK_LOCAL_MODELS; return true; }
   if id == "set.exec.hybrid.a" || id == "set.exec.modules.a" { s[0].ask = CP_ASK_EXECUTOR_MODELS; return true; }
+  if id == "set.pylon.state.a" || id == "set.pylon.contrib.a" || id == "set.pylon.sats.a" || id == "set.pylon.release.a" { s[0].ask = CP_ASK_PYLON_EXECUTOR; return true; }
   if id == "set.wallet.status.a" { s[0].ask = ifx s[0].set_wallet_ready then CP_ASK_WALLET_REFRESH else CP_ASK_WALLET_CONNECT; return true; }
   if id == "set.wallet.receive.a" { s[0].ask = CP_ASK_WALLET_RECEIVE; return true; }
   if id == "set.wallet.send.a" { s[0].ask = CP_ASK_WALLET_SEND; return true; }
@@ -449,6 +454,25 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       desc = "Class-E dense F64 modules: oa-exec-diff-verify, oa-exec-json-schema, oa-exec-dep-sched, oa-exec-arith-budget.",
       value = exec_lin, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.exec.group", x, y, w, erows[..]) + t.block_gap;
+    py_st := ifx s[0].set_pylon_state_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_state[0..<s[0].set_pylon_state_n]) else "Off";
+    py_co := ifx s[0].set_pylon_contrib_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_contrib[0..<s[0].set_pylon_contrib_n]) else "0 traces · 0 windows";
+    py_sa := ifx s[0].set_pylon_sats_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_sats[0..<s[0].set_pylon_sats_n]) else "0 sats settled";
+    py_rl := ifx s[0].set_pylon_release_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_release[0..<s[0].set_pylon_release_n]) else "No promoted release yet";
+    y += set_section_head(f, "set.pylon.head", x, y, w, "Pylon & Executor Network", "Live on-disk Pylon runtime state, verified training contributions, reconciled Spark sats (real_bitcoin_moved=true), and signed Ch 224 shadow rollout.") + t.section_gap;
+    pyrows: [4] SetRow;
+    pyrows[0] = SetRow.{id = "set.pylon.state", name = "Local Pylon",
+      desc = "Runtime state from ~/.openagents/pylon/state/ (Off / Self-testing / Executing / Validating / Training).",
+      value = py_st, kind = SET_ROW_BUTTON, button = "Details…", action = CP_SET_ACT};
+    pyrows[1] = SetRow.{id = "set.pylon.contrib", name = "Verified Traces & Training Windows",
+      desc = "Independent replay-verified traces and bounded W5 DiLoCo training windows contributed by this device.",
+      value = py_co, kind = SET_ROW_BUTTON, button = "Inspect…", action = CP_SET_ACT};
+    pyrows[2] = SetRow.{id = "set.pylon.sats", name = "Spark Satoshis Settled",
+      desc = "Reconciled from ~/.openagents/pylon/settlement/receipts.jsonl (real_bitcoin_moved=true only; test networks strictly separated from mainnet).",
+      value = py_sa, kind = SET_ROW_BUTTON, button = "Ledger…", action = CP_SET_ACT};
+    pyrows[3] = SetRow.{id = "set.pylon.release", name = "Executor Checkpoint & Shadow Rollout",
+      desc = "Signed openagents.executor-release.v1 SHA-256 lineage with Ch 224 shadow-to-promote & atomic rollback.",
+      value = py_rl, kind = SET_ROW_BUTTON, button = "Rollout…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.pylon.group", x, y, w, pyrows[..]) + t.block_gap;
     codex_st := ifx s[0].prov[0].codex_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_status[0..<s[0].prov[0].codex_status_n]) else "Not installed";
     codex_au := ifx s[0].prov[0].codex_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_auth[0..<s[0].prov[0].codex_auth_n]) else "Run `codex login` to sign in";
     cursor_st := ifx s[0].prov[0].cursor_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_status[0..<s[0].prov[0].cursor_status_n]) else "Not installed";
@@ -682,6 +706,14 @@ coder_page_settings_executor :: (s: [] CoderPage, status: string, lineage: strin
   s[0].set_exec_status_n = cp_out(s[0].set_exec_status[..], status);
   s[0].set_exec_lineage_n = cp_out(s[0].set_exec_lineage[..], lineage);
   s[0].set_exec_badge_n = cp_out(s[0].set_exec_badge[..], badge);
+}
+// Pylon & Executor Network dashboard + Ch 224 shadow rollout state in Settings > Models (#13928).
+coder_page_settings_pylon :: (s: [] CoderPage, state: string, contrib: string, sats: string, release: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].set_pylon_state_n = cp_out(s[0].set_pylon_state[..], state);
+  s[0].set_pylon_contrib_n = cp_out(s[0].set_pylon_contrib[..], contrib);
+  s[0].set_pylon_sats_n = cp_out(s[0].set_pylon_sats[..], sats);
+  s[0].set_pylon_release_n = cp_out(s[0].set_pylon_release[..], release);
 }
 // Bitcoin/Lightning Wallet status in Settings > Wallet (#13900).
 coder_page_settings_wallet :: (s: [] CoderPage, status: string, balance: string, addr: string, npub: string, limit: string, backup: string, history: string, ready: bool) #export_c #effects(all) {

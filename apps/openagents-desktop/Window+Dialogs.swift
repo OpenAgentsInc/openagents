@@ -669,6 +669,51 @@ extension CoderWindow {
             }
         }
     }
+    /// Settings > Models > Pylon & Executor Network (CP_ASK_PYLON_EXECUTOR; #13928):
+    /// displays live on-disk Pylon state, verified traces/windows, reconciled Spark sats
+    /// (real_bitcoin_moved=true with explicit network badge), and signed Ch 224 shadow
+    /// rollout state with atomic Promote and Rollback controls.
+    func managePylonExecutorNetwork() {
+        let snap = ExecutorReleaseUpdater.snapshot()
+        var body = snap.details
+        if let msg = ExecutorReleaseUpdater.lastMessage {
+            body += "\nLast action: " + msg
+        }
+        var d = CoderDialog(size: .lg, title: "Pylon & Executor Network", body: body)
+        var promoteIdx = -9
+        var rollbackIdx = -9
+        if snap.canPromote {
+            promoteIdx = d.buttons.count
+            d.buttons.append(.init(title: "Promote Staged", aside: true))
+        }
+        if snap.canRollback {
+            rollbackIdx = d.buttons.count
+            d.buttons.append(.init(title: "Rollback", kind: .danger, aside: true))
+        }
+        let refreshIdx = d.buttons.count
+        d.buttons.append(.init(title: "Refresh"))
+        let doneIdx = d.buttons.count
+        d.buttons.append(.init(title: "Done", kind: .primary))
+        d.confirm = doneIdx; d.cancel = doneIdx
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == promoteIdx {
+                _ = ExecutorReleaseUpdater.promoteStaged()
+                self.syncLocalModels()
+                self.managePylonExecutorNetwork()
+            } else if answer == rollbackIdx {
+                _ = ExecutorReleaseUpdater.rollbackActive()
+                self.syncLocalModels()
+                self.managePylonExecutorNetwork()
+            } else if answer == refreshIdx {
+                self.syncLocalModels()
+                self.managePylonExecutorNetwork()
+            } else {
+                self.syncLocalModels()
+                self.refocus()
+            }
+        }
+    }
     /// Coder > Claude Key: sets, replaces or removes the key Claude sub-agents use. It applies to the
     /// next Claude sub-agent; one already running keeps what it started with.
     func chooseKey() {
