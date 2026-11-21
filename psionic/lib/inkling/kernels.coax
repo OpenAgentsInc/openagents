@@ -137,6 +137,7 @@ ink_rmsnorm :: (item:int,dim:int,has_w:int,eps:f32,x:[]f32,w:[]f32,out:[]f32) #e
 // ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows) writes INK_D=8 rows.
 // 4 lanes cooperate on each 32-elem Q8_0 block (8 blocks/simdgroup, 100% coalesced & 72/8=9 exact!).
 // ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows = 8 rows/TG), 4 lanes/block coalesced.
+// ---- Matvec Q8_0 (1 token): 128 threads = 4 simdgroups x 2 rows (8 rows/TG, hoisted row bases).
 ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
@@ -147,13 +148,13 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
         r1:=base_row+1;
         a0:f32=0;a1:f32=0;
         k0:=sub*4;
-        for step:0..<(blocks+7)/8 {
-            block:=step*8+blk_lane;
-            if block<blocks {
-                xb:=block*32+k0*2;boff:=block*17;
-                if r1<rows {
-                    at0:=base_row*words+boff;
-                    at1:=at0+words;
+        if r1<rows {
+            rb0:=base_row*words;rb1:=rb0+words;
+            for step:0..<(blocks+7)/8 {
+                block:=step*8+blk_lane;
+                if block<blocks {
+                    xb:=block*32+k0*2;boff:=block*17;
+                    at0:=rb0+boff;at1:=rb1+boff;
                     s0:f32=0;s1:f32=0;
                     for j:0..<4 {
                         x0:=x[xb+2*j];
@@ -164,8 +165,15 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
                     }
                     a0+=ink_half(cast(u32)w[at0])*s0;
                     a1+=ink_half(cast(u32)w[at1])*s1;
-                } else if base_row<rows {
-                    at:=base_row*words+boff;sum:f32=0;
+                }
+            }
+        } else if base_row<rows {
+            rb0:=base_row*words;
+            for step:0..<(blocks+7)/8 {
+                block:=step*8+blk_lane;
+                if block<blocks {
+                    xb:=block*32+k0*2;boff:=block*17;
+                    at:=rb0+boff;sum:f32=0;
                     for j:0..<4 {
                         x0:=x[xb+2*j];
                         x1:=x[xb+2*j+1];
@@ -190,7 +198,7 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
     }
 }
 
-// ---- Sprint 28: Fused Q8_0 matvec + post shortconv + optional residual add (for attn_output decode, -48 dispatches & -48 barriers/tok!).
+// ---- Sprint 28+29: Fused Q8_0 matvec + post shortconv + optional residual add (8 rows/TG, hoisted row bases).
 ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
@@ -201,13 +209,13 @@ ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
         r1:=base_row+1;
         a0:f32=0;a1:f32=0;
         k0:=sub*4;
-        for step:0..<(blocks+7)/8 {
-            block:=step*8+blk_lane;
-            if block<blocks {
-                xb:=block*32+k0*2;boff:=block*17;
-                if r1<rows {
-                    at0:=base_row*words+boff;
-                    at1:=at0+words;
+        if r1<rows {
+            rb0:=base_row*words;rb1:=rb0+words;
+            for step:0..<(blocks+7)/8 {
+                block:=step*8+blk_lane;
+                if block<blocks {
+                    xb:=block*32+k0*2;boff:=block*17;
+                    at0:=rb0+boff;at1:=rb1+boff;
                     s0:f32=0;s1:f32=0;
                     for j:0..<4 {
                         x0:=x[xb+2*j];
@@ -218,8 +226,15 @@ ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
                     }
                     a0+=ink_half(cast(u32)w[at0])*s0;
                     a1+=ink_half(cast(u32)w[at1])*s1;
-                } else if base_row<rows {
-                    at:=base_row*words+boff;sum:f32=0;
+                }
+            }
+        } else if base_row<rows {
+            rb0:=base_row*words;
+            for step:0..<(blocks+7)/8 {
+                block:=step*8+blk_lane;
+                if block<blocks {
+                    xb:=block*32+k0*2;boff:=block*17;
+                    at:=rb0+boff;sum:f32=0;
                     for j:0..<4 {
                         x0:=x[xb+2*j];
                         x1:=x[xb+2*j+1];
@@ -3316,6 +3331,158 @@ ink_dequant_f32_bf16 :: (item:int,rows:int,cols:int,w:[]f32,out_bf16:[]u32) #exp
         }
     }
 }
+
+// ---- Sprint 29: Fused depth-attention mix + ctrl_prep (for MoE looped control, -24 dispatches & -24 barriers/tok).
+// Writes raw mix output to out_mix[0..dim-1], and concat(rms(out_mix, 1e-6), rms(msg, 1e-6)) to out_cat[0..2*dim-1].
+// Launch 1 work item, lanes = 256.
+ink_mix_ctrl_prep :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,msg:[]f32,out_mix:[]f32,out_cat:[]f32) #export_c #effects(all) {
+    part_ss:[1024]f32;part_dot:[1024]f32;p2_ss:[64]f32;p2_dot:[64]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    n_states:=n_blocks+1;
+    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
+    steps:=(dim+255)/256;
+    n_chunks:=(n_states+3)/4;
+    for ch:0..<n_chunks {
+        s0:=ch*4;
+        for thread:0..<INK_NT {
+            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
+            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+            b0:=s0*dim;b1:=b0+dim;b2:=b1+dim;b3:=b2+dim;
+            for k:0..<steps {
+                i:=k*256+thread;
+                if i<dim {
+                    qv:=query[i];
+                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
+                    ss0+=v0*v0;d0+=v0*qv;
+                    if s0+1<n_states {
+                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[i];
+                        ss1+=v1*v1;d1+=v1*qv;
+                    }
+                    if s0+2<n_states {
+                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[i];
+                        ss2+=v2*v2;d2+=v2*qv;
+                    }
+                    if s0+3<n_states {
+                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[i];
+                        ss3+=v3*v3;d3+=v3*qv;
+                    }
+                }
+            }
+            part_ss[thread*4+0]=ss0;part_ss[thread*4+1]=ss1;part_ss[thread*4+2]=ss2;part_ss[thread*4+3]=ss3;
+            part_dot[thread*4+0]=d0;part_dot[thread*4+1]=d1;part_dot[thread*4+2]=d2;part_dot[thread*4+3]=d3;
+        }
+        for thread:0..<INK_NT {
+            if thread<64 {
+                st:=thread/16;c:=thread%16;
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=part_ss[(j*16+c)*4+st];tdot+=part_dot[(j*16+c)*4+st];}
+                p2_ss[thread]=tss;p2_dot[thread]=tdot;
+            }
+        }
+        for thread:0..<INK_NT {
+            if thread>=s0 && thread<s0+4 && thread<n_states {
+                st:=thread-s0;
+                tss:f32=0;tdot:f32=0;
+                for j:0..<16 {tss+=p2_ss[st*16+j];tdot+=p2_dot[st*16+j];}
+                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
+                invs[thread]=inv;
+                scores[thread]=tdot*inv*inv_sqrt_d;
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        if thread<n_states {
+            mx:f32=scores[0];
+            for s:1..<n_states {if scores[s]>mx {mx=scores[s];}}
+            w[thread]=exp(scores[thread]-mx);
+        } else {
+            w[thread]=0.0f32;
+        }
+    }
+    for thread:0..<INK_NT {
+        esum:f32=0;
+        for s:0..<n_states {esum+=w[s];}
+        inv_e:=1.0f32/esum;
+        s1:f32=0;s2:f32=0;
+        for k:0..<steps {
+            i:=k*256+thread;
+            if i<dim {
+                acc:f32=0;
+                for s:0..<n_states {
+                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
+                    acc+=(w[s]*inv_e*invs[s])*v;
+                }
+                out_mix[i]=acc;
+                mv:=msg[i];
+                s1+=acc*acc;s2+=mv*mv;
+            }
+        }
+        part_ss[thread]=s1;part_dot[thread]=s2;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            t1:f32=0;t2:f32=0;
+            for j:0..<16 {t1+=part_ss[j*16+thread];t2+=part_dot[j*16+thread];}
+            p2_ss[thread]=t1;p2_dot[thread]=t2;
+        }
+    }
+    for thread:0..<INK_NT {
+        t1:f32=0;t2:f32=0;for j:0..<16 {t1+=p2_ss[j];t2+=p2_dot[j];}
+        inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
+        inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
+        for k:0..<steps {
+            i:=k*256+thread;
+            if i<dim {
+                out_cat[i]=out_mix[i]*inv1;
+                out_cat[dim+i]=msg[i]*inv2;
+            }
+        }
+    }
+}
+
+// ---- Sprint 29: GPU greedy argmax stage 1 (64 TGs x 256 threads scan logits -> 64 partial (val, id) pairs).
+ink_argmax_s1 :: (item:int,n:int,logits:[]f32,out_vals:[]f32,out_ids:[]u32) #export_c #effects(all) {
+    pv:[256]f32;pi:[256]u32;
+    chunk:=(n+63)/64;
+    lo:=item*chunk;
+    hi:=lo+chunk;
+    if hi>n {hi=n;}
+    for thread:0..<INK_NT {
+        bv:f32=-1.0e30f32;
+        bi:u32=0;
+        for step:0..<(chunk+255)/256 {
+            i:=lo+step*256+thread;
+            if i<hi {
+                v:=logits[i];
+                if v>bv {bv=v;bi=cast(u32)i;}
+            }
+        }
+        pv[thread]=bv;pi[thread]=bi;
+    }
+    for thread:0..<INK_NT {
+        if thread==0 {
+            bv:=pv[0];bi:=pi[0];
+            for j:1..<INK_NT {
+                if pv[j]>bv || (pv[j]==bv && pi[j]<bi) {bv=pv[j];bi=pi[j];}
+            }
+            out_vals[item]=bv;
+            out_ids[item]=bi;
+        }
+    }
+}
+
+// ---- Sprint 29: GPU greedy argmax stage 2 (1 TG of 64 threads reduces 64 partial pairs -> out_id[0]).
+ink_argmax_s2 :: (item:int,n_parts:int,vals:[]f32,ids:[]u32,out_id:[]u32) #export_c #effects(all) {
+    for thread:0..<INK_T {
+        if thread==0 {
+            bv:=vals[0];bi:=ids[0];
+            for j:1..<n_parts {
+                if vals[j]>bv || (vals[j]==bv && ids[j]<bi) {bv=vals[j];bi=ids[j];}
+            }
+            out_id[0]=bi;
+        }
+    }
+}
+
 
 
 

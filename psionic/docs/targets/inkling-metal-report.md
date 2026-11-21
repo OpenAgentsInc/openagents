@@ -154,6 +154,11 @@ The initial native Metal runtime worked end-to-end and wired Inkling 2 Mini into
 - **Native OpenAI `tools`, structured `tool_calls` & `role: "tool"` (`ecf7d63b65`):** Added full Inkling `tool_declare` / `<|content_invoke_tool_json|>` support in `psionic-inkling-serve` for drop-in OpenAI tool-calling compatibility.
 - **Keep `K_MOE_MM_BF16_16` up to `nb < 384` (`e89f8b6e11`):** Avoided 3–10× `tm=64` expert padding on 100–350 token cached coding turns, cutting 109-tok TTFT `554.7 → 453.5 ms` (-18.2%), 201-tok `666.1 → 570.2 ms` (-14.4%), 337-tok `800.4 → 701.8 ms` (-12.3%), and cutting 10-task real coding wall time from `200.4 s → 170.24 s` (-30.2 s).
 
+### Sprints 26–29 — `272bd3a642`, `30df1b4df5`, `31382fe8cf` & Sprint 29 (*In-Tile IQ4 Metal 4 Matmul, Decode Barrier Collapse & GPU Argmax*)
+- **In-tile `IQ4_NL` Metal 4 Neural Accelerator matmul (`am_matmul_iq4`, `30df1b4df5`):** Added `am_matmul_iq4` to `coax/lib/compute/apple.coax` (138/138 mutants killed) and `ink_moe_mm_iq4` / `ink_moe_mm_iq4_16` to `psionic/lib/inkling/kernels.coax`, dequantizing `IQ4_NL` directly into `threadgroup bfloat` inside Metal 4 `mpp::tensor_ops::matmul2d` with zero `w_bf16` DRAM staging (`-704 MB` RSS; `2.1–2.5×` faster 64–136 tok prefill).
+- **Decode barrier & dispatch collapse (`30df1b4df5`, `31382fe8cf`, Sprint 29):** Moved `attn_v_conv_proj` into Wave 3, fused K/V shortconv+clip/RMSNorm+KV store (`ink_conv_clip_kv`, `ink_conv_head_rmsnorm_kv` for `head_dim <= 256`), fused `attn_output` post-shortconv+residual (`ink_dv_q8_conv`), overlapped `K_MIX(messages)` into Wave 1 (`-24 barriers/tok`), fused `K_MIX` + `K_CTRL_PREP` (`ink_mix_ctrl_prep`, `-24 dispatches & barriers/tok`), hoisted Q8_0 row bases, and moved greedy argmax onto the GPU (`ink_argmax_s1` + `ink_argmax_s2`, eliminating 200k-float CPU logit scan). Decode reaches **~44 tok/s** on M5 Max (vs **34–35 tok/s** for `llama.cpp` on the same `Inkling-2-Mini-IQ4_NL.gguf` checkpoint, at **4.46× lower RSS**: `5.36 GiB` vs `23.91 GiB`).
+- **Live Gym → Benchmarks visualization (`61d0f5be73`, `1aa1f0e3bf`):** Embedded two real OpenAgents Coax GPU chat views side by side in `/Applications/OpenAgents.app` (`--experimental` → Gym → Benchmarks) for live head-to-head Psionic vs `llama.cpp` runs.
+
 ---
 
 ## 4. What Didn't Work (M5 Max Hardware Lessons)
@@ -165,6 +170,8 @@ Not every hypothesis won. We benchmarked and reverted the following regressions 
 3. **4-lane `ink_moe_down_iq4`:** While 4-lane coalescing sped up `ink_moe_gu_iq4` by +6.6%, applying it to `ink_moe_down_iq4` regressed decode from **3.78 ms → 6.01 ms** due to 4× `idx / blocks` divisions and `ink_half` conversions. Keeping 1-lane for `down` and 4-lane for `gu` + `m4` was optimal.
 4. **Larger Metal 4 tile `am_matmul_bf16(256, 64, 128)` & 16-row flattened `ink_dequant_iq4_exp_bf16`:** Both regressed prefill throughput compared to `(128, 64, 64)` and 8-row/TG 96-thread (`72/12=6`, `36/12=3` exact).
 5. **Metal indirect dispatch (`dispatchThreadgroupsWithIndirectBuffer`) inside `MTLDispatchTypeConcurrent`:** Intended to skip empty MoE tiles, but stalled Metal's concurrent command encoder on Apple Silicon (~350 ms regression on short prompts); reverted in `aec4315194`.
+6. **Load-time aligned `u32` split repack of 18-byte `IQ4_NL` MoE tensors (`qs[] u32` + `ds[] u16`):** Measured bit-exact but zero decode gain (`moe_gu_iq4` `4.57 ms` vs `4.51 ms`, `moe_down_iq4` `3.70 ms` vs `3.46 ms`) while adding `+0.57 s` load time and higher RSS. M5 Max's L1/L2 handles 18-byte `IQ4_NL` strides without penalty; the remaining gap to MLX's 125 tok/s is primarily checkpoint byte width (**4.10 GB/tok** in mixed `IQ4_NL+Q8_0+F32` GGUF vs **~2.4 GB/tok** in all-4-bit MLX).
+7. **Single-TG fused `K_CTRL_UP_APPLY_RMSNORM` & 16-row `ink_dv_q8_conv`:** Collapsing 36-TG `K_CTRL_UP_APPLY` into 1 TG regressed `mix+ctrl+norm` + `moe_prep+rtr` by **+2.8 ms/tok** (under-saturating 40 GPU cores on 1.18 MB `F32` weights); 16-row `ink_dv_q8_conv` dropped occupancy on `d=2304` (144 vs 288 TGs, `+0.20 ms`). Reverted both.
 
 ---
 
