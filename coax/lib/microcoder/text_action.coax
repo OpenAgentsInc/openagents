@@ -93,6 +93,24 @@ mc_member :: (obj: string, key: string, tok: int, empty: string, out: [] u8, n: 
   return true;
 }
 
+// An optional array member copied when present (non-null): wraps a single item of wrap_tok
+// (e.g. single edit object or single string view/note) into a 1-element array; omitted when absent.
+mc_member_opt_array :: (obj: string, key: string, wrap_tok: int, out: [] u8, n: [] int) -> bool {
+  v := cl_find(obj, key);
+  if !v.ok || v.tok == JSON_NULL { return true; }
+  n[0] = json_raw(out, n[0], ",\"");
+  n[0] = json_raw(out, n[0], key);
+  n[0] = json_raw(out, n[0], "\":");
+  if v.tok == JSON_ARRAY { n[0] = json_raw(out, n[0], cl_json(obj, v)); return true; }
+  if wrap_tok != 0 && v.tok == wrap_tok {
+    n[0] = json_raw(out, n[0], "[");
+    n[0] = json_raw(out, n[0], cl_json(obj, v));
+    n[0] = json_raw(out, n[0], "]");
+    return true;
+  }
+  return false;
+}
+
 // obj as a whole next_action in out, or why not ("" and why[0]).
 mc_normalize :: (ar: [] ClArena, obj: string, out: [] u8, why: [] string) -> string {
   any := false;
@@ -106,10 +124,25 @@ mc_normalize :: (ar: [] ClArena, obj: string, out: [] u8, why: [] string) -> str
   if c.ok { n[0] = mc_flatten(cl_json(obj, c), out, n[0], count[..]); }
   n[0] = json_raw(out, n[0], "]");
   if !mc_member(obj, "rationale", JSON_STRING, "\"\"", out, n[..]) { why[0] = "rationale is not a string"; return ""; }
-  if !mc_member(obj, "edits", JSON_ARRAY, "[]", out, n[..]) { why[0] = "edits is not an array"; return ""; }
+  // edits: array, or single edit object wrapped in []
+  ev := cl_find(obj, "edits");
+  if !ev.ok || ev.tok == JSON_NULL { n[0] = json_raw(out, n[0], ",\"edits\":[]"); }
+  else if ev.tok == JSON_ARRAY { n[0] = json_raw(out, n[0], ",\"edits\":"); n[0] = json_raw(out, n[0], cl_json(obj, ev)); }
+  else if ev.tok == JSON_OBJECT { n[0] = json_raw(out, n[0], ",\"edits\":["); n[0] = json_raw(out, n[0], cl_json(obj, ev)); n[0] = json_raw(out, n[0], "]"); }
+  else { why[0] = "edits is not an array"; return ""; }
   if !mc_member(obj, "reply", JSON_STRING, "\"\"", out, n[..]) { why[0] = "reply is not a string"; return ""; }
-  if !mc_member(obj, "view", JSON_ARRAY, "[]", out, n[..]) { why[0] = "view is not an array"; return ""; }
+  // view: array, or single path string wrapped in []
+  vv := cl_find(obj, "view");
+  if !vv.ok || vv.tok == JSON_NULL { n[0] = json_raw(out, n[0], ",\"view\":[]"); }
+  else if vv.tok == JSON_ARRAY { n[0] = json_raw(out, n[0], ",\"view\":"); n[0] = json_raw(out, n[0], cl_json(obj, vv)); }
+  else if vv.tok == JSON_STRING { n[0] = json_raw(out, n[0], ",\"view\":["); n[0] = json_raw(out, n[0], cl_json(obj, vv)); n[0] = json_raw(out, n[0], "]"); }
+  else { why[0] = "view is not an array"; return ""; }
   if !mc_member(obj, "finished", JSON_TRUE, "false", out, n[..]) { why[0] = "finished is not a boolean"; return ""; }
+  // Preserve optional aware/mode/checklist members so local models never lose working memory, todos or questions
+  if !mc_member_opt_array(obj, "notes", JSON_STRING, out, n[..]) { why[0] = "notes is not an array"; return ""; }
+  if !mc_member_opt_array(obj, "questions", JSON_STRING, out, n[..]) { why[0] = "questions is not an array"; return ""; }
+  if !mc_member_opt_array(obj, "todos", JSON_OBJECT, out, n[..]) { why[0] = "todos is not an array"; return ""; }
+  if !mc_member_opt_array(obj, "delegate", JSON_OBJECT, out, n[..]) { why[0] = "delegate is not an array"; return ""; }
   ask := cl_text(ar, obj, cl_find(obj, "ask"));
   n[0] = json_raw(out, n[0], ifx ask == "question" then ",\"ask\":\"question\"}" else ",\"ask\":\"none\"}");
   if n[0] < 0 { why[0] = "the reply does not fit its buffer"; return ""; }
@@ -119,6 +152,9 @@ mc_normalize :: (ar: [] ClArena, obj: string, out: [] u8, why: [] string) -> str
 // The action in a reply's text, decoded into ar (its normalized JSON in
 // norm). What's wrong with it, or "".
 mc_text_action :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction) -> string {
+  return mc_text_action_as(ar, raw, norm, a, false);
+}
+mc_text_action_as :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction, more: bool) -> string {
   a[0] = McAction.{};
   text := mc_without_reasoning(raw);
   first_why := "";
@@ -129,7 +165,7 @@ mc_text_action :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction) -> 
     why: [1] string;
     whole := mc_normalize(ar, obj, norm, why[..]);
     if whole.count == 0 { if first_why.count == 0 { first_why = why[0]; } continue; }
-    w := mc_action_parse(ar, whole, a);
+    w := mc_action_parse_as(ar, whole, a, more);
     if w.count == 0 { return ""; }
     if first_why.count == 0 { first_why = w; }
   }
@@ -200,4 +236,13 @@ mc_text_action :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction) -> 
   raw := "{\"rationale\": \"Apply edits.\", \"edits\": [{\"path\": \"a.coax\", \"old\": \"x\", \"new\": \"y\"}], \"finished\": false}";
   #assert mc_text_action(ar[..], raw, norm[..], a[..]) == "";
   #assert a[0].ne == 1 && a[0].edits[0].path == "a.coax" && a[0].edits[0].old == "x" && a[0].edits[0].text == "y";
+}
+
+#test "plain-text normalization preserves notes, todos, single-object edits and single-string views" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [4096] u8; a: [1] McAction;
+  raw := "{\"rationale\":\"fix\",\"notes\":[\"a.coax:1-4 bug here\"],\"edits\":{\"path\":\"a.coax\",\"old\":\"x\",\"new\":\"y\"},\"view\":\"b.coax:1-20\",\"todos\":[{\"id\":\"1\",\"content\":\"fix\",\"status\":\"in_progress\"}]}";
+  #assert mc_text_action_as(ar[..], raw, norm[..], a[..], true) == "";
+  #assert a[0].ne == 1 && a[0].edits[0].path == "a.coax" && a[0].nv == 1 && a[0].view[0] == "b.coax:1-20";
+  #assert a[0].nn == 1 && a[0].notes[0] == "a.coax:1-4 bug here" && a[0].nt == 1 && a[0].todos[0].id == "1";
 }

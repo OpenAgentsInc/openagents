@@ -24,6 +24,7 @@ cp_models :: (s: [] CoderPage) -> int {
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
   if s[0].hybrid_exec { n += 1; }
+  if cp_has_inkling_neon(s) { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   if s[0].prov[0].cursor { n += 1; }
   n += cp_acp_enabled_count(s);
@@ -56,6 +57,17 @@ cp_hybrid_idx :: (s: [] CoderPage) -> int {
   return n;
 }
 cp_is_hybrid :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].hybrid_exec && idx == cp_hybrid_idx(s); }
+cp_has_inkling_neon :: (s: [] CoderPage) -> bool { return s.count > 0 && cp_cloud_ok(s) && s[0].inkling; }
+cp_inkling_neon_idx :: (s: [] CoderPage) -> int {
+  if !cp_has_inkling_neon(s) { return -1; }
+  n := CP_MODELS;
+  if s[0].or_main_n > 0 { n += 1; }
+  if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
+  if s[0].hybrid_exec { n += 1; }
+  return n;
+}
+cp_is_inkling_neon :: (s: [] CoderPage, idx: int) -> bool { return cp_has_inkling_neon(s) && idx == cp_inkling_neon_idx(s); }
 cp_model_index :: (s: [] CoderPage) -> int {
   n := cp_models(s);
   if s.count > 0 && s[0].model >= 0 && s[0].model < n { return s[0].model; }
@@ -82,6 +94,10 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
   }
   if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" {
     if s.count > 0 && s[0].hybrid_exec { return cp_hybrid_idx(s); }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
+  if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" {
+    if cp_has_inkling_neon(s) { return cp_inkling_neon_idx(s); }
     return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
   if name == "codex" || name == "Codex" {
@@ -115,6 +131,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "antigravity"; }
   if cp_is_inkling(s, idx) { return "inkling-2-mini"; }
   if cp_is_hybrid(s, idx) { return "hybrid-exec-v1"; }
+  if cp_is_inkling_neon(s, idx) { return "inkling-neon"; }
   if cp_is_codex(s, idx) { return "codex"; }
   if cp_is_cursor(s, idx) { return "cursor"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -133,6 +150,7 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "Antigravity"; }
   if cp_is_inkling(s, idx) { return "Inkling 2 Mini (Local)"; }
   if cp_is_hybrid(s, idx) { return "Hybrid Executor [E]"; }
+  if cp_is_inkling_neon(s, idx) { return "Inkling + Neon (Hybrid)"; }
   if cp_is_codex(s, idx) { return "Codex"; }
   if cp_is_cursor(s, idx) { return "Cursor"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -167,6 +185,7 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].hybrid_desc[n..<s[0].hybrid_desc.count], badge);
     return cast(string) s[0].hybrid_desc[0..<n];
   }
+  if cp_is_inkling_neon(s, idx) { return "Local Inkling scout · Vertex Neon escalation · Free finish"; }
   if cp_is_codex(s, idx) { return "OpenAI Codex CLI · app-server"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP CLI · agent acp"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -218,12 +237,14 @@ coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #expo
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   ok := kind == "vertex" || kind == "key";
   s[0].set_gauth_n = ifx ok then cp_out(s[0].set_gauth[..], text) else 0;
   s[0].gauth_vertex = kind == "vertex";
   if was_agy { s[0].model = cp_agy_idx(s); }
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
@@ -232,6 +253,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
   }
   if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
   if cp_is_hybrid(s, idx) { return "Psionic Metal · Hybrid Executor [E]"; }
+  if cp_is_inkling_neon(s, idx) { return "Hybrid · Inkling + Gemini 4 Neon"; }
   if cp_is_codex(s, idx) { return "Codex CLI"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
@@ -270,6 +292,11 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
     s[0].model = cp_hybrid_idx(s);
     return true;
   }
+  if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" {
+    if !cp_has_inkling_neon(s) { return false; }
+    s[0].model = cp_inkling_neon_idx(s);
+    return true;
+  }
   if name == "codex" || name == "Codex" {
     if !s[0].prov[0].codex { return false; }
     s[0].model = cp_codex_idx(s);
@@ -305,32 +332,40 @@ coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #expor
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
   s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
   if was_agy { s[0].model = cp_agy_idx(s); }
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].agy = on;
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_hybrid := cp_is_hybrid(s, s[0].model);
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].inkling = on;
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_hybrid_exec :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].hybrid_exec = on;
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
@@ -338,10 +373,12 @@ coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(al
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
+  was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].cloud_authed = on;
   if was_agy { s[0].model = cp_agy_idx(s); }
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
   s[0].model = cp_model_index(s);
 }
 // The name of what runs the next message: the Antigravity CLI (agyworker), or Microcoder (mcworker)
@@ -353,6 +390,7 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if cp_is_agy(s, idx) { return "Antigravity CLI"; }
   if cp_is_inkling(s, idx) { return "Psionic Metal"; }
   if cp_is_hybrid(s, idx) { return "Psionic Metal · [E]"; }
+  if cp_is_inkling_neon(s, idx) { return "Inkling + Vertex AI"; }
   if cp_is_codex(s, idx) { return "Codex CLI"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP"; }
   if cp_is_acp(s, idx) { return "ACP Registry"; }

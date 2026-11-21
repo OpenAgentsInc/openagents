@@ -980,6 +980,13 @@ int main(int argc, char **argv) {
       if (got >= 2 && si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
         cd_experimental_set(g_slots[si].page, 1);
         cd_cloud_authed_set(g_slots[si].page, 1);
+        if (strcmp(val, "inkling-2-mini") == 0 || strcmp(val, "inkling") == 0 ||
+            strcmp(val, "inkling-neon") == 0 || strcmp(val, "hybrid-neon") == 0 || strcmp(val, "inkling+neon") == 0) {
+          cd_inkling(g_slots[si].page, 1);
+        } else if (strcmp(val, "hybrid-exec-v1") == 0 || strcmp(val, "hybrid-executor") == 0) {
+          cd_inkling(g_slots[si].page, 1);
+          cd_hybrid_exec(g_slots[si].page, 1);
+        }
         ok = cd_pick_model(g_slots[si].page, val);
       }
       printf("{\"ok\":%s}\n", ok ? "true" : "false");

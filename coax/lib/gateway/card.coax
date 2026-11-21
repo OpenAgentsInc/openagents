@@ -159,12 +159,14 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
 // pages, read 2026-11-19), and Anthropic's Claude models 200,000 (docs.anthropic.com, the
 // standard window). A model not here is unknown (0): its caller keeps its own floor.
 GwWindow :: struct { model: string; tokens: int; }
-GW_WINDOWS :: [5] GwWindow.[
+GW_WINDOWS :: [7] GwWindow.[
   GwWindow.{model = "gemini-4-hydrogen", tokens = 1048576},
   GwWindow.{model = "gemini-4-carbon", tokens = 1048576},
   GwWindow.{model = "gemini-4-argon", tokens = 1048576},
   GwWindow.{model = "gemini-4-neon", tokens = 1048576},
   GwWindow.{model = "gemini-2.5-flash-lite", tokens = 1048576},
+  GwWindow.{model = "inkling-2-mini", tokens = 32768},
+  GwWindow.{model = "hybrid-exec-v1", tokens = 32768},
 ];
 GW_CLAUDE_WINDOW :: 200000;
 
@@ -178,7 +180,8 @@ gw_window :: (model: string) -> int {
   return 0;
 }
 
-#test "context windows: the Gemini models a plan sends, with or without google/; Claude; anything else unknown" {
+#test "context windows: the Gemini models a plan sends, with or without google/; Claude; local Inkling 32K; anything else unknown" {
   #assert gw_window("gemini-4-hydrogen") == 1048576 && gw_window("google/gemini-4-hydrogen") == 1048576 && gw_window("gemini-4-neon") == 1048576;
+  #assert gw_window("inkling-2-mini") == 32768 && gw_window("hybrid-exec-v1") == 32768;
   #assert gw_window("claude-haiku-4-5") == 200000 && gw_window("local") == 0 && gw_window("z-ai/glm-5.3-flash") == 0 && gw_window("") == 0 && gw_window("google/") == 0;
 }

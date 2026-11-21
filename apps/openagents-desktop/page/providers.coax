@@ -270,6 +270,7 @@ cp_codex_idx :: (s: [] CoderPage) -> int {
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
   if s[0].hybrid_exec { n += 1; }
+  if cp_has_inkling_neon(s) { n += 1; }
   return n;
 }
 cp_is_codex :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].codex && idx == cp_codex_idx(s); }
@@ -284,6 +285,7 @@ cp_cursor_idx :: (s: [] CoderPage) -> int {
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
   if s[0].hybrid_exec { n += 1; }
+  if cp_has_inkling_neon(s) { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   return n;
 }
@@ -299,6 +301,7 @@ cp_acp_base_idx :: (s: [] CoderPage) -> int {
   if s[0].agy { n += 1; }
   if s[0].inkling { n += 1; }
   if s[0].hybrid_exec { n += 1; }
+  if cp_has_inkling_neon(s) { n += 1; }
   if s[0].prov[0].codex { n += 1; }
   if s[0].prov[0].cursor { n += 1; }
   return n;
@@ -317,7 +320,7 @@ cp_is_acp :: (s: [] CoderPage, idx: int) -> bool { return cp_acp_slot_for_model(
 cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
   if cp_is_agy(s, idx) { return CP_PROV_AGY; }
   if cp_is_inkling(s, idx) { return CP_PROV_INKLING; }
-  if cp_is_hybrid(s, idx) { return CP_PROV_HYBRID; }
+  if cp_is_hybrid(s, idx) || cp_is_inkling_neon(s, idx) { return CP_PROV_HYBRID; }
   if cp_is_codex(s, idx) { return CP_PROV_CODEX; }
   if cp_is_cursor(s, idx) { return CP_PROV_CURSOR; }
   if cp_is_acp(s, idx) { return CP_PROV_ACP; }

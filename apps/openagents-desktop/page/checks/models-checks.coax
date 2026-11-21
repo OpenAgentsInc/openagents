@@ -409,3 +409,27 @@
   #assert cp_settings_press(s, CP_SET_ACT, "set.pylon.sats.a") && coder_page_action(s) == CP_ASK_PYLON_EXECUTOR;
   #assert cp_settings_press(s, CP_SET_ACT, "set.pylon.release.a") && coder_page_action(s) == CP_ASK_PYLON_EXECUTOR;
 }
+
+#test "inkling-neon hybrid combo model selects cleanly, emits inkling-neon task, and routes level inkling sub-agents locally" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  // Not selectable until local inkling is enabled alongside cloud
+  #assert !coder_page_pick_model(s, "inkling-neon");
+  coder_page_set_inkling(s, true);
+  #assert coder_page_pick_model(s, "inkling-neon");
+  idx := cp_model_index(s);
+  #assert cp_model_id(s, idx) == "inkling-neon" && cp_model_label(s, idx) == "Inkling + Neon (Hybrid)";
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "fix it") && coder_page_submit(s);
+  n := coder_page_task(s, "sess-combo", "/w", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && !back[0].local && back[0].model == "inkling-neon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  // Neon delegating to level inkling produces local:true inkling-2-mini sub-agent task
+  #assert coder_page_pick_model(s, "gemini-4-neon");
+  #assert coder_page_set_text(s, "delegate search") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":1,\"tasks\":[{\"level\":\"inkling\",\"task\":\"grep foo\"}]}") == MWW_DELEGATE;
+  #assert s[0].turns[1].nagents == 1 && s[0].turns[1].agents[0].level == CP_LEVEL_INKLING && CP_LEVEL_NAME[CP_LEVEL_INKLING] == "Inkling";
+  ar[0].at = 0;
+  an := coder_page_agent_task(s, 0, "sess-sub", "/w", out[..]);
+  #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], back[..]) && back[0].local && back[0].model == "inkling-2-mini";
+}

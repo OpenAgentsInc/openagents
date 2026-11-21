@@ -545,12 +545,18 @@ mc_aw_render :: (aw: [] McAware, l: [] McLoop) {
   mc_memory_set(l[0].st[..], wm_view_findings(s, MC_MEM_FINDINGS, aw[0].v1[..]), wm_view_changed(s, MC_MEM_CHANGED, aw[0].v2[..]), wmf_view_open(aw[0].wm[..], MC_MEM_OPEN, aw[0].v3[..]));
 }
 
-// Once, after WM_NUDGE_STEPS steps with no change in the store (workmem/view.coax): a note to
-// make the first edit. True when it was given now.
+// Once, after MC_EARLY_NUDGE_STEPS steps with no change in the store: a compact note to make
+// the first edit rather than continuing read-only loops (breaks exploration spirals under tight
+// cloud budgets and local timeouts while keeping WM_NUDGE_STEPS intact for workmem's own checks).
+MC_EARLY_NUDGE_STEPS :: 2;
+MC_EARLY_NUDGE :: "You have explored for 2 steps without making an edit. Apply your first targeted edit now (edit each file while its lines are in context) and run the check in the same step; read more only if a concrete error requires it.";
 mc_aw_nudge :: (aw: [] McAware, l: [] McLoop) -> bool {
-  if !aw[0].memory || aw[0].nudged || !wm_nudge_due(aw[0].wm[0].s[..], l[0].steps) { return false; }
+  if !aw[0].memory || aw[0].nudged { return false; }
+  s := aw[0].wm[0].s[..];
+  if s[0].nchanges != 0 { return false; }
+  if l[0].steps < MC_EARLY_NUDGE_STEPS && !wm_nudge_due(s, l[0].steps) { return false; }
   aw[0].nudged = true;
-  mc_note(l[0].st[..], WM_NUDGE);
+  mc_note(l[0].st[..], ifx wm_nudge_due(s, l[0].steps) then WM_NUDGE else MC_EARLY_NUDGE);
   return true;
 }
 

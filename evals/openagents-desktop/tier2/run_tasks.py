@@ -70,6 +70,8 @@ HOME_LINKS = [
     "google-cloud-sdk",
     "Library/Application Support/Coder/openrouter-key",
     ".openagents/coder/antigravity.env",
+    ".openagents/modules",
+    ".openagents/models",
 ]
 
 AJ_KINDS = ["context", "model_chunk", "model_intent", "model_reply", "model_end", "command_intent",

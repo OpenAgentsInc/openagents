@@ -40,6 +40,45 @@ gw_psionic :: (base: string, url_buf: [] u8) -> Gateway {
   return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = GW_NO_STRICT_SCHEMA};
 }
 
+// The same local gateway with strict json_schema enabled (for llama-server / Inkling 2 Mini GBNF grammar decoding).
+gw_psionic_strict :: (base: string, url_buf: [] u8) -> Gateway {
+  return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = 0};
+}
+
+// One peer entry from PSIONIC_PEERS ("http://host:port" or "http://host:port#model").
+GwPsionicPeer :: struct { base: string; model: string; }
+
+gw_psionic_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == 9 || s[a] == 10 || s[a] == 13) { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == 9 || s[b - 1] == 10 || s[b - 1] == 13) { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+// Splits one entry "URL#MODEL" (or "URL") into base (without trailing slash) and optional model.
+gw_psionic_split_peer :: (entry: string) -> GwPsionicPeer {
+  t := gw_psionic_trim(entry);
+  hash := -1;
+  for i: 0..<t.count { if t[i] == '#' { hash = i; break; } }
+  base := ifx hash >= 0 then gw_psionic_trim(cast(string) t[0..<hash]) else t;
+  model := ifx hash >= 0 then gw_psionic_trim(cast(string) t[hash + 1..<t.count]) else "";
+  while base.count > 0 && base[base.count - 1] == '/' { base = cast(string) base[0..<base.count - 1]; }
+  return GwPsionicPeer.{base = base, model = model};
+}
+
+// Parses comma-separated PSIONIC_PEERS into out[0..<n]; returns n.
+gw_psionic_parse_peers :: (raw: string, out: [] GwPsionicPeer) -> int {
+  n := 0; i := 0;
+  while i < raw.count && n < out.count {
+    e := i;
+    while e < raw.count && raw[e] != ',' { e += 1; }
+    p := gw_psionic_split_peer(cast(string) raw[i..<e]);
+    if p.base.count > 0 { out[n] = p; n += 1; }
+    i = e + 1;
+  }
+  return n;
+}
+
 // Whether a server answers GET base/v1/models with 200 within a second.
 gw_psionic_up :: (base: string) -> bool {
   ub: [512] u8;
@@ -63,4 +102,14 @@ gw_psionic_up :: (base: string) -> bool {
   req := GwRequest.{model = "qwen3.5-4b", messages = msgs[..], schema = "{\"type\":\"object\"}", schema_hint = "Reply in JSON."};
   #assert gw_translate(g, req, out[..], why[..]) == "{\"model\":\"qwen3.5-4b\",\"messages\":[{\"role\":\"system\",\"content\":\"Reply in JSON.\"},{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
   #assert gw_rate("psionic", "qwen3.5-4b").ok == false;
+  gs := gw_psionic_strict(GW_PSIONIC_DEFAULT_BASE, ub[..]);
+  #assert gs.flags == 0 && gs.name == "psionic" && gs.url == g.url;
+  body_s := gw_translate(gs, req, out[..], why[..]);
+  ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(body_s) && cl_str(ar[..], body_s, "response_format.type") == "json_schema";
+  peers: [4] GwPsionicPeer;
+  np := gw_psionic_parse_peers("http://100.74.238.61:18795/#qwen35-9b, http://127.0.0.1:18794#inkling-2-mini , http://127.0.0.1:8080/", peers[..]);
+  #assert np == 3 && peers[0].base == "http://100.74.238.61:18795" && peers[0].model == "qwen35-9b";
+  #assert peers[1].base == "http://127.0.0.1:18794" && peers[1].model == "inkling-2-mini";
+  #assert peers[2].base == "http://127.0.0.1:8080" && peers[2].model == "";
 }

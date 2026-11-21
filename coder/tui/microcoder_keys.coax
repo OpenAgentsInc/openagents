@@ -279,24 +279,102 @@ mk_is_hybrid_model :: (model: string) -> bool {
   return model == "hybrid-exec-v1" || model == "hybrid-executor";
 }
 
+// Whether model requests dual-plan step-routed local Inkling <-> Vertex Neon hybrid mode.
+mk_is_combo_model :: (model: string) -> bool {
+  return model == "inkling-neon" || model == "hybrid-neon" || model == "inkling+neon" || model == "Inkling + Neon";
+}
+
+// Parses a positive integer environment variable, returning fallback when unset or invalid.
+mk_env_int :: (name: string, fallback: int) -> int {
+  b: [32] u8;
+  s := gw_env(name, b[..]);
+  if s.count == 0 { return fallback; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+// Whether a local psionic/Inkling server is explicitly configured and reachable for free sub-agents.
+mk_local_subagent_ready :: () -> bool {
+  eb: [16] u8;
+  flag := gw_env("MC_DELEGATE_INKLING", eb[..]);
+  if flag == "0" { return false; }
+  pb: [1024] u8;
+  peers_raw := gw_env("PSIONIC_PEERS", pb[..]);
+  if peers_raw.count > 0 {
+    peers: [8] GwPsionicPeer;
+    np := gw_psionic_parse_peers(peers_raw, peers[..]);
+    for i: 0..<np { if gw_psionic_up(peers[i].base) { return true; } }
+    return false;
+  }
+  ub: [512] u8;
+  base := gw_env("PSIONIC_BASE_URL", ub[..]);
+  if base.count == 0 && flag != "1" { return false; }
+  if base.count == 0 { base = GW_PSIONIC_DEFAULT_BASE; }
+  while base.count > 0 && base[base.count - 1] == '/' { base = cast(string) base[0..<base.count - 1]; }
+  return gw_psionic_up(base);
+}
+
 // The psionic engine's plan: one keyless gateway, the Chat Completions server
-// on this machine at PSIONIC_BASE_URL (http://127.0.0.1:8080 by default),
-// with explicit req_model (e.g. "hybrid-exec-v1"), else PSIONIC_MODEL or "local".
-// Nothing leaves the machine. "" when the plan is made, else why not.
+// on this machine at PSIONIC_BASE_URL (http://127.0.0.1:8080 by default), or a reachable
+// peer from PSIONIC_PEERS ("http://host1:port#model1,http://host2:port#model2"),
+// with explicit req_model (e.g. "hybrid-exec-v1"), else peer model, PSIONIC_MODEL or "local".
+// "" when the plan is made, else why not.
 mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) -> string {
   return mk_plan_local_for(k, p, pb, "", why);
 }
 mk_plan_local_for :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, req_model: string, why: [] u8) -> string {
   gw_plan_init(p, pb);
-  base := gw_psionic_base(k[0].pbase[..]);
   rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;    // recorded answers: no server to ask
-  if !replaying && !gw_psionic_up(base) {
-    n := mk_cat(why, 0, "No model server answers at "); n = mk_cat(why, n, base);
-    n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
-    return cast(string) why[0..<n];
+  base := "";
+  peer_model := "";
+  peers_buf: [1024] u8;
+  peers_raw := gw_env("PSIONIC_PEERS", peers_buf[..]);
+  if peers_raw.count > 0 {
+    peers: [8] GwPsionicPeer;
+    np := gw_psionic_parse_peers(peers_raw, peers[..]);
+    if np > 0 {
+      seed := cxproc_now_ms();
+      if seed < 0 { seed = -seed; }
+      start := seed % np;
+      for off: 0..<np {
+        idx := (start + off) % np;
+        if replaying || gw_psionic_up(peers[idx].base) {
+          nb := mk_keep(k[0].pbase[..], peers[idx].base);
+          base = cast(string) k[0].pbase[0..<nb];
+          if peers[idx].model.count > 0 {
+            nm := mk_keep(k[0].pmodel[..], peers[idx].model);
+            peer_model = cast(string) k[0].pmodel[0..<nm];
+          }
+          break;
+        }
+      }
+      if base.count == 0 {
+        n := mk_cat(why, 0, "No PSIONIC_PEERS server answered /v1/models ("); n = mk_cat(why, n, peers_raw); n = mk_cat(why, n, ").");
+        return cast(string) why[0..<n];
+      }
+    }
   }
-  model := ifx req_model.count > 0 then cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], req_model)] else gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
+  if base.count == 0 {
+    base = gw_psionic_base(k[0].pbase[..]);
+    if !replaying && !gw_psionic_up(base) {
+      n := mk_cat(why, 0, "No model server answers at "); n = mk_cat(why, n, base);
+      n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
+      return cast(string) why[0..<n];
+    }
+  }
+  model := ifx req_model.count > 0 then cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], req_model)]
+           else ifx peer_model.count > 0 then peer_model
+           else gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
   if model.count == 0 { model = "local"; }
+  sb: [16] u8; strict_env := gw_env("PSIONIC_STRICT_SCHEMA", sb[..]);
+  use_strict := strict_env != "0" && (strict_env == "1" || model == "inkling-2-mini" || model == "hybrid-exec-v1" || mk_is_hybrid_model(req_model) || peer_model.count > 0);
+  if use_strict {
+    x := gw_plan_add(p, gw_psionic_strict(base, k[0].purl[..]), model, k[0].none[0..<0]);
+  }
   x := gw_plan_add(p, gw_psionic(base, k[0].purl[..]), model, k[0].none[0..<0]);
   return "";
 }

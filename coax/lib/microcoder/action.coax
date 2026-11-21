@@ -49,6 +49,7 @@ MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"typ
 MC_SCHEMA_DELEGATE_HEAD :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"";
 MC_SCHEMA_DELEGATE_CLAUDE_LEVELS :: ",\"haiku\",\"sonnet\",\"opus\",\"fable\"";
 MC_SCHEMA_DELEGATE_OPENROUTER_LEVEL :: ",\"openrouter\"";
+MC_SCHEMA_DELEGATE_INKLING_LEVEL :: ",\"inkling\"";
 MC_SCHEMA_DELEGATE_TAIL :: "]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"},\"stop\":{\"type\":\"boolean\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
 MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
@@ -59,14 +60,18 @@ mc_schema_find :: (text: string, needle: string) -> int {
 }
 // schema (mc_schema's, any modes) with the delegate member after rationale, and required. Into
 // out; "" when it doesn't fit or schema is not one of mc_schema's. claude: with the Claude levels;
-// openrouter: with the openrouter level.
+// openrouter: with the openrouter level; inkling: with the free local inkling level.
 mc_schema_delegate :: (schema: string, out: [] u8, claude: bool, openrouter: bool) -> string {
+  return mc_schema_delegate_all(schema, out, claude, openrouter, false);
+}
+mc_schema_delegate_all :: (schema: string, out: [] u8, claude: bool, openrouter: bool, inkling: bool) -> string {
   a := mc_schema_find(schema, MC_SCHEMA_RATIONALE); b := mc_schema_find(schema, MC_SCHEMA_REQUIRED);
   if a < 0 || b < a { return ""; }
   a += MC_SCHEMA_RATIONALE.count; b += MC_SCHEMA_REQUIRED.count;
   n := json_raw(out, 0, cast(string) schema[0..<a]); n = json_raw(out, n, MC_SCHEMA_DELEGATE_HEAD);
   if claude { n = json_raw(out, n, MC_SCHEMA_DELEGATE_CLAUDE_LEVELS); }
   if openrouter { n = json_raw(out, n, MC_SCHEMA_DELEGATE_OPENROUTER_LEVEL); }
+  if inkling { n = json_raw(out, n, MC_SCHEMA_DELEGATE_INKLING_LEVEL); }
   n = json_raw(out, n, MC_SCHEMA_DELEGATE_TAIL);
   n = json_raw(out, n, cast(string) schema[a..<b]); n = json_raw(out, n, ",\"delegate\""); n = json_raw(out, n, cast(string) schema[b..<schema.count]);
   if n < 0 { return ""; }
@@ -216,11 +221,15 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
 // mc_action_parse_as, which leaves nd 0). The member may be missing. What's wrong with it, or "".
 // claude: the Claude levels are allowed too; openrouter: the openrouter level.
 mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bool, openrouter: bool) -> string {
+  return mc_action_delegates_all(ar, text, a, claude, openrouter, false);
+}
+mc_action_delegates_all :: (ar: [] ClArena, text: string, a: [] McAction, claude: bool, openrouter: bool, inkling: bool) -> string {
   a[0].nd = 0;
-  spec: [160] u8;
+  spec: [192] u8;
   ns := json_raw(spec[..], 0, "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon");
   if claude { ns = json_raw(spec[..], ns, "|haiku|sonnet|opus|fable"); }
   if openrouter { ns = json_raw(spec[..], ns, "|openrouter"); }
+  if inkling { ns = json_raw(spec[..], ns, "|inkling"); }
   ns = json_raw(spec[..], ns, " ?s:delegate.*.task");
   if !cl_valid(text, cast(string) spec[0..<ns]) { return "the reply's delegate does not match the next_action schema"; }
   ds := cl_raw(text, "delegate");

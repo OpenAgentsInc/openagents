@@ -48,15 +48,54 @@ wm_task_within :: (hay: string, needle: string) -> bool {
   return false;
 }
 
+// Whether one whitespace-separated token of hay matches a token of needle: exact match, or
+// (for the command executable token, first == true) a path-prefixed match like coax/bin/coax
+// matching coax.
+wm_task_tok_match :: (htok: string, ntok: string, first: bool) -> bool {
+  if htok == ntok { return true; }
+  if first && htok.count > ntok.count && htok[htok.count - ntok.count - 1] == '/' {
+    return cast(string) htok[htok.count - ntok.count..<htok.count] == ntok;
+  }
+  return false;
+}
+
+// Whether every whitespace-separated token of needle appears in hay in the same order
+// (allowing inserted flags like `-Ipath` or `--library` between command tokens).
+wm_task_tokens_within :: (hay: string, needle: string) -> bool {
+  ni := 0; hi := 0; matched := 0;
+  while ni < needle.count {
+    while ni < needle.count && (needle[ni] == ' ' || needle[ni] == 9) { ni += 1; }
+    if ni >= needle.count { break; }
+    ne := ni;
+    while ne < needle.count && needle[ne] != ' ' && needle[ne] != 9 { ne += 1; }
+    ntok := cast(string) needle[ni..<ne];
+    found := false;
+    while hi < hay.count {
+      while hi < hay.count && (hay[hi] == ' ' || hay[hi] == 9) { hi += 1; }
+      if hi >= hay.count { break; }
+      he := hi;
+      while he < hay.count && hay[he] != ' ' && hay[he] != 9 { he += 1; }
+      htok := cast(string) hay[hi..<he];
+      hi = he;
+      if wm_task_tok_match(htok, ntok, matched == 0) { found = true; break; }
+    }
+    if !found { return false; }
+    matched += 1;
+    ni = ne;
+  }
+  return matched >= 2;
+}
+
 // The check of the task that cmd is a run of: the longest of the task's
 // spans that is the whole command, or has a space (a command with
-// arguments) and is part of it. "" for none.
+// arguments) and is part of it (contiguously or as an ordered token
+// subsequence so added compiler flags like -I... still match). "" for none.
 wm_task_check :: (t: [] WmTask, cmd: string) -> string {
   best := "";
   for k: 0..<t[0].n {
     c := t[0].cmds[k];
     spaced := false; for ch: c { if ch == ' ' { spaced = true; } }
-    if (c == cmd || (spaced && wm_task_within(cmd, c))) && c.count > best.count { best = c; }
+    if (c == cmd || (spaced && (wm_task_within(cmd, c) || wm_task_tokens_within(cmd, c)))) && c.count > best.count { best = c; }
   }
   return best;
 }
@@ -77,6 +116,16 @@ wm_task_check :: (t: [] WmTask, cmd: string) -> string {
 #test "within: a part anywhere, the whole, and not a longer needle" {
   #assert wm_task_within("abc", "abc") && wm_task_within("xabc", "abc") && wm_task_within("abcx", "abc") && wm_task_within("abc", "");
   #assert !wm_task_within("ab", "abc") && !wm_task_within("abd", "abc") && !wm_task_within("", "a");
+}
+
+#test "ordered token subsequence matches commands with inserted flags or prefixed executables" {
+  t: [1] WmTask;
+  wm_task_scan("Verify with `cc -fsyntax-only evals/stub.c` and `coax test foo.coax`.", t[..]);
+  #assert wm_task_check(t[..], "cc -fsyntax-only -Iapps/shared/host/linux evals/stub.c") == "cc -fsyntax-only evals/stub.c";
+  #assert wm_task_check(t[..], "cc -fsyntax-only -U__APPLE__ -Iapps/shared/host/linux evals/stub.c") == "cc -fsyntax-only evals/stub.c";
+  #assert wm_task_check(t[..], "coax/bin/coax test --library foo.coax") == "coax test foo.coax";
+  #assert wm_task_check(t[..], "cc -fsyntax-only evals/other.c") == "";
+  #assert wm_task_check(t[..], "evals/stub.c cc -fsyntax-only") == "";
 }
 
 #test "a span over the limit, or of one byte, is not kept; the table holds 64" {

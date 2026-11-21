@@ -353,6 +353,7 @@ tool_main :: () -> int #export_c #effects(all) {
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8; sbuf: [256] u8;   // the compiler's answers and the working memory (#13444, #13445)
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
+  plan_cloud: [1] GwPlan; hy: [1] McHybrid;
   k: [1] MkKeys; h: [1] MkTurns;
   facts: [MC_FACTS_BYTES] u8;
   line: [MW_LINE] u8; nl := 0;
@@ -371,6 +372,7 @@ tool_main :: () -> int #export_c #effects(all) {
   run[0].spill_dir=ifx sn<0 then "" else cast(string)spill[0..<sn];
   mw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
   running := false;
+  hybrid_on := false;
   req: [1] MwwRequest;
   st: [1] McSteers; q: [1] MwQueue; f: [1] MwFollow;
   run[0].steers = st[..];
@@ -379,11 +381,29 @@ tool_main :: () -> int #export_c #effects(all) {
     // the run's events first, then whatever stdin has
     ended := "";
     if running {
+      if hybrid_on && run[0].call_due {
+        use_cloud := mc_hybrid_select(run[0].l[..], hy[..], cxproc_now_ms());
+        run[0].p = ifx use_cloud then plan_cloud[..] else plan[..];
+      }
       ev: [32] McRunEvent;
       n := mc_run_poll(run[..], ev[..]);
       for i: 0..<n {
+        if hybrid_on {
+          if ev[i].kind == MR_COMMAND {
+            if ev[i].text.count >= 5 && cast(string) ev[i].text[0..<5] == "edit " { hy[0].step_had_edit = true; }
+            if ev[i].exit != 0 || ev[i].timed_out { hy[0].step_failed = true; }
+          } else if ev[i].kind == MR_VIEW {
+            hy[0].step_views += 1;
+          }
+        }
         if ev[i].kind == MR_ENDED {
-          running = false; ended = mc_ending_name(ev[i].ending);
+          if hybrid_on && !hy[0].escalated && (ev[i].ending == MC_END_NO_CAPACITY || ev[i].ending == MC_END_BAD_REPLIES) {
+            run[0].ended = false; run[0].l[0].ending = MC_END_NONE; run[0].l[0].why = ""; run[0].l[0].bad = 0;
+            hy[0].local_steps = hy[0].local_max;
+            run[0].call_due = true;
+            continue;
+          }
+          running = false; hybrid_on = false; ended = mc_ending_name(ev[i].ending);
           mw_remember_end(h[..], ev[i].ending, ev[i].text);
         }
         mw_event(ev[i], out[..]);
@@ -498,8 +518,24 @@ tool_main :: () -> int #export_c #effects(all) {
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
     hybrid := mk_is_hybrid_model(req[0].model);
+    combo := mk_is_combo_model(req[0].model);
+    combo_active := false;
     local := req[0].local || hybrid;
-    if local {
+    if combo {
+      wb: [512] u8; lwhy := mk_plan_local_for(k[..], plan[..], pb[..], "", wb[..]);
+      cn_cloud := mk_plan(k[..], plan_cloud[..], pb[..], "gemini-4-neon");
+      if lwhy.count == 0 && cn_cloud > 0 {
+        combo_active = true;
+      } else if cn_cloud > 0 {
+        // Local server unavailable: fall back cleanly to Vertex Neon alone
+        _ = mk_plan(k[..], plan[..], pb[..], "gemini-4-neon");
+      } else if lwhy.count == 0 {
+        // Cloud unavailable: run local alone
+        local = true;
+      } else {
+        mw_ended(out[..], "no_capacity", lwhy); continue;
+      }
+    } else if local {
       wb: [512] u8; why := mk_plan_local_for(k[..], plan[..], pb[..], ifx hybrid then "hybrid-exec-v1" else "", wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
     } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
@@ -543,7 +579,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if why.count > 0 && !asked_mem { why = mc_aw_start(aw[..], run[0].l[..], lb[..], intel.ok && intel.value, false, cast(string) coaxb[0..<nx], "", cd, run[0].profile); }
     if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
     if aw[0].intel || aw[0].memory { run[0].aw = aw[..]; }
-    if req[0].agents && !mc_agents(run[0].l[..], lb[..], req[0].claude, req[0].openrouter) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
+    inkling_sub := req[0].agents && !local && !combo_active && mk_local_subagent_ready();
+    if req[0].agents && !mc_agents_ex(run[0].l[..], lb[..], req[0].claude, req[0].openrouter, inkling_sub) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
     if req[0].no_ask && !mc_no_ask(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the no-ask schema does not fit"); continue; }
     if req[0].device && !mc_device(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the device schema does not fit"); continue; }
     _ = mc_run_load_instructions(run[0].l[..], lb[..], cd);
@@ -562,8 +599,19 @@ tool_main :: () -> int #export_c #effects(all) {
     effort := req[0].effort;
     if effort != "medium" && effort != "high" { effort = "low"; }
     mk_plan_limits(plan[..], effort);
-    // before the first call, what the task names is looked up: its files viewed, its code names found (GitHub #13325)
-    run[0].seed = !local;
+    hybrid_on = combo_active;
+    run[0].defer_call = combo_active;
+    if combo_active {
+      plan_cloud[0].journal = journal[..];
+      mk_plan_limits(plan_cloud[..], effort);
+      lsteps := mk_env_int("MC_HYBRID_LOCAL_STEPS", MC_HYBRID_LOCAL_DEFAULT_STEPS);
+      lms := mk_env_int("MC_HYBRID_LOCAL_MS", MC_HYBRID_LOCAL_DEFAULT_MS);
+      ff_b: [16] u8; ff := gw_env("MC_HYBRID_FREE_FINISH", ff_b[..]) != "0";
+      mc_hybrid_init(hy[..], lsteps, lms, ff, cxproc_now_ms());
+    }
+    // before the first call, what the task names is looked up: its files viewed (anchored on task symbols), its code names found (GitHub #13325)
+    rpb: [1024] u8;
+    run[0].seed = !local || gw_env("GW_REPLAY", rpb[..]).count == 0;
     run[0].command_seconds = MK_COMMAND_SECONDS;
     mc_steer_clear(st[..]); st[0].nd = 0;
     mc_run_start(run[..], plan[..], bench[..], cd, effort);

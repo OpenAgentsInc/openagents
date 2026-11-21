@@ -512,6 +512,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
     k := cp_out(s[0].or_sub_id[..], CP_OR_PREFIX); k += cp_out(s[0].or_sub_id[k..<s[0].or_sub_id.count], cp_or_sub(s));
     t.model = cast(string) s[0].or_sub_id[0..<k]; t.effort = "medium";
   }
+  if level == CP_LEVEL_INKLING {
+    t.local = true; t.model = "inkling-2-mini"; t.effort = "low";
+  }
   return mww_task(out, t);
 }
 // Whether a shell command that succeeded changed a file (for the sub-agent CP_QUIET counter).

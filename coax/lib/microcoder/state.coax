@@ -352,9 +352,16 @@ mc_budget_request :: (st: [] McState, req0: int, fixed: int) {
 // The oldest closed steps are compacted into earlier until at most keep bytes of whole steps are
 // left (never the open one). Earlier makes room for them by losing its own oldest, when it must.
 mc_compact :: (st: [] McState, keep: int) {
+  mc_compact_keep_steps(st, keep, 0);
+}
+// The same, always preserving at least min_steps newest closed steps verbatim so a newly viewed
+// file or command output is never compacted before the model has seen and acted on it.
+mc_compact_keep_steps :: (st: [] McState, keep: int, min_steps: int) {
   closed := ifx st[0].open >= 0 then st[0].nacts - 1 else st[0].nacts;
+  max_k := closed - min_steps;
+  if max_k <= 0 { return; }
   k := 0;
-  while k < closed && st[0].nlog - st[0].act_at[k] > keep { k += 1; }
+  while k < max_k && st[0].nlog - st[0].act_at[k] > keep { k += 1; }
   if k == 0 { return; }
   cut := ifx k < st[0].nacts then st[0].act_at[k] else st[0].nlog;
   ccut := ifx k < st[0].nacts then st[0].cact_at[k] else st[0].nclog;
