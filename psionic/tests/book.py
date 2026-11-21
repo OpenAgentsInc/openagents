@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic, Metaverse Engine, Nostr, Coder, Bitcoin and
-OpenAgents books (`--book psionic|aethyr|nostr|coder|bitcoin|openagents`). Each book keeps chapters as
+One checker serves all eight OpenAgents books (`--book coax|psionic|aethyr|metaverse-engine|nostr|coder|bitcoin|openagents|everglade|all`).
+`coax` delegates to `coax/book/check-structure.py` and `metaverse-engine` aliases `aethyr`. Each non-Coax book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
 a status marker on every design draft. Coder has no example programs of its
 own yet: the programs its chapters run are inventoried by another book.
@@ -49,12 +49,18 @@ BOOKS = {
     "coder": ("coder/book", None, None, 1),
     "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),
     "openagents": ("openagents/book", "openagents/examples", None, 0),
+    "everglade": ("everglade/book", "everglade/examples", "everglade/README.md", 0),
 }
+ALIASES = {"metaverse-engine": "aethyr"}
+ALL_BOOKS = ("coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade")
 # Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
 # inventory (and its closed-inventory check) until their code moves.
 BORROWED = {"coder": "psionic"}
 # Fences a book may use besides jai, shell and text.
-FENCES = {"coder": ("```json", "```sh")}
+FENCES = {
+    "coder": ("```json", "```sh"),
+    "everglade": ("```json", "```sh", "```python"),
+}
 # The Metaverse Engine's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
 DRAFT = "> **Status: unimplemented — design draft.**"
@@ -119,6 +125,20 @@ def example_inventory(manifest, actual):
 
 
 def check(name="psionic"):
+    name = ALIASES.get(name, name)
+    if name == "all":
+        examples = []
+        for book_name in ALL_BOOKS:
+            examples.extend(check(book_name))
+        return examples
+    if name == "coax":
+        spec = importlib.util.spec_from_file_location("coax_book_structure", ROOT / "coax/book/check-structure.py")
+        structure = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(structure)
+        errors = structure.problems(ROOT / "coax/book")
+        assert not errors, "coax book structure: " + "; ".join(errors)
+        print("coax book structure: navigation, local links, checked excerpts and chapter registry pass")
+        return []
     book, programs, readme, least = BOOKS[name]
     spec = importlib.util.spec_from_file_location("coax_book_claims", ROOT / "coax/book/capability-claims.py")
     claims = importlib.util.module_from_spec(spec)
@@ -468,7 +488,7 @@ def run(compiler, examples, jobs=1):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--book", choices=sorted(BOOKS), default="psionic")
+    parser.add_argument("--book", choices=sorted(set(BOOKS) | set(ALIASES) | {"coax", "all"}), default="psionic")
     parser.add_argument("--coax", help="also compile and run every example")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="examples run at once")
     args = parser.parse_args()

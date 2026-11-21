@@ -324,3 +324,47 @@ Builds, `realms.json` module paths, `#load` paths and the release's site layout
 all name the current paths. The move happens one directory per commit, after
 the work in progress lands, and each commit keeps every build and check
 passing.
+
+## Chapters
+
+The [chapter registry](chapters.json) records each chapter's status, profile,
+dependencies, implemented source, qualified targets and consumers. The status
+table below, the [contents](SUMMARY.md) and each chapter's status marker must
+agree with it (`python3 psionic/tests/book.py --book everglade`).
+
+| Chapter | Status |
+| --- | --- |
+| [1. A reference image](ch001-a-reference-image.md) | Partly implemented: glade-reference-v1 |
+| [2. What the prototypes taught](ch002-what-the-prototypes-taught.md) | Partly implemented: prototype-baseline-v1 |
+| [3. Start from a bare world](ch003-start-from-a-bare-world.md) | Partly implemented: gamebuilder-world-edit-v1 |
+| [4. Ground you can stand on](ch004-ground-you-can-stand-on.md) | Runnable: terrain-tiles-v1 |
+| [5. Plant a forest with a function](ch005-plant-a-forest-with-a-function.md) | Partly implemented: forest-plant-v1 |
+| [6. The glade's light](ch006-the-glades-light.md) | Partly implemented: glade-lighting-v1 |
+| [7. Character Create in the world](ch007-character-create-in-the-world.md) | Partly implemented: character-create-studio-v1 |
+| [8. If you can see it, you can walk to it](ch008-if-you-can-see-it-you-can-walk-to-it.md) | Partly implemented: rock-and-trunk-colliders-v1 |
+| [9. A path through dense woods](ch009-a-path-through-dense-woods.md) | Partly implemented: forest-path-v1 |
+| [10. Hold 60 frames per second](ch010-hold-60-frames-per-second.md) | Partly implemented: gpu-cull-60fps-v1 |
+| [11. One address](ch011-one-address.md) | Partly implemented: everglade-domain-v1 |
+| [12. The room](ch012-the-room.md) | Partly implemented: authoritative-room-v1 |
+| [13. Coming back](ch013-coming-back.md) | Partly implemented: room-checkpoint-v1 |
+| [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md) | Partly implemented: srd-d20-rolls-v1 |
+| [15. Classes, levels 1 to 6](ch015-classes-levels-1-to-6.md) | Partly implemented: srd-classes-1-to-6-v1 |
+| [16. Spells and slots](ch016-spells-and-slots.md) | Partly implemented: srd-spells-and-slots-v1 |
+| [17. Conditions](ch017-conditions.md) | Partly implemented: srd-conditions-v1 |
+| [18. Turns become time](ch018-turns-become-time.md) | Partly implemented: srd-timing-profiles-v1 |
+| 19. Familiars and Wild Shape | Planned |
+| 20. A guard walks the path | Planned |
+| 21. Attack the guard | Planned |
+| 22. Death and respawn | Planned |
+| 23. Mouse look and the crosshair | Planned |
+| 24. The longbow | Planned |
+| 25. Cast while you run | Planned |
+| 26. Walk into a city | Planned |
+| 27. Townspeople | Planned |
+| 28. Interactions | Planned |
+| 29. Many rooms | Planned |
+| 30. Accounts and persistence | Planned |
+| 31. Ship it | Planned |
+| 32. Run a live world | Planned |
+| [33. Let's build a dragon](ch033-lets-build-a-dragon.md) | Partly implemented: dragon-shapechange-flight-v1 |
+

@@ -2,24 +2,640 @@
   "schema": 1,
   "book": "everglade",
   "chapters": [
-    { "number": 1, "file": "everglade/book/ch001-a-reference-image.md", "status": "partly implemented" },
-    { "number": 2, "file": "everglade/book/ch002-what-the-prototypes-taught.md", "status": "partly implemented" },
-    { "number": 3, "file": "everglade/book/ch003-start-from-a-bare-world.md", "status": "partly implemented" },
-    { "number": 4, "file": "everglade/book/ch004-ground-you-can-stand-on.md", "status": "implemented" },
-    { "number": 5, "file": "everglade/book/ch005-plant-a-forest-with-a-function.md", "status": "partly implemented" },
-    { "number": 6, "file": "everglade/book/ch006-the-glades-light.md", "status": "partly implemented" },
-    { "number": 7, "file": "everglade/book/ch007-character-create-in-the-world.md", "status": "partly implemented" },
-    { "number": 8, "file": "everglade/book/ch008-if-you-can-see-it-you-can-walk-to-it.md", "status": "partly implemented" },
-    { "number": 9, "file": "everglade/book/ch009-a-path-through-dense-woods.md", "status": "partly implemented" },
-    { "number": 10, "file": "everglade/book/ch010-hold-60-frames-per-second.md", "status": "partly implemented" },
-    { "number": 11, "file": "everglade/book/ch011-one-address.md", "status": "partly implemented" },
-    { "number": 12, "file": "everglade/book/ch012-the-room.md", "status": "partly implemented" },
-    { "number": 13, "file": "everglade/book/ch013-coming-back.md", "status": "partly implemented" },
-    { "number": 14, "file": "everglade/book/ch014-ability-scores-proficiency-and-the-d20.md", "status": "partly implemented" },
-    { "number": 15, "file": "everglade/book/ch015-classes-levels-1-to-6.md", "status": "partly implemented" },
-    { "number": 16, "file": "everglade/book/ch016-spells-and-slots.md", "status": "partly implemented" },
-    { "number": 17, "file": "everglade/book/ch017-conditions.md", "status": "partly implemented" },
-    { "number": 18, "file": "everglade/book/ch018-turns-become-time.md", "status": "partly implemented" },
-    { "number": 33, "file": "everglade/book/ch033-lets-build-a-dragon.md", "status": "partly implemented" }
+    {
+      "number": 1,
+      "title": "A reference image",
+      "file": "ch001-a-reference-image.md",
+      "status": "partly implemented",
+      "profile": "glade-reference-v1",
+      "depends_on": [
+        "coax:16",
+        "aethyr:1"
+      ],
+      "source": [
+        "metaverse-engine/world/environment.coax",
+        "everglade/world/forest.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "What the prototypes taught",
+      "file": "ch002-what-the-prototypes-taught.md",
+      "status": "partly implemented",
+      "profile": "prototype-baseline-v1",
+      "depends_on": [
+        1,
+        "aethyr:87"
+      ],
+      "source": [
+        "everglade/shared/everglade-step.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax",
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Start from a bare world",
+      "file": "ch003-start-from-a-bare-world.md",
+      "status": "partly implemented",
+      "profile": "gamebuilder-world-edit-v1",
+      "depends_on": [
+        1,
+        2,
+        "aethyr:52"
+      ],
+      "source": [
+        "gamebuilder/cli/main.coax",
+        "metaverse-engine/editor/world-edit.coax",
+        "everglade/world/edits.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "gamebuilder/cli/attached.coax"
+      ]
+    },
+    {
+      "number": 4,
+      "title": "Ground you can stand on",
+      "file": "ch004-ground-you-can-stand-on.md",
+      "status": "implemented",
+      "profile": "terrain-tiles-v1",
+      "depends_on": [
+        1,
+        3
+      ],
+      "source": [
+        "everglade/world/ground.coax",
+        "everglade/world/forest.coax",
+        "everglade/client/gpu/everglade2.coax",
+        "metaverse-engine/world/terrain-tile.coax",
+        "metaverse/character-glade.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "Plant a forest with a function",
+      "file": "ch005-plant-a-forest-with-a-function.md",
+      "status": "partly implemented",
+      "profile": "forest-plant-v1",
+      "depends_on": [
+        4
+      ],
+      "source": [
+        "everglade/world/plant.coax",
+        "everglade/world/field.coax",
+        "everglade/world/forest.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 6,
+      "title": "The glade's light",
+      "file": "ch006-the-glades-light.md",
+      "status": "partly implemented",
+      "profile": "glade-lighting-v1",
+      "depends_on": [
+        1,
+        4
+      ],
+      "source": [
+        "metaverse-engine/world/environment.coax",
+        "metaverse-engine/world/environment-region.coax",
+        "metaverse-engine/render/graph/cascades.coax",
+        "metaverse-engine/render/shade/bake.coax",
+        "everglade/world/environment.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 7,
+      "title": "Character Create in the world",
+      "file": "ch007-character-create-in-the-world.md",
+      "status": "partly implemented",
+      "profile": "character-create-studio-v1",
+      "depends_on": [
+        4,
+        6
+      ],
+      "source": [
+        "everglade/client/create.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 8,
+      "title": "If you can see it, you can walk to it",
+      "file": "ch008-if-you-can-see-it-you-can-walk-to-it.md",
+      "status": "partly implemented",
+      "profile": "rock-and-trunk-colliders-v1",
+      "depends_on": [
+        4,
+        5
+      ],
+      "source": [
+        "everglade/shared/move.coax",
+        "everglade/world/rock-hulls.coax",
+        "metaverse-engine/physics/query.coax",
+        "metaverse-engine/physics/collide.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax",
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 9,
+      "title": "A path through dense woods",
+      "file": "ch009-a-path-through-dense-woods.md",
+      "status": "partly implemented",
+      "profile": "forest-path-v1",
+      "depends_on": [
+        4,
+        5,
+        8
+      ],
+      "source": [
+        "everglade/world/forest.coax",
+        "everglade/client/client.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/world/plant.coax"
+      ]
+    },
+    {
+      "number": 10,
+      "title": "Hold 60 frames per second",
+      "file": "ch010-hold-60-frames-per-second.md",
+      "status": "partly implemented",
+      "profile": "gpu-cull-60fps-v1",
+      "depends_on": [
+        5,
+        9,
+        "aethyr:16"
+      ],
+      "source": [
+        "everglade/client/client.coax",
+        "everglade/client/cull.coax",
+        "everglade/client/gpu/everglade2-cull.coax",
+        "metaverse-engine/core/quality.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/everglade2-cull-check.coax"
+      ]
+    },
+    {
+      "number": 11,
+      "title": "One address",
+      "file": "ch011-one-address.md",
+      "status": "partly implemented",
+      "profile": "everglade-domain-v1",
+      "depends_on": [
+        7,
+        10
+      ],
+      "source": [
+        "coax/web/realms.ts",
+        "apps/openagents-web/realms.json",
+        "everglade/shared/class-kit.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/create.coax"
+      ]
+    },
+    {
+      "number": 12,
+      "title": "The room",
+      "file": "ch012-the-room.md",
+      "status": "partly implemented",
+      "profile": "authoritative-room-v1",
+      "depends_on": [
+        2,
+        8,
+        "aethyr:86",
+        "aethyr:87",
+        "aethyr:88"
+      ],
+      "source": [
+        "everglade/client/net.coax",
+        "everglade/client/net-core.coax",
+        "coax/web/room/room-everglade.coax",
+        "coax/web/room/net-proxy.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
+    },
+    {
+      "number": 13,
+      "title": "Coming back",
+      "file": "ch013-coming-back.md",
+      "status": "partly implemented",
+      "profile": "room-checkpoint-v1",
+      "depends_on": [
+        12,
+        "aethyr:88",
+        "aethyr:98"
+      ],
+      "source": [
+        "coax/web/room/room-checkpoint.coax",
+        "coax/web/room/e2-restart-check.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 14,
+      "title": "Ability scores, proficiency and the d20",
+      "file": "ch014-ability-scores-proficiency-and-the-d20.md",
+      "status": "partly implemented",
+      "profile": "srd-d20-rolls-v1",
+      "depends_on": [
+        12,
+        "aethyr:102"
+      ],
+      "source": [
+        "rules/srd/engine.coax",
+        "rules/srd/ability-check-math.coax",
+        "rules/srd/condition-rolls.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 15,
+      "title": "Classes, levels 1 to 6",
+      "file": "ch015-classes-levels-1-to-6.md",
+      "status": "partly implemented",
+      "profile": "srd-classes-1-to-6-v1",
+      "depends_on": [
+        14
+      ],
+      "source": [
+        "rules/srd/engine.coax",
+        "rules/srd/class-features.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/shared/class-kit.coax"
+      ]
+    },
+    {
+      "number": 16,
+      "title": "Spells and slots",
+      "file": "ch016-spells-and-slots.md",
+      "status": "partly implemented",
+      "profile": "srd-spells-and-slots-v1",
+      "depends_on": [
+        14,
+        15
+      ],
+      "source": [
+        "everglade/shared/cast-limits.coax",
+        "rules/srd/spell-coverage.coax",
+        "rules/srd/concentration.coax",
+        "rules/srd/area-origin.coax",
+        "rules/srd/cast-components.coax",
+        "rules/srd/ritual.coax",
+        "rules/srd/spell-limits.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/shared/cast-rules.coax"
+      ]
+    },
+    {
+      "number": 17,
+      "title": "Conditions",
+      "file": "ch017-conditions.md",
+      "status": "partly implemented",
+      "profile": "srd-conditions-v1",
+      "depends_on": [
+        14,
+        16
+      ],
+      "source": [
+        "rules/srd/engine.coax",
+        "rules/srd/condition-permissions.coax",
+        "rules/srd/condition-rolls.coax",
+        "rules/srd/exhaustion.coax",
+        "rules/srd/prone-movement.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 18,
+      "title": "Turns become time",
+      "file": "ch018-turns-become-time.md",
+      "status": "partly implemented",
+      "profile": "srd-timing-profiles-v1",
+      "depends_on": [
+        14,
+        16,
+        17
+      ],
+      "source": [
+        "rules/srd/world-profile.coax",
+        "rules/srd/timing-profile.coax",
+        "rules/srd/walk-budget.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax"
+      ]
+    },
+    {
+      "number": 19,
+      "title": "Familiars and Wild Shape",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        15,
+        16,
+        18
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 20,
+      "title": "A guard walks the path",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        9,
+        12,
+        "psionic:28"
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 21,
+      "title": "Attack the guard",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        18,
+        20
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 22,
+      "title": "Death and respawn",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        21
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 23,
+      "title": "Mouse look and the crosshair",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        8,
+        12
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 24,
+      "title": "The longbow",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        14,
+        21,
+        23
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 25,
+      "title": "Cast while you run",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        16,
+        18,
+        23
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 26,
+      "title": "Walk into a city",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        9,
+        10
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 27,
+      "title": "Townspeople",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        20,
+        26
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 28,
+      "title": "Interactions",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        27
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 29,
+      "title": "Many rooms",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        12,
+        13
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 30,
+      "title": "Accounts and persistence",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        13,
+        29,
+        "nostr:21"
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 31,
+      "title": "Ship it",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        11,
+        29,
+        30
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 32,
+      "title": "Run a live world",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        31
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 33,
+      "title": "Let's build a dragon",
+      "file": "ch033-lets-build-a-dragon.md",
+      "status": "partly implemented",
+      "profile": "dragon-shapechange-flight-v1",
+      "depends_on": [
+        16,
+        18
+      ],
+      "source": [
+        "metaverse-engine/action/flight.coax",
+        "rules/srd/dragon-actions.coax",
+        "rules/srd/shapechange.coax",
+        "everglade/zone-shapechange.coax",
+        "everglade/shapeshift.coax",
+        "everglade/dragon-clips.coax",
+        "scripts/blender/dragon.py",
+        "metaverse/tools/assets/dragon_bake.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/zone.coax"
+      ]
+    }
   ]
 }

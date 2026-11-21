@@ -44,7 +44,7 @@ same index on the same lattice, so it is the same point and the same height in
 both tiles, bit for bit.
 
 <!-- source: everglade/world/ground.coax lattice -->
-```coax
+```jai
 e2g_s64 :: () -> f64 { return f64(f32(E2G_SPACING)); }
 // Lattice coordinate `index` (half-steps allowed through `half`) from base: one f64 sum, one rounding.
 e2g_at :: (base: f32, index: int) -> f32 { return f32(f64(base) + f64(index) * e2g_s64()); }
@@ -73,7 +73,7 @@ draw at coarser levels (`E2G_LOD_NEAR` = 48 m, `E2G_LOD_MID` = 128 m), and
 `e2g_tile_code` stitches any side that meets a coarser neighbour.
 
 <!-- source: everglade/world/ground.coax seams -->
-```coax
+```jai
 // 0 when every seam holds, else 1 + the tile whose seam fails.
 e2g_seams :: (s: [] E2Tiles) -> int {
   for b: 0..<s[0].n {
@@ -108,7 +108,7 @@ the tiles, it falls back to `e2_height` and counts the fallback (`e2_probe`
 98).
 
 <!-- source: everglade/world/ground.coax query -->
-```coax
+```jai
 // Where you stand at (x, z), in the realm's frame: the admitted tile's triangle where a tile has
 // ground there, e2_height past them (counted).
 e2g_y :: (g: [] E2Ground, x: f32, z: f32) -> f32 {
@@ -139,7 +139,7 @@ live set, whole. If anything refuses, the page counts the refusal and keeps
 the set it had. With no record, the page converts the land itself.
 
 <!-- source: everglade/world/ground.coax publish -->
-```coax
+```jai
 // Publishes the staged set (sets[1 - cur]) when its seams hold and every frame converts. The status.
 // The set may be any of the tiles (by cell, the cells' that are in); the bake needs the glade's.
 e2g_publish :: (g: [] E2Ground, route: int) -> int {
@@ -179,7 +179,7 @@ side. The fine edge then follows the coarse edge exactly, and no gap opens
 between them.
 
 <!-- source: metaverse-engine/world/terrain-tile.coax lod -->
-```coax
+```jai
 // LOD profile v1: level L draws every 2^L-th sample (L 0..2; cells divisible by 2^L). Where a
 // side meets a neighbour drawn at a coarser level, its vertices between the coarse ones are
 // moved onto the line between them, so the finer edge lies on the coarser one: no crack, and
