@@ -1,0 +1,144 @@
+// Thin Coax C-export bridge for psionic/platform/exec-vm-gpu-host.c.
+// Exposes the 54-program Ch 226 verification suite, prompt encoding, and
+// exact Ch 233 rounding so the C platform host holds zero program/crypto logic.
+#load "../lib/exec-vm-gpu.coax";
+#load "../lib/exec-vm-opt-compile.coax";
+#load "../lib/exec-vm-programs.coax";
+#load "../lib/exec-vm-harness.coax";
+#load "../lib/compiler-harness.coax";
+
+evs_compile_ch226_metrics :: (mem_cells: int, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64, metrics_out: []EvSchedMetrics) -> EvModel #export_c #effects(all) {
+    nodes: [EV_VM_MAX_NODES]EvNode;
+    g := ev_ch226_build_graph(nodes[..], mem_cells);
+    if g.count == 0 { return EvModel.{status = EvStatus.shape}; }
+    forms: [EV_VM_MAX_NODES]EvForm;
+    layer: [EV_VM_MAX_NODES]int;
+    last: [EV_VM_MAX_NODES]int;
+    slot: [EV_VM_MAX_NODES]int;
+    clear: [EV_VM_MAX_NODES]int;
+    release: [EV_VM_MAX_NODES]int;
+    kept: [EV_VM_MAX_NODES]bool;
+    free_slots: [EV_VM_MAX_WIDTH]bool;
+    arena := EvCompileArena.{
+        forms = forms[..], layer = layer[..], last = last[..], slot = slot[..],
+        clear = clear[..], release = release[..], kept = kept[..], free_slots = free_slots[..],
+        kv_pin = g.pin[..]
+    };
+    m := evs_compile_ev(nodes[0..<g.count], g.outputs[..], EV_VM_KV_SLOTS, arena, layers, heads, weights);
+    if metrics_out.count >= 1 {
+        metrics_out[0] = evs_model_metrics(m, clear[..], true);
+    }
+    return m;
+}
+
+evs_compile_ch226 :: (mem_cells: int, layers: []EvLayerDesc, heads: []EvHeadDesc, weights: []f64) -> EvModel #export_c #effects(all) {
+    empty_m: [1]EvSchedMetrics;
+    return evs_compile_ch226_metrics(mem_cells, layers, heads, weights, empty_m[0..<0]);
+}
+
+evs_h_run :: (nodes: []EvNode, outputs: []int, inputs: []int, kv_ctx: []int, kv_count: int, kv_slots: int, fault: EvFault) -> EvHRun #export_c #effects(all) {
+    if nodes.count < 1 || nodes.count > EVH_NODES_MAX || outputs.count < 1 || outputs.count > 4 {
+        return EvHRun.{status = EvStatus.shape};
+    }
+    every: [EVH_NODES_MAX]int;
+    for i: 1..<nodes.count { every[i] = i; }
+    want: [EVH_NODES_MAX]int;
+    sc: [EVH_NODES_MAX]int;
+    e := ev_eval(nodes, inputs, kv_ctx, kv_count, kv_slots, every[0..<nodes.count], want[..], sc[..]);
+    if e.status != EvStatus.ok { return EvHRun.{status = e.status, node = e.node}; }
+
+    forms: [EVH_NODES_MAX]EvForm; layer: [EVH_NODES_MAX]int; last: [EVH_NODES_MAX]int;
+    slot: [EVH_NODES_MAX]int; clear: [EVH_NODES_MAX]int; release: [EVH_NODES_MAX]int;
+    kept: [EVH_NODES_MAX]bool; free_slots: [64]bool; ep: [1]int;
+    arena := EvCompileArena.{
+        forms = forms[..], layer = layer[..], last = last[..], slot = slot[..],
+        clear = clear[..], release = release[..], kept = kept[..], free_slots = free_slots[..],
+        kv_pin = ep[0..<0]
+    };
+    layers: [24]EvLayerDesc; heads: [16]EvHeadDesc; weights: [32768]f64;
+    m := evs_compile_ev_planted(nodes, outputs, kv_slots, arena, layers[..], heads[..], weights[..], fault);
+    if m.status != EvStatus.ok { return EvHRun.{status = m.status, node = m.node}; }
+
+    planned: [EVH_NODES_MAX]int; read: [4]int;
+    #assert evh_interpret(m, nodes, outputs, arena, inputs, kv_ctx, kv_count, planned[..], read[..]).status == EvStatus.ok;
+    first := evh_first_diff(planned[0..<nodes.count], want[0..<nodes.count]);
+    if first != -1 { return EvHRun.{where = EvWhere.schedule, node = first}; }
+    for k: 0..<outputs.count {
+        if read[k] != want[outputs[k]] { return EvHRun.{where = EvWhere.schedule, node = outputs[k]}; }
+    }
+
+    D := m.width;
+    kv_f: [EVH_KV_COUNT * 64]f64;
+    for s: 0..<kv_count {
+        for c: 0..<kv_slots { kv_f[s * D + c] = f64(kv_ctx[s * kv_slots + c]); }
+    }
+    in_f: [3]f64;
+    for k: 0..<inputs.count { in_f[k] = f64(inputs[k]); }
+    ex_x: [64]f64; ex_st: [64]f64; ex_h: [256]f64;
+    exec := EvExecArena.{x = ex_x[..], stage = ex_st[..], hidden = ex_h[..]};
+    res_v: [64]f64; got: [4]f64;
+    #assert ev_forward_token(m, in_f[0..<inputs.count], kv_f[0..<kv_count * D], kv_count, res_v[..], got[..], exec, false) == EvStatus.ok;
+    for k: 0..<outputs.count {
+        if got[k] != f64(read[k]) { return EvHRun.{where = EvWhere.emission, node = outputs[k]}; }
+    }
+    return EvHRun.{};
+}
+
+evs_ch_run :: (nodes: []GgNode, outputs: []int, inputs: []int, fault: GgFault) -> ChRun #export_c #effects(all) {
+    if nodes.count < 1 || nodes.count > CH_GRAPH_NODES { return ChRun.{status = GgStatus.shape}; }
+    every: [16]int;
+    for i: 1..<nodes.count { every[i] = i; }
+    want: [16]int;
+    e := gg_eval(nodes, inputs, every[0..<nodes.count], want[..]);
+    if e.status != GgStatus.ok { return ChRun.{status = e.status, node = e.node}; }
+    weights: [16384]f64;
+    plan := evs_compile_gg_planted(nodes, outputs, weights[..], fault);
+    if plan.status != GgStatus.ok { return ChRun.{status = plan.status, node = plan.node}; }
+    planned: [128]int; read: [16]int;
+    #assert ch_interpret(plan, nodes, inputs, planned[..], read[..]).status == GgStatus.ok;
+    first := ch_first_difference(planned[0..<nodes.count], want[0..<nodes.count]);
+    if first != -1 { return ChRun.{where = ChWhere.schedule, node = first}; }
+    for k: 0..<outputs.count {
+        if read[k] != want[outputs[k]] { return ChRun.{where = ChWhere.schedule, node = outputs[k]}; }
+    }
+    got: [16]f64;
+    #assert gg_run(plan, weights[..], inputs, got[..], false, false) == GgStatus.ok;
+    for k: 0..<outputs.count {
+        if got[k] != f64(read[k]) { return ChRun.{where = ChWhere.emission, node = outputs[k]}; }
+    }
+    return ChRun.{};
+}
+
+evgb_program :: (idx: int, out: []TmOp) -> int #export_c #effects(all) {
+    if idx == 0 { return ev_prog_squares(4, out); }
+    if idx == 1 { return ev_prog_sum(10, out); }
+    if idx == 2 { return ev_prog_fact(10, out); }
+    if idx == 3 { return ev_prog_memfill(5, 8, out); }
+    if idx >= 4 && idx < 54 { return ev_seed_program(idx - 4, out); }
+    return 0;
+}
+
+evgb_encode_program_i64 :: (program: []TmOp, width: int, kv_ctx: []int) -> bool #export_c #effects(all) {
+    if width < EV_VM_KV_SLOTS || kv_ctx.count < program.count * width { return false; }
+    for i: 0..<program.count {
+        base := i * width;
+        kv_ctx[base] = 1;
+        kv_ctx[base + EV_S_PROG_K1] = 2 * i;
+        kv_ctx[base + EV_S_PROG_K2] = -i * i;
+        kv_ctx[base + EV_S_PROG_KEY] = i;
+        kv_ctx[base + EV_S_PROG_OP] = cast(int)program[i].code;
+        kv_ctx[base + EV_S_PROG_ARG] = program[i].arg;
+        kv_ctx[base + EV_S_PROG_VAL] = 1;
+        kv_ctx[base + EV_S_STEP_K2] = -1;
+        for d: EV_S_NEXT_IP..<width { kv_ctx[base + d] = 0; }
+    }
+    return true;
+}
+
+evgb_encode_program_f64 :: (program: []TmOp, width: int, kv_ctx: []f64) -> bool #export_c #effects(all) {
+    return ev_ch226_encode_program(program, width, kv_ctx);
+}
+
+evgb_sm_nearest :: (x: f64) -> int #export_c #effects(all) {
+    return sm_nearest(x);
+}

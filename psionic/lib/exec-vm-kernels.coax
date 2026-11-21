@@ -1,0 +1,915 @@
+// Single-source Coax GPU compute kernels for exec-vm-v1 / exec-gpu-v1 (#13916, W1.3).
+// Admitted unchanged by:
+//   - `coax test` / `coax c` (CPU reference & oracle)
+//   - `coax metal-compute --release` (Apple Silicon Metal 4: exact s64 + compensated double-single f32x2, fast math OFF)
+//   - `coax cuda --release` (NVIDIA CUDA: exact s64 + native IEEE binary64, --fmad=false)
+//
+// Zero silent f32/bf16 truncation: exact profiles check every intermediate against
+// the declared exactness envelope and write a non-zero error word on violation.
+// Separate Ch 233 softmax kernels explicitly run f64, f32, and bf16 controls to
+// measure device-level precision cliffs against the analytic beta >= ln(4V) bound.
+
+EVK_EXACT_MAX :: 9007199254740992; // 2^53: binary64 exact integer envelope
+EVK_SHIFT_MAX :: 700.0;
+EVK_ROLLOUT_MAX_WIDTH :: 64;
+EVK_ROLLOUT_MAX_UNITS :: 128;
+
+evk_relu_i64 :: (x: int) -> int #effects(all) {
+    if x > 0 { return x; }
+    return 0;
+}
+
+evk_ok_i64 :: (x: int) -> bool #effects(all) {
+    return x >= -EVK_EXACT_MAX && x <= EVK_EXACT_MAX;
+}
+
+evk_ok_f64 :: (x: f64, limit: f64) -> bool #effects(all) {
+    return abs(x) <= limit;
+}
+
+// ---- Family 1: Per-Layer Dense exec-vm-v1 Kernels (Exact 64-bit Integer) ----
+
+evk_init_i64 :: (item: int, batch: int, width: int, n_inputs: int, inputs: []int, x: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    v := 0;
+    if i == 0 {
+        v = 1;
+    } else if i <= n_inputs {
+        v = inputs[b * n_inputs + (i - 1)];
+    }
+    x[b * width + i] = v;
+}
+
+evk_ffn_up_gate_i64 :: (item: int, batch: int, width: int, units: int, w_base: int, weights: []int, x: []int, hidden: []int, err: []int) #export_c #effects(all) {
+    b := item / units;
+    u := item % units;
+    x_base := b * width;
+    up_base := w_base + u * width;
+    gate_base := w_base + (units + u) * width;
+    v := 0;
+    g := 0;
+    for j: 0..<width {
+        xj := x[x_base + j];
+        v += weights[up_base + j] * xj;
+        g += weights[gate_base + j] * xj;
+    }
+    h := v * evk_relu_i64(g);
+    if !evk_ok_i64(v) || !evk_ok_i64(g) || !evk_ok_i64(h) {
+        err[b] = 1;
+    }
+    hidden[b * units + u] = h;
+}
+
+evk_ffn_down_i64 :: (item: int, batch: int, width: int, units: int, w_base: int, weights: []int, x: []int, hidden: []int, stage: []int, err: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    h_base := b * units;
+    out_base := w_base + 2 * units * width + i * units;
+    acc := x[b * width + i];
+    for u: 0..<units {
+        acc += weights[out_base + u] * hidden[h_base + u];
+    }
+    if !evk_ok_i64(acc) {
+        err[b] = 2;
+    }
+    stage[b * width + i] = acc;
+}
+
+evk_copy_i64 :: (item: int, src: []int, dst: []int) #export_c #effects(all) {
+    dst[item] = src[item];
+}
+
+evk_store_kv_i64 :: (item: int, batch: int, width: int, kv_stride: int, kv_lens: []int, active: []int, x: []int, kv_ctx: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    if active[b] != 0 {
+        pos := kv_lens[b];
+        kv_ctx[(b * kv_stride + pos) * width + i] = x[b * width + i];
+    }
+}
+
+evk_attn_uniform_head_i64 :: (item: int, batch: int, width: int, d_v: int, kv_stride: int, kv_lens: []int, kv_self: int, wv_base: int, weights: []int, kv_ctx: []int, x: []int, yv: []int, err: []int) #export_c #effects(all) {
+    b := item / d_v;
+    r := item % d_v;
+    n_kv := kv_lens[b];
+    n_attend := n_kv + kv_self;
+    row_base := wv_base + r * width;
+    kv_prog := b * kv_stride * width;
+    x_base := b * width;
+    sum := 0;
+    for s: 0..<n_attend {
+        dot := 0;
+        if s < n_kv {
+            sb := kv_prog + s * width;
+            for j: 0..<width { dot += weights[row_base + j] * kv_ctx[sb + j]; }
+        } else {
+            for j: 0..<width { dot += weights[row_base + j] * x[x_base + j]; }
+        }
+        sum += dot;
+        if !evk_ok_i64(sum) { err[b] = 3; }
+    }
+    yv[b * 4 + r] = sum;
+}
+
+evk_attn_parabolic_head_i64 :: (item: int, batch: int, width: int, d_v: int, oldest: int, kv_stride: int, kv_lens: []int, kv_self: int, hb: int, weights: []int, kv_ctx: []int, x: []int, yv: []int, err: []int) #export_c #effects(all) {
+    b := item;
+    x_base := b * width;
+    q0 := 0;
+    q1 := 0;
+    for j: 0..<width {
+        xj := x[x_base + j];
+        q0 += weights[hb + j] * xj;
+        q1 += weights[hb + width + j] * xj;
+    }
+    if !evk_ok_i64(q0) || !evk_ok_i64(q1) { err[b] = 4; }
+
+    n_kv := kv_lens[b];
+    n_attend := n_kv + kv_self;
+    if n_attend <= 0 {
+        for r: 0..<d_v { yv[b * 4 + r] = 0; }
+        return;
+    }
+
+    wk0 := hb + 2 * width;
+    wk1 := hb + 3 * width;
+    kv_prog := b * kv_stride * width;
+    best := 0;
+    best_sc := 0;
+    for s: 0..<n_attend {
+        k0 := 0;
+        k1 := 0;
+        if s < n_kv {
+            sb := kv_prog + s * width;
+            for j: 0..<width {
+                sv := kv_ctx[sb + j];
+                k0 += weights[wk0 + j] * sv;
+                k1 += weights[wk1 + j] * sv;
+            }
+        } else {
+            for j: 0..<width {
+                sv := x[x_base + j];
+                k0 += weights[wk0 + j] * sv;
+                k1 += weights[wk1 + j] * sv;
+            }
+        }
+        sc := q0 * k0 + q1 * k1;
+        if !evk_ok_i64(k0) || !evk_ok_i64(k1) || !evk_ok_i64(sc) { err[b] = 5; }
+        if s == 0 {
+            best_sc = sc;
+        } else if oldest == 0 {
+            if sc >= best_sc { best_sc = sc; best = s; }
+        } else {
+            if sc > best_sc { best_sc = sc; best = s; }
+        }
+    }
+
+    wv_base := hb + 4 * width;
+    for r: 0..<d_v {
+        row := wv_base + r * width;
+        val := 0;
+        if best < n_kv {
+            sb := kv_prog + best * width;
+            for j: 0..<width { val += weights[row + j] * kv_ctx[sb + j]; }
+        } else {
+            for j: 0..<width { val += weights[row + j] * x[x_base + j]; }
+        }
+        if !evk_ok_i64(val) { err[b] = 6; }
+        yv[b * 4 + r] = val;
+    }
+}
+
+evk_attn_apply_wo_i64 :: (item: int, batch: int, width: int, d_v: int, wo_base: int, weights: []int, yv: []int, stage: []int, err: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    acc := stage[b * width + i];
+    row := wo_base + i * d_v;
+    for r: 0..<d_v {
+        acc += weights[row + r] * yv[b * 4 + r];
+    }
+    if !evk_ok_i64(acc) { err[b] = 7; }
+    stage[b * width + i] = acc;
+}
+
+evk_readout_i64 :: (item: int, batch: int, width: int, n_outputs: int, w_out_base: int, weights: []int, x: []int, out: []int, err: []int) #export_c #effects(all) {
+    b := item / n_outputs;
+    k := item % n_outputs;
+    row := w_out_base + k * width;
+    x_base := b * width;
+    sum := 0;
+    for j: 0..<width {
+        sum += weights[row + j] * x[x_base + j];
+    }
+    if !evk_ok_i64(sum) { err[b] = 8; }
+    out[b * n_outputs + k] = sum;
+}
+
+// ---- Family 2: Persistent Batched Multi-Step Dense Rollout (Exact i64 & f64) ----
+// Each GPU work item executes a complete Ch 226 program autoregressively strictly
+// through the loaded dense weight matrices (zero CPU sync per step, zero interpreter).
+// Packed descriptors keep launch argument count <= 12 (Metal/CUDA ABI limit is 16):
+//   layer_desc[3*li + 0..2] = (kind: 0=ffn 1=attn, p0: units|head_first, p1: w_offset|head_count)
+//   head_desc[3*hi + 0..2]  = (kind: 0=parabolic 1=oldest 2=uniform, d_v, w_offset)
+//   prog_cfg[2*b + 0..1]    = (prog_len, budget)
+
+evk_ch226_rollout_i64 :: (
+    item: int,
+    width: int,
+    n_layers: int,
+    kv_stride: int,
+    max_steps: int,
+    w_out_base: int,
+    layer_desc: []int,
+    head_desc: []int,
+    weights: []int,
+    prog_cfg: []int,
+    kv_ctx: []int,
+    out_trace: []int,
+    out_meta: []int
+) #export_c #effects(all) {
+    b := item;
+    plen := prog_cfg[2 * b];
+    budget := prog_cfg[2 * b + 1];
+    kv_prog := b * kv_stride * width;
+    tr_prog := b * max_steps * 4;
+    ctx_len := plen;
+    steps := 0;
+    last_ip := 0;
+    status := 0;
+    err_code := 0;
+
+    x: [EVK_ROLLOUT_MAX_WIDTH]int;
+    stage: [EVK_ROLLOUT_MAX_WIDTH]int;
+    hidden: [EVK_ROLLOUT_MAX_UNITS]int;
+    yv: [4]int;
+    ro: [6]int;
+
+    for st: 0..<budget {
+        if ctx_len >= kv_stride {
+            status = 10; // capacity
+            break;
+        }
+        x[0] = 1;
+        for i: 1..<width { x[i] = 0; }
+
+        for li: 0..<n_layers {
+            lk := layer_desc[3 * li];
+            lp0 := layer_desc[3 * li + 1];
+            lp1 := layer_desc[3 * li + 2];
+            if lk == 0 {
+                U := lp0;
+                base := lp1;
+                for u: 0..<U {
+                    up_b := base + u * width;
+                    gt_b := base + (U + u) * width;
+                    v := 0;
+                    g := 0;
+                    for j: 0..<width {
+                        xj := x[j];
+                        v += weights[up_b + j] * xj;
+                        g += weights[gt_b + j] * xj;
+                    }
+                    h := v * evk_relu_i64(g);
+                    if !evk_ok_i64(v) || !evk_ok_i64(g) || !evk_ok_i64(h) { err_code = 1; }
+                    hidden[u] = h;
+                }
+                down_b := base + 2 * U * width;
+                for i: 0..<width {
+                    acc := x[i];
+                    row := down_b + i * U;
+                    for u: 0..<U { acc += weights[row + u] * hidden[u]; }
+                    if !evk_ok_i64(acc) { err_code = 2; }
+                    stage[i] = acc;
+                }
+                for i: 0..<width { x[i] = stage[i]; }
+            } else {
+                for i: 0..<width { stage[i] = x[i]; }
+                hf := lp0;
+                hc := lp1;
+                for hi: hf..<hf + hc {
+                    hk := head_desc[3 * hi];
+                    dv := head_desc[3 * hi + 1];
+                    hb := head_desc[3 * hi + 2];
+                    if hk == 2 {
+                        for r: 0..<dv {
+                            row := hb + r * width;
+                            sum := 0;
+                            for s: 0..<ctx_len {
+                                sb := kv_prog + s * width;
+                                for j: 0..<width { sum += weights[row + j] * kv_ctx[sb + j]; }
+                            }
+                            if !evk_ok_i64(sum) { err_code = 3; }
+                            yv[r] = sum;
+                        }
+                        wo_b := hb + dv * width;
+                        for i: 0..<width {
+                            acc := stage[i];
+                            row := wo_b + i * dv;
+                            for r: 0..<dv { acc += weights[row + r] * yv[r]; }
+                            if !evk_ok_i64(acc) { err_code = 7; }
+                            stage[i] = acc;
+                        }
+                    } else {
+                        q0 := 0;
+                        q1 := 0;
+                        for j: 0..<width {
+                            xj := x[j];
+                            q0 += weights[hb + j] * xj;
+                            q1 += weights[hb + width + j] * xj;
+                        }
+                        wk0 := hb + 2 * width;
+                        wk1 := hb + 3 * width;
+                        best := 0;
+                        best_sc := 0;
+                        for s: 0..<ctx_len {
+                            sb := kv_prog + s * width;
+                            k0 := 0;
+                            k1 := 0;
+                            for j: 0..<width {
+                                sv := kv_ctx[sb + j];
+                                k0 += weights[wk0 + j] * sv;
+                                k1 += weights[wk1 + j] * sv;
+                            }
+                            sc := q0 * k0 + q1 * k1;
+                            if !evk_ok_i64(sc) { err_code = 5; }
+                            if s == 0 {
+                                best_sc = sc;
+                            } else if hk == 0 {
+                                if sc >= best_sc { best_sc = sc; best = s; }
+                            } else {
+                                if sc > best_sc { best_sc = sc; best = s; }
+                            }
+                        }
+                        wv_b := hb + 4 * width;
+                        best_sb := kv_prog + best * width;
+                        for r: 0..<dv {
+                            row := wv_b + r * width;
+                            val := 0;
+                            for j: 0..<width { val += weights[row + j] * kv_ctx[best_sb + j]; }
+                            yv[r] = val;
+                        }
+                        wo_b := hb + (4 + dv) * width;
+                        for i: 0..<width {
+                            acc := stage[i];
+                            row := wo_b + i * dv;
+                            for r: 0..<dv { acc += weights[row + r] * yv[r]; }
+                            if !evk_ok_i64(acc) { err_code = 7; }
+                            stage[i] = acc;
+                        }
+                    }
+                }
+                for i: 0..<width { x[i] = stage[i]; }
+            }
+        }
+
+        if err_code != 0 {
+            status = 5; // arithmetic
+            break;
+        }
+        for k: 0..<6 {
+            row := w_out_base + k * width;
+            v := 0;
+            for j: 0..<width { v += weights[row + j] * x[j]; }
+            ro[k] = v;
+        }
+        r_ip := ro[0];
+        r_code := ro[1];
+        r_x := ro[2];
+        r_y := ro[3];
+        r_halt := ro[4];
+        r_fault := ro[5];
+        last_ip = r_ip;
+
+        if r_fault != 0 {
+            status = r_fault;
+            break;
+        }
+        if steps >= max_steps {
+            status = 10;
+            break;
+        }
+        dst_sb := kv_prog + ctx_len * width;
+        for i: 0..<width { kv_ctx[dst_sb + i] = x[i]; }
+        tb := tr_prog + steps * 4;
+        out_trace[tb] = r_ip;
+        out_trace[tb + 1] = r_code;
+        out_trace[tb + 2] = r_x;
+        out_trace[tb + 3] = r_y;
+        ctx_len += 1;
+        steps += 1;
+        if r_halt == 1 {
+            status = 0;
+            break;
+        }
+        if st + 1 == budget {
+            prev_next := kv_ctx[dst_sb + 8];
+            if prev_next == plen {
+                status = 8; // TmStatus.fell
+                last_ip = prev_next;
+            } else {
+                status = 9; // TmStatus.budget
+            }
+        }
+    }
+
+    out_meta[b * 4] = status;
+    out_meta[b * 4 + 1] = steps;
+    out_meta[b * 4 + 2] = last_ip;
+    out_meta[b * 4 + 3] = err_code;
+}
+
+// Persistent batched rollout in f64 (native IEEE binary64 on CUDA, compensated
+// double-single f32x2 Dekker/Knuth on Metal). Zero cast(int) of f64 so coax
+// metal-compute admits it verbatim.
+evk_ch226_rollout_f64 :: (
+    item: int,
+    width: int,
+    n_layers: int,
+    kv_stride: int,
+    max_steps: int,
+    w_out_base: int,
+    exact_lim: f64,
+    layer_desc: []int,
+    head_desc: []int,
+    weights: []f64,
+    prog_cfg: []int,
+    kv_ctx: []f64,
+    out_trace: []f64,
+    out_meta: []int
+) #export_c #effects(all) {
+    b := item;
+    plen := prog_cfg[2 * b];
+    budget := prog_cfg[2 * b + 1];
+    kv_prog := b * kv_stride * width;
+    tr_prog := b * max_steps * 4;
+    ctx_len := plen;
+    steps := 0;
+    status := 0;
+    err_code := 0;
+
+    x: [EVK_ROLLOUT_MAX_WIDTH]f64;
+    stage: [EVK_ROLLOUT_MAX_WIDTH]f64;
+    hidden: [EVK_ROLLOUT_MAX_UNITS]f64;
+    yv: [4]f64;
+    ro: [6]f64;
+
+    for st: 0..<budget {
+        if ctx_len >= kv_stride {
+            status = 10;
+            break;
+        }
+        x[0] = 1.0;
+        for i: 1..<width { x[i] = 0.0; }
+
+        for li: 0..<n_layers {
+            lk := layer_desc[3 * li];
+            lp0 := layer_desc[3 * li + 1];
+            lp1 := layer_desc[3 * li + 2];
+            if lk == 0 {
+                U := lp0;
+                base := lp1;
+                for u: 0..<U {
+                    up_b := base + u * width;
+                    gt_b := base + (U + u) * width;
+                    v: f64 = 0.0;
+                    g: f64 = 0.0;
+                    for j: 0..<width {
+                        xj := x[j];
+                        v += weights[up_b + j] * xj;
+                        g += weights[gt_b + j] * xj;
+                    }
+                    h := v * ((g + abs(g)) * 0.5);
+                    if !evk_ok_f64(v, exact_lim) || !evk_ok_f64(g, exact_lim) || !evk_ok_f64(h, exact_lim) { err_code = 1; }
+                    hidden[u] = h;
+                }
+                down_b := base + 2 * U * width;
+                for i: 0..<width {
+                    acc := x[i];
+                    row := down_b + i * U;
+                    for u: 0..<U { acc += weights[row + u] * hidden[u]; }
+                    if !evk_ok_f64(acc, exact_lim) { err_code = 2; }
+                    stage[i] = acc;
+                }
+                for i: 0..<width { x[i] = stage[i]; }
+            } else {
+                for i: 0..<width { stage[i] = x[i]; }
+                hf := lp0;
+                hc := lp1;
+                for hi: hf..<hf + hc {
+                    hk := head_desc[3 * hi];
+                    dv := head_desc[3 * hi + 1];
+                    hb := head_desc[3 * hi + 2];
+                    if hk == 2 {
+                        for r: 0..<dv {
+                            row := hb + r * width;
+                            sum: f64 = 0.0;
+                            for s: 0..<ctx_len {
+                                sb := kv_prog + s * width;
+                                for j: 0..<width { sum += weights[row + j] * kv_ctx[sb + j]; }
+                            }
+                            if !evk_ok_f64(sum, exact_lim) { err_code = 3; }
+                            yv[r] = sum;
+                        }
+                        wo_b := hb + dv * width;
+                        for i: 0..<width {
+                            acc := stage[i];
+                            row := wo_b + i * dv;
+                            for r: 0..<dv { acc += weights[row + r] * yv[r]; }
+                            if !evk_ok_f64(acc, exact_lim) { err_code = 7; }
+                            stage[i] = acc;
+                        }
+                    } else {
+                        q0: f64 = 0.0;
+                        q1: f64 = 0.0;
+                        for j: 0..<width {
+                            xj := x[j];
+                            q0 += weights[hb + j] * xj;
+                            q1 += weights[hb + width + j] * xj;
+                        }
+                        wk0 := hb + 2 * width;
+                        wk1 := hb + 3 * width;
+                        best := 0;
+                        best_sc: f64 = 0.0;
+                        for s: 0..<ctx_len {
+                            sb := kv_prog + s * width;
+                            k0: f64 = 0.0;
+                            k1: f64 = 0.0;
+                            for j: 0..<width {
+                                sv := kv_ctx[sb + j];
+                                k0 += weights[wk0 + j] * sv;
+                                k1 += weights[wk1 + j] * sv;
+                            }
+                            sc := q0 * k0 + q1 * k1;
+                            if !evk_ok_f64(sc, exact_lim) { err_code = 5; }
+                            if s == 0 {
+                                best_sc = sc;
+                            } else if hk == 0 {
+                                if sc >= best_sc { best_sc = sc; best = s; }
+                            } else {
+                                if sc > best_sc { best_sc = sc; best = s; }
+                            }
+                        }
+                        wv_b := hb + 4 * width;
+                        best_sb := kv_prog + best * width;
+                        for r: 0..<dv {
+                            row := wv_b + r * width;
+                            val: f64 = 0.0;
+                            for j: 0..<width { val += weights[row + j] * kv_ctx[best_sb + j]; }
+                            yv[r] = val;
+                        }
+                        wo_b := hb + (4 + dv) * width;
+                        for i: 0..<width {
+                            acc := stage[i];
+                            row := wo_b + i * dv;
+                            for r: 0..<dv { acc += weights[row + r] * yv[r]; }
+                            if !evk_ok_f64(acc, exact_lim) { err_code = 7; }
+                            stage[i] = acc;
+                        }
+                    }
+                }
+                for i: 0..<width { x[i] = stage[i]; }
+            }
+        }
+
+        if err_code != 0 {
+            status = 5;
+            break;
+        }
+        for k: 0..<6 {
+            row := w_out_base + k * width;
+            v: f64 = 0.0;
+            for j: 0..<width { v += weights[row + j] * x[j]; }
+            ro[k] = v;
+        }
+        if ro[5] != 0.0 {
+            status = 11; // in-weight fault (exact code decoded on host if needed)
+            break;
+        }
+        if steps >= max_steps {
+            status = 10;
+            break;
+        }
+        dst_sb := kv_prog + ctx_len * width;
+        for i: 0..<width { kv_ctx[dst_sb + i] = x[i]; }
+        tb := tr_prog + steps * 4;
+        out_trace[tb] = ro[0];
+        out_trace[tb + 1] = ro[1];
+        out_trace[tb + 2] = ro[2];
+        out_trace[tb + 3] = ro[3];
+        ctx_len += 1;
+        steps += 1;
+        if ro[4] == 1.0 {
+            status = 0;
+            break;
+        }
+        if st + 1 == budget {
+            if kv_ctx[dst_sb + 8] == f64(plen) {
+                status = 8;
+            } else {
+                status = 9;
+            }
+        }
+    }
+
+    out_meta[b * 4] = status;
+    out_meta[b * 4 + 1] = steps;
+    out_meta[b * 4 + 2] = ctx_len;
+    out_meta[b * 4 + 3] = err_code;
+}
+
+// ---- Family 3: Native binary64 (CUDA) / Double-Single f32x2 (Metal) Dense Kernels ----
+
+evk_ffn_up_gate_f64 :: (item: int, batch: int, width: int, units: int, w_base: int, exact_lim: f64, weights: []f64, x: []f64, hidden: []f64, err: []int) #export_c #effects(all) {
+    b := item / units;
+    u := item % units;
+    x_base := b * width;
+    up_base := w_base + u * width;
+    gate_base := w_base + (units + u) * width;
+    v: f64 = 0.0;
+    g: f64 = 0.0;
+    for j: 0..<width {
+        xj := x[x_base + j];
+        v += weights[up_base + j] * xj;
+        g += weights[gate_base + j] * xj;
+    }
+    h := v * ((g + abs(g)) * 0.5);
+    if !evk_ok_f64(v, exact_lim) || !evk_ok_f64(g, exact_lim) || !evk_ok_f64(h, exact_lim) {
+        err[b] = 1;
+    }
+    hidden[b * units + u] = h;
+}
+
+evk_ffn_down_f64 :: (item: int, batch: int, width: int, units: int, w_base: int, exact_lim: f64, weights: []f64, x: []f64, hidden: []f64, stage: []f64, err: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    h_base := b * units;
+    out_base := w_base + 2 * units * width + i * units;
+    acc := x[b * width + i];
+    for u: 0..<units {
+        acc += weights[out_base + u] * hidden[h_base + u];
+    }
+    if !evk_ok_f64(acc, exact_lim) { err[b] = 2; }
+    stage[b * width + i] = acc;
+}
+
+evk_copy_f64 :: (item: int, src: []f64, dst: []f64) #export_c #effects(all) {
+    dst[item] = src[item];
+}
+
+evk_attn_uniform_head_f64 :: (item: int, batch: int, width: int, d_v: int, kv_stride: int, kv_lens: []int, kv_self: int, wv_base: int, exact_lim: f64, weights: []f64, kv_ctx: []f64, x: []f64, yv: []f64, err: []int) #export_c #effects(all) {
+    b := item / d_v;
+    r := item % d_v;
+    n_kv := kv_lens[b];
+    n_attend := n_kv + kv_self;
+    row_base := wv_base + r * width;
+    kv_prog := b * kv_stride * width;
+    x_base := b * width;
+    sum: f64 = 0.0;
+    for s: 0..<n_attend {
+        dot: f64 = 0.0;
+        if s < n_kv {
+            sb := kv_prog + s * width;
+            for j: 0..<width { dot += weights[row_base + j] * kv_ctx[sb + j]; }
+        } else {
+            for j: 0..<width { dot += weights[row_base + j] * x[x_base + j]; }
+        }
+        sum += dot;
+        if !evk_ok_f64(sum, exact_lim) { err[b] = 3; }
+    }
+    yv[b * 4 + r] = sum;
+}
+
+evk_attn_parabolic_head_f64 :: (item: int, batch: int, width: int, d_v: int, oldest: int, kv_stride: int, kv_lens: []int, kv_self: int, hb: int, exact_lim: f64, weights: []f64, kv_ctx: []f64, x: []f64, yv: []f64, err: []int) #export_c #effects(all) {
+    b := item;
+    x_base := b * width;
+    q0: f64 = 0.0;
+    q1: f64 = 0.0;
+    for j: 0..<width {
+        xj := x[x_base + j];
+        q0 += weights[hb + j] * xj;
+        q1 += weights[hb + width + j] * xj;
+    }
+    if !evk_ok_f64(q0, exact_lim) || !evk_ok_f64(q1, exact_lim) { err[b] = 4; }
+
+    n_kv := kv_lens[b];
+    n_attend := n_kv + kv_self;
+    if n_attend <= 0 {
+        for r: 0..<d_v { yv[b * 4 + r] = 0.0; }
+        return;
+    }
+
+    wk0 := hb + 2 * width;
+    wk1 := hb + 3 * width;
+    kv_prog := b * kv_stride * width;
+    best := 0;
+    best_sc: f64 = 0.0;
+    for s: 0..<n_attend {
+        k0: f64 = 0.0;
+        k1: f64 = 0.0;
+        if s < n_kv {
+            sb := kv_prog + s * width;
+            for j: 0..<width {
+                sv := kv_ctx[sb + j];
+                k0 += weights[wk0 + j] * sv;
+                k1 += weights[wk1 + j] * sv;
+            }
+        } else {
+            for j: 0..<width {
+                sv := x[x_base + j];
+                k0 += weights[wk0 + j] * sv;
+                k1 += weights[wk1 + j] * sv;
+            }
+        }
+        sc := q0 * k0 + q1 * k1;
+        if !evk_ok_f64(k0, exact_lim) || !evk_ok_f64(k1, exact_lim) || !evk_ok_f64(sc, exact_lim) { err[b] = 5; }
+        if s == 0 {
+            best_sc = sc;
+        } else if oldest == 0 {
+            if sc >= best_sc { best_sc = sc; best = s; }
+        } else {
+            if sc > best_sc { best_sc = sc; best = s; }
+        }
+    }
+
+    wv_base := hb + 4 * width;
+    for r: 0..<d_v {
+        row := wv_base + r * width;
+        val: f64 = 0.0;
+        if best < n_kv {
+            sb := kv_prog + best * width;
+            for j: 0..<width { val += weights[row + j] * kv_ctx[sb + j]; }
+        } else {
+            for j: 0..<width { val += weights[row + j] * x[x_base + j]; }
+        }
+        if !evk_ok_f64(val, exact_lim) { err[b] = 6; }
+        yv[b * 4 + r] = val;
+    }
+}
+
+evk_attn_apply_wo_f64 :: (item: int, batch: int, width: int, d_v: int, wo_base: int, exact_lim: f64, weights: []f64, yv: []f64, stage: []f64, err: []int) #export_c #effects(all) {
+    b := item / width;
+    i := item % width;
+    acc := stage[b * width + i];
+    row := wo_base + i * d_v;
+    for r: 0..<d_v { acc += weights[row + r] * yv[b * 4 + r]; }
+    if !evk_ok_f64(acc, exact_lim) { err[b] = 7; }
+    stage[b * width + i] = acc;
+}
+
+evk_readout_f64 :: (item: int, batch: int, width: int, n_outputs: int, w_out_base: int, exact_lim: f64, weights: []f64, x: []f64, out: []f64, err: []int) #export_c #effects(all) {
+    b := item / n_outputs;
+    k := item % n_outputs;
+    row := w_out_base + k * width;
+    x_base := b * width;
+    sum: f64 = 0.0;
+    for j: 0..<width { sum += weights[row + j] * x[x_base + j]; }
+    if !evk_ok_f64(sum, exact_lim) { err[b] = 8; }
+    out[b * n_outputs + k] = sum;
+}
+
+// Precision-envelope control probe: computes a*b in f32 (breaks at 4097^2),
+// f64 (float-float on Metal: breaks above 2^48; binary64 on CUDA: exact to 2^53),
+// and exact i64 (exact to 2^53 on both Metal & CUDA).
+evk_precision_probe :: (item: int, a: []int, b: []int, out_f32: []f32, out_f64: []f64, out_i64: []int) #export_c #effects(all) {
+    ai := a[item];
+    bi := b[item];
+    out_f32[item] = f32(ai) * f32(bi);
+    out_f64[item] = f64(ai) * f64(bi);
+    out_i64[item] = ai * bi;
+}
+
+// ---- Family 4: Device-Level Ch 233 Softmax vs. Hard-Max Precision-Cliff Kernels ----
+// Matches psionic/lib/soft-memory.coax (sm_read) across fmt = 0 (f64), 1 (f32), 2 (bf16).
+
+evk_soft_round :: (x: f64, fmt: int) -> f64 #effects(all) {
+    if fmt == 0 { return x; }
+    bits := f32_bits(f32(x));
+    if fmt == 2 {
+        bits = (bits + 0x7fff + ((bits >> 16) & 1)) & 0xffff0000;
+    }
+    return f64(f32_from_bits(bits));
+}
+
+evk_soft_logit :: (k: int, q: int, t: int, count: int, beta: f64, fmt: int) -> f64 #effects(all) {
+    score := (2 * k * q - k * k) * (count + 1) + t;
+    return evk_soft_round(beta * evk_soft_round(f64(score), fmt), fmt);
+}
+
+evk_soft_top_logit :: (item: int, count: int, q: int, beta: f64, fmt: int, best_pos: int, keys: []int, top_out: []f64) #export_c #effects(all) {
+    if item == 0 {
+        top_out[0] = evk_soft_logit(keys[best_pos], q, best_pos, count, beta, fmt);
+    }
+}
+
+evk_soft_z_chunk :: (item: int, n_chunks: int, count: int, q: int, beta: f64, fmt: int, keys: []int, top_in: []f64, part_z: []f64, unstable: []int) #export_c #effects(all) {
+    lo := (item * count) / n_chunks;
+    hi := ((item + 1) * count) / n_chunks;
+    top := top_in[0];
+    s: f64 = 0.0;
+    c: f64 = 0.0;
+    for t: lo..<hi {
+        d := evk_soft_logit(keys[t], q, t, count, beta, fmt) - top;
+        if d > EVK_SHIFT_MAX {
+            unstable[0] = 1;
+            part_z[item] = 0.0;
+            return;
+        }
+        v := exp(d);
+        nt := s + v;
+        if abs(s) >= abs(v) { c += (s - nt) + v; } else { c += (v - nt) + s; }
+        s = nt;
+    }
+    part_z[item] = s + c;
+}
+
+evk_soft_reduce_f64 :: (item: int, n_chunks: int, parts: []f64, out: []f64) #export_c #effects(all) {
+    if item != 0 { return; }
+    s: f64 = 0.0;
+    c: f64 = 0.0;
+    for i: 0..<n_chunks {
+        v := parts[i];
+        nt := s + v;
+        if abs(s) >= abs(v) { c += (s - nt) + v; } else { c += (v - nt) + s; }
+        s = nt;
+    }
+    out[0] = s + c;
+}
+
+evk_soft_y_chunk :: (item: int, n_chunks: int, count: int, q: int, beta: f64, fmt: int, keys: []int, values: []int, top_in: []f64, total_z: []f64, part_y: []f64) #export_c #effects(all) {
+    lo := (item * count) / n_chunks;
+    hi := ((item + 1) * count) / n_chunks;
+    top := top_in[0];
+    z := total_z[0];
+    s: f64 = 0.0;
+    c: f64 = 0.0;
+    for t: lo..<hi {
+        d := evk_soft_logit(keys[t], q, t, count, beta, fmt) - top;
+        w := evk_soft_round(exp(d) / z, fmt);
+        v := w * evk_soft_round(f64(values[t]), fmt);
+        nt := s + v;
+        if abs(s) >= abs(v) { c += (s - nt) + v; } else { c += (v - nt) + s; }
+        s = nt;
+    }
+    part_y[item] = s + c;
+}
+
+// ---- CPU Self-Tests (verify exact kernel parity before device compilation) ----
+
+#test "exact i64 and f64 dense FFN + parabolic attention + readout kernels match reference" {
+    // 1-layer FFN computing x1 * x2 via 2 ReGLU units (width=3, units=2):
+    // W_up: row0=[0,1,0], row1=[0,1,0]
+    // W_gate: row0=[0,0,1], row1=[0,0,-1]
+    // W_down: row0=[0,0], row1=[0,0], row2=[1,-1] (writes into slot 2; wait let's write into slot 0? no, width=4, slot 3!)
+    // width=4, units=2:
+    // W_up [2,4], W_gate [2,4], W_down [4,2] = 24 weights.
+    w_i: [24]int;
+    w_f: [24]f64;
+    w_i[1] = 1; w_i[5] = 1;          // W_up: x[1]
+    w_i[10] = 1; w_i[14] = -1;       // W_gate: x[2] and -x[2]
+    w_i[16 + 3 * 2] = 1;             // W_down[3, 0] = +1
+    w_i[16 + 3 * 2 + 1] = -1;        // W_down[3, 1] = -1
+    for i: 0..<24 { w_f[i] = f64(w_i[i]); }
+
+    ins := [2]int.[4097, -4097];
+    x_i: [4]int; h_i: [2]int; st_i: [4]int; err_i: [1]int;
+    for i: 0..<4 { evk_init_i64(i, 1, 4, 2, ins[..], x_i[..]); }
+    for u: 0..<2 { evk_ffn_up_gate_i64(u, 1, 4, 2, 0, w_i[..], x_i[..], h_i[..], err_i[..]); }
+    for i: 0..<4 { evk_ffn_down_i64(i, 1, 4, 2, 0, w_i[..], x_i[..], h_i[..], st_i[..], err_i[..]); }
+    #assert err_i[0] == 0 && st_i[3] == -16785409;
+
+    x_f := [4]f64.[1.0, 4097.0, -4097.0, 0.0];
+    h_f: [2]f64; st_f: [4]f64; err_f: [1]int;
+    lim := f64(EVK_EXACT_MAX);
+    for u: 0..<2 { evk_ffn_up_gate_f64(u, 1, 4, 2, 0, lim, w_f[..], x_f[..], h_f[..], err_f[..]); }
+    for i: 0..<4 { evk_ffn_down_f64(i, 1, 4, 2, 0, lim, w_f[..], x_f[..], h_f[..], st_f[..], err_f[..]); }
+    #assert err_f[0] == 0 && st_f[3] == -16785409.0;
+
+    // Precision probe: 4097^2 breaks in f32, holds in f64 & i64!
+    pa := [1]int.[4097]; pb := [1]int.[4097];
+    pf32: [1]f32; pf64: [1]f64; pi64: [1]int;
+    evk_precision_probe(0, pa[..], pb[..], pf32[..], pf64[..], pi64[..]);
+    #assert pi64[0] == 16785409 && pf64[0] == 16785409.0 && f64(pf32[0]) != 16785409.0;
+}
+
+#test "Ch 233 parallel GPU softmax kernels reproduce f64 exactness and bf16 failure cliff" {
+    keys := [2]int.[16, 16];
+    vals := [2]int.[-1000, 1000];
+    beta := log(4000.0) + 1.0;
+    top: [1]f64; pz: [2]f64; tz: [1]f64; py: [2]f64; my: [1]f64; un: [1]int;
+
+    // f64 holds exact (+1000).
+    evk_soft_top_logit(0, 2, 16, beta, 0, 1, keys[..], top[..]);
+    for c: 0..<2 { evk_soft_z_chunk(c, 2, 2, 16, beta, 0, keys[..], top[..], pz[..], un[..]); }
+    evk_soft_reduce_f64(0, 2, pz[..], tz[..]);
+    for c: 0..<2 { evk_soft_y_chunk(c, 2, 2, 16, beta, 0, keys[..], vals[..], top[..], tz[..], py[..]); }
+    evk_soft_reduce_f64(0, 2, py[..], my[..]);
+    #assert un[0] == 0 && abs(my[0] - 1000.0) < 0.5;
+
+    // bf16 ties both keys -> returns ~0 (matches Ch 233 soft-memory.coax!).
+    evk_soft_top_logit(0, 2, 16, beta, 2, 1, keys[..], top[..]);
+    for c: 0..<2 { evk_soft_z_chunk(c, 2, 2, 16, beta, 2, keys[..], top[..], pz[..], un[..]); }
+    evk_soft_reduce_f64(0, 2, pz[..], tz[..]);
+    for c: 0..<2 { evk_soft_y_chunk(c, 2, 2, 16, beta, 2, keys[..], vals[..], top[..], tz[..], py[..]); }
+    evk_soft_reduce_f64(0, 2, py[..], my[..]);
+    #assert un[0] == 0 && abs(my[0]) < 0.5;
+}

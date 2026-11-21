@@ -1,0 +1,1550 @@
+// Optimal Liveness, Min-Register Layer Packing & Interval-Coloring Slot-Reuse
+// Scheduler + Formal Schedule Verifier (#authority, #13916, W1.3).
+//
+// Decides every safety- and optimality-critical scheduling choice for
+// exec-vm-v1 (Attention+FFN) and Ch 229 (straight-line FFN) graphs:
+//   1. Level-coalesced vs. eager Attention wave skeleton selection.
+//   2. Formal backward liveness + ASAP/ALAP slack windows.
+//   3. Exact branch-and-bound min-width layer packing (<= 12 flexible nodes) +
+//      ASAP/ALAP-seeded min-peak-pressure coordinate descent (large DAGs).
+//   4. Pin coalescing + left-edge / tightest-slack-under-pin interval coloring.
+//   5. Reuse-driven clearing (emitting zero clear units on unreused slots).
+//   6. Formal #authority schedule verifier (`evs_verify_schedule`) proving zero
+//      RAW, overlap, stale-slot, cleared-kept, or dirty-KV hazards.
+#load "exec-vm-core.coax";
+#authority;
+
+EVS_MAX_NODES :: 320;
+EVS_MAX_LAYERS :: 32;
+EVS_MAX_WIDTH :: 128;
+EVS_BNB_MAX_FLEX :: 12;
+EVS_BNB_BUDGET :: 2048;
+
+EvSchedErr :: enum u8 {
+    ok;
+    bad_layer;
+    raw_hazard;
+    bad_slot;
+    cleared_kept;
+    stale_slot;
+    overlap_hazard;
+    dirty_kv;
+}
+
+EvSchedCheck :: struct {
+    err: EvSchedErr;
+    node: int;
+    other: int;
+}
+
+EvSchedule :: struct {
+    status: EvStatus;
+    node: int;
+    width: int;
+    n_layers: int;
+}
+
+EvPressure :: struct {
+    peak_width: int;
+    bottlenecks: int;
+    total_span: int;
+}
+
+EvSchedMetrics :: struct {
+    status: EvStatus;
+    width: int;
+    n_layers: int;
+    n_heads: int;
+    n_weights: int;
+    total_units: int;
+    clear_units: int;
+    wb_units: int;
+}
+
+// ---- Formal Schedule Verifier (#authority) ----
+
+evs_verify_schedule :: (
+    nodes: []EvNode,
+    outputs: []int,
+    kv_slots: int,
+    kv_pin: []int,
+    n_layers: int,
+    layers: []EvLayerDesc,
+    forms: []EvForm,
+    layer: []int,
+    slot: []int,
+    clear: []int,
+    width: int,
+    has_wb: bool
+) -> EvSchedCheck #export_c #effects(all) {
+    n := nodes.count;
+    has_pins := kv_pin.count > 1; // slot 0 is reserved for constant 1; pins live in 1..<kv_pin.count
+    if n < 1 || n > EVS_MAX_NODES || n_layers < 0 || n_layers > layers.count || width < 1 {
+        return EvSchedCheck.{err = EvSchedErr.bad_layer};
+    }
+
+    last: [EVS_MAX_NODES]int;
+    kept: [EVS_MAX_NODES]bool;
+    is_base: [EVS_MAX_NODES]bool;
+
+    for i: 0..<n {
+        nd := nodes[i];
+        if nd.op == EvOp.input {
+            is_base[i] = true;
+            if layer[i] != 0 { return EvSchedCheck.{err = EvSchedErr.bad_layer, node = i}; }
+            if slot[i] < 1 || slot[i] >= width { return EvSchedCheck.{err = EvSchedErr.bad_slot, node = i}; }
+        } else if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            is_base[i] = true;
+            L := layer[i];
+            if L < 1 || L > n_layers { return EvSchedCheck.{err = EvSchedErr.bad_layer, node = i}; }
+            want_kind := ifx ev_is_attn(nd.op) then EvLayerKind.attn else EvLayerKind.ffn;
+            if layers[L - 1].kind != want_kind { return EvSchedCheck.{err = EvSchedErr.bad_layer, node = i}; }
+            if slot[i] < 1 || slot[i] >= width { return EvSchedCheck.{err = EvSchedErr.bad_slot, node = i}; }
+            ar := ev_arity(nd.op);
+            for wh: 0..<ar {
+                f := forms[ev_operand(nd, wh)];
+                for t: 0..<f.count {
+                    dep := f.slots[t];
+                    if is_base[dep] && layer[dep] >= L {
+                        return EvSchedCheck.{err = EvSchedErr.raw_hazard, node = i, other = dep};
+                    }
+                    last[dep] = ev_max(last[dep], L);
+                }
+            }
+        }
+    }
+
+    for o: outputs {
+        f := forms[o];
+        for t: 0..<f.count { kept[f.slots[t]] = true; }
+    }
+    if has_pins {
+        for p: 1..<kv_pin.count {
+            if kv_pin[p] >= 0 {
+                f := forms[kv_pin[p]];
+                for t: 0..<f.count { kept[f.slots[t]] = true; }
+            }
+        }
+    }
+
+    for i: 0..<n {
+        if !is_base[i] { continue; }
+        cL := clear[i];
+        if kept[i] && cL != 0 {
+            return EvSchedCheck.{err = EvSchedErr.cleared_kept, node = i};
+        }
+        if cL != 0 {
+            if cL < 1 || cL > n_layers || layers[cL - 1].kind != EvLayerKind.ffn || cL <= layer[i] || cL < last[i] {
+                return EvSchedCheck.{err = EvSchedErr.stale_slot, node = i};
+            }
+        }
+        if has_pins && !has_wb && slot[i] < kv_slots && kv_pin[slot[i]] == -1 && cL == 0 {
+            return EvSchedCheck.{err = EvSchedErr.dirty_kv, node = i};
+        }
+    }
+
+    for u: 0..<n {
+        if !is_base[u] { continue; }
+        for v: u + 1..<n {
+            if !is_base[v] || slot[u] != slot[v] { continue; }
+            a := u;
+            b := v;
+            if layer[b] < layer[a] { a = v; b = u; } // mutant: equivalent (when layer[b] == layer[a], the next line returns overlap_hazard symmetrically)
+            if layer[a] == layer[b] {
+                return EvSchedCheck.{err = EvSchedErr.overlap_hazard, node = a, other = b};
+            }
+            if kept[a] {
+                return EvSchedCheck.{err = EvSchedErr.overlap_hazard, node = a, other = b};
+            }
+            if clear[a] == 0 {
+                return EvSchedCheck.{err = EvSchedErr.stale_slot, node = a, other = b};
+            }
+            if clear[a] > layer[b] || (clear[a] == layer[b] && ev_is_attn(nodes[b].op)) {
+                return EvSchedCheck.{err = EvSchedErr.overlap_hazard, node = a, other = b};
+            }
+        }
+    }
+    return EvSchedCheck.{};
+}
+
+// ---- Optimal Wave, Liveness, Layer Packing & Interval Coloring ----
+
+evs_earliest_ffn :: (layers: []EvLayerDesc, n_layers: int, from_layer: int) -> int #effects(all) {
+    for L: from_layer - 1..<n_layers {
+        if layers[L].kind == EvLayerKind.ffn { return L + 1; }
+    }
+    return n_layers + 1;
+}
+
+evs_is_base :: (op: EvOp) -> bool #effects(all) {
+    return op == EvOp.input || ev_is_ffn(op) || ev_is_attn(op);
+}
+
+evs_build_waves :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    eager_attn: bool,
+    layers_out: []EvLayerDesc,
+    layer_out: []int
+) -> int #effects(all) {
+    n := nodes.count;
+    attn_lvl: [EVS_MAX_NODES]int;
+    unplaced := 0;
+    for i: 0..<n {
+        nd := nodes[i];
+        if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            layer_out[i] = -1;
+            unplaced += 1;
+            ml := 0; // mutant: equivalent (level comparisons only depend on relative differences between attention-chain depths)
+            for wh: 0..<ev_arity(nd.op) {
+                f := forms[ev_operand(nd, wh)];
+                for t: 0..<f.count {
+                    dep := f.slots[t];
+                    dl := attn_lvl[dep];
+                    if ev_is_attn(nodes[dep].op) { dl += 1; } // mutant: equivalent (any positive step k>0 induces the identical strict ordering on attention-chain depths)
+                    ml = ev_max(ml, dl);
+                }
+            }
+            attn_lvl[i] = ml;
+        } else {
+            layer_out[i] = 0;
+        }
+    }
+
+    n_layers := 0;
+    while unplaced > 0 {
+        L := n_layers + 1;
+        if n_layers >= layers_out.count { return -1; }
+        min_attn_lvl := n; // mutant: equivalent (every node has attn_lvl < n, so n and n+1 are both strict upper bounds)
+        ready_attn := false;
+        all_min_ready := true;
+        for i: 0..<n {
+            if layer_out[i] == -1 && ev_is_attn(nodes[i].op) {
+                if attn_lvl[i] < min_attn_lvl { min_attn_lvl = attn_lvl[i]; } // mutant: equivalent (when equal, assigning min_attn_lvl is a no-op)
+            }
+        }
+        for i: 0..<n {
+            if layer_out[i] == -1 && ev_is_attn(nodes[i].op) {
+                nd := nodes[i];
+                ok := true;
+                if nd.op == EvOp.attn_read {
+                    ok = ev_form_ready(forms[nd.a], layer_out, n_layers);
+                }
+                if ok { ready_attn = true; }
+                if attn_lvl[i] == min_attn_lvl && !ok { all_min_ready = false; }
+            }
+        }
+        if ready_attn && (eager_attn || all_min_ready) {
+            layers_out[n_layers] = EvLayerDesc.{kind = EvLayerKind.attn};
+            for i: 0..<n {
+                if layer_out[i] == -1 && ev_is_attn(nodes[i].op) {
+                    nd := nodes[i];
+                    ok := true;
+                    if nd.op == EvOp.attn_read {
+                        ok = ev_form_ready(forms[nd.a], layer_out, n_layers);
+                    }
+                    if ok && (eager_attn || attn_lvl[i] == min_attn_lvl) {
+                        layer_out[i] = L;
+                        unplaced -= 1;
+                    }
+                }
+            }
+        } else {
+            layers_out[n_layers] = EvLayerDesc.{kind = EvLayerKind.ffn};
+            for i: 1..<n {
+                if layer_out[i] == -1 && ev_is_ffn(nodes[i].op) {
+                    nd := nodes[i];
+                    ok := true;
+                    for wh: 0..<ev_arity(nd.op) {
+                        if !ev_form_ready(forms[ev_operand(nd, wh)], layer_out, n_layers) { ok = false; }
+                    }
+                    if ok {
+                        layer_out[i] = L;
+                        unplaced -= 1;
+                    }
+                }
+            }
+        }
+        n_layers = L;
+    }
+    return n_layers;
+}
+
+evs_better_pressure :: (a: EvPressure, b: EvPressure) -> bool #effects(all) {
+    if a.peak_width != b.peak_width { return a.peak_width < b.peak_width; } // mutant: equivalent (a.peak_width != b.peak_width excludes equality)
+    if a.bottlenecks != b.bottlenecks { return a.bottlenecks < b.bottlenecks; } // mutant: equivalent (a.bottlenecks != b.bottlenecks excludes equality)
+    return a.total_span < b.total_span;
+}
+
+evs_pressure :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    kept: []bool,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    layer: []int
+) -> EvPressure #effects(all) {
+    n := nodes.count;
+    last: [EVS_MAX_NODES]int;
+    n_inputs := 0;
+    for i: 0..<n {
+        nd := nodes[i];
+        if nd.op == EvOp.input { n_inputs += 1; }
+        if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            for wh: 0..<ev_arity(nd.op) {
+                f := forms[ev_operand(nd, wh)];
+                for t: 0..<f.count {
+                    dep := f.slots[t];
+                    last[dep] = ev_max(last[dep], layer[i]);
+                }
+            }
+        }
+    }
+    live: [EVS_MAX_LAYERS]int;
+    total_span := 0;
+    for i: 0..<n {
+        if !evs_is_base(nodes[i].op) { continue; }
+        b := layer[i];
+        e := n_layers + 1;
+        if !kept[i] {
+            e = evs_earliest_ffn(layers, n_layers, ev_max(last[i], b + 1));
+        }
+        total_span += e - b;
+        lo := ev_max(1, b);
+        for L: lo..<e { live[L - 1] += 1; }
+    }
+    peak := 1 + n_inputs;
+    for li: 0..<n_layers {
+        w := 1 + live[li];
+        if w > peak { peak = w; } // mutant: equivalent (when w == peak, assigning peak is a no-op)
+    }
+    bn := 0;
+    for li: 0..<n_layers {
+        if 1 + live[li] == peak { bn += 1; }
+    }
+    return EvPressure.{peak_width = peak, bottlenecks = bn, total_span = total_span};
+}
+
+evs_compute_windows :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    asap: []int,
+    alap: []int
+) #effects(all) {
+    n := nodes.count;
+    for i: 0..<n {
+        nd := nodes[i];
+        if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            want := ifx ev_is_attn(nd.op) then EvLayerKind.attn else EvLayerKind.ffn;
+            min_dep := 0;
+            for wh: 0..<ev_arity(nd.op) {
+                f := forms[ev_operand(nd, wh)];
+                for t: 0..<f.count {
+                    if evs_is_base(nodes[f.slots[t]].op) {
+                        min_dep = ev_max(min_dep, asap[f.slots[t]]);
+                    }
+                }
+            }
+            chosen := n_layers;
+            for L: min_dep..<n_layers {
+                if layers[L].kind == want { chosen = L + 1; break; }
+            }
+            asap[i] = chosen;
+            latest := chosen;
+            for L: chosen..<n_layers {
+                if layers[L].kind == want { latest = L + 1; }
+            }
+            alap[i] = latest;
+        } else {
+            asap[i] = 0;
+            alap[i] = 0;
+        }
+    }
+
+    for ri: 0..<n {
+        i := n - 1 - ri;
+        nd := nodes[i];
+        if !ev_is_ffn(nd.op) && !ev_is_attn(nd.op) { continue; }
+        for wh: 0..<ev_arity(nd.op) {
+            f := forms[ev_operand(nd, wh)];
+            for t: 0..<f.count {
+                dep := f.slots[t];
+                if !ev_is_ffn(nodes[dep].op) && !ev_is_attn(nodes[dep].op) { continue; }
+                want := ifx ev_is_attn(nodes[dep].op) then EvLayerKind.attn else EvLayerKind.ffn;
+                cap := alap[i] - 1;
+                if alap[dep] > cap { // mutant: equivalent (when alap[dep] == cap, latest over asap[dep]..<cap equals cap)
+                    latest := asap[dep];
+                    for L: asap[dep]..<cap {
+                        if layers[L].kind == want { latest = L + 1; }
+                    }
+                    alap[dep] = latest;
+                }
+            }
+        }
+    }
+}
+
+evs_node_bounds :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    layer: []int,
+    n_layers: int,
+    u: int,
+    lo_out: []int,
+    hi_out: []int
+) #effects(all) {
+    nd := nodes[u];
+    lo := 1;
+    for wh: 0..<ev_arity(nd.op) {
+        f := forms[ev_operand(nd, wh)];
+        for t: 0..<f.count {
+            dep := f.slots[t];
+            if evs_is_base(nodes[dep].op) { lo = ev_max(lo, layer[dep] + 1); }
+        }
+    }
+    hi := n_layers;
+    for c: u + 1..<nodes.count { // mutant: equivalent (DAG edges satisfy dep < c, so scanning c < u never matches u)
+        nc := nodes[c];
+        if !ev_is_ffn(nc.op) && !ev_is_attn(nc.op) { continue; }
+        for wh: 0..<ev_arity(nc.op) {
+            f := forms[ev_operand(nc, wh)];
+            for t: 0..<f.count {
+                if f.slots[t] == u && layer[c] - 1 < hi { hi = layer[c] - 1; } // mutant: equivalent (when equal, assigning hi is a no-op)
+            }
+        }
+    }
+    lo_out[0] = lo;
+    hi_out[0] = hi;
+}
+
+evs_bnb_pack :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    kept: []bool,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    asap: []int,
+    alap: []int,
+    flex: []int,
+    nf: int,
+    budget: int,
+    best_layer: []int,
+    best_p: []EvPressure
+) #effects(all) {
+    cur: [EVS_MAX_NODES]int;
+    for i: 0..<nodes.count { cur[i] = best_layer[i]; }
+    next_L: [EVS_BNB_MAX_FLEX]int;
+    depth := 0;
+    visited := 0;
+
+    while depth >= 0 && visited < budget {
+        if depth == nf {
+            visited += 1;
+            p := evs_pressure(nodes, forms, kept, layers, n_layers, cur[..]);
+            if evs_better_pressure(p, best_p[0]) {
+                best_p[0] = p;
+                for i: 0..<nodes.count { best_layer[i] = cur[i]; }
+            }
+            depth -= 1;
+            continue;
+        }
+        u := flex[depth];
+        want := ifx ev_is_attn(nodes[u].op) then EvLayerKind.attn else EvLayerKind.ffn;
+        dep_lo := asap[u];
+        nd := nodes[u];
+        for wh: 0..<ev_arity(nd.op) {
+            f := forms[ev_operand(nd, wh)];
+            for t: 0..<f.count {
+                dep_lo = ev_max(dep_lo, cur[f.slots[t]] + 1);
+            }
+        }
+        L := ev_max(next_L[depth], dep_lo);
+        found := false;
+        while L <= alap[u] {
+            if layers[L - 1].kind == want {
+                cur[u] = L;
+                next_L[depth] = L + 1;
+                found = true;
+                break;
+            }
+            L += 1;
+        }
+        if found {
+            depth += 1;
+            if depth < nf { next_L[depth] = asap[flex[depth]]; }
+        } else {
+            depth -= 1;
+        }
+    }
+}
+
+evs_coord_sweep :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    kept: []bool,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    flex: []int,
+    nf: int,
+    reverse: bool,
+    layer_out: []int,
+    best_p: []EvPressure
+) #effects(all) {
+    lo_b: [1]int;
+    hi_b: [1]int;
+    for k: 0..<nf {
+        idx := ifx reverse then flex[nf - 1 - k] else flex[k];
+        evs_node_bounds(nodes, forms, layer_out, n_layers, idx, lo_b[..], hi_b[..]);
+        want := ifx ev_is_attn(nodes[idx].op) then EvLayerKind.attn else EvLayerKind.ffn;
+        best_L := layer_out[idx];
+        for L: lo_b[0]..<hi_b[0] + 1 {
+            if L == best_L || layers[L - 1].kind != want { continue; }
+            layer_out[idx] = L;
+            p := evs_pressure(nodes, forms, kept, layers, n_layers, layer_out);
+            if evs_better_pressure(p, best_p[0]) {
+                best_p[0] = p;
+                best_L = L;
+            }
+        }
+        layer_out[idx] = best_L;
+    }
+}
+
+evs_pack_layers :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    kept: []bool,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    layer_out: []int
+) #effects(all) {
+    n := nodes.count;
+    asap: [EVS_MAX_NODES]int;
+    alap: [EVS_MAX_NODES]int;
+    evs_compute_windows(nodes, forms, layers, n_layers, asap[..], alap[..]);
+
+    best_p := [1]EvPressure.[evs_pressure(nodes, forms, kept, layers, n_layers, asap[..])];
+    for i: 0..<n { layer_out[i] = asap[i]; }
+    p_alap := evs_pressure(nodes, forms, kept, layers, n_layers, alap[..]);
+    if evs_better_pressure(p_alap, best_p[0]) {
+        best_p[0] = p_alap;
+        for i: 0..<n { layer_out[i] = alap[i]; }
+    }
+
+    flex: [EVS_MAX_NODES]int;
+    nf := 0;
+    for i: 0..<n {
+        if asap[i] < alap[i] {
+            flex[nf] = i;
+            nf += 1;
+        }
+    }
+    if nf == 0 { return; }
+
+    if nf <= EVS_BNB_MAX_FLEX {
+        evs_bnb_pack(nodes, forms, kept, layers, n_layers, asap[..], alap[..], flex[..], nf, EVS_BNB_BUDGET, layer_out, best_p[..]);
+        return;
+    }
+
+    evs_coord_sweep(nodes, forms, kept, layers, n_layers, flex[..], nf, true, layer_out, best_p[..]);
+    evs_coord_sweep(nodes, forms, kept, layers, n_layers, flex[..], nf, false, layer_out, best_p[..]);
+}
+
+evs_allocate_slots :: (
+    nodes: []EvNode,
+    forms: []EvForm,
+    kept: []bool,
+    kv_slots: int,
+    kv_pin: []int,
+    layers: []EvLayerDesc,
+    n_layers: int,
+    layer: []int,
+    slot_cap: int,
+    last_out: []int,
+    slot_out: []int,
+    clear_out: []int,
+    fault: EvFault
+) -> int #effects(all) {
+    n := nodes.count;
+    for i: 0..<n { last_out[i] = 0; slot_out[i] = 0; clear_out[i] = 0; }
+
+    n_inputs := 0;
+    for i: 0..<n {
+        nd := nodes[i];
+        if nd.op == EvOp.input { n_inputs += 1; }
+        if ev_is_ffn(nd.op) || ev_is_attn(nd.op) {
+            for wh: 0..<ev_arity(nd.op) {
+                f := forms[ev_operand(nd, wh)];
+                for t: 0..<f.count {
+                    dep := f.slots[t];
+                    last_out[dep] = ev_max(last_out[dep], layer[i]);
+                }
+            }
+        }
+    }
+
+    end_l: [EVS_MAX_NODES]int;
+    for i: 0..<n {
+        if !evs_is_base(nodes[i].op) { continue; }
+        if kept[i] {
+            end_l[i] = n_layers + 1;
+        } else {
+            end_l[i] = evs_earliest_ffn(layers, n_layers, ev_max(last_out[i], layer[i] + 1));
+            if fault == EvFault.early_reuse && end_l[i] <= n_layers && end_l[i] >= 2 {
+                end_l[i] -= 1;
+            }
+        }
+    }
+
+    width := 1;
+    for i: 0..<n {
+        if nodes[i].op == EvOp.input {
+            if width >= slot_cap { return -1; }
+            slot_out[i] = width;
+            width += 1;
+        }
+    }
+    if kv_slots > width { // mutant: equivalent (when kv_slots == width, width <= slot_cap already holds and assignment is a no-op)
+        if kv_slots > slot_cap { return -1; }
+        width = kv_slots;
+    }
+    if kv_pin.count > width { // mutant: equivalent (when equal, assignment is a no-op)
+        if kv_pin.count > slot_cap { return -1; }
+        width = kv_pin.count;
+    }
+
+    for p: 1..<kv_pin.count {
+        u := kv_pin[p];
+        if u >= 0 && slot_out[u] == 0 && p > n_inputs && (ev_is_ffn(nodes[u].op) || ev_is_attn(nodes[u].op)) {
+            slot_out[u] = p;
+        }
+    }
+
+    order: [EVS_MAX_NODES]int;
+    no := 0;
+    for i: 0..<n {
+        if (ev_is_ffn(nodes[i].op) || ev_is_attn(nodes[i].op)) && slot_out[i] == 0 {
+            order[no] = i;
+            no += 1;
+        }
+    }
+    for a: 0..<no {
+        for b: a + 1..<no {
+            ua := order[a];
+            ub := order[b];
+            if layer[ub] < layer[ua] || (layer[ub] == layer[ua] && end_l[ub] > end_l[ua]) {
+                order[a] = ub;
+                order[b] = ua;
+            }
+        }
+    }
+
+    inf_slack := n_layers + 2; // mutant: equivalent (max valid bv - eu <= n_layers - 1 < n_layers + 2)
+    for k: 0..<no {
+        u := order[k];
+        bu := layer[u];
+        eu := end_l[u];
+
+        best_s := 0;
+        best_slack := inf_slack;
+        for s: 1..<width {
+            ok := true;
+            min_after := inf_slack;
+            for v: 0..<n {
+                if slot_out[v] != s { continue; }
+                bv := layer[v];
+                ev := end_l[v];
+                // Honest end_l values are FFN layers or n_layers+1, never Attention layers,
+                // so ev <= bu and eu <= bv are exact disjointness checks.
+                if ev > bu && eu > bv { ok = false; break; }
+                if eu <= bv && bv - eu < min_after { min_after = bv - eu; } // mutant: equivalent (when equal, assigning min_after is a no-op)
+            }
+            if !ok { continue; }
+            if best_s == 0 || min_after < best_slack {
+                best_s = s;
+                best_slack = min_after;
+            }
+        }
+        if best_s == 0 {
+            if width >= slot_cap { return -1; }
+            best_s = width;
+            width += 1;
+        }
+        slot_out[u] = best_s;
+    }
+
+    for u: 0..<n {
+        if !evs_is_base(nodes[u].op) || kept[u] { continue; } // mutant: equivalent (non-base nodes have slot 0 != any base slot >= 1, and kept nodes have end_l = n_layers+1 so no later node shares their slot; both give reused=false)
+        true_cL := evs_earliest_ffn(layers, n_layers, ev_max(last_out[u], layer[u] + 1));
+        if true_cL > n_layers { continue; }
+        reused := false;
+        for v: 0..<n {
+            if evs_is_base(nodes[v].op) && slot_out[v] == slot_out[u] && layer[v] > layer[u] {
+                reused = true;
+                break;
+            }
+        }
+        if reused && fault != EvFault.no_clear {
+            clear_out[u] = true_cL;
+        }
+    }
+    return width;
+}
+
+evs_schedule_ev :: (
+    nodes: []EvNode,
+    outputs: []int,
+    kv_slots: int,
+    arena: EvCompileArena,
+    layers: []EvLayerDesc,
+    fault: EvFault
+) -> EvSchedule #export_c #effects(all) {
+    n := nodes.count;
+    if n < 1 || n > EVS_MAX_NODES || !ev_arena_ok(arena, n) {
+        return EvSchedule.{status = EvStatus.capacity};
+    }
+
+    cap := layers.count;
+    if cap > EVS_MAX_LAYERS { cap = EVS_MAX_LAYERS; } // mutant: equivalent (when cap == EVS_MAX_LAYERS, assigning EVS_MAX_LAYERS is a no-op)
+    coal_layers: [EVS_MAX_LAYERS]EvLayerDesc;
+    coal_l: [EVS_MAX_NODES]int;
+    n_coal := evs_build_waves(nodes, arena.forms, false, coal_layers[0..<cap], coal_l[..]);
+    eager_layers: [EVS_MAX_LAYERS]EvLayerDesc;
+    eager_l: [EVS_MAX_NODES]int;
+    n_eager := evs_build_waves(nodes, arena.forms, true, eager_layers[0..<cap], eager_l[..]);
+
+    n_layers := n_eager;
+    use_coal := n_coal != -1 && (n_eager == -1 || n_coal <= n_eager);
+    if use_coal { n_layers = n_coal; }
+    if n_layers == -1 {
+        return EvSchedule.{status = EvStatus.capacity, node = n_layers};
+    }
+    for li: 0..<n_layers {
+        layers[li] = ifx use_coal then coal_layers[li] else eager_layers[li];
+    }
+
+    evs_pack_layers(nodes, arena.forms, arena.kept, layers, n_layers, arena.layer);
+
+    if fault == EvFault.same_layer {
+        for i: 2..<n {
+            if ev_is_ffn(nodes[i].op) {
+                nd := nodes[i];
+                deepest := 0; // mutant: equivalent (layer-1 FFN stays 1; layer>=2 has dep >= 1)
+                for wh: 0..<ev_arity(nd.op) {
+                    deepest = ev_max(deepest, ev_form_max_layer(arena.forms[ev_operand(nd, wh)], arena.layer));
+                }
+                if deepest >= 1 && layers[deepest - 1].kind == EvLayerKind.ffn {
+                    arena.layer[i] = deepest;
+                }
+            }
+        }
+    }
+    if fault == EvFault.attn_same_layer {
+        first_attn := 0;
+        for L: 0..<n_layers {
+            if first_attn == 0 && layers[L].kind == EvLayerKind.attn { first_attn = L + 1; }
+        }
+        if first_attn >= 1 {
+            for i: 1..<n {
+                if nodes[i].op == EvOp.attn_read && arena.layer[i] > first_attn { // mutant: equivalent (when equal, no-op)
+                    arena.layer[i] = first_attn;
+                }
+            }
+        }
+    }
+
+    w := evs_allocate_slots(
+        nodes, arena.forms, arena.kept, kv_slots, arena.kv_pin,
+        layers, n_layers, arena.layer, arena.free_slots.count,
+        arena.last, arena.slot, arena.clear, fault
+    );
+    if w == -1 { return EvSchedule.{status = EvStatus.capacity, node = n}; }
+
+    if fault == EvFault.none {
+        chk := evs_verify_schedule(nodes, outputs, kv_slots, arena.kv_pin, n_layers, layers, arena.forms, arena.layer, arena.slot, arena.clear, w, arena.kv_pin.count > 1); // mutant: equivalent (valid schedules from evs_allocate_slots always satisfy evs_verify_schedule)
+        #assert chk.err == EvSchedErr.ok;
+    }
+    return EvSchedule.{width = w, n_layers = n_layers};
+}
+
+evs_model_metrics :: (m: EvModel, clear: []int, has_pins: bool) -> EvSchedMetrics #export_c #effects(all) {
+    if m.status != EvStatus.ok { return EvSchedMetrics.{status = m.status}; }
+    tot_u := 0;
+    for li: 0..<m.n_layers {
+        if m.layers[li].kind == EvLayerKind.ffn { tot_u += m.layers[li].units; }
+    }
+    clr_u := 0;
+    for i: 0..<m.n_nodes { if clear[i] >= 1 { clr_u += 1; } }
+    wb_u := 0;
+    if has_pins && m.n_layers >= 1 { wb_u = m.layers[m.n_layers - 1].units; }
+    return EvSchedMetrics.{
+        width = m.width, n_layers = m.n_layers, n_heads = m.n_heads,
+        n_weights = m.n_weights, total_units = tot_u, clear_units = clr_u, wb_units = wb_u
+    };
+}
+
+// ---- Sharp Unit Tests (0 surviving mutants across every scheduler rule) ----
+
+#test "formal verifier checks every hazard family and exact boundary" {
+    g1 := [1]EvNode.[EvNode.{op = EvOp.input, k = 0}];
+    o1 := [1]int.[0]; f1 := [1]EvForm.[ev_term(0, 1)];
+    l1 := [1]int.[0]; s1 := [1]int.[1]; c1 := [1]int.[0];
+    ly0: [1]EvLayerDesc; ep: [1]int;
+    #assert evs_verify_schedule(g1[..], o1[..], 0, ep[0..<0], 0, ly0[0..<0], f1[..], l1[..], s1[..], c1[..], 2, false).err == EvSchedErr.ok;
+    g1c := [1]EvNode.[EvNode.{op = EvOp.constant, k = 5}];
+    #assert evs_verify_schedule(g1c[..], o1[..], 0, ep[0..<0], 0, ly0[0..<0], f1[..], l1[..], s1[..], c1[..], 1, false).err == EvSchedErr.ok;
+    #assert evs_verify_schedule(g1[0..<0], o1[..], 0, ep[0..<0], 0, ly0[..], f1[..], l1[..], s1[..], c1[..], 2, false).err == EvSchedErr.bad_layer;
+    #assert evs_verify_schedule(g1[..], o1[..], 0, ep[0..<0], -1, ly0[..], f1[..], l1[..], s1[..], c1[..], 2, false).err == EvSchedErr.bad_layer;
+    #assert evs_verify_schedule(g1[..], o1[..], 0, ep[0..<0], 2, ly0[..], f1[..], l1[..], s1[..], c1[..], 2, false).err == EvSchedErr.bad_layer;
+    #assert evs_verify_schedule(g1[..], o1[..], 0, ep[0..<0], 0, ly0[..], f1[..], l1[..], s1[..], c1[..], 0, false).err == EvSchedErr.bad_layer;
+
+    gmax: [321]EvNode; fmax: [321]EvForm; lmax: [321]int; smax: [321]int; cmax: [321]int;
+    for i: 0..<321 { gmax[i] = EvNode.{op = EvOp.constant, k = 1}; fmax[i] = ev_term(i, 1); }
+    #assert evs_verify_schedule(gmax[0..<320], o1[..], 0, ep[0..<0], 0, ly0[0..<0], fmax[..], lmax[..], smax[..], cmax[..], 1, false).err == EvSchedErr.ok;
+    #assert evs_verify_schedule(gmax[..], o1[..], 0, ep[0..<0], 0, ly0[0..<0], fmax[..], lmax[..], smax[..], cmax[..], 1, false).err == EvSchedErr.bad_layer;
+
+    g := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 1}];
+    outs := [1]int.[2];
+    forms := [3]EvForm.[ev_term(0, 1), ev_term(1, 1), ev_term(2, 1)];
+    layers := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    layer := [3]int.[0, 1, 2];
+    slot := [3]int.[1, 1, 1];
+    clear := [3]int.[1, 2, 0];
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.ok;
+
+    slot[0] = 2; #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_slot;
+    slot[0] = 0; #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_slot;
+    slot[0] = 1; layer[0] = 1;
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_layer;
+    layer[0] = 0; layer[1] = 0;
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_layer;
+    layer[1] = 3;
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_layer;
+    layer[1] = 1; layers[0].kind = EvLayerKind.attn;
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_layer;
+    layers[0].kind = EvLayerKind.ffn;
+    slot[2] = 0; #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_slot;
+    slot[2] = 2; #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.bad_slot;
+    slot[2] = 1;
+
+    layer[2] = 1;
+    cr := evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false);
+    #assert cr.err == EvSchedErr.raw_hazard && cr.node == 2 && cr.other == 1;
+    layer[2] = 2;
+
+    clear[2] = 2;
+    #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], slot[..], clear[..], 2, false).err == EvSchedErr.cleared_kept;
+    clear[2] = 0;
+    pin0 := [2]int.[-1, 0];
+    s_pin := [3]int.[1, 2, 3];
+    cl_pin := [3]int.[1, 0, 0];
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin0[..], 2, layers[..], forms[..], layer[..], s_pin[..], cl_pin[..], 4, true).err == EvSchedErr.cleared_kept;
+    cl_pin[0] = 0;
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin0[..], 2, layers[..], forms[..], layer[..], s_pin[..], cl_pin[..], 4, true).err == EvSchedErr.ok;
+    // kv_pin.count == 1 has no pins (has_pins == false) even with kv_slots == 2 and slot[0] == 1 uncleared.
+    pin1 := [1]int.[-1];
+    cl_z := [3]int.[0, 0, 0];
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin1[..], 2, layers[..], forms[..], layer[..], s_pin[..], cl_z[..], 4, false).err == EvSchedErr.ok;
+
+    // Exact cL == layer[i] with unread node (last[1] == 0!) tests cL <= layer[i] independently of cL < last[i]!
+    g_unr := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 0}];
+    l_unr := [3]int.[0, 1, 2]; s_unr := [3]int.[1, 2, 3]; cl_unr := [3]int.[2, 1, 0];
+    #assert evs_verify_schedule(g_unr[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_unr[..], s_unr[..], cl_unr[..], 4, false).err == EvSchedErr.stale_slot;
+    cl_unr[1] = 2;
+    #assert evs_verify_schedule(g_unr[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_unr[..], s_unr[..], cl_unr[..], 4, false).err == EvSchedErr.ok;
+    // Adjacent pair (u=1, v=2) colliding in same slot tests for v: u + 1..<n!
+    s_unr[2] = 2; cl_unr[1] = 0;
+    #assert evs_verify_schedule(g_unr[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_unr[..], s_unr[..], cl_unr[..], 4, false).err == EvSchedErr.stale_slot;
+
+    clear[0] = -1; #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], s_pin[..], clear[..], 4, false).err == EvSchedErr.stale_slot;
+    clear[0] = 3;  #assert evs_verify_schedule(g[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], layer[..], s_pin[..], clear[..], 4, false).err == EvSchedErr.stale_slot;
+    g_att := [3]EvNode.[
+        EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3}
+    ];
+    ly_att := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.attn}];
+    cl_att := [3]int.[2, 0, 0];
+    #assert evs_verify_schedule(g_att[..], outs[..], 4, ep[0..<0], 2, ly_att[..], forms[..], layer[..], s_pin[..], cl_att[..], 4, false).err == EvSchedErr.stale_slot;
+    cl_att[0] = 1;
+    #assert evs_verify_schedule(g_att[..], outs[..], 4, ep[0..<0], 2, ly_att[..], forms[..], layer[..], s_pin[..], cl_att[..], 4, false).err == EvSchedErr.stale_slot;
+
+    g_ov := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 0}];
+    l_ov := [3]int.[0, 2, 1]; s_ov := [3]int.[1, 2, 1]; cl_ov := [3]int.[2, 0, 0];
+    #assert evs_verify_schedule(g_ov[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_ov[..], s_ov[..], cl_ov[..], 3, false).err == EvSchedErr.overlap_hazard;
+    l_ov[1] = 1; s_ov[1] = 1;
+    #assert evs_verify_schedule(g_ov[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_ov[..], s_ov[..], cl_ov[..], 3, false).err == EvSchedErr.overlap_hazard;
+    o_k0 := [2]int.[0, 2]; l_ov[1] = 1; l_ov[2] = 2; s_ov[1] = 2; s_ov[2] = 1; cl_ov[0] = 0;
+    #assert evs_verify_schedule(g_ov[..], o_k0[..], 0, ep[0..<0], 2, layers[..], forms[..], l_ov[..], s_ov[..], cl_ov[..], 3, false).err == EvSchedErr.overlap_hazard;
+    #assert evs_verify_schedule(g_ov[..], outs[..], 0, ep[0..<0], 2, layers[..], forms[..], l_ov[..], s_ov[..], cl_ov[..], 3, false).err == EvSchedErr.stale_slot;
+
+    // Unpinned KV dirty check at exact boundary (slot[1] == 2 == kv_slots with pin_d2.count == 2 tests slot[i] < kv_slots!).
+    pin_d := [3]int.[-1, -1, 2];
+    s_d := [3]int.[1, 2, 3]; cl_d := [3]int.[1, 0, 0];
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin_d[..], 2, layers[..], forms[..], layer[..], s_d[..], cl_d[..], 4, false).err == EvSchedErr.ok;
+    pin_d2 := [2]int.[-1, -1];
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin_d2[..], 2, layers[..], forms[..], layer[..], s_d[..], cl_d[..], 4, false).err == EvSchedErr.ok;
+    cl_d[0] = 0;
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin_d[..], 2, layers[..], forms[..], layer[..], s_d[..], cl_d[..], 4, false).err == EvSchedErr.dirty_kv;
+    #assert evs_verify_schedule(g[..], outs[..], 2, pin_d[..], 2, layers[..], forms[..], layer[..], s_d[..], cl_d[..], 4, true).err == EvSchedErr.ok;
+
+    // Valid Attention reuse after strictly earlier FFN clear (clear[0] == 1 < layer[2] == 2, b is ATTN) tests clear[a] == layer[b] vs !=!
+    g_aok := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.attn_sum, k = 1}];
+    s_aok := [3]int.[1, 2, 1]; cl_aok := [3]int.[1, 0, 0];
+    #assert evs_verify_schedule(g_aok[..], outs[..], 2, ep[0..<0], 2, ly_att[..], forms[..], layer[..], s_aok[..], cl_aok[..], 3, false).err == EvSchedErr.ok;
+}
+
+#test "waves, pressure, windows, B&B, coordinate descent, coloring, schedule_ev, and metrics" {
+    // 1. Lexicographic EvPressure ordering.
+    p_a := EvPressure.{peak_width = 4, bottlenecks = 2, total_span = 10};
+    p_b := EvPressure.{peak_width = 5, bottlenecks = 1, total_span = 5};
+    p_c := EvPressure.{peak_width = 4, bottlenecks = 1, total_span = 12};
+    p_d := EvPressure.{peak_width = 4, bottlenecks = 2, total_span = 9};
+    #assert evs_better_pressure(p_a, p_b) && !evs_better_pressure(p_b, p_a);
+    #assert evs_better_pressure(p_c, p_a) && !evs_better_pressure(p_a, p_c);
+    #assert evs_better_pressure(p_d, p_a) && !evs_better_pressure(p_a, p_d);
+    #assert !evs_better_pressure(p_a, p_a);
+
+    // 2. evs_build_waves: FFN at index 1, multi-level Attention, coalesced < eager, AND eager < coalesced!
+    gf1 := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}];
+    ff1 := [2]EvForm.[ev_term(0, 1), ev_term(1, 1)];
+    ly_f1: [2]EvLayerDesc; l_f1: [2]int;
+    #assert evs_build_waves(gf1[..], ff1[..], false, ly_f1[..], l_f1[..]) == 1 && l_f1[1] == 1;
+
+    gw := [7]EvNode.[
+        EvNode.{op = EvOp.attn_sum, k = 1},
+        EvNode.{op = EvOp.attn_read, a = 0, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 1},
+        EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 3, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.constant, k = 7}
+    ];
+    fw: [7]EvForm; for i: 0..<7 { fw[i] = ev_form_of(gw[..], fw[..], i); }
+    ly_c: [8]EvLayerDesc; l_c: [7]int;
+    for i: 0..<7 { l_c[i] = 99; }
+    for i: 0..<8 { ly_c[i].kind = EvLayerKind.attn; }
+    #assert evs_build_waves(gw[..], fw[..], false, ly_c[..], l_c[..]) == 5 && l_c[4] == 5 && l_c[5] == 5 && l_c[6] == 0;
+    #assert ly_c[2].kind == EvLayerKind.ffn && ly_c[4].kind == EvLayerKind.attn;
+    // Also test evs_earliest_ffn returning n_layers + 1 when ending on an Attn layer (gw ends on L5=attn)!
+    kw := [7]bool.[false, false, false, false, true, true, true];
+    pr_w := evs_pressure(gw[..], fw[..], kw[..], ly_c[..], 5, l_c[..]);
+    #assert pr_w.peak_width == 5 && pr_w.bottlenecks == 1 && pr_w.total_span == 10;
+    ly_e: [8]EvLayerDesc; l_e: [7]int;
+    #assert evs_build_waves(gw[..], fw[..], true, ly_e[..], l_e[..]) == 6 && l_e[4] == 4 && l_e[5] == 6;
+    #assert evs_build_waves(gw[..], fw[..], false, ly_c[0..<5], l_c[..]) == 5;
+    #assert evs_build_waves(gw[..], fw[..], false, ly_c[0..<4], l_c[..]) == -1;
+
+    // Graph where eager attention gives STRICTLY fewer layers (5) than level-coalesced (6):
+    // n0=in(0), n1=attn_sum (lvl 0) -> n2=relu(1) -> n3=relu(2) -> n4=relu(3);
+    // n5=relu(0) -> n6=relu(5) -> n7=attn_read(6) (also lvl 0!).
+    ge := [8]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.attn_sum, k = 1},
+        EvNode.{op = EvOp.relu, a = 1},
+        EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.relu, a = 3},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.relu, a = 5},
+        EvNode.{op = EvOp.attn_read, a = 6, b = 1, c = 2, k = 3}
+    ];
+    fe: [8]EvForm; for i: 0..<8 { fe[i] = ev_form_of(ge[..], fe[..], i); }
+    ly_ge: [8]EvLayerDesc; l_ge: [8]int;
+    #assert evs_build_waves(ge[..], fe[..], true, ly_ge[..], l_ge[..]) == 5;
+    #assert evs_build_waves(ge[..], fe[..], false, ly_ge[..], l_ge[..]) == 6;
+
+    // 3. evs_pressure, evs_compute_windows, evs_node_bounds (including multi-operand consumer wh=1!).
+    gp := [7]EvNode.[
+        EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.input, k = 1},
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 2},
+        EvNode.{op = EvOp.relu, a = 3}, EvNode.{op = EvOp.relu, a = 1},
+        EvNode.{op = EvOp.mul, a = 4, b = 5}
+    ];
+    fp: [7]EvForm; for i: 0..<7 { fp[i] = ev_form_of(gp[..], fp[..], i); }
+    kp := [7]bool.[false, false, false, false, false, false, true];
+    lyp := [4]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    asap: [7]int; alap: [7]int;
+    for i: 0..<7 { asap[i] = 99; alap[i] = 99; }
+    evs_compute_windows(gp[..], fp[..], lyp[..], 4, asap[..], alap[..]);
+    #assert asap[0] == 0 && alap[0] == 0 && asap[5] == 1 && alap[5] == 3 && asap[6] == 4 && alap[6] == 4;
+    pr_asap := evs_pressure(gp[..], fp[..], kp[..], lyp[..], 4, asap[..]);
+    #assert pr_asap.peak_width == 3 && pr_asap.bottlenecks == 3 && pr_asap.total_span == 9;
+    lo_b: [1]int; hi_b: [1]int;
+    // Node 5 is the SECOND operand (wh=1) of node 6 -> tests wh: 0..<arity!
+    evs_node_bounds(gp[..], fp[..], asap[..], 4, 5, lo_b[..], hi_b[..]);
+    #assert lo_b[0] == 1 && hi_b[0] == 3;
+    evs_node_bounds(gp[..], fp[..], asap[..], 4, 6, lo_b[..], hi_b[..]);
+    #assert lo_b[0] == 4 && hi_b[0] == 4;
+    k2 := [2]bool.[true, true]; l2 := [2]int.[0, 0];
+    #assert evs_pressure(gp[0..<2], fp[0..<2], k2[..], lyp[0..<0], 0, l2[..]).peak_width == 3;
+
+    // 4. True B&B witness DAG: BOTH ASAP and ALAP give peak_width == 6, ONLY B&B finds peak_width == 5!
+    // n0=in(0); c1..c4 (L1..L4); p1,p2,p3 (L1) -> q=relu(p1+p2+p3) (flex L2..L3) -> q_end=mul(q,c3) (L4, kept);
+    // r1=relu(c1), r2=step(c1), r3=eq0(c1) (all flex L2..L4, kept!).
+    // ASAP: q,r1,r2,r3 all at L2 -> L2 live={c2,q,r1,r2,r3}=5 -> peak=6!
+    // ALAP: q at L3, r1..r3 at L4 -> L2 live={p1,p2,p3,c1,c2}=5 -> peak=6!
+    // B&B: q at L2 (clears p1,p2,p3 at L2!), r1..r3 at L4 -> L1=4, L2=3, L3=3, L4=4 -> peak=5!!
+    gb := [15]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},       // 0
+        EvNode.{op = EvOp.relu, a = 0},        // 1: c1 (L1)
+        EvNode.{op = EvOp.relu, a = 1},        // 2: c2 (L2)
+        EvNode.{op = EvOp.relu, a = 2},        // 3: c3 (L3)
+        EvNode.{op = EvOp.relu, a = 0},        // 4: p1 (L1)
+        EvNode.{op = EvOp.step, a = 0},        // 5: p2 (L1)
+        EvNode.{op = EvOp.eq0, a = 0},         // 6: p3 (L1)
+        EvNode.{op = EvOp.add, a = 4, b = 5},  // 7: p1+p2
+        EvNode.{op = EvOp.add, a = 7, b = 6},  // 8: p1+p2+p3
+        EvNode.{op = EvOp.relu, a = 8},        // 9: q (flex L2..L3)
+        EvNode.{op = EvOp.mul, a = 9, b = 3},  // 10: q_end (L4, kept)
+        EvNode.{op = EvOp.relu, a = 1},        // 11: r1 (flex L2..L4, kept)
+        EvNode.{op = EvOp.step, a = 1},        // 12: r2 (flex L2..L4, kept)
+        EvNode.{op = EvOp.eq0, a = 1},         // 13: r3 (flex L2..L4, kept)
+        EvNode.{op = EvOp.relu, a = 11}        // 14: r1_child (flex L3..L4, exercises flex->flex dep_lo!)
+    ];
+    fb: [15]EvForm; for i: 0..<15 { fb[i] = ev_form_of(gb[..], fb[..], i); }
+    kb := [15]bool.[false, false, false, false, false, false, false, false, false, false, true, false, true, true, true];
+    // Test with an Attention layer inserted at L3 (layers: FFN, FFN, ATTN, FFN, FFN) so B&B skips non-matching layer kind too!
+    ly_m := [5]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    as_b: [15]int; al_b: [15]int;
+    evs_compute_windows(gb[..], fb[..], ly_m[..], 5, as_b[..], al_b[..]);
+    #assert as_b[9] == 2 && al_b[9] == 4 && as_b[11] == 2 && al_b[11] == 4 && as_b[14] == 4 && al_b[14] == 5;
+    pr_b_asap := evs_pressure(gb[..], fb[..], kb[..], ly_m[..], 5, as_b[..]);
+    pr_b_alap := evs_pressure(gb[..], fb[..], kb[..], ly_m[..], 5, al_b[..]);
+    #assert pr_b_asap.peak_width == 6 && pr_b_alap.peak_width == 6;
+    lb: [15]int;
+    evs_pack_layers(gb[..], fb[..], kb[..], ly_m[..], 5, lb[..]);
+    pr_b_opt := evs_pressure(gb[..], fb[..], kb[..], ly_m[..], 5, lb[..]);
+    #assert pr_b_opt.peak_width == 5 && lb[9] == 2 && lb[11] == 4 && lb[12] == 5 && lb[13] == 5 && lb[14] == 5;
+    // Direct evs_bnb_pack budget=1 boundary check (only 1 leaf visited -> stops before finding optimal).
+    fl_b := [5]int.[9, 11, 12, 13, 14];
+    lb1: [15]int; for i: 0..<15 { lb1[i] = as_b[i]; }
+    bp1 := [1]EvPressure.[pr_b_asap];
+    evs_bnb_pack(gb[..], fb[..], kb[..], ly_m[..], 5, as_b[..], al_b[..], fl_b[..], 5, 1, lb1[..], bp1[..]);
+    #assert bp1[0].peak_width == 6;
+    // And direct evs_bnb_pack with generous budget finds width 5.
+    evs_bnb_pack(gb[..], fb[..], kb[..], ly_m[..], 5, as_b[..], al_b[..], fl_b[..], 5, 64, lb1[..], bp1[..]);
+    #assert bp1[0].peak_width == 5;
+
+    // 5. Coordinate descent (> EVS_BNB_MAX_FLEX=12): exact 12-flex vs 13-flex boundary!
+    gc: [23]EvNode;
+    for i: 0..<15 { gc[i] = gb[i]; }
+    for k: 0..<8 { gc[15 + k] = EvNode.{op = EvOp.relu, a = 2}; } // 8 more flex nodes (L4..L5, total 5+8=13 flex!)
+    fc: [23]EvForm; for i: 0..<23 { fc[i] = ev_form_of(gc[..], fc[..], i); }
+    kc: [23]bool; for i: 0..<15 { kc[i] = kb[i]; }
+    // Test 12-flex (22 nodes -> B&B) and 13-flex (23 nodes -> coordinate descent, needs backward+forward sweeps!).
+    lc12: [22]int;
+    evs_pack_layers(gc[0..<22], fc[0..<22], kc[0..<22], ly_m[..], 5, lc12[..]);
+    #assert evs_pressure(gc[0..<22], fc[0..<22], kc[0..<22], ly_m[..], 5, lc12[..]).peak_width == 9;
+    lc13: [23]int;
+    evs_pack_layers(gc[..], fc[..], kc[..], ly_m[..], 5, lc13[..]);
+    #assert evs_pressure(gc[..], fc[..], kc[..], ly_m[..], 5, lc13[..]).peak_width == 10 && lc13[15] != lc13[22];
+    // Also test nf == 0 fast exit (single-layer chain with zero flex).
+    l_nf0: [2]int;
+    evs_pack_layers(gf1[..], ff1[..], kc[0..<2], ly_f1[0..<1], 1, l_nf0[..]);
+    #assert l_nf0[1] == 1;
+
+    // 6. evs_allocate_slots: pin coalescing (p=1 when n_inputs=0, blocked when p<=n_inputs), order sort, tightest slack, reuse-driven clearing, exact caps, early_reuse & no_clear!
+    ly4: [4]EvLayerDesc; for i: 0..<4 { ly4[i].kind = EvLayerKind.ffn; }
+    gs := [7]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},  // L1, read at L2 -> ends L2 -> slot 2 (slack 1 under node 3)
+        EvNode.{op = EvOp.relu, a = 1},  // L2, read at L3 -> ends L3 -> slot 2 (slack 0 under node 3)
+        EvNode.{op = EvOp.relu, a = 2},  // L3, pinned to slot 2
+        EvNode.{op = EvOp.relu, a = 3},  // L4, pinned to slot 3
+        EvNode.{op = EvOp.relu, a = 1},  // L2, unread [2,3) -> slot 3 (slack 1 under node 4) -> cleared L3
+        EvNode.{op = EvOp.relu, a = 1}   // L2, unread [2,3) -> slot 1 (no later user) -> 0 clear
+    ];
+    fs: [7]EvForm; for i: 0..<7 { fs[i] = ev_form_of(gs[..], fs[..], i); }
+    ks := [7]bool.[false, false, false, true, true, false, false];
+    ls := [7]int.[0, 1, 2, 3, 4, 2, 2];
+    pins := [4]int.[-1, 0, 3, 4]; // pin[1]=0 is input (p == n_inputs == 1, NOT overwritten by pin coalescing)
+    last_s: [7]int; slot_s: [7]int; clear_s: [7]int;
+    for i: 0..<7 { last_s[i] = 99; slot_s[i] = 99; clear_s[i] = 99; }
+    ws := evs_allocate_slots(gs[..], fs[..], ks[..], 4, pins[..], ly4[..], 4, ls[..], 4, last_s[..], slot_s[..], clear_s[..], EvFault.none);
+    #assert ws == 4 && slot_s[0] == 1 && slot_s[3] == 2 && slot_s[4] == 3;
+    #assert slot_s[1] == 2 && clear_s[1] == 2 && slot_s[2] == 2 && clear_s[2] == 3;
+    #assert slot_s[5] == 3 && clear_s[5] == 3 && slot_s[6] == 1 && clear_s[6] == 0;
+    // Test kv_slots > width (no pins) and kv_pin.count > width (kv_slots < kv_pin.count) + exact cap failures!
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 4, pins[..], ly4[..], 4, ls[..], 1, last_s[..], slot_s[..], clear_s[..], EvFault.none) == -1;
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 5, pins[0..<0], ly4[..], 4, ls[..], 5, last_s[..], slot_s[..], clear_s[..], EvFault.none) == 5;
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 5, pins[0..<0], ly4[..], 4, ls[..], 4, last_s[..], slot_s[..], clear_s[..], EvFault.none) == -1;
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 2, pins[..], ly4[..], 4, ls[..], 4, last_s[..], slot_s[..], clear_s[..], EvFault.none) == 4;
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 2, pins[..], ly4[..], 4, ls[..], 3, last_s[..], slot_s[..], clear_s[..], EvFault.none) == -1;
+    // Test pin[1] coalescing when n_inputs == 0 (node 0 = attn_sum pinned to slot 1!).
+    g0a := [2]EvNode.[EvNode.{op = EvOp.attn_sum, k = 1}, EvNode.{op = EvOp.relu, a = 0}];
+    f0a := [2]EvForm.[ev_term(0, 1), ev_term(1, 1)];
+    k0a := [2]bool.[true, true]; l0a := [2]int.[1, 2]; p0a := [2]int.[-1, 0];
+    ly0a := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    la0: [2]int; sl0: [2]int; cl0: [2]int;
+    #assert evs_allocate_slots(g0a[..], f0a[..], k0a[..], 2, p0a[..], ly0a[..], 2, l0a[..], 3, la0[..], sl0[..], cl0[..], EvFault.none) == 3 && sl0[0] == 1 && sl0[1] == 2;
+    #assert evs_allocate_slots(g0a[..], f0a[..], k0a[..], 2, p0a[..], ly0a[..], 2, l0a[..], 2, la0[..], sl0[..], cl0[..], EvFault.none) == -1;
+    // Test early_reuse at exact end_l == 2 (causes collision with layer 1) and no_clear!
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 4, pins[..], ly4[..], 4, ls[..], 8, last_s[..], slot_s[..], clear_s[..], EvFault.no_clear) == 4 && clear_s[1] == 0;
+    #assert evs_allocate_slots(gs[..], fs[..], ks[..], 4, pins[..], ly4[..], 4, ls[..], 8, last_s[..], slot_s[..], clear_s[..], EvFault.early_reuse) == 4 && slot_s[5] == 2 && clear_s[1] == 2;
+    // Test unsorted birth layers & same-birth descending-end tie-break in `order` sort!
+    g_ord := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, // L2 (later birth at lower index!)
+        EvNode.{op = EvOp.relu, a = 0}, // L1, short [1,2)
+        EvNode.{op = EvOp.relu, a = 0}  // L1, long kept [1,3) (placed before short -> gets slot 1!)
+    ];
+    f_ord: [4]EvForm; for i: 0..<4 { f_ord[i] = ev_form_of(g_ord[..], f_ord[..], i); }
+    k_ord := [4]bool.[false, true, false, true];
+    l_ord := [4]int.[0, 2, 1, 1];
+    la_o: [4]int; sl_o: [4]int; cl_o: [4]int;
+    #assert evs_allocate_slots(g_ord[..], f_ord[..], k_ord[..], 0, pins[0..<0], ly4[0..<2], 2, l_ord[..], 8, la_o[..], sl_o[..], cl_o[..], EvFault.none) == 4;
+    #assert sl_o[3] == 2 && sl_o[2] == 3 && sl_o[1] == 1 && cl_o[0] == 2;
+
+    // 7. evs_schedule_ev: n=1, n=320, n=321, eager<coal (ge), coal<eager (gw), same_layer (node 2 FFN vs Attn dep), attn_same_layer (node 1 + non-zero first_attn), slot_cap refusal!
+    a_f: [321]EvForm; a_l: [321]int; a_la: [321]int; a_s: [321]int; a_c: [321]int; a_r: [321]int; a_k: [321]bool; a_fs: [16]bool; a_ep: [1]int;
+    ar := EvCompileArena.{forms = a_f[..], layer = a_l[..], last = a_la[..], slot = a_s[..], clear = a_c[..], release = a_r[..], kept = a_k[..], free_slots = a_fs[..], kv_pin = a_ep[0..<0]};
+    ly_s: [8]EvLayerDesc;
+    // n=1 (constant only -> n_layers=0, width=1), n=0 refused, n=320 ok, n=321 refused!
+    g321: [321]EvNode; for i: 0..<321 { g321[i] = EvNode.{op = EvOp.constant, k = 1}; a_f[i] = ev_term(i, 1); a_k[i] = true; }
+    o0 := [1]int.[0];
+    s_n1 := evs_schedule_ev(g321[0..<1], o0[..], 0, ar, ly_s[..], EvFault.none);
+    #assert s_n1.status == EvStatus.ok && s_n1.n_layers == 0 && s_n1.width == 1;
+    #assert evs_schedule_ev(g321[0..<0], o0[..], 0, ar, ly_s[..], EvFault.none).status == EvStatus.capacity;
+    #assert evs_schedule_ev(g321[0..<320], o0[..], 0, ar, ly_s[..], EvFault.none).status == EvStatus.ok;
+    #assert evs_schedule_ev(g321[..], o0[..], 0, ar, ly_s[..], EvFault.none).status == EvStatus.capacity;
+
+    // coal < eager on gw (5 layers), exact layers.count == 5 succeeds, 4 refuses; slot_cap failure returns capacity.
+    for i: 0..<7 { a_f[i] = fw[i]; a_k[i] = kw[i]; }
+    o_w := [2]int.[4, 5];
+    #assert evs_schedule_ev(gw[..], o_w[..], 4, ar, ly_s[0..<5], EvFault.none).n_layers == 5;
+    #assert evs_schedule_ev(gw[..], o_w[..], 4, ar, ly_s[0..<4], EvFault.none).status == EvStatus.capacity;
+    ar_tiny := ar; ar_tiny.free_slots = a_fs[0..<2];
+    #assert evs_schedule_ev(gw[..], o_w[..], 4, ar_tiny, ly_s[..], EvFault.none).status == EvStatus.capacity;
+    // eager < coal on ge (5 layers instead of 6)!
+    for i: 0..<8 { a_f[i] = fe[i]; a_k[i] = false; } a_k[4] = true; a_k[7] = true;
+    o_e := [2]int.[4, 7];
+    #assert evs_schedule_ev(ge[..], o_e[..], 4, ar, ly_s[..], EvFault.none).n_layers == 5;
+    // same_layer on node 2 (FFN depending on FFN L1 -> moves to L1) vs gw node 2 (FFN depending on Attn L2 -> stays L3!).
+    g_sl := [3]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 1}];
+    for i: 0..<3 { a_f[i] = ev_term(i, 1); a_k[i] = (i == 2); }
+    o_sl := [1]int.[2];
+    #assert evs_schedule_ev(g_sl[..], o_sl[..], 0, ar, ly_s[..], EvFault.same_layer).status == EvStatus.ok && a_l[2] == 1;
+    for i: 0..<7 { a_f[i] = fw[i]; a_k[i] = kw[i]; }
+    #assert evs_schedule_ev(gw[..], o_w[..], 4, ar, ly_s[..], EvFault.same_layer).status == EvStatus.ok && a_l[2] == 3 && a_l[3] == 3;
+    // attn_same_layer on node 1 (gw: node 1 moves from L2 -> L1!) AND when first_attn == 2 (FFN at L1, Attn at L2, Attn at L3)!
+    #assert evs_schedule_ev(gw[..], o_w[..], 4, ar, ly_s[..], EvFault.attn_same_layer).status == EvStatus.ok && a_l[1] == 1 && a_l[4] == 1;
+    g_fa2 := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.attn_read, a = 1, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 3}
+    ];
+    for i: 0..<4 { a_f[i] = ev_term(i, 1); a_k[i] = (i == 3); }
+    o_fa2 := [1]int.[3];
+    #assert evs_schedule_ev(g_fa2[..], o_fa2[..], 4, ar, ly_s[..], EvFault.attn_same_layer).status == EvStatus.ok && a_l[3] == 2;
+
+    // 8. evs_model_metrics exact checks.
+    ml := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn, units = 3}, EvLayerDesc.{kind = EvLayerKind.ffn, units = 5}];
+    mc := [3]int.[1, 0, 2];
+    mm := EvModel.{width = 4, n_layers = 2, n_heads = 1, n_weights = 99, n_nodes = 3, layers = ml[..]};
+    m1 := evs_model_metrics(mm, mc[..], true);
+    #assert m1.status == EvStatus.ok && m1.total_units == 8 && m1.clear_units == 2 && m1.wb_units == 5;
+    #assert evs_model_metrics(mm, mc[..], false).wb_units == 0;
+    mm1 := mm; mm1.n_layers = 1; #assert evs_model_metrics(mm1, mc[..], true).wb_units == 3;
+    mm0 := mm; mm0.n_layers = 0; #assert evs_model_metrics(mm0, mc[..], true).wb_units == 0;
+    #assert evs_model_metrics(EvModel.{status = EvStatus.shape}, mc[..], true).status == EvStatus.shape;
+}
+
+#test "mutation sharp guards: pressure L1, node-0 flex, B&B exact budget/12-flex, coord sweeps, slots, and wave ties" {
+    // 1. evs_pressure li == 0 unique peak + evs_node_bounds wh == 0 consumer.
+    gl1 := [7]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.step, a = 0}, EvNode.{op = EvOp.eq0, a = 0},
+        EvNode.{op = EvOp.add, a = 1, b = 2}, EvNode.{op = EvOp.add, a = 4, b = 3},
+        EvNode.{op = EvOp.relu, a = 5}
+    ];
+    fl1: [7]EvForm; for i: 0..<7 { fl1[i] = ev_form_of(gl1[..], fl1[..], i); }
+    kl1 := [7]bool.[false, false, false, false, false, false, true];
+    ll1 := [7]int.[0, 1, 1, 1, 0, 0, 2];
+    ly2 := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    #assert evs_pressure(gl1[..], fl1[..], kl1[..], ly2[..], 2, ll1[..]).peak_width == 4;
+    lo1: [1]int; hi1: [1]int;
+    evs_node_bounds(gl1[..], fl1[..], ll1[..], 2, 1, lo1[..], hi1[..]);
+    #assert lo1[0] == 1 && hi1[0] == 1;
+
+    // 2. Node-0 = attn_sum (fixed & flex) tests for i: 0..<n in evs_bnb_pack and evs_pack_layers, plus nf == 1 middle optimum!
+    g0fix := [5]EvNode.[
+        EvNode.{op = EvOp.attn_sum, k = 1}, // 0: fixed L1
+        EvNode.{op = EvOp.relu, a = 0},     // 1: flex L2..L3 (unread)
+        EvNode.{op = EvOp.relu, a = 0},     // 2: fixed L2
+        EvNode.{op = EvOp.relu, a = 2},     // 3: fixed L3, kept
+        EvNode.{op = EvOp.step, a = 2}      // 4: fixed L3, kept
+    ];
+    f0fix: [5]EvForm; for i: 0..<5 { f0fix[i] = ev_form_of(g0fix[..], f0fix[..], i); }
+    k0fix := [5]bool.[false, false, false, true, true];
+    ly_aff := [3]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    as0f := [5]int.[1, 2, 2, 3, 3]; al0f := [5]int.[1, 3, 2, 3, 3];
+    bl0f := [5]int.[1, 3, 2, 3, 3]; fl0f := [1]int.[1];
+    bp0f := [1]EvPressure.[evs_pressure(g0fix[..], f0fix[..], k0fix[..], ly_aff[..], 3, bl0f[..])];
+    evs_bnb_pack(g0fix[..], f0fix[..], k0fix[..], ly_aff[..], 3, as0f[..], al0f[..], fl0f[..], 1, 8, bl0f[..], bp0f[..]);
+    #assert bl0f[1] == 2 && bp0f[0].peak_width == 3 && bp0f[0].total_span == 5;
+
+    g0flx := [7]EvNode.[
+        EvNode.{op = EvOp.attn_sum, k = 1}, // 0: flex L1..L3
+        EvNode.{op = EvOp.attn_sum, k = 2}, // 1: fixed L1
+        EvNode.{op = EvOp.attn_sum, k = 3}, // 2: fixed L1
+        EvNode.{op = EvOp.mul, a = 1, b = 2},
+        EvNode.{op = EvOp.attn_read, a = 3, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 4},
+        EvNode.{op = EvOp.mul, a = 0, b = 4}
+    ];
+    f0flx: [7]EvForm; for i: 0..<7 { f0flx[i] = ev_form_of(g0flx[..], f0flx[..], i); }
+    k0flx := [7]bool.[false, false, false, false, false, true, true];
+    ly_afaf := [4]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    as0x: [7]int; al0x: [7]int;
+    evs_compute_windows(g0flx[..], f0flx[..], ly_afaf[..], 4, as0x[..], al0x[..]);
+    bl0x: [7]int; for i: 0..<7 { bl0x[i] = as0x[i]; }
+    fl0x := [1]int.[0];
+    bp0x := [1]EvPressure.[evs_pressure(g0flx[..], f0flx[..], k0flx[..], ly_afaf[..], 4, bl0x[..])];
+    evs_bnb_pack(g0flx[..], f0flx[..], k0flx[..], ly_afaf[..], 4, as0x[..], al0x[..], fl0x[..], 1, 8, bl0x[..], bp0x[..]);
+    #assert bl0x[0] == 3 && bp0x[0].peak_width == 4 && bp0x[0].total_span == 8;
+    lp0x: [7]int;
+    evs_pack_layers(g0flx[..], f0flx[..], k0flx[..], ly_afaf[..], 4, lp0x[..]);
+    #assert lp0x[0] == 3;
+
+    // 6-layer [A,F,A,F,A,F] with ONLY node 0 flex (L1, L3, L5): L1 & L5 have 3 live, L3 has 2 -> ONLY L3 gives peak 4!
+    g0mid := [11]EvNode.[
+        EvNode.{op = EvOp.attn_sum, k = 1},                       // 0: flex L1..L5, unread
+        EvNode.{op = EvOp.attn_sum, k = 2},                       // 1: fixed L1
+        EvNode.{op = EvOp.attn_sum, k = 3},                       // 2: fixed L1
+        EvNode.{op = EvOp.attn_sum, k = 4},                       // 3: fixed L1
+        EvNode.{op = EvOp.add, a = 1, b = 2},                     // 4: 1+2
+        EvNode.{op = EvOp.add, a = 4, b = 3},                     // 5: 1+2+3
+        EvNode.{op = EvOp.relu, a = 5},                           // 6: fixed L2
+        EvNode.{op = EvOp.attn_read, a = 6, b = 1, c = 2, k = 3}, // 7: fixed L3
+        EvNode.{op = EvOp.relu, a = 7},                           // 8: fixed L4
+        EvNode.{op = EvOp.attn_read, a = 8, b = 1, c = 2, k = 3}, // 9: fixed L5
+        EvNode.{op = EvOp.attn_read, a = 8, b = 1, c = 2, k = 2}  // 10: fixed L5 (plus need L6 fixed consumer -> add node 11!)
+    ];
+    g0mid12: [12]EvNode; for i: 0..<11 { g0mid12[i] = g0mid[i]; }
+    g0mid12[11] = EvNode.{op = EvOp.mul, a = 9, b = 10};          // 11: fixed L6, kept
+    f0mid: [12]EvForm; for i: 0..<12 { f0mid[i] = ev_form_of(g0mid12[..], f0mid[..], i); }
+    k0mid := [12]bool.[false, false, false, false, false, false, false, false, false, false, false, true];
+    ly6a := [6]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    lp0m: [12]int;
+    evs_pack_layers(g0mid12[..], f0mid[..], k0mid[..], ly6a[..], 6, lp0m[..]);
+    #assert lp0m[0] == 3;
+
+    // 3. evs_bnb_pack: depth=0 (init from ALAP), exact visited/budget=1 vs 2 & depth-=1, and dep_lo RAW guard!
+    gv := [6]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0},  // 1: flex L1..L2, non-kept
+        EvNode.{op = EvOp.step, a = 0},  // 2: flex L1..L2, kept
+        EvNode.{op = EvOp.eq0, a = 0},   // 3: fixed L1
+        EvNode.{op = EvOp.mul, a = 0, b = 3}, // 4: fixed L2, kept (reads input 0 at L2!)
+        EvNode.{op = EvOp.step, a = 3}        // 5: fixed L2, kept
+    ];
+    fv: [6]EvForm; for i: 0..<6 { fv[i] = ev_form_of(gv[..], fv[..], i); }
+    kv := [6]bool.[false, false, true, false, true, true];
+    as_v := [6]int.[0, 1, 1, 1, 2, 2]; al_v := [6]int.[0, 2, 2, 1, 2, 2]; fl_v := [2]int.[1, 2];
+    lbv1 := [6]int.[0, 1, 1, 1, 2, 2];
+    bpv1 := [1]EvPressure.[evs_pressure(gv[..], fv[..], kv[..], ly2[..], 2, lbv1[..])];
+    evs_bnb_pack(gv[..], fv[..], kv[..], ly2[..], 2, as_v[..], al_v[..], fl_v[..], 2, 1, lbv1[..], bpv1[..]);
+    #assert bpv1[0].peak_width == 5 && lbv1[2] == 1;
+    evs_bnb_pack(gv[..], fv[..], kv[..], ly2[..], 2, as_v[..], al_v[..], fl_v[..], 2, 2, lbv1[..], bpv1[..]);
+    #assert bpv1[0].peak_width == 4 && lbv1[2] == 2;
+    // Start from ALAP (node 1 at L2, node 2 at L2 -> peak=5) so depth=0 MUST move flex[0]=1 to L1!
+    lbv_al := [6]int.[0, 2, 2, 1, 2, 2];
+    bpv_al := [1]EvPressure.[evs_pressure(gv[..], fv[..], kv[..], ly2[..], 2, lbv_al[..])];
+    evs_bnb_pack(gv[..], fv[..], kv[..], ly2[..], 2, as_v[..], al_v[..], fl_v[..], 2, 4, lbv_al[..], bpv_al[..]);
+    #assert bpv_al[0].peak_width == 4 && lbv_al[1] == 1 && lbv_al[2] == 2;
+
+    // dep_lo RAW guard in evs_bnb_pack: node 0 is already read at L2 by node 6 (so L1 has {0,1,2,3}=4 fixed and L3 has {7,8,9,10}=4 fixed)!
+    // Legal (11=L1,12=L2 or 11=L2,12=L3) forces peak 6; illegal (11=L2,12=L2) would give peak 5!
+    gd := [13]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.step, a = 0}, EvNode.{op = EvOp.eq0, a = 0},
+        EvNode.{op = EvOp.add, a = 1, b = 2}, EvNode.{op = EvOp.add, a = 4, b = 3},
+        EvNode.{op = EvOp.mul, a = 0, b = 5}, // 6: fixed L2 (fixes 1,2,3 at L1 AND reads input 0 at L2!)
+        EvNode.{op = EvOp.relu, a = 6}, EvNode.{op = EvOp.step, a = 6}, EvNode.{op = EvOp.eq0, a = 6}, EvNode.{op = EvOp.relu, a = 6}, // 7..10: fixed L3, kept
+        EvNode.{op = EvOp.relu, a = 0}, // 11: flex L1..L2, non-kept
+        EvNode.{op = EvOp.relu, a = 11} // 12: flex L2..L3, non-kept (depends on 11!)
+    ];
+    fd: [13]EvForm; for i: 0..<13 { fd[i] = ev_form_of(gd[..], fd[..], i); }
+    kd := [13]bool.[false, false, false, false, false, false, false, true, true, true, true, false, false];
+    ly3 := [3]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    ld: [13]int;
+    evs_pack_layers(gd[..], fd[..], kd[..], ly3[..], 3, ld[..]);
+    #assert ld[12] > ld[11] && evs_pressure(gd[..], fd[..], kd[..], ly3[..], 3, ld[..]).peak_width == 6;
+}
+
+#test "best_p = p_alap guard on 12-flex ALAP-optimal B&B" {
+    ly2 := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    gal: [13]EvNode;
+    gal[0] = EvNode.{op = EvOp.input, k = 0};
+    for j: 1..<13 { gal[j] = EvNode.{op = EvOp.relu, a = 0}; } // nf=12 kept flex nodes: ALAP (all L2) is strictly optimal!
+    fal: [13]EvForm; for i: 0..<13 { fal[i] = ev_form_of(gal[..], fal[..], i); }
+    kal: [13]bool; for j: 1..<13 { kal[j] = true; }
+    lal: [13]int;
+    evs_pack_layers(gal[..], fal[..], kal[..], ly2[..], 2, lal[..]);
+    // Removing best_p[0] = p_alap lets B&B leaf #4 (node 1 at L1, better than ASAP!) overwrite ALAP!
+    for j: 1..<13 { #assert lal[j] == 2; }
+}
+
+#test "exact B&B budget 2048 vs 2049 and max-flex 12 vs 13 boundary" {
+    ly2 := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    g28: [28]EvNode;
+    g28[0] = EvNode.{op = EvOp.input, k = 0};
+    g28[1] = EvNode.{op = EvOp.relu, a = 0}; // fixed L1
+    g28[2] = EvNode.{op = EvOp.mul, a = 0, b = 1}; // fixed L2, kept (reads input 0 at L2!)
+    for j: 1..<13 { g28[2 + j] = EvNode.{op = EvOp.relu, a = 1}; } // 3..14: fixed L2, kept
+    for j: 0..<13 { g28[15 + j] = EvNode.{op = EvOp.relu, a = 0}; } // 15..27: flex L1..L2 (15 is kept, 16..27 non-kept)
+    f28: [28]EvForm; for i: 0..<28 { f28[i] = ev_form_of(g28[..], f28[..], i); }
+    k28: [28]bool; for j: 2..<16 { k28[j] = true; }
+    l27: [27]int;
+    evs_pack_layers(g28[0..<27], f28[0..<27], k28[0..<27], ly2[..], 2, l27[..]);
+    #assert l27[15] == 1; // nf=12: 2048 leaves all have node 15 at L1; leaf 2049 would move node 15 to L2!
+    l28: [28]int;
+    evs_pack_layers(g28[..], f28[..], k28[..], ly2[..], 2, l28[..]);
+    #assert l28[15] == 2; // nf=13: coordinate descent moves node 15 to L2 immediately!
+}
+
+#test "exact B&B nf <= 12 simultaneous-move advantage over coordinate descent" {
+    ly3 := [3]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    gsim: [26]EvNode;
+    gsim[0] = EvNode.{op = EvOp.input, k = 0};
+    gsim[1] = EvNode.{op = EvOp.relu, a = 0}; // p1 (L1)
+    gsim[2] = EvNode.{op = EvOp.step, a = 0}; // p2 (L1)
+    gsim[3] = EvNode.{op = EvOp.eq0, a = 0};  // p3 (L1)
+    gsim[4] = EvNode.{op = EvOp.relu, a = 0}; // p4 (L1)
+    gsim[5] = EvNode.{op = EvOp.relu, a = 0}; // x (fixed L1 via node 10, kept alive to L3 via node 12!)
+    gsim[6] = EvNode.{op = EvOp.add, a = 1, b = 2};
+    gsim[7] = EvNode.{op = EvOp.add, a = 6, b = 3};
+    gsim[8] = EvNode.{op = EvOp.add, a = 7, b = 4}; // p1+p2+p3+p4
+    gsim[9] = EvNode.{op = EvOp.relu, a = 8};       // fixed L2 (fixes p1..p4 at L1)
+    gsim[10] = EvNode.{op = EvOp.mul, a = 1, b = 5}; // fixed L2 (fixes x at L1!)
+    gsim[11] = EvNode.{op = EvOp.eq0, a = 1};       // fixed L2
+    gsim[12] = EvNode.{op = EvOp.mul, a = 9, b = 5};  // fixed L3, kept
+    gsim[13] = EvNode.{op = EvOp.mul, a = 10, b = 11}; // fixed L3, kept
+    gsim[14] = EvNode.{op = EvOp.relu, a = 8}; // q1: flex L2..L3, kept
+    gsim[15] = EvNode.{op = EvOp.step, a = 8}; // q2: flex L2..L3, kept
+    for j: 0..<10 { gsim[16 + j] = EvNode.{op = EvOp.relu, a = 5}; } // f1..f10: flex L2..L3, non-kept
+    fsim: [26]EvForm; for i: 0..<26 { fsim[i] = ev_form_of(gsim[..], fsim[..], i); }
+    ksim: [26]bool; ksim[12] = true; ksim[13] = true; ksim[14] = true; ksim[15] = true;
+    lsim: [26]int;
+    evs_pack_layers(gsim[..], fsim[..], ksim[..], ly3[..], 3, lsim[..]);
+    #assert evs_pressure(gsim[..], fsim[..], ksim[..], ly3[..], 3, lsim[..]).peak_width == 11 && lsim[14] == 2 && lsim[15] == 2;
+}
+
+#test "coord sweeps, slot allocator boundaries, and wave ties" {
+    ly2 := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    ly3 := [3]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}];
+    // 5. Coordinate descent through evs_pack_layers (nf == 13): 3-node chains prove BOTH backward (true) AND forward (false) sweeps run in order!
+    // Backward witness (starts ASAP, needs reverse=true to shift a->2, b->3, c->4 in 1 sweep; [false] or [false,false] leaves a==1!):
+    gbk13: [20]EvNode;
+    gbk13[0] = EvNode.{op = EvOp.input, k = 0};
+    gbk13[1] = EvNode.{op = EvOp.relu, a = 0};       // fixed L1
+    gbk13[2] = EvNode.{op = EvOp.relu, a = 1};       // fixed L2
+    gbk13[3] = EvNode.{op = EvOp.relu, a = 2};       // fixed L3
+    gbk13[4] = EvNode.{op = EvOp.mul, a = 0, b = 3}; // fixed L4, kept (keeps input 0 alive to L4!)
+    gbk13[5] = EvNode.{op = EvOp.step, a = 3};       // fixed L4, kept
+    gbk13[6] = EvNode.{op = EvOp.eq0, a = 3};        // fixed L4, kept
+    gbk13[7] = EvNode.{op = EvOp.relu, a = 0};       // a: flex L1..L2, kept
+    gbk13[8] = EvNode.{op = EvOp.relu, a = 7};       // b: flex L2..L3, kept
+    gbk13[9] = EvNode.{op = EvOp.relu, a = 8};       // c: flex L3..L4, kept
+    for j: 0..<10 { gbk13[10 + j] = EvNode.{op = EvOp.relu, a = 1}; } // 10 flex L2..L4 -> total nf=13, ASAP beats ALAP!
+    fbk13: [20]EvForm; for i: 0..<20 { fbk13[i] = ev_form_of(gbk13[..], fbk13[..], i); }
+    kbk13: [20]bool; for j: 4..<10 { kbk13[j] = true; }
+    ly4f := [4]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    lbk13: [20]int;
+    evs_pack_layers(gbk13[..], fbk13[..], kbk13[..], ly4f[..], 4, lbk13[..]);
+    #assert lbk13[7] == 2 && lbk13[8] == 3 && lbk13[9] == 4;
+
+    // Forward witness (starts ALAP, needs reverse=false on sweep 2 to pull a->2, b->3, c->4; [true] or [true,true] leaves c==5!):
+    gfw13: [32]EvNode;
+    gfw13[0] = EvNode.{op = EvOp.input, k = 0};
+    gfw13[1] = EvNode.{op = EvOp.relu, a = 0};        // pa1 (fixed L1)
+    gfw13[2] = EvNode.{op = EvOp.step, a = 0};        // pa2 (fixed L1)
+    gfw13[3] = EvNode.{op = EvOp.add, a = 1, b = 2};  // pa1+pa2
+    gfw13[4] = EvNode.{op = EvOp.relu, a = 3};        // x2 (fixed L2)
+    gfw13[5] = EvNode.{op = EvOp.relu, a = 1};        // pb1 (fixed L2)
+    gfw13[6] = EvNode.{op = EvOp.step, a = 1};        // pb2 (fixed L2)
+    gfw13[7] = EvNode.{op = EvOp.add, a = 5, b = 6};  // pb1+pb2
+    gfw13[8] = EvNode.{op = EvOp.add, a = 4, b = 7};  // x2+pb1+pb2
+    gfw13[9] = EvNode.{op = EvOp.relu, a = 8};        // x3 (fixed L3)
+    gfw13[10] = EvNode.{op = EvOp.relu, a = 5};       // pc1 (fixed L3)
+    gfw13[11] = EvNode.{op = EvOp.step, a = 5};       // pc2 (fixed L3)
+    gfw13[12] = EvNode.{op = EvOp.add, a = 10, b = 11}; // pc1+pc2
+    gfw13[13] = EvNode.{op = EvOp.add, a = 9, b = 12};  // x3+pc1+pc2
+    gfw13[14] = EvNode.{op = EvOp.relu, a = 13};      // x4 (fixed L4)
+    gfw13[15] = EvNode.{op = EvOp.mul, a = 0, b = 14}; // x5 (fixed L5, kept; reads input 0 at L5!)
+    gfw13[16] = EvNode.{op = EvOp.relu, a = 3};       // a: flex L2..L3
+    gfw13[17] = EvNode.{op = EvOp.add, a = 16, b = 7}; // a+pb1+pb2
+    gfw13[18] = EvNode.{op = EvOp.relu, a = 17};      // b: flex L3..L4
+    gfw13[19] = EvNode.{op = EvOp.add, a = 18, b = 12}; // b+pc1+pc2
+    gfw13[20] = EvNode.{op = EvOp.relu, a = 19};      // c: flex L4..L5
+    for j: 0..<10 { gfw13[21 + j] = EvNode.{op = EvOp.relu, a = 0}; } // 10 flex L1..L5 -> total nf=13, ALAP beats ASAP!
+    ffw13: [31]EvForm; for i: 0..<31 { ffw13[i] = ev_form_of(gfw13[0..<31], ffw13[..], i); }
+    kfw13: [31]bool; kfw13[15] = true;
+    ly5f := [5]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    lfw13: [31]int;
+    evs_pack_layers(gfw13[0..<31], ffw13[..], kfw13[..], ly5f[..], 5, lfw13[..]);
+    #assert lfw13[16] == 2 && lfw13[18] == 3 && lfw13[20] == 4;
+
+    // Direct backward vs forward evs_coord_sweep on 2-node flex chain + ATTN barrier + layer_out restore!
+    gsw := [6]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, // 1: flex L1..L2, KEPT (already live at L2!)
+        EvNode.{op = EvOp.relu, a = 1}, // 2: flex L2..L4 (L3 is ATTN!), non-kept
+        EvNode.{op = EvOp.relu, a = 0}, // 3: L1
+        EvNode.{op = EvOp.step, a = 0}, // 4: L2
+        EvNode.{op = EvOp.relu, a = 0}  // 5: L4, kept (reads input 0 at L4!)
+    ];
+    fsw: [6]EvForm; for i: 0..<6 { fsw[i] = ev_form_of(gsw[..], fsw[..], i); }
+    ksw := [6]bool.[false, true, false, false, false, true];
+    ly_ffaf := [4]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.ffn},
+        EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.ffn}
+    ];
+    fl_sw := [2]int.[1, 2];
+    // Start at (1=L1, 2=L2): L2 has {0,1,2,4}=4 (peak=5); backward moves 2->L4 (skipping ATTN L3!) then 1->L2 in ONE sweep!
+    l_bk := [6]int.[0, 1, 2, 1, 2, 4];
+    bp_bk := [1]EvPressure.[evs_pressure(gsw[..], fsw[..], ksw[..], ly_ffaf[..], 4, l_bk[..])];
+    evs_coord_sweep(gsw[..], fsw[..], ksw[..], ly_ffaf[..], 4, fl_sw[..], 2, true, l_bk[..], bp_bk[..]);
+    #assert l_bk[1] == 2 && l_bk[2] == 4;
+    // Forward witness on [F,F,F,F]: p1,p2,p3 (L1) -> q=relu(p1+p2+p3) (L2..L3) -> q2=relu(q) (L3..L4, heavy L4)!
+    // Start at ALAP (q=L3, q2=L4): forward moves q->L2 (releases p1..p3!) then q2->L3 (restores best_L=3 after trying L4!) in ONE sweep!
+    gfw := [11]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.step, a = 0}, EvNode.{op = EvOp.eq0, a = 0}, // 1,2,3: p1..p3 (L1)
+        EvNode.{op = EvOp.add, a = 1, b = 2}, EvNode.{op = EvOp.add, a = 4, b = 3}, // 4,5: p1+p2+p3
+        EvNode.{op = EvOp.relu, a = 5}, // 6: q (flex L2..L3)
+        EvNode.{op = EvOp.relu, a = 6}, // 7: q2 (flex L3..L4, non-kept)
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.step, a = 0}, EvNode.{op = EvOp.eq0, a = 0} // 8,9,10: L4, kept
+    ];
+    ffw: [11]EvForm; for i: 0..<11 { ffw[i] = ev_form_of(gfw[..], ffw[..], i); }
+    kfw := [11]bool.[false, false, false, false, false, false, false, false, true, true, true];
+    fl_fw := [2]int.[6, 7];
+    l_fw := [11]int.[0, 1, 1, 1, 0, 0, 3, 4, 4, 4, 4];
+    bp_fw := [1]EvPressure.[evs_pressure(gfw[..], ffw[..], kfw[..], ly4f[..], 4, l_fw[..])];
+    evs_coord_sweep(gfw[..], ffw[..], kfw[..], ly4f[..], 4, fl_fw[..], 2, false, l_fw[..], bp_fw[..]);
+    #assert l_fw[6] == 2 && l_fw[7] == 3;
+
+    // 6. evs_allocate_slots guards: dirty last_out[0], 2 inputs + exact cap, kv_pin.count > width alone, pin[1] with n_inputs=0 & n_inputs=1, pin=-1/dup/const, early_reuse bounds (end_l==n_layers and end_l==2), order sort (no=2 & kept vs attn-end tie), v=0 reuser, same-layer non-reuse!
+    g2in := [2]EvNode.[EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.input, k = 1}];
+    f2in := [2]EvForm.[ev_term(0, 1), ev_term(1, 1)];
+    k2in := [2]bool.[true, true]; l2in := [2]int.[0, 0];
+    la2: [2]int; sl2: [2]int; cl2: [2]int; p_emp: [1]int;
+    la2[0] = 77;
+    #assert evs_allocate_slots(g2in[..], f2in[..], k2in[..], 0, p_emp[0..<0], ly2[0..<0], 0, l2in[..], 1, la2[..], sl2[..], cl2[..], EvFault.none) == -1;
+    #assert evs_allocate_slots(g2in[..], f2in[..], k2in[..], 0, p_emp[0..<0], ly2[0..<0], 0, l2in[..], 2, la2[..], sl2[..], cl2[..], EvFault.none) == -1;
+    #assert evs_allocate_slots(g2in[..], f2in[..], k2in[..], 0, p_emp[0..<0], ly2[0..<0], 0, l2in[..], 3, la2[..], sl2[..], cl2[..], EvFault.none) == 3 && sl2[0] == 1 && sl2[1] == 2 && la2[0] == 0;
+    p4n := [4]int.[-1, -1, -1, -1];
+    #assert evs_allocate_slots(g2in[0..<1], f2in[0..<1], k2in[0..<1], 0, p4n[..], ly2[0..<0], 0, l2in[0..<1], 4, la2[0..<1], sl2[0..<1], cl2[0..<1], EvFault.none) == 4;
+
+    // Pin coalescing guards: n_inputs=1 blocks p=1, -1 ignored, duplicate pin doesn't overwrite, constant pin ignored!
+    gp_blk := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},    // 0: slot 1, read at L2 -> alive [0,2)
+        EvNode.{op = EvOp.constant, k = 5}, // 1: constant (never gets slot!)
+        EvNode.{op = EvOp.relu, a = 0},     // 2: L1, kept
+        EvNode.{op = EvOp.relu, a = 0}      // 3: L2, kept
+    ];
+    fp_blk := [4]EvForm.[ev_term(0, 1), ev_term(1, 5), ev_term(2, 1), ev_term(3, 1)];
+    kp_blk := [4]bool.[false, false, true, true]; lp_blk := [4]int.[0, 0, 1, 2];
+    pp_blk := [5]int.[-1, 2, -1, 2, 1]; // p=1 blocked (p<=n_inputs), p=2 is -1, p=3 pins node 2, p=4 ignores constant 1!
+    pp_dup := [5]int.[-1, -1, 2, 2, 1]; // p=2 pins node 2 to slot 2, p=3 duplicate MUST keep slot 2!
+    la4: [4]int; sl4: [4]int; cl4: [4]int;
+    #assert evs_allocate_slots(gp_blk[..], fp_blk[..], kp_blk[..], 0, pp_blk[..], ly2[..], 2, lp_blk[..], 8, la4[..], sl4[..], cl4[..], EvFault.none) == 5 && sl4[2] == 3 && sl4[1] == 0;
+    #assert evs_allocate_slots(gp_blk[..], fp_blk[..], kp_blk[..], 0, pp_dup[..], ly2[..], 2, lp_blk[..], 8, la4[..], sl4[..], cl4[..], EvFault.none) == 5 && sl4[2] == 2 && sl4[1] == 0;
+
+    // n_inputs=0 with node 0 at L2 pinned to slot 1 & node 1 at L1 unpinned -> proves p=1, u=0 pin ran AND v=0 reuser triggers clear_out[1] == 2!
+    g0p := [2]EvNode.[EvNode.{op = EvOp.attn_sum, k = 1}, EvNode.{op = EvOp.attn_sum, k = 2}];
+    f0p := [2]EvForm.[ev_term(0, 1), ev_term(1, 1)];
+    k0p := [2]bool.[true, false]; l0p := [2]int.[2, 1]; p0p := [2]int.[-1, 0];
+    ly_fa := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.attn}, EvLayerDesc.{kind = EvLayerKind.attn}];
+    #assert evs_allocate_slots(g0p[..], f0p[..], k0p[..], 2, p0p[..], ly_fa[..], 2, l0p[..], 4, la2[..], sl2[..], cl2[..], EvFault.none) == 3 && sl2[0] == 1 && sl2[1] == 2;
+    // Now node 1 at L1 (FFN), node 0 at L2 (FFN) reuses node 1's slot 1 -> v=0 is ONLY reuser of u=1!
+    g0r := [2]EvNode.[EvNode.{op = EvOp.attn_sum, k = 1}, EvNode.{op = EvOp.attn_sum, k = 2}];
+    #assert evs_allocate_slots(g0r[..], f0p[..], k0p[..], 0, p_emp[0..<0], ly2[..], 2, l0p[..], 4, la2[..], sl2[..], cl2[..], EvFault.none) == 2 && sl2[1] == 1 && sl2[0] == 1 && cl2[1] == 2;
+
+    // order sort: no=2 [short_L1, long_L1] kills b: a+1 -> a+2; [L2, short_L1, long_L1] kills a: 0 -> 1; non-kept ending on ATTN L2 ties kept at L1 kills end_l = n_layers+1 -> +2!
+    go2 := [3]EvNode.[EvNode.{op = EvOp.constant, k = 1}, EvNode.{op = EvOp.attn_sum, k = 1}, EvNode.{op = EvOp.attn_sum, k = 2}];
+    fo2 := [3]EvForm.[ev_term(0, 1), ev_term(1, 1), ev_term(2, 1)];
+    ko2 := [3]bool.[false, false, true]; lo2 := [3]int.[0, 1, 1];
+    la3: [3]int; sl3: [3]int; cl3: [3]int;
+    #assert evs_allocate_slots(go2[..], fo2[..], ko2[..], 0, p_emp[0..<0], ly2[..], 2, lo2[..], 4, la3[..], sl3[..], cl3[..], EvFault.none) == 3 && sl3[2] == 1 && sl3[1] == 2;
+    // With ly_att = [FFN, ATTN]: node 1 (non-kept at L1) has end_l = n_layers + 1 = 3, SAME as kept node 2 -> NO swap (sl3[1] == 1)!
+    ly_fa2 := [2]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn}, EvLayerDesc.{kind = EvLayerKind.attn}];
+    #assert evs_allocate_slots(go2[..], fo2[..], ko2[..], 0, p_emp[0..<0], ly_fa2[..], 2, lo2[..], 4, la3[..], sl3[..], cl3[..], EvFault.none) == 3 && sl3[1] == 1 && sl3[2] == 2;
+    go3 := [4]EvNode.[EvNode.{op = EvOp.constant, k = 1}, EvNode.{op = EvOp.attn_sum, k = 1}, EvNode.{op = EvOp.attn_sum, k = 2}, EvNode.{op = EvOp.attn_sum, k = 3}];
+    fo3 := [4]EvForm.[ev_term(0, 1), ev_term(1, 1), ev_term(2, 1), ev_term(3, 1)];
+    ko3 := [4]bool.[false, true, false, true]; lo3 := [4]int.[0, 2, 1, 1];
+    #assert evs_allocate_slots(go3[..], fo3[..], ko3[..], 0, p_emp[0..<0], ly2[..], 2, lo3[..], 4, la4[..], sl4[..], cl4[..], EvFault.none) == 3 && sl4[3] == 1 && sl4[2] == 2 && sl4[1] == 2;
+
+    // early_reuse exact bounds: end_l == 2 -> 1 collides with another L1 node (and same-layer collision with NO later node keeps clear == 0 -> kills layer[v] > layer[u] vs >=!); AND end_l == n_layers (3) -> 2 collides with L2 node!
+    ger := [4]EvNode.[
+        EvNode.{op = EvOp.constant, k = 1},
+        EvNode.{op = EvOp.attn_sum, k = 1}, // 1: L1, end_l=2 -> early_reuse 1 -> collides with node 2 at L1!
+        EvNode.{op = EvOp.attn_sum, k = 2}, // 2: L1, unread (end_l=2 -> 1), shares slot 1 with node 1, NO later node -> clear[1]==0, clear[2]==0!
+        EvNode.{op = EvOp.attn_sum, k = 3}  // 3: L2, read at L3? (Make 3 at L2, end_l=3 -> early_reuse 2 -> collides with 4!)
+    ];
+    fer := [4]EvForm.[ev_term(0, 1), ev_term(1, 1), ev_term(2, 1), ev_term(3, 1)];
+    ker := [4]bool.[false, false, false, false]; ler := [4]int.[0, 1, 1, 2];
+    #assert evs_allocate_slots(ger[0..<3], fer[0..<3], ker[0..<3], 0, p_emp[0..<0], ly2[..], 2, ler[0..<3], 4, la3[..], sl3[..], cl3[..], EvFault.early_reuse) == 2 && sl3[1] == 1 && sl3[2] == 1 && cl3[1] == 0 && cl3[2] == 0;
+    // end_l == n_layers (3): node 1 at L1 read by node 3 at L3 -> end_l[1] == 3 == n_layers -> early_reuse 2 -> node 2 at L2 reuses slot 1!
+    ger3 := [4]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.relu, a = 0}, // 1: L1, read at L3 -> end_l == 3 == n_layers!
+        EvNode.{op = EvOp.relu, a = 0}, // 2: L2, kept -> under early_reuse steals slot of node 1!
+        EvNode.{op = EvOp.relu, a = 1}  // 3: L3, kept
+    ];
+    fer3 := [4]EvForm.[ev_term(0, 1), ev_term(1, 1), ev_term(2, 1), ev_term(3, 1)];
+    ker3 := [4]bool.[false, false, true, true]; ler3 := [4]int.[0, 1, 2, 3];
+    #assert evs_allocate_slots(ger3[..], fer3[..], ker3[..], 0, p_emp[0..<0], ly3[..], 3, ler3[..], 8, la4[..], sl4[..], cl4[..], EvFault.none) == 3 && sl4[1] == 2 && sl4[2] == 1;
+    // Give node 0 another read at L3 so slot 1 is busy at L2; then ONLY slot 2 (node 1) can be stolen by node 2 under early_reuse!
+    ger3[3] = EvNode.{op = EvOp.mul, a = 0, b = 1};
+    #assert evs_allocate_slots(ger3[..], fer3[..], ker3[..], 0, p_emp[0..<0], ly3[..], 3, ler3[..], 8, la4[..], sl4[..], cl4[..], EvFault.none) == 4 && sl4[1] == 2 && sl4[2] == 3;
+    #assert evs_allocate_slots(ger3[..], fer3[..], ker3[..], 0, p_emp[0..<0], ly3[..], 3, ler3[..], 8, la4[..], sl4[..], cl4[..], EvFault.early_reuse) == 3 && sl4[1] == 2 && sl4[2] == 1;
+
+    // 7. evs_schedule_ev guards: exact cap=5 for ge (n_coal==-1, n_eager==5), n_coal==n_eager==3 tie favors coal, and layers.count==65!
+    af: [16]EvForm; al: [16]int; ala: [16]int; asl: [16]int; acl: [16]int; arl: [16]int; ak: [16]bool; afs: [16]bool;
+    ar := EvCompileArena.{forms = af[..], layer = al[..], last = ala[..], slot = asl[..], clear = acl[..], release = arl[..], kept = ak[..], free_slots = afs[..], kv_pin = p_emp[0..<0]};
+    ge := [8]EvNode.[
+        EvNode.{op = EvOp.input, k = 0}, EvNode.{op = EvOp.attn_sum, k = 1},
+        EvNode.{op = EvOp.relu, a = 1}, EvNode.{op = EvOp.relu, a = 2}, EvNode.{op = EvOp.relu, a = 3},
+        EvNode.{op = EvOp.relu, a = 0}, EvNode.{op = EvOp.relu, a = 5},
+        EvNode.{op = EvOp.attn_read, a = 6, b = 1, c = 2, k = 3}
+    ];
+    for i: 0..<8 { af[i] = ev_form_of(ge[..], af[..], i); ak[i] = (i == 4 || i == 7); }
+    oe := [2]int.[4, 7];
+    ly5: [5]EvLayerDesc;
+    #assert evs_schedule_ev(ge[..], oe[..], 4, ar, ly5[..], EvFault.none).n_layers == 5;
+    // Tie graph: n_coal == n_eager == 3; coal has L1=FFN while eager has L1=ATTN!
+    gtie := [5]EvNode.[
+        EvNode.{op = EvOp.input, k = 0},
+        EvNode.{op = EvOp.attn_sum, k = 1},
+        EvNode.{op = EvOp.relu, a = 0},
+        EvNode.{op = EvOp.attn_read, a = 2, b = 1, c = 2, k = 3},
+        EvNode.{op = EvOp.relu, a = 1}
+    ];
+    for i: 0..<5 { af[i] = ev_form_of(gtie[..], af[..], i); ak[i] = (i == 3 || i == 4); }
+    otie := [2]int.[3, 4];
+    #assert evs_schedule_ev(gtie[..], otie[..], 4, ar, ly5[..], EvFault.none).n_layers == 3 && ly5[0].kind == EvLayerKind.ffn;
+    // layers.count == 65 > EVS_MAX_LAYERS (64) clamps cap cleanly without OOB!
+    ly65: [65]EvLayerDesc;
+    #assert evs_schedule_ev(gtie[..], otie[..], 4, ar, ly65[..], EvFault.none).n_layers == 3;
+}

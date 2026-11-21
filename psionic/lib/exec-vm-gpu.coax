@@ -1,0 +1,314 @@
+// Device admission, exact arithmetic-envelope preflight, memory planning, and
+// trace-digest verification for exec-gpu-metal-v1 and exec-gpu-cuda-v1 (#13916, W1.3).
+//
+// Enforces zero silent precision degradation before any GPU launch:
+//   - metal_i64 / cuda_i64: exact 64-bit integer profile (+/- 2^26 operands,
+//     +/- 2^53 exact envelope); refuses any non-integer or out-of-range weight/input.
+//   - metal_ff: Apple Silicon compensated double-single (f32x2 Dekker/Knuth)
+//     profile (+/- 2^24 operands, +/- 2^48 exact envelope); refuses operands > 2^24.
+//   - cuda_f64: NVIDIA native IEEE binary64 profile (--fmad=false, +/- 2^26
+//     operands, +/- 2^53 exact envelope).
+#load "exec-vm-sched.coax";
+#load "exec-vm.coax";
+#load "soft-memory.coax";
+#authority;
+
+EVG_FF_VALUE_MAX :: 16777216;          // 2^24: products <= 2^48 exact in f32x2 double-single
+EVG_FF_EXACT_MAX :: 281474976710656;   // 2^48: f32x2 exact integer envelope
+EVG_MIN_METAL_FAMILY :: 7;             // Apple7 (M1..M5+)
+EVG_MIN_CUDA_MAJOR :: 6;               // SM 6.0+ native FP64 (RTX 4080 = 8.9, L4 = 8.9)
+EVG_MIN_THREADS :: 256;
+
+EvGpuProfile :: enum u8 {
+    metal_i64;
+    metal_ff;
+    cuda_f64;
+    cuda_i64;
+}
+
+EvGpuStatus :: enum u8 {
+    ok;
+    shape;
+    model;
+    device;
+    memory;
+    non_integer;
+    range;
+    envelope;
+}
+
+EvGpuAdmit :: struct {
+    status: EvGpuStatus;
+    bad_index: int;
+    required_bytes: int;
+}
+
+evg_is_metal :: (p: EvGpuProfile) -> bool #effects(all) {
+    return p == EvGpuProfile.metal_i64 || p == EvGpuProfile.metal_ff;
+}
+
+evg_is_int_profile :: (p: EvGpuProfile) -> bool #effects(all) {
+    return p == EvGpuProfile.metal_i64 || p == EvGpuProfile.cuda_i64;
+}
+
+evg_value_max :: (p: EvGpuProfile) -> int #export_c #effects(all) {
+    if p == EvGpuProfile.metal_ff { return EVG_FF_VALUE_MAX; }
+    return EV_VALUE_MAX;
+}
+
+evg_exact_max :: (p: EvGpuProfile) -> int #export_c #effects(all) {
+    if p == EvGpuProfile.metal_ff { return EVG_FF_EXACT_MAX; }
+    return EV_EXACT_MAX;
+}
+
+// Device capability admission (reusing Ch 37 / Ch 68 discipline).
+evg_admit_device :: (p: EvGpuProfile, major: int, minor: int, max_threads: int, unified: int, apple_family: int) -> EvGpuStatus #export_c #effects(all) {
+    if max_threads < EVG_MIN_THREADS { return EvGpuStatus.device; }
+    if evg_is_metal(p) {
+        if unified != 1 || apple_family < EVG_MIN_METAL_FAMILY { return EvGpuStatus.device; }
+        return EvGpuStatus.ok;
+    }
+    if major < EVG_MIN_CUDA_MAJOR || minor < 0 || minor > 9 { return EvGpuStatus.device; }
+    return EvGpuStatus.ok;
+}
+
+// Exact device buffer footprint (bytes) for weights + batched KV cache + workspace + traces.
+evg_plan_bytes :: (m: EvModel, max_ctx: int, batch: int) -> int #export_c #effects(all) {
+    if m.status != EvStatus.ok || m.width < 1 || m.n_outputs < 1 || m.n_weights < 1 || max_ctx < 1 || batch < 1 {
+        return 0;
+    }
+    max_units := 1;
+    for li: 0..<m.n_layers {
+        if m.layers[li].kind == EvLayerKind.ffn && m.layers[li].units > max_units { // mutant: equivalent (when units == max_units, assigning max_units is a no-op)
+            max_units = m.layers[li].units;
+        }
+    }
+    w_bytes := m.n_weights * 8;
+    kv_bytes := batch * max_ctx * m.width * 8;
+    work_bytes := batch * (2 * m.width + max_units + 4 + m.n_outputs + 4) * 8;
+    trace_bytes := batch * max_ctx * 4 * 8;
+    desc_bytes := (m.n_layers * 3 + m.n_heads * 3 + batch * 2 + 16) * 8;
+    return w_bytes + kv_bytes + work_bytes + trace_bytes + desc_bytes;
+}
+
+// Preflight model & weight exactness admission before any GPU upload or launch.
+evg_admit_model :: (m: EvModel, p: EvGpuProfile, mem_bytes: int, max_ctx: int, batch: int) -> EvGpuAdmit #export_c #effects(all) {
+    if m.status != EvStatus.ok { return EvGpuAdmit.{status = EvGpuStatus.model}; }
+    if m.width < 1 || m.n_outputs < 1 || m.n_weights < 1 || max_ctx < 1 || batch < 1 || mem_bytes < 1 {
+        return EvGpuAdmit.{status = EvGpuStatus.shape};
+    }
+    if m.weights.count < m.n_weights { return EvGpuAdmit.{status = EvGpuStatus.model}; }
+    req := evg_plan_bytes(m, max_ctx, batch);
+    if req > mem_bytes { return EvGpuAdmit.{status = EvGpuStatus.memory, required_bytes = req}; }
+
+    lim := f64(evg_exact_max(p));
+    int_only := evg_is_int_profile(p);
+    for i: 0..<m.n_weights {
+        w := m.weights[i];
+        if !(abs(w) <= lim) {
+            return EvGpuAdmit.{status = EvGpuStatus.range, bad_index = i, required_bytes = req};
+        }
+        if int_only && f64(cast(int)w) != w {
+            return EvGpuAdmit.{status = EvGpuStatus.non_integer, bad_index = i, required_bytes = req};
+        }
+    }
+    return EvGpuAdmit.{required_bytes = req};
+}
+
+// Preflight Ch 226 program admission against the profile's exact operand envelope.
+evg_admit_program :: (program: []TmOp, p: EvGpuProfile) -> EvGpuStatus #export_c #effects(all) {
+    if tm_admit(program) != TmStatus.ok { return EvGpuStatus.shape; }
+    vmax := evg_value_max(p);
+    for op: program {
+        if op.code == TmCode.push && (op.arg < -vmax || op.arg > vmax) {
+            return EvGpuStatus.envelope;
+        }
+    }
+    return EvGpuStatus.ok;
+}
+
+// Preflight general input operand admission against the profile's exact envelope.
+evg_admit_inputs :: (inputs: []f64, p: EvGpuProfile) -> EvGpuStatus #export_c #effects(all) {
+    vmax := f64(evg_value_max(p));
+    int_only := evg_is_int_profile(p);
+    for v: inputs {
+        if !(abs(v) <= vmax) { return EvGpuStatus.envelope; }
+        if int_only && f64(cast(int)v) != v { return EvGpuStatus.non_integer; }
+    }
+    return EvGpuStatus.ok;
+}
+
+// Compute the canonical Ch 226 SHA-256 trace digest from a flat [steps * 4]int buffer.
+evg_trace_digest :: (trace: []int, steps: int, out_digest: []u8) -> bool #export_c #effects(all) {
+    if steps < 0 || trace.count < steps * TM_TOKENS || out_digest.count < 32 { return false; }
+    sha: [112]u8;
+    #assert sha256_init(sha[..]) == SHA_OK;
+    row: [TM_TOKENS]int;
+    bytes: [16]u8;
+    for s: 0..<steps {
+        row[0] = trace[s * 4];
+        row[1] = trace[s * 4 + 1];
+        row[2] = trace[s * 4 + 2];
+        row[3] = trace[s * 4 + 3];
+        tm_bytes(row[..], bytes[..]);
+        #assert sha256_update_checked(sha[..], bytes[..], false) == SHA_OK;
+    }
+    #assert sha256_final_checked(sha[..], out_digest[0..<32], false) == SHA_OK;
+    return true;
+}
+
+// ---- Tests ----
+
+#test "device, profile envelope, and memory admission enforce exact boundaries" {
+    #assert evg_value_max(EvGpuProfile.metal_i64) == EV_VALUE_MAX;
+    #assert evg_value_max(EvGpuProfile.cuda_f64) == EV_VALUE_MAX;
+    #assert evg_value_max(EvGpuProfile.cuda_i64) == EV_VALUE_MAX;
+    #assert evg_value_max(EvGpuProfile.metal_ff) == EVG_FF_VALUE_MAX;
+    #assert evg_exact_max(EvGpuProfile.metal_i64) == EV_EXACT_MAX;
+    #assert evg_exact_max(EvGpuProfile.cuda_f64) == EV_EXACT_MAX;
+    #assert evg_exact_max(EvGpuProfile.cuda_i64) == EV_EXACT_MAX;
+    #assert evg_exact_max(EvGpuProfile.metal_ff) == EVG_FF_EXACT_MAX;
+
+    // Metal M1..M5 device admission boundaries.
+    #assert evg_admit_device(EvGpuProfile.metal_i64, 0, 0, 1024, 1, 10) == EvGpuStatus.ok;
+    #assert evg_admit_device(EvGpuProfile.metal_ff, 0, 0, 256, 1, 7) == EvGpuStatus.ok;
+    #assert evg_admit_device(EvGpuProfile.metal_i64, 0, 0, 255, 1, 10) == EvGpuStatus.device;
+    #assert evg_admit_device(EvGpuProfile.metal_i64, 0, 0, 1024, 0, 10) == EvGpuStatus.device;
+    #assert evg_admit_device(EvGpuProfile.metal_i64, 0, 0, 1024, 1, 6) == EvGpuStatus.device;
+
+    // CUDA device admission boundaries (RTX 4080 = 8.9, Pascal = 6.0).
+    #assert evg_admit_device(EvGpuProfile.cuda_f64, 8, 9, 1024, 0, 0) == EvGpuStatus.ok;
+    #assert evg_admit_device(EvGpuProfile.cuda_i64, 6, 0, 256, 0, 0) == EvGpuStatus.ok;
+    #assert evg_admit_device(EvGpuProfile.cuda_f64, 5, 9, 1024, 0, 0) == EvGpuStatus.device;
+    #assert evg_admit_device(EvGpuProfile.cuda_f64, 8, -1, 1024, 0, 0) == EvGpuStatus.device;
+    #assert evg_admit_device(EvGpuProfile.cuda_f64, 8, 10, 1024, 0, 0) == EvGpuStatus.device;
+}
+
+#test "model, weight, program, input preflight refusals and trace digest match tm_run" {
+    // Build a compact Attention+FFN model with exact known byte footprint so mutation checks stay sharp and fast.
+    layers := [2]EvLayerDesc.[
+        EvLayerDesc.{kind = EvLayerKind.attn, head_first = 0, head_count = 1},
+        EvLayerDesc.{kind = EvLayerKind.ffn, units = 5}
+    ];
+    heads := [1]EvHeadDesc.[EvHeadDesc.{kind = EvHeadKind.parabolic_hardmax, d_k = 2, d_v = 1}];
+    weights: [64]f64;
+    weights[0] = 1.0;
+    weights[63] = -2.0;
+    vm := EvModel.{
+        width = 4, n_layers = 2, n_heads = 1, n_inputs = 1, n_outputs = 2,
+        kv_slots = 4, n_weights = 64, layers = layers[..], heads = heads[..], weights = weights[..]
+    };
+
+    // Exact byte formula check:
+    // w=64*8=512, kv=2*10*4*8=640, work=2*(8+5+4+2+4)*8=368, trace=2*10*4*8=640, desc=(6+3+4+16)*8=232 -> 2392 bytes.
+    req := evg_plan_bytes(vm, 10, 2);
+    #assert req == 2392;
+    // Also check when FFN units == 0 so max_units stays 1, and when attn layer has non-zero units field it is ignored.
+    layers[0].units = 99;
+    layers[1].units = 0;
+    #assert evg_plan_bytes(vm, 10, 2) == 2392 - 2 * 4 * 8;
+    layers[0].units = 0;
+    layers[1].units = 5;
+
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_ff, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_f64, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_i64, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req - 1, 10, 2).status == EvGpuStatus.memory;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req - 1, 10, 2).required_bytes == req;
+
+    // Shape & model status refusals.
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, 0, 10, 2).status == EvGpuStatus.shape;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 0, 2).status == EvGpuStatus.shape;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 0).status == EvGpuStatus.shape;
+    #assert evg_plan_bytes(vm, 0, 2) == 0 && evg_plan_bytes(vm, 10, 0) == 0;
+    bm := vm; bm.status = EvStatus.shape;
+    #assert evg_plan_bytes(bm, 10, 2) == 0 && evg_admit_model(bm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.model;
+    bm = vm; bm.width = 0; #assert evg_plan_bytes(bm, 10, 2) == 0 && evg_admit_model(bm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.shape;
+    bm = vm; bm.n_outputs = 0; #assert evg_plan_bytes(bm, 10, 2) == 0 && evg_admit_model(bm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.shape;
+    bm = vm; bm.n_weights = 0; #assert evg_plan_bytes(bm, 10, 2) == 0 && evg_admit_model(bm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.shape;
+    bm = vm; bm.weights = weights[0..<63];
+    #assert evg_admit_model(bm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.model;
+
+    // Non-integer weight refused on metal_i64/cuda_i64, accepted on metal_ff/cuda_f64 if in range.
+    weights[17] = 1.5;
+    r_ni := evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2);
+    #assert r_ni.status == EvGpuStatus.non_integer && r_ni.bad_index == 17 && r_ni.required_bytes == req;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_i64, req, 10, 2).status == EvGpuStatus.non_integer;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_ff, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_f64, req, 10, 2).status == EvGpuStatus.ok;
+
+    // Out-of-envelope weight refused on metal_ff (> 2^48) while accepted on cuda_f64/metal_i64 (<= 2^53).
+    weights[17] = f64(EVG_FF_EXACT_MAX);
+    #assert evg_admit_model(vm, EvGpuProfile.metal_ff, req, 10, 2).status == EvGpuStatus.ok;
+    weights[17] = f64(EVG_FF_EXACT_MAX) + 1.0;
+    r_ff := evg_admit_model(vm, EvGpuProfile.metal_ff, req, 10, 2);
+    #assert r_ff.status == EvGpuStatus.range && r_ff.bad_index == 17 && r_ff.required_bytes == req;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.ok;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_f64, req, 10, 2).status == EvGpuStatus.ok;
+
+    // > 2^53 (positive & negative) refused on every profile; !(abs(w) <= lim) also refuses NaN/Inf from C callers.
+    weights[17] = f64(EV_EXACT_MAX);
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.ok;
+    weights[17] = -f64(EV_EXACT_MAX);
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.ok;
+    weights[17] = f64(EV_EXACT_MAX) * 2.0;
+    #assert evg_admit_model(vm, EvGpuProfile.metal_i64, req, 10, 2).status == EvGpuStatus.range;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_f64, req, 10, 2).status == EvGpuStatus.range;
+    weights[17] = -f64(EV_EXACT_MAX) * 2.0;
+    #assert evg_admit_model(vm, EvGpuProfile.cuda_f64, req, 10, 2).status == EvGpuStatus.range;
+    weights[17] = 0.0;
+
+    // Program & input operand envelope refusals (2^24 cliff for metal_ff vs 2^26 for metal_i64/cuda_f64).
+    p := [2]TmOp.[TmOp.{code = TmCode.push, arg = EVG_FF_VALUE_MAX}, TmOp.{code = TmCode.ret}];
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_ff) == EvGpuStatus.ok;
+    p[0].arg = -EVG_FF_VALUE_MAX;
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_ff) == EvGpuStatus.ok;
+    p[0].arg = EVG_FF_VALUE_MAX + 1;
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_ff) == EvGpuStatus.envelope;
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_i64) == EvGpuStatus.ok;
+    p[0].arg = -EVG_FF_VALUE_MAX - 1;
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_ff) == EvGpuStatus.envelope;
+    p[0].arg = EV_VALUE_MAX + 1;
+    #assert evg_admit_program(p[..], EvGpuProfile.metal_i64) == EvGpuStatus.envelope;
+    #assert evg_admit_program(p[0..<0], EvGpuProfile.metal_i64) == EvGpuStatus.shape;
+
+    ins := [2]f64.[f64(EVG_FF_VALUE_MAX), -f64(EVG_FF_VALUE_MAX)];
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_ff) == EvGpuStatus.ok;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_i64) == EvGpuStatus.ok;
+    ins[0] = 3.25;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_i64) == EvGpuStatus.non_integer;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_ff) == EvGpuStatus.ok;
+    ins[0] = f64(EVG_FF_VALUE_MAX) + 1.0;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_ff) == EvGpuStatus.envelope;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.metal_i64) == EvGpuStatus.ok;
+    ins[0] = -f64(EV_VALUE_MAX) - 1.0;
+    #assert evg_admit_inputs(ins[..], EvGpuProfile.cuda_f64) == EvGpuStatus.envelope;
+
+    // Exact 1-element boundary checks (width=1, n_outputs=1, n_weights=1, max_ctx=1, batch=1, layer 0 FFN).
+    ly1 := [1]EvLayerDesc.[EvLayerDesc.{kind = EvLayerKind.ffn, units = 7}];
+    w1 := [1]f64.[1.0];
+    m1 := EvModel.{
+        width = 1, n_layers = 1, n_heads = 0, n_inputs = 0, n_outputs = 1,
+        kv_slots = 1, n_weights = 1, layers = ly1[..], heads = heads[0..<0], weights = w1[..]
+    };
+    // w=8, kv=8, work=(2+7+4+1+4)*8=144, trace=32, desc=(3+0+2+16)*8=168 -> 360 bytes.
+    #assert evg_plan_bytes(m1, 1, 1) == 360;
+    #assert evg_admit_model(m1, EvGpuProfile.metal_i64, 360, 1, 1).status == EvGpuStatus.ok;
+    #assert evg_admit_model(m1, EvGpuProfile.metal_i64, 1, 1, 1).status == EvGpuStatus.memory;
+    w1[0] = 0.5;
+    r0 := evg_admit_model(m1, EvGpuProfile.metal_i64, 360, 1, 1);
+    #assert r0.status == EvGpuStatus.non_integer && r0.bad_index == 0;
+
+    // Trace digest matches tm_run bit-for-bit (including exact slice length & 0-step boundary).
+    prog := [3]TmOp.[TmOp.{code = TmCode.push, arg = 7}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}];
+    tr: [16]int; outs: [4]int;
+    r := tm_run(prog[..], 16, tr[..], outs[..], false);
+    #assert r.status == TmStatus.ok && r.steps == 3;
+    d: [32]u8;
+    #assert evg_trace_digest(tr[0..<r.steps * 4], r.steps, d[..]) && ev_same_digest(r.digest, d);
+    #assert evg_trace_digest(tr[..], 0, d[..]);
+    #assert !evg_trace_digest(tr[..], -1, d[..]);
+    #assert !evg_trace_digest(tr[0..<r.steps * 4 - 1], r.steps, d[..]);
+    #assert !evg_trace_digest(tr[..], r.steps, d[0..<31]);
+}

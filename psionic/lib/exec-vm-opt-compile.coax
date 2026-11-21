@@ -1,0 +1,436 @@
+// Optimal dense-weight compiler drivers for exec-vm-v1 (Attention+FFN EvModel)
+// and Ch 229 (straight-line FFN GgPlan), backed by the #authority optimal
+// scheduler & formal verifier in psionic/lib/exec-vm-sched.coax (#13916, W1.3).
+#load "exec-vm-sched.coax";
+#load "gate-graph.coax";
+
+evs_compile_ev :: (
+    nodes: []EvNode,
+    outputs: []int,
+    kv_slots: int,
+    arena: EvCompileArena,
+    layers: []EvLayerDesc,
+    heads: []EvHeadDesc,
+    weights: []f64
+) -> EvModel #export_c #effects(all) {
+    return evs_compile_ev_planted(nodes, outputs, kv_slots, arena, layers, heads, weights, EvFault.none);
+}
+
+evs_compile_ev_planted :: (
+    nodes: []EvNode,
+    outputs: []int,
+    kv_slots: int,
+    arena: EvCompileArena,
+    layers: []EvLayerDesc,
+    heads: []EvHeadDesc,
+    weights: []f64,
+    fault: EvFault
+) -> EvModel #export_c #effects(all) {
+    adm := ev_admit(nodes, outputs, kv_slots);
+    if adm.status != EvStatus.ok { return EvModel.{status = adm.status, node = adm.node}; }
+    n := nodes.count;
+    if n > EVS_MAX_NODES || !ev_arena_ok(arena, n) { return EvModel.{status = EvStatus.capacity}; }
+    has_pins := arena.kv_pin.count > 0;
+    if has_pins {
+        if arena.kv_pin.count < kv_slots || arena.kv_pin.count > arena.free_slots.count {
+            return EvModel.{status = EvStatus.capacity};
+        }
+        for p: 1..<arena.kv_pin.count {
+            v := arena.kv_pin[p];
+            if v < -1 || v >= n { return EvResult_model(EvStatus.operand, p); }
+        }
+        for o: outputs {
+            found := false;
+            for p: 1..<arena.kv_pin.count { if arena.kv_pin[p] == o { found = true; } }
+            if !found { return EvResult_model(EvStatus.operand, o); }
+        }
+    }
+
+    m: EvModel;
+    m.n_outputs = outputs.count;
+    m.kv_slots = kv_slots;
+    m.n_nodes = n;
+    m.layers = layers;
+    m.heads = heads;
+    m.weights = weights;
+
+    for i: 0..<n {
+        arena.last[i] = 0; arena.slot[i] = 0; arena.clear[i] = 0; arena.release[i] = 0; arena.kept[i] = false;
+        nd := nodes[i];
+        arena.forms[i] = ev_form_of(nodes, arena.forms, i);
+        if arena.forms[i].count == -1 { return EvResult_model(EvStatus.terms, i); }
+        if ev_coef_sum(arena.forms[i]) > f64(EV_COEF_SUM_MAX) { return EvResult_model(EvStatus.range, i); }
+        if nd.op == EvOp.input { m.n_inputs += 1; }
+        if (nd.op == EvOp.step || nd.op == EvOp.eq0) && arena.forms[nd.a].count >= EV_FORM_TERMS {
+            return EvResult_model(EvStatus.terms, i);
+        }
+        if nd.op == EvOp.select && ev_plus(arena.forms[nd.a], ev_neg(arena.forms[nd.b])).count == -1 {
+            return EvResult_model(EvStatus.terms, i);
+        }
+        if nd.op == EvOp.constant { arena.kept[i] = true; }
+    }
+    for o: outputs {
+        f := arena.forms[o];
+        for t: 0..<f.count { arena.kept[f.slots[t]] = true; }
+    }
+    if has_pins {
+        for p: 1..<arena.kv_pin.count {
+            if arena.kv_pin[p] >= 0 {
+                f := arena.forms[arena.kv_pin[p]];
+                for t: 0..<f.count { arena.kept[f.slots[t]] = true; }
+            }
+        }
+    }
+
+    sched := evs_schedule_ev(nodes, outputs, kv_slots, arena, layers, fault);
+    if sched.status != EvStatus.ok { return EvResult_model(sched.status, sched.node); }
+    m.width = sched.width;
+    n_layers := sched.n_layers;
+
+    slot_dirty: [EVS_MAX_WIDTH]bool;
+    for i: 0..<n {
+        if evs_is_base(nodes[i].op) && arena.clear[i] == 0 {
+            slot_dirty[arena.slot[i]] = true;
+        }
+    }
+
+    wb_layer := -1;
+    if has_pins {
+        if n_layers >= layers.count { return EvResult_model(EvStatus.capacity, n_layers + 1); }
+        wb_layer = n_layers;
+        layers[wb_layer] = EvLayerDesc.{kind = EvLayerKind.ffn};
+        n_layers += 1;
+    }
+    m.n_layers = n_layers;
+
+    head_cursor := 0;
+    w_cursor := 0;
+    for li: 0..<n_layers {
+        L := li + 1;
+        if layers[li].kind == EvLayerKind.ffn {
+            units := 0;
+            if li == wb_layer {
+                for p: 1..<arena.kv_pin.count {
+                    if arena.kv_pin[p] >= 0 {
+                        want := ev_map_slots(arena.forms[arena.kv_pin[p]], arena.slot);
+                        delta := ifx slot_dirty[p] then ev_plus(want, ev_term(p, -1)) else want;
+                        if delta.count == -1 { return EvResult_model(EvStatus.terms, arena.kv_pin[p]); }
+                        if delta.count > 0 { units += 1; }
+                    } else if p < kv_slots && slot_dirty[p] {
+                        units += 1;
+                    }
+                }
+            } else {
+                for i: 0..<n {
+                    if arena.layer[i] == L && ev_is_ffn(nodes[i].op) { units += ev_gate_units(nodes[i].op); }
+                    if arena.clear[i] == L { units += 1; }
+                }
+            }
+            layers[li].units = units;
+            layers[li].w_offset = w_cursor;
+            w_cursor += ev_ffn_weights(m.width, units);
+        } else {
+            layers[li].head_first = head_cursor;
+            for i: 0..<n {
+                if arena.layer[i] != L || !ev_is_attn(nodes[i].op) { continue; }
+                ni := nodes[i];
+                qf_i: EvForm;
+                if ni.op == EvOp.attn_read { qf_i = ev_map_slots(arena.forms[ni.a], arena.slot); }
+                same_before := 0;
+                for j: 0..<i {
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    same_before += 1;
+                }
+                if same_before % EV_HEAD_VALUES_MAX == 0 {
+                    if head_cursor >= heads.count { return EvResult_model(EvStatus.capacity, i); }
+                    dv := 1;
+                    seen_after := 0;
+                    for j: i + 1..<n {
+                        if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                        if ni.op == EvOp.attn_read {
+                            if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                            if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                        }
+                        if seen_after < EV_HEAD_VALUES_MAX - 1 { dv += 1; }
+                        seen_after += 1;
+                    }
+                    dk := 0;
+                    hk := EvHeadKind.uniform_sum;
+                    if ni.op == EvOp.attn_read {
+                        dk = 2;
+                        hk = ifx fault == EvFault.attn_tie_break then EvHeadKind.parabolic_oldest else EvHeadKind.parabolic_hardmax;
+                    }
+                    heads[head_cursor] = EvHeadDesc.{kind = hk, mask = ni.mask, d_k = dk, d_v = dv, w_offset = w_cursor};
+                    w_cursor += ev_head_weights(m.width, dk, dv);
+                    head_cursor += 1;
+                }
+            }
+            layers[li].head_count = head_cursor - layers[li].head_first;
+        }
+    }
+    m.n_heads = head_cursor;
+    m.w_out_offset = w_cursor;
+    w_cursor += outputs.count * m.width;
+    m.n_weights = w_cursor;
+    if weights.count < m.n_weights { return EvResult_model(EvStatus.capacity, m.n_weights); }
+    for k: 0..<m.n_weights { weights[k] = 0; }
+
+    emit_head := 0;
+    for li: 0..<n_layers {
+        L := li + 1;
+        if layers[li].kind == EvLayerKind.ffn {
+            units := layers[li].units;
+            base := layers[li].w_offset;
+            u := 0;
+            if li == wb_layer {
+                for p: 1..<arena.kv_pin.count {
+                    if arena.kv_pin[p] >= 0 {
+                        want := ev_map_slots(arena.forms[arena.kv_pin[p]], arena.slot);
+                        delta := ifx slot_dirty[p] then ev_plus(want, ev_term(p, -1)) else want;
+                        if delta.count > 0 {
+                            ev_emit_unit(weights, base, m.width, units, u, delta, ev_one(), p, 1);
+                            u += 1;
+                        }
+                    } else if p < kv_slots && slot_dirty[p] {
+                        ev_emit_unit(weights, base, m.width, units, u, ev_term(p, 1), ev_one(), p, -1);
+                        u += 1;
+                    }
+                }
+            } else {
+                for i: 1..<n {
+                    nd := nodes[i];
+                    if arena.layer[i] == L && ev_is_ffn(nd.op) {
+                        fa := ev_map_slots(arena.forms[nd.a], arena.slot);
+                        fb: EvForm;
+                        fc: EvForm;
+                        if ev_arity(nd.op) >= 2 { fb = ev_map_slots(arena.forms[nd.b], arena.slot); }
+                        if ev_arity(nd.op) == 3 { fc = ev_map_slots(arena.forms[nd.c], arena.slot); }
+                        u = ev_emit_gate(weights, base, m.width, units, u, nd.op, fa, fb, fc, arena.slot[i]);
+                    }
+                }
+                for i: 0..<n {
+                    if arena.clear[i] == L {
+                        sign := -1;
+                        if fault == EvFault.clear_sign { sign = 1; }
+                        ev_emit_unit(weights, base, m.width, units, u, ev_term(arena.slot[i], 1), ev_one(), arena.slot[i], sign);
+                        u += 1;
+                    }
+                }
+            }
+            #assert u == units;
+        } else {
+            for i: 0..<n {
+                if arena.layer[i] != L || !ev_is_attn(nodes[i].op) { continue; }
+                ni := nodes[i];
+                qf_i: EvForm;
+                if ni.op == EvOp.attn_read { qf_i = ev_map_slots(arena.forms[ni.a], arena.slot); }
+                same_before := 0;
+                for j: 0..<i {
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    same_before += 1;
+                }
+                if same_before % EV_HEAD_VALUES_MAX != 0 { continue; }
+                hd := heads[emit_head];
+                hb := hd.w_offset;
+                D := m.width;
+                if hd.d_k == 2 {
+                    for t: 0..<qf_i.count { weights[hb + qf_i.slots[t]] += f64(qf_i.coefs[t]); }
+                    weights[hb + D] = 1.0;
+                    wk_base := hb + 2 * D;
+                    weights[wk_base + ni.b] = 1.0;
+                    k2_sign := 1.0;
+                    if fault == EvFault.attn_key_sign { k2_sign = -1.0; }
+                    weights[wk_base + D + ni.c] = k2_sign;
+                }
+                wv_base := hb + 2 * hd.d_k * D;
+                wo_base := wv_base + hd.d_v * D;
+                weights[wv_base + ni.k] = 1.0;
+                weights[wo_base + arena.slot[i] * hd.d_v] = 1.0;
+                r := 1;
+                for j: i + 1..<n {
+                    if r >= hd.d_v { break; }
+                    if arena.layer[j] != L || nodes[j].op != ni.op || nodes[j].mask != ni.mask { continue; }
+                    if ni.op == EvOp.attn_read {
+                        if nodes[j].b != ni.b || nodes[j].c != ni.c { continue; }
+                        if !ev_forms_equal(ev_map_slots(arena.forms[nodes[j].a], arena.slot), qf_i) { continue; }
+                    }
+                    weights[wv_base + r * D + nodes[j].k] = 1.0;
+                    weights[wo_base + arena.slot[j] * hd.d_v + r] = 1.0;
+                    r += 1;
+                }
+                #assert r == hd.d_v;
+                emit_head += 1;
+            }
+        }
+    }
+    #assert emit_head == m.n_heads;
+
+    for k: 0..<outputs.count {
+        row_base := m.w_out_offset + k * m.width;
+        if has_pins {
+            for p: 1..<arena.kv_pin.count {
+                if arena.kv_pin[p] == outputs[k] {
+                    weights[row_base + p] = 1.0;
+                    break;
+                }
+            }
+        } else {
+            f := ev_map_slots(arena.forms[outputs[k]], arena.slot);
+            for t: 0..<f.count { weights[row_base + f.slots[t]] += f64(f.coefs[t]); }
+        }
+    }
+    return m;
+}
+
+evs_gg_to_ev_op :: (op: GgOp) -> EvOp #effects(all) {
+    if op == GgOp.input { return EvOp.input; }
+    if op == GgOp.add { return EvOp.add; }
+    if op == GgOp.sub { return EvOp.sub; }
+    if op == GgOp.scale { return EvOp.scale; }
+    if op == GgOp.mul { return EvOp.mul; }
+    if op == GgOp.relu { return EvOp.relu; }
+    if op == GgOp.step { return EvOp.step; }
+    if op == GgOp.eq0 { return EvOp.eq0; }
+    if op == GgOp.select { return EvOp.select; }
+    return EvOp.constant;
+}
+
+evs_compile_gg :: (nodes: []GgNode, outputs: []int, weights: []f64) -> GgPlan #export_c #effects(all) {
+    return evs_compile_gg_planted(nodes, outputs, weights, GgFault.none);
+}
+
+evs_compile_gg_planted :: (nodes: []GgNode, outputs: []int, weights: []f64, fault: GgFault) -> GgPlan #export_c #effects(all) {
+    admitted := gg_admit(nodes, outputs);
+    if admitted.status != GgStatus.ok { return GgPlan.{status = admitted.status, node = admitted.node}; }
+
+    n := nodes.count;
+    forms: [GG_NODES_MAX]RaForm;
+    ev_nodes: [GG_NODES_MAX]EvNode;
+    ev_forms: [GG_NODES_MAX]EvForm;
+    kept: [GG_NODES_MAX]bool;
+    last: [GG_NODES_MAX]int;
+    release: [GG_NODES_MAX]int;
+    free_slots: [RA_WIDTH_MAX]bool;
+    empty_pin: [1]int;
+    plan: GgPlan;
+    plan.outputs = outputs.count;
+    plan.nodes = n;
+
+    for i: 0..<n {
+        nd := nodes[i];
+        forms[i] = gg_form_of(nodes, forms[..], i);
+        if forms[i].count == -1 { return GgPlan.{status = GgStatus.terms, node = i}; }
+        if gg_coef_sum(forms[i]) > f64(GG_COEF_SUM_MAX) { return GgPlan.{status = GgStatus.range, node = i}; }
+        if nd.op == GgOp.input { plan.inputs += 1; plan.values += 1; }
+        if gg_gate(nd.op) { plan.values += 1; }
+        if (nd.op == GgOp.step || nd.op == GgOp.eq0) && forms[nd.a].count >= RA_TERMS {
+            return GgPlan.{status = GgStatus.terms, node = i};
+        }
+        if nd.op == GgOp.select && ra_plus(forms[nd.a], ra_neg(forms[nd.b])).count == -1 {
+            return GgPlan.{status = GgStatus.terms, node = i};
+        }
+        ev_nodes[i] = EvNode.{op = evs_gg_to_ev_op(nd.op), a = nd.a, b = nd.b, c = nd.c, k = nd.k};
+        ev_forms[i] = ev_form_of(ev_nodes[0..<n], ev_forms[..], i);
+        if nd.op == GgOp.constant { kept[i] = true; }
+    }
+    for o: outputs {
+        f := forms[o];
+        for t: 0..<f.count { kept[f.slots[t]] = true; }
+    }
+
+    ev_fault := EvFault.none;
+    if fault == GgFault.early_reuse { ev_fault = EvFault.early_reuse; }
+    if fault == GgFault.same_layer { ev_fault = EvFault.same_layer; }
+    if fault == GgFault.no_clear { ev_fault = EvFault.no_clear; }
+    if fault == GgFault.clear_sign { ev_fault = EvFault.clear_sign; }
+
+    arena := EvCompileArena.{
+        forms = ev_forms[0..<n], layer = plan.layer[0..<n], last = last[0..<n],
+        slot = plan.slot[0..<n], clear = plan.clear[0..<n], release = release[0..<n],
+        kept = kept[0..<n], free_slots = free_slots[..], kv_pin = empty_pin[0..<0]
+    };
+    ly_desc: [GG_LAYERS_MAX]EvLayerDesc;
+    sched := evs_schedule_ev(ev_nodes[0..<n], outputs, 0, arena, ly_desc[..], ev_fault);
+    if sched.status != EvStatus.ok {
+        return GgPlan.{status = ifx sched.node == n then GgStatus.width else GgStatus.layers};
+    }
+    plan.layers = sched.n_layers;
+    plan.width = sched.width;
+
+    for i: 0..<n {
+        if gg_gate(nodes[i].op) { plan.units[plan.layer[i] - 1] += gg_units(nodes[i].op); }
+        if plan.clear[i] >= 1 { plan.units[plan.clear[i] - 1] += 1; }
+    }
+    for L: 0..<plan.layers {
+        if plan.units[L] > RA_UNITS_MAX { return GgPlan.{status = GgStatus.units, node = L}; }
+        plan.weights += ra_weight_count(plan.width, plan.units[L]);
+    }
+    if weights.count < plan.weights { return GgPlan.{status = GgStatus.capacity}; }
+    for k: 0..<plan.weights { weights[k] = 0; }
+
+    base := 0;
+    for li: 0..<plan.layers {
+        L := li + 1;
+        units := plan.units[li];
+        w_slice := weights[base..<base + ra_weight_count(plan.width, units)];
+        u := 0;
+        for i: 1..<n {
+            nd := nodes[i];
+            if plan.layer[i] == L && gg_gate(nd.op) {
+                a := gg_slots(forms[nd.a], plan.slot[..]);
+                t := plan.slot[i];
+                if nd.op == GgOp.mul { u = ra_mul(w_slice, plan.width, units, u, a, gg_slots(forms[nd.b], plan.slot[..]), t); }
+                if nd.op == GgOp.relu { u = ra_relu(w_slice, plan.width, units, u, a, t); }
+                if nd.op == GgOp.step { u = ra_step(w_slice, plan.width, units, u, a, t); }
+                if nd.op == GgOp.eq0 { u = ra_eq0(w_slice, plan.width, units, u, a, t); }
+                if nd.op == GgOp.select { u = ra_select(w_slice, plan.width, units, u, gg_slots(forms[nd.c], plan.slot[..]), a, gg_slots(forms[nd.b], plan.slot[..]), t); }
+            }
+        }
+        for i: 0..<n {
+            if plan.clear[i] == L {
+                sign := -1;
+                if fault == GgFault.clear_sign { sign = 1; }
+                #assert ra_unit(w_slice, plan.width, units, u, ra_term(plan.slot[i], 1), ra_one(), plan.slot[i], sign);
+                u += 1;
+            }
+        }
+        #assert u == units;
+        base += ra_weight_count(plan.width, units);
+    }
+    for k: 0..<outputs.count { plan.out[k] = gg_slots(forms[outputs[k]], plan.slot[..]); }
+    return plan;
+}
+
+#test "optimal compiler reduces width, layers, and weights while matching dense forward passes" {
+    g := [13]GgNode.[
+        GgNode.{op = GgOp.input, k = 0},
+        GgNode.{op = GgOp.relu, a = 0}, GgNode.{op = GgOp.relu, a = 1},
+        GgNode.{op = GgOp.relu, a = 2}, GgNode.{op = GgOp.relu, a = 3},
+        GgNode.{op = GgOp.constant, k = 1},
+        GgNode.{op = GgOp.add, a = 0, b = 5}, GgNode.{op = GgOp.sub, a = 0, b = 5},
+        GgNode.{op = GgOp.step, a = 0}, GgNode.{op = GgOp.eq0, a = 0},
+        GgNode.{op = GgOp.relu, a = 6}, GgNode.{op = GgOp.relu, a = 7},
+        GgNode.{op = GgOp.mul, a = 4, b = 10}
+    ];
+    outs := [4]int.[8, 9, 11, 12];
+    wg: [8192]f64; wo: [8192]f64;
+    pg := gg_compile(g[..], outs[..], wg[..]);
+    po := evs_compile_gg(g[..], outs[..], wo[..]);
+    #assert pg.status == GgStatus.ok && po.status == GgStatus.ok;
+    #assert po.layers == pg.layers && po.width < pg.width && po.weights < pg.weights;
+    for x: -2..<4 {
+        ins := [1]int.[x]; want: [4]int; og: [4]f64; oo: [4]f64;
+        #assert gg_eval(g[..], ins[..], outs[..], want[..]).status == GgStatus.ok;
+        #assert gg_run(pg, wg[..], ins[..], og[..], false, false) == GgStatus.ok;
+        #assert gg_run(po, wo[..], ins[..], oo[..], false, false) == GgStatus.ok;
+        for k: 0..<4 { #assert og[k] == f64(want[k]) && oo[k] == f64(want[k]); }
+    }
+}
