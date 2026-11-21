@@ -51,6 +51,7 @@ typedef struct {
   void (*text_paste)(void*,const char*,size_t);
   void (*text_error)(void *user,const char *message);
   // The pointer came over the window: set its cursor (a desktop app's; a realm hides it and draws its own).
+  // NULL when the seat lost its pointer: forget the one given before.
   void (*pointer_enter)(void *user,struct wl_pointer *pointer,uint32_t serial);
   const char *app_id;   // the window's application id; a realm's when not given
 } VkwTo;
@@ -168,10 +169,25 @@ static const struct wl_output_listener vkw_output_listener = {.geometry = vkw_ge
 static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t n) {
  (void)d;(void)k;
 #ifdef ENGINE_WAYLAND_INPUT_V1
- if(vkw_->to.realm_key){if(!hwi_sdk_keymap(&vkw_->input,f,fd,n)){fprintf(stderr,"vk-realm: keyboard map refused\n");vkw_->closed=1;}return;}
+ // A keymap it cannot use (none, which a compositor may send between keyboards, or one that does not
+ // compile) keeps the keymap it has: the window stays open and the keyboard as it was.
+ if(vkw_->to.realm_key){if(!hwi_sdk_keymap(&vkw_->input,f,fd,n))fprintf(stderr,"vk-realm: keyboard map refused; the last one is kept\n");return;}
 #endif
  (void)f;(void)n;close(fd);
 }
+#if defined(ENGINE_WAYLAND_INPUT_V1) && defined(ENGINE_WAYLAND_TEXT_V1)
+// The key hwt_paste judges, by what it types in the layout in use: Control-V is the key that types v
+// (Dvorak's, AZERTY's, a virtual keyboard's), Shift-Insert the Insert key; any other Latin letter is no
+// paste. A key with no Latin letter (a Cyrillic layout) keeps its place, the physical V, as GTK does.
+static int vkw_paste_code(int code){
+ if(!vkw_->input.state)return code;
+ xkb_keysym_t sym=xkb_state_key_get_one_sym(vkw_->input.state,(xkb_keycode_t)code+8);
+ if(sym==XKB_KEY_v||sym==XKB_KEY_V)return KEY_V;
+ if(sym==XKB_KEY_Insert||sym==XKB_KEY_KP_Insert)return KEY_INSERT;
+ if((sym>=XKB_KEY_a&&sym<=XKB_KEY_z)||(sym>=XKB_KEY_A&&sym<=XKB_KEY_Z))return -1;
+ return code;
+}
+#endif
 static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) {
   (void)d; (void)k; (void)s; (void)w;
   if(vkw_->to.focus)vkw_->to.focus(vkw_->to.user,1);
@@ -229,7 +245,7 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
 #ifdef ENGINE_WAYLAND_TEXT_V1
    HwtSdk*t=&vkw_->text_sdk;t->serial=serial;vkw_text_sync(vkw_,pressed&&hwt_boundary(code));
    if(!pressed&&vkw_->pasted_down[code]){vkw_->pasted_down[code]=0;return;}
-   if(pressed&&hwt_paste(code,hwi_sdk_mods(&vkw_->input),hwt_wants(t))){vkw_->pasted_down[code]=1;if(!hwt_paste_start(t))hwt_error(t,"Clipboard unavailable");return;}
+   if(pressed&&hwt_paste(vkw_paste_code(code),hwi_sdk_mods(&vkw_->input),hwt_wants(t))){vkw_->pasted_down[code]=1;if(!hwt_paste_start(t))hwt_error(t,"Clipboard unavailable");return;}
    if(pressed&&t->preedit&&vkw_->input.state){xkb_keysym_t sym=xkb_state_key_get_one_sym(vkw_->input.state,code+8);if(hwi_text(hwt_wants(t),hwi_sdk_mods(&vkw_->input),hwi_key(sym,xkb_keysym_to_utf32(sym)))){vkw_->input.text_down[code]=1;return;}}
 #endif
    hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);vkw_text_sync(vkw_,0);return;}
@@ -335,8 +351,22 @@ static const struct wl_pointer_listener vkw_pt_listener = {.enter = vkw_pt_enter
 #endif
 };
 
+// The seat's devices come and go (the last keyboard unplugged, a KVM switch, a virtual keyboard's
+// session): a capability that goes is let go like a leave, so nothing stays held, and its object is
+// released, so the device that comes next is bound again rather than lost for the window's life.
 static void vkw_caps(void *d, struct wl_seat *seat, uint32_t caps) {
   (void)d;
+  if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && vkw_->keyboard) {
+    if (vkw_->keyboard_focused) vkw_kb_leave(NULL, vkw_->keyboard, 0, NULL);
+    if (wl_proxy_get_version((struct wl_proxy *)vkw_->keyboard) >= 3) wl_keyboard_release(vkw_->keyboard); else wl_keyboard_destroy(vkw_->keyboard);
+    vkw_->keyboard = NULL;
+  }
+  if (!(caps & WL_SEAT_CAPABILITY_POINTER) && vkw_->pointer) {
+    vkw_pt_leave(NULL, vkw_->pointer, 0, NULL);
+    if (vkw_->to.pointer_enter) vkw_->to.pointer_enter(vkw_->to.user, NULL, 0);   // the cursor's pointer is gone too
+    if (wl_proxy_get_version((struct wl_proxy *)vkw_->pointer) >= 3) wl_pointer_release(vkw_->pointer); else wl_pointer_destroy(vkw_->pointer);
+    vkw_->pointer = NULL;
+  }
   if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !vkw_->keyboard) {
     vkw_->keyboard = wl_seat_get_keyboard(seat);
     wl_keyboard_add_listener(vkw_->keyboard, &vkw_kb_listener, NULL);

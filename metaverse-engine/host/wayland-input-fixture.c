@@ -44,6 +44,13 @@ int main(int argc,char **argv){
 #endif
  vkw_pt_axis(NULL,pointer,0,WL_POINTER_AXIS_HORIZONTAL_SCROLL,wl_fixed_from_double(3));vkw_pt_frame(NULL,pointer);
  window.x=20;window.y=30;vkw_pt_button(NULL,pointer,0,0,BTN_LEFT,WL_POINTER_BUTTON_STATE_PRESSED);vkw_pt_leave(NULL,pointer,0,NULL);row(7,window.down,0,0);vkw_pt_motion(NULL,pointer,0,wl_fixed_from_int(-20),wl_fixed_from_int(300));vkw_pt_button(NULL,pointer,0,0,BTN_LEFT,WL_POINTER_BUTTON_STATE_RELEASED);
+ // The seat loses its keyboard and pointer and gets them again (an unplug, a KVM switch): each is let go and bound again.
+ window.keyboard=wl_seat_get_keyboard(seat);window.pointer=wl_seat_get_pointer(seat);   // unfocused: a leave here would add a focus row
+ vkw_caps(NULL,seat,0);if(window.keyboard||window.pointer)return 3;
+ vkw_caps(NULL,seat,WL_SEAT_CAPABILITY_KEYBOARD|WL_SEAT_CAPABILITY_POINTER);if(!window.keyboard||!window.pointer)return 3;
+ vkw_caps(NULL,seat,0);
+ // A keymap the window cannot use (none, as a compositor may send between keyboards) keeps the one it has and the window open.
+ vkw_keymap(NULL,NULL,WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,open("/dev/null",O_RDONLY),0);if(window.closed||!window.input.state)return 3;
  wl_pointer_destroy(pointer);wl_seat_destroy(seat);wl_registry_destroy(registry);wl_display_disconnect(display);close(pair[1]);hwi_sdk_close(&window.input);row(8,window.input.context==NULL,window.input.map==NULL,window.input.state==NULL);
  printf("]}\n");xkb_keymap_unref(map);xkb_context_unref(ctx);return 0;
 }
