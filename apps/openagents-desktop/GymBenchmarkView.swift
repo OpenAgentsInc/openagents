@@ -1,4 +1,4 @@
-// Firm reason: 6 (AppKit live Psionic Metal vs llama.cpp coding benchmark workbench view inside Gym).
+// Firm reason: 6 (AppKit host for live Psionic Metal vs llama.cpp coding benchmark workbench using embedded Coax GPU chat views).
 import AppKit
 import Foundation
 
@@ -20,6 +20,8 @@ struct GymBenchTaskResult: Codable {
     var decode_tok_s: Double
     var ttfts: [Double]
     var checks: [[String]] // [name, "pass"|"fail"]
+    var prompt: String?
+    var chat_events: [String]?
 }
 
 struct GymBenchBackendReport: Codable {
@@ -58,7 +60,179 @@ private struct GymBenchStreamTurn {
     var promptTokens: Int
     var completionTokens: Int
     var content: String
+    var reasoning: String
     var toolCalls: [[String: Any]]
+}
+
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+// MARK: - Embedded Real OpenAgents GPU Chat Component
+
+private final class GymChatSurfaceView: NSView {
+    private let headerBar = NSView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let badgeLabel = NSTextField(labelWithString: "Ready")
+    private let headerDivider = NSView()
+    private let hostContainer = NSView()
+
+    private var page: UnsafeMutableRawPointer?
+    private var gpuView: NSView?
+    private var frameTimer: Timer?
+    private var owedFrames = 6
+
+    init(title: String, accent: NSColor) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.backgroundColor = NSColor(red: 0.045, green: 0.050, blue: 0.062, alpha: 1).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = accent.withAlphaComponent(0.32).cgColor
+        layer?.masksToBounds = true
+
+        headerBar.translatesAutoresizingMaskIntoConstraints = false
+        headerBar.wantsLayer = true
+        headerBar.layer?.backgroundColor = NSColor(red: 0.072, green: 0.078, blue: 0.095, alpha: 1).cgColor
+        addSubview(headerBar)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.stringValue = title
+        titleLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        titleLabel.textColor = accent
+        headerBar.addSubview(titleLabel)
+
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        badgeLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        badgeLabel.textColor = NSColor(white: 0.68, alpha: 1)
+        badgeLabel.alignment = .right
+        badgeLabel.lineBreakMode = .byTruncatingTail
+        headerBar.addSubview(badgeLabel)
+
+        headerDivider.translatesAutoresizingMaskIntoConstraints = false
+        headerDivider.wantsLayer = true
+        headerDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        addSubview(headerDivider)
+
+        hostContainer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hostContainer)
+
+        NSLayoutConstraint.activate([
+            headerBar.topAnchor.constraint(equalTo: topAnchor),
+            headerBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            headerBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            headerBar.heightAnchor.constraint(equalToConstant: 28),
+
+            titleLabel.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: 10),
+
+            badgeLabel.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+            badgeLabel.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 8),
+            badgeLabel.trailingAnchor.constraint(equalTo: headerBar.trailingAnchor, constant: -10),
+
+            headerDivider.topAnchor.constraint(equalTo: headerBar.bottomAnchor),
+            headerDivider.leadingAnchor.constraint(equalTo: leadingAnchor),
+            headerDivider.trailingAnchor.constraint(equalTo: trailingAnchor),
+            headerDivider.heightAnchor.constraint(equalToConstant: 1),
+
+            hostContainer.topAnchor.constraint(equalTo: headerDivider.bottomAnchor),
+            hostContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hostContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hostContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        openCoaxChat()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        frameTimer?.invalidate()
+        if let p = page {
+            cd_close(p)
+            page = nil
+        }
+    }
+
+    private func openCoaxChat() {
+        guard let res = Bundle.main.resourceURL?.appendingPathComponent("Components").path else { return }
+        guard let p = cd_open(res) else { return }
+        page = p
+        cd_toggle_sidebar(p)
+        _ = cd_pick_model(p, "inkling")
+        cd_env(p, 0, 0)
+        if let rawView = cd_view(p) {
+            let v = Unmanaged<NSView>.fromOpaque(rawView).takeUnretainedValue()
+            v.translatesAutoresizingMaskIntoConstraints = false
+            hostContainer.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.topAnchor.constraint(equalTo: hostContainer.topAnchor),
+                v.leadingAnchor.constraint(equalTo: hostContainer.leadingAnchor),
+                v.trailingAnchor.constraint(equalTo: hostContainer.trailingAnchor),
+                v.bottomAnchor.constraint(equalTo: hostContainer.bottomAnchor),
+            ])
+            gpuView = v
+        }
+        owedFrames = 6
+        startFrameTimer()
+    }
+
+    private func startFrameTimer() {
+        frameTimer?.invalidate()
+        let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.tickFrame()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        frameTimer = t
+    }
+
+    private func tickFrame() {
+        guard let p = page, window != nil, !isHiddenOrHasHiddenAncestor else { return }
+        if owedFrames > 0 || cd_moving(p) != 0 {
+            cd_frame(p)
+            if owedFrames > 0 { owedFrames -= 1 }
+        }
+    }
+
+    func wake() {
+        owedFrames = max(owedFrames, 4)
+    }
+
+    func setBadge(_ text: String) {
+        badgeLabel.stringValue = text
+    }
+
+    func startTask(prompt: String, taskName: String) {
+        guard let p = page else { return }
+        cd_line(p, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}")
+        _ = cd_new(p)
+        cd_folder(p, taskName)
+        _ = cd_set_text(p, prompt)
+        _ = cd_submit(p)
+        while cd_action(p) != 0 {}
+        wake()
+    }
+
+    func feedLine(_ jsonLine: String) {
+        guard let p = page else { return }
+        cd_line(p, jsonLine)
+        wake()
+    }
+
+    func replay(prompt: String, taskName: String, events: [String], badge: String) {
+        setBadge(badge)
+        startTask(prompt: prompt, taskName: taskName)
+        for ev in events {
+            feedLine(ev)
+        }
+        wake()
+    }
+
+    static func encodeJSON(_ obj: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj),
+              let s = String(data: data, encoding: .utf8) else { return "{}" }
+        return s
+    }
 }
 
 // MARK: - Per-Task Race Row View
@@ -90,7 +264,7 @@ private final class GymBenchTaskRowView: NSView {
         self.spec = spec
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 6
+        layer?.cornerRadius = 5
         layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.025).cgColor
         setup()
     }
@@ -100,7 +274,7 @@ private final class GymBenchTaskRowView: NSView {
     private func setup() {
         taskLabel.translatesAutoresizingMaskIntoConstraints = false
         taskLabel.stringValue = spec.id
-        taskLabel.font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
+        taskLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
         taskLabel.textColor = NSColor(white: 0.92, alpha: 1)
         taskLabel.lineBreakMode = .byTruncatingTail
         addSubview(taskLabel)
@@ -146,11 +320,11 @@ private final class GymBenchTaskRowView: NSView {
         llamaBarWidth = llamaBarFill.widthAnchor.constraint(equalToConstant: 0)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 36),
+            heightAnchor.constraint(equalToConstant: 30),
 
             taskLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             taskLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            taskLabel.widthAnchor.constraint(equalToConstant: 176),
+            taskLabel.widthAnchor.constraint(equalToConstant: 170),
 
             langBadge.leadingAnchor.constraint(equalTo: taskLabel.trailingAnchor, constant: 4),
             langBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -158,8 +332,8 @@ private final class GymBenchTaskRowView: NSView {
 
             psiBarTrack.leadingAnchor.constraint(equalTo: langBadge.trailingAnchor, constant: 12),
             psiBarTrack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            psiBarTrack.heightAnchor.constraint(equalToConstant: 10),
-            psiBarTrack.widthAnchor.constraint(equalToConstant: 110),
+            psiBarTrack.heightAnchor.constraint(equalToConstant: 9),
+            psiBarTrack.widthAnchor.constraint(equalToConstant: 100),
 
             psiBarFill.leadingAnchor.constraint(equalTo: psiBarTrack.leadingAnchor),
             psiBarFill.topAnchor.constraint(equalTo: psiBarTrack.topAnchor),
@@ -168,12 +342,12 @@ private final class GymBenchTaskRowView: NSView {
 
             psiValueLabel.leadingAnchor.constraint(equalTo: psiBarTrack.trailingAnchor, constant: 8),
             psiValueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            psiValueLabel.widthAnchor.constraint(equalToConstant: 150),
+            psiValueLabel.widthAnchor.constraint(equalToConstant: 145),
 
             llamaBarTrack.leadingAnchor.constraint(equalTo: psiValueLabel.trailingAnchor, constant: 8),
             llamaBarTrack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            llamaBarTrack.heightAnchor.constraint(equalToConstant: 10),
-            llamaBarTrack.widthAnchor.constraint(equalToConstant: 110),
+            llamaBarTrack.heightAnchor.constraint(equalToConstant: 9),
+            llamaBarTrack.widthAnchor.constraint(equalToConstant: 100),
 
             llamaBarFill.leadingAnchor.constraint(equalTo: llamaBarTrack.leadingAnchor),
             llamaBarFill.topAnchor.constraint(equalTo: llamaBarTrack.topAnchor),
@@ -182,7 +356,7 @@ private final class GymBenchTaskRowView: NSView {
 
             llamaValueLabel.leadingAnchor.constraint(equalTo: llamaBarTrack.trailingAnchor, constant: 8),
             llamaValueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            llamaValueLabel.widthAnchor.constraint(equalToConstant: 150),
+            llamaValueLabel.widthAnchor.constraint(equalToConstant: 145),
 
             deltaLabel.leadingAnchor.constraint(equalTo: llamaValueLabel.trailingAnchor, constant: 6),
             deltaLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
@@ -229,7 +403,7 @@ private final class GymBenchTaskRowView: NSView {
     }
 
     private func applyState(_ state: GymBenchRowState, fill: NSView, widthConstraint: NSLayoutConstraint, label: NSTextField, isPsionic: Bool, maxS: Double) {
-        let trackW: CGFloat = 110
+        let trackW: CGFloat = 100
         switch state {
         case .pending:
             widthConstraint.constant = 0
@@ -291,7 +465,7 @@ private final class GymBenchScoreCard: NSView {
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.stringValue = title
-        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
         titleLabel.textColor = accent
         addSubview(titleLabel)
 
@@ -302,40 +476,40 @@ private final class GymBenchScoreCard: NSView {
         addSubview(subtitleLabel)
 
         passLabel.translatesAutoresizingMaskIntoConstraints = false
-        passLabel.font = NSFont.monospacedSystemFont(ofSize: 15, weight: .bold)
+        passLabel.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .bold)
         passLabel.textColor = NSColor(white: 0.95, alpha: 1)
         addSubview(passLabel)
 
         wallLabel.translatesAutoresizingMaskIntoConstraints = false
-        wallLabel.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+        wallLabel.font = NSFont.monospacedSystemFont(ofSize: 17, weight: .bold)
         wallLabel.textColor = NSColor(white: 0.98, alpha: 1)
         wallLabel.alignment = .right
         addSubview(wallLabel)
 
         metricsLabel.translatesAutoresizingMaskIntoConstraints = false
-        metricsLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
+        metricsLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         metricsLabel.textColor = NSColor(white: 0.72, alpha: 1)
         metricsLabel.lineBreakMode = .byTruncatingTail
         addSubview(metricsLabel)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 82),
+            heightAnchor.constraint(equalToConstant: 72),
 
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
 
             subtitleLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 8),
 
-            wallLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            wallLabel.topAnchor.constraint(equalTo: topAnchor, constant: 7),
             wallLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
 
-            passLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            passLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
             passLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
 
             metricsLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             metricsLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            metricsLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
+            metricsLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
         ])
     }
 
@@ -391,17 +565,22 @@ final class GymBenchmarkView: NSView {
         subtitle: "llama-server --jinja",
         accent: NSColor(calibratedRed: 0.96, green: 0.68, blue: 0.28, alpha: 1)
     )
-    private let deltaBanner = NSTextField(labelWithString: "Click Run Benchmark to execute live side-by-side coding evals on this Mac.")
+    private let deltaBanner = NSTextField(labelWithString: "Click Run Benchmark to watch Psionic Metal vs llama.cpp race live in our GPU chat components.")
 
-    private let colHeaderLabel = NSTextField(labelWithString: "TASK                        TYPE     PSIONIC METAL (Coax → Metal 4)                  LLAMA.CPP METAL (--jinja)                       DELTA")
     private let rowsScroll = NSScrollView()
     private let rowsStack = NSStackView()
     private var rowViews: [String: GymBenchTaskRowView] = [:]
     private var activeSpecs: [GymBenchTaskSpec] = allTenTasks
 
-    private let streamHeader = NSTextField(labelWithString: "Live Agent Stream & Deterministic Checks")
-    private let streamScroll = NSScrollView()
-    private let streamTextView = NSTextView()
+    // Two real side-by-side OpenAgents Coax GPU chat components!
+    private let psiChatView = GymChatSurfaceView(
+        title: "Psionic Metal · Inkling 2 Mini",
+        accent: NSColor(calibratedRed: 0.24, green: 0.90, blue: 0.62, alpha: 1)
+    )
+    private let llamaChatView = GymChatSurfaceView(
+        title: "llama.cpp Metal · Inkling 2 Mini",
+        accent: NSColor(calibratedRed: 0.96, green: 0.68, blue: 0.28, alpha: 1)
+    )
 
     // Runtime state
     private var isRunning = false
@@ -483,7 +662,7 @@ final class GymBenchmarkView: NSView {
         addSubview(loadSavedButton)
 
         phaseLabel.translatesAutoresizingMaskIntoConstraints = false
-        phaseLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+        phaseLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium)
         phaseLabel.textColor = NSColor(white: 0.68, alpha: 1)
         phaseLabel.lineBreakMode = .byTruncatingTail
         addSubview(phaseLabel)
@@ -494,26 +673,21 @@ final class GymBenchmarkView: NSView {
         addSubview(llamaCard)
 
         deltaBanner.translatesAutoresizingMaskIntoConstraints = false
-        deltaBanner.font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .semibold)
+        deltaBanner.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
         deltaBanner.textColor = NSColor(calibratedRed: 0.72, green: 0.90, blue: 0.84, alpha: 1)
         deltaBanner.alignment = .center
         deltaBanner.wantsLayer = true
-        deltaBanner.layer?.cornerRadius = 6
+        deltaBanner.layer?.cornerRadius = 5
         deltaBanner.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.04).cgColor
         addSubview(deltaBanner)
 
-        colHeaderLabel.translatesAutoresizingMaskIntoConstraints = false
-        colHeaderLabel.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold)
-        colHeaderLabel.textColor = NSColor(white: 0.48, alpha: 1)
-        addSubview(colHeaderLabel)
-
         rowsStack.orientation = .vertical
         rowsStack.alignment = .leading
-        rowsStack.spacing = 4
-        rowsStack.edgeInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        rowsStack.spacing = 3
+        rowsStack.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
         rowsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let rowsDoc = NSView()
+        let rowsDoc = FlippedView()
         rowsDoc.translatesAutoresizingMaskIntoConstraints = false
         rowsDoc.addSubview(rowsStack)
         NSLayoutConstraint.activate([
@@ -530,37 +704,18 @@ final class GymBenchmarkView: NSView {
         rowsScroll.documentView = rowsDoc
         addSubview(rowsScroll)
 
-        streamHeader.translatesAutoresizingMaskIntoConstraints = false
-        streamHeader.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-        streamHeader.textColor = NSColor(white: 0.82, alpha: 1)
-        addSubview(streamHeader)
-
-        streamTextView.isEditable = false
-        streamTextView.isSelectable = true
-        streamTextView.drawsBackground = true
-        streamTextView.backgroundColor = NSColor(red: 0.04, green: 0.045, blue: 0.058, alpha: 1)
-        streamTextView.textColor = NSColor(white: 0.82, alpha: 1)
-        streamTextView.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
-        streamTextView.textContainerInset = NSSize(width: 8, height: 6)
-
-        streamScroll.translatesAutoresizingMaskIntoConstraints = false
-        streamScroll.hasVerticalScroller = true
-        streamScroll.autohidesScrollers = true
-        streamScroll.borderType = .noBorder
-        streamScroll.wantsLayer = true
-        streamScroll.layer?.cornerRadius = 6
-        streamScroll.layer?.borderWidth = 1
-        streamScroll.layer?.borderColor = NSColor(white: 1.0, alpha: 0.08).cgColor
-        streamScroll.documentView = streamTextView
-        addSubview(streamScroll)
+        psiChatView.translatesAutoresizingMaskIntoConstraints = false
+        llamaChatView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(psiChatView)
+        addSubview(llamaChatView)
 
         NSLayoutConstraint.activate([
-            suitePopup.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            suitePopup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            suitePopup.widthAnchor.constraint(equalToConstant: 320),
+            suitePopup.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            suitePopup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            suitePopup.widthAnchor.constraint(equalToConstant: 310),
 
             runButton.centerYAnchor.constraint(equalTo: suitePopup.centerYAnchor),
-            runButton.leadingAnchor.constraint(equalTo: suitePopup.trailingAnchor, constant: 10),
+            runButton.leadingAnchor.constraint(equalTo: suitePopup.trailingAnchor, constant: 8),
 
             stopButton.centerYAnchor.constraint(equalTo: suitePopup.centerYAnchor),
             stopButton.leadingAnchor.constraint(equalTo: runButton.trailingAnchor, constant: 6),
@@ -568,41 +723,38 @@ final class GymBenchmarkView: NSView {
             loadSavedButton.centerYAnchor.constraint(equalTo: suitePopup.centerYAnchor),
             loadSavedButton.leadingAnchor.constraint(equalTo: stopButton.trailingAnchor, constant: 6),
 
-            phaseLabel.topAnchor.constraint(equalTo: suitePopup.bottomAnchor, constant: 8),
-            phaseLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            phaseLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            phaseLabel.topAnchor.constraint(equalTo: suitePopup.bottomAnchor, constant: 6),
+            phaseLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            phaseLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
 
-            psiCard.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: 10),
-            psiCard.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            psiCard.trailingAnchor.constraint(equalTo: centerXAnchor, constant: -6),
+            psiCard.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: 8),
+            psiCard.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            psiCard.trailingAnchor.constraint(equalTo: centerXAnchor, constant: -5),
 
-            llamaCard.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: 10),
-            llamaCard.leadingAnchor.constraint(equalTo: centerXAnchor, constant: 6),
-            llamaCard.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            llamaCard.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: 8),
+            llamaCard.leadingAnchor.constraint(equalTo: centerXAnchor, constant: 5),
+            llamaCard.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
 
-            deltaBanner.topAnchor.constraint(equalTo: psiCard.bottomAnchor, constant: 8),
-            deltaBanner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            deltaBanner.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            deltaBanner.heightAnchor.constraint(equalToConstant: 26),
+            deltaBanner.topAnchor.constraint(equalTo: psiCard.bottomAnchor, constant: 6),
+            deltaBanner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            deltaBanner.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            deltaBanner.heightAnchor.constraint(equalToConstant: 24),
 
-            colHeaderLabel.topAnchor.constraint(equalTo: deltaBanner.bottomAnchor, constant: 12),
-            colHeaderLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 26),
-            colHeaderLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-
-            rowsScroll.topAnchor.constraint(equalTo: colHeaderLabel.bottomAnchor, constant: 4),
-            rowsScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            rowsScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            rowsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 220),
+            rowsScroll.topAnchor.constraint(equalTo: deltaBanner.bottomAnchor, constant: 8),
+            rowsScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            rowsScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            rowsScroll.heightAnchor.constraint(equalToConstant: 120),
             rowsDoc.widthAnchor.constraint(equalTo: rowsScroll.widthAnchor),
 
-            streamHeader.topAnchor.constraint(equalTo: rowsScroll.bottomAnchor, constant: 10),
-            streamHeader.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            psiChatView.topAnchor.constraint(equalTo: rowsScroll.bottomAnchor, constant: 8),
+            psiChatView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            psiChatView.trailingAnchor.constraint(equalTo: centerXAnchor, constant: -5),
+            psiChatView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
 
-            streamScroll.topAnchor.constraint(equalTo: streamHeader.bottomAnchor, constant: 6),
-            streamScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            streamScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            streamScroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
-            streamScroll.heightAnchor.constraint(equalToConstant: 175),
+            llamaChatView.topAnchor.constraint(equalTo: rowsScroll.bottomAnchor, constant: 8),
+            llamaChatView.leadingAnchor.constraint(equalTo: centerXAnchor, constant: 5),
+            llamaChatView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            llamaChatView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
         ])
     }
 
@@ -629,22 +781,35 @@ final class GymBenchmarkView: NSView {
         for (k, v) in rowViews {
             v.setSelected(k == id)
         }
-        if !isRunning {
-            var lines: [String] = ["=== Task Details: \(id) ==="]
-            if let p = psiResults[id] {
-                let ttftStr = p.ttfts.map { String(format: "%.2fs", $0) }.joined(separator: ", ")
-                let chkStr = p.checks.map { "\($0[1] == "pass" ? "✓" : "✗") \($0[0])" }.joined(separator: "  ")
-                lines.append(String(format: "Psionic Metal   : %@  %.2fs  %d turns  %d tok  %.1f tok/s  TTFTs=[%@]", p.passed ? "PASS" : "FAIL", p.wall_s, p.turns, p.toks, p.decode_tok_s, ttftStr))
-                lines.append("  Checks        : \(chkStr)")
+        guard !isRunning else { return }
+        if let p = psiResults[id] {
+            let badge = String(format: "%@ · %.2fs · %.1f tok/s", p.passed ? "PASS" : "FAIL", p.wall_s, p.decode_tok_s)
+            if let prompt = p.prompt, let events = p.chat_events, !events.isEmpty {
+                psiChatView.replay(prompt: prompt, taskName: id, events: events, badge: badge)
+            } else {
+                let summary = Self.formatSummaryMarkdown(p)
+                psiChatView.replay(prompt: "Task: \(id)", taskName: id, events: [
+                    GymChatSurfaceView.encodeJSON(["kind": "ended", "ending": "finished", "text": summary]),
+                ], badge: badge)
             }
-            if let l = llamaResults[id] {
-                let ttftStr = l.ttfts.map { String(format: "%.2fs", $0) }.joined(separator: ", ")
-                let chkStr = l.checks.map { "\($0[1] == "pass" ? "✓" : "✗") \($0[0])" }.joined(separator: "  ")
-                lines.append(String(format: "llama.cpp Metal : %@  %.2fs  %d turns  %d tok  %.1f tok/s  TTFTs=[%@]", l.passed ? "PASS" : "FAIL", l.wall_s, l.turns, l.toks, l.decode_tok_s, ttftStr))
-                lines.append("  Checks        : \(chkStr)")
-            }
-            streamTextView.string = lines.joined(separator: "\n") + "\n"
         }
+        if let l = llamaResults[id] {
+            let badge = String(format: "%@ · %.2fs · %.1f tok/s", l.passed ? "PASS" : "FAIL", l.wall_s, l.decode_tok_s)
+            if let prompt = l.prompt, let events = l.chat_events, !events.isEmpty {
+                llamaChatView.replay(prompt: prompt, taskName: id, events: events, badge: badge)
+            } else {
+                let summary = Self.formatSummaryMarkdown(l)
+                llamaChatView.replay(prompt: "Task: \(id)", taskName: id, events: [
+                    GymChatSurfaceView.encodeJSON(["kind": "ended", "ending": "finished", "text": summary]),
+                ], badge: badge)
+            }
+        }
+    }
+
+    private static func formatSummaryMarkdown(_ r: GymBenchTaskResult) -> String {
+        let ttftStr = r.ttfts.map { String(format: "%.2fs", $0) }.joined(separator: ", ")
+        let checksMd = r.checks.map { "- \($0[1] == "pass" ? "✓" : "✗") `\($0[0])`" }.joined(separator: "\n")
+        return String(format: "**%@** in **%.2fs** (%d turns · %d tok · %.1f tok/s)\n\nTTFTs: `%@`\n\n%@", r.passed ? "PASS" : "FAIL", r.wall_s, r.turns, r.toks, r.decode_tok_s, ttftStr, checksMd)
     }
 
     @objc private func suiteChanged() {
@@ -696,13 +861,6 @@ final class GymBenchmarkView: NSView {
             try? fh.close()
         } else {
             try? Data((line + "\n").utf8).write(to: logURL)
-        }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            let cur = self.streamTextView.string
-            let next = cur.count > 48000 ? String(cur.suffix(32000)) + line + "\n" : cur + line + "\n"
-            self.streamTextView.string = next
-            self.streamTextView.scrollToEndOfDocument(nil)
         }
     }
 
@@ -802,7 +960,7 @@ final class GymBenchmarkView: NSView {
         guard let data = try? Data(contentsOf: url),
               let saved = try? JSONDecoder().decode(GymBenchSavedRun.self, from: data) else {
             if !silent {
-                appendLog("[info] No saved benchmark found at \(url.path).")
+                phaseLabel.stringValue = "No saved benchmark found at \(url.path)."
             }
             return
         }
@@ -825,7 +983,10 @@ final class GymBenchmarkView: NSView {
             }
         }
         refreshScoreboards()
-        phaseLabel.stringValue = "Loaded saved run (\(saved.timestamp)) — click any row for details or Run Benchmark for a fresh live run."
+        phaseLabel.stringValue = "Loaded saved run (\(saved.timestamp)) — click any task row to inspect both transcripts, or click Run Benchmark."
+        if let first = activeSpecs.first(where: { psiResults[$0.id] != nil || llamaResults[$0.id] != nil }) {
+            selectTask(first.id)
+        }
     }
 
     private func saveRun() {
@@ -865,7 +1026,7 @@ final class GymBenchmarkView: NSView {
         }
     }
 
-    // MARK: - Live Benchmark Execution Engine (Native Swift)
+    // MARK: - Live Benchmark Execution Engine (Native Swift -> Coax GPU Chat Views)
 
     private func terminateServer(_ proc: Process) {
         guard proc.isRunning else { return }
@@ -887,6 +1048,10 @@ final class GymBenchmarkView: NSView {
         }
     }
 
+    private func chatView(for side: GymBenchSide) -> GymChatSurfaceView {
+        side == .psionic ? psiChatView : llamaChatView
+    }
+
     private func startBenchmarkRun() {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
@@ -894,19 +1059,19 @@ final class GymBenchmarkView: NSView {
         let llamaBin = "\(home)/.openagents/bin/llama-server"
 
         guard fm.fileExists(atPath: modelPath) else {
-            appendLog("[error] Missing model checkpoint: \(modelPath)")
+            phaseLabel.stringValue = "Missing model checkpoint: \(modelPath)"
             return
         }
         guard let psi = resolvePsionicBinaries() else {
-            appendLog("[error] Could not locate psionic-inkling-serve + inkling-kernels.metal.")
+            phaseLabel.stringValue = "Could not locate psionic-inkling-serve + inkling-kernels.metal."
             return
         }
         guard fm.isExecutableFile(atPath: llamaBin) else {
-            appendLog("[error] Missing llama-server at \(llamaBin)")
+            phaseLabel.stringValue = "Missing llama-server at \(llamaBin)"
             return
         }
         guard let evalRoot = resolveEvalRoot() else {
-            appendLog("[error] Could not locate evals/openagents-desktop/ in workspace.")
+            phaseLabel.stringValue = "Could not locate evals/openagents-desktop/."
             return
         }
 
@@ -923,7 +1088,8 @@ final class GymBenchmarkView: NSView {
         }
         psiCard.reset(total: activeSpecs.count)
         llamaCard.reset(total: activeSpecs.count)
-        streamTextView.string = ""
+        psiChatView.setBadge("Booting…")
+        llamaChatView.setBadge("Queued")
         deltaBanner.stringValue = "Running live head-to-head benchmark…"
         let specs = activeSpecs
 
@@ -951,7 +1117,7 @@ final class GymBenchmarkView: NSView {
                 if !self.cancelFlag {
                     self.saveRun()
                     self.refreshScoreboards()
-                    self.phaseLabel.stringValue = "Benchmark complete! Saved to ~/.openagents/gym/last-benchmark.json."
+                    self.phaseLabel.stringValue = "Benchmark complete! Click any task row above to inspect both GPU chat transcripts."
                     self.appendLog("[done] Head-to-head benchmark finished and saved.")
                 }
                 self.setRunningUI(false)
@@ -962,6 +1128,7 @@ final class GymBenchmarkView: NSView {
     private func runSide(side: GymBenchSide, executable: String, args: [String], port: Int, evalRoot: URL, specs: [GymBenchTaskSpec]) {
         DispatchQueue.main.async {
             self.phaseLabel.stringValue = "Booting \(side.rawValue)…"
+            self.chatView(for: side).setBadge("Booting…")
         }
         appendLog("\n=== Starting \(side.rawValue) on port \(port) ===")
 
@@ -997,12 +1164,13 @@ final class GymBenchmarkView: NSView {
         appendLog(String(format: "[boot] %@ ready in %.3fs (RSS %.1f MiB)", side.rawValue, bootS, bootRss))
 
         // Warmup
-        _ = streamTurn(port: port, messages: [["role": "user", "content": "hi"]], maxTokens: 8, onDelta: nil)
+        _ = streamTurn(port: port, messages: [["role": "user", "content": "hi"]], maxTokens: 8, onStream: nil)
 
         for (idx, spec) in specs.enumerated() {
             if cancelFlag { break }
             DispatchQueue.main.async {
                 self.phaseLabel.stringValue = "Running \(side.rawValue) [\(idx + 1)/\(specs.count)] \(spec.id)…"
+                for (k, v) in self.rowViews { v.setSelected(k == spec.id) }
             }
             let result = runSingleTask(side: side, port: port, pid: proc.processIdentifier, evalRoot: evalRoot, spec: spec)
             DispatchQueue.main.async {
@@ -1024,7 +1192,7 @@ final class GymBenchmarkView: NSView {
               let steps = taskObj["steps"] as? [[String: Any]],
               let prompt = steps.first?["send"] as? String else {
             appendLog("[error] Failed to load task spec \(taskFile.path)")
-            return GymBenchTaskResult(task: spec.id, tier: spec.tier, passed: false, wall_s: 0, turns: 0, toks: 0, decode_tok_s: 0, ttfts: [], checks: [["load_spec", "fail"]])
+            return GymBenchTaskResult(task: spec.id, tier: spec.tier, passed: false, wall_s: 0, turns: 0, toks: 0, decode_tok_s: 0, ttfts: [], checks: [["load_spec", "fail"]], prompt: nil, chat_events: nil)
         }
 
         let fixDir = tierDir.appendingPathComponent("fixtures/\(fixtureName)")
@@ -1040,27 +1208,51 @@ final class GymBenchmarkView: NSView {
             ["role": "user", "content": prompt],
         ]
 
+        var recordedEvents: [String] = []
+        let emitChat: ([String: Any]) -> Void = { [weak self] obj in
+            let line = GymChatSurfaceView.encodeJSON(obj)
+            recordedEvents.append(line)
+            DispatchQueue.main.async {
+                self?.chatView(for: side).feedLine(line)
+            }
+        }
+
+        DispatchQueue.main.async {
+            let cv = self.chatView(for: side)
+            cv.setBadge("\(spec.id) · Turn 1")
+            cv.startTask(prompt: prompt, taskName: spec.id)
+        }
+
         appendLog("[\(side.rawValue)] ▶ \(spec.id) (\(spec.langBadge))")
         let t0 = CFAbsoluteTimeGetCurrent()
         var ttfts: [Double] = []
         var totalToks = 0
         var totalDecodeS = 0.0
         var turns = 0
+        var lastAssistantText = ""
 
         for turnIdx in 1...8 {
             if cancelFlag { break }
             turns = turnIdx
             DispatchQueue.main.async {
+                self.chatView(for: side).setBadge("\(spec.id) · Turn \(turnIdx) prefill…")
                 self.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: 0, activeTool: ""), scaleMaxSeconds: 25.0)
             }
             var streamedChars = 0
-            let turnStart = CFAbsoluteTimeGetCurrent()
-            let tr = streamTurn(port: port, messages: messages, maxTokens: 1024) { [weak self] chunkChars, elapsedTurn in
-                streamedChars += chunkChars
+            let tr = streamTurn(port: port, messages: messages, maxTokens: 1024) { [weak self] deltaContent, deltaReason, elapsedDecode in
+                streamedChars += deltaContent.count + deltaReason.count
                 let approxTok = Double(streamedChars) / 4.0
-                let rate = elapsedTurn > 0.2 ? approxTok / elapsedTurn : 0
+                let rate = elapsedDecode > 0.2 ? approxTok / elapsedDecode : 0
                 DispatchQueue.main.async {
-                    self?.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: rate, activeTool: ""), scaleMaxSeconds: 25.0)
+                    guard let self else { return }
+                    let cv = self.chatView(for: side)
+                    if !deltaContent.isEmpty {
+                        cv.feedLine(GymChatSurfaceView.encodeJSON(["kind": "reply", "text": deltaContent]))
+                    }
+                    if rate > 0.1 {
+                        cv.setBadge(String(format: "%@ · T%d · %.0f tok/s", spec.id, turnIdx, rate))
+                    }
+                    self.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: rate, activeTool: ""), scaleMaxSeconds: 25.0)
                 }
             }
             let rssNow = pollRssMiB(pid: pid)
@@ -1068,6 +1260,14 @@ final class GymBenchmarkView: NSView {
                 if side == .psionic { self.psiPeakRss = max(self.psiPeakRss, rssNow) }
                 else { self.llamaPeakRss = max(self.llamaPeakRss, rssNow) }
                 self.refreshScoreboards()
+            }
+
+            if !tr.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                emitChat(["kind": "thought", "text": tr.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)])
+            }
+            if !tr.content.isEmpty {
+                lastAssistantText = tr.content
+                emitChat(["kind": "reply", "text": tr.content])
             }
 
             ttfts.append(tr.ttft)
@@ -1088,14 +1288,21 @@ final class GymBenchmarkView: NSView {
                 let argStr = (fn["arguments"] as? String) ?? "{}"
                 let argObj = (try? JSONSerialization.jsonObject(with: Data(argStr.utf8)) as? [String: Any]) ?? [:]
                 DispatchQueue.main.async {
+                    self.chatView(for: side).setBadge("\(spec.id) · T\(turnIdx) · \(fnName)")
                     self.rowViews[spec.id]?.update(side: side, state: .running(turn: turnIdx, elapsed: CFAbsoluteTimeGetCurrent() - t0, tokRate: turnTokRate, activeTool: fnName), scaleMaxSeconds: 25.0)
                 }
-                let toolOut = execTool(workdir: tmpDir, name: fnName, args: argObj)
+                let (toolOut, exitCode) = execTool(workdir: tmpDir, name: fnName, args: argObj)
                 let preview = (argObj["path"] as? String) ?? (argObj["command"] as? String) ?? ""
                 appendLog("    ↳ \(fnName)(\(preview.prefix(64)))")
+                if fnName == "Read" {
+                    emitChat(["kind": "view", "path": preview, "found": !toolOut.hasPrefix("(file not found")])
+                } else if fnName == "Write" {
+                    emitChat(["kind": "command", "command": "Write \(preview)", "exit": 0, "timed_out": false, "output": toolOut])
+                } else {
+                    emitChat(["kind": "command", "command": preview, "exit": Int(exitCode), "timed_out": false, "output": String(toolOut.prefix(1200))])
+                }
                 messages.append(["role": "tool", "tool_call_id": tcId, "content": toolOut])
             }
-            _ = turnStart
         }
 
         let wallS = CFAbsoluteTimeGetCurrent() - t0
@@ -1103,6 +1310,13 @@ final class GymBenchmarkView: NSView {
         let decodeTokS = totalDecodeS > 0 ? Double(totalToks) / totalDecodeS : 0
         let chkSummary = checks.map { "\($0[1] == "pass" ? "✓" : "✗") \($0[0])" }.joined(separator: "  ")
         appendLog(String(format: "  ⇒ %@ in %.2fs (%d turns, %d tok, %.1f tok/s)  %@", passed ? "PASS" : "FAIL", wallS, turns, totalToks, decodeTokS, chkSummary))
+
+        let verdictFooter = String(format: "\n\n---\n**%@** · `%.2fs` · `%d turns` · `%d tok` · `%.1f tok/s`  \n%@", passed ? "✓ PASS" : "✗ FAIL", wallS, turns, totalToks, decodeTokS, chkSummary)
+        let finalReply = (lastAssistantText.isEmpty ? "Completed." : lastAssistantText) + verdictFooter
+        emitChat(["kind": "ended", "ending": "finished", "text": finalReply])
+        DispatchQueue.main.async {
+            self.chatView(for: side).setBadge(String(format: "%@ · %@ %.2fs (%.1f tok/s)", spec.id, passed ? "PASS" : "FAIL", wallS, decodeTokS))
+        }
 
         return GymBenchTaskResult(
             task: spec.id,
@@ -1113,7 +1327,9 @@ final class GymBenchmarkView: NSView {
             toks: totalToks,
             decode_tok_s: (decodeTokS * 10).rounded() / 10,
             ttfts: ttfts.map { ($0 * 1000).rounded() / 1000 },
-            checks: checks
+            checks: checks,
+            prompt: prompt,
+            chat_events: recordedEvents
         )
     }
 
@@ -1179,7 +1395,7 @@ final class GymBenchmarkView: NSView {
         return ((kb / 1024.0) * 10).rounded() / 10
     }
 
-    private func streamTurn(port: Int, messages: [[String: Any]], maxTokens: Int, onDelta: ((Int, Double) -> Void)?) -> GymBenchStreamTurn {
+    private func streamTurn(port: Int, messages: [[String: Any]], maxTokens: Int, onStream: ((String, String, Double) -> Void)?) -> GymBenchStreamTurn {
         let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
         let payload: [String: Any] = [
             "model": "inkling-2-mini",
@@ -1199,22 +1415,25 @@ final class GymBenchmarkView: NSView {
 
         let t0 = CFAbsoluteTimeGetCurrent()
         let sem = DispatchSemaphore(value: 0)
-        var result = GymBenchStreamTurn(ttft: 0, dur: 0, promptTokens: 0, completionTokens: 0, content: "", toolCalls: [])
+        var result = GymBenchStreamTurn(ttft: 0, dur: 0, promptTokens: 0, completionTokens: 0, content: "", reasoning: "", toolCalls: [])
 
         final class SSEDelegate: NSObject, URLSessionDataDelegate {
             let t0: Double
-            let onDelta: ((Int, Double) -> Void)?
+            let onStream: ((String, String, Double) -> Void)?
             let done: (GymBenchStreamTurn) -> Void
             var buf = Data()
             var ttft: Double?
             var content = ""
+            var reasoning = ""
+            var pendingContent = ""
+            var pendingReason = ""
             var promptTokens = 0
             var completionTokens = 0
             var tcMap: [Int: (id: String, name: String, args: String)] = [:]
             var lastUI = 0.0
 
-            init(t0: Double, onDelta: ((Int, Double) -> Void)?, done: @escaping (GymBenchStreamTurn) -> Void) {
-                self.t0 = t0; self.onDelta = onDelta; self.done = done
+            init(t0: Double, onStream: ((String, String, Double) -> Void)?, done: @escaping (GymBenchStreamTurn) -> Void) {
+                self.t0 = t0; self.onStream = onStream; self.done = done
             }
 
             func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
@@ -1240,7 +1459,8 @@ final class GymBenchmarkView: NSView {
                     if !ct.isEmpty || !rc.isEmpty || !tcs.isEmpty {
                         if ttft == nil { ttft = CFAbsoluteTimeGetCurrent() - t0 }
                     }
-                    if !ct.isEmpty { content += ct }
+                    if !ct.isEmpty { content += ct; pendingContent += ct }
+                    if !rc.isEmpty { reasoning += rc; pendingReason += rc }
                     for tc in tcs {
                         let idx = (tc["index"] as? Int) ?? 0
                         let fn = (tc["function"] as? [String: Any]) ?? [:]
@@ -1251,9 +1471,11 @@ final class GymBenchmarkView: NSView {
                         tcMap[idx] = entry
                     }
                     let now = CFAbsoluteTimeGetCurrent()
-                    if now - lastUI > 0.12 {
+                    if now - lastUI > 0.08 && (!pendingContent.isEmpty || !pendingReason.isEmpty) {
                         lastUI = now
-                        onDelta?(ct.count + rc.count, now - (t0 + (ttft ?? 0)))
+                        let cOut = pendingContent; let rOut = pendingReason
+                        pendingContent = ""; pendingReason = ""
+                        onStream?(cOut, rOut, now - (t0 + (ttft ?? 0)))
                     }
                 }
             }
@@ -1275,12 +1497,13 @@ final class GymBenchmarkView: NSView {
                     promptTokens: promptTokens,
                     completionTokens: completionTokens,
                     content: content,
+                    reasoning: reasoning,
                     toolCalls: tcs
                 ))
             }
         }
 
-        let delegate = SSEDelegate(t0: t0, onDelta: onDelta) { tr in
+        let delegate = SSEDelegate(t0: t0, onStream: onStream) { tr in
             result = tr
             sem.signal()
         }
@@ -1294,25 +1517,26 @@ final class GymBenchmarkView: NSView {
         return result
     }
 
-    private func execTool(workdir: URL, name: String, args: [String: Any]) -> String {
+    private func execTool(workdir: URL, name: String, args: [String: Any]) -> (String, Int32) {
         let fm = FileManager.default
         if name == "Read" {
             let rel = ((args["path"] as? String) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let full = workdir.appendingPathComponent(rel)
-            return (try? String(contentsOf: full, encoding: .utf8)) ?? "(file not found: \(rel))"
+            if let txt = try? String(contentsOf: full, encoding: .utf8) { return (txt, 0) }
+            return ("(file not found: \(rel))", 1)
         } else if name == "Write" {
             let rel = ((args["path"] as? String) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let content = (args["content"] as? String) ?? ""
             let full = workdir.appendingPathComponent(rel)
             try? fm.createDirectory(at: full.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? Data(content.utf8).write(to: full)
-            return "Wrote \(rel) (\(content.utf8.count) bytes)."
+            return ("Wrote \(rel) (\(content.utf8.count) bytes).", 0)
         } else if name == "Bash" {
             let cmd = (args["command"] as? String) ?? ""
             let (code, out) = runShell(cmd, cwd: workdir)
-            return "exit=\(code)\n\(out.trimmingCharacters(in: .whitespacesAndNewlines))"
+            return ("exit=\(code)\n\(out.trimmingCharacters(in: .whitespacesAndNewlines))", code)
         }
-        return "(unknown tool \(name))"
+        return ("(unknown tool \(name))", 1)
     }
 
     private func runShell(_ cmd: String, cwd: URL) -> (Int32, String) {
