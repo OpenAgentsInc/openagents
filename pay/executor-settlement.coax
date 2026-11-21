@@ -1,0 +1,179 @@
+// Executor Network Verdict-Gated Two-Leg Escrow & Rolling Daily Cap Policy (GitHub #13922).
+//
+// Bitcoin / Lightning / Spark satoshis only. Every payout intent for a WORKER or
+// VALIDATOR leg passes through this #authority policy before any satoshis move:
+// - Requires EXACT_REPLAY or TRAINING_ACCEPTED verdict (FAILED/UNVERIFIED withheld).
+// - Strictly one payout per (receipt_id, leg) — duplicate deliveries refused.
+// - Enforces owner-signed arming, per-payout cap, per-pubkey daily cap, and
+//   global rolling 24-hour UTC period cap (monotonic utc_day reset).
+// - Enforces truthful `real_bitcoin_moved` receipt reporting (never claims real
+//   movement without a settled Spark/Lightning payment hash).
+#authority;
+
+ES_MAX_SAT :: 2_100_000_000_000_000;
+
+ES_LEG_WORKER :: 1;
+ES_LEG_VALIDATOR :: 2;
+
+ES_VERDICT_EXACT_REPLAY :: 1;
+ES_VERDICT_TRAINING_ACCEPTED :: 2;
+ES_VERDICT_FAILED :: 3;
+ES_VERDICT_UNVERIFIED :: 4;
+
+ES_RELEASE :: 0;
+ES_HOLD_OWNER :: 1;
+ES_WITHHOLD_FAILED :: 2;
+ES_REFUSE_DUPLICATE :: 3;
+ES_REFUSE_BAD_INPUT :: 4;
+
+EsPolicy :: struct {
+  owner_armed: bool;
+  per_payout_cap_sat: int;
+  per_pubkey_daily_cap_sat: int;
+  global_daily_cap_sat: int;
+}
+
+EsPeriodState :: struct {
+  utc_day: int;
+  global_spent_sat: int;
+  pubkey_spent_sat: int;
+}
+
+EsPayoutRequest :: struct {
+  leg: int;
+  verdict: int;
+  amount_sat: int;
+  utc_day: int;
+  already_paid_leg: bool;
+}
+
+// Monotonic rolling 24-hour UTC period reset: advances to a newer utc_day by
+// zeroing daily counters; never resets backwards on stale/out-of-order timestamps.
+es_roll_period :: (st: EsPeriodState, req_utc_day: int) -> EsPeriodState #effects() {
+  if req_utc_day > st.utc_day {
+    return EsPeriodState.{
+      utc_day = req_utc_day,
+      global_spent_sat = 0,
+      pubkey_spent_sat = 0
+    };
+  }
+  return st;
+}
+
+// Decides whether a WORKER or VALIDATOR leg payout may release, must be held for
+// owner review, must be withheld on failed verdict, or refused as duplicate/invalid.
+es_admit_payout :: (pol: EsPolicy, st: EsPeriodState, req: EsPayoutRequest) -> int #effects(traps) {
+  if req.leg != ES_LEG_WORKER && req.leg != ES_LEG_VALIDATOR { return ES_REFUSE_BAD_INPUT; }
+  if req.amount_sat <= 0 || req.amount_sat > ES_MAX_SAT { return ES_REFUSE_BAD_INPUT; }
+  if req.utc_day <= 0 { return ES_REFUSE_BAD_INPUT; }
+  if req.already_paid_leg { return ES_REFUSE_DUPLICATE; }
+  if req.verdict == ES_VERDICT_FAILED { return ES_WITHHOLD_FAILED; }
+  if req.verdict != ES_VERDICT_EXACT_REPLAY && req.verdict != ES_VERDICT_TRAINING_ACCEPTED {
+    return ES_HOLD_OWNER;
+  }
+  if !pol.owner_armed { return ES_HOLD_OWNER; }
+  cur := es_roll_period(st, req.utc_day);
+  if pol.per_payout_cap_sat > 0 && req.amount_sat > pol.per_payout_cap_sat { return ES_HOLD_OWNER; }
+  if pol.per_pubkey_daily_cap_sat > 0 && cur.pubkey_spent_sat + req.amount_sat > pol.per_pubkey_daily_cap_sat {
+    return ES_HOLD_OWNER;
+  }
+  if pol.global_daily_cap_sat > 0 && cur.global_spent_sat + req.amount_sat > pol.global_daily_cap_sat {
+    return ES_HOLD_OWNER;
+  }
+  return ES_RELEASE;
+}
+
+// Truthful settlement receipt invariant: real_bitcoin_moved may be true ONLY when
+// settled_sat > 0 AND a non-empty settlement payment_id was returned by Spark/LN.
+es_receipt_truthful :: (real_bitcoin_moved: bool, settled_sat: int, has_payment_id: bool) -> bool #effects() {
+  if real_bitcoin_moved {
+    return settled_sat > 0 && has_payment_id;
+  }
+  return true;
+}
+
+#test "executor-settlement: two-leg escrow, idempotency, rolling UTC caps & truthful receipts (#13922)" {
+  pol := EsPolicy.{
+    owner_armed = true,
+    per_payout_cap_sat = 5000,
+    per_pubkey_daily_cap_sat = 10000,
+    global_daily_cap_sat = 50000
+  };
+  st := EsPeriodState.{utc_day = 20778, global_spent_sat = 46000, pubkey_spent_sat = 6000};
+
+  // Both WORKER and VALIDATOR legs release on EXACT_REPLAY and TRAINING_ACCEPTED
+  req_w := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 4000, utc_day = 20778, already_paid_leg = false};
+  #assert es_admit_payout(pol, st, req_w) == ES_RELEASE;
+  req_v := req_w; req_v.leg = ES_LEG_VALIDATOR; req_v.verdict = ES_VERDICT_TRAINING_ACCEPTED;
+  #assert es_admit_payout(pol, st, req_v) == ES_RELEASE;
+
+  // Duplicate leg refused (zero double-spend)
+  dup := req_w; dup.already_paid_leg = true;
+  #assert es_admit_payout(pol, st, dup) == ES_REFUSE_DUPLICATE;
+
+  // Failed verdict withheld; unverified held for owner
+  fail := req_w; fail.verdict = ES_VERDICT_FAILED;
+  #assert es_admit_payout(pol, st, fail) == ES_WITHHOLD_FAILED;
+  unv := req_w; unv.verdict = ES_VERDICT_UNVERIFIED;
+  #assert es_admit_payout(pol, st, unv) == ES_HOLD_OWNER;
+
+  // Unarmed policy holds for owner
+  unarmed := pol; unarmed.owner_armed = false;
+  #assert es_admit_payout(unarmed, st, req_w) == ES_HOLD_OWNER;
+
+  // Bad inputs refused (invalid leg, zero/negative/over-MAX_SAT amount, non-positive utc_day)
+  bad_leg := req_w; bad_leg.leg = 0;
+  #assert es_admit_payout(pol, st, bad_leg) == ES_REFUSE_BAD_INPUT;
+  bad_amt0 := req_w; bad_amt0.amount_sat = 0;
+  #assert es_admit_payout(pol, st, bad_amt0) == ES_REFUSE_BAD_INPUT;
+  bad_amt_hi := req_w; bad_amt_hi.amount_sat = ES_MAX_SAT + 1;
+  #assert es_admit_payout(pol, st, bad_amt_hi) == ES_REFUSE_BAD_INPUT;
+  bad_day := req_w; bad_day.utc_day = 0;
+  #assert es_admit_payout(pol, st, bad_day) == ES_REFUSE_BAD_INPUT;
+
+  // Exact MAX_SAT with unbounded (0) caps releases
+  unb := EsPolicy.{owner_armed = true, per_payout_cap_sat = 0, per_pubkey_daily_cap_sat = 0, global_daily_cap_sat = 0};
+  st0 := EsPeriodState.{utc_day = 1, global_spent_sat = 0, pubkey_spent_sat = 0};
+  max_r := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = ES_MAX_SAT, utc_day = 1, already_paid_leg = false};
+  #assert es_admit_payout(unb, st0, max_r) == ES_RELEASE;
+
+  // Per-payout cap boundary (1 sat exact release, 5000 sat exact cap release, 5001 hold)
+  cap1 := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1, per_pubkey_daily_cap_sat = 0, global_daily_cap_sat = 0};
+  r1 := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 1, utc_day = 1, already_paid_leg = false};
+  #assert es_admit_payout(cap1, st0, r1) == ES_RELEASE;
+  r2 := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 2, utc_day = 1, already_paid_leg = false};
+  #assert es_admit_payout(cap1, st0, r2) == ES_HOLD_OWNER;
+  eq_p := req_w; eq_p.amount_sat = 5000;
+  #assert es_admit_payout(pol, st0, eq_p) == ES_RELEASE;
+  over_p := req_w; over_p.amount_sat = 5001;
+  #assert es_admit_payout(pol, st0, over_p) == ES_HOLD_OWNER;
+
+  // Per-pubkey daily cap boundary (6000 + 4001 > 10000 -> hold; 1-sat cap boundary)
+  over_pk := req_w; over_pk.amount_sat = 4001;
+  #assert es_admit_payout(pol, st, over_pk) == ES_HOLD_OWNER;
+  pk1 := EsPolicy.{owner_armed = true, per_payout_cap_sat = 0, per_pubkey_daily_cap_sat = 1, global_daily_cap_sat = 0};
+  #assert es_admit_payout(pk1, st0, r2) == ES_HOLD_OWNER;
+
+  // Global daily cap boundary (46000 + 4001 > 50000 -> hold; 1-sat cap boundary)
+  st_glob := EsPeriodState.{utc_day = 20778, global_spent_sat = 46000, pubkey_spent_sat = 0};
+  #assert es_admit_payout(pol, st_glob, over_pk) == ES_HOLD_OWNER;
+  gl1 := EsPolicy.{owner_armed = true, per_payout_cap_sat = 0, per_pubkey_daily_cap_sat = 0, global_daily_cap_sat = 1};
+  #assert es_admit_payout(gl1, st0, r2) == ES_HOLD_OWNER;
+
+  // Rolling 24-hour UTC period reset: next UTC day (20779) resets spent counters so 4001 releases!
+  next_day := over_pk; next_day.utc_day = 20779;
+  #assert es_admit_payout(pol, st, next_day) == ES_RELEASE;
+  // Stale/same day does NOT reset
+  same_r := es_roll_period(st, 20778);
+  #assert same_r.utc_day == 20778 && same_r.global_spent_sat == 46000 && same_r.pubkey_spent_sat == 6000;
+  old_r := es_roll_period(st, 20777);
+  #assert old_r.utc_day == 20778 && old_r.global_spent_sat == 46000;
+  new_r := es_roll_period(st, 20779);
+  #assert new_r.utc_day == 20779 && new_r.global_spent_sat == 0 && new_r.pubkey_spent_sat == 0;
+
+  // Truthful settlement receipt invariant
+  #assert es_receipt_truthful(true, 1, true);
+  #assert !es_receipt_truthful(true, 0, true);
+  #assert !es_receipt_truthful(true, 100, false);
+  #assert es_receipt_truthful(false, 0, false);
+}
