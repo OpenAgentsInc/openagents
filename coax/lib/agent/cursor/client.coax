@@ -70,6 +70,7 @@ CuClient :: struct {
   agent: [48] u8; agent_n: int;          // the agent's name in errors (cu_start); "" is Cursor's
   agent_ver: [64] u8; agent_ver_n: int;  // agentInfo.version from initialize
   has_auto_mode: bool;                   // "auto" advertised in modes.availableModes
+  mcp_buf: [4096] u8; mcp_n: int;        // comma-separated JSON objects for session/* mcpServers (#13833)
   runtime_mode: [32] u8; runtime_mode_n: int;  // active session mode id
   pending_mode: [32] u8; pending_mode_n: int;  // mode requested by cu_set_mode
   cmds: [CU_CMD_BUF] u8; cmds_n: int;    // newline-delimited advertised command names
@@ -82,6 +83,49 @@ cu_init :: (c: [] CuClient, line: [] u8, arena: [] u8, out: [] u8) {
 cu_session_id :: (c: [] CuClient) -> string { return cast(string) c[0].session[0..<c[0].session_n]; }
 cu_version :: (c: [] CuClient) -> string { return cast(string) c[0].agent_ver[0..<c[0].agent_ver_n]; }
 cu_has_auto_mode :: (c: [] CuClient) -> bool { return c[0].has_auto_mode; }
+cu_init_has_http_mcp :: (result: string) -> bool { return cl_bool(result, "agentCapabilities.mcpCapabilities.http").value; }
+cu_mcp_clear :: (c: [] CuClient) { c[0].mcp_n = 0; }
+cu_mcp_servers :: (c: [] CuClient) -> string { return cast(string) c[0].mcp_buf[0..<c[0].mcp_n]; }
+
+CU_MCP_BUF :: 4096;
+cu_mcp_append :: (c: [] CuClient, entry: string) -> bool {
+  if entry.count == 0 { return false; }
+  need := entry.count + (ifx c[0].mcp_n != 0 then 1 else 0);
+  if c[0].mcp_n + need > CU_MCP_BUF { return false; }
+  if c[0].mcp_n != 0 { c[0].mcp_buf[c[0].mcp_n] = ','; c[0].mcp_n += 1; }
+  c[0].mcp_n += cl_copy(c[0].mcp_buf[c[0].mcp_n..<CU_MCP_BUF], entry);
+  return true;
+}
+
+// Append an HTTP MCP server entry to session/* mcpServers (GitHub #13833).
+// bearer_token is serialized as an Authorization: Bearer header and never logged.
+cu_mcp_add_http :: (c: [] CuClient, name: string, url: string, bearer_token: string) -> bool {
+  if name.count == 0 || url.count == 0 { return false; }
+  tb: [1536] u8; o := [1] ClOut.[ClOut.{buf = tb[..]}];
+  cl_put(o[..], "{\"type\":\"http\",\"name\":"); cl_put_string(o[..], name);
+  cl_put(o[..], ",\"url\":"); cl_put_string(o[..], url);
+  cl_put(o[..], ",\"headers\":[");
+  if bearer_token.count > 0 {
+    hb: [512] u8; hn := cl_copy(hb[..], "Bearer "); hn += cl_copy(hb[hn..<hb.count], bearer_token);
+    cl_put(o[..], "{\"name\":\"Authorization\",\"value\":"); cl_put_string(o[..], cast(string) hb[0..<hn]); cl_put(o[..], "}");
+  }
+  cl_put(o[..], "]}");
+  if o[0].failed { return false; }
+  return cu_mcp_append(c, cast(string) tb[0..<o[0].len]);
+}
+
+// Append a stdio MCP server entry to session/* mcpServers (GitHub #13833).
+// args_json is a JSON array string (e.g. "[\"mcp\"]") or "" for [].
+cu_mcp_add_stdio :: (c: [] CuClient, name: string, command: string, args_json: string) -> bool {
+  if name.count == 0 || command.count == 0 { return false; }
+  tb: [1536] u8; o := [1] ClOut.[ClOut.{buf = tb[..]}];
+  cl_put(o[..], "{\"name\":"); cl_put_string(o[..], name);
+  cl_put(o[..], ",\"command\":"); cl_put_string(o[..], command);
+  cl_put(o[..], ",\"args\":"); cl_put(o[..], ifx args_json.count > 0 then args_json else "[]");
+  cl_put(o[..], ",\"env\":[]}");
+  if o[0].failed { return false; }
+  return cu_mcp_append(c, cast(string) tb[0..<o[0].len]);
+}
 cu_runtime_mode :: (c: [] CuClient) -> string { return cast(string) c[0].runtime_mode[0..<c[0].runtime_mode_n]; }
 cu_is_auto_mode :: (c: [] CuClient) -> bool { return cu_runtime_mode(c) == "auto"; }
 cu_command_count :: (c: [] CuClient) -> int {
@@ -376,7 +420,7 @@ cu_authenticate_with :: (c: [] CuClient, method: string) -> int {
 cu_session_new :: (c: [] CuClient, cwd: string) -> int {
   id := cu_open(c, CU_SESSION_NEW, "session/new");
   o := c[0].out[..];
-  cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]}");
   cu_close(c);
   return id;
 }
@@ -385,7 +429,7 @@ cu_session_load :: (c: [] CuClient, session: string, cwd: string) -> int {
   id := cu_open(c, CU_SESSION_LOAD, "session/load");
   o := c[0].out[..];
   cl_put(o, "{\"sessionId\":"); cl_put_string(o, session);
-  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]}");
   cu_close(c);
   return id;
 }
@@ -395,7 +439,7 @@ cu_session_resume :: (c: [] CuClient, session: string, cwd: string) -> int {
   id := cu_open(c, CU_SESSION_RESUME, "session/resume");
   o := c[0].out[..];
   cl_put(o, "{\"sessionId\":"); cl_put_string(o, session);
-  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]}");
   cu_close(c);
   if session.count < CU_ID { c[0].session_n = cu_keep(c[0].session[..], session); }   // the answer need not repeat it
   return id;

@@ -190,3 +190,74 @@ cu_test_client :: (c: [] CuClient, b: [] CuTest) { cu_init(c[..], b[0].line[..],
   #assert cu_tool_display_name("{\"title\":\"call_mcp_tool\",\"rawInput\":{\"tool_name\":\"search_docs\"}}", c[0].ar[..], nb[..]) == "search_docs";
   #assert cu_tool_display_name("{\"title\":\"Read file\",\"rawInput\":{\"Path\":\"/w/a.coax\"}}", c[0].ar[..], nb[..]) == "Read file";
 }
+
+#test "cursor client: mcpServers injection (HTTP with/without bearer + stdio + bounds + capability)" {
+  c: [1] CuClient; b: [1] CuTest; cu_test_client(c[..], b[..]);
+  #assert cu_init_has_http_mcp("{\"agentCapabilities\":{\"mcpCapabilities\":{\"http\":true}}}");
+  #assert !cu_init_has_http_mcp("{\"agentCapabilities\":{\"mcpCapabilities\":{\"http\":false}}}");
+  #assert !cu_init_has_http_mcp("{}");
+
+  // Validation: reject empty required fields and empty append
+  #assert !cu_mcp_append(c[..], "");
+  #assert !cu_mcp_add_http(c[..], "", "http://127.0.0.1/mcp", "");
+  #assert !cu_mcp_add_http(c[..], "a", "", "");
+  #assert !cu_mcp_add_stdio(c[..], "", "coder", "");
+  #assert !cu_mcp_add_stdio(c[..], "a", "", "");
+
+  // HTTP without bearer + stdio with default [] args
+  #assert cu_mcp_add_http(c[..], "h", "http://127.0.0.1/mcp", "");
+  #assert cu_mcp_servers(c[..]) == "{\"type\":\"http\",\"name\":\"h\",\"url\":\"http://127.0.0.1/mcp\",\"headers\":[]}";
+  #assert cu_mcp_add_stdio(c[..], "s", "coder", "");
+  #assert cu_mcp_servers(c[..]) == "{\"type\":\"http\",\"name\":\"h\",\"url\":\"http://127.0.0.1/mcp\",\"headers\":[]},{\"name\":\"s\",\"command\":\"coder\",\"args\":[],\"env\":[]}";
+
+  // Clear, then HTTP with bearer + stdio with explicit args -> exact JSON in new/load/resume
+  cu_mcp_clear(c[..]);
+  #assert cu_mcp_servers(c[..]) == "";
+  #assert cu_mcp_add_http(c[..], "c", "http://127.0.0.1:9/mcp", "t");
+  #assert cu_mcp_add_stdio(c[..], "l", "x", "[\"m\"]");
+  want := "{\"type\":\"http\",\"name\":\"c\",\"url\":\"http://127.0.0.1:9/mcp\",\"headers\":[{\"name\":\"Authorization\",\"value\":\"Bearer t\"}]},{\"name\":\"l\",\"command\":\"x\",\"args\":[\"m\"],\"env\":[]}";
+  #assert cu_mcp_servers(c[..]) == want;
+
+  _ = cu_session_new(c[..], "/r");
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"session/new\",\"params\":{\"cwd\":\"/r\",\"mcpServers\":[{\"type\":\"http\",\"name\":\"c\",\"url\":\"http://127.0.0.1:9/mcp\",\"headers\":[{\"name\":\"Authorization\",\"value\":\"Bearer t\"}]},{\"name\":\"l\",\"command\":\"x\",\"args\":[\"m\"],\"env\":[]}]}}\n";
+  cu_outbox_clear(c[..]);
+  _ = cu_session_load(c[..], "s1", "/r");
+  #assert c[0].pend_of[c[0].npend - 1] == CU_SESSION_LOAD;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/load\",\"params\":{\"sessionId\":\"s1\",\"cwd\":\"/r\",\"mcpServers\":[{\"type\":\"http\",\"name\":\"c\",\"url\":\"http://127.0.0.1:9/mcp\",\"headers\":[{\"name\":\"Authorization\",\"value\":\"Bearer t\"}]},{\"name\":\"l\",\"command\":\"x\",\"args\":[\"m\"],\"env\":[]}]}}\n";
+  cu_outbox_clear(c[..]);
+  _ = cu_session_resume(c[..], "s1", "/r");
+  #assert c[0].pend_of[c[0].npend - 1] == CU_SESSION_RESUME && cu_session_id(c[..]) == "s1";
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/resume\",\"params\":{\"sessionId\":\"s1\",\"cwd\":\"/r\",\"mcpServers\":[{\"type\":\"http\",\"name\":\"c\",\"url\":\"http://127.0.0.1:9/mcp\",\"headers\":[{\"name\":\"Authorization\",\"value\":\"Bearer t\"}]},{\"name\":\"l\",\"command\":\"x\",\"args\":[\"m\"],\"env\":[]}]}}\n";
+  // session_resume boundary: CU_ID - 1 is kept, CU_ID is not kept
+  smax: [CU_ID] u8;
+  for i: 0..<CU_ID { smax[i] = 'z'; }
+  _ = cu_session_resume(c[..], cast(string) smax[0..<CU_ID - 1], "/r");
+  #assert cu_session_id(c[..]).count == CU_ID - 1;
+  c[0].session_n = 0;
+  _ = cu_session_resume(c[..], cast(string) smax[..], "/r");
+  #assert cu_session_id(c[..]).count == 0;
+
+  // Exact boundary checks for cu_mcp_append and 1-byte args_json
+  cu_mcp_clear(c[..]);
+  #assert cu_mcp_add_stdio(c[..], "a", "b", "1");
+  #assert cu_mcp_servers(c[..]) == "{\"name\":\"a\",\"command\":\"b\",\"args\":1,\"env\":[]}";
+  cu_mcp_clear(c[..]);
+  #assert cu_mcp_append(c[..], "x") && cu_mcp_servers(c[..]) == "x";
+  #assert cu_mcp_append(c[..], "y") && cu_mcp_servers(c[..]) == "x,y";
+  full: [4096] u8;
+  for i: 0..<full.count { full[i] = 'f'; }
+  // Exact fit at mcp_buf.count with and without comma (and mcp_n == 1)
+  c[0].mcp_n = 1;
+  #assert !cu_mcp_append(c[..], cast(string) full[0..<CU_MCP_BUF - 1]);
+  c[0].mcp_n = CU_MCP_BUF - 2;
+  #assert !cu_mcp_append(c[..], "ab");
+  #assert cu_mcp_append(c[..], "a") && c[0].mcp_n == c[0].mcp_buf.count;
+  #assert !cu_mcp_append(c[..], "b");
+  cu_mcp_clear(c[..]);
+  #assert cu_mcp_append(c[..], cast(string) full[..]) && c[0].mcp_n == c[0].mcp_buf.count;
+  cu_mcp_clear(c[..]);
+  big: [1600] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  #assert !cu_mcp_add_http(c[..], "c", cast(string) big[..], "");
+  #assert !cu_mcp_add_stdio(c[..], "l", cast(string) big[..], "");
+}

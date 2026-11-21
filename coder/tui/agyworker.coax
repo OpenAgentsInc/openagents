@@ -70,6 +70,9 @@ AgywConfig :: struct {
   mode: [32] u8; mode_n: int;
   model: [128] u8; model_n: int;
   effort: [32] u8; effort_n: int;
+  mcp_url: [256] u8; mcp_url_n: int;
+  mcp_token: [256] u8; mcp_token_n: int;
+  mcp_stdio: [512] u8; mcp_stdio_n: int;
   interactive: bool;
 }
 
@@ -181,6 +184,21 @@ agyw_load_env :: (s: [] AgywState) {
   s[0].cfg.effort_n = agyw_copy(s[0].cfg.effort[..], eff);
   ib: [16] u8; intr := agyw_trim(cl_getenv("CODER_AGY_INTERACTIVE", ib[..]));
   s[0].cfg.interactive = intr == "1" || intr == "true";
+  mub: [256] u8; s[0].cfg.mcp_url_n = agyw_copy(s[0].cfg.mcp_url[..], agyw_trim(cl_getenv("CODER_MCP_URL", mub[..])));
+  mtb: [256] u8; s[0].cfg.mcp_token_n = agyw_copy(s[0].cfg.mcp_token[..], agyw_trim(cl_getenv("CODER_MCP_TOKEN", mtb[..])));
+  msb: [512] u8; s[0].cfg.mcp_stdio_n = agyw_copy(s[0].cfg.mcp_stdio[..], agyw_trim(cl_getenv("CODER_MCP_STDIO", msb[..])));
+}
+
+agyw_apply_mcp :: (s: [] AgywState, c: [] CuClient) {
+  cu_mcp_clear(c);
+  url := agyw_str(s[0].cfg.mcp_url[..], s[0].cfg.mcp_url_n);
+  if url.count > 0 {
+    _ = cu_mcp_add_http(c, "openagents-coder", url, agyw_str(s[0].cfg.mcp_token[..], s[0].cfg.mcp_token_n));
+  }
+  stdio := agyw_str(s[0].cfg.mcp_stdio[..], s[0].cfg.mcp_stdio_n);
+  if stdio.count > 0 {
+    _ = cu_mcp_add_stdio(c, "openagents-coder-stdio", stdio, "[\"mcp\"]");
+  }
 }
 
 // ---------------------------------------------------------------- wire I/O
@@ -887,6 +905,7 @@ tool_main :: () -> int #export_c #effects(all) {
             s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], prompt);
 
             if !x[0].live {
+              agyw_apply_mcp(s, x[0].c);
               why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
               if why.count > 0 {
                 agyw_finish_turn(s, "failed", why, true);
@@ -1253,4 +1272,19 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   subs[0] = agr_subagent_parse("{\"id\":\"c-1\",\"name\":\"researcher\",\"state\":\"SUBAGENT_STATE_KILLED\"}", "c-1", ar[..]);
   #assert agyw_sync_subagents(s, x, subs[..], 2, true) == 0 && cue_bg_subagents(x) == 0;
   #assert cue_watch(x, 1250) == CUE_WATCH_BG_DONE && !cue_held_bg(x);
+}
+
+#test "agyworker: MCP server injection passes bearer token to ACP session without logging it" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true;
+  s[0].cfg.mcp_url_n = agyw_copy(s[0].cfg.mcp_url[..], "http://127.0.0.1:7777/mcp");
+  s[0].cfg.mcp_token_n = agyw_copy(s[0].cfg.mcp_token[..], "super-secret-token");
+  agyw_apply_mcp(s, x[0].c);
+  cu_outbox_clear(x[0].c);
+  _ = cu_session_new(x[0].c, "/repo");
+  #assert agy_out_has(x, "\"openagents-coder\"") && agy_out_has(x, "Bearer super-secret-token");
+  #assert !agyw_logged(s, "super-secret-token");
 }
