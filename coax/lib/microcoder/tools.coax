@@ -24,15 +24,15 @@ cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 MC_COMMAND_SECONDS :: MC_COMMAND_DEFAULT;
 MC_VIEW_BYTES :: 65536;
 MC_VIEW_BINARY :: "[a binary file: not shown]";
-MC_KEEP_HEAD :: 5900;            // with the tail and the gap line, under the state's 6,000 + 6,000 cut
-MC_KEEP_TAIL :: 5900;
-MC_VIEW_LINES :: 300;            // lines a view shows when it names no range (GitHub #13325)
+MC_KEEP_HEAD :: 3000;            // with the tail and the gap line, under the state's 3,200 + 3,200 cut
+MC_KEEP_TAIL :: 3000;
+MC_VIEW_LINES :: 150;            // lines a view shows when it names no range (GitHub #13325, #13830)
 MC_VIEW_RANGE_MOST :: 800;       // lines a ranged view shows at most
-MC_VIEW_SHOW :: 24576;           // bytes a view shows at most, before the step's budget
+MC_VIEW_SHOW :: 12288;           // bytes a view shows at most, before the step's budget
 MC_VIEW_RAW :: 524288;           // bytes of a file a view reads
 MC_VIEW_MIN :: 600;              // a view with less room than this left in the step's budget is held back
 MC_EDIT_SHOW :: 3072;            // bytes an edit's result shows: its new text, or the nearest region
-MC_SPILL_SHOW :: 8192;           // bytes of a long output the state shows when its whole text is saved
+MC_SPILL_SHOW :: 4096;           // bytes of a long output the state shows when its whole text is saved
 MC_SPILL_MOST :: 16777216;       // bytes of one output a spill file keeps
 
 // What one command printed: its head, and a ring of its latest bytes.
@@ -803,7 +803,7 @@ mc_profile_input :: (h:int,profile:string)->bool {
 
 McViewTest :: struct { text: [40000] u8; out: [65536] u8; }
 
-#test "a view numbers its lines: the whole of a short file, else 300 lines or the range, and says what is next" {
+#test "a view numbers its lines: the whole of a short file, else 150 lines or the range, and says what is next" {
   t: [1] McViewTest;
   #assert mc_view_text("one\ntwo\n", McViewSpec.{path = "a"}, false, 4000, t[0].out[..]) == "     1\tone\n     2\ttwo\n";
   n := 0;
@@ -811,18 +811,18 @@ McViewTest :: struct { text: [40000] u8; out: [65536] u8; }
   text := cast(string) t[0].text[0..<n];
   v := mc_view_text(text, McViewSpec.{path = "f.txt"}, false, MC_VIEW_SHOW, t[0].out[..]);
   #assert rp_lines(v) == MC_VIEW_LINES + 1 && mc_line_ends(v) == MC_VIEW_LINES;
-  #assert ps_count(v, "   300\t300\n[lines 1-300 of 1000; next: view f.txt:301-600]") == 1 && ps_count(v, "\t301\n") == 0;
+  #assert ps_count(v, "   150\t150\n[lines 1-150 of 1000; next: view f.txt:151-300]") == 1 && ps_count(v, "\t151\n") == 0;
   v = mc_view_text(text, mc_view_spec("f.txt:990-1200"), false, MC_VIEW_SHOW, t[0].out[..]);
   #assert v == "   990\t990\n   991\t991\n   992\t992\n   993\t993\n   994\t994\n   995\t995\n   996\t996\n   997\t997\n   998\t998\n   999\t999\n  1000\t1000\n[lines 990-1000 of 1000]";
   v = mc_view_text(text, mc_view_spec("f.txt:1-1000"), false, MC_VIEW_SHOW, t[0].out[..]);
-  #assert ps_count(v, "[lines 1-800 of 1000; next: view f.txt:801-1100]") == 1;      // a range shows 800 lines at most
+  #assert ps_count(v, "[lines 1-800 of 1000; next: view f.txt:801-950]") == 1;      // a range shows 800 lines at most
   v = mc_view_text(text, mc_view_spec("f.txt:1-1000"), false, 2000, t[0].out[..]);
   #assert v.count <= 2000 && ps_count(v, ", cut to fit; next: view f.txt:") == 1;
   v = mc_view_text(text, mc_view_spec("f.txt:2000"), false, 2000, t[0].out[..]);
   #assert v == "[the file has 1000 lines: nothing from line 2000]";
   v = mc_view_text(text, mc_view_spec("f.txt:5-6"), true, 2000, t[0].out[..]);
-  #assert v == "     5\t5\n     6\t6\n[lines 5-6 of 1000 or more; next: view f.txt:7-306]";
-  #assert ps_count(MC_SYSTEM, "the first 300 or the range asked for") == 1 && MC_VIEW_LINES == 300;      // what the prompt says is so
+  #assert v == "     5\t5\n     6\t6\n[lines 5-6 of 1000 or more; next: view f.txt:7-156]";
+  #assert ps_count(MC_SYSTEM, "the first 150 or the range asked for") == 1 && MC_VIEW_LINES == 150;      // what the prompt says is so
   #assert mc_view_text("a\0b", McViewSpec.{path = "x"}, false, 100, t[0].out[..]) == MC_VIEW_BINARY && mc_view_text("", McViewSpec.{path = "x"}, false, 100, t[0].out[..]) == "[an empty file]";
 }
 
@@ -842,7 +842,7 @@ McViewTest :: struct { text: [40000] u8; out: [65536] u8; }
   nb: [64] u8; k := rp_put(nb[..], 0, "(lines "); k = rp_put_int(nb[..], k, first); k = rp_put(nb[..], k, "-");
   #assert ps_count(v, cast(string) nb[0..<k]) == 1;
   v = mc_output_shown(o[..], 100, "/s/1-2-1.txt", out[..]);
-  #assert v == "[the output, 30000 bytes in 2000 lines, is held back: this step's results reached their 32 KB. It is saved whole: view /s/1-2-1.txt:1-300]\n";
+  #assert v == "[the output, 30000 bytes in 2000 lines, is held back: this step's results reached their 32 KB. It is saved whole: view /s/1-2-1.txt:1-150]\n";
 }
 
 ps_find :: (text: string, needle: string) -> int {

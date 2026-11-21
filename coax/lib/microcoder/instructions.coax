@@ -24,7 +24,7 @@
 #load "../nostr/json.coax";
 
 MC_INSTR_MAX_DIRS :: 32;
-MC_INSTR_MAX_BYTES :: 12288;
+MC_INSTR_MAX_BYTES :: 4096;
 MC_INSTR_FILE_BUF :: 16384;
 MC_INSTR_NOTE_MAX :: 768;        // room kept for a cut file's note: where it was cut and the headings left out
 MC_INSTR_SCAN_MAX :: 262144;     // how far past the cut a note looks for headings

@@ -122,6 +122,30 @@ Key Phase 4 `mcworker` levers identified from the scorecard:
 2. **Unsolicited `git push` suppression:** Auto-loaded `AGENTS.md` triggers `git push` attempts after solving the task (6/27 Hydrogen, 3/27 Neon), tripping `no_guard_trips` despite passing the `command` grader.
 3. **Coax syntax & edit discipline:** Repeated `E0216` (`..` vs `..<`) and `E0105` escape errors burn attempts before compiling.
 
+### Phase 4 `mcworker` Improvements & Before/After Scorecard
+
+Principled, general-purpose `mcworker` (`coax/lib/microcoder/`) improvements shipped in Phase 4:
+1. **Lean workspace instruction cap (`instructions.coax`):** Tightened `MC_INSTR_MAX_BYTES` from `12288` to `4096` (~2,400 input tokens saved per attempt; truncated files still emit the full `##` heading index with line numbers for on-demand ranged views).
+2. **Bounded step-0 seeding (`run.coax`):** Capped `mc_run_seed` to `MC_SEED_FILES = 3` and `MC_SEED_BUDGET = 12288` bytes (down from `32768`) so multi-file tasks don't dump 32 KB into Attempt 1 before the model searches.
+3. **Tighter default view and command-output budgets (`tools.coax`):** Reduced unranged `view` default from `300` to `150` lines (`MC_VIEW_SHOW` `24576` → `12288`), spilled command preview (`MC_SPILL_SHOW` `8192` → `4096`), and kept command output head/tail (`MC_KEEP_HEAD/TAIL` `5900` → `3000`; full outputs remain in spill files and ranged `PATH:A-B` views still support up to 800 lines).
+4. **Git push safety, worktree discipline & verbatim-edit guidance (`loop.coax`):** Made `MC_SYSTEM` explicit to never run `git push` unless the user's own message explicitly asks to push (even if workspace or default instructions mention pushing), work directly in `environment.cwd` without `git worktree list` / `git branch -a` churn, and copy `old` verbatim from a view without line numbers.
+
+Re-run on the same 27-task suite (`./evals/session-history/run.sh run --model <model> --workers 4`, identical task budgets and graders):
+
+| Model | Phase | Overall Pass | Command Grader Pass | Budget-Stopped | `git push` Guard Trips | Total Cost | Total Wall | Top Failure Tags |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `gemini-4-hydrogen` | Phase 3 (before) | 7/27 (25%) | 14/27 (52%) | 15 | 6 | \$4.8971 | 1218s | `premature_done` (17), `edit_mismatch` (2), `compaction_drop` (1) |
+| `gemini-4-hydrogen` | **Phase 4 (after)** | **14/27 (51%)** | **16/27 (59%)** | **10** | **0** | **\$4.3282** | 1361s | `premature_done` (12), `compaction_drop` (1), `edit_mismatch` (0) |
+| `gemini-4-neon` | Phase 3 (before) | 5/27 (18%) | 10/27 (37%) | 20 | 3 | \$6.3495 | 1361s | `premature_done` (19), `edit_mismatch` (2), `compaction_drop` (1) |
+| `gemini-4-neon` | **Phase 4 (after)** | **8/27 (29%)** | 9/27 (33%) | **19** | **0** | **\$6.2481** | **1220s** | `premature_done` (19), `edit_mismatch` (0), `compaction_drop` (0) |
+| `gemini-4-carbon` | Phase 3 (before) | 0/27 (0%) | 4/27 (15%) | 27 | 0 | \$7.2356 | 1026s | `premature_done` (23), `edit_mismatch` (2), `compaction_drop` (2) |
+| `gemini-4-carbon` | **Phase 4 (after)** | 0/27 (0%) | 4/27 (15%) | 27 | **0** | **\$6.7253** | **1021s** | `premature_done` (22), `compaction_drop` (3), `edit_mismatch` (1), `search_bloat` (1) |
+
+Bucket highlights (Phase 3 → Phase 4):
+- **Hydrogen:** `A_edit_precision` 5/6 → **6/6 (100%)**, `B_multi_file` 0/5 → **3/5 (60%)**, `C_verification` 0/6 → **1/6 (16%)**, `D_error_recovery` 1/5 → **3/5 (60%)**, `E_long_context` 1/5 → 1/5 (20%).
+- **Neon:** `A_edit_precision` 4/6 → **6/6 (100%)**, `D_error_recovery` 1/5 → **2/5 (40%)**.
+- **Remaining Carbon bottleneck:** Vertex `us` multi-region returns `cachedContentTokenCount: null` (0% implicit cache hit), so 3–4 attempts on `$4/M`-input Carbon still reach `$0.12–$0.15` caps right as tasks finish (4/27 pass `command` grader before hitting budget). Explicit Vertex context caching or multi-turn cache hits are the next lever for Carbon.
+
 ## Verification
 
 ```sh

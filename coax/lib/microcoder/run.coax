@@ -334,23 +334,25 @@ mc_plan_window :: (p: [] GwPlan) -> int {
 // mentions is looked up (git grep, its first 8 lines; in a git checkout only). They are one
 // step in the state, given out and journaled like any step's views and commands. A task that
 // names nothing found leaves no step. Then the first call goes out.
-MC_SEED_FILES :: 4;
+MC_SEED_FILES :: 3;
+MC_SEED_BUDGET :: 12288;         // cap step-0 seeded views so multi-file tasks don't bloat every turn's prompt
 mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
   r[0].seeded = true; r[0].nob = 0;
   l := r[0].l[..]; k := 0;
   s: [1] McSeed; mc_seed_scan(l[0].st[0].task, s[..]);
   pb: [FS_PATH_MAX] u8; viewed := 0; begun := false;
-  // the files that exist share the step's budget, less room for the code names' lines
+  // the files that exist share the seed budget, less room for the code names' lines
   files := 0;
   for i: 0..<s[0].np { full := fs_join(r[0].cwd, s[0].paths[i], pb[..]); if files < MC_SEED_FILES && full.count > 0 && fs_kind(full) == FS_FILE { files += 1; } }
-  share := ifx files > 0 then (MC_STEP_BUDGET - 1024 * s[0].nn) / files else 0;
+  share := ifx files > 0 then (MC_SEED_BUDGET - 1024 * s[0].nn) / files else 0;
+  if share < 2048 { share = 2048; }
   for i: 0..<s[0].np {
     if viewed >= MC_SEED_FILES { break; }
     p := s[0].paths[i];
     full := fs_join(r[0].cwd, p, pb[..]);
     if full.count == 0 || fs_kind(full) != FS_FILE { continue; }
     if !mc_run_intent(r, AjKind.view_intent, p) { return mc_run_failed(r, out, k); }
-    room := ifx begun then mc_result_room(l[0].st[..], p) else MC_STEP_BUDGET - 96;
+    room := ifx begun then mc_result_room(l[0].st[..], p) else MC_SEED_BUDGET - 96;
     if room > share { room = share; }
     v := mc_run_view(r, p, room);
     if r[0].journal.count>0 && (!jf_output(r[0].journal,v.content) || !jf_result(r[0].journal,ifx v.found then "found=true" else "found=false")) {return mc_run_failed(r,out,k);}
