@@ -1,3 +1,0 @@
-shot: WebGPU adapter: hardware apple metal-3
-{"nativeArtifactExact":true,"completeQueueAndTrace":true,"corruptFilePreserved":true,"admissionAndPickerMs":8.680000007152557,"identity":[91,244,235,56,203,132,243,199,185,94,179,226,202,248,41,9,209,192,55,4,132,7,5,153,134,74,137,211,193,253,213,181],"trace":[101,151,241,201,47,18,167,64,14,146,98,192,113,121,80,6,228,210,99,226,58,53,226,69,20,155,242,7,160,128,131,8]}
-build/replay-cross-browser.png

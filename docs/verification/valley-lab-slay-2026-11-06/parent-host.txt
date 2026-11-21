@@ -1,3 +1,0 @@
-shot: WebGPU adapter: hardware apple metal-3
-{"ready":true,"scene":true}
-/tmp/slay-host-parent.png

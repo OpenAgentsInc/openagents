@@ -1,0 +1,24 @@
+# Raw verification artifacts belong in ~/.openagents/verification/, not git (#13840).
+# Keep Markdown summaries and SHA-256 manifests tracked.
+*.tar.gz
+*.tar.xz
+*.tar
+*.gz
+*.xz
+*.log
+*.stderr
+*.stdout
+*.out
+*.f32
+*.f64
+*.mp4
+*.bin
+*.pcm
+*.ogg
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.c
+*.h
+*.coax

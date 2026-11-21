@@ -1,3 +1,0 @@
-guide evaluation native: 126 independent route/record/deadline/canary cases passed
-guide evaluation native: 126 independent route/record/deadline/canary cases passed
-guide evaluation native: 126 independent route/record/deadline/canary cases passed

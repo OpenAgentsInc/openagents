@@ -1,4 +1,0 @@
-ActorPool 17032
-ActorSlot 1056
-ActorResources 312
-BehaviorState 264

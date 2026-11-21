@@ -1,1 +1,0 @@
-sanitized actor replay: 640 ticks, 64 controls

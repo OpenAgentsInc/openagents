@@ -1,2 +1,0 @@
-mutation scope: unit aethyr/rules/srd/spell-access.coax (its procedures; every check retained)
-176 mutants, 176 killed, 0 survived

@@ -1,1 +1,0 @@
-openagents: --model-dir selects the pinned Parakeet checkpoint; explicit Whisper backends use --model

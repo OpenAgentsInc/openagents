@@ -1,1 +1,0 @@
-candidate :: (x:u64)->u64 #export_c {return cast,trunc(u64)(-cast,trunc(int)x);}

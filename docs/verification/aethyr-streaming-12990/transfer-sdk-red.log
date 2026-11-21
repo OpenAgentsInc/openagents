@@ -1,1 +1,0 @@
-vks: vkCreateCommandPool(dev, &cpci, NULL, &pool) failed: -1

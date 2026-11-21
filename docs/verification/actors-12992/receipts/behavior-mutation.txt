@@ -1,2 +1,0 @@
-mutation scope: root-only (entry-source procedures; dependency checks retained)
-192 mutants, 192 killed, 0 survived

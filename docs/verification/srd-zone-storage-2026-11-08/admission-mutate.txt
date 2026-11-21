@@ -1,2 +1,0 @@
-mutation scope: unit aethyr/rules/srd/zone-admission.coax (its procedures; every check retained)
-19 mutants, 19 killed, 0 survived

@@ -1,2 +1,0 @@
-probe {\"rejected\":true,\"online\":false,\"message\":\"Failed to fetch\",\"ready\":true}
-offline admitted=true, warm IndexedDB replay=true, network restored=true

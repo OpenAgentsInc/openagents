@@ -79,6 +79,19 @@ PpRaw :: struct { ok: bool; before: string; after: string; status: u8; path: str
 // ---- text
 
 pp_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+pp_ends :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[s.count - p.count..<s.count] == p; }
+// Raw verification artifacts belong in ~/.openagents/verification/, not git (#13840).
+pp_verif_bloat :: (path: string) -> bool {
+  if !pp_starts(path, "docs/verification/") && !pp_starts(path, "psionic/docs/verification/") { return false; }
+  return pp_ends(path, ".tar.gz") || pp_ends(path, ".tar.xz") || pp_ends(path, ".tar") ||
+         pp_ends(path, ".gz") || pp_ends(path, ".xz") || pp_ends(path, ".log") ||
+         pp_ends(path, ".stderr") || pp_ends(path, ".stdout") || pp_ends(path, ".out") ||
+         pp_ends(path, ".f32") || pp_ends(path, ".f64") || pp_ends(path, ".mp4") ||
+         pp_ends(path, ".bin") || pp_ends(path, ".pcm") || pp_ends(path, ".ogg") ||
+         pp_ends(path, ".wav") || pp_ends(path, ".png") || pp_ends(path, ".jpg") ||
+         pp_ends(path, ".jpeg") || pp_ends(path, ".c") || pp_ends(path, ".h") ||
+         pp_ends(path, ".coax");
+}
 pp_has :: (s: string, p: string) -> bool {
   if p.count == 0 || p.count > s.count { return false; }
   for k: 0..<s.count - p.count + 1 { if s[k] == p[0] && cast(string) s[k..<k + p.count] == p { return true; } }
@@ -337,7 +350,7 @@ pp_is_commit :: (rev: string) -> bool {
 }
 
 // The verdict of rules 1 and 2 on one commit.
-PpVerdict :: struct { ok: bool; clobbers: int; no_agent: bool; merge: bool; }
+PpVerdict :: struct { ok: bool; clobbers: int; no_agent: bool; merge: bool; verif_bloat: int; }
 
 // Rules 1 and 2 for commit c on its first parent. push lists the commits of this push, one a line.
 // Prints what it refuses unless quiet.
@@ -375,6 +388,13 @@ pp_judge :: (c: string, push: string, st: [] PpState, bufs: [] PpBufs, quiet: bo
   dargv: [10] string; for k: 0..<8 { dargv[k] = da[k]; } dargv[8] = parent; dargv[9] = c;
   d := pp_git(dargv[..], bufs[0].diff[..]);
   if !d.ok || !pp_load(st, d.text) { v.ok = false; return v; }
+  for k: 0..<st[0].n {
+    if st[0].now[k] != PP_ZERO && pp_verif_bloat(st[0].path[k]) {
+      if v.verif_bloat < PP_SHOW && !quiet { print("  % adds/modifies raw verification artifact % (store in ~/.openagents/verification/ and commit only .md + .sha256, #13840)\n", cast(string) c[0..<10], st[0].path[k]); }
+      v.verif_bloat += 1;
+    }
+  }
+  if v.verif_bloat > PP_SHOW && !quiet { print("    and % more verification artifacts\n", v.verif_bloat - PP_SHOW); }
   ra := [8] string.["git", "-c", "core.quotePath=false", "diff-tree", "-r", "-M", "--diff-filter=R", "--name-status"];
   rargv: [10] string; for k: 0..<8 { rargv[k] = ra[k]; } rargv[8] = parent; rargv[9] = c;
   rn := pp_git(rargv[..], names_buf[..]);
@@ -1043,7 +1063,7 @@ tool_main :: () -> int #export_c #effects(all) {
     for c: push { if c == '\n' { count += 1; } }
     if push.count > 0 && push[push.count - 1] != '\n' { count += 1; }
     if count > PP_PUSH { print("prepush: % commits in one push (more than %); the rules read the newest %\n", count, PP_PUSH, PP_PUSH); }
-    clobbered := 0; unsigned := 0;
+    clobbered := 0; unsigned := 0; verif_bloat := 0;
     for k: 0..<count {
       c := pp_line(push, k);
       if c.count == 0 { continue; }
@@ -1052,12 +1072,14 @@ tool_main :: () -> int #export_c #effects(all) {
       if v.merge { print("prepush: note: % is a merge; the stale-snapshot rule reads one parent, so rebase instead of merging\n", cast(string) c[0..<10]); }
       if v.clobbers > 0 { clobbered += 1; }
       if v.no_agent { unsigned += 1; }
+      if v.verif_bloat > 0 { verif_bloat += 1; }
     }
     if clobbered > 0 {
       print("prepush: REFUSED: % commit% newer work on main. Fix: git fetch origin && git rebase origin/main, then check `git show --stat` lists only your files (restore others with git checkout origin/main -- PATH). If you mean it, name each file, its folder/ or the commit it undoes in the message (git commit --amend) and push again (%).\n", clobbered, ifx clobbered == 1 then " undoes" else "s undo", PP_HOW);
       refused += 1;
     }
     if unsigned > 0 { print("prepush: REFUSED: % commit% with no \"Agent:\" line (%)\n", unsigned, ifx unsigned == 1 then "" else "s", PP_HOW); refused += 1; }
+    if verif_bloat > 0 { print("prepush: REFUSED: % commit% raw verification artifacts under docs/verification/ or psionic/docs/verification/ (#13840)\n", verif_bloat, ifx verif_bloat == 1 then " adds" else "s add"); refused += 1; }
     if refused > 0 { continue; }
     print("prepush: % commit% to main: stale-snapshot and Agent rules passed (% ms)\n", count, ifx count == 1 then "" else "s", proc_now_ms() - t0);
     // the checks run on the checkout, so only for a push of its HEAD
@@ -1189,4 +1211,16 @@ PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 1
   #assert pp_touched_suites(list, "AGENTS.md\n", out[..]) == "";
   #assert pp_only_docs("AGENTS.md\ndocs/x/y.png\n") && !pp_only_docs("AGENTS.md\ncoax/web/x.coax\n") && pp_only_docs("");
   #assert pp_listed("a\nb\n", "b") && !pp_listed("ab\n", "a") && pp_has("xx aaaaaaa yy", "aaaaaaa") && !pp_has("", "a");
+}
+#test "verification bloat guard: refuses raw archives, logs and source dumps, allows summaries and manifests" {
+  #assert pp_verif_bloat("docs/verification/run/proof.tar.gz");
+  #assert pp_verif_bloat("docs/verification/run/out.log");
+  #assert pp_verif_bloat("docs/verification/data/snap/checker.coax");
+  #assert pp_verif_bloat("psionic/docs/verification/parakeet/runtime.c");
+  #assert pp_verif_bloat("psionic/docs/verification/parakeet/fi.f32");
+  #assert !pp_verif_bloat("docs/verification/2026-11-20-summary.md");
+  #assert !pp_verif_bloat("docs/verification/ARCHIVE-MANIFEST.sha256");
+  #assert !pp_verif_bloat("psionic/docs/verification/2026-11-20-summary.md");
+  #assert !pp_verif_bloat("docs/verification/.gitignore");
+  #assert !pp_verif_bloat("coax/lib/compiler/checker.coax");
 }

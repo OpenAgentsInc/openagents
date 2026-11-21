@@ -1,1 +1,0 @@
-101 mutants, 101 killed, 0 survived
