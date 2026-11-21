@@ -1,0 +1,159 @@
+// The lobby's and the party's rows (docs/programmatic-access.md, "The lobby and the party"):
+// what the lobby sheet shows, and what the person does there, each a row of the command table
+// (area "lobby"). The lobby lives in the running app, signed with the person's key on the room's
+// relay, so its rows are the app's alone (gap "lobby").
+//
+// Only the person speaks, names themself, reports, mutes, invites, answers or plays with others:
+// those rows' approval is "person", and ed_lobby_command takes whether the call is the person's
+// own (a press on the app's lobby sheet). Any other caller (an attached program, an agent) is
+// refused them by the core, so no agent speaks or invites for the person. The reads are the
+// person's to see; a program reaches none of it (gb_run refuses the area).
+
+// s's bytes in b, as the lobby's exports take them (the caller makes b long enough).
+lr_bytes :: (s: string, b: [] u8) -> [] u8 {
+  n := ifx s.count < b.count then s.count else b.count;
+  for i: 0..<n { b[i] = s[i]; }
+  return b[0..<n];
+}
+
+// Carries out lobby row v on the lobby l with args read (a.), signing with key and aux at now.
+// person: the call is a press of the person's own on the lobby sheet.
+gb_lobby_run :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, v: int, a: GbArgs, person: bool, out: [] u8) -> GbResult {
+  o: [1] Jo; jo_start(o[..], out);
+  if l.count != 1 || v < 0 || v >= GB_N || GB_COMMANDS[v].area != "lobby" { return gb_refuse(o[..], "bad-request", "not one of the lobby's rows"); }
+  c := GB_COMMANDS[v];
+  if c.approval == "person" && !person { return gb_refuse(o[..], "not-permitted", "only the person does this, on the app's lobby sheet; never an agent or a program for them"); }
+  nb: [256] u8;
+  if v == VERB_LOBBY_READ {
+    gb_ok(o[..]);
+    jo_key(o[..], "connected"); jo_bool(o[..], ed_lobby_connected(l));
+    jo_key(o[..], "can_say"); jo_bool(o[..], ed_lobby_can_say(l));
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) nb[0..<ed_lobby_my_name(l, nb[..])]);
+    jo_key(o[..], "players"); jo_arr(o[..]);
+    for i: 0..<ed_lobby_online(l) {
+      p := cast(s32) i;
+      jo_obj(o[..]); we_int(o[..], "player", cast(int) i);
+      jo_key(o[..], "name"); jo_str(o[..], cast(string) nb[0..<ed_lobby_player_name(l, p, nb[..])]);
+      we_int(o[..], "game", cast(int) ed_lobby_player_game(l, p)); we_int(o[..], "doing", cast(int) ed_lobby_player_doing(l, p));
+      jo_key(o[..], "me"); jo_bool(o[..], ed_lobby_player_me(l, p));
+      jo_key(o[..], "muted"); jo_bool(o[..], ed_lobby_muted_player(l, p));
+      jo_key(o[..], "in_party"); jo_bool(o[..], ed_party_has(l, p));
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    jo_key(o[..], "messages"); jo_arr(o[..]);
+    for i: 0..<ed_lobby_messages(l) {
+      m := cast(s32) i;
+      jo_obj(o[..]); we_int(o[..], "line", cast(int) i);
+      jo_key(o[..], "name"); jo_str(o[..], cast(string) nb[0..<ed_lobby_message_name(l, m, nb[..])]);
+      jo_key(o[..], "text"); jo_str(o[..], cast(string) nb[0..<ed_lobby_message_text(l, m, nb[..])]);
+      jo_key(o[..], "mine"); jo_bool(o[..], ed_lobby_message_mine(l, m));
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_PARTY_READ {
+    gb_ok(o[..]);
+    jo_key(o[..], "on"); jo_bool(o[..], ed_party_on(l));
+    jo_key(o[..], "leads"); jo_bool(o[..], ed_party_leads(l));
+    jo_key(o[..], "full"); jo_bool(o[..], ed_party_full(l));
+    jo_key(o[..], "fits"); jo_bool(o[..], ed_party_fits(l));
+    jo_key(o[..], "looking"); jo_bool(o[..], ed_party_looking(l));
+    jo_key(o[..], "invited_by"); jo_str(o[..], cast(string) nb[0..<ed_party_invited(l, nb[..])]);
+    we_int(o[..], "scrapper", cast(int) ed_party_kind(l));
+    jo_key(o[..], "mode"); jo_str(o[..], PLAYTEST_MODE_WORD[ed_party_mode(l)]);
+    we_int(o[..], "size", cast(int) ed_party_size(l));
+    jo_key(o[..], "members"); jo_arr(o[..]);
+    for i: 0..<ed_party_count(l) {
+      m := cast(s32) i;
+      jo_obj(o[..]); we_int(o[..], "member", cast(int) i);
+      jo_key(o[..], "name"); jo_str(o[..], cast(string) nb[0..<ed_party_member_name(l, m, nb[..])]);
+      jo_key(o[..], "me"); jo_bool(o[..], ed_party_member_me(l, m));
+      we_int(o[..], "side", cast(int) ed_party_member_side(l, m)); we_int(o[..], "scrapper", cast(int) ed_party_member_kind(l, m));
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_LOBBY_NAME {
+    if a.text.count > nb.count { return gb_refuse(o[..], "limit", "a lobby name is at most 20 bytes (LB_NAME)"); }
+    if !ed_lobby_name(l, lr_bytes(a.text, nb[..])) { return gb_refuse(o[..], "bad-request", "a lobby name is 3 to 20 (LB_NAME_MIN, LB_NAME) of letters, digits, spaces, _ and -, with no space at either end, and no rude word"); }
+  } else if v == VERB_LOBBY_SAY {
+    sb: [LB_TEXT + 64] u8;
+    if a.say.count > sb.count { return gb_refuse(o[..], "limit", "a message is at most 280 bytes (LB_TEXT)"); }
+    why := ed_lobby_say(l, key, aux, now, lr_bytes(a.say, sb[..]));
+    if why != SAY_OK { return gb_refuse(o[..], "edit-refused", cast(string) nb[0..<ed_lobby_why(why, nb[..])]); }
+  } else if v == VERB_LOBBY_MUTE || v == VERB_LOBBY_REPORT {
+    if a.pick >= ed_lobby_messages(l) { return gb_refuse(o[..], "not-found", "there is no such line: lobby-read numbers them"); }
+    if v == VERB_LOBBY_MUTE { ed_lobby_mute(l, a.pick); }
+    else if !ed_lobby_report(l, key, aux, now, a.pick) { return gb_refuse(o[..], "edit-refused", "it could not be sent: log in, be in the room, and report someone else's line"); }
+  } else if v == VERB_PARTY_INVITE {
+    if a.pick >= ed_lobby_online(l) { return gb_refuse(o[..], "not-found", "there is no such player: lobby-read numbers them"); }
+    if !ed_party_invite(l, key, aux, now, a.pick) { return gb_refuse(o[..], "edit-refused", "they could not be invited just now"); }
+  } else if v == VERB_PARTY_ANSWER {
+    ed_party_answer(l, key, aux, now, a.yes);
+  } else if v == VERB_PARTY_LEAVE {
+    ed_party_leave(l, key, aux, now);
+  } else if v == VERB_PARTY_SIDE {
+    if a.pick >= ed_party_count(l) { return gb_refuse(o[..], "not-found", "there is no such member: party-read numbers them"); }
+    ed_party_set_side(l, key, aux, now, a.pick, a.side);
+  } else if v == VERB_PARTY_SCRAPPER {
+    ed_party_set_kind(l, key, aux, now, a.pick);
+  } else if v == VERB_PARTY_MATCH {
+    ed_party_set_match(l, key, aux, now, a.mode, a.size);
+  } else if v == VERB_PARTY_LOOK {
+    ed_party_look(l, a.yes);
+  } else if v == VERB_PARTY_START {
+    if !ed_party_start(l, key, aux, now) { return gb_refuse(o[..], "edit-refused", "the match could not start just now: only the party's leader starts it, with the sides filled"); }
+  }
+  gb_ok(o[..]);
+  return gb_done(o[..], a, false, 0);
+}
+
+// The one way into the lobby's rows, as ed_command is into the rest: the answer's length when it
+// was done; minus its length when it was refused; 0 when it did not fit. person: a press of the
+// person's own on the lobby sheet (an attached program or an agent is never the person).
+ed_lobby_command :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, verb: s32, args: [] u8, person: bool, out: [] u8) -> s64 #export_c #effects(all) {
+  if out.count == 0 { return 0; }
+  o: [1] Jo; jo_start(o[..], out);
+  v := cast(int) verb;
+  r := GbResult.{};
+  if v < 0 || v >= GB_N || GB_COMMANDS[v].area != "lobby" { r = gb_refuse(o[..], "bad-request", "not one of the lobby's rows"); }
+  else {
+    t: [1] GbCommandCall; da: [1] Jv; at := -1;
+    s := cast(string) args;
+    if s.count > 0 && (!jv_parse(da[..], s, t[0].nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT) { r = gb_refuse(o[..], "bad-request", "the arguments are one JSON object"); }
+    else {
+      if s.count > 0 { at = 0; }
+      why := gb_mcp_read(t[0].call[..], v, da[0], at, GbFill.{});
+      r = ifx why.count > 0 then gb_refuse(o[..], "bad-request", why) else gb_lobby_run(l, key, aux, now, v, t[0].call[0].a[0], person, out);
+    }
+  }
+  if r.json.count == 0 { return 0; }
+  return ifx r.code == GB_DONE then r.json.count else -r.json.count;
+}
+
+LobbyRowTest :: struct { l: [1] Lobby; out: [8192] u8; args: [256] u8; }
+#test "the lobby's rows: the reads answer, and only the person speaks, invites or reports" {
+  t: [1] LobbyRowTest;
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) (i + 1); }
+  aux: [32] u8;
+  #assert ed_lobby_init(t[0].l[..], key[..]);
+  read := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_LOBBY_READ, lr_bytes("", t[0].args[..]), false, t[0].out[..]);
+  #assert read > 0 && level_find(cast(string) t[0].out[0..<read], "\"players\":[]") >= 0;
+  pr := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_PARTY_READ, lr_bytes("", t[0].args[..]), false, t[0].out[..]);
+  #assert pr > 0 && level_find(cast(string) t[0].out[0..<pr], "\"members\":") >= 0;
+  // a program may not speak for the person; the person may, and is told why it did not go
+  say := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_LOBBY_SAY, lr_bytes("{\"say\":\"hello\"}", t[0].args[..]), false, t[0].out[..]);
+  #assert say < 0 && level_find(cast(string) t[0].out[0..<-say], "not-permitted") >= 0;
+  said := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_LOBBY_SAY, lr_bytes("{\"say\":\"hello\"}", t[0].args[..]), true, t[0].out[..]);
+  #assert said < 0 && level_find(cast(string) t[0].out[0..<-said], "edit-refused") >= 0;
+  inv := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_PARTY_INVITE, lr_bytes("{\"player\":0}", t[0].args[..]), false, t[0].out[..]);
+  #assert inv < 0 && level_find(cast(string) t[0].out[0..<-inv], "not-permitted") >= 0;
+  // every action is the person's alone
+  for c: GB_COMMANDS { if c.area == "lobby" { #assert (c.effect == "read") == (c.approval == "none"); } }
+  // a name the person gives is taken
+  nm := ed_lobby_command(t[0].l[..], key[..], aux[..], 1000, VERB_LOBBY_NAME, lr_bytes("{\"name\":\"Moss\"}", t[0].args[..]), true, t[0].out[..]);
+  #assert nm > 0;
+}

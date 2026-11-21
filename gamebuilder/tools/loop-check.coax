@@ -1,0 +1,222 @@
+// A step of the core loop is counted under a name in shared/loop.coax's list, and under no other
+// (issue 18). Three things hold that, and this is the third:
+//
+//   - the page writes a count's body with lp_body (shared/loop.coax), which takes a row of the list
+//     and never a word; the server reads it with lp_count_read (coax/loop-day.coax), which refuses
+//     the whole body when one name is not in the list (their #tests);
+//   - and run as a tool over the sources, this fails when
+//       a call that counts a step (gs_count, ct_mark, ct_mark_as) names anything but one of the
+//         list's own rows (LP_ARRIVED ... LP_BUILDER_MS, read from shared/loop.coax itself);
+//       a file other than shared/loop.coax says the door a count is sent to, or begins a count's
+//         body by hand: a second way to count, past the list;
+//       a script of the page's says either (the glue hands the page's own body on, and writes none);
+//       the list's rows are not numbered 0 to LP_N - 1, each once;
+//       or the site's map (scripts/web-deploy.sh) does not send the door to the API.
+//
+// A #test may say what it checks, and tools/hosted-check.coax is a caller from outside on purpose
+// (it sends a name the list has not, and is refused): neither is scanned for bodies.
+//
+// scripts/check.sh runs both: `coax test tools/loop-check.coax` and
+//   coax/web/tool.sh tools/loop-check.coax shared/loop.coax scripts/web-deploy.sh web/*.coax web/*.js gamebuilder/core/*.coax cli/*.coax tools/*.coax
+#load "../../coax/lib/sys/tool.coax";
+#load "../shared/loop.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+LC_TEXT :: 1048576;
+LC_NAMES :: 32;
+LcScan :: struct { text: [LC_TEXT] u8; list: [LC_TEXT] u8; }
+// The list's rows by the names the code calls them: LP_ARRIVED and the rest, read from shared/loop.coax.
+LcRows :: struct { name: [LC_NAMES] string; value: [LC_NAMES] int; n: int; }
+
+lc_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+lc_starts :: (s: string, with: string) -> bool { return s.count >= with.count && cast(string) s[0..<with.count] == with; }
+lc_ends :: (s: string, with: string) -> bool { return s.count >= with.count && cast(string) s[s.count - with.count..<s.count] == with; }
+lc_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// A count's body begun by hand, as source text says it (the quotes escaped).
+lc_body_start :: () -> string { return "{\\\"schema\\\":\\\"gamebuilder.count.v1"; }
+
+// The row constants of the list: the lines `LP_NAME :: N;` between LP_N's and the rows' struct.
+lc_rows :: (text: string, rows: [] LcRows) -> bool {
+  rows[0].n = 0;
+  i := 0; on := false;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    line := cast(string) text[i..<j]; i = j + 1;
+    if lc_starts(line, "LP_N ::") { on = true; continue; }
+    if lc_starts(line, "LpRow ::") { break; }
+    if !on || !lc_starts(line, "LP_") { continue; }
+    k := 0; while k < line.count && lc_word(line[k]) { k += 1; }
+    name := cast(string) line[0..<k];
+    if !lc_starts(cast(string) line[k..<line.count], " :: ") { return false; }
+    k += 4; v := 0; digits := 0;
+    while k < line.count && line[k] >= '0' && line[k] <= '9' { v = v * 10 + cast(int) (line[k] - '0'); k += 1; digits += 1; }
+    if digits == 0 || k >= line.count || line[k] != ';' || rows[0].n >= LC_NAMES { return false; }
+    rows[0].name[rows[0].n] = name; rows[0].value[rows[0].n] = v; rows[0].n += 1;
+  }
+  // every row of the list has one name, and no name is of a row the list has not
+  if rows[0].n != LP_N { return false; }
+  for r: 0..<LP_N { seen := 0; for q: 0..<rows[0].n { if rows[0].value[q] == r { seen += 1; } } if seen != 1 { return false; } }
+  return true;
+}
+lc_row :: (rows: [] LcRows, word: string) -> bool {
+  for q: 0..<rows[0].n { if rows[0].name[q] == word { return true; } }
+  return false;
+}
+
+// What a call counts: the word after its first comma (the call's "(" is at `at`). "" when there is none.
+lc_counted :: (text: string, at: int) -> string {
+  i := at + 1; depth := 0;
+  while i < text.count && text[i] != '\n' {
+    c := text[i];
+    if c == '(' || c == '[' { depth += 1; }
+    else if c == ')' || c == ']' { if depth == 0 { return ""; } depth -= 1; }
+    else if c == ',' && depth == 0 { break; }
+    i += 1;
+  }
+  if i >= text.count || text[i] != ',' { return ""; }
+  i += 1; while i < text.count && text[i] == ' ' { i += 1; }
+  j := i; while j < text.count && text[j] != ',' && text[j] != ')' && text[j] != '\n' { j += 1; }
+  while j > i && text[j - 1] == ' ' { j -= 1; }
+  return cast(string) text[i..<j];
+}
+
+// A Coax file: each string literal, and each call that counts, outside comments and #test blocks.
+lc_scan :: (path: string, text: string, rows: [] LcRows, say: bool) -> int {
+  bad := 0; i := 0; line := 1; in_test := false; depth := 0; line_at := 0;
+  callers := [3] string.["gs_count(", "ct_mark(", "ct_mark_as("];
+  outside := lc_ends(path, "tools/hosted-check.coax");
+  while i < text.count {
+    c := text[i];
+    if c == '\n' { line += 1; i += 1; line_at = i; continue; }
+    if c == '/' && i + 1 < text.count && text[i + 1] == '/' { while i < text.count && text[i] != '\n' { i += 1; } continue; }
+    if c == '#' && i + 5 <= text.count && cast(string) text[i..<i + 5] == "#test" { in_test = true; depth = 0; i += 5; continue; }
+    if in_test && c == '{' { depth += 1; }
+    if in_test && c == '}' { depth -= 1; if depth == 0 { in_test = false; } }
+    if c == '\'' && i + 2 < text.count { i += ifx text[i + 1] == '\\' then 4 else 3; continue; }
+    if c == '"' {
+      j := i + 1;
+      while j < text.count && text[j] != '"' && text[j] != '\n' { j += ifx text[j] == '\\' then 2 else 1; }
+      if j >= text.count { break; }
+      s := cast(string) text[i + 1..<j];
+      i = j + 1;
+      if in_test || outside { continue; }
+      if s == LP_DOOR { if say { print("loop: NOT the list's: %:% says the door a count is sent to (read LP_DOOR from shared/loop.coax)\n", path, line); } bad += 1; }
+      if lc_starts(s, lc_body_start()) { if say { print("loop: NOT the list's: %:% begins a count's body by hand (write it with lp_body, shared/loop.coax)\n", path, line); } bad += 1; }
+      continue;
+    }
+    if in_test || (i > 0 && lc_word(text[i - 1])) { i += 1; continue; }
+    hit := -1;
+    for q: 0..<3 { if i + callers[q].count <= text.count && cast(string) text[i..<i + callers[q].count] == callers[q] { hit = q; } }
+    if hit < 0 { i += 1; continue; }
+    open := i + callers[hit].count - 1;
+    what := lc_counted(text, open);
+    // (the seam itself and the page's own pass a row on: gs_count's and ct_mark's one line each)
+    e := line_at; while e < text.count && text[e] != '\n' { e += 1; }
+    own := cast(string) text[line_at..<e];
+    passes := lc_starts(own, "gs_count :: ") || lc_starts(own, "ct_mark :: ");
+    if !passes && !lc_row(rows, what) {
+      if say { print("loop: NOT a step of the list: %:% counts \"%\" (a step is a row of shared/loop.coax: LP_ARRIVED ... ; add the row there first)\n", path, line, what); }
+      bad += 1;
+    }
+    i = open + 1;
+  }
+  return bad;
+}
+// A script of the page's, or any other text: it says neither the door nor a count's schema (comments too: // lines are left out).
+lc_plain :: (path: string, text: string, say: bool) -> int {
+  bad := 0; i := 0; line := 1;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    l := cast(string) text[i..<j];
+    k := 0; while k < l.count && l[k] == ' ' { k += 1; }
+    comment := k + 1 < l.count && l[k] == '/' && l[k + 1] == '/';
+    if !comment && (lc_has(l, LP_DOOR) || lc_has(l, LP_COUNT_SCHEMA)) {
+      if say { print("loop: NOT the list's: %:% says a count's door or schema (the page's own code sends a count: web/count.coax)\n", path, line); }
+      bad += 1;
+    }
+    i = j + 1; line += 1;
+  }
+  return bad;
+}
+// The site's map: the line that lists the API's paths names the door.
+lc_mapped :: (text: string) -> bool {
+  i := 0;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    l := cast(string) text[i..<j];
+    if lc_has(l, "'/api/rows/*'") && lc_has(l, "paths:") {
+      q: [64] u8; n := lp_put(q[..], 0, "'"); n = lp_put(q[..], n, LP_DOOR); n = lp_put(q[..], n, "'");
+      return lc_has(l, cast(string) q[0..<n]);
+    }
+    i = j + 1;
+  }
+  return false;
+}
+
+// (the list as its file says it, for the checks below: the tool reads the file itself)
+LC_LIST :: "LP_N :: 15;\nLP_ARRIVED :: 0;       // words\nLP_CREATE :: 1;\nLP_BUILDER :: 2;\nLP_PICKED :: 3;\nLP_PLACED :: 4;\nLP_PROMPT :: 5;\nLP_ACCOUNT :: 6;\nLP_MESSAGE :: 7;\nLP_PUBLISHED :: 8;\nLP_SHARED :: 9;\nLP_REMIX :: 10;\nLP_NOGPU :: 11;\nLP_BUTTON_MS :: 12;\nLP_BUILDER_MS :: 13;\nLP_KEPT :: 14;\n\nLpRow :: struct {\n";
+#test "the list's rows are read from its own file: one name a row, numbered 0 to LP_N - 1" {
+  r: [1] LcRows;
+  #assert lc_rows(LC_LIST, r[..]) && r[0].n == LP_N;
+  #assert lc_row(r[..], "LP_ARRIVED") && lc_row(r[..], "LP_PUBLISHED") && lc_row(r[..], "LP_BUILDER_MS") && !lc_row(r[..], "LP_N") && !lc_row(r[..], "LP_DOOR") && !lc_row(r[..], "LP_STEP") && !lc_row(r[..], "3") && !lc_row(r[..], "");
+  // a list with a number twice, or one missing, is no list
+  #assert !lc_rows("LP_N :: 14;\nLP_ARRIVED :: 0;\nLP_CREATE :: 0;\nLpRow :: struct {\n", r[..]);
+  #assert !lc_rows("LP_N :: 14;\nLP_ARRIVED :: 0;\nLpRow :: struct {\n", r[..]);
+}
+#test "a call that counts names a row of the list: a number, a word, another constant or a name the list has not fails" {
+  r: [1] LcRows;
+  #assert lc_rows(LC_LIST, r[..]);
+  #assert lc_scan("web/site.coax", "  if done { gs_count(s, LP_PUBLISHED); }\n  ct_mark(k, LP_REMIX); ct_mark_as(k, LP_PICKED, s[0].keep[0].restored && s[0].still);\n", r[..], false) == 0;
+  #assert lc_scan("web/site.coax", "  gs_count(s, 8);\n", r[..], false) == 1;
+  #assert lc_scan("web/site.coax", "  gs_count(s, LP_BOUGHT);\n", r[..], false) == 1;
+  #assert lc_scan("web/site.coax", "  gs_count(s, LP_N);\n  ct_mark(s[0].count[..], which);\n  ct_mark_as(k, LP_STEP, true);\n", r[..], false) == 3;
+  #assert lc_scan("web/site.coax", "  gs_count(s);\n", r[..], false) == 1;
+  // the seam's own line passes its row on; a comment and a check may say anything; another function's name that ends the same is not a call
+  #assert lc_scan("web/site.coax", "gs_count :: (s: [] Site, step: int) { ct_mark(s[0].count[..], step); }\n// gs_count(s, 8)\n  xgs_count(s, 8);\n", r[..], false) == 0;
+  #assert lc_scan("web/site.coax", "#test \"x\" {\n  ct_mark(c, -1); if true { gs_count(s, 99); }\n}\n  gs_count(s, 99);\n", r[..], false) == 1;
+}
+#test "a count's door and a body begun by hand are the list's alone, and the page's scripts say neither; the site's map names the door" {
+  r: [1] LcRows;
+  #assert lc_scan("web/chat.coax", "  n = put(out, n, \"/api/count\");\n", r[..], false) == 1;
+  #assert lc_scan("web/chat.coax", "  n = put(out, n, \"{\\\"schema\\\":\\\"gamebuilder.count.v1\\\",\\\"counts\\\":[{\\\"name\\\":\\\"bought\\\"\");\n", r[..], false) == 1;
+  #assert lc_scan("web/chat.coax", "  why[0] = \"a count's schema is gamebuilder.count.v1\"; n = put(out, n, \"/api/chat\"); // \"/api/count\"\n", r[..], false) == 0;
+  #assert lc_scan("web/chat.coax", "#test \"t\" {\n  #assert door == \"/api/count\";\n}\n", r[..], false) == 0;
+  #assert lc_scan("tools/hosted-check.coax", "  first := \"{\\\"schema\\\":\\\"gamebuilder.count.v1\\\",\\\"counts\\\":[]}\";\n", r[..], false) == 0;
+  #assert lc_plain("web/hud-glue.js", "// the page's door (/api/count) is the page's\nconst a = 1;\n", false) == 0;
+  #assert lc_plain("web/hud-glue.js", "navigator.sendBeacon(\"/api/count\", body);\n", false) == 1 && lc_plain("web/x.js", "const s = `gamebuilder.count.v1`;\n", false) == 1;
+  #assert lc_mapped("    api=\"  - paths: ['/api/rows/*', '/api/levels/*', '/api/count', '/mcp']\n") && !lc_mapped("    api=\"  - paths: ['/api/rows/*', '/api/levels/*', '/mcp']\n") && !lc_mapped("# '/api/count'\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { print("usage: tool.sh tools/loop-check.coax shared/loop.coax scripts/web-deploy.sh FILE...\n"); return 2; }
+  c: [1] LcScan; r: [1] LcRows;
+  n := fs_read(args_at(a[..], 0), c[0].list[..]);
+  if n <= 0 || n >= LC_TEXT || !lc_rows(cast(string) c[0].list[0..<n], r[..]) {
+    print("loop: NOT a list: % does not name each of its % rows once, 0 to % (LP_NAME :: N; between LP_N and LpRow)\n", args_at(a[..], 0), LP_N, LP_N - 1);
+    return 1;
+  }
+  n = fs_read(args_at(a[..], 1), c[0].text[..]);
+  if n <= 0 || n >= LC_TEXT || !lc_mapped(cast(string) c[0].text[0..<n]) {
+    print("loop: NOT mapped: % does not send % to the API (the line that lists the API's paths)\n", args_at(a[..], 1), LP_DOOR);
+    bad += 1;
+  }
+  files := 0;
+  for f: 2..<args_count(a[..]) {
+    path := args_at(a[..], f);
+    if lc_ends(path, "shared/loop.coax") || lc_ends(path, "tools/loop-check.coax") { continue; }
+    n = fs_read(path, c[0].text[..]);
+    if n < 0 || n >= LC_TEXT { print("loop: NOT read %\n", path); bad += 1; continue; }
+    files += 1;
+    if lc_ends(path, ".coax") { bad += lc_scan(path, cast(string) c[0].text[0..<n], r[..], true); }
+    else { bad += lc_plain(path, cast(string) c[0].text[0..<n], true); }
+  }
+  if bad > 0 { return 1; }
+  print("loop: ok, % rows, and % files count a step only by the list\n", LP_N, files);
+  return 0;
+}

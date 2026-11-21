@@ -1,0 +1,390 @@
+// The golden cases (docs/programmatic-access.md, "Determinism and tests"): every call in
+// tests/commands/*.case gives the same answer, byte for byte, on every surface its row has:
+//   - the core: ed_command's own path (gb_command_run, the app's and the pane's), on an editor
+//     opened from the case's files and written back as the CLI writes them. A row the app's
+//     screen holds (its gap says "screen") runs on the editor the case's last call left, so undo,
+//     the clipboard and the selection carry from one call to the next as they do in the app;
+//   - the CLI: `gamebuilder --dir D VERB WORDS... FLAGS...`, the call's arguments as words and
+//     its flags as the row names them;
+//   - MCP: one `gamebuilder --dir D mcp --no-agent` for the case, the call as a tools/call, the answer
+//     the result's text;
+//   - HTTP: one `gamebuilder --dir D serve --port 0` for the case, the call as
+//     POST /api/rows/VERB with its arguments as the body, the answer the response's body.
+// Every row has at least one case (issue 3, item 4), unless its gap says "live" (it waits on
+// something a case cannot stand in for), and then it has none.
+// Each case file starts from an empty folder and its calls run in order. A case is lines:
+//   # what it shows
+//   > VERB {"arg":value,...}
+//   < the answer, exactly
+//   < =   (the answer names the build, such as the engine's commit: it must only be the same
+//          on every surface the row has)
+// A new case is written with each answer as "< ?"; --write (first) fills each such line where
+// the ways in agree, for a person to read before it is kept.
+// A tool, not a #test: a check cannot run the CLI. cli/check.sh runs it with a HOME of its own
+// (nobody logged in) and prints what does not hold, or "golden: ok".
+//   coax/web/tool.sh tools/commands-golden.coax build/cli/gamebuilder tests/commands/*.case
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/clock.coax";
+#import "Basic";
+
+GC_LEVELS :: 16;            // levels a case may make
+GC_GAMES :: 8;
+GC_ANSWER :: 262144;
+
+// A folder held in memory, as the core's leg writes it.
+GcFile :: struct { n: s32; bytes: [GB_DOC_MAX] u8; len: int; claims: [CLAIM_FILE] u8; claims_len: int; }   // a level, and its claims beside it
+GC_AGENTS :: 8;             // agents a case may make
+GcLog :: struct { id: [AGR_ID] u8; id_n: int; bytes: [65536] u8; len: int; }
+GcStore :: struct { pub: [131072] u8; pub_len: int; levels: [GC_LEVELS] GcFile; level_n: int; games: [GC_GAMES] GcFile; game_n: int; agents: [1] AgrStore; logs: [GC_AGENTS] GcLog; pics: [AGP_INDEX_MAX] u8; pics_len: int; computers: [1] AgrComputers; }   // pics: the folder's agent-pictures
+
+// The agent k's log in the store, made when it isn't there yet; -1 when there's no room.
+gc_log :: (st: [] GcStore, id: string) -> int {
+  for i: 0..<GC_AGENTS { if st[0].logs[i].id_n > 0 && cast(string) st[0].logs[i].id[0..<st[0].logs[i].id_n] == id { return i; } }
+  for i: 0..<GC_AGENTS { if st[0].logs[i].id_n == 0 { st[0].logs[i].id_n = agr_set(st[0].logs[i].id[..], id); return i; } }
+  return -1;
+}
+// The computer's name the CLI is given (GAMEBUILDER_COMPUTER, set with the clock).
+gc_computer :: (b: [] u8) -> string { return proc_getenv("GAMEBUILDER_COMPUTER", b); }
+// The CLI's fixed clock when GAMEBUILDER_NOW is set (cli/check.sh sets it for the cases).
+gc_now :: () -> s64 {
+  b: [32] u8; w := proc_getenv("GAMEBUILDER_NOW", b[..]);
+  v: s64 = 0;
+  for ch: w { if ch < '0' || ch > '9' { return 0; } v = v * 10 + cast(s64) (ch - '0'); }
+  return v;
+}
+
+GcRun :: struct {
+  text: [262144] u8; written: [524288] u8; wn: int;
+  e: [1] Editor;
+  store: [1] GcStore;
+  core: [GC_ANSWER] u8; cli: [GC_ANSWER] u8; mcp: [GC_ANSWER] u8; http: [GC_ANSWER] u8; line: [GC_ANSWER * 2] u8; err: [4096] u8;
+  first: [GC_ANSWER] u8;
+  words: [8 * 1024] u8;
+  nodes: [WE_BATCH * WE_NODES + 64] JvNode;
+}
+
+gc_file :: (files: [] GcFile, count: int, n: s32) -> int {
+  for i: 0..<count { if files[i].n == n { return i; } }
+  return -1;
+}
+
+// The core's leg: opens what the row names from the store, runs it, writes back what it changed.
+gc_core :: (g: [] GcRun, v: int, args: string) -> string {
+  e := g[0].e[..]; st := g[0].store[..];
+  if gb_gap_has(GB_COMMANDS[v], "screen") { return gc_core_screen(g, v, args); }
+  // each level's revision, as the CLI reads its files
+  levels: [GC_LEVELS] s32; revs: [GC_LEVELS] s32;
+  for i: 0..<st[0].level_n {
+    levels[i] = st[0].levels[i].n;
+    g[0].e[0] = Editor.{};
+    revs[i] = ifx ed_open(e, levels[i], st[0].levels[i].bytes[0..<st[0].levels[i].len]) then cast(s32) ed_agent_rev(e) else 0;
+  }
+  g[0].e[0] = Editor.{};
+  for i: 0..<st[0].game_n { _ = ed_mine_load(e, st[0].games[i].n, st[0].games[i].bytes[0..<st[0].games[i].len]); }
+  if st[0].pub_len > 0 { _ = ed_pub_load(e, st[0].pub[0..<st[0].pub_len]); }
+  if gb_part(GB_COMMANDS[v].arguments, 0) == "level" {
+    da: [1] Jv;
+    n: s32 = -1;
+    if jv_parse(da[..], args, g[0].nodes[..]) { n = cast(s32) jv_int(da[0], jv_get(da[0], 0, "level"), -1); }
+    k := gc_file(st[0].levels[..], st[0].level_n, n);
+    o: [1] Jo; jo_start(o[..], g[0].core[..]);
+    why := ifx k >= 0 then gb_open(e, n, st[0].levels[k].bytes[0..<st[0].levels[k].len], true) else gb_open(e, n, g[0].core[0..<0], n == 0);
+    // write-content may make a level that isn't there, as the CLI's does
+    if why.count > 0 && !(v == VERB_WRITE_CONTENT && k < 0) { return gb_refuse(o[..], "not-found", why).json; }
+    // its claims, as the CLI reads them beside its file, on the same clock
+    ed_claims_clock(e, cast(s64) (cxproc_wall_us() / 1000000));
+    if k >= 0 && st[0].levels[k].claims_len > 0 { _ = ed_claims_load(e, st[0].levels[k].claims[0..<st[0].levels[k].claims_len]); }
+  }
+  cb: [64] u8;
+  // the named agent's log, as the CLI reads its file
+  lg := "";
+  if gb_part(GB_COMMANDS[v].arguments, 0) == "agent" {
+    da: [1] Jv; ib: [64] u8;
+    if jv_parse(da[..], args, g[0].nodes[..]) {
+      n := jv_str(da[0], jv_get(da[0], 0, "agent"), ib[..]);
+      k := ifx n > 0 then gc_log(st, cast(string) ib[0..<n]) else -1;
+      if k >= 0 { lg = cast(string) st[0].logs[k].bytes[0..<st[0].logs[k].len]; }
+    }
+  }
+  w := GbWorld.{levels = levels[0..<st[0].level_n], revs = revs[0..<st[0].level_n], agents = st[0].agents[..], log = lg,
+    pictures = cast(string) st[0].pics[0..<st[0].pics_len], now = gc_now(), computer = gc_computer(cb[..]), computers = st[0].computers[..]};
+  r := gb_command_run_world(e, v, args, w, g[0].core[..], 0);
+  if r.agent > 0 {
+    // as the CLI writes agent-ID.events: the lines appended
+    k := gc_log(st, agr_id(st[0].agents[0].r[r.agent - 1..<r.agent]));
+    if k >= 0 { st[0].logs[k].len = agr_put(st[0].logs[k].bytes[..], st[0].logs[k].len, r.lines); }
+  }
+  // as the CLI writes agent-pictures (its JPEG is a file the answers don't read)
+  if r.jpeg.count > 0 && r.pictures.count <= st[0].pics.count { st[0].pics_len = agr_put(st[0].pics[..], 0, r.pictures); }
+  if r.save_level {
+    n := ed_level(e); k := gc_file(st[0].levels[..], st[0].level_n, n);
+    if k < 0 && st[0].level_n < GC_LEVELS { k = st[0].level_n; st[0].level_n += 1; st[0].levels[k].n = n; }
+    if k >= 0 { st[0].levels[k].len = ed_save(e, st[0].levels[k].bytes[..]); }
+  }
+  // a new game's levels after its first (crates: a room each), as the CLI writes each one's file
+  while ed_more_due(e) > 0 {
+    n := ed_more_due(e); k := gc_file(st[0].levels[..], st[0].level_n, n);
+    if k < 0 && st[0].level_n < GC_LEVELS { k = st[0].level_n; st[0].level_n += 1; st[0].levels[k].n = n; }
+    if k < 0 { sk: [MORE_DOC] u8; skipped := ed_more_save(e, sk[..]); continue; }
+    st[0].levels[k].len = cast(int) ed_more_save(e, st[0].levels[k].bytes[..]);
+  }
+  // the claims written back as the CLI writes them: not for a dry run
+  dry := false;
+  { da: [1] Jv; if args.count > 0 && jv_parse(da[..], args, g[0].nodes[..]) { at := jv_get(da[0], 0, "dry_run"); dry = at >= 0 && jv_kind(da[0], at) == JV_TRUE; } }
+  if !dry && gb_part(GB_COMMANDS[v].arguments, 0) == "level" && ed_claims_due(e) {
+    k := gc_file(st[0].levels[..], st[0].level_n, ed_level(e));
+    if k >= 0 { st[0].levels[k].claims_len = ed_claims_save(e, st[0].levels[k].claims[..]); ed_claims_saved(e); }
+  }
+  if ed_pub_due(e) { st[0].pub_len = cast(int) ed_pub_save(e, st[0].pub[..]); ed_pub_saved(e); }
+  for sg: [2] s32.[r.save_game, r.save_also] {
+    if sg <= 0 { continue; }
+    k := gc_file(st[0].games[..], st[0].game_n, sg);
+    if k < 0 && st[0].game_n < GC_GAMES { k = st[0].game_n; st[0].game_n += 1; st[0].games[k].n = sg; }
+    if k >= 0 { st[0].games[k].len = ed_mine_save(e, sg, st[0].games[k].bytes[..]); }
+  }
+  // as the CLI deletes the file: the last one takes its place
+  if r.drop_level > 0 {
+    k := gc_file(st[0].levels[..], st[0].level_n, r.drop_level);
+    if k >= 0 { st[0].level_n -= 1; st[0].levels[k] = st[0].levels[st[0].level_n]; }
+  }
+  if r.drop_game > 0 {
+    k := gc_file(st[0].games[..], st[0].game_n, r.drop_game);
+    if k >= 0 { st[0].game_n -= 1; st[0].games[k] = st[0].games[st[0].game_n]; }
+  }
+  return r.json;
+}
+
+// A row the app's screen holds: run on the editor as the last call left it (its history, its
+// clipboard, its selection), and its level written back when it changed.
+gc_core_screen :: (g: [] GcRun, v: int, args: string) -> string {
+  e := g[0].e[..]; st := g[0].store[..];
+  levels: [GC_LEVELS] s32;
+  for i: 0..<st[0].level_n { levels[i] = st[0].levels[i].n; }
+  r := gb_command_run(e, v, args, levels[0..<st[0].level_n], g[0].core[..]);
+  // as the CLI writes agent-pictures (its JPEG is a file the answers don't read)
+  if r.jpeg.count > 0 && r.pictures.count <= st[0].pics.count { st[0].pics_len = agr_put(st[0].pics[..], 0, r.pictures); }
+  if r.save_level {
+    n := ed_level(e); k := gc_file(st[0].levels[..], st[0].level_n, n);
+    if k >= 0 { st[0].levels[k].len = ed_save(e, st[0].levels[k].bytes[..]); }
+  }
+  return r.json;
+}
+// Which legs a row is answered on: the core for what the app and the pane run (every row but
+// those a surface carries out around the core: the account's, the engine's and the funnel's), and the CLI,
+// MCP and HTTP where the row is on them.
+gc_on_core :: (v: int) -> bool { c := GB_COMMANDS[v]; return c.area != "account" && v != VERB_ENGINE && v != VERB_FUNNEL; }
+gc_on :: (v: int, surface: s32) -> bool { return (GB_COMMANDS[v].surfaces & surface) != 0; }
+
+// A JSON value as the word a person types: a string unescaped (into wb), a number or an object as written.
+gc_word :: (d: Jv, at: int, wb: [] u8, used: [] int) -> string {
+  if jv_kind(d, at) == JV_STRING {
+    k := jv_str(d, at, wb[used[0]..<wb.count]);
+    if k < 0 { return ""; }
+    s := cast(string) wb[used[0]..<used[0] + k]; used[0] += k; return s;
+  }
+  return jv_raw(d, at);
+}
+
+// The CLI's leg: the call's arguments as the words and flags a person types.
+gc_cli :: (g: [] GcRun, bin: string, dir: string, v: int, args: string) -> string {
+  argv: [24] string; n := 0;
+  argv[n] = bin; n += 1; argv[n] = "--dir"; n += 1; argv[n] = dir; n += 1; argv[n] = GB_COMMANDS[v].verb; n += 1;
+  da: [1] Jv;
+  if args.count > 0 {
+    if !jv_parse(da[..], args, g[0].nodes[..]) { return "(the case's arguments don't read)"; }
+    wb := g[0].words[..];
+    u: [1] int;
+    c := GB_COMMANDS[v];
+    for k: 0..<gb_parts(c.arguments) {
+      at := jv_get(da[0], 0, gb_mcp_prop(gb_part(c.arguments, k)));
+      if at >= 0 && n < argv.count { argv[n] = gc_word(da[0], at, wb, u[..]); n += 1; }
+    }
+    // each of the row's flags, by its property name (--dry-run is dry_run): a bool when true
+    for k: 0..<gb_parts(c.flags) {
+      f := gb_part(c.flags, k); colon := 0; while colon < f.count && f[colon] != ':' { colon += 1; }
+      flag := cast(string) f[0..<colon];
+      pb: [32] u8; prop := gb_mcp_flag(flag, pb[..]);
+      at := jv_get(da[0], 0, prop);
+      if at < 0 { continue; }
+      if cast(string) f[colon..<f.count] == ":bool" {
+        if jv_kind(da[0], at) == JV_TRUE && n < argv.count { argv[n] = flag; n += 1; }
+      } else if n + 2 <= argv.count {
+        // the flag's name lives in the table; its value in the words
+        argv[n] = flag; argv[n + 1] = gc_word(da[0], at, wb, u[..]); n += 2;
+      }
+    }
+  }
+  r := proc_run(argv[0..<n], 30000, g[0].cli[..], g[0].err[..]);
+  if r.started != 0 { return "(the CLI did not start)"; }
+  return cast(string) g[0].cli[0..<r.out_n];
+}
+
+// MCP's leg: one tools/call on the case's running server; the answer is the result's text.
+gc_mcp :: (g: [] GcRun, h: int, id: int, v: int, args: string) -> string {
+  nb: [64] u8;
+  o: [1] Jo; jo_start(o[..], g[0].line[..]);
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0"); jo_key(o[..], "id"); jo_int(o[..], id);
+  jo_key(o[..], "method"); jo_str(o[..], "tools/call");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], gb_mcp_name(GB_COMMANDS[v].verb, nb[..]));
+  jo_key(o[..], "arguments"); jo_value(o[..]); jo_put(o[..], ifx args.count > 0 then args else "{}");
+  jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad || !proc_send(h, jo_text(o[..])) || !proc_send(h, "\n") { return "(the request was not sent)"; }
+  n := proc_line(h, 30000, g[0].line[..]);
+  if n < 0 { return "(no answer)"; }
+  da: [1] Jv;
+  if !jv_parse(da[..], cast(string) g[0].line[0..<n], g[0].nodes[..]) { return "(the answer doesn't read)"; }
+  content := jv_path(da[0], 0, "result.content");
+  if content < 0 { return cast(string) g[0].line[0..<n]; }
+  k := jv_str(da[0], jv_get(da[0], jv_at(da[0], content, 0), "text"), g[0].mcp[..]);
+  return ifx k >= 0 then cast(string) g[0].mcp[0..<k] else "(no text)";
+}
+
+// HTTP's leg: POST /api/rows/VERB on the case's server at port; the answer is the body.
+gc_http :: (g: [] GcRun, port: int, v: int, args: string) -> string {
+  pb: [96] u8; pt := [1] Text.[Text.{buf = pb[..]}]; tx_put(pt[..], "/api/rows/"); tx_put(pt[..], GB_COMMANDS[v].verb);
+  s := gc_post(g, port, cast(string) pb[0..<pt[0].at], "", ifx args.count > 0 then args else "{}");
+  for i: 3..<s.count { if s[i - 3] == '\r' && s[i - 2] == '\n' && s[i - 1] == '\r' && s[i] == '\n' { return s[i + 1..<s.count]; } }
+  return "(no whole response)";
+}
+// A POST to path with body (and an extra header line, or ""): the whole response.
+gc_post :: (g: [] GcRun, port: int, path: string, header: string, body: string) -> string {
+  rb: [8192] u8; t := [1] Text.[Text.{buf = rb[..]}];
+  tx_put(t[..], "POST "); tx_put(t[..], path); tx_put(t[..], " HTTP/1.1\r\nHost: 127.0.0.1\r\n"); tx_put(t[..], header);
+  tx_put(t[..], "Content-Type: application/json\r\nContent-Length: ");
+  tx_int(t[..], cast(s64) body.count); tx_put(t[..], "\r\n\r\n"); tx_put(t[..], body);
+  if t[0].at >= rb.count { return "(the request did not fit)"; }
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  h := cxsock_connect(port, 5000);
+  if h < 0 { return "(no server)"; }
+  for b: rb[0..<t[0].at] { _ = cxsock_write(h, cast(int) b); }
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); return "(the request was not sent)"; }
+  n := 0; deadline := cxsock_now_ms() + 30000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < g[0].http.count { g[0].http[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+  }
+  _ = cxsock_close(h);
+  return cast(string) g[0].http[0..<n];
+}
+
+GC_LEG :: [4] string.["the core", "the CLI", "MCP", "HTTP"];
+// The first leg's answer, kept apart from the buffers the next legs write into.
+gc_keep :: (g: [] GcRun, s: string) -> string {
+  n := ifx s.count < g[0].first.count then s.count else g[0].first.count;
+  for i: 0..<n { g[0].first[i] = s[i]; }
+  return cast(string) g[0].first[0..<n];
+}
+
+// The case file as it is written back: a line, and its newline when it had one.
+gc_put :: (g: [] GcRun, s: string, newline: bool) {
+  for c: s { if g[0].wn < g[0].written.count { g[0].written[g[0].wn] = c; g[0].wn += 1; } }
+  if newline && g[0].wn < g[0].written.count { g[0].written[g[0].wn] = '\n'; g[0].wn += 1; }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0; calls := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { print("usage: tool.sh tools/commands-golden.coax [--write] GAMEBUILDER CASE...\n"); return 2; }
+  g: [1] GcRun;
+  cased: [GB_N] bool;
+  write := args_at(a[..], 0) == "--write";
+  first := ifx write then 1 else 0;
+  bin := args_at(a[..], first);
+  for f: first + 1..<args_count(a[..]) {
+    path := args_at(a[..], f);
+    size := fs_read(path, g[0].text[..]);
+    if size <= 0 || size >= g[0].text.count { print("golden: NOT read %\n", path); bad += 1; continue; }
+    text := cast(string) g[0].text[0..<size];
+    g[0].store[0] = GcStore.{};
+    cb: [256] u8; cdir := fs_temp("gb-golden-cli", cb[..]);
+    mb: [256] u8; mdir := fs_temp("gb-golden-mcp", mb[..]);
+    hb: [256] u8; hdir := fs_temp("gb-golden-http", hb[..]);
+    if cdir.count == 0 || mdir.count == 0 || hdir.count == 0 { print("golden: NOT a folder to work in\n"); return 1; }
+    // the case's server, and the port it says it listens on
+    sh := proc_new();
+    sok := proc_arg(sh, bin) && proc_arg(sh, "--dir") && proc_arg(sh, hdir) && proc_arg(sh, "serve") && proc_arg(sh, "--port") && proc_arg(sh, "0");
+    if !sok || proc_start(sh) != 0 { print("golden: NOT started: % serve\n", bin); return 1; }
+    sl: [256] u8; sn := proc_line(sh, 10000, sl[..]);
+    port := 0;
+    if sn > 0 {
+      said := cast(string) sl[0..<sn]; at := level_find(said, "127.0.0.1:");
+      if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { port = port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+    }
+    if port <= 0 { print("golden: NOT serving: %\n", cast(string) sl[0..<ifx sn > 0 then sn else 0]); return 1; }
+    h := proc_new();
+    // --no-agent: the session makes no agent record of its own, so the agent rows answer as the
+    // other legs' do (an MCP session's record is checked in cli/check.sh and attach-check)
+    ok := proc_arg(h, bin) && proc_arg(h, "--dir") && proc_arg(h, mdir) && proc_arg(h, "mcp") && proc_arg(h, "--no-agent");
+    if !ok || proc_start(h) != 0 { print("golden: NOT started: % mcp\n", bin); return 1; }
+    from := 0; verb := -1; args := ""; id := 0; line_no := 0; filled := 0;
+    g[0].wn = 0;
+    for i: 0..<size + 1 {
+      if i < size && text[i] != '\n' { continue; }
+      line := cast(string) text[from..<i]; from = i + 1; line_no += 1;
+      keep := line;
+      if line.count < 2 || line[0] == '#' { gc_put(g[..], keep, i < size); continue; }
+      if line[0] == '>' {
+        gc_put(g[..], keep, i < size);
+        // > VERB {args}
+        sp := 2; while sp < line.count && line[sp] != ' ' { sp += 1; }
+        verb = gb_find(cast(string) line[2..<sp]);
+        args = ifx sp + 1 < line.count then cast(string) line[sp + 1..<line.count] else "";
+        if verb < 0 { print("golden: NOT a verb at %:%\n", path, line_no); bad += 1; }
+        continue;
+      }
+      if line[0] != '<' || verb < 0 { print("golden: NOT a case line at %:%\n", path, line_no); bad += 1; gc_put(g[..], keep, i < size); continue; }
+      want := cast(string) line[2..<line.count];
+      calls += 1; id += 1;
+      cased[verb] = true;
+      // each leg the row has; the first answer is the one the others must equal
+      got := ""; legs := 0; agree := true; misses := 0;
+      for leg: 0..<4 {
+        on := ifx leg == 0 then gc_on_core(verb) else ifx leg == 1 then gc_on(verb, GB_CLI) else ifx leg == 2 then gc_on(verb, GB_MCP) else gc_on(verb, GB_HTTP);
+        if !on { continue; }
+        said := "";
+        if leg == 0 { said = gc_core(g[..], verb, args); } else if leg == 1 { said = gc_cli(g[..], bin, cdir, verb, args); }
+        else if leg == 2 { said = gc_mcp(g[..], h, id, verb, args); } else { said = gc_http(g[..], port, verb, args); }
+        if said != want && !(want == "=" && (legs == 0 || said == got)) {
+          print("golden: NOT the case's answer through % at %:%\n  want %\n  got  %\n", GC_LEG[leg], path, line_no, want, said);
+          bad += 1; misses += 1;
+        }
+        if legs == 0 { got = gc_keep(g[..], said); } else if said != got { agree = false; }
+        legs += 1;
+      }
+      if legs == 0 { print("golden: NOT a surface a case reaches: % at %:%\n", GB_COMMANDS[verb].verb, path, line_no); bad += 1; }
+      if write && want == "?" && legs > 0 && agree {
+        gc_put(g[..], "< ", false); gc_put(g[..], got, i < size); filled += 1; bad -= misses;
+      } else { gc_put(g[..], keep, i < size); }
+      verb = -1;
+    }
+    if write && filled > 0 {
+      if fs_write(path, cast(string) g[0].written[0..<g[0].wn]) { print("golden: wrote % answers into %\n", filled, path); }
+      else { print("golden: NOT written %\n", path); bad += 1; }
+    }
+    _ = proc_close_stdin(h); _ = proc_wait(h, 5000); _ = proc_release(h);
+    // the server answers only this computer: a page elsewhere is refused; MCP over HTTP answers
+    if f == first + 1 {
+      r := gc_post(g[..], port, "/api/rows/list-games", "Origin: https://example.com\r\n", "{}");
+      if level_find(r, "HTTP/1.1 403 ") != 0 { print("golden: NOT refused a page elsewhere: %\n", r); bad += 1; }
+      r = gc_post(g[..], port, "/mcp", "", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
+      if level_find(r, "HTTP/1.1 200 ") != 0 || level_find(r, "\"gb_read_level\"") < 0 { print("golden: NOT MCP over HTTP: %\n", r); bad += 1; }
+    }
+    _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh);
+  }
+  // every row has a case, or says "live" and has none (issue 3, item 4); the website's own plan
+  // lines are cased by the website's #tests, which tools/web-rows-check.coax holds to their rows
+  for v: 0..<GB_N {
+    if GB_COMMANDS[v].area == "web" { continue; }
+    live := gb_gap_has(GB_COMMANDS[v], "live");
+    if !cased[v] && !live { print("golden: NOT a case for the % row (tests/commands/*.case), and its gap doesn't say live\n", GB_COMMANDS[v].verb); bad += 1; }
+    if cased[v] && live { print("golden: NOT live: the % row has a case, so its gap's \"live\" is stale\n", GB_COMMANDS[v].verb); bad += 1; }
+  }
+  if bad > 0 { return 1; }
+  print("golden: ok, % calls on every surface their rows have, every row cased\n", calls);
+  return 0;
+}

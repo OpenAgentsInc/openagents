@@ -1,0 +1,276 @@
+// One published game, counted (docs/publishing.md, "Play counts and remix lineage"): how many times
+// its link was opened, how many of those played a minute, how many pressed Remix, and how many
+// remixes of it someone else went on to publish. One list for the page that sends a count
+// (web/publish.coax), the server that keeps it (cli/plays.coax: POST /api/play/CODE/played on a
+// hosted `gamebuilder serve`) and the rows that read it back (coax/commands.coax: `published`, a
+// creator's own games; cli/loop.coax: `funnel`, the site's).
+//
+// The number these are for: new published games caused by one published game, which is `remade`
+// over the links there are. Above one, each game brings more than one game after it.
+//
+// What a count is. Nothing about the person: no id, no address, no account, no cookie. The page
+// says one word, the fact's name, at the game's own address; the server adds one to that game's
+// total and to the site's, and keeps the totals alone. A count is a time it happened, not a
+// person: the same visitor opening a link twice is two. `remade` is never the page's to say: the
+// server counts it when a remix is first published (coax/publish.coax keeps which game a remix
+// came from), and only when another account published it.
+//
+// The totals are open to being raised by anyone who sends counts by hand: there is no player
+// token yet (docs/publishing.md). They are for seeing which games spread, and are not yet fit to
+// pay anyone by.
+//   coax/bin/coax test shared/plays.coax --library
+
+PY_DOOR :: "/played";                    // a count's door, after the game's own: POST /api/play/CODE/played
+PY_SCHEMA :: "gamebuilder.plays.v1";     // the first line of a totals file
+PY_CODE :: 6;                            // a link's code (coax/publish.coax PUB_CODE)
+
+PY_N :: 4;
+PY_OPENED :: 0;        // the link's page put the game in the world
+PY_MINUTE :: 1;        // it was still being played PY_MINUTE_S seconds on
+PY_REMIX :: 2;         // Remix pressed: the level became a game of the visitor's own
+PY_REMADE :: 3;        // a remix of it was published by another account (the server's to count)
+PY_SENT :: 3;          // the first PY_SENT are a page's to send
+PY_MINUTE_S :: 60;
+
+PyRow :: struct {
+  name: string;        // the name it is counted under, on the wire and in the file: lowercase letters
+  words: string;       // what a reader is told it is
+}
+PY_ROWS :: [PY_N] PyRow.[
+  PyRow.{name = "opened", words = "times the link was opened"},
+  PyRow.{name = "minute", words = "times it was played for a minute"},
+  PyRow.{name = "remix", words = "times remix was pressed"},
+  PyRow.{name = "remade", words = "remixes of it someone else published"},
+];
+py_find :: (name: string) -> int {
+  for i: 0..<PY_N { if PY_ROWS[i].name == name { return i; } }
+  return -1;
+}
+
+PY_TOP :: 10;                       // the site's totals name the PY_TOP games most opened
+PY_MOST :: 1000000000000000;        // a total stops here
+PY_TEXT :: 512;                     // bytes a totals file takes at most
+PY_BODY :: 32;                      // bytes of a count's body
+PY_LINE :: 80;                      // bytes of a game's line in the list a server gives `published`
+
+PyTop :: struct { code: [PY_CODE] u8; n: int; }
+// A game's totals, or the site's (which alone has a top).
+Plays :: struct { n: [PY_N] int; top: [PY_TOP] PyTop; top_n: int; }
+
+py_put :: (out: [] u8, at: int, s: string) -> int { n := at; for c: s { if n < out.count { out[n] = c; } n += 1; } return n; }
+py_put_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := ifx v < 0 then 0 else v;
+  d: [20] u8; k := 0;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; }
+  while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; } n += 1; }
+  return n;
+}
+// A whole number of at most 16 digits: -1 when s is not one.
+py_int :: (s: string) -> int {
+  if s.count == 0 || s.count > 16 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// A code as a file may be named by it: PY_CODE of lowercase letters and digits (which of them a
+// link's code may be is gamebuilder/core/publish.coax's to say: pub_code_ok).
+py_code_ok :: (code: string) -> bool {
+  if code.count != PY_CODE { return false; }
+  for c: code { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { return false; } }
+  return true;
+}
+
+// A count's body, as the page sends it: the fact's name and nothing else. "" for a fact that is
+// not the page's to send.
+//   {"fact":"opened"}
+py_body :: (fact: int, out: [] u8) -> string {
+  if fact < 0 || fact >= PY_SENT { return ""; }
+  n := py_put(out, 0, "{\"fact\":\""); n = py_put(out, n, PY_ROWS[fact].name); n = py_put(out, n, "\"}");
+  if n > out.count { return ""; }
+  return cast(string) out[0..<n];
+}
+// The fact a body says: -1 when it is not a body py_body writes (so nothing else is ever read
+// from a visitor: no number, no text).
+py_body_read :: (body: string) -> int {
+  b: [PY_BODY] u8;
+  for i: 0..<PY_SENT { if py_body(i, b[..]) == body { return i; } }
+  return -1;
+}
+PY_BODY_WORDS :: "a count's body is {\"fact\":F}, F one of: opened, minute, remix";
+
+py_add :: (p: [] Plays, fact: int) {
+  if fact < 0 || fact >= PY_N || p[0].n[fact] >= PY_MOST { return; }
+  p[0].n[fact] += 1;
+}
+py_top_at :: (p: [] Plays, code: string) -> int {
+  for i: 0..<p[0].top_n {
+    same := true; for k: 0..<PY_CODE { if p[0].top[i].code[k] != code[k] { same = false; } }
+    if same { return i; }
+  }
+  return -1;
+}
+// The site's top: the game at code has been opened n times. It is kept among the PY_TOP most
+// opened, most first; a game with fewer than every one of them is not.
+py_top :: (p: [] Plays, code: string, n: int) {
+  if !py_code_ok(code) || n < 1 { return; }
+  i := py_top_at(p, code);
+  if i < 0 {
+    if p[0].top_n < PY_TOP { i = p[0].top_n; p[0].top_n += 1; }
+    else if n > p[0].top[PY_TOP - 1].n { i = PY_TOP - 1; }
+    else { return; }
+    for k: 0..<PY_CODE { p[0].top[i].code[k] = code[k]; }
+  }
+  p[0].top[i].n = n;
+  while i > 0 && p[0].top[i].n > p[0].top[i - 1].n { t := p[0].top[i]; p[0].top[i] = p[0].top[i - 1]; p[0].top[i - 1] = t; i -= 1; }
+}
+// A game removed for good is in no top.
+py_top_drop :: (p: [] Plays, code: string) -> bool {
+  if !py_code_ok(code) { return false; }
+  i := py_top_at(p, code);
+  if i < 0 { return false; }
+  for k: i..<p[0].top_n - 1 { p[0].top[k] = p[0].top[k + 1]; }
+  p[0].top_n -= 1;
+  return true;
+}
+
+// A totals file: the schema's line, a line a fact, and (the site's) a line a top game.
+//   gamebuilder.plays.v1
+//   opened 12
+//   minute 5
+//   remix 2
+//   remade 1
+//   top abc234 9
+py_write :: (p: [] Plays, out: [] u8) -> string {
+  n := py_put(out, 0, PY_SCHEMA); n = py_put(out, n, "\n");
+  for i: 0..<PY_N { n = py_put(out, n, PY_ROWS[i].name); n = py_put(out, n, " "); n = py_put_int(out, n, p[0].n[i]); n = py_put(out, n, "\n"); }
+  for i: 0..<p[0].top_n {
+    n = py_put(out, n, "top "); c := p[0].top[i].code; n = py_put(out, n, cast(string) c[0..<PY_CODE]);
+    n = py_put(out, n, " "); n = py_put_int(out, n, p[0].top[i].n); n = py_put(out, n, "\n");
+  }
+  if n > out.count || n > PY_TEXT { return ""; }
+  return cast(string) out[0..<n];
+}
+// Reads a totals file into p: false, and p left at nothing, when a line is not one py_write makes.
+py_read :: (text: string, p: [] Plays) -> bool {
+  p[0] = Plays.{};
+  h := PY_SCHEMA;
+  if text.count <= h.count || text.count > PY_TEXT || cast(string) text[0..<h.count] != h || text[h.count] != '\n' { return false; }
+  from := h.count + 1;
+  for i: h.count + 1..<text.count {
+    if text[i] != '\n' { continue; }
+    line := cast(string) text[from..<i]; from = i + 1;
+    a := 0; while a < line.count && line[a] != ' ' { a += 1; }
+    b := a + 1; while b < line.count && line[b] != ' ' { b += 1; }
+    if a >= line.count { p[0] = Plays.{}; return false; }
+    name := cast(string) line[0..<a];
+    if name == "top" {
+      if b >= line.count || p[0].top_n >= PY_TOP { p[0] = Plays.{}; return false; }
+      code := cast(string) line[a + 1..<b]; v := py_int(cast(string) line[b + 1..<line.count]);
+      if !py_code_ok(code) || v < 1 || v > PY_MOST || py_top_at(p, code) >= 0 { p[0] = Plays.{}; return false; }
+      for k: 0..<PY_CODE { p[0].top[p[0].top_n].code[k] = code[k]; }
+      p[0].top[p[0].top_n].n = v; p[0].top_n += 1;
+      continue;
+    }
+    f := py_find(name); v := py_int(cast(string) line[a + 1..<line.count]);
+    if f < 0 || v < 0 || v > PY_MOST { p[0] = Plays.{}; return false; }
+    p[0].n[f] = v;
+  }
+  if from != text.count { p[0] = Plays.{}; return false; }
+  return true;
+}
+
+// The list a server gives the `published` row (GbWorld.plays): a line a game of the account's that
+// has been counted, "CODE OPENED MINUTE REMIX REMADE". py_list_put adds a line at `at` and answers
+// where the list ends now (past out.count: it did not fit); py_list_get reads a game's back.
+py_list_put :: (out: [] u8, at: int, code: string, p: [] Plays) -> int {
+  if !py_code_ok(code) { return at; }
+  n := py_put(out, at, code);
+  for i: 0..<PY_N { n = py_put(out, n, " "); n = py_put_int(out, n, p[0].n[i]); }
+  return py_put(out, n, "\n");
+}
+py_list_get :: (list: string, code: string, p: [] Plays) -> bool {
+  p[0] = Plays.{};
+  if !py_code_ok(code) { return false; }
+  from := 0;
+  for i: 0..<list.count {
+    if list[i] != '\n' { continue; }
+    line := cast(string) list[from..<i]; from = i + 1;
+    if line.count <= PY_CODE || cast(string) line[0..<PY_CODE] != code || line[PY_CODE] != ' ' { continue; }
+    at := PY_CODE + 1;
+    for f: 0..<PY_N {
+      to := at; while to < line.count && line[to] != ' ' { to += 1; }
+      v := py_int(cast(string) line[at..<to]);
+      if v < 0 { p[0] = Plays.{}; return false; }
+      p[0].n[f] = v; at = to + 1;
+    }
+    return true;
+  }
+  return false;
+}
+
+#test "the list: every fact has a name of its own in lowercase letters, and the page sends the first three alone" {
+  for i: 0..<PY_N {
+    r := PY_ROWS[i];
+    #assert r.name.count > 0 && r.name.count <= 8 && r.words.count > 0 && py_find(r.name) == i && r.name != "top";
+    for c: r.name { #assert c >= 'a' && c <= 'z'; }
+  }
+  #assert py_find("") == -1 && py_find("Opened") == -1 && py_find("top") == -1;
+  out: [PY_BODY] u8;
+  #assert py_body(PY_OPENED, out[..]) == "{\"fact\":\"opened\"}" && py_body(PY_MINUTE, out[..]) == "{\"fact\":\"minute\"}" && py_body(PY_REMIX, out[..]) == "{\"fact\":\"remix\"}";
+  // a remix published is the server's to count: no body says it, and none is read as it
+  #assert py_body(PY_REMADE, out[..]) == "" && py_body(-1, out[..]) == "" && py_body(PY_OPENED, out[0..<8]) == "";
+  #assert py_body_read("{\"fact\":\"opened\"}") == PY_OPENED && py_body_read("{\"fact\":\"remix\"}") == PY_REMIX;
+  #assert py_body_read("{\"fact\":\"remade\"}") == -1 && py_body_read("{\"fact\":\"opened\",\"n\":50}") == -1 && py_body_read("") == -1 && py_body_read("{}") == -1 && py_body_read("{\"fact\": \"opened\"}") == -1;
+}
+#test "a game's totals: a count adds one, and the file reads back the same; a file that is not one reads as nothing" {
+  p: [1] Plays; r: [1] Plays; out: [PY_TEXT] u8;
+  #assert py_write(p[..], out[..]) == "gamebuilder.plays.v1\nopened 0\nminute 0\nremix 0\nremade 0\n";
+  for k: 0..<12 { py_add(p[..], PY_OPENED); }
+  for k: 0..<5 { py_add(p[..], PY_MINUTE); }
+  py_add(p[..], PY_REMIX); py_add(p[..], PY_REMIX); py_add(p[..], PY_REMADE); py_add(p[..], PY_N); py_add(p[..], -1);
+  text := py_write(p[..], out[..]);
+  #assert text == "gamebuilder.plays.v1\nopened 12\nminute 5\nremix 2\nremade 1\n";
+  #assert py_read(text, r[..]) && r[0].n[PY_OPENED] == 12 && r[0].n[PY_MINUTE] == 5 && r[0].n[PY_REMIX] == 2 && r[0].n[PY_REMADE] == 1 && r[0].top_n == 0;
+  for bad: [8] string.["", "gamebuilder.plays.v1", "gamebuilder.plays.v2\nopened 1\n", "gamebuilder.plays.v1\nopened 1", "gamebuilder.plays.v1\nopened -1\n",
+    "gamebuilder.plays.v1\nplayers 3\n", "gamebuilder.plays.v1\nopened\n", "gamebuilder.plays.v1\ntop ../../ 4\n"] {
+    r[0].n[PY_OPENED] = 7;
+    #assert !py_read(bad, r[..]) && r[0].n[PY_OPENED] == 0;
+  }
+  // a total stops at its most, and never wraps
+  p[0].n[PY_OPENED] = PY_MOST; py_add(p[..], PY_OPENED);
+  #assert p[0].n[PY_OPENED] == PY_MOST && py_read(py_write(p[..], out[..]), r[..]) && r[0].n[PY_OPENED] == PY_MOST;
+  // the list a server gives the published row: a game's line read back, and no line for a game not counted
+  l: [4 * PY_LINE] u8;
+  r[0] = Plays.{}; r[0].n[PY_OPENED] = 3; r[0].n[PY_REMADE] = 1;
+  n := py_list_put(l[..], 0, "abc234", r[..]);
+  r[0].n[PY_OPENED] = 40; r[0].n[PY_MINUTE] = 9;
+  n = py_list_put(l[..], n, "zzz999", r[..]); n = py_list_put(l[..], n, "../../", r[..]);
+  list := cast(string) l[0..<n];
+  #assert list == "abc234 3 0 0 1\nzzz999 40 9 0 1\n";
+  #assert py_list_get(list, "zzz999", r[..]) && r[0].n[PY_OPENED] == 40 && r[0].n[PY_MINUTE] == 9 && r[0].n[PY_REMADE] == 1;
+  #assert py_list_get(list, "abc234", r[..]) && r[0].n[PY_OPENED] == 3 && !py_list_get(list, "abc235", r[..]) && r[0].n[PY_OPENED] == 0 && !py_list_get("", "abc234", r[..]);
+}
+#test "the site's top: the ten games most opened, most first; a game removed is in none" {
+  p: [1] Plays; r: [1] Plays; out: [PY_TEXT] u8;
+  codes := [12] string.["aaaaa2", "aaaaa3", "aaaaa4", "aaaaa5", "aaaaa6", "aaaaa7", "aaaaa8", "aaaaa9", "aaaaab", "aaaaac", "aaaaad", "aaaaae"];
+  for i: 0..<10 { py_top(p[..], codes[i], i + 1); }
+  #assert p[0].top_n == PY_TOP && p[0].top[0].n == 10 && p[0].top[PY_TOP - 1].n == 1;
+  // one opened less than every one of them is not kept; one opened more takes the last one's place
+  py_top(p[..], codes[10], 1);
+  #assert py_top_at(p[..], codes[10]) < 0;
+  py_top(p[..], codes[11], 6);
+  #assert p[0].top_n == PY_TOP && py_top_at(p[..], codes[11]) == 5 && py_top_at(p[..], codes[0]) < 0;
+  // a game opened again moves up
+  py_top(p[..], codes[1], 99);
+  #assert py_top_at(p[..], codes[1]) == 0 && p[0].top[0].n == 99;
+  for i: 1..<p[0].top_n { #assert p[0].top[i].n <= p[0].top[i - 1].n; }
+  py_top(p[..], "../../", 500); py_top(p[..], codes[2], 0);
+  #assert p[0].top[0].n == 99;
+  // the file holds it, at its biggest, and reads back the same
+  for i: 0..<PY_N { p[0].n[i] = PY_MOST; }
+  for i: 0..<p[0].top_n { p[0].top[i].n = PY_MOST - i; }
+  text := py_write(p[..], out[..]);
+  #assert text.count > 0 && py_read(text, r[..]) && r[0].top_n == PY_TOP && py_top_at(r[..], codes[1]) == 0 && r[0].top[0].n == PY_MOST;
+  #assert py_top_drop(r[..], codes[1]) && r[0].top_n == PY_TOP - 1 && py_top_at(r[..], codes[1]) < 0 && !py_top_drop(r[..], codes[1]) && !py_top_drop(r[..], "nope");
+}

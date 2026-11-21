@@ -1,0 +1,665 @@
+// Scrappers' match modes, and how many play on each side.
+//
+// A match is one of four modes, picked before it starts:
+//   Knockouts   knock rivals out; first to ten, or ahead when time is up (the first mode)
+//   Last Stand  nobody comes back until the round is over; the last team with
+//               anyone standing takes the round; first to three rounds
+//   Scrapball   one ball in the middle: grab it by running into it, carry it,
+//               and fire to kick it; into the rivals' goal scores; first to three
+//   Hoops       one ball and a raised hoop over each end: fire to throw it,
+//               through the rivals' hoop scores; first to five
+// and one to five a side. Seats are numbered so that three a side is seats 0
+// to 5 as it always was (0 to 2 yours, 3 to 5 theirs); four and five a side
+// add seats 6 and 7 to your team and 8 and 9 to theirs. A seat outside the
+// match's size is empty: nobody stands in it and it never comes back.
+//
+// The host runs every rule here (net.coax carries the mode, the size, the
+// ball and the round to guests); a guest only draws them.
+
+MODE_KNOCKOUTS :: 0; MODE_LAST_STAND :: 1; MODE_SCRAPBALL :: 2; MODE_HOOPS :: 3;
+MODES :: 4;
+MODE_NAME :: [MODES] string.["Knockouts", "Last Stand", "Scrapball", "Hoops"];
+MODE_BLURB :: [MODES] string.[
+  "Knock rivals out. First to ten wins.",
+  "No coming back in a round. Last team standing takes it. First to three rounds.",
+  "Grab the ball, carry it, fire to kick it into their goal. First to three.",
+  "Grab the ball, fire to throw it through their hoop. First to five."];
+MODE_GOAL :: [MODES] s32.[10, 3, 3, 5];     // the score that wins
+MODE_SECONDS :: [MODES] f32.[150, 60, 150, 150];   // the clock; Last Stand's is each round's
+
+SIZE_USUAL :: 3;                             // a side, when nobody has said
+SEAT_TEAM :: [FIGHTERS] s32.[0, 0, 0, 1, 1, 1, 0, 0, 1, 1];
+SEAT_SLOT :: [FIGHTERS] s32.[0, 1, 2, 0, 1, 2, 3, 4, 3, 4];
+
+LAST_BOUTS :: 7;             // Last Stand: rounds at most, then whoever is ahead
+MODE_PAUSE :: 2.5f32;        // seconds the match stands still after a score or a round
+MODE_RECOUNT :: 2.0f32;      // and the countdown after that
+
+BALL_R :: 0.35f32;
+BALL_GRAVITY :: 18.0f32;
+BALL_GRAB :: 1.25f32;        // how near a Scrapper must come to take a loose ball
+BALL_KICK :: 19.0f32;        // Scrapball: how fast a kick sends it
+BALL_THROW :: 12.0f32;       // Hoops: a throw that is not at the hoop
+BALL_WAIT :: 0.6f32;         // seconds before the one who let it go can take it again
+GOAL_BACK :: 1.4f32;         // a goal's middle, behind its team's start
+GOAL_WIDE :: 2.6f32;         // half its width
+GOAL_DEEP :: 1.3f32;         // half its depth
+GOAL_HIGH :: 2.2f32;
+HOOP_Y :: 3.1f32;            // the ring's height
+HOOP_R :: 0.55f32;
+HOOP_IN :: 0.5f32;           // the ring stands this far in from its board
+HOOP_HELP :: 0.4f32;         // radians off the hoop a throw still goes up at it
+HOOP_REACH :: 18.0f32;
+MODE_INSTANCES :: 40;        // what a mode draws, at most
+
+// What the HUD's banner says: a goal, a basket or a round taken.
+CALL_NONE :: 0; CALL_GOAL :: 1; CALL_BASKET :: 2; CALL_ROUND :: 3;
+
+Ball :: struct { x: f32; y: f32; z: f32; vx: f32; vy: f32; vz: f32; holder: s32; by: s32; wait: f32; last_y: f32; }
+
+// ---- the size and the seats
+
+play_size :: (p: [] Play) -> s64 {
+  s := cast(s64) p[0].size;
+  return ifx s >= 1 && s <= TEAM_SIZE then s else SIZE_USUAL;
+}
+// Whether seat i plays in this match.
+play_seated :: (p: [] Play, i: s64) -> bool { return cast(s64) SEAT_SLOT[i] < play_size(p); }
+// Where a seat stands beside its team, in places across the start: 0 the middle.
+play_slot_offset :: (p: [] Play, i: s64) -> f32 { return cast(f32) SEAT_SLOT[i] - cast(f32) (play_size(p) - 1) / 2; }
+
+// The mode and size the next match is played with (the picker, or a party's leader).
+ed_play_setup :: (e: [] Editor, mode: s32, size: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || mode < 0 || mode >= MODES || size < 1 || size > TEAM_SIZE { return false; }
+  e[0].play[0].mode = mode; e[0].play[0].size = size;
+  return true;
+}
+ed_play_mode :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].play[0].mode else 0; }
+ed_play_size :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then cast(s32) play_size(e[0].play[..]) else SIZE_USUAL; }
+ed_play_modes :: () -> s32 #export_c #effects(all) { return MODES; }
+ed_play_size_most :: () -> s32 #export_c #effects(all) { return TEAM_SIZE; }
+ed_play_mode_name :: (mode: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx mode < 0 || mode >= MODES then 0 else play_text(MODE_NAME[mode], out);
+}
+ed_play_mode_blurb :: (mode: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx mode < 0 || mode >= MODES then 0 else play_text(MODE_BLURB[mode], out);
+}
+
+// ---- the ends
+
+mode_ball :: (p: [] Play) -> bool { return (p[0].mode == MODE_SCRAPBALL || p[0].mode == MODE_HOOPS) && !p[0].explore && !p[0].her_on; }
+mode_ko_scores :: (p: [] Play) -> bool { return p[0].mode == MODE_KNOCKOUTS || p[0].mode < 0 || p[0].mode >= MODES; }
+// The host's team for a team as this device counts them (a guest across has them turned about).
+mode_home :: (p: [] Play, team: s64) -> s64 { return ifx p[0].flip then 1 - team else team; }
+
+// Team t's end, as the host counts teams: its goal's middle on the ground, and the flat way out of the arena from there.
+ModeEnd :: struct { x: f32; z: f32; ux: f32; uz: f32; }
+mode_end :: (p: [] Play, t: s64) -> ModeEnd {
+  if p[0].end_set[t] { return ModeEnd.{x = p[0].end_x[t], z = p[0].end_z[t], ux = p[0].end_ux[t], uz = p[0].end_uz[t]}; }
+  mx := (p[0].spawn_x[0] + p[0].spawn_x[1]) / 2; mz := (p[0].spawn_z[0] + p[0].spawn_z[1]) / 2;
+  dx := p[0].spawn_x[t] - mx; dz := p[0].spawn_z[t] - mz;
+  d := sqrt(dx * dx + dz * dz);
+  ux: f32 = 0; uz: f32 = ifx t == 0 then -1.0f32 else 1.0f32;
+  if d > 0.1 { ux = dx / d; uz = dz / d; }
+  return ModeEnd.{x = p[0].spawn_x[t] + ux * GOAL_BACK, z = p[0].spawn_z[t] + uz * GOAL_BACK, ux = ux, uz = uz};
+}
+mode_hoop :: (p: [] Play, t: s64) -> WorldPoint {
+  if p[0].hoop_set[t] { return WorldPoint.{x = p[0].hoop_x[t], y = HOOP_Y, z = p[0].hoop_z[t]}; }
+  g := mode_end(p, t);
+  return WorldPoint.{x = g.x - g.ux * HOOP_IN, y = HOOP_Y, z = g.z - g.uz * HOOP_IN};
+}
+// Whether a point is in team t's goal.
+mode_in_goal :: (p: [] Play, t: s64, x: f32, y: f32, z: f32) -> bool {
+  g := mode_end(p, t);
+  along := (x - g.x) * g.ux + (z - g.z) * g.uz;
+  across := -(x - g.x) * g.uz + (z - g.z) * g.ux;
+  return abs(across) < GOAL_WIDE && along > -GOAL_DEEP && along < GOAL_DEEP + 1 && y < GOAL_HIGH;
+}
+
+// ---- starting, scoring and rounds
+
+mode_ball_middle :: (p: [] Play) {
+  b := Ball.{holder = -1, by = -1};
+  mx := (p[0].spawn_x[0] + p[0].spawn_x[1]) / 2; mz := (p[0].spawn_z[0] + p[0].spawn_z[1]) / 2;
+  // the middle, or when a block stands there the nearest clear ground to its side: as far from either start
+  g := mode_end(p, 0);
+  for k: 0..<12 {
+    s := cast(f32) k * 0.5;
+    b.x = mx - g.uz * s; b.z = mz + g.ux * s;
+    if query_ground(play_colliders(p, true), b.x, b.z, 100000, BALL_R * 1.5).y < 0.05 { break; }
+  }
+  if p[0].ball_set { b.x = p[0].ball_x; b.z = p[0].ball_z; }   // where the level's marker puts it
+  b.y = BALL_R + 0.4;
+  b.last_y = b.y;
+  p[0].ball[0] = b;
+}
+
+// After ed_play has set the starts: the clock, the empty seats and the ball.
+mode_start :: (p: [] Play) {
+  if p[0].mode < 0 || p[0].mode >= MODES { p[0].mode = MODE_KNOCKOUTS; }
+  p[0].left = MODE_SECONDS[p[0].mode]; p[0].bout = 1; p[0].pause = 0; p[0].call = CALL_NONE; p[0].call_t = 0;
+  for i: 0..<FIGHTERS { if !play_seated(p, i) { p[0].f[i].alive = false; p[0].f[i].respawn = 0; } }
+  mode_ball_middle(p);
+}
+
+mode_scored :: (p: [] Play, team: s64, call: s32) {
+  p[0].score[team] += 1;
+  p[0].call = call; p[0].call_team = cast(s32) team; p[0].call_t = MODE_PAUSE;
+  p[0].ball[0].holder = -1;
+  play_sound(p, ifx team == 0 then SND_WIN else SND_LOSE, 0, 0, true);
+  if p[0].score[team] < MODE_GOAL[p[0].mode] { p[0].pause = MODE_PAUSE; }
+}
+
+// Everyone back at their start, the ball in the middle, and a short countdown.
+mode_next :: (e: [] Editor) {
+  p := e[0].play[..];
+  for i: 0..<FIGHTERS {
+    if !play_seated(p, i) { continue; }
+    keep := p[0].f[i].super;
+    play_place(p, i);
+    p[0].f[i].super = keep;
+  }
+  for s: 0..<SHOTS { p[0].shots[s].live = false; }
+  mode_ball_middle(p);
+  if p[0].mode == MODE_LAST_STAND { p[0].bout += 1; p[0].left = MODE_SECONDS[MODE_LAST_STAND]; }
+  p[0].count = MODE_RECOUNT;
+  e[0].vp[0].fyaw = p[0].f[0].yaw; e[0].vp[0].fpitch = 0;
+}
+
+// While the match stands still after a score: true, and play_step does nothing else.
+mode_paused :: (e: [] Editor) -> bool {
+  p := e[0].play[..];
+  p[0].call_t = play_max(p[0].call_t - PLAY_STEP, 0);
+  if p[0].pause <= 0 || p[0].over { return false; }
+  p[0].pause -= PLAY_STEP;
+  for i: 0..<FIGHTERS { p[0].f[i].shield = PLAY_SHIELD; }
+  if p[0].pause <= 0 { p[0].pause = 0; mode_next(e); }
+  return true;
+}
+
+// Whether the match is over (the winner is whoever is ahead).
+mode_done :: (p: [] Play) -> bool {
+  m := ifx p[0].mode >= 0 && p[0].mode < MODES then p[0].mode else MODE_KNOCKOUTS;
+  if p[0].score[0] >= MODE_GOAL[m] || p[0].score[1] >= MODE_GOAL[m] { return true; }
+  if m == MODE_LAST_STAND { return p[0].bout > LAST_BOUTS; }
+  return p[0].left <= 0;
+}
+
+// Seated Scrappers of a team still standing.
+mode_standing :: (p: [] Play, team: s64) -> s32 {
+  n: s32 = 0;
+  for i: 0..<FIGHTERS { if play_seated(p, i) && p[0].f[i].alive && cast(s64) p[0].f[i].team == team { n += 1; } }
+  return n;
+}
+
+// Last Stand: a round ends when a team has nobody standing, or its clock runs out.
+mode_round :: (p: [] Play) {
+  a := mode_standing(p, 0); b := mode_standing(p, 1);
+  if a > 0 && b > 0 && p[0].left > 0 { return; }
+  w: s64 = -1;
+  if a > 0 && b == 0 { w = 0; } else if b > 0 && a == 0 { w = 1; }
+  else if a > 0 && b > 0 {
+    // the clock ran out: more standing takes it, then more health left
+    if a != b { w = ifx a > b then 0 else 1; }
+    else {
+      h: [2] f32;
+      for i: 0..<FIGHTERS { f := p[0].f[i]; if play_seated(p, i) && f.alive { h[f.team] += f.hp / CLASS_HP[f.kind]; } }
+      if abs(h[0] - h[1]) > 0.01 { w = ifx h[0] > h[1] then 0 else 1; }
+    }
+  }
+  p[0].call = CALL_ROUND; p[0].call_team = cast(s32) w; p[0].call_t = MODE_PAUSE;
+  if w >= 0 { p[0].score[w] += 1; }
+  play_sound(p, ifx w == 1 then SND_LOSE else SND_WIN, 0, 0, true);
+  won := w >= 0 && p[0].score[w] >= MODE_GOAL[MODE_LAST_STAND];
+  if won { return; }
+  if p[0].bout >= LAST_BOUTS { p[0].bout += 1; return; }
+  p[0].pause = MODE_PAUSE;
+}
+
+// ---- the ball
+
+mode_holds :: (p: [] Play, i: s64) -> bool { return mode_ball(p) && cast(s64) p[0].ball[0].holder == i; }
+
+// A Scrapper knocked out lets the ball go where it fell.
+mode_knocked :: (p: [] Play, who: s64) {
+  if !mode_holds(p, who) { return; }
+  b := p[0].ball[0];
+  b.holder = -1; b.by = cast(s32) who; b.wait = 0; b.vx = 0; b.vy = 3; b.vz = 0;
+  p[0].ball[0] = b;
+}
+
+// Where a carried ball is: at its carrier's feet ahead (Scrapball) or held up (Hoops).
+mode_carried :: (p: [] Play, b: Ball) -> Ball {
+  out := b;
+  f := p[0].f[b.holder];
+  up: f32 = ifx p[0].mode == MODE_HOOPS then 1.15f32 else BALL_R;
+  out.x = f.x + sin(f.yaw) * 0.7; out.z = f.z + cos(f.yaw) * 0.7; out.y = f.y + up;
+  out.vx = 0; out.vy = 0; out.vz = 0; out.last_y = out.y;
+  return out;
+}
+
+// The carrier fired: a kick along the ground, or a throw (at the rivals' hoop
+// when it is roughly ahead and in reach).
+mode_throw :: (p: [] Play, i: s64, dir: WorldPoint) {
+  f := p[0].f[i];
+  b := p[0].ball[0];
+  // a person's throw goes where they look; a bot's where it aims
+  d := dir;
+  if i == 0 || p[0].net[0].remote[i] { d = play_ahead(f.yaw, f.pitch); }
+  b.holder = -1; b.by = cast(s32) i; b.wait = BALL_WAIT;
+  if p[0].mode == MODE_SCRAPBALL {
+    fl := sqrt(d.x * d.x + d.z * d.z);
+    if fl < 0.01 { d = play_ahead(f.yaw, 0); fl = 1; }
+    b.vx = d.x / fl * BALL_KICK; b.vz = d.z / fl * BALL_KICK; b.vy = 2.0 + play_max(d.y, 0) * 10;
+  } else {
+    h := mode_hoop(p, 1 - cast(s64) f.team);
+    dx := h.x - b.x; dz := h.z - b.z;
+    dist := sqrt(dx * dx + dz * dz);
+    off := abs(play_wrap(angle_atan2(dx, dz) - angle_atan2(d.x, d.z)));
+    if dist < HOOP_REACH && off < HOOP_HELP {
+      // up at the hoop, a little off the more so the further it is
+      tx := h.x + (play_rand(p) - 0.5) * dist * 0.06; tz := h.z + (play_rand(p) - 0.5) * dist * 0.06;
+      t := 0.55 + dist / 16;
+      b.vx = (tx - b.x) / t; b.vz = (tz - b.z) / t; b.vy = (h.y - b.y) / t + 0.5 * BALL_GRAVITY * t;
+    } else {
+      b.vx = d.x * BALL_THROW; b.vy = d.y * BALL_THROW + 4; b.vz = d.z * BALL_THROW;
+    }
+  }
+  p[0].ball[0] = b;
+  p[0].f[i].cool = 0.35; p[0].f[i].kick = 0; p[0].f[i].shield = 0;
+  play_sound(p, SND_HIT, f.x, f.z, i == 0);
+}
+
+// The ball's step on the host: carried, or flying, bouncing and rolling, and taken by whoever runs into it.
+mode_ball_step :: (p: [] Play) {
+  b := p[0].ball[0];
+  if b.holder >= 0 && (b.holder >= FIGHTERS || !p[0].f[b.holder].alive) { b.holder = -1; }
+  if b.holder >= 0 {
+    b = mode_carried(p, b);
+  } else {
+    b.wait = play_max(b.wait - PLAY_STEP, 0);
+    b.last_y = b.y;
+    b.vy -= BALL_GRAVITY * PLAY_STEP;
+    step := sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz) * PLAY_STEP;
+    if step > 0.0001 {
+      d := WorldPoint.{x = b.vx * PLAY_STEP / step, y = b.vy * PLAY_STEP / step, z = b.vz * PLAY_STEP / step};
+      h := query_ray(play_colliders(p, false), WorldPoint.{x = b.x, y = b.y, z = b.z}, d, step + BALL_R);
+      if h.hit && h.status == QueryStatus.ok && h.t < step + BALL_R {
+        // off the block, losing some of its speed
+        go := play_max(h.t - BALL_R, 0);
+        b.x += d.x * go; b.y += d.y * go; b.z += d.z * go;
+        into := b.vx * h.normal.x + b.vy * h.normal.y + b.vz * h.normal.z;
+        if into < 0 { b.vx -= 1.7 * into * h.normal.x; b.vy -= 1.7 * into * h.normal.y; b.vz -= 1.7 * into * h.normal.z; }
+      } else { b.x += b.vx * PLAY_STEP; b.y += b.vy * PLAY_STEP; b.z += b.vz * PLAY_STEP; }
+    }
+    under := query_stand(play_colliders(p, true), b.x, b.z, b.y, BALL_R * 0.5).y;
+    if b.y < under + BALL_R {
+      b.y = under + BALL_R;
+      if b.vy < 0 { b.vy = ifx b.vy < -2 then -b.vy * 0.5 else 0.0f32; }
+      // rolling slows it
+      k := play_max(1 - 1.6 * PLAY_STEP, 0);
+      b.vx *= k; b.vz *= k;
+    }
+    // fallen out of the arena: back to the middle
+    if abs(b.x) > 400 || abs(b.z) > 400 || b.y < -5 { p[0].ball[0] = b; mode_ball_middle(p); return; }
+    // taken by the nearest who runs into it
+    best: f32 = BALL_GRAB * BALL_GRAB; who := -1;
+    for i: 0..<FIGHTERS {
+      f := p[0].f[i];
+      if !f.alive || !play_seated(p, i) || (cast(s64) b.by == i && b.wait > 0) { continue; }
+      if abs(b.y - (f.y + 0.8)) > 1.6 { continue; }
+      dd := (f.x - b.x) * (f.x - b.x) + (f.z - b.z) * (f.z - b.z);
+      if dd < best { best = dd; who = i; }
+    }
+    if who >= 0 { b.holder = cast(s32) who; b.by = cast(s32) who; play_sound(p, SND_JUMP, b.x, b.z, who == 0); b = mode_carried(p, b); }
+  }
+  p[0].ball[0] = b;
+  if p[0].over { return; }
+  if p[0].mode == MODE_SCRAPBALL {
+    for t: 0..<2 { if mode_in_goal(p, t, b.x, b.y, b.z) { mode_scored(p, 1 - t, CALL_GOAL); return; } }
+  } else {
+    for t: 0..<2 {
+      h := mode_hoop(p, t);
+      if b.holder < 0 && b.last_y >= h.y && b.y < h.y && (b.x - h.x) * (b.x - h.x) + (b.z - h.z) * (b.z - h.z) < HOOP_R * HOOP_R { mode_scored(p, 1 - t, CALL_BASKET); return; }
+    }
+  }
+}
+
+// A guest's ball between the host's words: carried by who the host says, or flying on.
+mode_guest_ball :: (p: [] Play) {
+  if !mode_ball(p) { return; }
+  b := p[0].ball[0];
+  if b.holder >= 0 && b.holder < FIGHTERS { p[0].ball[0] = mode_carried(p, b); return; }
+  b.vy -= BALL_GRAVITY * PLAY_STEP;
+  b.x += b.vx * PLAY_STEP; b.y += b.vy * PLAY_STEP; b.z += b.vz * PLAY_STEP;
+  if b.y < BALL_R { b.y = BALL_R; b.vy = 0; }
+  p[0].ball[0] = b;
+}
+
+// Each step of a match that is on, after everyone has moved.
+mode_step :: (e: [] Editor) {
+  p := e[0].play[..];
+  if p[0].over || p[0].explore || p[0].her_on { return; }
+  if mode_ball(p) { mode_ball_step(p); }
+  if p[0].mode == MODE_LAST_STAND && p[0].pause <= 0 { mode_round(p); }
+}
+
+// Whether a knocked-out Scrapper comes back in this mode.
+mode_respawns :: (p: [] Play, i: s64) -> bool { return play_seated(p, i) && p[0].mode != MODE_LAST_STAND; }
+
+// ---- the bots
+
+// A bot walks toward a point, around what it bumps into.
+mode_bot_walk :: (p: [] Play, i: s64, gx: f32, gz: f32) {
+  f := p[0].f[i];
+  dx := gx - f.x; dz := gz - f.z;
+  dist := sqrt(dx * dx + dz * dz);
+  turn := play_wrap(angle_atan2(dx, dz) - f.yaw);
+  most := 7.0 * PLAY_STEP;
+  f.yaw = play_wrap(f.yaw + (ifx turn > most then most else (ifx turn < -most then -most else turn)));
+  f.pitch = 0;
+  p[0].f[i] = f;
+  if dist > 0.3 {
+    speed := CLASS_SPEED[f.kind] * 0.85 * PLAY_STEP;
+    ahead: f32 = 1; side: f32 = 0;
+    if f.stuck > 0 { p[0].f[i].stuck -= PLAY_STEP; side = f.detour; ahead = 0.2; }
+    mag := sqrt(ahead * ahead + side * side);
+    wx := (sin(f.yaw) * ahead - cos(f.yaw) * side) / mag * speed;
+    wz := (cos(f.yaw) * ahead + sin(f.yaw) * side) / mag * speed;
+    got := play_walk(p, i, wx, wz);
+    if got < speed * 0.3 && p[0].f[i].stuck <= 0 {
+      p[0].f[i].stuck = 0.5 + play_rand(p) * 0.5;
+      p[0].f[i].detour = ifx play_rand(p) < 0.5 then 1.0f32 else -1.0f32;
+    }
+  }
+  play_fall(p, i, false);
+}
+
+// A bot in a ball mode. True when it has had its step; false to fight as usual.
+mode_bot :: (p: [] Play, i: s64) -> bool {
+  if !mode_ball(p) { return false; }
+  b := p[0].ball[0];
+  f := p[0].f[i];
+  rival := 1 - cast(s64) f.team;
+  if cast(s64) b.holder == i {
+    // to the rivals' end, and let it go when near enough with nothing between
+    gx: f32 = 0; gz: f32 = 0; gy: f32 = 0.5; reach: f32 = 9;
+    if p[0].mode == MODE_HOOPS { h := mode_hoop(p, rival); gx = h.x; gz = h.z; gy = h.y; reach = 8; }
+    else { g := mode_end(p, rival); gx = g.x; gz = g.z; }
+    dx := gx - f.x; dz := gz - f.z;
+    dist := sqrt(dx * dx + dz * dz);
+    from := WorldPoint.{x = b.x, y = b.y + 0.1, z = b.z};
+    if dist < reach && play_sees(p, from, WorldPoint.{x = gx, y = gy, z = gz}) {
+      play_fire(p, i, WorldPoint.{x = dx / dist, y = 0, z = dz / dist});
+      return true;
+    }
+    mode_bot_walk(p, i, gx, gz);
+    return true;
+  }
+  if b.holder < 0 {
+    // the nearest of each team runs for a loose ball
+    near: f32 = 1000000; who := -1;
+    for j: 0..<FIGHTERS {
+      g := p[0].f[j];
+      if !g.alive || !play_seated(p, j) || g.team != f.team { continue; }
+      d := (g.x - b.x) * (g.x - b.x) + (g.z - b.z) * (g.z - b.z);
+      if d < near { near = d; who = j; }
+    }
+    if who == i { mode_bot_walk(p, i, b.x, b.z); return true; }
+    return false;
+  }
+  // a rival has it: go for the carrier
+  if p[0].f[b.holder].team != f.team { p[0].f[i].target = b.holder; p[0].f[i].think = 0.3; }
+  return false;
+}
+
+// ---- what is drawn
+
+// A goal's or hoop's piece, left undrawn when the camera is in or against it (it would fill the view).
+mode_inst :: (e: [] Editor, out: [] f32, n: s64, c: WorldPoint, hx: f32, hy: f32, hz: f32, yaw: f32, shade: f32, tint: s32) -> s64 {
+  dx := e[0].vp[0].fx - c.x; dy := e[0].vp[0].fy - c.y; dz := e[0].vp[0].fz - c.z;
+  lx := dx * cos(yaw) - dz * sin(yaw); lz := dx * sin(yaw) + dz * cos(yaw);
+  room: f32 = 0.5;
+  if abs(lx) < hx + room && abs(dy) < hy + room && abs(lz) < hz + room { return n; }
+  return play_inst(out, n, c, hx, hy, hz, yaw, shade, tint);
+}
+
+mode_draw :: (e: [] Editor, out: [] f32, at: s64) -> s64 {
+  p := e[0].play[..];
+  n := at;
+  if !mode_ball(p) { return n; }
+  for lt: 0..<2 {
+    t := mode_home(p, lt);
+    g := mode_end(p, t);
+    tint: s32 = ifx lt == 0 then TINT_MINE else TINT_RIVAL;
+    yaw := angle_atan2(g.ux, g.uz);
+    ax := -g.uz; az := g.ux;   // across the end
+    if p[0].mode == MODE_SCRAPBALL {
+      // two posts, a bar and a plate on the floor
+      for s: 0..<2 {
+        k: f32 = ifx s == 0 then 1.0f32 else -1.0f32;
+        n = mode_inst(e, out, n, WorldPoint.{x = g.x + ax * GOAL_WIDE * k - g.ux * GOAL_DEEP, y = GOAL_HIGH / 2, z = g.z + az * GOAL_WIDE * k - g.uz * GOAL_DEEP}, 0.13, GOAL_HIGH / 2, 0.13, yaw, 1.0, tint);
+      }
+      n = mode_inst(e, out, n, WorldPoint.{x = g.x - g.ux * GOAL_DEEP, y = GOAL_HIGH, z = g.z - g.uz * GOAL_DEEP}, GOAL_WIDE + 0.13, 0.12, 0.12, yaw, 1.0, tint);
+      n = mode_inst(e, out, n, WorldPoint.{x = g.x, y = 0.02, z = g.z}, GOAL_WIDE, 0.02, GOAL_DEEP, yaw, 0.55, tint);
+    } else {
+      // a pole, a board, and a ring of eight
+      h := mode_hoop(p, t);
+      n = mode_inst(e, out, n, WorldPoint.{x = g.x + g.ux * 0.15, y = (HOOP_Y + 0.9) / 2, z = g.z + g.uz * 0.15}, 0.1, (HOOP_Y + 0.9) / 2, 0.1, yaw, 0.8, TINT_DARK);
+      n = mode_inst(e, out, n, WorldPoint.{x = g.x, y = HOOP_Y + 0.45, z = g.z}, 0.95, 0.6, 0.05, yaw, 0.9, tint);
+      for k: 0..<8 {
+        a := cast(f32) k * 0.7853982;
+        n = mode_inst(e, out, n, WorldPoint.{x = h.x + sin(a) * HOOP_R, y = HOOP_Y, z = h.z + cos(a) * HOOP_R}, 0.22, 0.035, 0.035, a + 1.5707963, 1.0, tint);
+      }
+      n = mode_inst(e, out, n, WorldPoint.{x = g.x, y = 0.02, z = g.z}, 1.2, 0.02, 1.2, yaw, 0.55, tint);
+    }
+  }
+  // the ball: three turned cubes, roundish, glowing
+  b := p[0].ball[0];
+  c := WorldPoint.{x = b.x, y = b.y, z = b.z};
+  spin := (b.x + b.z) * 1.3;
+  r := BALL_R * 0.82;
+  n = play_inst(out, n, c, r, r, r, spin, 1.0, TINT_GLOW);
+  n = play_inst(out, n, c, r, r, r, spin + 0.7853982, 1.0, TINT_GLOW);
+  n = play_inst_aim(out, n, c, r, r, r, spin, 0.7853982, 1.0, TINT_GLOW);
+  return n;
+}
+
+// ---- the HUD's banner
+
+// "Goal! Your team scores", "Basket for the rivals", "Round 2 to your team".
+mode_banner :: (p: [] Play, out: [] u8) -> s64 {
+  if p[0].call_t <= 0 || p[0].call == CALL_NONE { return 0; }
+  t := [1] Text.[Text.{buf = out}];
+  w := p[0].call_team;
+  if p[0].call == CALL_ROUND {
+    if w < 0 { tx_put(t[..], "Round even: nobody takes it"); }
+    else { tx_put(t[..], ifx w == 0 then "Round to your team" else "Round to the rivals"); }
+  } else {
+    tx_put(t[..], ifx p[0].call == CALL_GOAL then "Goal! " else "Basket! ");
+    tx_put(t[..], ifx w == 0 then "Your team scores" else "The rivals score");
+  }
+  return t[0].at;
+}
+
+// ---- checks
+
+#test "three a side is seats 0 to 5 as before; one, two, four and five a side seat only theirs" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  for i: 0..<FIGHTERS { #assert play_seated(p, i) == (i < 6) && p[0].f[i].alive == (i < 6) && (p[0].f[i].team == 0) == (i < 3 || i == 6 || i == 7); }
+  for size: 1..<TEAM_SIZE + 1 {
+    #assert ed_play_setup(e, 0, cast(s32) size);
+    ed_play(e, 1);
+    mine := 0; theirs := 0;
+    for i: 0..<FIGHTERS { f := p[0].f[i]; if f.alive { if f.team == 0 { mine += 1; } else { theirs += 1; } } }
+    #assert mine == size && theirs == size && p[0].f[0].alive && ed_play_size(e) == cast(s32) size;
+    // a match left alone: the empty seats stay empty
+    play_test_go(p);
+    play_test_run(e, 20);
+    for i: 0..<FIGHTERS { if !play_seated(p, i) { #assert !p[0].f[i].alive; } }
+  }
+  #assert !ed_play_setup(e, 0, 0) && !ed_play_setup(e, 0, TEAM_SIZE + 1) && !ed_play_setup(e, MODES, 3);
+  // five a side stands side by side, nobody on another
+  #assert ed_play_setup(e, 0, 5);
+  ed_play(e, 0);
+  for i: 0..<FIGHTERS { for j: 0..<FIGHTERS {
+    if i == j { continue; }
+    a := p[0].f[i]; b := p[0].f[j];
+    #assert (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z) > 1;
+  } }
+}
+
+#test "Last Stand: nobody comes back in a round, the last team standing takes it, first to three wins" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  #assert ed_play_setup(e, MODE_LAST_STAND, 2);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  #assert p[0].left == MODE_SECONDS[MODE_LAST_STAND] && p[0].bout == 1;
+  // a rival out stays out; knockouts are not the score
+  play_hurt(p, 3, 0, 100000);
+  play_test_run(e, PLAY_RESPAWN + 1);
+  #assert !p[0].f[3].alive && p[0].score[0] == 0 && p[0].mine == 1;
+  // the other rival out: the round is yours, the match stands still, then everyone is back
+  play_hurt(p, 4, 0, 100000);
+  play_step(e);
+  #assert p[0].score[0] == 1 && p[0].pause > 0 && p[0].call == CALL_ROUND && p[0].call_team == 0;
+  buf: [96] u8;
+  n := ed_play_feed(e, buf[..]);
+  #assert cast(string) buf[0..<n] == "Round to your team";
+  play_test_run(e, MODE_PAUSE + 0.1);
+  #assert p[0].bout == 2 && p[0].f[3].alive && p[0].f[4].alive && p[0].count > 0 && !p[0].over;
+  // two more rounds to you and it is over, yours
+  for r: 0..<2 {
+    play_test_go(p);
+    play_hurt(p, 3, 0, 100000); play_hurt(p, 4, 1, 100000);
+    play_step(e);
+    play_test_run(e, MODE_PAUSE + 0.1);
+  }
+  play_step(e);
+  #assert p[0].score[0] == 3 && p[0].over && p[0].winner == 0;
+  // a round that runs out: more standing takes it
+  #assert ed_play_setup(e, MODE_LAST_STAND, 2);
+  ed_play(e, 0);
+  play_test_go(p);
+  play_hurt(p, 0, 3, 100000);
+  for i: 1..<FIGHTERS { p[0].f[i].shield = 1000; }
+  p[0].left = 0.01;
+  play_step(e);
+  #assert p[0].score[1] == 1 && p[0].call_team == 1;
+}
+
+#test "Scrapball: the ball starts in the middle, is taken by running into it, kicked by firing, and into their goal scores" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  #assert ed_play_setup(e, MODE_SCRAPBALL, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  b := p[0].ball[0];
+  // beside the middle block, as far from either start
+  d0 := (b.x - p[0].spawn_x[0]) * (b.x - p[0].spawn_x[0]) + (b.z - p[0].spawn_z[0]) * (b.z - p[0].spawn_z[0]);
+  d1 := (b.x - p[0].spawn_x[1]) * (b.x - p[0].spawn_x[1]) + (b.z - p[0].spawn_z[1]) * (b.z - p[0].spawn_z[1]);
+  #assert b.holder == -1 && abs(d0 - d1) < 0.01 && abs(b.x) > 1.5 && p[0].left == MODE_SECONDS[MODE_SCRAPBALL];
+  // the rival out of the way; you stand by the ball once it has come down off the middle block
+  p[0].f[3].alive = false; p[0].f[3].respawn = 1000;
+  p[0].ball[0].x = 3; p[0].ball[0].z = -4; p[0].ball[0].y = 2;
+  play_test_run(e, 2);
+  #assert p[0].ball[0].y < BALL_R + 0.05 && p[0].ball[0].holder == -1;
+  p[0].f[0].x = 3; p[0].f[0].z = -4.8; p[0].f[0].y = 0;
+  play_step(e);
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert p[0].ball[0].holder == 0 && ed_play_hud(e, hud[..]) && hud[54] == 1;
+  // carried into their goal, it scores
+  g := mode_end(p, 1);
+  p[0].f[0].x = g.x; p[0].f[0].z = g.z - 1.0; p[0].f[0].yaw = 0;
+  play_step(e);
+  #assert p[0].score[0] == 1 && p[0].pause > 0 && p[0].call == CALL_GOAL;
+  play_test_run(e, MODE_PAUSE + 0.1);
+  #assert abs(p[0].ball[0].z) < 0.01 && p[0].ball[0].holder == -1 && p[0].count > 0;
+  // a kick: fire while carrying sends it away along the ground, and does not fire a shot
+  play_test_go(p);
+  p[0].f[0].x = 3; p[0].f[0].z = -6; p[0].f[0].yaw = 0; p[0].f[0].pitch = 0; p[0].f[0].cool = 0;
+  p[0].ball[0].holder = 0;
+  play_fire(p, 0, play_ahead(0, 0));
+  live := 0; for s: 0..<SHOTS { if p[0].shots[s].live { live += 1; } }
+  #assert p[0].ball[0].holder == -1 && p[0].ball[0].vz > 10 && live == 0;
+  // a knocked out carrier drops it
+  p[0].ball[0].holder = 0; p[0].f[0].shield = 0;
+  play_hurt(p, 0, 3, 100000);
+  #assert p[0].ball[0].holder == -1 && p[0].score[1] == 0;
+}
+
+#test "Hoops: a throw at the hoop from in front goes through it and scores" #steps 400000000 {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  #assert ed_play_setup(e, MODE_HOOPS, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  p[0].f[3].alive = false; p[0].f[3].respawn = 1000;
+  h := mode_hoop(p, 1);
+  // six metres out in front of the rivals' hoop, past the low wall before it, looking at it, holding the ball
+  p[0].f[0].x = h.x + 4; p[0].f[0].z = h.z - 6; p[0].f[0].y = 0;
+  p[0].f[0].yaw = angle_atan2(h.x - p[0].f[0].x, h.z - p[0].f[0].z); p[0].f[0].pitch = 0.3; p[0].f[0].cool = 0;
+  p[0].ball[0].holder = 0;
+  p[0].ball[0] = mode_carried(p, p[0].ball[0]);
+  play_fire(p, 0, play_ahead(0, 0));
+  #assert p[0].ball[0].holder == -1 && p[0].ball[0].vy > 0;
+  for k: 0..<180 { if p[0].score[0] == 0 { play_step(e); } }
+  #assert p[0].score[0] == 1 && p[0].call == CALL_BASKET;
+}
+
+#test "left alone, bots take the ball to the goal and score in Scrapball" #steps 4000000000 #traversal 1000000000 {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  p := e[0].play[..];
+  #assert ed_play_setup(e, MODE_SCRAPBALL, 2);
+  ed_play(e, 0);
+  play_test_go(p);
+  p[0].f[0].alive = false; p[0].f[0].respawn = 100000;
+  play_test_run(e, 50);
+  #assert p[0].score[0] + p[0].score[1] > 0 && abs(p[0].ball[0].x) < 20 && abs(p[0].ball[0].z) < 20;
+}
+
+#test "left alone, bots take the ball to the hoop and score in Hoops" #steps 4000000000 #traversal 1000000000 {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  p := e[0].play[..];
+  #assert ed_play_setup(e, MODE_HOOPS, 2);
+  ed_play(e, 0);
+  play_test_go(p);
+  p[0].f[0].alive = false; p[0].f[0].respawn = 100000;
+  play_test_run(e, 50);
+  #assert p[0].score[0] + p[0].score[1] > 0 && abs(p[0].ball[0].x) < 20 && abs(p[0].ball[0].z) < 20;
+}
+
+#test "every mode draws: the camera and every instance are numbers, within the buffer" #steps 2000000000 {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 400, 874);
+  ed_new(e, 1);
+  out: [INSTANCES_MAX * INSTANCE_FLOATS] f32;
+  cam: [CAMERA_FLOATS] f32;
+  for m: 0..<MODES {
+    #assert ed_play_setup(e, cast(s32) m, 1);
+    ed_play(e, 0);
+    ed_play_view(e);
+    for k: 0..<8 {
+      _ = ed_tick(e, 0.5);
+      n := ed_draw(e, out[..]);
+      #assert n > 10 && n <= INSTANCES_MAX && ed_camera(e, cam[..]);
+      for i: 0..<CAMERA_FLOATS { #assert cam[i] == cam[i]; }
+      for i: 0..<n * INSTANCE_FLOATS { #assert out[i] == out[i] && abs(out[i]) < 100000; }
+    }
+  }
+}

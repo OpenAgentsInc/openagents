@@ -1,0 +1,309 @@
+// scripts/import-unreal.sh ZIP --engine UE_SOURCE --out NEW_DIR
+// A local scene preview, from a single supported cooked IoStore container.
+#import "Basic";
+#load "../../coax/lib/json/json.coax";
+#load "../../metaverse-engine/import/unreal/convert.coax";
+#load "unreal-archive-tools.coax";
+#load "unreal-preview-checks.coax" #test;
+
+UPV_NAME :: "unreal-preview";
+UPV_PACK :: "unreal-preview.pack";
+UPV_TEXT :: 4194304;
+UPV_MANIFEST :: 33554432;
+
+upv_extract :: (zip: string, end: UzEnd, z: [] UzCatalog, io: UzIo, dir: string) -> bool {
+  packed: [UZ_MEMBER_LIMIT] u8 = ---;
+  decoded: [UZ_MEMBER_LIMIT] u8 = ---;
+  for i: [4] int.[io.toc, io.global_toc, io.data, io.global_data] {
+    if i < 0 { continue; }
+    name := uz_name(z, i);
+    why := upv_member(zip, end, z, i, packed[..], decoded[..]);
+    if why == "" {
+      data := decoded[0..<z[0].entries[i].bytes];
+      if i == io.toc || i == io.global_toc { why = uz_toc_error(data); }
+      path: [4096] u8;
+      if why == "" && !fs_write(fs_join(dir, fs_base(name), path[..]), cast(string) data) {
+        why = "could not stage the IoStore member";
+      }
+    }
+    if why != "" { _ = upv_fail(why); tool_err("  member: "); tool_errln(name); return false; }
+  }
+  return true;
+}
+
+upv_supported_engine :: (meta: [] u8) -> bool {
+  nodes: [128] JvNode; d: [1] Jv;
+  return jv_parse(d[..], cast(string) meta, nodes[..]) &&
+    jv_raw(d[0], jv_get(d[0], 0, "MajorVersion")) == "5" &&
+    jv_raw(d[0], jv_get(d[0], 0, "MinorVersion")) == "9";
+}
+
+upv_field :: (j: [] Jo, key: string, s: string) {
+  jo_key(j, key); jo_str(j, s);
+}
+upv_count :: (j: [] Jo, key: string, n: int) {
+  jo_key(j, key); jo_int(j, n);
+}
+upv_inventory :: (j: [] Jo, z: [] UzCatalog, io: UzIo) {
+  jo_arr(j);
+  for k: 0..<z[0].n {
+    i := z[0].order[k]; e := z[0].entries[i]; p := uz_name(z, i);
+    jo_obj(j); upv_field(j, "path", p); upv_count(j, "bytes", e.bytes);
+    if i == io.toc || i == io.data || i == io.global_toc || i == io.global_data {
+      upv_field(j, "status", "used");
+      upv_field(j, "reason", ifx i == io.toc || i == io.data then "game IoStore pair" else "companion global IoStore pair");
+    } else if e.directory {
+      upv_field(j, "status", "directory");
+    } else {
+      upv_field(j, "status", "skipped");
+      reason := "loose file outside the cooked scene profile";
+      if uz_suffix(p, ".pak") { reason = "Pak container outside the IoStore scene profile"; }
+      else if uz_suffix(p, ".exe") || uz_suffix(p, ".dll") { reason = "packaged executable or library outside the scene profile"; }
+      upv_field(j, "reason", reason);
+    }
+    jo_end(j);
+  }
+  jo_end(j);
+}
+
+upv_diagnostics :: (j: [] Jo, lines: string, kind: int) {
+  jo_arr(j);
+  start := 0;
+  for i: 0..<lines.count + 1 {
+    if i < lines.count && lines[i] != '\n' { continue; }
+    line := lines[start..<i]; start = i + 1;
+    if line == "" { continue; }
+    if kind == 0 {
+      // Release-tool logs end in elapsed milliseconds. Strip the time and
+      // retain deterministic counts, named refusals and the bounds check.
+      if upv_starts(line, "unreal-cooked-export: ") || upv_starts(line, "  map ") {
+        if uz_suffix(line, " ms)") || uz_suffix(line, ") ms") {
+          q := line.count - 1; while q > 0 && line[q] != '(' { q -= 1; }
+          if q > 0 { line = line[0..<q - 1]; }
+        } else if uz_suffix(line, " ms") {
+          q := line.count - 4; while q > 0 && line[q] != ',' { q -= 1; }
+          if q > 0 { line = line[0..<q]; }
+        }
+        jo_str(j, line);
+      }
+    } else if kind == 1 {
+      if upv_starts(line, "unreal-level-import: ") && !upv_starts(line, "unreal-level-import: wrote ") {
+        jo_str(j, line);
+      }
+    } else if !upv_starts(line, "Import of ") {
+      // Keep every converter note and its final table. The first line
+      // contains the random staging path and carries no conversion result.
+      jo_str(j, line);
+    }
+  }
+  jo_end(j);
+}
+
+// Name the rows behind cv_material_shaded's aggregate unmapped count.
+// The preview supplies no toon options and uses the converter's base
+// parameter names. Bundle admission already checked texture references.
+upv_material_skips :: (j: [] Jo, d: Jv) -> int {
+  n := 0;
+  materials := jv_get(d, 0, "materials");
+  jo_arr(j);
+  for i: 0..<jv_len(d, materials) {
+    material := jv_at(d, materials, i);
+    if jv_raw_eq(jv_raw(d, jv_get(d, material, "origin")), "engine") { continue; }
+    for kind: [3] string.["vectors", "textures", "scalars"] {
+      seen_base := false;
+      params := jv_get(d, material, kind);
+      for k: 0..<jv_len(d, params) {
+        param := jv_get(d, jv_at(d, params, k), "name");
+        raw := jv_raw(d, param);
+        base := (kind == "vectors" && anim_in(raw, CV_BASE_COLOR)) ||
+          (kind == "textures" && anim_in(raw, CV_BASE_TEXTURE));
+        if base && !seen_base { seen_base = true; continue; }
+        jo_obj(j);
+        jo_key(j, "material"); jv_write(d, jv_get(d, material, "id"), j);
+        upv_field(j, "kind", kind);
+        jo_key(j, "parameter"); jv_write(d, param, j);
+        jo_end(j); n += 1;
+      }
+    }
+  }
+  jo_end(j);
+  return n;
+}
+
+// Fail the report if the pinned converter's aggregate no longer agrees
+// with the named rows above. The suffix has no clock or filesystem fields.
+upv_material_count_agrees :: (output: string, n: int) -> bool {
+  lines := output;
+  suffix := " material parameters not mapped";
+  if !uz_suffix(lines, suffix) {
+    // The converter's last line announces the pack by its filesystem path.
+    end := lines.count;
+    while end > 0 && lines[end - 1] != '\n' { end -= 1; }
+    if end == 0 { return false; }
+    lines = lines[0..<end - 1];
+  }
+  if !uz_suffix(lines, suffix) { return false; }
+  end := lines.count - suffix.count; start := end;
+  while start > 0 && lines[start - 1] >= '0' && lines[start - 1] <= '9' { start -= 1; }
+  if end == start || end - start > 9 { return false; }
+  actual := 0;
+  for c: lines[start..<end] { actual = actual * 10 + cast(int) (c - '0'); }
+  return n == actual;
+}
+
+UpvInputs :: struct {
+  pin: string; zip_sum: string; zip_size: int; engine_sum: string; pak_sum: string;
+  pack_sum: string; pack_size: int;
+  cooked_log: string; convert_log: string;
+}
+upv_report :: (result: string, bundle: string, z: [] UzCatalog, io: UzIo, info: UpvInputs) -> bool {
+  path: [4096] u8;
+  skips: [UPV_TEXT] u8 = ---;
+  sn := upv_read(fs_join(bundle, "skipped.json", path[..]), skips[..]);
+  report: [UPV_TEXT] u8 = ---;
+  rn := upv_read(fs_join(result, "import-report.txt", path[..]), report[..]);
+  raw: [UPV_MANIFEST] u8 = ---;
+  mn := upv_read(fs_join(bundle, "manifest.json", path[..]), raw[..]);
+  if sn < 0 || rn < 0 || rn == report.count || mn < 0 { return false; }
+  nodes: [600000] JvNode = ---; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<mn], nodes[..]) { return false; }
+  maps := jv_get(d[0], 0, "maps");
+  if jv_len(d[0], maps) == 0 { return false; }
+
+  data: [3 * UPV_TEXT] u8 = ---; j: [1] Jo;
+  jo_start(j[..], data[..]); jo_obj(j[..]);
+  upv_field(j[..], "schema", "gamebuilder.unreal-preview.v1");
+  upv_field(j[..], "outcome", "preview");
+  upv_count(j[..], "model_calls", 0);
+  jo_key(j[..], "source"); jo_obj(j[..]);
+  upv_field(j[..], "profile", "ue5.9-windows-cooked-iostore");
+  upv_count(j[..], "zip_bytes", info.zip_size); upv_field(j[..], "zip_sha256", info.zip_sum);
+  upv_field(j[..], "container", uz_name(z, io.toc));
+  jo_key(j[..], "entries"); upv_inventory(j[..], z, io); jo_end(j[..]);
+  jo_key(j[..], "toolchain"); jo_obj(j[..]);
+  upv_field(j[..], "openagents_pin", info.pin);
+  upv_field(j[..], "unreal_build_version_sha256", info.engine_sum);
+  upv_field(j[..], "unrealpak_sha256", info.pak_sum);
+  upv_field(j[..], "property_schema", "local UE 5.9 generated UHT C++ files from the built editor and its plugins");
+  jo_key(j[..], "project_schema"); jo_bool(j[..], false); jo_end(j[..]);
+  jo_key(j[..], "pack"); jo_obj(j[..]);
+  upv_field(j[..], "file", UPV_PACK); upv_count(j[..], "bytes", info.pack_size); upv_field(j[..], "sha256", info.pack_sum); jo_end(j[..]);
+  jo_key(j[..], "maps"); jo_arr(j[..]);
+  for i: 0..<jv_len(d[0], maps) {
+    m := jv_at(d[0], maps, i);
+    jo_obj(j[..]);
+    jo_key(j[..], "id"); jv_write(d[0], jv_get(d[0], m, "id"), j[..]);
+    upv_count(j[..], "bundle_placements", jv_len(d[0], jv_get(d[0], m, "placements")));
+    jo_end(j[..]);
+  }
+  jo_end(j[..]);
+  jo_key(j[..], "cooked_diagnostics"); upv_diagnostics(j[..], info.cooked_log, 0);
+  jo_key(j[..], "cooked_skips"); jo_raw(j[..], cast(string) skips[0..<sn]);
+  jo_key(j[..], "conversion_counts"); upv_diagnostics(j[..], info.convert_log, 1);
+  jo_key(j[..], "conversion_notes"); upv_diagnostics(j[..], cast(string) report[0..<rn], 2);
+  jo_key(j[..], "unmapped_material_parameters");
+  count := upv_material_skips(j[..], d[0]);
+  if !upv_material_count_agrees(info.convert_log, count) { return false; }
+  jo_key(j[..], "coverage_limits"); jo_arr(j[..]);
+  jo_str(j[..], "The input inventory covers every ZIP member. Only the selected IoStore files are extracted.");
+  jo_str(j[..], "The cooked skip list is the reader's complete list of observed skips, including pruned assets. Unavailable source semantics cannot be enumerated.");
+  jo_str(j[..], "The pack uses limited material and lighting mappings. Atmosphere and full material graphs, behavior, animation and game flow are outside this preview profile.");
+  jo_str(j[..], "The pack passed the converter's structural readback. No gameplay or visual parity is claimed.");
+  jo_end(j[..]); jo_end(j[..]);
+  if j[0].bad || !fs_write(fs_join(result, "report.json", path[..]), jo_text(j[..])) { return false; }
+  return fs_remove(fs_join(result, "import-report.txt", path[..]));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 5 || args_at(a[..], 1) != "--engine" || args_at(a[..], 3) != "--out" {
+    tool_errln("usage: scripts/import-unreal.sh SHIPPING.zip --engine UE_SOURCE --out NEW_DIR"); return 2;
+  }
+  zu: [4096] u8; span: [4096] u8; zip := fs_realpath(args_at(a[..], 0), zu[..]);
+  if zip == "" || fs_kind(zip) != FS_FILE { return upv_fail("ZIP must be a readable regular file"); }
+  size := fs_size(zip); stamp := fs_mtime_ns(zip);
+  z: [1] UzCatalog = ---; end: [1] UzEnd;
+  why := upv_archive(zip, size, z[..], end[..]);
+  if why != "" { return upv_fail(why); }
+  io := uz_io(z[..]);
+  if io.error != "" { return upv_fail(io.error); }
+
+  out_arg := args_at(a[..], 4);
+  dest := fs_realpath(fs_dir(out_arg), span[..]);
+  dest_b: [4096] u8; out := fs_join(dest, fs_base(out_arg), dest_b[..]);
+  if dest == "" || fs_kind(dest) != FS_DIR || fs_base(out_arg) == "" || out == "" {
+    return upv_fail("--out must name a new directory under an existing parent");
+  }
+  for c: out { if c < 32 || c == 127 { return upv_fail("--out cannot contain control characters"); } }
+  if fs_kind(out) != FS_NONE { return upv_fail("--out already exists or is inaccessible"); }
+
+  eb: [4096] u8; engine := fs_realpath(args_at(a[..], 2), eb[..]);
+  if engine == "" { return upv_fail("--engine must name a built Unreal 5.9 source tree"); }
+  path: [4096] u8; build := fs_join(engine, "Engine/Build/Build.version", path[..]);
+  meta: [4096] u8; mn := upv_read(build, meta[..]);
+  if mn < 0 || !upv_supported_engine(meta[0..<mn]) {
+    return upv_fail("--engine must provide a UE 5.9 Engine/Build/Build.version");
+  }
+  pb: [4096] u8;
+  platform := ifx tool_os() == TOOL_MAC then "Engine/Binaries/Mac/UnrealPak" else "Engine/Binaries/Linux/UnrealPak";
+  pak := fs_join(engine, platform, pb[..]);
+  if fs_kind(pak) != FS_FILE { return upv_fail("--engine has no UnrealPak binary for this host"); }
+
+  root_b: [4096] u8; pin_b: [64] u8;
+  root := proc_getenv("COAX_TOOL_REPO", root_b[..]);
+  pin := proc_getenv("GB_UNREAL_PIN", pin_b[..]);
+  lines: [UPV_LOG] u8 = ---;
+  if !upv_pinned(root, pin, lines[..]) { return 1; }
+
+  zh: [64] u8; eh: [64] u8; ph: [64] u8; oh: [64] u8;
+  if !upv_hash(zip, size, zh[..]) || !upv_hash(build, mn, eh[..]) || !upv_hash(pak, fs_size(pak), ph[..]) {
+    return upv_fail("could not hash the ZIP or Unreal toolchain");
+  }
+  // Temporary sibling so the finished directory can be moved in one rename.
+  pattern := fs_join(dest, ".gamebuilder-unreal.XXXXXX", path[..]);
+  mk := [3] string.["mktemp", "-d", pattern];
+  tmp_b: [4096] u8; tn := upv_run("creating private staging", mk[..], 30000, tmp_b[..]);
+  if tn < 0 { return 1; }
+  tmp := cast(string) tmp_b[0..<tn];
+  defer { _ = fs_remove(tmp); }
+  cargo_b: [4096] u8; cargo := fs_join(tmp, "containers", cargo_b[..]);
+  if !fs_mkdir_private(cargo) { return upv_fail("could not create private container staging"); }
+  if !upv_extract(zip, end[0], z[..], io, cargo) { return 1; }
+  if fs_size(zip) != size || fs_mtime_ns(zip) != stamp { return upv_fail("the ZIP changed during the import"); }
+
+  toc_b: [4096] u8; toc := fs_join(cargo, fs_base(uz_name(z[..], io.toc)), toc_b[..]);
+  extract_b: [4096] u8; extract := fs_join(tmp, "packages", extract_b[..]);
+  arg1: [4130] u8; arg2: [4130] u8;
+  find := upv_flag("-FindAndExtract=", toc, arg1[..]); dst := upv_flag("-OutPath=", extract, arg2[..]);
+  extract_cmd := [6] string.[pak, "IoStore", find, "-PackageFilter=*", dst, "-NoTrace"];
+  if upv_run("UnrealPak IoStore extraction", extract_cmd[..], 300000, lines[..]) < 0 { return 1; }
+
+  tools_b: [4096] u8; wrapper := fs_join(root, "coax/web/tool.sh", tools_b[..]);
+  bundle_b: [4096] u8; bundle := fs_join(tmp, "unreal-preview.aimport", bundle_b[..]);
+  cooked_b: [4096] u8; cooked := fs_join(root, "metaverse-engine/tools/unreal-cooked-export.coax", cooked_b[..]);
+  cooked_cmd := [6] string.[wrapper, cooked, extract, bundle, engine, ""];
+  cooked_log: [UPV_LOG] u8 = ---;
+  cn := upv_run("cooked package reader", cooked_cmd[..], 600000, cooked_log[..]);
+  if cn < 0 { return 1; }
+  result_b: [4096] u8; result := fs_join(tmp, "result", result_b[..]);
+  converter_b: [4096] u8; converter := fs_join(root, "metaverse-engine/tools/unreal-level-import.coax", converter_b[..]);
+  convert_cmd := [4] string.[wrapper, converter, bundle, result];
+  ln := upv_run("level pack converter", convert_cmd[..], 600000, lines[..]);
+  if ln < 0 { return 1; }
+  output := fs_join(result, UPV_PACK, path[..]);
+  output_n := fs_size(output);
+  if output_n <= 0 || !upv_hash(output, output_n, oh[..]) { return upv_fail("could not hash the verified preview pack"); }
+  info := UpvInputs.{pin = pin, zip_sum = cast(string) zh[..], zip_size = size, engine_sum = cast(string) eh[..], pak_sum = cast(string) ph[..],
+    pack_sum = cast(string) oh[..], pack_size = output_n, cooked_log = cast(string) cooked_log[0..<cn], convert_log = cast(string) lines[0..<ln]};
+  if !upv_report(result, bundle, z[..], io, info) { return upv_fail("could not write a complete preview report, or the import has no maps"); }
+  if fs_kind(out) != FS_NONE || !fs_rename(result, out) { return upv_fail("could not finish --out as a new directory"); }
+  print("Scene preview: %/%\nReport: %/report.json\nSHA-256: %\n", out, UPV_PACK, out, info.pack_sum);
+  return 0;
+}
+
+upv_flag :: (prefix: string, value: string, b: [] u8) -> string {
+  if value == "" || prefix.count + value.count > b.count { return ""; }
+  for c, i: prefix { b[i] = c; }
+  for c, i: value { b[prefix.count + i] = c; }
+  return cast(string) b[0..<prefix.count + value.count];
+}

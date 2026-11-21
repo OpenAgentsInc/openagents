@@ -1,0 +1,870 @@
+// Games and who may change them.
+//
+// GameBuilder ships games anyone can play. Each has owners, and only an
+// owner may change it: everyone else plays it, or makes a copy of their own
+// to change. A level you make yourself is yours.
+//
+// An owner is an OpenAgents account, named here by the email it logs in
+// with. The host logs in with the OpenAgents apps' own login
+// (apps/shared/host/apple/AppAuth.swift in openagents: an email code, the
+// same account) and hands this file the email that login proved. Owners are
+// associated by hand, in GAME_OWNERS below.
+//
+// This is the app's own rule, so it keeps an honest person out of a game
+// that isn't theirs. It is not what will protect a published game: that is
+// the publishing service's check of the account on its own side
+// (docs/publishing.md).
+
+GAMES :: 2;
+GAME_SCRAPPERS :: 0; GAME_SPLICE_BOTS :: 1;
+GAME_TITLE :: [GAMES] string.["Scrappers Arena", "SPLICEBOTS"];
+// The level ID and file name of a game's own level.
+GAME_ID :: [GAMES] string.["scrappers-arena", "splicebots"];
+// How a game plays: its template. Scrappers is the arena match. SPLICEBOTS
+// is the adventure template, a place you walk round in third person; its own
+// level plays the jam's world when that pack is here (docs/splice-bots-port.md).
+// The open field is the arena with the match taken out: no teams, clock or
+// score to win, you in first person with a blaster on the arena's plates
+// under its dusk sky, a big open floor with targets to shoot and enemies (the
+// arena's bots) coming at you, all of them placed things, to build a game of
+// your own on (play.coax, ed_open_field).
+//
+// A game of yours plays on a game type: one of shared/game-types.coax's, the
+// website's list too (AGENTS.md, "One way to make a game"). Its document names
+// the type by its id; a level no game holds is an arena. "Template" is the
+// word the commands kept for a game type.
+TEMPLATES :: GT_TYPES;
+TEMPLATE_ARENA :: GT_ARENA; TEMPLATE_ADVENTURE :: GT_ADVENTURE; TEMPLATE_FIELD :: GT_FIELD;
+TEMPLATE_ID :: GT_ID;       // as a game's document names it
+TEMPLATE_NAME :: GT_NAME;
+// What a level of yours on the type is, said while you play it: its card's line.
+TEMPLATE_NOTE :: GT_LINE;
+GAME_TEMPLATE :: [GAMES] s32.[TEMPLATE_ARENA, TEMPLATE_ADVENTURE];
+GAME_NOTE :: [GAMES] string.["Three a side. First to ten knockouts.", "The Director moves as she does in the jam build, on a blockout of the solar farm."];
+
+OWNERS_MAX :: 4;
+GameOwners :: struct { who: [OWNERS_MAX] string; }
+GAME_OWNERS :: [GAMES] GameOwners.[
+  GameOwners.{who = [OWNERS_MAX] string.["chris@openagents.com", "", "", ""]},
+  GameOwners.{who = [OWNERS_MAX] string.["chris@openagents.com", "", "", ""]}];
+
+ACCOUNT_MAX :: 254;      // the longest an email address may be
+
+game_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+// Whether this email owns the game. Letters compare without case; nothing
+// else is forgiven, and no email owns nothing.
+game_owner :: (game: s32, email: [] u8) -> bool {
+  if game < 0 || game >= GAMES || email.count == 0 { return false; }
+  for k: 0..<OWNERS_MAX {
+    w := GAME_OWNERS[game].who[k];
+    if w.count == 0 || w.count != email.count { continue; }
+    same := true;
+    for i: 0..<w.count { if game_lower(w[i]) != game_lower(email[i]) { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+
+// The account logged in on this device: the email its login proved, or none
+// (an empty one) when logged out. An address with a space or no @ is no
+// account.
+ed_set_account :: (e: [] Editor, email: [] u8) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].account_n = 0;
+  if email.count > ACCOUNT_MAX { return; }
+  at := false;
+  for c: email { if c <= 32 || c >= 127 { return; } if c == '@' { at = true; } }
+  if !at { return; }
+  for i: 0..<email.count { e[0].account[i] = game_lower(email[i]); }
+  e[0].account_n = cast(s32) email.count;
+  e[0].dirty = true;
+}
+
+ed_account :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || cast(s64) e[0].account_n > out.count { return 0; }
+  for i: 0..<cast(s64) e[0].account_n { out[i] = e[0].account[i]; }
+  return cast(s64) e[0].account_n;
+}
+
+// Whether what is open is a game's own level, not one of yours.
+ed_is_official :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].official; }
+
+// Whether the level open may be changed here: yours always, a game's own
+// only by one of its owners.
+ed_may_edit :: (e: [] Editor) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  me := e[0].account[0..<cast(s64) e[0].account_n];
+  if !e[0].official {
+    // a game of yours with owners named: only they change it; none named: anyone on this device
+    i := mine_find(e, e[0].mine_open);
+    if i < 0 || e[0].mine[i].owners_n == 0 { return true; }
+    return mine_owners_has(cast(string) e[0].mine[i].owners[0..<cast(s64) e[0].mine[i].owners_n], cast(string) me);
+  }
+  return game_owner(e[0].game, me);
+}
+
+ed_games :: () -> s32 #export_c #effects(all) { return GAMES; }
+ed_game :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].game else 0; }
+// Whether a game is walked round (true) or is an arena match (false).
+ed_game_explores :: (game: s32) -> bool #export_c #effects(all) { return game >= 0 && game < GAMES && GAME_TEMPLATE[game] == TEMPLATE_ADVENTURE; }
+// Whether the level open has no match (true: PLAY starts at once, you alone)
+// or is an arena match (false: PLAY asks which Scrapper first).
+ed_explores :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].plays != TEMPLATE_ARENA; }
+ed_template :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].plays else 0; }
+ed_templates :: () -> s32 #export_c #effects(all) { return TEMPLATES; }
+ed_template_name :: (t: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx t < 0 || t >= TEMPLATES then 0 else play_text(TEMPLATE_NAME[t], out);
+}
+// What is said of the level open while it is played: a game's own note, or
+// its template's.
+ed_play_note :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  // (the engine's page playing a world of its own: how the run stands, in the world's own words; world.coax writes them each frame)
+  if e[0].play[0].on && e[0].play[0].world && e[0].world[0].says_n > 0 {
+    n := ifx e[0].world[0].says_n < out.count then e[0].world[0].says_n else out.count;
+    for i: 0..<n { out[i] = e[0].world[0].says[i]; }
+    return n;
+  }
+  if e[0].official { return ed_game_note(e[0].game, out); }
+  return ifx e[0].plays < 0 || e[0].plays >= TEMPLATES then 0 else play_text(TEMPLATE_NOTE[e[0].plays], out);
+}
+template_of :: (word: string) -> s32 { return cast(s32) gt_of(word); }
+// Why a level of a game type can't be played in the app: "" for every type today (shared/game-types.coax
+// GT_PLAYS_IN_APP); a build without the engine's page says PLAY_NO_PAGE for the types the page plays.
+ed_play_why :: (t: s32) -> string {
+  if t < 0 || t >= GT_TYPES || GT_PLAYS_IN_APP[t] { return ""; }
+  return "this game type plays on gamebuilder.org for now: playing it in the app is not built yet. build it here; it is saved.";
+}
+// The name of a game's own level: its document's ID and its file's name.
+ed_game_id :: (game: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx game < 0 || game >= GAMES then 0 else play_text(GAME_ID[game], out);
+}
+ed_game_note :: (game: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx game < 0 || game >= GAMES then 0 else play_text(GAME_NOTE[game], out);
+}
+ed_game_title :: (game: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx game < 0 || game >= GAMES then 0 else play_text(GAME_TITLE[game], out);
+}
+
+// ---- your games
+//
+// A game of yours is a document: its name, its template and its levels, the
+// first of which is where it starts. It is a content document
+// (aethyr.content.v1, metaverse-engine/content/tables.coax), the format a
+// level's shapes already are, so a game's settings are cells that the same
+// world.edit.v1 cell edits can change, here and on the web:
+//   aethyr.content.v1 game 1
+//   reach 1
+//   table game id title:text template:text
+//   1|Game 2|adventure
+//   table levels id level:int
+//   1|7
+// The host keeps each as its own file (game-N.game) beside the levels, hands
+// them all in at start (ed_mine_load), and writes what ed_mine_save gives it.
+// A level's file does not say which game holds it: the game's levels table
+// does. A level no game holds is one of "My levels", an arena as before.
+
+MINE_MAX :: 32;              // games of your own on a device
+MINE_LEVELS :: 16;           // levels one game holds
+MINE_TITLE :: 48;            // bytes of a game's name
+MINE_OWNERS :: OWNERS_MAX * (ACCOUNT_MAX + 1);   // a game's owners, a comma between each
+MINE_DOC_MAX :: 220 + MINE_TITLE + MINE_LEVELS * (16 + MINE_TITLE) + MINE_OWNERS + OWNERS_MAX * 8;   // a game's document, at most
+// A game of yours: its levels in order, each with a name or none (name_n 0), and the accounts that
+// own it (owners, a comma between each), or none: anyone on this device may change it.
+Mine :: struct {
+  n: s32; plays: s32; title: [MINE_TITLE] u8; title_n: s32; levels: [MINE_LEVELS] s32; level_n: s32;
+  names: [MINE_LEVELS * MINE_TITLE] u8; name_n: [MINE_LEVELS] s32;
+  owners: [MINE_OWNERS] u8; owners_n: s32;
+}
+
+ed_mine_doc_max :: () -> s32 #export_c #effects(all) { return MINE_DOC_MAX; }
+
+// Where your game n is in the list, or -1.
+mine_find :: (e: [] Editor, n: s32) -> s64 {
+  for i: 0..<cast(s64) e[0].mine_n { if e[0].mine[i].n == n { return i; } }
+  return -1;
+}
+// Which of your games holds level n: its number, or 0.
+mine_of_level :: (e: [] Editor, level: s32) -> s32 {
+  for i: 0..<cast(s64) e[0].mine_n {
+    m := e[0].mine[i];
+    for k: 0..<cast(s64) m.level_n { if m.levels[k] == level { return m.n; } }
+  }
+  return 0;
+}
+
+// A name a game may have: one line of 1 to MINE_TITLE bytes, no bar, not
+// starting or ending with a space.
+mine_title_ok :: (t: string) -> bool {
+  if t.count < 1 || t.count > MINE_TITLE || t[0] == ' ' || t[t.count - 1] == ' ' { return false; }
+  for c: t { if c < 32 || c == 127 || c == '|' { return false; } }
+  return true;
+}
+
+// The game's document into out; "" when it does not fit.
+mine_text :: (m: Mine, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|");
+  title := m.title;
+  tx_put(t[..], cast(string) title[0..<cast(s64) m.title_n]); tx_put(t[..], "|");
+  tx_put(t[..], TEMPLATE_ID[m.plays]);
+  named := false; for k: 0..<cast(s64) m.level_n { if m.name_n[k] > 0 { named = true; } }
+  tx_put(t[..], ifx named then "\ntable levels id level:int name:text\n" else "\ntable levels id level:int\n");
+  for k: 0..<cast(s64) m.level_n {
+    tx_int(t[..], k + 1); tx_put(t[..], "|"); tx_int(t[..], cast(s64) m.levels[k]);
+    if named { tx_put(t[..], "|"); nb: [MINE_TITLE] u8; tx_put(t[..], mine_level_name(m, k, nb[..])); }
+    tx_put(t[..], "\n");
+  }
+  if m.owners_n > 0 {
+    tx_put(t[..], "table owners id email:text\n");
+    for k: 0..<OWNERS_MAX {
+      ob: [ACCOUNT_MAX] u8; n := mine_owner(m, k, ob[..]);
+      if n > 0 { tx_int(t[..], cast(s64) (k + 1)); tx_put(t[..], "|"); tx_put(t[..], cast(string) ob[0..<n]); tx_put(t[..], "\n"); }
+    }
+  }
+  return ifx t[0].at >= out.count then "" else cast(string) out[0..<t[0].at];
+}
+
+// A game's document read into out[0] as game n. False for one that is not
+// a game's: one row of game with a known template and a name it may have,
+// and 1 to MINE_LEVELS levels, numbered in order, each a level's number once.
+mine_read :: (text: string, n: s32, out: [] Mine) -> bool {
+  c: [1] ContentDoc;
+  if !ct_read(c[..], text) || (c[0].t_n != 2 && c[0].t_n != 3) || ct_doc_name(c[..]) != "game" { return false; }
+  g := ct_table(c[..], "game"); l := ct_table(c[..], "levels"); ow := ct_table(c[..], "owners");
+  if c[0].t_n == 3 && ow < 0 { return false; }
+  if g < 0 || l < 0 || ct_cols(c[..], g) != 3 || ct_col(c[..], g, "title") != 1 || ct_col(c[..], g, "template") != 2 { return false; }
+  if ct_rows(c[..], g) != 1 || ct_get(c[..], g, 0, 0) != 1 { return false; }
+  named := ct_cols(c[..], l) == 3;
+  if (ct_cols(c[..], l) != 2 && !named) || ct_col(c[..], l, "level") != 1 || (named && ct_col(c[..], l, "name") != 2) || ct_rows(c[..], l) < 1 || ct_rows(c[..], l) > MINE_LEVELS { return false; }
+  title := ct_str(c[..], g, 0, 1);
+  plays := template_of(ct_str(c[..], g, 0, 2));
+  if !mine_title_ok(title) || plays < 0 { return false; }
+  m := Mine.{n = n, plays = plays, title_n = cast(s32) title.count};
+  for i: 0..<title.count { m.title[i] = title[i]; }
+  for r: 0..<ct_rows(c[..], l) {
+    v := ct_get(c[..], l, r, 1);
+    if ct_get(c[..], l, r, 0) != r + 1 || v < 1 || v > LEVEL_MAX { return false; }
+    for k: 0..<r { if m.levels[k] == cast(s32) v { return false; } }
+    m.levels[r] = cast(s32) v;
+    if named {
+      name := ct_str(c[..], l, r, 2);
+      if name.count > 0 && !mine_title_ok(name) { return false; }
+      for i: 0..<name.count { m.names[r * MINE_TITLE + i] = name[i]; }
+      m.name_n[r] = cast(s32) name.count;
+    }
+  }
+  m.level_n = cast(s32) ct_rows(c[..], l);
+  if ow >= 0 {
+    if ct_cols(c[..], ow) != 2 || ct_col(c[..], ow, "email") != 1 || ct_rows(c[..], ow) < 1 || ct_rows(c[..], ow) > OWNERS_MAX { return false; }
+    lb: [MINE_OWNERS] u8; ln := 0;
+    for r: 0..<ct_rows(c[..], ow) {
+      who := ct_str(c[..], ow, r, 1);
+      if !mine_email_ok(who) { return false; }
+      if r > 0 { lb[ln] = ','; ln += 1; }
+      for i: 0..<who.count { lb[ln] = who[i]; ln += 1; }
+    }
+    for i: 0..<ln { m.owners[i] = lb[i]; }
+    m.owners_n = cast(s32) ln;
+  }
+  out[0] = m;
+  return true;
+}
+
+// Level k's name in game m, or "" when it has none.
+mine_level_name :: (m: Mine, k: s64, out: [] u8) -> string {
+  if k < 0 || k >= cast(s64) m.level_n { return ""; }
+  n := cast(s64) m.name_n[k];
+  if n > out.count { return ""; }
+  for j: 0..<n { out[j] = m.names[k * MINE_TITLE + j]; }
+  return cast(string) out[0..<n];
+}
+// An account an owner may be: an email of 3 to 254 bytes with one @ inside, no space, comma or bar.
+mine_email_ok :: (w: string) -> bool {
+  if w.count < 3 || w.count > ACCOUNT_MAX { return false; }
+  at := 0;
+  for i: 0..<w.count { c := w[i]; if c <= 32 || c == ',' || c == '|' || c == 127 { return false; } if c == '@' { if i == 0 || i == w.count - 1 { return false; } at += 1; } }
+  return at == 1;
+}
+// Why a list of owners is not one: "" when it is 1 to OWNERS_MAX emails, a comma between each.
+mine_owners_why :: (w: string) -> string {
+  if w.count == 0 || w.count > MINE_OWNERS { return "owners are 1 to 4 accounts' emails, a comma between each (OWNERS_MAX)"; }
+  n := 0; from := 0;
+  for i: 0..<w.count + 1 {
+    if i < w.count && w[i] != ',' { continue; }
+    if !mine_email_ok(cast(string) w[from..<i]) { return "each owner is an account's email: one @, no space"; }
+    n += 1; from = i + 1;
+  }
+  return ifx n > OWNERS_MAX then "a game has at most 4 owners (OWNERS_MAX)" else "";
+}
+// Owner k of game m into out: its length, or 0 when there are fewer.
+mine_owner :: (m: Mine, k: int, out: [] u8) -> s64 {
+  at := 0; from := 0;
+  for i: 0..<cast(s64) m.owners_n + 1 {
+    if i < cast(s64) m.owners_n && m.owners[i] != ',' { continue; }
+    if at == k {
+      n := i - from; if n > out.count { return 0; }
+      for j: 0..<n { out[j] = m.owners[from + j]; }
+      return n;
+    }
+    at += 1; from = i + 1;
+  }
+  return 0;
+}
+// Whether the list of owners names the account me, letters compared without case.
+mine_owners_has :: (list: string, me: string) -> bool {
+  from := 0;
+  for i: 0..<list.count + 1 {
+    if i < list.count && list[i] != ',' { continue; }
+    w := cast(string) list[from..<i]; from = i + 1;
+    if w.count != me.count { continue; }
+    same := true;
+    for j: 0..<w.count { if game_lower(w[j]) != game_lower(me[j]) { same = false; } }
+    if same { return true; }
+  }
+  return false;
+}
+// The managing of your games: each false, and nothing changed, for a game or a level not there.
+mine_drop_level :: (e: [] Editor, g: s32, level: s32) -> bool {
+  i := mine_find(e, g); if i < 0 { return false; }
+  m := e[0].mine[i]; at: s64 = -1;
+  for k: 0..<cast(s64) m.level_n { if m.levels[k] == level { at = k; } }
+  if at < 0 || m.level_n <= 1 { return false; }
+  for k: at..<cast(s64) m.level_n - 1 {
+    m.levels[k] = m.levels[k + 1]; m.name_n[k] = m.name_n[k + 1];
+    for j: 0..<MINE_TITLE { m.names[k * MINE_TITLE + j] = m.names[(k + 1) * MINE_TITLE + j]; }
+  }
+  m.level_n -= 1;
+  e[0].mine[i] = m;
+  if e[0].level == level { e[0].mine_open = 0; }
+  return true;
+}
+mine_name_level :: (e: [] Editor, g: s32, level: s32, name: string) -> bool {
+  i := mine_find(e, g); if i < 0 || !mine_title_ok(name) { return false; }
+  for k: 0..<cast(s64) e[0].mine[i].level_n {
+    if e[0].mine[i].levels[k] != level { continue; }
+    for j: 0..<name.count { e[0].mine[i].names[k * MINE_TITLE + j] = name[j]; }
+    e[0].mine[i].name_n[k] = cast(s32) name.count;
+    return true;
+  }
+  return false;
+}
+// Level out of the game it is in (if any) and into game into (0: none), its name with it.
+mine_move_level :: (e: [] Editor, level: s32, into: s32) -> bool {
+  from := mine_of_level(e, level);
+  ti := mine_find(e, into);
+  if into != 0 && (ti < 0 || e[0].mine[ti].level_n >= MINE_LEVELS) { return false; }
+  name: [MINE_TITLE] u8; name_n: s32 = 0;
+  fi := mine_find(e, from);
+  if fi >= 0 {
+    for k: 0..<cast(s64) e[0].mine[fi].level_n {
+      if e[0].mine[fi].levels[k] != level { continue; }
+      name_n = e[0].mine[fi].name_n[k];
+      for j: 0..<cast(s64) name_n { name[j] = e[0].mine[fi].names[k * MINE_TITLE + j]; }
+    }
+    if !mine_drop_level(e, from, level) { return false; }
+  }
+  if ti >= 0 {
+    k := cast(s64) e[0].mine[ti].level_n;
+    e[0].mine[ti].levels[k] = level; e[0].mine[ti].name_n[k] = name_n;
+    for j: 0..<cast(s64) name_n { e[0].mine[ti].names[k * MINE_TITLE + j] = name[j]; }
+    e[0].mine[ti].level_n += 1;
+  }
+  if e[0].level == level && !e[0].official {
+    e[0].mine_open = into;
+    e[0].plays = ifx ti >= 0 then e[0].mine[ti].plays else TEMPLATE_ARENA;
+  }
+  return true;
+}
+// Game g out of your list; its levels stay, in no game.
+mine_drop :: (e: [] Editor, g: s32) -> bool {
+  i := mine_find(e, g); if i < 0 { return false; }
+  for k: i..<cast(s64) e[0].mine_n - 1 { e[0].mine[k] = e[0].mine[k + 1]; }
+  e[0].mine_n -= 1;
+  if e[0].mine_open == g { e[0].mine_open = 0; e[0].plays = TEMPLATE_ARENA; }
+  return true;
+}
+mine_set_owners :: (e: [] Editor, g: s32, list: string) -> bool {
+  i := mine_find(e, g); if i < 0 || mine_owners_why(list).count > 0 { return false; }
+  for j: 0..<list.count { e[0].mine[i].owners[j] = list[j]; }
+  e[0].mine[i].owners_n = cast(s32) list.count;
+  return true;
+}
+
+// Puts game m in the list, in order of number, replacing one of the same
+// number. False when the list is full or one of its levels is another game's.
+mine_put :: (e: [] Editor, m: Mine) -> bool {
+  at := mine_find(e, m.n);
+  for k: 0..<cast(s64) m.level_n {
+    other := mine_of_level(e, m.levels[k]);
+    if other != 0 && other != m.n { return false; }
+  }
+  if at < 0 {
+    if e[0].mine_n >= MINE_MAX { return false; }
+    at = cast(s64) e[0].mine_n;
+    while at > 0 && e[0].mine[at - 1].n > m.n { e[0].mine[at] = e[0].mine[at - 1]; at -= 1; }
+    e[0].mine_n += 1;
+  }
+  e[0].mine[at] = m;
+  return true;
+}
+
+// Reads your game n from its file into the list. False, and the list as it
+// was, for bytes that are not a game's, a full list, or a level another game
+// already holds.
+ed_mine_load :: (e: [] Editor, n: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || n < 1 || n > LEVEL_MAX { return false; }
+  m: [1] Mine;
+  if !mine_read(cast(string) text, n, m[..]) { return false; }
+  if !mine_put(e, m[0]) { return false; }
+  if e[0].level > 0 && !e[0].official && mine_of_level(e, e[0].level) == n { e[0].mine_open = n; e[0].plays = m[0].plays; }
+  return true;
+}
+
+// Your game n's file into out: its length, or 0 for no such game or too
+// small an out (ed_mine_doc_max is always enough).
+ed_mine_save :: (e: [] Editor, n: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  i := mine_find(e, n);
+  if i < 0 { return 0; }
+  return mine_text(e[0].mine[i], out).count;
+}
+
+ed_mines :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].mine_n else 0; }
+// The number of your i-th game, lowest first; 0 past the end.
+ed_mine_at :: (e: [] Editor, i: s32) -> s32 #export_c #effects(all) {
+  return ifx e.count == 1 && i >= 0 && i < e[0].mine_n then e[0].mine[i].n else 0;
+}
+ed_mine_title :: (e: [] Editor, n: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  i := mine_find(e, n);
+  if i < 0 { return 0; }
+  return play_text(cast(string) e[0].mine[i].title[0..<cast(s64) e[0].mine[i].title_n], out);
+}
+ed_mine_template :: (e: [] Editor, n: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return -1; }
+  i := mine_find(e, n);
+  return ifx i < 0 then -1 else e[0].mine[i].plays;
+}
+// Where your game n starts: its first level's number, or 0.
+ed_mine_level :: (e: [] Editor, n: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  i := mine_find(e, n);
+  return ifx i < 0 then 0 else e[0].mine[i].levels[0];
+}
+// The game of yours the level open belongs to, or 0.
+ed_mine_open :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].mine_open else 0; }
+// The game of yours a row run on the screen changed since the last call (its number), or 0: the
+// host writes its file (ed_mine_save) as it writes a level when ed_save_due says so.
+ed_game_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  g := e[0].game_due; e[0].game_due = e[0].game_also_due; e[0].game_also_due = 0;
+  return g;
+}
+// The level's and the game's files a row deleted (delete-level, delete-game), for the host to
+// delete, and clears them; 0: none.
+ed_drop_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  n := e[0].drop_due; e[0].drop_due = 0;
+  return n;
+}
+ed_drop_game_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  g := e[0].drop_game_due; e[0].drop_game_due = 0;
+  return g;
+}
+// Which of your games holds level n, or 0: a level of "My levels".
+ed_level_mine :: (e: [] Editor, level: s32) -> s32 #export_c #effects(all) { return ifx e.count == 1 then mine_of_level(e, level) else 0; }
+
+// A game's file name: game-N.
+ed_mine_id :: (n: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if n < 1 || n > LEVEL_MAX { return 0; }
+  b: [16] u8;
+  t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], "game-"); tx_int(t[..], cast(s64) n);
+  return play_text(cast(string) b[0..<t[0].at], out);
+}
+// The number a game's file name stands for, or 0.
+ed_mine_number :: (name: [] u8) -> s32 #export_c #effects(all) {
+  head := "game-";
+  if name.count <= head.count || name.count > head.count + 4 || cast(string) name[0..<head.count] != head || name[head.count] == '0' { return 0; }
+  v: s32 = 0;
+  for i: head.count..<name.count {
+    if name[i] < '0' || name[i] > '9' { return 0; }
+    v = v * 10 + cast(s32) (name[i] - '0');
+  }
+  return ifx v <= LEVEL_MAX then v else 0;
+}
+
+// Makes your game n on a game type, named for its number, with level `level`
+// its first level: a new one holding the type's starter things
+// (shared/game-types.coax gt_starter_level, as the website's world opens with), open
+// and due a save. A type that starts with more levels than one (crates: three, a room
+// each; gt_levels) has the next numbers after `level` for them, each made here as its
+// file for the host to write (ed_more_due, ed_more_save). The host writes the game's
+// file next (ed_mine_save). False, and nothing changed, for a number in use, a level
+// another game holds, an unknown template or a full list.
+ed_new_game :: (e: [] Editor, n: s32, plays: s32, level: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || n < 1 || n > LEVEL_MAX || level < 1 || level > LEVEL_MAX || plays < 0 || plays >= TEMPLATES { return false; }
+  if mine_find(e, n) >= 0 || mine_of_level(e, level) != 0 || e[0].mine_n >= MINE_MAX { return false; }
+  levels := cast(s32) gt_levels(cast(int) plays);
+  for k: 1..<cast(s64) levels { if level + cast(s32) k > LEVEL_MAX || mine_of_level(e, level + cast(s32) k) != 0 { return false; } }
+  m := Mine.{n = n, plays = plays, level_n = levels};
+  for k: 0..<cast(s64) levels { m.levels[k] = level + cast(s32) k; }
+  b: [16] u8;
+  t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], "Game "); tx_int(t[..], cast(s64) n);
+  for i: 0..<t[0].at { m.title[i] = b[i]; }
+  m.title_n = cast(s32) t[0].at;
+  if !mine_put(e, m) { return false; }
+  // the levels after the first, the last one first: each made as the level open, and kept as its file
+  e[0].more_n = 0;
+  k := cast(s64) levels - 1;
+  while k >= 1 {
+    level_clear(e, level + cast(s32) k, GAME_SCRAPPERS);
+    e[0].plays = plays; e[0].mine_open = n;
+    ed_starter_level(e, plays, cast(s32) k);
+    at := cast(s64) e[0].more_n * MORE_DOC;
+    size := ed_save(e, e[0].more_doc[at..<at + MORE_DOC]);
+    e[0].more_level[e[0].more_n] = level + cast(s32) k; e[0].more_len[e[0].more_n] = cast(s32) size; e[0].more_n += 1;
+    k -= 1;
+  }
+  level_clear(e, level, GAME_SCRAPPERS);
+  e[0].plays = plays; e[0].mine_open = n;
+  ed_starter(e, plays);
+  ed_overview(e);
+  e[0].fresh = true;
+  return true;
+}
+
+// A level a new game made beside its first (ed_new_game), still to be written: its number, or 0 for
+// none. The host writes its file (ed_more_save) as it writes the open level, and asks again.
+ed_more_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || e[0].more_n <= 0 { return 0; }
+  return e[0].more_level[e[0].more_n - 1];
+}
+// That level's file into out, and it is no longer due. Its length; 0 when there is none or out is too small (MORE_DOC is enough).
+ed_more_save :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || e[0].more_n <= 0 { return 0; }
+  k := cast(s64) e[0].more_n - 1; size := cast(s64) e[0].more_len[k];
+  if out.count < size { return 0; }
+  for i: 0..<size { out[i] = e[0].more_doc[k * MORE_DOC + i]; }
+  e[0].more_n -= 1;
+  return size;
+}
+// The level after level n in your game that holds it, going round to its first; 0 when it is in no game of yours or is its only level.
+mine_next_level :: (e: [] Editor, n: s32) -> s32 {
+  gi := mine_find(e, mine_of_level(e, n));
+  if gi < 0 || e[0].mine[gi].level_n < 2 { return 0; }
+  for k: 0..<cast(s64) e[0].mine[gi].level_n { if e[0].mine[gi].levels[k] == n { return e[0].mine[gi].levels[(k + 1) % cast(s64) e[0].mine[gi].level_n]; } }
+  return 0;
+}
+// Which of its game's levels level n is (from 0), and how many the game has (1 for a level in no game of yours).
+mine_level_at :: (e: [] Editor, n: s32) -> [2] int {
+  gi := mine_find(e, mine_of_level(e, n));
+  if gi < 0 { return [2] int.[0, 1]; }
+  for k: 0..<cast(s64) e[0].mine[gi].level_n { if e[0].mine[gi].levels[k] == n { return [2] int.[cast(int) k, cast(int) e[0].mine[gi].level_n]; } }
+  return [2] int.[0, 1];
+}
+
+// ---- checks
+
+ManageTest :: struct { e: [1] Editor; a: [MINE_DOC_MAX] u8; m: [1] Mine; nb: [MINE_TITLE] u8; }
+#test "a game's levels are named, moved and dropped, its owners kept, and its file reads back the same" {
+  t: [1] ManageTest; e := t[0].e[..];
+  #assert ed_new_game(e, 1, TEMPLATE_ARENA, 2) && ed_new_game(e, 3, TEMPLATE_ARENA, 4);
+  #assert mine_move_level(e, 5, 1) && mine_name_level(e, 1, 5, "The Pit") && mine_of_level(e, 5) == 1;
+  #assert !mine_name_level(e, 1, 5, " no") && !mine_set_owners(e, 1, "nobody");
+  #assert mine_set_owners(e, 1, "a@b.co,Me@X.org") && mine_owners_has("a@b.co,Me@X.org", "me@x.org");
+  n := ed_mine_save(e, 1, t[0].a[..]);
+  text := cast(string) t[0].a[0..<n];
+  #assert level_find(text, "name:text") >= 0 && level_find(text, "2|5|The Pit") >= 0 && level_find(text, "2|Me@X.org") >= 0;
+  #assert mine_read(text, 1, t[0].m[..]) && t[0].m[0].level_n == 2 && mine_level_name(t[0].m[0], 1, t[0].nb[..]) == "The Pit" && t[0].m[0].owners_n == 15;
+  // a game keeps one level; a level moves out with its name, and a game dropped leaves its levels
+  #assert mine_move_level(e, 5, 3) && mine_of_level(e, 5) == 3 && mine_level_name(e[0].mine[mine_find(e, 3)], 1, t[0].nb[..]) == "The Pit";
+  #assert !mine_drop_level(e, 1, 2) && mine_drop(e, 1) && mine_find(e, 1) < 0 && mine_of_level(e, 2) == 0;
+  // a game of yours with owners is changed only by one of them
+  _ = mine_set_owners(e, 3, "a@b.co");
+  e[0].level = 4; e[0].mine_open = 3;
+  #assert !ed_may_edit(e);
+  ab := "A@B.CO"; for i: 0..<ab.count { e[0].account[i] = ab[i]; } e[0].account_n = cast(s32) ab.count;
+  #assert ed_may_edit(e);
+}
+
+#test "an owner is the email associated with the game, whatever its case, and nobody else" {
+  me := "chris@openagents.com"; loud := "Chris@OpenAgents.com";
+  b: [64] u8;
+  n := 0; for c: me { b[n] = c; n += 1; }
+  for g: 0..<GAMES { #assert game_owner(cast(s32) g, b[0..<n]); }
+  n = 0; for c: loud { b[n] = c; n += 1; }
+  #assert game_owner(GAME_SCRAPPERS, b[0..<n]);
+  others := [5] string.["chris@openagents.co", "xchris@openagents.com", "chris@openagents.com ", "", "someone@example.com"];
+  for w: others {
+    k := 0; for c: w { b[k] = c; k += 1; }
+    #assert !game_owner(GAME_SCRAPPERS, b[0..<k]);
+  }
+  #assert !game_owner(-1, b[0..<n]) && !game_owner(GAMES, b[0..<n]);
+}
+
+GamesTest :: struct { e: [1] Editor; a: [32768] u8; }
+
+#test "a game's own level plays for anyone and changes only for its owner; a copy is yours" {
+  t: [1] GamesTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_official(e);
+  n := ed_count(e);
+  was := ed_actor(e, 3);
+  #assert ed_is_official(e) && !ed_may_edit(e) && ed_level(e) == 0 && !ed_save_due(e);
+  // logged out: no edit lands, by a drag's edit, the toolbar, undo or the decision model's door
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) was.id, x = cast(int) was.x + 100, y = 0, z = cast(int) was.z});
+  ed_add_block(e);
+  e[0].selected = was.id; ed_delete(e);
+  #assert ed_count(e) == n && ed_actor(e, 3).x == was.x && !ed_can_undo(e) && !ed_save_due(e);
+  // and it still plays
+  ed_play(e, 0);
+  #assert ed_playing(e);
+  ed_stop(e);
+  // someone else logged in changes nothing either
+  other := "someone@example.com"; b: [64] u8;
+  k := 0; for c: other { b[k] = c; k += 1; }
+  ed_set_account(e, b[0..<k]);
+  ed_add_block(e);
+  #assert !ed_may_edit(e) && ed_count(e) == n;
+  // a copy is theirs to change, and is saved as their own level
+  ed_copy(e, 4);
+  #assert !ed_is_official(e) && ed_may_edit(e) && ed_level(e) == 4 && ed_save_due(e) && ed_count(e) == n;
+  ed_add_block(e);
+  #assert ed_count(e) == n + 1;
+  // the owner changes the game's own level, and it is due a save
+  ed_official(e);
+  me := "Chris@OpenAgents.com";
+  k = 0; for c: me { b[k] = c; k += 1; }
+  ed_set_account(e, b[0..<k]);
+  #assert ed_may_edit(e) && !ed_save_due(e);
+  ed_add_block(e);
+  #assert ed_count(e) == n + 1 && ed_save_due(e);
+  got := ed_account(e, b[..]);
+  #assert cast(string) b[0..<got] == "chris@openagents.com";
+  // logging out locks it again; an address that is not one is no account
+  ed_set_account(e, b[0..<0]);
+  #assert !ed_may_edit(e);
+  bad := "not an email";
+  k = 0; for c: bad { b[k] = c; k += 1; }
+  ed_set_account(e, b[0..<k]);
+  #assert ed_account(e, b[..]) == 0;
+}
+
+#test "the game's own level saves under its own name and opens as official" {
+  t: [1] GamesTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_official(e);
+  b: [32] u8;
+  n := ed_level_id(0, b[..]);
+  #assert cast(string) b[0..<n] == "scrappers-arena" && ed_level_number(b[0..<n]) == 0;
+  n = ed_level_title(0, b[..]);
+  #assert cast(string) b[0..<n] == "Scrappers Arena";
+  m := ed_save(e, t[0].a[..]);
+  #assert m > 0;
+  ed_new(e, 2);
+  #assert !ed_is_official(e);
+  #assert ed_open(e, 0, t[0].a[0..<m]) && ed_is_official(e) && ed_level(e) == 0 && !ed_may_edit(e);
+}
+
+#test "each game opens as its own level, owned by its owner, and saves under its own name" {
+  t: [1] GamesTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  none: [1] u8; b: [64] u8;
+  for g: 0..<GAMES {
+    #assert ed_open_game(e, cast(s32) g, none[0..<0]);
+    #assert ed_is_official(e) && ed_game(e) == cast(s32) g && ed_level(e) == 0 && !ed_may_edit(e) && ed_count(e) > 10 && ed_count(e) <= ACTORS_MAX;
+    #assert ed_actor(e, 0).kind == KIND_START;
+    m := ed_save(e, t[0].a[..]);
+    #assert m > 0;
+    n := ed_game_id(cast(s32) g, b[..]);
+    // the document names the game, and opens again as that game's
+    head := "world.doc.v1 ";
+    for i: 0..<n { #assert t[0].a[head.count + i] == b[i]; }
+    count := ed_count(e);
+    ed_new(e, 1);
+    #assert ed_open_game(e, cast(s32) g, t[0].a[0..<m]) && ed_game(e) == cast(s32) g && ed_is_official(e) && ed_count(e) == count;
+  }
+  #assert !ed_open_game(e, GAMES, none[0..<0]) && !ed_open_game(e, -1, none[0..<0]);
+  #assert ed_game_explores(GAME_SPLICE_BOTS) && !ed_game_explores(GAME_SCRAPPERS);
+  // a game's owner may change its level
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  me := "chris@openagents.com";
+  k := 0; for c: me { b[k] = c; k += 1; }
+  ed_set_account(e, b[0..<k]);
+  #assert ed_may_edit(e);
+}
+
+MineTest :: struct { e: [1] Editor; f: [1] Editor; a: [4096] u8; lv: [32768] u8; }
+
+mine_load_text :: (e: [] Editor, n: s32, text: string, b: [] u8) -> bool {
+  for i: 0..<text.count { b[i] = text[i]; }
+  return ed_mine_load(e, n, b[0..<text.count]);
+}
+
+#test "a new game is a document naming its template and its first level, and reads back the same" {
+  t: [1] MineTest; e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 400);
+  #assert ed_template(e) == TEMPLATE_ARENA && ed_mines(e) == 0;
+  #assert ed_new_game(e, 2, TEMPLATE_ADVENTURE, 7);
+  #assert ed_mines(e) == 1 && ed_mine_at(e, 0) == 2 && ed_mine_open(e) == 2 && ed_level(e) == 7;
+  #assert ed_template(e) == TEMPLATE_ADVENTURE && ed_explores(e) && !ed_is_official(e) && ed_may_edit(e) && ed_save_due(e);
+  #assert ed_actor(e, 0).kind == KIND_START && ed_count(e) > 5 && ed_level_mine(e, 7) == 2 && ed_level_mine(e, 6) == 0;
+  n := ed_mine_save(e, 2, t[0].a[..]);
+  #assert cast(string) t[0].a[0..<n] == "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Game 2|adventure\ntable levels id level:int\n1|7\n";
+  #assert n <= cast(s64) ed_mine_doc_max() && ed_mine_save(e, 2, t[0].a[0..<n - 1]) == 0 && ed_mine_save(e, 3, t[0].a[..]) == 0;
+  b: [64] u8;
+  k := ed_mine_title(e, 2, b[..]);
+  #assert cast(string) b[0..<k] == "Game 2" && ed_mine_template(e, 2) == TEMPLATE_ADVENTURE && ed_mine_level(e, 2) == 7;
+  // the level and the game, written and read on another device, open as that game's adventure
+  m := ed_save(e, t[0].lv[..]);
+  #assert m > 0;
+  ed_init(f, 800, 400);
+  #assert ed_mine_load(f, 2, t[0].a[0..<n]) && ed_open(f, 7, t[0].lv[0..<m]);
+  #assert ed_mine_open(f) == 2 && ed_template(f) == TEMPLATE_ADVENTURE && ed_count(f) == ed_count(e);
+  // a level no game holds is an arena, as before
+  ed_new(f, 3);
+  #assert ed_mine_open(f) == 0 && ed_template(f) == TEMPLATE_ARENA && !ed_explores(f);
+  // an arena game
+  #assert ed_new_game(f, 1, TEMPLATE_ARENA, 4) && ed_mines(f) == 2 && ed_mine_at(f, 0) == 1 && ed_mine_at(f, 1) == 2;
+  #assert ed_template(f) == TEMPLATE_ARENA && ed_actor(f, 1).kind == KIND_RIVAL;
+}
+
+#test "a new open field is an empty floor with your start, named field in its document, and reads back the same" {
+  t: [1] MineTest; e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 3, TEMPLATE_FIELD, 8);
+  #assert ed_template(e) == TEMPLATE_FIELD && ed_explores(e) && ed_may_edit(e) && ed_save_due(e);
+  // your start, cover, five targets and three enemies: no rival, nothing of a match
+  #assert ed_count(e) == 12 && ed_actor(e, 0).kind == KIND_START && ed_actor(e, 1).kind == KIND_BLOCK;
+  mt := 0; me := 0;
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    #assert a.kind != KIND_RIVAL && a.kind != KIND_PACK && a.kind != KIND_BALL;
+    if a.kind == KIND_TARGET || a.kind == KIND_MOVER { mt += 1; }
+    if a.kind == KIND_ENEMY { me += 1; }
+  }
+  #assert mt == 5 && me == 3;
+  n := ed_mine_save(e, 3, t[0].a[..]);
+  #assert cast(string) t[0].a[0..<n] == "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Game 3|field\ntable levels id level:int\n1|8\n";
+  b: [160] u8;
+  k := ed_template_name(TEMPLATE_FIELD, b[..]);
+  #assert cast(string) b[0..<k] == "open field";
+  k = ed_play_note(e, b[..]);
+  #assert cast(string) b[0..<k] == TEMPLATE_NOTE[TEMPLATE_FIELD];
+  m := ed_save(e, t[0].lv[..]);
+  ed_init(f, 800, 400);
+  #assert m > 0 && ed_mine_load(f, 3, t[0].a[0..<n]) && ed_open(f, 8, t[0].lv[0..<m]);
+  #assert ed_mine_open(f) == 3 && ed_template(f) == TEMPLATE_FIELD && ed_mine_template(f, 3) == TEMPLATE_FIELD && ed_count(f) == 12;
+  for i: 0..<ed_count(f) { #assert ed_actor(f, i).kind == ed_actor(e, i).kind; }   // targets and enemies keep their kinds in the file
+  // a game's own level says its own note
+  none: [1] u8;
+  #assert ed_open_game(f, GAME_SPLICE_BOTS, none[0..<0]);
+  k = ed_play_note(f, b[..]);
+  #assert cast(string) b[0..<k] == GAME_NOTE[GAME_SPLICE_BOTS];
+}
+
+#test "what is not a game, or clashes with one, is refused and changes nothing" {
+  t: [1] MineTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  good := "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Robot Rumble|arena\ntable levels id level:int\n1|3\n2|5\n";
+  #assert mine_load_text(e, 4, good, t[0].a[..]) && ed_mines(e) == 1 && ed_level_mine(e, 5) == 4;
+  bad := [9] string.[
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Robot Rumble|rally\ntable levels id level:int\n1|3\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1| Rumble|arena\ntable levels id level:int\n1|3\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\ntable levels id level:int\n1|0\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\ntable levels id level:int\n1|3\n2|3\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\n2|Other|arena\ntable levels id level:int\n1|3\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\ntable levels id level:int\n2|3\n",
+    "aethyr.content.v1 level 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\ntable levels id level:int\n1|3\n",
+    "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\n",
+    "not a game"];
+  for s: bad { #assert !mine_load_text(e, 6, s, t[0].a[..]); }
+  // a level another game holds, and a number out of range
+  clash := "aethyr.content.v1 game 1\nreach 1\ntable game id title:text template:text\n1|Rumble|arena\ntable levels id level:int\n1|5\n";
+  #assert !mine_load_text(e, 6, clash, t[0].a[..]) && !mine_load_text(e, 0, good, t[0].a[..]);
+  #assert ed_mines(e) == 1;
+  // the same game read again replaces itself
+  #assert mine_load_text(e, 4, good, t[0].a[..]) && ed_mines(e) == 1;
+  // new games: a number or a level in use, or an unknown template
+  #assert !ed_new_game(e, 4, TEMPLATE_ARENA, 9) && !ed_new_game(e, 6, TEMPLATE_ARENA, 3) && !ed_new_game(e, 6, TEMPLATES, 9) && !ed_new_game(e, 6, -1, 9);
+  #assert ed_mines(e) == 1 && ed_level(e) == 1;
+  // and a full list
+  for g: 0..<MINE_MAX - 1 { #assert ed_new_game(e, cast(s32) (10 + g), TEMPLATE_ARENA, cast(s32) (100 + g)); }
+  #assert ed_mines(e) == MINE_MAX && !ed_new_game(e, 999, TEMPLATE_ARENA, 999);
+  b: [16] u8;
+  k := ed_mine_id(12, b[..]);
+  #assert cast(string) b[0..<k] == "game-12" && ed_mine_number(b[0..<k]) == 12;
+  bads := [5] string.["game-0", "game-", "game-012", "level-3", "game-10000"];
+  for w: bads { for i: 0..<w.count { b[i] = w[i]; } #assert ed_mine_number(b[0..<w.count]) == 0; }
+}
+
+#test "the games that ship play on their own templates" {
+  t: [1] MineTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]) && ed_template(e) == TEMPLATE_ADVENTURE && ed_mine_open(e) == 0;
+  #assert ed_open_game(e, GAME_SCRAPPERS, none[0..<0]) && ed_template(e) == TEMPLATE_ARENA;
+  b: [16] u8;
+  for g: 0..<TEMPLATES { k := ed_template_name(cast(s32) g, b[..]); #assert k > 0 && cast(string) b[0..<k] == TEMPLATE_NAME[g]; }
+}
+
+#test "a new game of every type opens holding that type's starter things, as the website's world opens with them; a type that starts with several levels (crates: three rooms) has each as a level's file" #steps 80000000 {
+  t: [1] MineTest; e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 400);
+  for ty: 0..<GT_TYPES {
+    // (level numbers three apart: a type that starts with several levels takes the next ones too)
+    first := cast(s32) (ty * GT_LEVELS_MOST + 1);
+    #assert ed_new_game(e, cast(s32) (ty + 1), cast(s32) ty, first) && ed_template(e) == cast(s32) ty && ed_may_edit(e) && ed_save_due(e) && ed_level(e) == first;
+    // every level the type starts with is the game's, the first open and the rest for the host to write, each a level's file of its own things
+    gm := e[0].mine[mine_find(e, cast(s32) (ty + 1))];
+    #assert cast(int) gm.level_n == gt_levels(ty) && gm.levels[0] == first && cast(int) e[0].more_n == gt_levels(ty) - 1;
+    for lv: 1..<gt_levels(ty) {
+      #assert gm.levels[lv] == first + cast(s32) lv && ed_more_due(e) == first + cast(s32) lv;
+      mn := ed_more_save(e, t[0].lv[..]);
+      ed_init(f, 800, 400);
+      ls: [GT_STARTER_MAX] GtThing; ln := gt_starter_level(ty, lv, ls[..]);
+      #assert mn > 0 && mn <= MORE_DOC && ed_open(f, first + cast(s32) lv, t[0].lv[0..<mn]) && cast(int) ed_count(f) == ln && ln > 0;
+      for i: 0..<ln { fa := ed_actor(f, i); #assert cast(int) fa.kind == ls[i].kind && cast(int) fa.x == ls[i].x && cast(int) fa.z == ls[i].z && cast(int) fa.sx == ls[i].w && cast(int) fa.sz == ls[i].d; }
+    }
+    #assert ed_more_due(e) == 0;
+    s: [GT_STARTER_MAX] GtThing; n := gt_starter(ty, s[..]);
+    #assert cast(int) ed_count(e) == n;
+    for i: 0..<n {
+      a := ed_actor(e, i);
+      #assert cast(int) a.kind == s[i].kind && cast(int) a.x == s[i].x && cast(int) a.y == s[i].y && cast(int) a.z == s[i].z && cast(int) a.yaw == s[i].turn;
+      #assert cast(int) a.sx == s[i].w && cast(int) a.sy == s[i].h && cast(int) a.sz == s[i].d && cast(int) a.scale == s[i].scale && cast(int) a.go == s[i].go && cast(int) a.every == s[i].every;
+    }
+    // the game's file names the type by its id, and reads back as that type on another device
+    k := ed_mine_save(e, cast(s32) (ty + 1), t[0].a[..]);
+    m := ed_save(e, t[0].lv[..]);
+    ed_init(f, 800, 400);
+    #assert k > 0 && m > 0 && ed_mine_load(f, cast(s32) (ty + 1), t[0].a[0..<k]) && ed_open(f, first, t[0].lv[0..<m]);
+    #assert ed_template(f) == cast(s32) ty && ed_count(f) == ed_count(e);
+    // its palette is the type's
+    p: [GT_PALETTE_MAX] int; pn := gt_palette(ty, p[..]);
+    #assert cast(int) ed_palette_count(e) == pn;
+    for i: 0..<pn { #assert cast(int) ed_palette_kind(e, cast(s32) i) == p[i]; }
+    // every type is played. Without the engine's page (a build that has none) the village and the four worlds
+    // of their own stay in the editor and PLAY says so in words; with it they are the page's to play
+    #assert GT_PLAYS_IN_APP[ty] && ed_play_why(cast(s32) ty) == "";
+    ed_play(e, 0);
+    #assert ed_playing(e) == (ty < GT_VILLAGE);
+    if ed_playing(e) { ed_stop(e); } else {
+      b: [256] u8; w := ed_note(e, b[..]);
+      #assert w > 0 && cast(string) b[0..<w] == PLAY_NO_PAGE;
+      ed_world_attach(e, true);
+      ed_play(e, 0);
+      #assert ed_playing(e) && ed_world_playing(e);
+      ed_stop(e);
+      ed_world_attach(e, false);
+    }
+  }
+}
+#test "the shared numbers the app's rules lean on are the app's" {
+  #assert GT_REACH == WE_REACH && GT_ARENA_PACKS == PACKS && GT_ARENA_HALF == ARENA_HALF && KINDS == GK_KINDS;
+}

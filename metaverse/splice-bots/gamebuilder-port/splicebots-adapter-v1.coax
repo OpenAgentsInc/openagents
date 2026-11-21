@@ -1,0 +1,11 @@
+// The exact 15 November Windows submission and the source supplements its
+// cooked ZIP cannot supply. Changing a baseline or substitution adds a new
+// adapter version. These are hashes and paths, never the private assets.
+SBP_ADAPTER :: "splicebots.shipping-20261115.v1";
+SBP_ZIP_BYTES :: 334169740;
+SBP_ZIP_SHA :: "3b822890ad5530b594f1ceef772d55c7f122008276e38e019abe65c10bd7a166";
+SBP_WORLD_SHA :: "53073cab744a28ab3d7fa7ad0a15e6584195e35cd6e5cdd40c0fff710ec3c4cd";
+SBP_CAST_SHA :: "2f495913150745063585194ab73a4467b5e4f50441d6dc0f6058facf4eb2853d";
+SBP_TUNING_SHA :: "a0f2e36db0a6078a07ad6ec2765b4d2f4894eb3d5658342ffd8ab6b82699bb01";
+SBP_SOURCE_REV :: "70c5badcd169ed2c2eb18774dc91da78e4e7129f";
+SBP_DATA_PREFIX :: "SPLICEBOTS/Data/";

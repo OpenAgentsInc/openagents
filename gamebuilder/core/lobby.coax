@@ -1,0 +1,723 @@
+// The Lobby: one room everyone in the app is in (docs/lobby.md).
+//
+// Who is here and what they are doing is NIP-38 user status (kind 30315);
+// what they say is kind 42 named by the room's tag; a report is NIP-56 (kind
+// 1984). Every event is signed here with the device's Nostr key, carries an
+// expiration the relay enforces, and is verified here before it is shown.
+// Writing to the relay needs NIP-42 AUTH, answered here.
+//
+// The host owns the socket and the key. It tells this file when the socket
+// opens and closes and hands it every frame; it sends every frame
+// ed_lobby_take gives it. Nothing here calls the host.
+//
+// The Nostr pieces are openagents' own (coax/lib/nostr/): the signer, the
+// event reader and verifier, and the relay message codec.
+#load "../../coax/lib/nostr/message.coax";
+
+LOBBY_RELAY :: "wss://relay.openagents.com";
+LOBBY_ROOM :: "gamebuilder.lobby";
+LB_KIND_CHAT :: 42; LB_KIND_PRESENCE :: 30315; LB_KIND_AUTH :: 22242; LB_KIND_REPORT :: 1984;
+LB_PLAYERS :: 48;
+LB_MESSAGES :: 60;
+LB_TEXT :: 280;              // bytes a message may be
+LB_NAME :: 20;
+LB_NAME_MIN :: 3;
+LB_MUTED :: 32;
+LB_FRAME :: 4096;            // the longest frame this sends
+LB_OUT :: 6;                 // frames waiting to be sent
+LB_PRESENCE_EVERY :: 50;     // seconds between "I am here"
+LB_PRESENCE_LIVES :: 150;    // seconds one lasts
+LB_CHAT_LIVES :: 21600;      // seconds a message lasts: six hours
+LB_SAY_EVERY :: 1;           // seconds between your messages
+LB_FUTURE :: 900;            // seconds ahead of now an event may claim to be
+
+DOING_LOBBY :: 0; DOING_EDITING :: 1; DOING_PLAYING :: 2;
+DOING_WORD :: [3] string.["lobby", "editing", "playing"];
+GAME_OWN :: -1;              // a level of their own, not one of the games
+
+// Why a message was not sent.
+SAY_OK :: 0; SAY_LOGIN :: 1; SAY_OFFLINE :: 2; SAY_EMPTY :: 3; SAY_LONG :: 4; SAY_LINK :: 5; SAY_FAST :: 6; SAY_FULL :: 7;
+SAY_WORDS :: [8] string.["", "Log in to chat.", "Not connected yet.", "Say something first.", "That's too long.", "Links aren't allowed here.", "Slow down a little.", "Try again in a moment."];
+
+LbPlayer :: struct {
+  pub: [32] u8;
+  name: [LB_NAME] u8; name_n: s32;
+  game: s32; doing: s32;
+  looking: bool;             // they want a quick match (party.coax)
+  until: s64;                // when their presence runs out, Unix seconds
+  at: s64;                   // when it was made: a newer one replaces an older
+}
+LbMessage :: struct {
+  id: [32] u8; pub: [32] u8;
+  at: s64;
+  text: [LB_TEXT] u8; n: s32;
+}
+Lobby :: struct {
+  pub: [32] u8; has_key: bool;
+  account: bool;                       // this device is logged in: it may speak
+  open: bool; authed: bool; asked: bool;   // the socket is up; the relay took our AUTH; we sent one
+  name: [LB_NAME] u8; name_n: s32;
+  game: s32; doing: s32;
+  players: [LB_PLAYERS] LbPlayer; player_n: s32;
+  messages: [LB_MESSAGES] LbMessage; message_n: s32;
+  muted: [LB_MUTED * 32] u8; muted_n: s32;
+  out: [LB_OUT * LB_FRAME] u8; out_len: [LB_OUT] s32; out_n: s32;
+  next_presence: s64; last_said: s64;
+  changed: bool;                       // something to draw again
+  party: [1] Party;                    // playing together (party.coax)
+}
+
+// ---- small things
+
+lb_same :: (a: [] const u8, b: [] const u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+lb_is :: (a: [] const u8, s: string) -> bool {
+  if a.count != s.count { return false; }
+  for i: 0..<a.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+lb_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+// Words that are starred out of what is said and refused in a name. A short
+// list for now (docs/lobby.md says what a real filter needs).
+LB_WORDS :: 12;
+LB_WORD :: [LB_WORDS] string.["fuck", "shit", "bitch", "cunt", "nigger", "nigga", "faggot", "asshole", "dick", "pussy", "slut", "whore"];
+// Stars out every listed word in text, whatever its case. True when it found one.
+lb_mask :: (text: [] u8) -> bool {
+  found := false;
+  for w: LB_WORD {
+    if w.count > text.count { continue; }
+    for i: 0..<text.count - w.count + 1 {
+      hit := true;
+      for k: 0..<w.count { if lb_lower(text[i + k]) != w[k] { hit = false; break; } }
+      if hit { for k: 0..<w.count { text[i + k] = '*'; } found = true; }
+    }
+  }
+  return found;
+}
+// Whether text holds a web address.
+lb_link :: (text: [] u8) -> bool {
+  marks := [6] string.["http", "www.", "://", ".com", ".net", ".org"];
+  for m: marks {
+    if m.count > text.count { continue; }
+    for i: 0..<text.count - m.count + 1 {
+      hit := true;
+      for k: 0..<m.count { if lb_lower(text[i + k]) != m[k] { hit = false; break; } }
+      if hit { return true; }
+    }
+  }
+  return false;
+}
+// A name is 3 to 20 letters, digits, spaces, _ or -, starting and ending
+// with a letter or digit, and holds no starred word.
+lb_name_ok :: (name: [] u8) -> bool {
+  if name.count < LB_NAME_MIN || name.count > LB_NAME { return false; }
+  for c: name {
+    plain := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    if !plain && c != ' ' && c != '_' && c != '-' { return false; }
+  }
+  if name[0] == ' ' || name[name.count - 1] == ' ' { return false; }
+  copy: [LB_NAME] u8;
+  for i: 0..<name.count { copy[i] = name[i]; }
+  return !lb_mask(copy[0..<name.count]);
+}
+
+// The value of the first tag called `name` in an event's tags, as a compact
+// writer writes it (["name","value"...): its bytes into out and their count,
+// or -1 when there is none, it doesn't fit, or it holds an escape.
+lb_tag :: (tags: string, name: string, out: [] u8) -> int {
+  n := tags.count;
+  for i: 0..<n {
+    // ["name","
+    if i + name.count + 5 > n || tags[i] != '[' || tags[i + 1] != '"' { continue; }
+    same := true;
+    for k: 0..<name.count { if tags[i + 2 + k] != name[k] { same = false; break; } }
+    at := i + 2 + name.count;
+    if !same || tags[at] != '"' || tags[at + 1] != ',' || tags[at + 2] != '"' { continue; }
+    at += 3; m := 0;
+    while at < n && tags[at] != '"' {
+      if tags[at] == '\\' || m >= out.count { return -1; }
+      out[m] = tags[at]; m += 1; at += 1;
+    }
+    return ifx at < n then m else -1;
+  }
+  return -1;
+}
+lb_number :: (s: [] const u8) -> s64 {
+  if s.count == 0 || s.count > 12 { return -1; }
+  v: s64 = 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(s64) (c - '0'); }
+  return v;
+}
+
+lb_muted :: (l: [] Lobby, pub: [] const u8) -> bool {
+  for i: 0..<cast(s64) l[0].muted_n { if lb_same(l[0].muted[i * 32..<i * 32 + 32], pub) { return true; } }
+  return false;
+}
+
+// ---- sending
+
+lb_queue :: (l: [] Lobby, frame: [] u8) -> bool {
+  if l[0].out_n >= LB_OUT || frame.count > LB_FRAME || frame.count == 0 { return false; }
+  at := cast(s64) l[0].out_n * LB_FRAME;
+  for i: 0..<frame.count { l[0].out[at + i] = frame[i]; }
+  l[0].out_len[l[0].out_n] = cast(s32) frame.count;
+  l[0].out_n += 1;
+  return true;
+}
+
+// The next frame to send, into out: its length, or 0 when there is none or
+// out is too small.
+ed_lobby_take :: (l: [] Lobby, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || l[0].out_n <= 0 { return 0; }
+  n := cast(s64) l[0].out_len[0];
+  if n > out.count { return 0; }
+  for i: 0..<n { out[i] = l[0].out[i]; }
+  for k: 1..<cast(s64) l[0].out_n {
+    m := cast(s64) l[0].out_len[k];
+    for i: 0..<m { l[0].out[(k - 1) * LB_FRAME + i] = l[0].out[k * LB_FRAME + i]; }
+    l[0].out_len[k - 1] = l[0].out_len[k];
+  }
+  l[0].out_n -= 1;
+  return n;
+}
+
+LbSign :: struct { work: [1] NostrSignWork; scratch: [2048] u8; ev: [2048] u8; frame: [LB_FRAME] u8; }
+// Signs an event of this kind with these tags and content and queues it as
+// ["EVENT", ...] or, for the relay's challenge, ["AUTH", ...].
+lb_publish :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, kind: int, tags: string, content: string, auth: bool) -> bool {
+  if key.count != 32 || aux.count != 32 { return false; }
+  s: [1] LbSign;
+  r := EVENT_MORE;
+  while r == EVENT_MORE { r = nostr_event_sign_step(key, aux, now, kind, tags, content, s[0].work[..], s[0].scratch[..], s[0].ev[..], false); }
+  if r <= 0 { return false; }
+  event := cast(string) s[0].ev[0..<r];
+  n := 0;
+  if auth {
+    t := [1] Text.[Text.{buf = s[0].frame[..]}];
+    tx_put(t[..], "[\"AUTH\","); tx_put(t[..], event); tx_put(t[..], "]");
+    n = t[0].at;
+    if n >= LB_FRAME { return false; }
+  } else {
+    n = nostr_message_write_event(event, s[0].frame[..], false);
+    if n <= 0 { return false; }
+  }
+  return lb_queue(l, s[0].frame[0..<n]);
+}
+
+lb_presence :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) -> bool {
+  buf: [512] u8;
+  t := [1] Text.[Text.{buf = buf[..]}];
+  tx_put(t[..], "[[\"d\",\""); tx_put(t[..], LOBBY_ROOM);
+  tx_put(t[..], "\"],[\"t\",\""); tx_put(t[..], LOBBY_ROOM);
+  tx_put(t[..], "\"],[\"name\",\""); tx_put(t[..], cast(string) l[0].name[0..<cast(s64) l[0].name_n]);
+  tx_put(t[..], "\"],[\"game\",\""); tx_put(t[..], ifx l[0].game >= 0 && l[0].game < GAMES then GAME_ID[l[0].game] else "own");
+  tx_put(t[..], "\"],[\"doing\",\""); tx_put(t[..], DOING_WORD[l[0].doing]);
+  if l[0].party[0].looking && !l[0].party[0].on { tx_put(t[..], "\"],[\"mm\",\"1"); }
+  tx_put(t[..], "\"],[\"expiration\",\""); tx_int(t[..], now + LB_PRESENCE_LIVES);
+  tx_put(t[..], "\"]]");
+  return lb_publish(l, key, aux, now, LB_KIND_PRESENCE, tx_text(t[..]), "", false);
+}
+
+// ---- setting up
+
+// A lobby for this device's key: derives its public half and a first name,
+// "Player" and four characters of it.
+ed_lobby_init :: (l: [] Lobby, key: [] u8) -> bool #export_c #effects(all) {
+  if l.count != 1 || key.count != 32 { return false; }
+  l[0] = Lobby.{};
+  aux: [32] u8; sw: [1] NostrSignWork; scratch: [256] u8; ev: [512] u8;
+  if nostr_event_sign_step(key, aux[..], 0, 1, "[]", "", sw[..], scratch[..], ev[..], false) != EVENT_MORE { return false; }
+  for i: 0..<32 { l[0].pub[i] = sw[0].pub[i]; }
+  l[0].has_key = true;
+  digits := "0123456789abcdef";
+  first := "Player ";
+  for i: 0..<first.count { l[0].name[i] = first[i]; }
+  for i: 0..<2 { l[0].name[7 + i * 2] = digits[l[0].pub[i] >> 4]; l[0].name[8 + i * 2] = digits[l[0].pub[i] & 15]; }
+  l[0].name_n = 11;
+  l[0].game = GAME_OWN;
+  return true;
+}
+
+// This device's public key as 64 hex characters.
+ed_lobby_pubkey :: (l: [] Lobby, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || !l[0].has_key || out.count < 64 { return 0; }
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[i * 2] = digits[l[0].pub[i] >> 4]; out[i * 2 + 1] = digits[l[0].pub[i] & 15]; }
+  return 64;
+}
+
+ed_lobby_relay :: (out: [] u8) -> s64 #export_c #effects(all) { return play_text(LOBBY_RELAY, out); }
+
+// Whether this device is logged in: only then may it speak.
+ed_lobby_account :: (l: [] Lobby, on: bool) #export_c #effects(all) {
+  if l.count == 1 && l[0].account != on { l[0].account = on; l[0].changed = true; }
+}
+
+// Takes a new name. False for one that is not a name.
+ed_lobby_name :: (l: [] Lobby, name: [] u8) -> bool #export_c #effects(all) {
+  if l.count != 1 || !lb_name_ok(name) { return false; }
+  for i: 0..<name.count { l[0].name[i] = name[i]; }
+  l[0].name_n = cast(s32) name.count;
+  l[0].next_presence = 0; l[0].changed = true;
+  return true;
+}
+ed_lobby_my_name :: (l: [] Lobby, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || cast(s64) l[0].name_n > out.count { return 0; }
+  for i: 0..<cast(s64) l[0].name_n { out[i] = l[0].name[i]; }
+  return cast(s64) l[0].name_n;
+}
+
+// What you are doing now: which game (or GAME_OWN) and DOING_*. A change is
+// told to the room at the next tick.
+ed_lobby_activity :: (l: [] Lobby, game: s32, doing: s32) #export_c #effects(all) {
+  if l.count != 1 || doing < 0 || doing > DOING_PLAYING || game < GAME_OWN || game >= GAMES { return; }
+  if l[0].game == game && l[0].doing == doing { return; }
+  l[0].game = game; l[0].doing = doing; l[0].next_presence = 0;
+}
+
+// The proof that links this device's key to the logged-in OpenAgents account:
+// a NIP-98 event over the one-time URL the server gave (POST, no body), as
+// the base64 the server's /api/auth/link/nostr reads. Its length, or -1.
+ed_lobby_link_proof :: (key: [] u8, aux: [] u8, nonce: [] u8, now: s64, url: [] u8, out: [] u8) -> s64 #export_c #effects(all) {
+  none: [1] u8;
+  header: [N98S_HEADER] u8;
+  n := n98s_header(key, aux, nonce, now, cast(string) url, "POST", none[0..<0], false, header[..]);
+  // the header is "Nostr " and the base64: the proof is the base64 alone
+  lead := "Nostr ";
+  if n <= lead.count || n - lead.count > out.count { return -1; }
+  for i: 0..<lead.count { if header[i] != lead[i] { return -1; } }
+  for i: lead.count..<n { out[i - lead.count] = header[i]; }
+  return n - lead.count;
+}
+// Seconds to wait before trying the relay again after the socket drops.
+ed_lobby_retry :: () -> s32 #export_c #effects(all) { return 5; }
+
+// ---- the socket
+
+// The socket opened: ask the room for its talk and for who is here.
+ed_lobby_opened :: (l: [] Lobby, now: s64) #export_c #effects(all) {
+  if l.count != 1 { return; }
+  l[0].open = true; l[0].authed = false; l[0].asked = false; l[0].out_n = 0; l[0].next_presence = 0;
+  room := [1] string.[LOBBY_ROOM];
+  chat_kinds := [1] int.[LB_KIND_CHAT]; here_kinds := [1] int.[LB_KIND_PRESENCE];
+  by_t := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = room[..]}];
+  by_d := [1] NostrTagFilter.[NostrTagFilter.{name = 'd', values = room[..]}];
+  // and what is said to you by people you play with
+  me_hex: [64] u8;
+  _ = ed_lobby_pubkey(l, me_hex[..]);
+  me := [1] string.[cast(string) me_hex[..]];
+  party_kinds := [1] int.[PT_KIND];
+  by_p := [1] NostrTagFilter.[NostrTagFilter.{name = 'p', values = me[..]}];
+  filters := [3] NostrFilter.[
+    NostrFilter.{has_kinds = true, kinds = chat_kinds[..], tags = by_t[..], has_since = true, since = now - LB_CHAT_LIVES, has_limit = true, limit = LB_MESSAGES},
+    NostrFilter.{has_kinds = true, kinds = here_kinds[..], tags = by_d[..], has_since = true, since = now - LB_PRESENCE_LIVES},
+    NostrFilter.{has_kinds = true, kinds = party_kinds[..], tags = by_p[..], has_since = true, since = now - 5}];
+  frame: [1024] u8;
+  n := nostr_message_write_req("lobby", filters[..], frame[..], false);
+  if n > 0 { _ = lb_queue(l, frame[0..<n]); }
+  l[0].changed = true;
+}
+
+ed_lobby_closed :: (l: [] Lobby) #export_c #effects(all) {
+  if l.count != 1 { return; }
+  l[0].open = false; l[0].authed = false; l[0].asked = false; l[0].out_n = 0; l[0].changed = true;
+}
+
+lb_player :: (l: [] Lobby, pub: [] const u8) -> s64 {
+  for i: 0..<cast(s64) l[0].player_n { if lb_same(l[0].players[i].pub[..], pub) { return i; } }
+  return -1;
+}
+
+lb_here :: (l: [] Lobby, e: NostrEvent, now: s64) {
+  tags := e.original[e.tags_from..<e.tags_to];
+  v: [64] u8;
+  n := lb_tag(tags, "d", v[..]);
+  if n < 0 || !lb_is(v[0..<n], LOBBY_ROOM) { return; }
+  n = lb_tag(tags, "expiration", v[..]);
+  until := ifx n > 0 then lb_number(v[0..<n]) else -1;
+  if until <= now || until > now + LB_PRESENCE_LIVES + LB_FUTURE { return; }
+  p := LbPlayer.{until = until, at = e.created_at, game = GAME_OWN};
+  for i: 0..<32 { p.pub[i] = e.public_key[i]; }
+  n = lb_tag(tags, "name", v[..]);
+  if n < 0 || !lb_name_ok(v[0..<n]) { return; }
+  for i: 0..<n { p.name[i] = v[i]; }
+  p.name_n = cast(s32) n;
+  n = lb_tag(tags, "game", v[..]);
+  if n > 0 { for g: 0..<GAMES { if lb_is(v[0..<n], GAME_ID[g]) { p.game = cast(s32) g; } } }
+  n = lb_tag(tags, "doing", v[..]);
+  if n > 0 { for d: 0..<3 { if lb_is(v[0..<n], DOING_WORD[d]) { p.doing = cast(s32) d; } } }
+  n = lb_tag(tags, "mm", v[..]);
+  p.looking = n == 1 && v[0] == '1';
+  at := lb_player(l, p.pub[..]);
+  if at >= 0 {
+    if l[0].players[at].at > p.at { return; }
+    l[0].players[at] = p;
+  } else {
+    if l[0].player_n >= LB_PLAYERS { return; }
+    l[0].players[l[0].player_n] = p; l[0].player_n += 1;
+  }
+  l[0].changed = true;
+}
+
+lb_said :: (l: [] Lobby, e: NostrEvent, now: s64) {
+  tags := e.original[e.tags_from..<e.tags_to];
+  v: [64] u8;
+  n := lb_tag(tags, "t", v[..]);
+  if n < 0 || !lb_is(v[0..<n], LOBBY_ROOM) { return; }
+  if e.created_at < now - LB_CHAT_LIVES || e.created_at > now + LB_FUTURE { return; }
+  if lb_muted(l, e.public_key[..]) { return; }
+  for i: 0..<cast(s64) l[0].message_n { if lb_same(l[0].messages[i].id[..], e.id[..]) { return; } }
+  m := LbMessage.{at = e.created_at};
+  k := json_unescape(e.original[e.content_from..<e.content_to], m.text[..]);
+  if k <= 0 { return; }
+  for i: 0..<k { if m.text[i] < 32 { m.text[i] = ' '; } }
+  if lb_link(m.text[0..<k]) { return; }
+  _ = lb_mask(m.text[0..<k]);
+  m.n = cast(s32) k;
+  for i: 0..<32 { m.id[i] = e.id[i]; m.pub[i] = e.public_key[i]; }
+  // kept oldest first, by when each was said; the oldest goes when it is full
+  if l[0].message_n >= LB_MESSAGES {
+    if m.at <= l[0].messages[0].at { return; }
+    for i: 0..<LB_MESSAGES - 1 { l[0].messages[i] = l[0].messages[i + 1]; }
+    l[0].message_n -= 1;
+  }
+  at := cast(s64) l[0].message_n;
+  while at > 0 && l[0].messages[at - 1].at > m.at { l[0].messages[at] = l[0].messages[at - 1]; at -= 1; }
+  l[0].messages[at] = m;
+  l[0].message_n += 1;
+  l[0].changed = true;
+}
+
+LbRead :: struct { scratch: [8192] u8; }
+// A frame came from the relay. key and aux (32 fresh random bytes) sign the
+// answer to its challenge.
+ed_lobby_input :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, frame: [] u8) #export_c #effects(all) {
+  if l.count != 1 || !l[0].open || frame.count == 0 { return; }
+  text := cast(string) frame;
+  head := "[\"AUTH\",\"";
+  if text.count > head.count + 1 && text[0..<head.count] == head {
+    // the relay's challenge: answer it, signed, naming the relay
+    at := head.count; n := 0;
+    ch: [128] u8;
+    while at < text.count && text[at] != '"' {
+      if text[at] == '\\' || n >= 128 { return; }
+      ch[n] = text[at]; n += 1; at += 1;
+    }
+    if n == 0 || l[0].asked { return; }
+    buf: [512] u8;
+    t := [1] Text.[Text.{buf = buf[..]}];
+    tx_put(t[..], "[[\"relay\",\""); tx_put(t[..], LOBBY_RELAY);
+    tx_put(t[..], "\"],[\"challenge\",\""); tx_put(t[..], cast(string) ch[0..<n]); tx_put(t[..], "\"]]");
+    l[0].asked = lb_publish(l, key, aux, now, LB_KIND_AUTH, tx_text(t[..]), "", true);
+    return;
+  }
+  m := nostr_message_read(text);
+  if m.error != NM_OK { return; }
+  if m.type == NM_ACCEPT {
+    // the first thing we send that needs an answer is the AUTH
+    if l[0].asked && !l[0].authed && m.accepted { l[0].authed = true; l[0].next_presence = 0; l[0].changed = true; }
+    return;
+  }
+  if m.type != NM_EVENT { return; }
+  r: [1] LbRead;
+  e := nostr_message_event_verify_vartime(text, r[0].scratch[..], false);
+  if e.error != NE_OK || !e.verified { return; }
+  if e.kind == LB_KIND_PRESENCE { lb_here(l, e, now); }
+  if e.kind == LB_KIND_CHAT { lb_said(l, e, now); }
+  if e.kind == PT_KIND { pt_input(l, e, key, aux, now); }
+}
+
+// Time passed: say you are here when it is due, and forget those whose
+// presence ran out.
+ed_lobby_tick :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) #export_c #effects(all) {
+  if l.count != 1 { return; }
+  k: s64 = 0;
+  for i: 0..<cast(s64) l[0].player_n {
+    if l[0].players[i].until <= now { l[0].changed = true; continue; }
+    l[0].players[k] = l[0].players[i]; k += 1;
+  }
+  l[0].player_n = cast(s32) k;
+  if l[0].open && l[0].authed && now >= l[0].next_presence {
+    if lb_presence(l, key, aux, now) { l[0].next_presence = now + LB_PRESENCE_EVERY; }
+  }
+  pt_tick(l, key, aux, now);
+}
+
+// ---- speaking
+
+ed_lobby_can_say :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].account && l[0].open && l[0].authed; }
+
+// Says something to the room. SAY_OK, or why not (ed_lobby_why words it).
+ed_lobby_say :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, text: [] u8) -> s32 #export_c #effects(all) {
+  if l.count != 1 { return SAY_OFFLINE; }
+  if !l[0].account { return SAY_LOGIN; }
+  if !l[0].open || !l[0].authed { return SAY_OFFLINE; }
+  // less the spaces round it
+  from := 0; to := text.count;
+  while from < to && text[from] <= 32 { from += 1; }
+  while to > from && text[to - 1] <= 32 { to -= 1; }
+  if to == from { return SAY_EMPTY; }
+  if to - from > LB_TEXT { return SAY_LONG; }
+  if now < l[0].last_said + LB_SAY_EVERY { return SAY_FAST; }
+  said: [LB_TEXT] u8;
+  n := to - from;
+  for i: 0..<n { said[i] = ifx text[from + i] < 32 then ' ' else text[from + i]; }
+  if lb_link(said[0..<n]) { return SAY_LINK; }
+  _ = lb_mask(said[0..<n]);
+  buf: [128] u8;
+  t := [1] Text.[Text.{buf = buf[..]}];
+  tx_put(t[..], "[[\"t\",\""); tx_put(t[..], LOBBY_ROOM);
+  tx_put(t[..], "\"],[\"expiration\",\""); tx_int(t[..], now + LB_CHAT_LIVES); tx_put(t[..], "\"]]");
+  if !lb_publish(l, key, aux, now, LB_KIND_CHAT, tx_text(t[..]), cast(string) said[0..<n], false) { return SAY_FULL; }
+  l[0].last_said = now;
+  return SAY_OK;
+}
+ed_lobby_why :: (why: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx why < 0 || why >= 8 then 0 else play_text(SAY_WORDS[why], out);
+}
+
+// ---- who is here, and what was said
+
+ed_lobby_online :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].player_n else 0; }
+ed_lobby_connected :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].open; }
+// Whether there is something new to draw, and clears it.
+ed_lobby_take_changed :: (l: [] Lobby) -> bool #export_c #effects(all) {
+  if l.count != 1 { return false; }
+  c := l[0].changed; l[0].changed = false;
+  return c;
+}
+
+lb_name_of :: (l: [] Lobby, pub: [] const u8, out: [] u8) -> s64 {
+  at := lb_player(l, pub);
+  if at >= 0 {
+    p := l[0].players[at];
+    if cast(s64) p.name_n > out.count { return 0; }
+    for i: 0..<cast(s64) p.name_n { out[i] = p.name[i]; }
+    return cast(s64) p.name_n;
+  }
+  // gone from the room: "Player" and four characters of their key
+  if out.count < 11 { return 0; }
+  digits := "0123456789abcdef"; first := "Player ";
+  for i: 0..<first.count { out[i] = first[i]; }
+  for i: 0..<2 { out[7 + i * 2] = digits[pub[i] >> 4]; out[8 + i * 2] = digits[pub[i] & 15]; }
+  return 11;
+}
+
+ed_lobby_player_name :: (l: [] Lobby, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].player_n { return 0; }
+  return lb_name_of(l, l[0].players[i].pub[..], out);
+}
+ed_lobby_player_game :: (l: [] Lobby, i: s32) -> s32 #export_c #effects(all) { return ifx l.count == 1 && i >= 0 && i < l[0].player_n then l[0].players[i].game else GAME_OWN; }
+ed_lobby_player_doing :: (l: [] Lobby, i: s32) -> s32 #export_c #effects(all) { return ifx l.count == 1 && i >= 0 && i < l[0].player_n then l[0].players[i].doing else 0; }
+ed_lobby_player_me :: (l: [] Lobby, i: s32) -> bool #export_c #effects(all) { return l.count == 1 && i >= 0 && i < l[0].player_n && lb_same(l[0].players[i].pub[..], l[0].pub[..]); }
+
+ed_lobby_messages :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].message_n else 0; }
+ed_lobby_message_text :: (l: [] Lobby, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].message_n || cast(s64) l[0].messages[i].n > out.count { return 0; }
+  for k: 0..<cast(s64) l[0].messages[i].n { out[k] = l[0].messages[i].text[k]; }
+  return cast(s64) l[0].messages[i].n;
+}
+ed_lobby_message_name :: (l: [] Lobby, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].message_n { return 0; }
+  return lb_name_of(l, l[0].messages[i].pub[..], out);
+}
+ed_lobby_message_mine :: (l: [] Lobby, i: s32) -> bool #export_c #effects(all) { return l.count == 1 && i >= 0 && i < l[0].message_n && lb_same(l[0].messages[i].pub[..], l[0].pub[..]); }
+
+// ---- mute and report
+
+lb_mute_key :: (l: [] Lobby, pub: [] const u8) {
+  if lb_same(pub, l[0].pub[..]) || lb_muted(l, pub) || l[0].muted_n >= LB_MUTED { return; }
+  for i: 0..<32 { l[0].muted[cast(s64) l[0].muted_n * 32 + i] = pub[i]; }
+  l[0].muted_n += 1;
+  // what they said goes, and they leave the row of people
+  k: s64 = 0;
+  for i: 0..<cast(s64) l[0].message_n {
+    if lb_same(l[0].messages[i].pub[..], pub) { continue; }
+    l[0].messages[k] = l[0].messages[i]; k += 1;
+  }
+  l[0].message_n = cast(s32) k;
+  l[0].changed = true;
+}
+// Whoever said message i is muted: nothing of theirs shows on this device.
+ed_lobby_mute :: (l: [] Lobby, i: s32) #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].message_n { return; }
+  who := l[0].messages[i].pub;
+  lb_mute_key(l, who[..]);
+}
+// Reports whoever said message i (a NIP-56 report, signed) and mutes them.
+ed_lobby_report :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, i: s32) -> bool #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].message_n || !l[0].account || !l[0].authed { return false; }
+  who := l[0].messages[i].pub;
+  if lb_same(who[..], l[0].pub[..]) { return false; }
+  digits := "0123456789abcdef";
+  buf: [160] u8;
+  t := [1] Text.[Text.{buf = buf[..]}];
+  tx_put(t[..], "[[\"p\",\"");
+  hex: [64] u8;
+  for k: 0..<32 { hex[k * 2] = digits[who[k] >> 4]; hex[k * 2 + 1] = digits[who[k] & 15]; }
+  tx_put(t[..], cast(string) hex[..]);
+  tx_put(t[..], "\",\"other\"],[\"t\",\""); tx_put(t[..], LOBBY_ROOM); tx_put(t[..], "\"]]");
+  sent := lb_publish(l, key, aux, now, LB_KIND_REPORT, tx_text(t[..]), "Reported from the GameBuilder lobby.", false);
+  lb_mute_key(l, who[..]);
+  return sent;
+}
+ed_lobby_muted_player :: (l: [] Lobby, i: s32) -> bool #export_c #effects(all) {
+  return l.count == 1 && i >= 0 && i < l[0].player_n && lb_muted(l, l[0].players[i].pub[..]);
+}
+
+// ---- checks
+
+LbTest :: struct { a: [1] Lobby; b: [1] Lobby; frame: [LB_FRAME] u8; back: [LB_FRAME + 64] u8; }
+
+// A frame one lobby sends, as a relay hands it to another: ["EVENT", {...}]
+// becomes ["EVENT","lobby",{...}].
+lb_test_relay :: (t: [] LbTest, n: s64) -> s64 {
+  head := "[\"EVENT\",";
+  sub := "[\"EVENT\",\"lobby\",";
+  for i: 0..<sub.count { t[0].back[i] = sub[i]; }
+  for i: head.count..<n { t[0].back[sub.count + i - head.count] = t[0].frame[i]; }
+  return sub.count + n - head.count;
+}
+
+lb_test_key :: (seed: u8) -> [32] u8 {
+  k: [32] u8;
+  for i: 0..<32 { k[i] = seed + cast(u8) i; }
+  return k;
+}
+
+// Opens a's socket and answers the relay's challenge, as far as "authed".
+lb_test_join :: (t: [] LbTest, l: [] Lobby, key: [] u8, aux: [] u8, now: s64) {
+  ed_lobby_opened(l, now);
+  _ = ed_lobby_take(l, t[0].frame[..]);   // the REQ
+  ch := "[\"AUTH\",\"abc123\"]";
+  f: [32] u8; for i: 0..<ch.count { f[i] = ch[i]; }
+  ed_lobby_input(l, key, aux, now, f[0..<ch.count]);
+  n := ed_lobby_take(l, t[0].frame[..]);  // the signed answer
+  // the relay's OK for it: ["OK","<id>",true,""]
+  ok: [128] u8; k := 0;
+  for c: "[\"OK\",\"" { ok[k] = c; k += 1; }
+  mark := "\"id\":\"";
+  at := 0;
+  for i: 0..<n - mark.count { same := true; for j: 0..<mark.count { if t[0].frame[i + j] != mark[j] { same = false; break; } } if same { at = i + mark.count; break; } }
+  for i: 0..<64 { ok[k] = t[0].frame[at + i]; k += 1; }
+  for c: "\",true,\"\"]" { ok[k] = c; k += 1; }
+  ed_lobby_input(l, key, aux, now, ok[0..<k]);
+}
+
+#test "the lobby asks for the room, answers the relay's challenge, and then says it is here" {
+  t: [1] LbTest; a := t[0].a[..];
+  ka := lb_test_key(1); aux := lb_test_key(90);
+  #assert ed_lobby_init(a, ka[..]);
+  name: [32] u8;
+  n := ed_lobby_my_name(a, name[..]);
+  #assert n == 11 && cast(string) name[0..<7] == "Player ";
+  ed_lobby_opened(a, 1000000);
+  n = ed_lobby_take(a, t[0].frame[..]);
+  req := cast(string) t[0].frame[0..<n];
+  #assert n > 0 && req[0..<16] == "[\"REQ\",\"lobby\",{";
+  // nothing is said before the relay has taken our AUTH
+  ed_lobby_tick(a, ka[..], aux[..], 1000000);
+  #assert ed_lobby_take(a, t[0].frame[..]) == 0 && !ed_lobby_can_say(a);
+  ed_lobby_closed(a);
+  lb_test_join(t[..], a, ka[..], aux[..], 1000000);
+  #assert a[0].authed && !ed_lobby_can_say(a);   // connected, but logged out
+  ed_lobby_account(a, true);
+  #assert ed_lobby_can_say(a);
+  ed_lobby_tick(a, ka[..], aux[..], 1000000);
+  n = ed_lobby_take(a, t[0].frame[..]);
+  #assert n > 0 && a[0].next_presence == 1000000 + LB_PRESENCE_EVERY;
+  ed_lobby_tick(a, ka[..], aux[..], 1000010);
+  #assert ed_lobby_take(a, t[0].frame[..]) == 0;   // not due again yet
+}
+
+#test "one player's presence and words reach another, verified; a changed byte is dropped" {
+  t: [1] LbTest; a := t[0].a[..]; b := t[0].b[..];
+  ka := lb_test_key(1); kb := lb_test_key(40); aux := lb_test_key(90);
+  #assert ed_lobby_init(a, ka[..]) && ed_lobby_init(b, kb[..]);
+  lb_test_join(t[..], a, ka[..], aux[..], 2000000);
+  lb_test_join(t[..], b, kb[..], aux[..], 2000000);
+  ed_lobby_account(a, true);
+  ada := "Ada-7"; nb: [16] u8; for i: 0..<ada.count { nb[i] = ada[i]; }
+  #assert ed_lobby_name(a, nb[0..<ada.count]);
+  ed_lobby_activity(a, GAME_SPLICE_BOTS, DOING_PLAYING);
+  ed_lobby_tick(a, ka[..], aux[..], 2000000);
+  n := ed_lobby_take(a, t[0].frame[..]);
+  m := lb_test_relay(t[..], n);
+  ed_lobby_input(b, kb[..], aux[..], 2000001, t[0].back[0..<m]);
+  #assert ed_lobby_online(b) == 1 && ed_lobby_player_game(b, 0) == GAME_SPLICE_BOTS && ed_lobby_player_doing(b, 0) == DOING_PLAYING && !ed_lobby_player_me(b, 0);
+  out: [LB_TEXT] u8;
+  k := ed_lobby_player_name(b, 0, out[..]);
+  #assert cast(string) out[0..<k] == "Ada-7";
+  // she says something; b reads it, with her name, masked
+  hello := "  hello from the glade, you shit  ";
+  hb: [64] u8; for i: 0..<hello.count { hb[i] = hello[i]; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 2000002, hb[0..<hello.count]) == SAY_OK;
+  n = ed_lobby_take(a, t[0].frame[..]);
+  m = lb_test_relay(t[..], n);
+  ed_lobby_input(b, kb[..], aux[..], 2000003, t[0].back[0..<m]);
+  #assert ed_lobby_messages(b) == 1 && !ed_lobby_message_mine(b, 0);
+  k = ed_lobby_message_text(b, 0, out[..]);
+  #assert cast(string) out[0..<k] == "hello from the glade, you ****";
+  k = ed_lobby_message_name(b, 0, out[..]);
+  #assert cast(string) out[0..<k] == "Ada-7";
+  // the same frame again is the same message; with one byte of its words changed it no longer verifies
+  ed_lobby_input(b, kb[..], aux[..], 2000003, t[0].back[0..<m]);
+  #assert ed_lobby_messages(b) == 1;
+  for i: 0..<m - 5 { if t[0].back[i] == 'g' && t[0].back[i + 1] == 'l' && t[0].back[i + 2] == 'a' { t[0].back[i] = 'G'; break; } }
+  b[0].message_n = 0;
+  ed_lobby_input(b, kb[..], aux[..], 2000003, t[0].back[0..<m]);
+  #assert ed_lobby_messages(b) == 0;
+  // her presence runs out and she is gone
+  ed_lobby_tick(b, kb[..], aux[..], 2000000 + LB_PRESENCE_LIVES + 1);
+  #assert ed_lobby_online(b) == 0;
+}
+
+#test "what may be said: logged in, connected, not empty, not long, no links, not too fast" {
+  t: [1] LbTest; a := t[0].a[..];
+  ka := lb_test_key(1); aux := lb_test_key(90);
+  #assert ed_lobby_init(a, ka[..]);
+  hi := "hi"; b: [400] u8; for i: 0..<hi.count { b[i] = hi[i]; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<2]) == SAY_LOGIN;
+  ed_lobby_account(a, true);
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<2]) == SAY_OFFLINE;
+  lb_test_join(t[..], a, ka[..], aux[..], 500);
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<0]) == SAY_EMPTY;
+  for i: 0..<400 { b[i] = 'a'; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<LB_TEXT + 1]) == SAY_LONG;
+  link := "see www.example.com"; for i: 0..<link.count { b[i] = link[i]; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<link.count]) == SAY_LINK;
+  for i: 0..<hi.count { b[i] = hi[i]; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<2]) == SAY_OK;
+  #assert ed_lobby_say(a, ka[..], aux[..], 500, b[0..<2]) == SAY_FAST;
+  #assert ed_lobby_say(a, ka[..], aux[..], 501, b[0..<2]) == SAY_OK;
+  why: [64] u8;
+  k := ed_lobby_why(SAY_LINK, why[..]);
+  #assert cast(string) why[0..<k] == "Links aren't allowed here.";
+}
+
+#test "names are plain and clean, and a muted player's words go and stay gone" {
+  good := [3] string.["Ada", "Bolt_fan-9", "two words ok"];
+  bad := [7] string.["ab", "a name that is far too long", " lead", "trail ", "bad<tag>", "shithead", ""];
+  b: [64] u8;
+  for w: good { k := 0; for c: w { b[k] = c; k += 1; } #assert lb_name_ok(b[0..<k]); }
+  for w: bad { k := 0; for c: w { b[k] = c; k += 1; } #assert !lb_name_ok(b[0..<k]); }
+  t: [1] LbTest; a := t[0].a[..]; c := t[0].b[..];
+  ka := lb_test_key(1); kb := lb_test_key(40); aux := lb_test_key(90);
+  #assert ed_lobby_init(a, ka[..]) && ed_lobby_init(c, kb[..]);
+  lb_test_join(t[..], a, ka[..], aux[..], 700); lb_test_join(t[..], c, kb[..], aux[..], 700);
+  ed_lobby_account(a, true); ed_lobby_account(c, true);
+  hi := "hi there"; for i: 0..<hi.count { b[i] = hi[i]; }
+  #assert ed_lobby_say(a, ka[..], aux[..], 700, b[0..<hi.count]) == SAY_OK;
+  n := ed_lobby_take(a, t[0].frame[..]);
+  m := lb_test_relay(t[..], n);
+  ed_lobby_input(c, kb[..], aux[..], 701, t[0].back[0..<m]);
+  #assert ed_lobby_messages(c) == 1;
+  #assert ed_lobby_report(c, kb[..], aux[..], 702, 0);
+  #assert ed_lobby_messages(c) == 0 && ed_lobby_take(c, t[0].frame[..]) > 0;
+  ed_lobby_input(c, kb[..], aux[..], 703, t[0].back[0..<m]);
+  #assert ed_lobby_messages(c) == 0;
+}

@@ -1,0 +1,2147 @@
+// A device's levels and the account's, kept the same (docs/programmatic-access.md, stage C7): what
+// lets an agent on another computer change a phone's level, and the phone show it. The account's
+// levels are a hosted server's (gamebuilder serve --accounts, cli/main.coax); this is the device's
+// half. The host only carries bytes: it sends each request asked for to the site with the app's
+// login, reads and writes the level files named, and keeps the folder's `sync` file. Every
+// decision is here.
+//
+// A pass: the account's levels with their revisions (list-levels); then for each level on either
+// side, the device's file read and its revision taken (ed_agent_rev, as the server takes it);
+// then, against the revision both sides last agreed on (the base, kept in `sync` as "N REV" lines):
+//   the same on both sides      nothing; that is the base now
+//   only the device's changed   write-content to the account, from the account's revision
+//   only the account's changed  read-content, written to the device's file (the open level reloads)
+//   both changed                the account's comes to the device at its number, and the device's
+//                               goes to both as a new level one past the highest: nothing is lost
+// A refusal (stale: it changed again meanwhile) or no answer leaves the level to the next pass.
+//
+// A level one side deleted is not brought back (the kept file's first line names the account its
+// revisions were agreed with; another account's, or a file of before that line, deletes nothing):
+//   deleted here, the account's as agreed     delete-level on the account, after the games
+//   deleted here, the account's changed       the account's comes back: its change is not lost
+//   deleted on the account, this one as agreed  the device's file goes (SYNC_DROP: the host sets a copy aside)
+//   deleted on the account, this one changed  the device's goes to the account again
+// An account that lists no level at all deletes nothing here: the device's go to it.
+//
+// Games (issue 19): a game's document (game-N.game: its name, its type, its levels and their names)
+// is kept the same too, through the rows every surface uses. A level has one number on both sides,
+// so a game here and a game on the account are the same game when they hold the same level; their
+// own numbers may differ. Against the document both sides last agreed on (kept as "g LEVEL GAME
+// DIGEST STARTER" lines: a level of the game, the account's number for it, syg_digest of it):
+//   the same on both sides       nothing; that is agreed now
+//   only on the device           new-game on the account, of its type (a type that starts with several
+//                                levels, crates' three rooms: the account's others are deleted there
+//                                at once, delete-level, so the device's own levels are the game's,
+//                                moved in below); the device's first level takes
+//                                the number the account gave that game's level (SYNC_MOVE) and is
+//                                written into it (read-content for its revision, write-content from
+//                                it); then as "only the device's changed"
+//   only on the account          the game is made here, of its type, once its levels are here
+//   only the device's changed    rename-game, move-level, rename-level until the account's is the same
+//   only the account's changed   the device's document is written as the account's (SYNC_GAME)
+//   both changed                 the account's comes here, and the device's is kept as a new game
+//                                holding copies of its levels, which goes to the account on the next
+//                                pass: nothing is lost
+//   a level of it changed on both   the same: the account's level stays in the game, and the
+//                                device's copy of it is a new game of the same type and name
+//   deleted on one side, the other as agreed   deleted on the other too (delete-game; here the
+//                                document goes): its levels stay, in no game
+//   deleted on one side, the other changed     it is kept: made again on the side that deleted it
+// A game of one type here and another on the account is left as it is on both. The device's games
+// are the open editor's (ed_sync_device before a pass), and a change to them is made on it
+// (ed_sync_mine), so the host writes their files as it does after a row. What the person should be
+// told (both changed, a deletion that came from the account) is words for the line under the
+// toolbar (ed_sync_note).
+//
+// Then, while the person keeps agents on the account (the agents-account row, on unless turned
+// off), the folder's agents are reported (issue 4): the account's agents with their event counts
+// (agents), the folder's records (agent-ID.agent), and for each one with more events here, its
+// log read and agent-report sent from the account's count, at most AGR_REPORT events a report and
+// SYNC_REPORTS reports a pass. That is how gamebuilder.org/agents shows an agent on this Mac.
+// Then each agent the account keeps that works on a level here has its level's newest picture sent
+// (issue 9; agent-pictures.coax), when it is newer than the one the account has (the agents row
+// says it): the level's pictures file read, and agent-picture sent, at most SYNC_PICTURES a pass.
+// With agents not kept on the account, no picture goes either.
+//   scripts/check.sh (its #tests feed the answers a server and a device give)
+
+SYNC_LEVELS :: 128;           // levels a pass keeps the same, at most
+SYNC_ORIGIN :: "https://gamebuilder.org";
+
+// What the host is asked to do now (ed_sync_ask).
+SYNC_IDLE :: 0;               // nothing: no pass is going
+SYNC_HTTP :: 1;               // POST ed_sync_path to the site with ed_sync_body, signed in; answer the status and body
+SYNC_READ :: 2;               // read level ed_sync_level's file; answer 1 and its bytes, or 0: there is none
+SYNC_WRITE :: 3;              // write ed_sync_body as level ed_sync_level's file (reopen it if it is open); answer 1, or 0
+SYNC_KEEP :: 4;               // write ed_sync_body as the folder's sync file; answer 1, or 0
+SYNC_GAME :: 7;               // ed_sync_mine on the open editor (a game of the device's written as the pass has it, or taken away), then its files as after a row; answer 1, or 0: it refused
+SYNC_DROP :: 8;               // level ed_sync_level, deleted on the account: a copy of its file set aside, then ed_sync_mine on the open editor and its files as after a row; answer 1, or 0
+SYNC_MOVE :: 9;               // level ed_sync_level becomes level ed_sync_to: ed_sync_mine on the open editor, then ed_sync_body written as the new level's file and the old file deleted; answer 1, or 0
+SYNC_GAMES :: MINE_MAX + 8;   // games a pass holds a side: the device's with those it makes, the account's
+SYNC_SAID :: NOTE_MAX;
+SYNC_AGENTS :: 5;             // read every agent-*.agent of the folder; answer 1 and their bytes, each followed by a line break
+SYNC_AGENT_LOG :: 6;          // read the folder's file named ed_sync_path (an agent's log, a level's pictures); answer 1 and its bytes, or 0
+SYNC_REPORTS :: 64;           // agent reports a pass sends, at most (AGR_REPORT events each)
+SYNC_PICTURES :: 16;          // agents' pictures a pass sends, at most (one an agent, its level's newest)
+SYNC_BODY :: AGR_REPORT * (AGR_LINE + 2) + AGR_RECORD_MAX + AGENT_FILE_MAX * 2 + 512;
+
+// Where a pass is.
+SP_LIST :: 1; SP_LOCAL :: 2; SP_PUSH :: 3; SP_PULL :: 4; SP_PUT :: 5; SP_FORK_PUT :: 6; SP_FORK_PUSH :: 7; SP_KEEP :: 8;
+SP_AGENTS_LIST :: 9; SP_AGENTS_FILES :: 10; SP_AGENT_LOG :: 11; SP_AGENT_REPORT :: 12; SP_AGENT_PICS :: 13; SP_AGENT_PICTURE :: 14;
+// The games' half, and the levels deleted (below 0: sync_games_answer's).
+SP_GAMES_LIST :: -1; SP_G_DEVICE :: -2; SP_G_NEW :: -3; SP_G_START :: -4; SP_G_FIRST_READ :: -5; SP_G_FIRST_MOVE :: -6; SP_G_FIRST_PUSH :: -7;
+SP_G_MOVE :: -8; SP_G_UNLEVEL :: -9; SP_G_RENAME :: -10; SP_G_NAME :: -11; SP_G_DELETE :: -12; SP_G_COPY_READ :: -13; SP_G_COPY_WRITE :: -14;
+SP_L_DROP :: -15; SP_L_DELETE :: -16;
+SP_G_EXTRA :: -17;      // delete-level on the account, of a level its new-game made beside the first (crates: three rooms)
+// What ed_sync_mine does on the open editor.
+SG_PUT :: 1; SG_DROP :: 2; SG_MOVE :: 3; SG_UNLEVEL :: 4;
+
+SyncLevel :: struct {
+  n: s32;
+  server: s32;                // the account's revision, 0: it has none
+  local: s32;                 // the device's, 0: it has none
+  base: s32;                  // both sides' when they last agreed, 0: never
+  here: bool;                 // the device has a file for it (to be read)
+  done: bool;
+  had: bool;                  // the device had a file for it as the pass began
+  gone: bool;                 // it is to be deleted from the account, after the games
+  starter: bool;              // the account made it with a game this pass: the game's first level, as the type starts
+  name: [MINE_TITLE] u8; name_n: s32;   // its name in its game on the account (list-levels)
+}
+// What both sides last agreed a game is: a level it holds (which names it on both sides), the
+// account's number for it, and syg_digest of it. digest 0: the device's is being made on the
+// account; starter, then, is the level the account made with it, which the device's first level
+// has still to be written into (0: it has been).
+SyncGameBase :: struct { anchor: s32; acct: s32; digest: s32; starter: s32; live: bool; }
+
+GbSync :: struct {
+  e: [1] Editor;              // a file's revision is taken in it
+  levels: [SYNC_LEVELS] SyncLevel; count: int;
+  phase: int; at: int;
+  ask: s32;
+  level: s32;                 // SYNC_READ's and SYNC_WRITE's
+  path: [64] u8; path_n: int;
+  body: [SYNC_BODY] u8; body_n: int;
+  mine: [AGENT_FILE_MAX] u8; mine_n: int;       // the device's file of the level at hand
+  theirs: [AGENT_FILE_MAX] u8; theirs_n: int;   // the account's
+  pulled_rev: s32;
+  fork: s32;                  // both changed: the device's copy's new number
+  nodes: [16384] JvNode;
+  pushed: s32; pulled: s32; forked: s32; failed: s32;   // this pass's, for the host to say
+  // the agents' half
+  agents_on: bool;                                      // report the folder's agents (ed_sync_agents)
+  hid: [AGR_RECORDS * AGR_ID] u8; hid_n: [AGR_RECORDS] int; hev: [AGR_RECORDS] int; hn: int;   // the account's: id and events
+  recs: [AGR_RECORDS * AGR_RECORD_MAX] u8; rec_at: [AGR_RECORDS] int; rec_n: [AGR_RECORDS] int; rn: int; ra: int;   // the folder's records
+  sent: int; reports: int;
+  reported: s32;                                        // events reported this pass
+  hpm: [AGR_RECORDS] s64;                               // the account's: when each agent's picture was made (0: none)
+  pa: int; pics: int; pic_level: s32;                   // the agent whose picture is in hand, pictures sent, its level
+  pictured: s32;                                        // pictures sent this pass
+  // the games' half, and the levels deleted
+  given: bool; games: bool;                             // ed_sync_device gave the device's games for the next pass; this pass keeps games
+  who: [ACCOUNT_MAX] u8; who_n: int;                    // the account logged in (the kept file's first line)
+  trust: bool;                                          // the kept revisions were agreed with this account: a level gone from a side was deleted there
+  acct_any: bool; acct_games: bool;                     // the account lists a level; one of them is in a game
+  to: s32;                                              // SYNC_MOVE's: the level's new number
+  dev: [SYNC_GAMES] Mine; dev_n: int;                   // the device's games as the pass makes them
+  was: [SYNC_GAMES] Mine;                               // and as the open editor has them
+  dev_live: [SYNC_GAMES] bool; was_live: [SYNC_GAMES] bool;
+  dev_put: [SYNC_GAMES] bool; dev_drop: [SYNC_GAMES] bool;   // to be written on the open editor, or taken away
+  dev_done: [SYNC_GAMES] bool;                          // settled, or left to the next pass
+  dev_sends: [SYNC_GAMES] bool;                         // only the device's changed: its rows are going to the account (which the rows change)
+  dev_pair: [SYNC_GAMES] int; dev_base: [SYNC_GAMES] int;    // the account's game it is (an index, or -1), and what was agreed (gb's, or -1)
+  acc: [SYNC_GAMES] Mine; acc_n: int;                   // the account's games (list-games), as the pass's rows leave them
+  acc_live: [SYNC_GAMES] bool; acc_done: [SYNC_GAMES] bool;
+  acc_pair: [SYNC_GAMES] int; acc_base: [SYNC_GAMES] int;
+  gb: [SYNC_GAMES] SyncGameBase; gb_n: int;
+  pend: int; pend_kind: int;                            // SYNC_GAME's, SYNC_DROP's and SYNC_MOVE's: the device's game, and what is done
+  gi: int; gj: int; gl: s32; ginto: s32; gs: s32;       // the row in hand: the device's game, the account's, the level, where it moves, the starter's revision
+  gx: [GT_LEVELS_MOST] s32; gx_n: int;                  // the levels the account's new-game made beside the first, still to be deleted there
+  fk: [1] Mine; fk_at: int;                                 // both changed: the device's copy being made
+  said: [SYNC_SAID] u8; said_n: int; said_rank: int;    // words for the person (ed_sync_note)
+  gmade: s32; gcame: s32; gforked: s32; gdeleted: s32; gdropped: s32; ldeleted: s32; ldropped: s32;   // this pass's: games made on the account, brought here, kept as a copy, deleted there, deleted here; levels deleted there, here
+}
+
+sync_find :: (s: [] GbSync, n: s32) -> int {
+  for i: 0..<s[0].count { if s[0].levels[i].n == n { return i; } }
+  return -1;
+}
+// Level n's entry, made when it has none. -1 when there is no room.
+sync_entry :: (s: [] GbSync, n: s32) -> int {
+  k := sync_find(s, n);
+  if k >= 0 || n < 1 || n > LEVEL_MAX { return ifx n >= 1 && n <= LEVEL_MAX then k else -1; }
+  if s[0].count >= SYNC_LEVELS { return -1; }
+  k = s[0].count; s[0].count += 1;
+  s[0].levels[k] = SyncLevel.{n = n};
+  return k;
+}
+// A level file's revision, as the server takes it; 0 when the bytes aren't a level's.
+sync_rev :: (s: [] GbSync, n: s32, text: [] u8) -> s32 {
+  s[0].e[0] = Editor.{};
+  if !ed_open(s[0].e[..], n, text) { return 0; }
+  return cast(s32) ed_agent_rev(s[0].e[..]);
+}
+
+sync_set_path :: (s: [] GbSync, verb: string) {
+  t := [1] Text.[Text.{buf = s[0].path[..]}];
+  tx_put(t[..], "/api/rows/"); tx_put(t[..], verb);
+  s[0].path_n = t[0].at;
+}
+// Asks the host to POST verb's row with body (written in s.body by the caller).
+sync_http :: (s: [] GbSync, verb: string, phase: int) {
+  sync_set_path(s, verb);
+  s[0].ask = SYNC_HTTP; s[0].phase = phase;
+}
+sync_body_level :: (s: [] GbSync, n: s32) {
+  o: [1] Jo; jo_start(o[..], s[0].body[..]);
+  jo_obj(o[..]); jo_key(o[..], "level"); jo_int(o[..], cast(s64) n); jo_end(o[..]);
+  s[0].body_n = jo_text(o[..]).count;
+}
+// write-content's body: level n's file text, made from revision rev.
+sync_body_write :: (s: [] GbSync, n: s32, rev: s32, text: string) -> bool {
+  o: [1] Jo; jo_start(o[..], s[0].body[..]);
+  jo_obj(o[..]); jo_key(o[..], "level"); jo_int(o[..], cast(s64) n); jo_key(o[..], "revision"); jo_int(o[..], cast(s64) rev);
+  jo_key(o[..], "content"); jo_str(o[..], text); jo_end(o[..]);
+  if o[0].bad { return false; }
+  s[0].body_n = jo_text(o[..]).count;
+  return true;
+}
+sync_write :: (s: [] GbSync, n: s32, text: [] u8, phase: int) {
+  for i: 0..<text.count { s[0].body[i] = text[i]; }
+  s[0].body_n = text.count;
+  s[0].level = n; s[0].ask = SYNC_WRITE; s[0].phase = phase;
+}
+
+// The next level to keep the same, or the bases kept and the pass over.
+sync_next :: (s: [] GbSync) {
+  while s[0].at < s[0].count {
+    l := s[0].levels[s[0].at];
+    if l.done { s[0].at += 1; continue; }
+    if l.here {
+      // its file first
+      s[0].level = l.n; s[0].ask = SYNC_READ; s[0].phase = SP_LOCAL;
+      return;
+    }
+    if sync_decide(s) { return; }
+    s[0].at += 1;
+  }
+  // every level: then the games
+  sync_games(s);
+}
+// What both sides agreed on, written for the next pass: the account, each level's revision in
+// order, each game.
+sync_keep :: (s: [] GbSync) {
+  t := [1] Text.[Text.{buf = s[0].body[..]}];
+  if s[0].who_n > 0 { tx_put(t[..], "account "); tx_put(t[..], cast(string) s[0].who[0..<s[0].who_n]); tx_put(t[..], "\n"); }
+  for n: 1..<LEVEL_MAX + 1 {
+    k := sync_find(s, cast(s32) n);
+    if k < 0 || s[0].levels[k].base == 0 { continue; }
+    tx_int(t[..], cast(s64) n); tx_put(t[..], " "); tx_int(t[..], cast(s64) s[0].levels[k].base); tx_put(t[..], "\n");
+  }
+  for b: 0..<s[0].gb_n {
+    g := s[0].gb[b];
+    if !g.live { continue; }
+    // a game neither side has any more is forgotten
+    if s[0].games && syg_dev_of(s, g.anchor) < 0 && syg_acc_n(s, g.acct) < 0 { continue; }
+    tx_put(t[..], "g "); tx_int(t[..], cast(s64) g.anchor); tx_put(t[..], " "); tx_int(t[..], cast(s64) g.acct); tx_put(t[..], " ");
+    tx_int(t[..], cast(s64) g.digest); tx_put(t[..], " "); tx_int(t[..], cast(s64) g.starter); tx_put(t[..], "\n");
+  }
+  s[0].body_n = t[0].at;
+  s[0].ask = SYNC_KEEP; s[0].phase = SP_KEEP;
+}
+
+// Level at, its file read: what to do with it. True when the host was asked something.
+sync_decide :: (s: [] GbSync) -> bool {
+  k := s[0].at;
+  here_rev := s[0].levels[k].local; acct_rev := s[0].levels[k].server; base_rev := s[0].levels[k].base; n := s[0].levels[k].n;
+  if here_rev == acct_rev { s[0].levels[k].base = here_rev; s[0].levels[k].done = true; return false; }
+  if base_rev == 0 {
+    // the level the account made with a game of the device's: the device's first level goes into it (the games' half)
+    if here_rev == 0 && sync_starter(s, n) { s[0].levels[k].done = true; return false; }
+    // the first level of a game the account has not got: it goes there as that game's, not as a level in no game
+    if acct_rev == 0 && sync_held(s, n) { s[0].levels[k].done = true; return false; }
+  }
+  if s[0].trust && base_rev != 0 {
+    // deleted here, and the account's is as agreed: it goes from the account too, after the games
+    if here_rev == 0 && !s[0].levels[k].had && acct_rev == base_rev { s[0].levels[k].gone = true; s[0].levels[k].done = true; return false; }
+    // deleted on the account, and the device's is as agreed: its file goes
+    if acct_rev == 0 && s[0].acct_any && here_rev == base_rev {
+      s[0].level = n; s[0].pend_kind = SG_UNLEVEL; s[0].ask = SYNC_DROP; s[0].phase = SP_L_DROP;
+      return true;
+    }
+  }
+  mine_changed := here_rev != base_rev; theirs_changed := acct_rev != base_rev;
+  if here_rev != 0 && (!theirs_changed || acct_rev == 0) {
+    // the device's goes to the account
+    if !sync_body_write(s, n, acct_rev, cast(string) s[0].mine[0..<s[0].mine_n]) { s[0].failed += 1; s[0].levels[k].done = true; return false; }
+    sync_http(s, "write-content", SP_PUSH);
+    return true;
+  }
+  if acct_rev != 0 && (!mine_changed || here_rev == 0) {
+    // the account's comes to the device
+    s[0].fork = 0;
+    sync_body_level(s, n); sync_http(s, "read-content", SP_PULL);
+    return true;
+  }
+  // both changed: the device's goes to a new number, then the account's comes here
+  most: s32 = 0;
+  for i: 0..<s[0].count { if s[0].levels[i].n > most { most = s[0].levels[i].n; } }
+  if most >= LEVEL_MAX || s[0].count >= SYNC_LEVELS { s[0].failed += 1; s[0].levels[k].done = true; return false; }
+  s[0].fork = most + 1;
+  _ = sync_entry(s, s[0].fork);   // the number is taken
+  s[0].levels[s[0].count - 1].done = true;
+  // the device's file, as level fork's
+  s[0].e[0] = Editor.{};
+  if !ed_open(s[0].e[..], s[0].fork, s[0].mine[0..<s[0].mine_n]) { s[0].failed += 1; s[0].levels[k].done = true; return false; }
+  saved := ed_save(s[0].e[..], s[0].body[..]);
+  if saved <= 0 { s[0].failed += 1; s[0].levels[k].done = true; return false; }
+  s[0].body_n = cast(int) saved;
+  s[0].level = s[0].fork; s[0].ask = SYNC_WRITE; s[0].phase = SP_FORK_PUT;
+  return true;
+}
+
+// Starts a pass: the device's level numbers, and the folder's sync file (its bytes, or none).
+// False when a pass is going already.
+ed_sync_begin :: (s: [] GbSync, here: [] s32, kept: [] u8) -> bool #export_c #effects(all) {
+  if s.count != 1 || s[0].ask != SYNC_IDLE { return false; }
+  s[0].count = 0; s[0].at = 0; s[0].pushed = 0; s[0].pulled = 0; s[0].forked = 0; s[0].failed = 0;
+  s[0].hn = 0; s[0].rn = 0; s[0].ra = 0; s[0].reports = 0; s[0].reported = 0; s[0].pa = 0; s[0].pics = 0; s[0].pictured = 0;
+  // the games' half: the device's games, when the host gave them (ed_sync_device)
+  s[0].games = s[0].given; s[0].given = false;
+  if !s[0].games { s[0].dev_n = 0; s[0].who_n = 0; }
+  s[0].trust = false; s[0].acct_any = false; s[0].acct_games = false; s[0].acc_n = 0; s[0].gb_n = 0;
+  s[0].said_n = 0; s[0].said_rank = 0;
+  s[0].gmade = 0; s[0].gcame = 0; s[0].gforked = 0; s[0].gdeleted = 0; s[0].gdropped = 0; s[0].ldeleted = 0; s[0].ldropped = 0;
+  for i: 0..<SYNC_GAMES {
+    s[0].dev_put[i] = false; s[0].dev_drop[i] = false; s[0].dev_done[i] = false; s[0].dev_sends[i] = false; s[0].dev_pair[i] = -1; s[0].dev_base[i] = -1;
+    s[0].acc_live[i] = false; s[0].acc_done[i] = false; s[0].acc_pair[i] = -1; s[0].acc_base[i] = -1;
+  }
+  for n: here { k := sync_entry(s, n); if k >= 0 { s[0].levels[k].here = true; s[0].levels[k].had = true; } }
+  // the account's line, "N REV" lines, and the games' "g LEVEL GAME DIGEST STARTER" lines
+  text := cast(string) kept; from := 0;
+  other := false;
+  for i: 0..<text.count + 1 {
+    if i < text.count && text[i] != '\n' { continue; }
+    line := text[from..<i]; from = i + 1;
+    if line.count > 8 && cast(string) line[0..<8] == "account " {
+      name := cast(string) line[8..<line.count];
+      if s[0].who_n == 0 {
+        // no one's games were given: the line is kept as it is
+        if name.count <= ACCOUNT_MAX { for j: 0..<name.count { s[0].who[j] = name[j]; } s[0].who_n = name.count; }
+      } else if name == cast(string) s[0].who[0..<s[0].who_n] { s[0].trust = true; }
+      else { other = true; }
+      continue;
+    }
+    if other { continue; }
+    if line.count > 2 && line[0] == 'g' && line[1] == ' ' {
+      v: [4] int; vn := 0; at := 2;
+      for j: 2..<line.count + 1 {
+        if j < line.count && line[j] != ' ' { continue; }
+        if vn < 4 { v[vn] = gb_revision(cast(string) line[at..<j]); vn += 1; }
+        at = j + 1;
+      }
+      if vn == 4 && v[0] >= 1 && v[0] <= LEVEL_MAX && v[1] >= 1 && v[1] <= LEVEL_MAX && v[2] >= 0 && v[3] >= 0 && v[3] <= LEVEL_MAX && s[0].gb_n < SYNC_GAMES {
+        s[0].gb[s[0].gb_n] = SyncGameBase.{anchor = cast(s32) v[0], acct = cast(s32) v[1], digest = cast(s32) v[2], starter = cast(s32) v[3], live = true};
+        s[0].gb_n += 1;
+      }
+      continue;
+    }
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if sp == 0 || sp >= line.count { continue; }
+    n := gb_int(cast(string) line[0..<sp]); r := gb_revision(cast(string) line[sp + 1..<line.count]);
+    if !n.ok || r <= 0 { continue; }
+    k := sync_entry(s, cast(s32) n.v);
+    if k >= 0 { s[0].levels[k].base = cast(s32) r; }
+  }
+  // another account's file: nothing in it was agreed with this one
+  if other { for k: 0..<s[0].count { s[0].levels[k].base = 0; } s[0].gb_n = 0; }
+  s[0].body[0] = '{'; s[0].body[1] = '}'; s[0].body_n = 2;
+  sync_http(s, "list-levels", SP_LIST);
+  return true;
+}
+
+// What the host is asked now (SYNC_*), and its words.
+ed_sync_ask :: (s: [] GbSync) -> s32 #export_c #effects(all) { return ifx s.count == 1 then s[0].ask else SYNC_IDLE; }
+ed_sync_level :: (s: [] GbSync) -> s32 #export_c #effects(all) { return ifx s.count == 1 then s[0].level else 0; }
+ed_sync_path :: (s: [] GbSync, out: [] u8) -> s64 #export_c #effects(all) {
+  if s.count != 1 || out.count < s[0].path_n { return 0; }
+  for i: 0..<s[0].path_n { out[i] = s[0].path[i]; }
+  return s[0].path_n;
+}
+ed_sync_body :: (s: [] GbSync, out: [] u8) -> s64 #export_c #effects(all) {
+  if s.count != 1 || out.count < s[0].body_n { return 0; }
+  for i: 0..<s[0].body_n { out[i] = s[0].body[i]; }
+  return s[0].body_n;
+}
+// The most ed_sync_body writes.
+ed_sync_body_max :: () -> s64 #export_c #effects(all) { return SYNC_BODY; }
+// Where the account's levels are kept.
+ed_sync_origin :: (out: [] u8) -> s64 #export_c #effects(all) {
+  if out.count < SYNC_ORIGIN.count { return 0; }
+  for i: 0..<SYNC_ORIGIN.count { out[i] = SYNC_ORIGIN[i]; }
+  return SYNC_ORIGIN.count;
+}
+// This pass's counts: levels sent, levels brought here, both-changed copies made, levels left to the next.
+ed_sync_counts :: (s: [] GbSync, out: [] s32) -> bool #export_c #effects(all) {
+  if s.count != 1 || out.count < 4 { return false; }
+  out[0] = s[0].pushed; out[1] = s[0].pulled; out[2] = s[0].forked; out[3] = s[0].failed;
+  return true;
+}
+
+// The answer to what was asked: for SYNC_HTTP the status (0: no answer) and the body; for
+// SYNC_READ 1 and the file's bytes, or 0; for SYNC_WRITE and SYNC_KEEP 1 when it was written.
+ed_sync_answer :: (s: [] GbSync, status: s32, bytes: [] u8) #export_c #effects(all) {
+  if s.count != 1 || s[0].ask == SYNC_IDLE { return; }
+  phase := s[0].phase;
+  s[0].ask = SYNC_IDLE;
+  if phase == SP_KEEP {
+    s[0].phase = 0;
+    if s[0].agents_on { s[0].body[0] = '{'; s[0].body[1] = '}'; s[0].body_n = 2; sync_http(s, "agents", SP_AGENTS_LIST); }
+    return;
+  }
+  if phase < 0 { sync_games_answer(s, phase, status, bytes); return; }
+  if phase >= SP_AGENTS_LIST { sync_agents_answer(s, phase, status, bytes); return; }
+  if phase == SP_LIST {
+    d: [1] Jv;
+    if status != 200 || !jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) { s[0].phase = 0; s[0].failed += 1; return; }
+    arr := jv_get(d[0], 0, "levels");
+    m := ifx arr >= 0 && jv_kind(d[0], arr) == JV_ARRAY then d[0].nodes[arr].first else -1;
+    while m >= 0 {
+      n := jv_int(d[0], jv_get(d[0], m, "level"), -1); r := jv_int(d[0], jv_get(d[0], m, "revision"), -1);
+      if n >= 1 && n <= LEVEL_MAX && r > 0 {
+        k := sync_entry(s, cast(s32) n);
+        if k >= 0 {
+          s[0].levels[k].server = cast(s32) r; s[0].acct_any = true;
+          if jv_int(d[0], jv_get(d[0], m, "game"), 0) > 0 { s[0].acct_games = true; }
+          nb: [MINE_TITLE + 8] u8; nn := jv_str(d[0], jv_get(d[0], m, "name"), nb[..]);
+          if nn > 0 && nn <= MINE_TITLE { for j: 0..<nn { s[0].levels[k].name[j] = nb[j]; } s[0].levels[k].name_n = cast(s32) nn; }
+        }
+      }
+      m = d[0].nodes[m].next;
+    }
+    // the account's games, when it has any (each holds a level)
+    if s[0].games && s[0].acct_games { s[0].body[0] = '{'; s[0].body[1] = '}'; s[0].body_n = 2; sync_http(s, "list-games", SP_GAMES_LIST); return; }
+    if s[0].games { sync_pairs(s); }
+    s[0].at = 0;
+    sync_next(s);
+    return;
+  }
+  k := s[0].at;
+  if phase == SP_LOCAL {
+    s[0].levels[k].here = false; s[0].levels[k].local = 0; s[0].mine_n = 0;
+    if status == 1 && bytes.count > 0 && bytes.count <= AGENT_FILE_MAX {
+      for i: 0..<bytes.count { s[0].mine[i] = bytes[i]; }
+      s[0].mine_n = bytes.count;
+      s[0].levels[k].local = sync_rev(s, s[0].levels[k].n, s[0].mine[0..<s[0].mine_n]);
+    }
+    if !sync_decide(s) { s[0].at += 1; sync_next(s); }
+    return;
+  }
+  if phase == SP_PUSH {
+    d: [1] Jv;
+    if status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) {
+      r := jv_int(d[0], jv_get(d[0], 0, "revision"), -1);
+      if r > 0 { s[0].levels[k].base = cast(s32) r; s[0].levels[k].server = cast(s32) r; s[0].pushed += 1; } else { s[0].failed += 1; }
+    } else { s[0].failed += 1; }
+    s[0].levels[k].done = true; s[0].at += 1; sync_next(s);
+    return;
+  }
+  if phase == SP_PULL {
+    d: [1] Jv;
+    ok := status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]);
+    r := ifx ok then jv_int(d[0], jv_get(d[0], 0, "revision"), -1) else -1;
+    c := ifx ok then jv_get(d[0], 0, "content") else -1;
+    n := ifx c >= 0 && jv_kind(d[0], c) == JV_STRING then jv_str(d[0], c, s[0].theirs[..]) else -1;
+    if r <= 0 || n <= 0 { s[0].failed += 1; s[0].levels[k].done = true; s[0].at += 1; sync_next(s); return; }
+    s[0].theirs_n = n; s[0].pulled_rev = cast(s32) r;
+    sync_write(s, s[0].levels[k].n, s[0].theirs[0..<n], SP_PUT);
+    return;
+  }
+  if phase == SP_PUT {
+    if status == 1 { s[0].levels[k].base = s[0].pulled_rev; s[0].levels[k].server = s[0].pulled_rev; s[0].levels[k].local = s[0].pulled_rev; s[0].pulled += 1; } else { s[0].failed += 1; }
+    s[0].levels[k].done = true; s[0].at += 1; sync_next(s);
+    return;
+  }
+  if phase == SP_FORK_PUT {
+    // the device's copy is safe at its new number: now to the account, then the account's comes here
+    if status != 1 { s[0].failed += 1; s[0].levels[k].done = true; s[0].at += 1; sync_next(s); return; }
+    f := sync_find(s, s[0].fork);
+    if f >= 0 { s[0].levels[f].local = sync_rev(s, s[0].fork, s[0].body[0..<s[0].body_n]); }
+    t: [AGENT_FILE_MAX] u8; tn := s[0].body_n;
+    for i: 0..<tn { t[i] = s[0].body[i]; }
+    sync_say_level(s, 3, s[0].levels[k].n, s[0].fork);
+    // the game of the device's that held it
+    held := sync_fork_game(s, s[0].levels[k].n, s[0].fork, s[0].levels[k].base != 0);
+    if held {
+      // its game's first level, and the account has not got the game: it goes there with the game, not as a level in no game
+      s[0].forked += 1;
+      sync_body_level(s, s[0].levels[k].n); sync_http(s, "read-content", SP_PULL);
+      return;
+    }
+    if !sync_body_write(s, s[0].fork, 0, cast(string) t[0..<tn]) { s[0].failed += 1; s[0].levels[k].done = true; s[0].at += 1; sync_next(s); return; }
+    sync_http(s, "write-content", SP_FORK_PUSH);
+    return;
+  }
+  if phase == SP_FORK_PUSH {
+    d: [1] Jv;
+    f := sync_find(s, s[0].fork);
+    if status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) && f >= 0 {
+      r := jv_int(d[0], jv_get(d[0], 0, "revision"), -1);
+      if r > 0 { s[0].levels[f].base = cast(s32) r; s[0].levels[f].server = cast(s32) r; }
+    }
+    // left unsent, the next pass sends it: it is the device's and not the account's
+    s[0].forked += 1;
+    sync_body_level(s, s[0].levels[k].n); sync_http(s, "read-content", SP_PULL);
+    return;
+  }
+}
+
+// ---- the agents, reported to the account
+
+// Whether a pass reports the folder's agents (the agents-account row's setting): before ed_sync_begin.
+ed_sync_agents :: (s: [] GbSync, on: bool) #export_c #effects(all) { if s.count == 1 { s[0].agents_on = on; } }
+// Events reported to the account this pass.
+ed_sync_reported :: (s: [] GbSync) -> s32 #export_c #effects(all) { return ifx s.count == 1 then s[0].reported else 0; }
+
+sync_hosted :: (s: [] GbSync, id: string) -> int {
+  for i: 0..<s[0].hn { if cast(string) s[0].hid[i * AGR_ID..<i * AGR_ID + s[0].hid_n[i]] == id { return i; } }
+  return -1;
+}
+sync_hosted_set :: (s: [] GbSync, id: string, events: int) {
+  i := sync_hosted(s, id);
+  if i < 0 {
+    if s[0].hn >= AGR_RECORDS || id.count > AGR_ID { return; }
+    i = s[0].hn; s[0].hn += 1;
+    for j: 0..<id.count { s[0].hid[i * AGR_ID + j] = id[j]; }
+    s[0].hid_n[i] = id.count; s[0].hpm[i] = 0;
+  }
+  s[0].hev[i] = events;
+}
+sync_hosted_picture :: (s: [] GbSync, id: string, made: s64) {
+  i := sync_hosted(s, id);
+  if i >= 0 { s[0].hpm[i] = made; }
+}
+sync_rec :: (s: [] GbSync, k: int) -> string { return cast(string) s[0].recs[s[0].rec_at[k]..<s[0].rec_at[k] + s[0].rec_n[k]]; }
+// The account's count of record k's events, and its own; -1 for a record that doesn't read.
+sync_counts :: (s: [] GbSync, k: int, mine: [] int) -> int {
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  if agr_record_read(sync_rec(s, k), got[..], jw[..]).count > 0 { return -1; }
+  mine[0] = cast(int) got[0].events;
+  h := sync_hosted(s, agr_id(got[..]));
+  return ifx h < 0 then 0 else s[0].hev[h];
+}
+// The next agent with events the account hasn't got: its log asked for. Else the pass is over.
+sync_agent_next :: (s: [] GbSync) {
+  while s[0].ra < s[0].rn && s[0].reports < SYNC_REPORTS {
+    mine: [1] int;
+    theirs := sync_counts(s, s[0].ra, mine[..]);
+    if theirs < 0 || mine[0] <= theirs { s[0].ra += 1; continue; }
+    got: [1] AgrRecord; jw: [1] AgrJob;
+    _ = agr_record_read(sync_rec(s, s[0].ra), got[..], jw[..]);
+    fb: [64] u8;
+    name := agr_file(agr_id(got[..]), ".events", fb[..]);
+    for i: 0..<name.count { s[0].path[i] = name[i]; }
+    s[0].path_n = name.count;
+    s[0].ask = SYNC_AGENT_LOG; s[0].phase = SP_AGENT_LOG;
+    return;
+  }
+  s[0].pa = 0;
+  sync_picture_next(s);
+}
+// The next agent the account keeps that works on a level: its level's pictures file asked for.
+// Else the pass is over.
+sync_picture_next :: (s: [] GbSync) {
+  while s[0].pa < s[0].rn && s[0].pics < SYNC_PICTURES {
+    got: [1] AgrRecord; jw: [1] AgrJob;
+    if agr_record_read(sync_rec(s, s[0].pa), got[..], jw[..]).count > 0 || got[0].level <= 0 || sync_hosted(s, agr_id(got[..])) < 0 { s[0].pa += 1; continue; }
+    s[0].pic_level = got[0].level;
+    ib: [32] u8; n := ed_level_id(got[0].level, ib[..]);
+    m := agr_put(s[0].path[..], 0, cast(string) ib[0..<n]); m = agr_put(s[0].path[..], m, ".pictures");
+    s[0].path_n = m;
+    s[0].ask = SYNC_AGENT_LOG; s[0].phase = SP_AGENT_PICS;
+    return;
+  }
+  s[0].phase = 0;
+}
+sync_agents_answer :: (s: [] GbSync, phase: int, status: s32, bytes: [] u8) {
+  if phase == SP_AGENTS_LIST {
+    d: [1] Jv;
+    if status != 200 || !jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) { s[0].phase = 0; s[0].failed += 1; return; }
+    arr := jv_get(d[0], 0, "agents");
+    m := ifx arr >= 0 && jv_kind(d[0], arr) == JV_ARRAY then d[0].nodes[arr].first else -1;
+    ib: [AGR_ID + 8] u8;
+    while m >= 0 {
+      rec := jv_get(d[0], m, "agent");
+      if rec >= 0 {
+        n := jv_str(d[0], jv_get(d[0], rec, "id"), ib[..]);
+        ev := jv_int(d[0], jv_get(d[0], rec, "events"), -1);
+        if n > 0 && ev >= 0 {
+          sync_hosted_set(s, cast(string) ib[0..<n], ev);
+          // its picture on the account, when it has one (agent-pictures.coax agp_answer)
+          pic := jv_get(d[0], m, "picture");
+          if pic >= 0 { sync_hosted_picture(s, cast(string) ib[0..<n], cast(s64) jv_int(d[0], jv_get(d[0], pic, "made"), 0)); }
+        }
+      }
+      m = d[0].nodes[m].next;
+    }
+    s[0].ask = SYNC_AGENTS; s[0].phase = SP_AGENTS_FILES;
+    return;
+  }
+  if phase == SP_AGENTS_FILES {
+    if status != 1 { s[0].phase = 0; return; }
+    at := 0; used := 0;
+    for i: 0..<bytes.count {
+      if bytes[i] != '\n' { continue; }
+      line := bytes[at..<i]; at = i + 1;
+      if line.count == 0 || line.count > AGR_RECORD_MAX || s[0].rn >= AGR_RECORDS { continue; }
+      for j: 0..<line.count { s[0].recs[used + j] = line[j]; }
+      s[0].rec_at[s[0].rn] = used; s[0].rec_n[s[0].rn] = line.count; s[0].rn += 1;
+      used += line.count;
+    }
+    s[0].ra = 0;
+    sync_agent_next(s);
+    return;
+  }
+  if phase == SP_AGENT_LOG {
+    mine: [1] int;
+    theirs := sync_counts(s, s[0].ra, mine[..]);
+    o: [1] Jo; jo_start(o[..], s[0].body[..]);
+    sent := ifx status == 1 && theirs >= 0 then agr_report(sync_rec(s, s[0].ra), cast(string) bytes, theirs, o[..]) else -1;
+    if sent <= 0 { if sent < 0 { s[0].failed += 1; } s[0].ra += 1; sync_agent_next(s); return; }
+    s[0].body_n = jo_text(o[..]).count; s[0].sent = sent;
+    sync_http(s, "agent-report", SP_AGENT_REPORT);
+    return;
+  }
+  if phase == SP_AGENT_REPORT {
+    s[0].reports += 1;
+    d: [1] Jv;
+    if status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) {
+      ib: [AGR_ID + 8] u8;
+      n := jv_str(d[0], jv_get(d[0], 0, "agent"), ib[..]);
+      ev := jv_int(d[0], jv_get(d[0], 0, "events"), -1);
+      if n > 0 && ev >= 0 { sync_hosted_set(s, cast(string) ib[0..<n], ev); s[0].reported += cast(s32) s[0].sent; sync_agent_next(s); return; }
+    }
+    // refused (stale: the account's count moved) or no answer: the next pass lists it again
+    s[0].failed += 1; s[0].ra += 1; sync_agent_next(s);
+    return;
+  }
+  if phase == SP_AGENT_PICS {
+    // the level's newest picture, sent when the account's is older
+    got: [1] AgrRecord; jw: [1] AgrJob;
+    _ = agr_record_read(sync_rec(s, s[0].pa), got[..], jw[..]);
+    id := agr_id(got[..]);
+    h := sync_hosted(s, id);
+    nw := ifx status == 1 then agp_newest(cast(string) bytes, s[0].pic_level) else AgpNewest.{};
+    if h < 0 || nw.made <= s[0].hpm[h] { s[0].pa += 1; sync_picture_next(s); return; }
+    o: [1] Jo; jo_start(o[..], s[0].body[..]);
+    jo_obj(o[..]); jo_key(o[..], "agent"); jo_str(o[..], id);
+    jo_key(o[..], "picture"); jo_value(o[..]); jo_put(o[..], cast(string) bytes[nw.from..<nw.from + nw.count]);
+    jo_end(o[..]);
+    if o[0].bad { s[0].pa += 1; sync_picture_next(s); return; }
+    s[0].body_n = jo_text(o[..]).count;
+    s[0].hpm[h] = nw.made;           // said once a pass, whatever the answer
+    sync_http(s, "agent-picture", SP_AGENT_PICTURE);
+    return;
+  }
+  if phase == SP_AGENT_PICTURE {
+    s[0].pics += 1;
+    if status == 200 { s[0].pictured += 1; }
+    // refused as already (a newer one is there) or not answered: the next pass looks again
+    else if status != 409 { s[0].failed += 1; }
+    s[0].pa += 1; sync_picture_next(s);
+    return;
+  }
+}
+
+
+// ---- the games' half (issue 19)
+
+syg_at :: (m: Mine, level: s32) -> int {
+  for k: 0..<cast(int) m.level_n { if m.levels[k] == level { return k; } }
+  return -1;
+}
+syg_name :: (m: [] Mine, k: int, name: string) {
+  for j: 0..<name.count { m[0].names[k * MINE_TITLE + j] = name[j]; }
+  m[0].name_n[k] = cast(s32) name.count;
+}
+syg_add :: (m: [] Mine, level: s32, name: string) -> bool {
+  if m[0].level_n >= MINE_LEVELS { return false; }
+  k := cast(int) m[0].level_n;
+  m[0].levels[k] = level; syg_name(m, k, name); m[0].level_n += 1;
+  return true;
+}
+syg_remove :: (m: [] Mine, level: s32) {
+  at := syg_at(m[0], level);
+  if at < 0 { return; }
+  for k: at..<cast(int) m[0].level_n - 1 {
+    m[0].levels[k] = m[0].levels[k + 1]; m[0].name_n[k] = m[0].name_n[k + 1];
+    for j: 0..<MINE_TITLE { m[0].names[k * MINE_TITLE + j] = m[0].names[(k + 1) * MINE_TITLE + j]; }
+  }
+  m[0].level_n -= 1;
+}
+syg_mix :: (h: int, bytes: string) -> int {
+  x := h;
+  for c: bytes { x = ((x ^ cast(int) c) * 16777619) & 0xffffffff; }
+  return ((x ^ 255) * 16777619) & 0xffffffff;
+}
+// What a game is, on either side: its type, its name, and its levels with their names, whatever
+// order they are in and whatever the game's own number is. Never 0.
+syg_digest :: (m: Mine) -> s32 {
+  h := syg_mix(2166136261, ifx m.plays >= 0 && m.plays < TEMPLATES then TEMPLATE_ID[m.plays] else "?");
+  title := m.title;
+  h = syg_mix(h, cast(string) title[0..<cast(int) m.title_n]);
+  last: s32 = 0;
+  for q: 0..<cast(int) m.level_n {
+    best := -1;
+    for k: 0..<cast(int) m.level_n { if m.levels[k] > last && (best < 0 || m.levels[k] < m.levels[best]) { best = k; } }
+    if best < 0 { break; }
+    last = m.levels[best];
+    nb: [16] u8; t := [1] Text.[Text.{buf = nb[..]}]; tx_int(t[..], cast(s64) last);
+    h = syg_mix(h, cast(string) nb[0..<t[0].at]);
+    lb: [MINE_TITLE] u8; h = syg_mix(h, mine_level_name(m, best, lb[..]));
+  }
+  h = h & 0x7fffffff;
+  return ifx h == 0 then 1 else cast(s32) h;
+}
+syg_title :: (m: Mine, out: [] u8) -> string {
+  n := cast(int) m.title_n;
+  for j: 0..<n { out[j] = m.title[j]; }
+  return cast(string) out[0..<n];
+}
+
+// A game of the device's that is there (and not being taken away).
+syg_dev_on :: (s: [] GbSync, i: int) -> bool { return s[0].dev_live[i] && !s[0].dev_drop[i]; }
+// Which of the device's games holds the level, and which of the account's: an index, or -1.
+syg_dev_of :: (s: [] GbSync, level: s32) -> int {
+  for i: 0..<s[0].dev_n { if syg_dev_on(s, i) && syg_at(s[0].dev[i], level) >= 0 { return i; } }
+  return -1;
+}
+syg_acc_of :: (s: [] GbSync, level: s32) -> int {
+  for j: 0..<s[0].acc_n { if s[0].acc_live[j] && syg_at(s[0].acc[j], level) >= 0 { return j; } }
+  return -1;
+}
+// The account's game numbered n.
+syg_acc_n :: (s: [] GbSync, n: s32) -> int {
+  for j: 0..<s[0].acc_n { if s[0].acc_live[j] && s[0].acc[j].n == n { return j; } }
+  return -1;
+}
+// A game number free on the device, or 0.
+syg_free_game :: (s: [] GbSync) -> s32 {
+  n: s32 = 1;
+  while n <= LEVEL_MAX {
+    used := false;
+    for i: 0..<s[0].dev_n { if (s[0].dev_live[i] && s[0].dev[i].n == n) || (s[0].was_live[i] && s[0].was[i].n == n) { used = true; } }
+    if !used { return n; }
+    n += 1;
+  }
+  return 0;
+}
+// Room on the device for one more game: a place in the pass's list, and under the app's 32.
+syg_room :: (s: [] GbSync) -> bool {
+  on := 0;
+  for i: 0..<s[0].dev_n { if s[0].dev_live[i] { on += 1; } }
+  return on < MINE_MAX && s[0].dev_n < SYNC_GAMES;
+}
+sync_local :: (s: [] GbSync, n: s32) -> s32 { k := sync_find(s, n); return ifx k < 0 then 0 else s[0].levels[k].local; }
+sync_server :: (s: [] GbSync, n: s32) -> s32 { k := sync_find(s, n); return ifx k < 0 then 0 else s[0].levels[k].server; }
+// The highest level number either side has, and the highest the account has.
+sync_most :: (s: [] GbSync) -> s32 {
+  most: s32 = 0;
+  for i: 0..<s[0].count { if s[0].levels[i].n > most { most = s[0].levels[i].n; } }
+  return most;
+}
+sync_most_account :: (s: [] GbSync) -> s32 {
+  most: s32 = 0;
+  for i: 0..<s[0].count { if (s[0].levels[i].server != 0 || s[0].levels[i].starter) && s[0].levels[i].n > most { most = s[0].levels[i].n; } }
+  return most;
+}
+// The device has a level of its own numbered n: a file, and not just the account's copy of that level.
+sync_taken :: (s: [] GbSync, n: s32) -> bool {
+  k := sync_find(s, n);
+  if k < 0 { return false; }
+  l := s[0].levels[k];
+  if l.local != 0 && l.local == l.server { return false; }
+  return l.had || l.local != 0;
+}
+// Level n is the one the account made with a game of the device's, still to be written into.
+sync_starter :: (s: [] GbSync, n: s32) -> bool {
+  for b: 0..<s[0].gb_n { if s[0].gb[b].live && s[0].gb[b].digest == 0 && s[0].gb[b].starter == n { return true; } }
+  return false;
+}
+// Level n is the first level of a game of the device's that the account has not got, or has only
+// just made: it goes to the account as that game's.
+sync_held :: (s: [] GbSync, n: s32) -> bool {
+  i := syg_dev_of(s, n);
+  if i < 0 || s[0].dev[i].levels[0] != n { return false; }
+  b := s[0].dev_base[i];
+  if s[0].dev_pair[i] < 0 { return b < 0 || s[0].gb[b].digest == 0 || !s[0].trust; }
+  return b >= 0 && s[0].gb[b].digest == 0 && s[0].gb[b].starter != 0;
+}
+
+// Words for the person, the most telling of a pass kept (a higher rank over a lower).
+sync_say :: (s: [] GbSync, rank: int, words: string) {
+  if rank < s[0].said_rank { return; }
+  n := ifx words.count < SYNC_SAID then words.count else SYNC_SAID;
+  for i: 0..<n { s[0].said[i] = words[i]; }
+  s[0].said_n = n; s[0].said_rank = rank;
+}
+// rank 3: both changed (n kept as the account's, the device's now `other`); 2: deleted on the account.
+sync_say_level :: (s: [] GbSync, rank: int, n: s32, other: s32) {
+  b: [SYNC_SAID] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tb: [64] u8; title := cast(string) tb[0..<ed_level_title(n, tb[..])];
+  tx_put(t[..], title);
+  if rank == 3 {
+    tx_put(t[..], " changed here and on your account. Nothing is lost: your account's is ");
+    tx_put(t[..], title); tx_put(t[..], ", this device's is ");
+    ob: [64] u8; tx_put(t[..], cast(string) ob[0..<ed_level_title(other, ob[..])]); tx_put(t[..], ".");
+  } else { tx_put(t[..], " was deleted on your account, so it is deleted here too."); }
+  sync_say(s, rank, cast(string) b[0..<t[0].at]);
+}
+// what: 3 both changed, 2 deleted on the account, 1 came from the account, 4 one type here and another there.
+sync_say_game :: (s: [] GbSync, what: int, m: Mine) {
+  b: [SYNC_SAID] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tb: [MINE_TITLE] u8;
+  tx_put(t[..], syg_title(m, tb[..]));
+  if what == 3 { tx_put(t[..], " changed here and on your account. Nothing is lost: your account's is here now, and this device's is kept as a new game."); }
+  else if what == 2 { tx_put(t[..], " was deleted on your account, so it is no longer a game here. Its levels stay, in no game."); }
+  else if what == 4 { tx_put(t[..], " is one type of game here and another on your account: both are left as they are."); }
+  else { tx_put(t[..], " came from your account."); }
+  sync_say(s, ifx what == 4 then 3 else what, cast(string) b[0..<t[0].at]);
+}
+
+// A row of the account's asked, with one or two arguments: a number, then a number or (text given) a text.
+sync_row :: (s: [] GbSync, verb: string, phase: int, k1: string, v1: s32, k2: string, v2: s32, text: string) {
+  o: [1] Jo; jo_start(o[..], s[0].body[..]);
+  jo_obj(o[..]);
+  if k1.count > 0 { jo_key(o[..], k1); jo_int(o[..], cast(s64) v1); }
+  if k2.count > 0 { jo_key(o[..], k2); if text.count > 0 { jo_str(o[..], text); } else { jo_int(o[..], cast(s64) v2); } }
+  jo_end(o[..]);
+  s[0].body_n = jo_text(o[..]).count;
+  sync_http(s, verb, phase);
+}
+
+// Which game here is which on the account: by what was agreed, then by a level both hold.
+sync_pairs :: (s: [] GbSync) {
+  for b: 0..<s[0].gb_n {
+    if !s[0].gb[b].live { continue; }
+    i := syg_dev_of(s, s[0].gb[b].anchor); j := syg_acc_n(s, s[0].gb[b].acct);
+    if i >= 0 && s[0].dev_base[i] >= 0 { i = -1; }
+    if j >= 0 && s[0].acc_base[j] >= 0 { j = -1; }
+    if i < 0 && j < 0 { s[0].gb[b].live = false; continue; }
+    if i >= 0 { s[0].dev_base[i] = b; }
+    if j >= 0 { s[0].acc_base[j] = b; }
+    if i >= 0 && j >= 0 { s[0].dev_pair[i] = j; s[0].acc_pair[j] = i; }
+  }
+  for i: 0..<s[0].dev_n {
+    if !s[0].dev_live[i] || s[0].dev_pair[i] >= 0 || s[0].dev_base[i] >= 0 { continue; }
+    for k: 0..<cast(int) s[0].dev[i].level_n {
+      j := syg_acc_of(s, s[0].dev[i].levels[k]);
+      if j >= 0 && s[0].acc_pair[j] < 0 && s[0].acc_base[j] < 0 { s[0].dev_pair[i] = j; s[0].acc_pair[j] = i; break; }
+    }
+  }
+}
+
+// The device's game i is no longer one: taken from the open editor if it has it.
+syg_dev_kill :: (s: [] GbSync, i: int) {
+  s[0].dev_put[i] = false;
+  if s[0].was_live[i] { s[0].dev_drop[i] = true; } else { s[0].dev_live[i] = false; }
+  j := s[0].dev_pair[i];
+  if j >= 0 { s[0].acc_pair[j] = -1; s[0].dev_pair[i] = -1; }
+}
+// A level out of the device's game o: the game goes with its last level.
+syg_dev_take :: (s: [] GbSync, o: int, level: s32) {
+  if s[0].dev[o].level_n <= 1 { syg_dev_kill(s, o); return; }
+  syg_remove(s[0].dev[o..<o + 1], level);
+  s[0].dev_put[o] = true;
+}
+// A level of the device's forked (both changed): its game. Where both sides had agreed on the level,
+// its game keeps it (the account's now) and the device's copy is kept as a new game of the same
+// type and name, as a game changed on both sides is. Where they never had (two levels that only
+// share a number), the device's game keeps the device's copy, under its new number. True when the
+// copy is now its game's first level and goes to the account with that game.
+sync_fork_game :: (s: [] GbSync, n: s32, fork: s32, agreed: bool) -> bool {
+  o := syg_dev_of(s, n);
+  if o < 0 { return false; }
+  if agreed {
+    if !syg_room(s) { return false; }
+    d := s[0].dev[o];
+    k := s[0].dev_n; s[0].dev_n += 1;
+    s[0].dev[k] = Mine.{n = syg_free_game(s), plays = d.plays, title = d.title, title_n = d.title_n, owners = d.owners, owners_n = d.owners_n};
+    nb: [MINE_TITLE] u8;
+    _ = syg_add(s[0].dev[k..<k + 1], fork, mine_level_name(d, syg_at(d, n), nb[..]));
+    s[0].dev_live[k] = true; s[0].was_live[k] = false; s[0].dev_put[k] = true; s[0].dev_drop[k] = false;
+    s[0].dev_done[k] = false; s[0].dev_sends[k] = false; s[0].dev_pair[k] = -1; s[0].dev_base[k] = -1;
+    sync_say_game(s, 3, d);
+    s[0].gforked += 1;
+    return sync_held(s, fork);
+  }
+  at := syg_at(s[0].dev[o], n);
+  s[0].dev[o].levels[at] = fork; s[0].dev_put[o] = true;
+  // paired only by that number: they are two games
+  j := s[0].dev_pair[o];
+  if j >= 0 && s[0].dev_base[o] < 0 {
+    shared := false;
+    for k: 0..<cast(int) s[0].dev[o].level_n { if syg_at(s[0].acc[j], s[0].dev[o].levels[k]) >= 0 { shared = true; } }
+    if !shared { s[0].dev_pair[o] = -1; s[0].acc_pair[j] = -1; }
+  }
+  return sync_held(s, fork);
+}
+
+// Every level of the account's game j is on the device.
+sync_can_adopt :: (s: [] GbSync, j: int) -> bool {
+  for k: 0..<cast(int) s[0].acc[j].level_n { if sync_local(s, s[0].acc[j].levels[k]) == 0 { return false; } }
+  return s[0].acc[j].level_n > 0;
+}
+// The device's game i becomes what the account's game j is: its name, type, levels and their names
+// (the device's own number and owners stay). A level another game here holds leaves that game.
+sync_adopt :: (s: [] GbSync, i: int, j: int) {
+  m := s[0].acc[j]; d := s[0].dev[i];
+  m.n = d.n; m.owners = d.owners; m.owners_n = d.owners_n;
+  for k: 0..<cast(int) m.level_n {
+    o := syg_dev_of(s, m.levels[k]);
+    if o >= 0 && o != i { syg_dev_take(s, o, m.levels[k]); }
+  }
+  s[0].dev[i] = m; s[0].dev_put[i] = true;
+}
+// What was agreed for the pair is this, now.
+sync_agree :: (s: [] GbSync, i: int, j: int, digest: s32) {
+  b := s[0].dev_base[i];
+  if b < 0 { b = s[0].acc_base[j]; }
+  if b < 0 { if s[0].gb_n >= SYNC_GAMES { return; } b = s[0].gb_n; s[0].gb_n += 1; }
+  s[0].gb[b] = SyncGameBase.{anchor = s[0].dev[i].levels[0], acct = s[0].acc[j].n, digest = digest, live = true};
+  s[0].dev_base[i] = b; s[0].acc_base[j] = b;
+}
+// A put no other game of the open editor's stands in the way of (none of its levels is another's there).
+syg_put_free :: (s: [] GbSync, i: int) -> bool {
+  for k: 0..<cast(int) s[0].dev[i].level_n {
+    for o: 0..<s[0].dev_n { if o != i && s[0].was_live[o] && syg_at(s[0].was[o], s[0].dev[i].levels[k]) >= 0 { return false; } }
+  }
+  return true;
+}
+sync_device :: (s: [] GbSync, i: int, kind: int) { s[0].pend = i; s[0].pend_kind = kind; s[0].ask = SYNC_GAME; s[0].phase = SP_G_DEVICE; }
+
+// The next level the account's new-game made beside its first is deleted there; none left, the games go on.
+sync_extra :: (s: [] GbSync) {
+  if s[0].gx_n <= 0 { sync_games(s); return; }
+  s[0].gx_n -= 1;
+  sync_row(s, "delete-level", SP_G_EXTRA, "level", s[0].gx[s[0].gx_n], "", 0, "");
+}
+// The device's game i made on the account: new-game of its type, then the device's first level
+// written into the level the account made with it, under that level's number. 1: the host was
+// asked; 0: not now (left to the next pass).
+sync_make :: (s: [] GbSync, i: int) -> int {
+  first := s[0].dev[i].levels[0]; b := s[0].dev_base[i]; j := s[0].dev_pair[i];
+  if sync_local(s, first) == 0 { return 0; }
+  if j >= 0 && b >= 0 && s[0].gb[b].digest == 0 && s[0].gb[b].starter != 0 {
+    // the game is on the account, its first level still as the type starts: the device's goes into it
+    to := s[0].gb[b].starter;
+    if to != first && sync_taken(s, to) { return 0; }
+    s[0].gi = i; s[0].gj = j;
+    sync_row(s, "read-content", SP_G_START, "level", to, "", 0, "");
+    return 1;
+  }
+  // one past the account's highest is where its new game's level will be: free here, or this level's own number
+  want := sync_most_account(s) + 1;
+  if want > LEVEL_MAX || s[0].acc_n >= SYNC_GAMES || s[0].gb_n >= SYNC_GAMES || s[0].count >= SYNC_LEVELS { s[0].failed += 1; return 0; }
+  if want != first && sync_taken(s, want) { return 0; }
+  s[0].gi = i;
+  o: [1] Jo; jo_start(o[..], s[0].body[..]);
+  jo_obj(o[..]); jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[s[0].dev[i].plays]); jo_end(o[..]);
+  s[0].body_n = jo_text(o[..]).count;
+  sync_http(s, "new-game", SP_G_NEW);
+  return 1;
+}
+// The device's game i, changed since both agreed, made the same on the account, a row at a time.
+// 1: a row was asked; 2: something changed here instead; 0: nothing to ask now.
+sync_send :: (s: [] GbSync, i: int, j: int) -> int {
+  d := s[0].dev[i]; a := s[0].acc[j]; wait := false;
+  s[0].gi = i; s[0].gj = j;
+  for k: 0..<cast(int) d.level_n {
+    level := d.levels[k];
+    if syg_at(a, level) >= 0 { continue; }
+    if sync_server(s, level) == 0 { wait = true; continue; }   // not on the account yet
+    s[0].gl = level; s[0].ginto = a.n;
+    sync_row(s, "move-level", SP_G_MOVE, "level", level, "into", a.n, "");
+    return 1;
+  }
+  for k: 0..<cast(int) a.level_n {
+    level := a.levels[k];
+    if syg_at(d, level) >= 0 { continue; }
+    e := sync_find(s, level);
+    if e >= 0 && s[0].levels[e].gone {
+      // deleted here: it goes from the account, and so from its game there
+      if a.level_n <= 1 { wait = true; continue; }
+      s[0].gl = level;
+      sync_row(s, "delete-level", SP_G_UNLEVEL, "level", level, "", 0, "");
+      return 1;
+    }
+    // another game's here (its own turn moves it), not here at all, or the account's game's last
+    if syg_dev_of(s, level) >= 0 || sync_local(s, level) == 0 || a.level_n <= 1 { wait = true; continue; }
+    s[0].gl = level; s[0].ginto = 0;
+    sync_row(s, "move-level", SP_G_MOVE, "level", level, "into", 0, "");
+    return 1;
+  }
+  if wait { return 0; }
+  tb: [MINE_TITLE] u8; ab: [MINE_TITLE] u8;
+  if syg_title(d, tb[..]) != syg_title(a, ab[..]) {
+    sync_row(s, "rename-game", SP_G_RENAME, "game", a.n, "name", 0, syg_title(d, tb[..]));
+    return 1;
+  }
+  for k: 0..<cast(int) d.level_n {
+    ka := syg_at(a, d.levels[k]);
+    nb: [MINE_TITLE] u8; mb: [MINE_TITLE] u8;
+    mine := mine_level_name(d, k, nb[..]); theirs := mine_level_name(a, ka, mb[..]);
+    if mine == theirs { continue; }
+    if mine.count > 0 {
+      s[0].gl = d.levels[k];
+      sync_row(s, "rename-level", SP_G_NAME, "level", d.levels[k], "name", 0, mine);
+      return 1;
+    }
+    // no row takes a name away: the account's name is the device's too
+    syg_name(s[0].dev[i..<i + 1], k, theirs); s[0].dev_put[i] = true;
+    return 2;
+  }
+  return 0;
+}
+// Both changed: the device's game i kept as a new game here holding copies of its levels, then the
+// account's comes here. 1: the host was asked; 2: done; 0: no room (left as it is).
+sync_conflict :: (s: [] GbSync, i: int, j: int) -> int {
+  d := s[0].dev[i];
+  if !syg_room(s) || s[0].count + cast(int) d.level_n > SYNC_LEVELS || sync_most(s) + d.level_n > LEVEL_MAX { s[0].failed += 1; return 0; }
+  s[0].fk[0] = Mine.{n = syg_free_game(s), plays = d.plays, title = d.title, title_n = d.title_n, owners = d.owners, owners_n = d.owners_n};
+  s[0].fk_at = 0; s[0].gi = i; s[0].gj = j;
+  return sync_copy(s);
+}
+sync_copy :: (s: [] GbSync) -> int {
+  i := s[0].gi;
+  while s[0].fk_at < cast(int) s[0].dev[i].level_n {
+    level := s[0].dev[i].levels[s[0].fk_at];
+    if sync_local(s, level) != 0 { s[0].level = level; s[0].ask = SYNC_READ; s[0].phase = SP_G_COPY_READ; return 1; }
+    s[0].fk_at += 1;
+  }
+  sync_say_game(s, 3, s[0].dev[i]);
+  if s[0].fk[0].level_n > 0 {
+    k := s[0].dev_n; s[0].dev_n += 1;
+    s[0].dev[k] = s[0].fk[0]; s[0].dev_live[k] = true; s[0].was_live[k] = false; s[0].dev_put[k] = true; s[0].dev_drop[k] = false;
+    s[0].dev_done[k] = true; s[0].dev_sends[k] = false; s[0].dev_pair[k] = -1; s[0].dev_base[k] = -1;   // it goes to the account on the next pass
+  }
+  s[0].gforked += 1;
+  sync_adopt(s, i, s[0].gj);
+  return 2;
+}
+
+// The next thing the games need, or nothing. 1: the host was asked; 2: something changed here: look
+// again; 0: nothing is left.
+sync_games_step :: (s: [] GbSync) -> int {
+  for i: 0..<s[0].dev_n {
+    if !syg_dev_on(s, i) || s[0].dev_done[i] { continue; }
+    j := s[0].dev_pair[i]; b := s[0].dev_base[i];
+    d := s[0].dev[i]; dd := syg_digest(d);
+    if j < 0 {
+      if b >= 0 && s[0].gb[b].digest != 0 {
+        if !s[0].trust { s[0].dev_done[i] = true; continue; }
+        if s[0].acct_any && dd == s[0].gb[b].digest {
+          // it was on the account as it is here, and is not: deleted there. Its levels stay
+          sync_say_game(s, 2, d);
+          s[0].gb[b].live = false; s[0].dev_base[i] = -1; s[0].gdropped += 1;
+          syg_dev_kill(s, i);
+          return 2;
+        }
+        // changed here since: it is kept, made on the account again
+        s[0].gb[b].live = false; s[0].dev_base[i] = -1;
+      }
+      if sync_make(s, i) == 1 { return 1; }
+      s[0].dev_done[i] = true;
+      continue;
+    }
+    if s[0].acc_done[j] { continue; }
+    a := s[0].acc[j];
+    making := b >= 0 && s[0].gb[b].digest == 0;
+    if making && s[0].gb[b].starter != 0 {
+      if sync_make(s, i) == 1 { return 1; }
+      s[0].dev_done[i] = true;
+      continue;
+    }
+    if a.plays != d.plays {
+      sync_say_game(s, 4, d);
+      s[0].failed += 1; s[0].dev_done[i] = true; s[0].acc_done[j] = true;
+      continue;
+    }
+    da := syg_digest(a);
+    if dd == da { sync_agree(s, i, j, dd); s[0].dev_done[i] = true; continue; }
+    agreed := ifx b >= 0 then s[0].gb[b].digest else -1;
+    mine_changed := making || s[0].dev_sends[i] || agreed < 0 || dd != agreed;
+    theirs_changed := !making && !s[0].dev_sends[i] && (agreed < 0 || da != agreed);
+    if mine_changed && !theirs_changed {
+      s[0].dev_sends[i] = true;
+      r := sync_send(s, i, j);
+      if r != 0 { return r; }
+      s[0].dev_done[i] = true;
+      continue;
+    }
+    if !sync_can_adopt(s, j) { s[0].dev_done[i] = true; continue; }
+    if !mine_changed { sync_adopt(s, i, j); s[0].gcame += 1; return 2; }
+    r := sync_conflict(s, i, j);
+    if r != 0 { return r; }
+    s[0].dev_done[i] = true;
+  }
+  for j: 0..<s[0].acc_n {
+    if !s[0].acc_live[j] || s[0].acc_done[j] || s[0].acc_pair[j] >= 0 { continue; }
+    b := s[0].acc_base[j]; a := s[0].acc[j];
+    if a.plays < 0 { s[0].acc_done[j] = true; continue; }   // a type this build does not know: left alone
+    if b >= 0 && s[0].trust && (s[0].gb[b].digest == 0 || syg_digest(a) == s[0].gb[b].digest) {
+      // deleted on the device (or its making given up): it goes from the account. Its levels stay there
+      s[0].gj = j;
+      sync_row(s, "delete-game", SP_G_DELETE, "game", a.n, "", 0, "");
+      return 1;
+    }
+    if b >= 0 { if !s[0].trust { s[0].acc_done[j] = true; continue; } s[0].gb[b].live = false; s[0].acc_base[j] = -1; }
+    // a game the device has not got: made here once its levels are
+    if !sync_can_adopt(s, j) || !syg_room(s) { s[0].acc_done[j] = true; continue; }
+    k := s[0].dev_n; s[0].dev_n += 1;
+    s[0].dev[k] = Mine.{n = syg_free_game(s)}; s[0].dev_live[k] = true; s[0].was_live[k] = false; s[0].dev_drop[k] = false;
+    s[0].dev_done[k] = false; s[0].dev_sends[k] = false; s[0].dev_base[k] = -1; s[0].dev_pair[k] = j; s[0].acc_pair[j] = k;
+    sync_adopt(s, k, j);
+    sync_say_game(s, 1, a);
+    s[0].gcame += 1;
+    return 2;
+  }
+  return 0;
+}
+// The games, after the levels: the device's own changes first, then a step at a time.
+sync_games :: (s: [] GbSync) {
+  turns := 0;
+  while s[0].games && turns < 4096 {
+    turns += 1;
+    // a game taken away, then a put no other game of the open editor's stands in the way of
+    for i: 0..<s[0].dev_n { if s[0].dev_drop[i] { sync_device(s, i, SG_DROP); return; } }
+    stuck := false;
+    for i: 0..<s[0].dev_n {
+      if !s[0].dev_put[i] { continue; }
+      if syg_put_free(s, i) { sync_device(s, i, SG_PUT); return; }
+      stuck = true;
+    }
+    if stuck {
+      // each waits on another: left to the next pass
+      for i: 0..<s[0].dev_n { if s[0].dev_put[i] { sync_put_refused(s, i); } }
+      continue;
+    }
+    step := sync_games_step(s);
+    if step == 1 { return; }
+    if step == 0 { break; }
+  }
+  sync_after(s);
+}
+// The levels deleted here go from the account, then the pass's end.
+sync_after :: (s: [] GbSync) {
+  for k: 0..<s[0].count {
+    if !s[0].levels[k].gone || (s[0].levels[k].server == 0 && !s[0].levels[k].starter) { continue; }
+    s[0].at = k;
+    sync_row(s, "delete-level", SP_L_DELETE, "level", s[0].levels[k].n, "", 0, "");
+    return;
+  }
+  sync_keep(s);
+}
+// A put or a taking away the open editor refused (the person changed the game meanwhile), or that
+// could not be made: the pass's game is the editor's again, and it is left to the next pass.
+sync_put_refused :: (s: [] GbSync, i: int) {
+  s[0].failed += 1;
+  s[0].dev_put[i] = false; s[0].dev_drop[i] = false; s[0].dev_done[i] = true;
+  if s[0].was_live[i] { s[0].dev[i] = s[0].was[i]; return; }
+  s[0].dev_live[i] = false;
+  j := s[0].dev_pair[i];
+  if j >= 0 { s[0].acc_pair[j] = -1; s[0].acc_done[j] = true; s[0].dev_pair[i] = -1; }
+}
+// A step of the games that failed: both games are left to the next pass.
+sync_game_fail :: (s: [] GbSync) {
+  s[0].failed += 1;
+  if s[0].gi >= 0 { s[0].dev_done[s[0].gi] = true; }
+  if s[0].gj >= 0 { s[0].acc_done[s[0].gj] = true; }
+  sync_games(s);
+}
+// The device's first level, as its game's level on the account, written there from the starter's revision.
+sync_first_push :: (s: [] GbSync) {
+  b := s[0].dev_base[s[0].gi];
+  if !sync_body_write(s, s[0].gb[b].starter, s[0].gs, cast(string) s[0].mine[0..<s[0].mine_n]) { sync_game_fail(s); return; }
+  sync_http(s, "write-content", SP_G_FIRST_PUSH);
+}
+
+sync_games_answer :: (s: [] GbSync, phase: int, status: s32, bytes: [] u8) {
+  d: [1] Jv;
+  if phase == SP_GAMES_LIST {
+    if status != 200 || !jv_parse(d[..], cast(string) bytes, s[0].nodes[..]) { s[0].phase = 0; s[0].failed += 1; return; }
+    arr := jv_get(d[0], 0, "games");
+    m := ifx arr >= 0 && jv_kind(d[0], arr) == JV_ARRAY then d[0].nodes[arr].first else -1;
+    while m >= 0 && s[0].acc_n < SYNC_GAMES {
+      g := Mine.{n = cast(s32) jv_int(d[0], jv_get(d[0], m, "game"), 0)};
+      tb: [MINE_TITLE + 8] u8; tn := jv_str(d[0], jv_get(d[0], m, "title"), tb[..]);
+      if tn > 0 && tn <= MINE_TITLE { for j: 0..<tn { g.title[j] = tb[j]; } g.title_n = cast(s32) tn; }
+      pb: [64] u8; pn := jv_str(d[0], jv_get(d[0], m, "template"), pb[..]);
+      g.plays = ifx pn > 0 && pn < pb.count then template_of(cast(string) pb[0..<pn]) else -1;
+      ls := jv_get(d[0], m, "levels");
+      l := ifx ls >= 0 && jv_kind(d[0], ls) == JV_ARRAY then d[0].nodes[ls].first else -1;
+      gs := [1] Mine.[g];
+      while l >= 0 {
+        n := jv_int(d[0], l, 0);
+        if n >= 1 && n <= LEVEL_MAX {
+          k := sync_find(s, cast(s32) n);
+          name := ifx k >= 0 then cast(string) s[0].levels[k].name[0..<cast(int) s[0].levels[k].name_n] else "";
+          _ = syg_add(gs[..], cast(s32) n, name);
+        }
+        l = d[0].nodes[l].next;
+      }
+      if gs[0].n >= 1 && gs[0].level_n > 0 { s[0].acc[s[0].acc_n] = gs[0]; s[0].acc_live[s[0].acc_n] = true; s[0].acc_n += 1; }
+      m = d[0].nodes[m].next;
+    }
+    sync_pairs(s);
+    s[0].at = 0;
+    sync_next(s);
+    return;
+  }
+  if phase == SP_L_DROP {
+    k := s[0].at;
+    if status == 1 {
+      n := s[0].levels[k].n;
+      sync_say_level(s, 2, n, 0);
+      s[0].levels[k].local = 0; s[0].levels[k].base = 0; s[0].levels[k].had = false; s[0].ldropped += 1;
+      o := syg_dev_of(s, n);
+      if o >= 0 { syg_dev_take(s, o, n); }
+    } else { s[0].failed += 1; }
+    s[0].levels[k].done = true; s[0].at += 1; sync_next(s);
+    return;
+  }
+  if phase == SP_L_DELETE {
+    k := s[0].at;
+    s[0].levels[k].gone = false;
+    if status == 200 {
+      s[0].levels[k].server = 0; s[0].levels[k].base = 0; s[0].levels[k].starter = false; s[0].ldeleted += 1;
+      j := syg_acc_of(s, s[0].levels[k].n);
+      if j >= 0 { syg_remove(s[0].acc[j..<j + 1], s[0].levels[k].n); }
+    } else { s[0].failed += 1; }
+    sync_after(s);
+    return;
+  }
+  i := s[0].gi; j := s[0].gj;
+  if phase == SP_G_DEVICE {
+    p := s[0].pend;
+    if status == 1 {
+      if s[0].pend_kind == SG_DROP { s[0].dev_live[p] = false; s[0].was_live[p] = false; s[0].dev_drop[p] = false; }
+      else { s[0].was[p] = s[0].dev[p]; s[0].was_live[p] = true; s[0].dev_put[p] = false; }
+    } else { sync_put_refused(s, p); }
+    sync_games(s);
+    return;
+  }
+  if phase == SP_G_NEW {
+    ok := status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]);
+    g := ifx ok then jv_int(d[0], jv_get(d[0], 0, "game"), 0) else 0;
+    level := ifx ok then jv_int(d[0], jv_get(d[0], 0, "level"), 0) else 0;
+    s[0].gj = -1;
+    if g < 1 || g > LEVEL_MAX || level < 1 || level > LEVEL_MAX { sync_game_fail(s); return; }
+    j = s[0].acc_n; s[0].acc_n += 1;
+    s[0].acc[j] = Mine.{n = cast(s32) g, plays = s[0].dev[i].plays, level_n = 1};
+    s[0].acc[j].levels[0] = cast(s32) level;
+    s[0].acc_live[j] = true; s[0].acc_done[j] = false; s[0].acc_pair[j] = i; s[0].dev_pair[i] = j;
+    // kept before anything else is asked: a pass that stops here goes on from here
+    b := s[0].dev_base[i];
+    if b < 0 { b = s[0].gb_n; s[0].gb_n += 1; }
+    s[0].gb[b] = SyncGameBase.{anchor = s[0].dev[i].levels[0], acct = cast(s32) g, digest = 0, starter = cast(s32) level, live = true};
+    s[0].dev_base[i] = b; s[0].acc_base[j] = b;
+    k := sync_entry(s, cast(s32) level);
+    if k >= 0 { s[0].levels[k].starter = true; s[0].levels[k].done = true; }
+    s[0].gmade += 1;
+    // the levels the account made beside the first (the answer's "levels"): they go, there
+    s[0].gx_n = 0;
+    all := jv_get(d[0], 0, "levels");
+    for q: 0..<jv_len(d[0], all) {
+      x := jv_int(d[0], jv_at(d[0], all, q), 0);
+      if x >= 1 && x <= LEVEL_MAX && x != level && s[0].gx_n < GT_LEVELS_MOST { s[0].gx[s[0].gx_n] = cast(s32) x; s[0].gx_n += 1; }
+    }
+    sync_extra(s);
+    return;
+  }
+  if phase == SP_G_EXTRA {
+    if status != 200 { s[0].failed += 1; }
+    sync_extra(s);
+    return;
+  }
+  if phase == SP_G_START {
+    ok := status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]);
+    r := ifx ok then jv_int(d[0], jv_get(d[0], 0, "revision"), -1) else -1;
+    if r <= 0 { sync_game_fail(s); return; }
+    s[0].gs = cast(s32) r;
+    s[0].level = s[0].dev[i].levels[0]; s[0].ask = SYNC_READ; s[0].phase = SP_G_FIRST_READ;
+    return;
+  }
+  if phase == SP_G_FIRST_READ {
+    b := s[0].dev_base[i];
+    first := s[0].dev[i].levels[0]; to := s[0].gb[b].starter;
+    if status != 1 || bytes.count == 0 || bytes.count > AGENT_FILE_MAX { sync_game_fail(s); return; }
+    for q: 0..<bytes.count { s[0].mine[q] = bytes[q]; }
+    s[0].mine_n = bytes.count;
+    if to == first { sync_first_push(s); return; }
+    // the level takes the number the account gave its game's level
+    s[0].e[0] = Editor.{};
+    if !ed_open(s[0].e[..], to, s[0].mine[0..<s[0].mine_n]) { sync_game_fail(s); return; }
+    saved := ed_save(s[0].e[..], s[0].body[..]);
+    if saved <= 0 || saved > AGENT_FILE_MAX { sync_game_fail(s); return; }
+    for q: 0..<cast(int) saved { s[0].mine[q] = s[0].body[q]; }
+    s[0].mine_n = cast(int) saved; s[0].body_n = cast(int) saved;
+    s[0].level = first; s[0].to = to; s[0].pend = i; s[0].pend_kind = SG_MOVE;
+    s[0].ask = SYNC_MOVE; s[0].phase = SP_G_FIRST_MOVE;
+    return;
+  }
+  if phase == SP_G_FIRST_MOVE {
+    if status != 1 { sync_game_fail(s); return; }
+    b := s[0].dev_base[i];
+    first := s[0].dev[i].levels[0]; to := s[0].gb[b].starter;
+    s[0].dev[i].levels[0] = to;
+    if s[0].was_live[i] { at := syg_at(s[0].was[i], first); if at >= 0 { s[0].was[i].levels[at] = to; } }
+    k := sync_find(s, first);
+    if k >= 0 {
+      // the account's copy of it under the old number (a level in no game there) goes
+      s[0].levels[k].local = 0; s[0].levels[k].had = false;
+      if s[0].levels[k].server != 0 { s[0].levels[k].gone = true; } else { s[0].levels[k].base = 0; }
+    }
+    k = sync_entry(s, to);
+    if k >= 0 { s[0].levels[k].local = sync_rev(s, to, s[0].mine[0..<s[0].mine_n]); s[0].levels[k].done = true; }
+    sync_first_push(s);
+    return;
+  }
+  if phase == SP_G_FIRST_PUSH {
+    ok := status == 200 && jv_parse(d[..], cast(string) bytes, s[0].nodes[..]);
+    r := ifx ok then jv_int(d[0], jv_get(d[0], 0, "revision"), -1) else -1;
+    if r <= 0 { sync_game_fail(s); return; }
+    b := s[0].dev_base[i];
+    k := sync_entry(s, s[0].gb[b].starter);
+    if k >= 0 { s[0].levels[k].server = cast(s32) r; s[0].levels[k].base = cast(s32) r; s[0].levels[k].local = cast(s32) r; s[0].levels[k].starter = false; s[0].levels[k].done = true; }
+    s[0].gb[b].anchor = s[0].gb[b].starter; s[0].gb[b].starter = 0;
+    s[0].pushed += 1;
+    sync_games(s);
+    return;
+  }
+  if phase == SP_G_COPY_READ {
+    if status != 1 || bytes.count == 0 || bytes.count > AGENT_FILE_MAX { sync_game_fail(s); return; }
+    copy := sync_most(s) + 1;
+    k := sync_entry(s, copy);
+    s[0].e[0] = Editor.{};
+    if k < 0 || !ed_open(s[0].e[..], copy, bytes) { sync_game_fail(s); return; }
+    s[0].levels[k].done = true;
+    saved := ed_save(s[0].e[..], s[0].body[..]);
+    if saved <= 0 { sync_game_fail(s); return; }
+    s[0].body_n = cast(int) saved;
+    s[0].fork = copy; s[0].level = copy; s[0].ask = SYNC_WRITE; s[0].phase = SP_G_COPY_WRITE;
+    return;
+  }
+  if phase == SP_G_COPY_WRITE {
+    if status != 1 { sync_game_fail(s); return; }
+    k := sync_find(s, s[0].fork);
+    if k >= 0 { s[0].levels[k].local = sync_rev(s, s[0].fork, s[0].body[0..<s[0].body_n]); }
+    nb: [MINE_TITLE] u8;
+    _ = syg_add(s[0].fk[..], s[0].fork, mine_level_name(s[0].dev[i], s[0].fk_at, nb[..]));
+    s[0].fk_at += 1;
+    if sync_copy(s) == 2 { sync_games(s); }
+    return;
+  }
+  // a row of the account's
+  if status != 200 { sync_game_fail(s); return; }
+  if phase == SP_G_MOVE {
+    from := syg_acc_of(s, s[0].gl);
+    nb: [MINE_TITLE] u8; name := "";
+    if from >= 0 { name = mine_level_name(s[0].acc[from], syg_at(s[0].acc[from], s[0].gl), nb[..]); syg_remove(s[0].acc[from..<from + 1], s[0].gl); }
+    if s[0].ginto != 0 { _ = syg_add(s[0].acc[j..<j + 1], s[0].gl, name); }
+  } else if phase == SP_G_UNLEVEL {
+    syg_remove(s[0].acc[j..<j + 1], s[0].gl);
+    k := sync_find(s, s[0].gl);
+    if k >= 0 { s[0].levels[k].server = 0; s[0].levels[k].base = 0; s[0].levels[k].gone = false; s[0].levels[k].starter = false; }
+    s[0].ldeleted += 1;
+  } else if phase == SP_G_RENAME {
+    s[0].acc[j].title = s[0].dev[i].title; s[0].acc[j].title_n = s[0].dev[i].title_n;
+  } else if phase == SP_G_NAME {
+    nb: [MINE_TITLE] u8;
+    name := mine_level_name(s[0].dev[i], syg_at(s[0].dev[i], s[0].gl), nb[..]);
+    at := syg_at(s[0].acc[j], s[0].gl);
+    if at >= 0 { syg_name(s[0].acc[j..<j + 1], at, name); }
+  } else if phase == SP_G_DELETE {
+    b := s[0].acc_base[j];
+    if b >= 0 {
+      // a game given up while it was being made: the level the account made with it goes too
+      if s[0].gb[b].digest == 0 && s[0].gb[b].starter != 0 { k := sync_entry(s, s[0].gb[b].starter); if k >= 0 { s[0].levels[k].gone = true; s[0].levels[k].starter = true; } }
+      s[0].gb[b].live = false;
+    }
+    s[0].acc_live[j] = false; s[0].gdeleted += 1;
+  }
+  sync_games(s);
+}
+
+// ---- the device's games, on the open editor
+
+// The device's games and the account logged in, for the pass about to begin (ed_sync_begin): the
+// open editor's. Without it a pass keeps levels only.
+ed_sync_device :: (s: [] GbSync, e: [] Editor) #export_c #effects(all) {
+  if s.count != 1 || e.count != 1 || s[0].ask != SYNC_IDLE { return; }
+  s[0].who_n = cast(int) e[0].account_n;
+  for i: 0..<s[0].who_n { s[0].who[i] = e[0].account[i]; }
+  s[0].dev_n = 0;
+  for i: 0..<SYNC_GAMES { s[0].dev_live[i] = false; s[0].was_live[i] = false; }
+  for i: 0..<cast(int) e[0].mine_n {
+    s[0].dev[i] = e[0].mine[i]; s[0].was[i] = e[0].mine[i];
+    s[0].dev_live[i] = true; s[0].was_live[i] = true;
+    s[0].dev_n += 1;
+  }
+  s[0].given = true;
+}
+// SYNC_MOVE's: the level's new number.
+ed_sync_to :: (s: [] GbSync) -> s32 #export_c #effects(all) { return ifx s.count == 1 then s[0].to else 0; }
+// What SYNC_GAME, SYNC_DROP and SYNC_MOVE ask, done on the open editor, which then has the host
+// write and delete files as after a row (ed_game_due, ed_drop_game_due, ed_drop_due, ed_save_due).
+// False, and nothing changed, when the game is not as the pass found it (the person changed it
+// meanwhile), or the level is open and being played or not yet saved: left to the next pass.
+ed_sync_mine :: (s: [] GbSync, e: [] Editor) -> bool #export_c #effects(all) {
+  if s.count != 1 || e.count != 1 { return false; }
+  ask := s[0].ask; kind := s[0].pend_kind;
+  if !((ask == SYNC_GAME && (kind == SG_PUT || kind == SG_DROP)) || (ask == SYNC_DROP && kind == SG_UNLEVEL) || (ask == SYNC_MOVE && kind == SG_MOVE)) { return false; }
+  open := !e[0].official && e[0].level > 0;
+  if kind == SG_UNLEVEL {
+    n := s[0].level;
+    if open && e[0].level == n {
+      if e[0].play[0].on || ed_save_due(e) { return false; }
+      // the open level is not written again: the host deletes its file and opens another
+      e[0].fresh = false; editor_scene_saved(ed_scene(e));
+    }
+    e[0].drop_due = n; e[0].dirty = true;
+    return true;
+  }
+  i := s[0].pend; m := s[0].dev[i];
+  at := mine_find(e, m.n);
+  if s[0].was_live[i] { if at < 0 || syg_digest(e[0].mine[at]) != syg_digest(s[0].was[i]) { return false; } }
+  else if at >= 0 { return false; }
+  if kind == SG_DROP {
+    if at < 0 { return true; }
+    if !mine_drop(e, m.n) { return false; }
+    e[0].drop_game_due = m.n; e[0].dirty = true;
+    return true;
+  }
+  if kind == SG_MOVE {
+    from := s[0].level; to := s[0].to;
+    if at < 0 { return false; }
+    k := syg_at(e[0].mine[at], from);
+    if k < 0 || mine_of_level(e, to) != 0 { return false; }
+    if open && e[0].level == from && e[0].play[0].on { return false; }
+    e[0].mine[at].levels[k] = to;
+    // the level open keeps its scene under its new number, and is written as that
+    if open && e[0].level == from { e[0].level = to; e[0].fresh = true; }
+    e[0].game_due = m.n; e[0].dirty = true;
+    return true;
+  }
+  doc: [MINE_DOC_MAX] u8;
+  text := mine_text(m, doc[..]);
+  if text.count == 0 || !ed_mine_load(e, m.n, doc[0..<text.count]) { return false; }
+  // the level open: in the game that holds it now, played as that game's type
+  if open {
+    g := mine_of_level(e, e[0].level);
+    if g != e[0].mine_open {
+      gi := mine_find(e, g);
+      e[0].mine_open = g; e[0].plays = ifx gi >= 0 then e[0].mine[gi].plays else TEMPLATE_ARENA;
+    }
+  }
+  e[0].game_due = m.n; e[0].dirty = true;
+  return true;
+}
+// What the pass has to tell the person, put on the line under the toolbar. False: nothing.
+ed_sync_note :: (s: [] GbSync, e: [] Editor) -> bool #export_c #effects(all) {
+  if s.count != 1 || e.count != 1 || s[0].said_n == 0 { return false; }
+  ed_say(e, cast(string) s[0].said[0..<s[0].said_n]);
+  s[0].said_n = 0; s[0].said_rank = 0;
+  return true;
+}
+
+// ---- checks: a server and a device, played by the test
+
+SYNC_T :: 12;
+SyncTest :: struct {
+  s: [1] GbSync;
+  e: [1] Editor;
+  d: [1] Editor;              // the device's open editor: its games are the device's
+  a: [1] Editor;              // the account's games, as serve --accounts has them from its files
+  files: [SYNC_T] [AGENT_FILE_MAX] u8; sizes: [SYNC_T] int;      // the device's levels 1 to 11
+  account: [SYNC_T] [AGENT_FILE_MAX] u8; asizes: [SYNC_T] int;   // the account's
+  kept: [4096] u8; kept_n: int;
+  out: [AGENT_FILE_MAX * 2 + 512] u8;
+  nodes: [4096] JvNode;
+  reopened: s32;
+  aside: s32;                 // the level whose file the device set aside and deleted (SYNC_DROP)
+  asked: int; answers: int;   // requests the site was sent this pass; it answers only this many (0: all), then nothing
+  note: [NOTE_MAX] u8; note_n: int;   // what the pass told the person
+}
+// A level file: a new arena level n, with things moved along by shift (0: as it is made).
+sync_test_file :: (t: [] SyncTest, n: s32, shift: s32, out: [] u8) -> int {
+  t[0].e[0] = Editor.{};
+  ed_new(t[0].e[..], n);
+  // the first thing moved east by shift cm, as an edit does
+  if shift != 0 { t[0].e[0].selected = ed_actor(t[0].e[..], 0).id; _ = ed_set_field(t[0].e[..], FIELD_X, ed_actor(t[0].e[..], 0).x + shift); }
+  return cast(int) ed_save(t[0].e[..], out);
+}
+sync_test_rev :: (t: [] SyncTest, n: s32, text: [] u8) -> s32 {
+  t[0].e[0] = Editor.{};
+  if !ed_open(t[0].e[..], n, text) { return 0; }
+  return cast(s32) ed_agent_rev(t[0].e[..]);
+}
+// The server's answer to one request, as serve --accounts gives it: the row itself, run on the
+// account's files (a level the row names opened first, the level and the files written after),
+// written into out: its status.
+sync_test_server :: (t: [] SyncTest, path: string, body: string, out: [] u8, n: [] int) -> s32 {
+  v := ifx path.count > 10 then gb_find(cast(string) path[10..<path.count]) else -1;
+  if v < 0 { return 404; }
+  levels: [SYNC_T] s32; revs: [SYNC_T] s32; ln := 0;
+  for k: 1..<SYNC_T {
+    if t[0].asizes[k] == 0 { continue; }
+    levels[ln] = cast(s32) k; revs[ln] = sync_test_rev(t, cast(s32) k, t[0].account[k][0..<t[0].asizes[k]]); ln += 1;
+  }
+  a := t[0].a[..];
+  if gb_part(GB_COMMANDS[v].arguments, 0) == "level" {
+    d: [1] Jv;
+    if !jv_parse(d[..], body, t[0].nodes[..]) { return 400; }
+    level := jv_int(d[0], jv_get(d[0], 0, "level"), -1);
+    if level < 1 || level >= SYNC_T { return 404; }
+    found := t[0].asizes[level] > 0;
+    if found || v != VERB_WRITE_CONTENT {
+      if gb_open(a, cast(s32) level, t[0].account[level][0..<t[0].asizes[level]], found).count > 0 { return 404; }
+    }
+  }
+  r := gb_command_run_world(a, v, body, GbWorld.{levels = levels[0..<ln], revs = revs[0..<ln]}, out, 0);
+  if r.code != GB_DONE { return 409; }
+  if r.save_level { k := cast(int) ed_level(a); if k < 1 || k >= SYNC_T { return 500; } t[0].asizes[k] = cast(int) ed_save(a, t[0].account[k][..]); }
+  // (a new game's levels after its first: each one's file, as every surface writes them)
+  while ed_more_due(a) > 0 { k := cast(int) ed_more_due(a); if k < 1 || k >= SYNC_T { return 500; } t[0].asizes[k] = cast(int) ed_more_save(a, t[0].account[k][..]); }
+  if r.drop_level > 0 { t[0].asizes[r.drop_level] = 0; }
+  n[0] = r.json.count;
+  return 200;
+}
+// A row on the account from elsewhere (another device, the website, a command line).
+sync_test_acct :: (t: [] SyncTest, verb: string, body: string) -> bool {
+  pb: [64] u8; pt := [1] Text.[Text.{buf = pb[..]}];
+  tx_put(pt[..], "/api/rows/"); tx_put(pt[..], verb);
+  ab: [AGENT_FILE_MAX * 2 + 512] u8; an: [1] int;
+  return sync_test_server(t, cast(string) pb[0..<pt[0].at], body, ab[..], an[..]) == 200;
+}
+// The device's files after a row or a sync changed its open editor: what the host does.
+sync_test_saved :: (t: [] SyncTest) {
+  d := t[0].d[..];
+  dropped := ed_drop_due(d);
+  if dropped > 0 && dropped < SYNC_T { t[0].sizes[dropped] = 0; }
+  _ = ed_drop_game_due(d);
+  while ed_game_due(d) > 0 { }
+  while ed_more_due(d) > 0 { k := cast(int) ed_more_due(d); if k < 1 || k >= SYNC_T { break; } t[0].sizes[k] = cast(int) ed_more_save(d, t[0].files[k][..]); }
+  if ed_save_due(d) { k := cast(int) ed_level(d); if k >= 1 && k < SYNC_T { t[0].sizes[k] = cast(int) ed_save(d, t[0].files[k][..]); } ed_saved(d); }
+}
+// Opens a level of the device's in its editor, as the app does.
+sync_test_open :: (t: [] SyncTest, n: s32) -> bool { return n >= 1 && n < SYNC_T && t[0].sizes[n] > 0 && ed_open(t[0].d[..], n, t[0].files[n][0..<t[0].sizes[n]]); }
+// A row on the device, as the app runs it on its open editor.
+sync_test_here :: (t: [] SyncTest, verb: string, args: string) -> bool {
+  levels: [SYNC_T] s32; ln := 0;
+  for k: 1..<SYNC_T { if t[0].sizes[k] > 0 { levels[ln] = cast(s32) k; ln += 1; } }
+  r := gb_command_run_world(t[0].d[..], gb_find(verb), args, GbWorld.{levels = levels[0..<ln]}, t[0].out[..], 0);
+  if r.code != GB_DONE { return false; }
+  if r.save_level { t[0].d[0].fresh = true; }
+  sync_test_saved(t);
+  return true;
+}
+// The first thing of a level moved east by shift cm: on the device (its editor has the level open after), or on the account.
+sync_test_edit :: (t: [] SyncTest, n: s32, shift: s32) -> bool {
+  if !sync_test_open(t, n) { return false; }
+  d := t[0].d[..];
+  d[0].selected = ed_actor(d, 0).id;
+  if !ed_set_field(d, FIELD_X, ed_actor(d, 0).x + shift) { return false; }
+  sync_test_saved(t);
+  return true;
+}
+sync_test_edit_acct :: (t: [] SyncTest, n: s32, shift: s32) -> bool {
+  e := t[0].e[..];
+  e[0] = Editor.{};
+  if t[0].asizes[n] == 0 || !ed_open(e, n, t[0].account[n][0..<t[0].asizes[n]]) { return false; }
+  e[0].selected = ed_actor(e, 0).id;
+  if !ed_set_field(e, FIELD_X, ed_actor(e, 0).x + shift) { return false; }
+  t[0].asizes[n] = cast(int) ed_save(e, t[0].account[n][..]);
+  return true;
+}
+// The game of a side's editor that holds the level: its place in the list, or -1.
+sync_test_game :: (e: [] Editor, level: s32) -> s64 { return mine_find(e, mine_of_level(e, level)); }
+sync_test_title :: (e: [] Editor, level: s32, out: [] u8) -> string {
+  i := sync_test_game(e, level);
+  if i < 0 { return ""; }
+  return syg_title(e[0].mine[i], out);
+}
+sync_test_login :: (t: [] SyncTest, who: string) {
+  b: [64] u8; for i: 0..<who.count { b[i] = who[i]; }
+  ed_set_account(t[0].d[..], b[0..<who.count]);
+}
+sync_test_said :: (t: [] SyncTest) -> string { return cast(string) t[0].note[0..<t[0].note_n]; }
+// One pass, the test playing the host: requests to its server, files to its device.
+sync_test_pass :: (t: [] SyncTest) -> bool {
+  here: [SYNC_T] s32; hn := 0;
+  for k: 1..<SYNC_T { if t[0].sizes[k] > 0 { here[hn] = cast(s32) k; hn += 1; } }
+  t[0].asked = 0; t[0].note_n = 0; t[0].aside = 0;
+  ed_sync_device(t[0].s[..], t[0].d[..]);
+  if !ed_sync_begin(t[0].s[..], here[0..<hn], t[0].kept[0..<t[0].kept_n]) { return false; }
+  steps := 0;
+  while ed_sync_ask(t[0].s[..]) != SYNC_IDLE && steps < 200 {
+    steps += 1;
+    ask := ed_sync_ask(t[0].s[..]);
+    pb: [64] u8; pn := ed_sync_path(t[0].s[..], pb[..]);
+    bn := ed_sync_body(t[0].s[..], t[0].out[..]);
+    body := cast(string) t[0].out[0..<bn];
+    n := ed_sync_level(t[0].s[..]);
+    if ask == SYNC_HTTP {
+      ab: [AGENT_FILE_MAX * 2 + 512] u8; an: [1] int;
+      t[0].asked += 1;
+      st: s32 = 0;
+      if t[0].answers == 0 || t[0].asked <= t[0].answers { st = sync_test_server(t, cast(string) pb[0..<pn], body, ab[..], an[..]); }
+      ed_sync_answer(t[0].s[..], st, ab[0..<ifx st == 200 then an[0] else 0]);
+    } else if ask == SYNC_READ {
+      ok := n >= 1 && n < SYNC_T && t[0].sizes[n] > 0;
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, ifx ok then t[0].files[n][0..<t[0].sizes[n]] else t[0].out[0..<0]);
+    } else if ask == SYNC_WRITE {
+      if n < 1 || n >= SYNC_T { ed_sync_answer(t[0].s[..], 0, t[0].out[0..<0]); continue; }
+      for i: 0..<bn { t[0].files[n][i] = t[0].out[i]; }
+      t[0].sizes[n] = cast(int) bn; t[0].reopened = n;
+      // the level open is read again
+      if !t[0].d[0].official && ed_level(t[0].d[..]) == n { _ = ed_open(t[0].d[..], n, t[0].files[n][0..<t[0].sizes[n]]); }
+      ed_sync_answer(t[0].s[..], 1, t[0].out[0..<0]);
+    } else if ask == SYNC_GAME {
+      ok := ed_sync_mine(t[0].s[..], t[0].d[..]);
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, t[0].out[0..<0]);
+    } else if ask == SYNC_DROP {
+      ok := ed_sync_mine(t[0].s[..], t[0].d[..]);
+      if ok { t[0].aside = n; }
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, t[0].out[0..<0]);
+    } else if ask == SYNC_MOVE {
+      to := ed_sync_to(t[0].s[..]);
+      ok := to >= 1 && to < SYNC_T && ed_sync_mine(t[0].s[..], t[0].d[..]);
+      if ok { for i: 0..<bn { t[0].files[to][i] = t[0].out[i]; } t[0].sizes[to] = cast(int) bn; t[0].sizes[n] = 0; }
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, t[0].out[0..<0]);
+    } else if ask == SYNC_KEEP {
+      for i: 0..<bn { t[0].kept[i] = t[0].out[i]; }
+      t[0].kept_n = cast(int) bn;
+      ed_sync_answer(t[0].s[..], 1, t[0].out[0..<0]);
+    }
+  }
+  if ed_sync_note(t[0].s[..], t[0].d[..]) { t[0].note_n = cast(int) ed_note(t[0].d[..], t[0].note[..]); }
+  return steps < 200;
+}
+sync_test_same :: (t: [] SyncTest, k: int) -> bool {
+  if t[0].sizes[k] != t[0].asizes[k] { return false; }
+  for i: 0..<t[0].sizes[k] { if t[0].files[k][i] != t[0].account[k][i] { return false; } }
+  return true;
+}
+
+#test "a device's level goes to the account, the account's comes to the device, and a pass with nothing changed asks once" {
+  t: [1] SyncTest;
+  t[0].sizes[1] = sync_test_file(t[..], 1, 0, t[0].files[1][..]);     // the phone made level 1
+  t[0].asizes[2] = sync_test_file(t[..], 2, 300, t[0].account[2][..]); // another computer made level 2
+  #assert sync_test_pass(t[..]);
+  #assert sync_test_same(t[..], 1) && sync_test_same(t[..], 2);
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[0] == 1 && c[1] == 1 && c[2] == 0 && c[3] == 0;
+  #assert level_find(cast(string) t[0].kept[0..<t[0].kept_n], "1 ") == 0;
+  // nothing changed: one request (list-levels), then the bases kept
+  #assert sync_test_pass(t[..]);
+  #assert ed_sync_counts(t[0].s[..], c[..]) && c[0] == 0 && c[1] == 0 && c[2] == 0 && c[3] == 0;
+}
+
+#test "an agent's change to the account comes to the phone's open level; the phone's change goes back" {
+  t: [1] SyncTest;
+  t[0].sizes[1] = sync_test_file(t[..], 1, 0, t[0].files[1][..]);
+  #assert sync_test_pass(t[..]);
+  // an agent elsewhere moves a thing in the account's level 1
+  t[0].asizes[1] = sync_test_file(t[..], 1, 500, t[0].account[1][..]);
+  t[0].reopened = 0;
+  #assert sync_test_pass(t[..]);
+  #assert sync_test_same(t[..], 1) && t[0].reopened == 1;
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[1] == 1 && c[0] == 0;
+  // then the phone moves it again: it goes back
+  t[0].sizes[1] = sync_test_file(t[..], 1, 900, t[0].files[1][..]);
+  #assert sync_test_pass(t[..]);
+  #assert sync_test_same(t[..], 1) && ed_sync_counts(t[0].s[..], c[..]) && c[0] == 1 && c[1] == 0;
+}
+
+#test "when both sides changed a level, the account's is kept at its number and the device's becomes a new level on both" {
+  t: [1] SyncTest;
+  t[0].sizes[1] = sync_test_file(t[..], 1, 0, t[0].files[1][..]);
+  #assert sync_test_pass(t[..]);
+  t[0].asizes[1] = sync_test_file(t[..], 1, 500, t[0].account[1][..]);   // the account's changed
+  t[0].sizes[1] = sync_test_file(t[..], 1, -700, t[0].files[1][..]);    // and the phone's
+  mine := sync_test_rev(t[..], 1, t[0].files[1][0..<t[0].sizes[1]]);
+  #assert sync_test_pass(t[..]);
+  #assert sync_test_same(t[..], 1) && sync_test_same(t[..], 2);
+  // level 2 is the phone's change, nothing lost: the same things as its level 1 had
+  #assert sync_test_rev(t[..], 2, t[0].files[2][0..<t[0].sizes[2]]) != 0;
+  t[0].e[0] = Editor.{}; #assert ed_open(t[0].e[..], 2, t[0].files[2][0..<t[0].sizes[2]]);
+  t2: [1] SyncTest; _ = sync_test_file(t2[..], 2, -700, t2[0].out[..]);
+  #assert ed_actor(t[0].e[..], 0).x == ed_actor(t2[0].e[..], 0).x;
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[2] == 1 && c[1] == 1 && c[3] == 0;
+  _ = mine;
+  // and the next pass has nothing to do
+  #assert sync_test_pass(t[..]);
+  #assert ed_sync_counts(t[0].s[..], c[..]) && c[0] == 0 && c[1] == 0 && c[2] == 0;
+}
+
+#test "no answer from the site leaves everything for the next pass, and a pass can't start while one is going" {
+  t: [1] SyncTest;
+  t[0].sizes[1] = sync_test_file(t[..], 1, 0, t[0].files[1][..]);
+  here := [1] s32.[1];
+  #assert ed_sync_begin(t[0].s[..], here[..], t[0].kept[0..<0]);
+  #assert !ed_sync_begin(t[0].s[..], here[..], t[0].kept[0..<0]);
+  #assert ed_sync_ask(t[0].s[..]) == SYNC_HTTP;
+  ed_sync_answer(t[0].s[..], 0, t[0].out[0..<0]);
+  #assert ed_sync_ask(t[0].s[..]) == SYNC_IDLE;
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[3] == 1 && c[0] == 0;
+  #assert sync_test_pass(t[..]) && sync_test_same(t[..], 1);
+}
+
+// The agents' half: a folder's agent, with the rows on both sides: the device's (its files) and the
+// account's (serve --accounts keeps its records as the folder does).
+SyncAgentTest :: struct {
+  s: [1] GbSync; e: [1] Editor;
+  here: [1] AgrStore; here_log: [262144] u8; here_n: int;
+  acct: [1] AgrStore; acct_log: [262144] u8; acct_n: int;
+  acct_pics: [AGP_INDEX_MAX] u8; acct_pics_n: int; acct_jpeg: [AGP_HEX] u8;   // the account's agent-pictures, and the last picture kept
+  pics: [PIC_KEEP * PIC_LINE] u8; pics_n: int; pics_level: s32;               // the device's level-N.pictures
+  sent_pics: int;                                                             // agent-picture calls the site was sent
+  rec: [AGR_RECORD_MAX + 8] u8; rec_n: int;
+  out: [SYNC_BODY] u8; answer: [262144] u8; other: [262144] u8;
+  id: [AGR_ID] u8; id_n: int;
+  why: int;                   // why sa_same_events said no: 1 the device's read refused, 2 the account's, 3 and 4 they differ
+}
+SA_NOW :: 1763380000000;
+// A row on the device's files, as the CLI and the app run it: its lines appended to the log.
+sa_here :: (t: [] SyncAgentTest, v: int, args: string) -> GbResult {
+  w := GbWorld.{agents = t[0].here[..], log = cast(string) t[0].here_log[0..<t[0].here_n], now = SA_NOW, computer = AGR_THIS_MAC};
+  r := gb_command_run_world(t[0].e[..], v, args, w, t[0].answer[..], 0);
+  if r.code == GB_DONE {
+    for c: r.lines { t[0].here_log[t[0].here_n] = c; t[0].here_n += 1; }
+    if r.agent > 0 { k := cast(int) r.agent - 1; t[0].rec_n = agr_record_write(t[0].here[0].r[k..<k + 1], agr_job_of(t[0].here[..], k), t[0].rec[..]).count; }
+  }
+  return r;
+}
+// A row on the account, as serve --accounts runs it.
+sa_acct :: (t: [] SyncAgentTest, v: int, args: string, out: [] u8) -> GbResult {
+  w := GbWorld.{agents = t[0].acct[..], log = cast(string) t[0].acct_log[0..<t[0].acct_n], now = SA_NOW + 5000, computer = "", hosted = true,
+    pictures = cast(string) t[0].acct_pics[0..<t[0].acct_pics_n]};
+  r := gb_command_run_world(t[0].e[..], v, args, w, out, 0);
+  if r.code == GB_DONE { for c: r.lines { t[0].acct_log[t[0].acct_n] = c; t[0].acct_n += 1; } }
+  // an agent's picture kept, as the CLI keeps it (cli/agent-pictures.coax)
+  if r.code == GB_DONE && r.jpeg.count > 0 {
+    pb: [AGP_INDEX_MAX] u8; n := agr_put(pb[..], 0, r.pictures);
+    for i: 0..<n { t[0].acct_pics[i] = pb[i]; } t[0].acct_pics_n = n;
+    for i: 0..<AGP_HEX { t[0].acct_jpeg[i] = r.jpeg_at[i]; }
+  }
+  return r;
+}
+// One pass with the agents on, the test playing the host and the site.
+sa_pass :: (t: [] SyncAgentTest) -> bool {
+  none: [1] s32;
+  ed_sync_agents(t[0].s[..], true);
+  if !ed_sync_begin(t[0].s[..], none[0..<0], t[0].out[0..<0]) { return false; }
+  steps := 0;
+  while ed_sync_ask(t[0].s[..]) != SYNC_IDLE && steps < 400 {
+    steps += 1;
+    ask := ed_sync_ask(t[0].s[..]);
+    pb: [64] u8; pn := ed_sync_path(t[0].s[..], pb[..]);
+    path := cast(string) pb[0..<pn];
+    bn := ed_sync_body(t[0].s[..], t[0].out[..]);
+    if ask == SYNC_HTTP {
+      verb := ifx path.count > 10 then path[10..<path.count] else "";
+      if verb == "list-levels" { ok := "{\"ok\":true,\"levels\":[]}"; ed_sync_answer(t[0].s[..], 200, t[0].other[0..<agr_put(t[0].other[..], 0, ok)]); continue; }
+      v := gb_find(verb);
+      if v == VERB_AGENT_PICTURE { t[0].sent_pics += 1; }
+      r := sa_acct(t, v, cast(string) t[0].out[0..<bn], t[0].other[..]);
+      ed_sync_answer(t[0].s[..], ifx r.code == GB_DONE then 200 else 409, t[0].other[0..<r.json.count]);
+    } else if ask == SYNC_AGENTS {
+      n := agr_put(t[0].other[..], agr_put(t[0].other[..], 0, cast(string) t[0].rec[0..<t[0].rec_n]), "\n");
+      ed_sync_answer(t[0].s[..], 1, t[0].other[0..<n]);
+    } else if ask == SYNC_AGENT_LOG {
+      fb: [64] u8; want := agr_file(cast(string) t[0].id[0..<t[0].id_n], ".events", fb[..]);
+      // a level's pictures file: the device's, for its level
+      lb: [32] u8; ln := ed_level_id(t[0].pics_level, lb[..]);
+      pw: [64] u8; pn2 := agr_put(pw[..], agr_put(pw[..], 0, cast(string) lb[0..<ln]), ".pictures");
+      if t[0].pics_level > 0 && path == cast(string) pw[0..<pn2] { ed_sync_answer(t[0].s[..], ifx t[0].pics_n > 0 then 1 else 0, t[0].pics[0..<t[0].pics_n]); continue; }
+      ok := path == want;
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, t[0].here_log[0..<ifx ok then t[0].here_n else 0]);
+    } else { ed_sync_answer(t[0].s[..], 1, t[0].out[0..<0]); }
+  }
+  return steps < 400;
+}
+// agent-events of the agent, all of it, on the device and on the account: the same answer.
+sa_same_events :: (t: [] SyncAgentTest) -> bool {
+  ab: [256] u8;
+  o: [1] Jo; jo_start(o[..], ab[..]); jo_obj(o[..]); jo_key(o[..], "agent"); jo_str(o[..], cast(string) t[0].id[0..<t[0].id_n]); jo_key(o[..], "after"); jo_int(o[..], 0); jo_end(o[..]);
+  args := jo_text(o[..]);
+  same := true; after := 0;
+  while true {
+    ab2: [256] u8;
+    o2: [1] Jo; jo_start(o2[..], ab2[..]); jo_obj(o2[..]); jo_key(o2[..], "agent"); jo_str(o2[..], cast(string) t[0].id[0..<t[0].id_n]); jo_key(o2[..], "after"); jo_int(o2[..], after); jo_end(o2[..]);
+    w := GbWorld.{agents = t[0].here[..], log = cast(string) t[0].here_log[0..<t[0].here_n], now = SA_NOW, computer = AGR_THIS_MAC};
+    mine := gb_command_run_world(t[0].e[..], VERB_AGENT_EVENTS, jo_text(o2[..]), w, t[0].answer[..], 0);
+    theirs := sa_acct(t, VERB_AGENT_EVENTS, jo_text(o2[..]), t[0].other[..]);
+    if mine.code != GB_DONE { t[0].why = 1; same = false; break; }
+    if theirs.code != GB_DONE { t[0].why = 2; same = false; break; }
+    if mine.json.count != theirs.json.count { t[0].why = 3; same = false; break; }
+    if mine.json != theirs.json { t[0].why = 4; same = false; break; }
+    nx := level_find(mine.json, "\"next\":");
+    if nx < 0 || level_find(mine.json, "\"more\":true") < 0 { break; }
+    k := nx + 7; after = 0;
+    while k < mine.json.count && mine.json[k] >= '0' && mine.json[k] <= '9' { after = after * 10 + cast(int) (mine.json[k] - '0'); k += 1; }
+  }
+  _ = args;
+  return same;
+}
+
+#test "a folder's agent is reported to the account, and its events read the same from the account's agent-events" {
+  t: [1] SyncAgentTest;
+  none: [1] s32;
+  #assert gb_run(t[0].e[..], VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, t[0].answer[..]).code == GB_DONE;
+  gb: [128] u8; gt := [1] Text.[Text.{buf = gb[..]}];
+  tx_put(gt[..], "{\"game\":"); tx_int(gt[..], cast(s64) ed_mine_open(t[0].e[..])); tx_put(gt[..], ",\"role\":\"build\",\"job\":\"add two ramps\"}");
+  #assert sa_here(t[..], VERB_AGENT_NEW, cast(string) gb[0..<gt[0].at]).code == GB_DONE;
+  id := agr_id(t[0].here[0].r[0..<1]);
+  t[0].id_n = agr_put(t[0].id[..], 0, id);
+  // one pass: the account has it, every event, read back the same
+  #assert sa_pass(t[..]);
+  #assert t[0].acct[0].n == 1 && t[0].acct[0].r[0].events == t[0].here[0].r[0].events && ed_sync_reported(t[0].s[..]) == t[0].here[0].r[0].events;
+  #assert sa_same_events(t[..]);
+  // its list on the account: its game's name, this Mac
+  ob: [8192] u8;
+  r := sa_acct(t[..], VERB_AGENTS, "{}", ob[..]);
+  #assert level_find(r.json, "\"computer\":\"this Mac\"") >= 0 && level_find(r.json, "\"where\":\"this Mac\"") >= 0;
+  // many more events than one report carries: they go in reports of AGR_REPORT, in one pass
+  ab: [512] u8;
+  for i: 0..<12 {
+    o: [1] Jo; jo_start(o[..], ab[..]); jo_obj(o[..]); jo_key(o[..], "agent"); jo_str(o[..], cast(string) t[0].id[0..<t[0].id_n]); jo_end(o[..]);
+    #assert sa_here(t[..], VERB_AGENT_STOP, jo_text(o[..])).code == GB_DONE;
+    o2: [1] Jo; jo_start(o2[..], ab[..]); jo_obj(o2[..]); jo_key(o2[..], "agent"); jo_str(o2[..], cast(string) t[0].id[0..<t[0].id_n]); jo_key(o2[..], "message"); jo_str(o2[..], "and one more"); jo_end(o2[..]);
+    #assert sa_here(t[..], VERB_AGENT_MESSAGE, jo_text(o2[..])).code == GB_DONE;
+  }
+  #assert t[0].here[0].r[0].events > AGR_REPORT + 10;
+  #assert sa_pass(t[..]);
+  #assert t[0].acct[0].r[0].events == t[0].here[0].r[0].events && t[0].acct[0].r[0].state == t[0].here[0].r[0].state;
+  #assert sa_same_events(t[..]);
+  // nothing new: no report
+  #assert sa_pass(t[..]) && ed_sync_reported(t[0].s[..]) == 0;
+  // turned off: nothing is listed or sent
+  ed_sync_agents(t[0].s[..], false);
+  #assert ed_sync_begin(t[0].s[..], none[0..<0], t[0].out[0..<0]) && ed_sync_ask(t[0].s[..]) == SYNC_HTTP;
+  ok := "{\"ok\":true,\"levels\":[]}";
+  ed_sync_answer(t[0].s[..], 200, t[0].other[0..<agr_put(t[0].other[..], 0, ok)]);
+  #assert ed_sync_ask(t[0].s[..]) == SYNC_KEEP;
+  ed_sync_answer(t[0].s[..], 1, t[0].out[0..<0]);
+  #assert ed_sync_ask(t[0].s[..]) == SYNC_IDLE;
+}
+
+// A picture of level as the app keeps it, made at made, of six bytes of JPEG that differ by made.
+sa_picture :: (t: [] SyncAgentTest, level: s32, made: s64) {
+  p: [1] Pic;
+  p[0] = Pic.{which = PIC_AFTER, rev = cast(int) (made % 100000), made = made, w = PIC_W, h = PIC_H, n = 6};
+  p[0].jpeg[0] = 255; p[0].jpeg[1] = 216; p[0].jpeg[2] = cast(u8) (made % 251); p[0].jpeg[3] = 7; p[0].jpeg[4] = 255; p[0].jpeg[5] = 217;
+  lb: [PIC_LINE] u8; o: [1] Jo; jo_start(o[..], lb[..]);
+  jo_obj(o[..]); pic_json(o[..], level, p[..], true); jo_end(o[..]);
+  line := jo_text(o[..]);
+  t[0].pics_n = agr_put(t[0].pics[..], agr_put(t[0].pics[..], t[0].pics_n, line), "\n");
+  t[0].pics_level = level;
+}
+
+#test "an agent's newest picture goes to the account while agents are kept there: once, a newer one in its place, none when they are not" {
+  t: [1] SyncAgentTest;
+  none: [1] s32;
+  #assert gb_run(t[0].e[..], VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, t[0].answer[..]).code == GB_DONE;
+  gb: [128] u8; gt := [1] Text.[Text.{buf = gb[..]}];
+  tx_put(gt[..], "{\"game\":"); tx_int(gt[..], cast(s64) ed_mine_open(t[0].e[..])); tx_put(gt[..], ",\"role\":\"build\",\"job\":\"add two ramps\"}");
+  #assert sa_here(t[..], VERB_AGENT_NEW, cast(string) gb[0..<gt[0].at]).code == GB_DONE;
+  id := agr_id(t[0].here[0].r[0..<1]);
+  t[0].id_n = agr_put(t[0].id[..], 0, id);
+  level := t[0].here[0].r[0].level;
+  #assert level > 0;
+  // its level has no pictures yet: the record goes, no picture
+  #assert sa_pass(t[..]) && t[0].sent_pics == 0 && t[0].acct_pics_n == 0;
+  // two pictures of its level: the newest goes, and the account's agents row tells its address
+  sa_picture(t[..], level, SA_NOW + 10); sa_picture(t[..], level, SA_NOW + 30);
+  #assert sa_pass(t[..]) && t[0].sent_pics == 1 && agp_find(cast(string) t[0].acct_pics[0..<t[0].acct_pics_n], id).made == SA_NOW + 30;
+  ob: [8192] u8; pb: [64] u8;
+  r := sa_acct(t[..], VERB_AGENTS, "{}", ob[..]);
+  #assert level_find(r.json, agp_path(cast(string) t[0].acct_jpeg[0..<AGP_HEX], pb[..])) >= 0;
+  // nothing newer: nothing sent
+  t[0].sent_pics = 0;
+  #assert sa_pass(t[..]) && t[0].sent_pics == 0;
+  // a newer one takes its place
+  sa_picture(t[..], level, SA_NOW + 50);
+  #assert sa_pass(t[..]) && t[0].sent_pics == 1 && agp_find(cast(string) t[0].acct_pics[0..<t[0].acct_pics_n], id).made == SA_NOW + 50;
+  // agents not kept on the account: no picture goes either
+  sa_picture(t[..], level, SA_NOW + 70);
+  ed_sync_agents(t[0].s[..], false);
+  #assert ed_sync_begin(t[0].s[..], none[0..<0], t[0].out[0..<0]);
+  steps := 0;
+  while ed_sync_ask(t[0].s[..]) != SYNC_IDLE && steps < 20 {
+    steps += 1;
+    pb2: [64] u8; pn := ed_sync_path(t[0].s[..], pb2[..]);
+    #assert cast(string) pb2[0..<pn] != "/api/rows/agent-picture" && cast(string) pb2[0..<pn] != "/api/rows/agents";
+    ok := "{\"ok\":true,\"levels\":[]}";
+    ed_sync_answer(t[0].s[..], ifx ed_sync_ask(t[0].s[..]) == SYNC_HTTP then 200 else 1, t[0].other[0..<agr_put(t[0].other[..], 0, ok)]);
+  }
+  #assert steps < 20 && agp_find(cast(string) t[0].acct_pics[0..<t[0].acct_pics_n], id).made == SA_NOW + 50;
+}
+
+// ---- the games' half
+
+#test "a game made on the device is a game of its type on the account, one made on the account is a game of its type on the device, and nothing is asked twice" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  // the device makes a third person game (its level 1); the website has made a top-down game on the account (its level 1 too)
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && t[0].sizes[1] > 0 && sync_test_edit(t[..], 1, 200);
+  #assert sync_test_acct(t[..], "new-game", "{\"template\":\"top-down\"}") && t[0].asizes[1] > 0 && sync_test_edit_acct(t[..], 1, 300);
+  #assert sync_test_pass(t[..]);
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[3] == 0;
+  // the account's top-down is level 1 here, a top-down; the device's third-person game moved to level 2 on both, a third person game
+  #assert sync_test_same(t[..], 1) && sync_test_same(t[..], 2);
+  gi := sync_test_game(d, 1); #assert gi >= 0 && d[0].mine[gi].plays == template_of("top-down") && d[0].mine[gi].level_n == 1;
+  gi = sync_test_game(d, 2); #assert gi >= 0 && d[0].mine[gi].plays == template_of("third-person") && d[0].mine[gi].level_n == 1;
+  ai := sync_test_game(a, 2); #assert ai >= 0 && a[0].mine[ai].plays == template_of("third-person") && a[0].mine[ai].level_n == 1;
+  ai = sync_test_game(a, 1); #assert ai >= 0 && a[0].mine[ai].plays == template_of("top-down");
+  #assert a[0].mine_n == 2 && d[0].mine_n == 2 && t[0].s[0].gmade == 1 && t[0].s[0].gcame == 1;
+  #assert level_find(cast(string) t[0].kept[0..<t[0].kept_n], "account a@b.co\n") == 0;
+  // the names are the same on both sides
+  tb: [MINE_TITLE] u8; ub: [MINE_TITLE] u8;
+  #assert sync_test_title(d, 2, tb[..]) == sync_test_title(a, 2, ub[..]) && sync_test_title(d, 1, tb[..]) == sync_test_title(a, 1, ub[..]);
+  // nothing changed: the two lists are asked, and nothing else
+  #assert sync_test_pass(t[..]) && t[0].asked == 2;
+  #assert ed_sync_counts(t[0].s[..], c[..]) && c[0] == 0 && c[1] == 0 && c[2] == 0 && c[3] == 0 && t[0].s[0].gmade == 0 && t[0].s[0].gcame == 0;
+}
+
+#test "a game whose level the account already holds as a level in no game (synced before games were) becomes a game there, under the number the account gives its level" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  // as an app of before left it: a level in no game, then a game holding level 2; both on the account as levels
+  #assert sync_test_here(t[..], "new-level", "{}") && sync_test_here(t[..], "new-game", "{\"template\":\"top-down\"}") && t[0].sizes[2] > 0;
+  for k: 1..<3 { for i: 0..<t[0].sizes[k] { t[0].account[k][i] = t[0].files[k][i]; } t[0].asizes[k] = t[0].sizes[k]; }
+  kt := [1] Text.[Text.{buf = t[0].kept[..]}];
+  tx_put(kt[..], "1 "); tx_int(kt[..], cast(s64) sync_test_rev(t[..], 1, t[0].files[1][0..<t[0].sizes[1]]));
+  tx_put(kt[..], "\n2 "); tx_int(kt[..], cast(s64) sync_test_rev(t[..], 2, t[0].files[2][0..<t[0].sizes[2]])); tx_put(kt[..], "\n");
+  t[0].kept_n = kt[0].at;
+  #assert sync_test_open(t[..], 2);
+  #assert sync_test_pass(t[..]);
+  c: [4] s32; #assert ed_sync_counts(t[0].s[..], c[..]) && c[3] == 0;
+  // the game's level is level 3 on both sides, in a top-down game on both; level 2 is gone from both, level 1 as it was
+  #assert t[0].sizes[2] == 0 && t[0].asizes[2] == 0 && sync_test_same(t[..], 3) && sync_test_same(t[..], 1);
+  gi := sync_test_game(d, 3); ai := sync_test_game(a, 3);
+  #assert gi >= 0 && ai >= 0 && d[0].mine[gi].plays == template_of("top-down") && a[0].mine[ai].plays == template_of("top-down") && a[0].mine_n == 1 && d[0].mine_n == 1;
+  // the level open kept its scene under the new number
+  #assert ed_level(d) == 3 && ed_mine_open(d) == d[0].mine[gi].n;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && t[0].sizes[2] == 0 && t[0].asizes[2] == 0;
+}
+
+#test "a game renamed on one side is renamed on the other; renamed on both, the account's comes here and the device's is kept as a new game, and said" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && sync_test_pass(t[..]);
+  g := d[0].mine[0].n; ag := a[0].mine[0].n;
+  tb: [MINE_TITLE] u8; ab: [128] u8;
+  // here: it is renamed there
+  at := [1] Text.[Text.{buf = ab[..]}]; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) g); tx_put(at[..], ",\"name\":\"Night Race\"}");
+  #assert sync_test_here(t[..], "rename-game", cast(string) ab[0..<at[0].at]) && sync_test_pass(t[..]);
+  #assert sync_test_title(a, 1, tb[..]) == "Night Race" && t[0].s[0].failed == 0;
+  // there: it is renamed here
+  at[0].at = 0; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) ag); tx_put(at[..], ",\"name\":\"Dawn Race\"}");
+  #assert sync_test_acct(t[..], "rename-game", cast(string) ab[0..<at[0].at]) && sync_test_pass(t[..]);
+  #assert sync_test_title(d, 1, tb[..]) == "Dawn Race" && d[0].mine_n == 1 && t[0].s[0].failed == 0 && sync_test_said(t[..]) == "";
+  #assert sync_test_pass(t[..]) && t[0].asked == 2;
+  // both: nothing is lost
+  at[0].at = 0; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) g); tx_put(at[..], ",\"name\":\"Mine\"}");
+  #assert sync_test_here(t[..], "rename-game", cast(string) ab[0..<at[0].at]);
+  at[0].at = 0; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) ag); tx_put(at[..], ",\"name\":\"Theirs\"}");
+  #assert sync_test_acct(t[..], "rename-game", cast(string) ab[0..<at[0].at]);
+  #assert sync_test_pass(t[..]);
+  #assert sync_test_said(t[..]) == "Mine changed here and on your account. Nothing is lost: your account's is here now, and this device's is kept as a new game.";
+  #assert d[0].mine_n == 2 && sync_test_title(d, 1, tb[..]) == "Theirs" && sync_test_title(d, 2, tb[..]) == "Mine" && t[0].s[0].gforked == 1;
+  // the copy holds the same things as the level it copies
+  #assert sync_test_open(t[..], 2) && sync_test_rev(t[..], 1, t[0].files[1][0..<t[0].sizes[1]]) != 0;
+  #assert ed_count(d) == ed_count(t[0].e[..]) && ed_count(d) > 0 && ed_actor(d, 0).x == ed_actor(t[0].e[..], 0).x && ed_mine_open(d) == d[0].mine[sync_test_game(d, 2)].n;
+  // and the next pass makes the copy a game on the account too
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 2 && sync_test_title(a, 2, tb[..]) == "Mine" && sync_test_title(a, 1, tb[..]) == "Theirs" && sync_test_same(t[..], 2);
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && t[0].s[0].failed == 0;
+}
+
+#test "a level or a game deleted on the device is deleted on the account and not brought back; one deleted on the account is deleted here, its file set aside" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  // three levels in no game and a game (level 4), all on both sides
+  #assert sync_test_here(t[..], "new-level", "{}") && sync_test_here(t[..], "new-level", "{}") && sync_test_here(t[..], "new-level", "{}");
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && sync_test_pass(t[..]);
+  #assert t[0].asizes[1] > 0 && t[0].asizes[2] > 0 && t[0].asizes[3] > 0 && t[0].asizes[4] > 0 && a[0].mine_n == 1;
+  // level 2 deleted here: gone from the account, and it stays gone
+  #assert sync_test_open(t[..], 2) && sync_test_here(t[..], "delete-level", "{\"level\":2}") && t[0].sizes[2] == 0 && sync_test_open(t[..], 1);
+  #assert sync_test_pass(t[..]) && t[0].asizes[2] == 0 && t[0].sizes[2] == 0 && t[0].s[0].ldeleted == 1 && t[0].s[0].failed == 0;
+  #assert sync_test_pass(t[..]) && t[0].asizes[2] == 0 && t[0].sizes[2] == 0 && t[0].asked == 2;
+  // level 3 deleted on the account (another device did): its file goes here, set aside, and the person is told
+  #assert sync_test_acct(t[..], "delete-level", "{\"level\":3}") && t[0].asizes[3] == 0;
+  #assert sync_test_pass(t[..]) && t[0].sizes[3] == 0 && t[0].aside == 3 && t[0].asizes[3] == 0 && t[0].s[0].ldropped == 1;
+  #assert sync_test_said(t[..]) == "Level 3 was deleted on your account, so it is deleted here too.";
+  #assert sync_test_pass(t[..]) && t[0].sizes[3] == 0 && t[0].asizes[3] == 0;
+  // the game deleted here: gone from the account; its level stays on both, in no game
+  ab: [64] u8; at := [1] Text.[Text.{buf = ab[..]}]; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) d[0].mine[0].n); tx_put(at[..], "}");
+  #assert sync_test_here(t[..], "delete-game", cast(string) ab[0..<at[0].at]) && d[0].mine_n == 0;
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 0 && t[0].asizes[4] > 0 && t[0].sizes[4] > 0 && t[0].s[0].gdeleted == 1;
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 0 && d[0].mine_n == 0;
+  // a game deleted on the account: no longer a game here, its level stays, and the person is told
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"top-down\"}") && sync_test_pass(t[..]) && a[0].mine_n == 1 && d[0].mine_n == 1;
+  at[0].at = 0; tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) a[0].mine[0].n); tx_put(at[..], "}");
+  #assert sync_test_acct(t[..], "delete-game", cast(string) ab[0..<at[0].at]) && a[0].mine_n == 0;
+  #assert sync_test_pass(t[..]) && d[0].mine_n == 0 && t[0].sizes[5] > 0 && t[0].s[0].gdropped == 1;
+  #assert sync_test_said(t[..]) == "Game 1 was deleted on your account, so it is no longer a game here. Its levels stay, in no game.";
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 0 && d[0].mine_n == 0 && t[0].s[0].failed == 0;
+}
+
+#test "nothing is deleted on another account's say, on an old file's, or by an account that lists nothing; a level deleted here that the account changed comes back" {
+  t: [1] SyncTest;
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-level", "{}") && sync_test_here(t[..], "new-level", "{}") && sync_test_pass(t[..]);
+  // another account logs in on the device, with nothing on it: the device's levels go to it, none is deleted
+  for k: 1..<SYNC_T { t[0].asizes[k] = 0; }
+  sync_test_login(t[..], "c@d.co");
+  #assert sync_test_pass(t[..]) && t[0].sizes[1] > 0 && t[0].sizes[2] > 0 && sync_test_same(t[..], 1) && sync_test_same(t[..], 2) && t[0].s[0].ldropped == 0;
+  #assert level_find(cast(string) t[0].kept[0..<t[0].kept_n], "account c@d.co\n") == 0;
+  // the account lists nothing at all (it was emptied, or its store did not answer right): nothing is deleted here, it gets them again
+  for k: 1..<SYNC_T { t[0].asizes[k] = 0; }
+  #assert sync_test_pass(t[..]) && t[0].sizes[1] > 0 && sync_test_same(t[..], 1) && sync_test_same(t[..], 2) && t[0].s[0].ldropped == 0;
+  // a kept file of before the account's line: a level missing from the account is sent again, not deleted
+  kn := 0; for i: 15..<t[0].kept_n { t[0].kept[kn] = t[0].kept[i]; kn += 1; }
+  t[0].kept_n = kn; t[0].asizes[2] = 0;
+  #assert level_find(cast(string) t[0].kept[0..<t[0].kept_n], "1 ") == 0;
+  #assert sync_test_pass(t[..]) && t[0].sizes[2] > 0 && sync_test_same(t[..], 2) && t[0].s[0].ldropped == 0;
+  // deleted here, but the account's copy changed since both agreed: the account's comes back, its change is not lost
+  #assert sync_test_open(t[..], 2) && sync_test_here(t[..], "delete-level", "{\"level\":2}") && sync_test_open(t[..], 1) && sync_test_edit_acct(t[..], 2, 400);
+  #assert sync_test_pass(t[..]) && t[0].sizes[2] > 0 && sync_test_same(t[..], 2) && t[0].s[0].ldeleted == 0;
+  // deleted on the account, but changed here since: the device's goes to the account again
+  #assert sync_test_acct(t[..], "delete-level", "{\"level\":1}") && sync_test_edit(t[..], 1, 250);
+  #assert sync_test_pass(t[..]) && t[0].sizes[1] > 0 && sync_test_same(t[..], 1) && t[0].s[0].ldropped == 0;
+}
+
+#test "an arena game's second level and its name go to the account, and a level moved out there moves out here" #steps 200000000 {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"arena\"}") && sync_test_here(t[..], "new-level", "{}") && sync_test_pass(t[..]);
+  ab: [128] u8; at := [1] Text.[Text.{buf = ab[..]}]; tx_put(at[..], "{\"level\":2,\"into\":"); tx_int(at[..], cast(s64) d[0].mine[0].n); tx_put(at[..], "}");
+  #assert sync_test_here(t[..], "move-level", cast(string) ab[0..<at[0].at]) && sync_test_here(t[..], "rename-level", "{\"level\":2,\"name\":\"The Pit\"}");
+  #assert sync_test_pass(t[..]) && t[0].s[0].failed == 0;
+  ai := sync_test_game(a, 2); nb: [MINE_TITLE] u8;
+  // (the game's first level is level 3 on both sides: the account had level 2 when it made the game)
+  #assert ai >= 0 && ai == sync_test_game(a, 3) && t[0].sizes[1] == 0 && a[0].mine[ai].level_n == 2 && mine_level_name(a[0].mine[ai], 1, nb[..]) == "The Pit";
+  #assert d[0].mine_n == 1 && d[0].mine[0].level_n == 2 && mine_level_name(d[0].mine[0], 1, nb[..]) == "The Pit" && a[0].mine_n == 1;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2;
+  // moved out of the game on the account: out of it here
+  #assert sync_test_acct(t[..], "move-level", "{\"level\":2,\"into\":0}") && sync_test_pass(t[..]);
+  #assert d[0].mine_n == 1 && d[0].mine[0].level_n == 1 && mine_of_level(d, 2) == 0 && t[0].sizes[2] > 0 && t[0].s[0].failed == 0;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2;
+}
+
+// How many level files the device has, and the account.
+sync_test_files :: (t: [] SyncTest, account: bool) -> int { n := 0; for k: 1..<SYNC_T { if (ifx account then t[0].asizes[k] else t[0].sizes[k]) > 0 { n += 1; } } return n; }
+#test "a game of several levels (crates: three rooms) is kept the same: made here, its three levels are the account's game's, none doubled; made on the account, its three come here; a room deleted here is deleted there and does not come back; a room changed here is the account's" #steps 4000000000 {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  // made here: levels 1, 2 and 3, a room each
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"crates\"}") && d[0].mine_n == 1 && d[0].mine[0].level_n == 3 && sync_test_files(t[..], false) == 3;
+  #assert sync_test_pass(t[..]) && t[0].s[0].failed == 0;
+  // the account's game holds the device's three, in their order; the two rooms its own new-game made beside the first are gone there
+  #assert a[0].mine_n == 1 && a[0].mine[0].plays == template_of("crates") && a[0].mine[0].level_n == 3 && d[0].mine_n == 1 && d[0].mine[0].level_n == 3;
+  for k: 0..<3 { #assert a[0].mine[0].levels[k] == d[0].mine[0].levels[k] && sync_test_same(t[..], cast(int) d[0].mine[0].levels[k]); }
+  #assert sync_test_files(t[..], false) == 3 && sync_test_files(t[..], true) == 3;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && t[0].s[0].failed == 0 && sync_test_files(t[..], true) == 3 && d[0].mine[0].level_n == 3;
+  // the second room changed here (its first wall moved): it is the account's
+  second := d[0].mine[0].levels[1];
+  #assert sync_test_edit(t[..], second, 150) && !sync_test_same(t[..], cast(int) second) && sync_test_pass(t[..]) && sync_test_same(t[..], cast(int) second) && t[0].s[0].failed == 0;
+  // the third room deleted here: deleted there, the game two levels on both sides, and it does not come back
+  third := d[0].mine[0].levels[2];
+  db: [64] u8; dt := [1] Text.[Text.{buf = db[..]}]; tx_put(dt[..], "{\"level\":"); tx_int(dt[..], cast(s64) third); tx_put(dt[..], "}");
+  #assert sync_test_open(t[..], third) && sync_test_here(t[..], "delete-level", cast(string) db[0..<dt[0].at]) && t[0].sizes[third] == 0 && sync_test_open(t[..], second);
+  #assert sync_test_pass(t[..]) && t[0].s[0].failed == 0 && t[0].asizes[third] == 0 && a[0].mine[0].level_n == 2 && d[0].mine[0].level_n == 2;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && sync_test_files(t[..], false) == 2 && sync_test_files(t[..], true) == 2 && d[0].mine[0].level_n == 2;
+  // made on the account (the website, another device): its three rooms come here, in its game
+  #assert sync_test_acct(t[..], "new-game", "{\"template\":\"crates\"}") && a[0].mine_n == 2 && sync_test_files(t[..], true) == 5;
+  #assert sync_test_pass(t[..]) && t[0].s[0].failed == 0 && d[0].mine_n == 2 && sync_test_files(t[..], false) == 5;
+  gi := mine_find(d, mine_of_level(d, a[0].mine[1].levels[0]));
+  #assert gi >= 0 && d[0].mine[gi].level_n == 3 && d[0].mine[gi].plays == template_of("crates") && d[0].mine[gi].levels[1] == a[0].mine[1].levels[1] && d[0].mine[gi].levels[2] == a[0].mine[1].levels[2];
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && sync_test_files(t[..], true) == 5;
+}
+
+#test "a pass that stops after the account made the game goes on from there: one game, no second" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-level", "{}") && sync_test_pass(t[..]);
+  // a game here whose level is 2; the account's new game gets level 2 as well
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && sync_test_edit(t[..], 2, 150);
+  // the site answers list-levels and new-game, then nothing
+  t[0].answers = 2;
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 1 && t[0].s[0].failed > 0;
+  #assert level_find(cast(string) t[0].kept[0..<t[0].kept_n], "\ng 2 ") > 0;
+  t[0].answers = 0;
+  #assert sync_test_pass(t[..]) && a[0].mine_n == 1 && d[0].mine_n == 1 && sync_test_same(t[..], 2) && t[0].s[0].failed == 0 && t[0].s[0].gmade == 0;
+  #assert sync_test_game(a, 2) >= 0 && a[0].mine[0].plays == template_of("third-person");
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && a[0].mine_n == 1;
+}
+
+#test "a game the person changed while a pass was going is not written over: it is left to the next pass" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && sync_test_pass(t[..]);
+  ab: [128] u8; at := [1] Text.[Text.{buf = ab[..]}];
+  tx_put(at[..], "{\"game\":"); tx_int(at[..], cast(s64) a[0].mine[0].n); tx_put(at[..], ",\"name\":\"Theirs\"}");
+  #assert sync_test_acct(t[..], "rename-game", cast(string) ab[0..<at[0].at]);
+  // the pass begins, and before it reaches the game the person renames it
+  here := [1] s32.[1];
+  ed_sync_device(t[0].s[..], d);
+  #assert ed_sync_begin(t[0].s[..], here[..], t[0].kept[0..<t[0].kept_n]);
+  nb := "Mine"; mb: [8] u8; for i: 0..<nb.count { mb[i] = nb[i]; }
+  #assert ed_mine_rename(d, d[0].mine[0].n, mb[0..<nb.count]);
+  steps := 0; refused := false;
+  while ed_sync_ask(t[0].s[..]) != SYNC_IDLE && steps < 50 {
+    steps += 1;
+    ask := ed_sync_ask(t[0].s[..]);
+    pb: [64] u8; pn := ed_sync_path(t[0].s[..], pb[..]);
+    bn := ed_sync_body(t[0].s[..], t[0].out[..]);
+    if ask == SYNC_HTTP {
+      rb: [AGENT_FILE_MAX * 2 + 512] u8; an: [1] int;
+      st := sync_test_server(t[..], cast(string) pb[0..<pn], cast(string) t[0].out[0..<bn], rb[..], an[..]);
+      ed_sync_answer(t[0].s[..], st, rb[0..<ifx st == 200 then an[0] else 0]);
+    } else if ask == SYNC_READ { ed_sync_answer(t[0].s[..], 1, t[0].files[1][0..<t[0].sizes[1]]); }
+    else if ask == SYNC_GAME { ok := ed_sync_mine(t[0].s[..], d); if !ok { refused = true; } ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, t[0].out[0..<0]); }
+    else { if ask == SYNC_KEEP { for i: 0..<bn { t[0].kept[i] = t[0].out[i]; } t[0].kept_n = cast(int) bn; } ed_sync_answer(t[0].s[..], 1, t[0].out[0..<0]); }
+  }
+  tb: [MINE_TITLE] u8;
+  #assert refused && sync_test_title(d, 1, tb[..]) == "Mine" && t[0].s[0].failed == 1;
+  // the next pass sees both changed: nothing is lost
+  #assert sync_test_pass(t[..]) && d[0].mine_n == 2 && sync_test_title(d, 1, tb[..]) == "Theirs" && sync_test_title(d, 2, tb[..]) == "Mine";
+}
+
+#test "a game's level changed on both sides: the account's stays in the game, and the device's copy is a new game of the same type on both sides, and said" {
+  t: [1] SyncTest;
+  d := t[0].d[..]; a := t[0].a[..];
+  sync_test_login(t[..], "a@b.co");
+  #assert sync_test_here(t[..], "new-game", "{\"template\":\"third-person\"}") && sync_test_pass(t[..]) && a[0].mine_n == 1;
+  #assert sync_test_edit(t[..], 1, 150) && sync_test_edit_acct(t[..], 1, 400);
+  mine := ed_actor(d, 0).x;
+  #assert sync_test_pass(t[..]) && t[0].s[0].failed == 0;
+  #assert sync_test_said(t[..]) == "Game 1 changed here and on your account. Nothing is lost: your account's is here now, and this device's is kept as a new game.";
+  // level 1 is the account's on both; level 2 is the device's, a third person game of its own on both
+  #assert sync_test_same(t[..], 1) && sync_test_same(t[..], 2) && d[0].mine_n == 2 && a[0].mine_n == 2;
+  gi := sync_test_game(d, 2); ai := sync_test_game(a, 2);
+  #assert gi >= 0 && ai >= 0 && gi != sync_test_game(d, 1) && d[0].mine[gi].plays == template_of("third-person") && a[0].mine[ai].plays == template_of("third-person");
+  #assert sync_test_open(t[..], 2) && ed_actor(d, 0).x == mine;
+  #assert sync_test_pass(t[..]) && t[0].asked == 2 && t[0].s[0].failed == 0;
+}

@@ -1,0 +1,279 @@
+// An outside agent, attached (GitHub issue 6; docs/agents.md, "An attached agent"): one that
+// builds through `gamebuilder mcp` (stdio), `mcp --attach`, `mcp --remote` or `POST /mcp`, or a
+// one-off `gamebuilder --as-agent NAME` call, gets an agent record (coax/agent-record.coax),
+// place attached, kind build, with its client's name from MCP's initialize as its runner. Each
+// tool call it makes is appended as a tool event (its arguments and a short result), and a call
+// that changed the level as an edit event too (the revisions before and after and the things it
+// touched). Its edits carry its turn number (gb_att_turn) so undo-turn takes back its own turns
+// and no one else's. A record that was stopped (agent-stop) cuts it off: its calls are refused
+// in words. Its process is the person's, so we can't stop it (AGR_ATTACHED_CAN).
+//
+// Nothing here reads or writes a file or the clock: the surface (cli/main.coax) hands in the
+// record's file and the time and writes back what it is given: agent-ID.agent replaced whole,
+// agent-ID.events appended to.
+//   scripts/check.sh
+
+GB_ATT_TURN0 :: 1048576;   // attached agents' turn numbers start here: the pane's are AG_ID0 + k, a call no agent makes 0
+GB_ATT_CLIENT :: 16;       // bytes of a client's name kept: the record's runner
+// What it came through, as its job says it.
+GB_ATT_STDIO :: 0; GB_ATT_ATTACH :: 1; GB_ATT_HTTP :: 2; GB_ATT_ONE :: 3;
+GB_ATT_VIAS :: 4;
+GB_ATT_VIA :: [GB_ATT_VIAS] string.["gamebuilder mcp", "gamebuilder mcp --attach", "MCP over HTTP (POST /mcp)", "gamebuilder --as-agent"];
+GB_ATT_JOB :: "an outside agent, building through ";
+GB_ATT_NONE :: "My levels";   // a level in no game of yours, as the record's title says it
+
+// One attached agent, as the surface holds it while it works: its record, and the lines the
+// last step appended to its log.
+GbAtt :: struct {
+  on: bool;                       // a record is open
+  cloud: bool;                    // the record to open is a cloud agent's, whose calls a hosted server makes (cli/cloud.coax), not an attached one's
+  resident: bool;                 // the record to open is one the resident service runs (runner AGR_RESIDENT, cli/resident.coax), whose calls come through gamebuilder mcp --resident
+  r: [1] AgrRecord;
+  jw: [1] AgrJob;
+  ev: [1] AgrEvent;
+  out: [2 * AGR_LINE + 8] u8; out_n: int;     // the lines to append to agent-ID.events
+  file: [AGR_RECORD_MAX] u8;                  // agent-ID.agent, as gb_att_record writes it
+  nodes: [WE_BATCH * WE_NODES + 64] JvNode;
+}
+
+// The turn number an attached agent's edits carry (ed_agent_apply's agent), from its record's
+// id: the same id gives the same number on every surface, and none is a pane agent's or 0.
+gb_att_turn :: (id: string) -> s32 {
+  h: int = 2166136261;
+  for c: id { h = ((h ^ cast(int) c) * 16777619) % 4294967296; }
+  return cast(s32) (GB_ATT_TURN0 + h % (2147483647 - GB_ATT_TURN0));
+}
+
+gb_att_name_ok :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.'; }
+// A client's name as its record keeps it: letters, digits, ., - and _ (anything else a -), at
+// most 16 bytes; "mcp" when it gave none.
+gb_att_client :: (raw: string, out: [] u8) -> string {
+  n := 0;
+  for c: raw {
+    if n >= GB_ATT_CLIENT || n >= out.count { break; }
+    out[n] = ifx gb_att_name_ok(c) then c else cast(u8) '-'; n += 1;
+  }
+  while n > 0 && out[n - 1] == '-' { n -= 1; }
+  if n == 0 { return "mcp"; }
+  return cast(string) out[0..<n];
+}
+// Why a name can't be --as-agent's, or "".
+gb_att_name_why :: (name: string) -> string {
+  if name.count < 1 || name.count > GB_ATT_CLIENT { return "--as-agent is a name of 1 to 16 letters, digits, ., - and _ (GB_ATT_CLIENT)"; }
+  for c: name { if !gb_att_name_ok(c) { return "--as-agent is a name of 1 to 16 letters, digits, ., - and _ (GB_ATT_CLIENT)"; } }
+  return "";
+}
+
+gb_att_append :: (s: [] GbAtt, now: s64) -> bool {
+  line := agr_append(s[0].r[..], s[0].ev[..], now, s[0].out[s[0].out_n..<s[0].out.count]);
+  s[0].out_n += line.count;
+  return line.count > 0;
+}
+// The lines this step appended, for agent-ID.events.
+gb_att_lines :: (s: [] GbAtt) -> string { return cast(string) s[0].out[0..<s[0].out_n]; }
+// The record as its file is now, for agent-ID.agent: "" when it did not fit.
+gb_att_record :: (s: [] GbAtt) -> string {
+  return agr_record_write(s[0].r[..], cast(string) s[0].jw[0].buf[0..<s[0].jw[0].n], s[0].file[..]);
+}
+
+// A new record for a client that just attached through via: working from now. Its file is
+// gb_att_record's and its first event (the state) gb_att_lines'.
+gb_att_open :: (s: [] GbAtt, id: string, client: string, via: int, computer: string, now: s64) {
+  s[0].out_n = 0;
+  agr_record_new(s[0].r[..], id, 0, GB_ATT_NONE, 0, AGR_BUILD, AGR_ATTACHED, computer, client, now);
+  s[0].jw[0].n = agr_put(s[0].jw[0].buf[..], agr_put(s[0].jw[0].buf[..], 0, GB_ATT_JOB), GB_ATT_VIA[via]);
+  s[0].on = true;
+  s[0].ev[0] = agr_event(AGR_STATE); s[0].ev[0].state = AGR_WORKING;
+  _ = gb_att_append(s, now);
+}
+
+// An attached agent's record read from its file (with cloud set, a cloud agent's): "" when it is
+// one, else why not. Neither kind's record is the other's: an MCP session never logs to a cloud
+// agent, nor a cloud agent's calls to a session.
+gb_att_load :: (s: [] GbAtt, text: string) -> string {
+  s[0].on = false; s[0].out_n = 0;
+  why := agr_record_read(text, s[0].r[..], s[0].jw[..]);
+  if why.count > 0 { return why; }
+  if s[0].resident {
+    if s[0].r[0].place != AGR_LOCAL || cast(string) s[0].r[0].runner[0..<s[0].r[0].runner_n] != AGR_RESIDENT { return "that agent isn't one the resident service runs"; }
+    s[0].on = true;
+    return "";
+  }
+  if s[0].cloud && s[0].r[0].place != AGR_CLOUD { return "that agent isn't a cloud one"; }
+  if !s[0].cloud && s[0].r[0].place != AGR_ATTACHED { return "that agent isn't an attached one"; }
+  s[0].on = true;
+  return "";
+}
+
+// Whether it still works: neither stopped, failed nor done. A one-off call by name goes on in
+// the newest such record of that name.
+gb_att_live :: (r: AgrRecord) -> bool { return r.state != AGR_STOPPED && r.state != AGR_FAILED && r.state != AGR_DONE; }
+
+// Why its calls are refused, or "": a record that was stopped (agent-stop) has cut it off.
+gb_att_cut :: (s: [] GbAtt) -> string {
+  if !s[0].on || s[0].r[0].state != AGR_STOPPED { return ""; }
+  return "GameBuilder cut this agent off: its calls are refused. It was stopped in GameBuilder's agents list (agent-stop), and stays stopped: a new session is a new agent";
+}
+
+// What a call touched, from its answer: an apply-edits' ids (a cell's row is no thing: the
+// batch's edits say which are cells), else the one id it names.
+gb_att_things :: (s: [] GbAtt, v: int, answer: string, batch: string, ev: [] AgrEvent) {
+  ev[0].things_n = 0;
+  da: [1] Jv;
+  if !jv_parse(da[..], answer, s[0].nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return; }
+  ids := jv_get(da[0], 0, "ids");
+  if ids < 0 {
+    one := jv_int(da[0], jv_get(da[0], 0, "id"), 0);
+    if one > 0 { ev[0].things[0] = cast(s32) one; ev[0].things_n = 1; }
+    return;
+  }
+  // which of the batch's edits are cells (rows of a table, not things)
+  cell: [WE_BATCH] bool;
+  bd: [1] Jv; bn: [WE_BATCH * WE_NODES + 64] JvNode;
+  if v == VERB_APPLY_EDITS && jv_parse(bd[..], batch, bn[..]) {
+    edits := jv_get(bd[0], 0, "edits");
+    for i: 0..<jv_len(bd[0], edits) {
+      if i >= WE_BATCH { break; }
+      cell[i] = jv_raw_eq(jv_raw(bd[0], jv_get(bd[0], jv_at(bd[0], edits, i), "op")), "cell");
+    }
+  }
+  for i: 0..<jv_len(da[0], ids) {
+    if i < WE_BATCH && cell[i] { continue; }
+    id := jv_int(da[0], jv_at(da[0], ids, i), 0);
+    if id > 0 && ev[0].things_n < AGR_THINGS { ev[0].things[ev[0].things_n] = cast(s32) id; ev[0].things_n += 1; }
+  }
+}
+
+// What one call of the agent's is in its log: a tool event, its arguments as it sent them and a
+// short result; and when it changed the level (done, not a dry run, the revision moved), an edit
+// event with the revisions and the things. The record follows: its level, its game (0 and "My
+// levels" for a level in no game of yours), its step. before and after are the level's
+// revisions around the call (-1: not known); level is the one it named (-1: none).
+GbAttCall :: struct { v: int; args: string; batch: string; dry: bool; level: s32; game: s32; title: string; before: int; after: int; }
+gb_att_call :: (s: [] GbAtt, k: GbAttCall, r: GbResult, now: s64) {
+  s[0].out_n = 0;
+  if !s[0].on { return; }
+  c := GB_COMMANDS[k.v];
+  nb: [64] u8;
+  s[0].ev[0] = agr_event(AGR_TOOL);
+  s[0].ev[0].tool_n = agr_set(s[0].ev[0].tool[..], gb_mcp_name(c.verb, nb[..]));
+  agr_event_args(s[0].ev[..], ifx k.args.count > 0 then k.args else "{}");
+  s[0].ev[0].ok = r.code == GB_DONE;
+  s[0].ev[0].result_n = agr_set(s[0].ev[0].result[..], r.json);
+  _ = gb_att_append(s, now);
+  if r.code == GB_DONE && c.effect == "edit" && !k.dry && k.level >= 0 && k.before >= 0 && k.after >= 0 && k.before != k.after {
+    s[0].ev[0] = agr_event(AGR_EDIT);
+    s[0].ev[0].level = k.level; s[0].ev[0].before = cast(s32) k.before; s[0].ev[0].after = cast(s32) k.after;
+    gb_att_things(s, k.v, r.json, k.batch, s[0].ev[..]);
+    _ = gb_att_append(s, now);
+  }
+  if k.level >= 0 {
+    s[0].r[0].level = k.level; s[0].r[0].game = k.game;
+    s[0].r[0].title_n = agr_set(s[0].r[0].title[..], ifx k.game > 0 && k.title.count > 0 then k.title else GB_ATT_NONE);
+  }
+  sb: [AGR_STEP] u8; t := [1] Text.[Text.{buf = sb[..]}];
+  tx_put(t[..], c.verb);
+  if k.level >= 0 { tx_put(t[..], " on level "); tx_n(t[..], k.level); }
+  if r.code != GB_DONE { tx_put(t[..], ": refused"); }
+  s[0].r[0].step_n = agr_set(s[0].r[0].step[..], cast(string) sb[0..<t[0].at]);
+}
+
+// The session ended (stdin closed, or the client said so): done, unless it was cut off first.
+gb_att_end :: (s: [] GbAtt, now: s64) {
+  s[0].out_n = 0;
+  if !s[0].on || !gb_att_live(s[0].r[0]) { return; }
+  s[0].ev[0] = agr_event(AGR_STATE); s[0].ev[0].state = AGR_DONE; agr_event_text(s[0].ev[..], "its session ended");
+  _ = gb_att_append(s, now);
+  s[0].r[0].step_n = 0;
+}
+
+// The state event that cuts an attached agent off, as agent-stop appends it to its log: its
+// calls are refused from then on (gb_att_cut), and the record says what we can't do.
+gb_att_cut_event :: (ev: [] AgrEvent) {
+  ev[0] = agr_event(AGR_STATE); ev[0].state = AGR_STOPPED; agr_event_text(ev[..], AGR_ATTACHED_CUT);
+}
+
+// ---- checks
+
+AttTest :: struct { s: [1] GbAtt; lg: [65536] u8; lg_n: int; back: [1] GbAtt; }
+att_test_keep :: (t: [] AttTest) { t[0].lg_n = agr_put(t[0].lg[..], t[0].lg_n, gb_att_lines(t[0].s[..])); }
+
+#test "attached: a client that attaches gets a record of its own, attached, working, its name its runner" {
+  t: [1] AttTest; s := t[0].s[..];
+  now: s64 = 1763380000000;
+  cb: [32] u8;
+  #assert gb_att_client("claude-code", cb[..]) == "claude-code";
+  #assert gb_att_client("Claude Desktop (beta)", cb[..]) == "Claude-Desktop";
+  #assert gb_att_client("a very long client name indeed", cb[..]) == "a-very-long-clie";
+  #assert gb_att_client("", cb[..]) == "mcp" && gb_att_client("!!", cb[..]) == "mcp";
+  #assert gb_att_name_why("codex") == "" && gb_att_name_why("") != "" && gb_att_name_why("two words") != "" && gb_att_name_why("a-name-of-17-byte") != "";
+  ib: [AGR_ID] u8;
+  id := agr_new_id(now, 2, ib[..]);
+  gb_att_open(s, id, "claude-code", GB_ATT_ATTACH, AGR_THIS_MAC, now);
+  rec := gb_att_record(s);
+  #assert rec == "{\"schema\":\"gamebuilder.agent.v1\",\"id\":\"a19a91a37500-2\",\"game\":0,\"title\":\"My levels\",\"level\":0,\"kind\":\"build\",\"job\":\"an outside agent, building through gamebuilder mcp --attach\",\"place\":\"attached\",\"computer\":\"this Mac\",\"runner\":\"claude-code\",\"state\":\"working\",\"since\":1763380000000,\"made\":1763380000000,\"updated\":1763380000000,\"heard\":0,\"step\":\"\",\"why\":\"\",\"limits\":{\"turns\":0,\"cents\":0},\"events\":1}";
+  #assert gb_att_lines(s) == "{\"schema\":\"gamebuilder.agent.event.v1\",\"agent\":\"a19a91a37500-2\",\"n\":1,\"at\":1763380000000,\"type\":\"state\",\"state\":\"working\",\"text\":\"\"}\n";
+  // its file reads back as the record module reads any agent's
+  #assert gb_att_load(t[0].back[..], rec) == "" && agr_place_words(t[0].back[0].r[..]) == "attached" && gb_att_cut(t[0].back[..]) == "";
+  // a pane agent's record is not one to log an attached agent's calls to
+  pane: [1] AgrRecord; lb: [AGR_RECORD_MAX] u8;
+  agr_record_new(pane[..], "a1-0", 0, "My levels", 1, AGR_BUILD, AGR_LOCAL, AGR_THIS_MAC, "claude", now);
+  #assert gb_att_load(t[0].back[..], agr_record_write(pane[..], "add a floor", lb[..])) == "that agent isn't an attached one";
+  // its turn number is its own: the same id the same number, never a pane agent's or none
+  turn := gb_att_turn(id);
+  #assert turn == gb_att_turn("a19a91a37500-2") && turn >= GB_ATT_TURN0 && turn != gb_att_turn("a19a91a37500-3");
+}
+
+#test "attached: each call is a tool event, an edit with its revisions and things, and the record follows" {
+  t: [1] AttTest; s := t[0].s[..];
+  now: s64 = 1763380000000;
+  gb_att_open(s, "a1-0", "codex", GB_ATT_STDIO, "", now); att_test_keep(t[..]);
+  // a read: one tool event, no edit
+  r := GbResult.{code = GB_DONE, json = "{\"schema\":\"gamebuilder.level.v1\",\"rev\":4}"};
+  gb_att_call(s, GbAttCall.{v = VERB_READ_LEVEL, args = "{\"level\":3}", level = 3, game = 2, title = "Moss Run", before = 4, after = 4}, r, now + 1); att_test_keep(t[..]);
+  #assert agr_log_count(gb_att_lines(s)) == 1 && s[0].r[0].level == 3 && s[0].r[0].game == 2 && agr_text(s[0].r[0].title[..], s[0].r[0].title_n) == "Moss Run";
+  #assert agr_text(s[0].r[0].step[..], s[0].r[0].step_n) == "read-level on level 3";
+  // an add: the tool event, then the edit with the thing it made
+  r = GbResult.{code = GB_DONE, json = "{\"ok\":true,\"id\":29,\"kind\":\"block\",\"rev\":5}"};
+  gb_att_call(s, GbAttCall.{v = VERB_ADD, args = "{\"level\":3,\"kind\":\"block\"}", level = 3, game = 2, title = "Moss Run", before = 4, after = 5}, r, now + 2); att_test_keep(t[..]);
+  lines := gb_att_lines(s);
+  #assert agr_log_count(lines) == 2;
+  #assert level_find(lines, "\"n\":3,\"at\":1763380000002,\"type\":\"tool\",\"tool\":\"gb_add\",\"args\":\"{\\\"level\\\":3,\\\"kind\\\":\\\"block\\\"}\",\"ok\":true,\"result\":\"{\\\"ok\\\":true,\\\"id\\\":29") >= 0;
+  #assert level_find(lines, "\"n\":4,\"at\":1763380000002,\"type\":\"edit\",\"level\":3,\"before\":4,\"after\":5,\"things\":[29]}") >= 0;
+  // a batch: a new shape's row is no thing; the things it moved and made are
+  batch := "{\"schema\":\"world.edit.v1\",\"rev\":5,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"shape\",\"row\":17,\"col\":\"*\",\"v\":\"17|block|200|50|100\"},{\"op\":\"spawn\",\"id\":0,\"kind\":17,\"x\":0,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100},{\"op\":\"move\",\"id\":29,\"x\":100,\"y\":0,\"z\":0}]}";
+  r = GbResult.{code = GB_DONE, json = "{\"ok\":true,\"rev\":6,\"ids\":[17,30,29]}"};
+  gb_att_call(s, GbAttCall.{v = VERB_APPLY_EDITS, args = "{}", batch = batch, level = 3, game = 2, title = "Moss Run", before = 5, after = 6}, r, now + 3); att_test_keep(t[..]);
+  #assert level_find(gb_att_lines(s), "\"before\":5,\"after\":6,\"things\":[30,29]}") >= 0;
+  // a dry run, a refusal and a call that changed nothing make no edit event
+  gb_att_call(s, GbAttCall.{v = VERB_ADD, args = "{}", dry = true, level = 3, before = 6, after = 7}, GbResult.{code = GB_DONE, json = "{\"ok\":true,\"id\":31,\"dry_run\":true}"}, now + 4); att_test_keep(t[..]);
+  #assert agr_log_count(gb_att_lines(s)) == 1;
+  gb_att_call(s, GbAttCall.{v = VERB_SET_FIELD, args = "{}", level = 3, before = 6, after = 6}, GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"edit-refused\",\"why\":\"Turn is from -180 to 180°\"}"}, now + 5); att_test_keep(t[..]);
+  #assert agr_log_count(gb_att_lines(s)) == 1 && level_find(gb_att_lines(s), "\"ok\":false") >= 0 && agr_text(s[0].r[0].step[..], s[0].r[0].step_n) == "set-field on level 3: refused";
+  // the log reads back whole by cursor, as every surface reads it
+  lg := cast(string) t[0].lg[0..<t[0].lg_n];
+  #assert agr_log_count(lg) == 8 && s[0].r[0].events == 8;
+  pb: [65536] u8; o: [1] Jo; jo_start(o[..], pb[..]); jo_obj(o[..]); agr_events_page(lg, "a1-0", 0, 0, o[..]); jo_end(o[..]);
+  #assert level_find(jo_text(o[..]), "\"next\":8,\"more\":false}") >= 0 && level_find(jo_text(o[..]), "broken") < 0;
+  // a level in no game of yours is "My levels"
+  gb_att_call(s, GbAttCall.{v = VERB_READ_LEVEL, args = "{}", level = 1, game = 0, before = 1, after = 1}, GbResult.{code = GB_DONE, json = "{}"}, now + 6);
+  #assert agr_text(s[0].r[0].title[..], s[0].r[0].title_n) == "My levels";
+}
+
+#test "attached: stopped is cut off, its calls refused in words; a session's end is done, never over a cut" {
+  t: [1] AttTest; s := t[0].s[..];
+  now: s64 = 1763380000000;
+  gb_att_open(s, "a1-0", "claude-code", GB_ATT_HTTP, "", now);
+  #assert gb_att_cut(s) == "" && gb_att_live(s[0].r[0]);
+  // agent-stop appends the cut
+  gb_att_cut_event(s[0].ev[..]);
+  _ = gb_att_append(s, now + 1);
+  #assert s[0].r[0].state == AGR_STOPPED && agr_text(s[0].r[0].why[..], s[0].r[0].why_n) == AGR_ATTACHED_CUT;
+  #assert level_find(gb_att_cut(s), "GameBuilder cut this agent off: its calls are refused") == 0 && !gb_att_live(s[0].r[0]);
+  // the cut stands when its session ends
+  gb_att_end(s, now + 2);
+  #assert s[0].r[0].state == AGR_STOPPED && s[0].out_n == 0;
+  gb_att_open(s, "a1-1", "claude-code", GB_ATT_STDIO, "", now);
+  gb_att_end(s, now + 3);
+  #assert s[0].r[0].state == AGR_DONE && level_find(gb_att_lines(s), "\"state\":\"done\",\"text\":\"its session ended\"") >= 0 && !gb_att_live(s[0].r[0]);
+}

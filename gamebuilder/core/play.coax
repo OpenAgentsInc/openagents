@@ -1,0 +1,1803 @@
+// Play: the level as a game you can walk into.
+//
+// The first game template is a team arena: three Scrappers a side, yours and
+// two bots against three bots, in first person with a camera you can pull
+// back to third. The level's blocks are the arena's walls and cover; the
+// player start is your team's spawn and the rival start is theirs. Knock a
+// rival out to score; first to PLAY_GOAL, or ahead when the clock runs out,
+// wins.
+//
+// Collision is the Metaverse Engine's (physics/query.coax): a sweep moves a
+// body, a ray stops a shot, a clear line is what a bot can see. The walking,
+// the bots and the rules here are this template's own for now; the engine's
+// walker (move/walk.coax), follow camera (cam/follow.coax) and steering
+// (ai/steer.coax) replace them when play adopts the engine's World
+// (docs/openagents-integration.md, stage 2).
+//
+// The host sends touches, keys and the pointer, and draws the HUD where
+// ed_play_hud says. Every rule is here.
+
+FIGHTERS :: 10;              // up to five a side: 0 is you; modes.coax says which seat is whose (SEAT_TEAM)
+TEAM_SIZE :: 5;              // the most a side
+SHOTS :: 96;
+PLAY_GOAL :: 10;             // knockouts that win
+PLAY_SECONDS :: 150.0f32;
+PLAY_STEP :: 0.016666667f32;
+PLAY_RESPAWN :: 3.0f32;
+PLAY_GRAVITY :: 24.0f32;
+PLAY_JUMP :: 8.0f32;
+PLAY_RADIUS :: 0.4f32;       // a body's, for walls
+PLAY_HIT :: 0.65f32;         // how near a shot must pass a body's middle to hit
+PLAY_EYE :: 1.5f32;
+PLAY_REGEN_AFTER :: 3.0f32;  // seconds unhurt before health comes back
+PLAY_REGEN :: 0.14f32;       // of full health a second
+PLAY_AIM_HELP :: 0.11f32;    // radians off a rival your shot still goes to them
+PLAY_SUPER_FULL :: 100.0f32;
+PLAY_SUPER_PER_DAMAGE :: 0.035f32;
+PLAY_SLAM_REACH :: 6.5f32;
+PLAY_SLAM_DAMAGE :: 1500.0f32;
+PLAY_COUNTDOWN :: 3.0f32;    // seconds before a match starts
+PLAY_SHIELD :: 2.0f32;       // seconds nothing hurts a Scrapper who has just come in
+SPARKS :: 64;
+EVENTS :: 24;
+PLAY_FEED :: 3.0f32;         // seconds a knockout stays written on the HUD
+PACKS :: 4;                  // health packs in an arena
+PACK_HEAL :: 0.4f32;         // of full health one gives back
+PACK_BACK :: 12.0f32;        // seconds until a taken one is there again
+PACK_REACH :: 1.1f32;
+PLAY_STICK :: 60.0f32;       // points the move stick travels
+PLAY_BOT_DAMAGE :: 0.35f32;   // of a Scrapper's damage a bot's shot does: you are the one who decides a match
+PLAY_BOT_AIM :: 0.16f32;     // radians a bot's aim wanders, at most
+// The open field's targets and enemies (palette.coax places them)
+TARGETS :: 16;               // targets in a field, at most
+FIELD_ENEMIES :: 9;          // enemies in a field, at most: every seat but yours
+TARGET_UP :: 1.3f32;         // metres from the ground to a target's middle
+TARGET_R :: 0.45f32;         // its board's radius: a shot this near its middle hits it
+TARGET_BACK :: 3.0f32;       // seconds a shot target lies down before it pops back up
+TARGET_SLIDE :: 2.5f32;      // metres a moving target slides either way of its place
+TARGET_PACE :: 1.1f32;       // how fast it slides: radians of its swing a second
+
+// The Scrappers. Bolt is quick and fires fast; Boulder is tough and fires a
+// short spread; Lumen is fragile and hits hard from far away.
+CLASSES :: 3;
+CLASS_NAME :: [CLASSES] string.["Bolt", "Boulder", "Lumen"];
+CLASS_BLURB :: [CLASSES] string.["Fast feet, fast shots. Super: overdrive.", "Tough, with a close-range blast. Super: ground slam.", "Fragile, hits hard from far. Super: charged shots."];
+CLASS_HP :: [CLASSES] f32.[3200, 5600, 2600];
+CLASS_SPEED :: [CLASSES] f32.[7.2, 5.4, 6.2];
+CLASS_DAMAGE :: [CLASSES] f32.[420, 300, 1100];
+CLASS_COOL :: [CLASSES] f32.[0.22, 0.85, 1.0];
+CLASS_RANGE :: [CLASSES] f32.[20, 9, 42];
+CLASS_SHOT_SPEED :: [CLASSES] f32.[42, 30, 75];
+CLASS_PELLETS :: [CLASSES] int.[1, 5, 1];
+CLASS_SPREAD :: [CLASSES] f32.[0.012, 0.13, 0.0];
+CLASS_OVER :: [CLASSES] f32.[3.0, 0.0, 4.0];     // seconds a super lasts; Boulder's is the slam
+
+// Tints the host's shader knows (the instance's third spare float).
+TINT_NONE :: 0; TINT_MINE :: 1; TINT_RIVAL :: 2; TINT_SHOT_MINE :: 3; TINT_SHOT_RIVAL :: 4; TINT_HEALTH :: 5; TINT_DARK :: 6; TINT_SPARK :: 7; TINT_GLOW :: 8;
+TINT_WALL :: 17; TINT_COVER :: 18;   // an arena's tall walls and its low cover
+
+// What just happened, for the host to play as a sound (and a tap on a phone).
+// A shot's sound is its Scrapper's: SND_SHOT and the kind.
+SND_SHOT :: 1; SND_HIT :: 4; SND_HURT :: 5; SND_KNOCKOUT :: 6; SND_SUPER :: 7; SND_WIN :: 8; SND_LOSE :: 9; SND_BEEP :: 10; SND_GO :: 11; SND_JUMP :: 12;
+SOUNDS :: 13;
+SOUND_RATE :: 44100;
+
+Fighter :: struct {
+  team: s32; kind: s32;
+  x: f32; y: f32; z: f32; vy: f32;
+  yaw: f32; pitch: f32;
+  hp: f32; alive: bool; respawn: f32;
+  cool: f32;              // seconds until the next shot
+  unhurt: f32;            // seconds since it was last hit or fired
+  super: f32; over: f32;  // the super's charge, and seconds of it left
+  flash: f32;             // seconds it shows a hit
+  shield: f32;            // seconds nothing hurts it
+  stride: f32;            // how far along its step it is, for its legs
+  kick: f32;              // seconds since it fired, for the blaster's recoil
+  grounded: bool;
+  life: s32;              // times it has been put at its start: what a guest's word about its place is checked against
+  hits: s32; kos: s32; falls: s32;   // shots of its own that landed, knockouts it made, times it fell
+  // a bot's mind
+  target: s32; think: f32; strafe: f32; stuck: f32; detour: f32; err: f32;
+}
+
+PlayShot :: struct {
+  live: bool; team: s32; owner: s32; kind: s32;
+  x: f32; y: f32; z: f32; vx: f32; vy: f32; vz: f32;
+  life: f32; damage: f32;
+}
+
+// A health pack: where it lies, and seconds until it is back once taken (0: it is there).
+Pack :: struct { x: f32; z: f32; gone: f32; there: bool; }
+
+// An open field's target: where it stands and the way its face turns, whether
+// it slides from side to side, how far along its swing it is, and seconds until
+// it pops back up once shot (0: it is up).
+Target :: struct { x: f32; z: f32; yaw: f32; moving: bool; t: f32; down: f32; }
+
+Spark :: struct { life: f32; x: f32; y: f32; z: f32; vx: f32; vy: f32; vz: f32; tint: s32; }
+
+Play :: struct {
+  on: bool; over: bool; winner: s32;      // winner: 0 your team, 1 the rivals, -1 a draw
+  world: bool;                            // the engine's page plays it (world.coax): one of the website's worlds, by the website's own rules; nothing here steps
+  explore: bool;                          // no match: you alone, walking the place (a game that is not an arena)
+  // the meadow's four types (shared/game-types.coax gt_cam): you alone on the level, its balls solid, seen
+  // through that type's camera kind (the engine's cam/kinds.coax), ahead the way you faced as play began
+  meadow: bool; cam_kind: int; ahead: f32; line_x: f32; line_z: f32;
+  field: bool;                            // the open field: no match, but the arena's look, its first person and its blaster
+  targets: [TARGETS] Target; target_n: s32;   // the field's targets
+  downed: s32;                            // targets you have shot down
+  home_x: [FIGHTERS] f32; home_z: [FIGHTERS] f32; home_yaw: [FIGHTERS] f32; home_n: s32;   // where each of the field's enemies comes in: seats 1 to home_n
+  her_on: bool; her: [1] Her;             // SPLICEBOTS: you are the Director, moving by the jam's rules (her.coax)
+  jumper: s32;                            // the touch holding the jump button, and one, or 0
+  real: bool;                             // SPLICEBOTS on its real level, not the blockout (farm.coax)
+  scene: [1] ScenePlay;                   // that level's pickups, her bag and Digger (scene.coax)
+  left: f32;                              // seconds on the clock
+  acc: f32;                               // time owed to the fixed step
+  f: [FIGHTERS] Fighter;
+  shots: [SHOTS] PlayShot;
+  score: [2] s32;
+  boxes: [ACTORS_MAX * QUERY_BOX] f32; box_n: s64;
+  spawn_x: [2] f32; spawn_z: [2] f32; spawn_yaw: [2] f32;
+  // the match's pieces where the level's markers put them (palette.coax); worked out from the starts where it has none
+  end_set: [2] bool; end_x: [2] f32; end_z: [2] f32; end_ux: [2] f32; end_uz: [2] f32;   // each team's goal, and its way out
+  hoop_set: [2] bool; hoop_x: [2] f32; hoop_z: [2] f32;
+  ball_set: bool; ball_x: f32; ball_z: f32;
+  seed: int;
+  test: bool;                             // a play-test (playtest.coax): your seat is a bot's too
+  third: bool;                            // the camera is pulled back behind you
+  fire: bool; jump: bool; super: bool;    // what you are asking for
+  marker: f32; hurt: f32;                 // seconds the HUD shows you hit someone, or were hit
+  count: f32;                             // seconds of the countdown left
+  packs: [PACKS] Pack;
+  mine: s32;                              // knockouts that were yours
+  falls: s32;                             // times you were knocked out
+  touch: bool;                            // you are playing by touch: a shot fires itself when your aim is on a rival
+  sparks: [SPARKS] Spark;
+  ev: [EVENTS * 2] s32; ev_n: s32;        // sounds since the host last asked: an id and a loudness in percent
+  feed_by: s32; feed_who: s32; feed: f32; // the last knockout: who did it, to whom, and seconds it stays up
+  // touches, each a host's touch number and one, or 0
+  stick: s32; stick_ox: f32; stick_oy: f32; stick_x: f32; stick_y: f32;
+  look: s32; look_x: f32; look_y: f32;
+  trigger: s32;
+  net: [1] Net;                           // a match with other people in it (net.coax)
+  // the mode and how many a side (modes.coax): kept from one match to the next
+  mode: s32; size: s32;
+  ball: [1] Ball; bout: s32; pause: f32;  // a ball mode's ball; Last Stand's round; seconds it stands still after a score
+  call: s32; call_team: s32; call_t: f32; // the banner: what happened, for whom, seconds it stays up
+  flip: bool;                             // a guest across from the host: its teams are the host's turned about
+  // the editor's camera, to go back to
+  cam: [5] f32;
+}
+
+// ---- small things
+
+play_rand :: (p: [] Play) -> f32 {
+  p[0].seed = (p[0].seed * 1103515245 + 12345) % 2147483648;
+  return cast(f32) p[0].seed / 2147483648.0;
+}
+play_min :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+play_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+play_wrap :: (a: f32) -> f32 {
+  r := a;
+  while r > 3.14159265 { r -= 6.2831853; }
+  while r < -3.14159265 { r += 6.2831853; }
+  return r;
+}
+
+// Queues a sound at a place: as loud as it is near you. A sound that is
+// yours (at < 0) is full.
+play_sound :: (p: [] Play, id: s32, x: f32, z: f32, mine: bool) {
+  if p[0].ev_n >= EVENTS { return; }
+  loud: f32 = 100;
+  if !mine {
+    dx := x - p[0].f[0].x; dz := z - p[0].f[0].z;
+    loud = (1 - sqrt(dx * dx + dz * dz) / 45) * 55;
+    if loud < 4 { return; }
+  }
+  p[0].ev[p[0].ev_n * 2] = id; p[0].ev[p[0].ev_n * 2 + 1] = cast(s32) loud;
+  p[0].ev_n += 1;
+}
+
+// Throws `n` sparks out from a point.
+play_burst :: (p: [] Play, x: f32, y: f32, z: f32, n: s64, speed: f32, tint: s32) {
+  made := 0;
+  for k: 0..<SPARKS {
+    if made >= n { break; }
+    if p[0].sparks[k].life > 0 { continue; }
+    a := play_rand(p) * 6.2831853; up := play_rand(p);
+    v := speed * (0.5 + play_rand(p) * 0.5);
+    p[0].sparks[k] = Spark.{life = 0.35 + play_rand(p) * 0.3, x = x, y = y, z = z, vx = cos(a) * v, vy = (0.3 + up) * v, vz = sin(a) * v, tint = tint};
+    made += 1;
+  }
+}
+
+// Whether play wears the arena's look: its plates, its dusk sky, its walls
+// and cover in their colours and the Scrappers' models. A match does, and so
+// does the open field, the arena with the match taken out; a place you walk
+// round does not.
+play_arena_look :: (p: [] Play) -> bool { return !p[0].explore || p[0].field; }
+
+// Whether a knocked-out Scrapper comes back: in a match, as its mode says; on
+// the open field, you and every enemy, at your start or its marker.
+play_respawns :: (p: [] Play, i: s64) -> bool {
+  if p[0].field { return i == 0 || i <= cast(s64) p[0].home_n; }
+  return mode_respawns(p, i);
+}
+
+play_colliders :: (p: [] Play, ground: bool) -> Colliders {
+  return Colliders.{ground = 0, ground_enabled = ground, boxes = p[0].boxes[0..<p[0].box_n * QUERY_BOX]};
+}
+
+// The way a body faces, flat: yaw 0 is along +Z, as the editor's camera.
+play_ahead :: (yaw: f32, pitch: f32) -> WorldPoint {
+  cp := cos(pitch);
+  return WorldPoint.{x = sin(yaw) * cp, y = sin(pitch), z = cos(yaw) * cp};
+}
+
+// ---- starting and stopping
+
+play_place :: (p: [] Play, i: s64) {
+  f := p[0].f[i];
+  t := cast(s64) f.team;
+  slot := ifx p[0].field then 0.0f32 else play_slot_offset(p, i);   // on the open field, you stand on your start
+  yaw := p[0].spawn_yaw[t];
+  // side by side across the way the spawn faces
+  f.x = p[0].spawn_x[t] - cos(yaw) * slot * 1.6;
+  f.z = p[0].spawn_z[t] + sin(yaw) * slot * 1.6;
+  // an enemy on the open field comes in at its own marker
+  if p[0].field && i > 0 && i <= cast(s64) p[0].home_n { yaw = p[0].home_yaw[i]; f.x = p[0].home_x[i]; f.z = p[0].home_z[i]; }
+  f.y = 0; f.vy = 0; f.yaw = yaw; f.pitch = 0;
+  f.hp = CLASS_HP[f.kind]; f.alive = true; f.respawn = 0; f.cool = 0.4; f.unhurt = 0; f.over = 0; f.flash = 0;
+  f.target = -1; f.think = 0; f.stuck = 0; f.shield = PLAY_SHIELD; f.kick = 1; f.life += 1;
+  p[0].f[i] = f;
+}
+
+// Begins a match in the level as it stands, with you as this Scrapper.
+ed_play :: (e: [] Editor, kind: s32) #export_c #effects(all) {
+  if e.count != 1 || kind < 0 || kind >= CLASSES { return; }
+  // a game type the app does not play yet says so where the person is looking, and stays in the editor
+  if e[0].plays >= 0 && e[0].plays < GT_TYPES && !GT_PLAYS_IN_APP[e[0].plays] { ed_say(e, ed_play_why(e[0].plays)); return; }
+  // a world of its own is the engine's page's to play: without the page (a build that has none) it says so
+  if ed_play_needs_page(e) { ed_say(e, PLAY_NO_PAGE); return; }
+  vp_cancel(e[0].vp[..]);
+  e[0].drag = DRAG_NONE;
+  p := e[0].play[..];
+  v := e[0].vp[0];
+  cam := [5] f32.[v.fx, v.fy, v.fz, v.fyaw, v.fpitch];
+  if p[0].on { cam = p[0].cam; }
+  mode := p[0].mode; size := p[0].size;
+  p[0] = Play.{};
+  p[0].cam = cam; p[0].mode = mode; p[0].size = size;
+  if ed_paged(e) {
+    // one of the website's worlds, with the engine's page open: the page plays it by the website's own rules
+    // (world.coax, web/hud.coax). Nothing of the match is set up; the page starts the world over.
+    p[0].on = true; p[0].world = true; p[0].explore = true; p[0].feed_by = -1;
+    e[0].world[0].gen += 1; e[0].world[0].keys = 0;
+    e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false;
+    e[0].dirty = true;
+    return;
+  }
+  p[0].on = true; p[0].left = PLAY_SECONDS; p[0].seed = 20261116; p[0].count = PLAY_COUNTDOWN;
+  p[0].feed_by = -1;
+  p[0].field = e[0].plays == TEMPLATE_FIELD;
+  p[0].cam_kind = gt_cam(cast(int) e[0].plays); p[0].meadow = p[0].cam_kind >= 0;
+  // the blocks are the arena; the two starts are where the teams come in
+  have: [2] bool;
+  cx: f32 = 0; cz: f32 = 0; n: f32 = 0;
+  put_x: [PACKS] f32; put_z: [PACKS] f32; placed := 0;
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    if ed_kind_solid(a.kind) || (p[0].meadow && a.kind == KIND_BALL) {
+      b := ed_bounds(a);
+      at := p[0].box_n * QUERY_BOX;
+      p[0].boxes[at] = b.c.x - b.hx; p[0].boxes[at + 1] = b.c.y - b.hy; p[0].boxes[at + 2] = b.c.z - b.hz;
+      p[0].boxes[at + 3] = b.c.x + b.hx; p[0].boxes[at + 4] = b.c.y + b.hy; p[0].boxes[at + 5] = b.c.z + b.hz;
+      p[0].box_n += 1;
+      cx += b.c.x; cz += b.c.z; n += 1;
+      continue;
+    }
+    mx := cast(f32) a.x / 100; mz := cast(f32) a.z / 100; turn := cast(f32) a.yaw * 0.017453292;
+    if a.kind == KIND_PACK && placed < PACKS { put_x[placed] = mx; put_z[placed] = mz; placed += 1; continue; }
+    if a.kind == KIND_GOAL || a.kind == KIND_RIVAL_GOAL {
+      // a goal faces into the arena; its way out is behind it
+      g := ifx a.kind == KIND_RIVAL_GOAL then 1 else 0;
+      if !p[0].end_set[g] { p[0].end_set[g] = true; p[0].end_x[g] = mx; p[0].end_z[g] = mz; p[0].end_ux[g] = -sin(turn); p[0].end_uz[g] = -cos(turn); }
+      continue;
+    }
+    if a.kind == KIND_HOOP || a.kind == KIND_RIVAL_HOOP {
+      g := ifx a.kind == KIND_RIVAL_HOOP then 1 else 0;
+      if !p[0].hoop_set[g] { p[0].hoop_set[g] = true; p[0].hoop_x[g] = mx; p[0].hoop_z[g] = mz; }
+      continue;
+    }
+    if a.kind == KIND_BALL { if !p[0].ball_set { p[0].ball_set = true; p[0].ball_x = mx; p[0].ball_z = mz; } continue; }
+    if a.kind == KIND_TARGET || a.kind == KIND_MOVER {
+      if p[0].target_n < TARGETS { p[0].targets[p[0].target_n] = Target.{x = mx, z = mz, yaw = turn, moving = a.kind == KIND_MOVER}; p[0].target_n += 1; }
+      continue;
+    }
+    if a.kind == KIND_ENEMY {
+      if p[0].home_n < FIELD_ENEMIES { p[0].home_n += 1; h := p[0].home_n; p[0].home_x[h] = mx; p[0].home_z[h] = mz; p[0].home_yaw[h] = turn; }
+      continue;
+    }
+    if a.kind != KIND_START && a.kind != KIND_RIVAL { continue; }
+    t := ifx a.kind == KIND_RIVAL then 1 else 0;
+    if have[t] { continue; }
+    have[t] = true;
+    p[0].spawn_x[t] = cast(f32) a.x / 100; p[0].spawn_z[t] = cast(f32) a.z / 100; p[0].spawn_yaw[t] = cast(f32) a.yaw * 0.017453292;
+  }
+  if n > 0 { cx /= n; cz /= n; }
+  if !have[0] { p[0].spawn_x[0] = cx; p[0].spawn_z[0] = cz - 8; }
+  if !have[1] {
+    // no rival start: across the middle of the level from yours, facing back
+    p[0].spawn_x[1] = 2 * cx - p[0].spawn_x[0]; p[0].spawn_z[1] = 2 * cz - p[0].spawn_z[0];
+    p[0].spawn_yaw[1] = p[0].spawn_yaw[0] + 3.14159265;
+  }
+  for i: 0..<FIGHTERS {
+    p[0].f[i].team = SEAT_TEAM[i];
+    p[0].f[i].kind = ifx i == 0 then kind else cast(s32) ((cast(s64) kind + i) % CLASSES);
+    p[0].f[i].strafe = ifx i % 2 == 0 then 1.0f32 else -1.0f32;
+    play_place(p, i);
+  }
+  // health packs: a third and two thirds of the way between the starts, and either side of the middle, where no block stands
+  ax := p[0].spawn_x[0]; az := p[0].spawn_z[0]; bx := p[0].spawn_x[1]; bz := p[0].spawn_z[1];
+  wide := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+  if wide > 4 {
+    ux := (bx - ax) / wide; uz := (bz - az) / wide;
+    px := [PACKS] f32.[ax + (bx - ax) * 0.3, ax + (bx - ax) * 0.7, (ax + bx) / 2 - uz * wide * 0.28, (ax + bx) / 2 + uz * wide * 0.28];
+    pz := [PACKS] f32.[az + (bz - az) * 0.3, az + (bz - az) * 0.7, (az + bz) / 2 + ux * wide * 0.28, (az + bz) / 2 - ux * wide * 0.28];
+    for k: 0..<PACKS {
+      clear := query_ground(play_colliders(p, true), px[k], pz[k], 100000, 0.6).y < 0.05;
+      p[0].packs[k] = Pack.{x = px[k], z = pz[k], there = clear};
+    }
+  }
+  // packs the level places stand there instead, and only they
+  if placed > 0 {
+    for k: 0..<PACKS { p[0].packs[k] = ifx k < placed then Pack.{x = put_x[k], z = put_z[k], there = true} else Pack.{}; }
+  }
+  mode_start(p);
+  if e[0].plays == TEMPLATE_ADVENTURE {
+    // a place to walk, not a match: nobody else, no clock, seen from behind
+    p[0].explore = true; p[0].count = 0; p[0].third = true;
+    for i: 1..<FIGHTERS { p[0].f[i].alive = false; }
+    for k: 0..<PACKS { p[0].packs[k].there = false; }
+    p[0].f[0].shield = 0;
+    if e[0].game == GAME_SPLICE_BOTS && e[0].mine_open == 0 { p[0].real = e[0].farm[0].ok; her_start(e); scene_start(e); }
+  }
+  if p[0].meadow {
+    // the meadow's types: you alone, walking what was built, through the type's own camera
+    p[0].explore = true; p[0].count = 0; p[0].third = p[0].cam_kind != CAM_KIND_FIRST;
+    for i: 1..<FIGHTERS { p[0].f[i].alive = false; p[0].f[i].respawn = 0; }
+    for k: 0..<PACKS { p[0].packs[k].there = false; }
+    p[0].f[0].shield = 0;
+    p[0].ahead = p[0].f[0].yaw; p[0].line_x = p[0].f[0].x; p[0].line_z = p[0].f[0].z;
+  }
+  if p[0].field {
+    // the arena with the match taken out: no clock, no packs and no teams,
+    // you in first person with your blaster on the arena's floor under its
+    // sky, its targets standing and its enemies, the arena's bots, coming in
+    // at their markers and coming at you
+    p[0].explore = true; p[0].count = 0; p[0].third = false;
+    for i: 1..<FIGHTERS {
+      if i > cast(s64) p[0].home_n { p[0].f[i].alive = false; p[0].f[i].respawn = 0; continue; }
+      p[0].f[i].team = 1; p[0].f[i].kind = cast(s32) ((i - 1) % CLASSES);
+      play_place(p, i);
+    }
+    for k: 0..<PACKS { p[0].packs[k].there = false; }
+    p[0].f[0].shield = 0;
+  } else { p[0].target_n = 0; p[0].home_n = 0; }
+  e[0].vp[0].fyaw = p[0].f[0].yaw; e[0].vp[0].fpitch = ifx p[0].explore && !p[0].field then -0.15f32 else 0.0f32;
+  if p[0].meadow { k := cam_kind(p[0].cam_kind); if !k.looks { e[0].vp[0].fyaw = play_wrap(p[0].ahead + k.turn); e[0].vp[0].fpitch = -k.pitch; } }
+  play_camera(e);
+  e[0].dirty = true;
+}
+
+// Ends the match and goes back to editing, with the camera where it was.
+ed_stop :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on { return; }
+  c := e[0].play[0].cam;
+  e[0].play[0].on = false;
+  e[0].vp[0].fx = c[0]; e[0].vp[0].fy = c[1]; e[0].vp[0].fz = c[2]; e[0].vp[0].fyaw = c[3]; e[0].vp[0].fpitch = c[4];
+  e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false;
+  e[0].dirty = true;
+}
+
+ed_playing :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].play[0].on; }
+// Whether the match wants the pointer to itself (a mouse that looks around).
+ed_play_captures :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].play[0].on && !e[0].play[0].over && !e[0].play[0].world; }
+// Whether the engine's page is playing one of the website's worlds: the host hands it the pointer.
+ed_world_playing :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].play[0].on && e[0].play[0].world; }
+// Whether the open level's type is one only the engine's page plays (the village and the four worlds of
+// their own), in a build that has no page.
+ed_play_needs_page :: (e: [] Editor) -> bool { return e.count == 1 && e[0].plays >= GT_VILLAGE && e[0].plays < GT_TYPES && !e[0].world[0].page; }
+PLAY_NO_PAGE :: "this game type is played by the engine's page, which this build of the app does not have. build it here; it is saved, and plays on gamebuilder.org.";
+// The page's bit for a key held (web/hud.coax HUD_KEY_*, as web/hud-glue.js maps them): W A S D and the arrows
+// (the host's codes for them), Space, and = and - to zoom (Shift, bit 2048, is play_key's: a modifier). 0: not one of them.
+WORLD_KEY_UP :: 63232; WORLD_KEY_DOWN :: 63233; WORLD_KEY_LEFT :: 63234; WORLD_KEY_RIGHT :: 63235;
+world_key_bit :: (key: s32) -> int {
+  if key == KEY_W { return 1; } if key == KEY_S { return 2; } if key == KEY_A { return 4; } if key == KEY_D { return 8; }
+  if key == KEY_SPACE { return 16; } if key == WORLD_KEY_LEFT { return 32; } if key == WORLD_KEY_RIGHT { return 64; }
+  if key == WORLD_KEY_UP { return 128; } if key == WORLD_KEY_DOWN { return 256; }
+  if key == KEY_EQUALS { return 512; } if key == KEY_MINUS { return 1024; }
+  return 0;
+}
+
+ed_play_classes :: () -> s32 #export_c #effects(all) { return CLASSES; }
+play_text :: (s: string, out: [] u8) -> s64 {
+  if s.count > out.count { return 0; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+ed_play_class_name :: (kind: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx kind < 0 || kind >= CLASSES then 0 else play_text(CLASS_NAME[kind], out);
+}
+// How a Scrapper compares with the others, for the bars on its card: its
+// speed (0), toughness (1), damage a second (2) and reach (3), each 0 to 100
+// of the most any Scrapper has.
+ed_play_class_stat :: (kind: s32, which: s32) -> s32 #export_c #effects(all) {
+  if kind < 0 || kind >= CLASSES || which < 0 || which > 3 { return 0; }
+  mine: f32 = 0; most: f32 = 0;
+  for k: 0..<CLASSES {
+    v := CLASS_SPEED[k];
+    if which == 1 { v = CLASS_HP[k]; }
+    if which == 2 { v = CLASS_DAMAGE[k] * cast(f32) CLASS_PELLETS[k] / CLASS_COOL[k]; }
+    if which == 3 { v = CLASS_RANGE[k]; }
+    if v > most { most = v; }
+    if k == cast(int) kind { mine = v; }
+  }
+  return cast(s32) (mine / most * 100);
+}
+ed_play_class_blurb :: (kind: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx kind < 0 || kind >= CLASSES then 0 else play_text(CLASS_BLURB[kind], out);
+}
+
+// ---- moving
+
+// Moves a body across the ground by (dx, dz), sliding along what it meets.
+// Returns how far it got, in metres.
+play_walk :: (p: [] Play, i: s64, dx: f32, dz: f32) -> f32 {
+  c := play_colliders(p, false);
+  f := p[0].f[i];
+  x0 := f.x; z0 := f.z;
+  bx := dx; bz := dz;
+  for pass: 0..<3 {
+    if bx * bx + bz * bz < 0.0000001 { break; }
+    from := WorldPoint.{x = f.x, y = f.y + PLAY_RADIUS + 0.12, z = f.z};
+    h := query_sweep(c, from, PLAY_RADIUS, WorldPoint.{x = bx, y = 0, z = bz});
+    if h.status != QueryStatus.ok { break; }
+    if !h.hit { f.x += bx; f.z += bz; break; }
+    // up to the touch, less a skin, then what is left along the wall
+    mag := sqrt(bx * bx + bz * bz);
+    t := play_max(h.t - 0.02 / mag, 0);
+    f.x += bx * t; f.z += bz * t;
+    nx := h.normal.x; nz := h.normal.z;
+    nl := sqrt(nx * nx + nz * nz);
+    if nl < 0.0001 { break; }
+    nx /= nl; nz /= nl;
+    rx := bx * (1 - t); rz := bz * (1 - t);
+    into := rx * nx + rz * nz;
+    if into > 0 { break; }
+    bx = rx - nx * into; bz = rz - nz * into;
+  }
+  ex := f.x - x0; ez := f.z - z0;
+  got := sqrt(ex * ex + ez * ez);
+  f.stride += got * 2.6;
+  if f.stride > 6.2831853 { f.stride -= 6.2831853; }
+  p[0].f[i] = f;
+  return got;
+}
+
+// Gravity, the floor under a body (the ground or a block's top), and a jump.
+play_fall :: (p: [] Play, i: s64, jump: bool) {
+  c := play_colliders(p, true);
+  f := p[0].f[i];
+  if jump && f.grounded { f.vy = PLAY_JUMP; if i == 0 { play_sound(p, SND_JUMP, f.x, f.z, true); } }
+  f.vy -= PLAY_GRAVITY * PLAY_STEP;
+  f.y += f.vy * PLAY_STEP;
+  under := query_stand(c, f.x, f.z, f.y, PLAY_RADIUS * 0.6).y;
+  f.grounded = false;
+  if f.y <= under && f.vy <= 0 { f.y = under; f.vy = 0; f.grounded = true; }
+  p[0].f[i] = f;
+}
+
+// ---- shooting
+
+play_chest :: (f: Fighter) -> WorldPoint { return WorldPoint.{x = f.x, y = f.y + 0.95, z = f.z}; }
+play_eye :: (f: Fighter) -> WorldPoint { return WorldPoint.{x = f.x, y = f.y + PLAY_EYE, z = f.z}; }
+
+// Whether one point sees another past the blocks.
+play_sees :: (p: [] Play, a: WorldPoint, b: WorldPoint) -> bool {
+  dx := b.x - a.x; dy := b.y - a.y; dz := b.z - a.z;
+  d := sqrt(dx * dx + dy * dy + dz * dz);
+  if d < 0.001 { return true; }
+  return query_clear(play_colliders(p, false), a, WorldPoint.{x = dx / d, y = dy / d, z = dz / d}, d).clear;
+}
+
+play_hurt :: (p: [] Play, who: s64, by: s64, damage: f32) {
+  f := p[0].f[who];
+  if !f.alive || f.shield > 0 { return; }
+  f.hp -= damage; f.unhurt = 0; f.flash = 0.12;
+  play_burst(p, f.x, f.y + 1.0, f.z, 4, 3.5, TINT_SPARK);
+  if who == 0 { play_sound(p, SND_HURT, f.x, f.z, true); }
+  if by == 0 { play_sound(p, SND_HIT, f.x, f.z, true); }
+  if by >= 0 {
+    p[0].f[by].super = play_min(p[0].f[by].super + damage * PLAY_SUPER_PER_DAMAGE, PLAY_SUPER_FULL);
+    p[0].f[by].hits += 1;
+    if by == 0 { p[0].marker = 0.15; }
+  }
+  if who == 0 { p[0].hurt = 0.25; }
+  if f.hp <= 0 {
+    f.hp = 0; f.alive = false; f.respawn = ifx play_respawns(p, who) then PLAY_RESPAWN else 0.0f32; f.over = 0;
+    mode_knocked(p, who);
+    if by >= 0 && !p[0].over { if mode_ko_scores(p) { p[0].score[p[0].f[by].team] += 1; } if by == 0 { p[0].mine += 1; } }
+    if who == 0 && !p[0].over { p[0].falls += 1; }
+    if !p[0].over { f.falls += 1; if by >= 0 { p[0].f[by].kos += 1; } }
+    p[0].feed_by = cast(s32) by; p[0].feed_who = cast(s32) who; p[0].feed = PLAY_FEED;
+    play_burst(p, f.x, f.y + 1.0, f.z, 18, 6.5, ifx f.team == 0 then TINT_MINE else TINT_RIVAL);
+    play_sound(p, SND_KNOCKOUT, f.x, f.z, who == 0 || by == 0);
+  }
+  p[0].f[who] = f;
+}
+
+// Fires a Scrapper's shot along `dir` if it is ready.
+play_fire :: (p: [] Play, i: s64, dir: WorldPoint) {
+  f := p[0].f[i];
+  if !f.alive || f.cool > 0 { return; }
+  if mode_holds(p, i) { mode_throw(p, i, dir); return; }   // the ball's carrier kicks or throws it instead
+  k := f.kind;
+  f.cool = CLASS_COOL[k] * (ifx f.over > 0 && k == 0 then 0.33f32 else 1.0f32);
+  f.unhurt = 0; f.kick = 0; f.shield = 0;
+  p[0].f[i] = f;
+  play_sound(p, SND_SHOT + k, f.x, f.z, i == 0);
+  eye := play_eye(f);
+  yaw := angle_atan2(dir.x, dir.z);
+  flat := sqrt(dir.x * dir.x + dir.z * dir.z);
+  pitch := angle_atan2(dir.y, flat);
+  for pellet: 0..<CLASS_PELLETS[k] {
+    slot := -1;
+    for s: 0..<SHOTS { if !p[0].shots[s].live { slot = s; break; } }
+    if slot < 0 { return; }
+    d := play_ahead(yaw + (play_rand(p) - 0.5) * 2 * CLASS_SPREAD[k], pitch + (play_rand(p) - 0.5) * CLASS_SPREAD[k]);
+    v := CLASS_SHOT_SPEED[k];
+    p[0].shots[slot] = PlayShot.{live = true, team = f.team, owner = cast(s32) i, kind = k,
+      x = eye.x + d.x * 0.5, y = eye.y - 0.15 + d.y * 0.5, z = eye.z + d.z * 0.5, vx = d.x * v, vy = d.y * v, vz = d.z * v,
+      life = CLASS_RANGE[k] / v, damage = CLASS_DAMAGE[k] * (ifx f.over > 0 && k == 2 then 2.2f32 else 1.0f32) * (ifx i == 0 || p[0].net[0].remote[i] then 1.0f32 else PLAY_BOT_DAMAGE)};
+  }
+}
+
+// Uses a full super: Bolt and Lumen charge up for a while, Boulder slams the
+// ground and hurts every rival near.
+play_super :: (p: [] Play, i: s64) {
+  f := p[0].f[i];
+  if !f.alive || f.super < PLAY_SUPER_FULL { return; }
+  f.super = 0;
+  f.over = CLASS_OVER[f.kind];
+  play_sound(p, SND_SUPER, f.x, f.z, i == 0);
+  play_burst(p, f.x, f.y + 0.3, f.z, ifx f.kind == 1 then 24 else 10, ifx f.kind == 1 then 9.0f32 else 4.0f32, TINT_GLOW);
+  if f.kind == 1 && f.grounded { f.vy = 5; }
+  p[0].f[i] = f;
+  if f.kind != 1 { return; }
+  for j: 0..<FIGHTERS {
+    g := p[0].f[j];
+    if g.team == f.team || !g.alive { continue; }
+    dx := g.x - f.x; dz := g.z - f.z;
+    if dx * dx + dz * dz < PLAY_SLAM_REACH * PLAY_SLAM_REACH { play_hurt(p, j, i, PLAY_SLAM_DAMAGE); }
+  }
+}
+
+play_shots :: (p: [] Play) {
+  c := play_colliders(p, true);
+  for s: 0..<SHOTS {
+    sh := p[0].shots[s];
+    if !sh.live { continue; }
+    step := sqrt(sh.vx * sh.vx + sh.vy * sh.vy + sh.vz * sh.vz) * PLAY_STEP;
+    if step < 0.0001 { p[0].shots[s].live = false; continue; }
+    o := WorldPoint.{x = sh.x, y = sh.y, z = sh.z};
+    d := WorldPoint.{x = sh.vx * PLAY_STEP / step, y = sh.vy * PLAY_STEP / step, z = sh.vz * PLAY_STEP / step};
+    reach := step;
+    wall := query_ray(c, o, d, step);
+    if wall.hit { reach = wall.t; }
+    // the nearest rival the shot passes on the way
+    hit := -1; best := reach;
+    for j: 0..<FIGHTERS {
+      g := p[0].f[j];
+      if g.team == sh.team || !g.alive { continue; }
+      m := play_chest(g);
+      along := (m.x - o.x) * d.x + (m.y - o.y) * d.y + (m.z - o.z) * d.z;
+      if along < 0 { along = 0; }
+      if along > reach { along = reach; }
+      qx := o.x + d.x * along - m.x; qy := (o.y + d.y * along - m.y) * 0.6; qz := o.z + d.z * along - m.z;
+      if qx * qx + qy * qy + qz * qz < PLAY_HIT * PLAY_HIT && along <= best { best = along; hit = j; }
+    }
+    if hit >= 0 { play_hurt(p, hit, cast(s64) sh.owner, sh.damage); p[0].shots[s].live = false; continue; }
+    // your team's shots knock down the field's targets
+    board := -1;
+    if sh.team == 0 {
+      for k: 0..<cast(s64) p[0].target_n {
+        if p[0].targets[k].down > 0 { continue; }
+        m := play_target_at(p, k);
+        along := (m.x - o.x) * d.x + (m.y - o.y) * d.y + (m.z - o.z) * d.z;
+        if along < 0 { along = 0; }
+        if along > reach { along = reach; }
+        qx := o.x + d.x * along - m.x; qy := o.y + d.y * along - m.y; qz := o.z + d.z * along - m.z;
+        if qx * qx + qy * qy + qz * qz < TARGET_R * TARGET_R && along <= best { best = along; board = k; }
+      }
+    }
+    if board >= 0 { play_target_down(p, board, cast(s64) sh.owner); p[0].shots[s].live = false; continue; }
+    sh.life -= PLAY_STEP;
+    if wall.hit { play_burst(p, o.x + d.x * reach, o.y + d.y * reach, o.z + d.z * reach, 2, 2.5, TINT_SPARK); }
+    if wall.hit || sh.life <= 0 { p[0].shots[s].live = false; continue; }
+    sh.x += d.x * step; sh.y += d.y * step; sh.z += d.z * step;
+    p[0].shots[s] = sh;
+  }
+}
+
+// ---- the open field's targets
+
+// The middle of a target's board, where its swing has it now.
+play_target_at :: (p: [] Play, k: s64) -> WorldPoint {
+  g := p[0].targets[k];
+  off: f32 = ifx g.moving then sin(g.t * TARGET_PACE) * TARGET_SLIDE else 0.0f32;
+  // across its face: the way its yaw faces, turned a quarter
+  return WorldPoint.{x = g.x + cos(g.yaw) * off, y = TARGET_UP, z = g.z - sin(g.yaw) * off};
+}
+
+// A shot knocked a target down: sparks, a sound, and one more for you when it was yours.
+play_target_down :: (p: [] Play, k: s64, by: s64) {
+  m := play_target_at(p, k);
+  p[0].targets[k].down = TARGET_BACK;
+  play_burst(p, m.x, m.y, m.z, 10, 4.0, TINT_SPARK);
+  play_sound(p, SND_HIT, m.x, m.z, by == 0);
+  if by == 0 { p[0].downed += 1; p[0].marker = 0.15; }
+}
+
+// Targets slide and pop back up.
+play_targets_step :: (p: [] Play) {
+  for k: 0..<cast(s64) p[0].target_n {
+    g := p[0].targets[k];
+    if g.down > 0 { g.down = play_max(g.down - PLAY_STEP, 0); } else { g.t += PLAY_STEP; }   // a target lying down stands still
+    p[0].targets[k] = g;
+  }
+}
+
+// A target: a post, and its board of three rings facing its way, or the board
+// lying flat while it is down. A moving one has a rail under its swing.
+play_draw_target :: (e: [] Editor, out: [] f32, at: s64, k: s64) -> s64 {
+  p := e[0].play[..];
+  n := at;
+  g := p[0].targets[k];
+  m := play_target_at(p, k);
+  fx := sin(g.yaw); fz := cos(g.yaw);   // the way its face looks
+  if g.moving { n = play_inst(out, n, WorldPoint.{x = g.x, y = 0.04, z = g.z}, TARGET_SLIDE + 0.3, 0.04, 0.08, g.yaw, 0.5, TINT_DARK); }
+  if g.down > 0 {
+    n = play_inst(out, n, WorldPoint.{x = m.x, y = 0.05, z = m.z}, TARGET_R, 0.03, TARGET_R, g.yaw, 0.7, TINT_CREAM);
+    return n;
+  }
+  n = play_inst(out, n, WorldPoint.{x = m.x - fx * 0.05, y = TARGET_UP * 0.5, z = m.z - fz * 0.05}, 0.05, TARGET_UP * 0.5, 0.05, g.yaw, 0.5, TINT_DARK);
+  ms := e[0].meshes[0];
+  if e[0].meshes[0].ok {
+    // the pad on its edge, three times smaller and nearer: cream, red, a gold middle
+    rs := [3] f32.[TARGET_R, TARGET_R * 0.64, TARGET_R * 0.3];
+    ts := [3] s32.[TINT_CREAM, TINT_RIVAL, TINT_SPARK];
+    for r: 0..<3 {
+      c := WorldPoint.{x = m.x + fx * 0.02 * cast(f32) r, y = m.y, z = m.z + fz * 0.02 * cast(f32) r};
+      n = mesh_put(out, n, ms.pad, c, g.yaw, 1.5707963, rs[r], 0.5, rs[r], MESH_PLAIN, LOOK_SOLID, ts[r]);
+    }
+    return n;
+  }
+  n = play_inst(out, n, m, TARGET_R, TARGET_R, 0.03, g.yaw, 1.0, TINT_CREAM);
+  n = play_inst(out, n, WorldPoint.{x = m.x + fx * 0.035, y = m.y, z = m.z + fz * 0.035}, TARGET_R * 0.64, TARGET_R * 0.64, 0.01, g.yaw, 1.0, TINT_RIVAL);
+  n = play_inst(out, n, WorldPoint.{x = m.x + fx * 0.05, y = m.y, z = m.z + fz * 0.05}, TARGET_R * 0.3, TARGET_R * 0.3, 0.01, g.yaw, 1.0, TINT_SPARK);
+  return n;
+}
+
+// ---- the bots
+
+play_bot :: (p: [] Play, i: s64) {
+  if mode_bot(p, i) { return; }
+  f := p[0].f[i];
+  k := f.kind;
+  f.think -= PLAY_STEP;
+  if f.think <= 0 {
+    f.think = 0.25 + play_rand(p) * 0.3;
+    f.err = (play_rand(p) - 0.5) * PLAY_BOT_AIM;
+    if play_rand(p) < 0.3 { f.strafe = -f.strafe; }
+    f.target = -1;
+    near: f32 = 1000000;
+    for j: 0..<FIGHTERS {
+      g := p[0].f[j];
+      if g.team == f.team || !g.alive { continue; }
+      dx := g.x - f.x; dz := g.z - f.z;
+      d := dx * dx + dz * dz;
+      if d < near { near = d; f.target = cast(s32) j; }
+    }
+  }
+  // where it wants to go: the rival, or their spawn when none is up
+  gx := p[0].spawn_x[1 - f.team]; gz := p[0].spawn_z[1 - f.team]; gy: f32 = 0.95;
+  seen := false;
+  // badly hurt, with a pack lying near: it goes for the pack first
+  pack := -1;
+  if f.hp < CLASS_HP[k] * 0.4 {
+    near: f32 = 18 * 18;
+    for q: 0..<PACKS {
+      pk := p[0].packs[q];
+      if !pk.there || pk.gone > 0 { continue; }
+      d := (pk.x - f.x) * (pk.x - f.x) + (pk.z - f.z) * (pk.z - f.z);
+      if d < near { near = d; pack = q; }
+    }
+  }
+  if f.target >= 0 && p[0].f[f.target].alive {
+    g := p[0].f[f.target];
+    gx = g.x; gz = g.z; gy = g.y + 0.95;
+    seen = play_sees(p, play_eye(f), play_chest(g));
+  }
+  if pack >= 0 { gx = p[0].packs[pack].x; gz = p[0].packs[pack].z; seen = false; }
+  dx := gx - f.x; dz := gz - f.z;
+  dist := sqrt(dx * dx + dz * dz);
+  want := angle_atan2(dx, dz) + (ifx seen then f.err else 0.0f32);
+  turn := play_wrap(want - f.yaw);
+  most := 7.0 * PLAY_STEP;
+  f.yaw = play_wrap(f.yaw + (ifx turn > most then most else (ifx turn < -most then -most else turn)));
+  f.pitch = angle_atan2(gy - (f.y + PLAY_EYE), play_max(dist, 0.5));
+  ahead: f32 = 1; side: f32 = 0;
+  in_range := seen && dist < CLASS_RANGE[k] * 0.85;
+  if in_range {
+    side = f.strafe;
+    ahead = ifx dist < CLASS_RANGE[k] * 0.35 then -0.6f32 else 0.25f32;
+    if f.hp < CLASS_HP[k] * 0.3 { ahead = -1; }
+  }
+  if f.stuck > 0 { f.stuck -= PLAY_STEP; side = f.detour; ahead = 0.2; }
+  p[0].f[i] = f;
+  speed := CLASS_SPEED[k] * 0.85 * PLAY_STEP;
+  mag := sqrt(ahead * ahead + side * side);
+  if mag > 0.001 {
+    wx := (sin(f.yaw) * ahead - cos(f.yaw) * side) / mag * speed;
+    wz := (cos(f.yaw) * ahead + sin(f.yaw) * side) / mag * speed;
+    got := play_walk(p, i, wx, wz);
+    if got < speed * 0.3 && p[0].f[i].stuck <= 0 {
+      p[0].f[i].stuck = 0.5 + play_rand(p) * 0.5;
+      p[0].f[i].detour = ifx play_rand(p) < 0.5 then 1.0f32 else -1.0f32;
+    }
+  }
+  play_fall(p, i, false);
+  if in_range && abs(turn) < 0.2 {
+    play_fire(p, i, play_ahead(p[0].f[i].yaw, p[0].f[i].pitch));
+    if dist < PLAY_SLAM_REACH || k != 1 { play_super(p, i); }
+  }
+}
+
+// ---- you
+
+// Where your shot goes: straight ahead, or to a rival just off the crosshair.
+PlayAim :: struct { dir: WorldPoint; locked: bool; }
+play_aim :: (p: [] Play) -> PlayAim {
+  f := p[0].f[0];
+  ahead := play_ahead(f.yaw, f.pitch);
+  eye := play_eye(f);
+  best := PLAY_AIM_HELP; out := PlayAim.{dir = ahead};
+  for j: 0..<FIGHTERS {
+    g := p[0].f[j];
+    if g.team == f.team || !g.alive { continue; }
+    m := play_chest(g);
+    dx := m.x - eye.x; dy := m.y - eye.y; dz := m.z - eye.z;
+    d := sqrt(dx * dx + dy * dy + dz * dz);
+    if d < 0.5 || d > CLASS_RANGE[f.kind] { continue; }
+    dx /= d; dy /= d; dz /= d;
+    dot := dx * ahead.x + dy * ahead.y + dz * ahead.z;
+    off := sqrt(play_max(2 - 2 * dot, 0));   // the angle between them, about, for a small one
+    if off < best && play_sees(p, eye, m) { best = off; out = PlayAim.{dir = WorldPoint.{x = dx, y = dy, z = dz}, locked = true}; }
+  }
+  return out;
+}
+
+play_you :: (e: [] Editor) {
+  p := e[0].play[..];
+  // the camera's own turn is yours; under a fixed kind (top down, side on) you face the way you run instead
+  fixed := p[0].meadow && !cam_kind(p[0].cam_kind).looks;
+  if fixed { p[0].f[0].pitch = 0; } else { p[0].f[0].yaw = e[0].vp[0].fyaw; p[0].f[0].pitch = e[0].vp[0].fpitch; }
+  cy := e[0].vp[0].fyaw;
+  f := p[0].f[0];
+  ahead: f32 = (ifx e[0].k_fore then 1.0f32 else 0.0f32) - (ifx e[0].k_back then 1.0f32 else 0.0f32);
+  side: f32 = (ifx e[0].k_right then 1.0f32 else 0.0f32) - (ifx e[0].k_left then 1.0f32 else 0.0f32);
+  if p[0].stick != 0 { side = p[0].stick_x; ahead = -p[0].stick_y; }
+  // side on: left and right run along the line, up jumps (gamebuilder.org's side-scroller keys)
+  if p[0].meadow && p[0].cam_kind == CAM_KIND_SIDE { if ahead > 0.5 { p[0].jump = true; } ahead = 0; }
+  mag := sqrt(ahead * ahead + side * side);
+  if mag > 1 { ahead /= mag; side /= mag; }
+  if mag > 0.05 {
+    speed := CLASS_SPEED[f.kind] * PLAY_STEP;
+    // right is the camera's: ahead crossed with up
+    wx := (sin(cy) * ahead - cos(cy) * side) * speed; wz := (cos(cy) * ahead + sin(cy) * side) * speed;
+    if fixed { p[0].f[0].yaw = angle_atan2(wx, wz); }
+    _ = play_walk(p, 0, wx, wz);
+  }
+  play_fall(p, 0, p[0].jump);
+  p[0].jump = false;
+  if p[0].meadow && p[0].cam_kind == CAM_KIND_SIDE {
+    // held on the line across the view (the engine's cam_kind_line)
+    at := cam_kind_line(cam_kind(CAM_KIND_SIDE), v3(p[0].f[0].x, p[0].f[0].y, p[0].f[0].z), v3(p[0].line_x, 0, p[0].line_z), p[0].ahead);
+    p[0].f[0].x = at.x; p[0].f[0].z = at.z;
+  }
+  if p[0].explore && !p[0].field { p[0].super = false; return; }
+  if p[0].field { p[0].super = false; }   // a blaster and no super: with nobody to hit, nothing would charge one
+  // on a touch screen a shot fires itself while your aim is on a rival in reach: your thumbs are busy moving and looking
+  aim := play_aim(p);
+  auto := p[0].touch && aim.locked && !mode_holds(p, 0);   // the ball goes only when you say
+  if p[0].net[0].mode == NET_GUEST {
+    // the shot is the host's to make: this end kicks and sounds, and asks
+    net_guest_asks(p, p[0].fire || auto, aim.dir, p[0].super);
+    p[0].super = false;
+    return;
+  }
+  if p[0].fire || auto { play_fire(p, 0, aim.dir); }
+  if p[0].super { play_super(p, 0); p[0].super = false; }
+}
+
+// ---- a step
+
+play_step :: (e: [] Editor) {
+  p := e[0].play[..];
+  for k: 0..<SPARKS {
+    sp := p[0].sparks[k];
+    if sp.life <= 0 { continue; }
+    sp.life -= PLAY_STEP; sp.vy -= 14 * PLAY_STEP;
+    sp.x += sp.vx * PLAY_STEP; sp.y += sp.vy * PLAY_STEP; sp.z += sp.vz * PLAY_STEP;
+    if sp.y < 0.03 { sp.y = 0.03; sp.vy = -sp.vy * 0.4; }
+    p[0].sparks[k] = sp;
+  }
+  p[0].feed = play_max(p[0].feed - PLAY_STEP, 0);
+  if p[0].her_on { her_step(e, PLAY_STEP); return; }
+  if p[0].net[0].mode == NET_GUEST { net_guest_step(e); return; }
+  if mode_paused(e) { return; }
+  if p[0].count > 0 {
+    // three, two, one, go: nobody moves until it ends
+    was := p[0].count;
+    p[0].count = play_max(p[0].count - PLAY_STEP, 0);
+    if p[0].count <= 0 { play_sound(p, SND_GO, 0, 0, true); }
+    else if cast(s64) was != cast(s64) p[0].count || was == PLAY_COUNTDOWN { play_sound(p, SND_BEEP, 0, 0, true); }
+    for i: 0..<FIGHTERS { p[0].f[i].shield = PLAY_SHIELD; }
+    p[0].f[0].yaw = e[0].vp[0].fyaw; p[0].f[0].pitch = e[0].vp[0].fpitch;
+    return;
+  }
+  if !p[0].over && !p[0].explore {
+    p[0].left -= PLAY_STEP;
+    done := mode_done(p);
+    if done {
+      p[0].over = true; p[0].fire = false;
+      if p[0].left < 0 { p[0].left = 0; }
+      p[0].winner = ifx p[0].score[0] > p[0].score[1] then 0 else (ifx p[0].score[1] > p[0].score[0] then 1 else -1);
+      play_sound(p, ifx p[0].winner == 1 then SND_LOSE else SND_WIN, 0, 0, true);
+    }
+  }
+  p[0].marker = play_max(p[0].marker - PLAY_STEP, 0);
+  p[0].hurt = play_max(p[0].hurt - PLAY_STEP, 0);
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    f.cool = play_max(f.cool - PLAY_STEP, 0);
+    f.over = play_max(f.over - PLAY_STEP, 0);
+    f.flash = play_max(f.flash - PLAY_STEP, 0);
+    f.shield = play_max(f.shield - PLAY_STEP, 0);
+    f.kick += PLAY_STEP;
+    f.unhurt += PLAY_STEP;
+    if f.alive && f.unhurt > PLAY_REGEN_AFTER { f.hp = play_min(f.hp + CLASS_HP[f.kind] * PLAY_REGEN * PLAY_STEP, CLASS_HP[f.kind]); }
+    p[0].f[i] = f;
+    if !f.alive {
+      p[0].f[i].respawn -= PLAY_STEP;
+      if p[0].f[i].respawn <= 0 && !p[0].over && (i == 0 || !p[0].explore || p[0].field) && play_respawns(p, i) {
+        keep := p[0].f[i].super;
+        play_place(p, i);
+        p[0].f[i].super = keep;
+        if i == 0 { e[0].vp[0].fyaw = p[0].f[0].yaw; e[0].vp[0].fpitch = 0; }
+      }
+      continue;
+    }
+    if p[0].over { continue; }
+    if i == 0 && !p[0].test { play_you(e); } else if p[0].net[0].remote[i] { net_remote(p, i); } else { play_bot(p, i); }
+  }
+  // a pack heals whoever is hurt and walks over it, and is back after a while
+  for k: 0..<PACKS {
+    pk := p[0].packs[k];
+    if !pk.there { continue; }
+    if pk.gone > 0 { p[0].packs[k].gone = play_max(pk.gone - PLAY_STEP, 0); continue; }
+    for i: 0..<FIGHTERS {
+      f := p[0].f[i];
+      if !f.alive || f.hp >= CLASS_HP[f.kind] { continue; }
+      if (f.x - pk.x) * (f.x - pk.x) + (f.z - pk.z) * (f.z - pk.z) > PACK_REACH * PACK_REACH || f.y > 1 { continue; }
+      p[0].f[i].hp = play_min(f.hp + CLASS_HP[f.kind] * PACK_HEAL, CLASS_HP[f.kind]);
+      p[0].packs[k].gone = PACK_BACK;
+      play_burst(p, pk.x, 0.6, pk.z, 8, 3, TINT_HEALTH);
+      play_sound(p, SND_JUMP, pk.x, pk.z, i == 0);
+      break;
+    }
+  }
+  play_targets_step(p);
+  play_shots(p);
+  mode_step(e);
+}
+
+// Puts the editor's camera where you are: at your eyes, or behind you and
+// up a little, no further back than the first block in the way.
+play_camera :: (e: [] Editor) {
+  p := e[0].play[..];
+  if p[0].her_on { her_camera(e); return; }
+  f := p[0].f[0];
+  eye := play_eye(f);
+  // a fixed kind (top down, side on): the engine's rules for it, high over you or level beside you, never turning
+  if p[0].meadow && !cam_kind(p[0].cam_kind).looks {
+    k := cam_kind(p[0].cam_kind);
+    dist := play_min(play_max(k.dist, k.near), k.far);
+    e[0].vp[0].fyaw = play_wrap(p[0].ahead + k.turn); e[0].vp[0].fpitch = -k.pitch;
+    look := play_ahead(e[0].vp[0].fyaw, e[0].vp[0].fpitch);
+    mid := WorldPoint.{x = f.x, y = f.y + PLAY_EYE * 0.5, z = f.z};
+    e[0].vp[0].fx = mid.x - look.x * dist; e[0].vp[0].fy = mid.y - look.y * dist; e[0].vp[0].fz = mid.z - look.z * dist;
+    return;
+  }
+  if p[0].third {
+    back := play_ahead(e[0].vp[0].fyaw, e[0].vp[0].fpitch);
+    d := WorldPoint.{x = -back.x, y = -back.y + 0.25, z = -back.z};
+    dl := sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+    d = WorldPoint.{x = d.x / dl, y = d.y / dl, z = d.z / dl};
+    room: f32 = 4.5;
+    h := query_ray(play_colliders(p, true), eye, d, room + 0.3);
+    if h.hit { room = play_max(h.t - 0.3, 0.3); }
+    eye = WorldPoint.{x = eye.x + d.x * room, y = eye.y + d.y * room, z = eye.z + d.z * room};
+  }
+  e[0].vp[0].fx = eye.x; e[0].vp[0].fy = eye.y; e[0].vp[0].fz = eye.z;
+}
+
+// Time passed while playing: whole fixed steps of it, then the camera.
+play_tick :: (e: [] Editor, dt: f32) {
+  p := e[0].play[..];
+  if p[0].world { e[0].dirty = true; return; }   // (the page steps its world as it draws it)
+  p[0].acc += play_min(dt, 0.1);
+  while p[0].acc >= PLAY_STEP {
+    p[0].acc -= PLAY_STEP;
+    play_step(e);
+  }
+  play_camera(e);
+  e[0].dirty = true;
+}
+
+// ---- what you press
+
+// The buttons, in points from the view's top left: each a middle and a radius.
+PlayButton :: struct { x: f32; y: f32; r: f32; }
+play_button_fire :: (e: [] Editor) -> PlayButton { return PlayButton.{x = e[0].w - 92, y = e[0].h - 112, r = 46}; }
+play_button_super :: (e: [] Editor) -> PlayButton { return PlayButton.{x = e[0].w - 196, y = e[0].h - 76, r = 34}; }
+play_button_jump :: (e: [] Editor) -> PlayButton { return PlayButton.{x = e[0].w - 66, y = e[0].h - 214, r = 30}; }
+play_button_view :: (e: [] Editor) -> PlayButton { return PlayButton.{x = e[0].w - 44, y = 112, r = 22}; }
+play_in :: (b: PlayButton, x: f32, y: f32) -> bool { return (x - b.x) * (x - b.x) + (y - b.y) * (y - b.y) <= b.r * b.r * 1.3; }
+
+PLAY_TOUCH_DOWN :: 0; PLAY_TOUCH_MOVE :: 1; PLAY_TOUCH_UP :: 2;
+
+// A finger went down, moved or came up. `id` is the host's number for it (0
+// or more), the same from down to up. The left of the view is the move
+// stick, wherever the finger lands; the right looks around; the buttons
+// fire (and look, while held), jump, use the super and change the view.
+ed_play_touch :: (e: [] Editor, id: s32, phase: s32, x: f32, y: f32) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || id < 0 { return; }
+  p := e[0].play[..];
+  t := id + 1;
+  if phase == PLAY_TOUCH_DOWN {
+    p[0].touch = true;
+    if p[0].over { return; }
+    if play_in(play_button_view(e), x, y) { ed_play_view(e); return; }
+    if play_in(play_button_jump(e), x, y) {
+      // a press is a jump; held, it is her jetpack
+      p[0].jump = true;
+      if p[0].jumper == 0 { p[0].jumper = t; p[0].her[0].jump = true; }
+      return;
+    }
+    if play_in(play_button_super(e), x, y) { p[0].super = true; return; }
+    if play_in(play_button_fire(e), x, y) {
+      if p[0].trigger == 0 { p[0].trigger = t; p[0].fire = true; p[0].look_x = x; p[0].look_y = y; }
+      return;
+    }
+    if x < e[0].w * 0.45 {
+      if p[0].stick == 0 { p[0].stick = t; p[0].stick_ox = x; p[0].stick_oy = y; p[0].stick_x = 0; p[0].stick_y = 0; }
+      return;
+    }
+    if p[0].look == 0 { p[0].look = t; p[0].look_x = x; p[0].look_y = y; }
+    return;
+  }
+  if phase == PLAY_TOUCH_MOVE {
+    if t == p[0].stick {
+      dx := (x - p[0].stick_ox) / PLAY_STICK; dy := (y - p[0].stick_oy) / PLAY_STICK;
+      mag := sqrt(dx * dx + dy * dy);
+      if mag > 1 { dx /= mag; dy /= mag; }
+      p[0].stick_x = dx; p[0].stick_y = dy;
+    }
+    // one finger looks at a time: the look finger, or the one holding fire
+    if t == p[0].look || (t == p[0].trigger && p[0].look == 0) {
+      ed_play_look(e, (x - p[0].look_x) * 1.6, (y - p[0].look_y) * 1.6);
+      p[0].look_x = x; p[0].look_y = y;
+    }
+    return;
+  }
+  if t == p[0].stick { p[0].stick = 0; p[0].stick_x = 0; p[0].stick_y = 0; }
+  if t == p[0].look { p[0].look = 0; }
+  if t == p[0].trigger { p[0].trigger = 0; p[0].fire = false; }
+  if t == p[0].jumper { p[0].jumper = 0; p[0].her[0].jump = false; }
+}
+
+// The pointer moved by points while it looks around (a captured mouse, or a
+// finger).
+ed_play_look :: (e: [] Editor, dx: f32, dy: f32) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || e[0].play[0].over || e[0].play[0].world { return; }
+  if e[0].play[0].meadow && !cam_kind(e[0].play[0].cam_kind).looks { return; }   // a fixed camera kind never turns
+  k: f32 = ifx e[0].play[0].her_on then HER_LOOK else 1.0f32;
+  vp_fly_look(e[0].vp[..], dx * k, dy * k);
+}
+
+// The fire button of a mouse went down or up.
+ed_play_fire :: (e: [] Editor, down: bool) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on { return; }
+  e[0].play[0].fire = down && !e[0].play[0].over;
+}
+
+ed_play_view :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on { return; }
+  if e[0].play[0].her_on { e[0].play[0].her[0].first = !e[0].play[0].her[0].first; return; }
+  if e[0].play[0].meadow { return; }   // each of the meadow's types is its own camera
+  e[0].play[0].third = !e[0].play[0].third;
+}
+
+// The use button of a mouse (the right one): as the Director, on or off the board.
+ed_play_use :: (e: [] Editor) #export_c #effects(all) {
+  if e.count == 1 && e[0].play[0].on && e[0].play[0].her_on { e[0].play[0].super = true; }
+}
+
+KEY_SPACE :: 32; KEY_ESCAPE :: 27; KEY_V :: 118;
+KEY_MINUS :: 45; KEY_EQUALS :: 61;
+// A key went down or up while playing: W A S D are already held in the
+// editor's own flags.
+play_key :: (e: [] Editor, key: s32, down: bool) {
+  p := e[0].play[..];
+  if p[0].world {
+    // the page's world: its keys as the website's (web/hud-glue.js), R its own action, Escape back to the editor
+    if key == KEY_ESCAPE { if down { ed_stop(e); } return; }
+    if key == KEY_R { if down { e[0].world[0].act += 1; } return; }
+    bit := world_key_bit(key);
+    if bit != 0 { e[0].world[0].keys = ifx down then e[0].world[0].keys | bit else e[0].world[0].keys & (4095 ^ bit); }
+    // Shift held: down, while flying (the host tells a modifier's change as key 0)
+    e[0].world[0].keys = ifx e[0].k_fast then e[0].world[0].keys | 2048 else e[0].world[0].keys & (4095 ^ 2048);
+    return;
+  }
+  // held keys: jump (her jetpack is a held jump) and the board's trick
+  if key == KEY_SPACE { p[0].her[0].jump = down; }
+  if key == KEY_R { p[0].her[0].trick = down; }
+  if !down { return; }
+  if key == KEY_ESCAPE { ed_stop(e); return; }
+  if key == KEY_SPACE { p[0].jump = true; }
+  if key == KEY_F || key == KEY_E || key == KEY_Q { p[0].super = true; }
+  if key == KEY_V { ed_play_view(e); }
+  if p[0].her_on && key == KEY_MINUS { her_zoom(e, -1); }
+  if p[0].her_on && key == KEY_EQUALS { her_zoom(e, 1); }
+  // G tells Digger to stay or follow; 1 to 9 pick a hotbar slot
+  if p[0].her_on && key == 103 { ed_digger_toggle(e); }
+  // T travels to the next map of SPLICEBOTS' route (farm.coax)
+  if p[0].her_on && key == 116 { ed_farm_travel(e); }
+  if p[0].her_on && key >= 49 && key <= 57 { ed_bag_select(e, key - 49); }
+  if key == KEY_R && p[0].over { ed_play(e, p[0].f[0].kind); }
+}
+
+// ---- the HUD
+
+PLAY_HUD_FLOATS :: 64;
+ed_play_hud_floats :: () -> s32 #export_c #effects(all) { return PLAY_HUD_FLOATS; }
+// What the host draws over the match:
+//   0 playing  1 over  2 who won (0 you, 1 them, -1 a draw)  3 your health, 0 to 1  4 your super, 0 to 1
+//   5 your team's score  6 theirs  7 seconds left  8 seconds until you are back (0 while up)
+//   9 your Scrapper  10 third person  11 the stick is held  12, 13 where it began  14, 15 its knob
+//   16..18 fire: x, y, radius  19..21 super  22..24 jump  25..27 view
+//   28 you just hit someone, 0 to 1  29 you were just hit, 0 to 1  30 your super is running  31 the score that wins
+//   36 there is no match: you are walking the place  59 it is the open field: no match, but a crosshair and a fire button
+//   60 targets you shot down  61 targets in the field  62 enemies standing
+//   63 the camera is fixed (a top-down or side-on type): the mouse and V do nothing
+//   37 you are the Director  38 her jetpack's fuel, 0 to 1  39 its cells lit, of three  40 it is firing
+//   41 she is on the board  42 her speed, m/s  43 the camera is her own eyes
+//   32 seconds of the countdown left  33 you are shielded  34 the knockout line shows, 0 to 1  35 it is your team's knockout
+ed_play_hud :: (e: [] Editor, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < PLAY_HUD_FLOATS { return false; }
+  p := e[0].play[..];
+  f := p[0].f[0];
+  for i: 0..<PLAY_HUD_FLOATS { out[i] = 0; }
+  if !p[0].on { return true; }
+  out[0] = 1; out[1] = ifx p[0].over then 1.0f32 else 0.0f32; out[2] = cast(f32) p[0].winner;
+  out[3] = f.hp / CLASS_HP[f.kind]; out[4] = f.super / PLAY_SUPER_FULL;
+  out[5] = cast(f32) p[0].score[0]; out[6] = cast(f32) p[0].score[1]; out[7] = p[0].left;
+  out[8] = ifx f.alive then 0.0f32 else play_max(f.respawn, 0);
+  out[9] = cast(f32) f.kind; out[10] = ifx p[0].third then 1.0f32 else 0.0f32;
+  out[11] = ifx p[0].stick != 0 then 1.0f32 else 0.0f32;
+  out[12] = p[0].stick_ox; out[13] = p[0].stick_oy;
+  out[14] = p[0].stick_ox + p[0].stick_x * PLAY_STICK; out[15] = p[0].stick_oy + p[0].stick_y * PLAY_STICK;
+  b := play_button_fire(e); out[16] = b.x; out[17] = b.y; out[18] = b.r;
+  b = play_button_super(e); out[19] = b.x; out[20] = b.y; out[21] = b.r;
+  b = play_button_jump(e); out[22] = b.x; out[23] = b.y; out[24] = b.r;
+  b = play_button_view(e); out[25] = b.x; out[26] = b.y; out[27] = b.r;
+  out[28] = p[0].marker / 0.15; out[29] = p[0].hurt / 0.25; out[30] = ifx f.over > 0 then 1.0f32 else 0.0f32;
+  out[31] = cast(f32) MODE_GOAL[ifx p[0].mode >= 0 && p[0].mode < MODES then p[0].mode else 0];
+  // 52 the mode  53 how many a side  54 you carry the ball  55 your team standing  56 rivals standing  57 Last Stand's round  58 the match stands still after a score
+  out[52] = cast(f32) p[0].mode; out[53] = cast(f32) play_size(p); out[54] = ifx mode_holds(p, 0) then 1.0f32 else 0.0f32;
+  out[55] = cast(f32) mode_standing(p, 0); out[56] = cast(f32) mode_standing(p, 1); out[57] = cast(f32) p[0].bout; out[58] = play_max(p[0].pause, 0);
+  // 47 knockouts that were yours  48 a shot fires itself when your aim is on a rival (you play by touch)
+  // 50 others are in this match: 0 no, 1 you host it, 2 you are a guest, 3 a guest whose host is gone
+  out[50] = ifx p[0].net[0].lost then 3.0f32 else cast(f32) p[0].net[0].mode;
+  // 49 times you were knocked out
+  out[49] = cast(f32) p[0].falls;
+  out[47] = cast(f32) p[0].mine; out[48] = ifx p[0].touch then 1.0f32 else 0.0f32;
+  out[32] = p[0].count; out[33] = ifx f.shield > 0 && f.alive then 1.0f32 else 0.0f32;
+  out[36] = ifx p[0].explore then 1.0f32 else 0.0f32;
+  out[59] = ifx p[0].field then 1.0f32 else 0.0f32;
+  out[63] = ifx p[0].meadow && !cam_kind(p[0].cam_kind).looks then 1.0f32 else 0.0f32;
+  if p[0].world { out[63] = 2; }   // the engine's page plays it: the website's keys
+  out[60] = cast(f32) p[0].downed; out[61] = cast(f32) p[0].target_n;
+  if p[0].field { k: s32 = 0; for i: 1..<FIGHTERS { if p[0].f[i].alive { k += 1; } } out[62] = cast(f32) k; }
+  if p[0].her_on {
+    h := p[0].her[0]; jt: SrJetpackTuning;
+    out[37] = 1; out[38] = h.jet.fuel / jt.fuel_max; out[39] = cast(f32) sr_jetpack_cells_lit(h.jet, jt);
+    out[40] = ifx h.jet.firing then 1.0f32 else 0.0f32; out[41] = ifx h.riding then 1.0f32 else 0.0f32;
+    out[42] = her_speed(p); out[43] = ifx p[0].third then 0.0f32 else 1.0f32;
+    // 44 the level's scene is live (a hotbar to show)  45 what was just taken shows, 0 to 1  46 Digger: 0 none, 1 follows, 2 stays
+    out[44] = ifx p[0].real then 1.0f32 else 0.0f32;
+    out[45] = play_min(p[0].scene[0].said_t, 1);
+    out[46] = ifx !p[0].real || !e[0].scene[0].digger then 0.0f32 else (ifx p[0].scene[0].dig_stay then 2.0f32 else 1.0f32);
+    // 51 the route map she was last put at, and one (0: not on the real level); ed_farm_place names it and the next
+    out[51] = ifx p[0].real then cast(f32) (e[0].farm[0].at + 1) else 0.0f32;
+  }
+  out[34] = play_min(p[0].feed, 1); out[35] = ifx p[0].feed_by >= 0 && p[0].f[p[0].feed_by].team == 0 then 1.0f32 else 0.0f32;
+  // a goal, a basket or a round shows on the same line, in the colour of whoever it was for
+  if p[0].call_t > 0 && p[0].call != CALL_NONE { out[34] = play_min(p[0].call_t, 1); out[35] = ifx p[0].call_team == 0 then 1.0f32 else 0.0f32; }
+  return true;
+}
+
+// ---- what is drawn
+
+// The colour behind everything: the editor's near black, or a match's sky.
+ed_sky :: (e: [] Editor, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < 3 { return false; }
+  if e[0].play[0].on && e[0].play[0].real { for i: 0..<3 { out[i] = FARM_SKY_BLUE[i]; } }   // the jam's day sky
+  else if e[0].play[0].on { out[0] = 0.36; out[1] = 0.56; out[2] = 0.86; } else { out[0] = 0.05; out[1] = 0.05; out[2] = 0.05; }
+  return true;
+}
+
+play_inst :: (out: [] f32, n: s64, c: WorldPoint, hx: f32, hy: f32, hz: f32, yaw: f32, shade: f32, tint: s32) -> s64 {
+  m := ed_instance(out, n, c, hx, hy, hz, yaw * 57.29578, shade, LOOK_SOLID);
+  if m > n { out[n * INSTANCE_FLOATS + 18] = cast(f32) tint; }
+  return m;
+}
+
+// A point beside a body: `side` metres to its right and `fore` ahead, `up` above its feet.
+play_beside :: (f: Fighter, side: f32, up: f32, fore: f32) -> WorldPoint {
+  return WorldPoint.{x = f.x - cos(f.yaw) * side + sin(f.yaw) * fore, y = f.y + up, z = f.z + sin(f.yaw) * side + cos(f.yaw) * fore};
+}
+
+// An instance turned and tipped: a box whose long axis lies along the way
+// `yaw` and `pitch` face.
+play_inst_aim :: (out: [] f32, n: s64, c: WorldPoint, hx: f32, hy: f32, hz: f32, yaw: f32, pitch: f32, shade: f32, tint: s32) -> s64 {
+  at := n * INSTANCE_FLOATS;
+  if at + INSTANCE_FLOATS > out.count { return n; }
+  sy := sin(yaw); cy := cos(yaw); sp := sin(pitch); cp := cos(pitch);
+  // columns: the box's own x (level), its y (tipped with the pitch), its z (ahead)
+  m := [16] f32.[
+    cy * hx * 2, 0, -sy * hx * 2, 0,
+    -sp * sy * hy * 2, cp * hy * 2, -sp * cy * hy * 2, 0,
+    sy * cp * hz * 2, sp * hz * 2, cy * cp * hz * 2, 0,
+    c.x, c.y, c.z, 1];
+  for i: 0..<16 { out[at + i] = m[i]; }
+  out[at + 16] = shade; out[at + 17] = cast(f32) LOOK_SOLID; out[at + 18] = cast(f32) tint; out[at + 19] = 0;
+  return n + 1;
+}
+
+// One Scrapper: two legs that step, a body, two arms, a head with a visor
+// and a blaster. Boulder is broad, Lumen slight.
+play_draw_body :: (out: [] f32, at: s64, f: Fighter, blink: bool) -> s64 {
+  n := at;
+  team: s32 = ifx f.team == 0 then TINT_MINE else TINT_RIVAL;
+  tint: s32 = ifx f.flash > 0 then TINT_NONE else (ifx f.shield > 0 && blink then TINT_GLOW else team);
+  shade: f32 = ifx f.flash > 0 then 1.0f32 else 0.85f32;
+  wide: f32 = ifx f.kind == 1 then 0.42f32 else (ifx f.kind == 2 then 0.24f32 else 0.3f32);
+  deep := wide * 0.7;
+  swing := sin(f.stride) * 0.22;
+  n = play_inst(out, n, play_beside(f, wide * 0.5, 0.3, swing), wide * 0.38, 0.3, deep * 0.6, f.yaw, shade * 0.75, tint);
+  n = play_inst(out, n, play_beside(f, -wide * 0.5, 0.3, -swing), wide * 0.38, 0.3, deep * 0.6, f.yaw, shade * 0.75, tint);
+  n = play_inst(out, n, play_beside(f, 0, 0.85, 0), wide, 0.28, deep, f.yaw, shade, tint);
+  n = play_inst(out, n, play_beside(f, -(wide + 0.09), 0.85, swing * 0.8), 0.08, 0.26, 0.09, f.yaw, shade * 0.8, tint);
+  n = play_inst(out, n, play_beside(f, 0, 1.35, 0), 0.22, 0.22, 0.22, f.yaw, 1.0, tint);
+  n = play_inst(out, n, play_beside(f, 0, 1.38, 0.2), 0.17, 0.06, 0.03, f.yaw, 0.1, TINT_DARK);
+  // the blaster, held on the right, pointing where it aims and kicking back as it fires
+  back := play_max(0.12 - f.kick, 0) * 1.2;
+  grip := play_beside(f, wide + 0.06, 1.0, 0.28 - back);
+  long: f32 = ifx f.kind == 2 then 0.5f32 else (ifx f.kind == 1 then 0.26f32 else 0.34f32);
+  n = play_inst_aim(out, n, grip, ifx f.kind == 1 then 0.11f32 else 0.07f32, 0.07, long, f.yaw, f.pitch, 0.4, TINT_NONE);
+  return n;
+}
+
+// What a model's instance shows, in its shade: under 1 it is see-through by
+// that much (a shadow), 1 is plain, 2 is the white of a hit, 3 a shield's glow.
+MESH_PLAIN :: 1.0f32; MESH_HIT :: 2.0f32; MESH_SHIELD :: 3.0f32; MESH_SHADOW :: 0.38f32;
+
+// One Scrapper from its model's parts, each hung from its joint: legs that
+// step, a body that bobs, a head that looks where it aims, one arm swinging
+// and one raised with the blaster, which kicks back as it fires. A soft
+// shadow lies under it.
+play_draw_scrapper :: (e: [] Editor, out: [] f32, at: s64, f: Fighter, blink: bool) -> s64 {
+  n := at; k := f.kind;
+  hip_y := mesh_number(e, k, NUM_HIP_Y); hip_x := mesh_number(e, k, NUM_HIP_X);
+  sh_y := mesh_number(e, k, NUM_SHOULDER_Y); sh_x := mesh_number(e, k, NUM_SHOULDER_X);
+  neck_y := mesh_number(e, k, NUM_NECK_Y); arm := mesh_number(e, k, NUM_ARM);
+  team: s32 = ifx f.team == 0 then TINT_MINE else TINT_RIVAL;
+  show: f32 = ifx f.flash > 0 then MESH_HIT else (ifx f.shield > 0 && blink then MESH_SHIELD else MESH_PLAIN);
+  swing := sin(f.stride) * 0.62;
+  bob := abs(sin(f.stride)) * 0.035;
+  if f.grounded { n = mesh_put(out, n, e[0].meshes[0].disc, WorldPoint.{x = f.x, y = f.y + 0.02, z = f.z}, 0, 0, sh_x + 0.22, 1, sh_x + 0.22, MESH_SHADOW, LOOK_SOLID, TINT_NONE); }
+  n = mesh_put(out, n, mesh_part(e, k, PART_LEG), play_beside(f, hip_x, hip_y + bob, 0), f.yaw, swing, 1, 1, 1, show, LOOK_SOLID, team);
+  n = mesh_put(out, n, mesh_part(e, k, PART_LEG), play_beside(f, -hip_x, hip_y + bob, 0), f.yaw, -swing, 1, 1, 1, show, LOOK_SOLID, team);
+  n = mesh_put(out, n, mesh_part(e, k, PART_BODY), play_beside(f, 0, hip_y + bob, 0), f.yaw, 0.06, 1, 1, 1, show, LOOK_SOLID, team);
+  n = mesh_put(out, n, mesh_part(e, k, PART_HEAD), play_beside(f, 0, neck_y + bob, 0), f.yaw, -f.pitch * 0.5, 1, 1, 1, show, LOOK_SOLID, team);
+  n = mesh_put(out, n, mesh_part(e, k, PART_ARM), play_beside(f, -sh_x, sh_y + bob, 0), f.yaw, swing * 0.8, 1, 1, 1, show, LOOK_SOLID, team);
+  // the arm that holds the blaster is raised ahead, higher as it aims up
+  back := play_max(0.12 - f.kick, 0) * 1.2;
+  lift := -1.25 - f.pitch * 0.6;
+  n = mesh_put(out, n, mesh_part(e, k, PART_ARM), play_beside(f, sh_x, sh_y + bob, 0), f.yaw, lift, 1, 1, 1, show, LOOK_SOLID, team);
+  hand := play_beside(f, sh_x, sh_y + bob - arm * cos(lift), -arm * sin(lift) - back);
+  n = mesh_put(out, n, mesh_part(e, k, PART_GUN), hand, f.yaw, -f.pitch, 1, 1, 1, show, LOOK_SOLID, team);
+  return n;
+}
+
+// The arena, every Scrapper standing, their health bars, the shots in the
+// air and the sparks. Returns how many instances it wrote.
+play_draw :: (e: [] Editor, out: [] f32) -> s64 {
+  if e[0].play[0].world { return 0; }   // (the page draws its world)
+  p := e[0].play[..];
+  n: s64 = 0;
+  // on the real level the host draws the level's own meshes: no ground plane and no blocks here
+  models := e[0].meshes[0].ok && play_arena_look(p);
+  ms := e[0].meshes[0];
+  if !p[0].real { n = ed_instance(out, n, WorldPoint.{y = -0.05}, GROUND_HALF, 0.05, GROUND_HALF, 0, 0.24, ifx play_arena_look(p) then LOOK_ARENA else LOOK_GROUND); }
+  // a match is played under a dusk sky: a box round the eye, far past everything, that the host paints by direction
+  if !p[0].real && play_arena_look(p) { n = ed_instance(out, n, play_eye(p[0].f[0]), 450, 450, 450, 0, 1, LOOK_SKY); }
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    if p[0].real { continue; }
+    s := cast(f32) a.scale / 100;
+    if ed_kind_marker(a.kind) && !(p[0].meadow && a.kind == KIND_BALL) { continue; }   // play draws the pack, goal, hoop or ball itself
+    if a.kind == KIND_START || a.kind == KIND_RIVAL {
+      // where a team comes back: a glowing pad in its colour
+      if models { n = mesh_put(out, n, ms.pad, WorldPoint.{x = cast(f32) a.x / 100, y = 0.0, z = cast(f32) a.z / 100}, 0, 0, 1.1, 1, 1.1, MESH_PLAIN, LOOK_SOLID, ifx a.kind == KIND_START then TINT_MINE else TINT_RIVAL); }
+      continue;
+    }
+    if models && a.kind == KIND_BLOCK {
+      // a block is a crate with rounded edges: tall walls one colour, low cover another
+      n = mesh_put(out, n, ms.crate, WorldPoint.{x = cast(f32) a.x / 100, y = cast(f32) a.y / 100, z = cast(f32) a.z / 100}, cast(f32) a.yaw * 0.017453292, 0,
+        cast(f32) a.sx * s / 100, cast(f32) a.sy * s / 100, cast(f32) a.sz * s / 100, MESH_PLAIN, LOOK_SOLID, ifx cast(f32) a.sy * s >= 250 then TINT_WALL else TINT_COVER);
+      continue;
+    }
+    c := WorldPoint.{x = cast(f32) a.x / 100, y = cast(f32) a.y / 100 + cast(f32) a.sy * s / 200, z = cast(f32) a.z / 100};
+    was := n;
+    n = ed_instance(out, n, c, cast(f32) a.sx * s / 200, cast(f32) a.sy * s / 200, cast(f32) a.sz * s / 200, cast(f32) a.yaw, ifx a.kind == KIND_BLOCK then 0.95f32 else 0.9f32, LOOK_SOLID);
+    // in a match a block wears a colour by its height: tall walls one, low cover another
+    tint := ed_kind_tint(a.kind);
+    if a.kind == KIND_BLOCK && play_arena_look(p) { tint = ifx cast(f32) a.sy * s >= 250 then TINT_WALL else TINT_COVER; }
+    if n > was { out[was * INSTANCE_FLOATS + 18] = cast(f32) tint; }
+  }
+  cam_yaw := e[0].vp[0].fyaw; cam_pitch := e[0].vp[0].fpitch;
+  blink := (cast(s64) (p[0].left * 10) + cast(s64) (p[0].count * 10)) % 2 == 0;
+  if p[0].her_on { n = her_draw(e, out, n); }
+  n = mode_draw(e, out, n);
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    if !f.alive || p[0].her_on { continue; }
+    if i == 0 && !p[0].third {
+      // in first person only your blaster shows: low and to the right, turning with your eyes
+      back := play_max(0.12 - f.kick, 0) * 1.5;
+      ahead := play_ahead(cam_yaw, cam_pitch);
+      eye := play_eye(f);
+      hold := WorldPoint.{x = eye.x + ahead.x * (0.5 - back) - cos(cam_yaw) * 0.2 + sin(cam_pitch) * sin(cam_yaw) * 0.17,
+                          y = eye.y + ahead.y * (0.5 - back) - cos(cam_pitch) * 0.17,
+                          z = eye.z + ahead.z * (0.5 - back) + sin(cam_yaw) * 0.2 + sin(cam_pitch) * cos(cam_yaw) * 0.17};
+      if models { n = mesh_put(out, n, mesh_part(e, f.kind, PART_GUN), hold, cam_yaw, -cam_pitch, ifx f.kind == 1 then 0.42f32 else 0.62f32, ifx f.kind == 1 then 0.42f32 else 0.62f32, ifx f.kind == 1 then 0.42f32 else 0.62f32, ifx f.over > 0 then MESH_SHIELD else MESH_PLAIN, LOOK_SOLID, TINT_MINE); }
+      else { n = play_inst_aim(out, n, hold, ifx f.kind == 1 then 0.06f32 else 0.04f32, 0.045, ifx f.kind == 2 then 0.3f32 else 0.2f32, cam_yaw, cam_pitch, 0.45, ifx f.over > 0 then TINT_GLOW else TINT_NONE); }
+      continue;
+    }
+    if models { n = play_draw_scrapper(e, out, n, f, blink); } else { n = play_draw_body(out, n, f, blink); }
+    if i == 0 { continue; }
+    // a health bar that faces you: dark behind, the share left in front of it
+    share := f.hp / CLASS_HP[f.kind];
+    top := WorldPoint.{x = f.x, y = f.y + 1.85, z = f.z};
+    n = play_inst(out, n, top, 0.45, 0.05, 0.015, cam_yaw, 0.2, TINT_DARK);
+    off := -(1 - share) * 0.45;
+    bar := WorldPoint.{x = top.x - cos(cam_yaw) * off - sin(cam_yaw) * 0.02, y = top.y, z = top.z + sin(cam_yaw) * off - cos(cam_yaw) * 0.02};
+    n = play_inst(out, n, bar, 0.45 * share, 0.05, 0.015, cam_yaw, 1.0, ifx f.team == 0 then TINT_HEALTH else TINT_RIVAL);
+  }
+  for k: 0..<PACKS {
+    pk := p[0].packs[k];
+    if !pk.there || pk.gone > 0 { continue; }
+    // a health pack: a green box turning and bobbing over its spot
+    lift := 0.55 + sin(p[0].left * 3 + cast(f32) k) * 0.08;
+    if models {
+      n = mesh_put(out, n, ms.pack, WorldPoint.{x = pk.x, y = lift - 0.2, z = pk.z}, p[0].left * 1.5, 0, 1, 1, 1, MESH_PLAIN, LOOK_SOLID, TINT_HEALTH);
+      n = mesh_put(out, n, ms.pad, WorldPoint.{x = pk.x, y = 0.0, z = pk.z}, 0, 0, 0.5, 1, 0.5, MESH_PLAIN, LOOK_SOLID, TINT_HEALTH);
+      continue;
+    }
+    n = play_inst(out, n, WorldPoint.{x = pk.x, y = lift, z = pk.z}, 0.22, 0.22, 0.22, p[0].left * 1.5, 1.0, TINT_HEALTH);
+    n = play_inst(out, n, WorldPoint.{x = pk.x, y = 0.03, z = pk.z}, 0.45, 0.02, 0.45, 0, 0.6, TINT_HEALTH);
+  }
+  for k: 0..<cast(s64) p[0].target_n { n = play_draw_target(e, out, n, k); }
+  for s: 0..<SHOTS {
+    sh := p[0].shots[s];
+    if !sh.live { continue; }
+    big: f32 = ifx sh.kind == 2 then 0.1f32 else 0.06f32;
+    flat := sqrt(sh.vx * sh.vx + sh.vz * sh.vz);
+    if models {
+      // a shot is a bolt of light, drawn out along its way
+      n = mesh_put(out, n, ms.shot, WorldPoint.{x = sh.x, y = sh.y, z = sh.z}, angle_atan2(sh.vx, sh.vz), -angle_atan2(sh.vy, flat), big * 2.6, big * 2.6, 0.7, MESH_PLAIN, LOOK_SOLID, ifx sh.team == 0 then TINT_SHOT_MINE else TINT_SHOT_RIVAL);
+      continue;
+    }
+    n = play_inst_aim(out, n, WorldPoint.{x = sh.x, y = sh.y, z = sh.z}, big, big, 0.32, angle_atan2(sh.vx, sh.vz), angle_atan2(sh.vy, flat), 1.0, ifx sh.team == 0 then TINT_SHOT_MINE else TINT_SHOT_RIVAL);
+  }
+  for k: 0..<SPARKS {
+    sp := p[0].sparks[k];
+    if sp.life <= 0 { continue; }
+    size := 0.015 + play_min(sp.life, 0.3) * 0.09;
+    n = play_inst(out, n, WorldPoint.{x = sp.x, y = sp.y, z = sp.z}, size, size, size, sp.life * 9, 1.0, sp.tint);
+  }
+  return n;
+}
+
+// ---- sounds
+
+// The sounds a match makes, as samples: each a tone that slides from one
+// pitch to another with some noise in it, fading as it goes.
+SoundShape :: struct { from: f32; to: f32; seconds: f32; noise: f32; }
+SOUND_SHAPES :: [SOUNDS] SoundShape.[
+  SoundShape.{},
+  SoundShape.{from = 950, to = 320, seconds = 0.09, noise = 0.2},    // Bolt's shot
+  SoundShape.{from = 240, to = 70, seconds = 0.2, noise = 0.6},      // Boulder's
+  SoundShape.{from = 1600, to = 520, seconds = 0.24, noise = 0.08},  // Lumen's
+  SoundShape.{from = 720, to = 1080, seconds = 0.05, noise = 0.0},   // you hit someone
+  SoundShape.{from = 170, to = 90, seconds = 0.13, noise = 0.5},     // you were hit
+  SoundShape.{from = 520, to = 70, seconds = 0.42, noise = 0.3},     // a knockout
+  SoundShape.{from = 280, to = 1250, seconds = 0.36, noise = 0.1},   // a super
+  SoundShape.{from = 520, to = 1040, seconds = 0.7, noise = 0.0},    // you win
+  SoundShape.{from = 420, to = 140, seconds = 0.7, noise = 0.1},     // you lose
+  SoundShape.{from = 660, to = 660, seconds = 0.1, noise = 0.0},     // three, two, one
+  SoundShape.{from = 990, to = 990, seconds = 0.28, noise = 0.0},    // go
+  SoundShape.{from = 300, to = 520, seconds = 0.08, noise = 0.0}];   // a jump
+
+ed_play_sounds :: () -> s32 #export_c #effects(all) { return SOUNDS; }
+ed_play_sound_rate :: () -> s32 #export_c #effects(all) { return SOUND_RATE; }
+// Sound `id` as samples from -1 to 1 at SOUND_RATE. Returns how many it
+// wrote: 0 for no such sound or a buffer too small.
+ed_play_sound :: (id: s32, out: [] f32) -> s64 #export_c #effects(all) {
+  if id < 1 || id >= SOUNDS { return 0; }
+  h := SOUND_SHAPES[id];
+  n := cast(s64) (h.seconds * SOUND_RATE);
+  if n > out.count { return 0; }
+  phase: f32 = 0; seed := 12345 + cast(int) id;
+  for i: 0..<n {
+    t := cast(f32) i / cast(f32) n;
+    phase += (h.from + (h.to - h.from) * t) / SOUND_RATE;
+    if phase > 1 { phase -= 1; }
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    hiss := cast(f32) seed / 1073741824.0 - 1;
+    // in over the first hundredth of it, out as a square
+    fade := (1 - t) * (1 - t) * play_min(t * 100, 1);
+    out[i] = (sin(phase * 6.2831853) * (1 - h.noise) + hiss * h.noise) * fade * 0.6;
+  }
+  return n;
+}
+
+// The sounds since the last call, as pairs: an id and a loudness in percent.
+// Returns how many pairs it wrote, and forgets them.
+ed_play_events :: (e: [] Editor, out: [] s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  p := e[0].play[..];
+  n: s32 = 0;
+  for k: 0..<cast(s64) p[0].ev_n {
+    if (cast(s64) n + 1) * 2 > out.count { break; }
+    out[n * 2] = p[0].ev[k * 2]; out[n * 2 + 1] = p[0].ev[k * 2 + 1];
+    n += 1;
+  }
+  p[0].ev_n = 0;
+  return n;
+}
+
+// The knockout line the HUD shows: "You knocked out rival Lumen", "Rival
+// Boulder knocked out you". Returns its length; 0 when there is none to show.
+ed_play_feed :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count == 1 && e[0].play[0].on && e[0].play[0].call_t > 0 { return mode_banner(e[0].play[..], out); }
+  if e.count != 1 || !e[0].play[0].on || e[0].play[0].feed <= 0 || e[0].play[0].feed_by < 0 { return 0; }
+  p := e[0].play[..];
+  t := [1] Text.[Text.{buf = out}];
+  by := p[0].feed_by; who := p[0].feed_who;
+  if by == 0 { tx_put(t[..], "You"); }
+  else { tx_put(t[..], ifx p[0].f[by].team == 0 then "Your " else "Rival "); tx_put(t[..], CLASS_NAME[p[0].f[by].kind]); }
+  tx_put(t[..], " knocked out ");
+  if who == 0 { tx_put(t[..], "you"); }
+  else { tx_put(t[..], ifx p[0].f[who].team == 0 then "your " else "rival "); tx_put(t[..], CLASS_NAME[p[0].f[who].kind]); }
+  return t[0].at;
+}
+
+// ---- checks
+
+PlayTest :: struct { e: [1] Editor; }
+
+// Past the countdown and the shields a match starts with.
+play_test_go :: (p: [] Play) {
+  p[0].count = 0;
+  for i: 0..<FIGHTERS { p[0].f[i].shield = 0; }
+}
+
+play_test_run :: (e: [] Editor, seconds: f32) {
+  steps := cast(s64) (seconds / PLAY_STEP);
+  for k: 0..<steps { play_step(e); }
+}
+
+#test "a match starts three a side at the two starts, facing each other across the arena" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  #assert ed_playing(e) && p[0].box_n > 8 && p[0].count == PLAY_COUNTDOWN && p[0].left == PLAY_SECONDS;
+  for i: 0..<6 {
+    f := p[0].f[i];
+    #assert f.alive && f.hp == CLASS_HP[f.kind] && (f.team == 0) == (i < 3);
+    #assert (f.z < 0) == (f.team == 0);
+  }
+  #assert p[0].f[0].kind == 0 && p[0].f[1].kind == 1 && p[0].f[2].kind == 2;
+  // the camera is at your eyes
+  #assert abs(e[0].vp[0].fy - PLAY_EYE) < 0.01 && abs(e[0].vp[0].fx - p[0].f[0].x) < 0.01;
+}
+
+#test "a wall stops you, and you slide along it" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  // the south wall is behind your start: walking into it for five seconds leaves you inside the arena
+  for k: 0..<300 { _ = play_walk(p, 0, 0.0, -0.12); }
+  z := p[0].f[0].z;
+  wall: f32 = -cast(f32) ARENA_HALF / 100;
+  #assert z > wall && z < wall + 1.2;
+  x := p[0].f[0].x;
+  for k: 0..<30 { _ = play_walk(p, 0, 0.08, -0.08); }
+  #assert p[0].f[0].x > x + 1.5 && abs(p[0].f[0].z - z) < 0.05;
+}
+
+#test "a shot that meets a rival hurts them, charges the super, and a knockout scores and comes back" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 2);
+  p := e[0].play[..];
+  play_test_go(p);
+  // a rival straight ahead of you, close, with nothing between
+  p[0].f[3].x = p[0].f[0].x; p[0].f[3].z = p[0].f[0].z + 4;
+  hp := p[0].f[3].hp;
+  p[0].f[0].cool = 0;
+  play_fire(p, 0, play_ahead(p[0].f[0].yaw, 0));
+  for k: 0..<20 { play_shots(p); }
+  #assert p[0].f[3].hp == hp - CLASS_DAMAGE[2] && p[0].f[0].super > 0 && p[0].marker > 0;
+  play_hurt(p, 3, 0, 100000);
+  #assert !p[0].f[3].alive && p[0].score[0] == 1 && p[0].score[1] == 0;
+  // a block between stops the shot
+  p[0].f[4].x = p[0].f[0].x; p[0].f[4].z = 0.0 + 6;
+  was := p[0].f[4].hp;
+  p[0].f[0].x = 0; p[0].f[0].z = -6; p[0].f[0].cool = 0;
+  play_fire(p, 0, play_ahead(0, 0));
+  for k: 0..<60 { play_shots(p); }
+  #assert p[0].f[4].hp == was;
+  play_test_run(e, PLAY_RESPAWN + 0.1);
+  #assert p[0].f[3].alive && p[0].f[3].hp == CLASS_HP[p[0].f[3].kind];
+}
+
+#test "the bots fight: a match left alone scores, stays inside the walls and ends" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 1);
+  p := e[0].play[..];
+  play_test_go(p);
+  play_test_run(e, 60);
+  #assert p[0].score[0] + p[0].score[1] > 0;
+  for i: 0..<6 {
+    f := p[0].f[i];
+    edge: f32 = cast(f32) ARENA_HALF / 100 + 0.5;
+    #assert f.x > -edge && f.x < edge && f.z > -edge && f.z < edge && f.y >= 0 && f.y < 6;
+  }
+  play_test_run(e, PLAY_SECONDS);
+  #assert p[0].over && p[0].left == 0 || p[0].over && (p[0].score[0] >= PLAY_GOAL || p[0].score[1] >= PLAY_GOAL);
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert ed_play_hud(e, hud[..]) && hud[0] == 1 && hud[1] == 1 && !ed_play_captures(e);
+}
+
+#test "the stick moves you, the right side looks, fire holds, and stopping gives the camera back" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  eye := e[0].vp[0].fx; pitch := e[0].vp[0].fpitch;
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  z := p[0].f[0].z; yaw := p[0].f[0].yaw;
+  ed_play_touch(e, 4, PLAY_TOUCH_DOWN, 100, 300);
+  ed_play_touch(e, 4, PLAY_TOUCH_MOVE, 100, 300 - PLAY_STICK);   // pushed up: ahead
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert ed_play_hud(e, hud[..]) && hud[11] == 1 && hud[15] == 300 - PLAY_STICK;
+  // only you move in this check: the others' steps are not run
+  for k: 0..<60 { play_you(e); }
+  #assert p[0].f[0].z > z + 3;   // as far as the low wall before your start
+  ed_play_touch(e, 4, PLAY_TOUCH_UP, 100, 240);
+  z = p[0].f[0].z;
+  for k: 0..<30 { play_you(e); }
+  #assert abs(p[0].f[0].z - z) < 0.01;
+  ed_play_touch(e, 7, PLAY_TOUCH_DOWN, 600, 200);
+  ed_play_touch(e, 7, PLAY_TOUCH_MOVE, 640, 200);
+  #assert e[0].vp[0].fyaw != yaw;
+  fire := play_button_fire(e);
+  ed_play_touch(e, 9, PLAY_TOUCH_DOWN, fire.x, fire.y);
+  #assert p[0].fire;
+  ed_play_touch(e, 9, PLAY_TOUCH_UP, fire.x, fire.y);
+  #assert !p[0].fire;
+  ed_key(e, KEY_V, true, 0);
+  #assert p[0].third;
+  ed_key(e, KEY_ESCAPE, true, 0);
+  #assert !ed_playing(e) && e[0].vp[0].fx == eye && e[0].vp[0].fpitch == pitch;
+}
+
+#test "nobody moves or is hurt during the countdown, and a Scrapper who has just come in is shielded" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  z := p[0].f[3].z;
+  play_test_run(e, PLAY_COUNTDOWN - 0.2);
+  #assert p[0].count > 0 && p[0].f[3].z == z && p[0].left == PLAY_SECONDS;
+  play_hurt(p, 3, 0, 100000);
+  #assert p[0].f[3].alive && p[0].score[0] == 0;
+  play_test_run(e, 0.4);
+  #assert p[0].count == 0 && p[0].left < PLAY_SECONDS;
+  // the countdown beeped and said go
+  heard := false;
+  for k: 0..<cast(s64) p[0].ev_n { heard = heard || p[0].ev[k * 2] == SND_GO; }
+  #assert heard;
+  // firing drops your shield; being knocked out writes the line the HUD shows
+  p[0].f[0].cool = 0; p[0].f[0].shield = 1;
+  play_fire(p, 0, play_ahead(0, 0));
+  #assert p[0].f[0].shield == 0;
+  p[0].f[4].shield = 0;
+  play_hurt(p, 4, 0, 100000);
+  #assert !p[0].f[4].alive && p[0].feed > 0 && p[0].feed_by == 0 && p[0].feed_who == 4;
+}
+
+#test "every sound has samples that start and end quiet, and events are handed over once" {
+  buf: [44100] f32;
+  for id: 1..<SOUNDS {
+    n := ed_play_sound(cast(s32) id, buf[..]);
+    #assert n > 1000 && n <= 44100 && abs(buf[0]) < 0.01 && abs(buf[n - 1]) < 0.01;
+    loud: f32 = 0;
+    for i: 0..<n { #assert buf[i] >= -1 && buf[i] <= 1; if abs(buf[i]) > loud { loud = abs(buf[i]); } }
+    #assert loud > 0.15;
+  }
+  #assert ed_play_sound(0, buf[..]) == 0 && ed_play_sound(SOUNDS, buf[..]) == 0 && ed_play_sound(1, buf[0..<10]) == 0;
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  p[0].f[0].cool = 0;
+  play_fire(p, 0, play_ahead(0, 0));
+  out: [16] s32;
+  #assert ed_play_events(e, out[..]) == 1 && out[0] == SND_SHOT && out[1] == 100;
+  #assert ed_play_events(e, out[..]) == 0;
+  // a far Scrapper's shot is quieter than a near one's
+  p[0].f[4].x = p[0].f[0].x + 30; p[0].f[4].z = p[0].f[0].z; p[0].f[4].cool = 0;
+  p[0].f[5].x = p[0].f[0].x + 5; p[0].f[5].z = p[0].f[0].z; p[0].f[5].cool = 0;
+  play_fire(p, 4, play_ahead(0, 0)); play_fire(p, 5, play_ahead(0, 0));
+  #assert ed_play_events(e, out[..]) == 2 && out[1] < out[3] && out[3] < 100;
+}
+
+#test "a Scrapper's card bars compare it with the others" {
+  // Bolt is the quickest, Boulder the toughest, Lumen reaches furthest
+  #assert ed_play_class_stat(0, 0) == 100 && ed_play_class_stat(1, 1) == 100 && ed_play_class_stat(2, 3) == 100;
+  #assert ed_play_class_stat(1, 0) < 100 && ed_play_class_stat(2, 1) < 60 && ed_play_class_stat(1, 3) < 30;
+  for k: 0..<CLASSES { for w: 0..<4 { v := ed_play_class_stat(cast(s32) k, cast(s32) w); #assert v > 0 && v <= 100; } }
+  #assert ed_play_class_stat(3, 0) == 0 && ed_play_class_stat(0, 4) == 0;
+}
+
+#test "a game that is not an arena is walked: you alone, no clock, no shots" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  #assert ed_playing(e) && p[0].explore && p[0].third && p[0].count == 0 && p[0].f[0].alive;
+  for i: 1..<FIGHTERS { #assert !p[0].f[i].alive; }
+  p[0].fire = true;
+  e[0].k_fore = true;
+  play_test_run(e, 20);
+  live := 0; for s: 0..<SHOTS { if p[0].shots[s].live { live += 1; } }
+  #assert live == 0 && !p[0].over && p[0].left == PLAY_SECONDS && p[0].score[0] == 0;
+  for i: 1..<FIGHTERS { #assert !p[0].f[i].alive; }
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert ed_play_hud(e, hud[..]) && hud[36] == 1 && hud[59] == 0;
+}
+
+#test "the meadow's four types are walked through their own camera kinds, as on gamebuilder.org" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  for ty: GT_THIRD..<GT_SIDE + 1 {
+    #assert ed_new_game(e, cast(s32) (ty + 1), cast(s32) ty, cast(s32) (ty + 1)) && GT_PLAYS_IN_APP[ty];
+    ed_play(e, 0);
+    p := e[0].play[..];
+    #assert ed_playing(e) && p[0].explore && p[0].meadow && p[0].cam_kind == gt_cam(ty) && p[0].count == 0 && p[0].f[0].alive;
+    for i: 1..<FIGHTERS { #assert !p[0].f[i].alive; }
+    // the starter's ball is solid: three blocks and the ball are the place's boxes
+    #assert p[0].box_n == 4;
+    k := cam_kind(p[0].cam_kind);
+    #assert p[0].third == (p[0].cam_kind != CAM_KIND_FIRST);
+    // the host's hint leaves out the mouse and V under a fixed camera
+    hud: [PLAY_HUD_FLOATS] f32;
+    #assert ed_play_hud(e, hud[..]) && (hud[63] > 0) == !k.looks;
+    if !k.looks {
+      // fixed: the engine's tilt and turn for the kind, and looking does nothing
+      yaw := e[0].vp[0].fyaw; pitch := e[0].vp[0].fpitch;
+      #assert pitch == -k.pitch && yaw == play_wrap(p[0].ahead + k.turn);
+      ed_play_look(e, 120, 80);
+      #assert e[0].vp[0].fyaw == yaw && e[0].vp[0].fpitch == pitch;
+      ed_play_view(e); #assert p[0].third;
+      // a top-down eye is high over you; a side-on one level with you, beside the line
+      f := p[0].f[0];
+      if p[0].cam_kind == CAM_KIND_TOP { #assert e[0].vp[0].fy > f.y + 5; }
+      if p[0].cam_kind == CAM_KIND_SIDE { #assert abs(e[0].vp[0].fy - (f.y + PLAY_EYE * 0.5)) < 0.01; }
+    }
+    if p[0].cam_kind == CAM_KIND_SIDE {
+      // right runs along the line; up jumps; you stay on the line
+      x0 := p[0].f[0].x; z0 := p[0].f[0].z;
+      e[0].k_right = true; play_test_run(e, 20); e[0].k_right = false;
+      along := (p[0].f[0].x - x0) * sin(p[0].ahead) + (p[0].f[0].z - z0) * cos(p[0].ahead);
+      off := (p[0].f[0].x - x0) * cos(p[0].ahead) - (p[0].f[0].z - z0) * sin(p[0].ahead);
+      #assert along > 0.5 && abs(off) < 0.01;
+      // and you are seen side on, facing the way you run, not from behind
+      #assert abs(cos(p[0].f[0].yaw - e[0].vp[0].fyaw)) < 0.01 && cos(p[0].f[0].yaw - p[0].ahead) > 0.99;
+      e[0].k_fore = true; play_test_run(e, 3); e[0].k_fore = false;
+      #assert p[0].f[0].y > 0.05;
+    }
+    if p[0].cam_kind == CAM_KIND_TOP {
+      // up the screen is ahead
+      x0 := p[0].f[0].x; z0 := p[0].f[0].z;
+      e[0].k_fore = true; play_test_run(e, 20); e[0].k_fore = false;
+      #assert (p[0].f[0].x - x0) * sin(p[0].ahead) + (p[0].f[0].z - z0) * cos(p[0].ahead) > 0.5;
+    }
+    ed_stop(e);
+  }
+}
+
+FieldTest :: struct { e: [1] Editor; out: [512 * INSTANCE_FLOATS] f32; }
+
+// Turns your eyes to a point, as the mouse or a finger would.
+play_test_look_at :: (e: [] Editor, m: WorldPoint) {
+  f := e[0].play[0].f[0];
+  eye := play_eye(f);
+  dx := m.x - eye.x; dy := m.y - eye.y; dz := m.z - eye.z;
+  e[0].vp[0].fyaw = angle_atan2(dx, dz); e[0].vp[0].fpitch = angle_atan2(dy, sqrt(dx * dx + dz * dz));
+}
+
+#test "an open field is the arena with the match taken out: first person, a blaster, its floor and sky, targets and enemies" {
+  t: [1] FieldTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 1, TEMPLATE_FIELD, 2) && ed_explores(e);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  #assert ed_playing(e) && p[0].explore && p[0].field && !p[0].third && p[0].count == 0 && p[0].f[0].alive;
+  for k: 0..<PACKS { #assert !p[0].packs[k].there; }
+  // the starter place's five targets stand, and its three enemies come in at their markers, far off
+  #assert p[0].target_n == 5 && p[0].home_n == 3;
+  for i: 1..<FIGHTERS {
+    f := p[0].f[i];
+    #assert f.alive == (i <= 3);
+    if i <= 3 { #assert f.team == 1 && f.z > 30 && abs(f.x - p[0].home_x[i]) < 0.01; }
+  }
+  // you stand at your start, at your eyes, looking ahead
+  #assert abs(p[0].f[0].x) < 0.01 && abs(p[0].f[0].z) < 0.01 && abs(e[0].vp[0].fy - PLAY_EYE) < 0.01 && e[0].vp[0].fpitch == 0;
+  // shoot the target on the left: it goes down, counted, then pops back up
+  #assert !p[0].targets[0].moving && p[0].targets[0].down == 0;
+  play_test_look_at(e, play_target_at(p, 0));
+  p[0].fire = true;
+  for k: 0..<120 { play_step(e); if p[0].downed > 0 { break; } }
+  p[0].fire = false;
+  #assert p[0].downed == 1 && p[0].targets[0].down > 0;
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert ed_play_hud(e, hud[..]) && hud[36] == 1 && hud[59] == 1 && hud[60] == 1 && hud[61] == 5 && hud[62] == 3;
+  play_test_run(e, TARGET_BACK + 0.1);
+  #assert p[0].targets[0].down == 0;
+  // a moving target slides along its rail
+  mv := 2; #assert p[0].targets[mv].moving;
+  a := play_target_at(p, mv); play_test_run(e, 0.5); b := play_target_at(p, mv);
+  #assert abs(a.x - b.x) > 0.1 && abs(b.x - p[0].targets[mv].x) <= TARGET_SLIDE + 0.01;
+  // no super
+  p[0].super = true;
+  play_test_run(e, 0.1);
+  #assert p[0].f[0].over == 0 && !p[0].super;
+  // drawn in the arena's look: its plates, its sky; and the targets
+  n := play_draw(e, t[0].out[..]);
+  #assert n > 12 && t[0].out[17] == cast(f32) LOOK_ARENA && t[0].out[INSTANCE_FLOATS + 17] == cast(f32) LOOK_SKY;
+}
+
+#test "the open field's enemies come at you and hurt you; knocked out, they and you come back" {
+  t: [1] FieldTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 1, TEMPLATE_FIELD, 2);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  far := p[0].f[2].z;
+  // stood still, you are come at and shot
+  play_test_run(e, 12);
+  #assert p[0].f[2].z < far - 5 || !p[0].f[2].alive;
+  #assert p[0].f[0].hp < CLASS_HP[p[0].f[0].kind] || p[0].falls > 0;
+  // you knock one out: counted, and it comes back at its marker
+  play_test_run(e, PLAY_RESPAWN + 0.5);   // you are up again if you were knocked out
+  for i: 1..<4 { p[0].f[i].shield = 0; }
+  #assert p[0].f[1].alive;
+  mine := p[0].mine;
+  play_hurt(p, 1, 0, 1000000);
+  #assert !p[0].f[1].alive && p[0].mine == mine + 1 && p[0].f[1].respawn > 0;
+  for k: 0..<cast(s64) ((PLAY_RESPAWN + 0.1) / PLAY_STEP) { play_step(e); if p[0].f[1].alive { break; } }
+  #assert p[0].f[1].alive && abs(p[0].f[1].x - p[0].home_x[1]) < 0.01 && abs(p[0].f[1].z - p[0].home_z[1]) < 0.01;
+  // nothing ends: no clock, no score to win
+  #assert !p[0].over;
+  // with you knocked out, you are back at your start
+  p[0].f[0].shield = 0;
+  play_hurt(p, 0, 1, 1000000);
+  #assert !p[0].f[0].alive;
+  play_test_run(e, PLAY_RESPAWN + 0.1);
+  #assert p[0].f[0].alive && !p[0].over;
+}
+
+#test "a health pack heals the hurt who walk over it and comes back; your knockouts are counted; touch fires on a rival in your aim" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  play_test_go(p);
+  // the arena has packs where no block stands
+  there := 0; for k: 0..<PACKS { if p[0].packs[k].there { there += 1; } }
+  #assert there >= 2;
+  first := -1; for k: 0..<PACKS { if p[0].packs[k].there && first < 0 { first = k; } }
+  // unhurt, you walk over one and it stays; hurt, it heals you and is gone for a while
+  p[0].f[0].x = p[0].packs[first].x; p[0].f[0].z = p[0].packs[first].z; p[0].f[0].y = 0;
+  for i: 1..<FIGHTERS { p[0].f[i].alive = false; p[0].f[i].respawn = 1000; }
+  play_step(e);
+  #assert p[0].packs[first].gone == 0;
+  full := CLASS_HP[p[0].f[0].kind];
+  p[0].f[0].hp = full * 0.3;
+  play_step(e);
+  #assert abs(p[0].f[0].hp - full * 0.7) < 1 && p[0].packs[first].gone > PACK_BACK - 0.1;
+  p[0].f[0].hp = full * 0.3; p[0].f[0].unhurt = 0;
+  play_step(e);
+  #assert p[0].f[0].hp < full * 0.5;
+  // your knockouts are yours; a teammate's are the team's only
+  p[0].f[3].alive = true; p[0].f[3].shield = 0; p[0].f[4].alive = true; p[0].f[4].shield = 0;
+  play_hurt(p, 3, 0, 100000); play_hurt(p, 4, 1, 100000);
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert p[0].mine == 1 && p[0].score[0] == 2 && ed_play_hud(e, hud[..]) && hud[47] == 1 && hud[48] == 0;
+  // by touch, a rival straight ahead and in reach is fired on without the button
+  p[0].f[5].alive = true; p[0].f[5].shield = 0; p[0].f[5].hp = CLASS_HP[p[0].f[5].kind];
+  p[0].f[0].x = 3; p[0].f[0].z = -12; p[0].f[5].x = 3; p[0].f[5].z = -6;   // a lane with no cover in it
+  e[0].vp[0].fyaw = 0; e[0].vp[0].fpitch = 0; p[0].f[0].cool = 0;
+  play_you(e);
+  live := 0; for s: 0..<SHOTS { if p[0].shots[s].live { live += 1; } }
+  #assert live == 0;   // not by touch: nothing fires itself
+  ed_play_touch(e, 1, PLAY_TOUCH_DOWN, 700, 100);
+  p[0].f[0].cool = 0;
+  play_you(e);
+  live = 0; for s: 0..<SHOTS { if p[0].shots[s].live { live += 1; } }
+  #assert live == 1 && p[0].touch;
+}

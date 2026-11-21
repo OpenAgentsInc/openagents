@@ -1,0 +1,30 @@
+// Pure diagnostic-assisted platformer control, calibrated against the real rules.
+#load "../../web/world-platformer.coax";
+PpFrame :: struct {ok:bool;sequence:int;z:f32;y:f32;vy:f32;vz:f32;ground:bool;air:int;clock:f32;gate:int;falls:int;done:bool;}
+PpDecision :: struct {way:int=1;jump:bool;}
+pp_moves :: (p:[]Platformer,i:int)->bool {k:=p[0].c[0].parts[i].kind;return k==PF_MOVER || k==PF_LIFT;}
+pp_decide :: (p:[]Platformer,f:PpFrame,last:int,held:bool)->PpDecision {
+  d:PpDecision;c:=p[0].c[..];tgt:=ifx last+1<c[0].n then last+1 else last;nb:=pf_box(p,tgt);z:=f.z+f.vz*0.04;
+  st:=pf_on(p,0,f.y,f.z);
+  if f.ground && st>=0 {
+    q:=c[0].parts[st];cb:=pf_box(p,st);share:=course_slide_share(q.slide,pf_time(p));going:=course_slide_share(q.slide,pf_time(p)+0.05)>share;
+    if pp_moves(p,st) && !(share>0.86 && going) && share<=0.97 {d.way=0;}
+    else if q.kind!=PF_PAD {
+      for i:0..<c[0].spikes {sa:=c[0].spike[i*6+2];if abs(c[0].spike[i*6+1]-cb[4])<0.05 && z<sa-0.1 && z>sa-0.95 {d.jump=true;}}
+      joined:=nb[2]-cb[5]<0.05 && nb[4]-cb[4]<0.3 && !pp_moves(p,tgt);
+      if !joined {ready:=!pp_moves(p,tgt) || course_slide_share(c[0].parts[tgt].slide,pf_time(p))<0.12;
+        if !ready && z>cb[5]-1.9 {d.way=0;}else if z>cb[5]-0.85 {d.jump=true;}}
+    }
+  }else if !f.ground {
+    if f.vy>0 && held {d.jump=true;}
+    under:=false;for i:0..<c[0].n {b:=pf_box(p,i);if z>b[2]-0.2 && z<b[5]+0.2 && b[4]<=f.y+0.1 {under=true;}}
+    v:=-f.vy;dy:=f.y-nb[4];land:=ifx dy>0.2 then z+f.vz*(sqrt(v*v+80*dy)-v)/40 else z;
+    if f.air==0 && f.vy<0 && z<nb[2]-0.1 && land<nb[2]+0.6 && !under {d.jump=true;}
+    if z>nb[2]+0.3 && z<nb[5]+0.5 {d.way=ifx z>(nb[2]+nb[5])*0.5 then -1 else 0;}
+  }
+  if d.jump && held && !(f.vy>0 && !f.ground) {d.jump=false;}return d;
+}
+#test "platformer decisions stop on a moving slab and jump before an open edge" {
+  p:[1]Platformer;ok:=pf_enter(p[..]);#assert ok;p[0].clock=20;
+  q:=p[0].c[0].parts[0];f:=PpFrame.{z=q.z1-0.5,y=q.y,ground=true};d:=pp_decide(p[..],f,0,false);#assert d.jump && d.way==1;
+}

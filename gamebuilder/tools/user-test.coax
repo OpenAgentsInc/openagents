@@ -1,0 +1,215 @@
+// The automated user (issue 28; docs/user-testing.md): a person's journeys through the web app,
+// driven as a person drives it, in headless Chrome over its DevTools protocol (the player's own
+// machinery, coax/web/player-browser.coax), on three lanes:
+//   chrome-mac               1440x900, mouse and keys
+//   chrome-phone-emulation   412x915, scale 2, mobile, touch
+//   chrome-tablet-emulation  1024x1366, scale 2, mobile, touch
+// Each journey ends pass, fail (naming what a person would see go wrong) or blocked (in words:
+// what it could not reach). Evidence goes to a private folder: screenshots, the page's words, the
+// services' answers, timings, and the build's versions (/api/capabilities and the site's release).
+//
+//   scripts/user-test.sh --checks   this file's and tests/user's #tests (scripts/check.sh runs it)
+//   scripts/user-test.sh --local    the site built and staged as a deploy lays it out, in front of a
+//                                   local `gamebuilder serve --accounts`, a stand-in login service and
+//                                   a stand-in model (tests/user/edge.coax), on this Mac
+//   scripts/user-test.sh --live     gamebuilder.org itself, with the player's dedicated test inbox
+//                                   (run by the lead only: docs/user-testing.md, "The live run")
+//
+// What a journey names is read from the product's own sources, never written here twice:
+// the types from shared/game-types.coax, the limits from its constants and shared/buildings.coax,
+// the funnel's steps from shared/loop.coax, the agents' state words from gamebuilder/core/agent-record.coax.
+// tool.sh: tls
+// tool.sh: stack-gib 2
+// tool.sh: run-steps 250000000
+#load "../../coax/web/player-browser.coax";
+#load "../tests/player/mail.coax";
+#load "../tests/user/edge.coax";
+#load "../tests/user/catalog.coax";
+#load "../tests/user/journeys.coax";
+
+UT_LANES :: [3] string.["chrome-mac", "chrome-phone-emulation", "chrome-tablet-emulation"];
+UT_LANE_W :: [3] int.[1440, 412, 1024];
+UT_LANE_H :: [3] int.[900, 915, 1366];
+
+// ---------------------------------------------------------------- the local stack
+
+UtStack :: struct {
+  run: [2048] u8; run_n: int;           // the run's private folder: the edge's files, the accounts, the outbox
+  origin: [128] u8; origin_n: int;      // where the browser goes: http://localhost:EDGE
+  edge: int = -1; server: int = -1;     // their processes
+  api: int; model: int;                 // their ports
+}
+ut_run_path :: (s: [] UtStack, name: string, out: [] u8) -> string { return fs_join(cast(string) s[0].run[0..<s[0].run_n], name, out); }
+// A free port on this machine (asked of the system, then let go).
+ut_free_port :: () -> int { h := cxsock_listen(0); if h < 0 { return 0; } p := cxsock_port(h); _ = cxsock_close(h); return p; }
+ut_wait_file :: (path: string, ms: int, out: [] u8) -> int {
+  end := proc_now_ms() + ms;
+  while proc_now_ms() < end { n := fs_read(path, out); if n > 0 { return n; } proc_sleep(50); }
+  return 0;
+}
+// The stack up: the edge (this tool again, --edge), then the hosted server told the edge is its
+// origin and the edge's model listener its model. False with words on stderr when any part didn't start.
+ut_stack_up :: (s: [] UtStack, site: string, bin: string) -> bool {
+  rb: [256] u8; run := fs_temp("gb-user-test-", rb[..]);
+  if run.count == 0 { tool_errln("user-test: no private folder to run in"); return false; }
+  s[0].run_n = ws_put(s[0].run[..], 0, run);
+  fb: [2200] u8; ab: [2200] u8;
+  accounts := ut_run_path(s, "accounts", ab[..]);
+  if !fs_mkdir_private(accounts) { return false; }
+  // a test key of the run's own, never a real one (as tools/cloud-check.coax makes it)
+  kb: [2200] u8; key := ut_run_path(s, "model.key", kb[..]);
+  if !fs_write(key, "0101010101010101010101010101010101010101010101010101010101010101\n") { return false; }
+  // the run's owner token: the funnel's reader through the stand-in login
+  tok: [40] u8; ue_random(tok[..], false); if !fs_write(ut_run_path(s, "owner-token", fb[..]), cast(string) tok[..]) { return false; }
+  port := ut_free_port(); if port <= 0 { return false; }
+  self: [4096] u8; pb: [24] u8; pn := pb_decimal(pb[..], 0, port);
+  h := proc_new();
+  ok := proc_arg(h, tool_self(self[..])) && proc_arg(h, "--edge") && proc_arg(h, run) && proc_arg(h, site) && proc_arg(h, cast(string) pb[0..<pn]);
+  if !ok || proc_start(h) != 0 { tool_errln("user-test: the edge did not start"); return false; }
+  s[0].edge = h;
+  eb: [64] u8; en := ut_wait_file(ut_run_path(s, "edge", fb[..]), 20000, eb[..]);
+  if en <= 0 { tool_errln("user-test: the edge did not say where it listens"); return false; }
+  said := cast(string) eb[0..<en]; sp := ue_find(said, " ", 0);
+  if sp < 0 || ue_int(said) != port { tool_errln("user-test: the edge listens elsewhere"); return false; }
+  s[0].model = ue_int(said[sp + 1..<said.count]);
+  s[0].origin_n = ws_put(s[0].origin[..], 0, "http://localhost:"); s[0].origin_n = pb_decimal(s[0].origin[..], s[0].origin_n, port);
+  mb: [128] u8; mn := ws_put(mb[..], 0, "http://127.0.0.1:"); mn = pb_decimal(mb[..], mn, s[0].model); mn = ws_put(mb[..], mn, "/api/v1/inference");
+  kenv: [2300] u8; kn := ws_put(kenv[..], 0, "GB_MODEL_KEY_FILE="); kn = ws_put(kenv[..], kn, key);
+  senv: [4200] u8; sn := ws_put(senv[..], 0, "GB_SELF="); sn = ws_put(senv[..], sn, bin);
+  sh := proc_new();
+  ok = proc_env(sh, cast(string) kenv[0..<kn]) && proc_env(sh, cast(string) senv[0..<sn]) && proc_arg(sh, bin) && proc_arg(sh, "serve")
+    && proc_arg(sh, "--accounts") && proc_arg(sh, accounts) && proc_arg(sh, "--origin") && proc_arg(sh, cast(string) s[0].origin[0..<s[0].origin_n])
+    && proc_arg(sh, "--port") && proc_arg(sh, "0") && proc_arg(sh, "--model") && proc_arg(sh, cast(string) mb[0..<mn]);
+  if !ok || proc_start(sh) != 0 { tool_errln("user-test: gamebuilder serve did not start"); return false; }
+  s[0].server = sh;
+  line: [512] u8; ln := proc_line(sh, 20000, line[..]);
+  if ln <= 0 { tool_errln("user-test: gamebuilder serve said nothing"); return false; }
+  first := cast(string) line[0..<ln]; at := ue_find(first, "127.0.0.1:", 0);
+  if at < 0 || ue_find(first, "cloud agents on", 0) < 0 { tool_errln("user-test: gamebuilder serve does not run cloud agents here"); tool_errln(first); return false; }
+  s[0].api = ue_int(first[at + 10..<first.count]);
+  ap: [24] u8; an := pb_decimal(ap[..], 0, s[0].api);
+  return fs_write(ut_run_path(s, "api-port", fb[..]), cast(string) ap[0..<an]);
+}
+// The newest code the stand-in login sent to email (the run's outbox: "EMAIL CODE" a line), into out.
+ut_outbox_code :: (s: [] UtStack, email: string, out: [] u8) -> bool {
+  fb: [2200] u8; b: [65536] u8; n := fs_read(ut_run_path(s, "outbox", fb[..]), b[..]);
+  if n <= 0 || out.count < 6 { return false; }
+  text := cast(string) b[0..<n]; at := 0; found := false;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[at..<e]; at = e + 1;
+    if line.count == email.count + 7 && ue_starts(line, email) && line[email.count] == ' ' { for i: 0..<6 { out[i] = line[email.count + 1 + i]; } found = true; }
+  }
+  return found;
+}
+ut_stack_down :: (s: [] UtStack) {
+  fb: [2200] u8;
+  if s[0].run_n > 0 { _ = fs_write(ut_run_path(s, "edge.stop", fb[..]), "stop\n"); }
+  if s[0].server >= 0 { _ = proc_kill(s[0].server, 15); _ = proc_wait(s[0].server, 5000); _ = proc_release(s[0].server); s[0].server = -1; }
+  if s[0].edge >= 0 { if proc_wait(s[0].edge, 3000) < 0 { _ = proc_kill(s[0].edge, 15); _ = proc_wait(s[0].edge, 3000); } _ = proc_release(s[0].edge); s[0].edge = -1; }
+}
+
+// ---------------------------------------------------------------- the probe (a person's steps from a file, for finding a page's controls)
+
+// One step a line: go PATH | tap ID | type TEXT | key KEY CODE | wait MS | eval JS | shot NAME | click X Y
+ut_probe :: (s: [] UtStack, lane: int, file: string, out: string) -> int {
+  sb: [65536] u8; n := fs_read(file, sb[..]); if n <= 0 { tool_errln("user-test: no probe file"); return 2; }
+  c: [1] Cdp; lw := UT_LANE_W; lh := UT_LANE_H;
+  if !cdp_launch_live_headless(c[..], lw[lane], lh[lane], "gb-user-probe-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer cdp_close(c[..]);
+  ut_emulate(c[..], lane);
+  script := cast(string) sb[0..<n]; at := 0; shot := 0;
+  while at < script.count {
+    e := at; while e < script.count && script[e] != '\n' { e += 1; }
+    line := cast(string) script[at..<e]; at = e + 1;
+    sp := ue_find(line, " ", 0); verb := ifx sp < 0 then line else cast(string) line[0..<sp]; rest := ifx sp < 0 then "" else cast(string) line[sp + 1..<line.count];
+    ok := true;
+    if verb == "go" { url: [512] u8; un := ws_put(url[..], 0, cast(string) s[0].origin[0..<s[0].origin_n]); un = ws_put(url[..], un, rest); ok = ut_navigate(c[..], cast(string) url[0..<un]); }
+    else if verb == "tap" { ok = pb_tap_as(c[..], rest, lane > 0); }
+    else if verb == "type" { ok = pb_type(c[..], rest); }
+    else if verb == "key" { k := ue_find(rest, " ", 0); ok = pb_press(c[..], rest[0..<k], rest[k + 1..<rest.count]); }
+    else if verb == "wait" { proc_sleep(ue_int(rest)); }
+    else if verb == "clear" { ok = ut_clear(c[..]); }
+    else if verb == "init" { _ = cdp_call(c[..], "Page.enable", "{}", PB_CALL_MS); jb: [2048] u8; o: [1] Jo; jo_start(o[..], jb[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], rest); jo_end(o[..]); rr := cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), PB_CALL_MS); ok = rr >= 0; if !ok { print("init: %\n", cdp_error(c[..])); } }
+    else if verb == "code" { cb: [8] u8; ok = ut_outbox_code(s, rest, cb[..]) && pb_type(c[..], cast(string) cb[0..<6]); }
+    else if verb == "swipe" { ok = ut_swipe(c[..], ue_int(rest)); }
+    else if verb == "click" { k := ue_find(rest, " ", 0); ok = pb_click(c[..], ue_int(rest), ue_int(rest[k + 1..<rest.count])); }
+    else if verb == "eval" { r := pb_read(c[..], rest); print("% %\n", cxsock_now_ms() % 10000000, ifx r >= 0 then jv_raw(cdp_doc(c[..]), r) else cdp_error(c[..])); }
+    else if verb == "shot" {
+      b: [8388608] u8; k := cdp_screenshot(c[..], b[..]); pb: [4096] u8; nb: [256] u8; nn := ws_put(nb[..], 0, rest); nn = ws_put(nb[..], nn, ".png");
+      ok = k > 0 && fs_write(fs_join(out, cast(string) nb[0..<nn], pb[..]), cast(string) b[0..<k]);
+    }
+    if !ok { print("step failed: %\n", line); } else if verb != "eval" { print("% %\n", cxsock_now_ms() % 10000000, line); }
+  }
+  return 0;
+}
+// A swipe sideways across the middle of the window, as a finger makes one: leftwards for dir > 0.
+ut_swipe :: (c: [] Cdp, dir: int) -> bool {
+  w := cast(int) pb_number(c, "innerWidth", 0); h := cast(int) pb_number(c, "innerHeight", 0);
+  if w < 10 || h < 10 { return false; }
+  from := ifx dir > 0 then w * 3 / 4 else w / 4; span := ifx dir > 0 then -(w / 2) else w / 2;
+  a := [1] PbContact.[PbContact.{id = 1, x = from, y = h * 6 / 10}];
+  ok := pb_touch(c, "touchStart", a[..]);
+  for st: 1..<9 { a[0].x = from + span * st / 8; ok = pb_touch(c, "touchMove", a[..]) && ok; proc_sleep(16); }
+  return pb_touch(c, "touchEnd", a[..]) && ok;
+}
+// Goes to url (this run's own origin only: the local edge, or gamebuilder.org) and waits for the new
+// page to be the one answering. The player's pb_go takes https alone, with no query.
+ut_url_ok :: (url: string) -> bool {
+  local := ue_starts(url, "http://localhost:") || ue_starts(url, "https://gamebuilder.org/");
+  for ch: url { if ch <= 32 || ch == '@' || ch == '#' { return false; } }
+  return local;
+}
+#test "the browser goes to the run's own origin only" {
+  #assert ut_url_ok("http://localhost:4100/g/abc123") && ut_url_ok("https://gamebuilder.org/agents") && ut_url_ok("http://localhost:9/?x=1");
+  #assert !ut_url_ok("https://gamebuilder.org.evil/") && !ut_url_ok("http://localhost:9/a b") && !ut_url_ok("https://example.com/") && !ut_url_ok("http://a@localhost:9/");
+}
+ut_navigate :: (c: [] Cdp, url: string) -> bool {
+  if !ut_url_ok(url) { return false; }
+  prior := pb_number(c, "performance.timeOrigin", 0);
+  b: [4096] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  r := cdp_call(c, "Page.navigate", jo_text(o[..]), PB_CALL_MS);
+  if r < 0 || jv_get(cdp_doc(c), r, "errorText") >= 0 { return false; }
+  end := proc_now_ms() + 15000;
+  while proc_now_ms() < end { if pb_number(c, "performance.timeOrigin", prior) != prior && pb_bool(c, "document.readyState==='complete'") { return true; } proc_sleep(50); }
+  return false;
+}
+// Empties the focused field as a person does: the caret to its end, then Backspace for each character.
+ut_clear :: (c: [] Cdp) -> bool {
+  n := cast(int) pb_number(c, "(document.activeElement?.value||'').length", -1);
+  if n < 0 || n > 400 { return false; }
+  ok := pb_press(c, "End", "End");
+  for i: 0..<n { ok = pb_press(c, "Backspace", "Backspace") && ok; }
+  return ok && pb_bool(c, "(document.activeElement?.value||'')===''");
+}
+ut_emulate :: (c: [] Cdp, lane: int) {
+  lw := UT_LANE_W; lh := UT_LANE_H; touch := lane > 0;
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "width"); jo_int(o[..], lw[lane]); jo_key(o[..], "height"); jo_int(o[..], lh[lane]);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], ifx touch then 2 else 1); jo_key(o[..], "mobile"); jo_bool(o[..], touch); jo_end(o[..]);
+  _ = cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), PB_CALL_MS);
+  if touch { _ = cdp_call(c, "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}", PB_CALL_MS); }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  mode := args_at(a[..], 0);
+  if mode == "--edge" { u: [1] Ue; return ue_run(u[..], args_at(a[..], 1), args_at(a[..], 2), ue_int(args_at(a[..], 3))); }
+  if mode == "--coverage" {
+    sb: [1048576] u8; sn := fs_read("web/page.coax", sb[..]); db: [131072] u8; dn := fs_read(args_at(a[..], 1), db[..]);
+    if sn <= 0 || dn <= 0 { tool_errln("user-test: --coverage needs web/page.coax and docs/user-testing.md"); return 2; }
+    bad := uj_coverage(cast(string) sb[0..<sn], cast(string) db[0..<dn]);
+    if bad == 0 { print("user coverage: every address and loop step is covered, as docs/user-testing.md says\n"); }
+    return ifx bad == 0 then 0 else 1;
+  }
+  if mode == "--probe" {
+    s: [1] UtStack;
+    if !ut_stack_up(s[..], args_value(a[..], "--site", ""), args_value(a[..], "--bin", "build/cli/gamebuilder")) { ut_stack_down(s[..]); return 1; }
+    lane := 0; ln := UT_LANES; for i: 0..<3 { if ln[i] == args_value(a[..], "--lane", "chrome-mac") { lane = i; } }
+    out := args_value(a[..], "--out", cast(string) s[0].run[0..<s[0].run_n]);
+    print("run: %\n", cast(string) s[0].run[0..<s[0].run_n]);
+    r := ut_probe(s[..], lane, args_at(a[..], 1), out);
+    ut_stack_down(s[..]); return r;
+  }
+  return ut_main(a[..]);
+}

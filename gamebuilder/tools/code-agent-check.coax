@@ -1,0 +1,101 @@
+// A Code agent's folder, made for real (coax/code-agent.coax, docs/agents.md, "A Code agent"):
+// this tool makes scratch repositories in a temporary folder, the engine's and the app's, each
+// with a commit on main, and runs the pane's own steps against them. The worktree is made from
+// origin/main, detached, in the Code agents' folder and outside any checkout of the person's;
+// a second agent reuses the app's clone; the app's agent gets the engine's clone too (for
+// scripts/pin.sh); the engine clone's hook refuses a push to main and lets a branch go; and the
+// files an agent changed are measured. Nothing touches GitHub or a repository of the person's.
+// scripts/check.sh runs it; it prints what does not hold and ends 1, or "code agent: ok".
+//   coax/web/tool.sh tools/code-agent-check.coax
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#import "Basic";
+
+CkBuf :: struct { b: [4096] u8; n: int; }
+ck_cat :: (out: [] CkBuf, a: string, b: string) -> string {
+  out[0].n = 0;
+  for p: [2] string.[a, b] { for ch: p { if out[0].n < out[0].b.count { out[0].b[out[0].n] = ch; out[0].n += 1; } } }
+  return cast(string) out[0].b[0..<out[0].n];
+}
+// A shell line with its arguments as $1.. (never spliced in): its exit status, and its output.
+ck_sh :: (line: string, args: [] string, out: [] u8, said: [] int) -> int {
+  argv: [12] string; n := 0;
+  argv[0] = "/bin/sh"; argv[1] = "-c"; argv[2] = line; argv[3] = "sh"; n = 4;
+  for a: args { if n < 12 { argv[n] = a; n += 1; } }
+  err: [2048] u8;
+  r := proc_run(argv[0..<n], 60000, out, err[..]);
+  said[0] = r.out_n;
+  return ifx r.started != 0 then -1 else r.status;
+}
+ck_said :: (out: [] u8, said: [] int) -> string { return cast(string) out[0..<said[0]]; }
+
+// A scratch repository at origin: a bare one, with one commit on main.
+CK_ORIGIN :: "set -e; mkdir -p \"$1\"; git init --quiet --bare -b main \"$1/$2.git\"; seed=\"$1/seed-$2\"; git init --quiet -b main \"$seed\"; printf '# %s\\n' \"$2\" > \"$seed/AGENTS.md\"; git -C \"$seed\" add AGENTS.md; git -C \"$seed\" -c user.name=check -c user.email=check@example.invalid commit --quiet -m seed; git -C \"$seed\" push --quiet \"$1/$2.git\" main";
+
+tool_main :: () -> int #export_c #effects(all) {
+  tb: [1024] u8; dir := fs_temp("gb-code-agent", tb[..]);
+  if dir.count == 0 { print("code agent: NOT a folder to work in\n"); return 1; }
+  bad := 0;
+  out: [16384] u8; said: [1] int;
+  b1: [1] CkBuf; b2: [1] CkBuf; b3: [1] CkBuf; b4: [1] CkBuf;
+  // the scratch origins: dir/remote/OpenAgentsInc/{openagents,gamebuilder}.git
+  org := ck_cat(b1[..], dir, "/remote/OpenAgentsInc");
+  for name: [2] string.["openagents", "gamebuilder"] {
+    a := [2] string.[org, name];
+    if ck_sh(CK_ORIGIN, a[..], out[..], said[..]) != 0 { print("code agent: NOT a scratch origin for %\n", name); return 1; }
+  }
+  remote := ck_cat(b2[..], dir, "/remote/");
+  root := ck_cat(b3[..], dir, "/gamebuilder-code");
+  if ca_folder_why(root, "").count > 0 { print("code agent: NOT a folder for Code agents: %\n", root); return 1; }
+
+  c: [1] CaCode;
+  for pass: 0..<2 {
+    // an engine agent, twice: the second reuses the app's clone
+    c[0] = CaCode.{}; c[0].on = true; c[0].repo = AGR_ENGINE;
+    c[0].root_n = ag_put(c[0].root[..], 0, root);
+    tn := ag_put(c[0].tree[..], 0, root); tn = ag_put(c[0].tree[..], tn, ifx pass == 0 then "/openagents-a1" else "/openagents-a2"); c[0].tree_n = tn;
+    ca_plan_prepare(c[..], remote);
+    why := ca_run_all(c[..], 60000);
+    if why.count > 0 { print("code agent: NOT its worktree (pass %): %\n", pass, why); bad += 1; continue; }
+    base := ca_first_line(c[..]);
+    c[0].base_n = agr_set(c[0].base[..], base);
+    origin := ck_cat(b4[..], org, "/openagents.git");
+    a := [1] string.[origin];
+    _ = ck_sh("git -C \"$1\" rev-parse main", a[..], out[..], said[..]);
+    if !agr_commit_ok(base) || base != ck_said(out[..], said[..]) { print("code agent: NOT made from origin/main: % against %\n", base, ck_said(out[..], said[..])); bad += 1; }
+    t := [1] string.[ca_tree(c[..])];
+    if ck_sh("git -C \"$1\" symbolic-ref -q HEAD", t[..], out[..], said[..]) == 0 { print("code agent: NOT detached: %\n", ck_said(out[..], said[..])); bad += 1; }
+    if !ca_inside(root, ca_tree(c[..])) { print("code agent: NOT in the Code agents' folder: %\n", ca_tree(c[..])); bad += 1; }
+  }
+  // the engine clone's hook: main is refused, a branch goes
+  tree := ca_tree(c[..]);
+  t := [1] string.[tree];
+  if ck_sh("cd \"$1\" && git switch --quiet -c water-ripples && echo ripples > water.coax && git add water.coax && git -c user.name=check -c user.email=check@example.invalid commit --quiet -m water", t[..], out[..], said[..]) != 0 { print("code agent: NOT a commit in its worktree\n"); bad += 1; }
+  if ck_sh("git -C \"$1\" push --quiet origin HEAD:main 2>/dev/null", t[..], out[..], said[..]) == 0 { print("code agent: a push to the engine's main was NOT refused\n"); bad += 1; }
+  if ck_sh("git -C \"$1\" push --quiet origin HEAD:refs/heads/water-ripples", t[..], out[..], said[..]) != 0 { print("code agent: a branch push was NOT let through\n"); bad += 1; }
+  // what it changed: the commit's file and a new one, measured as the pane does
+  if ck_sh("echo notes > \"$1/notes.md\"", t[..], out[..], said[..]) != 0 { bad += 1; }
+  ca_plan_diff(c[..]);
+  why := ca_run_all(c[..], 60000);
+  got := ca_text(c[0].out[..], c[0].out_n);
+  if why.count > 0 || level_find(got, "water.coax\n") < 0 || level_find(got, "notes.md\n") < 0 { print("code agent: NOT the files it changed: % %\n", why, got); bad += 1; }
+
+  // the app's agent: the engine's clone is there for scripts/pin.sh, and no hook on the app's
+  c[0] = CaCode.{}; c[0].on = true; c[0].repo = AGR_APP;
+  c[0].root_n = ag_put(c[0].root[..], 0, root);
+  c[0].tree_n = ag_put(c[0].tree[..], ag_put(c[0].tree[..], 0, root), "/gamebuilder-a3");
+  ca_plan_prepare(c[..], remote);
+  why = ca_run_all(c[..], 60000);
+  if why.count > 0 { print("code agent: NOT the app's worktree: %\n", why); bad += 1; }
+  r := [1] string.[root];
+  if ck_sh("test -d \"$1/repos/openagents/.git\" && test -d \"$1/repos/gamebuilder/.git\" && test ! -e \"$1/repos/gamebuilder/.git/hooks/pre-push\"", r[..], out[..], said[..]) != 0 { print("code agent: NOT the app's clones as they should be\n"); bad += 1; }
+
+  d := [1] string.[dir];
+  _ = ck_sh("rm -rf \"$1\"", d[..], out[..], said[..]);
+  if bad > 0 { return 1; }
+  print("code agent: ok\n");
+  return 0;
+}

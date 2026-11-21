@@ -1,0 +1,162 @@
+// The automated user's journeys and what they cover (issue 28; docs/user-testing.md). What a
+// journey names comes from the product's own sources, loaded here, never written twice: the types
+// (shared/game-types.coax), their kinds (shared/kinds.coax), the limits (its constants and
+// shared/buildings.coax), the funnel's steps (shared/loop.coax), the agents' state words and limits
+// (coax/agent-record.coax).
+#load "../../shared/game-types.coax";
+#load "../../shared/loop.coax";
+#load "../../core/agent-record.coax";
+#load "../../web/gpu-words.coax";
+
+// The journeys, in the order a lane runs them (a person's day: arriving, building as a guest, signing up...).
+UJ_ARRIVE :: 0; UJ_GUEST :: 1; UJ_ASKS :: 2; UJ_SIGNUP :: 3; UJ_GAMES :: 4; UJ_LIMITS :: 5; UJ_TYPES :: 6;
+UJ_PUBLISH :: 7; UJ_PLAYS :: 8; UJ_UNPUBLISH :: 9; UJ_AGENTS :: 10; UJ_BUILDER :: 11; UJ_REFUSALS :: 12;
+UJ_OFFER :: 13; UJ_EMPTY :: 14; UJ_LEAVE :: 15; UJ_PAGES :: 16; UJ_TOUCH :: 17;
+UJ_N :: 18;
+UJ_IDS :: [UJ_N] string.["arrive", "guest-build", "ai-asks", "sign-up", "your-games", "limits", "per-type", "publish", "others-play",
+  "unpublish", "agents-page", "cloud-builder", "builder-refusals", "chat-offer", "agents-empty", "leave-return", "other-pages", "touch"];
+// A journey that spends model steps runs in a lane of its own, labelled so (the issue: model journeys
+// are their own lane, and model prose never passes one: the level must have changed).
+uj_model :: (j: int) -> bool { return j == UJ_BUILDER || j == UJ_REFUSALS || j == UJ_OFFER || j == UJ_EMPTY; }
+
+// The verdicts.
+UV_NONE :: 0; UV_PASS :: 1; UV_FAIL :: 2; UV_BLOCKED :: 3; UV_NA :: 4;
+UV_WORDS :: [5] string.["not run", "pass", "fail", "blocked", "not on this lane"];
+
+// The site's addresses (the views of web/page.coax's GS_PATHS, the builder's address and a published
+// game's, read from the source by `--coverage`) and the loop's steps (shared/loop.coax), each with the
+// journeys that cover it. A route or a step with none, or one this list names that the sources no
+// longer have, fails the check.
+UjCover :: struct { what: string; by: [4] int; }
+UJ_ROUTES :: [8] UjCover.[
+  UjCover.{what = "/", by = [4] int.[UJ_ARRIVE, UJ_LEAVE, -1, -1]},
+  UjCover.{what = "/login", by = [4] int.[UJ_PAGES, -1, -1, -1]},
+  UjCover.{what = "/credits", by = [4] int.[UJ_PAGES, -1, -1, -1]},
+  UjCover.{what = "/login/cli", by = [4] int.[UJ_PAGES, -1, -1, -1]},
+  UjCover.{what = "/agents", by = [4] int.[UJ_AGENTS, UJ_BUILDER, UJ_EMPTY, -1]},
+  UjCover.{what = "/play", by = [4] int.[UJ_GUEST, UJ_SIGNUP, UJ_TYPES, -1]},
+  UjCover.{what = "/g/", by = [4] int.[UJ_PUBLISH, UJ_PLAYS, UJ_UNPUBLISH, -1]},
+  UjCover.{what = "not found", by = [4] int.[UJ_PAGES, -1, -1, -1]}];
+UJ_STEPS :: [LP_N] UjCover.[
+  UjCover.{what = "arrived", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "create", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "builder", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "picked", by = [4] int.[UJ_GUEST, -1, -1, -1]},
+  UjCover.{what = "placed", by = [4] int.[UJ_GUEST, -1, -1, -1]},
+  UjCover.{what = "prompt", by = [4] int.[UJ_ASKS, -1, -1, -1]},
+  UjCover.{what = "account", by = [4] int.[UJ_SIGNUP, -1, -1, -1]},
+  UjCover.{what = "message", by = [4] int.[UJ_OFFER, UJ_TYPES, -1, -1]},
+  UjCover.{what = "published", by = [4] int.[UJ_PUBLISH, -1, -1, -1]},
+  UjCover.{what = "shared", by = [4] int.[UJ_PLAYS, -1, -1, -1]},
+  UjCover.{what = "remix", by = [4] int.[UJ_PLAYS, -1, -1, -1]},
+  UjCover.{what = "nogpu", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "button_ms", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "builder_ms", by = [4] int.[UJ_ARRIVE, -1, -1, -1]},
+  UjCover.{what = "kept", by = [4] int.[UJ_SIGNUP, UJ_GAMES, -1, -1]}];
+#test "every loop step is covered by a journey, under its own name" {
+  for i: 0..<LP_N {
+    #assert UJ_STEPS[i].what == LP_ROWS[i].name;
+    any := false; for j: UJ_STEPS[i].by { if j >= 0 { #assert j < UJ_N; any = true; } } #assert any;
+  }
+  for r: UJ_ROUTES { any := false; for j: r.by { if j >= 0 { any = true; } } #assert any; }
+  for i: 0..<UJ_N { for k: i + 1..<UJ_N { #assert UJ_IDS[i] != UJ_IDS[k]; } }
+}
+
+// ---------------------------------------------------------------- what a type is built with
+
+// The piece of a type's own a guest places in it (the issue: a boost on racing, a building in the
+// village, a moving platform in the platformer), as its website kind (shared/kinds.coax): -1 a meadow
+// type, which has none (blocks and balls alone); UJ_BUILDING the village's first building.
+UJ_BUILDING :: 100;
+uj_own_kind :: (t: int) -> int {
+  if t == GT_RACING { return BL_R_BOOST; }
+  if t == GT_PLATFORMER { return BL_R_SLIDER; }
+  if t == GT_CRATES { return BL_R_WALL; }
+  if t == GT_DRIFT { return BL_R_RING; }
+  if t == GT_VILLAGE { return UJ_BUILDING; }
+  return -1;
+}
+uj_type_kinds :: (t: int) -> int { return ifx t == GT_RACING then BL_RC_ROLES else ifx t == GT_PLATFORMER then BL_PF_ROLES else ifx t == GT_CRATES then BL_CR_ROLES else ifx t == GT_DRIFT then BL_DR_ROLES else 0; }
+// The words its item is called by on the hotbar or under more.
+uj_own_label :: (t: int) -> string {
+  r := uj_own_kind(t);
+  if r == UJ_BUILDING { return GK_SAID[GK_BUILDING]; }
+  return ifx r > 0 then bl_role_word(r) else "";
+}
+#test "a type's own piece is one of that type's kinds, named as the shared list names it" {
+  for k: 0..<GT_WEB_TYPES {
+    t := GT_WEB_FIRST + k; r := uj_own_kind(t);
+    if r > 0 && r != UJ_BUILDING { #assert (uj_type_kinds(t) & (1 << r)) != 0; }
+  }
+  #assert uj_own_label(GT_RACING) == "boost" && uj_own_label(GT_PLATFORMER) == "mover" && uj_own_label(GT_VILLAGE) == "britons house" && uj_own_label(GT_THIRD) == "";
+}
+
+// ---------------------------------------------------------------- words
+
+// Whether text says the number v as a whole number (not part of a longer one).
+uj_says_number :: (text: string, v: int) -> bool {
+  b: [24] u8; n := pb_decimal(b[..], 0, v); w := cast(string) b[0..<n]; at := 0;
+  while true {
+    k := ue_find(text, w, at); if k < 0 { return false; }
+    before := k == 0 || text[k - 1] < '0' || text[k - 1] > '9';
+    after := k + n >= text.count || text[k + n] < '0' || text[k + n] > '9';
+    if before && after { return true; }
+    at = k + 1;
+  }
+  return false;
+}
+#test "a number said whole, not inside another" {
+  #assert uj_says_number("holds 512 things at most, and this one has 513.", 512) && uj_says_number("has 513.", 513) && !uj_says_number("5120", 512) && !uj_says_number("", 1);
+}
+
+// ---------------------------------------------------------------- the coverage table, checked
+
+// What docs/user-testing.md's coverage table says covers `what`: its row `| \`WHAT\` | ids |`, the
+// ids into out (journey numbers). -1 when it has no such row.
+uj_doc_row :: (doc: string, what: string, out: [] int) -> int {
+  b: [96] u8; n := 0; for ch: "| `" { b[n] = ch; n += 1; } for ch: what { b[n] = ch; n += 1; } for ch: "` |" { b[n] = ch; n += 1; }
+  key := cast(string) b[0..<n]; at := ue_find(doc, key, 0);
+  if at < 0 || (at > 0 && doc[at - 1] != '\n') { return -1; }
+  s := at + key.count; e := s; while e < doc.count && doc[e] != '|' && doc[e] != '\n' { e += 1; }
+  cell := cast(string) doc[s..<e]; k := 0;
+  for j: 0..<UJ_N { q: [64] u8; m := 0; q[0] = '`'; m = 1; for ch: UJ_IDS[j] { q[m] = ch; m += 1; } q[m] = '`'; m += 1; if ue_find(cell, cast(string) q[0..<m], 0) >= 0 && k < out.count { out[k] = j; k += 1; } }
+  return k;
+}
+uj_cover_agrees :: (doc: string, c: UjCover) -> bool {
+  got: [UJ_N] int; n := uj_doc_row(doc, c.what, got[..]); if n < 0 { return false; }
+  want := 0; for j: c.by { if j >= 0 { want += 1; found := false; for i: 0..<n { if got[i] == j { found = true; } } if !found { return false; } } }
+  return n == want;
+}
+// The site's own addresses from web/page.coax's text: GS_PATHS, the builder's /play and GS_LINK.
+uj_site_paths :: (site: string, out: [] string) -> int {
+  key := "GS_PATHS :: [GS_VIEWS] string.["; at := ue_find(site, key, 0); if at < 0 { return -1; }
+  e := ue_find(site, "]", at + key.count); if e < 0 { return -1; }
+  n := 0; i := at + key.count;
+  while i < e { q := ue_find(site, "\"", i); if q < 0 || q >= e { break; } r := ue_find(site, "\"", q + 1); w := cast(string) site[q + 1..<r]; dup := false; for k: 0..<n { if out[k] == w { dup = true; } } if !dup && n < out.count { out[n] = w; n += 1; } i = r + 1; }
+  if ue_find(site, "== \"/play\"", 0) >= 0 && n < out.count { out[n] = "/play"; n += 1; }
+  if ue_find(site, "GS_LINK :: \"/g/\"", 0) >= 0 && n < out.count { out[n] = "/g/"; n += 1; }
+  return n;
+}
+// The coverage check: every address of the site and every step of the loop has a row, the table
+// says the journeys this file says, and every journey is in the journeys table. Problems printed; their count.
+uj_coverage :: (site: string, doc: string) -> int {
+  bad := 0; paths: [16] string; np := uj_site_paths(site, paths[..]);
+  if np <= 0 { print("user coverage: web/page.coax's addresses could not be read\n"); return 1; }
+  for i: 0..<np { known := false; for c: UJ_ROUTES { if c.what == paths[i] { known = true; } } if !known { print("user coverage: the site's address % is covered by no journey (tests/user/catalog.coax UJ_ROUTES)\n", paths[i]); bad += 1; } }
+  for c: UJ_ROUTES {
+    here := c.what == "not found" || c.what == "/play" || c.what == "/g/"; for i: 0..<np { if paths[i] == c.what { here = true; } }
+    if !here { print("user coverage: % is no longer one of the site's addresses\n", c.what); bad += 1; }
+    if !uj_cover_agrees(doc, c) { print("user coverage: docs/user-testing.md's row for % does not say the journeys tests/user/catalog.coax does\n", c.what); bad += 1; }
+  }
+  for i: 0..<LP_N { if UJ_STEPS[i].what != LP_ROWS[i].name || !uj_cover_agrees(doc, UJ_STEPS[i]) { print("user coverage: the loop's step % has no row in docs/user-testing.md that agrees\n", LP_ROWS[i].name); bad += 1; } }
+  for j: 0..<UJ_N { q: [64] u8; m := 0; for ch: "| `" { q[m] = ch; m += 1; } for ch: UJ_IDS[j] { q[m] = ch; m += 1; } q[m] = '`'; m += 1; if ue_find(doc, cast(string) q[0..<m], 0) < 0 { print("user coverage: the journey % is not in docs/user-testing.md's journeys table\n", UJ_IDS[j]); bad += 1; } }
+  return bad;
+}
+#test "the coverage table is read as the doc writes it" {
+  doc := "x\n| `/credits` | `other-pages` |\n| `arrived` | `arrive`, `leave-return` |\n";
+  got: [UJ_N] int;
+  #assert uj_doc_row(doc, "/credits", got[..]) == 1 && got[0] == UJ_PAGES && uj_doc_row(doc, "arrived", got[..]) == 2 && uj_doc_row(doc, "/x", got[..]) == -1;
+  #assert uj_cover_agrees(doc, UJ_ROUTES[2]) && !uj_cover_agrees(doc, UJ_STEPS[0]);
+  site := "GS_PATHS :: [GS_VIEWS] string.[\"/\", \"/login\", \"/\"];\nx == \"/play\"\nGS_LINK :: \"/g/\";";
+  p: [8] string; #assert uj_site_paths(site, p[..]) == 4 && p[1] == "/login" && p[2] == "/play" && p[3] == "/g/";
+}

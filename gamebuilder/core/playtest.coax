@@ -1,0 +1,527 @@
+// Play-test: a match played headless with bots in every seat, yours too, and
+// what happened in it (docs/programmatic-access.md, "Determinism and tests",
+// stage C4). The `play-test` row (coax/commands.coax) calls ed_play_test; the
+// CLI, MCP and the pane answer the same bytes for the same call.
+//
+// It is deterministic: the match runs in its own fixed steps (PLAY_STEP,
+// 1/60 s), never a clock's, and its random numbers come from the call's seed
+// (play_rand). Two runs of one call on one level give the same answer.
+//
+// Every game type is play-tested (shared/game-types.coax GT_PLAYTEST): an arena by a match, every
+// other type by a walk-through, a bot that walks from your start to every thing it can reach on the
+// engine's walking grid (metaverse-engine/world/nav/grid.coax), nearest first, at PLAYTEST_WALK.
+//
+// It answers gamebuilder.playtest.v1:
+//   {"ok":true,"schema":"gamebuilder.playtest.v1","level":L,"rev":R,"type":T,"bot":"match"|"walk-through",
+//    "mode":M,"size":N,"seed":S,
+//    "steps":K,"seconds":K/60,"ended":B,"how":"score"|"time"|"reached"|"",
+//    "winner":"yours"|"rivals"|"draw"|"","score":[A,B],"knockouts":N,
+//    "reached":N,"targets":N,
+//    "stuck":[{"seat":I,"times":N,"x":CM,"z":CM}],
+//    "unreached":[{"id":ID,"kind":KIND,"x":CM,"z":CM}],
+//    "paths":[{"seat":I,"side":"yours"|"rivals","points":[[X,Z],...]}]}
+// rev: the level's revision it played (agent.coax ed_agent_rev), whose picture it is in the app.
+// paths: where each bot went, a point every PLAYTEST_TRACE steps, at most PLAYTEST_POINTS a bot (past
+// that every other point goes and the spacing doubles), in centimetres. In the app the same answer is
+// a picture of the level with those paths on it, the stuck places crossed and the unreached ones boxed
+// (pictures.coax). A walk-through's mode is "walk-through" and its size 1; its score is how many things
+// it reached and how many it looked for; its stuck places are where it came nearest a thing it could
+// find no way to.
+// stuck: a Scrapper that stood within PLAYTEST_STILL of one place for a whole
+// PLAYTEST_LOOK while it was up and the match ran, how many times, and where
+// last. unreached: a marker (a goal, a hoop, the ball's place, a health pack)
+// that no Scrapper, nor the ball in a ball mode, came within PLAYTEST_REACH of.
+
+PLAYTEST_SECONDS :: 600;          // match time a play-test runs at most
+PLAYTEST_SEED :: 20261116;        // the seed a match starts with in the app (ed_play)
+PLAYTEST_SEED_MAX :: 2147483647;  // play_rand's numbers are below 2^31
+PLAYTEST_REACH :: 3.0f32;         // metres: as near as a marker must be come to
+PLAYTEST_LOOK :: 300;             // steps between looks at who has moved (5 s)
+PLAYTEST_STILL :: 0.5f32;         // metres: moved less between two looks is stuck
+PLAYTEST_MARKERS :: 64;           // markers looked after, at most
+PLAYTEST_ANSWER :: 16384;         // the answer's bytes, at most
+PLAYTEST_TRACE :: 60;             // steps between a path's points, at first (1 s)
+PLAYTEST_POINTS :: 40;            // points a bot's path keeps
+PLAYTEST_WALK :: 4.0f32;          // metres a second a walk-through's bot walks
+PLAYTEST_CELL :: 0.5f32;          // metres: a walk-through's grid's least cell
+PLAYTEST_PAD :: 4.0f32;           // metres the grid reaches past the level's things
+PLAYTEST_BODY :: 0.3f32;          // metres: the walker's half width
+PLAYTEST_HEAD :: 1.8f32;          // metres: what is higher off the ground than this is walked under
+
+// The modes as a call names them, in MODE_ order (modes.coax).
+PLAYTEST_MODE_WORD :: [MODES] string.["knockouts", "last-stand", "scrapball", "hoops"];
+playtest_mode_of :: (w: string) -> s32 {
+  for i: 0..<MODES { if PLAYTEST_MODE_WORD[i] == w { return cast(s32) i; } }
+  return -1;
+}
+
+// Whether a thing of this kind is a marker a play-test looks for a Scrapper at.
+playtest_marker :: (kind: s32) -> bool {
+  return kind == KIND_GOAL || kind == KIND_RIVAL_GOAL || kind == KIND_HOOP || kind == KIND_RIVAL_HOOP || kind == KIND_BALL || kind == KIND_PACK;
+}
+
+#load "../../metaverse-engine/world/nav/grid.coax";
+
+PlaytestRun :: struct {
+  marker_id: [PLAYTEST_MARKERS] s32; marker_kind: [PLAYTEST_MARKERS] s32;
+  marker_x: [PLAYTEST_MARKERS] f32; marker_z: [PLAYTEST_MARKERS] f32;
+  reached: [PLAYTEST_MARKERS] bool; markers: s64;
+  look_x: [FIGHTERS] f32; look_z: [FIGHTERS] f32; looked: [FIGHTERS] bool;
+  stuck: [FIGHTERS] s32; stuck_x: [FIGHTERS] f32; stuck_z: [FIGHTERS] f32;
+  // where each went: points (metres), every `every` steps
+  path_x: [FIGHTERS * PLAYTEST_POINTS] f32; path_z: [FIGHTERS * PLAYTEST_POINTS] f32; path_n: [FIGHTERS] s32;
+  path_on: [FIGHTERS] bool; path_side: [FIGHTERS] s32; every: s64; walk: bool;
+  // a walk-through's stuck places (a seat's slot each; times 1)
+  spots: s64; spot_x: [PLAYTEST_MARKERS] f32; spot_z: [PLAYTEST_MARKERS] f32;
+}
+
+// Why the open level can't be play-tested now, or "".
+playtest_why :: (e: [] Editor) -> string {
+  if e.count != 1 { return "no level is open"; }
+  if e[0].play[0].on { return "a match is being played: stop it first"; }
+  if e[0].plays < 0 || e[0].plays >= GT_TYPES { return "the level's game type is not one this app knows"; }
+  return "";
+}
+// Whether the open level is play-tested by a match (an arena) or walked through.
+playtest_walks :: (e: [] Editor) -> bool { return GT_PLAYTEST[e[0].plays] == GT_TEST_WALK; }
+
+// A point on bot i's path. When a path is full every other point goes, on every path, and the
+// spacing doubles, so the paths keep the whole run.
+playtest_point :: (r: [] PlaytestRun, i: int, x: f32, z: f32) {
+  if r[0].path_n[i] == PLAYTEST_POINTS {
+    for j: 0..<FIGHTERS {
+      m := 0;
+      for k: 0..<cast(int) r[0].path_n[j] { if k % 2 == 0 { r[0].path_x[j * PLAYTEST_POINTS + m] = r[0].path_x[j * PLAYTEST_POINTS + k]; r[0].path_z[j * PLAYTEST_POINTS + m] = r[0].path_z[j * PLAYTEST_POINTS + k]; m += 1; } }
+      r[0].path_n[j] = cast(s32) m;
+    }
+    r[0].every *= 2;
+  }
+  n := cast(int) r[0].path_n[i];
+  r[0].path_x[i * PLAYTEST_POINTS + n] = x; r[0].path_z[i * PLAYTEST_POINTS + n] = z;
+  r[0].path_n[i] += 1; r[0].path_on[i] = true;
+}
+
+// Plays the open level headless: mode (MODE_), size a side, at most seconds of match
+// time, from seed. Writes gamebuilder.playtest.v1 into out; its length, or 0 when the
+// level can't be play-tested (playtest_why) or the answer did not fit. The editor is left
+// as it was: not playing, its camera and its picked mode and size where they were.
+ed_play_test :: (e: [] Editor, mode: s32, size: s32, seconds: s32, seed: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if playtest_why(e).count > 0 || mode < 0 || mode >= MODES || size < 1 || size > TEAM_SIZE { return 0; }
+  if seconds < 1 || seconds > PLAYTEST_SECONDS || seed < 0 { return 0; }
+  if playtest_walks(e) { return playtest_walk(e, seconds, seed, out); }
+  was_mode := e[0].play[0].mode; was_size := e[0].play[0].size;
+  _ = ed_play_setup(e, mode, size);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  p[0].test = true; p[0].seed = cast(int) seed;
+  r: [1] PlaytestRun;
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    if !playtest_marker(a.kind) || r[0].markers >= PLAYTEST_MARKERS { continue; }
+    k := r[0].markers;
+    r[0].marker_id[k] = a.id; r[0].marker_kind[k] = a.kind;
+    r[0].marker_x[k] = cast(f32) a.x / 100; r[0].marker_z[k] = cast(f32) a.z / 100;
+    r[0].markers += 1;
+  }
+  steps := cast(s64) seconds * 60;
+  done: s64 = 0;
+  r[0].every = PLAYTEST_TRACE;
+  playtest_trace(p, r[..]);
+  while done < steps && !p[0].over {
+    play_step(e);
+    done += 1;
+    playtest_reach(p, r[..]);
+    if done % PLAYTEST_LOOK == 0 { playtest_look(p, r[..]); }
+    if done % r[0].every == 0 { playtest_trace(p, r[..]); }
+  }
+  n := playtest_answer(e, r[..], seed, done, out);
+  ed_stop(e);
+  e[0].play[0].mode = was_mode; e[0].play[0].size = was_size;
+  if n > 0 { playtest_picture(e, r[..]); }
+  return n;
+}
+
+// Where every bot that is up is now, on its path.
+playtest_trace :: (p: [] Play, r: [] PlaytestRun) {
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    if !f.alive || !play_seated(p, i) { continue; }
+    r[0].path_side[i] = f.team;
+    playtest_point(r, i, f.x, f.z);
+  }
+}
+
+// ---- the walk-through: every type but the arena
+
+PlaytestGrid :: struct {
+  g: NavGrid; walk: [NAV_GRID_MOST] bool; cost: [NAV_GRID_MOST] f32; heap: [NAV_GRID_MOST] s32; slot: [NAV_GRID_MOST] s32;
+  line: [NAV_GRID_MOST] s32;
+  target_cost: [PLAYTEST_MARKERS] f32; target_cell: [PLAYTEST_MARKERS] s32;
+  lx: [PLAYTEST_MARKERS] f32; hx: [PLAYTEST_MARKERS] f32; lz: [PLAYTEST_MARKERS] f32; hz: [PLAYTEST_MARKERS] f32;
+}
+// What stops the walker: a block, a tree or a wall whose top is over a step and whose bottom is under its head.
+playtest_blocks :: (a: Actor) -> bool {
+  if !ed_kind_solid(a.kind) && a.kind != GK_WALL { return false; }
+  b := ed_bounds(a);
+  return b.c.y + b.hy > QUERY_STEP_UP && b.c.y - b.hy < PLAYTEST_HEAD;
+}
+// What the walker looks for: every thing that isn't a block, a tree, a wall, your start, a rival's, water
+// or earth; on a level of blocks alone, the blocks.
+playtest_target :: (a: Actor, any: bool) -> bool {
+  if any { return a.kind != KIND_START && a.kind != KIND_RIVAL; }
+  return !ed_kind_solid(a.kind) && a.kind != GK_WALL && a.kind != KIND_START && a.kind != KIND_RIVAL && a.kind != KIND_WATER && a.kind != KIND_PATH;
+}
+// How far from cell c's middle to thing k's box, along the ground, squared.
+playtest_off :: (q: [] PlaytestGrid, k: int, c: int) -> f32 {
+  x := nav_grid_centre_x(q[0].g, c); z := nav_grid_centre_z(q[0].g, c);
+  dx: f32 = 0; dz: f32 = 0;
+  if x < q[0].lx[k] { dx = q[0].lx[k] - x; } else if x > q[0].hx[k] { dx = x - q[0].hx[k]; }
+  if z < q[0].lz[k] { dz = q[0].lz[k] - z; } else if z > q[0].hz[k] { dz = z - q[0].hz[k]; }
+  return dx * dx + dz * dz;
+}
+
+playtest_walk :: (e: [] Editor, seconds: s32, seed: s32, out: [] u8) -> s64 {
+  r: [1] PlaytestRun; q: [1] PlaytestGrid;
+  r[0].walk = true; r[0].every = PLAYTEST_TRACE;
+  any := true;
+  for i: 0..<ed_count(e) { if playtest_target(ed_actor(e, i), false) { any = false; } }
+  // the grid: the things and PLAYTEST_PAD round them, cells of PLAYTEST_CELL or more, NAV_GRID_MOST at most
+  big: f32 = 1000000.0;
+  lx := big; lz := big; hx := -big; hz := -big;
+  sx: f32 = 0; sz: f32 = 0; started := false;
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i); b := ed_bounds(a);
+    if b.c.x - b.hx < lx { lx = b.c.x - b.hx; } if b.c.z - b.hz < lz { lz = b.c.z - b.hz; }
+    if b.c.x + b.hx > hx { hx = b.c.x + b.hx; } if b.c.z + b.hz > hz { hz = b.c.z + b.hz; }
+    if a.kind == KIND_START && !started { sx = b.c.x; sz = b.c.z; started = true; }
+    if playtest_target(a, any) && r[0].markers < PLAYTEST_MARKERS {
+      k := r[0].markers;
+      r[0].marker_id[k] = a.id; r[0].marker_kind[k] = a.kind; r[0].marker_x[k] = b.c.x; r[0].marker_z[k] = b.c.z;
+      q[0].lx[k] = b.c.x - b.hx; q[0].hx[k] = b.c.x + b.hx; q[0].lz[k] = b.c.z - b.hz; q[0].hz[k] = b.c.z + b.hz;
+      r[0].markers += 1;
+    }
+  }
+  if lx > hx { lx = 0; hx = 0; lz = 0; hz = 0; }
+  if !started { sx = (lx + hx) * 0.5; sz = (lz + hz) * 0.5; }
+  lx -= PLAYTEST_PAD; lz -= PLAYTEST_PAD; hx += PLAYTEST_PAD; hz += PLAYTEST_PAD;
+  cell := PLAYTEST_CELL;
+  while cast(int) ((hx - lx) / cell + 1) * cast(int) ((hz - lz) / cell + 1) > NAV_GRID_MOST { cell *= 1.25; }
+  q[0].g = NavGrid.{nx = cast(int) ((hx - lx) / cell + 1), nz = cast(int) ((hz - lz) / cell + 1), cell = cell, x0 = lx, z0 = lz};
+  g := q[0].g; cells := nav_grid_cells(g);
+  for c: 0..<cells { q[0].walk[c] = true; }
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    if !playtest_blocks(a) { continue; }
+    b := ed_bounds(a);
+    for c: 0..<cells {
+      x := nav_grid_centre_x(g, c); z := nav_grid_centre_z(g, c);
+      if abs(x - b.c.x) < b.hx + PLAYTEST_BODY && abs(z - b.c.z) < b.hz + PLAYTEST_BODY { q[0].walk[c] = false; }
+    }
+  }
+  // the start: your start, or the walkable cell nearest it
+  cur := nav_grid_cell_at(g, sx, sz);
+  if cur < 0 || !q[0].walk[cur] {
+    best := -1; bd: f32 = big;
+    for c: 0..<cells {
+      if !q[0].walk[c] { continue; }
+      dx := nav_grid_centre_x(g, c) - sx; dz := nav_grid_centre_z(g, c) - sz; d := dx * dx + dz * dz;
+      if d < bd { bd = d; best = c; }
+    }
+    cur = best;
+  }
+  near := PLAYTEST_REACH * PLAYTEST_REACH;
+  budget := cast(f32) seconds;
+  walked: f32 = 0;
+  timed := false;
+  none: [1] s32;
+  flow: NavFlow;
+  if cur >= 0 {
+    playtest_point(r[..], 0, nav_grid_centre_x(g, cur), nav_grid_centre_z(g, cur));
+    while true {
+      flow = nav_grid_flow(g, q[0].walk[0..<cells], q[0].cost[0..<cells], q[0].heap[0..<cells], q[0].slot[0..<cells], none[0..<0], cur, cast(f32) NAV_GRID_FAR * 0.5, cells);
+      if flow.status != NavFlowStatus.ok { break; }
+      // what is reached from here, and the nearest thing not yet reached
+      pick := -1; pick_cost: f32 = big;
+      for k: 0..<r[0].markers {
+        q[0].target_cost[k] = big; q[0].target_cell[k] = -1;
+        if r[0].reached[k] { continue; }
+        for c: 0..<cells {
+          if q[0].cost[c] >= cast(f32) NAV_GRID_FAR || playtest_off(q[..], k, c) > near { continue; }
+          if q[0].cost[c] < q[0].target_cost[k] { q[0].target_cost[k] = q[0].cost[c]; q[0].target_cell[k] = cast(s32) c; }
+        }
+        if q[0].target_cell[k] >= 0 && q[0].target_cost[k] < pick_cost { pick_cost = q[0].target_cost[k]; pick = k; }
+      }
+      if pick < 0 { break; }
+      if walked + pick_cost / PLAYTEST_WALK > budget { timed = true; break; }
+      // the way there: downhill from the thing to the walker, then walked the other way
+      at := cast(int) q[0].target_cell[pick]; n := 0;
+      while at >= 0 && at != cur && n < cells { q[0].line[n] = cast(s32) at; n += 1; at = nav_grid_downhill(g, q[0].walk[0..<cells], q[0].cost[0..<cells], at); }
+      from_cost: f32 = 0;
+      while n > 0 {
+        n -= 1; c := cast(int) q[0].line[n];
+        for k: 0..<r[0].markers { if !r[0].reached[k] && playtest_off(q[..], k, c) <= near { r[0].reached[k] = true; } }
+        // a point each PLAYTEST_TRACE steps' walk
+        step_s := (q[0].cost[c] - from_cost) / PLAYTEST_WALK;
+        if step_s * 60 >= cast(f32) r[0].every || n == 0 { playtest_point(r[..], 0, nav_grid_centre_x(g, c), nav_grid_centre_z(g, c)); from_cost = q[0].cost[c]; }
+      }
+      r[0].reached[pick] = true;
+      walked += pick_cost / PLAYTEST_WALK;
+      cur = cast(int) q[0].target_cell[pick];
+    }
+    // where it came nearest each thing it found no way to
+    if flow.status == NavFlowStatus.ok && !timed {
+      for k: 0..<r[0].markers {
+        if r[0].reached[k] { continue; }
+        w := nav_grid_way(g, q[0].walk[0..<cells], q[0].cost[0..<cells], flow, nav_grid_cell_at(g, r[0].marker_x[k], r[0].marker_z[k]));
+        if w.nearest < 0 || r[0].spots >= PLAYTEST_MARKERS { continue; }
+        x := nav_grid_centre_x(g, w.nearest); z := nav_grid_centre_z(g, w.nearest);
+        seen := false;
+        for j: 0..<r[0].spots { if r[0].spot_x[j] == x && r[0].spot_z[j] == z { seen = true; } }
+        if !seen { r[0].spot_x[r[0].spots] = x; r[0].spot_z[r[0].spots] = z; r[0].spots += 1; }
+      }
+    }
+  }
+  done := cast(s64) (walked * 60);
+  n := playtest_walk_answer(e, r[..], seed, done, timed, out);
+  if n > 0 { playtest_picture(e, r[..]); }
+  return n;
+}
+
+playtest_walk_answer :: (e: [] Editor, r: [] PlaytestRun, seed: s32, done: s64, timed: bool, out: [] u8) -> s64 {
+  o: [1] Jo; jo_start(o[..], out);
+  reached := 0; for k: 0..<r[0].markers { if r[0].reached[k] { reached += 1; } }
+  all := reached == r[0].markers;
+  playtest_head(e, o[..], "walk-through");
+  jo_key(o[..], "mode"); jo_str(o[..], "walk-through");
+  we_int(o[..], "size", 1); we_int(o[..], "seed", cast(int) seed);
+  we_int(o[..], "steps", cast(int) done); we_int(o[..], "seconds", cast(int) (done / 60));
+  jo_key(o[..], "ended"); jo_bool(o[..], all || !timed);
+  jo_key(o[..], "how"); jo_str(o[..], ifx all then "reached" else (ifx timed then "time" else ""));
+  jo_key(o[..], "winner"); jo_str(o[..], "");
+  jo_key(o[..], "score"); jo_arr(o[..]); jo_int(o[..], reached); jo_int(o[..], cast(int) r[0].markers); jo_end(o[..]);
+  we_int(o[..], "knockouts", 0);
+  we_int(o[..], "reached", reached); we_int(o[..], "targets", cast(int) r[0].markers);
+  jo_key(o[..], "stuck"); jo_arr(o[..]);
+  for j: 0..<r[0].spots {
+    jo_obj(o[..]); we_int(o[..], "seat", 0); we_int(o[..], "times", 1);
+    we_int(o[..], "x", playtest_cm(r[0].spot_x[j])); we_int(o[..], "z", playtest_cm(r[0].spot_z[j])); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  playtest_tail(o[..], r);
+  if o[0].bad { return 0; }
+  return jo_text(o[..]).count;
+}
+
+// The answer's first members: which level and revision, its type and how it was played.
+playtest_head :: (e: [] Editor, o: [] Jo, bot: string) {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, true);
+  jo_key(o, "schema"); jo_str(o, "gamebuilder.playtest.v1");
+  we_int(o, "level", cast(int) ed_level(e)); we_int(o, "rev", ed_agent_rev(e));
+  jo_key(o, "type"); jo_str(o, GT_ID[e[0].plays]); jo_key(o, "bot"); jo_str(o, bot);
+}
+// Its last: what nobody reached, and the paths; the object closed.
+playtest_tail :: (o: [] Jo, r: [] PlaytestRun) {
+  jo_key(o, "unreached"); jo_arr(o);
+  for k: 0..<r[0].markers {
+    if r[0].reached[k] { continue; }
+    jo_obj(o); we_int(o, "id", cast(int) r[0].marker_id[k]); jo_key(o, "kind"); jo_str(o, LEVEL_KIND[r[0].marker_kind[k]]);
+    we_int(o, "x", playtest_cm(r[0].marker_x[k])); we_int(o, "z", playtest_cm(r[0].marker_z[k])); jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "paths"); jo_arr(o);
+  for i: 0..<FIGHTERS {
+    if !r[0].path_on[i] { continue; }
+    jo_obj(o); we_int(o, "seat", i); jo_key(o, "side"); jo_str(o, ifx r[0].path_side[i] == 0 then "yours" else "rivals");
+    jo_key(o, "points"); jo_arr(o);
+    for k: 0..<cast(int) r[0].path_n[i] { jo_arr(o); jo_int(o, playtest_cm(r[0].path_x[i * PLAYTEST_POINTS + k])); jo_int(o, playtest_cm(r[0].path_z[i * PLAYTEST_POINTS + k])); jo_end(o); }
+    jo_end(o); jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+// The play-test as a picture, in the app (pictures.coax): each bot's path in its side's colour, a
+// cross where one stuck, a box round each thing nobody reached, and what it found in words.
+PLAYTEST_MARK :: 0.6f32;    // metres: half a cross's or a box's side
+playtest_picture :: (e: [] Editor, r: [] PlaytestRun) {
+  if !pic_mine(e) { return; }
+  segs: [PIC_SEGS] PicSeg; n := 0;
+  for i: 0..<FIGHTERS {
+    tint: s32 = ifx r[0].walk then PIC_WALKER else (ifx r[0].path_side[i] == 0 then PIC_YOURS else PIC_RIVALS);
+    for k: 1..<cast(int) r[0].path_n[i] {
+      if n == PIC_SEGS { break; }
+      a := i * PLAYTEST_POINTS + k - 1;
+      segs[n] = PicSeg.{ax = r[0].path_x[a], az = r[0].path_z[a], bx = r[0].path_x[a + 1], bz = r[0].path_z[a + 1], tint = tint}; n += 1;
+    }
+  }
+  h := PLAYTEST_MARK;
+  for spot: 0..<FIGHTERS + cast(int) r[0].spots {
+    x: f32 = 0; z: f32 = 0;
+    if spot < FIGHTERS { if r[0].stuck[spot] == 0 { continue; } x = r[0].stuck_x[spot]; z = r[0].stuck_z[spot]; }
+    else { x = r[0].spot_x[spot - FIGHTERS]; z = r[0].spot_z[spot - FIGHTERS]; }
+    if n + 2 > PIC_SEGS { break; }
+    segs[n] = PicSeg.{ax = x - h, az = z - h, bx = x + h, bz = z + h, tint = PIC_STUCK}; n += 1;
+    segs[n] = PicSeg.{ax = x - h, az = z + h, bx = x + h, bz = z - h, tint = PIC_STUCK}; n += 1;
+  }
+  reached := 0;
+  for k: 0..<r[0].markers {
+    if r[0].reached[k] { reached += 1; continue; }
+    if n + 4 > PIC_SEGS { break; }
+    x := r[0].marker_x[k]; z := r[0].marker_z[k];
+    segs[n] = PicSeg.{ax = x - h, az = z - h, bx = x + h, bz = z - h, tint = PIC_UNREACHED}; n += 1;
+    segs[n] = PicSeg.{ax = x + h, az = z - h, bx = x + h, bz = z + h, tint = PIC_UNREACHED}; n += 1;
+    segs[n] = PicSeg.{ax = x + h, az = z + h, bx = x - h, bz = z + h, tint = PIC_UNREACHED}; n += 1;
+    segs[n] = PicSeg.{ax = x - h, az = z + h, bx = x - h, bz = z - h, tint = PIC_UNREACHED}; n += 1;
+  }
+  stuck := cast(int) r[0].spots; for i: 0..<FIGHTERS { if r[0].stuck[i] > 0 { stuck += 1; } }
+  b: [PIC_TEXT] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], ifx r[0].walk then "walk-through: " else "match: ");
+  tx_int(t[..], cast(s64) reached); tx_put(t[..], " of "); tx_int(t[..], r[0].markers); tx_put(t[..], " reached, ");
+  tx_int(t[..], cast(s64) stuck); tx_put(t[..], ifx stuck == 1 then " place stuck" else " places stuck");
+  pic_want_playtest(e, segs[0..<n], cast(string) b[0..<t[0].at]);
+}
+
+// Marks the markers a Scrapper who is up, or the ball in a ball mode, is near.
+playtest_reach :: (p: [] Play, r: [] PlaytestRun) {
+  near := PLAYTEST_REACH * PLAYTEST_REACH;
+  for k: 0..<r[0].markers {
+    if r[0].reached[k] { continue; }
+    mx := r[0].marker_x[k]; mz := r[0].marker_z[k];
+    for i: 0..<FIGHTERS {
+      f := p[0].f[i];
+      if !f.alive || !play_seated(p, i) { continue; }
+      if (f.x - mx) * (f.x - mx) + (f.z - mz) * (f.z - mz) <= near { r[0].reached[k] = true; break; }
+    }
+    if !r[0].reached[k] && mode_ball(p) {
+      b := p[0].ball[0];
+      if (b.x - mx) * (b.x - mx) + (b.z - mz) * (b.z - mz) <= near { r[0].reached[k] = true; }
+    }
+  }
+}
+
+// Every PLAYTEST_LOOK steps: a Scrapper up at this look and the last, with the match
+// running between them, who moved less than PLAYTEST_STILL is stuck there.
+playtest_look :: (p: [] Play, r: [] PlaytestRun) {
+  running := p[0].count <= 0 && p[0].pause <= 0 && !p[0].over;
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    up := f.alive && play_seated(p, i) && running;
+    if up && r[0].looked[i] {
+      dx := f.x - r[0].look_x[i]; dz := f.z - r[0].look_z[i];
+      if dx * dx + dz * dz < PLAYTEST_STILL * PLAYTEST_STILL {
+        r[0].stuck[i] += 1; r[0].stuck_x[i] = f.x; r[0].stuck_z[i] = f.z;
+      }
+    }
+    r[0].looked[i] = up; r[0].look_x[i] = f.x; r[0].look_z[i] = f.z;
+  }
+}
+
+playtest_cm :: (m: f32) -> int { return cast(int) (m * 100); }
+
+playtest_answer :: (e: [] Editor, r: [] PlaytestRun, seed: s32, done: s64, out: [] u8) -> s64 {
+  p := e[0].play[..];
+  o: [1] Jo; jo_start(o[..], out);
+  playtest_head(e, o[..], "match");
+  jo_key(o[..], "mode"); jo_str(o[..], PLAYTEST_MODE_WORD[p[0].mode]);
+  we_int(o[..], "size", cast(int) play_size(p)); we_int(o[..], "seed", cast(int) seed);
+  we_int(o[..], "steps", cast(int) done); we_int(o[..], "seconds", cast(int) (done / 60));
+  jo_key(o[..], "ended"); jo_bool(o[..], p[0].over);
+  m := p[0].mode;
+  how := ifx !p[0].over then "" else (ifx p[0].score[0] >= MODE_GOAL[m] || p[0].score[1] >= MODE_GOAL[m] then "score" else "time");
+  jo_key(o[..], "how"); jo_str(o[..], how);
+  winner := ifx !p[0].over then "" else (ifx p[0].winner == 0 then "yours" else (ifx p[0].winner == 1 then "rivals" else "draw"));
+  jo_key(o[..], "winner"); jo_str(o[..], winner);
+  jo_key(o[..], "score"); jo_arr(o[..]); jo_int(o[..], cast(int) p[0].score[0]); jo_int(o[..], cast(int) p[0].score[1]); jo_end(o[..]);
+  kos := 0;
+  for i: 0..<FIGHTERS { kos += cast(int) p[0].f[i].kos; }
+  we_int(o[..], "knockouts", kos);
+  reached := 0; for k: 0..<r[0].markers { if r[0].reached[k] { reached += 1; } }
+  we_int(o[..], "reached", reached); we_int(o[..], "targets", cast(int) r[0].markers);
+  jo_key(o[..], "stuck"); jo_arr(o[..]);
+  for i: 0..<FIGHTERS {
+    if r[0].stuck[i] == 0 { continue; }
+    jo_obj(o[..]); we_int(o[..], "seat", i); we_int(o[..], "times", cast(int) r[0].stuck[i]);
+    we_int(o[..], "x", playtest_cm(r[0].stuck_x[i])); we_int(o[..], "z", playtest_cm(r[0].stuck_z[i])); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  playtest_tail(o[..], r);
+  if o[0].bad { return 0; }
+  return jo_text(o[..]).count;
+}
+
+// ---- checks
+
+PlaytestTest :: struct { e: [1] Editor; a: [PLAYTEST_ANSWER] u8; b: [PLAYTEST_ANSWER] u8; }
+
+#test "a play-test of a new arena plays a whole match the same way twice, and leaves the editor as it was" {
+  t: [1] PlaytestTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  rev := ed_agent_rev(e);
+  n := ed_play_test(e, MODE_KNOCKOUTS, 3, PLAYTEST_SECONDS, PLAYTEST_SEED, t[0].a[..]);
+  #assert n > 0 && !ed_playing(e) && ed_agent_rev(e) == rev && e[0].play[0].mode == 0;
+  m := ed_play_test(e, MODE_KNOCKOUTS, 3, PLAYTEST_SECONDS, PLAYTEST_SEED, t[0].b[..]);
+  #assert m == n && cast(string) t[0].a[0..<n] == cast(string) t[0].b[0..<m];
+  s := cast(string) t[0].a[0..<n];
+  #assert level_find(s, "\"schema\":\"gamebuilder.playtest.v1\"") > 0 && level_find(s, "\"ended\":true") > 0;
+  #assert level_find(s, "\"knockouts\":0") < 0;
+  // another seed is another match
+  k := ed_play_test(e, MODE_KNOCKOUTS, 3, PLAYTEST_SECONDS, 7, t[0].b[..]);
+  #assert k > 0 && cast(string) t[0].b[0..<k] != s;
+  // a short one has not ended
+  k = ed_play_test(e, MODE_KNOCKOUTS, 3, 5, PLAYTEST_SEED, t[0].b[..]);
+  #assert level_find(cast(string) t[0].b[0..<k], "\"steps\":300,\"seconds\":5,\"ended\":false,\"how\":\"\",\"winner\":\"\"") > 0;
+}
+
+#test "a goal no Scrapper can get to is said to be unreached" {
+  t: [1] PlaytestTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  // the rivals' goal far outside the arena's walls
+  v := e[0].vp[..]; v[0].here_ok = true; v[0].here_x = 0; v[0].here_z = 9000;
+  id := ed_add(e, KIND_RIVAL_GOAL);
+  #assert id > 0;
+  e[0].selected = id;
+  #assert ed_set_field(e, FIELD_Z, 9000) && ed_field(e, FIELD_Z) == 9000;
+  n := ed_play_test(e, MODE_SCRAPBALL, 2, 60, PLAYTEST_SEED, t[0].a[..]);
+  s := cast(string) t[0].a[0..<n];
+  b: [64] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "\"unreached\":[{\"id\":"); tx_int(tx[..], cast(s64) id); tx_put(tx[..], ",\"kind\":\"rival-goal\"");
+  #assert n > 0 && level_find(s, cast(string) b[0..<tx[0].at]) > 0;
+  // the paths: every bot's, in centimetres
+  #assert level_find(s, "\"paths\":[{\"seat\":0,\"side\":\"yours\",\"points\":[[") > 0;
+  // a level played while a match is on is refused
+  e[0].play[0].on = true;
+  #assert playtest_why(e).count > 0 && ed_play_test(e, 0, 3, 60, 1, t[0].a[..]) == 0;
+  e[0].play[0].on = false;
+}
+
+#test "a level of every other type is walked through: what the bot reached, the way it went, and where it stuck short of what it found no way to" #steps 400000000 {
+  t: [1] PlaytestTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 1, TEMPLATE_ADVENTURE, 2);
+  // a clear level: a pack to walk to, then one shut in a ring of walls
+  editor_scene_reset(ed_scene(e)); e[0].shape_n = 0;
+  _ = ed_put(e, KIND_START, 0, 0, 60, 180, 60, 0);
+  near := ed_put(e, KIND_PACK, 800, 0, 60, 40, 60, 0);
+  far := ed_put(e, KIND_PACK, 0, 2000, 60, 40, 60, 0);
+  _ = ed_put(e, KIND_BLOCK, 0, 1600, 1200, 300, 100, 0);
+  _ = ed_put(e, KIND_BLOCK, 0, 2400, 1200, 300, 100, 0);
+  _ = ed_put(e, KIND_BLOCK, -550, 2000, 100, 300, 900, 0);
+  _ = ed_put(e, KIND_BLOCK, 550, 2000, 100, 300, 900, 0);
+  #assert playtest_why(e) == "" && playtest_walks(e);
+  n := ed_play_test(e, MODE_KNOCKOUTS, 3, PLAYTEST_SECONDS, PLAYTEST_SEED, t[0].a[..]);
+  s := cast(string) t[0].a[0..<n];
+  #assert n > 0 && level_find(s, "\"type\":\"adventure\",\"bot\":\"walk-through\",\"mode\":\"walk-through\"") > 0;
+  #assert level_find(s, "\"reached\":1,\"targets\":2,\"stuck\":[{\"seat\":0,\"times\":1,") > 0;
+  b: [64] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "\"unreached\":[{\"id\":"); tx_int(tx[..], cast(s64) far); tx_put(tx[..], ",\"kind\":\"pack\"");
+  #assert level_find(s, cast(string) b[0..<tx[0].at]) > 0;
+  #assert level_find(s, "\"paths\":[{\"seat\":0,\"side\":\"yours\",\"points\":[[") > 0;
+  // the same call answers the same
+  m := ed_play_test(e, MODE_KNOCKOUTS, 3, PLAYTEST_SECONDS, PLAYTEST_SEED, t[0].b[..]);
+  #assert m == n && cast(string) t[0].b[0..<m] == s;
+  // too short a walk to get there runs out of time
+  k := ed_play_test(e, MODE_KNOCKOUTS, 3, 1, PLAYTEST_SEED, t[0].b[..]);
+  #assert level_find(cast(string) t[0].b[0..<k], "\"ended\":false,\"how\":\"time\"") > 0 && near > 0;
+}

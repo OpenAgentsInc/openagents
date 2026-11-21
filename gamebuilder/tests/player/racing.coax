@@ -1,0 +1,41 @@
+// A declared circuit walkthrough. Planning reuses the product's public track
+// and pure steering policy; the live car receives only real keys/thumb input.
+#load "racing-policy.coax";
+RaceInput :: struct {way:int;drive:int;started:bool;steer_error:f32;drive_error:f32;w:int;h:int;}
+prc_frame :: (p:[]Pt)->RaceFrame {
+  f:RaceFrame;r:=pb_read(p[0].c[..],"globalThis.gamebuilderObservation");if r<0 {return f;}d:=cdp_doc(p[0].c[..]);
+  f.ok=pt_frame_valid(d,r) && pt_frame_tick(p[0].health[..],jv_int(d,jv_get(d,r,"sequence"),0),proc_now_ms()) && jv_int(d,jv_get(d,r,"game_type"),-1)==7;
+  for key:[12]string.["race_s_cm","race_hint","race_fx_milli","race_fz_milli","race_speed_cm","race_lap","race_gate","race_done","race_backs","race_clock_ms","race_best_ms","race_light"] {f.ok=f.ok && jv_kind(d,jv_get(d,r,key))==JV_NUMBER;}
+  f.sequence=jv_int(d,jv_get(d,r,"sequence"),0);f.x=cast(f32)jv_int(d,jv_get(d,r,"x_cm"),0)/100;f.z=-cast(f32)jv_int(d,jv_get(d,r,"z_cm"),0)/100;f.s=cast(f32)jv_int(d,jv_get(d,r,"race_s_cm"),0)/100;f.hint=jv_int(d,jv_get(d,r,"race_hint"),0);f.fx=cast(f32)jv_int(d,jv_get(d,r,"race_fx_milli"),0)/1000;f.fz=cast(f32)jv_int(d,jv_get(d,r,"race_fz_milli"),0)/1000;f.speed=cast(f32)jv_int(d,jv_get(d,r,"race_speed_cm"),0)/100;
+  f.lap=jv_int(d,jv_get(d,r,"race_lap"),0);f.gate=jv_int(d,jv_get(d,r,"race_gate"),0);f.backs=jv_int(d,jv_get(d,r,"race_backs"),0);f.clock=jv_int(d,jv_get(d,r,"race_clock_ms"),0);f.best=jv_int(d,jv_get(d,r,"race_best_ms"),0);f.light=jv_int(d,jv_get(d,r,"race_light"),0);f.done=jv_int(d,jv_get(d,r,"race_done"),0)==1;
+  f.ok=f.ok && f.hint>=0 && f.hint<RC_POINTS*RC_PER && f.gate>=0 && f.gate<RC_GATES && f.lap>=0 && f.lap<=RC_LAPS && abs(f.speed)<100;return f;
+}
+prc_input :: (p:[]Pt,k:[]RaceInput,d:RcKeys)->bool {
+  if p[0].touch {
+    points:=[1]PbContact.[PbContact.{id=1,x=k[0].w/4,y=k[0].h*3/5}];if !k[0].started {if !pb_touch(p[0].c[..],"touchStart",points[..]) {return false;}k[0].started=true;}
+    points[0].x+=cast(int)(d.steer*56);points[0].y-=cast(int)(d.throttle*56);return pb_touch(p[0].c[..],"touchMove",points[..]);
+  }
+  steer:=[1]f32.[k[0].steer_error];drive:=[1]f32.[k[0].drive_error];way:=prc_command(steer[..],d.steer);on:=prc_command(drive[..],d.throttle);k[0].steer_error=steer[0];k[0].drive_error=drive[0];ok:=true;
+  if way!=k[0].way {if k[0].way!=0 {ok=pt_key(p,ifx k[0].way>0 then "d" else "a",ifx k[0].way>0 then "KeyD" else "KeyA",false);}if way!=0 {ok=pt_key(p,ifx way>0 then "d" else "a",ifx way>0 then "KeyD" else "KeyA",true) && ok;}k[0].way=way;}
+  if on!=k[0].drive {if k[0].drive!=0 {ok=pt_key(p,ifx k[0].drive>0 then "w" else "s",ifx k[0].drive>0 then "KeyW" else "KeyS",false) && ok;}if on!=0 {ok=pt_key(p,ifx on>0 then "w" else "s",ifx on>0 then "KeyW" else "KeyS",true) && ok;}k[0].drive=on;}return ok;
+}
+pt_racing :: (p:[]Pt) {
+  entered:=pt_picker(p) && pt_enter(p,7);f:=prc_frame(p);_=pt_shot(p,"racing-start.png");
+  drove:=pt_hold(p,"w","KeyW",1200);moving:=prc_frame(p);braked:=pt_hold(p,"s","KeyS",500);slower:=prc_frame(p);reset:=pt_hot(p,"reset");_=pb_wait(pt_dir(p),1000);again:=prc_frame(p);
+  pt_result(p,"world.racing",entered && f.ok && drove && moving.s>f.s+1 && moving.speed>1 && braked && slower.speed<moving.speed && again.ok);
+  pt_result(p,"game.racing.reset",reset && again.backs==f.backs+1 && abs(again.speed)<0.5 && abs(again.s-f.s)<1);
+  course:[1]Racing;rc_in(course[..]);k:[1]RaceInput;k[0].w=cast(int)pt_number(p,"innerWidth",0);k[0].h=cast(int)pt_number(p,"innerHeight",0);sequence:=0;logged:=0;end:=proc_now_ms()+300000;ok:=again.ok;
+  while ok && proc_now_ms()<end {
+    _:=pb_heartbeat(pt_dir(p));f=prc_frame(p);if !f.ok {p[0].input_fault=true;ok=false;break;}if f.done {break;}if f.sequence==sequence {_:=pb_wait(pt_dir(p),20);continue;}sequence=f.sequence;
+    // Only a local planning value is reconstructed. This never enters the live
+    // game's memory and the planner does not step or predict a physics world.
+    course[0].s=f.s;course[0].hint=f.hint;course[0].body.pos=d3(cast(f64)f.x,0.0,cast(f64)f.z);course[0].body.orientation=dq_y(cast(f64)atan2(f.fx,f.fz));course[0].body.vel=d3(cast(f64)(f.fx*f.speed),0.0,cast(f64)(f.fz*f.speed));d:=rc_pilot(course[..]);
+    ok=prc_input(p,k[..],d);
+    if proc_now_ms()-logged>=500 {logged=proc_now_ms();b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"game");jo_str(o[..],GT_ID[GT_RACING]);jo_key(o[..],"time_ms");jo_int(o[..],f.clock);jo_key(o[..],"lap");jo_int(o[..],f.lap);jo_key(o[..],"gate");jo_int(o[..],f.gate);jo_key(o[..],"speed_cm");jo_int(o[..],cast(int)(f.speed*100));jo_key(o[..],"backs");jo_int(o[..],f.backs);jo_end(o[..]);path:[4096]u8;_=fs_append(pt_path(p,"measurements.jsonl",path[..]),jo_text(o[..]));_=fs_append(pt_path(p,"measurements.jsonl",path[..]),"\n");}
+    _:=pb_wait(pt_dir(p),30);
+  }
+  _:=pb_release(p[0].c[..]);_=pb_wait(pt_dir(p),400);f=prc_frame(p);_=pt_observe(p);_=pt_shot(p,"racing-objective.png");
+  finished:=ok && f.ok && f.done && f.lap==3 && f.clock>30000 && f.best>0 && pt_bool(p,"/finished: three laps/.test(document.getElementById('note')?.value||'')");
+  if finished {reset=pt_hot(p,"reset");_=pb_wait(pt_dir(p),1000);again=prc_frame(p);pt_result(p,"game.racing.reset",reset && again.ok && !again.done && again.lap==0 && again.light<4);}
+  returned:=pt_picker(p) && pt_enter(p,0);pt_result(p,"game.racing.objective",finished && returned);
+}

@@ -1,0 +1,2340 @@
+// GameBuilder's commands: one table that every way in reads
+// (docs/programmatic-access.md, stage C0). A row is one feature: its verb,
+// what it changes, who may run it, its arguments and their limits, what it
+// answers, the exports it calls and the surfaces that offer it. gb_run
+// carries a row out on an open editor and writes its answer; the gamebuilder
+// CLI (cli/main.coax) reads and writes the level and game files around it.
+// The CLI's help and its capability manifest (`gamebuilder commands --json`)
+// are made from the table, never typed again, and so is the Claude skill
+// (gb_skill, `gamebuilder skill`), and so are the MCP tools (coax/mcp.coax, `gamebuilder mcp`).
+// The app's own buttons are rows too: coax/controls.coax lists them
+// (GB_CONTROLS), and the host presses one through ed_command.
+//
+// A verb is matched exactly against the table (gb_find). Nothing here reads a
+// sentence: a person's words go to a model, which picks a row by name.
+//
+// Answers are the agent seam's form (coax/agent.coax):
+//   {"ok":true,...}
+//   {"ok":false,"error":CODE,"why":WORDS}
+// CODE: bad-request, not-found, not-permitted or edit-refused; apply-edits
+// answers the seam's own codes (stale, locked, refused, ...); claimed is
+// another agent's claim (claims.coax), the holder named in the words. A limit
+// that refused it is said in the words, with its number.
+//
+// Who calls: the person, unless the call names an agent: an Agents pane agent
+// is named by the pane (gb_command_run_as), any other by --agent NAME. A claim
+// refuses only an agent's change, never the person's.
+//   scripts/check.sh
+
+// The secp256k1 tables the editor loads are built at compile time (editor.coax).
+#run_steps 100000000;
+#load "editor.coax";
+// What an agent is and what it did: the record, its event log, its states and their words (issue 4).
+#load "agent-record.coax";
+#load "agent-rows.coax";
+#load "agent-pictures.coax";   // an agent's newest picture kept on the account (issue 9)
+// The core loop's counts on gamebuilder.org: a day's totals and the funnel made from them (issue 18).
+#load "loop-day.coax";
+#load "../shared/plays.coax";   // a published game, counted: what the published row reads back (docs/publishing.md)
+#load "engine-fork.coax";   // engine-ready and engine-mine: what they answer (issue 23)
+#load "triage.coax";        // where a request belongs: the question set and the rules on its answer (issue 22)
+#load "engine-list.coax";   // the engine's capability list, made by tools/engine-list.coax (issue 21)
+
+// The surfaces a row is offered on.
+GB_UI :: 1; GB_CLI :: 2; GB_MCP :: 4; GB_SKILL :: 8; GB_HTTP :: 16; GB_PANE :: 32; GB_WEB :: 64; GB_CLOUD :: 128;
+GB_SURFACES :: 8;
+GB_SURFACE_NAME :: [GB_SURFACES] string.["ui", "cli", "mcp", "skill", "http", "pane", "web", "cloud"];
+// Offline rows: whatever reaches a level's file.
+GB_FILES :: 30;             // GB_CLI | GB_MCP | GB_SKILL | GB_HTTP
+GB_EVERY :: 31;             // and the app's own controls
+// The Agents pane's tools (agents.coax): the open level read, changed, taken back and
+// played, and nothing else (no files, no other levels, no games).
+GB_FILES_PANE :: 62;        // GB_FILES | GB_PANE
+// The cloud Builder's rows (issue 27; coax/cloud-rows.coax, cli/cloud.coax): the rows a Builder the
+// hosted server runs may write as a command of a step, on its own level and as itself. They are
+// the pane's rows that run on the account's files, less play-test (a match would hold the one
+// server for minutes), and agent-undo, which takes back its own last change. The mark is this
+// surface and nothing else: what the Builder is told and what the server carries out both read it.
+GB_FILES_PANE_CLOUD :: 190; // GB_FILES | GB_PANE | GB_CLOUD
+
+// view: changes only what this screen shows (the tool, the camera, the selection, the clipboard);
+// spend: a model is paid for (Decide).
+// social: says or does something others in the lobby see (the lobby rows).
+GB_EFFECTS :: [7] string.["read", "edit", "view", "play", "account", "spend", "social"];
+// What an approval asks, as the skill says it.
+GB_APPROVAL_WORDS :: [4] string.["", "only on a level or game you own", "asks the person first", "only the person, never an agent for them"];
+// person: only the person can do it (type the code from their email), never an agent for them.
+GB_APPROVALS :: [4] string.["none", "owner", "confirm", "person"];
+// Argument kinds; "text:N" is any text of at most N bytes.
+GB_KINDS :: [40] string.["level", "game", "template", "kind", "thing", "field", "value", "batch", "text", "tool", "revision", "content",
+  "agent", "role", "job", "message", "answer", "after", "report", "region",
+  "shipped", "scrapper", "slot", "player", "line", "member", "side", "reply", "look", "say", "name", "into", "owners", "published", "version", "feedback", "which", "picture", "computer", "status"];
+// A tool's words, as ed_tool numbers them.
+GB_TOOL_WORD :: [ED_TOOLS] string.["select", "move", "rotate", "scale"];
+// party-answer's and party-look's words.
+GB_REPLY_WORD :: [2] string.["yes", "no"];
+GB_LOOK_WORD :: [2] string.["on", "off"];
+
+// Why a row is not on a surface (docs/programmatic-access.md, "Surfaces and their gaps"). Every
+// row is on every surface (GB_UI, GB_CLI, GB_MCP, GB_SKILL, GB_HTTP, GB_PANE) unless its gap column
+// names a reason here that excuses the ones it lacks; a reason must excuse a surface the row lacks
+// and fit the row (a #test below holds both). "live" excuses no surface: the row needs a live
+// service, so it has no golden case (tools/commands-golden.coax holds that).
+GbGap :: struct { name: string; excuses: s32; words: string; }
+GB_GAP_N :: 23;
+GB_GAPS :: [GB_GAP_N] GbGap.[
+  GbGap.{name = "screen", excuses = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP,
+    words = "it acts on what the app's screen holds (the selection, the clipboard, the tool, the history, the panes); a program reaches it in the running app with --attach"},
+  GbGap.{name = "pane", excuses = GB_UI | GB_CLI | GB_MCP | GB_SKILL | GB_HTTP,
+    words = "the Agents pane's own: an agent's turn taken back, or its question to the person"},
+  GbGap.{name = "open-level", excuses = GB_PANE,
+    words = "it reaches past the open level (other levels, games, files, the account, the engine), and the pane's agent gets the open level only"},
+  GbGap.{name = "pane-reads", excuses = GB_PANE,
+    words = "the pane's agent reads the open level as read-level; this other form of it is for programs"},
+  GbGap.{name = "view", excuses = GB_PANE,
+    words = "it changes only what the person's screen shows or keeps (the tool, the view, the clipboard, the history); the pane's agent changes the level, and takes back its own turns with undo-turn"},
+  GbGap.{name = "batch", excuses = GB_PANE,
+    words = "the pane's agent makes every change as one apply-edits batch, which undo-turn takes back whole"},
+  GbGap.{name = "drawn", excuses = GB_UI,
+    words = "a read: the app shows what it answers where it is used, so no control asks for it"},
+  GbGap.{name = "headless", excuses = GB_UI,
+    words = "it plays with no screen; on the screen the person plays the level instead"},
+  GbGap.{name = "gesture", excuses = GB_UI,
+    words = "the app makes it with a drag on the selection, not a press"},
+  GbGap.{name = "auto", excuses = GB_UI,
+    words = "the app does it on its own, with no control: your levels move between your devices as they are saved"},
+  GbGap.{name = "spend", excuses = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP | GB_PANE,
+    words = "it pays for a model with the app's own login, one request at a time, and only the person presses it"},
+  GbGap.{name = "person", excuses = GB_MCP | GB_HTTP | GB_PANE,
+    words = "only the person may do it, at a screen or a terminal (or, where the row is on HTTP, with their own login from gamebuilder.org's page or gamebuilder --remote), never an agent for them"},
+  GbGap.{name = "login", excuses = GB_UI | GB_MCP | GB_HTTP,
+    words = "each surface has its own login: the app its account sheet; MCP and HTTP act as the login of the CLI that serves them"},
+  GbGap.{name = "agents", excuses = GB_PANE,
+    words = "an agent's record and log belong to the surface the person runs it from; the pane's agent is one of those agents and does not drive the others"},
+  GbGap.{name = "runner", excuses = GB_UI,
+    words = "a running agent reports its own events through it; the person reads them in the Agents pane"},
+  GbGap.{name = "claim", excuses = GB_UI,
+    words = "a claim keeps one agent out of another's work, and never refuses the person, so the app has no control to make or end one; it draws every claim on the ground in its agent's colour"},
+  GbGap.{name = "match", excuses = GB_PANE,
+    words = "it starts, steers or reads the match on the person's screen; the pane's agent plays a level headless instead (play-test)"},
+  GbGap.{name = "lobby", excuses = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP | GB_PANE,
+    words = "the lobby and the party live in the running app, signed with the person's key on the room's relay; only the person is in the room, never a program or an agent for them"},
+  GbGap.{name = "web", excuses = GB_RULED,
+    words = "it is a plan line of gamebuilder.org's own world of blocks and balls, which its chat's model and its tools write alike (web/blocks.coax); a level's file takes apply-edits instead"},
+  GbGap.{name = "site", excuses = GB_UI | GB_PANE,
+    words = "it reads gamebuilder.org's own counts (how many visits reached each step of making a game there), which the app has no screen for and a level's agent no use for; the owner reads them at a command line"},
+  GbGap.{name = "door", excuses = GB_UI | GB_MCP | GB_HTTP | GB_PANE,
+    words = "it asks the OpenAgents decision door, signed with a key the command line keeps on this computer; an agent on another surface runs the command line for it, or reads engine-list and decides itself"},
+  GbGap.{name = "computer", excuses = GB_UI | GB_MCP | GB_HTTP | GB_PANE,
+    words = "it looks at this computer's own tools and GitHub login (git, gh, claude), which only the command line run there sees"},
+  GbGap.{name = "live", excuses = 0,
+    words = "it needs a live service (the account server, a model, a relay, a match on the network), which a golden case does not reach"},
+];
+// The surfaces the rule covers. The website (GB_WEB) has its own grammar (web/), held apart, and
+// the cloud Builder (GB_CLOUD) has the few rows marked for it, not every row less a reason.
+GB_RULED :: 63;             // GB_UI | GB_CLI | GB_MCP | GB_SKILL | GB_HTTP | GB_PANE
+gb_gap_find :: (name: string) -> int {
+  for i: 0..<GB_GAP_N { if GB_GAPS[i].name == name { return i; } }
+  return -1;
+}
+// Whether row c says it has no golden case (the reason "live").
+gb_gap_has :: (c: GbCommand, name: string) -> bool {
+  for k: 0..<gb_parts(c.gap) { if gb_part(c.gap, k) == name { return true; } }
+  return false;
+}
+
+GbCommand :: struct {
+  verb: string;           // the one name, on every surface
+  area: string;           // level, game, edit, view, decide, play, account, engine, agent, code, site
+  effect: string;         // GB_EFFECTS
+  approval: string;       // GB_APPROVALS: owner rows change only what this account may (ed_may_edit)
+  arguments: string;      // kinds, "|"-separated, in order
+  flags: string;          // "--x:cm|--dry-run:bool"
+  result: string;         // what it answers
+  limit: string;          // what bounds it, naming the constant
+  impl: string;           // the exports it calls
+  surfaces: s32;
+  gap: string;            // GB_GAPS, "|"-separated: why the row is not on each surface it lacks
+  usage: string; help: string;
+}
+
+GB_N :: 120;
+// The verbs, as the table's rows: a verb is a typed value and its row at once.
+VERB_LIST_LEVELS :: 0; VERB_READ_LEVEL :: 1; VERB_READ_STATE :: 2; VERB_READ_CONTENT :: 3;
+VERB_NEW_LEVEL :: 4; VERB_COPY_LEVEL :: 5;
+VERB_LIST_GAMES :: 6; VERB_LIST_TEMPLATES :: 7; VERB_NEW_GAME :: 8; VERB_RENAME_GAME :: 9; VERB_READ_GAME :: 10;
+VERB_APPLY_EDITS :: 11; VERB_ADD :: 12; VERB_SET_FIELD :: 13; VERB_DELETE :: 14; VERB_LIST_PALETTE :: 15; VERB_LIST_FIELDS :: 16;
+VERB_LIST_MODES :: 17;
+// The account rows are carried out by the surface around the core (it asks the server; cli/account.coax).
+VERB_WHOAMI :: 18; VERB_LOGIN :: 19; VERB_LOGOUT :: 20;
+// The engine row is answered by the surface too, with the engine commit it was built on (gb_engine).
+VERB_ENGINE :: 21;
+// The app's own: they act on the level open on its screen, its selection and its history
+// (GB_UI). A later --attach (stage C5) offers them to the CLI and MCP.
+VERB_UNDO :: 22; VERB_REDO :: 23; VERB_SET_TOOL :: 24; VERB_FOCUS :: 25;
+VERB_COPY :: 26; VERB_PASTE :: 27; VERB_DUPLICATE :: 28;
+// Decide is carried out by the host: it sends the request the core writes and hands the answer back.
+VERB_DECIDE :: 29;
+VERB_CUT :: 30;
+// A match played headless with bots in every seat (playtest.coax).
+VERB_PLAY_TEST :: 31;
+// The Agents pane (agents.coax): open or close it; an agent's last turn taken back; a
+// question put to the person, the turn waiting for the answer.
+VERB_AGENTS :: 32; VERB_UNDO_TURN :: 33; VERB_ASK :: 34;
+// A level's file put whole, against the revision it was read at: how a level moves between
+// your devices through the account (docs/programmatic-access.md, C7).
+VERB_WRITE_CONTENT :: 35;
+// An agent as a stored record with its event log (agent-record.coax, agent-rows.coax). agents
+// lists them; agents-pane is the app's button that opens the pane.
+VERB_AGENT_READ :: 36; VERB_AGENT_EVENTS :: 37; VERB_AGENT_NEW :: 38; VERB_AGENT_MESSAGE :: 39;
+VERB_AGENT_ANSWER :: 40; VERB_AGENT_STOP :: 41; VERB_AGENT_UNDO :: 42; VERB_AGENT_REPORT :: 43;
+VERB_AGENTS_PANE :: 44;
+// A Code agent (issue 8; agents.coax, code-agent.coax): what one on a repository is given and may
+// do, and the pane's sheet that starts one after the person approves it.
+VERB_CODE_BRIEF :: 45; VERB_CODE_AGENT :: 46;
+// Claims (claims.coax): what an agent is working on, so another agent's change there is refused.
+VERB_CLAIM :: 47; VERB_CLAIMS :: 48; VERB_RELEASE :: 49;
+// The app's screen: a level or a shipped game opened, a match played on it (issue 3, step 3).
+// The lobby and the party, the person's own (lobby-rows.coax).
+VERB_OPEN_LEVEL :: 50;
+VERB_OPEN_GAME :: 51;
+VERB_PLAY :: 52;
+VERB_STOP :: 53;
+VERB_PLAY_STATE :: 54;
+VERB_LIST_SCRAPPERS :: 55;
+VERB_TRAVEL :: 56;
+VERB_DIGGER :: 57;
+VERB_BAG_SELECT :: 58;
+VERB_LOBBY_READ :: 59;
+VERB_LOBBY_NAME :: 60;
+VERB_LOBBY_SAY :: 61;
+VERB_LOBBY_MUTE :: 62;
+VERB_LOBBY_REPORT :: 63;
+VERB_PARTY_READ :: 64;
+VERB_PARTY_INVITE :: 65;
+VERB_PARTY_ANSWER :: 66;
+VERB_PARTY_LEAVE :: 67;
+VERB_PARTY_SIDE :: 68;
+VERB_PARTY_SCRAPPER :: 69;
+VERB_PARTY_MATCH :: 70;
+VERB_PARTY_LOOK :: 71;
+VERB_PARTY_START :: 72;
+// Your games and levels managed: deleted, named, moved, and who owns a game (issue 3, step 4).
+VERB_DELETE_LEVEL :: 73;
+VERB_DELETE_GAME :: 74;
+VERB_RENAME_LEVEL :: 75;
+VERB_MOVE_LEVEL :: 76;
+VERB_OWNERS :: 77;
+VERB_SET_OWNERS :: 78;
+// gamebuilder.org's own world: its plan lines, as its chat's model and its tools write them (issue 3, step 5).
+VERB_WEB_PLACE :: 79;
+VERB_WEB_BALL :: 80;
+VERB_WEB_PUT :: 81;
+VERB_WEB_TURN :: 82;
+VERB_WEB_KIND :: 83;
+VERB_WEB_SIZE :: 84;
+VERB_WEB_MOVE :: 85;
+VERB_WEB_REMOVE :: 86;
+VERB_WEB_CLEAR :: 87;
+VERB_WEB_SET :: 88;
+VERB_WEB_RESET :: 89;
+VERB_WEB_GRAVITY :: 90;
+VERB_WEB_SELECT :: 91;
+VERB_WEB_SPIN :: 92;
+// The website's core loop, counted (shared/loop.coax, loop-day.coax): the surface answers it from
+// the day files its server keeps (cli/main.coax, cli_funnel).
+VERB_FUNNEL :: 93;
+// What agents and calls from outside the app changed, kept highlighted on the open level
+// (changes.coax): read it, Show me (frame it), and dismiss it.
+VERB_CHANGES :: 94; VERB_SHOW_CHANGES :: 95; VERB_DISMISS_CHANGES :: 96;
+// Publishing to the web (publish.coax; docs/publishing.md), the person's own (issue 3, step 7).
+VERB_PUB_PUBLISH :: 97;
+VERB_PUB_PUBLISHED :: 98;
+VERB_PUB_VERSIONS :: 99;
+VERB_PUB_SET_LIVE :: 100;
+VERB_PUB_UNPUBLISH :: 101;
+VERB_PUB_REMOVE_PUBLISHED :: 102;
+VERB_PUB_FEEDBACK :: 103;
+VERB_PUB_FEEDBACK_HIDE :: 104;
+VERB_PUB_BLOCK :: 105;
+VERB_PUB_REPORT :: 106;
+// Whether this computer's agents' conversations are kept on the account while logged in (the
+// Agents pane's switch; sync.coax reports them when it is on).
+VERB_AGENTS_ACCOUNT :: 107;
+// The pictures the app drew of agents' changes and play-tests, kept beside the level (pictures.coax).
+VERB_PICTURES :: 108; VERB_PICTURE :: 109;
+// An agent's newest picture, kept on the account for gamebuilder.org/agents (agent-pictures.coax).
+VERB_AGENT_PICTURE :: 110;
+// What the engine can do (issue 21; engine-list.coax, made from the engine's book at the pinned
+// commit): every chapter in a line, and one in full.
+VERB_ENGINE_LIST :: 112; VERB_ENGINE_READ :: 113;
+// Where a request in the person's words belongs (issue 22; triage.coax): the commands, GameBuilder's
+// own code, or the engine.
+VERB_TRIAGE :: 114;
+// a computer your agents run on, and an agent started there (issue 11: cli/resident.coax)
+VERB_COMPUTERS :: 115; VERB_COMPUTER_REPORT :: 116; VERB_AGENT_NEW_ON :: 117;
+// The engine pull request from a person's own fork (issue 23; engine-fork.coax): what this computer
+// needs for one, and the person's own pull requests.
+VERB_ENGINE_READY :: 118; VERB_ENGINE_MINE :: 119;
+
+GB_COMMANDS :: [GB_N] GbCommand.[
+  GbCommand.{verb = "list-levels", area = "level", effect = "read", approval = "none", result = "gamebuilder.levels.v1",
+    limit = "9,999 levels (LEVEL_MAX)", impl = "ed_level_number|ed_level_title|ed_level_mine", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "", help = "the levels in the folder, each with the game of yours it belongs to and its revision (read-content's)"},
+  GbCommand.{verb = "read-level", area = "level", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.level.v1",
+    impl = "ed_agent_scene", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "LEVEL", help = "the level as data: its things, its shape table, its revision, and whether it is yours to change"},
+  GbCommand.{verb = "read-state", area = "level", effect = "read", approval = "none", arguments = "level", result = "world.state.v1",
+    impl = "ed_agent_state", surfaces = GB_FILES, gap = "drawn|pane-reads",
+    usage = "LEVEL", help = "the level as the engine's world state, the form the web answers a world in"},
+  GbCommand.{verb = "read-content", area = "level", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.content.v1",
+    impl = "ed_save", surfaces = GB_FILES, gap = "drawn|pane-reads",
+    usage = "LEVEL", help = "the level's file, exactly as the app writes it"},
+  GbCommand.{verb = "new-level", area = "level", effect = "edit", approval = "none", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "9,999 levels (LEVEL_MAX)", impl = "ed_level_next|ed_new|ed_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "[--dry-run] [--key K]", help = "a new arena level of your own, numbered one past the highest"},
+  GbCommand.{verb = "copy-level", area = "level", effect = "edit", approval = "none", arguments = "level", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "9,999 levels (LEVEL_MAX)", impl = "ed_level_next|ed_copy|ed_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "LEVEL [--dry-run] [--key K]", help = "your own copy of a level, numbered one past the highest; level 0 is Scrappers Arena's own"},
+  GbCommand.{verb = "list-games", area = "game", effect = "read", approval = "none", result = "gamebuilder.games.v1",
+    limit = "32 games (MINE_MAX), 16 levels each (MINE_LEVELS)", impl = "ed_mines|ed_mine_at|ed_mine_title|ed_mine_template|ed_mine_level", surfaces = GB_FILES | GB_WEB, gap = "drawn|open-level",
+    usage = "", help = "your games, each with its template and its levels"},
+  GbCommand.{verb = "list-templates", area = "game", effect = "read", approval = "none", result = "gamebuilder.templates.v1",
+    impl = "ed_templates|ed_template_name", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "", help = "the game types a new game can be made on, as the New Game picker shows them: each id, name and line (shared/game-types.coax, gamebuilder.org's too)"},
+  GbCommand.{verb = "new-game", area = "game", effect = "edit", approval = "none", arguments = "template", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "32 games (MINE_MAX)", impl = "ed_new_game|ed_level_next|ed_mine_save|ed_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "TEMPLATE [--dry-run] [--key K]", help = "a new game of yours of a game type (TEMPLATE: its id), its first level holding what that type starts with, the same things gamebuilder.org opens it with"},
+  GbCommand.{verb = "rename-game", area = "game", effect = "edit", approval = "owner", arguments = "game|text", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a name of 1 to 48 bytes, one line, no bar (MINE_TITLE)", impl = "ed_mine_rename|ed_mine_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "GAME NAME [--dry-run] [--key K]", help = "give a game of yours a new name"},
+  GbCommand.{verb = "read-game", area = "game", effect = "read", approval = "none", arguments = "game", result = "gamebuilder.content.v1",
+    impl = "ed_mine_save", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "GAME", help = "a game's file: its name, its template and its levels"},
+  GbCommand.{verb = "apply-edits", area = "edit", effect = "edit", approval = "owner", arguments = "level|batch", flags = "--agent:agent|--dry-run:bool|--key:key", result = "realm.result.v1",
+    limit = "64 edits a batch (WE_BATCH); 200 m from the middle (AGENT_REACH)", impl = "ed_agent_apply|ed_save", surfaces = GB_FILES_PANE_CLOUD, gap = "gesture",
+    usage = "LEVEL BATCH.json|'{...}' [--agent NAME] [--dry-run] [--key K]", help = "carry out a world.edit.v1 batch as one step, or refuse it whole; read the level first for its revision"},
+  GbCommand.{verb = "add", area = "edit", effect = "edit", approval = "owner", arguments = "level|kind", flags = "--agent:agent|--x:cm|--z:cm|--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a level's one start, rival start, goals, hoops and ball; four health packs (PACKS); in the village, 33 buildings (VL_PUT) sharing 512 solid boxes (VL_WALLS), each put at the nearest place clear of the others", impl = "ed_add|ed_add_refusal|ed_save", surfaces = GB_EVERY, gap = "batch",
+    usage = "LEVEL KIND [--x CM --z CM] [--agent NAME] [--dry-run] [--key K]", help = "add a thing from the template's palette, on the ground at x, z (or the middle), snapped to the grid"},
+  GbCommand.{verb = "set-field", area = "edit", effect = "edit", approval = "owner", arguments = "level|thing|field|value", flags = "--agent:agent|--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "the field's range (FIELD_MIN, FIELD_MAX); a village building's scale is 50 to 300 percent (VL_SCALE_SMALL, VL_SCALE_BIG), its turn a quarter turn, its bottom on the ground, and its size its model's; a moving platform's or a lift's distance is 0 to 5000 cm (GK_GO_MOST) and its period 1000 to 60000 ms (GK_EVERY_LEAST, GK_EVERY_MOST), and no other thing has them", impl = "ed_set_field|ed_field_refusal|ed_save", surfaces = GB_EVERY, gap = "batch",
+    usage = "LEVEL THING FIELD VALUE [--agent NAME] [--dry-run] [--key K]", help = "set one of a thing's fields (kind, east, up, north, turn, scale, width, height, depth; a moving platform's or a lift's distance and period) as one edit"},
+  GbCommand.{verb = "delete", area = "edit", effect = "edit", approval = "owner", arguments = "level|thing", flags = "--agent:agent|--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "ed_delete|ed_save", surfaces = GB_EVERY, gap = "batch",
+    usage = "LEVEL THING [--agent NAME] [--dry-run] [--key K]", help = "take a thing out of the level"},
+  GbCommand.{verb = "list-palette", area = "edit", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.palette.v1",
+    impl = "ed_palette_count|ed_palette_kind|ed_kind_name", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "LEVEL", help = "the kinds of thing the level's game type lets you add, what the type is, how building goes in it, and its limits in words with their numbers"},
+  GbCommand.{verb = "list-fields", area = "edit", effect = "read", approval = "none", result = "gamebuilder.fields.v1",
+    impl = "ed_fields|ed_field_name|ed_field_unit|ed_field_min|ed_field_max", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "", help = "a thing's fields, each with its unit and its range; distance and period are a moving platform's or a lift's alone"},
+  GbCommand.{verb = "list-modes", area = "play", effect = "read", approval = "none", result = "gamebuilder.modes.v1",
+    impl = "ed_play_modes|ed_play_mode_name|ed_play_size_most", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "", help = "the match modes a level can be played in, and the most Scrappers a side"},
+  GbCommand.{verb = "whoami", area = "account", effect = "account", approval = "none", flags = "--profile:text|--origin:url", result = "gamebuilder.account.v1",
+    impl = "GET /api/auth/account", surfaces = GB_CLI | GB_SKILL, gap = "login|open-level",
+    usage = "[--profile NAME]", help = "the OpenAgents account you act as, and its email, as the server says"},
+  GbCommand.{verb = "login", area = "account", effect = "account", approval = "person", flags = "--browser:bool|--email:text|--code:text|--profile:text|--origin:url", result = "gamebuilder.account.v1",
+    impl = "POST /api/auth/cli/redeem|POST /api/auth/email/start|POST /api/auth/email/verify|GET /api/auth/account", surfaces = GB_CLI | GB_SKILL, gap = "login|person",
+    usage = "[--browser] [--email YOU] [--code CODE]", help = "log in with your GameBuilder account: in your browser at gamebuilder.org/login/cli, pasting the code it shows (at a terminal, the default), or by email with --email"},
+  GbCommand.{verb = "logout", area = "account", effect = "account", approval = "none", flags = "--profile:text", result = "gamebuilder.account.v1",
+    impl = "POST /api/auth/logout", surfaces = GB_CLI | GB_SKILL, gap = "login|open-level",
+    usage = "[--profile NAME]", help = "end this computer's login and forget it (the app's login is the app's)"},
+  GbCommand.{verb = "engine", area = "engine", effect = "read", approval = "none", result = "gamebuilder.engine.v1",
+    impl = "openagents.lock", surfaces = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP, gap = "drawn|open-level",
+    usage = "", help = "the engine GameBuilder is built on (OpenAgentsInc/openagents at its pinned commit), and how to propose an engine change as a pull request there"},
+  GbCommand.{verb = "undo", area = "edit", effect = "edit", approval = "owner", arguments = "level", result = "gamebuilder.result.v1",
+    limit = "128 steps of the level's history (EDITOR_SCENE_STEPS)", impl = "ed_undo", surfaces = GB_UI, gap = "screen|view",
+    usage = "LEVEL", help = "take back the last edit to the open level"},
+  GbCommand.{verb = "redo", area = "edit", effect = "edit", approval = "owner", arguments = "level", result = "gamebuilder.result.v1",
+    limit = "128 steps of the level's history (EDITOR_SCENE_STEPS)", impl = "ed_redo", surfaces = GB_UI, gap = "screen|view",
+    usage = "LEVEL", help = "make the last edit taken back again"},
+  GbCommand.{verb = "set-tool", area = "view", effect = "view", approval = "none", arguments = "tool", result = "gamebuilder.result.v1",
+    impl = "ed_set_tool", surfaces = GB_UI, gap = "screen|view",
+    usage = "TOOL", help = "pick what a drag on the selection does: select, move, rotate or scale"},
+  GbCommand.{verb = "focus", area = "view", effect = "view", approval = "none", arguments = "level|thing", result = "gamebuilder.result.v1",
+    impl = "ed_focus", surfaces = GB_UI, gap = "screen|view",
+    usage = "LEVEL THING", help = "select a thing and turn the view to it"},
+  GbCommand.{verb = "copy", area = "edit", effect = "view", approval = "none", arguments = "level|thing", result = "gamebuilder.result.v1",
+    limit = "a team's start is not copied: a level has one of each", impl = "ed_clip_copy", surfaces = GB_UI, gap = "screen|view",
+    usage = "LEVEL THING", help = "copy a thing to the editor's clipboard"},
+  GbCommand.{verb = "paste", area = "edit", effect = "edit", approval = "owner", arguments = "level", result = "gamebuilder.result.v1",
+    impl = "ed_clip_paste", surfaces = GB_UI, gap = "screen|batch",
+    usage = "LEVEL", help = "add what was copied, beside it or where the last tap met the ground, as one edit"},
+  GbCommand.{verb = "duplicate", area = "edit", effect = "edit", approval = "owner", arguments = "level|thing", result = "gamebuilder.result.v1",
+    impl = "ed_clip_duplicate", surfaces = GB_UI, gap = "screen|batch",
+    usage = "LEVEL THING", help = "a copy of a thing beside it, as one edit"},
+  GbCommand.{verb = "decide", area = "decide", effect = "spend", approval = "confirm", arguments = "level", result = "gamebuilder.result.v1",
+    limit = "one request at a time", impl = "ed_decide_body|ed_decide_url|ed_decide_sign|ed_decide_answer|ed_asking|ed_note", surfaces = GB_UI, gap = "spend|live",
+    usage = "LEVEL", help = "ask the decision model for the next edit to the open level, and make it"},
+  GbCommand.{verb = "cut", area = "edit", effect = "edit", approval = "owner", arguments = "level|thing", result = "gamebuilder.result.v1",
+    limit = "a team's start is not cut: a level has one of each", impl = "ed_clip_cut", surfaces = GB_UI, gap = "screen|batch",
+    usage = "LEVEL THING", help = "copy a thing to the editor's clipboard and take it out, as one edit"},
+  GbCommand.{verb = "play-test", area = "play", effect = "read", approval = "none", arguments = "level",
+    flags = "--mode:mode|--size:size|--seconds:seconds|--seed:seed", result = "gamebuilder.playtest.v1",
+    limit = "600 seconds of match or walking time (PLAYTEST_SECONDS); 1 to 5 a side (TEAM_SIZE); a path keeps 40 points a bot (PLAYTEST_POINTS); a walk-through looks for 64 things at most (PLAYTEST_MARKERS) on a grid of 16,384 cells (NAV_GRID_MOST)", impl = "ed_play_test", surfaces = GB_FILES_PANE, gap = "headless",
+    usage = "LEVEL [--mode MODE] [--size N] [--seconds S] [--seed N]",
+    help = "play the level headless and report how it went: an arena by a match with bots in every seat, in fixed steps from a seed (the score, knockouts), every other game type by a walk-through, a bot that walks from your start to every thing it can reach; and for both the bots' paths, where they got stuck, and the things no bot reached. In the app it is also a picture of the level with the paths on it. The same call answers the same every time"},
+  GbCommand.{verb = "agents", area = "agent", effect = "read", approval = "none", result = "gamebuilder.agents.v1",
+    limit = "256 agents a folder or an account keeps (AGR_RECORDS)", impl = "agr_store_add|agr_order|agr_shown_json", surfaces = GB_FILES | GB_WEB, gap = "drawn|agents",
+    usage = "", help = "your agents, each its record (gamebuilder.agent.v1) with the state it shows in words, how long it has been in it and where it runs: waiting for you first, then the newest"},
+  GbCommand.{verb = "undo-turn", area = "edit", effect = "edit", approval = "owner", arguments = "level", result = "gamebuilder.result.v1",
+    limit = "32 turns kept (AGENT_TURNS); only while just agents changed the level since", impl = "ed_agent_undo_turn", surfaces = GB_PANE, gap = "pane",
+    usage = "LEVEL", help = "take back your own last apply_edits, whole, even when other agents changed the level since; refused when the person changed it since (their edit stands)"},
+  GbCommand.{verb = "ask", area = "edit", effect = "read", approval = "none", result = "gamebuilder.answer.v1",
+    limit = "a question of at most 240 bytes; 2 to 4 answers of at most 40 bytes (AG_ASK, AG_CHOICES, AG_CHOICE)", impl = "ed_agents_choose", surfaces = GB_PANE, gap = "pane|live",
+    usage = "", help = "ask the person a question with buttons to answer it, and wait for the answer: use it when the request could mean two different levels, never to confirm an edit; with engine set, when the level needs an engine change, the person is offered a Code agent on the engine for it"},
+  GbCommand.{verb = "write-content", area = "level", effect = "edit", approval = "owner", arguments = "level|revision|content", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a level's file of at most 262,144 bytes (AGENT_FILE_MAX); levels 1 to 9999", impl = "ed_open|ed_save", surfaces = GB_FILES, gap = "auto|open-level",
+    usage = "LEVEL REVISION FILE|'world.doc.v1 ...' [--dry-run] [--key K]",
+    help = "put a level's file whole, as read-content gives it, made from REVISION (read-content's; 0 for a level not there yet); refused as stale when the level changed since. How a level moves between your devices"},
+  GbCommand.{verb = "agent-read", area = "agent", effect = "read", approval = "none", arguments = "agent", result = "gamebuilder.agent.v1",
+    impl = "agr_record_read|agr_shown_json", surfaces = GB_FILES | GB_WEB, gap = "drawn|agents",
+    usage = "AGENT", help = "one agent's record, with the state it shows in words, how long it has been in it and where it runs"},
+  GbCommand.{verb = "agent-events", area = "agent", effect = "read", approval = "none", arguments = "agent|after", result = "gamebuilder.agent.events.v1",
+    limit = "50 events a read (AGR_PAGE); the next read goes on from next", impl = "agr_events_page", surfaces = GB_FILES | GB_WEB, gap = "drawn|agents",
+    usage = "AGENT AFTER", help = "an agent's events (gamebuilder.agent.event.v1) after event AFTER (0: from the first), oldest first, and the cursor to read on from"},
+  GbCommand.{verb = "agent-new", area = "agent", effect = "edit", approval = "owner", arguments = "game|role|job", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a job of at most 240 bytes (AGR_JOB); 256 agents a folder keeps (AGR_RECORDS); build and playtest run today; a cloud Builder at most 12 model steps (a step runs at most 8 commands), 100,000 tokens, 30 changes and 10 minutes a message and 60 model steps a day an account (AGR_CLOUD_STEPS, AGR_CLOUD_TOKENS, AGR_CLOUD_EDITS, AGR_CLOUD_MINUTES, AGR_CLOUD_DAY)", impl = "agr_record_new|agr_append|gb_agent_new_cloud", surfaces = GB_FILES | GB_UI | GB_WEB, gap = "agents",
+    usage = "GAME ROLE JOB [--dry-run] [--key K]", help = "a new agent on a game of yours, queued on this computer: a Builder (build) or a Playtester (playtest), with its job in your words. GameBuilder runs it on the game's first level with your own Claude Code. On your account (gamebuilder.org/agents, serve --accounts) it is a cloud Builder: the server runs it with OpenAgents' model, free, and its answer says its limits"},
+  GbCommand.{verb = "agent-message", area = "agent", effect = "edit", approval = "owner", arguments = "agent|message", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a message of at most 1000 bytes (AGR_MESSAGE_MAX)", impl = "agr_append", surfaces = GB_FILES | GB_UI | GB_WEB, gap = "agents",
+    usage = "AGENT MESSAGE [--dry-run] [--key K]", help = "send an agent a message: it is queued and taken on its next turn; an agent that finished or was stopped goes on from it"},
+  GbCommand.{verb = "agent-answer", area = "agent", effect = "edit", approval = "owner", arguments = "agent|answer", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "one of its question's 2 to 4 answers (AGR_CHOICES)", impl = "agr_last|agr_append", surfaces = GB_FILES | GB_UI, gap = "agents",
+    usage = "AGENT ANSWER [--dry-run] [--key K]", help = "answer the question an agent waits on, with one of the answers it offered"},
+  GbCommand.{verb = "agent-stop", area = "agent", effect = "edit", approval = "owner", arguments = "agent", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "agr_append", surfaces = GB_FILES | GB_UI | GB_WEB, gap = "agents",
+    usage = "AGENT [--dry-run] [--key K]", help = "stop an agent; what it changed stays. A cloud agent's step under way is ended, and its answer is not used"},
+  GbCommand.{verb = "agent-undo", area = "agent", effect = "edit", approval = "owner", arguments = "agent", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "32 turns kept (AGENT_TURNS); only in the app, on the level open there, while just agents changed it since; a cloud agent's last 16 changes kept (AGR_CLOUD_UNDO), each while the level is as it left it", impl = "agr_last|ed_agent_undo_turn|gb_agent_undo_cloud", surfaces = GB_FILES | GB_UI | GB_WEB | GB_CLOUD, gap = "agents",
+    usage = "AGENT [--dry-run] [--key K]", help = "take back an agent's last edit, whole. The app does it, on the level open there; from the folder's files it says which edit and why it can't. A cloud agent's last change is taken back on your account, the level put as it was before it, while nothing has changed it since"},
+  GbCommand.{verb = "agent-report", area = "agent", effect = "edit", approval = "owner", arguments = "report", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "20 events a report (AGR_REPORT), each one line of at most 8192 bytes (AGR_LINE)", impl = "agr_event_read|agr_event_write", surfaces = GB_FILES, gap = "runner|agents",
+    usage = "REPORT.json|'{...}' [--dry-run] [--key K]",
+    help = "put an agent's record and the events after the ones kept here, as its computer sends them to your account: {record, from, events}; refused as stale, with the count kept, when from is not it. How GameBuilder on your Mac reports its agents to gamebuilder.org"},
+  GbCommand.{verb = "agents-pane", area = "view", effect = "view", approval = "none", result = "gamebuilder.result.v1",
+    impl = "Editor.agents_open", surfaces = GB_UI, gap = "screen|view",
+    usage = "", help = "open or close the Agents pane beside the level"},
+  GbCommand.{verb = "code-brief", area = "code", effect = "read", approval = "none", arguments = "text", result = "gamebuilder.code.v1",
+    limit = "80 turns and $10 of your plan a message (AGR_CODE_TURNS, AGR_CODE_CENTS)", impl = "gb_code_brief", surfaces = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP, gap = "drawn|open-level",
+    usage = "REPO", help = "what a Code agent on REPO (openagents, the engine, or gamebuilder, the app) is given and may do: Claude Code with its normal tools in a fresh worktree from origin/main, how its work lands, its limits, and what the person approves before it starts"},
+  GbCommand.{verb = "code-agent", area = "code", effect = "view", approval = "confirm", arguments = "text", result = "gamebuilder.result.v1",
+    limit = "80 turns and $10 of your plan a message (AGR_CODE_TURNS, AGR_CODE_CENTS); only a build that may start claude", impl = "Editor.code_sheet", surfaces = GB_UI, gap = "screen|view",
+    usage = "REPO", help = "open the Agents pane's New agent sheet on a Code agent for REPO (openagents or gamebuilder): it starts only when you approve it there"},
+  GbCommand.{verb = "claim", area = "edit", effect = "edit", approval = "owner", arguments = "level|region", flags = "--agent:agent|--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a box at most 10000 cm a side (CLAIM_SIDE) or 1 to 16 things (CLAIM_THINGS); 4 claims an agent (CLAIMS_EACH), 8 a level (CLAIMS_MAX); each lapses 600 seconds after its agent last claimed or changed something (CLAIM_SECONDS)",
+    impl = "ed_claims_count|ed_claim_box", surfaces = GB_FILES_PANE_CLOUD, gap = "claim",
+    usage = "LEVEL box:X0,Z0,X1,Z1|things:ID,ID --agent NAME [--dry-run] [--key K]",
+    help = "when several agents work on one level: claim what you will change, a box on the level (two corners in centimetres; it runs from the ground up) or some things by id, so another agent's change there is refused while you hold it (the person's never is). Claiming it again keeps it. It ends when you release it, when your turn ends, or 600 seconds after you last claimed or changed something"},
+  GbCommand.{verb = "claims", area = "edit", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.claims.v1",
+    limit = "8 claims a level (CLAIMS_MAX)", impl = "ed_claims_count|ed_claim_box", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "LEVEL", help = "every claim on the level: whose it is, and its box or its things"},
+  GbCommand.{verb = "release", area = "edit", effect = "edit", approval = "owner", arguments = "level", flags = "--agent:agent|--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "ed_claims_count", surfaces = GB_FILES_PANE_CLOUD, gap = "claim",
+    usage = "LEVEL [--agent NAME] [--dry-run] [--key K]", help = "end your claims on the level as soon as you are done there; without --agent, the person ends every claim on it"},
+  GbCommand.{verb = "open-level", area = "level", effect = "view", approval = "none", arguments = "level", result = "gamebuilder.result.v1",
+    impl = "ed_open_due|ed_open", surfaces = GB_UI, gap = "screen|view",
+    usage = "LEVEL", help = "open a level of the folder on the screen: the app reads its file and shows it"},
+  GbCommand.{verb = "open-game", area = "game", effect = "view", approval = "none", arguments = "shipped", result = "gamebuilder.result.v1",
+    limit = "the games the app ships: 0 Scrappers Arena and 1 SPLICEBOTS (GAMES)", impl = "ed_open_game_due|ed_open_game", surfaces = GB_UI, gap = "screen|view",
+    usage = "GAME", help = "open one of the games the app ships on the screen, with its saved level when there is one"},
+  GbCommand.{verb = "play", area = "play", effect = "play", approval = "none", arguments = "scrapper", flags = "--mode:mode|--size:size", result = "gamebuilder.result.v1",
+    limit = "1 to 5 a side (TEAM_SIZE); the village and the four worlds of their own are played by the engine's page; a build without it (Linux) stays in the editor and says so", impl = "ed_play|ed_play_setup", surfaces = GB_UI, gap = "screen|match",
+    usage = "SCRAPPER [--mode MODE] [--size N]", help = "play the open level on the screen as a Scrapper (list-scrappers), with the mode and the side's size"},
+  GbCommand.{verb = "stop", area = "play", effect = "play", approval = "none", result = "gamebuilder.result.v1",
+    impl = "ed_stop", surfaces = GB_UI, gap = "screen|match",
+    usage = "", help = "stop the match on the screen and go back to the editor"},
+  GbCommand.{verb = "play-state", area = "play", effect = "read", approval = "none", result = "gamebuilder.play.v1",
+    impl = "ed_playing|ed_play_mode|ed_play_size|ed_bag_selected", surfaces = GB_UI, gap = "screen|match",
+    usage = "", help = "the match on the screen: whether one is on, its mode and size, the score, the clock and the bag's slot"},
+  GbCommand.{verb = "list-scrappers", area = "play", effect = "read", approval = "none", result = "gamebuilder.scrappers.v1",
+    impl = "ed_play_classes|ed_play_class_name", surfaces = GB_FILES_PANE_CLOUD, gap = "drawn",
+    usage = "", help = "the Scrappers you can play as, each its number and name"},
+  GbCommand.{verb = "travel", area = "play", effect = "play", approval = "none", result = "gamebuilder.result.v1",
+    limit = "SPLICEBOTS' farm, while you play it", impl = "ed_farm_travel", surfaces = GB_UI, gap = "screen|match",
+    usage = "", help = "travel to the next field of SPLICEBOTS' farm"},
+  GbCommand.{verb = "digger", area = "play", effect = "play", approval = "none", result = "gamebuilder.result.v1",
+    limit = "SPLICEBOTS, while you play it with a digger", impl = "ed_digger_toggle", surfaces = GB_UI, gap = "screen|match",
+    usage = "", help = "turn the digger's staying-put on or off"},
+  GbCommand.{verb = "bag-select", area = "play", effect = "play", approval = "none", arguments = "slot", result = "gamebuilder.result.v1",
+    limit = "the bag's slots, 0 to 8 (SCENE_HOTBAR)", impl = "ed_bag_select", surfaces = GB_UI, gap = "screen|match",
+    usage = "SLOT", help = "pick a slot of SPLICEBOTS' bag"},
+  GbCommand.{verb = "lobby-read", area = "lobby", effect = "read", approval = "none", result = "gamebuilder.lobby.v1",
+    limit = "48 players (LB_PLAYERS) and the last 60 lines (LB_MESSAGES)", impl = "ed_lobby_connected|ed_lobby_can_say|ed_lobby_my_name|ed_lobby_online|ed_lobby_player_name|ed_lobby_player_game|ed_lobby_player_doing|ed_lobby_player_me|ed_lobby_muted_player|ed_lobby_messages|ed_lobby_message_name|ed_lobby_message_text|ed_lobby_message_mine", surfaces = GB_UI, gap = "lobby|live",
+    usage = "", help = "the lobby: whether you are in the room and may speak, your name, who is here (each a player number) and what was said (each a line number)"},
+  GbCommand.{verb = "lobby-name", area = "lobby", effect = "social", approval = "person", arguments = "name", result = "gamebuilder.result.v1",
+    limit = "3 to 20 bytes (LB_NAME_MIN, LB_NAME)", impl = "ed_lobby_name", surfaces = GB_UI, gap = "lobby|live",
+    usage = "NAME", help = "the name the lobby shows you by"},
+  GbCommand.{verb = "lobby-say", area = "lobby", effect = "social", approval = "person", arguments = "say", result = "gamebuilder.result.v1",
+    limit = "280 bytes (LB_TEXT), one a second (LB_SAY_EVERY), no links; only when logged in", impl = "ed_lobby_say|ed_lobby_why", surfaces = GB_UI, gap = "lobby|live",
+    usage = "TEXT", help = "say something to the lobby, in your own words"},
+  GbCommand.{verb = "lobby-mute", area = "lobby", effect = "view", approval = "person", arguments = "line", result = "gamebuilder.result.v1",
+    limit = "32 people muted (LB_MUTED)", impl = "ed_lobby_mute", surfaces = GB_UI, gap = "lobby|live",
+    usage = "LINE", help = "mute whoever said a line: nothing of theirs shows on this device"},
+  GbCommand.{verb = "lobby-report", area = "lobby", effect = "social", approval = "person", arguments = "line", result = "gamebuilder.result.v1",
+    impl = "ed_lobby_report", surfaces = GB_UI, gap = "lobby|live",
+    usage = "LINE", help = "report whoever said a line, signed, and mute them"},
+  GbCommand.{verb = "party-read", area = "lobby", effect = "read", approval = "none", result = "gamebuilder.party.v1",
+    limit = "4 in a party (PT_MEMBERS)", impl = "ed_party_on|ed_party_leads|ed_party_full|ed_party_fits|ed_party_looking|ed_party_invited|ed_party_kind|ed_party_mode|ed_party_size|ed_party_count|ed_party_member_name|ed_party_member_me|ed_party_member_side|ed_party_member_kind|ed_party_has", surfaces = GB_UI, gap = "lobby|live",
+    usage = "", help = "your party: whether you are in one and lead it, who invited you, the match it will play, and its members (each a member number) with their side and Scrapper"},
+  GbCommand.{verb = "party-invite", area = "lobby", effect = "social", approval = "person", arguments = "player", result = "gamebuilder.result.v1",
+    limit = "4 in a party (PT_MEMBERS); an invitation waits 45 seconds (PT_INVITE_LIVES)", impl = "ed_party_invite", surfaces = GB_UI, gap = "lobby|live",
+    usage = "PLAYER", help = "invite someone in the lobby to play with you"},
+  GbCommand.{verb = "party-answer", area = "lobby", effect = "social", approval = "person", arguments = "reply", result = "gamebuilder.result.v1",
+    impl = "ed_party_answer", surfaces = GB_UI, gap = "lobby|live",
+    usage = "yes|no", help = "answer the invitation you have"},
+  GbCommand.{verb = "party-leave", area = "lobby", effect = "social", approval = "person", result = "gamebuilder.result.v1",
+    impl = "ed_party_leave", surfaces = GB_UI, gap = "lobby|live",
+    usage = "", help = "leave your party"},
+  GbCommand.{verb = "party-side", area = "lobby", effect = "social", approval = "person", arguments = "member|side", result = "gamebuilder.result.v1",
+    limit = "the party's leader sets anyone's; a member sets their own", impl = "ed_party_set_side", surfaces = GB_UI, gap = "lobby|live",
+    usage = "MEMBER SIDE", help = "put a member of the party on side 0 or 1"},
+  GbCommand.{verb = "party-scrapper", area = "lobby", effect = "social", approval = "person", arguments = "scrapper", result = "gamebuilder.result.v1",
+    impl = "ed_party_set_kind", surfaces = GB_UI, gap = "lobby|live",
+    usage = "SCRAPPER", help = "the Scrapper you will play as in the party's match"},
+  GbCommand.{verb = "party-match", area = "lobby", effect = "social", approval = "person", flags = "--mode:mode|--size:size", result = "gamebuilder.result.v1",
+    limit = "the leader's; 1 to 5 a side (TEAM_SIZE)", impl = "ed_party_set_match", surfaces = GB_UI, gap = "lobby|live",
+    usage = "[--mode MODE] [--size N]", help = "the mode and size of the party's match"},
+  GbCommand.{verb = "party-look", area = "lobby", effect = "social", approval = "person", arguments = "look", result = "gamebuilder.result.v1",
+    impl = "ed_party_look", surfaces = GB_UI, gap = "lobby|live",
+    usage = "on|off", help = "look for a quick match with others who are looking, or stop"},
+  GbCommand.{verb = "party-start", area = "lobby", effect = "play", approval = "person", result = "gamebuilder.result.v1",
+    limit = "the party's leader, with its sides filled", impl = "ed_party_start", surfaces = GB_UI, gap = "lobby|live",
+    usage = "", help = "start the party's match"},
+  GbCommand.{verb = "delete-level", area = "level", effect = "edit", approval = "owner", arguments = "level", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a level of yours (1 to 9999); a game keeps one level at least: delete-game deletes the game", impl = "mine_drop_level", surfaces = GB_EVERY, gap = "open-level",
+    usage = "LEVEL [--dry-run] [--key K]", help = "delete a level of yours and its file; the game it was in no longer holds it"},
+  GbCommand.{verb = "delete-game", area = "game", effect = "edit", approval = "owner", arguments = "game", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "mine_drop", surfaces = GB_EVERY, gap = "open-level",
+    usage = "GAME [--dry-run] [--key K]", help = "delete a game of yours and its file; its levels stay, as levels of yours in no game"},
+  GbCommand.{verb = "rename-level", area = "level", effect = "edit", approval = "owner", arguments = "level|text", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a name of 1 to 48 bytes, one line, no bar (MINE_TITLE); a level in one of your games, which keeps its name", impl = "mine_name_level|ed_mine_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "LEVEL NAME [--dry-run] [--key K]", help = "give a level of one of your games a name, kept in the game's file"},
+  GbCommand.{verb = "move-level", area = "level", effect = "edit", approval = "owner", arguments = "level|into", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "16 levels a game (MINE_LEVELS); a game whose type offers every kind of thing the level holds; a game keeps one level at least", impl = "mine_move_level|ed_mine_save", surfaces = GB_EVERY, gap = "open-level",
+    usage = "LEVEL GAME [--dry-run] [--key K]", help = "put a level of yours into a game of yours, out of the one it was in (GAME 0: into none)"},
+  GbCommand.{verb = "owners", area = "game", effect = "read", approval = "none", arguments = "game", result = "gamebuilder.owners.v1",
+    limit = "4 accounts a game (OWNERS_MAX)", impl = "mine_owner", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "GAME", help = "the accounts that may change a game of yours; none named: anyone on this device"},
+  GbCommand.{verb = "set-owners", area = "game", effect = "edit", approval = "person", arguments = "game|owners", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "1 to 4 accounts (OWNERS_MAX), yours among them; only when logged in", impl = "mine_set_owners|ed_mine_save", surfaces = GB_UI | GB_CLI | GB_SKILL, gap = "person|open-level",
+    usage = "GAME EMAIL[,EMAIL...] [--dry-run] [--key K]", help = "say which accounts may change a game of yours, yours among them; only the person does it, never an agent for them"},
+  GbCommand.{verb = "place", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "sides 0.25 to 12, places within 200 of the middle, 1000 things (BL_MAX)",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "X Z W D H [Y] [rest] [KIND]", help = "a new block on the website's world: its centre, its size along x and z, its height, and how high its bottom is; rest keeps it still; a game type's kind may end it"},
+  GbCommand.{verb = "ball", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "a radius of 0.15 to 1.5; 1000 things (BL_MAX)",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "X Z R [Y] [rest]", help = "a new ball of radius R on the website's world"},
+  GbCommand.{verb = "put", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "the village only; 33 buildings (VL_PUT) and 512 solid boxes between them (VL_WALLS), the green's nine among them; a scale of 0.5 to 3 times its model (VL_SCALE_SMALL, VL_SCALE_BIG)",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "MODEL X Z [TURN] [SCALE]", help = "a building of the village standing on the ground at X Z, turned 0, 90, 180 or 270 degrees, at SCALE times its model (its usual scale when not given)"},
+  GbCommand.{verb = "turn", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "0, 90, 180 or 270 degrees; a building only",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID DEG", help = "a building turned where it stands"},
+  GbCommand.{verb = "kind", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "a block only; the kinds the game type has",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID KIND", help = "a block made one of the game type's kinds, or a plain block again"},
+  GbCommand.{verb = "size", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "sides 0.25 to 12; a ball's radius 0.15 to 1.5",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID W D H", help = "a block's new size, or a ball's new width"},
+  GbCommand.{verb = "move", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "places within 200 of the middle",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID X Z [Y]", help = "a thing's new place, put there upright"},
+  GbCommand.{verb = "remove", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID", help = "a thing taken away"},
+  GbCommand.{verb = "clear", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "", help = "everything on the website's world taken away"},
+  GbCommand.{verb = "set", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "a property's range, as the registry gives it",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "PATH VALUE", help = "a property of the website's world, a thing or all things set"},
+  GbCommand.{verb = "reset", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "PATH", help = "a property put back to its default"},
+  GbCommand.{verb = "gravity", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "0 to 5 times the normal (BL_GRAV_LOW, BL_GRAV_HIGH)",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "G", help = "the world's gravity, a multiple of the normal (as set world.gravity)"},
+  GbCommand.{verb = "select", area = "web", effect = "view", approval = "none", result = "gamebuilder.result.v1", limit = "in edit mode only",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID|none", help = "pick a thing in the website's edit mode, or none"},
+  GbCommand.{verb = "spin", area = "web", effect = "view", approval = "none", result = "gamebuilder.result.v1", limit = "while a building tool is picked",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "N", help = "turn the building about to be put a quarter turn, by the wheel"},
+  GbCommand.{verb = "funnel", area = "site", effect = "read", approval = "none", result = "gamebuilder.funnel.v1",
+    limit = "the last 7 days (LP_DAYS), in UTC; on gamebuilder.org only an owner of the games that ship reads it (GAME_OWNERS)", impl = "lp_funnel_day",
+    surfaces = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP, gap = "site",
+    usage = "", help = "gamebuilder.org's core loop, counted: for today so far, yesterday and the five days before, how many visits reached each step of making a game (arrived, pressed a game type on the home page, picked a type, placed a thing, made an account, sent a message, published), how many were lost before each, and the first-load times; with --remote, the live site's"},
+  // A highlight lives in the running app: a level read from its file has none, and these
+  // answer so there (reach the app's with --attach). show-changes and dismiss-changes change
+  // only the screen, so HTTP does not offer them (a view row: api.coax), nor the pane (an agent
+  // does not move the person's view). changes is a read: every surface a program uses; in the
+  // app its words are the line under the toolbar, so it has no control of its own.
+  GbCommand.{verb = "changes", area = "view", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.changes.v1",
+    limit = "64 things highlighted at once (CH_MARKS); when more change, the oldest highlight goes", impl = "ch_things|ch_json", surfaces = GB_FILES, gap = "drawn|pane-reads",
+    usage = "LEVEL", help = "what agents and calls from outside the app changed on the open level and is still highlighted: a summary in words, and each thing by name and id with how it changed (added, moved, changed, removed) and who changed it"},
+  GbCommand.{verb = "show-changes", area = "view", effect = "view", approval = "none", arguments = "level", result = "gamebuilder.result.v1",
+    impl = "ch_frame|ch_frame_ids", surfaces = GB_UI | GB_CLI | GB_MCP | GB_SKILL, gap = "screen|view",
+    usage = "LEVEL", help = "Show me: turn the view to frame every highlighted change, where each thing is now and where it was"},
+  GbCommand.{verb = "dismiss-changes", area = "view", effect = "view", approval = "none", arguments = "level", result = "gamebuilder.result.v1",
+    impl = "ch_dismiss", surfaces = GB_UI | GB_CLI | GB_MCP | GB_SKILL, gap = "screen|view",
+    usage = "LEVEL", help = "take the highlight off what agents and calls from outside the app changed"},
+  GbCommand.{verb = "publish", area = "publish", effect = "edit", approval = "person", arguments = "level|text", flags = "--dry-run:bool|--key:key|--from:code", result = "gamebuilder.publish.v1", limit = "256 KB a level (PUB_LEVEL_MAX), 30 publishes an hour (PUB_PER_HOUR), 16 published games (PUB_GAMES), 128 versions kept (PUB_VERSIONS: past it the oldest that no link plays goes); a name of 1 to 48 bytes with no link in it; --from is kept at a game's first publish only; on the account's server (--remote, or gamebuilder.org) it is on the web at its link, on a device it is kept on the device; only when logged in",
+    impl = "pub_publish|ed_save", surfaces = GB_UI | GB_CLI | GB_SKILL | GB_HTTP, gap = "person|open-level",
+    usage = "LEVEL NAME [--from CODE] [--dry-run] [--key K]", help = "publish the level as a new version of its game, named NAME, and make it the one its link plays; the link stays the same from version to version, and anyone who has it plays the game with no account; --from CODE says the published game this one was remixed from (the six characters after /g/ in its link)"},
+  GbCommand.{verb = "published", area = "publish", effect = "read", approval = "none", result = "gamebuilder.publish.v1", limit = "16 published games (PUB_GAMES); only when logged in",
+    impl = "pub_find", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "", help = "your published games: each its number, level, name, link, live version, versions and whether it is on the web; the game a remix came from (from); and on the account's server its counts (plays): times its link was opened, played for a minute, remix pressed, and remixes of it someone else published"},
+  GbCommand.{verb = "versions", area = "publish", effect = "read", approval = "none", arguments = "published", result = "gamebuilder.publish.v1", limit = "128 versions kept (PUB_VERSIONS)",
+    impl = "pub_version_at", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "PUBLISHED", help = "the versions of a published game of yours: each its number, when, its size and its level file's SHA-256"},
+  GbCommand.{verb = "set-live", area = "publish", effect = "edit", approval = "person", arguments = "published|version", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1", limit = "a version the game has",
+    impl = "pub_set_live", surfaces = GB_UI | GB_CLI | GB_SKILL | GB_HTTP, gap = "person|open-level",
+    usage = "PUBLISHED VERSION [--dry-run] [--key K]", help = "make a version the one the link plays: roll back, or forward again"},
+  GbCommand.{verb = "unpublish", area = "publish", effect = "edit", approval = "person", arguments = "published", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "pub_unpublish", surfaces = GB_UI | GB_CLI | GB_SKILL | GB_HTTP, gap = "person|open-level",
+    usage = "PUBLISHED [--dry-run] [--key K]", help = "take the link down at once; its versions and feedback are kept, and publish puts it back at the same link"},
+  GbCommand.{verb = "remove-published", area = "publish", effect = "edit", approval = "person", arguments = "published", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "pub_remove", surfaces = GB_UI | GB_CLI | GB_SKILL | GB_HTTP, gap = "person|open-level",
+    usage = "PUBLISHED [--dry-run] [--key K]", help = "remove a published game, its versions and its feedback for good"},
+  GbCommand.{verb = "feedback", area = "publish", effect = "read", approval = "none", arguments = "published", result = "gamebuilder.publish.v1", limit = "128 items a device (PUB_FEEDBACK), the oldest going first",
+    impl = "pub_item", surfaces = GB_FILES, gap = "drawn|open-level",
+    usage = "PUBLISHED", help = "the feedback on a published game of yours, newest first: each its number, version, thumb and line (a line with a link is held, not shown)"},
+  GbCommand.{verb = "feedback-hide", area = "publish", effect = "edit", approval = "person", arguments = "feedback", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "pub_act", surfaces = GB_UI | GB_CLI | GB_SKILL, gap = "person|open-level",
+    usage = "FEEDBACK [--dry-run] [--key K]", help = "hide an item of your games' feedback"},
+  GbCommand.{verb = "block", area = "publish", effect = "edit", approval = "person", arguments = "feedback", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1", limit = "64 players blocked (PUB_BLOCKS)",
+    impl = "pub_act", surfaces = GB_UI | GB_CLI | GB_SKILL, gap = "person|open-level",
+    usage = "FEEDBACK [--dry-run] [--key K]", help = "block whoever sent an item of feedback: theirs never arrives again, and this item is hidden"},
+  GbCommand.{verb = "report", area = "publish", effect = "edit", approval = "person", arguments = "feedback", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    impl = "pub_act", surfaces = GB_UI | GB_CLI | GB_SKILL, gap = "person|open-level",
+    usage = "FEEDBACK [--dry-run] [--key K]", help = "report an item of feedback to the operator: it is held for a moderator"},
+  GbCommand.{verb = "agents-account", area = "view", effect = "view", approval = "none", result = "gamebuilder.result.v1",
+    impl = "Editor.agents_private", surfaces = GB_UI, gap = "screen|view",
+    usage = "", help = "keep this computer's agents' conversations on your account while you're logged in, so gamebuilder.org/agents shows them, or stop: the Agents pane's switch"},
+  GbCommand.{verb = "pictures", area = "view", effect = "read", approval = "none", arguments = "level", result = "gamebuilder.pictures.v1",
+    limit = "a level keeps its last 32 pictures (PIC_KEEP), each 160 by 96 pixels (PIC_W, PIC_H) and at most 8,192 bytes of JPEG (PIC_JPEG)", impl = "ed_pic_jpeg|ed_pic_stamp", surfaces = GB_FILES, gap = "drawn|pane-reads",
+    usage = "LEVEL", help = "the pictures the app drew of the level, kept beside it: before and after each change an agent made, and each play-test's (its bots' paths, where they stuck, what nobody reached), each by the revision it shows, with its words"},
+  GbCommand.{verb = "picture", area = "view", effect = "read", approval = "none", arguments = "level|revision|which", result = "gamebuilder.picture.v1",
+    limit = "a picture is a JPEG of at most 8,192 bytes (PIC_JPEG), sent in base64", impl = "ed_pic_jpeg|ed_agents_pics|ed_agents_pic", surfaces = GB_UI | GB_FILES, gap = "pane-reads",
+    usage = "LEVEL REVISION before|after|playtest", help = "one picture the app drew of the level at a revision (an agent's change card names the revisions either side of it; a play-test's answer names its own): before, after or playtest, as a JPEG in base64"},
+  GbCommand.{verb = "agent-picture", area = "agent", effect = "edit", approval = "owner", arguments = "agent|picture", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "one picture an agent, its newest: a JPEG of at most 8,192 bytes (PIC_JPEG), so an account keeps at most 256 (AGR_RECORDS)", impl = "gb_agent_picture|agp_answer", surfaces = GB_FILES, gap = "runner|agents",
+    usage = "AGENT PICTURE.json|'{...}' [--dry-run] [--key K]",
+    help = "keep an agent's newest picture on your account, as its computer sends it: one gamebuilder.picture.v1 line of the agent's level (the pictures row's), newer than the one kept; gamebuilder.org/agents shows it on the agent's game. How GameBuilder on your Mac sends them, while your agents are kept on your account"},
+  // (a web row, added at the table's end: a VERB_ constant is a row's place, so a row is only ever added last)
+  GbCommand.{verb = "goes", area = "web", effect = "edit", approval = "owner", result = "gamebuilder.result.v1", limit = "a moving platform or a lift only; 0 to 50 m (GK_GO_MOST), there and back in 1 to 60 seconds (GK_EVERY_LEAST, GK_EVERY_MOST)",
+    impl = "web/blocks.coax bl_plan", surfaces = GB_WEB, gap = "web",
+    usage = "ID DISTANCE SECONDS", help = "how far a moving platform or a lift goes, and how many seconds there and back takes"},
+  GbCommand.{verb = "engine-list", area = "engine", effect = "read", approval = "none", result = "gamebuilder.engine.list.v1",
+    limit = "the engine's book at the pinned commit (ENG_PIN): a capability with no chapter is not listed", impl = "gb_engine_list|ENG_ROWS", surfaces = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP, gap = "drawn|open-level",
+    usage = "", help = "what the engine can do: every chapter of the OpenAgents Metaverse Engine's book at the commit GameBuilder is built on, each with its number, title, part, engine folder and whether it is implemented, partly implemented or a design draft. Read it before you say the engine can't do something"},
+  GbCommand.{verb = "engine-read", area = "engine", effect = "read", approval = "none", arguments = "text", result = "gamebuilder.engine.chapter.v1",
+    limit = "a summary of at most 300 bytes and 4 source files a chapter (tools/engine-list.coax)", impl = "gb_engine_read|ENG_ROWS", surfaces = GB_CLI | GB_MCP | GB_SKILL | GB_HTTP, gap = "drawn|open-level",
+    usage = "CHAPTER", help = "one chapter of the engine's book by its number, from engine-list: what it covers, its status, its source files and the link to read it in full at the pinned commit"},
+  GbCommand.{verb = "triage", area = "engine", effect = "read", approval = "none", arguments = "message", result = "gamebuilder.triage.v1",
+    limit = "a request of at most 1000 bytes (AGR_MESSAGE_MAX); one question set to the decision door a call, which limits each key by the minute and the day; a pick under 75% sure (TRI_SURE_PERCENT) answers sure false", impl = "tri_body|tri_answer|POST /api/v1/systemone", surfaces = GB_CLI | GB_SKILL, gap = "door|live",
+    usage = "REQUEST", help = "where a request in the person's words belongs: the commands (it names the one to start with), GameBuilder's own code, or the engine, and for the engine whether it already does it, does part of it, or can't yet (then it gives the offer to say). It asks OpenAgents' decision model once, and says when the model was not sure"},
+  GbCommand.{verb = "computers", area = "agent", effect = "read", approval = "none", result = "gamebuilder.computers.v1",
+    limit = "8 computers an account keeps (AGR_COMPUTERS); one agent at a time on each (AGR_SLOTS); offline when not heard from for 2 minutes (AGR_OFFLINE_MS)", impl = "agr_computer_read|agr_computer_shown_json", surfaces = GB_FILES | GB_WEB, gap = "drawn|agents",
+    usage = "", help = "the computers your agents run on, each as GameBuilder's resident service there last said it (gamebuilder.computer.v1): on, off or offline in words, its slots in use and the agents in them, and which coding agents are installed and signed in there. It names no login, token or key"},
+  GbCommand.{verb = "computer-report", area = "agent", effect = "edit", approval = "owner", arguments = "status", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a computer's file of at most 1,024 bytes (AGR_COMPUTER_MAX); 8 computers an account keeps (AGR_COMPUTERS)", impl = "agr_computer_read|agr_computer_write", surfaces = GB_FILES, gap = "runner|agents",
+    usage = "STATUS.json|'{...}' [--dry-run] [--key K]",
+    help = "put a computer on your account as its resident service says it (gamebuilder.computer.v1): how gamebuilder.org/agents shows whether it is on and what it runs. It names no login, token or key: a plan's login stays on its computer"},
+  GbCommand.{verb = "agent-new-on", area = "agent", effect = "edit", approval = "owner", arguments = "computer|game|role|job", flags = "--dry-run:bool|--key:key", result = "gamebuilder.result.v1",
+    limit = "a job of at most 240 bytes (AGR_JOB); a computer your account knows (computers); build and playtest run today; 256 agents a folder or an account keeps (AGR_RECORDS)", impl = "gb_agent_new_on|agr_record_new|agr_append", surfaces = GB_FILES | GB_UI | GB_WEB, gap = "agents",
+    usage = "COMPUTER GAME ROLE JOB [--dry-run] [--key K]",
+    help = "a new agent on a game of yours, queued on one of your computers by its name (computers): GameBuilder's resident service there runs it with your own Claude Code, with the app open or not, at no charge from us. From your account (gamebuilder.org/agents) it waits there until that computer takes it"},
+  GbCommand.{verb = "engine-ready", area = "engine", effect = "read", approval = "none", result = "gamebuilder.engine.ready.v1",
+    limit = "five checks, each run for at most 20 seconds (ENF_CALL_MS); the fix lines are for macOS", impl = "enf_ready|git|gh|claude", surfaces = GB_CLI | GB_SKILL, gap = "computer|live",
+    usage = "", help = "what this computer needs before an engine pull request can be opened at OpenAgentsInc/openagents: git, gh, gh's login, push access or your own fork, and Claude Code for a Code agent. Each one missing comes with the one command that fixes it, and it says whether your branch goes to the repository or to your fork. It changes nothing: it never logs in or forks for you"},
+  GbCommand.{verb = "engine-mine", area = "engine", effect = "read", approval = "none", result = "gamebuilder.engine.mine.v1",
+    limit = "your newest 20 pull requests (ENF_MINE), a title up to 120 bytes; it needs gh logged in and the network", impl = "enf_mine|gh pr list|gh api", surfaces = GB_CLI | GB_SKILL, gap = "computer|live",
+    usage = "", help = "your own pull requests at OpenAgentsInc/openagents: open, merged or closed, and for a merged one whether the engine commit GameBuilder is built on holds it yet"},
+];
+
+// ---- the version every surface reports (docs/programmatic-access.md, "Versions")
+
+// GB_COMMIT, GB_DIRTY: the commit this build is made from, written by scripts/env.sh.
+#load "../build/stamp.coax";
+GB_RELEASE :: "0.1.0";
+
+// A digest of one row: every column, so any change to what the row is, takes or answers changes it.
+gb_hash_text :: (h: int, s: string) -> int {
+  x := h;
+  for c: s { x = ((x ^ cast(int) c) * 16777619) & 4294967295; }
+  return ((x ^ 31) * 16777619) & 4294967295;   // the end of a column
+}
+gb_row_digest_of :: (c: GbCommand) -> int {
+  h: int = 2166136261;
+  for s: [12] string.[c.verb, c.area, c.effect, c.approval, c.arguments, c.flags, c.result, c.limit, c.impl, c.gap, c.usage, c.help] { h = gb_hash_text(h, s); }
+  return ((h ^ cast(int) c.surfaces) * 16777619) & 4294967295;
+}
+gb_row_digest :: (v: int) -> int { return ifx v >= 0 && v < GB_N then gb_row_digest_of(GB_COMMANDS[v]) else 0; }
+// The table's digest: every row, in order. Two builds that answer the same rows the same way
+// have the same one; a build whose table differs in anything has another.
+gb_table_digest :: () -> int {
+  h: int = 2166136261;
+  for v: 0..<GB_N { h = ((h ^ gb_row_digest(v)) * 16777619) & 4294967295; }
+  return h;
+}
+// A digest as the 8 hex digits every surface writes.
+gb_hex8 :: (v: int, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  if out.count < 8 { return ""; }
+  for i: 0..<8 { out[i] = digits[(v >> ((7 - i) * 4)) & 15]; }
+  return cast(string) out[0..<8];
+}
+// The version: the release, the commit and the table, as semver's build words:
+// "0.1.0+f3ece6bd335f.table-1a2b3c4d" (".dirty" after the commit when the build had changes not
+// committed). The CLI's `version`, the manifest, OpenAPI, MCP's initialize, the app's About and
+// the hosted server all say this one.
+gb_version :: (out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  hb: [8] u8;
+  tx_put(t[..], GB_RELEASE); tx_put(t[..], "+"); tx_put(t[..], GB_COMMIT);
+  if GB_DIRTY { tx_put(t[..], ".dirty"); }
+  tx_put(t[..], ".table-"); tx_put(t[..], gb_hex8(gb_table_digest(), hb[..]));
+  return cast(string) out[0..<t[0].at];
+}
+
+// The row a verb names, or -1.
+gb_find :: (verb: string) -> int {
+  for i: 0..<GB_N { if GB_COMMANDS[i].verb == verb { return i; } }
+  return -1;
+}
+// Whether row v takes argument kind k ("text" also matches "text:N").
+gb_part :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == '|' {
+      if n == k { return cast(string) s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+gb_parts :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 1;
+  for c: s { if c == '|' { n += 1; } }
+  return n;
+}
+gb_has_flag :: (v: int, flag: string) -> bool {
+  f := GB_COMMANDS[v].flags;
+  for k: 0..<gb_parts(f) {
+    p := gb_part(f, k);
+    cut := 0; while cut < p.count && p[cut] != ':' { cut += 1; }
+    if cast(string) p[0..<cut] == flag { return true; }
+  }
+  return false;
+}
+
+// ---- arguments
+
+// What a call names, read from words (the CLI's argv, or a tool call's values).
+GbArgs :: struct {
+  which: s32;                     // picture's: PIC_BEFORE, PIC_AFTER or PIC_PLAYTEST (pictures.coax)
+  level: s32; game: s32; plays: s32; kind: s32; thing: s32; field: s32; value: s32;
+  x: s32; z: s32; at: bool;       // where an added thing goes; at false: the middle of the view
+  dry: bool;                      // --dry-run: carry it out, answer, write nothing
+  key: string;                    // --key K: the surface keeps the first result sent with K and answers it again (gb_key_ok)
+  tool: s32;                      // set-tool's: as ed_tool numbers it
+  agent: s32;                     // who calls: an Agents pane agent's id (agents.coax), a named agent's (--agent), or 0: the person
+  who: string;                    // --agent NAME: the name a program gives itself (claims.coax)
+  region: string; claim: ClaimRegion;   // claim's: a box or things, as written and as read
+  mode: s32; size: s32; seconds: s32; seed: s32;   // play-test's (playtest.coax), with its defaults when not given
+  text: string; batch: string;
+  revision: s32; content: string;  // write-content's: the revision the file was read at (0: none), and the file
+  aid: string; role: s32;          // an agent's id; a new agent's kind (AGR_KIND_ID)
+  say: string;                     // a new agent's job, a message, or an answer, in the person's words
+  after: s32; report: string;      // agent-events' cursor; agent-report's report (and computer-report's status)
+  picture: string;                 // agent-picture's: one gamebuilder.picture.v1 line (agent-pictures.coax)
+  on: string;                      // agent-new-on's computer, by its name
+  pick: s32;                       // a shipped game, a Scrapper, a bag's slot, a lobby player, line or party member: its number
+  side: s32; yes: bool;            // party-side's side; party-answer's yes, party-look's on
+  into: s32; owners: string;       // move-level's game (0: none); set-owners' accounts, a comma between each
+  pub: s32; version: s32; item: s32;   // a published game, its version, an item of its feedback (publish.coax)
+  from: string;                    // publish's --from CODE: the published game this one was remixed from ("": none)
+}
+// Flags as words: "" when not given.
+GbFlags :: struct { x: string; z: string; dry: bool; key: string; mode: string; size: string; seconds: string; seed: string; agent: string; from: string; }
+// One word of a call read as a row's flag, the way every surface that takes a command line reads
+// it (the CLI's arguments; a cloud Builder's command, coax/cloud-rows.coax): 2 when w is a flag
+// that takes the word after it (v, kept in f), 1 when it stands alone, 0 when w is no row's flag.
+gb_flag_take :: (w: string, v: string, f: [] GbFlags) -> int {
+  if w == "--dry-run" { f[0].dry = true; return 1; }
+  if w == "--agent" { f[0].agent = v; return 2; }
+  if w == "--x" { f[0].x = v; return 2; }
+  if w == "--z" { f[0].z = v; return 2; }
+  if w == "--key" { f[0].key = v; return 2; }
+  if w == "--mode" { f[0].mode = v; return 2; }
+  if w == "--size" { f[0].size = v; return 2; }
+  if w == "--seconds" { f[0].seconds = v; return 2; }
+  if w == "--seed" { f[0].seed = v; return 2; }
+  if w == "--from" { f[0].from = v; return 2; }
+  return 0;
+}
+
+// A key, as realm.result.v1's are: 1 to 64 of letters, digits, -, _ and ., starting with a
+// letter or a digit (a key names a file).
+GB_KEY_MAX :: 64;
+gb_key_ok :: (k: string) -> bool {
+  if k.count < 1 || k.count > GB_KEY_MAX { return false; }
+  for i: 0..<k.count {
+    c := k[i];
+    word := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    if !word && (i == 0 || (c != '-' && c != '_' && c != '.')) { return false; }
+  }
+  return true;
+}
+
+GbInt :: struct { ok: bool; v: int; }
+// A whole number, with an optional minus: at most 9 digits.
+gb_int :: (s: string) -> GbInt {
+  neg := s.count > 0 && s[0] == '-';
+  d := ifx neg then cast(string) s[1..<s.count] else s;
+  if d.count == 0 || d.count > 9 { return GbInt.{}; }
+  v := 0;
+  for c: d { if c < '0' || c > '9' { return GbInt.{}; } v = v * 10 + cast(int) (c - '0'); }
+  return GbInt.{ok = true, v = ifx neg then -v else v};
+}
+// A revision (ed_agent_rev's, below 2^31): its value, or -1 when w is not one.
+gb_revision :: (w: string) -> int {
+  if w.count == 0 || w.count > 10 { return -1; }
+  v := 0;
+  for c: w { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return ifx v > 2147483647 then -1 else v;
+}
+// Lower case, for matching a field's name.
+gb_same_lower :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    x := a[i]; y := b[i];
+    if x >= 'A' && x <= 'Z' { x += 32; }
+    if y >= 'A' && y <= 'Z' { y += 32; }
+    if x != y { return false; }
+  }
+  return true;
+}
+
+// Reads the words for row v into a: "" when they are good, else why not.
+// The why names the argument and its bounds.
+gb_args_read :: (v: int, words: [] string, flags: GbFlags, a: [] GbArgs) -> string {
+  a[0] = GbArgs.{};
+  c := GB_COMMANDS[v];
+  want := gb_parts(c.arguments);
+  if words.count < want { return ifx want == 1 then "it takes one argument" else "it takes more arguments"; }
+  if words.count > want { return "it takes fewer arguments"; }
+  for k: 0..<want {
+    kind := gb_part(c.arguments, k); w := words[k];
+    if kind == "level" {
+      n := gb_int(w);
+      if !n.ok || n.v < 0 || n.v > LEVEL_MAX { return "a level is a number from 0 to 9999 (LEVEL_MAX)"; }
+      a[0].level = cast(s32) n.v;
+    } else if kind == "game" {
+      n := gb_int(w);
+      if !n.ok || n.v < 1 || n.v > LEVEL_MAX { return "a game is a number from 1 to 9999 (list-games)"; }
+      a[0].game = cast(s32) n.v;
+    } else if kind == "template" {
+      t := template_of(w);
+      if t < 0 { return "a template is a game type's id: list-templates names them"; }
+      a[0].plays = t;
+    } else if kind == "kind" {
+      t := level_kind_of(w);
+      if t < 0 { return "a kind is a kind's word: list-palette names the ones a level's game type offers"; }
+      a[0].kind = t;
+    } else if kind == "thing" {
+      n := gb_int(w);
+      if !n.ok || n.v < 1 { return "a thing is its id, a number from 1 (read-level)"; }
+      a[0].thing = cast(s32) n.v;
+    } else if kind == "field" {
+      f := -1;
+      for i: 0..<FIELDS { if gb_same_lower(w, FIELD_NAME[i]) { f = i; } }
+      if f < 0 { return "a field is kind, east, up, north, turn, scale, width, height or depth, or a moving platform's or a lift's distance or period"; }
+      a[0].field = cast(s32) f;
+    } else if kind == "value" {
+      if a[0].field == FIELD_KIND {
+        t := level_kind_of(w);
+        if t < 0 { return "a kind is one of the palette's (list-palette)"; }
+        a[0].value = t;
+      } else {
+        n := gb_int(w);
+        if !n.ok { return "a value is a whole number"; }
+        a[0].value = cast(s32) n.v;
+      }
+    } else if kind == "text" {
+      if !mine_title_ok(w) { return "a name is 1 to 48 bytes on one line, with no bar and no space at either end (MINE_TITLE)"; }
+      a[0].text = w;
+    } else if kind == "batch" {
+      if w.count == 0 { return "a batch is a world.edit.v1 batch"; }
+      a[0].batch = w;
+    } else if kind == "revision" {
+      r := gb_revision(w);
+      if r < 0 { return "a revision is read-content's, a whole number from 0 (0: the level isn't there yet)"; }
+      a[0].revision = cast(s32) r;
+    } else if kind == "content" {
+      if w.count == 0 { return "the content is a level's file (read-content)"; }
+      if w.count > AGENT_FILE_MAX { return "a level's file is at most 262144 bytes (AGENT_FILE_MAX)"; }
+      a[0].content = w;
+    } else if kind == "agent" {
+      if !agr_id_ok(w) { return "an agent is its id: 1 to 32 of a to z, 0 to 9 and -, starting with a letter (agents)"; }
+      a[0].aid = w;
+    } else if kind == "role" {
+      t := agr_index(AGR_KIND_ID[..], w);
+      if t < 0 { return "a role is build, playtest, art, fix, watch or code"; }
+      a[0].role = cast(s32) t;
+    } else if kind == "job" {
+      why := agr_job_why(w);
+      if why.count > 0 { return why; }
+      a[0].say = w;
+    } else if kind == "message" || kind == "answer" {
+      if w.count == 0 { return ifx kind == "message" then "say what you want it to do" else "answer with one of its answers"; }
+      if w.count > AGR_MESSAGE_MAX { return "a message is at most 1000 bytes (AGR_MESSAGE_MAX)"; }
+      a[0].say = w;
+    } else if kind == "after" {
+      n := gb_int(w);
+      if !n.ok || n.v < 0 || n.v > AGR_EVENTS { return "after is an event's number, 0 to 100000 (0: from the first)"; }
+      a[0].after = cast(s32) n.v;
+    } else if kind == "report" {
+      if w.count == 0 || w[0] != '{' { return "a report is a JSON object: {record, from, events}"; }
+      a[0].report = w;
+    } else if kind == "picture" {
+      if w.count == 0 || w[0] != '{' { return "a picture is one gamebuilder.picture.v1 line, a JSON object"; }
+      if w.count > PIC_LINE { return "a picture's line is at most 12288 bytes (PIC_LINE)"; }
+      a[0].picture = w;
+    } else if kind == "status" {
+      if w.count == 0 || w[0] != '{' { return "a computer's status is a JSON object (gamebuilder.computer.v1)"; }
+      a[0].report = w;
+    } else if kind == "computer" {
+      if w.count == 0 || w.count > AGR_COMPUTER || !agr_line_ok(w) { return "a computer is its name, 1 to 48 bytes on one line (computers)"; }
+      a[0].on = w;
+    } else if kind == "region" {
+      r: [1] ClaimRegion;
+      why := claim_region_read(w, r[..]);
+      if why.count > 0 { return why; }
+      a[0].region = w; a[0].claim = r[0];
+    } else if kind == "shipped" || kind == "scrapper" || kind == "slot" || kind == "player" || kind == "line" || kind == "member" || kind == "side" {
+      n := gb_int(w); most := gb_pick_most(kind);
+      if !n.ok || n.v < 0 || n.v > most { return gb_pick_words(kind); }
+      if kind == "side" { a[0].side = cast(s32) n.v; } else { a[0].pick = cast(s32) n.v; }
+    } else if kind == "into" {
+      n := gb_int(w);
+      if !n.ok || n.v < 0 || n.v > LEVEL_MAX { return "a game is a number from 1 to 9999 (list-games), or 0 for none"; }
+      a[0].into = cast(s32) n.v;
+    } else if kind == "published" || kind == "version" || kind == "feedback" {
+      n := gb_int(w);
+      if !n.ok || n.v < 1 || n.v > 1000000 { return ifx kind == "published" then "a published game is its number (published)" else ifx kind == "version" then "a version is its number, from 1 (versions)" else "a feedback item is its number (feedback)"; }
+      if kind == "published" { a[0].pub = cast(s32) n.v; } else if kind == "version" { a[0].version = cast(s32) n.v; } else { a[0].item = cast(s32) n.v; }
+    } else if kind == "owners" {
+      why := mine_owners_why(w);
+      if why.count > 0 { return why; }
+      a[0].owners = w;
+    } else if kind == "reply" || kind == "look" {
+      yes := ifx kind == "reply" then "yes" else "on"; no := ifx kind == "reply" then "no" else "off";
+      if w != yes && w != no { return ifx kind == "reply" then "answer yes or no" else "look is on or off"; }
+      a[0].yes = w == yes;
+    } else if kind == "say" {
+      if w.count == 0 { return "say something"; }
+      if w.count > LB_TEXT { return "a message is at most 280 bytes (LB_TEXT)"; }
+      a[0].say = w;
+    } else if kind == "name" {
+      if w.count < LB_NAME_MIN || w.count > LB_NAME { return "a lobby name is 3 to 20 bytes (LB_NAME_MIN, LB_NAME)"; }
+      a[0].text = w;
+    } else if kind == "which" {
+      t := pic_which_of(w);
+      if t == 0 { return "which picture is before, after or playtest"; }
+      a[0].which = t;
+    } else if kind == "tool" {
+      t := -1;
+      for i: 0..<ED_TOOLS { if w == GB_TOOL_WORD[i] { t = i; } }
+      if t < 0 { return "a tool is select, move, rotate or scale"; }
+      a[0].tool = cast(s32) t;
+    }
+  }
+  if flags.x.count > 0 || flags.z.count > 0 {
+    if !gb_has_flag(v, "--x") { return "it takes no --x or --z"; }
+    x := gb_int(flags.x); z := gb_int(flags.z);
+    if !x.ok || !z.ok { return "--x and --z come together, each a whole number of centimetres"; }
+    if x.v < -AGENT_REACH || x.v > AGENT_REACH || z.v < -AGENT_REACH || z.v > AGENT_REACH { return "--x and --z are within 20000 cm of the middle (AGENT_REACH)"; }
+    a[0].x = cast(s32) x.v; a[0].z = cast(s32) z.v; a[0].at = true;
+  }
+  if flags.dry {
+    if !gb_has_flag(v, "--dry-run") { return "it changes nothing, so it takes no --dry-run"; }
+    a[0].dry = true;
+  }
+  if flags.agent.count > 0 {
+    if !gb_has_flag(v, "--agent") { return "it takes no --agent: only a change, a claim and a release say which agent makes them"; }
+    if !claim_name_ok(flags.agent) { return "--agent NAME is 1 to 32 of letters, digits, -, _ and ., starting with a letter or a digit"; }
+    a[0].who = flags.agent; a[0].agent = claim_named(flags.agent);
+  }
+  if flags.key.count > 0 {
+    if !gb_has_flag(v, "--key") { return "it changes nothing, so it takes no --key"; }
+    if !gb_key_ok(flags.key) { return "--key K is 1 to 64 of letters, digits, -, _ and ., starting with a letter or a digit"; }
+    a[0].key = flags.key;
+  }
+  if flags.from.count > 0 {
+    if !gb_has_flag(v, "--from") { return "it takes no --from: only publish says which game a remix came from"; }
+    if !pub_code_ok(flags.from) { return PUB_FROM_WORDS; }
+    a[0].from = flags.from;
+  }
+  return gb_args_play(v, flags, a);
+}
+// The most a numbered kind may be, and what it is in words when it is out of bounds.
+gb_pick_most :: (kind: string) -> int {
+  if kind == "shipped" { return GAMES - 1; }
+  if kind == "scrapper" { return CLASSES - 1; }
+  if kind == "slot" { return SCENE_HOTBAR - 1; }
+  if kind == "player" { return LB_PLAYERS - 1; }
+  if kind == "line" { return LB_MESSAGES - 1; }
+  if kind == "member" { return PT_MEMBERS - 1; }
+  return 1;   // side
+}
+gb_pick_words :: (kind: string) -> string {
+  if kind == "shipped" { return "a game the app ships is 0 (Scrappers Arena) or 1 (SPLICEBOTS) (GAMES)"; }
+  if kind == "scrapper" { return "a Scrapper is its number, 0 to 2 (list-scrappers)"; }
+  if kind == "slot" { return "a slot of the bag is 0 to 8 (SCENE_HOTBAR)"; }
+  if kind == "player" { return "a player is their number in lobby-read, 0 to 47 (LB_PLAYERS)"; }
+  if kind == "line" { return "a line is its number in lobby-read, 0 to 59 (LB_MESSAGES)"; }
+  if kind == "member" { return "a member is their number in party-read, 0 to 3 (PT_MEMBERS)"; }
+  return "a side is 0 or 1";
+}
+// play-test's flags, each with its default.
+gb_args_play :: (v: int, flags: GbFlags, a: [] GbArgs) -> string {
+  a[0].mode = MODE_KNOCKOUTS; a[0].size = SIZE_USUAL; a[0].seconds = PLAYTEST_SECONDS; a[0].seed = PLAYTEST_SEED;
+  if flags.mode.count + flags.size.count + flags.seconds.count + flags.seed.count == 0 { return ""; }
+  if !gb_has_flag(v, "--mode") { return "it takes no --mode, --size, --seconds or --seed"; }
+  if flags.mode.count > 0 {
+    m := playtest_mode_of(flags.mode);
+    if m < 0 { return "--mode is knockouts, last-stand, scrapball or hoops (list-modes)"; }
+    a[0].mode = m;
+  }
+  if flags.size.count > 0 {
+    n := gb_int(flags.size);
+    if !n.ok || n.v < 1 || n.v > TEAM_SIZE { return "--size is 1 to 5 a side (TEAM_SIZE)"; }
+    a[0].size = cast(s32) n.v;
+  }
+  if flags.seconds.count > 0 {
+    n := gb_int(flags.seconds);
+    if !n.ok || n.v < 1 || n.v > PLAYTEST_SECONDS { return "--seconds is 1 to 600 of match time (PLAYTEST_SECONDS)"; }
+    a[0].seconds = cast(s32) n.v;
+  }
+  if flags.seed.count > 0 {
+    n := gb_int(flags.seed);
+    if !n.ok || n.v < 0 { return "--seed is a whole number from 0 to 999999999"; }
+    a[0].seed = cast(s32) n.v;
+  }
+  return "";
+}
+
+// ---- carrying a row out
+
+GB_DOC_MAX :: 262144;       // a level's file, at most (ed_save_max, held by a check)
+GB_DONE :: 0; GB_REFUSED :: 1; GB_APPROVAL :: 2; GB_UNKNOWN :: 3;
+
+// What the surface around the core does next: write the open level (as
+// ed_level numbers it) and your game save_game, unless it was a dry run.
+GbResult :: struct {
+  code: s32; json: string; save_level: bool; save_game: s32;
+  agent: s32;      // an agent row's: the store's record k + 1 to write (agent-ID.agent), 0 for none
+  lines: string;   // and the event lines to append to its log (agent-ID.events), each with its line break
+  drop_level: s32; drop_game: s32;   // a level's file and a game's file to delete (delete-level, delete-game), 0 for none
+  save_also: s32;                    // a second game of yours to write (move-level's: the one it left), 0 for none
+  published: s32; version: s32;      // publish's: the published game and the version just made, whose level file the surface keeps (0: none)
+  undone: bool;                      // agent-undo took back a cloud agent's kept change: the surface lets it go (GbWorld.undo)
+  // agent-picture's (agent-pictures.coax): the folder's agent-pictures file whole, the JPEG to keep
+  // as picture-ADDRESS.jpg and its address, and the address of the one it replaced, to delete ("" for none)
+  pictures: string; jpeg: string; jpeg_at: string; jpeg_gone: string;
+  computer: s32;                     // computer-report's: the store's computer k + 1 to write (computer-ID.computer), 0 for none
+}
+
+// What the core is told about the folder: the level numbers there are, and (where the surface
+// read the files: the CLI, MCP and HTTP) each one's revision, in the same order.
+// For an agent row (agent-rows.coax): the agents there are (none: an empty slice), the named
+// agent's log as its file holds it, the time now in milliseconds since 1970, and this computer's
+// name as the person sees it ("this Mac").
+// hosted: an account's files on the site's server (serve --accounts), where agents are reported
+// to and read, never started or told anything: they run on the person's computer.
+// games: where a published game's link lives (GAMES_DOMAIN: "https://gamebuilder.org" on the site's server), "" on a
+// device, where a publish is kept on the device.
+// pictures: the folder's agent-pictures file, each agent's newest picture kept there (agent-pictures.coax), "" for none.
+// A hosted server (serve --accounts) says whether it runs cloud agents (it has a model key: issue 7,
+// cli/cloud.coax), and for agent-undo the named cloud agent's newest change kept to take back:
+// "LEVEL BEFORE AFTER" on a line, then the level's file as it was before it ("": none kept).
+GbWorld :: struct { levels: [] s32; revs: [] s32; agents: [] AgrStore; log: string; now: s64; computer: string; hosted: bool; games: string; cloud: bool; undo: string; pictures: string;
+  computers: [] AgrComputers;     // the computers the surface read (computer-ID.computer; issue 11)
+  plays: string; }                // each of the account's published games' counts, a line a game (shared/plays.coax py_list_put): a hosted server's, "" on a device
+
+gb_refuse :: (o: [] Jo, error: string, why: string) -> GbResult {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, false);
+  jo_key(o, "error"); jo_str(o, error);
+  jo_key(o, "why"); jo_str(o, why);
+  jo_end(o);
+  return GbResult.{code = GB_REFUSED, json = jo_text(o)};
+}
+gb_ok :: (o: [] Jo) { jo_obj(o); jo_key(o, "ok"); jo_bool(o, true); }
+gb_done :: (o: [] Jo, a: GbArgs, save_level: bool, save_game: s32) -> GbResult {
+  if a.dry { jo_key(o, "dry_run"); jo_bool(o, true); }
+  if a.key.count > 0 && !a.dry { jo_key(o, "key"); jo_str(o, a.key); }
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o), save_level = save_level && !a.dry, save_game = ifx a.dry then 0 else save_game};
+}
+
+// Opens level n from its file's bytes (none: there is no file): a level of
+// yours, or Scrappers Arena's own (0). The host calls it before a row that
+// names a level. "" when it is open, else why not.
+gb_open :: (e: [] Editor, n: s32, text: [] u8, found: bool) -> string {
+  if n == 0 { return ifx ed_open_game(e, GAME_SCRAPPERS, text) then "" else "Scrappers Arena's level file is not a level's"; }
+  if !found { return "there is no such level (list-levels)"; }
+  return ifx ed_open(e, n, text) then "" else "that file is not a level's";
+}
+
+// Carries out row v on the open editor (gb_open first for a row that names a
+// level) and writes its answer into out.
+gb_run :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, out: [] u8) -> GbResult {
+  o: [1] Jo; jo_start(o[..], out);
+  if e.count != 1 || v < 0 || v >= GB_N { return gb_refuse(o[..], "bad-request", "no such command"); }
+  c := GB_COMMANDS[v];
+  if c.area == "account" { return gb_refuse(o[..], "bad-request", "the account is asked of the server by the surface, not the core"); }
+  if v == VERB_ENGINE { return gb_refuse(o[..], "bad-request", "the surface answers the engine row with the commit it was built on (gb_engine)"); }
+  if c.area == "site" { return gb_refuse(o[..], "bad-request", "the surface answers the funnel row from the day files its server keeps (gamebuilder funnel, or --remote for gamebuilder.org's)"); }
+  if v == VERB_DECIDE { return gb_refuse(o[..], "bad-request", "the app carries Decide out: it sends the request the core writes (ed_decide_body) and hands back the answer"); }
+  if v == VERB_WRITE_CONTENT { return gb_write_content(e, a, w, o[..]); }
+  if c.area == "publish" { return gb_run_publish(e, v, a, w, o[..]); }
+  if c.area == "web" { return gb_refuse(o[..], "not-permitted", "it is a plan line of gamebuilder.org's own world (web/blocks.coax): a level here takes apply-edits"); }
+  if c.area == "lobby" { return gb_refuse(o[..], "not-permitted", "the lobby is the person's own, on the app's lobby sheet (ed_lobby_command): a program or an agent does not join the room"); }
+  if v >= VERB_DELETE_LEVEL && v <= VERB_SET_OWNERS { return gb_run_manage(e, v, a, w, o[..]); }
+  if v >= VERB_OPEN_LEVEL && v <= VERB_BAG_SELECT { return gb_run_play(e, v, a, w, o[..]); }
+  if c.area == "agent" { return gb_agent_run(e, v, a, w, o[..]); }
+  if c.approval == "owner" && c.area != "game" && !ed_may_edit(e) {
+    return gb_refuse(o[..], "not-permitted", "this level is not yours to change: make your own copy (copy-level)");
+  }
+  if v == VERB_LIST_LEVELS {
+    gb_ok(o[..]); jo_key(o[..], "levels"); jo_arr(o[..]);
+    for i: 0..<LEVEL_MAX + 1 {     // in order
+      if !gb_world_has(w, cast(s32) i) { continue; }
+      jo_obj(o[..]);
+      we_int(o[..], "level", i);
+      b: [64] u8; jo_key(o[..], "title"); jo_str(o[..], cast(string) b[0..<ed_level_title(cast(s32) i, b[..])]);
+      we_int(o[..], "game", cast(int) ed_level_mine(e, cast(s32) i));
+      gi := mine_find(e, ed_level_mine(e, cast(s32) i));
+      if gi >= 0 { for k: 0..<cast(s64) e[0].mine[gi].level_n { if e[0].mine[gi].levels[k] == cast(s32) i && e[0].mine[gi].name_n[k] > 0 { jo_key(o[..], "name"); nb: [MINE_TITLE] u8; jo_str(o[..], mine_level_name(e[0].mine[gi], k, nb[..])); } } }
+      // what read-content would say: a device's sync asks only for what changed
+      rev := gb_world_rev(w, cast(s32) i);
+      if rev >= 0 { we_int(o[..], "revision", rev); }
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_READ_LEVEL { return gb_raw(o[..], ed_agent_scene(e, out)); }
+  if v == VERB_READ_STATE { return gb_raw(o[..], ed_agent_state(e, out)); }
+  if v == VERB_READ_CONTENT {
+    doc: [GB_DOC_MAX] u8; n := ed_save(e, doc[..]);
+    if n <= 0 { return gb_refuse(o[..], "bad-request", "the level's file did not fit"); }
+    gb_ok(o[..]); we_int(o[..], "level", cast(int) ed_level(e)); we_int(o[..], "revision", ed_agent_rev(e));
+    jo_key(o[..], "content"); jo_str(o[..], cast(string) doc[0..<n]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_NEW_LEVEL || v == VERB_COPY_LEVEL {
+    n := ed_level_next(w.levels);
+    if n == 0 { return gb_refuse(o[..], "edit-refused", "there are 9999 levels already (LEVEL_MAX)"); }
+    from := e[0].level;
+    if v == VERB_NEW_LEVEL { ed_new(e, n); } else { ed_copy(e, n); }
+    if ed_level(e) != n { return gb_refuse(o[..], "edit-refused", "the level could not be made"); }
+    gb_ok(o[..]); we_int(o[..], "level", cast(int) n);
+    if v == VERB_COPY_LEVEL { we_int(o[..], "from", cast(int) from); }
+    return gb_done(o[..], a, true, 0);
+  }
+  if v == VERB_LIST_GAMES {
+    gb_ok(o[..]); jo_key(o[..], "games"); jo_arr(o[..]);
+    for i: 0..<ed_mines(e) {
+      g := ed_mine_at(e, i);
+      jo_obj(o[..]);
+      we_int(o[..], "game", cast(int) g);
+      b: [64] u8; jo_key(o[..], "title"); jo_str(o[..], cast(string) b[0..<ed_mine_title(e, g, b[..])]);
+      jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[ed_mine_template(e, g)]);
+      jo_key(o[..], "levels"); jo_arr(o[..]);
+      m := e[0].mine[mine_find(e, g)];
+      for k: 0..<cast(s64) m.level_n { jo_int(o[..], cast(int) m.levels[k]); }
+      jo_end(o[..]);
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_LIST_TEMPLATES {
+    gb_ok(o[..]); jo_key(o[..], "templates"); jo_arr(o[..]);
+    // in the order the app's picker shows them (shared/game-types.coax gt_picker)
+    order: [GT_TYPES] int; n := gt_picker(GT_ON_APP, order[..]);
+    for i: 0..<n {
+      t := order[i];
+      jo_obj(o[..]); jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[t]); jo_key(o[..], "name"); jo_str(o[..], TEMPLATE_NAME[t]);
+      jo_key(o[..], "line"); jo_str(o[..], GT_LINE[t]); jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_NEW_GAME {
+    level := ed_level_next(w.levels);
+    g: s32 = 1;
+    while g <= LEVEL_MAX && mine_find(e, g) >= 0 { g += 1; }
+    if e[0].mine_n >= MINE_MAX { return gb_refuse(o[..], "edit-refused", "you have 32 games already (MINE_MAX)"); }
+    if level == 0 { return gb_refuse(o[..], "edit-refused", "there are 9999 levels already (LEVEL_MAX)"); }
+    if !ed_new_game(e, g, a.plays, level) { return gb_refuse(o[..], "edit-refused", "the game could not be made"); }
+    gb_ok(o[..]); we_int(o[..], "game", cast(int) g); we_int(o[..], "level", cast(int) level);
+    jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[a.plays]);
+    // (a type that starts with several levels: all of them, in order; the first is the one open)
+    if gt_levels(cast(int) a.plays) > 1 { jo_key(o[..], "levels"); jo_arr(o[..]); for k: 0..<gt_levels(cast(int) a.plays) { jo_int(o[..], cast(int) level + k); } jo_end(o[..]); }
+    return gb_done(o[..], a, true, g);
+  }
+  if v == VERB_RENAME_GAME || v == VERB_READ_GAME {
+    if mine_find(e, a.game) < 0 { return gb_refuse(o[..], "not-found", "you have no such game (list-games)"); }
+    if v == VERB_RENAME_GAME {
+      b: [MINE_TITLE] u8;
+      for i: 0..<a.text.count { b[i] = a.text[i]; }
+      if a.text.count > MINE_TITLE || !ed_mine_rename(e, a.game, b[0..<a.text.count]) { return gb_refuse(o[..], "edit-refused", "that name can't be a game's"); }
+      gb_ok(o[..]); we_int(o[..], "game", cast(int) a.game); jo_key(o[..], "title"); jo_str(o[..], a.text);
+      return gb_done(o[..], a, false, a.game);
+    }
+    doc: [MINE_DOC_MAX] u8; n := ed_mine_save(e, a.game, doc[..]);
+    gb_ok(o[..]); we_int(o[..], "game", cast(int) a.game);
+    jo_key(o[..], "content"); jo_str(o[..], cast(string) doc[0..<n]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_APPLY_EDITS {
+    // the engine reads a batch only in the wire's own form; the spaces and line breaks
+    // a person or an agent writes between its parts are dropped first, which loses nothing
+    tb: [WE_BATCH_BODY] u8;
+    batch := gb_tidy(a.batch, tb[..]);
+    snap: [1] ChSnap; ch_snap(e, snap[..]);
+    text := agent_apply_text(e, a.agent, batch, out);
+    if text.count == 0 { return gb_refuse(o[..], "bad-request", "the answer did not fit"); }
+    ok := agent_answer_ok(text);
+    if !ok && agent_has(text, "\"error\":\"unreadable\"") {
+      // say how it reads, written as the wire writes it, when it reads at all
+      cb: [WE_BATCH_BODY] u8;
+      wire := gb_wire(batch, cb[..]);
+      if wire.count > 0 && wire != batch {
+        jo_start(o[..], out);
+        jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], false); jo_key(o[..], "error"); jo_str(o[..], "unreadable");
+        jo_key(o[..], "why"); jo_str(o[..], "a batch is written as the wire writes it: each edit's fields in the wire's order, and no others. Here is yours written so; check nothing of yours was left out, then send it");
+        jo_key(o[..], "wire"); jo_str(o[..], wire); jo_end(o[..]);
+        return GbResult.{code = GB_REFUSED, json = ifx o[0].bad then text else jo_text(o[..])};
+      }
+    }
+    // what it changed, in words (changes.coax): a dry run says what the batch would do
+    if ok && text[text.count - 1] == '}' {
+      things: [CH_MARKS] ChThing;
+      k := ch_diff(e, snap[..], things[..]);
+      sb: [8192] u8; so: [1] Jo; jo_start(so[..], sb[..]);
+      jo_obj(so[..]); ch_json(so[..], things[0..<k]); jo_end(so[..]);
+      more := jo_text(so[..]);
+      if !so[0].bad && more.count > 2 && text.count + more.count <= out.count {
+        out[text.count - 1] = ',';
+        for i: 1..<more.count { out[text.count - 1 + i] = more[i]; }
+        text = cast(string) out[0..<text.count - 1 + more.count];
+      }
+    }
+    // the seam's answer, with what gb_done adds to any other row's
+    if ok && (a.dry || a.key.count > 0) && text.count + 32 + a.key.count <= out.count && text[text.count - 1] == '}' {
+      tb2: [96] u8; t := [1] Text.[Text.{buf = tb2[..]}];
+      if a.dry { tx_put(t[..], ",\"dry_run\":true"); } else { tx_put(t[..], ",\"key\":\""); tx_put(t[..], a.key); tx_put(t[..], "\""); }
+      tx_put(t[..], "}");
+      for i: 0..<t[0].at { out[text.count - 1 + i] = tb2[i]; }
+      text = cast(string) out[0..<text.count - 1 + t[0].at];
+    }
+    return GbResult.{code = ifx ok then GB_DONE else GB_REFUSED, json = text, save_level = ok && !a.dry};
+  }
+  if v == VERB_ADD {
+    why := ed_add_why(e, a.kind);
+    if why.count > 0 && !ed_kind_one(e, a.kind) { return gb_refuse(o[..], "edit-refused", why); }
+    if a.at { p := e[0].vp[..]; p[0].here_ok = true; p[0].here_x = cast(int) a.x; p[0].here_z = cast(int) a.z; }
+    had := ed_index(e, e[0].selected);
+    steps := ed_scene(e).st[0].done;
+    id := ed_add(e, a.kind);
+    if id == 0 && why.count == 0 && gk_building(cast(int) a.kind) >= 0 { rb: [128] u8; rn := vl_why_words(VL_WHY_ROOM, 0, rb[..], 0); return gb_refuse(o[..], "edit-refused", cast(string) rb[0..<rn]); }
+    if id == 0 { return gb_refuse(o[..], "edit-refused", ifx why.count > 0 then why else "it could not be added"); }
+    // where it landed may be in another agent's claim: then it is taken back, and not left to redo
+    if ed_scene(e).st[0].done > steps {
+      at := ed_actor(e, ed_index(e, id));
+      wb: [512] u8; k := claim_on_place(e, a.agent, cast(int) at.x, cast(int) at.z);
+      if k >= 0 {
+        ed_undo(e); editor_scene_branch(ed_scene(e));
+        return gb_refuse(o[..], "claimed", claim_why(e, k, "where it would put the new thing", 0, wb[..]));
+      }
+      claims_touch(e, a.agent);
+    }
+    gb_ok(o[..]); we_int(o[..], "id", cast(int) id);
+    jo_key(o[..], "kind"); jo_str(o[..], LEVEL_KIND[a.kind]);
+    // a kind a level has one of: the one there is, not moved
+    if why.count > 0 { jo_key(o[..], "already"); jo_bool(o[..], true); jo_key(o[..], "why"); jo_str(o[..], why); }
+    we_int(o[..], "rev", ed_agent_rev(e));
+    return gb_done(o[..], a, why.count == 0, 0);
+  }
+  if v == VERB_SET_FIELD || v == VERB_DELETE {
+    if ed_index(e, a.thing) < 0 { return gb_refuse(o[..], "not-found", "the level has no such thing (read-level)"); }
+    wb: [512] u8;
+    k := claim_on_thing(e, a.agent, a.thing);
+    if k >= 0 { return gb_refuse(o[..], "claimed", claim_why(e, k, "thing", cast(int) a.thing, wb[..])); }
+    if v == VERB_SET_FIELD && (a.field == FIELD_X || a.field == FIELD_Z) {
+      at := ed_actor(e, ed_index(e, a.thing));
+      k = claim_on_place(e, a.agent, ifx a.field == FIELD_X then cast(int) a.value else cast(int) at.x, ifx a.field == FIELD_Z then cast(int) a.value else cast(int) at.z);
+      if k >= 0 { return gb_refuse(o[..], "claimed", claim_why(e, k, "where it would move the thing", 0, wb[..])); }
+    }
+    claims_touch(e, a.agent);
+    e[0].selected = a.thing;
+    if v == VERB_DELETE {
+      ed_delete(e);
+      if ed_index(e, a.thing) >= 0 { return gb_refuse(o[..], "edit-refused", "it could not be taken out"); }
+      gb_ok(o[..]); we_int(o[..], "id", cast(int) a.thing); we_int(o[..], "rev", ed_agent_rev(e));
+      return gb_done(o[..], a, true, 0);
+    }
+    why := ed_field_why(e, a.field, a.value);
+    if why.count > 0 {
+      if why == "out of range" {
+        b: [128] u8; t := [1] Text.[Text.{buf = b[..]}];
+        tx_put(t[..], FIELD_NAME[a.field]); tx_put(t[..], " is from "); tx_n(t[..], FIELD_MIN[a.field]);
+        tx_put(t[..], " to "); tx_n(t[..], FIELD_MAX[a.field]);
+        u := FIELD_UNIT[a.field];
+        if u == "cm" { tx_put(t[..], " "); }
+        tx_put(t[..], u);
+        return gb_refuse(o[..], "edit-refused", cast(string) b[0..<t[0].at]);
+      }
+      return gb_refuse(o[..], "edit-refused", why);
+    }
+    if !ed_set_field(e, a.field, a.value) { return gb_refuse(o[..], "edit-refused", "the field could not be set"); }
+    gb_ok(o[..]); we_int(o[..], "id", cast(int) a.thing);
+    jo_key(o[..], "field"); jo_str(o[..], FIELD_NAME[a.field]);
+    we_int(o[..], "value", cast(int) ed_field(e, a.field)); we_int(o[..], "rev", ed_agent_rev(e));
+    return gb_done(o[..], a, true, 0);
+  }
+  if v == VERB_LIST_PALETTE {
+    gb_ok(o[..]); jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[ed_template(e)]);
+    jo_key(o[..], "kinds"); jo_arr(o[..]);
+    for i: 0..<ed_palette_count(e) {
+      k := ed_palette_kind(e, cast(s32) i);
+      jo_obj(o[..]); jo_key(o[..], "kind"); jo_str(o[..], LEVEL_KIND[k]); jo_key(o[..], "name"); jo_str(o[..], KIND_NAME[k]);
+      jo_key(o[..], "one"); jo_bool(o[..], ed_kind_one(e, k)); jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    // what the game type is, how building goes in it and its limits, in words with their numbers: what
+    // gamebuilder.org's model is told of the same type (shared/game-types.coax)
+    t := cast(int) ed_template(e);
+    jo_key(o[..], "game_type"); jo_str(o[..], GT_SAID[t]);
+    if GT_BUILT[t].count > 0 { jo_key(o[..], "building"); jo_str(o[..], GT_BUILT[t]); }
+    lb: [1024] u8; ln := gt_limits_words(t, ACTORS_MAX, lb[..], 0);
+    jo_key(o[..], "limits"); jo_str(o[..], cast(string) lb[0..<ln]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_LIST_FIELDS {
+    gb_ok(o[..]); jo_key(o[..], "fields"); jo_arr(o[..]);
+    for f: 0..<FIELDS {
+      jo_obj(o[..]); jo_key(o[..], "field"); jo_str(o[..], FIELD_NAME[f]); jo_key(o[..], "unit"); jo_str(o[..], FIELD_UNIT[f]);
+      we_int(o[..], "min", cast(int) FIELD_MIN[f]); we_int(o[..], "max", cast(int) FIELD_MAX[f]); jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_LIST_MODES {
+    gb_ok(o[..]); jo_key(o[..], "modes"); jo_arr(o[..]);
+    for m: 0..<ed_play_modes() {
+      jo_obj(o[..]); we_int(o[..], "mode", cast(int) m); jo_key(o[..], "word"); jo_str(o[..], PLAYTEST_MODE_WORD[m]); b: [64] u8; jo_key(o[..], "name"); jo_str(o[..], cast(string) b[0..<ed_play_mode_name(cast(s32) m, b[..])]); jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    we_int(o[..], "size_most", cast(int) ed_play_size_most());
+    return gb_done(o[..], a, false, 0);
+  }
+  if (v >= VERB_UNDO && v <= VERB_DUPLICATE) || v == VERB_CUT { return gb_run_app(e, v, a, o[..]); }
+  if v == VERB_PICTURES { pic_list_answer(e, o[..]); return gb_raw(o[..], ifx o[0].bad then 0 else jo_text(o[..]).count); }
+  if v == VERB_PICTURE {
+    why := pic_why_none(e, cast(int) a.revision, a.which);
+    if why.count > 0 { return gb_refuse(o[..], "not-found", why); }
+    if !pic_answer(e, o[..], cast(int) a.revision, a.which) || o[0].bad { return gb_refuse(o[..], "bad-request", "the answer did not fit"); }
+    return gb_raw(o[..], jo_text(o[..]).count);
+  }
+  if v == VERB_CHANGES {
+    things: [CH_MARKS] ChThing;
+    k := ch_things(e, -1, things[..]);
+    gb_ok(o[..]);
+    // the summary: each one who changed something, and what
+    b: [1024] u8; t := [1] Text.[Text.{buf = b[..]}];
+    for i: 0..<k {
+      who := gb_change_who(e, things[i].id); seen := false;
+      for j: 0..<i { if gb_change_who(e, things[j].id) == who { seen = true; } }
+      if seen { continue; }
+      mine: [CH_MARKS] ChThing; m := ch_things(e, who, mine[..]);
+      if t[0].at > 0 { tx_put(t[..], "; "); }
+      ch_line(t[..], who, mine[0..<m]);
+    }
+    jo_key(o[..], "summary"); jo_str(o[..], ifx k == 0 then "nothing an agent changed is highlighted here" else cast(string) b[0..<t[0].at]);
+    jo_key(o[..], "things"); jo_arr(o[..]);
+    for i: 0..<k {
+      ch_thing_json(o[..], things[i]);
+      who := gb_change_who(e, things[i].id);
+      wb: [64] u8; wt := [1] Text.[Text.{buf = wb[..]}]; ch_who(wt[..], who);
+      jo_key(o[..], "who"); jo_str(o[..], cast(string) wb[0..<wt[0].at]);
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_SHOW_CHANGES {
+    if e[0].play[0].on { return gb_refuse(o[..], "edit-refused", "a match is being played: stop it first"); }
+    k := ch_frame(e, -1);
+    if k == 0 { return gb_refuse(o[..], "not-found", "nothing an agent changed is highlighted here (changes)"); }
+    gb_ok(o[..]); we_int(o[..], "things", k);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_DISMISS_CHANGES {
+    gb_ok(o[..]); we_int(o[..], "dismissed", ch_dismiss(e, -1));
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_AGENTS_ACCOUNT {
+    e[0].agents_private = !e[0].agents_private;
+    gb_ok(o[..]); jo_key(o[..], "on"); jo_bool(o[..], !e[0].agents_private);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_AGENTS_PANE {
+    e[0].agents_open = !e[0].agents_open;
+    gb_ok(o[..]); jo_key(o[..], "open"); jo_bool(o[..], e[0].agents_open);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_UNDO_TURN {
+    r := ed_agent_undo_turn(e, a.agent);
+    if r == AGENT_NONE { return gb_refuse(o[..], "edit-refused", "you have no turn to take back"); }
+    if r == AGENT_CHANGED { return gb_refuse(o[..], "edit-refused", "the level changed since your turn: the person's edit stands (read-level)"); }
+    if r == AGENT_REFUSED { return gb_refuse(o[..], "edit-refused", "not now: a match is being played or the level is being dragged"); }
+    gb_ok(o[..]); jo_key(o[..], "already"); jo_bool(o[..], r == AGENT_ALREADY); we_int(o[..], "rev", ed_agent_rev(e));
+    return gb_done(o[..], a, r == AGENT_UNDONE, 0);
+  }
+  if v == VERB_ASK { return gb_refuse(o[..], "bad-request", "only the Agents pane asks the person (agents.coax)"); }
+  if v == VERB_ENGINE_READY || v == VERB_ENGINE_MINE { return gb_refuse(o[..], "bad-request", "the surface runs git and gh and answers this row (enf_ready, enf_mine)"); }
+  if v == VERB_TRIAGE { return gb_refuse(o[..], "bad-request", "the surface asks the decision door and answers the triage row (tri_body, tri_answer)"); }
+  if v == VERB_ENGINE_LIST { return gb_engine_list(o[..]); }
+  if v == VERB_ENGINE_READ { return gb_engine_read(o[..], a.text); }
+  if v == VERB_CODE_BRIEF || v == VERB_CODE_AGENT {
+    repo := agr_index(AGR_REPO_ID[..], a.text);
+    if repo < 0 { return gb_refuse(o[..], "bad-request", "a repository is openagents (the engine) or gamebuilder (the app)"); }
+    if v == VERB_CODE_BRIEF { return gb_code_brief(o[..], repo); }
+    // the pane takes it on its next tick (code-agent.coax): the sheet, never a start
+    e[0].agents_open = true; e[0].code_sheet = cast(s32) (repo + 1);
+    gb_ok(o[..]); jo_key(o[..], "repo"); jo_str(o[..], AGR_REPO_ID[repo]); jo_key(o[..], "approve"); jo_bool(o[..], true);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_CLAIM {
+    wb: [512] u8;
+    m := claims_make(e, a.agent, a.who, a.claim, wb[..]);
+    if m.error.count > 0 { return gb_refuse(o[..], m.error, m.why); }
+    gb_ok(o[..]); we_int(o[..], "level", cast(int) ed_level(e));
+    jo_key(o[..], "claim"); claim_json(o[..], e[0].claims[0].c[m.at]);
+    jo_key(o[..], "again"); jo_bool(o[..], m.again); we_int(o[..], "seconds", CLAIM_SECONDS);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_CLAIMS {
+    s := claims_here(e);
+    gb_ok(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "gamebuilder.claims.v1"); we_int(o[..], "level", cast(int) ed_level(e));
+    jo_key(o[..], "claims"); jo_arr(o[..]);
+    for k: 0..<s[0].n { claim_json(o[..], s[0].c[k]); }
+    jo_end(o[..]);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_RELEASE {
+    n := claims_end(e, a.agent);
+    gb_ok(o[..]); we_int(o[..], "level", cast(int) ed_level(e)); we_int(o[..], "released", n);
+    return gb_done(o[..], a, false, 0);
+  }
+  if v == VERB_PLAY_TEST {
+    why := playtest_why(e);
+    if why.count > 0 { return gb_refuse(o[..], "bad-request", why); }
+    return gb_raw(o[..], ed_play_test(e, a.mode, a.size, a.seconds, a.seed, out));
+  }
+  return gb_refuse(o[..], "bad-request", "no such command");
+}
+// Who changed a highlighted thing last (changes.coax).
+gb_change_who :: (e: [] Editor, id: s32) -> s32 {
+  k := ch_find(e[0].changes[..], id);
+  return ifx k >= 0 then e[0].changes[0].marks[k].who else 0;
+}
+// The app's own rows, on the open level (gb_run checked who may change it).
+gb_run_app :: (e: [] Editor, v: int, a: GbArgs, o: [] Jo) -> GbResult {
+  if e[0].play[0].on { return gb_refuse(o, "edit-refused", "a match is being played: stop it first"); }
+  if v == VERB_UNDO || v == VERB_REDO {
+    redo := v == VERB_REDO;
+    if !(ifx redo then ed_can_redo(e) else ed_can_undo(e)) { return gb_refuse(o, "edit-refused", ifx redo then "there is nothing to make again" else "there is nothing to take back"); }
+    rev := ed_agent_rev(e);
+    if redo { ed_redo(e); } else { ed_undo(e); }
+    if ed_agent_rev(e) == rev { return gb_refuse(o, "edit-refused", "not in the middle of a drag"); }
+    gb_ok(o); we_int(o, "rev", ed_agent_rev(e));
+    return gb_done(o, a, true, 0);
+  }
+  if v == VERB_SET_TOOL {
+    ed_set_tool(e, a.tool);
+    gb_ok(o); jo_key(o, "tool"); jo_str(o, GB_TOOL_WORD[ed_tool(e)]);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_PASTE {
+    if !ed_clip_has(e) { return gb_refuse(o, "edit-refused", "nothing is copied"); }
+    id := ed_clip_paste(e);
+    if id == 0 { return gb_refuse(o, "edit-refused", "it could not be pasted"); }
+    gb_ok(o); we_int(o, "id", cast(int) id); we_int(o, "rev", ed_agent_rev(e));
+    return gb_done(o, a, true, 0);
+  }
+  // focus, copy and duplicate: the thing named, selected
+  if ed_index(e, a.thing) < 0 { return gb_refuse(o, "not-found", "the level has no such thing (read-level)"); }
+  e[0].selected = a.thing;
+  if v == VERB_FOCUS { ed_focus(e); gb_ok(o); we_int(o, "id", cast(int) a.thing); return gb_done(o, a, false, 0); }
+  k := ed_actor(e, ed_index(e, a.thing)).kind;
+  if k == KIND_START || k == KIND_RIVAL { return gb_refuse(o, "edit-refused", "a level has one start for each team: it can't be copied"); }
+  if v == VERB_COPY {
+    if !ed_clip_copy(e) { return gb_refuse(o, "edit-refused", "it could not be copied"); }
+    gb_ok(o); we_int(o, "id", cast(int) a.thing); return gb_done(o, a, false, 0);
+  }
+  if v == VERB_CUT {
+    if !ed_clip_cut(e) || ed_index(e, a.thing) >= 0 { return gb_refuse(o, "edit-refused", "it could not be cut"); }
+    gb_ok(o); we_int(o, "id", cast(int) a.thing); we_int(o, "rev", ed_agent_rev(e)); return gb_done(o, a, true, 0);
+  }
+  id := ed_clip_duplicate(e);
+  if id == 0 { return gb_refuse(o, "edit-refused", "it could not be copied"); }
+  gb_ok(o); we_int(o, "id", cast(int) id); we_int(o, "from", cast(int) a.thing); we_int(o, "rev", ed_agent_rev(e));
+  return gb_done(o, a, true, 0);
+}
+gb_world_has :: (w: GbWorld, n: s32) -> bool {
+  for k: w.levels { if k == n { return true; } }
+  return false;
+}
+// Level n's revision as the surface read it, or -1 when it didn't.
+gb_world_rev :: (w: GbWorld, n: s32) -> int {
+  if w.revs.count != w.levels.count { return -1; }
+  for i: 0..<w.levels.count { if w.levels[i] == n { return cast(int) w.revs[i]; } }
+  return -1;
+}
+// write-content: level a.level's file put whole. The surface opened the level when it is there
+// (w names it); the file must have been read at its revision now, or at 0 when it isn't there.
+gb_write_content :: (e: [] Editor, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  if a.level < 1 { return gb_refuse(o, "not-permitted", "level 0 is Scrappers Arena's own: write your copy's number (copy-level)"); }
+  had := gb_world_has(w, a.level);
+  if had && !ed_may_edit(e) { return gb_refuse(o, "not-permitted", "this level is not yours to change: make your own copy (copy-level)"); }
+  now := ifx had then ed_agent_rev(e) else 0;
+  if cast(int) a.revision != now {
+    return gb_refuse(o, "stale", ifx had then "the level changed since that revision: read-content gives it as it is now" else "there is no such level yet: send revision 0 to make it");
+  }
+  doc: [AGENT_FILE_MAX] u8;
+  if a.content.count > doc.count { return gb_refuse(o, "limit", "a level's file is at most 262144 bytes (AGENT_FILE_MAX)"); }
+  for i: 0..<a.content.count { doc[i] = a.content[i]; }
+  if !ed_open(e, a.level, doc[0..<a.content.count]) || ed_level(e) != a.level { return gb_refuse(o, "unreadable", "that is not a level's file (read-content gives one)"); }
+  if !ed_may_edit(e) { return gb_refuse(o, "not-permitted", "that file is a game's own level, not yours to write"); }
+  gb_ok(o); we_int(o, "level", cast(int) a.level); we_int(o, "revision", ed_agent_rev(e));
+  return gb_done(o, a, true, 0);
+}
+// An answer some export wrote straight into out.
+// Your games and levels managed: a level or a game deleted (the surface deletes the file,
+// drop_level and drop_game), a level named or moved between games, and who owns a game.
+gb_run_manage :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  if v == VERB_DELETE_LEVEL || v == VERB_RENAME_LEVEL || v == VERB_MOVE_LEVEL {
+    if a.level < 1 || !gb_world_has(w, a.level) { return gb_refuse(o, "not-found", "you have no such level (list-levels)"); }
+    g := mine_of_level(e, a.level);
+    gi := mine_find(e, g);
+    if v == VERB_DELETE_LEVEL {
+      if gi >= 0 && e[0].mine[gi].level_n <= 1 { return gb_refuse(o, "edit-refused", "a game keeps one level at least: delete-game deletes the game"); }
+      if !a.dry && gi >= 0 { _ = mine_drop_level(e, g, a.level); }
+      // the open level is not written again: the host deletes its file and opens another
+      if !a.dry && a.level == e[0].level && !e[0].official { e[0].fresh = false; editor_scene_saved(ed_scene(e)); }
+      gb_ok(o); we_int(o, "level", cast(int) a.level);
+      r := gb_done(o, a, false, ifx gi >= 0 then g else 0);
+      if !a.dry { r.drop_level = a.level; }
+      return r;
+    }
+    if v == VERB_RENAME_LEVEL {
+      if gi < 0 { return gb_refuse(o, "edit-refused", "a level is named in its game: put it in one of yours first (move-level)"); }
+      if !a.dry { _ = mine_name_level(e, g, a.level, a.text); }
+      gb_ok(o); we_int(o, "level", cast(int) a.level); jo_key(o, "name"); jo_str(o, a.text);
+      return gb_done(o, a, false, g);
+    }
+    // move-level
+    if a.into == g { return gb_refuse(o, "edit-refused", ifx g == 0 then "that level is in no game already" else "that level is in that game already"); }
+    if gi >= 0 && e[0].mine[gi].level_n <= 1 { return gb_refuse(o, "edit-refused", "a game keeps one level at least: delete-game deletes the game"); }
+    ti := mine_find(e, a.into);
+    if a.into != 0 && ti < 0 { return gb_refuse(o, "not-found", "you have no such game (list-games)"); }
+    // a level goes into a game whose type offers every kind of thing it holds (shared/game-types.coax gt_offers): a
+    // crates room into a crates game, an empty level into any; its own game's type always offers them
+    if ti >= 0 && a.level == e[0].level && !e[0].official {
+      into := cast(int) e[0].mine[ti].plays;
+      for i: 0..<ed_count(e) {
+        kd := cast(int) ed_actor(e, i).kind;
+        if gt_offers(into, kd) { continue; }
+        wb: [200] u8; wt := [1] Text.[Text.{buf = wb[..]}];
+        tx_put(wt[..], "that level holds a "); tx_put(wt[..], GK_SAID[kd]); nm := TEMPLATE_NAME[into]; vowel := nm.count > 0 && (nm[0] == 'a' || nm[0] == 'e' || nm[0] == 'i' || nm[0] == 'o' || nm[0] == 'u' || nm[0] == 'A' || nm[0] == 'E' || nm[0] == 'I' || nm[0] == 'O' || nm[0] == 'U');
+        tx_put(wt[..], ifx vowel then ", which an " else ", which a "); tx_put(wt[..], nm);
+        tx_put(wt[..], " game has no kind for: a level moves into a game whose type offers every kind of thing it holds");
+        return gb_refuse(o, "edit-refused", cast(string) wb[0..<wt[0].at]);
+      }
+    }
+    if ti >= 0 && e[0].mine[ti].level_n >= MINE_LEVELS { return gb_refuse(o, "limit", "a game holds 16 levels (MINE_LEVELS)"); }
+    if !a.dry { _ = mine_move_level(e, a.level, a.into); }
+    gb_ok(o); we_int(o, "level", cast(int) a.level); we_int(o, "game", cast(int) a.into);
+    // both games' files change: the one it left is written here, the one it joined below
+    r := gb_done(o, a, false, ifx a.into != 0 then a.into else g);
+    if !a.dry && g != 0 && a.into != 0 { r.save_also = g; }
+    return r;
+  }
+  gi := mine_find(e, a.game);
+  if gi < 0 { return gb_refuse(o, "not-found", "you have no such game (list-games)"); }
+  if v == VERB_DELETE_GAME {
+    if !a.dry { _ = mine_drop(e, a.game); }
+    gb_ok(o); we_int(o, "game", cast(int) a.game);
+    r := gb_done(o, a, false, 0);
+    if !a.dry { r.drop_game = a.game; }
+    return r;
+  }
+  if v == VERB_OWNERS {
+    gb_ok(o); we_int(o, "game", cast(int) a.game); jo_key(o, "owners"); jo_arr(o);
+    for k: 0..<OWNERS_MAX { ob: [ACCOUNT_MAX] u8; n := mine_owner(e[0].mine[gi], k, ob[..]); if n > 0 { jo_str(o, cast(string) ob[0..<n]); } }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  // set-owners: the person's own account among them, so no one locks themself out
+  me := cast(string) e[0].account[0..<cast(s64) e[0].account_n];
+  if me.count == 0 { return gb_refuse(o, "not-logged-in", "owners are accounts: log in first (login)"); }
+  if !mine_owners_has(a.owners, me) { return gb_refuse(o, "edit-refused", "your own account is one of the owners, or you could not change the game again"); }
+  if !a.dry { _ = mine_set_owners(e, a.game, a.owners); }
+  gb_ok(o); we_int(o, "game", cast(int) a.game); jo_key(o, "owners"); jo_str(o, a.owners);
+  return gb_done(o, a, false, a.game);
+}
+
+
+// Publishing (publish.coax): every call checks the account itself. On the site's server (GbWorld.games is where
+// the links live) a publish is on the web and the answer's link is the whole address; on a device it is kept on
+// the device, and the answer says so.
+PUB_WHERE :: "kept on this device: publish with --remote, or at gamebuilder.org, and it is on the web";
+PUB_WHERE_WEB :: "on the web: anyone with the link plays it, with no account";
+PUB_LINK :: 96;
+// A game's link: GAMES/g/CODE, or g/CODE on a device.
+gb_pub_link :: (o: [] Jo, w: GbWorld, code: [] u8) {
+  lb: [PUB_LINK] u8; ln := 0;
+  if w.games.count > 0 && w.games.count < PUB_LINK - 16 { for c: w.games { lb[ln] = c; ln += 1; } lb[ln] = '/'; ln += 1; }
+  for c: "g/" { lb[ln] = c; ln += 1; } for k: 0..<PUB_CODE { lb[ln] = code[k]; ln += 1; }
+  jo_key(o, "link"); jo_str(o, cast(string) lb[0..<ln]);
+}
+gb_pub_where :: (o: [] Jo, w: GbWorld) { jo_key(o, "where"); jo_str(o, ifx w.games.count > 0 then PUB_WHERE_WEB else PUB_WHERE); }
+gb_pub_game :: (o: [] Jo, s: [] PubStore, i: s64, w: GbWorld) {
+  g := s[0].games[i];
+  jo_obj(o); we_int(o, "published", cast(int) g.id); we_int(o, "level", cast(int) g.level);
+  name := g.name; jo_key(o, "name"); jo_str(o, cast(string) name[0..<cast(s64) g.name_n]);
+  tp := g.type; if g.type_n > 0 { jo_key(o, "template"); jo_str(o, cast(string) tp[0..<cast(s64) g.type_n]); }
+  code := g.code; gb_pub_link(o, w, code[..]);
+  we_int(o, "live", cast(int) g.live); we_int(o, "versions", cast(int) g.versions);
+  jo_key(o, "on_web"); jo_bool(o, g.state == PUB_LIVE);
+  from := g.from; if g.from_n == PUB_CODE { jo_key(o, "from"); jo_str(o, cast(string) from[0..<PUB_CODE]); }
+  // its counts, where they are kept: the account's server (a game never counted there reads as nothing yet)
+  if w.games.count > 0 {
+    p: [1] Plays; _ = py_list_get(w.plays, cast(string) code[0..<PUB_CODE], p[..]);
+    jo_key(o, "plays"); jo_obj(o);
+    for f: 0..<PY_N { we_int(o, PY_ROWS[f].name, p[0].n[f]); }
+    jo_end(o);
+  }
+  jo_end(o);
+}
+gb_pub_refused :: (o: [] Jo, d: PubDone) -> GbResult { return gb_refuse(o, d.error, d.why); }
+gb_run_publish :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  me := cast(string) e[0].account[0..<cast(s64) e[0].account_n];
+  s := e[0].pub[..];
+  if me.count == 0 { return gb_refuse(o, "not-logged-in", "publishing needs your account: log in first (login)"); }
+  if v == VERB_PUB_PUBLISHED {
+    gb_ok(o); jo_key(o, "published"); jo_arr(o);
+    for i: 0..<cast(s64) s[0].game_n { if pub_mine(s, me, s[0].games[i].id) >= 0 { gb_pub_game(o, s, i, w); } }
+    jo_end(o); gb_pub_where(o, w);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_PUB_PUBLISH {
+    if a.level < 1 || !gb_world_has(w, a.level) { return gb_refuse(o, "not-found", "you have no such level (list-levels)"); }
+    doc: [GB_DOC_MAX] u8; n := ed_save(e, doc[..]);
+    if n <= 0 { return gb_refuse(o, "bad-request", "the level's file did not fit"); }
+    // the level's game type goes with it: the link's page plays it as that type (a level no game holds is an arena)
+    mg := mine_of_level(e, a.level);
+    tpl := TEMPLATE_ID[ifx mg > 0 && ed_mine_template(e, mg) >= 0 then ed_mine_template(e, mg) else TEMPLATE_ARENA];
+    d := pub_publish_from(s, me, a.level, a.text, tpl, a.from, doc[0..<n], w.now, a.dry);
+    if d.error.count > 0 { return gb_pub_refused(o, d); }
+    gb_ok(o); we_int(o, "published", cast(int) d.game); we_int(o, "version", cast(int) d.version);
+    if !a.dry { i := pub_find(s, d.game); code := s[0].games[i].code; gb_pub_link(o, w, code[..]); }
+    // the game it was remixed from, as kept (said once, at its first publish)
+    fb: [PUB_CODE] u8; from := ifx a.dry then "" else pub_from(s, d.game, fb[..]);
+    if from.count > 0 { jo_key(o, "from"); jo_str(o, from); }
+    gb_pub_where(o, w);
+    r := gb_done(o, a, false, 0);
+    // the surface keeps the version's file beside the store (cli/main.coax: the link plays those bytes)
+    if !a.dry { r.published = d.game; r.version = d.version; }
+    return r;
+  }
+  if v == VERB_PUB_FEEDBACK_HIDE || v == VERB_PUB_BLOCK || v == VERB_PUB_REPORT {
+    act := ifx v == VERB_PUB_FEEDBACK_HIDE then PUB_HIDE else ifx v == VERB_PUB_BLOCK then PUB_BLOCK else PUB_REPORT;
+    d := pub_act(s, me, a.item, act, a.dry);
+    if d.error.count > 0 { return gb_pub_refused(o, d); }
+    gb_ok(o); we_int(o, "feedback", cast(int) a.item);
+    return gb_done(o, a, false, 0);
+  }
+  i := pub_mine(s, me, a.pub);
+  if i < 0 { return gb_refuse(o, "not-found", "you have no such published game (published)"); }
+  if v == VERB_PUB_VERSIONS {
+    gb_ok(o); we_int(o, "published", cast(int) a.pub); jo_key(o, "versions"); jo_arr(o);
+    hex := "0123456789abcdef";
+    for k: 0..<cast(s64) s[0].version_n {
+      x := s[0].versions[k];
+      if x.game != a.pub { continue; }
+      jo_obj(o); we_int(o, "version", cast(int) x.n); jo_key(o, "at"); jo_int(o, x.at); we_int(o, "size", cast(int) x.size);
+      hb: [64] u8; for j: 0..<32 { hb[j * 2] = hex[cast(s64) (x.hash[j] >> 4)]; hb[j * 2 + 1] = hex[cast(s64) (x.hash[j] & 15)]; }
+      jo_key(o, "sha256"); jo_str(o, cast(string) hb[0..<64]); jo_key(o, "live"); jo_bool(o, x.n == s[0].games[i].live); jo_end(o);
+    }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_PUB_FEEDBACK {
+    gb_ok(o); we_int(o, "published", cast(int) a.pub); jo_key(o, "feedback"); jo_arr(o);
+    k := cast(s64) s[0].feedback_n - 1;
+    while k >= 0 {
+      f := s[0].feedback[k]; k -= 1;
+      if f.game != a.pub { continue; }
+      jo_obj(o); we_int(o, "feedback", cast(int) f.id); we_int(o, "version", cast(int) f.version);
+      jo_key(o, "thumb"); jo_str(o, ifx f.up then "up" else "down");
+      jo_key(o, "state"); jo_str(o, ifx f.state == PUB_HIDDEN then "hidden" else ifx f.state == PUB_HELD then "held" else "new");
+      text := f.text; if f.state == PUB_NEW { jo_key(o, "text"); jo_str(o, cast(string) text[0..<cast(s64) f.text_n]); }
+      jo_key(o, "reported"); jo_bool(o, f.reported); jo_end(o);
+    }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  d := ifx v == VERB_PUB_SET_LIVE then pub_set_live(s, me, a.pub, a.version, a.dry) else ifx v == VERB_PUB_UNPUBLISH then pub_unpublish(s, me, a.pub, a.dry) else pub_remove(s, me, a.pub, a.dry);
+  if d.error.count > 0 { return gb_pub_refused(o, d); }
+  gb_ok(o); we_int(o, "published", cast(int) a.pub);
+  if v == VERB_PUB_SET_LIVE { we_int(o, "live", cast(int) a.version); }
+  return gb_done(o, a, false, 0);
+}
+
+// The screen's own rows: a level or a shipped game opened (the core says which; the host reads the
+// file and opens it, ed_open_due), and a match played on it.
+gb_run_play :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  p := e[0].play[..];
+  if v == VERB_LIST_SCRAPPERS {
+    gb_ok(o); jo_key(o, "scrappers"); jo_arr(o);
+    for k: 0..<ed_play_classes() {
+      b: [64] u8; jo_obj(o); we_int(o, "scrapper", cast(int) k);
+      jo_key(o, "name"); jo_str(o, cast(string) b[0..<ed_play_class_name(cast(s32) k, b[..])]); jo_end(o);
+    }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_PLAY_STATE {
+    gb_ok(o); jo_key(o, "playing"); jo_bool(o, ed_playing(e));
+    jo_key(o, "mode"); jo_str(o, PLAYTEST_MODE_WORD[ed_play_mode(e)]);
+    we_int(o, "size", cast(int) ed_play_size(e)); we_int(o, "slot", cast(int) ed_bag_selected(e));
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_OPEN_LEVEL || v == VERB_OPEN_GAME {
+    if p[0].on { return gb_refuse(o, "edit-refused", "a match is being played: stop it first"); }
+    if v == VERB_OPEN_LEVEL && !gb_world_has(w, a.level) { return gb_refuse(o, "not-found", "there is no such level here (list-levels)"); }
+    if v == VERB_OPEN_LEVEL { e[0].open_due = a.level + 1; } else { e[0].open_game_due = a.pick + 1; }
+    gb_ok(o); we_int(o, ifx v == VERB_OPEN_LEVEL then "level" else "game", cast(int) (ifx v == VERB_OPEN_LEVEL then a.level else a.pick));
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_PLAY {
+    if p[0].on { return gb_refuse(o, "edit-refused", "a match is being played already: stop it first"); }
+    if e[0].plays >= 0 && e[0].plays < GT_TYPES && !GT_PLAYS_IN_APP[e[0].plays] { return gb_refuse(o, "edit-refused", ed_play_why(e[0].plays)); }
+    if ed_play_needs_page(e) { return gb_refuse(o, "edit-refused", PLAY_NO_PAGE); }
+    _ = ed_play_setup(e, a.mode, a.size);
+    ed_play(e, a.pick);
+    if !ed_playing(e) { return gb_refuse(o, "edit-refused", "the match could not start in this level"); }
+    gb_ok(o); we_int(o, "scrapper", cast(int) a.pick); jo_key(o, "mode"); jo_str(o, PLAYTEST_MODE_WORD[a.mode]); we_int(o, "size", cast(int) a.size);
+    return gb_done(o, a, false, 0);
+  }
+  if !p[0].on { return gb_refuse(o, "edit-refused", "no match is being played: play first"); }
+  if v == VERB_STOP { ed_stop(e); }
+  else if v == VERB_TRAVEL {
+    if !p[0].real || !e[0].farm[0].ok { return gb_refuse(o, "edit-refused", "travel is SPLICEBOTS' farm's, while you play it"); }
+    ed_farm_travel(e);
+  } else if v == VERB_DIGGER {
+    if !p[0].real || !e[0].scene[0].digger { return gb_refuse(o, "edit-refused", "the digger is SPLICEBOTS', while you play it with one"); }
+    ed_digger_toggle(e);
+  } else if v == VERB_BAG_SELECT {
+    if !p[0].real { return gb_refuse(o, "edit-refused", "the bag is SPLICEBOTS', while you play it"); }
+    ed_bag_select(e, a.pick);
+  }
+  gb_ok(o);
+  return gb_done(o, a, false, 0);
+}
+
+gb_raw :: (o: [] Jo, n: s64) -> GbResult {
+  if n <= 0 { return gb_refuse(o, "bad-request", "the answer did not fit"); }
+  return GbResult.{code = GB_DONE, json = cast(string) o[0].buf[0..<n]};
+}
+
+// ---- what the surfaces are made from
+
+// The capability manifest: every row, as `gamebuilder commands --json` prints it.
+// It says which build it is: the version (gb_version) and the table's digest on its own, which
+// `gamebuilder version --remote` compares with the hosted server's.
+gb_manifest :: (out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  vb: [96] u8; hb: [8] u8;
+  jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "gamebuilder.commands.v1");
+  jo_key(o[..], "version"); jo_str(o[..], gb_version(vb[..]));
+  jo_key(o[..], "table"); jo_str(o[..], gb_hex8(gb_table_digest(), hb[..]));
+  jo_key(o[..], "commands"); jo_arr(o[..]);
+  for c: GB_COMMANDS {
+    jo_obj(o[..]);
+    jo_key(o[..], "verb"); jo_str(o[..], c.verb); jo_key(o[..], "area"); jo_str(o[..], c.area);
+    jo_key(o[..], "effect"); jo_str(o[..], c.effect); jo_key(o[..], "approval"); jo_str(o[..], c.approval);
+    jo_key(o[..], "arguments"); jo_arr(o[..]); for k: 0..<gb_parts(c.arguments) { jo_str(o[..], gb_part(c.arguments, k)); } jo_end(o[..]);
+    jo_key(o[..], "flags"); jo_arr(o[..]); for k: 0..<gb_parts(c.flags) { jo_str(o[..], gb_part(c.flags, k)); } jo_end(o[..]);
+    jo_key(o[..], "result"); jo_str(o[..], c.result); jo_key(o[..], "limit"); jo_str(o[..], c.limit);
+    jo_key(o[..], "impl"); jo_str(o[..], c.impl);
+    jo_key(o[..], "surfaces"); jo_arr(o[..]);
+    for s: 0..<GB_SURFACES { if (c.surfaces & cast(s32) (1 << s)) != 0 { jo_str(o[..], GB_SURFACE_NAME[s]); } }
+    jo_end(o[..]);
+    jo_key(o[..], "gap"); jo_arr(o[..]); for k: 0..<gb_parts(c.gap) { jo_str(o[..], gb_part(c.gap, k)); } jo_end(o[..]);
+    jo_key(o[..], "usage"); jo_str(o[..], c.usage); jo_key(o[..], "help"); jo_str(o[..], c.help);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// A batch with the spaces, tabs and line breaks between its parts dropped (never inside a string).
+gb_tidy :: (text: string, out: [] u8) -> string {
+  n := 0; quoted := false; escaped := false;
+  for c: text {
+    if quoted {
+      if escaped { escaped = false; } else if c == '\\' { escaped = true; } else if c == '"' { quoted = false; }
+    } else {
+      if c == ' ' || c == '\t' || c == '\n' || c == '\r' { continue; }
+      if c == '"' { quoted = true; }
+    }
+    if n >= out.count { return text; }
+    out[n] = c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+// A batch read the engine's way and written as the wire writes it, fields it doesn't know left
+// out; "" when it doesn't read as a batch at all.
+gb_wire :: (text: string, out: [] u8) -> string {
+  if text.count == 0 || text.count > WE_BATCH_BODY { return ""; }
+  nodes: [WE_BATCH * WE_NODES + 16] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) { return ""; }
+  d := da[0];
+  wb: [WE_NAME + 1] u8;
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), WE_SCHEMA) { return ""; }
+  rev := jv_int(d, jv_get(d, 0, "rev"), -1);
+  words := WE_DO;
+  what := we_index(words[..], we_word(d, jv_get(d, 0, "do"), wb[..]));
+  list := jv_get(d, 0, "edits");
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) > WE_BATCH { return ""; }
+  edits: [WE_BATCH] WorldEdit;
+  n := jv_len(d, list);
+  // each edit read for what it says (we_from also holds it to its exact form, which is what is asked here)
+  for i: 0..<n { edits[i] = we_from(d, jv_at(d, list, i)); if edits[i].op == 0 { return ""; } edits[i].ok = true; }
+  return we_batch_write(rev, what, edits[..], n, out);
+}
+
+// ---- the engine, and changing it
+
+// The engine is open source at OpenAgentsInc/openagents; GameBuilder builds
+// against one commit of it (openagents.lock, AGENTS.md "Dependencies"). What
+// a world needs that the engine can't do is proposed there as a pull request.
+GB_ENGINE_REPO :: "OpenAgentsInc/openagents";
+GB_ENGINE_PARTS :: 6;
+GB_ENGINE_PATH :: [GB_ENGINE_PARTS] string.["metaverse-engine/render/", "metaverse-engine/physics/", "metaverse-engine/move/ and metaverse-engine/cam/",
+  "metaverse-engine/world/, content/ and editor/", "metaverse-engine/fx/ and gpu/", "coax/"];
+GB_ENGINE_WHAT :: [GB_ENGINE_PARTS] string.["how a world is drawn: light, shadows, materials, sky, water, grass", "rigid bodies, collision and queries",
+  "walking, jumping and the cameras", "the world, its content tables and the world.edit.v1 wire", "effects and the GPU passes", "the Coax compiler and its libraries"];
+GB_ENGINE_STEPS :: 7;
+GB_ENGINE_STEP :: [GB_ENGINE_STEPS] string.[
+  "Be sure it is the engine's to do, and that the engine can't do it already. What is in a level is the gamebuilder commands'. Which kinds of thing there are, templates and game rules are GameBuilder's own code. How things look (water that ripples, light, materials), move and collide, and the world formats, are the engine's: `gamebuilder engine-list` and `gamebuilder engine-read N` say what it does now, and its source at the commit `gamebuilder engine` names is the last word.",
+  "Tell the person what the engine can't do yet, what you would change, and why; ask before you open a pull request in their name.",
+  "Run `gamebuilder engine-ready`: it says what this computer is missing, each with its fix, and whether your branch goes to the repository or to your own fork. Clone github.com/OpenAgentsInc/openagents and branch from main. Without push access, which is the usual case, `gh repo fork OpenAgentsInc/openagents --remote --remote-name fork` in the clone makes your fork on GitHub the first time and adds it as the remote `fork`.",
+  "Read its AGENTS.md. Add the feature as an engine primitive: its own module, its own #test checks and a section in the engine's docs, usable by any world, never only by GameBuilder.",
+  "Run the checks its AGENTS.md names, and fix what they find.",
+  "Push the branch (`git push fork BRANCH` to your fork, or to the repository if you may) and open the pull request with `gh pr create --repo OpenAgentsInc/openagents`, saying what a GameBuilder world needs it for. Give the person its link.",
+  "Once it is merged, GameBuilder moves to that engine commit (scripts/pin.sh bump in the GameBuilder repo) and the feature can be used. `gamebuilder engine-mine` lists your pull requests and says whether GameBuilder has each merged one yet."];
+
+// The code-brief row's answer (gamebuilder.code.v1): what a Code agent on repo is given and may do,
+// in the words the pane's approval says them (agent-record.coax).
+gb_code_brief :: (o: [] Jo, repo: int) -> GbResult {
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.code.v1");
+  jo_key(o, "repo"); jo_str(o, AGR_REPO_ID[repo]);
+  jo_key(o, "github"); jo_str(o, AGR_REPO_GITHUB[repo]);
+  jo_key(o, "is"); jo_str(o, AGR_REPO_WORDS[repo]);
+  jo_key(o, "from"); jo_str(o, "origin/main");
+  jo_key(o, "rules"); jo_str(o, "AGENTS.md");
+  jo_key(o, "ends"); jo_str(o, AGR_REPO_ENDS[repo]);
+  jo_key(o, "then"); jo_str(o, AGR_REPO_THEN[repo]);
+  jo_key(o, "limits"); jo_obj(o); jo_key(o, "turns"); jo_int(o, AGR_CODE_TURNS); jo_key(o, "cents"); jo_int(o, AGR_CODE_CENTS); jo_end(o);
+  jo_key(o, "approval"); jo_str(o, "confirm");
+  jo_key(o, "words"); jo_arr(o);
+  jo_str(o, AGR_CODE_MAY); jo_str(o, AGR_CODE_WHERE); jo_str(o, AGR_REPO_ENDS_WORDS[repo]);
+  if AGR_REPO_THEN_WORDS[repo].count > 0 { jo_str(o, AGR_REPO_THEN_WORDS[repo]); }
+  jo_str(o, AGR_CODE_PLAN);
+  jo_end(o);
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+// A chapter's status in words, as the engine's book says it.
+ENG_STATUS :: [3] string.["implemented", "partly implemented", "design draft"];
+// The row with chapter number n: its index in ENG_ROWS, or -1.
+eng_find :: (n: s64) -> int { for i: 0..<ENG_N { if cast(s64) ENG_ROWS[i].number == n { return i; } } return -1; }
+// A chapter's line: what engine-list gives of each and engine-read starts with.
+gb_engine_row :: (o: [] Jo, r: EngRow) {
+  jo_key(o, "chapter"); jo_int(o, cast(s64) r.number); jo_key(o, "title"); jo_str(o, r.title);
+  jo_key(o, "status"); jo_str(o, ENG_STATUS[r.status]); jo_key(o, "part"); jo_str(o, r.part);
+  jo_key(o, "folder"); jo_str(o, r.folder);
+}
+// The engine-list row's answer (gamebuilder.engine.list.v1): every chapter in a line, with how many are of each status.
+gb_engine_list :: (o: [] Jo) -> GbResult {
+  counts: [3] s64;
+  for r: ENG_ROWS { counts[r.status] += 1; }
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.engine.list.v1");
+  jo_key(o, "repo"); jo_str(o, GB_ENGINE_REPO); jo_key(o, "commit"); jo_str(o, ENG_PIN);
+  jo_key(o, "from"); jo_str(o, "metaverse-engine/book");
+  jo_key(o, "implemented"); jo_int(o, counts[ENG_IMPLEMENTED]); jo_key(o, "partly"); jo_int(o, counts[ENG_PARTLY]); jo_key(o, "drafts"); jo_int(o, counts[ENG_DRAFT]);
+  jo_key(o, "limit"); jo_str(o, "The list is the engine's book at this commit. What the engine does with no chapter is not in it: read the source before you call something missing.");
+  jo_key(o, "chapters"); jo_arr(o);
+  for r: ENG_ROWS { jo_obj(o); gb_engine_row(o, r); jo_end(o); }
+  jo_end(o);
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+// The engine-read row's answer (gamebuilder.engine.chapter.v1): one chapter, by its number as text.
+gb_engine_read :: (o: [] Jo, which: string) -> GbResult {
+  n := gb_int(which);
+  i := ifx n.ok then eng_find(n.v) else -1;
+  if i < 0 { return gb_refuse(o, "bad-request", "a chapter is its number in engine-list"); }
+  r := ENG_ROWS[i];
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.engine.chapter.v1");
+  gb_engine_row(o, r);
+  jo_key(o, "summary"); jo_str(o, r.summary);
+  jo_key(o, "source"); jo_arr(o);
+  k := 0; while gb_part(r.source, k).count > 0 { jo_str(o, gb_part(r.source, k)); k += 1; }
+  jo_end(o);
+  b: [200] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], "https://github.com/"); tx_put(t[..], GB_ENGINE_REPO); tx_put(t[..], "/tree/"); tx_put(t[..], ENG_PIN); tx_put(t[..], "/metaverse-engine/book");
+  jo_key(o, "book"); jo_str(o, cast(string) b[0..<t[0].at]);
+  jo_key(o, "means"); jo_str(o, ifx r.status == ENG_IMPLEMENTED then "The engine does this. If a world can't use it, the change is GameBuilder's own code."
+    else ifx r.status == ENG_PARTLY then "The engine does part of this. Read the chapter and its source to see whether your case is covered before you propose a change."
+    else "The engine does not do this yet: the chapter is a design. Building it is an engine upgrade (gamebuilder engine).");
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+// The engine row's answer: the commit this surface was built on, what the engine holds, and the steps.
+gb_engine :: (o: [] Jo, pin: string) -> GbResult {
+  gb_ok(o); jo_key(o, "engine"); jo_str(o, "OpenAgents Metaverse Engine");
+  jo_key(o, "repo"); jo_str(o, GB_ENGINE_REPO); jo_key(o, "commit"); jo_str(o, pin);
+  b: [200] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], "https://github.com/"); tx_put(t[..], GB_ENGINE_REPO); tx_put(t[..], "/tree/"); tx_put(t[..], pin);
+  jo_key(o, "source"); jo_str(o, cast(string) b[0..<t[0].at]);
+  jo_key(o, "parts"); jo_arr(o);
+  for i: 0..<GB_ENGINE_PARTS { jo_obj(o); jo_key(o, "path"); jo_str(o, GB_ENGINE_PATH[i]); jo_key(o, "what"); jo_str(o, GB_ENGINE_WHAT[i]); jo_end(o); }
+  jo_end(o);
+  jo_key(o, "upgrade"); jo_arr(o); for i: 0..<GB_ENGINE_STEPS { jo_str(o, GB_ENGINE_STEP[i]); } jo_end(o);
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+// ---- the Claude skill (`gamebuilder skill`), made from the table
+
+GB_SKILL_MAX :: 32768;
+// The batch's form and rules, as the skill and the Agents pane's brief say them.
+gb_batch_text :: (t: [] Text) {
+  tx_put(t, "```json\n{\"schema\":\"world.edit.v1\",\"rev\":REV,\"do\":\"apply\",\"edits\":[\n  {\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":500,\"y\":0,\"z\":-300,\"yaw\":0,\"scale\":100},\n  {\"op\":\"move\",\"id\":12,\"x\":0,\"y\":0,\"z\":800},\n  {\"op\":\"rotate\",\"id\":12,\"yaw\":45},\n  {\"op\":\"scale\",\"id\":12,\"scale\":150},\n  {\"op\":\"despawn\",\"id\":7}]}\n```\n\n");
+  tx_put(t, "- Write each edit's fields in exactly the order shown, and no others. Spaces and line breaks between them are fine. If a batch comes back `unreadable` with a `wire` field, that is your batch written the way the wire wants it: check nothing of yours was left out, then send that.\n");
+  tx_put(t, "- `rev` is the `rev` you read. If the level changed since, the batch is refused as `stale`: read it again and plan again. Adding a shape row that nothing stands on doesn't change `rev`.\n");
+  tx_put(t, "- A spawn's `id` is 0: the level numbers it. Its `kind` is a row of the shape table, the `content` you read, as `ID|KIND|WIDTH|HEIGHT|DEPTH` in centimetres. `scale` is 100 for the row's own size.\n");
+  tx_put(t, "- A new size is a new row. Add it in the same batch, before the spawn that names it, as the table's next row N: `{\"op\":\"cell\",\"table\":\"shape\",\"row\":N,\"col\":\"*\",\"v\":\"N|block|400|50|200\"}`. `col` `*` means the whole row, and N is written twice, as `row` and at the start of `v`. Rows are only ever added; when a row already has the size you want, name it.\n");
+  // (a moving platform's and a lift's way: the table's two columns more, shared/kinds.coax's limits)
+  tx_put(t, "- A level with a moving platform or a lift in it (the platformer's `mover` and `lift`) has two columns more in its shape table, `ID|KIND|WIDTH|HEIGHT|DEPTH|GO|EVERY`: how far a row's things go, 0 to "); tx_int(t, GK_GO_MOST); tx_put(t, " cm (a mover along z, a lift up), and how long there and back takes, "); tx_int(t, GK_EVERY_LEAST); tx_put(t, " to "); tx_int(t, GK_EVERY_MOST);
+  tx_put(t, " ms; both are 0 for every other kind. A new row for one may end with them, `N|mover|320|90|400|1200|4500`; left out, it goes as a new one does (a mover "); tx_int(t, GK_GO_NEW); tx_put(t, " cm, a lift "); tx_int(t, GK_LIFT_NEW); tx_put(t, " cm, every "); tx_int(t, GK_EVERY_NEW);
+  tx_put(t, " ms). To change how one goes in a batch, take it out and spawn it again on a row with the new numbers.\n");
+  tx_put(t, "- The answer's `ids` has one number for each edit, in order: a spawn's new thing, the thing a move, turn, size or removal changed, and a new row's number for a `cell`. A dry run answers the same, with `dry_run` true.\n\n");
+}
+gb_skill :: (out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "---\nname: gamebuilder\ndescription: Build and change GameBuilder game worlds with the gamebuilder command line: make games and levels, read a level, add, move, turn, resize and remove things, and carry out world.edit.v1 batches as one step the person can undo. Use when asked to build, lay out, edit or fix a GameBuilder level or game. Also use when a world needs something the OpenAgents Metaverse Engine can't do yet: it says how to propose that engine change as a pull request at OpenAgentsInc/openagents.\n---\n\n");
+  tx_put(t[..], "# GameBuilder worlds with the gamebuilder CLI\n\n");
+  tx_put(t[..], "Run `gamebuilder VERB ...` (or `gb`). Commands answer JSON. A refusal is `{\"ok\":false,\"error\":CODE,\"why\":WORDS}`, where the words name the limit that refused it, with its number. Exit codes: 0 done (or a dry run), 1 refused, 3 no such command. `gamebuilder help` lists the commands; `gamebuilder commands` is the same list as JSON. `--dir DIR` (or `GAMEBUILDER_DIR`) works on the level and game files in another folder.\n\n");
+  tx_put(t[..], "If the gamebuilder MCP tools (`gb_read_level`, `gb_apply_edits`, ...) are connected, they are these same commands, named `gb_` and the verb with `_` for `-`: use whichever you have. A person connects them with `claude mcp add gamebuilder -- gamebuilder mcp`.\n\n");
+  tx_put(t[..], "## Before you start\n\n");
+  tx_put(t[..], "- `gamebuilder version` checks that it is installed. It is installed from the GameBuilder repo with `scripts/install-cli.sh`.\n");
+  tx_put(t[..], "- `gamebuilder whoami` says which account you act as. If nobody is logged in, ask the person to run `gamebuilder login` themselves: it opens gamebuilder.org/login/cli, they log in there and paste the code the page shows. Never log in for them, and never ask them for the code.\n");
+  tx_put(t[..], "- It changes the level and game files the GameBuilder app keeps on this computer. Ask the person to close a level in the app before you change it, or the app's next save writes over your change.\n\n");
+  tx_put(t[..], "## Opening a game or level in the app\n\n");
+  tx_put(t[..], "`gamebuilder --attach open-level LEVEL` opens a level on the screen of the GameBuilder app that is open on this computer. To open one of the person's games, open its first level: `list-games` gives each game's `levels`. It answers `{\"ok\":true,\"level\":LEVEL}`.\n\n");
+  tx_put(t[..], "- If it answers that GameBuilder isn't open, the app is not running: ask the person to open it, then send the command again.\n");
+  tx_put(t[..], "- `open-game` is only for the games the app ships (0 Scrappers Arena, 1 SPLICEBOTS). A game of the person's opens with `open-level`.\n");
+  tx_put(t[..], "- No command opens a level in a browser at gamebuilder.org. A published game has a link in a browser: `published` lists each one's.\n\n");
+  tx_put(t[..], "## Editing a world\n\n");
+  tx_put(t[..], "1. Find the level with `list-games` and `list-levels`, or make one: `new-game TEMPLATE` (see `list-templates`) or `new-level`. A new game's first level is a starter place with things already in it. They are the person's: move or remove the ones in your way, and say which.\n");
+  tx_put(t[..], "2. Read it: `read-level LEVEL`. `rev` is the revision you read. `things` is every thing in it: its `id`, its `kind` (a row of the shape table) and `is` (that kind's name), where it stands (`x`, `y`, `z`), its turn (`yaw`) and its size (`scale`). `content` is the level's shape table. `locked` true means the level isn't yours to change.\n");
+  tx_put(t[..], "3. If it is locked, `copy-level LEVEL` makes your own copy, and you change that. Level 0 is Scrappers Arena's own level.\n");
+  tx_put(t[..], "4. Plan the whole change, then send it as one batch: write it to a file, run `apply-edits LEVEL batch.json --dry-run`, and when that answers ok, run it again without `--dry-run`. The batch lands as one step the person can undo, or none of it does.\n");
+  tx_put(t[..], "5. Read the level again and check that it is what you meant. For one small change, `add`, `set-field` and `delete` are simpler than a batch.\n\n");
+  tx_put(t[..], "A change can carry `--key K`, a name of your own for that one call (1 to 64 of letters, digits, -, _ and .). The first result sent with it is kept with the folder, and the same call sent again with the same key answers that result again and changes nothing: use it when you may have to retry a call and don't know whether the first one landed.\n\n");
+  tx_put(t[..], "Units: centimetres, with y up and the level's middle at x 0, z 0; z is north. A thing's x and z are the middle of its base, and y is how high its base is (a thing may float). Turns are whole degrees from -180 to 180.\n\n");
+  tx_put(t[..], "A thing's size is its shape row (width, height and depth, in centimetres) times its `scale`, a percent of all three sides alike. `set-field LEVEL THING width CM` (or `height`, `depth`) gives one thing one new side, and the level adds the shape row for it. Nothing checks that things overlap: read the level back and look.\n\n");
+  tx_put(t[..], "## The batch: world.edit.v1\n\n");
+  gb_batch_text(t[..]);
+  tx_put(t[..], "## Limits\n\n");
+  tx_put(t[..], "- "); tx_int(t[..], WE_BATCH); tx_put(t[..], " edits a batch.\n");
+  tx_put(t[..], "- In a batch, and with `add --x --z`, a thing stands within "); tx_int(t[..], AGENT_REACH); tx_put(t[..], " cm of the middle on x and z, and 0 to "); tx_int(t[..], AGENT_REACH); tx_put(t[..], " cm up. `set-field` takes the wider ranges `list-fields` gives.\n");
+  tx_put(t[..], "- `scale` is "); tx_int(t[..], cast(s64) FIELD_MIN[FIELD_SCALE]); tx_put(t[..], " to "); tx_int(t[..], cast(s64) FIELD_MAX[FIELD_SCALE]); tx_put(t[..], " percent.\n");
+  tx_put(t[..], "- A new shape's sides are "); tx_int(t[..], AGENT_SIZE_MIN); tx_put(t[..], " to "); tx_int(t[..], AGENT_SIZE_MAX); tx_put(t[..], " cm; a level holds "); tx_int(t[..], SHAPES_MAX); tx_put(t[..], " shapes at most.\n");
+  tx_put(t[..], "- A level has one start for each team. You can move them, but not add or remove them.\n");
+  tx_put(t[..], "- A level holds the kinds of thing its game type allows: `list-palette LEVEL` names them, says what the type is and how building goes in it, and gives its limits (how far, how high, how big, how many) in words with their numbers. An edit past a limit is refused with those words. A thing's fields and their ranges: `list-fields`.\n");
+  tx_put(t[..], "- A moving platform or a lift goes 0 to "); tx_int(t[..], GK_GO_MOST); tx_put(t[..], " cm, there and back in "); tx_int(t[..], GK_EVERY_LEAST); tx_put(t[..], " to "); tx_int(t[..], GK_EVERY_MOST);
+  tx_put(t[..], " ms: `set-field LEVEL THING distance CM` and `set-field LEVEL THING period MS`. No other thing has a distance or a period.\n");
+  tx_put(t[..], "- Levels are numbered 1 to "); tx_int(t[..], LEVEL_MAX); tx_put(t[..], "; you can have "); tx_int(t[..], MINE_MAX); tx_put(t[..], " games.\n\n");
+  tx_put(t[..], "## Commands\n\n");
+  for c: GB_COMMANDS {
+    if (c.surfaces & GB_SKILL) == 0 { continue; }
+    tx_put(t[..], "- `gamebuilder "); tx_put(t[..], c.verb);
+    if c.usage.count > 0 { tx_put(t[..], " "); tx_put(t[..], c.usage); }
+    tx_put(t[..], "`: "); tx_put(t[..], c.help); tx_put(t[..], " ("); tx_put(t[..], c.effect);
+    for k: 0..<GB_APPROVALS.count { if GB_APPROVALS[k] == c.approval && GB_APPROVAL_WORDS[k].count > 0 { tx_put(t[..], "; "); tx_put(t[..], GB_APPROVAL_WORDS[k]); } }
+    tx_put(t[..], ")\n");
+  }
+  tx_put(t[..], "\n## When the world needs more than the commands\n\n");
+  tx_put(t[..], "Ask first. Before you tell a person something can't be done, run:\n\n```sh\ngamebuilder triage \"what the person asked for, in their words\"\n```\n\n");
+  tx_put(t[..], "It answers a `fit`. Do what the fit says:\n\n");
+  tx_put(t[..], "- `commands`: the commands above do it. Run the one it names in `command`, then the rest. Don't ask the person anything.\n");
+  tx_put(t[..], "- `gamebuilder`: it needs GameBuilder's own code: a new kind of thing, a template, a game rule or the editor itself. That code isn't open. Tell the person what is missing.\n");
+  tx_put(t[..], "- `engine-has`: the engine already does it and GameBuilder does not use it yet. That is GameBuilder's own code too: tell the person.\n");
+  tx_put(t[..], "- `engine-partly`: the engine does part of it. Read the chapter it names (`gamebuilder engine-read N`) and that chapter's source, then say which part is missing.\n");
+  tx_put(t[..], "- `engine-needs`: the engine can't do it yet. Say the answer's `offer` to the person, word for word:\n\n  > "); tx_put(t[..], TRI_OFFER); tx_put(t[..], "\n\n");
+  tx_put(t[..], "  \"Potentially\" is part of it: today a merged engine feature earns credit in the person's GitHub name, and no payment exists. Don't promise more. On a yes, follow the steps at the end of this section. On a no, tell the person what the engine is missing and stop.\n\n");
+  tx_put(t[..], "When it answers `\"sure\":false`, the model was under 75% sure. Tell the person you are not certain, read `gamebuilder engine-list` yourself, and decide from it before you offer anything. The answer then carries the chapter the model picked, whatever the fit: look at it. The same request gives the same answer each time; a request worded another way can give another.\n\n");
+  tx_put(t[..], "Triage asks OpenAgents' decision model once a call and needs the network. With no answer (`unreachable`, `refused`), decide which of three it is yourself:\n\n");
+  tx_put(t[..], "- **The level**: what is in it, where, and how big. Use the commands above.\n");
+  tx_put(t[..], "- **The game**: which kinds of thing there are, templates, game rules and the editor itself. These are GameBuilder's own code, which isn't open. Tell the person what is missing.\n");
+  tx_put(t[..], "- **The engine**: the OpenAgents Metaverse Engine and Coax, open source at "); tx_put(t[..], GB_ENGINE_REPO); tx_put(t[..], ". It holds:\n");
+  for i: 0..<GB_ENGINE_PARTS { tx_put(t[..], "  - `"); tx_put(t[..], GB_ENGINE_PATH[i]); tx_put(t[..], "`: "); tx_put(t[..], GB_ENGINE_WHAT[i]); tx_put(t[..], "\n"); }
+  tx_put(t[..], "\nBefore you say the engine can't do something, look: `gamebuilder engine-list` names every chapter of the engine's book at the commit GameBuilder is built on, each as implemented, partly implemented or a design draft, and `gamebuilder engine-read N` gives one chapter's summary and source files. An implemented chapter means the engine does it, so what is missing is GameBuilder's own code. A design draft, or no chapter at all, means it is an engine change. The list is the book: what the engine does with no chapter is not in it.\n");
+  tx_put(t[..], "\nWhen a world needs the engine to do something it can't, and the person said yes to the offer, propose the change as a pull request at "); tx_put(t[..], GB_ENGINE_REPO); tx_put(t[..], ". The person needs no push access there: the branch goes to their own fork. The pull request is public and in their GitHub name, and a person at OpenAgents reviews it and may change or decline it. `gamebuilder engine` gives the engine commit GameBuilder is built on (read the engine's source at that commit) and these steps:\n\n");
+  for i: 0..<GB_ENGINE_STEPS { tx_int(t[..], cast(s64) (i + 1)); tx_put(t[..], ". "); tx_put(t[..], GB_ENGINE_STEP[i]); tx_put(t[..], "\n"); }
+  if t[0].at >= out.count { return ""; }
+  return cast(string) out[0..<t[0].at];
+}
+
+// ---- checks
+
+#test "the command table is well formed" {
+  names := [GB_N] string.["list-levels", "read-level", "read-state", "read-content", "new-level", "copy-level",
+    "list-games", "list-templates", "new-game", "rename-game", "read-game",
+    "apply-edits", "add", "set-field", "delete", "list-palette", "list-fields", "list-modes",
+    "whoami", "login", "logout", "engine",
+    "undo", "redo", "set-tool", "focus", "copy", "paste", "duplicate", "decide", "cut", "play-test",
+    "agents", "undo-turn", "ask", "write-content",
+    "agent-read", "agent-events", "agent-new", "agent-message", "agent-answer", "agent-stop", "agent-undo", "agent-report",
+    "agents-pane", "code-brief", "code-agent", "claim", "claims", "release",
+    "open-level", "open-game", "play", "stop", "play-state", "list-scrappers", "travel", "digger", "bag-select",
+    "lobby-read", "lobby-name", "lobby-say", "lobby-mute", "lobby-report", "party-read", "party-invite", "party-answer", "party-leave", "party-side", "party-scrapper", "party-match", "party-look", "party-start",
+    "delete-level", "delete-game", "rename-level", "move-level", "owners", "set-owners",
+    "place", "ball", "put", "turn", "kind", "size", "move", "remove", "clear", "set", "reset", "gravity", "select", "spin", "funnel",
+    "changes", "show-changes", "dismiss-changes",
+    "publish", "published", "versions", "set-live", "unpublish", "remove-published", "feedback", "feedback-hide", "block", "report",
+    "agents-account", "pictures", "picture", "agent-picture", "goes", "engine-list", "engine-read", "triage", "computers", "computer-report", "agent-new-on", "engine-ready", "engine-mine"];
+  for i: 0..<GB_N {
+    c := GB_COMMANDS[i];
+    // each VERB_ constant is its row
+    #assert c.verb == names[i] && gb_find(c.verb) == i;
+    for j: i + 1..<GB_N { #assert c.verb != GB_COMMANDS[j].verb; }
+    known_effect := false; for x: GB_EFFECTS { if x == c.effect { known_effect = true; } }
+    known_approval := false; for x: GB_APPROVALS { if x == c.approval { known_approval = true; } }
+    #assert known_effect && known_approval;
+    for k: 0..<gb_parts(c.arguments) {
+      known := false; for x: GB_KINDS { if x == gb_part(c.arguments, k) { known = true; } }
+      #assert known;
+    }
+    // what changes something you may not own asks for its owner; a read never writes
+    #assert c.effect != "edit" || c.approval != "none" || c.arguments == "" || c.arguments == "level" || c.arguments == "template";
+    // an edit a program sends can be tried first; the app's own buttons are their own try
+    #assert c.effect == "edit" || !gb_has_flag(i, "--dry-run");
+    #assert c.effect != "edit" || gb_has_flag(i, "--dry-run") || (c.surfaces & GB_CLI) == 0;
+    // and can be sent again safely with a key (realm.result.v1)
+    #assert gb_has_flag(i, "--key") == (c.effect == "edit" && (c.surfaces & GB_CLI) != 0);
+    #assert c.usage.count > 0 || c.arguments == "";
+    #assert c.help.count > 0 && c.impl.count > 0 && ((c.surfaces & (GB_CLI | GB_UI | GB_PANE)) != 0 || (c.area == "web" && c.surfaces == GB_WEB));
+    // the pane's agent gets the open level's rows and no others: never a game, a file or the account
+    #assert (c.surfaces & GB_PANE) == 0 || ((c.area == "level" || c.area == "edit" || c.area == "play") && c.effect != "spend" && c.approval != "person" && c.verb != "read-state" && c.verb != "read-content");
+    // what is not read or looked at needs someone's leave
+    // (a match on the person's own screen is looked at: the screen's play rows)
+    #assert c.effect == "read" || c.effect == "view" || c.approval != "none" || c.area == "level" || c.area == "game" || c.area == "account" || (c.effect == "play" && gb_gap_has(c, "screen"));
+    #assert c.effect != "spend" || c.approval == "confirm" || c.approval == "person";
+    // only the person logs in; the account is never a level's edit
+    // and only the person speaks, invites or plays with others in the lobby
+    #assert (c.approval == "person") == (c.verb == "login" || c.verb == "set-owners" || (c.area == "lobby" && c.effect != "read") || (c.area == "publish" && c.effect != "read")) && (c.area == "account") == (c.effect == "account");
+    // every row the CLI runs is in the skill, and the skill offers only what the CLI runs
+    #assert ((c.surfaces & GB_SKILL) != 0) == ((c.surfaces & GB_CLI) != 0);
+    #assert (c.surfaces & GB_MCP) == 0 || (c.surfaces & GB_CLI) != 0;
+  }
+  #assert gb_find("nope") == -1 && gb_find("") == -1 && gb_find("Add") == -1;
+}
+
+#test "a call's words are read by their kinds, with their bounds in the refusal" {
+  a: [1] GbArgs; none := GbFlags.{};
+  #assert gb_try(VERB_SET_FIELD, "3 12 East -400", none, a[..]) == "";
+  #assert a[0].level == 3 && a[0].thing == 12 && a[0].field == FIELD_X && a[0].value == -400;
+  #assert gb_try(VERB_SET_FIELD, "3 12 kind tree", none, a[..]) == "" && a[0].value == KIND_TREE;
+  #assert gb_try(VERB_SET_FIELD, "3 12 colour 1", none, a[..]) != "";
+  #assert gb_try(VERB_READ_LEVEL, "10000", none, a[..]) == "a level is a number from 0 to 9999 (LEVEL_MAX)";
+  #assert gb_try(VERB_READ_LEVEL, "", none, a[..]) != "";
+  #assert gb_try(VERB_ADD, "1 ball", GbFlags.{x = "300", z = "-200"}, a[..]) == "" && a[0].at && a[0].x == 300 && a[0].z == -200;
+  #assert gb_try(VERB_ADD, "1 ball", GbFlags.{x = "300"}, a[..]) != "";
+  #assert gb_try(VERB_ADD, "1 ball", GbFlags.{x = "30000", z = "0"}, a[..]) == "--x and --z are within 20000 cm of the middle (AGENT_REACH)";
+  #assert gb_try(VERB_READ_LEVEL, "1", GbFlags.{dry = true}, a[..]) != "";
+  #assert gb_try(VERB_NEW_GAME, "adventure", GbFlags.{dry = true}, a[..]) == "" && a[0].plays == TEMPLATE_ADVENTURE && a[0].dry;
+  #assert gb_try(VERB_RENAME_GAME, "2 A|B", none, a[..]) != "";
+  #assert gb_try(VERB_NEW_LEVEL, "", GbFlags.{key = "k-1.A_b"}, a[..]) == "" && a[0].key == "k-1.A_b";
+  #assert gb_try(VERB_READ_LEVEL, "1", GbFlags.{key = "k"}, a[..]) != "";
+  for bad: [6] string.["", ".", "..", "a/b", "a b", "-k"] { #assert gb_try(VERB_NEW_LEVEL, "", GbFlags.{key = bad}, a[..]) != "" || bad == ""; }
+  long: [65] u8; for i: 0..<65 { long[i] = 'k'; }
+  #assert gb_try(VERB_NEW_LEVEL, "", GbFlags.{key = cast(string) long[..]}, a[..]) != "";
+  // play-test's flags, and their defaults
+  #assert gb_try(VERB_PLAY_TEST, "1", none, a[..]) == "" && a[0].mode == MODE_KNOCKOUTS && a[0].size == SIZE_USUAL && a[0].seconds == PLAYTEST_SECONDS && a[0].seed == PLAYTEST_SEED;
+  #assert gb_try(VERB_PLAY_TEST, "1", GbFlags.{mode = "hoops", size = "5", seconds = "30", seed = "0"}, a[..]) == "" && a[0].mode == MODE_HOOPS && a[0].size == 5 && a[0].seconds == 30 && a[0].seed == 0;
+  #assert gb_try(VERB_PLAY_TEST, "1", GbFlags.{mode = "Hoops"}, a[..]) != "" && gb_try(VERB_PLAY_TEST, "1", GbFlags.{size = "6"}, a[..]) == "--size is 1 to 5 a side (TEAM_SIZE)";
+  #assert gb_try(VERB_PLAY_TEST, "1", GbFlags.{seconds = "601"}, a[..]) != "" && gb_try(VERB_PLAY_TEST, "1", GbFlags.{seed = "-1"}, a[..]) != "";
+  #assert gb_try(VERB_READ_LEVEL, "1", GbFlags.{seed = "1"}, a[..]) != "";
+}
+
+// Reads a call written as one line of words, as a shell would split it.
+gb_try :: (v: int, line: string, flags: GbFlags, a: [] GbArgs) -> string {
+  w: [8] string; n := 0; from := 0;
+  for i: 0..<line.count + 1 {
+    if i == line.count || line[i] == ' ' {
+      if i > from && n < 8 { w[n] = cast(string) line[from..<i]; n += 1; }
+      from = i + 1;
+    }
+  }
+  return gb_args_read(v, w[0..<n], flags, a);
+}
+
+CommandTest :: struct { e: [1] Editor; out: [65536] u8; doc: [65536] u8; }
+
+#test "publish --from keeps the game a remix came from, and published reads it back, with the game's counts where a server keeps them" {
+  t: [1] CommandTest; e := t[0].e[..]; none: [1] s32; a: [1] GbArgs;
+  #assert gb_try(VERB_PUB_PUBLISH, "1 Moss", GbFlags.{from = "abc234"}, a[..]) == "" && a[0].from == "abc234";
+  #assert gb_try(VERB_PUB_PUBLISH, "1 Moss", GbFlags.{from = "abc0ef"}, a[..]) == PUB_FROM_WORDS && gb_try(VERB_PUB_UNPUBLISH, "1", GbFlags.{from = "abc234"}, a[..]) != "";
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ARENA}, GbWorld.{levels = none[0..<0]}, t[0].out[..]).code == GB_DONE;
+  for c: "me@example.com" { e[0].account[e[0].account_n] = c; e[0].account_n += 1; }
+  one := [1] s32.[ed_level(e)];
+  w := GbWorld.{levels = one[..], now = 1000};
+  // a dry run keeps nothing, and says nothing of it
+  r := gb_run(e, VERB_PUB_PUBLISH, GbArgs.{level = one[0], text = "Moss Two", from = "abc234", dry = true}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"from\"") < 0 && e[0].pub[0].game_n == 0;
+  r = gb_run(e, VERB_PUB_PUBLISH, GbArgs.{level = one[0], text = "Moss Two", from = "abc234"}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && r.published == 1 && r.version == 1 && level_find(r.json, "\"from\":\"abc234\"") > 0;
+  // a later version that says another game is answered with the one kept
+  r = gb_run(e, VERB_PUB_PUBLISH, GbArgs.{level = one[0], text = "Moss Two", from = "zzz999"}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && r.version == 2 && level_find(r.json, "\"from\":\"abc234\"") > 0;
+  // on a device: the game it came from, and no counts (none are kept there)
+  r = gb_run(e, VERB_PUB_PUBLISHED, GbArgs.{}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"on_web\":true,\"from\":\"abc234\"}") > 0 && level_find(r.json, "\"plays\"") < 0;
+  // on the account's server: the counts the server read for it, and nothing yet for a game never counted
+  code := e[0].pub[0].games[0].code; p: [1] Plays; lb: [PY_LINE] u8;
+  w.games = "https://gamebuilder.org";
+  r = gb_run(e, VERB_PUB_PUBLISHED, GbArgs.{}, w, t[0].out[..]);
+  #assert level_find(r.json, "\"from\":\"abc234\",\"plays\":{\"opened\":0,\"minute\":0,\"remix\":0,\"remade\":0}}") > 0;
+  p[0].n[PY_OPENED] = 12; p[0].n[PY_MINUTE] = 5; p[0].n[PY_REMIX] = 2; p[0].n[PY_REMADE] = 1;
+  ln := py_list_put(lb[..], 0, cast(string) code[0..<PUB_CODE], p[..]);
+  w.plays = cast(string) lb[0..<ln];
+  r = gb_run(e, VERB_PUB_PUBLISHED, GbArgs.{}, w, t[0].out[..]);
+  #assert level_find(r.json, "\"plays\":{\"opened\":12,\"minute\":5,\"remix\":2,\"remade\":1}}") > 0;
+}
+
+#test "rows change a level as the app does, and refuse in words" {
+  t: [1] CommandTest; e := t[0].e[..];
+  none: [1] s32;
+  w := GbWorld.{levels = none[0..<0]};
+  a: [1] GbArgs;
+  // a new level: number 1, an arena of things
+  #assert gb_run(e, VERB_NEW_LEVEL, GbArgs.{}, w, t[0].out[..]).save_level && ed_level(e) == 1;
+  before := ed_count(e);
+  // a block where it is asked for
+  #assert gb_try(VERB_ADD, "1 block", GbFlags.{x = "500", z = "-300"}, a[..]) == "";
+  r := gb_run(e, VERB_ADD, a[0], w, t[0].out[..]);
+  #assert r.code == GB_DONE && r.save_level && ed_count(e) == before + 1;
+  id := e[0].selected;
+  #assert ed_field(e, FIELD_X) == 500 && ed_field(e, FIELD_Z) == -300;
+  // a field set through the inspector's export, in range, and refused out of it with the numbers
+  #assert gb_try(VERB_SET_FIELD, "1 0 turn 90", GbFlags.{}, a[..]) != "";
+  a[0] = GbArgs.{level = 1, thing = id, field = FIELD_TURN, value = 90};
+  #assert gb_run(e, VERB_SET_FIELD, a[0], w, t[0].out[..]).code == GB_DONE && ed_field(e, FIELD_TURN) == 90;
+  a[0].value = 900;
+  r = gb_run(e, VERB_SET_FIELD, a[0], w, t[0].out[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "Turn is from -180 to 180") >= 0;
+  // a second ball is not added: the one there is answers
+  a[0] = GbArgs.{level = 1, kind = KIND_BALL};
+  r = gb_run(e, VERB_ADD, a[0], w, t[0].out[..]);
+  #assert r.code == GB_DONE && !r.save_level && level_find(r.json, "\"already\":true") >= 0;
+  // a dry run changes the editor and says it wrote nothing
+  a[0] = GbArgs.{level = 1, thing = id, dry = true};
+  r = gb_run(e, VERB_DELETE, a[0], w, t[0].out[..]);
+  #assert r.code == GB_DONE && !r.save_level && level_find(r.json, "\"dry_run\":true") >= 0 && ed_index(e, id) < 0;
+  // no such thing
+  a[0] = GbArgs.{level = 1, thing = 9999};
+  #assert gb_run(e, VERB_DELETE, a[0], w, t[0].out[..]).code == GB_REFUSED;
+  // the game's own level is not yours: a copy is
+  _ = gb_open(e, 0, t[0].doc[0..<0], true);
+  a[0] = GbArgs.{thing = 1};
+  r = gb_run(e, VERB_DELETE, a[0], w, t[0].out[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "not-permitted") >= 0 && level_find(r.json, "copy-level") >= 0;
+  one := [1] s32.[1];
+  r = gb_run(e, VERB_COPY_LEVEL, GbArgs.{}, GbWorld.{levels = one[..]}, t[0].out[..]);
+  #assert r.save_level && ed_level(e) == 2 && ed_may_edit(e);
+}
+
+#test "a new game and its level, named and listed" {
+  t: [1] CommandTest; e := t[0].e[..];
+  none: [1] s32;
+  w := GbWorld.{levels = none[0..<0]};
+  r := gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && r.save_level && r.save_game == 1 && ed_level(e) == 1 && ed_template(e) == TEMPLATE_ADVENTURE;
+  r = gb_run(e, VERB_RENAME_GAME, GbArgs.{game = 1, text = "Moss Run"}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && r.save_game == 1;
+  r = gb_run(e, VERB_LIST_GAMES, GbArgs.{}, w, t[0].out[..]);
+  #assert level_find(r.json, "\"title\":\"Moss Run\",\"template\":\"adventure\",\"levels\":[1]") >= 0;
+  r = gb_run(e, VERB_LIST_PALETTE, GbArgs.{}, w, t[0].out[..]);
+  #assert level_find(r.json, "\"template\":\"adventure\"") >= 0 && level_find(r.json, "\"kind\":\"ball\"") < 0;
+  #assert gb_run(e, VERB_RENAME_GAME, GbArgs.{game = 7, text = "X"}, w, t[0].out[..]).code == GB_REFUSED;
+}
+
+#test "a level's whole file fits the answer" { #assert ed_save_max() <= GB_DOC_MAX; }
+
+#test "the manifest names every row" {
+  t: [1] CommandTest;
+  m := gb_manifest(t[0].out[..]);
+  #assert m.count > 0;
+  for c: GB_COMMANDS { #assert level_find(m, c.verb) >= 0; }
+  vb: [96] u8; hb: [8] u8;
+  #assert level_find(m, "\"table\":\"") >= 0 && level_find(m, gb_version(vb[..])) >= 0;
+  #assert level_find(m, gb_hex8(gb_table_digest(), hb[..])) >= 0;
+}
+
+// The surface rule (issue 3, item 2): a row is on every surface unless it says why not, in words
+// from GB_GAPS, and every reason it gives is true of it and excuses a surface it lacks. A row
+// added on one surface only, or a reason left after the surface came, fails here.
+gb_gap_why :: (c: GbCommand) -> string {
+  excused: s32 = 0;
+  for k: 0..<gb_parts(c.gap) {
+    g := gb_gap_find(gb_part(c.gap, k));
+    if g < 0 { return "names a reason GB_GAPS doesn't have"; }
+    r := GB_GAPS[g];
+    if r.name != "live" && (r.excuses & (GB_RULED ^ (c.surfaces & GB_RULED))) == 0 { return "gives a reason for a surface it is on"; }
+    // each reason is true of the row
+    if r.name == "drawn" && c.effect != "read" { return "says drawn but is not a read"; }
+    if r.name == "spend" && c.effect != "spend" { return "says spend but pays for nothing"; }
+    if r.name == "person" && c.approval != "person" { return "says person but anyone may run it"; }
+    if r.name == "login" && c.area != "account" { return "says login but is not an account row"; }
+    if r.name == "pane" && ((c.surfaces & GB_PANE) == 0 || (c.surfaces & GB_UI) != 0) { return "says pane but is not the pane's own"; }
+    if (r.name == "screen" || r.name == "view") && (c.surfaces & GB_UI) == 0 { return "says screen or view but the app has no control for it"; }
+    if r.name == "match" && c.area != "play" { return "says match but is not a play row"; }
+    if r.name == "lobby" && c.area != "lobby" { return "says lobby but is not a lobby row"; }
+    if r.name == "web" && (c.area != "web" || c.surfaces != GB_WEB) { return "says web but is not the website's own plan line"; }
+    if r.name == "site" && c.area != "site" { return "says site but is not one of the website's own rows"; }
+    if r.name == "batch" && (c.effect != "edit" || (c.surfaces & GB_PANE) != 0) { return "says batch but is not an edit kept from the pane"; }
+    if r.name == "gesture" && c.effect != "edit" { return "says gesture but is not an edit"; }
+    if (r.name == "agents" || r.name == "runner") && c.area != "agent" { return "says agents or runner but is not an agent row"; }
+    if r.name == "claim" && (c.effect != "edit" || (c.surfaces & GB_PANE) == 0 || level_find(c.flags, "--agent:") < 0) { return "says claim but is not an edit an agent names itself in"; }
+    excused |= r.excuses;
+  }
+  lacks := GB_RULED ^ (c.surfaces & GB_RULED);
+  missing := lacks ^ (lacks & excused);
+  if missing != 0 {
+    for s: 0..<GB_SURFACES { if (missing & cast(s32) (1 << s)) != 0 { return GB_SURFACE_NAME[s]; } }
+  }
+  return "";
+}
+
+#test "every row is on every surface, or says why not in words the table holds" {
+  for c: GB_COMMANDS { #assert gb_gap_why(c) == ""; }
+  for g: GB_GAPS { #assert g.words.count > 0 && gb_gap_find(g.name) >= 0; }
+  // a row on one surface only, with no reason, is refused, and says which surface it lacks
+  one := GB_COMMANDS[VERB_ADD]; one.surfaces = GB_CLI | GB_SKILL; one.gap = "";
+  #assert gb_gap_why(one) == "ui";
+  // a reason for a surface the row is on, a reason not true of it, and a word not in the list
+  on := GB_COMMANDS[VERB_ADD]; on.surfaces = GB_FILES; on.gap = "batch|drawn";
+  #assert gb_gap_why(on) == "says drawn but is not a read";
+  stale := GB_COMMANDS[VERB_UNDO]; stale.surfaces = GB_UI | GB_PANE; stale.gap = "screen|view";
+  #assert gb_gap_why(stale) == "gives a reason for a surface it is on";
+  #assert gb_gap_why(GbCommand.{verb = "x", effect = "read", surfaces = GB_CLI | GB_SKILL, gap = "soon"}) == "names a reason GB_GAPS doesn't have";
+}
+
+#test "the version names the commit and the table, and any change to a row changes the table's digest" {
+  vb: [96] u8; hb: [8] u8;
+  v := gb_version(vb[..]);
+  #assert level_find(v, GB_RELEASE) == 0 && level_find(v, GB_COMMIT) > 0 && level_find(v, ".table-") > 0;
+  #assert level_find(v, gb_hex8(gb_table_digest(), hb[..])) == v.count - 8;
+  #assert gb_table_digest() == gb_table_digest() && gb_hex8(0x1a2b3c4d, hb[..]) == "1a2b3c4d";
+  // each column counts: a row changed in any one of them is another row
+  for v2: 0..<GB_N {
+    c := GB_COMMANDS[v2]; d := gb_row_digest(v2);
+    for k: 0..<13 {
+      x := c;
+      if k == 0 { x.verb = "other"; } else if k == 1 { x.area = "other"; } else if k == 2 { x.effect = "other"; }
+      else if k == 3 { x.approval = "other"; } else if k == 4 { x.arguments = "level|level"; } else if k == 5 { x.flags = "--other:bool"; }
+      else if k == 6 { x.result = "other"; } else if k == 7 { x.limit = "other"; } else if k == 8 { x.impl = "other"; }
+      else if k == 9 { x.usage = "other"; } else if k == 10 { x.help = "other"; } else if k == 11 { x.gap = "live"; }
+      else { x.surfaces = c.surfaces ^ GB_HTTP; }
+      #assert gb_row_digest_of(x) != d;
+    }
+    for w: v2 + 1..<GB_N { #assert gb_row_digest(w) != d; }
+  }
+}
+
+#test "the skill names every row it offers, the limits and the engine's way in" {
+  t: [1] CommandTest; b: [GB_SKILL_MAX] u8;
+  s := gb_skill(b[..]);
+  #assert s.count > 0 && level_find(s, "name: gamebuilder\n") >= 0;
+  for c: GB_COMMANDS {
+    if (c.surfaces & GB_SKILL) == 0 { continue; }
+    #assert level_find(s, c.help) >= 0;
+    line: [256] u8; lt := [1] Text.[Text.{buf = line[..]}];
+    tx_put(lt[..], "`gamebuilder "); tx_put(lt[..], c.verb); if c.usage.count > 0 { tx_put(lt[..], " "); tx_put(lt[..], c.usage); } tx_put(lt[..], "`");
+    #assert level_find(s, cast(string) line[0..<lt[0].at]) >= 0;
+  }
+  #assert level_find(s, "64 edits a batch") >= 0 && level_find(s, "20000 cm of the middle") >= 0;
+  #assert level_find(s, "gh pr create --repo OpenAgentsInc/openagents") >= 0;
+  o: [1] Jo; jo_start(o[..], t[0].out[..]);
+  r := gb_engine(o[..], "0123abcd");
+  #assert r.code == GB_DONE && level_find(r.json, "\"repo\":\"OpenAgentsInc/openagents\",\"commit\":\"0123abcd\"") >= 0;
+  #assert level_find(r.json, "/tree/0123abcd") >= 0 && level_find(r.json, "\"upgrade\":[") >= 0;
+}
+
+#test "a batch as people write it: spaced out, in another order, or dry" {
+  t: [1] CommandTest; e := t[0].e[..];
+  none: [1] s32; w := GbWorld.{levels = none[0..<0]};
+  r := gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, w, t[0].out[..]);
+  #assert r.code == GB_DONE;
+  rb: [64] u8; rt := [1] Text.[Text.{buf = rb[..]}]; tx_int(rt[..], cast(s64) ed_agent_rev(e));
+  rev := cast(string) rb[0..<rt[0].at];
+  bb: [512] u8; bt := [1] Text.[Text.{buf = bb[..]}];
+  tx_put(bt[..], "{\n  \"schema\": \"world.edit.v1\", \"rev\": "); tx_put(bt[..], rev);
+  tx_put(bt[..], ",\n  \"do\": \"apply\",\n  \"edits\": [\n    {\"op\": \"spawn\", \"id\": 0, \"kind\": 2, \"x\": 500, \"y\": 0, \"z\": 0, \"yaw\": 0, \"scale\": 100}\n  ]\n}\n");
+  // the fields out of the wire's order: refused, with the batch as the wire writes it
+  ob: [512] u8; ot := [1] Text.[Text.{buf = ob[..]}];
+  tx_put(ot[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); tx_put(ot[..], rev);
+  tx_put(ot[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"kind\":2,\"id\":0,\"x\":500,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}]}");
+  r = gb_run(e, VERB_APPLY_EDITS, GbArgs.{batch = cast(string) ob[0..<ot[0].at]}, w, t[0].out[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "\"wire\":\"{\\\"schema\\\":\\\"world.edit.v1\\\"") >= 0;
+  // spaced out over lines, as the skill shows it, and dry: carried out, nothing written
+  r = gb_run(e, VERB_APPLY_EDITS, GbArgs.{batch = cast(string) bb[0..<bt[0].at], dry = true}, w, t[0].out[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"dry_run\":true}") >= 0 && !r.save_level;
+  tb: [64] u8;
+  #assert gb_tidy("{ \"a\" : \"b c\" }\n", tb[..]) == "{\"a\":\"b c\"}";
+}

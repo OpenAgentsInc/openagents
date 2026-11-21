@@ -1,0 +1,331 @@
+// New Game's picker: a card a game type, drawn by the shared component kit (Metaverse skin) on
+// the shared UI host's view, as the side panel and the Agents pane are (host/panel/picker-host.c).
+// Its cards are shared/game-types.coax's list in that file's order (gt_picker): the same types,
+// ids, names, lines and pictures gamebuilder.org's picker draws (web/page.coax gs_picker), the
+// website's nine first and the three the app had before them after. A card pressed, or its key
+// (1 to 9), is a game type chosen: the host makes the game with ed_new_game (the `new-game` row's,
+// GB_HOST_NEW_GAME) and writes its file. Escape or the close button puts the picker away.
+//
+// The component kit draws no pictures yet (components/backend/gpu.coax: PRIM_IMAGE needs a texture
+// owner), so each card leaves its picture's place and says where it is (ed_picker_pic_rect,
+// ed_picker_pic): the host puts that file of web/img/ there. A picture in the kit belongs upstream.
+//   scripts/check.sh
+
+PK_MAX_VERTICES :: 32768;
+PK_UNDER :: 512; PK_OVER :: 768; PK_HITS :: 64; PK_POOL :: 4096; PK_ROWS :: 64; PK_KEYED :: 8;
+PK_DRAG :: 6.0;          // units a finger moves before a press becomes a scroll
+PK_ACT_CARD :: 100;      // a card pressed: PK_ACT_CARD + its place in the picker
+PK_ACT_CLOSE :: 1;
+
+PkGeneration :: struct { under: [PK_UNDER] Prim; over: [PK_OVER] Prim; hits: [PK_HITS] SheetHit; pool: [PK_POOL] u8; rows: [PK_ROWS] El; }
+
+EdPicker :: struct {
+  ready: bool; time: f32; d: f32; width: f32; height: f32;
+  atlas: [1] Atlas;
+  px: f32; py: f32; touching: bool; down_y: f32; dragging: bool;
+  pressed: [EL_ID] u8; pressed_n: int;
+  scroll: f32; content: f32;
+  gen: [2] PkGeneration; surface: [1] UiSurface;
+  keys: [PK_KEYED] Keyed; keyed: [1] KeyedStore;
+  refused: int;
+  order: [GT_TYPES] int; n: int;     // the types, in the picker's order
+  pic: [GT_TYPES * 4] f32;           // each card's picture: x, y, width, height, units, as last laid out
+  chosen: int;                       // a type chosen and not yet taken by the host, else -1
+  closed: bool;                      // put away and not yet told to the host
+}
+
+pk_init :: (p: [] EdPicker) {
+  p[0].ready = true;
+  g := p[0].gen[..];
+  p[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  p[0].keyed[0] = KeyedStore.{rows = p[0].keys[..]};
+  p[0].n = gt_picker(GT_ON_APP, p[0].order[..]);
+  p[0].chosen = -1;
+}
+
+// The card at place i chosen: its type is the host's to make.
+pk_choose :: (p: [] EdPicker, i: int) -> bool {
+  if !p[0].ready { pk_init(p); }
+  if i < 0 || i >= p[0].n { return false; }
+  p[0].chosen = p[0].order[i];
+  return true;
+}
+pk_press :: (p: [] EdPicker, act: int) -> bool {
+  if act == PK_ACT_CLOSE { p[0].closed = true; return true; }
+  if act >= PK_ACT_CARD && act < PK_ACT_CARD + GT_TYPES { return pk_choose(p, act - PK_ACT_CARD); }
+  return false;
+}
+pk_press_row :: (p: [] EdPicker, row: int) -> bool {
+  act := surface_action(p[0].surface[..], row);
+  return act != 0 && pk_press(p, act);
+}
+
+// ---- the layout
+
+// A whole number as text.
+pk_int :: (v: int, out: [] u8) -> string {
+  digits: [12] u8; k := 0; x := v; n := 0;
+  if x < 0 { out[0] = '-'; n = 1; x = -x; }
+  while true { digits[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 || k >= 11 { break; } }
+  while k > 0 { k -= 1; out[n] = digits[k]; n += 1; }
+  return cast(string) out[0..<n];
+}
+pk_id :: (prefix: string, k: int, out: [] u8) -> string {
+  n := 0;
+  for c: prefix { out[n] = c; n += 1; }
+  d := pk_int(k, out[n..<out.count]);
+  return cast(string) out[0..<n + d.count];
+}
+// How many cards go across a window w units wide: two, three from 700, four from 1000 (the website's).
+pk_columns :: (w: f32) -> int { return ifx w >= 1000 then 4 else ifx w >= 700 then 3 else 2; }
+// Up to two lines of text no wider than w: where the first ends (the whole text when it fits).
+pk_break :: (m: TextMeasure, face: int, text: string, w: f32) -> int {
+  if measure_width(m, face, text) <= w { return text.count; }
+  last := -1;
+  for i: 0..<text.count {
+    if text[i] != ' ' { continue; }
+    if measure_width(m, face, cast(string) text[0..<i]) > w { break; }
+    last = i;
+  }
+  return ifx last > 0 then last else text.count;
+}
+
+// Lays the picker out w by h units; returns its content's height.
+pk_layout :: (p: [] EdPicker, f: [] UiFrame, w: f32, h: f32) -> f32 {
+  k := f[0].skin; m := f[0].m;
+  sheet_fill(f[0].sheet, 0, 0, w, h, 0, k.canvas);
+  uiframe_clip(f, 0, 0, w, h);
+  ids: [EL_ID] u8;
+  pad := k.pad * 2;
+  x := pad; cw := w - 2 * pad;
+  y := pad - p[0].scroll;
+  bw := button_width(m, k, "close");
+  _ := ctx_button(f, "close", w - pad - bw, y, "close", false, 0, PK_ACT_CLOSE);
+  _ := sheet_text(f[0].sheet, m, -1, x, y, k.small.line, k.small.face, k.muted, GT_PICK_EYE);
+  y += k.small.line + k.space / 2;
+  _ := uiframe_semantic(f, "pick.h", EL_HEADING, GT_PICK_HEAD, x, y, cw, k.title.line, 0, 0);
+  _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, GT_PICK_HEAD);
+  y += k.title.line;
+  _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.muted, GT_PICK_LEDE);
+  y += k.body.line + k.space * 2;
+  cols := pk_columns(w);
+  gap := k.space;
+  card := (cw - gap * cast(f32) (cols - 1)) / cast(f32) cols;
+  pic_h := card * 9 / 16;
+  inner := card - 2 * k.pad;
+  text_h := k.pad + k.title.line + 2 * k.body.line + 2 * k.small.line + k.pad;   // a credit may take two lines
+  vb: [8] u8;
+  for i: 0..<p[0].n {
+    t := p[0].order[i];
+    cx := x + cast(f32) (i % cols) * (card + gap);
+    cy := y + cast(f32) (i / cols) * (pic_h + text_h + gap);
+    id := pk_id("kind.", i, ids[..]);
+    row := uiframe_semantic(f, id, EL_BUTTON, GT_NAME[t], cx, cy, card, pic_h + text_h, 0, PK_ACT_CARD + i);
+    held := p[0].pressed_n > 0 && cast(string) p[0].pressed[0..<p[0].pressed_n] == id;
+    _ := sheet_box(f[0].sheet, cx, cy, card, pic_h + text_h, k.radius, k.border, ifx held then k.hover else k.surface, k.hairline);
+    sheet_fill(f[0].sheet, cx + k.border, cy + k.border, card - 2 * k.border, pic_h - k.border, 0, k.sunk);   // the picture's place
+    p[0].pic[i * 4] = cx + k.border; p[0].pic[i * 4 + 1] = cy + k.border; p[0].pic[i * 4 + 2] = card - 2 * k.border; p[0].pic[i * 4 + 3] = pic_h - k.border;
+    ty := cy + pic_h + k.pad;
+    key := gt_key(i);
+    kx := cx + k.pad;
+    if key.count > 0 {
+      _ := sheet_text(f[0].sheet, m, -1, kx, ty, k.title.line, k.title.face, k.muted, key);
+      kx += measure_width(m, k.title.face, key) + k.space;
+    }
+    _ := sheet_text(f[0].sheet, m, -1, kx, ty, k.title.line, k.title.face, k.ink, GT_NAME[t]);
+    ty += k.title.line;
+    line := GT_LINE[t];
+    cut := pk_break(m, k.body.face, line, inner);
+    _ := sheet_text(f[0].sheet, m, -1, cx + k.pad, ty, k.body.line, k.body.face, k.muted, cast(string) line[0..<cut]);
+    if cut < line.count { _ := sheet_text(f[0].sheet, m, -1, cx + k.pad, ty + k.body.line, k.body.line, k.body.face, k.muted, cast(string) line[cut + 1..<line.count]); }
+    ty += 2 * k.body.line;
+    // whose art the world is, with its card (the village's 0 A.D. art: CC BY-SA 3.0)
+    credit := GT_CREDIT[t];
+    if credit.count > 0 {
+      cc := pk_break(m, k.small.face, credit, inner);
+      _ := sheet_text(f[0].sheet, m, -1, cx + k.pad, ty, k.small.line, k.small.face, k.faint, cast(string) credit[0..<cc]);
+      if cc < credit.count { _ := sheet_text(f[0].sheet, m, -1, cx + k.pad, ty + k.small.line, k.small.line, k.small.face, k.faint, cast(string) credit[cc + 1..<credit.count]); }
+    }
+    _ = vb; _ = row;
+  }
+  rows := (p[0].n + cols - 1) / cols;
+  uiframe_unclip(f);
+  return y + cast(f32) rows * (pic_h + text_h + gap) + p[0].scroll + pad;
+}
+
+pk_clamp_scroll :: (p: [] EdPicker) {
+  most := p[0].content - p[0].height;
+  if p[0].scroll > most { p[0].scroll = most; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+
+// ---- the host's calls
+
+// One frame of width by height device pixels. Returns the vertex count.
+ed_picker_frame :: (p: [] EdPicker, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if p.count < 1 || width < 1 || height < 1 { return 0; }
+  if !p[0].ready { pk_init(p); }
+  a := p[0].atlas[..];
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  w := width / d; h := height / d;
+  p[0].d = d; p[0].width = w; p[0].height = h;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  p[0].time += t;
+  a[0].frame += 1;
+  k := metaverse_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  pk_clamp_scroll(p);
+  f: [1] UiFrame;
+  input := uiinput(p[0].px, p[0].py, true, p[0].touching && !p[0].dragging, cast(string) p[0].pressed[0..<p[0].pressed_n], "");
+  uiframe_begin(f[..], p[0].surface[..], p[0].keyed[..], measure_font(a), k, input, p[0].time, t, false, false);
+  p[0].content = pk_layout(p, f[..], w, h);
+  if !uiframe_end(f[..], p[0].surface[..]) { p[0].refused += 1; }
+  sh := surface_sheet(p[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  return v;
+}
+// The pointer, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A card is pressed when
+// the pointer lifts on the card it went down on; a drag past PK_DRAG scrolls instead.
+ed_picker_pointer :: (p: [] EdPicker, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if p.count < 1 || !(p[0].d > 0) { return false; }
+  ux := x / p[0].d; uy := y / p[0].d;
+  was_y := p[0].py;
+  p[0].px = ux; p[0].py = uy;
+  row := surface_hit(p[0].surface[..], ux, uy);
+  id := surface_id(p[0].surface[..], row);
+  acts := surface_action(p[0].surface[..], row) != 0;
+  pressed := cast(string) p[0].pressed[0..<p[0].pressed_n];
+  if phase == 0 {
+    p[0].touching = true; p[0].dragging = false; p[0].down_y = uy;
+    p[0].pressed_n = ifx acts then el_copy(p[0].pressed[..], id) else 0;
+    return true;
+  }
+  if phase == 1 {
+    if !p[0].touching { return true; }
+    if !p[0].dragging && abs(uy - p[0].down_y) > PK_DRAG { p[0].dragging = true; p[0].pressed_n = 0; }
+    if p[0].dragging { p[0].scroll -= uy - was_y; pk_clamp_scroll(p); }
+    return true;
+  }
+  held := p[0].pressed_n > 0 && pressed == id && !p[0].dragging;
+  p[0].touching = false; p[0].dragging = false; p[0].pressed_n = 0;
+  if phase == 2 && held { _ = pk_press_row(p, row); }
+  return true;
+}
+ed_picker_wheel :: (p: [] EdPicker, dy: f32) #export_c #effects(all) {
+  if p.count < 1 || !(p[0].d > 0) { return; }
+  p[0].scroll += dy / p[0].d;
+  pk_clamp_scroll(p);
+}
+// A key (the UI host's: a Unicode scalar, -1 Escape): 1 to 9 choose that card, Escape puts the
+// picker away. True when the picker took it.
+ed_picker_key :: (p: [] EdPicker, key: int, down: bool) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  if !down { return true; }
+  if key == -1 { p[0].closed = true; return true; }
+  if key >= '1' && key <= '9' { return pk_choose(p, key - '1'); }
+  return false;
+}
+// The type chosen since the last call (a picker's card, by the place shared/game-types.coax gives
+// it), or -1: the host makes the game (ed_new_game) and puts the picker away.
+ed_picker_take :: (p: [] EdPicker) -> s32 #export_c #effects(all) {
+  if p.count < 1 { return -1; }
+  if !p[0].ready { pk_init(p); }
+  t := p[0].chosen; p[0].chosen = -1;
+  return cast(s32) t;
+}
+// Whether the picker was put away (Escape, close) since the last call.
+ed_picker_closed :: (p: [] EdPicker) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  c := p[0].closed; p[0].closed = false;
+  return c;
+}
+// The picker opened again: at its top, nothing chosen.
+ed_picker_reset :: (p: [] EdPicker) #export_c #effects(all) {
+  if p.count < 1 { return; }
+  if !p[0].ready { pk_init(p); }
+  p[0].scroll = 0; p[0].chosen = -1; p[0].closed = false; p[0].pressed_n = 0; p[0].touching = false;
+}
+// How many cards, and card i's picture: where it goes, in device pixels (x, y, width, height into
+// out; false past the cards or before a frame), and its file of web/img/ into out.
+ed_picker_cards :: (p: [] EdPicker) -> s32 #export_c #effects(all) {
+  if p.count < 1 { return 0; }
+  if !p[0].ready { pk_init(p); }
+  return cast(s32) p[0].n;
+}
+ed_picker_pic_rect :: (p: [] EdPicker, i: s32, out: [] f32) -> bool #export_c #effects(all) {
+  if p.count < 1 || out.count < 4 || i < 0 || cast(int) i >= p[0].n || !(p[0].d > 0) { return false; }
+  for c: 0..<4 { out[c] = p[0].pic[cast(int) i * 4 + c] * p[0].d; }
+  return true;
+}
+ed_picker_pic :: (p: [] EdPicker, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if p.count < 1 || i < 0 || cast(int) i >= p[0].n { return 0; }
+  return play_text(GT_PIC[p[0].order[i]], out);
+}
+// Presses the control with this id (kind.N, close), as a tap does.
+ed_picker_activate :: (p: [] EdPicker, id: [] u8) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  return pk_press_row(p, surface_find(p[0].surface[..], cast(string) id));
+}
+ed_picker_max_vertices :: () -> int #export_c #effects(all) { return PK_MAX_VERTICES; }
+ed_picker_size :: () -> s64 #export_c #effects(all) { return size_of(EdPicker); }
+
+// ---- checks
+
+PickerTest :: struct { p: [1] EdPicker; v: [PK_MAX_VERTICES * GP_VERTEX_FLOATS] f32; b: [64] u8; }
+
+pk_test_frame :: (t: [] PickerTest, w: f32) {
+  if !t[0].p[0].atlas[0].ready { text_test_atlas(t[0].p[0].atlas[..]); gp_set_atlas(t[0].p[0].atlas[..], 4096, 4096, 2); }
+  _ = ed_picker_frame(t[0].p[..], t[0].v[..], w, 900, 1, 0.016);
+}
+pk_test_tap :: (t: [] PickerTest, id: string) -> bool {
+  pk_test_frame(t, 1200);
+  i := surface_find(t[0].p[0].surface[..], id);
+  if i < 0 { return false; }
+  r := surface_rows(t[0].p[0].surface[..]).rows[i];
+  x := (r.x + r.w / 2) * t[0].p[0].d; y := (r.y + r.h / 2) * t[0].p[0].d;
+  _ := ed_picker_pointer(t[0].p[..], x, y, 0);
+  _ := ed_picker_pointer(t[0].p[..], x, y, 2);
+  return true;
+}
+
+#test "the picker's cards are the shared list in its order, each with its picture" {
+  t: [1] PickerTest;
+  pk_test_frame(t[..], 1200);
+  order: [GT_TYPES] int; n := gt_picker(GT_ON_APP, order[..]);
+  #assert ed_picker_cards(t[0].p[..]) == cast(s32) n && n == GT_TYPES;
+  r: [4] f32;
+  for i: 0..<n {
+    ids: [EL_ID] u8;
+    #assert surface_find(t[0].p[0].surface[..], pk_id("kind.", i, ids[..])) >= 0;
+    k := ed_picker_pic(t[0].p[..], cast(s32) i, t[0].b[..]);
+    #assert cast(string) t[0].b[0..<k] == GT_PIC[order[i]];
+    #assert ed_picker_pic_rect(t[0].p[..], cast(s32) i, r[..]) && r[2] > 0 && r[3] > 0;
+  }
+  #assert !ed_picker_pic_rect(t[0].p[..], cast(s32) n, r[..]) && ed_picker_pic(t[0].p[..], -1, t[0].b[..]) == 0;
+  // four across a wide window: the fifth card is under the first
+  a: [4] f32; b: [4] f32;
+  _ = ed_picker_pic_rect(t[0].p[..], 0, a[..]); _ = ed_picker_pic_rect(t[0].p[..], 4, b[..]);
+  #assert a[0] == b[0] && b[1] > a[1] && pk_columns(1200) == 4 && pk_columns(800) == 3 && pk_columns(400) == 2;
+}
+#test "a card tapped or its key chooses that type, once; Escape and close put the picker away" {
+  t: [1] PickerTest;
+  #assert ed_picker_take(t[0].p[..]) == -1;
+  #assert pk_test_tap(t[..], "kind.7") && ed_picker_take(t[0].p[..]) == GT_RACING && ed_picker_take(t[0].p[..]) == -1;
+  #assert pk_test_tap(t[..], "kind.9") && ed_picker_take(t[0].p[..]) == GT_ARENA;
+  #assert ed_picker_key(t[0].p[..], '1', true) && ed_picker_take(t[0].p[..]) == GT_THIRD;
+  #assert ed_picker_key(t[0].p[..], '9', true) && ed_picker_take(t[0].p[..]) == GT_DRIFT;
+  #assert !ed_picker_key(t[0].p[..], 'x', true) && ed_picker_take(t[0].p[..]) == -1;
+  #assert !ed_picker_closed(t[0].p[..]) && ed_picker_key(t[0].p[..], -1, true) && ed_picker_closed(t[0].p[..]) && !ed_picker_closed(t[0].p[..]);
+  #assert pk_test_tap(t[..], "close") && ed_picker_closed(t[0].p[..]);
+  // the village's card says whose art it is
+  sh := surface_sheet(t[0].p[0].surface[..]);
+  credited := false;
+  cr := GT_CREDIT[GT_VILLAGE];
+  // the credit, or its first line when the card is too narrow for it whole
+  for i: 0..<sh.no { tx := sh.over[i].text; if sh.over[i].kind == PRIM_TEXT && tx.count > 8 && tx.count <= cr.count && cast(string) cr[0..<tx.count] == tx { credited = true; } }
+  #assert credited;
+}

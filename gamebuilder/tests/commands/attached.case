@@ -1,0 +1,13 @@
+# An attached agent (issue 6): an outside agent's record, as an MCP session leaves it beside the
+# levels (here reported, as the site's copy is). The list says what GameBuilder can do to it,
+# and agent-stop cuts it off in its own words: its process isn't GameBuilder's to stop.
+> agent-report {"report":{"record":{"schema":"gamebuilder.agent.v1","id":"a19a91a37000-0","game":0,"title":"My levels","level":0,"kind":"build","job":"an outside agent, building through gamebuilder mcp --attach","place":"attached","computer":"this Mac","runner":"claude-code","state":"working","since":1763380000000,"made":1763380000000,"updated":1763380000000,"heard":0,"step":"","why":"","limits":{"turns":0,"cents":0},"events":1},"from":0,"events":[{"schema":"gamebuilder.agent.event.v1","agent":"a19a91a37000-0","n":1,"at":1763380000000,"type":"state","state":"working","text":""}]}}
+< {"ok":true,"agent":"a19a91a37000-0","events":1}
+> agents
+< {"ok":true,"agents":[{"agent":{"schema":"gamebuilder.agent.v1","id":"a19a91a37000-0","game":0,"title":"My levels","level":0,"kind":"build","job":"an outside agent, building through gamebuilder mcp --attach","place":"attached","computer":"this Mac","runner":"claude-code","state":"working","since":1763380000000,"made":1763380000000,"updated":1763380000000,"heard":1763380000000,"step":"","why":"","limits":{"turns":0,"cents":0},"events":1},"shown":"working","words":"working","for":"0s","where":"attached","cost":"your own agent: no charge from us","can":"GameBuilder can refuse its calls and cut it off, but can't stop its process: end that in the agent itself"}]}
+> agent-stop {"agent":"a19a91a37000-0"}
+< {"ok":true,"agent":"a19a91a37000-0","state":"stopped"}
+> agent-events {"agent":"a19a91a37000-0","after":1}
+< {"ok":true,"agent":"a19a91a37000-0","events":[{"schema":"gamebuilder.agent.event.v1","agent":"a19a91a37000-0","n":2,"at":1763380000000,"type":"state","state":"stopped","text":"You cut it off: its calls are refused and what it changed stays. GameBuilder can't stop its process: end that in the agent itself"}],"next":2,"more":false}
+> agent-stop {"agent":"a19a91a37000-0"}
+< {"ok":false,"error":"edit-refused","why":"it has already stopped"}

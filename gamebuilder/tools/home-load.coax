@@ -1,0 +1,280 @@
+// The home page's first load, measured against its budget (issue 12, restated for the ring in issue 30;
+// AGENTS.md, the website): a first visit in a fresh headless Chrome, its requests counted, their bytes
+// added as a browser is sent them, the time until the game types' names are on the screen, and the
+// time until they stand over the world's portals. It fails over the budget.
+//
+//   coax/web/tool.sh tools/home-load.coax URL [--stored DIR] [--latency MS] [--requests N] [--bytes N] [--names-ms N] [--portals-ms N]
+//
+// The names are the page alone: web/index.html draws them (web/home.coax, through tools/home-check.coax),
+// each a link to /play?type=ID, so they are there, and pressable, before any script has run. The world
+// (the module, the GPU host, the HUD, its shaders and the nine pictures) comes after; the visit's
+// requests and bytes are all of it, the ring included, and the portals' time is when the names first
+// stand over them (the glue's class `ringed`). A browser with no WebGPU never raises the ring: then the
+// portals are said not to have come, and that is not a failure (the names are the page there).
+//
+// URL alone is a live site (scripts/web-load.sh https://gamebuilder.org/): the bytes are what the
+// network carried (compressed), and a second visit follows, which may ask the network for the page
+// and the site's API only: every file must come from the browser's own copy.
+//
+// --stored DIR is the staged site on this machine (scripts/web-load.sh): the dev server sends
+// files as they are, so a file's bytes are its size in DIR, the same tree as the bucket holds it
+// (scripts/web-stage.sh DIR stored: the script, modules and shaders gzipped). The dev server sets
+// no cache times, so the second visit is judged by where a file is: every file but the page (and the
+// types' pictures, which are checked with the bucket like any picture) must be under /b/, the part of
+// the site a browser keeps for good (scripts/web-deploy.sh).
+//
+// --latency MS has the browser hold every response that long (Chrome's own network emulation), as a
+// server across the internet does: on this machine every file comes at once, so a first paint that waits
+// on another request (a font, the module) looks as quick as the page alone. scripts/web-load.sh gives it
+// to the staged site.
+//
+// The budget (the flags change it): the names within 500 ms; HL_REQUESTS requests and HL_BYTES bytes
+// for the whole first visit; the portals within HL_PORTALS_MS.
+// tool.sh: run-steps 100000000
+#run_steps 100000000;
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+
+HL_REQS :: 256;
+HL_QUIET_MS :: 1500;        // no request in flight for this long: the load is over
+HL_TIMEOUT_MS :: 60000;
+HlReq :: struct { id: [128] u8; n: int; url: [2048] u8; url_n: int; doc: bool; cached: bool; active: bool; failed: bool; encoded: int; status: int; }
+HlSeen :: struct { reqs: [HL_REQS] HlReq; n: int; again: int; overflow: bool; quiet: bool; }
+HlSum :: struct { requests: int; bytes: int; broken: int; unkept: int; }
+
+// Two moments are noted as the page runs: the first frame the names are laid out and seen (the first type's
+// link, the first .kind of the names' list, whichever nodes hold it: until the page's module starts they
+// are index.html's own, which carry no ids, so never ask for #ring here, the module's id), and whether the
+// names first seen were index.html's own (the page alone) or the module's; and the first the glue says
+// they stand over the portals (html.ringed).
+HL_WATCH :: "{\"source\":\"(()=>{const t=()=>{const h=document.documentElement;const b=document.querySelector('.names .kind');const r=b?b.getBoundingClientRect():null;if(globalThis.__gbNamesAt===undefined&&r&&r.width>0&&r.height>0&&getComputedStyle(b).visibility==='visible'){globalThis.__gbNamesAt=performance.now();globalThis.__gbNamesOwn=b.parentElement&&b.parentElement.id===''?1:0;}if(globalThis.__gbRingAt===undefined&&h&&h.classList.contains('ringed')){globalThis.__gbRingAt=performance.now();}if(globalThis.__gbRingAt===undefined){requestAnimationFrame(t);}};t();})();\"}";
+// What the page is asked once it is quiet, as eight whole numbers: the first contentful paint, the names' moment, the
+// first name's box, whether all nine are links to /play?type=, the portals' moment (-1: never), the names' count
+// (the module's, in #ring, by now), and whether the names first seen were index.html's own (1) or the module's (0).
+HL_ASK :: "(()=>{const p=performance.getEntriesByType('paint').find((e)=>e.name==='first-contentful-paint');const k=[...document.querySelectorAll('#ring .kind')];const b=k[0];const r=b?b.getBoundingClientRect():{width:0,height:0};const linked=k.length>0&&k.every((a)=>/^\\/play\\?type=[a-z-]+$/.test(a.getAttribute('href')||''));return [p?Math.ceil(p.startTime):-1,globalThis.__gbNamesAt===undefined?-1:Math.ceil(globalThis.__gbNamesAt),Math.round(r.width),Math.round(r.height),linked?1:0,globalThis.__gbRingAt===undefined?-1:Math.ceil(globalThis.__gbRingAt),k.length,globalThis.__gbNamesOwn===1?1:0].join(' ');})()";
+HL_NAMES :: 9;              // the types (shared/game-types.coax): every one is on the first paint
+HL_NAMES_MS :: 500;
+HL_REQUESTS :: 24;
+HL_BYTES :: 1600000;
+HL_PORTALS_MS :: 3000;
+
+// A request that went to a server: not a data: or blob: address, which is the page's own bytes.
+hl_counted :: (url: string) -> bool { return (url.count >= 7 && url[0..<7] == "http://") || (url.count >= 8 && url[0..<8] == "https://"); }
+// The address's path: no origin, no query.
+hl_path :: (url: string) -> string {
+  if !hl_counted(url) { return ""; }
+  from := ifx url[4] == 's' then 8 else 7;
+  while from < url.count && url[from] != '/' { from += 1; }
+  to := from;
+  while to < url.count && url[to] != '?' && url[to] != '#' { to += 1; }
+  return ifx from == to then "/" else url[from..<to];
+}
+hl_under :: (path: string, dir: string) -> bool { return path.count >= dir.count && path[0..<dir.count] == dir; }
+// The site's API is asked every visit (who is logged in): a call, not a file.
+hl_api :: (path: string) -> bool { return hl_under(path, "/api/"); }
+// A file a browser keeps for good: the release's own directory (scripts/web-stage.sh).
+hl_kept :: (path: string) -> bool { return hl_under(path, "/b/"); }
+// The bytes a request cost: its file's size as the bucket holds it, when one was given and the
+// request is a file's; else what the network carried.
+hl_bytes :: (r: HlReq, stored: string) -> int {
+  q := r; path := hl_path(cast(string) q.url[0..<q.url_n]);
+  if stored.count > 0 && !hl_api(path) {
+    name: [4096] u8; n := 0;
+    for c: stored { name[n] = c; n += 1; }
+    for c: path { if n < name.count { name[n] = c; n += 1; } }
+    if path[path.count - 1] == '/' { for c: "index.html" { if n < name.count { name[n] = c; n += 1; } } }
+    size := fs_size(cast(string) name[0..<n]);
+    if size >= 0 { return size; }
+  }
+  return r.encoded;
+}
+// A visit's total: the requests that went to the network, their bytes, the files that failed, and
+// (second: the visit is judged as a second one would go) the files a second visit asks for again.
+// `live` is a real second visit, where the browser's own copy answers; else it is the first
+// visit read for where its files are.
+hl_sum :: (seen: [] HlSeen, stored: string, second: bool, live: bool) -> HlSum {
+  s: HlSum;
+  s.requests = seen[0].again;
+  for i: 0..<seen[0].n {
+    r := seen[0].reqs[i]; url := cast(string) r.url[0..<r.url_n];
+    if !hl_counted(url) { continue; }
+    path := hl_path(url);
+    if !r.cached { s.requests += 1; s.bytes += hl_bytes(r, stored); }
+    if !hl_api(path) && (r.failed || r.status >= 400) { s.broken += 1; }
+    if second && !r.doc && !hl_api(path) && ((live && !r.cached) || (!live && !hl_kept(path))) { s.unkept += 1; }
+  }
+  return s;
+}
+
+#test "an address's path, what counts as a request, the API and the kept part of the site" {
+  #assert hl_path("https://gamebuilder.org/") == "/" && hl_path("https://gamebuilder.org") == "/" && hl_path("http://127.0.0.1:8811/b/ab12/host/app.js?app=site&root=x") == "/b/ab12/host/app.js";
+  #assert hl_counted("https://a/b") && hl_counted("http://a/b") && !hl_counted("data:image/png;base64,AAAA") && !hl_counted("blob:https://a/1");
+  #assert hl_api("/api/auth/account") && !hl_api("/apis") && hl_kept("/b/ab12/build/hud.wasm") && !hl_kept("/build/hud.wasm") && !hl_kept("/");
+}
+hl_test_add :: (seen: [] HlSeen, url: string, doc: bool, cached: bool, status: int, encoded: int) {
+  r: HlReq; for c: url { r.url[r.url_n] = c; r.url_n += 1; }
+  r.doc = doc; r.cached = cached; r.status = status; r.encoded = encoded;
+  seen[0].reqs[seen[0].n] = r; seen[0].n += 1;
+}
+#test "a visit's total: the page's own bytes are not requests, a cached file costs nothing, and a second visit may ask for the page and the API alone" #steps 400000000 {
+  w: [1] HlSeen; seen := w[..];
+  hl_test_add(seen, "https://g.org/", true, false, 200, 5000);
+  hl_test_add(seen, "https://g.org/b/ab/host/app.js?app=site", false, false, 200, 140000);
+  hl_test_add(seen, "data:image/png;base64,AAAA", false, false, 200, 0);
+  hl_test_add(seen, "https://g.org/api/auth/account", false, false, 401, 300);
+  first := hl_sum(seen, "", false, true);
+  #assert first.requests == 3 && first.bytes == 145300 && first.broken == 0 && first.unkept == 0;
+  // as a second visit of a staged site: every file is under /b/
+  #assert hl_sum(seen, "", true, false).unkept == 0;
+  hl_test_add(seen, "https://g.org/img/hero.jpg", false, false, 200, 90000);
+  #assert hl_sum(seen, "", true, false).unkept == 1 && hl_sum(seen, "", false, true).requests == 4;
+  // a real second visit: the script came from the browser's copy, the picture was asked for again (a 304 is a request)
+  seen[0].reqs[1].cached = true; seen[0].reqs[4].status = 304; seen[0].reqs[4].encoded = 200;
+  again := hl_sum(seen, "", true, true);
+  #assert again.requests == 3 && again.bytes == 5500 && again.unkept == 1;
+  seen[0].reqs[4].cached = true;
+  #assert hl_sum(seen, "", true, true).unkept == 0 && hl_sum(seen, "", true, true).requests == 2;
+  // a file that is not there is broken; the API saying "nobody" is not
+  seen[0].reqs[1].status = 404;
+  #assert hl_sum(seen, "", false, true).broken == 1;
+}
+
+hl_number :: (doc: Jv, path: string) -> int {
+  n := args_number(jv_raw(doc, jv_path(doc, 0, path))); return ifx n.ok then cast(int) n.value else 0;
+}
+hl_slot :: (seen: [] HlSeen, id: string, add: bool) -> int {
+  for i: 0..<seen[0].n { if seen[0].reqs[i].n == id.count && cast(string) seen[0].reqs[i].id[0..<seen[0].reqs[i].n] == id { return i; } }
+  if !add { return -1; }
+  if seen[0].n == HL_REQS { seen[0].overflow = true; return -1; }
+  i := seen[0].n; seen[0].n += 1;
+  seen[0].reqs[i] = HlReq.{};
+  for k: 0..<id.count { seen[0].reqs[i].id[k] = id[k]; } seen[0].reqs[i].n = id.count;
+  return i;
+}
+// Opens `url` and takes every request's events until the page is quiet. False when the browser broke.
+hl_visit :: (c: [] Cdp, url: string, seen: [] HlSeen) -> bool {
+  seen[0].n = 0; seen[0].again = 0; seen[0].overflow = false; seen[0].quiet = false;
+  j: [1] Jo; b: [4096] u8;
+  jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
+  // sent without waiting for its reply: the page's first request comes before it
+  if cdp_send(c, "Page.navigate", jo_text(j[..])) < 0 { return false; }
+  begin := proc_now_ms(); last := begin; active := 0;
+  while proc_now_ms() - begin < HL_TIMEOUT_MS {
+    polled := cdp_poll(c, 100);
+    if polled == CDP_FAIL || polled == CDP_CLOSED { return false; }
+    if polled == CDP_GOT {
+      doc := c[0].doc[0]; method := cdp_event_method(doc);
+      sent := method == "Network.requestWillBeSent";
+      if sent || method == "Network.requestServedFromCache" || method == "Network.responseReceived" || method == "Network.loadingFinished" || method == "Network.loadingFailed" {
+        idbuf: [128] u8; n := jv_str(doc, jv_path(doc, 0, "params.requestId"), idbuf[..]);
+        slot := ifx n > 0 then hl_slot(seen, cast(string) idbuf[0..<n], sent) else -1;
+        if slot >= 0 {
+          last = proc_now_ms();
+          if sent {
+            // the same id again is a redirect: one more request, and the address it led to
+            if seen[0].reqs[slot].url_n > 0 { seen[0].again += 1; }
+            seen[0].reqs[slot].url_n = jv_str(doc, jv_path(doc, 0, "params.request.url"), seen[0].reqs[slot].url[..]);
+            if seen[0].reqs[slot].url_n < 0 { seen[0].reqs[slot].url_n = 0; seen[0].overflow = true; }
+            seen[0].reqs[slot].doc = jv_raw(doc, jv_path(doc, 0, "params.type")) == "Document";
+            if !seen[0].reqs[slot].active { seen[0].reqs[slot].active = true; active += 1; }
+          }
+          if method == "Network.requestServedFromCache" { seen[0].reqs[slot].cached = true; }
+          if method == "Network.responseReceived" {
+            seen[0].reqs[slot].status = hl_number(doc, "params.response.status");
+            if jv_bool(doc, jv_path(doc, 0, "params.response.fromDiskCache")) || jv_bool(doc, jv_path(doc, 0, "params.response.fromPrefetchCache")) { seen[0].reqs[slot].cached = true; }
+          }
+          if method == "Network.loadingFinished" || method == "Network.loadingFailed" {
+            if method == "Network.loadingFinished" { seen[0].reqs[slot].encoded = hl_number(doc, "params.encodedDataLength"); } else { seen[0].reqs[slot].failed = true; }
+            if seen[0].reqs[slot].active { seen[0].reqs[slot].active = false; active -= 1; }
+          }
+        }
+      }
+    }
+    if seen[0].n > 0 && active == 0 && proc_now_ms() - last >= HL_QUIET_MS { seen[0].quiet = true; break; }
+  }
+  return true;
+}
+hl_list :: (seen: [] HlSeen, stored: string) {
+  for i: 0..<seen[0].n {
+    r := seen[0].reqs[i]; url := cast(string) r.url[0..<r.url_n];
+    if !hl_counted(url) { continue; }
+    print("  % % %\n", ifx r.cached then "kept    " else "network ", ifx r.cached then 0 else hl_bytes(r, stored), hl_path(url));
+  }
+}
+// A whole number as text, into `out`.
+hl_num :: (out: [] u8, v: int) -> string {
+  digits: [12] u8; m := 0; a := ifx v < 0 then 0 else v;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  k := 0; while m > 0 && k < out.count { m -= 1; out[k] = digits[m]; k += 1; }
+  return cast(string) out[0..<k];
+}
+hl_flag :: (a: [] Args, name: string, fallback: int) -> int {
+  v := args_number(args_value(a, name, "")); return ifx args_has(a, name) && v.ok && v.value > 0 then cast(int) v.value else fallback;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: home-load URL [--stored DIR] [--latency MS] [--requests N] [--bytes N] [--names-ms N] [--portals-ms N]\n"); return 2; }
+  url := args_at(a[..], 0); stored := args_value(a[..], "--stored", ""); live := stored.count == 0;
+  max_requests := hl_flag(a[..], "--requests", HL_REQUESTS); max_bytes := hl_flag(a[..], "--bytes", HL_BYTES);
+  max_names := hl_flag(a[..], "--names-ms", HL_NAMES_MS); max_portals := hl_flag(a[..], "--portals-ms", HL_PORTALS_MS);
+  latency := hl_flag(a[..], "--latency", 0);
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 1440, 900, "home-load-") { tool_errln(cdp_error(c[..])); return 1; }
+  ok := cdp_call(c[..], "Page.enable", "", 30000) >= 0;
+  ok = ok && cdp_call(c[..], "Runtime.enable", "", 30000) >= 0;
+  ok = ok && cdp_call(c[..], "Network.enable", "", 30000) >= 0;
+  ok = ok && cdp_call(c[..], "Emulation.setDeviceMetricsOverride", "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}", 30000) >= 0;
+  ok = ok && cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", HL_WATCH, 30000) >= 0;
+  if ok && latency > 0 {
+    lb: [160] u8; d: [12] u8; ln := 0;
+    for ch: "{\"offline\":false,\"latency\":" { lb[ln] = ch; ln += 1; }
+    for ch: hl_num(d[..], latency) { lb[ln] = ch; ln += 1; }
+    for ch: ",\"downloadThroughput\":-1,\"uploadThroughput\":-1}" { lb[ln] = ch; ln += 1; }
+    ok = cdp_call(c[..], "Network.emulateNetworkConditions", cast(string) lb[0..<ln], 30000) >= 0;
+    print("home: every response held % ms (--latency)\n", latency);
+  }
+  w: [2] HlSeen; bad := 0;
+  if !ok || !hl_visit(c[..], url, w[0..<1]) { tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  // the names: when they were painted, that they are links to the builder, and when they stood over the portals
+  said: [128] u8; at := cdp_evaluate(c[..], HL_ASK); sn := jv_str(c[0].doc[0], at, said[..]);
+  nums: [8] int; k := 0; i := 0;
+  for q: 0..<8 { nums[q] = -1; }
+  while sn > 0 && i < sn && k < 8 {
+    from := i; while i < sn && said[i] != ' ' { i += 1; }
+    v := args_number(cast(string) said[from..<i]); if v.ok { nums[k] = cast(int) v.value; } k += 1; i += 1;
+  }
+  names := ifx nums[0] > nums[1] then nums[0] else nums[1];
+  portals := nums[5];
+  first := hl_sum(w[0..<1], stored, false, live);
+  print("home: first visit of %\n", url); hl_list(w[0..<1], stored);
+  print("home: the names on the screen at % ms (the budget: %), from the page alone\n", names, max_names);
+  print("home: % requests (the budget: %), % bytes% (the budget: %), the world and its ring included\n", first.requests, max_requests, first.bytes, ifx live then " over the network" else " as the bucket holds them", max_bytes);
+  if portals >= 0 { print("home: the names over the portals at % ms (the budget: %)\n", portals, max_portals); }
+  else { print("home: the portals did not come (this browser has no WebGPU, or the world did not start): the names are the page\n"); }
+  if !w[0].quiet || w[0].overflow { print("home: the page NEVER went quiet (or made more than % requests)\n", HL_REQS); bad += 1; }
+  if first.requests > max_requests { print("home: OVER the budget of requests\n"); bad += 1; }
+  if first.bytes > max_bytes { print("home: OVER the budget of bytes\n"); bad += 1; }
+  if first.broken > 0 { print("home: % file(s) FAILED to load\n", first.broken); bad += 1; }
+  if nums[0] < 0 || nums[1] < 0 || nums[2] < 1 || nums[3] < 1 || nums[4] != 1 || nums[6] != HL_NAMES { print("home: the names are NOT on the page (nine links to /play?type=, in #ring; the page said \"%\")\n", cast(string) said[0..<ifx sn > 0 then sn else 0]); bad += 1; }
+  else if nums[7] != 1 { print("home: the names first seen were the page's module's, NOT the page alone (index.html's own names were not on the screen first)\n"); bad += 1; }
+  else if names > max_names { print("home: the names came LATE\n"); bad += 1; }
+  if portals > max_portals { print("home: the portals came LATE\n"); bad += 1; }
+  // the second visit
+  again: HlSum;
+  if live {
+    if !hl_visit(c[..], url, w[1..<2]) { tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+    again = hl_sum(w[1..<2], stored, true, true);
+    print("home: second visit\n"); hl_list(w[1..<2], stored);
+    print("home: % requests, % bytes; % file(s) asked for again besides the page\n", again.requests, again.bytes, again.unkept);
+  } else {
+    again = hl_sum(w[0..<1], stored, true, false);
+    print("home: a second visit asks for the page and the API alone when every file is under /b/: % file(s) are not\n", again.unkept);
+  }
+  if again.unkept > 0 { print("home: a second visit RE-FETCHES files\n"); bad += 1; }
+  cdp_close(c[..]);
+  if bad > 0 { print("home: the first load is NOT within its budget\n"); return 1; }
+  print("home: ok, the first load is within its budget\n");
+  return 0;
+}

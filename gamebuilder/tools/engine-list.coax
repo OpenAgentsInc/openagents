@@ -1,0 +1,287 @@
+// The engine's capability list (issue 21; docs/engine-upgrades.md, "The engine capability list"):
+// gamebuilder/core/engine-list.coax is made here from the OpenAgents Metaverse Engine's book at the commit in
+// openagents.lock, so the command line can say what the engine does with no openagents checkout.
+// One row a chapter: its number, title, status, the book's part, the engine folder most of its
+// source is in, up to 4 source files and a summary of up to 300 bytes.
+//
+// It reads, under metaverse-engine/book: chapters.json (the rows), SUMMARY.md
+// (each chapter's part) and each chapter's file (its summary: the text under "What this chapter
+// teaches", else its first paragraph).
+//
+//   coax/web/tool.sh tools/engine-list.coax            # writes gamebuilder/core/engine-list.coax
+//   coax/web/tool.sh tools/engine-list.coax --check    # changes nothing; ends 1 when it is not what the book makes
+//
+// scripts/pin.sh bump runs the first, scripts/check.sh the second.
+// tool.sh: run-steps 250000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/agent/claude/fields.coax";
+#import "Basic";
+
+EL_BOOK :: "metaverse-engine/book/";
+EL_OUT :: "gamebuilder/core/engine-list.coax";
+EL_LOCK :: "openagents.lock";
+EL_ROWS :: 400;          // chapters, at most
+EL_SUMMARY :: 300;
+EL_SOURCES :: 4;
+EL_FILE :: 524288;       // a file read or made, at most
+
+ElText :: struct { buf: [] u8; at: int; over: bool; }
+el_put :: (t: [] ElText, s: string) {
+  for c: s { if t[0].at >= t[0].buf.count { t[0].over = true; return; } t[0].buf[t[0].at] = c; t[0].at += 1; }
+}
+el_int :: (t: [] ElText, v: int) {
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { el_put(t, "0"); return; }
+  while x > 0 { d[n] = cast(u8) (48 + x % 10); n += 1; x /= 10; }
+  while n > 0 { n -= 1; b: [1] u8; b[0] = d[n]; el_put(t, cast(string) b[..]); }
+}
+// s as a Coax string literal: quotes and backslashes escaped, a line end a space.
+el_quote :: (t: [] ElText, s: string) {
+  el_put(t, "\"");
+  for c: s {
+    b: [1] u8; b[0] = c;
+    if c == '"' { el_put(t, "\\\""); } else if c == '\\' { el_put(t, "\\\\"); }
+    else if c == 10 || c == 13 || c == 9 { el_put(t, " "); }
+    else { el_put(t, cast(string) b[..]); }
+  }
+  el_put(t, "\"");
+}
+el_starts :: (s: string, at: int, w: string) -> bool {
+  if at < 0 || at + w.count > s.count { return false; }
+  return cast(string) s[at..<at + w.count] == w;
+}
+el_find :: (s: string, w: string, from: int) -> int {
+  i := from;
+  while i + w.count <= s.count { if el_starts(s, i, w) { return i; } i += 1; }
+  return -1;
+}
+// The line that starts at at: where it ends (its line end, or the text's).
+el_line_end :: (s: string, at: int) -> int {
+  i := at;
+  while i < s.count && s[i] != 10 { i += 1; }
+  return i;
+}
+
+// Markdown as plain words into out, from text[from..<to]: a list's dash and a quote's mark dropped,
+// a link its words, emphasis marks and backticks dropped, runs of spaces one. Stops at EL_SUMMARY
+// bytes, cut back to a whole word and ended with an ellipsis. Its length.
+el_plain :: (text: string, from: int, to: int, out: [] u8) -> int {
+  n := 0; i := from; line_start := true; space := true; cut := false;
+  while i < to {
+    c := text[i];
+    if line_start {
+      while i < to && (text[i] == ' ' || text[i] == '>') { i += 1; }
+      if i + 1 < to && (text[i] == '-' || text[i] == '*') && text[i + 1] == ' ' { i += 2; }
+      line_start = false;
+      continue;
+    }
+    if c == 10 { line_start = true; c = ' '; }
+    if c == '[' { i += 1; continue; }
+    if c == ']' && i + 1 < to && text[i + 1] == '(' {          // a link's address
+      j := i + 2;
+      while j < to && text[j] != ')' && text[j] != 10 { j += 1; }
+      i = ifx j < to && text[j] == ')' then j + 1 else i + 1;
+      continue;
+    }
+    if c == ']' || c == '`' || c == '*' { i += 1; continue; }
+    if c == ' ' || c == 9 || c == 13 {
+      if !space && n < out.count { out[n] = ' '; n += 1; }
+      space = true; i += 1;
+      continue;
+    }
+    if n >= EL_SUMMARY - 3 || n >= out.count { cut = true; break; }
+    out[n] = c; n += 1; space = false; i += 1;
+  }
+  while n > 0 && out[n - 1] == ' ' { n -= 1; }
+  if cut {
+    while n > 0 && out[n - 1] != ' ' { n -= 1; }
+    while n > 0 && (out[n - 1] == ' ' || out[n - 1] == ',' || out[n - 1] == ';' || out[n - 1] == ':') { n -= 1; }
+    // a cut inside a UTF-8 character can't happen: the cut is at a space
+    if n + 3 <= out.count { out[n] = '.'; out[n + 1] = '.'; out[n + 2] = '.'; n += 3; }
+  }
+  return n;
+}
+// A chapter's summary: the text under "## What this chapter teaches" up to the next heading, else
+// its first paragraph that is not a heading or a quote.
+el_summary :: (text: string, out: [] u8) -> int {
+  h := el_find(text, "\n## What this chapter teaches", 0);
+  if h >= 0 {
+    from := el_line_end(text, h + 1);
+    to := el_find(text, "\n## ", from);
+    return el_plain(text, from, ifx to < 0 then text.count else to, out);
+  }
+  i := 0;
+  while i < text.count {
+    e := el_line_end(text, i);
+    if e > i && text[i] != '#' && text[i] != '>' && text[i] != ' ' && text[i] != '<' && text[i] != '|' && text[i] != '-' {
+      to := el_find(text, "\n\n", i);
+      return el_plain(text, i, ifx to < 0 then text.count else to, out);
+    }
+    i = e + 1;
+  }
+  return 0;
+}
+// The book's part a chapter's file is listed under in SUMMARY.md: the "**II. A world**" line above
+// its link, as "A world". "" when it is under none.
+el_part :: (summary: string, file: string) -> string {
+  part := ""; i := 0;
+  while i < summary.count {
+    e := el_line_end(summary, i);
+    if el_starts(summary, i, "**") && e - i > 4 && el_starts(summary, e - 2, "**") {
+      a := i + 2; b := e - 2;
+      d := el_find(cast(string) summary[a..<b], ". ", 0);
+      part = cast(string) summary[ifx d < 0 then a else a + d + 2..<b];
+    } else if el_find(cast(string) summary[i..<e], file, 0) >= 0 { return part; }
+    i = e + 1;
+  }
+  return "";
+}
+// The engine folder most of a chapter's source files are in ("physics" for
+// metaverse-engine/physics/orbit.coax); the first such when several tie. "" when none is the engine's.
+el_folder :: (ar: [] ClArena, sources: string) -> string {
+  best := ""; best_n := 0; pre := "metaverse-engine/";
+  n := cl_count(sources);
+  for i: 0..<n {
+    ar[0].at = 0;
+    s := cl_text(ar, sources, cl_item(sources, i));
+    if !el_starts(s, 0, pre) { continue; }
+    e := el_find(s, "/", pre.count);
+    if e < 0 { continue; }
+    f := cast(string) s[pre.count..<e];
+    if f == "examples" || f == "tests" || f == "book" { continue; }
+    count := 0;
+    for k: 0..<n {
+      t := cl_json(sources, cl_item(sources, k));       // with its quotes
+      if t.count > pre.count + f.count + 2 && el_starts(t, 1, pre) && el_starts(t, 1 + pre.count, f) && t[1 + pre.count + f.count] == '/' { count += 1; }
+    }
+    if count > best_n { best_n = count; best = el_folder_keep(f); }
+  }
+  return best;
+}
+// A folder name that outlives the arena: one of the engine's own, as a constant.
+EL_FOLDERS :: [33] string.["action", "agent", "ai", "anim", "anime", "arch", "audio", "book", "cam", "character", "content", "core", "editor",
+  "export", "fx", "gpu", "host", "import", "kit", "lab", "move", "net", "physics", "render", "script", "session", "shot", "space", "state", "talk",
+  "tools", "ui", "world"];
+el_folder_keep :: (f: string) -> string { for w: EL_FOLDERS { if w == f { return w; } } return ""; }
+
+el_status :: (s: string) -> int {
+  if s == "implemented" { return 0; }
+  if s == "partly implemented" { return 1; }
+  if s == "design draft" { return 2; }
+  return -1;
+}
+
+ElWork :: struct { json: [EL_FILE] u8; summary: [EL_FILE] u8; chapter: [EL_FILE] u8; out: [EL_FILE] u8; old: [EL_FILE] u8; }
+
+// The file's text into w.out: its length, or -1 with why printed.
+el_make :: (w: [] ElWork, pin: string) -> int {
+  pb: [512] u8;
+  jn := fs_read(fs_join(EL_BOOK, "chapters.json", pb[..]), w[0].json[..]);
+  sn := fs_read(fs_join(EL_BOOK, "SUMMARY.md", pb[..]), w[0].summary[..]);
+  if jn <= 0 || jn >= EL_FILE || sn <= 0 || sn >= EL_FILE { print("engine-list: NOT read: %chapters.json and SUMMARY.md (run scripts/pin.sh sync)\n", EL_BOOK); return -1; }
+  json := cast(string) w[0].json[0..<jn]; summary := cast(string) w[0].summary[0..<sn];
+  chapters := cl_raw(json, "chapters");
+  n := cl_count(chapters);
+  if n <= 0 || n > EL_ROWS { print("engine-list: NOT made: chapters.json has % chapters (1 to % are read)\n", n, EL_ROWS); return -1; }
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  t := [1] ElText.[ElText.{buf = w[0].out[..]}];
+  el_put(t[..], "// Made by tools/engine-list.coax from the OpenAgents Metaverse Engine's book at the commit in\n");
+  el_put(t[..], "// openagents.lock. Don't edit it: scripts/pin.sh bump makes it again, and scripts/check.sh fails\n");
+  el_put(t[..], "// when it is not what the book at that commit makes. docs/engine-upgrades.md, \"The engine capability list\".\n");
+  el_put(t[..], "ENG_PIN :: "); el_quote(t[..], pin); el_put(t[..], ";\n");
+  el_put(t[..], "ENG_N :: "); el_int(t[..], n); el_put(t[..], ";\n");
+  el_put(t[..], "ENG_IMPLEMENTED :: 0; ENG_PARTLY :: 1; ENG_DRAFT :: 2;\n");
+  el_put(t[..], "// source: up to 4 files, \"|\" between them. folder: the engine folder most of them are in, \"\" for none.\n");
+  el_put(t[..], "EngRow :: struct { number: s32; status: s32; title: string; part: string; folder: string; source: string; summary: string; }\n");
+  el_put(t[..], "ENG_ROWS :: [ENG_N] EngRow.[\n");
+  sb: [EL_SUMMARY + 8] u8;
+  for i: 0..<n {
+    row := cl_json(chapters, cl_item(chapters, i));
+    ar[0].at = 0; ar[0].full = false;
+    number := cl_int(row, "number");
+    status := el_status(cl_str(ar[..], row, "status"));
+    file := cl_str(ar[..], row, "file");
+    title := cl_str(ar[..], row, "title");
+    if !number.ok || status < 0 || file.count == 0 || title.count == 0 || ar[0].full {
+      print("engine-list: NOT made: chapter % of chapters.json has no number, title, file or a status this tool knows\n", i + 1); return -1;
+    }
+    cn := fs_read(fs_join(EL_BOOK, file, pb[..]), w[0].chapter[..]);
+    if cn <= 0 || cn >= EL_FILE { print("engine-list: NOT read: % in %\n", file, EL_BOOK); return -1; }
+    sum_n := el_summary(cast(string) w[0].chapter[0..<cn], sb[..]);
+    el_put(t[..], "  EngRow.{number = "); el_int(t[..], number.value); el_put(t[..], ", status = "); el_int(t[..], status);
+    el_put(t[..], ", title = "); el_quote(t[..], title);
+    el_put(t[..], ", part = "); el_quote(t[..], el_part(summary, file));
+    sources := cl_raw(row, "source");
+    fa: [4096] u8; far: [1] ClArena; far[0].buf = fa[..];
+    el_put(t[..], ", folder = "); el_quote(t[..], el_folder(far[..], sources));
+    el_put(t[..], ",\n    source = \"");
+    kept := 0;
+    for k: 0..<cl_count(sources) {
+      if kept == EL_SOURCES { break; }
+      far[0].at = 0;
+      s := cl_text(far[..], sources, cl_item(sources, k));
+      if s.count == 0 || el_find(s, "\"", 0) >= 0 || el_find(s, "\\", 0) >= 0 || el_find(s, "|", 0) >= 0 { continue; }
+      if kept > 0 { el_put(t[..], "|"); }
+      el_put(t[..], s); kept += 1;
+    }
+    el_put(t[..], "\",\n    summary = "); el_quote(t[..], cast(string) sb[0..<sum_n]); el_put(t[..], "},\n");
+  }
+  el_put(t[..], "];\n");
+  if t[0].over { print("engine-list: NOT made: the list is longer than % bytes\n", EL_FILE); return -1; }
+  return t[0].at;
+}
+
+// The commit openagents.lock names: its first line of 40 hex digits. "" for none.
+el_pin :: (lock: string) -> string {
+  i := 0;
+  while i < lock.count {
+    e := el_line_end(lock, i);
+    if e - i == 40 {
+      hex := true;
+      for k: i..<e { c := lock[k]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { hex = false; } }
+      if hex { return cast(string) lock[i..<e]; }
+    }
+    i = e + 1;
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  check := args_count(a[..]) > 0 && args_at(a[..], 0) == "--check";
+  if args_count(a[..]) > (ifx check then 1 else 0) { print("usage: tool.sh tools/engine-list.coax [--check]\n"); return 2; }
+  lb: [4096] u8; ln := fs_read(EL_LOCK, lb[..]);
+  pin := el_pin(cast(string) lb[0..<ifx ln < 0 then 0 else ln]);
+  if pin.count == 0 { print("engine-list: NOT read: openagents.lock names no commit (run it from the repository's root)\n"); return 1; }
+  w: [1] ElWork;
+  n := el_make(w[..], pin);
+  if n < 0 { return 1; }
+  made := cast(string) w[0].out[0..<n];
+  on := fs_read(EL_OUT, w[0].old[..]);
+  if on == n && cast(string) w[0].old[0..<on] == made { if check { print("engine-list: ok, % is the book's at %\n", EL_OUT, cast(string) pin[0..<10]); } return 0; }
+  if check { print("engine-list: NOT made from the book at %: % (run coax/web/tool.sh tools/engine-list.coax)\n", cast(string) pin[0..<10], EL_OUT); return 1; }
+  if !fs_write(EL_OUT, made) { print("engine-list: NOT written %\n", EL_OUT); return 1; }
+  print("engine-list: made %\n", EL_OUT);
+  return 0;
+}
+
+#test "a chapter's summary is what it teaches, in plain words, cut at a word" {
+  b: [EL_SUMMARY + 8] u8;
+  n := el_summary("# 1. A\n\n> Status.\n\nFirst words.\n\n## What this chapter teaches\n\n- A [link](x.md) and `code`.\n- **Bold** next.\n\n## The method\n\nNo.\n", b[..]);
+  #assert cast(string) b[0..<n] == "A link and code. Bold next.";
+  n = el_summary("# 2. B\n\n> A quote\n> goes on.\n\nThe first\nparagraph.\n\nThe second.\n", b[..]);
+  #assert cast(string) b[0..<n] == "The first paragraph.";
+  long: [900] u8; for i: 0..<900 { long[i] = ifx i % 6 == 5 then cast(u8) ' ' else cast(u8) 'a'; }
+  n = el_plain(cast(string) long[..], 0, 900, b[..]);
+  #assert n <= EL_SUMMARY && b[n - 1] == '.' && b[n - 4] == 'a';
+}
+#test "a chapter's part is the heading above it, and its folder the engine's most used" {
+  s := "# Contents\n\n**I. Foundations**\n\n- [1. A](ch001-a.md)\n\n**II. A world**\n\n- [6. B](ch006-b.md)\n";
+  #assert el_part(s, "ch001-a.md") == "Foundations" && el_part(s, "ch006-b.md") == "A world" && el_part(s, "ch999.md") == "";
+  ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  #assert el_folder(ar[..], "[\"metaverse-engine/examples/a.coax\",\"metaverse-engine/move/b.coax\",\"metaverse-engine/cam/c.coax\",\"metaverse-engine/cam/d.coax\",\"metaverse/x.coax\"]") == "cam";
+  #assert el_folder(ar[..], "[\"apps/x.coax\"]") == "";
+  #assert el_pin("# a note\nf5a5677d3205449877bbaae67f415bd525ebe8d2\n") == "f5a5677d3205449877bbaae67f415bd525ebe8d2" && el_pin("nothing\n") == "";
+}

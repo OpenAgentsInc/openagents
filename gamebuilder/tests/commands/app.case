@@ -1,0 +1,29 @@
+# The app's own rows, on the level its screen holds: undo and redo, the tool, focus, the clipboard, the Agents pane and whether its agents are kept on the account. They run on one editor from call to call, as in the app.
+> new-level
+< {"ok":true,"level":1}
+> add {"level":1,"kind":"block","x":500,"z":-300}
+< {"ok":true,"id":29,"kind":"block","rev":233870360}
+> undo {}
+< {"ok":true,"rev":1289232695}
+> redo {}
+< {"ok":true,"rev":233870360}
+> set-tool {"tool":"move"}
+< {"ok":true,"tool":"move"}
+> focus {"thing":29}
+< {"ok":true,"id":29}
+> copy {"thing":29}
+< {"ok":true,"id":29}
+> paste {}
+< {"ok":true,"id":30,"rev":608054954}
+> duplicate {"thing":29}
+< {"ok":true,"id":31,"from":29,"rev":1961077278}
+> cut {"thing":29}
+< {"ok":true,"id":29,"rev":1460267371}
+> undo-turn {"level":1}
+< {"ok":false,"error":"edit-refused","why":"you have no turn to take back"}
+> agents-pane {}
+< {"ok":true,"open":true}
+> agents-account {}
+< {"ok":true,"on":false}
+> agents-account {}
+< {"ok":true,"on":true}

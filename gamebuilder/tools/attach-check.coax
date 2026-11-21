@@ -1,0 +1,153 @@
+// --attach end to end, over a real socket (coax/attach.coax, docs/cli.md): this
+// tool plays the app's part (an open level, listening, polled as the host's
+// timer polls it) and runs the gamebuilder CLI with --attach against it. An
+// add lands in the open level and stays highlighted, Show me frames it and dismiss takes the
+// highlight off, undo takes it back, a dry run changes nothing, another level is refused, and
+// with no app listening the CLI says so. An attached
+// agent (--as-agent; cli/attached.coax) gets a record beside the levels: its batch is its own
+// turn, logged with the open level's revisions, another agent's undo-turn takes nothing and its
+// own takes it back, and once it is cut off (agent-stop's event) its calls are refused in words.
+// cli/check.sh runs it; it prints what does not hold and ends 1, or "attach: ok".
+//   coax/web/tool.sh tools/attach-check.coax build/cli/gamebuilder
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#import "Basic";
+
+AcRun :: struct { e: [1] Editor; out: [65536] u8; n: int; status: int; }
+
+// Runs the CLI with words, answering its calls as the app would, until it ends.
+ac_run :: (t: [] AcRun, bin: string, dir: string, words: [] string) {
+  h := proc_new();
+  _ = proc_arg(h, bin); _ = proc_arg(h, "--dir"); _ = proc_arg(h, dir); _ = proc_arg(h, "--attach");
+  for w: words { _ = proc_arg(h, w); }
+  t[0].n = 0; t[0].status = -1;
+  if proc_start(h) != 0 { _ = proc_release(h); return; }
+  levels := [1] s32.[1];
+  deadline := proc_now_ms() + 20000;
+  while proc_now_ms() < deadline {
+    _ = ed_attach_poll(t[0].e[..], levels[..]);
+    st := proc_wait(h, 5);
+    if st != PROC_RUNNING { t[0].status = st; break; }
+  }
+  k := proc_line(h, 1000, t[0].out[..]);
+  t[0].n = ifx k > 0 then k else 0;
+  _ = proc_release(h);
+}
+// An agent's record and log in the folder, found by a part of its record.
+AcAgent :: struct { s: [1] GbAtt; path: [1100] u8; path_n: int; rec: [4096] u8; rec_n: int; log: [65536] u8; log_n: int; l: [1] FsList; }
+ac_agent :: (g: [] AcAgent, dir: string, part: string) -> bool {
+  if fs_list(dir, g[0].l[..]) < 0 { return false; }
+  for i: 0..<g[0].l[0].n {
+    f := fs_entry(g[0].l[..], i);
+    if f.count < 7 || cast(string) f[f.count - 6..<f.count] != ".agent" { continue; }
+    g[0].path_n = 0;
+    for p: [3] string.[dir, "/", f[0..<f.count - 6]] { for ch: p { g[0].path[g[0].path_n] = ch; g[0].path_n += 1; } }
+    g[0].rec_n = fs_read(ac_path(g[..], ".agent"), g[0].rec[..]);
+    if g[0].rec_n <= 0 || level_find(ac_record(g[..]), part) < 0 { continue; }
+    g[0].log_n = fs_read(ac_path(g[..], ".events"), g[0].log[..]);
+    if g[0].log_n < 0 { g[0].log_n = 0; }
+    return true;
+  }
+  return false;
+}
+ac_path :: (g: [] AcAgent, ext: string) -> string {
+  n := g[0].path_n; for ch: ext { g[0].path[n] = ch; n += 1; }
+  return cast(string) g[0].path[0..<n];
+}
+ac_record :: (g: [] AcAgent) -> string { return cast(string) g[0].rec[0..<g[0].rec_n]; }
+ac_log :: (g: [] AcAgent) -> string { return cast(string) g[0].log[0..<g[0].log_n]; }
+// Cuts it off as agent-stop does: the stopped state appended to its log, the record written.
+ac_cut :: (g: [] AcAgent) -> bool {
+  if gb_att_load(g[0].s[..], ac_record(g[..])).count > 0 { return false; }
+  gb_att_cut_event(g[0].s[0].ev[..]);
+  if !gb_att_append(g[0].s[..], 1794956160000) { return false; }
+  if !fs_append(ac_path(g[..], ".events"), gb_att_lines(g[0].s[..])) { return false; }
+  return fs_write(ac_path(g[..], ".agent"), gb_att_record(g[0].s[..]));
+}
+ac_agents :: (dir: string) -> int {
+  l: [1] FsList; n := 0;
+  if fs_list(dir, l[..]) < 0 { return 0; }
+  for i: 0..<l[0].n { f := fs_entry(l[..], i); if f.count > 6 && cast(string) f[f.count - 6..<f.count] == ".agent" { n += 1; } }
+  return n;
+}
+ac_said :: (t: [] AcRun) -> string { return cast(string) t[0].out[0..<t[0].n]; }
+ac_has :: (s: string, part: string) -> bool { return level_find(s, part) >= 0; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/attach-check.coax build/cli/gamebuilder\n"); return 2; }
+  bin := args_at(a[..], 0);
+  tb: [1024] u8; dir := fs_temp("gb-attach", tb[..]);
+  if dir.count == 0 { print("attach: NOT a folder to work in\n"); return 1; }
+  t: [1] AcRun; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  pb: [1100] u8; pn := 0;
+  for p: [2] string.[dir, "/s"] { for ch: p { pb[pn] = ch; pn += 1; } }
+  sock := cast(string) pb[0..<pn];
+  fb: [1100] u8; fn := 0;
+  for p: [2] string.[dir, "/attach"] { for ch: p { fb[fn] = ch; fn += 1; } }
+  if !ed_attach_listen(e, pb[0..<pn]) || !fs_write(cast(string) fb[0..<fn], sock) { print("attach: NOT listening at %\n", sock); return 1; }
+  bad := 0;
+  n := ed_count(e);
+  // an add lands in the open level, and stays highlighted
+  w1 := [7] string.["add", "1", "block", "--x", "300", "--z", "-200"]; ac_run(t[..], bin, dir, w1[..]);
+  if t[0].status != 0 || !ac_has(ac_said(t[..]), "{\"ok\":true,\"id\":") || ed_count(e) != n + 1 || !ch_any(e) {
+    print("attach: NOT added to the open level: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1;
+  }
+  // the highlight read, shown and dismissed from the terminal, as the toolbar's eye and eye.slash do
+  c1 := [2] string.["changes", "1"]; ac_run(t[..], bin, dir, c1[..]);
+  if t[0].status != 0 || !ac_has(ac_said(t[..]), "Outside the app: added 1 block") { print("attach: NOT the changes: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  c2 := [2] string.["show-changes", "1"]; ac_run(t[..], bin, dir, c2[..]);
+  if t[0].status != 0 || !ac_has(ac_said(t[..]), "\"things\":1") { print("attach: NOT shown: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  c3 := [2] string.["dismiss-changes", "1"]; ac_run(t[..], bin, dir, c3[..]);
+  if t[0].status != 0 || !ac_has(ac_said(t[..]), "\"dismissed\":1") || ch_any(e) { print("attach: NOT dismissed: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  // undo, the app's own, is offered attached; it takes the add back
+  w2 := [2] string.["undo", "1"]; ac_run(t[..], bin, dir, w2[..]);
+  if t[0].status != 0 || ed_count(e) != n { print("attach: NOT taken back: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  // a dry run answers and changes nothing here
+  w3 := [4] string.["add", "1", "block", "--dry-run"]; ac_run(t[..], bin, dir, w3[..]);
+  if t[0].status != 0 || !ac_has(ac_said(t[..]), "\"dry_run\":true") || ed_count(e) != n { print("attach: NOT a dry run: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  // a level that isn't the open one is refused
+  w4 := [2] string.["read-level", "2"]; ac_run(t[..], bin, dir, w4[..]);
+  if t[0].status != 1 || !ac_has(ac_said(t[..]), "not the one open here") { print("attach: NOT refused another level: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  // an attached agent: its own turns, its record, and cut off
+  rev := ed_agent_rev(e);
+  bb: [512] u8; bt := [1] Text.[Text.{buf = bb[..]}];
+  tx_put(bt[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); tx_int(bt[..], cast(s64) rev);
+  tx_put(bt[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":5,\"x\":300,\"y\":0,\"z\":300,\"yaw\":0,\"scale\":100}]}");
+  w6 := [5] string.["--as-agent", "claude", "apply-edits", "1", cast(string) bb[0..<bt[0].at]]; ac_run(t[..], bin, dir, w6[..]);
+  if t[0].status != 0 || ed_count(e) != n + 1 { print("attach: NOT the agent's batch: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  after := ed_agent_rev(e);
+  w7 := [4] string.["--as-agent", "other", "undo-turn", "1"]; ac_run(t[..], bin, dir, w7[..]);
+  if t[0].status != 1 || !ac_has(ac_said(t[..]), "no turn to take back") || ed_count(e) != n + 1 { print("attach: NOT refused another agent's undo-turn: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  w8 := [4] string.["--as-agent", "claude", "undo-turn", "1"]; ac_run(t[..], bin, dir, w8[..]);
+  if t[0].status != 0 || ed_count(e) != n { print("attach: NOT took back its own turn: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  // its record: attached, its name its runner, the batch an edit with the revisions around it
+  ag: [1] AcAgent;
+  if !ac_agent(ag[..], dir, "\"runner\":\"claude\"") { print("attach: NOT a record for claude\n"); bad += 1; }
+  else {
+    eb: [128] u8; et := [1] Text.[Text.{buf = eb[..]}];
+    tx_put(et[..], "\"type\":\"edit\",\"level\":1,\"before\":"); tx_int(et[..], cast(s64) rev); tx_put(et[..], ",\"after\":"); tx_int(et[..], cast(s64) after);
+    lg := ac_log(ag[..]);
+    if level_find(ac_record(ag[..]), "\"place\":\"attached\"") < 0 || level_find(lg, cast(string) eb[0..<et[0].at]) < 0 || level_find(lg, "\"tool\":\"gb_undo_turn\"") < 0 {
+      print("attach: NOT its calls and its edit in its log: %\n", lg); bad += 1;
+    }
+    // cut off: the event agent-stop appends; its next call is refused in words, and nothing changes
+    if !ac_cut(ag[..]) { print("attach: NOT cut off\n"); bad += 1; }
+    w9 := [5] string.["--as-agent", "claude", "add", "1", "block"]; ac_run(t[..], bin, dir, w9[..]);
+    if t[0].status != 1 || !ac_has(ac_said(t[..]), "GameBuilder cut this agent off") || ed_count(e) != n { print("attach: NOT refused a cut-off agent: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  }
+  // the calls made without --as-agent made no record: claude's and other's are all there is
+  if ac_agents(dir) != 2 { print("attach: NOT one record for each agent and none for the CLI's own calls: %\n", ac_agents(dir)); bad += 1; }
+  // with the app closed, the CLI says so
+  ed_attach_close(e);
+  w5 := [2] string.["read-level", "1"]; ac_run(t[..], bin, dir, w5[..]);
+  if t[0].status != 1 || !ac_has(ac_said(t[..]), "isn't open on this computer") { print("attach: NOT said the app is closed: exit %, %\n", t[0].status, ac_said(t[..])); bad += 1; }
+  if bad > 0 { return 1; }
+  print("attach: ok\n");
+  return 0;
+}

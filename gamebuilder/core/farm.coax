@@ -1,0 +1,505 @@
+// SPLICEBOTS' opening level as it is in the Unreal jam build: the solar farm.
+//
+// The level is not rebuilt here. It is the jam's own map (L_SolarFarm),
+// converted by openagents' Unreal importer into a private world pack: every
+// mesh, where each stands, its material, the sun, the player's start and the
+// level's colliders. This file reads that pack with the engine's reader
+// (metaverse-engine/world/imported-read.coax), hands the host what its GPU
+// draws, and gives the Director the level's real floor and walls to walk on.
+//
+// The pack is the owner's private art, in no repository (splice-bots-jam.pack,
+// 61 MB): scripts/generate.sh copies it into the build from this machine.
+// Without it the game plays on the blockout.
+//
+// The reader's world is a megabyte and a half, so it lives in a Farm the
+// host allocates, not in the Editor. What play needs each step (the map's
+// colliders, the start, the sun) is copied into the Editor once.
+#load "../../metaverse-engine/physics/collide.coax";
+
+// The jam's route, as its maps are named in the pack. The jam built every one
+// of them in one world frame (the farm at x -840, the plain at -380, the
+// garage ring at 0, the lab south of it), so they are drawn and walked here
+// as one world, the way the jam's own web port plays them
+// (openagents' metaverse/splice-bots/jam/jam-world.coax): walk or ride from
+// the farm across the plain to the ring. The first is the opening level.
+FARM_ROUTE :: 5;
+FARM_ROUTE_MAPS :: [FARM_ROUTE] string.["L_SolarFarm", "L_SolarFarm_GreekQuarter", "L_Plain", "L_Ring", "L_Lab"];
+FARM_ROUTE_NAMES :: [FARM_ROUTE] string.["Solar farm", "Greek quarter", "The plain", "Garage ring", "The lab"];
+// The farm's stand-ins for what the other maps hold (the jam's SJ_OPEN_ALWAYS):
+// a 315 m block over the garage's spot and two mountains over the lab and the
+// ring's south. In one world they would bury the ring and the lab, so they are
+// neither drawn nor walked, as in the jam's port.
+FARM_OPENINGS :: 3;
+FARM_OPEN_ACTOR :: [FARM_OPENINGS] string.["StaticMeshActor_1300", "StaticMeshActor_1302", "StaticMeshActor_1303"];
+FARM_RING :: 3;                  // the garage ring in the route, where the rave is
+FARM_FIGURE :: "SkeletalMeshActor_";   // the Director placed in a map as an unposed mesh: she is drawn as herself instead
+FARM_DRAWS :: 5120;              // instances drawn at most
+FARM_WALLS :: 1100;
+FARM_FLOORS :: 16;
+FARM_HULL_WORDS :: 44000;
+FARM_BODIES :: 32;
+FARM_SKY_SCALE :: 1000.0f32;     // an unlit mesh scaled past this is the sky's dome: not drawn
+FARM_LAYERS :: 64;                // texture layers a pack has at most here
+FARM_SKY_REACH :: 2000.0f32;     // metres the sky's dome is drawn at, round the eye
+// The jam's day on the farm (its Docs/look.md, "Day farm"): one flat blue
+// sky, no clouds, and a lilac haze line at the horizon; things fade into the
+// haze from 70 m, by 0.005 a metre, to 0.55 at most (its TOD_Day fog). The
+// blue is the doc's own; the lilac is read off its picture, not a number it gives.
+FARM_SKY_BLUE :: [3] f32.[0.596, 0.839, 0.973];    // #98D6F8
+FARM_HAZE :: [3] f32.[0.82, 0.76, 0.95];
+FARM_FOG_START :: 70.0f32; FARM_FOG_DENSITY :: 0.005f32; FARM_FOG_CAP :: 0.55f32;
+FARM_LIGHT_FLOATS :: 15;
+FARM_FAR :: 6000.0f32;           // metres the camera sees in the level: its hills are far off
+
+// The small side, in the Editor: what a step of play needs.
+FarmLevel :: struct {
+  ok: bool;
+  walls: [FARM_WALLS * 6] f32; nw: int;
+  floors: [FARM_FLOORS * STAND_FLOATS] f32; nf: int;
+  hulls: [FARM_HULL_WORDS] f32; hull_words: int;
+  bodies: [FARM_BODIES * 7] f32; nb: int;
+  spawn: [3] f32; yaw: f32; fall: f32;
+  key: [3] f32; key_rgb: [3] f32;
+  // each route map's player start (x, y, z, yaw), whether the pack has that map, and where she was last put
+  starts: [FARM_ROUTE * 4] f32; has: [FARM_ROUTE] bool; at: int;
+  over: int;                       // colliders left out for want of room (none on the jam's maps)
+  rave: [1] RaveLevel;             // the ring's raiders and its crowd, as people (rave.coax)
+}
+
+// The big side: the reader's world and its arrays, the host's to hold.
+Farm :: struct {
+  w: [1] IwWorld;
+  c: [1] IwColliders;              // one route map's colliders at a time, while they are gathered into lv
+  lv: [1] FarmLevel;               // the route's colliders and starts, as play takes them (ed_farm_bind)
+  cards: [1] RaveCards;            // the ring's crowd cards, while the pack is read
+  ok: bool; map: int;
+  route: [FARM_ROUTE] int;         // each route map's number in the catalog, or -1
+  draws: [FARM_DRAWS * 4] u32;             // first index, index count, instance, its texture layer and one (0: none)
+  objects: [FARM_DRAWS * IW_OBJECT] f32;   // what iw_object writes for each
+  draw_n: int;
+  vertices_at: int; vertices_n: int;       // bytes in the pack
+  indices_at: int; indices_n: int;
+  // the texture layers: where each one's image (a PNG) is in the pack
+  layer_at: [FARM_LAYERS] int; layer_len: [FARM_LAYERS] int; layers: int;
+  // the sky's dome: its draw and its object, kept apart because it is drawn round the eye
+  sky: bool; sky_draw: [4] u32; sky_object: [IW_OBJECT] f32; sky_scale: f32;
+  // which draw each of the reader's instances became (-1: not drawn), and the scene's actors among them
+  draw_of: [IW_INSTANCES] s32;
+  pick_inst: [SCENE_PICKUPS] s32; pick_n: s32;
+  dig_inst: s32; has_dig: bool;
+}
+
+// Whether a map's name is this one: the whole name, or its last part after a slash.
+farm_ends :: (s: string, tail: string) -> bool {
+  if s.count < tail.count { return false; }
+  for i: 0..<tail.count { if s[s.count - tail.count + i] != tail[i] { return false; } }
+  return s.count == tail.count || s[s.count - tail.count - 1] == '/';
+}
+
+// Which route map catalog map m is, or -1.
+farm_route_of :: (f: [] Farm, m: int) -> int {
+  for r: 0..<FARM_ROUTE { if f[0].route[r] == m && m >= 0 { return r; } }
+  return -1;
+}
+// Whether an actor (as iw_hash gives it) of route map r is one of the farm's stand-ins that are left out.
+farm_left_out :: (r: int, actor: u32) -> bool {
+  if r != 0 || actor == 0 { return false; }
+  for k: 0..<FARM_OPENINGS { if iw_hash(FARM_OPEN_ACTOR[k]) == actor { return true; } }
+  return false;
+}
+
+// Route map r's colliders, from c, onto the end of the route's: what is
+// left out is left out, and what has no room is counted in over.
+farm_gather :: (l: [] FarmLevel, c: [] IwColliders, r: int) {
+  l[0].over += c[0].over;
+  for i: 0..<c[0].nw {
+    if farm_left_out(r, c[0].wall_actor[i]) { continue; }
+    if l[0].nw >= FARM_WALLS { l[0].over += 1; continue; }
+    for k: 0..<6 { l[0].walls[l[0].nw * 6 + k] = c[0].walls[i * 6 + k]; } l[0].nw += 1;
+  }
+  for i: 0..<c[0].nf {
+    if farm_left_out(r, c[0].floor_actor[i]) { continue; }
+    if l[0].nf >= FARM_FLOORS { l[0].over += 1; continue; }
+    for k: 0..<STAND_FLOATS { l[0].floors[l[0].nf * STAND_FLOATS + k] = c[0].floors[i * STAND_FLOATS + k]; } l[0].nf += 1;
+  }
+  at := 0;
+  for i: 0..<c[0].nh {
+    n := 3 + cast(int) c[0].hulls[at] * 4;
+    if !farm_left_out(r, c[0].hull_actor[i]) {
+      if l[0].hull_words + n > FARM_HULL_WORDS { l[0].over += 1; }
+      else { for k: 0..<n { l[0].hulls[l[0].hull_words + k] = c[0].hulls[at + k]; } l[0].hull_words += n; }
+    }
+    at += n;
+  }
+  for i: 0..<c[0].nb {
+    if farm_left_out(r, c[0].body_actor[i]) { continue; }
+    if l[0].nb >= FARM_BODIES { l[0].over += 1; continue; }
+    for k: 0..<7 { l[0].bodies[l[0].nb * 7 + k] = c[0].bodies[i * 7 + k]; } l[0].nb += 1;
+  }
+}
+
+FarmTable :: struct { t: [1] PackTable; }
+// Opens the world pack: its table and catalog, the route's instances as
+// draws, and its colliders. False for bytes that are not that pack or hold no
+// solar farm. f is the host's memory, all zero before the first call.
+ed_farm_open :: (f: [] Farm, pack: [] u8) -> bool #export_c #effects(all) {
+  if f.count != 1 { return false; }
+  f[0].ok = false; f[0].draw_n = 0; f[0].sky = false; f[0].layers = 0;
+  most := PACK_HEADER + PACK_ENTRY * PACK_TABLE_MAX;
+  head := cast(string) pack[0..<(ifx pack.count < most then pack.count else most)];
+  r: [1] FarmTable;
+  if !pack_table(head, pack.count, r[0].t[..]) { return false; }
+  cat := pack_table_nth(r[0].t[..], PACK_CATALOG, 0);
+  vs := pack_table_nth(r[0].t[..], PACK_VERTICES, 0);
+  is := pack_table_nth(r[0].t[..], PACK_INDICES, 0);
+  if cat < 0 || vs < 0 || is < 0 { return false; }
+  c := r[0].t[0].entries[cat]; v := r[0].t[0].entries[vs]; x := r[0].t[0].entries[is];
+  if c.at < 0 || c.at + c.n > pack.count || v.at < 0 || v.at + v.n > pack.count || x.at < 0 || x.at + x.n > pack.count { return false; }
+  w := f[0].w[..];
+  iw_clear(w);
+  if !iw_admit(w, cast(string) pack[c.at..<c.at + c.n]) { return false; }
+  for k: 0..<FARM_ROUTE {
+    f[0].route[k] = -1;
+    for m: 0..<w[0].nm { if farm_ends(iw_map_name(w, m), FARM_ROUTE_MAPS[k]) { f[0].route[k] = m; break; } }
+  }
+  map := f[0].route[0];
+  if map < 0 { return false; }
+  // the scene's actors and the figures, by the names the catalog gives its instances (the reader keeps only
+  // their hashes): the catalog's P lines are the instances, in order. -2 marks one not to draw.
+  for k: 0..<w[0].ni { f[0].draw_of[k] = -1; }
+  f[0].pick_n = 0; f[0].has_dig = false;
+  f[0].lv[0].rave[0] = RaveLevel.{}; f[0].cards[0].n = 0;
+  ring := f[0].route[FARM_RING];
+  text := cast(string) pack[c.at..<c.at + c.n];
+  cursor := 0; inst := 0;
+  while cursor < text.count {
+    end := cursor; while end < text.count && text[end] != '\n' { end += 1; }
+    line := text[cursor..<end]; cursor = end + 1;
+    if line.count < 2 || line[0] != 'P' || line[1] != ' ' { continue; }
+    k := inst; inst += 1;
+    if k >= w[0].ni { continue; }
+    name := iw_field(line, 16);
+    actor := iw_actor_name(name);
+    if scene_starts(actor, FARM_FIGURE) { f[0].draw_of[k] = -2; continue; }
+    // the ring's raiders and crowd cards are drawn as people (rave.coax), not as the import's stand-ins
+    if ring >= 0 && w[0].inst[k].map == ring && scene_starts(actor, "SpliceRaveRaider_") { rave_place(f[0].lv[0].rave[..], w, k); f[0].draw_of[k] = -2; continue; }
+    if ring >= 0 && w[0].inst[k].map == ring && scene_starts(actor, "SpliceCrowd_") { rave_card(f[0].cards[..], w, k); f[0].draw_of[k] = -2; continue; }
+    if w[0].inst[k].map != map { continue; }
+    if scene_starts(name, "SpliceFarmPickup_") && f[0].pick_n < SCENE_PICKUPS { f[0].pick_inst[f[0].pick_n] = cast(s32) k; f[0].pick_n += 1; }
+    if scene_starts(name, "SpliceDigger_") && !f[0].has_dig { f[0].dig_inst = cast(s32) k; f[0].has_dig = true; }
+  }
+  rave_audience(f[0].lv[0].rave[..], f[0].cards[..]);
+  // every instance of the route but the sky's dome, the figures and the farm's stand-ins; a section past the pack's indices is refused
+  n := 0;
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k];
+    rt := farm_route_of(f, p.map);
+    hidden := f[0].draw_of[k] == -2;
+    f[0].draw_of[k] = -1;
+    if rt < 0 || hidden || farm_left_out(rt, p.actor) { continue; }
+    sc := w[0].sections[p.section];
+    if sc.first < 0 || sc.count < 0 || (sc.first + sc.count) * 4 > x.n { return false; }
+    big := abs(p.s[0]) >= FARM_SKY_SCALE || abs(p.s[1]) >= FARM_SKY_SCALE || abs(p.s[2]) >= FARM_SKY_SCALE;
+    layer := w[0].mats[p.mat].layer;
+    if big && (w[0].mats[p.mat].flags & 4) != 0 {
+      // the sky: one dome, drawn on its own (the first the route has: the farm's)
+      if !f[0].sky {
+        f[0].sky = true; f[0].sky_scale = abs(p.s[0]);
+        f[0].sky_draw[0] = cast(u32) sc.first; f[0].sky_draw[1] = cast(u32) sc.count; f[0].sky_draw[2] = 0; f[0].sky_draw[3] = cast(u32) (layer + 1);
+        iw_object(w, k, f[0].sky_object[..], 0);
+      }
+      continue;
+    }
+    if n >= FARM_DRAWS { break; }
+    f[0].draws[n * 4] = cast(u32) sc.first; f[0].draws[n * 4 + 1] = cast(u32) sc.count; f[0].draws[n * 4 + 2] = cast(u32) n; f[0].draws[n * 4 + 3] = cast(u32) (layer + 1);
+    iw_object(w, k, f[0].objects[..], n * IW_OBJECT);
+    f[0].draw_of[k] = cast(s32) n;
+    n += 1;
+  }
+  f[0].draw_n = n;
+  // a pickup or Digger that is not drawn is no actor of the scene
+  keep: s32 = 0;
+  for i: 0..<cast(s64) f[0].pick_n { if f[0].draw_of[f[0].pick_inst[i]] >= 0 { f[0].pick_inst[keep] = f[0].pick_inst[i]; keep += 1; } }
+  f[0].pick_n = keep;
+  if f[0].has_dig && f[0].draw_of[f[0].dig_inst] < 0 { f[0].has_dig = false; }
+  // the texture layers are the pack's layer entries, in order
+  for k: 0..<FARM_LAYERS {
+    at := pack_table_nth(r[0].t[..], PACK_LAYER, k);
+    if at < 0 { break; }
+    en := r[0].t[0].entries[at];
+    if en.at < 0 || en.n < 0 || en.at + en.n > pack.count { return false; }
+    f[0].layer_at[k] = en.at; f[0].layer_len[k] = en.n; f[0].layers = k + 1;
+  }
+  // the route's colliders, one map at a time, and each map's start
+  l := f[0].lv[..];
+  l[0].nw = 0; l[0].nf = 0; l[0].hull_words = 0; l[0].nb = 0; l[0].over = 0; l[0].at = 0;
+  for k: 0..<FARM_ROUTE {
+    l[0].has[k] = false;
+    m := f[0].route[k];
+    if m < 0 { continue; }
+    iw_colliders(w, m, f[0].c[..]);
+    farm_gather(l, f[0].c[..], k);
+    mp := w[0].maps[m];
+    for i: 0..<3 { l[0].starts[k * 4 + i] = mp.spawn[i]; } l[0].starts[k * 4 + 3] = mp.yaw; l[0].has[k] = true;
+  }
+  f[0].map = map;
+  f[0].vertices_at = v.at; f[0].vertices_n = v.n; f[0].indices_at = x.at; f[0].indices_n = x.n;
+  f[0].ok = true;
+  return true;
+}
+
+// Where the level's mesh is in the pack: out[0] the byte its vertices start
+// at (12 words each), out[1] their bytes, out[2] the byte its indices start
+// at (a word each, into all the vertices), out[3] their bytes.
+ed_farm_mesh :: (f: [] Farm, out: [] s64) -> bool #export_c #effects(all) {
+  if f.count != 1 || !f[0].ok || out.count < 4 { return false; }
+  out[0] = f[0].vertices_at; out[1] = f[0].vertices_n; out[2] = f[0].indices_at; out[3] = f[0].indices_n;
+  return true;
+}
+ed_farm_draws :: (f: [] Farm) -> s32 #export_c #effects(all) { return ifx f.count == 1 && f[0].ok then cast(s32) f[0].draw_n else 0; }
+ed_farm_object_floats :: () -> s32 #export_c #effects(all) { return IW_OBJECT; }
+// The draws (four words each) and their objects (IW_OBJECT floats each), copied out for the GPU.
+ed_farm_copy :: (f: [] Farm, draws: [] u32, objects: [] f32) -> bool #export_c #effects(all) {
+  if f.count != 1 || !f[0].ok || draws.count < f[0].draw_n * 4 || objects.count < f[0].draw_n * IW_OBJECT { return false; }
+  for i: 0..<f[0].draw_n * 4 { draws[i] = f[0].draws[i]; }
+  for i: 0..<f[0].draw_n * IW_OBJECT { objects[i] = f[0].objects[i]; }
+  return true;
+}
+
+// Texture layer k's image in the pack (a PNG): out[0] the byte it starts at,
+// out[1] its length. False for a layer the pack doesn't have.
+ed_farm_layer :: (f: [] Farm, k: s32, out: [] s64) -> bool #export_c #effects(all) {
+  if f.count != 1 || !f[0].ok || k < 0 || cast(int) k >= f[0].layers || out.count < 2 { return false; }
+  out[0] = f[0].layer_at[k]; out[1] = f[0].layer_len[k];
+  return true;
+}
+
+// The sky for an eye at (ex, ey, ez): its draw (first index, index count, 0,
+// its layer and one) and its object, the dome turned as the level has it but
+// drawn FARM_SKY_REACH round the eye, so it is always behind everything and
+// never out of sight. False when the level has no sky.
+ed_farm_sky :: (f: [] Farm, ex: f32, ey: f32, ez: f32, draw: [] u32, object: [] f32) -> bool #export_c #effects(all) {
+  if f.count != 1 || !f[0].ok || !f[0].sky || draw.count < 4 || object.count < IW_OBJECT || f[0].sky_scale <= 0 { return false; }
+  for i: 0..<4 { draw[i] = f[0].sky_draw[i]; }
+  for i: 0..<IW_OBJECT { object[i] = f[0].sky_object[i]; }
+  k := FARM_SKY_REACH / f[0].sky_scale;
+  eye := [3] f32.[ex, ey, ez];
+  for r: 0..<3 { for c: 0..<3 { object[r * 4 + c] = object[r * 4 + c] * k; } object[r * 4 + 3] = eye[r]; }
+  return true;
+}
+
+// Gives play the level: its colliders, where she starts, how far down is
+// out of the world, and the sun. False, and play stays on the blockout, when
+// the level has more colliders than there is room for.
+ed_farm_bind :: (e: [] Editor, f: [] Farm) -> bool #export_c #effects(all) {
+  if e.count != 1 || f.count != 1 || !f[0].ok { return false; }
+  l := e[0].farm[..];
+  l[0].ok = false;
+  if f[0].lv[0].over != 0 { return false; }
+  l[0] = f[0].lv[0];
+  l[0].ok = false;
+  m := f[0].w[0].maps[f[0].map];
+  for i: 0..<3 { l[0].key[i] = m.key_dir[i]; l[0].key_rgb[i] = m.key_rgb[i]; }
+  // she starts at the farm's start; out of the world is below the lowest route map's floor
+  farm_put(l, 0);
+  l[0].fall = m.fall;
+  for k: 0..<FARM_ROUTE { mk := f[0].route[k]; if mk >= 0 && f[0].w[0].maps[mk].fall < l[0].fall { l[0].fall = f[0].w[0].maps[mk].fall; } }
+  // the scene: where each pickup lies and what it is, and where Digger stands
+  sc := e[0].scene[..];
+  sc[0] = SceneLevel.{};
+  for i: 0..<cast(s64) f[0].pick_n {
+    k := f[0].pick_inst[i]; p := f[0].w[0].inst[k];
+    sc[0].pickups[i] = ScenePickup.{x = p.t[0], y = p.t[1], z = p.t[2], item = scene_item_at(p.t[0], p.t[2]), draw = f[0].draw_of[k], inst = k};
+  }
+  sc[0].pickup_n = f[0].pick_n;
+  if f[0].has_dig {
+    p := f[0].w[0].inst[f[0].dig_inst];
+    sc[0].digger = true; sc[0].dig_inst = f[0].dig_inst; sc[0].dig_draw = f[0].draw_of[f[0].dig_inst];
+    sc[0].dig_x = p.t[0]; sc[0].dig_y = p.t[1]; sc[0].dig_z = p.t[2];
+  }
+  if !m.key { l[0].key[0] = 0.35; l[0].key[1] = 0.9; l[0].key[2] = 0.25; for i: 0..<3 { l[0].key_rgb[i] = 1; } }
+  l[0].ok = true;
+  return true;
+}
+
+// Her start is route map k's player start (where a fall puts her back too).
+farm_put :: (l: [] FarmLevel, k: int) {
+  if k < 0 || k >= FARM_ROUTE || !l[0].has[k] { return; }
+  for i: 0..<3 { l[0].spawn[i] = l[0].starts[k * 4 + i]; } l[0].yaw = l[0].starts[k * 4 + 3]; l[0].at = k;
+}
+// The route map after the one she was last put at that the pack has.
+farm_next :: (l: [] FarmLevel) -> int {
+  for d: 1..<FARM_ROUTE + 1 { k := (l[0].at + d) % FARM_ROUTE; if l[0].has[k] { return k; } }
+  return l[0].at;
+}
+
+// Travel: she is put at the next route map's player start (the farm, the
+// Greek quarter, the plain, the garage ring, the lab, and round), on foot,
+// and Digger, when he follows, comes with her. The jam has no such jump
+// (its maps are walked into); it is here so the whole route can be seen
+// without the 840 m ride. The real level only.
+ed_farm_travel :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || !e[0].play[0].real || !e[0].farm[0].ok { return; }
+  l := e[0].farm[..];
+  farm_put(l, farm_next(l));
+  her_start(e);
+  scene_travel(e);
+}
+// The name of the route map she was last put at (which = 0), or of the next (which = 1), in out; its length.
+ed_farm_place :: (e: [] Editor, which: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || !e[0].farm[0].ok { return 0; }
+  l := e[0].farm[..];
+  k := ifx which == 0 then l[0].at else farm_next(l);
+  return play_text(FARM_ROUTE_NAMES[k], out);
+}
+
+// The level's colliders as the engine's queries take them: no flat ground
+// under it, only what the level has.
+farm_colliders :: (e: [] Editor) -> Colliders {
+  l := e[0].farm[..];
+  return Colliders.{ground = -1000000, ground_enabled = false, boxes = l[0].walls[0..<l[0].nw * 6], floors = l[0].floors[0..<l[0].nf * STAND_FLOATS],
+    hulls = l[0].hulls[0..<l[0].hull_words], capsules = l[0].bodies[0..<l[0].nb * 7]};
+}
+
+// Whether the real level is what is drawn and walked now.
+ed_farm_shown :: (e: [] Editor) -> bool #export_c #effects(all) {
+  return e.count == 1 && e[0].play[0].on && e[0].play[0].real;
+}
+
+// What the level's shader lights and fades with: the direction toward the
+// sun, its colour, the sky's blue, the haze's lilac (both as the screen's
+// colours), and the fade's start, density and most.
+ed_farm_light :: (e: [] Editor, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < FARM_LIGHT_FLOATS { return false; }
+  for i: 0..<3 { out[i] = e[0].farm[0].key[i]; out[3 + i] = e[0].farm[0].key_rgb[i]; out[6 + i] = FARM_SKY_BLUE[i]; out[9 + i] = FARM_HAZE[i]; }
+  out[12] = FARM_FOG_START; out[13] = FARM_FOG_DENSITY; out[14] = FARM_FOG_CAP;
+  return true;
+}
+ed_farm_light_floats :: () -> s32 #export_c #effects(all) { return FARM_LIGHT_FLOATS; }
+
+// ---- checks
+
+// A small world pack in the importer's own form: one map that is the solar
+// farm, a ground quad, a block standing on it, a sky dome, a floor and a wall.
+FarmTest :: struct { f: [1] Farm; e: [1] Editor; pack: [4096] u8; objects: [8 * IW_OBJECT] f32; }
+
+farm_test_pack :: (t: [] FarmTest) -> int {
+  b := t[0].pack[..];
+  cat := "world 1 test\ntitle Test\nmap 0 /Game/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Ring\nmat 0 1 0.5 0.25 1 -1 32 0.2 0.1 0.3\nmat 1 1 1 1 1 0 5\nM ground 0 6 0 -0.5 0 -0.5 0.5 0 0.5\nM cube 6 3 0 -0.5 0 -0.5 0.5 1 0.5\nP 0 0 0 0 0 0 0 0 1 0 0 0 100 1 100 Ground/Mesh\nP 0 1 0 0 0 0 0 0 1 10 0 5 2 3 2 Block/Mesh\nP 0 1 1 0 0 0 0 0 1 0 0 0 9000 9000 9000 Sky/Mesh\nP 0 1 0 0 0 0 0 0 1 7 0.55 5 1 1 1 SpliceFarmPickup_10/Shape\nP 0 1 0 0 0 0 0 0 1 2 0.1 9 1 1 1 SpliceDigger_1/GaitMesh\nP 1 1 0 0 0 0 0 0 1 40 0 8 2 2 2 Garage/Wall\nP 1 1 0 0 0 0 0 0 1 41 0 1 1 1 1 L_Ring.SkeletalMeshActor_3/SkeletalMeshComponent0\nP 1 1 0 0 0 0 0 0 1 38 0 1 1 1 1 L_Ring.SpliceRaveRaider_UAID_A_1/CharacterMesh0\nP 1 0 0 0 0 0.7071068 0 0 0.7071068 44 1 3 1.1 1 2 SpliceCrowd_UAID_A_2/Cards#0\nP 0 1 0 0 0 0 0 0 1 20 0 5 3 3 3 StaticMeshActor_1300/StaticMeshComponent0\nspawn 0 2 1 5 0\nfall 0 -50\nkey 0 0 1 0 1 0.9 0.8 4\ncol 0 floor -50 -50 100 0 0 100 0 0 0 Ground\ncol 0 box 9 0 4 11 3 6 Block\ncol 0 box 19 0 4 21 3 6 StaticMeshActor_1300\nspawn 1 40 1 2 1.5\nfall 1 -30\ncol 1 box 39 0 7 41 3 9 Garage\n";
+  table := PACK_HEADER + PACK_ENTRY * 3;
+  cat_at := table; cat_pad := (cat.count + 3) / 4 * 4;
+  v_at := cat_at + cat_pad; v_n := 4 * 48;
+  i_at := v_at + v_n; i_n := 9 * 4;
+  total := i_at + i_n;
+  b[0] = 'V'; b[1] = 'P'; b[2] = 'K'; b[3] = '2';
+  model_test_u32(b, 4, 3); model_test_u32(b, 8, total); model_test_u32(b, 12, total);
+  model_test_u32(b, 16, PACK_HEADER); model_test_u32(b, 20, table);
+  names := [3] string.["catalog", "vertices", "indices"];
+  ats := [3] int.[cat_at, v_at, i_at]; ns := [3] int.[cat.count, v_n, i_n];
+  for k: 0..<3 {
+    at := PACK_HEADER + PACK_ENTRY * k;
+    b[at] = cast(u8) (k + 1); b[at + 1] = 255;
+    model_test_u32(b, at + 4, ats[k]); model_test_u32(b, at + 8, ns[k]);
+    for i: 0..<names[k].count { b[at + 16 + i] = names[k][i]; }
+  }
+  for i: 0..<cat.count { b[cat_at + i] = cat[i]; }
+  return total;
+}
+
+#test "the world pack opens to the solar farm's draws without its sky, and gives play its floor, wall, start and sun" {
+  t: [1] FarmTest; e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 400);
+  n := farm_test_pack(t[..]);
+  opened := ed_farm_open(f, t[0].pack[0..<n]);
+  #assert f[0].w[0].why == "";
+  #assert opened;
+  // the ground, the block, a pickup, Digger and the ring's wall: not the dome, her unposed figure in the ring, or the farm's block over the ring
+  #assert ed_farm_draws(f) == 5 && f[0].draws[4 * 4 + 2] == 4 && f[0].objects[4 * IW_OBJECT + 3] == 40 && f[0].draws[3] == 0 && f[0].draws[0] == 0 && f[0].draws[1] == 6 && f[0].draws[4] == 6 && f[0].draws[5] == 3 && f[0].draws[6] == 1;
+  // the block's object: scaled 2 x 3 x 2 at (10, 0, 5), its two-tone material's colours
+  o := IW_OBJECT;
+  #assert f[0].objects[o] == 2 && f[0].objects[o + 3] == 10 && f[0].objects[o + 5] == 3 && f[0].objects[o + 11] == 5 && f[0].objects[o + 24] == 1 && f[0].objects[o + 25] == 0.5 && abs(f[0].objects[o + 29] - 0.2) < 0.0001;
+  // the sky is kept apart: the cube's mesh with layer 0, drawn round the eye at the sky's reach, not at the level's 9000
+  sky_draw: [4] u32; sky_object: [IW_OBJECT] f32;
+  #assert ed_farm_sky(f, 7, 8, 9, sky_draw[..], sky_object[..]) && sky_draw[0] == 6 && sky_draw[1] == 3 && sky_draw[3] == 1;
+  #assert abs(sky_object[0] - FARM_SKY_REACH) < 0.01 && sky_object[3] == 7 && sky_object[7] == 8 && sky_object[11] == 9 && sky_object[27] < 0;
+  layer: [2] s64;
+  #assert !ed_farm_layer(f, 0, layer[..]);   // this small pack carries no images
+  mesh: [4] s64;
+  #assert ed_farm_mesh(f, mesh[..]) && mesh[1] == 4 * 48 && mesh[3] == 9 * 4 && mesh[2] == mesh[0] + 4 * 48;
+  #assert ed_farm_bind(e, f) && e[0].farm[0].nw == 2 && e[0].farm[0].nf == 1 && e[0].farm[0].spawn[0] == 2 && e[0].farm[0].fall == -50;
+  // the route's walls are the farm's block and the ring's wall, without the farm's stand-in over the ring
+  #assert e[0].farm[0].walls[6] == 39 && e[0].farm[0].has[0] && e[0].farm[0].has[3] && !e[0].farm[0].has[1] && e[0].farm[0].at == 0;
+  light: [FARM_LIGHT_FLOATS] f32;
+  #assert ed_farm_light(e, light[..]) && light[1] == 1 && abs(light[4] - 0.9) < 0.0001 && abs(light[8] - 0.973) < 0.0001 && light[12] == 70;
+  // playing SPLICEBOTS is now on the real level: she starts at its start, stands on its floor, and its wall stops her
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  ed_play(e, 0);
+  p := e[0].play[..];
+  #assert ed_farm_shown(e) && p[0].real && abs(her_at(p).x - 2) < 0.01 && abs(her_at(p).z - 5) < 0.01;
+  for k: 0..<60 { play_step(e); }
+  #assert p[0].her[0].foot.jump.on_ground && abs(p[0].her[0].y) < 0.01;
+  // the scene: one pickup of scrap lying east of her, Digger where the level has him, the board and jetpack in her bag
+  name: [32] u8;
+  #assert e[0].scene[0].pickup_n == 1 && e[0].scene[0].pickups[0].item == 0 && e[0].scene[0].digger && !p[0].scene[0].taken[0];
+  #assert ed_bag_count(e, 0) == 1 && ed_bag_count(e, 1) == 1 && ed_bag_count(e, 2) == 0 && ed_bag_name(e, 2, name[..]) == 0;
+  bn := ed_bag_name(e, 0, name[..]);
+  #assert cast(string) name[0..<bn] == "Hoverboard";
+  // Digger has come to her left side: about a metre and a half from her, not the seven he started
+  dd := sqrt((p[0].scene[0].dig_x - her_at(p).x) * (p[0].scene[0].dig_x - her_at(p).x) + (p[0].scene[0].dig_z - her_at(p).z) * (p[0].scene[0].dig_z - her_at(p).z));
+  #assert dd > 1.0 && dd < 2.2;
+  e[0].vp[0].fyaw = 1.5707963;   // east, toward the block at x 9 to 11
+  e[0].k_fore = true;
+  for k: 0..<120 { play_step(e); }
+  #assert her_at(p).x > 8 && her_at(p).x < 9 - HER_RADIUS + 0.05;
+  // on the way she walked over the pickup: it is taken, in her bag, named on the HUD, and its mesh is gone
+  #assert p[0].scene[0].taken[0] && ed_bag_count(e, 2) == 1;
+  bn = ed_bag_name(e, 2, name[..]);
+  #assert cast(string) name[0..<bn] == "Scrap";
+  #assert ed_farm_live(e, f, t[0].objects[..]);
+  row := cast(int) e[0].scene[0].pickups[0].draw * IW_OBJECT;
+  #assert t[0].objects[row] == 0 && t[0].objects[row + 5] == 0 && t[0].objects[row + 10] == 0;
+  // Digger's row is where he walked to, not where the level left him
+  drow := cast(int) e[0].scene[0].dig_draw * IW_OBJECT;
+  #assert abs(t[0].objects[drow + 3] - p[0].scene[0].dig_x) < 0.001 && t[0].objects[drow + 3] > 5;
+  // told to stay, he stays while she walks on; told to follow, he comes
+  ed_digger_toggle(e);
+  stay_x := p[0].scene[0].dig_x;
+  e[0].vp[0].fyaw = 3.1415927; e[0].k_fore = true;
+  for k: 0..<120 { play_step(e); }
+  #assert p[0].scene[0].dig_x == stay_x && her_at(p).z < 0;
+  ed_digger_toggle(e);
+  for k: 0..<180 { play_step(e); }
+  #assert abs(p[0].scene[0].dig_z - her_at(p).z) < 3;
+  e[0].k_fore = false;
+  // travel: to the garage ring's start (the pack has no Greek quarter or plain), Digger with her, on its floor; then round to the farm
+  place: [32] u8;
+  pn := ed_farm_place(e, 1, place[..]);
+  #assert cast(string) place[0..<pn] == "Garage ring";
+  ed_farm_travel(e);
+  #assert e[0].farm[0].at == 3 && abs(her_at(p).x - 40) < 0.01 && abs(her_at(p).z - 2) < 0.01 && abs(e[0].vp[0].fyaw - 1.5) < 0.001;
+  pn = ed_farm_place(e, 0, place[..]);
+  #assert cast(string) place[0..<pn] == "Garage ring";
+  dd = sqrt((p[0].scene[0].dig_x - her_at(p).x) * (p[0].scene[0].dig_x - her_at(p).x) + (p[0].scene[0].dig_z - her_at(p).z) * (p[0].scene[0].dig_z - her_at(p).z));
+  #assert dd < 2.2;
+  for k: 0..<60 { play_step(e); }
+  #assert p[0].her[0].foot.jump.on_ground && abs(p[0].her[0].y) < 0.01;
+  // the ring's wall stops her: north from her start, toward the wall at z 7
+  e[0].vp[0].fyaw = 0; e[0].k_fore = true;
+  for k: 0..<120 { play_step(e); }
+  e[0].k_fore = false;
+  #assert her_at(p).z > 5 && her_at(p).z < 7 - HER_RADIUS + 0.05;
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert ed_play_hud(e, hud[..]) && hud[51] == 4;
+  ed_farm_travel(e);
+  #assert e[0].farm[0].at == 0 && abs(her_at(p).x - 2) < 0.01;
+  // another game plays its own level, not the farm
+  ed_stop(e);
+  #assert ed_open_game(e, GAME_SCRAPPERS, none[0..<0]);
+  ed_play(e, 0);
+  #assert !ed_farm_shown(e);
+  // a pack with no such map, or cut short, is refused
+  for i: 0..<n - 12 { if t[0].pack[i] == 'L' && t[0].pack[i + 1] == '_' && t[0].pack[i + 2] == 'S' { t[0].pack[i + 2] = 'X'; break; } }
+  #assert !ed_farm_open(f, t[0].pack[0..<n]) && ed_farm_draws(f) == 0;
+  #assert !ed_farm_open(f, t[0].pack[0..<n - 8]);
+}

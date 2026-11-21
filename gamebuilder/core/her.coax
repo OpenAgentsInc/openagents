@@ -1,0 +1,524 @@
+// SPLICEBOTS' Director: how she moves, as the Unreal jam build moves her.
+//
+// The rules are not written here. They are the jam's own C++ rules
+// (Source/SpliceRules: SpliceWalk.h, SpliceJetpack.h, SpliceBoard.h), ported
+// line for line into Coax in openagents with the same numbers and the C++
+// tests as checks (metaverse/splice-bots/rules/). This file loads them and
+// gives them what a game gives them: the keys, the ground under her, the
+// walls, and a camera.
+//
+//   on foot     6.9 m/s; sprint x1.5 (hold, or double-tap forward); sneak
+//               2.52 m/s; a 1.67 m jump and one air jump to 3.90 m
+//   jetpack     jump, air jump, then hold jump: 3.6 s of thrust from a full
+//               tank of three cells, refilling on the ground
+//   hoverboard  22 m/s, 40 sprinting, a slow build of speed, carving, an
+//               ollie, a 360 trick in the air; a step over half a metre is a wall
+//   camera      the jam's orbit (ASpliceCameraManager::ApplyOrbit): 5.5 m
+//               back from a point 1.55 m up, zoom 1.4 to 14 m, first person
+//               inside 1.4 m, 47 degrees widening a little at speed
+//
+// She has the jetpack and the board from the start: the jam's inventory and
+// pickups are not here yet. She is drawn as a figure of boxes in her
+// colours; her real model needs a skinned-mesh pass in the host
+// (docs/splice-bots-port.md).
+#load "../../metaverse/splice-bots/rules/walk.coax";
+#load "../../metaverse/splice-bots/rules/jetpack.coax";
+#load "../../metaverse/splice-bots/rules/board.coax";
+
+HER_RADIUS :: 0.45f32;           // her capsule: InitCapsuleSize(45, 87.5)
+HER_HEIGHT :: 1.75f32;
+HER_PIVOT :: 1.55f32;            // the camera's pivot above her feet: 2 x 87.5 - 20 cm
+HER_EYE :: 1.63f32;              // her head, for first person
+HER_DIST :: 5.5f32;              // the orbit's distance at the start
+HER_DIST_MIN :: 1.4f32;          // nearer than this is first person
+HER_DIST_MAX :: 14.0f32;
+HER_ZOOM :: 0.8869204f32;        // exp(-0.12): one notch of the wheel
+HER_DIST_EASE :: 12.0f32;        // /s the distance follows
+HER_LIFT :: 0.04f32;             // the eye rises this share of the distance
+HER_CAM_RADIUS :: 0.22f32;       // the camera's sweep
+HER_PITCH :: 1.3962634f32;       // 80 degrees up or down
+HER_LOOK :: 0.6f32;              // her mouse turns 0.0024 rad a point; the editor's camera 0.004
+HER_FOV :: 0.82f32;              // radians, vertical
+HER_FOV_RUN :: 0.035f32;         // wider at her walk speed
+HER_FOV_EASE :: 8.571428f32;     // 3 / 0.35 s
+HER_RIDE_TIME :: 0.15f32;        // seconds stepping on or off the board
+HER_DECK :: 0.06f32;             // the deck's thickness
+
+Her :: struct {
+  foot: SrOnFoot;
+  jet: SrJetpackState;
+  board: SrBoardState;
+  riding: bool;
+  swap: f32;                     // seconds left of stepping on or off
+  y: f32;                        // her feet as drawn
+  face: f32;                     // the way her body faces, radians
+  dist: f32; want: f32; first: bool;
+  fov: f32;
+  plume: f32;                    // the jetpack's exhaust, 0 to 1
+  stride: f32;
+  // what is held
+  jump: bool; sprint: bool; sneak: bool; trick: bool;
+}
+
+her_deg :: (rad: f32) -> f64 { return cast(f64) rad * 57.29577951308232; }
+her_rad :: (deg: f64) -> f32 { return cast(f32) (deg / 57.29577951308232); }
+
+// The top of whatever stands at a point, however tall: what the board's
+// probe needs to know a wall from a step.
+// What she collides with: the real level's colliders when it is here, else
+// the blockout's blocks (with a flat ground when asked).
+her_colliders :: (e: [] Editor, ground: bool) -> Colliders {
+  if e[0].play[0].real { return farm_colliders(e); }
+  return play_colliders(e[0].play[..], ground);
+}
+
+her_top :: (e: [] Editor, x: f32, z: f32) -> f32 {
+  return query_ground(her_colliders(e, true), x, z, 100000, 0.05).y;
+}
+// The floor her feet can stand on at a point.
+her_floor :: (e: [] Editor, x: f32, z: f32, feet: f32) -> f32 {
+  return query_stand(her_colliders(e, true), x, z, feet, HER_RADIUS * 0.6).y;
+}
+
+// She starts on foot at the level's start, facing the way it faces.
+her_start :: (e: [] Editor) {
+  p := e[0].play[..];
+  h := Her.{dist = HER_DIST, want = HER_DIST, fov = HER_FOV};
+  t: SrWalkTuning;
+  f := p[0].f[0];
+  up: f32 = 0;
+  if p[0].real {
+    // the level's own start
+    l := e[0].farm[0];
+    f.x = l.spawn[0]; f.z = l.spawn[2]; f.yaw = l.yaw; up = l.spawn[1];
+    e[0].vp[0].fyaw = f.yaw;
+  }
+  h.foot.walk.x = f.x; h.foot.walk.z = f.z; h.foot.walk.yaw = f.yaw;
+  h.foot.jump = sr_her_jump(up, t);
+  h.y = up;
+  h.face = f.yaw;
+  p[0].her[0] = h;
+  p[0].her_on = true;
+  p[0].third = true;
+}
+
+// Moves her across the ground by a displacement, sliding along the blocks,
+// and writes where she got to.
+her_slide :: (e: [] Editor, x0: f32, z0: f32, feet: f32, dx: f32, dz: f32) -> WorldPoint {
+  c := her_colliders(e, false);
+  x := x0; z := z0; bx := dx; bz := dz;
+  for pass: 0..<3 {
+    if bx * bx + bz * bz < 0.0000001 { break; }
+    from := WorldPoint.{x = x, y = feet + HER_RADIUS + 0.32, z = z};   // above what she steps over
+    hit := query_sweep(c, from, HER_RADIUS, WorldPoint.{x = bx, y = 0, z = bz});
+    if hit.status != QueryStatus.ok { break; }
+    if !hit.hit { x += bx; z += bz; break; }
+    mag := sqrt(bx * bx + bz * bz);
+    t := play_max(hit.t - 0.02 / mag, 0);
+    x += bx * t; z += bz * t;
+    nx := hit.normal.x; nz := hit.normal.z;
+    nl := sqrt(nx * nx + nz * nz);
+    if nl < 0.0001 { break; }
+    nx /= nl; nz /= nl;
+    rx := bx * (1 - t); rz := bz * (1 - t);
+    into := rx * nx + rz * nz;
+    if into > 0 { break; }
+    bx = rx - nx * into; bz = rz - nz * into;
+  }
+  if e[0].play[0].real {
+    // the level's rocks and panels are hulls, which a sweep doesn't meet: the engine's walker pushes a body out of them
+    out := collide_hulls(c, CollideProfile.{radius = HER_RADIUS, height = HER_HEIGHT}, CollideState.{feet = WorldPoint.{x = x, y = feet, z = z}});
+    x = out.state.feet.x; z = out.state.feet.z;
+  }
+  return WorldPoint.{x = x, y = feet, z = z};
+}
+
+// A step on foot: the jam's walk, jump and jetpack rules, with this level's
+// floor and walls.
+her_on_foot :: (e: [] Editor, go: f32, side: f32, dt: f32) {
+  p := e[0].play[..];
+  h := p[0].her[0];
+  t: SrWalkTuning; jt: SrJetpackTuning;
+  w := h.foot.walk;
+  w.yaw = e[0].vp[0].fyaw;
+  x0 := w.x; z0 := w.z;
+  j := sr_jump_press(h.foot.jump, h.jump);
+  st := sr_stance_forward(sr_stance_hold(sr_stance_sneak(h.foot.stance, h.sneak), h.sprint), go > 0.5, t);
+  // the jetpack first, as the jam does: it sets her climb and takes the heavier falling gravity away
+  was := h.jet.firing;
+  h.jet = sr_jetpack_step(h.jet, SrJetpackInput.{owned = true, jump_held = h.jump, on_ground = j.on_ground, air_jumps_spent = j.air_used >= j.air_jumps}, jt, dt);
+  jump_tuning := t;
+  if h.jet.firing {
+    j.vy = sr_jetpack_vertical_after(j.vy * 100, 0, jt, dt) / 100;
+    jump_tuning.fall_gravity_scale = 1;
+    if !was { play_sound(p, SND_SUPER, w.x, w.z, true); }
+  }
+  airborne := sr_jump_airborne(j);
+  n := sr_walk_step(w, go, side, sr_walk_pace(st, t), airborne, t, dt);
+  if h.jet.firing && airborne {
+    // in flight her ground speed is the jetpack's: pushed along what is asked, to 15 m/s
+    wx := sin(w.yaw) * go - cos(w.yaw) * side; wz := cos(w.yaw) * go + sin(w.yaw) * side;
+    v := sr_jetpack_fly_after(d2(cast(f64) n.vx * 100, cast(f64) n.vz * 100), d2(cast(f64) wx, cast(f64) wz), jt, dt);
+    n.vx = cast(f32) v.x / 100; n.vz = cast(f32) v.y / 100;
+    n.x = x0 + n.vx * dt; n.z = z0 + n.vz * dt;
+    n.speed = sqrt(n.vx * n.vx + n.vz * n.vz);
+  }
+  // the rules moved her freely: the walls have their say
+  at := her_slide(e, x0, z0, j.y, n.x - x0, n.z - z0);
+  n.x = at.x; n.z = at.z;
+  ground := her_floor(e, n.x, n.z, j.y);
+  j = sr_jump_advance(j, jump_tuning, ground, dt);
+  if j.landed { play_sound(p, SND_JUMP, n.x, n.z, true); }
+  h.foot.walk = n; h.foot.jump = j; h.foot.stance = sr_stance_tick(st, dt);
+  h.y = sr_feet_y(h.foot, ground, t);
+  h.face = sr_face_yaw(n);
+  if p[0].real && h.y < e[0].farm[0].fall {
+    // out of the world: back to the start
+    l := e[0].farm[0];
+    h.foot.walk.x = l.spawn[0]; h.foot.walk.z = l.spawn[2]; h.foot.walk.vx = 0; h.foot.walk.vz = 0;
+    h.foot.jump = sr_her_jump(l.spawn[1], t); h.y = l.spawn[1];
+  }
+  h.stride += n.speed * dt * 3.3;   // a stride of 1.9 m
+  if h.stride > 6.2831853 { h.stride -= 6.2831853; }
+  p[0].her[0] = h;
+}
+
+// The ground the board's probe finds at a point of its own plane (its x is
+// this world's z, its y this world's x).
+her_board_ground :: (e: [] Editor, at: D3) -> SrBoardGroundHit {
+  return sr_board_ground_hit(cast(f64) her_top(e, cast(f32) at.y, cast(f32) at.x));
+}
+
+// A step on the board: the jam's board rule, a sub-step of at most 1/120 s at
+// a time, with this level's ground.
+her_on_board :: (e: [] Editor, go: f32, side: f32, dt: f32) {
+  p := e[0].play[..];
+  h := p[0].her[0];
+  bt: SrBoardTuning;
+  // a turn to the right is a falling yaw here, a rising one in the jam
+  inp := SrBoardInput.{throttle = cast(f64) go, carve = -cast(f64) side, sprint = h.sprint, hop = h.jump, trick = h.trick};
+  num := sr_board_substeps(cast(f64) dt);
+  if num > 0 {
+    step := cast(f64) dt / cast(f64) num;
+    for i: 0..<num {
+      probe := sr_board_sub_probe(bt, h.board, inp, step);
+      h.board = sr_board_sub_finish(bt, h.board, inp, step, her_board_ground(e, probe.ahead), her_board_ground(e, probe.back));
+    }
+  }
+  h.y = cast(f32) h.board.location.z + HER_DECK;
+  h.face = her_rad(h.board.yaw_deg);
+  p[0].her[0] = h;
+}
+
+// Steps onto the board where she stands, or off it. On: only from the
+// ground. Off: only when the board is not in the air.
+her_ride :: (e: [] Editor) {
+  p := e[0].play[..];
+  h := p[0].her[0];
+  if h.swap > 0 { return; }
+  bt: SrBoardTuning; t: SrWalkTuning;
+  if !h.riding {
+    if !h.foot.jump.on_ground { return; }
+    w := h.foot.walk;
+    ahead := w.vx * sin(h.face) + w.vz * cos(h.face);
+    feet := d3(cast(f64) w.z, cast(f64) w.x, cast(f64) h.foot.jump.y);
+    h.board = sr_board_mount(bt, feet, her_deg(h.face), cast(f64) ahead, her_board_ground(e, sr_board_mount_probe(bt, feet)));
+    h.riding = true;
+  } else {
+    if h.board.airborne { return; }
+    x := cast(f32) h.board.location.y; z := cast(f32) h.board.location.x;
+    ground := her_top(e, x, z);
+    speed := play_min(cast(f32) h.board.speed, t.walk_speed);
+    yaw := her_rad(h.board.yaw_deg);
+    h.foot.walk.x = x; h.foot.walk.z = z; h.foot.walk.vx = sin(yaw) * speed; h.foot.walk.vz = cos(yaw) * speed;
+    h.foot.walk.face_off = yaw - e[0].vp[0].fyaw;
+    h.foot.jump = sr_her_jump(ground, t);
+    h.riding = false;
+  }
+  h.swap = HER_RIDE_TIME;
+  p[0].her[0] = h;
+  play_sound(p, SND_JUMP, 0, 0, true);
+}
+
+// Where she is, for the camera, the HUD and the lobby.
+her_at :: (p: [] Play) -> WorldPoint {
+  h := p[0].her[0];
+  if h.riding { return WorldPoint.{x = cast(f32) h.board.location.y, y = h.y, z = cast(f32) h.board.location.x}; }
+  return WorldPoint.{x = h.foot.walk.x, y = h.y, z = h.foot.walk.z};
+}
+her_speed :: (p: [] Play) -> f32 {
+  h := p[0].her[0];
+  return ifx h.riding then cast(f32) h.board.speed else h.foot.walk.speed;
+}
+
+// One step of her: what is held, then foot or board, then the things that
+// ease.
+her_step :: (e: [] Editor, dt: f32) {
+  p := e[0].play[..];
+  go: f32 = (ifx e[0].k_fore then 1.0f32 else 0.0f32) - (ifx e[0].k_back then 1.0f32 else 0.0f32);
+  side: f32 = (ifx e[0].k_right then 1.0f32 else 0.0f32) - (ifx e[0].k_left then 1.0f32 else 0.0f32);
+  if p[0].stick != 0 { side = p[0].stick_x; go = -p[0].stick_y; }
+  // a touch screen has no Ctrl: the boost button is sprint, the board button rides
+  p[0].her[0].sprint = e[0].k_fast_ctrl || p[0].fire;
+  p[0].her[0].sneak = e[0].k_sneak;
+  if p[0].super { p[0].super = false; her_ride(e); }
+  if p[0].her[0].riding { her_on_board(e, go, side, dt); } else { her_on_foot(e, go, side, dt); }
+  h := p[0].her[0];
+  h.swap = play_max(h.swap - dt, 0);
+  h.plume += ((ifx h.jet.firing then 1.0f32 else 0.0f32) - h.plume) * play_min(1, (ifx h.jet.firing then 14.0f32 else 8.0f32) * dt);
+  // the camera's distance and the view's width ease
+  h.dist += (h.want - h.dist) * play_min(1, HER_DIST_EASE * dt);
+  t: SrWalkTuning;
+  share := play_min(her_speed(p) / t.walk_speed, 1);
+  h.fov += (HER_FOV + HER_FOV_RUN * share - h.fov) * play_min(1, HER_FOV_EASE * dt);
+  p[0].her[0] = h;
+  // the match's own record of where you are, for the sounds and the lobby
+  at := her_at(p);
+  p[0].f[0].x = at.x; p[0].f[0].y = at.y; p[0].f[0].z = at.z; p[0].f[0].yaw = h.face;
+  model_step(e, dt);
+  scene_step(e, dt);
+}
+
+// The jam's orbit: the eye a distance behind a point above her feet, lifted
+// a little, no further back than the first thing in the way; inside 1.4 m,
+// or with V, her own eyes.
+her_camera :: (e: [] Editor) {
+  p := e[0].play[..];
+  h := p[0].her[0];
+  if e[0].vp[0].fpitch > HER_PITCH { e[0].vp[0].fpitch = HER_PITCH; }
+  if e[0].vp[0].fpitch < -HER_PITCH { e[0].vp[0].fpitch = -HER_PITCH; }
+  at := her_at(p);
+  p[0].third = !(h.first || h.want < HER_DIST_MIN);
+  if !p[0].third {
+    e[0].vp[0].fx = at.x; e[0].vp[0].fy = at.y + HER_EYE + 0.08; e[0].vp[0].fz = at.z;
+    return;
+  }
+  look := play_ahead(e[0].vp[0].fyaw, e[0].vp[0].fpitch);
+  pivot := WorldPoint.{x = at.x, y = at.y + HER_PIVOT, z = at.z};
+  by := WorldPoint.{x = -look.x * h.dist, y = -look.y * h.dist + HER_LIFT * h.dist, z = -look.z * h.dist};
+  share: f32 = 1;
+  hit := query_sweep(her_colliders(e, true), pivot, HER_CAM_RADIUS, by);
+  if hit.status == QueryStatus.ok && hit.hit { share = play_max(hit.t - 0.02, 0.03); }
+  e[0].vp[0].fx = pivot.x + by.x * share; e[0].vp[0].fy = pivot.y + by.y * share; e[0].vp[0].fz = pivot.z + by.z * share;
+}
+
+// The wheel, a pinch, or the - and = keys: nearer or further, a notch at a
+// time.
+her_zoom :: (e: [] Editor, notches: f32) {
+  p := e[0].play[..];
+  w := p[0].her[0].want;
+  n := notches;
+  while n >= 1 { w *= HER_ZOOM; n -= 1; }
+  while n <= -1 { w /= HER_ZOOM; n += 1; }
+  // what is left of a notch, as a pinch or a trackpad gives
+  w *= 1 - 0.12 * n;
+  if w > HER_DIST_MAX { w = HER_DIST_MAX; }
+  if w < HER_DIST_MIN * 0.9 { w = HER_DIST_MIN * 0.9; }
+  p[0].her[0].want = w;
+}
+
+// ---- what is drawn
+
+TINT_SKIN :: 12; TINT_HAIR :: 13; TINT_GEAR :: 14; TINT_CREAM :: 15; TINT_PACK :: 16;
+
+// A box at a place given in her own frame: `side` to her right, `up` above
+// her feet, `fore` ahead, turned as she is turned.
+her_box :: (out: [] f32, n: s64, at: WorldPoint, yaw: f32, side: f32, up: f32, fore: f32, hx: f32, hy: f32, hz: f32, shade: f32, tint: s32) -> s64 {
+  c := WorldPoint.{x = at.x - cos(yaw) * side + sin(yaw) * fore, y = at.y + up, z = at.z + sin(yaw) * side + cos(yaw) * fore};
+  return play_inst(out, n, c, hx, hy, hz, yaw, shade, tint);
+}
+
+// Her, 1.75 m tall in her colours (skin, red hair, black gear), with the
+// jetpack on her back and its exhaust, and the board under her when she
+// rides, side on as a rider stands.
+her_draw :: (e: [] Editor, out: [] f32, at0: s64) -> s64 {
+  p := e[0].play[..];
+  h := p[0].her[0];
+  n := at0;
+  at := her_at(p);
+  yaw := h.face;
+  if h.riding {
+    lean := cast(f32) h.board.lean;
+    deck := WorldPoint.{x = at.x, y = at.y - HER_DECK, z = at.z};
+    n = her_box(out, n, deck, yaw, 0, HER_DECK * 0.5, 0, 0.2, HER_DECK * 0.5, 0.6, 0.9, TINT_CREAM);
+    n = her_box(out, n, deck, yaw, 0, -0.03, 0.35, 0.12, 0.03, 0.1, 1.0, TINT_SHOT_MINE);
+    n = her_box(out, n, deck, yaw, 0, -0.03, -0.35, 0.12, 0.03, 0.1, 1.0, TINT_SHOT_MINE);
+    yaw = yaw + 1.2 + lean * 0.3 + her_rad(h.board.spin_deg * h.board.spin_dir);
+  }
+  if !p[0].third { return n; }
+  airborne := ifx h.riding then h.board.airborne else !h.foot.jump.on_ground;
+  swing: f32 = ifx h.riding || airborne then 0.12f32 else sin(h.stride) * 0.3 * play_min(her_speed(p) / 3, 1);
+  // her real model, when its pack is here, is the host's to draw (model.coax): only the jetpack's boxes are hers here
+  real := e[0].model[0].ok;
+  // legs (gear), body (gear), arms (skin), head (skin), hair
+  if !real {
+  n = her_box(out, n, at, yaw, 0.11, 0.42, swing, 0.085, 0.42, 0.1, 0.8, TINT_GEAR);
+  n = her_box(out, n, at, yaw, -0.11, 0.42, -swing, 0.085, 0.42, 0.1, 0.8, TINT_GEAR);
+  n = her_box(out, n, at, yaw, 0, 1.12, 0, 0.2, 0.29, 0.12, 0.9, TINT_GEAR);
+  n = her_box(out, n, at, yaw, 0.265, 1.1, -swing * 0.8, 0.055, 0.28, 0.065, 0.95, TINT_SKIN);
+  n = her_box(out, n, at, yaw, -0.265, 1.1, swing * 0.8, 0.055, 0.28, 0.065, 0.95, TINT_SKIN);
+  n = her_box(out, n, at, yaw, 0, 1.55, 0.01, 0.11, 0.125, 0.11, 1.0, TINT_SKIN);
+  n = her_box(out, n, at, yaw, 0, 1.63, -0.03, 0.125, 0.11, 0.125, 0.9, TINT_HAIR);
+  n = her_box(out, n, at, yaw, 0, 1.4, -0.13, 0.11, 0.2, 0.04, 0.85, TINT_HAIR);
+  }
+  // the jetpack: a black pack, two thrusters with cream bands, and the exhaust
+  n = her_box(out, n, at, yaw, 0, 1.15, -0.21, 0.15, 0.2, 0.08, 1.0, TINT_PACK);
+  for k: 0..<2 {
+    s: f32 = ifx k == 0 then 0.1f32 else -0.1f32;
+    n = her_box(out, n, at, yaw, s, 0.98, -0.25, 0.05, 0.12, 0.05, 1.0, TINT_PACK);
+    n = her_box(out, n, at, yaw, s, 1.02, -0.25, 0.055, 0.02, 0.055, 1.0, TINT_CREAM);
+    if h.plume > 0.03 { n = her_box(out, n, at, yaw, s, 0.84 - 0.25 * h.plume, -0.25, 0.04, 0.25 * h.plume, 0.04, 1.0, TINT_SPARK); }
+  }
+  return n;
+}
+
+// ---- checks
+
+HerTest :: struct { e: [1] Editor; }
+
+her_test_start :: (e: [] Editor) {
+  ed_init(e, 800, 400);
+  none: [1] u8;
+  _ = ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  ed_play(e, 0);
+}
+
+#test "she walks at the jam's 6.9 m/s, sprints at half as fast again, and sneaks at 2.52" {
+  t: [1] HerTest; e := t[0].e[..];
+  her_test_start(e);
+  p := e[0].play[..];
+  #assert p[0].her_on && p[0].explore && !p[0].her[0].riding;
+  // turned east, where the ground is open
+  e[0].vp[0].fyaw = 1.5707963;
+  e[0].k_fore = true;
+  for k: 0..<120 { play_step(e); }
+  #assert abs(her_speed(p) - 6.9) < 0.05;
+  e[0].k_fast_ctrl = true;
+  for k: 0..<120 { play_step(e); }
+  #assert abs(her_speed(p) - 10.35) < 0.08;
+  e[0].k_fast_ctrl = false; e[0].k_sneak = true;
+  for k: 0..<180 { play_step(e); }
+  #assert abs(her_speed(p) - 2.5185) < 0.05;
+  // let go: she brakes to a stop
+  e[0].k_sneak = false; e[0].k_fore = false;
+  for k: 0..<60 { play_step(e); }
+  #assert her_speed(p) < 0.01;
+}
+
+#test "she jumps 1.67 m, has one air jump, and holding jump after it fires the jetpack until it is empty" {
+  t: [1] HerTest; e := t[0].e[..];
+  her_test_start(e);
+  p := e[0].play[..];
+  e[0].vp[0].fyaw = 1.5707963;
+  // a held jump from the ground, to its top: the air jump is not spent, so no jetpack
+  top: f32 = 0;
+  p[0].her[0].jump = true;
+  for k: 0..<60 {
+    play_step(e);
+    if p[0].her[0].y > top { top = p[0].her[0].y; }
+    #assert !p[0].her[0].jet.firing;
+    if k > 3 && p[0].her[0].foot.jump.vy <= 0 { break; }
+  }
+  #assert top > 1.55 && top < 1.75 && p[0].her[0].foot.jump.air_used == 0;
+  // let go, then press again in the air: the air jump. Held on, with the air jump now spent, the
+  // jetpack takes over at once and holds her climb to 6.5 m/s, as the jam's rule has it
+  p[0].her[0].jump = false; play_step(e);
+  p[0].her[0].jump = true; play_step(e); play_step(e); play_step(e);
+  #assert p[0].her[0].foot.jump.air_used == 1 && p[0].her[0].jet.firing && p[0].her[0].foot.jump.vy <= 6.51 && p[0].her[0].foot.jump.vy > 0;
+  fired := 0; emptied := false;
+  for k: 0..<400 {
+    play_step(e);
+    if p[0].her[0].jet.fuel == 0 { emptied = true; }
+    if p[0].her[0].jet.firing { fired += 1; #assert p[0].her[0].foot.jump.vy <= 6.51; }
+    if p[0].her[0].y > top { top = p[0].her[0].y; }
+  }
+  // 100 fuel at 28 a second: about 3.6 s of thrust
+  #assert fired > 200 && fired < 225 && top > 15 && emptied && !p[0].her[0].jet.firing;
+  // on the ground it refills, and all three cells are lit
+  p[0].her[0].jump = false;
+  for k: 0..<500 { play_step(e); }
+  hud: [PLAY_HUD_FLOATS] f32;
+  #assert p[0].her[0].foot.jump.on_ground && p[0].her[0].jet.fuel == 100 && ed_play_hud(e, hud[..]) && hud[37] == 1 && hud[39] == 3;
+}
+
+#test "the board builds slowly to 22 m/s and faster sprinting, carves, and hops" #steps 60000000 {
+  t: [1] HerTest; e := t[0].e[..];
+  her_test_start(e);
+  p := e[0].play[..];
+  // out on open ground east of the panels, heading north
+  p[0].her[0].foot.walk.x = 42; p[0].her[0].foot.walk.z = -70; p[0].her[0].face = 0;
+  p[0].super = true;
+  play_step(e);
+  #assert p[0].her[0].riding && abs(p[0].her[0].y - 0.36) < 0.05;
+  e[0].k_fore = true;
+  for k: 0..<300 { play_step(e); }
+  // five seconds at 5 m/s^2 is past the casual 22: it holds there
+  #assert abs(her_speed(p) - 22) < 0.2;
+  e[0].k_fast_ctrl = true;
+  for k: 0..<60 { play_step(e); }
+  #assert her_speed(p) > 26 && her_speed(p) < 28;
+  // a carve to the right turns her
+  yaw := p[0].her[0].board.yaw_deg;
+  e[0].k_fast_ctrl = false; e[0].k_fore = false; e[0].k_right = true;
+  for k: 0..<60 { play_step(e); }
+  #assert p[0].her[0].board.yaw_deg < yaw - 40;
+  e[0].k_right = false;
+  // an ollie leaves the ground, and she can't step off in the air
+  p[0].her[0].jump = true; play_step(e); play_step(e);
+  #assert p[0].her[0].board.airborne;
+  p[0].super = true; play_step(e);
+  #assert p[0].her[0].riding;
+  p[0].her[0].jump = false;
+  for k: 0..<60 { play_step(e); }
+  #assert !p[0].her[0].board.airborne;
+  // off the board she is on foot where it was
+  for k: 0..<12 { play_step(e); }
+  at := her_at(p);
+  p[0].super = true; play_step(e);
+  #assert !p[0].her[0].riding && abs(p[0].her[0].foot.walk.x - at.x) < 1.5;
+}
+
+#test "a wall stops the board: a step far taller than half a metre" #steps 60000000 {
+  t: [1] HerTest; e := t[0].e[..];
+  her_test_start(e);
+  p := e[0].play[..];
+  // south of the lab, facing it: its wall is at z 61
+  p[0].her[0].foot.walk.x = 0; p[0].her[0].foot.walk.z = 40; p[0].her[0].face = 0;
+  p[0].super = true; play_step(e);
+  #assert p[0].her[0].riding;
+  e[0].k_fore = true;
+  for k: 0..<330 { play_step(e); }
+  #assert p[0].her[0].riding && her_at(p).z < 61.1 && her_at(p).z > 55 && her_speed(p) < 1;
+}
+
+#test "walls stop her on foot, and the camera is the jam's orbit: 5.5 m back, zooming, first person inside 1.4 m" {
+  t: [1] HerTest; e := t[0].e[..];
+  her_test_start(e);
+  p := e[0].play[..];
+  // north from the start is the first bank of panels: she is stopped at it
+  e[0].vp[0].fyaw = 0; e[0].vp[0].fpitch = 0;
+  e[0].k_fore = true;
+  for k: 0..<240 { play_step(e); }
+  #assert her_at(p).z < -56.6 && her_at(p).z > -58.5;
+  e[0].k_fore = false;
+  for k: 0..<60 { play_step(e); }
+  her_camera(e);
+  at := her_at(p);
+  // level, looking north: the eye is 5.5 m south of her, at her pivot's height and 4% of the distance more
+  #assert abs(e[0].vp[0].fz - (at.z - 5.5)) < 0.05 && abs(e[0].vp[0].fy - (HER_PIVOT + 0.22)) < 0.02 && p[0].third;
+  her_zoom(e, -3);
+  for k: 0..<120 { play_step(e); }
+  #assert abs(p[0].her[0].dist - 5.5 / (HER_ZOOM * HER_ZOOM * HER_ZOOM)) < 0.05;
+  her_zoom(e, 30);
+  for k: 0..<120 { play_step(e); }
+  her_camera(e);
+  #assert !p[0].third && abs(e[0].vp[0].fy - (HER_EYE + 0.08)) < 0.02 && abs(e[0].vp[0].fz - at.z) < 0.05;
+  // the view is 47 degrees standing and a little wider at a run
+  #assert abs(p[0].her[0].fov - HER_FOV) < 0.002;
+  e[0].vp[0].fyaw = 1.5707963; e[0].k_fore = true;
+  for k: 0..<120 { play_step(e); }
+  #assert abs(p[0].her[0].fov - (HER_FOV + HER_FOV_RUN)) < 0.003;
+  // looking up stops at 80 degrees
+  e[0].vp[0].fpitch = 1.45; her_camera(e);
+  #assert abs(e[0].vp[0].fpitch - HER_PITCH) < 0.0001;
+}

@@ -1,0 +1,14 @@
+// Offline calibration through the actual vehicle rules; never live evidence.
+// tool.sh: stack-gib 2
+#load "../../web/hud.coax";
+#load "racing-policy.coax";
+#import "Basic";
+prc_trial :: (touch:bool)->bool {
+ t:[1]HudTest;h:=t[0].h[..];r:=h[0].race[..];h[0].bare=true;hud_test_say(h,HUD_KIND_MSG,"7");hud_test_say(h,HUD_VIEW_MSG,"2");h[0].zoom=1;h[0].tilt=1;hud_race_in(h);hud_test_run(t[..],420,0.016666668);steer:[1]f32;drive:[1]f32;lap:=0;
+ for frame:0..<18000 {
+  if frame%4==0 {d:=rc_pilot(r);if touch {length:=sqrt(d.steer*d.steer+d.throttle*d.throttle);div:=ifx length>1 then length else 1.0f32;h[0].sticks.pad_x=d.steer/div;h[0].sticks.pad_y=d.throttle/div;hud_test_say(h,HUD_KEYS_MSG,"0");}else {way:=prc_command(steer[..],d.steer);on:=prc_command(drive[..],d.throttle);bits:=(ifx way>0 then 8 else ifx way<0 then 4 else 0)|(ifx on>0 then 1 else ifx on<0 then 2 else 0);text:[16]u8;n:=hud_test_put(text[..],0,bits);hud_test_say(h,HUD_KEYS_MSG,cast(string)text[0..<n]);}}
+  hud_test_run(t[..],1,0.016666668);if r[0].run.lap!=lap {lap=r[0].run.lap;}if r[0].run.done {return r[0].backs==0;}
+ }return false;
+}
+#test "digital browser steering can finish all three laps at the observation cadence" #steps 2000000000000 #traversal 1000000000 {#assert prc_trial(false);}
+#test "a real thumb-range input can finish all three laps through the vehicle rules" #steps 2000000000000 #traversal 1000000000 {#assert prc_trial(true);}

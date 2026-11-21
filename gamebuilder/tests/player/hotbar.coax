@@ -1,0 +1,23 @@
+// Exercise the shipped palette, real Shift/long-press drag, per-game storage,
+// changed shortcut positions and reset through the UI. No localStorage writes.
+pt_bar_drag :: (p:[]Pt,from:string,to:string)->bool {
+  a:=pb_target(p[0].c[..],from);if a<0 {return false;}d:=cdp_doc(p[0].c[..]);x:=jv_int(d,jv_get(d,a,"x"),-1);y:=jv_int(d,jv_get(d,a,"y"),-1);
+  b:=pb_target(p[0].c[..],to);if b<0 {return false;}d=cdp_doc(p[0].c[..]);tx:=jv_int(d,jv_get(d,b,"x"),-1);ty:=jv_int(d,jv_get(d,b,"y"),-1);tx-=10;   // drop before the target midpoint, including half-pixel touch layouts
+  if x<0 || y<0 || tx<0 || ty<0 {return false;}
+  points:=[1]PbContact.[PbContact.{id=1,x=x,y=y}];ok:=ifx p[0].touch then pb_touch(p[0].c[..],"touchStart",points[..]) else pb_mouse_mod(p[0].c[..],"mousePressed",x,y,"left",1,0,8);
+  _:=pb_wait(pt_dir(p),550);
+  for i:1..<7 {points[0].x=x+(tx-x)*i/6;points[0].y=y+(ty-y)*i/6;ok=(ifx p[0].touch then pb_touch(p[0].c[..],"touchMove",points[..]) else pb_mouse_mod(p[0].c[..],"mouseMoved",points[0].x,points[0].y,"left",1,0,8)) && ok;_=pb_wait(pt_dir(p),50);}
+  up:=ifx p[0].touch then pb_touch(p[0].c[..],"touchEnd",points[..]) else pb_mouse_mod(p[0].c[..],"mouseReleased",tx,ty,"left",0,0,8);_=pb_wait(pt_dir(p),500);return ok && up;
+}
+pt_hotbar :: (p:[]Pt) {
+  _:=pt_press(p,"Escape","Escape");opened:=pt_hot(p,"more");discovered:=opened && pt_bool(p,"!!document.getElementById('pal') && document.querySelectorAll('.hb-pc').length>=4 && [...document.querySelectorAll('.hb-pn')].some(e=>e.textContent==='reset hotbar')");_=pt_shot(p,"palette.png");_=pt_hot(p,"more");
+  used:=pt_palette(p,"pillar") && pt_bool(p,"Number(document.getElementById('state')?.textContent.split(' ')[0])===3");_=pt_press(p,"Escape","Escape");
+  source:[128]u8;dest:[128]u8;from:=pt_hot_id(p,"world",source[..]);to:=pt_hot_id(p,"shapes",dest[..]);x:=pt_number(p,"globalThis.gamebuilderObservation?.x_cm",-99999);z:=pt_number(p,"globalThis.gamebuilderObservation?.z_cm",-99999);yaw:=pt_number(p,"globalThis.gamebuilderObservation?.yaw_mrad",-99999);
+  dragged:=from.count>0 && to.count>0 && pt_bar_drag(p,from,to);reordered:=pt_bool(p,"document.getElementById('hot.s.0')?.getAttribute('aria-label')==='world'");stationary:=abs(pt_number(p,"globalThis.gamebuilderObservation?.x_cm",0)-x)+abs(pt_number(p,"globalThis.gamebuilderObservation?.z_cm",0)-z)<10 && abs(pt_number(p,"globalThis.gamebuilderObservation?.yaw_mrad",0)-yaw)<15;
+  restored:=pt_go(p,"/?observe=1") && pt_wait(p,"!!document.getElementById('kind.0')",30000) && pt_enter(p,0) && pt_bool(p,"document.getElementById('hot.s.0')?.getAttribute('aria-label')==='world'");
+  // The first physical key must now address the first slot, world settings.
+  key:=pb_press(p[0].c[..],"1","Digit1");_=pb_wait(pt_dir(p),300);key=key && pt_bool(p,"!!document.getElementById('world')");_=pt_press(p,"Escape","Escape");
+  reset:=pt_palette(p,"reset hotbar") && pt_bool(p,"document.getElementById('hot.s.0')?.getAttribute('aria-label')==='shapes'");_=pt_shot(p,"hotbar-restored.png");
+  pt_event(p,"hotbar-check","palette entries present",discovered);pt_event(p,"hotbar-check","pillar selected",used);pt_event(p,"hotbar-check","native drag delivered",dragged);pt_event(p,"hotbar-check","world reordered to first slot",reordered);pt_event(p,"hotbar-check","drag kept world stationary",stationary);pt_event(p,"hotbar-check","order restored after reload",restored);pt_event(p,"hotbar-check","first physical shortcut used new order",key);pt_event(p,"hotbar-check","reset restored default order",reset);
+  pt_result(p,"create.hotbar",discovered && used && dragged && reordered && stationary && restored && key && reset);
+}

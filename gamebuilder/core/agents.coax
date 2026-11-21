@@ -1,0 +1,1589 @@
+// The Agents pane (GitHub issues 1 and 4; docs/agents.md): the person's agents beside the level.
+// A person starts one ("+ New agent"), talks to it, watches what it changes, takes a turn back and
+// stops it.
+//
+//   - Each agent is a record with an event log (agent-record.coax), kept beside the levels as
+//     agent-ID.agent and agent-ID.events, so an agent, its conversation and what it changed are
+//     still there when the app opens again. The pane holds the records (p[0].store) and draws
+//     them; what an agent says and does is appended to its log (ag_emit), and the host writes
+//     what was appended (ed_agents_writes) and reads the folder's records in (ed_agents_load):
+//     at launch, and again when the CLI, MCP or the HTTP server added to one.
+//   - What the person does is the agent rows' (agent-rows.coax), run here as anywhere:
+//     + New agent is agent-new, Send agent-message, an answer's button agent-answer, Stop
+//     agent-stop. Undo turn is the app's own: ed_agent_undo_turn on the open level.
+//   - The turns are a runner's (runner.coax): the person's own Claude Code on this computer. A
+//     Code agent (code-agent.coax) is one too, with its normal tools in a worktree of its own.
+//   - What an agent did is drawn as a timeline of cards (agent-timeline.coax): each event the
+//     pane appends or reads in from a record's log is a card on the pane's ring too (ag_view_event),
+//     so the ring is made again from the records when the app opens. A change card has its summary
+//     in words (changes.coax), Show me and Undo this; a tool card unfolds to its arguments; the row
+//     says the agent's step in one line, and the open agent its meter against the record's limits.
+//     The ring keeps the last ATL_CARDS of all the agents; the whole is each one's log, which
+//     `gamebuilder agent-events` and gamebuilder.org/agents read.
+//   - What an agent's call changed stays highlighted in its colour (changes.coax) until the person
+//     dismisses it. The person may type while it works (an EditBuf, with its caret, selection and
+//     undo): the message is in its log at once and its runner gets it when the turn ends; while it
+//     waits on an ask, typed words are the answer.
+// Everything the pane shows and does is here; the host (host/panel/agents-host.c) hands it
+// frames, the pointer, the wheel, keys, text, the clock and the agents' files, and places its view.
+//   scripts/check.sh
+
+#load "runner.coax";
+#load "code-agent.coax";     // a Code agent: its worktree, its options, its card (issue 8)
+#load "agent-timeline.coax"; // what an agent did, as cards; the meter; the text field (issue 5)
+#load "agent-replay.coax";   // the pictures on its cards, and the replay's scrub (issue 9)
+
+AG_DRAFT :: 1000;          // bytes of a message (AGR_MESSAGE_MAX)
+AG_ID0 :: CH_AGENT0;       // agent k's id (ed_agent_apply's, and its highlight's colour) is AG_ID0 + k; the CLI and MCP are 0
+AG_SHOWN :: 40;            // cards of an open agent's timeline drawn (the pane keeps ATL_CARDS of all its agents)
+AG_WIDE :: 600.0;          // units wide from which the list and the open agent sit side by side
+AG_OUTBOX :: 1048576;      // bytes of events appended and not yet written by the host (it writes every tick)
+AG_OUT_ENTRIES :: 1024;
+AG_ASK_LINE :: 1024;       // bytes of an ask event's line, kept for its answer
+
+AG_MAX_VERTICES :: 32768;
+AG_UNDER :: 768; AG_OVER :: 768; AG_HITS :: 96; AG_POOL :: 8192; AG_ROWS :: 160; AG_KEYED :: 8;
+AG_NOTE :: 200;
+AG_DRAG :: 6.0;
+
+// Where this build may run an agent (the host says, ed_agents_place).
+AG_HERE_NONE :: 0;         // no computer of the person's to run one on (iPhone, iPad)
+AG_HERE_SANDBOX :: 1;      // the App Store Mac build: sandboxed, so it can't start `claude`
+AG_HERE_LOCAL :: 2;
+AG_TILE :: 400;           // bytes of a computer's line on the tile        // a build that may start `claude` (GameBuilder-macOS-Dev, Linux)
+// What the pane knows of Claude Code here.
+AG_CLAUDE_UNKNOWN :: 0; AG_CLAUDE_FOUND :: 1; AG_CLAUDE_MISSING :: 2; AG_CLAUDE_SIGNED_OUT :: 3; AG_CLAUDE_READY :: 4;
+// What the pane asks the host to do (ed_agents_request).
+AG_ASK_NOTHING :: 0; AG_ASK_INSTALL :: 1; AG_ASK_SIGN_IN :: 2; AG_ASK_OPEN_URL :: 3;
+AG_INSTALL_URL :: "https://claude.ai/download";
+
+// What a press dispatches.
+AG_ACT_THIS :: 1; AG_ACT_ALL :: 2; AG_ACT_CLOSE :: 3; AG_ACT_NEW :: 4; AG_ACT_START :: 5; AG_ACT_CANCEL :: 6;
+AG_ACT_STOP :: 7; AG_ACT_UNDO :: 8; AG_ACT_UNDO_ALL :: 9; AG_ACT_SEND :: 10; AG_ACT_COMPOSER :: 11; AG_ACT_JOB :: 12;
+AG_ACT_INSTALL :: 13; AG_ACT_SIGN_IN :: 14; AG_ACT_ACCOUNT :: 15;
+AG_ACT_REPO :: 16;         // 16, 17: the Code sheet's repository (AGR_ENGINE, AGR_APP)
+AG_ACT_OPEN_PR :: 18; AG_ACT_PIN :: 19; AG_ACT_OFFER :: 25;
+// Said when the first agent starts while its conversation is kept on the account.
+AG_ON_ACCOUNT :: "Its conversation is kept on your account while you're logged in, so gamebuilder.org/agents shows it. To keep it on this Mac only, turn off Kept on your account, below.";
+AG_ACT_KIND :: 20; AG_ACT_CHOICE :: 30; AG_ACT_ROW :: 100;    // a row's: AG_ACT_ROW + k, k below AGR_RECORDS
+AG_ACT_FOLD :: 400; AG_ACT_SHOW :: 500;   // a card's, plus its slot (ATL_CARDS of them)
+// The kinds the New agent sheet offers, in its tabs' order (their names are AGR_KIND_NAME's).
+AG_SHEET_N :: 3;
+AG_SHEET_KIND :: [AG_SHEET_N] int.[AGR_BUILD, AGR_PLAYTEST, AGR_CODE];
+// Which field has the keyboard.
+AG_FOCUS_NONE :: 0; AG_FOCUS_COMPOSER :: 1; AG_FOCUS_JOB :: 2;
+
+// What the pane keeps of agent k beside its record (p[0].store[0].r[k]): its question while it
+// waits, the person's words its runner takes next, its last edit, and what its message took so far.
+// Its cards are the pane's ring's. What is kept of its log is made again from it when the app opens;
+// the rest is the session's.
+AgAgent :: struct {
+  ask: [AG_ASK] u8; ask_n: int;
+  choice: [AGR_CHOICES * AGR_CHOICE] u8; choice_n: [AGR_CHOICES] int; choices: int;
+  ask_line: [AG_ASK_LINE] u8; ask_line_n: int;
+  pending: [AG_DRAFT] u8; pending_n: int;
+  edit_level: s32; edit_things: int;
+  engine: [AG_ASK] u8; engine_n: int;       // an ask's engine change: the pane offers a Code agent for it
+  pause_until: s64;                         // its plan's limit was hit this turn: it goes on then (runner.coax, ag_pause)
+  turns: int; cents: int;            // what its message took so far: model turns, and cents of the plan (the meter)
+  spent: f64; spent_base: f64;       // dollars its session reported at its last result, and at this message's start
+  turn_id: [96] u8; turn_id_n: int;  // the model message being read: a new one is a turn
+  later: [AG_DRAFT] u8; later_n: int;   // what the person sent while it worked: its runner gets it when the turn ends
+  batches: int; lit: int;            // what its turns since the last message changed: batches, and things highlighted
+}
+
+AgGeneration :: struct { under: [AG_UNDER] Prim; over: [AG_OVER] Prim; hits: [AG_HITS] SheetHit; pool: [AG_POOL] u8; rows: [AG_ROWS] El; }
+
+AgPane :: struct {
+  // the computers beside the levels (computer-ID.computer): each one's resident service as it last
+  // said it, which the host reads in with the records (ed_agents_computer; issue 11)
+  computers: [1] AgrComputers;
+  tile_text: [AGR_COMPUTERS * AG_TILE] u8;   // each one's line on the tile, kept while it is drawn
+  // drawing, as the side panel's (panel.coax)
+  ready: bool; time: f32; d: f32; width: f32; height: f32;
+  atlas: [1] Atlas;
+  px: f32; py: f32; touching: bool; down_y: f32; dragging: bool;
+  pressed: [EL_ID] u8; pressed_n: int;
+  scroll: f32; content: f32;
+  gen: [2] AgGeneration; surface: [1] UiSurface;
+  keys: [AG_KEYED] Keyed; keyed: [1] KeyedStore;
+  refused: int;
+  // what is shown
+  all: bool;                         // All games, else This game (the open level's)
+  open: int;                         // the agent open under the list, or -1
+  sheet: bool; sheet_kind: int;      // the New agent sheet, and its kind (AGR_*)
+  sheet_repo: int;                   // its Code agent's repository
+  focus: int;
+  composer: [1] EditBuf;             // the message field (at most AG_DRAFT bytes)
+  goal_eb: [1] EditBuf;              // the sheet's "What should it do?" (at most AGR_JOB bytes)
+  field_w: f32;                      // the fields' text width, for Up and Down
+  ring: [1] AtlRing;                 // what the agents did: their events, as the timeline's cards (who: the record's index)
+  note: [AG_NOTE] u8; note_n: int; failure: bool;
+  changed: bool;                     // the level changed: the host syncs its view of it
+  request: int;                      // AG_ASK_*, for the host
+  // the agents: their records (agent-record.coax), and what the pane keeps beside each
+  store: [1] AgrStore;
+  agents: [AGR_RECORDS] AgAgent;
+  now: s64;                          // the host's clock, in milliseconds since 1970 (ed_agents_clock)
+  // what was appended and not yet written: each entry an agent and its lines' span in ob
+  ob: [AG_OUTBOX] u8; ob_n: int;
+  ob_k: [AG_OUT_ENTRIES] s32; ob_from: [AG_OUT_ENTRIES] s32; ob_len: [AG_OUT_ENTRIES] s32; ob_e: int;
+  dirty: [AGR_RECORDS] bool;         // a record to write
+  wl: [AGR_RECORDS] s32; wn: int;    // ed_agents_writes' list
+  here: int; claude: int;
+  folder: [1024] u8; folder_n: int;  // the session's working folder (the host's, empty)
+  // the runner's session (runner.coax)
+  live: int = -1;                    // the agent it is for
+  asking: bool;                      // its ask waits on the person: nothing is polled
+  owed: bool;                        // the first message waits for initialize
+  q: [1] ClQuery; p: [1] ClProcess; opt: [1] ClOptions;
+  tool_verb: [CL_TOOLS] int;         // the server's tool k is row tool_verb[k]
+  tools: int;
+  strs: [AG_STRS] u8; strs_n: int;
+  system: [AG_SYSTEM] u8; system_n: int;
+  prompt: [AG_PROMPT] u8; prompt_n: int;
+  path: [1400] u8; path_n: int;
+  line: [1048576] u8; arena: [262144] u8; out: [1048576] u8; scratch: [131072] u8;
+  answer: [1048576] u8;
+  snap: [1] ChSnap;                  // the level before a call (changes.coax)
+  pics: [1] AtlPics;                 // where this frame's pictures go, for the host (ed_agents_pic)
+  scrub: [1] AtlScrub;               // the open agent's replay
+  demo: bool;                        // a debug launch's pane (ed_agents_demo): nothing of it is written
+  // Code agents (code-agent.coax): a slot each, and where they work
+  code: [CA_SLOTS] CaCode;
+  code_root: [512] u8; code_root_n: int;   // a check's folder for them; empty: ~/gamebuilder-code
+  remote: [256] u8; remote_n: int;         // a check's place for the repositories; empty: GitHub
+  url: [AGR_URL] u8; url_n: int;           // AG_ASK_OPEN_URL's address
+}
+
+// ---- text
+
+ag_put :: (out: [] u8, n: int, text: string) -> int { m := n; for c: text { if m < out.count { out[m] = c; m += 1; } } return m; }
+ag_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [24] u8; k := 0; x := v; neg := x < 0; if neg { x = -x; }
+  while x > 0 || k == 0 { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; if k >= 22 { break; } }
+  m := n; if neg { m = ag_put(out, m, "-"); }
+  for i: 0..<k { if m < out.count { out[m] = d[k - 1 - i]; m += 1; } }
+  return m;
+}
+ag_note :: (p: [] AgPane, text: string, failure: bool) {
+  p[0].note_n = ag_put(p[0].note[..], 0, agr_cut(text, AG_NOTE)); p[0].failure = failure && p[0].note_n > 0;
+}
+ag_keep :: (p: [] AgPane, text: string) -> string {
+  from := p[0].strs_n;
+  if from + text.count > AG_STRS { return ""; }
+  for i: 0..<text.count { p[0].strs[from + i] = text[i]; }
+  p[0].strs_n += text.count;
+  return cast(string) p[0].strs[from..<from + text.count];
+}
+ag_count :: (p: [] AgPane) -> int { return p[0].store[0].n; }
+ag_rec :: (p: [] AgPane, k: int) -> AgrRecord { return p[0].store[0].r[k]; }
+ag_set_pending :: (p: [] AgPane, k: int, words: string) { p[0].agents[k].pending_n = ag_put(p[0].agents[k].pending[..], 0, agr_cut(words, AG_DRAFT)); }
+
+// ---- what is drawn of an agent, made from its events
+
+// One event of agent k's, as the pane draws it and keeps it: a card on the ring (the timeline's),
+// a question and its answers, the last edit, what its message took. line is the event's line (an
+// ask's is kept for its answer).
+ag_view_event :: (p: [] AgPane, k: int, ev: [] AgrEvent, line: string) {
+  a := p[0].agents[k..<k + 1];
+  t := ev[0].type; text := cast(string) ev[0].text[0..<ev[0].text_n];
+  // the card: every event but a state of no note (working, waiting, queued with no words: the
+  // row says those)
+  ends := ev[0].state == AGR_DONE || ev[0].state == AGR_STOPPED || ev[0].state == AGR_FAILED || ev[0].state == AGR_UNKNOWN;
+  if t != AGR_STATE || ends || text.count > 0 {
+    c := atl_add(p[0].ring[..], k, t);
+    p[0].ring[0].ev[c] = ev[0];
+    // the pane draws no Markdown: an agent's marks are left out
+    if t == AGR_MESSAGE && ev[0].from == AGR_AGENT {
+      n := 0;
+      for i: 0..<ev[0].text_n { ch := ev[0].text[i]; if ch != '`' && ch != '*' { p[0].ring[0].ev[c].text[n] = ch; n += 1; } }
+      p[0].ring[0].ev[c].text_n = n;
+    }
+  }
+  if t == AGR_ANSWER { a[0].choices = 0; a[0].ask_n = 0; }
+  else if t == AGR_EDIT {
+    a[0].edit_level = ev[0].level; a[0].edit_things = ev[0].things_n;
+  } else if t == AGR_ASK {
+    a[0].ask_n = ag_put(a[0].ask[..], 0, agr_cut(text, AG_ASK));
+    for i: 0..<AGR_CHOICES * AGR_CHOICE { a[0].choice[i] = ev[0].choice[i]; }
+    for i: 0..<AGR_CHOICES { a[0].choice_n[i] = ev[0].choice_n[i]; }
+    a[0].choices = ev[0].choices;
+    // the ask's line, as a log of one event, for agent-answer to check the answer against
+    a[0].ask_line_n = ifx line.count < AG_ASK_LINE then ag_put(a[0].ask_line[..], ag_put(a[0].ask_line[..], 0, line), "\n") else 0;
+  } else if t == AGR_USAGE {
+    // the meter: what its message took, as its runner last said
+    a[0].turns = cast(int) ev[0].turns; a[0].cents = cast(int) ev[0].cents;
+  } else if t == AGR_STATE {
+    if ev[0].state != AGR_WAITING { a[0].choices = 0; a[0].ask_n = 0; a[0].engine_n = 0; }
+  }
+  ca_seen(p, k, ev, line);
+}
+ag_choice :: (a: [] AgAgent, i: int) -> string { return cast(string) a[0].choice[i * AGR_CHOICE..<i * AGR_CHOICE + a[0].choice_n[i]]; }
+
+// ---- appending to an agent's log
+
+// Lines appended to agent k's log (each with its line break; the record already counts them):
+// kept for the host to write, and drawn.
+ag_keep_lines :: (p: [] AgPane, k: int, lines: string) -> bool {
+  if lines.count == 0 { p[0].dirty[k] = true; return true; }
+  if p[0].ob_e >= AG_OUT_ENTRIES || p[0].ob_n + lines.count > AG_OUTBOX { return false; }
+  from := p[0].ob_n;
+  p[0].ob_n = ag_put(p[0].ob[..], p[0].ob_n, lines);
+  e := p[0].ob_e; p[0].ob_e += 1;
+  p[0].ob_k[e] = cast(s32) k; p[0].ob_from[e] = cast(s32) from; p[0].ob_len[e] = cast(s32) lines.count;
+  p[0].dirty[k] = true;
+  id := agr_id(p[0].store[0].r[k..<k + 1]);
+  ev: [1] AgrEvent; at := 0;
+  for i: 0..<lines.count {
+    if lines[i] != '\n' { continue; }
+    line := cast(string) lines[at..<i]; at = i + 1;
+    if agr_event_read(line, id, ev[..]) == "" { ag_view_event(p, k, ev[..], line); }
+  }
+  return true;
+}
+// Appends ev to agent k's log, now. False when it could not be kept (the pane says so).
+ag_emit :: (p: [] AgPane, k: int, ev: [] AgrEvent) -> bool {
+  if k < 0 || k >= ag_count(p) { return false; }
+  if p[0].ob_e >= AG_OUT_ENTRIES || p[0].ob_n + AGR_LINE + 1 > AG_OUTBOX {
+    ag_note(p, "Too much happened at once to keep: the newest events were left out.", true); return false;
+  }
+  lb: [AGR_LINE + 1] u8;
+  line := agr_append(p[0].store[0].r[k..<k + 1], ev, p[0].now, lb[..]);
+  if line.count == 0 { ag_note(p, "An agent's log keeps at most 100000 events (AGR_EVENTS): start a new agent.", true); return false; }
+  return ag_keep_lines(p, k, line);
+}
+ag_emit_say :: (p: [] AgPane, k: int, from: int, text: string) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_MESSAGE); ev[0].from = from; agr_event_text(ev[..], text);
+  _ = ag_emit(p, k, ev[..]);
+}
+// A state change, with why for a stop, a failure or anything the person should read.
+ag_set_state :: (p: [] AgPane, k: int, state: int, why: string) {
+  if k < 0 || k >= ag_count(p) { return; }
+  if p[0].store[0].r[k].state == state && why.count == 0 { return; }
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_STATE); ev[0].state = state; agr_event_text(ev[..], why);
+  _ = ag_emit(p, k, ev[..]);
+  // the one-line step: what a working agent does, empty otherwise
+  if state != AGR_WORKING { p[0].store[0].r[k].step_n = 0; }
+}
+ag_emit_tool :: (p: [] AgPane, k: int, name: string, args: string, ok: bool, result: string) { ag_emit_tool_at(p, k, name, args, ok, result, 0, 0); }
+// A tool event that played the level (play_test): its level and the revision it played, whose
+// picture its card shows (pictures.coax); 0 for any other.
+ag_emit_tool_at :: (p: [] AgPane, k: int, name: string, args: string, ok: bool, result: string, level: s32, rev: int) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_TOOL);
+  ev[0].level = level; ev[0].after = cast(s32) rev;
+  ev[0].tool_n = agr_set(ev[0].tool[..], name); agr_event_args(ev[..], args); ev[0].ok = ok;
+  ev[0].result_n = agr_set(ev[0].result[..], result);
+  p[0].store[0].r[k].step_n = agr_set(p[0].store[0].r[k].step[..], name);
+  _ = ag_emit(p, k, ev[..]);
+}
+// An edit on level, from revision before to after: the things it changed (changes.coax), and
+// what it changed in words ("added 2 blocks (Block 29, Block 30)"), as its change card says it.
+ag_emit_edit :: (p: [] AgPane, k: int, level: s32, before: int, after: int, things: [] ChThing) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_EDIT);
+  ev[0].level = level; ev[0].before = cast(s32) before; ev[0].after = cast(s32) after;
+  for i: 0..<things.count { if i < AGR_THINGS { ev[0].things[i] = things[i].id; ev[0].things_n = i + 1; } }
+  if things.count > 0 {
+    wb: [AGR_TEXT] u8; wt := [1] Text.[Text.{buf = wb[..]}];
+    ch_summary(wt[..], things);
+    agr_event_text(ev[..], cast(string) wb[0..<wt[0].at]);
+  }
+  _ = ag_emit(p, k, ev[..]);
+}
+ag_emit_ask :: (p: [] AgPane, k: int, question: string, ch: [] AgrEvent) {
+  ch[0].type = AGR_ASK; agr_event_text(ch, question);
+  if ag_emit(p, k, ch) { ag_set_state(p, k, AGR_WAITING, ""); }
+}
+ag_emit_usage :: (p: [] AgPane, k: int, turns: int, cents: int, ms: int) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_USAGE); ev[0].turns = cast(s32) turns; ev[0].cents = cast(s32) cents; ev[0].ms = cast(s32) ms;
+  _ = ag_emit(p, k, ev[..]);
+}
+
+// ---- the agent rows, run here
+
+// Runs agent row v with args (JSON) on the pane's records: what it appended is kept and drawn.
+// The answer; its refusal is said in the pane.
+ag_row_run :: (p: [] AgPane, e: [] Editor, v: int, args: string, lg: string) -> GbResult {
+  none: [1] s32;
+  w := GbWorld.{levels = none[0..<0], agents = p[0].store[..], log = lg, now = p[0].now, computer = AGR_THIS_MAC, computers = p[0].computers[..]};
+  r := gb_command_run_world(e, v, args, w, p[0].answer[..], 0);
+  if r.code == GB_DONE && r.agent > 0 {
+    if !ag_keep_lines(p, cast(int) r.agent - 1, r.lines) { ag_note(p, "Too much happened at once to keep: try again.", true); }
+  } else if r.code != GB_DONE {
+    nodes: [16] JvNode; da: [1] Jv; wb: [AG_NOTE] u8;
+    if jv_parse(da[..], r.json, nodes[..]) { n := jv_str(da[0], jv_get(da[0], 0, "why"), wb[..]); if n > 0 { ag_note(p, cast(string) wb[0..<n], true); } }
+  }
+  return r;
+}
+// A row's arguments: the agent's id and one word field (or none).
+ag_args :: (id: string, key: string, words: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "agent"); jo_str(o[..], id);
+  if key.count > 0 { jo_key(o[..], key); jo_str(o[..], words); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// ---- reading the folder's records in
+
+// A record's file and its log read in: a new agent, or what was appended to one since (by the
+// CLI, MCP or the HTTP server). False when the record doesn't read.
+ag_load :: (p: [] AgPane, e: [] Editor, text: string, lg: string) -> bool {
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  if agr_record_read(text, got[..], jw[..]).count > 0 { return false; }
+  id := agr_id(got[..]);
+  k := agr_find(p[0].store[..], id);
+  fresh := k < 0;
+  if fresh {
+    if ag_count(p) >= AGR_RECORDS { ag_note(p, "GameBuilder keeps at most 256 agents (AGR_RECORDS).", true); return false; }
+    k = p[0].store[0].n; p[0].store[0].n += 1;
+    p[0].agents[k] = AgAgent.{};
+  }
+  had := ifx fresh then 0 else cast(int) p[0].store[0].r[k].events;
+  p[0].store[0].r[k] = got[0]; p[0].store[0].jw[k] = jw[0];
+  // a Code agent read in: its slot, which its worktree's event makes ready again
+  if fresh && got[0].kind == AGR_CODE && got[0].repo >= 0 { _ = ca_adopt(p, k, got[0].repo, id); }
+  // its events after those the pane has: drawn, and the person's words kept for its runner
+  ev: [1] AgrEvent; at := 0; n := 0;
+  answered := ""; ab: [AG_DRAFT] u8;
+  for i: 0..<lg.count {
+    if lg[i] != '\n' { continue; }
+    line := cast(string) lg[at..<i]; at = i + 1; n += 1;
+    if n <= had || n > cast(int) got[0].events { continue; }
+    if agr_event_read(line, id, ev[..]).count > 0 { continue; }
+    ag_view_event(p, k, ev[..], line);
+    if ev[0].type == AGR_MESSAGE && ev[0].from == AGR_PERSON { ag_set_pending(p, k, cast(string) ev[0].text[0..<ev[0].text_n]); }
+    if ev[0].type == AGR_ANSWER { answered = cast(string) ab[0..<ag_put(ab[..], 0, cast(string) ev[0].text[0..<ev[0].text_n])]; }
+  }
+  r := p[0].store[0].r[k];
+  if p[0].live == k {
+    // its session is here: a stop ends it, an answer goes to the turn waiting on it
+    if r.state == AGR_STOPPED { ag_end(p); p[0].agents[k].pending_n = 0; }
+    else if answered.count > 0 && p[0].asking { ag_answer_turn(p, k, answered); }
+  } else if r.state == AGR_WORKING && r.place == AGR_LOCAL && cast(string) r.runner[0..<r.runner_n] == AG_RUNNER {
+    // a turn this computer ran, cut off when the app closed: nobody can tell where it got to
+    ag_set_state(p, k, AGR_UNKNOWN, "GameBuilder closed during its turn: what it changed stays. Send a message to go on.");
+  }
+  return true;
+}
+// Whether the pane would read this record's file in: an agent it doesn't have, or more events.
+ag_wants :: (p: [] AgPane, text: string) -> bool {
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  if agr_record_read(text, got[..], jw[..]).count > 0 { return false; }
+  k := agr_find(p[0].store[..], agr_id(got[..]));
+  return k < 0 || got[0].events > p[0].store[0].r[k].events;
+}
+// The answer goes to the turn waiting on it.
+ag_answer_turn :: (p: [] AgPane, k: int, words: string) {
+  ab: [AG_DRAFT * 6 + 64] u8;
+  o: [1] Jo; jo_start(o[..], ab[..]); jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "answer"); jo_str(o[..], words); jo_end(o[..]);
+  cl_tool_text(p[0].q[..], jo_text(o[..]), false);
+  p[0].asking = false; p[0].agents[k].pending_n = 0;
+  ag_set_state(p, k, AGR_WORKING, "");
+}
+
+// ---- what the person does
+
+ag_here_words :: (here: int) -> string {
+  if here == AG_HERE_SANDBOX { return "The App Store build can't start Claude Code itself: turn on GameBuilder's resident service on this Mac (gamebuilder resident) and New agent starts one there, or use the GameBuilder download for Mac."; }
+  if here == AG_HERE_NONE { return "Agents run on a computer: start one on yours at gamebuilder.org/agents, or open this game in GameBuilder on your Mac."; }
+  return "";
+}
+
+// A new agent on the open level's game, with its goal (agent-new): its index, or -1 and the pane
+// says why.
+ag_new :: (p: [] AgPane, e: [] Editor, kind: int, goal: string) -> int {
+  if goal.count == 0 { ag_note(p, "Say what it should do.", true); return -1; }
+  if !ag_can_new(p) { ag_note(p, ag_here_words(p[0].here), true); return -1; }
+  if kind == AGR_BUILD && !ed_may_edit(e) { ag_note(p, "This level isn't yours to change: make your own copy first, then start an agent on it.", true); return -1; }
+  game := ed_mine_open(e);
+  if game <= 0 { ag_note(p, "An agent works on a game of yours: open a level of one of your games (New Game makes one).", true); return -1; }
+  ab: [AGR_JOB * 6 + 128] u8;
+  o: [1] Jo; jo_start(o[..], ab[..]);
+  jo_obj(o[..]); jo_key(o[..], "game"); jo_int(o[..], cast(int) game); jo_key(o[..], "role"); jo_str(o[..], AGR_KIND_ID[kind]);
+  jo_key(o[..], "job"); jo_str(o[..], agr_cut(goal, AGR_JOB));
+  // a build that can't start claude: the resident service on this computer runs it (agent-new-on)
+  rk := ifx p[0].here == AG_HERE_LOCAL then -1 else ag_resident(p);
+  if rk >= 0 { c := p[0].computers[0].c[rk..<rk + 1]; jo_key(o[..], "computer"); jo_str(o[..], cast(string) c[0].name[0..<c[0].name_n]); }
+  jo_end(o[..]);
+  r := ag_row_run(p, e, ifx rk >= 0 then VERB_AGENT_NEW_ON else VERB_AGENT_NEW, jo_text(o[..]), "");
+  if r.code != GB_DONE || r.agent <= 0 { return -1; }
+  k := cast(int) r.agent - 1;
+  // the level it works on is the one open (the record's detail)
+  p[0].store[0].r[k].level = ed_level(e); p[0].dirty[k] = true;
+  // the first agent says where its conversation is kept
+  ag_note(p, ifx k == 0 && ed_agents_account(e) then AG_ON_ACCOUNT else "", false);
+  ag_set_pending(p, k, agr_job_of(p[0].store[..], k));
+  ag_next(p, e);
+  return k;
+}
+// The person's message to agent k (agent-message): in its log at once. While it works, its runner
+// gets it when the turn ends; while it waits on an ask, the words are the answer.
+ag_send :: (p: [] AgPane, e: [] Editor, k: int, words: string) {
+  if k < 0 || k >= ag_count(p) || words.count == 0 { return; }
+  s := ag_rec(p, k).state;
+  if s == AGR_WAITING && p[0].live == k && p[0].asking { _ = ag_answer(p, e, k, words); return; }
+  if ag_rec(p, k).kind == AGR_CODE && (ca_of(p, k) < 0 || !ca_c(p, k)[0].ready) { ag_note(p, "Its folder was never made: start a new Code agent.", true); return; }
+  ab: [AG_DRAFT * 6 + 128] u8;
+  r := ag_row_run(p, e, VERB_AGENT_MESSAGE, ag_args(agr_id(p[0].store[0].r[k..<k + 1]), "message", words, ab[..]), "");
+  if r.code != GB_DONE { return; }
+  if s == AGR_WORKING || s == AGR_QUEUED {
+    a := p[0].agents[k..<k + 1];
+    n := a[0].later_n;
+    if n > 0 { n = ag_put(a[0].later[..], n, "\n\n"); }
+    a[0].later_n = ag_put(a[0].later[..], n, words);
+    ag_note(p, "It gets your message when this turn ends.", false);
+    return;
+  }
+  ag_set_pending(p, k, words);
+  if p[0].live == k && p[0].p[0].handle >= 0 { p[0].agents[k].pending_n = 0; ag_take(p, e, k, words); return; }
+  ag_next(p, e);
+}
+// A turn ended (done or failed): what the person sent meanwhile goes now (it is in its log already).
+ag_later :: (p: [] AgPane, e: [] Editor, k: int) {
+  if k < 0 || k >= ag_count(p) { return; }
+  a := p[0].agents[k..<k + 1];
+  if a[0].later_n == 0 { return; }
+  msg: [AG_DRAFT] u8; mn := ag_put(msg[..], 0, cast(string) a[0].later[0..<a[0].later_n]);
+  a[0].later_n = 0;
+  ag_take(p, e, k, cast(string) msg[0..<mn]);
+}
+// Stop (agent-stop): the turn ends now and the session with it. What it changed stays. A message
+// waiting for its turn goes back to the field, unsent.
+ag_stop :: (p: [] AgPane, e: [] Editor, k: int) {
+  if k < 0 || k >= ag_count(p) { return; }
+  ab: [256] u8;
+  r := ag_row_run(p, e, VERB_AGENT_STOP, ag_args(agr_id(p[0].store[0].r[k..<k + 1]), "", "", ab[..]), "");
+  if r.code != GB_DONE { return; }
+  a := p[0].agents[k..<k + 1];
+  if a[0].later_n > 0 {
+    if p[0].composer[0].n == 0 { eb_set(p[0].composer[..], cast(string) a[0].later[0..<a[0].later_n]); }
+    a[0].later_n = 0;
+  }
+  a[0].pending_n = 0;
+  if p[0].live == k { ag_end(p); }
+  ag_next(p, e);
+}
+// The person's answer to an ask goes to the waiting turn, or, when its session is gone (the app
+// was closed), to a new one: one of its answers (agent-answer, which checks it against the ask in
+// its log), or, while its turn waits on it, their own words.
+ag_answer :: (p: [] AgPane, e: [] Editor, k: int, words: string) -> bool {
+  if k < 0 || k >= ag_count(p) || ag_rec(p, k).state != AGR_WAITING || words.count == 0 { return false; }
+  a := p[0].agents[k..<k + 1];
+  waiting := p[0].live == k && p[0].asking;
+  one := false; for i: 0..<a[0].choices { if ag_choice(a, i) == words { one = true; } }
+  if one {
+    ab: [512] u8;
+    r := ag_row_run(p, e, VERB_AGENT_ANSWER, ag_args(agr_id(p[0].store[0].r[k..<k + 1]), "answer", words, ab[..]), cast(string) a[0].ask_line[0..<a[0].ask_line_n]);
+    if r.code != GB_DONE { return false; }
+  } else {
+    // words of the person's own: its turn takes them as they are, and its log keeps them
+    if !waiting { ag_note(p, "Its turn has ended: answer with one of its answers.", true); return false; }
+    ev: [1] AgrEvent; ev[0] = agr_event(AGR_ANSWER); agr_event_text(ev[..], words);
+    if !ag_emit(p, k, ev[..]) { return false; }
+  }
+  if waiting { ag_answer_turn(p, k, words); return true; }
+  mb: [AG_DRAFT] u8; mn := ag_put(mb[..], 0, "The person answered your question: "); mn = ag_put(mb[..], mn, words);
+  ag_set_pending(p, k, cast(string) mb[0..<mn]);
+  ag_next(p, e);
+  return true;
+}
+// One of its answers, as its button gives it.
+ag_choose :: (p: [] AgPane, e: [] Editor, k: int, i: int) -> bool {
+  if k < 0 || k >= ag_count(p) || i < 0 || i >= p[0].agents[k].choices { return false; }
+  words: [AGR_CHOICE] u8; wn := ag_put(words[..], 0, ag_choice(p[0].agents[k..<k + 1], i));
+  return ag_answer(p, e, k, cast(string) words[0..<wn]);
+}
+// Undo: the agent's last turn, or all of them, taken back (ed_agent_undo_turn): even when other
+// agents changed the level since, never when the person did, so the person's own edit always stands.
+// Each taken back is marked on its change card.
+ag_undo :: (p: [] AgPane, e: [] Editor, k: int, all: bool) {
+  if k < 0 || k >= ag_count(p) { return; }
+  taken := 0;
+  for i: 0..<AGENT_TURNS {
+    r := ed_agent_undo_turn(e, cast(s32) (AG_ID0 + k));
+    if r == AGENT_UNDONE { taken += 1; ag_undone(p, k); }
+    if r == AGENT_CHANGED { ag_note(p, ifx taken > 0 then "Some was taken back; the rest came before your own edit, which stands." else "The level changed since its change: your edit stands, so nothing was taken back.", taken == 0); break; }
+    if r == AGENT_REFUSED { ag_note(p, "Not now: stop the match or finish the drag first.", true); break; }
+    if r == AGENT_NONE { break; }
+    if !all && taken > 0 { break; }
+  }
+  if taken > 0 {
+    a := p[0].agents[k..<k + 1];
+    p[0].changed = true; if !p[0].failure { ag_note(p, "", false); }
+    a[0].edit_things = 0;
+    a[0].batches = ifx all then 0 else ifx a[0].batches > 0 then a[0].batches - 1 else 0;
+    ag_emit_say(p, k, AGR_PERSON, ifx all then "I took back all of your changes." else "I took back your last change.");
+  } else if p[0].note_n == 0 { ag_note(p, "There is nothing of its to take back.", false); }
+}
+// Agent k's last change not yet taken back is marked so on its card.
+ag_undone :: (p: [] AgPane, k: int) {
+  u := atl_undoable(p[0].ring[..], k);
+  if u >= 0 { p[0].ring[0].undone[u] = true; }
+}
+// Show me, on change card c: the view framed on its things.
+ag_show :: (p: [] AgPane, e: [] Editor, c: int) {
+  if c < 0 || c >= ATL_CARDS { return; }
+  k := p[0].ring[0].who[c];
+  if k < 0 || k >= ag_count(p) { return; }
+  ev := p[0].ring[0].ev[c..<c + 1];
+  if ev[0].level != ed_level(e) { ag_note(p, "That change is on another level: open it to see it.", true); return; }
+  if e[0].play[0].on { ag_note(p, "Not now: stop the match first.", true); return; }
+  if ch_frame_ids(e, ev[0].things[0..<ev[0].things_n]) == 0 { ag_note(p, "Those things are no longer on this level.", true); return; }
+  ag_note(p, "", false);
+}
+// ---- a press
+
+ag_press :: (p: [] AgPane, e: [] Editor, act: int) -> bool {
+  k := p[0].open;
+  if act == AG_ACT_THIS || act == AG_ACT_ALL { p[0].all = act == AG_ACT_ALL; return true; }
+  if act == AG_ACT_CLOSE { e[0].agents_open = false; p[0].focus = AG_FOCUS_NONE; return true; }
+  if act == AG_ACT_NEW && !ag_can_new(p) { ag_note(p, ag_here_words(p[0].here), true); return true; }
+  if act == AG_ACT_NEW { p[0].sheet = true; p[0].focus = AG_FOCUS_JOB; ag_note(p, "", false); return true; }
+  if act == AG_ACT_CANCEL { p[0].sheet = false; p[0].focus = AG_FOCUS_NONE; return true; }
+  if act >= AG_ACT_KIND && act < AG_ACT_KIND + AG_SHEET_N { p[0].sheet_kind = AG_SHEET_KIND[act - AG_ACT_KIND]; return true; }
+  if act >= AG_ACT_REPO && act < AG_ACT_REPO + AGR_REPOS { p[0].sheet_repo = act - AG_ACT_REPO; return true; }
+  if act == AG_ACT_START {
+    goal := eb_text(p[0].goal_eb[..]);
+    // a Code agent's Start is its approval: the sheet said what it may do, in words
+    made := ifx p[0].sheet_kind == AGR_CODE then ca_new(p, e, p[0].sheet_repo, goal, true, ca_now(p)) else ag_new(p, e, p[0].sheet_kind, goal);
+    if made >= 0 { p[0].sheet = false; eb_clear(p[0].goal_eb[..]); p[0].open = made; p[0].focus = AG_FOCUS_COMPOSER; }
+    return true;
+  }
+  if act == AG_ACT_JOB { p[0].focus = AG_FOCUS_JOB; return true; }
+  if act == AG_ACT_COMPOSER { p[0].focus = AG_FOCUS_COMPOSER; return true; }
+  if act >= AG_ACT_ROW && act < AG_ACT_ROW + AGR_RECORDS { p[0].open = ifx p[0].open == act - AG_ACT_ROW then -1 else act - AG_ACT_ROW; return true; }
+  if act == AG_ACT_SEND {
+    if k < 0 || p[0].composer[0].n == 0 { return true; }
+    ag_send(p, e, k, eb_text(p[0].composer[..])); eb_clear(p[0].composer[..]);
+    return true;
+  }
+  if act == AG_ACT_STOP { ag_stop(p, e, k); return true; }
+  if act == AG_ACT_UNDO || act == AG_ACT_UNDO_ALL { ag_undo(p, e, k, act == AG_ACT_UNDO_ALL); return true; }
+  if act >= AG_ACT_CHOICE && act < AG_ACT_CHOICE + AGR_CHOICES { return ag_choose(p, e, k, act - AG_ACT_CHOICE); }
+  if act >= AG_ACT_FOLD && act < AG_ACT_FOLD + ATL_CARDS { c := act - AG_ACT_FOLD; p[0].ring[0].open[c] = !p[0].ring[0].open[c]; return true; }
+  if act >= AG_ACT_SHOW && act < AG_ACT_SHOW + ATL_CARDS { ag_show(p, e, act - AG_ACT_SHOW); return true; }
+  if act == AG_ACT_INSTALL { p[0].request = AG_ASK_INSTALL; return true; }
+  if act == AG_ACT_SIGN_IN { p[0].request = AG_ASK_SIGN_IN; return true; }
+  if act == AG_ACT_ACCOUNT { _ = ag_row_run(p, e, VERB_AGENTS_ACCOUNT, "{}", ""); return true; }
+  if act == AG_ACT_OPEN_PR { return ca_open_pr(p, k); }
+  if act == AG_ACT_PIN { return ca_pin(p, e, k); }
+  if act == AG_ACT_OFFER { return ca_offer(p, e, k); }
+  return false;
+}
+ag_press_row :: (p: [] AgPane, e: [] Editor, row: int) -> bool {
+  act := surface_action(p[0].surface[..], row);
+  // a row of tabs shares its first's action: the tab's id (kind.2, repo.1) says which
+  if act == AG_ACT_KIND || act == AG_ACT_REPO {
+    id := surface_id(p[0].surface[..], row);
+    if id.count > 0 && id[id.count - 1] >= '0' && id[id.count - 1] <= '9' { act += cast(int) (id[id.count - 1] - '0'); }
+  }
+  return act != 0 && ag_press(p, e, act);
+}
+
+// ---- the layout
+
+AG_GOLD :: Rgba.{r = 1, g = 0.78, b = 0.2, a = 1};
+
+ag_id :: (prefix: string, k: int, out: [] u8) -> string {
+  n := ag_put(out, 0, prefix); n = ag_put(out, n, "."); n = ag_put_int(out, n, k);
+  return cast(string) out[0..<n];
+}
+// Whether agent k is listed: every agent, or those on the open level's game (or the open level,
+// for one in no game).
+ag_listed :: (p: [] AgPane, e: [] Editor, k: int) -> bool {
+  r := p[0].store[0].r[k];
+  return p[0].all || (r.game > 0 && r.game == ed_mine_open(e)) || (r.game == 0 && r.level == ed_level(e));
+}
+
+// One agent's row: its kind and goal, then where it runs, for how long, and its state; an
+// ask's question on a gold edge. Returns its height.
+ag_row :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, k: int, x: f32, y: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  r := p[0].store[0].r[k..<k + 1];
+  shown := agr_shown_state(r[0], p[0].now);
+  ib: [24] u8; tb: [AGR_JOB + 32] u8; db: [192] u8; gb: [16] u8;
+  tn := ag_put(tb[..], 0, AGR_KIND_NAME[r[0].kind]); tn = ag_put(tb[..], tn, " - "); tn = ag_put(tb[..], tn, agr_job_of(p[0].store[..], k));
+  title := sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
+  dn := ag_put(db[..], 0, agr_place_words(r)); dn = ag_put(db[..], dn, " - Claude - ");
+  if p[0].all { dn = ag_put(db[..], dn, "level "); dn = ag_put_int(db[..], dn, cast(int) r[0].level); dn = ag_put(db[..], dn, " - "); }
+  since := ifx shown == AGR_OFFLINE then r[0].heard else r[0].since;
+  dn = ag_put(db[..], dn, agr_age(p[0].now - since, gb[..])); dn = ag_put(db[..], dn, " - "); dn = ag_put(db[..], dn, AGR_STATE_WORDS[shown]);
+  detail := sheet_pool(f[0].sheet, cast(string) db[0..<dn]);
+  pad := s.space;
+  h := 2 * pad + s.body.line + s.small.line;
+  waiting := shown == AGR_WAITING;
+  ask := cast(string) p[0].agents[k].ask[0..<p[0].agents[k].ask_n];
+  // what it is doing now, in one line (its timeline's last card): its question while it waits
+  sb: [AGR_STEP + 8] u8;
+  step := sheet_pool(f[0].sheet, atl_step(p[0].ring[..], k, sb[..]));
+  if waiting || step.count > 0 { h += s.small.line; }
+  row := uiframe_semantic(f, ag_id("row", k, ib[..]), EL_BUTTON, title, x, y, w, h, ifx p[0].open == k then EL_S_CURRENT else 0, AG_ACT_ROW + k);
+  _ := sheet_box(f[0].sheet, x, y, w, h, s.radius_control, s.border, ifx p[0].open == k then s.row_shown else s.raised, ifx waiting then AG_GOLD else s.hairline);
+  sheet_clip_right(f[0].sheet, x + w - pad);
+  _ := sheet_text(f[0].sheet, m, -1, x + pad, y + pad, s.body.line, s.body.face, s.ink, title);
+  _ := sheet_text(f[0].sheet, m, -1, x + pad, y + pad + s.body.line, s.small.line, s.small.face, ifx shown == AGR_FAILED then s.danger else s.muted, detail);
+  if waiting { _ := sheet_text(f[0].sheet, m, -1, x + pad, y + pad + s.body.line + s.small.line, s.small.line, s.small.face, AG_GOLD, ask); }
+  else if step.count > 0 { _ := sheet_text(f[0].sheet, m, -1, x + pad, y + pad + s.body.line + s.small.line, s.small.line, s.small.face, s.faint, step); }
+  sheet_unclip(f[0].sheet);
+  sheet_hit(f[0].sheet, UIFRAME_HIT, row, 0, x, y, w, h);
+  return h;
+}
+
+// The computers strip: this computer's tile, with the plain next step when one is missing, and
+// whether its agents are kept on the account.
+ag_tile :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  y := top;
+  s := f[0].skin; m := f[0].m;
+  words := ""; act := 0; label := "";
+  // each computer's resident service in words: on, its slots, what is signed in there (issue 11)
+  y0 := top; cy := top;
+  wb: [AG_TILE] u8;
+  for i: 0..<p[0].computers[0].n {
+    c := p[0].computers[0].c[i..<i + 1];
+    nb := p[0].tile_text[i * AG_TILE..<(i + 1) * AG_TILE];
+    n := ag_put(nb, 0, cast(string) c[0].name[0..<c[0].name_n]); n = ag_put(nb, n, " (resident service) - ");
+    n = ag_put(nb, n, agr_computer_words(c, p[0].now, wb[..]));
+    cy += control_copy(f[0].sheet, m, s.small, s.muted, x, cy, w, cast(string) nb[0..<n]) + s.space / 2;
+  }
+  y = cy;
+  if p[0].here != AG_HERE_LOCAL { words = ifx ag_resident(p) >= 0 then "New agent starts it on the resident service above, on your own Claude plan: no charge from us." else ag_here_words(p[0].here); }
+  else if p[0].claude == AG_CLAUDE_MISSING { words = "This Mac: Claude Code isn't installed."; act = AG_ACT_INSTALL; label = "Install Claude Code"; }
+  else if p[0].claude == AG_CLAUDE_SIGNED_OUT { words = "This Mac: Claude Code is signed out."; act = AG_ACT_SIGN_IN; label = "Sign in, in Terminal"; }
+  else if p[0].claude == AG_CLAUDE_READY { words = "This Mac: Claude Code - signed in"; }
+  else { words = "This Mac: Claude Code, on your own Claude plan"; }
+  pad := s.space;
+  tw := w - 2 * pad;
+  th := control_copy(f[0].sheet, m, s.small, s.muted, x + pad, y + pad, tw, words);
+  h := th + 2 * pad;
+  if act != 0 { h += s.control_h + pad / 2; }
+  _ := sheet_box(f[0].sheet, x, y, w, h, s.radius_control, s.border, s.surface, s.hairline);
+  _ = control_copy(f[0].sheet, m, s.small, s.muted, x + pad, y + pad, tw, words);
+  if act != 0 { _ := ctx_button(f, ifx act == AG_ACT_INSTALL then "install" else "sign-in", x + pad, y + pad + th + pad / 2, label, true, 0, act); }
+  if p[0].here != AG_HERE_LOCAL { return (y - y0) + h; }
+  // where the conversations are kept: the agents-account row's switch
+  y2 := y + h + s.space / 2;
+  _ := ctx_button(f, "account", x, y2, ifx ed_agents_account(e) then "Kept on your account: on" else "Kept on your account: off", false, 0, AG_ACT_ACCOUNT);
+  return (y - y0) + h + s.space / 2 + s.control_h;
+}
+
+// An open agent: its meter, its timeline, an ask's answers, Undo all, Stop while it works, and
+// the composer, which takes a message while it works too.
+ag_open :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, k: int, x: f32, top: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  a := p[0].agents[k];
+  r := p[0].store[0].r[k];
+  y := top;
+  ib: [24] u8;
+  // the meter: what its message took, against the record's limits
+  y += atl_meter(f, "meter", a.turns, cast(int) r.turns, a.cents, cast(int) r.cents, x, y, w) + s.space;
+  if ca_of(p, k) >= 0 { y += ca_card(p, e, f, k, x, y, w) + s.space; }
+  // the timeline: what it did, as cards
+  acts := AtlActs.{fold = AG_ACT_FOLD, show = AG_ACT_SHOW, undo = AG_ACT_UNDO};
+  y += atl_replay(f, p[0].ring[..], k, p[0].pics[..], p[0].scrub[..], e, x, y, w);
+  y += atl_timeline(f, p[0].ring[..], k, AGR_KIND_NAME[r.kind], AG_SHOWN, acts, p[0].pics[..], e, x, y, w);
+  // an ask: its answers as buttons
+  if r.state == AGR_WAITING && a.choices > 0 {
+    y += s.space / 2;
+    pen := x;
+    for c: 0..<a.choices {
+      label := ag_choice(p[0].agents[k..<k + 1], c);
+      bw := button_width(m, s, label);
+      if pen > x && pen + bw > x + w { pen = x; y += s.control_h + s.space / 2; }
+      _ := ctx_button(f, ag_id("choice", c, ib[..]), pen, y, label, true, 0, AG_ACT_CHOICE + c);
+      pen += bw + s.space / 2;
+    }
+    // an engine change it needs: a Code agent is offered, never started
+    if a.engine_n > 0 && p[0].live == k && p[0].asking {
+      label := "Start a Code agent on the engine...";
+      bw := button_width(m, s, label);
+      if pen > x && pen + bw > x + w { pen = x; y += s.control_h + s.space / 2; }
+      _ := ctx_button(f, "offer", pen, y, label, false, 0, AG_ACT_OFFER);
+    }
+    y += s.control_h + s.space;
+  }
+  busy := r.state == AGR_WORKING || r.state == AGR_WAITING || r.state == AGR_QUEUED;
+  pen := x;
+  if busy { pen += ctx_button(f, "stop", pen, y, "Stop", false, 0, AG_ACT_STOP) + s.space / 2; }
+  if a.batches > 1 && a.edit_level == ed_level(e) { pen += ctx_button(f, "undo-all", pen, y, "Undo all of this message", false, 0, AG_ACT_UNDO_ALL) + s.space / 2; }
+  if pen > x { y += s.control_h + s.space; }
+  nb: [AGR_JOB + 32] u8; pn := ag_put(nb[..], 0, "Tell the "); pn = ag_put(nb[..], pn, AGR_KIND_NAME[r.kind]); pn = ag_put(nb[..], pn, " what to change...");
+  p[0].field_w = w - 2 * s.chrome.field_pad;
+  y += atl_field(f, "composer", p[0].composer[..], x, y, w, "Message", sheet_pool(f[0].sheet, cast(string) nb[0..<pn]), 3, p[0].focus == AG_FOCUS_COMPOSER, 0, AG_ACT_COMPOSER) + s.space / 2;
+  answering := r.state == AGR_WAITING && p[0].live == k && p[0].asking;
+  label := ifx answering then "Answer" else ifx busy then "Send when this turn ends" else "Send";
+  _ := ctx_button(f, "send", x, y, label, true, ifx p[0].composer[0].n == 0 then EL_S_DISABLED else 0, AG_ACT_SEND);
+  y += s.control_h + s.space;
+  return y - top;
+}
+
+// The New agent sheet: its kind, what it should do, where it runs, Start.
+ag_sheet :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  y := top;
+  _ := sheet_text(f[0].sheet, m, -1, x, y, s.title.line, s.title.face, s.ink, "New agent");
+  y += s.title.line + s.space;
+  ids := [AG_SHEET_N] string.["kind.0", "kind.1", "kind.2"];
+  kinds: [AG_SHEET_N] string; at := 0;
+  for i: 0..<AG_SHEET_N { kinds[i] = AGR_KIND_NAME[AG_SHEET_KIND[i]]; if AG_SHEET_KIND[i] == p[0].sheet_kind { at = i; } }
+  _ := ctx_tabs(f, ids[..], x, y, kinds[..], at, AG_ACT_KIND);
+  // a tab's action is the first's: the row's own number picks which (ag_press_row)
+  y += s.control_h + s.space;
+  code := p[0].sheet_kind == AGR_CODE;
+  if code {
+    repo_ids := [AGR_REPOS] string.["repo.0", "repo.1"];
+    repos := [AGR_REPOS] string.["The engine (openagents)", "The app (gamebuilder)"];
+    _ := ctx_tabs(f, repo_ids[..], x, y, repos[..], p[0].sheet_repo, AG_ACT_REPO);
+    y += s.control_h + s.space;
+  }
+  p[0].field_w = w - 2 * s.chrome.field_pad;
+  y += atl_field(f, "goal", p[0].goal_eb[..], x, y, w, "What should it do?", "What should it do?", 3, p[0].focus == AG_FOCUS_JOB, 0, AG_ACT_JOB) + s.space / 2;
+  _ := sheet_text(f[0].sheet, m, -1, x, y, s.small.line, s.small.face, s.muted, "Runs on: This Mac, with your Claude Code");
+  y += s.small.line + s.space;
+  // what a Code agent may do, in words with its limits: Approve and start is the approval
+  if code { y += ca_approval(p, f, p[0].sheet_repo, x, y, w) + s.space; }
+  sw := ctx_button(f, "start", x, y, ifx code then "Approve and start" else "Start", true, ifx p[0].goal_eb[0].n == 0 then EL_S_DISABLED else 0, AG_ACT_START);
+  _ := ctx_button(f, "cancel", x + sw + s.space / 2, y, "Cancel", false, 0, AG_ACT_CANCEL);
+  y += s.control_h + s.space;
+  return y - top;
+}
+
+// Lays the pane out w by h units; returns its content's height.
+ag_layout :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, w: f32, h: f32) -> f32 {
+  k := f[0].skin; m := f[0].m;
+  sheet_fill(f[0].sheet, 0, 0, w, h, 0, k.sidebar);
+  sheet_fill(f[0].sheet, 0, 0, k.border, h, 0, k.hairline);
+  uiframe_clip(f, 0, 0, w, h);
+  x := k.pad; cw := w - 2 * k.pad;
+  y := k.pad - p[0].scroll;
+  shown := ag_shown(p, e);
+  wide := shown && w >= AG_WIDE;
+  lw := ifx wide then cw * 0.42 else cw;     // the list's width
+  _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, "Agents");
+  cl := button_width(m, k, "Close");
+  _ := ctx_button(f, "close", x + cw - cl, y + (k.title.line - k.control_h) / 2, "Close", false, 0, AG_ACT_CLOSE);
+  y += k.title.line + k.space;
+  top := y;
+  tab_ids := [2] string.["this", "all"]; tab_words := [2] string.["This game", "All games"];
+  _ := ctx_tabs(f, tab_ids[..], x, y, tab_words[..], ifx p[0].all then 1 else 0, AG_ACT_THIS);
+  y += k.control_h + k.space;
+  note := cast(string) p[0].note[0..<p[0].note_n];
+  if note.count > 0 { y += ctx_notice(f, "note", x, y, lw, note, p[0].failure) + k.space; }
+  // waiting for the person first, then the rest, newest first (agr_order)
+  listed := 0;
+  order: [AGR_RECORDS] int;
+  n := agr_order(p[0].store[..], p[0].now, order[..]);
+  for j: 0..<n {
+    i := order[j];
+    if !ag_listed(p, e, i) { continue; }
+    y += ag_row(p, e, f, i, x, y, lw) + k.space / 2;
+    listed += 1;
+  }
+  if listed == 0 { _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.muted, ifx p[0].all then "No agents yet." else "No agents on this game yet."); y += k.body.line + k.space; }
+  if p[0].sheet { y += k.space; y += ag_sheet(p, e, f, x, y, lw); }
+  else {
+    _ := ctx_button(f, "new", x, y, "+ New agent for this game", false, ifx ag_can_new(p) then 0 else EL_S_DISABLED, AG_ACT_NEW);
+    y += k.control_h + k.space;
+  }
+  y += k.space;
+  y += ag_tile(p, e, f, x, y, lw) + k.pad;
+  // the open agent: beside the list when the pane is wide enough, else under it
+  if shown {
+    if wide {
+      ox := x + lw + k.pad;
+      sheet_fill(f[0].sheet, ox - k.pad / 2, 0, k.border, h, 0, k.hairline);
+      oy := ag_open(p, e, f, p[0].open, ox, top, cw - lw - k.pad) + top + k.pad;
+      if oy > y { y = oy; }
+    } else {
+      sheet_fill(f[0].sheet, x, y, cw, k.border, 0, k.hairline);
+      y += k.space;
+      y += ag_open(p, e, f, p[0].open, x, y, cw) + k.pad;
+    }
+  }
+  uiframe_unclip(f);
+  return y + p[0].scroll;
+}
+// Whether an agent is open (the host makes the pane wide for it, AG_WIDE).
+ag_shown :: (p: [] AgPane, e: [] Editor) -> bool { return p[0].open >= 0 && p[0].open < ag_count(p) && ag_listed(p, e, p[0].open); }
+
+ag_clamp_scroll :: (p: [] AgPane) {
+  most := p[0].content - p[0].height;
+  if p[0].scroll > most { p[0].scroll = most; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+ag_init :: (p: [] AgPane) {
+  p[0].ready = true;
+  g := p[0].gen[..];
+  p[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  p[0].keyed[0] = KeyedStore.{rows = p[0].keys[..]};
+  if p[0].live == 0 && ag_count(p) == 0 { p[0].live = -1; }
+  p[0].open = -1; p[0].p[0].handle = -1;
+  for i: 0..<CA_SLOTS { if !p[0].code[i].on { p[0].code[i].h = -1; } }
+  if p[0].sheet_kind == 0 { p[0].sheet_kind = AGR_BUILD; }
+}
+ag_focus_id :: (p: [] AgPane) -> string {
+  if p[0].focus == AG_FOCUS_COMPOSER { return "composer"; }
+  if p[0].focus == AG_FOCUS_JOB { return "goal"; }
+  return "";
+}
+
+// ---- the host's calls
+
+// Where this build may run an agent (AG_HERE_*), and a folder of the host's for the session to
+// run in. Once, before the first frame.
+ed_agents_place :: (p: [] AgPane, here: s32, folder: [] u8) #export_c #effects(all) { ag_place(p, cast(int) here, cast(string) folder); }
+ag_place :: (p: [] AgPane, here: int, folder: string) {
+  if p.count < 1 { return; }
+  if !p[0].ready { ag_init(p); }
+  p[0].here = here;
+  p[0].folder_n = ifx folder.count <= p[0].folder.count then ag_put(p[0].folder[..], 0, folder) else 0;
+}
+// The host's clock, open or closed: the agents' time, and what the session sent. True when the
+// pane changed (the host draws it again; ed_agents_changed says whether the level did).
+ed_agents_tick :: (p: [] AgPane, e: [] Editor, dt: f32) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 { return false; }
+  if !p[0].ready { ag_init(p); }
+  // the code-agent row's Code sheet, and Code agents' steps
+  moved := ca_take_sheet(p, e);
+  for i: 0..<CA_SLOTS { if p[0].code[i].on && ca_tick_one(p, e, p[0].code[i].k) { moved = true; } }
+  ag_resume_due(p);
+  if p[0].live < 0 { ag_next(p, e); }
+  if ag_poll(p, e) { moved = true; }
+  // an agent's claims end with its turn: done, stopped or failed (claims.coax)
+  for k: 0..<ag_count(p) { st := p[0].store[0].r[k].state; if st != AGR_WORKING && st != AGR_WAITING && claims_end(e, cast(s32) (AG_ID0 + k)) > 0 { e[0].dirty = true; } }
+  return moved;
+}
+// One frame of width by height device pixels. Returns the vertex count.
+ed_agents_frame :: (p: [] AgPane, e: [] Editor, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || width < 1 || height < 1 { return 0; }
+  if !p[0].ready { ag_init(p); }
+  a := p[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * PN_SCALE;
+  w := width / d; h := height / d;
+  p[0].d = d; p[0].width = w; p[0].height = h;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  p[0].time += t;
+  a[0].frame += 1;
+  k := metaverse_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.sidebar, k.sidebar);
+  if !a[0].ready { return v; }
+  ag_clamp_scroll(p);
+  f: [1] UiFrame;
+  input := uiinput(p[0].px, p[0].py, true, p[0].touching && !p[0].dragging, cast(string) p[0].pressed[0..<p[0].pressed_n], ag_focus_id(p));
+  uiframe_begin(f[..], p[0].surface[..], p[0].keyed[..], measure_font(a), k, input, p[0].time, t, false, false);
+  p[0].pics[0].n = 0; p[0].pics[0].height = h;
+  p[0].content = ag_layout(p, e, f[..], w, h);
+  if !uiframe_end(f[..], p[0].surface[..]) { p[0].refused += 1; }
+  sh := surface_sheet(p[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  return v;
+}
+// The pictures this frame left places for (agent-replay.coax): how many, and picture i's place, in
+// points of the pane's view (x, y, width, height) into rect, and its level, revision and which
+// (PIC_BEFORE, PIC_AFTER, PIC_PLAYTEST) into of; false past them. The host lays each picture over
+// its place (ed_pic_jpeg gives its JPEG).
+ed_agents_pics :: (p: [] AgPane) -> s32 #export_c #effects(all) { return ifx p.count == 1 then cast(s32) p[0].pics[0].n else 0; }
+ed_agents_pic :: (p: [] AgPane, i: s32, rect: [] f32, of: [] s32) -> bool #export_c #effects(all) {
+  if p.count != 1 || rect.count < 4 || of.count < 3 || i < 0 || cast(int) i >= p[0].pics[0].n { return false; }
+  a := p[0].pics[0].at[i];
+  rect[0] = a.x * PN_SCALE; rect[1] = a.y * PN_SCALE; rect[2] = a.w * PN_SCALE; rect[3] = a.h * PN_SCALE;
+  of[0] = a.level; of[1] = a.rev; of[2] = a.which;
+  return true;
+}
+// The pointer, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled (panel.coax's).
+ed_agents_pointer :: (p: [] AgPane, e: [] Editor, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || !(p[0].d > 0) { return false; }
+  ux := x / p[0].d; uy := y / p[0].d;
+  was_y := p[0].py;
+  p[0].px = ux; p[0].py = uy;
+  row := surface_hit(p[0].surface[..], ux, uy);
+  id := surface_id(p[0].surface[..], row);
+  acts := surface_action(p[0].surface[..], row) != 0;
+  pressed := cast(string) p[0].pressed[0..<p[0].pressed_n];
+  // the replay's slider, dragged along an agent's changes (agent-replay.coax)
+  if atl_scrub_pointer(p[0].scrub[..], id, ux, phase) { p[0].touching = false; p[0].pressed_n = 0; return true; }
+  if phase == 0 {
+    p[0].touching = true; p[0].dragging = false; p[0].down_y = uy;
+    p[0].pressed_n = ifx acts then el_copy(p[0].pressed[..], id) else 0;
+    return true;
+  }
+  if phase == 1 {
+    if !p[0].touching { return true; }
+    if !p[0].dragging && abs(uy - p[0].down_y) > AG_DRAG { p[0].dragging = true; p[0].pressed_n = 0; }
+    if p[0].dragging { p[0].scroll -= uy - was_y; ag_clamp_scroll(p); }
+    return true;
+  }
+  held := p[0].pressed_n > 0 && pressed == id && !p[0].dragging;
+  p[0].touching = false; p[0].dragging = false; p[0].pressed_n = 0;
+  if phase == 2 && held { _ = ag_press_row(p, e, row); }
+  else if phase == 2 && !acts && !p[0].dragging { p[0].focus = AG_FOCUS_NONE; }
+  return true;
+}
+ed_agents_wheel :: (p: [] AgPane, dy: f32) #export_c #effects(all) {
+  if p.count < 1 || !(p[0].d > 0) { return; }
+  p[0].scroll += dy / p[0].d;
+  ag_clamp_scroll(p);
+}
+// Whether a field has the keyboard (the host sends it keys and text then).
+ed_agents_wants_text :: (p: [] AgPane) -> bool #export_c #effects(all) { return p.count > 0 && p[0].focus != AG_FOCUS_NONE; }
+// Typed text, into the field that has the keyboard.
+ed_agents_text :: (p: [] AgPane, text: [] u8) #export_c #effects(all) { ag_type(p, cast(string) text); }
+// The field that has the keyboard.
+ag_field :: (p: [] AgPane) -> [] EditBuf { return ifx p[0].focus == AG_FOCUS_JOB then p[0].goal_eb[..] else p[0].composer[..]; }
+ag_type :: (p: [] AgPane, text: string) {
+  if p.count < 1 || p[0].focus == AG_FOCUS_NONE { return; }
+  // a job is one line; a message may have line breaks (Shift-Return)
+  if p[0].focus == AG_FOCUS_JOB {
+    b: [AGR_JOB] u8; n := 0;
+    for c: text { if c != '\n' && n < b.count { b[n] = c; n += 1; } }
+    _ = atl_field_type(p[0].goal_eb[..], cast(string) b[0..<n], AGR_JOB);
+    return;
+  }
+  _ = atl_field_type(p[0].composer[..], text, AG_DRAFT);
+}
+// A key (the shared host's numbering: -1 Escape, -2 Enter, -3 Backspace, -4 to -7 the arrows,
+// -8 Home, -9 End; mods 1 Shift, 4 Option, 8 Command), into the field that has the keyboard
+// (atl_field_key): Return sends (Shift-Return is a new line), Escape lets the keyboard go.
+// True when taken.
+ed_agents_key :: (p: [] AgPane, e: [] Editor, key: int, mods: int, down: bool) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || p[0].focus == AG_FOCUS_NONE { return false; }
+  composer := p[0].focus == AG_FOCUS_COMPOSER;
+  if !down { return true; }
+  sk := metaverse_skin();
+  r := atl_field_key(ag_field(p), key, mods, measure_font(p[0].atlas[..]), sk.body.face, p[0].field_w);
+  if r == ATL_KEY_ESCAPE { p[0].focus = AG_FOCUS_NONE; return true; }
+  if r == ATL_KEY_ENTER {
+    if (mods & 1) != 0 { if composer { _ = atl_field_type(p[0].composer[..], "\n", AG_DRAFT); } return true; }
+    return ag_press(p, e, ifx composer then AG_ACT_SEND else AG_ACT_START);
+  }
+  return r == ATL_KEY_TAKEN;
+}
+// Whether a press or the session changed the level since the last call: the host syncs.
+ed_agents_changed :: (p: [] AgPane) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  c := p[0].changed; p[0].changed = false;
+  return c;
+}
+// What the pane asks the host to do, once: AG_ASK_INSTALL (open Anthropic's page),
+// AG_ASK_SIGN_IN (open Terminal running claude) or AG_ASK_OPEN_URL (open ed_agents_url's address,
+// a Code agent's pull request). AG_ASK_NOTHING when nothing.
+ed_agents_request :: (p: [] AgPane) -> s32 #export_c #effects(all) {
+  if p.count < 1 { return AG_ASK_NOTHING; }
+  r := p[0].request; p[0].request = AG_ASK_NOTHING;
+  return cast(s32) r;
+}
+ed_agents_install_url :: (out: [] u8) -> s64 #export_c #effects(all) { return ag_put(out, 0, AG_INSTALL_URL); }
+// The address AG_ASK_OPEN_URL opens.
+ed_agents_url :: (p: [] AgPane, out: [] u8) -> s64 #export_c #effects(all) { return ifx p.count < 1 then 0 else ag_put(out, 0, cast(string) p[0].url[0..<p[0].url_n]); }
+// Agents waiting for the person: the toolbar's badge.
+ed_agents_waiting :: (p: [] AgPane) -> s32 #export_c #effects(all) {
+  if p.count < 1 { return 0; }
+  n: s32 = 0; for k: 0..<ag_count(p) { if p[0].store[0].r[k].state == AGR_WAITING { n += 1; } }
+  return n;
+}
+// Whether an agent is open in the pane: the host gives the pane AG_WIDE units then, and the list
+// and the open agent sit side by side.
+ed_agents_wide :: (p: [] AgPane, e: [] Editor) -> bool #export_c #effects(all) { return p.count > 0 && e.count == 1 && p[0].ready && ag_shown(p, e); }
+// Whether the Agents pane is beside the level (the agents row toggles it).
+ed_agents_open :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].agents_open; }
+// Whether this computer's agents are kept on the account while logged in (the agents-account
+// row's switch): the app's sync reports them only then. The host keeps it, and sets it at launch.
+ed_agents_account :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && !e[0].agents_private; }
+ed_agents_set_account :: (e: [] Editor, on: bool) #export_c #effects(all) { if e.count == 1 { e[0].agents_private = !on; } }
+// Answers the open agent's ask with choice i, as a press of its button does.
+ed_agents_choose :: (p: [] AgPane, e: [] Editor, i: s32) -> bool #export_c #effects(all) { return p.count > 0 && e.count == 1 && ag_choose(p, e, p[0].open, cast(int) i); }
+// Presses the control with this id, as a tap does.
+ed_agents_activate :: (p: [] AgPane, e: [] Editor, id: [] u8) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 { return false; }
+  return ag_press_row(p, e, surface_find(p[0].surface[..], cast(string) id));
+}
+// The app quits: a running agent's session stops, and a Code agent's step. Its record and log stay
+// (the host writes what is left first, ed_agents_writes), and the next launch says its turn was
+// cut off.
+ed_agents_close :: (p: [] AgPane) #export_c #effects(all) {
+  if p.count < 1 { return; }
+  ag_end(p);
+  for i: 0..<CA_SLOTS { if p[0].code[i].on { ca_steps_stop(p[0].code[i..<i + 1]); } }
+}
+
+// ---- the agents' files, carried by the host (agent-ID.agent and agent-ID.events beside the levels)
+
+// The time now, in milliseconds since 1970: before each tick, and before the folder is read.
+ed_agents_clock :: (p: [] AgPane, now: s64) #export_c #effects(all) { if p.count > 0 { p[0].now = now; } }
+// A record's file and its log, read in (at launch, and when ed_agents_wants says so). True when
+// it was.
+ed_agents_load :: (p: [] AgPane, e: [] Editor, record: [] u8, events: [] u8) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 { return false; }
+  if !p[0].ready { ag_init(p); }
+  return ag_load(p, e, cast(string) record, cast(string) events);
+}
+// A computer's file (computer-ID.computer), read in with the records: its resident service, as it
+// last said it. True when it read.
+ed_agents_computer :: (p: [] AgPane, text: [] u8) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  got: [1] AgrComputer;
+  if agr_computer_read(cast(string) text, got[..]).count > 0 { return false; }
+  cs := p[0].computers[..];
+  k := agr_computer_find(cs, cast(string) got[0].id[0..<got[0].id_n]);
+  if k < 0 { if cs[0].n >= AGR_COMPUTERS { return false; } k = cs[0].n; cs[0].n += 1; }
+  cs[0].c[k] = got[0];
+  return true;
+}
+// The resident service on this computer that is on now (heard within AGR_OFFLINE_MS), or -1:
+// it takes the agents this build can't run itself (the App Store build's).
+ag_resident :: (p: [] AgPane) -> int {
+  for k: 0..<p[0].computers[0].n { if agr_computer_shown(p[0].computers[0].c[k], p[0].now) == AGR_ON { return k; } }
+  return -1;
+}
+// Whether New agent starts one here: this build's own runner, or the resident service.
+ag_can_new :: (p: [] AgPane) -> bool { return p[0].here == AG_HERE_LOCAL || ag_resident(p) >= 0; }
+// Whether the host should read this record's log in: an agent the pane hasn't got, or one the
+// CLI, MCP or the HTTP server added events to.
+ed_agents_wants :: (p: [] AgPane, record: [] u8) -> bool #export_c #effects(all) { return p.count > 0 && ag_wants(p, cast(string) record); }
+// The agents to write now: how many (the list stays until ed_agents_written).
+ed_agents_writes :: (p: [] AgPane) -> s32 #export_c #effects(all) {
+  if p.count < 1 || p[0].demo { return 0; }
+  p[0].wn = 0;
+  for k: 0..<ag_count(p) { if p[0].dirty[k] { p[0].wl[p[0].wn] = cast(s32) k; p[0].wn += 1; } }
+  return cast(s32) p[0].wn;
+}
+// The i-th one's file name: its log's (events true) or its record's.
+ed_agents_write_name :: (p: [] AgPane, i: s32, events: bool, out: [] u8) -> s64 #export_c #effects(all) {
+  if p.count < 1 || i < 0 || cast(int) i >= p[0].wn { return 0; }
+  k := cast(int) p[0].wl[i];
+  return agr_file(agr_id(p[0].store[0].r[k..<k + 1]), ifx events then ".events" else ".agent", out).count;
+}
+// Its bytes: the lines to append to its log, in order (events true), or its record's whole file.
+// 0 when there are none (or they don't fit: the size is asked first with an empty out).
+ed_agents_write_bytes :: (p: [] AgPane, i: s32, events: bool, out: [] u8) -> s64 #export_c #effects(all) {
+  if p.count < 1 || i < 0 || cast(int) i >= p[0].wn { return 0; }
+  k := cast(int) p[0].wl[i];
+  if !events {
+    rb: [AGR_RECORD_MAX * 2] u8;
+    text := agr_record_write(p[0].store[0].r[k..<k + 1], agr_job_of(p[0].store[..], k), rb[..]);
+    if text.count > out.count { return -text.count; }
+    return ag_put(out, 0, text);
+  }
+  n := 0; want := 0;
+  for j: 0..<p[0].ob_e { if p[0].ob_k[j] == cast(s32) k { want += cast(int) p[0].ob_len[j]; } }
+  if want > out.count { return -want; }
+  for j: 0..<p[0].ob_e {
+    if p[0].ob_k[j] != cast(s32) k { continue; }
+    from := cast(int) p[0].ob_from[j];
+    n = ag_put(out, n, cast(string) p[0].ob[from..<from + cast(int) p[0].ob_len[j]]);
+  }
+  return n;
+}
+// What ed_agents_writes listed is written: it is no longer kept.
+ed_agents_written :: (p: [] AgPane) #export_c #effects(all) {
+  if p.count < 1 { return; }
+  for i: 0..<p[0].wn { p[0].dirty[p[0].wl[i]] = false; }
+  // the outbox keeps only the agents not written
+  n := 0; e := 0;
+  for j: 0..<p[0].ob_e {
+    k := p[0].ob_k[j];
+    if !p[0].dirty[k] { continue; }
+    from := cast(int) p[0].ob_from[j]; size := cast(int) p[0].ob_len[j];
+    for b: 0..<size { p[0].ob[n + b] = p[0].ob[from + b]; }
+    p[0].ob_k[e] = k; p[0].ob_from[e] = cast(s32) n; p[0].ob_len[e] = cast(s32) size;
+    n += size; e += 1;
+  }
+  p[0].ob_n = n; p[0].ob_e = e; p[0].wn = 0;
+}
+// A debug launch's pane (the Mac app's -gbAgentsDemo YES): one Builder that did one thing on the
+// open level, as a session does it: a record, and its events appended through the runner's own
+// calls (ag_call), with no `claude` started. It is how the pane is looked at and screenshot without
+// spending anyone's plan; nothing of it is written to the agents' folder (p[0].demo).
+ed_agents_demo :: (p: [] AgPane, e: [] Editor) #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || ag_count(p) > 0 || !ed_may_edit(e) { return; }
+  if !p[0].ready { ag_init(p); }
+  p[0].demo = true;
+  now := ca_now(p); if p[0].now <= 0 { p[0].now = now; }
+  goal := "put two things either side of the start";
+  game := ed_mine_open(e); tb: [64] u8; ib: [AGR_ID] u8;
+  title := ifx game > 0 then cast(string) tb[0..<ed_mine_title(e, game, tb[..])] else "This level";
+  st := p[0].store[..];
+  agr_record_new(st[0].r[0..<1], agr_new_id(now, 0, ib[..]), ifx game > 0 then game else 0, title, ed_level(e), AGR_BUILD, AGR_LOCAL, AGR_THIS_MAC, AG_RUNNER, now);
+  st[0].r[0].turns = AGR_TURNS; st[0].r[0].cents = AGR_CENTS;
+  st[0].jw[0].n = agr_set(st[0].jw[0].buf[..], goal);
+  st[0].n = 1; p[0].agents[0] = AgAgent.{};
+  ag_emit_say(p, 0, AGR_PERSON, goal);
+  ag_set_state(p, 0, AGR_WORKING, "");
+  _ = ag_call(p, e, 0, VERB_READ_LEVEL, "{}");
+  // two trees where the template has them, else two of the first thing this level's template may have more than one of
+  kind: s32 = -1;
+  for g: 0..<GK_KINDS { if kind < 0 && ed_add_why(e, cast(s32) g).count == 0 && !ed_kind_one(e, cast(s32) g) { kind = cast(s32) g; } }
+  if ed_add_why(e, KIND_TREE).count == 0 { kind = KIND_TREE; }
+  if kind < 0 { return; }
+  bb: [512] u8; bt := [1] Text.[Text.{buf = bb[..]}];
+  tx_put(bt[..], "{\"batch\":\"{\\\"schema\\\":\\\"world.edit.v1\\\",\\\"rev\\\":"); tx_int(bt[..], cast(s64) ed_agent_rev(e));
+  for side: 0..<2 {
+    tx_put(bt[..], ifx side == 0 then ",\\\"do\\\":\\\"apply\\\",\\\"edits\\\":[" else ",");
+    tx_put(bt[..], "{\\\"op\\\":\\\"spawn\\\",\\\"id\\\":0,\\\"kind\\\":"); tx_n(bt[..], kind);
+    tx_put(bt[..], ifx side == 0 then ",\\\"x\\\":400" else ",\\\"x\\\":-400");
+    tx_put(bt[..], ",\\\"y\\\":0,\\\"z\\\":-300,\\\"yaw\\\":0,\\\"scale\\\":100}");
+  }
+  tx_put(bt[..], "]}\"}");
+  _ = ag_call(p, e, 0, VERB_APPLY_EDITS, cast(string) bb[0..<bt[0].at]);
+  ag_emit_say(p, 0, AGR_AGENT, "I put one either side of the start, four metres out.");
+  ag_emit_usage(p, 0, 3, 4, 0);
+  ag_set_state(p, 0, AGR_DONE, "");
+  p[0].open = 0; e[0].agents_open = true;
+}
+ed_agents_max_vertices :: () -> int #export_c #effects(all) { return AG_MAX_VERTICES; }
+ed_agents_size :: () -> s64 #export_c #effects(all) { return size_of(AgPane); }
+
+// ---- checks
+
+AgentsTest :: struct { p: [1] AgPane; e: [1] Editor; v: [AG_MAX_VERTICES * GP_VERTEX_FLOATS] f32; b: [65536] u8; lg: [65536] u8; }
+AG_TEST_NOW :: 1763380000000;
+
+ag_test_frame :: (t: [] AgentsTest) {
+  if !t[0].p[0].atlas[0].ready { text_test_atlas(t[0].p[0].atlas[..]); gp_set_atlas(t[0].p[0].atlas[..], 4096, 4096, 2); }
+  _ = ed_agents_frame(t[0].p[..], t[0].e[..], t[0].v[..], 340, 1400, 1, 0.016);
+}
+ag_test_tap :: (t: [] AgentsTest, id: string) -> bool {
+  ag_test_frame(t);
+  i := surface_find(t[0].p[0].surface[..], id);
+  if i < 0 { return false; }
+  r := surface_rows(t[0].p[0].surface[..]).rows[i];
+  x := (r.x + r.w / 2) * t[0].p[0].d; y := (r.y + r.h / 2) * t[0].p[0].d;
+  _ := ed_agents_pointer(t[0].p[..], t[0].e[..], x, y, 0);
+  _ := ed_agents_pointer(t[0].p[..], t[0].e[..], x, y, 2);
+  return true;
+}
+// Agent 0: a record of kind on level, on the open game (or none), made now, as agent-new makes one.
+ag_test_agent :: (t: [] AgentsTest, level: s32, kind: int) {
+  p := t[0].p[..]; ib: [AGR_ID] u8;
+  p[0].now = AG_TEST_NOW;
+  agr_record_new(p[0].store[0].r[0..<1], agr_new_id(AG_TEST_NOW, 0, ib[..]), ed_mine_open(t[0].e[..]), "Moss Run", level, kind, AGR_LOCAL, AGR_THIS_MAC, AG_RUNNER, AG_TEST_NOW);
+  p[0].store[0].r[0].turns = AGR_TURNS; p[0].store[0].r[0].cents = AGR_CENTS;
+  p[0].store[0].jw[0].n = agr_set(p[0].store[0].jw[0].buf[..], "add two ramps");
+  p[0].store[0].n = 1; p[0].agents[0] = AgAgent.{};
+}
+// A session's query with the pane's options and no process: lines are fed to it as `claude` would send them.
+ag_test_session :: (t: [] AgentsTest, k: int) {
+  p := t[0].p[..];
+  ag_options(p, k, "claude");
+  cl_init(p[0].q[..], p[0].line[..], p[0].arena[..], p[0].out[..]);
+  p[0].q[0].options = p[0].opt[0];
+  p[0].live = k;
+  ag_set_state(p, k, AGR_WORKING, "");
+}
+// A tools/call from `claude` for tool name with arguments (JSON).
+ag_test_call :: (t: [] AgentsTest, name: string, args: string) {
+  b: [8192] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"mcp_message\",\"server_name\":\"gamebuilder\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"");
+  tx_put(tx[..], name); tx_put(tx[..], "\",\"arguments\":"); tx_put(tx[..], args); tx_put(tx[..], "}}}}");
+  ev := cl_feed(t[0].p[0].q[..], cast(string) b[0..<tx[0].at]);
+  ag_event(t[0].p[..], t[0].e[..], ev);
+}
+ag_test_said :: (t: [] AgentsTest) -> string { return cl_outbox(t[0].p[0].q[..]); }
+// Whether agent k's timeline has a card of this type (a message's from the person or the agent;
+// -1 either) whose words hold part.
+ag_test_card :: (p: [] AgPane, k: int, type: int, from: int, part: string) -> bool {
+  r := p[0].ring[..];
+  for i: 0..<r[0].n {
+    c := atl_slot(r, i);
+    if r[0].who[c] != k || r[0].ev[c].type != type || (from >= 0 && r[0].ev[c].from != from) { continue; }
+    if level_find(cast(string) r[0].ev[c].text[0..<r[0].ev[c].text_n], part) >= 0 { return true; }
+  }
+  return false;
+}
+// apply_edits with batch, as the model sends it: the batch is a JSON string.
+ag_test_apply :: (t: [] AgentsTest, batch: string) {
+  b: [8192] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "batch"); jo_str(o[..], batch); jo_end(o[..]);
+  ag_test_call(t, "apply_edits", jo_text(o[..]));
+}
+// What the host would write for agent 0 now: its record, and its log's lines appended to lg. The
+// record's text, in t.b.
+ag_test_write :: (t: [] AgentsTest, lg_n: [] int) -> string {
+  p := t[0].p[..];
+  w := ed_agents_writes(p);
+  rec := "";
+  for i: 0..<w {
+    n := ed_agents_write_bytes(p, cast(s32) i, true, t[0].b[..]);
+    if n > 0 { lg_n[0] = ag_put(t[0].lg[..], lg_n[0], cast(string) t[0].b[0..<n]); }
+    m := ed_agents_write_bytes(p, cast(s32) i, false, t[0].b[..]);
+    rec = cast(string) t[0].b[0..<m];
+  }
+  ed_agents_written(p);
+  return rec;
+}
+
+#test "the agent's session has the pane's tools and nothing built in, on the person's own login, within its limits" {
+  t: [1] AgentsTest; p := t[0].p[..];
+  ed_arena(t[0].e[..]);
+  ag_place(p, AG_HERE_LOCAL, "/tmp/gb-agent");
+  ag_test_agent(t[..], 0, AGR_BUILD);
+  ag_options(p, 0, "claude");
+  o := p[0].opt[0];
+  // one tool for each pane row, and only those
+  want := 0; for v: 0..<GB_N { if (GB_COMMANDS[v].surfaces & GB_PANE) != 0 { want += 1; } }
+  #assert o.server_count == 1 && o.servers[0].name == "gamebuilder" && o.servers[0].tool_count == want && p[0].tools == want;
+  for k: 0..<p[0].tools { #assert (GB_COMMANDS[p[0].tool_verb[k]].surfaces & GB_PANE) != 0; }
+  nb: [64] u8;
+  #assert o.servers[0].tools[0].name == ag_tool_name(GB_COMMANDS[p[0].tool_verb[0]].verb, nb[..]);
+  // the command line: no built-in tool, no settings, the limits, only the pane's tools allowed
+  args: [1] ClArgs; ab: [65536] u8; sb: [8192] u8; args[0].buf = ab[..];
+  cl_build_args(o, args[..], sb[..]);
+  #assert !args[0].failed;
+  saw_tools := false; saw_settings := false; saw_turns := false; saw_allowed := false; saw_budget := false;
+  for i: 0..<args[0].count {
+    a := cl_arg_at(args[..], i);
+    if a == "--tools=" { saw_tools = true; }
+    if a == "--setting-sources=" { saw_settings = true; }
+    if a == "--max-turns=20" { saw_turns = true; }
+    if a == "--max-budget-usd=2" || a == "--max-budget-usd=2.0" { saw_budget = true; }
+    if a.count > 15 && a[0..<15] == "--allowedTools=" {
+      saw_allowed = true;
+      // every allowed tool is one of the pane's
+      list := a[15..<a.count]; from := 0;
+      for j: 0..<list.count + 1 {
+        if j < list.count && list[j] != ',' { continue; }
+        one := list[from..<j]; from = j + 1;
+        #assert one.count > 18 && one[0..<18] == "mcp__gamebuilder__";
+      }
+    }
+    #assert a != "--tools=default" && a != "--dangerously-skip-permissions";
+  }
+  #assert saw_tools && saw_settings && saw_turns && saw_allowed;
+  #assert o.cwd == "/tmp/gb-agent" && !o.persist_session;
+  removed_key := false; for i: 0..<o.env_remove_count { if o.env_remove[i] == "ANTHROPIC_API_KEY" { removed_key = true; } }
+  #assert removed_key;
+}
+
+#test "an agent's apply_edits lands on the open level as one step that stays highlighted in its colour, is kept in its log, and undo_turn takes it back" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, p[0].answer[..]).code == GB_DONE;
+  ag_place(p, AG_HERE_LOCAL, "");
+  ag_test_agent(t[..], ed_level(e), AGR_BUILD);
+  ag_test_session(t[..], 0);
+  n := ed_count(e);
+  // the agent reads the level for its revision
+  ag_test_call(t[..], "read_level", "{}");
+  #assert level_find(ag_test_said(t[..]), "gamebuilder.level.v1") >= 0;
+  cl_outbox_clear(p[0].q[..]);
+  rev := ed_agent_rev(e);
+  rb: [64] u8; rt := [1] Text.[Text.{buf = rb[..]}]; tx_int(rt[..], cast(s64) rev);
+  bb: [512] u8; bt := [1] Text.[Text.{buf = bb[..]}];
+  tx_put(bt[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); tx_put(bt[..], cast(string) rb[0..<rt[0].at]);
+  tx_put(bt[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":500,\"y\":0,\"z\":-300,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":-500,\"y\":0,\"z\":-300,\"yaw\":0,\"scale\":100}]}");
+  ag_test_apply(t[..], cast(string) bb[0..<bt[0].at]);
+  #assert level_find(ag_test_said(t[..]), "isError") < 0;
+  #assert ed_count(e) == n + 2;
+  things: [CH_MARKS] ChThing;
+  #assert ch_things(e, cast(s32) AG_ID0, things[..]) == 2 && things[0].how == CH_ADDED && things[1].id == ed_actor(e, n + 1).id;
+  // its answer says what it changed, in words
+  #assert level_find(ag_test_said(t[..]), "added 2 ") > 0;
+  #assert p[0].agents[0].edit_things == 2 && p[0].agents[0].batches == 1 && p[0].agents[0].lit == 2 && ed_agents_changed(p);
+  // the log: working, the read, the apply and the edit with its revisions and things
+  lg_n: [1] int;
+  rec := ag_test_write(t[..], lg_n[..]);
+  lg := cast(string) t[0].lg[0..<lg_n[0]];
+  #assert agr_log_count(lg) == 4 && level_find(rec, "\"events\":4") >= 0 && level_find(rec, "\"state\":\"working\"") >= 0;
+  #assert level_find(lg, "\"type\":\"tool\",\"tool\":\"read_level\"") >= 0 && level_find(lg, "\"tool\":\"apply_edits\"") >= 0;
+  eb: [128] u8; et := [1] Text.[Text.{buf = eb[..]}];
+  tx_put(et[..], "\"type\":\"edit\",\"level\":"); tx_int(et[..], cast(s64) ed_level(e)); tx_put(et[..], ",\"before\":"); tx_int(et[..], cast(s64) rev);
+  #assert level_find(lg, cast(string) eb[0..<et[0].at]) >= 0;
+  // written once: nothing more to write
+  #assert ed_agents_writes(p) == 0;
+  // one ⌘Z takes both back: the batch is one step
+  ed_undo(e);
+  #assert ed_count(e) == n;
+  ed_redo(e);
+  #assert ed_count(e) == n + 2;
+  // undo_turn takes back the agent's own turn
+  cl_outbox_clear(p[0].q[..]);
+  ag_test_call(t[..], "undo_turn", "{}");
+  #assert ed_count(e) == n && level_find(ag_test_said(t[..]), "\"isError\":true") < 0;
+  // a tool nobody offers the pane is refused: there is none to call
+  cl_outbox_clear(p[0].q[..]);
+  ag_test_call(t[..], "new_game", "{\"template\":\"arena\"}");
+  #assert level_find(ag_test_said(t[..]), "unknown tool") >= 0 || level_find(ag_test_said(t[..]), "not found") >= 0 || level_find(ag_test_said(t[..]), "\"error\"") >= 0;
+}
+
+#test "a pane agent's claim is its own, and ends with its turn" {
+  #assert AG_ID0 == CLAIM_PANE0;
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, p[0].answer[..]).code == GB_DONE;
+  ag_place(p, AG_HERE_LOCAL, "");
+  ag_test_agent(t[..], ed_level(e), AGR_BUILD);
+  ag_test_session(t[..], 0);
+  // the pane's claim tool takes no --agent: the runner's id is the agent's
+  ag_test_call(t[..], "claim", "{\"region\":\"box:-500,-500,500,500\"}");
+  #assert level_find(ag_test_said(t[..]), "\"isError\":true") < 0 && level_find(ag_test_said(t[..]), "agent 1") >= 0;
+  #assert ed_claims_count(e) == 1;
+  b: [6] s32; #assert ed_claim_box(e, 0, b[..]) && b[0] == cast(s32) AG_ID0;
+  // still working: the tick keeps it
+  _ := ed_agents_tick(p, e, 0.1);
+  #assert ed_claims_count(e) == 1;
+  // the turn ends: the claim goes with it
+  ag_set_state(p, 0, AGR_DONE, "");
+  _ := ed_agents_tick(p, e, 0.1);
+  #assert ed_claims_count(e) == 0;
+}
+
+#test "a stale batch and a locked level are refused, and the agent is told why" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  ag_test_agent(t[..], 7, AGR_BUILD);
+  ag_test_session(t[..], 0);
+  n := ed_count(e);
+  ag_test_apply(t[..], "{\"schema\":\"world.edit.v1\",\"rev\":12345,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}");
+  #assert ed_count(e) == n && level_find(ag_test_said(t[..]), "stale") >= 0 && level_find(ag_test_said(t[..]), "\"isError\":true") >= 0;
+  #assert p[0].agents[0].edit_things == 0;
+  // a game's own level, not the person's, is locked
+  e[0].official = true;
+  cl_outbox_clear(p[0].q[..]);
+  ag_test_apply(t[..], "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}");
+  #assert level_find(ag_test_said(t[..]), "not-permitted") >= 0;
+  // and the pane won't start a Builder there
+  #assert ag_new(p, e, AGR_BUILD, "add a ramp") == -1 && p[0].failure;
+}
+
+#test "ask waits for the person's answer, and the answer goes to the turn" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  ag_test_agent(t[..], 7, AGR_BUILD); p[0].open = 0;
+  ag_test_session(t[..], 0);
+  ag_test_call(t[..], "ask", "{\"question\":\"Ramps of wood or stone?\",\"choices\":[\"Wood\",\"Stone\"]}");
+  #assert p[0].asking && ag_rec(p, 0).state == AGR_WAITING && ed_agents_waiting(p) == 1 && ag_test_said(t[..]).count == 0;
+  // the row shows the question, and the answers are buttons: the answer is agent-answer's
+  #assert ag_test_tap(t[..], "choice.1");
+  #assert !p[0].asking && ag_rec(p, 0).state == AGR_WORKING && level_find(ag_test_said(t[..]), "Stone") >= 0;
+  lg_n: [1] int; _ = ag_test_write(t[..], lg_n[..]);
+  lg := cast(string) t[0].lg[0..<lg_n[0]];
+  #assert level_find(lg, "\"type\":\"ask\",\"choices\":[\"Wood\",\"Stone\"],\"text\":\"Ramps of wood or stone?\"") >= 0 && level_find(lg, "\"type\":\"answer\",\"text\":\"Stone\"") >= 0;
+  // a bad ask is refused to the agent, and nothing waits
+  cl_outbox_clear(p[0].q[..]);
+  ag_test_call(t[..], "ask", "{\"question\":\"Which?\",\"choices\":[\"Only one\"]}");
+  #assert !p[0].asking && level_find(ag_test_said(t[..]), "choices is 2 to 4 answers") >= 0;
+}
+
+#test "the pane says the plain next step where an agent can't run, and starts none" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_SANDBOX, "");
+  e[0].agents_open = true;
+  #assert ag_test_tap(t[..], "new") && !p[0].sheet;     // disabled
+  #assert ag_new(p, e, AGR_BUILD, "add a ramp") == -1 && level_find(cast(string) p[0].note[0..<p[0].note_n], "GameBuilder download for Mac") >= 0;
+  ag_place(p, AG_HERE_LOCAL, "");
+  // a level in no game of yours: an agent works on a game
+  #assert ag_new(p, e, AGR_BUILD, "add a ramp") == -1 && level_find(cast(string) p[0].note[0..<p[0].note_n], "a game of yours") >= 0;
+  p[0].claude = AG_CLAUDE_MISSING;
+  #assert ag_test_tap(t[..], "install") && ed_agents_request(p) == AG_ASK_INSTALL && ed_agents_request(p) == AG_ASK_NOTHING;
+  p[0].claude = AG_CLAUDE_SIGNED_OUT;
+  #assert ag_test_tap(t[..], "sign-in") && ed_agents_request(p) == AG_ASK_SIGN_IN;
+  // where the conversations are kept: on the account unless the switch is turned off
+  p[0].claude = AG_CLAUDE_READY;
+  #assert ed_agents_account(e) && ag_test_tap(t[..], "account") && !ed_agents_account(e);
+  #assert ag_test_tap(t[..], "account") && ed_agents_account(e);
+  // Close closes it, as the toolbar's Agents does
+  #assert ag_test_tap(t[..], "close") && !ed_agents_open(e);
+}
+
+#test "the sheet starts an agent from the person's words, typed, and Stop ends its turn" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  #assert ag_test_tap(t[..], "new") && p[0].sheet && ed_agents_wants_text(p);
+  ag_type(p, "add two rampz");
+  #assert ed_agents_key(p, e, -3, 0, true);
+  ag_type(p, "s");
+  #assert eb_text(p[0].goal_eb[..]) == "add two ramps";
+  // a session is a process: here it is marked running by hand
+  ag_test_agent(t[..], 7, AGR_BUILD);
+  ag_test_session(t[..], 0);
+  p[0].open = 0; p[0].sheet = false;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "stop") >= 0 && surface_find(p[0].surface[..], "row.0") >= 0;
+  #assert ag_test_tap(t[..], "stop");
+  #assert ag_rec(p, 0).state == AGR_STOPPED && p[0].live == -1;
+  // after Stop, the composer takes a message again
+  #assert ag_test_tap(t[..], "composer") && p[0].focus == AG_FOCUS_COMPOSER;
+}
+
+#test "an agent and its conversation are read back from its files when the app opens, and what the CLI adds is taken" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  ag_test_agent(t[..], 7, AGR_BUILD);
+  ag_test_session(t[..], 0);
+  ag_emit_say(p, 0, AGR_PERSON, "add two ramps");
+  ag_emit_say(p, 0, AGR_AGENT, "Two ramps, one each side.");
+  lg_n: [1] int;
+  rb: [AGR_RECORD_MAX] u8;
+  rn := ag_put(rb[..], 0, ag_test_write(t[..], lg_n[..]));
+  ib: [AGR_ID] u8; id := agr_new_id(AG_TEST_NOW, 0, ib[..]);
+  // the app quits mid-turn and opens again: a new pane reads the files
+  ed_agents_close(p);
+  t[0].p[0] = AgPane.{};
+  ag_place(p, AG_HERE_LOCAL, "");
+  ed_agents_clock(p, AG_TEST_NOW + 60000);
+  #assert ed_agents_wants(p, rb[0..<rn]);
+  #assert ed_agents_load(p, e, rb[0..<rn], t[0].lg[0..<lg_n[0]]);
+  #assert ag_count(p) == 1 && agr_id(p[0].store[0].r[0..<1]) == id && agr_job_of(p[0].store[..], 0) == "add two ramps";
+  // its timeline is made again from its log: the person's message and the agent's, as cards
+  #assert ag_test_card(p, 0, AGR_MESSAGE, AGR_PERSON, "add two ramps") && ag_test_card(p, 0, AGR_MESSAGE, AGR_AGENT, "Two ramps, one each side.");
+  // its turn was cut off: nobody can tell where it got to, and the pane says so (in its log too)
+  #assert ag_rec(p, 0).state == AGR_UNKNOWN && ag_test_card(p, 0, AGR_STATE, -1, "GameBuilder closed during its turn");
+  #assert !ed_agents_wants(p, rb[0..<rn]);
+  rn = ag_put(rb[..], 0, ag_test_write(t[..], lg_n[..]));
+  #assert agr_log_count(cast(string) t[0].lg[0..<lg_n[0]]) == cast(int) ag_rec(p, 0).events;
+  // the CLI sends it a message on the files (agent-message), as `gamebuilder agent-message` does
+  cs: [1] AgrStore;
+  #assert agr_store_add(cs[..], cast(string) rb[0..<rn]) == "";
+  ab: [512] u8;
+  w := GbWorld.{agents = cs[..], log = cast(string) t[0].lg[0..<lg_n[0]], now = AG_TEST_NOW + 90000, computer = AGR_THIS_MAC};
+  r := gb_command_run_world(e, VERB_AGENT_MESSAGE, ag_args(id, "message", "and a bridge", ab[..]), w, p[0].answer[..], 0);
+  #assert r.code == GB_DONE && r.lines.count > 0;
+  lg_n[0] = ag_put(t[0].lg[..], lg_n[0], r.lines);
+  rn = ag_put(rb[..], 0, agr_record_write(cs[0].r[0..<1], agr_job_of(cs[..], 0), t[0].b[..]));
+  // the pane's rescan takes it: drawn, and queued for its runner with the person's words
+  #assert ed_agents_wants(p, rb[0..<rn]);
+  #assert ed_agents_load(p, e, rb[0..<rn], t[0].lg[0..<lg_n[0]]);
+  #assert ag_test_card(p, 0, AGR_MESSAGE, AGR_PERSON, "and a bridge") && ag_rec(p, 0).state == AGR_QUEUED;
+  #assert cast(string) p[0].agents[0].pending[0..<p[0].agents[0].pending_n] == "and a bridge";
+  #assert ag_count(p) == 1 && ed_agents_writes(p) == 0;
+}
+
+#test "what an agent did is a timeline of cards: a change has its summary, Show me and Undo this, and the row says its step" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, p[0].answer[..]).code == GB_DONE;
+  ag_place(p, AG_HERE_LOCAL, "");
+  e[0].agents_open = true;
+  ag_test_agent(t[..], ed_level(e), AGR_BUILD); p[0].open = 0;
+  ag_emit_say(p, 0, AGR_PERSON, "add two blocks");
+  ag_test_session(t[..], 0);
+  n := ed_count(e);
+  ag_test_call(t[..], "read_level", "{}");
+  rb: [64] u8; rt := [1] Text.[Text.{buf = rb[..]}]; tx_int(rt[..], cast(s64) ed_agent_rev(e));
+  bb: [512] u8; bt := [1] Text.[Text.{buf = bb[..]}];
+  tx_put(bt[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); tx_put(bt[..], cast(string) rb[0..<rt[0].at]);
+  tx_put(bt[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":500,\"y\":0,\"z\":-300,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":-500,\"y\":0,\"z\":-300,\"yaw\":0,\"scale\":100}]}");
+  ag_test_apply(t[..], cast(string) bb[0..<bt[0].at]);
+  #assert ed_count(e) == n + 2;
+  // the person's message, two tool cards and the change card, in order (working is the row's, not a card)
+  r := p[0].ring[..];
+  #assert atl_count(r, 0) == 4;
+  #assert r[0].ev[atl_slot(r, 0)].type == AGR_MESSAGE && r[0].ev[atl_slot(r, 1)].type == AGR_TOOL && r[0].ev[atl_slot(r, 3)].type == AGR_EDIT;
+  c := atl_slot(r, 3);
+  sb: [256] u8;
+  #assert level_find(cast(string) r[0].ev[c].text[0..<r[0].ev[c].text_n], "added 2 ") == 0 && r[0].ev[c].things_n == 2;
+  #assert r[0].ev[c].after > r[0].ev[c].before;
+  #assert level_find(atl_step(r, 0, sb[..]), "Changed the level: added 2 ") == 0;
+  // the change card is the record's: its log has the same words
+  lg_n: [1] int; _ = ag_test_write(t[..], lg_n[..]);
+  #assert level_find(cast(string) t[0].lg[0..<lg_n[0]], "\"text\":\"added 2 ") >= 0;
+  // drawn: the meter, the cards, Show me and Undo this on the change
+  ib: [32] u8;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "meter") >= 0 && surface_find(p[0].surface[..], atl_id("card", atl_slot(r, 1), "", ib[..])) >= 0;
+  #assert surface_find(p[0].surface[..], atl_id("card", c, ".show", ib[..])) >= 0;
+  // a tool card unfolds to its arguments
+  #assert ag_test_tap(t[..], atl_id("card", atl_slot(r, 2), "", ib[..])) && r[0].open[atl_slot(r, 2)];
+  // Show me turns the view to the change
+  e[0].pivot = WorldPoint.{x = 99999, y = 0, z = 0};
+  #assert ag_test_tap(t[..], atl_id("card", c, ".show", ib[..])) && !p[0].failure && e[0].pivot.x < 1000;
+  // Undo this takes it back, and the card says so
+  #assert ag_test_tap(t[..], atl_id("card", c, ".undo", ib[..]));
+  #assert ed_count(e) == n && r[0].undone[c] && atl_undoable(r, 0) == -1;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], atl_id("card", c, ".undo", ib[..])) < 0;
+}
+
+#test "the person types while the agent works: the message waits for the turn's end, and words answer an ask" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  e[0].agents_open = true;
+  ag_test_agent(t[..], 7, AGR_BUILD); p[0].open = 0;
+  ag_test_session(t[..], 0);
+  // the field takes typing, moves its caret and selects while it works
+  #assert ag_test_tap(t[..], "composer") && p[0].focus == AG_FOCUS_COMPOSER;
+  ag_type(p, "make it tallr");
+  #assert ed_agents_key(p, e, -4, 0, true) && ed_agents_key(p, e, -4, 4, true);   // Left, then Option-Left
+  #assert p[0].composer[0].caret == 8;
+  #assert ed_agents_key(p, e, -9, 0, true);
+  #assert ed_agents_key(p, e, -3, 0, true) && ed_agents_key(p, e, -3, 0, true);
+  ag_type(p, "ler");
+  #assert eb_text(p[0].composer[..]) == "make it taller";
+  #assert ed_agents_key(p, e, 'a', 8, true) && eb_selected(p[0].composer[..]) == "make it taller";
+  #assert ed_agents_key(p, e, -9, 0, true);
+  // Send while it works: the card is there now (its log has it), and its runner gets it when the turn ends
+  #assert ed_agents_key(p, e, -2, 0, true);
+  #assert p[0].composer[0].n == 0 && p[0].agents[0].later_n == 14 && ag_test_said(t[..]).count == 0;
+  #assert p[0].ring[0].ev[atl_last(p[0].ring[..], 0, AGR_MESSAGE)].from == AGR_PERSON && ag_rec(p, 0).state == AGR_WORKING;
+  lg_n: [1] int; _ = ag_test_write(t[..], lg_n[..]);
+  #assert level_find(cast(string) t[0].lg[0..<lg_n[0]], "\"from\":\"person\",\"text\":\"make it taller\"") >= 0;
+  // an ask: typed words are its answer
+  ag_test_call(t[..], "ask", "{\"question\":\"How tall?\",\"choices\":[\"Twice\",\"Three times\"]}");
+  #assert p[0].asking;
+  ag_test_frame(t[..]);
+  ag_type(p, "four metres");
+  #assert ed_agents_key(p, e, -2, 0, true);
+  #assert !p[0].asking && level_find(ag_test_said(t[..]), "four metres") >= 0 && p[0].agents[0].later_n == 14;
+  #assert p[0].ring[0].ev[atl_last(p[0].ring[..], 0, -1)].type == AGR_ANSWER;
+  // the turn ends: the message sent meanwhile goes to its session now
+  cl_outbox_clear(p[0].q[..]);
+  p[0].p[0].handle = 0;
+  ag_set_state(p, 0, AGR_DONE, "");
+  ag_later(p, e, 0);
+  p[0].p[0].handle = -1;
+  #assert p[0].agents[0].later_n == 0 && level_find(ag_test_said(t[..]), "make it taller") >= 0 && ag_rec(p, 0).state == AGR_WORKING;
+}
+
+#test "a wide pane puts the list and the open agent side by side" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  e[0].agents_open = true;
+  ag_test_agent(t[..], 7, AGR_BUILD); p[0].store[0].r[0].state = AGR_DONE;
+  #assert !ed_agents_wide(p, e);
+  p[0].open = 0;
+  #assert ed_agents_wide(p, e);
+  if !p[0].atlas[0].ready { text_test_atlas(p[0].atlas[..]); gp_set_atlas(p[0].atlas[..], 4096, 4096, 2); }
+  _ = ed_agents_frame(p, e, t[0].v[..], 700, 900, 1, 0.016);
+  rows := surface_rows(p[0].surface[..]).rows;
+  row := rows[surface_find(p[0].surface[..], "row.0")]; field := rows[surface_find(p[0].surface[..], "composer")];
+  #assert field.x >= row.x + row.w && field.y < row.y + 200;
+  // narrow, the open agent is under the list
+  _ = ed_agents_frame(p, e, t[0].v[..], 340, 1400, 1, 0.016);
+  rows = surface_rows(p[0].surface[..]).rows;
+  row = rows[surface_find(p[0].surface[..], "row.0")]; field = rows[surface_find(p[0].surface[..], "composer")];
+  #assert field.y > row.y + row.h;
+}
+
+#test "the debug launch's pane is one Builder that did one thing, through a session's own calls" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, p[0].answer[..]).code == GB_DONE;
+  n := ed_count(e);
+  p[0].now = AG_TEST_NOW;
+  ed_agents_demo(p, e);
+  #assert ed_count(e) == n + 2 && ag_count(p) == 1 && ed_agents_open(e) && ed_agents_wide(p, e);
+  c := atl_last(p[0].ring[..], 0, AGR_EDIT);
+  #assert c >= 0 && p[0].ring[0].ev[c].things_n == 2 && p[0].ring[0].ev[atl_last(p[0].ring[..], 0, AGR_TOOL)].ok;
+  // a record like a session's, with its meter, and nothing of it written to the agents' folder
+  #assert ag_rec(p, 0).state == AGR_DONE && ag_rec(p, 0).events > 0 && p[0].agents[0].turns == 3 && p[0].agents[0].cents == 4;
+  #assert ed_agents_writes(p) == 0;
+  ag_test_frame(t[..]);
+  ib: [32] u8;
+  #assert surface_find(p[0].surface[..], atl_id("card", c, ".undo", ib[..])) >= 0;
+  // an arena level too (the app's first template)
+  t2: [1] AgentsTest; p2 := t2[0].p[..]; e2 := t2[0].e[..];
+  #assert gb_run(e2, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ARENA}, GbWorld.{levels = none[0..<0]}, p2[0].answer[..]).code == GB_DONE;
+  p2[0].now = AG_TEST_NOW;
+  ed_agents_demo(p2, e2);
+  #assert atl_last(p2[0].ring[..], 0, AGR_EDIT) >= 0;
+}

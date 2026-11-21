@@ -1,0 +1,44 @@
+// Diagnostic-assisted direct editing: project the player's selected box with
+// the shared engine camera/viewport. The screenshot-only policy never gets it.
+#load "../../../metaverse-engine/cam/kinds.coax";
+#load "../../../metaverse-engine/editor/viewport.coax";
+PeGeometry :: struct {x:f32;y:f32;z:f32;yaw:f32;pitch:f32;distance:f32;bx:f32;by:f32;bz:f32;bw:f32;bh:f32;bd:f32;w:f32;h:f32;}
+pe_face :: (g:PeGeometry,choice:int)->VpPixel {
+  if g.distance<=1.5 || g.w<=0 || g.h<=0 || g.bw<=0 || g.bh<=0 || g.bd<=0 {return VpPixel.{};}
+  orbit:=metaverse_orbit_start(v3(g.x,g.y,-g.z),g.yaw);orbit.pitch=g.pitch;orbit.zoom=g.distance;orbit.shown=g.distance;
+  shot:=metaverse_orbit_shot(orbit);view:=VpView.{ex=shot.eye.x,ey=shot.eye.y,ez=shot.eye.z,ax=shot.at.x,ay=shot.at.y,az=shot.at.z,fov=cam_kind(0).fov,w=g.w,h=g.h};
+  // Interior points of the top, then the face toward the camera. These are
+  // only candidate pixels: actual DOM hit testing must admit the native path.
+  x:=g.bx;y:=g.by+g.bh;z:=-g.bz;
+  if choice<3 {z+=(cast(f32)choice-1)*g.bd*0.25;}else {y=g.by+g.bh*(1-cast(f32)(choice-2)*0.2);z+=g.bd*0.5*(ifx shot.eye.z>z then 1.0f32 else -1.0f32);}
+  return vp_project(view,x,y,z);
+}
+pt_edit_geometry :: (p:[]Pt)->PeGeometry {
+  g:PeGeometry;g.x=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.x_cm",-99999)*0.01;g.y=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.y_cm",-99999)*0.01;g.z=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.z_cm",-99999)*0.01;
+  g.yaw=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.yaw_mrad",0)*0.001;g.pitch=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.pitch_mrad",0)*0.001;g.distance=cast(f32)pt_number(p,"globalThis.gamebuilderObservation?.distance_cm",0)*0.01;
+  g.bx=cast(f32)pt_selected_metric(p,4)*0.01;g.by=cast(f32)pt_selected_metric(p,5)*0.01;g.bz=cast(f32)pt_selected_metric(p,6)*0.01;g.bw=cast(f32)pt_selected_metric(p,7)*0.01;g.bh=cast(f32)pt_selected_metric(p,8)*0.01;g.bd=cast(f32)pt_selected_metric(p,9)*0.01;g.w=cast(f32)pt_number(p,"innerWidth",0);g.h=cast(f32)pt_number(p,"innerHeight",0);return g;
+}
+pt_world_path_clear :: (p:[]Pt,x0:int,y:int,x1:int)->bool {
+  if y<16 || y>cast(int)pt_number(p,"innerHeight",0)-16 {return false;}
+  for step:0..<6 {x:=x0+(x1-x0)*step/5;js:[1024]u8;n:=ws_put(js[..],0,"(()=>{const e=document.elementFromPoint(");n=pb_decimal(js[..],n,x);n=ws_put(js[..],n,",");n=pb_decimal(js[..],n,y);n=ws_put(js[..],n,");return !!e&&!e.closest('.chat,.hpanel,.hb,.hb-o,.hb-p,.menu,.top')})()");if !pt_bool(p,cast(string)js[0..<n]) {return false;}}
+  return true;
+}
+pt_edit_drag :: (p:[]Pt)->bool {
+  if !pt_observe(p) || !p[0].frame_fresh {return false;}g:=pt_edit_geometry(p);
+  for choice:0..<7 {pixel:=pe_face(g,choice);if !pixel.ok {continue;}x:=cast(int)pixel.x;y:=cast(int)pixel.y;delta:=ifx x+90<cast(int)g.w-16 then 90 else -90;end:=x+delta;
+    if x<16 || end<16 || x>=cast(int)g.w-16 || end>=cast(int)g.w-16 || !pt_world_path_clear(p,x,y,end) {continue;}
+    pt_event(p,"edit-step","projected face and native drag path are uncovered",true);return pt_drag(p,cast(int)(cast(f32)x*1440/g.w),cast(int)(cast(f32)y*900/g.h),cast(int)(cast(f32)end*1440/g.w),cast(int)(cast(f32)y*900/g.h));
+  }pt_event(p,"edit-step","projected face and native drag path are uncovered",false);return false;
+}
+pt_edit_wheel :: (p:[]Pt)->bool {
+  g:=pt_edit_geometry(p);id:=pt_number(p,"Number(document.getElementById('sel.id')?.textContent.slice(1))",-1);size:=pt_selected_metric(p,7);if id<0 || size<=0 {return false;}
+  for choice:0..<7 {pixel:=pe_face(g,choice);x:=cast(int)pixel.x;y:=cast(int)pixel.y;if !pixel.ok || x<16 || x>=cast(int)g.w-16 || !pt_world_path_clear(p,x,y,x) {continue;}
+    _:=pb_mouse(p[0].c[..],"mouseMoved",x,y,"none",0,0);_=pb_wait(pt_dir(p),100);sent:=pb_mouse(p[0].c[..],"mouseWheel",x,y,"none",0,-120);_=pb_wait(pt_dir(p),700);after:=pt_selected_metric(p,7);return sent && after>0 && after!=size && pt_number(p,"Number(document.getElementById('sel.id')?.textContent.slice(1))",-1)==id;
+  }return false;
+}
+#test "selected box pixels use the engine orbit and viewport at each device size" {
+  g:=PeGeometry.{yaw= -3.1415927,pitch=0.255,distance=9.52,z= -5.66,bx=1.4,bz= -4.2,bw=1,bh=1.25,bd=1,w=412,h=915};p:=pe_face(g,1);#assert p.ok && p.x>240 && p.x<350 && p.y>425 && p.y<455;
+  g.w=1440;g.h=900;p=pe_face(g,1);#assert p.ok && p.x>720 && p.x<1440 && p.y>0 && p.y<900;
+  g.w=1024;g.h=1366;p=pe_face(g,1);#assert p.ok && p.x>512 && p.x<1024 && p.y>0 && p.y<1366;
+  g.bh=0;#assert !pe_face(g,1).ok;
+}

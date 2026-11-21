@@ -1,0 +1,29 @@
+# An agent's newest picture kept on the account (issue 9): its computer sends it after the agent's
+# record, the agents list says where it is, and an older one, another level's, or an agent the
+# account doesn't keep is refused, in words.
+> new-game {"template":"arena"}
+< {"ok":true,"game":1,"level":1,"template":"arena"}
+> rename-game {"game":1,"name":"Moss Run"}
+< {"ok":true,"game":1,"title":"Moss Run"}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":1,"rev":5,"which":"after","made":1763370000004,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHB//Z"}}
+< {"ok":false,"error":"not-found","why":"the account keeps no such agent: its record goes first (agent-report)"}
+> agent-report {"report":{"record":{"schema":"gamebuilder.agent.v1","id":"a19a9000000-0","game":1,"title":"Moss Run","level":1,"kind":"build","job":"a moat","place":"local","computer":"this Mac","runner":"claude","state":"done","since":1763370000002,"made":1763370000000,"updated":1763370000003,"heard":0,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"from":0,"events":[{"schema":"gamebuilder.agent.event.v1","agent":"a19a9000000-0","n":1,"at":1763370000000,"type":"message","from":"person","text":"a moat"}]}}
+< {"ok":true,"agent":"a19a9000000-0","events":1}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":1,"rev":5,"which":"after","made":1763370000004,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHB//Z"},"dry_run":true}
+< {"ok":true,"agent":"a19a9000000-0","picture":{"at":"/api/pictures/4ec110538022028080effd480be96638.jpg","made":1763370000004,"rev":5,"which":"after","bytes":6},"dry_run":true}
+> agents
+< {"ok":true,"agents":[{"agent":{"schema":"gamebuilder.agent.v1","id":"a19a9000000-0","game":1,"title":"Moss Run","level":1,"kind":"build","job":"a moat","place":"local","computer":"this Mac","runner":"claude","state":"done","since":1763370000002,"made":1763370000000,"updated":1763370000003,"heard":1763380000000,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"shown":"done","words":"done","for":"2h","where":"this Mac","cost":"your own agent: no charge from us"}]}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":1,"rev":5,"which":"after","made":1763370000004,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHB//Z"}}
+< {"ok":true,"agent":"a19a9000000-0","picture":{"at":"/api/pictures/4ec110538022028080effd480be96638.jpg","made":1763370000004,"rev":5,"which":"after","bytes":6}}
+> agents
+< {"ok":true,"agents":[{"agent":{"schema":"gamebuilder.agent.v1","id":"a19a9000000-0","game":1,"title":"Moss Run","level":1,"kind":"build","job":"a moat","place":"local","computer":"this Mac","runner":"claude","state":"done","since":1763370000002,"made":1763370000000,"updated":1763370000003,"heard":1763380000000,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"shown":"done","words":"done","for":"2h","where":"this Mac","cost":"your own agent: no charge from us","picture":{"at":"/api/pictures/4ec110538022028080effd480be96638.jpg","made":1763370000004}}]}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":1,"rev":5,"which":"after","made":1763370000004,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHB//Z"}}
+< {"ok":false,"error":"already","why":"the account has this agent's picture, or a newer one"}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":2,"rev":6,"which":"after","made":1763370000009,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHCP/Z"}}
+< {"ok":false,"error":"bad-request","why":"a picture is one gamebuilder.picture.v1 line of the agent's level, its JPEG of at most 8,192 bytes (PIC_JPEG)"}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1"}}
+< {"ok":false,"error":"bad-request","why":"a picture is one gamebuilder.picture.v1 line of the agent's level, its JPEG of at most 8,192 bytes (PIC_JPEG)"}
+> agent-picture {"agent":"a19a9000000-0","picture":{"schema":"gamebuilder.picture.v1","level":1,"rev":6,"which":"after","made":1763370000009,"w":160,"h":96,"type":"image/jpeg","bytes":6,"text":"","data":"/9gHCP/Z"}}
+< {"ok":true,"agent":"a19a9000000-0","picture":{"at":"/api/pictures/52e810d06a0a9a2a0da6af403e85107e.jpg","made":1763370000009,"rev":6,"which":"after","bytes":6}}
+> agents
+< {"ok":true,"agents":[{"agent":{"schema":"gamebuilder.agent.v1","id":"a19a9000000-0","game":1,"title":"Moss Run","level":1,"kind":"build","job":"a moat","place":"local","computer":"this Mac","runner":"claude","state":"done","since":1763370000002,"made":1763370000000,"updated":1763370000003,"heard":1763380000000,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"shown":"done","words":"done","for":"2h","where":"this Mac","cost":"your own agent: no charge from us","picture":{"at":"/api/pictures/52e810d06a0a9a2a0da6af403e85107e.jpg","made":1763370000009}}]}

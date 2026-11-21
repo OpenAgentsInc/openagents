@@ -1,0 +1,497 @@
+// Claims (GitHub issue 10; docs/agents.md, "Several agents on one game"): so several agents can
+// work on one level safely. An agent claims what it is working on, a box on the level or a set
+// of things, and another agent's edit that touches a thing inside that claim, or puts one there,
+// is refused whole with the claim's holder named in the words (error "claimed"). The person is
+// never refused by a claim: a call that names no agent is the person's (agent 0).
+//
+// Who: an Agents pane agent by its id (agents.coax: CLAIM_PANE0 + k, "agent k+1"), and a program
+// on the CLI, MCP or HTTP by the name it gives with --agent (claim_named makes its id from it).
+//
+// What is inside a claim: a thing it names, and a thing whose base's middle stands in its box
+// (on x and z, edges included; a box runs from the ground up). A place is inside a box the same way.
+//
+// How long: until its agent releases it (the release row), or its agent's turn ends (an Agents
+// pane agent: done, stopped or failed, ed_agents_tick), or every turn of its agent is taken back
+// (ed_agent_undo_turn). And every claim lapses CLAIM_SECONDS after its agent last claimed or
+// changed something, so the claim of an agent that crashed ends on its own. The clock is the
+// surface's (ed_claims_clock, seconds since 1970); before it is set, claims lapse only as above.
+//
+// Kept with the level: the CLI and `serve --accounts` read them from beside the level's file
+// before a row and write them back after (level-N.claims), and so does the app, so a claim made
+// in one call holds in the next (ed_claims_save, ed_claims_load):
+//   gamebuilder.claims.v1
+//   AGENT|UNTIL|REGION|NAME            REGION as the claim row takes it: box:X0,Z0,X1,Z1 or things:ID,ID
+//
+// A claim's region is also data the editor draws in its agent's colour (ed_claim_box, ed_draw).
+//   scripts/check.sh
+
+CLAIMS_MAX :: 8;            // claims a level holds at once
+CLAIMS_EACH :: 4;           // claims one agent holds at once
+CLAIM_THINGS :: 16;         // things one claim names
+CLAIM_SIDE :: 10000;        // centimetres a claim's box is at most, a side
+CLAIM_SECONDS :: 600;       // a claim lapses this long after its agent last claimed or changed something
+CLAIM_NAME :: 32;           // bytes of an agent's name (--agent)
+CLAIM_PANE0 :: 100;         // the Agents pane's agent k has id CLAIM_PANE0 + k (agents.coax's AG_ID0)
+CLAIM_NAMED0 :: 1000;       // a named agent's id is from here up
+CLAIM_FILE :: 8192;         // a level's claims written out, at most
+CLAIM_HEAD :: "gamebuilder.claims.v1";
+// The agents' colours, as the host's shader numbers its tints (play.coax): gold, green, blue,
+// orange, indigo, red. Agent ids go round them.
+CLAIM_TINTS :: 6;
+CLAIM_TINT :: [CLAIM_TINTS] s32.[7, 5, 1, 18, 17, 2];
+
+ClaimRegion :: struct {
+  box: bool; x0: int; z0: int; x1: int; z1: int;      // a box: x0 < x1, z0 < z1, centimetres
+  things: [CLAIM_THINGS] s32; thing_n: int;           // or these things, by id
+}
+Claim :: struct {
+  agent: s32;
+  name: [CLAIM_NAME] u8; name_n: int;
+  r: ClaimRegion;
+  until: int;               // the clock's second it lapses; 0 while there is no clock
+}
+ClaimSet :: struct {
+  c: [CLAIMS_MAX] Claim; n: int;
+  now: int;                 // the surface's clock, seconds since 1970; 0: none
+  held: bool; level: s32; game: s32; official: bool;   // the level these are on
+  changed: bool;            // since the surface last kept them
+}
+
+// ---- who
+
+// A name an agent gives itself: 1 to 32 of letters, digits, -, _ and ., starting with a letter or a digit.
+claim_name_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > CLAIM_NAME { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    word := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    if !word && (i == 0 || (c != '-' && c != '_' && c != '.')) { return false; }
+  }
+  return true;
+}
+// A named agent's id: the same name is the same agent, in every call.
+claim_named :: (name: string) -> s32 {
+  h := 7;
+  for c: name { h = agent_mix(h, cast(int) c); }
+  return cast(s32) (CLAIM_NAMED0 + h % 2000000000);
+}
+claim_tint :: (agent: s32) -> s32 { return CLAIM_TINT[(cast(int) agent) % CLAIM_TINTS]; }
+// Its agent's name, copied into out.
+claim_name :: (c: Claim, out: [] u8) -> string {
+  n := claim_lo(c.name_n, out.count);
+  for i: 0..<n { out[i] = c.name[i]; }
+  return cast(string) out[0..<n];
+}
+
+// ---- the set, for the level open
+
+// The open level's claims: lapsed ones gone, and none of another level's.
+claims_here :: (e: [] Editor) -> [] ClaimSet {
+  s := e[0].claims[..];
+  if !s[0].held || s[0].level != e[0].level || s[0].game != e[0].game || s[0].official != e[0].official {
+    now := s[0].now;
+    s[0] = ClaimSet.{};
+    s[0].now = now; s[0].held = true; s[0].level = e[0].level; s[0].game = e[0].game; s[0].official = e[0].official;
+  }
+  k := 0;
+  while k < s[0].n {
+    if s[0].now > 0 && s[0].c[k].until > 0 && s[0].now >= s[0].c[k].until { claims_drop(s, k); } else { k += 1; }
+  }
+  return s;
+}
+claims_drop :: (s: [] ClaimSet, k: int) {
+  for j: k..<s[0].n - 1 { s[0].c[j] = s[0].c[j + 1]; }
+  s[0].n -= 1; s[0].changed = true;
+}
+
+// Ends every claim agent holds (agent 0: every claim on the level). How many ended.
+claims_end :: (e: [] Editor, agent: s32) -> int {
+  s := claims_here(e);
+  ended := 0; k := 0;
+  while k < s[0].n {
+    if agent == 0 || s[0].c[k].agent == agent { claims_drop(s, k); ended += 1; } else { k += 1; }
+  }
+  return ended;
+}
+// Agent is at work: its claims last CLAIM_SECONDS from now.
+claims_touch :: (e: [] Editor, agent: s32) {
+  if agent == 0 { return; }
+  s := claims_here(e);
+  if s[0].now <= 0 { return; }
+  for k: 0..<s[0].n { if s[0].c[k].agent == agent { s[0].c[k].until = s[0].now + CLAIM_SECONDS; s[0].changed = true; } }
+}
+
+// ---- inside
+
+claim_box_has :: (r: ClaimRegion, x: int, z: int) -> bool {
+  return r.box && x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
+}
+claim_has_thing :: (e: [] Editor, r: ClaimRegion, id: s32) -> bool {
+  for k: 0..<r.thing_n { if r.things[k] == id { return true; } }
+  i := ed_index(e, id);
+  if i < 0 { return false; }
+  a := ed_actor(e, i);
+  return claim_box_has(r, cast(int) a.x, cast(int) a.z);
+}
+// The claim, held by an agent other than agent, that thing id is in; -1 when none (and always for the person).
+claim_on_thing :: (e: [] Editor, agent: s32, id: s32) -> int {
+  if agent == 0 { return -1; }
+  s := claims_here(e);
+  for k: 0..<s[0].n { if s[0].c[k].agent != agent && claim_has_thing(e, s[0].c[k].r, id) { return k; } }
+  return -1;
+}
+// The claim, held by an agent other than agent, whose box has the place x, z; -1 when none.
+claim_on_place :: (e: [] Editor, agent: s32, x: int, z: int) -> int {
+  if agent == 0 { return -1; }
+  s := claims_here(e);
+  for k: 0..<s[0].n { if s[0].c[k].agent != agent && claim_box_has(s[0].c[k].r, x, z) { return k; } }
+  return -1;
+}
+
+// "thing 12 is inside agent 2's claim: ..." into out.
+claim_why :: (e: [] Editor, k: int, what: string, id: int, out: [] u8) -> string {
+  c := e[0].claims[0].c[k];
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], what); if id > 0 { tx_put(t[..], " "); tx_int(t[..], cast(s64) id); }
+  nb: [CLAIM_NAME] u8;
+  tx_put(t[..], " is inside "); tx_put(t[..], claim_name(c, nb[..]));
+  tx_put(t[..], "'s claim: another agent is working there. Work outside it (claims lists every claim), or wait for it to end: when that agent releases it or its turn ends, or ");
+  tx_int(t[..], CLAIM_SECONDS); tx_put(t[..], " seconds after it last claimed or changed something (CLAIM_SECONDS)");
+  return cast(string) out[0..<t[0].at];
+}
+
+// Why agent may not make edit w, as a world.edit.v1 batch carries it, for a claim; "" when it may.
+claim_edit_why :: (e: [] Editor, agent: s32, w: WorldEdit, out: [] u8) -> string {
+  if agent == 0 || w.op == WE_CELL { return ""; }
+  if w.op != WE_SPAWN {
+    k := claim_on_thing(e, agent, cast(s32) w.id);
+    if k >= 0 { return claim_why(e, k, "thing", w.id, out); }
+  }
+  if w.op == WE_SPAWN || w.op == WE_MOVE {
+    k := claim_on_place(e, agent, w.x, w.z);
+    if k >= 0 { return claim_why(e, k, ifx w.op == WE_SPAWN then "where it would put the new thing" else "where it would move the thing", 0, out); }
+  }
+  return "";
+}
+
+// ---- a region, as the claim row takes it
+
+// Whole numbers split by commas, at most out.count of them: how many, or -1 when not.
+claim_numbers :: (s: string, out: [] int) -> int {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != ',' { continue; }
+    w := s[from..<i]; from = i + 1;
+    neg := w.count > 0 && w[0] == '-';
+    d := ifx neg then w[1..<w.count] else w;
+    if d.count == 0 || d.count > 12 || n >= out.count { return -1; }   // ids and seconds since 1970 run to ten digits
+    v := 0;
+    for c: d { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+    out[n] = ifx neg then -v else v; n += 1;
+  }
+  return n;
+}
+claim_lo :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+claim_hi :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+claim_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+
+// Reads a region: box:X0,Z0,X1,Z1 (whole centimetres, either corner first) or things:ID,ID,...
+// "" when it is good, else why not, with the bounds.
+claim_region_read :: (w: string, r: [] ClaimRegion) -> string {
+  r[0] = ClaimRegion.{};
+  if claim_prefix(w, "box:") {
+    v: [4] int;
+    if claim_numbers(w[4..<w.count], v[..]) != 4 { return "a box is box:X0,Z0,X1,Z1: two corners, in whole centimetres"; }
+    for x: v { if x < -AGENT_REACH || x > AGENT_REACH { return "a box is within 20000 cm of the middle (AGENT_REACH)"; } }
+    r[0].box = true;
+    r[0].x0 = claim_lo(v[0], v[2]); r[0].x1 = claim_hi(v[0], v[2]);
+    r[0].z0 = claim_lo(v[1], v[3]); r[0].z1 = claim_hi(v[1], v[3]);
+    if r[0].x0 == r[0].x1 || r[0].z0 == r[0].z1 { return "a box has room in it: its corners differ on x and on z"; }
+    if r[0].x1 - r[0].x0 > CLAIM_SIDE || r[0].z1 - r[0].z0 > CLAIM_SIDE { return "a box is at most 10000 cm a side (CLAIM_SIDE): claim only where you will work"; }
+    return "";
+  }
+  if claim_prefix(w, "things:") {
+    v: [CLAIM_THINGS] int;
+    n := claim_numbers(w[7..<w.count], v[..]);
+    if n < 1 { return "a claim names 1 to 16 things (CLAIM_THINGS), as things:ID,ID,..."; }
+    for k: 0..<n {
+      if v[k] < 1 { return "a thing is its id, a number from 1 (read-level)"; }
+      r[0].things[k] = cast(s32) v[k];
+    }
+    r[0].thing_n = n;
+    return "";
+  }
+  return "a claim is a box, box:X0,Z0,X1,Z1 in centimetres, or things, things:ID,ID,...";
+}
+// A region as claim_region_read reads it.
+claim_region_text :: (r: ClaimRegion, t: [] Text) {
+  if r.box {
+    tx_put(t, "box:"); tx_int(t, r.x0); tx_put(t, ","); tx_int(t, r.z0); tx_put(t, ","); tx_int(t, r.x1); tx_put(t, ","); tx_int(t, r.z1);
+    return;
+  }
+  tx_put(t, "things:");
+  for k: 0..<r.thing_n { if k > 0 { tx_put(t, ","); } tx_n(t, r.things[k]); }
+}
+claim_same_region :: (p: ClaimRegion, q: ClaimRegion) -> bool {
+  if p.box != q.box || p.thing_n != q.thing_n { return false; }
+  if p.box { return p.x0 == q.x0 && p.z0 == q.z0 && p.x1 == q.x1 && p.z1 == q.z1; }
+  for k: 0..<p.thing_n { if p.things[k] != q.things[k] { return false; } }
+  return true;
+}
+// Whether two regions share a place or a thing.
+claim_overlap :: (e: [] Editor, p: ClaimRegion, q: ClaimRegion) -> bool {
+  if p.box && q.box && p.x0 <= q.x1 && q.x0 <= p.x1 && p.z0 <= q.z1 && q.z0 <= p.z1 { return true; }
+  for k: 0..<p.thing_n { if claim_has_thing(e, q, p.things[k]) { return true; } }
+  for k: 0..<q.thing_n { if claim_has_thing(e, p, q.things[k]) { return true; } }
+  return false;
+}
+
+// ---- making one
+
+ClaimMade :: struct { error: string; why: string; at: int; again: bool; }
+
+// Agent (named name, or a pane agent's) claims region r on the open level. error "" when it
+// holds it (again: it held it already, and now for CLAIM_SECONDS from now), else the refusal.
+claims_make :: (e: [] Editor, agent: s32, name: string, r: ClaimRegion, out: [] u8) -> ClaimMade {
+  if agent == 0 { return ClaimMade.{error = "bad-request", why = "a claim is an agent's: name yourself with --agent NAME (the person's own edits are never refused by a claim)"}; }
+  s := claims_here(e);
+  for k: 0..<r.thing_n {
+    if ed_index(e, r.things[k]) < 0 { return ClaimMade.{error = "not-found", why = "the level has no such thing (read-level)"}; }
+  }
+  mine := 0;
+  for k: 0..<s[0].n {
+    c := s[0].c[k];
+    if c.agent == agent {
+      if claim_same_region(c.r, r) {
+        s[0].c[k].until = ifx s[0].now > 0 then s[0].now + CLAIM_SECONDS else 0; s[0].changed = true;
+        return ClaimMade.{at = k, again = true};
+      }
+      mine += 1; continue;
+    }
+    if claim_overlap(e, c.r, r) {
+      t := [1] Text.[Text.{buf = out}];
+      nb: [CLAIM_NAME] u8;
+      tx_put(t[..], "that overlaps "); tx_put(t[..], claim_name(c, nb[..])); tx_put(t[..], "'s claim (");
+      claim_region_text(c.r, t[..]);
+      tx_put(t[..], "): another agent is working there. Claim somewhere else, or wait for it to end (claims lists every claim)");
+      return ClaimMade.{error = "claimed", why = cast(string) out[0..<t[0].at]};
+    }
+  }
+  if mine >= CLAIMS_EACH { return ClaimMade.{error = "limit", why = "an agent holds 4 claims at once (CLAIMS_EACH): release yours first"}; }
+  if s[0].n >= CLAIMS_MAX { return ClaimMade.{error = "limit", why = "a level holds 8 claims at once (CLAIMS_MAX): wait for one to end"}; }
+  c := Claim.{agent = agent, r = r};
+  if name.count > 0 { c.name_n = claim_lo(name.count, CLAIM_NAME); for i: 0..<c.name_n { c.name[i] = name[i]; } }
+  else {
+    t := [1] Text.[Text.{buf = c.name[..]}];
+    tx_put(t[..], "agent "); tx_int(t[..], ifx agent >= CLAIM_PANE0 && agent < CLAIM_NAMED0 then cast(s64) (agent - CLAIM_PANE0 + 1) else cast(s64) agent);
+    c.name_n = t[0].at;
+  }
+  c.until = ifx s[0].now > 0 then s[0].now + CLAIM_SECONDS else 0;
+  s[0].c[s[0].n] = c; s[0].n += 1; s[0].changed = true;
+  return ClaimMade.{at = s[0].n - 1};
+}
+
+// One claim as the rows answer it: {"agent":NAME,"box":[X0,Z0,X1,Z1]} or {"agent":NAME,"things":[ID,...]}.
+claim_json :: (o: [] Jo, c: Claim) {
+  nb: [CLAIM_NAME] u8;
+  jo_obj(o); jo_key(o, "agent"); jo_str(o, claim_name(c, nb[..]));
+  if c.r.box {
+    jo_key(o, "box"); jo_arr(o); jo_int(o, c.r.x0); jo_int(o, c.r.z0); jo_int(o, c.r.x1); jo_int(o, c.r.z1); jo_end(o);
+  } else {
+    jo_key(o, "things"); jo_arr(o); for k: 0..<c.r.thing_n { jo_int(o, cast(int) c.r.things[k]); } jo_end(o);
+  }
+  jo_end(o);
+}
+
+// ---- kept with the level
+
+// The surface's clock: seconds since 1970. The CLI and the hosted server set it before each
+// row; the app as its timer runs.
+ed_claims_clock :: (e: [] Editor, seconds: s64) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].claims[0].now = cast(int) seconds;
+}
+// Whether the open level's claims changed since they were last kept (ed_claims_saved).
+ed_claims_due :: (e: [] Editor) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  return claims_here(e)[0].changed;
+}
+ed_claims_saved :: (e: [] Editor) #export_c #effects(all) { if e.count == 1 { claims_here(e)[0].changed = false; } }
+
+// The open level's claims written out, as gamebuilder.claims.v1, into out: its length; 0 when
+// there are none (the file goes), or when out is too small.
+ed_claims_save :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  s := claims_here(e);
+  if s[0].n == 0 { return 0; }
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], CLAIM_HEAD); tx_put(t[..], "\n");
+  for k: 0..<s[0].n {
+    c := s[0].c[k];
+    tx_n(t[..], c.agent); tx_put(t[..], "|"); tx_int(t[..], cast(s64) c.until); tx_put(t[..], "|");
+    nb: [CLAIM_NAME] u8;
+    claim_region_text(c.r, t[..]); tx_put(t[..], "|"); tx_put(t[..], claim_name(c, nb[..])); tx_put(t[..], "\n");
+  }
+  return ifx t[0].at >= out.count then 0 else t[0].at;
+}
+// Reads the open level's claims back (after the level is open): lines that do not read, and
+// claims that have lapsed, are left out. False when it is not gamebuilder.claims.v1.
+ed_claims_load :: (e: [] Editor, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  s := claims_here(e);
+  s[0].n = 0; s[0].changed = false;
+  w := cast(string) text;
+  if !claim_prefix(w, CLAIM_HEAD) { return false; }
+  from := CLAIM_HEAD.count;
+  for i: from..<w.count + 1 {
+    if i < w.count && w[i] != '\n' { continue; }
+    line := w[from..<i]; from = i + 1;
+    p: [4] string; n := 0; at := 0;
+    for j: 0..<line.count + 1 {
+      if j < line.count && line[j] != '|' { continue; }
+      if n < 4 { p[n] = line[at..<j]; } n += 1; at = j + 1;
+    }
+    if n != 4 || s[0].n >= CLAIMS_MAX { continue; }
+    id: [1] int; until: [1] int; r: [1] ClaimRegion;
+    if claim_numbers(p[0], id[..]) != 1 || claim_numbers(p[1], until[..]) != 1 || claim_region_read(p[2], r[..]).count > 0 { continue; }
+    if id[0] < 1 || (p[3].count > 0 && p[3].count > CLAIM_NAME) || p[3].count == 0 { continue; }
+    if s[0].now > 0 && until[0] > 0 && s[0].now >= until[0] { continue; }
+    c := Claim.{agent = cast(s32) id[0], r = r[0], until = until[0], name_n = p[3].count};
+    for k: 0..<p[3].count { c.name[k] = p[3][k]; }
+    s[0].c[s[0].n] = c; s[0].n += 1;
+  }
+  return true;
+}
+
+// ---- drawn
+
+// How many claims the open level has.
+ed_claims_count :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  return cast(s32) claims_here(e)[0].n;
+}
+// Claim i as the editor draws it, into out (6): its agent, the agent's tint (the shader's), and
+// the box on the ground it covers, x0, z0, x1, z1 in centimetres: its box, or round its things.
+// False when there is no claim i, or none of its things is there.
+ed_claim_box :: (e: [] Editor, i: s32, out: [] s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < 6 { return false; }
+  s := claims_here(e);
+  if i < 0 || cast(int) i >= s[0].n { return false; }
+  c := s[0].c[i];
+  out[0] = c.agent; out[1] = claim_tint(c.agent);
+  if c.r.box { out[2] = cast(s32) c.r.x0; out[3] = cast(s32) c.r.z0; out[4] = cast(s32) c.r.x1; out[5] = cast(s32) c.r.z1; return true; }
+  any := false;
+  for k: 0..<c.r.thing_n {
+    j := ed_index(e, c.r.things[k]);
+    if j < 0 { continue; }
+    a := ed_actor(e, j);
+    // round the thing however it is turned: half its widest diagonal
+    h := cast(s32) ((claim_hi(cast(int) a.sx, cast(int) a.sz) * cast(int) a.scale * 71) / 10000);
+    if !any { out[2] = a.x - h; out[3] = a.z - h; out[4] = a.x + h; out[5] = a.z + h; any = true; continue; }
+    out[2] = cast(s32) claim_lo(cast(int) out[2], cast(int) (a.x - h)); out[3] = cast(s32) claim_lo(cast(int) out[3], cast(int) (a.z - h));
+    out[4] = cast(s32) claim_hi(cast(int) out[4], cast(int) (a.x + h)); out[5] = cast(s32) claim_hi(cast(int) out[5], cast(int) (a.z + h));
+  }
+  return any;
+}
+CLAIM_EDGE :: 0.06f32;      // metres wide, the line round a claim on the ground
+// Four thin strips on the ground round each claim, in its agent's colour: ed_draw's.
+claims_draw :: (e: [] Editor, out: [] f32, n: s64) -> s64 {
+  m := n;
+  b: [6] s32;
+  for i: 0..<ed_claims_count(e) {
+    if !ed_claim_box(e, cast(s32) i, b[..]) { continue; }
+    x0 := cast(f32) b[2] / 100; z0 := cast(f32) b[3] / 100; x1 := cast(f32) b[4] / 100; z1 := cast(f32) b[5] / 100;
+    hx := (x1 - x0) / 2; hz := (z1 - z0) / 2; cx := x0 + hx; cz := z0 + hz; th := CLAIM_EDGE / 2;
+    sides := [4] WorldPoint.[WorldPoint.{x = cx, y = 0.02, z = z0}, WorldPoint.{x = cx, y = 0.02, z = z1}, WorldPoint.{x = x0, y = 0.02, z = cz}, WorldPoint.{x = x1, y = 0.02, z = cz}];
+    for k: 0..<4 {
+      was := m;
+      m = ed_instance(out, m, sides[k], ifx k < 2 then hx + th else th, 0.02, ifx k < 2 then th else hz + th, 0, 1, LOOK_SOLID);
+      if m > was { out[was * INSTANCE_FLOATS + 18] = cast(f32) b[1]; }
+    }
+  }
+  return m;
+}
+
+// ---- checks
+
+ClaimTest :: struct { e: [1] Editor; out: [1024] u8; text: [CLAIM_FILE] u8; }
+
+#test "a region reads as a box or as things, within its bounds" {
+  r: [1] ClaimRegion;
+  #assert claim_region_read("box:500,-300,-500,300", r[..]) == "" && r[0].box && r[0].x0 == -500 && r[0].x1 == 500 && r[0].z0 == -300 && r[0].z1 == 300;
+  #assert claim_region_read("things:12,3", r[..]) == "" && !r[0].box && r[0].thing_n == 2 && r[0].things[1] == 3;
+  #assert claim_region_read("box:0,0,20001,10", r[..]) == "a box is within 20000 cm of the middle (AGENT_REACH)";
+  #assert claim_region_read("box:-6000,0,6000,10", r[..]) == "a box is at most 10000 cm a side (CLAIM_SIDE): claim only where you will work";
+  #assert claim_region_read("box:5,0,5,10", r[..]) != "" && claim_region_read("box:1,2,3", r[..]) != "";
+  #assert claim_region_read("things:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17", r[..]) == "a claim names 1 to 16 things (CLAIM_THINGS), as things:ID,ID,...";
+  #assert claim_region_read("things:0", r[..]) != "" && claim_region_read("here", r[..]) != "" && claim_region_read("things:", r[..]) != "";
+  b: [64] u8; t := [1] Text.[Text.{buf = b[..]}];
+  _ = claim_region_read("box:-5,7,9,8", r[..]); claim_region_text(r[0], t[..]);
+  #assert cast(string) b[0..<t[0].at] == "box:-5,7,9,8";
+  #assert claim_name_ok("builder-2") && !claim_name_ok("-x") && !claim_name_ok("a b") && claim_named("bob") == claim_named("bob") && claim_named("bob") != claim_named("ann");
+  #assert claim_named("bob") >= CLAIM_NAMED0;
+}
+
+#test "a claim refuses another agent's edit inside it, never the person's, and lapses on the clock" {
+  t: [1] ClaimTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  ed_claims_clock(e, 1000);
+  ann := claim_named("ann"); bob := claim_named("bob");
+  r: [1] ClaimRegion; _ = claim_region_read("box:-500,-500,500,500", r[..]);
+  #assert claims_make(e, ann, "ann", r[0], t[0].out[..]).error == "";
+  // bob's place, and a thing of his, inside ann's box are refused; ann's own are not; the person is never
+  #assert claim_on_place(e, bob, 0, 0) == 0 && claim_on_place(e, ann, 0, 0) < 0 && claim_on_place(e, 0, 0, 0) < 0;
+  #assert claim_on_place(e, bob, 501, 0) < 0;
+  w := WorldEdit.{ok = true, op = WE_SPAWN, x = 100, z = 100, kind = 2, scale = 100};
+  #assert level_find(claim_edit_why(e, bob, w, t[0].out[..]), "inside ann's claim") >= 0 && claim_edit_why(e, 0, w, t[0].out[..]) == "";
+  // bob's box over it is refused, naming ann; beside it is his
+  _ = claim_region_read("box:400,0,900,100", r[..]);
+  m := claims_make(e, bob, "bob", r[0], t[0].out[..]);
+  #assert m.error == "claimed" && level_find(m.why, "ann's claim (box:-500,-500,500,500)") >= 0;
+  _ = claim_region_read("box:600,0,900,100", r[..]);
+  #assert claims_make(e, bob, "bob", r[0], t[0].out[..]).error == "" && ed_claims_count(e) == 2;
+  // a claim is an agent's; and the counts are bounded
+  #assert claims_make(e, 0, "", r[0], t[0].out[..]).error == "bad-request";
+  #assert claims_make(e, bob, "bob", r[0], t[0].out[..]).again && ed_claims_count(e) == 2;
+  for k: 0..<3 { _ = claim_region_read(ifx k == 0 then "box:1000,0,1100,100" else ifx k == 1 then "box:1200,0,1300,100" else "box:1400,0,1500,100", r[..]); #assert claims_make(e, bob, "bob", r[0], t[0].out[..]).error == ""; }
+  _ = claim_region_read("box:1600,0,1700,100", r[..]);
+  #assert claims_make(e, bob, "bob", r[0], t[0].out[..]).why == "an agent holds 4 claims at once (CLAIMS_EACH): release yours first";
+  // kept and read back, as the CLI keeps them beside the level's file
+  n := ed_claims_save(e, t[0].text[..]);
+  #assert n > 0 && ed_claims_due(e);
+  f: [1] Editor; ed_init(f[..], 800, 600); ed_claims_clock(f[..], 1200);
+  #assert ed_claims_load(f[..], t[0].text[0..<n]) && ed_claims_count(f[..]) == 5 && claim_on_place(f[..], bob, 0, 0) == 0;
+  // the clock passes CLAIM_SECONDS: they lapse, and nothing is refused
+  ed_claims_clock(f[..], 1000 + CLAIM_SECONDS);
+  #assert ed_claims_count(f[..]) == 0 && claim_on_place(f[..], bob, 0, 0) < 0;
+  // touching renews only the agent's own
+  ed_claims_clock(e, 1500); claims_touch(e, ann); ed_claims_clock(e, 1000 + CLAIM_SECONDS);
+  #assert ed_claims_count(e) == 1 && claim_on_place(e, bob, 0, 0) == 0;
+  // released, it is gone
+  #assert claims_end(e, ann) == 1 && ed_claims_count(e) == 0 && ed_claims_save(e, t[0].text[..]) == 0;
+}
+
+#test "a claim of things holds them wherever they go, and is drawn round them in its agent's colour" {
+  t: [1] ClaimTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  id := ed_actor(e, 1).id;
+  ann := claim_named("ann"); bob := claim_named("bob");
+  r: [1] ClaimRegion; rb: [32] u8; tr := [1] Text.[Text.{buf = rb[..]}];
+  tx_put(tr[..], "things:"); tx_n(tr[..], id);
+  out: [INSTANCES_MAX * INSTANCE_FLOATS] f32;
+  plain := ed_draw(e, out[..]);
+  #assert claim_region_read(cast(string) rb[0..<tr[0].at], r[..]) == "" && claims_make(e, ann, "ann", r[0], t[0].out[..]).error == "";
+  #assert claim_on_thing(e, bob, id) == 0 && claim_on_thing(e, ann, id) < 0;
+  // a box over where the thing stands is another agent's no more
+  a := ed_actor(e, 1);
+  b: [64] u8; tb := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tb[..], "box:"); tx_n(tb[..], a.x - 10); tx_put(tb[..], ","); tx_n(tb[..], a.z - 10); tx_put(tb[..], ","); tx_n(tb[..], a.x + 10); tx_put(tb[..], ","); tx_n(tb[..], a.z + 10);
+  _ = claim_region_read(cast(string) b[0..<tb[0].at], r[..]);
+  #assert claims_make(e, bob, "bob", r[0], t[0].out[..]).error == "claimed";
+  box: [6] s32;
+  #assert ed_claim_box(e, 0, box[..]) && box[0] == ann && box[1] == claim_tint(ann) && box[2] < a.x && box[4] > a.x;
+  #assert ed_draw(e, out[..]) == plain + 4 && out[plain * INSTANCE_FLOATS + 18] == cast(f32) claim_tint(ann);
+  // another level's claims are not this one's
+  ed_new(e, 5);
+  #assert ed_claims_count(e) == 0;
+}

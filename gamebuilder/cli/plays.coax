@@ -1,0 +1,152 @@
+// A hosted server's count of each published game (docs/publishing.md, "Play counts and remix lineage"):
+// `gamebuilder serve --accounts DIR` takes a count from a link's page (POST /api/play/CODE/played,
+// gamebuilder/core/api.coax), counts a remix itself when one is first published, and gives the totals back to the
+// rows that read them. The facts, a count's body and the totals file are shared/plays.coax's; this
+// file reads and writes the files.
+//
+// Where the files are, under the accounts' folder DIR:
+//   DIR/.plays/CODE        one game's totals (gamebuilder.plays.v1): opened, minute, remix, remade
+//   DIR/.plays/.site       the site's: the same four added up, and the ten games most opened
+// No account's name has a dot, so the folder is no account's. A totals file holds totals only: no
+// visit, no id, no address. A file that does not read is left as it is: nothing is written over
+// what can't be read, and that game is not counted until a person has looked.
+//
+// A count is two small files read and written (the game's, then the site's), each replaced whole,
+// so a stop half way leaves a file that reads. The site's is second and is not waited on: a game's
+// own totals are what its creator is shown.
+PY_FOLDER :: ".plays";
+PY_SITE :: ".site";
+
+cli_plays_path :: (c: [] Cli, name: string, out: [] u8) -> string {
+  parts := [5] string.[cli_pub_root(c), "/", PY_FOLDER, ifx name.count > 0 then "/" else "", name];
+  return cli_pub_join(parts[..], out);
+}
+// Totals read from their file (a game's code, or PY_SITE): 1 read, 0 no file yet (nothing counted),
+// -1 a file that is not one.
+cli_plays_read :: (c: [] Cli, name: string, p: [] Plays) -> int {
+  pb: [PUB_PATH] u8; tb: [PY_TEXT + 1] u8;
+  p[0] = Plays.{};
+  path := cli_plays_path(c, name, pb[..]);
+  if path.count == 0 { return -1; }
+  if !fs_exists(path) { return 0; }
+  k := fs_read(path, tb[..]);
+  if k <= 0 || k > PY_TEXT || !py_read(cast(string) tb[0..<k], p) { p[0] = Plays.{}; return -1; }
+  return 1;
+}
+cli_plays_write :: (c: [] Cli, name: string, p: [] Plays) -> bool {
+  pb: [PUB_PATH] u8; tb: [PY_TEXT] u8;
+  path := cli_plays_path(c, name, pb[..]);
+  text := py_write(p, tb[..]);
+  return path.count > 0 && text.count > 0 && fs_replace_durable(path, text);
+}
+// One more of `fact` for the game at code, and for the site. False when the game's own totals could
+// not be kept: nothing was counted.
+cli_plays_add :: (c: [] Cli, code: string, fact: int) -> bool {
+  if !py_code_ok(code) || fact < 0 || fact >= PY_N { return false; }
+  fb: [PUB_PATH] u8;
+  folder := cli_plays_path(c, "", fb[..]);
+  if folder.count == 0 || (!fs_exists(folder) && !fs_mkdir(folder)) { return false; }
+  g: [1] Plays;
+  if cli_plays_read(c, code, g[..]) < 0 { return false; }
+  py_add(g[..], fact);
+  if !cli_plays_write(c, code, g[..]) { return false; }
+  s: [1] Plays;
+  if cli_plays_read(c, PY_SITE, s[..]) >= 0 {
+    py_add(s[..], fact);
+    if fact == PY_OPENED { py_top(s[..], code, g[0].n[PY_OPENED]); }
+    _ = cli_plays_write(c, PY_SITE, s[..]);
+  }
+  return true;
+}
+
+// POST /api/play/CODE/played: one more of the body's fact for the game. The answer's status; its JSON is
+// in refusal. A minute takes LP_PER_MINUTE counts at most, these and the loop's together (minute and taken
+// are the server's, kept between calls: cli/loop.coax).
+cli_pub_played :: (c: [] Cli, code: string, body: string, read_only: bool, minute: [] s64, taken: [] int, refusal: [] u8, json: [] string) -> int {
+  if read_only { json[0] = gb_api_refusal(403, "this server is read-only (gamebuilder serve --read-only): it keeps no counts", refusal); return 403; }
+  now := cast(s64) cxsock_now_ms() / 60000;
+  if now != minute[0] { minute[0] = now; taken[0] = 0; }
+  if taken[0] >= LP_PER_MINUTE { json[0] = gb_api_refusal(429, "this server takes 600 counts a minute (LP_PER_MINUTE): this one was not counted", refusal); return 429; }
+  fact := py_body_read(body);
+  if fact < 0 { json[0] = gb_api_refusal(400, PY_BODY_WORDS, refusal); return 400; }
+  if cli_pub_find(c, code) < 0 { json[0] = gb_api_refusal(404, "this game isn't available", refusal); return 404; }
+  taken[0] += 1;
+  if !cli_plays_add(c, code, fact) { json[0] = gb_api_refusal(503, "the game's counts can't be kept just now: this one was not counted", refusal); return 503; }
+  o: [1] Jo; jo_start(o[..], refusal);
+  gb_ok(o[..]); jo_key(o[..], "counted"); jo_str(o[..], PY_ROWS[fact].name); jo_end(o[..]);
+  json[0] = jo_text(o[..]);
+  return 200;
+}
+
+// Whether the game at `from` is one this server has a link for: a remix says where it came from only
+// when it is.
+cli_plays_known :: (c: [] Cli, from: string) -> bool {
+  ob: [80] u8;
+  return pub_code_ok(from) && cli_pub_owner(c, from, ob[..]).count > 0;
+}
+// A game was published for the first time (the account's store has it): when it is a remix of another
+// account's game, that game is counted one more remade. A remix of your own game is kept as one
+// (published says so) and counts for nothing: the number is of games brought by someone else.
+cli_plays_remade :: (c: [] Cli, game: s32) {
+  cb: [PUB_CODE] u8; ob: [80] u8;
+  from := pub_from(c[0].e[0].pub[..], game, cb[..]);
+  if from.count == 0 { return; }
+  who := cli_pub_owner(c, from, ob[..]);
+  if who.count == 0 || who == cli_pub_account(c) { return; }
+  _ = cli_plays_add(c, from, PY_REMADE);
+}
+// A game removed for good: its totals go with it, and it is in the site's top no more. What it
+// added to the site's totals stays: those are of everything that was ever counted.
+cli_plays_forget :: (c: [] Cli, code: string) {
+  if !py_code_ok(code) { return; }
+  pb: [PUB_PATH] u8;
+  path := cli_plays_path(c, code, pb[..]);
+  if path.count > 0 && fs_exists(path) { _ = fs_remove(path); }
+  s: [1] Plays;
+  if cli_plays_read(c, PY_SITE, s[..]) == 1 && py_top_drop(s[..], code) { _ = cli_plays_write(c, PY_SITE, s[..]); }
+}
+// The list the `published` row is given (GbWorld.plays): a line a game of the account's store that has
+// been counted. Into out; "" when there is none.
+cli_plays_list :: (c: [] Cli, out: [] u8) -> string {
+  s := c[0].e[0].pub[..]; n := 0;
+  for i: 0..<cast(s64) s[0].game_n {
+    code := s[0].games[i].code; p: [1] Plays;
+    if cli_plays_read(c, cast(string) code[0..<PUB_CODE], p[..]) != 1 { continue; }
+    k := py_list_put(out, n, cast(string) code[0..<PUB_CODE], p[..]);
+    if k > out.count { break; }
+    n = k;
+  }
+  return cast(string) out[0..<n];
+}
+
+// The funnel's part about published games (a hosted server's alone): how many links there are, the
+// site's totals, the number they are for, and the games most opened, each with its own totals.
+PY_GAMES_NOTE :: "Published games, counted since counting began. links: codes this server holds a game at. Each count is a time it happened, not a person: one visitor opening a link twice is two. remade: remixes of a game that another account published; remade over links is how many new published games one published game has brought, and above 1 the games spread on their own. Counts sent by hand are counted too (there is no player token yet): read them to see which games spread, not to pay anyone by.";
+cli_plays_funnel :: (c: [] Cli, o: [] Jo) {
+  ib: [PUB_PATH] u8; parts := [3] string.[cli_pub_root(c), "/", PUB_INDEX];
+  index := cli_pub_join(parts[..], ib[..]);
+  links := 0; more := false;
+  if index.count > 0 && fs_exists(index) && fs_list(index, c[0].list[..]) >= 0 {
+    for i: 0..<c[0].list[0].n { if pub_code_ok(fs_entry(c[0].list[..], i)) { links += 1; } }
+    more = c[0].list[0].full;
+  }
+  s: [1] Plays; read := cli_plays_read(c, PY_SITE, s[..]);
+  jo_key(o, "games"); jo_obj(o);
+  jo_key(o, "links"); jo_int(o, links);
+  if more { jo_key(o, "links_more"); jo_bool(o, true); }   // (more codes than one listing reads, FS_LIST_MAX: links is at least this)
+  for f: 0..<PY_N { jo_key(o, PY_ROWS[f].name); jo_int(o, s[0].n[f]); }
+  // remade over links, in thousandths: 1000 is one new published game a published game
+  jo_key(o, "remade_per_1000_links"); jo_int(o, ifx links > 0 then s[0].n[PY_REMADE] * 1000 / links else 0);
+  jo_key(o, "top"); jo_arr(o);
+  for i: 0..<s[0].top_n {
+    code := s[0].top[i].code; g: [1] Plays;
+    if cli_plays_read(c, cast(string) code[0..<PY_CODE], g[..]) != 1 { continue; }
+    jo_obj(o); jo_key(o, "code"); jo_str(o, cast(string) code[0..<PY_CODE]);
+    for f: 0..<PY_N { jo_key(o, PY_ROWS[f].name); jo_int(o, g[0].n[f]); }
+    jo_end(o);
+  }
+  jo_end(o);
+  if read < 0 { jo_key(o, "unread"); jo_bool(o, true); }   // (the site's totals file was not one: shown as nothing counted)
+  jo_key(o, "note"); jo_str(o, PY_GAMES_NOTE);
+  jo_end(o);
+}

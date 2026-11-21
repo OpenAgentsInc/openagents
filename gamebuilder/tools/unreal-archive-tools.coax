@@ -1,0 +1,94 @@
+// Shared local file and archive operations for the Unreal import commands.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#load "unreal-preview-zip.coax";
+
+UPV_LOG :: 262144;
+
+upv_fail :: (why: string) -> int {
+  tool_err("import-unreal: "); tool_errln(why); return 1;
+}
+upv_run :: (stage: string, argv: [] string, ms: int, out: [] u8) -> int {
+  err: [16384] u8;
+  r := proc_run(argv, ms, out, err[..]);
+  if r.started == 0 && r.status == 0 && !r.timed_out && !r.cut { return r.out_n; }
+  tool_err("import-unreal: "); tool_err(stage);
+  if r.timed_out { tool_errln(" exceeded its time limit"); }
+  else if r.cut { tool_errln(" exceeded the 256 KiB diagnostic limit"); }
+  else { tool_errln(" failed"); }
+  if r.out_n > 0 { tool_errln(cast(string) out[0..<r.out_n]); }
+  if r.err_n > 0 { tool_errln(cast(string) err[0..<r.err_n]); }
+  return -1;
+}
+
+upv_hash :: (path: string, size: int, out: [] u8) -> bool {
+  if size < 0 || out.count != 64 { return false; }
+  sha: [112] u8; sum: [32] u8; buf: [1048576] u8 = ---;
+  if sha256_init(sha[..]) != SHA_OK { return false; }
+  at := 0;
+  while at < size {
+    n := ifx size - at > buf.count then buf.count else size - at;
+    if fs_read_at(path, at, buf[0..<n]) != n || sha256_update_checked(sha[..], buf[0..<n], false) != SHA_OK { return false; }
+    at += n;
+  }
+  if sha256_final_checked(sha[..], sum[..], false) != SHA_OK { return false; }
+  h := "0123456789abcdef";
+  for c, i: sum { out[2 * i] = h[cast(int) (c >> 4)]; out[2 * i + 1] = h[cast(int) (c & 15)]; }
+  return true;
+}
+
+upv_read :: (path: string, out: [] u8) -> int {
+  n := fs_size(path);
+  return ifx n >= 0 && n <= out.count && fs_read_at(path, 0, out[0..<n]) == n then n else -1;
+}
+upv_starts :: (s: string, prefix: string) -> bool {
+  return s.count >= prefix.count && s[0..<prefix.count] == prefix;
+}
+
+upv_archive :: (zip: string, size: int, z: [] UzCatalog, end: [] UzEnd) -> string {
+  if size < 0 { return "ZIP must be a readable regular file"; }
+  if size > UZ_ARCHIVE_LIMIT { return "ZIP exceeds the 1 GiB archive limit"; }
+  tail: [65557] u8; n := ifx size < tail.count then size else tail.count;
+  if fs_read_at(zip, size - n, tail[0..<n]) != n { return "could not read the ZIP directory trailer"; }
+  end[0] = uz_end(tail[0..<n], size);
+  if end[0].error != "" { return end[0].error; }
+  central: [UZ_DIRECTORY_LIMIT] u8 = ---;
+  if fs_read_at(zip, end[0].at, central[0..<end[0].bytes]) != end[0].bytes { return "could not read the ZIP central directory"; }
+  return uz_catalog(central[0..<end[0].bytes], end[0], z);
+}
+
+// Verify the selected member's local header, inflate into the caller's
+// bounded buffers, and check the expanded size and CRC before any write.
+upv_member :: (zip: string, end: UzEnd, z: [] UzCatalog, i: int, packed: [] u8, decoded: [] u8) -> string {
+  e := z[0].entries[i]; name := uz_name(z, i);
+  if e.bytes > decoded.count || e.compressed > packed.count { return "selected ZIP member exceeds the extraction limit"; }
+  if (e.flags & 0xf7f1) != 0 { return "encrypted ZIP member or unsupported ZIP flags"; }
+  if e.method != 0 && e.method != 8 { return "only stored or DEFLATE ZIP members are supported"; }
+  head: [30] u8; local: [UZ_NAME] u8; normalized: [UZ_NAME] u8;
+  at := ifx fs_read_at(zip, e.offset, head[..]) == head.count then uz_data_at(head[..], e, end.at) else -1;
+  n := ifx at >= 0 then uz_le(head[..], 26, 2) else -1;
+  if n <= 0 || n > local.count || fs_read_at(zip, e.offset + 30, local[0..<n]) != n ||
+    uz_path(local[0..<n], normalized[..]) != n || cast(string) normalized[0..<n] != name {
+    return "ZIP local header disagrees with the central directory";
+  }
+  if fs_read_at(zip, at, packed[0..<e.compressed]) != e.compressed ||
+    !uz_decode(packed[0..<e.compressed], decoded[0..<e.bytes], e) {
+    return "ZIP member failed decompression, size or CRC validation";
+  }
+  return "";
+}
+
+// Both import commands run tools at exactly the pin they were built for.
+upv_pinned :: (root: string, pin: string, lines: [] u8) -> bool {
+  if root == "" || pin.count != 40 { _ = upv_fail("run through GameBuilder's script with the pinned OpenAgents tree"); return false; }
+  head := [5] string.["git", "-C", root, "rev-parse", "HEAD"];
+  n := upv_run("checking the OpenAgents pin", head[..], 30000, lines);
+  if n < 0 { return false; }
+  if cast(string) lines[0..<n] != pin { _ = upv_fail("OpenAgents is not at openagents.lock; run scripts/pin.sh sync"); return false; }
+  status := [6] string.["git", "-C", root, "status", "--porcelain", "--untracked-files=no"];
+  n = upv_run("checking the pinned sources", status[..], 30000, lines);
+  if n > 0 { _ = upv_fail("the pinned OpenAgents tree has tracked changes"); }
+  return n == 0;
+}

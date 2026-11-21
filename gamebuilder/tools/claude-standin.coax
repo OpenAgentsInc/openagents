@@ -1,0 +1,111 @@
+// A stand-in for the person's `claude -p --output-format stream-json` (issue 11), for
+// tools/resident-check.coax: it answers as Claude Code's stream-json does, and calls its tools
+// for real, through the MCP server its --mcp-config names (the resident's `gamebuilder mcp
+// --resident ID`). What it does is the job's word, read from the brief on stdin:
+//   pause-me   a plan's limit: a rate_limit_event, status rejected, resetsAt two seconds on; the
+//              next time (its log says it paused) it builds
+//   key-me     says its login is an API key (apiKeySource), then waits to be stopped
+//   slow-me    waits, working, for 20 seconds: to be stopped
+//   otherwise  builds: gb_add a block on its level through the MCP server, then answers
+// It writes what it was given to GB_STANDIN_LOG: whether a key reached its environment, and
+// whether it was told no settings and no tools of its own.
+//   coax/web/tool.sh tools/claude-standin.coax -p ... (as the resident starts it)
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/clock.coax";
+#load "../../coax/lib/json/json.coax";
+#import "Basic";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+
+SI_LOG :: 65536;
+si_find :: (s: string, part: string) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+si_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+si_line :: (s: string) { print("%\n", s); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 3; }
+  cfg := ""; tools_none := false; settings_none := false; allowed := "";
+  printed := false;
+  for i: 0..<args_count(a[..]) {
+    w := args_at(a[..], i);
+    if w == "--mcp-config" { cfg = args_at(a[..], i + 1); }
+    if w == "--tools=" { tools_none = true; }
+    if w == "--setting-sources=" { settings_none = true; }
+    if w.count > 15 && cast(string) w[0..<15] == "--allowedTools=" { allowed = w; }
+    if w == "-p" { printed = true; }
+  }
+  // not a turn (the check builds it first): nothing to read
+  if !printed { si_line("claude-standin"); return 0; }
+  // the brief, on stdin until it ends
+  pb: [65536] u8; pn := 0;
+  while true { b := cxterm_byte(-1); if b == -2 { break; } if b == -1 { continue; } if pn < pb.count { pb[pn] = cast(u8) b; pn += 1; } }
+  prompt := cast(string) pb[0..<pn];
+  eb: [256] u8; key := proc_getenv("ANTHROPIC_API_KEY", eb[..]);
+  lb: [1024] u8; logp := proc_getenv("GB_STANDIN_LOG", lb[..]);
+  had: [SI_LOG] u8; hn := ifx logp.count > 0 then fs_read(logp, had[..]) else 0;
+  before := ifx hn > 0 then cast(string) had[0..<hn] else "";
+  ob: [512] u8; on := 0;
+  on = si_put(ob[..], on, ifx key.count > 0 then "key:present " else "key:absent ");
+  on = si_put(ob[..], on, ifx tools_none then "tools:none " else "tools:some ");
+  on = si_put(ob[..], on, ifx settings_none then "settings:none " else "settings:some ");
+  on = si_put(ob[..], on, ifx si_find(allowed, "mcp__gamebuilder__gb_apply_edits") >= 0 then "allowed:rows " else "allowed:other ");
+  mode := ifx si_find(prompt, "pause-me") >= 0 && si_find(before, "paused") < 0 then "paused" else ifx si_find(prompt, "key-me") >= 0 then "key" else ifx si_find(prompt, "slow-me") >= 0 then "slow" else "build";
+  on = si_put(ob[..], on, mode); on = si_put(ob[..], on, "\n");
+  if logp.count > 0 { _ = fs_append(logp, cast(string) ob[0..<on]); }
+  if mode == "key" {
+    si_line("{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"ANTHROPIC_API_KEY\",\"session_id\":\"s\"}");
+    proc_sleep(20000);
+    return 0;
+  }
+  si_line("{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"session_id\":\"s\"}");
+  if mode == "slow" { proc_sleep(20000); return 0; }
+  if mode == "paused" {
+    s := cast(int) (cxproc_wall_us() / 1000000) + 2;
+    // resetsAt is in seconds
+    t: [512] u8; tn := si_put(t[..], 0, "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":");
+    db: [24] u8; dn := 0; x := s; while x > 0 { db[dn] = cast(u8) ('0' + x % 10); x /= 10; dn += 1; }
+    for i: 0..<dn { t[tn] = db[dn - 1 - i]; tn += 1; }
+    tn = si_put(t[..], tn, ",\"rateLimitType\":\"five_hour\"},\"session_id\":\"s\"}");
+    si_line(cast(string) t[0..<tn]);
+    si_line("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"num_turns\":1,\"duration_ms\":10,\"total_cost_usd\":0,\"result\":\"Claude usage limit reached\"}");
+    return 0;
+  }
+  // build: its level from the brief, and gb_add through the MCP server it was given
+  at := si_find(prompt, "Your level is level ");
+  level := 0;
+  if at >= 0 { i := at + 20; while i < prompt.count && prompt[i] >= '0' && prompt[i] <= '9' { level = level * 10 + cast(int) (prompt[i] - '0'); i += 1; } }
+  nodes: [256] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], cfg, nodes[..]) { si_line("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"no --mcp-config\"}"); return 0; }
+  d := da[0];
+  srv := jv_path(d, 0, "mcpServers.gamebuilder");
+  cb: [4096] u8; cn := jv_str(d, jv_get(d, srv, "command"), cb[..]);
+  h := proc_new();
+  ok := h >= 0 && cn > 0 && proc_arg(h, cast(string) cb[0..<cn]);
+  args := jv_get(d, srv, "args");
+  for i: 0..<jv_len(d, args) { ab: [4096] u8; an := jv_str(d, jv_at(d, args, i), ab[..]); ok = ok && an > 0 && proc_arg(h, cast(string) ab[0..<an]); }
+  ok = ok && proc_start(h) == 0;
+  if !ok { si_line("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"the MCP server did not start\"}"); return 0; }
+  _ = proc_send(h, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"1\"}}}\n");
+  lnb: [65536] u8;
+  _ = proc_line(h, 20000, lnb[..]);
+  _ = proc_send(h, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n");
+  cl: [512] u8; ctn := si_put(cl[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_add\",\"arguments\":{\"level\":");
+  lv: [8] u8; ln := 0; x := level; if x == 0 { lv[0] = '0'; ln = 1; } while x > 0 { lv[ln] = cast(u8) ('0' + x % 10); x /= 10; ln += 1; }
+  for i: 0..<ln { cl[ctn] = lv[ln - 1 - i]; ctn += 1; }
+  ctn = si_put(cl[..], ctn, ",\"kind\":\"block\",\"x\":100,\"z\":100}}}\n");
+  _ = proc_send(h, cast(string) cl[0..<ctn]);
+  n := proc_line(h, 20000, lnb[..]);
+  added := n > 0 && si_find(cast(string) lnb[0..<n], "\\\"ok\\\":true") >= 0;
+  _ = proc_close_stdin(h); _ = proc_wait(h, 10000); _ = proc_release(h);
+  si_line("{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"text\",\"text\":\"Adding a block.\"}]},\"session_id\":\"s\"}");
+  if !added { si_line("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"num_turns\":1,\"result\":\"gb_add was refused\"}"); return 0; }
+  si_line("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":2,\"duration_ms\":900,\"total_cost_usd\":0.0123,\"result\":\"I added a block.\"}");
+  return 0;
+}

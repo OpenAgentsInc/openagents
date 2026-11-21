@@ -1,0 +1,763 @@
+// The level as data, for an agent (GitHub issue 1, step 0): what an agent
+// reads, the edits it sends, and taking its turns back. No model is called
+// here; the agents pane (later) and its tools call these.
+//
+// Every format here is the engine's, so the same bytes serve a page on the
+// web, the CLI and an agent here (issue 1: only the pane is the desktop's).
+//
+// A level's kinds of thing are a content table (aethyr.content.v1,
+// metaverse-engine/content/tables.coax), the content a world's entities name
+// by row (ed_agent_tables): a shape is a kind of thing and its size.
+//   aethyr.content.v1 level REV
+//   reach 100000
+//   table shape id kind:text sx:cm sy:cm sz:cm
+//   1|start|60|180|60
+//   2|block|100|100|100
+// A level with a moving platform or a lift in it has two columns more,
+// `go:cm every:int` (level.coax): how far a row's things go and how many
+// milliseconds there and back takes.
+// Kinds: block, start (your team's), rival (theirs), tree, water, path.
+//
+// What an agent reads (ed_agent_scene): the open level as one JSON object, a
+// view made from those tables and the scene for a model to read:
+//   {"schema":"gamebuilder.level.v1","rev":N,"level":L,"game":G,"locked":B,"grid":CM,
+//    "content":"aethyr.content.v1 level ...",
+//    "things":[{"id":ID,"kind":ROW,"is":"block","x":CM,"y":CM,"z":CM,"yaw":DEG,"scale":PCT},...]}
+// Places are whole centimetres of the base's middle, Y up; turns whole
+// degrees; sizes whole percent, as world.edit.v1 carries them.
+//
+// What an agent sends (ed_agent_apply): one world.edit.v1 batch, the engine's
+// own wire (metaverse-engine/editor/world-edit.coax), from the revision it read:
+//   {"schema":"world.edit.v1","rev":N,"do":"apply","edits":[EDIT,...]}
+// A thing's edits: spawn (id 0; "kind" a row of the shape table), despawn,
+// move, rotate and scale. A new size is a new row, added in the same batch
+// before the spawn that names it, as the wire edits any content table:
+//   {"op":"cell","table":"shape","row":N,"col":"*","v":"N|block|200|50|100"}
+// A moving platform's or a lift's row may end with how far it goes (0 to 5000
+// cm) and how long there and back takes (1000 to 60000 ms), "N|mover|320|90|400|800|6000";
+// without them it goes as a new one does. set-field's distance and period change them.
+// N is the table's next row. Rows are only ever added (a row nothing stands
+// on changes nothing), so undo leaves them. The batch's things land as one
+// step that undo takes back, or none of it does. It is refused whole when the
+// level changed since the revision (someone edited, undid or redid), when the
+// level is not the person's to change, during play or a drag, or when one
+// edit is refused.
+//
+// The revision is a digest of what the level holds (each thing as placed and
+// sized, and which level it is), so it answers exactly "is this still the
+// level you read". An undo back to what was read is the level read.
+//
+// Taking a turn back (ed_agent_undo_turn): an agent's last batch, while
+// nothing the person did has come since; else the person's edit stands and the
+// agent is told so. Other agents' turns since are no bar: the batch's own
+// changes are taken back as one new step, leaving theirs (claims keep agents
+// apart, claims.coax), and refused when one of its things changed since. The
+// person's own Undo takes a turn back too: it is one ordinary step.
+//
+// Claims (claims.coax): an agent's batch that touches a thing in another
+// agent's claim, or puts one there, is refused whole ("claimed", naming whose
+// claim). The person's batch (agent 0) never is.
+//
+//   scripts/check.sh
+
+AGENT_TURNS :: 32;          // turns kept for taking back, newest last
+AGENT_REACH :: 20000;       // centimetres from the middle a thing may be put (the drawn ground's half)
+AGENT_SIZE_MIN :: 5;        // centimetres a side, at least, of a shape an agent adds
+AGENT_SIZE_MAX :: 20000;
+
+// ed_agent_undo_turn's answers.
+AGENT_UNDONE :: 1;          // the turn is taken back
+AGENT_ALREADY :: 2;         // it was already taken back (the person's Undo)
+AGENT_NONE :: 0;            // this agent has no turn to take back
+AGENT_CHANGED :: -1;        // the level changed since: nothing was taken back
+AGENT_REFUSED :: -2;        // not now: playing, dragging, or not the person's level
+
+AgentTurn :: struct { agent: s32; done: int; before: int; after: int; step: int; }   // step: its history step's digest
+AgentLog :: struct {
+  turns: [AGENT_TURNS] AgentTurn;
+  n: s32;
+  lit: [WE_BATCH] s32;      // the things the last turn made or changed, to light in the world
+  lit_n: s32;
+  lit_agent: s32;
+  made: [AGENT_TURNS] int;  // the steps agents' turns taken back out of order made (their digests), newest last
+  made_n: s32;
+}
+
+// ---- the revision
+
+agent_mix :: (h: int, v: int) -> int { return (h * 131 + v + 1000000007) % 2147483629; }
+
+// The level's revision: a digest of every thing as it stands and is sized,
+// and of which level it is. Adding a shape nobody uses changes nothing.
+ed_agent_rev :: (e: [] Editor) -> int {
+  h: int = 7;
+  h = agent_mix(h, cast(int) e[0].level); h = agent_mix(h, cast(int) e[0].game);
+  h = agent_mix(h, ifx e[0].official then 1 else 0);
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    h = agent_mix(h, cast(int) a.id); h = agent_mix(h, cast(int) a.kind);
+    h = agent_mix(h, cast(int) a.x); h = agent_mix(h, cast(int) a.y); h = agent_mix(h, cast(int) a.z);
+    h = agent_mix(h, cast(int) a.yaw); h = agent_mix(h, cast(int) a.scale);
+    h = agent_mix(h, cast(int) a.sx); h = agent_mix(h, cast(int) a.sy); h = agent_mix(h, cast(int) a.sz);
+    // (a moving platform's or a lift's way; a thing with none is digested as it always was)
+    if a.every > 0 { h = agent_mix(h, cast(int) a.go); h = agent_mix(h, cast(int) a.every); }
+  }
+  return h;
+}
+
+// ---- the content: the level's kinds of thing as a table (level.coax
+// writes it, as the level's file carries it)
+
+// The level's content tables (aethyr.content.v1) into out: its length, or 0
+// when it does not fit. A spawn's kind is a row of its table `shape`.
+ed_agent_tables :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  return level_tables_text(e, out).count;
+}
+
+// A row of the shape table as the wire's whole-row cell carries it,
+// "ID|KIND|SX|SY|SZ" (and for a kind that moves, optionally "|GO|EVERY"), read; not ok for anything else.
+AgentShape :: struct { ok: bool; id: int; kind: s32; sx: s32; sy: s32; sz: s32; go: s32; every: s32; }
+agent_number :: (s: string) -> int {
+  if s.count == 0 || s.count > 9 || s[0] == '0' { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+agent_shape_row :: (text: string) -> AgentShape {
+  parts: [7] string; n := 0; from := 0;
+  for i: 0..<text.count + 1 {
+    if i == text.count || text[i] == '|' {
+      if n >= 7 { return AgentShape.{}; }
+      parts[n] = text[from..<i]; n += 1; from = i + 1;
+    }
+  }
+  if n != 5 && n != 7 { return AgentShape.{}; }
+  r := AgentShape.{ok = true, id = agent_number(parts[0]), kind = level_kind_of(parts[1])};
+  sizes := [3] int.[agent_number(parts[2]), agent_number(parts[3]), agent_number(parts[4])];
+  for v: sizes { if v < 0 { return AgentShape.{}; } }
+  r.sx = cast(s32) sizes[0]; r.sy = cast(s32) sizes[1]; r.sz = cast(s32) sizes[2];
+  if r.id < 1 || r.kind < 0 { return AgentShape.{}; }
+  // (how far it goes and how long there and back takes: a kind that moves alone; left out, a new one's. "0" is a distance)
+  r.go = cast(s32) gk_go(cast(int) r.kind); r.every = cast(s32) gk_every(cast(int) r.kind);
+  if n == 7 {
+    go := ifx parts[5] == "0" then 0 else agent_number(parts[5]); every := agent_number(parts[6]);
+    if !gk_moves(cast(int) r.kind) || go < 0 || every < 0 { return AgentShape.{}; }
+    r.go = cast(s32) go; r.every = cast(s32) every;
+  }
+  return r;
+}
+
+// ---- reading
+
+agent_scene_text :: (e: [] Editor, out: [] u8) -> string {
+  tb: [8192] u8;
+  content := level_tables_text(e, tb[..]);
+  if content.count == 0 { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "gamebuilder.level.v1");
+  we_int(o[..], "rev", ed_agent_rev(e));
+  we_int(o[..], "level", cast(int) e[0].level);
+  we_int(o[..], "game", cast(int) e[0].game);
+  jo_key(o[..], "template"); jo_str(o[..], TEMPLATE_ID[e[0].plays]);
+  jo_key(o[..], "locked"); jo_bool(o[..], !ed_may_edit(e));
+  we_int(o[..], "grid", e[0].vp[0].grid);
+  jo_key(o[..], "content"); jo_str(o[..], content);
+  jo_key(o[..], "things"); jo_arr(o[..]);
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    jo_obj(o[..]);
+    we_int(o[..], "id", cast(int) a.id);
+    we_int(o[..], "kind", e[0].items[i].mesh);
+    jo_key(o[..], "is"); jo_str(o[..], level_kind_word(a.kind));
+    we_int(o[..], "x", cast(int) a.x); we_int(o[..], "y", cast(int) a.y); we_int(o[..], "z", cast(int) a.z);
+    we_int(o[..], "yaw", cast(int) a.yaw); we_int(o[..], "scale", cast(int) a.scale);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// The open level as gamebuilder.level.v1 into out. Its length, or 0 when it
+// does not fit.
+ed_agent_scene :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  return agent_scene_text(e, out).count;
+}
+
+// ---- the state, as the web answers it
+
+AGENT_FILE_MAX :: GT_LEVEL_FILE;    // a level's file, at most: 262,144 bytes (a check holds ed_save_max to it; shared/game-types.coax)
+
+// The open level as world.state.v1 into out: what openagents.com answers for
+// a world, so an agent reads a level here as it reads a world there. Its id is
+// the level's (or the game's, for a game's own level); the lane is dev, its
+// revision the one a batch names, its document the level's file. Its length,
+// or 0 when it does not fit.
+ed_agent_state :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  file: [AGENT_FILE_MAX] u8;
+  n := ed_save(e, file[..]);
+  if n == 0 { return 0; }
+  name: [32] u8;
+  nn := ifx e[0].official then ed_game_id(e[0].game, name[..]) else ed_level_id(e[0].level, name[..]);
+  if nn == 0 { return 0; }
+  st := ed_scene(e).st[0];
+  rev := ed_agent_rev(e);
+  v := WorldState.{lane = 0, rev = rev, dev = rev, when = 0, undo = st.done, redo = st.step_n - st.done};
+  return we_state_write(v, cast(string) name[0..<nn], cast(string) file[0..<n], "", out).count;
+}
+
+// ---- edits
+
+// The shape rows a batch adds, as it is checked, ahead of the level's own.
+AgentAdds :: struct { rows: [WE_BATCH] AgentShape; n: int; }
+
+agent_shape_is :: (e: [] Editor, adds: [] AgentAdds, r: AgentShape) -> int {
+  for i: 0..<cast(s64) e[0].shape_n {
+    h := e[0].shapes[i];
+    if h.kind == r.kind && h.sx == r.sx && h.sy == r.sy && h.sz == r.sz && h.go == r.go && h.every == r.every { return i + 1; }
+  }
+  for i: 0..<adds[0].n {
+    h := adds[0].rows[i];
+    if h.kind == r.kind && h.sx == r.sx && h.sy == r.sy && h.sz == r.sz && h.go == r.go && h.every == r.every { return h.id; }
+  }
+  return 0;
+}
+
+// Why one edit can't be carried out here, or "" when it can. The engine's
+// own reader has already checked it is an edit the wire carries. A row it
+// adds is kept in adds, so a later spawn may name it.
+agent_edit_why :: (e: [] Editor, w: WorldEdit, adds: [] AgentAdds) -> string {
+  rows := cast(int) e[0].shape_n + adds[0].n;
+  if w.op == WE_CELL {
+    if !we_table_is(w, "shape") { return "the level's one table is shape"; }
+    if !we_name_is(w, "*") { return "a shape is added whole: col \"*\""; }
+    if w.id != rows + 1 { return "a new shape is the table's next row"; }
+    tb := w.text;
+    r := agent_shape_row(cast(string) tb[0..<w.text_n]);
+    if !r.ok || r.id != w.id { return "a shape row is ID|KIND|SX|SY|SZ, and a moving platform's or a lift's may end |GO|EVERY"; }
+    if r.kind == KIND_START || r.kind == KIND_RIVAL { return "a level has one start for each team"; }
+    if !gt_offers(cast(int) e[0].plays, cast(int) r.kind) { return "this game type has no such kind: list-palette names the ones it has"; }
+    if r.sx < AGENT_SIZE_MIN || r.sx > AGENT_SIZE_MAX || r.sy < AGENT_SIZE_MIN || r.sy > AGENT_SIZE_MAX || r.sz < AGENT_SIZE_MIN || r.sz > AGENT_SIZE_MAX { return "a shape's side is 5 to 20000 cm"; }
+    // (a village building's row is its model's own size: how big it stands is its scale)
+    if gk_building(cast(int) r.kind) >= 0 && (r.sx != KIND_SX[r.kind] || r.sy != KIND_SY[r.kind] || r.sz != KIND_SZ[r.kind]) { return ed_building_size_why(e); }
+    if !gk_travel_ok(cast(int) r.kind, cast(int) r.go, cast(int) r.every) { n := gt_why_words(GT_WHY_TRAVEL, 0, 0, 0, e[0].why[..], 0); return cast(string) e[0].why[0..<n]; }
+    if agent_shape_is(e, adds, r) > 0 { return "that shape is a row already: name it"; }
+    if cast(int) e[0].shape_n + adds[0].n >= SHAPES_MAX { return "the shape table is full"; }
+    adds[0].rows[adds[0].n] = r; adds[0].n += 1;
+    return "";
+  }
+  if w.op != WE_SPAWN && w.op != WE_DESPAWN && w.op != WE_MOVE && w.op != WE_ROTATE && w.op != WE_SCALE {
+    return "only cell (the shape table), spawn, despawn, move, rotate and scale";
+  }
+  if w.op == WE_SPAWN {
+    if w.id != 0 { return "a spawn's id is 0: the level numbers it"; }
+    if w.kind < 1 || w.kind > rows { return "no such row of the shape table"; }
+    if w.kind <= cast(int) e[0].shape_n {
+      k := e[0].shapes[w.kind - 1].kind;
+      if k == KIND_START || k == KIND_RIVAL { return "a level has one start for each team"; }
+    }
+  }
+  // the app's first three types: as far as the drawn ground; the website's: their own bounds, below
+  if (w.op == WE_SPAWN || w.op == WE_MOVE) && !gt_sized(cast(int) e[0].plays) {
+    if w.x < -AGENT_REACH || w.x > AGENT_REACH || w.z < -AGENT_REACH || w.z > AGENT_REACH || w.y < 0 || w.y > AGENT_REACH { return "out of reach"; }
+  }
+  // the game type's bounds and sizes (shared/game-types.coax), in the website's words with their numbers
+  if w.op == WE_SPAWN {
+    sh := EdShape.{};
+    if w.kind <= cast(int) e[0].shape_n { sh = e[0].shapes[w.kind - 1]; }
+    else { r := adds[0].rows[w.kind - cast(int) e[0].shape_n - 1]; sh = EdShape.{kind = cast(s32) r.kind, sx = cast(s32) r.sx, sy = cast(s32) r.sy, sz = cast(s32) r.sz}; }
+    why := ed_bounds_why(e, sh.kind, w.x, w.y, w.z, cast(int) sh.sx, cast(int) sh.sy, cast(int) sh.sz, w.scale);
+    if why.count > 0 { return why; }
+    // a village building's own rules (shared/buildings.coax): its scale, its quarter turn, the ground, room, boxes
+    built := ed_building_why(e, sh.kind, w.x, w.y, w.z, w.yaw, w.scale, 0);
+    if built.count > 0 { return built; }
+  }
+  if w.op != WE_SPAWN {
+    i := ed_index(e, cast(s32) w.id);
+    if i < 0 { return "no such thing"; }
+    k := ed_actor(e, i).kind;
+    if w.op == WE_DESPAWN && (k == KIND_START || k == KIND_RIVAL) { return "a level has one start for each team"; }
+    if w.op == WE_MOVE || w.op == WE_SCALE {
+      a := ed_actor(e, i);
+      x := ifx w.op == WE_MOVE then w.x else cast(int) a.x; y := ifx w.op == WE_MOVE then w.y else cast(int) a.y; z := ifx w.op == WE_MOVE then w.z else cast(int) a.z;
+      sc := ifx w.op == WE_SCALE then w.scale else cast(int) a.scale;
+      why := ed_bounds_why(e, a.kind, x, y, z, cast(int) a.sx, cast(int) a.sy, cast(int) a.sz, sc);
+      if why.count > 0 { return why; }
+    }
+    if gk_building(cast(int) k) >= 0 && (w.op == WE_MOVE || w.op == WE_ROTATE || w.op == WE_SCALE) {
+      a := ed_actor(e, i);
+      built := ed_building_why(e, a.kind, ifx w.op == WE_MOVE then w.x else cast(int) a.x, ifx w.op == WE_MOVE then w.y else cast(int) a.y, ifx w.op == WE_MOVE then w.z else cast(int) a.z,
+        ifx w.op == WE_ROTATE then w.yaw else cast(int) a.yaw, ifx w.op == WE_SCALE then w.scale else cast(int) a.scale, a.id);
+      if built.count > 0 { return built; }
+    }
+  }
+  return "";
+}
+
+agent_refusal :: (o: [] Jo, error: string, rev: int, edit: int, why: string) {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, false);
+  jo_key(o, "error"); jo_str(o, error);
+  we_int(o, "rev", rev);
+  if edit >= 0 { we_int(o, "edit", edit); }
+  if why.count > 0 { jo_key(o, "why"); jo_str(o, why); }
+  jo_end(o);
+}
+
+agent_apply_text :: (e: [] Editor, agent: s32, batch: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  cur := ed_agent_rev(e);
+  if e[0].play[0].on { agent_refusal(o[..], "playing", cur, -1, "the level is being played"); return jo_text(o[..]); }
+  if e[0].drag != DRAG_NONE { agent_refusal(o[..], "busy", cur, -1, "the person is dragging something"); return jo_text(o[..]); }
+  if !ed_may_edit(e) { agent_refusal(o[..], "locked", cur, -1, "this level is not the person's to change: they must make their own copy"); return jo_text(o[..]); }
+  edits: [WE_BATCH] WorldEdit;
+  b := we_batch_read(batch, edits[..]);
+  if !b.ok || b.what != WB_APPLY { agent_refusal(o[..], "unreadable", cur, -1, "not a world.edit.v1 apply batch"); return jo_text(o[..]); }
+  if b.rev != cur { agent_refusal(o[..], "stale", cur, -1, "the level changed since that revision: read it again"); return jo_text(o[..]); }
+  adds: [1] AgentAdds;
+  for i: 0..<b.n {
+    why := agent_edit_why(e, edits[i], adds[..]);
+    if why.count > 0 { agent_refusal(o[..], "refused", cur, i, why); return jo_text(o[..]); }
+  }
+  // another agent's claim refuses the whole batch; the person's never does
+  wb: [512] u8;
+  for i: 0..<b.n {
+    why := claim_edit_why(e, agent, edits[i], wb[..]);
+    if why.count > 0 { agent_refusal(o[..], "claimed", cur, i, why); return jo_text(o[..]); }
+  }
+  s := ed_scene(e);
+  if s.st[0].open { agent_refusal(o[..], "busy", cur, -1, "another edit is open"); return jo_text(o[..]); }
+  // the new rows first: a row nothing stands on changes nothing, so they stay whatever follows
+  for k: 0..<adds[0].n {
+    r := adds[0].rows[k];
+    if ed_shape_go(e, r.kind, r.sx, r.sy, r.sz, r.go, r.every) != r.id { agent_refusal(o[..], "refused", cur, -1, "the shape table did not take a row"); return jo_text(o[..]); }
+  }
+  editor_scene_begin(s, EDITOR_SCENE_MOVE);
+  ids: [WE_BATCH] s32;
+  for i: 0..<b.n {
+    if edits[i].op == WE_CELL { ids[i] = cast(s32) edits[i].id; continue; }
+    r := we_scene_apply(s, edits[i]);
+    if !r.ok {
+      editor_scene_cancel(s);
+      agent_refusal(o[..], "refused", cur, i, "it names nothing there, changes nothing, or the level is full");
+      return jo_text(o[..]);
+    }
+    ids[i] = cast(s32) r.id;
+  }
+  // the batch as a whole: the village's buildings still stand by their rules (two of one batch may not stand in each other)
+  if e[0].plays == GT_VILLAGE {
+    built := ed_buildings_why(e);
+    if built.count > 0 { editor_scene_cancel(s); agent_refusal(o[..], "refused", cur, -1, built); return jo_text(o[..]); }
+  }
+  _ = editor_scene_end(s);
+  now := ed_agent_rev(e);
+  // remember the turn, so it can be taken back (a batch of rows alone is no step)
+  g := e[0].agent[..];
+  if now != cur {
+    if g[0].n == AGENT_TURNS {
+      for k: 0..<AGENT_TURNS - 1 { g[0].turns[k] = g[0].turns[k + 1]; }
+      g[0].n -= 1;
+    }
+    g[0].turns[g[0].n] = AgentTurn.{agent = agent, done = s.st[0].done, before = cur, after = now, step = agent_step_digest(s, s.st[0].done - 1)};
+    g[0].n += 1;
+  }
+  claims_touch(e, agent);
+  // what to light: what is still there of the things it touched
+  g[0].lit_n = 0; g[0].lit_agent = agent;
+  for i: 0..<b.n {
+    if edits[i].op != WE_CELL && ed_index(e, ids[i]) >= 0 { g[0].lit[g[0].lit_n] = ids[i]; g[0].lit_n += 1; }
+  }
+  if ed_index(e, e[0].selected) < 0 { e[0].selected = 0; }
+  e[0].dirty = true;
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true);
+  we_int(o[..], "rev", now);
+  jo_key(o[..], "ids"); jo_arr(o[..]);
+  for i: 0..<b.n { jo_int(o[..], cast(int) ids[i]); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// Carries out an agent's world.edit.v1 batch as one step undo takes back, and
+// writes the answer into out:
+//   {"ok":true,"rev":N,"ids":[ID,...]}             ids: each edit's thing (a spawn's new one), or a cell's row
+//   {"ok":false,"error":E,"rev":N,"edit":I,"why":WORDS}
+// E: stale, locked, playing, busy, unreadable or refused ("edit": which one).
+// The answer's length, or 0 when out is too small.
+ed_agent_apply :: (e: [] Editor, agent: s32, batch: [] u8, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  return agent_apply_text(e, agent, cast(string) batch, out).count;
+}
+
+// A history step as a number: its kind and each change, before and after. Equal steps are the
+// same edit, wherever the history has moved it.
+agent_item_mix :: (h: int, t: EditorItem) -> int {
+  m := agent_mix(h, t.id); m = agent_mix(m, t.mesh);
+  m = agent_mix(m, cast(int) (t.x * 1000)); m = agent_mix(m, cast(int) (t.y * 1000)); m = agent_mix(m, cast(int) (t.z * 1000));
+  m = agent_mix(m, cast(int) (t.yaw * 1000)); m = agent_mix(m, cast(int) (t.scale * 1000));
+  return m;
+}
+agent_step_digest :: (s: EditorScene, k: int) -> int {
+  if k < 0 || k >= s.st[0].step_n { return 0; }
+  st := s.steps[k];
+  h := agent_mix(agent_mix(11, st.kind), st.count);
+  if st.kind == EDITOR_SCENE_LAND { return h; }
+  for i: st.first..<st.first + st.count {
+    op := s.ops[i];
+    h = agent_mix(h, (ifx op.had then 2 else 0) + (ifx op.has then 1 else 0));
+    h = agent_item_mix(agent_item_mix(h, op.b), op.a);
+  }
+  return h;
+}
+// The step in [from, to) that is this digest's, newest first; -1 when none.
+agent_step_find :: (s: EditorScene, digest: int, from: int, to: int) -> int {
+  k := to - 1;
+  while k >= from { if s.steps[k].kind != EDITOR_SCENE_LAND && agent_step_digest(s, k) == digest { return k; } k -= 1; }
+  return -1;
+}
+// Whether step k is some agent's turn in the log (not the person's own edit).
+agent_step_is_turn :: (e: [] Editor, s: EditorScene, k: int) -> bool {
+  d := agent_step_digest(s, k);
+  g := e[0].agent[..];
+  for i: 0..<g[0].n { if g[0].turns[i].agent != 0 && g[0].turns[i].step == d { return true; } }   // the person's batch is no agent's
+  for i: 0..<g[0].made_n { if g[0].made[i] == d { return true; } }
+  return false;
+}
+AGENT_STEP_OPS :: WE_BATCH * 2;   // changes a turn taken back out of order may hold
+
+// Takes back this agent's last turn: AGENT_UNDONE, AGENT_ALREADY, AGENT_NONE,
+// AGENT_CHANGED or AGENT_REFUSED. Its last turn need not be the level's last
+// edit: when only other agents' turns came since, its own changes are taken
+// back as a new step and theirs stand. When the person edited since, or one of
+// its things is no longer as it left it, nothing is taken back. With every turn
+// of its taken back, its claims end.
+ed_agent_undo_turn :: (e: [] Editor, agent: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return AGENT_REFUSED; }
+  g := e[0].agent[..];
+  ti := cast(int) g[0].n - 1;
+  while ti >= 0 && g[0].turns[ti].agent != agent { ti -= 1; }
+  if ti < 0 { return AGENT_NONE; }
+  t := g[0].turns[ti];
+  if e[0].play[0].on || e[0].drag != DRAG_NONE || !ed_may_edit(e) { return AGENT_REFUSED; }
+  s := ed_scene(e);
+  if s.st[0].open { return AGENT_REFUSED; }
+  k := agent_step_find(s, t.step, 0, s.st[0].done);
+  if k < 0 {
+    // the person's Undo took it back already: it waits in their redo
+    if agent_step_find(s, t.step, s.st[0].done, s.st[0].step_n) < 0 { return AGENT_CHANGED; }
+    agent_turn_drop(e, ti, agent);
+    return AGENT_ALREADY;
+  }
+  for j: k + 1..<s.st[0].done { if !agent_step_is_turn(e, s, j) { return AGENT_CHANGED; } }
+  if k == s.st[0].done - 1 {
+    ed_history(e, false);
+    if s.st[0].done != k { return AGENT_CHANGED; }
+  } else {
+    // its changes, undone last first, as one new step: refused whole when a thing of its changed since
+    st := s.steps[k];
+    if st.count > AGENT_STEP_OPS { return AGENT_CHANGED; }
+    ops: [AGENT_STEP_OPS] EditorItemOp;
+    for i: 0..<st.count { ops[i] = s.ops[st.first + i]; }
+    editor_scene_begin(s, st.kind);
+    i := st.count - 1;
+    while i >= 0 {
+      if !editor_scene_push(s, editor_item_inverse(ops[i])) { editor_scene_cancel(s); return AGENT_CHANGED; }
+      i -= 1;
+    }
+    _ = editor_scene_end(s);
+    // both are agents' steps, not the person's: another agent's turn may still be taken back over them
+    agent_made(e, t.step); agent_made(e, agent_step_digest(s, s.st[0].done - 1));
+    if ed_index(e, e[0].selected) < 0 { e[0].selected = 0; }
+    e[0].dirty = true;
+  }
+  agent_turn_drop(e, ti, agent);
+  return AGENT_UNDONE;
+}
+// A step an agent made that is no longer a turn in the log: the turn it took back, and the step that did.
+agent_made :: (e: [] Editor, digest: int) {
+  g := e[0].agent[..];
+  if g[0].made_n == AGENT_TURNS { for m: 0..<AGENT_TURNS - 1 { g[0].made[m] = g[0].made[m + 1]; } g[0].made_n -= 1; }
+  g[0].made[g[0].made_n] = digest; g[0].made_n += 1;
+}
+// Turn ti is gone from the log; with the agent's last one gone, its claims end.
+agent_turn_drop :: (e: [] Editor, ti: int, agent: s32) {
+  g := e[0].agent[..];
+  for i: ti..<cast(int) g[0].n - 1 { g[0].turns[i] = g[0].turns[i + 1]; }
+  g[0].n -= 1;
+  g[0].lit_n = 0;
+  if ed_agent_turns(e, agent) == 0 { _ = claims_end(e, agent); }
+}
+
+// How many turns this agent can still take back, newest first.
+ed_agent_turns :: (e: [] Editor, agent: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  n: s32 = 0;
+  g := e[0].agent[..];
+  for i: 0..<g[0].n { if g[0].turns[i].agent == agent { n += 1; } }
+  return n;
+}
+
+// ---- checks
+
+AgentTest :: struct { e: [1] Editor; scene: [8192] u8; answer: [1024] u8; batch: [WE_BATCH_BODY] u8; }
+
+// A batch from these edits at this revision, through the export, and its answer.
+agent_try :: (t: [] AgentTest, agent: s32, rev: int, edits: [] WorldEdit) -> string {
+  batch := we_batch_write(rev, WB_APPLY, edits, edits.count, t[0].batch[..]);
+  if batch.count == 0 { return ""; }
+  m := ed_agent_apply(t[0].e[..], agent, t[0].batch[0..<batch.count], t[0].answer[..]);
+  return cast(string) t[0].answer[0..<m];
+}
+// A whole-row cell edit of the shape table, as an agent sends one.
+agent_test_cell :: (row: int, v: string) -> WorldEdit {
+  w := WorldEdit.{ok = true, op = WE_CELL, id = row};
+  tn := "shape"; for i: 0..<tn.count { w.table[i] = tn[i]; } w.table_n = tn.count;
+  w.name[0] = '*'; w.name_n = 1;
+  for i: 0..<v.count { w.text[i] = v[i]; } w.text_n = v.count;
+  return w;
+}
+agent_answer_ok :: (s: string) -> bool { return s.count > 11 && cast(string) s[0..<11] == "{\"ok\":true,"; }
+agent_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "an agent reads the level as data, with its revision" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_agent_scene(e, t[0].scene[..]);
+  text := cast(string) t[0].scene[0..<n];
+  #assert n > 0 && agent_has(text, "\"schema\":\"gamebuilder.level.v1\"") && agent_has(text, "\"locked\":false");
+  #assert agent_has(text, "\"is\":\"start\"") && agent_has(text, "{\"id\":2,\"kind\":2,\"is\":\"block\",\"x\":0,\"y\":0,\"z\":300,\"yaw\":0,\"scale\":100}");
+  #assert agent_has(text, "\"content\":\"aethyr.content.v1 level ");
+  // the revision is the level's: the same level reads the same, a change reads differently
+  r0 := ed_agent_rev(e);
+  #assert r0 == ed_agent_rev(e);
+  ed_add_block(e);
+  #assert ed_agent_rev(e) != r0;
+  ed_undo(e);
+  #assert ed_agent_rev(e) == r0;
+  // a buffer too small for it holds nothing
+  #assert ed_agent_scene(e, t[0].scene[0..<40]) == 0;
+}
+
+#test "a batch lands as one step: one undo takes all of it back" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_count(e);
+  ramp := cast(int) e[0].shape_n + 1;   // the shape table's next row
+  rows := e[0].shape_n;
+  r0 := ed_agent_rev(e);
+  was := ed_actor(e, 1);
+  rb: [64] u8; tr := [1] Text.[Text.{buf = rb[..]}];
+  tx_int(tr[..], cast(s64) ramp); tx_put(tr[..], "|block|200|50|100");
+  edits := [4] WorldEdit.[
+    agent_test_cell(ramp, cast(string) rb[0..<tr[0].at]),
+    WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = cast(int) ramp, x = 800, y = 0, z = 400, yaw = 90, scale = 100},
+    WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = cast(int) ramp, x = 900, y = 100, z = 400, yaw = 90, scale = 100},
+    WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) was.id, x = cast(int) was.x + 100, y = 0, z = cast(int) was.z}];
+  #assert agent_answer_ok(agent_try(t[..], 7, r0, edits[..]));
+  #assert ed_count(e) == n + 2 && ed_actor(e, 1).x == was.x + 100;
+  #assert e[0].agent[0].lit_n == 3 && e[0].agent[0].lit_agent == 7 && ed_agent_turns(e, 7) == 1;
+  #assert e[0].shape_n == rows + 1 && ed_actor(e, n).sx == 200 && ed_actor(e, n).sy == 50;
+  // the person's one Undo takes the whole turn back
+  ed_undo(e);
+  #assert ed_count(e) == n && ed_actor(e, 1).x == was.x && ed_agent_rev(e) == r0;
+  #assert e[0].shape_n == rows + 1;   // the row stays: nothing stands on it
+  // and the agent is told it already was
+  #assert ed_agent_undo_turn(e, 7) == AGENT_ALREADY && ed_agent_turns(e, 7) == 0;
+}
+
+#test "the agent's own undo takes its turn back, and never over a change of the person's since" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_count(e);
+  edits := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = 500, y = 0, z = 0, yaw = 0, scale = 100}];
+  #assert agent_answer_ok(agent_try(t[..], 3, ed_agent_rev(e), edits[..]));
+  #assert ed_agent_undo_turn(e, 4) == AGENT_NONE;   // another agent's turn is not this one's
+  #assert ed_agent_undo_turn(e, 3) == AGENT_UNDONE && ed_count(e) == n && ed_can_redo(e);
+  // a second turn, then the person adds a block: the agent may not take its turn back over it
+  #assert agent_answer_ok(agent_try(t[..], 3, ed_agent_rev(e), edits[..]));
+  ed_add_block(e);
+  #assert ed_agent_undo_turn(e, 3) == AGENT_CHANGED && ed_count(e) == n + 2;
+  // the person undoes their block: now it can
+  ed_undo(e);
+  #assert ed_agent_undo_turn(e, 3) == AGENT_UNDONE && ed_count(e) == n;
+}
+
+#test "a stale batch is refused whole, and so is one with a bad edit in it" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  r0 := ed_agent_rev(e);
+  ed_add_block(e);   // the person edits after the agent read
+  n := ed_count(e);
+  edits := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = 500, y = 0, z = 0, yaw = 0, scale = 100}];
+  a := agent_try(t[..], 1, r0, edits[..]);
+  #assert !agent_answer_ok(a) && agent_has(a, "\"error\":\"stale\"") && ed_count(e) == n;
+  // read again and the same edit lands
+  #assert agent_answer_ok(agent_try(t[..], 1, ed_agent_rev(e), edits[..]));
+  // a good edit then a move of nothing: neither lands, and the answer names the second
+  r1 := ed_agent_rev(e); n1 := ed_count(e); can := ed_can_redo(e);
+  two := [2] WorldEdit.[edits[0], WorldEdit.{ok = true, op = WE_MOVE, id = 999, x = 0, y = 0, z = 0}];
+  b := agent_try(t[..], 1, r1, two[..]);
+  #assert agent_has(b, "\"error\":\"refused\"") && agent_has(b, "\"edit\":1") && ed_count(e) == n1 && ed_agent_rev(e) == r1 && ed_can_redo(e) == can;
+  // an edit the engine refuses midway (a move to where it already is) also leaves nothing behind
+  a1 := ed_actor(e, 1);
+  same := [2] WorldEdit.[edits[0], WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) a1.id, x = cast(int) a1.x, y = cast(int) a1.y, z = cast(int) a1.z}];
+  #assert agent_has(agent_try(t[..], 1, r1, same[..]), "\"edit\":1") && ed_count(e) == n1 && ed_agent_rev(e) == r1;
+  // the starts stay: a level has one of each
+  start := ed_actor(e, 0);
+  #assert start.kind == KIND_START;
+  gone := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_DESPAWN, id = cast(int) start.id}];
+  #assert agent_has(agent_try(t[..], 1, r1, gone[..]), "one start for each team") && ed_count(e) == n1;
+  // shape rows: only the next one, never a start, a side in range, never one the table has
+  nx := cast(int) e[0].shape_n + 1;
+  rb: [64] u8; tr := [1] Text.[Text.{buf = rb[..]}]; tx_int(tr[..], cast(s64) nx);
+  base := tr[0].at;
+  cells := [5] string.["|start|60|180|60", "|block|1|100|100", "|block|100|100|100", "|lava|100|100|100", "|block|300|20|300"];
+  whys := [5] string.["one start for each team", "5 to 20000 cm", "a row already", "ID|KIND|SX|SY|SZ", ""];
+  for k: 0..<5 {
+    tr[0].at = base; tx_put(tr[..], cells[k]);
+    one := [1] WorldEdit.[agent_test_cell(nx, cast(string) rb[0..<tr[0].at])];
+    got := agent_try(t[..], 1, r1, one[..]);
+    if whys[k].count > 0 { #assert agent_has(got, whys[k]) && cast(int) e[0].shape_n == nx - 1; }
+    else { #assert agent_answer_ok(got) && cast(int) e[0].shape_n == nx && ed_agent_rev(e) == r1 && ed_agent_turns(e, 1) == 1; }
+  }
+  skip := [1] WorldEdit.[agent_test_cell(nx + 5, "1|block|300|20|300")];
+  #assert agent_has(agent_try(t[..], 1, r1, skip[..]), "the table's next row");
+  // out of reach
+  far := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = 90000, y = 0, z = 0, yaw = 0, scale = 100}];
+  #assert agent_has(agent_try(t[..], 1, r1, far[..]), "out of reach") && ed_count(e) == n1;
+  // and bytes that are not a batch
+  #assert agent_has(agent_apply_text(e, 1, "{\"edits\":[]}", t[0].answer[..]), "\"error\":\"unreadable\"");
+}
+
+#test "the level's content is the engine's content table, as its own reader reads it" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  doc: [1] ContentDoc;
+  n := ed_agent_tables(e, t[0].scene[..]);
+  #assert n > 0 && ct_read(doc[..], cast(string) t[0].scene[0..<n]);
+  #assert ct_rows(doc[..], 0) == cast(int) e[0].shape_n && doc[0].rev == cast(int) e[0].shape_n + 1;
+  #assert agent_has(cast(string) t[0].scene[0..<n], "\n1|start|60|180|60\n2|block|100|100|100\n");
+  // SPLICEBOTS' big ground fits the reach
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  m := ed_agent_tables(e, t[0].scene[..]);
+  #assert m > 0 && ct_read(doc[..], cast(string) t[0].scene[0..<m]);
+}
+
+#test "an agent can't change a game's own level unless the person owns it" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  #assert !ed_may_edit(e);
+  n := ed_agent_scene(e, t[0].scene[..]);
+  #assert agent_has(cast(string) t[0].scene[0..<n], "\"locked\":true");
+  c := ed_count(e);
+  edits := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = 500, y = 0, z = 0, yaw = 0, scale = 100}];
+  #assert agent_has(agent_try(t[..], 1, ed_agent_rev(e), edits[..]), "\"error\":\"locked\"") && ed_count(e) == c;
+}
+
+#test "the wire an agent writes by hand is the wire the engine reads" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_count(e);
+  o: [1] Jo; jo_start(o[..], t[0].batch[..]);
+  jo_put(o[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); jo_int(o[..], ed_agent_rev(e));
+  jo_put(o[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":500,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}]}");
+  m := ed_agent_apply(e, 1, t[0].batch[0..<o[0].n], t[0].answer[..]);
+  #assert agent_answer_ok(cast(string) t[0].answer[0..<m]) && ed_count(e) == n + 1;
+}
+
+#test "an agent reads the level's state as the web answers a world's, and a shape it adds is kept in the file" {
+  t: [1] AgentTest;
+  e := t[0].e[..];
+  ed_init(e, 800, 600);
+  #assert ed_save_max() <= AGENT_FILE_MAX;
+  big: [65536] u8; doc: [AGENT_FILE_MAX] u8; did: [1024] u8; scratch: [65536] u8;
+  n := ed_agent_state(e, big[..]);
+  #assert n > 0;
+  s := we_state_read(cast(string) big[0..<n], doc[..], did[..], scratch[..]);
+  #assert s.ok && s.lane == 0 && s.rev == ed_agent_rev(e) && s.undo == 0 && s.redo == 0 && cast(string) s.world[0..<s.world_n] == "level-1";
+  // the document is the level's file, and opens as the level
+  f: [1] Editor;
+  ed_init(f[..], 800, 600);
+  #assert ed_open(f[..], 1, doc[0..<s.doc_n]) && ed_agent_rev(f[..]) == ed_agent_rev(e);
+  // an agent adds a shape and a thing of it; the file keeps both
+  rows := cast(int) e[0].shape_n;
+  rb: [64] u8; tr := [1] Text.[Text.{buf = rb[..]}];
+  tx_int(tr[..], rows + 1); tx_put(tr[..], "|path|400|10|80");
+  edits := [2] WorldEdit.[
+    agent_test_cell(rows + 1, cast(string) rb[0..<tr[0].at]),
+    WorldEdit.{ok = true, op = WE_SPAWN, kind = rows + 1, x = 300, y = 0, z = -200, scale = 100},
+  ];
+  #assert agent_answer_ok(agent_try(t[..], 7, ed_agent_rev(e), edits[..]));
+  n = ed_agent_state(e, big[..]);
+  s = we_state_read(cast(string) big[0..<n], doc[..], did[..], scratch[..]);
+  #assert s.ok && s.undo == 1 && s.rev == ed_agent_rev(e);
+  ed_init(f[..], 800, 600);
+  #assert ed_open(f[..], 1, doc[0..<s.doc_n]) && f[0].shape_n == e[0].shape_n && e[0].shape_n == cast(s32) rows + 1 && ed_count(f[..]) == ed_count(e) && ed_agent_rev(f[..]) == ed_agent_rev(e);
+  last := ed_actor(f[..], ed_count(f[..]) - 1);
+  #assert last.kind == KIND_PATH && last.sx == 400 && last.sy == 10 && last.sz == 80;
+}
+
+// A spawn of a one-metre block at x, z.
+agent_test_block :: (x: int, z: int) -> WorldEdit { return WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = 2, x = x, y = 0, z = z, yaw = 0, scale = 100}; }
+agent_test_claim :: (e: [] Editor, agent: s32, region: string) -> bool {
+  r: [1] ClaimRegion; wb: [512] u8;
+  return claim_region_read(region, r[..]) == "" && claims_make(e, agent, "", r[0], wb[..]).error == "";
+}
+
+#test "two agents on one level: a claim refuses the other's edit in words, never the person's, and each one's work undoes on its own" {
+  t: [1] AgentTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  ed_claims_clock(e, 5000);
+  a: s32 = CLAIM_PANE0; b: s32 = CLAIM_PANE0 + 1;          // the pane's agents 1 and 2
+  #assert agent_test_claim(e, a, "box:-3000,-3000,-1000,-1000") && agent_test_claim(e, b, "box:1000,1000,3000,3000");
+  n := ed_count(e);
+  one := [1] WorldEdit.[agent_test_block(-2000, -2000)];
+  #assert agent_answer_ok(agent_try(t[..], a, ed_agent_rev(e), one[..]));
+  one[0] = agent_test_block(-1500, -1500);
+  #assert agent_answer_ok(agent_try(t[..], a, ed_agent_rev(e), one[..]));
+  one[0] = agent_test_block(2000, 2000);
+  #assert agent_answer_ok(agent_try(t[..], b, ed_agent_rev(e), one[..]));
+  a1 := ed_actor(e, n).id; a2 := ed_actor(e, n + 1).id; b1 := ed_actor(e, n + 2).id;
+  // b's batch with one edit in a's box is refused whole, in words naming a's claim
+  rev := ed_agent_rev(e);
+  two := [2] WorldEdit.[agent_test_block(1500, 1500), agent_test_block(-2500, -2500)];
+  got := agent_try(t[..], b, rev, two[..]);
+  #assert agent_has(got, "\"error\":\"claimed\"") && agent_has(got, "\"edit\":1") && agent_has(got, "is inside agent 1's claim") && ed_count(e) == n + 3 && ed_agent_rev(e) == rev;
+  // so is moving, turning or taking out a thing in it
+  mv := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) a1, x = 2000, y = 0, z = 1500}];
+  #assert agent_has(agent_try(t[..], b, rev, mv[..]), "thing " );
+  gone := [1] WorldEdit.[WorldEdit.{ok = true, op = WE_DESPAWN, id = cast(int) a1}];
+  #assert agent_has(agent_try(t[..], b, rev, gone[..]), "agent 1's claim") && ed_index(e, a1) >= 0;
+  // a's last turn is taken back though b's came after: a's thing goes, b's stays
+  #assert ed_agent_undo_turn(e, a) == AGENT_UNDONE && ed_index(e, a2) < 0 && ed_index(e, a1) >= 0 && ed_index(e, b1) >= 0;
+  #assert ed_claims_count(e) == 2;   // a has a turn left: its claim stands
+  // b's turns go, the last first, though a's step came between: a's thing stays, and b's claim ends with them
+  one[0] = agent_test_block(2500, 2500);
+  #assert agent_answer_ok(agent_try(t[..], b, ed_agent_rev(e), one[..]));
+  #assert ed_agent_undo_turn(e, b) == AGENT_UNDONE && ed_agent_undo_turn(e, b) == AGENT_UNDONE;
+  #assert ed_index(e, b1) < 0 && ed_index(e, a1) >= 0 && ed_agent_turns(e, b) == 0 && ed_claims_count(e) == 1;
+  // the person's edit lands in a's claim; a's turn now stays, the person's edit before it
+  one[0] = agent_test_block(-2600, -1200);
+  #assert agent_answer_ok(agent_try(t[..], 0, ed_agent_rev(e), one[..]));
+  p1 := ed_actor(e, ed_count(e) - 1).id;
+  #assert ed_agent_undo_turn(e, a) == AGENT_CHANGED && ed_index(e, a1) >= 0 && ed_index(e, p1) >= 0;
+  // when a's claim lapses, it refuses nothing
+  c: s32 = claim_named("cleo");
+  one[0] = agent_test_block(-2200, -2200);
+  #assert agent_has(agent_try(t[..], c, ed_agent_rev(e), one[..]), "agent 1's claim");
+  ed_claims_clock(e, 5000 + CLAIM_SECONDS);
+  #assert ed_claims_count(e) == 0 && agent_answer_ok(agent_try(t[..], c, ed_agent_rev(e), one[..]));
+  // the person takes back cleo's turn and their own: a's first turn goes now, over a's and b's taken-back steps
+  ed_undo(e); ed_undo(e);
+  #assert ed_index(e, p1) < 0 && ed_agent_undo_turn(e, a) == AGENT_UNDONE && ed_index(e, a1) < 0 && ed_count(e) == n;
+}

@@ -1,0 +1,45 @@
+// Browser scripts collect rectangles; the Coax judge decides whether text fits.
+pt_rect_fits :: (outer:[4]f64,inner:[4]f64)->bool {
+  return outer[2]>=44 && outer[3]>=44 && inner[2]>0 && inner[3]>0 && inner[0]>=outer[0]-0.5 && inner[1]>=outer[1]-0.5 && inner[0]+inner[2]<=outer[0]+outer[2]+0.5 && inner[1]+inner[3]<=outer[1]+outer[3]+0.5;
+}
+#test "picker text must fit even when the button itself is reachable" {
+  card:=[4]f64.[20,200,173,196];title:=[4]f64.[40,245,133,58];
+  #assert pt_rect_fits(card,title);
+  clipped:=title;clipped[1]=193;#assert !pt_rect_fits(card,clipped);
+  clipped=title;clipped[3]=160;#assert !pt_rect_fits(card,clipped);
+  clipped=title;clipped[0]=190;#assert !pt_rect_fits(card,clipped);
+  clipped=title;clipped[2]=0;#assert !pt_rect_fits(card,clipped);
+}
+pt_read_rect :: (d:Jv,node:int)->[4]f64 {
+  r:[4]f64;for i:0..<4 {at:=jv_at(d,node,i);v:=args_number(jv_raw(d,at));r[i]=ifx jv_kind(d,at)==JV_NUMBER && v.ok then v.value else -99999;}return r;
+}
+pt_reveal_picker :: (p:[]Pt,id:string)->bool {
+  quoted:[256]u8;o:[1]Jo;jo_start(o[..],quoted[..]);jo_str(o[..],id);js:[1024]u8;n:=ws_put(js[..],0,"(()=>{const e=document.getElementById(");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,");if(!e)return -2;const r=e.getBoundingClientRect();return r.top<8?-1:r.bottom>innerHeight-8?1:0})()");
+  for attempt:0..<12 {
+    side:=cast(int)pt_number(p,cast(string)js[0..<n],-2);if side==0 {return true;}if side==-2 {return false;}
+    _:=pb_heartbeat(pt_dir(p));ok:=false;
+    // Pan the page's outer padding, where no game choice is activated.
+    if p[0].touch {ok=pt_drag(p,1400,ifx side>0 then 600 else 300,1400,ifx side>0 then 300 else 600);}
+    else if p[0].driver==0 {w:=cast(int)pt_number(p,"innerWidth",0);h:=cast(int)pt_number(p,"innerHeight",0);ok=pb_mouse(p[0].c[..],"mouseWheel",w-12,h/2,"none",0,side*180);}
+    pt_event(p,"picker-scroll",id,ok);if !ok {return false;}_:=pb_wait(pt_dir(p),250);
+  }return false;
+}
+pt_picker_layout :: (p:[]Pt) {
+  ready:=pt_wait(p,"document.fonts.status==='loaded' && [...document.querySelectorAll('.picker .kind img')].every(e=>e.complete&&e.naturalWidth>0)",15000);
+  expression:="(()=>{const b=e=>{if(!e)return [];const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height]};return {schema:'player.picker-layout.v1',cards:[...document.querySelectorAll('.picker .kind')].map(e=>({id:e.id,picture:(()=>{const i=e.querySelector('img'),s=i&&getComputedStyle(i);return {bounds:b(i),naturalWidth:i?.naturalWidth||0,complete:i?.complete||false,src:i?.currentSrc||'',display:s?.display||'',visibility:s?.visibility||'',opacity:s?.opacity||''}})(),boxes:[b(e),b(e.querySelector('.no')),b(e.querySelector('.kn')),b(e.querySelector('.kl'))],lines:[...e.querySelectorAll('.no,.kn,.kl')].flatMap(t=>{const r=document.createRange();r.selectNodeContents(t);return [...r.getClientRects()].map(x=>[x.x,x.y,x.width,x.height])})}))}})()";
+  r:=ifx p[0].driver==0 then pb_read(p[0].c[..],expression) else wd_read(p[0].wd[..],expression);ok:=ready && r>=0;
+  if r>=0 {
+    d:=ifx p[0].driver==0 then cdp_doc(p[0].c[..]) else p[0].wd[0].doc[0];cards:=jv_get(d,r,"cards");ok=ok && jv_len(d,cards)==GT_WEB_TYPES;
+    for i:0..<jv_len(d,cards) {
+      one:=jv_at(d,cards,i);boxes:=jv_get(d,one,"boxes");card:=pt_read_rect(d,jv_at(d,boxes,0));number:=pt_read_rect(d,jv_at(d,boxes,1));title:=pt_read_rect(d,jv_at(d,boxes,2));caption:=pt_read_rect(d,jv_at(d,boxes,3));
+      fit:=jv_len(d,boxes)==4 && pt_rect_fits(card,number) && pt_rect_fits(card,title) && pt_rect_fits(card,caption) && title[1]>=number[1]+number[3]+2;
+      lines:=jv_get(d,one,"lines");fit=fit && jv_len(d,lines)>=3;for k:0..<jv_len(d,lines) {fit=pt_rect_fits(card,pt_read_rect(d,jv_at(d,lines,k))) && fit;}
+      picture:=jv_get(d,one,"picture");image:=pt_read_rect(d,jv_get(d,picture,"bounds"));opacity:=args_number(jv_raw(d,jv_get(d,picture,"opacity")));
+      painted:=jv_bool(d,jv_get(d,picture,"complete")) && jv_int(d,jv_get(d,picture,"naturalWidth"),0)>0 && jv_raw(d,jv_get(d,picture,"display"))!="none" && jv_raw(d,jv_get(d,picture,"visibility"))=="visible" && opacity.ok && opacity.value>0 && pt_rect_fits(card,image) && abs(image[2]-card[2])<=2.5 && abs(image[3]-card[3])<=2.5;
+      id:[128]u8;n:=jv_str(d,jv_get(d,one,"id"),id[..]);pt_event(p,"picker-labels",cast(string)id[0..<n],fit);ok=ok && fit;
+      pt_event(p,"picker-picture",cast(string)id[0..<n],painted);ok=ok && painted;
+    }
+    path:[4096]u8;_=fs_append(pt_path(p,"measurements.jsonl",path[..]),jv_raw(d,r));_=fs_append(pt_path(p,"measurements.jsonl",path[..]),"\n");
+  }
+  _:=pt_shot(p,"picker-labels.png");pt_result(p,"layout.controls",ok);
+}

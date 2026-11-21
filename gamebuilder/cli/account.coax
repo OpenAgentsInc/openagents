@@ -1,0 +1,648 @@
+// Who the CLI acts as, for `gamebuilder login`, `whoami` and `logout`, and for
+// the core's rule that only a game's owners change its own level
+// (coax/games.coax, ed_set_account).
+//
+// The login is GameBuilder's own. At a terminal it is in your browser (docs/cli.md, "Log in from
+// a browser"): the CLI opens https://gamebuilder.org/login/cli, you log in there by email if you
+// are not already, press "make a code" and copy the one-time code the page shows, and paste it
+// here; the CLI spends it (POST /api/auth/cli/redeem) for a login of its own, the same as the
+// browser's email login and no more. Or the one the app does (host/Sources/Account.swift), with
+// --email (and with no terminal):
+// your email, then the code sent to it, typed here. It goes to gamebuilder.org's
+// /api/auth/* (the OpenAgents login service, the same account as the app and the
+// site; web/login.coax), as an app: no browser page, no Origin, so the service
+// answers with the app's tokens. The login isn't bound to a device key, so its
+// refresh needs no proof.
+//
+// What is kept, mode 0600 in ~/.openagents/gamebuilder (0700):
+//   cli-login-PROFILE      origin, account, email, the access token and when it ends,
+//                          the refresh token (a refresh rotates both)
+//   cli-pending-PROFILE    an email code asked for and not yet typed (ten minutes)
+//   cli-app-email-PROFILE  the email the app's login proved, as whoami last learned it
+// PROFILE is --profile, else GAMEBUILDER_PROFILE, else "default"; the origin is
+// --origin, else GAMEBUILDER_ORIGIN, else https://gamebuilder.org.
+//
+// Without a login of its own, it uses the GameBuilder app's while the app's
+// access token lasts (~/.openagents/gamebuilder/login.json, or the same inside
+// the sandbox's container). It only reads that file, and never uses its refresh
+// token: the app's refreshes are bound to a key in this Mac's Secure Enclave,
+// and a refresh token used twice ends the app's login.
+//
+// Nothing here prints a token or a code.
+//   cli/check.sh
+#load "../../coax/lib/net/http.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../apps/openagents-cli/account_rules.coax";
+
+cxcli_now_s :: () -> int #foreign #effects(all);
+cxcli_mkdir_private :: (path: [] u8) -> int #foreign #effects(all);
+cxcli_write_private :: (path: [] u8, data: [] u8) -> int #foreign #effects(all);
+cxcli_read_line :: (out: [] u8, hide: int) -> int #foreign #effects(all);
+cxcli_isatty :: (fd: int) -> int #foreign #effects(all);
+
+AC_ORIGIN :: "https://gamebuilder.org";
+AC_HTTP_MS :: 15000;
+AC_APP_EPOCH :: 978307200;   // the app's dates are seconds from 2001-01-01 (Swift's JSONEncoder)
+AC_TOKEN :: 512;             // an access or refresh token, at most
+AC_FILE :: 4096;
+AC_CLI_CODE :: 32;           // a browser's code for the command line: 32 hex digits (128 bits)
+AC_CLI_PAGE :: "/login/cli"; // where the browser makes it
+
+// What the server said.
+AcCall :: struct { w: [1] HttpWork; out: [65536] u8; n: int; status: int; error: int; }
+ac_body :: (c: [] AcCall) -> string { return cast(string) c[0].out[0..<c[0].n]; }
+
+// The login in use.
+AC_NONE :: 0; AC_CLI :: 1; AC_APP :: 2;
+AC_HOSTED :: 3;   // a hosted server's caller (gamebuilder serve --accounts): the request's own login, nothing kept
+AcWho :: struct {
+  via: int;                                       // AC_NONE, AC_CLI (its own) or AC_APP (the app's)
+  access: [AC_TOKEN] u8; access_n: int;
+  refresh: [AC_TOKEN] u8; refresh_n: int;         // AC_CLI only
+  until: int;                                     // when the access token ends, in unix seconds
+  account: [64] u8; account_n: int;
+  email: [256] u8; email_n: int;
+  origin: [300] u8; origin_n: int;
+  profile: [64] u8; profile_n: int;
+  said: [240] u8; said_n: int;                    // the server's words for a refusal, kept
+}
+ac_origin_of :: (w: [] AcWho) -> string { return cast(string) w[0].origin[0..<w[0].origin_n]; }
+ac_profile_of :: (w: [] AcWho) -> string { return cast(string) w[0].profile[0..<w[0].profile_n]; }
+ac_email_of :: (w: [] AcWho) -> string { return cast(string) w[0].email[0..<w[0].email_n]; }
+ac_account_of :: (w: [] AcWho) -> string { return cast(string) w[0].account[0..<w[0].account_n]; }
+ac_wipe :: (w: [] AcWho) {
+  for i: 0..<AC_TOKEN { w[0].access[i] = 0; w[0].refresh[i] = 0; }
+  w[0].access_n = 0; w[0].refresh_n = 0;
+}
+// s into buf; its length, or -1 when it doesn't fit.
+ac_put :: (s: string, buf: [] u8) -> int {
+  if s.count > buf.count { return -1; }
+  for i: 0..<s.count { buf[i] = s[i]; }
+  return s.count;
+}
+// parts joined into out; "" when they don't fit.
+ac_join :: (parts: [] string, out: [] u8) -> string {
+  n := 0;
+  for p: parts { for c: p { if n >= out.count { return ""; } out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// A number's digits into out.
+ac_digits :: (v: int, out: [] u8) -> string {
+  if v <= 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  n := 0; k := v;
+  while k > 0 { n += 1; k /= 10; }
+  k = v;
+  for i: 0..<n { out[n - 1 - i] = cast(u8) ('0' + k % 10); k /= 10; }
+  return cast(string) out[0..<n];
+}
+
+// A profile's name: 1 to 32 of a-z, 0-9, - and _.
+ac_profile_ok :: (p: string) -> bool {
+  if p.count < 1 || p.count > 32 { return false; }
+  for c: p { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// An email worth sending: one @ with something each side, a dot after it, no spaces or quotes.
+ac_email_ok :: (e: string) -> bool {
+  if e.count < 5 || e.count > 254 { return false; }
+  at := -1;
+  for i: 0..<e.count {
+    c := e[i];
+    if c <= ' ' || c == '"' || c == '\\' || c >= 127 { return false; }
+    if c == '@' { if at >= 0 { return false; } at = i; }
+  }
+  if at < 1 || at > e.count - 4 { return false; }
+  for i: at + 2..<e.count - 1 { if e[i] == '.' { return true; } }
+  return false;
+}
+// A code as typed: 4 to 12 letters and digits, spaces and dashes dropped. Its length in out; -1 for none.
+ac_code :: (typed: string, out: [] u8) -> int {
+  n := 0;
+  for c: typed {
+    if c == ' ' || c == '-' { continue; }
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) { return -1; }
+    if n >= out.count { return -1; }
+    out[n] = c; n += 1;
+  }
+  return ifx n >= 4 && n <= 12 then n else -1;
+}
+// A browser's code as pasted: exactly 32 hex digits (spaces dropped, capitals made small), into
+// out. Its length (32), or -1 when it isn't one.
+ac_cli_code :: (typed: string, out: [] u8) -> int {
+  n := 0;
+  for c: typed {
+    if c == ' ' || c == '\t' { continue; }
+    d := ifx c >= 'A' && c <= 'F' then c + 32 else c;
+    if !((d >= '0' && d <= '9') || (d >= 'a' && d <= 'f')) { return -1; }
+    if n >= AC_CLI_CODE || n >= out.count { return -1; }
+    out[n] = d; n += 1;
+  }
+  return ifx n == AC_CLI_CODE then n else -1;
+}
+
+// ---- files
+
+// ~/.openagents/gamebuilder/NAME-PROFILE, or the folder when name is "".
+ac_file :: (w: [] AcWho, name: string, out: [] u8) -> string {
+  h: [1024] u8;
+  home := proc_getenv("HOME", h[..]);
+  if home.count == 0 { return ""; }
+  if name.count == 0 { parts := [2] string.[home, "/.openagents/gamebuilder"]; return ac_join(parts[..], out); }
+  parts := [5] string.[home, "/.openagents/gamebuilder/", name, "-", ac_profile_of(w)];
+  return ac_join(parts[..], out);
+}
+// Writes text to NAME-PROFILE, 0600 in a 0700 folder.
+ac_keep :: (w: [] AcWho, name: string, text: string) -> bool {
+  d: [1200] u8; p: [1200] u8; b: [AC_FILE] u8;
+  dir := ac_file(w, "", d[..]); path := ac_file(w, name, p[..]);
+  tn := ac_put(text, b[..]);
+  ok := dir.count > 0 && path.count > 0 && tn >= 0 && cxcli_mkdir_private(d[0..<dir.count]) == 0
+    && cxcli_write_private(p[0..<path.count], b[0..<tn]) == 0;
+  for i: 0..<b.count { b[i] = 0; }
+  return ok;
+}
+// NAME-PROFILE's text into out; "" when there is none.
+ac_read :: (w: [] AcWho, name: string, out: [] u8) -> string {
+  p: [1200] u8;
+  path := ac_file(w, name, p[..]);
+  if path.count == 0 || fs_kind(path) != FS_FILE { return ""; }
+  n := fs_read(path, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+ac_drop :: (w: [] AcWho, name: string) -> bool {
+  p: [1200] u8;
+  path := ac_file(w, name, p[..]);
+  return path.count > 0 && (fs_kind(path) != FS_FILE || fs_remove(path));
+}
+
+// Whole seconds of a number's text ("787000000.25" is 787000000); -1 for none.
+ac_seconds :: (s: string) -> int {
+  v := 0; n := 0;
+  for c: s { if c == '.' { break; } if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); n += 1; }
+  return ifx n == 0 || n > 12 then -1 else v;
+}
+
+// Keeps the CLI's own login: w's tokens, account, email and origin.
+ac_keep_login :: (w: [] AcWho) -> bool {
+  b: [AC_FILE] u8; t: [24] u8;
+  parts := [13] string.["origin ", ac_origin_of(w), "\naccount ", ac_account_of(w), "\nemail ", ac_email_of(w),
+    "\naccess ", cast(string) w[0].access[0..<w[0].access_n], "\naccess_until ", ac_digits(w[0].until, t[..]),
+    "\nrefresh ", cast(string) w[0].refresh[0..<w[0].refresh_n], "\n"];
+  text := ac_join(parts[..], b[..]);
+  ok := text.count > 0 && ac_keep(w, "cli-login", text);
+  for i: 0..<b.count { b[i] = 0; }
+  return ok;
+}
+// Reads the CLI's own login into w. False when there is none for this profile and origin.
+ac_load_login :: (w: [] AcWho) -> bool {
+  b: [AC_FILE] u8;
+  text := ac_read(w, "cli-login", b[..]);
+  ok := false;
+  if text.count > 0 && ar_line(text, "origin") == ac_origin_of(w) {
+    a := ac_put(ar_line(text, "access"), w[0].access[..]); r := ac_put(ar_line(text, "refresh"), w[0].refresh[..]);
+    c := ac_put(ar_line(text, "account"), w[0].account[..]); e := ac_put(ar_line(text, "email"), w[0].email[..]);
+    if a > 0 && r > 0 && c >= 0 && e >= 0 {
+      w[0].access_n = a; w[0].refresh_n = r; w[0].account_n = c; w[0].email_n = e;
+      w[0].until = ac_seconds(ar_line(text, "access_until"));
+      w[0].via = AC_CLI; ok = true;
+    }
+  }
+  for i: 0..<b.count { b[i] = 0; }
+  return ok;
+}
+
+// The value of "key": in the app's login file: a string's, or a number's text. "" when it isn't there.
+ac_json_field :: (text: string, key: string) -> string {
+  for i: 0..<text.count {
+    if text[i] != '"' || i + key.count + 2 > text.count || cast(string) text[i + 1..<i + 1 + key.count] != key || text[i + 1 + key.count] != '"' { continue; }
+    j := i + key.count + 2;
+    while j < text.count && (text[j] == ' ' || text[j] == ':') { j += 1; }
+    if j >= text.count { return ""; }
+    if text[j] == '"' {
+      k := j + 1; while k < text.count && text[k] != '"' && text[k] != '\\' { k += 1; }
+      return ifx k < text.count && text[k] == '"' then cast(string) text[j + 1..<k] else "";
+    }
+    k := j; while k < text.count && ((text[k] >= '0' && text[k] <= '9') || text[k] == '.' || text[k] == '-') { k += 1; }
+    return cast(string) text[j..<k];
+  }
+  return "";
+}
+// The GameBuilder app's access token, while it has more than a minute left. False when there is none.
+// Only for the default origin: the app logs in to the same service.
+ac_load_app :: (w: [] AcWho) -> bool {
+  h: [1024] u8; home := proc_getenv("HOME", h[..]);
+  if home.count == 0 || ac_origin_of(w) != AC_ORIGIN { return false; }
+  tails := [2] string.["/.openagents/gamebuilder/login.json", "/Library/Containers/com.openagents.gamebuilder/Data/.openagents/gamebuilder/login.json"];
+  for tail: tails {
+    p: [1200] u8; text: [AC_FILE] u8;
+    parts := [2] string.[home, tail];
+    path := ac_join(parts[..], p[..]);
+    if path.count == 0 || fs_kind(path) != FS_FILE { continue; }
+    n := fs_read(path, text[..]);
+    if n <= 0 { continue; }
+    body := cast(string) text[0..<n];
+    until := ac_seconds(ac_json_field(body, "accessUntil"));
+    a := ac_put(ac_json_field(body, "access"), w[0].access[..]);
+    c := ac_put(ac_json_field(body, "account"), w[0].account[..]);
+    ok := a > 8 && until > 0 && until + AC_APP_EPOCH - 60 > cxcli_now_s();
+    for i: 0..<text.count { text[i] = 0; }
+    if ok { w[0].access_n = a; w[0].account_n = ifx c > 0 then c else 0; w[0].until = until + AC_APP_EPOCH; w[0].via = AC_APP; return true; }
+    ac_wipe(w);
+  }
+  return false;
+}
+
+// ---- requests
+
+// One request to the origin, with the login's access token when there is one.
+ac_call :: (c: [] AcCall, w: [] AcWho, method: string, path: string, body: string) -> int {
+  url: [2400] u8;
+  parts := [2] string.[ac_origin_of(w), path];
+  full := ac_join(parts[..], url[..]);
+  c[0].n = 0; c[0].status = 0;
+  if full.count == 0 { c[0].error = HTTP_E_URL; return 0; }
+  auth: [AC_TOKEN + 40] u8;
+  ap := [2] string.["Authorization: Bearer ", cast(string) w[0].access[0..<w[0].access_n]];
+  head := ac_join(ap[..], auth[..]);
+  hs: [2] string; hn := 0;
+  if w[0].access_n > 0 { hs[hn] = head; hn += 1; }
+  if body.count > 0 { hs[hn] = "Content-Type: application/json"; hn += 1; }
+  res := http_do(c[0].w[..], method, full, hs[0..<hn], body, AC_HTTP_MS, 0, c[0].out[..]);
+  for i: 0..<auth.count { auth[i] = 0; }
+  c[0].error = res.error; c[0].n = ifx res.error == HTTP_OK then res.n else 0;
+  c[0].status = ifx res.error == HTTP_OK then res.code else 0;
+  return c[0].status;
+}
+// The server's words for a refusal ("error WORDS"), else a plain one.
+ac_said :: (c: [] AcCall) -> string {
+  if c[0].status == 0 { return "couldn't reach the server"; }
+  e := ar_line(ac_body(c), "error");
+  return ifx e.count > 0 then e else "the server refused it";
+}
+// Reads a logged-in answer's tokens into w. False when it isn't one.
+ac_take_tokens :: (c: [] AcCall, w: [] AcWho) -> bool {
+  body := ac_body(c);
+  a := ac_put(ar_line(body, "access_token"), w[0].access[..]);
+  r := ac_put(ar_line(body, "refresh_token"), w[0].refresh[..]);
+  account := ar_line(body, "account");
+  if a <= 0 || r <= 0 { return false; }
+  w[0].access_n = a; w[0].refresh_n = r;
+  if account.count > 0 { an := ac_put(account, w[0].account[..]); w[0].account_n = ifx an < 0 then 0 else an; }
+  life := ac_seconds(ar_line(body, "expires_in"));
+  w[0].until = cxcli_now_s() + ifx life > 0 then life else 3600;
+  w[0].via = AC_CLI;
+  return true;
+}
+// The CLI's own login, its access token renewed first when it has less than a minute left.
+// "" when it is good to use, else why not (and a login the server ended is forgotten).
+ac_fresh :: (w: [] AcWho) -> string {
+  if w[0].until - 60 > cxcli_now_s() { return ""; }
+  body: [AC_TOKEN + 40] u8; js: [AC_TOKEN + 8] u8;
+  jn := ar_json_str(cast(string) w[0].refresh[0..<w[0].refresh_n], js[..]);
+  parts := [3] string.["{\"refresh_token\":", cast(string) js[0..<ifx jn < 0 then 0 else jn], "}"];
+  req := ac_join(parts[..], body[..]);
+  c: [1] AcCall;
+  w[0].access_n = 0;   // a refresh carries no access token
+  st := ac_call(c[..], w, "POST", "/api/auth/refresh?as=lines", req);
+  for i: 0..<body.count { body[i] = 0; }
+  for i: 0..<js.count { js[i] = 0; }
+  if st == 200 && ac_take_tokens(c[..], w) { _ = ac_keep_login(w); return ""; }
+  if st == 401 { _ = ac_drop(w, "cli-login"); ac_wipe(w); return "your login has ended: run gamebuilder login"; }
+  said := ac_said(c[..]);
+  n := ifx said.count > w[0].said.count then w[0].said.count else said.count;
+  for i: 0..<n { w[0].said[i] = said[i]; }
+  w[0].said_n = n;
+  return cast(string) w[0].said[0..<n];
+}
+
+// ---- the commands
+
+AcFlags :: struct { profile: string; origin: string; email: string; code: string; browser: bool; }
+
+// Names the profile and the origin. "" when they are good, else why not.
+ac_open :: (w: [] AcWho, f: AcFlags) -> string {
+  env: [300] u8;
+  p := f.profile;
+  if p.count == 0 { p = proc_getenv("GAMEBUILDER_PROFILE", env[..]); }
+  if p.count == 0 { p = "default"; }
+  if !ac_profile_ok(p) { return "--profile is 1 to 32 of a-z, 0-9, - and _"; }
+  w[0].profile_n = ac_put(p, w[0].profile[..]);
+  oe: [300] u8;
+  o := f.origin;
+  if o.count == 0 { o = proc_getenv("GAMEBUILDER_ORIGIN", oe[..]); }
+  if o.count == 0 { o = AC_ORIGIN; }
+  if !ar_origin_ok(o) || o.count > w[0].origin.count { return "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"; }
+  w[0].origin_n = ac_put(o, w[0].origin[..]);
+  return "";
+}
+
+ac_refuse :: (o: [] Jo, error: string, why: string) -> int {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, false); jo_key(o, "error"); jo_str(o, error); jo_key(o, "why"); jo_str(o, why); jo_end(o);
+  return 1;
+}
+ac_answer :: (w: [] AcWho, o: [] Jo, already: bool) -> int {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, true);
+  jo_key(o, "account"); jo_str(o, ac_account_of(w)); jo_key(o, "email"); jo_str(o, ac_email_of(w));
+  jo_key(o, "via"); jo_str(o, ifx w[0].via == AC_CLI then "gamebuilder-cli" else "gamebuilder-app");
+  jo_key(o, "profile"); jo_str(o, ac_profile_of(w)); jo_key(o, "origin"); jo_str(o, ac_origin_of(w));
+  if already { jo_key(o, "already"); jo_bool(o, true); }
+  jo_end(o);
+  return 0;
+}
+
+// Asks the server who the login is (GET /api/auth/account), into w's account and email.
+// "" when it said, else why not.
+ac_ask_who :: (w: [] AcWho) -> string {
+  c: [1] AcCall;
+  st := ac_call(c[..], w, "GET", "/api/auth/account?as=lines", "");
+  body := ac_body(c[..]);
+  account := ar_line(body, "account");
+  if st == 0 { return "couldn't reach the server"; }
+  if st != 200 || account.count == 0 {
+    if w[0].via == AC_CLI { _ = ac_drop(w, "cli-login"); return "your login has ended: run gamebuilder login"; }
+    return "the app's login has ended: run gamebuilder login";
+  }
+  an := ac_put(account, w[0].account[..]); w[0].account_n = ifx an < 0 then 0 else an;
+  e := ac_put(ar_line(body, "primary"), w[0].email[..]);
+  if e > 0 { w[0].email_n = e; }
+  return "";
+}
+
+// A hosted server's caller: who the access token a request carried is, asked of the login service
+// at origin (GET /api/auth/account), into w's account and email. 200 when it said; 401 when the
+// token is no login's (ended, or never one); 0 when the service didn't answer. Nothing is kept,
+// and the token is wiped from w once asked.
+ac_hosted_who :: (w: [] AcWho, token: string, origin: string) -> int {
+  w[0] = AcWho.{};
+  w[0].via = AC_HOSTED;
+  on := ac_put(origin, w[0].origin[..]); tn := ac_put(token, w[0].access[..]);
+  if on <= 0 || tn <= 0 { ac_wipe(w); return 401; }
+  w[0].origin_n = on; w[0].access_n = tn;
+  c: [1] AcCall;
+  st := ac_call(c[..], w, "GET", "/api/auth/account?as=lines", "");
+  ac_wipe(w);
+  if st == 0 { return 0; }
+  account := ar_line(ac_body(c[..]), "account");
+  if st != 200 || account.count == 0 { return ifx st == 401 || st == 403 || st == 200 then 401 else 0; }
+  an := ac_put(account, w[0].account[..]); w[0].account_n = ifx an < 0 then 0 else an;
+  en := ac_put(ar_line(ac_body(c[..]), "primary"), w[0].email[..]); w[0].email_n = ifx en < 0 then 0 else en;
+  for i: 0..<c[0].out.count { c[0].out[i] = 0; }
+  return ifx an > 0 then 200 else 401;
+}
+
+// A hosted server's caller by a browser's login: the site's own cookie, as the page's request
+// carried it (coax/api.coax gb_api_cookie_call has already held the request to the site's own
+// page), passed on whole to origin's login service, which reads its own cookie in it and names the
+// account. As ac_hosted_who: 200 and w's account and email, 401 for a login that has ended or is
+// none, 0 when the service didn't answer. The cookie is kept nowhere.
+//
+// The login service gives a browser's session a new cookie once a day, in the answer to whichever
+// request comes first that day, and this server cannot hand an answer's cookie back to the browser.
+// So the page asks the login service who it is itself, first, each time it is about to call here
+// (web/account.coax: every pass begins with GET /api/auth/account): a new cookie, when one is due,
+// is given to the browser in that answer, and never to this server.
+ac_hosted_who_cookie :: (w: [] AcWho, cookie: string, origin: string) -> int {
+  w[0] = AcWho.{};
+  w[0].via = AC_HOSTED;
+  on := ac_put(origin, w[0].origin[..]);
+  if on <= 0 || cookie.count == 0 { ac_wipe(w); return 401; }
+  w[0].origin_n = on;
+  c: [1] AcCall;
+  url: [2400] u8;
+  parts := [2] string.[ac_origin_of(w), "/api/auth/account?as=lines"];
+  full := ac_join(parts[..], url[..]);
+  if full.count == 0 { return 0; }
+  head: [API_COOKIE + 16] u8;
+  hp := [2] string.["Cookie: ", cookie];
+  hs := [1] string.[ac_join(hp[..], head[..])];
+  if hs[0].count == 0 { return 401; }
+  res := http_do(c[0].w[..], "GET", full, hs[..], "", AC_HTTP_MS, 0, c[0].out[..]);
+  for i: 0..<head.count { head[i] = 0; }
+  c[0].error = res.error; c[0].n = ifx res.error == HTTP_OK then res.n else 0;
+  st := ifx res.error == HTTP_OK then res.code else 0;
+  c[0].status = st;
+  if st == 0 { return 0; }
+  account := ar_line(ac_body(c[..]), "account");
+  if st != 200 || account.count == 0 { return ifx st == 401 || st == 403 || st == 200 then 401 else 0; }
+  an := ac_put(account, w[0].account[..]); w[0].account_n = ifx an < 0 then 0 else an;
+  en := ac_put(ar_line(ac_body(c[..]), "primary"), w[0].email[..]); w[0].email_n = ifx en < 0 then 0 else en;
+  for i: 0..<c[0].out.count { c[0].out[i] = 0; }
+  return ifx an > 0 then 200 else 401;
+}
+
+// The login to use: the CLI's own (renewed when it needs it), else the app's. "" when there is one.
+ac_session :: (w: [] AcWho) -> string {
+  if ac_load_login(w) { return ac_fresh(w); }
+  if ac_load_app(w) { return ""; }
+  return "nobody is logged in: run gamebuilder login";
+}
+
+// whoami: who you act as, as the server says. Keeps the email it learns.
+ac_whoami :: (w: [] AcWho, o: [] Jo) -> int {
+  why := ac_session(w);
+  if why.count > 0 { return ac_refuse(o, ifx why == "couldn't reach the server" then "unreachable" else "not-logged-in", why); }
+  why = ac_ask_who(w);
+  if why.count > 0 { ac_wipe(w); return ac_refuse(o, ifx why == "couldn't reach the server" then "unreachable" else "not-logged-in", why); }
+  if w[0].via == AC_CLI { _ = ac_keep_login(w); } else { _ = ac_keep(w, "cli-app-email", ac_email_of(w)); }
+  ac_wipe(w);
+  return ac_answer(w, o, false);
+}
+
+// One line typed at the prompt (stderr); "" when nothing was.
+ac_ask :: (prompt: string, out: [] u8) -> string {
+  tool_err(prompt);
+  n := cxcli_read_line(out, 0);
+  if n <= 0 { return ""; }
+  s := 0; e := n;
+  while s < e && (out[s] == ' ' || out[s] == '\t') { s += 1; }
+  while e > s && (out[e - 1] == ' ' || out[e - 1] == '\t') { e -= 1; }
+  return cast(string) out[s..<e];
+}
+
+// Opens the page in this computer's browser (open on a Mac, xdg-open elsewhere). Not when
+// GAMEBUILDER_NO_BROWSER is set. Either way the address is said first, to open by hand.
+ac_open_page :: (url: string) {
+  nb: [8] u8;
+  if proc_getenv("GAMEBUILDER_NO_BROWSER", nb[..]).count > 0 { return; }
+  out: [64] u8; err: [256] u8;
+  un := [2] string.["uname", "-s"];
+  u := proc_run(un[..], 3000, out[..], err[..]);
+  mac := u.started == 0 && u.out_n >= 6 && cast(string) out[0..<6] == "Darwin";
+  argv := [2] string.[ifx mac then "open" else "xdg-open", url];
+  r := proc_run(argv[..], 5000, out[..], err[..]);
+}
+
+// login in the browser: the page makes a one-time code once you are logged in there, and you
+// paste it here (or pass it with --code). The code is spent for this computer's own login: the
+// browser's email login, at its level and no more (openagents INVARIANTS.md, "A command line's
+// login from a browser is the browser's email login, no more"). Nothing here prints the code.
+ac_login_browser :: (w: [] AcWho, f: AcFlags, o: [] Jo) -> int {
+  cb: [AC_CLI_CODE] u8; tb: [128] u8;
+  typed := f.code;
+  if typed.count == 0 {
+    ub: [400] u8;
+    up := [2] string.[ac_origin_of(w), AC_CLI_PAGE];
+    url := ac_join(up[..], ub[..]);
+    tool_errln("Log in in your browser, press \"make a code\", then copy it and paste it here.");
+    tool_err("The page: "); tool_errln(url);
+    ac_open_page(url);
+    tool_err("The code from the page: ");
+    n := cxcli_read_line(tb[..], 1);
+    tool_errln("");
+    typed = ifx n > 0 then cast(string) tb[0..<n] else "";
+    while typed.count > 0 && (typed[typed.count - 1] == ' ' || typed[typed.count - 1] == '\t') { typed = cast(string) typed[0..<typed.count - 1]; }
+  }
+  if typed.count == 0 {
+    return ac_refuse(o, "not-logged-in", "no code was pasted: run gamebuilder login again, or gamebuilder login --email YOU");
+  }
+  cn := ac_cli_code(typed, cb[..]);
+  for i: 0..<tb.count { tb[i] = 0; }
+  if cn < 0 { return ac_refuse(o, "bad-request", "that isn't the page's code: it is 32 letters and digits, from gamebuilder.org/login/cli"); }
+  body: [80] u8;
+  parts := [3] string.["{\"code\":\"", cast(string) cb[0..<cn], "\"}"];
+  req := ac_join(parts[..], body[..]);
+  c: [1] AcCall;
+  st := ac_call(c[..], w, "POST", "/api/auth/cli/redeem?as=lines", req);
+  for i: 0..<body.count { body[i] = 0; }
+  for i: 0..<cb.count { cb[i] = 0; }
+  if st != 200 || !ac_take_tokens(c[..], w) {
+    return ac_refuse(o, ifx st == 0 then "unreachable" else "not-logged-in", ac_said(c[..]));
+  }
+  _ = ac_drop(w, "cli-pending");
+  if ac_ask_who(w).count > 0 { ac_wipe(w); return ac_refuse(o, "not-logged-in", "the server did not say who the login is: run gamebuilder login again"); }
+  if !ac_keep_login(w) { ac_wipe(w); return ac_refuse(o, "operation-failed", "logged in, but the login could not be kept"); }
+  ac_wipe(w);
+  return ac_answer(w, o, false);
+}
+
+// login: in the browser (--browser; and the default at a terminal, with no --email or --code),
+// else your email, then the code sent to it. --email skips the first question; --code
+// finishes a login whose code was asked for before (by a run that had no one to type it), or with
+// --browser is the page's code.
+ac_login :: (w: [] AcWho, f: AcFlags, o: [] Jo) -> int {
+  // already logged in here: say who, and stop
+  if f.code.count == 0 && f.email.count == 0 && ac_load_login(w) && ac_fresh(w).count == 0 && ac_ask_who(w).count == 0 {
+    _ = ac_keep_login(w); ac_wipe(w);
+    return ac_answer(w, o, true);
+  }
+  ac_wipe(w); w[0].via = AC_NONE; w[0].account_n = 0; w[0].email_n = 0;
+  if f.browser && f.email.count > 0 { return ac_refuse(o, "bad-request", "--browser and --email are two ways in: use one"); }
+  if f.browser || (f.email.count == 0 && f.code.count == 0 && cxcli_isatty(0) == 1) { return ac_login_browser(w, f, o); }
+  pb: [AC_FILE] u8; pending := ""; email := "";
+  eb: [300] u8;
+  if f.code.count > 0 {
+    held := ac_read(w, "cli-pending", pb[..]);
+    if held.count == 0 || ar_line(held, "origin") != ac_origin_of(w) || ac_seconds(ar_line(held, "until")) < cxcli_now_s() {
+      return ac_refuse(o, "bad-request", "no code was asked for in the last ten minutes: run gamebuilder login --email YOU");
+    }
+    pending = ar_line(held, "pending");
+    en := ac_put(ar_line(held, "email"), eb[..]);
+    email = cast(string) eb[0..<ifx en < 0 then 0 else en];
+  } else {
+    typed := f.email;
+    tb: [300] u8;
+    if typed.count == 0 { typed = ac_ask("Your email: ", tb[..]); }
+    if !ac_email_ok(typed) { return ac_refuse(o, "bad-request", "that isn't an email address"); }
+    // lower case, as the app sends it
+    for i: 0..<typed.count { ch := typed[i]; eb[i] = ifx ch >= 'A' && ch <= 'Z' then ch + 32 else ch; }
+    email = cast(string) eb[0..<typed.count];
+    js: [300] u8; body: [400] u8;
+    jn := ar_json_str(email, js[..]);
+    parts := [3] string.["{\"email\":", cast(string) js[0..<ifx jn < 0 then 0 else jn], ",\"client\":\"app\"}"];
+    req := ac_join(parts[..], body[..]);
+    c: [1] AcCall;
+    st := ac_call(c[..], w, "POST", "/api/auth/email/start?as=lines", req);
+    if st != 200 { return ac_refuse(o, ifx st == 0 then "unreachable" else "refused", ac_said(c[..])); }
+    p := ar_line(ac_body(c[..]), "pending");
+    pn := ac_put(p, pb[..]);
+    if p.count == 0 || pn < 0 { return ac_refuse(o, "operation-failed", "the server's answer was not a sent code"); }
+    pending = cast(string) pb[0..<pn];
+    // kept, so a run with no one to type the code can finish with --code
+    nb: [24] u8; kb: [AC_FILE] u8;
+    kp := [9] string.["origin ", ac_origin_of(w), "\nemail ", email, "\npending ", pending, "\nuntil ", ac_digits(cxcli_now_s() + 600, nb[..]), "\n"];
+    kt := ac_join(kp[..], kb[..]);
+    if kt.count > 0 { _ = ac_keep(w, "cli-pending", kt); }
+    tool_err("We emailed a code to "); tool_err(email); tool_errln(". It works for ten minutes.");
+  }
+  cb: [16] u8; tb: [64] u8;
+  typed := f.code;
+  if typed.count == 0 { typed = ac_ask("The code: ", tb[..]); }
+  if typed.count == 0 {
+    return ac_refuse(o, "not-logged-in", "no code was typed: run gamebuilder login --code CODE within ten minutes");
+  }
+  cn := ac_code(typed, cb[..]);
+  if cn < 0 { return ac_refuse(o, "bad-request", "a code is 4 to 12 letters and digits, from the email"); }
+  js: [400] u8; body: [520] u8;
+  pj := ar_json_str(pending, js[..]);
+  parts := [5] string.["{\"code\":\"", cast(string) cb[0..<cn], "\",\"pending\":", cast(string) js[0..<ifx pj < 0 then 0 else pj], "}"];
+  req := ac_join(parts[..], body[..]);
+  c: [1] AcCall;
+  st := ac_call(c[..], w, "POST", "/api/auth/email/verify?as=lines", req);
+  for i: 0..<body.count { body[i] = 0; }
+  if st != 200 || !ac_take_tokens(c[..], w) {
+    return ac_refuse(o, ifx st == 0 then "unreachable" else "not-logged-in", ac_said(c[..]));
+  }
+  _ = ac_drop(w, "cli-pending");
+  en := ac_put(email, w[0].email[..]); w[0].email_n = ifx en < 0 then 0 else en;
+  _ = ac_ask_who(w);   // the account's own primary email, when the server says it
+  if !ac_keep_login(w) { ac_wipe(w); return ac_refuse(o, "operation-failed", "logged in, but the login could not be kept"); }
+  ac_wipe(w);
+  return ac_answer(w, o, false);
+}
+
+// logout: ends the CLI's own login on the server and forgets it here. The app's login is the app's.
+ac_logout :: (w: [] AcWho, o: [] Jo) -> int {
+  ended := false;
+  if ac_load_login(w) {
+    c: [1] AcCall;
+    ended = ac_call(c[..], w, "POST", "/api/auth/logout?as=lines", "{}") == 200;
+  }
+  ac_wipe(w);
+  if !ac_drop(w, "cli-login") || !ac_drop(w, "cli-pending") || !ac_drop(w, "cli-app-email") { return ac_refuse(o, "operation-failed", "could not forget the login"); }
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, true); jo_key(o, "profile"); jo_str(o, ac_profile_of(w));
+  jo_key(o, "ended"); jo_bool(o, ended);
+  jo_end(o);
+  return 0;
+}
+
+// The email your login proved, for the core's owners rule, with no request: the CLI's own
+// login's, else the app's while its access token lasts (as whoami last learned it). "" for nobody.
+ac_email :: (w: [] AcWho, out: [] u8) -> string {
+  if w[0].via == AC_HOSTED { n := ac_put(ac_email_of(w), out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+  b: [AC_FILE] u8;
+  text := ac_read(w, "cli-login", b[..]);
+  e := "";
+  if text.count > 0 && ar_line(text, "origin") == ac_origin_of(w) { e = ar_line(text, "email"); }
+  else if ac_load_app(w) {
+    ac_wipe(w);
+    e = ac_read(w, "cli-app-email", b[..]);
+    while e.count > 0 && (e[e.count - 1] == '\n' || e[e.count - 1] == ' ') { e = cast(string) e[0..<e.count - 1]; }
+  }
+  n := ac_put(e, out);
+  for i: 0..<b.count { b[i] = 0; }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+#test "the app's login file is read for its access token and its end, nothing else" {
+  body := "{\"access\":\"oa_at_abc123456\",\"refresh\":\"oa_rt_zzz\",\"accessUntil\":787000000.25,\"account\":\"acct_1\",\"deviceBound\":true}";
+  #assert ac_json_field(body, "access") == "oa_at_abc123456" && ac_json_field(body, "account") == "acct_1";
+  #assert ac_json_field(body, "accessUntil") == "787000000.25" && ac_seconds("787000000.25") == 787000000;
+  #assert ac_json_field(body, "nothing") == "" && ac_seconds("") == -1 && ac_seconds("x") == -1;
+  #assert ac_json_field("{\"access\" : \"t\"}", "access") == "t";
+}
+#test "a profile, an email and a code are read as typed" {
+  #assert ac_profile_ok("default") && ac_profile_ok("gb-2") && !ac_profile_ok("") && !ac_profile_ok("A") && !ac_profile_ok("a/b");
+  #assert ac_email_ok("me@example.com") && !ac_email_ok("me@example") && !ac_email_ok("me example@x.com") && !ac_email_ok("@x.com") && !ac_email_ok("a@b@c.com");
+  b: [16] u8; d: [24] u8;
+  #assert ac_code("123 456", b[..]) == 6 && cast(string) b[0..<6] == "123456";
+  #assert ac_code("12-34", b[..]) == 4 && ac_code("12", b[..]) == -1 && ac_code("12;34", b[..]) == -1;
+  k: [AC_CLI_CODE] u8;
+  #assert ac_cli_code("0123456789abcdef0123456789ABCDEF", k[..]) == 32 && cast(string) k[0..<32] == "0123456789abcdef0123456789abcdef";
+  #assert ac_cli_code(" 0123456789abcdef 0123456789abcdef ", k[..]) == 32;
+  #assert ac_cli_code("0123456789abcdef0123456789abcde", k[..]) == -1 && ac_cli_code("0123456789abcdef0123456789abcdef0", k[..]) == -1;
+  #assert ac_cli_code("0123456789abcdef0123456789abcdeg", k[..]) == -1 && ac_cli_code("482913", k[..]) == -1 && ac_cli_code("", k[..]) == -1;
+  #assert ac_digits(0, d[..]) == "0" && ac_digits(1763400000, d[..]) == "1763400000";
+}

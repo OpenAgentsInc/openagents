@@ -1,0 +1,180 @@
+// An agent's work as pictures, in the Agents pane (GitHub issue 9; docs/agents.md, "Pictures"):
+// each change card shows the level before and after the change, a play-test's card shows what it
+// saw, and an open agent's replay is a scrub along its changes, the level at each revision in turn.
+// The pictures are pictures.coax's, drawn by the app's renderer and kept beside the level; the
+// component kit draws no images, so each place a picture goes is left, said in words for those who
+// can't see it, and listed for the host (ed_agents_pic), which lays the picture over it, as New
+// Game's picker does its cards' (coax/picker.coax). A place whose picture isn't there says why.
+//   scripts/check.sh
+
+ATL_PLACES :: 24;             // pictures the pane shows at once
+ATL_PIC_SHARE :: 0.6f32;      // a picture's height over its width (PIC_H over PIC_W)
+ATL_REPLAY_W :: 240.0f32;     // points: the widest the replay's picture is drawn
+
+AtlPlace :: struct { x: f32; y: f32; w: f32; h: f32; level: s32; rev: s32; which: s32; }
+// The places this frame left for pictures, and the editor whose pictures they are.
+AtlPics :: struct { at: [ATL_PLACES] AtlPlace; n: int; height: f32; }
+// The replay's scrub: where its slider is, how many steps it has, and which is shown (-1: the last).
+AtlScrub :: struct { who: int = -1; at: int = -1; steps: int; x: f32; w: f32; dragging: bool; }
+
+// One picture's place, w wide: the picture laid over it when the open level keeps it, else why not,
+// in words. label: what it is of (its words for a screen reader, and its caption). Its height.
+atl_pic :: (f: [] UiFrame, pl: [] AtlPics, e: [] Editor, id: string, level: s32, rev: s32, which: s32, label: string, x: f32, y: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  h := w * ATL_PIC_SHARE;
+  kept := e.count == 1 && ed_level(e) == level && pic_has(e, cast(int) rev, which);
+  _ := sheet_box(f[0].sheet, x, y, w, h, s.radius_control, s.border, s.raised, s.hairline);
+  _ := uiframe_semantic(f, id, EL_IMAGE, label, x, y, w, h, 0, 0);
+  if kept {
+    if pl.count == 1 && pl[0].n < ATL_PLACES && y + h > 0 && y < pl[0].height {
+      pl[0].at[pl[0].n] = AtlPlace.{x = x, y = y, w = w, h = h, level = level, rev = rev, which = which};
+      pl[0].n += 1;
+    }
+  } else {
+    why := ifx e.count != 1 || ed_level(e) != level then "Its level isn't the one open, so its picture isn't here."
+      else (ifx pic_waiting(e, cast(int) rev, which) then "Being drawn..." else "No picture: the app draws one as the change is made, and a level keeps its last 32.");
+    _ = control_copy(f[0].sheet, m, s.small, s.faint, x + s.space / 2, y + s.space / 2, w - s.space, why);
+  }
+  _ := sheet_text(f[0].sheet, m, -1, x, y + h + s.space / 4, s.small.line, s.small.face, s.muted, label);
+  return h + s.space / 4 + s.small.line;
+}
+
+// A change card's two pictures side by side, before and after. Its height.
+atl_pics_change :: (f: [] UiFrame, pl: [] AtlPics, e: [] Editor, ev: AgrEvent, k: int, x: f32, y: f32, w: f32) -> f32 {
+  gap := f[0].skin.space / 2;
+  pw := (w - gap) / 2;
+  ib: [32] u8;
+  a := atl_pic(f, pl, e, atl_id("card", k, ".before", ib[..]), ev.level, ev.before, PIC_BEFORE, "Before", x, y, pw);
+  b := atl_pic(f, pl, e, atl_id("card", k, ".after", ib[..]), ev.level, ev.after, PIC_AFTER, "After", x + pw + gap, y, pw);
+  return ifx a > b then a else b;
+}
+
+// The height atl_pics_change takes, w wide.
+atl_pics_change_height :: (f: [] UiFrame, w: f32) -> f32 {
+  s := f[0].skin;
+  return (w - s.space / 2) / 2 * ATL_PIC_SHARE + s.space / 4 + s.small.line;
+}
+
+// The change events of who, oldest first, into slots: how many.
+atl_changes :: (r: [] AtlRing, who: int, slots: [] int) -> int {
+  n := 0;
+  for i: 0..<r[0].n {
+    k := atl_slot(r, i);
+    if r[0].who[k] != who || r[0].ev[k].type != AGR_EDIT || n >= slots.count { continue; }
+    slots[n] = k; n += 1;
+  }
+  return n;
+}
+
+// The replay: the level at each of who's changes, one at a time, and a slider along them; step 0 is
+// the level before its first change, step i the level after its i-th. Nothing when it changed nothing.
+// Its height.
+atl_replay :: (f: [] UiFrame, r: [] AtlRing, who: int, pl: [] AtlPics, sc: [] AtlScrub, e: [] Editor, x: f32, top: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  slots: [ATL_CARDS] int;
+  n := atl_changes(r, who, slots[..]);
+  if sc[0].who != who { sc[0].who = who; sc[0].at = -1; sc[0].dragging = false; }
+  sc[0].steps = n + 1;
+  if n == 0 { sc[0].steps = 0; return 0; }
+  at := ifx sc[0].at < 0 || sc[0].at > n then n else sc[0].at;
+  y := top;
+  _ := sheet_text(f[0].sheet, m, -1, x, y, s.small.line, s.small.face, s.muted, "Replay: the level at each change");
+  y += s.small.line + s.space / 4;
+  ev := r[0].ev[slots[ifx at == 0 then 0 else at - 1]];
+  rev := ifx at == 0 then ev.before else ev.after;
+  which: s32 = ifx at == 0 then PIC_BEFORE else PIC_AFTER;
+  // its words: which step, and what that change did
+  wb: [AGR_TEXT + 64] u8;
+  wn := agr_put(wb[..], 0, "Step "); wn = agr_int(wb[..], wn, cast(s64) at); wn = agr_put(wb[..], wn, " of "); wn = agr_int(wb[..], wn, cast(s64) n);
+  if at == 0 { wn = agr_put(wb[..], wn, ": before its first change"); }
+  else { wn = agr_put(wb[..], wn, ": "); wn = agr_put(wb[..], wn, cast(string) r[0].ev[slots[at - 1]].text[0..<ev.text_n]); }
+  words := sheet_pool(f[0].sheet, cast(string) wb[0..<wn]);
+  pw := ifx w > ATL_REPLAY_W then ATL_REPLAY_W else w;
+  y += atl_pic(f, pl, e, "replay.picture", ev.level, rev, which, words, x, y, pw) + s.space / 2;
+  // the slider along the changes: dragged, the picture follows
+  sc[0].x = x; sc[0].w = w;
+  ctx_slider(f, "replay", x, y, w, words, cast(f32) at / cast(f32) n, 0, 0);
+  y += s.control_h + s.space;
+  return y - top;
+}
+
+// The pointer on the replay's slider: down on it, it follows the pointer until up. True when taken.
+atl_scrub_pointer :: (sc: [] AtlScrub, id: string, x: f32, phase: int) -> bool {
+  if sc.count != 1 || sc[0].steps < 2 { return false; }
+  if phase == 0 { if id != "replay" { return false; } sc[0].dragging = true; }
+  else if !sc[0].dragging { return false; }
+  share := ifx sc[0].w > 0 then (x - sc[0].x) / sc[0].w else 0;
+  if share < 0 { share = 0; } if share > 1 { share = 1; }
+  sc[0].at = cast(int) (share * cast(f32) (sc[0].steps - 1) + 0.5);
+  if phase >= 2 { sc[0].dragging = false; }
+  return true;
+}
+
+// ---- checks
+
+#test "the replay's slider follows the pointer along an agent's changes, from the level before the first to after the last" {
+  sc: [1] AtlScrub;
+  sc[0].steps = 5; sc[0].x = 10; sc[0].w = 200;
+  #assert !atl_scrub_pointer(sc[..], "card.1", 50, 0) && !sc[0].dragging;
+  #assert atl_scrub_pointer(sc[..], "replay", 10, 0) && sc[0].at == 0 && sc[0].dragging;
+  #assert atl_scrub_pointer(sc[..], "", 110, 1) && sc[0].at == 2;
+  #assert atl_scrub_pointer(sc[..], "", 400, 1) && sc[0].at == 4;
+  #assert atl_scrub_pointer(sc[..], "", 160, 2) && sc[0].at == 3 && !sc[0].dragging;
+  #assert !atl_scrub_pointer(sc[..], "", 10, 1) && sc[0].at == 3;
+  // one step is nothing to scrub
+  sc[0].steps = 1;
+  #assert !atl_scrub_pointer(sc[..], "replay", 10, 0);
+}
+
+AtlPicTest :: struct { s: [1] PicStore; px: [PIC_W * PIC_DRAW * PIC_H * PIC_DRAW * 4] u8; }
+
+#test "an agent's change card shows the level before and after, drawn and kept; the replay scrubs back to before its first change" #steps 400000000 {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  q: [1] AtlPicTest;
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ADVENTURE}, GbWorld.{levels = none[0..<0]}, p[0].answer[..]).code == GB_DONE;
+  ed_pics_attach(e, q[0].s[..]);
+  p[0].now = AG_TEST_NOW;
+  ed_agents_demo(p, e);
+  c := atl_last(p[0].ring[..], 0, AGR_EDIT);
+  ev := p[0].ring[0].ev[c];
+  // the change queued the level before and after it, which are not drawn yet: the card says so
+  #assert ed_pic_due(e) == 2;
+  ag_test_frame(t[..]);
+  #assert ed_agents_pics(p) == 0 && surface_find(p[0].surface[..], "replay") >= 0;
+  // the host draws each (here, a plain fill) and hands it back
+  w := PIC_W * PIC_DRAW; h := PIC_H * PIC_DRAW;
+  for i: 0..<w * h * 4 { q[0].px[i] = cast(u8) (i % 251); }
+  pe: [1] Editor;
+  while ed_pic_due(e) > 0 {
+    #assert ed_pic_stage(e, pe[..], PIC_W, PIC_H) == PIC_BOXES;
+    #assert ed_pic_put(e, q[0].px[..], cast(s32) w, cast(s32) h, cast(s32) (w * 4), true, 5);
+  }
+  #assert pic_has(e, cast(int) ev.before, PIC_BEFORE) && pic_has(e, cast(int) ev.after, PIC_AFTER);
+  // now the card's two places and the replay's are listed for the host, by revision
+  ag_test_frame(t[..]);
+  #assert ed_agents_pics(p) == 3;
+  r: [4] f32; of: [3] s32; befores := 0; afters := 0;
+  for i: 0..<3 {
+    #assert ed_agents_pic(p, cast(s32) i, r[..], of[..]) && r[2] > 0 && r[3] > 0 && of[0] == ev.level;
+    if of[2] == PIC_BEFORE && of[1] == ev.before { befores += 1; }
+    if of[2] == PIC_AFTER && of[1] == ev.after { afters += 1; }
+  }
+  #assert befores == 1 && afters == 2 && !ed_agents_pic(p, 3, r[..], of[..]);
+  // the replay dragged to its start: the level before the first change
+  p[0].scrub[0].at = 0;
+  ag_test_frame(t[..]);
+  befores = 0;
+  for i: 0..<ed_agents_pics(p) { _ = ed_agents_pic(p, i, r[..], of[..]); if of[2] == PIC_BEFORE { befores += 1; } }
+  #assert befores == 2;
+  // a play-test from the pane: its card names the revision it played, and shows what it saw
+  #assert ag_call(p, e, 0, VERB_PLAY_TEST, "{\"seconds\":60}").code == GB_DONE;
+  k := atl_last(p[0].ring[..], 0, AGR_TOOL);
+  #assert p[0].ring[0].ev[k].level == ed_level(e) && p[0].ring[0].ev[k].after == cast(s32) ed_agent_rev(e) && ed_pic_due(e) == 1;
+  #assert ed_pic_stage(e, pe[..], PIC_W, PIC_H) == PIC_BOXES && pic_segs(pe[..]).count > 0;
+  #assert ed_pic_put(e, q[0].px[..], cast(s32) w, cast(s32) h, cast(s32) (w * 4), true, 6);
+  ag_test_frame(t[..]);
+  plays := 0;
+  for i: 0..<ed_agents_pics(p) { _ = ed_agents_pic(p, i, r[..], of[..]); if of[2] == PIC_PLAYTEST && of[1] == p[0].ring[0].ev[k].after { plays += 1; } }
+  #assert plays == 1;
+}

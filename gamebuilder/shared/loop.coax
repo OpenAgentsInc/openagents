@@ -1,0 +1,149 @@
+// The core loop's steps, and how one is counted (issue 18): one list for the page that counts them
+// (web/count.coax, web/page.coax), the server that keeps them (cli/main.coax: POST /api/count on
+// `gamebuilder serve`) and the row that reads them back (coax/loop-day.coax: `gamebuilder funnel`).
+// A step is counted under its name in this list and under no other: the page writes a count's body
+// with lp_body, which takes a row of the list and never a word; the server reads it with
+// lp_count_read (coax/loop-day.coax), which refuses the whole body when one name is not here; and
+// tools/loop-check.coax fails when another file says the door or the body's schema itself.
+//
+// The loop (docs/core-loop-audit.md): arrive at gamebuilder.org, press "create a game", see the
+// builder, pick a game type, place a first thing; be asked for an account, make one (or log in),
+// send the agent a message, publish; and a shared link opened, and Remix pressed on it.
+//
+// What a count is. Nothing about the person: no id, no address, no account, no cookie. A count
+// says a step's name and one whole number of milliseconds: for a step, how long since this visit's
+// step before it (-1 for the visit's first); for a measure, the measure. The server adds it to
+// that day's totals and keeps the totals alone (coax/loop-day.coax). A visit is a browser tab:
+// the page counts each step once in a tab and keeps which in the tab's own sessionStorage
+// (web/count.coax), which is sent nowhere.
+//
+// A new step: add its row here (and raise LP_N), and call gs_count(s, LP_YOURS) where it happens
+// (web/page.coax). Nothing else: the server, the day's file and the funnel read this list.
+//   coax/bin/coax test shared/loop.coax --library
+
+LP_DOOR :: "/api/count";                        // where a count is sent: this site's own path, POST
+LP_COUNT_SCHEMA :: "gamebuilder.count.v1";      // a count's body
+
+// What a row is: a step of the loop, a fact about the visit, or a measure of its first load.
+LP_STEP :: 0; LP_FACT :: 1; LP_MEASURE :: 2;
+
+LP_N :: 15;
+LP_ARRIVED :: 0;       // the page's code started in a tab that had not been here
+LP_CREATE :: 1;        // a game type pressed on the home page, its name or its portal (or the builder reached by a name's own link, pressed before the code had loaded); before issue 30, "create a game" pressed
+LP_BUILDER :: 2;       // the builder shown: the game types to pick from (the home page's ring, or the builder's own)
+LP_PICKED :: 3;        // a game type picked: its world is up (a game kept in this browser come back is one too)
+LP_PLACED :: 4;        // the first thing placed in it by hand
+LP_PROMPT :: 5;        // asked for an account (today: the login shown to someone not logged in; issue 16: the account sheet)
+LP_ACCOUNT :: 6;       // the email's code taken: an account made, or logged in to
+LP_MESSAGE :: 7;       // a message sent to the agent
+LP_PUBLISHED :: 8;     // a game published (issue 17)
+LP_SHARED :: 9;        // a shared link opened (issue 17): a way in of its own
+LP_REMIX :: 10;        // Remix pressed on a shared game (issue 17)
+LP_NOGPU :: 11;        // this browser cannot run the builder: no WebGPU (web/gpu-words.coax)
+LP_BUTTON_MS :: 12;    // a first visit to the home page: from the address asked for to the first paint, which holds the types' names (before issue 30, the button)
+LP_BUILDER_MS :: 13;   // a page loaded at the builder's address: from the address asked for to the builder shown
+LP_KEPT :: 14;         // a game built here kept on the account for the first time (issue 16: web/account.coax)
+
+LpRow :: struct {
+  name: string;        // the name it is counted under, on the wire and in the day's file: lowercase letters and _
+  kind: int;           // LP_STEP, LP_FACT, LP_MEASURE
+  after: int;          // a step: the step it follows in the loop (the funnel says how many were lost between them), -1 for a way in
+  words: string;       // what the funnel calls it
+}
+LP_ROWS :: [LP_N] LpRow.[
+  LpRow.{name = "arrived", kind = LP_STEP, after = -1, words = "arrived"},
+  LpRow.{name = "create", kind = LP_STEP, after = LP_ARRIVED, words = "pressed a game type on the home page"},
+  LpRow.{name = "builder", kind = LP_STEP, after = LP_CREATE, words = "saw the builder"},
+  LpRow.{name = "picked", kind = LP_STEP, after = LP_BUILDER, words = "picked a game type"},
+  LpRow.{name = "placed", kind = LP_STEP, after = LP_PICKED, words = "placed the first thing"},
+  LpRow.{name = "prompt", kind = LP_STEP, after = LP_PLACED, words = "saw the account prompt"},
+  LpRow.{name = "account", kind = LP_STEP, after = LP_PROMPT, words = "made an account or logged in"},
+  LpRow.{name = "message", kind = LP_STEP, after = LP_ACCOUNT, words = "sent a message"},
+  LpRow.{name = "published", kind = LP_STEP, after = LP_ACCOUNT, words = "published"},
+  LpRow.{name = "shared", kind = LP_STEP, after = -1, words = "opened a shared link"},
+  LpRow.{name = "remix", kind = LP_STEP, after = LP_SHARED, words = "pressed remix"},
+  LpRow.{name = "nogpu", kind = LP_FACT, after = -1, words = "browsers without WebGPU"},
+  LpRow.{name = "button_ms", kind = LP_MEASURE, after = -1, words = "first visit: time to the names"},
+  LpRow.{name = "builder_ms", kind = LP_MEASURE, after = -1, words = "first visit: time to the builder"},
+  LpRow.{name = "kept", kind = LP_STEP, after = LP_ACCOUNT, words = "game kept on the account"},
+];
+
+// The row counted under name: -1 when the list has none.
+lp_find :: (name: string) -> int {
+  for i: 0..<LP_N { if LP_ROWS[i].name == name { return i; } }
+  return -1;
+}
+
+// A count's bounds. A body holds at most LP_BATCH counts (a visit's steps are twelve) in at most
+// LP_BODY bytes; a time is whole milliseconds from -1 (not known) to LP_MS_MAX (a day).
+LP_BATCH :: 16;
+LP_BODY :: 1024;
+LP_MS_MAX :: 86400000;
+LpCount :: struct { row: int; ms: int; }
+
+// Times are kept as how many fell under each of these bounds (milliseconds), and how many past the
+// last: a day's file holds no single visit's time. The funnel says the middle one as its bound.
+LP_BUCKETS :: 14;
+LP_BOUNDS :: [LP_BUCKETS - 1] int.[250, 500, 1000, 2000, 4000, 8000, 15000, 30000, 60000, 120000, 300000, 900000, 3600000];
+lp_bucket :: (ms: int) -> int {
+  for i: 0..<LP_BUCKETS - 1 { if ms < LP_BOUNDS[i] { return i; } }
+  return LP_BUCKETS - 1;
+}
+
+lp_put :: (out: [] u8, at: int, s: string) -> int { n := at; for c: s { if n < out.count { out[n] = c; } n += 1; } return n; }
+lp_put_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = lp_put(out, n, "-"); x = -x; }
+  d: [20] u8; k := 0;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; }
+  while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; } n += 1; }
+  return n;
+}
+// A count's body, as the page sends it: these counts in order, at most LP_BATCH of them. A row is
+// one of the list's (a count of anything else is left out: there is no name to send it under), and
+// a time is held to its bounds. "" when it does not fit out.
+//   {"schema":"gamebuilder.count.v1","counts":[{"name":"arrived","ms":-1},{"name":"button_ms","ms":148}]}
+lp_body :: (counts: [] LpCount, out: [] u8) -> string {
+  n := lp_put(out, 0, "{\"schema\":\""); n = lp_put(out, n, LP_COUNT_SCHEMA); n = lp_put(out, n, "\",\"counts\":[");
+  put := 0;
+  for c: counts {
+    if c.row < 0 || c.row >= LP_N || put >= LP_BATCH { continue; }
+    ms := ifx c.ms < -1 then -1 else ifx c.ms > LP_MS_MAX then LP_MS_MAX else c.ms;
+    if put > 0 { n = lp_put(out, n, ","); }
+    n = lp_put(out, n, "{\"name\":\""); n = lp_put(out, n, LP_ROWS[c.row].name); n = lp_put(out, n, "\",\"ms\":"); n = lp_put_int(out, n, ms); n = lp_put(out, n, "}");
+    put += 1;
+  }
+  n = lp_put(out, n, "]}");
+  if n > out.count || n > LP_BODY { return ""; }
+  return cast(string) out[0..<n];
+}
+
+#test "the list: every row has a name of its own in lowercase letters and _, a step follows an earlier step, and a batch holds every row" {
+  for i: 0..<LP_N {
+    r := LP_ROWS[i];
+    #assert r.name.count > 0 && r.name.count <= 16 && r.words.count > 0 && lp_find(r.name) == i;
+    for c: r.name { #assert (c >= 'a' && c <= 'z') || c == '_'; }
+    #assert r.kind == LP_STEP || r.kind == LP_FACT || r.kind == LP_MEASURE;
+    #assert r.after < i && (r.after == -1 || LP_ROWS[r.after].kind == LP_STEP) && (r.kind == LP_STEP || r.after == -1);
+  }
+  #assert lp_find("") == -1 && lp_find("Arrived") == -1 && lp_find("arrive") == -1 && lp_find("clicked") == -1;
+  #assert LP_ROWS[LP_ARRIVED].name == "arrived" && LP_ROWS[LP_PUBLISHED].name == "published" && LP_ROWS[LP_REMIX].after == LP_SHARED && LP_ROWS[LP_BUILDER_MS].kind == LP_MEASURE;
+  #assert LP_BATCH >= LP_N;
+  // every row at its longest time, as one body, fits
+  all: [LP_N] LpCount; out: [LP_BODY] u8;
+  for i: 0..<LP_N { all[i] = LpCount.{row = i, ms = LP_MS_MAX}; }
+  #assert lp_body(all[..], out[..]).count > 0;
+}
+#test "a count's body: the list's names in order, times held to their bounds, and nothing for a row the list has not" {
+  out: [LP_BODY] u8;
+  a := [4] LpCount.[LpCount.{row = LP_ARRIVED, ms = -1}, LpCount.{row = LP_N, ms = 5}, LpCount.{row = LP_BUTTON_MS, ms = 148}, LpCount.{row = -1, ms = 5}];
+  #assert lp_body(a[..], out[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"button_ms\",\"ms\":148}]}";
+  b := [2] LpCount.[LpCount.{row = LP_CREATE, ms = -40}, LpCount.{row = LP_PICKED, ms = LP_MS_MAX + 1}];
+  #assert lp_body(b[..], out[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"create\",\"ms\":-1},{\"name\":\"picked\",\"ms\":86400000}]}";
+  #assert lp_body(a[..], out[0..<40]) == "" && lp_body(a[0..<0], out[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[]}";
+}
+#test "times fall under their bounds, which rise" {
+  for i: 1..<LP_BUCKETS - 1 { #assert LP_BOUNDS[i] > LP_BOUNDS[i - 1]; }
+  #assert lp_bucket(0) == 0 && lp_bucket(249) == 0 && lp_bucket(250) == 1 && lp_bucket(148) == 0 && lp_bucket(1999) == 3 && lp_bucket(3599999) == LP_BUCKETS - 2 && lp_bucket(LP_MS_MAX) == LP_BUCKETS - 1;
+}

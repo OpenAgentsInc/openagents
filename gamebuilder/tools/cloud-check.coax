@@ -1,0 +1,503 @@
+// A hosted server's cloud agent end to end (GitHub issues 7 and 27; docs/agents.md, "Built: a
+// cloud agent"): `gamebuilder serve --accounts DIR` with a model key, this tool standing in for
+// the login service (tools/hosted-lib.coax). The agent's loop is Microcoder's (the pinned
+// openagents tree's coax/lib/microcoder), each model step a child of the server's; its commands
+// are rows of the command table. It holds, first against Microcoder's scripted gateway
+// (serve --model script:FILE), that:
+//   - Microcoder's loop, driven from the server's child, places one block through a row: its
+//     read-level and apply-edits commands change the account's level, and its finished reply is
+//     the agent's message; the run's journal holds what the loop was given;
+// and then against a stand-in for OpenAgents' model route (POST /api/v1/inference, answering as
+// openagents.com does: a Chat Completions message whose content is one next_action), that:
+//   - the server says it runs cloud agents; agent-new (the /agents page's call) starts a Builder on
+//     a game of the caller's, queued, its limits said in words with their numbers before it starts;
+//   - each model call is signed with the server's key (Authorization: Nostr) and is Microcoder's
+//     request: its system prompt and next_action schema, and a state whose environment names the
+//     agent's level and the table's rows marked for it, and whose task is the person's words;
+//   - its read-level and apply-edits commands go through the rows: the level on the account
+//     changes (its file, as the desktop app's sync reads it), and the log reads back the tool, edit,
+//     message, usage and state events; its step is shown in the record as it runs;
+//   - several rows in one step run in order; a command that is no row of its own, another level,
+//     and an edit of Microcoder's are each refused in words; an answer that is no action is asked again;
+//   - agent-undo (the page's) takes its change back; with nothing kept it says so;
+//   - a change inside another agent's claim is refused as claimed, naming whose, as an event;
+//     its own agent-undo takes back its own last change;
+//   - agent-stop while a step is asked ends it: the answer is not used, the level stays;
+//   - a server stopped between two steps and started again goes on from the journal: the loop
+//     stands where it stood;
+//   - each limit stops it in words with its number: 12 model steps, 100,000 tokens, 30 changes,
+//     10 minutes a message and 60 model steps a day; a refused model call fails it in words;
+//   - another account can't read it.
+//   coax/web/tool.sh tools/cloud-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "hosted-lib.coax";
+
+// The model's side: one request read whole (its head and body), and an answer sent.
+McRun :: struct { req: [1048576] u8; n: int; head: int; }
+mc_read :: (m: [] McRun, h: int) -> bool {
+  n := 0; deadline := cxsock_now_ms() + 20000; want := -1;
+  while true {
+    if want >= 0 && n >= want { break; }
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < m[0].req.count { m[0].req[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    if want < 0 {
+      text := cast(string) m[0].req[0..<n];
+      e := level_find(text, "\r\n\r\n");
+      if e >= 0 {
+        cl := level_find(text, "Content-Length: ");
+        if cl < 0 { cl = level_find(text, "content-length: "); }
+        bl := 0;
+        if cl >= 0 { j := cl + 16; while j < n && m[0].req[j] >= '0' && m[0].req[j] <= '9' { bl = bl * 10 + cast(int) (m[0].req[j] - '0'); j += 1; } }
+        m[0].head = e + 4; want = e + 4 + bl;
+      }
+    }
+  }
+  m[0].n = n;
+  return want >= 0 && n >= want;
+}
+mc_body :: (m: [] McRun) -> string { return cast(string) m[0].req[m[0].head..<m[0].n]; }
+mc_headers :: (m: [] McRun) -> string { return cast(string) m[0].req[0..<m[0].head]; }
+// The next model call, if one comes within wait ms: its socket (-1: none came).
+mc_next :: (r: [] HcRun, m: [] McRun, model: int, wait: int) -> int {
+  h := cxsock_accept(model, wait);
+  if h < 0 { return -1; }
+  if !mc_read(m, h) { print("cloud: NOT a whole model request\n"); r[0].bad += 1; }
+  return h;
+}
+mc_send :: (h: int, status: int, body: string) {
+  b: [70000] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], ifx status == 200 then "HTTP/1.1 200 OK\r\n" else "HTTP/1.1 429 Too Many Requests\r\n");
+  tx_put(t[..], "Content-Type: application/json\r\nConnection: close\r\nContent-Length: "); tx_int(t[..], cast(s64) body.count);
+  tx_put(t[..], "\r\n\r\n"); tx_put(t[..], body);
+  for ch: b[0..<t[0].at] { _ = cxsock_write(h, cast(int) ch); }
+  _ = cxsock_flush(h, 5000); _ = cxsock_close(h);
+}
+// One next_action as Microcoder's schema has it: its commands, and for a finishing one its reply.
+mc_action :: (commands: [] string, finished: bool, reply: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "rationale"); jo_str(o[..], "the next step");
+  jo_key(o[..], "edits"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "commands"); jo_arr(o[..]); for c: commands { jo_str(o[..], c); } jo_end(o[..]);
+  jo_key(o[..], "view"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "finished"); jo_bool(o[..], finished); jo_key(o[..], "reply"); jo_str(o[..], reply);
+  jo_key(o[..], "ask"); jo_str(o[..], "none"); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+// An answer as the route gives one: a Chat Completions message whose content is text, with tokens counted.
+mc_text :: (h: int, content: string, tokens: int) {
+  b: [65536] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "choices"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "message"); jo_obj(o[..]);
+  jo_key(o[..], "role"); jo_str(o[..], "assistant"); jo_key(o[..], "content"); jo_str(o[..], content);
+  jo_end(o[..]); jo_key(o[..], "finish_reason"); jo_str(o[..], "stop"); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "usage"); jo_obj(o[..]); jo_key(o[..], "prompt_tokens"); jo_int(o[..], tokens - 20); jo_key(o[..], "completion_tokens"); jo_int(o[..], 20); jo_end(o[..]);
+  jo_end(o[..]);
+  mc_send(h, 200, jo_text(o[..]));
+}
+// An answer that runs commands (rows, as command lines), in order.
+mc_run :: (h: int, commands: [] string, tokens: int) {
+  b: [32768] u8;
+  mc_text(h, mc_action(commands, false, "", b[..]), tokens);
+}
+mc_one :: (h: int, command: string, tokens: int) { c := [1] string.[command]; mc_run(h, c[..], tokens); }
+// A finishing answer: its message is done.
+mc_say :: (h: int, text: string) {
+  b: [8192] u8; none: [1] string;
+  mc_text(h, mc_action(none[0..<0], true, text, b[..]), 320);
+}
+// The level's revision the last answer in the request said (its "rev": in a command's output, in
+// the loop's state, in the request's message, so escaped twice), or -1.
+mc_rev :: (body: string) -> int {
+  key := "\\\\\\\"rev\\\\\\\":"; at := -1; from := 0;
+  while true { k := level_find(body[from..<body.count], key); if k < 0 { break; } at = from + k; from = at + key.count; }
+  if at < 0 { return -1; }
+  v := 0; j := at + key.count;
+  while j < body.count && body[j] >= '0' && body[j] <= '9' { v = v * 10 + cast(int) (body[j] - '0'); j += 1; }
+  return v;
+}
+// The command that spawns a 150 cm block (the arena's kind 7) at x, z against rev: apply-edits with its batch inline.
+mc_spawn :: (rev: int, x: int, z: int, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "apply-edits 1 '{\"schema\":\"world.edit.v1\",\"rev\":"); tx_int(t[..], cast(s64) rev);
+  tx_put(t[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":7,\"x\":"); tx_int(t[..], cast(s64) x);
+  tx_put(t[..], ",\"y\":0,\"z\":"); tx_int(t[..], cast(s64) z); tx_put(t[..], ",\"yaw\":0,\"scale\":100}]}'");
+  return cast(string) out[0..<t[0].at];
+}
+
+// The agent's record file in a's folder, as it is now ("": none).
+cc_record :: (r: [] HcRun, dir: string, id: string, out: [] u8) -> string {
+  fb: [96] u8; jp := [3] string.[dir, "/acct_a/", agr_file(id, ".agent", fb[..])];
+  pb: [1024] u8; p := hc_join(r, jp[..]); for i: 0..<p.count { pb[i] = p[i]; }
+  n := fs_read(cast(string) pb[0..<p.count], out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// Waits up to ms for the record to say part.
+cc_until :: (r: [] HcRun, dir: string, id: string, part: string, ms: int) -> bool {
+  deadline := cxsock_now_ms() + ms;
+  rb: [4096] u8;
+  while true {
+    if level_find(cc_record(r, dir, id, rb[..]), part) >= 0 { return true; }
+    if cxsock_now_ms() > deadline { return false; }
+    _ = cxproc_sleep_ms(50);
+  }
+  return false;
+}
+cc_want :: (r: [] HcRun, dir: string, id: string, what: string, part: string) {
+  if !cc_until(r, dir, id, part, 20000) { rb: [4096] u8; print("cloud: NOT %: wanted % in\n  %\n", what, part, cc_record(r, dir, id, rb[..])); r[0].bad += 1; }
+}
+cc_has :: (r: [] HcRun, what: string, text: string, part: string) {
+  if level_find(text, part) < 0 { print("cloud: NOT %: wanted %\n  in %\n", what, part, text); r[0].bad += 1; }
+}
+// The agent's run file (agent-ID.run: SEEN STEPS TOKENS EDITS SINCE) with field k set to v.
+cc_run_set :: (r: [] HcRun, dir: string, id: string, k: int, v: s64) {
+  _ = cxproc_sleep_ms(300);   // the server writes it just after the call starts
+  fb: [96] u8; jp := [3] string.[dir, "/acct_a/", agr_file(id, ".run", fb[..])];
+  pb: [1024] u8; p := hc_join(r, jp[..]); for i: 0..<p.count { pb[i] = p[i]; }
+  path := cast(string) pb[0..<p.count];
+  tb: [128] u8; n := fs_read(path, tb[..]);
+  if n <= 0 { print("cloud: NOT a run file to change\n"); r[0].bad += 1; return; }
+  vals: [5] s64; at := 0;
+  for j: 0..<5 { x: s64 = 0; while at < n && tb[at] >= '0' && tb[at] <= '9' { x = x * 10 + cast(s64) (tb[at] - '0'); at += 1; } vals[j] = x; at += 1; }
+  vals[k] = v;
+  ob: [128] u8; t := [1] Text.[Text.{buf = ob[..]}];
+  for j: 0..<5 { if j > 0 { tx_put(t[..], " "); } tx_int(t[..], vals[j]); }
+  tx_put(t[..], "\n");
+  if !fs_write(path, cast(string) ob[0..<t[0].at]) { print("cloud: NOT the run file changed\n"); r[0].bad += 1; }
+}
+// A message to the agent, from the page (agent-message).
+cc_tell :: (r: [] HcRun, port: int, login: int, id: string, words: string) {
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "agent"); jo_str(o[..], id); jo_key(o[..], "message"); jo_str(o[..], words); jo_end(o[..]);
+  hc_expect(r, "a message to the cloud agent", hc_call(r, port, login, "POST", "/api/rows/agent-message", A, jo_text(o[..])), "HTTP/1.1 200 ", "\"ok\":true");
+}
+// The level's revision on a's account, as read-level says it.
+cc_rev :: (r: [] HcRun, port: int, login: int) -> int {
+  got := hc_call(r, port, login, "POST", "/api/rows/read-level", A, "{\"level\":1}");
+  rs := hc_between(got, "\"rev\":", ",");
+  v := 0; for ch: rs { if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); } }
+  return ifx rs.count > 0 then v else -1;
+}
+
+// A file of the agent's in a's folder (agent-ID.EXT), as it is now ("": none).
+cc_file :: (r: [] HcRun, dir: string, id: string, ext: string, out: [] u8) -> string {
+  fb: [96] u8; jp := [3] string.[dir, "/acct_a/", agr_file(id, ext, fb[..])];
+  pb: [1024] u8; p := hc_join(r, jp[..]); for i: 0..<p.count { pb[i] = p[i]; }
+  n := fs_read(cast(string) pb[0..<p.count], out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// gamebuilder serve --accounts dir, with the model key and the model named: its process (in sh)
+// and its port (0: it didn't start, or doesn't say it runs cloud agents).
+cc_serve :: (r: [] HcRun, bin: string, dir: string, origin: string, key_file: string, model: string, sh: [] int) -> int {
+  eb: [640] u8; et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "GB_MODEL_KEY_FILE="); tx_put(et[..], key_file);
+  sfb: [1200] u8; sft := [1] Text.[Text.{buf = sfb[..]}]; tx_put(sft[..], "GB_SELF="); tx_put(sft[..], bin);
+  sh[0] = proc_new();
+  ok := proc_env(sh[0], cast(string) eb[0..<et[0].at]) && proc_env(sh[0], cast(string) sfb[0..<sft[0].at]) && proc_arg(sh[0], bin) && proc_arg(sh[0], "serve")
+    && proc_arg(sh[0], "--accounts") && proc_arg(sh[0], dir) && proc_arg(sh[0], "--origin") && proc_arg(sh[0], origin) && proc_arg(sh[0], "--port") && proc_arg(sh[0], "0") && proc_arg(sh[0], "--model") && proc_arg(sh[0], model);
+  if !ok || proc_start(sh[0]) != 0 { print("cloud: NOT started: % serve --accounts\n", bin); return 0; }
+  sl: [256] u8; sn := proc_line(sh[0], 10000, sl[..]);
+  port := 0;
+  if sn > 0 {
+    said := cast(string) sl[0..<sn]; at := level_find(said, "127.0.0.1:");
+    if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { port = port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+    if level_find(said, "cloud agents on") < 0 { print("cloud: NOT said to run cloud agents: %\n", said); r[0].bad += 1; }
+  }
+  return port;
+}
+cc_quit :: (sh: int) { _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh); }
+// The new agent's id from agent-new's answer, into out.
+cc_id :: (got: string, out: [] u8) -> string {
+  idr := hc_between(got, "\"agent\":\"", "\""); n := 0;
+  for ch: idr { if n < out.count { out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+cc_events :: (r: [] HcRun, port: int, login: int, id: string) -> string {
+  eb: [128] u8; etx := [1] Text.[Text.{buf = eb[..]}]; tx_put(etx[..], "{\"agent\":\""); tx_put(etx[..], id); tx_put(etx[..], "\",\"after\":0}");
+  return hc_call(r, port, login, "POST", "/api/rows/agent-events", A, cast(string) eb[0..<etx[0].at]);
+}
+
+// Microcoder's loop driven from the server's child against its scripted gateway (issue 27's
+// first step): one block placed through a row.
+cc_scripted :: (r: [] HcRun, bin: string, origin: string, login: int, key_file: string) {
+  db: [256] u8; dir := fs_temp("gb-cloud-script", db[..]);
+  if dir.count == 0 { print("cloud: NOT a folder for the scripted run\n"); r[0].bad += 1; return; }
+  sp := [2] string.[dir, "/model.script"]; spb: [512] u8; spp := hc_join(r, sp[..]); for i: 0..<spp.count { spb[i] = spp[i]; }
+  script := cast(string) spb[0..<spp.count];
+  mb: [640] u8; mt := [1] Text.[Text.{buf = mb[..]}]; tx_put(mt[..], "script:"); tx_put(mt[..], script);
+  sh: [1] int;
+  port := cc_serve(r, bin, dir, origin, key_file, cast(string) mb[0..<mt[0].at], sh[..]);
+  if port <= 0 { print("cloud: NOT serving the scripted run\n"); r[0].bad += 1; return; }
+  hc_expect(r, "a game of a's (scripted)", hc_call(r, port, login, "POST", "/api/rows/new-game", A, "{\"template\":\"arena\"}"), "HTTP/1.1 200 ", "\"game\":1,\"level\":1");
+  rev0 := cc_rev(r, port, login);
+  // the script: read the level, place one block with the revision read, say so
+  lines: [8192] u8; t := [1] Text.[Text.{buf = lines[..]}]; ab: [4096] u8; cb: [512] u8;
+  one := [1] string.["read-level 1"]; none: [1] string;
+  tx_put(t[..], mc_action(one[..], false, "", ab[..])); tx_put(t[..], "\n");
+  one[0] = mc_spawn(rev0, 300, -900, cb[..]);
+  tx_put(t[..], mc_action(one[..], false, "", ab[..])); tx_put(t[..], "\n");
+  tx_put(t[..], mc_action(none[0..<0], true, "I placed one block by the start.", ab[..])); tx_put(t[..], "\n");
+  if !fs_write(script, cast(string) lines[0..<t[0].at]) { print("cloud: NOT a script written\n"); r[0].bad += 1; }
+  got := hc_call(r, port, login, "POST", "/api/rows/agent-new", A, "{\"game\":1,\"role\":\"build\",\"job\":\"place one block by the start\"}");
+  hc_expect(r, "a cloud Builder started on the scripted gateway", got, "HTTP/1.1 200 ", "\"state\":\"queued\"");
+  idb: [64] u8; id := cc_id(got, idb[..]);
+  if id.count == 0 { print("cloud: NOT a scripted agent: %\n", got); r[0].bad += 1; cc_quit(sh[0]); return; }
+  cc_want(r, dir, id, "the scripted run done", "\"state\":\"done\"");
+  rev1 := cc_rev(r, port, login);
+  if rev1 < 0 || rev1 == rev0 { print("cloud: NOT one block placed through a row by Microcoder's loop (% then %)\n", rev0, rev1); r[0].bad += 1; }
+  events := cc_events(r, port, login, id);
+  for part: [5] string.["\"type\":\"tool\",\"tool\":\"gb_read_level\",\"args\":\"{\\\"level\\\":1}\",\"ok\":true", "\"type\":\"tool\",\"tool\":\"gb_apply_edits\"", "\"type\":\"edit\",\"level\":1",
+    "\"type\":\"message\",\"from\":\"agent\",\"text\":\"I placed one block by the start.\"", "\"type\":\"usage\",\"turns\":3,\"cents\":0"] { cc_has(r, "the scripted run's log", events, part); }
+  // the journal: what the loop was told, each answer as it came, each result, in order
+  jb: [65536] u8; journal := cc_file(r, dir, id, ".loop", jb[..]);
+  cc_has(r, "the journal's first line", journal, "{\"environment\":\"{\\\"app\\\":\\\"GameBuilder (gamebuilder.org)\\\"");
+  cc_has(r, "the task in the journal", journal, "\"task\":\"place one block by the start\\n\"}\n{\"reply\":\"{\\\"rationale\\\"");
+  cc_has(r, "a command's result in the journal", journal, "{\"command\":\"read-level 1\",\"exit\":0,\"output\":\"{\\\"schema\\\":\\\"gamebuilder.level.v1\\\"");
+  cc_has(r, "the change's result in the journal", journal, "added 1 block");
+  cc_has(r, "a step's end in the journal", journal, "{\"done\":1}\n");
+  sb: [64] u8;
+  if fs_read(script, sb[..]) > 0 { print("cloud: NOT every scripted answer taken\n"); r[0].bad += 1; }
+  cc_quit(sh[0]);
+}
+
+// One loop (issue 27): the cloud Builder's two files hold no model request and read no model
+// answer of their own. cli/cloud.coax asks Microcoder for the request (mc_request), has the
+// gateway library write and read it (gw_translate, gw_parse_whole) and feeds the loop (mc_feed);
+// neither file names a Chat Completions field. Run from the repository's root (cli/check.sh).
+cc_one_loop :: (r: [] HcRun) {
+  fb: [262144] u8;
+  n := fs_read("cli/cloud.coax", fb[..]);
+  if n <= 0 || n >= fb.count { print("cloud: NOT cli/cloud.coax read (run from the repository's root)\n"); r[0].bad += 1; return; }
+  server := cast(string) fb[0..<n];
+  for part: [5] string.["microcoder/loop.coax", "mc_request(l)", "mc_feed(l, ", "gw_translate(", "gw_parse_whole("] {
+    if level_find(server, part) < 0 { print("cloud: NOT Microcoder's loop in cli/cloud.coax: wanted %\n", part); r[0].bad += 1; }
+  }
+  gb: [262144] u8;
+  g := fs_read("gamebuilder/core/cloud-rows.coax", gb[..]);
+  if g <= 0 || g >= gb.count { print("cloud: NOT gamebuilder/core/cloud-rows.coax read\n"); r[0].bad += 1; return; }
+  rows := cast(string) gb[0..<g];
+  qb: [32] u8;
+  for field: [6] string.["messages", "choices", "tool_calls", "role", "content", "response_format"] {
+    q := agr_put(qb[..], 0, "\\\""); q = agr_put(qb[..], q, field); q = agr_put(qb[..], q, "\\\"");
+    quoted := cast(string) qb[0..<q];
+    if level_find(server, quoted) >= 0 || level_find(rows, quoted) >= 0 { print("cloud: NOT one loop: a cloud Builder file names the model's field %\n", field); r[0].bad += 1; }
+  }
+  if fs_exists("gamebuilder/core/cloud.coax") { print("cloud: NOT gone: gamebuilder/core/cloud.coax, the second loop\n"); r[0].bad += 1; }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/cloud-check.coax GAMEBUILDER\n"); return 2; }
+  bin := args_at(a[..], 0);
+  r: [1] HcRun; m: [1] McRun;
+  login := cxsock_listen(0); model := cxsock_listen(0);
+  if login < 0 || model < 0 { print("cloud: NOT ports for the login service and the model\n"); return 1; }
+  ob: [64] u8; ot := [1] Text.[Text.{buf = ob[..]}]; tx_put(ot[..], "http://127.0.0.1:"); tx_int(ot[..], cast(s64) cxsock_port(login));
+  origin := cast(string) ob[0..<ot[0].at];
+  mb: [96] u8; mt := [1] Text.[Text.{buf = mb[..]}]; tx_put(mt[..], "http://127.0.0.1:"); tx_int(mt[..], cast(s64) cxsock_port(model)); tx_put(mt[..], "/api/v1/inference");
+  model_url := cast(string) mb[0..<mt[0].at];
+  db: [256] u8; dir := fs_temp("gb-cloud", db[..]);
+  kb: [256] u8; keys := fs_temp("gb-cloud-key", kb[..]);
+  if dir.count == 0 || keys.count == 0 { print("cloud: NOT folders to work in\n"); return 1; }
+  // a test key of this check's own (never a real one): 32 bytes of 01
+  kp := [2] string.[keys, "/model.key"]; kpb: [512] u8; kpp := hc_join(r[..], kp[..]); for i: 0..<kpp.count { kpb[i] = kpp[i]; }
+  key_file := cast(string) kpb[0..<kpp.count];
+  if !fs_write(key_file, "0101010101010101010101010101010101010101010101010101010101010101\n") { print("cloud: NOT a key written\n"); return 1; }
+
+  cc_one_loop(r[..]);
+  // first, Microcoder's scripted gateway: one block placed through a row
+  cc_scripted(r[..], bin, origin, login, key_file);
+
+  // then a stand-in for the model route
+  shs: [1] int;
+  port := cc_serve(r[..], bin, dir, origin, key_file, model_url, shs[..]);
+  if port <= 0 { print("cloud: NOT serving\n"); return 1; }
+  spawn: [512] u8; h := -1; body := "";
+
+  // a game of a's, and a cloud Builder started on it as the /agents page starts one
+  hc_expect(r[..], "a game of a's", hc_call(r[..], port, login, "POST", "/api/rows/new-game", A, "{\"template\":\"arena\"}"), "HTTP/1.1 200 ", "\"game\":1,\"level\":1");
+  rev0 := cc_rev(r[..], port, login);
+  hc_expect(r[..], "a cloud Playtester isn't one yet", hc_call(r[..], port, login, "POST", "/api/rows/agent-new", A, "{\"game\":1,\"role\":\"playtest\",\"job\":\"play it\"}"), "HTTP/1.1 ", "a cloud agent is a Builder (build) today");
+  hc_expect(r[..], "a cloud agent on no game of yours", hc_call(r[..], port, login, "POST", "/api/rows/agent-new", B, "{\"game\":1,\"role\":\"build\",\"job\":\"add a block\"}"), "HTTP/1.1 404 ", "no such game of yours");
+  got := hc_call(r[..], port, login, "POST", "/api/rows/agent-new", A, "{\"game\":1,\"role\":\"build\",\"job\":\"add a block by the start\"}");
+  hc_expect(r[..], "a cloud Builder started", got, "HTTP/1.1 200 ", "\"state\":\"queued\",\"level\":1,\"limits\":\"each message: at most 12 model steps (a step runs at most 8 commands), 100,000 tokens, 30 changes and 10 minutes; 60 model steps a day for your account. Free: no Claude plan is used\"");
+  idb: [64] u8; id := cc_id(got, idb[..]);
+  if id.count == 0 { print("cloud: NOT an agent: %\n", got); return 1; }
+  cc_want(r[..], dir, id, "its record, a cloud Builder", "\"place\":\"cloud\",\"computer\":\"\",\"runner\":\"openagents\"");
+
+  // its first step: signed, and Microcoder's request: its system prompt and schema, the rows marked for it, the person's words
+  h = mc_next(r[..], m[..], model, 20000);
+  if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_has(r[..], "the call signed with the server's key", mc_headers(m[..]), "Authorization: Nostr ");
+  cc_has(r[..], "the call to the model route", mc_headers(m[..]), "POST /api/v1/inference HTTP/1.1");
+  body = mc_body(m[..]);
+  cc_has(r[..], "OpenAgents' model asked", body, "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Microcoder, a small coding agent.");
+  cc_has(r[..], "one answer's tokens capped", body, "\"max_tokens\":8192");
+  cc_has(r[..], "not streamed", body, "\"stream\":false");
+  cc_has(r[..], "Microcoder's schema, strict", body, "\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"next_action\"");
+  cc_has(r[..], "the person's words, the task", body, "\\\"task\\\":\\\"add a block by the start\\\\n\\\"");
+  cc_has(r[..], "its level in the environment", body, "\\\"level\\\":1,\\\"game\\\":\\\"Game 1\\\"");
+  cc_has(r[..], "apply-edits a row of its own", body, "{\\\"command\\\":\\\"apply-edits LEVEL '{...}'\\\"");
+  cc_has(r[..], "agent-undo its own", body, "{\\\"command\\\":\\\"agent-undo AGENT\\\"");
+  cc_has(r[..], "its level's palette", body, "\\\"palette\\\":{\\\"ok\\\":true,\\\"template\\\":\\\"arena\\\"");
+  if level_find(body, "\"tools\":[") >= 0 || level_find(body, "play-test LEVEL") >= 0 { print("cloud: NOT only its marked rows, as commands\n"); r[0].bad += 1; }
+  cc_want(r[..], dir, id, "its step shown as it runs", "\"step\":\"step 0 of 12, 0 of 100,000 tokens, 0 of 30 changes: asking the model\"");
+  // an answer that is no action is asked again, with why
+  mc_text(h, "Sure, I will read it.", 200);
+  h = mc_next(r[..], m[..], model, 20000);
+  if h < 0 { print("cloud: NOT asked again after an answer that is no action\n"); return 1; }
+  cc_has(r[..], "why its last answer was refused", mc_body(m[..]), "Your last reply was refused");
+  // several rows in one step, in order
+  two := [2] string.["read-level 1", "claims 1"];
+  mc_run(h, two[..], 1000);
+  // it read the level; it changes it through apply-edits
+  h = mc_next(r[..], m[..], model, 20000);
+  if h < 0 { print("cloud: NOT a third model call\n"); return 1; }
+  body = mc_body(m[..]);
+  cc_has(r[..], "the level read back to it", body, "{\\\"command\\\":\\\"read-level 1\\\",\\\"exit\\\":0,\\\"output\\\":\\\"{\\\\\\\"schema\\\\\\\":\\\\\\\"gamebuilder.level.v1\\\\\\\"");
+  cc_has(r[..], "the second row of the step, after it", body, "{\\\"command\\\":\\\"claims 1\\\",\\\"exit\\\":0,\\\"output\\\":\\\"{\\\\\\\"ok\\\\\\\":true,\\\\\\\"schema\\\\\\\":\\\\\\\"gamebuilder.claims.v1\\\\\\\"");
+  mc_one(h, mc_spawn(mc_rev(body), 300, -900, spawn[..]), 1500);
+  h = mc_next(r[..], m[..], model, 20000);
+  if h < 0 { print("cloud: NOT a fourth model call\n"); return 1; }
+  cc_has(r[..], "its change carried out", mc_body(m[..]), "added 1 block");
+  mc_say(h, "I added a block by the start.");
+  cc_want(r[..], dir, id, "done with its message", "\"state\":\"done\"");
+  rev1 := cc_rev(r[..], port, login);
+  if rev1 < 0 || rev1 == rev0 { print("cloud: NOT the level changed on a's account (% then %)\n", rev0, rev1); r[0].bad += 1; }
+  hc_expect(r[..], "its change in a's levels, as the app's sync reads them", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", A, "{}"), "HTTP/1.1 200 ", "\"level\":1,");
+  // its log, read back
+  ib: [128] u8; itx := [1] Text.[Text.{buf = ib[..]}]; tx_put(itx[..], "{\"agent\":\""); tx_put(itx[..], id); tx_put(itx[..], "\"}");
+  one := cast(string) ib[0..<itx[0].at];
+  events := cc_events(r[..], port, login, id);
+  for part: [8] string.["\"type\":\"message\",\"from\":\"person\",\"text\":\"add a block by the start\"", "\"type\":\"state\",\"state\":\"working\"",
+    "\"type\":\"tool\",\"tool\":\"gb_read_level\"", "\"type\":\"tool\",\"tool\":\"gb_claims\"", "\"type\":\"tool\",\"tool\":\"gb_apply_edits\"", "\"type\":\"edit\",\"level\":1", "\"type\":\"message\",\"from\":\"agent\",\"text\":\"I added a block by the start.\"",
+    "\"type\":\"state\",\"state\":\"done\""] { cc_has(r[..], "its log", events, part); }
+  cc_has(r[..], "what it used", events, "\"type\":\"usage\",\"turns\":4,\"cents\":0");
+  hc_expect(r[..], "b can't read a's cloud agent", hc_call(r[..], port, login, "POST", "/api/rows/agent-read", B, one), "HTTP/1.1 404 ", "no such agent");
+
+  // the page's undo: its change taken back, the level as it was; then nothing kept
+  hc_expect(r[..], "its change taken back", hc_call(r[..], port, login, "POST", "/api/rows/agent-undo", A, one), "HTTP/1.1 200 ", "\"level\":1,\"rev\":");
+  if cc_rev(r[..], port, login) != rev0 { print("cloud: NOT the level as it was before its change\n"); r[0].bad += 1; }
+  hc_expect(r[..], "nothing more to take back", hc_call(r[..], port, login, "POST", "/api/rows/agent-undo", A, one), "HTTP/1.1 ", "it has no change kept to take back: it keeps its last 16");
+
+  // another agent's claim: its change inside it is refused, naming whose; one outside lands, and its own agent-undo takes it back
+  hc_expect(r[..], "ann's claim", hc_call(r[..], port, login, "POST", "/api/rows/claim", A, "{\"level\":1,\"region\":\"box:-1000,-1000,1000,1000\",\"agent\":\"ann\"}"), "HTTP/1.1 200 ", "\"agent\":\"ann\"");
+  cc_tell(r[..], port, login, id, "add one more by the middle");
+  h = mc_next(r[..], m[..], model, 20000);
+  if h < 0 { print("cloud: NOT a model call for its next message\n"); return 1; }
+  cc_has(r[..], "its next message, after the conversation so far", mc_body(m[..]), "\\\"task\\\":\\\"The conversation so far:\\\\n\\\\nMe: add a block by the start\\\\n\\\\nYou: I added a block by the start.\\\\n\\\\nNow:\\\\nadd one more by the middle\\\\n\\\"");
+  mc_one(h, "read-level 1", 1000);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  rv := mc_rev(mc_body(m[..]));
+  mc_one(h, mc_spawn(rv, 200, 200, spawn[..]), 1000);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_has(r[..], "its change inside ann's claim refused, naming whose", mc_body(m[..]), "inside ann's claim");
+  cc_has(r[..], "a refused row exits 1", mc_body(m[..]), "\\\"exit\\\":1,\\\"output\\\":\\\"{\\\\\\\"ok\\\\\\\":false,\\\\\\\"error\\\\\\\":\\\\\\\"claimed\\\\\\\"");
+  mc_one(h, mc_spawn(rv, 2000, 2000, spawn[..]), 1000);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_has(r[..], "its change outside the claim", mc_body(m[..]), "added 1 block");
+  if cc_rev(r[..], port, login) == rev0 { print("cloud: NOT the level changed outside the claim\n"); r[0].bad += 1; }
+  ub: [96] u8; ut := [1] Text.[Text.{buf = ub[..]}]; tx_put(ut[..], "agent-undo "); tx_put(ut[..], id);
+  mc_one(h, cast(string) ub[0..<ut[0].at], 1000);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_has(r[..], "agent-undo took its own change back", mc_body(m[..]), "\\\\\\\"ok\\\\\\\":true,\\\\\\\"agent\\\\\\\":");
+  // what is no row of its own is refused in words: a shell command, another level, a row not marked for it, more than 8 a step
+  nine := [10] string.["ls -la", "read-level 2", "delete-level 1", "agent-undo zz9", "apply-edits 1 batch.json", "claims 1", "claims 1", "claims 1", "claims 1", "claims 1"];
+  mc_run(h, nine[..], 1000);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  body = mc_body(m[..]);
+  cc_has(r[..], "a shell command refused", body, "{\\\"command\\\":\\\"ls -la\\\",\\\"exit\\\":1,\\\"output\\\":\\\"{\\\\\\\"ok\\\\\\\":false,\\\\\\\"error\\\\\\\":\\\\\\\"bad-request\\\\\\\",\\\\\\\"why\\\\\\\":\\\\\\\"no such command here: a command starts with one of read-level, apply-edits,");
+  cc_has(r[..], "another level refused", body, "your level is level 1: every command works on it");
+  cc_has(r[..], "a row not marked for it refused", body, "{\\\"command\\\":\\\"delete-level 1\\\",\\\"exit\\\":1");
+  cc_has(r[..], "another agent's undo refused", body, "agent-undo zz9\\\",\\\"exit\\\":1");
+  cc_has(r[..], "a batch's file refused", body, "write the batch inline as JSON in single quotes");
+  cc_has(r[..], "the ninth command of a step refused", body, "a step runs at most 8 commands (AGR_CLOUD_COMMANDS): send this one in your next step");
+  mc_say(h, "Taken back.");
+  cc_want(r[..], dir, id, "done again", "\"state\":\"done\"");
+  if cc_rev(r[..], port, login) != rev0 { print("cloud: NOT the level as it was after its agent-undo\n"); r[0].bad += 1; }
+  events = cc_events(r[..], port, login, id);
+  cc_has(r[..], "the refused step, an event the person reads", events, "\"ok\":false,\"result\":\"{\\\"ok\\\":false,\\\"error\\\":\\\"claimed\\\"");
+  cc_has(r[..], "a refused command, an event the person reads", events, "\"type\":\"tool\",\"tool\":\"command\",\"args\":\"{\\\"command\\\":\\\"ls -la\\\"}\",\"ok\":false");
+  cc_has(r[..], "the ninth command refused, an event the person reads", events, "a step runs at most 8 commands (AGR_CLOUD_COMMANDS)");
+  hc_expect(r[..], "ann's claim released", hc_call(r[..], port, login, "POST", "/api/rows/release", A, "{\"level\":1,\"agent\":\"ann\"}"), "HTTP/1.1 200 ", "\"released\":1");
+
+  // stop while a step is asked: its answer is not used
+  cc_tell(r[..], port, login, id, "keep going");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call to stop\n"); return 1; }
+  hc_expect(r[..], "stopped from the page", hc_call(r[..], port, login, "POST", "/api/rows/agent-stop", A, one), "HTTP/1.1 200 ", "\"state\":\"stopped\"");
+  mc_one(h, mc_spawn(rev0, 2000, 2000, spawn[..]), 1000);
+  if mc_next(r[..], m[..], model, 1500) >= 0 { print("cloud: NOT stopped: it asked the model again\n"); r[0].bad += 1; }
+  if cc_rev(r[..], port, login) != rev0 { print("cloud: NOT the answer after its stop left unused\n"); r[0].bad += 1; }
+  cc_want(r[..], dir, id, "stopped, in the person's words", "\"state\":\"stopped\"");
+
+  // the server stopped between two steps and started again: the loop goes on from its journal
+  cc_tell(r[..], port, login, id, "read it, then say how many things it has");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call before the restart\n"); return 1; }
+  mc_one(h, "read-level 1", 500);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a second model call before the restart\n"); return 1; }
+  cc_quit(shs[0]); _ = cxsock_close(h);
+  port = cc_serve(r[..], bin, dir, origin, key_file, model_url, shs[..]);
+  if port <= 0 { print("cloud: NOT serving again\n"); return 1; }
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT asked again after the restart\n"); return 1; }
+  body = mc_body(m[..]);
+  cc_has(r[..], "the task it had, after the restart", body, "keep going\\\\nread it, then say how many things it has\\\\n");
+  cc_has(r[..], "what it read before the restart", body, "{\\\"command\\\":\\\"read-level 1\\\",\\\"exit\\\":0,\\\"output\\\":\\\"{\\\\\\\"schema\\\\\\\":\\\\\\\"gamebuilder.level.v1\\\\\\\"");
+  mc_say(h, "It has the arena's own things.");
+  cc_want(r[..], dir, id, "done after the restart", "\"state\":\"done\"");
+  events = cc_events(r[..], port, login, id);
+  cc_has(r[..], "its answer after the restart", events, "\"type\":\"message\",\"from\":\"agent\",\"text\":\"It has the arena's own things.\"");
+
+  // its limits, each in words with its number
+  cc_tell(r[..], port, login, id, "read it over and over");
+  for k: 0..<AGR_CLOUD_STEPS {
+    h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT model step %\n", k + 1); return 1; }
+    mc_one(h, "read-level 1", 100);
+  }
+  if mc_next(r[..], m[..], model, 1500) >= 0 { print("cloud: NOT stopped at 12 model steps\n"); r[0].bad += 1; }
+  cc_want(r[..], dir, id, "the step limit", "It stopped at its limit for one message: 12 model steps. Send it a message to go on");
+  cc_tell(r[..], port, login, id, "read it once, heavily");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  mc_one(h, "read-level 1", 100000);
+  cc_want(r[..], dir, id, "the token limit", "It stopped at its limit for one message: 100,000 tokens. Send it a message to go on");
+  cc_tell(r[..], port, login, id, "change it past your changes");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_run_set(r[..], dir, id, 3, 30);   // as if it had made 30 changes for this message
+  mc_one(h, mc_spawn(rev0, 2000, 2000, spawn[..]), 100);
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_has(r[..], "the change limit", mc_body(m[..]), "you are at your limit for one message: 30 changes");
+  mc_say(h, "I am at my limit.");
+  cc_want(r[..], dir, id, "done at the change limit", "\"state\":\"done\"");
+  if cc_rev(r[..], port, login) != rev0 { print("cloud: NOT a change past the limit refused\n"); r[0].bad += 1; }
+  cc_tell(r[..], port, login, id, "take your time");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  cc_run_set(r[..], dir, id, 4, 1);    // as if its message had started long ago
+  mc_one(h, "read-level 1", 100);
+  cc_want(r[..], dir, id, "the time limit", "It stopped at its limit for one message: 10 minutes. Send it a message to go on");
+  day := cast(s64) (cxproc_wall_us() / 1000) / 86400000;
+  dpb: [128] u8; dpt := [1] Text.[Text.{buf = dpb[..]}]; tx_int(dpt[..], day); tx_put(dpt[..], " 60\n");
+  djp := [2] string.[dir, "/acct_a/cloud-day"]; dfb: [512] u8; dfp := hc_join(r[..], djp[..]); for i: 0..<dfp.count { dfb[i] = dfp[i]; }
+  day_file := cast(string) dfb[0..<dfp.count];
+  if !fs_write(day_file, cast(string) dpb[0..<dpt[0].at]) { print("cloud: NOT the day's count written\n"); r[0].bad += 1; }
+  cc_tell(r[..], port, login, id, "one more today");
+  cc_want(r[..], dir, id, "the day's limit", "It stopped: your account's 60 model steps for today are used. Send it a message tomorrow to go on");
+  if mc_next(r[..], m[..], model, 500) >= 0 { print("cloud: NOT refused past the day's limit before asking\n"); r[0].bad += 1; }
+  _ = fs_remove(day_file);
+  // three answers in a row that are no action: failed, in words
+  cc_tell(r[..], port, login, id, "say something");
+  for k: 0..<3 {
+    h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+    mc_text(h, "I can't.", 50);
+  }
+  cc_want(r[..], dir, id, "answers that can't be read", "the model's answers couldn't be read, 3 in a row (MC_BAD_LIMIT): send a message to try again");
+  // the route refused the call: failed, in words
+  cc_tell(r[..], port, login, id, "and again");
+  h = mc_next(r[..], m[..], model, 20000); if h < 0 { print("cloud: NOT a model call\n"); return 1; }
+  mc_send(h, 429, "{\"error\":\"the day is used up\"}");
+  cc_want(r[..], dir, id, "a refused model call", "OpenAgents' model has no more free calls for GameBuilder today");
+  cc_want(r[..], dir, id, "failed", "\"state\":\"failed\"");
+
+  cc_quit(shs[0]);
+  if r[0].bad > 0 { return 1; }
+  print("cloud: ok, a cloud agent on Microcoder's loop end to end (% logins asked)\n", r[0].asked);
+  return 0;
+}

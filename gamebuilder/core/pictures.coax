@@ -1,0 +1,606 @@
+// Pictures of an agent's work (GitHub issue 9; docs/agents.md, "Pictures"): the level before
+// and after each change an agent made, and what a play-test saw (its bots' paths, where they
+// stuck, what nobody reached), each drawn by the renderer that draws that level in the app and
+// kept beside the level.
+//
+//   - A picture is of one level at one revision (agent.coax ed_agent_rev): an agent's edit event
+//     already names the revisions either side of its change (gamebuilder.agent.event.v1 `before`
+//     and `after`), so a change card, the replay's scrub and every surface find its pictures by
+//     level, revision and which (before, after or playtest). One picture serves every agent and
+//     every surface that names that revision.
+//   - Every picture is drawn in the app, never here: a call that changed the level queues the
+//     level as it stood and as it stands (pic_want_change); a play-test queues the level with its
+//     marks (pic_want_playtest). The host takes the queue one picture at a time (ed_pic_due):
+//     ed_pic_stage sets up a second editor of its own with that level, a camera framing it and
+//     the change lit, the host draws that editor offscreen with the level's own renderer (the
+//     engine's page for a level of the website's types, coax/world.coax; the box pass for the
+//     app's own three), and hands the pixels to ed_pic_put, which halves them, codes them as a
+//     JPEG and keeps them. Nothing here is a renderer: it says what is in the picture.
+//   - The pictures are kept beside the level as level-N.pictures (one gamebuilder.picture.v1 a
+//     line, its JPEG in base64), which the app writes and the CLI, MCP and the hosted API read:
+//     the pictures and picture rows (commands.coax). A surface that draws nothing (the command
+//     line) answers what the app kept, or that there is none, in words.
+//
+// Limits, each said in words with its number where it is met: a picture is 160 by 96 pixels
+// (PIC_W, PIC_H), drawn at twice that and halved; its JPEG at most 8,192 bytes (PIC_JPEG); a
+// level keeps its last 32 pictures (PIC_KEEP), the oldest going first; at most 4 wait to be
+// drawn (PIC_QUEUE), the oldest waiting dropped past that; a play-test's marks are at most 384
+// lines (PIC_SEGS); a picture's words at most 240 bytes (PIC_TEXT).
+//   scripts/check.sh
+#load "../../coax/lib/text/base64.coax";
+#load "../../coax/lib/image/jpeg_enc.coax";
+
+PIC_W :: 160; PIC_H :: 96;    // a picture's pixels (multiples of 16, as the JPEG's halved colour needs)
+PIC_DRAW :: 2;                // drawn at twice that and halved, so its edges are smooth
+PIC_QUALITY :: 72;            // the JPEG's quality
+PIC_JPEG :: 8192;             // bytes a picture's JPEG may take
+PIC_KEEP :: 32;               // pictures a level keeps; the oldest goes first
+PIC_QUEUE :: 4;               // pictures waiting to be drawn; past that the oldest waiting is dropped
+PIC_TEXT :: 240;              // bytes of a picture's words
+PIC_SEGS :: 384;              // lines of a picture's marks
+PIC_LINE :: 12288;            // bytes of a picture's line in its file (its JPEG in base64 and the rest)
+PIC_ROOM :: 4.0f32;           // metres: the least a picture frames round the middle of the level
+PIC_PITCH :: 0.96f32;         // radians a picture looks down (55 degrees)
+PIC_BEFORE :: 1; PIC_AFTER :: 2; PIC_PLAYTEST :: 3;
+PIC_WHICH_WORD :: [4] string.["", "before", "after", "playtest"];
+pic_which_of :: (w: string) -> s32 { for k: 1..<4 { if PIC_WHICH_WORD[k] == w { return cast(s32) k; } } return 0; }
+// How a host draws a staged picture (ed_pic_stage): the engine's page, or the app's own box pass.
+PIC_NONE :: 0; PIC_PAGE :: 1; PIC_BOXES :: 2;
+// A mark's colours, as the host's tints number them (changes.coax CH_COLOUR): a path of your side
+// cyan, of the rivals' orange, a walk-through's green; where a bot stuck red; a place nobody
+// reached gold.
+PIC_YOURS :: 3; PIC_RIVALS :: 18; PIC_WALKER :: 5; PIC_STUCK :: 2; PIC_UNREACHED :: 7;
+
+Pic :: struct { which: s32; rev: int; made: s64; w: s32; h: s32; n: int; jpeg: [PIC_JPEG] u8; text: [PIC_TEXT] u8; text_n: int; }
+// A line on the ground in a tint, metres: a path's step, a cross where a bot stuck, a box round a
+// place nobody reached.
+PicSeg :: struct { ax: f32; az: f32; bx: f32; bz: f32; tint: s32; }
+PicJob :: struct {
+  which: s32; rev: int; level: s32; plays: s32; who: s32;
+  things: [ACTORS_MAX] Actor; n: int;          // the level as the picture shows it
+  marks: [CH_MARKS] ChThing; marks_n: int;     // what changed, lit as the editor lights it (changes.coax)
+  segs: [PIC_SEGS] PicSeg; segs_n: int;
+  cx: f32; cz: f32; radius: f32;               // what it frames
+  text: [PIC_TEXT] u8; text_n: int;
+}
+// A level's pictures and those waiting to be drawn: the surface's own memory (ed_pics_attach), so
+// an editor that keeps none is no bigger.
+PicStore :: struct {
+  pics: [PIC_KEEP] Pic; n: int;
+  level: s32; game: s32;                       // whose: the level they are of (ed_pics_load)
+  changed: bool;                               // to be written (ed_pics_due)
+  jobs: [PIC_QUEUE] PicJob; jobs_n: int;
+  dropped: int;                                // pictures not drawn because the queue was full
+}
+
+// The surface's store, if it gave one.
+pic_store :: (e: [] Editor) -> [] PicStore { return e[0].pic; }
+pic_here :: (e: [] Editor) -> bool { return e.count == 1 && e[0].pic.count == 1; }
+
+// The surface gives the editor its store, and says which level it holds (the open one: its
+// pictures are then read with ed_pics_load).
+ed_pics_attach :: (e: [] Editor, s: [] PicStore) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].pic = s;
+  if s.count == 1 { s[0].level = e[0].level; s[0].game = e[0].game; }
+}
+ed_pics_size :: () -> s64 #export_c #effects(all) { return size_of(PicStore); }
+// The sizes a host needs: a picture's points (PIC_W, PIC_H), how many times that it draws it at
+// (PIC_DRAW), and the bytes its pictures' file may take (PIC_KEEP lines of PIC_LINE), into out.
+ed_pic_sizes :: (out: [] s32) -> bool #export_c #effects(all) {
+  if out.count < 4 { return false; }
+  out[0] = PIC_W; out[1] = PIC_H; out[2] = PIC_DRAW; out[3] = PIC_KEEP * PIC_LINE;
+  return true;
+}
+
+// ---- finding and keeping
+
+pic_find :: (s: [] PicStore, rev: int, which: s32) -> int {
+  k := s[0].n;
+  while k > 0 { k -= 1; if s[0].pics[k].rev == rev && s[0].pics[k].which == which { return k; } }
+  return -1;
+}
+// Whether the open level has a picture of rev, or one waiting to be drawn.
+pic_has :: (e: [] Editor, rev: int, which: s32) -> bool { return pic_here(e) && pic_find(e[0].pic, rev, which) >= 0; }
+pic_waiting :: (e: [] Editor, rev: int, which: s32) -> bool {
+  if !pic_here(e) { return false; }
+  s := e[0].pic;
+  for k: 0..<s[0].jobs_n { if s[0].jobs[k].rev == rev && s[0].jobs[k].which == which { return true; } }
+  return false;
+}
+// The open level's: its store holds this level's pictures.
+pic_mine :: (e: [] Editor) -> bool { return pic_here(e) && e[0].pic[0].level == e[0].level && e[0].pic[0].game == e[0].game; }
+
+// Keeps a picture, the oldest going first when the level has PIC_KEEP. A picture of the same
+// revision and which is drawn again in its place.
+pic_keep :: (s: [] PicStore, p: Pic) {
+  at := pic_find(s, p.rev, p.which);
+  if at >= 0 { for j: at..<s[0].n - 1 { s[0].pics[j] = s[0].pics[j + 1]; } s[0].n -= 1; }
+  if s[0].n == PIC_KEEP { for j: 0..<PIC_KEEP - 1 { s[0].pics[j] = s[0].pics[j + 1]; } s[0].n -= 1; }
+  s[0].pics[s[0].n] = p; s[0].n += 1;
+  s[0].changed = true;
+}
+
+// ---- what is wanted: the queue
+
+pic_room :: (s: [] PicStore) -> [] PicJob {
+  if s[0].jobs_n == PIC_QUEUE {
+    for j: 0..<PIC_QUEUE - 1 { s[0].jobs[j] = s[0].jobs[j + 1]; }
+    s[0].jobs_n -= 1; s[0].dropped += 1;
+  }
+  k := s[0].jobs_n; s[0].jobs_n += 1;
+  s[0].jobs[k] = PicJob.{};
+  return s[0].jobs[k..<k + 1];
+}
+pic_take_things :: (j: [] PicJob, things: [] Actor) {
+  j[0].n = 0;
+  for a: things { if j[0].n < ACTORS_MAX { j[0].things[j[0].n] = a; j[0].n += 1; } }
+}
+pic_text :: (j: [] PicJob, text: string) {
+  n := 0; for c: text { if n < PIC_TEXT { j[0].text[n] = c; n += 1; } }
+  j[0].text_n = n;
+}
+// What a picture frames: the middle of the things, and how far round it.
+PicFrame :: struct { cx: f32; cz: f32; radius: f32; }
+pic_frame_of :: (a: [] Actor, b: [] Actor, segs: [] PicSeg) -> PicFrame {
+  big: f32 = 1000000000.0;
+  lx := big; lz := big; hx := -big; hz := -big;
+  for side: 0..<2 {
+    list := ifx side == 0 then a else b;
+    for t: list {
+      q := ed_bounds(t);
+      if q.c.x - q.hx < lx { lx = q.c.x - q.hx; } if q.c.z - q.hz < lz { lz = q.c.z - q.hz; }
+      if q.c.x + q.hx > hx { hx = q.c.x + q.hx; } if q.c.z + q.hz > hz { hz = q.c.z + q.hz; }
+    }
+  }
+  for g: segs {
+    for end: 0..<2 {
+      x := ifx end == 0 then g.ax else g.bx; z := ifx end == 0 then g.az else g.bz;
+      if x < lx { lx = x; } if z < lz { lz = z; } if x > hx { hx = x; } if z > hz { hz = z; }
+    }
+  }
+  if lx > hx { return PicFrame.{radius = PIC_ROOM}; }
+  r := vp_len(hx - lx, 0, hz - lz) * 0.5;
+  return PicFrame.{cx = (lx + hx) * 0.5, cz = (lz + hz) * 0.5, radius = ifx r < PIC_ROOM then PIC_ROOM else r};
+}
+
+// A call changed the level: the level as it stood (the snapshot, at revision before) and as it
+// stands, the change lit, queued to be drawn. Both frame the same ground, so they compare.
+pic_want_change :: (e: [] Editor, who: s32, snap: [] ChSnap, before: int, things: [] ChThing) {
+  if !pic_mine(e) || things.count == 0 { return; }
+  s := e[0].pic;
+  after := ed_agent_rev(e);
+  now: [ACTORS_MAX] Actor; nn := 0;
+  for i: 0..<ed_count(e) { if nn < ACTORS_MAX { now[nn] = ed_actor(e, i); nn += 1; } }
+  none: [1] PicSeg;
+  f := pic_frame_of(snap[0].before[0..<snap[0].n], now[0..<nn], none[0..<0]);
+  if !pic_waiting(e, before, PIC_BEFORE) {
+    j := pic_room(s);
+    j[0].which = PIC_BEFORE; j[0].rev = before; j[0].level = e[0].level; j[0].plays = e[0].plays; j[0].who = who;
+    pic_take_things(j, snap[0].before[0..<snap[0].n]);
+    j[0].cx = f.cx; j[0].cz = f.cz; j[0].radius = f.radius;
+  }
+  j := pic_room(s);
+  j[0].which = PIC_AFTER; j[0].rev = after; j[0].level = e[0].level; j[0].plays = e[0].plays; j[0].who = who;
+  pic_take_things(j, now[0..<nn]);
+  for th: things { if j[0].marks_n < CH_MARKS { j[0].marks[j[0].marks_n] = th; j[0].marks_n += 1; } }
+  j[0].cx = f.cx; j[0].cz = f.cz; j[0].radius = f.radius;
+  b: [PIC_TEXT] u8; t := [1] Text.[Text.{buf = b[..]}];
+  ch_summary(t[..], things);
+  pic_text(j, cast(string) b[0..<t[0].at]);
+}
+
+// A play-test's picture: the level as it stands, with the marks (paths, stuck spots, places
+// nobody reached) and what it found in words.
+pic_want_playtest :: (e: [] Editor, segs: [] PicSeg, text: string) {
+  if !pic_mine(e) { return; }
+  s := e[0].pic;
+  now: [ACTORS_MAX] Actor; nn := 0;
+  for i: 0..<ed_count(e) { if nn < ACTORS_MAX { now[nn] = ed_actor(e, i); nn += 1; } }
+  rev := ed_agent_rev(e);
+  // a play-test of a revision drawn again replaces the one waiting
+  for k: 0..<s[0].jobs_n {
+    if s[0].jobs[k].rev == rev && s[0].jobs[k].which == PIC_PLAYTEST {
+      for q: k..<s[0].jobs_n - 1 { s[0].jobs[q] = s[0].jobs[q + 1]; }
+      s[0].jobs_n -= 1; break;
+    }
+  }
+  j := pic_room(s);
+  j[0].which = PIC_PLAYTEST; j[0].rev = rev; j[0].level = e[0].level; j[0].plays = e[0].plays;
+  pic_take_things(j, now[0..<nn]);
+  for g: segs { if j[0].segs_n < PIC_SEGS { j[0].segs[j[0].segs_n] = g; j[0].segs_n += 1; } }
+  f := pic_frame_of(now[0..<nn], now[0..<0], segs);
+  j[0].cx = f.cx; j[0].cz = f.cz; j[0].radius = f.radius;
+  pic_text(j, text);
+}
+
+// ---- drawing one: the host's half
+
+// How many pictures wait to be drawn.
+ed_pic_due :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx pic_here(e) then cast(s32) e[0].pic[0].jobs_n else 0; }
+// The first waiting picture set up on the host's picture editor p (its own memory, never the
+// level's), w by h points: its level's things, the change lit, its marks, and a camera looking
+// down on it from the south. What draws it: PIC_PAGE (the engine's page, which the host then
+// points at p), PIC_BOXES (the box pass), or PIC_NONE when it can't be drawn here (it is dropped:
+// its level is not the one open).
+ed_pic_stage :: (e: [] Editor, p: [] Editor, w: f32, h: f32) -> s32 #export_c #effects(all) {
+  if !pic_here(e) || p.count != 1 || e[0].pic[0].jobs_n == 0 { return PIC_NONE; }
+  j := e[0].pic[0].jobs[0..<1];
+  if !pic_mine(e) || j[0].level != e[0].level { ed_pic_drop(e); return PIC_NONE; }
+  p[0] = Editor.{};
+  p[0].w = w; p[0].h = h;
+  p[0].level = j[0].level; p[0].game = e[0].game; p[0].plays = j[0].plays;
+  p[0].world[0].page = e[0].world[0].page;
+  p[0].pic = e[0].pic; p[0].pic_drawing = true;
+  // the things, each with the id it has in the picture's editor
+  ids: [ACTORS_MAX] s32;
+  for i: 0..<j[0].n {
+    a := j[0].things[i];
+    ids[i] = ed_put_at(p, a.kind, a.x, a.y, a.z, a.sx * a.scale / 100, a.sy * a.scale / 100, a.sz * a.scale / 100, a.yaw);
+  }
+  // what changed, lit as the editor lights an agent's change: now by its new id, a removed one a ghost
+  if j[0].marks_n > 0 {
+    marks: [CH_MARKS] ChThing;
+    for k: 0..<j[0].marks_n {
+      m := j[0].marks[k];
+      m.id = cast(s32) (900000 + k);
+      for i: 0..<j[0].n { if j[0].things[i].id == j[0].marks[k].id && ids[i] > 0 { m.id = ids[i]; m.now = ed_actor(p, ed_index(p, ids[i])); } }
+      marks[k] = m;
+    }
+    ch_mark(p, j[0].who, marks[0..<j[0].marks_n]);
+  }
+  // the camera: from the south, looking down at PIC_PITCH, far enough to see the frame's circle
+  r := j[0].radius;
+  d := r / tan(FOV * 0.5) * 1.08;
+  c := WorldPoint.{x = j[0].cx, y = 0, z = j[0].cz};
+  ed_set_eye(p, WorldPoint.{x = c.x, y = d * sin(PIC_PITCH), z = c.z - d * cos(PIC_PITCH)});
+  ed_aim(p, c);
+  p[0].dirty = true;
+  if !ed_paged(p) { return PIC_BOXES; }
+  // the page holds one scene: told the picture's things, it is told the open level's again after
+  e[0].world[0].sum = -1;
+  return PIC_PAGE;
+}
+
+// The pixels the host drew of the staged picture: w by h at stride bytes a row, BGRA (bgra) or
+// RGBA, drawn at PIC_DRAW times PIC_W by PIC_H. Halved, coded as a JPEG and kept; the picture is
+// then no longer waiting. made: when (ms since 1970). False when it could not be kept (then it is
+// dropped all the same, so a picture that can't be drawn never holds the queue).
+ed_pic_put :: (e: [] Editor, px: [] u8, w: s32, h: s32, stride: s32, bgra: bool, made: s64) -> bool #export_c #effects(all) {
+  if !pic_here(e) || e[0].pic[0].jobs_n == 0 { return false; }
+  ok := pic_code(e[0].pic, px, cast(int) w, cast(int) h, cast(int) stride, bgra, made);
+  ed_pic_drop(e);
+  return ok;
+}
+pic_code :: (s: [] PicStore, px: [] u8, w: int, h: int, stride: int, bgra: bool, made: s64) -> bool {
+  if w < PIC_W || h < PIC_H || stride < w * 4 || px.count < stride * (h - 1) + w * 4 { return false; }
+  j := s[0].jobs[0..<1];
+  // halved (each picture pixel the mean of the pixels it covers), RGB
+  rgb: [PIC_W * PIC_H * 3] u8;
+  fx := w / PIC_W; fz := h / PIC_H;
+  for y: 0..<PIC_H {
+    for x: 0..<PIC_W {
+      sum := [3] int.[0, 0, 0];
+      for dy: 0..<fz { for dx: 0..<fx {
+        at := (y * fz + dy) * stride + (x * fx + dx) * 4;
+        for c: 0..<3 { sum[c] += cast(int) px[at + (ifx bgra then 2 - c else c)]; }
+      } }
+      for c: 0..<3 { rgb[(y * PIC_W + x) * 3 + c] = cast(u8) (sum[c] / (fx * fz)); }
+    }
+  }
+  p := Pic.{which = j[0].which, rev = j[0].rev, made = made, w = PIC_W, h = PIC_H};
+  q := PIC_QUALITY; n := 0;
+  // a busy picture is coded coarser until it fits
+  while q >= 30 {
+    n = jpe_encode(rgb[..], PIC_W, PIC_H, 3, q, true, true, p.jpeg[..]);
+    if n > 0 { break; }
+    q -= 14;
+  }
+  if n <= 0 { return false; }
+  p.n = n;
+  for i: 0..<j[0].text_n { p.text[i] = j[0].text[i]; } p.text_n = j[0].text_n;
+  pic_keep(s, p);
+  return true;
+}
+// The first waiting picture dropped: drawn, or it can't be.
+ed_pic_drop :: (e: [] Editor) #export_c #effects(all) {
+  if !pic_here(e) || e[0].pic[0].jobs_n == 0 { return; }
+  s := e[0].pic;
+  for j: 0..<s[0].jobs_n - 1 { s[0].jobs[j] = s[0].jobs[j + 1]; }
+  s[0].jobs_n -= 1;
+}
+
+// The marks of the picture an editor is drawing (ed_pic_stage), for the renderer's own lines:
+// how many, and mark k's ends and tint.
+pic_segs :: (e: [] Editor) -> [] PicSeg {
+  if e.count != 1 || !e[0].pic_drawing || e[0].pic.count != 1 || e[0].pic[0].jobs_n == 0 { none: [] PicSeg; return none; }
+  j := e[0].pic[0].jobs[0..<1];
+  return j[0].segs[0..<j[0].segs_n];
+}
+// The marks as the box pass draws them: thin bars along the ground, in their tints.
+PIC_BAR :: 0.06f32;
+pic_draw :: (e: [] Editor, out: [] f32, n: s64) -> s64 {
+  m := n;
+  for g: pic_segs(e) {
+    dx := g.bx - g.ax; dz := g.bz - g.az; span := sqrt(dx * dx + dz * dz);
+    if span < 0.01 { continue; }
+    yaw := angle_atan2(-dz, dx) * 57.29578;
+    m = ed_line(out, m, WorldPoint.{x = (g.ax + g.bx) * 0.5, y = 0.04, z = (g.az + g.bz) * 0.5}, span * 0.5 + PIC_BAR * 0.5, PIC_BAR * 0.5, PIC_BAR, yaw, g.tint);
+  }
+  return m;
+}
+
+// The JPEG of the open level's picture of rev, into out: its length, 0 when there is none.
+ed_pic_jpeg :: (e: [] Editor, rev: s32, which: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if !pic_mine(e) { return 0; }
+  k := pic_find(e[0].pic, cast(int) rev, which);
+  if k < 0 || out.count < e[0].pic[0].pics[k].n { return 0; }
+  for i: 0..<e[0].pic[0].pics[k].n { out[i] = e[0].pic[0].pics[k].jpeg[i]; }
+  return e[0].pic[0].pics[k].n;
+}
+// A stamp that changes when the open level's pictures do, for a host that shows them.
+ed_pic_stamp :: (e: [] Editor) -> s64 #export_c #effects(all) {
+  if !pic_mine(e) { return 0; }
+  s := e[0].pic; h: s64 = s[0].n;
+  for k: 0..<s[0].n { h = (h * 1000003 + cast(s64) s[0].pics[k].rev + s[0].pics[k].made + cast(s64) s[0].pics[k].which) % 2147483647; }
+  return h;
+}
+
+// ---- the file: level-N.pictures
+
+// One picture as gamebuilder.picture.v1's members into an open object.
+pic_json :: (o: [] Jo, level: s32, pp: [] Pic, data: bool) {
+  p := pp[0..<1];
+  jo_key(o, "schema"); jo_str(o, "gamebuilder.picture.v1");
+  we_int(o, "level", cast(int) level); we_int(o, "rev", p[0].rev);
+  jo_key(o, "which"); jo_str(o, PIC_WHICH_WORD[p[0].which]);
+  we_int(o, "made", cast(int) p[0].made); we_int(o, "w", cast(int) p[0].w); we_int(o, "h", cast(int) p[0].h);
+  jo_key(o, "type"); jo_str(o, "image/jpeg"); we_int(o, "bytes", p[0].n);
+  jo_key(o, "text"); jo_str(o, cast(string) p[0].text[0..<p[0].text_n]);
+  if data {
+    b: [PIC_LINE] u8;
+    m := b64_encode(cast(string) p[0].jpeg[0..<p[0].n], b[..]);
+    jo_key(o, "data"); jo_str(o, cast(string) b[0..<(ifx m > 0 then m else 0)]);
+  }
+}
+// Whether the open level's pictures changed since they were last written (ed_pics_saved).
+ed_pics_due :: (e: [] Editor) -> bool #export_c #effects(all) { return pic_here(e) && e[0].pic[0].changed; }
+ed_pics_saved :: (e: [] Editor) #export_c #effects(all) { if pic_here(e) { e[0].pic[0].changed = false; } }
+// Whether the store holds the open level's pictures (else the host reads them: ed_pics_load).
+ed_pics_mine :: (e: [] Editor) -> bool #export_c #effects(all) { return pic_mine(e); }
+// The level the store holds, for the host writing its file.
+ed_pics_level :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx pic_here(e) then e[0].pic[0].level else 0; }
+// The pictures as their file: a line each, oldest first. Its length, 0 for none (the file goes).
+ed_pics_save :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if !pic_here(e) { return 0; }
+  s := e[0].pic; n := 0;
+  for k: 0..<s[0].n {
+    line: [PIC_LINE] u8;
+    o: [1] Jo; jo_start(o[..], line[..]);
+    jo_obj(o[..]); pic_json(o[..], s[0].level, s[0].pics[k..<k + 1], true); jo_end(o[..]);
+    if o[0].bad { continue; }
+    t := jo_text(o[..]);
+    if n + t.count + 1 > out.count { break; }
+    for c: t { out[n] = c; n += 1; }
+    out[n] = '\n'; n += 1;
+  }
+  return n;
+}
+// The open level's pictures read from their file (the level just opened): lines that are not a
+// picture of this level are left out. False when none was read.
+ed_pics_load :: (e: [] Editor, text: [] u8) -> bool #export_c #effects(all) {
+  if !pic_here(e) { return false; }
+  s := e[0].pic;
+  s[0].n = 0; s[0].jobs_n = 0; s[0].changed = false; s[0].level = e[0].level; s[0].game = e[0].game;
+  at := 0; t := cast(string) text;
+  while at < t.count {
+    end := at; while end < t.count && t[end] != '\n' { end += 1; }
+    if end < t.count { pic_read_line(s, cast(string) t[at..<end]); }   // (a last line without its break was cut short)
+    at = end + 1;
+  }
+  return s[0].n > 0;
+}
+pic_read_line :: (s: [] PicStore, line: string) {
+  p: [1] Pic;
+  if !pic_parse(line, s[0].level, p[..]) { return; }
+  pic_keep(s, p[0]);
+  s[0].changed = false;
+}
+// One gamebuilder.picture.v1 line read into p[0]: false when it is not one, is of another level
+// than level (any level, for level 0: the level it is of is then in p[0].level's place, lv[0]), or
+// its JPEG is not one of at most 8,192 bytes (PIC_JPEG).
+pic_parse :: (line: string, level: s32, p: [] Pic) -> bool {
+  lv: [1] s32;
+  return pic_parse_of(line, level, p, lv[..]);
+}
+pic_parse_of :: (line: string, level: s32, p: [] Pic, lv: [] s32) -> bool {
+  nodes: [48] JvNode; d: [1] Jv;
+  if line.count > PIC_LINE || !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  sb: [40] u8;
+  if jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]) != 22 || cast(string) sb[0..<22] != "gamebuilder.picture.v1" { return false; }
+  of := jv_int(d[0], jv_get(d[0], 0, "level"), -1);
+  if of < 1 || of > LEVEL_MAX || (level > 0 && of != cast(int) level) { return false; }
+  lv[0] = cast(s32) of;
+  wb: [16] u8; wn := jv_str(d[0], jv_get(d[0], 0, "which"), wb[..]);
+  which := ifx wn > 0 then pic_which_of(cast(string) wb[0..<wn]) else 0;
+  if which == 0 { return false; }
+  p[0] = Pic.{which = which, rev = jv_int(d[0], jv_get(d[0], 0, "rev"), 0), made = cast(s64) jv_int(d[0], jv_get(d[0], 0, "made"), 0),
+            w = cast(s32) jv_int(d[0], jv_get(d[0], 0, "w"), 0), h = cast(s32) jv_int(d[0], jv_get(d[0], 0, "h"), 0)};
+  if p[0].w != PIC_W || p[0].h != PIC_H || p[0].made <= 0 { return false; }
+  tn := jv_str(d[0], jv_get(d[0], 0, "text"), p[0].text[..]); p[0].text_n = ifx tn > 0 then tn else 0;
+  b: [PIC_LINE] u8;
+  bn := jv_str(d[0], jv_get(d[0], 0, "data"), b[..]);
+  if bn <= 0 || b64_decoded_max(bn) > PIC_JPEG + 3 { return false; }
+  jb: [PIC_JPEG + 3] u8;
+  jn := b64_decode(cast(string) b[0..<bn], jb[..]);
+  if jn < 4 || jn > PIC_JPEG || jb[0] != 255 || jb[1] != 216 { return false; }
+  for i: 0..<jn { p[0].jpeg[i] = jb[i]; } p[0].n = jn;
+  return true;
+}
+
+// ---- the rows' answers (commands.coax: pictures, picture)
+
+// The open level's pictures, without their bytes: {"ok":true,"schema":"gamebuilder.pictures.v1",
+// "level":L,"keep":32,"pictures":[{rev, which, made, w, h, type, bytes, text}],"waiting":N}.
+pic_list_answer :: (e: [] Editor, o: [] Jo) {
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, true);
+  jo_key(o, "schema"); jo_str(o, "gamebuilder.pictures.v1");
+  we_int(o, "level", cast(int) ed_level(e)); we_int(o, "keep", PIC_KEEP);
+  jo_key(o, "pictures"); jo_arr(o);
+  if pic_mine(e) {
+    s := e[0].pic;
+    for k: 0..<s[0].n {
+      p := s[0].pics[k];
+      jo_obj(o); we_int(o, "rev", p.rev); jo_key(o, "which"); jo_str(o, PIC_WHICH_WORD[p.which]);
+      we_int(o, "made", cast(int) p.made); we_int(o, "w", cast(int) p.w); we_int(o, "h", cast(int) p.h);
+      jo_key(o, "type"); jo_str(o, "image/jpeg"); we_int(o, "bytes", p.n);
+      jo_key(o, "text"); jo_str(o, cast(string) p.text[0..<p.text_n]); jo_end(o);
+    }
+  }
+  jo_end(o);
+  we_int(o, "waiting", cast(int) ed_pic_due(e));
+  jo_end(o);
+}
+// Why there is no picture of rev, in words, or "" when there is one.
+pic_why_none :: (e: [] Editor, rev: int, which: s32) -> string {
+  if pic_mine(e) && pic_find(e[0].pic, rev, which) >= 0 { return ""; }
+  if pic_waiting(e, rev, which) { return "that picture is waiting to be drawn: the app draws one at a time, as the level is shown"; }
+  return "no picture of that revision is kept: the app draws one when an agent changes the level (before and after) or play-tests it, with the level's own renderer, and a level keeps its last 32 (PIC_KEEP); a call from the command line draws none (pictures lists those kept)";
+}
+// One picture with its JPEG in base64: {"ok":true,"schema":"gamebuilder.picture.v1",...,"data":...}.
+pic_answer :: (e: [] Editor, o: [] Jo, rev: int, which: s32) -> bool {
+  if pic_why_none(e, rev, which).count > 0 { return false; }
+  k := pic_find(e[0].pic, rev, which);
+  jo_obj(o); jo_key(o, "ok"); jo_bool(o, true);
+  pic_json(o, ed_level(e), e[0].pic[0].pics[k..<k + 1], true);
+  jo_end(o);
+  return true;
+}
+
+// ---- checks
+
+PicTest :: struct { e: [1] Editor; p: [1] Editor; s: [1] PicStore; snap: [1] ChSnap; px: [PIC_W * PIC_DRAW * PIC_H * PIC_DRAW * 4] u8; file: [PIC_KEEP * PIC_LINE] u8; out: [INSTANCES_MAX * INSTANCE_FLOATS] f32; }
+
+pic_test_paint :: (t: [] PicTest, shade: int) {
+  w := PIC_W * PIC_DRAW; h := PIC_H * PIC_DRAW;
+  for y: 0..<h { for x: 0..<w { at := (y * w + x) * 4; t[0].px[at] = cast(u8) ((x + shade) % 256); t[0].px[at + 1] = cast(u8) (y % 256); t[0].px[at + 2] = cast(u8) shade; t[0].px[at + 3] = 255; } }
+}
+
+#test "an agent's change queues the level before and after, staged with the change lit and both framed alike; the pixels drawn are kept as a JPEG" #steps 200000000 {
+  t: [1] PicTest; e := t[0].e[..]; p := t[0].p[..];
+  ed_init(e, 800, 400); ed_new(e, 1);
+  ed_pics_attach(e, t[0].s[..]);
+  #assert ed_pic_due(e) == 0;
+  before := ed_agent_rev(e);
+  ch_snap(e, t[0].snap[..]);
+  added := ed_add(e, KIND_BLOCK);
+  things: [CH_MARKS] ChThing;
+  // recording the change (as the Agents pane and calls from the terminal do) queues both
+  #assert ch_record_into(e, CH_AGENT0, t[0].snap[..], things[..]) == 1;
+  #assert ed_pic_due(e) == 2;
+  s := t[0].s[..];
+  #assert s[0].jobs[0].which == PIC_BEFORE && s[0].jobs[0].rev == before && s[0].jobs[1].which == PIC_AFTER && s[0].jobs[1].rev == ed_agent_rev(e);
+  nb: [64] u8;
+  #assert s[0].jobs[0].cx == s[0].jobs[1].cx && s[0].jobs[0].radius == s[0].jobs[1].radius && s[0].jobs[1].n == s[0].jobs[0].n + 1;
+  #assert cast(string) s[0].jobs[1].text[0..<s[0].jobs[1].text_n] == pic_test_named(nb[..], "added 1 block (Block ", added);
+  // staged: the picture's editor holds the level as it stood, seen from above, in the box pass (an arena)
+  #assert ed_pic_stage(e, p, PIC_W, PIC_H) == PIC_BOXES;
+  #assert ed_count(p) == s[0].jobs[0].n && p[0].pic_drawing && e[0].vp[0].fy != p[0].vp[0].fy && p[0].vp[0].fpitch < -0.5;
+  // the level open is untouched
+  #assert ed_count(e) == s[0].jobs[1].n;
+  pic_test_paint(t[..], 40);
+  #assert ed_pic_put(e, t[0].px[..], PIC_W * PIC_DRAW, PIC_H * PIC_DRAW, PIC_W * PIC_DRAW * 4, true, 1000);
+  #assert ed_pic_due(e) == 1 && pic_has(e, before, PIC_BEFORE) && ed_pics_due(e);
+  // the after: the added block is lit in the picture's editor
+  #assert ed_pic_stage(e, p, PIC_W, PIC_H) == PIC_BOXES;
+  lit := 0; for i: 0..<ed_count(p) { if ch_light(p, ed_actor(p, i).id) > 1 { lit += 1; } }
+  #assert lit == 1;
+  #assert ed_draw(p, t[0].out[..]) > ed_count(p) + 12;
+  pic_test_paint(t[..], 90);
+  #assert ed_pic_put(e, t[0].px[..], PIC_W * PIC_DRAW, PIC_H * PIC_DRAW, PIC_W * PIC_DRAW * 4, true, 2000);
+  #assert ed_pic_due(e) == 0 && pic_has(e, ed_agent_rev(e), PIC_AFTER);
+  // a JPEG, within its limit, that the host can show
+  jb: [PIC_JPEG] u8;
+  k := ed_pic_jpeg(e, cast(s32) ed_agent_rev(e), PIC_AFTER, jb[..]);
+  #assert k > 100 && k <= PIC_JPEG && jb[0] == 255 && jb[1] == 216 && jb[k - 2] == 255 && jb[k - 1] == 217;
+}
+
+pic_test_named :: (b: [] u8, lead: string, id: s32) -> string {
+  t := [1] Text.[Text.{buf = b}];
+  tx_put(t[..], lead); tx_n(t[..], id); tx_put(t[..], ")");
+  return cast(string) b[0..<t[0].at];
+}
+
+#test "a level's pictures are its file, read back whole; a level keeps its last 32, and a picture of another level is not read" #steps 200000000 {
+  t: [1] PicTest; e := t[0].e[..];
+  ed_init(e, 800, 400); ed_new(e, 1);
+  ed_pics_attach(e, t[0].s[..]);
+  s := t[0].s[..];
+  segs := [2] PicSeg.[PicSeg.{ax = 0, az = 0, bx = 3, bz = 0, tint = PIC_YOURS}, PicSeg.{ax = 3, az = 0, bx = 3, bz = 4, tint = PIC_STUCK}];
+  // one drawn and coded; the rest kept as copies of it under other revisions
+  pic_want_playtest(e, segs[..], "a play-test");
+  s[0].jobs[0].rev = 1000;
+  pic_test_paint(t[..], 7);
+  #assert ed_pic_put(e, t[0].px[..], PIC_W * PIC_DRAW, PIC_H * PIC_DRAW, PIC_W * PIC_DRAW * 4, false, 0);
+  one := s[0].pics[0];
+  for k: 1..<PIC_KEEP + 3 { q := one; q.rev = 1000 + k; q.made = cast(s64) k; q.jpeg[q.n - 3] = cast(u8) k; pic_keep(s, q); }
+  #assert s[0].n == PIC_KEEP && !pic_has(e, 1000, PIC_PLAYTEST) && pic_has(e, 1003, PIC_PLAYTEST) && pic_has(e, 1000 + PIC_KEEP + 2, PIC_PLAYTEST);
+  n := ed_pics_save(e, t[0].file[..]);
+  #assert n > 0 && ed_pics_due(e);
+  ed_pics_saved(e);
+  // read back into a fresh store: every picture, byte for byte
+  f: [1] PicTest; g := f[0].e[..];
+  ed_init(g, 800, 400); ed_new(g, 1);
+  ed_pics_attach(g, f[0].s[..]);
+  #assert ed_pics_load(g, t[0].file[0..<n]);
+  #assert f[0].s[0].n == PIC_KEEP && !ed_pics_due(g);
+  for k: 0..<PIC_KEEP {
+    a := s[0].pics[k]; b := f[0].s[0].pics[k];
+    #assert a.rev == b.rev && a.which == b.which && a.n == b.n && a.made == b.made && cast(string) a.jpeg[0..<a.n] == cast(string) b.jpeg[0..<b.n];
+    #assert cast(string) b.text[0..<b.text_n] == "a play-test";
+  }
+  // the rows' words: the list, one picture, and why there is none
+  ab: [65536] u8; o: [1] Jo; jo_start(o[..], ab[..]);
+  pic_list_answer(g, o[..]);
+  #assert level_find(jo_text(o[..]), "\"schema\":\"gamebuilder.pictures.v1\",\"level\":1,\"keep\":32,\"pictures\":[{\"rev\":1003,\"which\":\"playtest\"") > 0;
+  jo_start(o[..], ab[..]);
+  #assert pic_answer(g, o[..], 1010, PIC_PLAYTEST) && level_find(jo_text(o[..]), "\"type\":\"image/jpeg\"") > 0 && level_find(jo_text(o[..]), "\"data\":\"/9j/") > 0;
+  #assert pic_why_none(g, 1000, PIC_PLAYTEST).count > 0 && pic_why_none(g, 1010, PIC_AFTER).count > 0;
+  // another level's file reads as none of this one's
+  h: [1] PicTest; o2 := h[0].e[..];
+  ed_init(o2, 800, 400); ed_new(o2, 2);
+  ed_pics_attach(o2, h[0].s[..]);
+  #assert !ed_pics_load(o2, t[0].file[0..<n]) && h[0].s[0].n == 0;
+  // a cut-short last line is not a picture yet
+  #assert ed_pics_load(g, t[0].file[0..<n - 10]) && f[0].s[0].n == PIC_KEEP - 1;
+}
+
+#test "a play-test's marks are the picture editor's lines; at most 4 pictures wait, the oldest dropped" {
+  t: [1] PicTest; e := t[0].e[..]; p := t[0].p[..];
+  ed_init(e, 800, 400); ed_new(e, 1);
+  ed_pics_attach(e, t[0].s[..]);
+  segs := [3] PicSeg.[PicSeg.{ax = 0, az = 0, bx = 3, bz = 0, tint = PIC_YOURS}, PicSeg.{ax = 3, az = 0, bx = 3, bz = 4, tint = PIC_RIVALS}, PicSeg.{ax = 30, az = 30, bx = 31, bz = 31, tint = PIC_STUCK}];
+  pic_want_playtest(e, segs[..], "3 a side");
+  #assert ed_pic_stage(e, p, PIC_W, PIC_H) == PIC_BOXES && pic_segs(p).count == 3;
+  plain := ed_draw(e, t[0].out[..]);
+  #assert ed_draw(p, t[0].out[..]) == ed_count(p) + 1 + 3;
+  // the frame takes in the marks far out
+  #assert t[0].s[0].jobs[0].radius > 20;
+  // a play-test of the same revision again replaces the one waiting; more than 4 drop the oldest
+  pic_want_playtest(e, segs[..], "again");
+  #assert ed_pic_due(e) == 1;
+  for k: 0..<6 { pic_want_playtest(e, segs[..], "more"); t[0].s[0].jobs[t[0].s[0].jobs_n - 1].rev = 5 + k; }
+  #assert ed_pic_due(e) == PIC_QUEUE && t[0].s[0].dropped == 2;
+  // a level the engine's page draws is staged for the page, which then tells the open level's things again
+  g: [1] PicTest; ge := g[0].e[..];
+  ed_init(ge, 800, 400);
+  #assert ed_new_game(ge, 1, GT_THIRD, 1);
+  ed_world_attach(ge, true);
+  ed_pics_attach(ge, g[0].s[..]);
+  pic_want_playtest(ge, segs[..], "a meadow");
+  #assert ed_pic_stage(ge, g[0].p[..], PIC_W, PIC_H) == PIC_PAGE && ed_paged(g[0].p[..]) && ge[0].world[0].sum == -1;
+  // a waiting picture of another level is dropped when it would be drawn
+  e[0].level = 2;
+  #assert ed_pic_stage(e, p, PIC_W, PIC_H) == PIC_NONE && ed_pic_due(e) == PIC_QUEUE - 1;
+  #assert plain > 0;
+}

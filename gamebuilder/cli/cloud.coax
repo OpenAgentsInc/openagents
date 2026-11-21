@@ -1,0 +1,807 @@
+// A hosted server's cloud agents (GitHub issues 7 and 27; docs/agents.md, "Built: a cloud agent"):
+// gamebuilder serve --accounts runs each one a step at a time, between the requests it answers.
+// The loop is Microcoder's, from the pinned openagents tree (coax/lib/microcoder/loop.coax),
+// unchanged: a step is one model call answered with one next_action, whose commands are rows of
+// the command table written as the CLI takes them (coax/cloud-rows.coax reads each into its row).
+// The server carries them out through the same rows as an attached agent's (cli/attached.coax
+// cli_att_run), on the account's files, with the agent's turn number, so claims hold and its
+// tool and edit events are logged to its record. The desktop app sees its changes by sync, as
+// any change to the account's level.
+//
+// The loop's state is kept in no process between steps. Each step is a child (gamebuilder
+// cloud-step) that starts a fresh loop, gives it back the run's journal in order (what it was
+// told, each model answer as it came, each command's result), takes one step and reports it:
+// so the server answers other requests while the model is asked, a restart or a deploy loses
+// nothing, and every file is written by the server, one request at a time.
+//
+//   agent-ID.agent, agent-ID.events   its record and log (coax/agent-record.coax), as every agent's
+//   agent-ID.loop                     its current message's journal (coax/cloud-rows.coax, "the run's journal")
+//   agent-ID.run                      where its current message stands: SEEN STEPS TOKENS EDITS SINCE
+//   agent-ID.undo.N                   its changes kept to take back, newest the highest N (AGR_CLOUD_UNDO)
+//   agent-ID.reply                    one step's report from its child, while it is asked
+//   cloud-day                         the account's model steps today: DAY STEPS
+//
+// The model request is Microcoder's (mc_request), written as a Chat Completions body by the
+// gateway library (gw_translate), and the answer is read by it (gw_parse_whole) and fed to the
+// loop (mc_feed): no file of GameBuilder's builds a request or reads an answer. Only the POST is
+// here: the server's own Nostr key signs it (NIP-98, its body bound), from GB_MODEL_KEY_FILE (64
+// hex, readable by the server only), read by the child for each call and never by the server
+// past a check that it reads. Without one, the server runs no cloud agents (agent-new says so).
+//   tools/cloud-check.coax (cli/check.sh) runs one end to end, against Microcoder's scripted
+//   gateway and against a stand-in model route.
+
+#load "../../coax/lib/crypto/rand_foreign.coax";
+#load "../../coax/lib/microcoder/loop.coax";
+
+CLOUD_SLOTS :: 4;              // cloud agents a server works at once; the rest are queued
+CLOUD_DUE :: 256;              // agents waiting for a slot
+CLOUD_TICK_MS :: 200;          // how often the server looks at its steps between requests
+CLOUD_CALL_MS :: 150000;       // ms one model call may take
+CLOUD_REPLY :: 1048576;        // bytes of a model's answer read
+CLOUD_ACCOUNT :: 128;          // bytes of an account's folder name
+CLOUD_REPORT :: 262144;        // bytes of one step's report from its child
+CLOUD_STEP :: 655360;          // bytes one step adds to the journal: a model's answer and its commands' results
+CLOUD_JOURNAL :: 2000000;      // bytes of one message's journal (2 MB): past it the message ends and says so
+
+CloudSlot :: struct {
+  on: bool; h: int = -1;                      // its model call's process, -1 when none
+  account: [CLOUD_ACCOUNT] u8; account_n: int;
+  id: [AGR_ID] u8; id_n: int;
+  asked: s64;                                 // when its call started (ms)
+}
+CloudDue :: struct { account: [CLOUD_ACCOUNT] u8; account_n: int; id: [AGR_ID] u8; id_n: int; }
+// Where its current message stands (agent-ID.run).
+CloudRun :: struct { seen: int; steps: int; tokens: int; edits: int; since: s64; }
+CliCloud :: struct {
+  on: bool;                                   // a model key reads: cloud agents run here
+  scanned: bool;                              // the accounts' agents were looked over once, at the first tick
+  url: [512] u8; url_n: int;                  // the model route (--model; CLD_URL)
+  self: [1024] u8; self_n: int;               // the program a step runs (GB_SELF; gamebuilder)
+  slots: [CLOUD_SLOTS] CloudSlot;
+  due: [CLOUD_DUE] CloudDue; due_n: int;
+  next: s64;
+  env: [CLD_ENV + 1] u8;                      // what a run is told: its environment, its task, its level's palette
+  task: [CLD_TASK + 1] u8;
+  pal: [CLD_ENV] u8;
+  rep: [CLOUD_REPORT] u8;                     // a step's report
+  nodes: [2048] JvNode;
+  line: [CLD_COMMAND + 16] u8;                // one command of it, its words, and its arguments as its log keeps them
+  words: [CLD_COMMAND] u8;
+  args: [CLD_COMMAND * 2 + 512] u8;
+  jr: [CLOUD_STEP] u8;                        // the step's lines for the journal
+  snap: [AGENT_FILE_MAX + 64] u8;
+  was: [AGENT_FILE_MAX + 1] u8;               // a level's file before a change of the agent's
+  who: [1] AcWho;                             // the account's owner, as its calls are carried out
+  root: [2048] u8; root_n: int;               // the accounts' folder
+  path: [4352] u8;
+}
+
+cloud_url :: (k: [] CliCloud) -> string { return cast(string) k[0].url[0..<k[0].url_n]; }
+
+// ---- the account's files of one agent
+
+// root/account/agent-ID.EXT, in k's own path buffer.
+cloud_file :: (c: [] Cli, id: string, ext: string, k: [] CliCloud) -> string {
+  nb: [96] u8; name := agr_file(id, ext, nb[..]);
+  t := [1] Text.[Text.{buf = k[0].path[..]}]; tx_put(t[..], cli_dir(c)); tx_put(t[..], "/"); tx_put(t[..], name);
+  return cast(string) k[0].path[0..<t[0].at];
+}
+// Points the folder at an account's: false when it can't.
+cloud_dir :: (c: [] Cli, k: [] CliCloud, account: string) -> bool {
+  parts := [3] string.[cast(string) k[0].root[0..<k[0].root_n], "/", account];
+  return cli_set_dir(c, parts[..]);
+}
+cloud_run_read :: (c: [] Cli, k: [] CliCloud, id: string) -> CloudRun {
+  b: [128] u8; n := fs_read(cloud_file(c, id, ".run", k), b[..]);
+  run := CloudRun.{};
+  if n <= 0 { return run; }
+  v: [5] s64; at := 0;
+  for j: 0..<5 {
+    x: s64 = 0; while at < n && b[at] >= '0' && b[at] <= '9' { x = x * 10 + cast(s64) (b[at] - '0'); at += 1; }
+    v[j] = x; at += 1;
+  }
+  run.seen = cast(int) v[0]; run.steps = cast(int) v[1]; run.tokens = cast(int) v[2]; run.edits = cast(int) v[3]; run.since = v[4];
+  return run;
+}
+cloud_run_write :: (c: [] Cli, k: [] CliCloud, id: string, run: CloudRun) -> bool {
+  b: [128] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_int(t[..], cast(s64) run.seen); tx_put(t[..], " "); tx_int(t[..], cast(s64) run.steps); tx_put(t[..], " "); tx_int(t[..], cast(s64) run.tokens);
+  tx_put(t[..], " "); tx_int(t[..], cast(s64) run.edits); tx_put(t[..], " "); tx_int(t[..], run.since); tx_put(t[..], "\n");
+  return fs_replace_durable(cloud_file(c, id, ".run", k), cast(string) b[0..<t[0].at]);
+}
+
+// The account's model steps today (UTC days since 1970), and one more taken.
+cloud_day_now :: (now: s64) -> s64 { return now / 86400000; }
+cloud_day_used :: (c: [] Cli, k: [] CliCloud, now: s64) -> int {
+  t := [1] Text.[Text.{buf = k[0].path[..]}]; tx_put(t[..], cli_dir(c)); tx_put(t[..], "/cloud-day");
+  b: [64] u8; n := fs_read(cast(string) k[0].path[0..<t[0].at], b[..]);
+  if n <= 0 { return 0; }
+  v: [2] s64; at := 0;
+  for j: 0..<2 { x: s64 = 0; while at < n && b[at] >= '0' && b[at] <= '9' { x = x * 10 + cast(s64) (b[at] - '0'); at += 1; } v[j] = x; at += 1; }
+  return ifx v[0] == cloud_day_now(now) then cast(int) v[1] else 0;
+}
+cloud_day_take :: (c: [] Cli, k: [] CliCloud, now: s64) {
+  used := cloud_day_used(c, k, now) + 1;
+  b: [64] u8; bt := [1] Text.[Text.{buf = b[..]}]; tx_int(bt[..], cloud_day_now(now)); tx_put(bt[..], " "); tx_int(bt[..], cast(s64) used); tx_put(bt[..], "\n");
+  t := [1] Text.[Text.{buf = k[0].path[..]}]; tx_put(t[..], cli_dir(c)); tx_put(t[..], "/cloud-day");
+  _ = fs_replace_durable(cast(string) k[0].path[0..<t[0].at], cast(string) b[0..<bt[0].at]);
+}
+
+// ---- its changes kept to take back (agent-ID.undo.N; agent-undo reads the newest)
+
+// The numbers of id's kept changes in the folder: the lowest and highest (0, 0: none) and how many.
+CloudKept :: struct { low: int; high: int; n: int; }
+cloud_kept :: (c: [] Cli, id: string) -> CloudKept {
+  r := CloudKept.{};
+  nb: [96] u8; head := agr_file(id, ".undo.", nb[..]);
+  if fs_list(cli_dir(c), c[0].list[..]) < 0 { return r; }
+  for i: 0..<c[0].list[0].n {
+    f := fs_entry(c[0].list[..], i);
+    if f.count <= head.count || cast(string) f[0..<head.count] != head { continue; }
+    x := 0; ok := true;
+    for ch: f[head.count..<f.count] { if ch < '0' || ch > '9' { ok = false; } else { x = x * 10 + cast(int) (ch - '0'); } }
+    if !ok || x < 1 { continue; }
+    if r.n == 0 || x < r.low { r.low = x; }
+    if x > r.high { r.high = x; }
+    r.n += 1;
+  }
+  return r;
+}
+cloud_kept_path :: (c: [] Cli, id: string, at: int, out: [] u8) -> string {
+  nb: [96] u8; head := agr_file(id, ".undo.", nb[..]);
+  t := [1] Text.[Text.{buf = out}]; tx_put(t[..], cli_dir(c)); tx_put(t[..], "/"); tx_put(t[..], head); tx_int(t[..], cast(s64) at);
+  return cast(string) out[0..<t[0].at];
+}
+// The newest kept change of id, read for agent-undo: "LEVEL BEFORE AFTER\n" and the level's file
+// before it ("": none). Its number goes into at.
+cli_cloud_undo_read :: (c: [] Cli, id: string, out: [] u8, at: [] int) -> string {
+  at[0] = 0;
+  kept := cloud_kept(c, id);
+  if kept.n == 0 { return ""; }
+  pb: [4400] u8;
+  n := fs_read(cloud_kept_path(c, id, kept.high, pb[..]), out);
+  if n <= 0 { return ""; }
+  at[0] = kept.high;
+  return cast(string) out[0..<n];
+}
+// agent-undo took it back: it is let go.
+cli_cloud_undo_drop :: (c: [] Cli, id: string, at: int) {
+  pb: [4400] u8;
+  if at > 0 { _ = fs_remove(cloud_kept_path(c, id, at, pb[..])); }
+}
+// A change of its kept: the level's file as it was before, and the revisions around it; the
+// oldest let go past AGR_CLOUD_UNDO.
+cloud_keep :: (c: [] Cli, k: [] CliCloud, id: string, level: s32, before: int, after: int, file: string) {
+  kept := cloud_kept(c, id);
+  t := [1] Text.[Text.{buf = k[0].snap[..]}];
+  tx_n(t[..], level); tx_put(t[..], " "); tx_int(t[..], cast(s64) before); tx_put(t[..], " "); tx_int(t[..], cast(s64) after); tx_put(t[..], "\n");
+  head := t[0].at;
+  if head + file.count > k[0].snap.count { return; }
+  for i: 0..<file.count { k[0].snap[head + i] = file[i]; }
+  pb: [4400] u8;
+  if !fs_replace_durable(cloud_kept_path(c, id, kept.high + 1, pb[..]), cast(string) k[0].snap[0..<head + file.count]) { return; }
+  n := kept.n + 1; low := kept.low;
+  if kept.n == 0 { low = kept.high + 1; }
+  while n > AGR_CLOUD_UNDO && low <= kept.high { _ = fs_remove(cloud_kept_path(c, id, low, pb[..])); low += 1; n -= 1; }
+}
+
+// ---- the server's part
+
+// Whether this server runs cloud agents: GB_MODEL_KEY_FILE names a file that holds a key (64
+// hex). The key is read only to check it, then wiped: each step's child reads it again.
+cli_cloud_open :: (c: [] Cli, k: [] CliCloud, model: string, root: string) {
+  k[0].on = false;
+  if root.count > k[0].root.count { return; }
+  k[0].root_n = agr_put(k[0].root[..], 0, root);
+  key: [32] u8;
+  if !cloud_key(c, key[..]) { return; }
+  for i: 0..<32 { key[i] = 0; }
+  u := ifx model.count > 0 then model else CLD_URL;
+  if u.count > k[0].url.count { return; }
+  k[0].url_n = agr_put(k[0].url[..], 0, u);
+  sb: [1024] u8; self := proc_getenv("GB_SELF", sb[..]);
+  k[0].self_n = agr_put(k[0].self[..], 0, ifx self.count > 0 then self else "gamebuilder");
+  k[0].on = true;
+}
+// The key GB_MODEL_KEY_FILE holds, into key: false when there is none or it doesn't read.
+cloud_key :: (c: [] Cli, key: [] u8) -> bool {
+  pb: [1024] u8; path := proc_getenv("GB_MODEL_KEY_FILE", pb[..]);
+  if path.count == 0 { return false; }
+  return cloud_key_at(path, key);
+}
+cloud_key_at :: (path: string, key: [] u8) -> bool {
+  hb: [128] u8; n := fs_read(path, hb[..]);
+  while n > 0 && (hb[n - 1] == '\n' || hb[n - 1] == ' ' || hb[n - 1] == '\r') { n -= 1; }
+  ok := n == 64;
+  if ok {
+    for i: 0..<32 {
+      v := 0;
+      for j: 0..<2 {
+        ch := hb[i * 2 + j]; d := -1;
+        if ch >= '0' && ch <= '9' { d = cast(int) (ch - '0'); } else if ch >= 'a' && ch <= 'f' { d = cast(int) (ch - 'a') + 10; } else if ch >= 'A' && ch <= 'F' { d = cast(int) (ch - 'A') + 10; }
+        if d < 0 { ok = false; } else { v = v * 16 + d; }
+      }
+      key[i] = cast,trunc(u8) v;
+    }
+  }
+  for i: 0..<hb.count { hb[i] = 0; }
+  return ok;
+}
+
+// An agent made due: it gets a slot at the next tick (once; a full queue drops none already due).
+cloud_due :: (k: [] CliCloud, account: string, id: string) {
+  if !k[0].on || account.count > CLOUD_ACCOUNT || id.count > AGR_ID { return; }
+  for i: 0..<k[0].due_n { if cast(string) k[0].due[i].account[0..<k[0].due[i].account_n] == account && cast(string) k[0].due[i].id[0..<k[0].due[i].id_n] == id { return; } }
+  for i: 0..<CLOUD_SLOTS { if k[0].slots[i].on && cast(string) k[0].slots[i].account[0..<k[0].slots[i].account_n] == account && cast(string) k[0].slots[i].id[0..<k[0].slots[i].id_n] == id { return; } }
+  if k[0].due_n >= CLOUD_DUE { return; }
+  d := k[0].due_n; k[0].due_n += 1;
+  k[0].due[d].account_n = agr_put(k[0].due[d].account[..], 0, account);
+  k[0].due[d].id_n = agr_put(k[0].due[d].id[..], 0, id);
+}
+// The account a folder is (root/ACCOUNT), from the folder now set.
+cloud_account_of :: (c: [] Cli, k: [] CliCloud) -> string {
+  root := cast(string) k[0].root[0..<k[0].root_n]; d := cli_dir(c);
+  if d.count <= root.count + 1 || cast(string) d[0..<root.count] != root { return ""; }
+  return d[root.count + 1..<d.count];
+}
+// A row changed a cloud agent's record on the account (cli_exec): queued, it is due; stopped, its
+// step under way ends and its answer is not used. email is who asked: the account's owner, whose
+// levels its calls change, kept beside its record (agent-ID.owner) for the steps the server takes.
+cli_cloud_heard :: (c: [] Cli, rs: [] AgrRecord, email: string) {
+  k := c[0].cloud[..];
+  r := rs[0];
+  if !k[0].on || r.place != AGR_CLOUD { return; }
+  account := cloud_account_of(c, k);
+  ib: [AGR_ID] u8; id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(rs))];
+  if r.state == AGR_QUEUED {
+    if email.count > 0 { _ = fs_replace_durable(cloud_file(c, id, ".owner", k), email); }
+    cloud_due(k, account, id); return;
+  }
+  if r.state == AGR_STOPPED || r.state == AGR_FAILED || r.state == AGR_DONE {
+    for i: 0..<CLOUD_SLOTS {
+      sl := k[0].slots[i..<i + 1];
+      if !sl[0].on || cast(string) sl[0].account[0..<sl[0].account_n] != account || cast(string) sl[0].id[0..<sl[0].id_n] != id { continue; }
+      if sl[0].h >= 0 { _ = proc_kill(sl[0].h, PROC_SIGTERM); _ = proc_wait(sl[0].h, 2000); _ = proc_release(sl[0].h); sl[0].h = -1; }
+      _ = fs_remove(cloud_file(c, id, ".reply", k));
+      sl[0].on = false;
+    }
+  }
+}
+
+// Between requests: the steps under way looked at, answers taken, and due agents given slots.
+// The folder is left as it was found (a request sets its own).
+cli_cloud_tick :: (c: [] Cli) {
+  k := c[0].cloud[..];
+  if !k[0].on { return; }
+  now := cli_now(c);
+  if now < k[0].next { return; }
+  k[0].next = now + CLOUD_TICK_MS;
+  keep: [2048] u8; kn := agr_put(keep[..], 0, cli_dir(c));
+  if !k[0].scanned { k[0].scanned = true; cloud_scan(c); }
+  for i: 0..<CLOUD_SLOTS {
+    sl := k[0].slots[i..<i + 1];
+    if !sl[0].on || sl[0].h < 0 { continue; }
+    lb: [128] u8; n := proc_line(sl[0].h, 0, lb[..]);
+    if n == PROC_TIMEOUT {
+      if cli_now(c) - sl[0].asked <= CLOUD_CALL_MS + 10000 { continue; }
+      _ = proc_kill(sl[0].h, PROC_SIGKILL);
+    }
+    // "status N": its HTTP status (0: no answer)
+    status := 0;
+    if n > 7 && cast(string) lb[0..<7] == "status " { for ch: lb[7..<n] { if ch >= '0' && ch <= '9' { status = status * 10 + cast(int) (ch - '0'); } } }
+    _ = proc_wait(sl[0].h, 2000); _ = proc_release(sl[0].h); sl[0].h = -1;
+    if !cloud_dir(c, k, cast(string) sl[0].account[0..<sl[0].account_n]) { sl[0].on = false; continue; }
+    cloud_answered(c, i, status);
+  }
+  // due agents, oldest first, into free slots: at most AGR_CLOUD_EACH of one account's at once
+  d := 0;
+  while d < k[0].due_n {
+    free := -1; mine := 0;
+    account := cast(string) k[0].due[d].account[0..<k[0].due[d].account_n];
+    for i: 0..<CLOUD_SLOTS {
+      if !k[0].slots[i].on { if free < 0 { free = i; } continue; }
+      if cast(string) k[0].slots[i].account[0..<k[0].slots[i].account_n] == account { mine += 1; }
+    }
+    if free < 0 { break; }
+    if mine >= AGR_CLOUD_EACH { d += 1; continue; }
+    sl := k[0].slots[free..<free + 1];
+    sl[0] = CloudSlot.{on = true, h = -1};
+    sl[0].account_n = agr_put(sl[0].account[..], 0, account);
+    sl[0].id_n = agr_put(sl[0].id[..], 0, cast(string) k[0].due[d].id[0..<k[0].due[d].id_n]);
+    for j: d + 1..<k[0].due_n { k[0].due[j - 1] = k[0].due[j]; }
+    k[0].due_n -= 1;
+    if cloud_dir(c, k, account) { cloud_step(c, free); } else { sl[0].on = false; }
+  }
+  kp := [1] string.[cast(string) keep[0..<kn]]; _ = cli_set_dir(c, kp[..]);
+}
+
+// At the first tick: every account's cloud agents queued or working (a restart's) are due.
+cloud_scan :: (c: [] Cli) {
+  k := c[0].cloud[..];
+  accounts: [1] FsList;
+  if fs_list(cast(string) k[0].root[0..<k[0].root_n], accounts[..]) < 0 { return; }
+  r: [1] AgrRecord; jw: [1] AgrJob;
+  for a: 0..<accounts[0].n {
+    account := fs_entry(accounts[..], a);
+    if !gb_api_account_ok(account) || !cloud_dir(c, k, account) { continue; }
+    if fs_list(cli_dir(c), c[0].list[..]) < 0 { continue; }
+    for i: 0..<c[0].list[0].n {
+      f := fs_entry(c[0].list[..], i);
+      if agr_file_id(f).count == 0 { continue; }
+      rb: [AGR_RECORD_MAX + 1] u8;
+      pt := [1] Text.[Text.{buf = k[0].path[..]}]; tx_put(pt[..], cli_dir(c)); tx_put(pt[..], "/"); tx_put(pt[..], f);
+      n := fs_read(cast(string) k[0].path[0..<pt[0].at], rb[..]);
+      if n <= 0 || agr_record_read(cast(string) rb[0..<n], r[..], jw[..]).count > 0 { continue; }
+      if r[0].place == AGR_CLOUD && (r[0].state == AGR_QUEUED || r[0].state == AGR_WORKING) { cloud_due(k, account, agr_id(r[..])); }
+    }
+  }
+}
+
+// The slot's agent's record, read as a cloud agent's into c.agent: false when it isn't there.
+cloud_open :: (c: [] Cli, k: [] CliCloud, i: int) -> bool {
+  sl := k[0].slots[i..<i + 1];
+  c[0].agent[0].cloud = true;
+  why := cli_att_read(c, cast(string) sl[0].id[0..<sl[0].id_n]);
+  return why.count == 0;
+}
+// One event appended to the open agent's log and written at once.
+cloud_event :: (c: [] Cli, ev: AgrEvent) {
+  s := c[0].agent[..];
+  s[0].out_n = 0; s[0].ev[0] = ev;
+  _ = gb_att_append(s, cli_now(c));
+  _ = cli_att_save(c);
+}
+// The record's one-line step, written at once.
+cloud_step_words :: (c: [] Cli, run: CloudRun, doing: string) {
+  s := c[0].agent[..];
+  sb: [AGR_STEP] u8; wb: [AGR_STEP] u8;
+  t := [1] Text.[Text.{buf = sb[..]}]; tx_put(t[..], agr_cloud_spent(run.steps, run.tokens, run.edits, wb[..])); tx_put(t[..], ": "); tx_put(t[..], doing);
+  s[0].r[0].step_n = agr_set(s[0].r[0].step[..], cast(string) sb[0..<t[0].at]);
+  s[0].out_n = 0;
+  _ = cli_att_save(c);
+}
+// Its message ended, by its own end, a limit or a failure: what it used, then the state with why
+// (a failure's why an error event too). The slot is let go.
+cloud_end :: (c: [] Cli, k: [] CliCloud, i: int, run: CloudRun, state: int, why: string) {
+  ev: [1] AgrEvent;
+  if why.count > 0 && state == AGR_FAILED { ev[0] = agr_event(AGR_ERROR); agr_event_text(ev[..], why); cloud_event(c, ev[0]); }
+  ev[0] = agr_event(AGR_USAGE); ev[0].turns = cast(s32) run.steps; ev[0].cents = 0;
+  ms := cli_now(c) - run.since;
+  ev[0].ms = cast(s32) (ifx ms < 0 then 0 else ifx ms > 2000000000 then 2000000000 else ms);
+  if run.steps > 0 { cloud_event(c, ev[0]); }
+  ev[0] = agr_event(AGR_STATE); ev[0].state = state; agr_event_text(ev[..], why);
+  s := c[0].agent[..]; s[0].r[0].step_n = 0;
+  cloud_event(c, ev[0]);
+  _ = cloud_run_write(c, k, agr_id(s[0].r[..]), run);
+  cloud_close(c, k, i);
+}
+cloud_close :: (c: [] Cli, k: [] CliCloud, i: int) {
+  c[0].agent[0].on = false; c[0].agent[0].cloud = false;
+  k[0].slots[i].on = false; k[0].slots[i].h = -1;
+}
+
+// The person's words since its last step, as notes in its journal for the next one: false when
+// they can't be written.
+cloud_notes :: (c: [] Cli, k: [] CliCloud, id: string, run: [] CloudRun) -> bool {
+  n := fs_read(cloud_file(c, id, ".events", k), c[0].lg[..]);
+  if n <= 0 { return true; }
+  lg := cast(string) c[0].lg[0..<n];
+  ev: [1] AgrEvent; nb: [AGR_TEXT + 64] u8;
+  j := [1] CldJournal.[CldJournal.{buf = k[0].jr[..]}];
+  from := 0;
+  for at: 0..<lg.count {
+    if lg[at] != '\n' { continue; }
+    line := cast(string) lg[from..<at]; from = at + 1;
+    if agr_event_read(line, id, ev[..]).count > 0 || cast(int) ev[0].n <= run[0].seen { continue; }
+    run[0].seen = cast(int) ev[0].n;
+    if cld_talk(ev[..]) != 1 { continue; }
+    cld_j_note(j[..], cld_note(cast(string) ev[0].text[0..<ev[0].text_n], nb[..]));
+  }
+  if j[0].bad { return false; }
+  return j[0].n == 0 || fs_append_durable(cloud_file(c, id, ".loop", k), cast(string) k[0].jr[0..<j[0].n]);
+}
+
+// A message's run begins: what Microcoder's loop is told, as its journal's first line. Its task
+// is the conversation so far and the person's new words (cld_task, from its log); its
+// environment names its level, the table's rows marked for it, the batch's form, its limits, and
+// the level's palette (list-palette's answer, asked here as the person would). "" when it is
+// written, else why not, in words for the person.
+cloud_begin :: (c: [] Cli, k: [] CliCloud, id: string, run: [] CloudRun) -> string {
+  s := c[0].agent[..];
+  level := s[0].r[0].level;
+  tb: [AGR_TITLE] u8; title := cast(string) tb[0..<agr_put(tb[..], 0, cast(string) s[0].r[0].title[0..<s[0].r[0].title_n])];
+  n := fs_read(cloud_file(c, id, ".events", k), c[0].lg[..]);
+  seen: [1] int;
+  task := cld_task(cast(string) c[0].lg[0..<ifx n > 0 then n else 0], id, k[0].task[..], seen[..]);
+  if task.count == 0 { return "there is no message of yours for it to work on: send it one"; }
+  run[0].seen = seen[0];
+  ga: [1] GbArgs; ga[0].level = level;
+  res := cli_keyed(c, VERB_LIST_PALETTE, ga[..], k[0].who[..]);
+  pn := 0;
+  if res.code == GB_DONE && res.json.count <= k[0].pal.count { pn = agr_put(k[0].pal[..], 0, res.json); }
+  env := cld_environment(level, title, id, cast(string) k[0].pal[0..<pn], k[0].env[..]);
+  if env.count == 0 { return "what it is told about its level doesn't fit in 16,384 bytes (CLD_ENV): tell GameBuilder's owner"; }
+  j := [1] CldJournal.[CldJournal.{buf = k[0].jr[..]}];
+  cld_j_head(j[..], env, task);
+  if j[0].bad || !fs_replace_durable(cloud_file(c, id, ".loop", k), cast(string) k[0].jr[0..<j[0].n]) { return "the server couldn't write its step: try again"; }
+  // (what a server before issue 27 kept of it)
+  _ = fs_remove(cloud_file(c, id, ".chat", k)); _ = fs_remove(cloud_file(c, id, ".ask", k));
+  return "";
+}
+
+// Why it can't take another step for this message, in words with the number, or "".
+cloud_over :: (c: [] Cli, k: [] CliCloud, run: CloudRun, now: s64, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  if run.steps >= AGR_CLOUD_STEPS { tx_put(t[..], "It stopped at its limit for one message: "); tx_int(t[..], cast(s64) AGR_CLOUD_STEPS); tx_put(t[..], " model steps. Send it a message to go on"); }
+  else if run.tokens >= AGR_CLOUD_TOKENS { tx_put(t[..], "It stopped at its limit for one message: 100,000 tokens. Send it a message to go on"); }
+  else if now - run.since >= cast(s64) AGR_CLOUD_MINUTES * 60000 { tx_put(t[..], "It stopped at its limit for one message: "); tx_int(t[..], cast(s64) AGR_CLOUD_MINUTES); tx_put(t[..], " minutes. Send it a message to go on"); }
+  else if cloud_day_used(c, k, now) >= AGR_CLOUD_DAY { tx_put(t[..], "It stopped: your account's "); tx_int(t[..], cast(s64) AGR_CLOUD_DAY); tx_put(t[..], " model steps for today are used. Send it a message tomorrow to go on"); }
+  return cast(string) out[0..<t[0].at];
+}
+
+// The slot's agent takes its next step: a queued agent starts its message's run and limits
+// afresh (cloud_begin), a working one hears what the person said since (cloud_notes); its limits
+// are looked at, and a child asks the model.
+cloud_step :: (c: [] Cli, i: int) {
+  k := c[0].cloud[..];
+  sl := k[0].slots[i..<i + 1];
+  if !cloud_open(c, k, i) { cloud_close(c, k, i); return; }
+  s := c[0].agent[..];
+  ib: [AGR_ID] u8; id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(s[0].r[..]))];
+  if s[0].r[0].state != AGR_QUEUED && s[0].r[0].state != AGR_WORKING { cloud_close(c, k, i); return; }
+  now := cli_now(c);
+  run := [1] CloudRun.[cloud_run_read(c, k, id)];
+  // (a working agent with no journal is one a server before issue 27 left: its run begins here, its limits as they stand)
+  fresh := s[0].r[0].state == AGR_QUEUED || !fs_exists(cloud_file(c, id, ".loop", k));
+  if s[0].r[0].state == AGR_QUEUED {
+    run[0].steps = 0; run[0].tokens = 0; run[0].edits = 0; run[0].since = now;
+    ev := agr_event(AGR_STATE); ev.state = AGR_WORKING;
+    cloud_event(c, ev);
+  }
+  cloud_owner(c, k, id);
+  if fresh {
+    why := cloud_begin(c, k, id, run[..]);
+    if !cloud_open(c, k, i) { cloud_close(c, k, i); return; }
+    if why.count > 0 { cloud_end(c, k, i, run[0], AGR_FAILED, why); return; }
+  } else if !cloud_notes(c, k, id, run[..]) { cloud_end(c, k, i, run[0], AGR_FAILED, "the server couldn't write its step: try again"); return; }
+  wb: [256] u8; over := cloud_over(c, k, run[0], now, wb[..]);
+  if over.count > 0 { cloud_end(c, k, i, run[0], AGR_STOPPED, over); return; }
+  if fs_size(cloud_file(c, id, ".loop", k)) > CLOUD_JOURNAL { cloud_end(c, k, i, run[0], AGR_FAILED, CLD_FULL); return; }
+  _ = fs_remove(cloud_file(c, id, ".reply", k));
+  h := proc_new();
+  ok := h >= 0 && proc_arg(h, cast(string) k[0].self[0..<k[0].self_n]) && proc_arg(h, "cloud-step") && proc_arg(h, cloud_url(k));
+  ok = ok && proc_arg(h, cloud_file(c, id, ".loop", k)) && proc_arg(h, cloud_file(c, id, ".reply", k));
+  ok = ok && proc_start(h) == 0;
+  if !ok {
+    if h >= 0 { _ = proc_release(h); }
+    cloud_end(c, k, i, run[0], AGR_FAILED, "the server couldn't start its model call: try again");
+    return;
+  }
+  sl[0].h = h; sl[0].asked = now;
+  cloud_day_take(c, k, now);
+  _ = cloud_run_write(c, k, id, run[0]);
+  cloud_step_words(c, run[0], "asking the model");
+  c[0].agent[0].on = false; c[0].agent[0].cloud = false;
+}
+
+// A refusal in the core's form, as the Builder is shown it, and its tool event in the log.
+cloud_refused :: (c: [] Cli, k: [] CliCloud, name: string, line: string, error: string, why: string) -> string {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_TOOL);
+  ev[0].tool_n = agr_set(ev[0].tool[..], name);
+  ao: [1] Jo; jo_start(ao[..], k[0].args[..]);
+  jo_obj(ao[..]); jo_key(ao[..], "command"); jo_str(ao[..], line); jo_end(ao[..]);
+  agr_event_args(ev[..], ifx ao[0].bad then "{}" else jo_text(ao[..]));
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  r := gb_refuse(o[..], error, why);
+  ev[0].ok = false; ev[0].result_n = agr_set(ev[0].result[..], r.json);
+  cloud_event(c, ev[0]);
+  return r.json;
+}
+
+// One command of a step's, carried out through its row as an attached agent's call is: the
+// line is read into its row and arguments (cld_read: the table's own reader), refused in words
+// when it isn't one of the Builder's or isn't its to make, and its answer goes into the step's
+// journal lines as the Builder will see it. A change it made is kept to take back
+// (agent-ID.undo.N) and counted against its limit.
+cloud_call :: (c: [] Cli, k: [] CliCloud, id: string, line: string, run: [] CloudRun, j: [] CldJournal) {
+  level := c[0].agent[0].r[0].level;
+  call: [1] GbMcpCall; whyb: [640] u8; nb: [64] u8;
+  rd := cld_read(line, level, id, k[0].words[..], call[0].a[..], whyb[..]);
+  name := ifx rd.v >= 0 then gb_mcp_name(GB_COMMANDS[rd.v].verb, nb[..]) else "command";
+  if rd.error.count > 0 { cld_j_answer(j, line, 1, cloud_refused(c, k, name, line, rd.error, rd.why)); return; }
+  v := rd.v;
+  row := GB_COMMANDS[v];
+  edit := row.effect == "edit" && v != VERB_AGENT_UNDO;
+  if edit && run[0].edits >= AGR_CLOUD_EDITS {
+    cld_j_answer(j, line, 1, cloud_refused(c, k, name, line, "limit", "you are at your limit for one message: 30 changes. Say what you changed and stop"));
+    return;
+  }
+  cloud_step_words(c, run[0], row.verb);
+  // the level's file as it was, for a change kept to take back
+  was := 0;
+  if edit {
+    b: [32] u8; lid := cli_id(ed_level_id(level, b[..]), b[..]);
+    was = fs_read(cli_path(c, lid, ".world"), k[0].was[..]);
+  }
+  args := gb_args_json(v, call[0].a[0], k[0].args[..]);
+  res := cli_att_run(c, v, call[0].a[..], k[0].who[..], ifx args.count > 0 then args else "{}");
+  cld_j_answer(j, line, ifx res.code == GB_DONE then 0 else 1, res.json);
+  if edit && res.code == GB_DONE && !call[0].a[0].dry && was > 0 && c[0].before >= 0 && c[0].after >= 0 && c[0].before != c[0].after {
+    cloud_keep(c, k, id, level, c[0].before, c[0].after, cast(string) k[0].was[0..<was]);
+    run[0].edits += 1;
+  }
+}
+
+// A string of the step's report, into out: "" when it has none.
+cloud_reported :: (d: Jv, at: int, out: [] u8) -> string {
+  n := ifx jv_kind(d, at) == JV_STRING then jv_str(d, at, out) else 0;
+  return cast(string) out[0..<ifx n > 0 then n else 0];
+}
+
+// The slot's step answered (status: the route's HTTP status as its child said it, 0 for none).
+// The child's report says where Microcoder's loop stands: its commands to run (each carried out
+// through its row, the results added to the journal, and the next step asked), another step to
+// take (an answer it couldn't read), or its end: an answer for the person, or a failure in words.
+cloud_answered :: (c: [] Cli, i: int, status: int) {
+  k := c[0].cloud[..];
+  if !cloud_open(c, k, i) { cloud_close(c, k, i); return; }
+  s := c[0].agent[..];
+  ib: [AGR_ID] u8; id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(s[0].r[..]))];
+  n := fs_read(cloud_file(c, id, ".reply", k), k[0].rep[..]);
+  _ = fs_remove(cloud_file(c, id, ".reply", k));
+  // stopped while it was asked: the answer is not used
+  if s[0].r[0].state != AGR_WORKING { cloud_close(c, k, i); return; }
+  run := [1] CloudRun.[cloud_run_read(c, k, id)];
+  run[0].steps += 1;
+  d: [1] Jv;
+  if n <= 0 || n >= k[0].rep.count || !jv_parse(d[..], cast(string) k[0].rep[0..<n], k[0].nodes[..]) {
+    cloud_end(c, k, i, run[0], AGR_FAILED, cld_status_words(ifx status == 200 then 0 else status)); return;
+  }
+  tb: [16] u8; eb: [24] u8;
+  turn := cloud_reported(d[0], jv_get(d[0], 0, "turn"), tb[..]);
+  run[0].tokens += jv_int(d[0], jv_get(d[0], 0, "tokens"), 0);
+  if turn == "ended" {
+    ending := cloud_reported(d[0], jv_get(d[0], 0, "ending"), eb[..]);
+    if ending == "finished" || ending == "asked" {
+      // its answer, or the question it can't go on without: the person answers with a message
+      reply := cloud_reported(d[0], jv_get(d[0], 0, "reply"), k[0].line[..]);
+      if reply.count > 0 {
+        ev: [1] AgrEvent; ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_AGENT; agr_event_text(ev[..], reply);
+        cloud_event(c, ev[0]);
+      }
+      cloud_end(c, k, i, run[0], AGR_DONE, ""); return;
+    }
+    why := CLD_LOST;
+    if ending == "no_capacity" { why = cld_status_words(jv_int(d[0], jv_get(d[0], 0, "status"), 0)); }
+    else if ending == "bad_replies" { why = CLD_BAD_REPLIES; }
+    else if ending == "idle" { why = CLD_IDLE; }
+    else if ending == "full" { why = CLD_FULL; }
+    cloud_end(c, k, i, run[0], AGR_FAILED, why); return;
+  }
+  if turn != "tools" && turn != "again" { cloud_end(c, k, i, run[0], AGR_FAILED, CLD_LOST); return; }
+  // the step's lines for the journal: the answer as it came, then each result in the loop's order
+  j := [1] CldJournal.[CldJournal.{buf = k[0].jr[..]}];
+  cld_j_reply(j[..], cloud_reported(d[0], jv_get(d[0], 0, "raw"), k[0].line[..]), jv_bool(d[0], jv_get(d[0], 0, "cut")));
+  if turn == "tools" {
+    pb: [1024] u8;
+    edits := jv_get(d[0], 0, "edits"); commands := jv_get(d[0], 0, "commands"); views := jv_get(d[0], 0, "views");
+    for x: 0..<jv_len(d[0], edits) { cld_j_refused(j[..], "edit", cloud_reported(d[0], jv_at(d[0], edits, x), pb[..]), CLD_NO_EDITS); }
+    cloud_owner(c, k, id);
+    for x: 0..<jv_len(d[0], commands) {
+      line := cloud_reported(d[0], jv_at(d[0], commands, x), k[0].line[..]);
+      // past a step's most: refused in words, to the model and in the log the person reads
+      if x >= AGR_CLOUD_COMMANDS { cld_j_answer(j[..], line, 1, cloud_refused(c, k, "command", line, "limit", CLD_MANY)); continue; }
+      cloud_call(c, k, id, line, run[..], j[..]);
+      // the record may have changed under its call (a stop): read again
+      if cli_att_read(c, id).count > 0 { cloud_close(c, k, i); return; }
+      if s[0].r[0].state != AGR_WORKING { _ = cloud_run_write(c, k, id, run[0]); cloud_close(c, k, i); return; }
+    }
+    for x: 0..<jv_len(d[0], views) { cld_j_refused(j[..], "view", cloud_reported(d[0], jv_at(d[0], views, x), pb[..]), CLD_NO_VIEW); }
+    cld_j_done(j[..]);
+  }
+  if j[0].bad || fs_size(cloud_file(c, id, ".loop", k)) + j[0].n > CLOUD_JOURNAL { cloud_end(c, k, i, run[0], AGR_FAILED, CLD_FULL); return; }
+  if !fs_append_durable(cloud_file(c, id, ".loop", k), cast(string) k[0].jr[0..<j[0].n]) { cloud_end(c, k, i, run[0], AGR_FAILED, "the server couldn't write its step: try again"); return; }
+  _ = cloud_run_write(c, k, id, run[0]);
+  c[0].agent[0].on = false;
+  cloud_step(c, i);
+}
+
+// Who its calls are carried out as: the account's owner, as agent-ID.owner names them (the login
+// that started it or last sent it a message), so a game's own levels are theirs to change.
+cloud_owner :: (c: [] Cli, k: [] CliCloud, id: string) {
+  w := k[0].who[..];
+  w[0] = AcWho.{}; w[0].via = AC_HOSTED;
+  n := fs_read(cloud_file(c, id, ".owner", k), w[0].email[..]);
+  w[0].email_n = ifx n > 0 then n else 0;
+  w[0].account_n = agr_put(w[0].account[..], 0, cloud_account_of(c, k));
+}
+
+// ---- gamebuilder cloud-step URL JOURNAL REPORT: one step of Microcoder's loop, the server's child
+
+CLOUD_ROUTE :: "{\"route\":\"build\",\"local_work\":1}";
+CloudChild :: struct {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  req: [MC_REQUEST_MAX + 65536] u8;           // the step's request, as the gateway library writes it
+  ar: [1] ClArena; arb: [CLOUD_REPORT] u8;    // a journal line's strings, then the answer's events'
+  ev: [64] GwEvent;
+  rep: [CLOUD_REPORT] u8;                     // its report
+  script: [65536] u8; replies: [1] string; s: [1] McScript;   // a scripted gateway's file (a check's)
+}
+
+cloud_at :: (line: string, key: string) -> bool { return level_find(line, key) == 0; }
+// The journal given back to a fresh loop, in order: what it was told, then each model answer as
+// it came and each result it was given. MC_AGAIN when the loop stands ready for its next step,
+// else -1: the journal isn't one, or ends inside a step.
+cloud_replay :: (w: [] CloudChild, text: string) -> int {
+  l := w[0].l[..]; ar := w[0].ar[..];
+  r := -1; from := 0; first := true;
+  for at: 0..<text.count {
+    if text[at] != '\n' { continue; }
+    line := cast(string) text[from..<at]; from = at + 1;
+    ar[0].at = 0; ar[0].full = false;
+    if first {
+      if !cloud_at(line, "{\"environment\":") { return -1; }
+      env := cl_str(ar, line, "environment"); task := cl_str(ar, line, "task");
+      if env.count == 0 || task.count == 0 || ar[0].full { return -1; }
+      mc_init(l, w[0].sb[..], w[0].lb[..], env, task, CLOUD_ROUTE, 1.0);
+      first = false; r = MC_AGAIN;
+    } else if cloud_at(line, "{\"note\":") { mc_note(l[0].st[..], cl_str(ar, line, "note")); }
+    else if cloud_at(line, "{\"reply\":") {
+      raw := cl_str(ar, line, "reply");
+      asked := mc_request(l);
+      if raw.count > 0 { r = mc_feed(l, GwEvent.{kind = GW_EV_TEXT, text = raw}); }
+      if cl_raw(line, "cut").count > 0 { r = mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the answer was cut off"}); }
+      else { r = mc_feed(l, GwEvent.{kind = GW_EV_DONE}); }
+    } else if cloud_at(line, "{\"edit\":") { mc_edited(l, cl_str(ar, line, "edit"), false, cl_str(ar, line, "why")); }
+    else if cloud_at(line, "{\"command\":") {
+      x := cl_int(line, "exit");
+      mc_command(l, cl_str(ar, line, "command"), ifx x.ok then x.value else 1, false, cl_str(ar, line, "output"));
+    } else if cloud_at(line, "{\"view\":") { mc_view(l, cl_str(ar, line, "view"), false, cl_str(ar, line, "why")); }
+    else if cloud_at(line, "{\"done\":") { r = mc_tools_done(l); }
+    else { return -1; }
+    if ar[0].full { return -1; }
+  }
+  return ifx first then -1 else r;
+}
+
+// The step's report for the server, written to path: where the loop stands (turn: tools, again
+// or ended, with its ending; `ending` names one of the child's own when not ""), the route's
+// status, the tokens it counted, the answer as it came, and for tools the action's edits,
+// commands and views, which the server carries out or refuses.
+cloud_report :: (w: [] CloudChild, path: string, r: int, ending: string, status: int, tokens: int, cut: bool) -> bool {
+  l := w[0].l[..];
+  o: [1] Jo; jo_start(o[..], w[0].rep[..]);
+  jo_obj(o[..]);
+  ended := ending.count > 0 || (r != MC_TOOLS && r != MC_AGAIN);
+  jo_key(o[..], "turn"); jo_str(o[..], ifx ended then "ended" else ifx r == MC_TOOLS then "tools" else "again");
+  if ended { jo_key(o[..], "ending"); jo_str(o[..], ifx ending.count > 0 then ending else ifx r == MC_ENDED then mc_ending_name(l[0].ending) else "lost"); }
+  jo_key(o[..], "status"); jo_int(o[..], status);
+  jo_key(o[..], "tokens"); jo_int(o[..], tokens);
+  if ending.count == 0 {
+    jo_key(o[..], "raw"); jo_str(o[..], cast(string) l[0].raw[0..<l[0].nr]);
+    jo_key(o[..], "cut"); jo_bool(o[..], cut);
+    if r == MC_ENDED { jo_key(o[..], "reply"); jo_str(o[..], l[0].reply); }
+    if r == MC_TOOLS {
+      a := mc_pending(l);
+      jo_key(o[..], "edits"); jo_arr(o[..]); for x: 0..<a.ne { jo_str(o[..], a.edits[x].path); } jo_end(o[..]);
+      jo_key(o[..], "commands"); jo_arr(o[..]); for x: 0..<a.nc { jo_str(o[..], a.commands[x]); } jo_end(o[..]);
+      jo_key(o[..], "views"); jo_arr(o[..]); for x: 0..<a.nv { jo_str(o[..], a.view[x]); } jo_end(o[..]);
+    }
+  }
+  jo_end(o[..]);
+  return !o[0].bad && fs_replace_durable(path, jo_text(o[..]));
+}
+cloud_child_end :: (ok: bool, status: int) -> int {
+  sb: [32] u8; t := [1] Text.[Text.{buf = sb[..]}]; tx_put(t[..], "status "); tx_int(t[..], cast(s64) (ifx ok then status else 0)); tx_put(t[..], "\n");
+  cloud_say(cast(string) sb[0..<t[0].at]);
+  return ifx ok && status == 200 then 0 else 1;
+}
+
+// One step: a fresh loop is given JOURNAL back (cloud_replay), asked for its next request
+// (mc_request), and fed the answer (mc_feed); what it then wants goes to REPORT, and "status N"
+// to stdout (the route's HTTP status; 0: no answer). The request is written by the gateway
+// library as a Chat Completions body for our route (gw_translate: not streamed, the strict
+// next_action schema) and the answer read by it (gw_parse_whole). The POST is signed here with
+// the server's key (NIP-98, its body bound), read for this call and wiped. With script:FILE for
+// URL, Microcoder's scripted gateway answers instead: the file's first line is this call's
+// answer and is taken off it.
+cli_cloud_child :: (c: [] Cli, url: string, journal: string, report: string) -> int {
+  w: [1] CloudChild;
+  l := w[0].l[..];
+  w[0].ar[0] = ClArena.{buf = w[0].arb[..]};
+  half := CLI_OUT / 2;
+  n := fs_read(journal, c[0].out[0..<half]);
+  if n <= 0 || n >= half || cloud_replay(w[..], cast(string) c[0].out[0..<n]) != MC_AGAIN {
+    return cloud_child_end(cloud_report(w[..], report, MC_ENDED, ifx n >= half then "full" else "lost", 0, 0, false), 0);
+  }
+  if url.count > CLD_SCRIPT.count && cast(string) url[0..<CLD_SCRIPT.count] == CLD_SCRIPT {
+    file := cast(string) url[CLD_SCRIPT.count..<url.count];
+    sn := fs_read(file, w[0].script[..]);
+    if sn < 0 { sn = 0; }
+    e := 0;
+    while e < sn && w[0].script[e] != '\n' { e += 1; }
+    w[0].replies[0] = cast(string) w[0].script[0..<e];
+    if sn > 0 { _ = fs_replace_durable(file, cast(string) w[0].script[ifx e < sn then e + 1 else sn..<sn]); }
+    w[0].s[0].replies = ifx sn > 0 then w[0].replies[..] else w[0].replies[0..<0];
+    r := mc_script_step(l, w[0].s[..]);
+    status := ifx r == MC_ENDED && l[0].ending == MC_END_NO_CAPACITY then 503 else 200;
+    cut := e > 5 && cast(string) w[0].script[0..<5] == "!cut:";
+    return cloud_child_end(cloud_report(w[..], report, r, "", status, 0, cut), status);
+  }
+  req := mc_request(l);
+  req.model = CLD_MODEL; req.stream = false; req.effort = "low"; req.max_tokens = AGR_CLOUD_ANSWER;
+  why: [1] string;
+  body := gw_translate(Gateway.{name = "ours", wire = GW_WIRE_CHAT, flags = GW_CHAT_LEGACY_MAX_TOKENS}, req, w[0].req[..], why[..]);
+  if body.count == 0 { return cloud_child_end(cloud_report(w[..], report, MC_ENDED, "full", 0, 0, false), 0); }
+  key: [32] u8;
+  if !cloud_key(c, key[..]) { return cloud_child_end(false, 0); }
+  aux: [32] u8; nonce: [16] u8;
+  if cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 { for q: 0..<32 { key[q] = 0; } return cloud_child_end(false, 0); }
+  hb: [N98S_HEADER + 32] u8;
+  pre := "Authorization: ";
+  for q: 0..<pre.count { hb[q] = pre[q]; }
+  bb: [] u8 = w[0].req[0..<body.count];
+  hn := n98s_header(key[..], aux[..], nonce[..], cast(int) (cli_now(c) / 1000), url, "POST", bb, true, hb[pre.count..<hb.count]);
+  for q: 0..<32 { key[q] = 0; aux[q] = 0; }
+  if hn <= 0 { return cloud_child_end(false, 0); }
+  hs := [2] string.[cast(string) hb[0..<pre.count + hn], "Content-Type: application/json"];
+  res := http_do(c[0].http[..], "POST", url, hs[..], body, CLOUD_CALL_MS, 0, c[0].out[0..<CLOUD_REPLY]);
+  for q: 0..<hb.count { hb[q] = 0; }
+  status := ifx res.error == 0 then res.code else 0;
+  answer := cast(string) c[0].out[0..<ifx status != 0 then res.n else 0];
+  // the answer as the loop's events: the whole body, or a refusal with the route's status
+  ar := w[0].ar[..]; ar[0].at = 0; ar[0].full = false;
+  en := 0;
+  if status == 200 { en = gw_parse_whole(GW_WIRE_CHAT, ar, answer, w[0].ev[..]); }
+  else { w[0].ev[0] = gw_refusal(ar, status, answer); en = 1; }
+  tokens := 0;
+  for x: 0..<en { if w[0].ev[x].kind == GW_EV_DONE && w[0].ev[x].usage.ok { tokens += w[0].ev[x].usage.input_tokens + w[0].ev[x].usage.output_tokens; } }
+  r := MC_WAIT; cut := false;
+  for x: 0..<en {
+    if r != MC_WAIT { break; }
+    if w[0].ev[x].kind == GW_EV_REFUSED && l[0].got_text { cut = true; }
+    r = mc_feed(l, w[0].ev[x]);
+  }
+  if r == MC_WAIT { r = mc_feed(l, GwEvent.{kind = GW_EV_DONE}); }   // a body with no done of its own
+  return cloud_child_end(cloud_report(w[..], report, r, "", status, tokens, cut), status);
+}
+cloud_say :: (s: string) { b: [64] u8; n := agr_put(b[..], 0, s); _ = cxterm_write(b[0..<n]); }
+// The model route a server may call: OpenAgents' own, a stand-in on this computer, or
+// Microcoder's scripted gateway reading a file (script:FILE), the last two a check's.
+cli_model_ok :: (u: string) -> bool {
+  if u == CLD_URL { return true; }
+  if u.count > CLD_SCRIPT.count && cast(string) u[0..<CLD_SCRIPT.count] == CLD_SCRIPT { return true; }
+  tail := "/api/v1/inference";
+  if u.count <= tail.count || cast(string) u[u.count - tail.count..<u.count] != tail { return false; }
+  return cli_server_ok(u[0..<u.count - tail.count]);
+}
+
+// ---- gamebuilder cloud-key FILE: the server's model key, made once
+
+// Makes the server's Nostr key in FILE (64 hex, mode 0600) when there is none, and prints only its
+// public key: the one openagents.com's OA_INFERENCE_PUBKEYS lists. The key itself is never printed.
+cli_cloud_keygen :: (c: [] Cli, file: string) -> int {
+  key: [32] u8;
+  if !fs_exists(file) {
+    if cxrand_draw(key[..], 32) != 0 { tool_errln("gamebuilder: no random bytes for a key"); return 1; }
+    hb: [65] u8; digits := "0123456789abcdef";
+    for i: 0..<32 { hb[2 * i] = digits[cast(int) (key[i] >> 4)]; hb[2 * i + 1] = digits[cast(int) (key[i] & 15)]; }
+    hb[64] = '\n';
+    pb: [1100] u8; pn := agr_put(pb[..], 0, file);
+    ok := pn == file.count && pn < pb.count && cxcli_write_private(pb[0..<pn], hb[..]) == 0;
+    for i: 0..<hb.count { hb[i] = 0; }
+    if !ok { for i: 0..<32 { key[i] = 0; } tool_err("gamebuilder: can't write the key to "); tool_errln(file); return 1; }
+  }
+  // read back as the server reads it
+  if !cloud_key_at(file, key[..]) { tool_err("gamebuilder: "); tool_err(file); tool_errln(" doesn't hold a key (64 hex)"); return 1; }
+  aux: [32] u8; work: [1] NostrSignWork;
+  r := es_key(key[..], aux[..], work[..]);
+  for i: 0..<32 { key[i] = 0; }
+  if r != EVENT_MORE { tool_errln("gamebuilder: that isn't a key a Nostr signature takes"); return 1; }
+  hx: [65] u8; digits := "0123456789abcdef";
+  for i: 0..<32 { hx[2 * i] = digits[cast(int) (work[0].pub[i] >> 4)]; hx[2 * i + 1] = digits[cast(int) (work[0].pub[i] & 15)]; }
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "pubkey"); jo_str(o[..], cast(string) hx[0..<64]); jo_key(o[..], "file"); jo_str(o[..], file); jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}

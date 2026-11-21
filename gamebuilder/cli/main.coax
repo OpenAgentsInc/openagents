@@ -1,0 +1,1298 @@
+// gamebuilder: GameBuilder's command line (docs/programmatic-access.md, stage
+// C1). One Coax program on the pinned tree's C tool host
+// (coax/platform/tool-native.c), with no window and no GPU, so it runs on the
+// Mac and on Linux alike. Every command is a row of gamebuilder/core/commands.coax: this
+// file only reads the arguments, reads and writes the level and game files
+// the app keeps, and prints the answer. What a command does, what it refuses
+// and its words are the core's.
+//
+//   gamebuilder [--dir DIR] [--attach | --remote] [--json] VERB [ARGS] [FLAGS]
+//   gamebuilder help                 every command, from the table
+//   gamebuilder commands             the capability manifest (JSON)
+//   gamebuilder version
+//   gamebuilder skill [--install [--global]]   the Claude skill, from the table (gb_skill)
+//   gamebuilder mcp [--read-only]    the table as MCP tools on stdio (coax/mcp.coax); the session is an attached agent (cli/attached.coax)
+//   gamebuilder --as-agent NAME VERB ...   one call as the attached agent NAME, logged to its record
+//   gamebuilder serve [--port N] [--read-only]   the table as HTTP routes and MCP over HTTP on 127.0.0.1 (coax/api.coax)
+//   gamebuilder serve --accounts DIR [--origin URL] [--port N]   the same, hosted: each caller signed in, each account's levels its own
+//
+// Files mode: it edits the files in the app's own folder, as the app does
+// (host/Sources/Levels.swift): level-N.world, scrappers-arena.world and
+// game-N.game. --dir or GAMEBUILDER_DIR names another. Close a level in the
+// app before changing its file here: the app does not read it again while it
+// is open (docs/cli.md).
+//
+// --attach: the call goes to the running app instead, which carries it out on
+// the level open there, as one step ⌘Z takes back (coax/attach.coax); the
+// app's own rows (undo, redo, the tools, the clipboard) are offered too.
+//
+// --remote: the call goes to your account's levels at the site instead (--origin, gamebuilder.org
+// unless named), signed in with your login: a hosted server's POST /api/rows/VERB
+// (serve --accounts). From another computer, or a phone's levels once they sync.
+// --server URL sends it to a hosted server on this computer instead (http://127.0.0.1:PORT or
+// http://localhost:PORT), still signed in with the site's login: a check before the site has it.
+//
+// Who you are: gamebuilder login | whoami | logout (cli/account.coax). The
+// email your login proved is given to the core before every row, so a game's
+// owners may change its own level.
+//
+// Exit codes: 0 done (or a dry run), 1 refused, 3 no such command.
+//   cli/build.sh, then: build/cli/gamebuilder help
+#import "Basic";
+#run_steps 100000000;
+#load "../core/mcp.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/clock.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+#load "account.coax";
+// An outside agent's record and log, kept around its calls (cli/attached.coax, gamebuilder/core/attached.coax).
+#load "attached.coax";
+#load "cloud.coax";      // a hosted server's cloud agents on Microcoder's loop: their steps between requests (issues 7, 27)
+#load "loop.coax";       // the website's core loop, counted: POST /api/count and the funnel row (issue 18)
+#load "publish.coax";    // a hosted server's published games: a link's page, what it plays, a report (issue 17)
+#load "plays.coax";      // each published game counted, and which game a remix came from (shared/plays.coax)
+#load "agent-pictures.coax";   // each agent's newest picture, kept on the account (issue 9)
+#load "resident.coax";   // GameBuilder's resident service: this computer's agents, with the app open or not (issue 11)
+// stdin a byte at a time, and stdout written whole (the tool host's gamebuilder/core/platform/tool-native.c), for mcp
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+// GB_ENGINE_PIN: the openagents commit this build used (openagents.lock), written by cli/build.sh.
+#load "../build/cli/pin.coax";
+
+// The version every surface says (gb_version: the release, the commit, the table's digest).
+CLI_VERSION :: 96;
+CLI_OUT :: 4194304;           // an answer, at most
+CLI_WORDS :: 16;
+
+Cli :: struct {
+  e: [1] Editor;
+  pics: [1] PicStore;         // the open level's pictures, read from level-N.pictures (the app draws and writes them)
+  pic_file: [PIC_KEEP * PIC_LINE] u8;
+  scratch: [1] Editor;        // a level's revision, read in cli_load
+  doc: [GB_DOC_MAX] u8;       // a file read or about to be written
+  out: [CLI_OUT] u8;
+  levels: [LEVEL_MAX + 1] s32; level_n: int;
+  revs: [LEVEL_MAX + 1] s32;  // each level's revision, read with it (list-levels says them)
+  dir: [4096] u8; dir_n: int;
+  path: [4352] u8;
+  env: [4096] u8;
+  list: [1] FsList;
+  attach: bool;               // --attach: calls go to the running app (cli_attach)
+  remote: bool;               // --remote: calls go to your account's levels at the site (cli_remote)
+  http: [1] HttpWork;         // --remote's requests
+  server: [64] u8; server_n: int;   // --server: --remote's calls go here, not to the login's site
+  agents: [1] AgrStore;       // the folder's agents (agent-ID.agent), read in cli_load
+  computers: [1] AgrComputers;  // the folder's computers (computer-ID.computer), read in cli_load (issue 11)
+  lg: [CLI_LOG] u8; lg_n: int;  // the named agent's log (agent-ID.events)
+  apics: [AGP_INDEX_MAX] u8; apics_n: int;   // the folder's agent-pictures (cli/agent-pictures.coax)
+  name: [256] u8;             // GAMEBUILDER_COMPUTER, read
+  hosted: bool;               // serve --accounts: an account's files
+  site: [2048] u8; site_n: int;   // serve --accounts: the accounts' folder, where the site's own counts are kept too (cli/loop.coax)
+  games: [300] u8; games_n: int;  // serve --accounts: where a published game's link lives (GAMES_DOMAIN, else the site itself)
+  // an attached agent (cli/attached.coax): its record while its calls are logged, the level's
+  // revision around the last call (-1: not known), a batch file it named, read, and with
+  // --remote, the site's session (mcp) or the agent's name (--as-agent)
+  agent: [1] GbAtt;
+  before: int; after: int;
+  att_batch: [WE_BATCH_BODY] u8;
+  session: [AGR_ID] u8; session_n: int;
+  as_agent: string;
+  no_agent: bool;             // mcp --no-agent: the session is no agent (no record, not listed)
+  resident: [AGR_ID] u8; resident_n: int;   // mcp --resident ID: the session is that agent's, which the resident service runs
+  res: [1] CliResident;       // resident: GameBuilder's resident service (cli/resident.coax)
+  // serve --accounts with a model key: the cloud agents it runs (cli/cloud.coax), and a cloud
+  // agent's newest kept change, read for agent-undo
+  cloud: [1] CliCloud;
+  undo: [AGENT_FILE_MAX + 64] u8;
+}
+CLI_LOG :: 4194304;           // bytes of an agent's log the CLI reads, at most: past it, the newest events aren't read
+
+// The time now, in milliseconds since 1970: GAMEBUILDER_NOW when it is set (the golden cases'
+// fixed clock), else the computer's.
+cli_now :: (c: [] Cli) -> s64 {
+  w := proc_getenv("GAMEBUILDER_NOW", c[0].env[..]);
+  if w.count > 0 {
+    v: s64 = 0;
+    for ch: w { if ch < '0' || ch > '9' { return 0; } v = v * 10 + cast(s64) (ch - '0'); }
+    return v;
+  }
+  return cast(s64) (cxproc_wall_us() / 1000);
+}
+// This computer's name as the person sees it, as an agent's record says where it runs.
+// GAMEBUILDER_COMPUTER names it instead when set (the golden cases', the same on every computer).
+cli_computer :: (c: [] Cli) -> string {
+  w := proc_getenv("GAMEBUILDER_COMPUTER", c[0].name[..]);
+  if w.count > 0 && w.count <= AGR_COMPUTER { return w; }
+  return ifx tool_os() == TOOL_MAC then AGR_THIS_MAC else AGR_PLACE_WORDS[AGR_LOCAL];
+}
+
+// --server's URL: a server on this computer only, so the login's token never goes to another
+// host by a typing slip. Exact prefixes, then the port's digits and nothing after.
+CLI_LOOPBACK :: [2] string.["http://127.0.0.1:", "http://localhost:"];
+cli_server_ok :: (u: string) -> bool {
+  for p: CLI_LOOPBACK {
+    if u.count > p.count && u.count <= p.count + 5 && cast(string) u[0..<p.count] == p {
+      for ch: u[p.count..<u.count] { if ch < '0' || ch > '9' { return false; } }
+      return true;
+    }
+  }
+  return false;
+}
+// Where --remote's calls go: --server's, else the login's site.
+cli_remote_base :: (c: [] Cli, who: [] AcWho) -> string {
+  if c[0].server_n > 0 { return cast(string) c[0].server[0..<c[0].server_n]; }
+  return ac_origin_of(who);
+}
+
+cli_dir :: (c: [] Cli) -> string { return cast(string) c[0].dir[0..<c[0].dir_n]; }
+// Where a published game's link lives: "" on a device (a publish there is kept on the device), a hosted server's
+// GAMES_DOMAIN or its own site.
+cli_games :: (c: [] Cli) -> string { return cast(string) c[0].games[0..<c[0].games_n]; }
+cli_set_dir :: (c: [] Cli, parts: [] string) -> bool {
+  n := 0;
+  for p: parts { for ch: p { if n >= c[0].dir.count { return false; } c[0].dir[n] = ch; n += 1; } }
+  c[0].dir_n = n;
+  return true;
+}
+// The app's folder: Application Support/<bundle>/Levels on the Mac (inside
+// the sandbox's container when the App Store build made one and the app
+// open now, by its `attach` file, is not the direct build), else
+// $XDG_DATA_HOME/gamebuilder/Levels.
+cli_default_dir :: (c: [] Cli) -> bool {
+  home := proc_getenv("HOME", c[0].env[..]);
+  if home.count == 0 { return false; }
+  if tool_os() == TOOL_MAC {
+    // Both folders can exist on one Mac (an App Store build ran once, a direct build runs now).
+    // The app writes `attach` in the folder it keeps: that folder is the one a person sees, so
+    // it wins. With `attach` in both or in neither, the container's folder when there is one.
+    plain := [2] string.[home, "/Library/Application Support/com.openagents.gamebuilder/Levels"];
+    plain_open := cli_set_dir(c, plain[..]) && fs_exists(cli_path(c, "attach", ""));
+    boxed := [3] string.[home, "/Library/Containers/com.openagents.gamebuilder/Data", "/Library/Application Support/com.openagents.gamebuilder/Levels"];
+    if cli_set_dir(c, boxed[..]) && fs_exists(cli_dir(c)) && (!plain_open || fs_exists(cli_path(c, "attach", ""))) { return true; }
+    return cli_set_dir(c, plain[..]);
+  }
+  data: [4096] u8;
+  xdg := proc_getenv("XDG_DATA_HOME", data[..]);
+  if xdg.count > 0 { p := [2] string.[xdg, "/gamebuilder/Levels"]; return cli_set_dir(c, p[..]); }
+  p := [2] string.[home, "/.local/share/gamebuilder/Levels"];
+  return cli_set_dir(c, p[..]);
+}
+// dir/name.ext
+cli_path :: (c: [] Cli, name: string, ext: string) -> string {
+  n := 0;
+  parts := [4] string.[cli_dir(c), "/", name, ext];
+  for p: parts { for ch: p { if n < c[0].path.count { c[0].path[n] = ch; n += 1; } } }
+  return cast(string) c[0].path[0..<n];
+}
+
+// The folder's levels and your games: every level's number, and each game read in.
+cli_load :: (c: [] Cli) {
+  c[0].level_n = 0; c[0].agents[0].n = 0; c[0].lg_n = 0; c[0].computers[0].n = 0;
+  if fs_list(cli_dir(c), c[0].list[..]) < 0 { return; }
+  for i: 0..<c[0].list[0].n {
+    name := fs_entry(c[0].list[..], i);
+    if name.count > 6 && cast(string) name[name.count - 6..<name.count] == ".world" {
+      base := cast(string) name[0..<name.count - 6];
+      b: [16] u8; if base.count > b.count { continue; }
+      for k: 0..<base.count { b[k] = base[k]; }
+      n := ed_level_number(b[0..<base.count]);
+      if n > 0 && c[0].level_n < c[0].levels.count {
+        // its revision, read in a scratch editor of its own (the run's starts afresh after)
+        k := fs_read(cli_path(c, base, ".world"), c[0].doc[..]);
+        c[0].scratch[0] = Editor.{};
+        ok := k > 0 && ed_open(c[0].scratch[..], n, c[0].doc[0..<k]);
+        c[0].revs[c[0].level_n] = ifx ok then cast(s32) ed_agent_rev(c[0].scratch[..]) else 0;
+        c[0].levels[c[0].level_n] = n; c[0].level_n += 1;
+      }
+    } else if agr_computer_file_ok(name) {
+      // a computer's, as its resident service wrote it (one that doesn't read is left out)
+      cb: [AGR_COMPUTER_MAX + 1] u8;
+      k := fs_read(cli_path(c, name, ""), cb[..]);
+      if k > 0 && k <= AGR_COMPUTER_MAX { _ = agr_computers_add(c[0].computers[..], cast(string) cb[0..<k]); }
+    } else if agr_file_id(name).count > 0 {
+      // an agent's record: one that doesn't read is left out (agents says only what reads)
+      rb: [AGR_RECORD_MAX + 1] u8;
+      k := fs_read(cli_path(c, name, ""), rb[..]);
+      if k > 0 && k <= AGR_RECORD_MAX { _ = agr_store_add(c[0].agents[..], cast(string) rb[0..<k]); }
+    } else if name.count > 5 && cast(string) name[name.count - 5..<name.count] == ".game" {
+      base := cast(string) name[0..<name.count - 5];
+      b: [16] u8; if base.count > b.count { continue; }
+      for k: 0..<base.count { b[k] = base[k]; }
+      g := ed_mine_number(b[0..<base.count]);
+      if g < 1 { continue; }
+      k := fs_read(cli_path(c, base, ".game"), c[0].doc[..]);
+      if k > 0 { _ = ed_mine_load(c[0].e[..], g, c[0].doc[0..<k]); }
+    }
+  }
+}
+// "USAGE: why", in the path buffer.
+cli_join :: (c: [] Cli, usage: string, why: string) -> string {
+  n := 0;
+  parts := [3] string.[usage, ": ", why];
+  for p: parts { for ch: p { if n < c[0].path.count { c[0].path[n] = ch; n += 1; } } }
+  return cast(string) c[0].path[0..<n];
+}
+cli_has_level :: (c: [] Cli, n: s32) -> bool {
+  for i: 0..<c[0].level_n { if c[0].levels[i] == n { return true; } }
+  return false;
+}
+cli_id :: (write: s64, b: [] u8) -> string { return cast(string) b[0..<write]; }
+
+// Writes the open level, or your game g, to its file. False when it could not.
+cli_save_level :: (c: [] Cli) -> bool {
+  e := c[0].e[..];
+  b: [32] u8; id := cli_id(ed_level_id(ed_level(e), b[..]), b[..]);
+  n := ed_save(e, c[0].doc[..]);
+  if n <= 0 || id.count == 0 { return false; }
+  _ = fs_mkdir(cli_dir(c));
+  return fs_replace_durable(cli_path(c, id, ".world"), cast(string) c[0].doc[0..<n]);
+}
+// The open level's claims (coax/claims.coax), kept beside its file as level-N.claims: read
+// after the level opens, written back (or taken away when there are none) when they changed.
+cli_claims_path :: (c: [] Cli) -> string {
+  b: [32] u8; id := cli_id(ed_level_id(ed_level(c[0].e[..]), b[..]), b[..]);
+  return cli_path(c, id, ".claims");
+}
+cli_load_claims :: (c: [] Cli) {
+  k := fs_read(cli_claims_path(c), c[0].doc[..]);
+  if k > 0 { _ = ed_claims_load(c[0].e[..], c[0].doc[0..<k]); }
+}
+// The open level's pictures (coax/pictures.coax), which the app draws and keeps beside its file as
+// level-N.pictures: read after the level opens, for the pictures and picture rows. The command line
+// draws none, so it never writes them.
+cli_pictures_path :: (c: [] Cli) -> string {
+  b: [32] u8; id := cli_id(ed_level_id(ed_level(c[0].e[..]), b[..]), b[..]);
+  return cli_path(c, id, ".pictures");
+}
+cli_load_pictures :: (c: [] Cli) {
+  ed_pics_attach(c[0].e[..], c[0].pics[..]);
+  k := fs_read(cli_pictures_path(c), c[0].pic_file[..]);
+  _ = ed_pics_load(c[0].e[..], c[0].pic_file[0..<(ifx k > 0 then k else 0)]);
+}
+cli_save_claims :: (c: [] Cli) -> bool {
+  e := c[0].e[..];
+  if !ed_claims_due(e) { return true; }
+  n := ed_claims_save(e, c[0].doc[..]);
+  path := cli_claims_path(c);
+  ok := ifx n > 0 then fs_replace_durable(path, cast(string) c[0].doc[0..<n]) else (!fs_exists(path) || fs_remove(path));
+  if ok { ed_claims_saved(e); }
+  return ok;
+}
+cli_save_game :: (c: [] Cli, g: s32) -> bool {
+  e := c[0].e[..];
+  b: [32] u8; id := cli_id(ed_mine_id(g, b[..]), b[..]);
+  n := ed_mine_save(e, g, c[0].doc[..]);
+  if n <= 0 || id.count == 0 { return false; }
+  _ = fs_mkdir(cli_dir(c));
+  return fs_replace_durable(cli_path(c, id, ".game"), cast(string) c[0].doc[0..<n]);
+}
+
+// Writes agent k: its new events appended to agent-ID.events, then its record to agent-ID.agent
+// (the record counts the events, so the log is never behind it).
+cli_save_agent :: (c: [] Cli, k: int, lines: string) -> bool {
+  s := c[0].agents[..];
+  id := agr_id(s[0].r[k..<k + 1]);
+  _ = fs_mkdir(cli_dir(c));
+  fb: [64] u8;
+  if lines.count > 0 && !fs_append_durable(cli_path(c, agr_file(id, ".events", fb[..]), ""), lines) { return false; }
+  rb: [AGR_RECORD_MAX * 2] u8;
+  text := agr_record_write(s[0].r[k..<k + 1], agr_job_of(s, k), rb[..]);
+  if text.count == 0 { return false; }
+  return fs_replace_durable(cli_path(c, agr_file(id, ".agent", fb[..]), ""), text);
+}
+
+// Writes computer k of the folder's (computer-ID.computer) whole.
+cli_save_computer :: (c: [] Cli, k: int) -> bool {
+  cs := c[0].computers[..];
+  _ = fs_mkdir(cli_dir(c));
+  fb: [64] u8; tb: [AGR_COMPUTER_MAX * 2] u8;
+  text := agr_computer_write(cs[0].c[k..<k + 1], tb[..]);
+  return text.count > 0 && fs_replace_durable(cli_path(c, agr_computer_file(cast(string) cs[0].c[k].id[0..<cs[0].c[k].id_n], fb[..]), ""), text);
+}
+
+// A refusal before the core ran, in the core's form.
+cli_refuse :: (c: [] Cli, error: string, head: string, why: string) -> int {
+  b: [1024] u8; t := [1] Text.[Text.{buf = b[..]}];
+  tx_put(t[..], head); tx_put(t[..], why);
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  r := gb_refuse(o[..], error, cast(string) b[0..<t[0].at]);
+  print("%\n", r.json);
+  return 1;
+}
+
+// ---- gamebuilder triage REQUEST (coax/triage.coax; issue 22)
+
+// ---- gamebuilder engine-ready, engine-mine (coax/engine-fork.coax; issue 23)
+
+ENF_CALL_MS :: 20000;          // ms one of git, gh or claude may take
+// Runs argv and says whether it ended 0; its first line of output, trimmed, into out.
+EnfRun :: struct { ok: bool; said: string; }
+cli_enf_run :: (argv: [] string, out: [] u8) -> EnfRun {
+  err: [512] u8;
+  r := proc_run(argv, ENF_CALL_MS, out, err[..]);
+  n := r.out_n;
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ') { n -= 1; }
+  return EnfRun.{ok = r.started == 0 && r.status == 0 && !r.timed_out, said = cast(string) out[0..<n]};
+}
+// What this computer has for an engine pull request. It reads only: no login, no fork.
+cli_engine_ready :: (c: [] Cli) -> int {
+  state: [ENF_CHECKS] s32; lb: [128] u8; ob: [512] u8; login := ""; pushes := false;
+  a1 := [2] string.["git", "--version"]; g := cli_enf_run(a1[..], ob[..]).ok; state[ENF_GIT] = ifx g then ENF_YES else ENF_NO;
+  a2 := [2] string.["gh", "--version"]; h := cli_enf_run(a2[..], ob[..]).ok; state[ENF_GH] = ifx h then ENF_YES else ENF_NO;
+  state[ENF_LOGIN] = ENF_SKIPPED; state[ENF_PUSH] = ENF_SKIPPED;
+  if h {
+    a3 := [5] string.["gh", "api", "user", "-q", ".login"]; l := cli_enf_run(a3[..], lb[..]);
+    if l.ok && l.said.count > 0 { login = l.said; state[ENF_LOGIN] = ENF_YES; } else { state[ENF_LOGIN] = ENF_NO; }
+  }
+  if login.count > 0 {
+    a4 := [8] string.["gh", "repo", "view", GB_ENGINE_REPO, "--json", "viewerPermission", "-q", ".viewerPermission"];
+    p := cli_enf_run(a4[..], ob[..]);
+    pushes = p.ok && (p.said == "WRITE" || p.said == "MAINTAIN" || p.said == "ADMIN");
+    state[ENF_PUSH] = ENF_NO;
+    if pushes { state[ENF_PUSH] = ENF_YES; }
+    else {
+      // a fork: a repository of theirs named as the engine's is, whose parent is the engine's
+      pb: [256] u8; t := [1] Text.[Text.{buf = pb[..]}];
+      tx_put(t[..], "repos/"); tx_put(t[..], login); tx_put(t[..], "/openagents");
+      a5 := [5] string.["gh", "api", tx_text(t[..]), "-q", ".parent.full_name"];
+      f := cli_enf_run(a5[..], ob[..]);
+      if f.ok && f.said == GB_ENGINE_REPO { state[ENF_PUSH] = ENF_YES; }
+    }
+  }
+  a6 := [2] string.["claude", "--version"]; k := cli_enf_run(a6[..], ob[..]).ok; state[ENF_CLAUDE] = ifx k then ENF_YES else ENF_NO;
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  r := enf_ready(o[..], state[..], login, pushes);
+  print("%\n", r.json);
+  return ifx r.code == GB_DONE then 0 else 1;
+}
+// The person's pull requests at the engine's repository, and whether the pin holds each merged one.
+cli_engine_mine :: (c: [] Cli) -> int {
+  half := CLI_OUT / 2;
+  lb: [128] u8; ob: [512] u8;
+  a1 := [5] string.["gh", "api", "user", "-q", ".login"]; l := cli_enf_run(a1[..], lb[..]); login := l.said;
+  if !l.ok || login.count == 0 { return cli_refuse(c, "refused", "", "gh is not installed or not logged in: `gamebuilder engine-ready` says which, with the fix"); }
+  a2 := [14] string.["gh", "pr", "list", "--repo", GB_ENGINE_REPO, "--author", "@me", "--state", "all", "--limit", "20",
+    "--json", "number,state,mergeCommit,url,title", "-q"];
+  argv: [15] string; for i: 0..<14 { argv[i] = a2[i]; }
+  argv[14] = ".[] | [(.number|tostring), .state, (.mergeCommit.oid // \"\"), .url, (.title | gsub(\"[\\t\\n]\"; \" \"))] | join(\"\\t\")";
+  err: [512] u8;
+  r := proc_run(argv[..], ENF_CALL_MS, c[0].out[half..<CLI_OUT], err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { return cli_refuse(c, "refused", "", "GitHub did not answer `gh pr list`"); }
+  lines := cast(string) c[0].out[half..<half + r.out_n];
+  reached: [ENF_MINE] s32;
+  for k: 0..<ENF_MINE {
+    reached[k] = ENF_SKIPPED;
+    el := enf_line(lines, k);
+    if !el.any { break; }
+    merge := enf_merge_of(el.text);
+    if merge.count == 0 { continue; }
+    // GitHub compares the merge with the pin: the pin holds it when the pin is behind it by nothing
+    pb: [256] u8; t := [1] Text.[Text.{buf = pb[..]}];
+    tx_put(t[..], "repos/"); tx_put(t[..], GB_ENGINE_REPO); tx_put(t[..], "/compare/"); tx_put(t[..], merge); tx_put(t[..], "..."); tx_put(t[..], ENG_PIN);
+    a3 := [5] string.["gh", "api", tx_text(t[..]), "-q", ".behind_by"];
+    b := cli_enf_run(a3[..], ob[..]);
+    if b.ok && b.said.count > 0 { reached[k] = ifx b.said == "0" then ENF_YES else ENF_NO; }
+  }
+  o: [1] Jo; jo_start(o[..], c[0].out[0..<half]);
+  a := enf_mine(o[..], login, lines, reached[..]);
+  print("%\n", a.json);
+  return ifx a.code == GB_DONE then 0 else 1;
+}
+
+TRIAGE_CALL_MS :: 60000;       // ms the decision door may take
+// This computer's key for the decision door, into key: ~/.openagents/gamebuilder/decide-key-PROFILE
+// (64 hex, mode 0600), made the first time. It signs each question set (NIP-98) and nothing else:
+// it is no login and names no account. Never printed.
+cli_triage_key :: (who: [] AcWho, key: [] u8) -> bool {
+  pb: [1200] u8; path := ac_file(who, "decide-key", pb[..]);
+  if path.count == 0 { return false; }
+  if !fs_exists(path) {
+    if cxrand_draw(key, 32) != 0 { return false; }
+    hb: [64] u8; digits := "0123456789abcdef";
+    for i: 0..<32 { hb[2 * i] = digits[cast(int) (key[i] >> 4)]; hb[2 * i + 1] = digits[cast(int) (key[i] & 15)]; }
+    ok := ac_keep(who, "decide-key", cast(string) hb[..]);
+    for i: 0..<64 { hb[i] = 0; }
+    if !ok { return false; }
+  }
+  return cloud_key_at(path, key);
+}
+// Asks the decision door where request belongs and prints the triage row's answer.
+cli_triage :: (c: [] Cli, who: [] AcWho, request: string) -> int {
+  half := CLI_OUT / 2;
+  body := tri_body(request, c[0].out[0..<DECIDE_BODY_MAX]);
+  if body.count == 0 { return cli_refuse(c, "bad-request", "", "the request doesn't fit one question set"); }
+  key: [32] u8; aux: [32] u8; nonce: [16] u8;
+  status := 0; got := 0;
+  if !cli_triage_key(who, key[..]) || cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 {
+    for q: 0..<32 { key[q] = 0; }
+    return cli_refuse(c, "refused", "", "couldn't make or read this computer's key for the decision door (~/.openagents/gamebuilder/decide-key-PROFILE)");
+  }
+  hb: [N98S_HEADER + 32] u8;
+  pre := "Authorization: ";
+  for q: 0..<pre.count { hb[q] = pre[q]; }
+  hn := n98s_header(key[..], aux[..], nonce[..], cast(int) (cli_now(c) / 1000), DECIDE_URL, "POST", c[0].out[0..<body.count], true, hb[pre.count..<hb.count]);
+  for q: 0..<32 { key[q] = 0; aux[q] = 0; }
+  if hn > 0 {
+    hs := [2] string.[cast(string) hb[0..<pre.count + hn], "Content-Type: application/json"];
+    res := http_do(c[0].http[..], "POST", DECIDE_URL, hs[..], body, TRIAGE_CALL_MS, 0, c[0].out[half..<CLI_OUT]);
+    if res.error == 0 { status = res.code; got = res.n; }
+  }
+  for q: 0..<hb.count { hb[q] = 0; }
+  o: [1] Jo; jo_start(o[..], c[0].out[DECIDE_BODY_MAX..<half]);
+  r := tri_answer(o[..], status, cast(string) c[0].out[half..<half + got]);
+  print("%\n", r.json);
+  return ifx r.code == GB_DONE then 0 else 1;
+}
+
+cli_usage :: () {
+  print("%\n", "gamebuilder: GameBuilder's command line");
+  print("%\n", "");
+  print("%\n", "Usage: gamebuilder [--dir DIR] [--attach | --remote] [--as-agent NAME] [--json] COMMAND [ARGS] [FLAGS]");
+  print("%\n", "");
+  area := "";
+  for c: GB_COMMANDS {
+    if (c.surfaces & GB_CLI) == 0 { continue; }   // the app's own buttons (coax/controls.coax)
+    if c.area != area { area = c.area; print("%:\n", area); }
+    print("  % %\n", c.verb, c.usage);
+    print("      %\n", c.help);
+  }
+  print("%\n", "");
+  print("%\n", "Other: help, commands (the capability manifest, JSON), version,");
+  print("%\n", "  skill [--install [--global]] (the Claude skill: printed, or written to .claude/skills/gamebuilder/SKILL.md here or in your home)");
+  print("%\n", "  mcp [--read-only] [--attach | --remote] [--no-agent] (the commands as MCP tools on stdio: claude mcp add gamebuilder -- gamebuilder mcp)");
+  print("%\n", "      each session is an attached agent, listed in agents; --no-agent: none, with no record and nothing to cut off");
+  print("%\n", "  serve [--port N] [--read-only] (the commands as HTTP routes on 127.0.0.1, port 8811 unless named: GET /api/openapi.json)");
+  print("%\n", "  serve --accounts DIR [--origin URL] (hosted: each call signed in with a GameBuilder login, each account's levels in DIR/ACCOUNT)");
+  print("%\n", "      with GB_MODEL_KEY_FILE (a Nostr key, 64 hex), it runs cloud agents too: agent-new on a game of yours, by OpenAgents' model");
+  print("%\n", "      [--model URL] (a stand-in on this computer, or script:FILE), each model step a child: cloud-step URL JOURNAL REPORT");
+  print("%\n", "  cloud-key FILE (the server's model key, made in FILE once, mode 0600: prints only its public key, for OA_INFERENCE_PUBKEYS)");
+  print("%\n", "  resident [--server URL] (GameBuilder's resident service: runs the agents queued on this computer with your own Claude Code,");
+  print("%\n", "      with the app open or not, one at a time, at no charge from us; signed in, it shows this computer on your account)");
+  print("%\n", "  resident stop | status | install (quit it: the agent it runs stops and says so; whether it is on; a login item that starts it)");
+  print("%\n", "  mcp --resident AGENT (the MCP server a resident turn's claude is given: each call logged to that agent's record)");
+  print("%\n", "");
+  print("%\n", "It edits the level and game files the app keeps (--dir or GAMEBUILDER_DIR for another folder).");
+  print("%\n", "--remote sends the command to your account's levels at gamebuilder.org (--origin), signed in with your login;");
+  print("%\n", "  --server http://127.0.0.1:PORT sends it to a serve --accounts on this computer instead, with the same login;");
+  print("%\n", "--attach sends the command to the running app, on the level open there (one step ⌘Z takes back);");
+  print("%\n", "  attached, the app's own commands work too: undo, redo, set-tool, focus, copy, cut, paste, duplicate.");
+  print("%\n", "--as-agent NAME makes the call an attached agent's: logged to the record of the newest agent of that name still working");
+  print("%\n", "  (or a new one), shown in GameBuilder's agents as attached; with --attach it may undo-turn its own turns. Without it, no record.");
+  print("%\n", "An MCP session (mcp, mcp --attach, mcp --remote, POST /mcp) is an attached agent of its own, named by its client.");
+  print("%\n", "Every answer is JSON: {\"ok\":true,...} or {\"ok\":false,\"error\":CODE,\"why\":WORDS}.");
+  print("%\n", "Exit codes: 0 done (or a dry run), 1 refused, 3 no such command.");
+}
+
+// skill: the Claude skill made from the table. Printed; or, with --install, written to
+// .claude/skills/gamebuilder/SKILL.md in this folder (--global: in your home, for every project).
+cli_skill :: (c: [] Cli, install: bool, global: bool) -> int {
+  text := gb_skill(c[0].out[..]);
+  if text.count == 0 { tool_errln("gamebuilder: the skill did not fit"); return 1; }
+  if !install { print("%", text); return 0; }
+  base := ".";
+  if global { base = proc_getenv("HOME", c[0].env[..]); if base.count == 0 { return cli_refuse(c, "bad-request", "", "no HOME for --global"); } }
+  dirs := [3] string.["/.claude", "/.claude/skills", "/.claude/skills/gamebuilder"];
+  for d: dirs {
+    b: [4352] u8; pd := [2] string.[base, d]; n := 0;
+    for p: pd { for ch: p { if n < b.count { b[n] = ch; n += 1; } } }
+    path := cast(string) b[0..<n];
+    if !fs_exists(path) && !fs_mkdir(path) { return cli_refuse(c, "operation-failed", "could not make ", path); }
+  }
+  pf := [2] string.[base, "/.claude/skills/gamebuilder/SKILL.md"]; pn := 0;
+  for p: pf { for ch: p { if pn < c[0].path.count { c[0].path[pn] = ch; pn += 1; } } }
+  path := cast(string) c[0].path[0..<pn];
+  if !fs_write(path, text) { return cli_refuse(c, "operation-failed", "could not write ", path); }
+  o: [1] Jo; b: [4608] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "skill"); jo_str(o[..], path); jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}
+
+// Runs row v with its words read, on the files in the folder, as you: what the CLI prints and
+// what an MCP call answers. The level a row names is opened first, and what the row changed is
+// written back. The answer is in c.out.
+cli_exec :: (c: [] Cli, v: int, ga: [] GbArgs, who: [] AcWho) -> GbResult {
+  c[0].before = -1; c[0].after = -1;
+  if c[0].attach { return cli_attach(c, v, ga); }
+  if c[0].remote { return cli_remote(c, v, ga, who); }
+  // the website's counts are the folder's day files, read by the surface (cli/loop.coax)
+  if v == VERB_FUNNEL { return cli_funnel(c, who); }
+  e := c[0].e[..];
+  // every run starts from the files: nothing is kept from the run before (a server runs many)
+  c[0].e[0] = Editor.{};
+  // claims lapse on the wall clock: they are kept between calls, this run and the next (coax/claims.coax)
+  ed_claims_clock(e, cast(s64) (cxproc_wall_us() / 1000000));
+  // the email your login proved: a game's owners change its own level
+  mb: [ACCOUNT_MAX] u8; mine := ac_email(who, mb[..]);
+  ed_set_account(e, mb[0..<mine.count]);
+  cli_load(c);
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  // what this folder has published (coax/publish.coax): a file that does not read is left as it is
+  { k := fs_read(cli_path(c, "published", ""), c[0].doc[..]); if k > 0 && !ed_pub_load(e, c[0].doc[0..<k]) { return gb_refuse(o[..], "operation-failed", "the folder's published file does not read: it is left as it is"); } }
+  // a batch named by its file, or written in the call
+  if v == VERB_APPLY_EDITS && ga[0].batch.count > 0 && ga[0].batch[0] != '{' {
+    k := fs_read(ga[0].batch, c[0].out[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no batch file", ga[0].batch)); }
+    // the batch moves out of the answer's buffer before the answer is written
+    for j: 0..<k { c[0].doc[j] = c[0].out[j]; }
+    ga[0].batch = cast(string) c[0].doc[0..<k];
+  }
+  // a report named by its file, or written in the call
+  if (v == VERB_AGENT_REPORT || v == VERB_COMPUTER_REPORT) && ga[0].report.count > 0 && ga[0].report[0] != '{' {
+    k := fs_read(ga[0].report, c[0].out[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no report file", ga[0].report)); }
+    for j: 0..<k { c[0].doc[j] = c[0].out[j]; }
+    ga[0].report = cast(string) c[0].doc[0..<k];
+  }
+  // a picture named by its file (one line), or written in the call
+  if v == VERB_AGENT_PICTURE && ga[0].picture.count > 0 && ga[0].picture[0] != '{' {
+    k := fs_read(ga[0].picture, c[0].out[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no picture file", ga[0].picture)); }
+    while k > 0 && (c[0].out[k - 1] == '\n' || c[0].out[k - 1] == '\r') { k -= 1; }
+    for j: 0..<k { c[0].doc[j] = c[0].out[j]; }
+    ga[0].picture = cast(string) c[0].doc[0..<k];
+  }
+  // each agent's newest picture kept here, for the agent rows (cli/agent-pictures.coax)
+  c[0].apics_n = 0;
+  if GB_COMMANDS[v].area == "agent" { cli_agp_read(c); }
+  // the named agent's log
+  if gb_part(GB_COMMANDS[v].arguments, 0) == "agent" {
+    fb: [64] u8;
+    k := fs_read(cli_path(c, agr_file(ga[0].aid, ".events", fb[..]), ""), c[0].lg[..]);
+    c[0].lg_n = ifx k > 0 then k else 0;
+  }
+  // a level's file named by its path, or written in the call
+  if v == VERB_WRITE_CONTENT && !cli_inline_content(ga[0].content) {
+    k := fs_read(ga[0].content, c[0].out[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no level file", ga[0].content)); }
+    if k > AGENT_FILE_MAX { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "limit", "a level's file is at most 262144 bytes (AGENT_FILE_MAX)"); }
+    for j: 0..<k { c[0].doc[j] = c[0].out[j]; }
+    ga[0].content = cast(string) c[0].doc[0..<k];
+  }
+  // a row that names a level opens it first (write-content may make one that isn't there)
+  if gb_part(GB_COMMANDS[v].arguments, 0) == "level" {
+    b: [32] u8; id := cli_id(ed_level_id(ga[0].level, b[..]), b[..]);
+    found := ga[0].level == 0 || cli_has_level(c, ga[0].level);
+    k := 0;
+    if found { k = fs_read(cli_path(c, id, ".world"), c[0].out[..]); if k < 0 { k = 0; } }
+    if found || v != VERB_WRITE_CONTENT {
+      why := gb_open(e, ga[0].level, c[0].out[0..<k], found);
+      if why.count > 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", why); }
+      c[0].before = ed_agent_rev(e);
+      if found { cli_load_claims(c); cli_load_pictures(c); }
+    }
+  }
+  // a cloud agent's newest kept change, for agent-undo on a hosted server (cli/cloud.coax)
+  kept := [1] int.[0]; undo := "";
+  if c[0].hosted && v == VERB_AGENT_UNDO && agr_id_ok(ga[0].aid) { undo = cli_cloud_undo_read(c, ga[0].aid, c[0].undo[..], kept[..]); }
+  // a hosted server's published games, counted: what the published row reads back (cli/plays.coax). And a remix says
+  // which game it came from only when this server has a link for that game
+  plb: [PUB_GAMES * PY_LINE] u8; counted := "";
+  if c[0].hosted && v == VERB_PUB_PUBLISHED { counted = cli_plays_list(c, plb[..]); }
+  if c[0].hosted && v == VERB_PUB_PUBLISH && ga[0].from.count > 0 && !cli_plays_known(c, ga[0].from) { ga[0].from = ""; }
+  w := GbWorld.{levels = c[0].levels[0..<c[0].level_n], revs = c[0].revs[0..<c[0].level_n],
+    agents = c[0].agents[..], log = cast(string) c[0].lg[0..<c[0].lg_n], now = cli_now(c), computer = cli_computer(c), hosted = c[0].hosted, games = cli_games(c),
+    cloud = c[0].hosted && c[0].cloud[0].on, undo = undo, pictures = cast(string) c[0].apics[0..<c[0].apics_n], computers = c[0].computers[..], plays = counted};
+  // a game about to be removed for good: its link's code, to give back after (cli/publish.coax)
+  gone: [PUB_CODE] u8; gone_n := 0;
+  if c[0].hosted && v == VERB_PUB_REMOVE_PUBLISHED && !ga[0].dry {
+    gi := pub_mine(e[0].pub[..], cast(string) mb[0..<mine.count], ga[0].pub);
+    if gi >= 0 { for k: 0..<PUB_CODE { gone[k] = e[0].pub[0].games[gi].code[k]; } gone_n = PUB_CODE; }
+  }
+  r := gb_run(e, v, ga[0], w, c[0].out[..]);
+  // a hosted publish: the link's code made this account's and the version's bytes kept, before the store says so
+  if c[0].hosted && r.published > 0 {
+    kwhy := cli_pub_keep(c, r);
+    if kwhy.count > 0 { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", kwhy); }
+  }
+  if r.agent > 0 && !cli_save_agent(c, cast(int) r.agent - 1, r.lines) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the agent's files could not be written"); }
+  if r.agent > 0 && c[0].hosted { hk := cast(int) r.agent - 1; cli_cloud_heard(c, c[0].agents[0].r[hk..<hk + 1], mine); }
+  // an agent's picture kept: its JPEG, the index of it, the one it replaced gone
+  if r.jpeg.count > 0 { pwhy := cli_agp_keep(c, r); if pwhy.count > 0 { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", pwhy); } }
+  if r.computer > 0 && !cli_save_computer(c, cast(int) r.computer - 1) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the computer's file could not be written"); }
+  if c[0].before >= 0 { c[0].after = ed_agent_rev(e); }
+  if r.save_level && !cli_save_level(c) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's file could not be written"); }
+  if r.undone { cli_cloud_undo_drop(c, ga[0].aid, kept[0]); }
+  // a new game's levels after its first (crates: a room each, gamebuilder/core/games.coax ed_new_game): each one's file
+  while ed_more_due(e) > 0 {
+    b: [32] u8; id := cli_id(ed_level_id(ed_more_due(e), b[..]), b[..]);
+    n := ed_more_save(e, c[0].doc[..]);
+    if n <= 0 || id.count == 0 || !fs_replace_durable(cli_path(c, id, ".world"), cast(string) c[0].doc[0..<n]) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's file could not be written"); }
+  }
+  if r.save_game > 0 && !cli_save_game(c, r.save_game) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the game's file could not be written"); }
+  if ed_pub_due(e) {
+    n := ed_pub_save(e, c[0].doc[..]);
+    if n <= 0 || !fs_replace_durable(cli_path(c, "published", ""), cast(string) c[0].doc[0..<n]) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the folder's published file could not be written"); }
+    ed_pub_saved(e);
+    if c[0].hosted {
+      if gone_n > 0 && r.code == GB_DONE { cli_pub_forget(c, cast(string) gone[0..<gone_n]); }
+      // a remix published for the first time: the game it came from is counted one more
+      if r.published > 0 && r.version == 1 { cli_plays_remade(c, r.published); }
+      if v == VERB_PUB_PUBLISH || v == VERB_PUB_REMOVE_PUBLISHED { cli_pub_sweep(c); }
+    }
+  }
+  if !ga[0].dry && gb_part(GB_COMMANDS[v].arguments, 0) == "level" && !cli_save_claims(c) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's claims could not be written"); }
+  if r.save_also > 0 && !cli_save_game(c, r.save_also) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the game's file could not be written"); }
+  // delete-level and delete-game: the file goes (the game the level was in was written above)
+  if r.drop_level > 0 {
+    b: [32] u8; id := cli_id(ed_level_id(r.drop_level, b[..]), b[..]);
+    if id.count == 0 || !fs_remove(cli_path(c, id, ".world")) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's file could not be deleted"); }
+    // and its claims beside it, if it had any
+    cp := cli_claims_path(c);
+    if fs_exists(cp) && !fs_remove(cp) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's claims could not be deleted"); }
+    // and its pictures
+    pp := cli_pictures_path(c);
+    if fs_exists(pp) && !fs_remove(pp) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the level's pictures could not be deleted"); }
+  }
+  if r.drop_game > 0 {
+    b: [32] u8; id := cli_id(ed_mine_id(r.drop_game, b[..]), b[..]);
+    if id.count == 0 || !fs_remove(cli_path(c, id, ".game")) { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "operation-failed", "the game's file could not be deleted"); }
+  }
+  return r;
+}
+
+// A level's file written in the call, not named by its path: it starts as every one does.
+cli_inline_content :: (s: string) -> bool {
+  head := "world.doc.v1 ";
+  return s.count >= head.count && cast(string) s[0..<head.count] == head;
+}
+
+// --attach: the call goes to the running app, which carries it out on the level open there
+// (coax/attach.coax). The app writes where it listens into the folder's `attach` file. The
+// answer is the app's: its code, a space, then the row's JSON, on one line.
+CLI_ATTACH_WAIT :: 120000;   // ms for the answer: a play-test of 600 s runs in the app
+cli_attach :: (c: [] Cli, v: int, ga: [] GbArgs) -> GbResult {
+  o: [1] Jo;
+  // a batch named by its file is read here and sent as text
+  if v == VERB_APPLY_EDITS && ga[0].batch.count > 0 && ga[0].batch[0] != '{' {
+    k := fs_read(ga[0].batch, c[0].doc[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no batch file", ga[0].batch)); }
+    ga[0].batch = cast(string) c[0].doc[0..<k];
+  }
+  sb: [512] u8;
+  sn := fs_read(cli_path(c, "attach", ""), sb[..]);
+  while sn > 0 && (sb[sn - 1] == '\n' || sb[sn - 1] == ' ') { sn -= 1; }
+  closed := "GameBuilder isn't open on this computer: open it, then try again (--attach reaches the level open in the app)";
+  if sn <= 0 || sn >= sb.count { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "operation-failed", closed); }
+  // the call: {"verb":VERB,"args":{...}}, built in out's second half
+  half := c[0].out.count / 2;
+  args := gb_args_json(v, ga[0], c[0].out[half..<c[0].out.count]);
+  jo_start(o[..], c[0].out[0..<half]);
+  db: [8] u8;
+  jo_obj(o[..]); jo_key(o[..], "verb"); jo_str(o[..], GB_COMMANDS[v].verb); jo_key(o[..], "args"); jo_value(o[..]); jo_put(o[..], args);
+  jo_key(o[..], "row"); jo_str(o[..], gb_hex8(gb_row_digest(v), db[..]));
+  // an attached agent's call names its turn number; the app answers the revisions around it (cli/attached.coax)
+  if ga[0].agent > 0 { jo_key(o[..], "agent"); jo_int(o[..], cast(int) ga[0].agent); }
+  jo_end(o[..]);
+  if args.count == 0 || o[0].bad { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "bad-request", "the call did not fit"); }
+  call := jo_text(o[..]);
+  for b: sb[0..<sn] { _ = cxsock_host_push(cast(int) b); }
+  h := cxsock_connect_unix(1000);
+  if h < 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "operation-failed", closed); }
+  for b: call { _ = cxsock_write(h, cast(int) b); }
+  _ = cxsock_write(h, '\n');
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "operation-failed", "the app did not take the call"); }
+  // the answer, into out from its start (the call is sent)
+  n := 0; done := false;
+  deadline := cxsock_now_ms() + CLI_ATTACH_WAIT;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k {
+      b := cxsock_byte(h, i);
+      if b == '\n' { done = true; break; }
+      if n < c[0].out.count { c[0].out[n] = cast(u8) b; n += 1; }
+    }
+  }
+  _ = cxsock_close(h);
+  // CODE TABLE JSON: done or refused, the app's table's digest, the row's answer
+  if !done || n < 12 || c[0].out[1] != ' ' || c[0].out[10] != ' ' || (c[0].out[0] != '0' && c[0].out[0] != '1') {
+    jo_start(o[..], c[0].doc[..]); return gb_refuse(o[..], "operation-failed", "the app's answer did not come whole: is the app older than this gamebuilder? (gamebuilder version)");
+  }
+  cli_table_note(cast(string) c[0].out[2..<10], "the app");
+  from := 11;
+  if ga[0].agent > 0 {
+    // BEFORE AFTER, then the JSON: the open level's revisions around an attached agent's call
+    nums := [2] int.[0, 0];
+    for k: 0..<2 {
+      at := from; x := 0;
+      while at < n && c[0].out[at] >= '0' && c[0].out[at] <= '9' { x = x * 10 + cast(int) (c[0].out[at] - '0'); at += 1; }
+      if at == from || at >= n || c[0].out[at] != ' ' { from = -1; break; }
+      nums[k] = x; from = at + 1;
+    }
+    // an app from before attached agents answers none: its record logs the call without them
+    if from < 0 { from = 11; } else { c[0].before = nums[0]; c[0].after = nums[1]; }
+  }
+  return GbResult.{code = cast(s32) (c[0].out[0] - '0'), json = cast(string) c[0].out[from..<n]};
+}
+
+// --remote: the call goes to the hosted server at the login's site, signed in as you, and its
+// answer is the server's: the same JSON as here, its status saying done or refused. A batch or a
+// level's file named by its path is read here and sent as text. --key goes with the call: the
+// server keeps its result.
+CLI_REMOTE_MS :: 120000;      // ms for the answer: a play-test of 600 s runs there
+cli_remote :: (c: [] Cli, v: int, ga: [] GbArgs, who: [] AcWho) -> GbResult {
+  o: [1] Jo;
+  if v == VERB_APPLY_EDITS && ga[0].batch.count > 0 && ga[0].batch[0] != '{' {
+    k := fs_read(ga[0].batch, c[0].doc[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no batch file", ga[0].batch)); }
+    ga[0].batch = cast(string) c[0].doc[0..<k];
+  }
+  if v == VERB_WRITE_CONTENT && !cli_inline_content(ga[0].content) {
+    k := fs_read(ga[0].content, c[0].doc[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no level file", ga[0].content)); }
+    if k > AGENT_FILE_MAX { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "limit", "a level's file is at most 262144 bytes (AGENT_FILE_MAX)"); }
+    ga[0].content = cast(string) c[0].doc[0..<k];
+  }
+  if (v == VERB_AGENT_REPORT || v == VERB_COMPUTER_REPORT) && ga[0].report.count > 0 && ga[0].report[0] != '{' {
+    k := fs_read(ga[0].report, c[0].doc[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no report file", ga[0].report)); }
+    ga[0].report = cast(string) c[0].doc[0..<k];
+  }
+  if v == VERB_AGENT_PICTURE && ga[0].picture.count > 0 && ga[0].picture[0] != '{' {
+    k := fs_read(ga[0].picture, c[0].doc[..]);
+    if k <= 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-found", cli_join(c, "no picture file", ga[0].picture)); }
+    while k > 0 && (c[0].doc[k - 1] == '\n' || c[0].doc[k - 1] == '\r') { k -= 1; }
+    ga[0].picture = cast(string) c[0].doc[0..<k];
+  }
+  why := ac_session(who);
+  if why.count > 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-logged-in", why); }
+  // the call's arguments in out's second half; the answer comes into its first
+  half := c[0].out.count / 2;
+  args := gb_args_json(v, ga[0], c[0].out[half..<c[0].out.count]);
+  if args.count == 0 { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "bad-request", "the call did not fit"); }
+  ub: [2400] u8;
+  up := [3] string.[cli_remote_base(c, who), "/api/rows/", GB_COMMANDS[v].verb];
+  url := ac_join(up[..], ub[..]);
+  ab: [AC_TOKEN + 40] u8;
+  ap := [2] string.["Authorization: Bearer ", cast(string) who[0].access[0..<who[0].access_n]];
+  // the row as this build reads it: the server carries it out only when its row is the same (gb_api_row_same)
+  rb: [40] u8; db: [8] u8; rp := [2] string.["X-GameBuilder-Row: ", gb_hex8(gb_row_digest(v), db[..])];
+  // --as-agent: the call is that attached agent's, on the account (cli/attached.coax)
+  nb: [GB_ATT_CLIENT + 24] u8; np := [2] string.["GameBuilder-Agent: ", c[0].as_agent];
+  hs := [4] string.[ac_join(ap[..], ab[..]), "Content-Type: application/json", ac_join(rp[..], rb[..]), ac_join(np[..], nb[..])];
+  res := http_do(c[0].http[..], "POST", url, hs[0..<ifx c[0].as_agent.count > 0 then 4 else 3], args, CLI_REMOTE_MS, 0, c[0].out[0..<half]);
+  cli_table_note(http_header(cast(string) c[0].http[0].head[0..<c[0].http[0].head_n], "x-gamebuilder-table"), "the site");
+  for i: 0..<ab.count { ab[i] = 0; }
+  ac_wipe(who);
+  if res.error != HTTP_OK || res.n <= 0 {
+    jo_start(o[..], c[0].out[..]);
+    return gb_refuse(o[..], "operation-failed", cli_join(c, "couldn't reach your account's levels at", cli_remote_base(c, who)));
+  }
+  body := cast(string) c[0].out[0..<res.n];
+  if res.code == 200 { return GbResult.{code = GB_DONE, json = body}; }
+  ok_false := "{\"ok\":false,";
+  if body.count > ok_false.count && cast(string) body[0..<ok_false.count] == ok_false {
+    // the server's refusal, as the core said it; a login it no longer knows says how to fix it
+    if res.code == 401 { jo_start(o[..], c[0].path[..]); return gb_refuse(o[..], "not-logged-in", "your login has ended or isn't the site's: run gamebuilder login"); }
+    return GbResult.{code = GB_REFUSED, json = body};
+  }
+  sb: [64] u8; t := [1] Text.[Text.{buf = sb[..]}]; tx_put(t[..], "the site has no account levels yet (HTTP "); tx_int(t[..], cast(s64) res.code); tx_put(t[..], ")");
+  jo_start(o[..], c[0].path[..]);
+  return gb_refuse(o[..], "operation-failed", cast(string) sb[0..<t[0].at]);
+}
+
+// --key K (realm.result.v1's keys): the first result sent with K, done or refused, is kept in
+// the folder's results/K, and the same command sent again with K answers it again and changes
+// nothing, so a call can be retried safely. A dry run is not kept. Keys are kept with the
+// folder they changed. The file is the verb and the exit code on a line, then the answer.
+cli_keyed :: (c: [] Cli, v: int, ga: [] GbArgs, who: [] AcWho) -> GbResult {
+  k := ga[0].key;
+  if k.count == 0 || ga[0].dry || c[0].remote { return cli_exec(c, v, ga, who); }
+  pb: [4352] u8; pn := 0;
+  parts := [3] string.[cli_dir(c), "/results/", k];
+  for p: parts { for ch: p { if pn < pb.count { pb[pn] = ch; pn += 1; } } }
+  path := cast(string) pb[0..<pn];
+  o: [1] Jo;
+  n := fs_read(path, c[0].out[..]);
+  if n > 0 {
+    line := 0; while line < n && c[0].out[line] != '\n' { line += 1; }
+    sp := 0; while sp < line && c[0].out[sp] != ' ' { sp += 1; }
+    if line >= n || sp + 2 != line { jo_start(o[..], c[0].doc[..]); return gb_refuse(o[..], "operation-failed", "the result kept for that key can't be read"); }
+    if cast(string) c[0].out[0..<sp] != GB_COMMANDS[v].verb {
+      jo_start(o[..], c[0].doc[..]);
+      return gb_refuse(o[..], "bad-request", "that key was sent with another command: a key is one call's");
+    }
+    code := cast(s32) (c[0].out[sp + 1] - '0');
+    return GbResult.{code = code, json = cast(string) c[0].out[line + 1..<n]};
+  }
+  r := cli_exec(c, v, ga, who);
+  if (r.code == GB_DONE || r.code == GB_REFUSED) && r.json.count > 0 {
+    // the verb, the code and the answer, written whole (doc is free once the files are written)
+    verb := GB_COMMANDS[v].verb;
+    m := verb.count + 3 + r.json.count;
+    if m <= c[0].doc.count {
+      for i: 0..<verb.count { c[0].doc[i] = verb[i]; }
+      c[0].doc[verb.count] = ' '; c[0].doc[verb.count + 1] = cast(u8) ('0' + r.code); c[0].doc[verb.count + 2] = '\n';
+      for i: 0..<r.json.count { c[0].doc[verb.count + 3 + i] = r.json[i]; }
+      rb: [4352] u8; rn := 0;
+      for p: [2] string.[cli_dir(c), "/results"] { for ch: p { if rn < rb.count { rb[rn] = ch; rn += 1; } } }
+      _ = fs_mkdir(cli_dir(c)); _ = fs_mkdir(cast(string) rb[0..<rn]);
+      _ = fs_replace_durable(path, cast(string) c[0].doc[0..<m]);
+    }
+  }
+  return r;
+}
+
+// Sets the folder from --dir, GAMEBUILDER_DIR or the app's own. "" when it is set, else why not.
+cli_folder :: (c: [] Cli, dir: string) -> string {
+  d0 := dir;
+  if d0.count == 0 { d0 = proc_getenv("GAMEBUILDER_DIR", c[0].env[..]); }
+  if d0.count > 0 { d := [1] string.[d0]; return ifx cli_set_dir(c, d[..]) then "" else "--dir is too long"; }
+  return ifx cli_default_dir(c) then "" else "no HOME, so no folder: name one with --dir";
+}
+
+// mcp: the table as MCP tools, JSON-RPC on stdio, one request a line, until stdin ends
+// (coax/mcp.coax). Each call runs its row with cli_exec, in this process.
+MCP_LINE :: 1048576;
+cli_mcp :: (c: [] Cli, who: [] AcWho, read_only: bool) -> int {
+  vb: [CLI_VERSION] u8;
+  cfg := GbMcpCfg.{read_only = read_only, version = gb_version(vb[..]), pin = GB_ENGINE_PIN, attach = c[0].attach};
+  // the session's agent (cli/attached.coax): made at initialize; with --remote, the site keeps it
+  via := ifx c[0].attach then GB_ATT_ATTACH else GB_ATT_STDIO;
+  opened := false;
+  call: [1] GbMcpCall; line: [MCP_LINE] u8; out: [CLI_OUT * 2 + 1] u8; nl: [1] u8; nl[0] = '\n';
+  n := 0; long := false;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { break; }
+    if b == -1 { continue; }
+    if b != '\n' {
+      if n < line.count { line[n] = cast(u8) b; n += 1; } else { long = true; }
+      continue;
+    }
+    text := cast(string) line[0..<n];
+    answer := "";
+    // every answer is written from out
+    if long { lit := "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"request too long\"}}"; for i: 0..<lit.count { out[i] = lit[i]; } answer = cast(string) out[0..<lit.count]; }
+    else if n > 0 && c[0].remote { answer = cli_mcp_remote(c, who, text, out[..]); }
+    else if n > 0 {
+      answer = gb_mcp_handle(text, cfg, out[..], call[..]);
+      if (call[0].init || call[0].v >= 0) && !opened && c[0].resident_n > 0 {
+        // the resident service's agent (cli/resident.coax): its record is there already
+        opened = true;
+        c[0].agent[0].resident = true;
+        rwhy := cli_att_read(c, cast(string) c[0].resident[0..<c[0].resident_n]);
+        if rwhy.count > 0 { tool_err("gamebuilder: "); tool_errln(rwhy); }
+      }
+      if (call[0].init || call[0].v >= 0) && !opened && !c[0].no_agent {
+        // a client that calls before it initializes is an agent too, by no name
+        cb: [GB_ATT_CLIENT] u8;
+        opened = true;
+        cfg.agent = cli_att_open(c, gb_att_client(cast(string) call[0].client[0..<call[0].client_n], cb[..]), via);
+      }
+      if answer.count == 0 && call[0].v >= 0 {
+        r := cli_att_run(c, call[0].v, call[0].a[..], who, call[0].args);
+        answer = gb_mcp_answer(call[..], r, out[..]);
+      }
+    }
+    n = 0; long = false;
+    if answer.count == 0 { continue; }
+    if cxterm_write(out[0..<answer.count]) != 0 || cxterm_write(nl[..]) != 0 { break; }
+  }
+  if c[0].remote { cli_mcp_remote_end(c, who); } else { cli_att_end(c); }
+  return 0;
+}
+
+// serve: the table as HTTP routes (coax/api.coax) on 127.0.0.1:PORT, this computer only, as
+// you, on the folder's files: each request runs its row with cli_keyed, as an MCP call does,
+// and answers the row's JSON. One request a connection, one at a time, until it is stopped.
+// The first line it prints says where it listens (--port 0 picks a free port).
+SERVE_WAIT :: 5000;           // ms a connection has to send its whole request
+CliServe :: struct {
+  raw: [API_HEAD + API_BODY] u8;
+  call: [1] GbMcpCall;
+  nodes: [WE_BATCH * WE_NODES + 256] JvNode;
+  text: [API_BODY + 64] u8;
+  head: [768] u8;
+  refusal: [4096] u8;
+  mcp: [CLI_OUT * 2 + 1] u8;    // an MCP answer: the row's JSON, escaped
+  who: [1] AcWho;               // a hosted server's caller, for one request
+  extra: [96] u8;               // a header more: an MCP session's id
+  minute: [1] s64; counts: [1] int;   // the counts taken this minute (cli/loop.coax, LP_PER_MINUTE)
+  pub: [1] CliPub;              // a hosted server's published games: the site's page kept, the reports counted (cli/publish.coax)
+}
+// gamebuilder serve --accounts DIR: a hosted server (docs/programmatic-access.md, C6 and C7). It
+// answers any computer that reaches it (behind a load balancer: it still binds 127.0.0.1, and a
+// proxy beside it takes the outside's connections, deploy/Dockerfile), but every call but
+// discovery carries a GameBuilder login (Authorization: Bearer, or from origin's own page the
+// login service's cookie: gamebuilder/core/api.coax gb_api_cookie_call), which origin's login service
+// names (GET /api/auth/account), and an account's levels are DIR/ACCOUNT's files and no one
+// else's. A browser's call is answered only from origin's own pages.
+CliHosted :: struct { on: bool; root: [2048] u8; root_n: int; site: [300] u8; site_n: int; }
+cli_hosted_root :: (h: [] CliHosted) -> string { return cast(string) h[0].root[0..<h[0].root_n]; }
+cli_hosted_site :: (h: [] CliHosted) -> string { return cast(string) h[0].site[0..<h[0].site_n]; }
+// Signs the request's caller in and points the folder at the account's: 0 when they are in, else
+// the status to refuse with (why says it).
+cli_hosted_caller :: (c: [] Cli, s: [] CliServe, h: [] CliHosted, req: GbApiRequest, why: [] string) -> int {
+  st := 0;
+  if req.bearer.count > 0 { st = ac_hosted_who(s[0].who[..], req.bearer, cli_hosted_site(h)); }
+  else {
+    // no Authorization: a browser logged in on the site, by the login service's own cookie, and only from the site's own page
+    no := gb_api_cookie_call(req, cli_hosted_site(h));
+    if no.count > 0 { why[0] = no; return ifx req.cookie.count == 0 then 401 else 403; }
+    st = ac_hosted_who_cookie(s[0].who[..], req.cookie, cli_hosted_site(h));
+  }
+  if st == 0 { why[0] = "the login service didn't answer: try again"; return 503; }
+  if st != 200 { why[0] = ifx req.bearer.count > 0 then "that login has ended or isn't one: log in again (gamebuilder login)" else "that login has ended or isn't one: log in again"; return 401; }
+  account := ac_account_of(s[0].who[..]);
+  if !gb_api_account_ok(account) { why[0] = "the login service named an account this server can't keep levels for"; return 503; }
+  parts := [3] string.[cli_hosted_root(h), "/", account];
+  if !cli_set_dir(c, parts[..]) { why[0] = "the account's folder name is too long"; return 503; }
+  _ = fs_mkdir(cli_hosted_root(h));
+  if !fs_exists(cli_dir(c)) && !fs_mkdir(cli_dir(c)) { why[0] = "the account's levels can't be kept just now"; return 503; }
+  return 0;
+}
+cli_serve :: (c: [] Cli, who: [] AcWho, port: int, read_only: bool, hosted: [] CliHosted) -> int {
+  l := cxsock_listen(port);
+  if l < 0 { tool_err("gamebuilder: can't listen on 127.0.0.1:"); tool_errln(ifx port == 0 then "a free port" else "that port (is something else on it?)"); return 1; }
+  s: [1] CliServe;
+  lb: [320] u8; t := [1] Text.[Text.{buf = lb[..]}];
+  tx_put(t[..], "gamebuilder: serving http://127.0.0.1:"); tx_int(t[..], cast(s64) cxsock_port(l)); tx_put(t[..], "/api/ (GET /api/openapi.json lists the routes)");
+  tx_put(t[..], ifx hosted[0].on then "; hosted: each call signed in, each account's levels its own" else "");
+  tx_put(t[..], ifx hosted[0].on && c[0].cloud[0].on then "; cloud agents on\n" else "\n");
+  if cxterm_write(lb[0..<t[0].at]) != 0 { return 1; }
+  while true {
+    // with cloud agents, their steps are looked at between requests (cli/cloud.coax)
+    cloud := hosted[0].on && c[0].cloud[0].on;
+    h := cxsock_accept(l, ifx cloud then CLOUD_TICK_MS else 1000);
+    if h >= 0 {
+      cli_serve_one(c, who, s[..], h, read_only, hosted);
+      _ = cxsock_close(h);
+    }
+    if cloud { cli_cloud_tick(c); }
+  }
+  return 0;
+}
+cli_serve_one :: (c: [] Cli, server_who: [] AcWho, s: [] CliServe, h: int, read_only: bool, hosted: [] CliHosted) {
+  n := 0;
+  req := GbApiRequest.{};
+  deadline := cxsock_now_ms() + SERVE_WAIT;
+  while req.state == API_NEED {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { return; }
+    for i: 0..<k { if n < s[0].raw.count { s[0].raw[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    req = gb_api_parse(cast(string) s[0].raw[0..<n]);
+    if req.state == API_NEED && n >= s[0].raw.count { req = GbApiRequest.{state = API_BAD, status = 413, why = "the request is too long"}; }
+  }
+  status := 0; allow := ""; body := ""; extra := ""; html := false; jpeg := false;
+  // on this computer: only this computer's callers; hosted: any, but a browser only from the site
+  local := "";
+  if req.state == API_READY { local = ifx hosted[0].on then gb_api_site_only(req, cli_hosted_site(hosted)) else gb_api_local_only(req); }
+  who := server_who;
+  route := ifx req.state == API_READY && local.count == 0 then gb_api_route(req.method, req.target) else GbApiRoute.{};
+  signed := 0; signed_why: [1] string;
+  if req.state == API_READY && local.count == 0 && route.status == 0 && hosted[0].on && gb_api_signed(route) {
+    signed = cli_hosted_caller(c, s, hosted, req, signed_why[..]);
+    who = s[0].who[..];
+  }
+  if req.state == API_BAD { status = req.status; body = gb_api_refusal(status, req.why, s[0].refusal[..]); }
+  else if local.count > 0 { status = 403; body = gb_api_refusal(403, local, s[0].refusal[..]); }
+  else if signed != 0 { status = signed; body = gb_api_refusal(signed, signed_why[0], s[0].refusal[..]); }
+  else {
+    if route.status != 0 { status = route.status; allow = route.allow; body = gb_api_refusal(status, route.why, s[0].refusal[..]); }
+    else if route.kind == API_CAPABILITIES { body = gb_manifest(c[0].out[..]); status = ifx body.count > 0 then 200 else 500; }
+    else if route.kind == API_OPENAPI { vb: [CLI_VERSION] u8; body = gb_api_openapi(gb_version(vb[..]), hosted[0].on, c[0].out[..]); status = ifx body.count > 0 then 200 else 500; }
+    else if route.kind == API_COUNT {
+      // gamebuilder.org's page counts a step of its loop: no login, added to today's totals (cli/loop.coax)
+      cj: [1] string;
+      status = cli_count(c, req.body, read_only, s[0].minute[..], s[0].counts[..], s[0].refusal[..], cj[..]); body = cj[0];
+    }
+    else if gb_api_players(route) && !hosted[0].on {
+      // a server on this computer keeps a publish on the device: it puts none on the web
+      status = 404; body = gb_api_refusal(404, "published games are played at gamebuilder.org: a server on this computer puts none on the web", s[0].refusal[..]);
+    }
+    else if route.kind == API_PICTURE {
+      // an agent's picture, by its address: anyone's who has it (cli/agent-pictures.coax); a server on this computer keeps none for the web
+      jn := ifx hosted[0].on then cli_agp_serve(c, route.picture, c[0].doc[..]) else 0;
+      if jn > 0 { status = 200; body = cast(string) c[0].doc[0..<jn]; jpeg = true; }
+      else { status = 404; body = gb_api_refusal(404, "no such picture", s[0].refusal[..]); }
+    }
+    else if route.kind == API_PLAY { pj: [1] string; status = cli_pub_play(c, route.code, s[0].refusal[..], pj[..]); body = pj[0]; }
+    else if route.kind == API_PLAY_COUNT { pj: [1] string; status = cli_pub_played(c, route.code, req.body, read_only, s[0].minute[..], s[0].counts[..], s[0].refusal[..], pj[..]); body = pj[0]; }
+    else if route.kind == API_PLAY_REPORT { pj: [1] string; status = cli_pub_report(c, s[0].pub[..], route.code, req.body, read_only, s[0].nodes[..], s[0].refusal[..], pj[..]); body = pj[0]; }
+    else if route.kind == API_PAGE {
+      // a published game's link: the site's own page, with the game's name and picture in its head
+      ph: [1] string;
+      status = cli_pub_page(c, s[0].pub[..], cli_hosted_site(hosted), route.code, ph[..]); body = ph[0]; html = status != 0;
+      if status == 0 { status = 503; body = gb_api_refusal(503, "the page can't be had just now: try again", s[0].refusal[..]); }
+    }
+    else if route.kind == API_MCP {
+      // MCP over HTTP: the message as gamebuilder mcp reads a line; a notification is taken with
+      // 202. A session is an attached agent's record (cli/attached.coax): initialize makes it
+      // and answers its Mcp-Session-Id, DELETE ends it
+      vb: [CLI_VERSION] u8;
+      cfg := GbMcpCfg.{read_only = read_only, version = gb_version(vb[..]), pin = GB_ENGINE_PIN};
+      m := cli_att_http(c, s, req, cfg, who, s[0].extra[..]);
+      status = m.status; body = m.body; extra = m.extra;
+    }
+    else if gb_api_row_same(req, route.v, s[0].refusal[..]).count > 0 {
+      // the caller's row is another build's: refused before it is read (gb_api_row_same)
+      why := gb_api_row_same(req, route.v, s[0].text[..]);
+      status = 409; body = gb_api_refusal(409, why, s[0].refusal[..]);
+    }
+    else if read_only && GB_COMMANDS[route.v].effect != "read" { status = 403; body = gb_api_refusal(403, "this server is read-only (gamebuilder serve --read-only)", s[0].refusal[..]); }
+    else if gb_api_person_call(req, route.v).count > 0 { status = 403; body = gb_api_refusal(403, gb_api_person_call(req, route.v), s[0].refusal[..]); }
+    else {
+      why := gb_api_args(route, req.body, s[0].call[..], s[0].nodes[..], s[0].text[..]);
+      if why.count > 0 { status = 400; body = gb_api_refusal(400, why, s[0].refusal[..]); }
+      else {
+        r: GbResult;
+        if route.v == VERB_ENGINE { o: [1] Jo; jo_start(o[..], c[0].out[..]); r = gb_engine(o[..], GB_ENGINE_PIN); }
+        else { r = cli_att_row(c, s, req, route.v, who); }
+        body = r.json; status = gb_api_status(r, s[0].nodes[..]);
+      }
+    }
+  }
+  if status == 500 && body.count == 0 { body = gb_api_refusal(500, "the answer did not fit", s[0].refusal[..]); }
+  head := ifx jpeg then gb_api_head_jpeg(status, body.count, s[0].head[..]) else ifx html then gb_api_head_html(status, body.count, s[0].head[..]) else gb_api_head_with(status, body.count, allow, extra, s[0].head[..]);
+  for b: head { if cxsock_write(h, cast(int) b) != 0 { return; } }
+  for b: body { if cxsock_write(h, cast(int) b) != 0 { return; } }
+  _ = cxsock_flush(h, SERVE_WAIT);
+  // a caller's account and email are the request's alone
+  s[0].who[0] = AcWho.{};
+}
+
+// Says on stderr, in words, when the other end (the app, the site) was built from another table
+// than this gamebuilder. The answer itself is unchanged: a row that differs was refused there.
+cli_table_note :: (theirs: string, who: string) {
+  hb: [8] u8; mine := gb_hex8(gb_table_digest(), hb[..]);
+  if theirs.count == 0 || theirs == mine { return; }
+  vb: [CLI_VERSION] u8;
+  tool_err("gamebuilder: note: "); tool_err(who); tool_err(" was built from another command table ("); tool_err(theirs);
+  tool_err(") than this gamebuilder ("); tool_err(gb_version(vb[..]));
+  tool_errln("): a command they read differently is refused; build both from the same commit (gamebuilder version --remote compares the site's)");
+}
+
+// version: this build's (gb_version). With --remote, the site's too (its GET /api/capabilities,
+// no login), and whether the two were built from the same command table: 0 when they were, 1
+// when not (said in words), 3 when the site didn't answer.
+cli_version :: (c: [] Cli, af: AcFlags) -> int {
+  vb: [CLI_VERSION] u8; mine := gb_version(vb[..]);
+  print("gamebuilder %\n", mine);
+  if !c[0].remote { return 0; }
+  who: [1] AcWho;
+  why := ac_open(who[..], af);
+  if why.count > 0 { tool_err("gamebuilder: "); tool_errln(why); return 3; }
+  ub: [2400] u8; up := [2] string.[cli_remote_base(c, who[..]), "/api/capabilities"];
+  url := ac_join(up[..], ub[..]);
+  none: [1] string;
+  // three tries: the site has answered a passing 503
+  res := http_do(c[0].http[..], "GET", url, none[0..<0], "", CLI_REMOTE_MS, 2, c[0].out[..]);
+  for again: 0..<2 { if res.error == HTTP_OK && res.code == 200 { break; } res = http_do(c[0].http[..], "GET", url, none[0..<0], "", CLI_REMOTE_MS, 2, c[0].out[..]); }
+  if res.error != HTTP_OK || res.code != 200 || res.n <= 0 {
+    eb: [96] u8; et := [1] Text.[Text.{buf = eb[..]}];
+    tx_put(et[..], " (error "); tx_int(et[..], cast(s64) res.error); tx_put(et[..], ", status "); tx_int(et[..], cast(s64) res.code); tx_put(et[..], ")");
+    tool_err("gamebuilder: the site didn't answer "); tool_err(url); tool_errln(cast(string) eb[0..<et[0].at]); return 3;
+  }
+  nodes: [4096] JvNode; d: [1] Jv;
+  tb: [16] u8; sb: [CLI_VERSION] u8; tn := -1; sn := -1;
+  if jv_parse(d[..], cast(string) c[0].out[0..<res.n], nodes[..]) {
+    tn = jv_str(d[0], jv_get(d[0], 0, "table"), tb[..]);
+    sn = jv_str(d[0], jv_get(d[0], 0, "version"), sb[..]);
+  }
+  site := cli_remote_base(c, who[..]);
+  if tn <= 0 { print("% says no version: it was built before versions were said, so its commands may differ\n", site); return 1; }
+  print("% %\n", site, ifx sn > 0 then cast(string) sb[0..<sn] else "(no version)");
+  hb: [8] u8; table := gb_hex8(gb_table_digest(), hb[..]);
+  if cast(string) tb[0..<tn] == table { print("the same command table: %\n", table); return 0; }
+  print("not the same command table: the site's is %, this gamebuilder's %. Deploy the site again from this commit (deploy/api/deploy.sh), or update gamebuilder\n", cast(string) tb[0..<tn], table);
+  return 1;
+}
+
+// Flags that take the word after them.
+cli_valued :: (w: string) -> bool { return w == "--from" || w == "--agent" || w == "--dir" || w == "--x" || w == "--z" || w == "--key" || w == "--mode" || w == "--size" || w == "--seconds" || w == "--seed" || w == "--profile" || w == "--origin" || w == "--email" || w == "--code" || w == "--port" || w == "--accounts" || w == "--server" || w == "--as-agent" || w == "--model" || w == "--resident"; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("gamebuilder: arguments too long"); return 3; }
+  c: [1] Cli;
+  // the words that are not flags, in order; flags anywhere
+  words: [CLI_WORDS] string; n := 0;
+  fl: [1] GbFlags;            // a row's own flags, read as every command line's are (gb_flag_take)
+  as_agent := "";
+  json := false; help := false; dir := ""; port_word := ""; install := false; global := false; read_only := false; accounts := ""; model := "";
+  af := AcFlags.{};
+  i := 0;
+  while i < args_count(a[..]) {
+    w := args_at(a[..], i);
+    if cli_valued(w) {
+      v := args_at(a[..], i + 1);
+      if gb_flag_take(w, v, fl[..]) == 2 {}
+      else if w == "--dir" { dir = v; }
+      else if w == "--port" { port_word = v; }
+      else if w == "--accounts" { accounts = v; }
+      else if w == "--as-agent" { as_agent = v; }
+      else if w == "--model" { model = v; }
+      else if w == "--resident" {
+        if !agr_id_ok(v) { tool_errln("gamebuilder: --resident names an agent by its id"); return 3; }
+        c[0].resident_n = agr_put(c[0].resident[..], 0, v);
+      }
+      else if w == "--server" {
+        if !cli_server_ok(v) { tool_errln("gamebuilder: --server is a server on this computer: http://127.0.0.1:PORT or http://localhost:PORT"); return 3; }
+        for k: 0..<v.count { c[0].server[k] = v[k]; }
+        c[0].server_n = v.count;
+      }
+      else if w == "--profile" { af.profile = v; } else if w == "--origin" { af.origin = v; } else if w == "--email" { af.email = v; } else { af.code = v; }
+      i += 2; continue;
+    }
+    if w == "--json" { json = true; }
+    else if w == "--browser" { af.browser = true; }
+    else if gb_flag_take(w, "", fl[..]) == 1 {}
+    else if w == "--help" || w == "-h" { help = true; }
+    else if w == "--install" { install = true; }
+    else if w == "--global" { global = true; }
+    else if w == "--read-only" { read_only = true; }
+    else if w == "--attach" { c[0].attach = true; }
+    else if w == "--remote" { c[0].remote = true; }
+    else if w == "--no-agent" { c[0].no_agent = true; }
+    else if n < CLI_WORDS { words[n] = w; n += 1; }
+    i += 1;
+  }
+  verb := ifx n > 0 then words[0] else "";
+  if c[0].server_n > 0 && !c[0].remote && verb != "resident" { tool_errln("gamebuilder: --server goes with --remote (or resident)"); return 3; }
+  if c[0].attach && c[0].remote { tool_errln("gamebuilder: --attach reaches the app here and --remote your account's levels at the site: one at a time"); return 3; }
+  if verb == "" || verb == "help" || help { cli_usage(); return ifx verb == "" && !help then 3 else 0; }
+  if verb == "version" { return cli_version(c[..], af); }
+  if verb == "commands" {
+    m := gb_manifest(c[0].out[..]);
+    if m.count == 0 { tool_errln("gamebuilder: the manifest did not fit"); return 1; }
+    print("%\n", m); return 0;
+  }
+  if verb == "skill" { return cli_skill(c[..], install, global); }
+  // the server's model key for cloud agents, made once: only its public key is printed (cli/cloud.coax)
+  if verb == "cloud-key" {
+    if n != 2 { tool_errln("gamebuilder: cloud-key FILE (makes the server's model key there once, and prints its public key)"); return 3; }
+    return cli_cloud_keygen(c[..], words[1]);
+  }
+  // a hosted server's child: one step of Microcoder's loop for a cloud agent (cli/cloud.coax)
+  if verb == "cloud-step" {
+    if n != 4 { tool_errln("gamebuilder: cloud-step URL JOURNAL REPORT (a hosted server runs it for each model step of a cloud agent's)"); return 3; }
+    if !cli_model_ok(words[1]) { tool_errln("gamebuilder: cloud-step's URL is https://openagents.com/api/v1/inference, a stand-in on this computer, or script:FILE"); return 3; }
+    return cli_cloud_child(c[..], words[1], words[2], words[3]);
+  }
+  // GameBuilder's resident service (cli/resident.coax): runs this computer's agents with the app open or not
+  if verb == "resident" {
+    rw: [1] AcWho;
+    rwhy := ac_open(rw[..], af);
+    if rwhy.count > 0 { return cli_refuse(c[..], "bad-request", "", rwhy); }
+    fwhy := cli_folder(c[..], dir);
+    if fwhy.count > 0 { tool_err("gamebuilder: "); tool_errln(fwhy); return 1; }
+    return cli_resident(c[..], rw[..], words[1..<n]);
+  }
+  if verb == "mcp" {
+    if n > 1 { tool_errln("gamebuilder: mcp takes no arguments (gamebuilder mcp [--read-only] [--attach | --remote] [--no-agent] [--dir DIR])"); return 3; }
+    mw: [1] AcWho;
+    mwhy := ac_open(mw[..], af);
+    if mwhy.count > 0 { return cli_refuse(c[..], "bad-request", "", mwhy); }
+    fwhy := cli_folder(c[..], dir);
+    if fwhy.count > 0 { tool_err("gamebuilder: "); tool_errln(fwhy); return 1; }
+    return cli_mcp(c[..], mw[..], read_only);
+  }
+  if verb == "serve" {
+    if n > 1 { tool_errln("gamebuilder: serve takes no arguments (gamebuilder serve [--port N] [--read-only] [--dir DIR])"); return 3; }
+    if c[0].attach || c[0].remote { tool_errln("gamebuilder: serve works on the folder's files, not the open app or the site"); return 3; }
+    port := 8811;
+    if port_word.count > 0 {
+      port = 0;
+      for ch: port_word { if ch < '0' || ch > '9' || port > 65535 { port = -1; break; } port = port * 10 + cast(int) (ch - '0'); }
+      if port < 0 || port > 65535 || port_word.count > 5 { tool_errln("gamebuilder: --port is 0 to 65535 (0: a free one)"); return 3; }
+    }
+    sw: [1] AcWho;
+    swhy := ac_open(sw[..], af);
+    if swhy.count > 0 { return cli_refuse(c[..], "bad-request", "", swhy); }
+    hosted: [1] CliHosted;
+    if accounts.count > 0 {
+      // hosted: the accounts' folder, and the site whose login service names each caller
+      if dir.count > 0 { tool_errln("gamebuilder: serve takes --dir or --accounts, not both"); return 3; }
+      if accounts.count > hosted[0].root.count { tool_errln("gamebuilder: --accounts is too long"); return 3; }
+      for k: 0..<accounts.count { hosted[0].root[k] = accounts[k]; }
+      hosted[0].root_n = accounts.count;
+      site := ac_origin_of(sw[..]);
+      for k: 0..<site.count { hosted[0].site[k] = site[k]; }
+      hosted[0].site_n = site.count; hosted[0].on = true; c[0].hosted = true;
+      for k: 0..<accounts.count { c[0].site[k] = accounts[k]; }
+      c[0].site_n = accounts.count;
+      // where a published game's link lives: the site itself, until GAMES_DOMAIN names another (docs/publishing.md)
+      gd: [300] u8; games := proc_getenv("GAMES_DOMAIN", gd[..]);
+      if games.count == 0 || games.count >= c[0].games.count { games = site; }
+      while games.count > 0 && games[games.count - 1] == '/' { games = games[0..<games.count - 1]; }
+      for k: 0..<games.count { c[0].games[k] = games[k]; }
+      c[0].games_n = games.count;
+      if !fs_exists(accounts) && !fs_mkdir(accounts) { tool_err("gamebuilder: can't make "); tool_errln(accounts); return 1; }
+      // with a model key (GB_MODEL_KEY_FILE), it runs cloud agents too (cli/cloud.coax)
+      if model.count > 0 && !cli_model_ok(model) { tool_errln("gamebuilder: --model is https://openagents.com/api/v1/inference, a stand-in on this computer (http://127.0.0.1:PORT/api/v1/inference), or script:FILE"); return 3; }
+      cli_cloud_open(c[..], c[0].cloud[..], model, accounts);
+      return cli_serve(c[..], sw[..], port, read_only, hosted[..]);
+    }
+    fwhy := cli_folder(c[..], dir);
+    if fwhy.count > 0 { tool_err("gamebuilder: "); tool_errln(fwhy); return 1; }
+    return cli_serve(c[..], sw[..], port, read_only, hosted[..]);
+  }
+  v := gb_find(verb);
+  if v < 0 { tool_err("gamebuilder: no command "); tool_err(verb); tool_errln(" (gamebuilder help)"); return 3; }
+  attached_ui := c[0].attach && (GB_COMMANDS[v].surfaces & GB_UI) != 0 && GB_COMMANDS[v].effect != "spend";
+  // an attached agent may take back its own turns on the open level
+  if c[0].attach && as_agent.count > 0 && v == VERB_UNDO_TURN { attached_ui = true; }
+  if GB_COMMANDS[v].area == "web" {
+    tool_err("gamebuilder: "); tool_err(verb); tool_errln(" is a plan line of gamebuilder.org's own world: a level here takes apply-edits (gamebuilder help)"); return 3;
+  }
+  if (GB_COMMANDS[v].surfaces & GB_CLI) == 0 && !attached_ui {
+    // undo, the tools, the clipboard and Decide act on the level open in the app, which the CLI can't reach yet (--attach)
+    tool_err("gamebuilder: "); tool_err(verb); tool_errln(" is one of the app's own buttons: it acts on the level open there (gamebuilder --attach, or gamebuilder help)"); return 3;
+  }
+  _ = json;   // every answer is JSON already; --json is kept for the spec's scripts
+  // who you are: the profile's login (cli/account.coax)
+  who: [1] AcWho;
+  owhy := ac_open(who[..], af);
+  if owhy.count > 0 { return cli_refuse(c[..], "bad-request", "", owhy); }
+  if GB_COMMANDS[v].area == "account" {
+    if n > 1 { return cli_refuse(c[..], "bad-request", "usage: ", cli_join(c[..], GB_COMMANDS[v].usage, "it takes no arguments")); }
+    o: [1] Jo; jo_start(o[..], c[0].out[..]);
+    code := ifx v == VERB_LOGIN then ac_login(who[..], af, o[..]) else ifx v == VERB_WHOAMI then ac_whoami(who[..], o[..]) else ac_logout(who[..], o[..]);
+    print("%\n", jo_text(o[..]));
+    return code;
+  }
+  if v == VERB_ENGINE_READY || v == VERB_ENGINE_MINE {
+    if n > 1 { return cli_refuse(c[..], "bad-request", "", "it takes no arguments"); }
+    return ifx v == VERB_ENGINE_READY then cli_engine_ready(c[..]) else cli_engine_mine(c[..]);
+  }
+  if v == VERB_TRIAGE {
+    ga: [1] GbArgs;
+    why := gb_args_read(v, words[1..<n], fl[0], ga[..]);
+    if why.count > 0 { tool_errln("usage: gamebuilder triage REQUEST"); return cli_refuse(c[..], "bad-request", "", why); }
+    return cli_triage(c[..], who[..], ga[0].say);
+  }
+  if v == VERB_ENGINE {
+    if n > 1 { return cli_refuse(c[..], "bad-request", "", "engine takes no arguments"); }
+    o: [1] Jo; jo_start(o[..], c[0].out[..]);
+    r := gb_engine(o[..], GB_ENGINE_PIN);
+    print("%\n", r.json);
+    return ifx r.code == GB_DONE then 0 else 1;
+  }
+  // where the files are
+  fwhy := cli_folder(c[..], dir);
+  if fwhy.count > 0 { tool_err("gamebuilder: "); tool_errln(fwhy); return 1; }
+  // the call's words, read by the row's kinds
+  ga: [1] GbArgs;
+  why := gb_args_read(v, words[1..<n], fl[0], ga[..]);
+  if why.count > 0 {
+    // the answer is the core's, as MCP's is; the usage is for the person, on stderr
+    if GB_COMMANDS[v].usage.count > 0 { tool_err("usage: gamebuilder "); tool_err(GB_COMMANDS[v].verb); tool_err(" "); tool_errln(GB_COMMANDS[v].usage); }
+    return cli_refuse(c[..], "bad-request", "", why);
+  }
+  // --as-agent NAME: the call is that attached agent's, logged to its record (cli/attached.coax);
+  // with --remote, the site keeps it
+  if as_agent.count > 0 {
+    awhy := ifx c[0].remote then gb_att_name_why(as_agent) else cli_att_named(c[..], as_agent, GB_ATT_ONE);
+    if awhy.count > 0 { return cli_refuse(c[..], "bad-request", "", awhy); }
+    if c[0].remote { c[0].as_agent = as_agent; }
+  }
+  r := cli_att_run(c[..], v, ga[..], who[..], "");
+  print("%\n", r.json);
+  return ifx r.code == GB_DONE then 0 else 1;
+}

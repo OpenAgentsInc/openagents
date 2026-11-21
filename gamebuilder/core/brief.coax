@@ -1,0 +1,68 @@
+// What a local Claude agent is told and how its program is found (issue 11): one copy, loaded by
+// the Agents pane's runner (runner.coax) and by GameBuilder's resident service (cli/resident.coax),
+// so an agent is briefed the same with the app open or closed. The person's own Claude Code on
+// their own plan: never a key (AG_NO_KEYS), and the plan's login never leaves its computer.
+//   scripts/check.sh
+
+AG_BUDGET_USD :: 2.0;      // dollars of the person's plan a message may use (--max-budget-usd): AGR_CENTS
+
+// Where `claude` is looked for, after the host's PATH: Anthropic's installer, Homebrew, and the older npm place.
+AG_PROGRAMS :: 5;
+
+// What each kind is told, by AGR_KIND_ID (a Code agent's brief is code-agent.coax's).
+AG_KIND_BRIEF :: [AGR_KINDS] string.[
+  "You are a Builder: you change the level as the person asks.",
+  "You are a Playtester: you play the level with play_test and report what broke, what was dull and what could not be reached. You change nothing unless the person asks you to.",
+  "", "", "", ""];
+// Taken out of every session's environment: the person's login, never a key.
+AG_NO_KEYS :: [6] string.["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_OAUTH_TOKEN"];
+
+AG_RULES :: "You work on one GameBuilder level with the person who has it open. You change it only through your tools, and each change appears in their world at once.\n\n- read_level first. It gives the level's things, its shape table (content) and its revision (rev), which every apply_edits names.\n- Send each change as one apply_edits batch: one idea a batch, so the person can take it back in one step. If a batch is refused as stale, the person changed the level: read_level again and plan again. undo_turn takes back your own last batch.\n- Other agents may be working on this level too. Before you change a part of it, claim that part: claim with a box round where you will work (box:X0,Z0,X1,Z1, centimetres) or the things you will change (things:ID,ID). A change of yours inside another agent's claim is refused as claimed, naming whose: work elsewhere (claims lists them all). Your claims end with your turn; release ends them sooner.\n- list_palette says what this level's game type is, the kinds of thing it can add, how building goes in it and its limits (how far, how high, how big, how many) in words with their numbers; call it before you build. An edit past a limit is refused with those words: tell the person plainly and offer what fits. list_fields gives a thing's fields and their ranges. play_test plays an arena level with bots and says how it went.\n- If the level is locked, it isn't the person's to change: say so in one line and stop. They make their own copy first.\n- ask puts a question to the person with 2 to 4 short answers, and waits. Use it only when the request could mean two different levels; never to confirm an edit, which they can always take back.\n- If the level needs something the engine can't do yet, say so plainly and ask, with engine set to the engine change it needs in one or two sentences: the person may start a Code agent on the engine for it. You never start one.\n- Write plain text, no Markdown, and keep it short: after a change, say what you changed in one or two lines.\n\n";
+
+// The resident service's agent (cli/resident.coax) reaches the level through `gamebuilder mcp`,
+// on the folder's files, with the app open or not: the pane's rules, less what only the pane has
+// (the person watching the level, ask and undo_turn), since no one may be at the screen.
+AG_RESIDENT_RULES :: "You work on one GameBuilder level for its owner, through your tools only, on GameBuilder's files on their computer: the app may be closed, and no one may be watching.\n\n- Every tool names the level: the one you are given. gb_read_level first. It gives the level's things, its shape table (content) and its revision (rev), which every gb_apply_edits names.\n- Send each change as one gb_apply_edits batch: one idea a batch, so the person can take it back in one step. If a batch is refused as stale, the level changed: gb_read_level again and plan again.\n- Other agents may be working on this level too. Before you change a part of it, claim that part: gb_claim with a box round where you will work (box:X0,Z0,X1,Z1, centimetres) or the things you will change (things:ID,ID). A change of yours inside another agent's claim is refused as claimed, naming whose: work elsewhere (gb_claims lists them all). gb_release ends your claims when you are done.\n- gb_list_palette says what this level's game type is, the kinds of thing it can add, how building goes in it and its limits (how far, how high, how big, how many) in words with their numbers; call it before you build. An edit past a limit is refused with those words: say so plainly and do what fits. gb_list_fields gives a thing's fields and their ranges. gb_play_test plays the level with bots and says how it went.\n- If the level is locked, it isn't the person's to change: say so in one line and stop.\n- If the request could mean two different levels, do the likelier one and say in your answer what you took it to mean: you cannot ask.\n- If the level needs something the engine can't do yet, say so plainly in your answer.\n- Write plain text, no Markdown, and keep it short: at the end, say what you changed in one or two lines.\n\n";
+
+// Where `claude` may be: as named (the host's PATH), then the installer's and Homebrew's places.
+ag_program :: (k: int, home: string, out: [] u8) -> string {
+  if k == 0 { return "claude"; }
+  n := 0;
+  if k == 1 { n = agr_put(out, agr_put(out, 0, home), "/.local/bin/claude"); }
+  if k == 2 { n = agr_put(out, 0, "/opt/homebrew/bin/claude"); }
+  if k == 3 { n = agr_put(out, 0, "/usr/local/bin/claude"); }
+  if k == 4 { n = agr_put(out, agr_put(out, 0, home), "/.claude/local/claude"); }
+  return cast(string) out[0..<n];
+}
+
+
+// What a limit a message is, in words with its number (the record's): turns, or dollars of the plan.
+ag_limit_words :: (r: AgrRecord, turns: bool, out: [] u8) -> string {
+  n := agr_put(out, 0, "It stopped at its limit of ");
+  if turns { n = agr_int(out, n, cast(s64) r.turns); n = agr_put(out, n, " turns"); }
+  else { n = agr_put(out, n, "$"); n = agr_int(out, n, cast(s64) r.cents / 100); n = agr_put(out, n, " of your plan"); }
+  n = agr_put(out, n, " for one message. Send another to go on.");
+  return cast(string) out[0..<n];
+}
+
+// What a session that would bill a key says, and one signed out: the person's login, never a key.
+AG_KEY_WORDS :: "Stopped: this would bill an API key, not your Claude login. Take ANTHROPIC_API_KEY or an apiKeyHelper out, then try again.";
+AG_SIGNED_OUT_WORDS :: "Claude Code is signed out on this computer. Sign in (run claude once in Terminal), then send your message again.";
+
+// ---- paused: the person's plan hit its limit (Claude Code's rate_limit_event, status
+// "rejected"), and it goes on at the time the plan says (resetsAt, in seconds)
+AG_RESUMED :: "Your Claude plan's limit has lifted: go on where you left off.";
+// When a rate limit event pauses an agent, in milliseconds since 1970: 0 when it doesn't (any
+// status but rejected, or no time said).
+ag_pause_until :: (status: string, resets_s: s64) -> s64 {
+  if status != "rejected" || resets_s <= 0 { return 0; }
+  return resets_s * 1000;
+}
+
+#test "a rejected rate limit pauses an agent until the plan's reset; any other status doesn't" {
+  #assert ag_pause_until("rejected", 1763387200) == 1763387200000;
+  #assert ag_pause_until("allowed_warning", 1763387200) == 0 && ag_pause_until("rejected", 0) == 0;
+  r := AgrRecord.{}; r.turns = 20; r.cents = 200; b: [160] u8;
+  #assert ag_limit_words(r, true, b[..]) == "It stopped at its limit of 20 turns for one message. Send another to go on.";
+  #assert ag_limit_words(r, false, b[..]) == "It stopped at its limit of $2 of your plan for one message. Send another to go on.";
+}

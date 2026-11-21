@@ -1,0 +1,163 @@
+// The match's models: Scrappers built from parts, and the arena's pieces.
+//
+// The art is GameBuilder's own, built in Blender by tools/models.py into
+// host/Models/scrappers.gbm (that script says what the file holds). This
+// reads the file's table, so the game knows each mesh by name and each
+// Scrapper's joints, and tells the host where each mesh's vertices are. The
+// game then places meshes as instances: the same stream the boxes go in, with
+// the mesh's number in an instance's last float (0 is the box).
+MESH_MAX :: 32;
+MESH_NAME :: 16;
+MESH_NUMBERS :: 8;
+MESH_ENTRY :: MESH_NAME + 8 + MESH_NUMBERS * 4;
+MESH_VERTEX_WORDS :: 7;
+// A Scrapper's parts, in the order their meshes are kept.
+PART_BODY :: 0; PART_HEAD :: 1; PART_ARM :: 2; PART_LEG :: 3; PART_GUN :: 4; PARTS :: 5;
+PART_NAME :: [PARTS] string.["-body", "-head", "-arm", "-leg", "-gun"];
+MESH_KIND_NAME :: [CLASSES] string.["bolt", "boulder", "lumen"];
+// A Scrapper's numbers, on its body: hip height, hip half spacing, shoulder height, shoulder half spacing, neck height, arm length.
+NUM_HIP_Y :: 0; NUM_HIP_X :: 1; NUM_SHOULDER_Y :: 2; NUM_SHOULDER_X :: 3; NUM_NECK_Y :: 4; NUM_ARM :: 5;
+
+Meshes :: struct {
+  ok: bool; n: s32;
+  first: [MESH_MAX] s32; count: [MESH_MAX] s32;
+  numbers: [MESH_MAX * MESH_NUMBERS] f32;
+  vertices_at: s64;                       // the byte the vertices start at
+  part: [CLASSES * PARTS] s32;            // each Scrapper's parts: a mesh's number and one
+  crate: s32; pack: s32; shot: s32; disc: s32; pad: s32;
+}
+
+meshes_u32 :: (b: [] u8, at: int) -> int {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+// The mesh called `name` in the table, as its number and one; 0 for none.
+meshes_find :: (b: [] u8, n: int, name: [] const u8) -> s32 {
+  for k: 0..<n {
+    at := 8 + k * MESH_ENTRY;
+    same := true;
+    for i: 0..<MESH_NAME {
+      want: u8 = ifx i < name.count then name[i] else 0;
+      if b[at + i] != want { same = false; break; }
+    }
+    if same { return cast(s32) (k + 1); }
+  }
+  return 0;
+}
+meshes_named :: (b: [] u8, n: int, name: string) -> s32 {
+  buf: [MESH_NAME] u8;
+  if name.count > MESH_NAME { return 0; }
+  for i: 0..<name.count { buf[i] = name[i]; }
+  return meshes_find(b, n, buf[0..<name.count]);
+}
+
+// Opens the models' file. False, and the match keeps its boxes, for bytes
+// that are not one or that lack a mesh the match draws.
+ed_meshes_open :: (e: [] Editor, b: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  m := e[0].meshes[..];
+  m[0] = Meshes.{};
+  if b.count < 8 || b[0] != 'G' || b[1] != 'B' || b[2] != 'M' || b[3] != '1' { return false; }
+  n := meshes_u32(b, 4);
+  if n < 1 || n > MESH_MAX || 8 + n * MESH_ENTRY > b.count { return false; }
+  data := 8 + n * MESH_ENTRY;
+  for k: 0..<n {
+    at := 8 + k * MESH_ENTRY;
+    first := meshes_u32(b, at + MESH_NAME); count := meshes_u32(b, at + MESH_NAME + 4);
+    if first < 0 || count < 3 || data + (first + count) * MESH_VERTEX_WORDS * 4 > b.count { return false; }
+    m[0].first[k] = cast(s32) first; m[0].count[k] = cast(s32) count;
+    for i: 0..<MESH_NUMBERS { m[0].numbers[k * MESH_NUMBERS + i] = f32_from_bits(cast(u32) meshes_u32(b, at + MESH_NAME + 8 + i * 4)); }
+  }
+  m[0].n = cast(s32) n; m[0].vertices_at = data;
+  name: [MESH_NAME] u8;
+  for c: 0..<CLASSES {
+    for q: 0..<PARTS {
+      k := 0;
+      for ch: MESH_KIND_NAME[c] { name[k] = ch; k += 1; }
+      for ch: PART_NAME[q] { name[k] = ch; k += 1; }
+      id := meshes_find(b, n, name[0..<k]);
+      if id == 0 { return false; }
+      m[0].part[c * PARTS + q] = id;
+    }
+  }
+  m[0].crate = meshes_named(b, n, "crate"); m[0].pack = meshes_named(b, n, "pack"); m[0].shot = meshes_named(b, n, "shot");
+  m[0].disc = meshes_named(b, n, "disc"); m[0].pad = meshes_named(b, n, "pad");
+  if m[0].crate == 0 || m[0].pack == 0 || m[0].shot == 0 || m[0].disc == 0 || m[0].pad == 0 { return false; }
+  m[0].ok = true;
+  return true;
+}
+
+ed_mesh_count :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 && e[0].meshes[0].ok then e[0].meshes[0].n else 0; }
+ed_mesh_vertex_words :: () -> s32 #export_c #effects(all) { return MESH_VERTEX_WORDS; }
+// The byte the file's vertices start at.
+ed_mesh_vertices_at :: (e: [] Editor) -> s64 #export_c #effects(all) { return ifx e.count == 1 && e[0].meshes[0].ok then e[0].meshes[0].vertices_at else 0; }
+// Mesh `id` (an instance's last float): out[0] its first vertex, out[1] how many. False for no such mesh.
+ed_mesh_range :: (e: [] Editor, id: s32, out: [] s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].meshes[0].ok || id < 1 || id > e[0].meshes[0].n || out.count < 2 { return false; }
+  out[0] = e[0].meshes[0].first[id - 1]; out[1] = e[0].meshes[0].count[id - 1];
+  return true;
+}
+
+// A Scrapper's number (NUM_*).
+mesh_number :: (e: [] Editor, kind: s32, which: int) -> f32 {
+  id := e[0].meshes[0].part[cast(int) kind * PARTS + PART_BODY];
+  return e[0].meshes[0].numbers[(cast(int) id - 1) * MESH_NUMBERS + which];
+}
+mesh_part :: (e: [] Editor, kind: s32, part: int) -> s32 { return e[0].meshes[0].part[cast(int) kind * PARTS + part]; }
+
+// One mesh placed: at a point, turned by yaw about the way up, then tipped by
+// `tip` about its own sideways axis (a leg's swing, a blaster's aim), then
+// scaled. The instance's last float is the mesh.
+mesh_put :: (out: [] f32, n: s64, mesh: s32, at: WorldPoint, yaw: f32, tip: f32, sx: f32, sy: f32, sz: f32, shade: f32, look: s32, tint: s32) -> s64 {
+  o := n * INSTANCE_FLOATS;
+  if o + INSTANCE_FLOATS > out.count || mesh <= 0 { return n; }
+  cy := cos(yaw); sy_ := sin(yaw); ct := cos(tip); st := sin(tip);
+  m := [16] f32.[
+    cy * sx, 0, -sy_ * sx, 0,
+    sy_ * st * sy, ct * sy, cy * st * sy, 0,
+    ct * sy_ * sz, -st * sz, ct * cy * sz, 0,
+    at.x, at.y, at.z, 1];
+  for i: 0..<16 { out[o + i] = m[i]; }
+  out[o + 16] = shade; out[o + 17] = cast(f32) look; out[o + 18] = cast(f32) tint; out[o + 19] = cast(f32) mesh;
+  return n + 1;
+}
+
+// ---- checks
+
+MeshTest :: struct { e: [1] Editor; file: [4096] u8; out: [4 * INSTANCE_FLOATS] f32; }
+
+// A small file in the models' form: every mesh the match needs, each one triangle.
+mesh_test_file :: (t: [] MeshTest) -> int {
+  b := t[0].file[..];
+  names := [20] string.["bolt-body", "bolt-head", "bolt-arm", "bolt-leg", "bolt-gun", "boulder-body", "boulder-head", "boulder-arm", "boulder-leg", "boulder-gun",
+    "lumen-body", "lumen-head", "lumen-arm", "lumen-leg", "lumen-gun", "crate", "pack", "shot", "disc", "pad"];
+  b[0] = 'G'; b[1] = 'B'; b[2] = 'M'; b[3] = '1';
+  model_test_u32(b, 4, 20);
+  for k: 0..<20 {
+    at := 8 + k * MESH_ENTRY;
+    for i: 0..<names[k].count { b[at + i] = names[k][i]; }
+    model_test_u32(b, at + MESH_NAME, k * 3); model_test_u32(b, at + MESH_NAME + 4, 3);
+  }
+  // bolt's hip is half a metre up
+  model_test_u32(b, 8 + MESH_NAME + 8, 0x3f000000);
+  return 8 + 20 * MESH_ENTRY + 20 * 3 * MESH_VERTEX_WORDS * 4;
+}
+
+#test "the models' file opens to every mesh the match draws, by name, with a Scrapper's joints" {
+  t: [1] MeshTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  n := mesh_test_file(t[..]);
+  #assert ed_meshes_open(e, t[0].file[0..<n]) && ed_mesh_count(e) == 20 && ed_mesh_vertices_at(e) == 8 + 20 * MESH_ENTRY;
+  range: [2] s32;
+  #assert ed_mesh_range(e, e[0].meshes[0].crate, range[..]) && range[0] == 15 * 3 && range[1] == 3;
+  #assert mesh_part(e, 1, PART_GUN) == 10 && mesh_part(e, 2, PART_BODY) == 11 && mesh_number(e, 0, NUM_HIP_Y) == 0.5;
+  #assert !ed_mesh_range(e, 0, range[..]) && !ed_mesh_range(e, 21, range[..]);
+  // a mesh put at a point, turned a quarter and scaled: its sideways axis lies along -z, its number is in the last float
+  k := mesh_put(t[0].out[..], 0, 16, WorldPoint.{x = 1, y = 2, z = 3}, 1.5707963, 0, 2, 3, 4, 0.9, 0, 5);
+  #assert k == 1 && abs(t[0].out[0]) < 0.0001 && abs(t[0].out[2] + 2) < 0.0001 && t[0].out[5] == 3 && abs(t[0].out[8] - 4) < 0.0001 && t[0].out[12] == 1 && t[0].out[19] == 16 && t[0].out[18] == 5;
+  // a file cut short, with a wrong mark, or missing a mesh is refused, and the match keeps its boxes
+  #assert !ed_meshes_open(e, t[0].file[0..<n - 4]) && ed_mesh_count(e) == 0;
+  t[0].file[8] = 'x';
+  #assert !ed_meshes_open(e, t[0].file[0..<n]);
+  t[0].file[8] = 'b'; t[0].file[0] = 'X';
+  #assert !ed_meshes_open(e, t[0].file[0..<n]);
+}

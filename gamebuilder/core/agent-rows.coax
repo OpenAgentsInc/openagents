@@ -1,0 +1,367 @@
+// The agent rows (GitHub issue 4; a cloud agent's on a hosted server, issue 7): agents, agent-read, agent-events, agent-new, agent-message,
+// agent-answer, agent-stop, agent-undo and agent-report, carried out on the records and logs a
+// surface read (GbWorld.agents, GbWorld.log) with the shared record module (agent-record.coax).
+// The core reads and writes no file and no clock: the answer says which record to write back
+// (GbResult.agent) and which event lines to append to its log (GbResult.lines), and the surface
+// does it, as it writes a level's file. The same rows run on the folder's files (the CLI, MCP and
+// HTTP), on an account's files (serve --accounts, which gamebuilder.org/agents reads), and in
+// the app (the Agents pane, whose runner appends what its agent does).
+//   scripts/check.sh (tests/commands/agents.case, four ways)
+
+gb_agent_refuse_none :: (o: [] Jo) -> GbResult { return gb_refuse(o, "not-found", "there is no such agent (agents)"); }
+
+// Appends ev to store record k: false when its log is full. The line goes after s.lines' first
+// used bytes (used[0]), which move on.
+gb_agent_append :: (s: [] AgrStore, k: int, ev: [] AgrEvent, now: s64, used: [] int) -> bool {
+  line := agr_append(s[0].r[k..<k + 1], ev, now, s[0].lines[used[0]..<s[0].lines.count]);
+  if line.count == 0 { return false; }
+  used[0] += line.count;
+  return true;
+}
+// A row's answer, and what the surface writes: record k and the lines appended (none on a dry run).
+gb_agent_done :: (o: [] Jo, a: GbArgs, s: [] AgrStore, k: int, used: int) -> GbResult {
+  r := gb_done(o, a, false, 0);
+  if r.code != GB_DONE || a.dry { return r; }
+  r.agent = cast(s32) (k + 1);
+  r.lines = cast(string) s[0].lines[0..<used];
+  return r;
+}
+
+gb_agent_run :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  if v == VERB_COMPUTERS || v == VERB_COMPUTER_REPORT { return gb_computer_run(v, a, w, o); }
+  s := w.agents;
+  if s.count != 1 { return gb_refuse(o, "bad-request", "this surface keeps no agents"); }
+  now := w.now;
+  if v == VERB_AGENTS {
+    order: [AGR_RECORDS] int;
+    n := agr_order(s, now, order[..]);
+    gb_ok(o); jo_key(o, "agents"); jo_arr(o);
+    for i: 0..<n {
+      k := order[i];
+      jo_obj(o); jo_key(o, "agent"); agr_record_json(s[0].r[k..<k + 1], agr_job_of(s, k), o); agr_shown_json(s, k, now, o);
+      // its newest picture on the account, when one was sent (agent-pictures.coax)
+      agp_answer(w.pictures, agr_id(s[0].r[k..<k + 1]), o);
+      jo_end(o);
+    }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_AGENT_READ || v == VERB_AGENT_EVENTS { return gb_agent_change(e, v, a, w, o); }
+  // a row that changes an agent: on a dry run, or when refused, the store is as it was
+  n := s[0].n; k := ifx v == VERB_AGENT_REPORT || v == VERB_AGENT_NEW || v == VERB_AGENT_NEW_ON then -1 else agr_find(s, a.aid);
+  keep: [1] AgrRecord; if k >= 0 { keep[0] = s[0].r[k]; }
+  r := gb_agent_change(e, v, a, w, o);
+  if a.dry || r.code != GB_DONE {
+    if k >= 0 { s[0].r[k] = keep[0]; }
+    s[0].n = n;
+    r.agent = 0; r.lines = "";
+  }
+  return r;
+}
+gb_agent_change :: (e: [] Editor, v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents; now := w.now;
+  if v == VERB_AGENT_REPORT { return gb_agent_report(a, w, o); }
+  if v == VERB_AGENT_PICTURE { return gb_agent_picture(a, w, o); }
+  if v == VERB_AGENT_NEW_ON { return gb_agent_new_on(e, a, w, o); }
+  // the account keeps what the computers report: it reads it, and only they change it
+  // the account runs its own cloud agents (issue 7: cli/cloud.coax runs them) and keeps what the
+  // computers report of theirs: it reads those, and only they change them
+  if w.hosted && v != VERB_AGENT_READ && v != VERB_AGENT_EVENTS {
+    if v == VERB_AGENT_NEW { return gb_agent_new_cloud(e, a, w, o); }
+    hk := agr_find(s, a.aid);
+    if hk < 0 { return gb_agent_refuse_none(o); }
+    if s[0].r[hk].place != AGR_CLOUD { return gb_refuse(o, "not-here", GB_AGENT_THERE); }
+    if v == VERB_AGENT_MESSAGE && !w.cloud { return gb_refuse(o, "not-here", GB_CLOUD_OFF); }
+    if v == VERB_AGENT_UNDO { return gb_agent_undo_cloud(e, a, w, o, hk); }
+  }
+  if v == VERB_AGENT_NEW { return gb_agent_new(e, a, w, o); }
+  k := agr_find(s, a.aid);
+  if k < 0 { return gb_agent_refuse_none(o); }
+  r := s[0].r[k..<k + 1];
+  if v == VERB_AGENT_READ {
+    gb_ok(o); jo_key(o, "agent"); agr_record_json(r, agr_job_of(s, k), o); agr_shown_json(s, k, now, o);
+    return gb_done(o, a, false, 0);
+  }
+  if v == VERB_AGENT_EVENTS {
+    gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid);
+    agr_events_page(w.log, a.aid, cast(int) a.after, 0, o);
+    return gb_done(o, a, false, 0);
+  }
+  ev: [1] AgrEvent; used: [1] int;
+  ended := r[0].state == AGR_DONE || r[0].state == AGR_STOPPED || r[0].state == AGR_FAILED;
+  if v == VERB_AGENT_MESSAGE {
+    if r[0].state == AGR_WAITING { return gb_refuse(o, "edit-refused", "it asked you a question and waits for your answer (agent-answer)"); }
+    ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_PERSON; agr_event_text(ev[..], a.say);
+    if !gb_agent_append(s, k, ev[..], now, used[..]) { return gb_refuse(o, "limit", "its log is full: one agent keeps at most 100000 events (AGR_EVENTS); start a new agent"); }
+    if r[0].state != AGR_WORKING && r[0].state != AGR_QUEUED {
+      ev[0] = agr_event(AGR_STATE); ev[0].state = AGR_QUEUED;
+      _ = gb_agent_append(s, k, ev[..], now, used[..]);
+    }
+    gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[r[0].state]);
+    return gb_agent_done(o, a, s, k, used[0]);
+  }
+  if v == VERB_AGENT_ANSWER {
+    if r[0].state != AGR_WAITING { return gb_refuse(o, "edit-refused", "it isn't waiting for an answer"); }
+    if agr_last(w.log, a.aid, AGR_ASK, ev[..]) == 0 { return gb_refuse(o, "edit-refused", "its question isn't in its log"); }
+    found := false;
+    for i: 0..<ev[0].choices { if cast(string) ev[0].choice[i * AGR_CHOICE..<i * AGR_CHOICE + ev[0].choice_n[i]] == a.say { found = true; } }
+    if !found {
+      b: [256] u8; t := [1] Text.[Text.{buf = b[..]}];
+      tx_put(t[..], "answer with one of its answers: ");
+      for i: 0..<ev[0].choices {
+        if i > 0 { tx_put(t[..], ifx i == ev[0].choices - 1 then " or " else ", "); }
+        tx_put(t[..], cast(string) ev[0].choice[i * AGR_CHOICE..<i * AGR_CHOICE + ev[0].choice_n[i]]);
+      }
+      return gb_refuse(o, "bad-request", cast(string) b[0..<t[0].at]);
+    }
+    ev[0] = agr_event(AGR_ANSWER); agr_event_text(ev[..], a.say);
+    if !gb_agent_append(s, k, ev[..], now, used[..]) { return gb_refuse(o, "limit", "its log is full: one agent keeps at most 100000 events (AGR_EVENTS); start a new agent"); }
+    ev[0] = agr_event(AGR_STATE); ev[0].state = AGR_QUEUED;
+    _ = gb_agent_append(s, k, ev[..], now, used[..]);
+    gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[r[0].state]);
+    return gb_agent_done(o, a, s, k, used[0]);
+  }
+  if v == VERB_AGENT_STOP {
+    if ended { return gb_refuse(o, "edit-refused", "it has already stopped"); }
+    ev[0] = agr_event(AGR_STATE); ev[0].state = AGR_STOPPED; agr_event_text(ev[..], ifx r[0].place == AGR_ATTACHED then AGR_ATTACHED_CUT else "You stopped it; what it changed stays.");
+    if !gb_agent_append(s, k, ev[..], now, used[..]) { return gb_refuse(o, "limit", "its log is full: one agent keeps at most 100000 events (AGR_EVENTS)"); }
+    gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[r[0].state]);
+    return gb_agent_done(o, a, s, k, used[0]);
+  }
+  if v == VERB_AGENT_UNDO {
+    if agr_last(w.log, a.aid, AGR_EDIT, ev[..]) == 0 { return gb_refuse(o, "edit-refused", "it has made no edit to take back"); }
+    b: [256] u8; t := [1] Text.[Text.{buf = b[..]}];
+    tx_put(t[..], "only the app takes back an agent's edit, on the level open there, while just agents changed it since: open level ");
+    tx_int(t[..], cast(s64) ev[0].level); tx_put(t[..], " in GameBuilder and press Undo turn in its Agents pane");
+    return gb_refuse(o, "edit-refused", cast(string) b[0..<t[0].at]);
+  }
+  return gb_refuse(o, "bad-request", "no such command");
+}
+
+// agent-new: a queued record on a game of yours, on this computer, with the job as the person's
+// first message.
+gb_agent_new :: (e: [] Editor, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents;
+  if mine_find(e, a.game) < 0 { return gb_refuse(o, "not-found", "there is no such game of yours (list-games)"); }
+  if a.role == AGR_CODE { return gb_refuse(o, "edit-refused", "a Code agent starts in the Agents pane, after you approve it there (code-agent)"); }
+  if !AGR_KIND_RUNS[a.role] { return gb_refuse(o, "edit-refused", "only a Builder (build) and a Playtester (playtest) run today"); }
+  if s[0].n >= AGR_RECORDS { return gb_refuse(o, "limit", "a folder keeps at most 256 agents (AGR_RECORDS)"); }
+  if w.now <= 0 { return gb_refuse(o, "bad-request", "this surface has no clock"); }
+  k := s[0].n;
+  ib: [AGR_ID] u8; tb: [64] u8;
+  id := agr_new_id(w.now, k, ib[..]);
+  if agr_find(s, id) >= 0 { return gb_refuse(o, "edit-refused", "an agent was made this millisecond: try again"); }
+  title := cast(string) tb[0..<ed_mine_title(e, a.game, tb[..])];
+  agr_record_new(s[0].r[k..<k + 1], id, a.game, title, ed_mine_level(e, a.game), cast(int) a.role, AGR_LOCAL, w.computer, "claude", w.now);
+  s[0].r[k].turns = AGR_TURNS; s[0].r[k].cents = AGR_CENTS;
+  s[0].jw[k].n = agr_set(s[0].jw[k].buf[..], a.say);
+  s[0].n += 1;
+  ev: [1] AgrEvent; used: [1] int;
+  ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_PERSON; agr_event_text(ev[..], a.say);
+  _ = gb_agent_append(s, k, ev[..], w.now, used[..]);
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, id); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[AGR_QUEUED]);
+  jo_key(o, "cost"); jo_str(o, AGR_LOCAL_COST);
+  return gb_agent_done(o, a, s, k, used[0]);
+}
+
+// ---- an agent on one of your computers, and the computers (issue 11; docs/agents.md, "The
+// resident service"): GameBuilder's resident service on a computer (cli/resident.coax) runs the
+// agents queued there for it, with the app open or not, and says how it is (computer-report)
+
+// What the account says of a change to an agent on one of your computers: it runs there.
+GB_AGENT_THERE :: AGR_THERE;   // (coax/agent-record.coax: the account's page says it too)
+GB_AGENT_ON_HERE :: "GameBuilder's resident service on this computer runs it (gamebuilder resident), with the app open or not";
+GB_AGENT_ON_THERE :: "it waits on your account until that computer takes it: GameBuilder's resident service there must be on and signed in";
+
+// agent-new-on: a queued record on a game of yours, on the computer named, for its resident
+// service to run (runner AGR_RESIDENT): one whose service said how it is (computers), beside the
+// levels or on your account. On the account the record waits until that computer takes it,
+// shown offline while the computer is.
+gb_agent_new_on :: (e: [] Editor, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents;
+  if mine_find(e, a.game) < 0 { return gb_refuse(o, "not-found", "there is no such game of yours (list-games)"); }
+  if a.role == AGR_CODE { return gb_refuse(o, "edit-refused", "a Code agent starts in the Agents pane on its computer, after you approve it there (code-agent)"); }
+  if !AGR_KIND_RUNS[a.role] { return gb_refuse(o, "edit-refused", "only a Builder (build) and a Playtester (playtest) run today"); }
+  // the computer: one whose resident service said how it is, here (its file beside the levels)
+  // or to the account (computer-report)
+  ib: [AGR_ID + 2] u8;
+  ck := agr_computer_find(w.computers, agr_computer_id(a.on, ib[..]));
+  if ck < 0 { return gb_refuse(o, "not-found", ifx w.hosted then "your account knows no computer of that name: start GameBuilder's resident service there, signed in (computers)" else "no computer of that name has GameBuilder's resident service here: start it (gamebuilder resident), then name it as computers does"); }
+  c := w.computers[0].c[ck..<ck + 1];
+  name := cast(string) c[0].name[0..<c[0].name_n];
+  // on the account, shown offline while its computer is: it is the computer's word that it is queued
+  heard: s64 = ifx w.hosted then c[0].heard else 0;
+  if s[0].n >= AGR_RECORDS { return gb_refuse(o, "limit", "a folder or an account keeps at most 256 agents (AGR_RECORDS)"); }
+  if w.now <= 0 { return gb_refuse(o, "bad-request", "this surface has no clock"); }
+  k := s[0].n;
+  idb: [AGR_ID] u8; tb: [64] u8;
+  id := agr_new_id(w.now, k, idb[..]);
+  if agr_find(s, id) >= 0 { return gb_refuse(o, "edit-refused", "an agent was made this millisecond: try again"); }
+  title := cast(string) tb[0..<ed_mine_title(e, a.game, tb[..])];
+  agr_record_new(s[0].r[k..<k + 1], id, a.game, title, ed_mine_level(e, a.game), cast(int) a.role, AGR_LOCAL, name, AGR_RESIDENT, w.now);
+  s[0].r[k].turns = AGR_TURNS; s[0].r[k].cents = AGR_CENTS; s[0].r[k].heard = heard;
+  s[0].jw[k].n = agr_set(s[0].jw[k].buf[..], a.say);
+  s[0].n += 1;
+  ev: [1] AgrEvent; used: [1] int;
+  ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_PERSON; agr_event_text(ev[..], a.say);
+  _ = gb_agent_append(s, k, ev[..], w.now, used[..]);
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, id); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[AGR_QUEUED]);
+  jo_key(o, "computer"); jo_str(o, name);
+  jo_key(o, "runs"); jo_str(o, ifx w.hosted then GB_AGENT_ON_THERE else GB_AGENT_ON_HERE);
+  jo_key(o, "cost"); jo_str(o, AGR_LOCAL_COST);
+  return gb_agent_done(o, a, s, k, used[0]);
+}
+
+// computers and computer-report: the computers the surface read (GbWorld.computers), in id
+// order, each with what it shows; and one as its resident service says it, kept with the time it
+// was heard (the surface writes computer-ID.computer: GbResult.computer).
+gb_computer_run :: (v: int, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  cs := w.computers;
+  if cs.count != 1 { return gb_refuse(o, "bad-request", "this surface keeps no computers"); }
+  if v == VERB_COMPUTERS {
+    order: [AGR_COMPUTERS] int; n := 0;
+    for k: 0..<cs[0].n {
+      at := n;
+      while at > 0 && agr_less(cast(string) cs[0].c[k].id[0..<cs[0].c[k].id_n], cast(string) cs[0].c[order[at - 1]].id[0..<cs[0].c[order[at - 1]].id_n]) { order[at] = order[at - 1]; at -= 1; }
+      order[at] = k; n += 1;
+    }
+    gb_ok(o); jo_key(o, "computers"); jo_arr(o);
+    for i: 0..<n {
+      k := order[i];
+      jo_obj(o); jo_key(o, "computer"); agr_computer_json(cs[0].c[k..<k + 1], o); agr_computer_shown_json(cs[0].c[k..<k + 1], w.now, o); jo_end(o);
+    }
+    jo_end(o);
+    return gb_done(o, a, false, 0);
+  }
+  got: [1] AgrComputer;
+  why := agr_computer_read(a.report, got[..]);
+  if why.count > 0 { return gb_refuse(o, "bad-request", why); }
+  if w.now <= 0 { return gb_refuse(o, "bad-request", "this surface has no clock"); }
+  id := cast(string) got[0].id[0..<got[0].id_n];
+  k := agr_computer_find(cs, id);
+  if k < 0 && cs[0].n >= AGR_COMPUTERS { return gb_refuse(o, "limit", "an account keeps at most 8 computers (AGR_COMPUTERS)"); }
+  // when this surface last heard from it (agr_computer_shown's offline rule)
+  got[0].heard = w.now;
+  if !a.dry {
+    if k < 0 { k = cs[0].n; cs[0].n += 1; }
+    cs[0].c[k] = got[0];
+  }
+  gb_ok(o); jo_key(o, "computer"); jo_str(o, id); agr_computer_shown_json(got[..], w.now, o);
+  r := gb_done(o, a, false, 0);
+  if r.code == GB_DONE && !a.dry { r.computer = cast(s32) (k + 1); }
+  return r;
+}
+
+// ---- a cloud agent (issue 7; docs/agents.md, "A cloud agent"): agent-new, agent-message,
+// agent-stop and agent-undo on a hosted server, for an agent that server runs
+
+GB_CLOUD_OFF :: "this server runs no cloud agents just now (it has no model key): start one in GameBuilder on your Mac";
+
+// agent-new on the account: a cloud Builder on the first level of a game of yours, queued for the
+// server to run, with the job as the person's first message. Its answer says its limits in words.
+gb_agent_new_cloud :: (e: [] Editor, a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents;
+  if !w.cloud { return gb_refuse(o, "not-here", GB_CLOUD_OFF); }
+  if mine_find(e, a.game) < 0 { return gb_refuse(o, "not-found", "there is no such game of yours (list-games)"); }
+  if a.role != AGR_BUILD { return gb_refuse(o, "edit-refused", "a cloud agent is a Builder (build) today: a Playtester and a Code agent run in GameBuilder on your Mac"); }
+  level := ed_mine_level(e, a.game);
+  if level < 1 || !gb_world_has(w, level) { return gb_refuse(o, "not-found", "that game has no level of yours here to work on (list-levels)"); }
+  if s[0].n >= AGR_RECORDS { return gb_refuse(o, "limit", "an account keeps at most 256 agents (AGR_RECORDS)"); }
+  if w.now <= 0 { return gb_refuse(o, "bad-request", "this surface has no clock"); }
+  k := s[0].n;
+  ib: [AGR_ID] u8; tb: [64] u8;
+  id := agr_new_id(w.now, k, ib[..]);
+  if agr_find(s, id) >= 0 { return gb_refuse(o, "edit-refused", "an agent was made this millisecond: try again"); }
+  title := cast(string) tb[0..<ed_mine_title(e, a.game, tb[..])];
+  agr_record_new(s[0].r[k..<k + 1], id, a.game, title, level, AGR_BUILD, AGR_CLOUD, "", AGR_CLOUD_RUNNER, w.now);
+  s[0].r[k].turns = AGR_CLOUD_STEPS; s[0].r[k].cents = 0;
+  s[0].jw[k].n = agr_set(s[0].jw[k].buf[..], a.say);
+  s[0].n += 1;
+  ev: [1] AgrEvent; used: [1] int;
+  ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_PERSON; agr_event_text(ev[..], a.say);
+  _ = gb_agent_append(s, k, ev[..], w.now, used[..]);
+  wb: [512] u8;
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, id); jo_key(o, "state"); jo_str(o, AGR_STATE_ID[AGR_QUEUED]);
+  jo_key(o, "level"); jo_int(o, cast(int) level); jo_key(o, "limits"); jo_str(o, agr_cloud_words(wb[..]));
+  return gb_agent_done(o, a, s, k, used[0]);
+}
+
+// agent-undo on a cloud agent: its newest kept change (w.undo) taken back, the level's file put
+// as it was before it, while the level is still as that change left it. The person's, from the
+// page; or its own (undo_turn), its turn number its own. An edit event says it, naming no things.
+gb_agent_undo_cloud :: (e: [] Editor, a: GbArgs, w: GbWorld, o: [] Jo, k: int) -> GbResult {
+  s := w.agents;
+  if w.undo.count == 0 { return gb_refuse(o, "edit-refused", "it has no change kept to take back: it keeps its last 16 (AGR_CLOUD_UNDO)"); }
+  nums: [3] int; at := 0;
+  for j: 0..<3 {
+    x := 0; from := at;
+    while at < w.undo.count && w.undo[at] >= '0' && w.undo[at] <= '9' { x = x * 10 + cast(int) (w.undo[at] - '0'); at += 1; }
+    if at == from || at >= w.undo.count || w.undo[at] != (ifx j == 2 then cast(u8) '\n' else cast(u8) ' ') { return gb_refuse(o, "operation-failed", "its kept change doesn't read: it is left as it is"); }
+    nums[j] = x; at += 1;
+  }
+  level := cast(s32) nums[0]; before := nums[1]; after := nums[2];
+  have := -1;
+  for i: 0..<w.levels.count { if w.levels[i] == level { have = i; } }
+  lb: [96] u8; lt := [1] Text.[Text.{buf = lb[..]}];
+  if have < 0 { tx_put(lt[..], "level "); tx_n(lt[..], level); tx_put(lt[..], ", which it changed, is gone"); return gb_refuse(o, "not-found", cast(string) lb[0..<lt[0].at]); }
+  if have >= w.revs.count || cast(int) w.revs[have] != after {
+    tx_put(lt[..], "level "); tx_n(lt[..], level); tx_put(lt[..], " changed since its change, so that change stands (read-level shows it as it is)");
+    return gb_refuse(o, "stale", cast(string) lb[0..<lt[0].at]);
+  }
+  file := w.undo[at..<w.undo.count];
+  doc: [AGENT_FILE_MAX] u8;
+  if file.count > doc.count { return gb_refuse(o, "operation-failed", "its kept change doesn't read: it is left as it is"); }
+  for i: 0..<file.count { doc[i] = file[i]; }
+  if !ed_open(e, level, doc[0..<file.count]) || ed_level(e) != level || ed_agent_rev(e) != before { return gb_refuse(o, "operation-failed", "its kept change doesn't read: it is left as it is"); }
+  if !ed_may_edit(e) { return gb_refuse(o, "not-permitted", "this level is not yours to change"); }
+  ev: [1] AgrEvent; used: [1] int;
+  ev[0] = agr_event(AGR_EDIT); ev[0].level = level; ev[0].before = cast(s32) after; ev[0].after = cast(s32) before;
+  if !gb_agent_append(s, k, ev[..], w.now, used[..]) { return gb_refuse(o, "limit", "its log is full: one agent keeps at most 100000 events (AGR_EVENTS); start a new agent"); }
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid); jo_key(o, "level"); jo_int(o, cast(int) level); jo_key(o, "rev"); jo_int(o, before);
+  r := gb_agent_done(o, a, s, k, used[0]);
+  if r.code == GB_DONE && !a.dry { r.save_level = true; r.undone = true; }
+  return r;
+}
+
+// agent-report: an agent's record and the events after those kept here, as its computer sends
+// them (coax/sync.coax): {"record": {...}, "from": N, "events": [{...}, ...]}. Each event is
+// written again as the record module writes it, so the log here is the computer's byte for byte.
+gb_agent_report :: (a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents;
+  nodes: [AGR_REPORT * (AGR_THINGS + 48) + 128] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], a.report, nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return gb_refuse(o, "bad-request", "a report is one JSON object: {record, from, events}"); }
+  d := da[0];
+  rec := jv_get(d, 0, "record"); evs := jv_get(d, 0, "events");
+  from := jv_int(d, jv_get(d, 0, "from"), -1);
+  if jv_kind(d, rec) != JV_OBJECT || jv_kind(d, evs) != JV_ARRAY || from < 0 { return gb_refuse(o, "bad-request", "a report is {record, from, events}: the record, the number of events already sent, and the events after them"); }
+  if jv_len(d, evs) > AGR_REPORT { return gb_refuse(o, "limit", "a report carries at most 20 events (AGR_REPORT): send the rest in the next"); }
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  why := agr_record_read(jv_raw(d, rec), got[..], jw[..]);
+  if why.count > 0 { return gb_refuse(o, "bad-request", why); }
+  id := agr_id(got[..]);
+  k := agr_find(s, id);
+  kept := ifx k >= 0 then cast(int) s[0].r[k].events else 0;
+  if from != kept {
+    b: [160] u8; t := [1] Text.[Text.{buf = b[..]}];
+    tx_put(t[..], "this agent's log here has "); tx_int(t[..], cast(s64) kept); tx_put(t[..], " events: report from there (agent-read)");
+    return gb_refuse(o, "stale", cast(string) b[0..<t[0].at]);
+  }
+  if k < 0 && s[0].n >= AGR_RECORDS { return gb_refuse(o, "limit", "an account keeps at most 256 agents (AGR_RECORDS)"); }
+  used := 0; ev: [1] AgrEvent;
+  for i: 0..<jv_len(d, evs) {
+    at := jv_at(d, evs, i);
+    ewhy := agr_event_read(jv_raw(d, at), id, ev[..]);
+    if ewhy.count > 0 { return gb_refuse(o, "bad-request", ewhy); }
+    if cast(int) ev[0].n != from + i + 1 { return gb_refuse(o, "bad-request", "a report's events are numbered on from from, one by one"); }
+    line := agr_event_write(id, ev[..], s[0].lines[used..<s[0].lines.count - 1]);
+    if line.count == 0 { return gb_refuse(o, "limit", "an event is one line of at most 8192 bytes (AGR_LINE)"); }
+    used += line.count; s[0].lines[used] = '\n'; used += 1;
+  }
+  if k < 0 { k = s[0].n; s[0].n += 1; }
+  s[0].r[k] = got[0]; s[0].jw[k] = jw[0];
+  s[0].r[k].events = cast(s32) (from + jv_len(d, evs));
+  // when the account last heard from the agent's computer (agr_shown_state's offline rule)
+  s[0].r[k].heard = w.now;
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, id); jo_key(o, "events"); jo_int(o, cast(int) s[0].r[k].events);
+  return gb_agent_done(o, a, s, k, used);
+}

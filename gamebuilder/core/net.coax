@@ -1,0 +1,532 @@
+// A Scrappers match played by more than one person.
+//
+// One device hosts: it runs the whole match (coax/play.coax) and is the only
+// one that decides hits, health and the score. Every other person is a guest
+// in a seat: one of the six Scrappers, on either team. A guest moves its own
+// body on its own device, so its feet answer at once, and tells the host
+// where it is and what it wants (an input, fifteen times a second). The host
+// tells every guest how the match stands (a snapshot, twelve times a second).
+// A seat nobody holds, or whose guest goes quiet, is a bot.
+//
+// On a guest's device the match is turned to be about them: the guest is
+// Scrapper 0 and its team is team 0, as everything that draws and counts
+// expects. `seat` is who they are on the host.
+//
+// This file is the match's side only: what the two messages say and what
+// each end does with them. They are text, numbers with commas between, and
+// whatever carries them (coax/party.coax) is not this file's business.
+NET_SOLO :: 0; NET_HOST :: 1; NET_GUEST :: 2;
+NET_SNAPSHOT_EVERY :: 1.0f32 / 12.0;
+NET_INPUT_EVERY :: 1.0f32 / 15.0;
+NET_QUIET :: 6.0f32;          // seconds without a guest's input before a bot takes its seat
+NET_LOST :: 8.0f32;           // seconds without a snapshot before a guest's match is lost
+NET_SHOTS :: 20;              // shots a snapshot carries at most
+NET_TEXT :: 1900;             // bytes a message is at most
+
+// What a guest in a seat is asking for, as the host last heard it.
+NetWant :: struct { fire: bool; dx: f32; dy: f32; dz: f32; supers: s32; quiet: f32; }
+// Where a guest last heard another Scrapper was: it is drawn moving there.
+NetTarget :: struct { x: f32; y: f32; z: f32; yaw: f32; pitch: f32; set: bool; }
+
+Net :: struct {
+  mode: s32;                      // NET_*
+  seat: s32;                      // a guest's Scrapper on the host
+  remote: [FIGHTERS] bool;        // the host: a person holds this seat
+  want: [FIGHTERS] NetWant;
+  tgt: [FIGHTERS] NetTarget;
+  seq: s32; got: s32;             // snapshots sent, and the last one taken
+  owed: f32;                      // time toward the next message
+  heard: f32;                     // a guest: seconds since a snapshot
+  lost: bool;
+  fire: bool; dir: WorldPoint;    // a guest: what it is asking for
+  supers: s32;
+  started: bool;                  // a guest has had its first snapshot
+}
+
+// ---- reading and writing numbers
+
+NetRead :: struct { b: [] const u8; at: int; bad: bool; }
+net_next :: (r: [] NetRead) -> s64 {
+  if r[0].at >= r[0].b.count { r[0].bad = true; return 0; }
+  neg := false; v: s64 = 0; n := 0;
+  if r[0].b[r[0].at] == '-' { neg = true; r[0].at += 1; }
+  while r[0].at < r[0].b.count && r[0].b[r[0].at] != ',' {
+    c := r[0].b[r[0].at];
+    if c < '0' || c > '9' || n > 11 { r[0].bad = true; return 0; }
+    v = v * 10 + cast(s64) (c - '0'); n += 1; r[0].at += 1;
+  }
+  if n == 0 { r[0].bad = true; }
+  r[0].at += 1;
+  return ifx neg then -v else v;
+}
+net_put :: (t: [] Text, v: f32, scale: f32) {
+  s := v * scale;
+  tx_int(t, cast(s64) (ifx s < 0 then s - 0.5 else s + 0.5)); tx_put(t, ",");
+}
+net_put_int :: (t: [] Text, v: s64) { tx_int(t, v); tx_put(t, ","); }
+
+// A guest's number for the host's Scrapper `h`, and back: the guest and
+// Scrapper 0 change places.
+net_local :: (seat: s64, h: s64) -> s64 { return ifx h == seat then 0 else (ifx h == 0 then seat else h); }
+
+// ---- starting
+
+// After ed_play on the host: this seat is a person's, playing this Scrapper.
+ed_net_seat :: (e: [] Editor, seat: s32, kind: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || seat < 1 || seat >= FIGHTERS || kind < 0 || kind >= CLASSES { return false; }
+  p := e[0].play[..];
+  if !play_seated(p, cast(s64) seat) { return false; }   // a seat this match's size leaves empty
+  p[0].net[0].mode = NET_HOST;
+  p[0].net[0].remote[seat] = true;
+  p[0].net[0].want[seat] = NetWant.{};
+  p[0].f[seat].kind = kind;
+  play_place(p, cast(s64) seat);
+  return true;
+}
+// The seat a new guest takes: beside you (true) or across from you. -1 when that side is full.
+ed_net_free_seat :: (e: [] Editor, same_team: bool) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return -1; }
+  side: s32 = ifx same_team then 0 else 1;
+  for i: 1..<FIGHTERS { if SEAT_TEAM[i] == side && play_seated(e[0].play[..], i) && !e[0].play[0].net[0].remote[i] { return cast(s32) i; } }
+  return -1;
+}
+// After ed_play on a guest: it holds this seat on the host.
+ed_net_guest :: (e: [] Editor, seat: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || seat < 1 || seat >= FIGHTERS { return false; }
+  p := e[0].play[..];
+  p[0].net[0] = Net.{mode = NET_GUEST, seat = seat};
+  p[0].flip = SEAT_TEAM[seat] == 1;
+  // until the host says how things stand, nobody but you is there
+  for i: 1..<FIGHTERS { p[0].f[i].alive = false; }
+  return true;
+}
+ed_net_mode :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 && e[0].play[0].on then e[0].play[0].net[0].mode else NET_SOLO; }
+ed_net_lost :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].play[0].on && e[0].play[0].net[0].lost; }
+// Whether a person still holds this seat (the host).
+ed_net_held :: (e: [] Editor, seat: s32) -> bool #export_c #effects(all) { return e.count == 1 && seat >= 0 && seat < FIGHTERS && e[0].play[0].on && e[0].play[0].net[0].remote[seat]; }
+
+// ---- the host
+
+// A person's Scrapper on the host: it stands where its guest last said, and
+// fires while its guest asks. A guest that has gone quiet gives its seat to a bot.
+net_remote :: (p: [] Play, i: s64) {
+  n := p[0].net[..];
+  n[0].want[i].quiet += PLAY_STEP;
+  if n[0].want[i].quiet > NET_QUIET { n[0].remote[i] = false; return; }
+  w := n[0].want[i];
+  if w.fire { play_fire(p, i, WorldPoint.{x = w.dx, y = w.dy, z = w.dz}); }
+}
+
+// The time a message is due: true once every `every` seconds of `dt`.
+ed_net_due :: (e: [] Editor, dt: f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on { return false; }
+  n := e[0].play[0].net[..];
+  if n[0].mode == NET_SOLO { return false; }
+  every := ifx n[0].mode == NET_HOST then NET_SNAPSHOT_EVERY else NET_INPUT_EVERY;
+  n[0].owed += dt;
+  if n[0].owed < every { return false; }
+  n[0].owed = ifx n[0].owed > every * 2 then 0.0f32 else n[0].owed - every;
+  return true;
+}
+
+// How the match stands, for every guest. Its length, or 0.
+ed_net_snapshot :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || e[0].play[0].net[0].mode != NET_HOST || out.count < NET_TEXT { return 0; }
+  p := e[0].play[..];
+  t := [1] Text.[Text.{buf = out[0..<NET_TEXT]}];
+  tx_put(t[..], "S,");
+  p[0].net[0].seq += 1;
+  net_put_int(t[..], cast(s64) p[0].net[0].seq);
+  net_put(t[..], p[0].left, 10); net_put(t[..], p[0].count, 10);
+  net_put_int(t[..], ifx p[0].over then 1 else 0); net_put_int(t[..], cast(s64) p[0].winner + 1);
+  net_put_int(t[..], cast(s64) p[0].score[0]); net_put_int(t[..], cast(s64) p[0].score[1]);
+  net_put_int(t[..], cast(s64) p[0].feed_by + 1); net_put_int(t[..], cast(s64) p[0].feed_who + 1); net_put(t[..], p[0].feed, 10);
+  mask: s64 = 0;
+  for k: 0..<PACKS { if p[0].packs[k].there && p[0].packs[k].gone <= 0 { mask |= 1 << k; } }
+  net_put_int(t[..], mask);
+  // the mode, its size, its round, its pause and banner, and the ball (modes.coax)
+  b := p[0].ball[0];
+  net_put_int(t[..], cast(s64) p[0].mode); net_put_int(t[..], play_size(p)); net_put_int(t[..], cast(s64) p[0].bout); net_put(t[..], p[0].pause, 10);
+  net_put_int(t[..], cast(s64) p[0].call); net_put_int(t[..], cast(s64) p[0].call_team + 1); net_put(t[..], p[0].call_t, 10);
+  net_put(t[..], b.x, 100); net_put(t[..], b.y, 100); net_put(t[..], b.z, 100);
+  net_put(t[..], b.vx, 10); net_put(t[..], b.vy, 10); net_put(t[..], b.vz, 10); net_put_int(t[..], cast(s64) b.holder + 1);
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    net_put_int(t[..], cast(s64) f.team); net_put_int(t[..], cast(s64) f.kind); net_put_int(t[..], ifx f.alive then 1 else 0);
+    net_put(t[..], f.x, 100); net_put(t[..], f.y, 100); net_put(t[..], f.z, 100);
+    net_put(t[..], f.yaw, 1000); net_put(t[..], f.pitch, 1000);
+    net_put(t[..], f.hp, 1); net_put(t[..], f.super, 1000); net_put(t[..], f.over, 10);
+    net_put_int(t[..], ifx f.flash > 0 then 1 else 0); net_put(t[..], f.shield, 10);
+    net_put(t[..], play_min(f.kick, 9), 100); net_put(t[..], play_max(f.respawn, 0), 10);
+    net_put_int(t[..], cast(s64) f.life); net_put_int(t[..], cast(s64) f.hits); net_put_int(t[..], cast(s64) f.kos); net_put_int(t[..], cast(s64) f.falls);
+  }
+  live := 0;
+  for s: 0..<SHOTS { if p[0].shots[s].live && live < NET_SHOTS { live += 1; } }
+  net_put_int(t[..], live);
+  sent := 0;
+  for s: 0..<SHOTS {
+    sh := p[0].shots[s];
+    if !sh.live || sent >= live { continue; }
+    sent += 1;
+    net_put_int(t[..], cast(s64) sh.team); net_put_int(t[..], cast(s64) sh.kind);
+    net_put(t[..], sh.x, 100); net_put(t[..], sh.y, 100); net_put(t[..], sh.z, 100);
+    net_put(t[..], sh.vx, 10); net_put(t[..], sh.vy, 10); net_put(t[..], sh.vz, 10);
+  }
+  if t[0].at >= NET_TEXT { return 0; }
+  return t[0].at;
+}
+
+// A guest's input came, for the seat its sender holds.
+ed_net_input :: (e: [] Editor, seat: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || seat < 1 || seat >= FIGHTERS || text.count < 3 || text[0] != 'I' || text[1] != ',' { return false; }
+  p := e[0].play[..];
+  if p[0].net[0].mode != NET_HOST || !p[0].net[0].remote[seat] { return false; }
+  r := [1] NetRead.[NetRead.{b = text, at = 2}];
+  v: [15] s64;
+  for i: 0..<15 { v[i] = net_next(r[..]); }
+  if r[0].bad { return false; }
+  w := p[0].net[0].want[seat];
+  w.quiet = 0;
+  f := p[0].f[seat];
+  // a word from before it was last put back at its start is about a place it has left
+  if cast(s32) v[0] == f.life && f.alive && p[0].count <= 0 {
+    f.x = cast(f32) v[1] / 100; f.y = cast(f32) v[2] / 100; f.z = cast(f32) v[3] / 100;
+    f.grounded = v[6] != 0; f.stride = cast(f32) v[7] / 100;
+  }
+  f.yaw = cast(f32) v[4] / 1000; f.pitch = cast(f32) v[5] / 1000;
+  p[0].f[seat] = f;
+  w.fire = v[8] != 0 && !p[0].over && p[0].count <= 0;
+  dx := cast(f32) v[9] / 1000; dy := cast(f32) v[10] / 1000; dz := cast(f32) v[11] / 1000;
+  mag := sqrt(dx * dx + dy * dy + dz * dz);
+  if mag > 0.5 { w.dx = dx / mag; w.dy = dy / mag; w.dz = dz / mag; } else { w.fire = false; }
+  again := cast(s32) v[12] != w.supers;
+  w.supers = cast(s32) v[12];
+  p[0].net[0].want[seat] = w;
+  if again && !p[0].over && p[0].count <= 0 { play_super(p, cast(s64) seat); }
+  return true;
+}
+
+// The Scrapper a guest's word says it speaks for: its last number. -1 for none.
+net_said_seat :: (text: [] u8) -> s32 {
+  to := text.count;
+  if to > 0 && text[to - 1] == ',' { to -= 1; }
+  from := to;
+  while from > 0 && text[from - 1] >= '0' && text[from - 1] <= '9' { from -= 1; }
+  if from == to || to - from > 2 { return -1; }
+  v: s32 = 0;
+  for i: from..<to { v = v * 10 + cast(s32) (text[i] - '0'); }
+  return v;
+}
+
+// ---- a guest
+
+// What this guest is doing, for the host. Its length, or 0.
+ed_net_say :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || e[0].play[0].net[0].mode != NET_GUEST || out.count < 256 { return 0; }
+  p := e[0].play[..];
+  f := p[0].f[0];
+  n := p[0].net[0];
+  t := [1] Text.[Text.{buf = out[0..<256]}];
+  tx_put(t[..], "I,");
+  net_put_int(t[..], cast(s64) f.life);
+  net_put(t[..], f.x, 100); net_put(t[..], f.y, 100); net_put(t[..], f.z, 100);
+  net_put(t[..], f.yaw, 1000); net_put(t[..], f.pitch, 1000);
+  net_put_int(t[..], ifx f.grounded then 1 else 0); net_put(t[..], f.stride, 100);
+  net_put_int(t[..], ifx n.fire then 1 else 0);
+  net_put(t[..], n.dir.x, 1000); net_put(t[..], n.dir.y, 1000); net_put(t[..], n.dir.z, 1000);
+  net_put_int(t[..], cast(s64) n.supers);
+  net_put_int(t[..], cast(s64) f.kind); net_put_int(t[..], cast(s64) n.seat);
+  if t[0].at >= 256 { return 0; }
+  return t[0].at;
+}
+
+// What a guest does where the host would fire: its blaster kicks and sounds
+// at once, and the asking goes to the host, whose shot it is.
+net_guest_asks :: (p: [] Play, fire: bool, dir: WorldPoint, super: bool) {
+  n := p[0].net[..];
+  f := p[0].f[0];
+  n[0].fire = fire; n[0].dir = dir;
+  if fire && f.alive && f.cool <= 0 {
+    f.cool = CLASS_COOL[f.kind] * (ifx f.over > 0 && f.kind == 0 then 0.33f32 else 1.0f32);
+    f.kick = 0; f.shield = 0;
+    p[0].f[0] = f;
+    play_sound(p, SND_SHOT + f.kind, f.x, f.z, true);
+  }
+  if super && f.super >= PLAY_SUPER_FULL { n[0].supers += 1; p[0].f[0].super = 0; play_sound(p, SND_SUPER, f.x, f.z, true); }
+}
+
+// The host said how the match stands.
+ed_net_take :: (e: [] Editor, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || text.count < 3 || text[0] != 'S' || text[1] != ',' { return false; }
+  p := e[0].play[..];
+  n := p[0].net[..];
+  if n[0].mode != NET_GUEST { return false; }
+  r := [1] NetRead.[NetRead.{b = text, at = 2}];
+  seq := cast(s32) net_next(r[..]);
+  if r[0].bad || (n[0].started && seq <= n[0].got) { return false; }
+  seat := cast(s64) n[0].seat;
+  flip := SEAT_TEAM[seat] == 1;
+  left := cast(f32) net_next(r[..]) / 10; count := cast(f32) net_next(r[..]) / 10;
+  over := net_next(r[..]) != 0; winner := cast(s32) net_next(r[..]) - 1;
+  s0 := cast(s32) net_next(r[..]); s1 := cast(s32) net_next(r[..]);
+  feed_by := net_next(r[..]) - 1; feed_who := net_next(r[..]) - 1; feed := cast(f32) net_next(r[..]) / 10;
+  mask := net_next(r[..]);
+  mode := cast(s32) net_next(r[..]); size := cast(s32) net_next(r[..]); bout := cast(s32) net_next(r[..]); pause := cast(f32) net_next(r[..]) / 10;
+  call := cast(s32) net_next(r[..]); call_team := cast(s32) net_next(r[..]) - 1; call_t := cast(f32) net_next(r[..]) / 10;
+  ball := Ball.{};
+  ball.x = cast(f32) net_next(r[..]) / 100; ball.y = cast(f32) net_next(r[..]) / 100; ball.z = cast(f32) net_next(r[..]) / 100;
+  ball.vx = cast(f32) net_next(r[..]) / 10; ball.vy = cast(f32) net_next(r[..]) / 10; ball.vz = cast(f32) net_next(r[..]) / 10;
+  holder := net_next(r[..]) - 1;
+  if mode < 0 || mode >= MODES || size < 1 || size > TEAM_SIZE || holder < -1 || holder >= FIGHTERS || call_team < -1 || call_team > 1 { return false; }
+  fs: [FIGHTERS] Fighter; tg: [FIGHTERS] NetTarget; kick: [FIGHTERS] f32;
+  for h: 0..<FIGHTERS {
+    f := Fighter.{};
+    f.team = cast(s32) net_next(r[..]); f.kind = cast(s32) net_next(r[..]); f.alive = net_next(r[..]) != 0;
+    t := NetTarget.{set = true};
+    t.x = cast(f32) net_next(r[..]) / 100; t.y = cast(f32) net_next(r[..]) / 100; t.z = cast(f32) net_next(r[..]) / 100;
+    t.yaw = cast(f32) net_next(r[..]) / 1000; t.pitch = cast(f32) net_next(r[..]) / 1000;
+    f.hp = cast(f32) net_next(r[..]); f.super = cast(f32) net_next(r[..]) / 1000; f.over = cast(f32) net_next(r[..]) / 10;
+    f.flash = ifx net_next(r[..]) != 0 then 0.12f32 else 0.0f32; f.shield = cast(f32) net_next(r[..]) / 10;
+    k := cast(f32) net_next(r[..]) / 100; f.respawn = cast(f32) net_next(r[..]) / 10;
+    f.life = cast(s32) net_next(r[..]); f.hits = cast(s32) net_next(r[..]); f.kos = cast(s32) net_next(r[..]); f.falls = cast(s32) net_next(r[..]);
+    if f.team < 0 || f.team > 1 || f.kind < 0 || f.kind >= CLASSES { return false; }
+    if flip { f.team = 1 - f.team; }
+    l := net_local(seat, h);
+    fs[l] = f; tg[l] = t; kick[l] = k;
+  }
+  shots := net_next(r[..]);
+  if r[0].bad || shots < 0 || shots > NET_SHOTS { return false; }
+  sh: [NET_SHOTS] PlayShot;
+  for s: 0..<shots {
+    a := PlayShot.{live = true, life = 1};
+    a.team = cast(s32) net_next(r[..]); a.kind = cast(s32) net_next(r[..]);
+    a.x = cast(f32) net_next(r[..]) / 100; a.y = cast(f32) net_next(r[..]) / 100; a.z = cast(f32) net_next(r[..]) / 100;
+    a.vx = cast(f32) net_next(r[..]) / 10; a.vy = cast(f32) net_next(r[..]) / 10; a.vz = cast(f32) net_next(r[..]) / 10;
+    if a.team < 0 || a.team > 1 || a.kind < 0 || a.kind >= CLASSES { return false; }
+    if flip { a.team = 1 - a.team; }
+    sh[s] = a;
+  }
+  if r[0].bad { return false; }
+  // all of it read and sound: now it is how things stand
+  first := !n[0].started;
+  n[0].started = true; n[0].got = seq; n[0].heard = 0;
+  // the countdown's beeps, and its end
+  if count > 0 && (first || cast(s64) (count + 0.999) != cast(s64) (p[0].count + 0.999)) { play_sound(p, SND_BEEP, 0, 0, true); }
+  if count <= 0 && p[0].count > 0 && !first { play_sound(p, SND_GO, 0, 0, true); }
+  p[0].left = left; p[0].count = count;
+  p[0].score[0] = ifx flip then s1 else s0; p[0].score[1] = ifx flip then s0 else s1;
+  if over && !p[0].over {
+    p[0].winner = ifx winner < 0 then -1 else (ifx flip then 1 - winner else winner);
+    p[0].fire = false;
+    play_sound(p, ifx p[0].winner == 1 then SND_LOSE else SND_WIN, 0, 0, true);
+  }
+  p[0].over = over;
+  if feed > p[0].feed + 0.5 && feed_by >= -1 && feed_by < FIGHTERS && feed_who >= 0 && feed_who < FIGHTERS {
+    p[0].feed_by = ifx feed_by < 0 then -1 else cast(s32) net_local(seat, feed_by);
+    p[0].feed_who = cast(s32) net_local(seat, feed_who);
+    who := fs[p[0].feed_who];
+    play_burst(p, tg[p[0].feed_who].x, tg[p[0].feed_who].y + 1.0, tg[p[0].feed_who].z, 18, 6.5, ifx who.team == 0 then TINT_MINE else TINT_RIVAL);
+    play_sound(p, SND_KNOCKOUT, tg[p[0].feed_who].x, tg[p[0].feed_who].z, p[0].feed_who == 0 || p[0].feed_by == 0);
+  }
+  p[0].feed = feed;
+  p[0].mode = mode; p[0].size = size; p[0].bout = bout; p[0].pause = pause; p[0].flip = flip;
+  p[0].call = call; p[0].call_t = call_t; p[0].call_team = ifx call_team < 0 || !flip then call_team else 1 - call_team;
+  ball.holder = ifx holder < 0 then -1 else cast(s32) net_local(seat, holder); ball.by = -1; ball.last_y = ball.y;
+  p[0].ball[0] = ball;
+  for k: 0..<PACKS { if p[0].packs[k].there { p[0].packs[k].gone = ifx (mask & (1 << k)) != 0 then 0.0f32 else 1.0f32; } }
+  for l: 0..<FIGHTERS {
+    was := p[0].f[l];
+    f := fs[l];
+    t := tg[l];
+    if l == 0 {
+      // you: your body is yours to move, except when the host has put you back at your start
+      moved := first || f.life != was.life || count > 0;
+      if f.hp < was.hp - 0.5 && was.alive { p[0].hurt = 0.25; play_sound(p, SND_HURT, was.x, was.z, true); }
+      if f.hits > was.hits && !first { p[0].marker = 0.15; play_sound(p, SND_HIT, was.x, was.z, true); }
+      p[0].mine = f.kos; p[0].falls = f.falls;
+      f.cool = was.cool; f.kick = was.kick; f.stride = was.stride; f.vy = was.vy; f.grounded = was.grounded;
+      f.x = was.x; f.y = was.y; f.z = was.z; f.yaw = was.yaw; f.pitch = was.pitch;
+      // a shot you asked for drops your shield here before the host knows
+      if was.shield <= 0 && !moved { f.shield = 0; }
+      if moved {
+        f.x = t.x; f.y = t.y; f.z = t.z; f.vy = 0; f.yaw = t.yaw; f.pitch = 0;
+        if first || f.life != was.life { e[0].vp[0].fyaw = t.yaw; e[0].vp[0].fpitch = 0; }
+      }
+      p[0].f[0] = f;
+      continue;
+    }
+    // someone else: they are drawn moving to where the host says they are
+    far := (t.x - was.x) * (t.x - was.x) + (t.z - was.z) * (t.z - was.z) > 36;
+    jump := first || !was.alive || !n[0].tgt[l].set || far || f.life != was.life;
+    f.x = was.x; f.y = was.y; f.z = was.z; f.yaw = was.yaw; f.pitch = was.pitch; f.stride = was.stride;
+    f.kick = was.kick;
+    if kick[l] < 0.2 && was.kick > 0.25 && f.alive {
+      f.kick = kick[l];
+      play_sound(p, SND_SHOT + f.kind, t.x, t.z, false);
+    }
+    if jump { f.x = t.x; f.y = t.y; f.z = t.z; f.yaw = t.yaw; f.pitch = t.pitch; }
+    f.grounded = true;
+    p[0].f[l] = f;
+    n[0].tgt[l] = t;
+  }
+  for s: 0..<SHOTS { p[0].shots[s].live = false; }
+  for s: 0..<shots { p[0].shots[s] = sh[s]; }
+  e[0].dirty = true;
+  return true;
+}
+
+// A guest's step: you move yourself; everyone else moves to where the host
+// last said; shots fly on between the host's words.
+net_guest_step :: (e: [] Editor) {
+  p := e[0].play[..];
+  n := p[0].net[..];
+  n[0].heard += PLAY_STEP;
+  if n[0].heard > NET_LOST { n[0].lost = true; }
+  p[0].marker = play_max(p[0].marker - PLAY_STEP, 0);
+  p[0].hurt = play_max(p[0].hurt - PLAY_STEP, 0);
+  for i: 0..<FIGHTERS {
+    f := p[0].f[i];
+    f.cool = play_max(f.cool - PLAY_STEP, 0);
+    f.over = play_max(f.over - PLAY_STEP, 0);
+    f.flash = play_max(f.flash - PLAY_STEP, 0);
+    f.shield = play_max(f.shield - PLAY_STEP, 0);
+    f.respawn = play_max(f.respawn - PLAY_STEP, 0);
+    f.kick += PLAY_STEP;
+    if i > 0 && f.alive && n[0].tgt[i].set {
+      t := n[0].tgt[i];
+      a: f32 = 0.22;
+      nx := f.x + (t.x - f.x) * a; nz := f.z + (t.z - f.z) * a;
+      f.stride += sqrt((nx - f.x) * (nx - f.x) + (nz - f.z) * (nz - f.z)) * 2.6;
+      if f.stride > 6.2831853 { f.stride -= 6.2831853; }
+      f.x = nx; f.z = nz; f.y += (t.y - f.y) * a;
+      f.yaw = play_wrap(f.yaw + play_wrap(t.yaw - f.yaw) * a); f.pitch += (t.pitch - f.pitch) * a;
+    }
+    p[0].f[i] = f;
+  }
+  if p[0].f[0].alive && p[0].count <= 0 && !p[0].over && n[0].started { play_you(e); }
+  else {
+    p[0].f[0].yaw = e[0].vp[0].fyaw; p[0].f[0].pitch = e[0].vp[0].fpitch;
+    n[0].fire = false; p[0].jump = false; p[0].super = false;
+  }
+  for s: 0..<SHOTS {
+    sh := p[0].shots[s];
+    if !sh.live { continue; }
+    sh.x += sh.vx * PLAY_STEP; sh.y += sh.vy * PLAY_STEP; sh.z += sh.vz * PLAY_STEP;
+    p[0].shots[s] = sh;
+  }
+  mode_guest_ball(p);
+  p[0].call_t = play_max(p[0].call_t - PLAY_STEP, 0);
+}
+
+// ---- checks
+
+NetTest :: struct { a: [1] Editor; b: [1] Editor; msg: [NET_TEXT] u8; }
+
+// One round between a host and its guest: the guest's word to the host, steps on both, the host's word back.
+net_test_round :: (t: [] NetTest, steps: s64) {
+  for k: 0..<steps {
+    n := ed_net_say(t[0].b[..], t[0].msg[..]);
+    if n > 0 { _ = ed_net_input(t[0].a[..], t[0].b[0].play[0].net[0].seat, t[0].msg[0..<n]); }
+    for q: 0..<5 { play_step(t[0].a[..]); play_step(t[0].b[..]); }
+    n = ed_net_snapshot(t[0].a[..], t[0].msg[..]);
+    if n > 0 { _ = ed_net_take(t[0].b[..], t[0].msg[0..<n]); }
+  }
+}
+
+#test "a guest across from the host sees the match turned about: it is Scrapper 0 on team 0, the host a rival" #steps 200000000 {
+  t: [1] NetTest; a := t[0].a[..]; b := t[0].b[..];
+  ed_init(a, 800, 400); ed_init(b, 800, 400);
+  ed_play(a, 0);
+  seat := ed_net_free_seat(a, false);
+  #assert seat == 3 && ed_net_seat(a, seat, 2) && ed_net_mode(a) == NET_HOST && ed_net_held(a, 3) && ed_net_free_seat(a, false) == 4 && ed_net_free_seat(a, true) == 1;
+  ed_play(b, 2);
+  #assert ed_net_guest(b, seat) && ed_net_mode(b) == NET_GUEST;
+  net_test_round(t[..], 2);
+  // the guest stands where the host put seat 3, facing as it does, as a Lumen on its own team 0
+  g := b[0].play[0].f[0]; h := a[0].play[0].f[3];
+  #assert g.alive && g.kind == 2 && g.team == 0 && abs(g.x - h.x) < 0.02 && abs(g.z - h.z) < 0.02 && g.life == h.life;
+  // the host is the guest's Scrapper 3, a rival, where the host stands
+  r := b[0].play[0].f[3]; me := a[0].play[0].f[0];
+  #assert r.alive && r.team == 1 && r.kind == 0 && abs(r.x - me.x) < 0.02 && abs(r.z - me.z) < 0.02;
+  // the count runs on the guest as on the host, and the guest's own side of the score is its own
+  #assert b[0].play[0].count > 0 && abs(b[0].play[0].count - a[0].play[0].count) < 0.2;
+  a[0].play[0].score[1] = 4; a[0].play[0].score[0] = 1;
+  net_test_round(t[..], 1);
+  #assert b[0].play[0].score[0] == 4 && b[0].play[0].score[1] == 1;
+}
+
+#test "a guest moves itself and the host follows; its asking fires the host's shot; quiet, it becomes a bot" #steps 400000000 {
+  t: [1] NetTest; a := t[0].a[..]; b := t[0].b[..];
+  ed_init(a, 800, 400); ed_init(b, 800, 400);
+  ed_play(a, 0);
+  #assert ed_net_seat(a, 1, 1);
+  ed_play(b, 1);
+  #assert ed_net_guest(b, 1);
+  // through the countdown
+  net_test_round(t[..], 45);
+  #assert a[0].play[0].count <= 0 && b[0].play[0].count <= 0;
+  // the guest walks ahead: the host's Scrapper 1 goes with it, and is not walked by a bot
+  x0 := b[0].play[0].f[0].x; z0 := b[0].play[0].f[0].z;
+  b[0].k_fore = true;
+  net_test_round(t[..], 10);
+  b[0].k_fore = false;
+  g := b[0].play[0].f[0];
+  moved := sqrt((g.x - x0) * (g.x - x0) + (g.z - z0) * (g.z - z0));
+  #assert moved > 2;
+  net_test_round(t[..], 1);
+  h := a[0].play[0].f[1];
+  #assert abs(h.x - b[0].play[0].f[0].x) < 0.05 && abs(h.z - b[0].play[0].f[0].z) < 0.05 && h.team == 0 && ed_net_held(a, 1);
+  // the host, on the guest's screen, is a team mate
+  #assert b[0].play[0].f[1].team == 0 && b[0].play[0].f[1].kind == 0;
+  // the guest asks to fire: the shot is the host's, and comes back in its word
+  shots := 0;
+  for s: 0..<SHOTS { if a[0].play[0].shots[s].live && a[0].play[0].shots[s].owner == 1 { shots += 1; } }
+  #assert shots == 0;
+  b[0].play[0].fire = true;
+  net_test_round(t[..], 2);
+  b[0].play[0].fire = false;
+  for s: 0..<SHOTS { if a[0].play[0].shots[s].live && a[0].play[0].shots[s].owner == 1 { shots += 1; } }
+  seen := 0;
+  for s: 0..<SHOTS { if b[0].play[0].shots[s].live { seen += 1; } }
+  #assert shots > 0 && seen > 0 && b[0].play[0].f[0].kick < 1;
+  // a word cut short or not a word changes nothing
+  n := ed_net_snapshot(a, t[0].msg[..]);
+  #assert n > 40 && !ed_net_take(b, t[0].msg[0..<n - 9]) && !ed_net_take(b, t[0].msg[0..<1]) && !ed_net_input(a, 1, t[0].msg[0..<n]);
+  // the guest goes quiet: after a while a bot has its seat, and with no word the guest's match is lost
+  for k: 0..<cast(s64) (NET_LOST / PLAY_STEP) + 5 { play_step(a); play_step(b); }
+  #assert !ed_net_held(a, 1) && ed_net_lost(b);
+}
+
+#test "a guest is told the mode, the size and the ball: a Scrapball match two a side, the host carrying, seen turned about" #steps 400000000 {
+  t: [1] NetTest; a := t[0].a[..]; b := t[0].b[..];
+  ed_init(a, 800, 400); ed_init(b, 800, 400);
+  #assert ed_play_setup(a, MODE_SCRAPBALL, 2);
+  ed_play(a, 0);
+  // two a side: seats 1, 3 and 4 play, 2 and the rest are empty
+  #assert ed_net_free_seat(a, false) == 3 && !ed_net_seat(a, 2, 0) && !ed_net_seat(a, 5, 0) && ed_net_seat(a, 3, 1);
+  ed_play(b, 1);
+  #assert ed_net_guest(b, 3);
+  a[0].play[0].ball[0].holder = 0;
+  net_test_round(t[..], 2);
+  q := b[0].play[0];
+  #assert q.mode == MODE_SCRAPBALL && q.size == 2 && q.flip && q.ball[0].holder == 3 && q.f[3].team == 1;
+  for i: 0..<FIGHTERS { #assert q.f[i].alive == play_seated(b[0].play[..], i); }
+  // a goal for the host's team is a goal for the guest's rivals
+  mode_scored(a[0].play[..], 0, CALL_GOAL);
+  net_test_round(t[..], 1);
+  buf: [96] u8;
+  n := ed_play_feed(b, buf[..]);
+  #assert b[0].play[0].score[1] == 1 && b[0].play[0].call_team == 1 && cast(string) buf[0..<n] == "Goal! The rivals score";
+}
+
+#test "five a side with every shot it carries still fits one snapshot" #steps 400000000 {
+  t: [1] NetTest; a := t[0].a[..];
+  ed_init(a, 800, 400);
+  #assert ed_play_setup(a, MODE_HOOPS, 5);
+  ed_play(a, 0);
+  #assert ed_net_seat(a, 9, 2);
+  p := a[0].play[..];
+  for i: 0..<FIGHTERS { f := p[0].f[i]; f.x = -123.45; f.z = -123.45; f.y = 12.3; f.yaw = -3.14; f.pitch = -1.5; f.hits = 999; f.kos = 999; f.falls = 999; f.life = 999; f.super = 99.9; p[0].f[i] = f; }
+  for s: 0..<NET_SHOTS { p[0].shots[s] = PlayShot.{live = true, x = -123.45, y = -12.3, z = -123.45, vx = -75, vy = -75, vz = -75, kind = 2, team = 1}; }
+  #assert ed_net_snapshot(a, t[0].msg[..]) > 1000;
+}

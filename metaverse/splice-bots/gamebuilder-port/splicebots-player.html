@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPLICEBOTS</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#000;color:#eee;font-family:system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%;touch-action:none;user-select:none}
+canvas[data-cursor=none]{cursor:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=crosshair]{cursor:crosshair}
+#coaxial-load{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+#coaxial-load.gone{display:none}
+.lb{display:block;width:240px;height:3px;background:#333;margin:16px auto}
+.lb i{display:block;height:100%;background:#88d7da;transform:scaleX(0);transform-origin:left}
+.le,.la{display:none}
+#coaxial-load[data-state=fail] .le,#coaxial-load[data-state=fail] .la{display:block}
+#coaxial-load[data-state=fail] .lb,#coaxial-load[data-state=fail] .lr{display:none}
+.la{color:#a8e9ec}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-label="SPLICEBOTS"></canvas>
+<div id="coaxial-load" role="progressbar" aria-label="Loading SPLICEBOTS" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <strong>SPLICEBOTS</strong>
+  <span class="lb"><i></i></span>
+  <p class="lr"><span class="lt">Loading</span> <span class="lp"></span></p>
+  <p class="le">The game could not load. Use a browser with WebGPU on this computer.</p>
+  <a class="la" href="/">Reload</a>
+</div>
+<script>
+if (["127.0.0.1", "localhost"].includes(location.hostname)) {
+  const local = new URL(location.href);
+  local.searchParams.set("pack", "splice-bots-jam");
+  local.searchParams.set("phone", "0");
+  history.replaceState(null, "", local);
+}
+</script>
+<script type="module" src="/coaxial/host.js" data-app="splice-jam" data-slot="splicebots-shipping-v1"
+ data-ui-font-src="/fonts/IBMPlexMono-Medium.ttf" data-ui-font-family="SplicePlexMono"
+ data-ui-title-font-src="/fonts/Michroma-Regular.ttf" data-ui-title-font-family="SpliceMichroma"
+ data-ui-title-font-weight="400" data-ui-title-font-scale="0.7"
+ data-style="anime" data-variant="dusk" data-clock="fixed:0.78" data-assets="
+  private:splice-bots-jam
+  private:splice-bots-jam-chars
+  private:splice-bots-jam-tables@catalog
+  private:splice-bots-jam-sounds@catalog"></script>
+</body>
+</html>

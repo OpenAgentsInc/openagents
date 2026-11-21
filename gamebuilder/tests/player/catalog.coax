@@ -1,0 +1,76 @@
+// The denominator of web qualification, including unavailable device lanes.
+#load "../../../coax/lib/json/json.coax";
+#load "../../shared/game-types.coax";   // the picker's list (the website's nine are its kinds 0 to 8)
+PT_CASES :: 55;
+PT_IDS :: [PT_CASES] string.[
+  "entry.home", "entry.login", "entry.play", "entry.redirects", "entry.history", "entry.invalid",
+  "auth.login", "auth.wrong-code", "auth.restore", "auth.logout", "auth.expiry", "auth.isolation",
+  "world.third-person", "world.first-person", "world.top-down", "world.side-scroller", "world.pointer-lock", "world.pointer-refusal",
+  "create.tools", "create.edit", "create.limits", "create.agent", "create.platform", "create.decide", "create.selected-agent",
+  "world.gravity", "world.physics", "input.focus", "input.blur", "layout.controls", "layout.resize", "session.reload", "session.resume",
+  "agent.refusal", "agent.recovery", "exploration", "entry.credits", "world.village", "create.placement-modes", "world.flight", "create.shapes",
+  "world.crates", "game.crates.reset", "game.crates.objective", "world.platformer", "world.cameras", "game.platformer.reset", "game.platformer.objective", "world.racing", "game.racing.reset", "game.racing.objective", "create.hotbar", "create.confirm-agent", "world.drift", "game.drift.objective"
+];
+// A picker choice's player contract: "world." and its type's id (shared/game-types.coax), the list being the picker's own.
+pt_game_case :: (kind:int,out:[]u8)->string {n:=0;for c:"world." {out[n]=c;n+=1;}for c:GT_ID[gt_web_type(kind)] {out[n]=c;n+=1;}return cast(string)out[0..<n];}
+// Its objective's contract: a world of its own (crates on) has "game." ID ".objective"; the meadow's and the village's are their world's.
+pt_game_objective :: (kind:int,out:[]u8)->string {
+  t:=gt_web_type(kind);if t<GT_CRATES {return pt_game_case(kind,out);}
+  n:=0;for c:"game." {out[n]=c;n+=1;}for c:GT_ID[t] {out[n]=c;n+=1;}for c:".objective" {out[n]=c;n+=1;}return cast(string)out[0..<n];
+}
+#test "every shipped picker choice has a unique required player contract" {
+  #assert GT_WEB_TYPES==9;
+  for k:0..<GT_WEB_TYPES {b:[64]u8;id:=pt_game_case(k,b[..]);found:=false;for required:PT_IDS {if id==required {found=true;}}#assert found;}
+  for k:0..<GT_WEB_TYPES {b:[64]u8;id:=pt_game_objective(k,b[..]);found:=false;for required:PT_IDS {if id==required {found=true;}}#assert found;}
+}
+PT_TARGET_COUNT :: 6;
+PT_TARGETS :: [PT_TARGET_COUNT]string.["chrome-mac","safari-mac","safari-iphone-simulator","safari-ipad-simulator","chrome-phone-emulation","chrome-tablet-emulation"];
+pt_target_required :: (target:int)->bool {return target==0 || target>=4;}
+
+PT_SURFACES :: [13] string.["hotbar-palette","build-agent","home","login","picker","world","chat","hotbar","selection","settings","account","credits","camera-menu"];
+#test "coverage cannot pass when required cells are blocked or omitted" {
+  #assert !pt_complete(143,0,144) && !pt_complete(144,1,144) && pt_complete(144,0,144);
+  ids:=PT_IDS;for i:0..<PT_CASES {for j:0..<i {#assert ids[i]!=ids[j];}}
+}
+pt_complete :: (passed:int,other:int,required:int)->bool {return required>0 && passed==required && other==0;}
+pt_applicable :: (target:int,id:string)->bool {return target<2 || (id!="world.pointer-lock" && id!="world.pointer-refusal");}
+// Production opened chat and build agents to every account. The two names
+// remain fixture aliases; both perform every account journey. Refusal is now
+// the anonymous UI access gate, tested in an independent empty profile.
+PT_SERVICE_POLICY :: "gamebuilder-accounts-27686bc39a-46685296b2";
+pt_role_required :: (ordinary:bool,id:string)->bool {return true;}
+pt_service_policy_ok :: (d:Jv)->bool {return jv_raw(d,jv_get(d,0,"expectedServicePolicy"))==PT_SERVICE_POLICY;}
+pt_merge_verdict :: (old:int,next:int)->int {
+  if old==2 || next==2 {return 2;}if old==3 || next==3 {return 3;}if old==4 || next==4 {return 4;}return ifx old==1 || next==1 then 1 else 0;
+}
+#test "matrix aggregation preserves failures, role obligations and touch applicability" {
+  #assert pt_merge_verdict(2,1)==2 && pt_merge_verdict(1,3)==3 && pt_merge_verdict(0,1)==1;
+  #assert pt_role_required(false,"agent.refusal") && pt_role_required(true,"agent.refusal");
+  for id:[6]string.["create.platform","create.agent","create.decide","create.selected-agent","create.confirm-agent","agent.recovery"] {#assert pt_role_required(true,id) && pt_role_required(false,id);}
+  #assert pt_applicable(0,"world.pointer-lock") && !pt_applicable(2,"world.pointer-lock") && pt_applicable(3,"world.flight");
+}
+#test "qualification cannot silently use the previous service-access policy" {
+  d:[1]Jv;nodes:[16]JvNode;#assert jv_parse(d[..],"{}",nodes[..]) && !pt_service_policy_ok(d[0]);
+  #assert jv_parse(d[..],"{\"expectedServicePolicy\":\"team-beta\"}",nodes[..]) && !pt_service_policy_ok(d[0]);
+  b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"expectedServicePolicy");jo_str(o[..],PT_SERVICE_POLICY);jo_end(o[..]);#assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && pt_service_policy_ok(d[0]);
+}
+pt_catalog :: (out:[]u8, revision:string, pin:string)->int {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"gamebuilder.player.catalog.v1");
+  jo_key(o[..],"revision");jo_str(o[..],revision);jo_key(o[..],"openagents");jo_str(o[..],pin);
+  jo_key(o[..],"origin");jo_str(o[..],"https://gamebuilder.org");
+  jo_key(o[..],"routes");jo_arr(o[..]);for p:[4]string.["/","/login","/play","/credits"] {jo_str(o[..],p);}jo_end(o[..]);
+  jo_key(o[..],"surfaces");jo_arr(o[..]);for s:PT_SURFACES {jo_str(o[..],s);}jo_end(o[..]);
+  jo_key(o[..],"games");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],"world");jo_key(o[..],"objective");jo_str(o[..],"create, explore, return");
+  jo_key(o[..],"perspectives");jo_arr(o[..]);for k:GT_THIRD..<GT_SIDE + 1 {jo_str(o[..],GT_NAME[k]);}jo_end(o[..]);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],"medieval-village");jo_key(o[..],"objective");jo_str(o[..],"enter, explore the green, interact and return");jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],GT_ID[GT_CRATES]);jo_key(o[..],"objective");jo_str(o[..],"push crates onto every pad, open the gate and leave all three rooms; reset and return to selection");jo_key(o[..],"rooms");jo_int(o[..],3);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],GT_ID[GT_PLATFORMER]);jo_key(o[..],"objective");jo_str(o[..],"run, jump and double jump across the course, ride moving platforms, respawn at checkpoints, reset and reach the finish");jo_key(o[..],"checkpoints");jo_int(o[..],8);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],GT_ID[GT_RACING]);jo_key(o[..],"objective");jo_str(o[..],"drive, steer, brake, reset at a checkpoint, finish all three laps in order and race again");jo_key(o[..],"laps");jo_int(o[..],3);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],GT_ID[GT_DRIFT]);jo_key(o[..],"objective");jo_str(o[..],"fly through all twelve rings in order and finish; reset and return");jo_key(o[..],"rings");jo_int(o[..],12);jo_end(o[..]);jo_end(o[..]);
+  jo_key(o[..],"entrances");jo_arr(o[..]);for i:0..<GT_WEB_TYPES {cb:[64]u8;ob:[64]u8;jo_obj(o[..]);jo_key(o[..],"pickerIndex");jo_int(o[..],i);jo_key(o[..],"name");jo_str(o[..],GT_NAME[gt_web_type(i)]);jo_key(o[..],"requiredCase");jo_str(o[..],pt_game_case(i,cb[..]));jo_key(o[..],"objectiveCase");jo_str(o[..],pt_game_objective(i,ob[..]));jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"requiredTargets");jo_arr(o[..]);targets:=PT_TARGETS;for i:0..<PT_TARGET_COUNT {if pt_target_required(i) {jo_str(o[..],targets[i]);}}jo_end(o[..]);
+  jo_key(o[..],"supplementaryTargets");jo_arr(o[..]);for i:0..<PT_TARGET_COUNT {if !pt_target_required(i) {jo_str(o[..],targets[i]);}}jo_end(o[..]);
+  jo_key(o[..],"requiredCases");jo_arr(o[..]);for id:PT_IDS {jo_str(o[..],id);}jo_end(o[..]);
+  jo_key(o[..],"harnessFixtures");jo_arr(o[..]);jo_str(o[..],"/build/player-permission.html");jo_str(o[..],"/build/player-focus.html");jo_end(o[..]);
+  jo_key(o[..],"planned");jo_arr(o[..]);for p:[4]string.["web.save","web.undo","web.scrappers","web.splicebots"] {jo_str(o[..],p);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

@@ -1,0 +1,14 @@
+// A lock change is asynchronous. Observe a fresh frame after acquisition,
+// then deliver a short native mouse path and require a later camera frame.
+pt_pointer_check :: (p:[]Pt) {
+  if p[0].touch {return;}
+  if p[0].driver==0 {_:=cdp_call(p[0].c[..],"Page.bringToFront","{}",PB_CALL_MS);_=pb_wait(pt_dir(p),1600);}
+  clicked:=pt_click(p,720,450);lock:=pt_wait(p,"!!document.pointerLockElement",1500);_=pb_wait(pt_dir(p),200);_=pt_observe(p);
+  frame:=pt_number(p,"globalThis.gamebuilderObservation?.sequence",-1);yaw:=pt_number(p,"globalThis.gamebuilderObservation?.yaw_mrad",-99999);moved:=false;
+  if p[0].driver==0 {moved=pb_mouse(p[0].c[..],"mouseMoved",810,450,"none",0,0) && pb_wait(pt_dir(p),100) && pb_mouse(p[0].c[..],"mouseMoved",900,450,"none",0,0);}else {moved=wd_drag(p[0].wd[..],720,450,900,450,200);}
+  _:=pb_wait(pt_dir(p),350);_=pt_observe(p);after:=pt_number(p,"globalThis.gamebuilderObservation?.yaw_mrad",-99999);later:=pt_number(p,"globalThis.gamebuilderObservation?.sequence",-1)>frame;
+  looked:=moved && later && yaw != -99999 && after != -99999 && abs(after-yaw)>15;
+  _:=pt_press(p,"Enter","Enter");unlocked:=pt_wait(p,"!document.pointerLockElement && document.activeElement?.id==='say'",2000);
+  detail:[512]u8;n:=ws_put(detail[..],0,"pointer lock: before=");n=pb_decimal(detail[..],n,cast(int)yaw);n=ws_put(detail[..],n,", after=");n=pb_decimal(detail[..],n,cast(int)after);n=ws_put(detail[..],n,ifx lock then ", acquired=true" else ", acquired=false");n=ws_put(detail[..],n,ifx later then ", fresh=true" else ", fresh=false");n=ws_put(detail[..],n,ifx unlocked then ", released=true" else ", released=false");pt_event(p,"measurement",cast(string)detail[0..<n],clicked && lock && looked && unlocked);
+  pt_result(p,"world.pointer-lock",clicked && lock && looked && unlocked);_=pt_press(p,"Escape","Escape");
+}

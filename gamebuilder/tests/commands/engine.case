@@ -1,0 +1,9 @@
+# What the engine can do, from its book at the pinned commit (the list and a chapter name that commit, so only the same on every surface), and a chapter that is not one.
+> engine-list
+< =
+> engine-read {"name":"1"}
+< =
+> engine-read {"name":"0"}
+< {"ok":false,"error":"bad-request","why":"a chapter is its number in engine-list"}
+> engine-read {"name":"water"}
+< {"ok":false,"error":"bad-request","why":"a chapter is its number in engine-list"}

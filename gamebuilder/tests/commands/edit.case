@@ -1,0 +1,17 @@
+# Editing one thing: added where it is asked for, turned, refused out of range in words, deleted.
+> new-level
+< {"ok":true,"level":1}
+> add {"level":1,"kind":"block","x":500,"z":-300}
+< {"ok":true,"id":29,"kind":"block","rev":233870360}
+> set-field {"level":1,"thing":29,"field":"turn","value":90}
+< {"ok":true,"id":29,"field":"Turn","value":90,"rev":969059702}
+> set-field {"level":1,"thing":29,"field":"turn","value":900}
+< {"ok":false,"error":"edit-refused","why":"Turn is from -180 to 180°"}
+> delete {"level":1,"thing":29,"dry_run":true}
+< {"ok":true,"id":29,"rev":1289232695,"dry_run":true}
+> read-level {"level":1}
+< {"schema":"gamebuilder.level.v1","rev":969059702,"level":1,"game":0,"template":"arena","locked":false,"grid":50,"content":"aethyr.content.v1 level 17\nreach 100000\ntable shape id kind:text sx:cm sy:cm sz:cm\n1|start|60|180|60\n2|rival|60|180|60\n3|block|3050|300|50\n4|block|50|300|3050\n5|block|300|150|300\n6|block|100|300|100\n7|block|150|150|150\n8|block|400|120|60\n9|block|60|120|400\n10|goal|520|220|260\n11|rival-goal|520|220|260\n12|hoop|20|310|20\n13|rival-hoop|20|310|20\n14|pack|60|40|60\n15|ball|70|70|70\n16|block|100|100|100\n","things":[{"id":1,"kind":1,"is":"start","x":0,"y":0,"z":-1250,"yaw":0,"scale":100},{"id":2,"kind":2,"is":"rival","x":0,"y":0,"z":1250,"yaw":180,"scale":100},{"id":3,"kind":3,"is":"block","x":0,"y":0,"z":-1500,"yaw":0,"scale":100},{"id":4,"kind":3,"is":"block","x":0,"y":0,"z":1500,"yaw":0,"scale":100},{"id":5,"kind":4,"is":"block","x":-1500,"y":0,"z":0,"yaw":0,"scale":100},{"id":6,"kind":4,"is":"block","x":1500,"y":0,"z":0,"yaw":0,"scale":100},{"id":7,"kind":5,"is":"block","x":0,"y":0,"z":0,"yaw":0,"scale":100},{"id":8,"kind":6,"is":"block","x":-650,"y":0,"z":-650,"yaw":0,"scale":100},{"id":9,"kind":7,"is":"block","x":-1100,"y":0,"z":-250,"yaw":0,"scale":100},{"id":10,"kind":6,"is":"block","x":650,"y":0,"z":-650,"yaw":0,"scale":100},{"id":11,"kind":7,"is":"block","x":1100,"y":0,"z":-250,"yaw":0,"scale":100},{"id":12,"kind":6,"is":"block","x":-650,"y":0,"z":650,"yaw":0,"scale":100},{"id":13,"kind":7,"is":"block","x":-1100,"y":0,"z":250,"yaw":0,"scale":100},{"id":14,"kind":6,"is":"block","x":650,"y":0,"z":650,"yaw":0,"scale":100},{"id":15,"kind":7,"is":"block","x":1100,"y":0,"z":250,"yaw":0,"scale":100},{"id":16,"kind":8,"is":"block","x":0,"y":0,"z":-800,"yaw":0,"scale":100},{"id":17,"kind":8,"is":"block","x":0,"y":0,"z":800,"yaw":0,"scale":100},{"id":18,"kind":9,"is":"block","x":-950,"y":0,"z":0,"yaw":0,"scale":100},{"id":19,"kind":9,"is":"block","x":950,"y":0,"z":0,"yaw":0,"scale":100},{"id":20,"kind":10,"is":"goal","x":0,"y":0,"z":-1390,"yaw":0,"scale":100},{"id":21,"kind":11,"is":"rival-goal","x":0,"y":0,"z":1390,"yaw":180,"scale":100},{"id":22,"kind":12,"is":"hoop","x":0,"y":0,"z":-1340,"yaw":0,"scale":100},{"id":23,"kind":13,"is":"rival-hoop","x":0,"y":0,"z":1340,"yaw":180,"scale":100},{"id":24,"kind":14,"is":"pack","x":0,"y":0,"z":-500,"yaw":0,"scale":100},{"id":25,"kind":14,"is":"pack","x":0,"y":0,"z":500,"yaw":0,"scale":100},{"id":26,"kind":14,"is":"pack","x":-700,"y":0,"z":0,"yaw":0,"scale":100},{"id":27,"kind":14,"is":"pack","x":700,"y":0,"z":0,"yaw":0,"scale":100},{"id":28,"kind":15,"is":"ball","x":250,"y":0,"z":0,"yaw":0,"scale":100},{"id":29,"kind":16,"is":"block","x":500,"y":0,"z":-300,"yaw":90,"scale":100}]}
+> delete {"level":1,"thing":29}
+< {"ok":true,"id":29,"rev":1289232695}
+> delete {"level":1,"thing":29}
+< {"ok":false,"error":"not-found","why":"the level has no such thing (read-level)"}

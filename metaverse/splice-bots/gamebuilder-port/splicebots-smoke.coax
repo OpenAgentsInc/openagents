@@ -1,0 +1,165 @@
+// Run against a generated port started with play.sh. This is separate from
+// the upstream rules replay: it sends keys through the actual browser host.
+#import "Basic";
+#load "../../../coax/lib/net/cdp.coax";
+
+sbsm_eval :: (c: [] Cdp, js: string) -> bool {
+  n := cdp_evaluate(c, js);
+  return n >= 0 && jv_kind(cdp_doc(c), n) == JV_TRUE;
+}
+sbsm_fail :: (c: [] Cdp, what: string) -> int {
+  tool_err("SPLICEBOTS browser check: "); tool_errln(what);
+  n := cdp_evaluate(c, "JSON.stringify({stopped:coaxial?.stopped?.what,load:document.querySelector('#coaxial-load')?.innerText,viewport:[innerWidth,innerHeight,devicePixelRatio],world:coaxial?.guardProbe(0),cast:coaxial?.guardProbe(11),pet:coaxial?.guardProbe(15),scrap:coaxial?.guardProbe(16),battery:coaxial?.fieldProbe(18),beds:coaxial?.audio?.beds(),heard:coaxial?.audio?.heard()})");
+  if n >= 0 { tool_errln(jv_raw(cdp_doc(c), n)); }
+  return 1;
+}
+sbsm_key :: (c: [] Cdp, key: string, code: string, down: bool) -> bool {
+  buf: [512] u8; writer: [1] Jo; j := writer[..]; jo_start(j, buf[..]); jo_obj(j);
+  jo_key(j, "type"); jo_str(j, ifx down then "keyDown" else "keyUp");
+  jo_key(j, "key"); jo_str(j, key);
+  jo_key(j, "code"); jo_str(j, code); jo_end(j);
+  return cdp_call(c, "Input.dispatchKeyEvent", jo_text(j), CDP_CALL_MS) >= 0;
+}
+sbsm_enter :: (c: [] Cdp) -> bool {
+  return sbsm_key(c, "Enter", "Enter", true) && sbsm_key(c, "Enter", "Enter", false) &&
+    sbsm_eval(c, "coaxialClipStep(3,60).then(()=>!coaxial.stopped)");
+}
+sbsm_press :: (c: [] Cdp, key: string, code: string) -> bool {
+  return sbsm_key(c, key, code, true) && sbsm_key(c, key, code, false);
+}
+sbsm_click :: (c: [] Cdp, x: int, y: int) -> bool {
+  for down: [2] bool.[true, false] {
+    b: [512] u8; writer: [1] Jo; j := writer[..];
+    jo_start(j, b[..]); jo_obj(j);
+    jo_key(j, "type"); jo_str(j, ifx down then "mousePressed" else "mouseReleased");
+    jo_key(j, "x"); jo_int(j, x); jo_key(j, "y"); jo_int(j, y);
+    jo_key(j, "button"); jo_str(j, "left"); jo_key(j, "buttons"); jo_int(j, ifx down then 1 else 0);
+    jo_key(j, "clickCount"); jo_int(j, 1); jo_end(j);
+    if cdp_call(c, "Input.dispatchMouseEvent", jo_text(j), CDP_CALL_MS) < 0 { return false; }
+  }
+  return true;
+}
+sbsm_wait :: (c: [] Cdp, js: string, milliseconds: int) -> bool {
+  until := proc_now_ms() + milliseconds;
+  while proc_now_ms() < until {
+    if sbsm_eval(c, js) { return true; }
+    proc_sleep(150);
+  }
+  return false;
+}
+sbsm_shot :: (c: [] Cdp, path: string) -> bool {
+  png: [8388608] u8 = ---; n := cdp_screenshot(c, png[..]);
+  return n >= 0 && fs_write(path, cast(string) png[0..<n]);
+}
+sbsm_project :: (c: [] Cdp, shot: string) -> int {
+  if !sbsm_click(c, 980, 610) ||
+    !sbsm_wait(c, "coaxial.audio.beds().some(x=>x.startsWith('ms-mus-title '))&&globalThis.sbAudioSignal?.()", 8000) {
+    return sbsm_fail(c, "the title bed did not play");
+  }
+  if !sbsm_eval(c, "(async()=>{const names=['ms-mus-title','ms-mus-cabin','ms-mus-desert','ms-mus-rave','ms-sfx-drill-sparks','ms-sfx-heat-haze','ms-sfx-speed-lines','ms-chirp-t02','ms-chirp-t07','ms-chirp-t20','ms-chirp-t21','ms-chirp-t22','ms-chirp-t23','ms-chirp-t33'];for(const n of names){const b=await coaxial.audio.decode(n);if(!b||b.numberOfChannels!==1||!b.getChannelData(0).some(x=>Math.abs(x)>0.001))return false;}return true;})()") {
+    return sbsm_fail(c, "a source MetaSound was missing, silent, or undecodable");
+  }
+  if !sbsm_key(c, "Enter", "Enter", true) || !sbsm_key(c, "Enter", "Enter", false) ||
+    !sbsm_eval(c, "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))") {
+    return sbsm_fail(c, "the title did not accept New Run");
+  }
+  if !sbsm_key(c, "Enter", "Enter", true) || !sbsm_key(c, "Enter", "Enter", false) ||
+    !sbsm_wait(c, "coaxial.fieldProbe(15)===1&&coaxial.audio.beds().some(x=>x.startsWith('ms-mus-desert '))", 8000) ||
+    !sbsm_wait(c, "coaxial.audio.heard().some(x=>x.startsWith('ms-chirp-t02 '))", 16000) {
+    return sbsm_fail(c, "New Run did not play the desert bed and Sniper's opening chirp");
+  }
+  if !sbsm_eval(c, "(coaxial.send(640,'71'),true)") ||
+    !sbsm_wait(c, "coaxial.fieldProbe(18)===1&&coaxial.guardProbe(16)===3&&coaxial.audio.beds().some(x=>x.startsWith('ms-mus-cabin '))", 8000) {
+    return sbsm_fail(c, "the edit bay did not have one recipe's ingredients and the cabin bed");
+  }
+  if !sbsm_click(c, 144, 612) || !sbsm_wait(c, "coaxial.guardProbe(15)===1&&coaxial.guardProbe(16)===0&&coaxial.fieldProbe(18)===0", 3000) ||
+    !sbsm_key(c, "b", "KeyB", true) || !sbsm_key(c, "b", "KeyB", false) ||
+    !sbsm_eval(c, "coaxial.guardProbe(15)===1&&coaxial.guardProbe(16)===0&&coaxial.fieldProbe(18)===0") {
+    return sbsm_fail(c, "crafting did not debit one battery and three scrap or refuse a second craft");
+  }
+  if !sbsm_key(c, "Escape", "Escape", true) || !sbsm_key(c, "Escape", "Escape", false) ||
+    !sbsm_eval(c, "(globalThis.sbPet=[coaxial.guardProbe(17),coaxial.guardProbe(18)],true)") ||
+    !sbsm_key(c, "w", "KeyW", true) ||
+    !sbsm_wait(c, "Math.hypot(coaxial.guardProbe(17)-sbPet[0],coaxial.guardProbe(18)-sbPet[1])>50", 6000) ||
+    !sbsm_key(c, "w", "KeyW", false) {
+    return sbsm_fail(c, "the crafted Microduck did not follow in the world");
+  }
+  if shot != "" && !sbsm_shot(c, shot) { return sbsm_fail(c, "could not capture the Microduck"); }
+  if !sbsm_eval(c, "(coaxial.send(640,'18'),true)") ||
+    !sbsm_wait(c, "coaxial.audio.beds().some(x=>x.startsWith('ms-mus-rave '))", 8000) {
+    return sbsm_fail(c, "the night garage did not play the rave bed");
+  }
+  print("SPLICEBOTS browser: 14 source MetaSounds decoded, title/desert/cabin/rave beds and Sniper chirp played, Microduck craft spent its ingredients, repeated craft was refused, and the pet followed.\n");
+  return 0;
+}
+sbsm_project_save :: (c: [] Cdp) -> int {
+  if !sbsm_click(c, 980, 610) || !sbsm_eval(c, "(coaxial.send(640,'72'),true)") ||
+    !sbsm_wait(c, "coaxial.fieldProbe(18)===2&&coaxial.guardProbe(16)===7&&coaxial.fieldProbe(39)===1&&coaxial.audio.beds().some(x=>x.startsWith('ms-mus-cabin '))", 5000) {
+    return sbsm_fail(c, "the edit bay did not start with the save fixture's ingredients");
+  }
+  if !sbsm_click(c, 144, 612) || !sbsm_wait(c, "coaxial.guardProbe(15)===1", 3000) ||
+    !sbsm_press(c, "b", "KeyB") || !sbsm_wait(c, "coaxial.guardProbe(15)===2&&coaxial.guardProbe(16)===1&&coaxial.fieldProbe(18)===0", 3000) {
+    return sbsm_fail(c, "two crafts did not leave two Microducks, one scrap and no batteries");
+  }
+  if !sbsm_wait(c, "coaxial.guardProbe(19)===2", 8000) { return sbsm_fail(c, "IndexedDB did not acknowledge the crafted roster"); }
+  if !sbsm_eval(c, "(globalThis.sbBeforeReload=true,true)") ||
+    cdp_call(c, "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 ||
+    !sbsm_wait(c, "!globalThis.sbBeforeReload&&coaxial?.sceneReady&&coaxial.guardProbe(0)===1&&coaxial.guardProbe(19)===2&&coaxial.guardProbe(15)===0", 60000) {
+    return sbsm_fail(c, "the reloaded title did not read the saved run");
+  }
+  if !sbsm_press(c, "Enter", "Enter") ||
+    !sbsm_wait(c, "coaxial.fieldProbe(16)===1&&coaxial.guardProbe(15)===2&&coaxial.guardProbe(16)===1&&coaxial.fieldProbe(18)===0&&coaxial.fieldProbe(17)===4&&coaxial.fieldProbe(39)===1", 6000) {
+    return sbsm_fail(c, "Continue did not restore both Microducks and the exact inventory");
+  }
+  if !sbsm_eval(c, "(globalThis.sbPet=[coaxial.guardProbe(17),coaxial.guardProbe(18)],true)") ||
+    !sbsm_key(c, "w", "KeyW", true) ||
+    !sbsm_wait(c, "Math.hypot(coaxial.guardProbe(17)-sbPet[0],coaxial.guardProbe(18)-sbPet[1])>50", 8000) ||
+    !sbsm_key(c, "w", "KeyW", false) {
+    return sbsm_fail(c, "the restored Microduck did not follow");
+  }
+  print("SPLICEBOTS browser: crafted two Microducks, saved to IndexedDB, reloaded and chose Continue. Both pets, one leftover scrap, zero batteries, the hotbar selection and the chest item were restored. The Microduck followed again.\n");
+  return 0;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 3 ||
+    (args_count(a[..]) == 3 && args_at(a[..], 1) != "--project-features") {
+    tool_errln("usage: splicebots-smoke LOOPBACK_URL [FARM.png | --project-features [PET.png] | --project-save]"); return 2;
+  }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1024, 640, "splicebots-port-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  _ = cdp_call(c[..], "Page.enable", "", CDP_CALL_MS);
+  features := args_count(a[..]) >= 2 && args_at(a[..], 1) == "--project-features";
+  saving := args_count(a[..]) == 2 && args_at(a[..], 1) == "--project-save";
+  live := features || saving;
+  _ = cdp_call(c[..], "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS);
+  if live && cdp_call(c[..], "Emulation.setDeviceMetricsOverride", "{\"width\":1024,\"height\":640,\"deviceScaleFactor\":1,\"mobile\":false}", CDP_CALL_MS) < 0 {
+    return sbsm_fail(c[..], "could not size the browser viewport");
+  }
+  script := ifx features then
+    "{\"source\":\"globalThis.coaxialAudioTap=ctx=>{const a=ctx.createAnalyser(), samples=new Float32Array(a.fftSize);a.connect(ctx.destination);globalThis.sbAudioSignal=()=>{a.getFloatTimeDomainData(samples);return samples.some(x=>Math.abs(x)>0.001);};return a;};\"}"
+    else "{\"source\":\"globalThis.coaxialClip=true\"}";
+  if !saving { _ = cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", script, CDP_CALL_MS); }
+  buf: [4096] u8; writer: [1] Jo; j := writer[..]; jo_start(j, buf[..]); jo_obj(j);
+  jo_key(j, "url"); jo_str(j, args_at(a[..], 0)); jo_end(j);
+  if j[0].bad || cdp_call(c[..], "Page.navigate", jo_text(j), CDP_CALL_MS) < 0 { return sbsm_fail(c[..], "could not open the port"); }
+  until := proc_now_ms() + 90000; ready := false;
+  while proc_now_ms() < until {
+    if sbsm_eval(c[..], "!!globalThis.coaxial?.stopped") { return sbsm_fail(c[..], "the runtime stopped during load"); }
+    if sbsm_eval(c[..], "(async()=>{if(!globalThis.coaxial?.ready)return false;if(globalThis.coaxialClip)await coaxialClipStep(1,60);return coaxial.sceneReady&&coaxial.guardProbe(0)===1&&coaxial.guardProbe(11)===1&&coaxial.guardProbe(6)>0})()") { ready = true; break; }
+    proc_sleep(150);
+  }
+  if !ready { return sbsm_fail(c[..], "the source world or cast did not load"); }
+  if saving { return sbsm_project_save(c[..]); }
+  if features { return sbsm_project(c[..], ifx args_count(a[..]) == 3 then args_at(a[..], 2) else ""); }
+  if !sbsm_enter(c[..]) || !sbsm_enter(c[..]) ||
+    !sbsm_eval(c[..], "coaxial.guardProbe(13)===1&&coaxial.fieldProbe(15)===1") { return sbsm_fail(c[..], "New Run did not put the Director on the imported farm"); }
+  if !sbsm_eval(c[..], "(globalThis.sbpFeet=[coaxial.fieldProbe(7),coaxial.fieldProbe(8)],true)") ||
+    !sbsm_key(c[..], "w", "KeyW", true) ||
+    !sbsm_eval(c[..], "coaxialClipStep(35,60).then(()=>Math.hypot(coaxial.fieldProbe(7)-sbpFeet[0],coaxial.fieldProbe(8)-sbpFeet[1])>15)") ||
+    !sbsm_key(c[..], "w", "KeyW", false) { return sbsm_fail(c[..], "a held W did not move the Director on the farm"); }
+  if args_count(a[..]) == 2 && !sbsm_shot(c[..], args_at(a[..], 1)) { return sbsm_fail(c[..], "could not capture the farm"); }
+  print("SPLICEBOTS browser: source world and cast loaded, New Run entered the imported farm, and W moved the Director.\n");
+  return 0;
+}

@@ -1,0 +1,11 @@
+# Levels: an empty folder, a new level of yours, and your own copy of Scrappers Arena's.
+> list-levels
+< {"ok":true,"levels":[]}
+> new-level
+< {"ok":true,"level":1}
+> copy-level {"level":0}
+< {"ok":true,"level":2,"from":0}
+> list-levels
+< {"ok":true,"levels":[{"level":1,"title":"Level 1","game":0,"revision":1289232695},{"level":2,"title":"Level 2","game":0,"revision":1193706683}]}
+> new-level {"dry_run":true}
+< {"ok":true,"level":3,"dry_run":true}

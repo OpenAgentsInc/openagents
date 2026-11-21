@@ -1,0 +1,143 @@
+// Shared production steps for the shipping archive and Unreal project adapters.
+#load "unreal-archive-tools.coax";
+#load "../../../coax/lib/json/json.coax";
+
+SBP_WORLD :: "splice-bots-jam.pack";
+SBP_CAST :: "splice-bots-jam-chars.pack";
+SBP_TABLES :: "splice-bots-jam-tables.pack";
+SBP_SOUNDS :: "splice-bots-jam-sounds.pack";
+
+sbp_fail :: (why: string) -> int {
+  tool_err("port-splicebots: "); tool_errln(why); return 1;
+}
+
+sbp_copy :: (from: string, to: string) -> bool {
+  if fs_kind(from) != FS_FILE { _ = sbp_fail("missing input file"); tool_errln(from); return false; }
+  cmd := [4] string.["cp", "-p", from, to]; lines: [UPV_LOG] u8 = ---;
+  return upv_run("copying a port input", cmd[..], 30000, lines[..]) >= 0;
+}
+// Run upstream entry points from their pinned tree.
+sbp_command_for :: (root: string, stage: string, argv: [] string, lines: [] u8, ms: int) -> int {
+  args: [20] string;
+  prefix := [5] string.["sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "port-splicebots", root];
+  for a, k: prefix { args[k] = a; }
+  for a, k: argv { args[5 + k] = a; }
+  return upv_run(stage, args[0..<5 + argv.count], ms, lines);
+}
+sbp_command :: (root: string, stage: string, argv: [] string, lines: [] u8) -> int {
+  return sbp_command_for(root, stage, argv, lines, 600000);
+}
+sbp_coax :: (root: string, stage: string, entry: string, argv: [] string, lines: [] u8) -> int {
+  args: [14] string; args[0] = "coax/web/tool.sh"; args[1] = entry;
+  for a, k: argv { args[2 + k] = a; }
+  return sbp_command(root, stage, args[0..<2 + argv.count], lines);
+}
+
+sbp_data_pack :: (root: string, src: string, data: string, plan: string, bundle: string, converted: string) -> bool {
+  buffer: [UPV_LOG] u8 = ---;
+  bundle_args := [5] string.[data, plan, bundle, "--source", src];
+  if sbp_coax(root, "converting game data to a bundle", "metaverse/splice-bots/tools/jam-data-bundle.coax", bundle_args[..], buffer[..]) < 0 { return false; }
+  pack_args := [4] string.[bundle, converted, "--plan", plan];
+  return sbp_coax(root, "packing game data", "metaverse-engine/tools/unreal-level-import.coax", pack_args[..], buffer[..]) >= 0;
+}
+
+sbp_runtime_packs :: (root: string, assets: string, data_pack: string, replay: string, project: bool) -> bool {
+  buffer: [UPV_LOG] u8 = ---;
+  table_b: [4096] u8; tables := fs_join(assets, SBP_TABLES, table_b[..]);
+  table_args := [3] string.[data_pack, tables, "--project"];
+  args := ifx project then table_args[..] else table_args[0..<2];
+  if sbp_coax(root, "building the gameplay tables", "metaverse/splice-bots/tools/jam-tables-pack.coax", args, buffer[..]) < 0 { return false; }
+
+  world_b: [4096] u8; world := fs_join(assets, SBP_WORLD, world_b[..]);
+  sounds_b: [4096] u8; sounds := fs_join(assets, SBP_SOUNDS, sounds_b[..]);
+  sounds_args := [3] string.[data_pack, world, sounds];
+  if sbp_coax(root, "building the sound pack", "metaverse/splice-bots/tools/jam-sounds-pack.coax", sounds_args[..], buffer[..]) < 0 { return false; }
+
+  chars_b: [4096] u8; chars := fs_join(assets, SBP_CAST, chars_b[..]);
+  replay_args := [4] string.[world, chars, "--tables", tables];
+  n := sbp_coax(root, "replaying the Coax jam game on the ported inputs", "metaverse/splice-bots/tools/jam-run-check.coax", replay_args[..], buffer[..]);
+  return n >= 0 && fs_write(replay, cast(string) buffer[0..<n]);
+}
+
+sbp_player_dirs :: (assets: string, player: string) -> bool {
+  if !fs_mkdir_private(assets) { return false; }
+  path: [4096] u8;
+  for name: [3] string.["build", "fonts", "coaxial"] {
+    if !fs_mkdir_private(fs_join(player, name, path[..])) { return false; }
+  }
+  return true;
+}
+
+sbp_player :: (root: string, gb: string, player: string) -> bool {
+  // The pinned Wasm cache splits clang's dependency paths on whitespace.
+  // Put compiler scratch in /tmp so the caller's output path can have spaces.
+  scratch: [4096] u8;
+  scratch_args := [3] string.["mktemp", "-d", "/tmp/gamebuilder-splicebots-web.XXXXXX"];
+  n_scratch := upv_run("creating browser compiler scratch", scratch_args[..], 30000, scratch[..]);
+  if n_scratch < 0 { return false; }
+  tmp := cast(string) scratch[0..<n_scratch];
+  defer { _ = fs_remove(tmp); }
+  buffer: [UPV_LOG] u8 = ---;
+  out: [4096] u8; from: [4096] u8;
+  wasm := fs_join(tmp, "splice-jam.wasm", out[..]);
+  wasm_args := [5] string.["coax/web/wasm.sh", "metaverse/splice-bots/splice-jam.coax", "metaverse/splice-bots/splice-jam-face.c", wasm, "apps/openagents-web/animelab-style.coax"];
+  if sbp_command(root, "building the Coax jam browser runtime", wasm_args[..], buffer[..]) < 0 { return false; }
+  path: [4096] u8;
+  if !sbp_copy(wasm, fs_join(player, "build/splice-jam.wasm", path[..])) { return false; }
+  if !sbp_copy(fs_join(tmp, "splice-jam.wasm.syms", from[..]), fs_join(player, "build/splice-jam.wasm.syms", path[..])) { return false; }
+  frame := fs_join(tmp, "frame-plan.wasm", out[..]);
+  frame_args := [4] string.["coax/web/wasm.sh", "metaverse-engine/host/frame-plan-carrier.coax", "coax/web/frame-plan-face.c", frame];
+  if sbp_command(root, "building the shared frame planner", frame_args[..], buffer[..]) < 0 ||
+    !sbp_copy(frame, fs_join(player, "build/frame-plan.wasm", path[..])) { return false; }
+  layers := fs_join(tmp, "host-layers.wasm", out[..]);
+  layer_args := [2] string.[root, layers];
+  if sbp_coax(root, "building the shared image decoder", "coax/web/build-layers.coax", layer_args[..], buffer[..]) < 0 ||
+    !sbp_copy(layers, fs_join(player, "build/host-layers.wasm", path[..])) { return false; }
+  packs := fs_join(tmp, "host-packs.wasm", out[..]);
+  pack_args := [2] string.[root, packs];
+  if sbp_coax(root, "building the shared pack reader", "coax/web/build-packs.coax", pack_args[..], buffer[..]) < 0 ||
+    !sbp_copy(packs, fs_join(player, "build/host-packs.wasm", path[..])) { return false; }
+  wgsl :=  fs_join(player, "splice-jam.wgsl", path[..]);
+  shader_args := [3] string.["metaverse/splice-bots/gpu/splice-jam.coax", wgsl, "metaverse/splice-bots/gpu/splice-jam.module"];
+  if sbp_coax(root, "building the shared engine shaders", "coax/web/wgsl-module.coax", shader_args[..], buffer[..]) < 0 { return false; }
+
+  if !sbp_copy(fs_join(gb, "tools/splicebots-player.html", from[..]), fs_join(player, "index.html", path[..])) { return false; }
+  for name: [4] string.["IBMPlexMono-Medium.ttf", "IBMPlexMono-OFL.txt", "Michroma-Regular.ttf", "Michroma-OFL.txt"] {
+    font_dir: [4096] u8; output_dir: [4096] u8;
+    base := fs_join(root, "apps/openagents-web/realms/splice-bots/assets/fonts", font_dir[..]);
+    if !sbp_copy(fs_join(base, name, from[..]), fs_join(fs_join(player, "fonts", output_dir[..]), name, path[..])) { return false; }
+  }
+  host_b: [4096] u8; local_b: [4096] u8;
+  host := fs_join(root, "coax/web", host_b[..]);
+  local := fs_join(player, "coaxial", local_b[..]);
+  js: [1] FsList;
+  n := fs_list(host, js[..]);
+  if n < 0 || js[0].full { return false; }
+  for i: 0..<n {
+    name := fs_entry(js[..], i);
+    if uz_suffix(name, ".js") && !sbp_copy(fs_join(host, name, from[..]), fs_join(local, name, path[..])) { return false; }
+  }
+  return true;
+}
+
+sbp_text :: (j: [] Jo, key: string, value: string) { jo_key(j, key); jo_str(j, value); }
+sbp_digest_field :: (j: [] Jo, result: string, name: string) -> bool {
+  path: [4096] u8; hash: [64] u8;
+  file := fs_join(result, name, path[..]);
+  if !upv_hash(file, fs_size(file), hash[..]) { return false; }
+  sbp_text(j, name, cast(string) hash[..]);
+  return true;
+}
+
+sbp_hash_fields :: (j: [] Jo, result: string, evidence: [] string) -> bool {
+  jo_key(j, "sha256"); jo_obj(j);
+  for name: [11] string.["player/private/splice-bots-jam.pack", "player/private/splice-bots-jam-chars.pack",
+      "player/private/splice-bots-jam-tables.pack", "player/private/splice-bots-jam-sounds.pack",
+      "player/build/splice-jam.wasm", "player/build/splice-jam.wasm.syms", "player/build/frame-plan.wasm",
+      "player/build/host-layers.wasm", "player/build/host-packs.wasm", "player/splice-jam.wgsl", "player/index.html"] {
+    if !sbp_digest_field(j, result, name) { return false; }
+  }
+  for name: evidence { if !sbp_digest_field(j, result, name) { return false; } }
+  jo_end(j);
+  return !j[0].bad;
+}

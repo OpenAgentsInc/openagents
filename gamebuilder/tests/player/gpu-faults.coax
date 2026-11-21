@@ -1,0 +1,18 @@
+// Faults are confined to a loopback copy, never a live player qualification.
+// Unlike the generic realm recovery probe this supports the site's two modules
+// and ordinary wall-clock rendering. No realm mutation or clip clock is used.
+pt_gpu_faults :: (url:string,dir:string)->int {
+  if url.count<18 || url[0..<17]!="http://127.0.0.1:" || !fs_mkdir_private(dir) {tool_errln("GPU fault checks require an explicit loopback fixture and fresh --out");return 2;}
+  p:[1]Pt;p[0].start=proc_now_ms();p[0].dir_n=ws_put(p[0].dir[..],0,dir);if !cdp_launch_live_headless(p[0].c[..],800,600,"gb-local-gpu-faults-") {return 1;}defer cdp_close(p[0].c[..]);
+  _:=cdp_call(p[0].c[..],"Page.enable","{}",PB_CALL_MS);
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);_=cdp_call(p[0].c[..],"Page.navigate",jo_text(o[..]),PB_CALL_MS);
+  ready:=pt_wait(p[..],"globalThis.coaxial?.worldLoop?.().submissions>30 && globalThis.coaxial?.drawStats?.().indices>0",30000);hardware:=pt_bool(p[..],CDP_HARDWARE_JS);_=pt_shot(p[..],"before-loss.png");
+  sent:=ready && cdp_evaluate(p[0].c[..],"globalThis.coaxial.loseDevice()")>=0;recovered:=sent && pt_wait(p[..],"globalThis.coaxial?.gpuRecovery?.state==='recovered'",15000);frames:=pt_number(p[..],"globalThis.coaxial?.worldLoop?.().submissions",-1);_=pb_wait(dir,500);drew:=pt_number(p[..],"globalThis.coaxial?.worldLoop?.().submissions",-1)>frames;_=pt_shot(p[..],"after-loss.png");
+  pt_event(p[..],"local-gpu-fault","hardware adapter recovered and submitted new frames",ready && hardware && recovered && drew);
+  // Simulate an absent browser API only on new documents in this local fixture.
+  // The released host must show its actual explanation, not fabricate a world.
+  script:="{\"source\":\"Object.defineProperty(navigator,'gpu',{get:()=>undefined})\"}";registered:=cdp_call(p[0].c[..],"Page.addScriptToEvaluateOnNewDocument",script,PB_CALL_MS)>=0;pt_event(p[..],"local-gpu-fault","absent-API fixture registered",registered);_=cdp_call(p[0].c[..],"Page.reload","{}",PB_CALL_MS);
+  unsupported:=pt_wait(p[..],"!navigator.gpu && /WebGPU/.test(document.getElementById('coaxial-no-gpu')?.textContent||'') && (()=>{const e=document.getElementById('coaxial-no-gpu');const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight})()",20000);_=pt_shot(p[..],"no-webgpu.png");pt_event(p[..],"local-gpu-fault","unsupported WebGPU has a visible explanation",unsupported);
+  diagnostic:=pb_read(p[0].c[..],"({gpu:!!navigator.gpu,notice:document.getElementById('coaxial-no-gpu')?.outerHTML||'',ready:globalThis.coaxial?.ready,indices:globalThis.coaxial?.drawStats?.().indices})");if diagnostic>=0 {path:[4096]u8;_=fs_write(pt_path(p[..],"gpu-faults.json",path[..]),jv_raw(cdp_doc(p[0].c[..]),diagnostic));}
+  print("local GPU faults: ready %, hardware %, recovered %, drawing resumed %, unsupported explanation %\n",ready,hardware,recovered,drew,unsupported);return ifx ready && hardware && recovered && drew && unsupported then 0 else 1;
+}

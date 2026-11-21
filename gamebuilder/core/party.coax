@@ -1,0 +1,662 @@
+// Playing Scrappers together: a party, invitations, a quick match, and the
+// wire a match's words go down.
+//
+// A party is a leader and up to three others. The leader invites people from
+// the lobby, says who is on their side and who is across from them, and
+// starts the match, which the leader's device hosts (coax/net.coax). A quick
+// match is the same thing made without asking: two people who are both
+// looking are put in a party of two, across from each other, and it starts.
+//
+// Everything here is said through the lobby's relay (coax/lobby.coax), as
+// short-lived Nostr events of one kind addressed to the people they are for.
+// The relay keeps none of them. Every event is signed, so a word about a
+// seat can only come from the person in it. What they say is text:
+//   inv,<party>,<auto>          leader to someone: come and play
+//   join,<party>,<scrapper>     their yes            no,<party>   their no
+//   me,<party>,<scrapper>       a member, every few seconds: still here, playing this
+//   state,<party>,<n>,<key>,<side>,<scrapper>,...   leader to all: who is in it
+//   leave,<party>               a member is going, or the leader has ended it
+//   start,<party>,<seat>,...    leader to all: the match begins, each in this seat
+//   bye,<party>                 leader: the match is over, I have left it
+//
+// The match itself does not go that way. Its words (net.coax) are many and
+// must be quick, so they go through the room server Everglade plays on, in
+// one of its relay rooms: a WebSocket at PT_WIRE and the party's name, where
+// every text frame one player sends reaches the others as "m SEAT TEXT". The
+// room reads nothing and decides nothing; the leader's device is the host.
+PT_KIND :: 25910;
+PT_ROOM :: "gamebuilder.party";
+PT_MEMBERS :: 4;
+PT_STATE_EVERY :: 2;         // seconds between the leader's "who is in it"
+PT_ME_EVERY :: 3;            // and a member's "still here"
+PT_GONE :: 12;               // seconds of silence before someone is taken to have gone
+PT_INVITE_LIVES :: 45;       // seconds an invitation waits for an answer
+PT_ASKED :: 8;
+PT_LOOK_EVERY :: 4;          // seconds between a quick match's tries
+PT_NONE :: 0; PT_HOST :: 1; PT_GUEST :: 2;
+PT_INPUT :: 256;
+PT_WIRE :: "wss://openagents.com/api/room/relay/scrappers/";   // the room server's relay rooms for this game
+
+PtMember :: struct { pub: [32] u8; side: s32; kind: s32; seat: s32; seen: s64; }
+Party :: struct {
+  on: bool; lead: bool; quick: bool;         // in one; leading it; it was made by a quick match
+  id: [8] u8;
+  m: [PT_MEMBERS] PtMember; n: s32;         // m[0] leads
+  kind: s32;                                // the Scrapper you will play
+  asked: [PT_ASKED * 32] u8; asked_n: s32;  // those the leader has invited
+  inv_on: bool; inv_auto: bool; inv_from: [32] u8; inv_id: [8] u8; inv_until: s64;
+  looking: bool; next_look: s64; made: s64; // a quick match: looking, when to try next, when this try began
+  next_say: s64; heard: s64;
+  begin: s32;                               // a match to begin, PT_HOST or PT_GUEST, until the host app takes it
+  playing: s32;                             // your part in the match that is on
+  bye: bool;                                // the leader left the match
+  wire: [FIGHTERS] s32;                     // the host: which of the room's seats, and one, speaks for each Scrapper
+  mode: s32; size: s32;                     // the match the leader picked (modes.coax); size 0 is the usual three
+}
+
+// ---- small things
+
+pt_hex :: (t: [] Text, b: [] const u8) {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { c: [2] u8; c[0] = digits[b[i] >> 4]; c[1] = digits[b[i] & 15]; tx_put(t, cast(string) c[..]); }
+}
+pt_unhex :: (s: string, out: [] u8) -> bool {
+  if s.count != out.count * 2 { return false; }
+  for i: 0..<out.count {
+    v: u8 = 0;
+    for k: 0..<2 {
+      c := s[i * 2 + k];
+      d: u8 = 0;
+      if c >= '0' && c <= '9' { d = c - '0'; } else if c >= 'a' && c <= 'f' { d = c - 'a' + 10; } else { return false; }
+      v = v * 16 + d;
+    }
+    out[i] = v;
+  }
+  return true;
+}
+// The next part of a word, up to its comma.
+PtRead :: struct { b: string; at: int; }
+pt_part :: (r: [] PtRead) -> string {
+  from := r[0].at;
+  while r[0].at < r[0].b.count && r[0].b[r[0].at] != ',' { r[0].at += 1; }
+  to := r[0].at;
+  if r[0].at < r[0].b.count { r[0].at += 1; }
+  return r[0].b[from..<to];
+}
+pt_small :: (s: string) -> s32 {
+  if s.count == 0 || s.count > 3 { return -1; }
+  v: s32 = 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(s32) (c - '0'); }
+  return v;
+}
+pt_member :: (p: [] Party, pub: [] const u8) -> s64 {
+  for i: 0..<cast(s64) p[0].n { if lb_same(p[0].m[i].pub[..], pub) { return i; } }
+  return -1;
+}
+
+// ---- sending
+
+PtSign :: struct { work: [1] NostrSignWork; scratch: [4096] u8; ev: [4096] u8; frame: [LB_FRAME] u8; tags: [512] u8; }
+PT_ALL :: -1;   // to everyone else in the party
+// Signs `content` to one member (their number) or to everyone else in the party, and queues it.
+pt_send_to :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, to: [] const u8, who: s64, content: string) -> bool {
+  if !l[0].open || !l[0].authed || key.count != 32 || aux.count != 32 { return false; }
+  s: [1] PtSign;
+  t := [1] Text.[Text.{buf = s[0].tags[..]}];
+  p := l[0].party[..];
+  tx_put(t[..], "[");
+  if to.count == 32 { tx_put(t[..], "[\"p\",\""); pt_hex(t[..], to); tx_put(t[..], "\"],"); }
+  else {
+    for i: 0..<cast(s64) p[0].n {
+      if lb_same(p[0].m[i].pub[..], l[0].pub[..]) || (who != PT_ALL && who != i) { continue; }
+      tx_put(t[..], "[\"p\",\""); pt_hex(t[..], p[0].m[i].pub[..]); tx_put(t[..], "\"],");
+    }
+  }
+  tx_put(t[..], "[\"t\",\""); tx_put(t[..], PT_ROOM); tx_put(t[..], "\"]]");
+  r := EVENT_MORE;
+  while r == EVENT_MORE { r = nostr_event_sign_step(key, aux, now, PT_KIND, tx_text(t[..]), content, s[0].work[..], s[0].scratch[..], s[0].ev[..], false); }
+  if r <= 0 { return false; }
+  n := nostr_message_write_event(cast(string) s[0].ev[0..<r], s[0].frame[..], false);
+  if n <= 0 { return false; }
+  return lb_queue(l, s[0].frame[0..<n]);
+}
+// A short word: `what`, the party, and what follows.
+pt_say :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, to: [] const u8, who: s64, what: string, id: [] const u8, more: string) -> bool {
+  buf: [96] u8;
+  t := [1] Text.[Text.{buf = buf[..]}];
+  tx_put(t[..], what); tx_put(t[..], ","); tx_put(t[..], cast(string) id);
+  if more.count > 0 { tx_put(t[..], ","); tx_put(t[..], more); }
+  return pt_send_to(l, key, aux, now, to, who, tx_text(t[..]));
+}
+pt_state :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) {
+  p := l[0].party[..];
+  if !p[0].on || !p[0].lead { return; }
+  buf: [512] u8;
+  t := [1] Text.[Text.{buf = buf[..]}];
+  tx_put(t[..], "state,"); tx_put(t[..], cast(string) p[0].id[..]); tx_put(t[..], ","); tx_int(t[..], cast(s64) p[0].n);
+  for i: 0..<cast(s64) p[0].n {
+    tx_put(t[..], ","); pt_hex(t[..], p[0].m[i].pub[..]);
+    tx_put(t[..], ","); tx_int(t[..], cast(s64) p[0].m[i].side); tx_put(t[..], ","); tx_int(t[..], cast(s64) p[0].m[i].kind);
+  }
+  tx_put(t[..], ","); tx_int(t[..], cast(s64) p[0].mode); tx_put(t[..], ","); tx_int(t[..], cast(s64) ed_party_size(l));
+  if p[0].n > 1 { _ = pt_send_to(l, key, aux, now, l[0].pub[0..<0], PT_ALL, tx_text(t[..])); }
+  p[0].next_say = now + PT_STATE_EVERY;
+  l[0].changed = true;
+}
+
+// ---- making and leaving one
+
+pt_new :: (l: [] Lobby, now: s64, quick: bool) {
+  p := l[0].party[..];
+  kind := p[0].kind; looking := p[0].looking; mode := p[0].mode; size := p[0].size;
+  p[0] = Party.{on = true, lead = true, quick = quick, n = 1, kind = kind, looking = looking, made = now, mode = mode, size = size};
+  digits := "0123456789abcdef";
+  for i: 0..<4 { p[0].id[i] = digits[(now >> (cast(s64) i * 4)) & 15]; }
+  for i: 0..<2 { p[0].id[4 + i * 2] = digits[l[0].pub[i] >> 4]; p[0].id[5 + i * 2] = digits[l[0].pub[i] & 15]; }
+  for i: 0..<32 { p[0].m[0].pub[i] = l[0].pub[i]; }
+  p[0].m[0].kind = kind; p[0].m[0].seen = now;
+  l[0].changed = true;
+}
+pt_end :: (l: [] Lobby) {
+  p := l[0].party[..];
+  kind := p[0].kind; looking := p[0].looking; playing := p[0].playing; mode := p[0].mode; size := p[0].size;
+  p[0] = Party.{kind = kind, looking = looking, mode = mode, size = size};
+  // a guest whose party is gone while a match is on has lost its host
+  if playing == PT_GUEST { p[0].bye = true; p[0].playing = PT_GUEST; }
+  l[0].changed = true;
+}
+pt_invite_pub :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, pub: [] const u8, quick: bool) -> bool {
+  p := l[0].party[..];
+  if lb_same(pub, l[0].pub[..]) || lb_muted(l, pub) { return false; }
+  if p[0].on && (!p[0].lead || p[0].n >= PT_MEMBERS || pt_member(p, pub) >= 0) { return false; }
+  if !l[0].account || !l[0].open || !l[0].authed { return false; }
+  if !p[0].on { pt_new(l, now, quick); }
+  known := false;
+  for i: 0..<cast(s64) p[0].asked_n { if lb_same(p[0].asked[i * 32..<i * 32 + 32], pub) { known = true; } }
+  if !known {
+    if p[0].asked_n >= PT_ASKED { p[0].asked_n = 0; }
+    for i: 0..<32 { p[0].asked[cast(s64) p[0].asked_n * 32 + i] = pub[i]; }
+    p[0].asked_n += 1;
+  }
+  return pt_say(l, key, aux, now, pub, 0, "inv", p[0].id[..], ifx quick then "1" else "0");
+}
+
+// Invites the lobby's player `i` to play with you: makes your party if you have none.
+ed_party_invite :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, i: s32) -> bool #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].player_n { return false; }
+  pub := l[0].players[i].pub;
+  return pt_invite_pub(l, key, aux, now, pub[..], false);
+}
+// Leaves your party; a leader's leaving ends it for everyone.
+ed_party_leave :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) #export_c #effects(all) {
+  if l.count != 1 || !l[0].party[0].on { return; }
+  p := l[0].party[..];
+  if p[0].lead { if p[0].n > 1 { _ = pt_say(l, key, aux, now, l[0].pub[0..<0], PT_ALL, "leave", p[0].id[..], ""); } }
+  else { _ = pt_say(l, key, aux, now, p[0].m[0].pub[..], 0, "leave", p[0].id[..], ""); }
+  playing := p[0].playing;
+  pt_end(l);
+  p[0].bye = false; p[0].playing = ifx playing == PT_GUEST then PT_NONE else playing;
+}
+// An invitation is waiting: the name of who sent it, into out. 0 for none.
+ed_party_invited :: (l: [] Lobby, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || !l[0].party[0].inv_on || l[0].party[0].inv_auto { return 0; }
+  return lb_name_of(l, l[0].party[0].inv_from[..], out);
+}
+// Answers the waiting invitation.
+ed_party_answer :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, yes: bool) #export_c #effects(all) {
+  if l.count != 1 || !l[0].party[0].inv_on { return; }
+  p := l[0].party[..];
+  from := p[0].inv_from; id := p[0].inv_id;
+  p[0].inv_on = false; l[0].changed = true;
+  if !yes || p[0].on {
+    _ = pt_say(l, key, aux, now, from[..], 0, "no", id[..], "");
+    return;
+  }
+  kind := p[0].kind; looking := false;
+  p[0] = Party.{on = true, n = 1, kind = kind, looking = looking, id = id, heard = now, quick = p[0].inv_auto};
+  for i: 0..<32 { p[0].m[0].pub[i] = from[i]; }
+  buf: [4] u8; t := [1] Text.[Text.{buf = buf[..]}]; tx_int(t[..], cast(s64) kind);
+  _ = pt_say(l, key, aux, now, from[..], 0, "join", id[..], tx_text(t[..]));
+  p[0].next_say = now + PT_ME_EVERY;
+}
+
+// ---- what the party screen shows
+
+ed_party_on :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].party[0].on; }
+ed_party_leads :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].party[0].on && l[0].party[0].lead; }
+ed_party_count :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 && l[0].party[0].on then l[0].party[0].n else 0; }
+ed_party_full :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].party[0].on && l[0].party[0].n >= PT_MEMBERS; }
+ed_party_member_name :: (l: [] Lobby, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= ed_party_count(l) { return 0; }
+  if lb_same(l[0].party[0].m[i].pub[..], l[0].pub[..]) { return ed_lobby_my_name(l, out); }
+  return lb_name_of(l, l[0].party[0].m[i].pub[..], out);
+}
+ed_party_member_me :: (l: [] Lobby, i: s32) -> bool #export_c #effects(all) { return l.count == 1 && i >= 0 && i < ed_party_count(l) && lb_same(l[0].party[0].m[i].pub[..], l[0].pub[..]); }
+// 0: on the leader's side. 1: across from the leader.
+ed_party_member_side :: (l: [] Lobby, i: s32) -> s32 #export_c #effects(all) { return ifx l.count == 1 && i >= 0 && i < ed_party_count(l) then l[0].party[0].m[i].side else 0; }
+ed_party_member_kind :: (l: [] Lobby, i: s32) -> s32 #export_c #effects(all) { return ifx l.count == 1 && i >= 0 && i < ed_party_count(l) then l[0].party[0].m[i].kind else 0; }
+// Whether the lobby's player `i` is in your party already.
+ed_party_has :: (l: [] Lobby, i: s32) -> bool #export_c #effects(all) {
+  if l.count != 1 || i < 0 || i >= l[0].player_n || !l[0].party[0].on { return false; }
+  return pt_member(l[0].party[..], l[0].players[i].pub[..]) >= 0;
+}
+ed_party_kind :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].party[0].kind else 0; }
+
+// The leader puts member `i` on their side (0) or across (1).
+ed_party_set_side :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, i: s32, side: s32) #export_c #effects(all) {
+  if l.count != 1 || !ed_party_leads(l) || i < 1 || i >= l[0].party[0].n || side < 0 || side > 1 { return; }
+  l[0].party[0].m[i].side = side;
+  pt_state(l, key, aux, now);
+}
+// The Scrapper you will play, in a party or a quick match.
+ed_party_set_kind :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, kind: s32) #export_c #effects(all) {
+  if l.count != 1 || kind < 0 || kind >= CLASSES { return; }
+  p := l[0].party[..];
+  p[0].kind = kind; l[0].changed = true;
+  if !p[0].on { return; }
+  if p[0].lead { p[0].m[0].kind = kind; pt_state(l, key, aux, now); } else { p[0].next_say = 0; }
+}
+
+// ---- a quick match
+
+// Starts or stops looking for someone to play.
+ed_party_look :: (l: [] Lobby, on: bool) #export_c #effects(all) {
+  if l.count != 1 || l[0].party[0].looking == on { return; }
+  l[0].party[0].looking = on; l[0].party[0].next_look = 0;
+  l[0].next_presence = 0; l[0].changed = true;
+}
+ed_party_looking :: (l: [] Lobby) -> bool #export_c #effects(all) { return l.count == 1 && l[0].party[0].looking; }
+
+// ---- starting the match
+
+// The leader starts the match: everyone gets a seat, on the leader's side or across.
+ed_party_start :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) -> bool #export_c #effects(all) {
+  if l.count != 1 || !ed_party_leads(l) || l[0].party[0].n < 2 { return false; }
+  p := l[0].party[..];
+  if !ed_party_fits(l) { return false; }
+  used: [FIGHTERS] bool; used[0] = true;
+  buf: [64] u8; t := [1] Text.[Text.{buf = buf[..]}];
+  for i: 1..<cast(s64) p[0].n {
+    // the side the leader said, or the other when that one is full at this size
+    seat := pt_seat(p, p[0].m[i].side, used[..]);
+    if seat < 0 { p[0].m[i].side = 1 - p[0].m[i].side; seat = pt_seat(p, p[0].m[i].side, used[..]); }
+    used[seat] = true;
+    p[0].m[i].seat = seat;
+    if i > 1 { tx_put(t[..], ","); }
+    tx_int(t[..], cast(s64) seat);
+  }
+  if !pt_say(l, key, aux, now, l[0].pub[0..<0], PT_ALL, "start", p[0].id[..], tx_text(t[..])) { return false; }
+  p[0].begin = PT_HOST; p[0].looking = false; l[0].next_presence = 0; l[0].changed = true;
+  return true;
+}
+// The first free seat on a side at the party's size (modes.coax numbers them). -1 when it is full.
+pt_seat :: (p: [] Party, side: s32, used: [] bool) -> s32 {
+  size := ifx p[0].size >= 1 && p[0].size <= TEAM_SIZE then p[0].size else SIZE_USUAL;
+  for s: 1..<FIGHTERS { if SEAT_TEAM[s] == side && SEAT_SLOT[s] < size && !used[s] { return cast(s32) s; } }
+  return -1;
+}
+// Whether everyone in the party has a seat at the size the leader picked: two a side holds four, one a side only two.
+ed_party_fits :: (l: [] Lobby) -> bool #export_c #effects(all) {
+  if l.count != 1 || !l[0].party[0].on { return false; }
+  size := ifx l[0].party[0].size >= 1 && l[0].party[0].size <= TEAM_SIZE then l[0].party[0].size else SIZE_USUAL;
+  return l[0].party[0].n <= size * 2;
+}
+// The leader picks the mode, how many a side, and (when nobody has voted) the arena; everyone is told.
+ed_party_set_match :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64, mode: s32, size: s32) #export_c #effects(all) {
+  if l.count != 1 || mode < 0 || mode >= MODES || size < 1 || size > TEAM_SIZE { return; }
+  p := l[0].party[..];
+  p[0].mode = mode; p[0].size = size; l[0].changed = true;
+  if ed_party_leads(l) { pt_state(l, key, aux, now); }
+}
+ed_party_mode :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].party[0].mode else 0; }
+ed_party_size :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 && l[0].party[0].size >= 1 then l[0].party[0].size else SIZE_USUAL; }
+// A match is waiting to begin: PT_HOST, PT_GUEST, or 0. The host app opens the arena, then calls ed_party_begin.
+ed_party_pending :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].party[0].begin else 0; }
+// Begins the waiting match in the level that is open.
+ed_party_begin :: (e: [] Editor, l: [] Lobby) -> bool #export_c #effects(all) {
+  if e.count != 1 || l.count != 1 || l[0].party[0].begin == PT_NONE { return false; }
+  p := l[0].party[..];
+  role := p[0].begin;
+  p[0].begin = PT_NONE; p[0].bye = false;
+  for i: 0..<FIGHTERS { p[0].wire[i] = 0; }
+  // the leader's mode and size, on every device
+  _ = ed_play_setup(e, p[0].mode, ed_party_size(l));
+  ed_play(e, p[0].kind);
+  if !e[0].play[0].on { return false; }
+  if role == PT_HOST {
+    for i: 1..<cast(s64) p[0].n { _ = ed_net_seat(e, p[0].m[i].seat, p[0].m[i].kind); }
+  } else {
+    me := pt_member(p, l[0].pub[..]);
+    if me < 1 || !ed_net_guest(e, p[0].m[me].seat) { ed_stop(e); return false; }
+  }
+  p[0].playing = role;
+  return true;
+}
+// The leader left the match you were a guest in (asked once).
+ed_party_take_bye :: (l: [] Lobby) -> bool #export_c #effects(all) {
+  if l.count != 1 || !l[0].party[0].bye { return false; }
+  l[0].party[0].bye = false; l[0].party[0].playing = PT_NONE;
+  return true;
+}
+ed_party_playing :: (l: [] Lobby) -> s32 #export_c #effects(all) { return ifx l.count == 1 then l[0].party[0].playing else 0; }
+
+// ---- words coming in
+
+pt_input :: (l: [] Lobby, e: NostrEvent, key: [] u8, aux: [] u8, now: s64) {
+  p := l[0].party[..];
+  body := e.original[e.content_from..<e.content_to];
+  from := e.public_key;
+  if lb_same(from[..], l[0].pub[..]) || lb_muted(l, from[..]) || body.count < 2 { return; }
+  if e.created_at < now - 60 || e.created_at > now + LB_FUTURE { return; }
+  r := [1] PtRead.[PtRead.{b = body}];
+  what := pt_part(r[..]);
+  id := pt_part(r[..]);
+  if id.count != 8 { return; }
+  ours := p[0].on && id == cast(string) p[0].id[..];
+  if what == "inv" {
+    quick := pt_part(r[..]) == "1";
+    if p[0].on || !l[0].account { return; }
+    if quick && !p[0].looking { return; }
+    for i: 0..<32 { p[0].inv_from[i] = from[i]; }
+    for i: 0..<8 { p[0].inv_id[i] = id[i]; }
+    p[0].inv_on = true; p[0].inv_auto = quick; p[0].inv_until = now + PT_INVITE_LIVES;
+    l[0].changed = true;
+    // someone looking, asked by someone looking, says yes without being asked
+    if quick { ed_party_answer(l, key, aux, now, true); }
+    return;
+  }
+  if what == "join" || what == "me" {
+    if !ours || !p[0].lead { return; }
+    kind := pt_small(pt_part(r[..]));
+    if kind < 0 || kind >= CLASSES { return; }
+    who := pt_member(p, from[..]);
+    if who < 0 {
+      asked := false;
+      for i: 0..<cast(s64) p[0].asked_n { if lb_same(p[0].asked[i * 32..<i * 32 + 32], from[..]) { asked = true; } }
+      if !asked || p[0].n >= PT_MEMBERS || what != "join" { return; }
+      who = cast(s64) p[0].n; p[0].n += 1;
+      p[0].m[who] = PtMember.{side = ifx p[0].quick then 1 else 0};
+      for i: 0..<32 { p[0].m[who].pub[i] = from[i]; }
+    }
+    changed := p[0].m[who].kind != kind || what == "join";
+    p[0].m[who].kind = kind; p[0].m[who].seen = now;
+    if changed { pt_state(l, key, aux, now); }
+    return;
+  }
+  if what == "no" {
+    if ours && p[0].lead && p[0].quick && p[0].n < 2 { pt_end(l); }
+    return;
+  }
+  if what == "leave" {
+    if !ours { return; }
+    if p[0].lead {
+      who := pt_member(p, from[..]);
+      if who < 1 { return; }
+      for i: who..<cast(s64) p[0].n - 1 { p[0].m[i] = p[0].m[i + 1]; }
+      p[0].n -= 1;
+      pt_state(l, key, aux, now);
+    } else if lb_same(from[..], p[0].m[0].pub[..]) { pt_end(l); }
+    return;
+  }
+  // the rest are the leader's to say
+  if !ours || p[0].lead || !lb_same(from[..], p[0].m[0].pub[..]) { return; }
+  if what == "state" {
+    n := pt_small(pt_part(r[..]));
+    if n < 1 || n > PT_MEMBERS { return; }
+    m: [PT_MEMBERS] PtMember; here := false;
+    for i: 0..<cast(s64) n {
+      if !pt_unhex(pt_part(r[..]), m[i].pub[..]) { return; }
+      m[i].side = pt_small(pt_part(r[..])); m[i].kind = pt_small(pt_part(r[..]));
+      if m[i].side < 0 || m[i].side > 1 || m[i].kind < 0 || m[i].kind >= CLASSES { return; }
+      if lb_same(m[i].pub[..], l[0].pub[..]) { here = true; }
+      old := pt_member(p, m[i].pub[..]);
+      if old >= 0 { m[i].seat = p[0].m[old].seat; }
+    }
+    if !lb_same(m[0].pub[..], from[..]) { return; }
+    if !here { pt_end(l); return; }
+    mode := pt_small(pt_part(r[..])); size := pt_small(pt_part(r[..]));
+    if mode >= 0 && mode < MODES && size >= 1 && size <= TEAM_SIZE { p[0].mode = mode; p[0].size = size; }
+    p[0].m = m; p[0].n = n; p[0].heard = now;
+    l[0].changed = true;
+    return;
+  }
+  if what == "start" {
+    for i: 1..<cast(s64) p[0].n {
+      seat := pt_small(pt_part(r[..]));
+      if seat < 1 || seat >= FIGHTERS { return; }
+      p[0].m[i].seat = seat;
+    }
+    p[0].begin = PT_GUEST; p[0].heard = now; p[0].looking = false; l[0].next_presence = 0;
+    l[0].changed = true;
+    return;
+  }
+  if what == "bye" { if p[0].playing == PT_GUEST { p[0].bye = true; } return; }
+}
+
+// ---- time passing
+
+// Seconds going by: who has gone quiet, the party's regular words, and a quick match's tries.
+pt_tick :: (l: [] Lobby, key: [] u8, aux: [] u8, now: s64) {
+  p := l[0].party[..];
+  if p[0].inv_on && now >= p[0].inv_until { p[0].inv_on = false; l[0].changed = true; }
+  if p[0].on && p[0].lead {
+    k: s64 = 1; gone := false;
+    for i: 1..<cast(s64) p[0].n {
+      if now - p[0].m[i].seen > PT_GONE { gone = true; continue; }
+      p[0].m[k] = p[0].m[i]; k += 1;
+    }
+    p[0].n = cast(s32) k;
+    if gone || now >= p[0].next_say { pt_state(l, key, aux, now); }
+    // a quick match's party: nobody came, so try again; somebody came, so play
+    if p[0].quick && p[0].n < 2 && now - p[0].made > PT_LOOK_EVERY * 2 && p[0].playing == PT_NONE { pt_end(l); }
+    if p[0].quick && p[0].n >= 2 && p[0].begin == PT_NONE && p[0].playing == PT_NONE { _ = ed_party_start(l, key, aux, now); }
+  } else if p[0].on {
+    if now - p[0].heard > PT_GONE { pt_end(l); return; }
+    if now >= p[0].next_say {
+      buf: [4] u8; t := [1] Text.[Text.{buf = buf[..]}]; tx_int(t[..], cast(s64) p[0].kind);
+      if pt_say(l, key, aux, now, p[0].m[0].pub[..], 0, "me", p[0].id[..], tx_text(t[..])) { p[0].next_say = now + PT_ME_EVERY; }
+    }
+  }
+  if p[0].looking && !p[0].on && l[0].open && l[0].authed && now >= p[0].next_look {
+    p[0].next_look = now + PT_LOOK_EVERY;
+    // of two who are looking, the one whose key is the lesser asks the other
+    for i: 0..<cast(s64) l[0].player_n {
+      o := l[0].players[i];
+      if !o.looking || lb_same(o.pub[..], l[0].pub[..]) || lb_muted(l, o.pub[..]) { continue; }
+      less := false;
+      for b: 0..<32 { if l[0].pub[b] != o.pub[b] { less = l[0].pub[b] < o.pub[b]; break; } }
+      if less { _ = pt_invite_pub(l, key, aux, now, o.pub[..], true); break; }
+    }
+  }
+}
+
+// The address of the room the match's words go through, while you are in one. 0 for none.
+ed_party_wire :: (l: [] Lobby, out: [] u8) -> s64 #export_c #effects(all) {
+  if l.count != 1 || l[0].party[0].playing == PT_NONE || !l[0].party[0].on { return 0; }
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], PT_WIRE); tx_put(t[..], cast(string) l[0].party[0].id[..]);
+  return ifx t[0].at >= out.count then 0 else t[0].at;
+}
+
+// Each frame while a match with others is on: notices when you have left
+// it or begun it again, and writes the word to send down the room's socket
+// when one is due. Its length, or 0.
+ed_party_pump :: (e: [] Editor, l: [] Lobby, key: [] u8, aux: [] u8, now: s64, dt: f32, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || l.count != 1 { return 0; }
+  p := l[0].party[..];
+  if p[0].playing == PT_NONE { return 0; }
+  if !e[0].play[0].on {
+    // you left the match: the leader tells the others it is over
+    if p[0].playing == PT_HOST && p[0].on { _ = pt_say(l, key, aux, now, l[0].pub[0..<0], PT_ALL, "bye", p[0].id[..], ""); }
+    p[0].playing = PT_NONE;
+    return 0;
+  }
+  if e[0].play[0].net[0].mode == NET_SOLO {
+    // the match was begun again from its end screen
+    if p[0].playing == PT_HOST && p[0].on && p[0].n > 1 {
+      for i: 1..<cast(s64) p[0].n { _ = ed_net_seat(e, p[0].m[i].seat, p[0].m[i].kind); }
+      buf: [64] u8; t := [1] Text.[Text.{buf = buf[..]}];
+      for i: 1..<cast(s64) p[0].n { if i > 1 { tx_put(t[..], ","); } tx_int(t[..], cast(s64) p[0].m[i].seat); }
+      _ = pt_say(l, key, aux, now, l[0].pub[0..<0], PT_ALL, "start", p[0].id[..], tx_text(t[..]));
+    } else if p[0].playing == PT_GUEST && p[0].on {
+      me := pt_member(p, l[0].pub[..]);
+      if me >= 1 { _ = ed_net_guest(e, p[0].m[me].seat); }
+    } else { p[0].playing = PT_NONE; return 0; }
+  }
+  if !ed_net_due(e, dt) { return 0; }
+  return ifx p[0].playing == PT_GUEST then ed_net_say(e, out) else ed_net_snapshot(e, out);
+}
+
+// A frame came from the room. "m SEAT TEXT" is a player's word: the host's
+// to a guest, or a guest's to the host. Everything else the room says (who
+// sat and who left) is the party's business, which the lobby already knows.
+ed_party_heard :: (e: [] Editor, l: [] Lobby, frame: [] u8) #export_c #effects(all) {
+  if e.count != 1 || l.count != 1 || frame.count < 6 || frame[0] != 'm' || frame[1] != ' ' { return; }
+  p := l[0].party[..];
+  at := 2; from: s32 = 0;
+  while at < frame.count && frame[at] != ' ' {
+    if frame[at] < '0' || frame[at] > '9' || at > 4 { return; }
+    from = from * 10 + cast(s32) (frame[at] - '0'); at += 1;
+  }
+  at += 1;
+  if at + 2 >= frame.count { return; }
+  text := frame[at..<frame.count];
+  if p[0].playing == PT_GUEST { if text[0] == 'S' { _ = ed_net_take(e, text); } return; }
+  if p[0].playing != PT_HOST || text[0] != 'I' { return; }
+  // a guest's word ends with the Scrapper it speaks for; the first of the room's seats to speak for one keeps it
+  seat := net_said_seat(text);
+  if seat < 1 || seat >= FIGHTERS { return; }
+  held := false;
+  for i: 1..<cast(s64) p[0].n { if p[0].m[i].seat == seat { held = true; } }
+  if !held { return; }
+  if p[0].wire[seat] == 0 { p[0].wire[seat] = from + 1; }
+  if p[0].wire[seat] != from + 1 { return; }
+  _ = ed_net_input(e, seat, text);
+}
+
+// ---- checks
+
+PtTest :: struct { a: [1] Lobby; b: [1] Lobby; ea: [1] Editor; eb: [1] Editor; t: [1] LbTest; msg: [NET_TEXT] u8; fr: [NET_TEXT + 16] u8; }
+
+// Everything a queues goes to b as the relay would hand it on.
+pt_test_carry :: (t: [] PtTest, a: [] Lobby, b: [] Lobby, kb: [] u8, aux: [] u8, now: s64) -> s64 {
+  sent := 0;
+  while true {
+    n := ed_lobby_take(a, t[0].t[0].frame[..]);
+    if n <= 0 { break; }
+    m := lb_test_relay(t[0].t[..], n);
+    ed_lobby_input(b, kb, aux, now, t[0].t[0].back[0..<m]);
+    sent += 1;
+  }
+  return sent;
+}
+// One of the room's frames: what seat `from` said.
+pt_test_room :: (t: [] PtTest, from: u8, n: s64) -> s64 {
+  t[0].fr[0] = 'm'; t[0].fr[1] = ' '; t[0].fr[2] = '0' + from; t[0].fr[3] = ' ';
+  for i: 0..<n { t[0].fr[4 + i] = t[0].msg[i]; }
+  return n + 4;
+}
+
+#test "an invitation makes a party, the leader puts the other across, and the match begins on both with the guest in its seat" #steps 3000000000 {
+  t: [1] PtTest; a := t[0].a[..]; b := t[0].b[..];
+  ka := lb_test_key(1); kb := lb_test_key(40); aux := lb_test_key(90);
+  now: s64 = 1800000000;
+  #assert ed_lobby_init(a, ka[..]) && ed_lobby_init(b, kb[..]);
+  ed_lobby_account(a, true); ed_lobby_account(b, true);
+  lb_test_join(t[0].t[..], a, ka[..], aux[..], now); lb_test_join(t[0].t[..], b, kb[..], aux[..], now);
+  // each says it is here, and each hears the other
+  ed_lobby_tick(a, ka[..], aux[..], now); ed_lobby_tick(b, kb[..], aux[..], now);
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now); _ = pt_test_carry(t[..], b, a, ka[..], aux[..], now);
+  #assert ed_lobby_online(a) == 1 && ed_lobby_online(b) == 1 && !ed_party_on(a);
+  // a invites b: a leads a party of one, and b has an invitation with a's name on it
+  #assert ed_party_invite(a, ka[..], aux[..], now, 0) && ed_party_on(a) && ed_party_leads(a) && ed_party_count(a) == 1;
+  #assert pt_test_carry(t[..], a, b, kb[..], aux[..], now) == 1;
+  name: [LB_NAME] u8;
+  #assert ed_party_invited(b, name[..]) == ed_lobby_my_name(a, name[..]) && !ed_party_on(b);
+  // b picks Lumen and says yes: both are in it, b not leading
+  ed_party_set_kind(b, kb[..], aux[..], now, 2);
+  ed_party_answer(b, kb[..], aux[..], now, true);
+  #assert ed_party_on(b) && !ed_party_leads(b) && ed_party_invited(b, name[..]) == 0;
+  _ = pt_test_carry(t[..], b, a, ka[..], aux[..], now);
+  #assert ed_party_count(a) == 2 && ed_party_member_kind(a, 1) == 2 && ed_party_member_side(a, 1) == 0 && ed_party_has(a, 0);
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  #assert ed_party_count(b) == 2 && ed_party_member_me(b, 1) && !ed_party_member_me(b, 0);
+  // someone not asked cannot join by saying so, and a member cannot start it
+  #assert !ed_party_start(b, kb[..], aux[..], now);
+  // the leader picks Hoops one a side: b is told; two people fit one a side, and b goes across whatever side it was put on
+  ed_party_set_match(a, ka[..], aux[..], now, MODE_HOOPS, 1);
+  #assert ed_party_fits(a) && ed_party_mode(a) == MODE_HOOPS && ed_party_size(a) == 1;
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  #assert ed_party_mode(b) == MODE_HOOPS && ed_party_size(b) == 1;
+  #assert ed_party_start(a, ka[..], aux[..], now) && a[0].party[0].m[1].seat == 3 && a[0].party[0].m[1].side == 1;
+  a[0].party[0].begin = PT_NONE;
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  b[0].party[0].begin = PT_NONE;
+  // three people do not fit one a side
+  a[0].party[0].n = 3;
+  #assert !ed_party_fits(a) && !ed_party_start(a, ka[..], aux[..], now);
+  a[0].party[0].n = 2;
+  ed_party_set_match(a, ka[..], aux[..], now, MODE_KNOCKOUTS, 3);
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  // the leader puts b across and starts: a hosts, b is a guest
+  ed_party_set_side(a, ka[..], aux[..], now, 1, 1);
+  #assert ed_party_start(a, ka[..], aux[..], now) && ed_party_pending(a) == PT_HOST;
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  #assert ed_party_member_side(b, 1) == 1 && ed_party_pending(b) == PT_GUEST;
+  ed_init(t[0].ea[..], 800, 400); ed_init(t[0].eb[..], 800, 400);
+  #assert ed_party_begin(t[0].ea[..], a) && ed_party_begin(t[0].eb[..], b) && ed_party_pending(a) == 0;
+  #assert ed_net_mode(t[0].ea[..]) == NET_HOST && ed_net_mode(t[0].eb[..]) == NET_GUEST && ed_net_held(t[0].ea[..], 3) && t[0].eb[0].play[0].net[0].seat == 3;
+  #assert ed_play_mode(t[0].ea[..]) == MODE_KNOCKOUTS && ed_play_size(t[0].eb[..]) == 3;
+  // both name the same room for the match's words
+  ua: [96] u8; ub: [96] u8;
+  na := ed_party_wire(a, ua[..]); nb := ed_party_wire(b, ub[..]);
+  #assert na > PT_WIRE.count && na == nb && cast(string) ua[0..<na] == cast(string) ub[0..<nb];
+  // the host's word goes down the room to the guest, and the guest's back
+  n := ed_party_pump(t[0].ea[..], a, ka[..], aux[..], now, 0.2, t[0].msg[..]);
+  #assert n > 40;
+  ed_party_heard(t[0].eb[..], b, t[0].fr[0..<pt_test_room(t[..], 0, n)]);
+  #assert t[0].eb[0].play[0].f[0].alive && t[0].eb[0].play[0].f[0].kind == 2 && t[0].eb[0].play[0].f[3].team == 1;
+  n = ed_party_pump(t[0].eb[..], b, kb[..], aux[..], now, 0.2, t[0].msg[..]);
+  #assert n > 10;
+  t[0].ea[0].play[0].net[0].want[3].quiet = 3;
+  ed_party_heard(t[0].ea[..], a, t[0].fr[0..<pt_test_room(t[..], 1, n)]);
+  #assert t[0].ea[0].play[0].net[0].want[3].quiet == 0;
+  // another of the room's seats cannot speak for that Scrapper
+  t[0].ea[0].play[0].net[0].want[3].quiet = 3;
+  ed_party_heard(t[0].ea[..], a, t[0].fr[0..<pt_test_room(t[..], 2, n)]);
+  #assert t[0].ea[0].play[0].net[0].want[3].quiet == 3;
+  // the leader leaves the match: the guest is told
+  ed_stop(t[0].ea[..]);
+  _ = ed_party_pump(t[0].ea[..], a, ka[..], aux[..], now, 0.2, t[0].msg[..]);
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now);
+  #assert ed_party_playing(a) == 0 && ed_party_take_bye(b) && !ed_party_take_bye(b) && ed_party_on(b);
+  // the guest leaves the party: the leader is alone in it again
+  ed_party_leave(b, kb[..], aux[..], now);
+  _ = pt_test_carry(t[..], b, a, ka[..], aux[..], now);
+  #assert !ed_party_on(b) && ed_party_count(a) == 1;
+}
+
+#test "two people looking for a quick match are put across from each other and it starts without asking" #steps 3000000000 {
+  t: [1] PtTest; a := t[0].a[..]; b := t[0].b[..];
+  ka := lb_test_key(1); kb := lb_test_key(40); aux := lb_test_key(90);
+  now: s64 = 1800000000;
+  #assert ed_lobby_init(a, ka[..]) && ed_lobby_init(b, kb[..]);
+  ed_lobby_account(a, true); ed_lobby_account(b, true);
+  lb_test_join(t[0].t[..], a, ka[..], aux[..], now); lb_test_join(t[0].t[..], b, kb[..], aux[..], now);
+  ed_party_look(a, true); ed_party_look(b, true);
+  #assert ed_party_looking(a) && ed_party_looking(b);
+  // each says it is here and looking; each hears it
+  ed_lobby_tick(a, ka[..], aux[..], now); ed_lobby_tick(b, kb[..], aux[..], now);
+  _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now); _ = pt_test_carry(t[..], b, a, ka[..], aux[..], now);
+  #assert a[0].players[0].looking && b[0].players[0].looking;
+  // a few seconds on, the one with the lesser key has asked, the other has said yes, and the match is to begin
+  for k: 0..<4 {
+    now += PT_LOOK_EVERY;
+    ed_lobby_tick(a, ka[..], aux[..], now); ed_lobby_tick(b, kb[..], aux[..], now);
+    _ = pt_test_carry(t[..], a, b, kb[..], aux[..], now); _ = pt_test_carry(t[..], b, a, ka[..], aux[..], now);
+  }
+  lead := ifx ed_party_leads(a) then a else b; other := ifx ed_party_leads(a) then b else a;
+  #assert ed_party_on(a) && ed_party_on(b) && ed_party_leads(lead) && !ed_party_leads(other);
+  #assert ed_party_pending(lead) == PT_HOST && ed_party_pending(other) == PT_GUEST && ed_party_member_side(lead, 1) == 1;
+  #assert !ed_party_looking(a) && !ed_party_looking(b);
+}

@@ -1,0 +1,108 @@
+// Records a run of the platformer's course (web/world-platformer.coax, PF_SOLUTION): a small player
+// runs it by holding the same keys a person holds (D to run right, Space to jump, Space again in
+// the air), through the real page's HUD (web/hud.coax: the character, the walk rules, the course's
+// rules), a frame at a time at 60 a second. It runs right; it jumps at a platform's end when the
+// next is not joined to it, and before spikes; it jumps again in the air when it is falling short
+// of where it is going; it waits for a moving platform or a lift to come to its near end before
+// jumping on, and rides one to its far end before running on; it never jumps on a pad (the pad
+// throws it). What it held each frame is printed as runs of letters (d right, j jump, x nothing)
+// and frames. Paste the line into web/world-platformer.coax; web/hud.coax's check replays it.
+// A tool, not a #test: it prints. Run it again when the course, the walk or the rules change.
+//   coax/web/tool.sh tools/platformer-record.coax
+// tool.sh: stack-gib 2
+#load "../../coax/lib/sys/tool.coax";
+#load "../web/hud.coax";
+#import "Basic";
+
+PR_FRAMES :: 16000;
+PR_FROM :: 0; PR_TO :: 0; PR_PART :: 49;
+PR_TRACE :: false;          // say where it is at each platform (for changing the course)
+
+Pr :: struct { t: [1] HudTest; held: [PR_FRAMES] u16; n: int; out: [32768] u8; was: int; }
+// One frame with these keys held.
+pr_frame :: (k: [] Pr, bits: int) {
+  h := k[0].t[0].h[..]; text: [16] u8;
+  m := hud_test_put(text[..], 0, bits);
+  hud_test_say(h, HUD_KEYS_MSG, cast(string) text[0..<m]);
+  hud_test_run(k[0].t[..], 1, 0.016666668);
+  if k[0].n < PR_FRAMES { k[0].held[k[0].n] = cast(u16) bits; k[0].n += 1; }
+  k[0].was = bits;
+}
+// How far along its way a moving platform or a lift is now, and whether it is going toward its far end.
+pr_share :: (p: [] Platformer, i: int) -> f32 { return course_slide_share(p[0].c[0].parts[i].slide, pf_time(p)); }
+pr_going :: (p: [] Platformer, i: int) -> bool { return course_slide_share(p[0].c[0].parts[i].slide, pf_time(p) + 0.05) > pr_share(p, i); }
+pr_moves :: (p: [] Platformer, i: int) -> bool { k := p[0].c[0].parts[i].kind; return k == PF_MOVER || k == PF_LIFT; }
+
+pr_run :: (k: [] Pr) -> bool {
+  h := k[0].t[0].h[..]; p := h[0].plat[..]; c := p[0].c[..];
+  hud_test_plat(k[0].t[..]);
+  k[0].n = 0; k[0].was = 0;
+  last := 0; air := 0; told := -1;
+  for f: 0..<PR_FRAMES {
+    if p[0].run.done && p[0].won > 1 { break; }
+    j := h[0].foot.jump; x := h[0].foot.walk.x; z := h[0].foot.walk.z;
+    st := pf_on(p, x, j.y, z);
+    if st >= 0 && j.on_ground { last = st; air = 0; }
+    tgt := ifx last + 1 < c[0].n then last + 1 else last;
+    nb := pf_box(p, tgt);
+    bits := HUD_KEY_RIGHT; jump := false;
+    if PR_TRACE && st != told && st >= 0 && j.on_ground { told = st; print("  part % (kind %) at z % y %, frame %, falls %\n", st, c[0].parts[st].kind, z, j.y, k[0].n, p[0].falls); }
+    if j.on_ground && st >= 0 {
+      q := c[0].parts[st]; cb := pf_box(p, st);
+      if pr_moves(p, st) && !(pr_share(p, st) > 0.86 && pr_going(p, st)) && !(pr_share(p, st) > 0.97) { bits = 0; }
+      else if q.kind != PF_PAD {
+        // (spikes lying at this platform's height, just ahead)
+        for s: 0..<c[0].spikes { sa := c[0].spike[s * 6 + 2]; if abs(c[0].spike[s * 6 + 1] - cb[4]) < 0.05 && z < sa - 0.15 && z > sa - 0.6 { jump = true; } }
+        joined := nb[2] - cb[5] < 0.05 && nb[4] - cb[4] < 0.3 && !pr_moves(p, tgt);
+        if !joined {
+          ready := !pr_moves(p, tgt) || (pr_share(p, tgt) < 0.08);
+          if !ready && z > cb[5] - 1.7 { bits = 0; }
+          else if z > cb[5] - 0.4 { jump = true; }
+        }
+      }
+    } else if !j.on_ground {
+      air += 1;
+      // hold the jump through the rise (letting go early cuts it short); then once more if falling short
+      if j.vy > 0 && (k[0].was & HUD_KEY_JUMP) != 0 { jump = true; }
+      under := false; for i: 0..<c[0].n { b := pf_box(p, i); if z > b[2] - 0.2 && z < b[5] + 0.2 && b[4] <= j.y + 0.1 { under = true; } }
+      // where it will come down at the target's height, at the speed it is making (falling at 40 m/s/s)
+      v := -j.vy; dy := j.y - nb[4]; vz := h[0].foot.walk.vz;
+      land := ifx dy > 0.2 then z + vz * (sqrt(v * v + 80 * dy) - v) / 40 else z;
+      if j.air_used == 0 && j.vy < 0 && z < nb[2] - 0.1 && land < nb[2] + 0.4 && air > 3 && !under { jump = true; }
+      // over the target: coast, and past its middle hold back, so as not to run off its far end
+      if z > nb[2] + 0.3 && z < nb[5] + 0.5 { bits = ifx z > (nb[2] + nb[5]) * 0.5 then HUD_KEY_LEFT else 0; }
+    }
+    if PR_TRACE && k[0].n > PR_FROM && k[0].n < PR_TO && k[0].n % 2 == 0 { lb := pf_box(p, PR_PART); print("    f % z % y % vy % ground % st % bits % part % % share %\n", k[0].n, z, j.y, j.vy, j.on_ground, st, bits | (ifx jump then 16 else 0), lb[2], lb[4], pr_share(p, PR_PART)); }
+    if jump {
+      // a press is a key going down: let go for a frame first if it is held
+      if (k[0].was & HUD_KEY_JUMP) != 0 && !(j.vy > 0 && !j.on_ground) { pr_frame(k, bits); continue; }
+      bits |= HUD_KEY_JUMP;
+    }
+    pr_frame(k, bits);
+  }
+  return p[0].run.done;
+}
+// The frames held, as runs.
+pr_print :: (k: [] Pr) {
+  o := 0; i := 0;
+  while i < k[0].n {
+    bits := cast(int) k[0].held[i]; e := i;
+    while e < k[0].n && cast(int) k[0].held[e] == bits { e += 1; }
+    if bits == 0 { k[0].out[o] = 'x'; o += 1; }
+    if (bits & HUD_KEY_RIGHT) != 0 { k[0].out[o] = 'd'; o += 1; }
+    if (bits & HUD_KEY_JUMP) != 0 { k[0].out[o] = 'j'; o += 1; }
+    o = hud_test_put(k[0].out[..], o, e - i);
+    i = e;
+  }
+  print("PF_SOLUTION :: \"%\";\n", cast(string) k[0].out[0..<o]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  k: [1] Pr;
+  h := k[0].t[0].h[..]; p := h[0].plat[..];
+  done := pr_run(k[..]);
+  print("finished % in % s (% frames), shards % of %, falls %\n", done, p[0].run.clock, k[0].n, course_taken(p[0].taken[..]), p[0].c[0].shards, p[0].falls);
+  if done { pr_print(k[..]); return 0; }
+  print("NOT finished: at z % y %, checkpoint %\n", h[0].foot.walk.z, h[0].foot.jump.y, p[0].run.next);
+  return 1;
+}

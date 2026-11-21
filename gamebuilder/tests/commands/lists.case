@@ -1,0 +1,5 @@
+# What a thing's fields are, and the modes a level is played in.
+> list-fields
+< {"ok":true,"fields":[{"field":"Kind","unit":"","min":0,"max":32},{"field":"East","unit":"cm","min":-10000000,"max":10000000},{"field":"Up","unit":"cm","min":-10000000,"max":10000000},{"field":"North","unit":"cm","min":-10000000,"max":10000000},{"field":"Turn","unit":"°","min":-180,"max":180},{"field":"Scale","unit":"%","min":10,"max":1000},{"field":"Width","unit":"cm","min":1,"max":100000},{"field":"Height","unit":"cm","min":1,"max":100000},{"field":"Depth","unit":"cm","min":1,"max":100000},{"field":"Distance","unit":"cm","min":0,"max":5000},{"field":"Period","unit":"ms","min":1000,"max":60000}]}
+> list-modes
+< {"ok":true,"modes":[{"mode":0,"word":"knockouts","name":"Knockouts"},{"mode":1,"word":"last-stand","name":"Last Stand"},{"mode":2,"word":"scrapball","name":"Scrapball"},{"mode":3,"word":"hoops","name":"Hoops"}],"size_most":5}

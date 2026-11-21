@@ -1,0 +1,555 @@
+// A cloud Builder's side of Microcoder's loop (GitHub issue 27; docs/agents.md, "Built: a cloud
+// agent"): a Builder that gamebuilder.org's hosted server (gamebuilder serve --accounts;
+// cli/cloud.coax) runs on a level of the account's. The loop is Microcoder's, from the pinned
+// openagents tree (coax/lib/microcoder), unchanged: one model call a step, answered with one
+// next_action whose commands the server runs. Here a command is one row of the command table,
+// written as the CLI takes it ("apply-edits 3 '{...}'"): it is split into words as a command line
+// is, its first word is matched to a row by its verb (gb_find), and its words are read by the
+// table's own argument reader (gb_flag_take, gb_args_read), so nothing here reads what the model
+// means. The rows it may write are the ones the table marks for it (GB_CLOUD), and what it is told
+// about them is made from those rows.
+//
+// What is here is words and JSON only: the environment the loop's state carries, the task made
+// from the agent's conversation, a command read into a row and its arguments, a long answer cut
+// into the parts one step shows, the run's journal lines, and what an ending or a refusal by the
+// route means in words. Nothing here builds a model request or reads a model's answer: that is
+// Microcoder's and the gateway library's, which cli/cloud.coax calls. Nothing here reads or writes
+// a file, the clock or the network.
+//   scripts/check.sh
+CLD_MODEL :: "google/gemini-4-hydrogen";              // a model openagents.com's inference route serves (its inference.models)
+CLD_URL :: "https://openagents.com/api/v1/inference";  // the route; gamebuilder serve --model names another (a check's stand-in)
+CLD_SCRIPT :: "script:";      // serve --model script:FILE: Microcoder's scripted gateway answers, a line of FILE a call (a check's)
+CLD_ENV :: 16384;             // bytes of the environment Microcoder's state keeps (its facts buffer)
+CLD_TASK :: 16384;            // bytes of the task it keeps
+CLD_COMMAND :: 65536;         // bytes of one command line (a batch written in it)
+CLD_WORDS :: 12;              // words of one command line
+CLD_PART :: 11000;            // bytes of an answer shown as one result (Microcoder shows 12,000 of one: its first and last 6,000)
+CLD_PARTS :: 2;               // parts of one answer shown; the rest is told in words
+CLD_TALK :: 12;               // messages of the conversation a task carries, newest kept
+CLD_SAID :: 1500;             // bytes of one earlier message of the agent's in it
+
+CLD_TOOLS :: "There is no shell, no working directory and no files here. You are a Builder working on one GameBuilder level of the person's, from gamebuilder.org; you change it only through the commands below, and the person sees each change in their world. Each command is one line: a row's name first (no program name before it), then its arguments as rows gives them. Nothing else runs: no pipes, no shell words, no other programs. Write a BATCH inline as JSON on one line, in single quotes: apply-edits LEVEL '{...}'. Never write --agent or --key: the server says who you are. A command's output is its JSON answer: exit 0 is done, exit 1 is refused, and a refusal's why says what to do instead. The commands of a step run in order and you see their answers in your next step; an answer longer than 11,000 bytes comes as two results, and what is past 22,000 bytes is not shown. edits and view do nothing here: apply-edits changes the level, read-level reads it.";
+CLD_RULES :: "- read-level first. It gives the level's things, its shape table (content) and its revision (rev), which every apply-edits batch names.\n- Send each change as one apply-edits batch, one idea a batch, in a step after the one that read the level. A batch's answer gives the level's new rev: a second batch names that one, so send it in your next step. If a batch is refused as stale, the level changed: read-level again and plan again. agent-undo takes back your own last change.\n- Other agents may be working on this level too. Before you change a part of it, claim that part: claim LEVEL box:X0,Z0,X1,Z1 round where you will work (centimetres) or claim LEVEL things:ID,ID for the things you will change. A change of yours inside another agent's claim is refused as claimed, naming whose: work elsewhere (claims lists them all). release ends your claims.\n- palette says what this level's game type is, the kinds of thing it can add, how building goes in it and its limits in words with their numbers. An edit past a limit is refused with those words: tell the person plainly and offer what fits. list-fields gives a thing's fields and their ranges.\n- If the level is locked, it isn't the person's to change: say so in one line and stop.\n- You have limits for each message the person sends (limits). Do all you can in each step. When you are done, answer with finished true and say what you changed in reply.\n- reply is plain text, no Markdown, and short: after a change, what you changed in one or two lines. A message that asks for no change is answered at once.";
+
+// Whether row v is a cloud Builder's: the table marks it (GB_CLOUD), and nothing else says so.
+cld_offered :: (v: int) -> bool { return v >= 0 && v < GB_N && (GB_COMMANDS[v].surfaces & GB_CLOUD) != 0; }
+
+// A row's usage as the Builder is shown it: the table's, less what the server says for it (who
+// calls, a key) and a batch's file (there are no files there).
+cld_cut :: (t: [] Text, s: string, part: string) -> bool {
+  at := level_find(s, part);
+  if at < 0 { return false; }
+  tx_put(t, cast(string) s[0..<at]); tx_put(t, cast(string) s[at + part.count..<s.count]);
+  return true;
+}
+cld_usage :: (v: int, out: [] u8) -> string {
+  gone := [5] string.[" [--agent NAME]", " --agent NAME", " [--key K]", "BATCH.json|", " [--dry-run]"];
+  a: [512] u8; n := agr_put(a[..], 0, GB_COMMANDS[v].usage);
+  for g: gone {
+    b: [512] u8; t := [1] Text.[Text.{buf = b[..]}];
+    if cld_cut(t[..], cast(string) a[0..<n], g) { n = agr_put(a[..], 0, cast(string) b[0..<t[0].at]); }
+  }
+  return cast(string) out[0..<agr_put(out, 0, cast(string) a[0..<n])];
+}
+
+// ---- a command line read into a row and its arguments
+
+// Where the JSON object that starts at s[i] ('{') ends (one past its '}'), or -1: braces are
+// counted outside its strings.
+cld_brace_end :: (s: string, i: int) -> int {
+  depth := 0; at := i; quoted := false;
+  while at < s.count {
+    ch := s[at];
+    if quoted {
+      if ch == '\\' { at += 2; continue; }
+      if ch == '"' { quoted = false; }
+    } else if ch == '"' { quoted = true; }
+    else if ch == '{' { depth += 1; }
+    else if ch == '}' { depth -= 1; if depth == 0 { return at + 1; } }
+    at += 1;
+  }
+  return -1;
+}
+cld_space :: (ch: u8) -> bool { return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'; }
+// The line's words, as a command line's are: spaces part them; single quotes keep what is
+// between them as it is; double quotes too, where \" and \\ are a quote and a backslash; and a
+// JSON object, bare or after a single quote, runs to its closing brace whatever is in its strings.
+// The words go into buf; n[0] is how many. "" when it read, else why not.
+cld_split :: (line: string, buf: [] u8, words: [] string, n: [] int) -> string {
+  n[0] = 0; i := 0; at := 0;
+  while true {
+    while i < line.count && cld_space(line[i]) { i += 1; }
+    if i >= line.count { break; }
+    if n[0] >= words.count { return "a command has at most 12 words (CLD_WORDS)"; }
+    start := at;
+    while i < line.count && !cld_space(line[i]) {
+      ch := line[i]; from := i; to := i;
+      if ch == '\'' && i + 1 < line.count && line[i + 1] == '{' {
+        e := cld_brace_end(line, i + 1);
+        if e < 0 { return "the JSON after the single quote has no closing brace"; }
+        if e >= line.count || line[e] != '\'' { return "close the single quote after the JSON"; }
+        from = i + 1; to = e; i = e + 1;
+      } else if ch == '\'' {
+        e := i + 1;
+        while e < line.count && line[e] != '\'' { e += 1; }
+        if e >= line.count { return "a single quote isn't closed"; }
+        from = i + 1; to = e; i = e + 1;
+      } else if ch == '"' {
+        e := i + 1; closed := false;
+        while e < line.count {
+          if line[e] == '\\' && e + 1 < line.count && (line[e + 1] == '"' || line[e + 1] == '\\') { e += 1; }
+          else if line[e] == '"' { closed = true; break; }
+          if at >= buf.count { return "the command is longer than 65536 bytes (CLD_COMMAND)"; }
+          buf[at] = line[e]; at += 1; e += 1;
+        }
+        if !closed { return "a double quote isn't closed"; }
+        i = e + 1; from = i; to = i;
+      } else if ch == '{' && at == start {
+        e := cld_brace_end(line, i);
+        if e < 0 { return "the JSON has no closing brace"; }
+        from = i; to = e; i = e;
+      } else { from = i; to = i + 1; i += 1; }
+      if at + (to - from) > buf.count { return "the command is longer than 65536 bytes (CLD_COMMAND)"; }
+      for k: from..<to { buf[at] = line[k]; at += 1; }
+    }
+    words[n[0]] = cast(string) buf[start..<at]; n[0] += 1;
+  }
+  return "";
+}
+
+// A command read: its row (v, -1 when it names none of the Builder's) and, when it can't be
+// carried out as written, the refusal's code and words. Its arguments go into a.
+CldRead :: struct { v: int = -1; error: string; why: string; }
+cld_no :: (v: int, error: string, why: string) -> CldRead { return CldRead.{v = v, error = error, why = why}; }
+// The Builder's rows, by name, for a refusal's words.
+cld_names :: (t: [] Text) {
+  some := false;
+  for v: 0..<GB_N { if cld_offered(v) { if some { tx_put(t, ", "); } tx_put(t, GB_COMMANDS[v].verb); some = true; } }
+}
+// Reads one command of the Builder on level `level`, agent `id`. buf holds its words (CLD_COMMAND
+// bytes), whyb a refusal's words.
+cld_read :: (line: string, level: s32, id: string, buf: [] u8, a: [] GbArgs, whyb: [] u8) -> CldRead {
+  a[0] = GbArgs.{};
+  words: [CLD_WORDS] string; n: [1] int;
+  t := [1] Text.[Text.{buf = whyb}];
+  if line.count > CLD_COMMAND { return cld_no(-1, "bad-request", "the command is longer than 65536 bytes (CLD_COMMAND)"); }
+  why := cld_split(line, buf, words[..], n[..]);
+  if why.count > 0 { return cld_no(-1, "bad-request", why); }
+  if n[0] == 0 { return cld_no(-1, "bad-request", "an empty command: write one row's command line"); }
+  v := gb_find(words[0]);
+  if !cld_offered(v) {
+    tx_put(t[..], "no such command here: a command starts with one of "); cld_names(t[..]);
+    return cld_no(-1, "bad-request", cast(string) whyb[0..<t[0].at]);
+  }
+  row := GB_COMMANDS[v];
+  fl: [1] GbFlags; args: [CLD_WORDS] string; na := 0;
+  i := 1;
+  while i < n[0] {
+    w := words[i];
+    if w.count > 2 && w[0] == '-' && w[1] == '-' {
+      took := gb_flag_take(w, ifx i + 1 < n[0] then words[i + 1] else "", fl[..]);
+      if w == "--agent" || w == "--key" { return cld_no(v, "bad-request", "leave out --agent and --key: the server says who you are"); }
+      if took == 0 || !gb_has_flag(v, w) {
+        tx_put(t[..], row.verb); tx_put(t[..], " takes no "); tx_put(t[..], agr_cut(w, 32));
+        return cld_no(v, "bad-request", cast(string) whyb[0..<t[0].at]);
+      }
+      if took == 2 && i + 1 >= n[0] {
+        tx_put(t[..], w); tx_put(t[..], " takes a value after it");
+        return cld_no(v, "bad-request", cast(string) whyb[0..<t[0].at]);
+      }
+      i += took;
+    } else { args[na] = w; na += 1; i += 1; }
+  }
+  // a batch is written in the command: a word that isn't one would be read as a file's name
+  for k: 0..<gb_parts(row.arguments) {
+    if gb_part(row.arguments, k) == "batch" && k < na && (args[k].count == 0 || args[k][0] != '{') {
+      return cld_no(v, "bad-request", "write the batch inline as JSON in single quotes, apply-edits LEVEL '{...}': there are no files here");
+    }
+  }
+  why = gb_args_read(v, args[0..<na], fl[0], a);
+  if why.count > 0 {
+    ub: [512] u8;
+    tx_put(t[..], why); tx_put(t[..], ": "); tx_put(t[..], row.verb);
+    u := cld_usage(v, ub[..]);
+    if u.count > 0 { tx_put(t[..], " "); tx_put(t[..], u); }
+    return cld_no(v, "bad-request", cast(string) whyb[0..<t[0].at]);
+  }
+  if gb_part(row.arguments, 0) == "level" && a[0].level != level {
+    tx_put(t[..], "your level is level "); tx_n(t[..], level); tx_put(t[..], ": every command works on it");
+    return cld_no(v, "not-permitted", cast(string) whyb[0..<t[0].at]);
+  }
+  if gb_part(row.arguments, 0) == "agent" && a[0].aid != id {
+    tx_put(t[..], "you are agent "); tx_put(t[..], id); tx_put(t[..], ": "); tx_put(t[..], row.verb); tx_put(t[..], " "); tx_put(t[..], id); tx_put(t[..], " is the only one of yours");
+    return cld_no(v, "not-permitted", cast(string) whyb[0..<t[0].at]);
+  }
+  return CldRead.{v = v};
+}
+// A refusal as the Builder is shown it, in the core's form.
+cld_refusal :: (error: string, why: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  return gb_refuse(o[..], error, why).json;
+}
+CLD_NO_EDITS :: "edits do nothing here: there are no files. Change the level with apply-edits";
+CLD_NO_VIEW :: "there are no files to view here. Read the level with read-level";
+CLD_MANY :: "a step runs at most 8 commands (AGR_CLOUD_COMMANDS): send this one in your next step";
+
+// ---- a long answer, in the parts one step shows
+
+// Where the part of answer that starts at from ends: CLD_PART bytes on, never inside a character.
+cld_part_end :: (answer: string, from: int) -> int {
+  to := from + CLD_PART;
+  if to >= answer.count { return answer.count; }
+  while to > from + 1 && (answer[to] & 192) == 128 { to -= 1; }
+  return to;
+}
+// The name part k of n has as a result of its command: the command, then which part it is, and
+// on the last how much is past what a step shows (more bytes; 0: none).
+cld_part_name :: (command: string, k: int, n: int, more: int, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], agr_cut(command, 400));
+  if n > 1 || more > 0 { tx_put(t[..], " [its answer, part "); tx_int(t[..], cast(s64) k + 1); tx_put(t[..], " of "); tx_int(t[..], cast(s64) n); }
+  if more > 0 && k + 1 == n { tx_put(t[..], "; "); tx_int(t[..], cast(s64) more); tx_put(t[..], " bytes more are not shown, past the 22,000 one answer shows"); }
+  if n > 1 || more > 0 { tx_put(t[..], "]"); }
+  return cast(string) out[0..<t[0].at];
+}
+
+// ---- what the loop's state carries
+
+// The environment: where the Builder works and what a command is, its rows made from the
+// table's marked ones, the batch's form, the level's palette (list-palette's answer, "" when it
+// doesn't fit: the row is there to ask), its rules and its limits in words. "" when it doesn't
+// fit CLD_ENV.
+cld_environment_with :: (level: s32, title: string, id: string, palette: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "app"); jo_str(o[..], "GameBuilder (gamebuilder.org)");
+  jo_key(o[..], "tools"); jo_str(o[..], CLD_TOOLS);
+  jo_key(o[..], "level"); jo_int(o[..], cast(int) level);
+  if title.count > 0 { jo_key(o[..], "game"); jo_str(o[..], title); }
+  jo_key(o[..], "agent"); jo_str(o[..], id);
+  jo_key(o[..], "you");
+  yb: [256] u8; y := [1] Text.[Text.{buf = yb[..]}];
+  tx_put(y[..], "LEVEL is always "); tx_n(y[..], level); tx_put(y[..], ", your level. AGENT is always "); tx_put(y[..], id); tx_put(y[..], ", you.");
+  jo_str(o[..], cast(string) yb[0..<y[0].at]);
+  jo_key(o[..], "rows"); jo_arr(o[..]);
+  for v: 0..<GB_N {
+    if !cld_offered(v) { continue; }
+    c := GB_COMMANDS[v];
+    ub: [512] u8; lb: [640] u8; t := [1] Text.[Text.{buf = lb[..]}];
+    tx_put(t[..], c.verb); u := cld_usage(v, ub[..]);
+    if u.count > 0 { tx_put(t[..], " "); tx_put(t[..], u); }
+    jo_obj(o[..]); jo_key(o[..], "command"); jo_str(o[..], cast(string) lb[0..<t[0].at]);
+    jo_key(o[..], "does"); jo_str(o[..], c.help);
+    if c.limit.count > 0 { jo_key(o[..], "limit"); jo_str(o[..], c.limit); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  bb: [8192] u8; b := [1] Text.[Text.{buf = bb[..]}];
+  gb_batch_text(b[..]);
+  jo_key(o[..], "batch"); jo_str(o[..], cast(string) bb[0..<b[0].at]);
+  jo_key(o[..], "palette");
+  if palette.count > 0 { jo_raw(o[..], palette); } else { jo_str(o[..], "ask for it: list-palette LEVEL"); }
+  jo_key(o[..], "rules"); jo_str(o[..], CLD_RULES);
+  wb: [512] u8;
+  jo_key(o[..], "limits"); jo_str(o[..], agr_cloud_words(wb[..]));
+  jo_end(o[..]);
+  if o[0].bad || jo_text(o[..]).count > CLD_ENV { return ""; }
+  return jo_text(o[..]);
+}
+cld_environment :: (level: s32, title: string, id: string, palette: string, out: [] u8) -> string {
+  e := cld_environment_with(level, title, id, palette, out);
+  if e.count > 0 || palette.count == 0 { return e; }
+  return cld_environment_with(level, title, id, "", out);
+}
+
+// One line of a conversation's: the person's message or answer (1), the agent's message (2), or
+// neither (0), from an event of its log.
+cld_talk :: (ev: [] AgrEvent) -> int {
+  if ev[0].text_n == 0 { return 0; }
+  if ev[0].type == AGR_ANSWER { return 1; }
+  if ev[0].type != AGR_MESSAGE { return 0; }
+  return ifx ev[0].from == AGR_PERSON then 1 else 2;
+}
+// The task: the person's newest messages, after the conversation so far when there is one, as
+// Microcoder's chat writes it ("Me:", "You:", then "Now:"). From the agent's log (its events
+// file); the newest CLD_TALK messages, the older of them let go until it fits CLD_TASK. seen[0]
+// is the newest event's number. "" when the log holds nothing the person said.
+cld_task :: (lg: string, id: string, out: [] u8, seen: [] int) -> string {
+  ev: [1] AgrEvent;
+  seen[0] = 0;
+  // how many lines of talk there are, and the last one of the agent's
+  total := 0; last_agent := -1;
+  from := 0;
+  for at: 0..<lg.count {
+    if lg[at] != '\n' { continue; }
+    line := cast(string) lg[from..<at]; from = at + 1;
+    if agr_event_read(line, id, ev[..]).count > 0 { continue; }
+    if cast(int) ev[0].n > seen[0] { seen[0] = cast(int) ev[0].n; }
+    k := cld_talk(ev[..]);
+    if k == 0 { continue; }
+    if k == 2 { last_agent = total; }
+    total += 1;
+  }
+  if total == 0 || last_agent == total - 1 { return ""; }
+  first := ifx total > CLD_TALK then total - CLD_TALK else 0;
+  // the sizes of the kept ones, and where to start so that they fit
+  size: [CLD_TALK] int; kept := 0;
+  from = 0; index := 0;
+  for at: 0..<lg.count {
+    if lg[at] != '\n' { continue; }
+    line := cast(string) lg[from..<at]; from = at + 1;
+    if agr_event_read(line, id, ev[..]).count > 0 { continue; }
+    k := cld_talk(ev[..]);
+    if k == 0 { continue; }
+    if index >= first && kept < CLD_TALK {
+      n := cast(int) ev[0].text_n;
+      if k == 2 && n > CLD_SAID { n = CLD_SAID; }
+      size[kept] = n + 8; kept += 1;
+    }
+    index += 1;
+  }
+  sum := 64;
+  for i: 0..<kept { sum += size[i]; }
+  drop := 0;
+  while drop < kept && sum > CLD_TASK && first + drop < last_agent + 1 { sum -= size[drop]; drop += 1; }
+  if sum > CLD_TASK || sum > out.count { return ""; }
+  first += drop;
+  t := [1] Text.[Text.{buf = out}];
+  from = 0; index = 0;
+  for at: 0..<lg.count {
+    if lg[at] != '\n' { continue; }
+    line := cast(string) lg[from..<at]; from = at + 1;
+    if agr_event_read(line, id, ev[..]).count > 0 { continue; }
+    k := cld_talk(ev[..]);
+    if k == 0 { continue; }
+    if index >= first {
+      text := cast(string) ev[0].text[0..<ev[0].text_n];
+      if index <= last_agent {
+        if index == first { tx_put(t[..], "The conversation so far:\n\n"); }
+        tx_put(t[..], ifx k == 1 then "Me: " else "You: ");
+        tx_put(t[..], ifx k == 2 then agr_cut(text, CLD_SAID) else text); tx_put(t[..], "\n\n");
+      } else {
+        if index == last_agent + 1 && last_agent >= first { tx_put(t[..], "Now:\n"); }
+        tx_put(t[..], text); tx_put(t[..], "\n");
+      }
+    }
+    index += 1;
+  }
+  return cast(string) out[0..<t[0].at];
+}
+// What the person says while it works, as a note for its next step.
+cld_note :: (text: string, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "The person says, while you work: "); tx_put(t[..], text);
+  return cast(string) out[0..<t[0].at];
+}
+
+// ---- the run's journal (agent-ID.loop): what Microcoder's loop was given and answered, a line each
+//
+//   {"environment":E,"task":T}            the first line: what the run started with
+//   {"note":TEXT}                          the person's words while it worked
+//   {"reply":RAW}  {"reply":RAW,"cut":1}   a model's answer as it came (cut: the route ended it early)
+//   {"edit":PATH,"why":WORDS}              an edit of that answer's, refused
+//   {"command":NAME,"exit":N,"output":O}   a command of it, carried out or refused
+//   {"view":PATH,"why":WORDS}              a view of it, refused
+//   {"done":1}                             that answer's results are all there
+// The server's child gives them back to a fresh loop in order before each step (cli/cloud.coax),
+// so the loop stands where it stood: nothing of it is kept in memory between steps.
+CldJournal :: struct { buf: [] u8; n: int; bad: bool; }
+cld_j_line :: (j: [] CldJournal, o: [] Jo) {
+  if o[0].bad || j[0].n + o[0].n + 1 > j[0].buf.count { j[0].bad = true; return; }
+  j[0].n += o[0].n; j[0].buf[j[0].n] = '\n'; j[0].n += 1;
+}
+cld_j_open :: (j: [] CldJournal, o: [] Jo) {
+  jo_start(o, j[0].buf[ifx j[0].n < j[0].buf.count then j[0].n else j[0].buf.count..<j[0].buf.count]);
+  jo_obj(o);
+}
+cld_j_head :: (j: [] CldJournal, environment: string, task: string) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], "environment"); jo_str(o[..], environment); jo_key(o[..], "task"); jo_str(o[..], task); jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+cld_j_note :: (j: [] CldJournal, text: string) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], "note"); jo_str(o[..], text); jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+cld_j_reply :: (j: [] CldJournal, raw: string, cut: bool) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], "reply"); jo_str(o[..], raw);
+  if cut { jo_key(o[..], "cut"); jo_int(o[..], 1); }
+  jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+cld_j_refused :: (j: [] CldJournal, key: string, path: string, why: string) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], key); jo_str(o[..], path); jo_key(o[..], "why"); jo_str(o[..], why); jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+cld_j_command :: (j: [] CldJournal, name: string, exit: int, output: string) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], "command"); jo_str(o[..], name); jo_key(o[..], "exit"); jo_int(o[..], exit); jo_key(o[..], "output"); jo_str(o[..], output); jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+cld_j_done :: (j: [] CldJournal) {
+  o: [1] Jo; cld_j_open(j, o[..]);
+  jo_key(o[..], "done"); jo_int(o[..], 1); jo_end(o[..]);
+  cld_j_line(j, o[..]);
+}
+// A command's answer as its results: one, or its parts (cld_part_end), each named (cld_part_name).
+cld_j_answer :: (j: [] CldJournal, command: string, exit: int, answer: string) {
+  parts := (answer.count + CLD_PART - 1) / CLD_PART;
+  if parts < 1 { parts = 1; }
+  more := 0;
+  if parts > CLD_PARTS { parts = CLD_PARTS; }
+  nb: [640] u8; from := 0;
+  for k: 0..<parts {
+    to := cld_part_end(answer, from);
+    if k + 1 == parts { more = answer.count - to; }
+    cld_j_command(j, cld_part_name(command, k, parts, more, nb[..]), exit, cast(string) answer[from..<to]);
+    from = to;
+  }
+}
+
+// ---- what an ending means, in words for the person
+
+// What the route's answer means when it isn't one, by its status.
+cld_status_words :: (status: int) -> string {
+  if status == 429 { return "OpenAgents' model has no more free calls for GameBuilder today (500 calls and $2.00 a day between every cloud agent): send a message tomorrow to go on"; }
+  if status == 401 || status == 403 { return "openagents.com didn't accept this server's model key, so no step was taken: GameBuilder's owner has to list it (OA_INFERENCE_PUBKEYS)"; }
+  if status == 402 { return "openagents.com says this server's model key has no credit, so no step was taken: GameBuilder's owner has to list it as a free key"; }
+  if status == 400 { return "openagents.com refused the step as asked (HTTP 400): send a message to try again, or start a new agent"; }
+  if status == 0 { return "openagents.com didn't answer: send a message to try again"; }
+  return "openagents.com's model didn't answer the step: send a message to try again";
+}
+CLD_BAD_REPLIES :: "the model's answers couldn't be read, 3 in a row (MC_BAD_LIMIT): send a message to try again";
+CLD_IDLE :: "it took 3 steps in a row without a command or an answer (MC_IDLE_LIMIT), so it stopped: send a message that says what to change";
+CLD_LOST :: "the server lost its place in this message's work: send a message to go on";
+CLD_FULL :: "this message's work no longer fits what the server keeps of it (2 MB): send a message to go on";
+
+// ---- checks
+
+CldTest :: struct { env: [CLD_ENV + 1024] u8; buf: [CLD_COMMAND] u8; why: [512] u8; a: [1] GbArgs; nodes: [4096] JvNode; log: [32768] u8; task: [CLD_TASK + 1] u8; j: [65536] u8; ev: [1] AgrEvent; }
+
+#test "the rows a cloud Builder is offered are the rows the table marks for it, in what it is told and in what is carried out" #steps 400000000 {
+  t: [1] CldTest;
+  env := cld_environment(3, "Moss Run", "ab12", "{\"ok\":true,\"kinds\":[]}", t[0].env[..]);
+  #assert env.count > 0 && env.count <= CLD_ENV;
+  d: [1] Jv;
+  #assert jv_parse(d[..], env, t[0].nodes[..]);
+  marked := 0;
+  for v: 0..<GB_N {
+    c := GB_COMMANDS[v];
+    is := (c.surfaces & GB_CLOUD) != 0;
+    if is { marked += 1; }
+    #assert cld_offered(v) == is;
+    // told: its rows name the row exactly when it is marked
+    nb: [96] u8; n := agr_put(nb[..], 0, "{\"command\":\""); n = agr_put(nb[..], n, c.verb);
+    told := level_find(env, cast(string) nb[0..<agr_put(nb[..], n, "\"")]) >= 0 || level_find(env, cast(string) nb[0..<agr_put(nb[..], n, " ")]) >= 0;
+    #assert told == is;
+    // carried out: a command that starts with its name reaches the row exactly when it is marked
+    r := cld_read(c.verb, 3, "ab12", t[0].buf[..], t[0].a[..], t[0].why[..]);
+    #assert (r.v == v) == is;
+    if !is { #assert r.v == -1 && r.error == "bad-request" && level_find(r.why, "no such command here") == 0; }
+    if is {
+      // a marked row runs on the account's files, and the server says who calls it
+      #assert (c.surfaces & GB_HTTP) != 0 && v != VERB_PLAY_TEST;
+      ub: [512] u8; u := cld_usage(v, ub[..]);
+      #assert level_find(u, "--agent") < 0 && level_find(u, "--key") < 0 && level_find(u, ".json") < 0;
+    }
+  }
+  #assert marked == jv_len(d[0], jv_get(d[0], 0, "rows")) && marked > 0;
+  // the rows' own words, the batch's form and the limits are there
+  #assert level_find(env, "{\"command\":\"apply-edits LEVEL '{...}'\",\"does\":\"carry out a world.edit.v1 batch") >= 0;
+  #assert level_find(env, "{\"command\":\"read-level LEVEL\"") >= 0 && level_find(env, "{\"command\":\"agent-undo AGENT\"") >= 0 && level_find(env, "{\"command\":\"claim LEVEL box:X0,Z0,X1,Z1|things:ID,ID\"") >= 0;
+  #assert level_find(env, "\"level\":3,\"game\":\"Moss Run\",\"agent\":\"ab12\"") >= 0 && level_find(env, "LEVEL is always 3, your level. AGENT is always ab12, you.") >= 0;
+  #assert level_find(env, "world.edit.v1") >= 0 && level_find(env, "\"palette\":{\"ok\":true,\"kinds\":[]}") >= 0;
+  #assert level_find(env, "\"limits\":\"each message: at most 12 model steps (a step runs at most 8 commands), 100,000 tokens, 30 changes and 10 minutes; 60 model steps a day for your account.") >= 0;
+  // a palette too long to carry is left to its row
+  big: [CLD_ENV] u8; for i: 0..<big.count { big[i] = '1'; }
+  env = cld_environment(3, "Moss Run", "ab12", cast(string) big[..], t[0].env[..]);
+  #assert env.count > 0 && level_find(env, "\"palette\":\"ask for it: list-palette LEVEL\"") >= 0;
+}
+
+#test "a command is split as a command line is and read by the table's reader: its row, its arguments, or why not in words" #steps 100000000 {
+  t: [1] CldTest; b := t[0].buf[..]; a := t[0].a[..]; w := t[0].why[..];
+  r := cld_read("read-level 3", 3, "ab12", b, a, w);
+  #assert r.v == VERB_READ_LEVEL && r.error == "" && a[0].level == 3;
+  // a batch in single quotes, whatever its strings hold; bare; and in double quotes with its quotes escaped
+  r = cld_read("apply-edits 3 '{\"schema\":\"world.edit.v1\",\"rev\":7,\"note\":\"it's {here}\"}' --dry-run", 3, "ab12", b, a, w);
+  #assert r.v == VERB_APPLY_EDITS && r.error == "" && a[0].dry && a[0].batch == "{\"schema\":\"world.edit.v1\",\"rev\":7,\"note\":\"it's {here}\"}";
+  r = cld_read("  apply-edits 3 {\"rev\":7, \"edits\":[ {\"op\":\"despawn\",\"id\":7} ]}\n", 3, "ab12", b, a, w);
+  #assert r.error == "" && a[0].batch == "{\"rev\":7, \"edits\":[ {\"op\":\"despawn\",\"id\":7} ]}" && !a[0].dry;
+  r = cld_read("apply-edits 3 \"{\\\"rev\\\":7}\"", 3, "ab12", b, a, w);
+  #assert r.error == "" && a[0].batch == "{\"rev\":7}";
+  r = cld_read("claim 3 box:0,0,100,100", 3, "ab12", b, a, w);
+  #assert r.v == VERB_CLAIM && r.error == "" && a[0].region == "box:0,0,100,100";
+  r = cld_read("agent-undo ab12", 3, "ab12", b, a, w);
+  #assert r.v == VERB_AGENT_UNDO && r.error == "" && a[0].aid == "ab12";
+  r = cld_read("list-fields", 3, "ab12", b, a, w);
+  #assert r.v == VERB_LIST_FIELDS && r.error == "";
+  // refused in words: another level, another agent, who calls, a file, a flag the row hasn't, the reader's own why with the row's form
+  r = cld_read("read-level 4", 3, "ab12", b, a, w);
+  #assert r.v == VERB_READ_LEVEL && r.error == "not-permitted" && r.why == "your level is level 3: every command works on it";
+  r = cld_read("agent-undo zz9", 3, "ab12", b, a, w);
+  #assert r.error == "not-permitted" && r.why == "you are agent ab12: agent-undo ab12 is the only one of yours";
+  r = cld_read("claim 3 box:0,0,100,100 --agent ann", 3, "ab12", b, a, w);
+  #assert r.error == "bad-request" && r.why == "leave out --agent and --key: the server says who you are";
+  r = cld_read("apply-edits 3 batch.json", 3, "ab12", b, a, w);
+  #assert r.error == "bad-request" && level_find(r.why, "write the batch inline as JSON in single quotes") == 0;
+  r = cld_read("read-level 3 --x 5", 3, "ab12", b, a, w);
+  #assert r.error == "bad-request" && r.why == "read-level takes no --x";
+  r = cld_read("read-level", 3, "ab12", b, a, w);
+  #assert r.error == "bad-request" && r.why == "it takes one argument: read-level LEVEL";
+  r = cld_read("apply-edits 3 '{\"rev\":7}", 3, "ab12", b, a, w);
+  #assert r.v == -1 && r.why == "close the single quote after the JSON";
+  // nothing but a marked row's name starts a command: no program's name, no shell, no other row
+  r = cld_read("gamebuilder read-level 3", 3, "ab12", b, a, w);
+  #assert r.v == -1 && level_find(r.why, "no such command here: a command starts with one of read-level, apply-edits, ") == 0;
+  r = cld_read("delete-level 3", 3, "ab12", b, a, w);
+  #assert r.v == -1 && r.error == "bad-request";
+  r = cld_read("play-test 3", 3, "ab12", b, a, w);
+  #assert r.v == -1;
+  r = cld_read("ls -la", 3, "ab12", b, a, w);
+  #assert r.v == -1;
+  r = cld_read("", 3, "ab12", b, a, w);
+  #assert r.v == -1 && r.why == "an empty command: write one row's command line";
+  #assert cld_refusal("bad-request", "x", t[0].j[..]) == "{\"ok\":false,\"error\":\"bad-request\",\"why\":\"x\"}";
+}
+
+#test "the task is the conversation as Microcoder's chat writes it; a long answer comes in parts; the journal's lines" #steps 100000000 {
+  t: [1] CldTest; ev := t[0].ev[..];
+  n := 0; lb: [AGR_LINE + 1] u8;
+  said := [5] string.["add a second floor", "", "Added a wooden floor over the hall.", "make it stone", "and wider"];
+  for i: 0..<5 {
+    ev[0] = agr_event(ifx i == 1 then AGR_TOOL else AGR_MESSAGE); ev[0].n = cast(s32) i + 1;
+    ev[0].from = ifx i == 2 then AGR_AGENT else AGR_PERSON;
+    agr_event_text(ev, said[i]);
+    line := agr_event_write("ab12", ev, lb[..]);
+    n = agr_put(t[0].log[..], n, line); n = agr_put(t[0].log[..], n, "\n");
+  }
+  seen: [1] int;
+  task := cld_task(cast(string) t[0].log[0..<n], "ab12", t[0].task[..], seen[..]);
+  #assert task == "The conversation so far:\n\nMe: add a second floor\n\nYou: Added a wooden floor over the hall.\n\nNow:\nmake it stone\nand wider\n" && seen[0] == 5;
+  // a first message is the task alone
+  ev[0] = agr_event(AGR_MESSAGE); ev[0].n = 1; ev[0].from = AGR_PERSON; agr_event_text(ev, "add a lamp");
+  n = agr_put(t[0].log[..], 0, agr_event_write("ab12", ev, lb[..])); n = agr_put(t[0].log[..], n, "\n");
+  #assert cld_task(cast(string) t[0].log[0..<n], "ab12", t[0].task[..], seen[..]) == "add a lamp\n" && seen[0] == 1;
+  #assert cld_task("", "ab12", t[0].task[..], seen[..]) == "";
+  #assert cld_note("stone, please", t[0].task[..]) == "The person says, while you work: stone, please";
+  // parts
+  big: [CLD_PART * 2 + 300] u8; for i: 0..<big.count { big[i] = 'a'; }
+  j := [1] CldJournal.[CldJournal.{buf = t[0].j[..]}];
+  cld_j_answer(j[..], "read-level 3", 0, cast(string) big[..]);
+  text := cast(string) t[0].j[0..<j[0].n];
+  #assert !j[0].bad && level_find(text, "{\"command\":\"read-level 3 [its answer, part 1 of 2]\",\"exit\":0,\"output\":\"aaa") == 0;
+  #assert level_find(text, "{\"command\":\"read-level 3 [its answer, part 2 of 2; 300 bytes more are not shown, past the 22,000 one answer shows]\",\"exit\":0,\"output\":\"aaa") > CLD_PART;
+  j[0].n = 0;
+  cld_j_head(j[..], "{\"a\":1}", "add a lamp\n"); cld_j_note(j[..], "n"); cld_j_reply(j[..], "{}", false); cld_j_reply(j[..], "{", true);
+  cld_j_refused(j[..], "edit", "a.txt", CLD_NO_EDITS); cld_j_answer(j[..], "claims 3", 1, "{\"ok\":false}"); cld_j_refused(j[..], "view", "a.txt", CLD_NO_VIEW); cld_j_done(j[..]);
+  #assert !j[0].bad && cast(string) t[0].j[0..<j[0].n] == "{\"environment\":\"{\\\"a\\\":1}\",\"task\":\"add a lamp\\n\"}\n{\"note\":\"n\"}\n{\"reply\":\"{}\"}\n{\"reply\":\"{\",\"cut\":1}\n{\"edit\":\"a.txt\",\"why\":\"edits do nothing here: there are no files. Change the level with apply-edits\"}\n{\"command\":\"claims 3\",\"exit\":1,\"output\":\"{\\\"ok\\\":false}\"}\n{\"view\":\"a.txt\",\"why\":\"there are no files to view here. Read the level with read-level\"}\n{\"done\":1}\n";
+  small: [8] u8; js := [1] CldJournal.[CldJournal.{buf = small[..]}];
+  cld_j_done(js[..]); cld_j_done(js[..]);
+  #assert js[0].bad;
+  #assert level_find(cld_status_words(429), "500 calls and $2.00 a day") >= 0 && level_find(cld_status_words(403), "OA_INFERENCE_PUBKEYS") >= 0;
+}

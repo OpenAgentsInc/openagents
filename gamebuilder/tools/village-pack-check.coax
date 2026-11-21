@@ -1,0 +1,125 @@
+// The medieval village's pack itself, checked as the file in the repository (web/assets/village.pack):
+// it is the pinned pack (web/village-pin.coax: its size and SHA-256), the engine's pack reader
+// admits it (metaverse-engine/editor/pack.coax: its layout, its budget, a licence
+// declared for every asset), its catalog credits the art's makers under their licence, and the
+// village reads it: every model a place names, with bounds and solid boxes that make sense.
+// A tool, not a #test: a check cannot read a file. scripts/web.sh check runs it; it prints what does
+// not hold and ends 1, or "village pack: ok" and 0.
+//   coax/web/tool.sh tools/village-pack-check.coax web/assets/village.pack
+// tool.sh: stack-gib 2
+#load "../../coax/lib/sys/tool.coax";
+#load "../web/world-village.coax";
+#load "../../metaverse-engine/physics/sim/bodies.coax";   // (BD_WALLS: the walls the placed buildings share with the green)
+#load "../../metaverse-engine/editor/pack.coax" as vpk;
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+// One thing that must hold: said when it does not. How many did not, so far.
+vc :: (bad: int, ok: bool, what: string) -> int { if ok { return bad; } print("village pack: NOT %\n", what); return bad + 1; }
+
+VlPackTest :: struct { bytes: [4194304] u8; v: [1] Village; r: [1] vpk.PackRead; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: tool.sh tools/village-pack-check.coax PACK\n"); return 2; }
+  t: [1] VlPackTest;
+  n := fs_read(args_at(a[..], 0), t[0].bytes[..]);
+  bad = vc(bad, n == VL_PACK_BYTES && n < 6291456, "n == VL_PACK_BYTES && n < 6291456");
+  // its SHA-256 is the pin's: what the page's host computes and the village admits by
+  st: [SHA_STATE_BYTES] u8;
+  ok := sha256_init(st[..]) == 0; at := 0;
+  while ok && at < n { m := ifx n - at > 65536 then 65536 else n - at; ok = sha256_update_checked(st[..], t[0].bytes[at..<at + m], false) == 0; at += m; }
+  bad = vc(bad, ok && sha256_final_checked(st[..], t[0].v[0].digest[..], false) == 0, "ok && sha256_final_checked(st[..], t[0].v[0].digest[..], false) == 0");
+  bad = vc(bad, vl_admit(t[0].v[..], n), "vl_admit(t[0].v[..], n)");
+  // one byte of it changed and it is not admitted
+  pin := VL_PACK_SHA256; t[0].v[0].digest[7] ^= 0x10; bad = vc(bad, !vl_admit(t[0].v[..], n), "!vl_admit(t[0].v[..], n)"); t[0].v[0].digest[7] = pin[7]; bad = vc(bad, vl_admit(t[0].v[..], n), "vl_admit(t[0].v[..], n)");
+  // the engine's reader admits it: the layout, the budget, and a declared licence for every asset
+  p := cast(string) t[0].bytes[0..<n];
+  bad = vc(bad, vpk.pack_read(p, t[0].r[..]) && t[0].r[0].ok && t[0].r[0].sources == 1 && t[0].r[0].budget == 6291456 && t[0].r[0].count >= 4, "vpk.pack_read(p, t[0].r[..]) && t[0].r[0].ok && t[0].r[0].sources == 1 && t[0].r[0].budget == 6291456 && t[0].r[0].count >= 4");
+  if !t[0].r[0].ok { print("village pack: the engine refuses it: % (entry %)\n", t[0].r[0].why, t[0].r[0].entry); }
+  for k: 3..<t[0].r[0].count { bad = vc(bad, t[0].r[0].entries[k].kind == 4 && t[0].r[0].entries[k].licence == 0, "t[0].r[0].entries[k].kind == 4 && t[0].r[0].entries[k].licence == 0"); }   // every layer is source 0's: Wildfire Games'
+  cat := vpk.pack_bytes(p, t[0].r[..], 0);
+  bad = vc(bad, vl_has(cat, "L 0 0 A.D. art by Wildfire Games|CC BY-SA 3.0|https://www.wildfiregames.com/\n"), "vl_has(cat, \"L 0 0 A.D. art by Wildfire Games|CC BY-SA 3.0|https://www.wildfiregames.com/\\n\")");
+  // the village reads its catalog, as the page does when the host hands it over
+  bad = vc(bad, cat.count <= VL_CATALOG, "cat.count <= VL_CATALOG");
+  for i: 0..<cat.count { t[0].v[0].catalog[i] = cat[i]; }
+  vl_part(t[0].v[..], 0, cat.count); vl_part(t[0].v[..], 1, t[0].r[0].entries[1].n); vl_part(t[0].v[..], 2, t[0].r[0].entries[2].n); vl_part(t[0].v[..], 3, 1);
+  v := t[0].v[..];
+  bad = vc(bad, v[0].ready && v[0].credited && v[0].models == 5 && v[0].nbox > 100 && v[0].nbox <= VL_BOXES, "v[0].ready && v[0].credited && v[0].models == 5 && v[0].nbox > 100 && v[0].nbox <= VL_BOXES");
+  // every model's indices are inside the pack's index buffer, in turn, and its bounds are a building's or a rock's
+  indices := t[0].r[0].entries[2].n / 4; next := 0;
+  for m: 0..<v[0].models {
+    bad = vc(bad, v[0].first[m] == next && v[0].count[m] % 3 == 0 && v[0].first[m] + v[0].count[m] <= indices, "v[0].first[m] == next && v[0].count[m] % 3 == 0 && v[0].first[m] + v[0].count[m] <= indices");
+    next += v[0].count[m];
+    b := v[0].bounds[m * 6..<m * 6 + 6];
+    bad = vc(bad, b[0] < 0 && b[3] > 0 && b[2] < 0 && b[5] > 0 && b[4] > 0.5 && b[4] < 9 && b[1] <= 0 && b[3] - b[0] < 12 && b[5] - b[2] < 12, "b[0] < 0 && b[3] > 0 && b[2] < 0 && b[5] > 0 && b[4] > 0.5 && b[4] < 9 && b[1] <= 0 && b[3] - b[0] < 12 && b[5] - b[2] < 12");
+  }
+  bad = vc(bad, next == indices, "next == indices");
+  // the table of the models (shared/buildings.coax) is this pack's: each model's bounds and its solid boxes,
+  // and the green a village opens with (shared/game-types.coax gt_starter) fits a level's buildings' boxes
+  hx := VL_HALF_X; hz := VL_HALF_Z; tall := VL_TALL; boxes := VL_KIND_BOXES; green := 0;
+  bad = vc(bad, v[0].models == VL_KINDS, "v[0].models == VL_KINDS");
+  for m: 0..<VL_KINDS {
+    b := v[0].bounds[m * 6..<m * 6 + 6]; nb := 0;
+    for k: 0..<v[0].nbox { if v[0].box_of[k] == m { nb += 1; } }
+    bad = vc(bad, cast(int) floor(b[3] * 1000 + 0.5) == hx[m] && cast(int) floor(-b[0] * 1000 + 0.5) == hx[m] && cast(int) floor(b[5] * 1000 + 0.5) == hz[m] && cast(int) floor(b[4] * 1000 + 0.5) == tall[m] && nb == boxes[m], "the table's bounds and boxes are the pack's");
+  }
+  stood := vl_test_green(v);
+  for j: 0..<stood { green += boxes[v[0].put[j].model]; }
+  bad = vc(bad, stood == GT_GREEN && green <= VL_WALLS && VL_WALLS == BD_WALLS && VL_SOLIDS >= VL_WALLS, "the green's nine stand, their boxes fit, and VL_WALLS == BD_WALLS");
+  // every index names a vertex of the pack
+  verts := t[0].r[0].entries[1].n / 48; ia := t[0].r[0].entries[2].at;
+  for k: 0..<indices { x := cast(int) t[0].bytes[ia + k * 4] | (cast(int) t[0].bytes[ia + k * 4 + 1] << 8) | (cast(int) t[0].bytes[ia + k * 4 + 2] << 16) | (cast(int) t[0].bytes[ia + k * 4 + 3] << 24); bad = vc(bad, x >= 0 && x < verts, "x >= 0 && x < verts"); }
+  // every vertex's layer is one the pack has
+  va := t[0].r[0].entries[1].at; layers := t[0].r[0].count - 3;
+  for k: 0..<verts { bad = vc(bad, cast(int) t[0].bytes[va + k * 48 + 35] < layers, "cast(int) t[0].bytes[va + k * 48 + 35] < layers"); }
+  // a solid box is inside its model's bounds (a cell's width over), has a size, and stands on the ground or hangs over it
+  for k: 0..<v[0].nbox {
+    b := v[0].bounds[v[0].box_of[k] * 6..<v[0].box_of[k] * 6 + 6]; x := v[0].box[k * 6..<k * 6 + 6];
+    bad = vc(bad, x[0] < x[3] && x[2] < x[5] && x[1] >= 0 && x[4] > x[1] && x[4] > 0.2 && x[0] >= b[0] - 0.01 && x[3] <= b[3] + 0.51 && x[2] >= b[2] - 0.01 && x[5] <= b[5] + 0.51 && x[4] <= b[4] + 0.26, "a solid box is inside its model's bounds");
+  }
+  // the model is a closed solid: every point of its surface a quarter metre or more over the ground (a wall, a roof, an
+  // eave: each vertex, and the middle of each triangle) is inside one of its model's boxes, or no more than a step over
+  // one; so a ray straight down onto any part of a building meets a solid at or above what is drawn
+  loose := 0; seen := 0; worst: f32 = 0;
+  for m: 0..<v[0].models {
+    for q: 0..<v[0].count[m] / 3 {
+      c: [3] f32;
+      for corner: 0..<4 {
+        pt: [3] f32;
+        if corner < 3 {
+          o := ia + (v[0].first[m] + q * 3 + corner) * 4;
+          vi := cast(int) t[0].bytes[o] | (cast(int) t[0].bytes[o + 1] << 8) | (cast(int) t[0].bytes[o + 2] << 16) | (cast(int) t[0].bytes[o + 3] << 24);
+          for ax: 0..<3 { w := va + vi * 48 + ax * 4; pt[ax] = f32_from_bits(cast(u32) t[0].bytes[w] | (cast(u32) t[0].bytes[w + 1] << 8) | (cast(u32) t[0].bytes[w + 2] << 16) | (cast(u32) t[0].bytes[w + 3] << 24)); c[ax] += pt[ax] / 3; }
+        } else { pt = c; }
+        if pt[1] < 0.25 { continue; }
+        seen += 1; held := false; gap: f32 = 100;
+        for k: 0..<v[0].nbox {
+          if v[0].box_of[k] != m { continue; }
+          x := v[0].box[k * 6..<k * 6 + 6];
+          if pt[0] < x[0] - 0.001 || pt[0] > x[3] + 0.001 || pt[2] < x[2] - 0.001 || pt[2] > x[5] + 0.001 { continue; }
+          if pt[1] >= x[1] - 0.26 && pt[1] <= x[4] + 0.26 { held = true; }
+          if pt[1] > x[4] && pt[1] - x[4] < gap { gap = pt[1] - x[4]; }
+        }
+        if !held { loose += 1; if gap < 100 && gap > worst { worst = gap; } }
+      }
+    }
+  }
+  bad = vc(bad, seen > 20000 && loose == 0, "every point of the models' surface is inside a solid box");
+  if loose > 0 { print("village pack: % of % surface points are outside every box (the furthest % m over one)\n", loose, seen, worst); }
+  // a building's middle is solid from the ground to over head height: nothing gets inside (the two houses and the market)
+  for m: 0..<3 {
+    full := false;
+    for k: 0..<v[0].nbox { x := v[0].box[k * 6..<k * 6 + 6]; if v[0].box_of[k] == m && x[0] <= 0 && x[3] >= 0 && x[2] <= 0 && x[5] >= 0 && x[1] == 0 && x[4] >= 2 { full = true; } }
+    bad = vc(bad, full, "a building's middle is solid from the ground up");
+  }
+  // all of it placed: the green's solid boxes fit the page's room, and none stands where you start or on the path's first metres
+  v[0].clock = vl_done(v) + 1;
+  s: [VL_SOLIDS * 6] f32;
+  placed := vl_solids(v, s[..]);
+  bad = vc(bad, placed > 150 && placed < VL_SOLIDS, "placed > 150 && placed < VL_SOLIDS");
+  for k: 0..<placed { b := s[k * 6..<k * 6 + 6]; bad = vc(bad, !(b[0] < 1.5 && b[3] > -1.5 && b[2] < 8 && b[5] > -2), "!(b[0] < 1.5 && b[3] > -1.5 && b[2] < 8 && b[5] > -2)"); }
+  if bad == 0 { print("village pack: ok (% bytes, % models, % solid boxes, % placed)\n", n, v[0].models, v[0].nbox, placed); }
+  return ifx bad == 0 then 0 else 1;
+}

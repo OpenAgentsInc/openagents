@@ -1,0 +1,276 @@
+// The hosted server end to end (docs/programmatic-access.md, C6 and C7): `gamebuilder serve
+// --accounts DIR`, with this tool standing in for the login service it asks who a caller is
+// (GET /api/auth/account, as gamebuilder.org's /api/auth/* answers). It holds that:
+//   - discovery answers anyone; every other route wants a login, and says so with 401 and the scheme;
+//   - two logins are two accounts, each with levels of its own, kept in DIR/ACCOUNT;
+//   - a level's file moves whole with read-content and write-content, and a stale one is refused;
+//   - MCP over HTTP is the same account's; a session is an attached agent kept in the account's
+//     folder (cli/attached.coax): initialize answers its Mcp-Session-Id, its calls are logged,
+//     another account can't use it, DELETE ends it, and --remote --as-agent's calls are logged too;
+//   - a login the service doesn't know is 401, a browser page of another site is 403 (and the
+//     service is never asked), and an account the service names unsafely is refused;
+//   - the site's page counts a step of its core loop with no login (POST /api/count, issue 18), a
+//     count under a name that is not on shared/loop.coax's list is refused whole and keeps nothing,
+//     the totals are kept in DIR/.loop and in no account's folder, and the funnel row reads them
+//     back for an owner of the games that ship and refuses every other login.
+//   - a browser logged in on the site is its account by the login service's cookie, with no
+//     Authorization, only as a POST from the site's own page (issue 16; gamebuilder/core/api.coax gb_api_cookie_call).
+//   - an agent made and told things on a computer's folder (the CLI), reported as the app's sync
+//     sends it (agr_report), reads back from the account's agent-events exactly as from the
+//     folder's, and the site's own page, signed in by its login's cookie, lists it (gamebuilder.org/agents);
+//     with no model key the server runs no cloud agent, and agent-new says so.
+//   - its newest picture, sent with agent-picture, is named in its account's agents list alone and
+//     served at its address (GET /api/pictures/ADDRESS.jpg) with no login; any other address is 404.
+// The server calls the login service while it answers, so each call here sends the request,
+// answers the login service's question when one is due, and then reads the answer.
+//   coax/web/tool.sh tools/hosted-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "hosted-lib.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/hosted-check.coax GAMEBUILDER\n"); return 2; }
+  bin := args_at(a[..], 0);
+  r: [1] HcRun;
+  login := cxsock_listen(0);
+  if login < 0 { print("hosted: NOT a port for the login service\n"); return 1; }
+  ob: [64] u8; ot := [1] Text.[Text.{buf = ob[..]}]; tx_put(ot[..], "http://127.0.0.1:"); tx_int(ot[..], cast(s64) cxsock_port(login));
+  origin := cast(string) ob[0..<ot[0].at];
+  db: [256] u8; dir := fs_temp("gb-hosted", db[..]);
+  if dir.count == 0 { print("hosted: NOT a folder to work in\n"); return 1; }
+  sh := proc_new();
+  ok := proc_arg(sh, bin) && proc_arg(sh, "serve") && proc_arg(sh, "--accounts") && proc_arg(sh, dir) && proc_arg(sh, "--origin") && proc_arg(sh, origin) && proc_arg(sh, "--port") && proc_arg(sh, "0");
+  if !ok || proc_start(sh) != 0 { print("hosted: NOT started: % serve --accounts\n", bin); return 1; }
+  sl: [256] u8; sn := proc_line(sh, 10000, sl[..]);
+  port := 0;
+  if sn > 0 {
+    said := cast(string) sl[0..<sn]; at := level_find(said, "127.0.0.1:");
+    if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { port = port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+    if level_find(said, "hosted") < 0 { print("hosted: NOT said to be hosted: %\n", said); r[0].bad += 1; }
+  }
+  if port <= 0 { print("hosted: NOT serving\n"); return 1; }
+
+  // discovery answers anyone; the document names the login
+  hc_expect(r[..], "capabilities, open", hc_call(r[..], port, login, "GET", "/api/capabilities", "", ""), "HTTP/1.1 200 ", "\"write-content\"");
+  hc_expect(r[..], "openapi, open, with the login", hc_call(r[..], port, login, "GET", "/api/openapi.json", "", ""), "HTTP/1.1 200 ", "\"securitySchemes\"");
+  // everything else wants a login, and says how
+  got := hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "", "{}");
+  hc_expect(r[..], "a call with no login", got, "HTTP/1.1 401 ", "WWW-Authenticate: Bearer");
+  hc_expect(r[..], "a call with no login, in words", got, "HTTP/1.1 401 ", "\"error\":\"not-logged-in\"");
+  if r[0].asked != 0 { print("hosted: NOT asked the login service only for signed calls\n"); r[0].bad += 1; }
+  // two logins, two accounts
+  hc_expect(r[..], "a new level of a's", hc_call(r[..], port, login, "POST", "/api/rows/new-level", A, "{}"), "HTTP/1.1 200 ", "{\"ok\":true,\"level\":1}");
+  hc_expect(r[..], "b's levels, none", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", B, "{}"), "HTTP/1.1 200 ", "{\"ok\":true,\"levels\":[]}");
+  if r[0].asked != 2 { print("hosted: NOT asked the login service once a signed call (% times)\n", r[0].asked); r[0].bad += 1; }
+  // a level's file, whole, moved to another number and written back against its revision
+  got = hc_call(r[..], port, login, "POST", "/api/rows/read-content", A, "{\"level\":1}");
+  hc_expect(r[..], "a's level's file", got, "HTTP/1.1 200 ", "\"content\":\"world.doc.v1 level-1\\n");
+  rev := hc_between(got, "\"revision\":", ",");
+  content := hc_between(got, "\"content\":\"", "\"}");
+  if rev.count == 0 || content.count == 0 { print("hosted: NOT a revision and a file: %\n", got); r[0].bad += 1; }
+  cb: [64] u8; ct := [1] Text.[Text.{buf = cb[..]}]; tx_put(ct[..], rev);
+  rev_kept := cast(string) cb[0..<ct[0].at];
+  // the content is kept before the next answer overwrites it
+  kept: [65536] u8; kn := content.count; for i: 0..<kn { kept[i] = content[i]; }
+  file := cast(string) kept[0..<kn];
+  jp1 := [3] string.["{\"level\":2,\"revision\":0,\"content\":\"", file, "\"}"];
+  jp2 := [3] string.["{\"level\":1,\"revision\":7,\"content\":\"", file, "\"}"];
+  jp3 := [5] string.["{\"level\":1,\"revision\":", rev_kept, ",\"content\":\"", file, "\"}"];
+  hc_expect(r[..], "a new level from a file", hc_call(r[..], port, login, "POST", "/api/rows/write-content", A,
+    hc_join(r[..], jp1[..])), "HTTP/1.1 200 ", "{\"ok\":true,\"level\":2,\"revision\":");
+  hc_expect(r[..], "a stale file refused", hc_call(r[..], port, login, "POST", "/api/rows/write-content", A,
+    hc_join(r[..], jp2[..])), "HTTP/1.1 409 ", "\"error\":\"stale\"");
+  hc_expect(r[..], "a file written at its revision", hc_call(r[..], port, login, "POST", "/api/rows/write-content", A,
+    hc_join(r[..], jp3[..])), "HTTP/1.1 200 ", "{\"ok\":true,\"level\":1,\"revision\":");
+  // MCP over HTTP is the caller's account too
+  hc_expect(r[..], "MCP, a's levels", hc_call(r[..], port, login, "POST", "/mcp", A,
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_list_levels\",\"arguments\":{}}}"), "HTTP/1.1 200 ", "{\\\"level\\\":2,");
+  hc_expect(r[..], "MCP with no login", hc_call(r[..], port, login, "POST", "/mcp", "", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"), "HTTP/1.1 401 ", "not-logged-in");
+  // an MCP session is an attached agent of a's, kept in a's folder
+  got = hc_call(r[..], port, login, "POST", "/mcp", A, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"claude-code\"}}}");
+  hc_expect(r[..], "MCP initialize, a session", got, "HTTP/1.1 200 ", "\r\nMcp-Session-Id: a");
+  sib: [64] u8; sid_raw := hc_between(got, "\r\nMcp-Session-Id: ", "\r\n"); for i: 0..<sid_raw.count { sib[i] = sid_raw[i]; }
+  sid := cast(string) sib[0..<sid_raw.count];
+  shb: [128] u8; sht := [1] Text.[Text.{buf = shb[..]}]; tx_put(sht[..], "Mcp-Session-Id: "); tx_put(sht[..], sid); tx_put(sht[..], "\r\n");
+  session_h := cast(string) shb[0..<sht[0].at];
+  jps := [2] string.[session_h, A];
+  hc_expect(r[..], "MCP, the session's call", hc_call(r[..], port, login, "POST", "/mcp", hc_join(r[..], jps[..]),
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_add\",\"arguments\":{\"level\":1,\"kind\":\"block\"}}}"), "HTTP/1.1 200 ", "\"isError\":false");
+  jpb := [2] string.[session_h, B];
+  hc_expect(r[..], "MCP, a's session with b's login", hc_call(r[..], port, login, "POST", "/mcp", hc_join(r[..], jpb[..]),
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_list_levels\",\"arguments\":{}}}"), "HTTP/1.1 404 ", "no such MCP session here");
+  hc_expect(r[..], "MCP, the session ended", hc_call(r[..], port, login, "DELETE", "/mcp", hc_join(r[..], jps[..]), ""), "HTTP/1.1 200 ", "{\"ok\":true}");
+  rpb: [512] u8; jpr := [4] string.[dir, "/acct_a/agent-", sid, ".agent"]; rp := hc_join(r[..], jpr[..]); for i: 0..<rp.count { rpb[i] = rp[i]; }
+  recb: [4096] u8; rn := fs_read(cast(string) rpb[0..<rp.count], recb[..]);
+  rec := ifx rn > 0 then cast(string) recb[0..<rn] else "";
+  if level_find(rec, "\"place\":\"attached\",\"computer\":\"\",\"runner\":\"claude-code\",\"state\":\"done\"") < 0 || level_find(rec, "\"level\":1,") < 0 || level_find(rec, "\"events\":4}") < 0 {
+    print("hosted: NOT the session's record in a's folder: %\n", rec); r[0].bad += 1;
+  }
+  // a login the service doesn't know, a page of another site, an account named unsafely
+  hc_expect(r[..], "an ended login", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "Authorization: Bearer tok-gone\r\n", "{}"), "HTTP/1.1 401 ", "log in again");
+  asked := r[0].asked;
+  hc_expect(r[..], "another site's page", hc_call(r[..], port, login, "POST", "/api/rows/new-level", "Origin: https://evil.example\r\nAuthorization: Bearer tok-a\r\n", "{}"), "HTTP/1.1 403 ", "own site's pages");
+  if r[0].asked != asked { print("hosted: NOT refused another site's page before asking the login service\n"); r[0].bad += 1; }
+  jp4 := [3] string.["Origin: ", origin, "\r\nAuthorization: Bearer tok-b\r\n"];
+  hc_expect(r[..], "the site's own page", hc_call(r[..], port, login, "POST", "/api/rows/list-levels",
+    hc_join(r[..], jp4[..]), "{}"), "HTTP/1.1 200 ", "\"levels\":[]");
+  hc_expect(r[..], "an unsafe account", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "Authorization: Bearer tok-unsafe\r\n", "{}"), "HTTP/1.1 503 ", "can't keep levels");
+  hc_expect(r[..], "not a bearer", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "Authorization: Basic eDp5\r\n", "{}"), "HTTP/1.1 401 ", "Bearer TOKEN");
+  // the site's page counts steps of its core loop: no login, and the login service is never asked
+  asked3 := r[0].asked;
+  first := "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"button_ms\",\"ms\":148}]}";
+  jpc := [3] string.["Origin: ", origin, "\r\n"];
+  hc_expect(r[..], "a count from the site's page, no login", hc_call(r[..], port, login, "POST", LP_DOOR, hc_join(r[..], jpc[..]), first), "HTTP/1.1 200 ", "{\"ok\":true,\"counted\":2}");
+  hc_expect(r[..], "a second visit, and its press", hc_call(r[..], port, login, "POST", LP_DOOR, "", "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"create\",\"ms\":3100}]}"), "HTTP/1.1 200 ", "{\"ok\":true,\"counted\":2}");
+  // a step counted under a name that is not on the list: refused whole, the good count beside it not kept
+  hc_expect(r[..], "a count under a name the list has not", hc_call(r[..], port, login, "POST", LP_DOOR, "", "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"bought\",\"ms\":3}]}"), "HTTP/1.1 400 ", "no step is counted under that name");
+  hc_expect(r[..], "a count from another site's page", hc_call(r[..], port, login, "POST", LP_DOOR, "Origin: https://evil.example\r\n", first), "HTTP/1.1 403 ", "own site's pages");
+  hc_expect(r[..], "a count asked for, not sent", hc_call(r[..], port, login, "GET", LP_DOOR, "", ""), "HTTP/1.1 405 ", "Allow: POST");
+  if r[0].asked != asked3 { print("hosted: NOT counted without asking the login service\n"); r[0].bad += 1; }
+  // the funnel: an owner of the games that ship reads it; another login and no login do not
+  hc_expect(r[..], "the funnel with no login", hc_call(r[..], port, login, "POST", "/api/rows/funnel", "", "{}"), "HTTP/1.1 401 ", "not-logged-in");
+  hc_expect(r[..], "the funnel, not an owner", hc_call(r[..], port, login, "POST", "/api/rows/funnel", A, "{}"), "HTTP/1.1 403 ", "an owner of the games that ship");
+  got = hc_call(r[..], port, login, "POST", "/api/rows/funnel", OWNER, "{}");
+  hc_expect(r[..], "the funnel, an owner", got, "HTTP/1.1 200 ", "\"which\":\"today so far\",\"steps\":[{\"name\":\"arrived\",\"words\":\"arrived\",\"n\":2},{\"name\":\"create\",\"words\":\"pressed a game type on the home page\",\"n\":1,\"after\":\"arrived\",\"percent\":50,\"left\":1,\"time\":\"under 4 s\",\"timed\":1}");
+  hc_expect(r[..], "the funnel's published games, counted (none yet)", got, "HTTP/1.1 200 ", "\"games\":{\"links\":0,\"opened\":0,\"minute\":0,\"remix\":0,\"remade\":0,\"remade_per_1000_links\":0,\"top\":[],\"note\":\"Published games, counted");
+  hc_expect(r[..], "the funnel's first-load time", got, "HTTP/1.1 200 ", "\"name\":\"button_ms\",\"words\":\"first visit: time to the names\",\"n\":1,\"time\":\"under 0.25 s\",\"timed\":1}");
+  hc_expect(r[..], "the funnel over MCP, not an owner", hc_call(r[..], port, login, "POST", "/mcp", B,
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_funnel\",\"arguments\":{}}}"), "HTTP/1.1 200 ", "an owner of the games that ship");
+  // the totals are the site's, in no account's folder, and hold nothing of a visit
+  ll: [1] FsList; jpl := [2] string.[dir, "/.loop"]; lfb: [512] u8; lf0 := hc_join(r[..], jpl[..]); for i: 0..<lf0.count { lfb[i] = lf0[i]; }
+  loop_dir := cast(string) lfb[0..<lf0.count];
+  if fs_list(loop_dir, ll[..]) < 0 || ll[0].n != 1 { print("hosted: NOT one day's file in DIR/.loop\n"); r[0].bad += 1; }
+  else {
+    jpd := [3] string.[loop_dir, "/", fs_entry(ll[..], 0)]; dpb: [1024] u8; dp := hc_join(r[..], jpd[..]); for i: 0..<dp.count { dpb[i] = dp[i]; }
+    dtb: [LP_DAY_TEXT] u8; dn := fs_read(cast(string) dpb[0..<dp.count], dtb[..]);
+    day_text := ifx dn > 0 then cast(string) dtb[0..<dn] else "";
+    if level_find(day_text, "{\"schema\":\"gamebuilder.loop.day.v1\",\"day\":\"") != 0 || level_find(day_text, "\"arrived\":{\"n\":2,\"timed\":0,") < 0 || level_find(day_text, "bought") >= 0
+      || level_find(day_text, "3100") >= 0 || level_find(day_text, "148") >= 0 || level_find(day_text, "127.0.0.1") >= 0 || level_find(day_text, "acct") >= 0 {
+      print("hosted: NOT a day's totals alone in DIR/.loop: %\n", day_text); r[0].bad += 1;
+    }
+  }
+  for acct: [3] string.["/acct_a/.loop", "/acct_b/.loop", "/acct_o/.loop"] { jpn := [2] string.[dir, acct]; if fs_exists(hc_join(r[..], jpn[..])) { print("hosted: NOT the site's own: counts in an account's folder %\n", acct); r[0].bad += 1; } }
+  // a browser logged in on the site (issue 16): the login service's own cookie and no Authorization, taken only
+  // with a POST from the site's own page (its Origin), and passed on to the login service, which names the account
+  jc1 := [3] string.["Cookie: __Host-oa_session=ck-a; theme=dark\r\nOrigin: ", origin, "\r\n"];
+  asked = r[0].asked;
+  hc_expect(r[..], "a browser's login, a's levels", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", hc_join(r[..], jc1[..]), "{}"), "HTTP/1.1 200 ", "\"levels\":[{\"level\":1,");
+  if r[0].asked != asked + 1 { print("hosted: NOT asked the login service once for a browser's login\n"); r[0].bad += 1; }
+  asked = r[0].asked;
+  hc_expect(r[..], "a cookie with no Origin", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "Cookie: __Host-oa_session=other-x\r\n", "{}"), "HTTP/1.1 403 ", "only from this site's own pages");
+  hc_expect(r[..], "a cookie from another site's page", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", "Cookie: __Host-oa_session=other-x\r\nOrigin: https://evil.example\r\n", "{}"), "HTTP/1.1 403 ", "own site's pages");
+  jc2 := [3] string.["Cookie: __Host-oa_session=other-x\r\nOrigin: ", origin, "\r\n"];
+  hc_expect(r[..], "a cookie on a GET", hc_call(r[..], port, login, "GET", "/api/levels/1", hc_join(r[..], jc2[..]), ""), "HTTP/1.1 403 ", "POST only");
+  if r[0].asked != asked { print("hosted: NOT refused a cookie that is not the site's page's before asking the login service\n"); r[0].bad += 1; }
+  jc3 := [3] string.["Cookie: __Host-oa_session=ck-gone\r\nOrigin: ", origin, "\r\n"];
+  hc_expect(r[..], "a browser's login that has ended", hc_call(r[..], port, login, "POST", "/api/rows/list-levels", hc_join(r[..], jc3[..]), "{}"), "HTTP/1.1 401 ", "log in again");
+  // --remote: the CLI and its MCP, on another computer, reach b's levels with b's login
+  hb: [256] u8; home := fs_temp("gb-hosted-home", hb[..]);
+  sb: [64] u8; st := [1] Text.[Text.{buf = sb[..]}]; tx_put(st[..], "http://127.0.0.1:"); tx_int(st[..], cast(s64) port);
+  site := cast(string) sb[0..<st[0].at];
+  jp7 := [3] string.[home, "/.openagents", ""]; d1 := hc_join(r[..], jp7[..]); _ = fs_mkdir(d1);
+  jp8 := [2] string.[home, "/.openagents/gamebuilder"]; d2 := hc_join(r[..], jp8[..]); _ = fs_mkdir(d2);
+  lf: [1024] u8;
+  jp9 := [3] string.["origin ", site, "\naccount acct_b\nemail b@example.com\naccess tok-b\naccess_until 4102444800\nrefresh rt-b\n"];
+  login_text := hc_join(r[..], jp9[..]); for i: 0..<login_text.count { lf[i] = login_text[i]; }
+  login_kept := cast(string) lf[0..<login_text.count];
+  jp10 := [2] string.[home, "/.openagents/gamebuilder/cli-login-default"];
+  if !fs_write(hc_join(r[..], jp10[..]), login_kept) { print("hosted: NOT a login written for --remote\n"); r[0].bad += 1; }
+  hc_expect(r[..], "--remote, a new level of b's", hc_remote(r[..], bin, home, site, login, "new-level", ""), "0 ", "{\"ok\":true,\"level\":1}");
+  hc_expect(r[..], "--remote, b's levels", hc_remote(r[..], bin, home, site, login, "list-levels", ""), "0 ", "\"levels\":[{\"level\":1,");
+  hc_expect(r[..], "--remote, a refusal is the server's", hc_remote(r[..], bin, home, site, login, "read-level", "9"), "1 ", "there is no such level");
+  // --remote --as-agent: the call is that attached agent's, its record on b's account
+  hc_expect(r[..], "--remote --as-agent, b's agent", hc_remote_as(r[..], bin, home, site, login, "codex", "list-levels"), "0 ", "\"levels\":[{\"level\":1,");
+  if hc_agents(r[..], dir, "/acct_b", "\"runner\":\"codex\"") != 1 || hc_agents(r[..], dir, "/acct_a", "\"runner\":\"codex\"") != 0 {
+    print("hosted: NOT one agent codex kept on b's account and none on a's\n"); r[0].bad += 1;
+  }
+  // --server: the site's login (gamebuilder.org's, still fresh), a server on this computer
+  jp12 := [1] string.["origin https://gamebuilder.org\naccount acct_b\nemail b@example.com\naccess tok-b\naccess_until 4102444800\nrefresh rt-b\n"];
+  site_login := hc_join(r[..], jp12[..]); for i: 0..<site_login.count { lf[i] = site_login[i]; }
+  jp13 := [2] string.[home, "/.openagents/gamebuilder/cli-login-site"];
+  if !fs_write(hc_join(r[..], jp13[..]), cast(string) lf[0..<site_login.count]) { print("hosted: NOT a site login written for --server\n"); r[0].bad += 1; }
+  hc_expect(r[..], "--remote --server, the site's login here", hc_remote_server(r[..], bin, home, site, login, 1, "list-levels"), "0 ", "\"levels\":[{\"level\":1,");
+  asked2 := r[0].asked;
+  hc_expect(r[..], "--server elsewhere", hc_remote_server(r[..], bin, home, "https://evil.example", login, 0, "list-levels"), "3 ", "");
+  if r[0].asked != asked2 { print("hosted: NOT refused --server elsewhere before any call\n"); r[0].bad += 1; }
+  // the files: a's two levels in a's folder, nothing of b's
+  pb: [512] u8;
+  for want: [2] string.["/acct_a/level-1.world", "/acct_a/level-2.world"] {
+    jp5 := [2] string.[dir, want];
+    p := hc_join(r[..], jp5[..]);
+    for i: 0..<p.count { pb[i] = p[i]; }
+    if !fs_exists(cast(string) pb[0..<p.count]) { print("hosted: NOT kept %\n", want); r[0].bad += 1; }
+  }
+  jp6 := [2] string.[dir, "/acct_b/level-1.world"];
+  bl := hc_join(r[..], jp6[..]);
+  if !fs_exists(bl) { print("hosted: NOT kept b's level, made with --remote\n"); r[0].bad += 1; }
+  jp11 := [2] string.[dir, "/acct_b/level-2.world"];
+  if fs_exists(hc_join(r[..], jp11[..])) { print("hosted: NOT b's own: b has a's second level\n"); r[0].bad += 1; }
+  // an agent on a computer's folder, reported to a's account as the app's sync reports it
+  lb2: [256] u8; here := fs_temp("gb-hosted-agent", lb2[..]);
+  ab: [16384] u8;
+  w1 := [2] string.["new-game", GT_ID[GT_ARENA]]; _ = hc_cli(r[..], bin, here, w1[..], ab[..]);
+  w2 := [4] string.["agent-new", "1", "build", "add a second floor"];
+  made := hc_cli(r[..], bin, here, w2[..], ab[..]);
+  idb: [64] u8; id := hc_between(made, "\"agent\":\"", "\"");
+  for i: 0..<id.count { idb[i] = id[i]; }
+  id = cast(string) idb[0..<id.count];
+  if id.count == 0 { print("hosted: NOT an agent made on the folder: %\n", made); r[0].bad += 1; }
+  w3 := [3] string.["agent-message", id, "make it wood"]; _ = hc_cli(r[..], bin, here, w3[..], ab[..]);
+  w4 := [2] string.["agent-stop", id]; _ = hc_cli(r[..], bin, here, w4[..], ab[..]);
+  fb: [128] u8; pb2: [512] u8; rb2: [4096] u8; eb2: [65536] u8;
+  frp := [3] string.[here, "/", agr_file(id, ".agent", fb[..])];
+  frn := fs_read(hc_join(r[..], frp[..]), rb2[..]);
+  ep := [3] string.[here, "/", agr_file(id, ".events", fb[..])];
+  en := fs_read(hc_join(r[..], ep[..]), eb2[..]);
+  _ = pb2;
+  if frn <= 0 || en <= 0 { print("hosted: NOT the agent's files on the folder\n"); r[0].bad += 1; }
+  else {
+    qb: [140000] u8; o: [1] Jo; jo_start(o[..], qb[..]);
+    sent := agr_report(cast(string) rb2[0..<frn], cast(string) eb2[0..<en], 0, o[..]);
+    if sent != 3 { print("hosted: NOT a report of the agent's 3 events (%)\n", sent); r[0].bad += 1; }
+    hc_expect(r[..], "an agent reported", hc_call(r[..], port, login, "POST", "/api/rows/agent-report", A, jo_text(o[..])), "HTTP/1.1 200 ", "\"events\":3");
+    hc_expect(r[..], "a report again from 0 is stale", hc_call(r[..], port, login, "POST", "/api/rows/agent-report", A, jo_text(o[..])), "HTTP/1.1 409 ", "has 3 events");
+    // the account's agent-events, and the folder's, the same events
+    kb: [65536] u8;
+    w5 := [3] string.["agent-events", id, "0"];
+    mine := hc_cli(r[..], bin, here, w5[..], kb[..]);
+    jb: [128] u8; jt := [1] Text.[Text.{buf = jb[..]}]; tx_put(jt[..], "{\"agent\":\""); tx_put(jt[..], id); tx_put(jt[..], "\",\"after\":0}");
+    theirs := hc_call(r[..], port, login, "POST", "/api/rows/agent-events", A, cast(string) jb[0..<jt[0].at]);
+    if hc_events(mine).count == 0 || hc_events(mine) != hc_events(theirs) { print("hosted: NOT the same events on the account as on the folder\n  folder  %\n  account %\n", mine, theirs); r[0].bad += 1; }
+    ib: [128] u8; itx := [1] Text.[Text.{buf = ib[..]}]; tx_put(itx[..], "{\"agent\":\""); tx_put(itx[..], id); tx_put(itx[..], "\"}");
+    one := cast(string) ib[0..<itx[0].at];
+    hc_expect(r[..], "a's agent, read on the account", hc_call(r[..], port, login, "POST", "/api/rows/agent-read", A, one), "HTTP/1.1 200 ", "\"state\":\"stopped\"");
+    hc_expect(r[..], "b has no such agent", hc_call(r[..], port, login, "POST", "/api/rows/agent-read", B, one), "HTTP/1.1 404 ", "no such agent");
+    hc_expect(r[..], "an agent isn't told things on the account", hc_call(r[..], port, login, "POST", "/api/rows/agent-stop", A, one), "HTTP/1.1 ", "\"error\":\"not-here\"");
+    // a server with no model key runs no cloud agents, and says so (tools/cloud-check.coax runs one that does)
+    hc_expect(r[..], "no cloud agent on a server with no model key", hc_call(r[..], port, login, "POST", "/api/rows/agent-new", A, "{\"game\":1,\"role\":\"build\",\"job\":\"add a floor\"}"), "HTTP/1.1 ", "it has no model key");
+    // the site's own page, signed in by its login's cookie: a's agents, this Mac, stopped
+    jp14 := [3] string.["Cookie: __Host-oa_session=ck-a\r\nOrigin: ", origin, "\r\n"];
+    hc_expect(r[..], "the site's page, by its cookie", hc_call(r[..], port, login, "POST", "/api/rows/agents", hc_join(r[..], jp14[..]), "{}"), "HTTP/1.1 200 ", "\"where\":\"this Mac\"");
+    hc_expect(r[..], "a cookie with no Origin is no login", hc_call(r[..], port, login, "POST", "/api/rows/agents", "Cookie: __Host-oa_session=ck-a\r\n", "{}"), "HTTP/1.1 403 ", "only from this site's own pages");
+    // its newest picture, sent as the app's sync sends it (issue 9): kept on a's account, named in
+    // its agents list, and served at its address with no login; b's list has none, and an address
+    // the server doesn't keep is 404
+    qp: [1024] u8; qt := [1] Text.[Text.{buf = qp[..]}];
+    tx_put(qt[..], "{\"agent\":\""); tx_put(qt[..], id);
+    tx_put(qt[..], "\",\"picture\":{\"schema\":\"gamebuilder.picture.v1\",\"level\":1,\"rev\":5,\"which\":\"after\",\"made\":1763380000004,\"w\":160,\"h\":96,\"type\":\"image/jpeg\",\"bytes\":6,\"text\":\"\",\"data\":\"/9gHB//Z\"}}");
+    pkept := hc_call(r[..], port, login, "POST", "/api/rows/agent-picture", A, cast(string) qp[0..<qt[0].at]);
+    hc_expect(r[..], "an agent's picture kept on the account", pkept, "HTTP/1.1 200 ", "\"at\":\"/api/pictures/");
+    atb: [80] u8; at := hc_between(pkept, "\"at\":\"", "\"");
+    for i: 0..<at.count { if i < atb.count { atb[i] = at[i]; } }
+    at = cast(string) atb[0..<(ifx at.count < atb.count then at.count else 0)];
+    hc_expect(r[..], "a's agents list names its picture", hc_call(r[..], port, login, "POST", "/api/rows/agents", A, "{}"), "HTTP/1.1 200 ", at);
+    if level_find(hc_call(r[..], port, login, "POST", "/api/rows/agents", B, "{}"), "/api/pictures/") >= 0 { print("hosted: NOT a's alone: b's agents list names a picture\n"); r[0].bad += 1; }
+    pgot := hc_call(r[..], port, login, "GET", at, "", "");
+    hc_expect(r[..], "the picture at its address, with no login", pgot, "HTTP/1.1 200 ", "Content-Type: image/jpeg");
+    if !(pgot.count > 6 && pgot[pgot.count - 6] == 255 && pgot[pgot.count - 5] == 216 && pgot[pgot.count - 1] == 217) { print("hosted: NOT the picture's own bytes at its address\n"); r[0].bad += 1; }
+    hc_expect(r[..], "an address not kept", hc_call(r[..], port, login, "GET", "/api/pictures/00000000000000000000000000000000.jpg", "", ""), "HTTP/1.1 404 ", "no such picture");
+    hc_expect(r[..], "a picture is only read", hc_call(r[..], port, login, "POST", at, A, "{}"), "HTTP/1.1 405 ", "");
+  }
+  _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh);
+  if r[0].bad > 0 { return 1; }
+  print("hosted: ok, % logins asked\n", r[0].asked);
+  return 0;
+}

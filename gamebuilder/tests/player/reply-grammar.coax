@@ -1,0 +1,27 @@
+// Read-only reply diagnostics: fixed enums and counts, never response text.
+ReplyGrammar :: struct {route_at_start:bool;route_seen:bool;root:int=-1;fenced:bool;leading_space:bool;carriage_returns:int;lines:int;plans:int;verbs:[8]int;}
+RG_ROOTS :: [7]string.["play","build","games","world","account","make","chat"];
+RG_VERBS :: [8]string.["place","ball","move","size","remove","clear","set","reset"];
+pt_reply_grammar :: (s:string)->ReplyGrammar {
+ g:ReplyGrammar;at:=0;g.leading_space=s.count>0 && (s[0]==' ' || s[0]=='\t' || s[0]=='\r' || s[0]=='\n');for v:s {if v=='\r' {g.carriage_returns+=1;}}
+ while at<s.count {
+  end:=at;while end<s.count && s[end]!='\n' {end+=1;}g.lines+=1;lo:=at;while lo<end && (s[lo]==' ' || s[lo]=='\t' || s[lo]=='\r') {lo+=1;}
+  if end-lo>=3 && s[lo..<lo+3]=="```" {g.fenced=true;}
+  if end-lo>=6 && s[lo..<lo+6]=="route:" {
+   g.route_seen=true;if at==0 && lo==0 {g.route_at_start=true;}start:=lo+6;while start<end && s[start]==' ' {start+=1;}stop:=start;while stop<end && s[stop]!='/' && s[stop]!=' ' && s[stop]!='\r' {stop+=1;}
+   for i:0..<7 {if s[start..<stop]==RG_ROOTS[i] {g.root=i;}}
+  }
+  if end-lo>=2 && s[lo]=='+' && s[lo+1]==' ' {
+   g.plans+=1;start:=lo+2;stop:=start;while stop<end && s[stop]!=' ' && s[stop]!='\t' && s[stop]!='\r' {stop+=1;}
+   for i:0..<8 {if s[start..<stop]==RG_VERBS[i] {g.verbs[i]+=1;}}
+  }
+  at=end+1;
+ }return g;
+}
+#test "reply grammar telemetry retains only bounded route enums and command counts" {
+ a:=pt_reply_grammar("route: build/block\n\nmade it taller.\n+ size b1 3 3 1");#assert a.route_at_start && a.route_seen && a.root==1 && a.plans==1 && a.verbs[3]==1;
+ b:=pt_reply_grammar("+ size b1 3 3 1");#assert !b.route_at_start && !b.route_seen && b.root==-1 && b.plans==1 && b.verbs[3]==1;
+ c:=pt_reply_grammar("```\nroute: build/block\n+ size b1 3 3 1\n```");#assert c.fenced && c.route_seen && !c.route_at_start;
+ d:=pt_reply_grammar("route: unknown/private\nprivate example text\n+ unknown private text");#assert d.root==-1 && d.plans==1;for n:d.verbs {#assert n==0;}
+ e:=pt_reply_grammar("\r\n route: build/block\r\n+ size b5 3 3 1\r\n");#assert e.leading_space && e.carriage_returns==3 && !e.route_at_start && e.root==1 && e.verbs[3]==1;
+}

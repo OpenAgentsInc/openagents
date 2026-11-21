@@ -1,0 +1,33 @@
+# Computers and the resident service (issue 11): a computer as its resident service says it,
+# listed with on, off or offline in words and no login in it; an agent queued on it at no charge
+# from us; and what each refuses.
+> computers
+< {"ok":true,"computers":[]}
+> new-game {"template":"arena"}
+< {"ok":true,"game":1,"level":1,"template":"arena"}
+> agent-new-on {"computer":"Studio Mac","game":1,"role":"build","job":"add a second floor"}
+< {"ok":false,"error":"not-found","why":"no computer of that name has GameBuilder's resident service here: start it (gamebuilder resident), then name it as computers does"}
+> computer-report {"status":{"schema":"gamebuilder.computer.v1","id":"studio-mac","name":"Studio Mac","on":true,"since":1763379000000,"heard":1763379000000,"slots":1,"used":0,"agents":{"claude":"signed-in","codex":"not-installed"},"running":[],"why":""},"dry_run":true}
+< {"ok":true,"computer":"studio-mac","shown":"on","words":"on: 0 of 1 slot in use; Claude signed in, Codex not installed","dry_run":true}
+> computers
+< {"ok":true,"computers":[]}
+> computer-report {"status":{"schema":"gamebuilder.computer.v1","id":"studio-mac","name":"Studio Mac","on":true,"since":1763379000000,"heard":1763379000000,"slots":1,"used":0,"agents":{"claude":"signed-in","codex":"not-installed"},"running":[],"why":""}}
+< {"ok":true,"computer":"studio-mac","shown":"on","words":"on: 0 of 1 slot in use; Claude signed in, Codex not installed"}
+> computer-report {"status":{"schema":"gamebuilder.computer.v1","id":"other","name":"Studio Mac","on":true,"since":1763379000000,"heard":1763379000000,"slots":1,"used":0,"agents":{"claude":"signed-in","codex":"not-installed"},"running":[],"why":""}}
+< {"ok":false,"error":"bad-request","why":"a computer's id is its name in lower case letters, digits and -"}
+> computer-report {"status":{"schema":"gamebuilder.computer.v1","id":"studio-mac","name":"Studio Mac","on":true,"since":1763379000000,"heard":1763379000000,"slots":1,"used":1,"agents":{"claude":"signed-in","codex":"not-installed"},"running":[],"why":""}}
+< {"ok":false,"error":"bad-request","why":"running names the agent in each slot in use"}
+> computers
+< {"ok":true,"computers":[{"computer":{"schema":"gamebuilder.computer.v1","id":"studio-mac","name":"Studio Mac","on":true,"since":1763379000000,"heard":1763380000000,"slots":1,"used":0,"agents":{"claude":"signed-in","codex":"not-installed"},"running":[],"why":""},"shown":"on","words":"on: 0 of 1 slot in use; Claude signed in, Codex not installed"}]}
+> agent-new-on {"computer":"Studio Mac","game":1,"role":"build","job":"add a second floor","dry_run":true}
+< {"ok":true,"agent":"a19a91a37500-0","state":"queued","computer":"Studio Mac","runs":"GameBuilder's resident service on this computer runs it (gamebuilder resident), with the app open or not","cost":"your own agent: no charge from us","dry_run":true}
+> agent-new-on {"computer":"Studio Mac","game":1,"role":"build","job":"add a second floor"}
+< {"ok":true,"agent":"a19a91a37500-0","state":"queued","computer":"Studio Mac","runs":"GameBuilder's resident service on this computer runs it (gamebuilder resident), with the app open or not","cost":"your own agent: no charge from us"}
+> agent-new-on {"computer":"Studio Mac","game":1,"role":"art","job":"paint it"}
+< {"ok":false,"error":"edit-refused","why":"only a Builder (build) and a Playtester (playtest) run today"}
+> agent-new-on {"computer":"Studio Mac","game":9,"role":"build","job":"x"}
+< {"ok":false,"error":"not-found","why":"there is no such game of yours (list-games)"}
+> agent-read {"agent":"a19a91a37500-0"}
+< {"ok":true,"agent":{"schema":"gamebuilder.agent.v1","id":"a19a91a37500-0","game":1,"title":"Game 1","level":1,"kind":"build","job":"add a second floor","place":"local","computer":"Studio Mac","runner":"resident","state":"queued","since":1763380000000,"made":1763380000000,"updated":1763380000000,"heard":0,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"shown":"queued","words":"queued","for":"0s","where":"Studio Mac","cost":"your own agent: no charge from us"}
+> agent-new {"game":1,"role":"playtest","job":"play it through"}
+< {"ok":true,"agent":"a19a91a37500-1","state":"queued","cost":"your own agent: no charge from us"}

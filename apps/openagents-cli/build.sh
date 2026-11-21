@@ -86,6 +86,9 @@ mkdir -p "$here/build"
   "$repo/psionic/build/parakeet/libpsionic-parakeet.a" "${libs[@]}" ${dlibs[@]+"${dlibs[@]}"} -lpthread -lm
 mv -f "$work/openagents" "$here/build/openagents"
 mv -f "$work/openagents-dictate" "$here/build/openagents-dictate"
+if [[ -x "$repo/gamebuilder/cli/build.sh" ]]; then
+  COAX="$coax" "$repo/gamebuilder/cli/build.sh" > /dev/null
+fi
 if [[ "$(uname -s)" == Linux ]]; then
   (cd "$repo" && COAX="$coax" coax/web/tool.sh apps/openagents-cli/dictate-stream-build.coax) > /dev/null
 fi

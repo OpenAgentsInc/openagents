@@ -1,2 +1,3 @@
 // Re-exported from base toolchain encoding library (#13843).
 #load "../encoding/json.coax";
+#load "fixtures/coax_relay.coax";

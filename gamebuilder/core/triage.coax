@@ -1,0 +1,245 @@
+// Triage (issue 22; docs/engine-upgrades.md, "Triage"): where a request in the person's words
+// belongs. One of five:
+//   commands        the gamebuilder commands do it
+//   gamebuilder     it needs GameBuilder's own code: a new kind of thing, a template, a rule, the editor
+//   engine-has      the engine does it (its chapter is implemented): GameBuilder does not use it yet
+//   engine-partly   the engine does part of it (its chapter is partly implemented)
+//   engine-needs    the engine can't do it yet (its chapter is a design draft, or it has none):
+//                   an engine upgrade, offered in TRI_OFFER's words
+//
+// The words are matched by meaning, never by the letters in them: one question set of the
+// OpenAgents decision door (decide.coax's, POST /api/v1/systemone with "model":"auto") picks who
+// owns the change, which command starts it and which chapter of the engine's book is about it,
+// from the command table and the engine's capability list (engine-list.coax). Everything after
+// the picks is a rule here: the chapter's status makes the fit, and a pick the model was less
+// than TRI_SURE sure of answers "sure":false.
+//
+// This file writes the request and reads the answer. The surface sends the bytes and keeps the
+// key that signs them (cli/main.coax, cli_triage): the core never reaches the network.
+//
+// Limits: a request is at most 1000 bytes (AGR_MESSAGE_MAX); the question set is at most 16384
+// bytes (DECIDE_BODY_MAX), so a command is told in up to 110 bytes of its help (TRI_HELP) and a
+// chapter by its title, part and status; one command and one chapter are named.
+
+TRI_SURE_PERCENT :: 75;        // a pick below this is said as not sure
+TRI_HELP :: 110;
+TRI_COMMANDS :: 64;            // commands offered, at most
+TRI_LABEL :: 160;
+TRI_OFFER :: "The engine can't do this yet. Would you like to code up this feature and potentially earn rewards for anyone who uses it?";
+TRI_FITS :: [5] string.["commands", "gamebuilder", "engine-has", "engine-partly", "engine-needs"];
+TRI_COMMANDS_FIT :: 0; TRI_GAMEBUILDER :: 1; TRI_ENGINE_HAS :: 2; TRI_ENGINE_PARTLY :: 3; TRI_ENGINE_NEEDS :: 4;
+
+TRI_OWNER_KEYS :: [3] string.["commands", "gamebuilder", "engine"];
+TRI_OWNER_LABELS :: [3] string.[
+  "Only the level or the game: things placed, moved, turned, resized, removed or given other values, or a level or game made, copied or renamed. An existing command does it.",
+  "GameBuilder itself: a new kind of thing to place, a new game template, a new game rule, or a change to the editor.",
+  "The engine under it: how a world is drawn, lit, animated, simulated, moved through, collided with, heard or networked."];
+
+// Whether row v is a command a request may start with: one the command line has, that reads or
+// changes levels, games or what is in them.
+tri_offered :: (v: int) -> bool {
+  c := GB_COMMANDS[v];
+  if (c.surfaces & GB_CLI) == 0 { return false; }
+  return c.area == "level" || c.area == "game" || c.area == "edit";
+}
+// A row's help, up to TRI_HELP bytes, cut at a space.
+tri_help :: (help: string) -> string {
+  if help.count <= TRI_HELP { return help; }
+  n := TRI_HELP;
+  while n > 0 && help[n] != ' ' { n -= 1; }
+  return cast(string) help[0..<ifx n == 0 then TRI_HELP else n];
+}
+
+TriWork :: struct {
+  key: [ENG_N + 1] [8] u8; keys: [ENG_N + 1] string;
+  label: [ENG_N + 1] [TRI_LABEL] u8; labels: [ENG_N + 1] string;
+  verbs: [TRI_COMMANDS + 1] string; helps: [TRI_COMMANDS + 1] string;
+}
+
+// The question set for request, into out: its text, or "" when it does not fit.
+tri_body :: (request: string, out: [] u8) -> string {
+  w: [1] TriWork;
+  for i: 0..<ENG_N {
+    r := ENG_ROWS[i];
+    k := [1] Text.[Text.{buf = w[0].key[i][..]}]; tx_put(k[..], "c"); tx_int(k[..], cast(s64) r.number);
+    w[0].keys[i] = tx_text(k[..]);
+    l := [1] Text.[Text.{buf = w[0].label[i][..]}];
+    tx_put(l[..], r.title); tx_put(l[..], " ("); tx_put(l[..], r.part); tx_put(l[..], "; "); tx_put(l[..], ENG_STATUS[r.status]); tx_put(l[..], ")");
+    w[0].labels[i] = tx_text(l[..]);
+  }
+  w[0].keys[ENG_N] = "none"; w[0].labels[ENG_N] = "No chapter is about it";
+  n := 0;
+  for v: 0..<GB_N {
+    if !tri_offered(v) || n == TRI_COMMANDS { continue; }
+    w[0].verbs[n] = GB_COMMANDS[v].verb; w[0].helps[n] = tri_help(GB_COMMANDS[v].help); n += 1;
+  }
+  w[0].verbs[n] = "none"; w[0].helps[n] = "No command does it"; n += 1;
+  sb: [AGR_MESSAGE_MAX + 128] u8; st := [1] Text.[Text.{buf = sb[..]}];
+  tx_put(st[..], "A person building a game in GameBuilder, a 3D level editor, asks: "); tx_put(st[..], request);
+  b: [1] SoBody;
+  so_begin(b[..], out, DECIDE_MODEL, "");
+  so_state_text(b[..], tx_text(st[..]));
+  ok := TRI_OWNER_KEYS; ol := TRI_OWNER_LABELS;
+  so_choice(b[..], "owner", "What has to change to do what the person asks?", ok[..], ol[..]);
+  so_choice(b[..], "command", "Which command does the first step of it?", w[0].verbs[0..<n], w[0].helps[0..<n]);
+  so_choice(b[..], "chapter", "Which chapter of the engine's book is about what the person asks for?", w[0].keys[..], w[0].labels[..]);
+  return so_body(b[..]);
+}
+
+// A probability as a whole percent.
+tri_percent :: (p: f64) -> s64 { return cast(s64) (p * 100.0 + 0.5); }
+
+// What a fit means and what comes next, in the words the agent says.
+tri_why :: (t: [] Text, fit: int, verb: string, row: int) {
+  if fit == TRI_COMMANDS_FIT {
+    if verb.count > 0 { tx_put(t, "The commands can do this. Start with `gamebuilder "); tx_put(t, verb); tx_put(t, "`."); }
+    else { tx_put(t, "The commands can do this, and no one command stood out: read the level, then make the edits."); }
+  } else if fit == TRI_GAMEBUILDER {
+    tx_put(t, "This needs GameBuilder's own code: a new kind of thing, a template, a game rule or a change to the editor. That code isn't open, so tell the person what is missing.");
+  } else if fit == TRI_ENGINE_HAS {
+    tx_put(t, "The engine already does this (chapter "); tx_int(t, cast(s64) ENG_ROWS[row].number); tx_put(t, ", "); tx_put(t, ENG_ROWS[row].title);
+    tx_put(t, ", implemented). What is missing is GameBuilder's use of it, which is GameBuilder's own code.");
+  } else if fit == TRI_ENGINE_PARTLY {
+    tx_put(t, "The engine does part of this (chapter "); tx_int(t, cast(s64) ENG_ROWS[row].number); tx_put(t, ", "); tx_put(t, ENG_ROWS[row].title);
+    tx_put(t, ", partly implemented). Read the chapter and its source to see whether this case is covered before you propose a change.");
+  } else if row >= 0 {
+    tx_put(t, "The engine can't do this yet: chapter "); tx_int(t, cast(s64) ENG_ROWS[row].number); tx_put(t, ", "); tx_put(t, ENG_ROWS[row].title);
+    tx_put(t, ", is a design that nobody has built.");
+  } else {
+    tx_put(t, "The engine can't do this yet: no chapter of its book is about it.");
+  }
+}
+
+// The decision door answered with an HTTP status and a body: the triage row's answer
+// (gamebuilder.triage.v1), or why there is none.
+tri_answer :: (o: [] Jo, status: int, body: string) -> GbResult {
+  if status == 0 { return gb_refuse(o, "unreachable", "couldn't reach the decision door (openagents.com). With no answer, read `gamebuilder engine-list` and decide from it"); }
+  if status == 401 || status == 403 { return gb_refuse(o, "refused", "the decision door refused this computer's key"); }
+  if status == 429 { return gb_refuse(o, "refused", "too many decisions for now: the door limits each key by the minute and the day. Try again in a minute, or read `gamebuilder engine-list`"); }
+  if status != 200 { return gb_refuse(o, "refused", "the decision door didn't answer"); }
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  owner := so_choice_of(ar[..], body, "owner");
+  command := so_choice_of(ar[..], body, "command");
+  chapter := so_choice_of(ar[..], body, "chapter");
+  if !owner.ok { return gb_refuse(o, "refused", "the answer had no decision in it"); }
+  // the picks, as rows
+  verb := "";
+  if command.ok { for v: 0..<GB_N { if tri_offered(v) && GB_COMMANDS[v].verb == command.choice { verb = GB_COMMANDS[v].verb; } } }
+  row := -1;
+  if chapter.ok && chapter.choice.count > 1 && chapter.choice[0] == 'c' {
+    n := gb_int(cast(string) chapter.choice[1..<chapter.choice.count]);
+    if n.ok { row = eng_find(n.v); }
+  }
+  fit := -1; sure := tri_percent(owner.confidence) >= TRI_SURE_PERCENT;
+  if owner.choice == "commands" { fit = TRI_COMMANDS_FIT; if verb.count == 0 { sure = false; } }
+  else if owner.choice == "gamebuilder" { fit = TRI_GAMEBUILDER; }
+  else if owner.choice == "engine" {
+    fit = ifx row < 0 then TRI_ENGINE_NEEDS else ifx ENG_ROWS[row].status == ENG_IMPLEMENTED then TRI_ENGINE_HAS
+      else ifx ENG_ROWS[row].status == ENG_PARTLY then TRI_ENGINE_PARTLY else TRI_ENGINE_NEEDS;
+    if !chapter.ok || tri_percent(chapter.confidence) < TRI_SURE_PERCENT { sure = false; }
+  }
+  if fit < 0 { return gb_refuse(o, "refused", "the answer named no owner this command knows"); }
+  wb: [600] u8; t := [1] Text.[Text.{buf = wb[..]}];
+  tri_why(t[..], fit, verb, row);
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.triage.v1");
+  jo_key(o, "fit"); jo_str(o, TRI_FITS[fit]);
+  jo_key(o, "sure"); jo_bool(o, sure);
+  jo_key(o, "confidence"); jo_int(o, tri_percent(owner.confidence));
+  jo_key(o, "why"); jo_str(o, tx_text(t[..]));
+  if fit == TRI_COMMANDS_FIT && verb.count > 0 {
+    jo_key(o, "command"); jo_str(o, verb);
+    jo_key(o, "usage"); jo_str(o, GB_COMMANDS[gb_find(verb)].usage);
+  }
+  // the chapter the model picked: the engine fits' own, and beside any other fit it was not sure of
+  if (fit >= TRI_ENGINE_HAS || !sure) && row >= 0 {
+    jo_key(o, "chapter"); jo_obj(o); gb_engine_row(o, ENG_ROWS[row]); jo_key(o, "confidence"); jo_int(o, tri_percent(chapter.confidence)); jo_end(o);
+  }
+  if fit == TRI_ENGINE_NEEDS { jo_key(o, "offer"); jo_str(o, TRI_OFFER); }
+  jo_key(o, "next"); jo_str(o, ifx fit == TRI_COMMANDS_FIT then "run the commands"
+    else ifx fit == TRI_GAMEBUILDER || fit == TRI_ENGINE_HAS then "tell the person what GameBuilder is missing"
+    else ifx fit == TRI_ENGINE_PARTLY then "gamebuilder engine-read, then the chapter's source"
+    else "say the offer; on a yes, follow gamebuilder engine");
+  if !sure { jo_key(o, "unsure"); jo_str(o, "The model was less than 75% sure (TRI_SURE_PERCENT). Say so, and check `gamebuilder engine-list` before you offer anything."); }
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+// An answer as the door sends one, for the checks: each pick with its confidence in percent.
+tri_test_answer :: (out: [] u8, owner: string, op: int, command: string, chapter: string, cp: int) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  names := [3] string.["owner", "command", "chapter"];
+  picks := [3] string.[owner, command, chapter];
+  ps := [3] int.[op, 90, cp];
+  tx_put(t[..], "{\"answers\":{");
+  for i: 0..<3 {
+    if i > 0 { tx_put(t[..], ","); }
+    tx_put(t[..], "\""); tx_put(t[..], names[i]); tx_put(t[..], "\":{\"type\":\"choice\",\"choice\":\""); tx_put(t[..], picks[i]);
+    tx_put(t[..], "\",\"probabilities\":{\""); tx_put(t[..], picks[i]); tx_put(t[..], "\":0."); tx_int(t[..], cast(s64) ps[i]);
+    tx_put(t[..], "},\"confidence\":0."); tx_int(t[..], cast(s64) ps[i]); tx_put(t[..], "}");
+  }
+  tx_put(t[..], "}}");
+  return tx_text(t[..]);
+}
+
+#test "the question set fits the door, names every chapter and only commands that edit levels and games" {
+  out: [DECIDE_BODY_MAX] u8;
+  body := tri_body("make the water reflect the sky", out[..]);
+  #assert body.count > 0 && body.count <= DECIDE_BODY_MAX;
+  #assert level_find(body, "make the water reflect the sky") >= 0;
+  #assert level_find(body, "\"c1\":") >= 0 && level_find(body, "\"none\":\"No chapter is about it\"") >= 0;
+  #assert level_find(body, "\"set-field\":") >= 0 && level_find(body, "\"login\":") < 0 && level_find(body, "\"engine-list\":") < 0;
+  // the longest request there is still fits
+  long: [AGR_MESSAGE_MAX] u8; for i: 0..<AGR_MESSAGE_MAX { long[i] = 'a'; }
+  #assert tri_body(cast(string) long[..], out[..]).count > 0;
+  n := 0; for v: 0..<GB_N { if tri_offered(v) { n += 1; } }
+  #assert n > 10 && n <= TRI_COMMANDS;
+}
+#test "a chapter's status makes the fit, and a pick the model is unsure of says so" {
+  ab: [1024] u8; ob: [4096] u8;
+  draft := -1; done := -1; partly := -1;
+  for i: 0..<ENG_N { s := ENG_ROWS[i].status; if s == ENG_DRAFT && draft < 0 { draft = i; } if s == ENG_IMPLEMENTED && done < 0 { done = i; } if s == ENG_PARTLY && partly < 0 { partly = i; } }
+  #assert draft >= 0 && done >= 0 && partly >= 0;
+  kb: [3] [8] u8; ks: [3] string; rows := [3] int.[done, partly, draft];
+  for i: 0..<3 { k := [1] Text.[Text.{buf = kb[i][..]}]; tx_put(k[..], "c"); tx_int(k[..], cast(s64) ENG_ROWS[rows[i]].number); ks[i] = tx_text(k[..]); }
+  fits := [3] string.["\"fit\":\"engine-has\"", "\"fit\":\"engine-partly\"", "\"fit\":\"engine-needs\""];
+  for i: 0..<3 {
+    o: [1] Jo; jo_start(o[..], ob[..]);
+    r := tri_answer(o[..], 200, tri_test_answer(ab[..], "engine", 90, "none", ks[i], 90));
+    #assert r.code == GB_DONE && level_find(r.json, fits[i]) >= 0 && level_find(r.json, "\"sure\":true") >= 0;
+    #assert (level_find(r.json, "\"offer\":") >= 0) == (i == 2);
+  }
+  o: [1] Jo; jo_start(o[..], ob[..]);
+  r := tri_answer(o[..], 200, tri_test_answer(ab[..], "engine", 90, "none", "none", 90));
+  #assert level_find(r.json, "\"fit\":\"engine-needs\"") >= 0 && level_find(r.json, "no chapter of its book") >= 0 && level_find(r.json, TRI_OFFER) >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, tri_test_answer(ab[..], "engine", 57, "none", ks[2], 90));
+  #assert level_find(r.json, "\"sure\":false") >= 0 && level_find(r.json, "\"confidence\":57") >= 0 && level_find(r.json, "\"unsure\":") >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, tri_test_answer(ab[..], "engine", 90, "none", ks[2], 40));
+  #assert level_find(r.json, "\"sure\":false") >= 0;
+}
+#test "an edit is the commands', a new kind GameBuilder's, and no answer is said plainly" {
+  ab: [1024] u8; ob: [4096] u8; o: [1] Jo;
+  jo_start(o[..], ob[..]);
+  r := tri_answer(o[..], 200, tri_test_answer(ab[..], "commands", 95, "set-field", "none", 90));
+  #assert level_find(r.json, "\"fit\":\"commands\"") >= 0 && level_find(r.json, "\"command\":\"set-field\"") >= 0 && level_find(r.json, "\"sure\":true") >= 0 && level_find(r.json, "\"offer\"") < 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, tri_test_answer(ab[..], "commands", 95, "login", "none", 90));    // not a command a request starts with
+  #assert level_find(r.json, "\"fit\":\"commands\"") >= 0 && level_find(r.json, "\"command\"") < 0 && level_find(r.json, "\"sure\":false") >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, tri_test_answer(ab[..], "gamebuilder", 80, "none", "none", 90));
+  #assert level_find(r.json, "\"fit\":\"gamebuilder\"") >= 0 && level_find(r.json, "\"chapter\"") < 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, tri_test_answer(ab[..], "gamebuilder", 46, "none", "c1", 90));     // not sure: the chapter it picked is given too
+  #assert level_find(r.json, "\"fit\":\"gamebuilder\"") >= 0 && level_find(r.json, "\"sure\":false") >= 0 && level_find(r.json, "\"chapter\":{\"chapter\":1,") >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 0, "");
+  #assert r.code != GB_DONE && level_find(r.json, "\"error\":\"unreachable\"") >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 429, "");
+  #assert level_find(r.json, "\"error\":\"refused\"") >= 0;
+  jo_start(o[..], ob[..]);
+  r = tri_answer(o[..], 200, "{\"answers\":{}}");
+  #assert level_find(r.json, "\"ok\":false") >= 0;
+}

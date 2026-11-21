@@ -1,0 +1,149 @@
+// GameBuilder's kinds of thing, for the website (web/) and the app (coax/) alike: one table, so
+// a thing's word, its name and the size a new one has are the same wherever it is made, saved or
+// told to a model (AGENTS.md, "One way to make a game"). A level's file names a thing's kind by
+// its word (coax/level.coax, the shape table's kind column); the app's KIND_* are these indices.
+// Which kinds a game type offers is the type's (shared/game-types.coax, gt_palette).
+//   coax/bin/coax test shared/kinds.coax --library
+
+GK_BLOCK :: 0; GK_START :: 1; GK_RIVAL :: 2;    // a block, where your team starts, where the rivals start
+GK_TREE :: 3; GK_WATER :: 4; GK_PATH :: 5;      // a tree, water and bare earth: a place's blockout
+// The arena's markers: where a health pack lies, each team's goal and hoop, and where the ball starts.
+GK_PACK :: 6; GK_GOAL :: 7; GK_RIVAL_GOAL :: 8; GK_HOOP :: 9; GK_RIVAL_HOOP :: 10; GK_BALL :: 11;
+// The open field's markers: a target that pops back up once shot, one that slides, where an enemy comes in.
+GK_TARGET :: 12; GK_MOVER :: 13; GK_ENEMY :: 14;
+// A game type's own kinds (the website's kinds of block, BL_R_* below): the platformer's bounce pad,
+// spikes, shard, checkpoint, moving platform and lift; crates' wall and the pad a crate must rest on (and its gate, below); racing's boost and cone.
+GK_PAD :: 15; GK_SPIKES :: 16; GK_SHARD :: 17; GK_CHECKPOINT :: 18;
+GK_WALL :: 19; GK_CRATE_GOAL :: 20;
+GK_BOOST :: 21; GK_CONE :: 22;
+// A world's own course, as things of the level (shared/game-types.coax gt_starter): a point the racing
+// circuit's line goes through (its bottom's height the road's, its turn the corner's bank in degrees).
+GK_TRACK :: 23;
+// And a ring of drift's course: the thing is the ring's middle (a ring is 6.5 m round at the made size,
+// and as much wider as the thing is), and the course goes through them in the list's order.
+GK_RING :: 24;
+// The medieval village's buildings (shared/buildings.coax: 0 A.D.'s models, art by Wildfire Games, CC BY-SA 3.0):
+// a house of the Britons and one of the Gauls, a market, a mossy rock and a rock. A building is its model: its
+// size here is the model's own, and how big one stands is its scale (a thing's size in percent). Its word is the
+// model's in the pack, in a level's file and in a plan line (`+ put britons_house 3 4 90`).
+GK_BRITONS_HOUSE :: 25; GK_GAULS_HOUSE :: 26; GK_MARKET :: 27; GK_MOSSY_ROCK :: 28; GK_ROCK :: 29;
+GK_BUILDING :: GK_BRITONS_HOUSE; GK_BUILDINGS :: 5;   // the first of them, and how many
+// The platformer's moving platform and its lift: a platform that slides along the course (north, +z) and
+// back, and one that rises and comes down. Each has two fields more than a size (the level's shape table:
+// go, every): how far it goes, centimetres, and how long there and back takes, milliseconds.
+GK_SLIDER :: 30; GK_LIFT :: 31;
+// And a crates room's way out (shared/game-types.coax gt_starter_level: a room is things of its level): a bar across
+// the way that is shut until a crate rests on every pad, then sinks; out through it is the next level of the
+// game. Where you start in a room is the start (GK_START), as in the app's first game types.
+GK_GATE :: 32;
+GK_KINDS :: 33;
+
+// A kind's word: in a level's file (its shape table) and in a command's arguments.
+GK_WORD :: [GK_KINDS] string.["block", "start", "rival", "tree", "water", "path", "pack", "goal", "rival-goal", "hoop", "rival-hoop", "ball",
+  "target", "moving-target", "enemy", "pad", "spikes", "shard", "checkpoint", "wall", "crate-goal", "boost", "cone", "track", "ring",
+  "britons_house", "gauls_house", "market", "mossy_rock", "rock", "mover", "lift", "gate"];
+// What a kind is called on screen.
+GK_NAME :: [GK_KINDS] string.["Block", "Your start", "Rival start", "Tree", "Water", "Path",
+  "Health pack", "Your goal", "Rival goal", "Your hoop", "Rival hoop", "Ball", "Target", "Moving target", "Enemy",
+  "Bounce pad", "Spikes", "Shard", "Checkpoint", "Wall", "Crate pad", "Boost", "Cone", "Track point", "Ring",
+  "Britons house", "Gauls house", "Market", "Mossy rock", "Rock", "Moving platform", "Lift", "Gate"];
+// What a model is told a kind is (Decide's state, gamebuilder/core/decide.coax).
+GK_SAID :: [GK_KINDS] string.["block", "player start", "rival start", "tree", "water", "path", "health pack", "goal", "rival goal", "hoop", "rival hoop", "ball",
+  "target", "moving target", "enemy", "bounce pad", "spikes", "shard", "checkpoint", "wall", "crate goal", "boost", "cone", "track point", "ring",
+  "britons house", "gauls house", "market", "mossy rock", "rock", "moving platform", "lift", "gate"];
+// The size a new one has, in centimetres: across (x), up (y) and along (z). A type's own kinds are made at
+// the sizes its model is told they are (shared/game-types.coax GT_BUILT): a wall 1.5 by 1.5 and 2.4 high, a
+// crate's pad 1.2 by 1.2 and 0.25 high, a shard 0.5 a side, a boost 4 by 4 and 0.25 high, a cone 0.4 by
+// 0.4 by 0.6; a bounce pad, spikes and a checkpoint a slab, 2 by 2 and 0.25 high; a track point a plate on the
+// road, 2 by 2 and 0.25 high; a ring's middle a cube, 2 a side. A building's is its model's own bounds (the pack's
+// catalog, to the centimetre below: shared/buildings.coax holds them to its millimetres); a moving platform
+// and a lift a slab of the course's own, 3.2 across, 0.9 thick and 4 along; a gate a wall's size, 1.5 by 1.5 and 2.4 high.
+GK_SX :: [GK_KINDS] s32.[100, 60, 60, 80, 600, 400, 60, 520, 520, 20, 20, 70, 90, 90, 60, 200, 200, 50, 200, 150, 120, 400, 40, 200, 200, 457, 428, 1008, 107, 134, 320, 320, 150];
+GK_SY :: [GK_KINDS] s32.[100, 180, 180, 450, 5, 5, 40, 220, 220, 310, 310, 70, 180, 180, 180, 25, 25, 50, 25, 240, 25, 25, 60, 25, 200, 327, 296, 452, 62, 100, 90, 90, 240];
+GK_SZ :: [GK_KINDS] s32.[100, 60, 60, 80, 400, 400, 60, 260, 260, 20, 20, 70, 20, 20, 60, 200, 200, 50, 200, 150, 120, 400, 40, 200, 200, 539, 572, 777, 81, 110, 400, 400, 150];
+// A kind that moves (the platformer's moving platform and lift): how far a new one goes, centimetres, and
+// how long there and back takes, milliseconds; and the most and least either may be set to. Every other
+// kind has neither (0 and 0).
+gk_moves :: (k: int) -> bool { return k == GK_SLIDER || k == GK_LIFT; }
+GK_GO_NEW :: 800; GK_LIFT_NEW :: 600; GK_EVERY_NEW :: 6000;
+gk_go :: (k: int) -> int { return ifx k == GK_SLIDER then GK_GO_NEW else ifx k == GK_LIFT then GK_LIFT_NEW else 0; }
+gk_every :: (k: int) -> int { return ifx gk_moves(k) then GK_EVERY_NEW else 0; }
+GK_GO_MOST :: 5000;                              // 50 m
+GK_EVERY_LEAST :: 1000; GK_EVERY_MOST :: 60000;  // 1 to 60 seconds
+// Whether a thing of kind k may go that far in that long: a kind that moves within those, any other 0 and 0.
+gk_travel_ok :: (k: int, go: int, every: int) -> bool {
+  if !gk_moves(k) { return go == 0 && every == 0; }
+  return go >= 0 && go <= GK_GO_MOST && every >= GK_EVERY_LEAST && every <= GK_EVERY_MOST;
+}
+// A mark: a place, not a body (a shard to take, a pad a crate must rest on, a boost to drive over, a room's gate,
+// which the room itself shuts and opens).
+gk_mark :: (k: int) -> bool { return k == GK_SHARD || k == GK_CRATE_GOAL || k == GK_BOOST || k == GK_TRACK || k == GK_RING || k == GK_GATE; }
+
+// The model a building's kind is (shared/buildings.coax, the pack's order), or -1 for a kind that is no building.
+gk_building :: (k: int) -> int { return ifx k >= GK_BUILDING && k < GK_BUILDING + GK_BUILDINGS then k - GK_BUILDING else -1; }
+
+// The kind a word names; -1: none.
+gk_of :: (word: string) -> int { for k: 0..<GK_KINDS { if GK_WORD[k] == word { return k; } } return -1; }
+
+#test "each kind has one word and a name, and a size to be made at" {
+  for k: 0..<GK_KINDS {
+    #assert gk_of(GK_WORD[k]) == k && GK_NAME[k].count > 0 && GK_SX[k] > 0 && GK_SY[k] > 0 && GK_SZ[k] > 0;
+    for j: 0..<k { #assert GK_WORD[j] != GK_WORD[k] && GK_NAME[j] != GK_NAME[k]; }
+  }
+  #assert gk_of("") == -1 && gk_of("Block") == -1;
+  #assert gk_building(GK_BRITONS_HOUSE) == 0 && gk_building(GK_ROCK) == 4 && gk_building(GK_RING) == -1 && gk_building(GK_KINDS) == -1 && gk_of("market") == GK_MARKET && GK_BUILDING + GK_BUILDINGS == GK_SLIDER && GK_LIFT + 1 == GK_GATE && GK_GATE + 1 == GK_KINDS;
+}
+
+// ---- the website's kinds of block
+// The kinds a game type of its own adds to building (docs/web-world.md, "Every game type is built
+// in"): what a block is to that type's rules. The page keeps them (web/blocks.coax: a place line's
+// last word, `kind ID KIND`, the model's world, the limits), the HUD runs them (web/hud.coax), and
+// the wire between them says a block of kind r as KIND BL_ROLE_WIRE + r. A type adds kinds; it
+// never takes building away.
+
+BL_R_NONE :: 0;          // a plain block
+BL_R_PAD :: 1;           // the platformer: a bounce pad, fixed
+BL_R_SPIKES :: 2;        // the platformer: spikes, fixed; standing on them puts you back
+BL_R_SHARD :: 3;         // the platformer: a shard to take, a mark (no body)
+BL_R_CHECKPOINT :: 4;    // the platformer: where a fall puts you back once stood on, fixed
+BL_R_WALL :: 5;          // crates: a wall nothing pushes, fixed
+BL_R_GOAL :: 6;          // crates: a pad of its own a crate must rest on, a mark
+BL_R_BOOST :: 7;         // racing: speeds the car up over it, a mark
+BL_R_CONE :: 8;           // racing: knocked away by the car, never a wall
+BL_R_TRACK :: 9;          // racing: a point of the circuit's line, a mark (the ribbon is laid through them in the list's order)
+BL_R_RING :: 10;          // drift: a ring of the course, a mark at its middle (the course goes through them in the list's order)
+BL_R_SLIDER :: 11;        // the platformer: a moving platform, sliding along the course and back (its go and its every)
+BL_R_LIFT :: 12;          // the platformer: a lift, rising and coming down (its go and its every)
+BL_R_GATE :: 13;          // crates: the room's way out, a mark (shut until every pad holds a crate; out through it is the next level)
+BL_R_START :: 14;         // crates: where you start in the room, a mark
+BL_ROLES :: 15;
+BL_ROLE_WIRE :: 10;
+BL_PF_ROLES :: 6174;     // the platformer's: pad, spikes, shard, checkpoint, moving platform, lift (a bit a kind)
+BL_CR_ROLES :: 24672;    // crates': wall, goal, gate, start
+BL_RC_ROLES :: 896;      // racing's: boost, cone, track
+BL_DR_ROLES :: 1024;     // drift's: ring
+
+// A kind's word ("block" is none); "" past them.
+// The kinds above are these: a website kind r is the app's GK_ROLE[r]. Its word is the kind's, but for
+// crates' goal, which plan lines call "goal" and a level's file "crate-goal" (the arena has a goal).
+GK_ROLE :: [BL_ROLES] int.[GK_BLOCK, GK_PAD, GK_SPIKES, GK_SHARD, GK_CHECKPOINT, GK_WALL, GK_CRATE_GOAL, GK_BOOST, GK_CONE, GK_TRACK, GK_RING, GK_SLIDER, GK_LIFT, GK_GATE, GK_START];
+bl_role_word :: (r: int) -> string { return ifx r == BL_R_GOAL then GK_WORD[GK_GOAL] else ifx r >= 0 && r < BL_ROLES then GK_WORD[GK_ROLE[r]] else ""; }
+// The website kind an app kind is, or -1 (the app's own: the rivals' start, markers, a place's blockout, the ball).
+gk_role :: (k: int) -> int { for r: 0..<BL_ROLES { if GK_ROLE[r] == k { return r; } } return -1; }
+// The kind a word names; -1: none.
+bl_role_of :: (word: string) -> int { for r: 0..<BL_ROLES { if bl_role_word(r) == word { return r; } } return -1; }
+
+#test "each kind has its word, and each word its kind; each type's kinds are its own" {
+  for r: 0..<BL_ROLES { #assert bl_role_of(bl_role_word(r)) == r; }
+  #assert bl_role_word(BL_ROLES) == "" && bl_role_word(-1) == "" && bl_role_of("") == -1 && bl_role_of("Pad") == -1;
+  #assert (BL_PF_ROLES & BL_CR_ROLES) == 0 && (BL_PF_ROLES & BL_RC_ROLES) == 0 && (BL_CR_ROLES & BL_RC_ROLES) == 0 && ((BL_PF_ROLES | BL_CR_ROLES | BL_RC_ROLES) & BL_DR_ROLES) == 0 && BL_DR_ROLES == 1 << BL_R_RING;
+  #assert BL_PF_ROLES == (1 << BL_R_PAD) | (1 << BL_R_SPIKES) | (1 << BL_R_SHARD) | (1 << BL_R_CHECKPOINT) | (1 << BL_R_SLIDER) | (1 << BL_R_LIFT);
+  // the kinds that move, and what they may be set to
+  #assert gk_moves(GK_SLIDER) && gk_moves(GK_LIFT) && !gk_moves(GK_MOVER) && !gk_moves(GK_BLOCK) && gk_go(GK_LIFT) == 600 && gk_every(GK_SLIDER) == 6000 && gk_go(GK_PAD) == 0;
+  #assert gk_travel_ok(GK_SLIDER, 0, 1000) && gk_travel_ok(GK_LIFT, 5000, 60000) && !gk_travel_ok(GK_LIFT, 5001, 6000) && !gk_travel_ok(GK_SLIDER, 800, 999) && !gk_travel_ok(GK_SLIDER, -1, 6000) && gk_travel_ok(GK_BLOCK, 0, 0) && !gk_travel_ok(GK_BLOCK, 800, 6000);
+  #assert BL_CR_ROLES == (1 << BL_R_WALL) | (1 << BL_R_GOAL) | (1 << BL_R_GATE) | (1 << BL_R_START) && BL_RC_ROLES == (1 << BL_R_BOOST) | (1 << BL_R_CONE) | (1 << BL_R_TRACK);
+  // and each is one of the app's kinds, its word that kind's (crates' goal said "goal" in a plan line)
+  for r: 0..<BL_ROLES { #assert gk_role(GK_ROLE[r]) == r; if r != BL_R_GOAL { #assert bl_role_word(r) == GK_WORD[GK_ROLE[r]]; } }
+  #assert bl_role_word(BL_R_GOAL) == "goal" && GK_WORD[GK_CRATE_GOAL] == "crate-goal" && gk_role(GK_RIVAL) == -1 && gk_role(GK_START) == BL_R_START && bl_role_word(BL_R_START) == "start" && bl_role_word(BL_R_GATE) == "gate";
+  #assert gk_mark(GK_SHARD) && gk_mark(GK_BOOST) && gk_mark(GK_CRATE_GOAL) && !gk_mark(GK_PAD) && !gk_mark(GK_CONE) && gk_mark(GK_TRACK) && gk_mark(GK_RING) && gk_mark(GK_GATE) && !gk_mark(GK_START);
+}

@@ -1,0 +1,236 @@
+// Each agent's newest picture, kept on the account (GitHub issue 9; docs/agents.md, "Built:
+// pictures, the replay and the play-test picture"): what gamebuilder.org/agents shows on a game's
+// group. The pictures are drawn in the app and kept beside their level (pictures.coax); while the
+// person keeps agents on the account (the agents-account row), the app's sync (sync.coax) sends,
+// for each agent it reports, its level's newest picture with the agent-picture row, and only when
+// it is newer than the one the account has. Nothing else sends one, and an agent the account has
+// no record of has none.
+//
+//   - The account keeps one picture an agent, the newest: its JPEG (at most 8,192 bytes, PIC_JPEG)
+//     as picture-ADDRESS.jpg in the account's folder, and a line "ID MADE ADDRESS" for it in the
+//     folder's agent-pictures file. A newer picture takes the older one's place, and the older one's
+//     file goes. So an account keeps at most 256 pictures (AGR_RECORDS), one an agent.
+//   - A picture's address is the first 16 bytes of the SHA-256 of the agent's id and the picture's
+//     own bytes, as 32 hex digits: not guessed without the picture, and the same picture always
+//     the same address. The agents row tells the account's own login each agent's picture as a
+//     path on the site (/api/pictures/ADDRESS.jpg, AGP_DOOR), which the hosted server answers with
+//     the JPEG to anyone with the address (coax/api.coax API_PICTURE): a browser's login is taken
+//     only with POST, and a picture is an <img>, which asks with GET.
+//   - The core writes no file: the row's answer says what the surface writes (GbResult.pictures,
+//     .jpeg, .jpeg_at, .jpeg_gone), as an agent row's does.
+//   scripts/check.sh (tests/commands/agents.case)
+
+AGP_INDEX :: "agent-pictures";   // the folder's file: a line an agent's picture, "ID MADE ADDRESS"
+AGP_DOOR :: "/api/pictures/";    // where the site answers a picture: AGP_DOOR ADDRESS ".jpg"
+AGP_EXT :: ".jpg";
+AGP_HEX :: 32;                   // an address: 32 hex digits
+AGP_LINE :: AGR_ID + 56;         // bytes of an index line, at most
+AGP_INDEX_MAX :: AGR_RECORDS * AGP_LINE;
+
+AgpEntry :: struct { found: bool; made: s64; hex: [AGP_HEX] u8; }
+
+// An address as an address may say it: 32 of 0-9 and a-f, nothing else (so it names a file and no path).
+agp_hex_ok :: (h: string) -> bool {
+  if h.count != AGP_HEX { return false; }
+  for c: h { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// The address of agent id's picture of jpeg's bytes.
+agp_address :: (id: string, jpeg: [] u8, out: [] u8) -> string {
+  seed: [AGR_ID + 1 + PIC_JPEG] u8; n := 0;
+  for c: id { seed[n] = c; n += 1; }
+  seed[n] = 0; n += 1;
+  for b: jpeg { seed[n] = b; n += 1; }
+  h: [32] u8; _ = sha256_hash_checked(seed[0..<n], h[..], false);
+  hx := "0123456789abcdef";
+  for k: 0..<AGP_HEX / 2 { out[2 * k] = hx[cast(int) (h[k] >> 4)]; out[2 * k + 1] = hx[cast(int) (h[k] & 15)]; }
+  return cast(string) out[0..<AGP_HEX];
+}
+// The path on the site that answers address h.
+agp_path :: (h: string, out: [] u8) -> string {
+  n := agr_put(out, 0, AGP_DOOR); n = agr_put(out, n, h); n = agr_put(out, n, AGP_EXT);
+  return cast(string) out[0..<n];
+}
+// The address in a path AGP_DOOR ADDRESS ".jpg", or "" when it is not one.
+agp_of_path :: (path: string) -> string {
+  d := AGP_DOOR; x := AGP_EXT;
+  if path.count != d.count + AGP_HEX + x.count || path[0..<d.count] != d || path[d.count + AGP_HEX..<path.count] != x { return ""; }
+  h := path[d.count..<d.count + AGP_HEX];
+  return ifx agp_hex_ok(h) then h else "";
+}
+// The index's line k's span (lines end in a line break; a last line without one is still read).
+agp_line :: (index: string, at: int) -> AgrSpan {
+  e := at; while e < index.count && index[e] != '\n' { e += 1; }
+  return AgrSpan.{from = at, count = e - at};
+}
+// Agent id's entry in the index; found false when it has none. A line that does not read is passed over.
+agp_find :: (index: string, id: string) -> AgpEntry {
+  r := AgpEntry.{};
+  at := 0;
+  while at < index.count {
+    sp := agp_line(index, at); line := index[sp.from..<sp.from + sp.count]; at = sp.from + sp.count + 1;
+    e := agp_read(line);
+    if e.found && line.count > id.count && line[0..<id.count] == id && line[id.count] == ' ' { return e; }
+  }
+  return r;
+}
+// One index line: "ID MADE ADDRESS".
+agp_read :: (line: string) -> AgpEntry {
+  r := AgpEntry.{};
+  a := 0; while a < line.count && line[a] != ' ' { a += 1; }
+  if a < 1 || a > AGR_ID || a >= line.count { return r; }
+  b := a + 1; m: s64 = 0;
+  while b < line.count && line[b] >= '0' && line[b] <= '9' && b - a <= 16 { m = m * 10 + cast(s64) (line[b] - '0'); b += 1; }
+  if b == a + 1 || b >= line.count || line[b] != ' ' || m <= 0 { return r; }
+  h := line[b + 1..<line.count];
+  if !agp_hex_ok(h) { return r; }
+  r.found = true; r.made = m;
+  for k: 0..<AGP_HEX { r.hex[k] = h[k]; }
+  return r;
+}
+// The index with agent id's line said again as MADE ADDRESS (added last when it had none), into out.
+agp_index_put :: (index: string, id: string, made: s64, h: string, out: [] u8) -> string {
+  n := 0; at := 0;
+  while at < index.count {
+    sp := agp_line(index, at); line := index[sp.from..<sp.from + sp.count]; at = sp.from + sp.count + 1;
+    e := agp_read(line);
+    if !e.found || (line.count > id.count && line[0..<id.count] == id && line[id.count] == ' ') { continue; }
+    n = agr_put(out, n, line); n = agr_put(out, n, "\n");
+  }
+  mb: [24] u8; t := [1] Text.[Text.{buf = mb[..]}]; tx_int(t[..], made);
+  n = agr_put(out, n, id); n = agr_put(out, n, " "); n = agr_put(out, n, cast(string) mb[0..<t[0].at]);
+  n = agr_put(out, n, " "); n = agr_put(out, n, h); n = agr_put(out, n, "\n");
+  return cast(string) out[0..<n];
+}
+// The agents row's word on agent id's picture: "picture":{"at":PATH,"made":MADE}, when it has one.
+agp_answer :: (index: string, id: string, o: [] Jo) {
+  e := agp_find(index, id);
+  if !e.found { return; }
+  pb: [64] u8;
+  jo_key(o, "picture"); jo_obj(o);
+  jo_key(o, "at"); jo_str(o, agp_path(cast(string) e.hex[0..<AGP_HEX], pb[..]));
+  jo_key(o, "made"); jo_int(o, cast(int) e.made);
+  jo_end(o);
+}
+
+// agent-picture: an agent's newest picture, as its computer sends it to the account:
+// {"agent": ID, "picture": a gamebuilder.picture.v1 line}. The agent is one the account keeps
+// (agent-report sent its record first), the picture is of its level, and newer than the one kept.
+gb_agent_picture :: (a: GbArgs, w: GbWorld, o: [] Jo) -> GbResult {
+  s := w.agents;
+  k := agr_find(s, a.aid);
+  if k < 0 { return gb_refuse(o, "not-found", "the account keeps no such agent: its record goes first (agent-report)"); }
+  p: [1] Pic;
+  if !pic_parse(a.picture, s[0].r[k].level, p[..]) {
+    return gb_refuse(o, "bad-request", "a picture is one gamebuilder.picture.v1 line of the agent's level, its JPEG of at most 8,192 bytes (PIC_JPEG)");
+  }
+  had := agp_find(w.pictures, a.aid);
+  if had.found && had.made >= p[0].made { return gb_refuse(o, "already", "the account has this agent's picture, or a newer one"); }
+  hb: [AGP_HEX] u8; h := agp_address(a.aid, p[0].jpeg[0..<p[0].n], hb[..]);
+  pb: [64] u8;
+  gb_ok(o); jo_key(o, "agent"); jo_str(o, a.aid);
+  jo_key(o, "picture"); jo_obj(o);
+  jo_key(o, "at"); jo_str(o, agp_path(h, pb[..]));
+  jo_key(o, "made"); jo_int(o, cast(int) p[0].made);
+  jo_key(o, "rev"); jo_int(o, p[0].rev);
+  jo_key(o, "which"); jo_str(o, PIC_WHICH_WORD[p[0].which]);
+  jo_key(o, "bytes"); jo_int(o, p[0].n);
+  jo_end(o);
+  r := gb_done(o, a, false, 0);
+  if r.code != GB_DONE || a.dry { return r; }
+  // what the surface writes, kept in the store's room for lines: the index whole, then the JPEG and its address
+  room := s[0].lines[..];
+  index := agp_index_put(w.pictures, a.aid, p[0].made, h, room);
+  at := index.count;
+  for i: 0..<p[0].n { room[at + i] = p[0].jpeg[i]; }
+  for i: 0..<AGP_HEX { room[at + p[0].n + i] = hb[i]; }
+  r.pictures = index;
+  r.jpeg = cast(string) room[at..<at + p[0].n];
+  r.jpeg_at = cast(string) room[at + p[0].n..<at + p[0].n + AGP_HEX];
+  if had.found {
+    for i: 0..<AGP_HEX { room[at + p[0].n + AGP_HEX + i] = had.hex[i]; }
+    gone := cast(string) room[at + p[0].n + AGP_HEX..<at + p[0].n + 2 * AGP_HEX];
+    if gone != r.jpeg_at { r.jpeg_gone = gone; }
+  }
+  return r;
+}
+
+// ---- the device's half (sync.coax): the newest picture of a level's file
+
+// Of a level's pictures file (level-N.pictures), the newest picture's line and when it was made;
+// made 0 when it has none that reads.
+AgpNewest :: struct { from: int; count: int; made: s64; }
+agp_newest :: (text: string, level: s32) -> AgpNewest {
+  r := AgpNewest.{};
+  p: [1] Pic;
+  at := 0;
+  while at < text.count {
+    sp := agp_line(text, at); at = sp.from + sp.count + 1;
+    line := text[sp.from..<sp.from + sp.count];
+    if line.count == 0 || !pic_parse(line, level, p[..]) { continue; }
+    if p[0].made > r.made { r.from = sp.from; r.count = sp.count; r.made = p[0].made; }
+  }
+  return r;
+}
+
+AgpTest :: struct { s: [1] AgrStore; pics: [1] PicStore; out: [65536] u8; line: [PIC_LINE] u8; idx: [4096] u8; t: [1] PicTest; }
+
+#test "an agent's newest picture goes to the account once, newer only, at an address of its own bytes; the old one's file goes" #steps 200000000 {
+  t: [1] AgpTest;
+  now: s64 = 1763380000000;
+  ib: [AGR_ID] u8;
+  agr_record_new(t[0].s[0].r[0..<1], agr_new_id(now, 0, ib[..]), 1, "Game 1", 1, AGR_BUILD, AGR_LOCAL, AGR_THIS_MAC, "claude", now);
+  t[0].s[0].n = 1;
+  id := agr_id(t[0].s[0].r[0..<1]);
+  // a picture of level 1, coded as the app codes one
+  pic_test_paint(t[0].t[..], 3);
+  ps := t[0].pics[..]; ps[0].level = 1;
+  w := PIC_W * PIC_DRAW; h := PIC_H * PIC_DRAW;
+  ps[0].jobs[0] = PicJob.{which = PIC_AFTER, rev = 77, level = 1}; ps[0].jobs_n = 1;
+  #assert pic_code(ps, t[0].t[0].px[..], w, h, w * 4, true, now + 5);
+  o: [1] Jo; jo_start(o[..], t[0].line[..]);
+  jo_obj(o[..]); pic_json(o[..], 1, ps[0].pics[0..<1], true); jo_end(o[..]);
+  line := jo_text(o[..]);
+  #assert agp_newest(line, 1).made == now + 5 && agp_newest(line, 2).made == 0;
+  // sent: the account keeps it, by an address of its own bytes, and the agents row tells it
+  a := GbArgs.{aid = id, picture = line};
+  wd := GbWorld.{agents = t[0].s[..], pictures = "", now = now};
+  jo_start(o[..], t[0].out[..]);
+  r := gb_agent_picture(a, wd, o[..]);
+  #assert r.code == GB_DONE && r.jpeg.count == ps[0].pics[0].n && agp_hex_ok(r.jpeg_at) && r.jpeg_gone.count == 0;
+  #assert r.jpeg[0] == 255 && cast(int) r.jpeg[1] == 216;
+  hb: [AGP_HEX] u8; #assert r.jpeg_at == agp_address(id, ps[0].pics[0].jpeg[0..<ps[0].pics[0].n], hb[..]);
+  ni := agr_put(t[0].idx[..], 0, r.pictures); index := cast(string) t[0].idx[0..<ni];
+  first := agp_find(index, id);
+  #assert first.found && first.made == now + 5 && cast(string) first.hex[0..<AGP_HEX] == r.jpeg_at;
+  jo_start(o[..], t[0].out[..]); jo_obj(o[..]); agp_answer(index, id, o[..]); jo_end(o[..]);
+  pb: [64] u8;
+  #assert level_find_agr(jo_text(o[..]), agp_path(cast(string) first.hex[0..<AGP_HEX], pb[..])) >= 0;
+  #assert agp_of_path(agp_path(cast(string) first.hex[0..<AGP_HEX], pb[..])) == cast(string) first.hex[0..<AGP_HEX];
+  #assert agp_of_path("/api/pictures/../x.jpg") == "" && agp_of_path("/api/pictures/0123.jpg") == "";
+  // the same again, or an older one: refused, nothing written
+  wd.pictures = index;
+  jo_start(o[..], t[0].out[..]);
+  #assert gb_agent_picture(a, wd, o[..]).code != GB_DONE && level_find_agr(jo_text(o[..]), "\"already\"") >= 0;
+  // a newer one takes its place: the old file goes
+  ps[0].jobs[0] = PicJob.{which = PIC_PLAYTEST, rev = 78, level = 1}; ps[0].jobs_n = 1;
+  pic_test_paint(t[0].t[..], 9);
+  #assert pic_code(ps, t[0].t[0].px[..], w, h, w * 4, true, now + 9);
+  jo_start(o[..], t[0].line[..]); jo_obj(o[..]); pic_json(o[..], 1, ps[0].pics[1..<2], true); jo_end(o[..]);
+  a.picture = jo_text(o[..]);
+  jo_start(o[..], t[0].out[..]);
+  r = gb_agent_picture(a, wd, o[..]);
+  #assert r.code == GB_DONE && r.jpeg_gone == cast(string) first.hex[0..<AGP_HEX] && r.jpeg_at != r.jpeg_gone;
+  #assert agp_find(r.pictures, id).made == now + 9 && level_find_agr(r.pictures, "\n") == r.pictures.count - 1;
+  // a dry run: nothing written
+  a.dry = true;
+  jo_start(o[..], t[0].out[..]); r = gb_agent_picture(a, wd, o[..]);
+  #assert r.code == GB_DONE && r.pictures.count == 0 && r.jpeg.count == 0;
+  a.dry = false;
+  // another level's picture, an agent the account doesn't keep: refused (a.picture's buffer is reused here)
+  jo_start(o[..], t[0].line[..]); jo_obj(o[..]); pic_json(o[..], 2, ps[0].pics[1..<2], true); jo_end(o[..]);
+  b := GbArgs.{aid = id, picture = jo_text(o[..])};
+  jo_start(o[..], t[0].out[..]); #assert gb_agent_picture(b, wd, o[..]).code != GB_DONE;
+  c := GbArgs.{aid = "a-nobody", picture = a.picture};
+  jo_start(o[..], t[0].out[..]); #assert level_find_agr(gb_agent_picture(c, wd, o[..]).json, "\"not-found\"") >= 0;
+}

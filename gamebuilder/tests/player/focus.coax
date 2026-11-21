@@ -1,0 +1,28 @@
+// The released client in a same-origin frame: a real click outside its window
+// must blur it and stop held input. No synthetic DOM event or state write.
+pt_focus_frame :: (p:[]Pt)->bool {
+  r:=pb_frame_read(p[0].c[..],"player","globalThis.gamebuilderObservation");if r<0 {return false;}d:=cdp_doc(p[0].c[..]);return pt_frame_valid(d,r) && pt_frame_tick(p[0].health[..],jv_int(d,jv_get(d,r,"sequence"),0),proc_now_ms());
+}
+pt_frame_focus :: (p:[]Pt)->bool {
+  _:=pt_provenance(p);_=pt_go(p,"/build/player-focus.html");end:=proc_now_ms()+30000;ready:=false;
+  while !ready && proc_now_ms()<end {_:=pb_heartbeat(pt_dir(p));ready=pb_frame_bool(p[0].c[..],"player","!!document.getElementById('kind.0')");proc_sleep(100);}
+  entered:=ready && pb_frame_tap(p[0].c[..],"player","kind.0");_=pb_wait(pt_dir(p),14000);_=pb_frame_tap(p[0].c[..],"player","say");_=pb_press(p[0].c[..],"Escape","Escape");_=pb_wait(pt_dir(p),200);
+  bound:=true;assets:=PT_ASSETS;for i:0..<5 {expr:[1024]u8;n:=ws_put(expr[..],0,"globalThis.coaxialAssetReceipts?.['");n=ws_put(expr[..],n,assets[i]);n=ws_put(expr[..],n,"']?.sha256||''");r:=pb_frame_read(p[0].c[..],"player",cast(string)expr[0..<n]);hash:[128]u8;hn:=ifx r>=0 then jv_str(cdp_doc(p[0].c[..]),r,hash[..]) else -1;if hn!=64 || !p[0].asset_seen[i] || cast(string)hash[0..<hn]!=cast(string)p[0].asset_hash[i][..] {bound=false;p[0].provenance_bad=true;}}
+  // This separate window-focus check uses native keyboard input on every lane.
+  // Touch-held cancellation is exercised by the real visibility transition.
+  // Chrome's nested-frame touch injector can time out after orientation
+  // changes; that transport is not needed to exercise window keyboard focus.
+  fresh:=pt_focus_frame(p);x:=pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.x_cm",-99999);z:=pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.z_cm",-99999);held:=false;
+  if fresh {held=pb_key(p[0].c[..],"a","KeyA",true);}_=pb_wait(pt_dir(p),250);pt_event(p,"frame-focus","native keyboard held",held);
+  pt_event(p,"frame-focus","entered",entered);pt_event(p,"frame-focus","bound released assets",bound);pt_event(p,"frame-focus","fresh frame",fresh);pt_event(p,"frame-focus","native held input accepted",held);
+  moved:=held && pt_focus_frame(p) && abs(pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.x_cm",x)-x)+abs(pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.z_cm",z)-z)>15;pt_event(p,"frame-focus","moved with held input",moved);
+  // This is the host browser's outside control, including on touch emulations.
+  // The in-game key remains held until the release behavior is judged.
+  outside:=pb_tap(p[0].c[..],"outside");end=proc_now_ms()+2000;lost:=false;while !lost && proc_now_ms()<end {_:=pb_heartbeat(pt_dir(p));lost=pb_frame_bool(p[0].c[..],"player","!document.hasFocus()");proc_sleep(25);}
+  pt_event(p,"frame-focus","outside control accepted",outside);pt_event(p,"frame-focus","frame lost focus",lost);
+  _:=pt_shot(p,"frame-focus-lost.png");_=pb_press(p[0].c[..],"Tab","Tab");restored:=pb_frame_bool(p[0].c[..],"player","document.hasFocus()");_=pb_wait(pt_dir(p),400);x=pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.x_cm",-99999);z=pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.z_cm",-99999);_=pb_wait(pt_dir(p),600);
+  stopped:=pt_focus_frame(p) && x != -99999 && abs(pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.x_cm",x)-x)+abs(pb_frame_number(p[0].c[..],"player","globalThis.gamebuilderObservation?.z_cm",z)-z)<15 && pb_frame_bool(p[0].c[..],"player","globalThis.gamebuilderObservation?.keys===0");
+  r:=pb_frame_read(p[0].c[..],"player",PT_OBSERVE);path:[4096]u8;if r>=0 {_:=fs_append(pt_path(p,"observations.jsonl",path[..]),jv_raw(cdp_doc(p[0].c[..]),r));_=fs_append(pt_path(p,"observations.jsonl",path[..]),"\n");}_=pb_release(p[0].c[..]);
+  pt_event(p,"lifecycle","real frame focus lost with input held",entered && bound && moved && outside && lost);pt_event(p,"lifecycle","frame stopped without driver release",stopped);pt_event(p,"lifecycle","Tab restored frame focus",restored);
+  returned:=pt_go(p,"/?observe=1") && pt_wait(p,"!!document.getElementById('kind.0')",30000) && pt_enter(p,0);pt_event(p,"frame-focus","returned to playable world",returned);return entered && bound && moved && outside && lost && stopped && restored && returned;
+}

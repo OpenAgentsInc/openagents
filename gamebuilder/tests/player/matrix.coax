@@ -1,0 +1,52 @@
+// An explicit one-shot batch, never a recurring scheduler. Fresh profiles and
+// UI logins in every child; stop at the first unclean run and retain evidence.
+// tool.sh's cache belongs to the working checkout. A long matrix owns a byte
+// copy so a later compilation cannot replace the executable of its children.
+pt_freeze_program :: (source:string,destination:string)->bool {
+  if source.count==0 || source==destination || fs_exists(destination) {return false;}
+  bytes:[33554432]u8;hash:[64]u8;check:[64]u8;n:=fs_read(source,bytes[..]);if n<1 || n!=fs_size(source) || !pt_sha(bytes[0..<n],hash[..]) || !fs_write(destination,cast(string)bytes[0..<n]) {return false;}
+  a:=[3]string.["/bin/chmod","700",destination];out:[256]u8;err:[256]u8;r:=proc_run(a[..],2000,out[..],err[..]);m:=fs_read(destination,bytes[..]);
+  return r.status==0 && !r.timed_out && m==n && pt_sha(bytes[0..<m],check[..]) && cast(string)hash[..]==cast(string)check[..];
+}
+pt_freeze_check :: (dir:string)->bool {
+  self:[4096]u8;a_path:[4096]u8;b_path:[4096]u8;a:=fs_join(dir,"policy-source",a_path[..]);b:=fs_join(dir,"policy-runner",b_path[..]);
+  if !pt_freeze_program(tool_self(self[..]),a) || !pt_freeze_program(a,b) || !fs_write(a,"a later build replaced the source executable") {return false;}
+  args:=[2]string.[b,"--help"];out:[2048]u8;err:[2048]u8;r:=proc_run(args[..],5000,out[..],err[..]);return r.status==0 && !r.timed_out && pa_contains(cast(string)out[0..<r.out_n],"player-test: headless Chrome");
+}
+pt_matrix :: (a:[]Args)->int {
+  dir:=args_value(a,"--out","");path:[4096]u8;if dir.count==0 || fs_exists(fs_join(dir,"batch.json",path[..])) || !fs_mkdir_private(dir) {tool_errln("--matrix needs a fresh private --out directory");return 2;}
+  merge:[1]Args;_=args_add(merge[..],"--merge");targets:=PT_TARGETS;self:[4096]u8;frozen:[4096]u8;program:=fs_join(dir,"runner",frozen[..]);stop:=false;
+  selected:=args_value(a,"--role","all");if selected!="all" && selected!="ordinary" && selected!="agent-entitled" {tool_errln("matrix role must be all, ordinary or agent-entitled");return 2;}
+  if !pt_freeze_program(tool_self(self[..]),program) {tool_errln("matrix could not freeze its runner executable");return 2;}
+  for round:0..<3 {for target:0..<PT_TARGET_COUNT {if !pt_target_required(target) || stop {continue;}for role:0..<2 {
+    if stop {continue;}name:[256]u8;n:=ws_put(name[..],0,"round-");n=pb_decimal(name[..],n,round+1);n=ws_put(name[..],n,"-");n=ws_put(name[..],n,targets[target]);n=ws_put(name[..],n,ifx role==0 then "-entitled" else "-ordinary");
+    if selected!="all" && selected!=(ifx role==0 then "agent-entitled" else "ordinary") {continue;}
+    child_path:[4096]u8;child:=fs_join(dir,cast(string)name[0..<n],child_path[..]);if !fs_mkdir_private(child) {return 2;}
+    _:=args_add(merge[..],child);b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"running");jo_str(o[..],child);jo_key(o[..],"round");jo_int(o[..],round+1);jo_end(o[..]);_=fs_write(fs_join(dir,"batch.json",path[..]),jo_text(o[..]));
+    h:=proc_new();ok:=h>=0 && proc_arg(h,program) && proc_arg(h,"--target") && proc_arg(h,targets[target]) && proc_arg(h,"--role") && proc_arg(h,ifx role==0 then "agent-entitled" else "ordinary") && proc_arg(h,"--origin") && proc_arg(h,args_value(a,"--origin","https://gamebuilder.org")) && proc_arg(h,"--out") && proc_arg(h,child) && proc_arg(h,"--upload-evidence");
+    if !ok || proc_start(h)!=0 {return 2;}print("matrix starting %\n",child);line:[65536]u8;end:=proc_now_ms()+5400000;
+    while proc_now_ms()<end {k:=proc_line(h,1000,line[..]);if k==PROC_EOF {break;}if k>0 {_:=fs_append(fs_join(child,"runner.log",path[..]),cast(string)line[0..<k]);_=fs_append(fs_join(child,"runner.log",path[..]),"\n");}}
+    status:=proc_wait(h,1000);if status<0 {_:=proc_kill(h,PROC_SIGTERM);}_:=proc_release(h);
+    report:[65536]u8;rn:=fs_read(fs_join(child,"report.json",path[..]),report[..]);d:[1]Jv;nodes:[8192]JvNode;
+    clean:=status==0 && rn>0 && jv_parse(d[..],cast(string)report[0..<rn],nodes[..]) && pa_clean(d[0]) && pt_video_ok(child);
+    print("matrix child clean: %\n",clean);if !clean {stop=true;}
+  }}}
+  matrix_path:[4096]u8;_=args_add(merge[..],"--out");_=args_add(merge[..],fs_join(dir,"matrix",matrix_path[..]));result:=pt_merge(merge[..]);_=fs_write(fs_join(dir,"batch.json",path[..]),ifx stop then "{\"status\":\"stopped-on-first-unclean-run\"}" else "{\"status\":\"completed\"}");return result;
+}
+// This file is shared by diagnostics and qualification; the account lease is
+// already held. Persist pacing outside disposable profiles, including failed
+// requests, so a restarted batch cannot exhaust the service's code allowance.
+pt_code_epoch :: (text:string)->int {
+  if text.count!=13 {return -1;}return pb_milliseconds(text);
+}
+#test "inbox pacing retains millisecond epochs beyond the CLI integer parser's nine digits" {
+  #assert pt_code_epoch("1794940629586")==1794940629586 && pt_code_epoch("1794939849586")+780000==pt_code_epoch("1794940629586");
+  #assert pt_code_epoch("bad")<0 && pt_code_epoch("179494062958x")<0 && pt_code_epoch("00000000000000")<0;
+}
+pt_code_budget :: (p:[]Pt)->bool {
+  root:[4096]u8;base:=proc_getenv("GB_PLAYER_PROFILE_ROOT",root[..]);path:[4096]u8;file:=fs_join(base,ifx p[0].ordinary then "ordinary-next-code-ms" else "entitled-next-code-ms",path[..]);b:[64]u8;n:=fs_read(file,b[..]);next:=ifx n>0 then pt_code_epoch(cast(string)b[0..<n]) else 0;
+  now:=cast(int)pt_number(p,"Date.now()",0);if now<1 || next<0 || next>now+780000 {return false;}
+  if next>now {print("pacing test inbox for % seconds\n",(next-now)/1000);}
+  while next>now {if !pb_wait(pt_dir(p),500) {return false;}now=cast(int)pt_number(p,"Date.now()",0);if now<1 {return false;}}
+  n=pb_decimal(b[..],0,now+780000);return base.count>0 && fs_write(file,cast(string)b[0..<n]);
+}

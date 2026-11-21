@@ -1,0 +1,25 @@
+# Two agents on one level: ann claims a box, bob's change inside it is refused naming ann, the person's lands; claims are listed and released.
+> new-level
+< {"ok":true,"level":1}
+> claim {"level":1,"region":"box:-500,-500,500,500","agent":"ann"}
+< {"ok":true,"level":1,"claim":{"agent":"ann","box":[-500,-500,500,500]},"again":false,"seconds":600}
+> claim {"level":1,"region":"box:400,0,900,300","agent":"bob"}
+< {"ok":false,"error":"claimed","why":"that overlaps ann's claim (box:-500,-500,500,500): another agent is working there. Claim somewhere else, or wait for it to end (claims lists every claim)"}
+> claim {"level":1,"region":"box:600,0,900,300","agent":"bob"}
+< {"ok":true,"level":1,"claim":{"agent":"bob","box":[600,0,900,300]},"again":false,"seconds":600}
+> claims {"level":1}
+< {"ok":true,"schema":"gamebuilder.claims.v1","level":1,"claims":[{"agent":"ann","box":[-500,-500,500,500]},{"agent":"bob","box":[600,0,900,300]}]}
+> add {"level":1,"kind":"block","x":100,"z":100,"agent":"bob"}
+< {"ok":false,"error":"claimed","why":"where it would put the new thing is inside ann's claim: another agent is working there. Work outside it (claims lists every claim), or wait for it to end: when that agent releases it or its turn ends, or 600 seconds after it last claimed or changed something (CLAIM_SECONDS)"}
+> add {"level":1,"kind":"block","x":100,"z":100}
+< {"ok":true,"id":29,"kind":"block","rev":1912882841}
+> claim {"level":1,"region":"things:1"}
+< {"ok":false,"error":"bad-request","why":"a claim is an agent's: name yourself with --agent NAME (the person's own edits are never refused by a claim)"}
+> release {"level":1,"agent":"ann"}
+< {"ok":true,"level":1,"released":1}
+> add {"level":1,"kind":"block","x":200,"z":200,"agent":"bob"}
+< {"ok":true,"id":30,"kind":"block","rev":305163809}
+> release {"level":1}
+< {"ok":true,"level":1,"released":1}
+> claims {"level":1}
+< {"ok":true,"schema":"gamebuilder.claims.v1","level":1,"claims":[]}

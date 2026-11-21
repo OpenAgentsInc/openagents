@@ -1,0 +1,1318 @@
+// An agent as a stored record with an event log (GitHub issue 4; docs/agents-audit.md,
+// recommendation 1; docs/agents.md, "The record and its events"). The one source for what an
+// agent is, what it did, its states and their words: the desktop core (the Agents pane, its
+// runner and the command rows), the gamebuilder CLI and its servers, and the website all load
+// this file and none of them has its own copy (a check holds that: tools/agents-drift.coax).
+//
+//   gamebuilder.agent.v1          the record: who it is, its game and level, its job in the
+//                                 person's words, where it runs, its state, limits, times and
+//                                 the one-line current step. One JSON object, the file
+//                                 agent-ID.agent beside the levels.
+//   gamebuilder.agent.event.v1    one numbered event of its log: a message, a tool call with
+//                                 its arguments and a short result, an edit batch with the
+//                                 revisions before and after and the things it touched, an
+//                                 ask, its answer, a state change, usage, an error. One JSON
+//                                 object a line, in the file agent-ID.events: only ever
+//                                 appended to, and read by cursor (the events after N).
+//
+// Nothing here reads or writes a file or the clock: the surface hands in the bytes and the time
+// and writes back what it is given.
+//   scripts/check.sh
+#load "../../coax/lib/json/json.coax";
+
+AGR_SCHEMA :: "gamebuilder.agent.v1";
+AGR_EVENT_SCHEMA :: "gamebuilder.agent.event.v1";
+
+// ---- limits (each said in words, with its number, where it refuses)
+AGR_ID :: 32;              // bytes of an id
+AGR_JOB :: 240;            // bytes of a job, in the person's words
+AGR_TITLE :: 48;           // bytes of a game's name (MINE_TITLE's)
+AGR_COMPUTER :: 48;        // bytes of a computer's name as the person sees it
+// What an agent on your computer is told, wherever it is asked to do something it is not there for: the rows that refuse, and gamebuilder.org/agents.
+AGR_THERE :: "an agent on your computer is told things and stopped there: in GameBuilder, or with gamebuilder agent-message and agent-stop on that computer; your account shows what it did (gamebuilder.org/agents)";
+AGR_STEP :: 120;           // bytes of the one-line current step
+AGR_WHY :: 240;            // bytes of why it stopped or failed
+AGR_TEXT :: 4096;          // bytes of an event's text: a message, a question, an error
+AGR_ARGS :: 2048;          // bytes of a tool call's arguments kept
+AGR_RESULT :: 240;         // bytes of a tool call's short result
+AGR_THINGS :: 64;          // things an edit event names (WE_BATCH's edits a batch)
+AGR_CHOICES :: 4; AGR_CHOICE :: 40;   // an ask's answers: 2 to 4, each at most 40 bytes
+AGR_PAGE :: 50;            // events one read answers; the next read goes on from its cursor
+AGR_RECORDS :: 256;        // agents a folder or an account keeps
+AGR_EVENTS :: 100000;      // events one agent's log holds
+AGR_LINE :: 8192;          // bytes of one event's line, at most
+AGR_RECORD_MAX :: 2048;    // bytes of one record's file, at most
+// A computer that has said nothing for this long is offline (its app reports every 10 seconds
+// while logged in: coax/sync.coax).
+AGR_OFFLINE_MS :: 120000;
+
+// ---- states, and their words (docs/agents.md, "A row's state"). The id is what the record
+// says; the words are what the pane and the page show; the meaning is what the page explains.
+AGR_WORKING :: 0; AGR_WAITING :: 1; AGR_QUEUED :: 2; AGR_PAUSED :: 3; AGR_DONE :: 4;
+AGR_STOPPED :: 5; AGR_FAILED :: 6; AGR_OFFLINE :: 7; AGR_UNKNOWN :: 8;
+AGR_STATES :: 9;
+AGR_STATE_ID :: [AGR_STATES] string.["working", "waiting", "queued", "paused", "done", "stopped", "failed", "offline", "unknown"];
+AGR_STATE_WORDS :: [AGR_STATES] string.["working", "waiting for you", "queued", "paused", "done", "stopped", "failed", "offline", "unknown"];
+AGR_STATE_MEANS :: [AGR_STATES] string.[
+  "a turn is running",
+  "it asked a question and waits for your answer",
+  "it is ready and waits for its computer to have room",
+  "your own plan hit its limit; it goes on when the plan does",
+  "it finished and said so",
+  "you, or its limit, stopped it; what it changed stays",
+  "it could not go on, and says why",
+  "its computer stopped answering; what it last did is shown with its age",
+  "the connection was lost mid-turn and we can't tell whether the turn ended"];
+
+// ---- kinds (docs/agents.md, "What an agent is here"). Builder, Playtester and Code run today.
+AGR_BUILD :: 0; AGR_PLAYTEST :: 1; AGR_ART :: 2; AGR_FIX :: 3; AGR_WATCH :: 4; AGR_CODE :: 5;
+AGR_KINDS :: 6;
+AGR_KINDS_RUN :: 3;        // how many kinds a runner takes today: build, playtest and code (AGR_KIND_RUNS)
+AGR_KIND_ID :: [AGR_KINDS] string.["build", "playtest", "art", "fix", "watch", "code"];
+AGR_KIND_NAME :: [AGR_KINDS] string.["Builder", "Playtester", "Artist", "Fixer", "Watcher", "Code"];
+AGR_KIND_RUNS :: [AGR_KINDS] bool.[true, true, false, false, false, true];
+
+// ---- a Code agent (issue 8; docs/agents.md, "A Code agent"): Claude Code with its normal tools
+// in a fresh git worktree from origin/main of one repository, the engine or the app. The words
+// here are what the pane's approval says and what the code-brief row answers, from one source.
+AGR_ENGINE :: 0; AGR_APP :: 1;
+AGR_REPOS :: 2;
+AGR_REPO_ID :: [AGR_REPOS] string.["openagents", "gamebuilder"];
+AGR_REPO_GITHUB :: [AGR_REPOS] string.["OpenAgentsInc/openagents", "OpenAgentsInc/gamebuilder"];
+AGR_REPO_WORDS :: [AGR_REPOS] string.["the engine", "the app"];
+// How its work lands: the engine only by pull request (the owner's decision, 2026-11-17); the app
+// by this repository's own rules.
+AGR_REPO_ENDS :: [AGR_REPOS] string.["pull-request", "repository-rules"];
+AGR_REPO_ENDS_WORDS :: [AGR_REPOS] string.[
+  "It ends in a pull request at OpenAgentsInc/openagents for a person to merge. It never pushes to main: a hook in its folder refuses that. Without push access there, it pushes its branch to your own fork of the engine on GitHub, which it makes in your name the first time.",
+  "It lands its work by this repository's own rules (its AGENTS.md): checked with scripts/check.sh and scripts/build.sh, then pushed to main."];
+// What follows: after an engine pull request merges, the app moves to it with a pin bump, which
+// the pane offers as the next job and never does by itself.
+AGR_REPO_THEN :: [AGR_REPOS] string.["pin-bump", ""];
+AGR_REPO_THEN_WORDS :: [AGR_REPOS] string.[
+  "After it merges, the pane offers the next job here: a Code agent on the app that moves openagents.lock to the merged commit (scripts/pin.sh bump) with scripts/check.sh passing.", ""];
+AGR_CODE_MAY :: "A Code agent is your Claude Code with its normal tools: it can run commands and change files in its own folder, which a Builder cannot. Its commands run as you on this computer; it is told to stay in its folder, and the app refuses its file edits anywhere else.";
+AGR_CODE_WHERE :: "It works in a fresh git worktree made from origin/main, in a folder GameBuilder makes for it (~/gamebuilder-code), outside the app's own folders and outside any main checkout, and follows the repository's AGENTS.md.";
+AGR_CODE_PLAN :: "It runs on your own Claude plan, signed in to Claude Code on this computer: never an API key, and no Credits.";
+// Its limits, a message: model turns, and cents of the person's plan.
+AGR_CODE_TURNS :: 80; AGR_CODE_CENTS :: 1000;
+
+// ---- where it runs
+AGR_LOCAL :: 0; AGR_CLOUD :: 1; AGR_ATTACHED :: 2;
+AGR_PLACES :: 3;
+AGR_PLACE_ID :: [AGR_PLACES] string.["local", "cloud", "attached"];
+AGR_PLACE_WORDS :: [AGR_PLACES] string.["this computer", "cloud", "attached"];
+AGR_THIS_MAC :: "this Mac";   // a Mac's computer name in the record, as the page shows it
+// What a view says of an attached agent (issue 6): its process is the person's, not ours.
+AGR_ATTACHED_CAN :: "GameBuilder can refuse its calls and cut it off, but can't stop its process: end that in the agent itself";
+// What agent-stop says of an attached agent (gb_att_cut_event writes the same).
+AGR_ATTACHED_CUT :: "You cut it off: its calls are refused and what it changed stays. GameBuilder can't stop its process: end that in the agent itself";
+
+// ---- events
+AGR_MESSAGE :: 0; AGR_TOOL :: 1; AGR_EDIT :: 2; AGR_ASK :: 3; AGR_ANSWER :: 4; AGR_STATE :: 5;
+AGR_USAGE :: 6; AGR_ERROR :: 7;
+// A Code agent's (issue 8): its worktree made from origin/main, the branch it works on, its pull
+// request, the files it changed, a check it ran and how it went, and the pin bump offered after.
+AGR_WORKTREE :: 8; AGR_BRANCH :: 9; AGR_PULL :: 10; AGR_FILES :: 11; AGR_CHECK :: 12; AGR_PIN :: 13;
+AGR_TYPES :: 14;
+AGR_TYPE_ID :: [AGR_TYPES] string.["message", "tool", "edit", "ask", "answer", "state", "usage", "error",
+  "worktree", "branch", "pr", "files", "check", "pin"];
+AGR_COMMIT :: 40;          // hex digits of a commit
+AGR_REF :: 128;            // bytes of a branch's name
+AGR_URL :: 240;            // bytes of a pull request's address
+AGR_NAMES :: 32;           // files a files event names (its count says how many changed)
+AGR_NAME :: 64;            // bytes of a check's name
+AGR_PERSON :: 0; AGR_AGENT :: 1;
+AGR_FROM_ID :: [2] string.["person", "agent"];
+
+AgrRecord :: struct {
+  id: [AGR_ID] u8; id_n: int;
+  game: s32;                      // the game of yours it works on; 0: a level in no game of yours
+  title: [AGR_TITLE] u8; title_n: int;   // the game's name, as the page groups by it
+  level: s32;                     // the level it is working on; 0 when none
+  kind: int; place: int;
+  repo: int;                      // a Code agent's repository (AGR_ENGINE, AGR_APP); written only for one
+  computer: [AGR_COMPUTER] u8; computer_n: int;
+  runner: [16] u8; runner_n: int;        // "claude": the person's own Claude Code
+  state: int;
+  since: s64; made: s64; updated: s64;   // milliseconds since 1970
+  heard: s64;                     // when the account last heard from its computer (0: it never left it)
+  step: [AGR_STEP] u8; step_n: int;
+  why: [AGR_WHY] u8; why_n: int;
+  resumes: s64;                   // paused: when its plan lets it go on (ms since 1970); written only while paused
+  turns: s32; cents: s32;         // its limits: model turns a message, and cents of the plan a message
+  events: s32;                    // events in its log
+}
+
+AgrEvent :: struct {
+  n: s32; at: s64; type: int;
+  from: int;                      // a message's: AGR_PERSON or AGR_AGENT
+  text: [AGR_TEXT] u8; text_n: int;          // message, edit (what it changed, in words), ask (the question), answer, error, state's why
+  tool: [64] u8; tool_n: int;
+  args: [AGR_ARGS] u8; args_n: int;          // a tool call's arguments, as it sent them (JSON)
+  result: [AGR_RESULT] u8; result_n: int; ok: bool;
+  level: s32; before: s32; after: s32;       // an edit's level and revisions; a play-test tool's level and the revision it played
+  things: [AGR_THINGS] s32; things_n: int;
+  choice: [AGR_CHOICES * AGR_CHOICE] u8; choice_n: [AGR_CHOICES] int; choices: int;
+  state: int;                     // a state event's new state
+  until: s64;                     // a paused state event's: when the plan lets it go on (0: not said)
+  turns: s32; cents: s32; ms: s32;           // usage
+  // a Code agent's: its repository, the commit its worktree started from, its branch, its pull
+  // request's number and address, how many files changed (their names one a line in text), a
+  // check's name (ok is whether it passed, text what it said)
+  repo: int;
+  commit: [AGR_COMMIT] u8; commit_n: int;
+  branch: [AGR_REF] u8; branch_n: int;
+  number: s32; url: [AGR_URL] u8; url_n: int;
+  count: s32;
+  name: [AGR_NAME] u8; name_n: int;
+  cut: bool;                      // text or arguments longer than kept: the rest was cut
+}
+
+// ---- small text helpers of its own (loaded by the core, the CLI and the web alike)
+
+agr_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+// At most n bytes of s, ending on a whole UTF-8 character.
+agr_cut :: (s: string, n: int) -> string {
+  if s.count <= n { return s; }
+  k := n; while k > 0 && (s[k] & 0xC0) == 0x80 { k -= 1; }
+  return cast(string) s[0..<k];
+}
+// s into buf (cut to buf's size): its length.
+agr_set :: (buf: [] u8, s: string) -> int { return agr_put(buf, 0, agr_cut(s, buf.count)); }
+agr_text :: (buf: [] u8, n: int) -> string { return cast(string) buf[0..<n]; }
+agr_index :: (words: [] const string, w: string) -> int { for i: 0..<words.count { if words[i] == w { return i; } } return -1; }
+agr_int :: (out: [] u8, n: int, v: s64) -> int {
+  d: [24] u8; k := 0; x := v; neg := x < 0; if neg { x = -x; }
+  while x > 0 || k == 0 { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; if k >= 22 { break; } }
+  m := n; if neg { m = agr_put(out, m, "-"); }
+  for i: 0..<k { if m < out.count { out[m] = d[k - 1 - i]; m += 1; } }
+  return m;
+}
+
+// An id: 1 to 32 of a to z, 0 to 9 and -, starting with a letter.
+agr_id_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > AGR_ID || s[0] < 'a' || s[0] > 'z' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A new agent's id: "a", the time it was made in hex, "-", how many agents the folder has.
+// Two computers on one account would have to make one in the same millisecond to clash.
+agr_new_id :: (now: s64, count: int, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  n := agr_put(out, 0, "a");
+  started := false;
+  for i: 0..<16 {
+    d := (now >> ((15 - i) * 4)) & 15;
+    if d != 0 { started = true; }
+    if started || i == 15 { if n < out.count { out[n] = digits[d]; n += 1; } }
+  }
+  n = agr_put(out, n, "-"); n = agr_int(out, n, cast(s64) count);
+  return cast(string) out[0..<n];
+}
+agr_id :: (r: [] AgrRecord) -> string { return cast(string) r[0].id[0..<r[0].id_n]; }
+// An agent's file's name: agent-ID.agent (its record) or agent-ID.events (its log), ext saying which.
+agr_file :: (id: string, ext: string, out: [] u8) -> string { return cast(string) out[0..<agr_put(out, agr_put(out, agr_put(out, 0, "agent-"), id), ext)]; }
+// The id a file's name names, when it is a record's (agent-ID.agent), else "".
+agr_file_id :: (name: string) -> string {
+  if name.count <= 12 || cast(string) name[0..<6] != "agent-" || cast(string) name[name.count - 6..<name.count] != ".agent" { return ""; }
+  id := cast(string) name[6..<name.count - 6];
+  return ifx agr_id_ok(id) then id else "";
+}
+
+// One line: no line break, and nothing below a space but a tab (the person's words in a job).
+agr_line_ok :: (s: string) -> bool { for c: s { if c < 32 && c != 9 { return false; } } return true; }
+
+// ---- the record
+
+// A new record, made now: its state queued until its runner takes it.
+agr_record_new :: (r: [] AgrRecord, id: string, game: s32, title: string, level: s32, kind: int, place: int, computer: string, runner: string, now: s64) {
+  r[0] = AgrRecord.{};
+  r[0].id_n = agr_set(r[0].id[..], id);
+  r[0].game = game; r[0].title_n = agr_set(r[0].title[..], title); r[0].level = level;
+  r[0].kind = kind; r[0].place = place;
+  r[0].computer_n = agr_set(r[0].computer[..], computer);
+  r[0].runner_n = agr_set(r[0].runner[..], runner);
+  r[0].state = AGR_QUEUED; r[0].since = now; r[0].made = now; r[0].updated = now;
+}
+// Why words can't be a job, or "".
+agr_job_why :: (words: string) -> string {
+  if words.count == 0 { return "say what it should do"; }
+  if words.count > AGR_JOB { return "a job is at most 240 bytes, in your own words (AGR_JOB)"; }
+  if !agr_line_ok(words) { return "a job is one line"; }
+  return "";
+}
+AgrJob :: struct { buf: [AGR_JOB] u8; n: int; }
+
+// The record as its file and its answers write it: gamebuilder.agent.v1, its fields always in
+// this order.
+agr_record_json :: (r: [] AgrRecord, jw: string, o: [] Jo) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, AGR_SCHEMA);
+  jo_key(o, "id"); jo_str(o, cast(string) r[0].id[0..<r[0].id_n]);
+  jo_key(o, "game"); jo_int(o, cast(int) r[0].game);
+  jo_key(o, "title"); jo_str(o, cast(string) r[0].title[0..<r[0].title_n]);
+  jo_key(o, "level"); jo_int(o, cast(int) r[0].level);
+  jo_key(o, "kind"); jo_str(o, AGR_KIND_ID[r[0].kind]);
+  if r[0].kind == AGR_CODE { jo_key(o, "repo"); jo_str(o, AGR_REPO_ID[r[0].repo]); }
+  jo_key(o, "job"); jo_str(o, jw);
+  jo_key(o, "place"); jo_str(o, AGR_PLACE_ID[r[0].place]);
+  jo_key(o, "computer"); jo_str(o, cast(string) r[0].computer[0..<r[0].computer_n]);
+  jo_key(o, "runner"); jo_str(o, cast(string) r[0].runner[0..<r[0].runner_n]);
+  jo_key(o, "state"); jo_str(o, AGR_STATE_ID[r[0].state]);
+  jo_key(o, "since"); jo_int(o, cast(int) r[0].since);
+  jo_key(o, "made"); jo_int(o, cast(int) r[0].made);
+  jo_key(o, "updated"); jo_int(o, cast(int) r[0].updated);
+  jo_key(o, "heard"); jo_int(o, cast(int) r[0].heard);
+  jo_key(o, "step"); jo_str(o, cast(string) r[0].step[0..<r[0].step_n]);
+  jo_key(o, "why"); jo_str(o, cast(string) r[0].why[0..<r[0].why_n]);
+  if r[0].state == AGR_PAUSED { jo_key(o, "resumes"); jo_int(o, cast(int) r[0].resumes); }
+  jo_key(o, "limits"); jo_obj(o); jo_key(o, "turns"); jo_int(o, cast(int) r[0].turns); jo_key(o, "cents"); jo_int(o, cast(int) r[0].cents); jo_end(o);
+  jo_key(o, "events"); jo_int(o, cast(int) r[0].events);
+  jo_end(o);
+}
+// The record and its job, as one file's bytes: "" when it did not fit.
+agr_record_write :: (r: [] AgrRecord, jw: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  agr_record_json(r, jw, o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// A record's file read: "" when it is one, else why not. Its job goes into job.
+agr_record_read :: (text: string, r: [] AgrRecord, jw: [] AgrJob) -> string {
+  r[0] = AgrRecord.{}; jw[0].n = 0;
+  if text.count == 0 || text.count > AGR_RECORD_MAX { return "a record is 1 to 2048 bytes (AGR_RECORD_MAX)"; }
+  nodes: [64] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return "a record is one JSON object"; }
+  d := da[0];
+  sb: [AGR_JOB * 6] u8;
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), AGR_SCHEMA) { return "a record's schema is gamebuilder.agent.v1"; }
+  n := jv_str(d, jv_get(d, 0, "id"), sb[..]);
+  if n < 0 || !agr_id_ok(cast(string) sb[0..<n]) { return "an id is 1 to 32 of a to z, 0 to 9 and -, starting with a letter"; }
+  r[0].id_n = agr_set(r[0].id[..], cast(string) sb[0..<n]);
+  r[0].game = cast(s32) jv_int(d, jv_get(d, 0, "game"), -1);
+  r[0].level = cast(s32) jv_int(d, jv_get(d, 0, "level"), -1);
+  if r[0].game < 0 || r[0].game > 9999 || r[0].level < 0 || r[0].level > 9999 { return "a game and a level are numbers from 0 to 9999"; }
+  n = jv_str(d, jv_get(d, 0, "title"), sb[..]);
+  if n < 0 || n > AGR_TITLE { return "a game's name is at most 48 bytes"; }
+  r[0].title_n = agr_set(r[0].title[..], cast(string) sb[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "kind"), sb[..]); r[0].kind = ifx n < 0 then -1 else agr_index(AGR_KIND_ID[..], cast(string) sb[0..<n]);
+  if r[0].kind < 0 { return "a kind is build, playtest, art, fix, watch or code"; }
+  if r[0].kind == AGR_CODE {
+    n = jv_str(d, jv_get(d, 0, "repo"), sb[..]); r[0].repo = ifx n < 0 then -1 else agr_index(AGR_REPO_ID[..], cast(string) sb[0..<n]);
+    if r[0].repo < 0 { return "a Code agent's repo is openagents or gamebuilder"; }
+  }
+  n = jv_str(d, jv_get(d, 0, "job"), jw[0].buf[..]);
+  if n < 0 || agr_job_why(cast(string) jw[0].buf[0..<n]).count > 0 { return "a job is 1 to 240 bytes on one line"; }
+  jw[0].n = n;
+  n = jv_str(d, jv_get(d, 0, "place"), sb[..]); r[0].place = ifx n < 0 then -1 else agr_index(AGR_PLACE_ID[..], cast(string) sb[0..<n]);
+  if r[0].place < 0 { return "a place is local, cloud or attached"; }
+  n = jv_str(d, jv_get(d, 0, "computer"), sb[..]);
+  if n < 0 || n > AGR_COMPUTER { return "a computer's name is at most 48 bytes"; }
+  r[0].computer_n = agr_set(r[0].computer[..], cast(string) sb[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "runner"), sb[..]);
+  if n < 0 || n > 16 { return "a runner's name is at most 16 bytes"; }
+  r[0].runner_n = agr_set(r[0].runner[..], cast(string) sb[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "state"), sb[..]); r[0].state = ifx n < 0 then -1 else agr_index(AGR_STATE_ID[..], cast(string) sb[0..<n]);
+  if r[0].state < 0 { return "a state is working, waiting, queued, paused, done, stopped, failed, offline or unknown"; }
+  r[0].since = cast(s64) jv_int(d, jv_get(d, 0, "since"), -1);
+  r[0].made = cast(s64) jv_int(d, jv_get(d, 0, "made"), -1);
+  r[0].updated = cast(s64) jv_int(d, jv_get(d, 0, "updated"), -1);
+  r[0].heard = cast(s64) jv_int(d, jv_get(d, 0, "heard"), -1);
+  if r[0].since < 0 || r[0].made < 0 || r[0].updated < 0 || r[0].heard < 0 { return "since, made, updated and heard are milliseconds since 1970"; }
+  n = jv_str(d, jv_get(d, 0, "step"), sb[..]);
+  if n < 0 || n > AGR_STEP { return "a step is at most 120 bytes (AGR_STEP)"; }
+  r[0].step_n = agr_set(r[0].step[..], cast(string) sb[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "why"), sb[..]);
+  if n < 0 || n > AGR_WHY { return "why is at most 240 bytes (AGR_WHY)"; }
+  r[0].why_n = agr_set(r[0].why[..], cast(string) sb[0..<n]);
+  if r[0].state == AGR_PAUSED {
+    r[0].resumes = cast(s64) jv_int(d, jv_get(d, 0, "resumes"), 0);
+    if r[0].resumes < 0 { return "resumes is milliseconds since 1970"; }
+  }
+  lim := jv_get(d, 0, "limits");
+  r[0].turns = cast(s32) jv_int(d, jv_get(d, lim, "turns"), -1);
+  r[0].cents = cast(s32) jv_int(d, jv_get(d, lim, "cents"), -1);
+  r[0].events = cast(s32) jv_int(d, jv_get(d, 0, "events"), -1);
+  if r[0].turns < 0 || r[0].cents < 0 { return "limits are turns and cents, whole numbers from 0"; }
+  if r[0].events < 0 || r[0].events > AGR_EVENTS { return "events is 0 to 100000 (AGR_EVENTS)"; }
+  return "";
+}
+
+// ---- events
+
+agr_event :: (type: int) -> AgrEvent { e := AgrEvent.{}; e.type = type; return e; }
+agr_event_text :: (ev: [] AgrEvent, s: string) {
+  ev[0].text_n = agr_set(ev[0].text[..], s);
+  if s.count > AGR_TEXT { ev[0].cut = true; }
+}
+agr_event_args :: (ev: [] AgrEvent, s: string) {
+  ev[0].args_n = agr_set(ev[0].args[..], s);
+  if s.count > AGR_ARGS { ev[0].cut = true; }
+}
+
+// One event as its line (without the line break): gamebuilder.agent.event.v1, the fields its
+// type has, always in this order. "" when it did not fit.
+agr_event_write :: (agent: string, ev: [] AgrEvent, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], AGR_EVENT_SCHEMA);
+  jo_key(o[..], "agent"); jo_str(o[..], agent);
+  jo_key(o[..], "n"); jo_int(o[..], cast(int) ev[0].n);
+  jo_key(o[..], "at"); jo_int(o[..], cast(int) ev[0].at);
+  jo_key(o[..], "type"); jo_str(o[..], AGR_TYPE_ID[ev[0].type]);
+  text := cast(string) ev[0].text[0..<ev[0].text_n];
+  t := ev[0].type;
+  if t == AGR_MESSAGE { jo_key(o[..], "from"); jo_str(o[..], AGR_FROM_ID[ev[0].from]); }
+  if t == AGR_TOOL {
+    jo_key(o[..], "tool"); jo_str(o[..], cast(string) ev[0].tool[0..<ev[0].tool_n]);
+    // the arguments as the agent sent them, kept as text: they may be cut
+    jo_key(o[..], "args"); jo_str(o[..], cast(string) ev[0].args[0..<ev[0].args_n]);
+    jo_key(o[..], "ok"); jo_bool(o[..], ev[0].ok);
+    jo_key(o[..], "result"); jo_str(o[..], cast(string) ev[0].result[0..<ev[0].result_n]);
+    // a play-test's: the level and the revision it played, whose picture its card shows (pictures.coax)
+    if ev[0].level > 0 { jo_key(o[..], "level"); jo_int(o[..], cast(int) ev[0].level); jo_key(o[..], "after"); jo_int(o[..], cast(int) ev[0].after); }
+  }
+  if t == AGR_EDIT {
+    jo_key(o[..], "level"); jo_int(o[..], cast(int) ev[0].level);
+    jo_key(o[..], "before"); jo_int(o[..], cast(int) ev[0].before);
+    jo_key(o[..], "after"); jo_int(o[..], cast(int) ev[0].after);
+    jo_key(o[..], "things"); jo_arr(o[..]); for i: 0..<ev[0].things_n { jo_int(o[..], cast(int) ev[0].things[i]); } jo_end(o[..]);
+  }
+  if t == AGR_ASK {
+    jo_key(o[..], "choices"); jo_arr(o[..]);
+    for i: 0..<ev[0].choices { jo_str(o[..], cast(string) ev[0].choice[i * AGR_CHOICE..<i * AGR_CHOICE + ev[0].choice_n[i]]); }
+    jo_end(o[..]);
+  }
+  if t == AGR_STATE { jo_key(o[..], "state"); jo_str(o[..], AGR_STATE_ID[ev[0].state]); }
+  if t == AGR_STATE && ev[0].state == AGR_PAUSED { jo_key(o[..], "until"); jo_int(o[..], cast(int) ev[0].until); }
+  if t == AGR_USAGE {
+    jo_key(o[..], "turns"); jo_int(o[..], cast(int) ev[0].turns);
+    jo_key(o[..], "cents"); jo_int(o[..], cast(int) ev[0].cents);
+    jo_key(o[..], "ms"); jo_int(o[..], cast(int) ev[0].ms);
+  }
+  if t == AGR_WORKTREE || t == AGR_BRANCH || t == AGR_PULL { jo_key(o[..], "repo"); jo_str(o[..], AGR_REPO_ID[ev[0].repo]); }
+  if t == AGR_WORKTREE { jo_key(o[..], "base"); jo_str(o[..], cast(string) ev[0].commit[0..<ev[0].commit_n]); }
+  if t == AGR_BRANCH || t == AGR_PULL { jo_key(o[..], "branch"); jo_str(o[..], cast(string) ev[0].branch[0..<ev[0].branch_n]); }
+  if t == AGR_PULL { jo_key(o[..], "number"); jo_int(o[..], cast(int) ev[0].number); }
+  if t == AGR_PULL || t == AGR_PIN { jo_key(o[..], "url"); jo_str(o[..], cast(string) ev[0].url[0..<ev[0].url_n]); }
+  if t == AGR_FILES {
+    jo_key(o[..], "count"); jo_int(o[..], cast(int) ev[0].count);
+    // the names, one a line in text, as an array
+    jo_key(o[..], "names"); jo_arr(o[..]);
+    from := 0;
+    for i: 0..<text.count + 1 { if i == text.count || text[i] == '\n' { if i > from { jo_str(o[..], cast(string) text[from..<i]); } from = i + 1; } }
+    jo_end(o[..]);
+  }
+  if t == AGR_CHECK { jo_key(o[..], "name"); jo_str(o[..], cast(string) ev[0].name[0..<ev[0].name_n]); jo_key(o[..], "ok"); jo_bool(o[..], ev[0].ok); }
+  // an edit's words are there when its writer said them (an older log's edits have none)
+  if t == AGR_MESSAGE || (t == AGR_EDIT && text.count > 0) || t == AGR_ASK || t == AGR_ANSWER || t == AGR_STATE || t == AGR_ERROR || t == AGR_CHECK || t == AGR_PIN { jo_key(o[..], "text"); jo_str(o[..], text); }
+  if ev[0].cut { jo_key(o[..], "cut"); jo_bool(o[..], true); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// One line of a log read back: "" when it is an event, else why not. agent is whose log it is.
+agr_event_read :: (line: string, agent: string, ev: [] AgrEvent) -> string {
+  ev[0] = AgrEvent.{};
+  if line.count == 0 || line.count > AGR_LINE { return "an event is one line of 1 to 8192 bytes (AGR_LINE)"; }
+  nodes: [AGR_THINGS + 64] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], line, nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return "an event is one JSON object"; }
+  d := da[0];
+  sb: [AGR_TEXT] u8;
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), AGR_EVENT_SCHEMA) { return "an event's schema is gamebuilder.agent.event.v1"; }
+  n := jv_str(d, jv_get(d, 0, "agent"), sb[..]);
+  if n < 0 || cast(string) sb[0..<n] != agent { return "the event is another agent's"; }
+  ev[0].n = cast(s32) jv_int(d, jv_get(d, 0, "n"), 0);
+  ev[0].at = cast(s64) jv_int(d, jv_get(d, 0, "at"), -1);
+  if ev[0].n < 1 || ev[0].at < 0 { return "an event's n is from 1 and its at milliseconds since 1970"; }
+  n = jv_str(d, jv_get(d, 0, "type"), sb[..]); ev[0].type = ifx n < 0 then -1 else agr_index(AGR_TYPE_ID[..], cast(string) sb[0..<n]);
+  if ev[0].type < 0 { return "an event's type is message, tool, edit, ask, answer, state, usage or error"; }
+  t := ev[0].type;
+  if t == AGR_MESSAGE || (t == AGR_EDIT && jv_get(d, 0, "text") >= 0) || t == AGR_ASK || t == AGR_ANSWER || t == AGR_STATE || t == AGR_ERROR || t == AGR_CHECK || t == AGR_PIN {
+    n = jv_str(d, jv_get(d, 0, "text"), ev[0].text[..]);
+    if n < 0 { return "its text is at most 4096 bytes (AGR_TEXT)"; }
+    ev[0].text_n = n;
+  }
+  if t == AGR_MESSAGE {
+    n = jv_str(d, jv_get(d, 0, "from"), sb[..]); ev[0].from = ifx n < 0 then -1 else agr_index(AGR_FROM_ID[..], cast(string) sb[0..<n]);
+    if ev[0].from < 0 { return "a message is from the person or the agent"; }
+  }
+  if t == AGR_TOOL {
+    n = jv_str(d, jv_get(d, 0, "tool"), ev[0].tool[..]); if n < 0 { return "a tool's name is at most 64 bytes"; } ev[0].tool_n = n;
+    n = jv_str(d, jv_get(d, 0, "args"), ev[0].args[..]); if n < 0 { return "a tool's arguments are at most 2048 bytes (AGR_ARGS)"; } ev[0].args_n = n;
+    n = jv_str(d, jv_get(d, 0, "result"), ev[0].result[..]); if n < 0 { return "a tool's result is at most 240 bytes (AGR_RESULT)"; } ev[0].result_n = n;
+    ev[0].ok = jv_bool(d, jv_get(d, 0, "ok"));
+    ev[0].level = cast(s32) jv_int(d, jv_get(d, 0, "level"), 0);
+    ev[0].after = cast(s32) jv_int(d, jv_get(d, 0, "after"), 0);
+    if ev[0].level < 0 || ev[0].after < 0 { return "a play-test's level and revision are not negative"; }
+  }
+  if t == AGR_EDIT {
+    ev[0].level = cast(s32) jv_int(d, jv_get(d, 0, "level"), -1);
+    ev[0].before = cast(s32) jv_int(d, jv_get(d, 0, "before"), -1);
+    ev[0].after = cast(s32) jv_int(d, jv_get(d, 0, "after"), -1);
+    if ev[0].level < 0 || ev[0].before < 0 || ev[0].after < 0 { return "an edit names its level and the revisions before and after"; }
+    th := jv_get(d, 0, "things");
+    if jv_kind(d, th) != JV_ARRAY || jv_len(d, th) > AGR_THINGS { return "an edit's things are at most 64 (AGR_THINGS)"; }
+    for i: 0..<jv_len(d, th) { ev[0].things[i] = cast(s32) jv_int(d, jv_at(d, th, i), 0); }
+    ev[0].things_n = jv_len(d, th);
+  }
+  if t == AGR_ASK {
+    c := jv_get(d, 0, "choices");
+    if jv_kind(d, c) != JV_ARRAY || jv_len(d, c) < 2 || jv_len(d, c) > AGR_CHOICES { return "an ask has 2 to 4 answers"; }
+    for i: 0..<jv_len(d, c) {
+      m := jv_str(d, jv_at(d, c, i), ev[0].choice[i * AGR_CHOICE..<(i + 1) * AGR_CHOICE]);
+      if m < 1 { return "each answer is 1 to 40 bytes"; }
+      ev[0].choice_n[i] = m;
+    }
+    ev[0].choices = jv_len(d, c);
+  }
+  if t == AGR_STATE {
+    n = jv_str(d, jv_get(d, 0, "state"), sb[..]); ev[0].state = ifx n < 0 then -1 else agr_index(AGR_STATE_ID[..], cast(string) sb[0..<n]);
+    if ev[0].state < 0 { return "a state event names one of the states"; }
+    if ev[0].state == AGR_PAUSED {
+      ev[0].until = cast(s64) jv_int(d, jv_get(d, 0, "until"), 0);
+      if ev[0].until < 0 { return "a pause's until is milliseconds since 1970"; }
+    }
+  }
+  if t == AGR_USAGE {
+    ev[0].turns = cast(s32) jv_int(d, jv_get(d, 0, "turns"), 0);
+    ev[0].cents = cast(s32) jv_int(d, jv_get(d, 0, "cents"), 0);
+    ev[0].ms = cast(s32) jv_int(d, jv_get(d, 0, "ms"), 0);
+  }
+  why := agr_code_event_read(d, ev);
+  if why.count > 0 { return why; }
+  ev[0].cut = jv_bool(d, jv_get(d, 0, "cut"));
+  return "";
+}
+// A Code agent's event's own fields read: "" when they are good, else why not.
+agr_code_event_read :: (d: Jv, ev: [] AgrEvent) -> string {
+  t := ev[0].type;
+  sb: [AGR_URL] u8;
+  if t == AGR_WORKTREE || t == AGR_BRANCH || t == AGR_PULL {
+    n := jv_str(d, jv_get(d, 0, "repo"), sb[..]); ev[0].repo = ifx n < 0 then -1 else agr_index(AGR_REPO_ID[..], cast(string) sb[0..<n]);
+    if ev[0].repo < 0 { return "a repo is openagents or gamebuilder"; }
+  }
+  if t == AGR_WORKTREE {
+    n := jv_str(d, jv_get(d, 0, "base"), ev[0].commit[..]);
+    if n < 0 || !agr_commit_ok(cast(string) ev[0].commit[0..<n]) { return "a base is a commit: 7 to 40 hex digits"; }
+    ev[0].commit_n = n;
+  }
+  if t == AGR_BRANCH || t == AGR_PULL {
+    n := jv_str(d, jv_get(d, 0, "branch"), ev[0].branch[..]);
+    if n < 0 || !agr_branch_ok(cast(string) ev[0].branch[0..<n]) { return "a branch is 1 to 128 bytes of a git branch's name (AGR_REF)"; }
+    ev[0].branch_n = n;
+  }
+  if t == AGR_PULL || t == AGR_PIN {
+    n := jv_str(d, jv_get(d, 0, "url"), ev[0].url[..]);
+    if n < 0 { return "an address is at most 240 bytes (AGR_URL)"; }
+    ev[0].url_n = n;
+  }
+  if t == AGR_PULL {
+    ev[0].number = cast(s32) jv_int(d, jv_get(d, 0, "number"), -1);
+    if agr_pull_number(ev[0].repo, cast(string) ev[0].url[0..<ev[0].url_n]) != ev[0].number { return "a pull request is its repository's: https://github.com/OWNER/REPO/pull/N, and its number N"; }
+  }
+  if t == AGR_FILES {
+    ev[0].count = cast(s32) jv_int(d, jv_get(d, 0, "count"), -1);
+    names := jv_get(d, 0, "names");
+    if ev[0].count < 0 || jv_kind(d, names) != JV_ARRAY || jv_len(d, names) > AGR_NAMES || jv_len(d, names) > cast(int) ev[0].count { return "a files event has its count and at most 32 of the names (AGR_NAMES)"; }
+    m := 0;
+    for i: 0..<jv_len(d, names) {
+      fb: [AGR_TEXT] u8;
+      k := jv_str(d, jv_at(d, names, i), fb[..]);
+      if k < 1 { return "a file's name is 1 or more bytes"; }
+      if i > 0 { m = agr_put(ev[0].text[..], m, "\n"); }
+      m = agr_put(ev[0].text[..], m, cast(string) fb[0..<k]);
+    }
+    ev[0].text_n = m;
+  }
+  if t == AGR_CHECK {
+    n := jv_str(d, jv_get(d, 0, "name"), ev[0].name[..]);
+    if n < 1 { return "a check's name is 1 to 64 bytes (AGR_NAME)"; }
+    ev[0].name_n = n;
+    ev[0].ok = jv_bool(d, jv_get(d, 0, "ok"));
+  }
+  return "";
+}
+
+// A commit: 7 to 40 hex digits.
+agr_commit_ok :: (s: string) -> bool {
+  if s.count < 7 || s.count > AGR_COMMIT { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// A branch's name as git allows it, kept short: 1 to 128 bytes, no space or control
+// character, none of ~ ^ : ? * [ \\, not starting with - or /, and no "..".
+agr_branch_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > AGR_REF || s[0] == '-' || s[0] == '/' { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    if c <= 32 || c == 127 || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\' { return false; }
+    if c == '.' && i + 1 < s.count && s[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+// A pull request's number, when url is one at repo's GitHub repository
+// (https://github.com/OpenAgentsInc/openagents/pull/123); else -1.
+agr_pull_number :: (repo: int, url: string) -> s32 {
+  if repo < 0 || repo >= AGR_REPOS { return -1; }
+  pb: [128] u8;
+  pn := agr_put(pb[..], 0, "https://github.com/"); pn = agr_put(pb[..], pn, AGR_REPO_GITHUB[repo]); pn = agr_put(pb[..], pn, "/pull/");
+  prefix := cast(string) pb[0..<pn];
+  if url.count <= pn || url.count > pn + 9 || cast(string) url[0..<pn] != prefix { return -1; }
+  v: s32 = 0;
+  for i: pn..<url.count { c := url[i]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(s32) (c - '0'); }
+  return ifx v > 0 then v else -1;
+}
+
+// Appends ev to r's log: it becomes event r.events + 1, made now, and the record follows it (a
+// state event moves its state; any event is an update). The line to append (with its line
+// break) is written into out; "" when the log is full or it did not fit.
+agr_append :: (r: [] AgrRecord, ev: [] AgrEvent, now: s64, out: [] u8) -> string {
+  if r[0].events >= AGR_EVENTS || out.count < 2 { return ""; }
+  ev[0].n = r[0].events + 1; ev[0].at = now;
+  line := agr_event_write(agr_id(r), ev, out[0..<out.count - 1]);
+  if line.count == 0 { return ""; }
+  out[line.count] = '\n';
+  r[0].events += 1; r[0].updated = now;
+  if ev[0].type == AGR_STATE && ev[0].state != r[0].state { r[0].state = ev[0].state; r[0].since = now; }
+  if ev[0].type == AGR_STATE {
+    // a stop, a failure, a pause or an unknown turn says why in the record too; any other state clears it
+    w := ifx ev[0].state == AGR_FAILED || ev[0].state == AGR_STOPPED || ev[0].state == AGR_PAUSED || ev[0].state == AGR_UNKNOWN then cast(string) ev[0].text[0..<ev[0].text_n] else "";
+    r[0].why_n = agr_set(r[0].why[..], w);
+    // a pause says when it goes on; any other state has none
+    r[0].resumes = ifx ev[0].state == AGR_PAUSED then ev[0].until else 0;
+  }
+  return cast(string) out[0..<line.count + 1];
+}
+
+// ---- reading a log by cursor
+
+// A log's lines: how many there are. A last line without its line break (a write cut short) is
+// not counted: it is not an event yet.
+agr_log_count :: (lg: string) -> int {
+  n := 0; for c: lg { if c == '\n' { n += 1; } }
+  return n;
+}
+// Where the line of event k (from 1) starts in log, and its length; -1 when there is none.
+AgrSpan :: struct { from: int; count: int; }
+agr_log_line :: (lg: string, k: int) -> AgrSpan {
+  if k < 1 { return AgrSpan.{from = -1}; }
+  line := 1; from := 0;
+  for i: 0..<lg.count {
+    if lg[i] != '\n' { continue; }
+    if line == k { return AgrSpan.{from = from, count = i - from}; }
+    line += 1; from = i + 1;
+  }
+  return AgrSpan.{from = -1};
+}
+
+// The events after cursor `after`, at most `most` (AGR_PAGE when 0), into o: the key "events",
+// an array of the events as their lines say them, then "next" (the cursor to read on from) and
+// "more" (whether there are more after it). A line that isn't its agent's event n stops the read
+// there and says so in "broken" (the log is kept as it is: nothing is ever rewritten).
+agr_events_page :: (lg: string, agent: string, after: int, most: int, o: [] Jo) {
+  limit := ifx most <= 0 || most > AGR_PAGE then AGR_PAGE else most;
+  total := agr_log_count(lg);
+  jo_key(o, "events"); jo_arr(o);
+  next := ifx after < 0 then 0 else after;
+  if next > total { next = total; }
+  k := next + 1; shown := 0; broken := 0;
+  line := 1; from := 0;
+  ev: [1] AgrEvent;
+  for i: 0..<lg.count {
+    if lg[i] != '\n' { continue; }
+    if line >= k && shown < limit && broken == 0 {
+      text := cast(string) lg[from..<i];
+      why := agr_event_read(text, agent, ev[..]);
+      if why.count > 0 || ev[0].n != cast(s32) line { broken = line; }
+      else { jo_raw(o, text); shown += 1; next = line; }
+    }
+    line += 1; from = i + 1;
+  }
+  jo_end(o);
+  jo_key(o, "next"); jo_int(o, next);
+  jo_key(o, "more"); jo_bool(o, broken == 0 && next < total);
+  if broken > 0 { jo_key(o, "broken"); jo_int(o, broken); }
+}
+
+// ---- what a view shows
+
+// The state a view shows: the record's, except that a local agent whose computer has said
+// nothing for AGR_OFFLINE_MS is offline (never done: it may still be working).
+agr_shown_state :: (r: AgrRecord, now: s64) -> int {
+  live := r.state == AGR_WORKING || r.state == AGR_WAITING || r.state == AGR_QUEUED || r.state == AGR_PAUSED;
+  if r.place == AGR_LOCAL && r.heard > 0 && live && now - r.heard > AGR_OFFLINE_MS { return AGR_OFFLINE; }
+  return r.state;
+}
+// Where it runs, in words: a local agent's computer by name, else the place.
+agr_place_words :: (r: [] AgrRecord) -> string {
+  if r[0].place == AGR_LOCAL && r[0].computer_n > 0 { return cast(string) r[0].computer[0..<r[0].computer_n]; }
+  return AGR_PLACE_WORDS[r[0].place];
+}
+// How long, short: "45s", "2m", "3h", "4d".
+agr_age :: (ms: s64, out: [] u8) -> string {
+  s := ifx ms < 0 then 0 else ms / 1000;
+  n := 0;
+  if s < 60 { n = agr_put(out, agr_int(out, 0, s), "s"); }
+  else if s < 3600 { n = agr_put(out, agr_int(out, 0, s / 60), "m"); }
+  else if s < 86400 { n = agr_put(out, agr_int(out, 0, s / 3600), "h"); }
+  else { n = agr_put(out, agr_int(out, 0, s / 86400), "d"); }
+  return cast(string) out[0..<n];
+}
+// Waiting for the person first, then the rest, newest first: whether a comes before b.
+agr_before :: (a: AgrRecord, b: AgrRecord, now: s64) -> bool {
+  wa := agr_shown_state(a, now) == AGR_WAITING; wb := agr_shown_state(b, now) == AGR_WAITING;
+  if wa != wb { return wa; }
+  return a.updated > b.updated;
+}
+
+// ---- the agents a folder or an account keeps, as the command rows see them
+
+AGR_TURNS :: 20;           // model turns one message may take (the runner's --max-turns)
+AGR_CENTS :: 200;          // cents of the person's plan one message may use
+AGR_MESSAGE_MAX :: 1000;   // bytes of a message the person sends
+AGR_REPORT :: 20;          // events one report carries; the next report goes on from there
+
+// ---- a cloud agent (issue 7; docs/agents.md, "A cloud agent"): a Builder that gamebuilder.org's
+// hosted server runs on a level of the account's, asking OpenAgents' model for each step. Its
+// limits, each said in words with its number before it starts and on its row as it runs. It uses
+// no Claude plan and costs the person nothing: OpenAgents' free key carries it, under that key's
+// own day (AGR_CLOUD_KEY_WORDS).
+AGR_CLOUD_STEPS :: 12;          // model steps one message may take
+AGR_CLOUD_TOKENS :: 100000;     // tokens (asked and answered) one message may use
+AGR_CLOUD_ANSWER :: 8192;       // tokens one step's answer may have
+AGR_CLOUD_COMMANDS :: 8;        // commands (rows) one model step may run; the rest are refused in words
+AGR_CLOUD_MINUTES :: 10;        // minutes one message may take
+AGR_CLOUD_EDITS :: 30;          // changes one message may make
+AGR_CLOUD_DAY :: 60;            // model steps an account's cloud agents may take a day (UTC)
+AGR_CLOUD_UNDO :: 16;           // its changes kept to take back, newest first
+AGR_CLOUD_EACH :: 2;            // an account's cloud agents working at once; the rest are queued
+AGR_CLOUD_RUNNER :: "openagents";   // its runner: OpenAgents' model, through openagents.com
+AGR_CLOUD_KEY_WORDS :: "OpenAgents' free model key carries every GameBuilder cloud agent: 500 model calls and $2.00 a day between them";
+// Its limits, in words with their numbers (the page says them before Start; agent-new answers them).
+agr_cloud_words :: (out: [] u8) -> string {
+  n := agr_put(out, 0, "each message: at most "); n = agr_int(out, n, AGR_CLOUD_STEPS); n = agr_put(out, n, " model steps (a step runs at most ");
+  n = agr_int(out, n, AGR_CLOUD_COMMANDS); n = agr_put(out, n, " commands), "); n = agr_thousands(out, n, AGR_CLOUD_TOKENS); n = agr_put(out, n, " tokens, "); n = agr_int(out, n, AGR_CLOUD_EDITS); n = agr_put(out, n, " changes and ");
+  n = agr_int(out, n, AGR_CLOUD_MINUTES); n = agr_put(out, n, " minutes; "); n = agr_int(out, n, AGR_CLOUD_DAY); n = agr_put(out, n, " model steps a day for your account. Free: no Claude plan is used");
+  return cast(string) out[0..<n];
+}
+// v with a comma every three digits (100,000).
+agr_thousands :: (out: [] u8, n: int, v: s64) -> int {
+  d: [24] u8; k := agr_int(d[..], 0, v); m := n;
+  for i: 0..<k {
+    if i > 0 && (k - i) % 3 == 0 && d[i - 1] != '-' { m = agr_put(out, m, ","); }
+    if m < out.count { out[m] = d[i]; m += 1; }
+  }
+  return m;
+}
+// Where it stands against its limits, as its row says it while it runs: "step 3 of 12, 8,200 of
+// 100,000 tokens, 2 of 30 changes".
+agr_cloud_spent :: (steps: int, tokens: int, edits: int, out: [] u8) -> string {
+  n := agr_put(out, 0, "step "); n = agr_int(out, n, steps); n = agr_put(out, n, " of "); n = agr_int(out, n, AGR_CLOUD_STEPS);
+  n = agr_put(out, n, ", "); n = agr_thousands(out, n, tokens); n = agr_put(out, n, " of "); n = agr_thousands(out, n, AGR_CLOUD_TOKENS);
+  n = agr_put(out, n, " tokens, "); n = agr_int(out, n, edits); n = agr_put(out, n, " of "); n = agr_int(out, n, AGR_CLOUD_EDITS); n = agr_put(out, n, " changes");
+  return cast(string) out[0..<n];
+}
+
+// Every record a surface read (the files agent-ID.agent), with its job: what the rows answer
+// from and change. lines is where a row writes the events it appends.
+AgrStore :: struct {
+  r: [AGR_RECORDS] AgrRecord; jw: [AGR_RECORDS] AgrJob; n: int;
+  lines: [AGR_REPORT * AGR_LINE + 64] u8;
+}
+// The record named id, or -1.
+agr_find :: (s: [] AgrStore, id: string) -> int {
+  if s.count != 1 { return -1; }
+  for k: 0..<s[0].n { if cast(string) s[0].r[k].id[0..<s[0].r[k].id_n] == id { return k; } }
+  return -1;
+}
+// A record's file read into the store: "" when it was kept, else why not.
+agr_store_add :: (s: [] AgrStore, text: string) -> string {
+  if s.count != 1 { return "no store"; }
+  if s[0].n >= AGR_RECORDS { return "a folder or an account keeps at most 256 agents (AGR_RECORDS)"; }
+  k := s[0].n;
+  why := agr_record_read(text, s[0].r[k..<k + 1], s[0].jw[k..<k + 1]);
+  if why.count > 0 { return why; }
+  if agr_find(s, agr_id(s[0].r[k..<k + 1])) >= 0 { return "two records have that id"; }
+  s[0].n += 1;
+  return "";
+}
+agr_job_of :: (s: [] AgrStore, k: int) -> string { return cast(string) s[0].jw[k].buf[0..<s[0].jw[k].n]; }
+// The store's records in the order a view shows them: waiting first, then newest.
+agr_order :: (s: [] AgrStore, now: s64, out: [] int) -> int {
+  n := 0;
+  for k: 0..<s[0].n {
+    if n >= out.count { break; }
+    at := n;
+    while at > 0 && agr_before(s[0].r[k], s[0].r[out[at - 1]], now) { out[at] = out[at - 1]; at -= 1; }
+    out[at] = k; n += 1;
+  }
+  return n;
+}
+// What a view says of a record, beside the record itself: the state it shows and its words,
+// how long it has been in it, and where it runs.
+agr_shown_json :: (s: [] AgrStore, k: int, now: s64, o: [] Jo) {
+  r := s[0].r[k..<k + 1];
+  st := agr_shown_state(r[0], now);
+  ab: [16] u8;
+  since := ifx st == AGR_OFFLINE then r[0].heard else r[0].since;
+  jo_key(o, "shown"); jo_str(o, AGR_STATE_ID[st]);
+  jo_key(o, "words"); jo_str(o, AGR_STATE_WORDS[st]);
+  jo_key(o, "for"); jo_str(o, agr_age(now - since, ab[..]));
+  jo_key(o, "where"); jo_str(o, agr_place_words(r));
+  // what it costs, in words (docs/business/agents.md)
+  cb: [128] u8;
+  jo_key(o, "cost"); jo_str(o, agr_cost_words(r, cb[..]));
+  // a pause says when it goes on: the core has no time zone, so in how long
+  if st == AGR_PAUSED && r[0].resumes > 0 { gb: [16] u8; jo_key(o, "goes_on"); jo_str(o, agr_age(r[0].resumes - now, gb[..])); }
+  // an attached agent's process isn't ours: the view says what GameBuilder can do to it
+  if r[0].place == AGR_ATTACHED { jo_key(o, "can"); jo_str(o, AGR_ATTACHED_CAN); }
+}
+// The last event of type in a log (agent's), read into ev: its n, or 0 when there is none.
+agr_last :: (lg: string, agent: string, type: int, ev: [] AgrEvent) -> int {
+  total := agr_log_count(lg);
+  k := total;
+  while k >= 1 {
+    sp := agr_log_line(lg, k);
+    if sp.from >= 0 && agr_event_read(cast(string) lg[sp.from..<sp.from + sp.count], agent, ev) == "" && ev[0].type == type { return k; }
+    k -= 1;
+  }
+  return 0;
+}
+
+// ---- an event in words
+
+// One event as a plain line, as gamebuilder.org/agents lists it: who said or did what. kind is
+// the agent's (its name says the agent's messages). Written into out.
+agr_event_line :: (ev: [] AgrEvent, kind: int, out: [] u8) -> string {
+  n := 0; t := ev[0].type; text := cast(string) ev[0].text[0..<ev[0].text_n];
+  name := AGR_KIND_NAME[ifx kind >= 0 && kind < AGR_KINDS then kind else 0];
+  if t == AGR_MESSAGE { n = agr_put(out, n, ifx ev[0].from == AGR_PERSON then "You" else name); n = agr_put(out, n, ": "); n = agr_put(out, n, text); }
+  else if t == AGR_TOOL {
+    n = agr_put(out, n, name); n = agr_put(out, n, " used "); n = agr_put(out, n, cast(string) ev[0].tool[0..<ev[0].tool_n]);
+    if !ev[0].ok { n = agr_put(out, n, ", refused"); }
+    if ev[0].result_n > 0 { n = agr_put(out, n, ": "); n = agr_put(out, n, cast(string) ev[0].result[0..<ev[0].result_n]); }
+  } else if t == AGR_EDIT && ev[0].things_n == 0 {
+    // a change taken back (a cloud agent's agent-undo): the level as it was before it, no thing named
+    n = agr_put(out, n, name); n = agr_put(out, n, "'s last change to level "); n = agr_int(out, n, cast(s64) ev[0].level); n = agr_put(out, n, " was taken back");
+  } else if t == AGR_EDIT {
+    n = agr_put(out, n, name); n = agr_put(out, n, " changed level "); n = agr_int(out, n, cast(s64) ev[0].level);
+    n = agr_put(out, n, ": "); n = agr_int(out, n, cast(s64) ev[0].things_n); n = agr_put(out, n, ifx ev[0].things_n == 1 then " thing" else " things");
+  } else if t == AGR_ASK {
+    n = agr_put(out, n, name); n = agr_put(out, n, " asks: "); n = agr_put(out, n, text); n = agr_put(out, n, " (");
+    for i: 0..<ev[0].choices { if i > 0 { n = agr_put(out, n, " / "); } n = agr_put(out, n, cast(string) ev[0].choice[i * AGR_CHOICE..<i * AGR_CHOICE + ev[0].choice_n[i]]); }
+    n = agr_put(out, n, ")");
+  } else if t == AGR_ANSWER { n = agr_put(out, n, "You answered: "); n = agr_put(out, n, text); }
+  else if t == AGR_STATE {
+    n = agr_put(out, n, "Now "); n = agr_put(out, n, AGR_STATE_WORDS[ev[0].state]);
+    if text.count > 0 { n = agr_put(out, n, ": "); n = agr_put(out, n, text); }
+    if ev[0].state == AGR_PAUSED && ev[0].until > ev[0].at { ab: [16] u8; n = agr_put(out, n, " (it goes on in "); n = agr_put(out, n, agr_age(ev[0].until - ev[0].at, ab[..])); n = agr_put(out, n, ")"); }
+  } else if t == AGR_USAGE {
+    // (a cloud agent uses no plan: its cents are none, and none are said)
+    n = agr_put(out, n, "Used "); n = agr_int(out, n, cast(s64) ev[0].turns); n = agr_put(out, n, ifx ev[0].turns == 1 then " turn" else " turns");
+    if ev[0].cents > 0 { n = agr_put(out, n, " and "); n = agr_int(out, n, cast(s64) ev[0].cents); n = agr_put(out, n, " cents of your Claude plan"); }
+  } else if t == AGR_ERROR { n = agr_put(out, n, "Error: "); n = agr_put(out, n, text); }
+  // a Code agent's
+  else if t == AGR_WORKTREE {
+    n = agr_put(out, n, "Its folder: a worktree of "); n = agr_put(out, n, AGR_REPO_GITHUB[ifx ev[0].repo >= 0 && ev[0].repo < AGR_REPOS then ev[0].repo else 0]);
+    n = agr_put(out, n, " from origin/main at "); n = agr_put(out, n, agr_cut(cast(string) ev[0].commit[0..<ev[0].commit_n], 10));
+  } else if t == AGR_BRANCH { n = agr_put(out, n, "Branch: "); n = agr_put(out, n, cast(string) ev[0].branch[0..<ev[0].branch_n]); }
+  else if t == AGR_PULL {
+    n = agr_put(out, n, "Pull request #"); n = agr_int(out, n, cast(s64) ev[0].number); n = agr_put(out, n, ": "); n = agr_put(out, n, cast(string) ev[0].url[0..<ev[0].url_n]);
+  } else if t == AGR_FILES { n = agr_put(out, n, "Files changed: "); n = agr_int(out, n, cast(s64) ev[0].count); }
+  else if t == AGR_CHECK {
+    n = agr_put(out, n, "Check "); n = agr_put(out, n, cast(string) ev[0].name[0..<ev[0].name_n]); n = agr_put(out, n, ifx ev[0].ok then " passed" else " failed");
+    if text.count > 0 { n = agr_put(out, n, ": "); n = agr_put(out, n, text); }
+  } else if t == AGR_PIN { n = agr_put(out, n, "Offered the pin bump after "); n = agr_put(out, n, cast(string) ev[0].url[0..<ev[0].url_n]); }
+  return cast(string) out[0..<n];
+}
+
+// ---- reporting to the account
+
+// The agent-report row's arguments for a record's file and its log, from the events the account
+// has (its agent-read's "events"; 0 for a new agent): {"report":{record, from, events}} with at
+// most AGR_REPORT events, written into o. How many events it carries; -1 when the record or a line
+// does not read (nothing is sent). The app's sync (sync.coax) sends exactly this.
+agr_report :: (record: string, lg: string, from: int, o: [] Jo) -> int {
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  rec := record;
+  while rec.count > 0 && (rec[rec.count - 1] == '\n' || rec[rec.count - 1] == ' ') { rec = rec[0..<rec.count - 1]; }
+  if agr_record_read(rec, got[..], jw[..]).count > 0 { return -1; }
+  id := agr_id(got[..]);
+  total := agr_log_count(lg);
+  if from < 0 || from > total { return -1; }
+  jo_obj(o); jo_key(o, "report"); jo_obj(o);
+  jo_key(o, "record"); jo_raw(o, rec);
+  jo_key(o, "from"); jo_int(o, from);
+  jo_key(o, "events"); jo_arr(o);
+  sent := 0; line := 1; at := 0; ev: [1] AgrEvent;
+  for i: 0..<lg.count {
+    if lg[i] != '\n' { continue; }
+    text := cast(string) lg[at..<i]; at = i + 1;
+    if line > from && sent < AGR_REPORT {
+      if agr_event_read(text, id, ev[..]).count > 0 || ev[0].n != cast(s32) line { return -1; }
+      jo_raw(o, text); sent += 1;
+    }
+    line += 1;
+  }
+  jo_end(o); jo_end(o); jo_end(o);
+  return ifx o[0].bad then -1 else sent;
+}
+
+// ---- what an agent costs (docs/business/agents.md; docs/agents.md, "Cost")
+
+// An agent on the person's own computer runs on their own plan: it never costs Credits, and the
+// pane, the page and its first event say so when it starts.
+AGR_LOCAL_COST :: "your own agent: no charge from us";
+// A cloud agent's Credits so far and its limit, and what the limit is made of. Nothing is charged
+// yet: OpenAgents' free model key carries every cloud agent (AGR_CLOUD_KEY_WORDS).
+AGR_CLOUD_COST :: "0 Credits so far, of a limit of 0: its model is OpenAgents' free key and its machine our server, so nothing is charged yet";
+agr_cost_words :: (r: [] AgrRecord, out: [] u8) -> string {
+  return cast(string) out[0..<agr_put(out, 0, ifx r[0].place == AGR_CLOUD then AGR_CLOUD_COST else AGR_LOCAL_COST)];
+}
+
+// ---- a computer (issue 11; docs/agents.md, "Computers"): one the person's agents run on,
+// as its resident service writes it (cli/resident.coax) and reports it to the account
+// (computer-report): its name, whether the service is on, its slots and the agents in them,
+// and which coding agents are installed and signed in there. It names no login, token or key:
+// a plan's login stays on its computer.
+
+AGR_COMPUTER_SCHEMA :: "gamebuilder.computer.v1";
+AGR_RESIDENT :: "resident";   // the record's runner when the resident service runs it (cli/resident.coax)
+// Whether a sorts before b, byte by byte.
+agr_less :: (a: string, b: string) -> bool {
+  for i: 0..<(ifx a.count < b.count then a.count else b.count) { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+AGR_COMPUTERS :: 8;        // computers an account keeps
+AGR_SLOTS :: 1;            // agents a resident runs at once: one session on a Claude plan
+AGR_COMPUTER_MAX :: 1024;  // bytes of one computer's file, at most
+// A coding agent there: not installed, installed but not signed in, signed in (to its maker's plan).
+AGR_NOT_INSTALLED :: 0; AGR_INSTALLED :: 1; AGR_SIGNED_IN :: 2;
+AGR_HAVE_ID :: [3] string.["not-installed", "installed", "signed-in"];
+AGR_HAVE_WORDS :: [3] string.["not installed", "installed, not signed in", "signed in"];
+AGR_CODERS :: 2;
+AGR_CODER_ID :: [AGR_CODERS] string.["claude", "codex"];
+AGR_CODER_NAME :: [AGR_CODERS] string.["Claude", "Codex"];
+// What a computer shows: on, off (its service was quit), or offline (on, but not heard from).
+AGR_ON :: 0; AGR_OFF :: 1; AGR_GONE :: 2;
+AGR_SHOWN_ID :: [3] string.["on", "off", "offline"];
+// What quitting the resident says: the agents it ran stop, and say why.
+AGR_QUIT :: "you quit GameBuilder's resident service on its computer: what it changed stays; start the service again and send it a message to go on";
+// Why a local agent is paused: its plan's limit (the runner and the resident service say it).
+AGR_PLAN_PAUSED :: "your Claude plan hit its limit: it goes on by itself when the plan lets it";
+AGR_LOST :: "GameBuilder's resident service on its computer ended mid-turn, so we can't tell whether its turn finished: what it changed stays";
+
+AgrComputer :: struct {
+  id: [AGR_ID] u8; id_n: int;
+  name: [AGR_COMPUTER] u8; name_n: int;
+  on: bool;                       // its resident service is running
+  since: s64;                     // when it went on, or off
+  heard: s64;                     // when it last wrote (on the account: when it last reported)
+  slots: s32; used: s32;
+  have: [AGR_CODERS] int;         // AGR_NOT_INSTALLED, AGR_INSTALLED or AGR_SIGNED_IN, a coding agent each
+  running: [AGR_SLOTS * AGR_ID] u8; running_n: [AGR_SLOTS] int;   // the agent each used slot runs
+  why: [AGR_WHY] u8; why_n: int;  // off: why
+}
+
+// A computer's id from its name: lower case letters, digits and -, starting with a letter.
+agr_computer_id :: (name: string, out: [] u8) -> string {
+  n := 0;
+  if name.count == 0 || !((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')) { n = agr_put(out, n, "c-"); }
+  for ch: name {
+    if n >= AGR_ID || n >= out.count { break; }
+    c := ch;
+    if c >= 'A' && c <= 'Z' { c = c + 32; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { c = '-'; }
+    out[n] = c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+// A computer's file's name: computer-ID.computer.
+agr_computer_file :: (id: string, out: [] u8) -> string { return cast(string) out[0..<agr_put(out, agr_put(out, agr_put(out, 0, "computer-"), id), ".computer")]; }
+agr_computer_file_ok :: (name: string) -> bool {
+  return name.count > 18 && cast(string) name[0..<9] == "computer-" && cast(string) name[name.count - 9..<name.count] == ".computer";
+}
+agr_computer_new :: (c: [] AgrComputer, name: string, now: s64) {
+  c[0] = AgrComputer.{};
+  ib: [AGR_ID + 2] u8;
+  c[0].id_n = agr_set(c[0].id[..], agr_computer_id(name, ib[..]));
+  c[0].name_n = agr_set(c[0].name[..], name);
+  c[0].on = true; c[0].since = now; c[0].heard = now; c[0].slots = AGR_SLOTS;
+}
+agr_computer_running :: (c: [] AgrComputer, i: int) -> string { return cast(string) c[0].running[i * AGR_ID..<i * AGR_ID + c[0].running_n[i]]; }
+
+// The computer as its file and its answers write it: gamebuilder.computer.v1, in this order.
+agr_computer_json :: (c: [] AgrComputer, o: [] Jo) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, AGR_COMPUTER_SCHEMA);
+  jo_key(o, "id"); jo_str(o, cast(string) c[0].id[0..<c[0].id_n]);
+  jo_key(o, "name"); jo_str(o, cast(string) c[0].name[0..<c[0].name_n]);
+  jo_key(o, "on"); jo_bool(o, c[0].on);
+  jo_key(o, "since"); jo_int(o, cast(int) c[0].since);
+  jo_key(o, "heard"); jo_int(o, cast(int) c[0].heard);
+  jo_key(o, "slots"); jo_int(o, cast(int) c[0].slots);
+  jo_key(o, "used"); jo_int(o, cast(int) c[0].used);
+  jo_key(o, "agents"); jo_obj(o);
+  for i: 0..<AGR_CODERS { jo_key(o, AGR_CODER_ID[i]); jo_str(o, AGR_HAVE_ID[c[0].have[i]]); }
+  jo_end(o);
+  jo_key(o, "running"); jo_arr(o); for i: 0..<cast(int) c[0].used { jo_str(o, agr_computer_running(c, i)); } jo_end(o);
+  jo_key(o, "why"); jo_str(o, cast(string) c[0].why[0..<c[0].why_n]);
+  jo_end(o);
+}
+agr_computer_write :: (c: [] AgrComputer, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  agr_computer_json(c, o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// A computer's file read: "" when it is one, else why not.
+agr_computer_read :: (text: string, c: [] AgrComputer) -> string {
+  c[0] = AgrComputer.{};
+  if text.count == 0 || text.count > AGR_COMPUTER_MAX { return "a computer is 1 to 1024 bytes (AGR_COMPUTER_MAX)"; }
+  nodes: [48] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return "a computer is one JSON object"; }
+  d := da[0];
+  sb: [AGR_WHY * 6] u8;
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), AGR_COMPUTER_SCHEMA) { return "a computer's schema is gamebuilder.computer.v1"; }
+  n := jv_str(d, jv_get(d, 0, "name"), sb[..]);
+  if n < 1 || n > AGR_COMPUTER || !agr_line_ok(cast(string) sb[0..<n]) { return "a computer's name is 1 to 48 bytes on one line"; }
+  c[0].name_n = agr_set(c[0].name[..], cast(string) sb[0..<n]);
+  ib: [AGR_ID + 2] u8; want := agr_computer_id(cast(string) sb[0..<n], ib[..]);
+  n = jv_str(d, jv_get(d, 0, "id"), sb[..]);
+  if n < 0 || cast(string) sb[0..<n] != want { return "a computer's id is its name in lower case letters, digits and -"; }
+  c[0].id_n = agr_set(c[0].id[..], want);
+  c[0].on = jv_bool(d, jv_get(d, 0, "on"));
+  c[0].since = cast(s64) jv_int(d, jv_get(d, 0, "since"), -1);
+  c[0].heard = cast(s64) jv_int(d, jv_get(d, 0, "heard"), -1);
+  if c[0].since < 0 || c[0].heard < 0 { return "since and heard are milliseconds since 1970"; }
+  c[0].slots = cast(s32) jv_int(d, jv_get(d, 0, "slots"), -1);
+  c[0].used = cast(s32) jv_int(d, jv_get(d, 0, "used"), -1);
+  if c[0].slots < 0 || c[0].slots > AGR_SLOTS || c[0].used < 0 || c[0].used > c[0].slots { return "a computer has 0 to 1 slots (AGR_SLOTS), and uses at most those"; }
+  ag := jv_get(d, 0, "agents");
+  for i: 0..<AGR_CODERS {
+    n = jv_str(d, jv_get(d, ag, AGR_CODER_ID[i]), sb[..]);
+    c[0].have[i] = ifx n < 0 then -1 else agr_index(AGR_HAVE_ID[..], cast(string) sb[0..<n]);
+    if c[0].have[i] < 0 { return "each coding agent is not-installed, installed or signed-in"; }
+  }
+  run := jv_get(d, 0, "running");
+  if jv_kind(d, run) != JV_ARRAY || jv_len(d, run) != cast(int) c[0].used { return "running names the agent in each slot in use"; }
+  for i: 0..<jv_len(d, run) {
+    n = jv_str(d, jv_at(d, run, i), sb[..]);
+    if n < 0 || !agr_id_ok(cast(string) sb[0..<n]) { return "running names agents by their ids"; }
+    c[0].running_n[i] = agr_put(c[0].running[i * AGR_ID..<(i + 1) * AGR_ID], 0, cast(string) sb[0..<n]);
+  }
+  n = jv_str(d, jv_get(d, 0, "why"), sb[..]);
+  if n < 0 || n > AGR_WHY { return "why is at most 240 bytes (AGR_WHY)"; }
+  c[0].why_n = agr_set(c[0].why[..], cast(string) sb[0..<n]);
+  return "";
+}
+// On, off or offline: on, and not heard from for AGR_OFFLINE_MS, is offline.
+agr_computer_shown :: (c: AgrComputer, now: s64) -> int {
+  if !c.on { return AGR_OFF; }
+  return ifx now - c.heard > AGR_OFFLINE_MS then AGR_GONE else AGR_ON;
+}
+// A computer in words, as the pane's tile and the page's list say it:
+//   "on: 1 of 1 slot in use; Claude signed in, Codex not installed"
+//   "offline: not heard from for 5m"     "off for 2h: you quit ..."
+agr_computer_words :: (c: [] AgrComputer, now: s64, out: [] u8) -> string {
+  st := agr_computer_shown(c[0], now); ab: [16] u8; n := 0;
+  if st == AGR_GONE { n = agr_put(out, n, "offline: not heard from for "); n = agr_put(out, n, agr_age(now - c[0].heard, ab[..])); return cast(string) out[0..<n]; }
+  if st == AGR_OFF {
+    n = agr_put(out, n, "off for "); n = agr_put(out, n, agr_age(now - c[0].since, ab[..]));
+    if c[0].why_n > 0 { n = agr_put(out, n, ": "); n = agr_put(out, n, cast(string) c[0].why[0..<c[0].why_n]); }
+    return cast(string) out[0..<n];
+  }
+  n = agr_put(out, n, "on: "); n = agr_int(out, n, cast(s64) c[0].used); n = agr_put(out, n, " of "); n = agr_int(out, n, cast(s64) c[0].slots);
+  n = agr_put(out, n, ifx c[0].slots == 1 then " slot in use; " else " slots in use; ");
+  for i: 0..<AGR_CODERS {
+    if i > 0 { n = agr_put(out, n, ", "); }
+    n = agr_put(out, n, AGR_CODER_NAME[i]); n = agr_put(out, n, " "); n = agr_put(out, n, AGR_HAVE_WORDS[c[0].have[i]]);
+  }
+  return cast(string) out[0..<n];
+}
+
+// Every computer a surface read (computer-ID.computer files).
+AgrComputers :: struct { c: [AGR_COMPUTERS] AgrComputer; n: int; }
+agr_computer_find :: (s: [] AgrComputers, id: string) -> int {
+  if s.count != 1 { return -1; }
+  for k: 0..<s[0].n { if cast(string) s[0].c[k].id[0..<s[0].c[k].id_n] == id { return k; } }
+  return -1;
+}
+agr_computers_add :: (s: [] AgrComputers, text: string) -> string {
+  if s.count != 1 { return "no store"; }
+  if s[0].n >= AGR_COMPUTERS { return "an account keeps at most 8 computers (AGR_COMPUTERS)"; }
+  k := s[0].n;
+  why := agr_computer_read(text, s[0].c[k..<k + 1]);
+  if why.count > 0 { return why; }
+  if agr_computer_find(s, cast(string) s[0].c[k].id[0..<s[0].c[k].id_n]) >= 0 { return "two computers have that id"; }
+  s[0].n += 1;
+  return "";
+}
+// What a view says of a computer, beside it: on, off or offline, and its words.
+agr_computer_shown_json :: (c: [] AgrComputer, now: s64, o: [] Jo) {
+  wb: [512] u8;
+  jo_key(o, "shown"); jo_str(o, AGR_SHOWN_ID[agr_computer_shown(c[0], now)]);
+  jo_key(o, "words"); jo_str(o, agr_computer_words(c, now, wb[..]));
+}
+
+// ---- checks
+
+AgrTest :: struct { r: [1] AgrRecord; jw: [1] AgrJob; ev: [1] AgrEvent; out: [16384] u8; lg: [65536] u8; log_n: int; page: [65536] u8; }
+
+agr_test_record :: (t: [] AgrTest, now: s64) {
+  ib: [AGR_ID] u8;
+  agr_record_new(t[0].r[..], agr_new_id(now, 0, ib[..]), 3, "Moss Run", 7, AGR_BUILD, AGR_LOCAL, AGR_THIS_MAC, "claude", now);
+  t[0].r[0].turns = 20; t[0].r[0].cents = 200;
+}
+agr_test_append :: (t: [] AgrTest, now: s64) -> bool {
+  line := agr_append(t[0].r[..], t[0].ev[..], now, t[0].out[..]);
+  if line.count == 0 { return false; }
+  t[0].log_n = agr_put(t[0].lg[..], t[0].log_n, line);
+  return true;
+}
+
+#test "the states, kinds, places and event types are each one list, with words for every one" {
+  #assert AGR_STATE_ID.count == AGR_STATES && AGR_STATE_WORDS.count == AGR_STATES && AGR_STATE_MEANS.count == AGR_STATES;
+  for i: 0..<AGR_STATES {
+    #assert AGR_STATE_ID[i].count > 0 && AGR_STATE_WORDS[i].count > 0 && AGR_STATE_MEANS[i].count > 0;
+    for j: i + 1..<AGR_STATES { #assert AGR_STATE_ID[i] != AGR_STATE_ID[j] && AGR_STATE_WORDS[i] != AGR_STATE_WORDS[j]; }
+  }
+  // docs/agents.md's words
+  #assert AGR_STATE_WORDS[AGR_WORKING] == "working" && AGR_STATE_WORDS[AGR_WAITING] == "waiting for you" && AGR_STATE_WORDS[AGR_OFFLINE] == "offline";
+  for i: 0..<AGR_KINDS { #assert AGR_KIND_ID[i].count > 0 && AGR_KIND_NAME[i].count > 0; }
+  #assert AGR_KIND_ID[AGR_BUILD] == "build" && AGR_KIND_ID[AGR_PLAYTEST] == "playtest" && AGR_KIND_ID[AGR_CODE] == "code";
+  runs := 0; for i: 0..<AGR_KINDS { if AGR_KIND_RUNS[i] { runs += 1; } }
+  #assert runs == AGR_KINDS_RUN;
+  for i: 0..<AGR_REPOS { #assert AGR_REPO_ID[i].count > 0 && AGR_REPO_GITHUB[i].count > 0 && AGR_REPO_WORDS[i].count > 0 && AGR_REPO_ENDS_WORDS[i].count > 0; }
+  #assert AGR_REPO_ENDS[AGR_ENGINE] == "pull-request" && AGR_REPO_THEN[AGR_ENGINE] == "pin-bump" && AGR_REPO_THEN[AGR_APP] == "";
+  for i: 0..<AGR_TYPES { #assert agr_index(AGR_TYPE_ID[..], AGR_TYPE_ID[i]) == i; }
+}
+
+#test "a record is written and read back field for field, and a bad one is refused in words" {
+  t: [1] AgrTest;
+  agr_test_record(t[..], 1763380000000);
+  #assert agr_id(t[0].r[..]) == "a19a91a37500-0" && agr_id_ok(agr_id(t[0].r[..]));
+  text := agr_record_write(t[0].r[..], "add a second floor", t[0].out[..]);
+  #assert text == "{\"schema\":\"gamebuilder.agent.v1\",\"id\":\"a19a91a37500-0\",\"game\":3,\"title\":\"Moss Run\",\"level\":7,\"kind\":\"build\",\"job\":\"add a second floor\",\"place\":\"local\",\"computer\":\"this Mac\",\"runner\":\"claude\",\"state\":\"queued\",\"since\":1763380000000,\"made\":1763380000000,\"updated\":1763380000000,\"heard\":0,\"step\":\"\",\"why\":\"\",\"limits\":{\"turns\":20,\"cents\":200},\"events\":0}";
+  back: [1] AgrRecord;
+  #assert agr_record_read(text, back[..], t[0].jw[..]) == "";
+  #assert agr_text(t[0].jw[0].buf[..], t[0].jw[0].n) == "add a second floor";
+  again: [16384] u8;
+  #assert agr_record_write(back[..], "add a second floor", again[..]) == text;
+  #assert agr_record_read("{}", back[..], t[0].jw[..]) == "a record's schema is gamebuilder.agent.v1";
+  #assert agr_record_read("not json", back[..], t[0].jw[..]) == "a record is one JSON object";
+  #assert agr_job_why("") != "" && agr_job_why("two\nlines") == "a job is one line" && agr_job_why("ok") == "";
+  long: [AGR_JOB + 1] u8; for i: 0..<long.count { long[i] = 'x'; }
+  #assert agr_job_why(cast(string) long[..]) == "a job is at most 240 bytes, in your own words (AGR_JOB)";
+  #assert !agr_id_ok("") && !agr_id_ok("A1") && !agr_id_ok("1a") && !agr_id_ok("a/b") && agr_id_ok("a1-b");
+}
+
+#test "events are appended in order, numbered from 1, and read back by cursor a page at a time" {
+  t: [1] AgrTest;
+  now: s64 = 1763380000000;
+  agr_test_record(t[..], now);
+  // the person's message, the agent's tool call, its edit, an ask, the answer, a state change, usage
+  t[0].ev[0] = agr_event(AGR_MESSAGE); t[0].ev[0].from = AGR_PERSON; agr_event_text(t[0].ev[..], "add a second floor");
+  #assert agr_test_append(t[..], now + 1);
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_WORKING;
+  #assert agr_test_append(t[..], now + 2) && t[0].r[0].state == AGR_WORKING && t[0].r[0].since == now + 2;
+  t[0].ev[0] = agr_event(AGR_TOOL); t[0].ev[0].tool_n = agr_set(t[0].ev[0].tool[..], "apply_edits");
+  agr_event_args(t[0].ev[..], "{\"batch\":\"...\"}"); t[0].ev[0].ok = true; t[0].ev[0].result_n = agr_set(t[0].ev[0].result[..], "2 things");
+  #assert agr_test_append(t[..], now + 3);
+  t[0].ev[0] = agr_event(AGR_EDIT); t[0].ev[0].level = 7; t[0].ev[0].before = 11; t[0].ev[0].after = 12;
+  t[0].ev[0].things[0] = 31; t[0].ev[0].things[1] = 32; t[0].ev[0].things_n = 2;
+  agr_event_text(t[0].ev[..], "added 2 blocks (Block 31, Block 32)");
+  #assert agr_test_append(t[..], now + 4);
+  t[0].ev[0] = agr_event(AGR_ASK); agr_event_text(t[0].ev[..], "Wood or stone?");
+  t[0].ev[0].choice_n[0] = agr_put(t[0].ev[0].choice[0..<AGR_CHOICE], 0, "Wood"); t[0].ev[0].choice_n[1] = agr_put(t[0].ev[0].choice[AGR_CHOICE..<2 * AGR_CHOICE], 0, "Stone"); t[0].ev[0].choices = 2;
+  #assert agr_test_append(t[..], now + 5);
+  t[0].ev[0] = agr_event(AGR_USAGE); t[0].ev[0].turns = 4; t[0].ev[0].cents = 31; t[0].ev[0].ms = 9000;
+  #assert agr_test_append(t[..], now + 6);
+  lg := cast(string) t[0].lg[0..<t[0].log_n];
+  #assert t[0].r[0].events == 6 && agr_log_count(lg) == 6 && t[0].r[0].updated == now + 6;
+  // each line reads back to the same line
+  ev: [1] AgrEvent; ob: [AGR_LINE] u8;
+  for k: 1..<7 {
+    s := agr_log_line(lg, k);
+    line := cast(string) lg[s.from..<s.from + s.count];
+    #assert agr_event_read(line, agr_id(t[0].r[..]), ev[..]) == "" && ev[0].n == cast(s32) k;
+    #assert agr_event_write(agr_id(t[0].r[..]), ev[..], ob[..]) == line;
+  }
+  #assert agr_event_read(cast(string) lg[0..<agr_log_line(lg, 1).count], "a-someone-else", ev[..]) == "the event is another agent's";
+  s3 := agr_log_line(lg, 3);
+  #assert cast(string) lg[s3.from..<s3.from + s3.count] == "{\"schema\":\"gamebuilder.agent.event.v1\",\"agent\":\"a19a91a37500-0\",\"n\":3,\"at\":1763380000003,\"type\":\"tool\",\"tool\":\"apply_edits\",\"args\":\"{\\\"batch\\\":\\\"...\\\"}\",\"ok\":true,\"result\":\"2 things\"}";
+  // a play-test's tool event names the level and the revision it played, read back the same
+  pb: [AGR_LINE] u8;
+  t[0].ev[0] = agr_event(AGR_TOOL); t[0].ev[0].tool_n = agr_set(t[0].ev[0].tool[..], "play_test"); t[0].ev[0].ok = true;
+  t[0].ev[0].level = 7; t[0].ev[0].after = 12; t[0].ev[0].n = 9;
+  pl := agr_event_write(agr_id(t[0].r[..]), t[0].ev[..], pb[..]);
+  #assert level_find_agr(pl, "\"result\":\"\",\"level\":7,\"after\":12}") >= 0;
+  #assert agr_event_read(pl, agr_id(t[0].r[..]), ev[..]) == "" && ev[0].level == 7 && ev[0].after == 12;
+  // by cursor: two at a time from 2, then the rest
+  o: [1] Jo; jo_start(o[..], t[0].page[..]); jo_obj(o[..]);
+  agr_events_page(lg, agr_id(t[0].r[..]), 2, 2, o[..]); jo_end(o[..]);
+  p := jo_text(o[..]);
+  #assert level_find_agr(p, "\"n\":3,") >= 0 && level_find_agr(p, "\"n\":4,") >= 0 && level_find_agr(p, "\"n\":5,") < 0 && level_find_agr(p, "\"next\":4,\"more\":true}") >= 0;
+  jo_start(o[..], t[0].page[..]); jo_obj(o[..]); agr_events_page(lg, agr_id(t[0].r[..]), 4, 0, o[..]); jo_end(o[..]);
+  #assert level_find_agr(jo_text(o[..]), "\"next\":6,\"more\":false}") >= 0;
+  // past the end: nothing, the cursor at the end
+  jo_start(o[..], t[0].page[..]); jo_obj(o[..]); agr_events_page(lg, agr_id(t[0].r[..]), 99, 0, o[..]); jo_end(o[..]);
+  #assert jo_text(o[..]) == "{\"events\":[],\"next\":6,\"more\":false}";
+  // a write cut short is not an event yet
+  #assert agr_log_count("{\"a\":1}\n{\"b\"") == 1;
+}
+
+#test "a stop or a failure says why in the record; a quiet computer's agent shows offline, never done" {
+  t: [1] AgrTest;
+  now: s64 = 1763380000000;
+  agr_test_record(t[..], now);
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_WORKING;
+  #assert agr_test_append(t[..], now);
+  t[0].r[0].heard = now;
+  #assert agr_shown_state(t[0].r[0], now + AGR_OFFLINE_MS) == AGR_WORKING;
+  #assert agr_shown_state(t[0].r[0], now + AGR_OFFLINE_MS + 1) == AGR_OFFLINE;
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_FAILED; agr_event_text(t[0].ev[..], "It stopped at its limit of 20 turns for one message.");
+  #assert agr_test_append(t[..], now + 1) && agr_text(t[0].r[0].why[..], t[0].r[0].why_n) == "It stopped at its limit of 20 turns for one message.";
+  // a finished agent stays finished however long its computer is quiet
+  #assert agr_shown_state(t[0].r[0], now + 10 * AGR_OFFLINE_MS) == AGR_FAILED;
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_QUEUED;
+  #assert agr_test_append(t[..], now + 2) && t[0].r[0].why_n == 0;
+  // on the computer itself (never reported) nothing is offline
+  t[0].r[0].heard = 0;
+  #assert agr_shown_state(t[0].r[0], now + 100 * AGR_OFFLINE_MS) == AGR_QUEUED;
+  ab: [16] u8;
+  #assert agr_age(45000, ab[..]) == "45s" && agr_age(150000, ab[..]) == "2m" && agr_age(3 * 3600000, ab[..]) == "3h" && agr_age(2 * 86400000, ab[..]) == "2d";
+  #assert agr_place_words(t[0].r[..]) == "this Mac";
+  // waiting first, then newest
+  w := t[0].r[0]; w.state = AGR_WAITING; w.updated = now;
+  q := t[0].r[0]; q.state = AGR_QUEUED; q.updated = now + 5;
+  #assert agr_before(w, q, now) && !agr_before(q, w, now);
+}
+
+#test "a Code agent's record names its repository, and its worktree, branch, pull request, files, checks and pin bump are events" {
+  t: [1] AgrTest;
+  now: s64 = 1763380000000;
+  ib: [AGR_ID] u8;
+  agr_record_new(t[0].r[..], agr_new_id(now, 1, ib[..]), 0, "My levels", 0, AGR_CODE, AGR_LOCAL, AGR_THIS_MAC, "claude", now);
+  t[0].r[0].repo = AGR_ENGINE; t[0].r[0].turns = AGR_CODE_TURNS; t[0].r[0].cents = AGR_CODE_CENTS;
+  text := agr_record_write(t[0].r[..], "water that ripples", t[0].out[..]);
+  #assert level_find_agr(text, "\"kind\":\"code\",\"repo\":\"openagents\",\"job\":") >= 0;
+  back: [1] AgrRecord;
+  #assert agr_record_read(text, back[..], t[0].jw[..]) == "" && back[0].kind == AGR_CODE && back[0].repo == AGR_ENGINE;
+  again: [16384] u8;
+  #assert agr_record_write(back[..], "water that ripples", again[..]) == text;
+  // a Builder's record says no repo
+  agr_test_record(t[..], now);
+  #assert level_find_agr(agr_record_write(t[0].r[..], "x", again[..]), "\"repo\"") < 0;
+  agr_record_new(t[0].r[..], "a1-1", 0, "My levels", 0, AGR_CODE, AGR_LOCAL, AGR_THIS_MAC, "claude", now);
+  t[0].r[0].repo = AGR_ENGINE;
+  t[0].ev[0] = agr_event(AGR_WORKTREE); t[0].ev[0].repo = AGR_ENGINE; t[0].ev[0].commit_n = agr_set(t[0].ev[0].commit[..], "7c2e19c3fc00827ec08972775f27c159abf3c534");
+  #assert agr_test_append(t[..], now + 1);
+  t[0].ev[0] = agr_event(AGR_BRANCH); t[0].ev[0].repo = AGR_ENGINE; t[0].ev[0].branch_n = agr_set(t[0].ev[0].branch[..], "water-ripples");
+  #assert agr_test_append(t[..], now + 2);
+  t[0].ev[0] = agr_event(AGR_PULL); t[0].ev[0].repo = AGR_ENGINE; t[0].ev[0].branch_n = agr_set(t[0].ev[0].branch[..], "water-ripples");
+  t[0].ev[0].url_n = agr_set(t[0].ev[0].url[..], "https://github.com/OpenAgentsInc/openagents/pull/12345"); t[0].ev[0].number = 12345;
+  #assert agr_test_append(t[..], now + 3);
+  t[0].ev[0] = agr_event(AGR_FILES); t[0].ev[0].count = 3; agr_event_text(t[0].ev[..], "metaverse-engine/render/water.coax\ndocs/water.md");
+  #assert agr_test_append(t[..], now + 4);
+  t[0].ev[0] = agr_event(AGR_CHECK); t[0].ev[0].name_n = agr_set(t[0].ev[0].name[..], "coax test"); t[0].ev[0].ok = false; agr_event_text(t[0].ev[..], "1 of 40 failed");
+  #assert agr_test_append(t[..], now + 5);
+  t[0].ev[0] = agr_event(AGR_PIN); t[0].ev[0].url_n = agr_set(t[0].ev[0].url[..], "https://github.com/OpenAgentsInc/openagents/pull/12345"); agr_event_text(t[0].ev[..], "offered");
+  #assert agr_test_append(t[..], now + 6);
+  lg := cast(string) t[0].lg[0..<t[0].log_n];
+  ev: [1] AgrEvent; ob: [AGR_LINE] u8;
+  for k: 1..<7 {
+    sp := agr_log_line(lg, k);
+    line := cast(string) lg[sp.from..<sp.from + sp.count];
+    #assert agr_event_read(line, "a1-1", ev[..]) == "" && ev[0].type == AGR_WORKTREE + k - 1;
+    #assert agr_event_write("a1-1", ev[..], ob[..]) == line;
+  }
+  s3 := agr_log_line(lg, 3);
+  #assert cast(string) lg[s3.from..<s3.from + s3.count] == "{\"schema\":\"gamebuilder.agent.event.v1\",\"agent\":\"a1-1\",\"n\":3,\"at\":1763380000003,\"type\":\"pr\",\"repo\":\"openagents\",\"branch\":\"water-ripples\",\"number\":12345,\"url\":\"https://github.com/OpenAgentsInc/openagents/pull/12345\"}";
+  // as the page says them
+  lb: [AGR_LINE] u8;
+  #assert agr_event_read(cast(string) lg[s3.from..<s3.from + s3.count], "a1-1", ev[..]) == "" && agr_event_line(ev[..], AGR_CODE, lb[..]) == "Pull request #12345: https://github.com/OpenAgentsInc/openagents/pull/12345";
+  s5 := agr_log_line(lg, 5);
+  #assert agr_event_read(cast(string) lg[s5.from..<s5.from + s5.count], "a1-1", ev[..]) == "" && agr_event_line(ev[..], AGR_CODE, lb[..]) == "Check coax test failed: 1 of 40 failed";
+  s4 := agr_log_line(lg, 4);
+  #assert level_find_agr(cast(string) lg[s4.from..<s4.from + s4.count], "\"count\":3,\"names\":[\"metaverse-engine/render/water.coax\",\"docs/water.md\"]") >= 0;
+  // a pull request elsewhere, or a number that isn't its address's, is refused
+  #assert agr_pull_number(AGR_ENGINE, "https://github.com/OpenAgentsInc/openagents/pull/7") == 7;
+  #assert agr_pull_number(AGR_APP, "https://github.com/OpenAgentsInc/openagents/pull/7") == -1;
+  #assert agr_pull_number(AGR_ENGINE, "https://github.com/someone/openagents/pull/7") == -1 && agr_pull_number(AGR_ENGINE, "https://github.com/OpenAgentsInc/openagents/pull/7x") == -1;
+  #assert agr_event_read("{\"schema\":\"gamebuilder.agent.event.v1\",\"agent\":\"a1-1\",\"n\":1,\"at\":1,\"type\":\"pr\",\"repo\":\"openagents\",\"branch\":\"b\",\"number\":8,\"url\":\"https://github.com/OpenAgentsInc/openagents/pull/7\"}", "a1-1", ev[..]) != "";
+  #assert agr_branch_ok("water-ripples") && !agr_branch_ok("-x") && !agr_branch_ok("a..b") && !agr_branch_ok("a b") && agr_commit_ok("7c2e19c") && !agr_commit_ok("7c2e19") && !agr_commit_ok("XYZ1234");
+}
+
+level_find_agr :: (s: string, part: string) -> int {
+  if part.count == 0 { return 0; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+
+#test "a cloud agent's limits are said in words with their numbers, and where it stands as it runs" {
+  b: [512] u8;
+  w := agr_cloud_words(b[..]);
+  #assert w == "each message: at most 12 model steps (a step runs at most 8 commands), 100,000 tokens, 30 changes and 10 minutes; 60 model steps a day for your account. Free: no Claude plan is used";
+  #assert agr_cloud_spent(3, 8200, 2, b[..]) == "step 3 of 12, 8,200 of 100,000 tokens, 2 of 30 changes";
+  #assert agr_thousands(b[..], 0, 7) == 1 && agr_thousands(b[..], 0, 1234567) == 9 && cast(string) b[0..<9] == "1,234,567";
+  // a cloud agent's usage says its turns and no plan
+  ev: [1] AgrEvent; lb: [256] u8;
+  ev[0] = agr_event(AGR_USAGE); ev[0].turns = 4; ev[0].cents = 0; ev[0].ms = 9000;
+  #assert agr_event_line(ev[..], AGR_BUILD, lb[..]) == "Used 4 turns";
+  ev[0].cents = 7;
+  #assert agr_event_line(ev[..], AGR_BUILD, lb[..]) == "Used 4 turns and 7 cents of your Claude plan";
+}
+
+#test "a local agent says it costs nothing, a cloud one its Credits and limit, and a pause when it goes on" {
+  t: [1] AgrTest; now: s64 = 1763380000000;
+  agr_test_record(t[..], now);
+  cb: [256] u8;
+  #assert agr_cost_words(t[0].r[..], cb[..]) == "your own agent: no charge from us";
+  t[0].r[0].place = AGR_CLOUD;
+  #assert agr_cost_words(t[0].r[..], cb[..]) == AGR_CLOUD_COST;
+  t[0].r[0].place = AGR_LOCAL;
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_PAUSED; t[0].ev[0].until = now + 7200000; agr_event_text(t[0].ev[..], "your Claude plan hit its limit");
+  line := agr_append(t[0].r[..], t[0].ev[..], now, t[0].out[..]);
+  #assert line == "{\"schema\":\"gamebuilder.agent.event.v1\",\"agent\":\"a19a91a37500-0\",\"n\":1,\"at\":1763380000000,\"type\":\"state\",\"state\":\"paused\",\"until\":1763387200000,\"text\":\"your Claude plan hit its limit\"}\n";
+  #assert t[0].r[0].state == AGR_PAUSED && t[0].r[0].resumes == now + 7200000;
+  back: [1] AgrEvent;
+  #assert agr_event_read(cast(string) line[0..<line.count - 1], "a19a91a37500-0", back[..]) == "" && back[0].until == now + 7200000;
+  lb: [512] u8;
+  #assert agr_event_line(back[..], AGR_BUILD, lb[..]) == "Now paused: your Claude plan hit its limit (it goes on in 2h)";
+  text := agr_record_write(t[0].r[..], "add a second floor", t[0].page[..]);
+  rb: [1] AgrRecord; jw: [1] AgrJob;
+  #assert agr_record_read(text, rb[..], jw[..]) == "" && rb[0].resumes == now + 7200000;
+  s: [1] AgrStore; s[0].r[0] = t[0].r[0]; s[0].n = 1;
+  o: [1] Jo; jo_start(o[..], t[0].lg[..]); jo_obj(o[..]); agr_shown_json(s[..], 0, now + 3600000, o[..]); jo_end(o[..]);
+  #assert jo_text(o[..]) == "{\"shown\":\"paused\",\"words\":\"paused\",\"for\":\"1h\",\"where\":\"this Mac\",\"cost\":\"your own agent: no charge from us\",\"goes_on\":\"1h\"}";
+  // going on clears it
+  t[0].ev[0] = agr_event(AGR_STATE); t[0].ev[0].state = AGR_WORKING;
+  _ = agr_append(t[0].r[..], t[0].ev[..], now + 7200000, t[0].out[..]);
+  #assert t[0].r[0].resumes == 0 && level_find_agr(agr_record_write(t[0].r[..], "add a second floor", t[0].page[..]), "resumes") < 0;
+}
+
+#test "a computer is written and read back, names no login, and says on, off or offline in words" {
+  c: [1] AgrComputer; now: s64 = 1763380000000;
+  agr_computer_new(c[..], "Chris's MacBook", now);
+  c[0].have[0] = AGR_SIGNED_IN; c[0].have[1] = AGR_INSTALLED;
+  ib: [40] u8;
+  #assert cast(string) c[0].id[0..<c[0].id_n] == "chris-s-macbook" && agr_computer_id("9 lives", ib[..]) == "c-9-lives";
+  fb: [64] u8; #assert agr_computer_file("chris-s-macbook", fb[..]) == "computer-chris-s-macbook.computer" && agr_computer_file_ok("computer-chris-s-macbook.computer") && !agr_computer_file_ok("agent-a1.agent");
+  c[0].used = 1; c[0].running_n[0] = agr_put(c[0].running[..], 0, "a19a91a37500-0");
+  out: [1024] u8;
+  text := agr_computer_write(c[..], out[..]);
+  #assert text == "{\"schema\":\"gamebuilder.computer.v1\",\"id\":\"chris-s-macbook\",\"name\":\"Chris's MacBook\",\"on\":true,\"since\":1763380000000,\"heard\":1763380000000,\"slots\":1,\"used\":1,\"agents\":{\"claude\":\"signed-in\",\"codex\":\"installed\"},\"running\":[\"a19a91a37500-0\"],\"why\":\"\"}";
+  back: [1] AgrComputer;
+  #assert agr_computer_read(text, back[..]) == "" && back[0].used == 1 && agr_computer_running(back[..], 0) == "a19a91a37500-0" && back[0].have[0] == AGR_SIGNED_IN;
+  again: [1024] u8; #assert agr_computer_write(back[..], again[..]) == text;
+  #assert agr_computer_read("{}", back[..]) == "a computer's schema is gamebuilder.computer.v1";
+  wb: [512] u8;
+  #assert agr_computer_words(c[..], now + 1000, wb[..]) == "on: 1 of 1 slot in use; Claude signed in, Codex installed, not signed in";
+  #assert agr_computer_words(c[..], now + 300000, wb[..]) == "offline: not heard from for 5m";
+  c[0].on = false; c[0].used = 0; c[0].why_n = agr_set(c[0].why[..], "you quit it");
+  #assert agr_computer_words(c[..], now + 7200000, wb[..]) == "off for 2h: you quit it";
+  s: [1] AgrComputers;
+  #assert agr_computers_add(s[..], text) == "" && agr_computers_add(s[..], text) == "two computers have that id" && agr_computer_find(s[..], "chris-s-macbook") == 0;
+}

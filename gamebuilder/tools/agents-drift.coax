@@ -1,0 +1,126 @@
+// An agent reads the same on every surface, and stays so (issue 4): the Agents pane, the website's
+// /agents page, the CLI, MCP and HTTP all say an agent's state, kind, place and events with the
+// words of one list, gamebuilder/core/agent-record.coax's (AGR_*). Two halves:
+//
+//   - run as a tool over the sources, it fails when a file other than gamebuilder/core/agent-record.coax has a
+//     string that is a state's, kind's or place's words, a state's meaning or this Mac's name (a
+//     second copy of them), or a line that lists two different states', kinds', places' or event
+//     types' ids (a second list). Such words are read from agent-record.coax (AGR_*);
+//   - its #tests feed it sources with such a copy, and hold that each one is found, and that the
+//     shared list itself is not.
+//
+// The other half of "no drift", that what this Mac writes and sends reads the same from the account,
+// is gamebuilder/core/sync.coax's #test (the rows on both sides) and tools/hosted-check.coax (the built server).
+//
+// scripts/check.sh runs both: `coax test tools/agents-drift.coax` and
+//   coax/web/tool.sh tools/agents-drift.coax web/*.coax gamebuilder/core/*.coax cli/*.coax tools/*.coax
+// tool.sh: run-steps 100000000
+#run_steps 100000000;
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/agent-record.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+ADR_TEXT :: 1048576;
+// A kind's name that is also an everyday word of the app (a login code's field is "Code"): alone it
+// is not a copy. A second list of kinds' names still is: its other names are flagged.
+ADR_EVERYDAY :: [1] string.["Code"];
+adr_everyday :: (s: string) -> bool { for w: ADR_EVERYDAY { if s == w { return true; } } return false; }
+AdrScan :: struct { text: [ADR_TEXT] u8; }
+
+// What a string is, when it is a word of the shared list's own: "" when it isn't.
+adr_word :: (s: string) -> string {
+  for i: 0..<AGR_STATES {
+    if s == AGR_STATE_MEANS[i] { return "a state's meaning (AGR_STATE_MEANS)"; }
+    if s == AGR_STATE_WORDS[i] && s != AGR_STATE_ID[i] { return "a state's words (AGR_STATE_WORDS)"; }
+  }
+  for i: 0..<AGR_KINDS { if s == AGR_KIND_NAME[i] && !adr_everyday(s) { return "a kind's name (AGR_KIND_NAME)"; } }
+  for i: 0..<AGR_PLACES { if s == AGR_PLACE_WORDS[i] && s != AGR_PLACE_ID[i] { return "a place's words (AGR_PLACE_WORDS)"; } }
+  if s == AGR_THIS_MAC { return "this Mac's name (AGR_THIS_MAC)"; }
+  return "";
+}
+// An id of the lists (states, kinds, places), or a kind's name: its list (0, 100, 200, 300) and
+// place, or -1. An id is often an everyday word ("done", "build", "local"), so a line is flagged
+// only when it holds two different ones of one list: a list. (Event types' ids, "message" and "edit", are everyday words
+// of the command table too, and are not flagged.)
+adr_id :: (s: string) -> int {
+  for i: 0..<AGR_STATES { if s == AGR_STATE_ID[i] { return i; } }
+  for i: 0..<AGR_KINDS { if s == AGR_KIND_ID[i] { return 100 + i; } }
+  for i: 0..<AGR_PLACES { if s == AGR_PLACE_ID[i] { return 200 + i; } }
+  for i: 0..<AGR_KINDS { if s == AGR_KIND_NAME[i] { return 300 + i; } }
+  return -1;
+}
+
+// Each string literal of the text (outside comments and #test blocks) that is a copy, said with its
+// place. found[0] is the first one's words, for the checks. Returns how many.
+adr_scan :: (path: string, text: string, quiet: bool) -> int {
+  bad := 0; i := 0; line := 1; in_test := false; depth := 0;
+  seen := -1; listed := false;
+  while i < text.count {
+    c := text[i];
+    if c == '\n' { line += 1; i += 1; seen = -1; listed = false; continue; }
+    if c == '/' && i + 1 < text.count && text[i + 1] == '/' { while i < text.count && text[i] != '\n' { i += 1; } continue; }
+    if c == '#' && i + 5 <= text.count && cast(string) text[i..<i + 5] == "#test" { in_test = true; depth = 0; i += 5; continue; }
+    if in_test && c == '{' { depth += 1; }
+    if in_test && c == '}' { depth -= 1; if depth == 0 { in_test = false; } }
+    if c == '\'' && i + 2 < text.count { i += ifx text[i + 1] == '\\' then 4 else 3; continue; }
+    if c != '"' { i += 1; continue; }
+    j := i + 1;
+    while j < text.count && text[j] != '"' && text[j] != '\n' { j += ifx text[j] == '\\' then 2 else 1; }
+    if j >= text.count { break; }
+    s := cast(string) text[i + 1..<j];
+    i = j + 1;
+    if in_test { continue; }
+    what := adr_word(s);
+    if what.count > 0 {
+      if !quiet { print("agents: NOT one list: %:% says \"%\", %: read it from gamebuilder/core/agent-record.coax\n", path, line, s, what); }
+      bad += 1; continue;
+    }
+    w := adr_id(s);
+    if w < 0 { continue; }
+    if seen < 0 { seen = w; continue; }
+    if w != seen && w / 100 == seen / 100 && !listed {
+      if !quiet { print("agents: NOT one list: %:% lists agents' ids (\"%\" and another): read them from gamebuilder/core/agent-record.coax (AGR_*_ID)\n", path, line, s); }
+      bad += 1; listed = true;
+    }
+  }
+  return bad;
+}
+
+#test "a copy of the states', kinds' or places' words, or a list of their ids, is found; the words read from the list are not" {
+  // the pane, the page or the CLI saying a state in words of its own
+  #assert adr_scan("pane", "  words := \"waiting for you\";\n", true) == 1;
+  #assert adr_scan("page", "  tr_leaf(t, \"row.k\", TG_SPAN, \"\", \"Builder\");\n", true) == 1;
+  #assert adr_scan("cli", "  where := \"this Mac\";\n", true) == 1;
+  #assert adr_scan("cli", "  where := \"this computer\";\n", true) == 1;
+  m: [512] u8; mn := agr_put(m[..], agr_put(m[..], agr_put(m[..], 0, "  x := \""), AGR_STATE_MEANS[AGR_OFFLINE]), "\";\n");
+  #assert adr_scan("page", cast(string) m[0..<mn], true) == 1;
+  // a second list of ids on one line
+  #assert adr_scan("page", "  STATES :: [2] string.[\"working\", \"waiting\"];\n", true) == 1;
+  #assert adr_scan("page", "  KINDS :: [2] string.[\"build\", \"playtest\"];\n", true) == 1;
+  // a kind's name that is an everyday word: alone it is a login code's label; in a list it is a copy
+  #assert adr_scan("login", "  tr_attr(t, f, AT_LABEL, \"Code\");\n", true) == 0;
+  #assert adr_scan("pane", "  kinds := [3] string.[\"Builder\", \"Playtester\", \"Code\"];\n", true) == 2;
+  // one id alone is an everyday word; reading the words from the list is the way
+  #assert adr_scan("cli", "  if mode == \"done\" { }\n", true) == 0;
+  #assert adr_scan("page", "  w := AGR_STATE_WORDS[st]; k := AGR_KIND_NAME[r.kind];\n", true) == 0;
+  // a comment and a #test may name them
+  #assert adr_scan("pane", "  // \"waiting for you\" is the record's\n", true) == 0;
+  #assert adr_scan("pane", "#test \"x\" { #assert w == \"waiting for you\"; }\n", true) == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: tool.sh tools/agents-drift.coax FILE...\n"); return 2; }
+  c: [1] AdrScan;
+  for f: 0..<args_count(a[..]) {
+    path := args_at(a[..], f);
+    if path == "gamebuilder/core/agent-record.coax" || path == "tools/agents-drift.coax" { continue; }
+    n := fs_read(path, c[0].text[..]);
+    if n < 0 || n >= ADR_TEXT { print("agents: NOT read %\n", path); bad += 1; continue; }
+    bad += adr_scan(path, cast(string) c[0].text[0..<n], false);
+  }
+  if bad > 0 { return 1; }
+  print("agents: ok, % files say an agent with agent-record.coax's words only\n", args_count(a[..]));
+  return 0;
+}
