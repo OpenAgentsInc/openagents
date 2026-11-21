@@ -73,11 +73,15 @@ ex_mcp_id :: (line: string, out: [] u8) -> string {
 }
 
 ex_mcp_tools_list :: (id_raw: string, out: [] u8) -> string {
-  b: [4096] u8;
+  b: [8192] u8;
   n := mod_cat(b[..], 0, "{\"tools\":[");
   n = mod_cat(b[..], n, "{\"name\":\"executor_verify_diff\",\"description\":\"Verify unified-diff hunk bounds and context via compiled Class-E oa-exec-diff-verify weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"old_start\":{\"type\":\"integer\"},\"old_count\":{\"type\":\"integer\"},\"new_start\":{\"type\":\"integer\"},\"new_count\":{\"type\":\"integer\"},\"file_lines\":{\"type\":\"integer\"},\"matched_ctx\":{\"type\":\"integer\"},\"expected_ctx\":{\"type\":\"integer\"}},\"required\":[\"old_start\",\"old_count\",\"new_start\",\"new_count\",\"file_lines\",\"matched_ctx\",\"expected_ctx\"]}},");
   n = mod_cat(b[..], n, "{\"name\":\"executor_validate_schema\",\"description\":\"Validate bounded tool-call arguments via compiled Class-E oa-exec-json-schema weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"has_path\":{\"type\":\"integer\"},\"path_len\":{\"type\":\"integer\"},\"max_path\":{\"type\":\"integer\"},\"has_old\":{\"type\":\"integer\"},\"old_len\":{\"type\":\"integer\"},\"has_new\":{\"type\":\"integer\"},\"new_len\":{\"type\":\"integer\"},\"max_body\":{\"type\":\"integer\"}},\"required\":[\"has_path\",\"path_len\",\"max_path\",\"has_old\",\"old_len\",\"has_new\",\"new_len\",\"max_body\"]}},");
   n = mod_cat(b[..], n, "{\"name\":\"executor_schedule_dag\",\"description\":\"Evaluate DAG task readiness, cycle refusal, and slot score via compiled Class-E oa-exec-dep-sched weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"remaining_deps\":{\"type\":\"integer\"},\"has_cycle\":{\"type\":\"integer\"},\"running\":{\"type\":\"integer\"},\"max_slots\":{\"type\":\"integer\"},\"priority\":{\"type\":\"integer\"},\"blocked\":{\"type\":\"integer\"}},\"required\":[\"remaining_deps\",\"has_cycle\",\"running\",\"max_slots\",\"priority\",\"blocked\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_rebase_patch\",\"description\":\"Rebase two unified-diff hunks and refuse overlap/EOF overflow via compiled Class-E oa-exec-patch-rebase weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"h1_start\":{\"type\":\"integer\"},\"h1_old\":{\"type\":\"integer\"},\"h1_new\":{\"type\":\"integer\"},\"h2_start\":{\"type\":\"integer\"},\"h2_old\":{\"type\":\"integer\"},\"h2_new\":{\"type\":\"integer\"},\"file_lines\":{\"type\":\"integer\"}},\"required\":[\"h1_start\",\"h1_old\",\"h1_new\",\"h2_start\",\"h2_old\",\"h2_new\",\"file_lines\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_match_glob\",\"description\":\"Evaluate bounded wildcard/segment path glob matching via compiled Class-E oa-exec-glob-match weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path_segs\":{\"type\":\"integer\"},\"pat_segs\":{\"type\":\"integer\"},\"has_double_star\":{\"type\":\"integer\"},\"matched_prefix\":{\"type\":\"integer\"},\"req_prefix\":{\"type\":\"integer\"},\"matched_suffix\":{\"type\":\"integer\"},\"req_suffix\":{\"type\":\"integer\"}},\"required\":[\"path_segs\",\"pat_segs\",\"has_double_star\",\"matched_prefix\",\"req_prefix\",\"matched_suffix\",\"req_suffix\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_solve_semver\",\"description\":\"Evaluate semantic-version range compatibility via compiled Class-E oa-exec-semver-solve weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"cand_maj\":{\"type\":\"integer\"},\"cand_min\":{\"type\":\"integer\"},\"cand_pat\":{\"type\":\"integer\"},\"min_maj\":{\"type\":\"integer\"},\"min_min\":{\"type\":\"integer\"},\"min_pat\":{\"type\":\"integer\"},\"max_maj_excl\":{\"type\":\"integer\"}},\"required\":[\"cand_maj\",\"cand_min\",\"cand_pat\",\"min_maj\",\"min_min\",\"min_pat\",\"max_maj_excl\"]}},");
+  n = mod_cat(b[..], n, "{\"name\":\"executor_check_wire_bounds\",\"description\":\"Validate protobuf/varint tag and framing length bounds via compiled Class-E oa-exec-wire-bounds weights.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"field_tag\":{\"type\":\"integer\"},\"max_tag\":{\"type\":\"integer\"},\"wire_type\":{\"type\":\"integer\"},\"varint_bytes\":{\"type\":\"integer\"},\"declared_len\":{\"type\":\"integer\"},\"frame_bytes\":{\"type\":\"integer\"},\"max_frame_bytes\":{\"type\":\"integer\"}},\"required\":[\"field_tag\",\"max_tag\",\"wire_type\",\"varint_bytes\",\"declared_len\",\"frame_bytes\",\"max_frame_bytes\"]}},");
   n = mod_cat(b[..], n, "{\"name\":\"executor_run_module\",\"description\":\"Verify and execute any digest-pinned module in ~/.openagents/modules/.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"module_id\":{\"type\":\"string\"},\"inputs\":{\"type\":\"string\"}},\"required\":[\"module_id\",\"inputs\"]}},");
   n = mod_cat(b[..], n, "{\"name\":\"executor_verify_trace\",\"description\":\"Verify SHA-256 weight digest and conformance admission gate for an installed executor module.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"module_id\":{\"type\":\"string\"}},\"required\":[\"module_id\"]}}");
   n = mod_cat(b[..], n, "]}");
@@ -151,6 +155,78 @@ ex_mcp_handle :: (line: string, out: [] u8) -> string {
     n = mod_put_int(tb[..], n, res[0]);
     n = mod_cat(tb[..], n, ",\\\"next_running\\\":"); n = mod_put_int(tb[..], n, res[1]);
     n = mod_cat(tb[..], n, ",\\\"score\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_rebase_patch" {
+    m := mv_compile_patch_rebase(la[..], ha[..], wa[..]);
+    inp := [7] int.[
+      ex_mcp_jint(line, "h1_start", 0), ex_mcp_jint(line, "h1_old", 0),
+      ex_mcp_jint(line, "h1_new", 0), ex_mcp_jint(line, "h2_start", 0),
+      ex_mcp_jint(line, "h2_old", 0), ex_mcp_jint(line, "h2_new", 0),
+      ex_mcp_jint(line, "file_lines", 0),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-patch-rebase\\\",\\\"class\\\":\\\"E\\\",\\\"valid\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"rebased_h2_start\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"final_file_lines\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_match_glob" {
+    m := mv_compile_glob_match(la[..], ha[..], wa[..]);
+    inp := [7] int.[
+      ex_mcp_jint(line, "path_segs", 0), ex_mcp_jint(line, "pat_segs", 0),
+      ex_mcp_jint(line, "has_double_star", 0), ex_mcp_jint(line, "matched_prefix", 0),
+      ex_mcp_jint(line, "req_prefix", 0), ex_mcp_jint(line, "matched_suffix", 0),
+      ex_mcp_jint(line, "req_suffix", 0),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-glob-match\\\",\\\"class\\\":\\\"E\\\",\\\"matched\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"wildcard_segs\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"depth_ok\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_solve_semver" {
+    m := mv_compile_semver_solve(la[..], ha[..], wa[..]);
+    inp := [7] int.[
+      ex_mcp_jint(line, "cand_maj", 0), ex_mcp_jint(line, "cand_min", 0),
+      ex_mcp_jint(line, "cand_pat", 0), ex_mcp_jint(line, "min_maj", 0),
+      ex_mcp_jint(line, "min_min", 0), ex_mcp_jint(line, "min_pat", 0),
+      ex_mcp_jint(line, "max_maj_excl", 0),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-semver-solve\\\",\\\"class\\\":\\\"E\\\",\\\"compatible\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"major_headroom\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"exact_min_match\\\":"); n = mod_put_int(tb[..], n, res[2]);
+    n = mod_cat(tb[..], n, "}");
+    return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
+  }
+
+  if name == "executor_check_wire_bounds" {
+    m := mv_compile_wire_bounds(la[..], ha[..], wa[..]);
+    inp := [7] int.[
+      ex_mcp_jint(line, "field_tag", 0), ex_mcp_jint(line, "max_tag", 16),
+      ex_mcp_jint(line, "wire_type", 0), ex_mcp_jint(line, "varint_bytes", 1),
+      ex_mcp_jint(line, "declared_len", 0), ex_mcp_jint(line, "frame_bytes", 0),
+      ex_mcp_jint(line, "max_frame_bytes", 1024),
+    ];
+    res: [3] int;
+    if mv_eval_model(m, inp[..], res[..]) != EvStatus.ok { return ex_mcp_tool_text(id_raw, "eval failed", true, out); }
+    n := mod_cat(tb[..], 0, "{\\\"module\\\":\\\"oa-exec-wire-bounds\\\",\\\"class\\\":\\\"E\\\",\\\"valid\\\":");
+    n = mod_put_int(tb[..], n, res[0]);
+    n = mod_cat(tb[..], n, ",\\\"payload_offset\\\":"); n = mod_put_int(tb[..], n, res[1]);
+    n = mod_cat(tb[..], n, ",\\\"trailing_bytes\\\":"); n = mod_put_int(tb[..], n, res[2]);
     n = mod_cat(tb[..], n, "}");
     return ex_mcp_tool_text(id_raw, cast(string) tb[0..<n], false, out);
   }

@@ -1,0 +1,170 @@
+// #authority Third-Party Compiled Weight-Module Author Submission & Payout Gate
+// (Agentic npm Wave 2, GitHub #13955).
+//
+// Enforces every invariant required before a third-party compiled weight module
+// may enter the signed Executor Network registry and release an author satoshi
+// reward via pay/executor-settlement.coax:
+//   - Valid author signature and distinct reviewer/validator key (no self-approval)
+//   - Exact SHA-256 weight digest match and bounded artifact byte size
+//   - Class-E verification label + >=20 passing conformance cases (100% pass)
+//   - Bit-exact Ch 234 replay verification + proven 1-byte tamper refusal
+//   - Held-out Gym lift strictly above 2-sigma noise floor with zero retained drop
+#authority;
+
+#load "../module-v2-policy.coax";
+#load "../../../pay/executor-settlement.coax";
+
+MA_MIN_CONFORMANCE :: 20;
+MA_MAX_WEIGHT_BYTES :: 16777216; // 16 MiB per single compiled weight module
+
+MaStatus :: enum u8 {
+  admitted;
+  bad_signature;
+  self_review;
+  bad_digest;
+  bad_size;
+  not_class_e;
+  conformance_failed;
+  replay_failed;
+  tamper_not_refused;
+  insufficient_lift;
+}
+
+MaSubmission :: struct {
+  sig_ok: bool;
+  author_key: int;
+  reviewer_key: int;
+  digest_match: bool;
+  weight_bytes: int;
+  label: MvLabel;
+  conformance_passed: int;
+  conformance_total: int;
+  exact_replay_ok: bool;
+  tamper_refused_ok: bool;
+  heldout_lift_bps: int;
+  noise_2sigma_bps: int;
+  retained_drop_bps: int;
+}
+
+ma_status_name :: (s: MaStatus) -> string #effects(all) {
+  if s == MaStatus.admitted { return "admitted"; }
+  if s == MaStatus.bad_signature { return "bad_signature"; }
+  if s == MaStatus.self_review { return "self_review"; }
+  if s == MaStatus.bad_digest { return "bad_digest"; }
+  if s == MaStatus.bad_size { return "bad_size"; }
+  if s == MaStatus.not_class_e { return "not_class_e"; }
+  if s == MaStatus.conformance_failed { return "conformance_failed"; }
+  if s == MaStatus.replay_failed { return "replay_failed"; }
+  if s == MaStatus.tamper_not_refused { return "tamper_not_refused"; }
+  return "insufficient_lift";
+}
+
+// Fail-closed third-party compiled module admission check.
+ma_admit_submission :: (sub: MaSubmission) -> MaStatus #effects(all) {
+  if !sub.sig_ok { return MaStatus.bad_signature; }
+  if sub.author_key == 0 || sub.reviewer_key == 0 || sub.author_key == sub.reviewer_key {
+    return MaStatus.self_review;
+  }
+  if !sub.digest_match { return MaStatus.bad_digest; }
+  if sub.weight_bytes < 1 || sub.weight_bytes > MA_MAX_WEIGHT_BYTES { return MaStatus.bad_size; }
+  if sub.label != MvLabel.exact { return MaStatus.not_class_e; }
+  if sub.conformance_total < MA_MIN_CONFORMANCE || sub.conformance_passed != sub.conformance_total {
+    return MaStatus.conformance_failed;
+  }
+  if !sub.exact_replay_ok { return MaStatus.replay_failed; }
+  if !sub.tamper_refused_ok { return MaStatus.tamper_not_refused; }
+  if sub.heldout_lift_bps <= sub.noise_2sigma_bps || sub.retained_drop_bps > 0 {
+    return MaStatus.insufficient_lift;
+  }
+  return MaStatus.admitted;
+}
+
+// Build the exact WORKER / EXACT_REPLAY payout request for an admitted third-party module author.
+ma_build_payout_request :: (amount_sat: int, utc_day: int, already_paid: bool) -> EsPayoutRequest #effects(all) {
+  return EsPayoutRequest.{
+    leg = ES_LEG_WORKER,
+    verdict = ES_VERDICT_EXACT_REPLAY,
+    amount_sat = amount_sat,
+    utc_day = utc_day,
+    already_paid_leg = already_paid,
+  };
+}
+
+// Gate author satoshi payout through pay/executor-settlement.coax ONLY after ma_admit_submission passes.
+ma_admit_author_payout :: (
+  sub: MaSubmission, pol: EsPolicy, st: EsPeriodState,
+  amount_sat: int, utc_day: int, already_paid: bool
+) -> int #effects(all) {
+  if ma_admit_submission(sub) != MaStatus.admitted { return ES_WITHHOLD_FAILED; }
+  req := ma_build_payout_request(amount_sat, utc_day, already_paid);
+  return es_admit_payout(pol, st, req);
+}
+
+#test "module-author: #authority third-party Class-E admission & payout gate (#13955)" {
+  good := MaSubmission.{
+    sig_ok = true, author_key = 101, reviewer_key = 202,
+    digest_match = true, weight_bytes = 65536, label = MvLabel.exact,
+    conformance_passed = 24, conformance_total = 24,
+    exact_replay_ok = true, tamper_refused_ok = true,
+    heldout_lift_bps = 400, noise_2sigma_bps = 150, retained_drop_bps = 0,
+  };
+  #assert ma_admit_submission(good) == MaStatus.admitted;
+  #assert ma_status_name(MaStatus.admitted) == "admitted";
+
+  // Exact boundary acceptances
+  edge := good;
+  edge.weight_bytes = 1; edge.conformance_passed = MA_MIN_CONFORMANCE; edge.conformance_total = MA_MIN_CONFORMANCE;
+  edge.heldout_lift_bps = 151;
+  #assert ma_admit_submission(edge) == MaStatus.admitted;
+  edge_hi := good; edge_hi.weight_bytes = MA_MAX_WEIGHT_BYTES;
+  #assert ma_admit_submission(edge_hi) == MaStatus.admitted;
+
+  // Every refusal path + boundary
+  b_sig := good; b_sig.sig_ok = false;
+  #assert ma_admit_submission(b_sig) == MaStatus.bad_signature && ma_status_name(MaStatus.bad_signature) == "bad_signature";
+
+  b_ak := good; b_ak.author_key = 0;
+  b_rk := good; b_rk.reviewer_key = 0;
+  b_self := good; b_self.reviewer_key = 101;
+  #assert ma_admit_submission(b_ak) == MaStatus.self_review;
+  #assert ma_admit_submission(b_rk) == MaStatus.self_review;
+  #assert ma_admit_submission(b_self) == MaStatus.self_review && ma_status_name(MaStatus.self_review) == "self_review";
+
+  b_dig := good; b_dig.digest_match = false;
+  #assert ma_admit_submission(b_dig) == MaStatus.bad_digest && ma_status_name(MaStatus.bad_digest) == "bad_digest";
+
+  b_sz0 := good; b_sz0.weight_bytes = 0;
+  b_szhi := good; b_szhi.weight_bytes = MA_MAX_WEIGHT_BYTES + 1;
+  #assert ma_admit_submission(b_sz0) == MaStatus.bad_size;
+  #assert ma_admit_submission(b_szhi) == MaStatus.bad_size && ma_status_name(MaStatus.bad_size) == "bad_size";
+
+  b_cls := good; b_cls.label = MvLabel.tests;
+  #assert ma_admit_submission(b_cls) == MaStatus.not_class_e && ma_status_name(MaStatus.not_class_e) == "not_class_e";
+
+  b_cmin := good; b_cmin.conformance_passed = MA_MIN_CONFORMANCE - 1; b_cmin.conformance_total = MA_MIN_CONFORMANCE - 1;
+  b_cmis := good; b_cmis.conformance_passed = 23;
+  #assert ma_admit_submission(b_cmin) == MaStatus.conformance_failed;
+  #assert ma_admit_submission(b_cmis) == MaStatus.conformance_failed && ma_status_name(MaStatus.conformance_failed) == "conformance_failed";
+
+  b_rep := good; b_rep.exact_replay_ok = false;
+  #assert ma_admit_submission(b_rep) == MaStatus.replay_failed && ma_status_name(MaStatus.replay_failed) == "replay_failed";
+
+  b_tmp := good; b_tmp.tamper_refused_ok = false;
+  #assert ma_admit_submission(b_tmp) == MaStatus.tamper_not_refused && ma_status_name(MaStatus.tamper_not_refused) == "tamper_not_refused";
+
+  b_lift := good; b_lift.heldout_lift_bps = 150; // == 2sigma -> refused
+  b_drop := good; b_drop.retained_drop_bps = 1;
+  #assert ma_admit_submission(b_lift) == MaStatus.insufficient_lift;
+  #assert ma_admit_submission(b_drop) == MaStatus.insufficient_lift && ma_status_name(MaStatus.insufficient_lift) == "insufficient_lift";
+
+  // Author payout request fields & gating through pay/executor-settlement.coax
+  req := ma_build_payout_request(500, 20778, false);
+  #assert req.leg == ES_LEG_WORKER && req.verdict == ES_VERDICT_EXACT_REPLAY && req.amount_sat == 500 && req.utc_day == 20778 && !req.already_paid_leg;
+  pol := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 20000};
+  st := EsPeriodState.{utc_day = 20778, global_spent_sat = 0, pubkey_spent_sat = 0};
+  #assert ma_admit_author_payout(good, pol, st, 500, 20778, false) == ES_RELEASE;
+  #assert ma_admit_author_payout(good, pol, st, 500, 20778, true) == ES_REFUSE_DUPLICATE;
+  #assert ma_admit_author_payout(b_lift, pol, st, 500, 20778, false) == ES_WITHHOLD_FAILED;
+  unarmed := pol; unarmed.owner_armed = false;
+  #assert ma_admit_author_payout(good, unarmed, st, 500, 20778, false) == ES_HOLD_OWNER;
+}

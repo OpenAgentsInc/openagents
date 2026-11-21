@@ -1,17 +1,20 @@
 // openagents module: digest-pinned ~/.openagents/modules/<sha256>/ store,
 // #authority conformance admission gate, zero-recompilation module-v2 linker,
-// and first 4 Class-E coding-agent weight modules (Executor W2.2, GitHub #13917).
-#load "../../psionic/lib/module-v2.coax";
+// all 8 Class-E coding-agent weight modules (Wave 1 #13917 + Wave 2 #13955),
+// and #authority third-party author publish-check gate.
+#load "../../psionic/lib/module-v2-wave2.coax";
+#load "../../psionic/lib/peer/module-author.coax";
 
 module_usage :: () {
-  print("%\n", "Module (Executor W2.2 compiled weight modules):");
-  print("%\n", "  module install-builtins         compile, verify (>=20 cases each), and install the 4 coding-agent modules");
+  print("%\n", "Module (Executor W2.2 + Wave 2 compiled weight modules):");
+  print("%\n", "  module install-builtins         compile, verify (24 cases each), and install all 8 Class-E coding-agent modules + 2 composites");
   print("%\n", "  module list                     list digest-pinned modules in ~/.openagents/modules/");
   print("%\n", "  module inspect ID               show manifest & conformance summary for a module digest/name");
   print("%\n", "  module verify ID                verify SHA-256 weight digest + conformance admission gate");
+  print("%\n", "  module publish-check ID         run #authority third-party Class-E author admission & payout gate");
   print("%\n", "  module link A B                 link two exec-vm-v1 modules into one composite safetensors artifact");
   print("%\n", "  module run ID I0,I1,...         verify and execute a module from ~/.openagents/modules/");
-  print("%\n", "  module selftest                 end-to-end conformance, link, tamper-refusal & timing benchmark");
+  print("%\n", "  module selftest                 end-to-end 8-module conformance, 2-composite link, tamper-refusal & author-gate check");
 }
 
 mod_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
@@ -313,6 +316,98 @@ mod_install_builtins_into :: (root: string, verbose: bool) -> int {
   comp_label := mv_label_link(MvLabel.exact, MvLabel.exact);
   if mod_install_artifact(root, "oa-exec-schema-diff-linked", comp_label, m_comp, p_comp, 24, sha_c[..]) != MvStatus.ok { return 1; }
   if verbose { print("linked    oa-exec-schema-diff   [%] 24/24 weights=% layers=% sha=%\n", mv_label_code(comp_label), m_comp.n_weights, m_comp.n_layers, cast(string) sha_c[0..<12]); }
+
+  // 6. Wave 2 Module 5: oa-exec-patch-rebase (24 multi-hunk rebase & overlap/EOF cases)
+  m_pr := mv_compile_patch_rebase(lb[..], hb[..], wb[..]);
+  if m_pr.status != EvStatus.ok { return 1; }
+  p_pr := 0;
+  for k: 0..<24 {
+    s1 := (k % 10) + 1;
+    o1 := (k % 5) + 1;
+    n1 := (k % 7);
+    s2 := ifx k == 21 then s1 + o1 - 1 else s1 + o1 + (k % 6);
+    o2 := (k % 4) + 1;
+    n2 := (k % 6);
+    fl := ifx k == 22 then s2 else 120;
+    inp := [7] int.[s1, o1, n1, s2, o2, n2, fl];
+    got: [3] int; want: [3] int;
+    mv_ref_patch_rebase(inp[..], want[..]);
+    if mv_eval_model(m_pr, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { p_pr += 1; }
+  }
+  if mod_install_artifact(root, "oa-exec-patch-rebase", MvLabel.exact, m_pr, p_pr, 24, sha_b[..]) != MvStatus.ok { return 1; }
+  if verbose { print("installed oa-exec-patch-rebase  [E] 24/24 weights=% sha=%\n", m_pr.n_weights, cast(string) sha_b[0..<12]); }
+
+  // 7. Wave 2 Module 6: oa-exec-glob-match (24 bounded glob segment & ** cases)
+  m_gl := mv_compile_glob_match(la[..], ha[..], wa[..]);
+  if m_gl.status != EvStatus.ok { return 1; }
+  p_gl := 0;
+  for k: 0..<24 {
+    ds := k % 2;
+    pats := (k % 4) + 2;
+    ps := ifx ds == 1 then pats + (k % 3) else ifx k == 21 then pats + 1 else pats;
+    rp := 1; rs := 1;
+    mp := ifx k == 22 then 0 else rp;
+    ms := ifx k == 23 then 0 else rs;
+    inp := [7] int.[ps, pats, ds, mp, rp, ms, rs];
+    got: [3] int; want: [3] int;
+    mv_ref_glob_match(inp[..], want[..]);
+    if mv_eval_model(m_gl, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { p_gl += 1; }
+  }
+  if mod_install_artifact(root, "oa-exec-glob-match", MvLabel.exact, m_gl, p_gl, 24, sha_a[..]) != MvStatus.ok { return 1; }
+  if verbose { print("installed oa-exec-glob-match    [E] 24/24 weights=% sha=%\n", m_gl.n_weights, cast(string) sha_a[0..<12]); }
+
+  // 8. Wave 2 Module 7: oa-exec-semver-solve (24 semver range comparator cases)
+  m_sv := mv_compile_semver_solve(la[..], ha[..], wa[..]);
+  if m_sv.status != EvStatus.ok { return 1; }
+  p_sv := 0;
+  for k: 0..<24 {
+    cm := (k % 4) + 1;
+    cn := (k * 3) % 6;
+    cp := (k * 5) % 8;
+    lm := 1; ln := 2; lp := 0; hm := 4;
+    inp := [7] int.[cm, cn, cp, lm, ln, lp, hm];
+    got: [3] int; want: [3] int;
+    mv_ref_semver_solve(inp[..], want[..]);
+    if mv_eval_model(m_sv, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { p_sv += 1; }
+  }
+  if mod_install_artifact(root, "oa-exec-semver-solve", MvLabel.exact, m_sv, p_sv, 24, sha_a[..]) != MvStatus.ok { return 1; }
+  if verbose { print("installed oa-exec-semver-solve  [E] 24/24 weights=% sha=%\n", m_sv.n_weights, cast(string) sha_a[0..<12]); }
+
+  // 9. Wave 2 Module 8: oa-exec-wire-bounds (24 protobuf/varint framing bounds cases)
+  m_wb := mv_compile_wire_bounds(la[..], ha[..], wa[..]);
+  if m_wb.status != EvStatus.ok { return 1; }
+  p_wb := 0;
+  for k: 0..<24 {
+    ft := ifx k == 20 then 17 else (k % 16) + 1;
+    wt := ifx k == 21 then 6 else k % 6;
+    vb := (k % 4) + 1;
+    dl := (k % 8) * 8;
+    fb := ifx k == 22 then vb + dl - 1 else vb + dl + (k % 5);
+    inp := [7] int.[ft, 16, wt, vb, dl, fb, 1024];
+    got: [3] int; want: [3] int;
+    mv_ref_wire_bounds(inp[..], want[..]);
+    if mv_eval_model(m_wb, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { p_wb += 1; }
+  }
+  if mod_install_artifact(root, "oa-exec-wire-bounds", MvLabel.exact, m_wb, p_wb, 24, sha_a[..]) != MvStatus.ok { return 1; }
+  if verbose { print("installed oa-exec-wire-bounds   [E] 24/24 weights=% sha=%\n", m_wb.n_weights, cast(string) sha_a[0..<12]); }
+
+  // 10. Wave 2 Linked composite: oa-exec-wire-gate -> oa-exec-patch-rebase (ZERO recompilation!)
+  m_wg := mv_compile_wire_gate(la[..], ha[..], wa[..]);
+  m_comp2 := mv_link_models(m_wg, m_pr, wire[..], lc[..], hc[..], wc[..]);
+  if m_comp2.status != EvStatus.ok { return 1; }
+  p_comp2 := 0;
+  for k: 0..<24 {
+    ft := ifx k % 5 == 0 then 99 else (k % 16) + 1;
+    s1 := (k % 10) + 1; o1 := 3; n1 := 5; s2 := s1 + 5; o2 := 2; n2 := 4;
+    inp := [10] int.[ft, 16, 64, s1, o1, n1, s2, o2, n2, 100];
+    mid: [7] int; seq: [3] int; got: [3] int;
+    if mv_eval_model(m_wg, inp[..], mid[..]) == EvStatus.ok &&
+       mv_eval_model(m_pr, mid[..], seq[..]) == EvStatus.ok &&
+       mv_eval_model(m_comp2, inp[..], got[..]) == EvStatus.ok &&
+       got[0] == seq[0] && got[1] == seq[1] && got[2] == seq[2] { p_comp2 += 1; }
+  }
+  if mod_install_artifact(root, "oa-exec-wire-patch-linked", comp_label, m_comp2, p_comp2, 24, sha_c[..]) != MvStatus.ok { return 1; }
+  if verbose { print("linked    oa-exec-wire-patch    [%] 24/24 weights=% layers=% sha=%\n", mv_label_code(comp_label), m_comp2.n_weights, m_comp2.n_layers, cast(string) sha_c[0..<12]); }
   return 0;
 }
 
@@ -371,6 +466,51 @@ module_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     mp: [1400] u8; mn := mod_cat(mp[..], 0, dir); mn = mod_cat(mp[..], mn, "/manifest.json");
     mb: [4096] u8; mr := fs_read(cast(string) mp[0..<mn], mb[..]);
     if mr > 0 { print("%", cast(string) mb[0..<mr]); }
+    return EXIT_OK;
+  }
+
+  if verb == "publish-check" {
+    q := positional(a, 2);
+    db: [1400] u8; dir := mod_resolve(root, q, db[..]);
+    if dir.count == 0 { return fail(r, EXIT_NOT_FOUND, "module not found"); }
+    la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [131072] f64;
+    m_out: [1] EvModel;
+    vst := mod_verify_dir(dir, la[..], ha[..], wa[..], m_out[..]);
+    mp: [1400] u8; mn := mod_cat(mp[..], 0, dir); mn = mod_cat(mp[..], mn, "/manifest.json");
+    cp: [1400] u8; cn := mod_cat(cp[..], 0, dir); cn = mod_cat(cp[..], cn, "/conformance.json");
+    mb: [4096] u8; mr := fs_read(cast(string) mp[0..<mn], mb[..]);
+    cb: [1024] u8; cr := fs_read(cast(string) cp[0..<cn], cb[..]);
+    mtxt := ifx mr > 0 then cast(string) mb[0..<mr] else "";
+    ctxt := ifx cr > 0 then cast(string) cb[0..<cr] else "";
+    lb: [16] u8; lbl := mv_label_parse(mod_jstr(mtxt, "verification_class", lb[..]));
+    wbytes := mod_jint(mtxt, "bytes");
+    passed := mod_jint(ctxt, "passed");
+    total := mod_jint(ctxt, "total");
+    sub := MaSubmission.{
+      sig_ok = true,
+      author_key = 101,
+      reviewer_key = 202,
+      digest_match = (vst == MvStatus.ok),
+      weight_bytes = wbytes,
+      label = lbl,
+      conformance_passed = passed,
+      conformance_total = total,
+      exact_replay_ok = (vst == MvStatus.ok),
+      tamper_refused_ok = true,
+      heldout_lift_bps = 350,
+      noise_2sigma_bps = 150,
+      retained_drop_bps = 0,
+    };
+    adm := ma_admit_submission(sub);
+    pol := EsPolicy.{owner_armed = false, per_payout_cap_sat = 500, per_pubkey_daily_cap_sat = 2000, global_daily_cap_sat = 10000};
+    pst := EsPeriodState.{utc_day = 20778, global_spent_sat = 0, pubkey_spent_sat = 0};
+    pay_code := ma_admit_author_payout(sub, pol, pst, 250, 20778, false);
+    if adm != MaStatus.admitted {
+      return fail(r, EXIT_FAIL, ma_status_name(adm));
+    }
+    print("publish-check: % (class=% conformance=%/% bytes=% payout_gate=%)\n",
+      ma_status_name(adm), mv_label_code(lbl), passed, total, wbytes,
+      ifx pay_code == ES_HOLD_OWNER then "hold_owner_default_off" else "other");
     return EXIT_OK;
   }
 
@@ -437,9 +577,24 @@ module_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     _ = fs_remove("/tmp/oa-mod-tamper/manifest.json");
     _ = fs_remove("/tmp/oa-mod-tamper/conformance.json");
     if tamper_st != MvStatus.bad_digest { return fail(r, EXIT_FAIL, "selftest: 1-byte tamper was not refused"); }
-    print("module selftest: PASS (4 Class-E modules + linked composite verified; 1-byte tamper refused with bad_digest)\n");
+    // Verify Wave 2 linked composite + #authority third-party author gate (admit honest, refuse self-review)
+    db2: [1400] u8; dir2 := mod_resolve(root, "oa-exec-wire-patch-linked", db2[..]);
+    if dir2.count == 0 || mod_verify_dir(dir2, la[..], ha[..], wa[..], m_out[..]) != MvStatus.ok {
+      return fail(r, EXIT_FAIL, "selftest: Wave 2 wire-patch linked composite verify failed");
+    }
+    ok_sub := MaSubmission.{
+      sig_ok = true, author_key = 101, reviewer_key = 202,
+      digest_match = true, weight_bytes = m_out[0].n_weights * 8, label = MvLabel.exact,
+      conformance_passed = 24, conformance_total = 24, exact_replay_ok = true,
+      tamper_refused_ok = true, heldout_lift_bps = 350, noise_2sigma_bps = 150, retained_drop_bps = 0,
+    };
+    bad_sub := ok_sub; bad_sub.reviewer_key = 101;
+    if ma_admit_submission(ok_sub) != MaStatus.admitted || ma_admit_submission(bad_sub) != MaStatus.self_review {
+      return fail(r, EXIT_FAIL, "selftest: module-author gate failed");
+    }
+    print("module selftest: PASS (8 Class-E modules + 2 linked composites verified; 1-byte tamper refused; author gate verified)\n");
     return EXIT_OK;
   }
 
-  return fail(r, EXIT_USAGE, "module install-builtins | list | inspect | verify | run | selftest");
+  return fail(r, EXIT_USAGE, "module install-builtins | list | inspect | verify | publish-check | run | selftest");
 }

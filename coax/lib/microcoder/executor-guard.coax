@@ -8,13 +8,17 @@
 // digests on every deterministic check.
 #authority;
 
-#load "../../../psionic/lib/module-v2.coax";
+#load "../../../psionic/lib/module-v2-wave2.coax";
 #load "../../../psionic/lib/hybrid-exec-policy.coax";
 
 MC_EXEC_MOD_DIFF :: 1;
 MC_EXEC_MOD_SCHEMA :: 2;
 MC_EXEC_MOD_DEP :: 3;
 MC_EXEC_MOD_BUDGET :: 4;
+MC_EXEC_MOD_PATCH_REBASE :: 5;
+MC_EXEC_MOD_GLOB :: 6;
+MC_EXEC_MOD_SEMVER :: 7;
+MC_EXEC_MOD_WIRE_BOUNDS :: 8;
 MC_EXEC_MAX_PATH :: 4096;
 
 McExecCode :: enum u8 {
@@ -34,6 +38,10 @@ McExecCode :: enum u8 {
   slots_full;
   over_budget;
   over_daily_cap;
+  hunk_overlap;
+  glob_mismatch;
+  semver_incompatible;
+  wire_bounds_violation;
   unknown_module;
 }
 
@@ -118,6 +126,10 @@ mc_exec_code_text :: (c: McExecCode) -> string #effects(all) {
   if c == McExecCode.slots_full { return "slots_full"; }
   if c == McExecCode.over_budget { return "over_budget"; }
   if c == McExecCode.over_daily_cap { return "over_daily_cap"; }
+  if c == McExecCode.hunk_overlap { return "hunk_overlap"; }
+  if c == McExecCode.glob_mismatch { return "glob_mismatch"; }
+  if c == McExecCode.semver_incompatible { return "semver_incompatible"; }
+  if c == McExecCode.wire_bounds_violation { return "wire_bounds_violation"; }
   return "unknown_module";
 }
 
@@ -257,7 +269,111 @@ mc_exec_check_budget :: (
   };
 }
 
-// Independent Ch 234 replay verification for any of the 4 Class-E modules.
+// Wave 2 Guard 5: oa-exec-patch-rebase compiled weight module.
+mc_exec_check_patch_rebase :: (
+  h1_start: int, h1_old: int, h1_new: int,
+  h2_start: int, h2_old: int, h2_new: int, file_lines: int
+) -> McExecVerdict #effects(all) {
+  inp := [7] int.[h1_start, h1_old, h1_new, h2_start, h2_old, h2_new, file_lines];
+  if hx_admit_call(MC_EXEC_MOD_PATCH_REBASE, 7, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    z := [3] int.[0, 0, file_lines];
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      out2 = file_lines,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_PATCH_REBASE, inp[..], z[..]),
+    };
+  }
+  la: [16] EvLayerDesc; ha: [1] EvHeadDesc; wa: [16384] f64;
+  m := mv_compile_patch_rebase(la[..], ha[..], wa[..]);
+  got: [3] int;
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_PATCH_REBASE, inp[..], got[..]);
+  if got[0] == 1 {
+    return McExecVerdict.{ok = true, code = McExecCode.ok, label = MvLabel.exact, out0 = got[0], out1 = got[1], out2 = got[2], digest = d};
+  }
+  why := McExecCode.oob_past_eof;
+  if h1_start < 1 || h2_start < 1 { why = McExecCode.invalid_start; }
+  else if h1_old < 0 || h1_new < 0 || h2_old < 0 || h2_new < 0 { why = McExecCode.invalid_count; }
+  else if h1_start + h1_old > h2_start { why = McExecCode.hunk_overlap; }
+  return McExecVerdict.{ok = false, code = why, label = MvLabel.exact, out2 = got[2], digest = d};
+}
+
+// Wave 2 Guard 6: oa-exec-glob-match compiled weight module.
+mc_exec_check_glob :: (
+  path_segs: int, pat_segs: int, has_double_star: int,
+  matched_prefix: int, req_prefix: int, matched_suffix: int, req_suffix: int
+) -> McExecVerdict #effects(all) {
+  inp := [7] int.[path_segs, pat_segs, has_double_star, matched_prefix, req_prefix, matched_suffix, req_suffix];
+  if hx_admit_call(MC_EXEC_MOD_GLOB, 7, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    z := [3] int.[0, 0, 0];
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_GLOB, inp[..], z[..]),
+    };
+  }
+  la: [16] EvLayerDesc; ha: [1] EvHeadDesc; wa: [16384] f64;
+  m := mv_compile_glob_match(la[..], ha[..], wa[..]);
+  got: [3] int;
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_GLOB, inp[..], got[..]);
+  return McExecVerdict.{
+    ok = (got[0] == 1),
+    code = ifx got[0] == 1 then McExecCode.ok else McExecCode.glob_mismatch,
+    label = MvLabel.exact, out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Wave 2 Guard 7: oa-exec-semver-solve compiled weight module.
+mc_exec_check_semver :: (
+  cand_maj: int, cand_min: int, cand_pat: int,
+  min_maj: int, min_min: int, min_pat: int, max_maj_excl: int
+) -> McExecVerdict #effects(all) {
+  inp := [7] int.[cand_maj, cand_min, cand_pat, min_maj, min_min, min_pat, max_maj_excl];
+  if hx_admit_call(MC_EXEC_MOD_SEMVER, 7, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    z := [3] int.[0, 0, 0];
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_SEMVER, inp[..], z[..]),
+    };
+  }
+  la: [16] EvLayerDesc; ha: [1] EvHeadDesc; wa: [32768] f64;
+  m := mv_compile_semver_solve(la[..], ha[..], wa[..]);
+  got: [3] int;
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_SEMVER, inp[..], got[..]);
+  return McExecVerdict.{
+    ok = (got[0] == 1),
+    code = ifx got[0] == 1 then McExecCode.ok else McExecCode.semver_incompatible,
+    label = MvLabel.exact, out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Wave 2 Guard 8: oa-exec-wire-bounds compiled weight module.
+mc_exec_check_wire_bounds :: (
+  field_tag: int, max_tag: int, wire_type: int,
+  varint_bytes: int, declared_len: int, frame_bytes: int, max_frame_bytes: int
+) -> McExecVerdict #effects(all) {
+  inp := [7] int.[field_tag, max_tag, wire_type, varint_bytes, declared_len, frame_bytes, max_frame_bytes];
+  if hx_admit_call(MC_EXEC_MOD_WIRE_BOUNDS, 7, true, inp[..]) != HxStatus.ok { // mutant: equivalent — hx_admit_call only checks module_id >= 1
+    z := [3] int.[0, 0, 0];
+    return McExecVerdict.{
+      ok = false, code = McExecCode.arg_out_of_range, label = MvLabel.exact,
+      digest = mc_exec_trace_digest(MC_EXEC_MOD_WIRE_BOUNDS, inp[..], z[..]),
+    };
+  }
+  la: [16] EvLayerDesc; ha: [1] EvHeadDesc; wa: [16384] f64;
+  m := mv_compile_wire_bounds(la[..], ha[..], wa[..]);
+  got: [3] int;
+  #assert mv_eval_model(m, inp[..], got[..]) == EvStatus.ok;
+  d := mc_exec_trace_digest(MC_EXEC_MOD_WIRE_BOUNDS, inp[..], got[..]);
+  return McExecVerdict.{
+    ok = (got[0] == 1),
+    code = ifx got[0] == 1 then McExecCode.ok else McExecCode.wire_bounds_violation,
+    label = MvLabel.exact, out0 = got[0], out1 = got[1], out2 = got[2], digest = d,
+  };
+}
+
+// Independent Ch 234 replay verification for all 8 Class-E modules.
 mc_exec_verify_replay :: (module_id: int, inp: [] int, claimed: [32] u8) -> bool #effects(all) {
   if module_id == MC_EXEC_MOD_DIFF && inp.count == 7 {
     v := mc_exec_check_diff(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
@@ -273,6 +389,22 @@ mc_exec_verify_replay :: (module_id: int, inp: [] int, claimed: [32] u8) -> bool
   }
   if module_id == MC_EXEC_MOD_BUDGET && inp.count == 6 {
     v := mc_exec_check_budget(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_PATCH_REBASE && inp.count == 7 {
+    v := mc_exec_check_patch_rebase(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_GLOB && inp.count == 7 {
+    v := mc_exec_check_glob(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_SEMVER && inp.count == 7 {
+    v := mc_exec_check_semver(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
+    return mc_exec_replay_eq(v.digest, claimed);
+  }
+  if module_id == MC_EXEC_MOD_WIRE_BOUNDS && inp.count == 7 {
+    v := mc_exec_check_wire_bounds(inp[0], inp[1], inp[2], inp[3], inp[4], inp[5], inp[6]);
     return mc_exec_replay_eq(v.digest, claimed);
   }
   return false;
@@ -429,6 +561,10 @@ mc_exec_verify_replay :: (module_id: int, inp: [] int, claimed: [32] u8) -> bool
   #assert mc_exec_code_text(McExecCode.slots_full) == "slots_full";
   #assert mc_exec_code_text(McExecCode.over_budget) == "over_budget";
   #assert mc_exec_code_text(McExecCode.over_daily_cap) == "over_daily_cap";
+  #assert mc_exec_code_text(McExecCode.hunk_overlap) == "hunk_overlap";
+  #assert mc_exec_code_text(McExecCode.glob_mismatch) == "glob_mismatch";
+  #assert mc_exec_code_text(McExecCode.semver_incompatible) == "semver_incompatible";
+  #assert mc_exec_code_text(McExecCode.wire_bounds_violation) == "wire_bounds_violation";
   #assert mc_exec_code_text(McExecCode.unknown_module) == "unknown_module";
 
   // Independent SHA-256 golden byte-order check (Ch 234 LE32 wire layout: mod=1, n_in=1, in=-2, n_out=1, out=0x01020304)
@@ -446,4 +582,83 @@ mc_exec_verify_replay :: (module_id: int, inp: [] int, claimed: [32] u8) -> bool
   d_le := mc_exec_trace_digest(1, iv[..], ov[..]);
   #assert mc_exec_replay_eq(d_le, want_le);
   #assert !mc_exec_replay_eq(d_le, mc_exec_trace_digest(2, iv[..], ov[..]));
+}
+
+#test "executor-guard: Wave 2 Class-E guards (patch-rebase, glob, semver, wire-bounds) & replay (#13955)" #steps 100000000 {
+  // 5. patch-rebase: valid, exact boundaries, every refusal code, OOR, replay
+  pr_ok := mc_exec_check_patch_rebase(10, 4, 7, 25, 3, 2, 100);
+  #assert pr_ok.ok && pr_ok.code == McExecCode.ok && pr_ok.label == MvLabel.exact && pr_ok.out0 == 1 && pr_ok.out1 == 28 && pr_ok.out2 == 102;
+  pri := [7] int.[10, 4, 7, 25, 3, 2, 100];
+  pro := [3] int.[1, 28, 102];
+  #assert mc_exec_replay_eq(pr_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_PATCH_REBASE, pri[..], pro[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_PATCH_REBASE, pri[..], pr_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_PATCH_REBASE, pri[0..<6], pr_ok.digest);
+  #assert mc_exec_check_patch_rebase(1, 0, 0, 1, 0, 0, 0).ok; // exact 0/1 boundaries
+  #assert mc_exec_check_patch_rebase(0, 1, 1, 5, 1, 1, 10).code == McExecCode.invalid_start;
+  #assert mc_exec_check_patch_rebase(1, 1, 1, 0, 1, 1, 10).code == McExecCode.invalid_start;
+  #assert mc_exec_check_patch_rebase(1, -1, 0, 5, 0, 0, 10).code == McExecCode.invalid_count;
+  #assert mc_exec_check_patch_rebase(1, 0, -1, 5, 0, 0, 10).code == McExecCode.invalid_count;
+  #assert mc_exec_check_patch_rebase(1, 0, 0, 5, -1, 0, 10).code == McExecCode.invalid_count;
+  #assert mc_exec_check_patch_rebase(1, 0, 0, 5, 0, -1, 10).code == McExecCode.invalid_count;
+  pr_ov := mc_exec_check_patch_rebase(1, 5, 5, 5, 0, 0, 20);
+  #assert !pr_ov.ok && pr_ov.code == McExecCode.hunk_overlap && pr_ov.label == MvLabel.exact && pr_ov.out0 == 0 && pr_ov.out1 == 0 && pr_ov.out2 == 20;
+  pr_eof := mc_exec_check_patch_rebase(1, 0, 0, 1, 5, 5, 4);
+  #assert !pr_eof.ok && pr_eof.code == McExecCode.oob_past_eof && pr_eof.out0 == 0 && pr_eof.out1 == 0 && pr_eof.out2 == 4;
+  pr_oor := mc_exec_check_patch_rebase(HX_ARG_MAX + 1, 0, 0, 1, 0, 0, 10);
+  pri_oor := [7] int.[HX_ARG_MAX + 1, 0, 0, 1, 0, 0, 10];
+  pro_oor := [3] int.[0, 0, 10];
+  #assert !pr_oor.ok && pr_oor.code == McExecCode.arg_out_of_range && pr_oor.label == MvLabel.exact && pr_oor.out0 == 0 && pr_oor.out1 == 0 && pr_oor.out2 == 10;
+  #assert mc_exec_replay_eq(pr_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_PATCH_REBASE, pri_oor[..], pro_oor[..]));
+
+  // 6. glob-match (distinct args across indices 0..6 to pin replay ordering)
+  gl_ok := mc_exec_check_glob(8, 5, 1, 2, 2, 3, 3);
+  #assert gl_ok.ok && gl_ok.code == McExecCode.ok && gl_ok.label == MvLabel.exact && gl_ok.out0 == 1 && gl_ok.out1 == 3 && gl_ok.out2 == 1;
+  gli := [7] int.[8, 5, 1, 2, 2, 3, 3];
+  glo := [3] int.[1, 3, 1];
+  #assert mc_exec_replay_eq(gl_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_GLOB, gli[..], glo[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_GLOB, gli[..], gl_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_GLOB, gli[0..<6], gl_ok.digest);
+  gl_bad := mc_exec_check_glob(5, 4, 0, 2, 1, 4, 3);
+  gli_bad := [7] int.[5, 4, 0, 2, 1, 4, 3];
+  #assert !gl_bad.ok && gl_bad.code == McExecCode.glob_mismatch && gl_bad.out0 == 0 && gl_bad.out1 == 0 && gl_bad.out2 == 0;
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_GLOB, gli_bad[..], gl_bad.digest);
+  gl_oor := mc_exec_check_glob(HX_ARG_MAX + 1, 3, 1, 1, 1, 1, 1);
+  gli_oor := [7] int.[HX_ARG_MAX + 1, 3, 1, 1, 1, 1, 1];
+  glo_oor := [3] int.[0, 0, 0];
+  #assert !gl_oor.ok && gl_oor.code == McExecCode.arg_out_of_range && gl_oor.label == MvLabel.exact && gl_oor.out0 == 0 && gl_oor.out1 == 0 && gl_oor.out2 == 0;
+  #assert mc_exec_replay_eq(gl_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_GLOB, gli_oor[..], glo_oor[..]));
+
+  // 7. semver-solve (distinct out0=1, out1=2, out2=0 and exact-min case)
+  sv_ok := mc_exec_check_semver(1, 5, 2, 1, 2, 0, 4);
+  #assert sv_ok.ok && sv_ok.code == McExecCode.ok && sv_ok.label == MvLabel.exact && sv_ok.out0 == 1 && sv_ok.out1 == 2 && sv_ok.out2 == 0;
+  sv_ex := mc_exec_check_semver(1, 2, 0, 1, 2, 0, 3);
+  #assert sv_ex.ok && sv_ex.out0 == 1 && sv_ex.out1 == 1 && sv_ex.out2 == 1;
+  svi := [7] int.[1, 5, 2, 1, 2, 0, 4];
+  svo := [3] int.[1, 2, 0];
+  #assert mc_exec_replay_eq(sv_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_SEMVER, svi[..], svo[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_SEMVER, svi[..], sv_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_SEMVER, svi[0..<6], sv_ok.digest);
+  sv_bad := mc_exec_check_semver(2, 0, 0, 1, 2, 0, 2);
+  #assert !sv_bad.ok && sv_bad.code == McExecCode.semver_incompatible && sv_bad.out0 == 0 && sv_bad.out1 == 0 && sv_bad.out2 == 0;
+  sv_oor := mc_exec_check_semver(HX_ARG_MAX + 1, 0, 0, 1, 0, 0, 2);
+  svi_oor := [7] int.[HX_ARG_MAX + 1, 0, 0, 1, 0, 0, 2];
+  svo_oor := [3] int.[0, 0, 0];
+  #assert !sv_oor.ok && sv_oor.code == McExecCode.arg_out_of_range && sv_oor.label == MvLabel.exact && sv_oor.out0 == 0 && sv_oor.out1 == 0 && sv_oor.out2 == 0;
+  #assert mc_exec_replay_eq(sv_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_SEMVER, svi_oor[..], svo_oor[..]));
+
+  // 8. wire-bounds (distinct wire_type=2 vs varint_bytes=3 to pin replay ordering)
+  wb_ok := mc_exec_check_wire_bounds(4, 16, 2, 3, 40, 49, 1024);
+  #assert wb_ok.ok && wb_ok.code == McExecCode.ok && wb_ok.label == MvLabel.exact && wb_ok.out0 == 1 && wb_ok.out1 == 3 && wb_ok.out2 == 6;
+  wbi := [7] int.[4, 16, 2, 3, 40, 49, 1024];
+  wbo := [3] int.[1, 3, 6];
+  #assert mc_exec_replay_eq(wb_ok.digest, mc_exec_trace_digest(MC_EXEC_MOD_WIRE_BOUNDS, wbi[..], wbo[..]));
+  #assert mc_exec_verify_replay(MC_EXEC_MOD_WIRE_BOUNDS, wbi[..], wb_ok.digest);
+  #assert !mc_exec_verify_replay(MC_EXEC_MOD_WIRE_BOUNDS, wbi[0..<6], wb_ok.digest);
+  wb_bad := mc_exec_check_wire_bounds(17, 16, 2, 3, 40, 49, 1024);
+  #assert !wb_bad.ok && wb_bad.code == McExecCode.wire_bounds_violation && wb_bad.out0 == 0 && wb_bad.out1 == 0 && wb_bad.out2 == 0;
+  wb_oor := mc_exec_check_wire_bounds(HX_ARG_MAX + 1, 16, 2, 3, 40, 49, 1024);
+  wbi_oor := [7] int.[HX_ARG_MAX + 1, 16, 2, 3, 40, 49, 1024];
+  wbo_oor := [3] int.[0, 0, 0];
+  #assert !wb_oor.ok && wb_oor.code == McExecCode.arg_out_of_range && wb_oor.label == MvLabel.exact && wb_oor.out0 == 0 && wb_oor.out1 == 0 && wb_oor.out2 == 0;
+  #assert mc_exec_replay_eq(wb_oor.digest, mc_exec_trace_digest(MC_EXEC_MOD_WIRE_BOUNDS, wbi_oor[..], wbo_oor[..]));
 }

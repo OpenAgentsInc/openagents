@@ -376,10 +376,15 @@ npm") over the registered single-codec schemas in
   `~/.openagents/modules/<sha256>/` and are linked and verified by the
   `openagents module` CLI. Any 1-byte tamper or conformance mismatch refuses
   at load time.
-- **Four shipping Class-E coding-agent cores:** `oa-exec-diff-verify` (exact
-  unified-diff hunk/line verification), `oa-exec-json-schema` (bounded JSON and
-  wire-schema validation), `oa-exec-dep-sched` (DAG topological sort and cycle
-  detection), and `oa-exec-arith-budget` (exact 64-bit integer and token/satoshi
-  budget accounting with overflow refusal), linked into composite artifacts and
-  invoked directly by Microcoder, OpenAgents Desktop, and `openagents mcp
-  --domains executor` ([W6.1 coding-agent verification record](../../docs/verification/executor-w61-coding-agent.md)).
+- **Eight shipping Class-E coding-agent cores (`module-v2.coax` + `module-v2-wave2.coax`):**
+  - Wave 1 (`#13917`): `oa-exec-diff-verify` (unified-diff hunk/line verification), `oa-exec-json-schema` (bounded JSON/wire schema validation), `oa-exec-dep-sched` (DAG readiness and cycle detection), and `oa-exec-arith-budget` (exact satoshi/token budget accounting).
+  - Wave 2 (`#13955`): `oa-exec-patch-rebase` (multi-hunk line-offset rebaser and overlap/EOF guard), `oa-exec-glob-match` (deterministic bounded glob/segment matcher, zero ReDoS), `oa-exec-semver-solve` (semantic-version range comparator), and `oa-exec-wire-bounds` (protobuf/varint framing bounds validator).
+  - Two zero-recompilation linked composites (`oa-exec-schema-diff-linked` and `oa-exec-wire-patch-linked`), all invoked directly by Microcoder (`coax/lib/microcoder/executor-guard.coax`), OpenAgents Desktop, and `openagents mcp --domains executor`.
+- **Third-party author admission & payout gate (`#13955`):** `#authority`
+  [`peer/module-author.coax`](../lib/peer/module-author.coax) (`53/53` mutants
+  killed, `0` survived) enforces signature, distinct reviewer key, SHA-256
+  digest match, Class-E exactness, `>= 20` passing conformance cases, tamper
+  refusal, held-out Gym lift strictly above 2σ, and default-OFF author payout
+  gating via `pay/executor-settlement.coax` (`openagents module publish-check`;
+  [Wave 2 verification record](../../docs/verification/executor-w22-wave2-modules.md),
+  [W6.1 verification record](../../docs/verification/executor-w61-coding-agent.md)).
