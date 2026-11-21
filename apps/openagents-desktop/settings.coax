@@ -15,22 +15,22 @@
 
 #load "../../components/app/settings.coax";
 
-CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8;
-CP_SET_PAGES :: 9;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills"];
-CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG];
+CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9;
+CP_SET_PAGES :: 10;
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice"];
+CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
 CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
-CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_FOREMAN, CP_PG_ABOUT];
-CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 1, 1, 1, 1, 2];   // the group of each place in CP_SET_ORDER
+CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_FOREMAN, CP_PG_ABOUT];
+CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 1, 1, 1, 1, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 46;
+CP_SET_ENTRIES :: 52;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -78,7 +78,13 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MCP, id = "", name = "MCP", terms = "mcp model context protocol servers http stdio tools oauth"},
     CpSetEntry.{page = CP_PG_MCP, id = "set.mcp.add", name = "Add MCP server", terms = "mcp server add http stdio connect oauth"},
     CpSetEntry.{page = CP_PG_SKILLS, id = "", name = "Skills", terms = "skills slash composer claude user project"},
-    CpSetEntry.{page = CP_PG_SKILLS, id = "set.skills.head", name = "Installed skills", terms = "skills enable disable toggle catalog"}];
+    CpSetEntry.{page = CP_PG_SKILLS, id = "set.skills.head", name = "Installed skills", terms = "skills enable disable toggle catalog"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "", name = "Voice", terms = "voice dictation microphone speech whisper apple audio"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.backend", name = "Transcription backend", terms = "voice speech apple whisper local offline backend"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.mode", name = "Shortcut mode", terms = "voice push to talk toggle hotkey option space shortcut"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.mic", name = "Microphone", terms = "voice mic input audio device permission"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.fillers", name = "Strip filler words", terms = "voice filler um uh like you know cleanup"},
+    CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.dict", name = "Custom dictionary", terms = "voice dictionary vocabulary custom words spelling"}];
 }
 // Whether a page shows: Foreman's and Account's are experimental features (General's last row).
 cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
@@ -208,6 +214,15 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.codex.a" || id == "set.codex" { s[0].ask = CP_ASK_CODEX; return true; }
   if id == "set.cursor.a" || id == "set.cursor" { s[0].ask = CP_ASK_CURSOR; return true; }
   if id == "set.acp.a" || id == "set.acp" { s[0].ask = CP_ASK_ACP_REGISTRY; return true; }
+  // Settings -> Voice (#13882)
+  vb := cp_number(id, "set.voice.backend.");
+  if vb == CP_VOICE_BACKEND_APPLE || vb == CP_VOICE_BACKEND_WHISPER { s[0].voice[0].backend = vb; s[0].ask = CP_ASK_VOICE_BACKEND; return true; }
+  vm := cp_number(id, "set.voice.mode.");
+  if vm == CP_VOICE_MODE_TOGGLE || vm == CP_VOICE_MODE_HOLD { s[0].voice[0].mode = vm; s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+  vf := cp_number(id, "set.voice.fillers.");
+  if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+  if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
+  if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
   if id == "set.update.a" {
     st := s[0].update_state;
     s[0].ask = ifx st == CP_UPD_AVAILABLE || st == CP_UPD_READY then CP_ASK_UPDATE else CP_ASK_CHECK_UPDATES;
@@ -474,6 +489,8 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.wallet.custody.group", x, y, w, crows[..]);
   } else if page == CP_PG_USAGE {
     y += cp_settings_usage(s, f, x, y, w);
+  } else if page == CP_PG_VOICE {
+    y += cp_settings_voice(s, f, x, y, w);
   } else if page == CP_PG_MCP {
     y += set_page_head(f, "set.title", x, y, w, names[page], "Configure HTTP and stdio Model Context Protocol servers for Microcoder, Claude, and Antigravity. Bearer tokens are stored in 0600 files and never logged.") + t.block_gap;
     add_one: [1] SetRow;

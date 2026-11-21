@@ -1248,3 +1248,58 @@ int cd_fanout_prompt(void *page, char *out, int cap) {
   CoderHost *c = page; if (!c || !out || cap < 2) return 0;
   return cd_text_out((int)coder_page_fanout_prompt(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }
+int cd_voice_state(void *page) { CoderHost *c = page; return c ? (int)coder_page_voice_state(cd_state(c)) : 0; }
+void cd_voice_set_state(void *page, int state, const char *msg) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_set_state(cd_state(c), state, cd_string(msg));
+  cd_woke(c);
+}
+void cd_voice_level(void *page, float rms) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_level(cd_state(c), rms);
+  cd_woke(c);
+}
+void cd_voice_partial(void *page, const char *text) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_partial(cd_state(c), cd_string(text));
+  cd_woke(c);
+}
+int cd_voice_commit(void *page, const char *text) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_voice_commit(cd_state(c), cd_string(text)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_voice_backend(void *page) { CoderHost *c = page; return c ? (int)coder_page_voice_backend(cd_state(c)) : 0; }
+void cd_voice_set_backend(void *page, int backend) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_set_backend(cd_state(c), backend);
+  cd_woke(c);
+}
+int cd_voice_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_voice_mode(cd_state(c)) : 0; }
+void cd_voice_set_mode(void *page, int mode) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_set_mode(cd_state(c), mode);
+  cd_woke(c);
+}
+int cd_voice_fillers(void *page) { CoderHost *c = page; return c && coder_page_voice_fillers(cd_state(c)) ? 1 : 0; }
+void cd_voice_set_fillers(void *page, int on) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_set_fillers(cd_state(c), on != 0);
+  cd_woke(c);
+}
+int cd_voice_dict_set(void *page, const char *raw) {
+  CoderHost *c = page; if (!c) return 0;
+  int n = (int)coder_page_voice_dict_set(cd_state(c), cd_string(raw));
+  cd_woke(c);
+  return n;
+}
+int cd_voice_dict_get(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_voice_dict_get(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_voice_status_set(void *page, const char *mic, const char *whisper, int apple_ready, int whisper_ready) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_voice_status_set(cd_state(c), cd_string(mic), cd_string(whisper), apple_ready != 0, whisper_ready != 0);
+  cd_woke(c);
+}

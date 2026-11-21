@@ -533,4 +533,19 @@ int cd_fanout_count(void *page);
 int cd_fanout_active(void *page);
 int cd_fanout_target(void *page, int idx, char *out, int cap);
 int cd_fanout_prompt(void *page, char *out, int cap);
+// Native & local voice dictation in composer and Settings -> Voice (page/voice.coax; #13882).
+int cd_voice_state(void *page);
+void cd_voice_set_state(void *page, int state, const char *msg);
+void cd_voice_level(void *page, float rms);
+void cd_voice_partial(void *page, const char *text);
+int cd_voice_commit(void *page, const char *text);
+int cd_voice_backend(void *page);
+void cd_voice_set_backend(void *page, int backend);
+int cd_voice_mode(void *page);
+void cd_voice_set_mode(void *page, int mode);
+int cd_voice_fillers(void *page);
+void cd_voice_set_fillers(void *page, int on);
+int cd_voice_dict_set(void *page, const char *raw);
+int cd_voice_dict_get(void *page, char *out, int cap);
+void cd_voice_status_set(void *page, const char *mic, const char *whisper, int apple_ready, int whisper_ready);
 #endif

@@ -11,6 +11,7 @@
 #load "../../../components/app/cargo.coax";
 #load "../../../components/app/mention.coax";
 #load "../../shared/app/view/shell.coax";
+#load "../../shared/dictation-join.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
 #load "../../../components/chat/editor.coax";
@@ -60,3 +61,4 @@
 #load "find.coax";
 #load "usage.coax";
 #load "mcpskills.coax";
+#load "voice.coax";

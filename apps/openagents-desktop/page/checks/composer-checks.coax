@@ -39,8 +39,10 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   add := elt_find(t[..], "coder.composer.add"); send := elt_find(t[..], "coder.composer.send");
   #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[send].x;
   #assert cp_press(s, add) && coder_page_action(s) == CP_ASK_ADD;
-  // no microphone: there is no dictation
-  #assert elt_find(t[..], "coder.composer.mic") < 0;
+  // microphone dictation button sits beside Send (#13882)
+  mic := elt_find(t[..], "coder.composer.mic");
+  #assert mic >= 0 && t[0].rows[mic].w == 28 && t[0].rows[mic].x < t[0].rows[send].x;
+  #assert cp_press(s, mic) && coder_page_action(s) == CP_ASK_VOICE_TOGGLE;
 }
 #test "a chat with messages: one 49 row while the draft fits, expanded past it or with a new line, back once 32 narrower" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);

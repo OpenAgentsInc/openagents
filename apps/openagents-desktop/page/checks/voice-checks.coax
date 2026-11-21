@@ -1,0 +1,171 @@
+// Checks for page/voice.coax: Desktop native & local voice dictation in composer
+// (Apple Speech / Local Whisper, waveform bars, filler stripping, custom dictionary,
+// Settings -> Voice, and composer insertion at cursor; GitHub #13882).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "filler-word stripping removes um, uh, like, you know on word boundaries only" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_voice_fillers(s);
+
+  out: [512] u8;
+  n := cp_voice_postprocess(s, "Um, can you, uh, fix the like bug?", out[..]);
+  #assert cast(string) out[0..<n] == "can you, fix the bug?";
+
+  n = cp_voice_postprocess(s, "it is, you know, fast", out[..]);
+  #assert cast(string) out[0..<n] == "it is, fast";
+
+  n = cp_voice_postprocess(s, "uh hello um world", out[..]);
+  #assert cast(string) out[0..<n] == "hello world";
+
+  // Word boundaries: umbrella, likely, super, term must never be mangled.
+  n = cp_voice_postprocess(s, "umbrella is likely a super term", out[..]);
+  #assert cast(string) out[0..<n] == "umbrella is likely a super term";
+
+  // Disabled filler stripping keeps input intact (trimmed).
+  coder_page_voice_set_fillers(s, false);
+  #assert !coder_page_voice_fillers(s);
+  n = cp_voice_postprocess(s, "  Um, uh, like hello  ", out[..]);
+  #assert cast(string) out[0..<n] == "Um, uh, like hello";
+}
+
+#test "custom dictionary parsing, word-boundary replacement, and 32-entry cap" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  rules := "# comment line\n\ncoax = Coax\nopen agents => OpenAgents\nsilero vad -> Silero VAD\nAntigravity\n";
+  cnt := coder_page_voice_dict_set(s, rules);
+  #assert cnt == 4;
+
+  rb: [512] u8;
+  rn := coder_page_voice_dict_get(s, rb[..]);
+  #assert cast(string) rb[0..<rn] == rules;
+
+  out: [512] u8;
+  n := cp_voice_postprocess(s, "um, open agents uses coax and silero vad with antigravity.", out[..]);
+  #assert cast(string) out[0..<n] == "OpenAgents uses Coax and Silero VAD with Antigravity.";
+
+  // Word-boundary check: "coaxial" must not match "coax".
+  n = cp_voice_postprocess(s, "coaxial cable", out[..]);
+  #assert cast(string) out[0..<n] == "coaxial cable";
+
+  // Cap at CP_VOICE_DICT_MAX (32).
+  big: [2048] u8; bn := 0;
+  for i: 0..<40 {
+    bn = el_put(big[..], bn, "w"); bn = el_put_i(big[..], bn, i);
+    bn = el_put(big[..], bn, " = W"); bn = el_put_i(big[..], bn, i);
+    bn = el_put(big[..], bn, "\n");
+  }
+  #assert coder_page_voice_dict_set(s, cast(string) big[0..<bn]) == CP_VOICE_DICT_MAX;
+}
+
+#test "dictation state transitions, 8-bar level meter, and cancel/error cleanup" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_voice_state(s) == CP_VOICE_IDLE;
+
+  // Level normalization stays in [0, 1] and shifts rolling 8-bar window.
+  #assert cp_voice_norm_level(-0.5f32) == 0.0f32 && cp_voice_norm_level(0.0f32) == 0.0f32;
+  mid := cp_voice_norm_level(0.0625f32);   // sqrt(0.25) = 0.5
+  #assert mid > 0.49f32 && mid < 0.51f32;
+  #assert cp_voice_norm_level(2.0f32) <= 1.0f32 && cp_voice_norm_level(2.0f32) > 0.99f32;
+
+  coder_page_voice_set_state(s, CP_VOICE_LISTENING, "");
+  #assert coder_page_voice_state(s) == CP_VOICE_LISTENING;
+  coder_page_voice_level(s, 0.04f32);
+  coder_page_voice_level(s, 0.25f32);
+  #assert s[0].voice[0].bars[CP_VOICE_BARS - 1] > 0.95f32;
+  #assert s[0].voice[0].bars[CP_VOICE_BARS - 2] > 0.35f32 && s[0].voice[0].bars[CP_VOICE_BARS - 2] < 0.45f32;
+  #assert s[0].voice[0].bars[0] == 0.0f32;
+
+  coder_page_voice_partial(s, "testing one two");
+  #assert cast(string) s[0].voice[0].partial[0..<s[0].voice[0].partial_n] == "testing one two";
+
+  // Press Cancel resets to IDLE, clears bars & partial, asks host to cancel.
+  #assert cp_voice_press(s, CP_VOICE_CANCEL) && coder_page_action(s) == CP_ASK_VOICE_CANCEL;
+  #assert coder_page_voice_state(s) == CP_VOICE_IDLE;
+  #assert s[0].voice[0].partial_n == 0 && s[0].voice[0].bars[CP_VOICE_BARS - 1] == 0.0f32;
+
+  // Error state carries message.
+  coder_page_voice_set_state(s, CP_VOICE_ERROR, "Microphone permission denied");
+  #assert coder_page_voice_state(s) == CP_VOICE_ERROR;
+  #assert cast(string) s[0].voice[0].error[0..<s[0].voice[0].error_n] == "Microphone permission denied";
+
+  // Mic press asks host to toggle dictation.
+  #assert cp_voice_press(s, CP_VOICE_MIC) && coder_page_action(s) == CP_ASK_VOICE_TOGGLE;
+}
+
+#test "composer insertion joins dictated text at cursor with smart spacing and post-processing" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  _ = coder_page_voice_dict_set(s, "coax = Coax\n");
+
+  // 1) Empty draft.
+  coder_page_voice_set_state(s, CP_VOICE_TRANSCRIBING, "");
+  #assert coder_page_voice_commit(s, "um, hello coax");
+  #assert eb_text(s[0].draft[..]) == "hello Coax";
+  #assert coder_page_voice_state(s) == CP_VOICE_IDLE;
+
+  // 2) Appending after existing word inserts a separating space.
+  #assert coder_page_voice_commit(s, "uh, world");
+  #assert eb_text(s[0].draft[..]) == "hello Coax world";
+
+  // 3) Closing punctuation does not add a leading space.
+  #assert coder_page_voice_commit(s, "!");
+  #assert eb_text(s[0].draft[..]) == "hello Coax world!";
+
+  // 4) Inserting at cursor in the middle of the draft adds spaces on both sides as needed.
+  e := cp_ed(s, CP_ED_COMPOSER);
+  eb_move_to(e[0].body[0].ed[..], 5);   // right after "hello"
+  #assert coder_page_voice_commit(s, "like dear");
+  #assert eb_text(s[0].draft[..]) == "hello dear Coax world!";
+
+  // 5) Empty/filler-only transcript returns false and leaves draft unchanged.
+  #assert !coder_page_voice_commit(s, "um, uh, like");
+  #assert eb_text(s[0].draft[..]) == "hello dear Coax world!";
+}
+
+#test "Settings -> Voice page rows, search hits, and live recording pill render cleanly" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  coder_page_voice_status_set(s, "MacBook Pro Microphone", "ggml-base.en.bin (ready)", true, true);
+
+  // Settings search discovers Voice page and rows.
+  hits: [CP_SET_HITS] int;
+  es := cp_set_entries();
+  hn := cp_set_hits_in("voice", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
+  hn = cp_set_hits_in("whisper", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
+  hn = cp_set_hits_in("dictionary", hits[..], false);
+  #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
+
+  // Settings -> Voice row actions dispatch non-conflicting CP_ASK_VOICE_*.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.voice.backend.1") && coder_page_action(s) == CP_ASK_VOICE_BACKEND;
+  #assert coder_page_voice_backend(s) == CP_VOICE_BACKEND_WHISPER;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.voice.mode.1") && coder_page_action(s) == CP_ASK_VOICE_PREFS;
+  #assert coder_page_voice_mode(s) == CP_VOICE_MODE_HOLD;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.voice.fillers.0") && coder_page_action(s) == CP_ASK_VOICE_PREFS;
+  #assert !coder_page_voice_fillers(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.voice.mic.a") && coder_page_action(s) == CP_ASK_VOICE_MIC;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.voice.dict.a") && coder_page_action(s) == CP_ASK_VOICE_DICT;
+
+  // Render Settings -> Voice page without errors.
+  coder_page_settings_open(s, CP_PG_VOICE, "");
+  #assert coder_page_settings_page(s) == CP_PG_VOICE;
+  f: [1] UiFrame;
+  #assert cp_test_draw_side(s, f[..]);
+
+  // Close settings, start listening, and render composer mic button + live recording pill.
+  coder_page_settings_open(s, -2, "");
+  coder_page_voice_set_state(s, CP_VOICE_LISTENING, "");
+  coder_page_voice_level(s, 0.16f32);
+  coder_page_voice_partial(s, "ship voice dictation");
+  #assert cp_test_draw_side(s, f[..]);
+  #assert s[0].voice[0].pill_h > 0.0f32;
+  #assert surface_find(s[0].surface[..], "coder.composer.mic") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.voice.pill") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.voice.stop") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.voice.cancel") >= 0;
+}

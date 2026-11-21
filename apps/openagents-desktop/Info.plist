@@ -24,6 +24,10 @@
 	<string>NSApplication</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenAgents lets OpenAgents on your iPhone find this Mac nearby, so you can pair them without a code.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenAgents uses the microphone for offline voice dictation directly into the chat composer.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OpenAgents uses on-device Apple Speech recognition to transcribe your voice into the chat composer.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_openagents-coder._tcp</string>

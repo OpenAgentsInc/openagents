@@ -214,7 +214,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h;   // what scrolls runs up to the trays and the bar
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h - s[0].voice[0].pill_h;   // what scrolls runs up to the trays and the bar
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -496,7 +496,8 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   if !s[0].todos[0].docked { todos_h = cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
   git_h := cp_git_output_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw);
   permit_h := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h, cw);
-  _ := cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw);
+  oauth_h := cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw);
+  _ := cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw);
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
@@ -533,7 +534,7 @@ cp_pill_shape :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> ZcPill {
 // Zeron's chat composer pill (ds/composer.luau, ds/composer_layout.luau) in the page's theme (cp_theme(), Coder Noir)
 // at (x, y), w wide, in shape g: its radius (26, at most half its height), the composer's solid and
 // edge (firmer with the keyboard), its 0 12 32 shadow, the 28 round + (a working folder) at its
-// start, the text, and the 32 round Send / Stop at its end. No microphone: there is no dictation.
+// start, the text, the 28 round mic dictation button (#13882), and the 32 round Send / Stop at its end.
 cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g: ZcPill, running: bool, off: bool) -> ComposerBox {
   k := f[0].skin; sh := f[0].sheet;
   border := cast(f32) ZC_BORDER;
@@ -554,7 +555,8 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
   // says what Return does (#13717)
   hint := ifx !running then "Do anything…" else "Steer the reply · ⇧Return queues · Esc stops";
-  tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right;
+  mic_side := cast(f32) ZC_CONTROL; mic_gap := 6.0f32;
+  tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right - (ifx g.expanded then 0.0f32 else mic_side + mic_gap);
   if tw < g.line { tw = g.line; }
   cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
   // the draft's attachments over its text (attach.coax)
@@ -573,9 +575,10 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sheet_fill(sh, lx + (control - arm) / 2, ly + (control - bar) / 2, arm, bar, bar / 2, lead_ink);
   sheet_fill(sh, lx + (control - bar) / 2, ly + (control - arm) / 2, bar, arm, bar / 2, lead_ink);
   if !lead_off { sheet_hit(sh, UIFRAME_HIT, lead_row, 0, lx, ly, control, control); }
-  // Send / Stop
+  // Send / Stop, with the voice dictation mic button beside it (#13882)
   send := cast(f32) ZC_TRAILING;
   sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
+  cp_voice_mic_button(s, f, sx - mic_gap - mic_side, sy + (send - mic_side) / 2, mic_side);
   can_send := running || (!off && (text.count > 0 || cp_cargo_n(s) > 0));
   send_label := ifx running then "Stop" else "Send";
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);

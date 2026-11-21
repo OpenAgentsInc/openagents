@@ -41,3 +41,4 @@
 #load "page/checks/usage-checks.coax" #test;
 #load "page/checks/mcpskills-checks.coax" #test;
 #load "page/checks/providers-checks.coax" #test;
+#load "page/checks/voice-checks.coax" #test;

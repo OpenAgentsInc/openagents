@@ -153,8 +153,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var termSessions: [Int32: TerminalSession] = [:]
     var termPortTimer: Timer?
     var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
+    let voice = CoderVoiceController()   // native & local voice dictation (Window+Voice.swift, #13882)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
+    private var keyUpMonitor: Any? // Push-to-talk release for ⌥Space voice dictation (#13882)
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
     private var cmdHoldTimer: Timer?
     private var cmdHintsShown = false
@@ -226,13 +228,19 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         } else { setFolder(folder, keep: false) }
         syncSettingsInfo()
         setupUsageDashboard()
+        setupVoiceDictation()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleModifierFlags(event.modifierFlags)
             return event
         }
+        keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            return self.handleVoiceKeyUp(event) ? nil : event
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.cancelCmdHold()
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            if !self.overlay.dialogOpen && self.handleVoiceKeyDown(event) { return nil }
             // Command-` opens Foreman when enabled (heard before macOS window cycling).
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags.contains(.command) && !flags.contains(.shift) && !flags.contains(.option) && !flags.contains(.control) && event.charactersIgnoringModifiers == "`" && (!self.overlay.dialogOpen || self.overlay.paletteUp) {
@@ -277,9 +285,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         if CommandLine.arguments.contains("--gym") { openGym() }
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills).
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -440,6 +448,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 77: manageAcpRegistry()
         case 78: runMultiModelFanout()
         case 79: openFanoutPicker()
+        case 80: toggleVoiceDictation()
+        case 81: cancelVoiceDictation()
+        case 82: voiceBackendChanged()
+        case 83: editVoiceDictionary()
+        case 84: chooseVoiceMicrophone()
+        case 85: voicePrefsChanged()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -567,6 +581,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         guard !retired else { return }
         retired = true
         gitProcess?.terminate(); gitProcess = nil
+        voice.stop(cancel: true)
         updater.stop()
         usageTimer?.invalidate(); usageTimer = nil
         stopAllTerminals()
@@ -581,6 +596,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cmdHoldTimer?.invalidate(); cmdHoldTimer = nil
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }; flagsMonitor = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
+        if let keyUpMonitor { NSEvent.removeMonitor(keyUpMonitor) }; keyUpMonitor = nil
         titleBar?.stop(); titleBar = nil
         cd_on_change(page, nil, nil); cd_close(page)
     }

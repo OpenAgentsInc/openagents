@@ -49,6 +49,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
   if act >= CP_SB_GROUP_TOGGLE && act <= CP_SB_UNDO_CLOSE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar groups, archive, bulk & undo (sidebar_groups.coax; #13875)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
+  if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   if cp_fp_yield(s, act, surface_id(s[0].surface[..], row)) { return true; }
