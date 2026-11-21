@@ -173,7 +173,22 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_PERMIT_DENY { return cp_permit_choose(s, false, -1); }
   if act == CP_FIELD { cp_ed_focus(s, CP_KB_COMPOSER); return true; }
   if act == CP_SEND {
-    if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
+    if cp_running(s) {
+      i := s[0].nturns - 1;
+      if s[0].turns[i].stopping {
+        s[0].turns[i].state = CP_STOPPED;
+        s[0].turns[i].stopping = false;
+        cp_cmds_end(s, i);
+        cp_todos_reset(s);
+        cp_permit_reset(s);
+        s[0].turns[i].h = 0;
+        s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
+      } else {
+        s[0].turns[i].stopping = true;
+      }
+      s[0].ask = CP_ASK_STOP;
+      return true;
+    }
     return cp_send(s);
   }
   if act == CP_NEW { return cp_new(s); }

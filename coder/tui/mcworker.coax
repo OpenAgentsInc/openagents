@@ -431,6 +431,8 @@ tool_main :: () -> int #export_c #effects(all) {
         for i: 0..<n { mw_event(ev[i], out[..]); if ev[i].kind == MR_ENDED { ending = mc_ending_name(ev[i].ending); mw_aware(run[..], out[..]); } }
         running = false;
         mw_turn_end(ending, st[..], q[..], f[..], out[..]);
+      } else {
+        mw_ended(out[..], "stopped", "");
       }
       continue;
     }
