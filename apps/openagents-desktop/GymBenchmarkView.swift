@@ -106,7 +106,8 @@ private final class GymBenchTaskRowView: NSView {
         addSubview(taskLabel)
 
         langBadge.translatesAutoresizingMaskIntoConstraints = false
-        langBadge.stringValue = " \(spec.langBadge) "
+        langBadge.stringValue = spec.langBadge
+        langBadge.alignment = .center
         langBadge.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold)
         langBadge.textColor = NSColor(calibratedRed: 0.62, green: 0.80, blue: 0.98, alpha: 1)
         langBadge.wantsLayer = true
@@ -153,7 +154,7 @@ private final class GymBenchTaskRowView: NSView {
 
             langBadge.leadingAnchor.constraint(equalTo: taskLabel.trailingAnchor, constant: 4),
             langBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
-            langBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            langBadge.widthAnchor.constraint(equalToConstant: 56),
 
             psiBarTrack.leadingAnchor.constraint(equalTo: langBadge.trailingAnchor, constant: 12),
             psiBarTrack.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -419,8 +420,21 @@ final class GymBenchmarkView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(red: 0.055, green: 0.060, blue: 0.075, alpha: 1).cgColor
         setupUI()
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--gym-suite=tier2") {
+            suitePopup.selectItem(at: 1)
+            activeSpecs = Self.allTenTasks.filter { $0.tier == "tier2" }
+        } else if args.contains("--gym-suite=tier4") {
+            suitePopup.selectItem(at: 2)
+            activeSpecs = Self.allTenTasks.filter { $0.tier == "tier4" }
+        }
         rebuildTaskRows()
         loadSavedIfPresent(silent: true)
+        if args.contains("--gym-run") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.startBenchmarkRun()
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -674,6 +688,15 @@ final class GymBenchmarkView: NSView {
     }
 
     private func appendLog(_ line: String) {
+        let logURL = Self.savedRunURL.deletingLastPathComponent().appendingPathComponent("last-run.log")
+        try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let fh = try? FileHandle(forWritingTo: logURL) {
+            fh.seekToEndOfFile()
+            fh.write(Data((line + "\n").utf8))
+            try? fh.close()
+        } else {
+            try? Data((line + "\n").utf8).write(to: logURL)
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let cur = self.streamTextView.string
@@ -740,10 +763,15 @@ final class GymBenchmarkView: NSView {
 
     private func resolveEvalRoot() -> URL? {
         let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
         var candidates: [URL] = []
+        if let res = Bundle.main.resourceURL {
+            candidates.append(res.appendingPathComponent("gym-evals"))
+        }
         if let wf = workingFolderProvider?() {
             candidates.append(wf.appendingPathComponent("evals/openagents-desktop"))
         }
+        candidates.append(home.appendingPathComponent(".cache/openagents/coder-release/src/evals/openagents-desktop"))
         candidates.append(URL(fileURLWithPath: "/Users/christopherdavid/work/openagents/evals/openagents-desktop"))
         for c in candidates {
             if fm.fileExists(atPath: c.appendingPathComponent("tier2/tasks").path) { return c }
@@ -871,6 +899,8 @@ final class GymBenchmarkView: NSView {
 
         cancelFlag = false
         setRunningUI(true)
+        let logURL = Self.savedRunURL.deletingLastPathComponent().appendingPathComponent("last-run.log")
+        try? FileManager.default.removeItem(at: logURL)
         psiResults.removeAll()
         llamaResults.removeAll()
         psiBootS = 0; llamaBootS = 0; psiPeakRss = 0; llamaPeakRss = 0
@@ -1277,6 +1307,14 @@ final class GymBenchmarkView: NSView {
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", cmd]
         p.currentDirectoryURL = cwd
+        var env = ProcessInfo.processInfo.environment
+        let extraPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if let cur = env["PATH"], !cur.isEmpty {
+            env["PATH"] = cur + ":" + extraPath
+        } else {
+            env["PATH"] = extraPath
+        }
+        p.environment = env
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe

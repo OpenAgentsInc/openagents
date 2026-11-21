@@ -91,6 +91,13 @@ if [[ -x "$repo/psionic/platform/inkling-build.sh" ]]; then
     cp "$repo/psionic/build/inkling-kernels.metal" "$res/inkling-kernels.metal"
   fi
 fi
+# Bundle Tier 2 + Tier 4 coding eval specs and fixtures for Gym Benchmarks so it runs from any workspace.
+if [[ -d "$repo/evals/openagents-desktop/tier2/tasks" && -d "$repo/evals/openagents-desktop/tier4/tasks" ]]; then
+  rm -rf "$res/gym-evals"
+  mkdir -p "$res/gym-evals/tier2" "$res/gym-evals/tier4"
+  cp -R "$repo/evals/openagents-desktop/tier2/tasks" "$repo/evals/openagents-desktop/tier2/fixtures" "$res/gym-evals/tier2/"
+  cp -R "$repo/evals/openagents-desktop/tier4/tasks" "$repo/evals/openagents-desktop/tier4/fixtures" "$res/gym-evals/tier4/"
+fi
 # ple-run (ple-run.coax): a PLE run a chat starts and the pictures it shows inline (docs/desktop/steer-ple-from-chat.md).
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/ple-run-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/ple-run"
