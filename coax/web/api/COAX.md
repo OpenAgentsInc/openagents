@@ -22,12 +22,11 @@ link straight into it:
   on seeded random mutations. `test.sh` runs it on every API test.
 - `mesh-policy.coax` is the mesh route policy (`mesh.c`).
 
-The image build (`Dockerfile`) compiles these from source. Its first stage
-bootstraps the Coax compiler from its own sources with the unchanged
-`coax/build.sh`, checks included. It takes about six minutes on the 32-core
-builder that `deploy.sh` asks for. Then it emits each module's C, and the
-service is built from that C. The committed `*.generated.c` and `*.generated.h`
-files are checked caches (`nip98.sh`, `mesh-policy.sh`) for local builds
-without a compiler.
+The image build (`Dockerfile`) and local test harness (`test.sh`) compile
+these from source at build time rather than tracking `*.generated.c` /
+`*.generated.h` in git. The Dockerfile's first stage bootstraps the Coax
+compiler from its own sources with the unchanged `coax/build.sh`, checks
+included (about six minutes on the 32-core builder that `deploy.sh` asks
+for), emits each module's C, and builds the service from that C.
 
 `coax_probe.coax` is an earlier parser probe and is not linked.
