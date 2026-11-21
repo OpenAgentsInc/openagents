@@ -1,0 +1,606 @@
+// Desktop native & local voice dictation in composer (GitHub #13882).
+// Owns dictation state, 8-bar rolling audio level meter, transcript post-processing
+// (optional filler-word stripping + custom dictionary substitutions), composer mic button
+// and live recording pill, and Settings -> Voice rows.
+// Native audio capture / SFSpeechRecognizer / Local Whisper live in Window+Voice.swift.
+
+CP_VOICE_IDLE :: 0;
+CP_VOICE_LISTENING :: 1;
+CP_VOICE_TRANSCRIBING :: 2;
+CP_VOICE_ERROR :: 3;
+
+CP_VOICE_BACKEND_APPLE :: 0;
+CP_VOICE_BACKEND_WHISPER :: 1;
+
+CP_VOICE_MODE_TOGGLE :: 0;
+CP_VOICE_MODE_HOLD :: 1;
+
+CP_VOICE_BARS :: 8;
+CP_VOICE_PARTIAL :: 512;
+CP_VOICE_ERR :: 160;
+CP_VOICE_MIC_NAME :: 96;
+CP_VOICE_WHISPER_INFO :: 128;
+CP_VOICE_DICT_MAX :: 32;
+CP_VOICE_DICT_KEY :: 48;
+CP_VOICE_DICT_VAL :: 64;
+CP_VOICE_DICT_RAW :: 2048;
+CP_VOICE_POST_MAX :: 4096;
+
+// Host asks (CP_ASK_* in state.coax; 80..85 are free after CP_ASK_FANOUT_PICK :: 79).
+CP_ASK_VOICE_TOGGLE :: 80;    // composer mic button or hotkey: start/stop dictation
+CP_ASK_VOICE_CANCEL :: 81;    // recording pill Cancel: abort active dictation without inserting
+CP_ASK_VOICE_BACKEND :: 82;   // Settings -> Voice: backend choice changed
+CP_ASK_VOICE_DICT :: 83;      // Settings -> Voice: open custom dictionary editor dialog
+CP_ASK_VOICE_MIC :: 84;       // Settings -> Voice: choose microphone / check permissions
+CP_ASK_VOICE_PREFS :: 85;     // Settings -> Voice: mode or filler-word toggle changed
+
+// Row action IDs (255..257, free after CP_FANOUT_TOGGLE :: 252).
+CP_VOICE_MIC :: 255;          // composer mic button
+CP_VOICE_STOP :: 256;         // recording pill Done/Stop button
+CP_VOICE_CANCEL :: 257;       // recording pill Cancel button
+
+CpVoiceDictEntry :: struct {
+  from: [CP_VOICE_DICT_KEY] u8; from_n: int;
+  to: [CP_VOICE_DICT_VAL] u8; to_n: int;
+}
+
+CpVoiceState :: struct {
+  state: int;                 // CP_VOICE_IDLE .. CP_VOICE_ERROR
+  backend: int;               // CP_VOICE_BACKEND_APPLE or CP_VOICE_BACKEND_WHISPER
+  mode: int;                  // CP_VOICE_MODE_TOGGLE or CP_VOICE_MODE_HOLD
+  strip_fillers: bool;        // strip um, uh, like, you know on commit
+  bars: [CP_VOICE_BARS] f32;  // rolling 8-bar normalized RMS levels (0.0..1.0)
+  level: f32;                 // latest normalized RMS level (0.0..1.0)
+  started_at: f32;            // s[0].clock when listening began
+  partial: [CP_VOICE_PARTIAL] u8; partial_n: int;
+  error: [CP_VOICE_ERR] u8; error_n: int;
+  mic_status: [CP_VOICE_MIC_NAME] u8; mic_status_n: int;
+  whisper_status: [CP_VOICE_WHISPER_INFO] u8; whisper_status_n: int;
+  apple_ready: bool;
+  whisper_ready: bool;
+  dict: [CP_VOICE_DICT_MAX] CpVoiceDictEntry; ndict: int;
+  dict_raw: [CP_VOICE_DICT_RAW] u8; dict_raw_n: int;
+  pill_h: f32;                // drawn height of the live recording pill above the composer
+}
+
+cp_voice_init :: (s: [] CoderPage) {
+  v := s[0].voice[..];
+  v[0].state = CP_VOICE_IDLE;
+  v[0].backend = CP_VOICE_BACKEND_APPLE;
+  v[0].mode = CP_VOICE_MODE_TOGGLE;
+  v[0].strip_fillers = true;
+  v[0].apple_ready = true;
+  v[0].whisper_ready = false;
+  v[0].level = 0.0f32;
+  v[0].started_at = 0.0f32;
+  v[0].partial_n = 0;
+  v[0].error_n = 0;
+  v[0].ndict = 0;
+  v[0].dict_raw_n = 0;
+  v[0].pill_h = 0.0f32;
+  for i: 0..<CP_VOICE_BARS { v[0].bars[i] = 0.0f32; }
+  v[0].mic_status_n = cp_out(v[0].mic_status[..], "System Default");
+  v[0].whisper_status_n = cp_out(v[0].whisper_status[..], "Not installed (~/.openagents/models/)");
+}
+
+cp_voice_backend_label :: (backend: int) -> string {
+  return ifx backend == CP_VOICE_BACKEND_WHISPER then "Local Whisper" else "Apple Speech (On-Device)";
+}
+
+cp_voice_mode_label :: (mode: int) -> string {
+  return ifx mode == CP_VOICE_MODE_HOLD then "Push-to-talk (hold ⌥Space)" else "Toggle (⌥Space)";
+}
+
+// Normalize raw linear RMS amplitude (0.0..1.0) into a visually responsive 0.0..1.0 bar height.
+cp_voice_norm_level :: (rms: f32) -> f32 {
+  if !(rms > 0.0f32) { return 0.0f32; }
+  // Speech RMS typically sits around 0.01..0.25; boost with sqrt curve so normal voice fills 40-90%.
+  scaled := rms * 4.0f32;
+  if scaled > 1.0f32 { scaled = 1.0f32; }
+  // Fast deterministic sqrt approximation via 3 Newton steps from 0.5.
+  g := 0.5f32;
+  g = 0.5f32 * (g + scaled / g);
+  g = 0.5f32 * (g + scaled / g);
+  g = 0.5f32 * (g + scaled / g);
+  if g < 0.0f32 { return 0.0f32; }
+  if g > 1.0f32 { return 1.0f32; }
+  return g;
+}
+
+cp_voice_push_level :: (s: [] CoderPage, rms: f32) {
+  v := s[0].voice[..];
+  lvl := cp_voice_norm_level(rms);
+  v[0].level = lvl;
+  for i: 0..<CP_VOICE_BARS - 1 { v[0].bars[i] = v[0].bars[i + 1]; }
+  v[0].bars[CP_VOICE_BARS - 1] = lvl;
+  if v[0].state == CP_VOICE_LISTENING { s[0].anim = true; }
+}
+
+cp_voice_clear_bars :: (s: [] CoderPage) {
+  v := s[0].voice[..];
+  v[0].level = 0.0f32;
+  for i: 0..<CP_VOICE_BARS { v[0].bars[i] = 0.0f32; }
+}
+
+// ---- custom dictionary & filler-word post-processing ----
+
+cp_voice_word_byte :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '\'';
+}
+
+cp_voice_space_byte :: (c: u8) -> bool {
+  return c == ' ' || c == 9 || c == 10 || c == 13;
+}
+
+cp_voice_punct_byte :: (c: u8) -> bool {
+  return c == ',' || c == '.' || c == ';' || c == ':' || c == '?' || c == '!';
+}
+
+cp_voice_trim_slice :: (s: string) -> string {
+  lo := 0;
+  while lo < s.count && cp_voice_space_byte(s[lo]) { lo += 1; }
+  hi := s.count;
+  while hi > lo && cp_voice_space_byte(s[hi - 1]) { hi -= 1; }
+  return s[lo..<hi];
+}
+
+// Parse newline-separated custom dictionary rules into s[0].voice[0].dict.
+// Accepted line formats:
+//   spoken = Written
+//   spoken => Written
+//   spoken -> Written
+//   CanonicalWord   (maps case-insensitively to itself)
+cp_voice_dict_parse :: (s: [] CoderPage, raw: string) -> int {
+  v := s[0].voice[..];
+  v[0].dict_raw_n = cp_out(v[0].dict_raw[..], raw);
+  v[0].ndict = 0;
+  i := 0;
+  while i < raw.count && v[0].ndict < CP_VOICE_DICT_MAX {
+    j := i;
+    while j < raw.count && raw[j] != 10 && raw[j] != 13 { j += 1; }
+    line := cp_voice_trim_slice(raw[i..<j]);
+    i = j + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    // Look for "=>", "->", or "=".
+    sep_at := -1; sep_len := 0;
+    for k: 0..<line.count {
+      if k + 1 < line.count && ((line[k] == '=' && line[k + 1] == '>') || (line[k] == '-' && line[k + 1] == '>')) {
+        sep_at = k; sep_len = 2; break;
+      }
+      if line[k] == '=' {
+        sep_at = k; sep_len = 1; break;
+      }
+    }
+    from_s := ""; to_s := "";
+    if sep_at >= 0 {
+      from_s = cp_voice_trim_slice(line[0..<sep_at]);
+      to_s = cp_voice_trim_slice(line[sep_at + sep_len..<line.count]);
+    } else {
+      from_s = line;
+      to_s = line;
+    }
+    if from_s.count == 0 || to_s.count == 0 { continue; }
+    idx := v[0].ndict;
+    v[0].dict[idx].from_n = cp_out(v[0].dict[idx].from[..], from_s);
+    v[0].dict[idx].to_n = cp_out(v[0].dict[idx].to[..], to_s);
+    v[0].ndict += 1;
+  }
+  return v[0].ndict;
+}
+
+CP_VOICE_FILLERS :: [8] string.["you know", "umm", "uhh", "erm", "um", "uh", "er", "like"];
+
+// Returns length of matched filler at `at` on a word boundary, or 0 if none.
+cp_voice_match_filler :: (text: string, at: int) -> int {
+  if at > 0 && cp_voice_word_byte(text[at - 1]) { return 0; }
+  for f: CP_VOICE_FILLERS {
+    if cp_starts_ci(text, at, f) {
+      end := at + f.count;
+      if end == text.count || !cp_voice_word_byte(text[end]) {
+        return f.count;
+      }
+    }
+  }
+  return 0;
+}
+
+// Post-processes raw transcript:
+//  1) Optional filler-word stripping (um, uh, like, you know, ...)
+//  2) Custom dictionary substitutions (case-insensitive word-boundary match)
+//  3) Whitespace & orphaned-comma normalization
+cp_voice_postprocess :: (s: [] CoderPage, raw: string, out: [] u8) -> int {
+  v := s[0].voice[..];
+  buf1: [CP_VOICE_POST_MAX] u8;
+  n1 := 0;
+  if v[0].strip_fillers {
+    i := 0;
+    while i < raw.count {
+      flen := cp_voice_match_filler(raw, i);
+      if flen > 0 {
+        i += flen;
+        // Skip trailing comma/semicolon and spaces right after the filler.
+        if i < raw.count && (raw[i] == ',' || raw[i] == ';') { i += 1; }
+        while i < raw.count && raw[i] == ' ' { i += 1; }
+        continue;
+      }
+      c := raw[i];
+      if c == ' ' {
+        // Avoid leading space or double space.
+        if n1 > 0 && buf1[n1 - 1] != ' ' && n1 < buf1.count {
+          buf1[n1] = ' '; n1 += 1;
+        }
+      } else if cp_voice_punct_byte(c) {
+        // Remove space directly before punctuation, and avoid duplicate commas.
+        if n1 > 0 && buf1[n1 - 1] == ' ' { n1 -= 1; }
+        if c == ',' && (n1 == 0 || buf1[n1 - 1] == ',') {
+          i += 1; continue;
+        }
+        if n1 < buf1.count { buf1[n1] = c; n1 += 1; }
+      } else {
+        if n1 < buf1.count { buf1[n1] = c; n1 += 1; }
+      }
+      i += 1;
+    }
+  } else {
+    n1 = cp_out(buf1[..], raw);
+  }
+  // Trim leading/trailing spaces on step 1.
+  lo1 := 0;
+  while lo1 < n1 && cp_voice_space_byte(buf1[lo1]) { lo1 += 1; }
+  while n1 > lo1 && cp_voice_space_byte(buf1[n1 - 1]) { n1 -= 1; }
+  step1 := cast(string) buf1[lo1..<n1];
+
+  // Step 2: custom dictionary substitutions.
+  n2 := 0;
+  if v[0].ndict > 0 {
+    i := 0;
+    while i < step1.count {
+      matched := false;
+      if i == 0 || !cp_voice_word_byte(step1[i - 1]) {
+        for k: 0..<v[0].ndict {
+          from := cast(string) v[0].dict[k].from[0..<v[0].dict[k].from_n];
+          if from.count > 0 && cp_starts_ci(step1, i, from) {
+            end := i + from.count;
+            if end == step1.count || !cp_voice_word_byte(step1[end]) {
+              to := cast(string) v[0].dict[k].to[0..<v[0].dict[k].to_n];
+              for ch: to { if n2 < out.count { out[n2] = ch; n2 += 1; } }
+              i = end;
+              matched = true;
+              break;
+            }
+          }
+        }
+      }
+      if !matched {
+        if n2 < out.count { out[n2] = step1[i]; n2 += 1; }
+        i += 1;
+      }
+    }
+  } else {
+    n2 = cp_out(out, step1);
+  }
+  // Final trim.
+  lo2 := 0;
+  while lo2 < n2 && cp_voice_space_byte(out[lo2]) { lo2 += 1; }
+  while n2 > lo2 && cp_voice_space_byte(out[n2 - 1]) { n2 -= 1; }
+  if lo2 > 0 {
+    for k: 0..<(n2 - lo2) { out[k] = out[lo2 + k]; }
+    n2 -= lo2;
+  }
+  return n2;
+}
+
+// Post-processes and inserts dictated text into the composer at the current cursor
+// using apps/shared/dictation-join.coax spacing rules, as one undoable paste step.
+cp_voice_insert :: (s: [] CoderPage, raw: string) -> bool {
+  clean_buf: [CP_VOICE_POST_MAX] u8;
+  cn := cp_voice_postprocess(s, raw, clean_buf[..]);
+  if cn <= 0 { return false; }
+  clean := cast(string) clean_buf[0..<cn];
+  e := cp_ed(s, CP_ED_COMPOSER);
+  ed := e[0].body[0].ed[..];
+  cur := eb_text(ed);
+  lo := eb_sel_lo(ed);
+  hi := eb_sel_hi(ed);
+  need_pre := lo > 0 && dj_gap(cur[lo - 1], clean[0]);
+  need_post := hi < cur.count && dj_gap(clean[clean.count - 1], cur[hi]);
+  join_buf: [CP_VOICE_POST_MAX + 4] u8;
+  jn := 0;
+  if need_pre && jn < join_buf.count { join_buf[jn] = ' '; jn += 1; }
+  jn += cp_out(join_buf[jn..<join_buf.count], clean);
+  if need_post && jn < join_buf.count { join_buf[jn] = ' '; jn += 1; }
+  ok := ue_paste(e, cast(string) join_buf[0..<jn]);
+  if ok { cp_ed_publish(s, CP_ED_COMPOSER); }
+  return ok;
+}
+
+// ---- UI actions ----
+
+cp_voice_press :: (s: [] CoderPage, act: int) -> bool {
+  v := s[0].voice[..];
+  if act == CP_VOICE_MIC || act == CP_VOICE_STOP {
+    s[0].model_menu = false;
+    s[0].usage[0].popover_open = false;
+    s[0].ask = CP_ASK_VOICE_TOGGLE;
+    return true;
+  }
+  if act == CP_VOICE_CANCEL {
+    v[0].state = CP_VOICE_IDLE;
+    v[0].partial_n = 0;
+    v[0].error_n = 0;
+    cp_voice_clear_bars(s);
+    s[0].ask = CP_ASK_VOICE_CANCEL;
+    return true;
+  }
+  return false;
+}
+
+// ---- UI drawing: composer mic button, live recording pill, Settings -> Voice ----
+
+// Draws the circular microphone dictation button inside the composer beside Send/Stop.
+cp_voice_mic_button :: (s: [] CoderPage, f: [] UiFrame, bx: f32, by: f32, side: f32) {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  v := s[0].voice[..];
+  listening := v[0].state == CP_VOICE_LISTENING;
+  transcribing := v[0].state == CP_VOICE_TRANSCRIBING;
+  label := ifx listening then "Stop voice dictation (⌥Space)" else ifx transcribing then "Transcribing speech…" else "Voice dictation (⌥Space)";
+  row := uiframe_semantic(f, "coder.composer.mic", EL_BUTTON, label, bx, by, side, side, ifx listening then EL_S_CURRENT else 0, CP_VOICE_MIC);
+  hov := uiframe_hovered(f, "coder.composer.mic");
+  prs := uiframe_pressed(f, "coder.composer.mic");
+  if listening {
+    bg := ifx prs then k.danger else opacity(k.danger, ifx hov then 0.28f32 else 0.20f32);
+    sheet_fill(sh, bx, by, side, side, side / 2, bg);
+  } else if transcribing {
+    sheet_fill(sh, bx, by, side, side, side / 2, opacity(k.accent, 0.20f32));
+  } else if prs || hov {
+    sheet_fill(sh, bx, by, side, side, side / 2, ifx prs then th.pressed else th.hover);
+  }
+  ink := ifx listening then k.danger else ifx transcribing then k.accent else ifx hov || prs then th.text else th.muted;
+  // Geometric microphone capsule + cradle + stem centered in (bx, by, side, side).
+  cx := bx + side / 2;
+  cy := by + side / 2;
+  cap_w := 5.0f32; cap_h := 8.5f32;
+  sheet_fill(sh, cx - cap_w / 2, cy - 6.0f32, cap_w, cap_h, cap_w / 2, ink);
+  // Cradle U-bar around lower capsule + vertical stem + base foot.
+  cradle_w := 9.0f32; stroke := 1.4f32;
+  sheet_fill(sh, cx - cradle_w / 2, cy - 1.5f32, stroke, 4.5f32, stroke / 2, ink);
+  sheet_fill(sh, cx + cradle_w / 2 - stroke, cy - 1.5f32, stroke, 4.5f32, stroke / 2, ink);
+  sheet_fill(sh, cx - cradle_w / 2, cy + 2.2f32, cradle_w, stroke, stroke / 2, ink);
+  sheet_fill(sh, cx - stroke / 2, cy + 3.0f32, stroke, 2.8f32, stroke / 2, ink);
+  sheet_fill(sh, cx - 3.0f32, cy + 5.2f32, 6.0f32, stroke, stroke / 2, ink);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
+}
+
+// Draws the live recording / transcribing / error pill above the composer.
+// Returns the height reserved above the composer (0 when idle).
+cp_voice_pill :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f32) -> f32 {
+  v := s[0].voice[..];
+  if v[0].state == CP_VOICE_IDLE {
+    v[0].pill_h = 0.0f32;
+    return 0.0f32;
+  }
+  k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
+  ph := 36.0f32;
+  py := bottom_y - ph;
+  r := 10.0f32;
+  border_col := ifx v[0].state == CP_VOICE_ERROR then k.danger else ifx v[0].state == CP_VOICE_LISTENING then opacity(k.danger, 0.55f32) else opacity(k.accent, 0.55f32);
+  _ := sheet_box(sh, x, py, cw, ph, r, 1.0f32, th.surface, border_col);
+  pill_row := uiframe_semantic(f, "coder.voice.pill", EL_REGION, "Voice dictation", x, py, cw, ph, 0, 0);
+
+  // Right-side action buttons: Done (when listening) and Cancel.
+  btn_h := 24.0f32;
+  btn_y := py + (ph - btn_h) / 2;
+  rx := x + cw - 8.0f32;
+  cancel_w := app_button_width(f, -1, ifx v[0].state == CP_VOICE_ERROR then "Dismiss" else "Cancel");
+  rx -= cancel_w;
+  _ := app_button(f, "coder.voice.cancel", rx, btn_y, cancel_w, -1, ifx v[0].state == CP_VOICE_ERROR then "Dismiss" else "Cancel", APP_BUTTON_QUIET, 0, CP_VOICE_CANCEL);
+  if v[0].state == CP_VOICE_LISTENING {
+    done_w := app_button_width(f, -1, "Done");
+    rx -= done_w + 6.0f32;
+    _ := app_button(f, "coder.voice.stop", rx, btn_y, done_w, -1, "Done", APP_BUTTON_DEFAULT, 0, CP_VOICE_STOP);
+  }
+
+  // Left side: status indicator + 8-bar waveform when listening.
+  lx := x + 12.0f32;
+  if v[0].state == CP_VOICE_LISTENING {
+    dot := 8.0f32;
+    sheet_fill(sh, lx, py + (ph - dot) / 2, dot, dot, dot / 2, k.danger);
+    lx += dot + 8.0f32;
+    bar_w := 3.0f32; bar_gap := 2.5f32; max_h := 18.0f32; min_h := 3.0f32;
+    for i: 0..<CP_VOICE_BARS {
+      bh := min_h + v[0].bars[i] * (max_h - min_h);
+      bx := lx + cast(f32) i * (bar_w + bar_gap);
+      by := py + (ph - bh) / 2;
+      sheet_fill(sh, bx, by, bar_w, bh, bar_w / 2, rgba_mix(th.muted, k.danger, 0.35f32 + 0.65f32 * v[0].bars[i]));
+    }
+    lx += cast(f32) CP_VOICE_BARS * (bar_w + bar_gap) + 8.0f32;
+  } else if v[0].state == CP_VOICE_TRANSCRIBING {
+    dot := 8.0f32;
+    sheet_fill(sh, lx, py + (ph - dot) / 2, dot, dot, dot / 2, k.accent);
+    lx += dot + 8.0f32;
+  } else {
+    dot := 8.0f32;
+    sheet_fill(sh, lx, py + (ph - dot) / 2, dot, dot, dot / 2, k.danger);
+    lx += dot + 8.0f32;
+  }
+
+  // Middle text: live partial transcript, transcribing status, or error message.
+  tb: [CP_VOICE_PARTIAL + 64] u8;
+  tn := 0;
+  if v[0].state == CP_VOICE_ERROR {
+    if v[0].error_n > 0 { tn = el_put(tb[..], 0, cast(string) v[0].error[0..<v[0].error_n]); }
+    else { tn = el_put(tb[..], 0, "Voice dictation failed."); }
+  } else if v[0].state == CP_VOICE_TRANSCRIBING {
+    tn = el_put(tb[..], 0, "Transcribing with ");
+    tn = el_put(tb[..], tn, cp_voice_backend_label(v[0].backend));
+    tn = el_put(tb[..], tn, "…");
+  } else if v[0].partial_n > 0 {
+    tn = el_put(tb[..], 0, cast(string) v[0].partial[0..<v[0].partial_n]);
+  } else {
+    secs := cast(int) (s[0].clock - v[0].started_at);
+    if secs < 0 { secs = 0; }
+    tn = el_put(tb[..], 0, "Listening · ");
+    tn = el_put_i(tb[..], tn, secs / 60);
+    tn = el_put(tb[..], tn, ":");
+    if secs % 60 < 10 { tn = el_put(tb[..], tn, "0"); }
+    tn = el_put_i(tb[..], tn, secs % 60);
+    tn = el_put(tb[..], tn, " · ");
+    tn = el_put(tb[..], tn, cp_voice_backend_label(v[0].backend));
+  }
+  msg := sheet_pool(sh, cast(string) tb[0..<tn]);
+  elt_value(f[0].rows, pill_row, msg);
+  avail := rx - lx - 8.0f32;
+  if avail > 20.0f32 {
+    col := ifx v[0].state == CP_VOICE_ERROR then k.danger else ifx v[0].partial_n > 0 then th.text else th.muted;
+    _ := sheet_text(sh, f[0].m, -1, lx, py + (ph - k.small.line) / 2, k.small.line, k.small.face, col, app_fit(f, k.small.face, msg, avail));
+  }
+  v[0].pill_h = ph + a.gap_small;
+  return v[0].pill_h;
+}
+
+// Settings -> Voice page (rendered from settings.coax).
+cp_settings_voice :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
+  k := f[0].skin; t := k.set; sh := f[0].sheet;
+  v := s[0].voice[..];
+  y := y0;
+  y += set_page_head(f, "set.title", x, y, w, "Voice", "Offline voice dictation in the composer via macOS Apple Speech or Local Whisper under ~/.openagents/models/. Press ⌥Space or click the composer mic button.") + t.block_gap;
+
+  y += set_section_head(f, "set.voice.engine.head", x, y, w, "Dictation", "Choose your offline recognition backend, trigger gesture, and input microphone.") + t.section_gap;
+  erows: [4] SetRow;
+  erows[0] = SetRow.{id = "set.voice.backend", name = "Transcription backend",
+    desc = "Apple Speech runs on-device via macOS Speech; Local Whisper uses a GGML model under ~/.openagents/models/.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = v[0].backend, action = CP_SET_ACT};
+  erows[0].options[0] = "Apple Speech";
+  erows[0].options[1] = "Local Whisper";
+
+  erows[1] = SetRow.{id = "set.voice.mode", name = "Shortcut mode (⌥Space)",
+    desc = "Toggle starts and stops on press; Push-to-talk records while ⌥Space is held and inserts on release.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = v[0].mode, action = CP_SET_ACT};
+  erows[1].options[0] = "Toggle";
+  erows[1].options[1] = "Push-to-talk";
+
+  mic_lbl := ifx v[0].mic_status_n > 0 then sheet_pool(sh, cast(string) v[0].mic_status[0..<v[0].mic_status_n]) else "System Default";
+  erows[2] = SetRow.{id = "set.voice.mic", name = "Microphone",
+    desc = "Audio input device used for dictation and live waveform levels.",
+    value = mic_lbl, kind = SET_ROW_BUTTON, button = "Choose…", action = CP_SET_ACT};
+
+  wh_lbl := ifx v[0].whisper_status_n > 0 then sheet_pool(sh, cast(string) v[0].whisper_status[0..<v[0].whisper_status_n]) else "Not installed";
+  erows[3] = SetRow.{id = "set.voice.whisper", name = "Local Whisper model",
+    desc = "Detected GGML model and CLI under ~/.openagents/models/ and ~/.openagents/bin/.",
+    value = wh_lbl, kind = SET_ROW_PLAIN};
+  y += cp_set_group(s, f, "set.voice.engine.group", x, y, w, erows[..]) + t.block_gap;
+
+  y += set_section_head(f, "set.voice.clean.head", x, y, w, "Transcript Cleanup", "Clean up filler words and enforce custom spellings before inserting into the composer.") + t.section_gap;
+  crows: [2] SetRow;
+  crows[0] = SetRow.{id = "set.voice.fillers", name = "Strip filler words",
+    desc = "Automatically remove um, uh, like, and you know before inserting dictated text.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx v[0].strip_fillers then 1 else 0, action = CP_SET_ACT};
+  crows[0].options[0] = "Off";
+  crows[0].options[1] = "On";
+
+  db: [32] u8; dn := 0;
+  if v[0].ndict == 0 { dn = el_put(db[..], 0, "None"); }
+  else {
+    dn = el_put_i(db[..], 0, v[0].ndict);
+    dn = el_put(db[..], dn, ifx v[0].ndict == 1 then " entry" else " entries");
+  }
+  crows[1] = SetRow.{id = "set.voice.dict", name = "Custom dictionary",
+    desc = "One rule per line: spoken = Written (or a single canonical word like OpenAgents).",
+    value = sheet_pool(sh, cast(string) db[0..<dn]), kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
+  y += cp_set_group(s, f, "set.voice.clean.group", x, y, w, crows[..]);
+  return y - y0;
+}
+
+// ---- C host exports ----
+
+coder_page_voice_state :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].voice[0].state else CP_VOICE_IDLE;
+}
+
+coder_page_voice_set_state :: (s: [] CoderPage, state: int, msg: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  v := s[0].voice[..];
+  prev := v[0].state;
+  v[0].state = ifx state >= CP_VOICE_IDLE && state <= CP_VOICE_ERROR then state else CP_VOICE_IDLE;
+  if v[0].state == CP_VOICE_LISTENING && prev != CP_VOICE_LISTENING {
+    v[0].started_at = s[0].clock;
+    v[0].partial_n = 0;
+    v[0].error_n = 0;
+    cp_voice_clear_bars(s);
+  } else if v[0].state == CP_VOICE_IDLE {
+    v[0].partial_n = 0;
+    v[0].error_n = 0;
+    cp_voice_clear_bars(s);
+  } else if v[0].state == CP_VOICE_ERROR {
+    v[0].error_n = cp_out(v[0].error[..], msg);
+    v[0].partial_n = 0;
+    cp_voice_clear_bars(s);
+  }
+}
+
+coder_page_voice_level :: (s: [] CoderPage, rms: f32) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_voice_push_level(s, rms);
+}
+
+coder_page_voice_partial :: (s: [] CoderPage, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].voice[0].partial_n = cp_out(s[0].voice[0].partial[..], text);
+}
+
+coder_page_voice_commit :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  ok := cp_voice_insert(s, text);
+  s[0].voice[0].state = CP_VOICE_IDLE;
+  s[0].voice[0].partial_n = 0;
+  s[0].voice[0].error_n = 0;
+  cp_voice_clear_bars(s);
+  return ok;
+}
+
+coder_page_voice_backend :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].voice[0].backend else CP_VOICE_BACKEND_APPLE;
+}
+
+coder_page_voice_set_backend :: (s: [] CoderPage, backend: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].voice[0].backend = ifx backend == CP_VOICE_BACKEND_WHISPER then CP_VOICE_BACKEND_WHISPER else CP_VOICE_BACKEND_APPLE;
+}
+
+coder_page_voice_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].voice[0].mode else CP_VOICE_MODE_TOGGLE;
+}
+
+coder_page_voice_set_mode :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].voice[0].mode = ifx mode == CP_VOICE_MODE_HOLD then CP_VOICE_MODE_HOLD else CP_VOICE_MODE_TOGGLE;
+}
+
+coder_page_voice_fillers :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].voice[0].strip_fillers;
+}
+
+coder_page_voice_set_fillers :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].voice[0].strip_fillers = on;
+}
+
+coder_page_voice_dict_set :: (s: [] CoderPage, raw: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_voice_dict_parse(s, raw);
+}
+
+coder_page_voice_dict_get :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].voice[0].dict_raw[0..<s[0].voice[0].dict_raw_n]);
+}
+
+coder_page_voice_status_set :: (s: [] CoderPage, mic: string, whisper: string, apple_ready: bool, whisper_ready: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  v := s[0].voice[..];
+  v[0].mic_status_n = cp_out(v[0].mic_status[..], mic);
+  v[0].whisper_status_n = cp_out(v[0].whisper_status[..], whisper);
+  v[0].apple_ready = apple_ready;
+  v[0].whisper_ready = whisper_ready;
+}
