@@ -1,0 +1,423 @@
+// Desktop activation, custom openagents:// protocol routing, single-instance
+// CLI control socket framing, quit-hold protection, multi-display window
+// bounds validation, and CLI shim script formatting (GitHub #13889).
+
+OA_URI_NONE :: 0;
+OA_URI_OPEN_PATH :: 1;
+OA_URI_OPEN_CHAT :: 2;
+OA_URI_OAUTH_CALLBACK :: 3;
+OA_URI_SETTINGS :: 4;
+OA_URI_NEW_CHAT :: 5;
+
+OA_ACT_NONE :: 0;
+OA_ACT_SHOW :: 1;
+OA_ACT_OPEN :: 2;
+OA_ACT_CHAT :: 3;
+OA_ACT_URI :: 4;
+OA_ACT_NEW_WINDOW :: 5;
+
+OA_QUIT_ALLOW :: 0;
+OA_QUIT_HINT :: 1;
+
+OA_DISPLAYS_MAX :: 16;
+
+OaUri :: struct {
+  kind: int;
+  value: [1024] u8; value_n: int;
+  extra: [512] u8; extra_n: int;
+}
+
+OaActCmd :: struct {
+  op: int;
+  arg: [1024] u8; arg_n: int;
+}
+
+OaQuitHold :: struct {
+  armed: bool;
+  armed_ms: int;
+  window_ms: int;
+}
+
+OaRect :: struct {
+  x: int;
+  y: int;
+  w: int;
+  h: int;
+}
+
+oa_act_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+}
+
+oa_act_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return 10 + cast(int) (c - 'a'); }
+  if c >= 'A' && c <= 'F' { return 10 + cast(int) (c - 'A'); }
+  return -1;
+}
+
+oa_act_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Percent-decode a URI component into dst, rejecting NUL bytes and overflow.
+oa_uri_decode :: (src: string, dst: [] u8) -> int {
+  n := 0;
+  i := 0;
+  while i < src.count {
+    if n >= dst.count { return -1; }
+    if src[i] == '%' {
+      if i + 2 >= src.count { return -1; }
+      hi := oa_act_hex(src[i + 1]);
+      lo := oa_act_hex(src[i + 2]);
+      if hi < 0 || lo < 0 { return -1; }
+      b := cast(u8) ((hi << 4) | lo);
+      if b == 0 { return -1; }
+      dst[n] = b; n += 1; i += 3;
+    } else if src[i] == '+' {
+      dst[n] = ' '; n += 1; i += 1;
+    } else {
+      if src[i] == 0 { return -1; }
+      dst[n] = src[i]; n += 1; i += 1;
+    }
+  }
+  return n;
+}
+
+// Extract query parameter `key` from `query` (e.g. "path=%2Ftmp&x=1") into out.
+oa_uri_query_param :: (query: string, key: string, out: [] u8) -> int {
+  i := 0;
+  while i <= query.count {
+    amp := i;
+    while amp < query.count && query[amp] != '&' { amp += 1; }
+    eq := i;
+    while eq < amp && query[eq] != '=' { eq += 1; }
+    if eq < amp && eq - i == key.count && cast(string) query[i..<eq] == key {
+      return oa_uri_decode(cast(string) query[eq + 1..<amp], out);
+    }
+    i = amp + 1;
+  }
+  return -1;
+}
+
+// Parse and validate an `openagents://` custom protocol URL (#13889).
+// Supported routes:
+//   openagents://open?path=<encoded-path>
+//   openagents://chat/<id> or openagents://chat?id=<id>
+//   openagents://oauth/callback?code=...&state=...
+//   openagents://settings/<page> or openagents://settings
+//   openagents://new?folder=<encoded-path>
+oa_uri_parse :: (raw: string, out: [] OaUri) -> bool {
+  out[0] = OaUri.{};
+  prefix := "openagents://";
+  if raw.count <= prefix.count { return false; }
+  for i: 0..<prefix.count {
+    if oa_act_lower(raw[i]) != prefix[i] { return false; }
+  }
+  rest := cast(string) raw[prefix.count..<raw.count];
+  qpos := rest.count;
+  for i: 0..<rest.count { if rest[i] == '?' { qpos = i; break; } }
+  path_part := cast(string) rest[0..<qpos];
+  query := ifx qpos < rest.count then cast(string) rest[qpos + 1..<rest.count] else "";
+
+  spos := path_part.count;
+  for i: 0..<path_part.count { if path_part[i] == '/' { spos = i; break; } }
+  host := cast(string) path_part[0..<spos];
+  sub := ifx spos + 1 < path_part.count then cast(string) path_part[spos + 1..<path_part.count] else "";
+
+  if host == "open" {
+    n := oa_uri_query_param(query, "path", out[0].value[..]);
+    if n <= 0 { return false; }
+    out[0].kind = OA_URI_OPEN_PATH;
+    out[0].value_n = n;
+    return true;
+  }
+  if host == "chat" {
+    n := ifx sub.count > 0 then oa_uri_decode(sub, out[0].value[..]) else oa_uri_query_param(query, "id", out[0].value[..]);
+    if n <= 0 { return false; }
+    // Reject path separators in chat IDs
+    for i: 0..<n { if out[0].value[i] == '/' || out[0].value[i] == '\\' { return false; } }
+    out[0].kind = OA_URI_OPEN_CHAT;
+    out[0].value_n = n;
+    return true;
+  }
+  if host == "oauth" && sub == "callback" {
+    cn := oa_uri_query_param(query, "code", out[0].value[..]);
+    sn := oa_uri_query_param(query, "state", out[0].extra[..]);
+    if cn <= 0 { return false; }
+    out[0].kind = OA_URI_OAUTH_CALLBACK;
+    out[0].value_n = cn;
+    out[0].extra_n = ifx sn > 0 then sn else 0;
+    return true;
+  }
+  if host == "settings" {
+    n := ifx sub.count > 0 then oa_uri_decode(sub, out[0].value[..]) else 0;
+    if n < 0 { return false; }
+    out[0].kind = OA_URI_SETTINGS;
+    out[0].value_n = n;
+    return true;
+  }
+  if host == "new" {
+    n := oa_uri_query_param(query, "folder", out[0].value[..]);
+    if n < 0 { n = 0; }
+    out[0].kind = OA_URI_NEW_CHAT;
+    out[0].value_n = n;
+    return true;
+  }
+  return false;
+}
+
+// Single-instance activation socket path under ~/.openagents/desktop/activate.sock (#13889).
+oa_act_socket_path :: (home: string, out: [] u8) -> string {
+  suffix := "/.openagents/desktop/activate.sock";
+  if home.count == 0 || home.count + suffix.count > out.count { return ""; }
+  n := oa_act_copy(out, home);
+  n += oa_act_copy(out[n..<out.count], suffix);
+  return cast(string) out[0..<n];
+}
+
+oa_act_put :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+
+oa_act_put_jstr :: (out: [] u8, at: int, s: string) -> int {
+  n := oa_act_put(out, at, "\"");
+  for c: s {
+    if c == '"' || c == '\\' {
+      if n + 2 <= out.count { out[n] = '\\'; out[n + 1] = c; n += 2; }
+    } else if c >= 32 {
+      if n < out.count { out[n] = c; n += 1; }
+    }
+  }
+  return oa_act_put(out, n, "\"");
+}
+
+// Encode one CLI activation command as a single JSON line.
+oa_act_format_cmd :: (op: int, arg: string, out: [] u8) -> int {
+  n := 0;
+  if op == OA_ACT_SHOW {
+    n = oa_act_put(out, n, "{\"op\":\"show\"}");
+  } else if op == OA_ACT_OPEN {
+    n = oa_act_put(out, n, "{\"op\":\"open\",\"path\":");
+    n = oa_act_put_jstr(out, n, arg);
+    n = oa_act_put(out, n, "}");
+  } else if op == OA_ACT_CHAT {
+    n = oa_act_put(out, n, "{\"op\":\"chat\",\"id\":");
+    n = oa_act_put_jstr(out, n, arg);
+    n = oa_act_put(out, n, "}");
+  } else if op == OA_ACT_URI {
+    n = oa_act_put(out, n, "{\"op\":\"uri\",\"url\":");
+    n = oa_act_put_jstr(out, n, arg);
+    n = oa_act_put(out, n, "}");
+  } else if op == OA_ACT_NEW_WINDOW {
+    n = oa_act_put(out, n, "{\"op\":\"new_window\"");
+    if arg.count > 0 {
+      n = oa_act_put(out, n, ",\"path\":");
+      n = oa_act_put_jstr(out, n, arg);
+    }
+    n = oa_act_put(out, n, "}");
+  } else {
+    return 0;
+  }
+  return ifx n < out.count then n else 0;
+}
+
+// Extract a top-level JSON string field `key` from a flat command object into `dst`.
+oa_act_jstr :: (line: string, key: string, dst: [] u8) -> int {
+  needle: [64] u8;
+  nn := oa_act_put(needle[..], 0, "\"");
+  nn = oa_act_put(needle[..], nn, key);
+  nn = oa_act_put(needle[..], nn, "\":\"");
+  if nn > line.count { return -1; }
+  pos := -1;
+  for i: 0..<line.count - nn + 1 {
+    ok := true;
+    for j: 0..<nn { if line[i + j] != needle[j] { ok = false; break; } }
+    if ok { pos = i + nn; break; }
+  }
+  if pos < 0 { return -1; }
+  n := 0;
+  i := pos;
+  while i < line.count && line[i] != '"' {
+    if line[i] == '\\' && i + 1 < line.count {
+      i += 1;
+    }
+    if n < dst.count { dst[n] = line[i]; n += 1; }
+    i += 1;
+  }
+  return ifx i < line.count && line[i] == '"' then n else -1;
+}
+
+// Decode one JSON activation command received on the single-instance socket.
+oa_act_parse_cmd :: (line: string, out: [] OaActCmd) -> bool {
+  out[0] = OaActCmd.{};
+  opb: [32] u8;
+  opn := oa_act_jstr(line, "op", opb[..]);
+  if opn <= 0 { return false; }
+  op := cast(string) opb[0..<opn];
+  if op == "show" {
+    out[0].op = OA_ACT_SHOW;
+    return true;
+  }
+  if op == "open" {
+    n := oa_act_jstr(line, "path", out[0].arg[..]);
+    if n <= 0 { return false; }
+    out[0].op = OA_ACT_OPEN;
+    out[0].arg_n = n;
+    return true;
+  }
+  if op == "chat" {
+    n := oa_act_jstr(line, "id", out[0].arg[..]);
+    if n <= 0 { return false; }
+    out[0].op = OA_ACT_CHAT;
+    out[0].arg_n = n;
+    return true;
+  }
+  if op == "uri" {
+    n := oa_act_jstr(line, "url", out[0].arg[..]);
+    if n <= 0 { return false; }
+    out[0].op = OA_ACT_URI;
+    out[0].arg_n = n;
+    return true;
+  }
+  if op == "new_window" {
+    n := oa_act_jstr(line, "path", out[0].arg[..]);
+    out[0].op = OA_ACT_NEW_WINDOW;
+    out[0].arg_n = ifx n > 0 then n else 0;
+    return true;
+  }
+  return false;
+}
+
+// Double-press / Hold-to-Quit Cmd+Q state machine (#13889).
+// Returns OA_QUIT_ALLOW when quit should proceed, OA_QUIT_HINT when user should press again.
+oa_quit_hold_press :: (q: [] OaQuitHold, enabled: bool, running_agents: int, now_ms: int) -> int {
+  if !enabled && running_agents <= 0 {
+    q[0].armed = false;
+    return OA_QUIT_ALLOW;
+  }
+  win := ifx q[0].window_ms > 0 then q[0].window_ms else 1500;
+  if q[0].armed && now_ms >= q[0].armed_ms && now_ms - q[0].armed_ms <= win {
+    q[0].armed = false;
+    return OA_QUIT_ALLOW;
+  }
+  q[0].armed = true;
+  q[0].armed_ms = now_ms;
+  return OA_QUIT_HINT;
+}
+
+// Validate saved window bounds against connected displays (1 px edge tolerance, #13889).
+// Preserves `saved` if at least 120x80 px (and its titlebar) sit visibly on any display;
+// otherwise clamps and centers onto `displays[0]`.
+oa_bounds_validate :: (saved: OaRect, displays: [] OaRect, count: int) -> OaRect {
+  if count <= 0 { return saved; }
+  w := ifx saved.w < 420 then 420 else saved.w;
+  h := ifx saved.h < 320 then 320 else saved.h;
+  for i: 0..<count {
+    d := displays[i];
+    if d.w <= 0 || d.h <= 0 { continue; }
+    // 1 px edge tolerance
+    dx0 := d.x - 1;
+    dy0 := d.y - 1;
+    dx1 := d.x + d.w + 1;
+    dy1 := d.y + d.h + 1;
+    ix0 := ifx saved.x > dx0 then saved.x else dx0;
+    iy0 := ifx saved.y > dy0 then saved.y else dy0;
+    ix1 := ifx saved.x + w < dx1 then saved.x + w else dx1;
+    iy1 := ifx saved.y + h < dy1 then saved.y + h else dy1;
+    // Also ensure the top edge (titlebar) is reachable within the display.
+    top_ok := saved.y + h > d.y + 28 && saved.y + h <= dy1;
+    if ix1 - ix0 >= 120 && iy1 - iy0 >= 80 && top_ok {
+      return OaRect.{x = saved.x, y = saved.y, w = w, h = h};
+    }
+  }
+  // Off-screen (disconnected external monitor): clamp size and center on primary display.
+  p := displays[0];
+  cw := ifx w > p.w then p.w else w;
+  ch := ifx h > p.h then p.h else h;
+  return OaRect.{
+    x = p.x + (p.w - cw) / 2,
+    y = p.y + (p.h - ch) / 2,
+    w = cw,
+    h = ch
+  };
+}
+
+// Format a POSIX PATH CLI shim script invoking the installed desktop binary (#13889).
+oa_cli_shim_script :: (target_bin: string, out: [] u8) -> string {
+  if target_bin.count == 0 { return ""; }
+  head := "#!/bin/sh\n# Installed by OpenAgents Desktop (#13889)\nexec '";
+  tail := "' \"$@\"\n";
+  if head.count + target_bin.count + tail.count > out.count { return ""; }
+  for c: target_bin { if c == '\'' || c == '\n' || c == 0 { return ""; } }
+  n := oa_act_copy(out, head);
+  n += oa_act_copy(out[n..<out.count], target_bin);
+  n += oa_act_copy(out[n..<out.count], tail);
+  return cast(string) out[0..<n];
+}
+
+#test "activation: openagents:// protocol URI parsing and validation (#13889)" {
+  u: [1] OaUri;
+  #assert oa_uri_parse("openagents://open?path=%2FUsers%2Fme%2Fwork%20dir", u[..]);
+  #assert u[0].kind == OA_URI_OPEN_PATH && cast(string) u[0].value[0..<u[0].value_n] == "/Users/me/work dir";
+
+  #assert oa_uri_parse("OPENAGENTS://chat/abc-123", u[..]);
+  #assert u[0].kind == OA_URI_OPEN_CHAT && cast(string) u[0].value[0..<u[0].value_n] == "abc-123";
+
+  #assert !oa_uri_parse("openagents://chat/bad/slash", u[..]);
+  #assert !oa_uri_parse("https://openagents.com/chat", u[..]);
+
+  #assert oa_uri_parse("openagents://oauth/callback?code=xyz&state=s1", u[..]);
+  #assert u[0].kind == OA_URI_OAUTH_CALLBACK && cast(string) u[0].value[0..<u[0].value_n] == "xyz" && cast(string) u[0].extra[0..<u[0].extra_n] == "s1";
+
+  #assert oa_uri_parse("openagents://settings/models", u[..]);
+  #assert u[0].kind == OA_URI_SETTINGS && cast(string) u[0].value[0..<u[0].value_n] == "models";
+
+  #assert oa_uri_parse("openagents://new?folder=%2Ftmp", u[..]);
+  #assert u[0].kind == OA_URI_NEW_CHAT && cast(string) u[0].value[0..<u[0].value_n] == "/tmp";
+}
+
+#test "activation: single-instance socket framing, quit-hold, multi-display bounds, and CLI shim (#13889)" {
+  sp: [256] u8;
+  #assert oa_act_socket_path("/Users/me", sp[..]) == "/Users/me/.openagents/desktop/activate.sock";
+
+  buf: [512] u8;
+  n := oa_act_format_cmd(OA_ACT_OPEN, "/Users/me/repo", buf[..]);
+  #assert n > 0;
+  cmd: [1] OaActCmd;
+  #assert oa_act_parse_cmd(cast(string) buf[0..<n], cmd[..]);
+  #assert cmd[0].op == OA_ACT_OPEN && cast(string) cmd[0].arg[0..<cmd[0].arg_n] == "/Users/me/repo";
+
+  n2 := oa_act_format_cmd(OA_ACT_NEW_WINDOW, "/tmp/proj", buf[..]);
+  #assert oa_act_parse_cmd(cast(string) buf[0..<n2], cmd[..]) && cmd[0].op == OA_ACT_NEW_WINDOW;
+
+  // Quit-hold state machine
+  q: [1] OaQuitHold;
+  #assert oa_quit_hold_press(q[..], false, 0, 1000) == OA_QUIT_ALLOW;
+  #assert oa_quit_hold_press(q[..], true, 0, 1000) == OA_QUIT_HINT;
+  #assert oa_quit_hold_press(q[..], true, 0, 2200) == OA_QUIT_ALLOW; // within 1500 ms
+  #assert oa_quit_hold_press(q[..], false, 2, 5000) == OA_QUIT_HINT; // running agents protect too
+  #assert oa_quit_hold_press(q[..], false, 2, 7500) == OA_QUIT_HINT; // past 1500 ms window -> re-arms
+  #assert oa_quit_hold_press(q[..], false, 2, 8200) == OA_QUIT_ALLOW;
+
+  // Multi-display window bounds validation
+  displays := [2] OaRect.[
+    OaRect.{x = 0, y = 0, w = 1728, h = 1080},
+    OaRect.{x = 1728, y = 0, w = 2560, h = 1440}
+  ];
+  // Valid window on second display with 1 px edge tolerance
+  ok_r := oa_bounds_validate(OaRect.{x = 1800, y = 100, w = 1200, h = 800}, displays[..], 2);
+  #assert ok_r.x == 1800 && ok_r.y == 100 && ok_r.w == 1200 && ok_r.h == 800;
+  // Disconnected second monitor (only primary remains): restores centered on primary!
+  re_r := oa_bounds_validate(OaRect.{x = 2200, y = 100, w = 1200, h = 800}, displays[..], 1);
+  #assert re_r.x == 264 && re_r.y == 140 && re_r.w == 1200 && re_r.h == 800;
+
+  // CLI shim script rejects quotes/newlines and formats clean POSIX shim
+  sb: [512] u8;
+  #assert oa_cli_shim_script("/Applications/OpenAgents.app/Contents/MacOS/OpenAgents", sb[..]).count > 0;
+  #assert oa_cli_shim_script("/bad'path", sb[..]).count == 0;
+}

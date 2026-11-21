@@ -9,3 +9,4 @@ Terminal=false
 Categories=Development;IDE;
 StartupWMClass=openagents-desktop
 StartupNotify=true
+MimeType=x-scheme-handler/openagents;

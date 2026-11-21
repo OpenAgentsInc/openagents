@@ -50,6 +50,7 @@
 #load "traces.coax";
 #load "wallet.coax";
 #load "models.coax";
+#load "desktop.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -89,6 +90,7 @@ usage :: () {
   dictate_usage();
   labs_usage();
   coder_usage();
+  desktop_usage();
   models_usage();
   mcp_usage();
   print("%\n", "Other:");
@@ -157,6 +159,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "transcribe" { return transcribe_main(a, r, verb); }
   if domain == "dictate" { return dictate_launch(a, r); }
   if domain == "coder" { return coder_main(a, r); }
+  if domain == "desktop" { return desktop_main(a, r); }
   if domain == "models" { return models_main(a, r, verb); }
   if domain == "labs" { return labs_main(a, r, profile, verb); }
   if domain == "mcp" { return mcp_main(a, r, profile); }

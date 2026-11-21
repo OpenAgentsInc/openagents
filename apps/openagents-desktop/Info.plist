@@ -34,6 +34,17 @@
 	</array>
 	<key>CFBundleIconFile</key>
 	<string>OpenAgents</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.openagents.desktop.uri</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>openagents</string>
+			</array>
+		</dict>
+	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

@@ -4,8 +4,9 @@ import AppKit
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
+    var extraWindows: [CoderWindow] = []
     private var statusItem: NSStatusItem?
-    private var opened: [URL] = []   // files the Mac asked Coder to open before its window was up
+    private var opened: [URL] = []   // files & openagents:// URLs the Mac asked Coder to open before its window was up
     var accountStatusItem: NSMenuItem?
     var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: an experimental feature
     var foremanMenuItem: NSMenuItem?      // the Foreman menu: an experimental feature
@@ -16,6 +17,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         }
         self.main = main
         main.installPaletteKeys()
+        DesktopActivation.shared.start(delegate: self)
         TestLaunch.start()
         CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
         MacPush.delegateForwards = true
@@ -38,12 +40,21 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         self.statusItem = statusItem
         NSApp.activate(ignoringOtherApps: true)
         let early = opened; opened = []
-        for url in early { main.openFileInPane(url) }
+        for url in early {
+            if url.scheme?.lowercased() == "openagents" {
+                _ = DesktopActivation.shared.handleURL(url)
+            } else if url.isFileURL {
+                main.openFileInPane(url)
+            }
+        }
     }
-    // A .coax file (or another text file) opened with Coder from the Finder or `open` (#13759): it
-    // opens in the pane on the window's right. Several go one after another; the last one shows.
+    // A .coax file (or another text file) opened with Coder from the Finder or `open` (#13759),
+    // or a custom `openagents://` protocol deep link (#13889).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where !url.isFileURL && Experimental.on {
+        for url in urls where url.scheme?.lowercased() == "openagents" {
+            if main == nil { opened.append(url) } else { _ = DesktopActivation.shared.handleURL(url) }
+        }
+        for url in urls where !url.isFileURL && url.scheme?.lowercased() != "openagents" && Experimental.on {
             _ = MacAccount.shared.handleUniversalLink(url)
         }
         let files = urls.filter { $0.isFileURL }
@@ -52,6 +63,29 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         main.show()
         for url in files { main.openFileInPane(url) }
+    }
+    func openNewWindow(folderPath: String? = nil) {
+        guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path,
+              let win = CoderWindow(resources: resources) else { return }
+        win.installPaletteKeys()
+        if let folderPath, !folderPath.isEmpty {
+            win.openFolderURL(URL(fileURLWithPath: folderPath))
+        }
+        extraWindows.append(win)
+        NSApp.activate(ignoringOtherApps: true)
+        win.show()
+    }
+    @objc func newWindow(_ sender: Any?) { openNewWindow() }
+    @objc func toggleQuitHold(_ sender: Any?) {
+        DesktopActivation.quitHoldEnabled.toggle()
+    }
+    @objc func toggleCliShim(_ sender: Any?) {
+        let res = DesktopActivation.isShimInstalled() ? DesktopActivation.uninstallShim() : DesktopActivation.installShim()
+        let alert = NSAlert()
+        alert.alertStyle = res.ok ? .informational : .warning
+        alert.messageText = res.ok ? "CLI Shim Updated" : "CLI Shim Error"
+        alert.informativeText = res.message
+        alert.runModal()
     }
     func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
         guard Experimental.on, userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
@@ -101,6 +135,10 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             }, cancelled: { NSApp.reply(toApplicationShouldTerminate: false) })
             return .terminateLater
         }
+        // Optional Hold-to-Quit / double-press Cmd+Q protection (#13889)
+        if !DesktopActivation.shared.shouldAllowQuit(runningAgents: main?.runningCount ?? 0) {
+            return .terminateCancel
+        }
         guard let count = main?.runningCount, count > 0 else { return .terminateNow }
         // the daemon keeps them running; the next Coder attaches to them (GitHub #13694)
         if main?.runsOutliveQuit == true { return .terminateNow }
@@ -113,7 +151,12 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Quit")
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
-    func applicationWillTerminate(_ notification: Notification) { main?.retire(); TestLaunch.stopHost() }
+    func applicationWillTerminate(_ notification: Notification) {
+        DesktopActivation.shared.stop()
+        main?.retire()
+        for w in extraWindows { w.retire() }
+        TestLaunch.stopHost()
+    }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
     @objc func search(_ sender: Any?) { main?.togglePalette() }
     @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
@@ -193,6 +236,14 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(backToChats(_:)) { return main?.settingsOpen == true }
         if item.action == #selector(findInSettings(_:)) { return main != nil }
         if item.action == #selector(findNext(_:)) || item.action == #selector(findPrev(_:)) { return main?.findOpen == true }
+        if item.action == #selector(toggleQuitHold(_:)) {
+            item.state = DesktopActivation.quitHoldEnabled ? .on : .off
+            return true
+        }
+        if item.action == #selector(toggleCliShim(_:)) {
+            item.title = DesktopActivation.isShimInstalled() ? "Uninstall CLI Shim…" : "Install CLI Shim…"
+            return true
+        }
         return true
     }
 }
@@ -252,6 +303,9 @@ enum TestLaunch {
         let appMenu = NSMenu(), edit = NSMenu(title: "Edit")
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
+        let newWinItem = file.addItem(withTitle: "New Window", action: #selector(CoderDelegate.newWindow(_:)), keyEquivalent: "N")
+        newWinItem.keyEquivalentModifierMask = [.command, .shift]
+        newWinItem.target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
         file.addItem(withTitle: "Open 3D Scene…", action: #selector(CoderDelegate.openScene(_:)), keyEquivalent: "").target = delegate
         file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
@@ -312,6 +366,8 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Install CLI Shim…", action: #selector(CoderDelegate.toggleCliShim(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Hold-to-Quit Protection (⌘Q×2)", action: #selector(CoderDelegate.toggleQuitHold(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide OpenAgents", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())

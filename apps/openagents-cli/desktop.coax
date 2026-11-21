@@ -1,0 +1,102 @@
+// `openagents desktop` — route commands to a running OpenAgents Desktop instance
+// over its single-instance 0700 AF_UNIX activation socket (#13889).
+#load "../../coax/lib/agent/desktop/activation.coax";
+
+desktop_usage :: () {
+  print("%\n", "Desktop:");
+  print("%\n", "  desktop show                     bring the running OpenAgents Desktop window to front");
+  print("%\n", "  desktop open PATH                open a folder or file in the running Desktop window");
+  print("%\n", "  desktop chat ID                  open a chat by ID in the running Desktop window");
+  print("%\n", "  desktop uri URL                  route an openagents:// URI to the running Desktop window");
+  print("%\n", "  desktop new-window [DIR]         open a new independent Desktop workspace window");
+}
+
+desktop_send_activation :: (op: int, arg: string, r: [] Rep) -> int {
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  if home.count == 0 {
+    tool_errln("openagents desktop: HOME is not set");
+    return EXIT_FAIL;
+  }
+  sb: [1200] u8; sock := oa_act_socket_path(home, sb[..]);
+  if sock.count == 0 || !fs_exists(sock) {
+    tool_errln("openagents desktop: OpenAgents Desktop is not running (activation socket not found)");
+    return EXIT_NOT_FOUND;
+  }
+  cmd_b: [2048] u8;
+  cn := oa_act_format_cmd(op, arg, cmd_b[..]);
+  if cn <= 0 {
+    tool_errln("openagents desktop: failed to encode activation command");
+    return EXIT_USAGE;
+  }
+  for c: sock { _ = cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(3000);
+  if h < 0 {
+    tool_errln("openagents desktop: could not connect to activation socket");
+    return EXIT_FAIL;
+  }
+  for i: 0..<cn { _ = cxsock_write(h, cast(int) cmd_b[i]); }
+  _ = cxsock_write(h, 10);
+  if cxsock_flush(h, 3000) < 0 {
+    _ = cxsock_close(h);
+    tool_errln("openagents desktop: failed to send command");
+    return EXIT_FAIL;
+  }
+  rep_b: [1024] u8; rn := 0;
+  got := cxsock_read(h, 3000);
+  if got > 0 {
+    for i: 0..<got {
+      b := cxsock_byte(h, i);
+      if b == 10 { break; }
+      if rn < rep_b.count { rep_b[rn] = cast(u8) b; rn += 1; }
+    }
+  }
+  _ = cxsock_close(h);
+  if r[0].json {
+    print("%\n", ifx rn > 0 then cast(string) rep_b[0..<rn] else "{\"ok\":true}");
+  } else {
+    print("ok\n");
+  }
+  return EXIT_OK;
+}
+
+desktop_main :: (a: [] Args, r: [] Rep) -> int {
+  verb := positional(a, 1);
+  if verb == "show" {
+    return desktop_send_activation(OA_ACT_SHOW, "", r);
+  }
+  if verb == "open" {
+    target := positional(a, 2);
+    if target.count == 0 {
+      tool_errln("usage: openagents desktop open <dir|file>");
+      return EXIT_USAGE;
+    }
+    rb: [FS_PATH_MAX] u8;
+    real := fs_realpath(target, rb[..]);
+    return desktop_send_activation(OA_ACT_OPEN, ifx real.count > 0 then real else target, r);
+  }
+  if verb == "chat" {
+    id := positional(a, 2);
+    if id.count == 0 {
+      tool_errln("usage: openagents desktop chat <id>");
+      return EXIT_USAGE;
+    }
+    return desktop_send_activation(OA_ACT_CHAT, id, r);
+  }
+  if verb == "uri" {
+    u := positional(a, 2);
+    parsed: [1] OaUri;
+    if !oa_uri_parse(u, parsed[..]) {
+      tool_errln("openagents desktop uri: invalid openagents:// URI");
+      return EXIT_USAGE;
+    }
+    return desktop_send_activation(OA_ACT_URI, u, r);
+  }
+  if verb == "new-window" {
+    dir := positional(a, 2);
+    rb: [FS_PATH_MAX] u8;
+    real := ifx dir.count > 0 then fs_realpath(dir, rb[..]) else "";
+    return desktop_send_activation(OA_ACT_NEW_WINDOW, ifx real.count > 0 then real else dir, r);
+  }
+  desktop_usage();
+  return EXIT_USAGE;
+}

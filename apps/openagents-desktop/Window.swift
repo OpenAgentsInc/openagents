@@ -281,7 +281,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self.tick()
         }
         RunLoop.main.add(watchdog, forMode: .common); self.watchdog = watchdog
-        window.center(); window.makeKeyAndOrderFront(nil); focusComposer()
+        if let restored = DesktopActivation.restoredWindowBounds(defaultSize: window.frame.size) {
+            window.setFrame(restored, display: false)
+        } else {
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil); focusComposer()
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         if CommandLine.arguments.contains("--gym") { openGym() }
@@ -541,6 +546,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     func show() { window.makeKeyAndOrderFront(nil); wake() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCmdHold(); window.orderOut(nil); return false }
+    func openFolderURL(_ url: URL) { setFolder(url, keep: true); focusComposer(); wake() }
+    func openChatById(_ id: String) { open(id); focusComposer(); wake() }
+    func windowDidMove(_ notification: Notification) { DesktopActivation.saveWindowBounds(window.frame) }
+    func windowDidResize(_ notification: Notification) { DesktopActivation.saveWindowBounds(window.frame) }
     func windowDidBecomeKey(_ notification: Notification) { clearViewedChatBadges(chat) }
     func windowDidResignKey(_ notification: Notification) { cancelCmdHold() }
     private func setCmdHints(_ shown: Bool) {
