@@ -10,9 +10,9 @@
 - [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) — partly implemented
 - [2. State and actions](ch002-state-and-actions.md) — partly implemented
 - [3. A transcript](ch003-a-transcript.md) — partly implemented
-- [4. A reply from the service](ch004-a-reply-from-the-service.md) — design draft
-- [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) — design draft
-- [6. One case, every step](ch006-one-case-every-step.md) — design draft
+- [4. A reply from the service](ch004-a-reply-from-the-service.md) — partly implemented
+- [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) — partly implemented
+- [6. One case, every step](ch006-one-case-every-step.md) — partly implemented
 
 ## II. What the app adds next
 

@@ -1,10 +1,14 @@
 # 6. One case, every step
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
-> The first milestone recorded on 2026-11-13 ran on the old app, which is
-> being removed; the new app earns it again here (see "The first milestone,
-> on the old app").
+> **Status: partly implemented.** The end-to-end opening acceptance runner
+> ([`openagents/examples/opening-case-runner.coax`](../examples/opening-case-runner.coax))
+> and the committed CPU case runner
+> (`coax/web/tool.sh apps/shared/cases.coax cpu`) pass on `cpu` across all five
+> committed cases (`login`, `login-cancel`, `first-milestone`, `logout-pending`,
+> `reconnect`), the GPU `ComposerScreen` spine, and the `LoginFlow` gate.
+> Remaining for native targets (`ios-simulator`, `ios-device`, `macos-arm64`):
+> running the GPU-kit chat page case on the iOS Simulator and physical iPhone
+> with XCUITest. (The earlier 2026-11-13 UIKit milestone is kept below as history.)
 
 ## Premise
 
@@ -136,22 +140,87 @@ It builds on what exists today:
 
 ### The chapter's check
 
-- **Source:** `openagents/examples/cases/chat-page.ops`, over the chat page
-  of chapters 1 to 5.
-- **Trace:** each operation and its answer, one line each, in a committed
-  `.trace` file; the simulator and the phone give the same bytes after the
-  host's name line.
-- **Refusal:** in the same case, the parts released after `tap
-  composer.stop` each answer `late part dropped`; a driver with a wrong
-  token gets `refused: wrong token`; an app built from another commit
-  refuses the run with the rebuild command.
-- **Independent check:** an XCUITest that runs the same steps through the
-  accessibility tree with the system keyboard, with no `coax drive`, on the
-  simulator and on the phone.
+- **Source:** [`openagents/examples/opening-case-runner.coax`](../examples/opening-case-runner.coax),
+  [`apps/shared/cases.coax`](../../apps/shared/cases.coax),
+  [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
+  [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+  [`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax),
+  and the committed operation/trace pairs under
+  [`openagents/examples/cases`](../examples/cases).
+- **Trace:** committed debug/release stdout in [`openagents/examples/opening-case-runner.out`](../examples/opening-case-runner.out),
+  plus `coax/web/tool.sh apps/shared/cases.coax cpu` verifying byte-for-byte trace equality
+  for `login` (14 ops), `login-cancel` (8 ops), `first-milestone` (33 ops),
+  `logout-pending` (19 ops), and `reconnect` (16 ops).
+- **Refusal:** parts released after `tap composer.stop` or `tap shell.logout`
+  each answer `late part dropped`; `tap composer.nope` answers
+  `no element composer.nope on this screen (tree lists them)`; an unsupported
+  operation (`layout`) answers `unknown operation 'layout'`; `state account.token`
+  is refused by the inspection allowlist; and a duplicate GPU row ID is refused
+  atomically (`dup_refused=1`).
+- **Independent check:** `coax/web/tool.sh apps/shared/cases.coax cpu` replays the
+  committed `.ops` files from disk against their `.trace` files independently of the
+  standalone book runner; native XCUITest runs on simulator and physical phone
+  remain required before adding `ios-simulator` or `ios-device` to `qualified_targets`.
 
-Planned paths: `openagents/examples/cases/chat-page.ops`. The earlier cases
-in [`openagents/examples/cases`](../examples/cases) stay as the record of
-the old app's milestone.
+## Source listing & runnable example
+
+Run [`openagents/examples/opening-case-runner.coax`](../examples/opening-case-runner.coax) (committed transcript [`openagents/examples/opening-case-runner.out`](../examples/opening-case-runner.out)):
+
+<!-- source: openagents/examples/opening-case-runner.coax opening-case-replay -->
+```jai
+ocr_run_suite :: (a: [] OapApp, tr: [] OapTrace) -> bool {
+  // 1. First milestone (33 ops): login, empty send refusal, streamed reply, copy, Stop fence.
+  a[0] = OapApp.{}; tr[0] = OapTrace.{};
+  oap_play(a, OCR_FIRST_MILESTONE, tr);
+  t1 := cast(string) tr[0].t[0..<tr[0].n];
+  ok1 := oap_has(t1, "composer.send can't be pressed now") &&
+         oap_has(t1, "you: hello\nreply: Hello! This is a fixture reply.") &&
+         oap_has(t1, "released chat.part: late part dropped") &&
+         oap_has(t1, "notice: Stopped");
+  print("case=first-milestone ops=% ok=%\n", ocr_count_ops(OCR_FIRST_MILESTONE), ok1);
+
+  // 2. Logout with turn pending: late parts dropped and transcript cleared.
+  a[0] = OapApp.{}; tr[0] = OapTrace.{};
+  oap_play(a, OCR_LOGOUT_PENDING, tr);
+  t2 := cast(string) tr[0].t[0..<tr[0].n];
+  ok2 := oap_has(t2, "released chat.part: late part dropped") && oap_has(t2, "> state transcript\n(empty)\n");
+  print("case=logout-pending ops=% ok=%\n", ocr_count_ops(OCR_LOGOUT_PENDING), ok2);
+
+  // 3. Reconnect with lost answer: same operation ID stores once.
+  a[0] = OapApp.{}; tr[0] = OapTrace.{};
+  oap_play(a, OCR_RECONNECT, tr);
+  t3 := cast(string) tr[0].t[0..<tr[0].n];
+  ok3 := oap_has(t3, "lost chat.send: sent again as op-1") &&
+         oap_has(t3, "released chat.send: op-1 already stored; first result") &&
+         oap_has(t3, "> state service.messages\n1\n");
+  print("case=reconnect ops=% ok=%\n", ocr_count_ops(OCR_RECONNECT), ok3);
+  return ok1 && ok2 && ok3;
+}
+```
+
+```shell
+coax/bin/coax run openagents/examples/opening-case-runner.coax
+coax/web/tool.sh apps/shared/cases.coax cpu
+```
+
+Expected output of `opening-case-runner.coax`:
+
+```text
+case=first-milestone ops=33 ok=true
+case=logout-pending ops=17 ok=true
+case=reconnect ops=14 ok=true
+gpu_spine messages=2 pinned=true dup_refused=1
+login_gate asked=true card_open=true
+refuse_control=no element composer.nope on this screen (tree lists them)
+refuse_op=unknown operation 'layout'; operations: tree, tap ID, type ID TEXT, state [NAME], clock +MS, clock data [release|lose NAME], logs, input
+refuse_secret=account.token is not inspectable; state takes route, account.step, account.words, account.who, account.waiting, composer.text, turn, transcript, service.messages, clipboard, clock
+all_passed=true
+```
+
+Planned paths: `openagents/examples/cases/chat-page.ops`. The CPU runner in
+[`openagents/examples/opening-case-runner.coax`](../examples/opening-case-runner.coax)
+and the committed cases in [`openagents/examples/cases`](../examples/cases)
+run today on `cpu`.
 
 ## Sources
 

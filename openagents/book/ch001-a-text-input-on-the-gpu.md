@@ -109,19 +109,24 @@ It builds on what exists today:
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
   [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
   [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  [`openagents/examples/composer-input.coax`](../examples/composer-input.coax),
   and [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops).
-- **Trace:** `tree` prints `composer.input field "Message"`, with its bounds;
-  `type composer.input hello` answers `typed`; `state draft` prints `hello`;
-  `counts` prints `refused 0`.
+- **Trace:** committed debug/release stdout in [`openagents/examples/composer-input.out`](../examples/composer-input.out)
+  and drive trace in [`openagents/examples/cases/composer-type.trace`](../examples/cases/composer-type.trace):
+  `composer.input` and `composer.send` commit in the semantic table; `type composer.input hello`
+  answers `typed`; `state draft` prints `hello`; `counts` prints `refused 0`; and an idle frame
+  sleeps with `0` vertices.
 - **Refusal:** a frame that records two rows with the ID `composer.input`
-  is refused: the surface keeps its last committed frame and `counts`
-  prints the refusal.
-- **Independent check:** native accessibility UI tests on desktop and iOS
-  that find the field through the accessibility tree and type into it with
-  the system keyboard, with no `coax drive`, and read back the same value.
-- **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
-  `coax/bin/coax test apps/openagents-desktop/page.coax`, and
-  `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
+  is refused atomically: the surface keeps its last committed generation (`generation 2`),
+  keeps the draft `hello`, and `counts` prints `refused 1 lost 1`. Typing into an unknown
+  field (`composer.nope`) answers `no such field`.
+- **Independent check:** `coax/bin/coax test apps/shared/chat/screen.coax` and
+  `coax/bin/coax test openagents/examples/composer-input.coax` on `cpu`, plus native
+  accessibility UI tests on desktop and iOS (remaining for native targets) that find
+  the field through the accessibility tree with no `coax drive`.
+- **Commands:** `coax/bin/coax run openagents/examples/composer-input.coax`,
+  `coax/bin/coax test openagents/examples/composer-input.coax`, and
+  `coax/bin/coax test apps/shared/chat/screen.coax`.
 
 Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
 [`apps/openagents-desktop`](../../apps/openagents-desktop), mobile consumes the
@@ -173,6 +178,64 @@ cs_layout_composer :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, dupl
 }
 ```
 
-Run the end-to-end Chapters 1–3 example in [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax) with `coax/bin/coax run openagents/examples/chat-screen-flow.coax`.
+Run the Chapter 1 example in [`openagents/examples/composer-input.coax`](../examples/composer-input.coax) (committed transcript [`openagents/examples/composer-input.out`](../examples/composer-input.out)):
+
+<!-- source: openagents/examples/composer-input.coax composer-input-drive -->
+```jai
+ci_drive_line :: (s: [] ComposerScreen, op: string, out: [] u8) -> string {
+  n := cs_drive(s, op, out);
+  if n <= 0 { return ""; }
+  // Trim trailing newline for single-line structured transcript printing.
+  end := n;
+  while end > 0 && out[end - 1] == '\n' { end -= 1; }
+  return cast(string) out[0..<end];
+}
+
+ci_run :: (s: [] ComposerScreen, o: [] CsOut) -> bool {
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  v0 := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  if v0 <= 0 { return false; }
+
+  buf: [4096] u8;
+  print("composer_row=% send_row=%\n", cs_find_composer(s, "composer.input"), cs_find_composer(s, "composer.send"));
+  print("type=%\n", ci_drive_line(s, "type composer.input hello", buf[..]));
+  _ := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("draft=%\n", ci_drive_line(s, "state draft", buf[..]));
+  print("counts_before=%\n", ci_drive_line(s, "counts", buf[..]));
+
+  // Still screen sleeps: a second render with no dirty surface submits 0 vertices.
+  v_idle := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("idle_vertices=%\n", v_idle);
+
+  // Refusal: a frame recording two rows with ID composer.input is refused atomically,
+  // keeping the last committed generation and draft intact.
+  _ = cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, true);
+  print("counts_after_dup=%\n", ci_drive_line(s, "counts", buf[..]));
+  print("draft_kept=%\n", ci_drive_line(s, "state draft", buf[..]));
+  print("bad_field=%\n", ci_drive_line(s, "type composer.nope hi", buf[..]));
+  return s[0].surface[0].refused == 1 && cs_draft(s) == "hello";
+}
+```
+
+```shell
+coax/bin/coax run openagents/examples/composer-input.coax
+```
+
+Expected output:
+
+```text
+composer_row=0 send_row=1
+type=typed
+draft=hello
+counts_before=generation 2 refused 0 lost 0 prims 4/512 text 4/128 hits 2/64 rows 2/128
+keyed 0/32 refused 0 (full 0, duplicate 0 this frame) retired 0
+idle_vertices=0
+counts_after_dup=generation 2 refused 1 lost 1 prims 4/512 text 4/128 hits 2/64 rows 2/128
+keyed 0/32 refused 0 (full 0, duplicate 0 this frame) retired 0
+draft_kept=hello
+bad_field=no such field
+ok=true
+```
 
 Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

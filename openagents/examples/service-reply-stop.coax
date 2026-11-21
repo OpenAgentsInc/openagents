@@ -1,0 +1,110 @@
+// Runnable example for The OpenAgents Book Chapter 4: A reply from the service.
+// Exercises two real production modules together:
+//   1. apps/shared/app/core/effects.coax (FxOutbox): URL policy refusal,
+//      unknown outcome without auto-retry, duplicate completion refusal,
+//      and generation cancellation dropping late host completions.
+//   2. apps/shared/openagents-app.coax (OapApp): controlled-clock streamed
+//      reply parts, Stop fencing dropping late parts with "notice: Stopped",
+//      and lost-answer reconnect deduplicating on the same operation ID.
+//   coax/bin/coax run openagents/examples/service-reply-stop.coax
+//   coax/bin/coax test openagents/examples/service-reply-stop.coax
+#import "Basic";
+#load "../../apps/shared/app/core/effects.coax";
+#load "../../apps/shared/openagents-app.coax";
+
+// book:begin outbox-and-stream-stop
+main :: () {
+  // Part 1: Effect outbox rules (apps/shared/app/core/effects.coax).
+  o: [1] FxOutbox;
+  fx_init(o[..]);
+  // Refusal: policy rejects cross-origin and non-chat privileged paths.
+  bad_url := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "https://evil/api/chat/x", "", "{\"m\":\"hi\"}", 4096, 5000);
+  bad_wallet := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/wallet/spend", "", "{\"sats\":10}", 4096, 5000);
+  print("outbox_policy_refuse bad_url=% bad_wallet=%\n", bad_url, bad_wallet);
+
+  // Admitted POST -> pending -> unknown outcome (never auto-retried) -> duplicate completion ignored.
+  op1 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"hello\"}", 4096, 10000);
+  gen1 := fx_generation(o[..], 0);
+  taken1 := fx_take(o[..], op1);
+  c1 := fx_complete(o[..], op1, gen1, FXO_UNKNOWN);
+  dup1 := fx_complete(o[..], op1, gen1, FXO_DONE);
+  print("outbox_unknown op=% taken=% deliver=% state=% queued=% dup=%\n",
+    op1, taken1, c1 == FXC_DELIVER, fx_state(o[..], op1) == FX_UNKNOWN, fx_queued(o[..]), dup1 == FXC_NONE);
+
+  // Cancel bumps owner generation so a late completion is dropped (FXC_DROPPED).
+  op2 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"again\"}", 4096, 10000);
+  _ := fx_take(o[..], op2);
+  _ = fx_cancel(o[..], 0);
+  cancel_notify := fx_cancel_next(o[..]);
+  late2 := fx_complete(o[..], op2, gen1, FXO_DONE);
+  print("outbox_cancel op=% notify=% dropped=% gen_after=% dropped_count=%\n",
+    op2, cancel_notify, late2 == FXC_DROPPED, fx_generation(o[..], 0), o[0].dropped);
+
+  // Part 2: Controlled-clock streaming, Stop fence, and retry dedupe (apps/shared/openagents-app.coax).
+  a: [1] OapApp;
+  tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ = oap_drive(a[..], "tap shell.new");
+  _ = oap_drive(a[..], "type composer.input hello");
+  _ = oap_drive(a[..], "tap composer.send");
+  print("turn_pending=%\n", oap_drive(a[..], "state turn"));
+  print("send_release=%\n", oap_drive(a[..], "clock data release chat.send"));
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.done");
+  print("stream_done turn=%\n", oap_drive(a[..], "state turn"));
+  print("transcript_1:\n%\n", oap_drive(a[..], "state transcript"));
+
+  // Second turn: Stop after one part -> held late parts are dropped and notice: Stopped is recorded.
+  _ = oap_drive(a[..], "type composer.input again");
+  _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  print("stop=%\n", oap_drive(a[..], "tap composer.stop"));
+  print("late_part_1=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("late_part_2=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("late_done=%\n", oap_drive(a[..], "clock data release chat.done"));
+  print("transcript_stopped:\n%\n", oap_drive(a[..], "state transcript"));
+
+  // Third turn: lost connection replays the same operation ID -> stored once.
+  _ = oap_drive(a[..], "type composer.input retry");
+  _ = oap_drive(a[..], "tap composer.send");
+  print("lost_send=%\n", oap_drive(a[..], "clock data lose chat.send"));
+  print("retry_release=%\n", oap_drive(a[..], "clock data release chat.send"));
+  print("service_messages=%\n", oap_drive(a[..], "state service.messages"));
+}
+// book:end outbox-and-stream-stop
+
+#test "openagents book ch4: outbox policy, unknown outcome, stop fence, and op-id dedupe" {
+  o: [1] FxOutbox;
+  fx_init(o[..]);
+  #assert fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "https://evil/api/chat/x", "", "{\"x\":1}", 4096, 5000) == 0;
+  #assert fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/wallet/spend", "", "{\"x\":1}", 4096, 5000) == 0;
+  op1 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"hello\"}", 4096, 10000);
+  gen1 := fx_generation(o[..], 0);
+  #assert op1 == 1 && fx_take(o[..], op1);
+  #assert fx_complete(o[..], op1, gen1, FXO_UNKNOWN) == FXC_DELIVER && fx_state(o[..], op1) == FX_UNKNOWN && fx_queued(o[..]) == 0;
+  #assert fx_complete(o[..], op1, gen1, FXO_DONE) == FXC_NONE;
+  op2 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"again\"}", 4096, 10000);
+  #assert fx_take(o[..], op2) && fx_cancel(o[..], 0) && fx_cancel_next(o[..]) == op2;
+  #assert fx_complete(o[..], op2, gen1, FXO_DONE) == FXC_DROPPED && o[0].dropped == 1;
+
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ := oap_drive(a[..], "tap shell.new");
+  _ = oap_drive(a[..], "type composer.input hello"); _ = oap_drive(a[..], "tap composer.send");
+  #assert oap_drive(a[..], "clock data release chat.send") == "released chat.send: stored op-1";
+  for i: 0..<3 { _ = oap_drive(a[..], "clock data release chat.part"); }
+  #assert oap_drive(a[..], "clock data release chat.done") == "released chat.done";
+  _ = oap_drive(a[..], "type composer.input again"); _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send"); _ = oap_drive(a[..], "clock data release chat.part");
+  #assert oap_drive(a[..], "tap composer.stop") == "tapped composer.stop (chat)";
+  #assert oap_drive(a[..], "clock data release chat.part") == "released chat.part: late part dropped";
+  #assert oap_drive(a[..], "clock data release chat.part") == "released chat.part: late part dropped";
+  #assert oap_drive(a[..], "clock data release chat.done") == "released chat.done: late part dropped";
+  _ = oap_drive(a[..], "type composer.input retry"); _ = oap_drive(a[..], "tap composer.send");
+  #assert oap_drive(a[..], "clock data lose chat.send") == "lost chat.send: sent again as op-3";
+  #assert oap_drive(a[..], "clock data release chat.send") == "released chat.send: op-3 already stored; first result";
+  #assert oap_drive(a[..], "state service.messages") == "3";
+}

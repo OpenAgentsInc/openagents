@@ -13,7 +13,9 @@
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
         "apps/openagents-ios/composer_screen.coax",
-        "openagents/examples/cases/composer-type.ops"
+        "openagents/examples/cases/composer-type.ops",
+        "openagents/examples/composer-input.coax",
+        "openagents/examples/composer-input.out"
       ],
       "qualified_targets": [
         "cpu"
@@ -34,7 +36,8 @@
         "apps/openagents-desktop/page.coax",
         "apps/openagents-ios/composer_screen.coax",
         "openagents/examples/cases/send.ops",
-        "openagents/examples/chat-screen-flow.coax"
+        "openagents/examples/chat-screen-flow.coax",
+        "openagents/examples/chat-screen-flow.out"
       ],
       "qualified_targets": [
         "cpu"
@@ -54,7 +57,9 @@
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
         "apps/openagents-ios/composer_screen.coax",
-        "openagents/examples/cases/transcript.ops"
+        "openagents/examples/cases/transcript.ops",
+        "openagents/examples/transcript-scroll.coax",
+        "openagents/examples/transcript-scroll.out"
       ],
       "qualified_targets": [
         "cpu"
@@ -65,40 +70,75 @@
       "number": 4,
       "title": "A reply from the service",
       "file": "ch004-a-reply-from-the-service.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         3
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "apps/shared/app/core/effects.coax",
+        "apps/shared/app/core/url-policy.coax",
+        "apps/shared/openagents-app.coax",
+        "openagents/examples/service-reply-stop.coax",
+        "openagents/examples/service-reply-stop.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/shared/app/core/core.coax",
+        "apps/openagents-web/milestone.coax"
+      ]
     },
     {
       "number": 5,
       "title": "Logging in when a send needs it",
       "file": "ch005-logging-in-when-a-send-needs-it.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         4
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "apps/shared/app/login/flow.coax",
+        "apps/shared/app/login/service.coax",
+        "apps/shared/login/screen.coax",
+        "apps/shared/openagents-app.coax",
+        "openagents/examples/login-gate-flow.coax",
+        "openagents/examples/login-gate-flow.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/shared/app/login/bridge.coax",
+        "apps/openagents-web/milestone.coax"
+      ]
     },
     {
       "number": 6,
       "title": "One case, every step",
       "file": "ch006-one-case-every-step.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         5
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "apps/shared/cases.coax",
+        "apps/shared/openagents-app.coax",
+        "apps/shared/chat/screen.coax",
+        "apps/shared/app/login/flow.coax",
+        "openagents/examples/opening-case-runner.coax",
+        "openagents/examples/opening-case-runner.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/shared/app/core/host.coax",
+        "apps/openagents-ios/host.c"
+      ]
     },
     {
       "number": 7,

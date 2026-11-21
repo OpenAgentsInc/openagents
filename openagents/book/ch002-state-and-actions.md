@@ -186,7 +186,7 @@ cs_dispatch :: (s: [] ComposerScreen, act: ChatAction) -> ChatDispatchResult {
 }
 ```
 
-Run [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax):
+Run [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax) (committed transcript [`openagents/examples/chat-screen-flow.out`](../examples/chat-screen-flow.out)):
 
 ```shell
 coax/bin/coax run openagents/examples/chat-screen-flow.coax

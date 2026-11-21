@@ -1,7 +1,15 @@
 # 4. A reply from the service
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The effect outbox
+> ([`apps/shared/app/core/effects.coax`](../../apps/shared/app/core/effects.coax)),
+> `#authority` URL admission policy
+> ([`apps/shared/app/core/url-policy.coax`](../../apps/shared/app/core/url-policy.coax)),
+> controlled-clock streamed reply and Stop fence
+> ([`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax)),
+> and runnable example [`openagents/examples/service-reply-stop.coax`](../examples/service-reply-stop.coax)
+> pass on `cpu` in debug and release. Remaining for full chapter completion:
+> registering `openagents.chat.v1` as a `.proto` schema and qualifying the live
+> native iOS/desktop HTTP streaming host.
 
 ## Premise
 
@@ -105,23 +113,126 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the chat effect and the fake service in the lean app, with
-  their checks, and `openagents/examples/cases/reply.ops`.
-- **Trace:** `type composer.input hello`, `tap composer.send`, `state turn`
-  prints `pending`; three `clock data release chat.part` and one `clock data
-  release chat.done`; `state transcript` prints `you: hello` and the
-  recorded reply.
-- **Refusal:** a second send, `tap composer.stop` after one part, then a
-  release of the held parts: each answers `late part dropped`, the
-  transcript ends with `notice: Stopped`, and `logs` lists the drops. A lost
-  answer followed by a retry with the same operation ID stores one message.
-- **Independent check:** the session record's and the stream parser's own
-  checks, written before this chapter, and the service's suite for the chat
-  route on a build host against the same request bodies.
+- **Source:** [`apps/shared/app/core/effects.coax`](../../apps/shared/app/core/effects.coax),
+  [`apps/shared/app/core/url-policy.coax`](../../apps/shared/app/core/url-policy.coax),
+  [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
+  and [`openagents/examples/service-reply-stop.coax`](../examples/service-reply-stop.coax).
+- **Trace:** committed debug/release stdout in [`openagents/examples/service-reply-stop.out`](../examples/service-reply-stop.out):
+  `fx_request` admits `POST /api/chat/submit/v2alpha1`, `FXO_UNKNOWN` transitions to
+  `FX_UNKNOWN` with `queued=0` (never auto-retried), and a controlled-clock send streams
+  three `chat.part` chunks plus `chat.done` into `you: hello` / `reply: Hello! This is a fixture reply.`.
+- **Refusal:** URL policy rejects cross-origin (`https://evil/api/chat/x`) and privileged
+  (`/api/wallet/spend`) paths with `0`; duplicate completions return `FXC_NONE`; `fx_cancel`
+  advances the owner generation and drops late completions (`FXC_DROPPED`, `dropped_count=1`);
+  `tap composer.stop` after one part drops every remaining `chat.part` and `chat.done` with
+  `late part dropped` and appends `notice: Stopped`; and `clock data lose chat.send` followed
+  by retry deduplicates on the same operation ID (`op-3 already stored; first result`).
+- **Independent check:** `coax/bin/coax test apps/shared/app/core/effects.coax --library`,
+  `coax/bin/coax test apps/shared/app/core/url-policy.coax --library`,
+  `coax/bin/coax test apps/shared/openagents-app.coax`, and the session record's checks
+  (`coax/bin/coax test coax/lib/agent/session/session.coax`).
 
-Planned paths: `openagents/examples/cases/reply.ops`. Service routes go in
-[`coax/web/api/`](../../coax/web/api) and their schemas in
-[`proto/`](../../proto).
+## Source listing & runnable example
+
+Run [`openagents/examples/service-reply-stop.coax`](../examples/service-reply-stop.coax) (committed transcript [`openagents/examples/service-reply-stop.out`](../examples/service-reply-stop.out)):
+
+<!-- source: openagents/examples/service-reply-stop.coax outbox-and-stream-stop -->
+```jai
+main :: () {
+  // Part 1: Effect outbox rules (apps/shared/app/core/effects.coax).
+  o: [1] FxOutbox;
+  fx_init(o[..]);
+  // Refusal: policy rejects cross-origin and non-chat privileged paths.
+  bad_url := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "https://evil/api/chat/x", "", "{\"m\":\"hi\"}", 4096, 5000);
+  bad_wallet := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/wallet/spend", "", "{\"sats\":10}", 4096, 5000);
+  print("outbox_policy_refuse bad_url=% bad_wallet=%\n", bad_url, bad_wallet);
+
+  // Admitted POST -> pending -> unknown outcome (never auto-retried) -> duplicate completion ignored.
+  op1 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"hello\"}", 4096, 10000);
+  gen1 := fx_generation(o[..], 0);
+  taken1 := fx_take(o[..], op1);
+  c1 := fx_complete(o[..], op1, gen1, FXO_UNKNOWN);
+  dup1 := fx_complete(o[..], op1, gen1, FXO_DONE);
+  print("outbox_unknown op=% taken=% deliver=% state=% queued=% dup=%\n",
+    op1, taken1, c1 == FXC_DELIVER, fx_state(o[..], op1) == FX_UNKNOWN, fx_queued(o[..]), dup1 == FXC_NONE);
+
+  // Cancel bumps owner generation so a late completion is dropped (FXC_DROPPED).
+  op2 := fx_request(o[..], 0, FX_HTTP, 1, UP_POST, "/api/chat/submit/v2alpha1", "", "{\"text\":\"again\"}", 4096, 10000);
+  _ := fx_take(o[..], op2);
+  _ = fx_cancel(o[..], 0);
+  cancel_notify := fx_cancel_next(o[..]);
+  late2 := fx_complete(o[..], op2, gen1, FXO_DONE);
+  print("outbox_cancel op=% notify=% dropped=% gen_after=% dropped_count=%\n",
+    op2, cancel_notify, late2 == FXC_DROPPED, fx_generation(o[..], 0), o[0].dropped);
+
+  // Part 2: Controlled-clock streaming, Stop fence, and retry dedupe (apps/shared/openagents-app.coax).
+  a: [1] OapApp;
+  tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ = oap_drive(a[..], "tap shell.new");
+  _ = oap_drive(a[..], "type composer.input hello");
+  _ = oap_drive(a[..], "tap composer.send");
+  print("turn_pending=%\n", oap_drive(a[..], "state turn"));
+  print("send_release=%\n", oap_drive(a[..], "clock data release chat.send"));
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  _ = oap_drive(a[..], "clock data release chat.done");
+  print("stream_done turn=%\n", oap_drive(a[..], "state turn"));
+  print("transcript_1:\n%\n", oap_drive(a[..], "state transcript"));
+
+  // Second turn: Stop after one part -> held late parts are dropped and notice: Stopped is recorded.
+  _ = oap_drive(a[..], "type composer.input again");
+  _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  print("stop=%\n", oap_drive(a[..], "tap composer.stop"));
+  print("late_part_1=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("late_part_2=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("late_done=%\n", oap_drive(a[..], "clock data release chat.done"));
+  print("transcript_stopped:\n%\n", oap_drive(a[..], "state transcript"));
+
+  // Third turn: lost connection replays the same operation ID -> stored once.
+  _ = oap_drive(a[..], "type composer.input retry");
+  _ = oap_drive(a[..], "tap composer.send");
+  print("lost_send=%\n", oap_drive(a[..], "clock data lose chat.send"));
+  print("retry_release=%\n", oap_drive(a[..], "clock data release chat.send"));
+  print("service_messages=%\n", oap_drive(a[..], "state service.messages"));
+}
+```
+
+```shell
+coax/bin/coax run openagents/examples/service-reply-stop.coax
+```
+
+Expected output:
+
+```text
+outbox_policy_refuse bad_url=0 bad_wallet=0
+outbox_unknown op=1 taken=true deliver=true state=true queued=0 dup=true
+outbox_cancel op=2 notify=2 dropped=true gen_after=2 dropped_count=1
+turn_pending=live
+send_release=released chat.send: stored op-1
+stream_done turn=idle
+transcript_1:
+you: hello
+reply: Hello! This is a fixture reply.
+stop=tapped composer.stop (chat)
+late_part_1=released chat.part: late part dropped
+late_part_2=released chat.part: late part dropped
+late_done=released chat.done: late part dropped
+transcript_stopped:
+you: hello
+reply: Hello! This is a fixture reply.
+you: again
+reply: Hello! 
+notice: Stopped
+lost_send=lost chat.send: sent again as op-3
+retry_release=released chat.send: op-3 already stored; first result
+service_messages=3
+```
+
+Planned paths: none new — CPU rules and example run in [`apps/shared/app/core/effects.coax`](../../apps/shared/app/core/effects.coax), [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax), and [`openagents/examples/service-reply-stop.coax`](../examples/service-reply-stop.coax). Service routes go in [`coax/web/api/`](../../coax/web/api) and their schemas in [`proto/`](../../proto).
 
 ## Sources
 

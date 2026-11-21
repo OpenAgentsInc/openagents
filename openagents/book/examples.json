@@ -2,9 +2,44 @@
   "schema": 1,
   "examples": [
     {
+      "source": "openagents/examples/composer-input.coax",
+      "chapter": "openagents/book/ch001-a-text-input-on-the-gpu.md",
+      "stdout": "openagents/examples/composer-input.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
       "source": "openagents/examples/chat-screen-flow.coax",
       "chapter": "openagents/book/ch002-state-and-actions.md",
       "stdout": "openagents/examples/chat-screen-flow.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/transcript-scroll.coax",
+      "chapter": "openagents/book/ch003-a-transcript.md",
+      "stdout": "openagents/examples/transcript-scroll.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/service-reply-stop.coax",
+      "chapter": "openagents/book/ch004-a-reply-from-the-service.md",
+      "stdout": "openagents/examples/service-reply-stop.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/login-gate-flow.coax",
+      "chapter": "openagents/book/ch005-logging-in-when-a-send-needs-it.md",
+      "stdout": "openagents/examples/login-gate-flow.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/opening-case-runner.coax",
+      "chapter": "openagents/book/ch006-one-case-every-step.md",
+      "stdout": "openagents/examples/opening-case-runner.out",
       "exit_status": 0,
       "modes": ["debug", "release"]
     }

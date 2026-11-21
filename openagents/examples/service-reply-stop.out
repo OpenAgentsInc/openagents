@@ -1,0 +1,22 @@
+outbox_policy_refuse bad_url=0 bad_wallet=0
+outbox_unknown op=1 taken=true deliver=true state=true queued=0 dup=true
+outbox_cancel op=2 notify=2 dropped=true gen_after=2 dropped_count=1
+turn_pending=live
+send_release=released chat.send: stored op-1
+stream_done turn=idle
+transcript_1:
+you: hello
+reply: Hello! This is a fixture reply.
+stop=tapped composer.stop (chat)
+late_part_1=released chat.part: late part dropped
+late_part_2=released chat.part: late part dropped
+late_done=released chat.done: late part dropped
+transcript_stopped:
+you: hello
+reply: Hello! This is a fixture reply.
+you: again
+reply: Hello! 
+notice: Stopped
+lost_send=lost chat.send: sent again as op-3
+retry_release=released chat.send: op-3 already stored; first result
+service_messages=3

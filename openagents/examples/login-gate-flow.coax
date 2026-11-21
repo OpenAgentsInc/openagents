@@ -1,0 +1,112 @@
+// Runnable example for The OpenAgents Book Chapter 5: Logging in when a send needs it.
+// Exercises two real production modules together:
+//   1. apps/shared/app/login/flow.coax (LoginFlow): logged-out send opens the
+//      login card while keeping intent and draft; wrong code keeps card open
+//      with server words; valid code closes card and offers intent; logout
+//      advances generation so late completions are dropped.
+//   2. apps/shared/openagents-app.coax (OapApp): logging out while a reply is
+//      pending drops late parts and clears the transcript, and tokens never
+//      appear in state or tree.
+//   coax/bin/coax run openagents/examples/login-gate-flow.coax
+//   coax/bin/coax test openagents/examples/login-gate-flow.coax
+#import "Basic";
+#load "../../apps/shared/app/login/flow.coax";
+#load "../../apps/shared/openagents-app.coax";
+
+INTENT_SEND :: 1;
+
+// book:begin login-gate-and-logout-fence
+main :: () {
+  // Part 1: Login gate state machine (apps/shared/app/login/flow.coax).
+  l: [1] LoginFlow;
+  q: [1] LoginRequest;
+  r: [1] LoginResult;
+  lf_begin(l[..]);
+  _ := lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  _ = lf_result(l[..], r[..]);
+
+  // Pressing Send while logged out asks for login and keeps the intent (composer draft untouched).
+  gate := lf_need(l[..], INTENT_SEND, 0);
+  print("send_logged_out gate=% card_open=% step=%\n", gate == LF_ASKED, l[0].open, lf_step(l[..]));
+
+  // Email -> code requested.
+  _ = lf_set(l[..], LF_FIELD_EMAIL, "you@example.com");
+  _ = lf_press(l[..], LF_ACT_SEND);
+  _ = lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  _ = lf_result(l[..], r[..]);
+  print("email_sent step=%\n", lf_step(l[..]));
+
+  // Refusal 1: wrong code keeps card open with the service's words and clears the code field.
+  _ = lf_set(l[..], LF_FIELD_CODE, "000000");
+  _ = lf_press(l[..], LF_ACT_VERIFY);
+  _ = lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_FAILED, 400, false, "That code isn't right.", "");
+  _ = lf_result(l[..], r[..]);
+  print("wrong_code open=% logged_in=% words=%\n", l[0].open, lf_logged_in(l[..]), lf_words(l[..]));
+
+  // Valid code logs in, closes card, and offers the held send intent without auto-sending.
+  _ = lf_set(l[..], LF_FIELD_CODE, "123456");
+  _ = lf_press(l[..], LF_ACT_VERIFY);
+  _ = lf_take(l[..], q[..]);
+  saved_verify_q := q[0];
+  r[0] = ls_result(q[0], LS_DONE, 200, true, "", "y...@example.com");
+  _ = lf_result(l[..], r[..]);
+  print("verified open=% logged_in=% who=% offer=% gen=%\n",
+    l[0].open, lf_logged_in(l[..]), lf_who(l[..]), lf_offer(l[..]), lf_generation(l[..]));
+
+  // Refusal 2: logout bumps generation and fences any late verify result from an older generation.
+  ended := lf_logout(l[..]);
+  r[0] = ls_result(saved_verify_q, LS_DONE, 200, true, "", "y...@example.com");
+  late_ok := lf_result(l[..], r[..]);
+  print("logout_fence ended=% logged_in=% gen=% late_ok=% dropped=%\n",
+    ended, lf_logged_in(l[..]), lf_generation(l[..]), late_ok, l[0].dropped);
+
+  // Part 2: Logout while a reply is pending drops late parts and clears the transcript.
+  a: [1] OapApp;
+  tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ = oap_drive(a[..], "tap shell.new");
+  _ = oap_drive(a[..], "type composer.input hello");
+  _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  print("logout_pending=%\n", oap_drive(a[..], "tap shell.logout"));
+  print("after_logout_part=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("after_logout_transcript=%\n", oap_drive(a[..], "state transcript"));
+  print("token_guard=%\n", oap_drive(a[..], "state account.token"));
+}
+// book:end login-gate-and-logout-fence
+
+#test "openagents book ch5: login gate, wrong code refusal, logout fence, and token allowlist" {
+  l: [1] LoginFlow; q: [1] LoginRequest; r: [1] LoginResult;
+  lf_begin(l[..]);
+  #assert lf_take(l[..], q[..]) && q[0].kind == LS_SESSION;
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  #assert lf_result(l[..], r[..]);
+  #assert lf_need(l[..], INTENT_SEND, 0) == LF_ASKED && l[0].open;
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "you@example.com") && lf_press(l[..], LF_ACT_SEND);
+  #assert lf_take(l[..], q[..]) && q[0].kind == LS_START;
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  #assert lf_result(l[..], r[..]) && lf_step(l[..]) == LF_CODE;
+  #assert lf_set(l[..], LF_FIELD_CODE, "000000") && lf_press(l[..], LF_ACT_VERIFY) && lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_FAILED, 400, false, "That code isn't right.", "");
+  #assert lf_result(l[..], r[..]) && l[0].open && !lf_logged_in(l[..]) && lf_words(l[..]) == "That code isn't right.";
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY) && lf_take(l[..], q[..]);
+  saved := q[0];
+  r[0] = ls_result(q[0], LS_DONE, 200, true, "", "y...@example.com");
+  #assert lf_result(l[..], r[..]) && !l[0].open && lf_logged_in(l[..]) && lf_offer(l[..]) == INTENT_SEND;
+  #assert lf_logout(l[..]) && !lf_logged_in(l[..]);
+  r[0] = ls_result(saved, LS_DONE, 200, true, "", "y...@example.com");
+  #assert !lf_result(l[..], r[..]) && l[0].dropped == 1;
+
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ := oap_drive(a[..], "tap shell.new"); _ = oap_drive(a[..], "type composer.input hello"); _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send"); _ = oap_drive(a[..], "clock data release chat.part");
+  #assert oap_drive(a[..], "tap shell.logout") == "tapped shell.logout (home)";
+  #assert oap_drive(a[..], "clock data release chat.part") == "released chat.part: late part dropped";
+  #assert oap_drive(a[..], "state transcript") == "(empty)";
+  #assert oap_has(oap_drive(a[..], "state account.token"), "account.token is not inspectable");
+}

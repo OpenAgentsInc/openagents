@@ -1,0 +1,8 @@
+after_edit composer_redraws=2 transcript_redraws=1
+after_send has_list=true has_msg1=true pinned=true
+overflow count=7 overflows=true pinned=true has_jump=false
+refuse_jump_when_pinned=no such control
+refuse_empty_append accepted=false reason=1 count=7
+unpinned_append pinned=false same_scroll=true unread=1 has_jump=true
+jump_tap=tapped transcript.jump_bottom
+after_jump pinned=true unread=0 has_jump=false

@@ -1,0 +1,75 @@
+// Runnable example for The OpenAgents Book Chapter 1: A text input on the GPU.
+// Exercises the shared GPU composer surface (apps/shared/chat/screen.coax):
+// semantic tree commit, typing via coax drive, draft state inspection,
+// frame counts, and atomic duplicate-ID refusal keeping the last frame.
+//   coax/bin/coax run openagents/examples/composer-input.coax
+//   coax/bin/coax test openagents/examples/composer-input.coax
+#import "Basic";
+#load "../../apps/shared/chat/screen.coax";
+
+// book:begin composer-input-drive
+ci_drive_line :: (s: [] ComposerScreen, op: string, out: [] u8) -> string {
+  n := cs_drive(s, op, out);
+  if n <= 0 { return ""; }
+  // Trim trailing newline for single-line structured transcript printing.
+  end := n;
+  while end > 0 && out[end - 1] == '\n' { end -= 1; }
+  return cast(string) out[0..<end];
+}
+
+ci_run :: (s: [] ComposerScreen, o: [] CsOut) -> bool {
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  v0 := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  if v0 <= 0 { return false; }
+
+  buf: [4096] u8;
+  print("composer_row=% send_row=%\n", cs_find_composer(s, "composer.input"), cs_find_composer(s, "composer.send"));
+  print("type=%\n", ci_drive_line(s, "type composer.input hello", buf[..]));
+  _ := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("draft=%\n", ci_drive_line(s, "state draft", buf[..]));
+  print("counts_before=%\n", ci_drive_line(s, "counts", buf[..]));
+
+  // Still screen sleeps: a second render with no dirty surface submits 0 vertices.
+  v_idle := cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("idle_vertices=%\n", v_idle);
+
+  // Refusal: a frame recording two rows with ID composer.input is refused atomically,
+  // keeping the last committed generation and draft intact.
+  _ = cs_render(s, o[0].v[..], 1280, 420, 1, 0.016, true);
+  print("counts_after_dup=%\n", ci_drive_line(s, "counts", buf[..]));
+  print("draft_kept=%\n", ci_drive_line(s, "state draft", buf[..]));
+  print("bad_field=%\n", ci_drive_line(s, "type composer.nope hi", buf[..]));
+  return s[0].surface[0].refused == 1 && cs_draft(s) == "hello";
+}
+// book:end composer-input-drive
+
+main :: () {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  ok := ci_run(s[..], o[..]);
+  print("ok=%\n", ok);
+}
+
+#test "openagents book ch1: composer tree, type, sleep, and duplicate-ID refusal" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  #assert cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false) > 0;
+  #assert cs_find_composer(s[..], "composer.input") >= 0 && cs_find_composer(s[..], "composer.send") >= 0;
+
+  buf: [4096] u8;
+  #assert ci_drive_line(s[..], "type composer.input hello", buf[..]) == "typed";
+  #assert cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false) > 0;
+  #assert ci_drive_line(s[..], "state draft", buf[..]) == "hello";
+  #assert s[0].surface[0].refused == 0;
+  #assert cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false) == 0;
+
+  gen_before := s[0].surface[0].generation;
+  _ := cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, true);
+  #assert s[0].surface[0].refused == 1;
+  #assert s[0].surface[0].generation == gen_before;
+  #assert cs_draft(s[..]) == "hello";
+  #assert ci_drive_line(s[..], "type composer.nope hi", buf[..]) == "no such field";
+}

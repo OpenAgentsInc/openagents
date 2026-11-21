@@ -1,0 +1,11 @@
+composer_row=0 send_row=1
+type=typed
+draft=hello
+counts_before=generation 2 refused 0 lost 0 prims 4/512 text 4/128 hits 2/64 rows 2/128
+keyed 0/32 refused 0 (full 0, duplicate 0 this frame) retired 0
+idle_vertices=0
+counts_after_dup=generation 2 refused 1 lost 1 prims 4/512 text 4/128 hits 2/64 rows 2/128
+keyed 0/32 refused 0 (full 0, duplicate 0 this frame) retired 0
+draft_kept=hello
+bad_field=no such field
+ok=true

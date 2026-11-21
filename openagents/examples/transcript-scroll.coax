@@ -1,0 +1,112 @@
+// Runnable example for The OpenAgents Book Chapter 3: A transcript.
+// Exercises the shared GPU transcript surface (apps/shared/chat/screen.coax):
+// per-surface dirty isolation, Markdown message layout, overflow pin-to-bottom,
+// unpinning on scroll up with jump-to-bottom, unread counter, and refusals.
+//   coax/bin/coax run openagents/examples/transcript-scroll.coax
+//   coax/bin/coax test openagents/examples/transcript-scroll.coax
+#import "Basic";
+#load "../../apps/shared/chat/screen.coax";
+
+ts_drive_line :: (s: [] ComposerScreen, op: string, out: [] u8) -> string {
+  n := cs_drive(s, op, out);
+  if n <= 0 { return ""; }
+  end := n;
+  while end > 0 && out[end - 1] == '\n' { end -= 1; }
+  return cast(string) out[0..<end];
+}
+
+// book:begin transcript-scroll-flow
+main :: () {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  buf: [4096] u8;
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  _ := cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+
+  // Typing dirties only the composer surface, never the transcript surface.
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_EDIT, text = "hello"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_edit composer_redraws=% transcript_redraws=%\n", s[0].composer_redraws, s[0].transcript_redraws);
+
+  // Sending commits message.1 and dirties both surfaces.
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_SEND});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_send has_list=% has_msg1=% pinned=%\n",
+    cs_find_transcript(s[..], "transcript.list") >= 0,
+    cs_find_transcript(s[..], "message.1") >= 0,
+    chat_state_pinned(s[0].state[..]));
+
+  // Append 6 Markdown assistant replies so content overflows the 420px viewport.
+  for i: 0..<6 {
+    _ = cs_dispatch(s[..], ChatAction.{
+      kind = CS_ACT_APPEND,
+      role = CHAT_ROLE_ASSISTANT,
+      text = "# Heading\n\nBody with **bold** and `code`.\n\n- item one\n- item two"
+    });
+  }
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("overflow count=% overflows=% pinned=% has_jump=%\n",
+    s[0].state[0].message_count,
+    s[0].state[0].content_h > s[0].state[0].viewport_h,
+    chat_state_pinned(s[0].state[..]),
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+
+  // Refusal 1: tapping jump_bottom while already pinned is refused (control not present).
+  print("refuse_jump_when_pinned=%\n", ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]));
+
+  // Refusal 2: appending an empty message is refused and leaves message_count unchanged.
+  rempty := cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = ""});
+  print("refuse_empty_append accepted=% reason=% count=%\n", rempty.accepted, rempty.reason, s[0].state[0].message_count);
+
+  // Scroll up unpins and exposes transcript.jump_bottom; appending increments unread_below without moving scroll_y.
+  _ = ts_drive_line(s[..], "scroll -120", buf[..]);
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  prev_y := s[0].state[0].scroll_y;
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "New reply while reading above"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("unpinned_append pinned=% same_scroll=% unread=% has_jump=%\n",
+    chat_state_pinned(s[0].state[..]),
+    s[0].state[0].scroll_y == prev_y,
+    s[0].state[0].unread_below,
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+
+  // Jump to bottom re-pins, clears unread_below, and hides transcript.jump_bottom.
+  print("jump_tap=%\n", ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]));
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_jump pinned=% unread=% has_jump=%\n",
+    chat_state_pinned(s[0].state[..]),
+    s[0].state[0].unread_below,
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+}
+// book:end transcript-scroll-flow
+
+#test "openagents book ch3: transcript dirty isolation, markdown overflow, unpin, jump, and refusals" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  buf: [4096] u8;
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  _ := cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_EDIT, text = "hello"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  #assert s[0].composer_redraws == 2 && s[0].transcript_redraws == 1;
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_SEND});
+  for i: 0..<6 {
+    _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "# Heading\n\nBody with **bold** and `code`."});
+  }
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  #assert s[0].state[0].content_h > s[0].state[0].viewport_h && chat_state_pinned(s[0].state[..]);
+  #assert ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]) == "no such control";
+  rempty := cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = ""});
+  #assert !rempty.accepted && rempty.reason == CS_DISPATCH_REFUSED_EMPTY && s[0].state[0].message_count == 7;
+  _ = ts_drive_line(s[..], "scroll -120", buf[..]);
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  prev_y := s[0].state[0].scroll_y;
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "reply"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  #assert !chat_state_pinned(s[0].state[..]) && s[0].state[0].scroll_y == prev_y && s[0].state[0].unread_below == 1;
+  #assert ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]) == "tapped transcript.jump_bottom";
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  #assert chat_state_pinned(s[0].state[..]) && s[0].state[0].unread_below == 0 && cs_find_transcript(s[..], "transcript.jump_bottom") < 0;
+}

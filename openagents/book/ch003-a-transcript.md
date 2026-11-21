@@ -87,22 +87,26 @@ It builds on what exists today:
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
   [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
   [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  [`openagents/examples/transcript-scroll.coax`](../examples/transcript-scroll.coax),
   and [`openagents/examples/cases/transcript.ops`](../examples/cases/transcript.ops).
-- **Trace:** send three messages, one with `**bold**`; `tree` lists
-  `message.1` to `message.3` in order; `state scroll` prints `at end`; a
-  scroll up prints `not at end`, a fourth send leaves the offset where it
-  was and reveals `transcript.jump_bottom`, and tapping `transcript.jump_bottom`
-  returns to `at end`.
-- **Refusal:** a frame that gives two messages the same ID refuses that
-  component's keyed state and counts it; `counts` prints
-  `refused_duplicate 1`, and neither message takes the other's state.
+- **Trace:** committed debug/release stdout in [`openagents/examples/transcript-scroll.out`](../examples/transcript-scroll.out)
+  and [`openagents/examples/cases/transcript.trace`](../examples/cases/transcript.trace):
+  editing dirties only the composer (`composer_redraws=2 transcript_redraws=1`);
+  sending commits `transcript.list` and `message.1`; appending six Markdown replies
+  overflows the viewport while staying pinned (`has_jump=false`); scrolling up
+  (`scroll -120`) unpins, exposes `transcript.jump_bottom`, and keeps `scroll_y`
+  stationary while incrementing `unread=1` on a new reply; tapping `transcript.jump_bottom`
+  re-pins and clears `unread=0`.
+- **Refusal:** tapping `transcript.jump_bottom` while already pinned answers
+  `no such control`, and appending an empty message is refused (`accepted=false reason=1`)
+  leaving `message_count` unchanged.
 - **Independent check:** the session record's own checks
   (`coax/bin/coax test coax/lib/agent/session/session.coax`), the Markdown
   parser's checks (`coax/bin/coax test components/core/markdown.coax`), and
   the scroll helper checks (`coax/bin/coax test components/core/scroll.coax`).
-- **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
-  `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
-  `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
+- **Commands:** `coax/bin/coax run openagents/examples/transcript-scroll.coax`,
+  `coax/bin/coax test openagents/examples/transcript-scroll.coax`, and
+  `coax/bin/coax test apps/shared/chat/screen.coax`.
 
 Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/transcript.ops`](../examples/cases/transcript.ops), [`openagents/examples/cases/transcript.trace`](../examples/cases/transcript.trace).
 
@@ -119,7 +123,7 @@ Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/scree
 
 ## Source listing
 
-Pin-to-bottom invariant in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), exercised by [`openagents/examples/chat-screen-flow.coax`](../examples/chat-screen-flow.coax):
+Pin-to-bottom invariant in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), exercised by [`openagents/examples/transcript-scroll.coax`](../examples/transcript-scroll.coax) (committed transcript [`openagents/examples/transcript-scroll.out`](../examples/transcript-scroll.out)):
 
 <!-- source: apps/shared/chat/screen.coax transcript-pin -->
 ```jai
@@ -127,6 +131,90 @@ chat_state_pinned :: (st: [] ChatState) -> bool {
   if st.count < 1 { return true; }
   return !st[0].unpinned;
 }
+```
+
+<!-- source: openagents/examples/transcript-scroll.coax transcript-scroll-flow -->
+```jai
+main :: () {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  buf: [4096] u8;
+  cs_test_atlas(s[0].atlas[..]);
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  _ := cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+
+  // Typing dirties only the composer surface, never the transcript surface.
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_EDIT, text = "hello"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_edit composer_redraws=% transcript_redraws=%\n", s[0].composer_redraws, s[0].transcript_redraws);
+
+  // Sending commits message.1 and dirties both surfaces.
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_SEND});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_send has_list=% has_msg1=% pinned=%\n",
+    cs_find_transcript(s[..], "transcript.list") >= 0,
+    cs_find_transcript(s[..], "message.1") >= 0,
+    chat_state_pinned(s[0].state[..]));
+
+  // Append 6 Markdown assistant replies so content overflows the 420px viewport.
+  for i: 0..<6 {
+    _ = cs_dispatch(s[..], ChatAction.{
+      kind = CS_ACT_APPEND,
+      role = CHAT_ROLE_ASSISTANT,
+      text = "# Heading\n\nBody with **bold** and `code`.\n\n- item one\n- item two"
+    });
+  }
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("overflow count=% overflows=% pinned=% has_jump=%\n",
+    s[0].state[0].message_count,
+    s[0].state[0].content_h > s[0].state[0].viewport_h,
+    chat_state_pinned(s[0].state[..]),
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+
+  // Refusal 1: tapping jump_bottom while already pinned is refused (control not present).
+  print("refuse_jump_when_pinned=%\n", ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]));
+
+  // Refusal 2: appending an empty message is refused and leaves message_count unchanged.
+  rempty := cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = ""});
+  print("refuse_empty_append accepted=% reason=% count=%\n", rempty.accepted, rempty.reason, s[0].state[0].message_count);
+
+  // Scroll up unpins and exposes transcript.jump_bottom; appending increments unread_below without moving scroll_y.
+  _ = ts_drive_line(s[..], "scroll -120", buf[..]);
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  prev_y := s[0].state[0].scroll_y;
+  _ = cs_dispatch(s[..], ChatAction.{kind = CS_ACT_APPEND, role = CHAT_ROLE_ASSISTANT, text = "New reply while reading above"});
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("unpinned_append pinned=% same_scroll=% unread=% has_jump=%\n",
+    chat_state_pinned(s[0].state[..]),
+    s[0].state[0].scroll_y == prev_y,
+    s[0].state[0].unread_below,
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+
+  // Jump to bottom re-pins, clears unread_below, and hides transcript.jump_bottom.
+  print("jump_tap=%\n", ts_drive_line(s[..], "tap transcript.jump_bottom", buf[..]));
+  _ = cs_render(s[..], o[0].v[..], 1280, 420, 1, 0.016, false);
+  print("after_jump pinned=% unread=% has_jump=%\n",
+    chat_state_pinned(s[0].state[..]),
+    s[0].state[0].unread_below,
+    cs_find_transcript(s[..], "transcript.jump_bottom") >= 0);
+}
+```
+
+```shell
+coax/bin/coax run openagents/examples/transcript-scroll.coax
+```
+
+Expected output:
+
+```text
+after_edit composer_redraws=2 transcript_redraws=1
+after_send has_list=true has_msg1=true pinned=true
+overflow count=7 overflows=true pinned=true has_jump=false
+refuse_jump_when_pinned=no such control
+refuse_empty_append accepted=false reason=1 count=7
+unpinned_append pinned=false same_scroll=true unread=1 has_jump=true
+jump_tap=tapped transcript.jump_bottom
+after_jump pinned=true unread=0 has_jump=false
 ```
 
 Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

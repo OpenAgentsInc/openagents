@@ -1,0 +1,9 @@
+send_logged_out gate=true card_open=true step=1
+email_sent step=4
+wrong_code open=true logged_in=false words=That code isn't right.
+verified open=false logged_in=true who=y...@example.com offer=1 gen=1
+logout_fence ended=true logged_in=false gen=2 late_ok=false dropped=1
+logout_pending=tapped shell.logout (home)
+after_logout_part=released chat.part: late part dropped
+after_logout_transcript=(empty)
+token_guard=account.token is not inspectable; state takes route, account.step, account.words, account.who, account.waiting, composer.text, turn, transcript, service.messages, clipboard, clock

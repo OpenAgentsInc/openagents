@@ -1,0 +1,9 @@
+case=first-milestone ops=33 ok=true
+case=logout-pending ops=17 ok=true
+case=reconnect ops=14 ok=true
+gpu_spine messages=2 pinned=true dup_refused=1
+login_gate asked=true card_open=true
+refuse_control=no element composer.nope on this screen (tree lists them)
+refuse_op=unknown operation 'layout'; operations: tree, tap ID, type ID TEXT, state [NAME], clock +MS, clock data [release|lose NAME], logs, input
+refuse_secret=account.token is not inspectable; state takes route, account.step, account.words, account.who, account.waiting, composer.text, turn, transcript, service.messages, clipboard, clock
+all_passed=true

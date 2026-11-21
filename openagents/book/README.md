@@ -4,12 +4,17 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: chapters 1–3 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
-> Chapters 1–3 now run on CPU against the shared chat logic in
+> **Status: chapters 1–6 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
+> Chapters 1–6 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
+> with verified debug/release transcripts grounded in
 > [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+> [`apps/shared/app/core/effects.coax`](../../apps/shared/app/core/effects.coax),
+> [`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax), and
+> [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
 > grounded primarily in the desktop app ([`apps/openagents-desktop`](../../apps/openagents-desktop))
 > and consumed by the mobile app ([`apps/openagents-ios`](../../apps/openagents-ios))
-> as a second native host.
+> as a second native host. Native host accessibility UI tests (`macos-arm64`,
+> `ios-simulator`, `ios-device`) remain open per [CONTRACT.md](CONTRACT.md).
 > Where a piece already runs in the repository, such as the desktop shell,
 > the login service, and the GPU login screen, the chapter says so and
 > builds on it. [CONTRACT.md](CONTRACT.md) says what moves a chapter
@@ -182,9 +187,9 @@ NIPs, old crates and protocol packages.
 | [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) | Partly implemented: cpu |
 | [2. State and actions](ch002-state-and-actions.md) | Partly implemented: cpu |
 | [3. A transcript](ch003-a-transcript.md) | Partly implemented: cpu |
-| [4. A reply from the service](ch004-a-reply-from-the-service.md) | Unimplemented: design draft |
-| [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) | Unimplemented: design draft |
-| [6. One case, every step](ch006-one-case-every-step.md) | Unimplemented: design draft |
+| [4. A reply from the service](ch004-a-reply-from-the-service.md) | Partly implemented: cpu |
+| [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) | Partly implemented: cpu |
+| [6. One case, every step](ch006-one-case-every-step.md) | Partly implemented: cpu |
 
 ### II. What the app adds next
 

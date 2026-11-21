@@ -1,10 +1,13 @@
 # 5. Logging in when a send needs it
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
-> The account service it uses runs today in `coax/web/api`, and the GPU
-> login screen runs in the iOS Simulator
+> **Status: partly implemented.** The login gate flow
+> ([`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax)),
+> logout pending-turn fence ([`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax)),
+> and runnable example [`openagents/examples/login-gate-flow.coax`](../examples/login-gate-flow.coax)
+> pass on `cpu` in debug and release. The account service runs in `coax/web/api`,
+> and the GPU login screen runs in the iOS Simulator
 > ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)).
+> Remaining: physical-phone VoiceOver, one-time-code AutoFill, and IME checks.
 
 ## Premise
 
@@ -109,22 +112,113 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the chat page's login card and logout in the lean app, over
-  `apps/shared/login/screen.coax`, and
-  `openagents/examples/cases/login-card.ops`.
-- **Trace:** `type composer.input hello`, `tap composer.send` with no
-  session; `tree` shows `login.email`; the email and the code (`123456`)
-  with their held answers released; `state session` prints `logged in`;
-  `state transcript` prints `you: hello` once.
-- **Refusal:** logout with a reply pending: each later `clock data release
-  chat.part` answers `late part dropped`, and the transcript is empty. A
-  wrong code leaves the card open with `That code isn't right.`
-- **Independent check:** an XCUITest that logs in through the accessibility
-  tree with no `coax drive`, and the API's auth suite on a build host
-  against the same request bodies.
+- **Source:** [`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax),
+  [`apps/shared/app/login/service.coax`](../../apps/shared/app/login/service.coax),
+  [`apps/shared/login/screen.coax`](../../apps/shared/login/screen.coax),
+  [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
+  and [`openagents/examples/login-gate-flow.coax`](../examples/login-gate-flow.coax).
+- **Trace:** committed debug/release stdout in [`openagents/examples/login-gate-flow.out`](../examples/login-gate-flow.out):
+  `lf_need(INTENT_SEND)` while logged out returns `LF_ASKED` and opens the card;
+  submitting `you@example.com` enters `LF_CODE`; verifying `123456` closes the card,
+  sets `logged_in=true`, `who=y...@example.com`, and offers `offer=1` without auto-sending.
+- **Refusal:** a wrong code (`000000`) leaves the card open with `That code isn't right.`;
+  `lf_logout` advances `generation` (`1 -> 2`) so a late verify result returns `false`
+  with `dropped=1`; logging out while a reply is pending drops subsequent `chat.part`
+  chunks (`late part dropped`) and clears `state transcript` to `(empty)`; and
+  `state account.token` is refused by the inspection allowlist.
+- **Independent check:** `coax/bin/coax test apps/shared/app/login/flow.coax`,
+  `coax/bin/coax test apps/shared/app/login/service.coax`,
+  `coax/bin/coax test coax/web/api/auth-policy.coax --library`, plus XCUITest
+  through the accessibility tree on native hosts (remaining for `ios-device`).
 
-Planned paths: `openagents/examples/cases/login-card.ops`. Server rules
-stay in [`coax/web/api/`](../../coax/web/api).
+## Source listing & runnable example
+
+Run [`openagents/examples/login-gate-flow.coax`](../examples/login-gate-flow.coax) (committed transcript [`openagents/examples/login-gate-flow.out`](../examples/login-gate-flow.out)):
+
+<!-- source: openagents/examples/login-gate-flow.coax login-gate-and-logout-fence -->
+```jai
+main :: () {
+  // Part 1: Login gate state machine (apps/shared/app/login/flow.coax).
+  l: [1] LoginFlow;
+  q: [1] LoginRequest;
+  r: [1] LoginResult;
+  lf_begin(l[..]);
+  _ := lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  _ = lf_result(l[..], r[..]);
+
+  // Pressing Send while logged out asks for login and keeps the intent (composer draft untouched).
+  gate := lf_need(l[..], INTENT_SEND, 0);
+  print("send_logged_out gate=% card_open=% step=%\n", gate == LF_ASKED, l[0].open, lf_step(l[..]));
+
+  // Email -> code requested.
+  _ = lf_set(l[..], LF_FIELD_EMAIL, "you@example.com");
+  _ = lf_press(l[..], LF_ACT_SEND);
+  _ = lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_DONE, 200, false, "", "");
+  _ = lf_result(l[..], r[..]);
+  print("email_sent step=%\n", lf_step(l[..]));
+
+  // Refusal 1: wrong code keeps card open with the service's words and clears the code field.
+  _ = lf_set(l[..], LF_FIELD_CODE, "000000");
+  _ = lf_press(l[..], LF_ACT_VERIFY);
+  _ = lf_take(l[..], q[..]);
+  r[0] = ls_result(q[0], LS_FAILED, 400, false, "That code isn't right.", "");
+  _ = lf_result(l[..], r[..]);
+  print("wrong_code open=% logged_in=% words=%\n", l[0].open, lf_logged_in(l[..]), lf_words(l[..]));
+
+  // Valid code logs in, closes card, and offers the held send intent without auto-sending.
+  _ = lf_set(l[..], LF_FIELD_CODE, "123456");
+  _ = lf_press(l[..], LF_ACT_VERIFY);
+  _ = lf_take(l[..], q[..]);
+  saved_verify_q := q[0];
+  r[0] = ls_result(q[0], LS_DONE, 200, true, "", "y...@example.com");
+  _ = lf_result(l[..], r[..]);
+  print("verified open=% logged_in=% who=% offer=% gen=%\n",
+    l[0].open, lf_logged_in(l[..]), lf_who(l[..]), lf_offer(l[..]), lf_generation(l[..]));
+
+  // Refusal 2: logout bumps generation and fences any late verify result from an older generation.
+  ended := lf_logout(l[..]);
+  r[0] = ls_result(saved_verify_q, LS_DONE, 200, true, "", "y...@example.com");
+  late_ok := lf_result(l[..], r[..]);
+  print("logout_fence ended=% logged_in=% gen=% late_ok=% dropped=%\n",
+    ended, lf_logged_in(l[..]), lf_generation(l[..]), late_ok, l[0].dropped);
+
+  // Part 2: Logout while a reply is pending drops late parts and clears the transcript.
+  a: [1] OapApp;
+  tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ = oap_drive(a[..], "tap shell.new");
+  _ = oap_drive(a[..], "type composer.input hello");
+  _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send");
+  _ = oap_drive(a[..], "clock data release chat.part");
+  print("logout_pending=%\n", oap_drive(a[..], "tap shell.logout"));
+  print("after_logout_part=%\n", oap_drive(a[..], "clock data release chat.part"));
+  print("after_logout_transcript=%\n", oap_drive(a[..], "state transcript"));
+  print("token_guard=%\n", oap_drive(a[..], "state account.token"));
+}
+```
+
+```shell
+coax/bin/coax run openagents/examples/login-gate-flow.coax
+```
+
+Expected output:
+
+```text
+send_logged_out gate=true card_open=true step=1
+email_sent step=4
+wrong_code open=true logged_in=false words=That code isn't right.
+verified open=false logged_in=true who=y...@example.com offer=1 gen=1
+logout_fence ended=true logged_in=false gen=2 late_ok=false dropped=1
+logout_pending=tapped shell.logout (home)
+after_logout_part=released chat.part: late part dropped
+after_logout_transcript=(empty)
+token_guard=account.token is not inspectable; state takes route, account.step, account.words, account.who, account.waiting, composer.text, turn, transcript, service.messages, clipboard, clock
+```
+
+Planned paths: none new — CPU login gate and logout fence run in [`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax), [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax), and [`openagents/examples/login-gate-flow.coax`](../examples/login-gate-flow.coax). Server rules stay in [`coax/web/api/`](../../coax/web/api).
 
 ## Sources
 
