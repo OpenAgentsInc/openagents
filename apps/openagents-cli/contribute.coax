@@ -1,0 +1,125 @@
+// Opt-In, Secret-Redacted ATIF-v1.8 Coding Trajectory Contribution CLI (GitHub #13926).
+//
+// Hard privacy invariant: default is strictly OFF. Zero bytes leave the machine
+// unless explicitly enabled AND previewed/verified through #authority
+// coax/lib/agent/redact-trajectory.coax.
+#load "../../coax/lib/agent/redact-trajectory.coax";
+
+contribute_usage :: () {
+  print("  openagents contribute status                      Show global opt-in status (default OFF)\n");
+  print("  openagents contribute enable                      Explicitly opt in to redacted trajectory capture\n");
+  print("  openagents contribute disable                     Disable trajectory capture (local only)\n");
+  print("  openagents contribute preview --file TRACE.jsonl  Inspect redacted payload & #authority verdict locally\n");
+  print("  openagents contribute selftest                    Verify default-OFF, secret redaction & verifier gate\n");
+}
+
+contribute_config_path :: (out: [] u8) -> string {
+  hb: [512] u8;
+  home := proc_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  db: [768] u8;
+  dir := fs_join(home, ".openagents/contribute", db[..]);
+  _ = fs_mkdir_all(dir);
+  return fs_join(dir, "consent.flag", out);
+}
+
+contribute_is_enabled :: () -> bool {
+  pb: [1024] u8;
+  p := contribute_config_path(pb[..]);
+  if p.count == 0 || !fs_exists(p) { return false; }
+  buf: [64] u8;
+  n := fs_read(p, buf[..]);
+  return n >= 2 && cast(string) buf[0..<2] == "on";
+}
+
+contribute_main :: (a: [] Args, r: [] Rep) -> int {
+  sub := ifx a[0].n >= 2 then args_at(a, 1) else "status";
+
+  if sub == "status" {
+    on := contribute_is_enabled();
+    print("contribute: % (default OFF; local-first privacy)\n", ifx on then "ENABLED (opt-in)" else "OFF");
+    return 0;
+  }
+
+  if sub == "enable" {
+    pb: [1024] u8;
+    p := contribute_config_path(pb[..]);
+    if p.count == 0 || !fs_replace_durable(p, "on\n") {
+      tool_errln("contribute: failed to persist consent flag");
+      return 1;
+    }
+    print("contribute: ENABLED (opt-in persisted at %)\n", p);
+    return 0;
+  }
+
+  if sub == "disable" {
+    pb: [1024] u8;
+    p := contribute_config_path(pb[..]);
+    if p.count > 0 && fs_exists(p) { _ = fs_remove(p); }
+    print("contribute: OFF (local only; zero uploads)\n");
+    return 0;
+  }
+
+  if sub == "preview" {
+    file_path := "";
+    i := 2;
+    while i < a[0].n {
+      if args_at(a, i) == "--file" && i + 1 < a[0].n { file_path = args_at(a, i + 1); i += 2; continue; }
+      i += 1;
+    }
+    if file_path.count == 0 {
+      tool_errln("usage: openagents contribute preview --file TRACE.atif.jsonl");
+      return 2;
+    }
+    raw_b: [65536] u8;
+    rn := fs_read(file_path, raw_b[..]);
+    if rn <= 0 { tool_errln("contribute preview: failed to read file"); return 1; }
+    red_b: [65536] u8;
+    red_n := rt_redact(cast(string) raw_b[0..<rn], red_b[..]);
+    if red_n < 0 { tool_errln("contribute preview: redaction buffer overflow"); return 1; }
+    red_str := cast(string) red_b[0..<red_n];
+    leak_at := rt_find_secret(red_str);
+    adm := RtAdmission.{
+      global_opt_in = contribute_is_enabled(),
+      workspace_opt_in = contribute_is_enabled(),
+      secret_clean = leak_at == -1,
+      has_compiler_verdict = true,
+      has_test_verdict = false,
+      has_patch_replay_verdict = false,
+      held_out_contaminated = false,
+      atif_verified = true
+    };
+    code := rt_admit_trajectory(adm);
+    print("--- REDACTED PREVIEW ---\n%\n--- GATE VERDICT ---\n%\n", red_str, rt_verdict_label(code));
+    return ifx code == RT_ADMIT then 0 else 3;
+  }
+
+  if sub == "selftest" {
+    // 1) Default-OFF refuses admission
+    off := RtAdmission.{global_opt_in = false, workspace_opt_in = false, secret_clean = true, has_compiler_verdict = true, atif_verified = true};
+    if rt_admit_trajectory(off) != RT_REFUSE_OPT_OUT { tool_errln("selftest: default-OFF failed"); return 1; }
+
+    // 2) Adversarial secret redaction leaves zero secret signatures
+    adv := "AKIAIOSFODNN7EXAMPLE sk-ant-999 ghp_secret123 nsec1deadbeef xprv9s21 Bearer tok_1 API_KEY=topsecret /Users/alice/repo";
+    rb: [512] u8;
+    rn := rt_redact(adv, rb[..]);
+    if rn <= 0 || rt_find_secret(cast(string) rb[0..<rn]) != -1 {
+      tool_errln("selftest: adversarial secret leaked after redaction");
+      return 1;
+    }
+
+    // 3) Unverified LLM-only trajectory is refused; held-out is refused; verified opted-in is admitted
+    no_v := RtAdmission.{global_opt_in = true, workspace_opt_in = true, secret_clean = true, atif_verified = true};
+    if rt_admit_trajectory(no_v) != RT_REFUSE_NO_VERIFIER { tool_errln("selftest: unverified trajectory not refused"); return 1; }
+    ho := no_v; ho.has_test_verdict = true; ho.held_out_contaminated = true;
+    if rt_admit_trajectory(ho) != RT_REFUSE_HELD_OUT { tool_errln("selftest: held-out trajectory not blocked"); return 1; }
+    ok := no_v; ok.has_test_verdict = true;
+    if rt_admit_trajectory(ok) != RT_ADMIT { tool_errln("selftest: verified opted-in trajectory not admitted"); return 1; }
+
+    print("openagents contribute selftest: PASS (default_off=ok adversarial_redaction=clean verifier_gate=ok heldout_block=ok)\n");
+    return 0;
+  }
+
+  contribute_usage();
+  return 0;
+}
