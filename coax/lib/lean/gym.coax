@@ -9,7 +9,7 @@
 #load "wire.coax";
 
 DLG_KEYS :: [11] string.["schema", "id", "open", "view", "module", "decl", "tour_step", "search", "math_tab", "file", "line"];
-DLG_VIEWS :: [6] string.["tour", "atlas", "math", "inspect", "trust", "prover"];
+DLG_VIEWS :: [7] string.["fly3d", "tour", "atlas", "math", "inspect", "trust", "prover"];
 DLG_MATH_TABS :: [3] string.["strip", "robin", "theta"];
 
 dlg_known_key :: (key: string) -> bool {
@@ -19,6 +19,7 @@ dlg_known_key :: (key: string) -> bool {
 
 dlg_norm_view :: (v: string) -> string {
   if v.count == 0 { return ""; }
+  if v == "3d" || v == "flythrough" { return "fly3d"; }
   if v == "rh" || v == "overview" { return "tour"; }
   if v == "graph" || v == "map" { return "atlas"; }
   if v == "visuals" || v == "viz" { return "math"; }
@@ -123,6 +124,7 @@ dc_lean_gym_plan :: (req: string, out: [] u8) -> string {
 #test "lean gym plan: valid requests, aliases and refusals" {
   b: [4096] u8;
   // every canonical view and alias
+  #assert dlg_norm_view("fly3d") == "fly3d" && dlg_norm_view("3d") == "fly3d" && dlg_norm_view("flythrough") == "fly3d";
   #assert dlg_norm_view("tour") == "tour" && dlg_norm_view("rh") == "tour" && dlg_norm_view("overview") == "tour";
   #assert dlg_norm_view("atlas") == "atlas" && dlg_norm_view("graph") == "atlas" && dlg_norm_view("map") == "atlas";
   #assert dlg_norm_view("math") == "math" && dlg_norm_view("visuals") == "math" && dlg_norm_view("viz") == "math";

@@ -45,23 +45,32 @@ cp_gym_lean :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) 
   k := f[0].skin; sh := f[0].sheet;
   l := s[0].lean[..];
 
-  // 34 pt Lean · RH View Tabs Strip
+  // 34 pt Lean · RH View Tabs Strip (3D Flythrough first & default!)
   sheet_fill(sh, x, y, w, CP_LEAN_SUB_H, 0, k.canvas);
   sheet_rule(sh, x, y + CP_LEAN_SUB_H - k.border, w, k.border, k.hairline);
   tx := x + 16.0f32;
-  v_labels := [6] string.["1. Guided Tour", "2. Proof Atlas", "3. Math Visuals", "4. Module Inspector", "5. Trust Ledger", "6. Live Prover"];
-  v_tones := [6] Rgba.[k.warning, k.syntax[4], k.success, k.syntax[5], k.brand, k.syntax[1]];
-  for vi: 0..<6 {
-    pw := measure_width(f[0].m, k.small.face, v_labels[vi]) + 18.0f32;
+  v_ids := [7] int.[CP_LEAN_3D, CP_LEAN_TOUR, CP_LEAN_ATLAS, CP_LEAN_MATH, CP_LEAN_INSPECT, CP_LEAN_TRUST, CP_LEAN_PROVER];
+  v_labels := [7] string.["1. 3D Flythrough", "2. Guided Tour", "3. Proof Atlas", "4. Math Visuals", "5. Module Inspector", "6. Trust Ledger", "7. Live Prover"];
+  v_tones := [7] Rgba.[k.success, k.warning, k.syntax[4], k.syntax[2], k.syntax[5], k.brand, k.syntax[1]];
+  for ti: 0..<7 {
+    vi := v_ids[ti];
+    pw := measure_width(f[0].m, k.small.face, v_labels[ti]) + 18.0f32;
     if tx + pw > x + w - 12.0f32 { break; }
-    tx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.view.", vi), tx, y + 5.0f32, v_labels[vi], l[0].view == vi, v_tones[vi], CP_LEAN_VIEW_ACT) + 6.0f32;
+    tx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.view.", vi), tx, y + 5.0f32, v_labels[ti], l[0].view == vi, v_tones[ti], CP_LEAN_VIEW_ACT) + 6.0f32;
   }
 
   vy := y + CP_LEAN_SUB_H;
   vh := h - CP_LEAN_SUB_H;
   if vh < 20.0f32 { return; }
 
-  if l[0].view == CP_LEAN_TOUR { cp_lean_draw_tour(s, f, x, vy, w, vh); }
+  l[0].fly_x = x; l[0].fly_y = vy; l[0].fly_w = w; l[0].fly_h = vh;
+
+  if l[0].view == CP_LEAN_3D {
+    // Native macOS Metal 3D RhFlythroughView overlays this rect; keep clean dark backing underneath.
+    sheet_fill(sh, x, vy, w, vh, 0, k.sunk);
+    _ := sheet_text(sh, f[0].m, -1, x + 28.0f32, vy + 28.0f32, k.strong.line, k.strong.face, k.ink, "Metaverse Engine 3D Flythrough — Riemann Hypothesis Proof Palace");
+    _ := sheet_text(sh, f[0].m, -1, x + 28.0f32, vy + 54.0f32, k.small.line, k.small.face, k.muted, "3D Metal viewport active on macOS OpenAgents Desktop (Catmull-Rom flyover via metaverse-engine/cam/flyover.coax).");
+  } else if l[0].view == CP_LEAN_TOUR { cp_lean_draw_tour(s, f, x, vy, w, vh); }
   else if l[0].view == CP_LEAN_ATLAS { cp_lean_draw_atlas(s, f, x, vy, w, vh); }
   else if l[0].view == CP_LEAN_MATH { cp_lean_draw_math(s, f, x, vy, w, vh); }
   else if l[0].view == CP_LEAN_INSPECT { cp_lean_draw_inspect(s, f, x, vy, w, vh); }
@@ -69,7 +78,7 @@ cp_gym_lean :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) 
   else { cp_lean_draw_prover(s, f, x, vy, w, vh); }
 }
 
-// Handles clicks on the lifted GYM bar and inside all 6 Lean · RH views.
+// Handles clicks on the lifted GYM bar and inside all 7 Lean · RH views.
 cp_lean_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   l := s[0].lean[..];
   if act == CP_GYM_MODE_ACT {
@@ -83,11 +92,13 @@ cp_lean_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   }
   if act == CP_LEAN_VIEW_ACT {
     v := cp_number(id, "view.");
-    if v >= 0 && v <= 5 {
+    if v >= 0 && v <= 6 {
       l[0].view = v;
       l[0].scroll_y = 0;
       if (v == CP_LEAN_INSPECT || (v == CP_LEAN_ATLAS && l[0].atlas_lod == 2)) && l[0].src_n == 0 {
         cp_lean_req(s, CP_ASK_LEAN_MODULE, cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);
+      } else {
+        s[0].ask = CP_ASK_LEAN_VIEW;
       }
       return true;
     }
@@ -399,4 +410,15 @@ coder_page_lean_req_str :: (s: [] CoderPage, out: [] u8) -> int #export_c #effec
 coder_page_lean_atlas_lod_set :: (s: [] CoderPage, lod: int) #export_c #effects(all) {
   if s.count < 1 || lod < 0 || lod > 2 { return; }
   s[0].lean[0].atlas_lod = lod;
+}
+coder_page_lean_view_set :: (s: [] CoderPage, view: int) #export_c #effects(all) {
+  if s.count < 1 || view < 0 || view > 6 { return; }
+  s[0].lean[0].view = view;
+}
+coder_page_lean_3d_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 || s[0].set_open || !s[0].gym_open || s[0].gym_mode != CP_GYM_LEAN { return false; }
+  l := s[0].lean[..];
+  if l[0].view != CP_LEAN_3D || !(l[0].fly_w > 0) || !(l[0].fly_h > 0) { return false; }
+  out[0] = l[0].fly_x; out[1] = l[0].fly_y; out[2] = l[0].fly_w; out[3] = l[0].fly_h;
+  return true;
 }

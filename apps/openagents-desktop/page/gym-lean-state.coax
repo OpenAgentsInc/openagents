@@ -20,6 +20,7 @@ CP_LEAN_MATH :: 2;
 CP_LEAN_INSPECT :: 3;
 CP_LEAN_TRUST :: 4;
 CP_LEAN_PROVER :: 5;
+CP_LEAN_3D :: 6;
 
 // Host asks (allocated at 150..158 after CP_ASK_PYLON_EXECUTOR :: 147)
 CP_ASK_LEAN_MODE :: 150;     // top Gym mode switched (host syncs macOS GymWorkbenchView & loads RH atlas)
@@ -30,6 +31,7 @@ CP_ASK_LEAN_EXPLAIN :: 154;  // "Explain in Chat" grounded AI prompt for active 
 CP_ASK_LEAN_VERIFY :: 155;   // run live `lean-run verify` on active prover preset
 CP_ASK_LEAN_OPEN_FILE :: 156;// open real .lean file on disk in external editor / File Pane
 CP_ASK_LEAN_SAVE_NOTE :: 157;// persist study note (`rh-note.v1`) for active module
+CP_ASK_LEAN_VIEW :: 158;     // Lean · RH sub-view switched (host syncs Metal 3D RhFlythroughView)
 
 // Row action IDs (allocated at 360..392 after CP_FORGE_ISS_CHAT :: 349)
 CP_GYM_MODE_ACT :: 360;      // coder.gym.mode.<0|1|2>
@@ -167,11 +169,13 @@ CpLeanRh :: struct {
   req_str: [256] u8; req_str_n: int;
   // Scroll for general views
   scroll_y: f32;
+  // Screen-space viewport rect for embedded Metaverse Engine 3D Flythrough (CP_LEAN_3D)
+  fly_x: f32; fly_y: f32; fly_w: f32; fly_h: f32;
 }
 
 cp_lean_init :: (s: [] CoderPage) {
   l := s[0].lean[..];
-  l[0].view = CP_LEAN_TOUR;
+  l[0].view = CP_LEAN_3D;
   l[0].tour_track = 1;
   l[0].tour_step = 0;
   l[0].atlas_lod = 0;
@@ -197,13 +201,14 @@ cp_lean_req :: (s: [] CoderPage, ask_code: int, arg: string) {
 }
 
 cp_lean_view_name :: (v: int) -> string {
+  if v == CP_LEAN_3D { return "fly3d"; }
   if v == CP_LEAN_TOUR { return "tour"; }
   if v == CP_LEAN_ATLAS { return "atlas"; }
   if v == CP_LEAN_MATH { return "math"; }
   if v == CP_LEAN_INSPECT { return "inspect"; }
   if v == CP_LEAN_TRUST { return "trust"; }
   if v == CP_LEAN_PROVER { return "prover"; }
-  return "tour";
+  return "fly3d";
 }
 
 cp_lean_math_tab_name :: (t: int) -> string {
@@ -481,7 +486,8 @@ cp_lean_apply_plan :: (s: [] CoderPage, plan_json: string) -> bool {
   vb: [32] u8; vn := jv_str(d, jv_get(d, 0, "view"), vb[..]);
   if vn > 0 {
     vs := cast(string) vb[0..<vn];
-    if vs == "tour" { l[0].view = CP_LEAN_TOUR; }
+    if vs == "fly3d" || vs == "3d" { l[0].view = CP_LEAN_3D; }
+    else if vs == "tour" { l[0].view = CP_LEAN_TOUR; }
     else if vs == "atlas" { l[0].view = CP_LEAN_ATLAS; }
     else if vs == "math" { l[0].view = CP_LEAN_MATH; }
     else if vs == "inspect" { l[0].view = CP_LEAN_INSPECT; }

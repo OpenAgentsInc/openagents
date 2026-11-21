@@ -28,7 +28,34 @@ extension CoderWindow {
         guard cd_gym_open(page) != 0 else { return }
         cd_gym_set(page, 0)
         gymView?.isHidden = true
+        rhFlythroughView?.isHidden = true
         wake()
+    }
+
+    func ensureRhFlythroughView() -> RhFlythroughView {
+        if let existing = rhFlythroughView {
+            if existing.superview == nil {
+                canvas.addSubview(existing)
+            }
+            return existing
+        }
+        let view = RhFlythroughView(frame: .zero)
+        view.isHidden = true
+        view.onInspectModule = { [weak self] mod in
+            guard let self else { return }
+            cd_lean_view_set(self.page, 3) // CP_LEAN_INSPECT
+            self.rhFlythroughView?.isHidden = true
+            self.runLeanTool(["rh", "module", mod, "--json"]) { [weak self] out in
+                guard let self, let out else { return }
+                _ = cd_lean_module_set(self.page, out)
+                self.wake()
+            }
+            self.syncGymPanelFrame()
+            self.wake()
+        }
+        canvas.addSubview(view)
+        rhFlythroughView = view
+        return view
     }
 
     func ensureGymView() -> GymWorkbenchView {
@@ -48,26 +75,37 @@ extension CoderWindow {
         return view
     }
 
-    /// Keeps the GymWorkbenchView aligned to the Coax page's gym rect (right of sidebar, below lifted 36 pt GYM bar).
+    /// Keeps the GymWorkbenchView and RhFlythroughView aligned to their Coax page rects.
     func syncGymPanelFrame() {
-        guard let view = gymView else { return }
-        var rect = [Float](repeating: 0, count: 4)
-        let shown = cd_gym_rect(page, &rect)
-        guard shown != 0, rect[2] > 1, rect[3] > 1 else {
-            if !view.isHidden { view.isHidden = true }
-            return
-        }
         let canvasH = canvas.bounds.height
-        let x = CGFloat(rect[0]).rounded()
-        let w = CGFloat(rect[2]).rounded()
-        let h = CGFloat(rect[3]).rounded()
-        let y = (canvasH - CGFloat(rect[1]) - h).rounded()
-        let target = NSRect(x: x, y: max(0, y), width: max(1, w), height: max(1, h))
-        if view.frame != target {
-            view.frame = target
+        if let view = gymView {
+            var rect = [Float](repeating: 0, count: 4)
+            let shown = cd_gym_rect(page, &rect)
+            if shown != 0, rect[2] > 1, rect[3] > 1 {
+                let x = CGFloat(rect[0]).rounded()
+                let w = CGFloat(rect[2]).rounded()
+                let h = CGFloat(rect[3]).rounded()
+                let y = (canvasH - CGFloat(rect[1]) - h).rounded()
+                let target = NSRect(x: x, y: max(0, y), width: max(1, w), height: max(1, h))
+                if view.frame != target { view.frame = target }
+                if view.isHidden { view.isHidden = false }
+            } else if !view.isHidden {
+                view.isHidden = true
+            }
         }
-        if view.isHidden {
-            view.isHidden = false
+        var fRect = [Float](repeating: 0, count: 4)
+        let fShown = cd_lean_3d_rect(page, &fRect)
+        if fShown != 0, fRect[2] > 1, fRect[3] > 1 {
+            let fv = ensureRhFlythroughView()
+            let x = CGFloat(fRect[0]).rounded()
+            let w = CGFloat(fRect[2]).rounded()
+            let h = CGFloat(fRect[3]).rounded()
+            let y = (canvasH - CGFloat(fRect[1]) - h).rounded()
+            let target = NSRect(x: x, y: max(0, y), width: max(1, w), height: max(1, h))
+            if fv.frame != target { fv.frame = target }
+            if fv.isHidden { fv.isHidden = false }
+        } else if let fv = rhFlythroughView, !fv.isHidden {
+            fv.isHidden = true
         }
     }
 
@@ -232,6 +270,9 @@ extension CoderWindow {
             wake()
         case 157: // CP_ASK_FILE_LEAN_GOAL
             refreshFilePaneLeanGoal()
+        case 158: // CP_ASK_LEAN_VIEW
+            syncGymPanelFrame()
+            wake()
         default:
             break
         }

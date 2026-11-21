@@ -1,0 +1,259 @@
+// Metaverse Engine 3D Flythrough realm data & Catmull-Rom spline camera for the
+// Riemann Hypothesis Proof Workbench (OpenAgents Desktop Gym -> Lean · RH -> 1. 3D Flythrough).
+//
+// Reuses:
+//   - metaverse-engine/cam/flyover.coax (Catmull-Rom spline flyover camera `fly_parse` / `fly_shot`)
+//   - coax/lib/lean/rh-math.coax (real Riemann-Siegel Hardy Z(t) & |zeta(s)|, exact Robin 5040
+//     divisor ratios, and Alpoge's 8-stage sqrt(X) theta-lift chain vs 2/3 barrier)
+//
+//   coax/bin/coax test metaverse/rh-flythrough.coax --library
+#load "../metaverse-engine/cam/flyover.coax";
+#load "../coax/lib/lean/rh-math.coax";
+#load "../coax/lib/json/json.coax";
+
+RH3D_STATIONS :: 8;
+RH3D_DURATION :: 62.0f32;
+
+// 10-key Metaverse Engine Catmull-Rom flyover spline (Y-up meters, matching metaverse-engine/cam/flyover.coax):
+//   t=0..49s glides smoothly through all 8 stations (X = -42 .. +42, 12m apart along Z = 0),
+//   t=55s sweeps high into a full panoramic vista of all 8 stations end-to-end,
+//   t=62s loops cleanly back toward Station 1 (Zeta Terrain).
+RH3D_FLY_PATH :: "0,-49,8.5,15,-42,2.6,0~7,-34,7.2,13.5,-30,2.8,0~14,-21,7.5,14,-18,3.2,0~21,-8,8.5,15,-6,3.8,0~28,6,11.5,18,6,4.5,0~35,19,8.0,14.5,18,3.2,0~42,32,8.5,15,30,3.6,0~49,47,10.5,16,42,5.5,0~55,0,32.0,74,0,3.0,0~62,-49,8.5,15,-42,2.6,0";
+
+Rh3dStation :: struct {
+  x: f32;
+  y: f32;
+  z: f32;
+  time_s: f32;
+  eye_x: f32;
+  eye_y: f32;
+  eye_z: f32;
+  short_name: string;
+  title: string;
+  subtitle: string;
+  plain_english: string;
+  module_name: string;
+}
+
+rh3d_station :: (idx: int) -> Rh3dStation {
+  if idx == 0 {
+    return Rh3dStation.{
+      x = -42.0f32, y = 2.6f32, z = 0.0f32, time_s = 0.0f32,
+      eye_x = -49.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
+      short_name = "1. Zeta Terrain",
+      title = "1. THE MYSTERY — Riemann Zeta Terrain & Critical Wall",
+      subtitle = "Real |zeta(sigma + it)| mountain range computed live in Coax",
+      plain_english = "The height of this 3D landscape is |zeta(s)| over the complex plane. Every deep valley where it hits zero (gold beacons) sits on one golden glass wall at Re(s) = 1/2. Proving NO zero ever wanders off this wall is the Riemann Hypothesis.",
+      module_name = "Statements",
+    };
+  }
+  if idx == 1 {
+    return Rh3dStation.{
+      x = -30.0f32, y = 2.8f32, z = 0.0f32, time_s = 7.0f32,
+      eye_x = -34.0f32, eye_y = 7.2f32, eye_z = 13.5f32,
+      short_name = "2. Robin 5040",
+      title = "2. THE EQUIVALENT TEST — Robin's 5040 Gate",
+      subtitle = "Exact divisor sums sigma(n) break the ceiling up to 5040, then stay under forever",
+      plain_english = "In 1984 Guy Robin proved RH is 100% identical to a test on whole numbers: divisor sums sigma(n) stay below e^gamma * n * ln(ln n) for every n > 5040. The golden tower at 5040 is the last exception in math — used to cross-check Challenge.lean.",
+      module_name = "Challenge",
+    };
+  }
+  if idx == 2 {
+    return Rh3dStation.{
+      x = -18.0f32, y = 3.2f32, z = 0.0f32, time_s = 14.0f32,
+      eye_x = -21.0f32, eye_y = 7.5f32, eye_z = 14.0f32,
+      short_name = "3. 2/3 Barrier",
+      title = "3. THE BREAKTHROUGH — Smashing the 2/3 Wall",
+      subtitle = "Classical transfer stalled below 2/3; Alpoge's 8-stage sqrt(X) chain climbs past it",
+      plain_english = "For decades, classical math stalled under the crimson 2/3 density barrier (red glass slab). By pairing sqrt(X) square-root cancellation with an 8-stage iterated Theta-Lift chain (glowing cyan staircase), Alpoge's proof vaults straight over 2/3.",
+      module_name = "Supplements.ThetaPairLifts",
+    };
+  }
+  if idx == 3 {
+    return Rh3dStation.{
+      x = -6.0f32, y = 3.8f32, z = 0.0f32, time_s = 21.0f32,
+      eye_x = -8.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
+      short_name = "4. Theta Bridge",
+      title = "4. THE ENGINE — Formal Degree & Bessel Cathedral",
+      subtitle = "44,578 Supplements modules mapping primes into curved automorphic symmetries",
+      plain_english = "These 8 luminous sapphire columns represent the core analytic engine (FormalDegreeBessel, ThetaPairLifts, Whittaker, Spectral, Endoscopy). They translate prime-number oscillations into symmetries on curved hyperbolic spaces where cancellations become visible.",
+      module_name = "Supplements.FormalDegreeBessel",
+    };
+  }
+  if idx == 4 {
+    return Rh3dStation.{
+      x = 6.0f32, y = 4.5f32, z = 0.0f32, time_s = 28.0f32,
+      eye_x = 6.0f32, eye_y = 11.5f32, eye_z = 18.0f32,
+      short_name = "5. 175k City",
+      title = "5. THE 17.37M-LINE CITY — All 175,182 Real Lean Files",
+      subtitle = "Real 3D skyline hydrated live from ~/.openagents/lean/index/rh-atlas.json",
+      plain_english = "Every skyscraper here is a real folder of machine-checked Lean 4 code built by Levent Alpoge & Claude: Formalism (130,278 files, emerald district) + Supplements (44,578 files, sapphire district) + 8 specialist districts feeding upward into Main.",
+      module_name = "Formalism",
+    };
+  }
+  if idx == 5 {
+    return Rh3dStation.{
+      x = 18.0f32, y = 3.2f32, z = 0.0f32, time_s = 35.0f32,
+      eye_x = 19.0f32, eye_y = 8.0f32, eye_z = 14.5f32,
+      short_name = "6. Behrend/Weil",
+      title = "6. THE GUARDRAILS — Behrend Sets & Weil Bounds",
+      subtitle = "Additive combinatorics crystal lattice + algebraic geometry arches lock error terms",
+      plain_english = "Even a tiny uncontrolled error term could hide an off-line zero. Behrend progression-free sphere sets (amber 3D crystal lattice) and Weil finite-field bounds (golden arches overhead) prove residual terms can never conspire against Re(s) = 1/2.",
+      module_name = "Formalism.BehrendSets.FinalE",
+    };
+  }
+  if idx == 6 {
+    return Rh3dStation.{
+      x = 30.0f32, y = 3.6f32, z = 0.0f32, time_s = 42.0f32,
+      eye_x = 32.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
+      short_name = "7. 4 Kernels",
+      title = "7. THE TRUST FORTRESS — 4 Independent Lean Kernels",
+      subtitle = "MIT multi-kernel certification: 0 sorry, 0 native_decide, 3 standard axioms only",
+      plain_english = "Four separate typecheckers (lake check --paranoid, leanchecker, nanoda, con-leche & con-ron) re-checked the proof using only propext, Quot.sound, and Classical.choice. The 6 small amber beacons show the 6 audited metaprogramming sites.",
+      module_name = "BuildAid.D1",
+    };
+  }
+  return Rh3dStation.{
+    x = 42.0f32, y = 5.5f32, z = 0.0f32, time_s = 49.0f32,
+    eye_x = 47.0f32, eye_y = 10.5f32, eye_z = 16.0f32,
+    short_name = "8. Summit Q.E.D.",
+    title = "8. THE SUMMIT — Main.riemannHypothesis (Q.E.D.)",
+    subtitle = "813,182 theorems lock into 4 lines of Lean: theorem riemannHypothesis := rhOfAll",
+    plain_english = "Every glowing conduit across all 175,182 Lean files converges into this golden summit spire. Four lines in src/Main.lean seal the Riemann Hypothesis — released Nov 20, 2026 and certified by the Lean FRO & Mathlib Initiative on Nov 21, 2026.",
+    module_name = "Main",
+  };
+}
+
+// Evaluates the Metaverse Engine Catmull-Rom flyover spline at `t_sec` (wrapping modulo RH3D_DURATION).
+rh3d_eval_fly :: (t_sec: f32) -> Shot {
+  p := fly_parse(RH3D_FLY_PATH);
+  t := t_sec;
+  while t < 0.0f32 { t += RH3D_DURATION; }
+  while t >= RH3D_DURATION { t -= RH3D_DURATION; }
+  return fly_shot(p, t);
+}
+
+// Evaluates clamped |zeta(sigma + i*t)| height in [0.0, 4.5] for 3D terrain rendering.
+rh3d_zeta_height :: (sigma: f64, t: f64) -> f32 {
+  mag := rhm_l_abs(0, sigma, t);
+  if mag < 0.0 { mag = 0.0; }
+  if mag > 4.5 { mag = 4.5; }
+  return cast(f32) mag;
+}
+
+// Fills an `ns * nt` grid of real |zeta(sigma + it)| elevations for sigma in [0.12, 0.88], t in [4.0, 50.0].
+rh3d_fill_zeta_grid :: (ns: int, nt: int, out: [] f32) -> int {
+  if ns < 2 || nt < 2 || out.count < ns * nt { return 0; }
+  for j: 0..<nt {
+    t := 4.0 + (46.0 * cast(f64) j) / cast(f64) (nt - 1);
+    for i: 0..<ns {
+      sigma := 0.12 + (0.76 * cast(f64) i) / cast(f64) (ns - 1);
+      out[j * ns + i] = rh3d_zeta_height(sigma, t);
+    }
+  }
+  return ns * nt;
+}
+
+// ---- C ABI exports linked into OpenAgents Desktop (RhFlythroughView.swift) ----
+
+oa_dc_rh3d_fly_shot :: (t_ms: int, out_mm: [] int) -> int #export_c #effects(all) {
+  if out_mm.count < 6 { return 0; }
+  sh := rh3d_eval_fly(cast(f32) t_ms / 1000.0f32);
+  out_mm[0] = cast(int) (sh.eye.x * 1000.0f32);
+  out_mm[1] = cast(int) (sh.eye.y * 1000.0f32);
+  out_mm[2] = cast(int) (sh.eye.z * 1000.0f32);
+  out_mm[3] = cast(int) (sh.at.x * 1000.0f32);
+  out_mm[4] = cast(int) (sh.at.y * 1000.0f32);
+  out_mm[5] = cast(int) (sh.at.z * 1000.0f32);
+  return 1;
+}
+
+oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "duration_ms"); jo_int(o[..], cast(int) (RH3D_DURATION * 1000.0f32));
+  jo_key(o[..], "stations"); jo_arr(o[..]);
+  for i: 0..<RH3D_STATIONS {
+    st := rh3d_station(i);
+    jo_obj(o[..]);
+    jo_key(o[..], "x_mm"); jo_int(o[..], cast(int) (st.x * 1000.0f32));
+    jo_key(o[..], "y_mm"); jo_int(o[..], cast(int) (st.y * 1000.0f32));
+    jo_key(o[..], "z_mm"); jo_int(o[..], cast(int) (st.z * 1000.0f32));
+    jo_key(o[..], "time_ms"); jo_int(o[..], cast(int) (st.time_s * 1000.0f32));
+    jo_key(o[..], "eye_x_mm"); jo_int(o[..], cast(int) (st.eye_x * 1000.0f32));
+    jo_key(o[..], "eye_y_mm"); jo_int(o[..], cast(int) (st.eye_y * 1000.0f32));
+    jo_key(o[..], "eye_z_mm"); jo_int(o[..], cast(int) (st.eye_z * 1000.0f32));
+    jo_key(o[..], "short_name"); jo_str(o[..], st.short_name);
+    jo_key(o[..], "title"); jo_str(o[..], st.title);
+    jo_key(o[..], "subtitle"); jo_str(o[..], st.subtitle);
+    jo_key(o[..], "plain_english"); jo_str(o[..], st.plain_english);
+    jo_key(o[..], "module"); jo_str(o[..], st.module_name);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "zeros_mm"); jo_arr(o[..]);
+  for i: 0..<10 { jo_int(o[..], cast(int) (RHM_ZEROS[i] * 1000.0)); }
+  jo_end(o[..]);
+  jo_key(o[..], "robin"); jo_arr(o[..]);
+  for i: 0..<RHM_ROBIN_MARKS_N {
+    n := RHM_ROBIN_MARKS[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "n"); jo_int(o[..], n);
+    jo_key(o[..], "ratio_mm"); jo_int(o[..], cast(int) (rhm_robin_ratio(n) * 1000.0));
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "theta"); jo_arr(o[..]);
+  for k: 1..<9 {
+    jo_obj(o[..]);
+    jo_key(o[..], "stage"); jo_int(o[..], k);
+    jo_key(o[..], "classical_mm"); jo_int(o[..], cast(int) (rhm_theta_classical(k, 1.0) * 1000.0));
+    jo_key(o[..], "alpoge_mm"); jo_int(o[..], cast(int) (rhm_theta_alpoge(k, 1.0) * 1000.0));
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  ns := 24; nt := 36;
+  grid: [864] f32;
+  gn := rh3d_fill_zeta_grid(ns, nt, grid[..]);
+  jo_key(o[..], "zeta_ns"); jo_int(o[..], ns);
+  jo_key(o[..], "zeta_nt"); jo_int(o[..], nt);
+  jo_key(o[..], "zeta_mm"); jo_arr(o[..]);
+  for i: 0..<gn { jo_int(o[..], cast(int) (grid[i] * 1000.0f32)); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return 0; }
+  if o[0].n < out.count { out[o[0].n] = 0; }
+  return o[0].n;
+}
+
+#test "rh3d flythrough: Metaverse Engine Catmull-Rom spline is valid, smooth, and hits all 8 stations" {
+  p := fly_parse(RH3D_FLY_PATH);
+  #assert p.ok && p.flight.count == 10 && p.length == RH3D_DURATION;
+
+  s0 := rh3d_eval_fly(0.0f32);
+  #assert s0.at.x == -42.0f32 && s0.eye.x == -49.0f32;
+  s7 := rh3d_eval_fly(49.0f32);
+  #assert s7.at.x == 42.0f32 && s7.eye.x == 47.0f32;
+  s_pan := rh3d_eval_fly(55.0f32);
+  #assert s_pan.eye.y == 32.0f32 && s_pan.eye.z == 74.0f32;
+
+  for k: 0..<120 {
+    t := cast(f32) k * 0.5f32;
+    a := rh3d_eval_fly(t);
+    b := rh3d_eval_fly(t + 0.5f32);
+    #assert length(sub(a.eye, b.eye)) < 25.0f32;
+  }
+
+  h_zero := rh3d_zeta_height(0.5, RHM_ZEROS[0]);
+  h_peak := rh3d_zeta_height(0.5, 17.5);
+  #assert h_zero < 0.12f32 && h_peak > 1.0f32;
+
+  grid: [64] f32;
+  #assert rh3d_fill_zeta_grid(8, 8, grid[..]) == 64;
+
+  // C ABI exports work end-to-end
+  mm: [6] int;
+  #assert oa_dc_rh3d_fly_shot(0, mm[..]) == 1 && mm[0] == -49000 && mm[3] == -42000;
+  jb: [32768] u8;
+  #assert oa_dc_rh3d_scene_json(jb[..]) > 2000;
+}

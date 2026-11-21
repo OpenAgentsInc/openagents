@@ -135,6 +135,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var liveSceneCheckedAt: CFTimeInterval = 0
     var liveSceneFailedAt: [Double] = []
     var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
+    var rhFlythroughView: RhFlythroughView? // Metaverse Engine 3D RH Flythrough view (RhFlythroughView.swift)
     var gymRequestTimer: Timer?          // takes ple-run gym's requests (Window+Gym.swift, #13812)
     var leanHydrated = false             // whether Lean · RH Workbench initial doctor/audit/Main hydration ran (#13946)
     // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
@@ -499,7 +500,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 140...145: forgeAsked(what)
         case 146: manageExecutorModels()
         case 147: managePylonExecutorNetwork()
-        case 150...157: leanGymAsked(what)
+        case 150...158: leanGymAsked(what)
         case 40...43: fileAsked(what)
         default: break
         }

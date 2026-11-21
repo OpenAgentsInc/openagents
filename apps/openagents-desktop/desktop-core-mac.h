@@ -85,3 +85,5 @@ int64_t oa_dc_pylon_dashboard(coax_string home, coax_v_u8 out_pylon, coax_v_u8 o
 int64_t oa_dc_exec_release_stage(coax_string home, coax_string manifest_path, coax_string payload_path, coax_string trusted_pubkey, coax_v_u8 out_err);
 int64_t oa_dc_exec_release_promote(coax_string home, coax_v_u8 out_err);
 int64_t oa_dc_exec_release_rollback(coax_string home, coax_v_u8 out_err);
+int64_t oa_dc_rh3d_fly_shot(int64_t t_ms, coax_v_s64 out_mm);
+int64_t oa_dc_rh3d_scene_json(coax_v_u8 out);

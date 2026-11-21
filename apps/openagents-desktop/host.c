@@ -2053,6 +2053,15 @@ void cd_lean_atlas_lod_set(void *page, int lod) {
   coder_page_lean_atlas_lod_set(cd_state(c), lod);
   cd_woke(c);
 }
+void cd_lean_view_set(void *page, int view) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_lean_view_set(cd_state(c), view);
+  cd_woke(c);
+}
+int cd_lean_3d_rect(void *page, float out[4]) {
+  CoderHost *c = page;
+  return c && out && coder_page_lean_3d_rect(cd_state(c), (coax_v_f32){out, 4});
+}
 void cd_file_lean_goal(void *page, int line, int ok, int accomplished, const char *summary) {
   CoderHost *c = page; if (!c) return;
   coder_page_file_lean_goal(cd_state(c), line, ok != 0, accomplished != 0, cd_string(summary));

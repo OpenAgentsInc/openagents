@@ -380,9 +380,41 @@ enum TestLaunch {
         return okCount >= 8 ? 0 : 1
     }
 
+    /// Headless offscreen Metal PNG capture of the Metaverse Engine 3D RH Flythrough (ZERO windows).
+    static func runRh3dShots(outDir: String) -> Int32 {
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+        let view = RhFlythroughView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
+        let shots: [(String, Float?, Bool)] = [
+            ("00-overview.png", nil, true),
+            ("01-zeta-terrain.png", 0.0, false),
+            ("02-robin-5040.png", 7.0, false),
+            ("03-barrier-23.png", 14.0, false),
+            ("04-theta-bridge.png", 21.0, false),
+            ("05-city-175k.png", 28.0, false),
+            ("06-behrend-weil.png", 35.0, false),
+            ("07-kernels.png", 42.0, false),
+            ("08-summit-qed.png", 49.0, false),
+        ]
+        var ok = 0
+        for (name, t, ov) in shots {
+            let url = URL(fileURLWithPath: outDir).appendingPathComponent(name)
+            if view.renderOffscreenPNG(to: url, width: 1440, height: 900, timeSeconds: t, overview: ov) {
+                print("wrote \(name)")
+                ok += 1
+            } else {
+                fputs("failed \(name)\n", stderr)
+            }
+        }
+        return ok == shots.count ? 0 : 1
+    }
+
     static func main() {
         if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
             exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
+        }
+        if let at = CommandLine.arguments.firstIndex(of: "--shot-rh-3d"), at + 1 < CommandLine.arguments.count {
+            exit(runRh3dShots(outDir: CommandLine.arguments[at + 1]))
         }
         let app = NSApplication.shared; app.setActivationPolicy(.regular)
         let delegate = CoderDelegate(); app.delegate = delegate

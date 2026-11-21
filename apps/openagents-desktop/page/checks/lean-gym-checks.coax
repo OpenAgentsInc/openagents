@@ -164,3 +164,22 @@
   #assert cp_lean_load_audit(s, "{\"reachable_from_main\":175181,\"digests\":[],\"tier_c_receipt\":{\"verified\":true,\"target\":\"add_zero_right\",\"kernel\":\"lean4\",\"elapsed_ms\":10,\"file_sha256\":\"short\"}}");
   #assert !s[0].lean[0].tier_c_present;
 }
+
+#test "lean 3d flythrough tab: default view is CP_LEAN_3D and exposes valid Metal 3D overlay rect" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  s[0].experimental = true; s[0].gym_open = true; s[0].gym_mode = CP_GYM_LEAN;
+  #assert s[0].lean[0].view == CP_LEAN_3D;
+  verts: [CP_MAX_VERTICES] f32;
+  _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+  #assert s[0].refused == 0;
+  r: [4] f32;
+  #assert coder_page_lean_3d_rect(s, r[..]) && r[2] > 600.0f32 && r[3] > 400.0f32;
+  // Switching to Guided Tour hides the 3D overlay rect and raises CP_ASK_LEAN_VIEW
+  #assert cp_lean_press(s, CP_LEAN_VIEW_ACT, "coder.lean.view.0") && s[0].lean[0].view == CP_LEAN_TOUR;
+  #assert coder_page_action(s) == CP_ASK_LEAN_VIEW;
+  #assert !coder_page_lean_3d_rect(s, r[..]);
+}
