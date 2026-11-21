@@ -21,7 +21,7 @@ hd_feed :: (out:[]f32,at:int,s:[]HudFeed,b:HudBox,p:HdPen)->int {
   text:=source[0..<stop];starts:[64]int;ends:[64]int;count:=0;from:=0;
   ink:=hd_ink(p,0);ink.sans=false;
   while from<text.count {
-    next:[1]int;end:=wrap_ink(text,from,b.width-8,11,0.22,0.72,ink,next[..]);
+    next:[1]int;end:=font_ink_line(text,from,b.width-8,11,0.22,0.72,ink,next[..]);
     starts[count%rows]=from;ends[count%rows]=end;count+=1;from=next[0];
   }
   first:=count-rows;if first<0 {first=0;}

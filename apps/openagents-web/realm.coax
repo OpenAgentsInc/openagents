@@ -907,7 +907,7 @@ draw_voice :: (r: [] Realm, out: [] f32, at: int, talking: string) -> int {
   v := draw_fit(d, out, at, label, b.x0 + 12 * k, b.y0 + 17 * k, 7 * k, GAP, SPACE, orange(k, 0.95), b.x1 - b.x0 - 24 * k);
   if text.count > 0 {
     used: [1] f32;
-    v = draw_wrapped(d, out, v, text, b.x0 + 12 * k, b.y0 + 33 * k, 8 * k, GAP, SPACE, white(k, 0.95),
+    v = draw_lines(d, out, v, text, b.x0 + 12 * k, b.y0 + 33 * k, 8 * k, GAP, SPACE, white(k, 0.95),
                      b.x1 - b.x0 - 24 * k, 14 * k, false, true, used[..]);
   }
   return v;
@@ -957,7 +957,7 @@ draw_offer :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   ln = put(line[..], ln, ": ");
   ln = put(line[..], ln, ifx v.offer_what.count > 0 then v.offer_what else "a change to your world");
   used: [1] f32;
-  vertices = draw_wrapped(k, out, vertices, cast(string) line[0..<ln], x, b.y0 + 46 * k, 8 * k, GAP, SPACE, white(k, 0.9),
+  vertices = draw_lines(k, out, vertices, cast(string) line[0..<ln], x, b.y0 + 46 * k, 8 * k, GAP, SPACE, white(k, 0.9),
                           b.x1 - x - 16 * k, 16 * k, false, true, used[..]);
   bw := (b.x1 - b.x0 - 44 * k) * 0.5; bh := 30 * k; y1 := b.y1 - 12 * k;
   yes := Box.{x0 = x, y0 = y1 - bh, x1 = x + bw, y1 = y1};
@@ -1070,7 +1070,7 @@ draw_chat :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   for i: first..<v.lines {
     ln := chat_line(line[..], v, i);
     h: [1] f32;
-    vertices = draw_wrapped(k, out, vertices, cast(string) line[0..<ln], x, y, cap, GAP, SPACE,
+    vertices = draw_lines(k, out, vertices, cast(string) line[0..<ln], x, y, cap, GAP, SPACE,
                             ifx v.line_mine[i] then orange(k, 0.85) else white(k, 0.9), width, lead, false, true, h[..]);
     y += hi(h[0], lead) + 4 * k;
   }
@@ -1092,7 +1092,7 @@ draw_chat :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   vertices = hud_button(r, out, vertices, BTN_SEND, sending, "SEND", "", text.count > 0);
   vertices = hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "", false);
   said: [1] f32;
-  return draw_wrapped(k, out, vertices, CHAT_DISCLOSURE, b.x0 + 4 * k, b.y1 + 8 * k, 6.5 * k, GAP, SPACE, white(k, 0.7),
+  return draw_lines(k, out, vertices, CHAT_DISCLOSURE, b.x0 + 4 * k, b.y1 + 8 * k, 6.5 * k, GAP, SPACE, white(k, 0.7),
                       b.x1 - b.x0 - 8 * k, 13 * k, false, true, said[..]);
 }
 CHAT_DISCLOSURE :: "Everyone in this house sees what you say here, and we keep it.";
@@ -1173,13 +1173,13 @@ draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32)
   x := b.x0 + 18 * k;
   // a long answer makes the box taller, up to the top of the HUD
   need: [1] f32;
-  _ := draw_wrapped(k, out, at, v.reply, x, 0, 8.5 * k, GAP, SPACE, white(k, 0), b.x1 - x - 18 * k, 17 * k, false, false, need[..]);
+  _ := draw_lines(k, out, at, v.reply, x, 0, 8.5 * k, GAP, SPACE, white(k, 0), b.x1 - x - 18 * k, 17 * k, false, false, need[..]);
   b.y0 = hi(lo(b.y0, b.y1 - need[0] - 104 * k), top_bottom(r) + 12 * k);
   plate(r, b, 0.92, LOOK_PLAIN);
   vertices := at;
   vertices = write(k, out, vertices, v.talking, x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   height: [1] f32;
-  vertices = draw_wrapped(k, out, vertices, v.reply, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, 0.85),
+  vertices = draw_lines(k, out, vertices, v.reply, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, 0.85),
                           b.x1 - x - 18 * k, 17 * k, false, true, height[..]);
   gap := ifx phone(r) then 8 * k else 12 * k;
   bw := lo(ifx phone(r) then 74 * k else 92 * k, (b.x1 - b.x0 - 36 * k - 3 * gap) / 4); bh := 32 * k;
@@ -1268,7 +1268,7 @@ draw_name :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   if v.quest_line.count > 0 {
     // wrapped, not cut: on a phone the first step ("Walk in through the front door") is wider than the room left of the map
     said: [1] f32;
-    vertices = draw_wrapped(k, out, vertices, v.quest_line, t.x0 + 2 * k, t.y1 + 12.5 * k, 7.5 * k, GAP, SPACE,
+    vertices = draw_lines(k, out, vertices, v.quest_line, t.x0 + 2 * k, t.y1 + 12.5 * k, 7.5 * k, GAP, SPACE,
                             orange(k, ifx v.quest < QUEST_STEPS then 0.95f32 else 0.6f32), minimap_box(r).x0 - t.x0 - 16 * k, 12.5 * k, false, true, said[..]);
   }
   return vertices;
@@ -1297,7 +1297,7 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   shown := ifx text.count > 0 then text else empty;
   used: [1] f32;
   // all of it selected (Cmd+A) is drawn orange
-  vertices = draw_wrapped(k, out, vertices, shown, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE,
+  vertices = draw_lines(k, out, vertices, shown, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE,
                           ifx r[0].typed_all && text.count > 0 then orange(k, 0.95) else white(k, ifx text.count > 0 then 0.9f32 else 0.4f32),
                           b.x1 - x - 18 * k, 17 * k, false, true, used[..]);
   if sin(r[0].time * 6) > -0.2 {
@@ -1315,9 +1315,9 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   said: [1] f32;
   disclosure := ifx kind == TYPE_ASK then ASK_DISCLOSURE else ifx kind == TYPE_TEACH then TEACH_DISCLOSURE else ifx kind == TYPE_PIECE then PIECE_DISCLOSURE else TRACK_DISCLOSURE;
   // under the box when it fits on the screen, else over it (the box sits on the bar, at the screen's bottom)
-  _ := draw_wrapped(k, out, vertices, disclosure, 0, 0, 7 * k, GAP, SPACE, white(k, 0), b.x1 - b.x0 - 8 * k, 14 * k, false, false, said[..]);
+  _ := draw_lines(k, out, vertices, disclosure, 0, 0, 7 * k, GAP, SPACE, white(k, 0), b.x1 - b.x0 - 8 * k, 14 * k, false, false, said[..]);
   dy := ifx b.y1 + 8 * k + said[0] <= r[0].height - 4 * k then b.y1 + 8 * k else b.y0 - 10 * k - said[0];
-  vertices = draw_wrapped(k, out, vertices, disclosure, b.x0 + 4 * k, dy, 7 * k, GAP, SPACE, white(k, 0.7),
+  vertices = draw_lines(k, out, vertices, disclosure, b.x0 + 4 * k, dy, 7 * k, GAP, SPACE, white(k, 0.7),
                           b.x1 - b.x0 - 8 * k, 14 * k, false, true, said[..]);
   return hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "ESC", false);
 }
@@ -1396,7 +1396,7 @@ draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   // what the house saves while you're here (analytics.coax), as the playtest says it
   dw := lo(360 * k, r[0].width - 2 * gutter(r));
   said: [1] f32;
-  return draw_wrapped(k, out, vertices, TRACK_DISCLOSURE, cx - dw * 0.5, y + 22 * k, 7 * k, GAP, SPACE, white(k, 0.5),
+  return draw_lines(k, out, vertices, TRACK_DISCLOSURE, cx - dw * 0.5, y + 22 * k, 7 * k, GAP, SPACE, white(k, 0.5),
                       dw, 14 * k, false, true, said[..]);
 }
 
@@ -1463,7 +1463,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     w := lo(measure(v.notice, GAP, SPACE, false) * cap, r[0].width - 2 * gutter(r));
     y := top_bottom(r) + 28 * k;
     used: [1] f32;
-    vertices = draw_wrapped(d, out, vertices, v.notice, (r[0].width - w) * 0.5, y, cap, GAP, SPACE, white(k, 0.95),
+    vertices = draw_lines(d, out, vertices, v.notice, (r[0].width - w) * 0.5, y, cap, GAP, SPACE, white(k, 0.95),
                             w + cap, 18 * k, false, true, used[..]);
   }
 
@@ -1519,12 +1519,12 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     if told > 0.01 && !r[0].map && !chatting && use_label(v).count == 0 {
       said: [1] f32;
       dw := lo(420 * k, r[0].width - 2 * gutter(r) - 24 * k);
-      vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, 0, 0, 6.5 * k, GAP, SPACE, white(k, 0), dw, 13 * k, false, false, said[..]);
+      vertices = draw_lines(d, out, vertices, TRACK_DISCLOSURE, 0, 0, 6.5 * k, GAP, SPACE, white(k, 0), dw, 13 * k, false, false, said[..]);
       bottom := hotbar_top(r) - 40 * k;
       x0 := (r[0].width - dw) * 0.5;
       top := bottom - said[0] - 6.5 * k;
       plate(r, Box.{x0 = x0 - 12 * k, y0 = top - 15 * k, x1 = x0 + dw + 12 * k, y1 = bottom + 4 * k}, 0.75 * told, LOOK_PLAIN);
-      vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, x0, top - 6.5 * k, 6.5 * k, GAP, SPACE, white(k, 0.8 * told), dw, 13 * k, false, true, said[..]);
+      vertices = draw_lines(d, out, vertices, TRACK_DISCLOSURE, x0, top - 6.5 * k, 6.5 * k, GAP, SPACE, white(k, 0.8 * told), dw, 13 * k, false, true, said[..]);
     }
   }
   return vertices;

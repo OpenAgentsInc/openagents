@@ -124,9 +124,9 @@ eu_number :: (buf: [] u8, value: int, suffix: string) -> string { n := put_int(b
 // Hashes wrap at exact byte boundaries, remaining fully visible and copyable.
 eu_lines :: (s: [] ExplorerUi, out: [] f32, at: int, text: string, x: f32, y: f32, width: f32, tone: int) -> int {
   v := at; i := 0; line := 0; next: [1] int;
-  while i < text.count { end := wrap_ink(text,i,width,9,0,0,Ink.{sans=true},next[..]); v = eu_text(s,out,v,text[i..<end],x,y+cast(f32)line*21,9,tone); i = next[0]; line += 1; } return v;
+  while i < text.count { end := font_ink_line(text,i,width,9,0,0,Ink.{sans=true},next[..]); v = eu_text(s,out,v,text[i..<end],x,y+cast(f32)line*21,9,tone); i = next[0]; line += 1; } return v;
 }
-eu_line_height :: (text: string, width: f32) -> f32 { i := 0; lines := 0; next: [1] int; while i < text.count { _ := wrap_ink(text,i,width,9,0,0,Ink.{sans=true},next[..]); i = next[0]; lines += 1; } return 21*cast(f32)most(1,lines); }
+eu_line_height :: (text: string, width: f32) -> f32 { i := 0; lines := 0; next: [1] int; while i < text.count { _ := font_ink_line(text,i,width,9,0,0,Ink.{sans=true},next[..]); i = next[0]; lines += 1; } return 21*cast(f32)most(1,lines); }
 eu_link :: (s: [] ExplorerUi, out: [] f32, at: int, text: string, x: f32, y: f32, width: f32, kind: int, key: string) -> int {
   d := s[0].dpr; height := eu_line_height(text,width); top := hi(y-14,212); bottom := lo(y+height,s[0].height/d-26);
   if top < bottom { eu_hit(s,Box.{x0=x*d,y0=top*d,x1=(x+width)*d,y1=bottom*d},kind,key,text); }

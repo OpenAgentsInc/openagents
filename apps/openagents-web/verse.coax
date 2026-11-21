@@ -1199,7 +1199,7 @@ draw_galaxy :: (s: [] MetaverseState, out: [] f32, at: int) -> int {
     b := Box.{x0 = cx - tw * 0.5, y0 = h - 110 * k - th, x1 = cx + tw * 0.5, y1 = h - 110 * k};
     plate(s, b, 0.95 * shown, LOOK_LIT);
     used: [1] f32;
-    vertices = draw_wrapped(d, out, vertices, say, b.x0 + 14 * k, b.y0 + 9 * k, 8.5 * k, GAP, SPACE, white(k, shown), tw - 28 * k, 16 * k, false, true, used[..]);
+    vertices = draw_lines(d, out, vertices, say, b.x0 + 14 * k, b.y0 + 9 * k, 8.5 * k, GAP, SPACE, white(k, shown), tw - 28 * k, 16 * k, false, true, used[..]);
   }
   return vertices;
 }

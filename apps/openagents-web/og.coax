@@ -303,7 +303,7 @@ og_preview :: (out: [] f32, at: int, s: [] OgState, r: int, b: Box, p: Pen, lit_
   y := pic.y1 + 22 * d;
   t := white; t.sans = true;
   v = put_fit(out, v, og_cell(s, r, O_TITLE), x, y, 8.5 * d, t, w);
-  v = put_wrapped(out, v, og_cell(s, r, O_DESC), x, y + 19 * d, 7 * d, dim, w, 14 * d, 3);
+  v = put_lines(out, v, og_cell(s, r, O_DESC), x, y + 19 * d, 7 * d, dim, w, 14 * d, 3);
   // the address, then the picture's facts
   url := og_cell(s, r, O_URL);
   v = put_fit(out, v, url, x, y + 66 * d, 6.5 * d, faint, w);
@@ -372,7 +372,7 @@ og_card :: (out: [] f32, at: int, s: [] OgState, r: int, p: Pen, uniforms: [] f3
   cap := ifx brand then 64 * u else 46 * u;
   if text_width(title, cap) > w { cap = hi(26 * u, cap * w / text_width(title, cap)); }
   v = put_fit(out, v, title, x, 236 * u, cap, white, w);
-  v = put_wrapped(out, v, desc, x, 318 * u, 16 * u, line, w, 40 * u, 3);
+  v = put_lines(out, v, desc, x, 318 * u, 16 * u, line, w, 40 * u, 3);
   if same(kind, "project") && og_cell(s, r, O_PROGRESS).count > 0 {
     pr := og_cell(s, r, O_PROGRESS);
     done := og_word_int(pr, 0); open := og_word_int(pr, 1); readyn := og_word_int(pr, 2);
