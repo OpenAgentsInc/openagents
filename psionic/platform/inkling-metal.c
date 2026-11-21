@@ -12,7 +12,7 @@
 #define INK_NT  256
 #define INK_D   8
 #define INK_MAX_BLOCKS 8
-#define INK_PREFILL_B 1024
+#define INK_PREFILL_B 3072
 
 enum {
     K_EMBED_Q8 = 0,
@@ -288,6 +288,7 @@ struct InkSession {
     /* Per logical slot recurrent shortconv state and KV cache */
     int n_slots;
     int max_ctx;
+    int prefill_b;
     int kv_cap[INK_MAX_SLOTS];
     PmBuffer kv_k[INK_MAX_SLOTS];   /* [kv_cap * n_kv_elem] u16 */
     PmBuffer kv_v[INK_MAX_SLOTS];   /* [kv_cap * n_kv_elem] u16 */
@@ -776,7 +777,8 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         ink_close(s); return 1;
     }
 
-    size_t B = INK_PREFILL_B;
+    s->prefill_b = (s->max_ctx <= 8192) ? INK_PREFILL_B : (s->max_ctx <= 16384) ? 2048 : 1024;
+    size_t B = (size_t)s->prefill_b;
     size_t d = (size_t)hp->n_embd;
     size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
     size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
@@ -818,15 +820,15 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
         alloc_buf(s, &s->moe_gu, B * (size_t)hp->n_expert_used * 2 * (size_t)hp->n_ff_exp * 4) ||
         alloc_buf(s, &s->moe_out, B * d * 4) ||
         alloc_buf(s, &s->moe_slot_out, B * (size_t)hp->n_expert_used * d * 4) ||
-        alloc_buf(s, &s->exp_toks, (size_t)hp->n_expert * B * 4) ||
-        alloc_buf(s, &s->exp_slots, (size_t)hp->n_expert * B * 4) ||
-        alloc_buf(s, &s->exp_wts, (size_t)hp->n_expert * B * 4) ||
+        alloc_buf(s, &s->exp_toks, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
+        alloc_buf(s, &s->exp_slots, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
+        alloc_buf(s, &s->exp_wts, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
         alloc_buf(s, &s->exp_cnt, (size_t)hp->n_expert * 4) ||
         alloc_buf(s, &s->exp_off, (size_t)hp->n_expert * 4) ||
         alloc_buf(s, &s->row_dst, B * (size_t)hp->n_expert_used * 4) ||
         alloc_buf(s, &s->row_wt, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + B / 2 + 16) * 4) ||
-        alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + B / 2 + 16) * 4) ||
+        alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
+        alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
         alloc_buf(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
         alloc_buf(s, &s->tok_ids_buf, B * 4) ||
@@ -1776,7 +1778,7 @@ int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_
         int off = 0;
         while (off < n_tokens) {
             int nb = n_tokens - off;
-            if (nb > INK_PREFILL_B) nb = INK_PREFILL_B;
+            if (nb > s->prefill_b) nb = s->prefill_b;
             int need_logits = compute_last_logits && (off + nb == n_tokens);
             if (nb == 1) {
                 if (ink_step(s, tokens[off], need_logits) != 0) return 1;

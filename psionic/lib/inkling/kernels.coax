@@ -5,7 +5,7 @@
 
 INK_T :: 64;
 INK_NT :: 256;
-INK_PREFILL_B :: 1024;
+INK_PREFILL_B :: 3072;
 INK_DR :: 4;
 INK_D :: 8;
 INK_HEAD :: 128;
