@@ -72,9 +72,80 @@ am_matmul_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int
         }
     }
 }
+am_iq4_lut :: (q:u32)->f32 #effects(all) {
+    t:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];
+    return t[cast(int)(q&15)];
+}
+am_f16 :: (h:u32)->f32 #effects(all) {
+    sign:=ifx (h&0x8000)!=0 then -1.0f32 else 1.0f32;
+    ex:=cast(int)((h>>10)&31);
+    mant:=cast(f32)(h&1023);
+    if ex==0 {return sign*(mant/1024.0f32)*(1.0f32/16384.0f32);}
+    if ex==31 {return 0.0f32;}
+    v:=1.0f32+mant/1024.0f32;
+    e:=ex-15;
+    for _:0..<e {v*=2.0f32;}
+    for _:0..<-e {v*=0.5f32;}
+    return sign*v;
+}
+am_matmul_iq4_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,tn:int,w:int,x:int,out:int,tg:int)->bool #effects(all) {
+    if cols<64 || cols%64!=0 || r0<0 || r0>=rows || t0<0 || t0>=tokens || tg<tn*64 {return false;}
+    return w>=rows*((cols/32)*9) && x>=tokens*cols && out>=tokens*rows;
+}
+am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u16,x:[]f32,out:[]f32,tg:[]u16) #effects(all) {
+    #assert am_matmul_iq4_valid(rows,cols,tokens,r0,t0,tn,w.count,x.count,out.count,tg.count);
+    #assert am_tile_valid(threads,tm,tn);
+    blocks:=cols/32;
+    row_words:=blocks*9;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for b:0..<blocks {
+                base:=ar*row_words+b*9;
+                sc:=f64(am_f16(cast(u32)w[base]));
+                for k:0..<8 {
+                    v:=cast(u32)w[base+1+k];
+                    k2:=b*32+2*k;
+                    sum+=sc*f64(am_iq4_lut(v&15))*f64(x[at*cols+k2]);
+                    sum+=sc*f64(am_iq4_lut((v>>4)&15))*f64(x[at*cols+k2+16]);
+                    sum+=sc*f64(am_iq4_lut((v>>8)&15))*f64(x[at*cols+k2+1]);
+                    sum+=sc*f64(am_iq4_lut((v>>12)&15))*f64(x[at*cols+k2+17]);
+                }
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
 
 #test "BF16 halves decode exactly" {
     #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
+}
+#test "am_matmul_iq4 decodes IQ4_NL weights and multiplies" {
+    exp_lut:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];
+    for q:0..<16 {#assert am_iq4_lut(cast(u32)q)==exp_lut[q];}
+    #assert am_iq4_lut(16)==-127.0f32;
+    #assert am_f16(0x3c00)==1.0f32 && am_f16(0xbc00)==-1.0f32 && am_f16(0x0000)==0.0f32 && am_f16(0x0400)==(1.0f32/16384.0f32);
+    #assert am_f16(0x0200)==(0.5f32/16384.0f32) && am_f16(0x4400)==4.0f32 && am_f16(0x3600)==0.375f32 && am_f16(0x7c00)==0.0f32 && am_f16(0x3c01)>1.0f32;
+    #assert am_matmul_iq4_valid(1,64,1,0,0,64,18,64,1,4096) && !am_matmul_iq4_valid(3,64,3,0,0,64,54,192,8,4096);
+    #assert am_matmul_iq4_valid(2,64,2,0,0,64,36,128,4,4096);
+    #assert !am_matmul_iq4_valid(0,64,2,0,0,64,36,128,4,4096) && !am_matmul_iq4_valid(2,32,2,0,0,64,36,128,4,4096) && !am_matmul_iq4_valid(2,96,2,0,0,64,72,192,4,4096);
+    #assert !am_matmul_iq4_valid(2,64,0,0,0,64,36,128,4,4096) && !am_matmul_iq4_valid(2,64,2,-1,0,64,36,128,4,4096) && !am_matmul_iq4_valid(2,64,2,2,0,64,36,128,4,4096);
+    #assert !am_matmul_iq4_valid(2,64,2,0,-1,64,36,128,4,4096) && !am_matmul_iq4_valid(2,64,2,0,2,64,36,128,4,4096) && !am_matmul_iq4_valid(2,64,2,0,0,64,36,128,4,4095);
+    #assert !am_matmul_iq4_valid(2,64,2,0,0,64,35,128,4,4096) && !am_matmul_iq4_valid(2,64,2,0,0,64,36,127,4,4096) && !am_matmul_iq4_valid(2,64,2,0,0,64,36,128,3,4096);
+    w:[72]u16;x:[256]f32;out:[4]f32;tg:[4096]u16;
+    for r:0..<2 {
+        for b:0..<4 {
+            base:=(r*4+b)*9;
+            w[base]=ifx r==0 then 0x3c00 else 0x4000;
+            for k:0..<8 {w[base+1+k]=0x9888;}
+        }
+    }
+    for t:0..<2 {for i:0..<128 {x[t*128+i]=f32((t+1)*(i+1));}}
+    am_matmul_iq4(128,16,64,2,128,2,0,0,w[..],x[..],out[..],tg[..]);
+    #assert out[0]>0 && out[1]==out[0]*2.0f32 && out[2]==out[0]*2.0f32 && out[3]==out[0]*4.0f32;
+    #assert out[0]==f32(128*129/2 + 12*(4*(18+20+22+24+26+28+30+32) + 8*(0+32+64+96)));
 }
 #test "the simdgroup tile adds a b^T into acc" {
     acc:[2048]f32;a:[2048]f32;b:[1024]f32;out:[2048]f32;

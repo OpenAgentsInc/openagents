@@ -515,7 +515,7 @@ WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 // Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
 static bool is_device_primitive(const ProcDecl *p) {
-  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_matmul_bf16"));
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_iq4"));
 }
 // The integer value of a constant expression (a literal or a named constant).
 static int64_t constant_of_expr(const Expr *e) {
@@ -1776,6 +1776,11 @@ struct Emitter {
                                 group_barrier().substr(0, group_barrier().size() - 1) + ")";
           apple_tensor = true;
           auto value = [&](int i) { return std::to_string(constant_of_expr(e->args[i])); };
+          if (kind == 4) {
+            std::string s = "coax_am_matmul_iq4<" + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
+            for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
+            return s + "(threadgroup bfloat *)" + whole(11) + ".e, coax_lane, " + line + ", coax_err)";
+          }
           std::string s = "coax_am_matmul<" + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
           for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
           return s + line + ", coax_err)";
@@ -3290,6 +3295,54 @@ COAX_DEV void coax_am_matmul(int64_t rows, int64_t cols, int64_t tokens, int64_t
   constexpr auto d = matmul2d_descriptor(TM, TN, static_cast<int>(dynamic_extent), false, true, false);
   matmul2d<d, execution_simdgroups<SG>> op;
   op.run(X, W, C);
+}
+static constant float coax_iq4_lut[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -35.0f, -22.0f, -10.0f, 1.0f, 13.0f, 25.0f, 38.0f, 53.0f, 69.0f, 89.0f, 113.0f};
+template <int TM, int TN, int SG>
+COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, coax_v_f32 x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
+  using namespace mpp::tensor_ops;
+  int64_t n_blocks = cols >> 5;
+  int64_t row_words = n_blocks * 9;
+  if (rows < 1 || cols < 64 || (cols & 63) != 0 || tokens < 1 || r0 < 0 || r0 >= rows || t0 < 0 || t0 >= tokens || rows > 2147483647 / cols ||
+      tokens > 2147483647 / cols || tokens > 2147483647 / rows || w.count < rows * row_words || x.count < tokens * cols || out.count < tokens * rows) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int c = (int)cols, nt = (int)min((int64_t)TM, tokens - t0), nr = (int)min((int64_t)TN, rows - r0);
+  auto X0 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols, dextents<int32_t, 2>(64, nt), array<int32_t, 2>({1, c}));
+  auto W0 = tensor<threadgroup bfloat, dextents<int32_t, 2>, tensor_inline>(W_tg, dextents<int32_t, 2>(64, nr), array<int32_t, 2>({1, 64}));
+  auto C = tensor<device float, dextents<int32_t, 2>, tensor_inline>(out.data + t0 * rows + r0, dextents<int32_t, 2>(nr, nt), array<int32_t, 2>({1, (int)rows}));
+  constexpr auto d = matmul2d_descriptor(TM, TN, 64, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<d, execution_simdgroups<SG>> op;
+  auto ct = op.template get_destination_cooperative_tensor<decltype(X0), decltype(W0), float>();
+  for (int i = 0; i < ct.get_capacity(); i++) ct[i] = 0.0f;
+  const uint32_t nthreads = (uint32_t)(SG * 32);
+  const uint32_t total_blocks = (uint32_t)(TN * 2);
+  for (int k0 = 0; k0 < c; k0 += 64) {
+    int kb = k0 >> 5;
+    for (uint32_t bi = tid; bi < total_blocks; bi += nthreads) {
+      int r = (int)(bi >> 1);
+      int b = (int)(bi & 1);
+      threadgroup bfloat *dst = W_tg + r * 64 + b * 32;
+      if (r < nr) {
+        const device uint16_t *src = w.data + (r0 + r) * row_words + (kb + b) * 9;
+        float sc = float(as_type<half>(src[0]));
+        for (int k = 0; k < 8; k++) {
+          uint32_t v = src[1 + k];
+          dst[2 * k]      = bfloat(sc * coax_iq4_lut[v & 15]);
+          dst[2 * k + 16] = bfloat(sc * coax_iq4_lut[(v >> 4) & 15]);
+          dst[2 * k + 1]  = bfloat(sc * coax_iq4_lut[(v >> 8) & 15]);
+          dst[2 * k + 17] = bfloat(sc * coax_iq4_lut[(v >> 12) & 15]);
+        }
+      } else {
+        for (int k = 0; k < 32; k++) dst[k] = bfloat(0.0f);
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    auto Xk = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols + k0, dextents<int32_t, 2>(64, nt), array<int32_t, 2>({1, c}));
+    op.run(Xk, W0, ct);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  ct.store(C);
 }
 )COAXRT";
 

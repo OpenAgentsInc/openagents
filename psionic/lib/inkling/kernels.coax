@@ -190,6 +190,64 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
     }
 }
 
+// ---- Sprint 28: Fused Q8_0 matvec + post shortconv + optional residual add (for attn_output decode, -48 dispatches & -48 barriers/tok!).
+ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
+    for thread:0..<128 {
+        lane:=thread%32;simd:=thread/32;
+        blk_lane:=lane/4;sub:=lane%4;
+        base_row:=row0+simd*2;
+        r1:=base_row+1;
+        a0:f32=0;a1:f32=0;
+        k0:=sub*4;
+        for step:0..<(blocks+7)/8 {
+            block:=step*8+blk_lane;
+            if block<blocks {
+                xb:=block*32+k0*2;boff:=block*17;
+                if r1<rows {
+                    at0:=base_row*words+boff;
+                    at1:=at0+words;
+                    s0:f32=0;s1:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];
+                        x1:=x[xb+2*j+1];
+                        kk:=1+k0+j;
+                        v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
+                        v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
+                    }
+                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    a1+=ink_half(cast(u32)w[at1])*s1;
+                } else if base_row<rows {
+                    at:=base_row*words+boff;sum:f32=0;
+                    for j:0..<4 {
+                        x0:=x[xb+2*j];
+                        x1:=x[xb+2*j+1];
+                        v:=cast(u32)w[at+1+k0+j];
+                        sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
+                    }
+                    a0+=ink_half(cast(u32)w[at])*sum;
+                }
+            }
+        }
+        part[thread*2+0]=a0;part[thread*2+1]=a1;
+    }
+    for thread:0..<128 {
+        if thread<INK_D {
+            row:=item*INK_D+thread;
+            if row<rows {
+                simd:=thread/2;r:=thread%2;sum:f32=0;
+                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
+                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];x3:=sum;
+                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=x3;
+                acc:=x0*cw[row*4+0]+x1*cw[row*4+1]+x2*cw[row*4+2]+x3*cw[row*4+3];
+                cv:=(x3+acc)*0.4472135954999579f32;
+                if add_res!=0 {out[row]=res[row]+cv;} else {out[row]=cv;}
+            }
+        }
+    }
+}
+
 // ---- Matvec IQ4_NL (1 token): group of 64 threads writes INK_D=8 rows.
 // w is [rows, cols] IQ4_NL stored as u16 (9 u16 per 32 values: 1 f16 d, 8 u16 = 16 qs bytes).
 // qs byte j has low nibble for elem j (0..15) and high nibble for elem j+16 (16..31).
@@ -266,6 +324,7 @@ ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #ex
     }
 }
 
+
 // ---- Matvec F32 (1 token): 1 group of 64 threads writes INK_D=8 rows.
 ink_dv_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
@@ -312,6 +371,7 @@ ink_dv_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #ex
         }
     }
 }
+
 
 // ---- Matvec F32 for small-row matrices (rows <= 128, e.g. ctrl_down [64,4608], router [128,2304]).
 // Launch items = rows, lanes = 256 (1 threadgroup of 256 threads per row).
@@ -1007,6 +1067,84 @@ ink_head_rmsnorm :: (item:int,head_dim:int,eps:f32,x:[]f32) #export_c #effects(a
             i:=add_wrap(mul_wrap(k,64),t);
             if i<hd {idx:=cast(int)add_wrap(base,i);x[idx]=x[idx]*inv;}
         }
+    }
+}
+
+// ---- Sprint 28: Fused K shortconv + L2 clip + f16 KV cache store (-48 dispatches & -48 barriers/tok!).
+// Launch items = n_head_kv (8), lanes = 64 (head_dim <= 128, 2 register slots/thread).
+ink_conv_clip_kv :: (item:int,head_dim:int,n_kv_elem:int,slot_pos:int,has_dyn:int,threshold:f32,cur:[]f32,w:[]f32,dyn:[]f32,hist:[]f32,k_cache:[]u16) #export_c #effects(all) {
+    part:[64]f32;
+    buf:[128]f32;
+    base:=item*head_dim;
+    dbase:=slot_pos*n_kv_elem+base;
+    inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
+    for thread:0..<INK_T {
+        s:f32=0;
+        v0:f32=0;v1:f32=0;
+        if thread<head_dim {
+            c:=base+thread;
+            x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];x3:=cur[c];
+            hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            if has_dyn!=0 {acc+=dyn[item*4+0]*x3+dyn[item*4+1]*x2+dyn[item*4+2]*x1+dyn[item*4+3]*x0;}
+            v0=(x3+acc)*inv_s;s+=v0*v0;
+        }
+        if 64+thread<head_dim {
+            c:=base+64+thread;
+            x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];x3:=cur[c];
+            hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            if has_dyn!=0 {acc+=dyn[item*4+0]*x3+dyn[item*4+1]*x2+dyn[item*4+2]*x1+dyn[item*4+3]*x0;}
+            v1=(x3+acc)*inv_s;s+=v1*v1;
+        }
+        buf[thread*2+0]=v0;buf[thread*2+1]=v1;
+        part[thread]=s;
+    }
+    for thread:0..<INK_T {
+        tot:f32=0;for j:0..<INK_T {tot+=part[j];}
+        nrm:=sqrt(tot)+0.000001f32;
+        fac:=threshold/nrm;
+        if fac>1.0f32 {fac=1.0f32;}
+        if thread<head_dim {k_cache[dbase+thread]=cast(u16)ink_f16(buf[thread*2+0]*fac);}
+        if 64+thread<head_dim {k_cache[dbase+64+thread]=cast(u16)ink_f16(buf[thread*2+1]*fac);}
+    }
+}
+
+// ---- Sprint 28: Fused V shortconv + head RMSNorm + f16 KV cache store (-48 dispatches & -48 barriers/tok!).
+// Launch items = n_head_kv (8), lanes = 64 (head_dim <= 128, 2 register slots/thread).
+ink_conv_head_rmsnorm_kv :: (item:int,head_dim:int,n_kv_elem:int,slot_pos:int,has_dyn:int,eps:f32,cur:[]f32,w:[]f32,dyn:[]f32,hist:[]f32,v_cache:[]u16) #export_c #effects(all) {
+    part:[64]f32;
+    buf:[128]f32;
+    base:=item*head_dim;
+    dbase:=slot_pos*n_kv_elem+base;
+    inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
+    for thread:0..<INK_T {
+        s:f32=0;
+        v0:f32=0;v1:f32=0;
+        if thread<head_dim {
+            c:=base+thread;
+            x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];x3:=cur[c];
+            hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            if has_dyn!=0 {acc+=dyn[item*4+0]*x3+dyn[item*4+1]*x2+dyn[item*4+2]*x1+dyn[item*4+3]*x0;}
+            v0=(x3+acc)*inv_s;s+=v0*v0;
+        }
+        if 64+thread<head_dim {
+            c:=base+64+thread;
+            x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];x3:=cur[c];
+            hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            if has_dyn!=0 {acc+=dyn[item*4+0]*x3+dyn[item*4+1]*x2+dyn[item*4+2]*x1+dyn[item*4+3]*x0;}
+            v1=(x3+acc)*inv_s;s+=v1*v1;
+        }
+        buf[thread*2+0]=v0;buf[thread*2+1]=v1;
+        part[thread]=s;
+    }
+    for thread:0..<INK_T {
+        tot:f32=0;for j:0..<INK_T {tot+=part[j];}
+        inv:=1.0f32/sqrt(tot/f32(head_dim)+eps);
+        if thread<head_dim {v_cache[dbase+thread]=cast(u16)ink_f16(buf[thread*2+0]*inv);}
+        if 64+thread<head_dim {v_cache[dbase+64+thread]=cast(u16)ink_f16(buf[thread*2+1]*inv);}
     }
 }
 
@@ -2717,6 +2855,56 @@ ink_moe_mm_bf16_16 :: (item:int,e_lo:int,rows:int,cols:int,w_bf16:[]u32,x_exp:[]
             w_bf16[w_lo..<w_lo+w_stride],
             x_exp[x_lo..<x_lo+nm*cols],
             y_exp[y_lo..<y_lo+nm*rows]);
+    }
+}
+
+// Sprint 27: Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (64x64 tile, ZERO w_bf16 DRAM staging!).
+ink_moe_mm_iq4 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+    tg:[4096]u16;
+    r_tiles:=(rows+63)/64;
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
+        e_off:=cast(int)exp_off[exp_id];
+        w_stride:=rows*((cols/32)*9);
+        w_lo:=exp_id*w_stride;
+        x_lo:=e_off*cols;
+        y_lo:=e_off*rows;
+        am_matmul_iq4(128,64,64,rows,cols,nm,r0,m0,
+            w_iq4[w_lo..<w_lo+w_stride],
+            x_exp[x_lo..<x_lo+nm*cols],
+            y_exp[y_lo..<y_lo+nm*rows],
+            tg[..]);
+    }
+}
+
+// Sprint 27: Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (16x64 tile for small/medium prompts, ZERO w_bf16 DRAM staging!).
+ink_moe_mm_iq4_16 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+    tg:[4096]u16;
+    r_tiles:=(rows+63)/64;
+    t_idx:=item/r_tiles;
+    r0:=(item%r_tiles)*64;
+    for thread:0..<128 {}
+    nt:=cast(int)tile_cnt[0];
+    if t_idx<nt {
+        exp_id:=cast(int)tile_exp[t_idx];
+        m0:=cast(int)tile_m0[t_idx];
+        nm:=cast(int)exp_cnt[exp_id];
+        e_off:=cast(int)exp_off[exp_id];
+        w_stride:=rows*((cols/32)*9);
+        w_lo:=exp_id*w_stride;
+        x_lo:=e_off*cols;
+        y_lo:=e_off*rows;
+        am_matmul_iq4(128,16,64,rows,cols,nm,r0,m0,
+            w_iq4[w_lo..<w_lo+w_stride],
+            x_exp[x_lo..<x_lo+nm*cols],
+            y_exp[y_lo..<y_lo+nm*rows],
+            tg[..]);
     }
 }
 
