@@ -39,6 +39,10 @@ AGY_VERSION_PREFIX :: "agy_acp_server_";
 AGY_MODEL_NOT_APPLIED :: 1; AGY_EFFORT_NOT_APPLIED :: 2;
 AGY_QUOTA_SUMMARY_URL :: "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary";
 AGY_QUOTA_MODELS_URL :: "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
+AGY_MANIFEST_BASE :: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests";
+AGY_STORAGE_PREFIX :: "https://storage.googleapis.com/antigravity-public/antigravity-cli/";
+AGY_MANAGED_SUBDIR :: "/.openagents/runtimes/agy";
+AGY_MAX_LEASES :: 32;
 
 agy_agent :: () -> CuAgent {
   a: [1] CuAgent;
@@ -47,11 +51,26 @@ agy_agent :: () -> CuAgent {
   return a[0];
 }
 
-// agy on PATH, else HOME/.local/bin/agy; "" when neither is there.
+// agy on PATH, else managed ~/.openagents/runtimes/agy/active.json, else HOME/.local/bin/agy.
 agy_find :: (path_env: string, home: string, out: [] u8) -> string {
   found := cu_on_path(path_env, "agy", out);
   if found.count > 0 { return found; }
   if home.count == 0 || home.count > 4000 { return ""; }
+  // Managed versioned installation under ~/.openagents/runtimes/agy/active.json (#13839)
+  rb: [4200] u8; root := agy_managed_root(home, rb[..]);
+  if root.count > 0 {
+    ab: [4260] u8; ap := agy_active_pointer_path(root, ab[..]);
+    fb: [512] u8; fn := fs_read(ap, fb[..]);
+    if fn > 0 {
+      idb: [80] u8; rid := agy_parse_active_release(cast(string) fb[0..<fn], idb[..]);
+      if rid.count == 64 {
+        eb: [4300] u8; ep := agy_managed_exe_path(root, rid, false, eb[..]);
+        if ep.count > 0 && ep.count <= out.count && fs_exists(ep) {
+          return cast(string) out[0..<cl_copy(out, ep)];
+        }
+      }
+    }
+  }
   n := cl_copy(out, home); n += cl_copy(out[n..<out.count], "/.local/bin/agy");
   if n >= out.count || !fs_exists(cast(string) out[0..<n]) { return ""; }
   return cast(string) out[0..<n];
@@ -291,6 +310,221 @@ agy_token_path :: (home: string, profile_dir: string, out: [] u8) -> string {
   return agy_token_path_join(home, "", false, out);
 }
 
+// ---------------------------------------------------------------- managed CLI installation & leases (#13839)
+
+AgyRelease :: struct {
+  version: [32] u8; nversion: int;
+  url: [256] u8; nurl: int;
+  sha512: [128] u8; nsha512: int;
+  exe: [32] u8; nexe: int;
+  is_tar_gz: bool;
+}
+
+AgyLease :: struct {
+  release_id: [64] u8; nrelease: int;
+  pid: int;
+  active: bool;
+}
+
+AgyLeases :: struct {
+  items: [AGY_MAX_LEASES] AgyLease;
+}
+
+agy_is_hex :: (c: u8) -> bool {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+agy_is_release_id :: (id: string) -> bool {
+  if id.count != 64 { return false; }
+  for c: id { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// Map (os, arch, musl) to Google's Antigravity CLI manifest target name.
+agy_cli_target :: (os: string, arch: string, musl: bool, out: [] u8) -> string {
+  if os != "darwin" && os != "linux" && os != "windows" { return ""; }
+  if arch != "x64" && arch != "arm64" { return ""; }
+  cpu := ifx arch == "x64" then "amd64" else "arm64";
+  n := cl_copy(out, os);
+  n += cl_copy(out[n..<out.count], "_");
+  n += cl_copy(out[n..<out.count], cpu);
+  if os == "linux" && musl { n += cl_copy(out[n..<out.count], "_musl"); }
+  return cast(string) out[0..<n];
+}
+
+// Validate and parse a Google Antigravity CLI release manifest JSON for (os, arch, musl).
+// Enforces >= 1.5.0 < 2.0.0, 128-hex SHA-512, and pinned Google Cloud Storage URL layout.
+agy_parse_release :: (json: string, os: string, arch: string, musl: bool, out: [] AgyRelease) -> bool {
+  out[0] = AgyRelease.{};
+  tb: [32] u8;
+  if agy_cli_target(os, arch, musl, tb[..]).count == 0 { return false; }
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  ver := cl_str(ar[..], json, "version");
+  url := cl_str(ar[..], json, "url");
+  sha := cl_str(ar[..], json, "sha512");
+  if ver.count == 0 || ver.count > out[0].version.count || !agy_version_ok(ver) { return false; }
+  // Require strict X.Y.Z digits
+  dots := 0; seg := 0;
+  for c: ver {
+    if c == '.' { if seg == 0 { return false; } dots += 1; seg = 0; }
+    else if c >= '0' && c <= '9' { seg += 1; }
+    else { return false; }
+  }
+  if dots != 2 || seg == 0 { return false; }
+  if sha.count != 128 { return false; }
+  for c, i: sha {
+    if !agy_is_hex(c) { return false; }
+    out[0].sha512[i] = ifx c >= 'A' && c <= 'F' then c + 32 else c;
+  }
+  out[0].nsha512 = 128;
+  // Validate URL: https://storage.googleapis.com/antigravity-public/antigravity-cli/<ver>-<digits>/<folder>/cli_<os>_<cpu><suffix>.<ext>
+  if url.count > out[0].url.count || url.count <= AGY_STORAGE_PREFIX.count + ver.count + 2 { return false; }
+  if cast(string) url[0..<AGY_STORAGE_PREFIX.count] != AGY_STORAGE_PREFIX { return false; }
+  pos := AGY_STORAGE_PREFIX.count;
+  if cast(string) url[pos..<pos + ver.count] != ver { return false; }
+  pos += ver.count;
+  if url[pos] != '-' { return false; }
+  pos += 1;
+  dcount := 0;
+  while pos < url.count && url[pos] >= '0' && url[pos] <= '9' { pos += 1; dcount += 1; }
+  if dcount == 0 || pos >= url.count || url[pos] != '/' { return false; }
+  pos += 1;
+  rest := cast(string) url[pos..<url.count];
+  eb: [128] u8; en := 0;
+  en += cl_copy(eb[en..<eb.count], os);
+  en += cl_copy(eb[en..<eb.count], ifx arch == "arm64" then "-arm" else "-x64");
+  if os == "linux" && musl { en += cl_copy(eb[en..<eb.count], "-musl"); }
+  en += cl_copy(eb[en..<eb.count], "/cli_");
+  en += cl_copy(eb[en..<eb.count], ifx os == "darwin" then "mac" else os);
+  en += cl_copy(eb[en..<eb.count], "_");
+  en += cl_copy(eb[en..<eb.count], arch);
+  if os == "linux" && musl { en += cl_copy(eb[en..<eb.count], "_musl"); }
+  en += cl_copy(eb[en..<eb.count], ifx os == "windows" then ".exe" else ".tar.gz");
+  if rest != cast(string) eb[0..<en] { return false; }
+  out[0].nversion = cl_copy(out[0].version[..], ver);
+  out[0].nurl = cl_copy(out[0].url[..], url);
+  out[0].nexe = cl_copy(out[0].exe[..], ifx os == "windows" then "agy.exe" else "antigravity");
+  out[0].is_tar_gz = os != "windows";
+  return true;
+}
+
+agy_managed_root :: (home: string, out: [] u8) -> string {
+  if home.count == 0 || home.count + AGY_MANAGED_SUBDIR.count > out.count { return ""; }
+  n := cl_copy(out, home);
+  n += cl_copy(out[n..<out.count], AGY_MANAGED_SUBDIR);
+  return cast(string) out[0..<n];
+}
+
+agy_release_dir :: (root: string, release_id: string, out: [] u8) -> string {
+  if root.count == 0 || !agy_is_release_id(release_id) { return ""; }
+  b: [1024] u8; p := fs_join(root, "releases", b[..]);
+  return fs_join(p, release_id, out);
+}
+
+agy_active_pointer_path :: (root: string, out: [] u8) -> string {
+  if root.count == 0 { return ""; }
+  return fs_join(root, "active.json", out);
+}
+
+agy_managed_exe_path :: (root: string, release_id: string, is_windows: bool, out: [] u8) -> string {
+  db: [1024] u8; dir := agy_release_dir(root, release_id, db[..]);
+  if dir.count == 0 { return ""; }
+  return fs_join(dir, ifx is_windows then "agy.exe" else "antigravity", out);
+}
+
+agy_parse_active_release :: (json: string, out: [] u8) -> string {
+  ab: [512] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  rid := cl_str(ar[..], json, "releaseId");
+  if !agy_is_release_id(rid) || rid.count > out.count { return ""; }
+  return cast(string) out[0..<cl_copy(out, rid)];
+}
+
+agy_format_active_release :: (release_id: string, out: [] u8) -> string {
+  if !agy_is_release_id(release_id) || out.count < 82 { return ""; }
+  n := cl_copy(out, "{\"releaseId\":\"");
+  n += cl_copy(out[n..<out.count], release_id);
+  n += cl_copy(out[n..<out.count], "\"}\n");
+  return cast(string) out[0..<n];
+}
+
+agy_lease_acquire :: (l: [] AgyLeases, release_id: string, pid: int) -> int {
+  if !agy_is_release_id(release_id) || pid <= 0 { return -1; }
+  for i: 0..<AGY_MAX_LEASES {
+    if !l[0].items[i].active {
+      l[0].items[i].nrelease = cl_copy(l[0].items[i].release_id[..], release_id);
+      l[0].items[i].pid = pid;
+      l[0].items[i].active = true;
+      return i;
+    }
+  }
+  return -1;
+}
+
+agy_lease_release :: (l: [] AgyLeases, release_id: string, pid: int) -> bool {
+  for i: 0..<AGY_MAX_LEASES {
+    if l[0].items[i].active && l[0].items[i].pid == pid && cast(string) l[0].items[i].release_id[0..<l[0].items[i].nrelease] == release_id {
+      l[0].items[i].active = false;
+      l[0].items[i].pid = 0;
+      l[0].items[i].nrelease = 0;
+      return true;
+    }
+  }
+  return false;
+}
+
+agy_lease_count :: (l: [] AgyLeases, release_id: string) -> int {
+  c := 0;
+  for i: 0..<AGY_MAX_LEASES {
+    if l[0].items[i].active && cast(string) l[0].items[i].release_id[0..<l[0].items[i].nrelease] == release_id { c += 1; }
+  }
+  return c;
+}
+
+// True only when candidate_id is a valid release ID that is neither the active release
+// nor leased by any running agy process (#13839).
+agy_can_prune_release :: (l: [] AgyLeases, active_id: string, candidate_id: string) -> bool {
+  if !agy_is_release_id(candidate_id) { return false; }
+  if candidate_id == active_id { return false; }
+  return agy_lease_count(l, candidate_id) == 0;
+}
+
+// True when program ends in .cmd or .bat (case-insensitive) for Windows launcher handling (#13839).
+agy_is_windows_cmd :: (program: string) -> bool {
+  if program.count < 4 { return false; }
+  s := program.count - 4;
+  if program[s] != '.' { return false; }
+  a := ifx program[s + 1] >= 'A' && program[s + 1] <= 'Z' then program[s + 1] + 32 else program[s + 1];
+  b := ifx program[s + 2] >= 'A' && program[s + 2] <= 'Z' then program[s + 2] + 32 else program[s + 2];
+  c := ifx program[s + 3] >= 'A' && program[s + 3] <= 'Z' then program[s + 3] + 32 else program[s + 3];
+  return (a == 'c' && b == 'm' && c == 'd') || (a == 'b' && b == 'a' && c == 't');
+}
+
+// Wrap a Windows .cmd/.bat launcher through cmd.exe /d /s /c <program> <args...> (#13839).
+agy_wrap_windows_cmd :: (l: [] CuLaunch) -> bool {
+  if !agy_is_windows_cmd(l[0].program) { return false; }
+  if l[0].args_n + 4 > l[0].args.count { return false; }
+  orig := l[0].program;
+  i := l[0].args_n - 1;
+  while i >= 0 { l[0].args[i + 4] = l[0].args[i]; i -= 1; }
+  l[0].program = "cmd.exe";
+  l[0].args[0] = "/d";
+  l[0].args[1] = "/s";
+  l[0].args[2] = "/c";
+  l[0].args[3] = orig;
+  l[0].args_n += 4;
+  return true;
+}
+
+// Bounded retry backoff (ms) for briefly locked Windows runtime folders during install/update; -1 past cap (#13839).
+agy_win_retry_delay_ms :: (attempt: int) -> int {
+  if attempt == 0 { return 100; }
+  if attempt == 1 { return 250; }
+  if attempt == 2 { return 500; }
+  if attempt == 3 { return 1000; }
+  if attempt == 4 { return 2000; }
+  return -1;
+}
+
 // Parse an Antigravity agentInfo.version (stripping any agy_acp_server_ prefix).
 // Accepts >= 1.5.0 < 2.0.0 (and empty/absent version); refuses explicit < 1.5.0 or >= 2.0.0.
 agy_version_ok :: (version: string) -> bool {
@@ -339,6 +573,7 @@ agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, 
   has_sc := cl_getenv("SSH_CONNECTION", sb[..]).count > 0;
   l: [1] CuLaunch;
   agy_prepare_launch(l[..], e[..], program, cwd, profile_dir, has_au, has_gh, has_sc);
+  _ = agy_wrap_windows_cmd(l[..]);
   why := cue_start(x, l[0], name, version);
   if why.count == 0 {
     stb: [32] u8; rb: [32] u8;
@@ -1018,4 +1253,65 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   #assert agy_token_path_join("/home/me", "/tmp/p1", true, pb[..]) == "/tmp/p1/antigravity-acp/antigravity-oauth-token";
   #assert agy_token_path_join("/home/me", "", true, pb[..]) == "/home/me/.gemini/antigravity-acp/antigravity-oauth-token";
   #assert agy_token_path_join("/home/me", "", false, pb[..]) == "/home/me/.gemini/antigravity-cli/antigravity-oauth-token";
+}
+
+#test "antigravity: managed CLI release manifest, version leases, pruning, and Windows .cmd launcher (#13839)" {
+  // 1. Target mapping & release manifest validation
+  tb: [32] u8;
+  #assert agy_cli_target("darwin", "arm64", false, tb[..]) == "darwin_arm64";
+  #assert agy_cli_target("linux", "x64", true, tb[..]) == "linux_amd64_musl";
+  #assert agy_cli_target("windows", "x64", false, tb[..]) == "windows_amd64";
+  #assert agy_cli_target("freebsd", "x64", false, tb[..]) == "";
+
+  sha := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rel: [1] AgyRelease;
+  m_mac := "{\"version\":\"1.5.12\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.12-20261120/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
+  #assert agy_parse_release(m_mac, "darwin", "arm64", false, rel[..]);
+  #assert cast(string) rel[0].version[0..<rel[0].nversion] == "1.5.12" && rel[0].is_tar_gz;
+  #assert cast(string) rel[0].exe[0..<rel[0].nexe] == "antigravity";
+  #assert cast(string) rel[0].sha512[0..<rel[0].nsha512] == sha;
+
+  m_win := "{\"version\":\"1.5.12\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.12-99/windows-x64/cli_windows_x64.exe\",\"sha512\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
+  #assert agy_parse_release(m_win, "windows", "x64", false, rel[..]);
+  #assert !rel[0].is_tar_gz && cast(string) rel[0].exe[0..<rel[0].nexe] == "agy.exe";
+
+  // Refuse spoofed URL or < 1.5.0 version
+  m_evil := "{\"version\":\"1.5.12\",\"url\":\"https://evil.example.com/1.5.12-1/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
+  #assert !agy_parse_release(m_evil, "darwin", "arm64", false, rel[..]);
+  m_old := "{\"version\":\"1.4.9\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.4.9-1/darwin-arm/cli_mac_arm64.tar.gz\",\"sha512\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
+  #assert !agy_parse_release(m_old, "darwin", "arm64", false, rel[..]);
+
+  // 2. Immutable paths, atomic active pointer, and version leases preventing pruning
+  rid_a := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  rid_b := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  rid_c := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  rb: [256] u8; root := agy_managed_root("/home/me", rb[..]);
+  #assert root == "/home/me/.openagents/runtimes/agy";
+  eb: [512] u8;
+  #assert agy_managed_exe_path(root, rid_a, false, eb[..]) == "/home/me/.openagents/runtimes/agy/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/antigravity";
+  #assert agy_managed_exe_path(root, rid_a, true, eb[..]) == "/home/me/.openagents/runtimes/agy/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/agy.exe";
+  ab: [128] u8; aj := agy_format_active_release(rid_b, ab[..]);
+  idb: [80] u8;
+  #assert agy_parse_active_release(aj, idb[..]) == rid_b;
+  #assert agy_parse_active_release("{\"releaseId\":\"../escape\"}", idb[..]) == "";
+
+  leases: [1] AgyLeases;
+  #assert agy_lease_acquire(leases[..], rid_a, 4242) >= 0;
+  #assert agy_lease_count(leases[..], rid_a) == 1;
+  // rid_a is leased, rid_b is active, rid_c is unleased & inactive
+  #assert !agy_can_prune_release(leases[..], rid_b, rid_a);
+  #assert !agy_can_prune_release(leases[..], rid_b, rid_b);
+  #assert agy_can_prune_release(leases[..], rid_b, rid_c);
+  // Once process 4242 exits and releases its lease, rid_a becomes prunable
+  #assert agy_lease_release(leases[..], rid_a, 4242);
+  #assert agy_can_prune_release(leases[..], rid_b, rid_a);
+
+  // 3. Windows .cmd launcher wrapping & lock retry backoff
+  #assert agy_is_windows_cmd("C:\\Users\\me\\bin\\agy.cmd") && agy_is_windows_cmd("AGY.CMD") && agy_is_windows_cmd("agy.bat");
+  #assert !agy_is_windows_cmd("/usr/local/bin/agy") && !agy_is_windows_cmd("agy.exe");
+  e: [1] AgyEnv; l: [1] CuLaunch;
+  agy_prepare_launch(l[..], e[..], "C:\\bin\\agy.cmd", "C:\\work", "", false, false, false);
+  #assert agy_wrap_windows_cmd(l[..]);
+  #assert l[0].program == "cmd.exe" && l[0].args_n == 4 && l[0].args[0] == "/d" && l[0].args[2] == "/c" && l[0].args[3] == "C:\\bin\\agy.cmd";
+  #assert agy_win_retry_delay_ms(0) == 100 && agy_win_retry_delay_ms(4) == 2000 && agy_win_retry_delay_ms(5) == -1;
 }
