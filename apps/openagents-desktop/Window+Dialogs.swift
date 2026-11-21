@@ -260,7 +260,10 @@ final class LocalModelServer {
     private let queue = DispatchQueue(label: "openagents.local-model-server")
 
     static func findLlamaServer() -> String? {
+        let homeBin = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/bin/llama-server").path
         let candidates = [
+            homeBin,
             "/opt/homebrew/bin/llama-server",
             "/usr/local/bin/llama-server",
             Bundle.main.resourcePath.map { $0 + "/llama-server" } ?? "",
