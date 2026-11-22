@@ -443,9 +443,9 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       }
       st := s[0].turns[i].state;
       if st == CP_RUNNING {
-        // before its worker's first line the turn has not begun: Sending…, no clock (Zeron's sending bridge)
-        sending := !s[0].turns[i].heard && !s[0].turns[i].stopping;
-        y += app_working(f, cp_id(ib[..], i, ".t"), x, y, ifx sending then -1 else cast(int) (s[0].clock - s[0].turns[i].began),
+        // before its worker's first line (or while loading the local model) the turn has not begun: no clock
+        no_clock := (s[0].turns[i].loading_model || !s[0].turns[i].heard) && !s[0].turns[i].stopping;
+        y += app_working(f, cp_id(ib[..], i, ".t"), x, y, ifx no_clock then -1 else cast(int) (s[0].clock - s[0].turns[i].began),
                          cp_working_word(s, i)) + a.gap;
       }
       else if st == CP_FAILED {
@@ -747,7 +747,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
   if s[0].local_os_ok && s[0].local_hw_ok && s[0].local_dl_state == CP_LOCAL_STARTING {
     s[0].anim = true;
-    msg := "Starting Inkling 2 Mini…";
+    msg := "Loading model…";
     tw := ceil(measure_width(f[0].m, k.small.face, msg));
     row_w := a.icon + a.gap_small + tw;
     if row_w > cw { row_w = cw; }
@@ -755,7 +755,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     ry := (h - k.small.line) / 2.0f32;
     min_y := cp_bar(s) + a.gap;
     if ry < min_y { ry = min_y; }
-    _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Starting Inkling 2 Mini", rx, ry, row_w, k.small.line, 0, 0);
+    _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Loading model", rx, ry, row_w, k.small.line, 0, 0);
     activity(sh, k, rx, ry + (k.small.line - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
     _ := app_meta(f, "coder.onboarding.starting", rx + a.icon + a.gap_small, ry, row_w - a.icon - a.gap_small, msg, false);
     s[0].bar_h = 0.0f32;
@@ -901,7 +901,8 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   stash_h := ifx cp_flag(s, DC_FLAG_RICH) then cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw) else 0.0f32;
   tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
   // Quiet, borderless single-line readiness or migration caption above the composer.
-  if no_local {
+  loading_bg := !no_local && !running && s[0].inkling && s[0].local_dl_state == CP_LOCAL_STARTING && (!cp_has_model_picker(s) || cp_is_inkling(s, cp_model_index(s)));
+  if no_local || loading_bg {
     sh := f[0].sheet; th := cp_theme();
     st := s[0].local_dl_state;
     spinning := st == CP_LOCAL_STARTING || st == CP_LOCAL_VERIFYING || st == CP_LOCAL_DOWNLOADING;
@@ -910,7 +911,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
     cap_y := tray_top - cap_h - 4.0f32;
     if spinning {
       s[0].anim = true;
-      msg := ifx st == CP_LOCAL_STARTING then "Starting Inkling 2 Mini…"
+      msg := ifx st == CP_LOCAL_STARTING then "Loading model…"
              else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
              else "Downloading Inkling 2 Mini…";
       mfit := app_fit(f, k.small.face, msg, cw - a.icon - a.gap_small - 16.0f32);
@@ -1015,7 +1016,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   hint := "Message OpenAgents";
   if !running && !cp_has_model_picker(s) && !s[0].inkling {
     st := s[0].local_dl_state;
-    hint = ifx st == CP_LOCAL_STARTING then "Starting Inkling 2 Mini…"
+    hint = ifx st == CP_LOCAL_STARTING then "Loading model…"
            else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
            else ifx st == CP_LOCAL_DOWNLOADING then "Downloading Inkling 2 Mini…"
            else "Inkling 2 Mini is not ready";

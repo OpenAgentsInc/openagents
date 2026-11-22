@@ -247,6 +247,7 @@ CpTurn :: struct {
   blocks: int; rev: int;      // its reply's Markdown blocks; which reply that is (cp_doc parses it when drawn)
   ask_open: bool;             // its message, folded past five lines, was opened (Show more)
   heard: bool;                // its worker has sent a line: until then the working row says Sending…
+  loading_model: bool;        // waiting for the local model server to load weights & warm up GPU: excluded from TTFT and elapsed clock
   took: f32;                  // seconds it worked, once it ended; -1 not known
   seen_h: f32;                // its height when last measured, kept when that goes stale (0: never measured)
   note: [CP_NOTE] u8; note_n: int;

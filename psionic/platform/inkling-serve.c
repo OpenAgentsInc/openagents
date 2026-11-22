@@ -2698,9 +2698,33 @@ int main(int argc, char **argv) {
     sv.tok_tool_error  = ink_find_token(sv.sess, "<|content_tool_error|>");
     sv.tok_end_msg     = ink_find_token(sv.sess, "<|end_message|>");
     sv.tok_eog         = ink_eos_token(sv.sess);
+    double load_s = now_sec() - t0;
+    double warm_s = 0.0;
+    const char *no_warm = getenv("INK_NO_WARMUP");
+    if ((!no_warm || no_warm[0] == '\0' || no_warm[0] == '0') && sv.n_vocab > 0 && sv.max_ctx >= 4) {
+        double tw0 = now_sec();
+        int warm_n = sv.max_ctx >= 68 ? 64 : (sv.max_ctx - 3);
+        if (warm_n < 1) warm_n = 1;
+        int32_t warm_toks[64];
+        int32_t base_tok = sv.tok_user >= 0 && sv.tok_user < sv.n_vocab ? sv.tok_user : 0;
+        warm_toks[0] = base_tok;
+        for (int wi = 1; wi < warm_n; wi++) {
+            warm_toks[wi] = (int32_t)(((int64_t)wi * 131 + 7) % sv.n_vocab);
+        }
+        /* Warm prefill + decode pipelines and commit GPU residency sets before
+           /health reports ready, so req#1 TTFT excludes cold model/GPU loading. */
+        if (ink_prefill(sv.sess, warm_toks, warm_n, 0) == 0) {
+            (void)ink_step(sv.sess, warm_toks[0], 1);
+            if (warm_n + 2 <= sv.max_ctx) {
+                (void)ink_step(sv.sess, warm_toks[warm_n > 1 ? 1 : 0], 1);
+            }
+        }
+        ink_reset(sv.sess);
+        warm_s = now_sec() - tw0;
+    }
     sv.last_active     = now_sec();
-    fprintf(stderr, "[psionic-inkling-serve] loaded %s on %s in %.2fs (ctx=%d, vocab=%d, eog=%d, idle_exit=%ds)\n",
-            gguf, sv.engine, now_sec() - t0, sv.max_ctx, sv.n_vocab, sv.tok_eog, idle_exit_s);
+    fprintf(stderr, "[psionic-inkling-serve] loaded %s on %s in %.2fs (load=%.2fs, warm=%.2fs, ctx=%d, vocab=%d, eog=%d, idle_exit=%ds)\n",
+            gguf, sv.engine, now_sec() - t0, load_s, warm_s, sv.max_ctx, sv.n_vocab, sv.tok_eog, idle_exit_s);
 
     int srv = (int)socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) { sock_error("socket"); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1; }

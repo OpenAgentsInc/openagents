@@ -26,6 +26,7 @@ final class CoderRun {
     var pendingChat: String?           // chat id reserved while its worktree is being created
     let simChat = "run-" + UUID().uuidString.lowercased()   // who asks the simulator helper while it has no chat id (OA_SIM_CHAT, #13811)
     var preparingWorktree = false, worktreeSkip = false, startingWorker = false
+    var startGen: Int = 0
     var lastPermitOpen = false
     var lastGoalStatus: Int32 = 0
     var lastProviderKind: Int32 = -1
@@ -330,7 +331,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
         NotificationCenter.default.addObserver(forName: LocalModelServer.stateChangedNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.syncLocalModels()
+            self?.syncLocalModels(prewarm: false)
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             guard let self else { return }

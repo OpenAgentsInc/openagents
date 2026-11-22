@@ -190,7 +190,10 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   if cp_fu_line(s, kind, l[0]) { return kind; }
   if !cp_running(s) { return kind; }
   i := s[0].nturns - 1;
-  if kind != 0 { s[0].turns[i].heard = true; }   // the turn has begun: no longer Sending…
+  if kind != 0 {
+    s[0].turns[i].loading_model = false;
+    s[0].turns[i].heard = true;   // the turn has begun: no longer Loading model… / Sending…
+  }
   if kind != MWW_NONE && kind != MWW_THOUGHT && kind != MWW_TODOS { s[0].turns[i].thought_open = false; }
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
@@ -263,10 +266,28 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   }
   return kind;
 }
+// Host tells the active running turn whether the local model is still loading/warming up.
+// When loading finishes (loading == false), reset `began` so model-load time is excluded
+// from both "Worked for Ns" and fallback TTFT.
+coder_page_turn_loading_model :: (s: [] CoderPage, loading: bool) #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return; }
+  i := s[0].nturns - 1;
+  was := s[0].turns[i].loading_model;
+  s[0].turns[i].loading_model = loading;
+  if was && !loading {
+    s[0].turns[i].began = s[0].clock;
+    s[0].turns[i].first_tok = -1;
+    if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_turn_began > 0 {
+      s[0].goal_turn_began = ifx s[0].clock > 0 then s[0].clock else 0.001f32;
+    }
+  }
+  if loading { s[0].anim = true; }
+}
 // The worker could not start or went away: the running turn says why.
 coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return; }
   i := s[0].nturns - 1;
+  s[0].turns[i].loading_model = false;
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
   if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
   s[0].turns[i].took = s[0].clock - s[0].turns[i].began;

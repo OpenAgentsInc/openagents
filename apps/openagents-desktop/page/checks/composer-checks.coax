@@ -243,9 +243,12 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   #assert coder_page_load(r, cast(string) sb[0..<sn]) && r[0].effort == CP_EFFORT_LOW && !coder_page_save_due(r);
   // a change of effort alone is a change to keep
   cp_effort_cycle(r); #assert coder_page_save_due(r);
-  // a new chat starts at the default; Microcoder's default is Low, and its task line says so
+  // a new chat starts at the default; Microcoder's default is Low, Inkling's default is Medium
   #assert cp_new(s) && s[0].effort == CP_EFFORT_DEFAULT;
   #assert coder_page_pick_model(s, "gemini-4-neon") && cp_effort_label(s, cp_model_index(s)) == "Low";
   #assert cp_task_effort(s, cp_model_index(s)) == "low";
+  coder_page_set_inkling(s, true);
+  #assert coder_page_pick_model(s, "inkling-2-mini") && cp_effort_label(s, cp_model_index(s)) == "Medium";
+  #assert cp_task_effort(s, cp_model_index(s)) == "medium";
   s[0].effort = CP_EFFORT_HIGH; #assert cp_task_effort(s, cp_model_index(s)) == "high";
 }

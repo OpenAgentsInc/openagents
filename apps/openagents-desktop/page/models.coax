@@ -559,10 +559,12 @@ cp_effort_of :: (word: string) -> int {
 }
 // The level a model runs at when the chat names none: for Antigravity, the effort Settings sets
 // (its model summary, "MODEL · high"), else agyworker's own, medium; a Claude model's, the level
-// Settings set for it (high until then); Microcoder's models, low.
+// Settings set for it (high until then); Inkling / Hybrid Executor models, medium; Microcoder's
+// cloud models, low.
 cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
   cslot := cp_claude_slot(s, idx);
   if cslot >= 0 { return cp_claude_effort(s, cslot) + CP_EFFORT_LOW; }   // the level Settings set for this Claude model
+  if cp_is_inkling(s, idx) || cp_is_hybrid(s, idx) || cp_is_inkling_neon(s, idx) { return CP_EFFORT_MEDIUM; }
   if !cp_is_agy(s, idx) { return CP_EFFORT_LOW; }
   m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
   dot := " · ";
@@ -582,7 +584,7 @@ cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_L
 cp_task_effort :: (s: [] CoderPage, model: int) -> string {
   words := CP_EFFORT_WORD;
   if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_MAX { return words[cp_effort_at(s, model)]; }
-  if cp_is_claude(s, model) { return words[cp_effort_default(s, model)]; }
+  if cp_is_claude(s, model) || cp_is_inkling(s, model) || cp_is_hybrid(s, model) || cp_is_inkling_neon(s, model) { return words[cp_effort_default(s, model)]; }
   return ifx cp_is_agy(s, model) then "" else "low";
 }
 // A press on the effort chip: the next level after the one shown, the top one wrapping to low:

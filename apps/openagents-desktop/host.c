@@ -512,6 +512,7 @@ int cd_steer_reason(void *page, int i, char *out, int cap) { CoderHost *c = page
 int cd_worker_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_worker_turn(cd_state(c)) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
 void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
+void cd_turn_loading_model(void *page, int loading) { CoderHost *c = page; if (!c) return; coder_page_turn_loading_model(cd_state(c), loading != 0); cd_woke(c); }
 int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }
 int64_t cd_cost_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_cost_usd_micros(cd_state(c)) : 0; }
 int64_t cd_budget_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_budget_usd_micros(cd_state(c)) : 50000000; }

@@ -414,27 +414,34 @@ extension CoderWindow {
                 on = 1
                 statusCode = 3 // CP_LOCAL_READY
                 err = ""
+            case .idle:
+                // Weights are verified on disk; composer stays usable and loads on demand when sent.
+                on = 1
+                statusCode = 3 // CP_LOCAL_READY
+                err = ""
+            case .starting:
+                // Allow immediate compose/send while loading; an active turn shows "Loading model…"
+                // until the server is warm and excludes model load from TTFT.
+                on = 1
+                statusCode = 5 // CP_LOCAL_STARTING
+                err = ""
+                status = "Loading model…"
             case .failed(let msg):
                 on = singleModel ? 0 : 1
                 statusCode = 6 // CP_LOCAL_SERVER_ERROR
                 err = msg
                 status = "Server error — click Retry"
-            case .idle, .starting:
-                on = singleModel ? 0 : 1
-                statusCode = 5 // CP_LOCAL_STARTING
-                err = ""
-                status = "Starting Inkling 2 Mini on Metal…"
             }
         }
         cd_settings_local(target, status)
         cd_inkling(target, on)
         cd_local_state(target, ui.osOk, ui.hwOk, ui.ramGB, statusCode, ui.pct, ui.dlMB, ui.totalMB, err)
     }
-    func syncLocalModels() {
+    func syncLocalModels(prewarm: Bool = true) {
         LocalModelStore.verifyExistingIfNeeded { [weak self] in
             self?.syncLocalModels()
         }
-        if LocalModelStore.isSelectable && (!FeatureFlags.anyExtraModel || cd_model_inkling(page) != 0) {
+        if prewarm && LocalModelStore.isSelectable && (!FeatureFlags.anyExtraModel || cd_model_inkling(page) != 0) {
             LocalModelServer.shared.prewarmIfReady()
         }
         syncLocalState(on: page)

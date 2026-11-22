@@ -26,6 +26,14 @@ extension CoderWindow {
         wake()
     }
     func stopRun(_ r: CoderRun) {
+        if r.startingWorker {
+            r.startGen &+= 1
+            r.startingWorker = false
+            cd_turn_loading_model(r.page, 0)
+            cd_line(r.page, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}")
+            wake()
+            return
+        }
         var out = [CChar](repeating: 0, count: 4096)
         let n = cd_stop_line(&out, Int32(out.count))
         r.worker.write(out, count: Int(n))
@@ -151,14 +159,29 @@ extension CoderWindow {
             }
             #endif
             r.startingWorker = true
-            LocalModelServer.shared.ensureRunning { [weak self, weak r] err in
-                guard let self, let r else { return }
+            let gen = r.startGen
+            if !LocalModelServer.shared.isReady {
+                cd_turn_loading_model(r.page, 1)
+                wake()
+            }
+            LocalModelServer.shared.ensureRunning(onLoading: { [weak self, weak r] in
+                guard let self, let r, r.startGen == gen, cd_running(r.page) != 0 else { return }
+                cd_turn_loading_model(r.page, 1)
+                self.wake()
+            }) { [weak self, weak r] err in
+                guard let self, let r, r.startGen == gen else { return }
                 r.startingWorker = false
+                guard cd_running(r.page) != 0 else {
+                    cd_turn_loading_model(r.page, 0)
+                    return
+                }
+                cd_turn_loading_model(r.page, 0)
                 if let err {
                     cd_failed(r.page, err)
                     self.wake()
                     return
                 }
+                self.wake()
                 let latestURL = LocalModelServer.baseURL
                 var retryRecall = needsRecall
                 if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL {
@@ -192,8 +215,13 @@ extension CoderWindow {
         let sendRecall = needsRecall || switchedProgram || freshSession
         let handoffJSON = resolved.handoffJSON
         r.startingWorker = true
+        let gen = r.startGen
         r.worker.startAsync { [weak self, weak r] ok in
             guard let self, let r else { return }
+            guard r.startGen == gen else {
+                if ok { r.worker.stop() }
+                return
+            }
             r.startingWorker = false
             let stillShown = r === self.run
             let stillBackground = !stillShown && r.chat != nil && self.runs[r.chat!] === r

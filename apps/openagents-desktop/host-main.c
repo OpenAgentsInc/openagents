@@ -695,7 +695,7 @@ static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
     }
     l->server_pid = pid;
   }
-  for (int i = 0; i < 240; i++) {
+  for (int i = 0; i < 360; i++) {
     if (oa_http_probe_health(l->port) == 1) return 1;
     if (!oa_server_pid_alive(l->server_pid)) {
       l->server_pid = 0;
@@ -858,7 +858,11 @@ static int ensure_worker(DesktopApp *a) {
   int want_kind = want_agy ? 1 : want_claude ? 2 : use_inky ? 3 : 0;
   if (want_inkling) {
     char srv_err[512] = {0};
-    if (!local_ensure_server(a, srv_err, sizeof srv_err)) {
+    int need_load = (oa_http_probe_health(a->local.port) != 1);
+    if (need_load) cd_turn_loading_model(a->page, 1);
+    int srv_ok = local_ensure_server(a, srv_err, sizeof srv_err);
+    if (need_load) cd_turn_loading_model(a->page, 0);
+    if (!srv_ok) {
       cd_failed(a->page, srv_err[0] ? srv_err : "could not start psionic-inkling-serve");
       return 0;
     }

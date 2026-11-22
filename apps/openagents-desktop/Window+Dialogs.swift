@@ -515,13 +515,16 @@ final class LocalModelServer {
         }
     }
 
-    func ensureRunning(completion: @escaping (String?) -> Void) {
+    func ensureRunning(onLoading: (() -> Void)? = nil, completion: @escaping (String?) -> Void) {
         queue.async {
             if case .ready(let p) = self.state {
                 if case .psionicHealthy = self.probePortHealth(port: p) {
                     DispatchQueue.main.async { completion(nil) }
                     return
                 }
+            }
+            if let onLoading {
+                DispatchQueue.main.async { onLoading() }
             }
             self.waiters.append(completion)
             if self.bootInFlight { return }
@@ -621,7 +624,7 @@ final class LocalModelServer {
                 break
             }
             var bindCollision = false
-            for _ in 0..<120 {
+            for _ in 0..<360 {
                 if case .psionicHealthy = self.probePortHealth(port: targetPort) {
                     self.finishBootLocked(port: targetPort, error: nil)
                     return

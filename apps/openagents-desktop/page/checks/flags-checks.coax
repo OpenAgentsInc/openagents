@@ -170,11 +170,21 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert retry_btn >= 0 && cp_press(s, retry_btn) && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
   #assert coder_page_set_text(s, "who are you") && !coder_page_submit(s) && s[0].nturns == 0;
 
-  // 7. Installed & server ready -> onboarding disappears, composer ready, sends on inkling-2-mini local=true agents=false
-  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  // 7. Installed & loading in background -> composer stays unlocked with quiet Loading model… caption, default effort is Medium
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_STARTING, 100, 16811, 16811, "");
   coder_page_set_inkling(s, true);
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.local.status") >= 0;
+  #assert cp_effort_label(s, cp_model_index(s)) == "Medium";
+  #assert cp_task_effort(s, cp_model_index(s)) == "medium";
+
+  // 7b. Server ready -> quiet loading caption clears, sends on inkling-2-mini local=true effort=medium agents=false
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
+  #assert surface_find(s[0].surface[..], "coder.local.status") < 0;
   #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
   #assert surface_find(s[0].surface[..], "coder.model") >= 0;
   #assert surface_find(s[0].surface[..], "coder.copy") < 0;
@@ -183,7 +193,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "sess-rel", "/w", out[..]);
   #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
-  #assert back[0].model == "inkling-2-mini" && back[0].local && !back[0].agents && !back[0].claude && back[0].openrouter == "";
+  #assert back[0].model == "inkling-2-mini" && back[0].effort == "medium" && back[0].local && !back[0].agents && !back[0].claude && back[0].openrouter == "";
 }
 
 #test "flags release mode: kept chat from disabled model shows read-only original byline, migration notice, and sends on Inkling" {

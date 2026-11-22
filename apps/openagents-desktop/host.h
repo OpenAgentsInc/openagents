@@ -309,6 +309,8 @@ int cd_worker_turn(void *page);
 void cd_line(void *page, const char *line);
 // The worker could not start or went away: the running message says why.
 void cd_failed(void *page, const char *why);
+// Marks the running turn as waiting for local model load (1) or finished loading (0, resetting elapsed/TTFT start).
+void cd_turn_loading_model(void *page, int loading);
 int cd_running(void *page);
 // The chat's running total cost in microdollars (1,000,000 = $1.00), updated in real time as attempts arrive.
 int64_t cd_cost_usd_micros(void *page);
