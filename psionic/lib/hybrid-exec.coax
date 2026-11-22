@@ -13,7 +13,7 @@
 //   - Frozen W2.2 EvModel execution + Ch 234 exact-replayable trace receipt
 //     (rx_claim + rx_check -> RxVerdict.exact) verified bit-for-bit.
 #load "hybrid-lora.coax";
-#load "module-v2.coax";
+#load "module-v2-wave2.coax";
 #load "next-token.coax";
 #load "replay.coax";
 #authority;
@@ -23,6 +23,11 @@ HX_MOD_JSON_SCHEMA :: 2;
 HX_MOD_DEP_SCHED :: 3;
 HX_MOD_ARITH_BUDGET :: 4;
 HX_MOD_SCHEMA_DIFF :: 5;
+HX_MOD_PATCH_REBASE :: 6;
+HX_MOD_GLOB_MATCH :: 7;
+HX_MOD_SEMVER_SOLVE :: 8;
+HX_MOD_WIRE_BOUNDS :: 9;
+HX_MOD_WIRE_PATCH :: 10;
 
 HX_GRAMMAR_STATES :: 64;
 HX_GRAMMAR_EDGES :: 192;
@@ -71,6 +76,11 @@ hx_module_id :: (name: string) -> int #export_c #effects(all) {
   if name == "oa-exec-dep-sched" { return HX_MOD_DEP_SCHED; }
   if name == "oa-exec-arith-budget" { return HX_MOD_ARITH_BUDGET; }
   if name == "oa-exec-schema-diff-linked" { return HX_MOD_SCHEMA_DIFF; }
+  if name == "oa-exec-patch-rebase" { return HX_MOD_PATCH_REBASE; }
+  if name == "oa-exec-glob-match" { return HX_MOD_GLOB_MATCH; }
+  if name == "oa-exec-semver-solve" { return HX_MOD_SEMVER_SOLVE; }
+  if name == "oa-exec-wire-bounds" { return HX_MOD_WIRE_BOUNDS; }
+  if name == "oa-exec-wire-patch-linked" { return HX_MOD_WIRE_PATCH; }
   return 0;
 }
 
@@ -80,6 +90,11 @@ hx_module_name :: (module_id: int) -> string #export_c #effects(all) {
   if module_id == HX_MOD_DEP_SCHED { return "oa-exec-dep-sched"; }
   if module_id == HX_MOD_ARITH_BUDGET { return "oa-exec-arith-budget"; }
   if module_id == HX_MOD_SCHEMA_DIFF { return "oa-exec-schema-diff-linked"; }
+  if module_id == HX_MOD_PATCH_REBASE { return "oa-exec-patch-rebase"; }
+  if module_id == HX_MOD_GLOB_MATCH { return "oa-exec-glob-match"; }
+  if module_id == HX_MOD_SEMVER_SOLVE { return "oa-exec-semver-solve"; }
+  if module_id == HX_MOD_WIRE_BOUNDS { return "oa-exec-wire-bounds"; }
+  if module_id == HX_MOD_WIRE_PATCH { return "oa-exec-wire-patch-linked"; }
   return "";
 }
 
@@ -89,6 +104,11 @@ hx_module_arity :: (module_id: int) -> int #export_c #effects(all) {
   if module_id == HX_MOD_DEP_SCHED { return 6; }
   if module_id == HX_MOD_ARITH_BUDGET { return 6; }
   if module_id == HX_MOD_SCHEMA_DIFF { return 10; }
+  if module_id == HX_MOD_PATCH_REBASE { return 7; }
+  if module_id == HX_MOD_GLOB_MATCH { return 7; }
+  if module_id == HX_MOD_SEMVER_SOLVE { return 7; }
+  if module_id == HX_MOD_WIRE_BOUNDS { return 7; }
+  if module_id == HX_MOD_WIRE_PATCH { return 10; }
   return 0;
 }
 
@@ -293,10 +313,49 @@ hx_pre_check :: (module_id: int, core_verified: bool, args: [] int) -> HxExecRea
     }
     return HxExecReason.ok;
   }
-  if args[2] < 0 || args[4] < 0 || args[6] < 0 || args[7] < 0 || args[9] < 0 {
+  if module_id == HX_MOD_SCHEMA_DIFF {
+    if args[2] < 0 || args[4] < 0 || args[6] < 0 || args[7] < 0 || args[9] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    if args[7] + (args[6] - args[4]) > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_PATCH_REBASE {
+    if args[1] < 0 || args[2] < 0 || args[4] < 0 || args[5] < 0 || args[6] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    if args[3] + (args[2] - args[1]) > HX_ARG_MAX || args[6] + (args[2] - args[1]) + (args[5] - args[4]) > HX_ARG_MAX {
+      return HxExecReason.arith_overflow;
+    }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_GLOB_MATCH {
+    if args[0] < 0 || args[1] < 0 || args[4] < 0 || args[6] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    if args[4] + args[6] > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_SEMVER_SOLVE {
+    if args[0] < 0 || args[1] < 0 || args[2] < 0 || args[3] < 0 || args[4] < 0 || args[5] < 0 || args[6] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    return HxExecReason.ok;
+  }
+  if module_id == HX_MOD_WIRE_BOUNDS {
+    if args[1] < 0 || args[4] < 0 || args[5] < 0 || args[6] < 0 {
+      return HxExecReason.arg_out_of_range;
+    }
+    if args[3] + args[4] > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+    return HxExecReason.ok;
+  }
+  // HX_MOD_WIRE_PATCH
+  if args[1] < 0 || args[2] < 0 || args[4] < 0 || args[5] < 0 || args[7] < 0 || args[8] < 0 || args[9] < 0 {
     return HxExecReason.arg_out_of_range;
   }
-  if args[7] + (args[6] - args[4]) > HX_ARG_MAX { return HxExecReason.arith_overflow; }
+  if args[6] + (args[5] - args[4]) > HX_ARG_MAX || args[9] + (args[5] - args[4]) + (args[8] - args[7]) > HX_ARG_MAX {
+    return HxExecReason.arith_overflow;
+  }
   return HxExecReason.ok;
 }
 
@@ -361,6 +420,50 @@ hx_build_witness :: (module_id: int, args: [] int, outputs: [] int, prog: [] TmO
     prog[n] = TmOp.{code = TmCode.push, arg = args[5]}; n += 1;
     prog[n] = TmOp.{code = TmCode.mul}; n += 1;
     prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_PATCH_REBASE && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[6]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[1]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[5]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_GLOB_MATCH && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[0]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[6]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = outputs[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_SEMVER_SOLVE && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[6]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = 1}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[0]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = outputs[2]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+  } else if module_id == HX_MOD_WIRE_BOUNDS && outputs[0] == 1 {
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.out}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[5]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[3]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.push, arg = args[4]}; n += 1;
+    prog[n] = TmOp.{code = TmCode.add}; n += 1;
+    prog[n] = TmOp.{code = TmCode.sub}; n += 1;
     prog[n] = TmOp.{code = TmCode.out}; n += 1;
   } else {
     prog[n] = TmOp.{code = TmCode.push, arg = outputs[1]}; n += 1;
@@ -548,6 +651,11 @@ hx_format_injection :: (rec: HxCoreReceipt, out: [] u8) -> int #export_c #effect
   #assert hx_module_id("oa-exec-dep-sched") == HX_MOD_DEP_SCHED && hx_module_name(HX_MOD_DEP_SCHED) == "oa-exec-dep-sched" && hx_module_arity(HX_MOD_DEP_SCHED) == 6;
   #assert hx_module_id("oa-exec-arith-budget") == HX_MOD_ARITH_BUDGET && hx_module_name(HX_MOD_ARITH_BUDGET) == "oa-exec-arith-budget" && hx_module_arity(HX_MOD_ARITH_BUDGET) == 6;
   #assert hx_module_id("oa-exec-schema-diff-linked") == HX_MOD_SCHEMA_DIFF && hx_module_name(HX_MOD_SCHEMA_DIFF) == "oa-exec-schema-diff-linked" && hx_module_arity(HX_MOD_SCHEMA_DIFF) == 10;
+  #assert hx_module_id("oa-exec-patch-rebase") == HX_MOD_PATCH_REBASE && hx_module_name(HX_MOD_PATCH_REBASE) == "oa-exec-patch-rebase" && hx_module_arity(HX_MOD_PATCH_REBASE) == 7;
+  #assert hx_module_id("oa-exec-glob-match") == HX_MOD_GLOB_MATCH && hx_module_name(HX_MOD_GLOB_MATCH) == "oa-exec-glob-match" && hx_module_arity(HX_MOD_GLOB_MATCH) == 7;
+  #assert hx_module_id("oa-exec-semver-solve") == HX_MOD_SEMVER_SOLVE && hx_module_name(HX_MOD_SEMVER_SOLVE) == "oa-exec-semver-solve" && hx_module_arity(HX_MOD_SEMVER_SOLVE) == 7;
+  #assert hx_module_id("oa-exec-wire-bounds") == HX_MOD_WIRE_BOUNDS && hx_module_name(HX_MOD_WIRE_BOUNDS) == "oa-exec-wire-bounds" && hx_module_arity(HX_MOD_WIRE_BOUNDS) == 7;
+  #assert hx_module_id("oa-exec-wire-patch-linked") == HX_MOD_WIRE_PATCH && hx_module_name(HX_MOD_WIRE_PATCH) == "oa-exec-wire-patch-linked" && hx_module_arity(HX_MOD_WIRE_PATCH) == 10;
   #assert hx_module_id("unknown") == 0 && hx_module_name(0) == "" && hx_module_arity(0) == 0;
 
   // Reason names
@@ -864,10 +972,140 @@ hx_format_injection :: (rec: HxCoreReceipt, out: [] u8) -> int #export_c #effect
   t0 := r_b; t0.replay_ok = false; #assert !hx_verify_receipt(m_bud, sha, t0);
   t1 := r_b; t1.module_sha[0] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t1);
   t2 := r_b; t2.module_id = 0; t2.n_inputs = 0; #assert !hx_verify_receipt(m_bud, sha, t2);
-  t2b := r_b; t2b.module_id = HX_MOD_SCHEMA_DIFF + 1; #assert !hx_verify_receipt(m_bud, sha, t2b);
+  t2b := r_b; t2b.module_id = HX_MOD_WIRE_PATCH + 1; #assert !hx_verify_receipt(m_bud, sha, t2b);
   t3 := r_b; t3.n_inputs = 5; #assert !hx_verify_receipt(m_bud, sha, t3);
   t4 := r_b; t4.n_outputs = 2; #assert !hx_verify_receipt(m_bud, sha, t4);
   t8 := r_b; t8.rx_claim.trace[0] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t8);
   t9 := r_b; t9.ev_digest[31] ^= 1; #assert !hx_verify_receipt(m_bud, sha, t9);
   #assert !hx_verify_receipt(bad_m, sha, r_b);
+}
+
+#test "hybrid-exec Wave 3: 4 Wave 2 Class-E cores + wire-patch linked composite, Ch 234 replay & pre-checks (#13962)" #steps 400000000 {
+  l5: [MV_MAX_LAYERS] EvLayerDesc; h5: [MV_MAX_HEADS] EvHeadDesc; w5: [65536] f64;
+  l6: [MV_MAX_LAYERS] EvLayerDesc; h6: [MV_MAX_HEADS] EvHeadDesc; w6: [65536] f64;
+  l7: [MV_MAX_LAYERS] EvLayerDesc; h7: [MV_MAX_HEADS] EvHeadDesc; w7: [65536] f64;
+  l8: [MV_MAX_LAYERS] EvLayerDesc; h8: [MV_MAX_HEADS] EvHeadDesc; w8: [65536] f64;
+  lw: [MV_MAX_LAYERS] EvLayerDesc; hw: [MV_MAX_HEADS] EvHeadDesc; ww: [65536] f64;
+  lc: [MV_MAX_LAYERS] EvLayerDesc; hc: [MV_MAX_HEADS] EvHeadDesc; wc: [131072] f64;
+
+  m_pr := mv_compile_patch_rebase(l5[..], h5[..], w5[..]);
+  m_gl := mv_compile_glob_match(l6[..], h6[..], w6[..]);
+  m_sv := mv_compile_semver_solve(l7[..], h7[..], w7[..]);
+  m_wb := mv_compile_wire_bounds(l8[..], h8[..], w8[..]);
+  m_wg := mv_compile_wire_gate(lw[..], hw[..], ww[..]);
+  wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+  m_wp := mv_link_models(m_wg, m_pr, wire[..], lc[..], hc[..], wc[..]);
+
+  sha: [32] u8;
+  for i: 0..<32 { sha[i] = cast(u8) (i * 7 + 11); }
+
+  // 6. oa-exec-patch-rebase: valid (19 steps) + overlap/invalid (7 steps) + exact pre-checks
+  a_pr := [7] int.[10, 4, 7, 25, 3, 2, 100];
+  r_pr := hx_invoke_core(HX_MOD_PATCH_REBASE, m_pr, sha, true, a_pr[..]);
+  #assert r_pr.reason == HxExecReason.ok && r_pr.outputs[0] == 1 && r_pr.outputs[1] == 28 && r_pr.outputs[2] == 102;
+  #assert r_pr.rx_claim.steps == 19 && hx_verify_receipt(m_pr, sha, r_pr);
+  a_pr_bad := [7] int.[10, 16, 16, 25, 3, 3, 100];
+  r_pr_bad := hx_invoke_core(HX_MOD_PATCH_REBASE, m_pr, sha, true, a_pr_bad[..]);
+  #assert r_pr_bad.reason == HxExecReason.ok && r_pr_bad.outputs[0] == 0 && r_pr_bad.rx_claim.steps == 7 && hx_verify_receipt(m_pr, sha, r_pr_bad);
+
+  pr_zero := [7] int.[1, 0, 0, 1, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pr_zero[..]) == HxExecReason.ok;
+  for ni: [5] int.[1, 2, 4, 5, 6] {
+    pn := a_pr; pn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pn[..]) == HxExecReason.arg_out_of_range;
+  }
+  pr_ed1 := [7] int.[1, 4, 4, HX_ARG_MAX, 3, 3, 10];
+  #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pr_ed1[..]) == HxExecReason.ok;
+  pr_ov1 := [7] int.[1, 4, 5, HX_ARG_MAX, 3, 3, 10];
+  #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pr_ov1[..]) == HxExecReason.arith_overflow;
+  pr_ed2 := [7] int.[1, 4, 5, 20, 3, 2, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pr_ed2[..]) == HxExecReason.ok;
+  pr_ov2 := [7] int.[1, 4, 5, 20, 3, 3, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_PATCH_REBASE, true, pr_ov2[..]) == HxExecReason.arith_overflow;
+
+  // 7. oa-exec-glob-match: valid (11 steps, distinct rp=2 != ms=1) + mismatch (7 steps) + exact pre-checks
+  a_gl := [7] int.[6, 3, 1, 2, 2, 1, 1];
+  r_gl := hx_invoke_core(HX_MOD_GLOB_MATCH, m_gl, sha, true, a_gl[..]);
+  #assert r_gl.reason == HxExecReason.ok && r_gl.outputs[0] == 1 && r_gl.outputs[1] == 3 && r_gl.outputs[2] == 1;
+  #assert r_gl.rx_claim.steps == 11 && hx_verify_receipt(m_gl, sha, r_gl);
+  a_gl_bad := [7] int.[5, 4, 0, 1, 1, 1, 1];
+  r_gl_bad := hx_invoke_core(HX_MOD_GLOB_MATCH, m_gl, sha, true, a_gl_bad[..]);
+  #assert r_gl_bad.reason == HxExecReason.ok && r_gl_bad.outputs[0] == 0 && r_gl_bad.rx_claim.steps == 7 && hx_verify_receipt(m_gl, sha, r_gl_bad);
+
+  gl_zero := [7] int.[0, 0, 0, 0, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_GLOB_MATCH, true, gl_zero[..]) == HxExecReason.ok;
+  for ni: [4] int.[0, 1, 4, 6] {
+    gn := a_gl; gn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_GLOB_MATCH, true, gn[..]) == HxExecReason.arg_out_of_range;
+  }
+  gl_ed := [7] int.[5, 3, 1, 1, 33554432, 1, 33554432];
+  #assert hx_pre_check(HX_MOD_GLOB_MATCH, true, gl_ed[..]) == HxExecReason.ok;
+  gl_ov := [7] int.[5, 3, 1, 1, 33554432, 1, 33554433];
+  #assert hx_pre_check(HX_MOD_GLOB_MATCH, true, gl_ov[..]) == HxExecReason.arith_overflow;
+
+  // 8. oa-exec-semver-solve: valid (11 steps) + incompatible (7 steps) + exact pre-checks
+  a_sv := [7] int.[1, 2, 0, 1, 2, 0, 4];
+  r_sv := hx_invoke_core(HX_MOD_SEMVER_SOLVE, m_sv, sha, true, a_sv[..]);
+  #assert r_sv.reason == HxExecReason.ok && r_sv.outputs[0] == 1 && r_sv.outputs[1] == 2 && r_sv.outputs[2] == 1;
+  #assert r_sv.rx_claim.steps == 11 && hx_verify_receipt(m_sv, sha, r_sv);
+  a_sv_bad := [7] int.[4, 0, 0, 1, 2, 0, 4];
+  r_sv_bad := hx_invoke_core(HX_MOD_SEMVER_SOLVE, m_sv, sha, true, a_sv_bad[..]);
+  #assert r_sv_bad.reason == HxExecReason.ok && r_sv_bad.outputs[0] == 0 && r_sv_bad.rx_claim.steps == 7 && hx_verify_receipt(m_sv, sha, r_sv_bad);
+
+  sv_zero := [7] int.[0, 0, 0, 0, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_SEMVER_SOLVE, true, sv_zero[..]) == HxExecReason.ok;
+  for ni: 0..<7 {
+    sn := a_sv; sn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_SEMVER_SOLVE, true, sn[..]) == HxExecReason.arg_out_of_range;
+  }
+
+  // 9. oa-exec-wire-bounds: valid (11 steps) + truncated (7 steps) + exact pre-checks
+  a_wb := [7] int.[3, 16, 2, 2, 40, 48, 1024];
+  r_wb := hx_invoke_core(HX_MOD_WIRE_BOUNDS, m_wb, sha, true, a_wb[..]);
+  #assert r_wb.reason == HxExecReason.ok && r_wb.outputs[0] == 1 && r_wb.outputs[1] == 2 && r_wb.outputs[2] == 6;
+  #assert r_wb.rx_claim.steps == 11 && hx_verify_receipt(m_wb, sha, r_wb);
+  a_wb_bad := [7] int.[3, 16, 2, 2, 50, 48, 1024];
+  r_wb_bad := hx_invoke_core(HX_MOD_WIRE_BOUNDS, m_wb, sha, true, a_wb_bad[..]);
+  #assert r_wb_bad.reason == HxExecReason.ok && r_wb_bad.outputs[0] == 0 && r_wb_bad.rx_claim.steps == 7 && hx_verify_receipt(m_wb, sha, r_wb_bad);
+
+  wb_zero := [7] int.[1, 0, 0, 1, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_WIRE_BOUNDS, true, wb_zero[..]) == HxExecReason.ok;
+  for ni: [4] int.[1, 4, 5, 6] {
+    wn := a_wb; wn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_WIRE_BOUNDS, true, wn[..]) == HxExecReason.arg_out_of_range;
+  }
+  wb_ed := [7] int.[3, 16, 2, 4, HX_ARG_MAX - 4, 48, 1024];
+  #assert hx_pre_check(HX_MOD_WIRE_BOUNDS, true, wb_ed[..]) == HxExecReason.ok;
+  wb_ov := [7] int.[3, 16, 2, 4, HX_ARG_MAX - 3, 48, 1024];
+  #assert hx_pre_check(HX_MOD_WIRE_BOUNDS, true, wb_ov[..]) == HxExecReason.arith_overflow;
+
+  // 10. oa-exec-wire-patch-linked composite (7 steps) + bad framing gate + exact pre-checks
+  a_wp := [10] int.[2, 16, 64, 10, 4, 7, 25, 3, 2, 100];
+  r_wp := hx_invoke_core(HX_MOD_WIRE_PATCH, m_wp, sha, true, a_wp[..]);
+  #assert r_wp.reason == HxExecReason.ok && r_wp.outputs[0] == 1 && r_wp.outputs[1] == 28 && r_wp.outputs[2] == 102;
+  #assert r_wp.rx_claim.steps == 7 && hx_verify_receipt(m_wp, sha, r_wp);
+  a_wp_bad := [10] int.[99, 16, 64, 10, 4, 7, 25, 3, 2, 100];
+  r_wp_bad := hx_invoke_core(HX_MOD_WIRE_PATCH, m_wp, sha, true, a_wp_bad[..]);
+  #assert r_wp_bad.reason == HxExecReason.ok && r_wp_bad.outputs[0] == 0 && r_wp_bad.outputs[1] == 0 && r_wp_bad.outputs[2] == 100 && hx_verify_receipt(m_wp, sha, r_wp_bad);
+
+  wp_zero := [10] int.[1, 0, 0, 1, 0, 0, 1, 0, 0, 0];
+  #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wp_zero[..]) == HxExecReason.ok;
+  for ni: [7] int.[1, 2, 4, 5, 7, 8, 9] {
+    wpn := a_wp; wpn[ni] = -1;
+    #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wpn[..]) == HxExecReason.arg_out_of_range;
+  }
+  wp_ed1 := [10] int.[2, 16, 64, 1, 4, 4, HX_ARG_MAX, 3, 3, 10];
+  #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wp_ed1[..]) == HxExecReason.ok;
+  wp_ov1 := [10] int.[2, 16, 64, 1, 4, 5, HX_ARG_MAX, 3, 3, 10];
+  #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wp_ov1[..]) == HxExecReason.arith_overflow;
+  wp_ed2 := [10] int.[2, 16, 64, 1, 4, 5, 20, 3, 2, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wp_ed2[..]) == HxExecReason.ok;
+  wp_ov2 := [10] int.[2, 16, 64, 1, 4, 5, 20, 3, 3, HX_ARG_MAX];
+  #assert hx_pre_check(HX_MOD_WIRE_PATCH, true, wp_ov2[..]) == HxExecReason.arith_overflow;
+
+  // ABI call parser round-trip for new modules
+  pc_pr := hx_parse_call("<exec_call><exec_module>oa-exec-patch-rebase</exec_module><exec_arg>10,4,7,25,3,2,100</exec_arg></exec_call>");
+  #assert pc_pr.reason == HxExecReason.ok && pc_pr.module_id == HX_MOD_PATCH_REBASE && pc_pr.n_args == 7;
+  pc_wp := hx_parse_call("<exec_call><exec_module>oa-exec-wire-patch-linked</exec_module><exec_arg>2,16,64,10,4,7,25,3,2,100</exec_arg></exec_call>");
+  #assert pc_wp.reason == HxExecReason.ok && pc_wp.module_id == HX_MOD_WIRE_PATCH && pc_wp.n_args == 10;
 }

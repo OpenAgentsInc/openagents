@@ -1,12 +1,12 @@
-// Runnable pure-Coax demonstration of hybrid-exec-v1 (Executor W3.1, #13920):
-//   1. Compiles and verifies all 4 W2.2 Class-E dense F64 weight modules + linked composite
+// Runnable pure-Coax demonstration of hybrid-exec-v1 (Executor W3.1 #13920 + Wave 3 #13962):
+//   1. Compiles and verifies all 8 Class-E dense F64 weight modules + 2 linked composites
 //      against their SHA-256 digests in ~/.openagents/modules/.
 //   2. Exercises Ch 53 constrained byte-level DFA call grammar (next-token.coax).
 //   3. Trains a Ch 140 LoRA routing adapter via AdamW, proves bit-exact zero-adapter
 //      equivalence, and verifies atomic hot-swap refusal on mismatched base/core digests
 //      and 1-byte weight tampering.
-//   4. Executes frozen compiled weight cores with Ch 234 exact replay receipts (100% replay)
-//      and typed <exec_refuse> edge-case traps (0 silent wrong answers).
+//   4. Executes frozen compiled weight cores across all 8 Class-E modules + 2 composites
+//      with Ch 234 exact replay receipts (100% replay) and typed <exec_refuse> traps.
 #import "Basic";
 #load "../lib/hybrid-exec.coax";
 
@@ -21,13 +21,19 @@ hx_ex_hex :: (d: [32] u8, out: [] u8) -> string {
 }
 
 main :: () {
-  // 1. Compile all 4 W2.2 dense F64 modules + linked composite and serialize with SHA-256
+  // 1. Compile all 8 Class-E dense F64 modules + 2 linked composites and serialize with SHA-256
   l1: [MV_MAX_LAYERS] EvLayerDesc; h1: [MV_MAX_HEADS] EvHeadDesc; w1: [32768] f64;
   l2: [MV_MAX_LAYERS] EvLayerDesc; h2: [MV_MAX_HEADS] EvHeadDesc; w2: [32768] f64;
   l3: [MV_MAX_LAYERS] EvLayerDesc; h3: [MV_MAX_HEADS] EvHeadDesc; w3: [32768] f64;
   l4: [MV_MAX_LAYERS] EvLayerDesc; h4: [MV_MAX_HEADS] EvHeadDesc; w4: [32768] f64;
   lg: [MV_MAX_LAYERS] EvLayerDesc; hg: [MV_MAX_HEADS] EvHeadDesc; wg: [32768] f64;
   lc: [MV_MAX_LAYERS] EvLayerDesc; hc: [MV_MAX_HEADS] EvHeadDesc; wc: [65536] f64;
+  l5: [MV_MAX_LAYERS] EvLayerDesc; h5: [MV_MAX_HEADS] EvHeadDesc; w5: [65536] f64;
+  l6: [MV_MAX_LAYERS] EvLayerDesc; h6: [MV_MAX_HEADS] EvHeadDesc; w6: [65536] f64;
+  l7: [MV_MAX_LAYERS] EvLayerDesc; h7: [MV_MAX_HEADS] EvHeadDesc; w7: [65536] f64;
+  l8: [MV_MAX_LAYERS] EvLayerDesc; h8: [MV_MAX_HEADS] EvHeadDesc; w8: [65536] f64;
+  lw: [MV_MAX_LAYERS] EvLayerDesc; hw: [MV_MAX_HEADS] EvHeadDesc; ww: [65536] f64;
+  lc2: [MV_MAX_LAYERS] EvLayerDesc; hc2: [MV_MAX_HEADS] EvHeadDesc; wc2: [131072] f64;
 
   m_diff := mv_compile_diff_verify(l1[..], h1[..], w1[..]);
   m_json := mv_compile_json_schema(l2[..], h2[..], w2[..]);
@@ -36,22 +42,39 @@ main :: () {
   m_gate := mv_compile_schema_gate(lg[..], hg[..], wg[..]);
   wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
   m_comp := mv_link_models(m_gate, m_diff, wire[..], lc[..], hc[..], wc[..]);
+  m_pr := mv_compile_patch_rebase(l5[..], h5[..], w5[..]);
+  m_gl := mv_compile_glob_match(l6[..], h6[..], w6[..]);
+  m_sv := mv_compile_semver_solve(l7[..], h7[..], w7[..]);
+  m_wb := mv_compile_wire_bounds(l8[..], h8[..], w8[..]);
+  m_wg := mv_compile_wire_gate(lw[..], hw[..], ww[..]);
+  m_wp := mv_link_models(m_wg, m_pr, wire[..], lc2[..], hc2[..], wc2[..]);
 
-  sb: [65536] u8;
+  sb: [131072] u8;
   s1 := ev_serialize(m_diff, sb[..]);
   s2 := ev_serialize(m_json, sb[..]);
   s3 := ev_serialize(m_dep, sb[..]);
   s4 := ev_serialize(m_bud, sb[..]);
   s5 := ev_serialize(m_comp, sb[..]);
+  s6 := ev_serialize(m_pr, sb[..]);
+  s7 := ev_serialize(m_gl, sb[..]);
+  s8 := ev_serialize(m_sv, sb[..]);
+  s9 := ev_serialize(m_wb, sb[..]);
+  s10 := ev_serialize(m_wp, sb[..]);
   #assert s1.status == EvStatus.ok && s2.status == EvStatus.ok && s3.status == EvStatus.ok && s4.status == EvStatus.ok && s5.status == EvStatus.ok;
+  #assert s6.status == EvStatus.ok && s7.status == EvStatus.ok && s8.status == EvStatus.ok && s9.status == EvStatus.ok && s10.status == EvStatus.ok;
 
   hb: [64] u8;
-  print("hybrid-exec-v1 pure-Coax verification (#13920)\n");
+  print("hybrid-exec-v1 pure-Coax verification (#13920, #13962)\n");
   print("  oa-exec-diff-verify        sha256=%\n", hx_ex_hex(s1.digest, hb[..]));
   print("  oa-exec-json-schema        sha256=%\n", hx_ex_hex(s2.digest, hb[..]));
   print("  oa-exec-dep-sched          sha256=%\n", hx_ex_hex(s3.digest, hb[..]));
   print("  oa-exec-arith-budget       sha256=%\n", hx_ex_hex(s4.digest, hb[..]));
   print("  oa-exec-schema-diff-linked sha256=%\n", hx_ex_hex(s5.digest, hb[..]));
+  print("  oa-exec-patch-rebase       sha256=%\n", hx_ex_hex(s6.digest, hb[..]));
+  print("  oa-exec-glob-match         sha256=%\n", hx_ex_hex(s7.digest, hb[..]));
+  print("  oa-exec-semver-solve       sha256=%\n", hx_ex_hex(s8.digest, hb[..]));
+  print("  oa-exec-wire-bounds        sha256=%\n", hx_ex_hex(s9.digest, hb[..]));
+  print("  oa-exec-wire-patch-linked  sha256=%\n", hx_ex_hex(s10.digest, hb[..]));
 
   // 2. Ch 53 constrained DFA grammar check
   edges: [HX_GRAMMAR_EDGES] NxEdge;
@@ -102,19 +125,24 @@ main :: () {
   #assert hl_hotswap(slot[..], tampered, base_sha, core_sha) == HxStatus.core_unverified;
   print("  ch140_lora_hotswap: PASS (zero=bit-exact, trained=20/20, bad_base/bad_core/tamper refused)\n");
 
-  // 4. Frozen W2.2 execution + Ch 234 exact replay + typed <exec_refuse> traps
-  calls := [6] string.[
+  // 4. Frozen Class-E execution (all 8 modules + 2 composites) + Ch 234 exact replay + typed <exec_refuse> traps
+  calls := [11] string.[
     "<exec_call><exec_module>oa-exec-diff-verify</exec_module><exec_arg>4789,39,4789,54,4827,14,14</exec_arg></exec_call>",
     "<exec_call><exec_module>oa-exec-json-schema</exec_module><exec_arg>1,147,256,1,3847,1,4345,8192</exec_arg></exec_call>",
     "<exec_call><exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,0,37,128,473,0</exec_arg></exec_call>",
     "<exec_call><exec_module>oa-exec-arith-budget</exec_module><exec_arg>1847293,624180,1437,1000000,473,789</exec_arg></exec_call>",
     "<exec_call><exec_module>oa-exec-arith-budget</exec_module><exec_arg>95000000,1000,500,99000000,10,50</exec_arg></exec_call>",
     "<exec_call><exec_module>oa-exec-dep-sched</exec_module><exec_arg>0,1,14,64,520,0</exec_arg></exec_call>",
+    "<exec_call><exec_module>oa-exec-patch-rebase</exec_module><exec_arg>10,4,7,25,3,2,100</exec_arg></exec_call>",
+    "<exec_call><exec_module>oa-exec-glob-match</exec_module><exec_arg>5,3,1,1,1,1,1</exec_arg></exec_call>",
+    "<exec_call><exec_module>oa-exec-semver-solve</exec_module><exec_arg>1,2,0,1,2,0,4</exec_arg></exec_call>",
+    "<exec_call><exec_module>oa-exec-wire-bounds</exec_module><exec_arg>3,16,2,2,40,48,1024</exec_arg></exec_call>",
+    "<exec_call><exec_module>oa-exec-wire-patch-linked</exec_module><exec_arg>2,16,64,10,4,7,25,3,2,100</exec_arg></exec_call>",
   ];
   replayed := 0;
   cores_ran := 0;
   ibuf: [HX_INJECT_MAX] u8;
-  for ci: 0..<6 {
+  for ci: 0..<11 {
     pc := hx_parse_call(calls[ci]);
     rec: HxCoreReceipt;
     if pc.reason != HxExecReason.ok {
@@ -131,11 +159,26 @@ main :: () {
     } else if pc.module_id == HX_MOD_ARITH_BUDGET {
       rec = hx_invoke_core(pc.module_id, m_bud, s4.digest, true, pc.args[0..<pc.n_args]);
       if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_bud, s4.digest, rec) { replayed += 1; } }
+    } else if pc.module_id == HX_MOD_PATCH_REBASE {
+      rec = hx_invoke_core(pc.module_id, m_pr, s6.digest, true, pc.args[0..<pc.n_args]);
+      if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_pr, s6.digest, rec) { replayed += 1; } }
+    } else if pc.module_id == HX_MOD_GLOB_MATCH {
+      rec = hx_invoke_core(pc.module_id, m_gl, s7.digest, true, pc.args[0..<pc.n_args]);
+      if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_gl, s7.digest, rec) { replayed += 1; } }
+    } else if pc.module_id == HX_MOD_SEMVER_SOLVE {
+      rec = hx_invoke_core(pc.module_id, m_sv, s8.digest, true, pc.args[0..<pc.n_args]);
+      if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_sv, s8.digest, rec) { replayed += 1; } }
+    } else if pc.module_id == HX_MOD_WIRE_BOUNDS {
+      rec = hx_invoke_core(pc.module_id, m_wb, s9.digest, true, pc.args[0..<pc.n_args]);
+      if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_wb, s9.digest, rec) { replayed += 1; } }
+    } else if pc.module_id == HX_MOD_WIRE_PATCH {
+      rec = hx_invoke_core(pc.module_id, m_wp, s10.digest, true, pc.args[0..<pc.n_args]);
+      if rec.core_ran { cores_ran += 1; if hx_verify_receipt(m_wp, s10.digest, rec) { replayed += 1; } }
     }
     ilen := hx_format_injection(rec, ibuf[..]);
     #assert ilen > 0;
     print("  call[%] => %\n", ci, cast(string) ibuf[0..<ilen]);
   }
-  #assert cores_ran == 5 && replayed == 5;
+  #assert cores_ran == 10 && replayed == 10;
   print("  ch234_exact_replay: %/% (100%%)\n", replayed, cores_ran);
 }
