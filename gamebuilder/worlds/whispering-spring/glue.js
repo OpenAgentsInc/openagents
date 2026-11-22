@@ -144,7 +144,9 @@ function placeCallout(sp, x, y) {
   $("quest-count").textContent = `${n} of 3 lore pages found`;
   const busy = state.m !== 0 || state.s === 1 || !$("found").hidden || settings.text || bubbleShown;
   if (sp < 0 || busy || !inGrove) { c.hidden = true; return; }
-  if (c.textContent !== CALLOUT[sp]) c.textContent = CALLOUT[sp];
+  // a spot off the side of the screen (a phone looks at part of the grove): an arrow says which way; a tap glides there
+  const label = x < 8 ? `‹ ${CALLOUT[sp]}` : x > innerWidth - 8 ? `${CALLOUT[sp]} ›` : CALLOUT[sp];
+  if (c.textContent !== label) c.textContent = label;
   c.hidden = false;
   c.style.left = `${Math.min(innerWidth - c.offsetWidth - 40, Math.max(12, x))}px`;
   c.style.top = `${Math.max(120, y - 20)}px`;
@@ -365,7 +367,7 @@ $("l-settings").addEventListener("click", () => open("settings"));
 
 function enterGrove() {
   audio.start(); audio.startAmbience();
-  inGrove = true; paused = false;
+  inGrove = true; paused = false; setTimeout(swipeHintOnce, 2500);
   $("landing").hidden = true; $("hud").hidden = false;
   close("album", false); close("settings", false);
   syncSoundInputs(); renderText();
@@ -455,6 +457,14 @@ $("assist").addEventListener("change", (e) => send(MSG.stones, `a ${e.target.che
 $("rebuild").addEventListener("click", () => send(MSG.stones, "r"));
 
 // ---- the hint while something is in hand
+const touchy = matchMedia("(pointer: coarse)").matches;
+let swipeHintUntil = 0;
+// an upright phone sees part of the grove: say once that a swipe looks around
+function swipeHintOnce() {
+  if (innerWidth / innerHeight >= 0.9) return;
+  try { if (localStorage.getItem("whispering-spring.swiped")) return; localStorage.setItem("whispering-spring.swiped", "1"); } catch {}
+  swipeHintUntil = Date.now() + 6000; renderHint(); setTimeout(renderHint, 6100);
+}
 function renderHint() {
   const el = $("hint");
   let html = "";
@@ -466,8 +476,11 @@ function renderHint() {
     html = (decor.ok ? "<b>It can stand here.</b> " : "<b>Not here.</b> ") + `Click the ground to set the ${DECOR[decor.k][0].toLowerCase()} · <kbd>Esc</kbd> puts it back`;
     el.dataset.ok = decor.ok ? "1" : "0";
   } else if (state.m === 1 && $("stones").hidden && state.c.split(",").filter(Boolean).length < 4) {
-    html = "Click a creek stone in the pile to pick it up"; el.dataset.ok = "1";
+    html = `${touchy ? "Tap" : "Click"} a creek stone in the pile to pick it up`; el.dataset.ok = "1";
+  } else if (Date.now() < swipeHintUntil) {
+    html = "Swipe sideways to look around the grove"; el.dataset.ok = "1";
   }
+  if (touchy) html = html.replace("Click to let go", "Tap where it should go").replace("Click the ground", "Tap the ground").replace(/ · <kbd>Q<\/kbd>\/<kbd>E<\/kbd> or the wheel turns it · <kbd>Esc<\/kbd> puts it back| · <kbd>Esc<\/kbd> puts it back/, "");
   el.hidden = !html || !inGrove;
   if (html && el.innerHTML !== html) el.innerHTML = html;
 }

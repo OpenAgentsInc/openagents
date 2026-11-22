@@ -73,10 +73,18 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #sound-more summary{cursor:pointer;color:var(--cream-dim);font-size:14px;list-style:none;text-align:right}
 #landing .foot{position:absolute;left:18px;bottom:16px;max-width:min(420px,calc(100% - 300px));font-size:14px;color:#efe3c8;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 @media (max-width:640px){
-  #landing .title{top:12%}
-  #enter{top:58%;min-width:220px}
-  #listen{right:50%;transform:translateX(50%);top:auto;bottom:150px}
-  #landing .foot{max-width:none;right:18px;bottom:92px;text-align:center}
+  /* a phone: the way in, the album and the sound stack down the screen, nothing on top of anything */
+  #landing .title{top:8%}
+  #enter{top:47%;min-width:220px;min-height:64px;padding:12px 32px}
+  #listen{right:auto;left:50%;transform:translateX(-50%);top:calc(47% + 74px);bottom:auto;min-height:52px;padding:10px 22px;white-space:nowrap}
+  #listen .moon{display:inline;margin-right:8px;font-size:18px}
+  #landing .foot{left:16px;right:16px;bottom:86px;max-width:none;text-align:center;font-size:13px}
+  #landing .corner{left:12px;right:12px;bottom:12px;flex-direction:row-reverse;justify-content:space-between;align-items:flex-end}
+  #sound-more{min-width:0;padding:8px 12px}
+  #sound-more[open]{position:absolute;right:0;bottom:56px;min-width:240px}
+}
+@media (max-width:640px) and (max-height:700px){
+  #landing .foot{display:none}
 }
 .sound{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center}
 
@@ -114,6 +122,17 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 .decor-grid .btn .ico{font-size:24px;line-height:1}
 .decor-grid .btn[aria-pressed="true"]{border-color:var(--gold);box-shadow:0 0 10px rgba(240,215,156,.4)}
 #decor.panel{width:min(330px,calc(100% - 24px))}
+@media (max-width:640px){
+  /* on a phone the basket and the stones are a short tray, so the ground stays free to tap */
+  #decor.panel,#stones.panel{max-height:40%;padding:12px 14px}
+  #decor.panel h2,#stones.panel h2{font-size:19px;margin-bottom:4px}
+  #decor.panel > p.small.muted,#stones.panel > p.small.muted{display:none}
+  .decor-grid{grid-template-columns:repeat(6,1fr);gap:4px;margin-top:6px}
+  .decor-grid .btn{padding:6px 2px;font-size:10px;min-height:52px}
+  .decor-grid .btn .ico{font-size:20px}
+  #hint{bottom:70px;font-size:14px;padding:8px 14px;width:max-content}
+  #callout{font-size:16px;padding:8px 16px}
+}
 #bar .sep{width:1px;height:26px;background:rgba(240,215,156,.35)}
 #menu{position:fixed;right:16px;bottom:76px;display:flex;flex-direction:column;gap:4px;padding:8px;min-width:220px;background:var(--panel);border:1px solid var(--line);border-radius:14px;z-index:19}
 #menu .btn,#menu a{justify-content:flex-start;border:0;background:none;color:var(--cream);text-decoration:none;font-size:16px;min-height:44px;padding:8px 12px;border-radius:8px;display:flex;align-items:center}

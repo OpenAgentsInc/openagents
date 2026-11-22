@@ -162,3 +162,15 @@ wider lens. The fit, nothing-in-the-way and long-visit tests all pass at 16:9, p
   with a small drop and bounce. While decorating, a click on one already set picks it up to move it. Arrows and
   Enter work from the keyboard. Up to 16 are kept in the save. Lantern, candles and crystal glow (under 1.1 with
   reduced bloom).
+
+## Sixth pass: phones (built)
+
+- **An upright phone frames the grove closer** (aspect under WS_TALL_ASPECT): a 56° lens and a smaller first
+  view (WS_SAFE_TALL: the quail's strip, the pool, the spout) instead of backing off until the whole grove fits.
+  A sideways swipe with nothing in hand slides the camera along x (within WS_PAN). Touching a spot (a tap, the
+  callout or a button) glides there, and finishing the cairn or tying a ribbon glides back. Tests check every spot
+  and tie point is in the picture once glided to, and that a swipe touches nothing.
+- **The page on a phone:** the title page stacks its parts with no overlap. The stones and decorating panels are
+  short trays, with the basket in one row, so the ground stays free to tap. The callout carries an arrow toward a
+  spot off the side of the screen, and the hints use tap wording. A one-time hint says a swipe looks around.
+- Touch play: tap a pile stone, then tap where it should go (or drag it there); the same for decorations.

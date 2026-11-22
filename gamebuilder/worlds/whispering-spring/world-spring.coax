@@ -109,6 +109,8 @@ Spring :: struct {
   decor: [WS_DECOR_MAX * 3] f32; decor_t: [WS_DECOR_MAX] f32; decor_n: int;
   carry: int = -1; carry_x: f32; carry_z: f32; carry_from: int = -1;
   wheel_owe: f32; told_holds: bool; told_ok: bool;
+  // an upright phone's look left and right: the camera's first x, how far it has slid, where it is gliding
+  cam_x0: f32; pan: f32; pan_goal: f32; panning: bool; pan_last: f32;
   // the ribbon
   ribbon: bool; fabric: int; colour: int; charm: int; branch: int;
   word: [WS_WORD] u8; word_n: int; tied_t: f32 = -1;
@@ -430,14 +432,32 @@ WS_FOV :: 0.8029;      // 46 degrees tall
 WS_BACK :: [3] f32.[0.0, 0.0, 1.0];
 WS_TILT :: 0.04;   // radians the camera looks up
 WS_FIT_MARGIN :: 0.03;
+// A screen taller than this ratio (a phone held upright) frames less of the grove, closer, and can look
+// left and right: a swipe slides the camera along x within WS_PAN of its first view, and touching a spot
+// glides it there.
+WS_TALL_ASPECT :: 0.9;
+WS_TALL_FOV :: 0.98;     // 56 degrees tall
+WS_SAFE_TALL :: [6] f32.[-3.6, 0.0, -3.7, 1.0, 3.1, 2.7];   // what it shows at first: the quail's strip, the pool, the spout
+WS_PAN :: [2] f32.[-2.4, 3.3];   // how far it may slide left and right of the first view (metres)
 
 ws_fits :: (u: [] f32, width: f32, height: f32, x: f32, y: f32, z: f32, margin: f32) -> bool {
   p := sty_project(u, x, y, z);
   return p.ahead && p.x >= width * margin && p.x <= width * (1 - margin) && p.y >= height * margin && p.y <= height * (1 - margin);
 }
 
+ws_tall :: (width: f32, height: f32) -> bool { return height > 0 && width / height < f32(WS_TALL_ASPECT); }
+
 ws_box_fits :: (u: [] f32, width: f32, height: f32) -> bool {
   m: f32 = WS_FIT_MARGIN;
+  if ws_tall(width, height) {
+    for c: 0..<8 {
+      x: f32 = ifx (c & 1) != 0 then WS_SAFE_TALL[3] else WS_SAFE_TALL[0];
+      y: f32 = ifx (c & 2) != 0 then WS_SAFE_TALL[4] else WS_SAFE_TALL[1];
+      z: f32 = ifx (c & 4) != 0 then WS_SAFE_TALL[5] else WS_SAFE_TALL[2];
+      if !ws_fits(u, width, height, x, y, z, m) { return false; }
+    }
+    return true;
+  }
   for c: 0..<8 {
     x: f32 = ifx (c & 1) != 0 then WS_SAFE[3] else WS_SAFE[0];
     y: f32 = ifx (c & 2) != 0 then WS_SAFE[4] else WS_SAFE[1];
@@ -464,10 +484,13 @@ ws_camera_for :: (width: f32, height: f32) -> StyCamera {
   aspect := ifx height > 0 then width / height else 1.0f32;
   lens: f32 = WS_FOV;
   if aspect < 1.3 { lens = lens * sqrt(1.3 / aspect); if lens > 1.25 { lens = 1.25; } }
+  tall := ws_tall(width, height);
+  if tall { lens = WS_TALL_FOV; }
   c.fov = lens; c.yaw = 0; c.pitch = f32(WS_TILT); c.near = 0.1; c.far = 600;
-  d: f32 = 7.0;
+  d: f32 = ifx tall then 3.0f32 else 7.0f32;
   for i: 0..<140 {
-    c.x = f32(WS_AIM[0]); c.y = f32(WS_AIM[1]); c.z = f32(WS_AIM[2]) + d;
+    c.x = ifx tall then (f32(WS_SAFE_TALL[0]) + f32(WS_SAFE_TALL[3])) * 0.5 else f32(WS_AIM[0]);
+    c.y = f32(WS_AIM[1]); c.z = f32(WS_AIM[2]) + d;
     if width < 1 || height < 1 { return c; }
     _ = sty_frame(u[..], width, height, 0, c, look);
     if ws_box_fits(u[..], width, height) { return c; }
@@ -706,6 +729,7 @@ ws_settle :: (h: [] Spring) {
     ws_send(h, WS_ACT_EVENT, c[..]);
     h[0].mode = WS_MODE_GROVE;
     ws_find(h, WS_FOUND_CAIRN);
+    ws_glide_to(h, h[0].cam_x0);
   }
   ws_keep(h);
   ws_tell_state(h);
@@ -986,8 +1010,15 @@ ws_decor_message :: (h: [] Spring, t: string) {
 }
 
 // ---- touching the grove
+// An upright phone glides to look at x.
+ws_glide_to :: (h: [] Spring, x: f32) {
+  if !ws_tall(h[0].cam_w, h[0].cam_h) { return; }
+  h[0].pan_goal = clamp(x - h[0].cam_x0, f32(WS_PAN[0]), f32(WS_PAN[1]));
+}
+
 ws_activate :: (h: [] Spring, s: int) {
   if h[0].paused { return; }
+  if s != WS_SPOT_QUAIL { q := ws_spot(s); ws_glide_to(h, q[0]); }
   if s == WS_SPOT_QUAIL {
     if h[0].quail[0].state != WS_Q_SPEAK && h[0].quail[0].state != WS_Q_ALERT {
       ws_quail_speak(h[0].quail[..], 4.5);
@@ -1499,7 +1530,14 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
       ws_send(h, WS_ACT_EVENT, tq[..]);
     }
   }
-  if width != h[0].cam_w || height != h[0].cam_h { h[0].cam = ws_camera_for(width, height); h[0].cam_w = width; h[0].cam_h = height; }
+  if width != h[0].cam_w || height != h[0].cam_h {
+    h[0].cam = ws_camera_for(width, height); h[0].cam_w = width; h[0].cam_h = height; h[0].cam_x0 = h[0].cam.x;
+    if !ws_tall(width, height) { h[0].pan = 0; h[0].pan_goal = 0; }
+  }
+  if ws_tall(width, height) {
+    if !h[0].panning { h[0].pan += (h[0].pan_goal - h[0].pan) * clamp(step * (ifx h[0].calm then 20.0f32 else 4.0f32), 0, 1); }
+    h[0].cam.x = h[0].cam_x0 + h[0].pan;
+  }
   if uniforms.count >= WS_UNIFORMS && width >= 1 && height >= 1 {
     u := uniforms;
     _ = sty_frame(u, width, height, h[0].time, h[0].cam, ws_look());
@@ -1523,12 +1561,23 @@ ws_pointer :: (h: [] Spring, x: f32, y: f32, phase: int, kind: int, id: int, but
   if h.count < 1 { return; }
   holding := h[0].held >= 0 && h[0].fly == WS_FLY_HELD;
   if phase == 0 {
-    h[0].down = true; h[0].down_x = x; h[0].down_y = y; h[0].down_id = id;
+    h[0].down = true; h[0].down_x = x; h[0].down_y = y; h[0].down_id = id; h[0].panning = false;
     if holding { ws_aim_at(h, x, y); }
     if h[0].carry >= 0 { ws_decor_aim(h, x, y); }
     return;
   }
   if phase == 1 {
+    // on an upright phone, a sideways swipe with nothing in hand slides the view along the grove
+    if h[0].down && id == h[0].down_id && !holding && h[0].carry < 0 && ws_tall(h[0].cam_w, h[0].cam_h) {
+      if !h[0].panning && abs(x - h[0].down_x) > 14 * h[0].dpr { h[0].panning = true; h[0].pan_last = x; }
+      if h[0].panning {
+        depth := h[0].cam.z - 1.0;
+        per := 2 * depth * tan(h[0].cam.fov * 0.5) / h[0].cam_h;
+        h[0].pan = clamp(h[0].pan - (x - h[0].pan_last) * per, f32(WS_PAN[0]), f32(WS_PAN[1]));
+        h[0].pan_goal = h[0].pan; h[0].pan_last = x;
+        return;
+      }
+    }
     // the held stone or decoration follows the pointer (a mouse, or a finger dragging it)
     if holding && (kind == 0 || h[0].down) { ws_aim_at(h, x, y); }
     if h[0].carry >= 0 && (kind == 0 || h[0].down) { ws_decor_aim(h, x, y); }
@@ -1540,6 +1589,7 @@ ws_pointer :: (h: [] Spring, x: f32, y: f32, phase: int, kind: int, id: int, but
   }
   if phase == 2 && h[0].down && id == h[0].down_id {
     h[0].down = false;
+    if h[0].panning { h[0].panning = false; return; }
     if h[0].paused { return; }
     dx := x - h[0].down_x; dy := y - h[0].down_y;
     tap := dx * dx + dy * dy < 400 * h[0].dpr * h[0].dpr;
@@ -1586,7 +1636,7 @@ ws_cursor :: (h: [] Spring) -> int #export_c #effects(all) {
   return ifx h[0].hover >= 0 || h[0].hover_stone >= 0 || h[0].carry >= 0 || (h[0].held >= 0 && h[0].fly == WS_FLY_HELD) then 1 else 0;
 }
 
-ws_blur :: (h: [] Spring) #export_c #effects(all) { if h.count > 0 { h[0].down = false; h[0].hover = -1; h[0].hover_stone = -1; } }
+ws_blur :: (h: [] Spring) #export_c #effects(all) { if h.count > 0 { h[0].down = false; h[0].panning = false; h[0].hover = -1; h[0].hover_stone = -1; } }
 
 ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
   if h.count < 1 || length < 0 || length > WS_INBOX { return; }
@@ -1597,6 +1647,7 @@ ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
   if kind == WS_MSG_RIBBON {
     if ws_set_ribbon(h, t, 0) {
       h[0].tied_t = 0; h[0].mode = WS_MODE_GROVE;
+      ws_glide_to(h, h[0].cam_x0 + 1.2);
       ws_event(h, "cue", ifx h[0].charm == 1 then "ribbon.tie.bell" else "ribbon.tie");
       ws_keep(h);
     }
@@ -1731,16 +1782,22 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
         }
       }
     }
+    // each spot, and every tie point with the foot of a ribbon hanging from it, is in the picture (an
+    // upright phone glides to it first)
+    tall := ws_tall(w, hh);
     for s: 0..<3 {
       q := ws_spot(s);
-      #assert ws_fits(u[..], w, hh, q[0], q[1], q[2], 0.02);
-      for k: 0..<np { #assert !ws_segment_hits(eye, ws_v(q[0], q[1], q[2]), props[k * 4], props[k * 4 + 1], props[k * 4 + 2], props[k * 4 + 3]); }
+      g := c; if tall { g.x = c.x + clamp(q[0] - c.x, f32(WS_PAN[0]), f32(WS_PAN[1])); }
+      v: [STY_UNIFORM_FLOATS] f32; _ = sty_frame(v[..], w, hh, 0, g, look);
+      #assert ws_fits(v[..], w, hh, q[0], q[1], q[2], 0.02);
+      for k: 0..<np { #assert !ws_segment_hits(ws_v(g.x, g.y, g.z), ws_v(q[0], q[1], q[2]), props[k * 4], props[k * 4 + 1], props[k * 4 + 2], props[k * 4 + 3]); }
     }
-    // every tie point, and the foot of a ribbon hanging from it, is in the picture
     for l: 0..<WS_LIMBS {
       for sl: 0..<WS_LIMB_SLOTS {
         at := ws_tie(l, sl);
-        #assert ws_fits(u[..], w, hh, at.x, at.y, at.z, 0.02) && ws_fits(u[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
+        g := c; if tall { g.x = c.x + clamp(at.x - c.x, f32(WS_PAN[0]), f32(WS_PAN[1])); }
+        v: [STY_UNIFORM_FLOATS] f32; _ = sty_frame(v[..], w, hh, 0, g, look);
+        #assert ws_fits(v[..], w, hh, at.x, at.y, at.z, 0.02) && ws_fits(v[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
       }
     }
   }
@@ -1761,7 +1818,7 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
     _ = ws_test_drain(h, "");
     q := h[0].quail[0];
     #assert ws_q_in_range(q);
-    #assert ws_fits(h[0].view[..], w, hh, q.x, ws_ground_y(q.x, q.z) + 0.2, q.z, 0.02);
+    if abs(h[0].pan) < 0.05 { #assert ws_fits(h[0].view[..], w, hh, q.x, ws_ground_y(q.x, q.z) + 0.2, q.z, 0.02); }
     #assert h[0].skin_n > 0 && h[0].skin_n < WS_SKIN_V;
   }
   #assert h[0].found == WS_FOUND_ALL;
@@ -1822,6 +1879,11 @@ ws_test_click :: (h: [] Spring, x: f32, y: f32) { ws_pointer(h, x, y, 0, 0, 1, 0
     c := ws_camera_for(w, hh);
     u: [STY_UNIFORM_FLOATS] f32; look: StyLook;
     _ = sty_frame(u[..], w, hh, 0, c, look);
+    if ws_tall(w, hh) {
+      q := ws_spot(WS_SPOT_STONES);
+      c.x = c.x + clamp(q[0] - c.x, f32(WS_PAN[0]), f32(WS_PAN[1]));
+      _ = sty_frame(u[..], w, hh, 0, c, look);
+    }
     for k: 0..<WS_STONE_N { p := ws_pile_at(k); #assert ws_fits(u[..], w, hh, p[0], ws_pile_y(k), p[1], 0.02); }
     #assert ws_fits(u[..], w, hh, WS_CAIRN_X, 1.6, WS_CAIRN_Z, 0.02) && ws_fits(u[..], w, hh, WS_CAIRN_X, 0.1, WS_CAIRN_Z, 0.02);
   }
@@ -1897,6 +1959,25 @@ ws_test_click :: (h: [] Spring, x: f32, y: f32) { ws_pointer(h, x, y, 0, 0, 1, 0
   v: [1] WsTest; g := v[0].h[..];
   ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
   #assert g[0].placed_n == 4 && g[0].placed[2] == 2 && abs(g[0].offs[0] - h[0].offs[0]) < 0.02;
+}
+
+#test "on an upright phone a sideways swipe looks along the grove, a tap on a spot glides there, and a swipe touches nothing" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 390, 844);
+  x0 := h[0].cam.x;
+  ws_pointer(h, 300, 600, 0, 1, 1, 0);
+  for i: 0..<10 { ws_pointer(h, 300 - 20 * cast(f32) i, 600, 1, 1, 1, 0); }
+  ws_pointer(h, 120, 600, 2, 1, 1, 0);
+  ws_test_run(t[..], 1, 0.016, 390, 844);
+  #assert h[0].cam.x > x0 + 0.3 && h[0].mode == WS_MODE_GROVE && h[0].spring_t < 0;
+  // the stones, by the button: it glides to them
+  ws_test_say(h, WS_MSG_PICK, "1");
+  ws_test_run(t[..], 120, 0.016, 390, 844);
+  q := ws_spot(WS_SPOT_STONES);
+  #assert abs(h[0].cam.x - (x0 + clamp(q[0] - x0, f32(WS_PAN[0]), f32(WS_PAN[1])))) < 0.05;
+  // a wide screen never slides
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  #assert h[0].pan == 0 && h[0].cam.x == 0;
 }
 
 #test "assisted placement always holds" #steps 40000000000 {
