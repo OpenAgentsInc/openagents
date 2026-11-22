@@ -812,7 +812,7 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
   if uniforms.count >= WS_UNIFORMS && width >= 1 && height >= 1 {
     u := uniforms;
     _ = sty_frame(u, width, height, h[0].time, h[0].cam, ws_look());
-    _ = sty_shadow_box(u, 0, 1, -1.5, 11, 40);
+    _ = sty_shadow_box(u, 0, 1, -1.5, 15, 50);
     _ = sty_reveal(u, 0, 0, 0, 0);
     _ = sty_mover(u, 0, 0, 0);
     _ = sty_wind(u, 0.6, 0.3, 0.2, 2);

@@ -64,15 +64,22 @@ WS_CEDAR_AT :: [WS_CEDARS * WS_CEDAR_FLOATS] f32.[
    7.6,  3.4, 0.0, 5.6, 1.8, 23,    // and the right
    8.8, -1.6, 0.0, 4.4, 1.6, 29];
 WS_CEDAR_BLOBS :: 5;
-// Canopy high over the frame's top: x, y, z, rx, ry, rz. A gap is left over the pool.
-WS_CANOPY_N :: 6;
+// Canopy high over the frame's top: x, y, z, rx, ry, rz. A gap is left over the pool. The last four
+// hang high above and behind the camera, out of the shot: placed back along the sun's way from
+// the ground they shade (the foreground, both sides, the right back), so their shadows leave one
+// warm patch of light on the pool and the quail's strip in front of it.
+WS_CANOPY_N :: 10;
 WS_CANOPY :: [WS_CANOPY_N * 6] f32.[
   -4.6, 5.6, -0.6, 2.2, 0.8, 1.6,
   -2.8, 6.3, -3.4, 1.8, 0.7, 1.4,
    4.2, 5.8, -0.2, 2.3, 0.8, 1.7,
    3.0, 6.5, -3.6, 1.6, 0.7, 1.3,
   -6.2, 5.0,  1.4, 1.8, 0.9, 1.5,
-   6.4, 5.2,  1.8, 1.9, 0.9, 1.5];
+   6.4, 5.2,  1.8, 1.9, 0.9, 1.5,
+  -2.84, 7.5, 6.74, 3.0, 0.8, 2.0,
+  -7.74, 7.5, 2.54, 2.5, 0.8, 2.5,
+   1.06, 7.5, 3.74, 2.0, 0.8, 2.0,
+   0.26, 7.5, 0.34, 1.8, 0.8, 1.5];
 // Roots over the bank's face: x along the bank, how far down it hangs.
 WS_ROOTS :: 11;
 WS_ROOT_AT :: [WS_ROOTS * 2] f32.[-3.4, 1.3, -2.6, 0.9, -1.8, 1.7, -1.1, 1.1, -0.4, 2.0, 0.2, 1.4, 0.9, 1.9, 1.5, 1.0, 2.2, 1.6, 2.9, 1.2, 3.7, 0.8];

@@ -22,6 +22,7 @@ function tone(ac, out, f, t, len, { type = "sine", gain = 0.2, attack = 0.005, p
   g.connect(out);
   const ps = partials || [[1, 1]];
   for (const [mult, amp] of ps) {
+    if (f * mult > Math.min(18000, ac.sampleRate / 2.2)) continue;   // past hearing (and past the Nyquist limit)
     const o = ac.createOscillator();
     o.type = type; o.frequency.value = f * mult; o.detune.value = detune;
     const pg = ac.createGain(); pg.gain.value = amp;

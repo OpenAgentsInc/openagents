@@ -1,6 +1,6 @@
 // Firm reason: 1 (the page's half of The Whispering Spring: panels, journal, settings and sound;
 // world-spring.coax decides everything that happens in the grove and tells this page in events).
-import { SpringAudio } from "/whispering-spring/audio.js";
+import { SpringAudio } from "./audio.js";
 
 const $ = (id) => document.getElementById(id);
 const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129 };

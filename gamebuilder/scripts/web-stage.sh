@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around cp, shasum, sed and gzip; holds no logic).
 # Stages gamebuilder.org from a finished web/build.sh output:
-#   scripts/web-stage.sh DIR            unversioned site tree (/, /credits, /fated-dragon, /splicebots)
+#   scripts/web-stage.sh DIR            unversioned site tree (/, /credits, /fated-dragon, /splicebots, /whispering-spring)
 #   scripts/web-stage.sh DIR release    moves immutable release code/shaders/fonts under /b/NAME/ and rewrites HTML; prints NAME
 #   scripts/web-stage.sh DIR stored     gzips .js/.wasm/.wgsl/.gbd1 under /b/ in place for Content-Encoding: gzip
 set -euo pipefail
@@ -13,7 +13,8 @@ stage="$1"; web="$GB_ROOT/web"
 if [[ "${2:-}" == "" ]]; then
   mkdir -p "$stage/build" "$stage/coaxial" "$stage/fonts" "$stage/img" "$stage/api/auth" \
     "$stage/fated-dragon/build" "$stage/fated-dragon/assets" \
-    "$stage/splicebots/build" "$stage/splicebots/fonts" "$stage/splicebots/packs"
+    "$stage/splicebots/build" "$stage/splicebots/fonts" "$stage/splicebots/packs" \
+    "$stage/whispering-spring/build"
   cp "$web/index.html" "$web/index.md" "$web/credits.html" "$web/404.html" "$stage/"
   cp "$web/fonts/"* "$stage/fonts/"
   cp "$web/img/"* "$stage/img/"
@@ -28,6 +29,9 @@ if [[ "${2:-}" == "" ]]; then
   cp "$web/splicebots/build/splice-jam.wasm" "$stage/splicebots/build/"
   cp "$web/splicebots/fonts/"* "$stage/splicebots/fonts/"
   cp "$web/splicebots/packs/"*.pack "$stage/splicebots/packs/"
+  # The Whispering Spring (audio-manifest.json stays unversioned: the artist's files swap in without a release)
+  cp "$web/whispering-spring/index.html" "$web/whispering-spring/glue.js" "$web/whispering-spring/audio.js" "$web/whispering-spring/audio-manifest.json" "$web/whispering-spring/whispering-spring.wgsl" "$stage/whispering-spring/"
+  cp "$web/whispering-spring/build/whispering-spring.wasm" "$stage/whispering-spring/build/"
   # Empty response for host.js optional viewer check so the console stays free of 404s.
   : > "$stage/api/auth/viewer"
   exit
@@ -45,10 +49,15 @@ if [[ "$2" == release ]]; then
     "$stage/splicebots/build/splice-jam.wasm" \
     "$stage/splicebots/splice-jam.wgsl" \
     "$stage/splicebots/fonts/"* \
+    "$stage/whispering-spring/glue.js" \
+    "$stage/whispering-spring/audio.js" \
+    "$stage/whispering-spring/build/whispering-spring.wasm" \
+    "$stage/whispering-spring/whispering-spring.wgsl" \
     | shasum -a 256 | cut -c1-16)"
   mkdir -p "$stage/b/$name/coaxial" "$stage/b/$name/build" "$stage/b/$name/fonts" \
     "$stage/b/$name/fated-dragon/build" "$stage/b/$name/fated-dragon/assets" \
-    "$stage/b/$name/splicebots/build" "$stage/b/$name/splicebots/fonts"
+    "$stage/b/$name/splicebots/build" "$stage/b/$name/splicebots/fonts" \
+    "$stage/b/$name/whispering-spring/build"
   mv "$stage/coaxial/"*.js "$stage/b/$name/coaxial/"
   rmdir "$stage/coaxial"
   mv "$stage/build/"*.wasm "$stage/b/$name/build/"
@@ -67,6 +76,10 @@ if [[ "$2" == release ]]; then
   mkdir -p "$stage/packs/splicebots"
   mv "$stage/splicebots/packs/"*.pack "$stage/packs/splicebots/"
   rmdir "$stage/splicebots/packs"
+  # The Whispering Spring: its code is versioned; its page and audio-manifest.json are not
+  mv "$stage/whispering-spring/glue.js" "$stage/whispering-spring/audio.js" "$stage/whispering-spring/whispering-spring.wgsl" "$stage/b/$name/whispering-spring/"
+  mv "$stage/whispering-spring/build/whispering-spring.wasm" "$stage/b/$name/whispering-spring/build/"
+  rmdir "$stage/whispering-spring/build"
 
   sed -i.was -e "s|/fonts/\([A-Za-z-]*\)\.woff2|/b/$name/fonts/\1.woff2|g" "$stage/index.html" "$stage/credits.html"
   rm -f "$stage/index.html.was" "$stage/credits.html.was"
@@ -88,6 +101,13 @@ if [[ "$2" == release ]]; then
     -e "s|pack:/splicebots/packs/|pack:/packs/splicebots/|g" \
     "$stage/splicebots/index.html"
   rm -f "$stage/splicebots/index.html.was"
+  sed -i.was \
+    -e "s|\"/coaxial/host\.js\"|\"/b/$name/coaxial/host.js\"|g" \
+    -e "s|\"/whispering-spring/build/whispering-spring\.wasm\"|\"/b/$name/whispering-spring/build/whispering-spring.wasm\"|g" \
+    -e "s|\"/whispering-spring/whispering-spring\.wgsl\"|\"/b/$name/whispering-spring/whispering-spring.wgsl\"|g" \
+    -e "s|\"/whispering-spring/glue\.js\"|\"/b/$name/whispering-spring/glue.js\"|g" \
+    "$stage/whispering-spring/index.html"
+  rm -f "$stage/whispering-spring/index.html.was"
   echo "$name"
   exit
 fi

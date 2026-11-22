@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around gcloud; holds no logic).
-# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots)
+# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots, /whispering-spring)
 # served from gs://openagentsgemini-gamebuilder-web behind Cloud CDN.
 # Accounts use OpenAgents login (https://openagents.com); gamebuilder.org hosts no separate login.
 #
@@ -75,6 +75,10 @@ $api
     urlRedirect:
       pathRedirect: /splicebots
       redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
+  - paths: ['/whispering-spring/', '/whispering-spring/index.html']
+    urlRedirect:
+      pathRedirect: /whispering-spring
+      redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
   - paths: ['/credits/', '/credits/index.html']
     urlRedirect:
       pathRedirect: /credits
@@ -117,7 +121,7 @@ fi
 # Upload immutable release assets before HTML pages that reference them.
 g storage cp --recursive "$stage/b/$release/fonts" "$bucket/b/$release/" --cache-control "$kept" > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/fonts" "$bucket/b/$release/splicebots/" --cache-control "$kept" > /dev/null
-g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
+g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$stage/b/$release/whispering-spring" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/build" "$stage/b/$release/splicebots/splice-jam.wgsl" "$bucket/b/$release/splicebots/" --cache-control "$kept" --content-encoding gzip > /dev/null
 
 # Extensionless HTML routes served directly (trailing slashes and /index.html 301-redirect here).
@@ -128,16 +132,19 @@ cache="no-cache"
 cp "$stage/credits.html" "$pages/credits"
 mv "$stage/fated-dragon/index.html" "$pages/fated-dragon"
 mv "$stage/splicebots/index.html" "$pages/splicebots"
+mv "$stage/whispering-spring/index.html" "$pages/whispering-spring"
+# whispering-spring/ keeps audio-manifest.json (unversioned, so the artist's audio swaps in without a release)
 rmdir "$stage/fated-dragon" "$stage/splicebots" 2>/dev/null || true
 
 # Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
-g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$' --cache-control "$cache" > /dev/null
+g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$,^whispering-spring$' --cache-control "$cache" > /dev/null
 g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
 
 # Upload extensionless HTML pages after rsync; packs live under /packs/splicebots/ so no prefix collides.
 g storage cp "$pages/credits" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/fated-dragon" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/splicebots" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/whispering-spring" "$bucket/whispering-spring" --content-type "text/html" --cache-control "$cache" > /dev/null
 
 # Prune old immutable releases, keeping the previous release during rollout.
 for old in $(g storage ls "$bucket/b/" 2> /dev/null); do
