@@ -1,0 +1,391 @@
+// Scrappers Arena WebGPU shaders (gamebuilder.org/scrappers-arena).
+// Emitted to WGSL by coax/web/wgsl-module.coax. Nothing written in WGSL by hand.
+// Renders:
+//   - Stylized dusk arena sky dome with sunset sun glow & atmospheric bands (bg)
+//   - Directional sun shadow map for walls, cover, Scrappers, medkits, goals, and ball (shadow)
+//   - Instanced Blender-crafted Scrappers (.gbm) & unit-box arena geometry with metallic tiled
+//     arena plates, team/instance/emissive vertex color modes, Fresnel rim light, hit flash,
+//     shield hologram pulse, soft contact shadow discs, and HDR bloom output (scene)
+//   - Quarter/eighth-res separable HDR bloom + ACES filmic tone-map + hurt/overdrive vignette (bloom, post)
+#load "../../../../metaverse-engine/gpu/wgsl.coax";
+#load "../scrappers-layout.coax";
+
+SaFilm :: struct { light: V4; bloom: V4; }
+SaShade :: struct { pos: V4; }
+SaOut :: struct {
+  pos: V4;
+  world: V3;
+  normal: V3;
+  vcol: V4;
+  meta: V4 #flat;   // shade, look, tint, mesh
+}
+SaFx :: struct { pos: V4; ink: V4; }
+sa_fx_vs_in :: struct { a: V4; b: V4; }
+
+// ---- vector & matrix helpers
+
+sa_add3 :: (a: V3, b: V3) -> V3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+sa_sub3 :: (a: V3, b: V3) -> V3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+sa_mul3 :: (a: V3, b: V3) -> V3 { return v3(a.x * b.x, a.y * b.y, a.z * b.z); }
+sa_scale3 :: (a: V3, s: f32) -> V3 { return v3(a.x * s, a.y * s, a.z * s); }
+sa_mix3 :: (a: V3, b: V3, t: f32) -> V3 { return sa_add3(a, sa_scale3(sa_sub3(b, a), t)); }
+sa_dot3 :: (a: V3, b: V3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+sa_len3 :: (a: V3) -> f32 { return sqrt(fmax(sa_dot3(a, a), 1e-12f32)); }
+sa_norm3 :: (a: V3) -> V3 { return sa_scale3(a, 1.0f32 / sa_len3(a)); }
+sa_u3 :: (u: [] f32, at: int) -> V3 { return v3(u[at], u[at + 1], u[at + 2]); }
+
+// Multiply column-major 4x4 matrix stored at u[at..at+16] by point (p, 1).
+sa_mat4_pt :: (u: [] f32, at: int, p: V3) -> V4 {
+  x: f32 = u[at + 0] * p.x + u[at + 4] * p.y + u[at + 8] * p.z + u[at + 12];
+  y: f32 = u[at + 1] * p.x + u[at + 5] * p.y + u[at + 9] * p.z + u[at + 13];
+  z: f32 = u[at + 2] * p.x + u[at + 6] * p.y + u[at + 10] * p.z + u[at + 14];
+  w: f32 = u[at + 3] * p.x + u[at + 7] * p.y + u[at + 11] * p.z + u[at + 15];
+  return v4(x, y, z, w);
+}
+
+// sRGB -> linear and linear -> sRGB
+sa_lin :: (c: V3) -> V3 {
+  return v3(pow(fmax(c.x, 0.0f32), 2.2f32), pow(fmax(c.y, 0.0f32), 2.2f32), pow(fmax(c.z, 0.0f32), 2.2f32));
+}
+sa_srgb :: (c: V3) -> V3 {
+  r: f32 = pow(saturate(c.x), 1.0f32 / 2.2f32);
+  g: f32 = pow(saturate(c.y), 1.0f32 / 2.2f32);
+  b: f32 = pow(saturate(c.z), 1.0f32 / 2.2f32);
+  return v3(r, g, b);
+}
+
+// ACES-like filmic tone curve
+sa_tone :: (c: V3) -> V3 {
+  ax: f32 = c.x * 1.08f32; ay: f32 = c.y * 1.08f32; az: f32 = c.z * 1.08f32;
+  rx: f32 = saturate((ax * (2.51f32 * ax + 0.03f32)) / (ax * (2.43f32 * ax + 0.59f32) + 0.14f32));
+  ry: f32 = saturate((ay * (2.51f32 * ay + 0.03f32)) / (ay * (2.43f32 * ay + 0.59f32) + 0.14f32));
+  rz: f32 = saturate((az * (2.51f32 * az + 0.03f32)) / (az * (2.43f32 * az + 0.59f32) + 0.14f32));
+  return v3(rx, ry, rz);
+}
+
+// Tint palette matching gamebuilder/core/play.coax TINT_* & world.coax world_tint (in sRGB, converted to linear).
+sa_tint_srgb :: (t: s32) -> V3 {
+  if (t == 1) { return v3(0.22f32, 0.62f32, 1.00f32); }   // TINT_MINE (electric sky blue)
+  if (t == 2) { return v3(1.00f32, 0.28f32, 0.34f32); }   // TINT_RIVAL (vibrant coral red)
+  if (t == 3) { return v3(0.38f32, 0.93f32, 1.00f32); }   // TINT_SHOT_MINE (neon cyan bolt)
+  if (t == 4) { return v3(1.00f32, 0.42f32, 0.26f32); }   // TINT_SHOT_RIVAL (blazing coral bolt)
+  if (t == 5) { return v3(0.24f32, 0.92f32, 0.50f32); }   // TINT_HEALTH (emerald medkit)
+  if (t == 6) { return v3(0.14f32, 0.16f32, 0.24f32); }   // TINT_DARK (deep visor / bar backing)
+  if (t == 7) { return v3(1.00f32, 0.86f32, 0.34f32); }   // TINT_SPARK (golden hit sparks)
+  if (t == 8) { return v3(1.00f32, 0.90f32, 0.44f32); }   // TINT_GLOW (ball & shield glow)
+  if (t == 16) { return v3(0.95f32, 0.92f32, 0.85f32); }  // TINT_CREAM
+  if (t == 17) { return v3(0.32f32, 0.36f32, 0.58f32); }  // TINT_WALL (arena perimeter slate indigo)
+  if (t == 18) { return v3(0.95f32, 0.54f32, 0.22f32); }  // TINT_COVER (tactical amber cover)
+  return v3(0.90f32, 0.90f32, 0.92f32);
+}
+
+// ---- dusk arena sky dome
+
+sa_sky_color :: (dir: V3, u: [] f32) -> V3 {
+  d: V3 = sa_norm3(dir);
+  y: f32 = d.y;
+  zenith: V3 = v3(0.035f32, 0.055f32, 0.16f32);
+  mid: V3 = v3(0.11f32, 0.14f32, 0.30f32);
+  horizon: V3 = v3(0.68f32, 0.32f32, 0.22f32);
+  below: V3 = v3(0.04f32, 0.05f32, 0.10f32);
+  c: V3 = sa_mix3(horizon, mid, smoothstep(-0.02f32, 0.24f32, y));
+  c = sa_mix3(c, zenith, smoothstep(0.18f32, 0.78f32, y));
+  if (y < 0.0f32) { c = sa_mix3(horizon, below, smoothstep(0.0f32, -0.22f32, y)); }
+  // Sunset sun glow along sun direction
+  sun: V3 = sa_norm3(sa_u3(u, SA_U_SUN));
+  sd: f32 = fmax(sa_dot3(d, sun), 0.0f32);
+  halo: f32 = pow(sd, 9.0f32) * 0.42f32 + pow(sd, 64.0f32) * 0.85f32;
+  disc: f32 = smoothstep(0.9975f32, 0.9992f32, sd) * 2.6f32;
+  c = sa_add3(c, sa_scale3(v3(1.0f32, 0.58f32, 0.30f32), halo));
+  c = sa_add3(c, sa_scale3(v3(1.0f32, 0.90f32, 0.72f32), disc));
+  // Subtle stylized dusk cloud bands near the upper horizon
+  band: f32 = sin(d.x * 7.5f32 + d.z * 4.2f32 + u[SA_U_EYE + 3] * 0.04f32) * 0.5f32 + 0.5f32;
+  cloud: f32 = smoothstep(0.04f32, 0.16f32, y) * (1.0f32 - smoothstep(0.24f32, 0.52f32, y)) * smoothstep(0.35f32, 0.85f32, band);
+  c = sa_add3(c, sa_scale3(v3(0.38f32, 0.20f32, 0.26f32), cloud * 0.18f32));
+  return c;
+}
+
+sa_film :: (c: V3, glow: f32) -> SaFilm {
+  lum: f32 = c.x * 0.2126f32 + c.y * 0.7152f32 + c.z * 0.0722f32;
+  excess: f32 = fmax(saturate((lum - 1.35f32) * 0.85f32), glow);
+  out: SaFilm;
+  out.light = v4(c.x, c.y, c.z, 1.0f32);
+  out.bloom = v4(c.x, c.y, c.z, excess);
+  return out;
+}
+
+sa_bg_vs :: (i: u32, _iid: u32) -> V4 {
+  p: [3] V2 = [3] V2.[v2(-1.0f32, -3.0f32), v2(-1.0f32, 1.0f32), v2(3.0f32, 1.0f32)];
+  return v4(p[cast(int) i].x, p[cast(int) i].y, 0.0f32, 1.0f32);
+}
+
+sa_bg_fs :: (pos: V4, u: [] f32) -> SaFilm {
+  w: f32 = fmax(u[SA_U_SCREEN], 1.0f32);
+  h: f32 = fmax(u[SA_U_SCREEN + 1], 1.0f32);
+  nx: f32 = (pos.x / w) * 2.0f32 - 1.0f32;
+  ny: f32 = 1.0f32 - (pos.y / h) * 2.0f32;
+  r: V3 = sa_u3(u, SA_U_CAM_R);
+  up: V3 = sa_u3(u, SA_U_CAM_U);
+  f: V3 = sa_u3(u, SA_U_CAM_F);
+  dir: V3 = sa_add3(f, sa_add3(sa_scale3(r, nx * u[SA_U_CAM_R + 3]), sa_scale3(up, ny * u[SA_U_CAM_U + 3])));
+  return sa_film(sa_sky_color(dir, u), 0.0f32);
+}
+
+// ---- shadow map pass
+
+sa_shadow_vs :: (id: u32, instance: u32, u: [] f32, verts: [] u32, insts: [] V4) -> SaShade {
+  vb: int = cast(int) id * SA_VERT_WORDS;
+  px: f32 = f32_from_bits(verts[vb]);
+  py: f32 = f32_from_bits(verts[vb + 1]);
+  pz: f32 = f32_from_bits(verts[vb + 2]);
+  ib: int = cast(int) instance * SA_INST_V4;
+  c0: V4 = insts[ib]; c1: V4 = insts[ib + 1]; c2: V4 = insts[ib + 2]; c3: V4 = insts[ib + 3];
+  w: V3 = v3(
+    c0.x * px + c1.x * py + c2.x * pz + c3.x,
+    c0.y * px + c1.y * py + c2.y * pz + c3.y,
+    c0.z * px + c1.z * py + c2.z * pz + c3.z);
+  o: SaShade;
+  o.pos = sa_mat4_pt(u, SA_U_LIGHT, w);
+  return o;
+}
+sa_shadow_fs :: (_s: SaShade) {}
+
+// ---- scene pass
+
+sa_shadow_sample :: (p: V3, n: V3, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> f32 {
+  q: V4 = sa_mat4_pt(u, SA_U_LIGHT, sa_add3(p, sa_scale3(n, 0.08f32)));
+  if (abs(q.x) > 0.99f32 || abs(q.y) > 0.99f32 || q.z < 0.0f32 || q.z > 1.0f32) { return 1.0f32; }
+  uv: V2 = v2(q.x * 0.5f32 + 0.5f32, 0.5f32 - q.y * 0.5f32);
+  texel: f32 = 1.0f32 / cast(f32) gpu_depth_width(shadow_map);
+  lit: f32 = 0.0f32;
+  for i: 0..<9 {
+    a: f32 = cast(f32) i * 2.399963f32;
+    d: f32 = sqrt((cast(f32) i + 0.5f32) / 9.0f32) * 2.4f32 * texel;
+    lit = lit + gpu_compare(shadow_map, shadow_cmp, v2(uv.x + cos(a) * d, uv.y + sin(a) * d), q.z - 0.0018f32);
+  }
+  return lit / 9.0f32;
+}
+
+sa_scene_vs :: (id: u32, instance: u32, u: [] f32, verts: [] u32, insts: [] V4) -> SaOut {
+  vb: int = cast(int) id * SA_VERT_WORDS;
+  px: f32 = f32_from_bits(verts[vb]);
+  py: f32 = f32_from_bits(verts[vb + 1]);
+  pz: f32 = f32_from_bits(verts[vb + 2]);
+  nx: f32 = f32_from_bits(verts[vb + 3]);
+  ny: f32 = f32_from_bits(verts[vb + 4]);
+  nz: f32 = f32_from_bits(verts[vb + 5]);
+  col: V4 = wg_unpack4x8unorm(verts[vb + 6]);
+  ib: int = cast(int) instance * SA_INST_V4;
+  c0: V4 = insts[ib]; c1: V4 = insts[ib + 1]; c2: V4 = insts[ib + 2]; c3: V4 = insts[ib + 3];
+  meta: V4 = insts[ib + 4];
+  w: V3 = v3(
+    c0.x * px + c1.x * py + c2.x * pz + c3.x,
+    c0.y * px + c1.y * py + c2.y * pz + c3.y,
+    c0.z * px + c1.z * py + c2.z * pz + c3.z);
+  // Inverse-transpose for orthogonal rotation * diagonal scale: divide each basis column by its squared length.
+  s0: f32 = fmax(c0.x * c0.x + c0.y * c0.y + c0.z * c0.z, 1e-8f32);
+  s1: f32 = fmax(c1.x * c1.x + c1.y * c1.y + c1.z * c1.z, 1e-8f32);
+  s2: f32 = fmax(c2.x * c2.x + c2.y * c2.y + c2.z * c2.z, 1e-8f32);
+  wn: V3 = v3(
+    c0.x * (nx / s0) + c1.x * (ny / s1) + c2.x * (nz / s2),
+    c0.y * (nx / s0) + c1.y * (ny / s1) + c2.y * (nz / s2),
+    c0.z * (nx / s0) + c1.z * (ny / s1) + c2.z * (nz / s2));
+  o: SaOut;
+  o.pos = sa_mat4_pt(u, SA_U_VP, w);
+  o.world = w;
+  o.normal = wn;
+  o.vcol = col;
+  o.meta = meta;
+  return o;
+}
+
+sa_scene_fs :: (s: SaOut, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> SaFilm {
+  shade: f32 = s.meta.x;
+  look: s32 = cast(s32) (s.meta.y + 0.5f32);
+  tint_id: s32 = cast(s32) (s.meta.z + 0.5f32);
+  mesh_id: s32 = cast(s32) (s.meta.w + 0.5f32);
+  eye: V3 = sa_u3(u, SA_U_EYE);
+  to_eye: V3 = sa_sub3(eye, s.world);
+  dist: f32 = sa_len3(to_eye);
+  view_dir: V3 = sa_scale3(to_eye, 1.0f32 / dist);
+  sun: V3 = sa_norm3(sa_u3(u, SA_U_SUN));
+  n: V3 = sa_norm3(s.normal);
+
+  // Soft dark contact shadow discs under Scrappers (mesh > 0, shade < 0.9, drawn with alpha blend)
+  if (mesh_id > 0 && shade < 0.9f32) {
+    out_s: SaFilm;
+    out_s.light = v4(0.02f32, 0.03f32, 0.07f32, saturate(shade));
+    out_s.bloom = v4(0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    return out_s;
+  }
+
+  // Arena floor plates (LOOK_ARENA = 4)
+  if (look == SA_LOOK_ARENA || look == SA_LOOK_GROUND) {
+    ah: f32 = fmax(u[SA_U_CAM_F + 3], 15.0f32);
+    inside: f32 = ifx abs(s.world.x) <= ah + 0.6f32 && abs(s.world.z) <= ah + 0.6f32 then 1.0f32 else 0.0f32;
+    // 2 m metallic plate grid with beveled seams and alternating panel tones
+    gx: f32 = abs(fract(s.world.x * 0.5f32 + 0.5f32) - 0.5f32);
+    gz: f32 = abs(fract(s.world.z * 0.5f32 + 0.5f32) - 0.5f32);
+    seam: f32 = smoothstep(0.455f32, 0.492f32, fmax(gx, gz));
+    cx_i: f32 = floor(s.world.x * 0.5f32);
+    cz_i: f32 = floor(s.world.z * 0.5f32);
+    chk: f32 = fract((cx_i + cz_i) * 0.5f32) * 2.0f32;
+    base: V3 = sa_mix3(v3(0.055f32, 0.068f32, 0.115f32), v3(0.072f32, 0.088f32, 0.145f32), chk * inside);
+    if (inside < 0.5f32) { base = v3(0.028f32, 0.034f32, 0.062f32); }
+    base = sa_mix3(base, v3(0.020f32, 0.026f32, 0.048f32), seam * 0.75f32);
+    // Team territory subtle center line & glowing center ring inside the arena
+    mid_line: f32 = (1.0f32 - smoothstep(0.06f32, 0.14f32, abs(s.world.z))) * inside;
+    rad: f32 = sqrt(s.world.x * s.world.x + s.world.z * s.world.z);
+    ring: f32 = (1.0f32 - smoothstep(0.06f32, 0.16f32, abs(rad - 4.4f32))) * inside;
+    side_tint: V3 = ifx s.world.z < 0.0f32 then v3(0.14f32, 0.44f32, 0.90f32) else v3(0.90f32, 0.22f32, 0.28f32);
+    trim: f32 = (1.0f32 - smoothstep(0.15f32, 0.35f32, abs(fmax(abs(s.world.x), abs(s.world.z)) - (ah - 0.55f32)))) * inside;
+    sh: f32 = sa_shadow_sample(s.world, v3(0.0f32, 1.0f32, 0.0f32), u, shadow_map, shadow_cmp);
+    ndl: f32 = fmax(sun.y, 0.0f32);
+    lit: V3 = sa_mul3(base, sa_add3(v3(0.38f32, 0.42f32, 0.62f32), sa_scale3(v3(1.15f32, 0.92f32, 0.76f32), ndl * (0.25f32 + 0.75f32 * sh))));
+    // Subtle sun specular sheen on metallic plates
+    hv: V3 = sa_norm3(sa_add3(sun, view_dir));
+    spec: f32 = pow(fmax(hv.y, 0.0f32), 28.0f32) * (1.0f32 - seam) * sh * inside * 0.22f32;
+    lit = sa_add3(lit, sa_scale3(v3(1.0f32, 0.72f32, 0.52f32), spec));
+    // Emissive court markings
+    mark_glow: f32 = fmax(mid_line * 0.55f32, fmax(ring * 0.75f32, trim * 0.65f32));
+    lit = sa_add3(lit, sa_scale3(v3(0.55f32, 0.72f32, 1.0f32), (mid_line * 0.35f32 + ring * 0.55f32)));
+    lit = sa_add3(lit, sa_scale3(side_tint, trim * 0.45f32));
+    // Distance dusk haze fading seamlessly into the horizon
+    haze_t: f32 = smoothstep(26.0f32, 115.0f32, dist) * 0.92f32;
+    haze: V3 = sa_sky_color(sa_scale3(view_dir, -1.0f32), u);
+    return sa_film(sa_mix3(lit, haze, haze_t), mark_glow * 0.25f32);
+  }
+
+  // Solid / emissive 3D geometry (Scrappers, crates, walls, packs, pads, shots, goals, hoops, ball, sparks, health bars)
+  a: f32 = s.vcol.w;
+  own_c: V3 = sa_lin(v3(s.vcol.x, s.vcol.y, s.vcol.z));
+  inst_c: V3 = sa_lin(sa_tint_srgb(tint_id));
+  emissive: bool = false;
+  albedo: V3 = own_c;
+  if (a < 0.12f32) {
+    // TEAM (alpha 0)
+    albedo = inst_c;
+  } else if (a < 0.38f32) {
+    // INSTANCE (alpha 64): crates, walls, unit boxes
+    albedo = sa_mul3(inst_c, sa_mix3(v3(0.85f32, 0.85f32, 0.85f32), own_c, 0.45f32));
+  } else if (a < 0.62f32) {
+    // GLOW (alpha 128): vertex's own glowing color (eyes, visors, crystal core, medkit cross)
+    albedo = own_c;
+    emissive = true;
+  } else if (a < 0.88f32) {
+    // GLOW_INSTANCE (alpha 192): plasma bolts, glowing pad rings
+    albedo = inst_c;
+    emissive = true;
+  }
+  // Unit-box emissive tints (shots, sparks, ball/glow)
+  if (mesh_id == 0 && (tint_id == 3 || tint_id == 4 || tint_id == 7 || tint_id == 8)) {
+    albedo = inst_c;
+    emissive = true;
+  }
+  // Unit-box brightness multiplier for dark backings & health bars
+  if (mesh_id == 0 && !emissive) {
+    albedo = sa_scale3(albedo, fmax(shade, 0.15f32));
+  }
+
+  // Hit flash (MESH_HIT = 2.0) and shield glow (MESH_SHIELD = 3.0)
+  if (emissive) {
+    boost: f32 = ifx tint_id == 3 || tint_id == 4 then 2.8f32 else 2.1f32;
+    glow_c: V3 = sa_scale3(albedo, boost);
+    return sa_film(glow_c, 0.95f32);
+  }
+
+  ndl: f32 = sa_dot3(n, sun);
+  sh: f32 = sa_shadow_sample(s.world, n, u, shadow_map, shadow_cmp);
+  // Stylized 2-band + smooth wrap key light
+  band: f32 = smoothstep(-0.12f32, 0.22f32, ndl) * 0.68f32 + smoothstep(0.45f32, 0.72f32, ndl) * 0.32f32;
+  hemi: f32 = n.y * 0.5f32 + 0.5f32;
+  amb: V3 = sa_mix3(v3(0.16f32, 0.14f32, 0.24f32), v3(0.32f32, 0.38f32, 0.58f32), hemi);
+  sun_c: V3 = sa_scale3(v3(1.25f32, 0.96f32, 0.78f32), band * (0.22f32 + 0.78f32 * sh));
+  lit: V3 = sa_mul3(albedo, sa_add3(amb, sun_c));
+
+  // Crisp studio specular & Fresnel rim light so Scrapper silhouettes pop against dusk walls
+  hv: V3 = sa_norm3(sa_add3(sun, view_dir));
+  spec: f32 = pow(fmax(sa_dot3(n, hv), 0.0f32), 24.0f32) * sh * 0.22f32;
+  ndv: f32 = fmax(sa_dot3(n, view_dir), 0.0f32);
+  rim: f32 = pow(1.0f32 - ndv, 3.2f32) * (0.18f32 + 0.25f32 * hemi);
+  lit = sa_add3(lit, sa_scale3(v3(1.0f32, 0.85f32, 0.70f32), spec));
+  lit = sa_add3(lit, sa_scale3(v3(0.45f32, 0.65f32, 1.0f32), rim));
+
+  glow_out: f32 = 0.0f32;
+  if (mesh_id > 0 && shade > 2.5f32) {
+    // MESH_SHIELD: luminous holographic shield rim
+    sh_rim: f32 = 0.35f32 + pow(1.0f32 - ndv, 2.0f32) * 1.4f32;
+    lit = sa_add3(lit, sa_scale3(v3(0.45f32, 0.90f32, 1.0f32), sh_rim));
+    glow_out = 0.75f32;
+  } else if (mesh_id > 0 && shade > 1.5f32) {
+    // MESH_HIT: crisp white impact flash
+    lit = sa_add3(sa_scale3(lit, 0.4f32), v3(1.45f32, 1.42f32, 1.38f32));
+    glow_out = 0.7f32;
+  }
+
+  // Subtle dusk atmospheric perspective on far arena geometry
+  haze_t: f32 = smoothstep(28.0f32, 120.0f32, dist) * 0.65f32;
+  haze: V3 = sa_sky_color(sa_scale3(view_dir, -1.0f32), u);
+  return sa_film(sa_mix3(lit, haze, haze_t), glow_out);
+}
+
+// ---- HDR bloom & filmic post pass
+
+sa_bloom_fs :: (pos: V4, bloom_src: Tex2D, bloom_lin: Sampler, bloom_step: [] f32) -> V4 {
+  texel: V2 = v2(1.0f32 / cast(f32) gpu_width(bloom_src), 1.0f32 / cast(f32) gpu_height(bloom_src));
+  uv: V2 = v2(pos.x * bloom_step[3] * texel.x, pos.y * bloom_step[3] * texel.y);
+  if (bloom_step[2] < 0.5f32) {
+    c: V3 = v3(0.0f32, 0.0f32, 0.0f32);
+    for k: 0..<4 {
+      ox: f32 = cast(f32) (k & 1) * 2.0f32 - 1.0f32;
+      oy: f32 = cast(f32) (k >> 1) * 2.0f32 - 1.0f32;
+      t: V4 = gpu_sample_level(bloom_src, bloom_lin, v2(uv.x + ox * texel.x, uv.y + oy * texel.y), 0.0f32);
+      c = sa_add3(c, sa_scale3(v3(fmin(t.x, 12.0f32), fmin(t.y, 12.0f32), fmin(t.z, 12.0f32)), saturate(t.w)));
+    }
+    return v4(c.x * 0.25f32, c.y * 0.25f32, c.z * 0.25f32, 1.0f32);
+  }
+  dx: f32 = bloom_step[0] * texel.x;
+  dy: f32 = bloom_step[1] * texel.y;
+  m: V4 = gpu_sample_level(bloom_src, bloom_lin, uv, 0.0f32);
+  a: V4 = gpu_sample_level(bloom_src, bloom_lin, v2(uv.x + dx * 1.385f32, uv.y + dy * 1.385f32), 0.0f32);
+  b: V4 = gpu_sample_level(bloom_src, bloom_lin, v2(uv.x - dx * 1.385f32, uv.y - dy * 1.385f32), 0.0f32);
+  e: V4 = gpu_sample_level(bloom_src, bloom_lin, v2(uv.x + dx * 3.231f32, uv.y + dy * 3.231f32), 0.0f32);
+  f: V4 = gpu_sample_level(bloom_src, bloom_lin, v2(uv.x - dx * 3.231f32, uv.y - dy * 3.231f32), 0.0f32);
+  return v4(
+    m.x * 0.227f32 + (a.x + b.x) * 0.316f32 + (e.x + f.x) * 0.070f32,
+    m.y * 0.227f32 + (a.y + b.y) * 0.316f32 + (e.y + f.y) * 0.070f32,
+    m.z * 0.227f32 + (a.z + b.z) * 0.316f32 + (e.z + f.z) * 0.070f32,
+    1.0f32);
+}
+
+sa_post_fs :: (pos: V4, u: [] f32, post_light: Tex2D, post_quarter: Tex2D, post_eighth: Tex2D, post_lin: Sampler) -> V4 {
+  light: V4 = gpu_load(post_light, cast(s32) pos.x, cast(s32) pos.y, 0);
+  w: f32 = fmax(u[SA_U_SCREEN], 1.0f32);
+  h: f32 = fmax(u[SA_U_SCREEN + 1], 1.0f32);
+  uv: V2 = v2(pos.x / w, pos.y / h);
+  q: V4 = gpu_sample_level(post_quarter, post_lin, uv, 0.0f32);
+  e: V4 = gpu_sample_level(post_eighth, post_lin, uv, 0.0f32);
+  bloom: V3 = sa_add3(sa_scale3(v3(q.x, q.y, q.z), 0.55f32), sa_scale3(v3(e.x, e.y, e.z), 0.45f32));
+  c: V3 = sa_srgb(sa_tone(sa_add3(v3(light.x, light.y, light.z), sa_scale3(bloom, 0.36f32))));
+  // Subtle edge vignette for hurt flash and super overdrive
+  ex: f32 = uv.x * 2.0f32 - 1.0f32;
+  ey: f32 = uv.y * 2.0f32 - 1.0f32;
+  edge: f32 = saturate((ex * ex + ey * ey) * 0.65f32 - 0.15f32);
+  hurt: f32 = saturate(u[SA_U_SCREEN + 3]);
+  if (hurt > 0.01f32) { c = sa_mix3(c, v3(0.95f32, 0.14f32, 0.20f32), edge * hurt * 0.65f32); }
+  sup: f32 = saturate(u[SA_U_SUN + 3]);
+  if (sup > 0.01f32) { c = sa_mix3(c, v3(0.35f32, 0.85f32, 1.0f32), edge * sup * 0.28f32); }
+  return v4(c.x, c.y, c.z, 1.0f32);
+}
+
+// ---- minimal fx pass (HUD is HTML/CSS overlay for crisp typography & controls)
+
+sa_fx_vs :: (_vid: u32, _iid: u32, in_: sa_fx_vs_in, u: [] f32) -> SaFx {
+  o: SaFx;
+  w: f32 = fmax(u[SA_U_SCREEN], 1.0f32);
+  h: f32 = fmax(u[SA_U_SCREEN + 1], 1.0f32);
+  o.pos = v4((in_.a.x / w) * 2.0f32 - 1.0f32, 1.0f32 - (in_.a.y / h) * 2.0f32, 0.0f32, 1.0f32);
+  o.ink = in_.b;
+  return o;
+}
+sa_fx_fs :: (s: SaFx) -> V4 { return s.ink; }

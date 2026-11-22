@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around gcloud; holds no logic).
-# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots, /whispering-spring)
+# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots, /whispering-spring, /ice-cream-man, /scrappers-arena)
 # served from gs://openagentsgemini-gamebuilder-web behind Cloud CDN.
 # Accounts use OpenAgents login (https://openagents.com); gamebuilder.org hosts no separate login.
 #
@@ -87,6 +87,14 @@ $rooms
     urlRedirect:
       pathRedirect: /whispering-spring
       redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
+  - paths: ['/ice-cream-man/', '/ice-cream-man/index.html', '/icecream', '/icecream/', '/icecream/index.html']
+    urlRedirect:
+      pathRedirect: /ice-cream-man
+      redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
+  - paths: ['/scrappers-arena/', '/scrappers-arena/index.html', '/scrapper-arena', '/scrapper-arena/', '/scrapper-arena/index.html', '/scrappers', '/scrappers/', '/scrappers/index.html']
+    urlRedirect:
+      pathRedirect: /scrappers-arena
+      redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
   - paths: ['/credits/', '/credits/index.html']
     urlRedirect:
       pathRedirect: /credits
@@ -129,7 +137,7 @@ fi
 # Upload immutable release assets before HTML pages that reference them.
 g storage cp --recursive "$stage/b/$release/fonts" "$bucket/b/$release/" --cache-control "$kept" > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/fonts" "$bucket/b/$release/splicebots/" --cache-control "$kept" > /dev/null
-g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$stage/b/$release/whispering-spring" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
+g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$stage/b/$release/whispering-spring" "$stage/b/$release/ice-cream-man" "$stage/b/$release/scrappers-arena" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/build" "$stage/b/$release/splicebots/splice-jam.wgsl" "$bucket/b/$release/splicebots/" --cache-control "$kept" --content-encoding gzip > /dev/null
 
 # Extensionless HTML routes served directly (trailing slashes and /index.html 301-redirect here).
@@ -141,10 +149,12 @@ cp "$stage/credits.html" "$pages/credits"
 mv "$stage/fated-dragon/index.html" "$pages/fated-dragon"
 mv "$stage/splicebots/index.html" "$pages/splicebots"
 mv "$stage/whispering-spring/index.html" "$pages/whispering-spring"
-rmdir "$stage/fated-dragon" "$stage/splicebots" "$stage/whispering-spring" 2>/dev/null || true
+mv "$stage/ice-cream-man/index.html" "$pages/ice-cream-man"
+mv "$stage/scrappers-arena/index.html" "$pages/scrappers-arena"
+rmdir "$stage/fated-dragon" "$stage/splicebots" "$stage/whispering-spring" "$stage/ice-cream-man" "$stage/scrappers-arena" 2>/dev/null || true
 
 # Sync top-level pages, images, unversioned manifests, and content-verified packs; remove stale unmanaged legacy objects.
-g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$,^whispering-spring$' --cache-control "$cache" > /dev/null
+g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$,^whispering-spring$,^ice-cream-man$,^scrappers-arena$' --cache-control "$cache" > /dev/null
 g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
 
 # Upload extensionless HTML pages after rsync; packs live under /packs/ and manifests under /manifests/ so no prefix collides.
@@ -152,6 +162,8 @@ g storage cp "$pages/credits" "$bucket/credits" --content-type "text/html" --cac
 g storage cp "$pages/fated-dragon" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/splicebots" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/whispering-spring" "$bucket/whispering-spring" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/ice-cream-man" "$bucket/ice-cream-man" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/scrappers-arena" "$bucket/scrappers-arena" --content-type "text/html" --cache-control "$cache" > /dev/null
 
 # Prune old immutable releases, keeping the previous release during rollout.
 for old in $(g storage ls "$bucket/b/" 2> /dev/null); do

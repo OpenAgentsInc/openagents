@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Scrappers Arena — GAMEBUILDER</title>
+<meta name="description" content="Play Scrappers Arena directly in your browser on WebGPU: pick Bolt, Boulder, or Lumen and battle 3v3 across Knockouts, Last Stand, Scrapball, and Hoops.">
+<meta property="og:title" content="Scrappers Arena — GAMEBUILDER">
+<meta property="og:description" content="Team arena robot shooter on WebGPU: Bolt, Boulder, and Lumen across Knockouts, Last Stand, Scrapball, and Hoops at gamebuilder.org.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gamebuilder.org/scrappers-arena">
+<meta property="og:image" content="https://gamebuilder.org/img/scrappers-arena.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Scrappers Arena — GAMEBUILDER">
+<meta name="twitter:description" content="Team arena robot shooter on WebGPU: Bolt, Boulder, and Lumen across Knockouts, Last Stand, Scrapball, and Hoops.">
+<meta name="twitter:image" content="https://gamebuilder.org/img/scrappers-arena.jpg">
+<meta name="theme-color" content="#0b0d17">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M9 9h14v14H9z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Geist';src:url('/fonts/Geist.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Geist';src:url('/fonts/Geist-Medium.woff2') format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Geist';src:url('/fonts/Geist-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Geist Mono';src:url('/fonts/GeistMono.woff2') format('woff2');font-weight:400;font-display:swap}
+:root{
+  --bg:#090b14;
+  --glass:rgba(10,12,22,.76);
+  --glass-hi:rgba(14,17,30,.90);
+  --line:rgba(255,255,255,.14);
+  --line-hi:rgba(255,255,255,.38);
+  --ink:#f4f6fb;
+  --muted:#a6aec2;
+  --dim:#767f96;
+  --mine:#389eff;
+  --rival:#ff4a58;
+  --gold:#ffd23f;
+  --mint:#3ee07a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;user-select:none}
+#coaxial{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.hide{display:none!important}
+.mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* Top-left back link */
+#sa-back{position:fixed;top:14px;left:16px;z-index:40;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(10,12,22,.64);border:1px solid var(--line);color:var(--ink);text-decoration:none;font:400 11px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(8px);transition:background .15s,border-color .15s}
+#sa-back:hover{background:var(--glass-hi);border-color:var(--line-hi)}
+
+/* Loading / WebGPU fallback */
+#coaxial-load{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:50;text-align:center;font-family:'Geist Mono',monospace}
+#coaxial-load.gone{display:none}
+.lb{display:block;width:240px;height:3px;background:rgba(255,255,255,.15);margin:16px auto}
+.lb i{display:block;height:100%;background:var(--mine);transform:scaleX(0);transform-origin:left}
+.le,.la{display:none}
+#coaxial-load[data-state=fail] .le,#coaxial-load[data-state=fail] .la{display:block;margin-top:10px}
+#coaxial-load[data-state=fail] .lb,#coaxial-load[data-state=fail] .lr{display:none}
+.la{color:var(--mine)}
+
+/* Pre-match Loadout Overlay (docked bottom-center over the live 3v3 showcase) */
+#sa-lobby{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:space-between;padding:56px 20px 22px;pointer-events:none;background:linear-gradient(180deg,rgba(8,10,20,.42) 0%,rgba(8,10,20,0) 32%,rgba(8,10,20,.12) 60%,rgba(8,10,20,.78) 100%)}
+.lobby-head{text-align:center;pointer-events:none}
+.lobby-eyebrow{font:400 11px/1 'Geist Mono',monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;text-shadow:0 2px 12px rgba(0,0,0,.7)}
+.lobby-head h1{font-size:clamp(28px,4.5vw,46px);font-weight:600;letter-spacing:-.02em;text-shadow:0 4px 24px rgba(0,0,0,.75)}
+.lobby-sub{font-size:14px;color:rgba(244,246,251,.84);margin-top:4px;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+
+.lobby-panel{pointer-events:auto;margin:0 auto;width:min(820px,100%);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.row-label{font:400 10px/1 'Geist Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+
+.class-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.class-btn{text-align:left;background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--ink);padding:11px 12px;cursor:pointer;transition:border-color .15s,background .15s,transform .12s;font:inherit}
+.class-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.32)}
+.class-btn.on{background:rgba(56,158,255,.16);border-color:var(--mine);box-shadow:inset 0 0 0 1px rgba(56,158,255,.45)}
+.class-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.class-name{font-size:15px;font-weight:600;display:flex;align-items:center;gap:7px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.swatch.bolt{background:#ffd23f}
+.swatch.boulder{background:#ff8a3d}
+.swatch.lumen{background:#7cf3ff}
+.class-role{font:400 10px/1 'Geist Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.class-blurb{font-size:12px;line-height:1.4;color:var(--muted);margin-bottom:8px}
+.bars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px;font:400 9px/1 'Geist Mono',monospace;color:var(--dim)}
+.bar-row{display:flex;align-items:center;gap:5px}
+.bar-row i{flex:1;height:3px;background:rgba(255,255,255,.12);display:block;overflow:hidden}
+.bar-row i b{display:block;height:100%;background:var(--ink)}
+
+.setup-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px solid var(--line)}
+.pill-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--muted);padding:7px 11px;font:400 11px/1 'Geist Mono',monospace;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .14s}
+.pill:hover{color:var(--ink);border-color:rgba(255,255,255,.32)}
+.pill.on{background:rgba(255,210,63,.16);border-color:var(--gold);color:var(--ink)}
+.pill.sz.on{background:rgba(56,158,255,.18);border-color:var(--mine);color:var(--ink)}
+
+.play-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+#sa-mode-desc{font-size:12px;color:var(--muted)}
+.play-cta{background:linear-gradient(135deg,#389eff,#1c74e6);color:#fff;border:0;padding:12px 28px;font:600 13px/1 'Geist Mono',monospace;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;box-shadow:0 6px 24px rgba(56,158,255,.4);transition:transform .12s,filter .15s}
+.play-cta:hover{filter:brightness(1.1);transform:translateY(-1px)}
+
+/* In-Match HUD */
+#sa-hud{position:fixed;inset:0;z-index:25;pointer-events:none}
+.hud-top{position:fixed;top:14px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
+.scoreboard{display:flex;align-items:center;gap:0;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(10px);overflow:hidden}
+.sc-team{padding:8px 16px;font:600 22px/1 'Geist Mono',monospace;min-width:62px;text-align:center}
+.sc-team.mine{color:var(--mine);background:rgba(56,158,255,.12);border-right:1px solid var(--line)}
+.sc-team.rival{color:var(--rival);background:rgba(255,74,88,.12);border-left:1px solid var(--line)}
+.sc-mid{padding:6px 16px;text-align:center}
+#sa-clock{font:600 17px/1.1 'Geist Mono',monospace;letter-spacing:.05em}
+#sa-mode-pill{font:400 9px/1.3 'Geist Mono',monospace;letter-spacing:.12em;color:var(--muted)}
+#sa-standing{display:flex;gap:10px;align-items:center;padding:4px 12px;background:var(--glass);border:1px solid var(--line);font:400 10px/1 'Geist Mono',monospace;letter-spacing:.1em}
+#sa-standing .mine{color:var(--mine)}
+#sa-standing .rival{color:var(--rival)}
+#sa-ball{padding:6px 14px;background:rgba(255,210,63,.2);border:1px solid var(--gold);color:#fff6cc;font:600 11px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(6px)}
+
+.hud-actions{position:fixed;top:14px;right:16px;display:flex;gap:6px;pointer-events:auto}
+.hud-btn{background:var(--glass);border:1px solid var(--line);color:var(--ink);padding:6px 10px;font:400 10px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;backdrop-filter:blur(8px)}
+.hud-btn:hover{background:var(--glass-hi);border-color:var(--line-hi)}
+
+/* Crosshair + hitmarker */
+#sa-crosshair{position:fixed;top:50%;left:50%;width:24px;height:24px;transform:translate(-50%,-50%)}
+#sa-crosshair::before,#sa-crosshair::after{content:"";position:absolute;background:rgba(255,255,255,.88);box-shadow:0 0 4px rgba(0,0,0,.85)}
+#sa-crosshair::before{left:50%;top:2px;bottom:2px;width:1.5px;transform:translateX(-50%)}
+#sa-crosshair::after{top:50%;left:2px;right:2px;height:1.5px;transform:translateY(-50%)}
+#sa-crosshair.hit::before,#sa-crosshair.hit::after{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+#sa-crosshair.hit{transform:translate(-50%,-50%) scale(1.25) rotate(45deg)}
+
+#sa-count{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font:600 84px/1 'Geist Mono',monospace;color:var(--gold);text-shadow:0 6px 32px rgba(0,0,0,.85)}
+#sa-feed{position:fixed;top:106px;left:50%;transform:translateX(-50%);padding:7px 14px;background:var(--glass);border:1px solid var(--line);font:500 12px/1.2 'Geist Mono',monospace;letter-spacing:.06em;backdrop-filter:blur(8px);white-space:nowrap}
+#sa-feed.mine{border-color:var(--mine);color:#cbe6ff}
+#sa-feed.rival{border-color:var(--rival);color:#ffd2d6}
+#sa-respawn{position:fixed;top:56%;left:50%;transform:translate(-50%,-50%);padding:10px 18px;background:rgba(255,74,88,.22);border:1px solid var(--rival);font:600 13px/1 'Geist Mono',monospace;letter-spacing:.14em;backdrop-filter:blur(8px)}
+#sa-lock-hint{position:fixed;bottom:108px;left:50%;transform:translateX(-50%);padding:6px 12px;background:rgba(10,12,22,.65);border:1px solid var(--line);color:var(--muted);font:400 10px/1 'Geist Mono',monospace;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(6px)}
+
+/* Bottom-center Status Deck */
+.hud-bottom{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);width:min(340px,calc(100% - 32px));background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(10px);padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.hb-meta{display:flex;justify-content:space-between;align-items:center;font:400 10px/1 'Geist Mono',monospace;letter-spacing:.12em;color:var(--muted)}
+.meter-row{display:flex;align-items:center;gap:10px}
+.meter-track{flex:1;height:8px;background:rgba(255,255,255,.12);overflow:hidden}
+#sa-hp-fill{height:100%;width:100%;background:var(--mint);transition:width .08s linear,background .15s}
+#sa-hp-fill.mid{background:var(--gold)}
+#sa-hp-fill.low{background:var(--rival)}
+#sa-hp-val{font:600 12px/1 'Geist Mono',monospace;min-width:36px;text-align:right}
+.super-track{height:6px;background:rgba(255,255,255,.12);overflow:hidden}
+#sa-sp-fill{height:100%;width:0%;background:var(--mine);transition:width .08s linear}
+#sa-sp-fill.ready{background:var(--gold);box-shadow:0 0 12px var(--gold)}
+#sa-sp-label{font:400 10px/1 'Geist Mono',monospace;letter-spacing:.12em;color:var(--muted);text-align:center}
+
+.hud-hint{position:fixed;right:16px;bottom:18px;padding:6px 10px;background:rgba(10,12,22,.56);border:1px solid var(--line);color:var(--dim);font:400 10px/1.4 'Geist Mono',monospace;letter-spacing:.05em;backdrop-filter:blur(6px)}
+@media (max-width:1180px){.hud-hint{display:none}}
+
+/* Pause & Match Over Cards */
+.modal{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;background:rgba(6,8,16,.66);backdrop-filter:blur(6px);padding:20px}
+.modal-card{width:min(420px,100%);background:var(--glass-hi);border:1px solid var(--line-hi);padding:26px 24px;text-align:center;display:flex;flex-direction:column;gap:14px}
+.modal-card h2{font-size:30px;font-weight:600;letter-spacing:.06em}
+.modal-card h2.win{color:var(--mine)}
+.modal-card h2.lose{color:var(--rival)}
+.modal-card h2.draw{color:var(--gold)}
+#sa-over-score{font:600 38px/1 'Geist Mono',monospace;letter-spacing:.08em}
+#sa-over-meta{font:400 12px/1.5 'Geist Mono',monospace;color:var(--muted)}
+.modal-btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:6px}
+.btn-sec{background:rgba(255,255,255,.06);border:1px solid var(--line-hi);color:var(--ink);padding:11px 18px;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;text-decoration:none}
+.btn-sec:hover{background:rgba(255,255,255,.14)}
+
+@media (max-width:740px){
+  .class-grid{grid-template-columns:1fr}
+  .hud-hint{display:none}
+  #sa-lobby{padding:48px 12px 14px;overflow-y:auto}
+}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-label="Scrappers Arena"></canvas>
+<a id="sa-back" href="/">← GAMEBUILDER</a>
+
+<div id="coaxial-load" role="progressbar" aria-label="Loading Scrappers Arena" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <strong>SCRAPPERS ARENA</strong>
+  <span class="lb"><i></i></span>
+  <p class="lr"><span class="lt">Loading</span> <span class="lp"></span></p>
+  <p class="le">The game could not load. Use a browser with WebGPU on this computer.</p>
+  <a class="la" href="/scrappers-arena">Reload</a>
+</div>
+
+<!-- Pre-match Loadout Overlay over the live 3v3 dusk arena showcase -->
+<div id="sa-lobby">
+  <div class="lobby-head">
+    <p class="lobby-eyebrow">GameBuilder · Live 3D Arena</p>
+    <h1>Scrappers Arena</h1>
+    <p class="lobby-sub">Pick your Scrapper and mode, then drop straight into the arena.</p>
+  </div>
+  <div class="lobby-panel">
+    <div>
+      <div class="row-label"><span>Choose Scrapper</span><span>3 Classes</span></div>
+      <div class="class-grid">
+        <button class="class-btn on" type="button" data-kind="0" aria-pressed="true">
+          <div class="class-top"><span class="class-name"><i class="swatch bolt"></i>Bolt</span><span class="class-role">Speed</span></div>
+          <p class="class-blurb">Fast feet, rapid blaster. Super: Overdrive fire rate.</p>
+          <div class="bars">
+            <span class="bar-row">SPD<i><b style="width:100%"></b></i></span>
+            <span class="bar-row">HP<i><b style="width:57%"></b></i></span>
+            <span class="bar-row">DPS<i><b style="width:100%"></b></i></span>
+            <span class="bar-row">RNG<i><b style="width:48%"></b></i></span>
+          </div>
+        </button>
+        <button class="class-btn" type="button" data-kind="1" aria-pressed="false">
+          <div class="class-top"><span class="class-name"><i class="swatch boulder"></i>Boulder</span><span class="class-role">Tank</span></div>
+          <p class="class-blurb">Heavy armor, 5-pellet blast. Super: Ground Slam.</p>
+          <div class="bars">
+            <span class="bar-row">SPD<i><b style="width:75%"></b></i></span>
+            <span class="bar-row">HP<i><b style="width:100%"></b></i></span>
+            <span class="bar-row">DPS<i><b style="width:92%"></b></i></span>
+            <span class="bar-row">RNG<i><b style="width:21%"></b></i></span>
+          </div>
+        </button>
+        <button class="class-btn" type="button" data-kind="2" aria-pressed="false">
+          <div class="class-top"><span class="class-name"><i class="swatch lumen"></i>Lumen</span><span class="class-role">Sniper</span></div>
+          <p class="class-blurb">Long-range crystal rifle. Super: 2.2× Charged Shots.</p>
+          <div class="bars">
+            <span class="bar-row">SPD<i><b style="width:86%"></b></i></span>
+            <span class="bar-row">HP<i><b style="width:46%"></b></i></span>
+            <span class="bar-row">DPS<i><b style="width:58%"></b></i></span>
+            <span class="bar-row">RNG<i><b style="width:100%"></b></i></span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="setup-row">
+      <div class="pill-group" role="group" aria-label="Game mode">
+        <button class="pill on" type="button" data-mode="0" aria-pressed="true">Knockouts</button>
+        <button class="pill" type="button" data-mode="1" aria-pressed="false">Last Stand</button>
+        <button class="pill" type="button" data-mode="2" aria-pressed="false">Scrapball</button>
+        <button class="pill" type="button" data-mode="3" aria-pressed="false">Hoops</button>
+      </div>
+      <div class="pill-group" role="group" aria-label="Team size">
+        <button class="pill sz" type="button" data-size="1" aria-pressed="false">1v1</button>
+        <button class="pill sz" type="button" data-size="2" aria-pressed="false">2v2</button>
+        <button class="pill sz on" type="button" data-size="3" aria-pressed="true">3v3</button>
+        <button class="pill sz" type="button" data-size="4" aria-pressed="false">4v4</button>
+        <button class="pill sz" type="button" data-size="5" aria-pressed="false">5v5</button>
+      </div>
+    </div>
+
+    <div class="play-row">
+      <span id="sa-mode-desc">Knock rivals out. First to 10 wins.</span>
+      <button id="sa-play-btn" class="play-cta" type="button">Play Match →</button>
+    </div>
+  </div>
+</div>
+
+<!-- In-Match HUD -->
+<div id="sa-hud" class="hide">
+  <div class="hud-top">
+    <div class="scoreboard">
+      <div class="sc-team mine" id="sa-s0">0</div>
+      <div class="sc-mid">
+        <div id="sa-clock">2:30</div>
+        <div id="sa-mode-pill">KNOCKOUTS · 3v3 · TO 10</div>
+      </div>
+      <div class="sc-team rival" id="sa-s1">0</div>
+    </div>
+    <div id="sa-standing" class="hide"></div>
+    <div id="sa-ball" class="hide">HOLDING BALL</div>
+  </div>
+
+  <div class="hud-actions">
+    <button id="sa-view-btn" class="hud-btn" type="button">1ST (V)</button>
+    <button id="sa-mute-btn" class="hud-btn" type="button">SOUND ON</button>
+    <button id="sa-menu-btn" class="hud-btn" type="button">ESC</button>
+  </div>
+
+  <div id="sa-crosshair"></div>
+  <div id="sa-count" class="hide">3</div>
+  <div id="sa-feed" class="hide"></div>
+  <div id="sa-respawn" class="hide"></div>
+  <div id="sa-lock-hint">Click arena to lock mouse · WASD move · Left-click fire</div>
+
+  <div class="hud-bottom">
+    <div class="hb-meta">
+      <span id="sa-class-tag">BOLT</span>
+      <span id="sa-stats-tag">KO 0 · FALLS 0</span>
+    </div>
+    <div class="meter-row">
+      <div class="meter-track"><div id="sa-hp-fill"></div></div>
+      <span id="sa-hp-val">100%</span>
+    </div>
+    <div class="super-track"><div id="sa-sp-fill"></div></div>
+    <div id="sa-sp-label">SUPER 0%</div>
+  </div>
+
+  <div class="hud-hint">WASD · Space · Click fire · Q/E super · V view · Esc</div>
+</div>
+
+<!-- Pause Menu -->
+<div id="sa-pause" class="modal hide">
+  <div class="modal-card">
+    <h2>PAUSED</h2>
+    <p class="mono" style="font-size:12px;color:var(--muted)">Switch Scrapper or mode, or return to the match.</p>
+    <div class="modal-btns">
+      <button id="sa-resume-btn" class="play-cta" type="button">Resume</button>
+      <button id="sa-pause-lobby-btn" class="btn-sec" type="button">Loadout</button>
+      <a class="btn-sec" href="/">GameBuilder</a>
+    </div>
+  </div>
+</div>
+
+<!-- Match Over -->
+<div id="sa-over" class="modal hide">
+  <div class="modal-card">
+    <h2 id="sa-over-title" class="win">VICTORY</h2>
+    <div id="sa-over-score">10 — 6</div>
+    <p id="sa-over-meta">Knockouts · Bolt · 5 knockouts · 1 fall</p>
+    <div class="modal-btns">
+      <button id="sa-rematch-btn" class="play-cta" type="button">Play Again (R)</button>
+      <button id="sa-over-lobby-btn" class="btn-sec" type="button">Loadout</button>
+      <a class="btn-sec" href="/">GameBuilder</a>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/coaxial/host.js"
+  data-app="scrappers-arena"
+  data-wasm="/scrappers-arena/build/scrappers-arena.wasm"
+  data-wgsl="/scrappers-arena/scrappers-arena.wgsl"
+  data-assets="data:/scrappers-arena/assets/scrappers.gbm"></script>
+<script type="module" src="/scrappers-arena/glue.js"></script>
+</body>
+</html>

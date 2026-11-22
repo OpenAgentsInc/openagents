@@ -1,0 +1,687 @@
+// Scrappers Arena — standalone GameBuilder world (https://gamebuilder.org/scrappers-arena).
+// Runs the canonical GameBuilder arena match (gamebuilder/core/play.coax, modes.coax, meshes.coax)
+// on WebGPU with Blender-crafted articulated Scrapper models (scrappers.gbm):
+//   - Three Scrappers: Bolt (fast / overdrive), Boulder (tough / ground slam), Lumen (sniper / charged)
+//   - Four modes: Knockouts (10), Last Stand (3 rounds), Scrapball (3 goals), Hoops (5 baskets)
+//   - Team sizes 1v1 to 5v5, 1st/3rd person toggle (V), pointer-lock FPS & drag-look + touch sticks
+//   - Live 3v3 bot showcase behind the pre-match loadout picker
+//   coax/bin/coax test gamebuilder/worlds/scrappers-arena/scrappers.coax --library
+#run_steps 100000000;
+#load "../../core/commands.coax";
+#load "scrappers-layout.coax";
+
+SA_ACT_EVENT :: 90;
+SA_MSG_START :: 120;   // "kind mode size"
+SA_MSG_LOBBY :: 121;   // return to live showcase + loadout
+SA_MSG_KEYS :: 122;    // bitmask: 1=W 2=S 4=A 8=D 16=Space 32=Super 64=View 128=Restart
+SA_MSG_FIRE :: 123;    // "0" or "1"
+SA_MSG_SUPER :: 124;   // trigger super
+SA_MSG_VIEW :: 125;    // toggle 1st/3rd person
+SA_MSG_TOUCH :: 126;   // "id phase x y"
+SA_MSG_PAUSE :: 127;   // "0" or "1"
+
+SA_KEY_W :: 1; SA_KEY_S :: 2; SA_KEY_A :: 4; SA_KEY_D :: 8;
+SA_KEY_JUMP :: 16; SA_KEY_SUPER :: 32; SA_KEY_VIEW :: 64; SA_KEY_RESTART :: 128;
+
+ScrappersWorld :: struct {
+  ed: [1] Editor;
+  inited: bool;
+  lobby: bool = true;
+  paused: bool;
+  still_hash: bool;
+  pick_kind: s32;
+  pick_mode: s32;
+  pick_size: s32 = 3;
+  want_third: bool;
+  time: f32;
+  wide: f32 = 1280;
+  high: f32 = 720;
+  dpr: f32 = 1;
+  locked: bool;
+  drag: bool; drag_id: int; drag_x: f32; drag_y: f32;
+  keys: int;
+  // Binary asset destination for scrappers.gbm
+  gbm: [SA_GBM_CAP] u8;
+  gbm_len: int;
+  // GPU Store 0: unit cube (36 verts) + scrappers.gbm vertices (7 u32 words/vert)
+  verts: [SA_MAX_VERTS * SA_VERT_WORDS] u32;
+  vert_count: int;
+  verts_ver: int;
+  // GPU Store 1: raw and sorted instances (20 floats/inst)
+  raw: [SA_MAX_INSTS * SA_INST_FLOATS] f32;
+  insts: [SA_MAX_INSTS * SA_INST_FLOATS] f32;
+  inst_n: int;
+  insts_ver: int;
+  // Draw lists (scene + shadow)
+  draws: [SA_MAX_DRAWS * 4] u32;
+  draw_n: int;
+  draw_blend: [SA_MAX_DRAWS] s32;
+  shadow_draws: [SA_MAX_DRAWS * 4] u32;
+  shadow_draw_n: int;
+  // Host message / event buffers
+  inbox: [512] u8;
+  outbox: [768] u8;
+  out_n: int;
+  out_ready: bool;
+  hud_step: int;
+  // Cached HUD / sound scratch
+  hud_f: [PLAY_HUD_FLOATS] f32;
+  ev_buf: [EVENTS * 2] s32;
+  feed_buf: [128] u8;
+}
+
+// ---- small parsing & formatting helpers
+
+sa_bits_f32 :: (x: f32) -> u32 { return f32_bits(x); }
+
+sa_put :: (out: [] u8, n: int, s: string) -> int {
+  k := n;
+  for c: s { if k < out.count { out[k] = c; k += 1; } }
+  return k;
+}
+
+sa_put_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = sa_put(out, k, "-"); a = -a; }
+  d: [16] u8; m := 0;
+  if a == 0 { d[0] = '0'; m = 1; }
+  while a > 0 && m < 16 { d[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = d[m]; k += 1; } }
+  return k;
+}
+
+SaInt :: struct { ok: bool; v: int; next: int; }
+sa_read_int :: (s: string, at: int) -> SaInt {
+  i := at;
+  while i < s.count && (s[i] == ' ' || s[i] == ',' || s[i] == ';') { i += 1; }
+  if i >= s.count { return SaInt.{}; }
+  neg := false;
+  if s[i] == '-' { neg = true; i += 1; }
+  if i >= s.count || s[i] < '0' || s[i] > '9' { return SaInt.{}; }
+  v := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return SaInt.{ok = true, v = ifx neg then -v else v, next = i};
+}
+
+sa_contains :: (s: string, sub: string) -> bool {
+  if sub.count == 0 || sub.count > s.count { return false; }
+  for i: 0..<s.count - sub.count + 1 {
+    ok := true;
+    for j: 0..<sub.count { if s[i + j] != sub[j] { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// ---- vertex store setup (unit cube + scrappers.gbm)
+
+sa_build_cube :: (w: [] ScrappersWorld) {
+  cube: [ED_CUBE_VERTICES * 6] f32;
+  n := ed_cube(cube[..]);
+  // Packed RGBA = (255, 255, 255, 64) -> INSTANCE color mode matching models.py
+  col: u32 = 0x40ffffff;
+  for i: 0..<cast(int) n {
+    o := i * SA_VERT_WORDS;
+    c := i * 6;
+    w[0].verts[o + 0] = sa_bits_f32(cube[c + 0]);
+    w[0].verts[o + 1] = sa_bits_f32(cube[c + 1]);
+    w[0].verts[o + 2] = sa_bits_f32(cube[c + 2]);
+    w[0].verts[o + 3] = sa_bits_f32(cube[c + 3]);
+    w[0].verts[o + 4] = sa_bits_f32(cube[c + 4]);
+    w[0].verts[o + 5] = sa_bits_f32(cube[c + 5]);
+    w[0].verts[o + 6] = col;
+  }
+  w[0].vert_count = cast(int) n;
+  w[0].verts_ver += 1;
+}
+
+sa_start_showcase :: (w: [] ScrappersWorld) {
+  e := w[0].ed[..];
+  w[0].lobby = true;
+  w[0].paused = false;
+  w[0].keys = 0;
+  e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false;
+  _ = ed_play_setup(e, w[0].pick_mode, w[0].pick_size);
+  ed_play(e, w[0].pick_kind);
+  e[0].play[0].test = true;
+  e[0].play[0].count = 0;
+  e[0].play[0].third = true;
+  e[0].vp[0].fly = true;
+}
+
+sa_start_match :: (w: [] ScrappersWorld, kind: s32, mode: s32, size: s32) {
+  k := kind; if k < 0 || k >= CLASSES { k = 0; }
+  m := mode; if m < 0 || m >= MODES { m = 0; }
+  sz := size; if sz < 1 || sz > TEAM_SIZE { sz = 3; }
+  w[0].pick_kind = k; w[0].pick_mode = m; w[0].pick_size = sz;
+  w[0].lobby = false;
+  w[0].paused = false;
+  w[0].keys = 0;
+  e := w[0].ed[..];
+  e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false;
+  _ = ed_play_setup(e, m, sz);
+  ed_play(e, k);
+  e[0].play[0].test = false;
+  e[0].play[0].third = w[0].want_third;
+  e[0].vp[0].fly = true;
+  w[0].hud_step = 0;
+}
+
+sa_ensure_init :: (w: [] ScrappersWorld) {
+  if w[0].inited { return; }
+  w[0].inited = true;
+  e := w[0].ed[..];
+  ed_init(e, w[0].wide, w[0].high);
+  ed_official(e);
+  sa_build_cube(w);
+  sa_start_showcase(w);
+}
+
+// ---- binary asset loading (scrappers.gbm)
+
+sa_asset_cap :: () -> int #export_c #effects(all) { return SA_GBM_CAP; }
+
+sa_asset_ready :: (w: [] ScrappersWorld, idx: int, bytes: int) #export_c #effects(all) {
+  if w.count < 1 || idx != 0 || bytes <= 0 || bytes > SA_GBM_CAP { return; }
+  sa_ensure_init(w);
+  w[0].gbm_len = bytes;
+  e := w[0].ed[..];
+  if !ed_meshes_open(e, w[0].gbm[0..<bytes]) { return; }
+  at := cast(int) ed_mesh_vertices_at(e);
+  if at <= 0 || at >= bytes { return; }
+  words := (bytes - at) / 4;
+  verts := words / SA_VERT_WORDS;
+  if SA_CUBE_VERTS + verts > SA_MAX_VERTS { verts = SA_MAX_VERTS - SA_CUBE_VERTS; }
+  base := SA_CUBE_VERTS * SA_VERT_WORDS;
+  for i: 0..<verts * SA_VERT_WORDS {
+    b := at + i * 4;
+    w[0].verts[base + i] = cast(u32) w[0].gbm[b] | (cast(u32) w[0].gbm[b + 1] << 8) | (cast(u32) w[0].gbm[b + 2] << 16) | (cast(u32) w[0].gbm[b + 3] << 24);
+  }
+  w[0].vert_count = SA_CUBE_VERTS + verts;
+  w[0].verts_ver += 1;
+}
+
+// ---- directional sun shadow matrix
+
+sa_write_light_vp :: (u: [] f32, sx: f32, sy: f32, sz: f32) {
+  // Light eye sits 42 m up along sun direction looking at arena center (0, 0, 0)
+  ex := sx * 42.0f32; ey := sy * 42.0f32; ez := sz * 42.0f32;
+  fx := -sx; fy := -sy; fz := -sz;
+  // Right = normalize(cross((0, 1, 0), f)) = normalize((fz, 0, -fx))
+  rl := sqrt(fz * fz + fx * fx);
+  rx := ifx rl > 0.001f32 then fz / rl else 1.0f32;
+  ry: f32 = 0;
+  rz := ifx rl > 0.001f32 then -fx / rl else 0.0f32;
+  // Up = cross(f, r)
+  ux := fy * rz - fz * ry;
+  uy := fz * rx - fx * rz;
+  uz := fx * ry - fy * rx;
+  // Orthographic extents: half = 24 m, depth [4, 88] -> span = 84 m
+  inv_h: f32 = 1.0f32 / 24.0f32;
+  z_near: f32 = 4.0f32;
+  inv_z: f32 = 1.0f32 / 84.0f32;
+  re := rx * ex + ry * ey + rz * ez;
+  ue := ux * ex + uy * ey + uz * ez;
+  fe := fx * ex + fy * ey + fz * ez;
+  rows := [16] f32.[
+    rx * inv_h, ry * inv_h, rz * inv_h, -re * inv_h,
+    ux * inv_h, uy * inv_h, uz * inv_h, -ue * inv_h,
+    fx * inv_z, fy * inv_z, fz * inv_z, (-fe - z_near) * inv_z,
+    0, 0, 0, 1];
+  for row: 0..<4 {
+    for col: 0..<4 { u[SA_U_LIGHT + col * 4 + row] = rows[row * 4 + col]; }
+  }
+}
+
+// ---- instance grouping & draw list builder
+
+sa_copy_inst :: (dst: [] f32, di: int, src: [] f32, si: int) {
+  d := di * SA_INST_FLOATS;
+  s := si * SA_INST_FLOATS;
+  for k: 0..<SA_INST_FLOATS { dst[d + k] = src[s + k]; }
+}
+
+sa_emit_draw :: (w: [] ScrappersWorld, first_v: int, count_v: int, first_i: int, count_i: int, blend: s32, casts_shadow: bool) {
+  if count_v <= 0 || count_i <= 0 || w[0].draw_n >= SA_MAX_DRAWS { return; }
+  d := w[0].draw_n;
+  w[0].draws[d * 4 + 0] = cast(u32) first_v;
+  w[0].draws[d * 4 + 1] = cast(u32) count_v;
+  w[0].draws[d * 4 + 2] = 0x80000000 | cast(u32) first_i;
+  w[0].draws[d * 4 + 3] = cast(u32) count_i;
+  w[0].draw_blend[d] = blend;
+  w[0].draw_n = d + 1;
+  if casts_shadow && w[0].shadow_draw_n < SA_MAX_DRAWS {
+    sd := w[0].shadow_draw_n;
+    w[0].shadow_draws[sd * 4 + 0] = cast(u32) first_v;
+    w[0].shadow_draws[sd * 4 + 1] = cast(u32) count_v;
+    w[0].shadow_draws[sd * 4 + 2] = 0x80000000 | cast(u32) first_i;
+    w[0].shadow_draws[sd * 4 + 3] = cast(u32) count_i;
+    w[0].shadow_draw_n = sd + 1;
+  }
+}
+
+sa_pack_draws :: (w: [] ScrappersWorld) {
+  e := w[0].ed[..];
+  raw_n := cast(int) ed_draw(e, w[0].raw[..]);
+  if raw_n > SA_MAX_INSTS { raw_n = SA_MAX_INSTS; }
+  w[0].inst_n = 0;
+  w[0].draw_n = 0;
+  w[0].shadow_draw_n = 0;
+
+  // Group A: Arena floor (mesh 0, LOOK_ARENA / LOOK_GROUND) — opaque, no shadow cast
+  f_start := w[0].inst_n;
+  for i: 0..<raw_n {
+    o := i * SA_INST_FLOATS;
+    look := cast(int) (w[0].raw[o + 17] + 0.5f32);
+    mesh := cast(int) (w[0].raw[o + 19] + 0.5f32);
+    if mesh == 0 && (look == SA_LOOK_ARENA || look == SA_LOOK_GROUND) {
+      sa_copy_inst(w[0].insts[..], w[0].inst_n, w[0].raw[..], i);
+      w[0].inst_n += 1;
+    }
+  }
+  sa_emit_draw(w, 0, SA_CUBE_VERTS, f_start, w[0].inst_n - f_start, 0, false);
+
+  // Group B: Solid unit-cube instances (mesh 0, excluding LOOK_SKY and floor) — opaque, casts shadows
+  b_start := w[0].inst_n;
+  for i: 0..<raw_n {
+    o := i * SA_INST_FLOATS;
+    look := cast(int) (w[0].raw[o + 17] + 0.5f32);
+    mesh := cast(int) (w[0].raw[o + 19] + 0.5f32);
+    if mesh == 0 && look != SA_LOOK_SKY && look != SA_LOOK_ARENA && look != SA_LOOK_GROUND {
+      sa_copy_inst(w[0].insts[..], w[0].inst_n, w[0].raw[..], i);
+      w[0].inst_n += 1;
+    }
+  }
+  sa_emit_draw(w, 0, SA_CUBE_VERTS, b_start, w[0].inst_n - b_start, 0, true);
+
+  // Group C: Opaque .gbm meshes (mesh 1..n, shade >= 0.9) — one instanced draw per mesh, casts shadows
+  mc := cast(int) ed_mesh_count(e);
+  rng: [2] s32;
+  for m: 1..<mc + 1 {
+    if !ed_mesh_range(e, cast(s32) m, rng[..]) { continue; }
+    m_start := w[0].inst_n;
+    for i: 0..<raw_n {
+      o := i * SA_INST_FLOATS;
+      mesh := cast(int) (w[0].raw[o + 19] + 0.5f32);
+      shade := w[0].raw[o + 16];
+      if mesh == m && shade >= 0.9f32 {
+        sa_copy_inst(w[0].insts[..], w[0].inst_n, w[0].raw[..], i);
+        w[0].inst_n += 1;
+      }
+    }
+    if w[0].inst_n > m_start {
+      // Shots (mesh == ms.shot) don't need to cast dark shadows; everything else does
+      casts := cast(s32) m != e[0].meshes[0].shot;
+      sa_emit_draw(w, SA_CUBE_VERTS + cast(int) rng[0], cast(int) rng[1], m_start, w[0].inst_n - m_start, 0, casts);
+    }
+  }
+
+  // Group D: Transparent contact shadow discs (mesh 1..n, shade < 0.9) — drawn LAST with alpha blend (2)
+  for m: 1..<mc + 1 {
+    if !ed_mesh_range(e, cast(s32) m, rng[..]) { continue; }
+    s_start := w[0].inst_n;
+    for i: 0..<raw_n {
+      o := i * SA_INST_FLOATS;
+      mesh := cast(int) (w[0].raw[o + 19] + 0.5f32);
+      shade := w[0].raw[o + 16];
+      if mesh == m && shade < 0.9f32 {
+        sa_copy_inst(w[0].insts[..], w[0].inst_n, w[0].raw[..], i);
+        w[0].inst_n += 1;
+      }
+    }
+    if w[0].inst_n > s_start {
+      sa_emit_draw(w, SA_CUBE_VERTS + cast(int) rng[0], cast(int) rng[1], s_start, w[0].inst_n - s_start, 2, false);
+    }
+  }
+
+  w[0].insts_ver += 1;
+}
+
+// ---- HUD & sound event serialization (ACT_EVENT = 90 -> glue.js)
+
+sa_pack_hud_event :: (w: [] ScrappersWorld, force: bool) {
+  e := w[0].ed[..];
+  _ = ed_play_hud(e, w[0].hud_f[..]);
+  ev_n := cast(int) ed_play_events(e, w[0].ev_buf[..]);
+  // Silence showcase bot sound effects while on the pre-match loadout screen
+  if w[0].lobby { ev_n = 0; }
+  w[0].hud_step += 1;
+  if !force && ev_n == 0 && (w[0].hud_step % 3) != 1 { return; }
+  h := w[0].hud_f[..];
+  o := w[0].outbox[..];
+  n := sa_put(o, 0, "hud|lb="); n = sa_put_int(o, n, ifx w[0].lobby then 1 else 0);
+  n = sa_put(o, n, ";pa="); n = sa_put_int(o, n, ifx w[0].paused then 1 else 0);
+  n = sa_put(o, n, ";lk="); n = sa_put_int(o, n, ifx w[0].locked then 1 else 0);
+  n = sa_put(o, n, ";md="); n = sa_put_int(o, n, cast(int) w[0].pick_mode);
+  n = sa_put(o, n, ";sz="); n = sa_put_int(o, n, cast(int) w[0].pick_size);
+  n = sa_put(o, n, ";kd="); n = sa_put_int(o, n, cast(int) w[0].pick_kind);
+  n = sa_put(o, n, ";ov="); n = sa_put_int(o, n, cast(int) (h[1] + 0.5f32));
+  n = sa_put(o, n, ";wn="); n = sa_put_int(o, n, cast(int) h[2]);
+  n = sa_put(o, n, ";hp="); n = sa_put_int(o, n, cast(int) (h[3] * 100.0f32 + 0.5f32));
+  n = sa_put(o, n, ";sp="); n = sa_put_int(o, n, cast(int) (h[4] * 100.0f32 + 0.5f32));
+  n = sa_put(o, n, ";s0="); n = sa_put_int(o, n, cast(int) (h[5] + 0.5f32));
+  n = sa_put(o, n, ";s1="); n = sa_put_int(o, n, cast(int) (h[6] + 0.5f32));
+  n = sa_put(o, n, ";tm="); n = sa_put_int(o, n, cast(int) (h[7] * 10.0f32 + 0.5f32));
+  n = sa_put(o, n, ";rs="); n = sa_put_int(o, n, cast(int) (h[8] * 10.0f32 + 0.5f32));
+  n = sa_put(o, n, ";th="); n = sa_put_int(o, n, cast(int) (h[10] + 0.5f32));
+  n = sa_put(o, n, ";mk="); n = sa_put_int(o, n, cast(int) (h[28] * 100.0f32));
+  n = sa_put(o, n, ";ht="); n = sa_put_int(o, n, cast(int) (h[29] * 100.0f32));
+  n = sa_put(o, n, ";od="); n = sa_put_int(o, n, cast(int) (h[30] + 0.5f32));
+  n = sa_put(o, n, ";gl="); n = sa_put_int(o, n, cast(int) (h[31] + 0.5f32));
+  n = sa_put(o, n, ";ct="); n = sa_put_int(o, n, cast(int) (h[32] * 10.0f32 + 0.5f32));
+  n = sa_put(o, n, ";sh="); n = sa_put_int(o, n, cast(int) (h[33] + 0.5f32));
+  n = sa_put(o, n, ";ft="); n = sa_put_int(o, n, cast(int) (h[35] + 0.5f32));
+  n = sa_put(o, n, ";ko="); n = sa_put_int(o, n, cast(int) (h[47] + 0.5f32));
+  n = sa_put(o, n, ";fl="); n = sa_put_int(o, n, cast(int) (h[49] + 0.5f32));
+  n = sa_put(o, n, ";bl="); n = sa_put_int(o, n, cast(int) (h[54] + 0.5f32));
+  n = sa_put(o, n, ";a0="); n = sa_put_int(o, n, cast(int) (h[55] + 0.5f32));
+  n = sa_put(o, n, ";a1="); n = sa_put_int(o, n, cast(int) (h[56] + 0.5f32));
+  n = sa_put(o, n, ";bt="); n = sa_put_int(o, n, cast(int) (h[57] + 0.5f32));
+  n = sa_put(o, n, ";gm="); n = sa_put_int(o, n, ifx e[0].meshes[0].ok then 1 else 0);
+  // Knockout / goal / round feed banner text
+  fn := cast(int) ed_play_feed(e, w[0].feed_buf[..]);
+  if fn > 0 && !w[0].lobby {
+    n = sa_put(o, n, ";fd=");
+    n = sa_put(o, n, cast(string) w[0].feed_buf[0..<fn]);
+  }
+  // Sound events from this frame: id:loud,id:loud
+  if ev_n > 0 {
+    n = sa_put(o, n, ";sx=");
+    for k: 0..<ev_n {
+      if k > 0 { n = sa_put(o, n, ","); }
+      n = sa_put_int(o, n, cast(int) w[0].ev_buf[k * 2]);
+      n = sa_put(o, n, ":");
+      n = sa_put_int(o, n, cast(int) w[0].ev_buf[k * 2 + 1]);
+    }
+  }
+  w[0].out_n = n;
+  w[0].out_ready = true;
+}
+
+// ---- frame step
+
+sa_frame :: (w: [] ScrappersWorld, _verts: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if w.count < 1 || u.count < SA_UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  w[0].wide = width; w[0].high = height; w[0].dpr = ifx dpr > 0.5f32 then dpr else 1.0f32;
+  sa_ensure_init(w);
+  e := w[0].ed[..];
+  e[0].w = width / w[0].dpr;
+  e[0].h = height / w[0].dpr;
+  step := ifx still || w[0].still_hash then 0.0f32 else (ifx dt > 0.05f32 then 0.05f32 else (ifx dt < 0.0f32 then 0.0f32 else dt));
+  w[0].time += step;
+
+  if w[0].lobby {
+    if step > 0 {
+      _ = ed_tick(e, step);
+      if e[0].play[0].over { sa_start_showcase(w); }
+    }
+    // Smooth cinematic dusk orbit above the live 3v3 Scrapper fight
+    ang := (ifx w[0].still_hash then 0.45f32 else w[0].time * 0.13f32 + 0.52f32);
+    rad: f32 = 17.5f32;
+    ex := sin(ang) * rad;
+    ez := -cos(ang) * rad;
+    ey: f32 = 8.6f32;
+    e[0].vp[0].fx = ex; e[0].vp[0].fy = ey; e[0].vp[0].fz = ez;
+    e[0].vp[0].fyaw = angle_atan2(-ex, -ez);
+    e[0].vp[0].fpitch = -0.38f32;
+    e[0].vp[0].fly = true;
+  } else if !w[0].paused {
+    e[0].vp[0].fly = true;
+    if step > 0 { _ = ed_tick(e, step); }
+  }
+
+  // Build scene draws & instance buffer
+  sa_pack_draws(w);
+
+  // Fill GPU uniform block
+  cam: [CAMERA_FLOATS] f32;
+  _ = ed_camera(e, cam[..]);
+  for i: 0..<16 { u[SA_U_VP + i] = cam[i]; }
+  // Warm dusk sun direction (normalized)
+  sl := sqrt(0.52f32 * 0.52f32 + 0.66f32 * 0.66f32 + 0.54f32 * 0.54f32);
+  sx := 0.52f32 / sl; sy := 0.66f32 / sl; sz := -0.54f32 / sl;
+  sa_write_light_vp(u, sx, sy, sz);
+  eye := ed_eye(e);
+  basis := ed_basis(e);
+  thf := tan(ed_fov(e) * 0.5f32);
+  aspect := width / height;
+  p := e[0].play[0];
+  hurt := ifx w[0].lobby then 0.0f32 else p.hurt / 0.25f32;
+  sup_on := ifx !w[0].lobby && p.f[0].over > 0 then 1.0f32 else 0.0f32;
+  u[SA_U_EYE + 0] = eye.x; u[SA_U_EYE + 1] = eye.y; u[SA_U_EYE + 2] = eye.z; u[SA_U_EYE + 3] = w[0].time;
+  u[SA_U_SCREEN + 0] = width; u[SA_U_SCREEN + 1] = height; u[SA_U_SCREEN + 2] = w[0].dpr; u[SA_U_SCREEN + 3] = hurt;
+  u[SA_U_SUN + 0] = sx; u[SA_U_SUN + 1] = sy; u[SA_U_SUN + 2] = sz; u[SA_U_SUN + 3] = sup_on;
+  u[SA_U_CAM_R + 0] = basis.r.x; u[SA_U_CAM_R + 1] = basis.r.y; u[SA_U_CAM_R + 2] = basis.r.z; u[SA_U_CAM_R + 3] = thf * aspect;
+  u[SA_U_CAM_U + 0] = basis.u.x; u[SA_U_CAM_U + 1] = basis.u.y; u[SA_U_CAM_U + 2] = basis.u.z; u[SA_U_CAM_U + 3] = thf;
+  u[SA_U_CAM_F + 0] = basis.f.x; u[SA_U_CAM_F + 1] = basis.f.y; u[SA_U_CAM_F + 2] = basis.f.z; u[SA_U_CAM_F + 3] = cast(f32) ARENA_HALF / 100.0f32;
+  u[SA_U_FLAGS + 0] = p.marker / 0.15f32;
+  u[SA_U_FLAGS + 1] = ifx p.over then 1.0f32 else 0.0f32;
+  u[SA_U_FLAGS + 2] = ifx p.third then 1.0f32 else 0.0f32;
+  u[SA_U_FLAGS + 3] = ifx w[0].lobby then 1.0f32 else 0.0f32;
+
+  sa_pack_hud_event(w, false);
+  return 0;
+}
+
+// ---- input, mouselook, messages & hash
+
+sa_mouselook :: (w: [] ScrappersWorld) -> int #export_c #effects(all) {
+  if w.count < 1 || w[0].lobby || w[0].paused || w[0].ed[0].play[0].over { return 0; }
+  return 2;
+}
+
+sa_look_delta :: (w: [] ScrappersWorld, dx: f32, dy: f32) #export_c #effects(all) {
+  if w.count < 1 || w[0].lobby || w[0].paused { return; }
+  w[0].ed[0].vp[0].fly = true;
+  ed_play_look(w[0].ed[..], dx * 0.72f32, dy * 0.72f32);
+}
+
+sa_pointer_lock :: (w: [] ScrappersWorld, status: int) #export_c #effects(all) {
+  if w.count < 1 { return; }
+  was := w[0].locked;
+  w[0].locked = status == 1;
+  if was && !w[0].locked && !w[0].lobby { ed_play_fire(w[0].ed[..], false); }
+  sa_pack_hud_event(w, true);
+}
+
+sa_pointer :: (w: [] ScrappersWorld, x: f32, y: f32, phase: int, kind: int, id: int, button: int) #export_c #effects(all) {
+  if w.count < 1 || w[0].lobby || w[0].paused { return; }
+  sa_ensure_init(w);
+  e := w[0].ed[..];
+  if kind != 0 {
+    // Touch screen: forward CSS points directly to play.coax touch sticks & buttons
+    px := x / w[0].dpr; py := y / w[0].dpr;
+    tp: s32 = ifx phase == 0 then PLAY_TOUCH_DOWN else (ifx phase == 1 then PLAY_TOUCH_MOVE else PLAY_TOUCH_UP);
+    ed_play_touch(e, cast(s32) id, tp, px, py);
+    return;
+  }
+  if w[0].locked {
+    // Pointer locked: left click holds fire, right click activates super
+    if phase == 0 {
+      if button == 0 { ed_play_fire(e, true); }
+      else if button == 2 { e[0].play[0].super = true; }
+    } else if phase == 2 || phase == 3 {
+      if button == 0 || phase == 3 { ed_play_fire(e, false); }
+    }
+    return;
+  }
+  // Unlocked mouse fallback: left click fires & drags to look, right drag looks
+  if phase == 0 {
+    w[0].drag = true; w[0].drag_id = id; w[0].drag_x = x; w[0].drag_y = y;
+    if button == 0 { ed_play_fire(e, true); }
+    else if button == 2 { e[0].play[0].super = true; }
+    return;
+  }
+  if phase == 1 && w[0].drag && id == w[0].drag_id {
+    e[0].vp[0].fly = true;
+    ed_play_look(e, (x - w[0].drag_x) / w[0].dpr, (y - w[0].drag_y) / w[0].dpr);
+    w[0].drag_x = x; w[0].drag_y = y;
+    return;
+  }
+  if phase == 2 || phase == 3 {
+    w[0].drag = false;
+    ed_play_fire(e, false);
+  }
+}
+
+sa_blur :: (w: [] ScrappersWorld) #export_c #effects(all) {
+  if w.count < 1 { return; }
+  w[0].drag = false; w[0].keys = 0; w[0].locked = false;
+  e := w[0].ed[..];
+  e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false;
+  ed_play_fire(e, false);
+}
+
+sa_message :: (w: [] ScrappersWorld, kind: int, length: int) #export_c #effects(all) {
+  if w.count < 1 || length < 0 || length > 512 { return; }
+  sa_ensure_init(w);
+  t := cast(string) w[0].inbox[0..<length];
+  e := w[0].ed[..];
+  if kind == SA_MSG_START {
+    a := sa_read_int(t, 0);
+    b := sa_read_int(t, a.next);
+    c := sa_read_int(t, b.next);
+    sa_start_match(w, ifx a.ok then cast(s32) a.v else w[0].pick_kind, ifx b.ok then cast(s32) b.v else w[0].pick_mode, ifx c.ok then cast(s32) c.v else w[0].pick_size);
+    sa_pack_hud_event(w, true);
+    return;
+  }
+  if kind == SA_MSG_LOBBY {
+    sa_start_showcase(w);
+    sa_pack_hud_event(w, true);
+    return;
+  }
+  if kind == SA_MSG_PAUSE {
+    a := sa_read_int(t, 0);
+    if !w[0].lobby {
+      w[0].paused = a.ok && a.v != 0;
+      if w[0].paused { ed_play_fire(e, false); e[0].k_fore = false; e[0].k_back = false; e[0].k_left = false; e[0].k_right = false; }
+      sa_pack_hud_event(w, true);
+    }
+    return;
+  }
+  if kind == SA_MSG_FIRE {
+    a := sa_read_int(t, 0);
+    if !w[0].lobby && !w[0].paused { ed_play_fire(e, a.ok && a.v != 0); }
+    return;
+  }
+  if kind == SA_MSG_SUPER {
+    if !w[0].lobby && !w[0].paused { e[0].play[0].super = true; }
+    return;
+  }
+  if kind == SA_MSG_VIEW {
+    if !w[0].lobby && !w[0].paused {
+      ed_play_view(e);
+      w[0].want_third = e[0].play[0].third;
+      sa_pack_hud_event(w, true);
+    }
+    return;
+  }
+  if kind == SA_MSG_KEYS {
+    a := sa_read_int(t, 0);
+    now := ifx a.ok then a.v else 0;
+    was := w[0].keys;
+    w[0].keys = now;
+    if w[0].lobby || w[0].paused { return; }
+    e[0].k_fore = (now & SA_KEY_W) != 0;
+    e[0].k_back = (now & SA_KEY_S) != 0;
+    e[0].k_left = (now & SA_KEY_A) != 0;
+    e[0].k_right = (now & SA_KEY_D) != 0;
+    if (now & SA_KEY_JUMP) != 0 && (was & SA_KEY_JUMP) == 0 { e[0].play[0].jump = true; }
+    if (now & SA_KEY_SUPER) != 0 && (was & SA_KEY_SUPER) == 0 { e[0].play[0].super = true; }
+    if (now & SA_KEY_VIEW) != 0 && (was & SA_KEY_VIEW) == 0 {
+      ed_play_view(e);
+      w[0].want_third = e[0].play[0].third;
+      sa_pack_hud_event(w, true);
+    }
+    if (now & SA_KEY_RESTART) != 0 && (was & SA_KEY_RESTART) == 0 && e[0].play[0].over {
+      sa_start_match(w, w[0].pick_kind, w[0].pick_mode, w[0].pick_size);
+      sa_pack_hud_event(w, true);
+    }
+    return;
+  }
+  if kind == SA_MSG_TOUCH {
+    if w[0].lobby || w[0].paused { return; }
+    a := sa_read_int(t, 0); b := sa_read_int(t, a.next); c := sa_read_int(t, b.next); d := sa_read_int(t, c.next);
+    if a.ok && b.ok && c.ok && d.ok { ed_play_touch(e, cast(s32) a.v, cast(s32) b.v, cast(f32) c.v, cast(f32) d.v); }
+  }
+}
+
+sa_hash :: (w: [] ScrappersWorld, length: int) #export_c #effects(all) {
+  if w.count < 1 || length <= 0 || length > 512 { return; }
+  sa_ensure_init(w);
+  s := cast(string) w[0].inbox[0..<length];
+  if sa_contains(s, "bolt") { w[0].pick_kind = 0; }
+  if sa_contains(s, "boulder") { w[0].pick_kind = 1; }
+  if sa_contains(s, "lumen") { w[0].pick_kind = 2; }
+  if sa_contains(s, "knockouts") { w[0].pick_mode = MODE_KNOCKOUTS; }
+  if sa_contains(s, "last-stand") { w[0].pick_mode = MODE_LAST_STAND; }
+  if sa_contains(s, "scrapball") { w[0].pick_mode = MODE_SCRAPBALL; }
+  if sa_contains(s, "hoops") { w[0].pick_mode = MODE_HOOPS; }
+  if sa_contains(s, "1v1") { w[0].pick_size = 1; }
+  if sa_contains(s, "2v2") { w[0].pick_size = 2; }
+  if sa_contains(s, "3v3") { w[0].pick_size = 3; }
+  if sa_contains(s, "4v4") { w[0].pick_size = 4; }
+  if sa_contains(s, "5v5") { w[0].pick_size = 5; }
+  if sa_contains(s, "third") { w[0].want_third = true; }
+  if sa_contains(s, "still") { w[0].still_hash = true; }
+  if sa_contains(s, "play") {
+    sa_start_match(w, w[0].pick_kind, w[0].pick_mode, w[0].pick_size);
+    if sa_contains(s, "go") { w[0].ed[0].play[0].count = 0; }
+  } else {
+    sa_start_showcase(w);
+  }
+  sa_pack_hud_event(w, true);
+}
+
+// ---- host query accessors
+
+sa_max_vertices :: () -> int #export_c #effects(all) { return SA_MAX_FX_VERTS; }
+sa_vertex_floats :: () -> int #export_c #effects(all) { return SA_FX_FLOATS; }
+sa_uniform_floats :: () -> int #export_c #effects(all) { return SA_UNIFORM_FLOATS; }
+sa_inbox_cap :: () -> int #export_c #effects(all) { return 512; }
+sa_draw_count :: (w: [] ScrappersWorld) -> int #export_c #effects(all) { return ifx w.count < 1 then 0 else w[0].draw_n; }
+sa_draw_blend :: (w: [] ScrappersWorld, i: int) -> int #export_c #effects(all) { return ifx w.count < 1 || i < 0 || i >= w[0].draw_n then 0 else cast(int) w[0].draw_blend[i]; }
+sa_shadow_draw_count :: (w: [] ScrappersWorld) -> int #export_c #effects(all) { return ifx w.count < 1 then 0 else w[0].shadow_draw_n; }
+sa_store_cap :: (k: int) -> int #export_c #effects(all) {
+  return ifx k == 0 then SA_MAX_VERTS * SA_VERT_WORDS * 4 else SA_MAX_INSTS * SA_INST_FLOATS * 4;
+}
+sa_store_bytes :: (w: [] ScrappersWorld, k: int) -> int #export_c #effects(all) {
+  if w.count < 1 { return 0; }
+  return ifx k == 0 then w[0].vert_count * SA_VERT_WORDS * 4 else w[0].inst_n * SA_INST_FLOATS * 4;
+}
+sa_store_version :: (w: [] ScrappersWorld, k: int) -> int #export_c #effects(all) {
+  if w.count < 1 { return 0; }
+  return ifx k == 0 then w[0].verts_ver else w[0].insts_ver;
+}
+sa_take_action :: (w: [] ScrappersWorld) -> int #export_c #effects(all) {
+  if w.count < 1 || !w[0].out_ready || w[0].out_n <= 0 { return 0; }
+  w[0].out_ready = false;
+  return SA_ACT_EVENT;
+}
+sa_outbox_len :: (w: [] ScrappersWorld) -> int #export_c #effects(all) { return ifx w.count < 1 then 0 else w[0].out_n; }
+
+// ---- checks
+
+SaTest :: struct { w: [1] ScrappersWorld; u: [SA_UNIFORM_FLOATS] f32; fx: [64] f32; }
+
+#test "scrappers arena boots into a live 3v3 showcase, produces finite draws, and starts every mode" {
+  t: [1] SaTest; w := t[0].w[..];
+  _ = sa_frame(w, t[0].fx[..], t[0].u[..], 1280, 720, 1, 0.016, false);
+  #assert w[0].inited && w[0].lobby && w[0].vert_count == SA_CUBE_VERTS;
+  #assert w[0].draw_n >= 2 && w[0].shadow_draw_n >= 1 && w[0].inst_n > 20;
+  for i: 0..<SA_UNIFORM_FLOATS { #assert t[0].u[i] == t[0].u[i]; }
+  #assert sa_mouselook(w) == 0;
+  // Start a match in every mode (Knockouts, Last Stand, Scrapball, Hoops) and step
+  for m: 0..<MODES {
+    sa_start_match(w, cast(s32) (m % CLASSES), cast(s32) m, 3);
+    #assert !w[0].lobby && sa_mouselook(w) == 2 && w[0].ed[0].play[0].mode == cast(s32) m;
+    _ = sa_frame(w, t[0].fx[..], t[0].u[..], 1280, 720, 1, 0.05, false);
+    #assert w[0].draw_n >= 2 && w[0].inst_n > 20;
+  }
+  // Event line carries live HUD fields
+  #assert sa_take_action(w) == SA_ACT_EVENT && w[0].out_n > 20;
+  #assert sa_contains(cast(string) w[0].outbox[0..<w[0].out_n], "hud|lb=0;");
+  // Returning to lobby frees the cursor
+  sa_start_showcase(w);
+  #assert w[0].lobby && sa_mouselook(w) == 0;
+}

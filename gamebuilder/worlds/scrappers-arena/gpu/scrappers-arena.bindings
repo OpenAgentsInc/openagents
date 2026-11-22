@@ -1,0 +1,14 @@
+# Scrappers Arena bindings for coax/web/wgsl-module.coax matching coax/web/host.js:
+# group 0: uniforms (64 floats = 16 vec4f); group 1: 2 stores (verts, insts); group 2: shadow map.
+u 0 0 uniform 16
+verts 1 0
+insts 1 1
+shadow_map 2 0
+shadow_cmp 2 1
+bloom_src 1 0
+bloom_lin 1 1
+bloom_step 1 2 uniform 1
+post_light 1 0
+post_quarter 1 1
+post_eighth 1 2
+post_lin 1 5

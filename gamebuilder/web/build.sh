@@ -2,9 +2,11 @@
 # Firm reason: 5 (thin wrapper around coax/web/wasm.sh, wgsl-module.coax, assets-sync and dragon-bake; holds no logic).
 # Builds gamebuilder.org for the browser: static landing page (/ and /credits), shared Coaxial host
 # (/coaxial/*.js + /build/{frame-plan,host-layers,host-packs}.wasm), and standalone worlds:
-#   /fated-dragon  (gamebuilder/worlds/fated-dragon/)
-#   /splicebots    (gamebuilder/worlds/splicebots/ + metaverse/splice-bots/)
+#   /fated-dragon      (gamebuilder/worlds/fated-dragon/)
+#   /splicebots        (gamebuilder/worlds/splicebots/ + metaverse/splice-bots/)
 #   /whispering-spring (gamebuilder/worlds/whispering-spring/)
+#   /ice-cream-man     (gamebuilder/worlds/ice-cream-man/ + metaverse/icecream/)
+#   /scrappers-arena   (gamebuilder/worlds/scrappers-arena/ + gamebuilder/core/play.coax)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 gb="$(cd "$here/.." && pwd)"
@@ -15,7 +17,16 @@ ulimit -s 65520 2>/dev/null || true
 mkdir -p "$here/build" "$here/coaxial" "$here/credits" \
   "$here/fated-dragon/build" "$here/fated-dragon/assets" \
   "$here/splicebots/build" "$here/splicebots/fonts" "$here/splicebots/packs" \
-  "$here/whispering-spring/build"
+  "$here/whispering-spring/build" \
+  "$here/ice-cream-man/build" "$here/ice-cream-man/assets" \
+  "$here/scrappers-arena/build" "$here/scrappers-arena/assets" \
+  "$gb/build"
+
+# Ensure stamp.coax exists for gamebuilder/core/commands.coax (used by Scrappers Arena)
+if [[ ! -s "$gb/build/stamp.coax" ]]; then
+  head_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "0000000000")"
+  printf 'GB_COMMIT :: "%s";\nGB_DIRTY :: false;\n' "${head_sha:0:10}" > "$gb/build/stamp.coax"
+fi
 
 # Hydrate content-addressed binary packs (SPLICEBOTS packs + GameBuilder assets)
 (cd "$repo" && COAX="$COAX" "$repo/coax/web/tool.sh" assets-sync --group gamebuilder)
@@ -63,3 +74,17 @@ if [[ $ws_stale == 1 ]]; then
 fi
 "$repo/coax/web/wasm.sh" "$ws_src/world-spring.coax" "$ws_src/whispering-spring-face.c" "$here/whispering-spring/build/whispering-spring.wasm"
 (cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.coax "$here/whispering-spring/whispering-spring.wgsl" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.module)
+
+# World 4: Ice Cream Man (/ice-cream-man)
+icm_src="$gb/worlds/ice-cream-man"
+cp "$icm_src/index.html" "$here/ice-cream-man/index.html"
+cp "$repo/apps/openagents-web/realms/ice-cream-man/assets/IceCream.indices" "$here/ice-cream-man/assets/IceCream.indices"
+COAXIAL_RENDER=0 "$repo/coax/web/wasm.sh" "$repo/apps/openagents-web/icecream.coax" "$icm_src/icecream-face.c" "$here/ice-cream-man/build/icecream.wasm" "$repo/metaverse/icecream/scene.coax"
+(cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" apps/openagents-web/gpu/icecream.coax "$here/ice-cream-man/icecream.wgsl" apps/openagents-web/gpu/icecream.module)
+
+# World 5: Scrappers Arena (/scrappers-arena)
+sa_src="$gb/worlds/scrappers-arena"
+cp "$sa_src/index.html" "$sa_src/glue.js" "$here/scrappers-arena/"
+cp "$gb/assets/scrappers.gbm" "$here/scrappers-arena/assets/scrappers.gbm"
+COAXIAL_RUN_STEPS=100000000 "$repo/coax/web/wasm.sh" "$sa_src/scrappers.coax" "$sa_src/scrappers-face.c" "$here/scrappers-arena/build/scrappers-arena.wasm"
+(cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" gamebuilder/worlds/scrappers-arena/gpu/scrappers-arena.coax "$here/scrappers-arena/scrappers-arena.wgsl" gamebuilder/worlds/scrappers-arena/gpu/scrappers-arena.module)

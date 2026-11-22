@@ -28,7 +28,7 @@ ulimit -s 65520 2>/dev/null || true
 "$COAX" test "$GB_ROOT/tests/player/provenance.coax" --library
 
 # Static landing & world pages sanity
-for f in "$GB_ROOT/web/index.html" "$GB_ROOT/web/index.md" "$GB_ROOT/web/credits.html" "$GB_ROOT/worlds/fated-dragon/index.html" "$GB_ROOT/worlds/splicebots/index.html" "$GB_ROOT/worlds/whispering-spring/index.html"; do
+for f in "$GB_ROOT/web/index.html" "$GB_ROOT/web/index.md" "$GB_ROOT/web/credits.html" "$GB_ROOT/worlds/fated-dragon/index.html" "$GB_ROOT/worlds/splicebots/index.html" "$GB_ROOT/worlds/whispering-spring/index.html" "$GB_ROOT/worlds/ice-cream-man/index.html" "$GB_ROOT/worlds/scrappers-arena/index.html"; do
   [[ -s "$f" ]] || { echo "FAIL missing $f" >&2; exit 1; }
 done
 

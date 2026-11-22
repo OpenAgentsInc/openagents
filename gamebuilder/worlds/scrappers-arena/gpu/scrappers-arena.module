@@ -1,0 +1,3 @@
+--vertices sa_bg_vs,sa_shadow_vs,sa_scene_vs,sa_fx_vs
+--fragments sa_bg_fs,sa_shadow_fs,sa_scene_fs,sa_bloom_fs,sa_post_fs,sa_fx_fs
+--bindings gamebuilder/worlds/scrappers-arena/gpu/scrappers-arena.bindings --strip sa_

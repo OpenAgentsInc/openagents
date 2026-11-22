@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ice Cream Man — GAMEBUILDER</title>
+<meta name="description" content="Find three check-out keys and escape a seeded Airbnb house before the Ice Cream Man scoops you. Play directly in your browser on WebGPU at gamebuilder.org.">
+<meta property="og:title" content="Ice Cream Man — GAMEBUILDER">
+<meta property="og:description" content="Find three keys and escape a seeded house before the Ice Cream Man scoops you — playable on WebGPU at gamebuilder.org.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gamebuilder.org/ice-cream-man">
+<meta property="og:image" content="https://gamebuilder.org/img/ice-cream-man.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ice Cream Man — GAMEBUILDER">
+<meta name="twitter:description" content="Find three keys and escape a seeded house before the Ice Cream Man scoops you — playable on WebGPU at gamebuilder.org.">
+<meta name="twitter:image" content="https://gamebuilder.org/img/ice-cream-man.jpg">
+<meta name="theme-color" content="#0a0b0f">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M9 9h14v14H9z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Geist Mono';src:url('/fonts/GeistMono.woff2') format('woff2');font-weight:400;font-display:swap}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0a0b0f;color:#eee;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=none]{cursor:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=crosshair]{cursor:crosshair}
+#icm-back{position:fixed;bottom:14px;left:16px;z-index:20;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(10,11,15,.64);border:1px solid rgba(255,255,255,.16);color:#e8eaf0;text-decoration:none;font-size:11px;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(6px);transition:background .15s,border-color .15s}
+#icm-back:hover{background:rgba(10,11,15,.88);border-color:rgba(255,255,255,.45)}
+@media (pointer:coarse),(max-width:640px){#icm-back{display:none}}
+#coaxial-load{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:25;text-align:center}
+#coaxial-load.gone{display:none}
+.lb{display:block;width:240px;height:3px;background:#333;margin:16px auto}
+.lb i{display:block;height:100%;background:#ff8fb0;transform:scaleX(0);transform-origin:left}
+.le,.la{display:none}
+#coaxial-load[data-state=fail] .le,#coaxial-load[data-state=fail] .la{display:block}
+#coaxial-load[data-state=fail] .lb,#coaxial-load[data-state=fail] .lr{display:none}
+.la{color:#ff8fb0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-label="Ice Cream Man"></canvas>
+<a id="icm-back" href="/">← GAMEBUILDER</a>
+<div id="coaxial-load" role="progressbar" aria-label="Loading Ice Cream Man" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <strong>ICE CREAM MAN</strong>
+  <span class="lb"><i></i></span>
+  <p class="lr"><span class="lt">Loading</span> <span class="lp"></span></p>
+  <p class="le">The game could not load. Use a browser with WebGPU on this computer.</p>
+  <a class="la" href="/ice-cream-man">Reload</a>
+</div>
+<script type="module" src="/coaxial/host.js"
+  data-app="icecream"
+  data-slot="ice-cream-man"
+  data-wasm="/ice-cream-man/build/icecream.wasm"
+  data-wgsl="/ice-cream-man/icecream.wgsl"
+  data-style="lowpoly"
+  data-clock="fixed:0.5"
+  data-assets="index:/ice-cream-man/assets/IceCream.indices"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+// Scrappers Arena shared CPU/GPU layout constants (gamebuilder.org/scrappers-arena).
+// Uniform block (64 floats = 16 vec4f), vertex stride (7 u32 words matching scrappers.gbm),
+// and instance stride (20 floats = 5 vec4f matching gamebuilder/core/editor.coax INSTANCE_FLOATS).
+
+SA_UNIFORM_FLOATS :: 64;
+SA_U_VP :: 0;          // 16 floats: column-major view-projection matrix (ed_camera)
+SA_U_LIGHT :: 16;      // 16 floats: column-major directional sun shadow matrix
+SA_U_EYE :: 32;        // 4 floats: camera eye xyz, time
+SA_U_SCREEN :: 36;     // 4 floats: viewport width, height, dpr, hurt vignette (0..1)
+SA_U_SUN :: 40;        // 4 floats: unit sun dir xyz, super overdrive glow (0..1)
+SA_U_CAM_R :: 44;      // 4 floats: camera right xyz, tan(fov/2) * aspect
+SA_U_CAM_U :: 48;      // 4 floats: camera up xyz, tan(fov/2)
+SA_U_CAM_F :: 52;      // 4 floats: camera forward xyz, arena half-size (m)
+SA_U_FLAGS :: 56;      // 4 floats: hitmarker (0..1), match_over (0..1), third (0..1), lobby (0..1)
+
+SA_VERT_WORDS :: 7;    // px, py, pz, nx, ny, nz (f32 bits), rgba (u8x4)
+SA_CUBE_VERTS :: 36;   // unit cube [-0.5, 0.5]^3 stored at vertices 0..35
+SA_MAX_VERTS :: 72000; // cube (36) + scrappers.gbm (66,780) + headroom
+SA_INST_FLOATS :: 20;  // 4x4 column-major model matrix + (shade, look, tint, mesh)
+SA_INST_V4 :: 5;
+SA_MAX_INSTS :: 1024;
+SA_MAX_DRAWS :: 48;
+SA_GBM_CAP :: 2200000; // scrappers.gbm is 1,870,968 bytes
+SA_MAX_FX_VERTS :: 64;
+SA_FX_FLOATS :: 8;
+
+// Matching gamebuilder/core/editor.coax LOOK_* and play.coax TINT_*
+SA_LOOK_SOLID :: 0;
+SA_LOOK_GROUND :: 2;
+SA_LOOK_ARENA :: 4;
+SA_LOOK_SKY :: 5;
