@@ -52,5 +52,14 @@ done
 # World 3: The Whispering Spring (/whispering-spring)
 ws_src="$gb/worlds/whispering-spring"
 cp "$ws_src/index.html" "$ws_src/glue.js" "$ws_src/audio.js" "$ws_src/room.js" "$ws_src/audio-manifest.json" "$here/whispering-spring/"
+# the modelled grove pieces (the Obsidian Quail grove asset kit), baked again when a model or the baker changes
+mkdir -p "$here/whispering-spring/assets"
+ws_models=("$ws_src/models/earthen-bank.glb" "$ws_src/models/cedar.glb" "$ws_src/models/limestone.glb" "$ws_src/models/exposed-roots.glb" "$ws_src/models/pool-and-spillway.glb")
+ws_grove="$here/whispering-spring/assets/grove.wsg"
+ws_stale=0; [[ -s "$ws_grove" && ! "$gb/tools/grove-bake.coax" -nt "$ws_grove" ]] || ws_stale=1
+for m in "${ws_models[@]}"; do [[ "$m" -nt "$ws_grove" ]] && ws_stale=1; done
+if [[ $ws_stale == 1 ]]; then
+  (cd "$repo" && COAX="$COAX" "$repo/coax/web/tool.sh" gamebuilder/tools/grove-bake.coax "$ws_grove" "${ws_models[@]}")
+fi
 "$repo/coax/web/wasm.sh" "$ws_src/world-spring.coax" "$ws_src/whispering-spring-face.c" "$here/whispering-spring/build/whispering-spring.wasm"
 (cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.coax "$here/whispering-spring/whispering-spring.wgsl" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.module)

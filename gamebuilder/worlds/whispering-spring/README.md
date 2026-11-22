@@ -1,44 +1,61 @@
 # The Whispering Spring
 
-An album you discover by spending time in a place: `/whispering-spring` on gamebuilder.org.
-One fixed, composed shot of a low-poly Texas Hill Country cedar grove. An obsidian-black quail
-goes about its day; the grove answers when you touch something or listen closely, and each
-discovery reveals a track.
+Obsidian Quail's album as a place: `/whispering-spring` on gamebuilder.org. One fixed, composed shot of
+a low-poly Texas Hill Country grove at dusk. An obsidian quail, who stands for the musician, keeps the
+grove: she greets visitors, speaks prayers, and leads them to three small rituals. Each ritual opens a
+page of the musician's and the album's lore. Everyone who visits sees the same prayer tree and can talk
+in a live grove chat. "Listen to the Album" plays the music on its own.
 
-- **Listen to the water**: touch the pool once; it answers in three phrases, the third with a
-  curling plume of champagne-gold particles. Then "Play full track".
-- **Stack creek stones**: pick, turn and set four stones; each sounds a note of a chord, so the
-  finished cairn plays a voicing you made. Assisted placement gives the same reward.
-- **Hang a prayer ribbon**: fabric, colour, charm, a word, a branch; it catches the wind.
-- **Album journal**: found tracks, a lyric, an alternate take and a voice note (with transcript);
-  play, keep or download them.
+- **Listen to the water**: touch the pool; it answers in three phrases, the last with a curling plume
+  of champagne gold. A lore page opens.
+- **Stack creek stones**: pick, turn and set four stones; each sounds a note and the cairn holds a
+  chord (assisted placement gives the same reward). A lore page opens.
+- **Hang a prayer ribbon** on one of six limbs: fabric, colour, charm, an intention (shared only if
+  the visitor chooses). It joins everyone's ribbons on the tree. A lore page opens.
+- **Greet the quail**: she turns to you and says a prayer in a cozy-game babble voice.
+- **Album journal**: the lore pages found, to read, keep or download.
 
-Plan, layout, timeline, audio manifest and save format: [PLAN.md](PLAN.md).
+Plan, layout, timeline, rooms and save format: [PLAN.md](PLAN.md).
 
 ## Files
 
 | File | What it is |
 |------|------------|
-| `world-spring.coax` | the world: camera, picking, the spring, cairn, ribbon, saves, events to the page, tests |
-| `quail.coax` | the quail's state machine and its faceted mesh |
-| `grove.coax` | the grove's layout and static mesh |
+| `world-spring.coax` | the world: camera, picking, the spring, cairn, ribbons (own and shared), the spout's water, fireflies, saves, the modelled pieces' loading, events to the page, tests |
+| `quail.coax` | the quail's state machine (with its speak state) and its faceted mesh |
+| `grove.coax` | the grove's layout, its hand-built mesh, the six prayer limbs, and where each modelled piece is placed |
 | `spring-tune.coax` | every tunable: quail timing, particles, bloom, audio levels |
 | `spring-layout.coax` | the frame block shared with the shaders |
 | `gpu/` | shaders (the engine's stylized shading; the live grove reuses Fated Dragon's HDR bloom path) |
 | `whispering-spring-face.c` | the scalar Wasm face for `coax/web/host.js` |
-| `index.html`, `glue.js` | the page: landing, panels, journal, settings, text-first grove |
-| `audio.js`, `audio-manifest.json` | sound: recordings when present, synthesized placeholders until then |
+| `models/*.glb` | the modelled pieces from the Obsidian Quail grove asset kit: earthen bank, cedar, limestone, exposed roots (and the pool, not placed: its layout is for the kit's own camera) |
+| `index.html`, `glue.js` | the page: title page, in-grove frame, panels, journal, settings, text-first grove, speech bubble, chat |
+| `room.js` | the shared grove over the OpenAgents API's rooms: guest key, chat, everyone's ribbons |
+| `audio.js`, `audio-manifest.json` | sound and words: lore pages, the quail's lines, recordings when present, synthesized placeholders until then |
+
+`gamebuilder/tools/grove-bake.coax` bakes `models/*.glb` into `assets/grove.wsg` (one binary of coloured
+triangles, 16-bit fixed point; about 18 KB). `web/build.sh` rebakes it when a model or the baker
+changes. The world loads it as its one asset; until it arrives, or if it never does, the hand-built
+bank, trees, rocks and roots stand in. To swap or add a model: replace the GLB (flat base colours,
+root nodes with translation, rotation and scale; the baker refuses textures and nested nodes), then
+adjust its placements in `grove.coax` `WS_PLACE_AT`.
 
 ```
 coax/bin/coax test gamebuilder/worlds/whispering-spring/world-spring.coax --library
+coax/bin/coax test gamebuilder/tools/grove-bake.coax
 gamebuilder/scripts/web.sh          # http://127.0.0.1:8810/whispering-spring
 ```
 
+Chat and shared ribbons need the OpenAgents API behind `/api/playtest/` (on gamebuilder.org:
+`web-deploy.sh domain` routes those paths to `oa-api`). Without it the grove still plays; the chat
+says it can't be reached and only the visitor's own ribbon hangs.
+
 ## Credits and licences
 
-- Grove, quail, stones, ribbon and gold: procedural geometry written for this world (no models).
+- Earthen bank, cedar, limestone, exposed roots: the Obsidian Quail grove asset kit, supplied by the
+  project's owner for this world.
+- Everything else in the grove, the quail and the effects: procedural geometry written for this world.
 - Shading: the Metaverse Engine's stylized shaders (this repository).
-- Sound: every sound is synthesized in `audio.js`; no samples. All album audio, lyrics, titles and
-  the voice-note transcript are placeholders until the artist supplies them; each will be
-  credited here and in `audio-manifest.json` as it arrives.
+- Sound: synthesized in `audio.js`; no samples. Lore pages, the quail's lines, album audio and titles
+  are placeholders until the artist supplies hers, and will be credited here as they arrive.
 - Fonts: the visitor's own system fonts (nothing is downloaded).

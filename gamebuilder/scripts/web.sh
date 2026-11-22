@@ -15,6 +15,7 @@ if [[ "${1:-}" == check ]]; then
   "$COAX" test "$GB_ROOT/worlds/fated-dragon/fated-dragon.coax" --library
   "$COAX" test "$GB_ROOT/tools/dragon-bake.coax"
   "$COAX" test "$GB_ROOT/worlds/whispering-spring/world-spring.coax" --library
+  "$COAX" test "$GB_ROOT/tools/grove-bake.coax"
   "$COAX" test "$GB_ROOT/web/ghost.coax" --library
   "$COAX" test "$GB_ROOT/web/hud.coax" --library
   "$COAX" test "$GB_ROOT/web/gpu/hud.coax" --library

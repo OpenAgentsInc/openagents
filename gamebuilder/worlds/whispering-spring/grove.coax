@@ -26,8 +26,8 @@ WS_RANGE :: [4] f32.[-1.7, 0.1, 0.9, 1.9];   // x0, z0, x1, z1
 WS_CLUE_AT :: [6] f32.[-1.55, 0.9,  -1.05, 0.2,  0.3, 0.15];
 // The spout: a carved limestone mouth in the bank above the pool, the water falling from its lip
 // into the pool's back (world-spring.coax draws the moving water).
-WS_SPOUT :: [3] f32.[0.4, 1.55, -3.62];        // the mouth's middle, on the bank's face
-WS_SPOUT_LIP :: [3] f32.[0.4, 1.38, -3.3];     // where the water leaves the stone
+WS_SPOUT :: [3] f32.[0.4, 1.55, -3.86];        // the mouth's middle, on the modelled bank's face
+WS_SPOUT_LIP :: [3] f32.[0.4, 1.38, -3.54];    // where the water leaves the stone
 WS_SPOUT_FALL :: [3] f32.[0.4, -0.1, -2.45];   // where it meets the pool
 // The interaction spots the pointer and keyboard pick: x, y, z, radius. The quail's spot moves with it.
 WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOT_QUAIL :: 3; WS_SPOTS :: 4;
@@ -321,6 +321,90 @@ ws_spot :: (s: int) -> [4] f32 {
   return [4] f32.[q[0], q[1], q[2], q[3]];
 }
 
+
+// ---- the modelled pieces (the Obsidian Quail grove asset kit, baked by gamebuilder/tools/grove-bake.coax
+// into assets/grove.wsg). Until they arrive, and if they never do, the hand-built pieces stand in.
+WS_MODEL_BANK :: 0; WS_MODEL_CEDAR :: 1; WS_MODEL_LIMESTONE :: 2; WS_MODEL_ROOTS :: 3; WS_MODEL_POOL :: 4;
+WS_MODELS :: 8;
+WS_MODEL_TRI :: 22;          // bytes a triangle: 9 i16 corners (1/1024 m), r g b, a spare
+WS_MODEL_POS :: 0.0009765625;
+WS_BANK_FACE_Z :: -3.92;     // where the modelled bank's face stands once placed
+WsModels :: struct { ok: bool; data: [] u8; at: [WS_MODELS] int; tris: [WS_MODELS] int; count: int; }
+
+ws_m_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+ws_m_i16 :: (b: [] u8, at: int) -> f32 { u := ws_m_u16(b, at); if u >= 32768 { u -= 65536; } return cast(f32) u * f32(WS_MODEL_POS); }
+
+// Reads a WSG1 asset's header: where each module's triangles start. False when it is not one.
+ws_models_read :: (m: [] WsModels, data: [] u8) -> bool {
+  m[0].ok = false; m[0].data = data;
+  if data.count < 8 || data[0] != 'W' || data[1] != 'S' || data[2] != 'G' || data[3] != '1' { return false; }
+  count := ws_m_u16(data, 4) | (ws_m_u16(data, 6) << 16);
+  if count < 1 || count > WS_MODELS { return false; }
+  at := 8;
+  for k: 0..<count {
+    if at + 4 > data.count { return false; }
+    n := ws_m_u16(data, at) | (ws_m_u16(data, at + 2) << 16);
+    at += 4;
+    if n < 0 || at + n * WS_MODEL_TRI > data.count { return false; }
+    m[0].at[k] = at; m[0].tris[k] = n;
+    at += n * WS_MODEL_TRI;
+  }
+  m[0].count = count; m[0].ok = true;
+  return true;
+}
+
+// Where each piece goes: module, x y z, scale x y z, turn about y.
+WS_PLACE_FLOATS :: 8;
+WS_PLACES :: 21;
+WS_PLACE_AT :: [WS_PLACES * WS_PLACE_FLOATS] f32.[
+  0,  0.2, 0.0, 2.95,   1.9, 1.0, 1.0,  0.0,     // the bank: stretched across the shot, its face at WS_BANK_FACE_Z
+  1,  4.6, 0.0, -3.0,   1.35, 1.35, 1.35, 0.6,   // cedars where the plain trees stood
+  1, -6.6, 3.2, -6.4,   1.2, 1.2, 1.2,  2.1,
+  1, -2.1, 3.2, -7.6,   1.35, 1.35, 1.35, 4.0,
+  1,  1.6, 3.2, -8.1,   1.25, 1.25, 1.25, 1.2,
+  1,  5.2, 3.2, -6.7,   1.15, 1.15, 1.15, 5.1,
+  1, -8.4, 0.0,  3.6,   1.6, 1.6, 1.6,  0.9,
+  1,  8.8, 0.0, -1.6,   1.4, 1.4, 1.4,  2.7,
+  1, -7.2, 0.0, -1.2,   1.6, 1.6, 1.6,  3.3,
+  1,  7.0, 0.0, -1.0,   1.55, 1.55, 1.55, 0.2,
+  2, -3.6, 0.0,  2.6,   0.75, 0.75, 0.75, 0.4,   // limestone clusters where the boulders lay
+  2,  2.9, 0.0,  2.3,   0.7, 0.7, 0.7,  2.2,
+  2,  3.9, 0.0,  1.0,   0.95, 0.95, 0.95, 4.1,
+  2, -3.4, 0.0, -1.0,   0.6, 0.6, 0.6,  1.3,
+  2,  2.7, 0.0, -2.6,   0.65, 0.65, 0.65, 3.0,
+  2, -5.6, 0.0, -0.6,   0.8, 0.8, 0.8,  5.5,
+  2,  5.4, 0.0,  2.4,   0.8, 0.8, 0.8,  0.9,
+  3, -2.4, 3.22, -3.9,  1.5, 1.4, 1.5,  0.2,     // roots over the bank's top edge
+  3,  0.3, 3.24, -3.9,  1.7, 1.6, 1.7,  -0.3,
+  3,  2.6, 3.22, -3.9,  1.4, 1.3, 1.4,  0.5,
+  3, -4.8, 3.2,  -3.9,  1.3, 1.2, 1.3,  2.9];
+
+ws_m_corner :: (m: WsModels, at: int, c: int, q: [] const f32) -> WsV {
+  x := ws_m_i16(m.data, at + c * 6) * q[4]; y := ws_m_i16(m.data, at + c * 6 + 2) * q[5]; z := ws_m_i16(m.data, at + c * 6 + 4) * q[6];
+  cy := cos(q[7]); sy := sin(q[7]);
+  return ws_v(q[1] + x * cy + z * sy, q[2] + y, q[3] - x * sy + z * cy);
+}
+
+// One placed piece, each triangle flat-shaded in its own colour; the GLB winds them outward.
+ws_pen_place :: (p: [] ArchPen, m: WsModels, k: int) {
+  q: [] const f32 = WS_PLACE_AT[k * WS_PLACE_FLOATS..<(k + 1) * WS_PLACE_FLOATS];
+  mod := cast(int) q[0];
+  if mod >= m.count { return; }
+  for t: 0..<m.tris[mod] {
+    at := m.at[mod] + t * WS_MODEL_TRI;
+    a := ws_m_corner(m, at, 0, q); b := ws_m_corner(m, at, 1, q); c := ws_m_corner(m, at, 2, q);
+    r: f32 = cast(f32) m.data[at + 18] / 255; gg: f32 = cast(f32) m.data[at + 19] / 255; bl: f32 = cast(f32) m.data[at + 20] / 255;
+    material := ARCH_M_SMOOTH;
+    if mod == WS_MODEL_BANK { material = ARCH_M_PLASTER; }
+    else if mod == WS_MODEL_ROOTS { material = ARCH_M_BARK; }
+    else if mod == WS_MODEL_CEDAR { material = ifx gg > r then ARCH_M_LEAF else ARCH_M_BARK; }
+    arch_material(p, material, r, gg, bl);
+    n := ws_face(a, b, c);
+    arch_tri(p, arch_at(a.x, a.y, a.z, n.x, n.y, n.z, a.x, a.y + a.z), arch_at(b.x, b.y, b.z, n.x, n.y, n.z, b.x, b.y + b.z), arch_at(c.x, c.y, c.z, n.x, n.y, n.z, c.x, c.y + c.z));
+  }
+}
+ws_place_module :: (k: int) -> int { return cast(int) WS_PLACE_AT[k * WS_PLACE_FLOATS]; }
+
 // ---- the grove's mesh, once
 WS_FAR :: 220.0;
 WS_MESH_VERTICES :: 80000;
@@ -374,7 +458,8 @@ ws_pen_agave :: (p: [] ArchPen, x: f32, z: f32, size: f32, seed: int) {
   }
 }
 
-ws_build_grove :: (p: [] ArchPen) {
+ws_build_grove :: (p: [] ArchPen, models: WsModels) {
+  mk := models.ok;
   // The far land under and past everything (its own draw; record 0).
   g: f32 = WS_FAR;
   ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
@@ -423,19 +508,23 @@ ws_build_grove :: (p: [] ArchPen) {
       band: f32 = ifx (k % 2) == 0 then 0.15f32 else 0.75f32;
       ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_UMBER[..], WS_UMBER_LIGHT[..], clamp(band + (n - 0.5) * 0.25, 0, 1)));
       facing := ws_v((a.x + c.x) * 0.5, (a.y + c.y) * 0.5, -40);
-      ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing);
+      if !mk { ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing); }
     }
     // the land above it, back toward the far trees
     t0 := ws_bank_point(i, WS_BANK_BANDS); t1 := ws_bank_point(i + 1, WS_BANK_BANDS);
     back0 := ws_v(t0.x, t0.y + 0.1, -9.5); back1 := ws_v(t1.x, t1.y + 0.1, -9.5);
     far0 := ws_v(t0.x, t0.y + 0.4, -18); far1 := ws_v(t1.x, t1.y + 0.4, -18);
     ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_OLIVE_DARK[..], WS_DRY[..], ws_rand(49, i) * 0.5));
-    ws_pen_tri(p, t0, t1, back1, below); ws_pen_tri(p, t0, back1, back0, below);
+    if mk {
+      // behind the modelled bank's top: the land runs on from where its cap ends
+      c0 := ws_v(t0.x, 3.3, -6.55); c1 := ws_v(t1.x, 3.3, -6.55);
+      ws_pen_tri(p, c0, c1, back1, below); ws_pen_tri(p, c0, back1, back0, below);
+    } else { ws_pen_tri(p, t0, t1, back1, below); ws_pen_tri(p, t0, back1, back0, below); }
     ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
     ws_pen_tri(p, back0, back1, far1, below); ws_pen_tri(p, back0, far1, far0, below);
   }
-  // Roots hanging over the face, each splitting once.
-  for i: 0..<WS_ROOTS {
+  // Roots hanging over the face, each splitting once (the modelled roots take their place).
+  for i: 0..<(ifx mk then 0 else WS_ROOTS) {
     x: f32 = WS_ROOT_AT[i * 2]; down: f32 = WS_ROOT_AT[i * 2 + 1];
     over: f32 = WS_BANK_OVER;
     top := ws_v(x, ws_bank_top(x) - 0.06, ws_bank_z(x) + over + 0.05);
@@ -531,8 +620,8 @@ ws_build_grove :: (p: [] ArchPen) {
     ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF_SUN[..], ws_rand(77, l)));
     ws_pen_blob(p, b);
   }
-  // Boulders.
-  for i: 0..<WS_BOULDERS {
+  // Boulders (the modelled limestone takes their place).
+  for i: 0..<(ifx mk then 0 else WS_BOULDERS) {
     q: [] const f32 = WS_BOULDER_AT[i * 4..<i * 4 + 4];
     b: WsBlob;
     b.x = q[0]; b.z = q[1]; b.y = ws_ground_y(q[0], q[1]) + q[2] * 0.35;
@@ -544,7 +633,9 @@ ws_build_grove :: (p: [] ArchPen) {
   // Agave clumps.
   for i: 0..<WS_AGAVES { ws_pen_agave(p, WS_AGAVE_AT[i * 3], WS_AGAVE_AT[i * 3 + 1], WS_AGAVE_AT[i * 3 + 2], 900 + i); }
   // Trees.
-  for t: 0..<WS_TREES { ws_pen_tree(p, t); }
+  // the three trees that hold the prayer limbs are always hand-built; the rest become modelled cedars
+  for t: 0..<WS_TREES { if !mk || t < 3 { ws_pen_tree(p, t); } }
+  if mk { for k: 0..<WS_PLACES { ws_pen_place(p, models, k); } }
   // The prayer limbs: bark from the trunk out to a bare tip, a few leaves near the trunk.
   for l: 0..<WS_LIMBS {
     ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
@@ -619,7 +710,8 @@ ws_segment_hits :: (a: WsV, b: WsV, x: f32, y: f32, z: f32, r: f32) -> bool {
 #test "the grove's mesh fits its buffer and its pieces are where the plan puts them" #steps 6000000000 {
   buf: [WS_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32;
   p: [1] ArchPen; arch_pen(p[..], buf[..]);
-  ws_build_grove(p[..]);
+  none: WsModels;
+  ws_build_grove(p[..], none);
   #assert !p[0].full && p[0].n > 8000 && p[0].n < WS_MESH_VERTICES;
   // the pool lies below the ground round it, and the bank rises behind it
   #assert ws_ground_y(WS_POOL_X, WS_POOL_Z) < WS_WATER_Y && ws_ground_y(-1.0, 1.0) > WS_WATER_Y;

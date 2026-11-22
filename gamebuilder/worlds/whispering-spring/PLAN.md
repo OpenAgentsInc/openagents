@@ -99,6 +99,27 @@ Not yet: a dedicated ribbon API with a report button (a ribbon line can only be 
 today), a display font for the title (the visitor's serif stands in), and painted or modelled
 assets (see the client doc's asset prompts).
 
+## Third pass (built)
+
+- **Lore, not songs:** each ritual opens a page of the musician's and the album's lore
+  (`audio-manifest.json` `lore.pages`, placeholders for the artist to write). The quest card counts
+  lore pages, and the journal holds them to read, keep (the save's `x` bits) or download.
+  "Listen to the Album" stays on the title page.
+- **The spout:** a carved limestone mouth in the bank above the pool (`grove.coax` `WS_SPOUT`), its water
+  drawn live as a glowing arc into the pool with a splash.
+- **Camera:** low, tilted a little up (`WS_BACK` y below 0, `WS_AIM` raised). The fit check still holds the
+  safe box and every tie point at every aspect ratio.
+- **Edges:** four more trees and six bare framing limbs (`WS_FRAME_LIMB_AT`), all in the
+  nothing-in-the-way test's props.
+- **Dusk and glow:** the engine's painted sky (zenith lavender, horizon peach-rose, sunset glow), a low
+  sun over 1 so lit surfaces bloom, 36 fireflies, glowing ribbons, stream and splash. With reduced
+  bloom, everything stays under 1.1.
+- **Dusk interface:** plum and violet panels, rose glow, gold lines (`index.html` `:root` tokens).
+- **The asset kit's models:** `gamebuilder/tools/grove-bake.coax` bakes the GLBs into `assets/grove.wsg`;
+  the world loads it as its asset and places the bank, cedars, limestone and roots (`WS_PLACE_AT`). The
+  hand-built pieces stand in until it arrives. The kit's pool isn't placed, because its layout is for the
+  kit's orthographic camera, not this shot.
+
 ## Later phases (designed for, not built)
 
 What OpenAgents already has: Nostr sign-in (NIP-07/NIP-98) and the browser playtest player;

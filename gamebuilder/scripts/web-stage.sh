@@ -14,7 +14,7 @@ if [[ "${2:-}" == "" ]]; then
   mkdir -p "$stage/build" "$stage/coaxial" "$stage/fonts" "$stage/img" "$stage/api/auth" \
     "$stage/fated-dragon/build" "$stage/fated-dragon/assets" \
     "$stage/splicebots/build" "$stage/splicebots/fonts" "$stage/splicebots/packs" \
-    "$stage/whispering-spring/build"
+    "$stage/whispering-spring/build" "$stage/whispering-spring/assets"
   cp "$web/index.html" "$web/index.md" "$web/credits.html" "$web/404.html" "$stage/"
   cp "$web/fonts/"* "$stage/fonts/"
   cp "$web/img/"* "$stage/img/"
@@ -32,6 +32,7 @@ if [[ "${2:-}" == "" ]]; then
   # The Whispering Spring (audio-manifest.json stays unversioned: the artist's files swap in without a release)
   cp "$web/whispering-spring/index.html" "$web/whispering-spring/glue.js" "$web/whispering-spring/audio.js" "$web/whispering-spring/room.js" "$web/whispering-spring/audio-manifest.json" "$web/whispering-spring/whispering-spring.wgsl" "$stage/whispering-spring/"
   cp "$web/whispering-spring/build/whispering-spring.wasm" "$stage/whispering-spring/build/"
+  cp "$web/whispering-spring/assets/grove.wsg" "$stage/whispering-spring/assets/"
   # Empty response for host.js optional viewer check so the console stays free of 404s.
   : > "$stage/api/auth/viewer"
   exit
@@ -54,11 +55,12 @@ if [[ "$2" == release ]]; then
     "$stage/whispering-spring/room.js" \
     "$stage/whispering-spring/build/whispering-spring.wasm" \
     "$stage/whispering-spring/whispering-spring.wgsl" \
+    "$stage/whispering-spring/assets/grove.wsg" \
     | shasum -a 256 | cut -c1-16)"
   mkdir -p "$stage/b/$name/coaxial" "$stage/b/$name/build" "$stage/b/$name/fonts" \
     "$stage/b/$name/fated-dragon/build" "$stage/b/$name/fated-dragon/assets" \
     "$stage/b/$name/splicebots/build" "$stage/b/$name/splicebots/fonts" \
-    "$stage/b/$name/whispering-spring/build"
+    "$stage/b/$name/whispering-spring/build" "$stage/b/$name/whispering-spring/assets"
   mv "$stage/coaxial/"*.js "$stage/b/$name/coaxial/"
   rmdir "$stage/coaxial"
   mv "$stage/build/"*.wasm "$stage/b/$name/build/"
@@ -81,6 +83,8 @@ if [[ "$2" == release ]]; then
   mv "$stage/whispering-spring/glue.js" "$stage/whispering-spring/audio.js" "$stage/whispering-spring/room.js" "$stage/whispering-spring/whispering-spring.wgsl" "$stage/b/$name/whispering-spring/"
   mv "$stage/whispering-spring/build/whispering-spring.wasm" "$stage/b/$name/whispering-spring/build/"
   rmdir "$stage/whispering-spring/build"
+  mv "$stage/whispering-spring/assets/grove.wsg" "$stage/b/$name/whispering-spring/assets/"
+  rmdir "$stage/whispering-spring/assets"
 
   sed -i.was -e "s|/fonts/\([A-Za-z-]*\)\.woff2|/b/$name/fonts/\1.woff2|g" "$stage/index.html" "$stage/credits.html"
   rm -f "$stage/index.html.was" "$stage/credits.html.was"
@@ -107,6 +111,7 @@ if [[ "$2" == release ]]; then
     -e "s|\"/whispering-spring/build/whispering-spring\.wasm\"|\"/b/$name/whispering-spring/build/whispering-spring.wasm\"|g" \
     -e "s|\"/whispering-spring/whispering-spring\.wgsl\"|\"/b/$name/whispering-spring/whispering-spring.wgsl\"|g" \
     -e "s|\"/whispering-spring/glue\.js\"|\"/b/$name/whispering-spring/glue.js\"|g" \
+    -e "s|data:/whispering-spring/assets/grove\.wsg|data:/b/$name/whispering-spring/assets/grove.wsg|g" \
     "$stage/whispering-spring/index.html"
   rm -f "$stage/whispering-spring/index.html.was"
   echo "$name"
@@ -114,7 +119,7 @@ if [[ "$2" == release ]]; then
 fi
 
 if [[ "$2" == stored ]]; then
-  find "$stage/b" -type f \( -name '*.js' -o -name '*.wasm' -o -name '*.wgsl' -o -name '*.gbd1' \) \
+  find "$stage/b" -type f \( -name '*.js' -o -name '*.wasm' -o -name '*.wgsl' -o -name '*.gbd1' -o -name '*.wsg' \) \
     -exec sh -c 'gzip -9 -n "$1" && mv "$1.gz" "$1"' _ {} \;
   exit
 fi

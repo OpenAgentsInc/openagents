@@ -61,6 +61,7 @@ WS_SLOT_AUTO :: 7;        // a ribbon's slot the world picks: the free one neare
 WS_SLOT_ORDER :: [6] int.[2, 3, 1, 4, 0, 5];
 
 WS_INBOX :: 512;
+WS_MODEL_BYTES :: 131072;
 WS_OUT :: 384;
 WS_QUEUE :: 32;
 WS_SKIN_V :: 22000;
@@ -95,6 +96,8 @@ Spring :: struct {
   hover: int = -1; down: bool; down_x: f32; down_y: f32; down_id: int;
   // saving: nothing is kept until last visit's save has come back (or plainly isn't coming)
   heard_kept: bool; dirty: bool; told: bool;
+  // the modelled grove pieces (assets/grove.wsg), when they have come
+  models: [WS_MODEL_BYTES] u8; models_n: int; model_view: [1] WsModels;
   // GPU stores
   mesh_built: bool; mesh_n: int; mesh: [WS_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32; gen: int;
   records: [WS_RECORDS * WS_RECORD_FLOATS] f32; rec_gen: int;
@@ -891,7 +894,9 @@ ws_build_skin :: (h: [] Spring) {
 
 ws_build_mesh :: (h: [] Spring) {
   p: [1] ArchPen; arch_pen(p[..], h[0].mesh[..]);
-  ws_build_grove(p[..]);
+  mv := h[0].model_view[0];
+  if mv.ok { mv.data = h[0].models[0..<h[0].models_n]; }
+  ws_build_grove(p[..], mv);
   h[0].mesh_n = p[0].n;
   h[0].mesh_built = true;
   h[0].gen += 1;
@@ -919,6 +924,15 @@ ws_max_vertices :: () -> int #export_c #effects(all) { return 6; }
 ws_vertex_floats :: () -> int #export_c #effects(all) { return 8; }
 ws_uniform_floats :: () -> int #export_c #effects(all) { return WS_UNIFORMS; }
 ws_inbox_cap :: () -> int #export_c #effects(all) { return WS_INBOX; }
+ws_asset_cap :: () -> int #export_c #effects(all) { return WS_MODEL_BYTES; }
+
+// The modelled grove pieces have come: read their header and build the grove again with them.
+ws_asset_ready :: (h: [] Spring, i: int, bytes: int) #export_c #effects(all) {
+  if h.count < 1 || i != 0 || bytes < 8 || bytes > WS_MODEL_BYTES { return; }
+  h[0].models_n = bytes;
+  if !ws_models_read(h[0].model_view[..], h[0].models[0..<bytes]) { h[0].models_n = 0; return; }
+  h[0].mesh_built = false;
+}
 
 ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if h.count < 1 { return 0; }
@@ -1108,6 +1122,33 @@ ws_test_drain :: (h: [] Spring, want: string) -> bool {
 }
 
 ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
+
+#test "the modelled grove pieces load from their asset and take the hand-built ones' places" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  plain := h[0].mesh_n;
+  // a WSG1 asset of five modules, one small triangle each
+  b := h[0].models[..];
+  b[0] = 'W'; b[1] = 'S'; b[2] = 'G'; b[3] = '1'; b[4] = 5; b[5] = 0; b[6] = 0; b[7] = 0;
+  at := 8;
+  for k: 0..<5 {
+    b[at] = 1; b[at + 1] = 0; b[at + 2] = 0; b[at + 3] = 0; at += 4;
+    for e: 0..<22 { b[at + e] = 0; }
+    b[at + 2] = 0; b[at + 3] = 4;        // second corner 1 m up (1024 = 0x0400)
+    b[at + 6] = 0; b[at + 7] = 4;        // third corner 1 m along x
+    b[at + 18] = 120; b[at + 19] = 90; b[at + 20] = 60;
+    at += 22;
+  }
+  ws_asset_ready(h, 0, at);
+  #assert h[0].model_view[0].ok && h[0].model_view[0].count == 5 && !h[0].mesh_built;
+  ws_test_run(t[..], 1, 0.016, 1280, 720);
+  #assert h[0].mesh_built && h[0].mesh_n != plain;
+  // a broken asset is refused and the hand-built grove stays
+  u: [1] WsTest; g := u[0].h[..];
+  g[0].models[0] = 'X';
+  ws_asset_ready(g, 0, 64);
+  #assert !g[0].model_view[0].ok && g[0].models_n == 0;
+}
 
 #test "the fixed shot shows the quail's range and every spot at 16:9, phone portrait and ultra-wide, and nothing stands in the way" #steps 40000000000 {
   props: [WS_PROPS * 4] f32; np := ws_props(props[..]);
