@@ -9,13 +9,63 @@ cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].
 // 14 (the composer's draft, as the platform editor sets it; the menus' search), then the library's display faces.
 CP_FONT_SIZES :: [16] f32.[15, 12, 12, 15, 13.5, 13, 12, 11, 14, 13, 11, 14, 24, 11, 12, 20];
 CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placeholder when the platform editor is not showing
-// Coder Desktop's colours: Coder Noir (components/skin/noir.coax), the Theme the page reads a
-// colour from when the skin has no role for it. Every colour on the page is the skin's or this;
-// none is written out in the page (#13738).
-cp_theme :: () -> Theme { return coder_noir(); }
-// Builds Coder Desktop's UiSkin over any resolved Theme (Coder Noir, Daylight, Grove, Ocean, Ember, or imported VS Code theme).
+// T3 Code Dark palette (packages/shared/src/themePalettes.ts T3_CODE_DARK_THEME_COLORS):
+// pure black sidebar (#000000), obsidian canvas (#0a0a0a), low-glare #111111 composer & cards,
+// #1a1b1b active rows, #141414 dividers & bubbles, #f5f5f5 ink, #818181 muted, #346bf1 accent,
+// and #fb414a red stop/error.
+cp_t3_dark :: () -> Theme {
+  text := hex(0xf5f5f5, 1);
+  accent := hex(0x346bf1, 1);
+  return Theme.{
+    shell = hex(0x0a0a0a, 1),
+    surface = hex(0x111111, 1),
+    border = hex(0x222222, 1),
+    text = text, muted = hex(0x818181, 1), faint = hex(0x656565, 1),
+    disabled = opacity(text, 0.28),
+    accent = accent,
+    accent_hover = hex(0x4b7cf3, 1), accent_active = hex(0x2858d0, 1),
+    selection = opacity(accent, 0.35),
+    focus_ring = opacity(accent, 0.6),
+    bg = hex(0x0a0a0a, 1),
+    claude = hex(0xd97757, 1),
+    line = hex(0x191919, 1),
+    line_subtle = hex(0x141414, 1),
+    line_strong = hex(0x303030, 1),
+    hover = rgba(1, 1, 1, 0.06),
+    pressed = rgba(1, 1, 1, 0.12),
+    selected = hex(0x1a1b1b, 1),
+    raised = hex(0x1a1b1b, 1),
+    base = hex(0x111111, 1),
+    sidebar = hex(0x000000, 1),
+    row_selected = hex(0x1a1b1b, 1),
+    primary = hex(0xf5f5f5, 1), primary_hover = hex(0xffffff, 1), primary_active = hex(0xd4d4d8, 1),
+    secondary = hex(0x141414, 1), secondary_hover = hex(0x1e1e1e, 1),
+    menu = hex(0x141414, 1), menu_selected = rgba(1, 1, 1, 0.08),
+    popover = hex(0x141414, 1),
+    composer_tint = hex(0x111111, 1),
+    shadow_sm = rgba(0, 0, 0, 0x59 / 255.0), shadow_md = rgba(0, 0, 0, 0x66 / 255.0), shadow_lg = rgba(0, 0, 0, 0x80 / 255.0),
+    composer_shadow = rgba(0, 0, 0, 0x70 / 255.0), menu_shadow = rgba(0, 0, 0, 0x52 / 255.0), dialog_shadow = rgba(0, 0, 0, 0x80 / 255.0),
+    danger = hex(0xfb414a, 1), warning = hex(0xfe9a00, 1), success = hex(0x34d399, 1),
+    info = hex(0x51a2ff, 1),
+    connecting = hex(0x51a2ff, 1), input = hex(0x818cf8, 1), approval = hex(0xffb900, 1),
+    plan = hex(0xad98fe, 1), done = hex(0x34d399, 1), failed = hex(0xff6467, 1),
+    limited = hex(0xfe9a00, 1)};
+}
+cp_theme :: () -> Theme { return cp_t3_dark(); }
+// Builds Coder Desktop's UiSkin over any resolved Theme (T3 Dark default, Daylight, Grove, Ocean, Ember, or imported VS Code theme).
 cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
-  k := ifx base_noir then coder_noir_skin() else zeron_skin_from(th);
+  k := ifx base_noir then zeron_skin_from(cp_t3_dark()) else zeron_skin_from(th);
+  if base_noir {
+    k.name = "t3-dark";
+    k.danger_muted = th.danger; k.warning_muted = th.warning;
+    k.hunk_wash = opacity(th.accent, 0.22);
+    k.file_tint = th.warning;
+    k.doc_tint = th.muted;
+    k.menu_divider = hex(0x141414, 1);
+    palette := NOIR_SYNTAX;
+    for i: 0..<UISKIN_SYNTAX { k.syntax[i] = hex(palette[i], 1); }
+    k.spinner[0] = th.info; k.spinner[1] = hex(0x93c5fd, 1); k.spinner[2] = th.muted;
+  }
   k.chat.enabled = true;
   // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
   k.app.side_row = 32.0f32;
@@ -77,9 +127,9 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
   // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
   k.motion.enter = 0.12f32;
   k.app.rise = 3.0f32;
-  // Composer: exact Zeron pill geometry (26pt radius (zeron.composer.radius), 22pt input line (14/22), 14pt side pad, 12pt top pad,
-  // 40pt action strip, 6pt concentric inset, 28pt circular send/stop pill, 10pt stop square r=3, 28pt chips).
-  k.cmp.radius = 26.0f32;
+  // Composer: T3 Code 2-row rounded-rectangle card (16pt radius, 22pt input line, 14pt side pad,
+  // 12pt top pad, 40pt action strip, 6pt concentric inset, 28pt circular send/stop, 10pt stop square r=3, 28pt chips).
+  k.cmp.radius = 16.0f32;
   k.cmp.line = 22.0f32;
   k.cmp.text_inset = 14.0f32;
   k.cmp.pad_top = 12.0f32;
@@ -105,8 +155,8 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
   k.set = st;
   return k;
 }
-// Coder Desktop's default skin (Coder Noir): kept for tests and callers without page state.
-cp_skin :: () -> UiSkin { return cp_skin_from(coder_noir(), true); }
+// Coder Desktop's default skin (T3 Dark): kept for tests and callers without page state.
+cp_skin :: () -> UiSkin { return cp_skin_from(cp_t3_dark(), true); }
 // Coder Desktop's live skin for the active theme state (customize.coax; #13887).
 cp_skin_for :: (s: [] CoderPage) -> UiSkin {
   if s.count < 1 || !cp_flag(s, DC_FLAG_CUSTOMIZE) { return cp_skin(); }

@@ -32,53 +32,37 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   #assert comp >= 0 && head < 0 && model >= 0 && folder >= 0;
   #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;   // 76 of text, 42 of controls, the border
   #assert t[0].rows[comp].y > 200 && t[0].rows[comp].y + t[0].rows[comp].h < 600;
-  #assert t[0].rows[model].y >= t[0].rows[comp].y + t[0].rows[comp].h;
-  // the model sits on the left, the working folder on the right, and no backend or cost chip shows on an empty chat
-  #assert t[0].rows[folder].x > t[0].rows[model].x + t[0].rows[model].w;
+  // T3 Code layout: model sits inside the composer's bottom row, folder sits in the quiet foot below
+  #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
+  #assert t[0].rows[folder].y >= t[0].rows[comp].y + t[0].rows[comp].h;
   #assert elt_find(t[..], "coder.backend") < 0 && elt_find(t[..], "coder.cost") < 0;
   add := elt_find(t[..], "coder.composer.add"); send := elt_find(t[..], "coder.composer.send");
-  #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[send].x;
+  #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[model].x && t[0].rows[model].x < t[0].rows[send].x;
   #assert cp_press(s, add) && coder_page_action(s) == CP_ASK_ADD;
   // microphone dictation button sits beside Send (#13882)
   mic := elt_find(t[..], "coder.composer.mic");
   #assert mic >= 0 && t[0].rows[mic].w == 28 && t[0].rows[mic].x < t[0].rows[send].x;
   #assert cp_press(s, mic) && coder_page_action(s) == CP_ASK_VOICE_TOGGLE;
 }
-#test "a chat with messages: one 49 row while the draft fits, expanded past it or with a new line, back once 32 narrower" {
+#test "a chat with messages stays in the 2-row expanded T3 composer card and grows smoothly for multi-line drafts" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
   comp := elt_find(t[..], "coder.composer");
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "compact" && t[0].rows[comp].h == 49;
-  // at the window's foot, the foot's chips under it
-  model := elt_find(t[..], "coder.model");
-  #assert t[0].rows[model].y >= t[0].rows[comp].y + t[0].rows[comp].h && t[0].rows[model].y + t[0].rows[model].h <= 800;
-  // a line wider than the room (8 a glyph in the checks' atlas)
-  long: [120] u8; for i: 0..<long.count { long[i] = 120; }
-  coder_page_ime_replace(s, -1, -1, cast(string) long[..]);
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;
+  // model is inside the card's bottom row, folder is in the foot under the card
+  model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
+  #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
+  #assert t[0].rows[folder].y >= t[0].rows[comp].y + t[0].rows[comp].h && t[0].rows[folder].y + t[0].rows[folder].h <= 800;
+  // adding newlines expands the card taller, clearing returns to 120
+  #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && coder_page_key(s, KEY_ENTER, MOD_SHIFT) && coder_page_key(s, KEY_ENTER, MOD_SHIFT);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h > 120;
+  #assert coder_page_key(s, 97, MOD_CMD) && coder_page_key(s, KEY_BACKSPACE, 0);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
   #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h == 120;
-  // ten glyphs fewer still stays open (hysteresis); everything gone, it is compact again
-  for i: 0..<10 { #assert coder_page_key(s, KEY_BACKSPACE, 0); }
-  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded";
-  #assert coder_page_key(s, 97, MOD_CMD) && coder_page_key(s, KEY_BACKSPACE, 0);
-  coder_page_ime_replace(s, -1, -1, "a");
-  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "compact";
-  #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded";
-}
-#test "the pill moves to its new shape over 220 ms without reduced motion" {
-  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
-  coder_page_env(s, true, false);
-  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, MOD_SHIFT) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t := [1] ElTable.[cp_test_pill_rows(s)];
-  hh := t[0].rows[elt_find(t[..], "coder.composer")].h;
-  #assert hh > 49 && hh < 120 && zc_moving(s[0].pill[..]) && s[0].anim;
-  for i: 0..<20 { #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false); }
-  t[0] = cp_test_pill_rows(s); #assert t[0].rows[elt_find(t[..], "coder.composer")].h == 120 && !zc_moving(s[0].pill[..]);
 }
 // A chat with one finished message, a branch, a paused goal and the last model call's counts
 // (cp_ctx_take reads them from a worker's attempt line).
@@ -95,9 +79,9 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   t := [1] ElTable.[cp_test_pill_rows(s)];
   model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
   #assert model >= 0 && folder >= 0 && elt_find(t[..], "coder.backend") < 0 && elt_find(t[..], "coder.cost") < 0;
-  // model on the left, working folder flush to the right side of the composer's foot
+  // model inside the composer's bottom row, working folder flush to the right side of the composer's foot
   comp := elt_find(t[..], "coder.composer");
-  #assert abs(t[0].rows[model].x - (t[0].rows[comp].x + cast(f32) CP_FOOT_SIDE)) < 0.01;
+  #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
   #assert abs(t[0].rows[folder].x + t[0].rows[folder].w - (t[0].rows[comp].x + t[0].rows[comp].w - cast(f32) CP_FOOT_SIDE)) < 0.01;
   // "Antigravity CLI" only appears when the model dropdown is opened
   sh0 := surface_sheet(s[0].surface[..]);
@@ -129,9 +113,9 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   t[0] = cp_test_pill_rows(s);
   cost := elt_find(t[..], "coder.cost"); folder = elt_find(t[..], "coder.folder"); model = elt_find(t[..], "coder.model");
   #assert elt_find(t[..], "coder.backend") < 0 && cost >= 0 && elt_value_of(t[..], cost) == "$0.00 / $50.00";
-  #assert t[0].rows[model].x < t[0].rows[cost].x && t[0].rows[cost].x < t[0].rows[folder].x;
+  #assert t[0].rows[cost].x < t[0].rows[folder].x;
 }
-#test "the foot: the model on the left, goal, cost, context ring and folder › branch on the right" {
+#test "the foot: goal, cost, context ring and folder › branch on the right, model inside the composer" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_footed(s, f[..]);
   #assert cp_ctx_share(s) > 0.04 && cp_ctx_share(s) < 0.06;
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
@@ -140,7 +124,7 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   ring := elt_find(t[..], "coder.context"); folder := elt_find(t[..], "coder.folder");
   #assert model >= 0 && goal >= 0 && cost >= 0 && ring >= 0 && folder >= 0;
   #assert elt_value_of(t[..], folder) == "~/work/app › main";
-  #assert t[0].rows[model].x < t[0].rows[goal].x && t[0].rows[goal].x < t[0].rows[cost].x && t[0].rows[cost].x < t[0].rows[ring].x && t[0].rows[ring].x < t[0].rows[folder].x;
+  #assert t[0].rows[goal].x < t[0].rows[cost].x && t[0].rows[cost].x < t[0].rows[ring].x && t[0].rows[ring].x < t[0].rows[folder].x;
   #assert elt_find(t[..], "coder.context.card") < 0;
 }
 #test "the context ring, hovered, shows the last call's tokens in a card over it" {
@@ -168,7 +152,8 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   // the window's width for a column whose foot has `room` (its sides are 8 each)
   #assert cp_test_pill_frame(s, f[..], 400, 800, 0, 0, false);
   edge := 400 - s[0].col_w + 2 * cast(f32) CP_FOOT_SIDE;
-  all := wf + wm + we + wr + wc + wg + 5 * gap;
+  all := wf + wr + wc + wg + 4 * gap;
+  _ = wm; _ = we;
   #assert cp_test_pill_frame(s, f[..], edge + all, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.goal") >= 0;
   #assert cp_test_pill_frame(s, f[..], edge + all - 1, 800, 0, 0, false);
@@ -179,7 +164,7 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.context") < 0;
   #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app › main";
   #assert cp_test_pill_frame(s, f[..], edge + all - wg - wc - wr - 3 * gap - 1, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app" && elt_find(t[..], "coder.model") >= 0;
+  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app";
 }
 #test "the context's counts are kept with the chat and cleared by a new one; a token count is short" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);

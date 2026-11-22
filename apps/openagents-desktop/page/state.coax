@@ -305,7 +305,7 @@ CoderPage :: struct {
   kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
   kept_pane_open: bool; kept_pane_turn: int; kept_pane_agent: int; kept_pane_manual: bool;
   effort: int; kept_effort: int; effort_menu: bool; effort_x: f32;   // the chat's thinking level (CP_EFFORT_*), its dropdown menu state and anchor x
-  model: int; kept_model: int; model_menu: bool;            // selected main model for this chat (0: Neon) and picker popover state
+  model: int; kept_model: int; model_menu: bool; model_x: f32;   // selected main model for this chat (0: Neon), picker popover state and anchor x
   or_main: [CP_OR_ID] u8; or_main_n: int;                   // the OpenRouter model for Microcoder ("" for none): the picker's CP_MODEL_OR
   or_sub: [CP_OR_ID] u8; or_sub_n: int;                     // the OpenRouter model for sub-agents ("" for none): level openrouter
   or_id: [CP_OR_ID + 16] u8; or_sub_id: [CP_OR_ID + 16] u8; or_meta: [CP_OR_ID + 40] u8;   // "openrouter:" ids and the reply's byline

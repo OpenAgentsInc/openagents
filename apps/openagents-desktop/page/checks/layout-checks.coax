@@ -50,15 +50,15 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert k.cmp.send == 28 && k.cmp.action_inset == 6 && k.cmp.chip_h == 28;
 }
 
-#test "Coder's skin is Coder Noir on Zeron's measures, with no colour of its own" {
-  k := cp_skin(); z := coder_noir_skin(); th := cp_theme(); n := coder_noir();
-  #assert th.shell.r == n.shell.r && th.sidebar.r == n.sidebar.r && th.surface.r == n.surface.r;   // noir.coax checks these against builtins.rs coder(dark)
+#test "Coder's skin is T3 Code Dark on Zeron's measures" {
+  k := cp_skin(); th := cp_theme(); t3 := cp_t3_dark();
+  #assert th.shell.r == t3.shell.r && th.sidebar.r == t3.sidebar.r && th.surface.r == t3.surface.r;
   #assert k.canvas.r == th.shell.r && k.sidebar.a == 1 && k.sidebar.r == th.sidebar.r && k.sidebar.r < k.canvas.r;   // the sidebar darker than the main area
-  #assert k.ink.r == th.text.r && k.muted.r == th.muted.r && k.faint.r == th.faint.r && k.accent.r == th.text.r && k.warning.g == th.warning.g;
-  #assert k.raised.r == z.raised.r && k.hover.a == z.hover.a && k.hairline.r == z.hairline.r && k.surface.r == th.surface.r;
-  #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r && k.bubble.r == th.secondary.r && k.syntax[1].r == z.syntax[1].r;
-  // Zeron's radii: the composer's 26, code blocks' 12
-  #assert k.cmp.radius == 26 && k.md.block_radius == 12 && k.app.code_radius == 12;
+  #assert k.ink.r == th.text.r && k.muted.r == th.muted.r && k.faint.r == th.faint.r && k.accent.b == th.accent.b && k.warning.g == th.warning.g;
+  #assert k.raised.r == th.raised.r && k.surface.r == th.surface.r;
+  #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r && k.bubble.r == th.secondary.r;
+  // T3 composer card radius 16, code blocks 12
+  #assert k.cmp.radius == 16 && k.md.block_radius == 12 && k.app.code_radius == 12;
 }
 
 #test "sidebar footer draws demo pills stacked in the footer region" {

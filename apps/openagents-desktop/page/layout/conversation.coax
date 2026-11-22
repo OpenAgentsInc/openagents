@@ -950,8 +950,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
-  if cp_models(s) > 0 && s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
+  if cp_models(s) > 0 && s[0].model_menu { cp_model_menu(s, f, x, cw, s[0].model_x, box_y, foot_y, h); }
   if s[0].effort_menu { cp_effort_menu(s, f, x, cw, s[0].effort_x, box_y, foot_y, h); }
+  _ = m_x;
   if cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
@@ -974,7 +975,8 @@ cp_pill_shape :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> ZcPill {
   open_w := cw - cast(f32) (ZC_BORDER * 2 + ZC_TEXT_OPEN_SIDE * 2);
   rows := cast(f32) cp_ed_lines(s, k, open_w) * line;
   cargo := cp_cargo_n(s) > 0;   // attachments keep it expanded, their strip over the text (#13699)
-  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, s[0].nturns == 0 || cargo, lines, s[0].pill_next);
+  // Always use the 2-row expanded T3 Code card layout (prompt area on top, controls row inside bottom).
+  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, lines, s[0].pill_next);
   s[0].pill_next = target.next_text;
   if cargo { target = zc_with_cargo(target, cp_cargo_height(s, f, cw)); }
   g := zc_motion_step(s[0].pill[..], target, f[0].dt, s[0].reduced);
@@ -1003,12 +1005,9 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   elt_value(f[0].rows, uiframe_semantic(f, "coder.composer.shape", EL_REGION, ifx g.expanded then "Expanded" else "Compact", x, y, w, g.height, 0, 0), ifx g.expanded then "expanded" else "compact");
   _ := sheet_box(sh, x, y, w, g.height, radius, border, z_solid, ifx editing && !off then z_edge_focus else z_edge);
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
-  // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
-  // says what Return does (#13717)
-  hint := "Ask OpenAgents";
-  if running {
-    hint = "Steer the reply · ⇧Return queues · Esc stops";
-  } else if !cp_has_model_picker(s) && !s[0].inkling {
+  // Clean minimal placeholder (never cluttered with shortcut hints).
+  hint := "Message OpenAgents";
+  if !running && !cp_has_model_picker(s) && !s[0].inkling {
     st := s[0].local_dl_state;
     hint = ifx st == CP_LOCAL_STARTING then "Starting Inkling 2 Mini…"
            else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
@@ -1022,7 +1021,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
   // the draft's attachments over its text (attach.coax)
   if cp_cargo_n(s) > 0 && g.expanded { cp_cargo_draw(s, f, x, y, w); }
-  // + : its menu attaches files or changes the working folder (attach.coax, #13699)
+  // Bottom-left paperclip attach button (T3 Code layout; opens attach files / change folder menu)
   control := cast(f32) ZC_CONTROL;
   lx := x + border + g.lead_left; ly := y + g.height - border - g.lead_bottom - control;
   s[0].add_x = lx + control / 2; s[0].add_y = ly + control;
@@ -1032,22 +1031,53 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   lead_prs := !lead_off && uiframe_pressed(f, "coder.composer.add");
   if lead_prs || lead_hov { sheet_fill(sh, lx, ly, control, control, control / 2, ifx lead_prs then th.pressed else th.hover); }
   lead_ink := ifx lead_off then th.faint else ifx lead_hov || lead_prs then th.text else th.muted;
-  arm := cast(f32) CP_PLUS; bar := cast(f32) CP_PLUS_STROKE;
-  sheet_fill(sh, lx + (control - arm) / 2, ly + (control - bar) / 2, arm, bar, bar / 2, lead_ink);
-  sheet_fill(sh, lx + (control - bar) / 2, ly + (control - arm) / 2, bar, arm, bar / 2, lead_ink);
+  clip_ic := 16.0f32;
+  sheet_icon(sh, ICON_PAPERCLIP, lx + (control - clip_ic) / 2, ly + (control - clip_ic) / 2, clip_ic, lead_ink);
   if !lead_off { sheet_hit(sh, UIFRAME_HIT, lead_row, 0, lx, ly, control, control); }
-  // Send / Stop, with the voice dictation mic button beside it when voice is enabled (#13882)
+  // Bottom-right cluster (T3 Code layout): [Model] [Effort] [Mic] [Send / Red Stop]
   send := cast(f32) ZC_TRAILING;
   sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
-  if has_voice { cp_voice_mic_button(s, f, sx - mic_gap - mic_side, sy + (send - mic_side) / 2, mic_side); }
+  right_x := sx;
+  if has_voice {
+    right_x -= mic_gap + mic_side;
+    cp_voice_mic_button(s, f, right_x, sy + (send - mic_side) / 2, mic_side);
+  }
+  chip_y := sy + (send - k.cmp.chip_h) / 2;
+  min_chip_x := lx + control + 8.0f32;
+  e_label := cp_effort_label(s, cp_model_index(s));
+  w_effort := cp_foot_chip_width(f, -1, e_label, true);
+  if right_x - 4.0f32 - w_effort >= min_chip_x {
+    right_x -= 4.0f32 + w_effort;
+    s[0].effort_x = right_x;
+    _ := cp_foot_chip(f, "coder.effort", "Thinking level (⇧Tab)", right_x, chip_y, w_effort, -1, e_label, true, ifx s[0].effort_menu then EL_S_CURRENT else 0, CP_EFFORT_MENU);
+  } else {
+    s[0].effort_x = right_x;
+  }
+  show_model := cp_models(s) > 0;
+  if show_model {
+    m_label := cp_model_label(s, cp_model_index(s));
+    w_model := cp_foot_chip_width(f, -1, m_label, true);
+    avail_m := right_x - 4.0f32 - min_chip_x;
+    if avail_m > 48.0f32 {
+      mw := ifx w_model < avail_m then w_model else avail_m;
+      right_x -= 4.0f32 + mw;
+      s[0].model_x = right_x;
+      _ := cp_foot_chip(f, "coder.model", "Model (⌘/)", right_x, chip_y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU);
+    } else {
+      s[0].model_x = min_chip_x;
+    }
+  } else {
+    s[0].model_x = min_chip_x;
+  }
   can_send := running || (!off && (text.count > 0 || cp_cargo_n(s) > 0));
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   send_label := ifx running then cp_tr(loc, "stop") else cp_tr(loc, "send");
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
   send_prs := can_send && uiframe_pressed(f, "coder.composer.send");
-  send_bg := ifx !can_send then z_dis_bg else ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg;
-  send_ink := ifx !can_send then z_dis_ink else z_pri_ink;
+  stop_bg := ifx send_prs then noir_mix(th.danger, 0, 0.16) else ifx send_hov then noir_mix(th.danger, 1, 0.14) else th.danger;
+  send_bg := ifx running then stop_bg else ifx !can_send then z_dis_bg else ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg;
+  send_ink := ifx running then hex(0xffffff, 1) else ifx !can_send then z_dis_ink else z_pri_ink;
   sheet_fill(sh, sx, sy, send, send, send / 2, send_bg);
   if running {
     sq := k.cmp.stop;
@@ -1137,38 +1167,28 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   show_branch := cp_flag(s, DC_FLAG_GIT) && show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<6 {
-    need := (ifx show_model then w_model + gap else 0.0f32) + w_effort;
-    if show_fu_draft { need += gap + w_fu; }
+    need := 0.0f32;
+    if show_fu_draft { need += w_fu; }
     if show_folder { need += gap + (ifx show_branch then w_folder else w_short); }
     if show_usage { need += gap + w_usage; }
     if show_ring { need += gap + w_ring; } if show_cost { need += gap + w_cost; } if show_goal { need += gap + w_goal; }
     if need <= room { break; }
     if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
-  // the left side: Steer & Queue (while a reply runs with a draft), the model chip,
-  // and effort chip, kept whole before the working folder is shortened.
+  // the left side: Steer & Queue (while a reply runs with a draft), Fresh & Fan-out when enabled.
+  // Model and Effort live inside the composer card's bottom bar (T3 Code layout).
   fx := x + side;
   end_x := x + cw - side;
   if show_fu_draft {
     sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
-    if fx + sw + qw + 2 * gap + w_model <= end_x {
+    if fx + sw + qw + gap <= end_x {
       _ := app_chip(f, "coder.fu.steer", fx, y, 0, -1, "Steer the reply with the draft (Return)", "Steer", EL_S_CURRENT, CP_FU_DRAFT);
       _ := app_chip(f, "coder.fu.queue", fx + sw + gap, y, 0, -1, "Queue the draft for after the reply (⇧Return)", "Queue", 0, CP_FU_DRAFT);
       fx += sw + qw + 2 * gap;
     }
   }
-  m_x := fx;
-  mw := ifx show_model then w_model else 0.0f32;
-  if mw > end_x - m_x { mw = end_x - m_x; }
-  if show_model && mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
-  // the effort chip: sits immediately to the right of the model chip
-  eff_gap := ifx show_model && mw > 0 then gap else 0.0f32;
-  s[0].effort_x = fx + eff_gap;
-  if (!show_model || mw > 0) && fx + eff_gap + w_effort <= end_x {
-    fx += eff_gap;
-    s[0].effort_x = fx;
-    fx += cp_foot_chip(f, "coder.effort", "Thinking level (⇧Tab)", fx, y, w_effort, -1, e_label, true, ifx s[0].effort_menu then EL_S_CURRENT else 0, CP_EFFORT_MENU);
-  }
+  m_x := s[0].model_x;
+  _ = m_label; _ = e_label; _ = show_model; _ = w_model; _ = w_effort;
   // the right side, from the end: working folder at the far right, then context ring, cost, and goal;
   // when space is tight, the working folder shrinks before the left chips ever truncate
   rx := end_x;
