@@ -1,5 +1,12 @@
 # Microcoder in Coax, and the inference gateways
 
+> **DEPRECATED (2026-11-22, GitHub `#13978`–`#13983`):** Microcoder (`coax/lib/microcoder/` and `coder/tui/mcworker.coax`) is **deprecated** and excluded from OpenAgents Desktop v1.0 (`--minimal`) release builds. All local **Inkling 2 Mini** sessions now run on **Inky** — our native Inkling 2.0 agent harness designed from scratch around native tool calling, append-only KV-cache-preserving history, interleaved reasoning, and `<|content_tool_error|>` feedback:
+> - **Active Specification:** [`docs/coder/inky-spec.md`](inky-spec.md)
+> - **Qualification Report:** [`docs/verification/inky-vs-microcoder-qualification.md`](../verification/inky-vs-microcoder-qualification.md)
+> - **Implementation:** `coax/lib/inky/` and `coder/tui/inky.coax`
+>
+> `mcworker` remains strictly isolated to `--full` developer builds (for legacy cloud Gemini/OpenRouter/Codex comparisons) until cloud models migrate onto Inky's native tool loop or are retired. Do not add new local-model features to `coax/lib/microcoder/`.
+
 Written 2026-10-28. Project: [Coder](https://openagents.com/projects/coder).
 Book: [chapter 9 of Coder: Coding Agents From Scratch](../../coder/book/ch009-microcoder.md).
 

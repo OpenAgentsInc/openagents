@@ -11,6 +11,8 @@
 **Related docs:**
 - [OpenAgents Desktop: audit for an Inkling-only first release](../audits/2026-11-21-openagents-desktop-inkling-first-release-audit.md)
 - [Coax Desktop](coax-desktop.md)
+- [Inky Native Inkling 2.0 Harness Specification](../coder/inky-spec.md)
+- [Inky vs. Microcoder Qualification Report](../verification/inky-vs-microcoder-qualification.md)
 - [Desktop Evals Specification](../coder/desktop-evals-spec.md)
 - [Ch. 269: Inkling 2 Mini on Metal](../../psionic/book/ch269-inkling-2-mini-on-metal.md)
 - [Ch. 270: Tool Calls and Responses for Inkling 2 Mini](../../psionic/book/ch270-tool-calls-and-responses-for-inkling-2-mini.md)
@@ -42,7 +44,7 @@ Everything outside the core local coding loop—cloud models, accounts, Bitcoin 
 
 | Area | Included Capabilities | Shared Coax / Workers | macOS Host | Linux & Windows Host (§5) |
 | --- | --- | --- | --- | --- |
-| **Core Chat** | Send, stop, steer, follow-up queue, markdown replies, tool rows, streaming thoughts. No model selector; no sub-agents (`agents = false`). | `page/transcript.coax`, `page/followups.coax`, `page/compose.coax`, `page/input.coax`, `mcworker` | `Window.swift`, `Window+Runs.swift`, `Worker.swift` | `host-main.c`, `host.c`, `host-core.coax` |
+| **Core Chat** | Send, stop, steer, follow-up queue, markdown replies, tool rows, streaming thoughts. No model selector; no sub-agents (`agents = false`). | `page/transcript.coax`, `page/followups.coax`, `page/compose.coax`, `page/input.coax`, `inky` (`coax/lib/inky/`) | `Window.swift`, `Window+Runs.swift`, `Worker.swift` | `host-main.c`, `host.c`, `host-core.coax` |
 | **First-Run & Local Model** | Hardware/VRAM check, resumable Hugging Face download into `~/.openagents/models/inkling-2-mini/`, progress bar, SHA-256 verification, safe delete (blocked during active runs), eager launch prewarm of `psionic-inkling-serve` with automatic free-port selection and logs, and composer send lock until the server is ready. | `page/layout/conversation.coax`, `#authority coax/lib/agent/desktop/local-model.coax` | `Window+Dialogs.swift` (`LocalModelStore`, `LocalModelServer`) | Thin OS adapter in `host-main.c` + `linux/main.c` / `windows/main.c` |
 | **Chat History & Sidebar** | Persisted chats, sidebar list, new/rename/delete/fork. Pre-existing chats created on hidden models open readable and continue on Inkling with an explicit notice. | `page/chats.coax`, `page/persist.coax`, `page/layout/sidebar.coax` | `Store.swift` | `host-core.coax` / `host-main.c` |
 | **Workspace & Attachments** | Working folder picker, file attachments, and `/` slash commands (`/goal`, `/new`, `/fork`). No `@` file mentions and no file viewer pane in v1.0. | `page/attach.coax`, `page/mention.coax` (`/` only) | `Window+Attach.swift` | `portal.c`, `host-main.c` |
@@ -139,7 +141,7 @@ Measured from an actual `OpenAgents.app` build (`apps/openagents-desktop/build.s
 | `Contents/MacOS/OpenAgents` — Breez static libs (`libBreezSdkSpark.a` 8.5 MB + `libBigNumber.a` 0.3 MB, ~29% of `__text`) | **~4.0 MB** | ~1.5 MB | Static archives | **No** (`wallet`) |
 | `Contents/MacOS/OpenAgents` — Other flagged Swift (47 files), Coax modules (21 files), and C objs (`lab-sign.o` 558 KB, `rh-flythrough.o` 62 KB, `pay-wallet*.o` 12 KB) | **~4.5 MB** | ~1.5 MB | **36,866+ LOC** | **No** (29 flags) |
 | `Contents/MacOS/OpenAgents` — v1.0 Core (22 Swift files, 33 Coax files, `carrier.o`, `ui-host.o`, `desktop-core.o`) | **~5.1 MB** | ~1.5 MB | **~21,000 LOC** | **Yes** |
-| Core v1.0 `Contents/Resources/` (`coder-host` 2.5 MB, `inkling-kernels.metal` 1.2 MB, `mcworker` 0.9 MB, `Components/` 0.8 MB, `psionic-inkling-serve` 0.2 MB, `OpenAgents.icns` 0.2 MB, `gitguard` 0.1 MB, metadata) | **6.1 MB** | ~2.0 MB | Core runtime | **Yes** |
+| Core v1.0 `Contents/Resources/` (`coder-host` 2.6 MB, `inkling-kernels.metal` 1.4 MB, `inky` 0.5 MB, `Components/` 0.8 MB, `psionic-inkling-serve` 0.25 MB, `OpenAgents.icns` 0.16 MB, `gitguard` 0.15 MB, metadata; legacy `mcworker` excluded) | **~5.8 MB** | ~2.0 MB | Core runtime | **Yes** |
 | **Total today** | **60.5 MB** | **25 MB** | **59,731 LOC** | **~49 MB (81%) removable** |
 
 ### 4.2 Build Profiles Across Platforms
@@ -158,9 +160,9 @@ Introduce one consistent build switch across `apps/openagents-desktop/build.sh`,
 
 **Target outcome:** **60.5 MB → ~16 MB on disk (−73%)**, **25 MB → ~5–6 MB zipped (−76%)**.
 
-1. **Skip copying all 17 non-v1 `Contents/Resources/` artifacts** in `build.sh` when `--minimal` is set. Ship only:
+1. **Skip copying all non-v1 `Contents/Resources/` artifacts** (including deprecated `mcworker`) in `build.sh` when `--minimal` is set. Ship only:
    - `coder-host`
-   - `mcworker`
+   - `inky`
    - `psionic-inkling-serve`
    - `inkling-kernels.metal`
    - `gitguard`
@@ -195,7 +197,7 @@ Add a Coax tool (`apps/openagents-desktop/v1-bundle-check.coax`, run via `coax/w
 
 1. **Size budget (macOS):** Total `.app` ≤ 18 MB (Stage 1) and ≤ 14 MB (Stage 2); zipped archive ≤ 7 MB (Stage 1) and ≤ 5 MB (Stage 2). *(Linux and Windows `--minimal` packages stay even smaller—target ≤ 12 MB unpacked / ≤ 5 MB compressed—because they ship zero Swift or Spark binaries.)*
 2. **Zero bundled frameworks (macOS):** `Contents/Frameworks/` does not exist or is empty.
-3. **Strict shipped-files allowlist:** Only core executable, `coder-host`, `mcworker`, `psionic-inkling-serve`, platform kernel file(s), `gitguard`, `Components/`, and app icon/metadata may exist (no `claudeworker`, `agyworker`, `oasim`, `lean-run`, `tbench-run`, `gym-evals`, `bip39-english.txt`, etc.).
+3. **Strict shipped-files allowlist:** Only core executable, `coder-host`, `inky` (`inky.exe` on Windows), `psionic-inkling-serve`, platform kernel file(s), `gitguard`, `Components/`, app icon/metadata (plus `agyworker` / `agyworker.exe` on Linux/Windows for `#13984` onboarding fallback) may exist (no deprecated `mcworker`, `claudeworker`, `oasim`, `lean-run`, `tbench-run`, `gym-evals`, `bip39-english.txt`, etc.).
 4. **Strict dynamic-link denylist:**
    - macOS (`otool -L`): must not link `breez_sdk_sparkFFI`, `WebKit`, `Speech`, `AVFoundation`, or `AuthenticationServices`.
    - Linux (`ldd`) / Windows (`objdump -p`): must not statically or dynamically require `libcuda.so` / `nvcuda.dll` at load time (CUDA is always `dlopen`/`LoadLibraryA` at runtime so machines without an NVIDIA driver still boot cleanly to the onboarding screen).
@@ -222,7 +224,7 @@ A large fraction of OpenAgents Desktop is already cross-platform; the remaining 
 | **Desktop UI & State** (`page.coax`, `app-v1.coax`, `settings.coax`) | Coax → C (`gallery.o`) | **Already shared** (same `app.coax`) | **Already shared** (same `app.coax`) | Switch `--minimal` builds on all 3 OSes to `app-v1.coax`. |
 | **GPU UI Shaders** (`components/backend/*.coax`) | `coax metal` → `.metal` | **Already shared** (`coax spirv` → `.spv` on Vulkan) | **Already shared** (`coax spirv` → `.spv` on Vulkan) | None. |
 | **Window / Input Host** | Swift + ObjC (`ui-host.m`) | **Already works** (Wayland + Vulkan `ui-host.c`, `portal.c`, real-window input tests passing) | **Already works** (Win32 + Vulkan `ui-host.c`, `portal.c`, Wine smoke tests; needs real Win11 verification) | Real Windows 11 native smoke & GPU run. |
-| **Workers & Daemon** (`mcworker`, `coder-host`, `gitguard`) | Coax → Mach-O | **Already shared** (Coax → Linux ELF) | **Already shared** (Coax → MinGW `.exe`, except `gitguard.exe` needs bundling) | Bundle `gitguard.exe` on Windows; omit `claudeworker`/`agyworker` in `--minimal`. |
+| **Workers & Daemon** (`inky`, `coder-host`, `gitguard`) | Coax → Mach-O | **Already shared** (Coax → Linux ELF) | **Already shared** (Coax → MinGW `.exe`) | Ship `inky` / `inky.exe` in `--minimal` (omit deprecated `mcworker` & `claudeworker`; keep `agyworker` on Linux/Windows per `#13984`). |
 | **29-Flag Registry** (`coax/lib/agent/desktop/flags.coax`) | Coax → Swift (`defaults`, `OA_FLAGS`, `--flag`) | Wired into `host-main.c` | Wired into `host-main.c` | Done (`flags.coax` + `desktop-flags.json`). |
 | **Local Model Store & Server Supervisor** | **macOS-only Swift** (`Window+Dialogs.swift`: download, SHA-256, manifest, server spawn, port check, quit lifetime) | **Missing** in `host-main.c` | **Missing** in `host-main.c` | Extract policy/state machine into `#authority coax/lib/agent/desktop/local-model.coax`; add thin OS adapters in `host-main.c` (see §5.5). |
 | **Inkling HTTP/SSE & Schema Server** (`psionic/platform/inkling-serve.c`, `inkling-responses.coax`) | POSIX sockets + hardcoded `inkling-metal.h` | Compiles only against POSIX + Metal | Does not compile (POSIX sockets, `mmap`, `clock_gettime`, Metal) | Split out backend-agnostic `inkling-engine.h`; add `#ifdef _WIN32` Winsock2 + Win32 `MapViewOfFile` in `inkling-gguf.c` (see §5.3). |
@@ -301,13 +303,13 @@ Linux and Windows are already much lighter than macOS because they never link Sw
 
 1. **`apps/openagents-desktop/linux/build.sh --minimal` & `install.sh --minimal`:**
    - Compile `app-v1.coax` instead of `app.coax`.
-   - Omit `pay/wallet.coax`, `pay/wallet-backup.coax`, `pay/wallet-rpc.coax`, `claudeworker`, and `agyworker`.
-   - Build and bundle `psionic-inkling-serve` + `inkling-kernels-cuda.cu` (and optional `inkling-kernels-vulkan.spv`) alongside `OpenAgents`, `mcworker`, `coder-host`, `gitguard`, `components.spv`, `composition.spv`, fonts, icons, and `.desktop`.
+   - Omit `pay/wallet.coax`, `pay/wallet-backup.coax`, `pay/wallet-rpc.coax`, deprecated `mcworker`, and `claudeworker` (keep `agyworker` per `#13984`).
+   - Build and bundle `psionic-inkling-serve` + `inkling-kernels-cuda.cu` (and optional `inkling-kernels-vulkan.spv`) alongside `OpenAgents`, `inky`, `agyworker`, `coder-host`, `gitguard`, `components.spv`, `composition.spv`, fonts, icons, and `.desktop`.
    - Ship as a self-contained tarball (or AppImage) validated by `v1-bundle-check`.
 2. **`apps/openagents-desktop/windows/build.sh --minimal`:**
    - Compile `app-v1.coax` instead of `app.coax`.
-   - Omit `pay/wallet*.coax`, `claudeworker.exe`, and `agyworker.exe`.
-   - Build and bundle `psionic-inkling-serve.exe` + `inkling-kernels-cuda.cu` (and optional `.spv`) + `gitguard.exe` alongside `OpenAgents.exe`, `mcworker.exe`, `coder-host.exe`, `res/` (`components.spv`, `composition.spv`, fonts, icons, `OpenAgents.ico`).
+   - Omit `pay/wallet*.coax`, deprecated `mcworker.exe`, and `claudeworker.exe` (keep `agyworker.exe` per `#13984`).
+   - Build and bundle `psionic-inkling-serve.exe` + `inkling-kernels-cuda.cu` (and optional `.spv`) + `gitguard.exe` alongside `OpenAgents.exe`, `inky.exe`, `agyworker.exe`, `coder-host.exe`, `res/` (`components.spv`, `composition.spv`, fonts, icons, `OpenAgents.ico`).
    - Ship as a signed portable `.zip` / installer validated by `v1-bundle-check`.
 
 ---

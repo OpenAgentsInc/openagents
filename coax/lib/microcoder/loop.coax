@@ -1,3 +1,8 @@
+// DEPRECATED (2026-11-22, #13978/#13983): Microcoder is deprecated for local Inkling 2 Mini
+// and excluded from OpenAgents Desktop v1.0 (--minimal) release builds.
+// Active native Inkling 2.0 harness: coax/lib/inky/ (worker: coder/tui/inky.coax, spec: docs/coder/inky-spec.md).
+// Kept strictly for legacy --full developer cloud comparisons until cloud models migrate or retire.
+//
 // Microcoder's loop (docs/coder/microcoder.md, Part 1): one structured
 // model call a step, the commands it asks for run and recorded, until the
 // run ends.

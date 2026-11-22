@@ -1,3 +1,8 @@
+// DEPRECATED (2026-11-22, #13978/#13983): mcworker is deprecated for local Inkling 2 Mini
+// and excluded from OpenAgents Desktop v1.0 (--minimal) release builds.
+// Use coder/tui/inky.coax (coax/lib/inky/, spec: docs/coder/inky-spec.md) instead.
+// Kept strictly in --full developer builds for legacy cloud model comparisons until retirement.
+//
 // Microcoder as a process for Coder's TUI (microcoder.coax): it reads one
 // JSON object a line on stdin and writes one a line on stdout, like the
 // Claude and Codex CLIs the other engines drive.
