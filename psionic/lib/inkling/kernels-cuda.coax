@@ -214,11 +214,16 @@ ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #ex
 ink_dvr_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;mid:[16]f32;
     for thread:0..<INK_NT {
-        acc:f32=0;
-        base:=(item%rows)*cols;xb:=(item/rows)*cols;
-        for step:0..<(cols+INK_NT-1)/INK_NT {
-            col:=step*INK_NT+thread;
-            if col<cols {acc+=w[base+col]*x[xb+col];}
+        acc:f32=0;nc:=cast(u32)cols;t:=cast(u32)thread;
+        base:=cast(u32)((item%rows)*cols);xb:=cast(u32)((item/rows)*cols);
+        // Three columns at a time, their loads asked for together.
+        for step:cast(u32)0..<(nc+767)/768 {
+            c0:=add_wrap(mul_wrap(step,768),t);c1:=add_wrap(c0,256);c2:=add_wrap(c0,512);
+            w0:f32=0;w1:f32=0;w2:f32=0;x0:f32=0;x1:f32=0;x2:f32=0;
+            if c0<nc {w0=w[cast(int)add_wrap(base,c0)];x0=x[cast(int)add_wrap(xb,c0)];}
+            if c1<nc {w1=w[cast(int)add_wrap(base,c1)];x1=x[cast(int)add_wrap(xb,c1)];}
+            if c2<nc {w2=w[cast(int)add_wrap(base,c2)];x2=x[cast(int)add_wrap(xb,c2)];}
+            acc+=w0*x0;acc+=w1*x1;acc+=w2*x2;
         }
         part[thread]=acc;
     }
@@ -439,11 +444,13 @@ ink_ctrl_gate :: (item:int,dim:int,np:int,stack:int,flags:int,off0:int,off1:int,
     cb:=(ifx swa!=0 then 0 else cl)*stack+tok*dim;gb:=(c0+cl)*stack+tok*dim;
     wb:=(ifx cl==0 then off0 else ifx cl==1 then off1 else off2)+r*2*dim;
     for thread:0..<INK_MT {
-        sa:f32=0;sb:f32=0;sc:f32=0;sm:f32=0;
-        for k:0..<(dim+INK_MT-1)/INK_MT {
-            i:=k*INK_MT+thread;
-            if i<dim {
-                a:=cur[cb+i];m:=msg[gb+i];wa:=arena[wb+i];wm:=arena[wb+dim+i];
+        sa:f32=0;sb:f32=0;sc:f32=0;sm:f32=0;nd:=cast(u32)dim;t:=cast(u32)thread;
+        cb32:=cast(u32)cb;gb32:=cast(u32)gb;wb32:=cast(u32)wb;
+        for k:cast(u32)0..<(nd+1023)/1024 {
+            i:=add_wrap(mul_wrap(k,1024),t);
+            if i<nd {
+                a:=cur[cast(int)add_wrap(cb32,i)];m:=msg[cast(int)add_wrap(gb32,i)];
+                wa:=arena[cast(int)add_wrap(wb32,i)];wm:=arena[cast(int)add_wrap(add_wrap(wb32,nd),i)];
                 sa+=wa*a;sb+=wm*m;sc+=a*a;sm+=m*m;
             }
         }
@@ -1390,11 +1397,12 @@ ink_moe_sum :: (item:int,rows:int,n_parts:int,part:[]f32,out:[]f32) #export_c #e
 // shares (as ink_moe_sum, or ink_mvq_s for the attention output), the post
 // short convolution with its history, and the residual add into cur; with
 // block_start != 0, cur is first saved in blk and then replaced. Launch items
-// = ceil(rows / 32), a group of 256 threads.
+// = ceil(rows / 32), a group of 1024 threads: warp c adds a run of the shares
+// for the group's 32 rows.
 ink_sum_post :: (item:int,rows:int,n_parts:int,block_start:int,part:[]f32,w:[]f32,hist:[]f32,cur:[]f32,blk:[]f32) #export_c #effects(all) {
-    mid:[256]f32;
-    nr:=cast(u32)rows;np:=cast(u32)n_parts;run:=(np+7)/8;row0:=mul_wrap(cast(u32)item,32);
-    for thread:0..<INK_NT {
+    mid:[1024]f32;m2:[256]f32;
+    nr:=cast(u32)rows;np:=cast(u32)n_parts;run:=(np+31)/32;row0:=mul_wrap(cast(u32)item,32);
+    for thread:0..<INK_MT {
         t:=cast(u32)thread;row:=add_wrap(row0,t%32);chunk:=t/32;s:f32=0;
         if row<nr {
             for pp:cast(u32)0..<run {
@@ -1404,12 +1412,18 @@ ink_sum_post :: (item:int,rows:int,n_parts:int,block_start:int,part:[]f32,w:[]f3
         }
         mid[thread]=s;
     }
-    for thread:0..<INK_NT {
+    for thread:0..<INK_MT {
+        if thread<256 {
+            r:=thread%32;c:=thread/32;
+            m2[thread]=(mid[(c*4)*32+r]+mid[(c*4+1)*32+r])+(mid[(c*4+2)*32+r]+mid[(c*4+3)*32+r]);
+        }
+    }
+    for thread:0..<INK_MT {
         if thread<32 && item*32+thread<rows {
             c:=item*32+thread;
             x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];
             w0:=w[c*4+0];w1:=w[c*4+1];w2:=w[c*4+2];w3:=w[c*4+3];old:=cur[c];
-            x3:=((mid[thread]+mid[32+thread])+(mid[64+thread]+mid[96+thread]))+((mid[128+thread]+mid[160+thread])+(mid[192+thread]+mid[224+thread]));
+            x3:=((m2[thread]+m2[32+thread])+(m2[64+thread]+m2[96+thread]))+((m2[128+thread]+m2[160+thread])+(m2[192+thread]+m2[224+thread]));
             y:=(x3+(x0*w0+x1*w1+x2*w2+x3*w3))/sqrt(5.0f32);
             if block_start!=0 {blk[c]=old;cur[c]=y;} else {cur[c]=old+y;}
             hist[c*3+0]=x1;hist[c*3+1]=x2;hist[c*3+2]=x3;

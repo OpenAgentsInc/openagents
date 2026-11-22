@@ -42,6 +42,7 @@
 /* VRAM left unplanned: the kernel module, driver bookkeeping and whatever
    else the desktop allocates while the model runs. */
 #define INK_VRAM_MARGIN_MB 384
+#define INK_LIKING_RATE 0.3f   /* weight of the newest router logit in an expert's running mean */
 #define INK_LAYER_TENSORS ((int)(sizeof(InkLayerTensors) / sizeof(InkTensor)))
 
 /* Tokens a prefill batch may hold. Decode is a batch of one. */
@@ -158,7 +159,7 @@ static const int k_threads[K_COUNT] = {
     1,      /* K_PROJ_P */
     1,      /* K_PROJ_S */
     INK_NT, /* K_KV1 */
-    INK_NT, /* K_SUM_POST */
+    INK_MT, /* K_SUM_POST */
 };
 
 /* One layer's experts on the device. cap == n_expert means every expert is
@@ -170,6 +171,8 @@ typedef struct {
     int16_t  slot_of[INK_MAX_EXPERTS];    /* expert -> slot, or -1 */
     int16_t  expert_in[INK_MAX_EXPERTS];  /* slot -> expert, or -1 */
     uint64_t used[INK_MAX_EXPERTS];       /* slot -> tick of its last use */
+    float    liking[INK_MAX_EXPERTS];     /* expert -> running mean of the router's logit for it */
+    int      liking_set;
 } ExpertCache;
 
 struct InkSession {
@@ -455,9 +458,21 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
     if (c->cap >= hp->n_expert) return 0;
     uint32_t ids[INK_MAX_BATCH * 16], slots[INK_MAX_BATCH * 16];
     double began = s->profile ? pc_seconds() : 0.0;
+    static float logits[INK_MAX_BATCH * INK_MAX_EXPERTS];
+    int n_tok = n / (int)hp->n_expert_used;
     if (pc_download(ids, s->moe_ids, (size_t)n * 4, s->stream) != PC_OK ||
+        pc_download(logits, s->router_logits, (size_t)n_tok * (size_t)hp->n_expert * 4, s->stream) != PC_OK ||
         pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "read expert ids");
-    if (getenv("INK_EXPERT_TRACE")) { for (int k = 0; k < n; k++) fprintf(stderr, "XT %d %u\n", ip, ids[k]); }
+    /* How much the router has lately liked each expert, chosen or not: among
+       experts that have waited equally long, the least liked one is the one
+       to replace. An expert the router keeps scoring high is likely to be
+       chosen soon even if it has not been yet. */
+    for (int t = 0; t < n_tok; t++) {
+        const float *row = logits + (size_t)t * (size_t)hp->n_expert;
+        for (int e = 0; e < hp->n_expert; e++)
+            c->liking[e] = c->liking_set ? c->liking[e] + INK_LIKING_RATE * (row[e] - c->liking[e]) : row[e];
+        c->liking_set = 1;
+    }
     /* Mark what this batch needs before choosing what to replace. */
     s->tick++;
     for (int k = 0; k < n; k++) {
@@ -473,7 +488,11 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
         int slot = c->slot_of[e];
         if (slot < 0) {
             slot = 0;
-            for (int i = 1; i < c->cap; i++) if (c->used[i] < c->used[slot]) slot = i;
+            for (int i = 1; i < c->cap; i++) {
+                if (c->used[i] > c->used[slot]) continue;
+                if (c->used[i] < c->used[slot] || c->expert_in[slot] < 0) { slot = i; continue; }
+                if (c->expert_in[i] < 0 || c->liking[c->expert_in[i]] < c->liking[c->expert_in[slot]]) slot = i;
+            }
             if (c->expert_in[slot] >= 0) c->slot_of[c->expert_in[slot]] = -1;
             if (load_expert(s, ip, (int)e, slot)) return 1;
             c->slot_of[e] = (int16_t)slot;
@@ -1167,28 +1186,6 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         ink_close(s); return 1;
     }
     s->pos = 0;
-    if (getenv("INK_LAUNCH_BENCH")) {
-        /* What an empty launch costs: queued back to back, and with a wait after each. */
-        PcArg args[] = { a_int(1), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->dummy_f32, 0, 64) };
-        pc_sync_stream(s->stream);
-        double t0 = pc_seconds();
-        for (int i = 0; i < 20000; i++) pc_launch(s->kernels[K_COPY], 1, 256, args, 3, s->stream);
-        double t1 = pc_seconds();
-        pc_sync_stream(s->stream);
-        double t2 = pc_seconds();
-        for (int i = 0; i < 20000; i++) { pc_launch(s->kernels[K_COPY], 1, 256, args, 3, s->stream); pc_sync_stream(s->stream); }
-        double t3 = pc_seconds();
-        uint32_t tmp[16];
-        for (int i = 0; i < 20000; i++) {
-            pc_launch(s->kernels[K_COPY], 1, 256, args, 3, s->stream);
-            pc_download(tmp, s->moe_ids, 32, s->stream); pc_sync_stream(s->stream);
-            pc_upload(s->moe_slots, tmp, 32, s->stream);
-        }
-        double t4 = pc_seconds();
-        fprintf(stderr, "psionic-cuda: launch + 32-byte download + wait + 32-byte upload: %.2f us\n", (t4 - t3) / 20000 * 1e6);
-        fprintf(stderr, "psionic-cuda: an empty launch: %.2f us to queue, %.2f us queued and run back to back, %.2f us with a wait after each\n",
-                (t1 - t0) / 20000 * 1e6, (t2 - t0) / 20000 * 1e6, (t3 - t2) / 20000 * 1e6);
-    }
     *out = s;
     return 0;
 }
