@@ -60,7 +60,7 @@ xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-librar
   "$spark_sdk/libBreezSdkSpark.a" "$spark_sdk/libBigNumber.a" \
   -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \
-  -framework CryptoKit -framework Security -framework UserNotifications -framework AuthenticationServices -framework Speech -framework AVFoundation -framework IOKit -framework WebKit \
+  -framework CryptoKit -framework Security -framework UserNotifications -framework AuthenticationServices -framework Speech -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework IOKit -framework WebKit \
   -o "$app/Contents/MacOS/OpenAgents.new"
 mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

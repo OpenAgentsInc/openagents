@@ -1,5 +1,8 @@
 // Firm reason: 6 (AppKit/Metal 3D Metaverse Grid Flythrough viewport over CAMetalLayer driven by Metaverse Engine Coax flyover spline + rh-math.coax).
 import AppKit
+import AVFoundation
+import CoreMedia
+import CoreVideo
 import Metal
 import QuartzCore
 import CoreGraphics
@@ -3211,5 +3214,321 @@ final class RhFlythroughView: NSView {
               let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
         CGImageDestinationAddImage(dest, cgImg, nil)
         return CGImageDestinationFinalize(dest)
+    }
+
+    // MARK: - Native Hardware-Accelerated 1080p Walkthrough Video Recorder (Metal 4x MSAA HDR + AVAssetWriter H.264)
+
+    func recordWalkthroughMP4(to url: URL, width: Int = 1920, height: Int = 1080, fps: Int = 30) -> Bool {
+        guard let dev = device, let queue = commandQueue, stations.count >= 8 else { return false }
+
+        try? FileManager.default.removeItem(at: url)
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else {
+            fputs("rh3d record: failed to create AVAssetWriter\n", stderr)
+            return false
+        }
+        writer.shouldOptimizeForNetworkUse = true
+
+        let compression: [String: Any] = [
+            AVVideoAverageBitRateKey: 7_500_000,
+            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+            AVVideoMaxKeyFrameIntervalKey: fps * 2,
+        ]
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: compression,
+        ]
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoInput.expectsMediaDataInRealTime = false
+
+        let pixelAttrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+        ]
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: pixelAttrs)
+        guard writer.canAdd(videoInput) else { return false }
+        writer.add(videoInput)
+
+        guard writer.startWriting() else {
+            fputs("rh3d record: startWriting failed: \(writer.error?.localizedDescription ?? "unknown")\n", stderr)
+            return false
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]
+        texDesc.storageMode = .shared
+        guard let colorTex = dev.makeTexture(descriptor: texDesc) else { return false }
+
+        // Helper: compute stage-centered camera pose for station i at local orbit progress u in [0, 1]
+        func stationPose(_ idx: Int, orbitU: Float) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+            let st = stations[idx]
+            let baseOffset = st.eye - st.pos
+            let rXZ = hypot(baseOffset.x, baseOffset.z)
+            let baseYaw = atan2(baseOffset.x, baseOffset.z)
+            let smoothU = orbitU * orbitU * (3.0 - 2.0 * orbitU)
+            let yaw = baseYaw + (smoothU - 0.5) * 0.42 // smooth +-12 degree gentle orbit
+            let lift = sin(orbitU * .pi) * 0.45
+            let e = st.pos + SIMD3<Float>(rXZ * sin(yaw), baseOffset.y + lift, rXZ * cos(yaw))
+            // Shift look target slightly right (+2.2m) so the 3D landmark sits dead-center in the open stage left of the Guide card
+            let fwd = simd_normalize(st.pos - e)
+            let right = simd_normalize(simd_cross(fwd, SIMD3<Float>(0, 1, 0)))
+            let t = st.pos + right * 2.2
+            return (e, t)
+        }
+
+        func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+            let t = max(0.0, min(1.0, (x - edge0) / max(1e-5, edge1 - edge0)))
+            return t * t * (3.0 - 2.0 * t)
+        }
+
+        // 70.0-second cinematic guided walkthrough:
+        //   0.0 - 4.5s  : Panoramic Overview Opening ("The Big Picture in 30 Seconds")
+        //   4.5 - 64.5s : 8 Stations x 7.5s each (1.7s smooth glide + 5.8s living orbit dwell with full Explainer & Significance)
+        //   64.5 - 70.0s: Grand Finale pullback to full 8-station Overview + fade out
+        let introDur: Float = 4.5
+        let stationSlot: Float = 7.5
+        let glideDur: Float = 1.7
+        let outroStart: Float = introDur + Float(stations.count) * stationSlot // 64.5s
+        let totalDur: Float = 70.0
+        let totalFrames = Int((totalDur * Float(fps)).rounded())
+
+        let uiScale = CGFloat(width) / 1536.0
+        let logicalSize = CGSize(width: CGFloat(width) / uiScale, height: CGFloat(height) / uiScale)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+
+        let ovStartEye = SIMD3<Float>(-7.0, 33.5, 76.0)
+        let ovEndEye   = SIMD3<Float>( 4.0, 31.5, 72.0)
+        let ovFinalEye = SIMD3<Float>( 0.0, 32.0, 74.0)
+        let ovTarget   = SIMD3<Float>( 0.0,  3.0,  0.0)
+
+        let prevShowGuide = showGuide
+        let prevShowLabels = showLabels
+        showGuide = true
+        showLabels = true
+        selectedPick = nil
+
+        let tStart = CACurrentMediaTime()
+        for frameIdx in 0..<totalFrames {
+            let t = Float(frameIdx) / Float(fps)
+            totalElapsedS = t
+            flyTimeS = t
+
+            var guideAlpha: CGFloat = 1.0
+            var fadeBlack: CGFloat = 0.0
+            if t < 0.65 {
+                fadeBlack = CGFloat(1.0 - smoothstep(0.0, 0.65, t))
+            } else if t > totalDur - 0.85 {
+                fadeBlack = CGFloat(smoothstep(totalDur - 0.85, totalDur, t))
+            }
+
+            if t < introDur {
+                // Opening Overview drift
+                let u = t / introDur
+                let s = u * u * (3.0 - 2.0 * u)
+                eye = ovStartEye + (ovEndEye - ovStartEye) * s
+                target = ovTarget
+                isOverviewMode = true
+                activeStation = 0
+                guideAlpha = CGFloat(smoothstep(0.25, 0.95, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
+            } else if t < outroStart {
+                // Guided tour across Stations 0..7
+                let local = t - introDur
+                let stIdx = min(stations.count - 1, Int(local / stationSlot))
+                let stT = local - Float(stIdx) * stationSlot
+                activeStation = stIdx
+                isOverviewMode = false
+
+                if stT < glideDur {
+                    let u = stT / glideDur
+                    let s = u * u * (3.0 - 2.0 * u)
+                    let fromPose: (eye: SIMD3<Float>, target: SIMD3<Float>) = (stIdx == 0)
+                        ? (ovEndEye, ovTarget)
+                        : stationPose(stIdx - 1, orbitU: 1.0)
+                    let toPose = stationPose(stIdx, orbitU: 0.0)
+                    let arcLift = sin(u * .pi) * (stIdx == 0 ? 2.0 : 1.35)
+                    eye = fromPose.eye + (toPose.eye - fromPose.eye) * s + SIMD3<Float>(0, arcLift, 0)
+                    target = fromPose.target + (toPose.target - fromPose.target) * s
+                    // Crossfade Guide card smoothly into the arriving station
+                    guideAlpha = CGFloat(smoothstep(glideDur * 0.45, glideDur, stT))
+                } else {
+                    let dwellU = min(1.0, (stT - glideDur) / max(0.01, stationSlot - glideDur))
+                    let pose = stationPose(stIdx, orbitU: dwellU)
+                    eye = pose.eye
+                    target = pose.target
+                    let outFade = 1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)
+                    guideAlpha = CGFloat(outFade)
+                }
+            } else {
+                // Grand Finale pullback to full panoramic Overview
+                let ot = t - outroStart
+                let pullDur: Float = 3.0
+                if ot < pullDur {
+                    let u = ot / pullDur
+                    let s = u * u * (3.0 - 2.0 * u)
+                    let fromPose = stationPose(stations.count - 1, orbitU: 1.0)
+                    eye = fromPose.eye + (ovFinalEye - fromPose.eye) * s + SIMD3<Float>(0, sin(u * .pi) * 3.0, 0)
+                    target = fromPose.target + (ovTarget - fromPose.target) * s
+                    isOverviewMode = (u > 0.52)
+                    activeStation = stations.count - 1
+                    guideAlpha = isOverviewMode ? CGFloat(smoothstep(0.55, 0.95, u)) : 0.0
+                } else {
+                    let driftU = (ot - pullDur) / max(0.1, (totalDur - outroStart) - pullDur)
+                    eye = ovFinalEye + SIMD3<Float>(driftU * 2.5, driftU * 0.8, driftU * 1.5)
+                    target = ovTarget
+                    isOverviewMode = true
+                    activeStation = stations.count - 1
+                    guideAlpha = 1.0
+                }
+            }
+
+            autoreleasepool {
+                guard let cmd = queue.makeCommandBuffer() else { return }
+                encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: Float(uiScale))
+                cmd.commit()
+                cmd.waitUntilCompleted()
+
+                while !videoInput.isReadyForMoreMediaData {
+                    Thread.sleep(forTimeInterval: 0.002)
+                }
+                guard let pool = adaptor.pixelBufferPool else { return }
+                var pbOpt: CVPixelBuffer?
+                guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pbOpt) == kCVReturnSuccess, let pb = pbOpt else { return }
+
+                CVPixelBufferLockBaseAddress(pb, [])
+                if let baseAddr = CVPixelBufferGetBaseAddress(pb) {
+                    let bpr = CVPixelBufferGetBytesPerRow(pb)
+                    colorTex.getBytes(baseAddr, bytesPerRow: bpr, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+
+                    if let ctx = CGContext(data: baseAddr, width: width, height: height, bitsPerComponent: 8, bytesPerRow: bpr, space: cs, bitmapInfo: bi.rawValue) {
+                        NSGraphicsContext.saveGraphicsState()
+                        ctx.saveGState()
+                        ctx.translateBy(x: 0, y: CGFloat(height))
+                        ctx.scaleBy(x: uiScale, y: -uiScale)
+                        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+
+                        // 1. Crisp 3D projected labels
+                        let proj = computeProjectedLabels(viewSize: logicalSize)
+                        RhLabelsOverlayView.drawLabels(proj, in: ctx)
+
+                        // 2. Smoothly faded Friendly Explainer & Significance Guide Card
+                        if guideAlpha > 0.01 {
+                            ctx.saveGState()
+                            ctx.setAlpha(guideAlpha)
+                            let guideContent = buildGuideContent(overview: isOverviewMode)
+                            let guideRect = isOverviewMode
+                                ? CGRect(x: 20, y: 18, width: logicalSize.width - 40, height: 156)
+                                : CGRect(x: logicalSize.width - 412, y: 20, width: 392, height: 616)
+                            GridExplainerPanelView.drawExplainer(guideContent, in: ctx, rect: guideRect)
+                            ctx.restoreGState()
+                        }
+
+                        // 3. Bottom OpenAgents Grid Navigation Bar + Live Progress Track + 8 Station Step Strip
+                        let cardRect = CGRect(x: 20, y: logicalSize.height - 108, width: logicalSize.width - 40, height: 92)
+                        drawGridHudFrame(in: ctx, rect: cardRect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: true)
+
+                        ("OPENAGENTS / VERSE  ·  THE GRID  ·  RIEMANN HYPOTHESIS WALKTHROUGH" as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 8), withAttributes: [
+                            .font: NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium),
+                            .foregroundColor: GridTokens.nsMid,
+                            .kern: 1.0,
+                        ])
+
+                        let curSec = Int(t), totSec = Int(totalDur)
+                        let timeStr = String(format: "%02d:%02d / %02d:%02d", curSec / 60, curSec % 60, totSec / 60, totSec % 60)
+                        let timeAttrs: [NSAttributedString.Key: Any] = [
+                            .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+                            .foregroundColor: GridTokens.nsLight,
+                            .kern: 0.8,
+                        ]
+                        let tw = (timeStr as NSString).size(withAttributes: timeAttrs).width
+                        (timeStr as NSString).draw(at: CGPoint(x: cardRect.maxX - 18 - tw, y: cardRect.minY + 8), withAttributes: timeAttrs)
+
+                        let titleStr = (isOverviewMode ? "THE FULL STORY — 8 STATIONS FROM 1859 MYSTERY TO Q.E.D. (175,182 LEAN FILES)" : stations[activeStation].title).uppercased()
+                        let subStr = isOverviewMode ? "1. Prime Music → 2. 5040 Test → 3. 2/3 Wall → 4. Mirror Bridge → 5. 175k City → 6. Safety Nets → 7. 4 Checkers → 8. Solved (Q.E.D.)" : stations[activeStation].subtitle
+
+                        (titleStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 21), withAttributes: [
+                            .font: NSFont.monospacedSystemFont(ofSize: 12.8, weight: .bold),
+                            .foregroundColor: GridTokens.nsWhite,
+                            .kern: 0.4,
+                        ])
+                        (subStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 40), withAttributes: [
+                            .font: NSFont.monospacedSystemFont(ofSize: 9.8, weight: .medium),
+                            .foregroundColor: GridTokens.nsCyan,
+                        ])
+
+                        // Live animated cyan progress bar
+                        let trackRect = CGRect(x: cardRect.minX + 18, y: cardRect.minY + 57, width: cardRect.width - 36, height: 2.0)
+                        ctx.setFillColor(NSColor(white: 0.94, alpha: 0.14).cgColor)
+                        ctx.fill(trackRect)
+                        let fillW = trackRect.width * CGFloat(max(0.0, min(1.0, t / totalDur)))
+                        ctx.setFillColor(GridTokens.nsCyan.cgColor)
+                        ctx.fill(CGRect(x: trackRect.minX, y: trackRect.minY, width: fillW, height: 2.0))
+
+                        // 8 Station Step Strip along bottom
+                        let pillGap: CGFloat = 5
+                        let pillW = (trackRect.width - pillGap * 7) / 8.0
+                        let pillY = cardRect.minY + 65
+                        for i in 0..<8 {
+                            let px = trackRect.minX + CGFloat(i) * (pillW + pillGap)
+                            let pRect = CGRect(x: px, y: pillY, width: pillW, height: 19)
+                            let isAct = (!isOverviewMode && i == activeStation)
+                            ctx.setFillColor((isAct ? NSColor(calibratedRed: 0.04, green: 0.15, blue: 0.16, alpha: 0.92) : NSColor(calibratedRed: 0.016, green: 0.020, blue: 0.026, alpha: 0.85)).cgColor)
+                            ctx.fill(pRect)
+                            ctx.setStrokeColor((isAct ? GridTokens.nsCyan.withAlphaComponent(0.85) : NSColor(white: 0.94, alpha: 0.22)).cgColor)
+                            ctx.setLineWidth(1.0)
+                            ctx.stroke(pRect)
+                            let pStr = stations[i].shortName.uppercased()
+                            let pAttrs: [NSAttributedString.Key: Any] = [
+                                .font: NSFont.monospacedSystemFont(ofSize: 9.0, weight: isAct ? .bold : .medium),
+                                .foregroundColor: isAct ? GridTokens.nsCyan : GridTokens.nsLight,
+                                .kern: 0.5,
+                            ]
+                            let sz = (pStr as NSString).size(withAttributes: pAttrs)
+                            (pStr as NSString).draw(at: CGPoint(x: pRect.midX - sz.width * 0.5, y: pRect.midY - sz.height * 0.5), withAttributes: pAttrs)
+                        }
+
+                        // Cinematic fade-in / fade-out
+                        if fadeBlack > 0.005 {
+                            ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: fadeBlack).cgColor)
+                            ctx.fill(CGRect(origin: .zero, size: logicalSize))
+                        }
+
+                        ctx.restoreGState()
+                        NSGraphicsContext.restoreGraphicsState()
+                    }
+                }
+                CVPixelBufferUnlockBaseAddress(pb, [])
+
+                let pts = CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(fps))
+                adaptor.append(pb, withPresentationTime: pts)
+            }
+
+            if frameIdx > 0 && frameIdx % (fps * 10) == 0 {
+                let elapsed = CACurrentMediaTime() - tStart
+                print(String(format: "rh3d record: %d/%d frames (%.1fs elapsed)", frameIdx, totalFrames, elapsed))
+                fflush(stdout)
+            }
+        }
+
+        showGuide = prevShowGuide
+        showLabels = prevShowLabels
+
+        videoInput.markAsFinished()
+        let sem = DispatchSemaphore(value: 0)
+        writer.finishWriting { sem.signal() }
+        sem.wait()
+
+        let elapsed = CACurrentMediaTime() - tStart
+        if writer.status == .completed {
+            print(String(format: "rh3d record: wrote %@ (%dx%d @ %dfps, %.1fs in %.1fs)", url.path, width, height, fps, totalDur, elapsed))
+            return true
+        }
+        fputs("rh3d record: writer finished with error: \(writer.error?.localizedDescription ?? "unknown")\n", stderr)
+        return false
     }
 }

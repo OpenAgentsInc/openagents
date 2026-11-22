@@ -409,12 +409,24 @@ enum TestLaunch {
         return ok == shots.count ? 0 : 1
     }
 
+    private static func runRh3dRecord(outPath: String) -> Int32 {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
+        let view = RhFlythroughView(frame: NSRect(x: 0, y: 0, width: 1536, height: 864))
+        let url = URL(fileURLWithPath: outPath)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return view.recordWalkthroughMP4(to: url, width: 1920, height: 1080, fps: 30) ? 0 : 1
+    }
+
     static func main() {
         if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
             exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
         }
         if let at = CommandLine.arguments.firstIndex(of: "--shot-rh-3d"), at + 1 < CommandLine.arguments.count {
             exit(runRh3dShots(outDir: CommandLine.arguments[at + 1]))
+        }
+        if let at = CommandLine.arguments.firstIndex(of: "--record-rh-3d"), at + 1 < CommandLine.arguments.count {
+            exit(runRh3dRecord(outPath: CommandLine.arguments[at + 1]))
         }
         let app = NSApplication.shared; app.setActivationPolicy(.regular)
         let delegate = CoderDelegate(); app.delegate = delegate
