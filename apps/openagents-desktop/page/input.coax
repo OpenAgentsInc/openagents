@@ -228,16 +228,31 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     }
     return false;
   }
-  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
-  if act == CP_ASK_ADD_PRESS { s[0].model_menu = false; s[0].ask = CP_ASK_ADD; return true; }
+  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_ASK_ADD_PRESS { s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_ADD; return true; }
   if act == CP_CARGO || act == CP_CARGO_REMOVE { return cp_cargo_press(s, surface_id(s[0].surface[..], row), act == CP_CARGO_REMOVE); }
   if act == CP_TOAST_CLOSE { return app_toast_dismiss(s[0].toasts[..], app_toast_pressed(surface_id(s[0].surface[..], row)), s[0].clock); }
   if act == CP_MENTION { return cp_mn_pick(s, app_mn_pressed("coder.mention", surface_id(s[0].surface[..], row))); }
-  if act == CP_EFFORT_CYCLE { s[0].model_menu = false; cp_effort_cycle(s); return true; }
-  if act == CP_FRESH_TOGGLE { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) { return false; } s[0].model_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
-  if act == CP_FANOUT_OPEN { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) || !cp_has_model_picker(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
+  if act == CP_EFFORT_CYCLE { s[0].model_menu = false; s[0].effort_menu = false; cp_effort_cycle(s); return true; }
+  if act == CP_EFFORT_MENU {
+    s[0].model_menu = false;
+    s[0].usage[0].popover_open = false;
+    s[0].effort_menu = !s[0].effort_menu;
+    return true;
+  }
+  if act == CP_EFFORT_PICK {
+    lvl := cp_number(surface_id(s[0].surface[..], row), "coder.effort.");
+    s[0].effort_menu = false;
+    top := CP_EFFORT_LOW + cp_effort_count(s, cp_model_index(s)) - 1;
+    if lvl < CP_EFFORT_LOW || lvl > top { return false; }
+    s[0].effort = lvl;
+    return true;
+  }
+  if act == CP_FRESH_TOGGLE { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
+  if act == CP_FANOUT_OPEN { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) || !cp_has_model_picker(s) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
   if act == CP_MODEL_MENU {
     if !cp_has_model_picker(s) { return false; }
+    s[0].effort_menu = false;
     s[0].usage[0].popover_open = false;
     s[0].model_menu = !s[0].model_menu;
     return true;
@@ -245,6 +260,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_USAGE_POPOVER {
     if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].model_menu = false;
+    s[0].effort_menu = false;
     s[0].usage[0].popover_open = !s[0].usage[0].popover_open;
     return true;
   }
@@ -370,6 +386,13 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
     act := surface_action(s[0].surface[..], row);
     if act != CP_MODEL_MENU && act != CP_MODEL_PICK && act != CP_MODEL_LOCAL {
       s[0].model_menu = false;
+      return true;
+    }
+  }
+  if phase == 0 && s[0].effort_menu {
+    act := surface_action(s[0].surface[..], row);
+    if act != CP_EFFORT_MENU && act != CP_EFFORT_PICK && id != "coder.effort.menu" {
+      s[0].effort_menu = false;
       return true;
     }
   }

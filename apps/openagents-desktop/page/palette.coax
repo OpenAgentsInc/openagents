@@ -120,7 +120,7 @@ cp_pal_cmd :: (p: [] AppPalette, label: string, words: string, keys: string, ico
 cp_palette_show :: (s: [] CoderPage, scope: int) {
   if s[0].ov[0].dlg[0].shown { return; }
   app_menu_close(s[0].ov[0].menu[..], APP_MENU_NONE); _ := app_menu_take(s[0].ov[0].menu[..]);
-  s[0].model_menu = false;
+  s[0].model_menu = false; s[0].effort_menu = false;
   s[0].find[0].pal_mode = CP_PAL_MODE_COMMANDS;
   s[0].find[0].content_query_n = 0;
   cp_palette_fill(s);
@@ -258,5 +258,5 @@ coder_page_chat_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(a
 coder_page_toggle_sidebar :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 && !s[0].set_open { s[0].side_collapsed = !s[0].side_collapsed; } }
 // ⌘/: the composer's model menu opens or closes (only when extra model flags enable the picker).
 coder_page_toggle_models :: (s: [] CoderPage) #export_c #effects(all) {
-  if s.count > 0 && cp_has_model_picker(s) && !s[0].set_open && !cp_overlay_open(s) { s[0].model_menu = !s[0].model_menu; }
+  if s.count > 0 && cp_has_model_picker(s) && !s[0].set_open && !cp_overlay_open(s) { s[0].effort_menu = false; s[0].model_menu = !s[0].model_menu; }
 }

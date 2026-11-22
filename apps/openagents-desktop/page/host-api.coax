@@ -193,15 +193,36 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   if kind != 0 { s[0].turns[i].heard = true; }   // the turn has begun: no longer Sending…
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
-  if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
-  else if kind == MWW_ATTEMPT && l[0].gateway == "antigravity" { s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], l[0].model); }   // the model agy opened the session on: the reply's label
-  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]); }
+  if kind == MWW_REPLY {
+    if s[0].turns[i].first_tok < 0 { s[0].turns[i].first_tok = s[0].clock; }
+    cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false;
+  }
+  else if kind == MWW_ATTEMPT && l[0].gateway == "antigravity" {
+    s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], l[0].model);
+    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 { s[0].turns[i].attempt_tokens += l[0].output_tokens.value; }
+  }   // the model agy opened the session on: the reply's label
+  else if kind == MWW_ATTEMPT {
+    s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]);
+    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 { s[0].turns[i].attempt_tokens += l[0].output_tokens.value; }
+  }
+  else if kind == MWW_STATS {
+    if l[0].ttft_ms.ok && l[0].ttft_ms.value > 0 && s[0].turns[i].ttft_ms <= 0 { s[0].turns[i].ttft_ms = l[0].ttft_ms.value; }
+    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 && l[0].decode_ms.ok && l[0].decode_ms.value > 0 {
+      s[0].turns[i].stat_tokens += l[0].output_tokens.value;
+      s[0].turns[i].stat_decode_ms += l[0].decode_ms.value;
+      s[0].turns[i].tok_s_x10 = (s[0].turns[i].stat_tokens * 10000 + s[0].turns[i].stat_decode_ms / 2) / s[0].turns[i].stat_decode_ms;
+      if s[0].turns[i].tok_s_x10 < 1 { s[0].turns[i].tok_s_x10 = 1; }
+    }
+  }
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_PERMIT { cp_permit_take_line(s, -1, "", l[0], line); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_STOP_AGENT { if l[0].agent.ok { cp_agent_stopped_by_run(s, i, l[0].agent.value); } }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
-  else if kind == MWW_THOUGHT { cp_thought_add(s, i, -1, l[0].text, false); }
+  else if kind == MWW_THOUGHT {
+    if s[0].turns[i].first_tok < 0 { s[0].turns[i].first_tok = s[0].clock; }
+    cp_thought_add(s, i, -1, l[0].text, false);
+  }
   else if kind == MWW_TODOS { cp_todos_take(s, l[0].todos); }
   else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
@@ -225,6 +246,18 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
     cp_todos_reset(s);
     cp_permit_reset(s);
     s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
+    if s[0].turns[i].ttft_ms <= 0 && s[0].turns[i].first_tok >= s[0].turns[i].began {
+      fms := cast(int) ((s[0].turns[i].first_tok - s[0].turns[i].began) * 1000.0f32 + 0.5f32);
+      if fms > 0 { s[0].turns[i].ttft_ms = fms; }
+    }
+    if s[0].turns[i].tok_s_x10 <= 0 && s[0].turns[i].attempt_tokens > 0 {
+      t_start := ifx s[0].turns[i].first_tok >= s[0].turns[i].began then s[0].turns[i].first_tok else s[0].turns[i].began;
+      dms := cast(int) ((s[0].clock - t_start) * 1000.0f32 + 0.5f32);
+      if dms >= 50 {
+        s[0].turns[i].tok_s_x10 = (s[0].turns[i].attempt_tokens * 10000 + dms / 2) / dms;
+        if s[0].turns[i].tok_s_x10 < 1 { s[0].turns[i].tok_s_x10 = 1; }
+      }
+    }
     cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
   }
   return kind;

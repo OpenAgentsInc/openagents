@@ -880,3 +880,53 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   // New chat clears selection.
   #assert coder_page_new(s) && !coder_page_has_selection(s);
 }
+
+#test "finished activity summary keeps Worked for Ns without Thought process and hover info shows tok/s and TTFT" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  coder_page_set_inkling(s, true);
+  #assert coder_page_pick_model(s, "inkling-2-mini");
+  #assert coder_page_set_text(s, "who are you") && coder_page_submit(s);
+  coder_page_tick(s, 8.0f32);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Checking identity.\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"stats\",\"ttft_ms\":340,\"decode_ms\":2000,\"output_tokens\":84}") == MWW_STATS;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"I'm Microcoder, a coding agent.\"}") == MWW_ENDED;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  // Finished thought-only turn says "Worked for 8s" without "· Thought process".
+  g0 := surface_find(s[0].surface[..], "t0.grp");
+  #assert g0 >= 0 && surface_say(s[0].surface[..], g0) == "Worked for 8s";
+  // Hover-lane info shows model + tok/s + TTFT when toggled on.
+  s[0].turns[0].info = true;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  m0 := surface_find(s[0].surface[..], "t0.m");
+  #assert m0 >= 0 && surface_say(s[0].surface[..], m0) == "Psionic Metal · Inkling 2 Mini · 42.0 tok/s · 340ms TTFT";
+  // Second turn: thought + 1 command -> "Worked for 19s · Ran 1 command", and >=1s TTFT formats in seconds.
+  #assert coder_page_set_text(s, "summarize") && coder_page_submit(s);
+  coder_page_tick(s, 19.0f32);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Step 1\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"stats\",\"ttft_ms\":1240,\"decode_ms\":1000,\"output_tokens\":16}") == MWW_STATS;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  s[0].turns[1].info = true;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  g1 := surface_find(s[0].surface[..], "t1.grp");
+  #assert g1 >= 0 && surface_say(s[0].surface[..], g1) == "Worked for 19s · Ran 1 command";
+  m1 := surface_find(s[0].surface[..], "t1.m");
+  #assert m1 >= 0 && surface_say(s[0].surface[..], m1) == "Psionic Metal · Inkling 2 Mini · 16.0 tok/s · 1.2s TTFT";
+  // Save and load round-trip keeps tok/s and TTFT.
+  sb: [65536] u8; sn := coder_page_save(s, sb[..]);
+  #assert sn > 0;
+  q: [1] CoderPage; q_st: [1] CpCheckStore; r := cp_check_page(q[..], q_st[..]); cp_init(r);
+  coder_page_set_inkling(r, true);
+  #assert coder_page_load(r, cast(string) sb[0..<sn]);
+  #assert r[0].turns[0].tok_s_x10 == 420 && r[0].turns[0].ttft_ms == 340;
+  #assert r[0].turns[1].tok_s_x10 == 160 && r[0].turns[1].ttft_ms == 1240;
+  // Wall-clock + MWW_ATTEMPT fallback when MWW_STATS is absent.
+  #assert coder_page_set_text(r, "fallback") && coder_page_submit(r);
+  coder_page_tick(r, 0.5f32);
+  #assert coder_page_line(r, "{\"kind\":\"reply\",\"text\":\"Hi\"}") == MWW_REPLY;
+  coder_page_tick(r, 2.0f32);
+  #assert coder_page_line(r, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"output_tokens\":50,\"usd_micros\":1}") == MWW_ATTEMPT;
+  #assert coder_page_line(r, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hi there\"}") == MWW_ENDED;
+  #assert r[0].turns[2].ttft_ms == 500 && r[0].turns[2].tok_s_x10 == 250;
+}

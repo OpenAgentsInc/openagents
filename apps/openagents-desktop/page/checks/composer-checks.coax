@@ -192,7 +192,7 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_tokens(b[..], 1048576) == "1.05M" && cp_tokens(b[..], 2000000) == "2M" && cp_tokens(b[..], 1500000) == "1.5M";
 }
 
-#test "the foot's effort chip beside the model: Antigravity's default from Settings else Medium, Microcoder's Low; a press steps it, the task line names it, the chat keeps it" {
+#test "the foot's effort chip beside the model: click opens the 3-option menu, Shift+Tab cycles levels, the task line names it, the chat keeps it" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
   coder_page_set_agy(s, true);
   #assert coder_page_pick_model(s, "agy") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
@@ -205,11 +205,29 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   coder_page_settings_agy(s, "Installed", 0, "Default · high", "Isolated profile");
   #assert cp_effort_label(s, cp_model_index(s)) == "High";
   coder_page_settings_agy(s, "Installed", 0, "Default", "Isolated profile");
-  // a press steps Medium to High, then wraps to Low
-  #assert cp_press(s, eff) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  // clicking the effort chip opens the dropdown menu with Low, Medium, High (does not cycle directly)
+  #assert !s[0].effort_menu && cp_press(s, eff) && s[0].effort_menu && s[0].effort == CP_EFFORT_DEFAULT;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.effort")) == "High" && s[0].effort == CP_EFFORT_HIGH;
-  cp_effort_cycle(s); #assert s[0].effort == CP_EFFORT_LOW && cp_effort_label(s, cp_model_index(s)) == "Low";
+  #assert elt_find(t[..], "coder.effort.menu") >= 0;
+  o1 := elt_find(t[..], "coder.effort.1"); o2 := elt_find(t[..], "coder.effort.2"); o3 := elt_find(t[..], "coder.effort.3");
+  #assert o1 >= 0 && o2 >= 0 && o3 >= 0 && elt_find(t[..], "coder.effort.4") < 0;
+  // Escape closes the effort menu without changing level
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && !s[0].effort_menu && s[0].effort == CP_EFFORT_DEFAULT;
+  // re-open menu and pick High (option 3)
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert cp_press(s, elt_find(t[..], "coder.effort")) && s[0].effort_menu && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert cp_press(s, elt_find(t[..], "coder.effort.3")) && !s[0].effort_menu && s[0].effort == CP_EFFORT_HIGH;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.effort")) == "High";
+  // Shift+Tab cycles High -> Low -> Medium -> High
+  #assert coder_page_key(s, -15, MOD_SHIFT) && s[0].effort == CP_EFFORT_LOW && cp_effort_label(s, cp_model_index(s)) == "Low";
+  #assert coder_page_key(s, -15, MOD_SHIFT) && s[0].effort == CP_EFFORT_MEDIUM && cp_effort_label(s, cp_model_index(s)) == "Medium";
+  #assert coder_page_key(s, -15, MOD_SHIFT) && s[0].effort == CP_EFFORT_HIGH && cp_effort_label(s, cp_model_index(s)) == "High";
+  #assert coder_page_key(s, -15, MOD_SHIFT) && s[0].effort == CP_EFFORT_LOW && cp_effort_label(s, cp_model_index(s)) == "Low";
   // the task line names the picked effort
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   #assert coder_page_set_text(s, "fix it") && coder_page_submit(s);

@@ -174,7 +174,10 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   for j: 0..<nagents { app_act_count(c[..], APP_ACT_AGENT, s[0].turns[i].agents[j].state == CP_FAILED); }
   sb: [256] u8; sn := 0;
   said := 0;   // "Worked for 42s", once done
-  if worked >= 0 { said = el_put(sb[..], 0, "Worked for "); said = el_put_i(sb[..], said, worked); said = el_put(sb[..], said, "s"); }
+  if worked >= 0 {
+    said = el_put(sb[..], 0, "Worked for "); said = el_put_i(sb[..], said, worked); said = el_put(sb[..], said, "s");
+    c[0].thoughts = 0;   // finished summary keeps "Worked for Ns" without a redundant "Thought process" suffix
+  }
   wn := ifx said > 0 then el_put(sb[..], said, " · ") else 0;
   sn = wn + app_act_summary(sb[wn..<sb.count], c[0]);
   if sn == wn { sn = ifx said > 0 then said else el_put(sb[..], 0, "Worked"); }   // nothing counted: "Worked for 42s" alone
@@ -416,8 +419,12 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
           show_meta := q_vis && (info_hov || s[0].turns[i].info);
           meta_x := info_x + lane_btn + a.gap_small;
           meta_w := x + cw - meta_x - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
-          // Model/harness metadata stays hidden behind the hover-lane info icon until hovered or toggled.
-          if show_meta && meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), meta_x, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
+          // Model/harness metadata (with tok/s and TTFT) stays hidden behind the hover-lane info icon until hovered or toggled.
+          if show_meta && meta_w > 24 {
+            mb: [160] u8;
+            info_txt := sheet_pool(f[0].sheet, cp_turn_info_text(s, i, mb[..]));
+            _ := app_meta(f, cp_id(ib[..], i, ".m"), meta_x, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, info_txt, false);
+          }
           cp_info_button(f, info_id, info_x, y, q_vis, s[0].turns[i].info, CP_TURN_INFO);
           if has_quote { cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, q_vis, did, CP_COPY_REPLY);
@@ -885,10 +892,11 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if cp_has_model_picker(s) && s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
+  if s[0].effort_menu { cp_effort_menu(s, f, x, cw, s[0].effort_x, box_y, foot_y, h); }
   if cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
-  if !(cp_has_model_picker(s) && s[0].model_menu) && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
+  if !(cp_has_model_picker(s) && s[0].model_menu) && !s[0].effort_menu && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -924,7 +932,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   border := cast(f32) ZC_BORDER;
   radius := k.cmp.radius; if radius > g.height / 2 { radius = g.height / 2; }
   text := eb_text(s[0].draft[..]);
-  editing := cp_composer_focused(s) && !s[0].model_menu;
+  editing := cp_composer_focused(s) && !s[0].model_menu && !s[0].effort_menu;
   th := cp_theme();
   z_solid := th.surface; z_edge := th.border; z_edge_focus := th.line_strong;
   z_pri_bg := th.primary; z_pri_hov := th.primary_hover; z_pri_prs := th.primary_active; z_pri_ink := th.bg;
@@ -1057,7 +1065,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   w_fu := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else 0.0f32;
   has_picker := cp_has_model_picker(s);
   w_model := ifx has_picker then cp_foot_chip_width(f, -1, m_label, true) else 0.0f32;
-  w_effort := cp_foot_chip_width(f, -1, e_label, false);
+  w_effort := cp_foot_chip_width(f, -1, e_label, true);
   w_ring := c.chip_h;
   w_usage := c.chip_h;
   w_cost := cp_foot_chip_width(f, -1, cost, false);
@@ -1095,9 +1103,11 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if has_picker && mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
   // the effort chip: sits beside the model chip when the picker is shown, or at the left edge in single-model mode
   eff_gap := ifx has_picker && mw > 0 then gap else 0.0f32;
+  s[0].effort_x = fx + eff_gap;
   if (!has_picker || mw > 0) && fx + eff_gap + w_effort <= end_x {
     fx += eff_gap;
-    fx += cp_foot_chip(f, "coder.effort", "Effort (low, medium, high)", fx, y, w_effort, -1, e_label, false, 0, CP_EFFORT_CYCLE);
+    s[0].effort_x = fx;
+    fx += cp_foot_chip(f, "coder.effort", "Thinking level (⇧Tab)", fx, y, w_effort, -1, e_label, true, ifx s[0].effort_menu then EL_S_CURRENT else 0, CP_EFFORT_MENU);
   }
   // the right side, from the end: working folder at the far right, then context ring, cost, and goal;
   // when space is tight, the working folder shrinks before the left chips ever truncate
@@ -1261,5 +1271,63 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   _ := sheet_text(sh, f[0].m, -1, ltx, lry + 3.0f32, k.label.line, k.label.face, ifx s[0].inkling then z_sec else z_ink, app_fit(f, k.label.face, llabel, ltw));
   _ := sheet_text(sh, f[0].m, -1, ltx, lry + 21.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, ldesc, ltw));
   sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
+  if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
+}
+// The thinking-level menu, anchored to the effort chip at (e_x, foot_y): shows Low, Medium, High
+// (and X-High, Max on Claude models), styled to match cp_model_menu.
+cp_effort_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, e_x: f32, box_y: f32, foot_y: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
+  glass := cp_glass(s);
+  idx := cp_model_index(s);
+  count := cp_effort_count(s, idx);
+  cur := cp_effort_at(s, idx);
+  pw := 216.0f32;
+  if pw > cw { pw = cw; }
+  pad := 6.0f32;
+  rh := 40.0f32;
+  ph := pad * 2 + cast(f32) count * rh;
+  px := e_x;
+  if px + pw > x + cw { px = x + cw - pw; }
+  if px < x { px = x; }
+  below_y := foot_y + k.cmp.chip_h + 6.0f32;
+  py := ifx below_y + ph <= h - 8.0f32 then below_y else box_y - ph - 6.0f32;
+  if py < 8.0f32 { py = 8.0f32; }
+  menu_r := 12.0f32;
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, k.shadows.menu));
+  if glass {
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, px, py, px + pw, py + ph));
+    sheet_over_n(sh, prim_backdrop(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, cp_glass_blur(s)));
+  }
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32, ifx glass then opacity(th.menu, 0.8) else th.menu, th.line));
+  card_row := uiframe_semantic(f, "coder.effort.menu", EL_REGION, "Thinking level", px, py, pw, ph, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
+  labels := CP_EFFORT_LABEL;
+  eb: [32] u8;
+  for ei: 0..<count {
+    lvl := CP_EFFORT_LOW + ei;
+    ry := py + pad + cast(f32) ei * rh;
+    en := el_put(eb[..], 0, "coder.effort."); en = el_put_i(eb[..], en, lvl);
+    eid := sheet_pool(sh, cast(string) eb[0..<en]);
+    sel := lvl == cur;
+    hov := uiframe_hover(f, KEYED_LAZY, eid);
+    label := labels[lvl];
+    desc := cp_effort_desc(lvl);
+    erow := uiframe_semantic(f, eid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_EFFORT_PICK);
+    elt_value(f[0].rows, erow, desc);
+    if hov > 0 || sel {
+      fill := ifx sel then rgba_mix(th.menu_selected, z_hov, hov) else opacity(z_hov, hov);
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1.0f32, pw - 2 * pad, rh - 2.0f32, k.cmp.chip_radius, 0, fill, Rgba.{}));
+    }
+    tx := px + pad + 10.0f32;
+    tw := pw - 2 * pad - 34.0f32;
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + 3.0f32, k.label.line, k.label.face, z_ink, app_fit(f, k.label.face, label, tw));
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + 21.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, desc, tw));
+    if sel {
+      ck := 14.0f32;
+      sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10.0f32 - ck, ry + (rh - ck) / 2, ck, ck, z_ink));
+    }
+    sheet_hit(sh, UIFRAME_HIT, erow, 0, px + pad, ry, pw - 2 * pad, rh);
+  }
   if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
 }

@@ -319,7 +319,7 @@ cp_voice_insert :: (s: [] CoderPage, raw: string) -> bool {
 cp_voice_press :: (s: [] CoderPage, act: int) -> bool {
   v := s[0].voice[..];
   if act == CP_VOICE_MIC || act == CP_VOICE_STOP {
-    s[0].model_menu = false;
+    s[0].model_menu = false; s[0].effort_menu = false;
     s[0].usage[0].popover_open = false;
     s[0].ask = CP_ASK_VOICE_TOGGLE;
     return true;

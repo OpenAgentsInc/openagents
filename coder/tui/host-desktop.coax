@@ -417,7 +417,7 @@ dk_sub_rows :: (s: [] Session, k: int, id: string, running: bool, file: [] u8, a
     ar[0].at = 0; ar[0].full = false;
     kind := mww_read(ar[..], line, l[..]);
     if kind == MWW_REPLY { nsaid = hs_cat(said[..], nsaid, l[0].text); continue; }
-    if kind == MWW_NONE || kind == MWW_READY || kind == MWW_JOURNAL || kind == MWW_ATTEMPT || kind == MWW_THOUGHT || kind == MWW_TODOS { continue; }
+    if kind == MWW_NONE || kind == MWW_READY || kind == MWW_JOURNAL || kind == MWW_ATTEMPT || kind == MWW_THOUGHT || kind == MWW_TODOS || kind == MWW_STATS { continue; }
     if nsaid > 0 { _ = s_sub_add(s, k, false, "", cast(string) said[0..<nsaid], ""); nsaid = 0; }
     if kind == MWW_ASK {
       if s_sub_add(s, k, true, "Bash", l[0].command, "") { s[0].parts[k].subcalls += 1; dk_now(s, k, "Bash", l[0].command); }

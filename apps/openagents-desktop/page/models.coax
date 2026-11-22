@@ -387,6 +387,34 @@ cp_turn_meta :: (s: [] CoderPage, i: int) -> string {
   return cp_model_meta(s, t);
 }
 
+// Reply hover-lane info line: model/harness label plus measured decode speed (tok/s) and TTFT when available.
+cp_turn_info_text :: (s: [] CoderPage, i: int, out: [] u8) -> string {
+  n := el_put(out, 0, cp_turn_meta(s, i));
+  tps := s[0].turns[i].tok_s_x10;
+  if tps > 0 {
+    n = el_put(out, n, " · ");
+    n = el_put_i(out, n, tps / 10);
+    n = el_put(out, n, ".");
+    n = el_put_i(out, n, tps % 10);
+    n = el_put(out, n, " tok/s");
+  }
+  ttft := s[0].turns[i].ttft_ms;
+  if ttft > 0 {
+    n = el_put(out, n, " · ");
+    if ttft < 1000 {
+      n = el_put_i(out, n, ttft);
+      n = el_put(out, n, "ms TTFT");
+    } else {
+      ds := (ttft + 50) / 100;
+      n = el_put_i(out, n, ds / 10);
+      n = el_put(out, n, ".");
+      n = el_put_i(out, n, ds % 10);
+      n = el_put(out, n, "s TTFT");
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
 coder_page_agy_seen :: (s: [] CoderPage, id: string, name: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].agy_seen_n = cp_out(s[0].agy_seen[..], id);
@@ -505,6 +533,12 @@ coder_page_model_claude :: (s: [] CoderPage) -> bool #export_c #effects(all) { r
 CP_EFFORT_DEFAULT :: 0; CP_EFFORT_LOW :: 1; CP_EFFORT_MEDIUM :: 2; CP_EFFORT_HIGH :: 3; CP_EFFORT_XHIGH :: 4; CP_EFFORT_MAX :: 5;
 CP_EFFORT_WORD :: [6] string.["", "low", "medium", "high", "xhigh", "max"];
 CP_EFFORT_LABEL :: [6] string.["", "Low", "Medium", "High", "X-High", "Max"];
+CP_EFFORT_DESC :: [6] string.["", "Fast, minimal reasoning", "Balanced speed & depth", "Deep reasoning", "Extra-deep reasoning", "Maximum reasoning"];
+cp_effort_count :: (s: [] CoderPage, idx: int) -> int { return ifx cp_is_claude(s, idx) then CP_CLAUDE_EFFORTS else 3; }
+cp_effort_desc :: (level: int) -> string {
+  descs := CP_EFFORT_DESC;
+  return ifx level >= CP_EFFORT_LOW && level <= CP_EFFORT_MAX then descs[level] else "";
+}
 // The thinking level Settings set for Claude model slot (which of CP_CLAUDE_ID), 0..<CP_CLAUDE_EFFORTS.
 cp_claude_effort :: (s: [] CoderPage, slot: int) -> int {
   if s.count < 1 || slot < 0 || slot >= CP_CLAUDE_MODELS { return CP_CLAUDE_EFFORT_START; }

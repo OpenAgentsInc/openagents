@@ -194,7 +194,7 @@ cp_settings_show :: (s: [] CoderPage, open: bool, page: int) {
   if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { s[0].set_scroll = 0; } s[0].set_page = page; }
   if open && !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
   if open == s[0].set_open { return; }
-  s[0].set_open = open; s[0].model_menu = false; s[0].usage[0].popover_open = false;
+  s[0].set_open = open; s[0].model_menu = false; s[0].effort_menu = false; s[0].usage[0].popover_open = false;
   if !open { s[0].set_query_n = 0; s[0].set_target_n = 0; }
   s[0].fld[0].kb = ifx open then CP_KB_NONE else CP_KB_COMPOSER;
   s[0].ask = CP_ASK_SETTINGS;

@@ -152,7 +152,7 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
     over := cp_overlay_open(s);
     for i: 0..<CP_EDS {
       if (i == CP_ED_DIALOG || i == CP_ED_PALETTE) && cp_ed_which(s) != i { continue; }
-      if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu) { continue; }
+      if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu || s[0].effort_menu) { continue; }
       if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
       if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
       if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }
@@ -203,6 +203,10 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     s[0].model_menu = false;
     return true;
   }
+  if s[0].effort_menu && key == KEY_ESCAPE && mods == 0 {
+    s[0].effort_menu = false;
+    return true;
+  }
   if s[0].set_open && key == KEY_ESCAPE && mods == 0 {
     if coder_page_search_clear(s) { return true; }
     coder_page_settings_open(s, -2, "");
@@ -218,6 +222,12 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
   }
   if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { return cp_term_key(s, key, mods); }
   which := cp_ed_which(s);
+  if !cp_overlay_open(s) && !s[0].set_open && key == -15 && mods == MOD_SHIFT && (which < 0 || which == CP_ED_COMPOSER) {
+    s[0].model_menu = false;
+    s[0].effort_menu = false;
+    cp_effort_cycle(s);
+    return true;
+  }
   if !cp_overlay_open(s) && !s[0].set_open && key == 97 && mods == MOD_CMD && (which < 0 || (which == CP_ED_COMPOSER && eb_text(s[0].draft[..]).count == 0)) {
     if cp_sel_select_all(s) { return true; }
   }

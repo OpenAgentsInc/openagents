@@ -524,7 +524,7 @@ cp_ed_over :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
   over := cp_overlay_open(s);
   for i: 0..<CP_EDS {
     if (i == CP_ED_DIALOG || i == CP_ED_PALETTE) && cp_ed_which(s) != i { continue; }
-    if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu) { continue; }
+    if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu || s[0].effort_menu) { continue; }
     if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
     if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
     if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }

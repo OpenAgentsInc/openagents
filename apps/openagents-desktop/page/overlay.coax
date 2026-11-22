@@ -123,7 +123,7 @@ coder_page_dialog_button :: (s: [] CoderPage, label: string, kind: int, aside: b
 }
 coder_page_dialog_show :: (s: [] CoderPage, confirm: int, cancel: int, focus: int) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].model_menu = false;
+  s[0].model_menu = false; s[0].effort_menu = false;
   d := s[0].ov[0].dlg[..];
   app_dialog_open(d, confirm, cancel);
   if focus >= 0 && focus < d[0].nf { d[0].focus = focus; }
@@ -164,7 +164,7 @@ coder_page_menu_item :: (s: [] CoderPage, label: string, kind: int, checked: boo
 }
 coder_page_menu_show :: (s: [] CoderPage, x: f32, y: f32) #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) || s[0].ov[0].dlg[0].shown || s[0].ov[0].pal[0].shown { return; }
-  s[0].model_menu = false;
+  s[0].model_menu = false; s[0].effort_menu = false;
   app_menu_open(s[0].ov[0].menu[..], x / s[0].d, y / s[0].d);
 }
 // The menu's answer once: the item chosen, -1 when it closed with none, -2 while none is owed.

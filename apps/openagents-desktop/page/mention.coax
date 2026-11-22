@@ -150,7 +150,7 @@ cp_mn_pick :: (s: [] CoderPage, k: int) -> bool {
   if !done { return false; }
   cp_ed_publish(s, CP_ED_COMPOSER);
   mn[0].open = false; mn[0].shut = -1;
-  if mn[0].trigger == '/' && hit == CP_CMD_MODEL && cp_has_model_picker(s) { s[0].model_menu = true; }
+  if mn[0].trigger == '/' && hit == CP_CMD_MODEL && cp_has_model_picker(s) { s[0].effort_menu = false; s[0].model_menu = true; }
   if mn[0].trigger == '/' && hit == CP_CMD_NEW { _ = cp_new(s); }
   if mn[0].trigger == '/' && hit >= CP_CMD_FORK && hit <= CP_CMD_STASH { _ = cp_rich_run_cmd(s, hit); }
   return true;

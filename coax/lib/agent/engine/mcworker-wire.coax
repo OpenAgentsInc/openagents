@@ -76,6 +76,7 @@ MWW_STOP_AGENT :: 26;
 MWW_TODOS :: 27;               // {"kind":"todos","todos":[{"id":I,"content":C,"status":S}]}: live agent checklist
 MWW_DEVICE :: 28;              // {"kind":"device","op":OP,"ok":B,"shot":P}: after an oasim command's line, what it did to the simulator (GitHub #13811)
 MWW_PERMIT :: 29;              // {"kind":"permit","ticket":N,"question":B,"title":T,"command":C,"options":O}: interactive permission or user-input question (GitHub #13831)
+MWW_STATS :: 30;               // {"kind":"stats","ttft_ms":N,"decode_ms":N,"output_tokens":N}: per-attempt inference timing (TTFT and decode speed)
 // queue ops
 MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
@@ -364,6 +365,14 @@ mww_reply :: (o: [] u8, text: string) -> int {
 mww_attempt :: (o: [] u8, gateway: string, model: string, effort: string, outcome: string, status: int, values: [] int) -> int {
   return cst_attempt(o, "", gateway, model, effort, outcome, status, values);
 }
+// Per-attempt inference timing emitted beside a finished attempt: time-to-first-token (ms, -1
+// unknown), decode window (ms, 0 unknown), and generated output tokens (0 unknown).
+mww_stats :: (o: [] u8, ttft_ms: int, decode_ms: int, output_tokens: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"stats\",\"ttft_ms\":"); n = json_write_int(o, n, ttft_ms);
+  n = json_raw(o, n, ",\"decode_ms\":"); n = json_write_int(o, n, decode_ms);
+  n = json_raw(o, n, ",\"output_tokens\":"); n = json_write_int(o, n, output_tokens);
+  return json_raw(o, n, "}");
+}
 mww_command :: (o: [] u8, command: string, exit: int, timed_out: bool, output: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, command);
   n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, exit);
@@ -500,6 +509,7 @@ MwwLine :: struct {
   op: string;                    // queue_refused; device: the oasim verb
   ok: ClBool; shot: string;      // device: whether it went, the screenshot it took ("" for none)
   question: ClBool; title: string; options: string;   // permit: interactive permission or user-input question
+  ttft_ms: JsonInt; decode_ms: JsonInt;               // stats: time-to-first-token and decode duration in ms
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
 // they hold until either changes. A string that does not fit in ar reads as "".
@@ -551,6 +561,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "queue" { k = MWW_QUEUED; l[0].paused = cl_bool(line, "paused"); l[0].reason = cl_str(ar, line, "reason"); l[0].active = cl_str(ar, line, "active"); l[0].items = cl_raw(line, "items"); }
   else if kind == "stop_agent" { k = MWW_STOP_AGENT; l[0].agent = cl_int(line, "agent"); }
   else if kind == "device" { k = MWW_DEVICE; l[0].op = cl_str(ar, line, "op"); l[0].ok = cl_bool(line, "ok"); l[0].shot = cl_str(ar, line, "shot"); }
+  else if kind == "stats" { k = MWW_STATS; l[0].ttft_ms = cl_int(line, "ttft_ms"); l[0].decode_ms = cl_int(line, "decode_ms"); l[0].output_tokens = cl_int(line, "output_tokens"); }
   else if kind == "queue_refused" { k = MWW_QUEUE_REFUSED; l[0].op = cl_str(ar, line, "op"); l[0].id = cl_str(ar, line, "id"); l[0].reason = cl_str(ar, line, "reason"); }
   l[0].kind = k;
   return k;
@@ -840,6 +851,9 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_PERMIT && l[0].options == "[]";
   n = mww_permit(o[..], 12, false, "T", "", "0");
   #assert cast(string) o[0..<n] == "{\"kind\":\"permit\",\"ticket\":12,\"question\":false,\"title\":\"T\",\"command\":\"\",\"options\":0}";
+  n = mww_stats(o[..], 340, 2100, 88);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"stats\",\"ttft_ms\":340,\"decode_ms\":2100,\"output_tokens\":88}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STATS && l[0].ttft_ms.ok && l[0].ttft_ms.value == 340 && l[0].decode_ms.ok && l[0].decode_ms.value == 2100 && l[0].output_tokens.ok && l[0].output_tokens.value == 88;
 }
 
 #test "microcoder worker lines: task flags, request kinds, explicit false booleans and task_read guards" {

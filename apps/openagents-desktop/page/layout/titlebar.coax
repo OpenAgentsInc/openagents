@@ -78,7 +78,7 @@ cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
 // page's takes it: the host then moves the window, or a double-click zooms it as the system says
 // (Window+TitleBar.swift). A dialog, a menu or a sidebar's edge keeps its press.
 coder_page_bar_drags :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || !s[0].ready || cp_overlay_open(s) || s[0].model_menu { return false; }
+  if s.count < 1 || !s[0].ready || cp_overlay_open(s) || s[0].model_menu || s[0].effort_menu { return false; }
   sc := cp_scale(s); ux := x / sc; uy := y / sc;
   if uy < 0 || uy >= cp_bar(s) || cp_edge(s, ux) != 0 { return false; }
   return surface_action(s[0].surface[..], surface_hit(s[0].surface[..], ux, uy)) == 0;

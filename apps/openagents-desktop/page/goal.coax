@@ -62,8 +62,9 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   s[0].migrated_from_n = 0;
   s[0].turns[i].began = s[0].clock; s[0].turns[i].fold = APP_ACT_UNCHOSEN;
   s[0].turns[i].heard = false; s[0].turns[i].took = -1; s[0].turns[i].ask_open = false; s[0].turns[i].seen_h = 0;
+  s[0].turns[i].ttft_ms = 0; s[0].turns[i].tok_s_x10 = 0; s[0].turns[i].stat_tokens = 0; s[0].turns[i].stat_decode_ms = 0; s[0].turns[i].attempt_tokens = 0; s[0].turns[i].first_tok = -1;
   s[0].rev_n += 1; s[0].turns[i].rev = s[0].rev_n;
-  s[0].model_menu = false;
+  s[0].model_menu = false; s[0].effort_menu = false;
   s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1; s[0].pane_manual = false;
   s[0].goal_prompt_kind = prompt_kind;
   if s[0].goal_status == CP_GOAL_ACTIVE {
