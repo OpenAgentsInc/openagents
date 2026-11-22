@@ -10,8 +10,8 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
     tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
     t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
   }
-  rb: [64] u8; rn := ifx s[0].chats[q].folder_n > 0 then cp_sb_folder_label(cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n], rb[..]) else cp_out(rb[..], "General");
-  repo_str := sheet_pool(f[0].sheet, cast(string) rb[0..<rn]);
+  rb: [64] u8; rn := ifx s[0].chats[q].folder_n > 0 then cp_sb_folder_label(cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n], rb[..]) else 0;
+  repo_str := ifx rn > 0 then sheet_pool(f[0].sheet, cast(string) rb[0..<rn]) else "";
   br_str := ifx s[0].chats[q].branch_n > 0 then cast(string) s[0].chats[q].branch[0..<s[0].chats[q].branch_n] else "";
   st_str := "";
   if sel {
@@ -28,7 +28,7 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      unread = s[0].chats[q].unread && !is,
                      status = st_str,
                      attention = sel,
-                     icon = ICON_FOLDER,
+                     icon = ifx rn > 0 then ICON_FOLDER else -1,
                      card = true,
                      repo = repo_str,
                      branch = br_str,
@@ -81,7 +81,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
   stop := sy + 2.0f32;
-  rows: [CP_CHATS + CP_SB_MAX_GROUPS * 2 + 12] AppSideRow;
+  rows: [CP_CHATS + 12] AppSideRow;
   nrows := 0;
   s[0].sb[0].vis_n = 0;
   now_ms := s[0].sb[0].now_ms;
@@ -93,7 +93,6 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       if s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { npinned += 1; }
     }
   }
-  has_projects := !is_arch && cp_sb_has_projects(s);
   visible_chats := 0;
   pin_start_y := a.side_head;
   if is_arch {
@@ -135,95 +134,18 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
         nrows += 1; visible_chats += 1;
       }
     }
-    // Projects section (Antigravity layout): heading with trailing folder-plus button, then folder rows.
-    rows[nrows] = AppSideRow.{id = "coder.projects", title = "Projects", heading = true,
-                              trail_icon = ICON_FOLDER_ADD,
-                              head_btn_id = "coder.sb.add_project",
-                              head_btn_label = "Add project",
-                              head_btn_action = CP_SB_ADD_PROJECT_ACT};
-    nrows += 1;
-    if has_projects {
-      for g: 0..<s[0].sb[0].nprojects {
-        ppath := cast(string) s[0].sb[0].projects[g].path[0..<s[0].sb[0].projects[g].path_n];
-        gcount := 0;
-        gworking := 0;
-        for q: 0..<s[0].nchats {
-          if !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
-          if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] != ppath { continue; }
-          if cp_sb_is_working(s, q, cur, running) { gworking += 1; continue; }
-          if !s[0].chats[q].pinned { gcount += 1; }
-        }
-        if gcount == 0 && gworking == 0 && !s[0].sb[0].projects[g].added { continue; }
-        pid_b: [32] u8; pn := el_put(pid_b[..], 0, "coder.proj."); pn = el_put_i(pid_b[..], pn, g);
-        collapsed := s[0].sb[0].projects[g].collapsed;
-        proj_working := collapsed && gworking > 0;
-        cnt_s := "";
-        show_cnt := ifx proj_working then gworking else gcount;
-        if show_cnt > 0 {
-          cnt_b: [16] u8; cn := el_put_i(cnt_b[..], 0, show_cnt);
-          cnt_s = sheet_pool(f[0].sheet, cast(string) cnt_b[0..<cn]);
-        }
-        rows[nrows] = AppSideRow.{id = sheet_pool(f[0].sheet, cast(string) pid_b[0..<pn]),
-                                  title = cast(string) s[0].sb[0].projects[g].label[0..<s[0].sb[0].projects[g].label_n],
-                                  status = cnt_s,
-                                  state = EL_S_EXPANDS | (ifx !collapsed then EL_S_EXPANDED else 0) | (ifx proj_working then EL_S_BUSY else 0),
-                                  icon = ICON_FOLDER,
-                                  trail_icon = ifx collapsed then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
-                                  action = CP_SB_GROUP_TOGGLE};
-        nrows += 1;
-        if !collapsed {
-          show_all := s[0].sb[0].projects[g].show_all;
-          shown := 0;
-          for q: 0..<s[0].nchats {
-            if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
-            if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] == ppath {
-              if !show_all && shown >= CP_SB_GROUP_LIMIT { break; }
-              cr := cp_side_chat_row(s, f, q, cur, running);
-              cr.indent = a.icon + a.row_inset;
-              cr.tree_line = true;
-              rows[nrows] = cr;
-              nrows += 1; visible_chats += 1; shown += 1;
-            }
-          }
-          if !show_all && gcount > CP_SB_GROUP_LIMIT {
-            ab_id: [32] u8; an := el_put(ab_id[..], 0, "coder.proj.all."); an = el_put_i(ab_id[..], an, g);
-            rows[nrows] = AppSideRow.{id = sheet_pool(f[0].sheet, cast(string) ab_id[0..<an]),
-                                      title = "See all",
-                                      indent = a.icon + a.row_inset,
-                                      tree_line = true,
-                                      action = CP_SB_GROUP_ALL};
-            nrows += 1;
-          }
-        }
-      }
-      // Active non-pinned, non-working chats without a folder go in a trailing General section.
-      unassigned := 0;
+    // Single chronological list of all active chats, most recent message first.
+    nrecent := 0;
+    for q: 0..<s[0].nchats {
+      if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { nrecent += 1; }
+    }
+    if nrecent > 0 || s[0].chats_more > 0 {
+      rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
+      nrows += 1;
       for q: 0..<s[0].nchats {
-        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) && s[0].chats[q].folder_n == 0 { unassigned += 1; }
-      }
-      if unassigned > 0 {
-        rows[nrows] = AppSideRow.{id = "coder.chats", title = "General", heading = true};
-        nrows += 1;
-        for q: 0..<s[0].nchats {
-          if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) && s[0].chats[q].folder_n == 0 {
-            rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
-            nrows += 1; visible_chats += 1;
-          }
-        }
-      }
-    } else {
-      nrecent := 0;
-      for q: 0..<s[0].nchats {
-        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { nrecent += 1; }
-      }
-      if nrecent > 0 || s[0].chats_more > 0 {
-        rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
-        nrows += 1;
-        for q: 0..<s[0].nchats {
-          if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
-          rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
-          nrows += 1; visible_chats += 1;
-        }
+        if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
+        rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
+        nrows += 1; visible_chats += 1;
       }
     }
   }
@@ -235,7 +157,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   if stop + me_h > h { me_h = 0; }
   s[0].side_view = h - stop - footer_h - me_h;
   bottom_pad := 16.0f32;
-  show_tail := (is_arch && visible_chats == 0) || (!is_arch && visible_chats == 0 && !has_projects) || (!is_arch && s[0].chats_more > 0);
+  show_tail := (is_arch && visible_chats == 0) || (!is_arch && visible_chats == 0 && nworking == 0) || (!is_arch && s[0].chats_more > 0);
   tail := ifx show_tail then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
   s[0].side_content = app_side_window_at(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, s[0].side_scr[0].stretch, tail, CP_CHAT);
   if s[0].cmd_hints && s[0].side_view > 0 {
@@ -247,7 +169,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       rh := app_side_height(f, r);
       ry := stop + cursor - at;
       cursor += rh;
-      if r.heading || r.action == CP_SB_GROUP_TOGGLE || r.action == CP_SB_GROUP_ALL || r.action == CP_SB_WORKING_TOGGLE { continue; }
+      if r.heading || r.action == CP_SB_WORKING_TOGGLE { continue; }
       slot += 1;
       if slot > 9 { break; }
       if ry + rh <= stop || ry >= stop + s[0].side_view { continue; }

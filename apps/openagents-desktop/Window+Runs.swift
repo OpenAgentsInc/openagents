@@ -420,7 +420,7 @@ extension CoderWindow {
         return ""
     }
     /// The list as the page reads it: one chat a line, its id, a tab, its title, and optional tabs
-    /// for busy, pinned, managed, unread, archived, snoozed_until_ms, project_folder, updated_ms,
+    /// for busy, pinned, managed, unread, archived, snoozed_until_ms, folder, updated_ms,
     /// branch, and harness (#13875).
     var chatLines: String {
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
@@ -432,18 +432,18 @@ extension CoderWindow {
             let isUnread = unread.contains(chat.id)
             let isArchived = store.isArchived(chat.id)
             let snoozeMs = store.snoozedUntil(chat.id)
-            let proj = store.effectiveProjectFolder(chat)
+            let dir = store.effectiveFolder(chat)
                 .replacingOccurrences(of: "\t", with: " ")
                 .replacingOccurrences(of: "\n", with: "")
             let updatedMs = Int64(chat.updated * 1000)
             let branch: String
             if let wb = chat.worktreeBranch, !wb.isEmpty, !CoderWindow.isAutoWorktreeBranch(wb) {
                 branch = wb
-            } else if let cached = branchCache[proj] {
+            } else if let cached = branchCache[dir] {
                 branch = cached
             } else {
-                let b = CoderWindow.quickGitBranch(at: proj)
-                branchCache[proj] = b
+                let b = CoderWindow.quickGitBranch(at: dir)
+                branchCache[dir] = b
                 branch = b
             }
             let prog = (runs[chat.id] ?? (chat.id == self.chat ? run : nil))?.worker.program ?? ""
@@ -453,7 +453,7 @@ extension CoderWindow {
                 : prog == "codex" ? "codex"
                 : "psionic"
             let cleanBranch = branch.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: "")
-            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + proj + "\t" + String(updatedMs) + "\t" + cleanBranch + "\t" + harness
+            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + dir + "\t" + String(updatedMs) + "\t" + cleanBranch + "\t" + harness
         }.joined(separator: "\n")
     }
     var isForemanShown: Bool { chat == Foreman.chatID }

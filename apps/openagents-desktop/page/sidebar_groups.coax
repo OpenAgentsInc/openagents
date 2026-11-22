@@ -1,17 +1,13 @@
-// Coder Desktop page (../page.coax): project-grouped sidebar, archiving, snoozing,
+// Coder Desktop page (../page.coax): sidebar working shelf, archiving, snoozing,
 // multi-select bulk actions, and undo toast (GitHub #13875).
 //
 // Owns:
-// - Project/repo grouping by working folder with collapsible headers and explicit
-//   added/dropped projects (lifting the old 50-chat visibility cap via CP_CHATS).
 // - Active vs. Archived view toggle & filtering (wired to DaemonSessionMeta.archived).
 // - Snooze wake-time filtering (snoozed_until_ms) with automatic resurfacing when now_ms >= wake.
 // - Multi-select (Cmd-click toggle, Shift-click contiguous range) + bulk archive/restore/delete/pin bar.
 // - Floating Undo toast with interactive Undo button, Close button, and auto-dismiss timer.
 
-CP_CHAT_FOLDER :: 160;        // bytes of a chat's project/working folder path
-CP_SB_MAX_GROUPS :: 64;       // max distinct project groups shown in sidebar
-CP_SB_GROUP_LIMIT :: 10;      // max chats shown per expanded project before "See all"
+CP_CHAT_FOLDER :: 160;        // bytes of a chat's working folder path
 CP_SB_UNDO_TEXT :: 160;       // bytes of undo toast message
 CP_SB_UNDO_LIFE :: 6.0f32;    // default undo toast auto-dismiss seconds
 
@@ -29,19 +25,15 @@ CP_ASK_SIDEBAR :: 62;
 
 // Sidebar host operations (coder_page_sb_op).
 CP_SB_OP_NONE :: 0;
-CP_SB_OP_ADD_PROJECT :: 1;    // user pressed "+ Project" -> host opens folder picker
-CP_SB_OP_DROP_PROJECT :: 2;   // user dropped a folder -> host reads coder_page_sb_drop_path
 CP_SB_OP_BULK_ARCHIVE :: 3;   // bulk archive selected chats (coder_page_sb_selected_ids)
 CP_SB_OP_BULK_RESTORE :: 4;   // bulk unarchive selected chats
 CP_SB_OP_BULK_DELETE :: 5;    // bulk delete selected chats
 CP_SB_OP_BULK_PIN :: 6;       // bulk toggle pin on selected chats
 CP_SB_OP_UNDO :: 7;           // user pressed Undo on the undo toast
 
-// Sidebar widget action IDs (210..220; free of all other page action ranges).
-CP_SB_GROUP_TOGGLE :: 210;
+// Sidebar widget action IDs (211..222; free of all other page action ranges).
 CP_SB_VIEW_ACTIVE_ACT :: 211;
 CP_SB_VIEW_ARCHIVED_ACT :: 212;
-CP_SB_ADD_PROJECT_ACT :: 213;
 CP_SB_BULK_ARCHIVE_ACT :: 214;
 CP_SB_BULK_RESTORE_ACT :: 215;
 CP_SB_BULK_DELETE_ACT :: 216;
@@ -49,16 +41,7 @@ CP_SB_BULK_PIN_ACT :: 217;
 CP_SB_BULK_CLEAR_ACT :: 218;
 CP_SB_UNDO_ACT :: 219;
 CP_SB_UNDO_CLOSE_ACT :: 220;
-CP_SB_GROUP_ALL :: 221;
 CP_SB_WORKING_TOGGLE :: 222;
-
-CpSbProject :: struct {
-  path: [CP_CHAT_FOLDER] u8; path_n: int;
-  label: [64] u8; label_n: int;
-  collapsed: bool;
-  show_all: bool;             // expanded past CP_SB_GROUP_LIMIT via "See all"
-  added: bool;                // added via folder picker or drag-and-drop (shown even when empty)
-}
 
 CpSbUndo :: struct {
   active: bool;
@@ -72,7 +55,6 @@ CpSidebar :: struct {
   view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
   now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
   working_collapsed: bool;    // Working shelf collapse state (false = expanded by default)
-  projects: [CP_SB_MAX_GROUPS] CpSbProject; nprojects: int;
   sel: [CP_CHATS] bool;       // multi-select bitset indexed by s[0].chats[q]
   sel_count: int;
   sel_anchor: int;            // last clicked chat index q for Shift-click range (-1: none)
@@ -80,7 +62,6 @@ CpSidebar :: struct {
   vis_order: [CP_CHATS] int; vis_n: int;  // visual order of rendered chat indices q
   undo: [1] CpSbUndo;
   op: int;                    // pending CP_SB_OP_* for host
-  drop_path: [CP_CHAT_FOLDER] u8; drop_path_n: int;
   pending_ids: [CP_CHATS * (CP_CHAT_ID + 1)] u8; pending_ids_n: int;
 }
 
@@ -169,63 +150,6 @@ cp_sb_snoozed_count :: (s: [] CoderPage) -> int {
     if !s[0].chats[q].archived && cp_sb_is_snoozed(s[0].chats[q], now_ms) { n += 1; }
   }
   return n;
-}
-
-cp_sb_find_project :: (s: [] CoderPage, path: string) -> int {
-  nb: [CP_CHAT_FOLDER] u8; nn := cp_sb_norm_path(path, nb[..]);
-  norm := cast(string) nb[0..<nn];
-  if norm.count == 0 { return -1; }
-  for i: 0..<s[0].sb[0].nprojects {
-    if cast(string) s[0].sb[0].projects[i].path[0..<s[0].sb[0].projects[i].path_n] == norm { return i; }
-  }
-  return -1;
-}
-
-// Ensure a project folder exists in s[0].sb[0].projects, preserving its collapsed state.
-cp_sb_ensure_project :: (s: [] CoderPage, path: string, added: bool) -> int {
-  nb: [CP_CHAT_FOLDER] u8; nn := cp_sb_norm_path(path, nb[..]);
-  norm := cast(string) nb[0..<nn];
-  if norm.count == 0 { return -1; }
-  idx := cp_sb_find_project(s, norm);
-  if idx >= 0 {
-    if added { s[0].sb[0].projects[idx].added = true; }
-    return idx;
-  }
-  if s[0].sb[0].nprojects >= CP_SB_MAX_GROUPS { return -1; }
-  k := s[0].sb[0].nprojects;
-  s[0].sb[0].projects[k] = CpSbProject.{collapsed = true, added = added};
-  s[0].sb[0].projects[k].path_n = cp_out(s[0].sb[0].projects[k].path[..], norm);
-  s[0].sb[0].projects[k].label_n = cp_sb_folder_label(norm, s[0].sb[0].projects[k].label[..]);
-  s[0].sb[0].nprojects += 1;
-  return k;
-}
-
-// Sync project groups from all chats' folders (preserving collapsed state and explicit projects).
-cp_sb_sync_projects :: (s: [] CoderPage) {
-  for q: 0..<s[0].nchats {
-    if s[0].chats[q].folder_n > 0 {
-      _ = cp_sb_ensure_project(s, cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n], false);
-    }
-  }
-}
-
-// True when the sidebar should render project-grouped sections instead of a single flat Recents section.
-cp_sb_has_projects :: (s: [] CoderPage) -> bool {
-  for i: 0..<s[0].sb[0].nprojects {
-    if s[0].sb[0].projects[i].added { return true; }
-  }
-  now_ms := s[0].sb[0].now_ms;
-  for q: 0..<s[0].nchats {
-    if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && s[0].chats[q].folder_n > 0 { return true; }
-  }
-  return false;
-}
-
-cp_sb_toggle_group :: (s: [] CoderPage, idx: int) -> bool {
-  if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
-  s[0].sb[0].projects[idx].collapsed = !s[0].sb[0].projects[idx].collapsed;
-  if s[0].sb[0].projects[idx].collapsed { s[0].sb[0].projects[idx].show_all = false; }
-  return true;
 }
 
 // ---- Multi-select helpers
@@ -437,16 +361,6 @@ cp_sb_bulk_bar :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32) -> f32 {
 // ---- Action dispatch for sidebar_groups controls (called from cp_press in input.coax)
 
 cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
-  if act == CP_SB_GROUP_TOGGLE {
-    idx := cp_number(id, "coder.proj.");
-    return cp_sb_toggle_group(s, idx);
-  }
-  if act == CP_SB_GROUP_ALL {
-    idx := cp_number(id, "coder.proj.all.");
-    if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
-    s[0].sb[0].projects[idx].show_all = true;
-    return true;
-  }
   if act == CP_SB_WORKING_TOGGLE {
     s[0].sb[0].working_collapsed = !s[0].sb[0].working_collapsed;
     return true;
@@ -461,11 +375,6 @@ cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     s[0].sb[0].view_mode = CP_SB_VIEW_ARCHIVED;
     cp_sb_clear_sel(s);
     s[0].side_scroll = 0;
-    return true;
-  }
-  if act == CP_SB_ADD_PROJECT_ACT {
-    s[0].sb[0].op = CP_SB_OP_ADD_PROJECT;
-    s[0].ask = CP_ASK_SIDEBAR;
     return true;
   }
   if act == CP_SB_BULK_CLEAR_ACT {
@@ -530,36 +439,12 @@ coder_page_sb_now_ms :: (s: [] CoderPage, now_ms: int) #export_c #effects(all) {
   s[0].sb[0].now_ms = now_ms;
 }
 
-// Register an explicit project folder (from saved projects, folder picker, or drag-and-drop).
-coder_page_sb_add_project :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
-  if s.count < 1 || path.count == 0 { return false; }
-  return cp_sb_ensure_project(s, path, true) >= 0;
-}
-
-// Handle a folder dropped onto the sidebar/window from Finder.
-coder_page_sb_drop_folder :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
-  if s.count < 1 || path.count == 0 { return false; }
-  if cp_sb_ensure_project(s, path, true) < 0 { return false; }
-  s[0].sb[0].drop_path_n = cp_sb_norm_path(path, s[0].sb[0].drop_path[..]);
-  s[0].sb[0].op = CP_SB_OP_DROP_PROJECT;
-  s[0].ask = CP_ASK_SIDEBAR;
-  return true;
-}
-
 // Read and consume the pending sidebar host op after CP_ASK_SIDEBAR.
 coder_page_sb_op :: (s: [] CoderPage) -> int #export_c #effects(all) {
   if s.count < 1 { return CP_SB_OP_NONE; }
   op := s[0].sb[0].op;
   s[0].sb[0].op = CP_SB_OP_NONE;
   return op;
-}
-
-// Read the dropped project folder path after CP_SB_OP_DROP_PROJECT.
-coder_page_sb_drop_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || s[0].sb[0].drop_path_n <= 0 { return 0; }
-  n := cp_out(out, cast(string) s[0].sb[0].drop_path[0..<s[0].sb[0].drop_path_n]);
-  s[0].sb[0].drop_path_n = 0;
-  return n;
 }
 
 // Read the newline-separated bare chat IDs captured for a bulk action.

@@ -1,6 +1,7 @@
 // Checks for page/sidebar_groups.coax and layout/sidebar.coax (GitHub #13875):
-// project/repo grouping, collapsible headers, lifted 50-chat cap, folder drop/add,
-// archive/unarchive view, snooze auto-wake, multi-select bulk actions, and undo toast.
+// flat chronological chat list (most recent message first, no project grouping),
+// lifted 50-chat cap, Working shelf, archive/unarchive view, snooze auto-wake,
+// multi-select bulk actions, and undo toast.
 #load "../parts.coax";
 #load "checks-kit.coax";
 
@@ -21,133 +22,58 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   return coder_page_press(s, cx, cy, 2, 1, mods);
 }
 
-#test "sidebar groups chats by project folder, defaults collapsed, caps expanded projects at 10 with See all, and lifts the 50-chat cap" {
+#test "sidebar renders one flat chronological chat list sorted by most recent message with no projects UI and lifted 50-chat cap" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  // Two projects + one pinned chat + one unassigned chat.
-  coder_page_chats(s, "p1\tPinned task\t0\t1\t0\t0\t0\t0\t/Users/dev/work/openagents\na1\tFix sidebar\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\na2\tAdd tests\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents/\nb1\tShip iOS\t0\t0\t0\t0\t0\t0\t/Users/dev/work/app-ios\ng1\tQuick note\t0\t0\t0\t0\t0\t0\t\n");
-  #assert s[0].nchats == 5 && s[0].sb[0].nprojects == 2;
-  #assert s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
+  // Mixed working folders and out-of-order updated_ms timestamps (column 10) + one pinned chat.
+  coder_page_chats(s, "p1\tPinned task\t0\t1\t0\t0\t0\t0\t/Users/dev/work/openagents\t1000\na1\tOlder chat\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\t2000\nb1\tNewest chat\t0\t0\t0\t0\t0\t0\t/Users/dev/work/app-ios\t5000\ng1\tMiddle chat\t0\t0\t0\t0\t0\t0\t\t3500\n");
+  #assert s[0].nchats == 4;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Both project headers are visible and collapsed by default; Pinned stays at top, Projects heading + folder-add sit above folders.
-  #assert surface_find(s[0].surface[..], "coder.pinned") >= 0;
-  #assert surface_find(s[0].surface[..], "chat.p1") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.projects") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.sb.add_project") >= 0;
-  // The old Active/Archived toolbar and split Local account pill are gone; single unified Settings footer remains.
+  // Zero project UI: no Projects heading, no Add project button, no project folder rows.
+  #assert surface_find(s[0].surface[..], "coder.projects") < 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.add_project") < 0;
+  #assert surface_find(s[0].surface[..], "coder.proj.0") < 0;
+  #assert surface_find(s[0].surface[..], "coder.proj.1") < 0;
+  // Footer retains unified icon-only Settings button; no legacy Active/Archived tabs.
   #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
   #assert surface_find(s[0].surface[..], "coder.me") < 0 && surface_find(s[0].surface[..], "coder.me.settings") >= 0;
-  // Projects heading and folder-plus button sit on the same horizontal row.
-  ph := surface_rows(s[0].surface[..]).rows[surface_find(s[0].surface[..], "coder.projects")];
-  pb := surface_rows(s[0].surface[..]).rows[surface_find(s[0].surface[..], "coder.sb.add_project")];
-  #assert pb.x > ph.x && pb.y >= ph.y && pb.y + pb.h <= ph.y + ph.h + 1.0f32;
-  #assert surface_find(s[0].surface[..], "coder.proj.0") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.proj.1") >= 0;
-  // Project chats stay hidden until their project folder is expanded; unassigned g1 stays visible.
-  #assert surface_find(s[0].surface[..], "chat.a1") < 0 && surface_find(s[0].surface[..], "chat.a2") < 0;
-  #assert surface_find(s[0].surface[..], "chat.b1") < 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
-  // Click project 0 header to expand it: a1 and a2 appear, b1 stays collapsed.
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert !s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
-  #assert cp_sb_test_frame(s, f[..], 0.02f32);
-  #assert surface_find(s[0].surface[..], "chat.a1") >= 0 && surface_find(s[0].surface[..], "chat.a2") >= 0;
-  #assert surface_find(s[0].surface[..], "chat.b1") < 0;
-  // Reloading chats preserves the expanded state of project 0 and collapsed state of project 1.
-  coder_page_chats(s, "a1\tFix sidebar\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\nb1\tShip iOS\t0\t0\t0\t0\t0\t0\t/Users/dev/work/app-ios\n");
-  #assert !s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
-  // Click project 0 header again to collapse it.
-  #assert cp_sb_test_frame(s, f[..], 0.04f32);
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert s[0].sb[0].projects[0].collapsed;
-  #assert cp_sb_test_frame(s, f[..], 0.06f32);
-  #assert surface_find(s[0].surface[..], "chat.a1") < 0;
+  // All chats are visible immediately in one list without expanding any folder.
+  i_p1 := surface_find(s[0].surface[..], "chat.p1");
+  i_b1 := surface_find(s[0].surface[..], "chat.b1");
+  i_g1 := surface_find(s[0].surface[..], "chat.g1");
+  i_a1 := surface_find(s[0].surface[..], "chat.a1");
+  #assert i_p1 >= 0 && i_b1 >= 0 && i_g1 >= 0 && i_a1 >= 0;
+  // Chronological order from most recent message: b1 (5000) above g1 (3500) above a1 (2000).
+  rows := surface_rows(s[0].surface[..]).rows;
+  #assert rows[i_b1].y < rows[i_g1].y && rows[i_g1].y < rows[i_a1].y;
   // Lift 50-chat visibility cap: 75 chats load with chats_more == 0.
   lb: [4096] u8; ln := 0;
   for i: 0..<75 {
     ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, i);
     ln = el_put(lb[..], ln, "\tChat "); ln = el_put_i(lb[..], ln, i);
-    ln = el_put(lb[..], ln, "\t0\t0\t0\t0\t0\t0\t/tmp/repo\n");
+    ln = el_put(lb[..], ln, "\t0\t0\t0\t0\t0\t0\t/tmp/repo\t");
+    ln = el_put_i(lb[..], ln, 1000 + i);
+    ln = el_put(lb[..], ln, "\n");
   }
   coder_page_chats(s, cast(string) lb[0..<ln]);
   #assert s[0].nchats == 75 && s[0].chats_more == 0;
-}
-
-#test "expanded project shows at most 10 chats with a See all button that expands the rest" {
-  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
-  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  lb: [2048] u8; ln := 0;
-  for i: 0..<14 {
-    ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, i);
-    ln = el_put(lb[..], ln, "\tThread "); ln = el_put_i(lb[..], ln, i);
-    ln = el_put(lb[..], ln, "\t0\t0\t0\t0\t0\t0\t/tmp/bigproj\n");
-  }
-  coder_page_chats(s, cast(string) lb[0..<ln]);
-  #assert s[0].nchats == 14 && s[0].sb[0].nprojects == 1 && s[0].sb[0].projects[0].collapsed;
-  f: [1] UiFrame;
-  #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  #assert surface_find(s[0].surface[..], "chat.c0") < 0 && surface_find(s[0].surface[..], "coder.proj.all.0") < 0;
-  // Expand project 0 -> shows c0..c9 plus "See all", hides c10..c13.
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert cp_sb_test_frame(s, f[..], 0.02f32);
-  #assert surface_find(s[0].surface[..], "chat.c0") >= 0 && surface_find(s[0].surface[..], "chat.c9") >= 0;
-  #assert surface_find(s[0].surface[..], "chat.c10") < 0 && surface_find(s[0].surface[..], "chat.c13") < 0;
-  see_all := surface_find(s[0].surface[..], "coder.proj.all.0");
-  #assert see_all >= 0 && surface_say(s[0].surface[..], see_all) == "See all";
-  // Click "See all" -> reveals c10..c13 and hides the "See all" button.
-  #assert cp_sb_click_id(s, "coder.proj.all.0", 0);
-  #assert s[0].sb[0].projects[0].show_all;
-  #assert cp_sb_test_frame(s, f[..], 0.04f32);
-  #assert surface_find(s[0].surface[..], "chat.c10") >= 0 && surface_find(s[0].surface[..], "chat.c13") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.proj.all.0") < 0;
-  // Collapsing and re-expanding resets back to the 10-chat cap + "See all".
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert s[0].sb[0].projects[0].collapsed && !s[0].sb[0].projects[0].show_all;
-  #assert cp_sb_test_frame(s, f[..], 0.06f32);
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert cp_sb_test_frame(s, f[..], 0.08f32);
-  #assert surface_find(s[0].surface[..], "chat.c9") >= 0 && surface_find(s[0].surface[..], "chat.c10") < 0;
-  #assert surface_find(s[0].surface[..], "coder.proj.all.0") >= 0;
-}
-
-#test "adding projects via + Project button and folder drag-and-drop works" {
-  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
-  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  f: [1] UiFrame;
-  #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Press "+ Project" toolbar button -> asks host for folder picker.
-  #assert cp_sb_click_id(s, "coder.sb.add_project", 0);
-  #assert coder_page_action(s) == CP_ASK_SIDEBAR;
-  #assert coder_page_sb_op(s) == CP_SB_OP_ADD_PROJECT;
-  // Explicit project added even with zero chats shows as a project header.
-  #assert coder_page_sb_add_project(s, "/Users/dev/work/empty-repo/");
-  #assert cp_sb_test_frame(s, f[..], 0.02f32);
-  #assert surface_find(s[0].surface[..], "coder.proj.0") >= 0;
-  // Drag-and-drop folder onto sidebar registers project and notifies host.
-  #assert coder_page_sb_drop_folder(s, "/Users/dev/work/dropped-repo/");
-  #assert coder_page_action(s) == CP_ASK_SIDEBAR;
-  #assert coder_page_sb_op(s) == CP_SB_OP_DROP_PROJECT;
-  dp: [CP_CHAT_FOLDER] u8;
-  dn := coder_page_sb_drop_path(s, dp[..]);
-  #assert cast(string) dp[0..<dn] == "/Users/dev/work/dropped-repo";
-  #assert cp_sb_test_frame(s, f[..], 0.04f32);
-  #assert surface_find(s[0].surface[..], "coder.proj.1") >= 0;
+  // Highest updated_ms (c74) sorts to the top.
+  #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.c74";
 }
 
 #test "archived chats hide from active list, show in Archived view, and undo toast restores or expires" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  coder_page_chats(s, "c1\tActive thread\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc2\tArchived thread\t0\t0\t0\t0\t1\t0\t/tmp/proj\n");
+  coder_page_chats(s, "c1\tActive thread\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc2\tArchived thread\t0\t0\t0\t0\t1\t0\t/tmp/repo\n");
   #assert cp_sb_archived_count(s) == 1;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert cp_sb_test_frame(s, f[..], 0.01f32);
-  // Active view shows c1 and hides c2; no Active/Archived toolbar tabs are rendered.
+  // Active view shows c1 immediately and hides c2.
   #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c2") < 0;
-  // Programmatic Archived view still shows c2 and hides c1.
+  // Archived view shows c2 and hides c1.
   coder_page_sb_set_view(s, CP_SB_VIEW_ARCHIVED);
   #assert coder_page_sb_view(s) == CP_SB_VIEW_ARCHIVED;
   #assert cp_sb_test_frame(s, f[..], 0.02f32);
@@ -179,15 +105,13 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   coder_page_sb_now_ms(s, 1000000);
-  coder_page_chats(s, "c1\tAwake chat\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc2\tSnoozed chat\t0\t0\t0\t0\t0\t2000000\t/tmp/proj\n");
+  coder_page_chats(s, "c1\tAwake chat\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc2\tSnoozed chat\t0\t0\t0\t0\t0\t2000000\t/tmp/repo\n");
   #assert cp_sb_snoozed_count(s) == 1;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert cp_sb_test_frame(s, f[..], 0.01f32);
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c2") < 0;
-  // Advance wall-clock past snoozed_until_ms -> c2 resurfaces automatically!
+  // Advance wall-clock past snoozed_until_ms -> c2 resurfaces automatically.
   coder_page_sb_now_ms(s, 2000000);
   #assert cp_sb_snoozed_count(s) == 0;
   #assert cp_sb_test_frame(s, f[..], 0.02f32);
@@ -197,11 +121,9 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
 #test "multi-select with Cmd-click and Shift-click supports bulk archive, restore, pin, and delete" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  coder_page_chats(s, "c1\tFirst\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc2\tSecond\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc3\tThird\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc4\tFourth\t0\t0\t0\t0\t0\t0\t/tmp/proj\n");
+  coder_page_chats(s, "c1\tFirst\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc2\tSecond\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc3\tThird\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc4\tFourth\t0\t0\t0\t0\t0\t0\t/tmp/repo\n");
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert cp_sb_test_frame(s, f[..], 0.01f32);
   // Cmd-click (mods=8) on c1 selects c1 without opening it.
   #assert cp_sb_click_id(s, "chat.c1", 8);
   #assert coder_page_sb_sel_count(s) == 1;
@@ -242,46 +164,40 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert coder_page_sb_sel_count(s) == 0 && coder_page_action(s) == CP_ASK_NONE;
 }
 
-#test "working chats move to top Working shelf by default, mark collapsed projects busy with count, and return on input or completion" {
+#test "working chats move to top Working shelf by default and return to the flat list on input or completion" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
-  // c1 is running in background in /tmp/openagents; c2 is idle in /tmp/openagents; g1 is running in General.
+  // c1 and g1 are running; c2 is idle.
   coder_page_chats(s, "c1\tdoes this work\t1\t0\t0\t0\t0\t0\t/tmp/openagents\nc2\tIdle chat\t0\t0\t0\t0\t0\t0\t/tmp/openagents\ng1\tQuick task\t1\t0\t0\t0\t0\t0\t\n");
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Working shelf is expanded by default at top with count 2; both c1 and g1 are visible immediately even though project 0 is collapsed.
+  // Working shelf is expanded by default at top with count 2; c2 sits in Recents below.
   w_idx := surface_find(s[0].surface[..], "coder.working");
   #assert w_idx >= 0;
   #assert (surface_rows(s[0].surface[..]).rows[w_idx].state & (EL_S_EXPANDS | EL_S_EXPANDED | EL_S_BUSY)) == (EL_S_EXPANDS | EL_S_EXPANDED | EL_S_BUSY);
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
-  // General heading is empty because its only chat (g1) moved into Working.
-  #assert surface_find(s[0].surface[..], "coder.chats") < 0;
-  // Collapsed project 0 carries EL_S_BUSY and shows working count "1".
-  p0 := surface_find(s[0].surface[..], "coder.proj.0");
-  p0_row := surface_rows(s[0].surface[..]).rows[p0];
-  #assert p0 >= 0 && (p0_row.state & EL_S_BUSY) != 0;
-  #assert cast(string) p0_row.value[0..<p0_row.value_n] == "1";
-  // Clicking Working collapses it and hides c1 and g1 from the Working shelf.
+  #assert surface_find(s[0].surface[..], "chat.c2") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.projects") < 0 && surface_find(s[0].surface[..], "coder.proj.0") < 0;
+  // Clicking Working collapses it and hides c1 and g1 from the Working shelf while c2 stays visible.
   #assert cp_sb_click_id(s, "coder.working", 0);
   #assert s[0].sb[0].working_collapsed;
   #assert cp_sb_test_frame(s, f[..], 0.02f32);
   #assert surface_find(s[0].surface[..], "chat.c1") < 0 && surface_find(s[0].surface[..], "chat.g1") < 0;
+  #assert surface_find(s[0].surface[..], "chat.c2") >= 0;
   // Clicking Working again re-expands it.
   #assert cp_sb_click_id(s, "coder.working", 0);
   #assert !s[0].sb[0].working_collapsed;
   #assert cp_sb_test_frame(s, f[..], 0.04f32);
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
-  // When c1 is the active chat and opens a permission/input prompt, it leaves Working so it surfaces for user input.
+  // When c1 is the active chat and opens a permission/input prompt, it leaves Working into Recents.
   coder_page_current(s, "c1");
   s[0].permit[0].open = true;
   #assert cp_sb_test_frame(s, f[..], 0.06f32);
-  // Only g1 remains in Working; project 0 no longer has any working chats.
-  p0 = surface_find(s[0].surface[..], "coder.proj.0");
-  #assert p0 >= 0 && (surface_rows(s[0].surface[..]).rows[p0].state & EL_S_BUSY) == 0;
-  // Once all chats finish, the Working shelf disappears and g1 returns to General.
+  #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
+  // Once all chats finish, the Working shelf disappears and all three chats sit in Recents.
   s[0].permit[0].open = false;
   coder_page_chats(s, "c1\tdoes this work\t0\t0\t0\t0\t0\t0\t/tmp/openagents\nc2\tIdle chat\t0\t0\t0\t0\t0\t0\t/tmp/openagents\ng1\tQuick task\t0\t0\t0\t0\t0\t0\t\n");
   #assert cp_sb_test_frame(s, f[..], 0.08f32);
   #assert surface_find(s[0].surface[..], "coder.working") < 0;
-  #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "chat.c1") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
 }

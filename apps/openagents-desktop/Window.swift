@@ -223,7 +223,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_agy(page, 0)
         #endif
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
-        for proj in store.savedProjects { _ = cd_sb_add_project(page, proj) }
         cd_chats(page, chatLines)
         #if OA_FULL
         if FeatureFlags.isOn(.foreman) { syncForemanUI() }
@@ -746,7 +745,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         foremanServer.stop()
         ForemanControlDescriptor.remove()
         #endif
-        if chat != nil { keep(closing: true) }
+        if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
         for back in runs.values { keep(back, closing: true); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }
         runs = [:]

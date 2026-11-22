@@ -50,7 +50,21 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
     }
     i = e + 1;
   }
-  cp_sb_sync_projects(s);
+  // Order non-pinned chats chronologically from most recent message (updated_ms descending),
+  // preserving host order on ties and keeping pinned chats in their user-pinned order.
+  for qi: 1..<s[0].nchats {
+    if s[0].chats[qi].pinned { continue; }
+    cur_q := qi;
+    while cur_q > 0 {
+      prev := cur_q - 1;
+      while prev >= 0 && s[0].chats[prev].pinned { prev -= 1; }
+      if prev < 0 || s[0].chats[cur_q].updated_ms <= s[0].chats[prev].updated_ms { break; }
+      tmp := s[0].chats[cur_q];
+      s[0].chats[cur_q] = s[0].chats[prev];
+      s[0].chats[prev] = tmp;
+      cur_q = prev;
+    }
+  }
   cp_sb_recount_sel(s);
 }
 // Helpers for pinned chats in the sidebar.

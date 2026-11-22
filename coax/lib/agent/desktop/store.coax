@@ -54,18 +54,18 @@ dc_store_reload :: (s: [] DcStore) -> bool {
   dc_store_sort(s[0].x[..]);
   return !s[0].x[0].full;
 }
-// Newest created first (an entry with no created time counts its updated time), ties kept in
-// the file's order: CoderStore.init's sort.
+// Most recently updated first (an entry with no updated time counts its created time), ties kept
+// in the file's order: chronological from most recent message.
 dc_store_sort :: (x: [] DkIndex) {
   for i: 1..<x[0].n {
     j := i;
     while j > 0 && dc_when(x, j) > dc_when(x, j - 1) { t := x[0].chats[j]; x[0].chats[j] = x[0].chats[j - 1]; x[0].chats[j - 1] = t; j -= 1; }
   }
 }
-// A list entry's created (or updated) seconds in microseconds, from its raw JSON number.
+// A list entry's updated (or created) seconds in microseconds, from its raw JSON number.
 dc_when :: (x: [] DkIndex, i: int) -> int {
-  raw := ifx x[0].chats[i].created_n > 0 then dk_created(x, i) else dk_updated(x, i);
-  return dc_micros(raw);
+  u := dc_micros(dk_updated(x, i));
+  return ifx u > 0 then u else dc_micros(dk_created(x, i));
 }
 dc_micros :: (raw: string) -> int {
   whole := 0; frac := 0; digits := 0; i := 0; neg := false;
@@ -299,8 +299,21 @@ dc_store_search_chat :: (chat_json: string, query: string, out: [] DcSearchHit) 
   b: [64] u8; #assert dc_key_tail("sk-ant-12345678", b[..]) == "…5678" && dc_key_tail("ab", b[..]) == "…ab";
   chats: [8] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
   #assert dk_index_parse(x[..], DK_FIXTURE_INDEX) && x[0].n == 4;
-  dc_store_sort(x[..]);   // created or updated, newest first: aaa (1763500000.5), bbb (1763400000), ccc (5), foreman (1)
+  dc_store_sort(x[..]);   // most recently updated first: aaa (1763500100.25), bbb (1763400000), ccc (5), foreman (1)
   #assert dk_id(x[..], 0) == "aaa" && dk_id(x[..], 1) == "bbb" && dk_id(x[..], 2) == "ccc" && dk_id(x[..], 3) == "foreman";
+  // An older-created chat updated more recently sorts above a newer-created chat.
+  x[0].chats[1].updated_n = dk_copy(x[0].chats[1].updated[..], "1763600000");
+  dc_store_sort(x[..]);
+  #assert dk_id(x[..], 0) == "bbb" && dk_id(x[..], 1) == "aaa";
+  // An entry with no updated time (empty or 0) falls back to its created time; any positive updated time wins.
+  x[0].chats[1].updated_n = 0;
+  #assert dc_when(x[..], 1) == 1763500000500000;
+  x[0].chats[1].updated_n = dk_copy(x[0].chats[1].updated[..], "0");
+  #assert dc_when(x[..], 1) == 1763500000500000;
+  x[0].chats[1].updated_n = dk_copy(x[0].chats[1].updated[..], "0.000001");
+  #assert dc_when(x[..], 1) == 1;
+  dc_store_sort(x[..]);
+  #assert dk_id(x[..], 0) == "bbb" && dk_id(x[..], 1) == "ccc" && dk_id(x[..], 2) == "foreman" && dk_id(x[..], 3) == "aaa";
   st: [1] DcStore; st[0].x[0] = x[0];
   #assert !dc_store_move_pin(st[..], "missing", 0) && !dc_store_move_pin(st[..], "aaa", 0);
 }

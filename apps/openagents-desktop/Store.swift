@@ -24,7 +24,6 @@ struct CoderChat: Codable {
     var repoRoot: String? = nil
     var archived: Bool? = nil
     var snoozedUntilMs: Int64? = nil
-    var projectFolder: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title, created, updated, folder, renamed, pinned, archived
@@ -33,7 +32,6 @@ struct CoderChat: Codable {
         case worktreeBranch = "worktree_branch"
         case repoRoot = "repo_root"
         case snoozedUntilMs = "snoozed_until_ms"
-        case projectFolder = "project_folder"
     }
     var worktree: ChatWorktree? {
         guard let worktreePath, let repoRoot, let worktreeBranch else { return nil }
@@ -41,13 +39,11 @@ struct CoderChat: Codable {
     }
 }
 
-/// Sidecar sidebar metadata (archived, snoozedUntilMs, projectFolder, explicit projects) persisted
+/// Sidecar sidebar metadata (archived, snoozedUntilMs) persisted
 /// beside index.json so oa_dc_store_* rewrites never drop sidebar state (#13875).
 private struct SidebarMetaStore: Codable {
     var archived: Set<String> = []
     var snoozedUntilMs: [String: Int64] = [:]
-    var projectFolder: [String: String] = [:]
-    var projects: [String] = []
 }
 
 /// One ranked full-text hit across stored chats (GitHub #13876).
@@ -120,14 +116,13 @@ final class CoderStore {
             return
         }
         list = kept.enumerated().sorted { a, b in
-            let ta = a.element.created ?? a.element.updated
-            let tb = b.element.created ?? b.element.updated
+            let ta = a.element.updated > 0 ? a.element.updated : (a.element.created ?? 0)
+            let tb = b.element.updated > 0 ? b.element.updated : (b.element.created ?? 0)
             return ta != tb ? ta > tb : a.offset < b.offset
         }.map { pair in
             var c = pair.element
             if sidebarMeta.archived.contains(c.id) { c.archived = true }
             if let s = sidebarMeta.snoozedUntilMs[c.id], s > 0 { c.snoozedUntilMs = s }
-            if let pf = sidebarMeta.projectFolder[c.id], !pf.isEmpty { c.projectFolder = pf }
             return c
         }
     }
@@ -342,16 +337,7 @@ final class CoderStore {
 
     func worktree(_ id: String) -> ChatWorktree? { list.first { $0.id == id }?.worktree }
 
-    // ---- Sidebar grouping, archiving, snoozing & undo restore (#13875)
-
-    var savedProjects: [String] { sidebarMeta.projects }
-
-    func addProject(_ path: String) {
-        let norm = URL(fileURLWithPath: path).standardizedFileURL.path
-        guard !norm.isEmpty, !sidebarMeta.projects.contains(norm) else { return }
-        sidebarMeta.projects.append(norm)
-        saveSidebarMeta()
-    }
+    // ---- Sidebar archiving, snoozing & undo restore (#13875)
 
     func isArchived(_ id: String) -> Bool {
         sidebarMeta.archived.contains(id) || (list.first { $0.id == id }?.archived == true)
@@ -403,8 +389,8 @@ final class CoderStore {
         return woke
     }
 
-    func effectiveProjectFolder(_ chat: CoderChat) -> String {
-        let raw = chat.projectFolder ?? chat.repoRoot ?? chat.folder
+    func effectiveFolder(_ chat: CoderChat) -> String {
+        let raw = chat.repoRoot ?? chat.folder
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
         return URL(fileURLWithPath: trimmed).standardizedFileURL.path
@@ -416,11 +402,6 @@ final class CoderStore {
         if meta.pinned != nil && !isPinned(meta.id) { togglePin(meta.id) }
         if meta.archived == true { setArchived(meta.id, true) }
         if let wake = meta.snoozedUntilMs, wake > 0 { setSnoozed(meta.id, untilMs: wake) }
-        if let pf = meta.projectFolder, !pf.isEmpty {
-            sidebarMeta.projectFolder[meta.id] = pf
-            saveSidebarMeta()
-            reload()
-        }
     }
 
     func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {

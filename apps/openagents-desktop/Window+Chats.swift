@@ -419,52 +419,6 @@ extension CoderWindow {
         wake()
     }
 
-    func chooseProjectFolder() {
-        guard !choosingFolder, window.attachedSheet == nil else { return }
-        choosingFolder = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            guard self.window.attachedSheet == nil else { self.choosingFolder = false; return }
-            guard self.canPresentOpenPanel() else { self.chooseProjectFolderFallback(); return }
-            let panel = NSOpenPanel()
-            panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
-            panel.directoryURL = self.folder
-            panel.prompt = "Add Project"; panel.message = "Choose a project or repository folder to add to the sidebar."
-            panel.beginSheetModal(for: self.window) { [weak self] answer in
-                guard let self else { return }
-                self.choosingFolder = false
-                if answer == .OK, let url = panel.url {
-                    self.store.addProject(url.path)
-                    _ = cd_sb_add_project(self.page, url.path)
-                    self.wake()
-                }
-                self.refocus()
-            }
-        }
-    }
-
-    private func chooseProjectFolderFallback() {
-        var d = CoderDialog(size: .md, title: "Add Project Folder", body: "Enter the path to a project or repository folder.")
-        d.fields = [.init(value: folder.path, hint: FileManager.default.homeDirectoryForCurrentUser.path)]
-        d.buttons = [.init(title: "Cancel"), .init(title: "Add", kind: .primary)]
-        d.confirm = 1; d.cancel = 0
-        present(d) { [weak self] answer, values in
-            guard let self else { return }
-            self.choosingFolder = false
-            defer { self.refocus() }
-            guard answer == 1 else { return }
-            let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !raw.isEmpty else { return }
-            let expanded = (raw as NSString).expandingTildeInPath
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
-                self.store.addProject(expanded)
-                _ = cd_sb_add_project(self.page, expanded)
-                self.wake()
-            }
-        }
-    }
-
     private func readSelectedSidebarIDs() -> [String] {
         var buf = [CChar](repeating: 0, count: 65536)
         guard cd_sb_selected_ids(page, &buf, Int32(buf.count)) > 0 else { return [] }
@@ -493,16 +447,6 @@ extension CoderWindow {
     func sidebarAsked() {
         let op = cd_sb_op(page)
         switch op {
-        case 1: // CP_SB_OP_ADD_PROJECT
-            chooseProjectFolder()
-        case 2: // CP_SB_OP_DROP_PROJECT
-            var buf = [CChar](repeating: 0, count: 1024)
-            if cd_sb_drop_path(page, &buf, Int32(buf.count)) > 0 {
-                let path = String(cString: buf)
-                store.addProject(path)
-                cd_toast(page, "Added project “" + URL(fileURLWithPath: path).lastPathComponent + "”", 0)
-                wake()
-            }
         case 3: // CP_SB_OP_BULK_ARCHIVE
             let ids = readSelectedSidebarIDs().filter { $0 != Foreman.chatID && !busy($0) }
             guard !ids.isEmpty else { return }
