@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 78;
+CP_SET_ENTRIES :: 79;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -60,6 +60,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.codex", name = "Codex CLI", terms = "codex openai chatgpt cli oauth login provider"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.cursor", name = "Cursor ACP CLI", terms = "cursor agent acp cli oauth login provider"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.acp", name = "ACP Registry", terms = "acp registry custom agent opencode kiro cli binary provider"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.local", name = "Local Models (Inkling 2 Mini)", terms = "local model inkling download gguf metal sha256 weights"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.hybrid", name = "Hybrid Executor (hybrid-exec-v1)", terms = "executor hybrid replay exact sha256 psionic local deterministic"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.modules", name = "Compiled Weight Modules", terms = "executor weight modules safetensors diff schema dep budget sha256 verify"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.state", name = "Local Pylon", terms = "pylon local state executing validating training off self-testing network"},
@@ -482,7 +483,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "None downloaded";
     y += set_section_head(f, "set.local.head", x, y, w, "Local Models", "Download, verify, and manage local checkpoints served by Psionic Metal (~/.openagents/models).") + t.section_gap;
     lrows: [1] SetRow;
-    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (16.4 GB IQ4_NL GGUF on native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.", 
+    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (17.63 GB IQ4_NL GGUF · SHA-256 verified · native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.", 
       value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]) + t.block_gap;
     exec_st := ifx s[0].set_exec_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_status[0..<s[0].set_exec_status_n]) else "Not verified";

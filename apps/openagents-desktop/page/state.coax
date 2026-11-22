@@ -162,6 +162,7 @@ CP_GYM :: 72;               // the sidebar's Gym row (3D PLE Workbench, #13792)
 CP_EFFORT_CYCLE :: 74;      // the composer's effort chip beside the model: low, then medium, then high, and for Claude x-high and max (models.coax)
 CP_PERMIT_OPT :: 75;        // an allow/choice button on the interactive permission/question card (permit.coax; #13831)
 CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission card (permit.coax; #13831)
+CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Models downloader/manager (#13826)
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -369,7 +370,7 @@ CoderPage :: struct {
   set_box: [4] f32; set_due: bool; bar_full: bool;   // set_due: the page scrolled to a row, one more frame; bar_full: the window is in full screen (titlebar.coax)
   set_claude: [48] u8; set_claude_n: int;
   set_gemini: [48] u8; set_gemini_n: int;
-  set_local_status: [96] u8; set_local_status_n: int;  // Local Models status in Settings > Models (#13826)
+  set_local_status: [128] u8; set_local_status_n: int;  // Local Models status in Settings > Models & composer picker (#13826)
   set_exec_status: [128] u8; set_exec_status_n: int;   // Hybrid Executor status in Settings > Models (#13924)
   set_exec_lineage: [160] u8; set_exec_lineage_n: int; // Compiled Weight Modules SHA-256 lineage in Settings > Models (#13924)
   set_exec_badge: [48] u8; set_exec_badge_n: int;      // Verification-class badge ("Exact Replay [E]", "Unverified [N]", #13924)

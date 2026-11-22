@@ -162,6 +162,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var previewNavDelegate: PreviewNavigationDelegate?
     var previewLoadedURL = ""
     var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
+    var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
+    var localModelsDialogGen = 0
     let voice = CoderVoiceController()   // native & local voice dictation (Window+Voice.swift, #13882)
     var appearanceObservation: NSKeyValueObservation? // live macOS Light/Dark appearance watcher (Window+Customize.swift, #13887)
     private var monitor: Any?

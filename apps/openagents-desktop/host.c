@@ -970,6 +970,7 @@ int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok
 // Dialogs and right-click menus over the page (page/overlay.coax, GitHub #13746).
 void cd_on_overlay(void *page, void (*fn)(void *context), void *context) { CoderHost *c = page; if (c) { c->overlay = fn; c->overlay_context = context; } }
 void cd_dialog_begin(void *page, int size, const char *title, const char *body) { CoderHost *c = page; if (c) coder_page_dialog_begin(cd_state(c), size, cd_string(title), cd_string(body)); }
+void cd_dialog_body(void *page, const char *body) { CoderHost *c = page; if (c) { coder_page_dialog_body(cd_state(c), cd_string(body)); cd_woke(c); } }
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines) { CoderHost *c = page; return c && coder_page_dialog_field(cd_state(c), cd_string(label), cd_string(value), cd_string(hint), secure != 0, lines); }
 int cd_dialog_button(void *page, const char *label, int kind, int aside) { CoderHost *c = page; return c && coder_page_dialog_button(cd_state(c), cd_string(label), kind, aside != 0); }
 void cd_dialog_show(void *page, int confirm, int cancel, int focus) { CoderHost *c = page; if (c) { coder_page_dialog_show(cd_state(c), confirm, cancel, focus); cd_woke(c); } }

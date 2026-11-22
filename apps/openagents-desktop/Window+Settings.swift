@@ -264,6 +264,7 @@ extension CoderWindow {
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }
     func syncLocalModels() {
+        LocalModelStore.verifyExistingIfNeeded { [weak self] in self?.syncLocalModels() }
         let status = LocalModelStore.statusSummary()
         let on: Int32 = LocalModelStore.isSelectable ? 1 : 0
         cd_settings_local(page, status)
@@ -272,7 +273,16 @@ extension CoderWindow {
             cd_settings_local(r.page, status)
             cd_inkling(r.page, on)
         }
+        if let shownState = localModelsDialogState, overlay.dialogOpen {
+            let cur = LocalModelStore.state
+            if cur == shownState {
+                cd_dialog_body(page, LocalModelStore.dialogBody())
+            } else {
+                manageLocalModels()
+            }
+        }
         syncExecutorModels()
+        wake()
     }
     func syncExecutorModels() {
         let snap = ExecutorModelStore.scan()

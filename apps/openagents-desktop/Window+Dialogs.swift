@@ -161,97 +161,6 @@ final class CoderOverlay: NSObject {
 
 private var coderOverlays: [ObjectIdentifier: CoderOverlay] = [:]
 
-/// Local GGUF checkpoint store (~/.openagents/models) for OpenAgents Desktop (#13825, #13826).
-enum LocalModelStore {
-    static var rootDir: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".openagents", isDirectory: true)
-            .appendingPathComponent("models", isDirectory: true)
-    }
-    static var inklingDir: URL { rootDir.appendingPathComponent("inkling-2-mini", isDirectory: true) }
-    static var weightsURL: URL { inklingDir.appendingPathComponent("Inkling-2-Mini-IQ4_NL.gguf") }
-    static var partialURL: URL { inklingDir.appendingPathComponent("Inkling-2-Mini-IQ4_NL.gguf.part") }
-    static var manifestURL: URL { inklingDir.appendingPathComponent("manifest.json") }
-    static let downloadURL = "https://huggingface.co/ggml-org/Inkling-2-Mini-GGUF/resolve/main/Inkling-2-Mini-IQ4_NL.gguf"
-    static let expectedBytes: Int64 = 17_627_940_768
-    static let minValidBytes: Int64 = 16_000_000_000
-    static var physicalMemoryGB: Int { Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)) }
-    static var hardwareSupported: Bool { physicalMemoryGB >= 32 }
-    static var weightsBytes: Int64 {
-        (try? FileManager.default.attributesOfItem(atPath: weightsURL.path)[.size] as? Int64) ?? 0
-    }
-    static var partialBytes: Int64 {
-        (try? FileManager.default.attributesOfItem(atPath: partialURL.path)[.size] as? Int64) ?? 0
-    }
-    static var isInstalled: Bool { weightsBytes >= minValidBytes }
-    static var isSelectable: Bool { hardwareSupported && isInstalled }
-    private static var downloadProcess: Process?
-    static var isDownloading: Bool { downloadProcess?.isRunning == true }
-    static var lastError: String?
-
-    static func statusSummary() -> String {
-        if !hardwareSupported { return "Requires 32 GB RAM" }
-        if isDownloading {
-            let gb = Double(partialBytes) / 1_073_741_824.0
-            let pct = Int(min(99, max(0, (Double(partialBytes) / Double(expectedBytes)) * 100.0)))
-            return String(format: "Downloading %.1f / 16.4 GB (%d%%)", gb, pct)
-        }
-        if isInstalled { return "Installed (16.4 GB · Metal)" }
-        return "Not downloaded (16.4 GB)"
-    }
-    static func writeManifest() {
-        try? FileManager.default.createDirectory(at: inklingDir, withIntermediateDirectories: true)
-        let manifest = "{\"model_id\":\"inkling-2-mini\",\"weights\":\"Inkling-2-Mini-IQ4_NL.gguf\",\"bytes\":\(weightsBytes),\"loops\":3}\n"
-        try? manifest.write(to: manifestURL, atomically: true, encoding: .utf8)
-    }
-    static func startDownload(onUpdate: @escaping () -> Void) {
-        guard !isDownloading else { return }
-        lastError = nil
-        do {
-            try FileManager.default.createDirectory(at: inklingDir, withIntermediateDirectories: true)
-        } catch {
-            lastError = "Could not create " + inklingDir.path
-            onUpdate()
-            return
-        }
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        proc.arguments = ["-fSL", "-C", "-", "-o", partialURL.path, downloadURL]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        proc.terminationHandler = { p in
-            DispatchQueue.main.async {
-                downloadProcess = nil
-                if p.terminationStatus == 0 && partialBytes >= minValidBytes {
-                    try? FileManager.default.removeItem(at: weightsURL)
-                    try? FileManager.default.moveItem(at: partialURL, to: weightsURL)
-                    writeManifest()
-                } else if p.terminationStatus != 0 && p.terminationReason != .uncaughtSignal {
-                    lastError = "Download failed (curl exit \(p.terminationStatus))."
-                }
-                onUpdate()
-            }
-        }
-        do {
-            try proc.run()
-            downloadProcess = proc
-            onUpdate()
-        } catch {
-            lastError = "Could not launch curl: \(error.localizedDescription)"
-            onUpdate()
-        }
-    }
-    static func cancelDownload() {
-        downloadProcess?.terminate()
-        downloadProcess = nil
-    }
-    static func removeInkling() {
-        cancelDownload()
-        LocalModelServer.shared.stop()
-        try? FileManager.default.removeItem(at: inklingDir)
-    }
-}
-
 /// SHA-256 verified Executor Models & Compiled Weight-Module store (~/.openagents/modules)
 /// backed by Coax #authority admission (psionic/lib/executor-desktop.coax via oa_dc_exec_scan; #13924).
 enum ExecutorModelStore {
@@ -571,66 +480,152 @@ extension CoderWindow {
             self.refocus()
         }
     }
-    /// Settings > Models > Local Models (#13826): download, verify, or remove local GGUF checkpoints.
-    func manageLocalModels() {
-        let ramGB = LocalModelStore.physicalMemoryGB
-        let supported = LocalModelStore.hardwareSupported
-        let installed = LocalModelStore.isInstalled
-        let downloading = LocalModelStore.isDownloading
-        var about = "Inkling 2 Mini (26.4B total / 3.4B active looped MoE, IQ4_NL GGUF, 16.4 GB).\n"
-        about += "Storage: " + LocalModelStore.inklingDir.path + "\n"
-        about += "Hardware: " + String(ramGB) + " GB unified memory"
-        if !supported {
-            about += " (requires >= 32 GB RAM)."
-        } else if downloading {
-            about += " · " + LocalModelStore.statusSummary()
-        } else if installed {
-            about += " · Installed and ready in the composer model picker (Metal GPU)."
+    /// True when the foreground chat or any background chat is actively running a reply on Inkling 2 Mini or Hybrid Executor.
+    private func isInklingReplyRunning() -> Bool {
+        if cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0) { return true }
+        for r in runs.values where r.page != page {
+            if cd_running(r.page) != 0 && (cd_model_inkling(r.page) != 0 || cd_model_hybrid(r.page) != 0) { return true }
+        }
+        return false
+    }
+
+    private func revealLocalModelInFinder() {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: LocalModelStore.weightsURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([LocalModelStore.weightsURL])
+        } else if fm.fileExists(atPath: LocalModelStore.partialURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([LocalModelStore.partialURL])
         } else {
-            about += " · Ready to download from Hugging Face (16.4 GB, resumable)."
+            try? fm.createDirectory(at: LocalModelStore.rootDir, withIntermediateDirectories: true)
+            NSWorkspace.shared.activateFileViewerSelecting([LocalModelStore.rootDir])
         }
-        if let err = LocalModelStore.lastError {
-            about += "\nLast error: " + err
+    }
+
+    private func confirmDeleteLocalModel() {
+        if isInklingReplyRunning() {
+            present(.notice(
+                "Inkling 2 Mini is in use",
+                "Stop the active Inkling 2 Mini reply before deleting its cached weights."
+            )) { [weak self] _, _ in
+                self?.manageLocalModels()
+            }
+            return
         }
-        var d = CoderDialog(size: .md, title: "Local Models — Inkling 2 Mini", body: about)
-        var removeIdx = -9
-        var downloadIdx = -9
-        var cancelDlIdx = -9
-        if installed {
-            removeIdx = d.buttons.count
-            d.buttons.append(.init(title: "Remove", kind: .danger, aside: true))
-            let done = d.buttons.count
-            d.buttons.append(.init(title: "Done", kind: .primary))
-            d.confirm = done; d.cancel = done
-        } else if downloading {
-            cancelDlIdx = d.buttons.count
-            d.buttons.append(.init(title: "Cancel Download", kind: .danger, aside: true))
-            let done = d.buttons.count
-            d.buttons.append(.init(title: "Close", kind: .primary))
-            d.confirm = done; d.cancel = done
-        } else if supported {
-            d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
-            downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Download", kind: .primary))
-            d.confirm = downloadIdx
-        } else {
-            let close = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
-            d.confirm = close; d.cancel = close
-        }
+        let reclaim = LocalModelStore.formatBytes(LocalModelStore.diskUsageBytes)
+        var d = CoderDialog(
+            size: .sm,
+            title: "Delete Inkling 2 Mini?",
+            body: "This removes \(reclaim) from \(LocalModelStore.inklingDir.path) and stops the local Psionic Metal server. You can re-download it later."
+        )
+        d.buttons = [
+            .init(title: "Delete", kind: .danger, aside: true),
+            .init(title: "Cancel", kind: .primary),
+        ]
+        d.confirm = 1
+        d.cancel = 1
         present(d) { [weak self] answer, _ in
             guard let self else { return }
-            if answer == downloadIdx {
-                LocalModelStore.startDownload { [weak self] in
-                    self?.syncLocalModels()
+            if answer == 0 {
+                if self.isInklingReplyRunning() {
+                    self.present(.notice("Inkling 2 Mini is in use", "Stop the active reply before deleting its cached weights."))
+                    return
                 }
-                self.syncLocalModels()
-            } else if answer == cancelDlIdx {
-                LocalModelStore.cancelDownload()
-                self.syncLocalModels()
-            } else if answer == removeIdx {
-                LocalModelStore.removeInkling()
+                LocalModelStore.removeInkling { LocalModelServer.shared.stop() }
                 self.syncLocalModels()
             }
             self.refocus()
+        }
+    }
+
+    /// Settings > Models > Local Models & composer model picker (#13826):
+    /// catalog metadata, RAM & disk compatibility, resumable download with Pause/Resume/Cancel,
+    /// live progress/speed/ETA, streaming SHA-256 verification, Reveal in Finder, and confirmed Delete.
+    func manageLocalModels() {
+        let st = LocalModelStore.state
+        localModelsDialogGen += 1
+        let gen = localModelsDialogGen
+        localModelsDialogState = st
+        var d = CoderDialog(size: .lg, title: "Local Models — Inkling 2 Mini", body: LocalModelStore.dialogBody())
+        var deleteIdx = -9
+        var revealIdx = -9
+        var verifyIdx = -9
+        var downloadIdx = -9
+        var pauseIdx = -9
+        var cancelDlIdx = -9
+        var closeIdx = -9
+
+        switch st {
+        case .installed:
+            deleteIdx = d.buttons.count; d.buttons.append(.init(title: "Delete…", kind: .danger, aside: true))
+            revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+            verifyIdx = d.buttons.count; d.buttons.append(.init(title: "Verify SHA-256"))
+            closeIdx = d.buttons.count; d.buttons.append(.init(title: "Done", kind: .primary))
+            d.confirm = closeIdx; d.cancel = closeIdx
+        case .downloading:
+            cancelDlIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel Download", kind: .danger, aside: true))
+            pauseIdx = d.buttons.count; d.buttons.append(.init(title: "Pause"))
+            closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
+            d.confirm = closeIdx; d.cancel = closeIdx
+        case .verifying:
+            revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder", aside: true))
+            closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
+            d.confirm = closeIdx; d.cancel = closeIdx
+        case .paused:
+            cancelDlIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel Download", kind: .danger, aside: true))
+            revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+            closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close"))
+            downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Resume", kind: .primary))
+            d.confirm = downloadIdx; d.cancel = closeIdx
+        case .notInstalled:
+            if LocalModelStore.hasUnverifiedWeights {
+                deleteIdx = d.buttons.count; d.buttons.append(.init(title: "Delete…", kind: .danger, aside: true))
+                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+                closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+                verifyIdx = d.buttons.count; d.buttons.append(.init(title: "Verify SHA-256", kind: .primary))
+                d.confirm = verifyIdx; d.cancel = closeIdx
+            } else if LocalModelStore.hasEnoughDiskForDownload {
+                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Open Folder", aside: true))
+                closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+                downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Download (17.6 GB)", kind: .primary))
+                d.confirm = downloadIdx; d.cancel = closeIdx
+            } else {
+                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Open Folder", aside: true))
+                closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
+                d.confirm = closeIdx; d.cancel = closeIdx
+            }
+        case .unsupportedHardware:
+            closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
+            d.confirm = closeIdx; d.cancel = closeIdx
+        }
+
+        present(d) { [weak self] answer, _ in
+            guard let self, self.localModelsDialogGen == gen else { return }
+            self.localModelsDialogState = nil
+            if answer == downloadIdx {
+                LocalModelStore.startDownload { [weak self] in self?.syncLocalModels() }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            } else if answer == pauseIdx {
+                LocalModelStore.pauseDownload { [weak self] in self?.syncLocalModels() }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            } else if answer == cancelDlIdx {
+                LocalModelStore.cancelDownload { [weak self] in self?.syncLocalModels() }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            } else if answer == verifyIdx {
+                LocalModelStore.verifyInstalledNow { [weak self] in self?.syncLocalModels() }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            } else if answer == revealIdx {
+                self.revealLocalModelInFinder()
+                self.manageLocalModels()
+            } else if answer == deleteIdx {
+                self.confirmDeleteLocalModel()
+            } else {
+                self.syncLocalModels()
+                self.refocus()
+            }
         }
     }
     /// Settings > Models > Executor Models & Weight Modules (CP_ASK_EXECUTOR_MODELS; #13924):

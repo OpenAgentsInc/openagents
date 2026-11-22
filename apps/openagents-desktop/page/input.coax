@@ -257,6 +257,11 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].model = idx;
     return true;
   }
+  if act == CP_MODEL_LOCAL {
+    s[0].model_menu = false;
+    s[0].ask = CP_ASK_LOCAL_MODELS;
+    return true;
+  }
   if act == CP_COPY {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); block := cp_number(id, ".code.");
@@ -351,7 +356,7 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   }
   if phase == 0 && s[0].model_menu {
     act := surface_action(s[0].surface[..], row);
-    if act != CP_MODEL_MENU && act != CP_MODEL_PICK {
+    if act != CP_MODEL_MENU && act != CP_MODEL_PICK && act != CP_MODEL_LOCAL {
       s[0].model_menu = false;
       return true;
     }

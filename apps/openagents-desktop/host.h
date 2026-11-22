@@ -402,6 +402,7 @@ int cd_chat_step(void *page, int dir);
 void cd_toggle_sidebar(void *page);
 void cd_toggle_models(void *page);
 void cd_dialog_begin(void *page, int size, const char *title, const char *body);
+void cd_dialog_body(void *page, const char *body);
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines);
 int cd_dialog_button(void *page, const char *label, int kind, int aside);
 void cd_dialog_show(void *page, int confirm, int cancel, int focus);

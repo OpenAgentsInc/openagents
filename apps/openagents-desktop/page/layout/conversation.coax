@@ -838,11 +838,13 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   k := f[0].skin; sh := f[0].sheet; th := cp_theme();
   z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
   glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
-  pw := 240.0f32;
+  pw := 268.0f32;
   if pw > cw { pw = cw; }
   pad := 6.0f32;
   rh := 42.0f32;
-  ph := pad * 2 + cast(f32) cp_models(s) * rh;
+  div_h := 7.0f32;
+  lrh := 40.0f32;
+  ph := pad * 2 + cast(f32) cp_models(s) * rh + div_h + lrh;
   px := m_x;
   if px + pw > x + cw { px = x + cw - pw; }
   if px < x { px = x; }
@@ -885,5 +887,22 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     }
     sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
   }
+  // Local Models action row (#13826, #13825): live availability/download status and one-click manager access.
+  dy := py + pad + cast(f32) cp_models(s) * rh;
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad + 6.0f32, dy + 3.0f32, pw - 2 * pad - 12.0f32, 1.0f32, 0, 0, th.line, Rgba.{}));
+  lry := dy + div_h;
+  lhov := uiframe_hover(f, KEYED_LAZY, "coder.model.local");
+  llabel := ifx s[0].inkling then "Manage Local Models…" else "Inkling 2 Mini (Local)";
+  ldesc := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else ifx s[0].inkling then "Installed · Psionic Metal" else "Not downloaded (17.6 GB) · Download…";
+  lrow := uiframe_semantic(f, "coder.model.local", EL_BUTTON, llabel, px + pad, lry, pw - 2 * pad, lrh, 0, CP_MODEL_LOCAL);
+  elt_value(f[0].rows, lrow, ldesc);
+  if lhov > 0 {
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, lry + 1.0f32, pw - 2 * pad, lrh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, lhov), Rgba.{}));
+  }
+  ltx := px + pad + 10.0f32;
+  ltw := pw - 2 * pad - 20.0f32;
+  _ := sheet_text(sh, f[0].m, -1, ltx, lry + 3.0f32, k.label.line, k.label.face, ifx s[0].inkling then z_sec else z_ink, app_fit(f, k.label.face, llabel, ltw));
+  _ := sheet_text(sh, f[0].m, -1, ltx, lry + 21.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, ldesc, ltw));
+  sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
   if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
 }

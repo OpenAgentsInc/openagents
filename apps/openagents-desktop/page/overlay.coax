@@ -110,6 +110,11 @@ coder_page_dialog_begin :: (s: [] CoderPage, size: int, title: string, body: str
   app_menu_close(s[0].ov[0].menu[..], APP_MENU_NONE); _ := app_menu_take(s[0].ov[0].menu[..]);
   app_dialog_begin(s[0].ov[0].dlg[..], size, title, body);
 }
+// Live-update an open dialog's body text in place (e.g. download progress, speed, ETA; #13826).
+coder_page_dialog_body :: (s: [] CoderPage, body: string) #export_c #effects(all) {
+  if s.count < 1 || !s[0].ov[0].dlg[0].shown { return; }
+  s[0].ov[0].dlg[0].nb = app_ov_put(s[0].ov[0].dlg[0].body[..], body);
+}
 coder_page_dialog_field :: (s: [] CoderPage, label: string, value: string, hint: string, secure: bool, lines: int) -> bool #export_c #effects(all) {
   return s.count > 0 && app_dialog_field(s[0].ov[0].dlg[..], label, value, hint, secure, lines);
 }

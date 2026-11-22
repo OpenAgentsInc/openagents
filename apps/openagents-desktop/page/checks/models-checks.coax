@@ -496,3 +496,39 @@
   coder_page_set_claude(s, false);
   #assert cp_models(s) == CP_MODELS && cp_model_index(s) == CP_MODEL_DEFAULT;
 }
+
+#test "composer model picker shows real-time Local Models row and opens Local Models manager (#13826)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
+  s[0].d = 1.0f32;
+  coder_page_settings_local(s, "Downloading 42% · 7.4 / 17.6 GB · 85 MB/s");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && cp_press(s, btn) && s[0].model_menu;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  loc := elt_find(t[..], "coder.model.local");
+  #assert loc >= 0 && cast(string) t[0].rows[loc].label[0..<t[0].rows[loc].label_n] == "Inkling 2 Mini (Local)";
+  #assert cast(string) t[0].rows[loc].value[0..<t[0].rows[loc].value_n] == "Downloading 42% · 7.4 / 17.6 GB · 85 MB/s";
+  // Clicking the Local Models footer row closes the menu and asks the host to open Local Models UI.
+  cx := t[0].rows[loc].x + t[0].rows[loc].w * 0.5f32;
+  cy := t[0].rows[loc].y + t[0].rows[loc].h * 0.5f32;
+  #assert coder_page_pointer(s, cx, cy, 0);
+  #assert coder_page_pointer(s, cx, cy, 2);
+  #assert !s[0].model_menu && coder_page_action(s) == CP_ASK_LOCAL_MODELS;
+  // Once installed & verified, Inkling becomes a selectable model and the footer offers Manage Local Models.
+  coder_page_set_inkling(s, true);
+  coder_page_settings_local(s, "Installed (17.63 GB · SHA-256 verified)");
+  s[0].model_menu = true;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  t2 := [1] ElTable.[surface_rows(s[0].surface[..])];
+  loc2 := elt_find(t2[..], "coder.model.local");
+  #assert loc2 >= 0 && cast(string) t2[0].rows[loc2].label[0..<t2[0].rows[loc2].label_n] == "Manage Local Models…";
+  #assert cast(string) t2[0].rows[loc2].value[0..<t2[0].rows[loc2].value_n] == "Installed (17.63 GB · SHA-256 verified)";
+}
