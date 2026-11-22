@@ -353,7 +353,7 @@ tool_main :: () -> int #export_c #effects(all) {
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8; sbuf: [256] u8;   // the compiler's answers and the working memory (#13444, #13445)
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
-  plan_cloud: [1] GwPlan; hy: [1] McHybrid;
+  plan_cloud: [1] GwPlan; hy: [1] McHybrid; lguard: [1] MkLocalGuard;
   k: [1] MkKeys; h: [1] MkTurns;
   facts: [MC_FACTS_BYTES] u8;
   line: [MW_LINE] u8; nl := 0;
@@ -381,13 +381,21 @@ tool_main :: () -> int #export_c #effects(all) {
     // the run's events first, then whatever stdin has
     ended := "";
     if running {
-      if hybrid_on && run[0].call_due {
-        use_cloud := mc_hybrid_select(run[0].l[..], hy[..], cxproc_now_ms());
-        run[0].p = ifx use_cloud then plan_cloud[..] else plan[..];
+      if run[0].call_due {
+        if hybrid_on {
+          use_cloud := mc_hybrid_select(run[0].l[..], hy[..], cxproc_now_ms());
+          run[0].p = ifx use_cloud then plan_cloud[..] else plan[..];
+        } else if lguard[0].active {
+          note := mk_lg_note(lguard[..]);
+          if note.count > 0 { mc_note(run[0].l[0].st[..], note); }
+        }
       }
       ev: [32] McRunEvent;
       n := mc_run_poll(run[..], ev[..]);
       for i: 0..<n {
+        if lguard[0].active && ev[i].kind == MR_COMMAND {
+          mk_lg_command(lguard[..], run[0].l[0].steps, ev[i].text, ev[i].exit, ev[i].timed_out);
+        }
         if hybrid_on {
           if ev[i].kind == MR_ATTEMPT && ev[i].log.gateway != "psionic" {
             c := ifx ev[i].log.cost_usd_micros > 0 then ev[i].log.cost_usd_micros else (ifx ev[i].log.card_usd_micros > 0 then ev[i].log.card_usd_micros else 0);
@@ -506,6 +514,9 @@ tool_main :: () -> int #export_c #effects(all) {
         n := mc_run_answer_owned(run[..], ifx ticket.ok then ticket.value else 0, req[0].allow, req[0].why, ev[..]);
         e := "";
         for i: 0..<n {
+          if lguard[0].active && ev[i].kind == MR_COMMAND {
+            mk_lg_command(lguard[..], run[0].l[0].steps, ev[i].text, ev[i].exit, ev[i].timed_out);
+          }
           if ev[i].kind == MR_ENDED {
             running = false; e = mc_ending_name(ev[i].ending);
             mw_remember_end(h[..], ev[i].ending, ev[i].text);
@@ -527,12 +538,13 @@ tool_main :: () -> int #export_c #effects(all) {
     cn := mk_keep(cwd[..], incoming_cwd);
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
-    hybrid := mk_is_hybrid_model(req[0].model);
-    combo := mk_is_combo_model(req[0].model);
+    req_model := ifx req[0].model.count > 0 then req[0].model else cl_str(ar[..], msg, "model");
+    hybrid := mk_is_hybrid_model(req_model);
+    combo := mk_is_combo_model(req_model);
     combo_active := false;
     local := req[0].local || hybrid;
     if combo {
-      wb: [512] u8; lwhy := mk_plan_local_for(k[..], plan[..], pb[..], "", wb[..]);
+      wb: [512] u8; lwhy := mk_plan_local_for(k[..], plan[..], pb[..], "inkling-2-mini", wb[..]);
       cn_cloud := mk_plan(k[..], plan_cloud[..], pb[..], "gemini-4-neon");
       if lwhy.count == 0 && cn_cloud > 0 {
         combo_active = true;
@@ -546,10 +558,10 @@ tool_main :: () -> int #export_c #effects(all) {
         mw_ended(out[..], "no_capacity", lwhy); continue;
       }
     } else if local {
-      wb: [512] u8; why := mk_plan_local_for(k[..], plan[..], pb[..], ifx hybrid then "hybrid-exec-v1" else "", wb[..]);
+      wb: [512] u8; why := mk_plan_local_for(k[..], plan[..], pb[..], ifx hybrid then "hybrid-exec-v1" else req_model, wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
-    } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
-      if mk_openrouter_model(req[0].model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
+    } else if mk_plan(k[..], plan[..], pb[..], req_model) == 0 {
+      if mk_openrouter_model(req_model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
       mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: set an OpenRouter key in settings, or add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
@@ -597,6 +609,10 @@ tool_main :: () -> int #export_c #effects(all) {
     if hybrid {
       _ = mc_instructions(run[0].l[..], lb[..], "\n\nHybrid Executor (hybrid-exec-v1): structured edits are pre-verified by compiled Class-E dense F64 weight cores (oa-exec-json-schema, oa-exec-diff-verify) before touching disk, emitting Ch 234 replayable trace digests. Prefer targeted edits over whole-file rewrites.");
     }
+    lg := mk_local_guidance(local, combo_active);
+    if lg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], lg); }
+    gg := mk_goal_guidance(tk);
+    if gg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], gg); }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
@@ -610,7 +626,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if effort != "medium" && effort != "high" { effort = "low"; }
     mk_plan_limits(plan[..], effort);
     hybrid_on = combo_active;
-    run[0].defer_call = combo_active;
+    mk_lg_init(lguard[..], local && !combo_active, tk);
+    run[0].defer_call = combo_active || lguard[0].active;
     if combo_active {
       plan_cloud[0].journal = journal[..];
       mk_plan_limits(plan_cloud[..], effort);

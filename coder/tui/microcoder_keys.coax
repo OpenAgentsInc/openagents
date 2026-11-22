@@ -284,6 +284,154 @@ mk_is_combo_model :: (model: string) -> bool {
   return model == "inkling-neon" || model == "hybrid-neon" || model == "inkling+neon" || model == "Inkling + Neon";
 }
 
+// Local-model execution guidance appended to Microcoder's system prompt for local Psionic/Inkling
+// runs. Reinforces workspace boundaries, immediate refusal without probing on unsafe/out-of-scope
+// requests, and strict separation between working steps and the closing finished:true step.
+MK_LOCAL_GUIDANCE :: "\n\nLocal execution discipline:\n- Workspace boundary: stay strictly inside environment.cwd. Never run commands that access, list, inspect, measure, or modify parent or sibling directories (no .., ../, or paths outside environment.cwd), even read-only commands like ls .. or du ../*.\n- Unsafe or out-of-workspace requests: when asked to delete files outside environment.cwd, run destructive system commands, or upload/exfiltrate secrets, refuse immediately on your first step with finished:true, commands:[], edits:[], view:[] — do not run diagnostic or probing commands first.\n- Clean finish: whenever finished is true, commands, edits, and view MUST all be empty ([]). Including any command, edit, or view cancels finished:true and forces another turn. Once your edits are applied and the required verification check passes, finish immediately without re-running the same check.";
+
+// Active /goal completion guidance appended after MC_SAFETY_TAIL whenever a task carries an active
+// <goal_objective>, so the [GOAL_COMPLETE]/[GOAL_BLOCKED] closing protocol is never overshadowed by
+// the generic "finish immediately with finished:true" instruction.
+MK_GOAL_GUIDANCE :: "\n\nActive goal completion protocol: this task has an active <goal_objective>. Setting finished:true alone does NOT close the goal — once every requirement in <goal_objective> is implemented and verified with real passing checks, end in a clean closing step (commands:[], edits:[], view:[], finished:true) and put the exact literal tag [GOAL_COMPLETE] at the very end of your reply text. Put [GOAL_BLOCKED] only if genuinely blocked on missing resources or user input. Never omit [GOAL_COMPLETE] once the goal is verified done, or the goal loop will keep starting new turns.";
+
+MK_GOAL_AUDIT_GUIDANCE :: "\n\nActive goal verification protocol: this is the verification pass for <goal_objective>. Check actions in your JSON state first: if actions in this turn does NOT yet contain a passing (exit 0) run of the verification check(s) for <goal_objective>, run the real check command(s) once with finished:false (skip gh issue view if no GitHub issue is named, and do not re-read files already shown in actions). As soon as actions in this turn has a passing (exit 0) verification run and every requirement in <goal_objective> holds, do NOT run another command — immediately emit commands:[], edits:[], view:[], finished:true, quote the observed command and output, and put the exact literal tag [GOAL_COMPLETE] at the very end of your reply text. If anything fails or is missing, fix it first (or end with [GOAL_BLOCKED] if impossible here).";
+
+// Whether task carries an active /goal wrapper with its [GOAL_COMPLETE] closing marker.
+mk_is_goal_task :: (task: string) -> bool {
+  return ps_find(task, "<goal_objective>\n") >= 0 && ps_find(task, "\n</goal_objective>\n") >= 0 && ps_find(task, "[GOAL_COMPLETE]") >= 0;
+}
+
+// Whether task is the /goal skeptical verification pass before closing a goal.
+mk_is_goal_audit :: (task: string) -> bool {
+  return mk_is_goal_task(task) && ps_find(task, "You said the goal above is done. Before it closes, check the work") >= 0;
+}
+
+// System-prompt guidance for an active /goal turn ("" for non-goal tasks).
+mk_goal_guidance :: (task: string) -> string {
+  if mk_is_goal_audit(task) { return MK_GOAL_AUDIT_GUIDANCE; }
+  if mk_is_goal_task(task) { return MK_GOAL_GUIDANCE; }
+  return "";
+}
+
+// System-prompt guidance for local Psionic/Inkling runs ("" for cloud-only runs).
+mk_local_guidance :: (local: bool, combo: bool) -> string {
+  if local || combo { return MK_LOCAL_GUIDANCE; }
+  return "";
+}
+
+// Picks the local Psionic model name: explicit hybrid req_model wins, else peer_model,
+// PSIONIC_MODEL env, explicit non-empty req_model (e.g. "inkling-2-mini"), or "local".
+mk_local_model_pick :: (req_model: string, peer_model: string, env_model: string) -> string {
+  if mk_is_hybrid_model(req_model) { return req_model; }
+  if peer_model.count > 0 { return peer_model; }
+  if env_model.count > 0 { return env_model; }
+  if req_model.count > 0 { return req_model; }
+  return "local";
+}
+
+// Per-turn step tracker for local Psionic/Inkling runs: breaks redundant verification/command
+// loops where a small local model keeps re-running an already-passing check without intervening
+// edits, and reminds an audit turn to close once its verification check has exited 0.
+MkLocalGuard :: struct {
+  active: bool;
+  goal_task: bool;
+  goal_audit: bool;
+  pass_checks: int;          // passing check commands since the last edit/write or failure
+  last_cmd: [256] u8;
+  nlast_cmd: int;
+  repeat_pass_cmd: bool;     // latest step re-ran the identical passing command with no edit since
+  step_passed_check: bool;   // latest step ran a passing check command
+  step_failed: bool;         // latest step had any non-zero exit or timeout
+  step_changed: bool;        // latest step ran an edit or file-writing shell command
+  step_cmds: int;
+  audit_noted: bool;
+  spin_notes: int;
+}
+
+mk_lg_init :: (g: [] MkLocalGuard, active: bool, task: string) {
+  g[0] = MkLocalGuard.{
+    active = active,
+    goal_task = mk_is_goal_task(task),
+    goal_audit = mk_is_goal_audit(task),
+  };
+}
+
+// Conservative check for shell commands that write or mutate workspace files (redirection, tee,
+// sed -i, rm, mv, cp, mkdir, touch, patch, git checkout/apply). Used only to avoid mistaking a
+// write+test step for a read-only redundant verification spin.
+mk_cmd_writes :: (cmd: string) -> bool {
+  if ps_find(cmd, ">") >= 0 { return true; }
+  if ps_find(cmd, "tee ") >= 0 || ps_find(cmd, "sed -i") >= 0 { return true; }
+  if ps_find(cmd, "rm ") >= 0 || ps_find(cmd, "mv ") >= 0 || ps_find(cmd, "cp ") >= 0 { return true; }
+  if ps_find(cmd, "mkdir ") >= 0 || ps_find(cmd, "touch ") >= 0 || ps_find(cmd, "patch ") >= 0 { return true; }
+  if ps_find(cmd, "git checkout") >= 0 || ps_find(cmd, "git apply") >= 0 { return true; }
+  return false;
+}
+
+// Records one completed MR_COMMAND from a model step (steps > 0 ignores step-0 seed lookups).
+mk_lg_command :: (g: [] MkLocalGuard, steps: int, cmd: string, exit: int, timed_out: bool) {
+  if !g[0].active || steps <= 0 { return; }
+  is_edit := cmd.count >= 5 && cast(string) cmd[0..<5] == "edit ";
+  is_write := is_edit || mk_cmd_writes(cmd);
+  g[0].step_cmds += 1;
+  if exit != 0 || timed_out {
+    g[0].step_failed = true;
+    g[0].pass_checks = 0;
+    g[0].nlast_cmd = 0;
+    g[0].audit_noted = false;
+    g[0].spin_notes = 0;
+    return;
+  }
+  if is_write {
+    g[0].step_changed = true;
+    g[0].pass_checks = 0;
+    g[0].nlast_cmd = 0;
+    g[0].audit_noted = false;
+    g[0].spin_notes = 0;
+  }
+  is_check := !is_edit && (mc_cmd_kind(cmd) & MC_CMD_CHECK) != 0;
+  if is_check {
+    g[0].step_passed_check = true;
+    g[0].pass_checks += 1;
+  }
+  if !is_write {
+    if g[0].nlast_cmd > 0 && cmd.count <= g[0].last_cmd.count && cast(string) g[0].last_cmd[0..<g[0].nlast_cmd] == cmd {
+      g[0].repeat_pass_cmd = true;
+    } else {
+      g[0].nlast_cmd = mk_keep(g[0].last_cmd[..], cmd);
+    }
+  }
+}
+
+MK_NOTE_AUDIT_VERIFIED :: "VERIFICATION ALREADY PASSED IN THIS AUDIT TURN (exit 0 above). Do NOT re-run passing tests without editing first. If every requirement in <goal_objective> holds, emit commands:[], edits:[], view:[], finished:true now, quote the observed command and output, and end your reply with [GOAL_COMPLETE]. Only edit if a requirement is genuinely missing.";
+MK_NOTE_GOAL_REPEAT :: "That check/command ALREADY exited 0 with no edits since. Do NOT run it again. If every requirement in <goal_objective> is satisfied, emit commands:[], edits:[], view:[], finished:true now and end your reply with [GOAL_COMPLETE].";
+MK_NOTE_LOCAL_REPEAT :: "That command ALREADY exited 0 with no edits since. Do NOT run it again. If the task is complete, emit commands:[], edits:[], view:[], finished:true now with a concise reply.";
+
+// Consumes the latest step's command observations right before the next deferred model call and
+// returns an anti-spin / verification-complete note when appropriate ("" otherwise).
+mk_lg_note :: (g: [] MkLocalGuard) -> string {
+  cmds := g[0].step_cmds;
+  failed := g[0].step_failed;
+  changed := g[0].step_changed;
+  passed_check := g[0].step_passed_check;
+  repeated := g[0].repeat_pass_cmd;
+  g[0].step_cmds = 0;
+  g[0].step_failed = false;
+  g[0].step_changed = false;
+  g[0].step_passed_check = false;
+  g[0].repeat_pass_cmd = false;
+  if !g[0].active || cmds == 0 || failed || changed { return ""; }
+  if g[0].goal_audit && passed_check && !g[0].audit_noted {
+    g[0].audit_noted = true;
+    return MK_NOTE_AUDIT_VERIFIED;
+  }
+  if (repeated || (passed_check && g[0].pass_checks >= 2)) && g[0].spin_notes < 2 {
+    g[0].spin_notes += 1;
+    return ifx g[0].goal_task then MK_NOTE_GOAL_REPEAT else MK_NOTE_LOCAL_REPEAT;
+  }
+  return "";
+}
+
 // Parses a positive integer environment variable, returning fallback when unset or invalid.
 mk_env_int :: (name: string, fallback: int) -> int {
   b: [32] u8;
@@ -366,10 +514,10 @@ mk_plan_local_for :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, req_mode
       return cast(string) why[0..<n];
     }
   }
-  model := ifx req_model.count > 0 then cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], req_model)]
-           else ifx peer_model.count > 0 then peer_model
-           else gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
-  if model.count == 0 { model = "local"; }
+  env_buf: [256] u8;
+  env_model := gw_env("PSIONIC_MODEL", env_buf[..]);
+  picked := mk_local_model_pick(req_model, peer_model, env_model);
+  model := cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], picked)];
   sb: [16] u8; strict_env := gw_env("PSIONIC_STRICT_SCHEMA", sb[..]);
   use_strict := strict_env != "0" && (strict_env == "1" || model == "inkling-2-mini" || model == "hybrid-exec-v1" || mk_is_hybrid_model(req_model) || peer_model.count > 0);
   if use_strict {
@@ -531,4 +679,72 @@ mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_se
   #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_SECRETS, "9z9z", o[..]) == "key\tAPI key ending 9z9z (~/work/.secrets)";
   #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_ENV, "abcd", o[..]) == "key\tAPI key ending abcd (GEMINI_API_KEY)";
   #assert mk_auth_text(MK_VX_NONE, "p", 0, "", o[..]) == "none\t";
+}
+
+#test "local and active-goal guidance selection covers workspace boundaries, refusals, clean finish, and goal audit" {
+  #assert mk_local_guidance(false, false) == "";
+  lg_local := mk_local_guidance(true, false);
+  lg_combo := mk_local_guidance(false, true);
+  #assert lg_local == MK_LOCAL_GUIDANCE && lg_combo == MK_LOCAL_GUIDANCE;
+  #assert ps_find(lg_local, "Workspace boundary") >= 0 && ps_find(lg_local, "refuse immediately") >= 0 && ps_find(lg_local, "commands:[], edits:[], view:[]") >= 0;
+
+  #assert !mk_is_goal_task("Fix calc.py so python3 -m unittest passes.");
+  #assert !mk_is_goal_task("Mention <goal_objective>\nfoo\n</goal_objective>\n without completion tag");
+  #assert mk_goal_guidance("Fix calc.py") == "";
+
+  goal_start := "<goal_objective>\nCreate todo.py\n</goal_objective>\nWork autonomously. Include [GOAL_COMPLETE] at the end of your reply.";
+  #assert mk_is_goal_task(goal_start) && !mk_is_goal_audit(goal_start);
+  #assert mk_goal_guidance(goal_start) == MK_GOAL_GUIDANCE && ps_find(mk_goal_guidance(goal_start), "[GOAL_COMPLETE]") >= 0;
+
+  goal_audit := "<goal_objective>\nCreate todo.py\n</goal_objective>\nYou said the goal above is done. Before it closes, check the work as a skeptical reviewer. End with [GOAL_COMPLETE].";
+  #assert mk_is_goal_task(goal_audit) && mk_is_goal_audit(goal_audit);
+  #assert mk_goal_guidance(goal_audit) == MK_GOAL_AUDIT_GUIDANCE && ps_find(mk_goal_guidance(goal_audit), "gh issue view") >= 0 && ps_find(mk_goal_guidance(goal_audit), "[GOAL_COMPLETE]") >= 0;
+}
+
+#test "local Psionic model selection honors hybrid, peer, env, task model, then local fallback" {
+  #assert mk_local_model_pick("hybrid-exec-v1", "peer-m", "env-m") == "hybrid-exec-v1";
+  #assert mk_local_model_pick("inkling-2-mini", "peer-m", "env-m") == "peer-m";
+  #assert mk_local_model_pick("inkling-2-mini", "", "env-m") == "env-m";
+  #assert mk_local_model_pick("inkling-2-mini", "", "") == "inkling-2-mini";
+  #assert mk_local_model_pick("", "", "") == "local";
+}
+
+#test "local anti-spin guard nudges verified audit turns and repeated passing checks without interfering with edits or failures" {
+  g: [1] MkLocalGuard;
+  audit := "<goal_objective>\nCreate todo.py\n</goal_objective>\nYou said the goal above is done. Before it closes, check the work as a skeptical reviewer. End with [GOAL_COMPLETE].";
+  mk_lg_init(g[..], true, audit);
+  // Step-0 seed commands are ignored.
+  mk_lg_command(g[..], 0, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  // Step 1 on audit turn runs passing unittest -> immediate verification-passed note.
+  mk_lg_command(g[..], 1, "cat SKILL.md", 0, false);
+  mk_lg_command(g[..], 1, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_AUDIT_VERIFIED;
+  // Step 2 re-runs passing unittest without edits -> repeat-check note.
+  mk_lg_command(g[..], 2, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_GOAL_REPEAT;
+
+  // Regular task: write+test step does not trigger; re-running same check without edits triggers; failure or edit resets cleanly.
+  goal := "<goal_objective>\nCreate todo.py\n</goal_objective>\nInclude [GOAL_COMPLETE] at the end.";
+  mk_lg_init(g[..], true, goal);
+  mk_lg_command(g[..], 1, "cat > todo.py <<'EOF'\nEOF\npython3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 2, "python3 -m unittest", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_GOAL_REPEAT;
+  mk_lg_command(g[..], 3, "edit todo.py", 0, false);
+  mk_lg_command(g[..], 3, "python3 -m unittest", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 4, "python3 -m unittest", 1, false);
+  #assert mk_lg_note(g[..]) == "";
+
+  // Non-goal local task: identical passing read command repeated twice breaks spin.
+  mk_lg_init(g[..], true, "Write ready to notes.txt");
+  mk_lg_command(g[..], 1, "cat notes.txt", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 2, "cat notes.txt", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_LOCAL_REPEAT;
+  // Inactive guard (cloud runs) never emits notes.
+  mk_lg_init(g[..], false, audit);
+  mk_lg_command(g[..], 1, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
 }
