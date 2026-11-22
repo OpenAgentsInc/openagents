@@ -141,14 +141,13 @@ cp "$stage/credits.html" "$pages/credits"
 mv "$stage/fated-dragon/index.html" "$pages/fated-dragon"
 mv "$stage/splicebots/index.html" "$pages/splicebots"
 mv "$stage/whispering-spring/index.html" "$pages/whispering-spring"
-# whispering-spring/ keeps audio-manifest.json (unversioned, so the artist's audio swaps in without a release)
-rmdir "$stage/fated-dragon" "$stage/splicebots" 2>/dev/null || true
+rmdir "$stage/fated-dragon" "$stage/splicebots" "$stage/whispering-spring" 2>/dev/null || true
 
-# Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
+# Sync top-level pages, images, unversioned manifests, and content-verified packs; remove stale unmanaged legacy objects.
 g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$,^whispering-spring$' --cache-control "$cache" > /dev/null
 g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
 
-# Upload extensionless HTML pages after rsync; packs live under /packs/splicebots/ so no prefix collides.
+# Upload extensionless HTML pages after rsync; packs live under /packs/ and manifests under /manifests/ so no prefix collides.
 g storage cp "$pages/credits" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/fated-dragon" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/splicebots" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null

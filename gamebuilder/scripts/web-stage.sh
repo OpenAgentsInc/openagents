@@ -3,7 +3,7 @@
 # Stages gamebuilder.org from a finished web/build.sh output:
 #   scripts/web-stage.sh DIR            unversioned site tree (/, /credits, /fated-dragon, /splicebots, /whispering-spring)
 #   scripts/web-stage.sh DIR release    moves immutable release code/shaders/fonts under /b/NAME/ and rewrites HTML; prints NAME
-#   scripts/web-stage.sh DIR stored     gzips .js/.wasm/.wgsl/.gbd1 under /b/ in place for Content-Encoding: gzip
+#   scripts/web-stage.sh DIR stored     gzips .js/.wasm/.wgsl/.gbd1/.wsg under /b/ in place for Content-Encoding: gzip
 set -euo pipefail
 gb="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo="$(cd "$gb/.." && pwd)"
@@ -79,12 +79,16 @@ if [[ "$2" == release ]]; then
   mkdir -p "$stage/packs/splicebots"
   mv "$stage/splicebots/packs/"*.pack "$stage/packs/splicebots/"
   rmdir "$stage/splicebots/packs"
-  # The Whispering Spring: its code is versioned; its page and audio-manifest.json are not
+  # The Whispering Spring: its code is versioned; its page and audio-manifest.json are not.
+  # Move audio-manifest.json under /manifests/whispering-spring/ so no whispering-spring/ prefix
+  # collides with the extensionless /whispering-spring GCS object.
   mv "$stage/whispering-spring/glue.js" "$stage/whispering-spring/audio.js" "$stage/whispering-spring/room.js" "$stage/whispering-spring/whispering-spring.wgsl" "$stage/b/$name/whispering-spring/"
   mv "$stage/whispering-spring/build/whispering-spring.wasm" "$stage/b/$name/whispering-spring/build/"
   rmdir "$stage/whispering-spring/build"
   mv "$stage/whispering-spring/assets/grove.wsg" "$stage/b/$name/whispering-spring/assets/"
   rmdir "$stage/whispering-spring/assets"
+  mkdir -p "$stage/manifests/whispering-spring"
+  mv "$stage/whispering-spring/audio-manifest.json" "$stage/manifests/whispering-spring/"
 
   sed -i.was -e "s|/fonts/\([A-Za-z-]*\)\.woff2|/b/$name/fonts/\1.woff2|g" "$stage/index.html" "$stage/credits.html"
   rm -f "$stage/index.html.was" "$stage/credits.html.was"
@@ -114,6 +118,10 @@ if [[ "$2" == release ]]; then
     -e "s|data:/whispering-spring/assets/grove\.wsg|data:/b/$name/whispering-spring/assets/grove.wsg|g" \
     "$stage/whispering-spring/index.html"
   rm -f "$stage/whispering-spring/index.html.was"
+  sed -i.was \
+    -e "s|\"/whispering-spring/audio-manifest\.json\"|\"/manifests/whispering-spring/audio-manifest.json\"|g" \
+    "$stage/b/$name/whispering-spring/glue.js"
+  rm -f "$stage/b/$name/whispering-spring/glue.js.was"
   echo "$name"
   exit
 fi
