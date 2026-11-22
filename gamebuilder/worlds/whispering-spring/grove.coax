@@ -1,0 +1,484 @@
+// The Whispering Spring's grove: one composed shot of a low-poly Texas Hill Country cedar grove.
+// A blue-green pool at the foot of a tall, dark umber cut bank with cedar roots over its face;
+// water spills over a low limestone lip into a shallow brook; Ashe-juniper cedars frame it and
+// their canopy leaves a gap where the warm light falls on the pool. Broad flat-shaded facets in a
+// restrained palette (olive, walnut, pale limestone, muted blue-green), built once with the
+// Metaverse Engine's mesh pen. Where everything stands is in PLAN.md's table and here.
+//   coax/bin/coax test gamebuilder/worlds/whispering-spring/world-spring.coax --library
+#load "../../../metaverse-engine/arch/solid.coax";
+#load "../../../metaverse-engine/core/points.coax";
+
+WS_PI :: 3.14159265;
+WS_TAU :: 6.2831853;
+
+// ---- the layout (metres; +y up; the camera looks toward -z)
+WS_POOL_X :: 0.3;   WS_POOL_Z :: -1.6;
+WS_POOL_RX :: 1.75; WS_POOL_RZ :: 1.15;
+WS_WATER_Y :: -0.1;
+WS_LIP_X :: 2.0;    WS_LIP_Z :: -1.1;   WS_LIP_YAW :: 0.75;
+WS_PILE_X :: -2.95; WS_PILE_Z :: 1.35;
+WS_CAIRN_X :: -2.35; WS_CAIRN_Z :: 0.45; WS_CAIRN_TOP :: 0.08;
+// The ribbon cedar's branch: from near the trunk to its tip, drooping a little in the middle.
+WS_LIMB :: [6] f32.[-3.75, 1.78, -2.45,  -2.15, 2.35, -1.8];
+WS_LIMB_DROOP :: 0.12;
+WS_TIES :: [3] f32.[0.52, 0.74, 0.93];   // where along the branch a ribbon can be tied
+// The quail's range: a foreground strip with nothing in it or between it and the camera.
+WS_RANGE :: [4] f32.[-1.4, 0.0, 2.8, 1.9];   // x0, z0, x1, z1
+// Where the quail goes to give each clue (inside its range): stones, ribbon, pool.
+WS_CLUE_AT :: [6] f32.[-1.3, 0.9,  -1.2, 0.05,  0.3, 0.05];
+// The three interaction spots the pointer and keyboard pick: x, y, z, radius.
+WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOTS :: 3;
+WS_SPOT :: [WS_SPOTS * 4] f32.[0.3, -0.05, -1.6, 1.25,   -2.65, 0.15, 0.9, 0.75,   -2.6, 2.15, -1.95, 0.6];
+// What the camera aims at, and the box every frame must show (x0, y0, z0, x1, y1, z1).
+WS_AIM :: [3] f32.[0.0, 0.8, -1.1];
+WS_SAFE :: [6] f32.[-3.35, 0.0, -2.9, 3.1, 2.5, 1.95];
+
+// ---- the palette (display colours; the shaders decode them)
+WS_OLIVE :: [3] f32.[0.42, 0.45, 0.25];
+WS_OLIVE_DARK :: [3] f32.[0.31, 0.35, 0.19];
+WS_DRY :: [3] f32.[0.55, 0.5, 0.33];
+WS_WALNUT :: [3] f32.[0.34, 0.24, 0.16];
+WS_UMBER :: [3] f32.[0.21, 0.135, 0.085];
+WS_UMBER_LIGHT :: [3] f32.[0.29, 0.19, 0.12];
+WS_LIMESTONE :: [3] f32.[0.8, 0.76, 0.66];
+WS_LIME_SHADE :: [3] f32.[0.69, 0.65, 0.56];
+WS_WATER :: [3] f32.[0.22, 0.44, 0.42];
+WS_BROOK :: [3] f32.[0.3, 0.52, 0.48];
+WS_SPILL :: [3] f32.[0.62, 0.76, 0.72];
+WS_BARK :: [3] f32.[0.3, 0.2, 0.14];
+WS_ROOT :: [3] f32.[0.36, 0.26, 0.18];
+WS_CEDAR :: [3] f32.[0.3, 0.37, 0.2];
+WS_CEDAR_DARK :: [3] f32.[0.22, 0.28, 0.15];
+
+// ---- cedars: x, z, base y, height, crown radius, seed
+WS_CEDARS :: 9;
+WS_CEDAR_FLOATS :: 6;
+WS_CEDAR_AT :: [WS_CEDARS * WS_CEDAR_FLOATS] f32.[
+  -4.5, -2.7, 0.0, 6.0, 1.4, 3,     // the ribbon cedar: its crown high, clear of the branch
+   4.5, -2.9, 0.0, 4.7, 1.7, 5,
+  -6.6, -6.4, 3.2, 3.8, 1.6, 7,
+  -2.1, -7.6, 3.2, 4.4, 1.9, 11,
+   1.6, -8.1, 3.2, 4.0, 1.8, 13,
+   5.2, -6.7, 3.2, 3.6, 1.5, 17,
+  -7.4,  2.8, 0.0, 5.2, 1.7, 19,    // foreground framing, at the left edge
+   7.6,  3.4, 0.0, 5.6, 1.8, 23,    // and the right
+   8.8, -1.6, 0.0, 4.4, 1.6, 29];
+WS_CEDAR_BLOBS :: 5;
+// Canopy high over the frame's top: x, y, z, rx, ry, rz. A gap is left over the pool.
+WS_CANOPY_N :: 6;
+WS_CANOPY :: [WS_CANOPY_N * 6] f32.[
+  -4.6, 5.6, -0.6, 2.2, 0.8, 1.6,
+  -2.8, 6.3, -3.4, 1.8, 0.7, 1.4,
+   4.2, 5.8, -0.2, 2.3, 0.8, 1.7,
+   3.0, 6.5, -3.6, 1.6, 0.7, 1.3,
+  -6.2, 5.0,  1.4, 1.8, 0.9, 1.5,
+   6.4, 5.2,  1.8, 1.9, 0.9, 1.5];
+// Roots over the bank's face: x along the bank, how far down it hangs.
+WS_ROOTS :: 11;
+WS_ROOT_AT :: [WS_ROOTS * 2] f32.[-3.4, 1.3, -2.6, 0.9, -1.8, 1.7, -1.1, 1.1, -0.4, 2.0, 0.2, 1.4, 0.9, 1.9, 1.5, 1.0, 2.2, 1.6, 2.9, 1.2, 3.7, 0.8];
+// The brook: a polyline from the spill lip off the frame's right.
+WS_BROOK_N :: 6;
+WS_BROOK_AT :: [WS_BROOK_N * 2] f32.[2.25, -0.95, 2.95, -0.35, 3.55, 0.5, 4.35, 1.4, 5.45, 2.4, 7.2, 3.6];
+
+// ---- small geometry
+WsV :: struct { x: f32; y: f32; z: f32; }
+ws_v :: (x: f32, y: f32, z: f32) -> WsV { return WsV.{x = x, y = y, z = z}; }
+ws_sub :: (a: WsV, b: WsV) -> WsV { return ws_v(a.x - b.x, a.y - b.y, a.z - b.z); }
+ws_add :: (a: WsV, b: WsV) -> WsV { return ws_v(a.x + b.x, a.y + b.y, a.z + b.z); }
+ws_scale :: (a: WsV, k: f32) -> WsV { return ws_v(a.x * k, a.y * k, a.z * k); }
+ws_dot :: (a: WsV, b: WsV) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+ws_cross :: (a: WsV, b: WsV) -> WsV { return ws_v(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+ws_len :: (a: WsV) -> f32 { return sqrt(ws_dot(a, a)); }
+ws_unit :: (a: WsV) -> WsV { l := ws_len(a); if l < 0.000001 { return ws_v(0, 1, 0); } return ws_scale(a, 1 / l); }
+ws_face :: (a: WsV, b: WsV, c: WsV) -> WsV { return ws_unit(ws_cross(ws_sub(b, a), ws_sub(c, a))); }
+ws_mid3 :: (a: WsV, b: WsV, c: WsV) -> WsV { return ws_v((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, (a.z + b.z + c.z) / 3); }
+ws_lerp :: (a: WsV, b: WsV, t: f32) -> WsV { return ws_v(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+
+ws_rand :: (seed: int, k: int) -> f32 {
+  h := sin(cast(f32) (seed * 19 + k * 73) * 1.6180339) * 43758.5453;
+  return h - floor(h);
+}
+
+ws_mix3 :: (a: [] const f32, b: [] const f32, t: f32) -> [3] f32 {
+  return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+ws_mix3v :: (a: [3] f32, b: [] const f32, t: f32) -> [3] f32 {
+  return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+// A faceted blob: an ellipsoid with few segments and rings, each corner pushed in or out a
+// little (jag), turned by yaw, pitch and roll. Corners are shared, so the facets close.
+WsBlob :: struct {
+  x: f32; y: f32; z: f32;
+  rx: f32; ry: f32; rz: f32;
+  yaw: f32; pitch: f32; roll: f32;
+  seg: int = 7; rings: int = 4; seed: int; jag: f32 = 0.18;
+}
+
+ws_turn :: (b: WsBlob, x0: f32, y0: f32, z0: f32) -> WsV {
+  cr := cos(b.roll); sr := sin(b.roll);
+  x1 := x0 * cr - y0 * sr; y1 := x0 * sr + y0 * cr;
+  cp := cos(b.pitch); sp := sin(b.pitch);
+  y2 := y1 * cp - z0 * sp; z2 := y1 * sp + z0 * cp;
+  cy := cos(b.yaw); sy := sin(b.yaw);
+  x3 := x1 * cy + z2 * sy; z3 := -x1 * sy + z2 * cy;
+  return ws_v(b.x + x3, b.y + y2, b.z + z3);
+}
+
+ws_blob_at :: (b: WsBlob, i: int, j: int) -> WsV {
+  half: f32 = 0.5 * f32(WS_PI);
+  lat := -half + f32(WS_PI) * cast(f32) j / cast(f32) b.rings;
+  if j <= 0 { return ws_turn(b, 0, -b.ry, 0); }
+  if j >= b.rings { return ws_turn(b, 0, b.ry, 0); }
+  k := i % b.seg;
+  lon := f32(WS_TAU) * (cast(f32) k + (ifx (j % 2) == 1 then 0.5f32 else 0.0f32)) / cast(f32) b.seg;
+  push := 1 + b.jag * (ws_rand(b.seed, k * 31 + j * 7) - 0.5);
+  c := cos(lat) * push;
+  return ws_turn(b, b.rx * c * cos(lon), b.ry * sin(lat) * push, b.rz * c * sin(lon));
+}
+
+// A pen triangle with its own flat normal, turned to face away from `inside`.
+ws_pen_tri :: (p: [] ArchPen, a: WsV, b: WsV, c: WsV, inside: WsV) {
+  n := ws_face(a, b, c);
+  if ws_dot(n, ws_sub(ws_mid3(a, b, c), inside)) < 0 {
+    m := ws_scale(n, -1);
+    arch_tri(p, arch_at(a.x, a.y, a.z, m.x, m.y, m.z, a.x, a.y + a.z), arch_at(c.x, c.y, c.z, m.x, m.y, m.z, c.x, c.y + c.z), arch_at(b.x, b.y, b.z, m.x, m.y, m.z, b.x, b.y + b.z));
+    return;
+  }
+  arch_tri(p, arch_at(a.x, a.y, a.z, n.x, n.y, n.z, a.x, a.y + a.z), arch_at(b.x, b.y, b.z, n.x, n.y, n.z, b.x, b.y + b.z), arch_at(c.x, c.y, c.z, n.x, n.y, n.z, c.x, c.y + c.z));
+}
+
+ws_paint :: (p: [] ArchPen, material: int, c: [] const f32) { arch_material(p, material, c[0], c[1], c[2]); }
+ws_paint3 :: (p: [] ArchPen, material: int, c: [3] f32) { arch_material(p, material, c[0], c[1], c[2]); }
+
+ws_pen_blob :: (p: [] ArchPen, b: WsBlob) {
+  in := ws_v(b.x, b.y, b.z);
+  for j: 0..<b.rings {
+    for i: 0..<b.seg {
+      a := ws_blob_at(b, i, j); bb := ws_blob_at(b, i + 1, j);
+      c := ws_blob_at(b, i + 1, j + 1); d := ws_blob_at(b, i, j + 1);
+      if j == 0 { ws_pen_tri(p, a, c, d, in); }
+      else if j == b.rings - 1 { ws_pen_tri(p, a, bb, c, in); }
+      else { ws_pen_tri(p, a, bb, c, in); ws_pen_tri(p, a, c, d, in); }
+    }
+  }
+}
+
+// A box turned about y, every face flat.
+ws_pen_box :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32, yaw: f32) {
+  c := cos(yaw); s := sin(yaw);
+  k: [8] WsV;
+  for i: 0..<8 {
+    sx := ifx (i & 1) != 0 then hx else -hx; sy := ifx (i & 2) != 0 then hy else -hy; sz := ifx (i & 4) != 0 then hz else -hz;
+    k[i] = ws_v(cx + sx * c + sz * s, cy + sy, cz - sx * s + sz * c);
+  }
+  in := ws_v(cx, cy, cz);
+  faces := [24] int.[0, 1, 3, 2,  4, 6, 7, 5,  0, 4, 5, 1,  2, 3, 7, 6,  0, 2, 6, 4,  1, 5, 7, 3];
+  for f: 0..<6 {
+    ws_pen_tri(p, k[faces[f * 4]], k[faces[f * 4 + 1]], k[faces[f * 4 + 2]], in);
+    ws_pen_tri(p, k[faces[f * 4]], k[faces[f * 4 + 2]], k[faces[f * 4 + 3]], in);
+  }
+}
+
+// ---- the land
+ws_brook_dist :: (x: f32, z: f32) -> f32 {
+  best: f32 = 1000;
+  for i: 0..<WS_BROOK_N - 1 {
+    ax: f32 = WS_BROOK_AT[i * 2]; az: f32 = WS_BROOK_AT[i * 2 + 1];
+    bx: f32 = WS_BROOK_AT[i * 2 + 2]; bz: f32 = WS_BROOK_AT[i * 2 + 3];
+    dx := bx - ax; dz := bz - az;
+    t := clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1);
+    ex := x - (ax + dx * t); ez := z - (az + dz * t);
+    d := sqrt(ex * ex + ez * ez);
+    if d < best { best = d; }
+  }
+  return best;
+}
+
+ws_pool_d :: (x: f32, z: f32) -> f32 {
+  rx: f32 = WS_POOL_RX; rz: f32 = WS_POOL_RZ;
+  dx := (x - f32(WS_POOL_X)) / rx; dz := (z - f32(WS_POOL_Z)) / rz;
+  return sqrt(dx * dx + dz * dz);
+}
+
+ws_ground_y :: (x: f32, z: f32) -> f32 {
+  y := 0.04 * sin(x * 1.3 + 0.5) + 0.05 * cos(z * 1.1 - x * 0.4);
+  d := ws_pool_d(x, z) * 0.9;
+  if d < 1 { y -= 0.34 * (1 - d * d); }
+  b := ws_brook_dist(x, z);
+  if b < 0.6 { y -= 0.17 * (1 - b / 0.6); }
+  return y;
+}
+
+ws_bank_z :: (x: f32) -> f32 { return -3.9 + 0.35 * sin(x * 0.7) + 0.15 * cos(x * 1.9 + 0.4); }
+ws_bank_top :: (x: f32) -> f32 { return 3.2 + 0.22 * sin(x * 2.3) + 0.12 * cos(x * 0.9); }
+WS_BANK_OVER :: 0.3;   // the cut bank's top leans out over its foot
+
+ws_bank_point :: (i: int, k: int) -> WsV {
+  x: f32 = -11 + 0.55 * cast(f32) i;
+  shares := [4] f32.[0, 0.3, 0.64, 1];
+  f: f32 = shares[k];
+  over: f32 = WS_BANK_OVER;
+  j := ifx k == 0 || k == 3 then 0.0f32 else (ws_rand(41, i * 5 + k) - 0.5) * 0.16;
+  z := ws_bank_z(x) + over * f * f + j;
+  foot := ws_ground_y(x, ws_bank_z(x)) - 0.05;
+  y := foot + (ws_bank_top(x) - foot) * f + (ifx k == 0 || k == 3 then 0.0f32 else (ws_rand(43, i * 5 + k) - 0.5) * 0.18);
+  return ws_v(x, y, z);
+}
+
+ws_cedar_blob :: (t: int, m: int) -> WsBlob {
+  q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
+  seed := cast(int) q[5];
+  r := q[4];
+  up := q[2] + q[3];
+  b: WsBlob;
+  b.seed = seed * 10 + m; b.seg = 7; b.rings = 4; b.jag = 0.28;
+  if m == 0 {
+    b.x = q[0]; b.y = up - r * 0.55; b.z = q[1]; b.rx = r * 0.8; b.ry = r * 0.75; b.rz = r * 0.75;
+  } else {
+    a := f32(WS_TAU) * (cast(f32) m / cast(f32) (WS_CEDAR_BLOBS - 1)) + ws_rand(seed, m) * 1.2;
+    far := r * (0.55 + 0.3 * ws_rand(seed, m + 9));
+    b.x = q[0] + cos(a) * far; b.z = q[1] + sin(a) * far * 0.8;
+    b.y = up - r * (0.9 + 0.7 * ws_rand(seed, m + 3));
+    b.rx = r * (0.55 + 0.2 * ws_rand(seed, m + 5)); b.ry = r * 0.5; b.rz = b.rx * 0.85;
+  }
+  b.yaw = ws_rand(seed, m + 13) * 3;
+  return b;
+}
+
+ws_canopy_blob :: (c: int) -> WsBlob {
+  q: [] const f32 = WS_CANOPY[c * 6..<c * 6 + 6];
+  b: WsBlob;
+  b.x = q[0]; b.y = q[1]; b.z = q[2]; b.rx = q[3]; b.ry = q[4]; b.rz = q[5];
+  b.seg = 8; b.rings = 3; b.jag = 0.3; b.seed = 300 + c; b.yaw = cast(f32) c * 0.7;
+  return b;
+}
+
+// Where along the ribbon branch (0 at the trunk end, 1 at the tip).
+ws_limb_at :: (t: f32) -> WsV {
+  a := ws_v(WS_LIMB[0], WS_LIMB[1], WS_LIMB[2]); b := ws_v(WS_LIMB[3], WS_LIMB[4], WS_LIMB[5]);
+  p := ws_lerp(a, b, t);
+  droop: f32 = WS_LIMB_DROOP;
+  p.y -= droop * 4 * t * (1 - t);
+  return p;
+}
+
+ws_spot :: (s: int) -> [4] f32 {
+  q: [] const f32 = WS_SPOT[s * 4..<s * 4 + 4];
+  return [4] f32.[q[0], q[1], q[2], q[3]];
+}
+
+// ---- the grove's mesh, once
+WS_FAR :: 220.0;
+WS_MESH_VERTICES :: 48000;
+
+ws_build_grove :: (p: [] ArchPen) {
+  // The far land under and past everything (its own draw; record 0).
+  g: f32 = WS_FAR;
+  ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
+  below := ws_v(0, -100, 0);
+  ws_pen_tri(p, ws_v(-g, -0.35, g), ws_v(g, -0.35, g), ws_v(g, -0.35, -g), below);
+  ws_pen_tri(p, ws_v(-g, -0.35, g), ws_v(g, -0.35, -g), ws_v(-g, -0.35, -g), below);
+  // The grove's ground: a coarse grid, one flat colour a triangle.
+  cols := 30; rows := 18;
+  x0: f32 = -12; z0: f32 = -4.7; cell: f32 = 0.8;
+  for r: 0..<rows {
+    for c: 0..<cols {
+      xa := x0 + cell * cast(f32) c; xb := xa + cell;
+      za := z0 + cell * cast(f32) r; zb := za + cell;
+      jx := (ws_rand(5, r * 61 + c) - 0.5) * 0.3; jz := (ws_rand(6, r * 61 + c) - 0.5) * 0.3;
+      a := ws_v(xa, ws_ground_y(xa, za), za);
+      b := ws_v(xb, ws_ground_y(xb, za), za);
+      cc := ws_v(xb + jx * 0, ws_ground_y(xb, zb), zb);
+      d := ws_v(xa, ws_ground_y(xa, zb), zb);
+      // a jittered middle point breaks the grid into irregular facets
+      mx := (xa + xb) * 0.5 + jx; mz := (za + zb) * 0.5 + jz;
+      m := ws_v(mx, ws_ground_y(mx, mz), mz);
+      corners: [5] WsV; corners[0] = a; corners[1] = b; corners[2] = cc; corners[3] = d; corners[4] = a;
+      for e: 0..<4 {
+        u := corners[e]; w := corners[e + 1];
+        tx := (u.x + w.x + m.x) / 3; tz := (u.z + w.z + m.z) / 3;
+        wet := ws_pool_d(tx, tz) < 1.35 || ws_brook_dist(tx, tz) < 0.75;
+        n := ws_rand(9, r * 251 + c * 7 + e);
+        // broad, slow patches of olive and dry grass; each facet only a little its own
+        broad := 0.5 + 0.5 * sin(tx * 0.45 + tz * 0.3) * cos(tz * 0.5 - tx * 0.2);
+        if wet { ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n * 0.5)); }
+        else {
+          grass := ws_mix3(WS_OLIVE_DARK[..], WS_OLIVE[..], clamp(broad + (n - 0.5) * 0.3, 0, 1));
+          ws_paint3(p, ARCH_M_PLASTER, ws_mix3v(grass, WS_DRY[..], clamp((1 - broad) * 0.35 + (n - 0.5) * 0.12, 0, 0.5)));
+        }
+        ws_pen_tri(p, u, w, m, below);
+      }
+    }
+  }
+  // The cut bank: three bands of facets up its face, the top leaning out.
+  bank_cols := 40;
+  for i: 0..<bank_cols {
+    for k: 0..<3 {
+      a := ws_bank_point(i, k); b := ws_bank_point(i + 1, k);
+      c := ws_bank_point(i + 1, k + 1); d := ws_bank_point(i, k + 1);
+      n := ws_rand(47, i * 3 + k);
+      ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_UMBER[..], WS_UMBER_LIGHT[..], n * (ifx k == 1 then 1.0f32 else 0.6f32)));
+      facing := ws_v((a.x + c.x) * 0.5, (a.y + c.y) * 0.5, -40);
+      ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing);
+    }
+    // the land above it, back toward the far trees
+    t0 := ws_bank_point(i, 3); t1 := ws_bank_point(i + 1, 3);
+    back0 := ws_v(t0.x, t0.y + 0.1, -9.5); back1 := ws_v(t1.x, t1.y + 0.1, -9.5);
+    far0 := ws_v(t0.x, t0.y + 0.4, -18); far1 := ws_v(t1.x, t1.y + 0.4, -18);
+    ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_OLIVE_DARK[..], WS_DRY[..], ws_rand(49, i) * 0.5));
+    ws_pen_tri(p, t0, t1, back1, below); ws_pen_tri(p, t0, back1, back0, below);
+    ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
+    ws_pen_tri(p, back0, back1, far1, below); ws_pen_tri(p, back0, far1, far0, below);
+  }
+  // Cedar roots hanging over the face.
+  for i: 0..<WS_ROOTS {
+    x: f32 = WS_ROOT_AT[i * 2]; down: f32 = WS_ROOT_AT[i * 2 + 1];
+    over: f32 = WS_BANK_OVER;
+    top := ws_v(x, ws_bank_top(x) - 0.08, ws_bank_z(x) + over + 0.04);
+    ws_paint(p, ARCH_M_BARK, WS_ROOT[..]);
+    a := top; r: f32 = 0.055;
+    for s: 0..<3 {
+      sway := (ws_rand(53, i * 3 + s) - 0.5) * 0.35;
+      b := ws_v(a.x + sway, a.y - down / 3, a.z - 0.04 * cast(f32) s);
+      arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, r, r * 0.7, 5);
+      a = b; r *= 0.7;
+    }
+  }
+  // The pool: limestone slabs round its back and left, water over the basin.
+  for i: 0..<7 {
+    ang := 2.6 + 0.62 * cast(f32) i;
+    rx: f32 = WS_POOL_RX * 1.1; rz: f32 = WS_POOL_RZ * 1.12;
+    sx := f32(WS_POOL_X) + rx * cos(ang); sz := f32(WS_POOL_Z) + rz * sin(ang);
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_LIMESTONE[..], WS_LIME_SHADE[..], ws_rand(57, i)));
+    ws_pen_box(p, sx, ws_ground_y(sx, sz) + 0.02, sz, 0.3 + 0.1 * ws_rand(59, i), 0.07, 0.17, -ang + 0.3 * ws_rand(61, i));
+  }
+  // the spill lip, and a ledge or two at the bank's foot
+  ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
+  ws_pen_box(p, WS_LIP_X, -0.07, WS_LIP_Z, 0.46, 0.06, 0.2, WS_LIP_YAW);
+  ws_paint(p, ARCH_M_SMOOTH, WS_LIME_SHADE[..]);
+  ws_pen_box(p, -1.6, 0.05, -3.25, 0.7, 0.12, 0.3, 0.2);
+  ws_pen_box(p, 2.4, 0.06, -3.3, 0.55, 0.14, 0.28, -0.3);
+  // the cairn's slab
+  ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
+  ws_pen_box(p, WS_CAIRN_X, 0.03, WS_CAIRN_Z, 0.4, 0.05, 0.3, 0.2);
+  // water: the pool's surface as a fan, the brook as a strip, the spill between them
+  ws_paint(p, ARCH_M_WATER, WS_WATER[..]);
+  segs := 20;
+  centre := ws_v(WS_POOL_X, WS_WATER_Y, WS_POOL_Z);
+  for i: 0..<segs {
+    a0 := f32(WS_TAU) * cast(f32) i / cast(f32) segs; a1 := f32(WS_TAU) * cast(f32) (i + 1) / cast(f32) segs;
+    rx: f32 = WS_POOL_RX; rz: f32 = WS_POOL_RZ;
+    r0 := ws_v(f32(WS_POOL_X) + rx * cos(a0), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a0));
+    r1 := ws_v(f32(WS_POOL_X) + rx * cos(a1), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a1));
+    ws_pen_tri(p, centre, r0, r1, below);
+  }
+  ws_paint(p, ARCH_M_WATER, WS_BROOK[..]);
+  for i: 0..<WS_BROOK_N - 1 {
+    ax: f32 = WS_BROOK_AT[i * 2]; az: f32 = WS_BROOK_AT[i * 2 + 1];
+    bx: f32 = WS_BROOK_AT[i * 2 + 2]; bz: f32 = WS_BROOK_AT[i * 2 + 3];
+    dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz);
+    nx := -dz / l; nz := dx / l;
+    wa := 0.22 + 0.05 * cast(f32) i; wb := wa + 0.05;
+    ya: f32 = -0.13; yb: f32 = -0.13;
+    ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx + nx * wb, yb, bz + nz * wb), ws_v(bx - nx * wb, yb, bz - nz * wb), below);
+    ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx - nx * wb, yb, bz - nz * wb), ws_v(ax - nx * wa, ya, az - nz * wa), below);
+  }
+  ws_paint(p, ARCH_M_WATER, WS_SPILL[..]);
+  lc: f32 = cos(f32(WS_LIP_YAW)); ls: f32 = sin(f32(WS_LIP_YAW));
+  lx: f32 = WS_LIP_X; lz: f32 = WS_LIP_Z;
+  // the lip's outer edge (its +z side once turned), down to where the brook starts
+  e0 := ws_v(lx - 0.42 * lc + 0.2 * ls, -0.02, lz + 0.42 * ls + 0.2 * lc);
+  e1 := ws_v(lx + 0.42 * lc + 0.2 * ls, -0.02, lz - 0.42 * ls + 0.2 * lc);
+  bx0: f32 = WS_BROOK_AT[0]; bz0: f32 = WS_BROOK_AT[1];
+  f0 := ws_v(bx0 - 0.25, -0.14, bz0 + 0.18); f1 := ws_v(bx0 + 0.2, -0.14, bz0 - 0.2);
+  front := ws_v(lx - 3, -3, lz - 3);
+  ws_pen_tri(p, e0, e1, f1, front); ws_pen_tri(p, e0, f1, f0, front);
+  // Cedars: a trunk each and a crown of faceted clumps.
+  for t: 0..<WS_CEDARS {
+    q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
+    ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+    lean := (ws_rand(cast(int) q[5], 99) - 0.5) * 0.5;
+    arch_limb(p, q[0], q[2], q[1], q[0] + lean, q[2] + q[3] * 0.75, q[1] + lean * 0.4, 0.17, 0.09, 6);
+    for m: 0..<WS_CEDAR_BLOBS {
+      n := ws_rand(cast(int) q[5], m + 40);
+      ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_CEDAR_DARK[..], WS_CEDAR[..], n));
+      ws_pen_blob(p, ws_cedar_blob(t, m));
+    }
+  }
+  // the ribbon cedar's branch, bare at its outer end where the ribbon is tied
+  ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+  steps := 6;
+  for s: 0..<steps {
+    a := ws_limb_at(cast(f32) s / cast(f32) steps); b := ws_limb_at(cast(f32) (s + 1) / cast(f32) steps);
+    ra := 0.085 - 0.01 * cast(f32) s; rb := ra - 0.01;
+    arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, ra, rb, 5);
+  }
+  for m: 0..<2 {
+    at := ws_limb_at(0.12 + 0.16 * cast(f32) m);
+    b: WsBlob;
+    b.x = at.x; b.y = at.y + 0.28; b.z = at.z - 0.1; b.rx = 0.55; b.ry = 0.34; b.rz = 0.45; b.seed = 500 + m; b.seg = 6; b.rings = 3; b.jag = 0.3;
+    ws_paint(p, ARCH_M_LEAF, WS_CEDAR[..]);
+    ws_pen_blob(p, b);
+  }
+  // Canopy over the top of the frame.
+  for c: 0..<WS_CANOPY_N {
+    ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_CEDAR_DARK[..], WS_CEDAR[..], ws_rand(71, c) * 0.7));
+    ws_pen_blob(p, ws_canopy_blob(c));
+  }
+}
+
+// ---- what could stand in the way: every piece of scenery as rough spheres (for the tests and
+// for nothing else; the mesh above is what is drawn).
+WS_PROPS :: WS_CEDARS * (WS_CEDAR_BLOBS + 3) + WS_CANOPY_N + 4;
+ws_props :: (out: [] f32) -> int {
+  n := 0;
+  for t: 0..<WS_CEDARS {
+    q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
+    for m: 0..<WS_CEDAR_BLOBS {
+      b := ws_cedar_blob(t, m);
+      r := b.rx; if b.ry > r { r = b.ry; } if b.rz > r { r = b.rz; }
+      out[n * 4] = b.x; out[n * 4 + 1] = b.y; out[n * 4 + 2] = b.z; out[n * 4 + 3] = r * 1.15; n += 1;
+    }
+    for s: 0..<3 {
+      out[n * 4] = q[0]; out[n * 4 + 1] = q[2] + q[3] * (0.12 + 0.25 * cast(f32) s); out[n * 4 + 2] = q[1]; out[n * 4 + 3] = 0.3; n += 1;
+    }
+  }
+  for c: 0..<WS_CANOPY_N {
+    b := ws_canopy_blob(c);
+    r := b.rx; if b.rz > r { r = b.rz; }
+    out[n * 4] = b.x; out[n * 4 + 1] = b.y; out[n * 4 + 2] = b.z; out[n * 4 + 3] = r * 1.1; n += 1;
+  }
+  for m: 0..<2 {
+    at := ws_limb_at(0.12 + 0.16 * cast(f32) m);
+    out[n * 4] = at.x; out[n * 4 + 1] = at.y + 0.28; out[n * 4 + 2] = at.z - 0.1; out[n * 4 + 3] = 0.62; n += 1;
+  }
+  // the two foot ledges
+  out[n * 4] = -1.6; out[n * 4 + 1] = 0.05; out[n * 4 + 2] = -3.25; out[n * 4 + 3] = 0.75; n += 1;
+  out[n * 4] = 2.4; out[n * 4 + 1] = 0.06; out[n * 4 + 2] = -3.3; out[n * 4 + 3] = 0.6; n += 1;
+  return n;
+}
+
+// Does the segment from `a` to `b` pass through a sphere (x, y, z, r)?
+ws_segment_hits :: (a: WsV, b: WsV, x: f32, y: f32, z: f32, r: f32) -> bool {
+  d := ws_sub(b, a); c := ws_sub(ws_v(x, y, z), a);
+  l2 := ws_dot(d, d);
+  t := ifx l2 > 0 then clamp(ws_dot(c, d) / l2, 0, 1) else 0.0f32;
+  e := ws_sub(c, ws_scale(d, t));
+  return ws_dot(e, e) < r * r;
+}
+
+#test "the grove's mesh fits its buffer and its pieces are where the plan puts them" #steps 4000000000 {
+  buf: [WS_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32;
+  p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  ws_build_grove(p[..]);
+  #assert !p[0].full && p[0].n > 6000 && p[0].n < WS_MESH_VERTICES;
+  // the pool lies below the ground round it, and the bank rises behind it
+  #assert ws_ground_y(WS_POOL_X, WS_POOL_Z) < WS_WATER_Y && ws_ground_y(-1.0, 1.0) > WS_WATER_Y;
+  #assert ws_bank_z(0) < WS_POOL_Z - WS_POOL_RZ && ws_bank_top(0) > 2.8;
+  // the branch's tie points are above the ground and out from the trunk
+  for k: 0..<3 { at := ws_limb_at(WS_TIES[k]); #assert at.y > 1.8 && at.x > -3.5; }
+  props: [WS_PROPS * 4] f32;
+  #assert ws_props(props[..]) <= WS_PROPS;
+}

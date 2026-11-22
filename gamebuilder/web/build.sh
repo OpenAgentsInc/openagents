@@ -4,6 +4,7 @@
 # (/coaxial/*.js + /build/{frame-plan,host-layers,host-packs}.wasm), and standalone worlds:
 #   /fated-dragon  (gamebuilder/worlds/fated-dragon/)
 #   /splicebots    (gamebuilder/worlds/splicebots/ + metaverse/splice-bots/)
+#   /whispering-spring (gamebuilder/worlds/whispering-spring/)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 gb="$(cd "$here/.." && pwd)"
@@ -13,7 +14,8 @@ ulimit -s 65520 2>/dev/null || true
 
 mkdir -p "$here/build" "$here/coaxial" "$here/credits" \
   "$here/fated-dragon/build" "$here/fated-dragon/assets" \
-  "$here/splicebots/build" "$here/splicebots/fonts" "$here/splicebots/packs"
+  "$here/splicebots/build" "$here/splicebots/fonts" "$here/splicebots/packs" \
+  "$here/whispering-spring/build"
 
 # Hydrate content-addressed binary packs (SPLICEBOTS packs + GameBuilder assets)
 (cd "$repo" && COAX="$COAX" "$repo/coax/web/tool.sh" assets-sync --group gamebuilder)
@@ -46,3 +48,9 @@ for f in IBMPlexMono-Medium.ttf IBMPlexMono-OFL.txt Michroma-Regular.ttf Michrom
 done
 "$repo/coax/web/wasm.sh" "$repo/metaverse/splice-bots/splice-jam.coax" "$repo/metaverse/splice-bots/splice-jam-face.c" "$here/splicebots/build/splice-jam.wasm" "$repo/apps/openagents-web/animelab-style.coax"
 (cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" metaverse/splice-bots/gpu/splice-jam.coax "$here/splicebots/splice-jam.wgsl" metaverse/splice-bots/gpu/splice-jam.module)
+
+# World 3: The Whispering Spring (/whispering-spring)
+ws_src="$gb/worlds/whispering-spring"
+cp "$ws_src/index.html" "$ws_src/glue.js" "$ws_src/audio.js" "$ws_src/audio-manifest.json" "$here/whispering-spring/"
+"$repo/coax/web/wasm.sh" "$ws_src/world-spring.coax" "$ws_src/whispering-spring-face.c" "$here/whispering-spring/build/whispering-spring.wasm"
+(cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.coax "$here/whispering-spring/whispering-spring.wgsl" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.module)

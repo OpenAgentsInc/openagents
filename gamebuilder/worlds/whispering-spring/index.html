@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Whispering Spring — GAMEBUILDER</title>
+<meta name="description" content="An album you discover by spending time in a place: a Hill Country cedar grove, a black quail, and a spring that answers when you touch it.">
+<meta property="og:title" content="The Whispering Spring — GAMEBUILDER">
+<meta property="og:description" content="An album you discover by spending time in a place, on gamebuilder.org.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gamebuilder.org/whispering-spring">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2321170f'/%3E%3Cellipse cx='16' cy='20' rx='10' ry='5' fill='%235e8c86'/%3E%3Ccircle cx='16' cy='11' r='2.5' fill='%23d9c08a'/%3E%3C/svg%3E">
+<style>
+:root{
+  --walnut:#21170f; --panel:rgba(28,20,13,.9); --panel-soft:rgba(28,20,13,.72); --line:rgba(239,231,214,.2);
+  --cream:#efe7d6; --cream-dim:#c9bfa9; --gold:#d9c08a; --gold-strong:#f0d79c; --water:#5e8c86; --olive:#7d8450;
+  --serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --tap:48px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--walnut);color:var(--cream);font:16px/1.5 var(--sans)}
+#coaxial{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#coaxial[data-cursor="pointer"]{cursor:pointer}
+.text-mode #coaxial{visibility:hidden}
+button,input,select,label{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--gold-strong);outline-offset:2px}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[hidden]{display:none!important}
+h1,h2,h3{font-family:var(--serif);font-weight:500;letter-spacing:.01em}
+.btn{min-height:var(--tap);min-width:var(--tap);padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:rgba(239,231,214,.06);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:left}
+.btn:hover{background:rgba(239,231,214,.14)}
+.btn.primary{background:var(--gold);color:#22170c;border-color:var(--gold);font-weight:600}
+.btn.primary:hover{background:var(--gold-strong)}
+.btn[aria-pressed="true"]{border-color:var(--gold);background:rgba(217,192,138,.2)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.stack{display:flex;flex-direction:column;gap:12px}
+.muted{color:var(--cream-dim)}
+.small{font-size:14px}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+legend{padding:0 6px;color:var(--cream-dim);font-size:14px}
+.choice{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:6px 12px;border-radius:10px;border:1px solid var(--line);margin:4px 6px 4px 0;cursor:pointer}
+.choice:has(input:checked){border-color:var(--gold);background:rgba(217,192,138,.18)}
+.choice input{width:20px;height:20px;accent-color:var(--gold)}
+.swatch{width:18px;height:18px;border-radius:50%;border:1px solid rgba(255,255,255,.5);display:inline-block}
+input[type=range]{accent-color:var(--gold);width:160px;height:var(--tap)}
+input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.3);width:100%}
+.check{display:flex;align-items:center;gap:10px;min-height:var(--tap)}
+.check input{width:22px;height:22px;accent-color:var(--gold)}
+
+/* landing */
+#landing{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:linear-gradient(180deg,rgba(20,14,9,.55),rgba(20,14,9,.86));overflow:auto}
+#landing .card{max-width:560px;width:100%;background:var(--panel-soft);border:1px solid var(--line);border-radius:18px;padding:28px 24px;backdrop-filter:blur(6px)}
+#landing h1{font-size:clamp(32px,6vw,46px);line-height:1.1;margin-bottom:8px}
+#landing .lede{font-family:var(--serif);font-size:19px;color:var(--cream-dim);margin-bottom:20px}
+#landing .choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0 14px}
+#landing .choices .btn{min-height:64px;font-size:18px;justify-content:center}
+@media (max-width:480px){#landing .choices{grid-template-columns:1fr}}
+.sound{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center}
+
+/* in the grove */
+#hud{position:fixed;inset:0;z-index:16;pointer-events:none}
+.text-mode #spots{display:none}
+#hud > *{pointer-events:auto}
+#back{position:fixed;top:12px;left:12px;padding:8px 12px;background:var(--panel-soft);border:1px solid var(--line);border-radius:10px;color:var(--cream);text-decoration:none;font-size:13px;letter-spacing:.1em;text-transform:uppercase;min-height:var(--tap);display:inline-flex;align-items:center}
+#tools{position:fixed;top:12px;right:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 180px)}
+#tools .btn{background:var(--panel-soft);padding:8px 12px;font-size:15px}
+#spots{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:max-content;max-width:calc(100% - 24px)}
+#spots .btn{background:var(--panel-soft);font-size:15px}
+#spots .btn .glint{width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);opacity:0}
+#spots .btn.clue .glint{opacity:1}
+#caption{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);max-width:min(680px,calc(100% - 24px));padding:10px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-family:var(--serif);font-size:18px;text-align:center;transition:opacity .4s}
+#caption.gone{opacity:0}
+.panel{position:fixed;z-index:20;right:12px;top:72px;width:min(420px,calc(100% - 24px));max-height:calc(100% - 170px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px}
+.panel h2{font-size:24px;margin-bottom:10px}
+.panel .close{position:absolute;top:10px;right:10px}
+.panel.wide{width:min(560px,calc(100% - 24px))}
+@media (max-width:640px){
+  .panel{left:12px;right:12px;width:auto;top:auto;bottom:12px;max-height:72%}
+  #tools{max-width:calc(100% - 24px);top:68px;right:12px}
+  #caption{bottom:auto;top:130px}
+}
+.list{list-style:none;display:flex;flex-direction:column;gap:10px}
+.list li{border:1px solid var(--line);border-radius:12px;padding:12px}
+.status{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--cream-dim)}
+.status.found{color:var(--gold)}
+.lyric{font-family:var(--serif);font-style:italic;white-space:pre-line;font-size:18px;line-height:1.6;border-left:2px solid var(--gold);padding:4px 0 4px 14px;margin:8px 0}
+.transcript{white-space:pre-line;font-size:15px;border:1px dashed var(--line);border-radius:10px;padding:10px;margin-top:8px}
+.balance{font-size:17px;padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.25)}
+.balance[data-b="0"]::before{content:"● ";color:#9fc28a}.balance[data-b="1"]::before{content:"◐ ";color:var(--gold)}.balance[data-b="2"]::before{content:"○ ";color:#e19a7c}
+#found{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,10,6,.45)}
+#found .card{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--gold);border-radius:18px;padding:24px;text-align:center}
+#found h2{font-size:28px;margin:6px 0 4px}
+#paused{position:fixed;inset:0;z-index:25;display:flex;align-items:center;justify-content:center;background:rgba(15,10,6,.55)}
+#paused .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;text-align:center}
+#textmode{position:fixed;inset:0;z-index:15;overflow:auto;padding:84px 16px 140px;background:linear-gradient(180deg,#2a1f15,#1b130c)}
+#textmode .inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:16px;font-family:var(--serif);font-size:19px}
+#textmode .actions .btn{font-family:var(--sans);font-size:16px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-label="The grove: a cedar-shaded pool under a dark cut bank, creek stones, a ribbon branch, and a black quail" role="img"></canvas>
+<main id="ws-ui">
+  <div id="live" class="sr" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Landing -->
+  <section id="landing" aria-labelledby="landing-title">
+    <div class="card">
+      <h1 id="landing-title">The Whispering Spring</h1>
+      <p class="lede">An album you discover by spending time in a place. A cedar grove, a black quail, and a spring that answers when you touch it.</p>
+      <fieldset class="sound" aria-describedby="sound-note">
+        <legend>Sound</legend>
+        <span>Sound</span>
+        <div class="row"><button class="btn" id="l-sound" aria-pressed="true" type="button">Sound on</button></div>
+        <label for="l-music">Music</label><input id="l-music" type="range" min="0" max="100" value="80">
+        <label for="l-amb">Ambience</label><input id="l-amb" type="range" min="0" max="100" value="60">
+        <span></span><label class="check"><input id="l-captions" type="checkbox" checked> Captions for sounds</label>
+      </fieldset>
+      <p id="sound-note" class="small muted" style="margin-top:6px">Set sound first; you can change it any time in Settings.</p>
+      <div class="choices">
+        <button class="btn primary" id="enter" type="button">Enter the Grove</button>
+        <button class="btn" id="listen" type="button">Listen to the Album</button>
+      </div>
+      <p class="small muted">No account needed: play as a guest. What you find stays on this device. <button class="btn small" id="l-settings" type="button" style="min-height:40px;padding:4px 10px">More settings</button></p>
+    </div>
+  </section>
+
+  <!-- In the grove -->
+  <div id="hud" hidden>
+    <a id="back" href="/">← GAMEBUILDER</a>
+    <nav id="tools" aria-label="Grove">
+      <button class="btn" id="t-disc" type="button" aria-controls="discoveries" aria-expanded="false">Discoveries</button>
+      <button class="btn" id="t-journal" type="button" aria-controls="journal" aria-expanded="false">Journal</button>
+      <button class="btn" id="t-settings" type="button" aria-controls="settings" aria-expanded="false">Settings</button>
+      <button class="btn" id="t-pause" type="button">Pause</button>
+      <button class="btn" id="t-leave" type="button">Leave</button>
+    </nav>
+    <div id="spots" role="toolbar" aria-label="Things in the grove">
+      <button class="btn" data-spot="0" type="button"><span class="glint" aria-hidden="true"></span>Touch the water</button>
+      <button class="btn" data-spot="1" type="button"><span class="glint" aria-hidden="true"></span>Creek stones</button>
+      <button class="btn" data-spot="2" type="button"><span class="glint" aria-hidden="true"></span>Ribbon branch</button>
+    </div>
+    <div id="caption" class="gone" aria-hidden="true"></div>
+  </div>
+
+  <!-- Discoveries -->
+  <section id="discoveries" class="panel" hidden aria-labelledby="disc-title" tabindex="-1">
+    <h2 id="disc-title">Discoveries</h2>
+    <button class="btn close" type="button" data-close aria-label="Close discoveries">✕</button>
+    <p class="muted small" id="disc-count"></p>
+    <ul class="list" id="disc-list"></ul>
+    <p style="margin-top:12px" id="disc-clue" class="muted"></p>
+  </section>
+
+  <!-- Stones -->
+  <section id="stones" class="panel" hidden aria-labelledby="stones-title" tabindex="-1">
+    <h2 id="stones-title">Stack creek stones</h2>
+    <button class="btn close" type="button" data-close aria-label="Close stones">✕</button>
+    <p class="small muted">Pick a stone, turn it, set it on the cairn. Each stone you set plays a note; four make a chord you voiced. Wide, flat stones hold best low down; a round stone only takes a pebble.</p>
+    <fieldset style="margin-top:10px"><legend>Stone in hand</legend><div id="stone-choices"></div></fieldset>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="turn-l" type="button" aria-label="Turn left 15 degrees" aria-keyshortcuts="Q">↺ Turn</button>
+      <span id="turn-at" aria-live="polite">0°</span>
+      <button class="btn" id="turn-r" type="button" aria-label="Turn right 15 degrees" aria-keyshortcuts="E">Turn ↻</button>
+    </div>
+    <p class="balance" id="balance" data-b="0" style="margin-top:10px" aria-live="polite"></p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="place" type="button" aria-keyshortcuts="Enter">Set it on the cairn</button>
+      <label class="check"><input type="checkbox" id="assist"> Assisted placement</label>
+    </div>
+    <p class="small muted" style="margin-top:8px" id="cairn-desc"></p>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="rebuild" type="button">Take the cairn down</button></div>
+  </section>
+
+  <!-- Ribbon -->
+  <section id="ribbon" class="panel wide" hidden aria-labelledby="ribbon-title" tabindex="-1">
+    <h2 id="ribbon-title">Hang a prayer ribbon</h2>
+    <button class="btn close" type="button" data-close aria-label="Close ribbon">✕</button>
+    <form id="ribbon-form" class="stack">
+      <fieldset><legend>Fabric</legend><div id="r-fabric"></div></fieldset>
+      <fieldset><legend>Colour</legend><div id="r-colour"></div></fieldset>
+      <fieldset><legend>Charm</legend><div id="r-charm"></div></fieldset>
+      <div><label for="r-word">A word or a short intention</label><input id="r-word" type="text" maxlength="40" autocomplete="off" placeholder="for someone, for something"><p class="small muted">Kept only on this device.</p></div>
+      <fieldset><legend>Where on the branch</legend><div id="r-branch"></div></fieldset>
+      <div class="row"><button class="btn primary" type="submit">Tie it on</button><button class="btn" type="button" data-close>Not now</button></div>
+    </form>
+  </section>
+
+  <!-- Journal -->
+  <section id="journal" class="panel wide" hidden aria-labelledby="journal-title" tabindex="-1">
+    <h2 id="journal-title">Album journal</h2>
+    <button class="btn close" type="button" data-close aria-label="Close journal">✕</button>
+    <p class="small muted">Tracks you have found, and what came with them. All recordings are placeholders until the artist's files arrive.</p>
+    <ul class="list" id="journal-list" style="margin-top:10px"></ul>
+  </section>
+
+  <!-- Listen -->
+  <section id="album" class="panel wide" hidden aria-labelledby="album-title" tabindex="-1">
+    <h2 id="album-title">Listen to the album</h2>
+    <button class="btn close" type="button" data-close aria-label="Close album">✕</button>
+    <p class="small muted">Every track, straight through, no searching needed. (Placeholder audio for now.)</p>
+    <ul class="list" id="album-list" style="margin-top:10px"></ul>
+  </section>
+
+  <!-- Settings -->
+  <section id="settings" class="panel" hidden aria-labelledby="settings-title" tabindex="-1">
+    <h2 id="settings-title">Settings</h2>
+    <button class="btn close" type="button" data-close aria-label="Close settings">✕</button>
+    <div class="stack">
+      <label class="check"><input type="checkbox" id="s-sound" checked> Sound</label>
+      <div class="row"><label for="s-music" style="min-width:90px">Music</label><input id="s-music" type="range" min="0" max="100" value="80"></div>
+      <div class="row"><label for="s-amb" style="min-width:90px">Ambience</label><input id="s-amb" type="range" min="0" max="100" value="60"></div>
+      <label class="check"><input type="checkbox" id="s-captions" checked> Captions for sounds and transcripts</label>
+      <label class="check"><input type="checkbox" id="s-motion"> Reduced motion</label>
+      <label class="check"><input type="checkbox" id="s-bloom"> Reduced bloom (softer gold glow)</label>
+      <label class="check"><input type="checkbox" id="s-text"> Text-first grove (the same discoveries, in words)</label>
+      <p class="small muted">Keys: 1 water · 2 stones · 3 ribbon · D discoveries · J journal · P pause · Esc close. In the stones: Q / E turn, Enter set.</p>
+      <button class="btn small" id="s-forget" type="button">Start over (forget what you found)</button>
+    </div>
+  </section>
+
+  <!-- Text-first grove -->
+  <section id="textmode" hidden aria-labelledby="text-title">
+    <div class="inner">
+      <h2 id="text-title">The grove, in words</h2>
+      <p>Cedars lean over a small pool at the foot of a tall, dark cut bank. Roots hang out of the earth above the water. On the right the pool spills over a low lip of pale limestone into a shallow brook. To the left lies a scatter of creek stones beside a flat slab, and a cedar holds one bare branch out over the pool. A black quail with a curled topknot goes about its morning in front of you.</p>
+      <p id="text-quail" aria-live="polite">The quail is foraging.</p>
+      <div class="row actions">
+        <button class="btn" data-spot="0" type="button">Touch the water</button>
+        <button class="btn" data-spot="1" type="button">Kneel by the creek stones</button>
+        <button class="btn" data-spot="2" type="button">Go to the ribbon branch</button>
+      </div>
+      <p id="text-state" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- Found -->
+  <div id="found" hidden role="dialog" aria-modal="true" aria-labelledby="found-title">
+    <div class="card stack">
+      <p class="status found">You found a track</p>
+      <h2 id="found-title"></h2>
+      <p class="muted" id="found-extra"></p>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" id="found-play" type="button">Play full track</button>
+        <button class="btn" id="found-journal" type="button">Open the journal</button>
+        <button class="btn" id="found-close" type="button">Stay in the grove</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="paused" hidden role="dialog" aria-modal="true" aria-labelledby="paused-title">
+    <div class="card stack">
+      <h2 id="paused-title">Paused</h2>
+      <p class="muted">The grove waits. What you found is kept on this device.</p>
+      <div class="row" style="justify-content:center"><button class="btn primary" id="resume" type="button">Back to the grove</button><button class="btn" id="paused-leave" type="button">Leave</button></div>
+    </div>
+  </div>
+</main>
+<script type="module" src="/coaxial/host.js"
+  data-app="whispering-spring"
+  data-root="/whispering-spring"
+  data-slot="whispering-spring"
+  data-wasm="/whispering-spring/build/whispering-spring.wasm"
+  data-wgsl="/whispering-spring/whispering-spring.wgsl"></script>
+<script type="module" src="/whispering-spring/glue.js"></script>
+</body>
+</html>
