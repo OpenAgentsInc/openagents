@@ -32,6 +32,7 @@
 
 #define INK_T   64
 #define INK_NT  256
+#define INK_MT  1024
 #define INK_D   8
 #define INK_MAX_BLOCKS 8
 #define INK_MAX_EXPERTS 256
@@ -41,6 +42,7 @@
 /* VRAM left unplanned: the kernel module, driver bookkeeping and whatever
    else the desktop allocates while the model runs. */
 #define INK_VRAM_MARGIN_MB 384
+#define INK_LIKING_RATE 0.3f   /* weight of the newest router logit in an expert's running mean */
 #define INK_LAYER_TENSORS ((int)(sizeof(InkLayerTensors) / sizeof(InkTensor)))
 
 /* Tokens a prefill batch may hold. Decode is a batch of one. */
@@ -68,6 +70,19 @@ enum {
     K_COPY,
     K_SOFTCAP,
     K_Q8_ROUND,
+    K_RELAYOUT,
+    K_MOE_POST,
+    K_MOE_GU_T,
+    K_MOE_DOWN_T,
+    K_MOE_SUM,
+    K_MVQ_P,
+    K_MVQ_S,
+    K_RMSN,
+    K_ATTN_POST,
+    K_PROJ_P,
+    K_PROJ_S,
+    K_KV1,
+    K_SUM_POST,
     K_COUNT
 };
 
@@ -75,15 +90,15 @@ static const char *const k_names[K_COUNT] = {
     "ink_embed_q8",
     "ink_rmsnorm",
     "ink_dv_iq4",
-    "ink_dvq",
+    "ink_mvq",
     "ink_dvr_f32",
     "ink_dvs_f32",
     "ink_moe_gu",
     "ink_moe_down",
     "ink_router",
     "ink_mix",
-    "ink_ctrl_prep",
-    "ink_ctrl_apply",
+    "ink_ctrl_gate",
+    "ink_ctrl_out",
     "ink_convolve",
     "ink_clip",
     "ink_head_rmsnorm",
@@ -93,6 +108,19 @@ static const char *const k_names[K_COUNT] = {
     "ink_copy",
     "ink_softcap",
     "ink_q8_round",
+    "ink_relayout",
+    "ink_moe_post",
+    "ink_moe_gu_t",
+    "ink_moe_down_t",
+    "ink_moe_sum",
+    "ink_mvq_p",
+    "ink_mvq_s",
+    "ink_rmsn",
+    "ink_attn_post",
+    "ink_proj_p",
+    "ink_proj_s",
+    "ink_kv1",
+    "ink_sum_post",
 };
 
 /* Threads per work item: the T of a group kernel's `for thread: 0..<T`
@@ -101,15 +129,15 @@ static const int k_threads[K_COUNT] = {
     INK_NT, /* K_EMBED_Q8 */
     INK_NT, /* K_RMSNORM */
     INK_T,  /* K_DV_IQ4 (the quant-kernel test only) */
-    INK_T,  /* K_DVQ */
+    INK_MT, /* K_DVQ */
     INK_NT, /* K_DVR_F32 */
     1,      /* K_DVS_F32 */
-    INK_T,  /* K_MOE_GU */
-    INK_NT, /* K_MOE_DOWN */
-    INK_NT, /* K_ROUTER */
+    INK_MT, /* K_MOE_GU */
+    INK_MT, /* K_MOE_DOWN */
+    INK_MT, /* K_ROUTER */
     INK_NT, /* K_MIX */
-    INK_NT, /* K_CTRL_PREP */
-    1,      /* K_CTRL_APPLY */
+    INK_MT, /* K_CTRL_PREP: ink_ctrl_gate */
+    INK_NT, /* K_CTRL_APPLY: ink_ctrl_out */
     1,      /* K_CONVOLVE */
     INK_T,  /* K_CLIP */
     INK_T,  /* K_HEAD_RMSNORM */
@@ -119,6 +147,19 @@ static const int k_threads[K_COUNT] = {
     1,      /* K_COPY */
     1,      /* K_SOFTCAP */
     1,      /* K_Q8_ROUND */
+    1,      /* K_RELAYOUT */
+    1,      /* K_MOE_POST */
+    INK_NT, /* K_MOE_GU_T */
+    INK_NT, /* K_MOE_DOWN_T */
+    INK_NT, /* K_MOE_SUM */
+    1,      /* K_MVQ_P */
+    1,      /* K_MVQ_S */
+    INK_NT, /* K_RMSN */
+    1,      /* K_ATTN_POST */
+    1,      /* K_PROJ_P */
+    1,      /* K_PROJ_S */
+    INK_NT, /* K_KV1 */
+    INK_MT, /* K_SUM_POST */
 };
 
 /* One layer's experts on the device. cap == n_expert means every expert is
@@ -130,6 +171,8 @@ typedef struct {
     int16_t  slot_of[INK_MAX_EXPERTS];    /* expert -> slot, or -1 */
     int16_t  expert_in[INK_MAX_EXPERTS];  /* slot -> expert, or -1 */
     uint64_t used[INK_MAX_EXPERTS];       /* slot -> tick of its last use */
+    float    liking[INK_MAX_EXPERTS];     /* expert -> running mean of the router's logit for it */
+    int      liking_set;
 } ExpertCache;
 
 struct InkSession {
@@ -141,6 +184,8 @@ struct InkSession {
 
     /* Weights on the device. */
     PcBuffer weights;                                /* every resident tensor, packed */
+    PcBuffer stage;                                  /* GGUF-order blocks on their way to device order */
+    size_t stage_bytes;
     PcBuffer layer_dev[32][sizeof(InkLayerTensors) / sizeof(InkTensor)];
     PcBuffer out_res_query_dev, out_norm_dev, output_dev, tok_norm_dev;
     PcBuffer embd_row;                               /* the batch's token_embd rows, uploaded each batch */
@@ -148,20 +193,35 @@ struct InkSession {
     ExpertCache experts[32];
     int streaming;                                   /* some layer's cap < n_expert */
     uint64_t tick, expert_hits, expert_misses, expert_upload_bytes;
+    double queue_seconds;                            /* time spent queueing work, before the last wait of each call */
 
     /* Scratch activations (f32 unless noted), each [batch, width]. The
        block and message stacks are [stack, batch, n_embd]. */
-    PcBuffer cur, inp_sa, ffn_inp, prelude, bank_out;
+    PcBuffer cur, prelude, bank_out;
     PcBuffer blocks, prelude_blk, bank_blk;          /* [INK_MAX_BLOCKS * n_embd] */
-    PcBuffer mix_out, messages;                      /* [4 * n_embd] */
-    PcBuffer inp_q, inp_k, inp_v;
-    PcBuffer ctrl_cat, ctrl_gate, ctrl_gain, ctrl_forget;
-    PcBuffer q_buf, k_raw, k_buf, v_raw, v_buf, r_buf, dyn_buf, sinks_buf, gate_buf;
+    PcBuffer messages;                               /* [4][batch][n_embd] */
+    PcBuffer inp3, inp3b;                            /* a layer's Q, K and V inputs: [3][batch][n_embd] */
+    PcBuffer norm_b2;
+    PcBuffer ctrl_gate;                              /* [3][batch][gate_rank] */
+    size_t weights_bytes;
+    PcBuffer proj;                                   /* the projections' outputs; the eight below are places in it */
+    PcBuffer q_buf, k_raw, v_raw, r_buf, kdyn_buf, vdyn_buf, sinks_buf, gate_buf;
+    PcBuffer k_buf, v_buf;
+    size_t proj_floats;
+    /* The fused projection launch (ink_proj_p, ink_proj_s): a layer's list of
+       matrices, [0] when Q, K and V share one input and [1] when each has
+       its own. n_mats == 0: the layer's matrices go one at a time. */
+    PcBuffer proj_desc;
+    struct { int n_mats; int64_t items, rows; } proj_list[32][2];
     PcBuffer attn_scores, attn_out, o_raw, norm_buf;
     PcBuffer router_logits;
     PcBuffer moe_ids;                                /* [batch, n_expert_used] u32, expert ids from the router */
     PcBuffer moe_slots;                              /* [batch, n_expert_used] u32, cache slots of those experts */
     PcBuffer moe_wts, moe_hid, moe_out;
+    PcBuffer mv_part;                                /* one token's matvec shares: [blocks, rows] */
+    size_t mv_part_floats;
+    PcBuffer gu_part, dn_part;                       /* one token's table-kernel shares */
+    int no_tables;                                   /* INK_NO_TABLES: IQ4_NL experts through the direct kernels */
     PcBuffer logits;
     PcBuffer dummy_f32;
     PcBuffer oracle_x;                               /* INK_ORACLE_Q8: a matvec input rounded as ggml rounds it */
@@ -228,9 +288,6 @@ static PcBuffer tensor_dev(const InkSession *s, const InkTensor *t) {
 static PcArg a_tensor_f32(const InkSession *s, const InkTensor *t) {
     return a_view(tensor_dev(s, t), 0, (int64_t)(t->nbytes / 4));
 }
-static PcArg a_tensor_u16(const InkSession *s, const InkTensor *t) {
-    return a_view(tensor_dev(s, t), 0, (int64_t)(t->nbytes / 2));
-}
 
 static int call_k(InkSession *s, int k, int64_t items, int count, const PcArg *args) {
     double began = s->profile ? pc_seconds() : 0.0;
@@ -257,6 +314,45 @@ static int call_k(InkSession *s, int k, int64_t items, int count, const PcArg *a
 static int host_fail(InkSession *s, const char *what) {
     snprintf(s->error, sizeof s->error, "%s: %s", what, pc_log());
     return 1;
+}
+
+/* 32-bit words of codes in a 32-value block: Q8_0 has 32 bytes, IQ4_NL 16. */
+static int64_t quant_words(uint32_t type) { return type == INK_GGML_Q8_0 ? 8 : 4; }
+
+/* Put a quantized matrix on the device in device order (see ink_relayout in
+   kernels-cuda.coax): `rows` rows of `blocks` GGUF blocks at src become the
+   block-major words and scales at dst, the same number of bytes. The rows go
+   through the staging buffer a piece at a time. pair > 0 stores an expert's
+   gate and up rows as neighbours and needs the whole matrix in one piece. */
+static int relayout(InkSession *s, const uint8_t *src, PcBuffer dst, int64_t rows, int64_t blocks, int64_t words, int64_t pair) {
+    int64_t row_bytes = blocks * (4 * words + 2);
+    int64_t piece = (int64_t)s->stage_bytes / row_bytes;
+    if (piece > rows) piece = rows;
+    if (piece <= 0 || (pair > 0 && piece < rows)) {
+        snprintf(s->error, sizeof s->error, "staging buffer too small for a matrix of %lld-byte rows", (long long)row_bytes);
+        return 1;
+    }
+    for (int64_t row0 = 0; row0 < rows; row0 += piece) {
+        int64_t n = rows - row0 < piece ? rows - row0 : piece;
+        if (pc_upload(s->stage, src + row0 * row_bytes, (size_t)(n * row_bytes), s->stream) != PC_OK) return host_fail(s, "upload weights");
+        CALL(s, K_RELAYOUT, n * blocks * (words + 1), a_int(rows), a_int(row0), a_int(n), a_int(blocks), a_int(words), a_int(pair),
+             a_view(s->stage, 0, n * row_bytes / 2),
+             a_view(dst, 0, rows * blocks * words), a_view(dst, rows * blocks * words * 4, rows * blocks));
+    }
+    return 0;
+}
+
+/* One expert of layer ip from the GGUF into cache slot `slot`. */
+static int load_expert(InkSession *s, int ip, int e, int slot) {
+    const InkHParams *hp = &s->gguf.hp;
+    const InkLayerTensors *L = &s->gguf.layers[ip];
+    ExpertCache *c = &s->experts[ip];
+    const uint8_t *gu = s->gguf.map + L->ffn_gate_up_exps.offset + (size_t)e * c->gu_bytes;
+    const uint8_t *dn = s->gguf.map + L->ffn_down_exps.offset + (size_t)e * c->dn_bytes;
+    return relayout(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32,
+                    quant_words(L->ffn_gate_up_exps.type), hp->n_ff_exp) ||
+           relayout(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32,
+                    quant_words(L->ffn_down_exps.type), 0);
 }
 
 static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t rows, int64_t cols, int add,
@@ -291,8 +387,22 @@ static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t
         x_buf = s->oracle_x; x_off = 0;
     }
     if (quantized) {
-        CALL(s, K_DVQ, n * ((rows + 3) / 4), a_int(rows), a_int(cols), a_int(add), a_int(w->type == INK_GGML_Q8_0),
-             a_tensor_u16(s, w), a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
+        int64_t words = quant_words(w->type), blocks = cols / 32;
+        int64_t lrows = (int64_t)(w->nbytes / (uint64_t)(blocks * (4 * words + 2)));
+        PcBuffer dev = tensor_dev(s, w);
+        if (w->type == INK_GGML_Q8_0 && !s->no_tables && rows % 4 == 0 && (size_t)(rows * blocks) <= s->mv_part_floats) {
+            for (int64_t tok = 0; tok < n; tok++) {
+                CALL(s, K_MVQ_P, blocks * (rows / 4), a_int(rows), a_int(lrows), a_int(cols),
+                     a_view(dev, 0, lrows * blocks * words), a_view(dev, lrows * blocks * words * 4, lrows * blocks),
+                     a_f32v(x_buf, x_off + tok * cols, cols), a_f32v(s->mv_part, 0, rows * blocks));
+                CALL(s, K_MVQ_S, rows, a_int(rows), a_int(blocks), a_int(add),
+                     a_f32v(s->mv_part, 0, rows * blocks), a_f32v(out_buf, out_off + tok * rows, rows));
+            }
+            return 0;
+        }
+        CALL(s, K_DVQ, n * ((rows + 31) / 32), a_int(rows), a_int(lrows), a_int(cols), a_int(add), a_int(w->type == INK_GGML_Q8_0),
+             a_view(dev, 0, lrows * blocks * words), a_view(dev, lrows * blocks * words * 4, lrows * blocks),
+             a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
     } else if (w->type == INK_GGML_F32) {
         /* A wide matrix gets a group per output; a narrow one, a thread. */
         CALL(s, cols >= 1024 ? K_DVR_F32 : K_DVS_F32, n * rows, a_int(rows), a_int(cols), a_int(add),
@@ -304,22 +414,35 @@ static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t
     return 0;
 }
 
-/* The cross-pass recurrence gate for np tokens: out = cur - tanh(forget) cur
-   + tanh(gain) msg, with gain and forget projected from (cur, msg). */
-static int dispatch_control(InkSession *s, const InkLayerTensors *L, int ctrl, int64_t np,
+/* A resident f32 tensor's place in the weights, in floats: the kernels that
+   take several weights of a layer take the whole arena and these. */
+static int64_t arena_at(const InkSession *s, const InkTensor *t) {
+    return (int64_t)((tensor_dev(s, t) - s->weights) / 4);
+}
+static PcArg a_arena(const InkSession *s) { return a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)); }
+
+/* The cross-pass recurrence gate for np tokens and n inputs (messages c0 ..
+   c0 + n - 1) at once: out[c] = cur - tanh(forget) cur + tanh(gain) msg, with
+   gain and forget projected from (cur, msg). cur is [n][batch][d], or with
+   single one vector that every input shares; out is [n][batch][d]. */
+static int dispatch_control(InkSession *s, const InkLayerTensors *L, int c0, int n, int single, int64_t np,
                             PcBuffer cur_buf, PcBuffer out_buf) {
     const InkHParams *hp = &s->gguf.hp;
-    int64_t d = hp->n_embd;
-    int64_t rank = hp->gate_rank;
-    int64_t msg_off = (int64_t)ctrl * s->batch * d;
-    CALL(s, K_CTRL_PREP, np, a_int(d),
-         a_f32v(cur_buf, 0, np * d), a_f32v(s->messages, msg_off, np * d), a_f32v(s->ctrl_cat, 0, np * 2 * d));
-    if (dispatch_mv(s, &L->loop_ctrl_down[ctrl], np, rank, 2 * d, 0, s->ctrl_cat, 0, s->ctrl_gate, 0)) return 1;
-    if (dispatch_mv(s, &L->loop_ctrl_gain[ctrl], np, d, rank, 0, s->ctrl_gate, 0, s->ctrl_gain, 0)) return 1;
-    if (dispatch_mv(s, &L->loop_ctrl_forget[ctrl], np, d, rank, 0, s->ctrl_gate, 0, s->ctrl_forget, 0)) return 1;
-    CALL(s, K_CTRL_APPLY, np * d, a_int(np * d),
-         a_f32v(cur_buf, 0, np * d), a_f32v(s->messages, msg_off, np * d),
-         a_f32v(s->ctrl_gain, 0, np * d), a_f32v(s->ctrl_forget, 0, np * d), a_f32v(out_buf, 0, np * d));
+    int64_t d = hp->n_embd, stack = (int64_t)s->batch * d;
+    int64_t flags = (single ? 1 : 0) | ((int64_t)c0 << 8);
+    int64_t down[3] = {0, 0, 0}, gf[3] = {0, 0, 0};
+    for (int c = 0; c < n; c++) {
+        down[c] = arena_at(s, &L->loop_ctrl_down[c0 + c]);
+        gf[c] = arena_at(s, &L->loop_ctrl_gain[c0 + c]) | (arena_at(s, &L->loop_ctrl_forget[c0 + c]) << 32);
+    }
+    int64_t cur_n = (single ? 1 : n) * stack;
+    CALL(s, K_CTRL_PREP, n * np * hp->gate_rank, a_int(d), a_int(np), a_int(stack), a_int(flags),
+         a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
+         a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
+    CALL(s, K_CTRL_APPLY, n * np * ((d + 31) / 32), a_int(d), a_int(np), a_int(stack), a_int(flags),
+         a_int(gf[0]), a_int(gf[1]), a_int(gf[2]), a_arena(s),
+         a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank),
+         a_f32v(out_buf, 0, n * stack));
     return 0;
 }
 
@@ -333,11 +456,23 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
     const InkHParams *hp = &s->gguf.hp;
     *ids_buf = s->moe_ids;
     if (c->cap >= hp->n_expert) return 0;
-    const InkLayerTensors *L = &s->gguf.layers[ip];
     uint32_t ids[INK_MAX_BATCH * 16], slots[INK_MAX_BATCH * 16];
     double began = s->profile ? pc_seconds() : 0.0;
+    static float logits[INK_MAX_BATCH * INK_MAX_EXPERTS];
+    int n_tok = n / (int)hp->n_expert_used;
     if (pc_download(ids, s->moe_ids, (size_t)n * 4, s->stream) != PC_OK ||
+        pc_download(logits, s->router_logits, (size_t)n_tok * (size_t)hp->n_expert * 4, s->stream) != PC_OK ||
         pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "read expert ids");
+    /* How much the router has lately liked each expert, chosen or not: among
+       experts that have waited equally long, the least liked one is the one
+       to replace. An expert the router keeps scoring high is likely to be
+       chosen soon even if it has not been yet. */
+    for (int t = 0; t < n_tok; t++) {
+        const float *row = logits + (size_t)t * (size_t)hp->n_expert;
+        for (int e = 0; e < hp->n_expert; e++)
+            c->liking[e] = c->liking_set ? c->liking[e] + INK_LIKING_RATE * (row[e] - c->liking[e]) : row[e];
+        c->liking_set = 1;
+    }
     /* Mark what this batch needs before choosing what to replace. */
     s->tick++;
     for (int k = 0; k < n; k++) {
@@ -353,13 +488,13 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
         int slot = c->slot_of[e];
         if (slot < 0) {
             slot = 0;
-            for (int i = 1; i < c->cap; i++) if (c->used[i] < c->used[slot]) slot = i;
+            for (int i = 1; i < c->cap; i++) {
+                if (c->used[i] > c->used[slot]) continue;
+                if (c->used[i] < c->used[slot] || c->expert_in[slot] < 0) { slot = i; continue; }
+                if (c->expert_in[i] < 0 || c->liking[c->expert_in[i]] < c->liking[c->expert_in[slot]]) slot = i;
+            }
             if (c->expert_in[slot] >= 0) c->slot_of[c->expert_in[slot]] = -1;
-            const uint8_t *gu = s->gguf.map + L->ffn_gate_up_exps.offset + (size_t)e * c->gu_bytes;
-            const uint8_t *dn = s->gguf.map + L->ffn_down_exps.offset + (size_t)e * c->dn_bytes;
-            if (pc_upload(c->gu + (uint64_t)slot * c->gu_bytes, gu, c->gu_bytes, s->stream) != PC_OK ||
-                pc_upload(c->dn + (uint64_t)slot * c->dn_bytes, dn, c->dn_bytes, s->stream) != PC_OK)
-                return host_fail(s, "upload expert");
+            if (load_expert(s, ip, (int)e, slot)) return 1;
             c->slot_of[e] = (int16_t)slot;
             c->expert_in[slot] = (int16_t)e;
             c->used[slot] = s->tick;
@@ -391,99 +526,97 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
     int64_t n_dyn = n_head_kv * hp->conv_len;
     int is_swa = hp->is_swa[ip];
 
-    /* inpSA = cur */
-    CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->inp_sa, 0, nd));
-
-    /* Attention inputs: SWA mixes 1 vector, full attention mixes 3 (Q, K, V). */
+    /* Attention inputs. SWA mixes one vector for Q, K and V; full attention
+       mixes three. With messages each input then passes its own gate. Then
+       the input RMSNorms, into inp3b. */
+    int one = is_swa || !L->attn_res_query.present; /* Q, K and V start as the same vector */
     if (L->attn_res_query.present) {
         int64_t nq = is_swa ? 1 : 3;
         CALL(s, K_MIX, np * nq, a_int(d), a_int(*n_blocks), a_int(nq), a_int(stack),
              a_f32v(s->blocks, 0, INK_MAX_BLOCKS * stack),
              a_f32v(s->cur, 0, nd),
              a_tensor_f32(s, &L->attn_res_query),
-             a_f32v(s->mix_out, 0, 4 * stack));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->mix_out, 0, nd), a_f32v(s->inp_q, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->mix_out, is_swa ? 0 : stack, nd), a_f32v(s->inp_k, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->mix_out, is_swa ? 0 : 2 * stack, nd), a_f32v(s->inp_v, 0, nd));
+             a_f32v(s->inp3, 0, 3 * stack));
     } else {
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->inp_q, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->inp_k, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->inp_v, 0, nd));
+        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->inp3, 0, nd));
     }
-
+    PcBuffer norm_src = s->inp3;
     if (has_messages) {
-        if (dispatch_control(s, L, 0, np, s->inp_q, s->inp_q)) return 1;
-        if (dispatch_control(s, L, 1, np, s->inp_k, s->inp_k)) return 1;
-        if (dispatch_control(s, L, 2, np, s->inp_v, s->inp_v)) return 1;
+        if (dispatch_control(s, L, 0, 3, one, np, s->inp3, s->inp3b)) return 1;
+        norm_src = s->inp3b;
+        one = 0;
     }
-
-    /* Input RMSNorms. */
-    if (is_swa && !has_messages) {
-        CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_q, 0, nd), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->inp_q, 0, nd), a_f32v(s->inp_k, 0, nd));
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->inp_q, 0, nd), a_f32v(s->inp_v, 0, nd));
-    } else {
+    int same = one && is_swa; /* one input and one norm: Q, K and V share a vector */
+    {
         const InkTensor *nq_w = is_swa ? &L->attn_norm : &L->attn_q_inp_norm;
         const InkTensor *nk_w = is_swa ? &L->attn_norm : &L->attn_k_inp_norm;
         const InkTensor *nv_w = is_swa ? &L->attn_norm : &L->attn_v_inp_norm;
-        CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_q, 0, nd), a_tensor_f32(s, nq_w), a_f32v(s->inp_q, 0, nd));
-        CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_k, 0, nd), a_tensor_f32(s, nk_w), a_f32v(s->inp_k, 0, nd));
-        CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(s->inp_v, 0, nd), a_tensor_f32(s, nv_w), a_f32v(s->inp_v, 0, nd));
+        CALL(s, K_RMSN, (same ? 1 : 3) * np, a_int(d), a_int(np), a_int(stack), a_int(one), a_f32(hp->rms_eps),
+             a_int(arena_at(s, nq_w)), a_int(arena_at(s, nk_w)), a_int(arena_at(s, nv_w)), a_arena(s),
+             a_f32v(norm_src, 0, 3 * stack), a_f32v(s->inp3b, 0, 3 * stack));
     }
+    PcBuffer xin = s->inp3b;
+    int64_t xq = 0, xk = same ? 0 : stack, xv = same ? 0 : 2 * stack;
 
     /* Q, K, V, R projections + K/V causal shortconv. */
-    if (dispatch_mv(s, &L->attn_q, np, n_q, d, 0, s->inp_q, 0, s->q_buf, 0)) return 1;
-    if (dispatch_mv(s, &L->attn_k, np, n_kv, d, 0, s->inp_k, 0, s->k_raw, 0)) return 1;
+    int variant = same ? 0 : 1;
+    int fused = s->proj_list[ip][variant].n_mats > 0 && !s->oracle_q8 && !s->no_tables;
+    for (int64_t tok = 0; fused && tok < np; tok++) {
+        PcArg desc = a_u32v(s->proj_desc, (int64_t)(ip * 2 + variant) * 80, 80);
+        CALL(s, K_PROJ_P, s->proj_list[ip][variant].items, a_int(s->proj_list[ip][variant].n_mats), a_int(tok), a_int(d), desc,
+             a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)), a_view(s->weights, 0, (int64_t)(s->weights_bytes / 2)),
+             a_f32v(xin, 0, 3 * stack), a_f32v(s->mv_part, 0, (int64_t)s->mv_part_floats));
+        CALL(s, K_PROJ_S, s->proj_list[ip][variant].rows, a_int(s->proj_list[ip][variant].n_mats), a_int(tok), a_int(d / 32), desc,
+             a_f32v(s->mv_part, 0, (int64_t)s->mv_part_floats), a_f32v(s->proj, 0, (int64_t)s->proj_floats));
+    }
+    if (!fused && dispatch_mv(s, &L->attn_q, np, n_q, d, 0, xin, xq, s->q_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_k, np, n_kv, d, 0, xin, xk, s->k_raw, 0)) return 1;
     int k_dyn = !is_swa && L->attn_k_conv_proj.present;
-    if (k_dyn && dispatch_mv(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, s->inp_k, 0, s->dyn_buf, 0)) return 1;
-    CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(k_dyn), a_int(np),
-         a_f32v(s->k_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_k_conv),
-         k_dyn ? a_f32v(s->dyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, np * n_kv));
-
-    if (dispatch_mv(s, &L->attn_v, np, n_kv, d, 0, s->inp_v, 0, s->v_raw, 0)) return 1;
     int v_dyn = !is_swa && L->attn_v_conv_proj.present;
-    if (v_dyn && dispatch_mv(s, &L->attn_v_conv_proj, np, n_dyn, d, 0, s->inp_v, 0, s->dyn_buf, 0)) return 1;
-    CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(v_dyn), a_int(np),
-         a_f32v(s->v_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_v_conv),
-         v_dyn ? a_f32v(s->dyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, np * n_kv));
+    if (!fused && k_dyn && dispatch_mv(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, xin, xk, s->kdyn_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_v, np, n_kv, d, 0, xin, xv, s->v_raw, 0)) return 1;
+    if (!fused && v_dyn && dispatch_mv(s, &L->attn_v_conv_proj, np, n_dyn, d, 0, xin, xv, s->vdyn_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_rel, np, n_head * n_rel, d, 0, xin, xq, s->r_buf, 0)) return 1;
 
-    if (dispatch_mv(s, &L->attn_rel, np, n_head * n_rel, d, 0, s->inp_q, 0, s->r_buf, 0)) return 1;
-
-    /* Clip Q, K, R; RMSNorm V. Full-attention Q and R are scaled by
-       tau = 1 + alpha * log(max(1, (position + 1) / floor)), which the
-       kernel computes for each token's own position. */
+    /* K and V: the causal short convolutions, K's clip and V's RMSNorm, then
+       into the KV cache of slot il. One token takes one launch. The
+       attention kernel clips Q and R itself. */
+    int64_t kv_cap = s->kv_cap[il];
+    if (np == 1 && hd == 128 && k_dyn == v_dyn) {
+        CALL(s, K_KV1, n_head_kv, a_int(n_kv), a_int(k_dyn), a_int(s->pos), a_int(kv_cap), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
+             a_f32v(s->k_raw, 0, n_kv), a_f32v(s->v_raw, 0, n_kv),
+             a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
+             k_dyn ? a_f32v(s->kdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             v_dyn ? a_f32v(s->vdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->conv_v[il], 0, n_kv * 3),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    } else {
+        CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(k_dyn), a_int(np),
+             a_f32v(s->k_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_k_conv),
+             k_dyn ? a_f32v(s->kdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, np * n_kv));
+        CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(v_dyn), a_int(np),
+             a_f32v(s->v_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             v_dyn ? a_f32v(s->vdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, np * n_kv));
+        CALL(s, K_CLIP, np * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
+             a_f32(hp->qk_clip), a_f32(0.0f), a_f32(1.0f), a_int(s->pos),
+             a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->dummy_f32, 0, 64));
+        CALL(s, K_HEAD_RMSNORM, np * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
+             a_f32v(s->v_buf, 0, np * n_kv));
+        CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(s->pos), a_int(kv_cap),
+             a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    }
+    /* Full-attention Q and R are scaled by tau = 1 + alpha * log(max(1,
+       (position + 1) / floor)), which the attention kernel computes for
+       each token's own position. */
     float tau_alpha = is_swa ? 0.0f : hp->log_scale_alpha;
     float tau_floor = (float)hp->log_scale_floor;
-    CALL(s, K_CLIP, np * n_head, a_int(hd), a_int(n_head), a_int(L->attn_q_clip.present ? 1 : 0),
-         a_f32(hp->qk_clip), a_f32(tau_alpha), a_f32(tau_floor), a_int(s->pos),
-         a_f32v(s->q_buf, 0, np * n_q),
-         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64));
-    CALL(s, K_CLIP, np * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
-         a_f32(hp->qk_clip), a_f32(0.0f), a_f32(1.0f), a_int(s->pos),
-         a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->dummy_f32, 0, 64));
-    CALL(s, K_HEAD_RMSNORM, np * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
-         a_f32v(s->v_buf, 0, np * n_kv));
-    CALL(s, K_CLIP, np * n_head, a_int(n_rel), a_int(n_head), a_int(L->attn_rel_clip.present ? 1 : 0),
-         a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor), a_int(s->pos),
-         a_f32v(s->r_buf, 0, np * n_head * n_rel),
-         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
-
-    /* Store the batch's K and V into the KV cache of slot il, then attend:
-       each token sees the positions up to its own. */
-    int64_t kv_cap = s->kv_cap[il];
-    CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(s->pos), a_int(kv_cap),
-         a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
 
     /* Sink logits and the attention output gate. */
-    if (dispatch_mv(s, &L->attn_sink_proj, np, n_head, d, 0, s->inp_q, 0, s->sinks_buf, 0)) return 1;
-    if (dispatch_mv(s, &L->attn_gate, np, n_q, d, 0, s->inp_q, 0, s->gate_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_sink_proj, np, n_head, d, 0, xin, xq, s->sinks_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_gate, np, n_q, d, 0, xin, xq, s->gate_buf, 0)) return 1;
 
     /* Attention. The kernel unpacks these packed dimensions. */
     int64_t dims0 = n_head | (n_head_kv << 16) | (hd << 32) | (n_rel << 48);
@@ -499,43 +632,55 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
          a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
          a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
          a_f32v(s->attn_scores, 0, np * n_head * s->max_ctx),
-         a_f32v(s->attn_out, 0, np * n_q));
+         a_f32v(s->attn_out, 0, np * n_q),
+         a_int((L->attn_q_clip.present ? 1 : 0) | (L->attn_rel_clip.present ? 2 : 0)),
+         a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor),
+         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
+         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
 
-    /* Output projection + post shortconv. */
-    if (dispatch_mv(s, &L->attn_output, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
-    CALL(s, K_CONVOLVE, d, a_int(d), a_int(1), a_int(0), a_int(np),
-         a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv),
-         a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_ao[il], 0, d * 3), a_f32v(s->cur, 0, nd));
-
-    /* A block boundary starts a new residual stream; otherwise add. */
-    if (ip % hp->block_size == 0) {
-        if (*n_blocks >= INK_MAX_BLOCKS) {
-            snprintf(s->error, sizeof s->error, "block count overflow");
-            return 1;
-        }
-        CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->inp_sa, 0, nd),
-             a_f32v(s->blocks, (int64_t)(*n_blocks) * stack, nd));
-        (*n_blocks)++;
-    } else {
-        CALL(s, K_ADD, nd, a_int(nd), a_f32v(s->inp_sa, 0, nd), a_f32v(s->cur, 0, nd),
-             a_f32v(s->cur, 0, nd));
+    /* The output projection, the post shortconv and the residual add; a
+       block's first layer starts a new residual stream and keeps the old one
+       as the block's entry. One token's Q8_0 projection leaves its shares
+       for the kernel that also does the rest. */
+    int block_start = ip % hp->block_size == 0;
+    if (block_start && *n_blocks >= INK_MAX_BLOCKS) {
+        snprintf(s->error, sizeof s->error, "block count overflow");
+        return 1;
     }
-
-    /* ffn_inp = cur */
-    CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->ffn_inp, 0, nd));
+    PcArg blk_arg = block_start ? a_f32v(s->blocks, (int64_t)(*n_blocks) * stack, nd) : a_f32v(s->dummy_f32, 0, 64);
+    const InkTensor *wo = &L->attn_output;
+    if (np == 1 && wo->type == INK_GGML_Q8_0 && !s->no_tables && !s->oracle_q8 && d % 4 == 0 && n_q % 32 == 0 &&
+        (size_t)(d * (n_q / 32)) <= s->mv_part_floats) {
+        int64_t blocks = n_q / 32, lrows = (int64_t)(wo->nbytes / (uint64_t)(blocks * 34));
+        PcBuffer dev = tensor_dev(s, wo);
+        CALL(s, K_MVQ_P, blocks * (d / 4), a_int(d), a_int(lrows), a_int(n_q),
+             a_view(dev, 0, lrows * blocks * 8), a_view(dev, lrows * blocks * 32, lrows * blocks),
+             a_f32v(s->attn_out, 0, n_q), a_f32v(s->mv_part, 0, d * blocks));
+        CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(blocks), a_int(block_start),
+             a_f32v(s->mv_part, 0, d * blocks), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+             a_f32v(s->cur, 0, nd), blk_arg);
+    } else {
+        if (dispatch_mv(s, wo, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
+        CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
+             a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+             a_f32v(s->cur, 0, nd), blk_arg);
+    }
+    if (block_start) (*n_blocks)++;
 
     /* MoE input: mix -> optional control -> RMSNorm. */
     CALL(s, K_MIX, np, a_int(d), a_int(*n_blocks), a_int(1), a_int(stack),
          a_f32v(s->blocks, 0, INK_MAX_BLOCKS * stack),
          a_f32v(s->cur, 0, nd),
          a_tensor_f32(s, &L->ffn_res_query),
-         a_f32v(s->norm_buf, 0, nd));
+         a_f32v(s->norm_b2, 0, nd));
+    PcBuffer ffn_src = s->norm_b2;
     if (has_messages) {
-        if (dispatch_control(s, L, 3, np, s->norm_buf, s->norm_buf)) return 1;
+        if (dispatch_control(s, L, 3, 1, 0, np, s->norm_b2, s->norm_buf)) return 1;
+        ffn_src = s->norm_buf;
     }
-    CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
-         a_f32v(s->norm_buf, 0, nd), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, nd));
+    CALL(s, K_RMSN, np, a_int(d), a_int(np), a_int(stack), a_int(0), a_f32(hp->rms_eps),
+         a_int(arena_at(s, &L->ffn_norm)), a_int(0), a_int(0), a_arena(s),
+         a_f32v(ffn_src, 0, nd), a_f32v(s->norm_buf, 0, nd));
 
     /* MoE router, then the chosen experts onto the device. */
     int64_t n_used = hp->n_expert_used;
@@ -555,39 +700,63 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
         return 1;
     }
 
-    /* MoE gate_up + SITU, then down + weighted sum. */
+    /* MoE gate_up + SITU, then down + weighted sum, then the post shortconv
+       and the residual add. */
     int64_t n_ff = hp->n_ff_exp;
-    PcBuffer moe_x = s->norm_buf;
-    if (s->oracle_q8) {
-        CALL(s, K_Q8_ROUND, nd / 32, a_int(nd), a_f32v(s->norm_buf, 0, nd), a_f32v(s->oracle_x, 0, nd));
-        moe_x = s->oracle_x;
+    int64_t gu_q8 = gu_type == INK_GGML_Q8_0, dn_q8 = dn_type == INK_GGML_Q8_0;
+    int64_t gu_words = (int64_t)((size_t)c->cap * c->gu_bytes / 4), dn_words = (int64_t)((size_t)c->cap * c->dn_bytes / 4);
+    if (!gu_q8 && !dn_q8 && !s->oracle_q8 && !s->no_tables && d % 32 == 0 && n_ff % 32 == 0) {
+        /* IQ4_NL experts: the table kernels, a token at a time. */
+        int64_t gu_n = n_used * (d / 32) * 2 * n_ff, n_parts = n_used * (n_ff / 32);
+        for (int64_t tok = 0; tok < np; tok++) {
+            CALL(s, K_MOE_GU_T, n_used * (d / 32), a_int(n_ff), a_int(d),
+                 a_view(c->gu, 0, gu_words), a_view(c->gu, 0, gu_words * 2),
+                 a_f32v(s->norm_buf, tok * d, d), a_u32v(ids, tok * n_used, n_used), a_f32v(s->gu_part, 0, gu_n));
+            CALL(s, K_MOE_DOWN_T, n_parts, a_int(d), a_int(n_ff), a_int(d),
+                 a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+                 a_view(c->dn, 0, dn_words), a_view(c->dn, 0, dn_words * 2),
+                 a_f32v(s->gu_part, 0, gu_n), a_u32v(ids, tok * n_used, n_used), a_f32v(s->moe_wts, tok * n_used, n_used),
+                 a_f32v(s->dn_part, 0, n_parts * d));
+            if (np == 1) {
+                /* One token: the sum, the post shortconv and the residual add together. */
+                CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(n_parts), a_int(0),
+                     a_f32v(s->dn_part, 0, n_parts * d), a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                     a_f32v(s->cur, 0, nd), a_f32v(s->dummy_f32, 0, 64));
+                return 0;
+            }
+            CALL(s, K_MOE_SUM, (d + 31) / 32, a_int(d), a_int(n_parts),
+                 a_f32v(s->dn_part, 0, n_parts * d), a_f32v(s->moe_out, tok * d, d));
+        }
+    } else {
+        PcBuffer moe_x = s->norm_buf;
+        if (s->oracle_q8) {
+            CALL(s, K_Q8_ROUND, nd / 32, a_int(nd), a_f32v(s->norm_buf, 0, nd), a_f32v(s->oracle_x, 0, nd));
+            moe_x = s->oracle_x;
+        }
+        CALL(s, K_MOE_GU, np * n_used * ((n_ff + 15) / 16),
+             a_int(n_ff), a_int(d), a_int(n_used), a_int(gu_q8),
+             a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+             a_view(c->gu, 0, (int64_t)((size_t)c->cap * c->gu_bytes / 4)),
+             a_view(c->gu, 0, (int64_t)((size_t)c->cap * c->gu_bytes / 2)),
+             a_f32v(moe_x, 0, nd),
+             a_u32v(ids, 0, np * n_used),
+             a_f32v(s->moe_hid, 0, np * n_used * n_ff));
+        if (s->oracle_q8) {
+            int64_t n = np * n_used * n_ff;
+            CALL(s, K_Q8_ROUND, n / 32, a_int(n), a_f32v(s->moe_hid, 0, n), a_f32v(s->moe_hid, 0, n));
+        }
+        CALL(s, K_MOE_DOWN, np * ((d + 31) / 32),
+             a_int(d), a_int(n_ff), a_int(n_used), a_int(dn_q8),
+             a_view(c->dn, 0, (int64_t)((size_t)c->cap * c->dn_bytes / 4)),
+             a_view(c->dn, 0, (int64_t)((size_t)c->cap * c->dn_bytes / 2)),
+             a_f32v(s->moe_hid, 0, np * n_used * n_ff),
+             a_u32v(ids, 0, np * n_used),
+             a_f32v(s->moe_wts, 0, np * n_used),
+             a_f32v(s->moe_out, 0, nd));
     }
-    CALL(s, K_MOE_GU, np * n_used * ((n_ff + 3) / 4),
-         a_int(n_ff), a_int(d), a_int(n_used), a_int(gu_type == INK_GGML_Q8_0),
-         a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
-         a_view(c->gu, 0, (int64_t)((size_t)c->cap * c->gu_bytes / 2)),
-         a_f32v(moe_x, 0, nd),
-         a_u32v(ids, 0, np * n_used),
-         a_f32v(s->moe_hid, 0, np * n_used * n_ff));
-    if (s->oracle_q8) {
-        int64_t n = np * n_used * n_ff;
-        CALL(s, K_Q8_ROUND, n / 32, a_int(n), a_f32v(s->moe_hid, 0, n), a_f32v(s->moe_hid, 0, n));
-    }
-    CALL(s, K_MOE_DOWN, np * ((d + 3) / 4),
-         a_int(d), a_int(n_ff), a_int(n_used), a_int(dn_type == INK_GGML_Q8_0),
-         a_view(c->dn, 0, (int64_t)((size_t)c->cap * c->dn_bytes / 2)),
-         a_f32v(s->moe_hid, 0, np * n_used * n_ff),
-         a_u32v(ids, 0, np * n_used),
-         a_f32v(s->moe_wts, 0, np * n_used),
-         a_f32v(s->moe_out, 0, nd));
-
-    /* MoE post shortconv + residual add. */
-    CALL(s, K_CONVOLVE, d, a_int(d), a_int(1), a_int(0), a_int(np),
-         a_f32v(s->moe_out, 0, nd), a_tensor_f32(s, &L->ffn_post_conv),
-         a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->cur, 0, nd));
-    CALL(s, K_ADD, nd, a_int(nd), a_f32v(s->ffn_inp, 0, nd), a_f32v(s->cur, 0, nd),
-         a_f32v(s->cur, 0, nd));
+    CALL(s, K_MOE_POST, d, a_int(d), a_int(np), a_f32v(s->moe_out, 0, nd),
+         a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+         a_f32v(s->cur, 0, nd), a_f32v(s->cur, 0, nd));
     return 0;
 }
 
@@ -677,7 +846,21 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         ink_close(s); return 1;
     }
     s->profile = getenv("INK_PROFILE") != NULL;
+    if (hp->n_embd > 2304) {
+        snprintf(err, err_bytes, "this engine handles a width of at most 2304, not %lld", (long long)hp->n_embd);
+        ink_close(s); return 1;
+    }
+    if (hp->n_expert > 128 || hp->n_expert_used > 16) {
+        snprintf(err, err_bytes, "this engine routes among at most 128 experts and 16 chosen, not %lld and %lld",
+                 (long long)hp->n_expert, (long long)hp->n_expert_used);
+        ink_close(s); return 1;
+    }
+    if (hp->gate_rank != 64) {
+        snprintf(err, err_bytes, "this engine handles a recurrence gate of rank 64, not %lld", (long long)hp->gate_rank);
+        ink_close(s); return 1;
+    }
     s->oracle_q8 = getenv("INK_ORACLE_Q8") != NULL;
+    s->no_tables = getenv("INK_NO_TABLES") != NULL;
 
     PcDeviceInfo info;
     PcStatus opened = pc_open(&info);
@@ -816,14 +999,29 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     }
 
     /* ---- Resident weights. ---- */
+    s->weights_bytes = resident_bytes;
     if (pc_alloc(resident_bytes, &s->weights) != PC_OK) {
         snprintf(err, err_bytes, "out of VRAM for %lld MB of weights: %s", (long long)to_mb(resident_bytes), pc_log());
+        ink_close(s); return 1;
+    }
+    s->stage_bytes = (size_t)32 << 20;
+    for (int ip = 0; ip < hp->n_phys; ip++)
+        if (s->experts[ip].gu_bytes > s->stage_bytes) s->stage_bytes = s->experts[ip].gu_bytes;
+    if (pc_alloc(s->stage_bytes, &s->stage) != PC_OK) {
+        snprintf(err, err_bytes, "out of VRAM for the staging buffer: %s", pc_log());
         ink_close(s); return 1;
     }
     size_t at = 0;
 #define PLACE(tensor, dev) do { \
         (dev) = s->weights + at; \
-        if (upload_big(s, (dev), s->gguf.map + (tensor)->offset, (size_t)(tensor)->nbytes)) { snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1; } \
+        int quant_ = (tensor)->type == INK_GGML_Q8_0 || (tensor)->type == INK_GGML_IQ4_NL; \
+        int64_t blocks_ = (int64_t)(tensor)->dims[0] / 32, words_ = quant_words((tensor)->type); \
+        if (quant_ && ((tensor)->ndims != 2 || (tensor)->dims[0] % 32 != 0 || \
+                       (tensor)->nbytes != (tensor)->dims[1] * (uint64_t)(blocks_ * (4 * words_ + 2)))) { \
+            snprintf(err, err_bytes, "a quantized tensor is not a matrix of whole blocks"); ink_close(s); return 1; \
+        } \
+        if (quant_ ? relayout(s, s->gguf.map + (tensor)->offset, (dev), (int64_t)(tensor)->dims[1], blocks_, words_, 0) \
+                   : upload_big(s, (dev), s->gguf.map + (tensor)->offset, (size_t)(tensor)->nbytes)) { snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1; } \
         at += ((size_t)(tensor)->nbytes + 255) & ~(size_t)255; \
     } while (0)
     for (int ip = 0; ip < hp->n_phys; ip++) {
@@ -843,7 +1041,6 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     /* ---- Expert caches. ---- */
     for (int ip = 0; ip < hp->n_phys; ip++) {
         ExpertCache *c = &s->experts[ip];
-        const InkLayerTensors *L = &s->gguf.layers[ip];
         if (pc_alloc((size_t)c->cap * c->gu_bytes, &c->gu) != PC_OK || pc_alloc((size_t)c->cap * c->dn_bytes, &c->dn) != PC_OK) {
             snprintf(err, err_bytes, "out of VRAM for layer %d's expert cache: %s", ip, pc_log());
             ink_close(s); return 1;
@@ -852,12 +1049,13 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         /* Fill the cache with the first cap experts: all of them when the
            layer is resident, and otherwise a start that spares the first
            tokens a miss on nearly every expert they choose. */
-        if (upload_big(s, c->gu, s->gguf.map + L->ffn_gate_up_exps.offset, (size_t)c->cap * c->gu_bytes) ||
-            upload_big(s, c->dn, s->gguf.map + L->ffn_down_exps.offset, (size_t)c->cap * c->dn_bytes)) {
-            snprintf(err, err_bytes, "%s", s->error);
-            ink_close(s); return 1;
+        for (int e = 0; e < c->cap; e++) {
+            if (load_expert(s, ip, e, e)) {
+                snprintf(err, err_bytes, "%s", s->error);
+                ink_close(s); return 1;
+            }
+            c->slot_of[e] = (int16_t)e; c->expert_in[e] = (int16_t)e;
         }
-        for (int e = 0; e < c->cap; e++) { c->slot_of[e] = (int16_t)e; c->expert_in[e] = (int16_t)e; }
     }
 
     /* ---- Scratch. ---- */
@@ -865,33 +1063,22 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     size_t nb = (size_t)s->batch;
     size_t n_used = (size_t)hp->n_expert_used;
     size_t widest = 2 * d > n_q ? 2 * d : n_q;
+    size_t n_rel_all = (size_t)hp->n_head * (size_t)hp->rel_len, n_dyn_all = (size_t)hp->n_head_kv * (size_t)hp->conv_len;
+    size_t proj_rows = 2 * n_q + 2 * n_kv + 2 * n_dyn_all + n_rel_all + (size_t)hp->n_head;
     if (alloc_zero(s, &s->embd_row, nb * row_bytes) ||
         alloc_zero(s, &s->cur, nb * d * 4) ||
-        alloc_zero(s, &s->inp_sa, nb * d * 4) ||
-        alloc_zero(s, &s->ffn_inp, nb * d * 4) ||
         alloc_zero(s, &s->prelude, nb * d * 4) ||
         alloc_zero(s, &s->bank_out, nb * d * 4) ||
         alloc_zero(s, &s->blocks, INK_MAX_BLOCKS * nb * d * 4) ||
         alloc_zero(s, &s->prelude_blk, INK_MAX_BLOCKS * nb * d * 4) ||
         alloc_zero(s, &s->bank_blk, INK_MAX_BLOCKS * nb * d * 4) ||
-        alloc_zero(s, &s->mix_out, 4 * nb * d * 4) ||
+        alloc_zero(s, &s->inp3, 3 * nb * d * 4) ||
+        alloc_zero(s, &s->inp3b, 3 * nb * d * 4) ||
+        alloc_zero(s, &s->norm_b2, nb * d * 4) ||
         alloc_zero(s, &s->messages, 4 * nb * d * 4) ||
-        alloc_zero(s, &s->inp_q, nb * d * 4) ||
-        alloc_zero(s, &s->inp_k, nb * d * 4) ||
-        alloc_zero(s, &s->inp_v, nb * d * 4) ||
-        alloc_zero(s, &s->ctrl_cat, nb * 2 * d * 4) ||
-        alloc_zero(s, &s->ctrl_gate, nb * (size_t)hp->gate_rank * 4) ||
-        alloc_zero(s, &s->ctrl_gain, nb * d * 4) ||
-        alloc_zero(s, &s->ctrl_forget, nb * d * 4) ||
-        alloc_zero(s, &s->q_buf, nb * n_q * 4) ||
-        alloc_zero(s, &s->k_raw, nb * n_kv * 4) ||
+        alloc_zero(s, &s->ctrl_gate, 3 * nb * (size_t)hp->gate_rank * 4) ||
         alloc_zero(s, &s->k_buf, nb * n_kv * 4) ||
-        alloc_zero(s, &s->v_raw, nb * n_kv * 4) ||
         alloc_zero(s, &s->v_buf, nb * n_kv * 4) ||
-        alloc_zero(s, &s->r_buf, nb * (size_t)hp->n_head * (size_t)hp->rel_len * 4) ||
-        alloc_zero(s, &s->dyn_buf, nb * (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
-        alloc_zero(s, &s->sinks_buf, nb * (size_t)hp->n_head * 4) ||
-        alloc_zero(s, &s->gate_buf, nb * n_q * 4) ||
         alloc_zero(s, &s->attn_scores, nb * (size_t)hp->n_head * (size_t)s->max_ctx * 4) ||
         alloc_zero(s, &s->attn_out, nb * n_q * 4) ||
         alloc_zero(s, &s->o_raw, nb * d * 4) ||
@@ -902,6 +1089,11 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         alloc_zero(s, &s->moe_wts, nb * n_used * 4) ||
         alloc_zero(s, &s->moe_hid, nb * n_used * (size_t)hp->n_ff_exp * 4) ||
         alloc_zero(s, &s->moe_out, nb * d * 4) ||
+        alloc_zero(s, &s->mv_part, (s->mv_part_floats = (n_q > d ? n_q : d) * ((n_q > d ? n_q : d) / 32) + proj_rows * (d / 32)) * 4) ||
+        alloc_zero(s, &s->proj, (s->proj_floats = nb * proj_rows) * 4) ||
+        alloc_zero(s, &s->proj_desc, 32 * 2 * 80 * 4) ||
+        alloc_zero(s, &s->gu_part, n_used * (d / 32) * 2 * (size_t)hp->n_ff_exp * 4) ||
+        alloc_zero(s, &s->dn_part, n_used * ((size_t)hp->n_ff_exp / 32) * d * 4) ||
         alloc_zero(s, &s->logits, (size_t)hp->n_vocab * 4) ||
         alloc_zero(s, &s->oracle_x, nb * widest * 4) ||
         alloc_zero(s, &s->dummy_f32, 64 * 4)) {
@@ -918,6 +1110,67 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
             alloc_zero(s, &s->conv_fo[il], d * 3 * 4)) {
             snprintf(err, err_bytes, "%s", s->error);
             ink_close(s); return 1;
+        }
+    }
+    /* The projections' outputs, side by side in s->proj. */
+    {
+        size_t at_f = 0;
+        s->q_buf = s->proj + at_f * 4;     at_f += nb * n_q;
+        s->k_raw = s->proj + at_f * 4;     at_f += nb * n_kv;
+        s->kdyn_buf = s->proj + at_f * 4;  at_f += nb * n_dyn_all;
+        s->v_raw = s->proj + at_f * 4;     at_f += nb * n_kv;
+        s->vdyn_buf = s->proj + at_f * 4;  at_f += nb * n_dyn_all;
+        s->r_buf = s->proj + at_f * 4;     at_f += nb * n_rel_all;
+        s->sinks_buf = s->proj + at_f * 4; at_f += nb * (size_t)hp->n_head;
+        s->gate_buf = s->proj + at_f * 4;
+    }
+    /* Each layer's list for the fused projection launch. */
+    for (int ip = 0; ip < hp->n_phys; ip++) {
+        const InkLayerTensors *L = &s->gguf.layers[ip];
+        int dyn = !hp->is_swa[ip];
+        struct { const InkTensor *t; int sel; PcBuffer out; int use; } mats[8] = {
+            {&L->attn_q, 0, s->q_buf, 1},
+            {&L->attn_k, 1, s->k_raw, 1},
+            {&L->attn_k_conv_proj, 1, s->kdyn_buf, dyn && L->attn_k_conv_proj.present},
+            {&L->attn_v, 2, s->v_raw, 1},
+            {&L->attn_v_conv_proj, 2, s->vdyn_buf, dyn && L->attn_v_conv_proj.present},
+            {&L->attn_rel, 0, s->r_buf, 1},
+            {&L->attn_sink_proj, 0, s->sinks_buf, 1},
+            {&L->attn_gate, 0, s->gate_buf, 1},
+        };
+        for (int variant = 0; variant < 2; variant++) {
+            uint32_t desc[80] = {0};
+            int n = 0, ok = 1;
+            int64_t items = 0, rows_all = 0, blocks = (int64_t)d / 32;
+            for (int m = 0; m < 8 && ok; m++) {
+                const InkTensor *t = mats[m].t;
+                if (!mats[m].use) continue;
+                if (!t->present || t->type != INK_GGML_Q8_0 || t->ndims != 2 || t->dims[0] != d || t->dims[1] % 4 != 0) { ok = 0; break; }
+                int64_t rows = (int64_t)t->dims[1];
+                PcBuffer dev = tensor_dev(s, t);
+                uint32_t *e = desc + n * 10;
+                e[0] = (uint32_t)((dev - s->weights) / 4);
+                e[1] = (uint32_t)((dev - s->weights + (uint64_t)(rows * blocks * 32)) / 2);
+                e[2] = (uint32_t)rows;
+                e[3] = (uint32_t)rows;
+                e[4] = (uint32_t)(variant ? (size_t)mats[m].sel * nb * d : 0);
+                e[5] = (uint32_t)((mats[m].out - s->proj) / 4);
+                e[6] = (uint32_t)(rows_all * blocks);
+                items += blocks * (rows / 4);
+                rows_all += rows;
+                e[7] = (uint32_t)items;
+                e[8] = (uint32_t)rows_all;
+                n++;
+            }
+            if (!ok || (size_t)(rows_all * blocks) > s->mv_part_floats) n = 0;
+            s->proj_list[ip][variant].n_mats = n;
+            s->proj_list[ip][variant].items = items;
+            s->proj_list[ip][variant].rows = rows_all;
+            if (pc_upload(s->proj_desc + (uint64_t)(ip * 2 + variant) * 80 * 4, desc, sizeof desc, s->stream) != PC_OK ||
+                pc_sync_stream(s->stream) != PC_OK) {
+                snprintf(err, err_bytes, "upload the projection lists: %s", pc_log());
+                ink_close(s); return 1;
+            }
         }
     }
     size_t zeros = (n_kv > d ? n_kv : d) * 3;
@@ -960,7 +1213,9 @@ void ink_close(InkSession *s) {
             fprintf(stderr, "  %-18s %8.3f ms a step (%4.1f%%)\n", "expert streaming",
                     1000.0 * s->prof_stream_seconds / s->total_steps, 100.0 * s->prof_stream_seconds / sum);
         }
-        if (s->streaming && s->expert_hits + s->expert_misses > 0)
+        if (getenv("INK_PROFILE") || getenv("INK_TIMES"))
+        fprintf(stderr, "psionic-cuda: %.3f s queueing work, %.3f s in all on the device path\n", s->queue_seconds, s->total_gpu_seconds);
+    if (s->streaming && s->expert_hits + s->expert_misses > 0)
             fprintf(stderr, "psionic-cuda: expert cache %llu hits, %llu misses (%.1f%% hit), %.1f MB uploaded\n",
                     (unsigned long long)s->expert_hits, (unsigned long long)s->expert_misses,
                     100.0 * (double)s->expert_hits / (double)(s->expert_hits + s->expert_misses),
@@ -972,12 +1227,12 @@ void ink_close(InkSession *s) {
         }
         for (int ip = 0; ip < 32; ip++) { free_buf(&s->experts[ip].gu); free_buf(&s->experts[ip].dn); }
         PcBuffer *scratch[] = {
-            &s->weights, &s->embd_row, &s->cur, &s->inp_sa, &s->ffn_inp, &s->prelude, &s->bank_out,
-            &s->blocks, &s->prelude_blk, &s->bank_blk, &s->mix_out, &s->messages,
-            &s->inp_q, &s->inp_k, &s->inp_v, &s->ctrl_cat, &s->ctrl_gate, &s->ctrl_gain, &s->ctrl_forget,
-            &s->q_buf, &s->k_raw, &s->k_buf, &s->v_raw, &s->v_buf, &s->r_buf, &s->dyn_buf, &s->sinks_buf, &s->gate_buf,
+            &s->weights, &s->embd_row, &s->cur, &s->prelude, &s->bank_out,
+            &s->blocks, &s->prelude_blk, &s->bank_blk, &s->messages,
+            &s->inp3, &s->inp3b, &s->norm_b2, &s->ctrl_gate,
+            &s->proj, &s->proj_desc, &s->k_buf, &s->v_buf,
             &s->attn_scores, &s->attn_out, &s->o_raw, &s->norm_buf, &s->router_logits,
-            &s->moe_ids, &s->moe_slots, &s->moe_wts, &s->moe_hid, &s->moe_out, &s->logits, &s->dummy_f32, &s->oracle_x,
+            &s->moe_ids, &s->moe_slots, &s->moe_wts, &s->moe_hid, &s->moe_out, &s->gu_part, &s->dn_part, &s->mv_part, &s->logits, &s->dummy_f32, &s->oracle_x,
         };
         for (size_t i = 0; i < sizeof scratch / sizeof *scratch; i++) free_buf(scratch[i]);
         if (s->module) pc_unload(s->module);
@@ -1215,8 +1470,10 @@ int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_
             return 1;
         }
     }
+    double queued = pc_seconds();
     if (pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "device");
     s->total_gpu_seconds += pc_seconds() - began;
+    s->queue_seconds += queued - began;
     return 0;
 }
 
