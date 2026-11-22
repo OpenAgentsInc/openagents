@@ -355,7 +355,7 @@ static void local_status_summary(DesktopApp *a, char *out, size_t cap) {
   char b1[32], b2[32];
   if (st == OA_LM_STATE_UNSUPPORTED_HW) {
     if (l->hw_verdict == OA_LM_HW_LOW_VRAM_CUDA) {
-      snprintf(out, cap, "Requires >= 24 GB NVIDIA VRAM (%d GB detected)", l->hw.gpu_vram_gb);
+      snprintf(out, cap, "%s This GPU has %d GB.", l->hw_reason[0] ? l->hw_reason : "Not enough NVIDIA VRAM.", l->hw.gpu_vram_gb);
     } else {
       snprintf(out, cap, "%s", l->hw_reason[0] ? l->hw_reason : "Unsupported hardware");
     }
@@ -2523,6 +2523,9 @@ static int oa_main(int argc, char **argv) {
     oa_fail("OpenAgents could not open its window.");
     return 1;
   }
+  /* A Linux or Windows window has no buttons at its top left, as a Mac's has: the sidebar's toggle
+     takes the window's edge, as it does on a Mac in full screen. */
+  cd_bar_full(app.page, 1);
   app.portal = shot ? NULL : portal_open();
   oa_started();
   // Resolve the 28-flag mask via #authority coax/lib/agent/desktop/flags.coax (all off by default),

@@ -597,7 +597,8 @@ oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
 #test "host-core local-model bridge: hardware admission, reasons, lifecycle, removal, quit, port, and pct" {
   // Hardware admission across macOS, Linux, Windows
   #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 24, LM_QUANT_IQ4_NL) == LM_HW_OK;
-  #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 23, LM_QUANT_IQ4_NL) == LM_HW_LOW_VRAM_CUDA;
+  #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 16, LM_QUANT_IQ4_NL) == LM_HW_OK;
+  #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 7, LM_QUANT_IQ4_NL) == LM_HW_LOW_VRAM_CUDA;
   #assert oa_core_local_admit_hw(LM_OS_WINDOWS, 0, 32, LM_BACKEND_CUDA, 16, LM_QUANT_NVFP4) == LM_HW_OK;
   #assert oa_core_local_admit_hw(LM_OS_WINDOWS, 0, 32, LM_BACKEND_NONE, 0, LM_QUANT_IQ4_NL) == LM_HW_NO_GPU;
   #assert oa_core_local_admit_hw(LM_OS_MAC, 1, 32, LM_BACKEND_METAL, 32, LM_QUANT_IQ4_NL) == LM_HW_OK;
@@ -607,7 +608,7 @@ oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
   rn := oa_core_local_hw_reason(LM_HW_NO_GPU, rb[..]);
   #assert rn > 0 && cast(string) rb[0..<rn] == "No supported Psionic GPU backend detected.";
   rn = oa_core_local_hw_reason(LM_HW_LOW_VRAM_CUDA, rb[..]);
-  #assert rn > 0 && cast(string) rb[0..<rn] == "Insufficient NVIDIA VRAM for Inkling 2 Mini.";
+  #assert rn > 0 && cast(string) rb[0..<rn] == "Inkling 2 Mini requires an NVIDIA GPU with at least 8 GB of VRAM.";
 
   // Lifecycle state, labels, download admission, removal, quit, port, pct
   #assert oa_core_local_state(LM_HW_NO_GPU, 0, 0, 0, 0, 0, 0) == LM_STATE_UNSUPPORTED_HW;
