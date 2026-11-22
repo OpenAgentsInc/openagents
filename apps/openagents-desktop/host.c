@@ -436,6 +436,8 @@ int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
 int cd_model_claude(void *page) { CoderHost *c = page; return c && coder_page_model_claude(cd_state(c)) ? 1 : 0; }
 void cd_orchestrator_set(void *page, int claude, int model) { CoderHost *c = page; if (!c) return; coder_page_orchestrator_set(cd_state(c), claude != 0, model); cd_woke(c); }
+void cd_claude_effort_set(void *page, int model, int level) { CoderHost *c = page; if (!c) return; coder_page_claude_effort_set(cd_state(c), model, level); cd_woke(c); }
+int cd_claude_effort(void *page, int model) { CoderHost *c = page; return c ? (int)coder_page_claude_effort(cd_state(c), model) : 2; }
 int cd_orchestrator(void *page) { CoderHost *c = page; return c ? (int)coder_page_orchestrator(cd_state(c)) : 0; }
 int cd_orchestrator_model(void *page) { CoderHost *c = page; return c ? (int)coder_page_orchestrator_model(cd_state(c)) : 1; }
 int cd_model_hybrid(void *page) { CoderHost *c = page; return c && coder_page_model_hybrid(cd_state(c)) ? 1 : 0; }

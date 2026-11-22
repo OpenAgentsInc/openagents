@@ -16,7 +16,20 @@ enum CoderOrchestrator {
         set { UserDefaults.standard.set(newValue, forKey: modelKey) }
     }
     /// Tells a page the pick. A page learns whether Claude Code is installed first (coderApplyClaude).
-    static func apply(_ page: UnsafeMutableRawPointer?) { cd_orchestrator_set(page, claude ? 1 : 0, Int32(model)) }
+    /// Each Claude model's thinking level, in the picker's order (Fable 5.2, Opus 5.5, Sonnet 5.5,
+    /// Haiku 5.5): 0 low, 1 medium, 2 high, 3 x-high, 4 max. High unless set (`claudeEfforts`).
+    static let effortsKey = "claudeEfforts"
+    static var efforts: [Int] {
+        get {
+            let kept = UserDefaults.standard.array(forKey: effortsKey) as? [Int] ?? []
+            return (0..<4).map { $0 < kept.count && (0...4).contains(kept[$0]) ? kept[$0] : 2 }
+        }
+        set { UserDefaults.standard.set(newValue, forKey: effortsKey) }
+    }
+    static func apply(_ page: UnsafeMutableRawPointer?) {
+        cd_orchestrator_set(page, claude ? 1 : 0, Int32(model))
+        for (k, level) in efforts.enumerated() { cd_claude_effort_set(page, Int32(k), Int32(level)) }
+    }
 }
 /// What every page is told of Claude: whether Claude Code is installed here (its models join the
 /// picker, and sub-agents may run on them), and the model new chats start on.
@@ -125,6 +138,12 @@ extension CoderWindow {
     func orchestratorChanged() {
         CoderOrchestrator.claude = cd_orchestrator(page) != 0
         CoderOrchestrator.model = Int(cd_orchestrator_model(page))
+        for r in runs.values where r.page != page { CoderOrchestrator.apply(r.page) }
+    }
+    /// Settings > Models > a Claude model's thinking level was pressed (CP_ASK_CLAUDE_EFFORT): the
+    /// levels are kept, and every chat out of view learns them.
+    func claudeEffortChanged() {
+        CoderOrchestrator.efforts = (0..<4).map { Int(cd_claude_effort(page, Int32($0))) }
         for r in runs.values where r.page != page { CoderOrchestrator.apply(r.page) }
     }
     func experimentalChanged() {

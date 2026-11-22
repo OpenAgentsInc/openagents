@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 77;
+CP_SET_ENTRIES :: 78;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -48,6 +48,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini.auth", name = "Gemini sign-in", terms = "vertex adc gcloud google cloud gemini sign-in credentials"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.orch", name = "New chats start on", terms = "claude neon gemini main model orchestrator default agent sdk"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.orch.model", name = "Claude model", terms = "claude fable opus sonnet haiku main model orchestrator default"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.claude.effort.1", name = "Claude thinking level", terms = "claude effort reasoning thinking level low medium high xhigh max fable opus sonnet haiku"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.claude", name = "Claude key", terms = "anthropic api token login sub-agents"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or", name = "OpenRouter key", terms = "openrouter api"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or.main", name = "Model for Microcoder", terms = "openrouter model main"},
@@ -206,6 +207,12 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   urec := cp_number(id, "set.usage.recovery.");
   if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
+  eslot := cp_number(id, "set.claude.effort.");
+  if eslot >= 0 && eslot < CP_CLAUDE_MODELS && id.count == "set.claude.effort.0.0".count {
+    elevel := cast(int) (id[id.count - 1] - '0');
+    if elevel < 0 || elevel >= CP_CLAUDE_EFFORTS { return false; }
+    coder_page_claude_effort_set(s, eslot, elevel); s[0].ask = CP_ASK_CLAUDE_EFFORT; return true;
+  }
   omodel := cp_number(id, "set.orch.model.");
   if omodel >= 0 && omodel < CP_CLAUDE_MODELS { coder_page_orchestrator_set(s, s[0].orch_claude, omodel); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
   omain := cp_number(id, "set.orch.");
@@ -410,7 +417,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.gemini.group", x, y, w, gone[..]) + t.block_gap;
     claude := ifx s[0].set_claude_n > 0 then sheet_pool(sh, cast(string) s[0].set_claude[0..<s[0].set_claude_n]) else "Not set";
     y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "A chat can run on Claude through Claude Code on this computer, and any chat can hand tasks to Claude sub-agents: Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2.") + t.section_gap;
-    one: [3] SetRow; cn := 0;
+    one: [3 + CP_CLAUDE_MODELS] SetRow; cn := 0;
     // the model new chats start on; a chat's own picker still changes it for that chat
     on_claude := s[0].orch_claude && s[0].claude;
     one[cn] = SetRow.{id = "set.orch", name = "New chats start on",
@@ -428,6 +435,19 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
         kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_MODELS, chosen = om, action = CP_SET_ACT};
       for ci: 0..<CP_CLAUDE_MODELS { one[cn].options[ci] = shorts[ci]; }
       cn += 1;
+    }
+    if s[0].claude {
+      // each Claude model's thinking level: a chat on it starts there, and a sub-agent on it runs there
+      enames := [CP_CLAUDE_MODELS] string.["Fable 5.2 thinking", "Opus 5.5 thinking", "Sonnet 5.5 thinking", "Haiku 5.5 thinking"];
+      eids := [CP_CLAUDE_MODELS] string.["set.claude.effort.0", "set.claude.effort.1", "set.claude.effort.2", "set.claude.effort.3"];
+      elabels := CP_CLAUDE_EFFORT_LABEL;
+      for ek: 0..<CP_CLAUDE_MODELS {
+        one[cn] = SetRow.{id = eids[ek], name = enames[ek],
+          desc = ifx ek == 0 then "How hard the model thinks, in a chat and as a sub-agent. A chat's composer can pick another level for that chat." else "",
+          kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_EFFORTS, chosen = cp_claude_effort(s, ek), action = CP_SET_ACT};
+        for ei: 0..<CP_CLAUDE_EFFORTS { one[cn].options[ei] = elabels[ei]; }
+        cn += 1;
+      }
     }
     one[cn] = SetRow.{id = "set.claude", name = "Claude key", desc = "Claude chats and sub-agents use it in place of the Claude Code login on this computer.",
       value = claude, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
@@ -999,4 +1019,47 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.3") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
   #assert !cp_settings_press(s, CP_SET_ACT, "set.orch.model.4");
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "gemini-4-neon";
+}
+
+#test "settings: each Claude model has a thinking level, which a chat on it and a sub-agent on it run at" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_settings_open(s, CP_PG_MODELS, "");
+  #assert cp_set_test_frame(s, 1200, 2400) && surface_find(s[0].surface[..], "set.claude.effort.0") < 0;   // no Claude Code: no rows
+  coder_page_set_claude(s, true);
+  #assert cp_set_test_frame(s, 1200, 2400);
+  #assert surface_find(s[0].surface[..], "set.claude.effort.0") >= 0 && surface_find(s[0].surface[..], "set.claude.effort.3") >= 0 && surface_find(s[0].surface[..], "set.claude.effort.0.4") >= 0;
+  for k: 0..<CP_CLAUDE_MODELS { #assert coder_page_claude_effort(s, k) == CP_CLAUDE_EFFORT_START; }
+  #assert cp_settings_press(s, CP_SET_ACT, "set.claude.effort.0.4") && coder_page_action(s) == CP_ASK_CLAUDE_EFFORT && coder_page_claude_effort(s, 0) == 4;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.claude.effort.3.0") && coder_page_action(s) == CP_ASK_CLAUDE_EFFORT && coder_page_claude_effort(s, 3) == 0 && coder_page_claude_effort(s, 1) == 2;
+  #assert !cp_settings_press(s, CP_SET_ACT, "set.claude.effort.1.5") && !cp_settings_press(s, CP_SET_ACT, "set.claude.effort.4.1");
+  coder_page_claude_effort_set(s, 2, 9);
+  #assert coder_page_claude_effort(s, 2) == CP_CLAUDE_EFFORT_START;
+  // a chat on Fable runs at max, and its chip says so; a pick in the chat wins, through all five levels
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_pick_model(s, "fable") && cp_effort_label(s, cp_model_index(s)) == "Max";
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "claude-fable-5-2" && back[0].effort == "max";
+  // its sub-agents run at their own model's level: Haiku low, Opus high, Fable max
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"haiku\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"review\"},{\"level\":\"fable\",\"task\":\"prove\"},{\"level\":\"sonnet\",\"task\":\"build\"}],\"ticket\":1}") == MWW_DELEGATE;
+  want := [4] string.["low", "high", "max", "high"];
+  for j: 0..<4 {
+    ar[0].at = 0;
+    n = coder_page_agent_task(s, j, "s-a", "/w", out[..]);
+    #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].effort == want[j];
+  }
+  #assert coder_page_line(s, "{\"kind\":\"results\"}") != MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
+  cp_effort_cycle(s);
+  #assert s[0].effort == CP_EFFORT_LOW && cp_task_effort(s, cp_model_index(s)) == "low";
+  for k: 0..<3 { cp_effort_cycle(s); }
+  #assert s[0].effort == CP_EFFORT_XHIGH && cp_effort_label(s, cp_model_index(s)) == "X-High" && cp_task_effort(s, cp_model_index(s)) == "xhigh";
+  cp_effort_cycle(s); cp_effort_cycle(s);
+  #assert s[0].effort == CP_EFFORT_LOW;
+  // x-high on a model that has no such level runs as high, and its chip wraps from high
+  s[0].effort = CP_EFFORT_MAX; s[0].model = CP_MODEL_DEFAULT;
+  #assert cp_effort_label(s, CP_MODEL_DEFAULT) == "High" && cp_task_effort(s, CP_MODEL_DEFAULT) == "high";
+  cp_effort_cycle(s);
+  #assert s[0].effort == CP_EFFORT_LOW && cp_effort_of("xhigh") == CP_EFFORT_XHIGH && cp_effort_of("max") == CP_EFFORT_MAX;
 }

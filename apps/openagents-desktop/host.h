@@ -231,6 +231,12 @@ int cd_model_hybrid(void *page);
 int cd_model_claude(void *page);
 void cd_orchestrator_set(void *page, int claude, int model);
 int cd_orchestrator(void *page);
+// cd_claude_effort_set: the thinking level Settings > Models keeps for a Claude model (0 Fable 5.2,
+// 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5): 0 low, 1 medium, 2 high, 3 x-high, 4 max. A chat on the
+// model and a sub-agent on it run at it. cd_claude_effort reads one back after the page asks
+// (action 98), for the host to keep.
+void cd_claude_effort_set(void *page, int model, int level);
+int cd_claude_effort(void *page, int model);
 int cd_orchestrator_model(void *page);
 // cd_openrouter: the OpenRouter models set with Coder > OpenRouter Models ("" for none): main is a
 // composer picker entry for Microcoder, sub is a sub-agent level (openrouter).

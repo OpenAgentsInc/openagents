@@ -205,13 +205,24 @@ A chat on Claude works like a chat on Microcoder:
 - The reply shows as Claude writes it. Tool calls and thinking show as they do for a Claude sub-agent.
 - Stop ends the turn and keeps the conversation. A message you send while a turn runs reaches Claude at its next step. Follow-ups queue as usual.
 - One Claude Code session lasts for the chat. A change of working folder or thinking level starts a new session, which is told the chat's earlier messages and replies (the newest 262,144 bytes, without their tool calls). The same happens when you open a saved chat.
-- The thinking level is High until you pick another in the composer.
+- The thinking level is the one Settings keeps for the chat's model (see [Claude thinking levels](#claude-thinking-levels)) until you pick another in the composer. The composer's chip steps through Low, Medium, High, X-High and Max.
 - A turn's cost is what Claude Code reports for it.
 - It uses the Claude login on this Mac, or the [Claude key](#claude-key), and needs no Gemini sign-in.
 
 Limits: a message is up to 262,144 bytes. One `delegate` call's answer carries
 up to 400,000 bytes of the sub-agents' replies, shared equally when they are
 longer together; a cut reply says how many bytes are not shown.
+
+#### Claude thinking levels
+
+Each Claude model has its own thinking level: Low, Medium, High, X-High or
+Max, which are Claude Code's `--effort` levels. **Settings > Models > Claude**
+has one row for each model (Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5). Every
+model starts at High.
+
+- A sub-agent runs at its model's level.
+- A chat on a Claude model starts at its model's level. The composer's chip changes it for that chat only.
+- A change applies to the next sub-agent and the next message. A change of level in a chat starts a new Claude Code session, which is told the chat so far.
 
 #### Claude key
 

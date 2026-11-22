@@ -92,6 +92,13 @@ CP_CLAUDE_ALIAS :: [CP_CLAUDE_MODELS] string.["fable", "opus", "sonnet", "haiku"
 CP_CLAUDE_DESC :: [CP_CLAUDE_MODELS] string.["Hardest work · Claude Code", "Deep reasoning · Claude Code", "Everyday coding · Claude Code", "Fast & light · Claude Code"];
 CP_CLAUDE_META :: [CP_CLAUDE_MODELS] string.["Claude Code · Claude Fable 5.2", "Claude Code · Claude Opus 5.5", "Claude Code · Claude Sonnet 5.5", "Claude Code · Claude Haiku 5.5"];
 CP_CLAUDE_START :: 1;       // the Claude model new chats start on until Settings picks another: Opus 5.5
+// The thinking level each Claude model runs at, as Claude Code names them (--effort). Settings >
+// Models sets one for each model; a chat on the model and a sub-agent on it both use it.
+CP_CLAUDE_EFFORTS :: 5;
+CP_CLAUDE_EFFORT_WORD :: [CP_CLAUDE_EFFORTS] string.["low", "medium", "high", "xhigh", "max"];
+CP_CLAUDE_EFFORT_LABEL :: [CP_CLAUDE_EFFORTS] string.["Low", "Medium", "High", "X-High", "Max"];
+CP_CLAUDE_EFFORT_START :: 2;   // high, until Settings picks another
+CP_ASK_CLAUDE_EFFORT :: 98; // Settings > Models > a Claude model's thinking level changed (coder_page_claude_effort)
 CP_ASK_ORCHESTRATOR :: 97;  // Settings > Models > the model new chats start on changed (coder_page_orchestrator)
 
 // Default per-chat-thread max budget in microdollars ($50.00).
@@ -152,7 +159,7 @@ CP_AGENT_STOP :: 69;        // stop button under a running sub-agent's activity 
 CP_TODOS_TOGGLE :: 70;      // collapse or expand the live agent todo checklist tray
 CP_URL :: 71;               // an http(s) link a reply or sub-agent message carries
 CP_GYM :: 72;               // the sidebar's Gym row (3D PLE Workbench, #13792)
-CP_EFFORT_CYCLE :: 74;      // the composer's effort chip beside the model: low, then medium, then high (models.coax)
+CP_EFFORT_CYCLE :: 74;      // the composer's effort chip beside the model: low, then medium, then high, and for Claude x-high and max (models.coax)
 CP_PERMIT_OPT :: 75;        // an allow/choice button on the interactive permission/question card (permit.coax; #13831)
 CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission card (permit.coax; #13831)
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
@@ -262,6 +269,7 @@ CoderPage :: struct {
   reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
   claude: bool;               // Claude Code is installed here: a chat may run on it, and hand tasks to it
+  claude_effort: [CP_CLAUDE_MODELS] int;   // Settings > Models: each Claude model's thinking level less CP_CLAUDE_EFFORT_START (0: high), so a new page starts at high
   orch_claude: bool; orch_model: int;   // Settings > Models: new chats start on Claude (which of CP_CLAUDE_ID), not Neon
   agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
   inkling: bool;              // Inkling 2 Mini local checkpoint is installed on >=32GB Mac: shown in the model picker (#13825)

@@ -189,7 +189,7 @@ SET_ROW_LINK :: 1;      // the whole row leads somewhere: the value, then a chev
 SET_ROW_BUTTON :: 2;    // a small secondary button at its end (the value before it)
 SET_ROW_STEPPER :: 3;   // two small buttons with the value between them (".a" and ".b")
 SET_ROW_CHOICE :: 4;    // one of a few options (".0", ".1", ...)
-SET_OPTIONS :: 4;
+SET_OPTIONS :: 5;
 SetRow :: struct {
   id: string;
   icon: int = -1;            // a lead tile's glyph (-1: none)

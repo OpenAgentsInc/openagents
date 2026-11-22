@@ -898,6 +898,14 @@ static void handle_action(DesktopApp *a, int act) {
       if (!oa_core_key_save(cs("orchestrator"), cs(pick))) cd_toast(a->page, "The setting could not be saved.", 0);
       break;
     }
+    case 98: {
+      // Settings > Models: each Claude model's thinking level, kept beside the keys as four digits
+      char levels[8];
+      for (int k = 0; k < 4; k++) levels[k] = (char)('0' + cd_claude_effort(a->page, k));
+      levels[4] = '\0';
+      if (!oa_core_key_save(cs("claude-effort"), cs(levels))) cd_toast(a->page, "The setting could not be saved.", 0);
+      break;
+    }
     case 36: break;   // Experimental features: the page shows or hides them; Foreman and the Gym are Mac-only
     case 37: fork_shown(a); break;
     case 40: handle_file_save(a); break;
@@ -1686,6 +1694,13 @@ static int oa_main(int argc, char **argv) {
   app.portal = shot ? NULL : portal_open();
   oa_started();
   cd_claude(app.page, app.claude_worker_bin[0] ? 1 : 0);
+  {
+    // each Claude model's thinking level, as Settings > Models kept it (four digits, 0 low to 4 max)
+    char levels[8] = {0};
+    if (oa_core_key_read(cs("claude-effort"), vu(levels, (int)sizeof levels)) >= 4) {
+      for (int k = 0; k < 4; k++) if (levels[k] >= '0' && levels[k] <= '4') cd_claude_effort_set(app.page, k, levels[k] - '0');
+    }
+  }
   {
     // the model new chats start on, as Settings > Models kept it ("claude:N" or "neon:N")
     char pick[16] = {0};

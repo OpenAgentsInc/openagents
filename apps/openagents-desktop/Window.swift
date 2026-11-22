@@ -431,6 +431,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 35: chooseAntigravityAuth()
         case 36: experimentalChanged()
         case 97: orchestratorChanged()
+        case 98: claudeEffortChanged()
         case 37: forkShown()
         case 38: chooseGeminiKey()
         case 44: editInstructions()

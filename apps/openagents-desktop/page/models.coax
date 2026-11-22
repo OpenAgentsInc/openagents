@@ -488,19 +488,35 @@ coder_page_model_claude :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 
 // The chat's thinking level, beside the model in the composer's foot as Zeron and Claude Code show
 // it: CP_EFFORT_DEFAULT until the person picks one, then low, medium or high, kept with the chat.
-CP_EFFORT_DEFAULT :: 0; CP_EFFORT_LOW :: 1; CP_EFFORT_MEDIUM :: 2; CP_EFFORT_HIGH :: 3;
-CP_EFFORT_WORD :: [4] string.["", "low", "medium", "high"];
-CP_EFFORT_LABEL :: [4] string.["", "Low", "Medium", "High"];
+// A chat on a Claude model has two more, x-high and max (Claude Code's --effort levels); on any
+// other model they run as high.
+CP_EFFORT_DEFAULT :: 0; CP_EFFORT_LOW :: 1; CP_EFFORT_MEDIUM :: 2; CP_EFFORT_HIGH :: 3; CP_EFFORT_XHIGH :: 4; CP_EFFORT_MAX :: 5;
+CP_EFFORT_WORD :: [6] string.["", "low", "medium", "high", "xhigh", "max"];
+CP_EFFORT_LABEL :: [6] string.["", "Low", "Medium", "High", "X-High", "Max"];
+// The thinking level Settings set for Claude model slot (which of CP_CLAUDE_ID), 0..<CP_CLAUDE_EFFORTS.
+cp_claude_effort :: (s: [] CoderPage, slot: int) -> int {
+  if s.count < 1 || slot < 0 || slot >= CP_CLAUDE_MODELS { return CP_CLAUDE_EFFORT_START; }
+  e := s[0].claude_effort[slot] + CP_CLAUDE_EFFORT_START;
+  return ifx e >= 0 && e < CP_CLAUDE_EFFORTS then e else CP_CLAUDE_EFFORT_START;
+}
+// Settings > Models: Claude model slot (0 Fable 5.2, 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5) runs at
+// level (0 low, 1 medium, 2 high, 3 x-high, 4 max), as the chat's main model and as a sub-agent.
+coder_page_claude_effort_set :: (s: [] CoderPage, slot: int, level: int) #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= CP_CLAUDE_MODELS { return; }
+  s[0].claude_effort[slot] = (ifx level >= 0 && level < CP_CLAUDE_EFFORTS then level else CP_CLAUDE_EFFORT_START) - CP_CLAUDE_EFFORT_START;
+}
+coder_page_claude_effort :: (s: [] CoderPage, slot: int) -> int #export_c #effects(all) { return cp_claude_effort(s, slot); }
 cp_effort_of :: (word: string) -> int {
   words := CP_EFFORT_WORD;
-  for i: 1..<4 { if word == words[i] { return i; } }
+  for i: 1..<6 { if word == words[i] { return i; } }
   return CP_EFFORT_DEFAULT;
 }
 // The level a model runs at when the chat names none: for Antigravity, the effort Settings sets
-// (its model summary, "MODEL · high"), else agyworker's own, medium; Claude's, high, as Claude Code
-// runs it; Microcoder's models, low.
+// (its model summary, "MODEL · high"), else agyworker's own, medium; a Claude model's, the level
+// Settings set for it (high until then); Microcoder's models, low.
 cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
-  if cp_is_claude(s, idx) { return CP_EFFORT_HIGH; }
+  cslot := cp_claude_slot(s, idx);
+  if cslot >= 0 { return cp_claude_effort(s, cslot) + CP_EFFORT_LOW; }   // the level Settings set for this Claude model
   if !cp_is_agy(s, idx) { return CP_EFFORT_LOW; }
   m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
   dot := " · ";
@@ -514,7 +530,8 @@ cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
 // The level the model at idx runs at in this chat: the one picked, else its default.
 cp_effort_at :: (s: [] CoderPage, idx: int) -> int {
   e := s[0].effort;
-  return ifx e >= CP_EFFORT_LOW && e <= CP_EFFORT_HIGH then e else cp_effort_default(s, idx);
+  if e > CP_EFFORT_HIGH && e <= CP_EFFORT_MAX && !cp_is_claude(s, idx) { return CP_EFFORT_HIGH; }
+  return ifx e >= CP_EFFORT_LOW && e <= CP_EFFORT_MAX then e else cp_effort_default(s, idx);
 }
 cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_LABEL; return labels[cp_effort_at(s, idx)]; }
 // The effort a task line names for the model at index model: the chat's pick; with none, nothing
@@ -522,12 +539,14 @@ cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_L
 // low made agy think not at all), and low for Microcoder.
 cp_task_effort :: (s: [] CoderPage, model: int) -> string {
   words := CP_EFFORT_WORD;
-  if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_HIGH { return words[s[0].effort]; }
-  if cp_is_claude(s, model) { return "high"; }
+  if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_MAX { return words[cp_effort_at(s, model)]; }
+  if cp_is_claude(s, model) { return words[cp_effort_default(s, model)]; }
   return ifx cp_is_agy(s, model) then "" else "low";
 }
-// A press on the effort chip: the next level after the one shown, high wrapping to low.
+// A press on the effort chip: the next level after the one shown, the top one wrapping to low:
+// high, or max for a chat on a Claude model.
 cp_effort_cycle :: (s: [] CoderPage) {
   e := cp_effort_at(s, cp_model_index(s));
-  s[0].effort = ifx e >= CP_EFFORT_HIGH then CP_EFFORT_LOW else e + 1;
+  top := ifx cp_is_claude(s, cp_model_index(s)) then CP_EFFORT_MAX else CP_EFFORT_HIGH;
+  s[0].effort = ifx e >= top then CP_EFFORT_LOW else e + 1;
 }

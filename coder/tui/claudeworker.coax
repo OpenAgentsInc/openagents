@@ -6,7 +6,8 @@
 //
 // A sub-agent (a task line without "agents"): one task, then it exits.
 //
-//   in   {"task":"...","cwd":"/path","model":"sonnet"}   the task; model is haiku, sonnet, opus or fable, or a model id
+//   in   {"task":"...","cwd":"/path","model":"sonnet","effort":"high"}   the task; model is haiku, sonnet, opus or fable, or a model id;
+//                                                         effort is low, medium, high, xhigh or max (none: Claude Code's own)
 //        {"stop":true}                                    STOP the run
 //   out  {"kind":"ready"}
 //        {"kind":"ask","command":"ls","ticket":N}         a tool call as it starts. No answer is read: nothing waits.
@@ -1009,6 +1010,7 @@ tool_main :: () -> int #export_c #effects(all) {
       cl_init(q[..], cline[..], carena[..], cout[..]);
       o: [1] ClOptions;
       cw_options(o[..], cast(string) model[0..<mn], cast(string) cwd[0..<cn]);
+      if en > 0 { o[0].effort = cast(string) effort[0..<en]; }   // the thinking level the task line names, a sub-agent's too
       cl_remove_env(o[..], "ANTHROPIC_API_KEY");
       cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
       cl_remove_env(o[..], "ANTHROPIC_BASE_URL");
