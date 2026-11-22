@@ -92,6 +92,15 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
 int  ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens);
 int  ink_step(InkSession *s, int32_t token_id, int compute_logits);
 int  ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits);
+/* Verify tokens[0..n_tokens-1] in one batched forward pass starting at current s->pos:
+   tokens[0] is the already-sampled current token; tokens[1..n_tokens-1] are speculative drafts.
+   Accepts drafts matching the target distribution (exact argmax when temperature <= 1e-6, or
+   exact speculative rejection sampling when temperature > 0), rewinds recurrent state to
+   pos0 + 1 + accepted, leaves s->logits at the last accepted token, and writes the verified
+   next token into *out_next_token. Returns accepted draft count [0..n_tokens-1], or -1 on error. */
+int  ink_verify_draft(InkSession *s, const int32_t *tokens, int n_tokens,
+                      const InkSampleParams *p, uint64_t *rng_state,
+                      int32_t *out_next_token);
 
 const float      *ink_logits(const InkSession *s);
 const float      *ink_hidden(const InkSession *s);

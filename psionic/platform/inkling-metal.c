@@ -15,6 +15,9 @@
 #define INK_D   8
 #define INK_MAX_BLOCKS 8
 #define INK_PREFILL_B 3072
+#define INK_MAX_SNAPS 8
+#define INK_MAX_SWA_SNAPS 3
+#define INK_SPEC_MAX_NB 8
 
 enum {
     K_EMBED_Q8 = 0,
@@ -453,16 +456,29 @@ struct InkSession {
 
     int pos;
     int max_pos_written;
+    int swa_cap_min;
+    int swa_valid_from;
     int64_t last_hidden_off;
-    /* Exact cross-request KV + shortconv prefix snapshots (slot 0 = prefill end, slot 1 = backup/turn end). */
+    int32_t *live_tokens;
+    int live_len;
+    /* Lazy-allocated scratch for batched speculative draft verification (ink_verify_draft). */
+    PmBuffer verify_logits; /* [INK_SPEC_MAX_NB * n_vocab] f32 */
+    PmBuffer spec_hist;     /* [n_slots * INK_SPEC_MAX_NB * (2*n_kv + 2*d)] f32 */
+    float   *spec_old_conv; /* [n_slots * (2*n_kv + 2*d) * 3] f32 */
+    /* Exact cross-request KV + shortconv prefix snapshots (LRU + pinned SWA-backed checkpoints). */
+    uint64_t snap_clock;
     struct {
         int valid;
         int pos;
         int has_logits;
+        int pinned;
+        uint64_t last_used;
         int32_t *tokens;
         float   *conv_state;
         float   *logits;
-    } snaps[2];
+        uint16_t *swa_kv;
+        int swa_win;
+    } snaps[INK_MAX_SNAPS];
     double total_gpu_seconds;
     int total_steps;
     char error[512];
@@ -1733,6 +1749,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         ink_close(s); return 1;
     }
 
+    s->swa_cap_min = s->max_ctx;
     for (int il = 0; il < s->n_slots; il++) {
         int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
         /* SWA ring buffer must hold at least (swa + prefill_b) entries so K_KV_STORE_BATCH never
@@ -1740,6 +1757,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         int swa_cap = hp->swa + s->prefill_b;
         int cap = hp->is_swa[ip] ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
         s->kv_cap[il] = cap;
+        if (hp->is_swa[ip] && cap < s->swa_cap_min) s->swa_cap_min = cap;
         if (alloc_buf(s, &s->kv_k[il], (size_t)cap * n_kv * 2) ||
             alloc_buf(s, &s->kv_v[il], (size_t)cap * n_kv * 2) ||
             alloc_buf(s, &s->conv_k[il], n_kv * 3 * 4) ||
@@ -1751,11 +1769,26 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         }
     }
 
+    s->live_tokens = (int32_t *)malloc((size_t)s->max_ctx * sizeof(int32_t));
+    if (!s->live_tokens) {
+        snprintf(err, err_bytes, "out of memory allocating live_tokens");
+        ink_close(s); return 1;
+    }
+
     build_fast_weights(s);
 
     s->pos = 0;
+    s->live_len = 0;
+    s->swa_valid_from = 0;
     *out = s;
     return 0;
+}
+
+static inline void ink_mark_written(InkSession *s, int p_end) {
+    if (p_end > s->max_pos_written) s->max_pos_written = p_end;
+    if (s->swa_cap_min > 0 && p_end - s->swa_cap_min > s->swa_valid_from) {
+        s->swa_valid_from = p_end - s->swa_cap_min;
+    }
 }
 
 static void ink_discard_prep(InkSession *s) {
@@ -1768,10 +1801,15 @@ static void ink_discard_prep(InkSession *s) {
 void ink_close(InkSession *s) {
     if (!s) return;
     ink_discard_prep(s);
-    for (int i = 0; i < 2; i++) {
+    free(s->live_tokens);
+    free(s->spec_old_conv);
+    pm_free(s->verify_logits);
+    pm_free(s->spec_hist);
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         free(s->snaps[i].tokens);
         free(s->snaps[i].conv_state);
         free(s->snaps[i].logits);
+        free(s->snaps[i].swa_kv);
     }
     for (int il = 0; il < INK_MAX_SLOTS; il++) {
         pm_free(s->kv_k[il]); pm_free(s->kv_v[il]);
@@ -1814,10 +1852,15 @@ void ink_reset(InkSession *s) {
         memset(pm_contents(s->conv_fo[il]), 0, d * 3 * 4);
     }
     s->pos = 0;
+    s->live_len = 0;
     s->max_pos_written = 0;
+    s->swa_valid_from = 0;
     s->last_hidden_off = 0;
-    s->snaps[0].valid = 0;
-    s->snaps[1].valid = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        s->snaps[i].valid = 0;
+        s->snaps[i].pinned = 0;
+        s->snaps[i].swa_win = 0;
+    }
 }
 
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits) {
@@ -1827,7 +1870,30 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
     size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
     size_t conv_per_slot = (2 * n_kv + 2 * d) * 3;
     size_t conv_elems = (size_t)s->n_slots * conv_per_slot;
-    int slot = save_logits ? 0 : 1;
+    int is_pinned = (save_logits == 2);
+    int has_lg = (save_logits == 1);
+
+    /* Choose slot: reuse matching pos, else free slot, else LRU non-pinned (or LRU pinned if is_pinned). */
+    int slot = -1;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        if (s->snaps[i].valid && s->snaps[i].pos == n_tokens && s->snaps[i].pinned == is_pinned) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < INK_MAX_SNAPS; i++) {
+            if (!s->snaps[i].valid) { slot = i; break; }
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < INK_MAX_SNAPS; i++) {
+            if (!is_pinned && s->snaps[i].pinned) continue;
+            if (slot < 0 || s->snaps[i].last_used < s->snaps[slot].last_used) slot = i;
+        }
+        if (slot < 0) slot = 0;
+    }
+
     if (!s->snaps[slot].tokens) {
         s->snaps[slot].tokens = (int32_t *)malloc((size_t)s->max_ctx * sizeof(int32_t));
         s->snaps[slot].conv_state = (float *)malloc(conv_elems * sizeof(float));
@@ -1845,11 +1911,49 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
         memcpy(dst, pm_contents(s->conv_ao[il]), d * 3 * sizeof(float));   dst += d * 3;
         memcpy(dst, pm_contents(s->conv_fo[il]), d * 3 * sizeof(float));   dst += d * 3;
     }
-    if (save_logits) {
+    if (has_lg) {
         memcpy(s->snaps[slot].logits, pm_contents(s->logits), (size_t)hp->n_vocab * sizeof(float));
     }
+    /* Optional SWA KV window backup so pinned system/early checkpoints survive arbitrary SWA ring wraps. */
+    s->snaps[slot].swa_win = 0;
+    int n_swa_alloc = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        if (s->snaps[i].swa_kv) n_swa_alloc++;
+    }
+    int want_swa = (s->budget.swa_slots > 0 && hp->swa > 0 && s->budget.headroom_mb >= 4096 &&
+                    (is_pinned || (n_tokens <= 4096 && (s->snaps[slot].swa_kv != NULL || n_swa_alloc < INK_MAX_SWA_SNAPS))));
+    if (want_swa) {
+        size_t swa_elems = (size_t)s->budget.swa_slots * (size_t)hp->swa * n_kv * 2;
+        if (!s->snaps[slot].swa_kv && n_swa_alloc < INK_MAX_SWA_SNAPS) {
+            s->snaps[slot].swa_kv = (uint16_t *)malloc(swa_elems * sizeof(uint16_t));
+        }
+        if (s->snaps[slot].swa_kv) {
+            int win = (n_tokens < (int)hp->swa) ? n_tokens : (int)hp->swa;
+            int p0 = n_tokens - win;
+            uint16_t *sd = s->snaps[slot].swa_kv;
+            for (int il = 0; il < s->n_slots; il++) {
+                int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
+                if (!hp->is_swa[ip]) continue;
+                int cap = s->kv_cap[il];
+                const uint16_t *kk = (const uint16_t *)pm_contents(s->kv_k[il]);
+                const uint16_t *kv = (const uint16_t *)pm_contents(s->kv_v[il]);
+                int r0 = p0 % cap;
+                int first = (r0 + win <= cap) ? win : (cap - r0);
+                int second = win - first;
+                memcpy(sd, kk + (size_t)r0 * n_kv, (size_t)first * n_kv * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * n_kv, kk, (size_t)second * n_kv * sizeof(uint16_t));
+                sd += (size_t)win * n_kv;
+                memcpy(sd, kv + (size_t)r0 * n_kv, (size_t)first * n_kv * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * n_kv, kv, (size_t)second * n_kv * sizeof(uint16_t));
+                sd += (size_t)win * n_kv;
+            }
+            s->snaps[slot].swa_win = win;
+        }
+    }
     s->snaps[slot].pos = n_tokens;
-    s->snaps[slot].has_logits = save_logits ? 1 : 0;
+    s->snaps[slot].has_logits = has_lg ? 1 : 0;
+    s->snaps[slot].pinned = is_pinned ? 1 : 0;
+    s->snaps[slot].last_used = ++s->snap_clock;
     s->snaps[slot].valid = 1;
 }
 
@@ -1857,22 +1961,27 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     if (!s || !tokens || n_tokens <= 0) { ink_reset(s); return 0; }
     ink_discard_prep(s);
     const InkHParams *hp = &s->gguf.hp;
-    int swa_cap = s->max_ctx;
-    for (int il = 0; il < s->n_slots; il++) {
-        int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
-        if (hp->is_swa[ip] && s->kv_cap[il] < swa_cap) swa_cap = s->kv_cap[il];
-    }
     int best = -1;
-    for (int i = 0; i < 2; i++) {
+    int best_need_swa = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         if (!s->snaps[i].valid) continue;
         int sp = s->snaps[i].pos;
         if (sp <= 0 || sp > n_tokens) continue;
         if (sp == n_tokens && !s->snaps[i].has_logits) continue;
-        /* Verify SWA ring-buffer keys [oldest_needed .. sp-1] were never overwritten by writes up to max_pos_written. */
-        int oldest_needed = (sp >= hp->swa) ? (sp - (int)hp->swa + 1) : 0;
-        if (s->max_pos_written - oldest_needed > swa_cap) continue;
+        /* Full-attention KV cache must still match snaps[i].tokens[0..sp-1] exactly. */
+        if (sp > s->live_len || !s->live_tokens) continue;
+        if (memcmp(s->live_tokens, s->snaps[i].tokens, (size_t)sp * sizeof(int32_t)) != 0) continue;
         if (memcmp(s->snaps[i].tokens, tokens, (size_t)sp * sizeof(int32_t)) != 0) continue;
-        if (best < 0 || sp > s->snaps[best].pos) best = i;
+        /* SWA ring keys [oldest_needed .. sp-1] must either still be live or backed by swa_kv. */
+        int oldest_needed = (sp >= hp->swa) ? (sp - (int)hp->swa + 1) : 0;
+        int swa_still_live = (oldest_needed >= s->swa_valid_from);
+        int need_win = (sp < (int)hp->swa) ? sp : (int)hp->swa;
+        int has_swa_backup = (s->snaps[i].swa_kv != NULL && s->snaps[i].swa_win >= need_win);
+        if (!swa_still_live && !has_swa_backup) continue;
+        if (best < 0 || sp > s->snaps[best].pos) {
+            best = i;
+            best_need_swa = !swa_still_live;
+        }
     }
     if (best < 0) {
         ink_reset(s);
@@ -1888,13 +1997,37 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
         memcpy(pm_contents(s->conv_fo[il]), src, d * 3 * sizeof(float));   src += d * 3;
     }
     int sp = s->snaps[best].pos;
+    if (best_need_swa && s->snaps[best].swa_kv) {
+        int win = s->snaps[best].swa_win;
+        int p0 = sp - win;
+        const uint16_t *ss = s->snaps[best].swa_kv;
+        for (int il = 0; il < s->n_slots; il++) {
+            int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
+            if (!hp->is_swa[ip]) continue;
+            int cap = s->kv_cap[il];
+            uint16_t *kk = (uint16_t *)pm_contents(s->kv_k[il]);
+            uint16_t *kv = (uint16_t *)pm_contents(s->kv_v[il]);
+            int r0 = p0 % cap;
+            int first = (r0 + win <= cap) ? win : (cap - r0);
+            int second = win - first;
+            memcpy(kk + (size_t)r0 * n_kv, ss, (size_t)first * n_kv * sizeof(uint16_t));
+            if (second > 0) memcpy(kk, ss + (size_t)first * n_kv, (size_t)second * n_kv * sizeof(uint16_t));
+            ss += (size_t)win * n_kv;
+            memcpy(kv + (size_t)r0 * n_kv, ss, (size_t)first * n_kv * sizeof(uint16_t));
+            if (second > 0) memcpy(kv, ss + (size_t)first * n_kv, (size_t)second * n_kv * sizeof(uint16_t));
+            ss += (size_t)win * n_kv;
+        }
+        s->swa_valid_from = p0;
+        s->max_pos_written = sp;
+    }
     if (sp == n_tokens && s->snaps[best].has_logits) {
         memcpy(pm_contents(s->logits), s->snaps[best].logits, (size_t)hp->n_vocab * sizeof(float));
     }
     s->argmax_valid = 0;
     s->pos = sp;
-    s->max_pos_written = sp;
-    for (int i = 0; i < 2; i++) {
+    s->live_len = sp;
+    s->snaps[best].last_used = ++s->snap_clock;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         if (i != best && s->snaps[i].valid && s->snaps[i].pos > sp) s->snaps[i].valid = 0;
     }
     return sp;
@@ -2066,8 +2199,12 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, int comput
     }
 
     if (advance_state) {
+        if (s->live_tokens && s->pos < s->max_ctx) {
+            s->live_tokens[s->pos] = token_id;
+            s->live_len = s->pos + 1;
+        }
         s->pos++;
-        if (s->pos > s->max_pos_written) s->max_pos_written = s->pos;
+        ink_mark_written(s, s->pos);
         s->total_steps++;
     }
     return 0;
@@ -2151,7 +2288,7 @@ static int dispatch_mm_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t 
     return 0;
 }
 
-static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, int64_t nb) {
+static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, int64_t nb, int save_spec_hist, int force_fp32) {
     PmBatch batch = *bp;
     const InkHParams *hp = &s->gguf.hp;
     const InkLayerTensors *L = &s->gguf.layers[ip];
@@ -2165,6 +2302,12 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     int64_t n_rel = hp->rel_len;
     int is_swa = hp->is_swa[ip];
     int64_t bd = nb * d;
+    int64_t spec_slot_base = (int64_t)il * (int64_t)INK_SPEC_MAX_NB * (2 * n_kv + 2 * d);
+    int64_t m4_min = force_fp32 ? 1000000 : 8;
+    {
+        const char *env_m4 = getenv("INK_M4_BATCH_MIN");
+        if (!force_fp32 && env_m4 && env_m4[0]) m4_min = strtoll(env_m4, NULL, 10);
+    }
 
     /* Wave 1: save inp_sa = cur concurrently with depth-attention mix. */
     CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd), a_f32v(s->cur, 0, bd), a_f32v(s->inp_sa, 0, bd));
@@ -2247,7 +2390,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     /* Wave 2: Input RMSNorms + overlapped Q8/F32 -> BF16 weight dequantization (-48 barriers/prefill!). */
     int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
     int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
-    int qkv_bf16 = (nb >= 8 && L->attn_q.type == INK_GGML_Q8_0 && L->attn_k.type == INK_GGML_Q8_0 &&
+    int qkv_bf16 = (nb >= m4_min && L->attn_q.type == INK_GGML_Q8_0 && L->attn_k.type == INK_GGML_Q8_0 &&
                     L->attn_v.type == INK_GGML_Q8_0 && L->attn_rel.type == INK_GGML_Q8_0 && L->attn_gate.type == INK_GGML_Q8_0);
     int64_t off_q = 0;
     int64_t off_k = off_q + n_q * (d / 2);
@@ -2348,6 +2491,13 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     int use_tau_vec = is_swa ? 0 : 1;
     PmArg tau_arg = use_tau_vec ? a_f32v(s->tau_buf, 0, nb) : a_f32v(s->dummy_f32, 0, 64);
     int64_t conv_kv_items = ((nb + 31) / 32) * ((n_kv + 63) / 64);
+    if (save_spec_hist) {
+        int64_t bkv = nb * n_kv;
+        CALL(s, batch, K_COPY, (bkv + INK_NT - 1) / INK_NT, a_int(bkv),
+             a_f32v(s->k_raw, 0, bkv), a_f32v(s->spec_hist, spec_slot_base, bkv));
+        CALL(s, batch, K_COPY, (bkv + INK_NT - 1) / INK_NT, a_int(bkv),
+             a_f32v(s->v_raw, 0, bkv), a_f32v(s->spec_hist, spec_slot_base + (int64_t)INK_SPEC_MAX_NB * n_kv, bkv));
+    }
     CALL(s, batch, K_CONVOLVE_BATCH, conv_kv_items, a_int(n_kv), a_int(n_head_kv), a_int(has_k_dyn ? 1 : 0), a_int(nb),
          a_f32v(s->k_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_k_conv),
          has_k_dyn ? a_f32v(s->dyn_buf, 0, nb * n_head_kv * hp->conv_len) : a_f32v(s->dummy_f32, 0, 64),
@@ -2420,7 +2570,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
          a_f32v(s->sinks_buf, 0, nb * n_head));
     pm_barrier(batch);
     prof_mark(bp, 4); batch = *bp; /* 4: attn_softmax_mma */
-    int o_bf16 = (nb >= 8 && L->attn_output.type == INK_GGML_Q8_0);
+    int o_bf16 = (nb >= m4_min && L->attn_output.type == INK_GGML_Q8_0);
     if (hd == 128) {
         CALL(s, batch, K_ATTN_VALUES_M4, n_head * q_tiles * 2,
              a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
@@ -2455,6 +2605,10 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     }
     pm_barrier(batch);
     int64_t conv_d_items = ((nb + 31) / 32) * ((d + 63) / 64);
+    if (save_spec_hist) {
+        CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
+             a_f32v(s->o_raw, 0, bd), a_f32v(s->spec_hist, spec_slot_base + (int64_t)INK_SPEC_MAX_NB * (2 * n_kv), bd));
+    }
     if (ip % hp->block_size == 0) {
         if (*n_blocks >= INK_MAX_BLOCKS) {
             snprintf(s->error, sizeof s->error, "block count overflow");
@@ -2548,10 +2702,10 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
 
     int64_t n_ff = hp->n_ff_exp;
     int64_t tile_cap = hp->n_expert + INK_PREFILL_B / 2 + 16;
-    int64_t direct_thresh = 16;
+    int64_t direct_thresh = force_fp32 ? 16 : (m4_min - 1);
     {
         const char *env_t = getenv("INK_DIRECT_THRESH");
-        if (env_t && env_t[0]) direct_thresh = strtoll(env_t, NULL, 10);
+        if (!force_fp32 && env_t && env_t[0]) direct_thresh = strtoll(env_t, NULL, 10);
     }
     if (nb <= direct_thresh &&
         L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL &&
@@ -2601,7 +2755,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
              a_f32v(s->moe_slot_out, 0, tot_rows * d));
         pm_barrier(batch);
         prof_mark(bp, 3); batch = *bp; /* 3: moe_mm_iq4 (GU+SITU+DN+scatter) */
-    } else if (nb >= 8 &&
+    } else if (nb >= m4_min &&
         L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL &&
         L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
         /* Sprint 42: Metal 4 Neural Accelerator Expert-Grouped MoE with IN-TILE IQ4_NL dequant (TM=128 for nb>=1024 halves dequant!) */
@@ -2845,6 +2999,10 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
          a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
          a_f32v(s->moe_out, 0, bd));
     pm_barrier(batch);
+    if (save_spec_hist) {
+        CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
+             a_f32v(s->moe_out, 0, bd), a_f32v(s->spec_hist, spec_slot_base + (int64_t)INK_SPEC_MAX_NB * (2 * n_kv + d), bd));
+    }
     CALL(s, batch, K_CONVOLVE_ADD_BATCH, conv_d_items, a_int(d), a_int(nb),
          a_f32v(s->moe_out, 0, bd),
          a_tensor_f32(s, &L->ffn_post_conv),
@@ -2856,7 +3014,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     return 0;
 }
 
-static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_last_logits) {
+static int run_chunk_ex(InkSession *s, const int32_t *tokens, int nb, int compute_logits_mode, int save_spec_hist, int force_fp32) {
     const InkHParams *hp = &s->gguf.hp;
     if (s->pos + nb > s->max_ctx) {
         snprintf(s->error, sizeof s->error, "context full (%d+%d/%d)", s->pos, nb, s->max_ctx);
@@ -2897,12 +3055,12 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
     int start = (int)hp->loop_start;
     int end = (int)hp->loop_end;
 
-    int do_pprof = (getenv("INK_PREFILL_PROF") != NULL);
+    int do_pprof = (!save_spec_hist && getenv("INK_PREFILL_PROF") != NULL);
     if (do_pprof) { prof_active = 1; memset(prof_ms, 0, sizeof prof_ms); }
 
     /* 2. Prelude layers [0 .. start) */
     for (int il = 0; il < start; il++) {
-        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb, save_spec_hist, force_fp32) != 0) { pm_wait(batch, NULL); return 1; }
     }
 
     /* Save prelude output and prelude blocks */
@@ -2944,7 +3102,7 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         for (int ip = start; ip < end; ip++) {
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
             if (pass == 0) {
-                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 0, nb, save_spec_hist, force_fp32) != 0) { pm_wait(batch, NULL); return 1; }
             } else {
                 const InkLayerTensors *L = &s->gguf.layers[ip];
                 CALL(s, batch, K_MIX_BATCH, 4 * nb, a_int(d), a_int(bank_n_blocks), a_int(nb),
@@ -2953,14 +3111,14 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
                      a_tensor_f32(s, &L->loop_msg_query),
                      a_f32v(s->messages, 0, 4 * bd));
                 pm_barrier(batch);
-                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 1, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 1, nb, save_spec_hist, force_fp32) != 0) { pm_wait(batch, NULL); return 1; }
             }
         }
     }
 
     /* 4. Coda layers [end .. n_phys) */
     for (int il = end; il < hp->n_phys; il++) {
-        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb, save_spec_hist, force_fp32) != 0) { pm_wait(batch, NULL); return 1; }
     }
     if (do_pprof) {
         prof_active = 0;
@@ -2979,9 +3137,9 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         }
     }
 
-    /* 5. Output mix -> output_norm -> lm_head -> logit softcap (ONLY for last token nb-1!) */
-    if (compute_last_logits) {
-        /* Copy last token's blocks[0..n_blocks-1] and cur[nb-1] or mix all nb and take nb-1: */
+    /* 5. Output mix -> output_norm -> lm_head -> logit softcap */
+    if (compute_logits_mode == 1) {
+        /* Last token nb-1 only (normal prefill). */
         CALL(s, batch, K_MIX_BATCH, nb, a_int(d), a_int(n_blocks), a_int(nb),
              a_f32v(s->blocks, 0, INK_MAX_BLOCKS * bd),
              a_f32v(s->cur, 0, bd),
@@ -3001,6 +3159,33 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         }
         s->last_hidden_off = last_off;
         s->argmax_valid = 0;
+    } else if (compute_logits_mode == 2) {
+        /* All nb tokens into s->verify_logits[0..nb*nv) for speculative verification. */
+        CALL(s, batch, K_MIX_BATCH, nb, a_int(d), a_int(n_blocks), a_int(nb),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * bd),
+             a_f32v(s->cur, 0, bd),
+             a_tensor_f32(s, &s->gguf.out_res_query),
+             a_f32v(s->norm_buf, 0, bd));
+        pm_barrier(batch);
+        CALL(s, batch, K_RMSNORM, nb, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(s->norm_buf, 0, bd), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, 0, bd));
+        pm_barrier(batch);
+        int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+        /* Launch all nb lm_head GEMVs concurrently (disjoint output slices, SLC weight reuse, ~6x faster than 64x32 K_MM_Q8 at nb<=8!). */
+        for (int t = 0; t < nb; t++) {
+            if (dispatch_mv_q4(s, batch, &s->gguf.output, &s->fast_output, nv, d, 0,
+                               s->norm_buf, (int64_t)t * d, s->verify_logits, (int64_t)t * nv) != 0) {
+                pm_wait(batch, NULL);
+                return 1;
+            }
+        }
+        if (hp->logit_softcap > 0.0f) {
+            pm_barrier(batch);
+            int64_t tot_nv = (int64_t)nb * nv;
+            CALL(s, batch, K_SOFTCAP, (tot_nv + INK_NT - 1) / INK_NT, a_int(tot_nv),
+                 a_f32(hp->logit_softcap), a_f32v(s->verify_logits, 0, tot_nv));
+        }
+        s->argmax_valid = 0;
     }
 
     double gpu_s = 0.0;
@@ -3008,11 +3193,21 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         snprintf(s->error, sizeof s->error, "pm_wait: %s", pm_log());
         return 1;
     }
-    s->pos += nb;
-    if (s->pos > s->max_pos_written) s->max_pos_written = s->pos;
-    s->total_steps += nb;
+    if (!save_spec_hist) {
+        if (s->live_tokens && s->pos + nb <= s->max_ctx) {
+            memcpy(s->live_tokens + s->pos, tokens, (size_t)nb * sizeof(int32_t));
+            s->live_len = s->pos + nb;
+        }
+        s->pos += nb;
+        ink_mark_written(s, s->pos);
+        s->total_steps += nb;
+    }
     s->total_gpu_seconds += gpu_s;
     return 0;
+}
+
+static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_last_logits) {
+    return run_chunk_ex(s, tokens, nb, compute_last_logits ? 1 : 0, 0, 0);
 }
 
 int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits) {
@@ -3081,8 +3276,12 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             pm_patch_first_arg_int(cur_batch, (int64_t)token_id);
             s->argmax_valid = compute_logits ? 1 : 0;
             s->last_hidden_off = 0;
+            if (s->live_tokens && s->pos < s->max_ctx) {
+                s->live_tokens[s->pos] = token_id;
+                s->live_len = s->pos + 1;
+            }
             s->pos++;
-            if (s->pos > s->max_pos_written) s->max_pos_written = s->pos;
+            ink_mark_written(s, s->pos);
             s->total_steps++;
         } else {
             ink_discard_prep(s);
@@ -3179,33 +3378,45 @@ const char *ink_token_str(const InkSession *s, int32_t id) {
     return s->gguf.tok.tokens[id].text;
 }
 
-int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_state) {
-    const float *logits = ink_logits(s);
-    int n = ink_vocab_unpadded(s);
-    if (!logits || n <= 0) return -1;
+static float next_u01(uint64_t *rng_state) {
+    uint64_t x = rng_state ? *rng_state : 0x9e3779b97f4a7c15ULL;
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
+    if (rng_state) *rng_state = x;
+    return (float)((x * 2685821657736338717ULL) >> 40) / (float)(1ULL << 24);
+}
 
+/* Sample from a logit vector (top-k + top-p) with optional exact speculative verification:
+ * if verify_draft >= 0 and temperature > 1e-6, performs exact rejection sampling against a
+ * deterministic draft token (accept with prob p(draft); else sample from residual p(x|x!=draft))
+ * and sets *out_accepted = 1 (accepted) or 0 (rejected, return value is exact replacement token). */
+static int32_t sample_logits_ex(const float *logits, int n, const InkSampleParams *p, uint64_t *rng_state,
+                                int32_t verify_draft, int *out_accepted) {
+    if (!logits || n <= 0) return -1;
     float temp = p ? p->temperature : 0.0f;
     if (temp <= 1e-6f) {
-        if (s->argmax_valid) {
-            return (int32_t)((const uint32_t *)pm_contents(s->argmax_out))[0];
-        }
         int best = 0; float bv = logits[0];
         for (int i = 1; i < n; i++) {
             if (logits[i] > bv) { bv = logits[i]; best = i; }
         }
+        if (out_accepted) *out_accepted = (verify_draft >= 0 && best == verify_draft) ? 1 : 0;
         return (int32_t)best;
     }
 
     int top_k = (p && p->top_k > 0 && p->top_k < n) ? p->top_k : 40;
     float top_p = (p && p->top_p > 0.0f && p->top_p < 1.0f) ? p->top_p : 0.95f;
 
-    /* Simple top-k selection */
-    int *idx = (int *)malloc((size_t)top_k * sizeof(int));
-    float *val = (float *)malloc((size_t)top_k * sizeof(float));
-    if (!idx || !val) { free(idx); free(val); return 0; }
+    int idx_stack[64];
+    float val_stack[64];
+    int *idx = (top_k <= 64) ? idx_stack : (int *)malloc((size_t)top_k * sizeof(int));
+    float *val = (top_k <= 64) ? val_stack : (float *)malloc((size_t)top_k * sizeof(float));
+    if (!idx || !val) {
+        if (top_k > 64) { free(idx); free(val); }
+        return 0;
+    }
     int k = 0;
+    float inv_t = 1.0f / temp;
     for (int i = 0; i < n; i++) {
-        float v = logits[i] / temp;
+        float v = logits[i] * inv_t;
         if (k < top_k) {
             int j = k++;
             while (j > 0 && val[j - 1] < v) { val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--; }
@@ -3227,20 +3438,192 @@ int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_
     }
     float norm = 0.0f;
     for (int i = 0; i < cut; i++) norm += val[i];
+    for (int i = 0; i < cut; i++) val[i] /= norm;
 
-    uint64_t x = rng_state ? *rng_state : 0x9e3779b97f4a7c15ULL;
-    x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
-    if (rng_state) *rng_state = x;
-    float r = (float)((x * 2685821657736338717ULL) >> 40) / (float)(1ULL << 24);
-
-    float acc = 0.0f;
     int chosen = idx[0];
-    for (int i = 0; i < cut; i++) {
-        acc += val[i] / norm;
-        if (r <= acc) { chosen = idx[i]; break; }
+    if (verify_draft >= 0) {
+        float p_draft = 0.0f;
+        int draft_pos = -1;
+        for (int i = 0; i < cut; i++) {
+            if (idx[i] == verify_draft) { p_draft = val[i]; draft_pos = i; break; }
+        }
+        float u = next_u01(rng_state);
+        if (u < p_draft) {
+            if (out_accepted) *out_accepted = 1;
+            chosen = verify_draft;
+        } else {
+            if (out_accepted) *out_accepted = 0;
+            float rem = 1.0f - p_draft;
+            if (rem <= 1e-7f) {
+                chosen = idx[0];
+            } else {
+                float r = next_u01(rng_state);
+                float acc = 0.0f;
+                chosen = (draft_pos == 0 && cut > 1) ? idx[1] : idx[0];
+                for (int i = 0; i < cut; i++) {
+                    if (i == draft_pos) continue;
+                    acc += val[i] / rem;
+                    if (r <= acc) { chosen = idx[i]; break; }
+                }
+            }
+        }
+    } else {
+        float r = next_u01(rng_state);
+        float acc = 0.0f;
+        for (int i = 0; i < cut; i++) {
+            acc += val[i];
+            if (r <= acc) { chosen = idx[i]; break; }
+        }
     }
-    free(idx); free(val);
+    if (top_k > 64) { free(idx); free(val); }
     return (int32_t)chosen;
+}
+
+int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_state) {
+    const float *logits = ink_logits(s);
+    int n = ink_vocab_unpadded(s);
+    if (!logits || n <= 0) return -1;
+    float temp = p ? p->temperature : 0.0f;
+    if (temp <= 1e-6f && s->argmax_valid) {
+        return (int32_t)((const uint32_t *)pm_contents(s->argmax_out))[0];
+    }
+    return sample_logits_ex(logits, n, p, rng_state, -1, NULL);
+}
+
+static void rewind_conv_array(float *dst_hist, const float *old_hist, const float *cur_hist, int64_t n_ch, int a) {
+    if (a >= 3) {
+        const float *c0 = cur_hist + (int64_t)(a - 3) * n_ch;
+        const float *c1 = cur_hist + (int64_t)(a - 2) * n_ch;
+        const float *c2 = cur_hist + (int64_t)(a - 1) * n_ch;
+        for (int64_t ch = 0; ch < n_ch; ch++) {
+            dst_hist[ch * 3 + 0] = c0[ch];
+            dst_hist[ch * 3 + 1] = c1[ch];
+            dst_hist[ch * 3 + 2] = c2[ch];
+        }
+    } else if (a == 2) {
+        const float *c0 = cur_hist;
+        const float *c1 = cur_hist + n_ch;
+        for (int64_t ch = 0; ch < n_ch; ch++) {
+            dst_hist[ch * 3 + 0] = old_hist[ch * 3 + 2];
+            dst_hist[ch * 3 + 1] = c0[ch];
+            dst_hist[ch * 3 + 2] = c1[ch];
+        }
+    } else { /* a == 1 */
+        const float *c0 = cur_hist;
+        for (int64_t ch = 0; ch < n_ch; ch++) {
+            dst_hist[ch * 3 + 0] = old_hist[ch * 3 + 1];
+            dst_hist[ch * 3 + 1] = old_hist[ch * 3 + 2];
+            dst_hist[ch * 3 + 2] = c0[ch];
+        }
+    }
+}
+
+int ink_verify_draft(InkSession *s, const int32_t *tokens, int n_tokens,
+                     const InkSampleParams *p, uint64_t *rng_state,
+                     int32_t *out_next_token) {
+    if (!s || !tokens || n_tokens < 1 || !out_next_token) return -1;
+    const InkHParams *hp = &s->gguf.hp;
+    int nb = n_tokens;
+    if (nb > INK_SPEC_MAX_NB) nb = INK_SPEC_MAX_NB;
+    /* Fall back cleanly to single-token step if nb < 2, near context/65K boundary, or SWA ring too small. */
+    if (nb < 2 || s->pos + nb > s->max_ctx || s->pos + nb > 65535 || s->max_ctx > 65535 ||
+        (s->budget.swa_slots > 0 && s->swa_cap_min < (int)hp->swa + nb)) {
+        if (ink_step(s, tokens[0], 1) != 0) return -1;
+        *out_next_token = ink_sample(s, p, rng_state);
+        return 0;
+    }
+
+    ink_discard_prep(s);
+    int64_t d = hp->n_embd;
+    int64_t n_kv = hp->n_head_kv * hp->head_dim;
+    int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+    size_t conv_per_slot = (size_t)(2 * n_kv + 2 * d) * 3;
+    /* Lazy-allocate verification scratch buffers once per session (~18 MB total). */
+    if (!s->verify_logits) {
+        if (alloc_buf(s, &s->verify_logits, (size_t)INK_SPEC_MAX_NB * (size_t)hp->n_vocab * sizeof(float)) != 0) return -1;
+    }
+    if (!s->spec_hist) {
+        size_t sh_elems = (size_t)s->n_slots * (size_t)INK_SPEC_MAX_NB * (size_t)(2 * n_kv + 2 * d);
+        if (alloc_buf(s, &s->spec_hist, sh_elems * sizeof(float)) != 0) return -1;
+    }
+    if (!s->spec_old_conv) {
+        s->spec_old_conv = (float *)malloc((size_t)s->n_slots * conv_per_slot * sizeof(float));
+        if (!s->spec_old_conv) { snprintf(s->error, sizeof s->error, "out of memory allocating spec_old_conv"); return -1; }
+    }
+
+    /* Save shortconv state at pos0 so partial acceptance rewinds in <0.05 ms with zero GPU recompute. */
+    float *old_p = s->spec_old_conv;
+    for (int il = 0; il < s->n_slots; il++) {
+        memcpy(old_p, pm_contents(s->conv_k[il]), (size_t)n_kv * 3 * sizeof(float)); old_p += n_kv * 3;
+        memcpy(old_p, pm_contents(s->conv_v[il]), (size_t)n_kv * 3 * sizeof(float)); old_p += n_kv * 3;
+        memcpy(old_p, pm_contents(s->conv_ao[il]), (size_t)d * 3 * sizeof(float));   old_p += d * 3;
+        memcpy(old_p, pm_contents(s->conv_fo[il]), (size_t)d * 3 * sizeof(float));   old_p += d * 3;
+    }
+
+    int pos0 = s->pos;
+    const char *fp32_env = getenv("INK_SPEC_FP32");
+    int force_fp32 = (fp32_env != NULL && fp32_env[0] != '0');
+    if (run_chunk_ex(s, tokens, nb, 2, 1, force_fp32) != 0) {
+        /* Restore shortconv state on error. */
+        const float *rp = s->spec_old_conv;
+        for (int il = 0; il < s->n_slots; il++) {
+            memcpy(pm_contents(s->conv_k[il]), rp, (size_t)n_kv * 3 * sizeof(float)); rp += n_kv * 3;
+            memcpy(pm_contents(s->conv_v[il]), rp, (size_t)n_kv * 3 * sizeof(float)); rp += n_kv * 3;
+            memcpy(pm_contents(s->conv_ao[il]), rp, (size_t)d * 3 * sizeof(float));   rp += d * 3;
+            memcpy(pm_contents(s->conv_fo[il]), rp, (size_t)d * 3 * sizeof(float));   rp += d * 3;
+        }
+        return -1;
+    }
+
+    const float *vlog = (const float *)pm_contents(s->verify_logits);
+    int accepted = 0;
+    int32_t next_tok = -1;
+    for (int j = 0; j < nb - 1; j++) {
+        int ok = 0;
+        int32_t sampled = sample_logits_ex(vlog + (int64_t)j * nv, (int)nv, p, rng_state, tokens[j + 1], &ok);
+        if (ok) {
+            accepted++;
+        } else {
+            next_tok = sampled;
+            break;
+        }
+    }
+    if (accepted == nb - 1) {
+        next_tok = sample_logits_ex(vlog + (int64_t)(nb - 1) * nv, (int)nv, p, rng_state, -1, NULL);
+    }
+
+    int a = accepted + 1; /* tokens[0..a-1] committed to KV/shortconv state */
+    memcpy(pm_contents(s->logits), vlog + (int64_t)(a - 1) * nv, (size_t)nv * sizeof(float));
+    s->last_hidden_off = (int64_t)(a - 1) * d;
+    s->argmax_valid = 0;
+
+    if (a < nb) {
+        const float *sh_base = (const float *)pm_contents(s->spec_hist);
+        const float *op = s->spec_old_conv;
+        int64_t slot_stride = (int64_t)INK_SPEC_MAX_NB * (2 * n_kv + 2 * d);
+        for (int il = 0; il < s->n_slots; il++) {
+            const float *sh = sh_base + (int64_t)il * slot_stride;
+            rewind_conv_array((float *)pm_contents(s->conv_k[il]), op, sh, n_kv, a);
+            op += n_kv * 3;
+            rewind_conv_array((float *)pm_contents(s->conv_v[il]), op, sh + (int64_t)INK_SPEC_MAX_NB * n_kv, n_kv, a);
+            op += n_kv * 3;
+            rewind_conv_array((float *)pm_contents(s->conv_ao[il]), op, sh + (int64_t)INK_SPEC_MAX_NB * (2 * n_kv), d, a);
+            op += d * 3;
+            rewind_conv_array((float *)pm_contents(s->conv_fo[il]), op, sh + (int64_t)INK_SPEC_MAX_NB * (2 * n_kv + d), d, a);
+            op += d * 3;
+        }
+    }
+
+    if (s->live_tokens && pos0 + a <= s->max_ctx) {
+        memcpy(s->live_tokens + pos0, tokens, (size_t)a * sizeof(int32_t));
+        s->live_len = pos0 + a;
+    }
+    s->pos = pos0 + a;
+    /* SWA ring was written up to pos0 + nb during batched verification. */
+    ink_mark_written(s, pos0 + nb);
+    s->total_steps += a;
+    *out_next_token = next_tok;
+    return accepted;
 }
 
 const char *ink_error(const InkSession *s) { return s ? s->error : "null session"; }

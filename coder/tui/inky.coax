@@ -349,7 +349,9 @@ tool_main :: () -> int #export_c #effects(all) {
   exec_b: [16] u8;
   env_hybrid := gw_env("INKY_EXECUTOR", exec_b[..]) == "1";
   ae_b: [16] u8;
-  env_adaptive := gw_env("INKY_ADAPTIVE_EFFORT", ae_b[..]) != "0";
+  // Adaptive mid-session effort shifts change Inkling's system-position effort token and bust
+  // the multi-turn KV prefix cache, so keep it opt-in (INKY_ADAPTIVE_EFFORT=1).
+  env_adaptive := gw_env("INKY_ADAPTIVE_EFFORT", ae_b[..]) == "1";
   env_max_tok := ikw_env_int("INKY_MAX_TOKENS", 0);
 
   while true {

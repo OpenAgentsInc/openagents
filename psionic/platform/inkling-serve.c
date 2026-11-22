@@ -1283,6 +1283,7 @@ typedef struct {
     double          last_active;
     int             idle_exit_s;
     int             max_ctx;
+    int32_t         tok_user;
     int32_t         tok_model;
     int32_t         tok_thinking;
     int32_t         tok_text;
@@ -1707,6 +1708,36 @@ static int emit_responses_tool_call(int fd, int idx, const char *id,
     return rc;
 }
 
+/* Zero-weight prompt+generation n-gram lookup drafter for lossless speculative decoding.
+   Matches trailing L-gram [all_toks[n_all-(L-1)..n_all-1], cur_tok] in recent history
+   and extracts up to max_draft non-special continuation tokens. */
+static int spec_lookup_draft(const int32_t *all_toks, int n_all, int32_t cur_tok,
+                             int32_t *out_drafts, int max_draft, int min_ngram, int min_draft) {
+    if (max_draft < min_draft || n_all < min_ngram) return 0;
+    if (cur_tok < 0 || cur_tok >= 200000) return 0;
+    for (int L = 4; L >= min_ngram; L--) {
+        if (n_all < L) continue;
+        int lo = n_all - 16384;
+        if (lo < L - 1) lo = L - 1;
+        for (int pos = n_all - 2; pos >= lo; pos--) {
+            if (all_toks[pos] != cur_tok) continue;
+            int match = 1;
+            for (int k = 1; k < L; k++) {
+                if (all_toks[pos - k] != all_toks[n_all - k]) { match = 0; break; }
+            }
+            if (!match) continue;
+            int nd = 0;
+            while (nd < max_draft && pos + 1 + nd < n_all) {
+                int32_t dt = all_toks[pos + 1 + nd];
+                if (dt < 0 || dt >= 200000) break;
+                out_drafts[nd++] = dt;
+            }
+            if (nd >= min_draft) return nd;
+        }
+    }
+    return 0;
+}
+
 static void handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
@@ -1818,12 +1849,36 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     } else {
         ink_reset(sv->sess);
     }
+    /* Pin SWA-backed checkpoints at (1) tool_declare end (shared across all tasks even with
+     * different repo AGENTS.md/cwd) and (2) first <|message_user|> (shared across compaction
+     * and identical-system tasks). */
+    int tool_end = 0;
+    int sys_end = 0;
+    if (r.cache_prompt && sv->tok_user >= 0) {
+        if (r.tools_json.len > 0 && sv->tok_end_msg >= 0 && cached == 0) {
+            for (int k = 0; k < n_prompt; k++) {
+                if (toks[k] == sv->tok_end_msg) { tool_end = k + 1; break; }
+            }
+            if (tool_end < 64 || tool_end >= n_prompt) tool_end = 0;
+        }
+        for (int k = cached; k < n_prompt; k++) {
+            if (toks[k] == sv->tok_user) { sys_end = k; break; }
+        }
+        if (sys_end < 64 || sys_end >= n_prompt || sys_end <= cached) sys_end = 0;
+        if (tool_end >= sys_end) tool_end = 0;
+    }
+    int next_ckpt = (cached / 4096 + 1) * 4096;
     for (int i = cached; i < n_prompt && !g_stop; ) {
         if (sock_disconnected(fd)) {
             client_gone = 1;
             break;
         }
         int chunk = n_prompt - i;
+        if (tool_end > 0 && i < tool_end && i + chunk > tool_end) {
+            chunk = tool_end - i;
+        } else if (sys_end > 0 && i < sys_end && i + chunk > sys_end) {
+            chunk = sys_end - i;
+        }
         if (chunk > 3072) chunk = 3072;
         int need_logits = (i + chunk == n_prompt);
         if (ink_prefill(sv->sess, toks + i, chunk, need_logits) != 0) {
@@ -1838,6 +1893,14 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             return;
         }
         i += chunk;
+        if (r.cache_prompt && !g_stop && i < n_prompt) {
+            if ((tool_end > 0 && i == tool_end) || (sys_end > 0 && i == sys_end)) {
+                ink_prefix_save(sv->sess, toks, i, 2);
+            } else if (i >= next_ckpt) {
+                ink_prefix_save(sv->sess, toks, i, 0);
+                next_ckpt = (i / 4096 + 1) * 4096;
+            }
+        }
         if (r.stream && i < n_prompt) {
             if (send_all(fd, ": prefilling\n\n", 14) != 0) {
                 client_gone = 1;
@@ -1908,13 +1971,46 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     const char *finish_reason = "length";
     double td0 = now_sec();
 
+    /* Optional lossless prompt-lookup speculative decoding (opt-in via INK_SPEC_LOOKUP=1;
+     * off by default on sparse 128-expert MoE where batched expert fan-out outweighs reuse). */
+    const char *spec_env = getenv("INK_SPEC_LOOKUP");
+    int spec_enabled = (!use_js) && (spec_env != NULL && spec_env[0] != '0' && spec_env[0] != '\0');
+    int spec_max_draft = 5;
+    {
+        const char *sd = getenv("INK_SPEC_DRAFT");
+        if (sd && sd[0]) {
+            int v = atoi(sd);
+            if (v >= 3 && v <= 7) spec_max_draft = v;
+        }
+    }
+    int spec_min_ngram = 3;
+    {
+        const char *sn = getenv("INK_SPEC_MIN_NGRAM");
+        if (sn && sn[0]) {
+            int v = atoi(sn);
+            if (v >= 2 && v <= 4) spec_min_ngram = v;
+        }
+    }
+    int32_t verified_buf[8];
+    int v_head = 0, v_tail = 0;
+    int32_t prefetched_tok = -1;
+    int has_prefetched = 0;
+    int spec_calls = 0, spec_drafted = 0, spec_accepted = 0;
+
     for (int i = 0; i < max_gen && !g_stop && !client_gone; i++) {
         if ((i & 15) == 15 && sock_disconnected(fd)) {
             client_gone = 1;
             break;
         }
         int32_t tok;
-        if (use_js && channel == 2) {
+        int tok_already_stepped = 0;
+        if (v_head < v_tail) {
+            tok = verified_buf[v_head++];
+            tok_already_stepped = 1;
+        } else if (has_prefetched) {
+            tok = prefetched_tok;
+            has_prefetched = 0;
+        } else if (use_js && channel == 2) {
             js_started = 1;
             tok = js_sample_constrained(sv, js_sc, &js_st, &sp);
         } else if (use_js && !js_started) {
@@ -2078,12 +2174,46 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         }
 
         if (i + 1 < max_gen && !client_gone) {
-            if (ink_step(sv->sess, tok, 1) != 0) {
-                fprintf(stderr, "[psionic-inkling-serve] step error: %s\n", ink_error(sv->sess));
-                break;
+            if (!tok_already_stepped) {
+                int used_spec = 0;
+                if (spec_enabled && !in_header && (channel == 1 || channel == 2 || channel == 3 || channel == 4)) {
+                    int max_d = spec_max_draft;
+                    int rem_gen = max_gen - (i + 2);
+                    int rem_ctx = max_ctx - (n_all + 2);
+                    if (max_d > rem_gen) max_d = rem_gen;
+                    if (max_d > rem_ctx) max_d = rem_ctx;
+                    int32_t drafts[8];
+                    int nd = spec_lookup_draft(all_toks, n_all, tok, drafts, max_d, spec_min_ngram, 3);
+                    if (nd >= 3) {
+                        int32_t vtoks[8];
+                        vtoks[0] = tok;
+                        memcpy(vtoks + 1, drafts, (size_t)nd * sizeof(int32_t));
+                        int32_t next_t = -1;
+                        int acc = ink_verify_draft(sv->sess, vtoks, 1 + nd, &sp, &sv->rng, &next_t);
+                        if (acc < 0) {
+                            fprintf(stderr, "[psionic-inkling-serve] verify error: %s\n", ink_error(sv->sess));
+                            break;
+                        }
+                        spec_calls++;
+                        spec_drafted += nd;
+                        spec_accepted += acc;
+                        v_head = 0;
+                        v_tail = acc;
+                        for (int k = 0; k < acc; k++) verified_buf[k] = drafts[k];
+                        prefetched_tok = next_t;
+                        has_prefetched = 1;
+                        used_spec = 1;
+                    }
+                }
+                if (!used_spec) {
+                    if (ink_step(sv->sess, tok, 1) != 0) {
+                        fprintf(stderr, "[psionic-inkling-serve] step error: %s\n", ink_error(sv->sess));
+                        break;
+                    }
+                }
             }
             if (n_all < max_ctx) all_toks[n_all++] = tok;
-            if (channel == 1 && !think_broken && think_start >= 0 && sv->tok_end_msg >= 0 && n_all < max_ctx) {
+            if (v_head == v_tail && channel == 1 && !think_broken && think_start >= 0 && sv->tok_end_msg >= 0 && n_all < max_ctx) {
                 int lp = detect_thinking_loop(all_toks, think_start, n_all);
                 if (lp > 0) {
                     if (pending.len > 0) {
@@ -2102,6 +2232,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
                     think_broken = 1;
                     channel = 0;
                     think_start = -1;
+                    has_prefetched = 0;
                     if (ink_step(sv->sess, sv->tok_end_msg, 1) != 0) {
                         fprintf(stderr, "[psionic-inkling-serve] step error on loop break: %s\n", ink_error(sv->sess));
                         break;
@@ -2176,9 +2307,13 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         finish_reason = "tool_calls";
     }
     double t_decode = now_sec() - td0;
-    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (cached=%d, %.2fs) gen=%d (reason=%d, %.2fs, %.1f tok/s) finish=%s%s\n",
+    char spec_msg[64] = "";
+    if (spec_calls > 0) {
+        snprintf(spec_msg, sizeof spec_msg, " spec=%d/%d(%d)", spec_accepted, spec_drafted, spec_calls);
+    }
+    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (cached=%d, %.2fs) gen=%d (reason=%d, %.2fs, %.1f tok/s%s) finish=%s%s\n",
             sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream,
-            n_prompt, cached, t_prefill, n_gen, n_reason, t_decode, n_gen / (t_decode + 1e-9), finish_reason,
+            n_prompt, cached, t_prefill, n_gen, n_reason, t_decode, n_gen / (t_decode + 1e-9), spec_msg, finish_reason,
             client_gone ? " [aborted]" : "");
 
     if (client_gone) {
@@ -2554,6 +2689,7 @@ int main(int argc, char **argv) {
     }
     sv.engine          = ink_backend_name(sv.sess);
     sv.max_ctx         = ink_max_ctx(sv.sess);
+    sv.tok_user        = ink_find_token(sv.sess, "<|message_user|>");
     sv.tok_model       = ink_find_token(sv.sess, "<|message_model|>");
     sv.tok_thinking    = ink_find_token(sv.sess, "<|content_thinking|>");
     sv.tok_text        = ink_find_token(sv.sess, "<|content_text|>");

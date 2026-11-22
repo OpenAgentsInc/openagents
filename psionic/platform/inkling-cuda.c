@@ -1481,6 +1481,15 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
     return ink_prefill(s, &token_id, 1, compute_logits);
 }
 
+int ink_verify_draft(InkSession *s, const int32_t *tokens, int n_tokens,
+                     const InkSampleParams *p, uint64_t *rng_state,
+                     int32_t *out_next_token) {
+    if (!s || !tokens || n_tokens < 1 || !out_next_token) return -1;
+    if (ink_step(s, tokens[0], 1) != 0) return -1;
+    *out_next_token = ink_sample(s, p, rng_state);
+    return 0;
+}
+
 const float *ink_logits(const InkSession *s) { return s ? s->logits_host : NULL; }
 const float *ink_hidden(const InkSession *s) { return s ? s->hidden_host : NULL; }
 const InkHParams *ink_hparams(const InkSession *s) { return s ? &s->gguf.hp : NULL; }
