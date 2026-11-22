@@ -244,8 +244,9 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   }
   lx2 := ix0;
   if r.icon >= 0 {
-    ic := ifx r.icon == ICON_FOLDER then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
-    ig := ifx r.icon == ICON_FOLDER then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
+    is_folder := r.icon == ICON_FOLDER_8 || r.icon == ICON_FOLDER;
+    ic := ifx is_folder then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
+    ig := ifx is_folder then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
     sheet_icon(sh, r.icon, lx2, y2 + (s.small.line - ic) / 2.0f32, ic, s.muted);
     lx2 += ic + ig;
   }

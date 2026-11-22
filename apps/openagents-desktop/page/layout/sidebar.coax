@@ -28,7 +28,7 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      unread = s[0].chats[q].unread && !is,
                      status = st_str,
                      attention = sel,
-                     icon = ifx rn > 0 then ICON_FOLDER else -1,
+                     icon = ifx rn > 0 then ICON_FOLDER_8 else -1,
                      card = true,
                      repo = repo_str,
                      branch = br_str,

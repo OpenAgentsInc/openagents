@@ -88,17 +88,17 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   comp := elt_find(t[..], "coder.composer");
   #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
   #assert abs(t[0].rows[folder].x + t[0].rows[folder].w - (t[0].rows[comp].x + t[0].rows[comp].w - cast(f32) CP_FOOT_SIDE)) < 0.01;
-  // working-folder chip under the composer draws its folder icon at the smaller 11pt size
+  // working-folder chip under the composer draws its folder icon via the 8pt atlas slot ICON_FOLDER_8
   sh_f := surface_sheet(s[0].surface[..]);
   saw_small_folder := false;
   for qi: 0..<sh_f.nu {
     p_ic := sh_f.under[qi];
-    if p_ic.kind == PRIM_ICON && p_ic.id == ICON_FOLDER && p_ic.x >= t[0].rows[folder].x && p_ic.x <= t[0].rows[folder].x + t[0].rows[folder].w && p_ic.y >= t[0].rows[folder].y && p_ic.y <= t[0].rows[folder].y + t[0].rows[folder].h {
+    if p_ic.kind == PRIM_ICON && p_ic.id == ICON_FOLDER_8 && p_ic.x >= t[0].rows[folder].x && p_ic.x <= t[0].rows[folder].x + t[0].rows[folder].w && p_ic.y >= t[0].rows[folder].y && p_ic.y <= t[0].rows[folder].y + t[0].rows[folder].h {
       #assert p_ic.w == CP_FOOT_FOLDER_ICON && p_ic.h == CP_FOOT_FOLDER_ICON;
       saw_small_folder = true;
     }
   }
-  #assert saw_small_folder;
+  #assert saw_small_folder && coder_page_icon_size(ICON_FOLDER_8) == 8.0f32;
   // "Antigravity CLI" only appears when the model dropdown is opened
   sh0 := surface_sheet(s[0].surface[..]);
   for qi: 0..<sh0.no { #assert sh0.over[qi].kind != PRIM_TEXT || cp_find(sh0.over[qi].text, "Antigravity CLI") < 0; }
