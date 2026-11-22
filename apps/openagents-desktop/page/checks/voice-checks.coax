@@ -131,14 +131,16 @@
   cp_init(s);
   coder_page_voice_status_set(s, "MacBook Pro Microphone", "ggml-base.en.bin (ready)", true, true);
 
-  // Settings search discovers Voice page and rows.
+  // Settings search hides Voice when voice flag is off and discovers it when on.
   hits: [CP_SET_HITS] int;
   es := cp_set_entries();
-  hn := cp_set_hits_in("voice", hits[..], false);
+  #assert cp_set_hits_in("voice", hits[..], false) == 0 && cp_set_hits_in("whisper", hits[..], false) == 0;
+  vf := dc_flag_bit(DC_FLAG_VOICE);
+  hn := cp_set_hits_flags("voice", hits[..], vf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
-  hn = cp_set_hits_in("whisper", hits[..], false);
+  hn = cp_set_hits_flags("whisper", hits[..], vf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
-  hn = cp_set_hits_in("dictionary", hits[..], false);
+  hn = cp_set_hits_flags("dictionary", hits[..], vf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
 
   // Settings -> Voice row actions dispatch non-conflicting CP_ASK_VOICE_*.

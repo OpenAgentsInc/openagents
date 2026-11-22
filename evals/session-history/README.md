@@ -84,7 +84,10 @@ evals/session-history/run.sh sanitize \
 # Run the hermeticity gate across the entire tasks/ directory
 evals/session-history/run.sh sanitize --verify --require-base-fail --repo .
 
-# Run committed tasks via evals/openagents-desktop (host_driver + mcworker) and emit scorecard
+# Run committed tasks via evals/openagents-desktop (host_driver + mcworker) on default local Inkling 2 Mini (Psionic Metal 32K, $0.00) and emit scorecard
+evals/session-history/run.sh run
+
+# Opt-in cloud comparison run
 evals/session-history/run.sh run --model gemini-4-hydrogen --workers 4
 
 # Re-compute comparison scorecard from an existing run directory
@@ -146,6 +149,14 @@ Bucket highlights (Phase 3 → Phase 4):
 - **Hydrogen:** `A_edit_precision` 5/6 → **6/6 (100%)**, `B_multi_file` 0/5 → **3/5 (60%)**, `C_verification` 0/6 → **1/6 (16%)**, `D_error_recovery` 1/5 → **3/5 (60%)**, `E_long_context` 1/5 → 1/5 (20%).
 - **Neon:** `A_edit_precision` 4/6 → **6/6 (100%)**, `D_error_recovery` 1/5 → **2/5 (40%)**.
 - **Remaining Carbon bottleneck:** Vertex `us` multi-region returns `cachedContentTokenCount: null` (0% implicit cache hit), so 3–4 attempts on `$4/M`-input Carbon still reach `$0.12–$0.15` caps right as tasks finish (4/27 pass `command` grader before hitting budget). Explicit Vertex context caching or multi-turn cache hits are the next lever for Carbon.
+
+### Inkling 2 Mini Release Build Slice (Psionic Metal 32K, `A_edit_precision`)
+
+Run via `evals/openagents-desktop/tier2/run_tasks.py --tasks-dir evals/session-history/tasks --timeout-floor 0` against the shipped `psionic-inkling-serve --ctx 32768` (Metal 4 + exact KV prefix cache + byte-level `json-schema.coax` constrained decoding) and `host_driver` in single-model release mode (`flags = 0`, `$0.0000`), aggregated with `evals/session-history/tools/compare.coax`:
+
+| Slice | Model / Engine | Pass | Cost | Wall | Input / Output Tokens | Mean TTFT | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `A_edit_precision` (6/27 tasks: `sh_001`, `sh_002`, `sh_004`, `sh_005`, `sh_006`, `sh_007`) | `inkling-2-mini` (`psionic-metal`, ctx 32768) | **5/6 (83%)** | \$0.0000 | 1051s | 101,259 / 5,100 | 5072 ms | `sh_002`, `sh_004`, `sh_005`, `sh_006`, `sh_007` passed; `0` edit mismatches (`sh_001` also passed in 115.9s uncontended); full 27-task sweep runs with `evals/session-history/run.sh run`. |
 
 ## Verification
 

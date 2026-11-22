@@ -334,9 +334,9 @@ cp_theme_from_vscode :: (t: CpThemeState) -> Theme {
   return th;
 }
 
-// Resolves the live Theme for CoderPage.
+// Resolves the live Theme for CoderPage (falls back to Coder Noir when customize flag is off).
 cp_cust_theme :: (s: [] CoderPage) -> Theme {
-  if s.count < 1 { return coder_noir(); }
+  if s.count < 1 || !cp_flag(s, DC_FLAG_CUSTOMIZE) { return coder_noir(); }
   t := s[0].cust[0].theme[0];
   th := ifx t.has_vscode then cp_theme_from_vscode(t) else cp_theme_builtin(cp_theme_effective_skin_id(t));
   if t.high_contrast { th = cp_theme_apply_contrast(th, cp_theme_is_light_now(t)); }
@@ -345,7 +345,7 @@ cp_cust_theme :: (s: [] CoderPage) -> Theme {
 
 // True only when Coder Noir is active with no imported VS Code theme (keeps legacy monochrome pass).
 cp_cust_is_monochrome :: (s: [] CoderPage) -> bool {
-  if s.count < 1 { return true; }
+  if s.count < 1 || !cp_flag(s, DC_FLAG_CUSTOMIZE) { return true; }
   t := s[0].cust[0].theme[0];
   if t.has_vscode { return false; }
   return cp_theme_effective_skin_id(t) == CP_SKIN_NOIR;
@@ -788,9 +788,9 @@ cp_tr :: (locale: int, key: string) -> string {
   return key;
 }
 
-// Localized Settings page title for sidebar & page headers.
+// Localized Settings page title for sidebar & page headers (English when customize flag is off).
 cp_set_page_label :: (s: [] CoderPage, page: int) -> string {
-  loc := ifx s.count > 0 then s[0].cust[0].locale.active else CP_LOCALE_EN;
+  loc := ifx s.count > 0 && cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   if page == CP_PG_GENERAL { return cp_tr(loc, "general"); }
   if page == CP_PG_MODELS { return cp_tr(loc, "models"); }
   if page == CP_PG_APPEARANCE { return cp_tr(loc, "appearance"); }

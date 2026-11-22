@@ -145,16 +145,18 @@
 
 #test "usage: Settings -> Usage renders, searches, dispatches actions, and composer popover works" {
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  hn := cp_set_hits("usage", hits[..]);
+  #assert cp_set_hits_flags("usage", hits[..], 0) == 0 && !cp_set_page_ok(false, CP_PG_USAGE);
+  uf := dc_flag_bit(DC_FLAG_USAGE);
+  hn := cp_set_hits_flags("usage", hits[..], uf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_USAGE;
-  hn2 := cp_set_hits("price", hits[..]);
+  hn2 := cp_set_hits_flags("price", hits[..], uf);
   #assert hn2 >= 1 && es[hits[0]].id == "set.usage.prices";
-  hn3 := cp_set_hits("pooling", hits[..]);
+  hn3 := cp_set_hits_flags("pooling", hits[..], uf);
   #assert hn3 >= 1 && es[hits[0]].id == "set.usage.pool";
 
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
-  #assert cp_set_page_ok(false, CP_PG_USAGE);
+  #assert cp_set_page_ok_flags(uf, CP_PG_USAGE);
   a0 := coder_page_usage_set_account(s, CP_US_PROV_CLAUDE, "Default", "Claude Max", CP_US_ST_OBSERVED, "", 1000, false, 0);
   #assert coder_page_usage_add_window(s, a0, "Week", 7200, 1700100000);
   _ := coder_page_usage_tick(s, 1700000000);

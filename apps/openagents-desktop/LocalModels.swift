@@ -82,11 +82,57 @@ enum LocalModelStore {
     static var expectedSHA256: String { entry.expectedSHA256 }
 
     // Host compatibility.
+    static var isAppleSilicon: Bool {
+        #if arch(arm64)
+        return true
+        #else
+        return false
+        #endif
+    }
+    static var logsDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents", isDirectory: true)
+            .appendingPathComponent("logs", isDirectory: true)
+    }
     static var physicalMemoryGB: Int {
         if let physicalMemoryGBOverride { return physicalMemoryGBOverride }
         return Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024))
     }
-    static var hardwareSupported: Bool { physicalMemoryGB >= entry.minRamGB }
+    static var hardwareSupported: Bool {
+        if physicalMemoryGBOverride != nil { return physicalMemoryGB >= entry.minRamGB }
+        return isAppleSilicon && physicalMemoryGB >= entry.minRamGB
+    }
+
+    struct UIState {
+        let osOk: Int32
+        let hwOk: Int32
+        let ramGB: Int32
+        let statusCode: Int32   // 0=not downloaded, 1=downloading, 2=verifying, 3=ready, 4=error
+        let pct: Int32
+        let dlMB: Int32
+        let totalMB: Int32
+        let err: String
+    }
+
+    static func uiState() -> UIState {
+        let totalMB = Int32(expectedBytes / (1024 * 1024))
+        let dlMB = Int32((isInstalled ? expectedBytes : partialBytes) / (1024 * 1024))
+        let hwOk: Int32 = hardwareSupported ? 1 : 0
+        let ram = Int32(physicalMemoryGB)
+        if isVerifying {
+            return UIState(osOk: 1, hwOk: hwOk, ramGB: ram, statusCode: 2, pct: Int32(verifyPct), dlMB: totalMB, totalMB: totalMB, err: "")
+        }
+        if isDownloading {
+            return UIState(osOk: 1, hwOk: hwOk, ramGB: ram, statusCode: 1, pct: Int32(downloadPct), dlMB: dlMB, totalMB: totalMB, err: "")
+        }
+        if isInstalled {
+            return UIState(osOk: 1, hwOk: hwOk, ramGB: ram, statusCode: 3, pct: 100, dlMB: totalMB, totalMB: totalMB, err: "")
+        }
+        if let err = lastError, !err.isEmpty {
+            return UIState(osOk: 1, hwOk: hwOk, ramGB: ram, statusCode: 4, pct: Int32(downloadPct), dlMB: dlMB, totalMB: totalMB, err: err)
+        }
+        return UIState(osOk: 1, hwOk: hwOk, ramGB: ram, statusCode: 0, pct: Int32(downloadPct), dlMB: dlMB, totalMB: totalMB, err: "")
+    }
 
     static func availableDiskBytes() -> Int64 {
         if let availableDiskBytesOverride { return availableDiskBytesOverride }

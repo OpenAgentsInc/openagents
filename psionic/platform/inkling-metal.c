@@ -386,6 +386,7 @@ struct InkSession {
     PmBuffer tile_cnt;     /* [16] u32 */
     PmBuffer w_bf16;       /* [220M] u32 (BF16 pairs for Metal 4 am_matmul_bf16: 64-exp GU = 2 chunks, 128-exp Down = 1 chunk) */
     PmBuffer tok_ids_buf;  /* [INK_PREFILL_B] u32 */
+    PmBuffer tau_buf;      /* [prefill_b] f32 per-token log-scale tau for 32K batched prefill */
     PmBuffer logits;       /* [vocab_size] f32 */
     PmBuffer argmax_vals;  /* [64] f32 */
     PmBuffer argmax_ids;   /* [64] u32 */
@@ -1484,6 +1485,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
         alloc_buf(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
         alloc_buf(s, &s->tok_ids_buf, B * 4) ||
+        alloc_buf(s, &s->tau_buf, B * 4) ||
         alloc_buf(s, &s->logits, (size_t)hp->n_vocab * 4) ||
         alloc_buf(s, &s->argmax_vals, 64 * 4) ||
         alloc_buf(s, &s->argmax_ids, 64 * 4) ||
@@ -1542,7 +1544,7 @@ void ink_close(InkSession *s) {
     pm_free(s->moe_slot_out); pm_free(s->exp_toks); pm_free(s->exp_slots); pm_free(s->exp_wts); pm_free(s->exp_cnt);
     pm_free(s->exp_off); pm_free(s->row_dst); pm_free(s->row_wt);
     pm_free(s->tile_exp); pm_free(s->tile_m0); pm_free(s->tile_cnt); pm_free(s->w_bf16);
-    pm_free(s->tok_ids_buf);
+    pm_free(s->tok_ids_buf); pm_free(s->tau_buf);
     pm_free(s->logits); pm_free(s->argmax_vals); pm_free(s->argmax_ids); pm_free(s->argmax_out); pm_free(s->dummy_f32);
     pm_free(s->fast_buf);
     pm_free(s->weights_buf);
@@ -1889,7 +1891,7 @@ static int dispatch_mm_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t 
     return 0;
 }
 
-static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, float tau, int64_t nb) {
+static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, int64_t nb) {
     PmBatch batch = *bp;
     const InkHParams *hp = &s->gguf.hp;
     const InkLayerTensors *L = &s->gguf.layers[ip];
@@ -2067,21 +2069,26 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     pm_barrier(batch);
     prof_mark(bp, 1); batch = *bp; /* 1: QKV+R+G+Sink+Dyn GEMMs */
 
-    /* Wave 4: K shortconv, Q clip, R clip (+ V shortconv if !has_v_dyn). */
-    float q_tau = is_swa ? 1.0f : tau;
+    /* Wave 4: K shortconv, Q clip, R clip (+ V shortconv if !has_v_dyn).
+     * Non-SWA layers apply per-token log-scale tau from s->tau_buf so batched MMA prefill
+     * stays exact across the entire 32K context window (including past log_scale_floor=8192). */
+    int use_tau_vec = is_swa ? 0 : 1;
+    PmArg tau_arg = use_tau_vec ? a_f32v(s->tau_buf, 0, nb) : a_f32v(s->dummy_f32, 0, 64);
     int64_t conv_kv_items = ((nb + 31) / 32) * ((n_kv + 63) / 64);
     CALL(s, batch, K_CONVOLVE_BATCH, conv_kv_items, a_int(n_kv), a_int(n_head_kv), a_int(has_k_dyn ? 1 : 0), a_int(nb),
          a_f32v(s->k_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_k_conv),
          has_k_dyn ? a_f32v(s->dyn_buf, 0, nb * n_head_kv * hp->conv_len) : a_f32v(s->dummy_f32, 0, 64),
          a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, nb * n_kv));
     CALL(s, batch, K_CLIP_BATCH, nb * n_head, a_int(hd), a_int(n_head), a_int(L->attn_q_clip.present ? 1 : 0),
-         a_f32(hp->qk_clip), a_f32(q_tau),
+         a_f32(hp->qk_clip), a_int(use_tau_vec), a_f32(1.0f),
          a_f32v(s->q_buf, 0, nb * n_q),
-         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64));
+         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
+         tau_arg);
     CALL(s, batch, K_CLIP_BATCH, nb * n_head, a_int(n_rel), a_int(n_head), a_int(L->attn_rel_clip.present ? 1 : 0),
-         a_f32(hp->rel_clip), a_f32(q_tau),
+         a_f32(hp->rel_clip), a_int(use_tau_vec), a_f32(1.0f),
          a_f32v(s->r_buf, 0, nb * n_head * n_rel),
-         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
+         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64),
+         tau_arg);
     if (!has_v_dyn) {
         CALL(s, batch, K_CONVOLVE_BATCH, conv_kv_items, a_int(n_kv), a_int(n_head_kv), a_int(0), a_int(nb),
              a_f32v(s->v_raw, 0, nb * n_kv), a_tensor_f32(s, &L->attn_v_conv),
@@ -2102,8 +2109,8 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
 
     /* Wave 5: K clip + V head RMSNorm concurrently. */
     CALL(s, batch, K_CLIP_BATCH, nb * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
-         a_f32(hp->qk_clip), a_f32(1.0f),
-         a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->dummy_f32, 0, 64));
+         a_f32(hp->qk_clip), a_int(0), a_f32(1.0f),
+         a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->dummy_f32, 0, 64));
     CALL(s, batch, K_HEAD_RMSNORM, nb * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
          a_f32v(s->v_buf, 0, nb * n_kv));
     pm_barrier(batch);
@@ -2566,12 +2573,16 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         return 1;
     }
     uint32_t *tids = (uint32_t *)pm_contents(s->tok_ids_buf);
+    float *taus = (float *)pm_contents(s->tau_buf);
     for (int i = 0; i < nb; i++) {
         if (tokens[i] < 0 || tokens[i] >= hp->n_vocab) {
             snprintf(s->error, sizeof s->error, "token id %d out of range", tokens[i]);
             return 1;
         }
         tids[i] = (uint32_t)tokens[i];
+        float ratio = (float)(s->pos + i + 1) / (float)hp->log_scale_floor;
+        if (ratio < 1.0f) ratio = 1.0f;
+        taus[i] = 1.0f + hp->log_scale_alpha * logf(ratio);
     }
 
     PmBatch batch = NULL;
@@ -2582,7 +2593,6 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
 
     int64_t d = hp->n_embd;
     int64_t bd = (int64_t)nb * d;
-    float tau = 1.0f;
 
     /* 1. Batched embedding lookup + token_embd_norm */
     CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
@@ -2602,7 +2612,7 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
 
     /* 2. Prelude layers [0 .. start) */
     for (int il = 0; il < start; il++) {
-        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
     }
 
     /* Save prelude output and prelude blocks */
@@ -2644,7 +2654,7 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         for (int ip = start; ip < end; ip++) {
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
             if (pass == 0) {
-                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
             } else {
                 const InkLayerTensors *L = &s->gguf.layers[ip];
                 CALL(s, batch, K_MIX_BATCH, 4 * nb, a_int(d), a_int(bank_n_blocks), a_int(nb),
@@ -2653,14 +2663,14 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
                      a_tensor_f32(s, &L->loop_msg_query),
                      a_f32v(s->messages, 0, 4 * bd));
                 pm_barrier(batch);
-                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 1, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 1, nb) != 0) { pm_wait(batch, NULL); return 1; }
             }
         }
     }
 
     /* 4. Coda layers [end .. n_phys) */
     for (int il = end; il < hp->n_phys; il++) {
-        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, nb) != 0) { pm_wait(batch, NULL); return 1; }
     }
     if (do_pprof) {
         prof_active = 0;
@@ -2717,9 +2727,9 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
 
 int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits) {
     if (n_tokens <= 0) return 0;
-    const InkHParams *hp = &s->gguf.hp;
-    /* Use true batched MMA prefill for chunks of up to 64 tokens when pos+nb <= log_scale_floor. */
-    if (n_tokens > 1 && s->pos + n_tokens <= hp->log_scale_floor) {
+    /* Use true batched MMA prefill across the entire 32K context window (per-token tau in tau_buf;
+     * kv_info packs kv_cap and sc_stride in 16-bit fields so cap at 65535). */
+    if (n_tokens > 1 && s->pos + n_tokens <= 65535 && s->max_ctx <= 65535) {
         int off = 0;
         while (off < n_tokens) {
             int nb = n_tokens - off;

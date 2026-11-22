@@ -201,6 +201,7 @@ final class DesktopActivation {
             delegate.main?.newChat()
             return true
         case "oauth":
+            guard FeatureFlags.isOn(.mcp) || FeatureFlags.isOn(.account) else { return false }
             if url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased() == "callback" {
                 NotificationCenter.default.post(name: Notification.Name("OpenAgentsOAuthCallback"), object: nil, userInfo: ["url": url])
                 return true

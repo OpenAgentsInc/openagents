@@ -193,7 +193,7 @@
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
-  s[0].experimental = true; s[0].cloud_authed = true;
+  coder_page_experimental_set(s, true); s[0].cloud_authed = true;
   #assert !coder_page_model_agy(s) && cp_models(s) == CP_MODELS;
   #assert !coder_page_pick_model(s, "antigravity");
   coder_page_set_agy(s, true);
@@ -227,39 +227,46 @@
   #assert !coder_page_model_agy(s) && s[0].model == CP_MODEL_DEFAULT;
 }
 
-#test "cloud models require experimental && cloud_authed; otherwise local-harness-only (Antigravity)" {
+#test "cloud models require models.gemini + auth; release mode is Inkling-only with no model picker" {
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
-  // Default unauthed / experimental off: no cloud models.
+  // Release default (flags = 0): Inkling 2 Mini is the sole model, no cloud or agy models.
   coder_page_experimental_set(s, false);
   coder_page_set_cloud_authed(s, false);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 0 && !coder_page_pick_model(s, "gemini-4-neon");
-  // With Antigravity installed, it is the sole entry and selected automatically.
+  #assert !coder_page_cloud_ok(s) && !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
+  #assert !coder_page_pick_model(s, "gemini-4-neon");
+  // Even if Antigravity is installed, release mode stays Inkling-only until models.antigravity is enabled.
   coder_page_set_agy(s, true);
-  #assert cp_models(s) == 1 && coder_page_model_agy(s) && cp_model_label(s, 0) == "Antigravity";
+  #assert cp_models(s) == 1 && !coder_page_model_agy(s) && cp_model_id(s, 0) == "inkling-2-mini";
+  // Enabling models.antigravity exposes Antigravity as the picker entry.
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_ANTIGRAVITY));
+  #assert cp_has_model_picker(s) && cp_models(s) == 1 && coder_page_model_agy(s) && cp_model_label(s, 0) == "Antigravity";
   // Experimental on alone (not logged in) still hides cloud models.
   coder_page_experimental_set(s, true);
   #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
-  // Logged in alone (experimental off) still hides cloud models.
+  // Logged in alone (experimental off) still hides cloud models (back to Inkling-only).
   coder_page_experimental_set(s, false);
   coder_page_set_cloud_authed(s, true);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
-  // Both experimental && logged in: cloud models appear and Antigravity stays selected.
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
+  // Both experimental && logged in: cloud models appear and Antigravity is selectable.
   coder_page_experimental_set(s, true);
-  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_MODELS + 1 && coder_page_model_agy(s);
+  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_MODELS + 1 && coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   #assert coder_page_pick_model(s, "gemini-4-neon") && !coder_page_model_agy(s);
   // Logging out drops back to Antigravity.
   coder_page_set_cloud_authed(s, false);
   #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
 }
 
-#test "the backend label names what runs the next message: Antigravity CLI, OpenRouter, the Gemini API, nothing with no model" {
+#test "the backend label names what runs the next message: Psionic Metal, Antigravity CLI, OpenRouter, Gemini API" {
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
-  // no Gemini key, not signed in, no agy: no model, no label
+  // Release default: Inkling 2 Mini on Psionic Metal.
   coder_page_experimental_set(s, false); coder_page_set_cloud_authed(s, false);
+  #assert cp_model_index(s) == 0 && cp_backend_label(s) == "Psionic Metal";
+  // With developer flags on and no cloud auth, no agy: no model, no label.
+  coder_page_experimental_set(s, true);
   #assert cp_model_index(s) < 0 && cp_backend_label(s) == "";
   // agy installed and the only entry
   coder_page_set_agy(s, true);
@@ -284,11 +291,12 @@
   #assert d0 != d1 && da.count > 0 && d0 != da;
 }
 
-#test "a Vertex AI or API key sign-in Microcoder finds on its own runs Gemini models with no key in Settings" {
+#test "a Vertex AI or API key sign-in Microcoder finds on its own runs Gemini models when models.gemini is enabled" {
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
-  coder_page_experimental_set(s, false); coder_page_set_cloud_authed(s, false);
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_GEMINI) | dc_flag_bit(DC_FLAG_MODELS_ANTIGRAVITY));
+  coder_page_set_cloud_authed(s, false);
   coder_page_set_agy(s, true);
   #assert !coder_page_cloud_ok(s) && cp_models(s) == 1;
   // the owner's setup: ~/work/.secrets/vertex-sa-inference.json and gcloud, no key in Settings
@@ -351,10 +359,9 @@
   #assert cp_backend_label(s) == "Psionic Metal · [E]";
   #assert cp_model_provider_kind(s, idx) == CP_PROV_HYBRID;
 
-  // Selection survives cloud/agy/experimental changes
+  // Selection survives cloud/agy changes while models.hybrid is enabled
   coder_page_set_agy(s, true);
   #assert coder_page_model_hybrid(s);
-  coder_page_experimental_set(s, false);
   coder_page_set_cloud_authed(s, false);
   #assert coder_page_model_hybrid(s);
 
@@ -367,9 +374,9 @@
 
   // Settings > Models renders Executor Models & Weight Modules section, matches search, dispatches CP_ASK_EXECUTOR_MODELS
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  hn := cp_set_hits("safetensors", hits[..]);
+  hn := cp_set_hits_flags("safetensors", hits[..], s[0].flags);
   #assert hn >= 1 && es[hits[0]].id == "set.exec.modules";
-  hn = cp_set_hits("hybrid-exec-v1", hits[..]);
+  hn = cp_set_hits_flags("hybrid-exec-v1", hits[..], s[0].flags);
   #assert hn >= 1 && es[hits[0]].id == "set.exec.hybrid";
 
   coder_page_settings_open(s, CP_PG_MODELS, "set.exec.hybrid");
@@ -498,7 +505,7 @@
 }
 
 #test "composer model picker shows real-time Local Models row and opens Local Models manager (#13826)" {
-  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); coder_page_flags_set(s, DC_FLAGS_ALL); test_atlas(s[0].atlas[..]);
   s[0].d = 1.0f32;
   coder_page_settings_local(s, "Downloading 42% · 7.4 / 17.6 GB · 85 MB/s");
   f: [1] UiFrame;

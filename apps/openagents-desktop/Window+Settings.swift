@@ -38,9 +38,82 @@ func coderApplyClaude(_ page: UnsafeMutableRawPointer?) {
     CoderOrchestrator.apply(page)
 }
 
+/// Compile-time bit positions matching coax/lib/agent/desktop/flags.coax (single source of truth).
+enum DesktopFlag: Int64, CaseIterable {
+    case modelsGemini = 0
+    case modelsClaude = 1
+    case modelsOpenrouter = 2
+    case modelsAgy = 3
+    case modelsExternal = 4
+    case modelsExecutor = 5
+    case modelsInklingNeon = 6
+    case account = 7
+    case foreman = 8
+    case gym = 9
+    case wallet = 10
+    case forge = 11
+    case git = 12
+    case simulator = 13
+    case terminal = 14
+    case preview = 15
+    case voice = 16
+    case mcp = 17
+    case scheduled = 18
+    case environments = 19
+    case pairing = 20
+    case usage = 21
+    case customize = 22
+    case proof = 23
+    case capabilities = 24
+    case agents = 25
+    case scenes = 26
+    case rich = 27
+}
+
+/// Resolved desktop feature flag mask backed by #authority coax/lib/agent/desktop/flags.coax.
+/// All 28 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
+enum FeatureFlags {
+    private static let flagNames: [String] = {
+        let n = Int(DesktopCore.onCoreStack { oa_dc_flag_count() })
+        return (0..<n).map { i in
+            DesktopCore.callString(64) { oa_dc_flag_name(Int64(i), $0) }
+        }
+    }()
+
+    static var mask: Int64 {
+        let ud = UserDefaults.standard
+        var defaultsMask: Int64 = 0
+        for (i, name) in flagNames.enumerated() where !name.isEmpty {
+            if ud.bool(forKey: "flag." + name) || ud.bool(forKey: "oa.flag." + name) {
+                defaultsMask |= (Int64(1) << Int64(i))
+            }
+        }
+        let exp: Int64 = ud.bool(forKey: Experimental.key) ? 1 : 0
+        let envFlags = ProcessInfo.processInfo.environment["OA_FLAGS"] ?? ""
+        let envExp = ProcessInfo.processInfo.environment["OA_EXPERIMENTAL"] ?? ""
+        let argsNl = CommandLine.arguments.dropFirst().joined(separator: "\n")
+        return DesktopCore.onCoreStack {
+            DesktopCore.withCoaxString(envFlags) { ef in
+                DesktopCore.withCoaxString(envExp) { ee in
+                    DesktopCore.withCoaxString(argsNl) { an in
+                        oa_dc_flags_resolve(exp, defaultsMask, ef, ee, an)
+                    }
+                }
+            }
+        }
+    }
+
+    static func isOn(_ flag: DesktopFlag) -> Bool {
+        (mask & (Int64(1) << flag.rawValue)) != 0
+    }
+
+    static var anyExtraModel: Bool {
+        DesktopCore.onCoreStack { oa_dc_flags_any_extra_model(mask) } != 0
+    }
+}
+
 /// Settings > General > Experimental features, off unless set (UserDefaults `experimentalFeatures`):
-/// log in and the account, Gym, and Foreman (its sidebar row, its menu and its control server).
-/// Off, Coder is local: chats, runs and pairing a phone over Tailscale need no login.
+/// enables all 28 developer/experimental flags as an alias for OA_FLAGS=all.
 enum Experimental {
     static let key = "experimentalFeatures"
     static var on: Bool {
@@ -149,7 +222,7 @@ extension CoderWindow {
     func experimentalChanged() {
         let on = cd_experimental(page) != 0
         UserDefaults.standard.set(on, forKey: Experimental.key)
-        applyExperimental(on)
+        applyFlags()
     }
     /// Settings > General > Notifications row was pressed (CP_ASK_NOTIFY): persist and request OS permission if needed.
     func notificationModeChanged() {
@@ -161,49 +234,76 @@ extension CoderWindow {
         if mode.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
         wake()
     }
-    /// Propagates the current experimental + OpenAgents account login state and Gemini API key to the shown page and background runs.
+    /// Propagates the current flag mask, OpenAgents account login state, and Gemini API key to the shown page and background runs.
     func syncCloudAuth() {
-        let authed: Int32 = (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0
-        let exp: Int32 = Experimental.on ? 1 : 0
-        let gemini = CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? ""
-        cd_experimental_set(page, exp)
+        let m = FeatureFlags.mask
+        let authed: Int32 = (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0
+        let gemini = FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : ""
+        cd_flags_set(page, m)
         cd_cloud_authed_set(page, authed)
         cd_settings_gemini(page, gemini)
         for r in runs.values where r.page != page {
-            cd_experimental_set(r.page, exp)
+            cd_flags_set(r.page, m)
             cd_cloud_authed_set(r.page, authed)
             cd_settings_gemini(r.page, gemini)
         }
-        // a key saved or removed in Settings can change which sign-in Microcoder uses
-        CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        if FeatureFlags.isOn(.modelsGemini) {
+            CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        }
         wake()
     }
     /// The Gemini sign-in and Antigravity's real model (CoderProbes) on the shown page and every run's.
     func applyProbes() {
+        guard FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) else { return }
         CoderProbes.apply(page)
         for r in runs.values where r.page != page { CoderProbes.apply(r.page) }
         wake()
     }
-    /// Shows or hides the experimental features: the page's rows, the Foreman control server, the menus.
-    func applyExperimental(_ on: Bool) {
-        cd_experimental_set(page, on ? 1 : 0)
-        cd_cloud_authed_set(page, (on && MacAccount.shared.loggedIn) ? 1 : 0)
+    /// Applies the resolved 28-flag mask across UI pages, host background services, and menu bar items.
+    func applyFlags() {
+        let m = FeatureFlags.mask
+        let acctAuthed: Int32 = (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0
+        cd_flags_set(page, m)
+        cd_cloud_authed_set(page, acctAuthed)
         for r in runs.values where r.page != page {
-            cd_experimental_set(r.page, on ? 1 : 0)
-            cd_cloud_authed_set(r.page, (on && MacAccount.shared.loggedIn) ? 1 : 0)
+            cd_flags_set(r.page, m)
+            cd_cloud_authed_set(r.page, acctAuthed)
         }
-        if on {
+        if FeatureFlags.isOn(.foreman) {
             startForemanServer()
-            startGymRequests()
         } else {
-            stopGymRequests()
-            closeGym()
             if isForemanShown { newChat() }
             foremanServer.stop()
             ForemanControlDescriptor.remove()
         }
-        (NSApp.delegate as? CoderDelegate)?.applyExperimental(on)
+        if FeatureFlags.isOn(.gym) {
+            startGymRequests()
+        } else {
+            stopGymRequests()
+            closeGym()
+        }
+        if FeatureFlags.isOn(.pairing) {
+            CoderTailnet.shared.start()
+        } else {
+            CoderTailnet.shared.stopListening()
+        }
+        if FeatureFlags.isOn(.scheduled) {
+            startScheduledAutomation()
+        }
+        if !FeatureFlags.isOn(.usage) {
+            usageTimer?.invalidate(); usageTimer = nil
+        }
+        if !FeatureFlags.isOn(.voice) {
+            voice.stop(cancel: true)
+        }
+        (NSApp.delegate as? CoderDelegate)?.applyFlags()
+        syncSettingsInfo()
         wake()
+    }
+    /// Legacy alias kept for callers toggling Experimental features.
+    func applyExperimental(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Experimental.key)
+        applyFlags()
     }
     /// Starts the Foreman control server (127.0.0.1) and writes its descriptor for programs outside the app.
     func startForemanServer() {
@@ -241,37 +341,50 @@ extension CoderWindow {
     func syncSettingsInfo() {
         func ends(_ key: String) -> String { "Ends " + String(key.suffix(4)) }
         var claude = ""
-        if let launch = CoderKey.fromLaunch { claude = ends(launch) + " (this launch)" } else if let kept = CoderKey.saved { claude = ends(kept) }
+        if FeatureFlags.isOn(.modelsClaude) {
+            if let launch = CoderKey.fromLaunch { claude = ends(launch) + " (this launch)" } else if let kept = CoderKey.saved { claude = ends(kept) }
+        }
         var openrouter = ""
-        if let kept = CoderOpenRouter.saved { openrouter = ends(kept) } else if CoderOpenRouter.hasKey { openrouter = "From openrouter.env" }
+        if FeatureFlags.isOn(.modelsOpenrouter) {
+            if let kept = CoderOpenRouter.saved { openrouter = ends(kept) } else if CoderOpenRouter.hasKey { openrouter = "From openrouter.env" }
+        }
         let info = Bundle.main.infoDictionary
         var version = info?["CFBundleShortVersionString"] as? String ?? ""
         if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
-        let gemini = CoderGemini.saved.map { ends($0) } ?? ""
+        let gemini = FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { ends($0) } ?? "") : ""
+        cd_flags_set(page, FeatureFlags.mask)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
-        syncAntigravitySettings()
-        syncExternalProviders(on: page)
-        syncWalletSettings()
-        if cd_settings_page(page) == 6 { refreshUsageDashboard() }
-        syncMcpSkills()
-        syncEnvironments()
-        syncScheduledSettings()
-        applyProbes()
-        CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        if FeatureFlags.isOn(.modelsAgy) { syncAntigravitySettings() }
+        if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
+        if FeatureFlags.isOn(.wallet) { syncWalletSettings() }
+        if FeatureFlags.isOn(.usage) && cd_settings_page(page) == 6 { refreshUsageDashboard() }
+        if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
+        if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
+        if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }
+        if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { applyProbes() }
+        if FeatureFlags.isOn(.modelsGemini) {
+            CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        }
     }
-    func syncLocalModels() {
-        LocalModelStore.verifyExistingIfNeeded { [weak self] in self?.syncLocalModels() }
+    func syncLocalState(on target: UnsafeMutableRawPointer) {
         let status = LocalModelStore.statusSummary()
         let on: Int32 = LocalModelStore.isSelectable ? 1 : 0
-        cd_settings_local(page, status)
-        cd_inkling(page, on)
+        let ui = LocalModelStore.uiState()
+        cd_settings_local(target, status)
+        cd_inkling(target, on)
+        cd_local_state(target, ui.osOk, ui.hwOk, ui.ramGB, ui.statusCode, ui.pct, ui.dlMB, ui.totalMB, ui.err)
+    }
+    func syncLocalModels() {
+        LocalModelStore.verifyExistingIfNeeded { [weak self] in
+            self?.syncLocalModels()
+        }
+        syncLocalState(on: page)
         for r in runs.values where r.page != page {
-            cd_settings_local(r.page, status)
-            cd_inkling(r.page, on)
+            syncLocalState(on: r.page)
         }
         if let shownState = localModelsDialogState, overlay.dialogOpen {
             let cur = LocalModelStore.state
@@ -281,7 +394,12 @@ extension CoderWindow {
                 manageLocalModels()
             }
         }
-        syncExecutorModels()
+        if FeatureFlags.isOn(.modelsExecutor) {
+            syncExecutorModels()
+        } else {
+            cd_hybrid_exec(page, 0)
+            for r in runs.values where r.page != page { cd_hybrid_exec(r.page, 0) }
+        }
         wake()
     }
     func syncExecutorModels() {

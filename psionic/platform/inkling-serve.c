@@ -6,11 +6,15 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "inkling-metal.h"
+#include "json-schema.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <netinet/in.h>
+#include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -332,6 +336,8 @@ typedef struct {
     float    top_p;
     int      top_k;
     int      cache_prompt;
+    int      resp_fmt;          /* 0=none, 1=json_object, 2=json_schema */
+    Buf      resp_schema_json;  /* raw JSON schema object when resp_fmt==2 */
 } Req;
 
 static void tc_free(ToolCall *tc) {
@@ -369,6 +375,7 @@ static void req_free(Req *r) {
     buf_free(&r->effort);
     buf_free(&r->json_schema_name);
     buf_free(&r->json_schema_raw);
+    buf_free(&r->resp_schema_json);
 }
 
 static ChatMsg *req_add_msg(Req *r) {
@@ -713,8 +720,9 @@ static void parse_format_obj(JScan *j, Req *r) {
             Buf tv = {0};
             j_string(j, &tv);
             if (tv.data) {
-                if (!strcmp(tv.data, "json_schema")) r->json_mode = 2;
-                else if (!strcmp(tv.data, "json_object")) r->json_mode = 1;
+                if (!strcmp(tv.data, "json_schema")) { r->json_mode = 2; r->resp_fmt = 2; }
+                else if (!strcmp(tv.data, "json_object")) { r->json_mode = 1; r->resp_fmt = 1; }
+                else if (!strcmp(tv.data, "text")) { r->json_mode = 0; r->resp_fmt = 0; }
             }
             buf_free(&tv);
         } else if (!strcmp(ks, "json_schema")) {
@@ -733,6 +741,10 @@ static void parse_format_obj(JScan *j, Req *r) {
         if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
     }
     if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+    r->resp_schema_json.len = 0;
+    if (r->resp_fmt == 2 && r->json_schema_raw.len > 0) {
+        buf_append(&r->resp_schema_json, r->json_schema_raw.data, r->json_schema_raw.len);
+    }
 }
 
 static int parse_request_json(const char *body, size_t body_len, Req *r) {
@@ -995,16 +1007,257 @@ static size_t utf8_complete_prefix(const unsigned char *s, size_t n) {
 /* ---------------- Generation & HTTP handlers ---------------- */
 
 typedef struct {
-    InkSession *sess;
-    int32_t     tok_model;
-    int32_t     tok_thinking;
-    int32_t     tok_text;
-    int32_t     tok_invoke_tool;
-    int32_t     tok_end_msg;
-    int32_t     tok_eog;
-    uint64_t    rng;
-    int         req_seq;
+    InkSession     *sess;
+    pthread_mutex_t sess_mu;
+    pthread_mutex_t state_mu;
+    int             in_flight;
+    double          last_active;
+    int             idle_exit_s;
+    int             max_ctx;
+    int32_t         tok_model;
+    int32_t         tok_thinking;
+    int32_t         tok_text;
+    int32_t         tok_invoke_tool;
+    int32_t         tok_end_msg;
+    int32_t         tok_eog;
+    uint64_t        rng;
+    int             req_seq;
+    /* Pre-decoded vocabulary table for zero-alloc JSON Schema constrained decoding */
+    int             n_vocab;
+    char           *vocab_pool;
+    uint32_t       *vocab_off;
+    uint16_t       *vocab_len;
+    uint8_t        *vocab_special;
 } Server;
+
+static int vocab_table_build(Server *sv) {
+    int n = ink_vocab_unpadded(sv->sess);
+    if (n <= 0) return 1;
+    sv->n_vocab = n;
+    sv->vocab_off = (uint32_t *)calloc((size_t)n, sizeof(uint32_t));
+    sv->vocab_len = (uint16_t *)calloc((size_t)n, sizeof(uint16_t));
+    sv->vocab_special = (uint8_t *)calloc((size_t)n, sizeof(uint8_t));
+    if (!sv->vocab_off || !sv->vocab_len || !sv->vocab_special) return 1;
+    Buf pool = {0};
+    char tmp[512];
+    for (int i = 0; i < n; i++) {
+        if (i >= 200000 || ink_is_eog(sv->sess, i)) {
+            sv->vocab_special[i] = 1;
+            continue;
+        }
+        int len = ink_decode_piece(sv->sess, i, tmp, (int)sizeof tmp);
+        if (len > 0) {
+            if (len > 65535) len = 65535;
+            sv->vocab_off[i] = (uint32_t)pool.len;
+            sv->vocab_len[i] = (uint16_t)len;
+            if (buf_append(&pool, tmp, (size_t)len)) { buf_free(&pool); return 1; }
+        }
+    }
+    sv->vocab_pool = pool.data;
+    return 0;
+}
+
+static void vocab_table_free(Server *sv) {
+    free(sv->vocab_pool); sv->vocab_pool = NULL;
+    free(sv->vocab_off); sv->vocab_off = NULL;
+    free(sv->vocab_len); sv->vocab_len = NULL;
+    free(sv->vocab_special); sv->vocab_special = NULL;
+    sv->n_vocab = 0;
+}
+
+typedef struct { int32_t id; float val; } Cand;
+
+static int cmp_cand_desc(const void *a, const void *b) {
+    float va = ((const Cand *)a)->val;
+    float vb = ((const Cand *)b)->val;
+    return (vb > va) - (vb < va);
+}
+
+static uint64_t sv_xorshift64(uint64_t *st) {
+    uint64_t x = *st ? *st : 0x9E3779B97F4A7C15ULL;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *st = x;
+    return x;
+}
+
+static int js_tok_allowed(const Server *sv, const coax_t_JsSchema *sc, const coax_t_JsState *st,
+                          int32_t tok, int can_fin, coax_t_JsState *next_out) {
+    if (tok == sv->tok_end_msg || tok == sv->tok_eog || ink_is_eog(sv->sess, tok)) {
+        if (!can_fin) return 0;
+        if (next_out) *next_out = *st;
+        return 1;
+    }
+    if (tok < 0 || tok >= sv->n_vocab || sv->vocab_special[tok]) return 0;
+    uint16_t len = sv->vocab_len[tok];
+    if (len == 0) return 0;
+    coax_t_JsState trial = *st;
+    coax_v_t_JsSchema scv = { (coax_t_JsSchema *)sc, 1 };
+    coax_v_t_JsState stv = { &trial, 1 };
+    coax_string piece = { sv->vocab_pool + sv->vocab_off[tok], (int64_t)len };
+    if (ink_js_step(scv, stv, piece) == 1) {
+        if (next_out) *next_out = trial;
+        return 1;
+    }
+    return 0;
+}
+
+static int32_t js_sample_constrained(Server *sv, const coax_t_JsSchema *sc, coax_t_JsState *st,
+                                     const InkSampleParams *sp) {
+    coax_v_t_JsSchema scv = { (coax_t_JsSchema *)sc, 1 };
+    coax_v_t_JsState stv = { st, 1 };
+    if (ink_js_is_done(stv) == 1) {
+        return (sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_eog;
+    }
+    int can_fin = (ink_js_can_finish(scv, stv) == 1);
+    const float *logits = ink_logits(sv->sess);
+    int n = sv->n_vocab;
+    if (!logits || n <= 0) return -1;
+
+    float temp = sp ? sp->temperature : 0.0f;
+    if (temp <= 1e-6f) {
+        /* Fast path 1: check unconstrained argmax first (zero heap/sort). */
+        int32_t argmax = 0;
+        float best_v = logits[0];
+        for (int i = 1; i < n; i++) {
+            if (logits[i] > best_v) { best_v = logits[i]; argmax = i; }
+        }
+        coax_t_JsState next_st;
+        if (js_tok_allowed(sv, sc, st, argmax, can_fin, &next_st)) {
+            *st = next_st;
+            return argmax;
+        }
+        /* Fast path 2: top-64 logits pass. */
+        enum { KFAST = 64 };
+        Cand top[KFAST];
+        int nt = 0;
+        float min_v = -1e30f;
+        int min_idx = 0;
+        for (int i = 0; i < n; i++) {
+            float v = logits[i];
+            if (nt < KFAST) {
+                top[nt] = (Cand){ i, v };
+                if (nt == 0 || v < min_v) { min_v = v; min_idx = nt; }
+                nt++;
+            } else if (v > min_v) {
+                top[min_idx] = (Cand){ i, v };
+                min_v = top[0].val; min_idx = 0;
+                for (int j = 1; j < KFAST; j++) {
+                    if (top[j].val < min_v) { min_v = top[j].val; min_idx = j; }
+                }
+            }
+        }
+        qsort(top, (size_t)nt, sizeof(Cand), cmp_cand_desc);
+        for (int j = 0; j < nt; j++) {
+            if (js_tok_allowed(sv, sc, st, top[j].id, can_fin, &next_st)) {
+                *st = next_st;
+                return top[j].id;
+            }
+        }
+        /* Exact full-vocab fallback: guaranteed to find the highest-logit schema-valid token. */
+        int32_t win = -1;
+        float win_v = -1e30f;
+        coax_t_JsState win_st;
+        for (int i = 0; i < n; i++) {
+            float v = logits[i];
+            if (win >= 0 && v <= win_v) continue;
+            if (js_tok_allowed(sv, sc, st, i, can_fin, &next_st)) {
+                win = i; win_v = v; win_st = next_st;
+            }
+        }
+        if (win >= 0) { *st = win_st; return win; }
+        return sv->tok_eog;
+    }
+
+    /* Stochastic sampling: top-K filtered by schema, then temperature + top_p. */
+    int K = (sp && sp->top_k > 64) ? sp->top_k : 128;
+    if (K > 256) K = 256;
+    Cand top[256];
+    int nt = 0;
+    float min_v = -1e30f;
+    int min_idx = 0;
+    for (int i = 0; i < n; i++) {
+        float v = logits[i];
+        if (nt < K) {
+            top[nt] = (Cand){ i, v };
+            if (nt == 0 || v < min_v) { min_v = v; min_idx = nt; }
+            nt++;
+        } else if (v > min_v) {
+            top[min_idx] = (Cand){ i, v };
+            min_v = top[0].val; min_idx = 0;
+            for (int j = 1; j < K; j++) {
+                if (top[j].val < min_v) { min_v = top[j].val; min_idx = j; }
+            }
+        }
+    }
+    qsort(top, (size_t)nt, sizeof(Cand), cmp_cand_desc);
+    Cand valid[256];
+    int nv = 0;
+    for (int j = 0; j < nt; j++) {
+        if (js_tok_allowed(sv, sc, st, top[j].id, can_fin, NULL)) {
+            valid[nv++] = top[j];
+        }
+    }
+    coax_t_JsState next_st;
+    if (nv == 0) {
+        int32_t win = -1;
+        float win_v = -1e30f;
+        coax_t_JsState win_st;
+        for (int i = 0; i < n; i++) {
+            float v = logits[i];
+            if (win >= 0 && v <= win_v) continue;
+            if (js_tok_allowed(sv, sc, st, i, can_fin, &next_st)) {
+                win = i; win_v = v; win_st = next_st;
+            }
+        }
+        if (win >= 0) { *st = win_st; return win; }
+        return sv->tok_eog;
+    }
+    float max_l = valid[0].val;
+    float probs[256];
+    float sum = 0.0f;
+    for (int j = 0; j < nv; j++) {
+        probs[j] = expf((valid[j].val - max_l) / temp);
+        sum += probs[j];
+    }
+    float top_p = (sp && sp->top_p > 0.0f && sp->top_p < 1.0f) ? sp->top_p : 1.0f;
+    float cum = 0.0f;
+    int cut = nv;
+    for (int j = 0; j < nv; j++) {
+        probs[j] /= sum;
+        cum += probs[j];
+        if (cum >= top_p) { cut = j + 1; break; }
+    }
+    float csum = 0.0f;
+    for (int j = 0; j < cut; j++) csum += probs[j];
+    float u = (float)((sv_xorshift64(&sv->rng) >> 11) * (1.0 / 9007199254740992.0)) * csum;
+    float acc = 0.0f;
+    int chosen = cut - 1;
+    for (int j = 0; j < cut; j++) {
+        acc += probs[j];
+        if (acc >= u) { chosen = j; break; }
+    }
+    int32_t tok = valid[chosen].id;
+    if (js_tok_allowed(sv, sc, st, tok, can_fin, &next_st)) *st = next_st;
+    return tok;
+}
+
+static int32_t js_sample_no_eog(Server *sv, const InkSampleParams *sp, int prefer_text) {
+    int32_t tok = ink_sample(sv->sess, sp, &sv->rng);
+    if (tok >= 0 && tok != sv->tok_eog && !ink_is_eog(sv->sess, tok)) return tok;
+    if (prefer_text && sv->tok_text >= 0) return sv->tok_text;
+    const float *logits = ink_logits(sv->sess);
+    int n = sv->n_vocab;
+    if (!logits || n <= 0) return tok;
+    int32_t best = -1;
+    float best_v = -1e30f;
+    for (int i = 0; i < n; i++) {
+        if (i == sv->tok_eog || ink_is_eog(sv->sess, i)) continue;
+        if (best < 0 || logits[i] > best_v) { best = i; best_v = logits[i]; }
+    }
+    return best >= 0 ? best : tok;
+}
 
 static void parse_invoked_tool_json(const char *s, size_t n, const Buf *hdr_name, Buf *out_name, Buf *out_args) {
     JScan j = { s, n, 0 };
@@ -1124,252 +1377,98 @@ static void emit_responses_tool_call(int fd, int idx, const char *id,
     buf_free(&ev);
 }
 
-/* ---------------- Incremental byte-level JSON object grammar constraint ---------------- */
-
-enum {
-    JL_ROOT = 0,       /* expecting '{' */
-    JL_OBJ_KEY_OR_END, /* expecting '"' or '}' */
-    JL_OBJ_KEY,        /* expecting '"' after ',' */
-    JL_OBJ_COLON,      /* expecting ':' */
-    JL_VALUE,          /* expecting any JSON value */
-    JL_ARR_VAL_OR_END, /* expecting any value or ']' */
-    JL_AFTER_VAL,      /* expecting ',' or '}' / ']' */
-    JL_STR,            /* inside string */
-    JL_STR_ESC,        /* after '\' inside string */
-    JL_STR_U1, JL_STR_U2, JL_STR_U3, JL_STR_U4,
-    JL_NUM_SIGN,       /* after '-' */
-    JL_NUM_ZERO,       /* after leading '0' */
-    JL_NUM_INT,        /* inside integer digits */
-    JL_NUM_DOT,        /* after '.' (needs >=1 digit) */
-    JL_NUM_FRAC,       /* inside fraction digits */
-    JL_NUM_EXP,        /* after 'e'/'E' */
-    JL_NUM_EXPSIGN,    /* after 'e+'/'e-' */
-    JL_NUM_EXPDIG,     /* inside exponent digits */
-    JL_LIT_T1, JL_LIT_T2, JL_LIT_T3,
-    JL_LIT_F1, JL_LIT_F2, JL_LIT_F3, JL_LIT_F4,
-    JL_LIT_N1, JL_LIT_N2, JL_LIT_N3,
-    JL_DONE            /* root object closed */
-};
-
-typedef struct {
-    int  state;
-    int  depth;
-    int  str_is_key;
-    char stack[64]; /* '{' or '[' */
-} JsonLex;
-
-static int jl_is_ws(unsigned char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
-static int jl_is_hex(unsigned char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
-
-static int jl_finish_val(JsonLex *l) {
-    l->state = (l->depth == 0) ? JL_DONE : JL_AFTER_VAL;
-    return 0;
-}
-
-static int json_lex_byte(JsonLex *l, unsigned char c) {
-    for (;;) {
-        switch (l->state) {
-        case JL_ROOT:
-            if (jl_is_ws(c)) return 0;
-            if (c == '{') { l->stack[l->depth++] = '{'; l->state = JL_OBJ_KEY_OR_END; return 0; }
-            return 1;
-        case JL_OBJ_KEY_OR_END:
-            if (jl_is_ws(c)) return 0;
-            if (c == '}') { l->depth--; return jl_finish_val(l); }
-            if (c == '"') { l->str_is_key = 1; l->state = JL_STR; return 0; }
-            return 1;
-        case JL_OBJ_KEY:
-            if (jl_is_ws(c)) return 0;
-            if (c == '"') { l->str_is_key = 1; l->state = JL_STR; return 0; }
-            return 1;
-        case JL_OBJ_COLON:
-            if (jl_is_ws(c)) return 0;
-            if (c == ':') { l->state = JL_VALUE; return 0; }
-            return 1;
-        case JL_ARR_VAL_OR_END:
-            if (jl_is_ws(c)) return 0;
-            if (c == ']') { l->depth--; return jl_finish_val(l); }
-            l->state = JL_VALUE;
-            continue;
-        case JL_VALUE:
-            if (jl_is_ws(c)) return 0;
-            if (c == '{') { if (l->depth >= 64) return 1; l->stack[l->depth++] = '{'; l->state = JL_OBJ_KEY_OR_END; return 0; }
-            if (c == '[') { if (l->depth >= 64) return 1; l->stack[l->depth++] = '['; l->state = JL_ARR_VAL_OR_END; return 0; }
-            if (c == '"') { l->str_is_key = 0; l->state = JL_STR; return 0; }
-            if (c == '-') { l->state = JL_NUM_SIGN; return 0; }
-            if (c == '0') { l->state = JL_NUM_ZERO; return 0; }
-            if (c >= '1' && c <= '9') { l->state = JL_NUM_INT; return 0; }
-            if (c == 't') { l->state = JL_LIT_T1; return 0; }
-            if (c == 'f') { l->state = JL_LIT_F1; return 0; }
-            if (c == 'n') { l->state = JL_LIT_N1; return 0; }
-            return 1;
-        case JL_AFTER_VAL:
-            if (jl_is_ws(c)) return 0;
-            if (l->depth <= 0) return 1;
-            if (l->stack[l->depth - 1] == '{') {
-                if (c == ',') { l->state = JL_OBJ_KEY; return 0; }
-                if (c == '}') { l->depth--; return jl_finish_val(l); }
-                return 1;
-            } else {
-                if (c == ',') { l->state = JL_VALUE; return 0; }
-                if (c == ']') { l->depth--; return jl_finish_val(l); }
-                return 1;
-            }
-        case JL_STR:
-            if (c < 0x20) return 1; /* unescaped control chars forbidden by RFC 8259 */
-            if (c == '\\') { l->state = JL_STR_ESC; return 0; }
-            if (c == '"') { l->state = l->str_is_key ? JL_OBJ_COLON : ((l->depth == 0) ? JL_DONE : JL_AFTER_VAL); return 0; }
-            return 0;
-        case JL_STR_ESC:
-            if (c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't') {
-                l->state = JL_STR; return 0;
-            }
-            if (c == 'u') { l->state = JL_STR_U1; return 0; }
-            return 1;
-        case JL_STR_U1: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U2; return 0;
-        case JL_STR_U2: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U3; return 0;
-        case JL_STR_U3: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U4; return 0;
-        case JL_STR_U4: if (!jl_is_hex(c)) return 1; l->state = JL_STR; return 0;
-        case JL_NUM_SIGN:
-            if (c == '0') { l->state = JL_NUM_ZERO; return 0; }
-            if (c >= '1' && c <= '9') { l->state = JL_NUM_INT; return 0; }
-            return 1;
-        case JL_NUM_ZERO:
-            if (c == '.') { l->state = JL_NUM_DOT; return 0; }
-            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
-            jl_finish_val(l); continue;
-        case JL_NUM_INT:
-            if (c >= '0' && c <= '9') return 0;
-            if (c == '.') { l->state = JL_NUM_DOT; return 0; }
-            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
-            jl_finish_val(l); continue;
-        case JL_NUM_DOT:
-            if (c >= '0' && c <= '9') { l->state = JL_NUM_FRAC; return 0; }
-            return 1;
-        case JL_NUM_FRAC:
-            if (c >= '0' && c <= '9') return 0;
-            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
-            jl_finish_val(l); continue;
-        case JL_NUM_EXP:
-            if (c == '+' || c == '-') { l->state = JL_NUM_EXPSIGN; return 0; }
-            if (c >= '0' && c <= '9') { l->state = JL_NUM_EXPDIG; return 0; }
-            return 1;
-        case JL_NUM_EXPSIGN:
-            if (c >= '0' && c <= '9') { l->state = JL_NUM_EXPDIG; return 0; }
-            return 1;
-        case JL_NUM_EXPDIG:
-            if (c >= '0' && c <= '9') return 0;
-            jl_finish_val(l); continue;
-        case JL_LIT_T1: if (c != 'r') return 1; l->state = JL_LIT_T2; return 0;
-        case JL_LIT_T2: if (c != 'u') return 1; l->state = JL_LIT_T3; return 0;
-        case JL_LIT_T3: if (c != 'e') return 1; return jl_finish_val(l);
-        case JL_LIT_F1: if (c != 'a') return 1; l->state = JL_LIT_F2; return 0;
-        case JL_LIT_F2: if (c != 'l') return 1; l->state = JL_LIT_F3; return 0;
-        case JL_LIT_F3: if (c != 's') return 1; l->state = JL_LIT_F4; return 0;
-        case JL_LIT_F4: if (c != 'e') return 1; return jl_finish_val(l);
-        case JL_LIT_N1: if (c != 'u') return 1; l->state = JL_LIT_N2; return 0;
-        case JL_LIT_N2: if (c != 'l') return 1; l->state = JL_LIT_N3; return 0;
-        case JL_LIT_N3: if (c != 'l') return 1; return jl_finish_val(l);
-        case JL_DONE:
-            if (jl_is_ws(c)) return 0;
-            return 1;
-        default:
-            return 1;
-        }
-    }
-}
-
-static int json_lex_feed(JsonLex *l, const char *s, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        if (json_lex_byte(l, (unsigned char)s[i]) != 0) return 1;
-    }
-    return 0;
-}
-
-/* Pick the highest-logit token in [0..nv) accepted by the incremental JSON object grammar. */
-static int32_t sample_constrained_json(Server *sv, const InkSampleParams *sp, JsonLex *jlex) {
-    if (jlex->state == JL_DONE) {
-        return (sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_eog;
-    }
-    /* Fast path: try unconstrained sample first (zero extra cost when model already emits valid JSON). */
-    int32_t cand = ink_sample(sv->sess, sp, &sv->rng);
-    if (cand >= 0 && cand < 200000 && !ink_is_eog(sv->sess, cand)) {
-        char piece[512];
-        int plen = ink_decode_piece(sv->sess, cand, piece, sizeof piece);
-        if (plen > 0) {
-            JsonLex tmp = *jlex;
-            if (json_lex_feed(&tmp, piece, (size_t)plen) == 0) {
-                *jlex = tmp;
-                return cand;
-            }
-        }
-    }
-    /* Constrained fallback: scan logits for best valid JSON continuation token (no fences, no prose, no premature EOG). */
-    const float *lg = ink_logits(sv->sess);
-    int nv = ink_vocab_unpadded(sv->sess);
-    if (nv > 200000) nv = 200000;
-    int32_t best_tok = -1;
-    float best_v = -1e30f;
-    JsonLex best_lex = *jlex;
-    char piece[512];
-    for (int i = 0; i < nv; i++) {
-        float v = lg[i];
-        if (v <= best_v) continue;
-        int plen = ink_decode_piece(sv->sess, i, piece, sizeof piece);
-        if (plen <= 0) continue;
-        JsonLex tmp = *jlex;
-        if (json_lex_feed(&tmp, piece, (size_t)plen) == 0) {
-            best_v = v;
-            best_tok = i;
-            best_lex = tmp;
-        }
-    }
-    if (best_tok >= 0) {
-        *jlex = best_lex;
-        return best_tok;
-    }
-    return (sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_eog;
-}
-
 static void handle_inference(Server *sv, int fd, int is_responses, const char *body, size_t body_len) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
-        const char *e = "{\"error\":{\"message\":\"invalid JSON request\"}}";
+        const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
         send_http_json(fd, 400, "Bad Request", e, strlen(e));
         req_free(&r);
         return;
+    }
+
+    int use_js = 0;
+    coax_t_JsSchema *js_sc = NULL;
+    coax_t_JsState js_st;
+    memset(&js_st, 0, sizeof js_st);
+    if (r.resp_fmt == 1 || r.resp_fmt == 2) {
+        js_sc = (coax_t_JsSchema *)calloc(1, sizeof *js_sc);
+        if (!js_sc) {
+            const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
+            send_http_json(fd, 500, "Internal Server Error", e, strlen(e));
+            req_free(&r);
+            return;
+        }
+        coax_v_t_JsSchema scv = { js_sc, 1 };
+        int64_t ok = 0;
+        if (r.resp_fmt == 1) {
+            ok = ink_js_init_object(scv);
+        } else if (r.resp_schema_json.data && r.resp_schema_json.len > 0) {
+            coax_string sjs = { r.resp_schema_json.data, (int64_t)r.resp_schema_json.len };
+            ok = ink_js_compile_schema(scv, sjs);
+        }
+        if (ok != 1 || ink_js_reset(scv, (coax_v_t_JsState){ &js_st, 1 }) != 1) {
+            const char *e = "{\"error\":{\"message\":\"invalid or unsupported response_format json_schema\",\"type\":\"invalid_request_error\"}}";
+            send_http_json(fd, 400, "Bad Request", e, strlen(e));
+            free(js_sc);
+            req_free(&r);
+            return;
+        }
+        use_js = 1;
     }
 
     Buf prompt = {0};
     format_inkling_prompt(&r, &prompt);
 
+    pthread_mutex_lock(&sv->state_mu);
+    sv->in_flight++;
+    sv->last_active = now_sec();
+    pthread_mutex_unlock(&sv->state_mu);
+
+    pthread_mutex_lock(&sv->sess_mu);
+
     int max_ctx = ink_max_ctx(sv->sess);
-    int32_t *toks = (int32_t *)malloc((size_t)max_ctx * sizeof(int32_t));
+    int32_t *toks = (int32_t *)malloc((size_t)(max_ctx + 1) * sizeof(int32_t));
     if (!toks) {
         const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
         send_http_json(fd, 500, "Internal Server Error", e, strlen(e));
-        buf_free(&prompt);
-        req_free(&r);
+        pthread_mutex_unlock(&sv->sess_mu);
+        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        buf_free(&prompt); free(js_sc); req_free(&r);
         return;
     }
-    int n_prompt = ink_encode(sv->sess, prompt.data ? prompt.data : "", prompt.len, toks, max_ctx - 1, 1);
+    int n_prompt = ink_encode(sv->sess, prompt.data ? prompt.data : "", prompt.len, toks, max_ctx, 1);
     if (n_prompt <= 0) {
-        const char *e = "{\"error\":{\"message\":\"empty prompt\"}}";
+        const char *e = "{\"error\":{\"message\":\"empty prompt\",\"type\":\"invalid_request_error\"}}";
         send_http_json(fd, 400, "Bad Request", e, strlen(e));
-        free(toks); buf_free(&prompt); req_free(&r);
+        pthread_mutex_unlock(&sv->sess_mu);
+        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
+        return;
+    }
+    if (n_prompt >= max_ctx - 1) {
+        char ebuf[320];
+        snprintf(ebuf, sizeof ebuf,
+                 "{\"error\":{\"message\":\"This model's maximum context length is %d tokens. However, your messages exceeded the context length.\",\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\"}}",
+                 max_ctx);
+        send_http_json(fd, 400, "Bad Request", ebuf, strlen(ebuf));
+        pthread_mutex_unlock(&sv->sess_mu);
+        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return;
     }
 
     int64_t created = (int64_t)time(NULL);
     const char *model = (r.model.data && r.model.len) ? r.model.data : "inkling-2-mini";
     sv->req_seq++;
-    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d starting\n",
-            sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream, n_prompt);
+    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d fmt=%d prompt=%d starting\n",
+            sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream, r.resp_fmt, n_prompt);
     fflush(stderr);
 
     if (r.stream) {
         if (send_sse_headers(fd) != 0) {
-            free(toks); buf_free(&prompt); req_free(&r);
+            pthread_mutex_unlock(&sv->sess_mu);
+            pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+            free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return;
         }
     }
@@ -1391,13 +1490,17 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 snprintf(ebuf, sizeof ebuf, "{\"error\":{\"message\":\"prefill failed: %s\"}}", ink_error(sv->sess));
                 send_http_json(fd, 500, "Internal Server Error", ebuf, strlen(ebuf));
             }
-            free(toks); buf_free(&prompt); req_free(&r);
+            pthread_mutex_unlock(&sv->sess_mu);
+            pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+            free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return;
         }
         i += chunk;
         if (r.stream && i < n_prompt) {
             if (send_all(fd, ": prefilling\n\n", 14) != 0) {
-                free(toks); buf_free(&prompt); req_free(&r);
+                pthread_mutex_unlock(&sv->sess_mu);
+                pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+                free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
                 return;
             }
         }
@@ -1430,8 +1533,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json */
     int channel = 0;
     int in_header = 0;
-    JsonLex jlex;
-    memset(&jlex, 0, sizeof jlex);
+    int js_started = 0;
     Buf header_buf = {0};
     Buf tool_json = {0};
     Buf pending = {0};
@@ -1452,15 +1554,27 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
 
     for (int i = 0; i < max_gen && !g_stop; i++) {
         int32_t tok;
-        if (r.json_mode > 0 && channel == 2) {
-            tok = sample_constrained_json(sv, &sp, &jlex);
+        if (use_js && channel == 2) {
+            js_started = 1;
+            tok = js_sample_constrained(sv, js_sc, &js_st, &sp);
+        } else if (use_js && !js_started) {
+            tok = js_sample_no_eog(sv, &sp, (channel == 0 && !in_header));
+            /* If the model emits a non-special token directly from channel 0 (implicit channel 2),
+             * enforce the JSON Schema grammar on it too. */
+            if (channel == 0 && !in_header && tok >= 0 && tok < 200000 &&
+                tok != sv->tok_model && tok != sv->tok_thinking && tok != sv->tok_text &&
+                tok != sv->tok_end_msg && tok != sv->tok_eog && !ink_is_eog(sv->sess, tok)) {
+                channel = 2;
+                js_started = 1;
+                coax_t_JsState next_st;
+                if (js_tok_allowed(sv, js_sc, &js_st, tok, 0, &next_st)) {
+                    js_st = next_st;
+                } else {
+                    tok = js_sample_constrained(sv, js_sc, &js_st, &sp);
+                }
+            }
         } else {
             tok = ink_sample(sv->sess, &sp, &sv->rng);
-            /* Guard against empty first reply when json_mode is required without tool calls. */
-            if (r.json_mode > 0 && r.tools_json.len == 0 && n_emitted_tcs == 0 &&
-                jlex.state == JL_ROOT && (tok == sv->tok_eog || ink_is_eog(sv->sess, tok))) {
-                tok = (channel == 0 && in_header) ? sv->tok_text : sv->tok_model;
-            }
         }
         if (tok < 0) break;
         n_gen++;
@@ -1471,6 +1585,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
 
         if (tok == sv->tok_model || tok == sv->tok_end_msg) {
+            int was_js_text = (use_js && channel == 2);
             if (channel == 3 && tool_json.len > 0) {
                 if (n_emitted_tcs >= cap_emitted_tcs) {
                     int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
@@ -1507,11 +1622,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 }
                 pending.len = 0;
             }
-            if (r.json_mode > 0 && channel == 2 && jlex.state == JL_DONE) {
+            channel = 0;
+            if (was_js_text) {
                 finish_reason = "stop";
                 break;
             }
-            channel = 0;
             if (tok == sv->tok_model) {
                 in_header = 1;
                 header_buf.len = 0;
@@ -1558,6 +1673,18 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                         pending.len -= ready;
                     }
                 }
+            }
+            if (use_js && channel == 2 && ink_js_is_done((coax_v_t_JsState){ &js_st, 1 }) == 1) {
+                if (pending.len > 0) {
+                    buf_append(&full_text, pending.data, pending.len);
+                    if (r.stream) {
+                        if (is_responses) emit_responses_delta(fd, 0, pending.data, pending.len);
+                        else emit_chat_delta(fd, created, model, 0, pending.data, pending.len);
+                    }
+                    pending.len = 0;
+                }
+                finish_reason = "stop";
+                break;
             }
         }
 
@@ -1746,6 +1873,12 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     buf_free(&pending);
     buf_free(&full_text);
     buf_free(&full_think);
+    pthread_mutex_unlock(&sv->sess_mu);
+    pthread_mutex_lock(&sv->state_mu);
+    sv->in_flight--;
+    sv->last_active = now_sec();
+    pthread_mutex_unlock(&sv->state_mu);
+    free(js_sc);
     req_free(&r);
 }
 
@@ -1814,12 +1947,61 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
     return 0;
 }
 
+typedef struct {
+    Server *sv;
+    int     cfd;
+} ConnArg;
+
+static void *conn_thread(void *arg) {
+    ConnArg *ca = (ConnArg *)arg;
+    Server *sv = ca->sv;
+    int cfd = ca->cfd;
+    free(ca);
+
+    char method[16] = {0}, path[256] = {0};
+    Buf body = {0};
+    if (read_http_request(cfd, method, sizeof method, path, sizeof path, &body) == 0) {
+        if (!strcmp(method, "OPTIONS")) {
+            const char *cors =
+                "HTTP/1.1 204 No Content\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+                "Connection: close\r\n\r\n";
+            send_all(cfd, cors, strlen(cors));
+        } else if (!strcmp(method, "GET") && !strcmp(path, "/health")) {
+            pthread_mutex_lock(&sv->state_mu);
+            int busy = sv->in_flight > 0;
+            pthread_mutex_unlock(&sv->state_mu);
+            char ok[160];
+            snprintf(ok, sizeof ok,
+                     "{\"status\":\"ok\",\"engine\":\"psionic-metal\",\"ctx\":%d,\"busy\":%s}",
+                     sv->max_ctx, busy ? "true" : "false");
+            send_http_json(cfd, 200, "OK", ok, strlen(ok));
+        } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
+            const char *ms = "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"psionic-metal\"}]}";
+            send_http_json(cfd, 200, "OK", ms, strlen(ms));
+        } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
+            handle_inference(sv, cfd, 0, body.data ? body.data : "", body.len);
+        } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
+            handle_inference(sv, cfd, 1, body.data ? body.data : "", body.len);
+        } else {
+            const char *nf = "{\"error\":{\"message\":\"not found\"}}";
+            send_http_json(cfd, 404, "Not Found", nf, strlen(nf));
+        }
+    }
+    buf_free(&body);
+    close(cfd);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     const char *gguf = NULL;
     const char *metal = NULL;
     const char *host = "127.0.0.1";
     int port = 18794;
-    int max_ctx = 8192;
+    int max_ctx = 32768;
+    int idle_exit_s = 0;
 
     for (int i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "--model") || !strcmp(argv[i], "-m")) && i + 1 < argc) gguf = argv[++i];
@@ -1827,23 +2009,39 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--host") && i + 1 < argc) host = argv[++i];
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if ((!strcmp(argv[i], "--ctx") || !strcmp(argv[i], "--ctx-size")) && i + 1 < argc) max_ctx = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--idle-exit-s") && i + 1 < argc) idle_exit_s = atoi(argv[++i]);
     }
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--host 127.0.0.1] [--port 18794] [--ctx 8192]\n", argv[0]);
+        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n", argv[0]);
         return 2;
     }
 
     signal(SIGPIPE, SIG_IGN);
-    signal(SIGINT, on_sig);
-    signal(SIGTERM, on_sig);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_sig;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; /* No SA_RESTART: poll()/accept() wake immediately on SIGTERM/SIGINT */
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
 
     double t0 = now_sec();
     Server sv;
     memset(&sv, 0, sizeof sv);
+    pthread_mutex_init(&sv.sess_mu, NULL);
+    pthread_mutex_init(&sv.state_mu, NULL);
+    sv.last_active = t0;
+    sv.idle_exit_s = idle_exit_s;
+    sv.max_ctx = max_ctx;
     sv.rng = (uint64_t)time(NULL) ^ 0x9E3779B97F4A7C15ULL;
     char err[512];
     if (ink_open(gguf, metal, max_ctx, &sv.sess, err, sizeof err) != 0) {
         fprintf(stderr, "[psionic-inkling-serve] ink_open failed: %s\n", err);
+        return 1;
+    }
+    if (vocab_table_build(&sv) != 0) {
+        fprintf(stderr, "[psionic-inkling-serve] failed to build vocab table\n");
+        ink_close(sv.sess);
         return 1;
     }
     sv.tok_model       = ink_find_token(sv.sess, "<|message_model|>");
@@ -1852,11 +2050,12 @@ int main(int argc, char **argv) {
     sv.tok_invoke_tool = ink_find_token(sv.sess, "<|content_invoke_tool_json|>");
     sv.tok_end_msg     = ink_find_token(sv.sess, "<|end_message|>");
     sv.tok_eog         = ink_eos_token(sv.sess);
-    fprintf(stderr, "[psionic-inkling-serve] loaded %s on Psionic Metal in %.2fs (ctx=%d, eog=%d)\n",
-            gguf, now_sec() - t0, max_ctx, sv.tok_eog);
+    sv.last_active     = now_sec();
+    fprintf(stderr, "[psionic-inkling-serve] loaded %s on Psionic Metal in %.2fs (ctx=%d, vocab=%d, eog=%d, idle_exit=%ds)\n",
+            gguf, now_sec() - t0, max_ctx, sv.n_vocab, sv.tok_eog, idle_exit_s);
 
     int srv = socket(AF_INET, SOCK_STREAM, 0);
-    if (srv < 0) { perror("socket"); ink_close(sv.sess); return 1; }
+    if (srv < 0) { perror("socket"); vocab_table_free(&sv); ink_close(sv.sess); return 1; }
     int one = 1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 
@@ -1866,18 +2065,44 @@ int main(int argc, char **argv) {
     addr.sin_port = htons((uint16_t)port);
     if (inet_pton(AF_INET, host, &addr.sin_addr) != 1) {
         fprintf(stderr, "[psionic-inkling-serve] invalid host %s\n", host);
-        close(srv); ink_close(sv.sess); return 1;
+        close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
     }
     if (bind(srv, (struct sockaddr *)&addr, sizeof addr) != 0) {
-        perror("bind"); close(srv); ink_close(sv.sess); return 1;
+        fprintf(stderr, "[psionic-inkling-serve] bind %s:%d failed: %s\n", host, port, strerror(errno));
+        close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
     }
-    if (listen(srv, 16) != 0) {
-        perror("listen"); close(srv); ink_close(sv.sess); return 1;
+    if (listen(srv, 32) != 0) {
+        perror("listen"); close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
     }
-    fprintf(stderr, "[psionic-inkling-serve] listening on http://%s:%d (Psionic Metal)\n", host, port);
+    fprintf(stderr, "[psionic-inkling-serve] listening on http://%s:%d (Psionic Metal, ctx=%d)\n", host, port, max_ctx);
     fflush(stderr);
 
     while (!g_stop) {
+        struct pollfd pfd;
+        pfd.fd = srv;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        int pr = poll(&pfd, 1, 500);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pr == 0) {
+            if (sv.idle_exit_s > 0) {
+                pthread_mutex_lock(&sv.state_mu);
+                int busy = sv.in_flight > 0;
+                double idle = now_sec() - sv.last_active;
+                pthread_mutex_unlock(&sv.state_mu);
+                if (!busy && idle >= (double)sv.idle_exit_s) {
+                    fprintf(stderr, "[psionic-inkling-serve] idle %.0fs >= %ds, exiting cleanly\n",
+                            idle, sv.idle_exit_s);
+                    fflush(stderr);
+                    break;
+                }
+            }
+            continue;
+        }
+        if (!(pfd.revents & POLLIN)) continue;
         struct sockaddr_in cli;
         socklen_t clen = sizeof cli;
         int cfd = accept(srv, (struct sockaddr *)&cli, &clen);
@@ -1885,37 +2110,30 @@ int main(int argc, char **argv) {
             if (errno == EINTR) continue;
             break;
         }
-        char method[16] = {0}, path[256] = {0};
-        Buf body = {0};
-        if (read_http_request(cfd, method, sizeof method, path, sizeof path, &body) == 0) {
-            if (!strcmp(method, "OPTIONS")) {
-                const char *cors =
-                    "HTTP/1.1 204 No Content\r\n"
-                    "Access-Control-Allow-Origin: *\r\n"
-                    "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-                    "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-                    "Connection: close\r\n\r\n";
-                send_all(cfd, cors, strlen(cors));
-            } else if (!strcmp(method, "GET") && !strcmp(path, "/health")) {
-                const char *ok = "{\"status\":\"ok\",\"engine\":\"psionic-metal\"}";
-                send_http_json(cfd, 200, "OK", ok, strlen(ok));
-            } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
-                const char *ms = "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"psionic-metal\"}]}";
-                send_http_json(cfd, 200, "OK", ms, strlen(ms));
-            } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
-                handle_inference(&sv, cfd, 0, body.data ? body.data : "", body.len);
-            } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
-                handle_inference(&sv, cfd, 1, body.data ? body.data : "", body.len);
-            } else {
-                const char *nf = "{\"error\":{\"message\":\"not found\"}}";
-                send_http_json(cfd, 404, "Not Found", nf, strlen(nf));
-            }
+        ConnArg *ca = (ConnArg *)malloc(sizeof *ca);
+        if (!ca) { close(cfd); continue; }
+        ca->sv = &sv;
+        ca->cfd = cfd;
+        pthread_t tid;
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        pthread_attr_setstacksize(&attr, 2 * 1024 * 1024);
+        if (pthread_create(&tid, &attr, conn_thread, ca) != 0) {
+            free(ca);
+            close(cfd);
         }
-        buf_free(&body);
-        close(cfd);
+        pthread_attr_destroy(&attr);
     }
 
     close(srv);
+    /* Wait for any in-flight inference thread (already winding down because g_stop=1) before freeing Metal. */
+    pthread_mutex_lock(&sv.sess_mu);
+    vocab_table_free(&sv);
     ink_close(sv.sess);
+    sv.sess = NULL;
+    pthread_mutex_unlock(&sv.sess_mu);
+    pthread_mutex_destroy(&sv.sess_mu);
+    pthread_mutex_destroy(&sv.state_mu);
     return 0;
 }

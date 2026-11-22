@@ -62,9 +62,9 @@ while [ "$#" -gt 0 ]; do
       echo "  --tier 0           Run Tier 0 unit & wire-contract checks (page.coax, mcworker-wire.coax, tools_smoke.sh)"
       echo "  --tier 1           Run Tier 1 deterministic transcript replay + compaction suites"
       echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C12)"
-      echo "  --tier 2           Run the Tier 2 live-agent suite (real mcworker, real models, costs money; opt-in only)"
-      echo "  --tier 3           Run the Tier 3 native suite: build Coder.app, drive it on the mock worker, compare captures (macOS; opt-in only)"
-      echo "  --tier 4           Run Tier 4: golden trajectories and the 25-task benchmark slice (tier4/slice.json) through the Tier 2 harness, compared with tier4/baseline (costs money; opt-in only)"
+      echo "  --tier 2           Run the Tier 2 live-agent suite on shipped Inkling 2 Mini (Psionic Metal 32K, \$0 local; opt-in)"
+      echo "  --tier 3           Run the Tier 3 native suite: build OpenAgents.app, drive it on the mock worker, compare captures (macOS; opt-in)"
+      echo "  --tier 4           Run Tier 4: golden trajectories and the 25-task benchmark slice (tier4/slice.json) on local Inkling 2 Mini (opt-in)"
       echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2, 3 or 4)"
       echo "  --filter TEXT      Tier 2, 3 and 4: run tasks or flows whose name contains TEXT (comma-separated)"
       echo "  --compare BASE NEW Compare two Tier 2 or Tier 4 runs (summary.json files or run folders)"
@@ -204,14 +204,14 @@ if tier == 1 and case_name == "tier1_host_scenarios":
 # Also emit per-task records when running the Tier 2 live suite or Tier 4 (the same runner)
 if (tier == 2 and case_name == "tier2_live_suite") or (tier == 4 and case_name == "tier4_suite"):
     for ln in text.splitlines():
-        tm = re.match(r"^(ok  |FAIL|KNOWN) task (\S+): (.*?) \((\d+) ms, \$([0-9.]+), (\d+) attempts, (\d+) turns, (\d+) commands\)(?: -- (.*))?$", ln)
+        tm = re.match(r"^(ok  |FAIL|KNOWN) task (\S+): (.*?) \((\d+) ms, \$([0-9.]+), (\d+) attempts, (\d+) turns, (\d+) commands(?:, .*?)?\)(?: -- (.*))?$", ln)
         if tm:
             ok = tm.group(1).strip() == "ok"
             trec = {
                 "run_id": run_id,
                 "tier": tier,
                 "case": f"task_{tm.group(2)}",
-                "model": "live",
+                "model": "inkling-2-mini",
                 "passed": ok,
                 "wall_ms": int(tm.group(4)),
                 "cost_usd_micros": int(round(float(tm.group(5)) * 1e6)),

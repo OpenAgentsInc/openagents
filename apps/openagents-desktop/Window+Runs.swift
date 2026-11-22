@@ -35,12 +35,12 @@ extension CoderWindow {
         var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
         let page = r.page, cwd = (r === run ? folder : r.folder).path
         if r !== run && cd_action(page) == 3 { stopRun(r) }
-        if cd_budget_exceeded(page) == 0 {
+        if FeatureFlags.anyExtraModel && cd_budget_exceeded(page) == 0 {
             while true {
                 let j = cd_agent_next(page)
                 if j < 0 { break }
                 let one = CoderWorker()
-                if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+                if FeatureFlags.isOn(.modelsClaude) && cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
                 one.folder = cwd
                 wireAgent(r, j, one)
                 guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
@@ -80,19 +80,19 @@ extension CoderWindow {
             r.worker.folder = r.folder.path
             needsRecall = false
         }
-        let useAgy = cd_model_agy(r.page) != 0
-        let useInkling = cd_model_inkling(r.page) != 0
-        let useHybrid = cd_model_hybrid(r.page) != 0
+        let useAgy = FeatureFlags.isOn(.modelsAgy) && cd_model_agy(r.page) != 0
+        let useInkling = cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel
+        let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
         // Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
-        let useExternal = provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp || provKind == ExternalProviders.providerClaude
+        let useExternal = FeatureFlags.anyExtraModel && (provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp || provKind == ExternalProviders.providerClaude)
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
-        let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
+        let cloudOk = FeatureFlags.isOn(.modelsGemini) && (CoderGemini.saved != nil || CoderProbes.geminiReady || (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn))
         if !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
-            cd_failed(r.page, CoderWorker.hasAntigravity
+            cd_failed(r.page, FeatureFlags.isOn(.modelsAgy) && CoderWorker.hasAntigravity
                 ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
-                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
+                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models.")
             wake()
             return
         }
@@ -106,11 +106,20 @@ extension CoderWindow {
                     return
                 }
             } else if !LocalModelStore.isSelectable {
-                let msg = !LocalModelStore.hardwareSupported
-                    ? "Inkling 2 Mini requires >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
-                    : "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Open Settings → Models → Local Models to download or verify it."
-                cd_failed(r.page, msg)
-                if shown { manageLocalModels() }
+                let why: String
+                if !LocalModelStore.isAppleSilicon {
+                    why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
+                } else if !LocalModelStore.hardwareSupported {
+                    why = "Inkling 2 Mini requires at least 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
+                } else if LocalModelStore.isVerifying {
+                    why = "Inkling 2 Mini is verifying its SHA-256 checksum. Please wait a moment."
+                } else if LocalModelStore.isDownloading {
+                    why = "Inkling 2 Mini is still downloading (\(LocalModelStore.statusSummary()))."
+                } else {
+                    why = "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Download or verify it in Settings → Models → Local Model."
+                }
+                cd_failed(r.page, why)
+                if shown && LocalModelStore.hardwareSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
                 wake()
                 return
             }
@@ -206,13 +215,16 @@ extension CoderWindow {
                   let kept = t.chatText, let sent = CoderTurn.withoutLast(kept), let back = cd_headless() else {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
-            coderApplyOpenRouter(back); coderApplyClaude(back); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
-            syncExternalProviders(on: back)
-            cd_experimental_set(back, Experimental.on ? 1 : 0)
-            cd_cloud_authed_set(back, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
-            cd_settings_gemini(back, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
-            CoderProbes.apply(back)
-            syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
+            cd_flags_set(back, FeatureFlags.mask)
+            syncLocalState(on: back)
+            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
+            cd_agy(back, (FeatureFlags.isOn(.modelsAgy) && CoderWorker.hasAntigravity) ? 1 : 0)
+            if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
+            cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
+            cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
+            if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { CoderProbes.apply(back) }
+            syncSkillsNote(for: back, isForeman: FeatureFlags.isOn(.foreman) && t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {
                 cd_close(back); CoderTurn.remove(t.run); continue
@@ -377,8 +389,8 @@ extension CoderWindow {
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
     }
     func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
-        let base = coderSkillsNote(repoFolder: folder)
-        if isForeman {
+        let base = FeatureFlags.isOn(.mcp) ? coderSkillsNote(repoFolder: folder) : ""
+        if isForeman && FeatureFlags.isOn(.foreman) {
             let note = Foreman.systemPrompt(tier: foremanTier, workspace: folder.path, chatCount: store.orderedList.count, runningCount: runningCount, baseSkills: base)
             cd_skills(pagePtr, note)
         } else {
@@ -386,27 +398,31 @@ extension CoderWindow {
         }
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
-        var env = CoderAntigravity.workerEnv()
-        for (k, v) in McpServerStore.workerEnv() { env[k] = v }
-        if isForeman && foremanServer.port > 0 {
+        var env: [String: String] = FeatureFlags.isOn(.modelsAgy) ? CoderAntigravity.workerEnv() : [:]
+        if FeatureFlags.isOn(.mcp) {
+            for (k, v) in McpServerStore.workerEnv() { env[k] = v }
+        }
+        if isForeman && FeatureFlags.isOn(.foreman) && foremanServer.port > 0 {
             env["CODER_FOREMAN_URL"] = foremanServer.baseURL
             env["CODER_FOREMAN_TOKEN"] = foremanServer.token
             env["CODER_FOREMAN_TIER"] = foremanTier.wireName
             if let res = Bundle.main.resourcePath {
                 // Claude Code is found on the person's PATH, so a Foreman on Claude keeps it after the app's tools
-                env["PATH"] = cd_model_claude(r.page) != 0 ? res + ":" + CoderWorker.path : res
+                env["PATH"] = (FeatureFlags.isOn(.modelsClaude) && cd_model_claude(r.page) != 0) ? res + ":" + CoderWorker.path : res
             }
         }
-        if cd_model_hybrid(r.page) != 0 {
+        if FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "hybrid-exec-v1"
-        } else if cd_model_inkling(r.page) != 0 {
+        } else if cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "inkling-2-mini"
         }
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
-        env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
-        env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+        if FeatureFlags.isOn(.simulator) {
+            env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
+            env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+        }
         let cwd = (r === run ? folder : r.folder).path
         let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
         r.worker.extraEnv = env
@@ -440,7 +456,9 @@ extension CoderWindow {
         }
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
-        coderApplyOpenRouter(back)
+        cd_flags_set(back, FeatureFlags.mask)
+        syncLocalState(on: back)
+        if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
         guard cd_take(back, page) != 0 else { cd_close(back); return false }
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id

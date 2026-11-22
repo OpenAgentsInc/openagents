@@ -3,10 +3,10 @@
 
 cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, running: bool) -> AppSideRow {
   id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
-  is := !s[0].gym_open && cur.count > 0 && id == cur;
+  is := !(cp_flag(s, DC_FLAG_GYM) && s[0].gym_open) && cur.count > 0 && id == cur;
   sel := s[0].sb[0].sel[q];
   t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
-  if s[0].chats[q].managed {
+  if cp_flag(s, DC_FLAG_FOREMAN) && s[0].chats[q].managed {
     tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
     t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
   }
@@ -25,18 +25,20 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sw := app_sidebar_surface(f, 0, 0, left, h);
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
-  loc := s[0].cust[0].locale.active;
+  loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), 0, CP_NEW);
   sy += app_side_action(f, "coder.search", 0, sy, sw, ICON_SET_SEARCH, cp_tr(loc, "search"), 0, CP_PALETTE);
   cur := cast(string) s[0].current[0..<s[0].current_n];
-  // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
-  // Both are experimental features (Settings > General): off, neither shows.
-  if s[0].experimental {
+  // Flag-gated sidebar destinations: off in the Inkling first release.
+  if cp_flag(s, DC_FLAG_FOREMAN) {
     sy += cp_side_foreman(s, f, sw, sy, cur, running);
-    // Gym / 3D PLE Workbench row right under Foreman (#13792).
+  }
+  if cp_flag(s, DC_FLAG_GYM) {
     sy += app_side_action(f, "coder.gym", 0, sy, sw, ICON_WIDGET, "Gym", ifx s[0].gym_open then EL_S_CURRENT else 0, CP_GYM);
   }
-  sy += app_side_action(f, "coder.forge", 0, sy, sw, ICON_SHARE, "PRs & Issues", ifx cp_forge_shown(s) then EL_S_CURRENT else 0, CP_FORGE_TOGGLE);
+  if cp_flag(s, DC_FLAG_FORGE) {
+    sy += app_side_action(f, "coder.forge", 0, sy, sw, ICON_SHARE, "PRs & Issues", ifx cp_forge_shown(s) then EL_S_CURRENT else 0, CP_FORGE_TOGGLE);
+  }
   sy += 4.0f32;
   sy += cp_sb_toolbar(s, f, sw, sy);
   sy += cp_sb_bulk_bar(s, f, sw, sy);

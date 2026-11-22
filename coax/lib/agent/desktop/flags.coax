@@ -1,0 +1,321 @@
+// Feature flag registry for OpenAgents Desktop (macOS, Linux, Windows).
+// Single source of truth for the Inkling-only first release and all gated
+// capabilities (docs/audits/2026-11-21-openagents-desktop-inkling-first-release-audit.md).
+//
+// Every flag defaults to off for the first release so the app runs on local
+// Inkling 2 Mini alone. Turning on `experimentalFeatures` (Settings > General,
+// `--experimental`, or `OA_EXPERIMENTAL=1`) enables every flag as a developer
+// alias; individual flags turn on via `defaults write com.openagents.desktop
+// flag.NAME -bool YES`, `OA_FLAGS=name,name`, or `--flag name`.
+#authority;
+
+DC_FLAG_NONE :: -1;
+DC_FLAG_MODELS_GEMINI :: 0;
+DC_FLAG_MODELS_CLAUDE :: 1;
+DC_FLAG_MODELS_OPENROUTER :: 2;
+DC_FLAG_MODELS_ANTIGRAVITY :: 3;
+DC_FLAG_MODELS_EXTERNAL :: 4;
+DC_FLAG_MODELS_EXECUTOR :: 5;
+DC_FLAG_MODELS_INKLING_NEON :: 6;
+DC_FLAG_ACCOUNT :: 7;
+DC_FLAG_FOREMAN :: 8;
+DC_FLAG_GYM :: 9;
+DC_FLAG_WALLET :: 10;
+DC_FLAG_FORGE :: 11;
+DC_FLAG_GIT :: 12;
+DC_FLAG_SIMULATOR :: 13;
+DC_FLAG_TERMINAL :: 14;
+DC_FLAG_PREVIEW :: 15;
+DC_FLAG_VOICE :: 16;
+DC_FLAG_MCP :: 17;
+DC_FLAG_SCHEDULED :: 18;
+DC_FLAG_ENVIRONMENTS :: 19;
+DC_FLAG_PAIRING :: 20;
+DC_FLAG_USAGE :: 21;
+DC_FLAG_CUSTOMIZE :: 22;
+DC_FLAG_PROOF :: 23;
+DC_FLAG_CAPABILITIES :: 24;
+DC_FLAG_AGENTS :: 25;
+DC_FLAG_SCENES :: 26;
+DC_FLAG_RICH :: 27;
+
+DC_FLAG_COUNT :: 28;
+DC_FLAGS_ALL :: (1 << DC_FLAG_COUNT) - 1;
+DC_FLAGS_MODELS_MASK :: (1 << 7) - 1;
+
+DcFlagDef :: struct {
+  bit: int;
+  name: string;
+  default_on: bool;
+  desc: string;
+}
+
+dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
+  return [DC_FLAG_COUNT] DcFlagDef.[
+    DcFlagDef.{bit = DC_FLAG_MODELS_GEMINI, name = "models.gemini", default_on = false, desc = "Gemini cloud models, API key, sign-in probe, and Gemini sub-agent levels."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_CLAUDE, name = "models.claude", default_on = false, desc = "Claude Code models, Claude sub-agents, Claude key, and orchestrator picker."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_OPENROUTER, name = "models.openrouter", default_on = false, desc = "OpenRouter main and sub-agent models and key settings."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_ANTIGRAVITY, name = "models.antigravity", default_on = false, desc = "Antigravity CLI model entry, probe, and settings rows."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_EXTERNAL, name = "models.external", default_on = false, desc = "Codex, Cursor, ACP Registry providers, handoff, and multi-model fan-out."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_EXECUTOR, name = "models.executor", default_on = false, desc = "Hybrid Executor, compiled weight modules, Local Pylon, settled sats, and rollout."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_INKLING_NEON, name = "models.inklingNeon", default_on = false, desc = "Inkling + Neon hybrid routing and Inkling as a cloud sub-agent."},
+    DcFlagDef.{bit = DC_FLAG_ACCOUNT, name = "account", default_on = false, desc = "OpenAgents account login, profile page, and device key linking."},
+    DcFlagDef.{bit = DC_FLAG_FOREMAN, name = "foreman", default_on = false, desc = "Foreman chat, sidebar row, menu, permission tiers, and local control server."},
+    DcFlagDef.{bit = DC_FLAG_GYM, name = "gym", default_on = false, desc = "Gym workbench, Benchmarks, Terminal-Bench, PLE 3D, and Lean RH modes."},
+    DcFlagDef.{bit = DC_FLAG_WALLET, name = "wallet", default_on = false, desc = "Spark Bitcoin/Lightning wallet, RPC, Nostr identity, and settle helper."},
+    DcFlagDef.{bit = DC_FLAG_FORGE, name = "forge", default_on = false, desc = "PRs & Issues sidebar view and review tours."},
+    DcFlagDef.{bit = DC_FLAG_GIT, name = "git", default_on = false, desc = "Git actions toolbar, diff viewer, checkpoints, and rewind."},
+    DcFlagDef.{bit = DC_FLAG_SIMULATOR, name = "simulator", default_on = false, desc = "iOS Simulator pane and oasim helper."},
+    DcFlagDef.{bit = DC_FLAG_TERMINAL, name = "terminal", default_on = false, desc = "Integrated multi-tab terminal pane."},
+    DcFlagDef.{bit = DC_FLAG_PREVIEW, name = "preview", default_on = false, desc = "Web preview pane and SnapShot Region."},
+    DcFlagDef.{bit = DC_FLAG_VOICE, name = "voice", default_on = false, desc = "Voice dictation, mic button, and Voice settings page."},
+    DcFlagDef.{bit = DC_FLAG_MCP, name = "mcp", default_on = false, desc = "MCP servers, OAuth sign-in, and Skills catalog."},
+    DcFlagDef.{bit = DC_FLAG_SCHEDULED, name = "scheduled", default_on = false, desc = "Scheduled tasks, webhooks, and Update Everything."},
+    DcFlagDef.{bit = DC_FLAG_ENVIRONMENTS, name = "environments", default_on = false, desc = "Remote SSH, Boats, server exposure, and keep awake."},
+    DcFlagDef.{bit = DC_FLAG_PAIRING, name = "pairing", default_on = false, desc = "Tailscale mobile device pairing listener and settings."},
+    DcFlagDef.{bit = DC_FLAG_USAGE, name = "usage", default_on = false, desc = "Usage and quota dashboard, price overrides, and per-chat cost/budget UI."},
+    DcFlagDef.{bit = DC_FLAG_CUSTOMIZE, name = "customize", default_on = false, desc = "Themes, VS Code themes, keybindings, and languages."},
+    DcFlagDef.{bit = DC_FLAG_PROOF, name = "proof", default_on = false, desc = "Thread Proof, ATIF trace export, and sync opt-in."},
+    DcFlagDef.{bit = DC_FLAG_CAPABILITIES, name = "capabilities", default_on = false, desc = "New Local Capability studio and two-arm eval."},
+    DcFlagDef.{bit = DC_FLAG_AGENTS, name = "agents", default_on = false, desc = "Agents page (Coder, Tester, Game Builder)."},
+    DcFlagDef.{bit = DC_FLAG_SCENES, name = "scenes", default_on = false, desc = "Open 3D Scene and 3D scene side panel."},
+    DcFlagDef.{bit = DC_FLAG_RICH, name = "rich", default_on = false, desc = "Prompt stash, history, side chat, and composer upgrades."},
+  ];
+}
+
+dc_flag_space :: (c: u8) -> bool #effects() {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+dc_flag_trim :: (s: string) -> string #effects(reads, traps) {
+  a := 0;
+  b := s.count;
+  while a < b && dc_flag_space(s[a]) { a += 1; }
+  while b > a && dc_flag_space(s[b - 1]) { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+dc_flag_bit :: (flag: int) -> int #effects(traps) {
+  if flag < 0 || flag >= DC_FLAG_COUNT { return 0; }
+  return 1 << flag;
+}
+
+dc_flag_on :: (mask: int, flag: int) -> bool #effects(traps) {
+  return (mask & dc_flag_bit(flag)) != 0;
+}
+
+dc_flag_set :: (mask: int, flag: int, on: bool) -> int #effects(traps) {
+  b := dc_flag_bit(flag);
+  if b == 0 { return mask & DC_FLAGS_ALL; }
+  clean := mask & DC_FLAGS_ALL;
+  if on { return clean | b; }
+  return clean & (DC_FLAGS_ALL ^ b);
+}
+
+dc_flag_find :: (name: string) -> int #effects(reads, traps) {
+  t := dc_flag_trim(name);
+  tbl := dc_flags_table();
+  for i: 0..<DC_FLAG_COUNT {
+    if tbl[i].name == t { return tbl[i].bit; }
+  }
+  return DC_FLAG_NONE;
+}
+
+dc_flag_name :: (flag: int) -> string #effects(traps) {
+  if flag < 0 || flag >= DC_FLAG_COUNT { return ""; }
+  tbl := dc_flags_table();
+  return tbl[flag].name;
+}
+
+dc_flag_desc :: (flag: int) -> string #effects(traps) {
+  if flag < 0 || flag >= DC_FLAG_COUNT { return ""; }
+  tbl := dc_flags_table();
+  return tbl[flag].desc;
+}
+
+dc_flags_defaults_of :: (tbl: [] const DcFlagDef) -> int #effects(reads, traps) {
+  m := 0;
+  for d: tbl {
+    if d.default_on { m = m | dc_flag_bit(d.bit); }
+  }
+  return m;
+}
+
+dc_flags_defaults :: () -> int #effects(reads, traps) {
+  tbl := dc_flags_table();
+  return dc_flags_defaults_of(tbl[..]);
+}
+
+dc_flags_any_extra_model :: (mask: int) -> bool #effects() {
+  return (mask & DC_FLAGS_MODELS_MASK) != 0;
+}
+
+dc_flags_apply_token :: (mask: int, raw: string) -> int #effects(reads, traps) {
+  t := dc_flag_trim(raw);
+  if t.count == 0 { return mask & DC_FLAGS_ALL; }
+  if t == "all" || t == "*" { return DC_FLAGS_ALL; }
+  if t == "none" { return 0; }
+  on := true;
+  if t[0] == '-' || t[0] == '!' {
+    on = false;
+    t = cast(string) t[1..<t.count];
+  }
+  f := dc_flag_find(t);
+  if f < 0 { return mask & DC_FLAGS_ALL; }
+  return dc_flag_set(mask, f, on);
+}
+
+dc_flags_parse_csv :: (base: int, csv: string) -> int #effects(reads, traps) {
+  m := base & DC_FLAGS_ALL;
+  i := 0;
+  while i < csv.count {   // mutant: equivalent (at i == csv.count the slice is empty and dc_flags_apply_token is a no-op)
+    e := i;
+    while e < csv.count && csv[e] != ',' { e += 1; }
+    m = dc_flags_apply_token(m, cast(string) csv[i..<e]);
+    i = e + 1;
+  }
+  return m;
+}
+
+dc_flags_parse_args :: (base: int, args_nl: string) -> int #effects(reads, traps) {
+  m := base & DC_FLAGS_ALL;
+  i := 0;
+  expect := 0;   // 1: next arg is --flag value, 2: next arg is --no-flag value
+  while i < args_nl.count {   // mutant: equivalent (at i == args_nl.count the slice is empty and continues out)
+    e := i;
+    while e < args_nl.count && args_nl[e] != '\n' { e += 1; }
+    tok := dc_flag_trim(cast(string) args_nl[i..<e]);
+    i = e + 1;
+    if tok.count == 0 { continue; }
+    if expect == 1 {
+      m = dc_flags_parse_csv(m, tok);
+      expect = 0;
+      continue;
+    }
+    if expect == 2 {
+      f := dc_flag_find(tok);
+      if f >= 0 { m = dc_flag_set(m, f, false); }
+      expect = 0;
+      continue;
+    }
+    if tok == "--experimental" {
+      m = DC_FLAGS_ALL;
+    } else if tok == "--flag" {
+      expect = 1;
+    } else if tok == "--no-flag" {
+      expect = 2;
+    } else if tok.count > 7 && cast(string) tok[0..<7] == "--flag=" {   // mutant: equivalent (tok.count == 7 has empty RHS, a no-op)
+      m = dc_flags_parse_csv(m, cast(string) tok[7..<tok.count]);
+    } else if tok.count >= 11 && cast(string) tok[0..<10] == "--no-flag=" {   // mutant: equivalent (shortest flag name is 3 chars so RHS of len 0..2 never matches a flag)
+      f := dc_flag_find(cast(string) tok[10..<tok.count]);
+      if f >= 0 { m = dc_flag_set(m, f, false); }
+    }
+  }
+  return m;
+}
+
+dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, env_experimental: string, args_nl: string) -> int #effects(reads, traps) {
+  m := dc_flags_defaults() | (defaults_mask & DC_FLAGS_ALL);
+  if experimental || dc_flag_trim(env_experimental) == "1" { m = DC_FLAGS_ALL; }
+  m = dc_flags_parse_csv(m, env_flags);
+  m = dc_flags_parse_args(m, args_nl);
+  return m;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "flag registry: all 28 flags have unique sequential bits, names, descriptions, and default off" {
+  tbl := dc_flags_table();
+  #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 28;
+  #assert dc_flags_defaults() == 0;
+  for i: 0..<DC_FLAG_COUNT {
+    #assert tbl[i].bit == i;
+    #assert tbl[i].name.count > 0 && tbl[i].desc.count > 0;
+    #assert !tbl[i].default_on;
+    #assert dc_flag_find(tbl[i].name) == i;
+    #assert dc_flag_name(i) == tbl[i].name;
+    #assert dc_flag_desc(i) == tbl[i].desc;
+    #assert dc_flag_bit(i) == (1 << i);
+    for j: i + 1..<DC_FLAG_COUNT {
+      #assert tbl[i].name != tbl[j].name;
+    }
+  }
+  sample := [2] DcFlagDef.[
+    DcFlagDef.{bit = DC_FLAG_GIT, name = "git", default_on = true, desc = "g"},
+    DcFlagDef.{bit = DC_FLAG_VOICE, name = "voice", default_on = false, desc = "v"},
+  ];
+  #assert dc_flags_defaults_of(sample[..]) == dc_flag_bit(DC_FLAG_GIT);
+  #assert dc_flag_find("") == DC_FLAG_NONE && dc_flag_find("   ") == DC_FLAG_NONE && dc_flag_find("unknown") == DC_FLAG_NONE;
+  #assert dc_flag_find(" \tgit\r\n ") == DC_FLAG_GIT;
+  #assert dc_flag_bit(-1) == 0 && dc_flag_bit(DC_FLAG_COUNT) == 0;
+  #assert dc_flag_name(-1) == "" && dc_flag_name(DC_FLAG_COUNT) == "";
+  #assert dc_flag_desc(-1) == "" && dc_flag_desc(DC_FLAG_COUNT) == "";
+}
+
+#test "flag bit manipulation, extra-model predicate, CSV and CLI arg parsing" {
+  m := dc_flag_set(0, DC_FLAG_GIT, true);
+  #assert dc_flag_on(m, DC_FLAG_GIT) && !dc_flag_on(m, DC_FLAG_VOICE);
+  #assert !dc_flags_any_extra_model(m);
+  #assert dc_flag_set(m, DC_FLAG_GIT, false) == 0;
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), -1, true) == DC_FLAGS_ALL;
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), DC_FLAG_COUNT, true) == DC_FLAGS_ALL;
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), DC_FLAG_GIT, false) == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_GIT));
+
+  // Extra-model mask covers bits 0..6 and nothing above
+  for i: 0..<7 { #assert dc_flags_any_extra_model(dc_flag_bit(i)); }
+  for i: 7..<DC_FLAG_COUNT { #assert !dc_flags_any_extra_model(dc_flag_bit(i)); }
+
+  // CSV parsing (OA_FLAGS)
+  c1 := dc_flags_parse_csv(0, "git, terminal , models.claude, bogus");
+  #assert dc_flag_on(c1, DC_FLAG_GIT) && dc_flag_on(c1, DC_FLAG_TERMINAL) && dc_flag_on(c1, DC_FLAG_MODELS_CLAUDE);
+  #assert dc_flags_any_extra_model(c1) && !dc_flag_on(c1, DC_FLAG_WALLET);
+  c2 := dc_flags_parse_csv(c1, "-git,!terminal");
+  #assert !dc_flag_on(c2, DC_FLAG_GIT) && !dc_flag_on(c2, DC_FLAG_TERMINAL) && dc_flag_on(c2, DC_FLAG_MODELS_CLAUDE);
+  #assert dc_flags_parse_csv(0, "all") == DC_FLAGS_ALL;
+  #assert dc_flags_parse_csv(0, "*") == DC_FLAGS_ALL;
+  #assert dc_flags_parse_csv(DC_FLAGS_ALL, "none") == 0;
+  #assert dc_flags_parse_csv(0, " , , ") == 0;
+  #assert dc_flags_parse_csv(1 << 30, "") == 0;
+  #assert dc_flags_apply_token((1 << 30) | dc_flag_bit(DC_FLAG_GIT), "") == dc_flag_bit(DC_FLAG_GIT);
+  #assert dc_flags_apply_token((1 << 30) | dc_flag_bit(DC_FLAG_GIT), "unknown") == dc_flag_bit(DC_FLAG_GIT);
+
+  // CLI args parsing (--flag, --flag=, --no-flag, --no-flag=, --experimental)
+  a1 := dc_flags_parse_args(0, "OpenAgents\n--flag\ngit,voice\n--flag=models.gemini\n--other\n");
+  #assert dc_flag_on(a1, DC_FLAG_GIT) && dc_flag_on(a1, DC_FLAG_VOICE) && dc_flag_on(a1, DC_FLAG_MODELS_GEMINI);
+  #assert !dc_flag_on(a1, DC_FLAG_FOREMAN);
+  a2 := dc_flags_parse_args(a1, "--no-flag\nvoice\n--no-flag=git\n--no-flag=unknown\n--no-flag\nunknown\n");
+  #assert !dc_flag_on(a2, DC_FLAG_VOICE) && !dc_flag_on(a2, DC_FLAG_GIT) && dc_flag_on(a2, DC_FLAG_MODELS_GEMINI);
+  // 1-char value after --flag and --flag=* plus clearing bit 0 (models.gemini) via both --no-flag forms
+  #assert dc_flags_parse_args(0, "--flag\n*\n") == DC_FLAGS_ALL;
+  #assert dc_flags_parse_args(0, "--flag=*\n") == DC_FLAGS_ALL;
+  #assert dc_flags_parse_args(DC_FLAGS_ALL, "--no-flag\nmodels.gemini\n") == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_MODELS_GEMINI));
+  #assert dc_flags_parse_args(DC_FLAGS_ALL, "--no-flag=models.gemini\n") == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_MODELS_GEMINI));
+  #assert dc_flags_parse_args(0, "\n--experimental\n") == DC_FLAGS_ALL;
+  #assert dc_flags_parse_args(1 << 30, "") == 0;
+}
+
+#test "flag resolution: release default is 0; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
+  // Release default: every flag off, Inkling-only
+  r0 := dc_flags_resolve(false, 0, "", "", "");
+  #assert r0 == 0 && !dc_flags_any_extra_model(r0);
+
+  // Individual defaults bitmask masked to valid bits
+  r1 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT) | (1 << 35), "", "", "");
+  #assert r1 == dc_flag_bit(DC_FLAG_GIT);
+
+  // experimentalFeatures default alias turns every flag on
+  #assert dc_flags_resolve(true, 0, "", "", "") == DC_FLAGS_ALL;
+
+  // OA_EXPERIMENTAL=1 alias turns every flag on; "0" does not
+  #assert dc_flags_resolve(false, 0, "", "1", "") == DC_FLAGS_ALL;
+  #assert dc_flags_resolve(false, 0, "", " 1 ", "") == DC_FLAGS_ALL;
+  #assert dc_flags_resolve(false, 0, "", "0", "") == 0;
+
+  // --experimental turns all on; subsequent --no-flag can narrow it
+  r2 := dc_flags_resolve(false, 0, "", "", "--experimental\n--no-flag=wallet\n");
+  #assert r2 == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_WALLET));
+
+  // Env and CLI compose with defaults
+  r3 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT), "terminal", "", "--flag\npreview");
+  #assert r3 == (dc_flag_bit(DC_FLAG_GIT) | dc_flag_bit(DC_FLAG_TERMINAL) | dc_flag_bit(DC_FLAG_PREVIEW));
+}

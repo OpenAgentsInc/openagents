@@ -43,7 +43,8 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_WALLET, id = "set.wallet.limit", name = "Daily spend limit", terms = "limit cap daily spend sats budget"},
     CpSetEntry.{page = CP_PG_WALLET, id = "set.wallet.backup", name = "Backup & recovery", terms = "backup seed words bip39 recovery keychain"},
     CpSetEntry.{page = CP_PG_WALLET, id = "set.wallet.npub", name = "Nostr identity", terms = "nostr npub nip06 key identity"},
-    CpSetEntry.{page = CP_PG_MODELS, id = "", name = "Models", terms = "providers keys gemini antigravity agy"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "", name = "Models", terms = "local inkling weights metal"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.local", name = "Inkling 2 Mini (Local)", terms = "local model inkling gguf download weights psionic metal sha256"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini", name = "Gemini API key", terms = "gemini google api key microcoder aistudio"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini.auth", name = "Gemini sign-in", terms = "vertex adc gcloud google cloud gemini sign-in credentials"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.orch", name = "New chats start on", terms = "claude neon gemini main model orchestrator default agent sdk"},
@@ -60,7 +61,6 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.codex", name = "Codex CLI", terms = "codex openai chatgpt cli oauth login provider"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.cursor", name = "Cursor ACP CLI", terms = "cursor agent acp cli oauth login provider"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.acp", name = "ACP Registry", terms = "acp registry custom agent opencode kiro cli binary provider"},
-    CpSetEntry.{page = CP_PG_MODELS, id = "set.local", name = "Local Models (Inkling 2 Mini)", terms = "local model inkling download gguf metal sha256 weights"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.hybrid", name = "Hybrid Executor (hybrid-exec-v1)", terms = "executor hybrid replay exact sha256 psionic local deterministic"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.exec.modules", name = "Compiled Weight Modules", terms = "executor weight modules safetensors diff schema dep budget sha256 verify"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.pylon.state", name = "Local Pylon", terms = "pylon local state executing validating training off self-testing network"},
@@ -75,7 +75,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_ABOUT, id = "set.version", name = "Version", terms = "about build"},
     CpSetEntry.{page = CP_PG_ABOUT, id = "set.update", name = "Check for updates", terms = "update upgrade release install restart"},
     CpSetEntry.{page = CP_PG_ABOUT, id = "", name = "About & updates", terms = "about"},
-    CpSetEntry.{page = CP_PG_GENERAL, id = "set.exp", name = "Experimental features", terms = "experimental labs flag account login gym foreman"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.exp", name = "Experimental features", terms = "experimental labs flags"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr", name = "Agent instructions", terms = "system prompt instructions rules commit push git agents.md claude.md default"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr.reset", name = "Reset agent instructions", terms = "default restore instructions system prompt"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.notify", name = "Notifications", terms = "notifications alerts sound chime badge dock bell"},
@@ -95,7 +95,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.mic", name = "Microphone", terms = "voice mic input audio device permission"},
     CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.fillers", name = "Strip filler words", terms = "voice filler um uh like you know cleanup"},
     CpSetEntry.{page = CP_PG_VOICE, id = "set.voice.dict", name = "Custom dictionary", terms = "voice dictionary vocabulary custom words spelling"},
-    CpSetEntry.{page = CP_PG_CONNECTIONS, id = "", name = "Connections", terms = "connections ssh remote boat wsl wsl2 tailscale lan pairing mobile keep awake sleep"},
+    CpSetEntry.{page = CP_PG_CONNECTIONS, id = "", name = "Connections", terms = "connections"},
     CpSetEntry.{page = CP_PG_CONNECTIONS, id = "set.env.active", name = "Active environment", terms = "environment ssh host boat wsl2 remote folder"},
     CpSetEntry.{page = CP_PG_CONNECTIONS, id = "set.env.expose", name = "Server exposure", terms = "exposure local lan tailscale network daemon"},
     CpSetEntry.{page = CP_PG_CONNECTIONS, id = "set.env.pair", name = "Pair mobile device", terms = "pair mobile phone ios qr code authorized devices revoke"},
@@ -113,8 +113,40 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.reset", name = "Reset keybindings", terms = "reset default shortcuts keybindings"},
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.0", name = "Customize shortcuts", terms = "rebind shortcut when editorFocus terminalFocus filePaneFocus settingsFocus"}];
 }
-// Whether a page shows: Foreman's and Account's are experimental features (General's last row).
-cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
+// Whether a settings page is visible for the active flag bitmask.
+// In the Inkling-only first release (flags == 0): only General, Models (Local), and About & updates show.
+cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
+  if page == CP_PG_GENERAL || page == CP_PG_MODELS || page == CP_PG_ABOUT { return true; }
+  if page == CP_PG_FOREMAN { return dc_flag_on(flags, DC_FLAG_FOREMAN); }
+  if page == CP_PG_ACCOUNT { return dc_flag_on(flags, DC_FLAG_ACCOUNT); }
+  if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
+  if page == CP_PG_USAGE { return dc_flag_on(flags, DC_FLAG_USAGE); }
+  if page == CP_PG_MCP || page == CP_PG_SKILLS { return dc_flag_on(flags, DC_FLAG_MCP); }
+  if page == CP_PG_VOICE { return dc_flag_on(flags, DC_FLAG_VOICE); }
+  if page == CP_PG_CONNECTIONS { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS) || dc_flag_on(flags, DC_FLAG_PAIRING); }
+  if page == CP_PG_SCHED { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
+  if page == CP_PG_APPEARANCE || page == CP_PG_KEYBINDINGS { return dc_flag_on(flags, DC_FLAG_CUSTOMIZE); }
+  return false;
+}
+// Whether a specific settings entry (page or row) is visible and searchable for the active flags.
+cp_set_entry_ok_flags :: (flags: int, e: CpSetEntry) -> bool {
+  if !cp_set_page_ok_flags(flags, e.page) { return false; }
+  if e.page == CP_PG_MODELS {
+    if e.id == "set.gemini" || e.id == "set.gemini.auth" { return dc_flag_on(flags, DC_FLAG_MODELS_GEMINI); }
+    if e.id == "set.orch" || e.id == "set.orch.model" || e.id == "set.claude" || e.id == "set.claude.effort.1" { return dc_flag_on(flags, DC_FLAG_MODELS_CLAUDE); }
+    if e.id == "set.or" || e.id == "set.or.main" || e.id == "set.or.sub" { return dc_flag_on(flags, DC_FLAG_MODELS_OPENROUTER); }
+    if e.id == "set.agy.status" || e.id == "set.agy.mode" || e.id == "set.agy.model" || e.id == "set.agy.auth" { return dc_flag_on(flags, DC_FLAG_MODELS_ANTIGRAVITY); }
+    if e.id == "set.codex" || e.id == "set.cursor" || e.id == "set.acp" { return dc_flag_on(flags, DC_FLAG_MODELS_EXTERNAL); }
+    if e.id == "set.exec.hybrid" || e.id == "set.exec.modules" || e.id == "set.pylon.state" || e.id == "set.pylon.contrib" || e.id == "set.pylon.sats" || e.id == "set.pylon.release" { return dc_flag_on(flags, DC_FLAG_MODELS_EXECUTOR); }
+  } else if e.page == CP_PG_CONNECTIONS {
+    if e.id == "set.env.active" || e.id == "set.env.awake" { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS); }
+    if e.id == "set.env.expose" || e.id == "set.env.pair" { return dc_flag_on(flags, DC_FLAG_PAIRING); }
+  } else if e.page == CP_PG_ABOUT {
+    if e.id == "set.update.all" { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
+  }
+  return true;
+}
+cp_set_page_ok :: (experimental: bool, page: int) -> bool { return cp_set_page_ok_flags(ifx experimental then DC_FLAGS_ALL else 0, page); }
 cp_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
 // Where needle starts in text, by letters (any case); -1 when it doesn't.
 cp_find_ci :: (text: string, needle: string) -> int {
@@ -139,16 +171,19 @@ cp_set_score :: (e: CpSetEntry, q: string) -> int {
   return 0;
 }
 // The search's results, best first, into out (entry indexes), every page's. Returns how many.
-cp_set_hits :: (q: string, out: [] int) -> int { return cp_set_hits_in(q, out, true); }
-// The same, leaving out the experimental pages' entries unless experimental.
-cp_set_hits_in :: (q: string, out: [] int, experimental: bool) -> int {
+cp_set_hits :: (q: string, out: [] int) -> int { return cp_set_hits_flags(q, out, DC_FLAGS_ALL); }
+// The same, filtered to entries whose feature flag is on.
+cp_set_hits_flags :: (q: string, out: [] int, flags: int) -> int {
   if q.count == 0 { return 0; }
   es := cp_set_entries(); n := 0;
   for want: 0..<3 {
     score := 3 - want;
-    for e, i: es { if n < out.count && cp_set_page_ok(experimental, e.page) && cp_set_score(e, q) == score { out[n] = i; n += 1; } }
+    for e, i: es { if n < out.count && cp_set_entry_ok_flags(flags, e) && cp_set_score(e, q) == score { out[n] = i; n += 1; } }
   }
   return n;
+}
+cp_set_hits_in :: (q: string, out: [] int, experimental: bool) -> int {
+  return cp_set_hits_flags(q, out, ifx experimental then DC_FLAGS_ALL else 0);
 }
 cp_set_query :: (s: [] CoderPage) -> string { return cast(string) s[0].set_query[0..<s[0].set_query_n]; }
 
@@ -157,7 +192,7 @@ cp_set_query :: (s: [] CoderPage) -> string { return cast(string) s[0].set_query
 // press gives it to the search) and comes back to it after; the host is asked to move it.
 cp_settings_show :: (s: [] CoderPage, open: bool, page: int) {
   if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { s[0].set_scroll = 0; } s[0].set_page = page; }
-  if open && !cp_set_page_ok(s[0].experimental, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
+  if open && !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
   if open == s[0].set_open { return; }
   s[0].set_open = open; s[0].model_menu = false; s[0].usage[0].popover_open = false;
   if !open { s[0].set_query_n = 0; s[0].set_target_n = 0; }
@@ -192,93 +227,105 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if ex == 0 || ex == 1 { coder_page_experimental_set(s, ex == 1); s[0].ask = CP_ASK_EXPERIMENTAL; return true; }
   if id == "set.instr.a" { s[0].ask = CP_ASK_INSTRUCTIONS; return true; }
   if id == "set.instr.reset.a" { s[0].ask = CP_ASK_INSTRUCTIONS_RESET; return true; }
-  if id == "set.gemini.a" { s[0].ask = CP_ASK_GEMINI_KEY; return true; }
   if id == "set.local.a" { s[0].ask = CP_ASK_LOCAL_MODELS; return true; }
-  if id == "set.exec.hybrid.a" || id == "set.exec.modules.a" { s[0].ask = CP_ASK_EXECUTOR_MODELS; return true; }
-  if id == "set.pylon.state.a" || id == "set.pylon.contrib.a" || id == "set.pylon.sats.a" || id == "set.pylon.release.a" { s[0].ask = CP_ASK_PYLON_EXECUTOR; return true; }
-  if id == "set.wallet.status.a" { s[0].ask = ifx s[0].set_wallet_ready then CP_ASK_WALLET_REFRESH else CP_ASK_WALLET_CONNECT; return true; }
-  if id == "set.wallet.receive.a" { s[0].ask = CP_ASK_WALLET_RECEIVE; return true; }
-  if id == "set.wallet.send.a" { s[0].ask = CP_ASK_WALLET_SEND; return true; }
-  if id == "set.wallet.limit.a" { s[0].ask = CP_ASK_WALLET_LIMIT; return true; }
-  if id == "set.wallet.backup.a" { s[0].ask = CP_ASK_WALLET_BACKUP; return true; }
-  if id == "set.usage.refresh.a" { s[0].ask = CP_ASK_USAGE_REFRESH; return true; }
-  if id == "set.usage.prices.a" { s[0].ask = CP_ASK_USAGE_PRICES; return true; }
-  upool := cp_number(id, "set.usage.pool.");
-  if upool == 0 || upool == 1 { s[0].usage[0].pool_enabled = (upool == 1); s[0].ask = CP_ASK_USAGE_POOL; return true; }
-  urec := cp_number(id, "set.usage.recovery.");
-  if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
-  if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
-  eslot := cp_number(id, "set.claude.effort.");
-  if eslot >= 0 && eslot < CP_CLAUDE_MODELS && id.count == "set.claude.effort.0.0".count {
-    elevel := cast(int) (id[id.count - 1] - '0');
-    if elevel < 0 || elevel >= CP_CLAUDE_EFFORTS { return false; }
-    coder_page_claude_effort_set(s, eslot, elevel); s[0].ask = CP_ASK_CLAUDE_EFFORT; return true;
+  if id == "set.gemini.a" { if !cp_flag(s, DC_FLAG_MODELS_GEMINI) { return false; } s[0].ask = CP_ASK_GEMINI_KEY; return true; }
+  if id == "set.exec.hybrid.a" || id == "set.exec.modules.a" { if !cp_flag(s, DC_FLAG_MODELS_EXECUTOR) { return false; } s[0].ask = CP_ASK_EXECUTOR_MODELS; return true; }
+  if id == "set.pylon.state.a" || id == "set.pylon.contrib.a" || id == "set.pylon.sats.a" || id == "set.pylon.release.a" { if !cp_flag(s, DC_FLAG_MODELS_EXECUTOR) { return false; } s[0].ask = CP_ASK_PYLON_EXECUTOR; return true; }
+  if id == "set.wallet.status.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = ifx s[0].set_wallet_ready then CP_ASK_WALLET_REFRESH else CP_ASK_WALLET_CONNECT; return true; }
+  if id == "set.wallet.receive.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_RECEIVE; return true; }
+  if id == "set.wallet.send.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_SEND; return true; }
+  if id == "set.wallet.limit.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_LIMIT; return true; }
+  if id == "set.wallet.backup.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_BACKUP; return true; }
+  if cp_flag(s, DC_FLAG_USAGE) {
+    if id == "set.usage.refresh.a" { s[0].ask = CP_ASK_USAGE_REFRESH; return true; }
+    if id == "set.usage.prices.a" { s[0].ask = CP_ASK_USAGE_PRICES; return true; }
+    upool := cp_number(id, "set.usage.pool.");
+    if upool == 0 || upool == 1 { s[0].usage[0].pool_enabled = (upool == 1); s[0].ask = CP_ASK_USAGE_POOL; return true; }
+    urec := cp_number(id, "set.usage.recovery.");
+    if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
   }
-  omodel := cp_number(id, "set.orch.model.");
-  if omodel >= 0 && omodel < CP_CLAUDE_MODELS { coder_page_orchestrator_set(s, s[0].orch_claude, omodel); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
-  omain := cp_number(id, "set.orch.");
-  if id.count == "set.orch.0".count && (omain == 0 || (omain == 1 && s[0].claude)) { coder_page_orchestrator_set(s, omain == 1, s[0].orch_model); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
-  if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
-  if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
-  amode := cp_number(id, "set.agy.mode.");
-  if amode >= 0 && amode <= 2 { s[0].set_agy_mode = amode; s[0].ask = CP_ASK_AGY_MODE; return true; }
-  if id == "set.agy.auth.a" || id == "set.agy.auth" { s[0].ask = CP_ASK_AGY_AUTH; return true; }
-  // Settings -> MCP (#13879)
-  if id == "set.mcp.add.a" { s[0].ask = CP_ASK_MCP_ADD; return true; }
-  msrv := cp_number(id, "set.mcp.srv.");
-  if msrv >= 0 && msrv < s[0].mcp_skills[0].nservers && id.count >= 2 && id[id.count - 2] == '.' {
-    opt := cast(int) (id[id.count - 1] - '0');
-    s[0].mcp_skills[0].mcp_target = msrv;
-    if opt == 0 || opt == 1 {
-      want := opt == 1;
-      if s[0].mcp_skills[0].servers[msrv].enabled != want { _ = cp_mcp_toggle(s, msrv); }
-      s[0].ask = CP_ASK_MCP_TOGGLE;
-      return true;
+  if cp_flag(s, DC_FLAG_MODELS_CLAUDE) {
+    if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
+    eslot := cp_number(id, "set.claude.effort.");
+    if eslot >= 0 && eslot < CP_CLAUDE_MODELS && id.count == "set.claude.effort.0.0".count {
+      elevel := cast(int) (id[id.count - 1] - '0');
+      if elevel < 0 || elevel >= CP_CLAUDE_EFFORTS { return false; }
+      coder_page_claude_effort_set(s, eslot, elevel); s[0].ask = CP_ASK_CLAUDE_EFFORT; return true;
     }
-    if opt == 2 { s[0].ask = CP_ASK_MCP_OAUTH; return true; }
-    if opt == 3 { s[0].ask = CP_ASK_MCP_REMOVE; return true; }
+    omodel := cp_number(id, "set.orch.model.");
+    if omodel >= 0 && omodel < CP_CLAUDE_MODELS { coder_page_orchestrator_set(s, s[0].orch_claude, omodel); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
+    omain := cp_number(id, "set.orch.");
+    if id.count == "set.orch.0".count && (omain == 0 || (omain == 1 && s[0].claude)) { coder_page_orchestrator_set(s, omain == 1, s[0].orch_model); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
   }
-  // Settings -> Skills (#13879)
-  mskill := cp_number(id, "set.skill.");
-  if mskill >= 0 && mskill < s[0].mcp_skills[0].nskills && id.count >= 2 && id[id.count - 2] == '.' {
-    opt := cast(int) (id[id.count - 1] - '0');
-    if opt == 0 || opt == 1 {
-      s[0].mcp_skills[0].skill_target = mskill;
-      want := opt == 1;
-      if s[0].mcp_skills[0].skills[mskill].enabled != want { _ = cp_skills_toggle(s, mskill); }
-      s[0].ask = CP_ASK_SKILL_TOGGLE;
-      return true;
+  if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { if !cp_flag(s, DC_FLAG_MODELS_OPENROUTER) { return false; } s[0].ask = CP_ASK_OPENROUTER; return true; }
+  if cp_flag(s, DC_FLAG_MODELS_ANTIGRAVITY) {
+    if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
+    amode := cp_number(id, "set.agy.mode.");
+    if amode >= 0 && amode <= 2 { s[0].set_agy_mode = amode; s[0].ask = CP_ASK_AGY_MODE; return true; }
+    if id == "set.agy.auth.a" || id == "set.agy.auth" { s[0].ask = CP_ASK_AGY_AUTH; return true; }
+  }
+  // Settings -> MCP & Skills (#13879)
+  if cp_flag(s, DC_FLAG_MCP) {
+    if id == "set.mcp.add.a" { s[0].ask = CP_ASK_MCP_ADD; return true; }
+    msrv := cp_number(id, "set.mcp.srv.");
+    if msrv >= 0 && msrv < s[0].mcp_skills[0].nservers && id.count >= 2 && id[id.count - 2] == '.' {
+      opt := cast(int) (id[id.count - 1] - '0');
+      s[0].mcp_skills[0].mcp_target = msrv;
+      if opt == 0 || opt == 1 {
+        want := opt == 1;
+        if s[0].mcp_skills[0].servers[msrv].enabled != want { _ = cp_mcp_toggle(s, msrv); }
+        s[0].ask = CP_ASK_MCP_TOGGLE;
+        return true;
+      }
+      if opt == 2 { s[0].ask = CP_ASK_MCP_OAUTH; return true; }
+      if opt == 3 { s[0].ask = CP_ASK_MCP_REMOVE; return true; }
+    }
+    mskill := cp_number(id, "set.skill.");
+    if mskill >= 0 && mskill < s[0].mcp_skills[0].nskills && id.count >= 2 && id[id.count - 2] == '.' {
+      opt := cast(int) (id[id.count - 1] - '0');
+      if opt == 0 || opt == 1 {
+        s[0].mcp_skills[0].skill_target = mskill;
+        want := opt == 1;
+        if s[0].mcp_skills[0].skills[mskill].enabled != want { _ = cp_skills_toggle(s, mskill); }
+        s[0].ask = CP_ASK_SKILL_TOGGLE;
+        return true;
+      }
     }
   }
-  if id == "set.codex.a" || id == "set.codex" { s[0].ask = CP_ASK_CODEX; return true; }
-  if id == "set.cursor.a" || id == "set.cursor" { s[0].ask = CP_ASK_CURSOR; return true; }
-  if id == "set.acp.a" || id == "set.acp" { s[0].ask = CP_ASK_ACP_REGISTRY; return true; }
+  if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) {
+    if id == "set.codex.a" || id == "set.codex" { s[0].ask = CP_ASK_CODEX; return true; }
+    if id == "set.cursor.a" || id == "set.cursor" { s[0].ask = CP_ASK_CURSOR; return true; }
+    if id == "set.acp.a" || id == "set.acp" { s[0].ask = CP_ASK_ACP_REGISTRY; return true; }
+  }
   // Settings -> Voice (#13882)
-  vb := cp_number(id, "set.voice.backend.");
-  if vb == CP_VOICE_BACKEND_APPLE || vb == CP_VOICE_BACKEND_WHISPER { s[0].voice[0].backend = vb; s[0].ask = CP_ASK_VOICE_BACKEND; return true; }
-  vm := cp_number(id, "set.voice.mode.");
-  if vm == CP_VOICE_MODE_TOGGLE || vm == CP_VOICE_MODE_HOLD { s[0].voice[0].mode = vm; s[0].ask = CP_ASK_VOICE_PREFS; return true; }
-  vf := cp_number(id, "set.voice.fillers.");
-  if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
-  if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
-  if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
+  if cp_flag(s, DC_FLAG_VOICE) {
+    vb := cp_number(id, "set.voice.backend.");
+    if vb == CP_VOICE_BACKEND_APPLE || vb == CP_VOICE_BACKEND_WHISPER { s[0].voice[0].backend = vb; s[0].ask = CP_ASK_VOICE_BACKEND; return true; }
+    vm := cp_number(id, "set.voice.mode.");
+    if vm == CP_VOICE_MODE_TOGGLE || vm == CP_VOICE_MODE_HOLD { s[0].voice[0].mode = vm; s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+    vf := cp_number(id, "set.voice.fillers.");
+    if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+    if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
+    if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
+  }
   // Settings -> Connections (#13883)
-  if cp_env_settings_press(s, id) { return true; }
+  if (cp_flag(s, DC_FLAG_ENVIRONMENTS) || cp_flag(s, DC_FLAG_PAIRING)) && cp_env_settings_press(s, id) { return true; }
   // Settings -> Scheduled Tasks & About -> Update Everything (#13885)
-  if cp_settings_sched_press(s, id) { return true; }
+  if cp_flag(s, DC_FLAG_SCHEDULED) && cp_settings_sched_press(s, id) { return true; }
   // Settings -> Appearance & Keybindings (#13887)
-  if cp_cust_settings_press(s, id) { return true; }
+  if cp_flag(s, DC_FLAG_CUSTOMIZE) && cp_cust_settings_press(s, id) { return true; }
   if id == "set.update.a" {
     st := s[0].update_state;
     s[0].ask = ifx st == CP_UPD_AVAILABLE || st == CP_UPD_READY then CP_ASK_UPDATE else CP_ASK_CHECK_UPDATES;
     return true;
   }
-  if !s[0].experimental { return false; }   // Foreman's rows and Log in below are experimental
-  tier := cp_number(id, "set.tier.");
-  if tier >= 0 && tier <= CP_FOREMAN_TIER_AUTO { s[0].set_tier = tier; s[0].ask = CP_ASK_TIER; return true; }
-  if id == "set.audit.a" { s[0].ask = CP_ASK_AUDIT; return true; }
-  if id == "set.clear.a" { s[0].ask = CP_ASK_CLEAR_FOREMAN; return true; }
-  if id == "set.login" { s[0].ask = CP_ASK_LOGIN; return true; }
+  if cp_flag(s, DC_FLAG_FOREMAN) {
+    tier := cp_number(id, "set.tier.");
+    if tier >= 0 && tier <= CP_FOREMAN_TIER_AUTO { s[0].set_tier = tier; s[0].ask = CP_ASK_TIER; return true; }
+    if id == "set.audit.a" { s[0].ask = CP_ASK_AUDIT; return true; }
+    if id == "set.clear.a" { s[0].ask = CP_ASK_CLEAR_FOREMAN; return true; }
+  }
+  if cp_flag(s, DC_FLAG_ACCOUNT) && id == "set.login" { s[0].ask = CP_ASK_LOGIN; return true; }
   return false;
 }
 
@@ -308,7 +355,7 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   if q.count > 0 {
     // the results stand in the pages' place
     hits: [CP_SET_HITS] int;
-    n := cp_set_hits_in(q, hits[..], s[0].experimental);
+    n := cp_set_hits_flags(q, hits[..], s[0].flags);
     es := cp_set_entries(); icons := CP_SET_ICON;
     ry += set_nav_head(f, "set.found", x, ry, w, ifx n > 0 then "Settings found" else "No settings match.") + t.list_gap;
     hb: [24] u8;
@@ -323,7 +370,7 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
     headed := -1;   // the group whose heading is drawn last: a group with no page shown has none
     for i: 0..<CP_SET_PAGES {
       p := order[i];
-      if !cp_set_page_ok(s[0].experimental, p) { continue; }
+      if !cp_set_page_ok_flags(s[0].flags, p) { continue; }
       if within[i] != headed {
         headed = within[i];
         gn := el_put(gb[..], 0, "set.group."); gn = el_put_i(gb[..], gn, within[i]);
@@ -405,134 +452,142 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
     y += cp_set_group(s, f, "set.instr.group", x, y, w, irows[..]);
   } else if page == CP_PG_MODELS {
-    y += set_page_head(f, "set.title", x, y, w, names[page], "The keys and models Microcoder and its sub-agents run on.") + t.block_gap;
-    gemini := ifx s[0].set_gemini_n > 0 then sheet_pool(sh, cast(string) s[0].set_gemini[0..<s[0].set_gemini_n]) else "Not set";
-    y += set_section_head(f, "set.gemini.head", x, y, w, "Gemini", "Microcoder runs Gemini models on Vertex AI when this Mac has a Google Cloud service account, else on a Gemini API key.") + t.section_gap;
-    gauth := ifx s[0].set_gauth_n > 0 then sheet_pool(sh, cast(string) s[0].set_gauth[0..<s[0].set_gauth_n]) else "None found";
-    gone: [2] SetRow;
-    gone[0] = SetRow.{id = "set.gemini.auth", name = "Signed in with",
-      desc = "Vertex AI: the service account in ~/.openagents/coder/antigravity.env or ~/work/.secrets/vertex-sa-inference.json, through gcloud. Else the key below.",
-      value = gauth, kind = SET_ROW_PLAIN};
-    gone[1] = SetRow.{id = "set.gemini", name = "Gemini API key", desc = "Paste a key from Google AI Studio. Kept in a file only you can read.",
-      value = gemini, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.gemini.group", x, y, w, gone[..]) + t.block_gap;
-    claude := ifx s[0].set_claude_n > 0 then sheet_pool(sh, cast(string) s[0].set_claude[0..<s[0].set_claude_n]) else "Not set";
-    y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "A chat can run on Claude through Claude Code on this computer, and any chat can hand tasks to Claude sub-agents: Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2.") + t.section_gap;
-    one: [3 + CP_CLAUDE_MODELS] SetRow; cn := 0;
-    // the model new chats start on; a chat's own picker still changes it for that chat
-    on_claude := s[0].orch_claude && s[0].claude;
-    one[cn] = SetRow.{id = "set.orch", name = "New chats start on",
-      desc = ifx !s[0].claude then "Claude Code is not installed on this computer. To install it, run: curl -fsSL https://claude.ai/install.sh | bash"
-             else ifx on_claude then "Claude runs each new chat and hands tasks to sub-agents. Change one chat's model in its composer."
-             else "Gemini 4 Neon runs each new chat and hands tasks to sub-agents. Change one chat's model in its composer.",
-      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx on_claude then 1 else 0, action = CP_SET_ACT, state = ifx s[0].claude then 0 else EL_S_DISABLED};
-    one[cn].options[0] = "Gemini 4 Neon"; one[cn].options[1] = "Claude";
-    cn += 1;
-    if s[0].claude {
-      shorts := CP_CLAUDE_SHORT;
-      om := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
-      one[cn] = SetRow.{id = "set.orch.model", name = "Claude model",
-        desc = ifx on_claude then "The Claude model new chats start on." else "The Claude model new chats start on when Claude is picked above.",
-        kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_MODELS, chosen = om, action = CP_SET_ACT};
-      for ci: 0..<CP_CLAUDE_MODELS { one[cn].options[ci] = shorts[ci]; }
-      cn += 1;
-    }
-    if s[0].claude {
-      // each Claude model's thinking level: a chat on it starts there, and a sub-agent on it runs there
-      enames := [CP_CLAUDE_MODELS] string.["Fable 5.2 thinking", "Opus 5.5 thinking", "Sonnet 5.5 thinking", "Haiku 5.5 thinking"];
-      eids := [CP_CLAUDE_MODELS] string.["set.claude.effort.0", "set.claude.effort.1", "set.claude.effort.2", "set.claude.effort.3"];
-      elabels := CP_CLAUDE_EFFORT_LABEL;
-      for ek: 0..<CP_CLAUDE_MODELS {
-        one[cn] = SetRow.{id = eids[ek], name = enames[ek],
-          desc = ifx ek == 0 then "How hard the model thinks, in a chat and as a sub-agent. A chat's composer can pick another level for that chat." else "",
-          kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_EFFORTS, chosen = cp_claude_effort(s, ek), action = CP_SET_ACT};
-        for ei: 0..<CP_CLAUDE_EFFORTS { one[cn].options[ei] = elabels[ei]; }
-        cn += 1;
-      }
-    }
-    one[cn] = SetRow.{id = "set.claude", name = "Claude key", desc = "Claude chats and sub-agents use it in place of the Claude Code login on this computer.",
-      value = claude, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
-    cn += 1;
-    y += cp_set_group(s, f, "set.claude.group", x, y, w, one[0..<cn]) + t.block_gap;
-    orkey := ifx s[0].set_orkey_n > 0 then sheet_pool(sh, cast(string) s[0].set_orkey[0..<s[0].set_orkey_n]) else "Not set";
-    y += set_section_head(f, "set.or.head", x, y, w, "OpenRouter", "Run Microcoder or its sub-agents on an OpenRouter model that takes a strict JSON schema.") + t.section_gap;
-    rows: [3] SetRow;
-    rows[0] = SetRow.{id = "set.or", name = "OpenRouter key", desc = "Kept in a file only you can read.", value = orkey, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
-    rows[1] = SetRow.{id = "set.or.main", name = "Model for Microcoder", desc = "Joins the composer's model picker.", value = sheet_pool(sh, cp_or_shown(cp_or_main(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
-    rows[2] = SetRow.{id = "set.or.sub", name = "Model for sub-agents", desc = "One more level Microcoder can hand tasks to.", value = sheet_pool(sh, cp_or_shown(cp_or_sub(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.or.group", x, y, w, rows[..]) + t.block_gap;
-    agy_st := ifx s[0].set_agy_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_agy_status[0..<s[0].set_agy_status_n]) else "Not installed";
-    // the model agy really opens a session on with these settings, not "Default" (agyworker --probe)
-    agy_shown := cp_agy_shown(s);
-    agy_mod := sheet_pool(sh, ifx agy_shown.count > 0 then agy_shown else "Checking…");
-    agy_au := ifx s[0].set_agy_auth_n > 0 then sheet_pool(sh, cast(string) s[0].set_agy_auth[0..<s[0].set_agy_auth_n]) else "Isolated profile";
-    amode := ifx s[0].set_agy_mode >= 0 && s[0].set_agy_mode <= 2 then s[0].set_agy_mode else 0;
-    y += set_section_head(f, "set.agy.head", x, y, w, "Antigravity", "Run tasks with the Antigravity CLI (agy >= 1.5.0) in an isolated profile.") + t.section_gap;
-    arows: [4] SetRow;
-    arows[0] = SetRow.{id = "set.agy.status", name = "Antigravity CLI", desc = "Binary path and detected version (requires >= 1.5.0).",
-      value = agy_st, kind = SET_ROW_BUTTON, button = "Configure…", action = CP_SET_ACT};
-    arows[1] = SetRow.{id = "set.agy.mode", name = "Review mode",
-      desc = ifx amode == 1 then "Pause for review before risky edits." else ifx amode == 2 then "Propose a plan before making edits." else "Apply edits and run commands automatically.",
-      kind = SET_ROW_CHOICE, noptions = 3, chosen = amode, action = CP_SET_ACT};
-    arows[1].options[0] = "Auto"; arows[1].options[1] = "Default"; arows[1].options[2] = "Plan";
-    arows[2] = SetRow.{id = "set.agy.model", name = "Model & effort", desc = ifx s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" then "None set: agy's own default model, at medium effort, which streams its thinking. Set a model id and effort to change it." else "The Antigravity model id and reasoning effort (low, medium, high) you set.",
-      value = agy_mod, kind = SET_ROW_LINK, action = CP_SET_ACT};
-    arows[3] = SetRow.{id = "set.agy.auth", name = "Sign-in & profile", desc = "Google sign-in, isolated profile directory, or antigravity.env ADC.",
-      value = agy_au, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.agy.group", x, y, w, arows[..]) + t.block_gap;
-    local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "None downloaded";
-    y += set_section_head(f, "set.local.head", x, y, w, "Local Models", "Download, verify, and manage local checkpoints served by Psionic Metal (~/.openagents/models).") + t.section_gap;
+    models_sub := ifx cp_has_model_picker(s) then "The local runtime and optional cloud or CLI models." else "Inkling 2 Mini runs locally on this Mac through Psionic Metal.";
+    y += set_page_head(f, "set.title", x, y, w, names[page], models_sub) + t.block_gap;
+    local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "Not downloaded";
+    y += set_section_head(f, "set.local.head", x, y, w, "Local Model", "Download, verify (SHA-256), and manage Inkling 2 Mini on Psionic Metal (~/.openagents/models).") + t.section_gap;
     lrows: [1] SetRow;
-    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (17.63 GB IQ4_NL GGUF · SHA-256 verified · native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.", 
+    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (17.63 GB IQ4_NL GGUF · SHA-256 verified · native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.",
       value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]) + t.block_gap;
-    exec_st := ifx s[0].set_exec_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_status[0..<s[0].set_exec_status_n]) else "Not verified";
-    exec_lin := ifx s[0].set_exec_lineage_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_lineage[0..<s[0].set_exec_lineage_n]) else "0/4 modules verified";
-    exec_bdg := ifx s[0].set_exec_badge_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_badge[0..<s[0].set_exec_badge_n]) else "Unverified [N]";
-    ed: [192] u8; edn := el_put(ed[..], 0, "Verification class: "); edn = el_put(ed[..], edn, exec_bdg);
-    edn = el_put(ed[..], edn, ". Selectable in picker only when base checkpoint and 4/4 SHA-256 modules pass.");
-    y += set_section_head(f, "set.exec.head", x, y, w, "Executor Models & Weight Modules", "SHA-256 verified compiled dense F64 weight modules (~/.openagents/modules) and Hybrid Executor (hybrid-exec-v1).") + t.section_gap;
-    erows: [2] SetRow;
-    erows[0] = SetRow.{id = "set.exec.hybrid", name = "Hybrid Executor (hybrid-exec-v1)",
-      desc = sheet_pool(sh, cast(string) ed[0..<edn]),
-      value = exec_st, kind = SET_ROW_BUTTON, button = "Verify…", action = CP_SET_ACT};
-    erows[1] = SetRow.{id = "set.exec.modules", name = "Compiled Weight Modules",
-      desc = "Class-E dense F64 modules: oa-exec-diff-verify, oa-exec-json-schema, oa-exec-dep-sched, oa-exec-arith-budget.",
-      value = exec_lin, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.exec.group", x, y, w, erows[..]) + t.block_gap;
-    py_st := ifx s[0].set_pylon_state_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_state[0..<s[0].set_pylon_state_n]) else "Off";
-    py_co := ifx s[0].set_pylon_contrib_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_contrib[0..<s[0].set_pylon_contrib_n]) else "0 traces · 0 windows";
-    py_sa := ifx s[0].set_pylon_sats_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_sats[0..<s[0].set_pylon_sats_n]) else "0 sats settled";
-    py_rl := ifx s[0].set_pylon_release_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_release[0..<s[0].set_pylon_release_n]) else "No promoted release yet";
-    y += set_section_head(f, "set.pylon.head", x, y, w, "Pylon & Executor Network", "Live on-disk Pylon runtime state, verified training contributions, reconciled Spark sats (real_bitcoin_moved=true), and signed Ch 224 shadow rollout.") + t.section_gap;
-    pyrows: [4] SetRow;
-    pyrows[0] = SetRow.{id = "set.pylon.state", name = "Local Pylon",
-      desc = "Runtime state from ~/.openagents/pylon/state/ (Off / Self-testing / Executing / Validating / Training).",
-      value = py_st, kind = SET_ROW_BUTTON, button = "Details…", action = CP_SET_ACT};
-    pyrows[1] = SetRow.{id = "set.pylon.contrib", name = "Verified Traces & Training Windows",
-      desc = "Independent replay-verified traces and bounded W5 DiLoCo training windows contributed by this device.",
-      value = py_co, kind = SET_ROW_BUTTON, button = "Inspect…", action = CP_SET_ACT};
-    pyrows[2] = SetRow.{id = "set.pylon.sats", name = "Spark Satoshis Settled",
-      desc = "Reconciled from ~/.openagents/pylon/settlement/receipts.jsonl (real_bitcoin_moved=true only; test networks strictly separated from mainnet).",
-      value = py_sa, kind = SET_ROW_BUTTON, button = "Ledger…", action = CP_SET_ACT};
-    pyrows[3] = SetRow.{id = "set.pylon.release", name = "Executor Checkpoint & Shadow Rollout",
-      desc = "Signed openagents.executor-release.v1 SHA-256 lineage with Ch 224 shadow-to-promote & atomic rollback.",
-      value = py_rl, kind = SET_ROW_BUTTON, button = "Rollout…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.pylon.group", x, y, w, pyrows[..]) + t.block_gap;
-    codex_st := ifx s[0].prov[0].codex_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_status[0..<s[0].prov[0].codex_status_n]) else "Not installed";
-    codex_au := ifx s[0].prov[0].codex_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_auth[0..<s[0].prov[0].codex_auth_n]) else "Run `codex login` to sign in";
-    cursor_st := ifx s[0].prov[0].cursor_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_status[0..<s[0].prov[0].cursor_status_n]) else "Not installed";
-    cursor_au := ifx s[0].prov[0].cursor_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_auth[0..<s[0].prov[0].cursor_auth_n]) else "Run `agent login` to sign in";
-    acp_st := ifx s[0].prov[0].acp_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].acp_status[0..<s[0].prov[0].acp_status_n]) else "None registered";
-    y += set_section_head(f, "set.providers.head", x, y, w, "External CLI & ACP Providers", "Wire Codex, Cursor, or any ACP-compliant CLI agent (OpenCode, Kiro, custom binaries) into the model picker.") + t.section_gap;
-    provs: [3] SetRow;
-    provs[0] = SetRow.{id = "set.codex", name = "Codex CLI", desc = codex_au,
-      value = codex_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
-    provs[1] = SetRow.{id = "set.cursor", name = "Cursor ACP CLI", desc = cursor_au,
-      value = cursor_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
-    provs[2] = SetRow.{id = "set.acp", name = "ACP Registry", desc = "Custom ACP binaries (~/.openagents/desktop/acp-registry.json).",
-      value = acp_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.providers.group", x, y, w, provs[..]);
+    if cp_flag(s, DC_FLAG_MODELS_GEMINI) {
+      gemini := ifx s[0].set_gemini_n > 0 then sheet_pool(sh, cast(string) s[0].set_gemini[0..<s[0].set_gemini_n]) else "Not set";
+      y += set_section_head(f, "set.gemini.head", x, y, w, "Gemini", "Microcoder runs Gemini models on Vertex AI when this Mac has a Google Cloud service account, else on a Gemini API key.") + t.section_gap;
+      gauth := ifx s[0].set_gauth_n > 0 then sheet_pool(sh, cast(string) s[0].set_gauth[0..<s[0].set_gauth_n]) else "None found";
+      gone: [2] SetRow;
+      gone[0] = SetRow.{id = "set.gemini.auth", name = "Signed in with",
+        desc = "Vertex AI: the service account in ~/.openagents/coder/antigravity.env or ~/work/.secrets/vertex-sa-inference.json, through gcloud. Else the key below.",
+        value = gauth, kind = SET_ROW_PLAIN};
+      gone[1] = SetRow.{id = "set.gemini", name = "Gemini API key", desc = "Paste a key from Google AI Studio. Kept in a file only you can read.",
+        value = gemini, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.gemini.group", x, y, w, gone[..]) + t.block_gap;
+    }
+    if cp_flag(s, DC_FLAG_MODELS_CLAUDE) {
+      claude := ifx s[0].set_claude_n > 0 then sheet_pool(sh, cast(string) s[0].set_claude[0..<s[0].set_claude_n]) else "Not set";
+      y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "A chat can run on Claude through Claude Code on this computer, and any chat can hand tasks to Claude sub-agents: Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2.") + t.section_gap;
+      one: [3 + CP_CLAUDE_MODELS] SetRow; cn := 0;
+      on_claude := s[0].orch_claude && s[0].claude;
+      one[cn] = SetRow.{id = "set.orch", name = "New chats start on",
+        desc = ifx !s[0].claude then "Claude Code is not installed on this computer. To install it, run: curl -fsSL https://claude.ai/install.sh | bash"
+               else ifx on_claude then "Claude runs each new chat and hands tasks to sub-agents. Change one chat's model in its composer."
+               else "Default model runs each new chat. Change one chat's model in its composer.",
+        kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx on_claude then 1 else 0, action = CP_SET_ACT, state = ifx s[0].claude then 0 else EL_S_DISABLED};
+      one[cn].options[0] = "Default"; one[cn].options[1] = "Claude";
+      cn += 1;
+      if s[0].claude {
+        shorts := CP_CLAUDE_SHORT;
+        om := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
+        one[cn] = SetRow.{id = "set.orch.model", name = "Claude model",
+          desc = ifx on_claude then "The Claude model new chats start on." else "The Claude model new chats start on when Claude is picked above.",
+          kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_MODELS, chosen = om, action = CP_SET_ACT};
+        for ci: 0..<CP_CLAUDE_MODELS { one[cn].options[ci] = shorts[ci]; }
+        cn += 1;
+        enames := [CP_CLAUDE_MODELS] string.["Fable 5.2 thinking", "Opus 5.5 thinking", "Sonnet 5.5 thinking", "Haiku 5.5 thinking"];
+        eids := [CP_CLAUDE_MODELS] string.["set.claude.effort.0", "set.claude.effort.1", "set.claude.effort.2", "set.claude.effort.3"];
+        elabels := CP_CLAUDE_EFFORT_LABEL;
+        for ek: 0..<CP_CLAUDE_MODELS {
+          one[cn] = SetRow.{id = eids[ek], name = enames[ek],
+            desc = ifx ek == 0 then "How hard the model thinks, in a chat and as a sub-agent. A chat's composer can pick another level for that chat." else "",
+            kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_EFFORTS, chosen = cp_claude_effort(s, ek), action = CP_SET_ACT};
+          for ei: 0..<CP_CLAUDE_EFFORTS { one[cn].options[ei] = elabels[ei]; }
+          cn += 1;
+        }
+      }
+      one[cn] = SetRow.{id = "set.claude", name = "Claude key", desc = "Claude chats and sub-agents use it in place of the Claude Code login on this computer.",
+        value = claude, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+      cn += 1;
+      y += cp_set_group(s, f, "set.claude.group", x, y, w, one[0..<cn]) + t.block_gap;
+    }
+    if cp_flag(s, DC_FLAG_MODELS_OPENROUTER) {
+      orkey := ifx s[0].set_orkey_n > 0 then sheet_pool(sh, cast(string) s[0].set_orkey[0..<s[0].set_orkey_n]) else "Not set";
+      y += set_section_head(f, "set.or.head", x, y, w, "OpenRouter", "Run Microcoder or its sub-agents on an OpenRouter model that takes a strict JSON schema.") + t.section_gap;
+      rows: [3] SetRow;
+      rows[0] = SetRow.{id = "set.or", name = "OpenRouter key", desc = "Kept in a file only you can read.", value = orkey, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+      rows[1] = SetRow.{id = "set.or.main", name = "Model for Microcoder", desc = "Joins the composer's model picker.", value = sheet_pool(sh, cp_or_shown(cp_or_main(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
+      rows[2] = SetRow.{id = "set.or.sub", name = "Model for sub-agents", desc = "One more level Microcoder can hand tasks to.", value = sheet_pool(sh, cp_or_shown(cp_or_sub(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.or.group", x, y, w, rows[..]) + t.block_gap;
+    }
+    if cp_flag(s, DC_FLAG_MODELS_ANTIGRAVITY) {
+      agy_st := ifx s[0].set_agy_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_agy_status[0..<s[0].set_agy_status_n]) else "Not installed";
+      agy_shown := cp_agy_shown(s);
+      agy_mod := sheet_pool(sh, ifx agy_shown.count > 0 then agy_shown else "Checking…");
+      agy_au := ifx s[0].set_agy_auth_n > 0 then sheet_pool(sh, cast(string) s[0].set_agy_auth[0..<s[0].set_agy_auth_n]) else "Isolated profile";
+      amode := ifx s[0].set_agy_mode >= 0 && s[0].set_agy_mode <= 2 then s[0].set_agy_mode else 0;
+      y += set_section_head(f, "set.agy.head", x, y, w, "Antigravity", "Run tasks with the Antigravity CLI (agy >= 1.5.0) in an isolated profile.") + t.section_gap;
+      arows: [4] SetRow;
+      arows[0] = SetRow.{id = "set.agy.status", name = "Antigravity CLI", desc = "Binary path and detected version (requires >= 1.5.0).",
+        value = agy_st, kind = SET_ROW_BUTTON, button = "Configure…", action = CP_SET_ACT};
+      arows[1] = SetRow.{id = "set.agy.mode", name = "Review mode",
+        desc = ifx amode == 1 then "Pause for review before risky edits." else ifx amode == 2 then "Propose a plan before making edits." else "Apply edits and run commands automatically.",
+        kind = SET_ROW_CHOICE, noptions = 3, chosen = amode, action = CP_SET_ACT};
+      arows[1].options[0] = "Auto"; arows[1].options[1] = "Default"; arows[1].options[2] = "Plan";
+      arows[2] = SetRow.{id = "set.agy.model", name = "Model & effort", desc = ifx s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" then "None set: agy's own default model, at medium effort, which streams its thinking. Set a model id and effort to change it." else "The Antigravity model id and reasoning effort (low, medium, high) you set.",
+        value = agy_mod, kind = SET_ROW_LINK, action = CP_SET_ACT};
+      arows[3] = SetRow.{id = "set.agy.auth", name = "Sign-in & profile", desc = "Google sign-in, isolated profile directory, or antigravity.env ADC.",
+        value = agy_au, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.agy.group", x, y, w, arows[..]) + t.block_gap;
+    }
+    if cp_flag(s, DC_FLAG_MODELS_EXECUTOR) {
+      exec_st := ifx s[0].set_exec_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_status[0..<s[0].set_exec_status_n]) else "Not verified";
+      exec_lin := ifx s[0].set_exec_lineage_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_lineage[0..<s[0].set_exec_lineage_n]) else "0/4 modules verified";
+      exec_bdg := ifx s[0].set_exec_badge_n > 0 then sheet_pool(sh, cast(string) s[0].set_exec_badge[0..<s[0].set_exec_badge_n]) else "Unverified [N]";
+      ed: [192] u8; edn := el_put(ed[..], 0, "Verification class: "); edn = el_put(ed[..], edn, exec_bdg);
+      edn = el_put(ed[..], edn, ". Selectable in picker only when base checkpoint and 4/4 SHA-256 modules pass.");
+      y += set_section_head(f, "set.exec.head", x, y, w, "Executor Models & Weight Modules", "SHA-256 verified compiled dense F64 weight modules (~/.openagents/modules) and Hybrid Executor (hybrid-exec-v1).") + t.section_gap;
+      erows: [2] SetRow;
+      erows[0] = SetRow.{id = "set.exec.hybrid", name = "Hybrid Executor (hybrid-exec-v1)",
+        desc = sheet_pool(sh, cast(string) ed[0..<edn]),
+        value = exec_st, kind = SET_ROW_BUTTON, button = "Verify…", action = CP_SET_ACT};
+      erows[1] = SetRow.{id = "set.exec.modules", name = "Compiled Weight Modules",
+        desc = "Class-E dense F64 modules: oa-exec-diff-verify, oa-exec-json-schema, oa-exec-dep-sched, oa-exec-arith-budget.",
+        value = exec_lin, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.exec.group", x, y, w, erows[..]) + t.block_gap;
+      py_st := ifx s[0].set_pylon_state_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_state[0..<s[0].set_pylon_state_n]) else "Off";
+      py_co := ifx s[0].set_pylon_contrib_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_contrib[0..<s[0].set_pylon_contrib_n]) else "0 traces · 0 windows";
+      py_sa := ifx s[0].set_pylon_sats_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_sats[0..<s[0].set_pylon_sats_n]) else "0 sats settled";
+      py_rl := ifx s[0].set_pylon_release_n > 0 then sheet_pool(sh, cast(string) s[0].set_pylon_release[0..<s[0].set_pylon_release_n]) else "No promoted release yet";
+      y += set_section_head(f, "set.pylon.head", x, y, w, "Pylon & Executor Network", "Live on-disk Pylon runtime state, verified training contributions, reconciled Spark sats (real_bitcoin_moved=true), and signed Ch 224 shadow rollout.") + t.section_gap;
+      pyrows: [4] SetRow;
+      pyrows[0] = SetRow.{id = "set.pylon.state", name = "Local Pylon",
+        desc = "Runtime state from ~/.openagents/pylon/state/ (Off / Self-testing / Executing / Validating / Training).",
+        value = py_st, kind = SET_ROW_BUTTON, button = "Details…", action = CP_SET_ACT};
+      pyrows[1] = SetRow.{id = "set.pylon.contrib", name = "Verified Traces & Training Windows",
+        desc = "Independent replay-verified traces and bounded W5 DiLoCo training windows contributed by this device.",
+        value = py_co, kind = SET_ROW_BUTTON, button = "Inspect…", action = CP_SET_ACT};
+      pyrows[2] = SetRow.{id = "set.pylon.sats", name = "Spark Satoshis Settled",
+        desc = "Reconciled from ~/.openagents/pylon/settlement/receipts.jsonl (real_bitcoin_moved=true only; test networks strictly separated from mainnet).",
+        value = py_sa, kind = SET_ROW_BUTTON, button = "Ledger…", action = CP_SET_ACT};
+      pyrows[3] = SetRow.{id = "set.pylon.release", name = "Executor Checkpoint & Shadow Rollout",
+        desc = "Signed openagents.executor-release.v1 SHA-256 lineage with Ch 224 shadow-to-promote & atomic rollback.",
+        value = py_rl, kind = SET_ROW_BUTTON, button = "Rollout…", action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.pylon.group", x, y, w, pyrows[..]) + t.block_gap;
+    }
+    if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) {
+      codex_st := ifx s[0].prov[0].codex_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_status[0..<s[0].prov[0].codex_status_n]) else "Not installed";
+      codex_au := ifx s[0].prov[0].codex_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].codex_auth[0..<s[0].prov[0].codex_auth_n]) else "Run `codex login` to sign in";
+      cursor_st := ifx s[0].prov[0].cursor_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_status[0..<s[0].prov[0].cursor_status_n]) else "Not installed";
+      cursor_au := ifx s[0].prov[0].cursor_auth_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].cursor_auth[0..<s[0].prov[0].cursor_auth_n]) else "Run `agent login` to sign in";
+      acp_st := ifx s[0].prov[0].acp_status_n > 0 then sheet_pool(sh, cast(string) s[0].prov[0].acp_status[0..<s[0].prov[0].acp_status_n]) else "None registered";
+      y += set_section_head(f, "set.providers.head", x, y, w, "External CLI & ACP Providers", "Wire Codex, Cursor, or any ACP-compliant CLI agent (OpenCode, Kiro, custom binaries) into the model picker.") + t.section_gap;
+      provs: [3] SetRow;
+      provs[0] = SetRow.{id = "set.codex", name = "Codex CLI", desc = codex_au,
+        value = codex_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
+      provs[1] = SetRow.{id = "set.cursor", name = "Cursor ACP CLI", desc = cursor_au,
+        value = cursor_st, kind = SET_ROW_BUTTON, button = "Status…", action = CP_SET_ACT};
+      provs[2] = SetRow.{id = "set.acp", name = "ACP Registry", desc = "Custom ACP binaries (~/.openagents/desktop/acp-registry.json).",
+        value = acp_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+      y += cp_set_group(s, f, "set.providers.group", x, y, w, provs[..]);
+    }
   } else if page == CP_PG_FOREMAN {
     y += set_page_head(f, "set.title", x, y, w, names[page], "How much Foreman may do across your chats.") + t.block_gap;
     tier := s[0].foreman_tier;
@@ -684,7 +739,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     one[0] = SetRow.{id = "set.update", name = "Check for updates", desc = desc, kind = SET_ROW_BUTTON, button = button, action = CP_SET_ACT,
       state = ifx st == CP_UPD_DOWNLOADING then EL_S_DISABLED else 0};
     y += cp_set_group(s, f, "set.update.group", x, y, w, one[..]) + t.block_gap;
-    y += cp_settings_update_everything(s, f, x, y, w);
+    if cp_flag(s, DC_FLAG_SCHEDULED) { y += cp_settings_update_everything(s, f, x, y, w); }
   }
   y += t.page_bottom;
   uiframe_unclip(f);
@@ -732,16 +787,9 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
 // The Gemini API key's state ("Ends 1a2b", "" not set); also updates model picker availability.
 coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_agy := cp_is_agy(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].set_gemini_n = cp_out(s[0].set_gemini[..], gemini);
-  if was_agy { s[0].model = cp_agy_idx(s); }
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
 // Local Models status in Settings > Models ("Inkling 2 Mini installed (~20 GB)", "None downloaded"; #13826).
 coder_page_settings_local :: (s: [] CoderPage, status: string) #export_c #effects(all) {
@@ -807,7 +855,7 @@ coder_page_search_set :: (s: [] CoderPage, text: string) #export_c #effects(all)
 coder_page_search_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].set_open { return false; }
   hits: [1] int;
-  if cp_set_hits_in(cp_set_query(s), hits[..], s[0].experimental) < 1 { return false; }
+  if cp_set_hits_flags(cp_set_query(s), hits[..], s[0].flags) < 1 { return false; }
   es := cp_set_entries(); e := es[hits[0]];
   cp_settings_show(s, true, e.page);
   s[0].set_target_n = cp_out(s[0].set_target[..], e.id); s[0].set_scroll = 0;
@@ -913,7 +961,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   coder_page_search_set(s, "agent instructions");
   #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_GENERAL;
 }
-#test "settings: Antigravity rows render under Models, dispatch actions, and match search for antigravity and agy" {
+#test "settings: Antigravity rows render under Models, dispatch actions, and match search for antigravity and agy" #steps 40000000 {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_settings_agy(s, "v1.5.2 (ready)", 1, "gemini-4-hydrogen · high", "antigravity.env (ADC)");
@@ -931,10 +979,10 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.agy.auth.a") && coder_page_action(s) == CP_ASK_AGY_AUTH;
   // Search for "antigravity" and "agy" finds the Antigravity rows under Models
   coder_page_search_set(s, "antigravity");
-  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.10").action == CP_SET_HIT;
+  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.21").action == CP_SET_HIT;
   #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_MODELS;
   coder_page_search_set(s, "agy");
-  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.10").action == CP_SET_HIT;
+  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.21").action == CP_SET_HIT;
 }
 #test "settings: experimental features off hides Foreman, Gym and Account everywhere, and General's row turns them on" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
@@ -958,11 +1006,12 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert coder_page_settings_page(s) == CP_PG_GENERAL;
   #assert !cp_settings_press(s, CP_SET_ACT, "set.tier.2") && !cp_settings_press(s, CP_SET_ACT, "set.login");
   #assert cp_settings_press(s, CP_SET_ACT, "set.update.a") && coder_page_action(s) == CP_ASK_CHECK_UPDATES;
-  // the search: no Foreman or Account entries; "account" finds the toggle
+  // the search: no Foreman or Account entries when off (Audit §7.3 zero hits for disabled features)
   hits: [CP_SET_HITS] int; es := cp_set_entries();
   #assert cp_set_hits_in("tier", hits[..], false) == 0 && cp_set_hits_in("tier", hits[..], true) == 1;
-  n := cp_set_hits_in("account", hits[..], false);
-  #assert n == 1 && es[hits[0]].id == "set.exp";
+  #assert cp_set_hits_in("account", hits[..], false) == 0;
+  n := cp_set_hits_in("account", hits[..], true);
+  #assert n >= 1 && es[hits[0]].page == CP_PG_ACCOUNT;
   #assert cp_set_page_ok(false, CP_PG_GENERAL) && cp_set_page_ok(false, CP_PG_MODELS) && cp_set_page_ok(false, CP_PG_ABOUT);
   #assert !cp_set_page_ok(false, CP_PG_FOREMAN) && !cp_set_page_ok(false, CP_PG_ACCOUNT) && cp_set_page_ok(true, CP_PG_ACCOUNT);
   // General's row: Off shown; On turns them on and asks the host to keep it
@@ -977,14 +1026,21 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert s[0].set_page == CP_PG_GENERAL && !coder_page_gym_open(s);
 }
 
-#test "settings: Wallet page is always visible, searchable, and dispatches wallet asks" {
+#test "settings: Wallet page is flag-gated, searchable when wallet flag is on, and dispatches wallet asks" {
   state: [1] CoderPage; s := state[..];
   cp_init(s);
-  #assert cp_set_page_ok(false, CP_PG_WALLET);
+  // Release default (flags = 0): Wallet is hidden and unsearchable.
+  #assert !cp_set_page_ok(false, CP_PG_WALLET);
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  n := cp_set_hits_in("wallet", hits[..], false);
+  #assert cp_set_hits_in("wallet", hits[..], false) == 0;
+  #assert cp_set_hits_in("bitcoin", hits[..], false) == 0;
+  // Enable wallet flag: visible, searchable, and dispatches wallet asks.
+  wflag := dc_flag_bit(DC_FLAG_WALLET);
+  coder_page_flags_set(s, wflag);
+  #assert cp_set_page_ok_flags(wflag, CP_PG_WALLET);
+  n := cp_set_hits_flags("wallet", hits[..], wflag);
   #assert n >= 2 && es[hits[0]].page == CP_PG_WALLET;
-  n = cp_set_hits_in("bitcoin", hits[..], false);
+  n = cp_set_hits_flags("bitcoin", hits[..], wflag);
   #assert n >= 3 && es[hits[0]].page == CP_PG_WALLET;
   coder_page_settings_open(s, CP_PG_WALLET, "");
   #assert coder_page_settings_page(s) == CP_PG_WALLET;

@@ -1876,13 +1876,15 @@ ink_convolve_add_batch :: (item:int,n_channels:int,n_tok:int,cur:[]f32,w:[]f32,h
     }
 }
 
-// ---- Batched per-head L2 clip: optional per-channel scale, L2 norm clip to threshold, tau multiplier.
+// ---- Batched per-head L2 clip: optional per-channel scale, L2 norm clip to threshold, scalar or per-token tau multiplier.
 // Launch items = n_tok * n_heads, lanes = 64.
-ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,tau:f32,x:[]f32,scale:[]f32) #export_c #effects(all) {
+ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,use_tau_vec:int,tau:f32,x:[]f32,scale:[]f32,tau_vec:[]f32) #export_c #effects(all) {
     part:[64]f32;
     base:=item*head_dim;
+    tok:=item/n_heads;
     h:=item%n_heads;
     sbase:=h*head_dim;
+    t:=ifx use_tau_vec!=0 then tau_vec[tok] else tau;
     for thread:0..<INK_T {
         s:f32=0;
         for k:0..<(head_dim+INK_T-1)/INK_T {
@@ -1901,7 +1903,7 @@ ink_clip_batch :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32
         nrm:=sqrt(tot)+0.000001f32;
         fac:=threshold/nrm;
         if fac>1.0f32 {fac=1.0f32;}
-        fac=fac*tau;
+        fac=fac*t;
         for k:0..<(head_dim+INK_T-1)/INK_T {
             i:=k*INK_T+thread;
             if i<head_dim {x[base+i]=x[base+i]*fac;}

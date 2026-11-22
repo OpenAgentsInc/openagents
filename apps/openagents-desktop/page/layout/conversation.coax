@@ -62,13 +62,15 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
   }
   if cp_edit_at(text) > 0 { return cp_act_edit(s, f, q); }
   // an oasim command says what it did to the simulator (spec 7.5): "Tapped (201, 640)"
-  stb: [256] u8; sim := cp_sim_cmd(text, stb[..]);
-  if sim.verb.count > 0 {
-    return AppActRow.{kind = APP_ACT_EXEC, verb = sim.verb, target = sheet_single_line(sh, sim.target), call = text, output = output,
-                      failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
+  if cp_flag(s, DC_FLAG_SIMULATOR) {
+    stb: [256] u8; sim := cp_sim_cmd(text, stb[..]);
+    if sim.verb.count > 0 {
+      return AppActRow.{kind = APP_ACT_EXEC, verb = sim.verb, target = sheet_single_line(sh, sim.target), call = text, output = output,
+                        failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
+    }
   }
   pbad := [1] bool.[false];
-  pill := cp_exec_replay_pill(output, pbad[..]);
+  pill := ifx cp_flag(s, DC_FLAG_MODELS_EXECUTOR) then cp_exec_replay_pill(output, pbad[..]) else "";
   return AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = sheet_single_line(sh, text), call = text, output = output,
                     badge = ifx pill.count > 0 then sheet_pool(sh, pill) else "", badge_bad = pbad[0],
                     failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
@@ -76,7 +78,7 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
 // What a press on row q does: an oasim command that went brings the simulator pane to the front
 // (spec 7.5, GitHub #13811); any other row does what its group's rows do.
 cp_row_act :: (s: [] CoderPage, q: int, row: int) -> int {
-  if s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
+  if !cp_flag(s, DC_FLAG_SIMULATOR) || s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
   tb: [256] u8;
   return ifx cp_sim_cmd(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n], tb[..]).verb.count > 0 then CP_SIM_ROW else row;
 }
@@ -91,7 +93,7 @@ cp_act_edit :: (s: [] CoderPage, f: [] UiFrame, q: int) -> AppActRow {
   // a diff is the row's change, drawn as hunks; anything else (why it failed) is its output
   diff := cp_edit_diff(s, q) > 0; out := cp_call_text(s, q);
   pbad := [1] bool.[false];
-  pill := cp_exec_replay_pill(out, pbad[..]);
+  pill := ifx cp_flag(s, DC_FLAG_MODELS_EXECUTOR) then cp_exec_replay_pill(out, pbad[..]) else "";
   return AppActRow.{kind = ifx write then APP_ACT_WRITE else APP_ACT_EDIT, verb = verb, target = sheet_pool(f[0].sheet, app_diff_base(path)),
                     badge = ifx pill.count > 0 then sheet_pool(f[0].sheet, pill) else "", badge_bad = pbad[0],
                     output = ifx diff then "" else out, diff = ifx diff then out else "", failed = failed, running = running,
@@ -251,7 +253,11 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h - s[0].mcp_skills[0].oauth_tray_h - s[0].voice[0].pill_h - s[0].rich[0].tray_h;   // what scrolls runs up to the trays and the bar
+  git_tray := ifx cp_flag(s, DC_FLAG_GIT) then s[0].git[0].tray_h else 0.0f32;
+  oauth_tray := ifx cp_flag(s, DC_FLAG_MCP) then s[0].mcp_skills[0].oauth_tray_h else 0.0f32;
+  voice_tray := ifx cp_flag(s, DC_FLAG_VOICE) then s[0].voice[0].pill_h else 0.0f32;
+  rich_tray := ifx cp_flag(s, DC_FLAG_RICH) then s[0].rich[0].tray_h else 0.0f32;
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - git_tray - s[0].permit[0].tray_h - oauth_tray - voice_tray - rich_tray;   // what scrolls runs up to the trays and the bar
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -264,7 +270,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
   // the first message starts under the window's title bar, which holds the corners' buttons (titlebar.coax)
   y += cp_bar(s);
-  is_foreman := cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
+  is_foreman := cp_flag(s, DC_FLAG_FOREMAN) && cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
   if is_foreman { y += cp_foreman_hud(s, f, x, y, cw, running, exceeded); }
   // an empty chat's heading stands over its composer (cp_composer); Foreman's here, its composer at the foot
   if s[0].nturns == 0 && is_foreman {
@@ -298,25 +304,31 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         s[0].turns[i].ay = y;
         f[0].skin.motion.enter = 0;
         vv := ifx s[0].veil_turn == i then MdVeil.{ veil = s[0].veil[..], now = s[0].clock } else MdVeil.{};
-        y += cp_rich_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
-                                   ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
+        if cp_flag(s, DC_FLAG_RICH) {
+          y += cp_rich_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
+                                     ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
+        } else {
+          y += app_message_agent_linked_veiled(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
+                                               ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
+        }
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
-          ck_w := cp_ckpt_turn_actions(s, f, i, x + cw, y);
+          ck_w := ifx cp_flag(s, DC_FLAG_GIT) then cp_ckpt_turn_actions(s, f, i, x + cw, y) else 0.0f32;
           q_vis := a_hov || did || s[0].turns[i].info;
-          q_off := ifx q_vis then lane_btn + a.gap_small else 0.0f32;
+          has_quote := cp_flag(s, DC_FLAG_RICH);
+          q_off := ifx has_quote && q_vis then lane_btn + a.gap_small else 0.0f32;
           meta_w := cw - lane_btn - q_off - a.gap_small - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
           // who wrote it, always beside Copy/Quote: the harness and its model
           if meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + q_off + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
-          cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis);
+          if has_quote { cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, q_vis, did, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else {
         s[0].turns[i].ah = 0;
-        if s[0].turns[i].state != CP_RUNNING && cp_ckpt_has(s, i) {
+        if cp_flag(s, DC_FLAG_GIT) && s[0].turns[i].state != CP_RUNNING && cp_ckpt_has(s, i) {
           _ := cp_ckpt_turn_actions(s, f, i, x + cw, y);
           y += lane;
         }
@@ -389,7 +401,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     y += app_notice(f, "coder.goal.notice", x, y, cw, sheet_pool(f[0].sheet, cast(string) s[0].goal_notice[0..<s[0].goal_notice_n]), APP_NOTICE_INFO) + a.gap;
     f[0].skin.motion.enter = enter0;
   }
-  if exceeded {
+  if exceeded && cp_flag(s, DC_FLAG_USAGE) {
     cb1: [32] u8; bb1: [32] u8; nb: [160] u8;
     c_str := ifx s[0].cost_usd_micros > 0 then cp_cost(cb1[..], s[0].cost_usd_micros) else "$0.00";
     b_str := cp_cost(bb1[..], cp_budget(s));
@@ -489,35 +501,127 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   // New chat floats in the window's top right corner, over what scrolls
   all := s[0].copied_kind == CP_COPIED_ALL;
   copy_x := ifx left > 0 then w - a.icon_button - CP_CORNER else w - 2 * a.icon_button - CP_CORNER;
-  // the code review (#13696): its button shows once an edit changed a file, or while it is open
-  review := s[0].review || cp_has_edits(s);
+  // the code review (#13696): its button shows once an edit changed a file, or while it is open (git flag)
+  review := cp_flag(s, DC_FLAG_GIT) && (s[0].review || cp_has_edits(s));
   lead_x := ifx review then copy_x - side else copy_x;
-  // Reserve space for both terminal (lead_x - side) and files (lead_x - 2*side) toggle buttons so Git toolbar chips never overlap them.
-  cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), lead_x - 2 * side - a.gap_small, cy);
+  has_term := cp_flag(s, DC_FLAG_TERMINAL);
+  ft_x := ifx has_term then lead_x - 2 * side else lead_x - side;
+  // Reserve space for terminal (when enabled) and files toggle buttons so Git toolbar chips never overlap them.
+  if cp_flag(s, DC_FLAG_GIT) {
+    cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), ft_x - a.gap_small, cy);
+  }
   if review {
     shown := cp_review_shown(s);
     _ := app_icon_button(f, "coder.review", lead_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);
   }
-  term_shown := cp_term_shown(s);
-  _ := app_icon_button(f, "coder.term.toggle", lead_x - side, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
+  if has_term {
+    term_shown := cp_term_shown(s);
+    _ := app_icon_button(f, "coder.term.toggle", lead_x - side, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
+  }
   ft_shown := cp_ft_shown(s);
-  _ := app_icon_button(f, "coder.ft.toggle", lead_x - 2 * side, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
+  _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
   _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
-    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, cp_tr(s[0].cust[0].locale.active, "new_chat"), APP_BUTTON_QUIET,
+    loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
+    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, cp_tr(loc, "new_chat"), APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
+// First-run Inkling 2 Mini onboarding card when running in single-model release mode before the
+// local model weights are installed and verified on disk (Audit §5.6).
+cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
+  card_w := ifx cw < 520.0f32 then cw else 520.0f32;
+  cx := x + (cw - card_w) / 2.0f32;
+  pad := 20.0f32;
+  iw := card_w - 2.0f32 * pad;
+  // Estimate card height so it stays centered vertically in the window.
+  est_h := 220.0f32;
+  cy := (h - est_h) / 2.0f32;
+  min_y := cp_bar(s) + a.gap;
+  if cy < min_y { cy = min_y; }
+  // Reserve a card background box; draw inner elements and then compute final height cleanly.
+  y := cy + pad;
+  // Compute content first via inner layout on card box of fixed minimum height, or draw card cleanly:
+  // Title & subtitle
+  title_h := k.strong.line;
+  sub_h := k.small.line;
+  // Measure body height cleanly depending on state
+  body_h := 110.0f32;
+  if !s[0].local_os_ok || !s[0].local_hw_ok { body_h = 84.0f32; }
+  else if s[0].local_dl_state == CP_LOCAL_ERROR { body_h = 128.0f32; }
+  total_h := 2.0f32 * pad + title_h + a.gap_small + sub_h + a.gap + body_h;
+  _ := sheet_box(sh, cx, cy, card_w, total_h, 16.0f32, 1.0f32, th.surface, th.border);
+  _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Inkling 2 Mini setup", cx, cy, card_w, total_h, 0, 0);
+  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.strong.line, k.strong.face, th.text, app_fit(f, k.strong.face, "OpenAgents Desktop", iw));
+  y += title_h + a.gap_small;
+  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, "Private, on-device coding powered by Inkling 2 Mini", iw));
+  y += sub_h + a.gap;
+  if !s[0].local_os_ok {
+    _ := app_notice(f, "coder.onboarding.unsupported", cx + pad, y, iw,
+                    "Inkling 2 Mini requires macOS on Apple Silicon (M1 or newer). Local Metal inference is not supported on this platform.", APP_NOTICE_ERROR);
+  } else if !s[0].local_hw_ok {
+    rb: [192] u8; rn := el_put(rb[..], 0, "Inkling 2 Mini requires at least 32 GB of unified memory");
+    if s[0].local_ram_gb > 0 {
+      rn = el_put(rb[..], rn, " (this Mac has "); rn = el_put_i(rb[..], rn, s[0].local_ram_gb); rn = el_put(rb[..], rn, " GB).");
+    } else {
+      rn = el_put(rb[..], rn, ".");
+    }
+    _ := app_notice(f, "coder.onboarding.ram", cx + pad, y, iw, sheet_pool(sh, cast(string) rb[0..<rn]), APP_NOTICE_ERROR);
+  } else if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {
+    pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini (IQ4_NL) — ");
+    if s[0].local_dl_total_mb > 0 {
+      pn = el_put_i(pb[..], pn, s[0].local_dl_mb); pn = el_put(pb[..], pn, " / ");
+      pn = el_put_i(pb[..], pn, s[0].local_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
+      pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%)");
+    } else {
+      pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%");
+    }
+    ptext := sheet_pool(sh, cast(string) pb[0..<pn]);
+    y += app_meta(f, "coder.onboarding.status", cx + pad, y, iw, ptext, false) + a.gap_small;
+    bar_h := 8.0f32;
+    pct_clamped := ifx s[0].local_dl_pct < 0 then 0 else ifx s[0].local_dl_pct > 100 then 100 else s[0].local_dl_pct;
+    share := cast(f32) pct_clamped / 100.0f32;
+    prow := uiframe_semantic(f, "coder.onboarding.progress", EL_PROGRESS, "Download progress", cx + pad, y, iw, bar_h, 0, 0);
+    elt_value_share(f[0].rows, prow, share);
+    sheet_fill(sh, cx + pad, y, iw, bar_h, 4.0f32, th.raised);
+    if share > 0 { sheet_fill(sh, cx + pad, y, iw * share, bar_h, 4.0f32, th.accent); }
+    y += bar_h + a.gap;
+    cw_btn := app_button_width(f, -1, "Cancel download");
+    _ := app_button(f, "coder.local.cancel", cx + pad, y, cw_btn, -1, "Cancel download", APP_BUTTON_DEFAULT, 0, CP_LOCAL_CANCEL);
+  } else if s[0].local_dl_state == CP_LOCAL_VERIFYING {
+    activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
+    _ := app_meta(f, "coder.onboarding.verifying", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
+                  "Verifying SHA-256 checksum of Inkling-2-Mini-IQ4_NL.gguf…", false);
+  } else if s[0].local_dl_state == CP_LOCAL_ERROR {
+    emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
+            else "Download failed. Check your internet connection and free disk space, then try again.";
+    y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
+    bw := app_button_width(f, -1, "Retry download (17.6 GB)");
+    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry download (17.6 GB)", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+  } else {
+    y += app_meta(f, "coder.onboarding.specs", cx + pad, y, iw,
+                  "17.6 GB GGUF · 32K context · Apple Silicon Metal · Free, no account required", false) + a.gap;
+    bw := app_button_width(f, -1, "Download Inkling 2 Mini (17.6 GB)");
+    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Download Inkling 2 Mini (17.6 GB)", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+  }
+  s[0].bar_h = 0.0f32;
+}
+
 // The composer, x and cw as the conversation (#13743): Zeron's pill (components/zeron/composer.coax's
 // zc_pill), compact on one 49 row while the draft fits and expanded over it, and its foot under it:
-// the model (Command-/ opens its menu) on the left, and on the right the chat's goal, its cost, how
-// full the context is, and the working folder and its branch. A narrow foot folds the goal first,
-// then the cost, the context and the branch. An empty chat (not Foreman's) holds the composer,
-// expanded, in the window's middle under its heading; it grows down from there.
+// the model (Command-/ opens its menu, when extra model flags are enabled) on the left, and on the right
+// the chat's goal, its cost (when usage is on), how full the context is, and the working folder.
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
-  is_foreman := cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
+  is_foreman := cp_flag(s, DC_FLAG_FOREMAN) && cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
+  // Single-model release mode before Inkling 2 Mini is downloaded: show the first-run setup card
+  // on an empty chat instead of a bare composer that cannot send.
+  if !cp_has_model_picker(s) && !is_foreman && s[0].nturns == 0 && !s[0].inkling {
+    cp_local_onboarding(s, f, x, cw, h);
+    return;
+  }
   centred := s[0].nturns == 0 && !is_foreman;
   foot := k.cmp.chip_h + a.gap_small;
   g := cp_pill_shape(s, f, cw);
@@ -531,23 +635,37 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
     if abs(eh - s[0].empty_h) > 0.5 { s[0].empty_h = eh; s[0].anim = true; }
     if top + eh + a.gap < box_y { box_y = top + eh + a.gap; }
   }
-  s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded);
+  no_local := !cp_has_model_picker(s) && !s[0].inkling;
+  s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded || no_local);
   s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
   todos_h: f32 = 0.0f32;
   if !s[0].todos[0].docked { todos_h = cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
-  git_h := cp_git_output_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw);
+  git_h := ifx cp_flag(s, DC_FLAG_GIT) then cp_git_output_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h, cw) else 0.0f32;
   permit_h := cp_permit_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h, cw);
-  oauth_h := cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw);
-  voice_h := cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw);
-  _ := cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw);
+  oauth_h := ifx cp_flag(s, DC_FLAG_MCP) then cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw) else 0.0f32;
+  voice_h := ifx cp_flag(s, DC_FLAG_VOICE) then cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw) else 0.0f32;
+  stash_h := ifx cp_flag(s, DC_FLAG_RICH) then cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw) else 0.0f32;
+  // Kept-chat migration notice when an existing chat was started on a model that is now disabled.
+  if s[0].migrated_from_n > 0 && s[0].nturns > 0 {
+    from_id := cast(string) s[0].migrated_from[0..<s[0].migrated_from_n];
+    mb: [160] u8; mn := el_put(mb[..], 0, "Started on ");
+    mn = el_put(mb[..], mn, cp_model_known_label(from_id));
+    mn = el_put(mb[..], mn, " · Next message runs on Inkling 2 Mini");
+    tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
+    mh := k.small.line + 2.0f32 * a.gap_small + 16.0f32;
+    enter_m := f[0].skin.motion.enter; f[0].skin.motion.enter = 0;
+    actual_mh := app_notice(f, "coder.migrated", x, tray_top - mh, cw, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), APP_NOTICE_INFO);
+    f[0].skin.motion.enter = enter_m;
+    s[0].bar_h += actual_mh + a.gap_small;
+  }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
-  if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
-  if s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
+  if cp_has_model_picker(s) && s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
+  if cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
-  if !s[0].model_menu && !s[0].usage[0].popover_open { cp_mn_paint(s, f, x, cw); }
+  if !(cp_has_model_picker(s) && s[0].model_menu) && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -598,8 +716,9 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
   // says what Return does (#13717)
   hint := ifx !running then "Do anything…" else "Steer the reply · ⇧Return queues · Esc stops";
+  has_voice := cp_flag(s, DC_FLAG_VOICE);
   mic_side := cast(f32) ZC_CONTROL; mic_gap := 6.0f32;
-  tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right - (ifx g.expanded then 0.0f32 else mic_side + mic_gap);
+  tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right - (ifx g.expanded || !has_voice then 0.0f32 else mic_side + mic_gap);
   if tw < g.line { tw = g.line; }
   cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
   // the draft's attachments over its text (attach.coax)
@@ -618,12 +737,12 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sheet_fill(sh, lx + (control - arm) / 2, ly + (control - bar) / 2, arm, bar, bar / 2, lead_ink);
   sheet_fill(sh, lx + (control - bar) / 2, ly + (control - arm) / 2, bar, arm, bar / 2, lead_ink);
   if !lead_off { sheet_hit(sh, UIFRAME_HIT, lead_row, 0, lx, ly, control, control); }
-  // Send / Stop, with the voice dictation mic button beside it (#13882)
+  // Send / Stop, with the voice dictation mic button beside it when voice is enabled (#13882)
   send := cast(f32) ZC_TRAILING;
   sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
-  cp_voice_mic_button(s, f, sx - mic_gap - mic_side, sy + (send - mic_side) / 2, mic_side);
+  if has_voice { cp_voice_mic_button(s, f, sx - mic_gap - mic_side, sy + (send - mic_side) / 2, mic_side); }
   can_send := running || (!off && (text.count > 0 || cp_cargo_n(s) > 0));
-  loc := s[0].cust[0].locale.active;
+  loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   send_label := ifx running then cp_tr(loc, "stop") else cp_tr(loc, "send");
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
@@ -704,16 +823,21 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   cap := cast(f32) CP_FOLDER_MOST;
   if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
   w_fu := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else 0.0f32;
-  w_model := cp_foot_chip_width(f, -1, m_label, true);
+  has_picker := cp_has_model_picker(s);
+  w_model := ifx has_picker then cp_foot_chip_width(f, -1, m_label, true) else 0.0f32;
   w_effort := cp_foot_chip_width(f, -1, e_label, false);
   w_ring := c.chip_h;
   w_usage := c.chip_h;
   w_cost := cp_foot_chip_width(f, -1, cost, false);
   w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
-  show_goal := has_goal; show_cost := !home; show_ring := s[0].ctx_in > 0; show_usage := s[0].usage[0].naccts > 0 || s[0].usage[0].popover_open; show_branch := show_folder && s[0].branch_n > 0 && !running;
+  show_goal := has_goal;
+  show_cost := cp_flag(s, DC_FLAG_USAGE) && !home;
+  show_ring := s[0].ctx_in > 0;
+  show_usage := cp_flag(s, DC_FLAG_USAGE) && (s[0].usage[0].naccts > 0 || s[0].usage[0].popover_open);
+  show_branch := cp_flag(s, DC_FLAG_GIT) && show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<6 {
-    need := w_model + gap + w_effort;
+    need := (ifx has_picker then w_model + gap else 0.0f32) + w_effort;
     if show_fu_draft { need += gap + w_fu; }
     if show_folder { need += gap + (ifx show_branch then w_folder else w_short); }
     if show_usage { need += gap + w_usage; }
@@ -721,8 +845,8 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     if need <= room { break; }
     if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
-  // the left side: Steer & Queue (while a reply runs with a draft) and the model chip, kept whole
-  // before the working folder is shortened
+  // the left side: Steer & Queue (while a reply runs with a draft), the model chip (when enabled),
+  // and effort chip, kept whole before the working folder is shortened.
   fx := x + side;
   end_x := x + cw - side;
   if show_fu_draft {
@@ -734,16 +858,17 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     }
   }
   m_x := fx;
-  mw := w_model;
+  mw := ifx has_picker then w_model else 0.0f32;
   if mw > end_x - m_x { mw = end_x - m_x; }
-  if mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
-  // the effort, as Zeron and Claude Code show it next to the model: a press steps low, medium, high
-  if mw > 0 && fx + gap + w_effort <= end_x {
-    fx += gap;
+  if has_picker && mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
+  // the effort chip: sits beside the model chip when the picker is shown, or at the left edge in single-model mode
+  eff_gap := ifx has_picker && mw > 0 then gap else 0.0f32;
+  if (!has_picker || mw > 0) && fx + eff_gap + w_effort <= end_x {
+    fx += eff_gap;
     fx += cp_foot_chip(f, "coder.effort", "Effort (low, medium, high)", fx, y, w_effort, -1, e_label, false, 0, CP_EFFORT_CYCLE);
   }
   // the right side, from the end: working folder at the far right, then context ring, cost, and goal;
-  // when space is tight, the working folder shrinks before the model chip ever truncates
+  // when space is tight, the working folder shrinks before the left chips ever truncate
   rx := end_x;
   other_right: f32 = 0;
   if show_usage { other_right += w_usage + gap; }
@@ -752,8 +877,8 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if show_goal { other_right += w_goal + gap; }
   fw := ifx show_branch then w_folder else w_short;
   right_total := other_right + (ifx show_folder then fw + gap else 0.0f32);
-  // Fresh Session toggle & Multi-model fan-out chips: fold before goal/cost/context/folder
-  if !running && (s[0].nturns > 0 || s[0].prov[0].fresh_session) {
+  // Fresh Session toggle & Multi-model fan-out chips: gated by models.external
+  if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) && !running && (s[0].nturns > 0 || s[0].prov[0].fresh_session) {
     fresh_lbl := ifx s[0].prov[0].fresh_session then "Fresh ✓" else "Fresh";
     w_fresh := cp_foot_chip_width(f, -1, fresh_lbl, false);
     if fx + gap + w_fresh + right_total <= end_x {
@@ -761,7 +886,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
       fx += cp_foot_chip(f, "coder.fresh", "Fresh Session (skip prior history on next send)", fx, y, w_fresh, -1, fresh_lbl, false, ifx s[0].prov[0].fresh_session then EL_S_CURRENT else 0, CP_FRESH_TOGGLE);
     }
   }
-  if !running && (cp_models(s) >= 2 || cp_fanout_ready(s)) {
+  if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) && has_picker && !running && (cp_models(s) >= 2 || cp_fanout_ready(s)) {
     fob: [24] u8; fon := 0;
     if cp_fanout_ready(s) {
       fon = el_put(fob[..], 0, "Fan-out (");
@@ -777,7 +902,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
       fx += cp_foot_chip(f, "coder.fanout", "Multi-model fan-out (send to 2–4 models in parallel)", fx, y, w_fo, -1, fo_lbl, false, ifx cp_fanout_ready(s) then EL_S_CURRENT else 0, CP_FANOUT_OPEN);
     }
   }
-  max_fw := rx - fx - (ifx mw > 0 then gap else 0.0f32) - other_right;
+  max_fw := rx - fx - (ifx fx > x + side then gap else 0.0f32) - other_right;
   if fw > max_fw { fw = max_fw; }
   if show_folder && fw > 2 * c.chip_pad {
     rx -= fw;

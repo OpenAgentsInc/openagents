@@ -444,20 +444,23 @@ cp_rich_run_cmd :: (s: [] CoderPage, cmd: int) -> bool {
     s[0].ask = CP_ASK_FORK;
     return true;
   }
-  if cmd == CP_CMD_COMPACT { s[0].ask = CP_ASK_RICH_COMPACT; return true; }
-  if cmd == CP_CMD_CLEAR { s[0].ask = CP_ASK_RICH_CLEAR; return true; }
+  if cmd == CP_CMD_COMPACT { if !cp_flag(s, DC_FLAG_RICH) { return false; } s[0].ask = CP_ASK_RICH_COMPACT; return true; }
+  if cmd == CP_CMD_CLEAR { if !cp_flag(s, DC_FLAG_RICH) { return false; } s[0].ask = CP_ASK_RICH_CLEAR; return true; }
   if cmd == CP_CMD_REVIEW {
+    if !cp_flag(s, DC_FLAG_GIT) { return false; }
     s[0].review = true;
     s[0].pane_tab = CP_TAB_CHANGES;
     s[0].ask = CP_ASK_RICH_REVIEW;
     return true;
   }
   if cmd == CP_CMD_USAGE {
+    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     cp_settings_show(s, true, CP_PG_USAGE);
     s[0].ask = CP_ASK_RICH_USAGE;
     return true;
   }
   if cmd == CP_CMD_STASH {
+    if !cp_flag(s, DC_FLAG_RICH) { return false; }
     cur := cp_trim(eb_text(s[0].draft[..]));
     if cur.count > 0 {
       if cp_stash_push(s, cur) {
@@ -476,16 +479,16 @@ cp_rich_run_cmd :: (s: [] CoderPage, cmd: int) -> bool {
 cp_rich_slash :: (s: [] CoderPage, text: string) -> bool {
   t := cp_trim(text);
   if t.count < 2 || t[0] != '/' { return false; }
-  if cp_eq_ci(t, "/compact") { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_COMPACT); }
-  if cp_eq_ci(t, "/clear")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_CLEAR); }
-  if cp_eq_ci(t, "/review")  { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_REVIEW); }
-  if cp_eq_ci(t, "/usage")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_USAGE); }
-  if cp_eq_ci(t, "/stash") {
+  if cp_flag(s, DC_FLAG_RICH) && cp_eq_ci(t, "/compact") { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_COMPACT); }
+  if cp_flag(s, DC_FLAG_RICH) && cp_eq_ci(t, "/clear")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_CLEAR); }
+  if cp_flag(s, DC_FLAG_GIT) && cp_eq_ci(t, "/review")   { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_REVIEW); }
+  if cp_flag(s, DC_FLAG_USAGE) && cp_eq_ci(t, "/usage")  { eb_set(s[0].draft[..], ""); return cp_rich_run_cmd(s, CP_CMD_USAGE); }
+  if cp_flag(s, DC_FLAG_RICH) && cp_eq_ci(t, "/stash") {
     eb_set(s[0].draft[..], "");
     if s[0].rich[0].nstash > 0 { _ = cp_stash_pop_to_composer(s, -1); }
     return true;
   }
-  if t.count >= 7 && cp_eq_ci(cast(string) t[0..<7], "/stash ") {
+  if cp_flag(s, DC_FLAG_RICH) && t.count >= 7 && cp_eq_ci(cast(string) t[0..<7], "/stash ") {
     arg := cp_trim(cast(string) t[7..<t.count]);
     eb_set(s[0].draft[..], "");
     if cp_eq_ci(arg, "pop") { _ = cp_stash_pop_to_composer(s, -1); return true; }

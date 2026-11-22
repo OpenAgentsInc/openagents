@@ -131,6 +131,8 @@ CP_ASK_GEMINI_KEY :: 38;    // Settings > Models > Gemini API key dialog
 CP_ASK_INSTRUCTIONS :: 44;  // Settings > General > Agent instructions: the editor (~/.openagents/instructions.md, #13808)
 CP_ASK_INSTRUCTIONS_RESET :: 45;  // Settings > General > Agent instructions: Reset to default (#13808)
 CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and manager UI (#13826)
+CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding: start downloading Inkling 2 Mini
+CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding: cancel Inkling 2 Mini download
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
@@ -163,6 +165,9 @@ CP_EFFORT_CYCLE :: 74;      // the composer's effort chip beside the model: low,
 CP_PERMIT_OPT :: 75;        // an allow/choice button on the interactive permission/question card (permit.coax; #13831)
 CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission card (permit.coax; #13831)
 CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Models downloader/manager (#13826)
+CP_LOCAL_DL :: 400;         // first-run onboarding: Download / Retry Inkling 2 Mini
+CP_LOCAL_CANCEL :: 401;     // first-run onboarding: Cancel download
+CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -242,7 +247,8 @@ CpTurn :: struct {
   steer_rows: [CP_STEER_MARKS] int;          // where each was taken (#13809): the row it came before, counted as the activity group counts, -1 after them all
   refs_at: int; refs_n: int;                  // its attachments' paths and the files it mentions, as the note its task carries: CoderPage.long_buf[refs_at..<refs_at + refs_n] (#13699)
   state: int; stopping: bool;
-  model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
+  model: int;                 // index into current model list used for this turn
+  saved_model: [64] u8; saved_model_n: int;   // canonical model id captured at turn start or loaded from disk (stable across flag changes)
   ran: [64] u8; ran_n: int;   // the model its harness reported it ran on (Antigravity's attempt line: gemini-4-carbon-low); "" not reported
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy
   ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
@@ -352,8 +358,18 @@ CoderPage :: struct {
   // row it asked for, the search field's box, and what the host told it
   set_open: bool; set_page: int; set_tier: int;
   notify_mode: int;           // CP_NOTIFY_OFF / _OS / _SOUND / _BOTH (page/notify.coax; GitHub #13874)
-  experimental: bool;         // experimental features (log in and the account, Gym, Foreman) show; off unless the host turns them on
-  cloud_authed: bool;         // signed into an OpenAgents account; cloud/Microcoder models require experimental && cloud_authed
+  flags: int;                 // feature flag bitmask from coax/lib/agent/desktop/flags.coax (0 = Inkling-only release)
+  experimental: bool;         // developer alias turning every flag on (flags == DC_FLAGS_ALL)
+  cloud_authed: bool;         // signed into an OpenAgents account; cloud/Microcoder models require models.gemini && account && cloud_authed
+  local_os_ok: bool;          // true on Apple Silicon macOS (Metal runtime); false on Linux/Windows/Intel
+  local_hw_ok: bool;          // true when Apple Silicon Mac has >= 32 GB physical RAM
+  local_ram_gb: int;          // physical RAM reported by host, in GB
+  local_dl_state: int;        // CP_LOCAL_NOT_INSTALLED..CP_LOCAL_ERROR
+  local_dl_pct: int;          // 0..100 download progress percentage
+  local_dl_mb: int;           // downloaded MB so far
+  local_dl_total_mb: int;     // expected total MB (16811 MiB / 17628 MB)
+  local_dl_err: [256] u8; local_dl_err_n: int;   // last download or SHA-256 verification error
+  migrated_from: [64] u8; migrated_from_n: int;  // kept chat's prior model id when its flag is off (next turn runs on Inkling)
   gym_open: bool;             // the Gym Workbench is open beside the sidebar (#13792, #13946)
   gym_mode: int;              // CP_GYM_BENCH (0), CP_GYM_PLE (1), CP_GYM_LEAN (2)
   gym_x: f32; gym_y: f32; gym_w: f32; gym_h: f32;  // its host viewport rect in logical points
@@ -485,10 +501,23 @@ CpCheckStore :: struct {
   arena: [131072] u8;
   scratch: [262144] u8;
 }
+cp_flag :: (s: [] CoderPage, flag: int) -> bool {
+  return s.count > 0 && dc_flag_on(s[0].flags, flag);
+}
+// True when any extra non-Inkling model flag is on (shows the composer model picker & model switchers).
+// Off in the Inkling-only first release: only one model exists, so no model selector is shown.
+cp_has_model_picker :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && dc_flags_any_extra_model(s[0].flags);
+}
+
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
-  p[0].experimental = true;   // the checks see every feature; the ones with it off turn it off
+  p[0].flags = DC_FLAGS_ALL;
+  p[0].experimental = true;   // the checks see every feature; per-flag & release-set checks turn them off
   p[0].cloud_authed = true;
+  p[0].local_os_ok = true;
+  p[0].local_hw_ok = true;
+  p[0].local_ram_gb = 64;
   return p;
 }
 // A second page's storage in a check that holds two (a chat taken or read back): a few turns.
@@ -507,8 +536,12 @@ CpCheckLean :: struct {
 }
 cp_check_lean :: (p: [] CoderPage, st: [] CpCheckLean) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
   p[0].cloud_authed = true;
+  p[0].local_os_ok = true;
+  p[0].local_hw_ok = true;
+  p[0].local_ram_gb = 64;
   return p;
 }
 // A chat of one message with 600 rows (a kept chat over 1 MiB): room for its tool calls.
@@ -526,8 +559,12 @@ CpCheckRows :: struct {
 }
 cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
   p[0].cloud_authed = true;
+  p[0].local_os_ok = true;
+  p[0].local_hw_ok = true;
+  p[0].local_ram_gb = 64;
   return p;
 }
 

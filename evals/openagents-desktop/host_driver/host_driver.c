@@ -659,6 +659,9 @@ int main(int argc, char **argv) {
           printf("{\"ok\":false,\"error\":\"cd_open/cd_headless returned NULL\"}\n");
         } else {
           cd_env(s->page, 1, 1);
+          // Default to ready-to-chat Inkling release state (flags=0, local verified ready).
+          cd_local_state(s->page, 1, 1, 64, 3, 100, 16811, 16811, "");
+          cd_inkling(s->page, 1);
           slot_render(s);
           print_slot_state(si);
         }
@@ -977,20 +980,44 @@ int main(int argc, char **argv) {
       sscanf(line, "%*s %d %lld", &si, &micros);
       int ok = (si >= 0 && si < MAX_SLOTS && g_slots[si].page) ? cd_set_budget_usd_micros(g_slots[si].page, (int64_t)micros) : 0;
       printf("{\"ok\":%s}\n", ok ? "true" : "false");
+    } else if (strcmp(cmd, "SET_FLAGS") == 0) {
+      int si = 0;
+      long long mask = 0;
+      sscanf(line, "%*s %d %lld", &si, &mask);
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        cd_flags_set(g_slots[si].page, (int64_t)mask);
+        printf("{\"ok\":true,\"flags\":%lld}\n", (long long)cd_flags(g_slots[si].page));
+      } else {
+        printf("{\"ok\":false}\n");
+      }
+    } else if (strcmp(cmd, "SET_LOCAL_STATE") == 0) {
+      int si = 0, os_ok = 1, hw_ok = 1, ram = 64, dl_st = 3, pct = 100, dl_mb = 16811, tot_mb = 16811;
+      sscanf(line, "%*s %d %d %d %d %d %d %d %d", &si, &os_ok, &hw_ok, &ram, &dl_st, &pct, &dl_mb, &tot_mb);
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        cd_local_state(g_slots[si].page, os_ok, hw_ok, ram, dl_st, pct, dl_mb, tot_mb, "");
+        cd_inkling(g_slots[si].page, (os_ok && hw_ok && dl_st == 3) ? 1 : 0);
+        printf("{\"ok\":true}\n");
+      } else {
+        printf("{\"ok\":false}\n");
+      }
     } else if (strcmp(cmd, "SET_MODEL") == 0) {
       int si = 0;
       char val[128] = {0};
       int got = sscanf(line, "%*s %d %127s", &si, val);
       int ok = 0;
       if (got >= 2 && si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
-        cd_experimental_set(g_slots[si].page, 1);
-        cd_cloud_authed_set(g_slots[si].page, 1);
-        if (strcmp(val, "inkling-2-mini") == 0 || strcmp(val, "inkling") == 0 ||
-            strcmp(val, "inkling-neon") == 0 || strcmp(val, "hybrid-neon") == 0 || strcmp(val, "inkling+neon") == 0) {
+        if (strcmp(val, "inkling-2-mini") == 0 || strcmp(val, "inkling") == 0) {
+          // Single-model Inkling release path: keep flags untouched (default 0).
+          cd_local_state(g_slots[si].page, 1, 1, 64, 3, 100, 16811, 16811, "");
           cd_inkling(g_slots[si].page, 1);
-        } else if (strcmp(val, "hybrid-exec-v1") == 0 || strcmp(val, "hybrid-executor") == 0) {
+        } else {
+          // Opt-in developer/legacy model override unlocks all flags for comparison runs.
+          cd_flags_set(g_slots[si].page, (1LL << 28) - 1);
+          cd_cloud_authed_set(g_slots[si].page, 1);
           cd_inkling(g_slots[si].page, 1);
-          cd_hybrid_exec(g_slots[si].page, 1);
+          if (strcmp(val, "hybrid-exec-v1") == 0 || strcmp(val, "hybrid-executor") == 0) {
+            cd_hybrid_exec(g_slots[si].page, 1);
+          }
         }
         ok = cd_pick_model(g_slots[si].page, val);
       }

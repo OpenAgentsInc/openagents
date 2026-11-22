@@ -26,47 +26,56 @@ cp_palette_fill :: (s: [] CoderPage) {
   cur := cast(string) s[0].current[0..<s[0].current_n];
   kb: [APP_PAL_KEY] u8;
   // the chats: Foreman, then the sidebar's (most recent first; the pinned ones pinned)
-  labs := s[0].experimental;   // Foreman is an experimental feature (Settings > General)
-  if labs { _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ `", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN); }
+  has_foreman := cp_flag(s, DC_FLAG_FOREMAN);
+  has_picker := cp_has_model_picker(s);
+  if has_foreman { _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ `", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN); }
   for q: 0..<s[0].nchats {
     id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
     title := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
     if title.count == 0 { title = "New chat"; }
-    hint := ifx id == cur then "Current" else ifx s[0].chats[q].busy then "Running" else ifx s[0].chats[q].managed then "Foreman" else "";
+    hint := ifx id == cur then "Current" else ifx s[0].chats[q].busy then "Running" else ifx has_foreman && s[0].chats[q].managed then "Foreman" else "";
     _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", title, "", hint, "", id, ICON_CHATS, s[0].chats[q].pinned, false, 0, CP_PAL_CHAT + q);
   }
   // the commands that work now
   running := cp_running(s); shown := !s[0].set_open;
   cp_pal_cmd(p, "New chat", "new start fresh", "⌘ N", ICON_COMPOSE, CP_PC_NEW, 0);
-  if labs { cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0); }
+  if has_foreman { cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0); }
   if !running { cp_pal_cmd(p, "Open folder…", "working folder directory project cwd", "⌘ O", ICON_FOLDER, CP_PC_FOLDER, 0); }
   if shown { cp_pal_cmd(p, ifx s[0].side_collapsed then "Show sidebar" else "Hide sidebar", "toggle sidebar chats", "⌘ B", ICON_SIDEBAR, CP_PC_SIDEBAR, 0); }
-  cp_pal_cmd(p, "Switch model", "model gemini openrouter", "⌘ /", -1, CP_PC_MODEL, CP_PAL_PAGE_MODEL);
-  p[0].items[p[0].n - 1].hint = cp_model_label(s, cp_model_index(s));
+  if has_picker {
+    cp_pal_cmd(p, "Switch model", "model gemini openrouter", "⌘ /", -1, CP_PC_MODEL, CP_PAL_PAGE_MODEL);
+    p[0].items[p[0].n - 1].hint = cp_model_label(s, cp_model_index(s));
+  }
   ti := ifx s[0].foreman_tier >= 0 && s[0].foreman_tier < 3 then s[0].foreman_tier else 1;
   tiers := CP_TIER_NAME;
-  if labs {
+  if has_foreman {
     cp_pal_cmd(p, "Foreman permission tier", "foreman tier observe managed autonomous", "", ICON_BOT, CP_PC_TIER, CP_PAL_PAGE_TIER);
     p[0].items[p[0].n - 1].hint = tiers[ti];
   }
   if !s[0].set_open { cp_pal_cmd(p, "Open settings", "preferences", "⌘ ,", ICON_SETTINGS, CP_PC_SETTINGS, 0); }
   if shown {
-    cp_pal_cmd(p, "Chat budget…", "budget spend cost limit", "", -1, CP_PC_BUDGET, 0);
+    if cp_flag(s, DC_FLAG_USAGE) { cp_pal_cmd(p, "Chat budget…", "budget spend cost limit", "", -1, CP_PC_BUDGET, 0); }
     cp_pal_cmd(p, "Thread goal…", "goal objective autonomous", "", -1, CP_PC_GOAL, 0);
     cp_pal_cmd(p, "Find in chat", "find search transcript", "⌘ F", ICON_SET_SEARCH, CP_PC_FIND, 0);
     cp_pal_cmd(p, ifx s[0].find[0].minimap_on then "Hide transcript minimap" else "Show transcript minimap", "minimap scrollbar overview", "", -1, CP_PC_MINIMAP, 0);
     if s[0].nturns > 0 { cp_pal_cmd(p, "Copy chat", "copy transcript clipboard", "", ICON_COPY, CP_PC_COPY, 0); }
     if s[0].nturns > 0 && cur != "chat.foreman" { cp_pal_cmd(p, "Fork chat", "fork branch duplicate split /fork", "", ICON_COMPOSE, CP_PC_FORK, 0); }
     if running { cp_pal_cmd(p, "Stop reply", "stop cancel interrupt", "", ICON_STOP, CP_PC_STOP, 0); }
-    if cp_has_edits(s) { cp_pal_cmd(p, ifx cp_review_shown(s) then "Hide changes" else "Show changes", "review diff edits changes", "", -1, CP_PC_REVIEW, 0); }
+    if cp_flag(s, DC_FLAG_GIT) && cp_has_edits(s) { cp_pal_cmd(p, ifx cp_review_shown(s) then "Hide changes" else "Show changes", "review diff edits changes", "", -1, CP_PC_REVIEW, 0); }
   }
-  cp_pal_cmd(p, ifx cp_sim_shown(s) then "Hide iOS Simulator" else "Show iOS Simulator", "ios iphone simulator device phone", "⌥ ⌘ S", ICON_SET_PHONE, CP_PC_SIM, 0);
-  cp_pal_cmd(p, ifx cp_preview_shown(s) then "Hide Web Preview" else "Toggle Web Preview", "web preview browser wkwebview dom picker localhost", "⌥ ⌘ P", ICON_GLOBAL, CP_PC_PREVIEW, 0);
-  cp_pal_cmd(p, "SnapShot region", "snapshot screenshot capture screen region attach", "⇧ ⌘ 6", ICON_SIM_CAMERA, CP_PC_SNAPSHOT, 0);
-  cp_pal_cmd(p, ifx cp_term_shown(s) then "Hide terminal" else "Show terminal", "terminal shell pty console drawer", "⌘ J", ICON_TERMINAL, CP_PC_TERM, 0);
-  cp_pal_cmd(p, "New terminal tab", "terminal shell tab pty", "", ICON_TERMINAL, CP_PC_TERM_NEW, 0);
-  cp_pal_cmd(p, "Pull Requests inbox", "pr pull requests forge github gitlab bitbucket azure forgejo review tour", "", ICON_SHARE, CP_PC_FORGE_PRS, 0);
-  cp_pal_cmd(p, "Issues view", "issues github linear team bug task", "", ICON_CHECKLIST, CP_PC_FORGE_ISSUES, 0);
+  if cp_flag(s, DC_FLAG_SIMULATOR) { cp_pal_cmd(p, ifx cp_sim_shown(s) then "Hide iOS Simulator" else "Show iOS Simulator", "ios iphone simulator device phone", "⌥ ⌘ S", ICON_SET_PHONE, CP_PC_SIM, 0); }
+  if cp_flag(s, DC_FLAG_PREVIEW) {
+    cp_pal_cmd(p, ifx cp_preview_shown(s) then "Hide Web Preview" else "Toggle Web Preview", "web preview browser wkwebview dom picker localhost", "⌥ ⌘ P", ICON_GLOBAL, CP_PC_PREVIEW, 0);
+    cp_pal_cmd(p, "SnapShot region", "snapshot screenshot capture screen region attach", "⇧ ⌘ 6", ICON_SIM_CAMERA, CP_PC_SNAPSHOT, 0);
+  }
+  if cp_flag(s, DC_FLAG_TERMINAL) {
+    cp_pal_cmd(p, ifx cp_term_shown(s) then "Hide terminal" else "Show terminal", "terminal shell pty console drawer", "⌘ J", ICON_TERMINAL, CP_PC_TERM, 0);
+    cp_pal_cmd(p, "New terminal tab", "terminal shell tab pty", "", ICON_TERMINAL, CP_PC_TERM_NEW, 0);
+  }
+  if cp_flag(s, DC_FLAG_FORGE) {
+    cp_pal_cmd(p, "Pull Requests inbox", "pr pull requests forge github gitlab bitbucket azure forgejo review tour", "", ICON_SHARE, CP_PC_FORGE_PRS, 0);
+    cp_pal_cmd(p, "Issues view", "issues github linear team bug task", "", ICON_CHECKLIST, CP_PC_FORGE_ISSUES, 0);
+  }
   cp_pal_cmd(p, "Bigger text", "zoom in larger font", "⌘ +", -1, CP_PC_BIGGER, 0);
   cp_pal_cmd(p, "Smaller text", "zoom out font", "⌘ -", -1, CP_PC_SMALLER, 0);
   cp_pal_cmd(p, "Actual size", "reset zoom default normal font", "⌘ 0", -1, CP_PC_ACTUAL, 0);
@@ -80,23 +89,27 @@ cp_palette_fill :: (s: [] CoderPage) {
     cp_pal_cmd(p, "Next chat", "switch", "Ctrl Tab", -1, CP_PC_NEXT, 0);
     cp_pal_cmd(p, "Previous chat", "switch", "Ctrl Shift Tab", -1, CP_PC_PREV, 0);
   }
-  if labs { cp_pal_cmd(p, "View Foreman audit log", "foreman history actions", "", -1, CP_PC_AUDIT, 0); }
-  // settings: its pages and rows (settings.coax's search entries)
+  if has_foreman { cp_pal_cmd(p, "View Foreman audit log", "foreman history actions", "", -1, CP_PC_AUDIT, 0); }
+  // settings: its pages and rows (settings.coax's search entries, filtered by feature flags)
   es := cp_set_entries(); names := CP_SET_NAME; icons := CP_SET_ICON;
   for e, i: es {
-    if !cp_set_page_ok(labs, e.page) { continue; }
+    if !cp_set_entry_ok_flags(s[0].flags, e) { continue; }
     page_hint := ifx e.id.count > 0 then names[e.page] else "";
     n := el_put(kb[..], 0, "set."); n = el_put_i(kb[..], n, i);
     _ := app_palette_item(p, 0, APP_PAL_SETTINGS, "Settings", e.name, e.terms, page_hint, "", app_palette_keep(p, cast(string) kb[0..<n]), ifx e.id.count == 0 then icons[e.page] else -1, false, false, 0, CP_PAL_SET + i);
   }
   // the model's page and the tier's
-  for m: 0..<cp_models(s) {
-    n := el_put(kb[..], 0, "model."); n = el_put_i(kb[..], n, m);
-    _ := app_palette_item(p, CP_PAL_PAGE_MODEL, APP_PAL_COMMANDS, "", cp_model_label(s, m), cp_model_desc(s, m), cp_model_desc(s, m), "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, m == cp_model_index(s), 0, CP_PAL_MODEL + m);
+  if has_picker {
+    for m: 0..<cp_models(s) {
+      n := el_put(kb[..], 0, "model."); n = el_put_i(kb[..], n, m);
+      _ := app_palette_item(p, CP_PAL_PAGE_MODEL, APP_PAL_COMMANDS, "", cp_model_label(s, m), cp_model_desc(s, m), cp_model_desc(s, m), "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, m == cp_model_index(s), 0, CP_PAL_MODEL + m);
+    }
   }
-  for t: 0..<3 {
-    n := el_put(kb[..], 0, "tier."); n = el_put_i(kb[..], n, t);
-    _ := app_palette_item(p, CP_PAL_PAGE_TIER, APP_PAL_COMMANDS, "", tiers[t], "", "", "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, t == ti, 0, CP_PAL_TIER + t);
+  if has_foreman {
+    for t: 0..<3 {
+      n := el_put(kb[..], 0, "tier."); n = el_put_i(kb[..], n, t);
+      _ := app_palette_item(p, CP_PAL_PAGE_TIER, APP_PAL_COMMANDS, "", tiers[t], "", "", "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, t == ti, 0, CP_PAL_TIER + t);
+    }
   }
 }
 cp_pal_cmd :: (p: [] AppPalette, label: string, words: string, keys: string, icon: int, code: int, opens: int) {
@@ -119,7 +132,7 @@ cp_pal_leave_settings :: (s: [] CoderPage) { if s[0].set_open { s[0].set_open = 
 // Opens chat q of the sidebar's list (-1: Foreman). False when it is the one shown.
 cp_pal_open_chat :: (s: [] CoderPage, q: int) -> bool {
   cur := cast(string) s[0].current[0..<s[0].current_n];
-  if q < 0 && !s[0].experimental { return false; }
+  if q < 0 && !cp_flag(s, DC_FLAG_FOREMAN) { return false; }
   if q < 0 { if cur == "chat.foreman" && !s[0].set_open { return false; } cp_pal_leave_settings(s); s[0].ask = CP_ASK_FOREMAN; return true; }
   if q >= s[0].nchats { return false; }
   if cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { if s[0].set_open { cp_settings_show(s, false, -1); return true; } return false; }
@@ -136,12 +149,12 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c >= CP_PAL_CHAT && c < CP_PAL_SET { return cp_pal_open_chat(s, c - CP_PAL_CHAT); }
   if c >= CP_PAL_SET && c < CP_PAL_MODEL {
     es := cp_set_entries(); e := c - CP_PAL_SET;
-    if e >= CP_SET_ENTRIES { return false; }
+    if e >= CP_SET_ENTRIES || !cp_set_entry_ok_flags(s[0].flags, es[e]) { return false; }
     cp_settings_show(s, true, es[e].page);
     s[0].set_target_n = cp_out(s[0].set_target[..], es[e].id); s[0].set_scroll = 0;
     return true;
   }
-  if c >= CP_PAL_MODEL && c < CP_PAL_TIER { m := c - CP_PAL_MODEL; if m >= cp_models(s) { return false; } s[0].model = m; return true; }
+  if c >= CP_PAL_MODEL && c < CP_PAL_TIER { if !cp_has_model_picker(s) { return false; } m := c - CP_PAL_MODEL; if m >= cp_models(s) { return false; } s[0].model = m; return true; }
   if c >= CP_PAL_CONTENT {
     idx := c - CP_PAL_CONTENT;
     if idx < 0 || idx >= s[0].find[0].ncontent { return false; }
@@ -161,32 +174,32 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     s[0].ask = CP_ASK_OPEN_FILE;
     return true;
   }
-  if c >= CP_PAL_TIER { t := c - CP_PAL_TIER; if t > CP_FOREMAN_TIER_AUTO { return false; } s[0].set_tier = t; s[0].ask = CP_ASK_TIER; return true; }
+  if c >= CP_PAL_TIER { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } t := c - CP_PAL_TIER; if t > CP_FOREMAN_TIER_AUTO { return false; } s[0].set_tier = t; s[0].ask = CP_ASK_TIER; return true; }
   if c == CP_PC_NEW { cp_pal_leave_settings(s); return cp_new(s); }
   if c == CP_PC_FOREMAN { return cp_pal_open_chat(s, -1); }
   if c == CP_PC_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if c == CP_PC_SIDEBAR { s[0].side_collapsed = !s[0].side_collapsed; return true; }
   if c == CP_PC_SETTINGS { cp_settings_show(s, true, -1); return true; }
-  if c == CP_PC_BUDGET { s[0].ask = CP_ASK_BUDGET; return true; }
+  if c == CP_PC_BUDGET { if !cp_flag(s, DC_FLAG_USAGE) { return false; } s[0].ask = CP_ASK_BUDGET; return true; }
   if c == CP_PC_GOAL { s[0].ask = CP_ASK_GOAL; return true; }
   if c == CP_PC_FIND { cp_find_open(s); return true; }
   if c == CP_PC_MINIMAP { s[0].find[0].minimap_on = !s[0].find[0].minimap_on; return true; }
   if c == CP_PC_COPY { if s[0].nturns == 0 { return false; } s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true; }
   if c == CP_PC_FORK { cur := cast(string) s[0].current[0..<s[0].current_n]; if s[0].nturns == 0 || cur == "chat.foreman" { return false; } s[0].ask = CP_ASK_FORK; return true; }
   if c == CP_PC_STOP { if !cp_running(s) { return false; } s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
-  if c == CP_PC_SIM { if cp_sim_shown(s) { cp_sim_hide(s); } else { s[0].sim[0].closed_by_person = false; cp_sim_show(s); } return true; }
-  if c == CP_PC_PREVIEW { cp_preview_toggle(s); return true; }
-  if c == CP_PC_SNAPSHOT { cp_preview_trigger_snapshot(s); return true; }
-  if c == CP_PC_TERM { cp_term_toggle(s); return true; }
-  if c == CP_PC_TERM_NEW { cp_term_show(s); _ = cp_term_new_tab(s, "", ""); return true; }
-  if c == CP_PC_FORGE_PRS { cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_PRS); return true; }
-  if c == CP_PC_FORGE_ISSUES { cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_ISSUES); return true; }
-  if c == CP_PC_REVIEW { if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }
+  if c == CP_PC_SIM { if !cp_flag(s, DC_FLAG_SIMULATOR) { return false; } if cp_sim_shown(s) { cp_sim_hide(s); } else { s[0].sim[0].closed_by_person = false; cp_sim_show(s); } return true; }
+  if c == CP_PC_PREVIEW { if !cp_flag(s, DC_FLAG_PREVIEW) { return false; } cp_preview_toggle(s); return true; }
+  if c == CP_PC_SNAPSHOT { if !cp_flag(s, DC_FLAG_PREVIEW) { return false; } cp_preview_trigger_snapshot(s); return true; }
+  if c == CP_PC_TERM { if !cp_flag(s, DC_FLAG_TERMINAL) { return false; } cp_term_toggle(s); return true; }
+  if c == CP_PC_TERM_NEW { if !cp_flag(s, DC_FLAG_TERMINAL) { return false; } cp_term_show(s); _ = cp_term_new_tab(s, "", ""); return true; }
+  if c == CP_PC_FORGE_PRS { if !cp_flag(s, DC_FLAG_FORGE) { return false; } cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_PRS); return true; }
+  if c == CP_PC_FORGE_ISSUES { if !cp_flag(s, DC_FLAG_FORGE) { return false; } cp_pal_leave_settings(s); cp_forge_show(s, CP_FORGE_TAB_ISSUES); return true; }
+  if c == CP_PC_REVIEW { if !cp_flag(s, DC_FLAG_GIT) { return false; } if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }
   if c == CP_PC_BIGGER { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   if c == CP_PC_SMALLER { s[0].ask = CP_ASK_ZOOM_OUT; return true; }
   if c == CP_PC_ACTUAL { s[0].ask = CP_ASK_ZOOM_RESET; return true; }
   if c == CP_PC_UPDATES { s[0].ask = CP_ASK_CHECK_UPDATES; return true; }
-  if c == CP_PC_AUDIT { s[0].ask = CP_ASK_AUDIT; return true; }
+  if c == CP_PC_AUDIT { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].ask = CP_ASK_AUDIT; return true; }
   if c == CP_PC_NEXT { return cp_chat_step(s, 1); }
   if c == CP_PC_PREV { return cp_chat_step(s, -1); }
   if c == CP_PC_RENAME || c == CP_PC_DELETE || c == CP_PC_STOP_ALL { s[0].ov[0].pal_cmd = c; s[0].ask = CP_ASK_PALETTE; return true; }
@@ -201,13 +214,14 @@ cp_palette_collect :: (s: [] CoderPage) {
 // the one shown (none shown: the first or the last). False when there is nothing to step to.
 cp_chat_step :: (s: [] CoderPage, dir: int) -> bool {
   order: [CP_CHATS + 1] int; n := 0;
-  if s[0].experimental { order[n] = -1; n += 1; }   // Foreman, when experimental features are on
+  has_foreman := cp_flag(s, DC_FLAG_FOREMAN);
+  if has_foreman { order[n] = -1; n += 1; }
   for q: 0..<s[0].nchats { if s[0].chats[q].pinned { order[n] = q; n += 1; } }
   for q: 0..<s[0].nchats { if !s[0].chats[q].pinned { order[n] = q; n += 1; } }
   if n < 2 { return false; }
   cur := cast(string) s[0].current[0..<s[0].current_n];
   at := -1;
-  if cur == "chat.foreman" && s[0].experimental { at = 0; }
+  if cur == "chat.foreman" && has_foreman { at = 0; }
   else { for k: 0..<n { if order[k] < 0 { continue; } q := order[k]; if cur.count > 0 && cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { at = k; break; } } }
   next := ifx at < 0 then (ifx dir > 0 then 0 else n - 1) else (at + (ifx dir > 0 then 1 else n - 1)) % n;
   return cp_pal_open_chat(s, order[next]);
@@ -241,7 +255,7 @@ coder_page_chat_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(a
 }
 // ⌘B: the sidebar shows or hides.
 coder_page_toggle_sidebar :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 && !s[0].set_open { s[0].side_collapsed = !s[0].side_collapsed; } }
-// ⌘/: the composer's model menu opens or closes.
+// ⌘/: the composer's model menu opens or closes (only when extra model flags enable the picker).
 coder_page_toggle_models :: (s: [] CoderPage) #export_c #effects(all) {
-  if s.count > 0 && !s[0].set_open && !cp_overlay_open(s) { s[0].model_menu = !s[0].model_menu; }
+  if s.count > 0 && cp_has_model_picker(s) && !s[0].set_open && !cp_overlay_open(s) { s[0].model_menu = !s[0].model_menu; }
 }

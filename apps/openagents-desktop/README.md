@@ -1,40 +1,47 @@
-# Coder for desktop
+# OpenAgents Desktop
 
-Coder is a Coax Native desktop app. It targets macOS first. It is a
-conversation with Microcoder on Gemini 4 Neon: your messages and the
-replies scroll above the message bar.
+OpenAgents Desktop is a Coax Native desktop app targeting macOS first (with shared Coax core and Linux/Windows hosts). In its first release, it is a single-model local coding assistant running **Inkling 2 Mini** on **Psionic Metal** (`psionic-inkling-serve`, 32,768-token context, zero cloud keys or logins required, Apple Silicon Mac with ≥32 GB unified memory).
 
-Every part of the screen is the shared app set (`components/app/`): the
-composer, your message, the reply as Markdown with code blocks and Copy,
-the typing mark and notices. The page draws and edits its own text fields
-(`page/editor.coax` on `components/zeron/editor.coax`): the composer, settings'
-search and a dialog's fields, with the Mac's input method through the shared host.
+Every part of the screen is the shared app set (`components/app/`): the composer, your message, the reply as Markdown with code blocks and Copy, the typing mark and notices. The page draws and edits its own text fields (`page/editor.coax` on `components/zeron/editor.coax`): the composer, settings' search and a dialog's fields, with the Mac's input method through the shared host.
 
-For the repeatable workflow used to match Claude Desktop's layout, spacing, and
-typography in Coder's monochrome palette, see
-[`docs/coder/claude-desktop-parity-process.md`](../../docs/coder/claude-desktop-parity-process.md).
-For the tiered evaluation specification and phased rollout plan for Coder
-desktop, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals-spec.md).
+For the repeatable workflow used to match Claude Desktop's layout, spacing, and typography in the monochrome palette, see [`docs/coder/claude-desktop-parity-process.md`](../../docs/coder/claude-desktop-parity-process.md).
+For the tiered evaluation specification and phased rollout plan, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals-spec.md).
+
+## First-release scope & feature flags
+
+The first release ships **Inkling 2 Mini** as the sole model:
+
+- **First run:** checks Apple Silicon and ≥32 GB RAM, downloads `Inkling-2-Mini-IQ4_NL.gguf` (`17,627,940,768` bytes) into `~/.openagents/models/inkling-2-mini/` with live progress and full SHA-256 verification (`cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4`), and starts the bundled `psionic-inkling-serve` (`--ctx 32768 --idle-exit-s 300`, port override via `OA_INKLING_PORT`, logs in `~/.openagents/logs/inkling-serve.log`).
+- **Single-model UI:** no model selector is rendered or reachable in release mode (`coder.model`, `Choose Model` `⌘/`, `/model`, and `Switch model` are omitted). Kept chats originally created on another model open with their full history and show a notice that the next message runs on Inkling 2 Mini.
+- **Included in the release:** chat with Inkling (send, stop, steer, queue, tool rows, thoughts), local model download/status/remove/server lifecycle, saved chats & sidebar (rename, delete, fork), working folder / attachments / `@` files, file pane, command palette & Find, permission & question cards, to-do tray, `/goal`, runs that outlive the app (`coder-host`), per-chat git worktrees & git guard, Settings (`General`, `Models`, `About`), Updates, Notifications, and workspace agent instructions (`AGENTS.md` / `CLAUDE.md`).
+- **Feature-flagged capabilities (off by default):** 28 named flags in the shared `#authority;` Coax registry (`coax/lib/agent/desktop/flags.coax`, shared across macOS, Linux, and Windows):
+  - **Additional models & harnesses:** `models.gemini`, `models.claude`, `models.openrouter`, `models.antigravity`, `models.external` (Codex, Cursor, ACP Registry, handoff/fan-out), `models.executor` (Hybrid Executor / Local Pylon), `models.inklingNeon`.
+  - **Surfaces & subsystems:** `account`, `foreman`, `gym` (Benchmarks, Terminal-Bench, PLE 3D, Lean · RH), `wallet` (Spark wallet & Nostr identity), `forge` (PRs & Issues, review tours), `git` (Git actions toolbar, diff viewer, checkpoints/rewind), `simulator` (iOS Simulator pane & `oasim`), `terminal` (terminal pane), `preview` (web preview & SnapShot Region), `voice` (dictation), `mcp` (MCP servers, OAuth & Skills catalog), `scheduled` (scheduled tasks & webhooks), `environments` (Remote SSH, Boats, server exposure, keep awake), `pairing` (Tailscale phone pairing), `usage` (usage/quota/cost/budget), `customize` (themes, keybindings, languages), `proof` (Thread Proof & ATIF export), `capabilities` (New Local Capability), `agents` (Agents page), `scenes` (3D Scenes), and `rich` (prompt stash/history & composer upgrades).
+- **Enabling flags for development:**
+  - Individual flag via defaults: `defaults write com.openagents.desktop flag.<name> -bool YES`
+  - Environment variable: `OA_FLAGS=models.gemini,git,terminal`
+  - Launch argument: `--flag git --flag terminal`
+  - Developer alias (enables all 28 flags): `defaults write com.openagents.desktop experimentalFeatures -bool YES` (or `OA_EXPERIMENTAL=1`). When a flag is off, its UI, shortcuts, slash commands, background probes, listeners, and servers do not run.
+
+> **Compatibility paths:** Saved chats, turns, and optional developer keys remain under `~/Library/Application Support/Coder/`, and existing `CODER_*` environment variables (`CODER_WORKTREES`, `CODER_BUILD`, `CODER_CLAUDE_KEY`, etc.) remain supported so existing installations continue working seamlessly.
 
 ## What it does
 
-- **Send** (or Return) starts one Microcoder run. While a reply runs, Return steers it and Shift-Return queues a follow-up (when idle, Shift-Return makes a new line; Option-Return always makes a new line).
+- **Send** (or Return) starts one Microcoder run on Inkling 2 Mini. While a reply runs, Return steers it and Shift-Return queues a follow-up (when idle, Shift-Return makes a new line; Option-Return always makes a new line).
 - **Stop** ends the run.
 - **New chat** (the top row of the sidebar, the top-right icon when the sidebar is hidden, or Command-N) clears the window and makes Microcoder forget the conversation.
 - **The composer** is one row while your message fits on a line and grows into a box when it doesn't, when it has a new line, or in a new chat, where it stands in the middle of the window. Return sends (or steers while a reply runs); Shift-Return queues while a reply runs (or makes a new line when idle); Option-Return always makes a new line. The **+** at its start chooses the working folder.
-- **Under the composer** are the model (View > Choose Model, Command-/) and its thinking effort on the left (a press steps Low, Medium, High; the chat keeps it, and until one is picked Antigravity runs at the effort set in Settings, else Medium, and Microcoder at Low), and on the right the chat's goal, its cost against its budget, a ring that shows how full the model's context was on its last call (hover it for the token counts), and the working folder and its Git branch. In a narrow window the goal goes first, then the cost, the ring and the branch.
-- **The working folder** shows as a chip under the composer. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
-- **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
+- **Under the composer** are the thinking effort control on the left (and when developer model flags are enabled, the unified single-list model picker via View > Choose Model, Command-/), and on the right the chat's goal, a ring that shows how full the model's context was on its last call (hover it for the token counts; cost/budget also appears when `usage` is enabled), and the working folder and its Git branch. In a narrow window the goal goes first, then the ring and the branch.
+- **The working folder** shows as a chip under the composer. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. OpenAgents Desktop keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
+- **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. OpenAgents Desktop keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output and thoughts are not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
 - **A message of yours** longer than five lines folds; **Show more** opens it and **Show less** folds it again.
 - **Away from the end** of the chat, **Jump to latest** (or **New reply** while one is written) floats above the composer. It glides to the end, as sending does when you have scrolled up.
-- **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top (and **Command-\`** to open Foreman when enabled). See [Saved chats](#saved-chats).
-- **Experimental features** (Settings > General, off until you turn them on) are logging in and the account, Gym, and Foreman: its sidebar row, its menu and its control server. Off, Coder works with no login: local chats, runs and pairing a phone over Tailscale. `defaults write com.openagents.desktop experimentalFeatures -bool YES` turns them on. The iPhone app has the same switch (Settings > Experimental features, `experimentalFeatures` in `com.openagents.app`): off, it has no login, account, Projects, Foreman or Nostr keys, and works only with the computers it is paired with.
-- **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
-- **A file a row or a reply names** opens in the pane on the window's right, as does a `.coax` file you open with Coder from the Finder (Coder registers the `.coax` type, `com.openagents.coax`, as plain-text source code). The pane shows the file's name, its path, and its lines with their numbers. Click in the text to edit it: the tab says **Edited** and **Save** (or File > Save, Command-S) writes it back. The arrow icon opens the file in the Mac's own app for it (for a `.coax` file, the Mac's text editor). Close asks first when there are changes, and so does quitting. A picture or a PDF opens in its own app as before. Files up to 16 KB and 512 lines are edited in the pane; longer ones up to 256 KB are shown read-only, and the pane says so. A file Coder can't read (missing, a folder, not text, or longer than 256 KB) says why. A press on a sub-agent's row or Review shows that pane instead; the file comes back when it closes.
+- **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top (and **Command-\`** to open Foreman when `foreman` is enabled). See [Saved chats](#saved-chats).
+- **A file a row or a reply names** opens in the pane on the window's right, as does a `.coax` file you open with OpenAgents Desktop from the Finder (it registers the `.coax` type, `com.openagents.coax`, as plain-text source code). The pane shows the file's name, its path, and its lines with their numbers. Click in the text to edit it: the tab says **Edited** and **Save** (or File > Save, Command-S) writes it back. The arrow icon opens the file in the Mac's own app for it (for a `.coax` file, the Mac's text editor). Close asks first when there are changes, and so does quitting. A picture or a PDF opens in its own app as before. Files up to 16 KB and 512 lines are edited in the pane; longer ones up to 256 KB are shown read-only, and the pane says so. A file OpenAgents Desktop can't read (missing, a folder, not text, or longer than 256 KB) says why. A press on a sub-agent's row or Review shows that pane instead; the file comes back when it closes.
 
 Limits, all shown on screen when you reach them:
 
@@ -114,10 +121,9 @@ Coder asks the worker to wait before each command (`"gated":true`) so the row
 is on screen first, and then answers yes at once. Coder does not ask you.
 Microcoder can still edit files directly (`"edits":true`).
 
-## Sub-agents
+## Sub-agents (feature-flagged: `models.gemini`, `models.claude`, `models.openrouter`)
 
-Microcoder can hand parts of a message to sub-agents (#13655). It picks a
-level for each task:
+In the default single-model Inkling 2 Mini release, sub-agents are off. When additional model flags (or `experimentalFeatures`) are enabled, Microcoder can hand parts of a message to sub-agents (#13655). It picks a level for each task:
 
 - **Hydrogen** (Gemini 4 Hydrogen) takes lookups, searches, commands and small changes.
 - **Carbon** (Gemini 4 Carbon) takes work that needs many steps or careful reasoning.
@@ -246,11 +252,9 @@ or `CLAUDE_CODE_OAUTH_TOKEN` in Coder's environment is not passed on. If
 Claude refuses the key, the sub-agent's row says so. You still need the
 `claude` command installed.
 
-## OpenRouter models
+## OpenRouter models (feature-flagged: `models.openrouter`)
 
-Microcoder and its sub-agents can run on any OpenRouter model that takes a
-strict JSON schema (OpenRouter lists most models that way). Open
-**Coder > OpenRouter Models…** and fill in:
+When `models.openrouter` (or `experimentalFeatures`) is enabled, Microcoder and its sub-agents can run on any OpenRouter model that takes a strict JSON schema (OpenRouter lists most models that way). Open **OpenAgents > OpenRouter Models…** and fill in:
 
 - **Key:** your OpenRouter key (`sk-or-…`, from [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)). Coder keeps it in `~/Library/Application Support/Coder/openrouter-key`, readable by you only. Leave it empty to keep the key already set. Without a key here, Coder uses `~/work/.secrets/openrouter.env`.
 - **Model for Microcoder:** an OpenRouter id such as `deepseek/deepseek-v4.1-flash-1017`. It joins the composer's model picker, under its name after the vendor.
@@ -317,36 +321,21 @@ sub-agent of the newest message that has that many:
 open -n apps/openagents-desktop/build/OpenAgents.app --args --chat 1 --agent 1
 ```
 
-## Skills and installed commands
+## Skills and installed commands (feature-flagged: `mcp`)
 
-Coder tells Microcoder which skills are installed for you: each folder under
-`~/.claude/skills` with a `SKILL.md`, by name, file and description (the
-first 16 skills, 300 characters of each description, 4,000 bytes in all).
-Microcoder reads a skill's file before work the skill covers. The note goes
-ahead of each message and is not shown.
+When `mcp` (or `experimentalFeatures`) is enabled, OpenAgents Desktop tells Microcoder which skills are installed for you: each folder under `~/.claude/skills` with a `SKILL.md`, by name, file and description (the first 16 skills, 300 characters of each description, 4,000 bytes in all). Microcoder reads a skill's file before work the skill covers. The note goes ahead of each message and is not shown.
 
-The commands Microcoder runs also find what is installed for you: Coder puts
-`~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` on the worker's
-`PATH`.
+The commands Microcoder runs also find what is installed for you: OpenAgents Desktop puts `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` on the worker's `PATH`.
 
-So with the GameBuilder skill and command line installed
-(`scripts/install-cli.sh` in the GameBuilder repo), a message such as
-"List my GameBuilder levels" runs `gamebuilder list-levels`.
+So with the GameBuilder skill and command line installed (`scripts/install-cli.sh` in the GameBuilder repo), a message such as "List my GameBuilder levels" runs `gamebuilder list-levels`.
 
 ## How a message runs
 
-The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts
-it on the first message. `Worker.swift` carries bytes between the worker and the
-page. The page (`page.coax` and its parts in `page/`) writes the task line and reads every reply line
-with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
-Each sub-agent is one more worker process, which the app starts (through the daemon, see [Runs outlive Coder](#runs-outlive-coder)) when
-Microcoder hands a task over and stops when the task ends.
-The worker reads this machine's credentials as Coder's terminal app does
-(`coder/tui/microcoder_keys.coax`): Vertex first, then the Gemini API, then
-OpenRouter. A model you set in OpenRouter Models runs on OpenRouter alone,
-with the key Coder keeps (see [OpenRouter models](#openrouter-models)).
+The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and the Psionic Metal server (`psionic-inkling-serve` + `inkling-kernels.metal`), starting them on demand. `Worker.swift` carries bytes between the worker and the page. The page (`page.coax` and its parts in `page/`) writes the task line and reads every reply line with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
 
-## Runs outlive Coder
+In the default release, Microcoder runs locally against `psionic-inkling-serve` (`--ctx 32768`, zero cloud keys) with byte-level JSON Schema constrained decoding (`psionic/lib/inkling/json-schema.coax`). When developer model flags (`models.*`) are enabled, additional cloud and external providers (Gemini via Vertex/API key, Claude via `claudeworker`, OpenRouter, Antigravity, Codex/Cursor/ACP, Hybrid Executor) and sub-agents are also available.
+
+## Runs outlive OpenAgents Desktop
 
 Coder's background service runs the workers (#13694). It is the unified
 daemon, `coder host serve` (`coder/tui/host.coax`), bundled as
@@ -387,9 +376,9 @@ Limits:
 - A daemon from an older Coder that doesn't run workers leaves them to Coder, as before: quitting Coder then stops them, and Coder asks first.
 - A finished run's files are removed when Coder sees it end, and after a week otherwise.
 
-## iOS Simulator
+## iOS Simulator (feature-flagged: `simulator`)
 
-View > iOS Simulator (Option-Command-S, or "Show iOS Simulator" in the palette) puts a simulated
+When `simulator` (or `experimentalFeatures`) is enabled, View > iOS Simulator (Option-Command-S, or "Show iOS Simulator" in the palette) puts a simulated
 iPhone in the pane on the right (docs/desktop/ios-simulator-spec.md; GitHub #13811). The pane shows
 the device's screen (live: a frame from the device's framebuffer whenever it changes, up to 15 a
 second; stills, 4 a second, when this Xcode's SimulatorKit can't be used), its name and runtime, Device… (a menu of
@@ -536,6 +525,7 @@ apps/openagents-desktop/foreman-control-test.sh --live   # also drives a built O
 
 | File | What |
 | --- | --- |
+| `coax/lib/agent/desktop/flags.coax` | `#authority;` 28-flag desktop feature registry shared by macOS, Linux, Windows and `page.coax` |
 | `page.coax` | The page's entry: it loads `page/parts.coax` and the checks |
 | `page/parts.coax` | The page's parts, in one namespace; a check file loads it alone |
 | `page/state.coax` | Capacities, ids and actions, the `CoderPage` struct, its store (`CpStore`, `CpCheckStore`), `cp_init` and the small helpers |

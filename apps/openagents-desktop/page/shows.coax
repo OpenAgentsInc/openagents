@@ -98,17 +98,17 @@ cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
     // the caption, and what a press opens
     tb: [512] u8; tn := el_put(tb[..], 0, label);
     if live { tn = el_put(tb[..], tn, " · live 3D: drag to turn it, Option-scroll to zoom"); }
-    else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
+    else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_flag(s, DC_FLAG_SCENES) && cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
     cn := cp_id(cb[..], i, ".showc").count; cn = el_put_i(cb[..], cn, j);
     yy += app_meta(f, sheet_pool(sh, cast(string) cb[0..<cn]), x, yy, w, sheet_pool(sh, cast(string) tb[0..<tn]), false) + a.gap;
   }
   return yy - y;
 }
-// Whether show, drawn at (x, y) w by h, is the live 3D card: a live scene, while Experimental is on,
+// Whether show, drawn at (x, y) w by h, is the live 3D card: a live scene, while scenes flag is on,
 // at least partly in the conversation's clip (cp_conversation keeps it in live_r[4..8]). It then
 // becomes the one the host mounts its viewport over; a later card on screen takes it.
 cp_show_live :: (s: [] CoderPage, show: CpShow, x: f32, y: f32, w: f32, h: f32) -> bool {
-  if !show.live || !s[0].experimental || !cp_show_scene(show.open) || show.open.count > CP_IMG_PATH { return false; }
+  if !show.live || !cp_flag(s, DC_FLAG_SCENES) || !cp_show_scene(show.open) || show.open.count > CP_IMG_PATH { return false; }
   sc := cp_scale(s);
   if y * sc >= s[0].live_r[5] + s[0].live_r[7] || (y + h) * sc <= s[0].live_r[5] { return false; }
   s[0].live_r[0] = x * sc; s[0].live_r[1] = y * sc; s[0].live_r[2] = w * sc; s[0].live_r[3] = h * sc;

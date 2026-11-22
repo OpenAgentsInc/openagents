@@ -1693,15 +1693,29 @@ static int oa_main(int argc, char **argv) {
   }
   app.portal = shot ? NULL : portal_open();
   oa_started();
-  cd_claude(app.page, app.claude_worker_bin[0] ? 1 : 0);
+  // Resolve the 28-flag mask via #authority coax/lib/agent/desktop/flags.coax (all off by default).
+  int64_t dc_flags = 0;
   {
+    char args_nl[4096] = {0};
+    size_t pos = 0;
+    for (int i = 1; i < argc && pos + 2 < sizeof(args_nl); i++) {
+      int w = snprintf(args_nl + pos, sizeof(args_nl) - pos, "%s\n", argv[i]);
+      if (w > 0) pos += (size_t)w;
+    }
+    const char *env_f = getenv("OA_FLAGS");
+    const char *env_e = getenv("OA_EXPERIMENTAL");
+    dc_flags = oa_core_flags_resolve(0, 0, cs(env_f ? env_f : ""), cs(env_e ? env_e : ""), (coax_string){args_nl, (int64_t)pos});
+    cd_flags_set(app.page, dc_flags);
+    // Inkling 2 Mini Metal runtime is Apple Silicon macOS only; report unsupported OS on Linux/Windows.
+    cd_local_state(app.page, 0, 0, 0, 0, 0, 0, 16811, "");
+  }
+  cd_claude(app.page, ((dc_flags & (1LL << 1)) && app.claude_worker_bin[0]) ? 1 : 0);
+  if (dc_flags & (1LL << 1)) {
     // each Claude model's thinking level, as Settings > Models kept it (four digits, 0 low to 4 max)
     char levels[8] = {0};
     if (oa_core_key_read(cs("claude-effort"), vu(levels, (int)sizeof levels)) >= 4) {
       for (int k = 0; k < 4; k++) if (levels[k] >= '0' && levels[k] <= '4') cd_claude_effort_set(app.page, k, levels[k] - '0');
     }
-  }
-  {
     // the model new chats start on, as Settings > Models kept it ("claude:N" or "neon:N")
     char pick[16] = {0};
     if (oa_core_key_read(cs("orchestrator"), vu(pick, (int)sizeof pick)) > 0) {
@@ -1710,7 +1724,7 @@ static int oa_main(int argc, char **argv) {
       cd_orchestrator_set(app.page, on, num && num[1] >= '0' && num[1] <= '3' ? num[1] - '0' : 1);
     }
   }
-  cd_agy(app.page, app.agy_worker_bin[0] ? 1 : 0);
+  cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
   set_folder(&app, app.folder);
   refresh_settings_info(&app);
   refresh_chats(&app);

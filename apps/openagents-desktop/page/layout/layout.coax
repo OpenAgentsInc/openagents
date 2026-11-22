@@ -11,13 +11,13 @@ cp_pane_spec :: () -> AppPaneSpec {
 // The right sidebar: the file pane or the code review when it shows, else the task list at the top
 // with any sub-agent's transcript underneath.
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  if cp_forge_shown(s) { cp_forge_pane(s, f, px, pw, h); return; }
-  if cp_side_chat_shown(s) { cp_side_chat_pane(s, f, px, pw, h); return; }
-  if cp_preview_shown(s) { cp_previewpane(s, f, px, pw, h); return; }
-  if cp_term_shown(s) { cp_termpane(s, f, px, pw, h); return; }
-  if cp_sim_shown(s) { cp_simpane(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_FORGE) && cp_forge_shown(s) { cp_forge_pane(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_RICH) && cp_side_chat_shown(s) { cp_side_chat_pane(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { cp_previewpane(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) { cp_termpane(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { cp_simpane(s, f, px, pw, h); return; }
   if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); return; }
-  if cp_review_shown(s) { cp_review(s, f, px, pw, h); return; }
+  if cp_flag(s, DC_FLAG_GIT) && cp_review_shown(s) { cp_review(s, f, px, pw, h); return; }
   py: f32 = 0.0f32;
   if s[0].todos[0].n > 0 {
     k := f[0].skin; a := k.app; sh := f[0].sheet;
@@ -41,7 +41,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].preview[0].open || s[0].forge[0].open || todos_side, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || s[0].fp[0].open || s[0].ft[0].open || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
   kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");
@@ -57,7 +58,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].side = left; s[0].pane_w = ifx right > 0 then pane_w else 0.0f32; s[0].pane_x = window_w - right;
   s[0].gym_w = 0; s[0].gym_h = 0;
   toggle := left > 0 || (s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM);
-  if s[0].gym_open {
+  if cp_flag(s, DC_FLAG_GYM) && s[0].gym_open {
     running := cp_running(s);
     sc := cp_scale(s);
     gy := cp_bar(s);
@@ -87,7 +88,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   col := app_shell_column(left, w, CP_COLUMN, CP_PAD);
   cw := col.w; x := col.x;
   s[0].col_x = x; s[0].col_w = cw;
-  running := cp_running(s); full := cp_full(s); exceeded := cp_budget_exceeded(s);
+  running := cp_running(s); full := cp_full(s); exceeded := cp_flag(s, DC_FLAG_USAGE) && cp_budget_exceeded(s);
   cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
   cp_corners(s, f, left, w, window_w, exceeded);
   // the sidebar at its whole width, slid out to the left as it shuts

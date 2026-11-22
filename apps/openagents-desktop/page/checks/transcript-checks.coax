@@ -252,6 +252,12 @@ CpCheckLong :: struct {
 }
 cp_check_long :: (p: [] CoderPage, st: [] CpCheckLong) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[0..<0], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[0..<0], st[0].arena[..], st[0].scratch[..]);
+  p[0].flags = DC_FLAGS_ALL;
+  p[0].experimental = true;
+  p[0].cloud_authed = true;
+  p[0].local_os_ok = true;
+  p[0].local_hw_ok = true;
+  p[0].local_ram_gb = 64;
   return p;
 }
 cp_test_turns :: (s: [] CoderPage, n: int, ask: string) -> bool {
