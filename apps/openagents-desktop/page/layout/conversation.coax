@@ -816,12 +816,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   box_y := h - cast(f32) CP_BOTTOM - foot - g.height;
   if centred {
     least := zc_pill(cw, 0, 0, k.cmp.line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, false, false).height;
-    top := (h - s[0].empty_h - a.gap - least - foot) / 2;
+    top := (h - least - foot) / 2;
     if top < cast(f32) CP_CORNER + a.icon_button { top = cast(f32) CP_CORNER + a.icon_button; }
-    eh := app_centred(f, k.strong, k.ink, x, top, cw, "Let's build");
-    _ := uiframe_semantic(f, "coder.empty", EL_HEADING, "Let's build", x, top, cw, eh, 0, 0);
-    if abs(eh - s[0].empty_h) > 0.5 { s[0].empty_h = eh; s[0].anim = true; }
-    if top + eh + a.gap < box_y { box_y = top + eh + a.gap; }
+    if top < box_y { box_y = top; }
   }
   no_local := !cp_has_model_picker(s) && !s[0].inkling;
   s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded || no_local);
@@ -891,12 +888,12 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
-  if cp_has_model_picker(s) && s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
+  if cp_models(s) > 0 && s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
   if s[0].effort_menu { cp_effort_menu(s, f, x, cw, s[0].effort_x, box_y, foot_y, h); }
   if cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
-  if !(cp_has_model_picker(s) && s[0].model_menu) && !s[0].effort_menu && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
+  if !(cp_models(s) > 0 && s[0].model_menu) && !s[0].effort_menu && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -946,7 +943,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
   // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
   // says what Return does (#13717)
-  hint := "Do anything…";
+  hint := "Ask OpenAgents";
   if running {
     hint = "Steer the reply · ⇧Return queues · Esc stops";
   } else if !cp_has_model_picker(s) && !s[0].inkling {
@@ -1064,7 +1061,8 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
   w_fu := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else 0.0f32;
   has_picker := cp_has_model_picker(s);
-  w_model := ifx has_picker then cp_foot_chip_width(f, -1, m_label, true) else 0.0f32;
+  show_model := cp_models(s) > 0;
+  w_model := ifx show_model then cp_foot_chip_width(f, -1, m_label, true) else 0.0f32;
   w_effort := cp_foot_chip_width(f, -1, e_label, true);
   w_ring := c.chip_h;
   w_usage := c.chip_h;
@@ -1077,7 +1075,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   show_branch := cp_flag(s, DC_FLAG_GIT) && show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<6 {
-    need := (ifx has_picker then w_model + gap else 0.0f32) + w_effort;
+    need := (ifx show_model then w_model + gap else 0.0f32) + w_effort;
     if show_fu_draft { need += gap + w_fu; }
     if show_folder { need += gap + (ifx show_branch then w_folder else w_short); }
     if show_usage { need += gap + w_usage; }
@@ -1085,7 +1083,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     if need <= room { break; }
     if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
-  // the left side: Steer & Queue (while a reply runs with a draft), the model chip (when enabled),
+  // the left side: Steer & Queue (while a reply runs with a draft), the model chip,
   // and effort chip, kept whole before the working folder is shortened.
   fx := x + side;
   end_x := x + cw - side;
@@ -1098,13 +1096,13 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     }
   }
   m_x := fx;
-  mw := ifx has_picker then w_model else 0.0f32;
+  mw := ifx show_model then w_model else 0.0f32;
   if mw > end_x - m_x { mw = end_x - m_x; }
-  if has_picker && mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
-  // the effort chip: sits beside the model chip when the picker is shown, or at the left edge in single-model mode
-  eff_gap := ifx has_picker && mw > 0 then gap else 0.0f32;
+  if show_model && mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
+  // the effort chip: sits immediately to the right of the model chip
+  eff_gap := ifx show_model && mw > 0 then gap else 0.0f32;
   s[0].effort_x = fx + eff_gap;
-  if (!has_picker || mw > 0) && fx + eff_gap + w_effort <= end_x {
+  if (!show_model || mw > 0) && fx + eff_gap + w_effort <= end_x {
     fx += eff_gap;
     s[0].effort_x = fx;
     fx += cp_foot_chip(f, "coder.effort", "Thinking level (⇧Tab)", fx, y, w_effort, -1, e_label, true, ifx s[0].effort_menu then EL_S_CURRENT else 0, CP_EFFORT_MENU);
@@ -1211,7 +1209,8 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   rh := 42.0f32;
   div_h := 7.0f32;
   lrh := 40.0f32;
-  ph := pad * 2 + cast(f32) cp_models(s) * rh + div_h + lrh;
+  show_local_row := cp_has_model_picker(s);
+  ph := pad * 2 + cast(f32) cp_models(s) * rh + (ifx show_local_row then div_h + lrh else 0.0f32);
   px := m_x;
   if px + pw > x + cw { px = x + cw - pw; }
   if px < x { px = x; }
@@ -1254,23 +1253,25 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     }
     sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
   }
-  // Local Models action row (#13826, #13825): live availability/download status and one-click manager access.
-  dy := py + pad + cast(f32) cp_models(s) * rh;
-  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad + 6.0f32, dy + 3.0f32, pw - 2 * pad - 12.0f32, 1.0f32, 0, 0, th.line, Rgba.{}));
-  lry := dy + div_h;
-  lhov := uiframe_hover(f, KEYED_LAZY, "coder.model.local");
-  llabel := ifx s[0].inkling then "Manage Local Models…" else "Inkling 2 Mini (Local)";
-  ldesc := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else ifx s[0].inkling then "Installed · Psionic Metal" else "Not downloaded (17.6 GB) · Download…";
-  lrow := uiframe_semantic(f, "coder.model.local", EL_BUTTON, llabel, px + pad, lry, pw - 2 * pad, lrh, 0, CP_MODEL_LOCAL);
-  elt_value(f[0].rows, lrow, ldesc);
-  if lhov > 0 {
-    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, lry + 1.0f32, pw - 2 * pad, lrh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, lhov), Rgba.{}));
+  // Local Models action row (#13826, #13825): shown in multi-model mode; in single-model mode Inkling 2 Mini is the sole option.
+  if show_local_row {
+    dy := py + pad + cast(f32) cp_models(s) * rh;
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad + 6.0f32, dy + 3.0f32, pw - 2 * pad - 12.0f32, 1.0f32, 0, 0, th.line, Rgba.{}));
+    lry := dy + div_h;
+    lhov := uiframe_hover(f, KEYED_LAZY, "coder.model.local");
+    llabel := ifx s[0].inkling then "Manage Local Models…" else "Inkling 2 Mini (Local)";
+    ldesc := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else ifx s[0].inkling then "Installed · Psionic Metal" else "Not downloaded (17.6 GB) · Download…";
+    lrow := uiframe_semantic(f, "coder.model.local", EL_BUTTON, llabel, px + pad, lry, pw - 2 * pad, lrh, 0, CP_MODEL_LOCAL);
+    elt_value(f[0].rows, lrow, ldesc);
+    if lhov > 0 {
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, lry + 1.0f32, pw - 2 * pad, lrh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, lhov), Rgba.{}));
+    }
+    ltx := px + pad + 10.0f32;
+    ltw := pw - 2 * pad - 20.0f32;
+    _ := sheet_text(sh, f[0].m, -1, ltx, lry + 3.0f32, k.label.line, k.label.face, ifx s[0].inkling then z_sec else z_ink, app_fit(f, k.label.face, llabel, ltw));
+    _ := sheet_text(sh, f[0].m, -1, ltx, lry + 21.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, ldesc, ltw));
+    sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
   }
-  ltx := px + pad + 10.0f32;
-  ltw := pw - 2 * pad - 20.0f32;
-  _ := sheet_text(sh, f[0].m, -1, ltx, lry + 3.0f32, k.label.line, k.label.face, ifx s[0].inkling then z_sec else z_ink, app_fit(f, k.label.face, llabel, ltw));
-  _ := sheet_text(sh, f[0].m, -1, ltx, lry + 21.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, ldesc, ltw));
-  sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
   if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
 }
 // The thinking-level menu, anchored to the effort chip at (e_x, foot_y): shows Low, Medium, High

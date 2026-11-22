@@ -359,7 +359,7 @@ coder_page_flags_set :: (s: [] CoderPage, mask: int) #export_c #effects(all) {
   s[0].flags = mask & DC_FLAGS_ALL;
   s[0].experimental = s[0].flags == DC_FLAGS_ALL;
   cp_model_restore_id(s, prev);
-  if !cp_has_model_picker(s) { s[0].model_menu = false; }
+  if cp_models(s) == 0 { s[0].model_menu = false; }
   if !cp_flag(s, DC_FLAG_GYM) { s[0].gym_open = false; }
   if !cp_flag(s, DC_FLAG_FORGE) { s[0].forge[0].open = false; }
   if !cp_flag(s, DC_FLAG_TERMINAL) { s[0].term[0].open = false; }

@@ -251,7 +251,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_FRESH_TOGGLE { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
   if act == CP_FANOUT_OPEN { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) || !cp_has_model_picker(s) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
   if act == CP_MODEL_MENU {
-    if !cp_has_model_picker(s) { return false; }
+    if cp_models(s) == 0 { return false; }
     s[0].effort_menu = false;
     s[0].usage[0].popover_open = false;
     s[0].model_menu = !s[0].model_menu;
@@ -276,7 +276,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_MODEL_PICK {
-    if !cp_has_model_picker(s) { s[0].model_menu = false; return false; }
+    if cp_models(s) == 0 { s[0].model_menu = false; return false; }
     idx := cp_number(surface_id(s[0].surface[..], row), "coder.model.");
     s[0].model_menu = false;
     if idx < 0 || idx >= cp_models(s) { return false; }

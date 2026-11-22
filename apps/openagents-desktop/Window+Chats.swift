@@ -30,6 +30,7 @@ extension CoderWindow {
         #else
         cd_branch(page, "")
         #endif
+        prewarmWorktree(for: folder)
         wake()
     }
     /// The working folder's Git branch for the composer's foot (#13743): HEAD's branch, a detached

@@ -45,7 +45,7 @@
   #assert coder_page_pick_model(s2, "inkling-2-mini");
   #assert coder_page_model_inkling(s2);
   #assert cp_model_id(s2, s2[0].model) == "inkling-2-mini";
-  #assert cp_model_label(s2, s2[0].model) == "Inkling 2 Mini (Local)";
+  #assert cp_model_label(s2, s2[0].model) == "Inkling 2 Mini";
   #assert cp_backend_label(s2) == "Psionic Metal";
   #assert coder_page_set_text(s2, "hello inkling") && coder_page_submit(s2);
   n = coder_page_task(s2, "sess-local", "/w", out[..]);

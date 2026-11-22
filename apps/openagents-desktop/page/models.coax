@@ -309,7 +309,7 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
     return ifx at < m.count then cast(string) m[at..<m.count] else m;
   }
   if e.kind == CP_MK_AGY { return "Antigravity"; }
-  if e.kind == CP_MK_INKLING { return "Inkling 2 Mini (Local)"; }
+  if e.kind == CP_MK_INKLING { return "Inkling 2 Mini"; }
   if e.kind == CP_MK_HYBRID { return "Hybrid Executor [E]"; }
   if e.kind == CP_MK_INKLING_NEON { return "Inkling + Neon (Hybrid)"; }
   if e.kind == CP_MK_CODEX { return "Codex"; }
