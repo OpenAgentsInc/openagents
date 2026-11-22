@@ -451,6 +451,7 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
     double began = s->profile ? pc_seconds() : 0.0;
     if (pc_download(ids, s->moe_ids, (size_t)n * 4, s->stream) != PC_OK ||
         pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "read expert ids");
+    if (getenv("INK_EXPERT_TRACE")) { for (int k = 0; k < n; k++) fprintf(stderr, "XT %d %u\n", ip, ids[k]); }
     /* Mark what this batch needs before choosing what to replace. */
     s->tick++;
     for (int k = 0; k < n; k++) {
@@ -795,6 +796,10 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         ink_close(s); return 1;
     }
     s->profile = getenv("INK_PROFILE") != NULL;
+    if (hp->n_embd > 2304) {
+        snprintf(err, err_bytes, "this engine handles a width of at most 2304, not %lld", (long long)hp->n_embd);
+        ink_close(s); return 1;
+    }
     if (hp->gate_rank != 64) {
         snprintf(err, err_bytes, "this engine handles a recurrence gate of rank 64, not %lld", (long long)hp->gate_rank);
         ink_close(s); return 1;
@@ -1137,6 +1142,14 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         double t2 = pc_seconds();
         for (int i = 0; i < 20000; i++) { pc_launch(s->kernels[K_COPY], 1, 256, args, 3, s->stream); pc_sync_stream(s->stream); }
         double t3 = pc_seconds();
+        uint32_t tmp[16];
+        for (int i = 0; i < 20000; i++) {
+            pc_launch(s->kernels[K_COPY], 1, 256, args, 3, s->stream);
+            pc_download(tmp, s->moe_ids, 32, s->stream); pc_sync_stream(s->stream);
+            pc_upload(s->moe_slots, tmp, 32, s->stream);
+        }
+        double t4 = pc_seconds();
+        fprintf(stderr, "psionic-cuda: launch + 32-byte download + wait + 32-byte upload: %.2f us\n", (t4 - t3) / 20000 * 1e6);
         fprintf(stderr, "psionic-cuda: an empty launch: %.2f us to queue, %.2f us queued and run back to back, %.2f us with a wait after each\n",
                 (t1 - t0) / 20000 * 1e6, (t2 - t0) / 20000 * 1e6, (t3 - t2) / 20000 * 1e6);
     }
