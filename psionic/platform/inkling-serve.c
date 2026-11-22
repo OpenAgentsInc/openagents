@@ -63,8 +63,14 @@ static int ink_spawn_detached(InkThreadFn fn, void *arg) {
     CloseHandle(h);
     return 0;
 }
-/* A SOCKET is kept in an int: Windows hands out handles that fit in 32 bits. */
-static int g_listen = -1;
+/* A SOCKET is kept in an int: Windows hands out handles that fit in 32 bits.
+   g_listen is taken with InterlockedExchange so the console handler and main
+   close the listener exactly once between them. */
+static volatile LONG g_listen = -1;
+static void close_listen_once(void) {
+    LONG fd = InterlockedExchange(&g_listen, -1);
+    if (fd >= 0) closesocket((SOCKET)fd);
+}
 static int sock_start(void) { WSADATA w; return WSAStartup(MAKEWORD(2, 2), &w) == 0 ? 0 : 1; }
 static void sock_close(int fd) { closesocket((SOCKET)fd); }
 static int sock_interrupted(void) { return WSAGetLastError() == WSAEINTR; }
@@ -85,11 +91,14 @@ static int sock_poll_read(int fd, int timeout_ms) {
 static BOOL WINAPI on_console(DWORD event) {
     (void)event;
     g_stop = 1;
-    if (g_listen >= 0) closesocket((SOCKET)g_listen);
+    close_listen_once();
     return TRUE;
 }
-static void stop_signals(int listen_fd) { g_listen = listen_fd; SetConsoleCtrlHandler(on_console, TRUE); }
-static void sock_close_listener(int fd) { if (!g_stop) closesocket((SOCKET)fd); } /* the handler closed it otherwise */
+static void stop_signals(int listen_fd) { InterlockedExchange(&g_listen, (LONG)listen_fd); SetConsoleCtrlHandler(on_console, TRUE); }
+static void sock_close_listener(int fd) { (void)fd; close_listen_once(); } /* a no-op if the handler already closed it */
+/* Winsock's SO_REUSEADDR lets a second process listen on a port that is in
+   use; SO_EXCLUSIVEADDRUSE makes that bind fail, as it does on POSIX. */
+static void sock_reuse_port(int fd) { BOOL on = TRUE; setsockopt((SOCKET)fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&on, sizeof on); }
 static double now_sec(void) {
     LARGE_INTEGER f, c;
     QueryPerformanceFrequency(&f);
@@ -159,6 +168,7 @@ static void stop_signals(int listen_fd) {
     sigaction(SIGTERM, &sa, NULL);
 }
 static void sock_close_listener(int fd) { close(fd); }
+static void sock_reuse_port(int fd) { int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one); }
 static double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -2191,8 +2201,7 @@ int main(int argc, char **argv) {
 
     int srv = (int)socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) { sock_error("socket"); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1; }
-    int one = 1;
-    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);
+    sock_reuse_port(srv);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof addr);

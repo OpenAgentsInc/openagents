@@ -12,7 +12,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 /* The driver API is __stdcall on Windows; on x86_64 that is the one ABI. */
-static void *pc_lib_open(const char *path) { return (void *)LoadLibraryA(path); }
+/* For a full path, LOAD_WITH_ALTERED_SEARCH_PATH looks for the DLL's own
+   dependencies (nvrtc-builtins64_*.dll) in its folder; a bare name loads as usual. */
+static void *pc_lib_open(const char *path) {
+    int full = strchr(path, '\\') || strchr(path, '/');
+    return (void *)LoadLibraryExA(path, NULL, full ? LOAD_WITH_ALTERED_SEARCH_PATH : 0);
+}
 static void *pc_lib_symbol(void *lib, const char *name) { return (void *)(uintptr_t)GetProcAddress((HMODULE)lib, name); }
 static double pc_now(void) {
     LARGE_INTEGER f, c;
@@ -178,13 +183,17 @@ static int load_nvrtc(void) {
     char home[4096] = "", cuda_home[4096] = "", cuda_path[4096] = "", cuda_path12[4096] = "";
 #ifdef _WIN32
     /* CUDA 13 and 12 name the NVRTC DLL by major version; CUDA_PATH is the
-       toolkit's install directory when one is installed. */
+       toolkit's install directory when one is installed. Both bin\x64 and
+       bin are tried, for toolkits that keep the DLLs in either place. */
+    char cuda_path_x64[4096] = "", cuda_path12_x64[4096] = "";
     const char *c = getenv("CUDA_PATH");
     if (c) {
+        snprintf(cuda_path_x64, sizeof cuda_path_x64, "%s\\bin\\x64\\nvrtc64_130_0.dll", c);
         snprintf(cuda_path, sizeof cuda_path, "%s\\bin\\nvrtc64_130_0.dll", c);
+        snprintf(cuda_path12_x64, sizeof cuda_path12_x64, "%s\\bin\\x64\\nvrtc64_120_0.dll", c);
         snprintf(cuda_path12, sizeof cuda_path12, "%s\\bin\\nvrtc64_120_0.dll", c);
     }
-    const char *paths[] = {getenv("PSIONIC_NVRTC"), cuda_path, cuda_path12, cuda_home, home, "nvrtc64_130_0.dll", "nvrtc64_120_0.dll"};
+    const char *paths[] = {getenv("PSIONIC_NVRTC"), cuda_path_x64, cuda_path, cuda_path12_x64, cuda_path12, cuda_home, home, "nvrtc64_130_0.dll", "nvrtc64_120_0.dll"};
 #else
     const char *h = getenv("HOME"), *c = getenv("CUDA_HOME");
     if (h) snprintf(home, sizeof home, "%s/cuda-13.2/lib/libnvrtc.so.13", h);
@@ -193,7 +202,11 @@ static int load_nvrtc(void) {
 #endif
     for (size_t i = 0; i < sizeof paths / sizeof *paths && !g.nvrtc; i++)
         if (paths[i] && *paths[i]) g.nvrtc = pc_lib_open(paths[i]);
+#ifdef _WIN32
+    if (!g.nvrtc) { note("no NVRTC library: set PSIONIC_NVRTC or CUDA_PATH"); return 0; }
+#else
     if (!g.nvrtc) { note("no NVRTC library: set PSIONIC_NVRTC or CUDA_HOME"); return 0; }
+#endif
     LOAD(g.nvrtc, nvrtcCreateProgram, "nvrtcCreateProgram");
     LOAD(g.nvrtc, nvrtcCompileProgram, "nvrtcCompileProgram");
     LOAD(g.nvrtc, nvrtcGetPTXSize, "nvrtcGetPTXSize");
