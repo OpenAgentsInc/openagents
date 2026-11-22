@@ -291,3 +291,48 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_flags_set(s, 0);
   #assert !coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");
 }
+
+#test "flags release mode: onboarding offers Connect Google Antigravity where Inkling cannot run" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_set_inkling(s, false);
+
+  // Without agyworker bundled, unsupported machine shows no Antigravity section.
+  coder_page_local_state(s, false, false, 0, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  coder_page_agy_connect(s, false, CP_AGY_IDLE, "", -1, 0, 0);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.unsupported") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.connect") < 0;
+
+  // With agyworker bundled, Connect Google Antigravity appears and semantic region covers it.
+  coder_page_agy_connect(s, true, CP_AGY_IDLE, "", -1, 0, 0);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  btn := surface_find(s[0].surface[..], "coder.agy.connect");
+  reg := surface_find(s[0].surface[..], "coder.onboarding");
+  #assert btn >= 0 && reg >= 0;
+  #assert s[0].surface[0].rows[0].rows[reg].y + s[0].surface[0].rows[0].rows[reg].h >= s[0].surface[0].rows[0].rows[btn].y + s[0].surface[0].rows[0].rows[btn].h;
+  #assert cp_press(s, btn) && coder_page_action(s) == CP_ASK_AGY_CONNECT && s[0].agy_conn == CP_AGY_BUSY;
+
+  // Download progress state shows progress bar and text.
+  coder_page_agy_connect(s, true, CP_AGY_BUSY, "Downloading…", 42, 18, 44);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.agy.progress") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.progress.text") >= 0;
+
+  // Failure shows error notice and retry button; low-RAM path also offers Antigravity.
+  coder_page_local_state(s, true, false, 16, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  coder_page_agy_connect(s, true, CP_AGY_FAILED, "Sign-in cancelled.", -1, 0, 0);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.ram") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.error") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.connect") >= 0;
+
+  // Once connected, enabling models.antigravity + agy dismisses onboarding and selects Antigravity.
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_ANTIGRAVITY));
+  coder_page_set_agy(s, true);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
+  #assert coder_page_model_agy(s);
+}

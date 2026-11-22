@@ -10,8 +10,9 @@
 //   oa_home(out, cap)                         the home folder ("" unknown), forward slashes
 //   oa_working_dir(out, cap)                  the folder the app starts in
 //   oa_absolute(path)                         whether a path names a place on its own
-//   oa_temp_dir(out, cap), oa_mkdir(path)     a new private temporary folder; a folder
+//   oa_temp_dir(out, cap), oa_mkdir(path), oa_rmdir(path)  a new private temporary folder; create/remove a folder
 //   oa_open_external(target)                  a link or file in the system's own app
+//   oa_proc_logged(p, argv, envs, log)        a program in the background, its output appended to a log
 //   oa_fail(why), oa_started()                a startup failure told to the person; the window is up
 // Paths are UTF-8 with forward slashes on both.
 #include "host.h"
@@ -119,6 +120,16 @@ typedef struct {
   char agy_model[128];
   int agy_mode;
   int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude
+  // Connect Google Antigravity from the onboarding where Inkling cannot run: agyworker --connect,
+  // its lines read from a log in its own temporary folder (agy_connect_start / pump_agy_connect).
+  OaSubproc agy_conn_proc;
+  int agy_connecting, agy_conn_failed, agy_conn_ok;
+  long agy_conn_read;
+  char agy_conn_dir[OA_PATH];
+  char agy_conn_step[256];
+  char agy_conn_err[512];
+  char agy_conn_profile[OA_PATH];   // the agy profile it signed in to (kept as the "agy-profile" key once connected)
+  int agy_dl_pct, agy_dl_mb, agy_dl_total_mb;   // the Antigravity CLI's download (pct -1: not downloading)
   int foreman_tier;
   char folder[OA_PATH];
   char worktree_path[OA_PATH];
@@ -178,7 +189,7 @@ static void refresh_chats(DesktopApp *a) {
   cd_current(a->page, a->chat_id);
 }
 
-enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE };
+enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE };
 static void local_sync(DesktopApp *a);
 static void ask_local_models(DesktopApp *a);
 
@@ -824,6 +835,10 @@ static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
   if (is_agy && a) {
     if (a->agy_bin[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_BIN=%s\n", a->agy_bin);
     if (a->agy_model[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_MODEL=%s\n", a->agy_model);
+    // the profile the onboarding's Connect Google Antigravity signed in to
+    char prof[OA_PATH] = {0};
+    if (oa_core_key_read(cs("agy-profile"), vu(prof, (int)sizeof prof)) > 0 && prof[0] && pos < cap)
+      pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_PROFILE=%s\n", prof);
   }
   if (!is_agy && a && a->page && (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags))) {
     int port = a->local.port > 0 ? a->local.port : 18794;
@@ -1180,6 +1195,169 @@ static void ask_agy(DesktopApp *a) {
   show_dialog(a, OA_DIALOG_AGY, 2, 1);
 }
 
+// ---- Connect Google Antigravity (the onboarding where Inkling cannot run) ----
+// agyworker --connect installs the Antigravity CLI when it is missing, opens a session, and signs in
+// through Google when agy is signed out, saying each step as KIND<TAB>TEXT lines (step / url / ok /
+// fail) into connect.log; the code Google shows goes back through code.txt. Once it says ok,
+// models.antigravity is turned on and kept, so this install's chats run on Antigravity.
+static void agy_connect_sync(DesktopApp *a) {
+  int state = a->agy_connecting ? 1 : a->agy_conn_failed ? 2 : 0;
+  cd_agy_connect(a->page, a->agy_worker_bin[0] != '\0', state, a->agy_connecting ? a->agy_conn_step : a->agy_conn_err,
+                 a->agy_connecting ? a->agy_dl_pct : -1, a->agy_dl_mb, a->agy_dl_total_mb);
+}
+
+static void agy_connect_cleanup_dir(DesktopApp *a) {
+  if (!a->agy_conn_dir[0]) return;
+  char path[OA_PATH];
+  snprintf(path, sizeof path, "%s/connect.log", a->agy_conn_dir); remove(path);
+  snprintf(path, sizeof path, "%s/code.txt", a->agy_conn_dir); remove(path);
+  snprintf(path, sizeof path, "%s/code.txt.tmp", a->agy_conn_dir); remove(path);
+  oa_rmdir(a->agy_conn_dir);
+  a->agy_conn_dir[0] = '\0';
+}
+
+static void agy_connect_fail(DesktopApp *a, const char *why) {
+  a->agy_connecting = 0;
+  a->agy_conn_failed = 1;
+  agy_connect_cleanup_dir(a);
+  snprintf(a->agy_conn_err, sizeof a->agy_conn_err, "%s", why && why[0] ? why : "Google Antigravity could not be connected.");
+  agy_connect_sync(a);
+}
+
+static void agy_connect_start(DesktopApp *a) {
+  if (a->agy_connecting) { agy_connect_sync(a); return; }
+  agy_connect_cleanup_dir(a);
+  a->agy_conn_failed = 0; a->agy_conn_ok = 0; a->agy_conn_err[0] = '\0';
+  if (!a->agy_worker_bin[0]) { agy_connect_fail(a, "This build has no Antigravity worker (agyworker)."); return; }
+  if (!oa_temp_dir(a->agy_conn_dir, sizeof a->agy_conn_dir)) { agy_connect_fail(a, "Could not make a temporary folder to connect Antigravity in."); return; }
+  char log[OA_PATH], code[OA_PATH];
+  snprintf(log, sizeof log, "%s/connect.log", a->agy_conn_dir);
+  snprintf(code, sizeof code, "%s/code.txt", a->agy_conn_dir);
+  const char *argv[] = {a->agy_worker_bin, "--connect", "--code", code, NULL};
+  // the configured agy (Settings), and the profile an earlier connection signed in to
+  char env_bin[OA_PATH + 32], env_prof[OA_PATH + 32], kept[OA_PATH] = {0};
+  const char *envs[3] = {NULL, NULL, NULL};
+  int ne = 0;
+  if (a->agy_bin[0]) { snprintf(env_bin, sizeof env_bin, "CODER_AGY_BIN=%s", a->agy_bin); envs[ne++] = env_bin; }
+  if (oa_core_key_read(cs("agy-profile"), vu(kept, (int)sizeof kept)) > 0 && kept[0]) {
+    snprintf(env_prof, sizeof env_prof, "CODER_AGY_PROFILE=%s", kept); envs[ne++] = env_prof;
+  }
+  if (!oa_proc_logged(&a->agy_conn_proc, argv, envs, log)) { agy_connect_fail(a, "Could not start the Antigravity worker."); return; }
+  a->agy_connecting = 1;
+  a->agy_conn_read = 0;
+  a->agy_dl_pct = -1; a->agy_dl_mb = 0; a->agy_dl_total_mb = 0;
+  a->agy_conn_profile[0] = '\0';
+  snprintf(a->agy_conn_step, sizeof a->agy_conn_step, "Connecting to Google Antigravity…");
+  agy_connect_sync(a);
+}
+
+// Google's sign-in opened in the browser: the code it shows, if any, is pasted here.
+static void ask_agy_code(DesktopApp *a) {
+  cd_dialog_begin(a->page, 1, "Sign in to Google Antigravity",
+                  "Google's sign-in opened in your browser. Approve it there. If Google then shows a code, paste it here.");
+  cd_dialog_field(a->page, "", "", "Code from Google", 0, 1);
+  cd_dialog_button(a->page, "Cancel", 1, 0);
+  cd_dialog_button(a->page, "Continue", 0, 0);
+  show_dialog(a, OA_DIALOG_AGY_CODE, 1, 0);
+}
+
+static void agy_connect_line(DesktopApp *a, char *line) {
+  char *tab = strchr(line, '\t');
+  if (!tab) return;
+  *tab = '\0';
+  const char *kind = line, *text = tab + 1;
+  if (strcmp(kind, "step") == 0) {
+    snprintf(a->agy_conn_step, sizeof a->agy_conn_step, "%s", text);
+    a->agy_dl_pct = -1;   // a step after the download: the bar goes
+    agy_connect_sync(a);
+  } else if (strcmp(kind, "progress") == 0) {
+    int pct = 0, done = 0, total = 0;
+    if (sscanf(text, "%d\t%d\t%d", &pct, &done, &total) >= 2) {
+      a->agy_dl_pct = pct < 0 ? 0 : pct > 100 ? 100 : pct;
+      a->agy_dl_mb = done; a->agy_dl_total_mb = total;
+      agy_connect_sync(a);
+    }
+  } else if (strcmp(kind, "profile") == 0) {
+    snprintf(a->agy_conn_profile, sizeof a->agy_conn_profile, "%s", text);
+  } else if (strcmp(kind, "url") == 0) {
+    if (strncmp(text, "https://accounts.google.com/", 28) == 0) {
+      oa_open_external(text);
+      snprintf(a->agy_conn_step, sizeof a->agy_conn_step, "Waiting for the Google sign-in…");
+      agy_connect_sync(a);
+      if (!a->dialog) ask_agy_code(a);
+    }
+  } else if (strcmp(kind, "ok") == 0) {
+    a->agy_conn_ok = 1;
+    // the Antigravity worker signs in with the same profile from now on (worker_extra)
+    if (a->agy_conn_profile[0]) (void)oa_core_key_save(cs("agy-profile"), cs(a->agy_conn_profile));
+    a->flags |= (1LL << 3);   // models.antigravity
+    if (!oa_core_flag_persist(cs("models.antigravity"), 1)) cd_toast(a->page, "Antigravity is connected, but the setting could not be saved for next time.", 1);
+    cd_flags_set(a->page, a->flags);
+    cd_agy(a->page, 1);
+    refresh_settings_info(a);
+    char note[384];
+    snprintf(note, sizeof note, "Google Antigravity is connected (%s).", text[0] ? text : "Antigravity");
+    cd_toast(a->page, note, 0);
+  } else if (strcmp(kind, "fail") == 0) {
+    snprintf(a->agy_conn_err, sizeof a->agy_conn_err, "%s", text);
+  }
+}
+
+// The lines agyworker --connect added to its log since the last look (whole lines only).
+static void agy_connect_read(DesktopApp *a) {
+  if (!a->agy_conn_dir[0]) return;
+  char log[OA_PATH];
+  snprintf(log, sizeof log, "%s/connect.log", a->agy_conn_dir);
+  FILE *f = fopen(log, "rb");
+  if (!f) return;
+  char buf[8192];
+  for (;;) {
+    if (fseek(f, a->agy_conn_read, SEEK_SET) != 0) break;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    if (n == 0) break;
+    buf[n] = '\0';
+    char *start = buf;
+    int got_line = 0;
+    for (;;) {
+      char *nl = memchr(start, '\n', (size_t)(buf + n - start));
+      if (!nl) break;
+      got_line = 1;
+      a->agy_conn_read += (long)(nl - start) + 1;
+      *nl = '\0';
+      if (nl > start && nl[-1] == '\r') nl[-1] = '\0';
+      agy_connect_line(a, start);
+      start = nl + 1;
+    }
+    if (!got_line) {
+      // A single line longer than buf: skip this chunk so polling never stalls on it.
+      if (n == sizeof buf - 1) { a->agy_conn_read += (long)n; continue; }
+      break;
+    }
+    if (n < sizeof buf - 1) break;
+  }
+  fclose(f);
+}
+
+static void pump_agy_connect(DesktopApp *a) {
+  if (!a->agy_connecting) return;
+  agy_connect_read(a);
+  int code = 1;
+  if (!oa_dl_poll(&a->agy_conn_proc, &code)) return;
+  agy_connect_read(a);   // what it wrote as it ended
+  if (a->dialog == OA_DIALOG_AGY_CODE) {   // signed in without a code (or it failed): the code dialog goes
+    a->dialog = OA_DIALOG_NONE;
+    (void)cd_overlay_key(a->page, -1, 0);
+  }
+  if (a->agy_conn_ok) {
+    a->agy_connecting = 0;
+    a->agy_conn_failed = 0;
+    agy_connect_cleanup_dir(a);
+    agy_connect_sync(a);
+    return;
+  }
+  agy_connect_fail(a, a->agy_conn_err);
+}
+
 static void ask_clear_foreman(DesktopApp *a) {
   cd_dialog_begin(a->page, 0, "Clear Foreman history?",
                   "This removes the Foreman conversation history. Managed chats are not deleted.");
@@ -1321,6 +1499,27 @@ static void pump_dialog(DesktopApp *a) {
         a->agy_bin[0] = '\0';
         refresh_settings_info(a);
         cd_toast(a->page, "Antigravity CLI reset to auto-detect.", 0);
+      }
+      break;
+    case OA_DIALOG_AGY_CODE:
+      if (!a->agy_connecting) break;
+      if (answer == 1 && vn > 0) {
+        // Write to a sibling temp file then rename atomically so agyworker never reads a partial file.
+        char code_path[OA_PATH], tmp_path[OA_PATH];
+        snprintf(code_path, sizeof code_path, "%s/code.txt", a->agy_conn_dir);
+        snprintf(tmp_path, sizeof tmp_path, "%s/code.txt.tmp", a->agy_conn_dir);
+        FILE *cf = fopen(tmp_path, "wb");
+        int wrote = cf && fwrite(v, 1, vn, cf) == vn;
+        if (cf && fclose(cf) != 0) wrote = 0;
+        if (wrote) { remove(code_path); if (rename(tmp_path, code_path) != 0) wrote = 0; }
+        if (!wrote) { remove(tmp_path); oa_dl_stop(&a->agy_conn_proc); agy_connect_fail(a, "The code could not be passed to the Antigravity CLI."); break; }
+        snprintf(a->agy_conn_step, sizeof a->agy_conn_step, "Finishing the Google sign-in…");
+        agy_connect_sync(a);
+      } else if (answer != 1) {
+        oa_dl_stop(&a->agy_conn_proc);
+        agy_connect_fail(a, "The Google sign-in was cancelled.");
+      } else {
+        ask_agy_code(a);   // Continue with no code: ask again
       }
       break;
     case OA_DIALOG_CLEAR_FOREMAN:
@@ -1676,6 +1875,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 47: ask_local_models(a); break;
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;
+    case 162: agy_connect_start(a); break;
     case 52: {
       int op = cd_term_op(a->page);
       int tid = cd_term_op_tab(a->page);
@@ -1806,6 +2006,7 @@ static void pump_host(DesktopApp *a) {
   pump_subagents(a);
   pump_terms(a);
   pump_local(a);
+  pump_agy_connect(a);
   if (cd_save_due(a->page)) save_current_chat(a);
   if (a->interactive) {
     static int oa_last_running = 0;
@@ -2563,6 +2764,7 @@ static int oa_main(int argc, char **argv) {
     }
   }
   cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
+  agy_connect_sync(&app);   // the onboarding offers Connect Google Antigravity when agyworker is bundled
   set_folder(&app, app.folder);
   refresh_settings_info(&app);
   refresh_chats(&app);
@@ -2585,6 +2787,8 @@ static int oa_main(int argc, char **argv) {
   }
 
   if (app.local.downloading) oa_dl_stop(&app.local.dl_proc);
+  if (app.agy_connecting) oa_dl_stop(&app.agy_conn_proc);
+  agy_connect_cleanup_dir(&app);
   stop_all_terms(&app);
   stop_all_subagents(&app);
   {

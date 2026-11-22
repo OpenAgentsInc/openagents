@@ -4,7 +4,7 @@
 # (coax/lib/agent/desktop/) + shared Wayland/Vulkan host (apps/shared/host/linux/).
 #   apps/openagents-desktop/linux/build.sh [--full|--minimal] [--stage-dir DIR] [--verify] [--smoke] [--flow-test] [--input-test] [--open] [--no-worker]
 # --minimal (or OA_RELEASE_MINIMAL=1): build the v1.0 minimal release slice (omits wallet units,
-#   claudeworker and agyworker; bundles gitguard and optional psionic-inkling-serve; stages a clean
+#   claudeworker; keeps agyworker for the onboarding's Connect Google Antigravity; bundles gitguard and optional psionic-inkling-serve; stages a clean
 #   release directory and verifies it with v1-bundle-check.coax). Default is --full.
 # --stage-dir DIR: stage the clean minimal release layout into DIR (default: build/minimal-stage in --minimal).
 # --verify: run apps/openagents-desktop/v1-bundle-check.coax against the staged minimal layout.
@@ -141,8 +141,9 @@ fi
 if [[ "$want_worker" == 1 ]]; then
   coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
   if [[ "$minimal" == 1 ]]; then
-    worker_pairs=("mcworker:mcworker" "gitguard:gitguard" "host:coder-host")
-    rm -f "$work/claudeworker" "$work/agyworker"
+    # agyworker: the onboarding's Connect Google Antigravity where Inkling cannot run
+    worker_pairs=("mcworker:mcworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
+    rm -f "$work/claudeworker"
   else
     worker_pairs=("mcworker:mcworker" "claudeworker:claudeworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
   fi
@@ -184,13 +185,13 @@ if [[ "$minimal" == 1 || -n "$stage_dir" ]]; then
   rm -rf "$out_stage"
   mkdir -p "$out_stage/resources/fonts" "$out_stage/resources/icons"
   install -m 0755 "$work/OpenAgents" "$out_stage/OpenAgents"
-  for bin in mcworker coder-host gitguard psionic-inkling-serve; do
+  for bin in mcworker agyworker coder-host gitguard psionic-inkling-serve; do
     if [[ -x "$work/$bin" ]]; then
       install -m 0755 "$work/$bin" "$out_stage/$bin"
     fi
   done
   if [[ "$minimal" == 1 ]] && command -v strip >/dev/null 2>&1; then
-    for bin in OpenAgents mcworker coder-host gitguard psionic-inkling-serve; do
+    for bin in OpenAgents mcworker agyworker coder-host gitguard psionic-inkling-serve; do
       if [[ -x "$out_stage/$bin" ]]; then
         strip --strip-unneeded "$out_stage/$bin" 2>/dev/null || strip "$out_stage/$bin" 2>/dev/null || true
       fi

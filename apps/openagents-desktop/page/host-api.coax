@@ -390,6 +390,21 @@ coder_page_local_state :: (s: [] CoderPage, os_ok: bool, hw_ok: bool, ram_gb: in
   s[0].local_dl_err_n = cp_out(s[0].local_dl_err[..], err);
 }
 
+// The onboarding's Antigravity connection (Connect Google Antigravity, CP_AGY_CONNECT): whether this
+// build can offer it (agyworker is bundled), CP_AGY_IDLE / _BUSY / _FAILED, and the step it is on or
+// why it failed. The onboarding shows it only where Inkling cannot run.
+// While the Antigravity CLI downloads, pct is how far (0..100) with dl_mb of total_mb (0: unknown);
+// pct -1 otherwise.
+coder_page_agy_connect :: (s: [] CoderPage, avail: bool, state: int, msg: string, pct: int, dl_mb: int, total_mb: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].agy_avail = avail;
+  s[0].agy_conn = ifx state == CP_AGY_BUSY || state == CP_AGY_FAILED then state else CP_AGY_IDLE;
+  s[0].agy_conn_msg_n = cp_out(s[0].agy_conn_msg[..], msg);
+  s[0].agy_dl_pct = ifx s[0].agy_conn == CP_AGY_BUSY && pct >= 0 then (ifx pct > 100 then 100 else pct) else -1;
+  s[0].agy_dl_mb = dl_mb; s[0].agy_dl_total_mb = total_mb;
+  s[0].anim = true;
+}
+
 // Experimental features (Settings > General): developer alias turning every flag on or off.
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }

@@ -21,6 +21,11 @@
 //   agyworker --probe   opens one agy session (no prompt), prints the model it would run on as
 //                       "ID<TAB>NAME" (gemini-4-carbon-low	Gemini 4 Carbon (Low)) and exits; 1 and why on stderr
 //                       when agy did not open one. Same environment as a run (CODER_AGY_*).
+//   agyworker --connect [--code FILE]
+//                       installs agy when missing, opens a session, signs in through Google when agy
+//                       is signed out (the code read from FILE), saying each step as KIND<TAB>TEXT
+//                       lines (step / url / ok / fail; see agyw_connect). The desktop's onboarding
+//                       "Connect Google Antigravity" runs it.
 //
 // Environment variables:
 //   CODER_AGY_BIN       optional custom agy binary path (default: agy_program / agy on PATH)
@@ -35,6 +40,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";        // proc_sleep: --probe waits on agy
 #load "../../coax/lib/agent/engine/antigravity.coax";
+#load "../../coax/lib/agent/engine/agy-install-lib.coax";   // --connect installs agy when it is missing
 #load "../../coax/lib/agent/observe/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
@@ -792,15 +798,19 @@ agyw_probe_cleanup :: (profile: string, home: string, session_id: string, cwd: s
   }
 }
 
-// agyworker --probe: agy started with the run's settings, one session opened, its model printed.
+// agy started with the run's settings and one session opened (no prompt), then closed and its
+// on-disk traces removed: "" with the model in s.ran / s.ran_name, else why not (agy's own words
+// when it refused, e.g. "Authentication required").
 AGYW_PROBE_MS :: 45000;
-agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
+agyw_open_once :: (s: [] AgywState, x: [] CuEngine, why_out: [] u8) -> string {
+  s[0].ran_n = 0; s[0].ran_name_n = 0;
   s[0].turn_model_n = agyw_copy(s[0].turn_model[..], agyw_resolve_model("", agyw_str(s[0].cfg.model[..], s[0].cfg.model_n)));
   s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], agyw_resolve_effort("", agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n)));
   hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
+  if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
   if cwd.count == 0 { cwd = "."; }
   why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
-  if why.count > 0 { tool_errln(why); return 1; }
+  if why.count > 0 { return cast(string) why_out[0..<agyw_copy(why_out, why)]; }
   agyw_lease_acquire(s, x[0].p[0].pid);
   until := cxproc_now_ms() + AGYW_PROBE_MS;
   while x[0].live && s[0].ran_n == 0 && cxproc_now_ms() < until {
@@ -811,15 +821,23 @@ agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
   }
   if s[0].ran_n == 0 {
     w := ifx x[0].live then "Antigravity opened no session in time." else cue_why(x);
+    if w.count == 0 { w = "Antigravity stopped before it opened a session."; }
+    wn := agyw_copy(why_out, w);
     if x[0].live { cue_close(x); }
     agyw_lease_release(s);
-    tool_errln(ifx w.count > 0 then w else "Antigravity stopped before it opened a session.");
-    return 1;
+    return cast(string) why_out[0..<wn];
   }
   sid_buf: [CU_ID] u8; sid_n := agyw_copy(sid_buf[..], cu_session_id(x[0].c));
   cue_close(x);
   agyw_lease_release(s);
   agyw_probe_cleanup(agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n), cwd, cast(string) sid_buf[0..<sid_n], cwd);
+  return "";
+}
+
+// agyworker --probe: agy started with the run's settings, one session opened, its model printed.
+agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
+  wb: [1024] u8; why := agyw_open_once(s, x, wb[..]);
+  if why.count > 0 { tool_errln(why); return 1; }
   n := agyw_copy(s[0].out[..], agyw_str(s[0].ran[..], s[0].ran_n));
   n += agyw_copy(s[0].out[n..<s[0].out.count], "\t");
   n += agyw_copy(s[0].out[n..<s[0].out.count], agyw_str(s[0].ran_name[..], s[0].ran_name_n));
@@ -831,6 +849,297 @@ agyw_probe_asked :: () -> bool {
   if !args_load(a[..]) { return false; }
   for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--probe" { return true; } }
   return false;
+}
+
+// ---------------------------------------------------------------- --connect (the desktop's "Connect Google Antigravity")
+//
+// agyworker --connect [--code FILE]: makes agy usable here, saying what it does one line at a time
+// (KIND<TAB>TEXT on stdout, which the desktop reads from a log file):
+//   step  words for what it is doing now
+//   progress  PCT<TAB>DONE_MB<TAB>TOTAL_MB while the Antigravity CLI downloads (TOTAL_MB 0: unknown)
+//   profile   the agy profile folder it signs in to (OpenAgents' own, file-backed sign-in), which
+//         the desktop then passes to the Antigravity worker as CODER_AGY_PROFILE
+//   url   the Google sign-in page (https://accounts.google.com/...) to open; the code Google then
+//         shows is read from FILE once the desktop writes it there, and handed to agy
+//   ok    agy runs here and is signed in: the model it runs on ("Gemini 4 Carbon (Low)")
+//   fail  why it could not
+// Steps: the Antigravity CLI (CODER_AGY_BIN, on PATH, or the managed install), else installed from
+// Google's release list into ~/.openagents/runtimes/agy; a session opened as --probe does; when agy
+// says it is not signed in, `agy acp --login` (as t3code signs in, docs/audits/
+// 2026-11-20-t3code-antigravity-v0-1-11-audit.md §3.1), then a session again.
+AGYW_LOGIN_MS :: 600000;
+
+agyw_say :: (s: [] AgywState, kind: string, text: string) {
+  n := agyw_copy(s[0].out[..], kind);
+  n += agyw_copy(s[0].out[n..<s[0].out.count], "\t");
+  // one line: newlines and tabs in agy's words become spaces
+  for c: text {
+    if n >= s[0].out.count - 2 { break; }
+    s[0].out[n] = ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
+    n += 1;
+  }
+  agyw_write_line(s, n);
+}
+
+agyw_arg_value :: (name: string, out: [] u8) -> string {
+  a: [1] Args;
+  if !args_load(a[..]) { return ""; }
+  v := args_value(a[..], name, "");
+  return cast(string) out[0..<agyw_copy(out, v)];
+}
+
+agyw_connect_asked :: () -> bool {
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--connect" { return true; } }
+  return false;
+}
+
+agyw_ends_with :: (s: string, tail: string) -> bool {
+  return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail;
+}
+
+// `agy acp --login`: the sign-in page's address relayed as "url", the code from code_path handed to
+// agy's stdin, its end awaited: "" when agy signed in, else why not.
+agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  h := proc_new();
+  if h < 0 { return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the Antigravity CLI to sign in.")]; }
+  ok := true;
+  if agyw_ends_with(prog, ".cmd") || agyw_ends_with(prog, ".bat") || agyw_ends_with(prog, ".CMD") || agyw_ends_with(prog, ".BAT") {
+    ok = proc_arg(h, "cmd.exe") && proc_arg(h, "/c");
+  }
+  ok = ok && proc_arg(h, prog) && proc_arg(h, "acp");
+  if prof.count > 0 {
+    ok = ok && proc_arg(h, "--gemini-dir") && proc_arg(h, prof) && proc_arg(h, "--app-data-dir") && proc_arg(h, AGY_APP_DATA_DIR);
+    gb: [1100] u8; gn := agyw_copy(gb[..], "GEMINI_HOME="); gn += agyw_copy(gb[gn..<gb.count], prof);
+    ok = ok && proc_env(h, cast(string) gb[0..<gn]) && proc_env(h, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
+  }
+  ok = ok && proc_arg(h, "--login") && proc_env(h, "AGY_CLI_DISABLE_AUTO_UPDATE=1");
+  // no display: agy prints the sign-in address instead of opening a browser itself (#13837)
+  ok = ok && proc_unset(h, "DISPLAY") && proc_unset(h, "WAYLAND_DISPLAY") && proc_err_to_out(h);
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
+  if home.count > 0 { ok = ok && proc_cwd(h, home); }
+  if !ok { _ = proc_release(h); return cast(string) why_out[0..<agyw_copy(why_out, "Could not prepare the Antigravity sign-in.")]; }
+  if proc_start(h) != 0 { _ = proc_release(h); return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the Antigravity CLI to sign in.")]; }
+  deadline := cxproc_now_ms() + AGYW_LOGIN_MS;
+  sent_url := false; sent_code := false; timed_out := false;
+  line: [8192] u8;
+  tail: [512] u8; tail_n := 0;
+  while true {
+    n := proc_line(h, 250, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n >= 0 {
+      text := agyw_trim(cast(string) line[0..<n]);
+      ub: [4096] u8; u := ifx sent_url then "" else agy_parse_oauth_url(text, ub[..]);
+      if u.count > 0 { agyw_say(s, "url", u); sent_url = true; }
+      else if text.count > 0 { tail_n = agyw_copy(tail[..], text); }
+    }
+    if sent_url && !sent_code && code_path.count > 0 && fs_exists(code_path) {
+      cb: [4096] u8; cn := fs_read(code_path, cb[..]);
+      code := ifx cn > 0 then agyw_trim(cast(string) cb[0..<cn]) else "";
+      if code.count > 0 {
+        _ = proc_send(h, code); _ = proc_send(h, "\n");
+        sent_code = true;
+        _ = fs_remove(code_path);
+        agyw_say(s, "step", "Finishing the Google sign-in…");
+      }
+    }
+    if cxproc_now_ms() > deadline { timed_out = true; break; }
+  }
+  if timed_out { _ = proc_kill(h, PROC_SIGKILL); }
+  st := proc_wait(h, ifx timed_out then 2000 else 15000);
+  if st == PROC_RUNNING { _ = proc_kill(h, PROC_SIGKILL); st = proc_wait(h, 2000); }
+  _ = proc_release(h);
+  if timed_out { return cast(string) why_out[0..<agyw_copy(why_out, "The Google sign-in was not finished in time. Try again.")]; }
+  if st != 0 {
+    w := ifx tail_n > 0 then cast(string) tail[0..<tail_n] else "The Antigravity sign-in did not finish.";
+    return cast(string) why_out[0..<agyw_copy(why_out, w)];
+  }
+  return "";
+}
+
+// The size curl will download from url (its last Content-Length, after redirects), or -1.
+agyw_remote_size :: (url: string) -> int {
+  argv := [4] string.["curl", "-fsSIL", "--max-time", "20"];
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := true;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  ok = ok && proc_arg(h, url) && proc_err_to_out(h);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return -1; }
+  size := -1;
+  line: [2048] u8;
+  while true {
+    n := proc_line(h, 25000, line[..]);
+    if n < 0 { break; }
+    t := agyw_trim(cast(string) line[0..<n]);
+    key := "content-length:";
+    if t.count > key.count {
+      same := true;
+      for i: 0..<key.count {
+        lc := cast(int) t[i];
+        if lc >= 65 && lc <= 90 { lc += 32; }
+        if lc != cast(int) key[i] { same = false; break; }
+      }
+      if same {
+        v := 0; any := false;
+        for i: key.count..<t.count {
+          d := cast(int) t[i];
+          if d >= 48 && d <= 57 { v = v * 10 + (d - 48); any = true; } else if any { break; }
+        }
+        if any { size = v; }
+      }
+    }
+  }
+  _ = proc_wait(h, 5000);
+  _ = proc_release(h);
+  return size;
+}
+
+// v (0 or more) in decimal into out at n: the new n.
+agyw_put_int :: (out: [] u8, n0: int, v0: int) -> int {
+  n := n0; v := ifx v0 < 0 then 0 else v0;
+  tmp: [24] u8; k := 0;
+  while true { tmp[k] = cast(u8) (48 + v % 10); k += 1; v /= 10; if v == 0 || k == tmp.count { break; } }
+  for i: 0..<k { if n < out.count { out[n] = tmp[k - 1 - i]; n += 1; } }
+  return n;
+}
+
+#test "agyworker: progress numbers are written whole, zero included" {
+  b: [32] u8;
+  n := agyw_put_int(b[..], 0, 0); n = agyw_put_int(b[..], n, 52); n = agyw_put_int(b[..], n, 1234);
+  #assert cast(string) b[0..<n] == "0521234";
+}
+
+// "progress<TAB>PCT<TAB>DONE_MB<TAB>TOTAL_MB" (TOTAL_MB 0 when the size is not known).
+agyw_say_progress :: (s: [] AgywState, pct: int, done_mb: int, total_mb: int) {
+  pb: [64] u8; n := 0;
+  n = agyw_put_int(pb[..], n, pct); pb[n] = '\t'; n += 1;
+  n = agyw_put_int(pb[..], n, done_mb); pb[n] = '\t'; n += 1;
+  n = agyw_put_int(pb[..], n, total_mb);
+  agyw_say(s, "progress", cast(string) pb[0..<n]);
+}
+
+// The newest managed agy for this machine from Google's release list, downloaded by curl in the
+// background so "progress" lines can say how far it is, then verified and installed by the
+// installer library (agy_install_from_manifest): "" and agy's path in s.cfg.program, else why not.
+agyw_install :: (s: [] AgywState, why_out: [] u8) -> string {
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
+  rb: [4200] u8; root := agy_managed_root(home, rb[..]);
+  if root.count == 0 { return cast(string) why_out[0..<agyw_copy(why_out, "Could not find the home folder to install the Antigravity CLI in.")]; }
+  os := agy_host_os();
+  ab: [16] u8; arch := agy_host_arch(ab[..]);
+  mb: [8192] u8; mjson := agy_fetch_manifest(os, arch, false, mb[..]);
+  if mjson.count == 0 { return cast(string) why_out[0..<agyw_copy(why_out, "Could not reach Google's Antigravity CLI release list. Check the internet connection.")]; }
+  rel: [1] AgyRelease;
+  if !agy_parse_release(mjson, os, arch, false, rel[..]) { return cast(string) why_out[0..<agyw_copy(why_out, "Google's Antigravity CLI release list was not one this version understands.")]; }
+  url := cast(string) rel[0].url[0..<rel[0].nurl];
+  ridb: [80] u8; rid := agy_release_id_from_sha512(cast(string) rel[0].sha512[0..<rel[0].nsha512], ridb[..]);
+  eb: [1280] u8; target := agy_managed_exe_path(root, rid, os == "windows", eb[..]);
+  dl := "";
+  dlb: [1280] u8;
+  if rid.count == 64 && target.count > 0 && fs_kind(target) != FS_FILE {
+    sb: [1024] u8; stg := fs_join(root, "staging", sb[..]);
+    if stg.count == 0 || !fs_mkdir_all(stg) { return cast(string) why_out[0..<agyw_copy(why_out, "Could not make the Antigravity CLI's download folder.")]; }
+    nb: [96] u8; nn := agyw_copy(nb[..], rid); nn += agyw_copy(nb[nn..<nb.count], ".progress");
+    dl = fs_join(stg, cast(string) nb[0..<nn], dlb[..]);
+    _ = fs_remove(dl);
+    total := agyw_remote_size(url);
+    total_mb := ifx total > 0 then (total + 524288) / 1048576 else 0;
+    agyw_say_progress(s, 0, 0, total_mb);
+    h := proc_new();
+    if h < 0 { return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the download.")]; }
+    ok := proc_arg(h, "curl") && proc_arg(h, "-fsSL") && proc_arg(h, "--retry") && proc_arg(h, "2") && proc_arg(h, "-o") && proc_arg(h, dl) && proc_arg(h, url) && proc_quiet(h);
+    if !ok || proc_start(h) != 0 { _ = proc_release(h); return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the download (curl).")]; }
+    last_pct := -1; last_mb := -1;
+    st := PROC_RUNNING;
+    while true {
+      st = proc_wait(h, 300);
+      got := fs_size(dl);
+      if got < 0 { got = 0; }
+      pct := ifx total > 0 then (got * 100) / total else 0;
+      if pct > 99 && st == PROC_RUNNING { pct = 99; }
+      done_mb := got / 1048576;
+      if pct != last_pct || (total <= 0 && done_mb != last_mb) { agyw_say_progress(s, pct, done_mb, total_mb); last_pct = pct; last_mb = done_mb; }
+      if st != PROC_RUNNING { break; }
+    }
+    _ = proc_release(h);
+    if st != 0 { _ = fs_remove(dl); return cast(string) why_out[0..<agyw_copy(why_out, "The Antigravity CLI download failed. Check the internet connection and try again.")]; }
+    agyw_say_progress(s, 100, ifx total_mb > 0 then total_mb else last_mb, total_mb);
+    agyw_say(s, "step", "Verifying the Antigravity CLI…");
+  }
+  xb: [4300] u8;
+  err := agy_install_from_manifest(root, mjson, os, arch, false, dl, true, xb[..]);
+  if dl.count > 0 { _ = fs_remove(dl); }
+  if err.count > 0 { return cast(string) why_out[0..<agyw_copy(why_out, err)]; }
+  s[0].cfg.program_n = agy_program(s[0].cfg.program[..]).count;
+  if s[0].cfg.program_n == 0 && target.count > 0 && fs_kind(target) == FS_FILE {
+    s[0].cfg.program_n = agyw_copy(s[0].cfg.program[..], target);
+  }
+  if s[0].cfg.program_n == 0 { return cast(string) why_out[0..<agyw_copy(why_out, "The Antigravity CLI installed but could not be found.")]; }
+  return "";
+}
+
+// --connect keeps OpenAgents' own agy profile (CODER_AGY_PROFILE, else ~/.openagents/runtimes/agy/profile):
+// agy then keeps its Google sign-in as a file in it (agy_prepare_launch sets SSH_CONNECTION and
+// GEMINI_HOME for a profile), so whether it is signed in is a file, not a session that waits.
+agyw_default_profile :: (s: [] AgywState) {
+  if s[0].cfg.profile_n > 0 { return; }
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
+  rb: [4200] u8; root := agy_managed_root(home, rb[..]);
+  if root.count == 0 { return; }
+  pb: [1024] u8; prof := fs_join(root, "profile", pb[..]);
+  if prof.count > 0 && prof.count <= s[0].cfg.profile.count && fs_mkdir_all(prof) {
+    s[0].cfg.profile_n = agyw_copy(s[0].cfg.profile[..], prof);
+  }
+}
+
+agyw_signed_in_file :: (s: [] AgywState) -> bool {
+  prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  if prof.count == 0 { return false; }
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
+  tb: [1100] u8; tok := agy_token_path(home, prof, tb[..]);
+  return tok.count > 0 && fs_exists(tok);
+}
+
+agyw_connect :: (s: [] AgywState, x: [] CuEngine) -> int {
+  cpb: [1024] u8; code_path := agyw_arg_value("--code", cpb[..]);
+  if s[0].cfg.program_n == 0 {
+    agyw_say(s, "step", "Downloading the Antigravity CLI from Google…");
+    ib: [1024] u8; iw := agyw_install(s, ib[..]);
+    if iw.count > 0 { agyw_say(s, "fail", iw); return 1; }
+  }
+  agyw_default_profile(s);
+  agyw_say(s, "profile", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+  wb: [1024] u8;
+  why := "";
+  signed := agyw_signed_in_file(s);
+  if signed {
+    agyw_say(s, "step", "Checking your Antigravity sign-in…");
+    why = agyw_open_once(s, x, wb[..]);
+    if why.count == 0 { return agyw_connected(s); }
+    if !agy_signed_out(why) && agyw_signed_in_file(s) { agyw_say(s, "fail", why); return 1; }
+  }
+  agyw_say(s, "step", "Opening the Google sign-in…");
+  lb: [1024] u8; lw := agyw_login(s, code_path, lb[..]);
+  if lw.count > 0 { agyw_say(s, "fail", lw); return 1; }
+  agyw_say(s, "step", "Starting Antigravity…");
+  why = agyw_open_once(s, x, wb[..]);
+  if why.count > 0 { agyw_say(s, "fail", why); return 1; }
+  return agyw_connected(s);
+}
+
+agyw_connected :: (s: [] AgywState) -> int {
+  name := agyw_str(s[0].ran_name[..], s[0].ran_name_n);
+  if name.count == 0 { name = agyw_str(s[0].ran[..], s[0].ran_n); }
+  agyw_say(s, "ok", ifx name.count > 0 then name else "Antigravity");
+  return 0;
 }
 
 agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) {
@@ -941,6 +1250,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cu_line: [65536] u8; cu_arena: [65536] u8; cu_out: [65536] u8;
   cue_attach(x, cb[..], pb[..], cu_line[..], cu_arena[..], cu_out[..]);
   if agyw_probe_asked() { return agyw_probe(s, x); }
+  if agyw_connect_asked() { return agyw_connect(s, x); }
 
   in_buf: [AGYW_LINE] u8; in_len: [1] int;
   req_ar_buf: [131072] u8; req_ar: [1] ClArena; req_ar[0].buf = req_ar_buf[..];

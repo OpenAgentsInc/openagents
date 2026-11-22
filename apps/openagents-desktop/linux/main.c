@@ -54,6 +54,7 @@ static int oa_temp_dir(char *out, size_t cap) {
   return mkdtemp(out) != NULL;
 }
 static int oa_mkdir(const char *path) { return mkdir(path, 0700) == 0; }
+static void oa_rmdir(const char *path) { if (path && path[0]) rmdir(path); }
 static void oa_open_external(const char *target) {
   if (!target || !target[0]) return;
   pid_t pid = fork();
@@ -293,6 +294,54 @@ static void oa_dl_stop(OaSubproc *p) {
   }
   p->active = 0;
   p->pid = -1;
+}
+
+// A program run in the background, its stdout and stderr appended to log_path: argv[0] the
+// program and argv NULL-ended; envs, when not NULL, "NAME=value" entries (NULL-ended) set for it
+// alone. Polled and stopped with oa_dl_poll / oa_dl_stop. 1 when it started.
+static int oa_proc_logged(OaSubproc *p, const char *const *argv, const char *const *envs, const char *log_path) {
+  if (!p || !argv || !argv[0] || !log_path) return 0;
+  memset(p, 0, sizeof *p);
+  // Build the child environment before fork() so the child calls only async-signal-safe syscalls.
+  size_t base_n = 0, add_n = 0;
+  if (environ) while (environ[base_n]) base_n++;
+  if (envs) while (envs[add_n]) add_n++;
+  char **envp = (char **)malloc((base_n + add_n + 1) * sizeof *envp);
+  if (!envp) return 0;
+  size_t out_n = 0;
+  for (size_t i = 0; i < base_n; i++) {
+    const char *eq = strchr(environ[i], '=');
+    int replaced = 0;
+    if (eq && envs) {
+      size_t klen = (size_t)(eq - environ[i]) + 1;
+      for (size_t j = 0; j < add_n; j++) {
+        if (strncmp(envs[j], environ[i], klen) == 0) { replaced = 1; break; }
+      }
+    }
+    if (!replaced) envp[out_n++] = environ[i];
+  }
+  for (size_t j = 0; j < add_n; j++) {
+    if (strchr(envs[j], '=')) envp[out_n++] = (char *)envs[j];
+  }
+  envp[out_n] = NULL;
+  pid_t pid = fork();
+  if (pid < 0) { free(envp); return 0; }
+  if (pid == 0) {
+    int devnull = open("/dev/null", O_RDONLY);
+    if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
+    int lfd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (lfd >= 0) {
+      dup2(lfd, 1);
+      dup2(lfd, 2);
+      if (lfd > 2) close(lfd);
+    }
+    execve(argv[0], (char *const *)argv, envp);
+    _exit(127);
+  }
+  free(envp);
+  p->pid = pid;
+  p->active = 1;
+  return 1;
 }
 
 typedef struct { void (*fn)(void *); void *arg; } OaThreadBox;
