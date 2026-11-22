@@ -273,8 +273,9 @@ cc_one_loop :: (r: [] HcRun) {
     if level_find(server, part) < 0 { print("cloud: NOT Microcoder's loop in cli/cloud.coax: wanted %\n", part); r[0].bad += 1; }
   }
   gb: [262144] u8;
-  g := fs_read("gamebuilder/core/cloud-rows.coax", gb[..]);
-  if g <= 0 || g >= gb.count { print("cloud: NOT gamebuilder/core/cloud-rows.coax read\n"); r[0].bad += 1; return; }
+  g := fs_read("core/cloud-rows.coax", gb[..]);
+  if g <= 0 { g = fs_read("gamebuilder/core/cloud-rows.coax", gb[..]); }
+  if g <= 0 || g >= gb.count { print("cloud: NOT core/cloud-rows.coax read\n"); r[0].bad += 1; return; }
   rows := cast(string) gb[0..<g];
   qb: [32] u8;
   for field: [6] string.["messages", "choices", "tool_calls", "role", "content", "response_format"] {
@@ -282,7 +283,7 @@ cc_one_loop :: (r: [] HcRun) {
     quoted := cast(string) qb[0..<q];
     if level_find(server, quoted) >= 0 || level_find(rows, quoted) >= 0 { print("cloud: NOT one loop: a cloud Builder file names the model's field %\n", field); r[0].bad += 1; }
   }
-  if fs_exists("gamebuilder/core/cloud.coax") { print("cloud: NOT gone: gamebuilder/core/cloud.coax, the second loop\n"); r[0].bad += 1; }
+  if fs_exists("core/cloud.coax") || fs_exists("gamebuilder/core/cloud.coax") { print("cloud: NOT gone: core/cloud.coax, the second loop\n"); r[0].bad += 1; }
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -331,7 +332,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cc_has(r[..], "the call signed with the server's key", mc_headers(m[..]), "Authorization: Nostr ");
   cc_has(r[..], "the call to the model route", mc_headers(m[..]), "POST /api/v1/inference HTTP/1.1");
   body = mc_body(m[..]);
-  cc_has(r[..], "OpenAgents' model asked", body, "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Microcoder, a small coding agent.");
+  cc_has(r[..], "OpenAgents' model asked", body, "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Microcoder, a coding agent.");
   cc_has(r[..], "one answer's tokens capped", body, "\"max_tokens\":8192");
   cc_has(r[..], "not streamed", body, "\"stream\":false");
   cc_has(r[..], "Microcoder's schema, strict", body, "\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"next_action\"");

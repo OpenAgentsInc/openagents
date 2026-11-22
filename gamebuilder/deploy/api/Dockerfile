@@ -1,18 +1,15 @@
 # The hosted levels API (docs/programmatic-access.md, C6 and C7): `gamebuilder serve --accounts`
 # with each account's level files on the mounted volume /data, and socat taking the outside's
 # connections (the server binds 127.0.0.1 only; docs/cli.md, "Hosted: serve --accounts").
-# The context is the folder deploy/api/deploy.sh stages: gamebuilder/ at the commit being
-# deployed and openagents-gamebuilder/ at its pin (openagents.lock).
+# The context is the monorepo subset deploy/api/deploy.sh stages from HEAD.
 FROM ubuntu:24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive COAX_MUTATION=0
 RUN apt-get update -q && apt-get install -yq --no-install-recommends \
       build-essential clang pkg-config libssl-dev git ca-certificates curl perl rsync \
   && rm -rf /var/lib/apt/lists/*
-COPY openagents-gamebuilder /w/openagents-gamebuilder
-COPY gamebuilder /w/gamebuilder
+COPY . /w
 WORKDIR /w
-RUN mkdir -p gamebuilder/vendor && ln -sfn /w/openagents-gamebuilder gamebuilder/vendor/openagents \
-  && openagents-gamebuilder/coax/build.sh \
+RUN coax/build.sh \
   && gamebuilder/cli/build.sh --force
 
 FROM ubuntu:24.04

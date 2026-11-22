@@ -86,7 +86,7 @@ upv_pinned :: (root: string, pin: string, lines: [] u8) -> bool {
   head := [5] string.["git", "-C", root, "rev-parse", "HEAD"];
   n := upv_run("checking the OpenAgents pin", head[..], 30000, lines);
   if n < 0 { return false; }
-  if cast(string) lines[0..<n] != pin { _ = upv_fail("OpenAgents is not at openagents.lock; run scripts/pin.sh sync"); return false; }
+  if cast(string) lines[0..<n] != pin { _ = upv_fail("OpenAgents checkout does not match the expected commit"); return false; }
   status := [6] string.["git", "-C", root, "status", "--porcelain", "--untracked-files=no"];
   n = upv_run("checking the pinned sources", status[..], 30000, lines);
   if n > 0 { _ = upv_fail("the pinned OpenAgents tree has tracked changes"); }

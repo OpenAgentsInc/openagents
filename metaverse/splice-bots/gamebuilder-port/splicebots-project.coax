@@ -59,13 +59,13 @@ sbpj_save_editor_log :: (scratch: string, private_root: string) {
 
 sbpj_world :: (root: string, gb: string, project: string, engine: string, scratch: string, private_root: string, assets: string, result: string) -> bool {
   paths: [6][4096] u8;
-  plan := fs_join(gb, "tools/splicebots-project-maps-v1.json", paths[0][..]);
+  plan := fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-project-maps-v1.json", paths[0][..]);
   bundle := fs_join(scratch, "maps.aimport", paths[1][..]);
   converted := fs_join(scratch, "world", paths[2][..]);
   buffer: [UPV_LOG] u8 = ---;
   // This adapter takes clips from the source rigs. Some of the newer baked
   // Unreal AnimSequences crash the general glTF exporter on this engine.
-  profile := fs_join(gb, "tools/splicebots-project-assets-v1.json", paths[5][..]);
+  profile := fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-project-assets-v1.json", paths[5][..]);
   env: [4096] u8; e: [1] Jo; jo_start(e[..], env[..]);
   jo_put(e[..], "AIMPORT_ASSETS="); jo_put(e[..], profile);
   if e[0].bad { return false; }
@@ -104,7 +104,7 @@ sbpj_data_and_cast :: (root: string, gb: string, checkout: string, scratch: stri
   // The data reader enumerates this directory. Some project revisions have
   // only Unreal audio assets, which come through the separate editor export.
   if fs_kind(wav) != FS_DIR && !fs_mkdir(wav) { return false; }
-  plan := fs_join(gb, "tools/splicebots-project-data-v1.json", paths[2][..]);
+  plan := fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-project-data-v1.json", paths[2][..]);
   bundle := fs_join(scratch, "data.aimport", paths[3][..]);
   converted := fs_join(scratch, "data", paths[4][..]);
   if !sbp_data_pack(root, checkout, data, plan, bundle, converted) { return false; }
@@ -195,7 +195,7 @@ tool_main :: () -> int #export_c #effects(all) {
   tool_errln("Building the source character packs and replaying the campaign...");
   if !sbpj_data_and_cast(root, gb, checkout, scratch, assets, tmp) { return 1; }
   tool_errln("Building the local SPLICEBOTS player...");
-  launcher := fs_join(gb, "tools/splicebots-play.sh", paths[4][..]);
+  launcher := fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-play.sh", paths[4][..]);
   notice_b: [4096] u8;
   notice := fs_join(checkout, "Assets/Source/Things/NOTICE-microduck.md", notice_b[..]);
   if !sbp_copy(notice, fs_join(tmp, SBPJ_DUCK_NOTICE, path[..])) { return sbp_fail("could not copy the source Microduck notice"); }

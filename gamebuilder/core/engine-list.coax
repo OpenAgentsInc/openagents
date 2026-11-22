@@ -1,7 +1,7 @@
-// Made by tools/engine-list.coax from the OpenAgents Metaverse Engine's book at the commit in
-// openagents.lock. Don't edit it: scripts/pin.sh bump makes it again, and scripts/check.sh fails
-// when it is not what the book at that commit makes. docs/engine-upgrades.md, "The engine capability list".
-ENG_PIN :: "7c8823286b8c07a12cefb236cd8206d5de0c2c48";
+// Made by gamebuilder/tools/engine-list.coax from the OpenAgents Metaverse Engine's book.
+// Don't edit it: run coax/web/tool.sh gamebuilder/tools/engine-list.coax to regenerate.
+// docs/engine-upgrades.md, "The engine capability list".
+ENG_PIN :: "f7b7bbb4e4789f0b79cdcbbc9b0cc4e0aa6d8c59";
 ENG_N :: 103;
 ENG_IMPLEMENTED :: 0; ENG_PARTLY :: 1; ENG_DRAFT :: 2;
 // source: up to 4 files, "|" between them. folder: the engine folder most of them are in, "" for none.
@@ -179,7 +179,7 @@ ENG_ROWS :: [ENG_N] EngRow.[
     source = "",
     summary = "A realm as data played by one shared module. Composition for a first-time visitor: what was asked for, in view from the spawn, on a phone too. Four cameras over one controller: third person, first person, top-down and 2D side-on. Characters who talk, from the document's names, roles and lore."},
   EngRow.{number = 58, status = 1, title = "Everglade", part = "Realms", folder = "session",
-    source = "apps/openagents-web/everglade5e.coax|coax/web/room/worker.coax|metaverse-engine/session/ledger.coax",
+    source = "coax/web/room/worker.coax|metaverse-engine/session/ledger.coax",
     summary = "Everglade combines the forest city, characters, the watch, quests, combat, fire, boats and the Cultist Raid. Its current page is everglade5e.coax, with content in everglade/legacy/v1/ and the shared movement step in everglade-step.coax."},
   EngRow.{number = 59, status = 2, title = "Dead Gears", part = "Realms", folder = "",
     source = "",
@@ -260,7 +260,7 @@ ENG_ROWS :: [ENG_N] EngRow.[
     source = "metaverse-engine/session/lifecycle.coax|metaverse-engine/host/lifecycle.coax|metaverse-engine/render/loss-policy.coax|metaverse-engine/world/stream-walk-device.coax",
     summary = "The host owns platform effects: the window, devices, GPU, audio, files and sockets. Coax owns gameplay, admission and recovery policy. metaverse-engine/host/README.md specifies aethyr-host-v1, including initialization, asynchronous ownership and failure behavior. Missing a contract version..."},
   EngRow.{number = 85, status = 1, title = "Everyone can play", part = "Shipping realms", folder = "ui",
-    source = "metaverse-engine/ui/settings.coax|apps/openagents-web/old/v1/everglade-access.coax",
+    source = "metaverse-engine/ui/settings.coax",
     summary = "metaverse-engine/ui/settings.coax owns the versioned record, its defaults and its codec. Each action has one key and one pad button. Binding a code already in use swaps the two bindings, leaving every action bound. Text size ranges from 100 to 200 percent in steps of 25. A malformed or..."},
   EngRow.{number = 86, status = 1, title = "One server owns the scene", part = "Many players: a multiplayer engine", folder = "",
     source = "coax/web/room/room.coax|coax/web/room/room-host.c|coax/web/room/room-everglade.coax|coax/web/room/room-world.c",
@@ -275,7 +275,7 @@ ENG_ROWS :: [ENG_N] EngRow.[
     source = "coax/web/room/room-everglade.coax|everglade/server/input.coax|everglade/shared/everglade-wire.coax",
     summary = "Intents with sequence numbers, and why the server needs them. A bounded per-seat queue that refuses old, repeated and excess commands. Stepping inputs at the rate time passes, not the rate they arrive. Acknowledgements that say which input the state includes. Refusals with a reason the page can..."},
   EngRow.{number = 90, status = 1, title = "Predict your own movement", part = "Many players: a multiplayer engine", folder = "net",
-    source = "metaverse-engine/net/predict.coax|metaverse-engine/net/interp.coax|apps/openagents-web/old/v1/everglade-net.coax|apps/openagents-web/everglade5e-face.c",
+    source = "metaverse-engine/net/predict.coax|metaverse-engine/net/interp.coax|metaverse-engine/move/walk.coax",
     summary = "Predict only your own movement. Everything else comes from the server. Reconcile: start from the server's state for the input it acknowledged. Replay the inputs the server hasn't stepped yet. Smooth the correction on the drawn body, and never on the camera."},
   EngRow.{number = 91, status = 1, title = "One record for every replicated entity", part = "Many players: a multiplayer engine", folder = "",
     source = "everglade/shared/everglade-wire.coax",
@@ -284,22 +284,22 @@ ENG_ROWS :: [ENG_N] EngRow.[
     source = "everglade/shared/everglade-wire.coax|coax/web/room/room-everglade.coax|coax/web/room/room-host.c",
     summary = "Estimating the bytes a room sends, before measuring them. Priority from distance and relevance, accumulated so nothing starves. A per-client byte budget per tick. Send queues bounded by age as well as size."},
   EngRow.{number = 93, status = 1, title = "One interpolation buffer for every remote entity", part = "Many players: a multiplayer engine", folder = "net",
-    source = "metaverse-engine/net/interp.coax|apps/openagents-web/old/v1/everglade-net.coax|everglade/client/net-core.coax",
+    source = "metaverse-engine/net/interp.coax|everglade/client/net-core.coax",
     summary = "Drawing remote entities a short delay in the past. Estimating the server clock from pings. An adaptive delay from lateness, jitter and interval. What to do when the buffer runs dry."},
   EngRow.{number = 94, status = 1, title = "Effects are state, events are cues", part = "Many players: a multiplayer engine", folder = "",
-    source = "apps/openagents-web/old/v1/everglade-status.coax|apps/openagents-web/old/v1/everglade-net.coax",
+    source = "",
     summary = "Conditions, zones, buffs, holds and walls as entities with a start and a duration. Particles, sound, rings and status lines derived from those entities. One-shot events as cosmetic cues only. Why this makes late joiners correct and double application impossible."},
   EngRow.{number = 95, status = 1, title = "Offline is a local server", part = "Many players: a multiplayer engine", folder = "",
     source = "coax/web/room/room-worker.c|coax/web/room/room-tick.c|coax/web/room-worker.js|coax/web/room/worker.coax",
     summary = "Why \"offline\" and \"room\" must be one code path. Running the server's simulation in a Web Worker. A local host that speaks the same frames as the real server. Where state defaults and new server steps must live so both hosts get them."},
   EngRow.{number = 96, status = 1, title = "Casts and combat under latency", part = "Many players: a multiplayer engine", folder = "",
-    source = "everglade/shared/cast-limits.coax|apps/openagents-web/old/v1/everglade-cast-rules.coax|apps/openagents-web/old/v1/everglade-cast-sight.coax|coax/web/room/room-casts.coax",
+    source = "everglade/shared/cast-limits.coax|coax/web/room/room-casts.coax|coax/web/room/cast-check.coax|coax/web/room/room-proof.coax",
     summary = "Latency compensation as a game rule, decided per game. Two checkpoints for range and line of sight: start and release. Bounding a command's age without trusting a client clock. What happens when a target falls or leaves during a cast. A fixed order of actions within one tick. What the page..."},
   EngRow.{number = 97, status = 1, title = "Interest without leaks", part = "Many players: a multiplayer engine", folder = "",
     source = "coax/web/room/room-interest.coax|coax/web/room/room-blocks.coax",
     summary = "The interest pipeline, from spatial candidates to the frame. Hysteresis at the edge of interest. Subscriptions that are not spatial, such as a party member's health. Withholding what a client isn't entitled to see."},
   EngRow.{number = 98, status = 1, title = "Versions, deploys and reconnect", part = "Many players: a multiplayer engine", folder = "",
-    source = "apps/openagents-web/old/v1/everglade-net.coax|coax/web/room/room-relay.coax|coax/web/room/room-vitals.coax|coax/web/room/rejoin-check.coax",
+    source = "coax/web/room/room-relay.coax|coax/web/room/room-vitals.coax|coax/web/room/rejoin-check.coax",
     summary = "A protocol version on every join, and what a mismatch does. A deploy order where old and new versions overlap safely. Draining a server instead of cutting its players. Reconnect: socket, session and character as three lifetimes."},
   EngRow.{number = 99, status = 1, title = "Watch the whole action path", part = "Many players: a multiplayer engine", folder = "",
     source = "coax/web/room/room-host.c|coax/web/room/room-stats.coax|coax/web/room/room-stats.h",

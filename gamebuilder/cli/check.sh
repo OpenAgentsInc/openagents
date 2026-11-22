@@ -127,9 +127,9 @@ HOME="$home" expect 0 '"profile":"default"'       -- logout
 # hosted server, and the link plays the published file with no login (tools/web-publish-check.coax; issue 17).
 (cd "$here/.." && HOME="$home" "$here/../../coax/web/tool.sh" tools/web-publish-check.coax "$bin" 2>/dev/null | tail -n 20) \
   || { echo "FAIL the website's publishing against the app's (tools/web-publish-check.coax)" >&2; fails=$((fails + 1)); }
-# The skill: made from the table, and the repo's copy is the same (gamebuilder skill --install).
+# The skill: made from the table, and `skill --install` writes the exact same file.
 expect 0 '"repo":"OpenAgentsInc/openagents"'      -- engine
-[[ "$("$bin" skill)" == "$(cat "$here/../.claude/skills/gamebuilder/SKILL.md")" ]] || { echo "FAIL .claude/skills/gamebuilder/SKILL.md is not the table's: run build/cli/gamebuilder skill --install" >&2; fails=$((fails + 1)); }
 (cd "$dir" && "$bin" skill --install > /dev/null) && [[ -s "$dir/.claude/skills/gamebuilder/SKILL.md" ]] || { echo "FAIL skill --install wrote nothing" >&2; fails=$((fails + 1)); }
+[[ "$("$bin" skill)" == "$(cat "$dir/.claude/skills/gamebuilder/SKILL.md")" ]] || { echo "FAIL skill --install output differs from gamebuilder skill" >&2; fails=$((fails + 1)); }
 [[ "$fails" == 0 ]] || exit 1
 echo "cli: ok"

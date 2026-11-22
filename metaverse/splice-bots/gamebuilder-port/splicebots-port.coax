@@ -150,7 +150,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for name: [2] string.["shipping-data-check.txt", "coax-replay.txt"] {
     if !fs_rename(fs_join(tmp, name, from[..]), fs_join(res, name, path[..])) { return sbp_fail("could not keep the verification logs"); }
   }
-  launcher := fs_join(gb, "tools/splicebots-play.sh", from[..]);
+  launcher := fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-play.sh", from[..]);
   if !sbp_copy(launcher, fs_join(res, "play.sh", path[..])) || !sbp_report(res, count[0], pin) { return sbp_fail("could not package the port report or launcher"); }
   if fs_kind(out) != FS_NONE || !fs_rename(res, out) { return sbp_fail("could not finish --out as a new directory"); }
   print("SPLICEBOTS: %\nRun %/play.sh and open the URL it prints.\nVerification: %/port.json\n", out, out, out);

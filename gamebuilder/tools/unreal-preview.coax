@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../../coax/lib/json/json.coax";
 #load "../../metaverse-engine/import/unreal/convert.coax";
-#load "unreal-archive-tools.coax";
+#load "../../metaverse-engine/tools/unreal-archive-tools.coax";
 #load "unreal-preview-checks.coax" #test;
 
 UPV_NAME :: "unreal-preview";

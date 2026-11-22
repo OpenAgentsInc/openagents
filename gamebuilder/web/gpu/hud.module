@@ -1,3 +1,3 @@
 --vertices hud_bg_vs,hud_shadow_vs,hud_grass_vs,hud_scene_vs,hud_fx_vs
 --fragments hud_bg_fs,hud_shadow_fs,hud_grass_fs,hud_scene_fs,hud_bloom_fs,hud_post_fs,hud_fx_fs
---bindings web/gpu/hud.bindings --strip hud_
+--bindings gamebuilder/web/gpu/hud.bindings --strip hud_

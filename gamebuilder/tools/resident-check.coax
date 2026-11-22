@@ -100,7 +100,7 @@ tool_main :: () -> int #export_c #effects(all) {
   k[0].wrap_n = agr_put(k[0].wrap[..], agr_put(k[0].wrap[..], 0, home), "/claude");
   k[0].log_n = agr_put(k[0].log[..], agr_put(k[0].log[..], 0, home), "/standin.log");
   sb: [4096] u8; st := [1] Text.[Text.{buf = sb[..]}];
-  tx_put(st[..], "#!/bin/sh\nexec \""); tx_put(st[..], cwd); tx_put(st[..], "/coax/web/tool.sh\" \""); tx_put(st[..], cwd); tx_put(st[..], "/tools/claude-standin.coax\" \"$@\"\n");
+  tx_put(st[..], "#!/bin/sh\nexec \""); tx_put(st[..], cwd); tx_put(st[..], "/../coax/web/tool.sh\" \""); tx_put(st[..], cwd); tx_put(st[..], "/tools/claude-standin.coax\" \"$@\"\n");
   wrap := cast(string) k[0].wrap[0..<k[0].wrap_n];
   if !fs_write(wrap, cast(string) sb[0..<st[0].at]) { tool_errln("resident: can't write the stand-in"); return 1; }
   ob: [256] u8; eb: [256] u8; cm := [3] string.["/bin/chmod", "755", wrap];

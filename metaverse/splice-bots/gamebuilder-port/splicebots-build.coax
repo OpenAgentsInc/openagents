@@ -1,5 +1,5 @@
 // Shared production steps for the shipping archive and Unreal project adapters.
-#load "unreal-archive-tools.coax";
+#load "../../../metaverse-engine/tools/unreal-archive-tools.coax";
 #load "../../../coax/lib/json/json.coax";
 
 SBP_WORLD :: "splice-bots-jam.pack";
@@ -101,7 +101,7 @@ sbp_player :: (root: string, gb: string, player: string) -> bool {
   shader_args := [3] string.["metaverse/splice-bots/gpu/splice-jam.coax", wgsl, "metaverse/splice-bots/gpu/splice-jam.module"];
   if sbp_coax(root, "building the shared engine shaders", "coax/web/wgsl-module.coax", shader_args[..], buffer[..]) < 0 { return false; }
 
-  if !sbp_copy(fs_join(gb, "tools/splicebots-player.html", from[..]), fs_join(player, "index.html", path[..])) { return false; }
+  if !sbp_copy(fs_join(root, "metaverse/splice-bots/gamebuilder-port/splicebots-player.html", from[..]), fs_join(player, "index.html", path[..])) { return false; }
   for name: [4] string.["IBMPlexMono-Medium.ttf", "IBMPlexMono-OFL.txt", "Michroma-Regular.ttf", "Michroma-OFL.txt"] {
     font_dir: [4096] u8; output_dir: [4096] u8;
     base := fs_join(root, "apps/openagents-web/realms/splice-bots/assets/fonts", font_dir[..]);

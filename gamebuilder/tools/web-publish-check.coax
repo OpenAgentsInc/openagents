@@ -226,7 +226,8 @@ tool_main :: () -> int #export_c #effects(all) {
   // 0. the limits the page says in words are the core's own numbers, and its report reasons the core's own list:
   // read from the core's source (coax/publish.coax), which the page does not load
   src: [] u8 = r[0].answer[..];
-  cn0 := fs_read("gamebuilder/core/publish.coax", src);
+  cn0 := fs_read("core/publish.coax", src);
+  if cn0 <= 0 { cn0 = fs_read("gamebuilder/core/publish.coax", src); }
   core := cast(string) src[0..<(ifx cn0 > 0 then cn0 else 0)];
   lb: [160] u8; ln := 0; held := core.count > 0;
   ln = bl_put(lb[..], 0, "\nPUB_GAMES :: "); ln = bl_int(lb[..], ln, PB_GAMES); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }

@@ -1,6 +1,5 @@
 // The engine's capability list (issue 21; docs/engine-upgrades.md, "The engine capability list"):
-// gamebuilder/core/engine-list.coax is made here from the OpenAgents Metaverse Engine's book at the commit in
-// openagents.lock, so the command line can say what the engine does with no openagents checkout.
+// gamebuilder/core/engine-list.coax is made here from the OpenAgents Metaverse Engine's book.
 // One row a chapter: its number, title, status, the book's part, the engine folder most of its
 // source is in, up to 4 source files and a summary of up to 300 bytes.
 //
@@ -8,19 +7,18 @@
 // (each chapter's part) and each chapter's file (its summary: the text under "What this chapter
 // teaches", else its first paragraph).
 //
-//   coax/web/tool.sh tools/engine-list.coax            # writes gamebuilder/core/engine-list.coax
-//   coax/web/tool.sh tools/engine-list.coax --check    # changes nothing; ends 1 when it is not what the book makes
+//   coax/web/tool.sh gamebuilder/tools/engine-list.coax            # writes gamebuilder/core/engine-list.coax
+//   coax/web/tool.sh gamebuilder/tools/engine-list.coax --check    # changes nothing; ends 1 when it is not what the book makes
 //
-// scripts/pin.sh bump runs the first, scripts/check.sh the second.
 // tool.sh: run-steps 250000000
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/agent/claude/fields.coax";
 #import "Basic";
 
 EL_BOOK :: "metaverse-engine/book/";
 EL_OUT :: "gamebuilder/core/engine-list.coax";
-EL_LOCK :: "openagents.lock";
 EL_ROWS :: 400;          // chapters, at most
 EL_SUMMARY :: 300;
 EL_SOURCES :: 4;
@@ -186,9 +184,9 @@ el_make :: (w: [] ElWork, pin: string) -> int {
   if n <= 0 || n > EL_ROWS { print("engine-list: NOT made: chapters.json has % chapters (1 to % are read)\n", n, EL_ROWS); return -1; }
   ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
   t := [1] ElText.[ElText.{buf = w[0].out[..]}];
-  el_put(t[..], "// Made by tools/engine-list.coax from the OpenAgents Metaverse Engine's book at the commit in\n");
-  el_put(t[..], "// openagents.lock. Don't edit it: scripts/pin.sh bump makes it again, and scripts/check.sh fails\n");
-  el_put(t[..], "// when it is not what the book at that commit makes. docs/engine-upgrades.md, \"The engine capability list\".\n");
+  el_put(t[..], "// Made by gamebuilder/tools/engine-list.coax from the OpenAgents Metaverse Engine's book.\n");
+  el_put(t[..], "// Don't edit it: run coax/web/tool.sh gamebuilder/tools/engine-list.coax to regenerate.\n");
+  el_put(t[..], "// docs/engine-upgrades.md, \"The engine capability list\".\n");
   el_put(t[..], "ENG_PIN :: "); el_quote(t[..], pin); el_put(t[..], ";\n");
   el_put(t[..], "ENG_N :: "); el_int(t[..], n); el_put(t[..], ";\n");
   el_put(t[..], "ENG_IMPLEMENTED :: 0; ENG_PARTLY :: 1; ENG_DRAFT :: 2;\n");
@@ -251,17 +249,19 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   check := args_count(a[..]) > 0 && args_at(a[..], 0) == "--check";
-  if args_count(a[..]) > (ifx check then 1 else 0) { print("usage: tool.sh tools/engine-list.coax [--check]\n"); return 2; }
-  lb: [4096] u8; ln := fs_read(EL_LOCK, lb[..]);
-  pin := el_pin(cast(string) lb[0..<ifx ln < 0 then 0 else ln]);
-  if pin.count == 0 { print("engine-list: NOT read: openagents.lock names no commit (run it from the repository's root)\n"); return 1; }
+  if args_count(a[..]) > (ifx check then 1 else 0) { print("usage: tool.sh gamebuilder/tools/engine-list.coax [--check]\n"); return 2; }
+  git := [6] string.["git", "log", "-1", "--format=%H", "--", "metaverse-engine/book"];
+  lb: [256] u8; eb: [1024] u8;
+  gr := proc_run(git[..], 10000, lb[..], eb[..]);
+  pin := ifx gr.started == 0 && gr.status == 0 then el_pin(cast(string) lb[0..<gr.out_n]) else "";
+  if pin.count == 0 { print("engine-list: NOT read: git log returned no commit for metaverse-engine/book (run from the repository root)\n"); return 1; }
   w: [1] ElWork;
   n := el_make(w[..], pin);
   if n < 0 { return 1; }
   made := cast(string) w[0].out[0..<n];
   on := fs_read(EL_OUT, w[0].old[..]);
   if on == n && cast(string) w[0].old[0..<on] == made { if check { print("engine-list: ok, % is the book's at %\n", EL_OUT, cast(string) pin[0..<10]); } return 0; }
-  if check { print("engine-list: NOT made from the book at %: % (run coax/web/tool.sh tools/engine-list.coax)\n", cast(string) pin[0..<10], EL_OUT); return 1; }
+  if check { print("engine-list: NOT made from the book at %: % (run coax/web/tool.sh gamebuilder/tools/engine-list.coax)\n", cast(string) pin[0..<10], EL_OUT); return 1; }
   if !fs_write(EL_OUT, made) { print("engine-list: NOT written %\n", EL_OUT); return 1; }
   print("engine-list: made %\n", EL_OUT);
   return 0;

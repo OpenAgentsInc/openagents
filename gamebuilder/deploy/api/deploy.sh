@@ -38,20 +38,16 @@ if [[ "${1:-}" == status ]]; then
 fi
 
 # What is deployed is a commit on main, never a working tree.
-[[ -z "$(git -C "$GB_ROOT" status --porcelain)" ]] || { echo "deploy/api: the checkout has changes; deploy a commit" >&2; exit 1; }
-commit="$(git -C "$GB_ROOT" rev-parse HEAD)"
-pin="$(grep -E '^[0-9a-f]{40}$' "$GB_ROOT/openagents.lock" | head -n 1)"
+[[ -z "$(git -C "$repo" status --porcelain -- gamebuilder)" ]] || { echo "deploy/api: gamebuilder has uncommitted changes; deploy a commit" >&2; exit 1; }
+commit="$(git -C "$repo" rev-parse HEAD)"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
-mkdir -p "$stage/gamebuilder" "$stage/openagents-gamebuilder"
-git -C "$GB_ROOT" archive "$commit" | tar -x -C "$stage/gamebuilder"
-# the commit it is, for the version it reports (scripts/env.sh reads .commit where there is no git)
+# Only what the CLI's build loads (its compiler, libraries, gamebuilder and the engine), not the whole
+# tree. coax/tests stays (a library loads from it), and scripts/coax-release.sh is one of the compiler's checked inputs.
+git -C "$repo" archive "$commit" -- gamebuilder coax apps/openagents-cli components metaverse-engine metaverse/splice-bots psionic/lib \
+  scripts/coax-release.sh | tar -x -C "$stage"
+# the commit it is, for the version it reports where there is no git
 printf '%s\n' "$commit" > "$stage/gamebuilder/.commit"
-# Only what the CLI's build loads (its compiler, libraries and the engine's editor), not the whole
-# tree: about 160 MB instead of 2 GB sent to Cloud Build. coax/tests stays (a library loads from
-# it), and scripts/coax-release.sh is one of the compiler's checked inputs (coax/provenance.sh).
-git -C "$GB_VENDOR" archive "$pin" -- coax apps/openagents-cli components metaverse-engine metaverse/splice-bots psionic/lib \
-  scripts/coax-release.sh | tar -x -C "$stage/openagents-gamebuilder"
 cp "$GB_ROOT/deploy/api/Dockerfile" "$stage/Dockerfile"
 
 has storage buckets describe "gs://$bucket" || g storage buckets create "gs://$bucket" --location "$region" --uniform-bucket-level-access --public-access-prevention

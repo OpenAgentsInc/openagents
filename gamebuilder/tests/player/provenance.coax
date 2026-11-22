@@ -22,12 +22,13 @@ pt_sha :: (bytes:[]u8,out:[]u8)->bool {
 }
 pt_write_catalog :: (root:string)->bool {
   git:=[5]string.["git","-C",root,"rev-parse","HEAD"];rev:[256]u8;err:[1024]u8;r:=proc_run(git[..],5000,rev[..],err[..]);if r.status!=0 {return false;}
-  p:[4096]u8;lock:[4096]u8;n:=fs_read(fs_join(root,"openagents.lock",p[..]),lock[..]);if n<=0 {return false;}
-  pin:="";at:=0;while at<n {end:=at;while end<n && lock[end]!='\n' {end+=1;}line:=cast(string)lock[at..<end];if line.count==40 && line[0]!='#' {pin=line;}at=end+1;}if pin.count!=40 {return false;}
-  b:[65536]u8;cn:=pt_catalog(b[..],http_trim(cast(string)rev[0..<r.out_n]),pin);if cn<=0 {return false;}
+  end:=r.out_n;while end>0 && (rev[end-1]=='\n'||rev[end-1]=='\r'||rev[end-1]==' ') {end-=1;}
+  head:=cast(string)rev[0..<end];if head.count!=40 {return false;}
+  p:[4096]u8;
+  b:[65536]u8;cn:=pt_catalog(b[..],head,head);if cn<=0 {return false;}
   // The catalog writer owns its closing brace. Append asset identities with Jo.
   o:[1]Jo;extra:[8192]u8;jo_start(o[..],extra[..]);jo_obj(o[..]);
   bytes:[8388608]u8;digest:[64]u8;
   for name:PT_ASSETS {rel:[256]u8;rn:=ws_put(rel[..],0,ifx name=="assets/village.pack" then "web/" else "web/build/");rn=ws_put(rel[..],rn,name);size:=fs_read(fs_join(root,cast(string)rel[0..<rn],p[..]),bytes[..]);if size<=0 || !pt_sha(bytes[0..<size],digest[..]) {return false;}jo_key(o[..],name);jo_str(o[..],cast(string)digest[..]);}
-  jo_end(o[..]);n=ws_put(b[..],cn-1,",\"assets\":");n=ws_put(b[..],n,jo_text(o[..]));n=ws_put(b[..],n,"}\n");return n>0 && fs_write(fs_join(root,"web/build/player-catalog.json",p[..]),cast(string)b[0..<n]);
+  jo_end(o[..]);n:=ws_put(b[..],cn-1,",\"assets\":");n=ws_put(b[..],n,jo_text(o[..]));n=ws_put(b[..],n,"}\n");return n>0 && fs_write(fs_join(root,"web/build/player-catalog.json",p[..]),cast(string)b[0..<n]);
 }
