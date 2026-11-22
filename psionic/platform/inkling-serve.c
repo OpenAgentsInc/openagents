@@ -1,38 +1,170 @@
-/* Native Psionic Metal HTTP inference server for Inkling 2 Mini.
+/* Native Psionic HTTP inference server for Inkling 2 Mini.
    Serves /health, /v1/models, /v1/chat/completions (OpenAI SSE & JSON with
    reasoning_content), and /v1/responses (Open Responses SSE & JSON) directly
-   on Psionic's Coax-compiled Metal kernels (psionic/lib/inkling/kernels.coax). */
+   on Psionic's Coax-compiled kernels. It is written against the engine
+   contract (inkling-engine.h) only, so the same source is the server on
+   Metal (macOS) and on CUDA (Linux and Windows); the sockets, the clock and
+   the stop signal below are the only code that differs by system. */
 
+#ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
+#endif
 
-#include "inkling-metal.h"
+#include "inkling-engine.h"
 #include "json-schema.h"
 
-#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <sys/socket.h>
 #include <time.h>
-#include <unistd.h>
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int sig) { (void)sig; g_stop = 1; }
 
+#ifdef _WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#ifdef _MSC_VER
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#define strncasecmp _strnicmp
+#else
+#include <strings.h>
+#endif
+typedef CRITICAL_SECTION InkMutex;
+static void ink_mutex_init(InkMutex *m) { InitializeCriticalSection(m); }
+static void ink_mutex_destroy(InkMutex *m) { DeleteCriticalSection(m); }
+static void ink_mutex_lock(InkMutex *m) { EnterCriticalSection(m); }
+static void ink_mutex_unlock(InkMutex *m) { LeaveCriticalSection(m); }
+typedef void (*InkThreadFn)(void *);
+typedef struct { InkThreadFn fn; void *arg; } InkWinThread;
+static DWORD WINAPI ink_win_thread(LPVOID p) {
+    InkWinThread *t = (InkWinThread *)p;
+    InkThreadFn fn = t->fn; void *arg = t->arg;
+    free(t);
+    fn(arg);
+    return 0;
+}
+static int ink_spawn_detached(InkThreadFn fn, void *arg) {
+    InkWinThread *t = (InkWinThread *)malloc(sizeof *t);
+    if (!t) return 1;
+    t->fn = fn; t->arg = arg;
+    HANDLE h = CreateThread(NULL, 2 * 1024 * 1024, ink_win_thread, t, 0, NULL);
+    if (!h) { free(t); return 1; }
+    CloseHandle(h);
+    return 0;
+}
+/* A SOCKET is kept in an int: Windows hands out handles that fit in 32 bits. */
+static int g_listen = -1;
+static int sock_start(void) { WSADATA w; return WSAStartup(MAKEWORD(2, 2), &w) == 0 ? 0 : 1; }
+static void sock_close(int fd) { closesocket((SOCKET)fd); }
+static int sock_interrupted(void) { return WSAGetLastError() == WSAEINTR; }
+static ssize_t sock_send(int fd, const char *buf, size_t len) { return send((SOCKET)fd, buf, (int)(len > 1 << 30 ? 1 << 30 : len), 0); }
+static ssize_t sock_recv(int fd, char *buf, size_t len) { return recv((SOCKET)fd, buf, (int)len, 0); }
+static void sock_error(const char *what) { fprintf(stderr, "%s: Windows socket error %d\n", what, WSAGetLastError()); }
+static int sock_poll_read(int fd, int timeout_ms) {
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET((SOCKET)fd, &rfds);
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    return select(0, &rfds, NULL, NULL, &tv);
+}
+/* Ctrl+C, Ctrl+Break, a closed console, logoff and shutdown all stop the
+   server: closing the listening socket ends the select/accept it is waiting in. */
+static BOOL WINAPI on_console(DWORD event) {
+    (void)event;
+    g_stop = 1;
+    if (g_listen >= 0) closesocket((SOCKET)g_listen);
+    return TRUE;
+}
+static void stop_signals(int listen_fd) { g_listen = listen_fd; SetConsoleCtrlHandler(on_console, TRUE); }
+static void sock_close_listener(int fd) { if (!g_stop) closesocket((SOCKET)fd); } /* the handler closed it otherwise */
+static double now_sec(void) {
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart / (double)f.QuadPart;
+}
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <pthread.h>
+#include <strings.h>
+#include <sys/socket.h>
+#include <unistd.h>
+typedef pthread_mutex_t InkMutex;
+static void ink_mutex_init(InkMutex *m) { pthread_mutex_init(m, NULL); }
+static void ink_mutex_destroy(InkMutex *m) { pthread_mutex_destroy(m); }
+static void ink_mutex_lock(InkMutex *m) { pthread_mutex_lock(m); }
+static void ink_mutex_unlock(InkMutex *m) { pthread_mutex_unlock(m); }
+typedef void (*InkThreadFn)(void *);
+typedef struct { InkThreadFn fn; void *arg; } InkPosixThread;
+static void *ink_posix_thread(void *p) {
+    InkPosixThread *t = (InkPosixThread *)p;
+    InkThreadFn fn = t->fn; void *arg = t->arg;
+    free(t);
+    fn(arg);
+    return NULL;
+}
+static int ink_spawn_detached(InkThreadFn fn, void *arg) {
+    InkPosixThread *t = (InkPosixThread *)malloc(sizeof *t);
+    if (!t) return 1;
+    t->fn = fn; t->arg = arg;
+    pthread_t tid;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_attr_setstacksize(&attr, 2 * 1024 * 1024);
+    int rc = pthread_create(&tid, &attr, ink_posix_thread, t);
+    pthread_attr_destroy(&attr);
+    if (rc != 0) { free(t); return 1; }
+    return 0;
+}
+static void on_sig(int sig) { (void)sig; g_stop = 1; }
+static int sock_start(void) { signal(SIGPIPE, SIG_IGN); return 0; }
+static void sock_close(int fd) { close(fd); }
+static int sock_interrupted(void) { return errno == EINTR; }
+static ssize_t sock_send(int fd, const char *buf, size_t len) { return send(fd, buf, len, 0); }
+static ssize_t sock_recv(int fd, char *buf, size_t len) { return recv(fd, buf, len, 0); }
+static void sock_error(const char *what) { perror(what); }
+static int sock_poll_read(int fd, int timeout_ms) {
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int pr = poll(&pfd, 1, timeout_ms);
+    if (pr > 0 && !(pfd.revents & POLLIN)) return 0;
+    return pr;
+}
+static void stop_signals(int listen_fd) {
+    (void)listen_fd;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_sig;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; /* No SA_RESTART: poll()/accept() wake immediately on SIGTERM/SIGINT */
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+}
+static void sock_close_listener(int fd) { close(fd); }
 static double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
+#endif
 
 /* ---------------- Dynamic byte buffer ---------------- */
 
@@ -91,9 +223,9 @@ static int buf_add_json_escaped(Buf *b, const char *s, size_t n) {
 static int send_all(int fd, const char *buf, size_t len) {
     size_t sent = 0;
     while (sent < len) {
-        ssize_t w = send(fd, buf + sent, len - sent, 0);
+        ssize_t w = sock_send(fd, buf + sent, len - sent);
         if (w < 0) {
-            if (errno == EINTR) continue;
+            if (sock_interrupted()) continue;
             return 1;
         }
         if (w == 0) return 1;
@@ -1008,8 +1140,9 @@ static size_t utf8_complete_prefix(const unsigned char *s, size_t n) {
 
 typedef struct {
     InkSession     *sess;
-    pthread_mutex_t sess_mu;
-    pthread_mutex_t state_mu;
+    InkMutex        sess_mu;
+    InkMutex        state_mu;
+    const char     *engine;
     int             in_flight;
     double          last_active;
     int             idle_exit_s;
@@ -1419,20 +1552,20 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     Buf prompt = {0};
     format_inkling_prompt(&r, &prompt);
 
-    pthread_mutex_lock(&sv->state_mu);
+    ink_mutex_lock(&sv->state_mu);
     sv->in_flight++;
     sv->last_active = now_sec();
-    pthread_mutex_unlock(&sv->state_mu);
+    ink_mutex_unlock(&sv->state_mu);
 
-    pthread_mutex_lock(&sv->sess_mu);
+    ink_mutex_lock(&sv->sess_mu);
 
     int max_ctx = ink_max_ctx(sv->sess);
     int32_t *toks = (int32_t *)malloc((size_t)(max_ctx + 1) * sizeof(int32_t));
     if (!toks) {
         const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
         send_http_json(fd, 500, "Internal Server Error", e, strlen(e));
-        pthread_mutex_unlock(&sv->sess_mu);
-        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        ink_mutex_unlock(&sv->sess_mu);
+        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
         return;
     }
@@ -1440,8 +1573,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     if (n_prompt <= 0) {
         const char *e = "{\"error\":{\"message\":\"empty prompt\",\"type\":\"invalid_request_error\"}}";
         send_http_json(fd, 400, "Bad Request", e, strlen(e));
-        pthread_mutex_unlock(&sv->sess_mu);
-        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        ink_mutex_unlock(&sv->sess_mu);
+        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return;
     }
@@ -1451,8 +1584,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                  "{\"error\":{\"message\":\"This model's maximum context length is %d tokens. However, your messages exceeded the context length.\",\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\"}}",
                  max_ctx);
         send_http_json(fd, 400, "Bad Request", ebuf, strlen(ebuf));
-        pthread_mutex_unlock(&sv->sess_mu);
-        pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+        ink_mutex_unlock(&sv->sess_mu);
+        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return;
     }
@@ -1466,8 +1599,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
 
     if (r.stream) {
         if (send_sse_headers(fd) != 0) {
-            pthread_mutex_unlock(&sv->sess_mu);
-            pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+            ink_mutex_unlock(&sv->sess_mu);
+            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return;
         }
@@ -1490,16 +1623,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 snprintf(ebuf, sizeof ebuf, "{\"error\":{\"message\":\"prefill failed: %s\"}}", ink_error(sv->sess));
                 send_http_json(fd, 500, "Internal Server Error", ebuf, strlen(ebuf));
             }
-            pthread_mutex_unlock(&sv->sess_mu);
-            pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+            ink_mutex_unlock(&sv->sess_mu);
+            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return;
         }
         i += chunk;
         if (r.stream && i < n_prompt) {
             if (send_all(fd, ": prefilling\n\n", 14) != 0) {
-                pthread_mutex_unlock(&sv->sess_mu);
-                pthread_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); pthread_mutex_unlock(&sv->state_mu);
+                ink_mutex_unlock(&sv->sess_mu);
+                ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
                 free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
                 return;
             }
@@ -1873,11 +2006,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     buf_free(&pending);
     buf_free(&full_text);
     buf_free(&full_think);
-    pthread_mutex_unlock(&sv->sess_mu);
-    pthread_mutex_lock(&sv->state_mu);
+    ink_mutex_unlock(&sv->sess_mu);
+    ink_mutex_lock(&sv->state_mu);
     sv->in_flight--;
     sv->last_active = now_sec();
-    pthread_mutex_unlock(&sv->state_mu);
+    ink_mutex_unlock(&sv->state_mu);
     free(js_sc);
     req_free(&r);
 }
@@ -1890,8 +2023,8 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
     int have_hdr = 0;
 
     while (raw.len < 4 * 1024 * 1024) {
-        ssize_t n = recv(fd, tmp, sizeof tmp, 0);
-        if (n < 0) { if (errno == EINTR) continue; buf_free(&raw); return 1; }
+        ssize_t n = sock_recv(fd, tmp, sizeof tmp);
+        if (n < 0) { if (sock_interrupted()) continue; buf_free(&raw); return 1; }
         if (n == 0) break;
         if (buf_append(&raw, tmp, (size_t)n)) { buf_free(&raw); return 1; }
         if (!have_hdr) {
@@ -1952,7 +2085,7 @@ typedef struct {
     int     cfd;
 } ConnArg;
 
-static void *conn_thread(void *arg) {
+static void conn_thread(void *arg) {
     ConnArg *ca = (ConnArg *)arg;
     Server *sv = ca->sv;
     int cfd = ca->cfd;
@@ -1970,16 +2103,19 @@ static void *conn_thread(void *arg) {
                 "Connection: close\r\n\r\n";
             send_all(cfd, cors, strlen(cors));
         } else if (!strcmp(method, "GET") && !strcmp(path, "/health")) {
-            pthread_mutex_lock(&sv->state_mu);
+            ink_mutex_lock(&sv->state_mu);
             int busy = sv->in_flight > 0;
-            pthread_mutex_unlock(&sv->state_mu);
-            char ok[160];
+            ink_mutex_unlock(&sv->state_mu);
+            char ok[192];
             snprintf(ok, sizeof ok,
-                     "{\"status\":\"ok\",\"engine\":\"psionic-metal\",\"ctx\":%d,\"busy\":%s}",
-                     sv->max_ctx, busy ? "true" : "false");
+                     "{\"status\":\"ok\",\"engine\":\"%s\",\"ctx\":%d,\"busy\":%s}",
+                     sv->engine, sv->max_ctx, busy ? "true" : "false");
             send_http_json(cfd, 200, "OK", ok, strlen(ok));
         } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
-            const char *ms = "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"psionic-metal\"}]}";
+            char ms[224];
+            snprintf(ms, sizeof ms,
+                     "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"%s\"}]}",
+                     sv->engine);
             send_http_json(cfd, 200, "OK", ms, strlen(ms));
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
             handle_inference(sv, cfd, 0, body.data ? body.data : "", body.len);
@@ -1991,8 +2127,7 @@ static void *conn_thread(void *arg) {
         }
     }
     buf_free(&body);
-    close(cfd);
-    return NULL;
+    sock_close(cfd);
 }
 
 int main(int argc, char **argv) {
@@ -2005,31 +2140,25 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "--model") || !strcmp(argv[i], "-m")) && i + 1 < argc) gguf = argv[++i];
-        else if (!strcmp(argv[i], "--metal") && i + 1 < argc) metal = argv[++i];
+        else if ((!strcmp(argv[i], "--kernels") || !strcmp(argv[i], "--metal")) && i + 1 < argc) metal = argv[++i];
         else if (!strcmp(argv[i], "--host") && i + 1 < argc) host = argv[++i];
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if ((!strcmp(argv[i], "--ctx") || !strcmp(argv[i], "--ctx-size")) && i + 1 < argc) max_ctx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--idle-exit-s") && i + 1 < argc) idle_exit_s = atoi(argv[++i]);
     }
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n", argv[0]);
+        fprintf(stderr, "usage: %s --model PATH.gguf --kernels PATH [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
+                        "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option)\n", argv[0]);
         return 2;
     }
 
-    signal(SIGPIPE, SIG_IGN);
-    struct sigaction sa;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = on_sig;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0; /* No SA_RESTART: poll()/accept() wake immediately on SIGTERM/SIGINT */
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
+    if (sock_start() != 0) { fprintf(stderr, "[psionic-inkling-serve] cannot start sockets\n"); return 1; }
 
     double t0 = now_sec();
     Server sv;
     memset(&sv, 0, sizeof sv);
-    pthread_mutex_init(&sv.sess_mu, NULL);
-    pthread_mutex_init(&sv.state_mu, NULL);
+    ink_mutex_init(&sv.sess_mu);
+    ink_mutex_init(&sv.state_mu);
     sv.last_active = t0;
     sv.idle_exit_s = idle_exit_s;
     sv.max_ctx = max_ctx;
@@ -2037,13 +2166,19 @@ int main(int argc, char **argv) {
     char err[512];
     if (ink_open(gguf, metal, max_ctx, &sv.sess, err, sizeof err) != 0) {
         fprintf(stderr, "[psionic-inkling-serve] ink_open failed: %s\n", err);
+        ink_mutex_destroy(&sv.sess_mu);
+        ink_mutex_destroy(&sv.state_mu);
         return 1;
     }
     if (vocab_table_build(&sv) != 0) {
         fprintf(stderr, "[psionic-inkling-serve] failed to build vocab table\n");
         ink_close(sv.sess);
+        ink_mutex_destroy(&sv.sess_mu);
+        ink_mutex_destroy(&sv.state_mu);
         return 1;
     }
+    sv.engine          = ink_backend_name(sv.sess);
+    sv.max_ctx         = ink_max_ctx(sv.sess);
     sv.tok_model       = ink_find_token(sv.sess, "<|message_model|>");
     sv.tok_thinking    = ink_find_token(sv.sess, "<|content_thinking|>");
     sv.tok_text        = ink_find_token(sv.sess, "<|content_text|>");
@@ -2051,13 +2186,13 @@ int main(int argc, char **argv) {
     sv.tok_end_msg     = ink_find_token(sv.sess, "<|end_message|>");
     sv.tok_eog         = ink_eos_token(sv.sess);
     sv.last_active     = now_sec();
-    fprintf(stderr, "[psionic-inkling-serve] loaded %s on Psionic Metal in %.2fs (ctx=%d, vocab=%d, eog=%d, idle_exit=%ds)\n",
-            gguf, now_sec() - t0, max_ctx, sv.n_vocab, sv.tok_eog, idle_exit_s);
+    fprintf(stderr, "[psionic-inkling-serve] loaded %s on %s in %.2fs (ctx=%d, vocab=%d, eog=%d, idle_exit=%ds)\n",
+            gguf, sv.engine, now_sec() - t0, sv.max_ctx, sv.n_vocab, sv.tok_eog, idle_exit_s);
 
-    int srv = socket(AF_INET, SOCK_STREAM, 0);
-    if (srv < 0) { perror("socket"); vocab_table_free(&sv); ink_close(sv.sess); return 1; }
+    int srv = (int)socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) { sock_error("socket"); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1; }
     int one = 1;
-    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof addr);
@@ -2065,34 +2200,30 @@ int main(int argc, char **argv) {
     addr.sin_port = htons((uint16_t)port);
     if (inet_pton(AF_INET, host, &addr.sin_addr) != 1) {
         fprintf(stderr, "[psionic-inkling-serve] invalid host %s\n", host);
-        close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
+        sock_close(srv); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1;
     }
     if (bind(srv, (struct sockaddr *)&addr, sizeof addr) != 0) {
-        fprintf(stderr, "[psionic-inkling-serve] bind %s:%d failed: %s\n", host, port, strerror(errno));
-        close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
+        sock_error("bind"); sock_close(srv); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1;
     }
     if (listen(srv, 32) != 0) {
-        perror("listen"); close(srv); vocab_table_free(&sv); ink_close(sv.sess); return 1;
+        sock_error("listen"); sock_close(srv); vocab_table_free(&sv); ink_close(sv.sess); ink_mutex_destroy(&sv.sess_mu); ink_mutex_destroy(&sv.state_mu); return 1;
     }
-    fprintf(stderr, "[psionic-inkling-serve] listening on http://%s:%d (Psionic Metal, ctx=%d)\n", host, port, max_ctx);
+    stop_signals(srv);
+    fprintf(stderr, "[psionic-inkling-serve] listening on http://%s:%d (%s, ctx=%d)\n", host, port, sv.engine, sv.max_ctx);
     fflush(stderr);
 
     while (!g_stop) {
-        struct pollfd pfd;
-        pfd.fd = srv;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        int pr = poll(&pfd, 1, 500);
+        int pr = sock_poll_read(srv, 500);
         if (pr < 0) {
-            if (errno == EINTR) continue;
+            if (!g_stop && sock_interrupted()) continue;
             break;
         }
         if (pr == 0) {
             if (sv.idle_exit_s > 0) {
-                pthread_mutex_lock(&sv.state_mu);
+                ink_mutex_lock(&sv.state_mu);
                 int busy = sv.in_flight > 0;
                 double idle = now_sec() - sv.last_active;
-                pthread_mutex_unlock(&sv.state_mu);
+                ink_mutex_unlock(&sv.state_mu);
                 if (!busy && idle >= (double)sv.idle_exit_s) {
                     fprintf(stderr, "[psionic-inkling-serve] idle %.0fs >= %ds, exiting cleanly\n",
                             idle, sv.idle_exit_s);
@@ -2102,38 +2233,31 @@ int main(int argc, char **argv) {
             }
             continue;
         }
-        if (!(pfd.revents & POLLIN)) continue;
         struct sockaddr_in cli;
         socklen_t clen = sizeof cli;
-        int cfd = accept(srv, (struct sockaddr *)&cli, &clen);
+        int cfd = (int)accept(srv, (struct sockaddr *)&cli, &clen);
         if (cfd < 0) {
-            if (errno == EINTR) continue;
+            if (!g_stop && sock_interrupted()) continue;
             break;
         }
         ConnArg *ca = (ConnArg *)malloc(sizeof *ca);
-        if (!ca) { close(cfd); continue; }
+        if (!ca) { sock_close(cfd); continue; }
         ca->sv = &sv;
         ca->cfd = cfd;
-        pthread_t tid;
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-        pthread_attr_setstacksize(&attr, 2 * 1024 * 1024);
-        if (pthread_create(&tid, &attr, conn_thread, ca) != 0) {
+        if (ink_spawn_detached(conn_thread, ca) != 0) {
             free(ca);
-            close(cfd);
+            sock_close(cfd);
         }
-        pthread_attr_destroy(&attr);
     }
 
-    close(srv);
-    /* Wait for any in-flight inference thread (already winding down because g_stop=1) before freeing Metal. */
-    pthread_mutex_lock(&sv.sess_mu);
+    sock_close_listener(srv);
+    /* Wait for any in-flight inference thread (already winding down because g_stop=1) before freeing the engine. */
+    ink_mutex_lock(&sv.sess_mu);
     vocab_table_free(&sv);
     ink_close(sv.sess);
     sv.sess = NULL;
-    pthread_mutex_unlock(&sv.sess_mu);
-    pthread_mutex_destroy(&sv.sess_mu);
-    pthread_mutex_destroy(&sv.state_mu);
+    ink_mutex_unlock(&sv.sess_mu);
+    ink_mutex_destroy(&sv.sess_mu);
+    ink_mutex_destroy(&sv.state_mu);
     return 0;
 }

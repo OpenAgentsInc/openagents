@@ -1,14 +1,39 @@
-#include "inkling-metal.h"
+#include "inkling-engine.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+static double now_sec(void) {
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart / (double)f.QuadPart;
+}
+#else
 #include <time.h>
-
 static double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+#endif
+
+/* --tokens "1,2,3": token ids to run in place of an encoded prompt, so two
+   runtimes can be compared on exactly the same input. */
+static int parse_token_list(const char *text, int32_t *out, int max_out) {
+    int n = 0;
+    while (*text && n < max_out) {
+        char *end = NULL;
+        long v = strtol(text, &end, 10);
+        if (end == text) break;
+        out[n++] = (int32_t)v;
+        text = end;
+        while (*text == ',' || *text == ' ') text++;
+    }
+    return n;
 }
 
 int main(int argc, char **argv) {
@@ -22,10 +47,14 @@ int main(int argc, char **argv) {
     int test_quant_kernels = 0;
     int raw = 0;
     float temp = 0.0f;
+    const char *token_list = NULL;
+    const char *dump_logits = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) gguf = argv[++i];
-        else if (!strcmp(argv[i], "--metal") && i + 1 < argc) metal = argv[++i];
+        else if ((!strcmp(argv[i], "--kernels") || !strcmp(argv[i], "--metal")) && i + 1 < argc) metal = argv[++i];
+        else if (!strcmp(argv[i], "--tokens") && i + 1 < argc) token_list = argv[++i];
+        else if (!strcmp(argv[i], "--dump-logits") && i + 1 < argc) dump_logits = argv[++i];
         else if (!strcmp(argv[i], "--prompt") && i + 1 < argc) prompt = argv[++i];
         else if (!strcmp(argv[i], "--max-tokens") && i + 1 < argc) max_tokens = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ctx") && i + 1 < argc) max_ctx = atoi(argv[++i]);
@@ -36,7 +65,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--raw")) raw = 1;
     }
     if (test_quant_kernels) {
-        if (!metal) { fprintf(stderr, "usage: %s --metal PATH.metal --test-quant-kernels\n", argv[0]); return 2; }
+        if (!metal) { fprintf(stderr, "usage: %s --kernels PATH --test-quant-kernels\n", argv[0]); return 2; }
         char qerr[512];
         if (ink_test_quant_kernels(metal, qerr, sizeof qerr) != 0) {
             fprintf(stderr, "test-quant-kernels failed: %s\n", qerr);
@@ -45,7 +74,8 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--prompt TEXT] [--max-tokens N] [--ctx N] [--loops K] [--verify-prefill-decode] [--test-quant-kernels] [--raw]\n", argv[0]);
+        fprintf(stderr, "usage: %s --model PATH.gguf --kernels PATH [--prompt TEXT | --tokens 1,2,3] [--max-tokens N] [--ctx N] [--loops K] [--temp T] [--verify-prefill-decode] [--test-quant-kernels] [--dump-logits FILE] [--raw]\n"
+                        "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option)\n", argv[0]);
         return 2;
     }
 
@@ -58,6 +88,7 @@ int main(int argc, char **argv) {
     }
     const InkHParams *hp = ink_hparams(s);
     const InkMemoryBudget *mb = ink_memory_budget(s);
+    fprintf(stderr, "engine %s\n", ink_backend_name(s));
     fprintf(stderr, "loaded in %.2fs (vocab=%d unpadded=%d bos=%d eos=%d phys=%lld loop=[%lld..%lld) K=%lld slots=%lld)\n",
             now_sec() - t0, ink_vocab_size(s), ink_vocab_unpadded(s), ink_bos_token(s), ink_eos_token(s),
             (long long)hp->n_phys, (long long)hp->loop_start, (long long)hp->loop_end,
@@ -80,7 +111,8 @@ int main(int argc, char **argv) {
     }
 
     int32_t toks[4096];
-    int n_tok = ink_encode(s, formatted, strlen(formatted), toks, 4096, 1);
+    int n_tok = token_list ? parse_token_list(token_list, toks, 4096)
+                           : ink_encode(s, formatted, strlen(formatted), toks, 4096, 1);
     if (n_tok <= 0) {
         fprintf(stderr, "ink_encode failed (%d)\n", n_tok);
         ink_close(s); return 1;
@@ -141,6 +173,17 @@ int main(int argc, char **argv) {
         free(pre_lg);
         ink_close(s);
         return ok ? 0 : 1;
+    }
+
+    if (dump_logits) {
+        /* The next-token logits as raw little-endian f32, one per vocabulary entry. */
+        FILE *lf = fopen(dump_logits, "wb");
+        if (!lf || fwrite(ink_logits(s), sizeof(float), (size_t)ink_vocab_unpadded(s), lf) != (size_t)ink_vocab_unpadded(s)) {
+            fprintf(stderr, "cannot write %s\n", dump_logits);
+            if (lf) fclose(lf);
+            ink_close(s); return 1;
+        }
+        fclose(lf);
     }
 
     /* Print top-5 logits after prefill for verification */

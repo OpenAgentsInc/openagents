@@ -1,0 +1,184 @@
+// Inkling 2 Mini on a discrete GPU: the VRAM plan made before any large
+// allocation (docs/desktop/openagents-v1-spec.md, C1).
+//
+// A discrete GPU holds weights apart from host memory. Everything except the
+// MoE experts must be in VRAM: the resident tensors, the split KV cache
+// (full-context slots and sliding-window slots) and scratch. The experts go
+// through a per-layer cache of `slots` experts. With room for all of them the
+// model is fully resident; with less, every layer keeps the same number of
+// slots and the remaining experts stream from host memory; below `min_slots`
+// the device is refused with the numbers a caller needs to say why.
+//
+// psionic/platform/inkling-cuda.c makes the same plan with the same integer
+// arithmetic; this file is its authority and its tests.
+#authority;
+
+InklingVramStatus :: enum u8 {resident;streaming;refused;shape;}
+InklingVramSpec :: struct {
+    free_bytes:int;            // VRAM the device reports free
+    margin_bytes:int;          // left unplanned: kernel module, driver, the desktop
+    resident_bytes:int;        // every tensor except the experts and the token embedding
+    scratch_bytes:int;
+    full_slots:int;            // logical layers with full-context attention
+    swa_slots:int;             // logical layers with a sliding window
+    swa_window:int;
+    kv_bytes_per_slot_tok:int; // K and V of one position in one slot
+    state_bytes_per_slot:int;  // shortconv state of one slot
+    context_len:int;
+    expert_slot_bytes:int;     // one expert in every layer: one slot of every layer's cache
+    n_expert:int;
+    min_slots:int;             // smallest cache a layer can run with
+}
+InklingVramPlan :: struct {
+    status:InklingVramStatus;
+    slots:int;            // experts cached per layer
+    kv_bytes:int;
+    cache_bytes:int;
+    planned_bytes:int;    // everything the engine will allocate, plus the margin
+    least_bytes:int;      // the same with the smallest cache
+    headroom_bytes:int;
+    max_context_len:int;  // longest context that fits with the smallest cache
+}
+
+inkling_vram_plan :: (spec:InklingVramSpec)->InklingVramPlan #export_c #effects(all) {
+    if spec.free_bytes < 0 || spec.margin_bytes < 0 || spec.resident_bytes < 1 || spec.scratch_bytes < 0 ||
+       spec.full_slots < 1 || spec.swa_slots < 0 || spec.swa_window < 0 || spec.kv_bytes_per_slot_tok < 1 ||
+       spec.state_bytes_per_slot < 0 || spec.context_len < 1 || spec.expert_slot_bytes < 1 ||
+       spec.n_expert < 1 || spec.min_slots < 1 || spec.min_slots > spec.n_expert {
+        return InklingVramPlan.{status=InklingVramStatus.shape};
+    }
+    swa_cap := ifx spec.swa_window < spec.context_len then spec.swa_window else spec.context_len; // mutant: equivalent (equal on tie)
+    state := (spec.full_slots + spec.swa_slots) * spec.state_bytes_per_slot;
+    kv := (spec.full_slots * spec.context_len + spec.swa_slots * swa_cap) * spec.kv_bytes_per_slot_tok + state;
+    fixed := spec.resident_bytes + spec.scratch_bytes + spec.margin_bytes + kv;
+    least := fixed + spec.min_slots * spec.expert_slot_bytes;
+
+    // Longest context with the smallest cache; the window slots are charged in full.
+    base := spec.resident_bytes + spec.scratch_bytes + spec.margin_bytes + state +
+            spec.swa_slots * spec.swa_window * spec.kv_bytes_per_slot_tok + spec.min_slots * spec.expert_slot_bytes;
+    max_ctx := 0;
+    if spec.free_bytes > base { max_ctx = (spec.free_bytes - base) / (spec.full_slots * spec.kv_bytes_per_slot_tok); } // mutant: equivalent (when free_bytes == base the quotient is 0)
+
+    if spec.free_bytes < least {
+        return InklingVramPlan.{status=InklingVramStatus.refused, kv_bytes=kv, planned_bytes=least, least_bytes=least, max_context_len=max_ctx};
+    }
+    slots := (spec.free_bytes - fixed) / spec.expert_slot_bytes;
+    status := InklingVramStatus.streaming;
+    if slots >= spec.n_expert { slots = spec.n_expert; status = InklingVramStatus.resident; }
+    cache := slots * spec.expert_slot_bytes;
+    planned := fixed + cache;
+    return InklingVramPlan.{status=status, slots=slots, kv_bytes=kv, cache_bytes=cache, planned_bytes=planned,
+                            least_bytes=least, headroom_bytes=spec.free_bytes - planned, max_context_len=max_ctx};
+}
+
+MIB :: 1048576;
+
+// Inkling 2 Mini IQ4_NL at K=3: 8 full slots and 40 window slots of 1024,
+// 8 KV heads x 128 x (K + V) x f16 = 4096 B a position, shortconv state
+// (2 x 1024 + 2 x 2304) x 3 x f32 = 79872 B a slot, about 121 MiB for one expert
+// in all 24 layers (rounded here to whole MiB).
+inkling_mini_spec :: (free_mb:int, context_len:int)->InklingVramSpec #effects(all) {
+    return InklingVramSpec.{
+        free_bytes=free_mb*MIB, margin_bytes=384*MIB, resident_bytes=1250*MIB, scratch_bytes=16*MIB,
+        full_slots=8, swa_slots=40, swa_window=1024, kv_bytes_per_slot_tok=4096, state_bytes_per_slot=79872,
+        context_len=context_len, expert_slot_bytes=121*MIB, n_expert=128, min_slots=16
+    };
+}
+
+#test "a 24 GB card holds every expert at 32,768 context" {
+    p := inkling_vram_plan(inkling_mini_spec(23500, 32768));
+    #assert p.status == InklingVramStatus.resident;
+    #assert p.slots == 128;
+    // KV: (8 * 32768 + 40 * 1024) * 4096 + 48 * 79872 bytes.
+    #assert p.kv_bytes == 1241513984 + 3833856;
+    #assert p.cache_bytes == 128 * 121 * MIB;
+    #assert p.headroom_bytes == 23500 * MIB - p.planned_bytes && p.headroom_bytes > 0;
+}
+
+#test "a 16 GB card streams: every layer gets the same share of what is left" {
+    p := inkling_vram_plan(inkling_mini_spec(16000, 4096));
+    #assert p.status == InklingVramStatus.streaming;
+    // fixed = 1250 + 16 + 384 MiB + KV (8*4096 + 40*1024)*4096 + state = 1650 MiB + 301989888 + 3833856 B
+    // left = 16000 MiB - fixed = 14350 MiB - 305823744 B = 14058.3 MiB -> 116 slots of 121 MiB.
+    #assert p.slots == 116;
+    #assert p.cache_bytes == 116 * 121 * MIB;
+    #assert p.headroom_bytes >= 0 && p.headroom_bytes < 121 * MIB;
+    // A longer context takes VRAM from the cache, never past the device.
+    q := inkling_vram_plan(inkling_mini_spec(16000, 32768));
+    #assert q.status == InklingVramStatus.streaming && q.slots == 108;
+    #assert q.planned_bytes <= 16000 * MIB;
+}
+
+#test "too little VRAM is refused with what would fit" {
+    // Smallest plan at 4096 context: 1650 MiB + 305823744 B + 16 * 121 MiB = 3877.7 MiB.
+    p := inkling_vram_plan(inkling_mini_spec(3877, 4096));
+    #assert p.status == InklingVramStatus.refused && p.slots == 0 && p.cache_bytes == 0;
+    #assert p.least_bytes == 1650 * MIB + 305823744 + 16 * 121 * MIB;
+    #assert p.max_context_len < 4096 && p.max_context_len > 0;
+    ok := inkling_vram_plan(inkling_mini_spec(3878, 4096));
+    #assert ok.status == InklingVramStatus.streaming && ok.slots == 16;
+    // The context it names does fit.
+    again := inkling_vram_plan(inkling_mini_spec(3877, p.max_context_len));
+    #assert again.status == InklingVramStatus.streaming && again.slots == 16;
+    // Nothing fits in 1 GiB: no context to offer.
+    none := inkling_vram_plan(inkling_mini_spec(1024, 4096));
+    #assert none.status == InklingVramStatus.refused && none.max_context_len == 0;
+}
+
+#test "the boundaries are exact" {
+    s := inkling_mini_spec(0, 512);
+    fixed := 1650 * MIB + (8 * 512 + 40 * 512) * 4096 + 48 * 79872;
+    // Exactly the smallest plan fits; one byte less does not.
+    s.free_bytes = fixed + 16 * 121 * MIB;
+    #assert inkling_vram_plan(s).status == InklingVramStatus.streaming;
+    #assert inkling_vram_plan(s).headroom_bytes == 0;
+    s.free_bytes -= 1;
+    #assert inkling_vram_plan(s).status == InklingVramStatus.refused;
+    // Exactly every expert is resident; one byte less streams with 127.
+    s.free_bytes = fixed + 128 * 121 * MIB;
+    #assert inkling_vram_plan(s).status == InklingVramStatus.resident && inkling_vram_plan(s).headroom_bytes == 0;
+    s.free_bytes -= 1;
+    #assert inkling_vram_plan(s).status == InklingVramStatus.streaming && inkling_vram_plan(s).slots == 127;
+    // More VRAM than the model needs is headroom, not more slots.
+    s.free_bytes = fixed + 200 * 121 * MIB;
+    #assert inkling_vram_plan(s).slots == 128 && inkling_vram_plan(s).headroom_bytes == 72 * 121 * MIB;
+}
+
+#test "a malformed request is a shape error" {
+    s := inkling_mini_spec(16000, 4096);
+    #assert inkling_vram_plan(s).status != InklingVramStatus.shape;
+    // Exact valid lower bounds (0 for non-negative fields, 1 for strictly positive fields).
+    lo := InklingVramSpec.{
+        free_bytes=0, margin_bytes=0, resident_bytes=1, scratch_bytes=0,
+        full_slots=1, swa_slots=0, swa_window=0, kv_bytes_per_slot_tok=1, state_bytes_per_slot=0,
+        context_len=1, expert_slot_bytes=1, n_expert=1, min_slots=1
+    };
+    #assert inkling_vram_plan(lo).status != InklingVramStatus.shape;
+    // One below every lower bound (and min_slots > n_expert) is a shape error.
+    t0 := lo; t0.free_bytes = -1;            #assert inkling_vram_plan(t0).status == InklingVramStatus.shape;
+    t1 := lo; t1.margin_bytes = -1;          #assert inkling_vram_plan(t1).status == InklingVramStatus.shape;
+    t2 := lo; t2.resident_bytes = 0;         #assert inkling_vram_plan(t2).status == InklingVramStatus.shape;
+    t3 := lo; t3.scratch_bytes = -1;         #assert inkling_vram_plan(t3).status == InklingVramStatus.shape;
+    t4 := lo; t4.full_slots = 0;             #assert inkling_vram_plan(t4).status == InklingVramStatus.shape;
+    t5 := lo; t5.swa_slots = -1;             #assert inkling_vram_plan(t5).status == InklingVramStatus.shape;
+    t6 := lo; t6.swa_window = -1;            #assert inkling_vram_plan(t6).status == InklingVramStatus.shape;
+    t7 := lo; t7.kv_bytes_per_slot_tok = 0;  #assert inkling_vram_plan(t7).status == InklingVramStatus.shape;
+    t8 := lo; t8.state_bytes_per_slot = -1;  #assert inkling_vram_plan(t8).status == InklingVramStatus.shape;
+    t9 := lo; t9.context_len = 0;            #assert inkling_vram_plan(t9).status == InklingVramStatus.shape;
+    ta := lo; ta.expert_slot_bytes = 0;      #assert inkling_vram_plan(ta).status == InklingVramStatus.shape;
+    tb := lo; tb.n_expert = 0;               #assert inkling_vram_plan(tb).status == InklingVramStatus.shape;
+    tc := lo; tc.min_slots = 0;              #assert inkling_vram_plan(tc).status == InklingVramStatus.shape;
+    td := s;  td.min_slots = 129;            #assert inkling_vram_plan(td).status == InklingVramStatus.shape;
+    te := s;  te.min_slots = 128;            #assert inkling_vram_plan(te).status != InklingVramStatus.shape;
+}
+
+#forall "the plan never exceeds the device and never caches fewer than the minimum" free_gb: 0..<40 {
+    p := inkling_vram_plan(inkling_mini_spec(free_gb * 1024, 8192));
+    if p.status == InklingVramStatus.refused {
+        #assert p.least_bytes > free_gb * 1024 * MIB;
+    } else {
+        #assert p.planned_bytes <= free_gb * 1024 * MIB;
+        #assert p.slots >= 16 && p.slots <= 128;
+        #assert (p.status == InklingVramStatus.resident) == (p.slots == 128);
+    }
+}

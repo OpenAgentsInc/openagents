@@ -1,7 +1,7 @@
 /* Internal GGUF loader & BPE tokenizer structures for Psionic Inkling 2 Mini. */
 #ifndef PSIONIC_INKLING_GGUF_H
 #define PSIONIC_INKLING_GGUF_H
-#include "inkling-metal.h"
+#include "inkling-engine.h"
 #include <stddef.h>
 #include <stdint.h>
 

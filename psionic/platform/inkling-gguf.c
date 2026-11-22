@@ -7,9 +7,68 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
+
+/* Map the whole checkpoint read-only. The file's pages are the weights: no
+   heap copy is made on either system. Returns 0 and fills base/file_size/
+   map_size, or writes why not into err. */
+#ifdef _WIN32
+static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) { snprintf(err, err_bytes, "open %s: Windows error %lu", path, (unsigned long)GetLastError()); return 1; }
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(file, &size) || size.QuadPart < 64) {
+        snprintf(err, err_bytes, "stat %s failed", path);
+        CloseHandle(file); return 1;
+    }
+    HANDLE mapping = CreateFileMappingA(file, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (!mapping) {
+        snprintf(err, err_bytes, "mmap %s: Windows error %lu", path, (unsigned long)GetLastError());
+        CloseHandle(file); return 1;
+    }
+    void *view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    unsigned long why = GetLastError();
+    /* The view keeps the mapping and the file alive. */
+    CloseHandle(mapping);
+    CloseHandle(file);
+    if (!view) { snprintf(err, err_bytes, "mmap %s: Windows error %lu", path, why); return 1; }
+    *base = (uint8_t *)view;
+    *file_size = (size_t)size.QuadPart;
+    *map_size = (size_t)size.QuadPart;
+    return 0;
+}
+static void ink_unmap_file(uint8_t *base, size_t map_size) { (void)map_size; UnmapViewOfFile(base); }
+#else
+static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { snprintf(err, err_bytes, "open %s: %s", path, strerror(errno)); return 1; }
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size < 64) {
+        snprintf(err, err_bytes, "stat %s failed", path);
+        close(fd); return 1;
+    }
+    size_t page = (size_t)sysconf(_SC_PAGESIZE);
+    size_t fsize = (size_t)st.st_size;
+    size_t msize = (fsize + page - 1) & ~(page - 1);
+    void *map = mmap(NULL, msize, PROT_READ, MAP_PRIVATE, fd, 0);
+    /* The mapping outlives the descriptor. */
+    int why = errno;
+    close(fd);
+    if (map == MAP_FAILED) { snprintf(err, err_bytes, "mmap %s: %s", path, strerror(why)); return 1; }
+    *base = (uint8_t *)map;
+    *file_size = fsize;
+    *map_size = msize;
+    return 0;
+}
+static void ink_unmap_file(uint8_t *base, size_t map_size) { munmap(base, map_size); }
+#endif
 
 #define GGUF_MAGIC 0x46554747u /* 'GGUF' */
 
@@ -223,25 +282,7 @@ static void bind_tensor(InkGGUF *g, const char *name, uint64_t nlen, const InkTe
 int ink_gguf_open(const char *path, InkGGUF *g, char *err, size_t err_bytes) {
     memset(g, 0, sizeof *g);
     g->fd = -1;
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) { snprintf(err, err_bytes, "open %s: %s", path, strerror(errno)); return 1; }
-    struct stat st;
-    if (fstat(fd, &st) != 0 || st.st_size < 64) {
-        snprintf(err, err_bytes, "stat %s failed", path);
-        close(fd); return 1;
-    }
-    size_t page = (size_t)sysconf(_SC_PAGESIZE);
-    size_t fsize = (size_t)st.st_size;
-    size_t msize = (fsize + page - 1) & ~(page - 1);
-    void *map = mmap(NULL, msize, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (map == MAP_FAILED) {
-        snprintf(err, err_bytes, "mmap %s: %s", path, strerror(errno));
-        close(fd); return 1;
-    }
-    g->fd = fd;
-    g->map = (uint8_t *)map;
-    g->file_size = fsize;
-    g->map_size = msize;
+    if (ink_map_file(path, &g->map, &g->file_size, &g->map_size, err, err_bytes) != 0) return 1;
 
     Reader r = { g->map, g->map + g->file_size };
     uint32_t magic = 0, ver = 0;
@@ -519,8 +560,7 @@ void ink_gguf_close(InkGGUF *g) {
     free(g->tok.tok_map);
     free(g->tok.merge_map);
     free(g->tok.special_ids);
-    if (g->map && g->map_size) munmap(g->map, g->map_size);
-    if (g->fd >= 0) close(g->fd);
+    if (g->map && g->map_size) ink_unmap_file(g->map, g->map_size);
     memset(g, 0, sizeof *g);
     g->fd = -1;
 }

@@ -1,14 +1,36 @@
 /* Device effects for Coax-generated CUDA kernels (see cuda-host.h).
-   The driver API and NVRTC are reached through dlopen; their few types are
-   declared here, so no CUDA header or toolkit is needed to build. */
+   The driver API and NVRTC are reached through dlopen (LoadLibraryA on
+   Windows); their few types are declared here, so no CUDA header or toolkit
+   is needed to build, and one source serves Linux and Windows. */
 #define _GNU_SOURCE
 #include "cuda-host.h"
-#include <dlfcn.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+/* The driver API is __stdcall on Windows; on x86_64 that is the one ABI. */
+static void *pc_lib_open(const char *path) { return (void *)LoadLibraryA(path); }
+static void *pc_lib_symbol(void *lib, const char *name) { return (void *)(uintptr_t)GetProcAddress((HMODULE)lib, name); }
+static double pc_now(void) {
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart / (double)f.QuadPart;
+}
+#else
+#include <dlfcn.h>
 #include <time.h>
+static void *pc_lib_open(const char *path) { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
+static void *pc_lib_symbol(void *lib, const char *name) { return dlsym(lib, name); }
+static double pc_now(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec;
+}
+#endif
 
 typedef int CUresult;
 typedef int CUdevice;
@@ -94,15 +116,21 @@ static PcStatus check(CUresult r, const char *what) {
 
 #define LOAD(lib, sym, name)                                         \
     do {                                                             \
-        *(void **)&g.sym = dlsym(lib, name);                         \
+        *(void **)&g.sym = pc_lib_symbol(lib, name);                        \
         if (!g.sym) { note("missing symbol %s", name); return 0; }   \
     } while (0)
 
 static int load_cuda(void) {
+#ifdef _WIN32
+    const char *paths[] = {getenv("PSIONIC_LIBCUDA"), "nvcuda.dll"};
+    const char *wanted = "nvcuda.dll";
+#else
     const char *paths[] = {getenv("PSIONIC_LIBCUDA"), "libcuda.so.1", "/run/opengl-driver/lib/libcuda.so.1", "/usr/lib/x86_64-linux-gnu/libcuda.so.1"};
+    const char *wanted = "libcuda.so.1";
+#endif
     for (size_t i = 0; i < sizeof paths / sizeof *paths && !g.cuda; i++)
-        if (paths[i] && *paths[i]) g.cuda = dlopen(paths[i], RTLD_NOW | RTLD_LOCAL);
-    if (!g.cuda) { note("no CUDA driver library (libcuda.so.1)"); return 0; }
+        if (paths[i] && *paths[i]) g.cuda = pc_lib_open(paths[i]);
+    if (!g.cuda) { note("no CUDA driver library (%s)", wanted); return 0; }
     LOAD(g.cuda, cuInit, "cuInit");
     LOAD(g.cuda, cuDriverGetVersion, "cuDriverGetVersion");
     LOAD(g.cuda, cuDeviceGetCount, "cuDeviceGetCount");
@@ -147,13 +175,24 @@ static int load_cuda(void) {
 
 static int load_nvrtc(void) {
     if (g.nvrtc) return 1;
-    char home[4096] = "", cuda_home[4096] = "";
+    char home[4096] = "", cuda_home[4096] = "", cuda_path[4096] = "", cuda_path12[4096] = "";
+#ifdef _WIN32
+    /* CUDA 13 and 12 name the NVRTC DLL by major version; CUDA_PATH is the
+       toolkit's install directory when one is installed. */
+    const char *c = getenv("CUDA_PATH");
+    if (c) {
+        snprintf(cuda_path, sizeof cuda_path, "%s\\bin\\nvrtc64_130_0.dll", c);
+        snprintf(cuda_path12, sizeof cuda_path12, "%s\\bin\\nvrtc64_120_0.dll", c);
+    }
+    const char *paths[] = {getenv("PSIONIC_NVRTC"), cuda_path, cuda_path12, cuda_home, home, "nvrtc64_130_0.dll", "nvrtc64_120_0.dll"};
+#else
     const char *h = getenv("HOME"), *c = getenv("CUDA_HOME");
     if (h) snprintf(home, sizeof home, "%s/cuda-13.2/lib/libnvrtc.so.13", h);
     if (c) snprintf(cuda_home, sizeof cuda_home, "%s/lib/libnvrtc.so.13", c);
-    const char *paths[] = {getenv("PSIONIC_NVRTC"), cuda_home, home, "libnvrtc.so.13", "libnvrtc.so"};
+    const char *paths[] = {getenv("PSIONIC_NVRTC"), cuda_home, home, cuda_path, cuda_path12, "libnvrtc.so.13", "libnvrtc.so.12", "libnvrtc.so"};
+#endif
     for (size_t i = 0; i < sizeof paths / sizeof *paths && !g.nvrtc; i++)
-        if (paths[i] && *paths[i]) g.nvrtc = dlopen(paths[i], RTLD_NOW | RTLD_LOCAL);
+        if (paths[i] && *paths[i]) g.nvrtc = pc_lib_open(paths[i]);
     if (!g.nvrtc) { note("no NVRTC library: set PSIONIC_NVRTC or CUDA_HOME"); return 0; }
     LOAD(g.nvrtc, nvrtcCreateProgram, "nvrtcCreateProgram");
     LOAD(g.nvrtc, nvrtcCompileProgram, "nvrtcCompileProgram");
@@ -202,8 +241,7 @@ PcStatus pc_compile(const char *source, size_t length, const char *name, PcModul
     if (!g.ready) return PC_ABSENT;
     if (!source || !name || !module) return PC_ARGUMENT;
     if (!load_nvrtc()) return PC_NO_NVRTC;
-    struct timespec a, b;
-    clock_gettime(CLOCK_MONOTONIC, &a);
+    double began = pc_now();
     char *text = malloc(length + 1);
     if (!text) return PC_MEMORY;
     memcpy(text, source, length);
@@ -233,8 +271,7 @@ PcStatus pc_compile(const char *source, size_t length, const char *name, PcModul
     g.nvrtcDestroyProgram(&program);
     PcStatus s = check(g.cuModuleLoadDataEx(module, ptx, 0, NULL, NULL), "cuModuleLoadDataEx");
     free(ptx);
-    clock_gettime(CLOCK_MONOTONIC, &b);
-    if (seconds) *seconds = (double)(b.tv_sec - a.tv_sec) + 1e-9 * (double)(b.tv_nsec - a.tv_nsec);
+    if (seconds) *seconds = pc_now() - began;
     return s;
 }
 
@@ -316,6 +353,11 @@ PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg 
     if (block % 32 != 0 || warps > INT64_MAX / 32) return PC_ARGUMENT;
     return launch(kernel, warps, warps * 32, block, args, count, stream);
 }
+PcStatus pc_launch_groups(PcKernel kernel, int64_t groups, int threads, const PcArg *args, int count, PcStream stream) {
+    if (threads < 32 || threads > 1024 || threads % 32 != 0 || groups > INT64_MAX / threads) return PC_ARGUMENT;
+    return launch(kernel, groups, groups * threads, threads, args, count, stream);
+}
+double pc_seconds(void) { return pc_now(); }
 
 /* Parameter values are copied by the driver before these calls return. */
 PcStatus pc_program_create(size_t capacity,PcProgram *out){

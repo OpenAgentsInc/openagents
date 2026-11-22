@@ -1,0 +1,248 @@
+// Compare two next-token logit dumps (raw little-endian f32, one per token).
+//
+// Prints top-1 of each, the cosine similarity over the tokens both hold, and
+// the largest absolute difference. Exits 0 when top-1 agrees and the cosine
+// is at least --min-cos (default 0.99999), 1 otherwise.
+//
+// Usage: coax/web/tool.sh psionic/tests/inkling_logits_compare.coax A.bin B.bin [--min-cos 0.99999]
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+ILC_CHUNK_FLOATS :: 4096;
+ILC_CHUNK_BYTES :: ILC_CHUNK_FLOATS * 4;
+
+IlcAcc :: struct {
+  n: int;
+  top_a: int;
+  top_b: int;
+  top_va: f64;
+  top_vb: f64;
+  dot: f64;
+  dot_c: f64;
+  na: f64;
+  na_c: f64;
+  nb: f64;
+  nb_c: f64;
+  max_abs: f64;
+}
+
+IlcKahan :: struct { sum: f64; comp: f64; }
+IlcF64 :: struct { val: f64; ok: bool; }
+
+ilc_kahan :: (sum: f64, comp: f64, val: f64) -> IlcKahan {
+  y := val - comp;
+  t := sum + y;
+  return IlcKahan.{sum = t, comp = (t - sum) - y};
+}
+
+ilc_f32_le :: (buf: [] const u8, off: int) -> f64 {
+  u: u32 = cast(u32) buf[off]
+         | (cast(u32) buf[off + 1] << 8)
+         | (cast(u32) buf[off + 2] << 16)
+         | (cast(u32) buf[off + 3] << 24);
+  return cast(f64) f32_from_bits(u);
+}
+
+ilc_feed_chunk :: (acc: [] IlcAcc, a: [] const u8, b: [] const u8, nbytes: int) {
+  k := nbytes / 4;
+  for i: 0..<k {
+    va := ilc_f32_le(a, i * 4);
+    vb := ilc_f32_le(b, i * 4);
+    idx := acc[0].n;
+    if idx == 0 || va > acc[0].top_va { acc[0].top_a = idx; acc[0].top_va = va; }
+    if idx == 0 || vb > acc[0].top_vb { acc[0].top_b = idx; acc[0].top_vb = vb; }
+    r1 := ilc_kahan(acc[0].dot, acc[0].dot_c, va * vb);
+    acc[0].dot = r1.sum; acc[0].dot_c = r1.comp;
+    r2 := ilc_kahan(acc[0].na, acc[0].na_c, va * va);
+    acc[0].na = r2.sum; acc[0].na_c = r2.comp;
+    r3 := ilc_kahan(acc[0].nb, acc[0].nb_c, vb * vb);
+    acc[0].nb = r3.sum; acc[0].nb_c = r3.comp;
+    diff := va - vb;
+    if diff < 0.0 { diff = -diff; }
+    if diff > acc[0].max_abs { acc[0].max_abs = diff; }
+    acc[0].n = idx + 1;
+  }
+}
+
+ilc_sqrt :: (x: f64) -> f64 {
+  if x <= 0.0 { return 0.0; }
+  g := ifx x > 1.0 then x else 1.0;
+  for i: 0..<64 {
+    ng := 0.5 * (g + x / g);
+    if ng == g { break; }
+    g = ng;
+  }
+  return g;
+}
+
+ilc_cosine :: (acc: IlcAcc) -> f64 {
+  if acc.na <= 0.0 || acc.nb <= 0.0 { return 0.0; }
+  return acc.dot / ilc_sqrt(acc.na * acc.nb);
+}
+
+ilc_parse_f64 :: (s: string) -> IlcF64 {
+  if s.count == 0 { return IlcF64.{}; }
+  i := 0;
+  neg := false;
+  if s[i] == '-' { neg = true; i += 1; } else if s[i] == '+' { i += 1; }
+  whole := 0.0;
+  frac := 0.0;
+  scale := 1.0;
+  seen_dot := false;
+  digits := 0;
+  while i < s.count {
+    c := s[i];
+    if c == '.' && !seen_dot {
+      seen_dot = true;
+    } else if c >= '0' && c <= '9' {
+      d := cast(f64) (c - '0');
+      if !seen_dot { whole = whole * 10.0 + d; }
+      else { scale *= 0.1; frac += d * scale; }
+      digits += 1;
+    } else {
+      return IlcF64.{};
+    }
+    i += 1;
+  }
+  if digits == 0 { return IlcF64.{}; }
+  v := whole + frac;
+  return IlcF64.{val = ifx neg then -v else v, ok = true};
+}
+
+ilc_put_ch :: (out: [] u8, at: int, c: u8) -> int {
+  if at >= out.count { return at; }
+  out[at] = c;
+  return at + 1;
+}
+
+ilc_put_str :: (out: [] u8, at: int, s: string) -> int {
+  k := at;
+  for c: s { k = ilc_put_ch(out, k, c); }
+  return k;
+}
+
+ilc_put_int :: (out: [] u8, at: int, v_in: int) -> int {
+  k := at;
+  v := v_in;
+  if v < 0 { k = ilc_put_ch(out, k, '-'); v = -v; }
+  if v == 0 { return ilc_put_ch(out, k, '0'); }
+  rev: [32] u8;
+  rn := 0;
+  while v > 0 && rn < 32 {
+    rev[rn] = cast,trunc(u8) ('0' + (v % 10));
+    v /= 10;
+    rn += 1;
+  }
+  while rn > 0 {
+    rn -= 1;
+    k = ilc_put_ch(out, k, rev[rn]);
+  }
+  return k;
+}
+
+ilc_put_fixed :: (out: [] u8, at: int, v_in: f64, places: int) -> int {
+  k := at;
+  v := v_in;
+  if v < 0.0 { k = ilc_put_ch(out, k, '-'); v = -v; }
+  mult := 1.0;
+  for p: 0..<places { mult *= 10.0; }
+  scaled := cast(int) (v * mult + 0.5);
+  imult := cast(int) mult;
+  whole := scaled / imult;
+  rem := scaled % imult;
+  k = ilc_put_int(out, k, whole);
+  k = ilc_put_ch(out, k, '.');
+  div := imult / 10;
+  for p: 0..<places {
+    d := (rem / div) % 10;
+    k = ilc_put_ch(out, k, cast,trunc(u8) ('0' + d));
+    div /= 10;
+    if div < 1 { div = 1; }
+  }
+  return k;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  ar: [1] Args;
+  if !args_load(ar[..]) || ar[0].n < 2 {
+    tool_errln("usage: inkling_logits_compare.coax A.bin B.bin [--min-cos 0.99999]");
+    return 2;
+  }
+  path_a := args_at(ar[..], 0);
+  path_b := args_at(ar[..], 1);
+  min_cos := 0.99999;
+  i := 2;
+  while i < ar[0].n {
+    if args_at(ar[..], i) == "--min-cos" && i + 1 < ar[0].n {
+      parsed := ilc_parse_f64(args_at(ar[..], i + 1));
+      if !parsed.ok {
+        tool_errln("invalid --min-cos value");
+        return 2;
+      }
+      min_cos = parsed.val;
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+  sa := fs_size(path_a);
+  sb := fs_size(path_b);
+  if sa < 4 || sb < 4 {
+    tool_errln("could not read logit files (need >= 4 bytes each)");
+    return 2;
+  }
+  total := (ifx sa < sb then sa else sb) / 4 * 4;
+  acc: [1] IlcAcc;
+  ba: [ILC_CHUNK_BYTES] u8;
+  bb: [ILC_CHUNK_BYTES] u8;
+  off := 0;
+  while off < total {
+    want := total - off;
+    if want > ILC_CHUNK_BYTES { want = ILC_CHUNK_BYTES; }
+    ga := fs_read_at(path_a, off, ba[0..<want]);
+    gb := fs_read_at(path_b, off, bb[0..<want]);
+    if ga < want || gb < want {
+      tool_errln("short read from logit file");
+      return 2;
+    }
+    ilc_feed_chunk(acc[..], ba[0..<want], bb[0..<want], want);
+    off += want;
+  }
+  cval := ilc_cosine(acc[0]);
+  ok := acc[0].top_a == acc[0].top_b && cval >= min_cos;
+  line: [256] u8;
+  ln := 0;
+  ln = ilc_put_str(line[..], ln, "n="); ln = ilc_put_int(line[..], ln, acc[0].n);
+  ln = ilc_put_str(line[..], ln, " top1_a="); ln = ilc_put_int(line[..], ln, acc[0].top_a);
+  ln = ilc_put_ch(line[..], ln, '('); ln = ilc_put_fixed(line[..], ln, acc[0].top_va, 4); ln = ilc_put_ch(line[..], ln, ')');
+  ln = ilc_put_str(line[..], ln, " top1_b="); ln = ilc_put_int(line[..], ln, acc[0].top_b);
+  ln = ilc_put_ch(line[..], ln, '('); ln = ilc_put_fixed(line[..], ln, acc[0].top_vb, 4); ln = ilc_put_ch(line[..], ln, ')');
+  ln = ilc_put_str(line[..], ln, " cos="); ln = ilc_put_fixed(line[..], ln, cval, 7);
+  ln = ilc_put_str(line[..], ln, " max_abs="); ln = ilc_put_fixed(line[..], ln, acc[0].max_abs, 5);
+  ln = ilc_put_str(line[..], ln, " ok="); ln = ilc_put_str(line[..], ln, ifx ok then "true" else "false");
+  print("%\n", cast(string) line[0..<ln]);
+  return ifx ok then 0 else 1;
+}
+
+#test "inkling_logits_compare: exact match and divergence checks" {
+  // Little-endian f32 encodings: 1.0f = 0x3f800000, 3.0f = 0x40400000, -2.0f = 0xc0000000.
+  a := [12] u8.[0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x00, 0xc0];
+  b := [12] u8.[0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x00, 0xc0];
+  acc: [1] IlcAcc;
+  ilc_feed_chunk(acc[..], a[..], b[..], 12);
+  #assert acc[0].n == 3 && acc[0].top_a == 1 && acc[0].top_b == 1;
+  #assert acc[0].max_abs == 0.0;
+  cval := ilc_cosine(acc[0]);
+  #assert cval > 0.999999 && cval < 1.000001;
+
+  // Different argmax fails top-1 equality.
+  c := [12] u8.[0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x00, 0xc0];
+  acc2: [1] IlcAcc;
+  ilc_feed_chunk(acc2[..], a[..], c[..], 12);
+  #assert acc2[0].top_a == 1 && acc2[0].top_b == 0 && acc2[0].max_abs == 2.0;
+
+  pf := ilc_parse_f64("0.99999");
+  #assert pf.ok && pf.val > 0.99998 && pf.val < 0.999999;
+}

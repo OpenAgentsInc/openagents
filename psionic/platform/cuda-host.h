@@ -1,8 +1,8 @@
 /* Device effects for Coax-generated CUDA kernels: load the driver, compile
    generated CUDA C with NVRTC, move bytes, launch, wait. No arithmetic or
    scheduling decisions live here; Coax makes them. Both libraries are opened
-   with dlopen, so a build needs no CUDA headers and a machine without a GPU
-   reports PC_ABSENT. */
+   at run time (dlopen on Linux, LoadLibraryA on Windows), so a build needs no
+   CUDA headers and a machine without an NVIDIA driver reports PC_ABSENT. */
 #ifndef PSIONIC_CUDA_HOST_H
 #define PSIONIC_CUDA_HOST_H
 #include <stddef.h>
@@ -92,5 +92,10 @@ uint64_t pc_waits(void);
 PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args, int count, PcStream stream);
 /* A warp kernel: `warps` work items of 32 lanes each; block is a multiple of 32. */
 PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg *args, int count, PcStream stream);
+/* A group kernel (`for thread: 0..<T` loops): `groups` work items, each one
+   block of `threads` = T threads (a multiple of 32 from 32 to 1024). */
+PcStatus pc_launch_groups(PcKernel kernel, int64_t groups, int threads, const PcArg *args, int count, PcStream stream);
+/* A monotonic clock in seconds, for timing host waits on either system. */
+double pc_seconds(void);
 
 #endif

@@ -2867,6 +2867,7 @@ int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_
 }
 
 const char *ink_error(const InkSession *s) { return s ? s->error : "null session"; }
+const char *ink_backend_name(const InkSession *s) { (void)s; return "psionic-metal"; }
 double ink_last_gpu_seconds(const InkSession *s) { return s ? s->total_gpu_seconds : 0.0; }
 const InkMemoryBudget *ink_memory_budget(const InkSession *s) { return s ? &s->budget : NULL; }
 
