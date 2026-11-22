@@ -452,24 +452,41 @@ ink_ctrl_gate :: (item:int,dim:int,np:int,stack:int,flags:int,off0:int,off1:int,
     }
 }
 
-// ink_ctrl_out: launch items = inputs * np * dim, one thread for one output.
-// gf0..gf2 hold each input's G and F places in `arena` ([dim, INK_RANK] f32):
-// G in the low 32 bits, F in the high. Every load is asked for before the
-// two dot products use any.
+// ink_ctrl_out: launch items = inputs * np * ceil(dim / 32), a group of 256
+// threads for 32 outputs. gf0..gf2 hold each input's G and F places in
+// `arena` ([dim, INK_RANK] f32): G in the low 32 bits, F in the high. Eight
+// threads share an output: four take 16 gate values each for the gain and
+// four for the forget, and the output's first thread adds them up.
 ink_ctrl_out :: (item:int,dim:int,np:int,stack:int,flags:int,gf0:int,gf1:int,gf2:int,arena:[]f32,cur:[]f32,msg:[]f32,gate:[]f32,out:[]f32) #export_c #effects(all) {
-    gs:[64]f32;ws:[64]f32;fs:[64]f32;
+    gsh:[64]f32;pp:[256]f32;
     swa:=flags&255;c0:=(flags>>8)&255;
-    n:=np*dim;cl:=item/n;tok:=(item/dim)%np;i:=item%dim;
-    if cl<3 {
-        gf:=ifx cl==0 then gf0 else ifx cl==1 then gf1 else gf2;
-        gw:=(gf&4294967295)+i*INK_RANK;fw:=((gf>>32)&4294967295)+i*INK_RANK;gb:=(cl*np+tok)*INK_RANK;
-        for j:0..<INK_RANK {gs[j]=gate[gb+j];}
-        for j:0..<INK_RANK {ws[j]=arena[gw+j];}
-        for j:0..<INK_RANK {fs[j]=arena[fw+j];}
-        c:=cur[(ifx swa!=0 then 0 else cl)*stack+tok*dim+i];m:=msg[(c0+cl)*stack+tok*dim+i];
-        gain:f32=0;forget:f32=0;
-        for j:0..<INK_RANK {gain+=ws[j]*gs[j];forget+=fs[j]*gs[j];}
-        out[cl*stack+tok*dim+i]=c-ink_tanh(forget)*c+ink_tanh(gain)*m;
+    per:=(dim+31)/32;g:=item%per;ct:=item/per;cl:=ct/np;tok:=ct%np;
+    gf:=ifx cl==0 then gf0 else ifx cl==1 then gf1 else gf2;
+    gbase:=cast(u32)(gf&4294967295);fbase:=cast(u32)((gf>>32)&4294967295);
+    cb:=(ifx swa!=0 then 0 else cl)*stack+tok*dim;mb:=(c0+cl)*stack+tok*dim;ob:=cl*stack+tok*dim;
+    for thread:0..<INK_NT {
+        if thread<INK_RANK {gsh[thread]=gate[ct*INK_RANK+thread];}
+    }
+    for thread:0..<INK_NT {
+        e:=g*32+thread/8;part:=thread%8;q:=part%4;sum:f32=0;
+        if e<dim {
+            base:=add_wrap(add_wrap(ifx part<4 then gbase else fbase,mul_wrap(cast(u32)e,64)),cast(u32)(q*16));
+            ws:[16]f32;
+            for j:0..<16 {ws[j]=arena[cast(int)add_wrap(base,cast(u32)j)];}
+            for j:0..<16 {sum+=ws[j]*gsh[q*16+j];}
+        }
+        pp[thread]=sum;
+    }
+    for thread:0..<INK_NT {
+        if thread<32 {
+            e:=g*32+thread;
+            if e<dim {
+                gain:=(pp[thread*8]+pp[thread*8+1])+(pp[thread*8+2]+pp[thread*8+3]);
+                forget:=(pp[thread*8+4]+pp[thread*8+5])+(pp[thread*8+6]+pp[thread*8+7]);
+                c:=cur[cb+e];m:=msg[mb+e];
+                out[ob+e]=c-ink_tanh(forget)*c+ink_tanh(gain)*m;
+            }
+        }
     }
 }
 

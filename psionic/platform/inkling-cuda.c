@@ -134,7 +134,7 @@ static const int k_threads[K_COUNT] = {
     INK_NT, /* K_ROUTER */
     INK_NT, /* K_MIX */
     INK_MT, /* K_CTRL_PREP: ink_ctrl_gate */
-    1,      /* K_CTRL_APPLY: ink_ctrl_out */
+    INK_NT, /* K_CTRL_APPLY: ink_ctrl_out */
     1,      /* K_CONVOLVE */
     INK_T,  /* K_CLIP */
     INK_T,  /* K_HEAD_RMSNORM */
@@ -433,7 +433,7 @@ static int dispatch_control(InkSession *s, const InkLayerTensors *L, int c0, int
     CALL(s, K_CTRL_PREP, n * np * hp->gate_rank, a_int(d), a_int(np), a_int(stack), a_int(flags),
          a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
          a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
-    CALL(s, K_CTRL_APPLY, n * np * d, a_int(d), a_int(np), a_int(stack), a_int(flags),
+    CALL(s, K_CTRL_APPLY, n * np * ((d + 31) / 32), a_int(d), a_int(np), a_int(stack), a_int(flags),
          a_int(gf[0]), a_int(gf[1]), a_int(gf[2]), a_arena(s),
          a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank),
          a_f32v(out_buf, 0, n * stack));
