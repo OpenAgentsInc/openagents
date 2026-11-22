@@ -430,7 +430,22 @@ void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = pag
 void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
-void cd_agy(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_agy(cd_state(c), on != 0); }
+void cd_agy(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_agy(cd_state(c), on != 0); cd_changed(c); } }
+void cd_agy_models_clear(void *page) { CoderHost *c = page; if (c) coder_page_agy_models_clear(cd_state(c)); }
+int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default) {
+  CoderHost *c = page;
+  if (!c) return -1;
+  return (int)coder_page_agy_models_add(cd_state(c), cd_string(inst_id), cd_string(inst_name), cd_string(slug), cd_string(name), efforts_mask, default_effort, is_default != 0);
+}
+int cd_model_inst_id(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap <= 1) return 0;
+  int n = (int)coder_page_model_inst_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  if (n < 0) n = 0;
+  if (n >= cap) n = cap - 1;
+  out[n] = '\0';
+  return n;
+}
 int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model_agy(cd_state(c)) ? 1 : 0; }
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
 int cd_model_claude(void *page) { CoderHost *c = page; return c && coder_page_model_claude(cd_state(c)) ? 1 : 0; }

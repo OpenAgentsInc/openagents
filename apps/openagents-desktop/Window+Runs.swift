@@ -10,7 +10,16 @@ extension CoderWindow {
     }
     /// A run's worker lines go to its page, wherever that page is now.
     func wire(_ r: CoderRun) {
-        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.followUpBegan(r); self.markUnread(r); self.pump(r) }
+        r.worker.line = { [weak self, weak r] text in
+            guard let self, let r else { return }
+            if r.worker.program == "agyworker" && text.contains("Sign in to Antigravity in Settings") {
+                ProviderInstancesStore.shared.refreshAll()
+            }
+            cd_line(r.page, text)
+            self.followUpBegan(r)
+            self.markUnread(r)
+            self.pump(r)
+        }
         r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; let label = r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
@@ -100,9 +109,9 @@ extension CoderWindow {
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = FeatureFlags.isOn(.modelsGemini) && (CoderGemini.saved != nil || CoderProbes.geminiReady || (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn))
         if !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
-            cd_failed(r.page, ProviderInstancesStore.shared.hasEnabledAntigravityBinary
-                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
-                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models.")
+            cd_failed(r.page, ProviderInstancesStore.shared.hasLoadedAntigravityModels
+                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to an Antigravity model."
+                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or sign into Antigravity in Settings → Providers.")
             wake()
             return
         }
@@ -288,7 +297,7 @@ extension CoderWindow {
             }
             cd_flags_set(back, FeatureFlags.mask)
             syncLocalState(on: back)
-            cd_agy(back, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
+            syncAntigravityModels(on: back)
             #if OA_FULL
             if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
@@ -541,7 +550,10 @@ extension CoderWindow {
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
         var env: [String: String] = [:]
-        if let inst = ProviderInstancesStore.shared.activeAntigravityInstance() {
+        var instBuf = [CChar](repeating: 0, count: 128)
+        let instN = cd_model_inst_id(r.page, &instBuf, Int32(instBuf.count))
+        let pickedInstId = instN > 0 ? String(cString: instBuf) : ""
+        if let inst = ProviderInstancesStore.shared.instance(id: pickedInstId) ?? ProviderInstancesStore.shared.activeAntigravityInstance() {
             let res = AntigravityRuntimeManager.shared.resolveBinary(for: inst)
             env = AntigravityProfileManager.workerEnv(for: inst, resolvedBinary: res.path)
         } else {
@@ -615,7 +627,7 @@ extension CoderWindow {
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
         syncLocalState(on: back)
-        cd_agy(back, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
+        syncAntigravityModels(on: back)
         #if OA_FULL
         if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
         #endif

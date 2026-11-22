@@ -98,6 +98,33 @@ struct ProviderModelConfig: Codable, Equatable {
     var thinking: Bool
     var thoughtLevels: [String]
     var custom: Bool
+    var isDefault: Bool
+    var defaultEffort: String
+
+    init(slug: String, name: String, enabled: Bool, favorite: Bool, thinking: Bool, thoughtLevels: [String], custom: Bool, isDefault: Bool = false, defaultEffort: String = "medium") {
+        self.slug = slug
+        self.name = name
+        self.enabled = enabled
+        self.favorite = favorite
+        self.thinking = thinking
+        self.thoughtLevels = thoughtLevels
+        self.custom = custom
+        self.isDefault = isDefault
+        self.defaultEffort = defaultEffort
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try c.decode(String.self, forKey: .slug)
+        name = try c.decode(String.self, forKey: .name)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        favorite = try c.decode(Bool.self, forKey: .favorite)
+        thinking = try c.decode(Bool.self, forKey: .thinking)
+        thoughtLevels = try c.decode([String].self, forKey: .thoughtLevels)
+        custom = try c.decode(Bool.self, forKey: .custom)
+        isDefault = (try? c.decodeIfPresent(Bool.self, forKey: .isDefault)) ?? false
+        defaultEffort = (try? c.decodeIfPresent(String.self, forKey: .defaultEffort)) ?? "medium"
+    }
 }
 
 struct ProviderInstanceConfig: Codable, Equatable {
@@ -965,7 +992,9 @@ final class AntigravityAuthManager {
 
         let p = Process()
         p.executableURL = URL(fileURLWithPath: workerPath)
-        p.arguments = forceLogin ? ["--connect", "--force-login"] : ["--connect"]
+        var args = ["--connect", "--code", codeFile.path]
+        if forceLogin { args.append("--force-login") }
+        p.arguments = args
         let out = Pipe()
         p.standardOutput = out
         p.standardError = out
@@ -1049,6 +1078,7 @@ final class AntigravityAuthManager {
             }
         case "warn":
             if var cur = sessions[instanceId] {
+                if !cur.authUrl.isEmpty { cur.state = 3 }
                 cur.detail = msg
                 sessions[instanceId] = cur
                 onChange?(instanceId)
@@ -1519,10 +1549,34 @@ final class ProviderInstancesStore {
         return instances[selectedIndex]
     }
 
+    func instance(id: String) -> ProviderInstanceConfig? {
+        guard !id.isEmpty else { return nil }
+        return instances.first { $0.id == id }
+    }
+
     func activeAntigravityInstance() -> ProviderInstanceConfig? {
         if let sel = selectedInstance, sel.driver == .antigravity, sel.enabled { return sel }
         return instances.first { $0.driver == .antigravity && $0.enabled }
             ?? instances.first { $0.driver == .antigravity }
+    }
+
+    /// Enabled models from authenticated (or previously loaded, not explicitly unauthenticated)
+    /// Antigravity instances, favorites first then user order, capped at 16 for the composer picker.
+    func loadedPickerModels() -> [(instId: String, instName: String, model: ProviderModelConfig)] {
+        var favs: [(instId: String, instName: String, model: ProviderModelConfig)] = []
+        var rest: [(instId: String, instName: String, model: ProviderModelConfig)] = []
+        for inst in instances where inst.driver == .antigravity && inst.enabled {
+            if probes[inst.id]?.authStatus == "unauthenticated" { continue }
+            for m in inst.models where m.enabled && !m.slug.isEmpty {
+                let item = (inst.id, inst.displayName, m)
+                if m.favorite { favs.append(item) } else { rest.append(item) }
+            }
+        }
+        return Array((favs + rest).prefix(16))
+    }
+
+    var hasLoadedAntigravityModels: Bool {
+        !loadedPickerModels().isEmpty
     }
 
     var hasEnabledAntigravityBinary: Bool {
@@ -1546,7 +1600,7 @@ final class ProviderInstancesStore {
         onChange?()
     }
 
-    func updateSelectedConfig(displayName: String, accent: Int, authMethod: AntigravityAuthMethod, newApiKey: String, gcpProject: String, gcpLocation: String, binaryPath: String, extraPath: String) {
+    func persistSelectedConfigOnly(displayName: String, accent: Int, authMethod: AntigravityAuthMethod, newApiKey: String, gcpProject: String, gcpLocation: String, binaryPath: String, extraPath: String) {
         guard selectedIndex >= 0 && selectedIndex < instances.count else { return }
         var inst = instances[selectedIndex]
         let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1569,8 +1623,32 @@ final class ProviderInstancesStore {
             _ = AntigravityProfileManager.prepareProfile(for: inst)
         }
         save()
+    }
+
+    func updateSelectedConfig(displayName: String, accent: Int, authMethod: AntigravityAuthMethod, newApiKey: String, gcpProject: String, gcpLocation: String, binaryPath: String, extraPath: String) {
+        persistSelectedConfigOnly(
+            displayName: displayName, accent: accent, authMethod: authMethod,
+            newApiKey: newApiKey, gcpProject: gcpProject, gcpLocation: gcpLocation,
+            binaryPath: binaryPath, extraPath: extraPath
+        )
+        guard selectedIndex >= 0 && selectedIndex < instances.count else { return }
+        let inst = instances[selectedIndex]
         if inst.enabled { probeInstance(id: inst.id) }
         else { seedImmediateProbe(for: inst) }
+        onChange?()
+    }
+
+    func markSignedOut(instanceId: String) {
+        guard let idx = instances.firstIndex(where: { $0.id == instanceId }) else { return }
+        instances[idx].models = instances[idx].models.filter { $0.custom }
+        save()
+        let inst = instances[idx]
+        probes[instanceId] = ProviderProbeSnapshot(
+            status: 2, headline: "Needs attention",
+            summary: "Antigravity is installed. Connect with \(inst.authMethod.label) to load models.",
+            version: probes[instanceId]?.version ?? (CoderAntigravity.detectedVersion().map { "v\($0)" } ?? ""),
+            authStatus: "unauthenticated", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+        )
         onChange?()
     }
 
@@ -1738,12 +1816,19 @@ final class ProviderInstancesStore {
                     version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
                     authStatus: "unauthenticated", hasAutoMode: false, defaultModel: "", checkedAt: Date()
                 )
+            } else if inst.models.contains(where: { !$0.custom }) {
+                probes[inst.id] = ProviderProbeSnapshot(
+                    status: 1, headline: "Ready",
+                    summary: "Checking Antigravity access…",
+                    version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
+                    authStatus: "unknown", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+                )
             } else {
                 probes[inst.id] = ProviderProbeSnapshot(
                     status: 2, headline: "Needs attention",
                     summary: "Antigravity is installed. Connect with \(inst.authMethod.label) to load models.",
                     version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
-                    authStatus: "unauthenticated", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+                    authStatus: "unknown", hasAutoMode: false, defaultModel: "", checkedAt: Date()
                 )
             }
         }
@@ -1875,8 +1960,13 @@ final class ProviderInstancesStore {
                 for m in rawModels {
                     guard let slug = m["slug"] as? String, !slug.isEmpty else { continue }
                     let name = (m["name"] as? String) ?? slug
-                    let thinking = (m["thinking"] as? Bool) ?? false
-                    let levels = (m["thoughtLevels"] as? [String]) ?? []
+                    var levels = (m["thoughtLevels"] as? [String]) ?? []
+                    if levels.isEmpty, let detailed = m["thinkingLevels"] as? [[String: Any]] {
+                        levels = detailed.compactMap { $0["value"] as? String }
+                    }
+                    let thinking = !levels.isEmpty || ((m["thinking"] as? Bool) ?? false)
+                    let isDefault = (m["isDefault"] as? Bool) ?? (slug == defModel)
+                    let defEffort = (m["thinkingDefault"] as? String) ?? "medium"
                     let prev = existing[slug]
                     bySlug[slug] = ProviderModelConfig(
                         slug: slug, name: name,
@@ -1884,7 +1974,9 @@ final class ProviderInstancesStore {
                         favorite: prev?.favorite ?? false,
                         thinking: thinking,
                         thoughtLevels: levels,
-                        custom: false
+                        custom: false,
+                        isDefault: isDefault,
+                        defaultEffort: defEffort.isEmpty ? "medium" : defEffort
                     )
                 }
                 for old in instances[idx].models {
@@ -1913,6 +2005,14 @@ final class ProviderInstancesStore {
             }
         } else {
             let needsAuth = authSt == "unauthenticated"
+            // Exact T3 clearAccountMetadata parity: unauthenticated Antigravity must not keep stale models in the chat picker.
+            if needsAuth, let idx = instances.firstIndex(where: { $0.id == inst.id }) {
+                let keptCustom = instances[idx].models.filter { $0.custom }
+                if keptCustom.count != instances[idx].models.count {
+                    instances[idx].models = keptCustom
+                    save()
+                }
+            }
             let summary = !msg.isEmpty ? msg
                 : "Antigravity is installed. Connect with \(inst.authMethod.label) to load models."
             probes[inst.id] = ProviderProbeSnapshot(
@@ -1932,6 +2032,35 @@ final class ProviderInstancesStore {
 // MARK: - CoderWindow Settings -> Providers (Core Basic Flow)
 
 extension CoderWindow {
+    func syncAntigravityModels(on targetPage: UnsafeMutableRawPointer) {
+        let loaded = ProviderInstancesStore.shared.loadedPickerModels()
+        cd_agy_models_clear(targetPage)
+        for entry in loaded {
+            let m = entry.model
+            var mask: Int32 = 0
+            for lvl in m.thoughtLevels {
+                switch lvl.lowercased() {
+                case "low": mask |= 1
+                case "medium": mask |= 2
+                case "high": mask |= 4
+                case "xhigh": mask |= 8
+                default: break
+                }
+            }
+            if mask == 0 && m.thinking { mask = 1 | 2 | 4 }
+            let defEff: Int32
+            switch m.defaultEffort.lowercased() {
+            case "low": defEff = 1
+            case "medium": defEff = 2
+            case "high": defEff = 3
+            case "xhigh": defEff = 4
+            default: defEff = 2
+            }
+            _ = cd_agy_models_add(targetPage, entry.instId, entry.instName, m.slug, m.name, mask, defEff, m.isDefault ? 1 : 0)
+        }
+        cd_agy(targetPage, loaded.isEmpty ? 0 : 1)
+    }
+
     func setupProvidersSettings() {
         ProviderInstancesStore.shared.onChange = { [weak self] in
             DispatchQueue.main.async {
@@ -1940,15 +2069,22 @@ extension CoderWindow {
                 #if OA_FULL
                 if FeatureFlags.isOn(.modelsAgy) { self.syncAntigravitySettings() }
                 #endif
-                let hasAgy: Int32 = ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0
-                cd_agy(self.page, hasAgy)
-                for r in self.runs.values where r.page != self.page { cd_agy(r.page, hasAgy) }
+                self.syncAntigravityModels(on: self.page)
+                for r in self.runs.values where r.page != self.page { self.syncAntigravityModels(on: r.page) }
                 self.applyProbes()
                 self.wake()
             }
         }
         syncProvidersSettingsPage()
+        syncAntigravityModels(on: page)
         AntigravityRuntimeManager.shared.checkLatestRelease()
+        // Probe enabled Antigravity instances asynchronously at launch so already-authenticated
+        // accounts load real models into the composer picker automatically (never opens a browser).
+        if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                ProviderInstancesStore.shared.refreshAll()
+            }
+        }
     }
 
     func syncProvidersSettingsPage() {
@@ -2066,6 +2202,18 @@ extension CoderWindow {
             cd_toast(page, res.message, res.ok ? 0 : 1)
             store.refreshAll()
         case 179: // CP_ASK_PS_AUTH_START
+            // Flush any unsaved inline edits (e.g. GCP project/location/API key typed right before clicking Connect).
+            store.persistSelectedConfigOnly(
+                displayName: psReadField(0),
+                accent: Int(cd_ps_int(page, 0)),
+                authMethod: AntigravityAuthMethod.from(uiIndex: cd_ps_int(page, 1)),
+                newApiKey: psReadField(1),
+                gcpProject: psReadField(2),
+                gcpLocation: psReadField(3),
+                binaryPath: psReadField(4),
+                extraPath: psReadField(5)
+            )
+            configureWorkerEnv(run, isForeman: isForemanShown)
             guard let sel = store.selectedInstance else { return }
             if sel.driver == .antigravity {
                 let probe = store.probes[sel.id]
@@ -2085,6 +2233,7 @@ extension CoderWindow {
                 run.worker.stop()
             }
             AntigravityAuthManager.shared.signOut(for: sel) {
+                store.markSignedOut(instanceId: sel.id)
                 store.probeInstance(id: sel.id)
                 cd_toast(self.page, "Signed out of \(sel.displayName).", 0)
             }
@@ -2135,7 +2284,9 @@ extension CoderWindow {
                     models.append(ProviderModelConfig(
                         slug: slug, name: name,
                         enabled: en != 0, favorite: fav != 0, thinking: th != 0,
-                        thoughtLevels: prev?.thoughtLevels ?? [], custom: cu != 0
+                        thoughtLevels: prev?.thoughtLevels ?? [], custom: cu != 0,
+                        isDefault: prev?.isDefault ?? false,
+                        defaultEffort: prev?.defaultEffort ?? "medium"
                     ))
                 }
             }

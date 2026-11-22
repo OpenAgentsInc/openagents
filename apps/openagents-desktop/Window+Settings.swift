@@ -404,7 +404,7 @@ extension CoderWindow {
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
         let ui = LocalModelStore.uiState()
-        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasEnabledAntigravityBinary
+        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels
         var status = LocalModelStore.statusSummary()
         var statusCode = ui.statusCode
         var err = ui.err
@@ -442,7 +442,7 @@ extension CoderWindow {
         LocalModelStore.verifyExistingIfNeeded { [weak self] in
             self?.syncLocalModels()
         }
-        if prewarm && LocalModelStore.isSelectable && ((!FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasEnabledAntigravityBinary) || cd_model_inkling(page) != 0) {
+        if prewarm && LocalModelStore.isSelectable && ((!FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels) || cd_model_inkling(page) != 0) {
             LocalModelServer.shared.prewarmIfReady()
         }
         syncLocalState(on: page)
@@ -498,20 +498,19 @@ extension CoderWindow {
         applyAntigravity()
     }
     func applyAntigravity() {
-        let hasAgy: Int32 = CoderWorker.hasAntigravity ? 1 : 0
         let approvalOn: Int32 = CoderAntigravity.modeIndex != 0 ? 1 : 0
-        cd_agy(page, hasAgy)
+        syncAntigravityModels(on: page)
         cd_permit_approval_mode_set(page, approvalOn)
         configureWorkerEnv(run, isForeman: isForemanShown)
         for (id, r) in runs {
-            cd_agy(r.page, hasAgy)
+            syncAntigravityModels(on: r.page)
             cd_permit_approval_mode_set(r.page, approvalOn)
             configureWorkerEnv(r, isForeman: id == Foreman.chatID)
         }
         syncAntigravitySettings()
         // the model agy runs depends on these settings: ask it again
         applyProbes()
-        CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
+        ProviderInstancesStore.shared.refreshAll()
         wake()
     }
     #endif

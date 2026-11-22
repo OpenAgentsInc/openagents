@@ -224,6 +224,9 @@ int cd_recall_line(void *page, char *out, int cap);
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
 void cd_agy(void *page, int on);
+void cd_agy_models_clear(void *page);
+int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default);
+int cd_model_inst_id(void *page, char *out, int cap);
 int cd_model_agy(void *page);
 int cd_model_inkling(void *page);
 int cd_model_hybrid(void *page);

@@ -1959,7 +1959,8 @@ coder_page_ps_set_detail_runtime :: (s: [] CoderPage, rt_state: int, rt_status: 
 coder_page_ps_set_detail_auth :: (s: [] CoderPage, auth_state: int, auth_sub: string, auth_detail: string, auth_btn: string, auth_can_signout: bool, auth_url: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   d := s[0].ps[0].detail[..];
-  if d[0].auth_state != auth_state {
+  prev_state := d[0].auth_state;
+  if prev_state != auth_state {
     d[0].auth_copied = false;
     if auth_state != CP_PS_AS_WAITING { d[0].auth_code_n = 0; }
   }
@@ -1969,6 +1970,10 @@ coder_page_ps_set_detail_auth :: (s: [] CoderPage, auth_state: int, auth_sub: st
   d[0].auth_btn_n = cp_out(d[0].auth_btn[..], auth_btn);
   d[0].auth_can_signout = auth_can_signout;
   d[0].auth_url_n = cp_out(d[0].auth_url[..], auth_url);
+  // Auto-focus the code paste field the moment Google OAuth enters WAITING state so ⌘V + Enter works immediately.
+  if prev_state != CP_PS_AS_WAITING && auth_state == CP_PS_AS_WAITING && s[0].set_open && s[0].set_page == CP_PG_PROVIDERS && d[0].auth_code_n == 0 {
+    cp_ps_focus_ed(s, CP_PS_ED_OAUTH_CODE);
+  }
 }
 
 coder_page_ps_env_clear :: (s: [] CoderPage) #export_c #effects(all) {

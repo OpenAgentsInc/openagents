@@ -212,7 +212,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                      Unmanaged.passUnretained(self).toOpaque())
         // Push the resolved 28-flag mask first; all gated probes, services, and UI stay off when their flag is off.
         cd_flags_set(page, FeatureFlags.mask)
-        cd_agy(page, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
+        syncAntigravityModels(on: page)
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) { cd_skills(page, coderSkillsNote()) } else { cd_skills(page, "") }
         if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(page) } else { cd_claude(page, 0) }
@@ -249,9 +249,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         AgentInstructions.seed()
         cd_settings_instructions(page, AgentInstructions.words)
         CoderProbes.apply(page)
-        if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
-            CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
-        }
+        // ProviderInstancesStore.shared.refreshAll() in setupProvidersSettings() probes enabled
+        // Antigravity instances and updates both loaded models and legacy CoderProbes cache.
         #if OA_FULL
         if FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
         if FeatureFlags.isOn(.foreman) { startForemanServer() }

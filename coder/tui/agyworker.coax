@@ -105,6 +105,9 @@ AgywState :: struct {
   cwd: [1024] u8; cwd_n: int;
   turn_model: [128] u8; turn_model_n: int;
   turn_effort: [32] u8; turn_effort_n: int;
+  active_model: [128] u8; active_model_n: int;
+  active_effort: [32] u8; active_effort_n: int;
+  sess_json: [16384] u8; sess_json_n: int;
   ran: [128] u8; ran_n: int;              // the model agy runs the open session on (agy_effective_model)
   ran_name: [128] u8; ran_name_n: int;    // and agy's name for it
   compact: bool;                                // the turn is a /compact, which may end with no words
@@ -190,20 +193,27 @@ agyw_resolve_mode :: (raw: string) -> string {
 // first within 3 to 9 s. A thought arrives every few seconds while the model thinks, so a long
 // think (#13227) reads as thinking, not as a stall.
 AGYW_EFFORT :: "medium";
-// Resolve effort from task or CODER_AGY_EFFORT: low | medium | high (else empty).
+// Resolve effort from task or CODER_AGY_EFFORT: low | medium | high | xhigh (else empty).
 agyw_resolve_effort :: (task_effort: string, env_effort: string) -> string {
   e := agyw_trim(task_effort);
   if e.count == 0 { e = agyw_trim(env_effort); }
-  if e == "low" || e == "medium" || e == "high" { return e; }
+  if e == "low" || e == "medium" || e == "high" || e == "xhigh" { return e; }
   return "";
 }
 
-// Resolve model: task model overrides env model; sentinel "antigravity" / "agy" means use default.
-agyw_resolve_model :: (task_model: string, env_model: string) -> string {
-  m := agyw_trim(task_model);
-  if m == "antigravity" || m == "agy" { m = ""; }
-  if m.count == 0 { m = agyw_trim(env_model); }
+// Resolve model: task model overrides env model; strips "agy:" prefix; sentinel "antigravity" / "agy" means default.
+agyw_strip_model_prefix :: (raw: string) -> string {
+  m := agyw_trim(raw);
+  if m.count >= 4 && cast(string) m[0..<4] == "agy:" {
+    m = agyw_trim(cast(string) m[4..<m.count]);
+  }
   if m == "antigravity" || m == "agy" { return ""; }
+  return m;
+}
+
+agyw_resolve_model :: (task_model: string, env_model: string) -> string {
+  m := agyw_strip_model_prefix(task_model);
+  if m.count == 0 { m = agyw_strip_model_prefix(env_model); }
   return m;
 }
 
@@ -889,20 +899,33 @@ agyw_probe_asked :: () -> bool { return agyw_flag_asked("--probe"); }
 agyw_probe_json_asked :: () -> bool { return agyw_flag_asked("--probe-json"); }
 agyw_logout_asked :: () -> bool { return agyw_flag_asked("--logout"); }
 
-// Extract thought_level config option into JSON snippet: "thinkingId":"...","thinkingDefault":"...","thinkingLevels":[{"value":"...","label":"..."}]
+// Extract thought_level config option into JSON snippet:
+// "thinking":true,"thoughtLevels":["low","medium","high","xhigh"],"thinkingId":"...","thinkingDefault":"...","thinkingLevels":[{"value":"...","label":"..."}]
 agyw_put_thinking_json :: (o: [] ClOut, result: string, ar: [] ClArena) {
   opts := cl_raw(result, "configOptions");
   n := cl_count(opts);
   for i: 0..<n {
     item := cl_json(opts, cl_item(opts, i));
-    if cl_str(ar, item, "category") != "thought_level" { continue; }
+    if cl_str(ar, item, "category") != "thought_level" && cl_str(ar, item, "id") != "thought_level" { continue; }
     oid := cl_str(ar, item, "id");
     cur := cl_str(ar, item, "currentValue");
+    choices := cl_raw(item, "options");
+    m := cl_count(choices);
+    cl_put(o, ",\"thinking\":"); cl_put(o, ifx m > 0 then "true" else "false");
+    cl_put(o, ",\"thoughtLevels\":[");
+    wrote_t := false;
+    for j: 0..<m {
+      ch := cl_json(choices, cl_item(choices, j));
+      val := cl_str(ar, ch, "value");
+      if val.count == 0 { continue; }
+      if wrote_t { cl_put(o, ","); }
+      cl_put_string(o, val);
+      wrote_t = true;
+    }
+    cl_put(o, "]");
     cl_put(o, ",\"thinkingId\":"); cl_put_string(o, oid);
     cl_put(o, ",\"thinkingDefault\":"); cl_put_string(o, cur);
     cl_put(o, ",\"thinkingLevels\":[");
-    choices := cl_raw(item, "options");
-    m := cl_count(choices);
     wrote := false;
     for j: 0..<m {
       ch := cl_json(choices, cl_item(choices, j));
@@ -919,6 +942,87 @@ agyw_put_thinking_json :: (o: [] ClOut, result: string, ar: [] ClArena) {
     cl_put(o, "]");
     return;
   }
+  cl_put(o, ",\"thinking\":false,\"thoughtLevels\":[]");
+}
+
+AGYW_MAX_PROBED :: 24;
+AgywProbedModel :: struct {
+  slug: [128] u8; slug_n: int;
+  name: [128] u8; name_n: int;
+  is_default: bool;
+}
+
+agyw_probed_has :: (list: [] AgywProbedModel, count: int, slug: string) -> bool {
+  for i: 0..<count {
+    if cast(string) list[i].slug[0..<list[i].slug_n] == slug { return true; }
+  }
+  return false;
+}
+
+agyw_probed_push :: (list: [] AgywProbedModel, count: int, slug: string, name: string, cur_val: string) -> int {
+  s := agyw_trim(slug);
+  if s.count == 0 || count >= list.count || agyw_probed_has(list, count, s) { return count; }
+  n := agyw_trim(name);
+  if n.count == 0 { n = s; }
+  list[count] = AgywProbedModel.{};
+  list[count].slug_n = agyw_copy(list[count].slug[..], s);
+  list[count].name_n = agyw_copy(list[count].name[..], n);
+  list[count].is_default = cur_val.count > 0 && s == cur_val;
+  return count + 1;
+}
+
+// Extract Antigravity models from session/new result (exact port of T3 buildAntigravityModelsFromSession):
+// prefers configOptions[id=="model" || category=="model"] (flat or grouped options),
+// falling back to models.availableModels only when configOptions has no model option.
+// Writes the model configOption id into cfg_id_out (empty if fallback to models.availableModels).
+agyw_collect_session_models :: (sess_json: string, ar: [] ClArena, out: [] AgywProbedModel, cfg_id_out: [] u8, cfg_id_n: [] int) -> int {
+  cfg_id_n[0] = 0;
+  count := 0;
+  opts := cl_raw(sess_json, "configOptions");
+  on := cl_count(opts);
+  found_cfg := false;
+  for i: 0..<on {
+    item := cl_json(opts, cl_item(opts, i));
+    oid := cl_str(ar, item, "id");
+    cat := cl_str(ar, item, "category");
+    if oid != "model" && cat != "model" { continue; }
+    found_cfg = true;
+    cfg_id_n[0] = agyw_copy(cfg_id_out, oid);
+    cur := cl_str(ar, item, "currentValue");
+    choices := cl_raw(item, "options");
+    cn := cl_count(choices);
+    for j: 0..<cn {
+      ch := cl_json(choices, cl_item(choices, j));
+      val := cl_str(ar, ch, "value");
+      if val.count > 0 {
+        count = agyw_probed_push(out, count, val, cl_str(ar, ch, "name"), cur);
+      } else {
+        sub := cl_raw(ch, "options");
+        sn := cl_count(sub);
+        for k: 0..<sn {
+          sch := cl_json(sub, cl_item(sub, k));
+          sval := cl_str(ar, sch, "value");
+          if sval.count > 0 {
+            count = agyw_probed_push(out, count, sval, cl_str(ar, sch, "name"), cur);
+          }
+        }
+      }
+    }
+    break;
+  }
+  if found_cfg && count > 0 { return count; }
+  // Fallback: models.availableModels (legacy agy < 1.4 or sessions without configOptions model)
+  cur_m := cl_str(ar, sess_json, "models.currentModelId");
+  models := cl_raw(sess_json, "models.availableModels");
+  mc := cl_count(models);
+  for i: 0..<mc {
+    item := cl_json(models, cl_item(models, i));
+    mid := cl_str(ar, item, "modelId");
+    if mid.count > 0 {
+      count = agyw_probed_push(out, count, mid, cl_str(ar, item, "name"), cur_m);
+    }
+  }
+  return count;
 }
 
 // agyworker --probe-json: full T3 AntigravityProvider status + catalog probe.
@@ -995,9 +1099,7 @@ agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
     agyw_lease_release(s);
     err_str := cast(string) err_buf[0..<err_n];
     is_unauth := auth_refused || agy_is_signin_required(err_str);
-    if is_unauth && agy_auth_uses_browser(method) && (agy_has(err_str, "remote (SSH)") || agy_has(err_str, "No browser")) {
-      err_str = ifx method == AGY_AUTH_OAUTH_BUSINESS then "Antigravity is installed. Sign in with Gemini Enterprise to load models." else "Antigravity is installed. Sign in with Google to load models.";
-    }
+    err_str = agy_format_auth_error(err_str, method, true);
     cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
     cl_put(o[..], ",\"version\":"); cl_put_string(o[..], cast(string) ver_buf[0..<ver_n]);
     cl_put(o[..], ",\"authStatus\":"); cl_put_string(o[..], ifx is_unauth then "unauthenticated" else "unknown");
@@ -1008,13 +1110,29 @@ agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
     agyw_write_line(s, o[0].len);
     return 0;
   }
-  // Authenticated! Extract default model + models list (with base thinking config + per-model probe).
+  // Authenticated! Extract default model + models list (configOptions first, fallback models.availableModels)
+  // and probe per-model thought_level options (exact port of T3 AntigravityProvider.ts).
   sid_buf: [CU_ID] u8; sid_n := agyw_copy(sid_buf[..], cu_session_id(x[0].c));
   sess_json := cast(string) sess_buf[0..<sess_n];
   pab: [65536] u8; par := [1] ClArena.[ClArena.{buf = pab[..]}];
+  probed: [AGYW_MAX_PROBED] AgywProbedModel;
+  mcfg_id: [128] u8; mcfg_id_n: [1] int;
+  mc := agyw_collect_session_models(sess_json, par[..], probed[..], mcfg_id[..], mcfg_id_n[..]);
   def_id_buf: [128] u8;
-  def_id := agy_effective_at(sess_json, "", "", AGYW_EFFORT, par[..], def_id_buf[..]);
-  def_name := agy_model_shown(sess_json, def_id, par[..]);
+  def_name_buf: [128] u8;
+  def_id := ""; def_name := "";
+  for i: 0..<mc {
+    if probed[i].is_default {
+      def_id = cast(string) def_id_buf[0..<agyw_copy(def_id_buf[..], cast(string) probed[i].slug[0..<probed[i].slug_n])];
+      def_name = cast(string) def_name_buf[0..<agyw_copy(def_name_buf[..], cast(string) probed[i].name[0..<probed[i].name_n])];
+      break;
+    }
+  }
+  if def_id.count == 0 {
+    par[0].at = 0; par[0].full = false;
+    def_id = agy_effective_at(sess_json, "", "", AGYW_EFFORT, par[..], def_id_buf[..]);
+    def_name = cast(string) def_name_buf[0..<agyw_copy(def_name_buf[..], agy_model_shown(sess_json, def_id, par[..]))];
+  }
   cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
   cl_put(o[..], ",\"version\":"); cl_put_string(o[..], cast(string) ver_buf[0..<ver_n]);
   cl_put(o[..], ",\"authStatus\":\"authenticated\",\"authMethod\":"); cl_put_string(o[..], method);
@@ -1024,33 +1142,34 @@ agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
   cl_put(o[..], ",\"defaultModel\":"); cl_put_string(o[..], def_id);
   cl_put(o[..], ",\"defaultModelName\":"); cl_put_string(o[..], def_name);
   cl_put(o[..], ",\"models\":[");
-  models := cl_raw(sess_json, "models.availableModels");
-  mc := cl_count(models);
   wrote_m := false;
-  probe_limit := ifx mc > 24 then 24 else mc;
-  for i: 0..<probe_limit {
+  switched_model := false;
+  has_cfg_model := mcfg_id_n[0] > 0;
+  cfg_model_id := cast(string) mcfg_id[0..<mcfg_id_n[0]];
+  for i: 0..<mc {
     par[0].at = 0; par[0].full = false;
-    item := cl_json(models, cl_item(models, i));
-    mid := cl_str(par[..], item, "modelId");
-    if mid.count == 0 { continue; }
-    mname := cl_str(par[..], item, "name");
-    if mname.count == 0 { mname = mid; }
-    // Probe per-model thinking config options via session/set_model (port of T3 AntigravityProvider.ts).
+    mid := cast(string) probed[i].slug[0..<probed[i].slug_n];
+    mname := cast(string) probed[i].name[0..<probed[i].name_n];
+    // Probe per-model thinking config options via set_config_option / set_model (skip current default which sess_json already describes).
     mres_buf: [16384] u8; mres_n := 0;
-    if x[0].live && cxproc_now_ms() < until {
-      _ = cu_set_model(x[0].c, mid);
+    if !probed[i].is_default && x[0].live && cxproc_now_ms() < until {
+      want_of := ifx has_cfg_model then CU_SESSION_SET_CONFIG else CU_SESSION_SET_MODEL;
+      if has_cfg_model { _ = cu_set_config(x[0].c, cfg_model_id, mid); }
+      else { _ = cu_set_model(x[0].c, mid); }
+      _ = cu_flush(x[0].c, x[0].p);
+      switched_model = true;
       m_until := cxproc_now_ms() + 3000;
       while x[0].live && cxproc_now_ms() < m_until {
         mev: [1] CuEvent;
         cue_poll(x, mev[..]);
         if mev[0].kind == CuEventKind.idle { proc_sleep(10); continue; }
-        if mev[0].kind == CuEventKind.answered && mev[0].of == CU_SESSION_SET_MODEL {
+        if mev[0].kind == CuEventKind.answered && mev[0].of == want_of {
           if cl_raw(mev[0].result, "configOptions").count > 0 {
             mres_n = agyw_copy(mres_buf[..], mev[0].result);
           }
           break;
         }
-        if mev[0].kind == CuEventKind.refused && mev[0].of == CU_SESSION_SET_MODEL { break; }
+        if mev[0].kind == CuEventKind.refused && mev[0].of == want_of { break; }
         if mev[0].kind == CuEventKind.notification && mev[0].method == "session/update" {
           upd := cl_raw(mev[0].params, "update");
           if cl_str(x[0].c[0].ar[..], upd, "sessionUpdate") == "config_option_update" {
@@ -1063,9 +1182,16 @@ agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
     if wrote_m { cl_put(o[..], ","); }
     cl_put(o[..], "{\"slug\":"); cl_put_string(o[..], mid);
     cl_put(o[..], ",\"name\":"); cl_put_string(o[..], mname);
+    cl_put(o[..], ",\"isDefault\":"); cl_put(o[..], ifx probed[i].is_default then "true" else "false");
     agyw_put_thinking_json(o[..], ifx mres_n > 0 then cast(string) mres_buf[0..<mres_n] else sess_json, par[..]);
     cl_put(o[..], "}");
     wrote_m = true;
+  }
+  // Restore original default model on the session before closing, matching T3 publishCatalog.
+  if switched_model && def_id.count > 0 && x[0].live {
+    if has_cfg_model { _ = cu_set_config(x[0].c, cfg_model_id, def_id); }
+    else { _ = cu_set_model(x[0].c, def_id); }
+    _ = cu_flush(x[0].c, x[0].p);
   }
   cl_put(o[..], "]}");
   cue_close(x);
@@ -1417,6 +1543,7 @@ agyw_signed_in_file :: (s: [] AgywState) -> bool {
 
 agyw_connect :: (s: [] AgywState, x: [] CuEngine) -> int {
   cpb: [1024] u8; code_path := agyw_arg_value("--code", cpb[..]);
+  if code_path.count == 0 { code_path = agyw_trim(cl_getenv("CODER_AGY_CODE_FILE", cpb[..])); }
   auth_cfg := agyw_auth_config(s);
   method := agy_auth_normalize(auth_cfg.method);
   if s[0].cfg.auth_method_n > 0 {
@@ -1437,7 +1564,7 @@ agyw_connect :: (s: [] AgywState, x: [] CuEngine) -> int {
   if s[0].cfg.auth_method_n > 0 && !agy_auth_uses_browser(method) {
     agyw_say(s, "step", "Verifying Antigravity credentials…");
     why := agyw_open_once(s, x, wb[..]);
-    if why.count > 0 { agyw_say(s, "fail", why); return 1; }
+    if why.count > 0 { agyw_say(s, "fail", agy_format_auth_error(why, method, true)); return 1; }
     return agyw_connected(s);
   }
   why := "";
@@ -1447,14 +1574,14 @@ agyw_connect :: (s: [] AgywState, x: [] CuEngine) -> int {
     agyw_say(s, "step", "Checking your Antigravity sign-in…");
     why = agyw_open_once(s, x, wb[..]);
     if why.count == 0 { return agyw_connected(s); }
-    if !agy_is_signin_required(why) && agyw_signed_in_file(s) { agyw_say(s, "fail", why); return 1; }
+    if !agy_is_signin_required(why) && agyw_signed_in_file(s) { agyw_say(s, "fail", agy_format_auth_error(why, method, true)); return 1; }
   }
   agyw_say(s, "step", "Opening the Google sign-in…");
   lb: [1024] u8; lw := agyw_login(s, code_path, lb[..]);
-  if lw.count > 0 { agyw_say(s, "fail", lw); return 1; }
+  if lw.count > 0 { agyw_say(s, "fail", agy_format_auth_error(lw, method, true)); return 1; }
   agyw_say(s, "step", "Starting Antigravity…");
   why = agyw_open_once(s, x, wb[..]);
-  if why.count > 0 { agyw_say(s, "fail", why); return 1; }
+  if why.count > 0 { agyw_say(s, "fail", agy_format_auth_error(why, method, true)); return 1; }
   return agyw_connected(s);
 }
 
@@ -1482,7 +1609,13 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       mod := agyw_str(s[0].turn_model[..], s[0].turn_model_n);
       eff := agyw_str(s[0].turn_effort[..], s[0].turn_effort_n);
       mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-      _ = agy_configure_at(x, ev.result, mod, eff, mode, AGYW_EFFORT);
+      s[0].sess_json_n = agyw_copy(s[0].sess_json[..], ev.result);
+      s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
+      s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
+      missed := agy_configure_at(x, ev.result, mod, eff, mode, AGYW_EFFORT);
+      if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
+        cue_set(x, "thought_level", eff);
+      }
       agyw_ran(s, x, ev.result, mod, eff, emit);
       cue_owed(x, s[0].turn_active);
       return;
@@ -1513,8 +1646,10 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     return;
   }
   if ev.kind == CuEventKind.refused {
-    if ev.of == CU_AUTHENTICATE {
-      why := ifx ev.message.count > 0 then ev.message else "Antigravity could not authenticate with the configured credentials.";
+    if ev.of == CU_AUTHENTICATE || ev.of == CU_SESSION_NEW {
+      raw_why := ifx ev.message.count > 0 then ev.message else "Antigravity could not authenticate with the configured credentials.";
+      why := ifx emit then agy_format_auth_error(raw_why, agyw_str(s[0].cfg.auth_method[..], s[0].cfg.auth_method_n), false) else raw_why;
+      x[0].err_n = agyw_copy(x[0].err[..], why);
       cue_close(x);
       agyw_lease_release(s);
       if s[0].turn_active { agyw_finish_turn(s, "failed", why, emit); }
@@ -1533,7 +1668,8 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
         _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
         return;
       }
-      why := ifx ev.message.count > 0 then ev.message else "Antigravity refused the prompt.";
+      raw_why := ifx ev.message.count > 0 then ev.message else "Antigravity refused the prompt.";
+      why := ifx emit then agy_format_auth_error(raw_why, agyw_str(s[0].cfg.auth_method[..], s[0].cfg.auth_method_n), false) else raw_why;
       agyw_finish_turn(s, "failed", why, emit);
       return;
     }
@@ -1562,8 +1698,9 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
           return;
         }
       }
-      why := cue_why(x);
-      if why.count == 0 { why = "Antigravity process stopped unexpectedly."; }
+      raw_why := cue_why(x);
+      if raw_why.count == 0 { raw_why = "Antigravity process stopped unexpectedly."; }
+      why := ifx emit then agy_format_auth_error(raw_why, agyw_str(s[0].cfg.auth_method[..], s[0].cfg.auth_method_n), false) else raw_why;
       agyw_finish_turn(s, "failed", why, emit);
     }
   }
@@ -1684,6 +1821,18 @@ tool_main :: () -> int #export_c #effects(all) {
                 _ = cue_send(x, prompt);
               }
             } else {
+              // Apply mid-chat model or thinking-level switch on an already-live session before sending prompt.
+              if x[0].ready && (mod != agyw_str(s[0].active_model[..], s[0].active_model_n) || eff != agyw_str(s[0].active_effort[..], s[0].active_effort_n)) {
+                sj := agyw_str(s[0].sess_json[..], s[0].sess_json_n);
+                mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
+                missed := agy_configure_at(x, sj, mod, eff, mode, AGYW_EFFORT);
+                if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
+                  cue_set(x, "thought_level", eff);
+                }
+                s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
+                s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
+                agyw_ran(s, x, sj, mod, eff, true);
+              }
               _ = cue_send(x, prompt);
             }
           }
@@ -1728,11 +1877,14 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert agyw_resolve_mode("bogus") == "auto";
 
   #assert agyw_resolve_effort("high", "low") == "high";
+  #assert agyw_resolve_effort("xhigh", "medium") == "xhigh";
   #assert agyw_resolve_effort("", "medium") == "medium";
   #assert agyw_resolve_effort("", "") == "";
   #assert agyw_resolve_effort("invalid", "low") == "";
 
   #assert agyw_resolve_model("gemini-4-hydrogen", "gemini-4-carbon") == "gemini-4-hydrogen";
+  #assert agyw_resolve_model("agy:gemini-4-neon", "gemini-4-carbon") == "gemini-4-neon";
+  #assert agyw_resolve_model("agy:", "gemini-4-carbon") == "gemini-4-carbon";
   #assert agyw_resolve_model("antigravity", "gemini-4-carbon") == "gemini-4-carbon";
   #assert agyw_resolve_model("agy", "") == "";
 
@@ -2101,4 +2253,37 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert !agyw_session_db_owned("...session_id:probe-1...file:///other...", "probe-1", "file:///Users/me");
   #assert !agyw_session_db_owned("...session_id:real-9...file:///Users/me...", "probe-1", "file:///Users/me");
   #assert !agyw_session_db_owned("", "probe-1", "file:///Users/me");
+}
+
+#test "agyworker: T3 model catalog extraction (configOptions flat & grouped + thoughtLevels) and SSH error translation" {
+  // 1. configOptions[id="model"] wins over legacy models.availableModels, handles flat + grouped options
+  sess := "{\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-low\",\"name\":\"Legacy Low\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\"},{\"label\":\"Standard\",\"options\":[{\"value\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\"},{\"value\":\"gemini-4-hydrogen\",\"name\":\"Gemini 4 Hydrogen\"}]}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"},{\"value\":\"xhigh\",\"name\":\"Extra\"}]}]}";
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  probed: [AGYW_MAX_PROBED] AgywProbedModel;
+  cfg_id: [64] u8; cfg_n: [1] int;
+  mc := agyw_collect_session_models(sess, ar[..], probed[..], cfg_id[..], cfg_n[..]);
+  #assert mc == 3 && cast(string) cfg_id[0..<cfg_n[0]] == "model";
+  #assert cast(string) probed[0].slug[0..<probed[0].slug_n] == "gemini-4-neon" && !probed[0].is_default;
+  #assert cast(string) probed[1].slug[0..<probed[1].slug_n] == "gemini-4-carbon" && probed[1].is_default;
+  #assert cast(string) probed[2].slug[0..<probed[2].slug_n] == "gemini-4-hydrogen" && cast(string) probed[2].name[0..<probed[2].name_n] == "Gemini 4 Hydrogen";
+
+  // 2. agyw_put_thinking_json emits both thinking:true, thoughtLevels:[...] AND thinkingLevels:[...]
+  ob: [2048] u8; o := [1] ClOut.[ClOut.{buf = ob[..]}];
+  cl_put(o[..], "{\"slug\":\"gemini-4-neon\"");
+  agyw_put_thinking_json(o[..], sess, ar[..]);
+  cl_put(o[..], "}");
+  out_s := cast(string) ob[0..<o[0].len];
+  #assert agy_has(out_s, "\"thinking\":true");
+  #assert agy_has(out_s, "\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]");
+  #assert agy_has(out_s, "\"thinkingDefault\":\"medium\"");
+
+  // 3. Raw SSH error on authenticate / session/new refusal NEVER leaks into chat
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true; x[0].live = true;
+  ev := CuEvent.{kind = CuEventKind.refused, of = CU_AUTHENTICATE, message = "No browser is available here (this is a remote (SSH) session, so the browser's sign-in redirect can't reach this machine). Run 'agy acp --login'"};
+  agyw_handle_event(s, x, ev, true);
+  #assert !s[0].turn_active && agyw_logged(s, AGY_SIGNIN_REQUIRED) && !agyw_logged(s, "remote (SSH)");
 }

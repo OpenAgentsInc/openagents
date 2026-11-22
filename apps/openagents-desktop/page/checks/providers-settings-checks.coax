@@ -104,3 +104,70 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert next3 >= 0 && cp_press(s, next3) && !s[0].ps[0].wiz[0].open;
   #assert coder_page_action(s) == CP_ASK_PS_WIZ_CREATE;
 }
+
+#test "providers settings: loaded Antigravity models surface individually in composer picker with per-model X-High and Providers shortcut" #steps 60000000 {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+
+  // 1. Before Antigravity auth: zero Antigravity models; model menu has Inkling + Connect Antigravity...
+  #assert cp_models(s) == 1 && !cp_model_agy_test(s);
+  coder_page_toggle_models(s);
+  #assert cp_ps_test_frame(s, 1200, 800);
+  prov_row := surface_find(s[0].surface[..], "coder.model.providers");
+  #assert prov_row >= 0 && surface_say(s[0].surface[..], prov_row) == "Connect Antigravity…";
+  // Pressing Connect Antigravity... opens Settings -> Providers directly.
+  #assert cp_press(s, prov_row) && !s[0].model_menu && s[0].set_open && coder_page_settings_page(s) == CP_PG_PROVIDERS;
+
+  // Entering OAuth WAITING state auto-focuses the code paste input box.
+  coder_page_ps_set_detail_auth(s, CP_PS_AS_WAITING, "Finish sign-in", "", "Cancel", false, "https://accounts.google.com/o/oauth2/auth?state=s1");
+  #assert s[0].ps[0].ed_field == CP_PS_ED_OAUTH_CODE && cp_ed_which(s) == CP_ED_PROV;
+  cp_settings_show(s, false, CP_PG_PROVIDERS);
+
+  // 2. After Antigravity auth: real models load individually with per-model effort capabilities.
+  coder_page_agy_models_clear(s);
+  #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_MEDIUM, false) == 0;
+  #assert coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, true) == 1;
+  coder_page_set_agy(s, true);
+  #assert cp_has_model_picker(s) && cp_models(s) == 3;
+  #assert cp_model_label(s, 0) == "Gemini 4 Neon" && cp_model_id(s, 0) == "agy:gemini-4-neon";
+  #assert cp_model_label(s, 1) == "Gemini 4 Carbon" && cp_model_id(s, 1) == "agy:gemini-4-carbon";
+  #assert cp_model_label(s, 2) == "Inkling 2 Mini";
+
+  // Neon supports 4 thinking levels (including X-High); Carbon supports 3.
+  #assert cp_effort_count(s, 0) == 4 && cp_effort_count(s, 1) == 3;
+  #assert coder_page_pick_model(s, "agy:gemini-4-neon") && coder_page_model_agy(s);
+  ib: [64] u8;
+  #assert cast(string) ib[0..<coder_page_model_inst_id(s, ib[..])] == "antigravity";
+  s[0].effort = CP_EFFORT_XHIGH;
+  #assert cp_effort_label(s, cp_model_index(s)) == "X-High";
+  // Task line sends agy:gemini-4-neon + xhigh.
+  #assert coder_page_set_text(s, "hello neon") && coder_page_submit(s);
+  tb: [8192] u8; tn := coder_page_task(s, "s-agy", "/w", tb[..]);
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; back: [1] McTask;
+  #assert tn > 0 && mww_task_read(ar[..], cast(string) tb[0..<tn - 1], back[..]);
+  #assert back[0].model == "agy:gemini-4-neon" && back[0].effort == "xhigh" && !back[0].local;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+
+  // Switching to Carbon clamps X-High down to High and reports instance "antigravity-work".
+  #assert coder_page_pick_model(s, "agy:gemini-4-carbon");
+  #assert cp_effort_label(s, cp_model_index(s)) == "High";
+  #assert cast(string) ib[0..<coder_page_model_inst_id(s, ib[..])] == "antigravity-work";
+
+  // Refreshing the model list preserves the active selection ("agy:gemini-4-carbon").
+  coder_page_agy_models_clear(s);
+  _ = coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_MEDIUM, false);
+  _ = coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, true);
+  coder_page_set_agy(s, true);
+  #assert cp_model_id(s, cp_model_index(s)) == "agy:gemini-4-carbon";
+
+  // Model menu footer updates to "Manage Providers…".
+  coder_page_toggle_models(s);
+  #assert cp_ps_test_frame(s, 1200, 800);
+  prov_row2 := surface_find(s[0].surface[..], "coder.model.providers");
+  #assert prov_row2 >= 0 && surface_say(s[0].surface[..], prov_row2) == "Manage Providers…";
+}
+
+cp_model_agy_test :: (s: [] CoderPage) -> bool { return coder_page_model_agy(s); }

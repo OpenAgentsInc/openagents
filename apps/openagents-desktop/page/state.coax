@@ -167,6 +167,19 @@ CP_EFFORT_CYCLE :: 74;      // the composer's effort chip beside the model: low,
 CP_PERMIT_OPT :: 75;        // an allow/choice button on the interactive permission/question card (permit.coax; #13831)
 CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission card (permit.coax; #13831)
 CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Models downloader/manager (#13826)
+CP_MODEL_PROVIDERS :: 396;  // composer model picker footer row: open Settings -> Providers
+CP_AGY_MODELS_MAX :: 16;    // max loaded Antigravity models surfaced individually in the composer picker
+CP_AGY_PREFIX :: "agy:";    // canonical saved model id prefix for Antigravity models (avoids Microcoder collision)
+CP_EFF_BIT_LOW :: 1; CP_EFF_BIT_MED :: 2; CP_EFF_BIT_HIGH :: 4; CP_EFF_BIT_XHIGH :: 8;
+CpAgyModel :: struct {
+  inst_id: [64] u8; inst_id_n: int;
+  inst_name: [64] u8; inst_name_n: int;
+  slug: [96] u8; slug_n: int;
+  name: [96] u8; name_n: int;
+  efforts_mask: int;
+  default_effort: int;   // CP_EFFORT_LOW..CP_EFFORT_XHIGH (0: medium)
+  is_default: bool;
+}
 CP_LOCAL_DL :: 400;         // first-run onboarding: Download / Retry Inkling 2 Mini
 CP_LOCAL_CANCEL :: 401;     // first-run onboarding: Cancel download
 CP_TURN_INFO :: 402;        // reply hover lane info icon button: toggles model/harness metadata visibility
@@ -440,6 +453,9 @@ CoderPage :: struct {
   set_agy_auth: [96] u8; set_agy_auth_n: int;
   agy_meta: [128] u8;         // cp_model_meta's Antigravity line: "Antigravity CLI · " and the model
   agy_desc: [160] u8;         // cp_model_desc's Antigravity line: "Antigravity CLI · " the model and the review mode
+  agy_id_buf: [128] u8;       // "agy:<slug>" id for loaded Antigravity models
+  agy_prev_id: [128] u8; agy_prev_id_n: int;   // active model id captured across agy_models_clear -> set_agy
+  agy_models: [CP_AGY_MODELS_MAX] CpAgyModel; agy_models_n: int;
   agy_seen: [64] u8; agy_seen_n: int;             // the model agy runs a new session on with these settings (agyworker --probe): its id
   agy_seen_name: [64] u8; agy_seen_name_n: int;   // and agy's name for it ("Gemini 4 Carbon (Low)")
   set_agy_mode: int;          // 0 Auto, 1 Default, 2 Plan
@@ -532,10 +548,10 @@ CpCheckStore :: struct {
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
   return s.count > 0 && dc_flag_on(s[0].flags, flag);
 }
-// True when any extra non-Inkling model flag is on or Antigravity is enabled in core Providers.
-// Off in the Inkling-only first release until Antigravity is installed & enabled.
+// True when any extra non-Inkling model flag is on or Antigravity has loaded models in core Providers.
+// Off in the Inkling-only first release until Antigravity is authenticated and models are loaded.
 cp_has_model_picker :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy);
+  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0);
 }
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {

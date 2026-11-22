@@ -151,7 +151,7 @@ extension CoderWindow {
         }
         cd_skills(back, coderSkillsNote())
         coderApplyClaude(back)
-        cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
+        syncAntigravityModels(on: back)
         coderApplyOpenRouter(back)
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
             _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
@@ -264,7 +264,7 @@ extension CoderWindow {
         }
         cd_skills(back, coderSkillsNote())
         coderApplyClaude(back)
-        cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
+        syncAntigravityModels(on: back)
         coderApplyOpenRouter(back)
         guard cd_load(back, saved) != 0 else {
             cd_close(back)

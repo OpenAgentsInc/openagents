@@ -30,6 +30,7 @@ AGY_INSTALL :: "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 AGY_MISSING :: "The Antigravity CLI (agy) was not found. Install it with: curl -fsSL https://antigravity.google/cli/install.sh | bash";
 AGY_OLD_VERSION :: "The Antigravity CLI (agy) is too old (requires >= 1.5.0). Upgrade it with: curl -fsSL https://antigravity.google/cli/install.sh | bash";
 AGY_SIGNED_OUT :: "Antigravity is not signed in. Run agy once to sign in, or name Google Cloud credentials in ~/.openagents/coder/antigravity.env (AGY_ADC_AUTH=1, GOOGLE_APPLICATION_CREDENTIALS=PATH, GOOGLE_CLOUD_PROJECT=ID).";
+AGY_SIGNIN_REQUIRED :: "Sign in to Antigravity in Settings → Providers before you continue.";
 AGY_ENV_FILE :: "/.openagents/coder/antigravity.env";
 AGY_ENV_NAMES :: [4] string.["AGY_ADC_AUTH", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"];
 AGY_MODE :: "default";
@@ -193,8 +194,9 @@ agy_prepare_launch_auth :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: 
       l[0].unset_n += 1;
     }
   }
-  // SSH_CONNECTION forces pasted-code OAuth for oauth-personal; strip it for all other auth methods.
-  if m == AGY_AUTH_OAUTH_PERSONAL {
+  // SSH_CONNECTION suppresses surprise macOS `open` browser spawns on browser-based auth methods
+  // during background probes and chat sessions; strip it for non-browser credential methods.
+  if agy_auth_uses_browser(m) {
     if !agy_env_has(e, "SSH_CONNECTION") {
       agy_env_push(e, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
     }
@@ -1810,7 +1812,9 @@ agy_parse_login_response :: (raw_input: string, expected_state: string, out: [] 
 // Broad sign-in required error detection (exact port of T3 isAntigravitySignInRequiredError).
 agy_is_signin_required :: (message: string) -> bool {
   if agy_signed_out(message) { return true; }
-  marks := [11] string.[
+  marks := [17] string.[
+    "No browser is available here", "remote (SSH)", "agy acp --login", "-32000",
+    "Sign in to Antigravity", "invalid_rapt",
     "not authenticated", "Not authenticated", "UNAUTHENTICATED",
     "please log in", "Please log in", "sign in", "Sign in",
     "invalid_grant", "token expired", "could not find default credentials",
@@ -1818,6 +1822,22 @@ agy_is_signin_required :: (message: string) -> bool {
   ];
   for m: marks { if agy_has(message, m) { return true; } }
   return false;
+}
+
+// Translate raw agy ACP auth/SSH errors into clean T3-parity messages (never leaking SSH boilerplate).
+agy_format_auth_error :: (raw: string, method: string, for_probe: bool) -> string {
+  if !agy_is_signin_required(raw) { return raw; }
+  if !for_probe { return AGY_SIGNIN_REQUIRED; }
+  m := agy_auth_normalize(method);
+  if m == AGY_AUTH_AGENT_PLATFORM && (agy_has(raw, "invalid_rapt") || agy_has(raw, "invalid_grant") || agy_has(raw, "could not find default credentials") || agy_has(raw, "Reauthentication is needed")) {
+    return "Google Cloud ADC session expired — run `gcloud auth application-default login` or enter a Vertex AI express API key.";
+  }
+  if agy_has(raw, "No browser") || agy_has(raw, "remote (SSH)") || agy_has(raw, "agy acp --login") || agy_has(raw, "Authentication required") || agy_has(raw, "-32000") {
+    if m == AGY_AUTH_OAUTH_BUSINESS { return "Antigravity is installed. Sign in with Gemini Enterprise to load models."; }
+    if m == AGY_AUTH_OAUTH_PERSONAL { return "Antigravity is installed. Sign in with Google to load models."; }
+    return "Antigravity could not authenticate with the configured credentials.";
+  }
+  return raw;
 }
 
 // Format Antigravity version for UI display (exact port of T3 getProviderVersionLabel).
@@ -1960,4 +1980,9 @@ agy_parse_go_duration_ms :: (dur: string) -> int {
   #assert agy_verify_init_result("{\"agentInfo\":{\"name\":\"Other\",\"version\":\"1.5.12\"}}", ar[..]).count > 0;
   #assert agy_parse_go_duration_ms("1h2m3.5s") == 3723500 && agy_parse_go_duration_ms("500ms") == 500;
   #assert agy_is_signin_required("UNAUTHENTICATED: please log in") && agy_is_signin_required("could not find default credentials");
+  ssh_err := "No browser is available here (this is a remote (SSH) session, so the browser's sign-in redirect can't reach this machine). Run 'agy acp --login'";
+  #assert agy_is_signin_required(ssh_err);
+  #assert agy_format_auth_error(ssh_err, "oauth-personal", false) == AGY_SIGNIN_REQUIRED;
+  #assert agy_format_auth_error(ssh_err, "oauth-personal", true) == "Antigravity is installed. Sign in with Google to load models.";
+  #assert agy_format_auth_error("invalid_rapt: reauth needed", "agent-platform", true) == "Google Cloud ADC session expired — run `gcloud auth application-default login` or enter a Vertex AI express API key.";
 }
