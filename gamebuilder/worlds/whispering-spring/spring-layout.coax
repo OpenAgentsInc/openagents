@@ -1,0 +1,12 @@
+// The Whispering Spring's frame block: what follows the Metaverse Engine's stylized frame
+// (metaverse-engine/render/shade/stylized-layout.coax, STY_UNIFORM_FLOATS floats), shared by
+// world-spring.coax and gpu/whispering-spring.coax.
+//   WS_U_EXTRA: [0] dpr, [1] shown (0..1), [2] spare, [3] spare
+#load "../../../metaverse-engine/render/shade/stylized-layout.coax";
+WS_U_EXTRA :: STY_UNIFORM_FLOATS;
+WS_UNIFORMS :: STY_UNIFORM_FLOATS + 4;
+// A scene draw whose first instance is this or more is the live part of the grove (the quail,
+// the gold, the ripples, the stones and the ribbon): its vertices come from the `skin` and
+// `tris` stores, not the static `mesh`.
+WS_SKIN_AT :: 4096;
+WS_SKIN_FLOATS :: 9;   // x y z, nx ny nz, r g b (display colour; over 1 blooms)

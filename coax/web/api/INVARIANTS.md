@@ -51,9 +51,14 @@ every answer is as it was.
 A request with a listed site's `Origin` reaches `GET /api/auth/account`,
 `POST /api/auth/email/start`, `POST /api/auth/email/verify`,
 `POST /api/auth/logout`, `POST /api/auth/cli/code` (a command line's code,
-made by the logged-in browser: next section), `POST /api/chat/complete/v1` and a
+made by the logged-in browser: next section), `POST /api/chat/complete/v1`, a
 GameBuilder build agent's three routes (`POST /api/gamebuilder/agents/v1`,
-`GET /api/gamebuilder/agent/v1`, `GET /api/gamebuilder/agent/events/v1`), and is
+`GET /api/gamebuilder/agent/v1`, `GET /api/gamebuilder/agent/events/v1`), and
+The Whispering Spring's five shared-grove guest/room routes
+(`POST /api/playtest/player`, `POST /api/playtest/player/name`,
+`GET`/`POST /api/playtest/chat/whispering-spring`,
+`GET`/`POST /api/playtest/chat/whispering-spring-ribbons`,
+`POST /api/playtest/presence/whispering-spring`), and is
 `403 Not from this site.` on every other route of the API, at the gate, before
 the route runs. The account chat keeps its own rules there as on this site
 (`account-chat.c`: a person's session or 401, `act_read`'s shape and sizes or

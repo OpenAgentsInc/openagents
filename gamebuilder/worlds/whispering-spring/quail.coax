@@ -1,0 +1,401 @@
+// The Whispering Spring's quail: an obsidian-black bird with a compact faceted body and a curved
+// topknot that bobs with its steps. A small state machine (forage, scurry, scan, peck, call,
+// attend-to-clue, alert, resume) whose every target lies inside its range (grove.coax WS_RANGE),
+// so it never leaves the shot. Its attention is the clue system: it scratches by the creek
+// stones, pauses under the ribbon branch and lifts its head at the pool, for whichever discovery
+// is still hidden. Drawn each frame as flat-shaded triangles into the world's skin store.
+//   coax/bin/coax test gamebuilder/worlds/whispering-spring/world-spring.coax --library
+#load "grove.coax";
+#load "spring-tune.coax";
+#load "spring-layout.coax";
+
+WS_Q_FORAGE :: 0; WS_Q_SCURRY :: 1; WS_Q_SCAN :: 2; WS_Q_PECK :: 3;
+WS_Q_CALL :: 4; WS_Q_ATTEND :: 5; WS_Q_ALERT :: 6; WS_Q_RESUME :: 7;
+WS_Q_SPEAK :: 8;   // still, turned to the visitor, saying its greeting or a prayer
+WS_CLUE_STONES :: 0; WS_CLUE_RIBBON :: 1; WS_CLUE_POOL :: 2;
+WS_Q_MARGIN :: 0.12;
+
+Quail :: struct {
+  x: f32 = 0.7; z: f32 = 1.1;
+  face: f32 = 3.4;              // heading: forward is (cos face, 0, sin face)
+  state: int; t: f32; dur: f32 = 1.5;
+  tx: f32 = 0.7; tz: f32 = 1.1;
+  speed: f32;
+  arrived: bool;
+  head_up: f32; head_dip: f32; head_turn: f32; scratch: f32;
+  phase: f32;                    // the step cycle
+  k: int;                        // random draws so far
+  since_clue: f32;
+  clue: int = -1;                // the clue it is giving (WS_CLUE_*), -1 none
+  // what happened this step, for the world to tell the page
+  called: bool; clued: int = -1;
+}
+
+ws_q_rand :: (q: [] Quail) -> f32 { q[0].k += 1; return ws_rand(907, q[0].k); }
+
+ws_q_clamp :: (q: [] Quail) {
+  m: f32 = WS_Q_MARGIN;
+  q[0].x = clamp(q[0].x, f32(WS_RANGE[0]) + m, f32(WS_RANGE[2]) - m);
+  q[0].z = clamp(q[0].z, f32(WS_RANGE[1]) + m, f32(WS_RANGE[3]) - m);
+}
+
+ws_q_target :: (q: [] Quail, reach: f32) {
+  m: f32 = WS_Q_MARGIN;
+  a := ws_q_rand(q) * f32(WS_TAU); d := reach * (0.35 + 0.65 * ws_q_rand(q));
+  q[0].tx = clamp(q[0].x + cos(a) * d, f32(WS_RANGE[0]) + m, f32(WS_RANGE[2]) - m);
+  q[0].tz = clamp(q[0].z + sin(a) * d, f32(WS_RANGE[1]) + m, f32(WS_RANGE[3]) - m);
+  q[0].arrived = false;
+}
+
+ws_q_enter :: (q: [] Quail, state: int, base: f32, t: WsTune) {
+  q[0].state = state; q[0].t = 0; q[0].dur = base * (1 + t.vary * ws_q_rand(q));
+  q[0].arrived = false;
+}
+
+// The next thing to do, once one is done. A hidden discovery's clue comes round often.
+ws_q_next :: (q: [] Quail, t: WsTune, clue: int, calm: bool) {
+  q[0].clue = -1;
+  if clue >= 0 && q[0].since_clue >= t.attend_every_s {
+    ws_q_enter(q, WS_Q_ATTEND, t.attend_s, t);
+    q[0].clue = clue;
+    m: f32 = WS_Q_MARGIN;
+    q[0].tx = clamp(f32(WS_CLUE_AT[clue * 2]), f32(WS_RANGE[0]) + m, f32(WS_RANGE[2]) - m);
+    q[0].tz = clamp(f32(WS_CLUE_AT[clue * 2 + 1]), f32(WS_RANGE[1]) + m, f32(WS_RANGE[3]) - m);
+    q[0].since_clue = 0;
+    return;
+  }
+  r := ws_q_rand(q);
+  if r < 0.36 { ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t); ws_q_target(q, 0.9); }
+  else if r < 0.41 {
+    if calm { ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t); ws_q_target(q, 1.2); }
+    else { ws_q_enter(q, WS_Q_SCURRY, t.scurry_s, t); ws_q_target(q, 2.2); }
+  }
+  else if r < 0.66 { ws_q_enter(q, WS_Q_SCAN, t.scan_s, t); }
+  else if r < 0.81 { ws_q_enter(q, WS_Q_PECK, t.peck_s, t); }
+  else if r < 0.91 { ws_q_enter(q, WS_Q_CALL, t.call_s, t); }
+  else { ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t); ws_q_target(q, 0.6); }
+}
+
+// It speaks: turns to the visitor and holds still, nodding, for `seconds`.
+ws_quail_speak :: (q: [] Quail, seconds: f32) {
+  q[0].state = WS_Q_SPEAK; q[0].t = 0; q[0].dur = seconds; q[0].clue = -1; q[0].speed = 0; q[0].arrived = false;
+}
+
+// Turn toward a heading, and walk on along the way it faces when it nearly faces it.
+ws_q_walk :: (q: [] Quail, speed: f32, step: f32) -> bool {
+  dx := q[0].tx - q[0].x; dz := q[0].tz - q[0].z;
+  d := sqrt(dx * dx + dz * dz);
+  if d < 0.05 { q[0].speed = 0; return true; }
+  want := atan2(dz, dx);
+  diff := wrap_angle(want - q[0].face);
+  most := 6.0 * step;
+  q[0].face = wrap_angle(q[0].face + clamp(diff, -most, most));
+  go := ifx abs(diff) < 0.7 then speed else speed * 0.25;
+  move := go * step; if move > d { move = d; }
+  q[0].x += cos(q[0].face) * move; q[0].z += sin(q[0].face) * move;
+  q[0].speed = go;
+  return false;
+}
+
+ws_pos :: (v: f32) -> f32 { return ifx v > 0 then v else 0.0f32; }
+ws_q_ease :: (v: f32, want: f32, rate: f32, step: f32) -> f32 { return v + (want - v) * clamp(step * rate, 0, 1); }
+
+// One step of the quail's day. `clue` is the hidden discovery's clue (-1: all found); `calm`
+// is reduced motion (no scurrying); `alert` goes still now (the water's first ripple).
+ws_quail_step :: (q: [] Quail, t: WsTune, step: f32, clue: int, calm: bool, alert: bool) {
+  q[0].called = false; q[0].clued = -1;
+  if !(step > 0) { return; }
+  if alert && q[0].state != WS_Q_ALERT { ws_q_enter(q, WS_Q_ALERT, t.alert_s, t); q[0].clue = -1; }
+  q[0].t += step; q[0].since_clue += step;
+  up: f32 = 0; dip: f32 = 0; turn: f32 = 0; scratch: f32 = 0;
+  s := q[0].state;
+  if s == WS_Q_FORAGE {
+    if !q[0].arrived && ws_q_walk(q, t.walk_speed, step) { q[0].arrived = true; }
+    if q[0].arrived { q[0].speed = 0; dip = 0.6 * ws_pos(sin(q[0].t * 6)); if q[0].t > q[0].dur * 0.6 { ws_q_target(q, 0.6); } }
+    else { dip = 0.15 * ws_pos(sin(q[0].t * 5)); }
+  } else if s == WS_Q_SCURRY {
+    if ws_q_walk(q, t.scurry_speed, step) { q[0].t = q[0].dur; }
+    up = 0.3;
+  } else if s == WS_Q_SCAN {
+    q[0].speed = 0; up = 1; turn = 0.65 * sin(q[0].t * 1.6);
+  } else if s == WS_Q_PECK {
+    q[0].speed = 0; dip = abs(sin(q[0].t * 8.5));
+  } else if s == WS_Q_CALL {
+    q[0].speed = 0; up = 1;
+    if q[0].t - step < 0.25 && q[0].t >= 0.25 { q[0].called = true; }
+  } else if s == WS_Q_ATTEND {
+    if !q[0].arrived {
+      if ws_q_walk(q, t.walk_speed * 1.5, step) { q[0].arrived = true; q[0].t = 0; q[0].clued = q[0].clue; }
+      else if q[0].t > 12 { q[0].arrived = true; q[0].t = 0; q[0].clued = q[0].clue; }   // never stuck walking
+    } else {
+      q[0].speed = 0;
+      c := q[0].clue;
+      if c == WS_CLUE_STONES {
+        // scratch at the ground, facing the stones
+        q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(atan2(f32(WS_PILE_Z) - q[0].z, f32(WS_PILE_X) - q[0].x) - q[0].face), -0.1, 0.1));
+        dip = 0.55 + 0.45 * abs(sin(q[0].t * 7)); scratch = sin(q[0].t * 11);
+      } else if c == WS_CLUE_RIBBON {
+        up = 1; turn = 0.2 * sin(q[0].t * 0.9);   // still, beneath the branch, looking up
+      } else {
+        q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(atan2(f32(WS_POOL_Z) - q[0].z, f32(WS_POOL_X) - q[0].x) - q[0].face), -0.1, 0.1));
+        up = 1;   // head lifted toward the pool
+      }
+      if q[0].t >= q[0].dur { ws_q_enter(q, WS_Q_RESUME, t.resume_s, t); }
+    }
+  } else if s == WS_Q_ALERT {
+    q[0].speed = 0; up = 1;
+  } else if s == WS_Q_SPEAK {
+    // three-quarters toward the camera (which stands at +z), head high, a small nod as it talks
+    q[0].speed = 0; up = 1;
+    want: f32 = ifx q[0].x < 0 then 1.0f32 else 2.1f32;
+    q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(want - q[0].face), -4 * step, 4 * step));
+    dip = 0.1 * abs(sin(q[0].t * 9)) * (ifx q[0].t < q[0].dur - 0.4 then 1.0f32 else 0.0f32);
+  } else {
+    q[0].speed = 0; turn = 0.15 * sin(q[0].t * 20) * (1 - q[0].t / q[0].dur);   // a little shake
+  }
+  ws_q_clamp(q);
+  if q[0].state == s && q[0].t >= q[0].dur {
+    if s == WS_Q_ALERT || s == WS_Q_SPEAK { ws_q_enter(q, WS_Q_RESUME, t.resume_s, t); }
+    else if s != WS_Q_ATTEND { ws_q_next(q, t, clue, calm); }
+  }
+  frozen := q[0].state == WS_Q_ALERT;
+  rate: f32 = ifx frozen then 30.0f32 else 10.0f32;
+  q[0].head_up = ws_q_ease(q[0].head_up, up, rate, step);
+  q[0].head_dip = ws_q_ease(q[0].head_dip, dip, 16, step);
+  q[0].head_turn = ws_q_ease(q[0].head_turn, turn, 8, step);
+  q[0].scratch = scratch;
+  if q[0].speed > 0 { q[0].phase += step * (6 + q[0].speed * 18); }
+}
+
+ws_q_in_range :: (q: Quail) -> bool {
+  return q.x >= f32(WS_RANGE[0]) && q.x <= f32(WS_RANGE[2]) && q.z >= f32(WS_RANGE[1]) && q.z <= f32(WS_RANGE[3]);
+}
+
+// ---- drawing into the skin store (WS_SKIN_FLOATS a vertex: place, normal, display colour)
+WsSkin :: struct { out: [] f32; n: int; full: bool; }
+
+ws_skin_put :: (s: [] WsSkin, a: WsV, n: WsV, c: [3] f32) {
+  o := s[0].n * WS_SKIN_FLOATS;
+  s[0].out[o] = a.x; s[0].out[o + 1] = a.y; s[0].out[o + 2] = a.z;
+  s[0].out[o + 3] = n.x; s[0].out[o + 4] = n.y; s[0].out[o + 5] = n.z;
+  s[0].out[o + 6] = c[0]; s[0].out[o + 7] = c[1]; s[0].out[o + 8] = c[2];
+  s[0].n += 1;
+}
+
+ws_skin_tri :: (s: [] WsSkin, a: WsV, b: WsV, c: WsV, col: [3] f32, inside: WsV) {
+  if (s[0].n + 3) * WS_SKIN_FLOATS > s[0].out.count { s[0].full = true; return; }
+  n := ws_face(a, b, c);
+  if ws_dot(n, ws_sub(ws_mid3(a, b, c), inside)) < 0 {
+    m := ws_scale(n, -1);
+    ws_skin_put(s, a, m, col); ws_skin_put(s, c, m, col); ws_skin_put(s, b, m, col);
+    return;
+  }
+  ws_skin_put(s, a, n, col); ws_skin_put(s, b, n, col); ws_skin_put(s, c, n, col);
+}
+
+ws_skin_blob :: (s: [] WsSkin, b: WsBlob, col: [3] f32) {
+  in := ws_v(b.x, b.y, b.z);
+  for j: 0..<b.rings {
+    for i: 0..<b.seg {
+      a := ws_blob_at(b, i, j); bb := ws_blob_at(b, i + 1, j);
+      c := ws_blob_at(b, i + 1, j + 1); d := ws_blob_at(b, i, j + 1);
+      if j == 0 { ws_skin_tri(s, a, c, d, col, in); }
+      else if j == b.rings - 1 { ws_skin_tri(s, a, bb, c, col, in); }
+      else { ws_skin_tri(s, a, bb, c, col, in); ws_skin_tri(s, a, c, d, col, in); }
+    }
+  }
+}
+
+// A flat strip from a to b, `wa` wide at a and `wb` at b, across `side`; seen from both sides.
+ws_skin_strip :: (s: [] WsSkin, a: WsV, b: WsV, side: WsV, wa: f32, wb: f32, col: [3] f32, toward: WsV) {
+  a0 := ws_add(a, ws_scale(side, wa)); a1 := ws_sub(a, ws_scale(side, wa));
+  b0 := ws_add(b, ws_scale(side, wb)); b1 := ws_sub(b, ws_scale(side, wb));
+  behind := ws_sub(ws_scale(ws_add(a, b), 0.5), ws_sub(toward, ws_scale(ws_add(a, b), 0.5)));
+  ws_skin_tri(s, a0, b0, b1, col, behind); ws_skin_tri(s, a0, b1, a1, col, behind);
+}
+
+WS_OBSIDIAN :: [3] f32.[0.12, 0.095, 0.095];      // the model sheet's warm brown-black
+WS_OBSIDIAN_SHEEN :: [3] f32.[0.17, 0.135, 0.13];
+WS_WING :: [3] f32.[0.15, 0.115, 0.11];
+WS_WING_EDGE :: [3] f32.[0.1, 0.08, 0.08];
+WS_MARK :: [3] f32.[0.93, 0.88, 0.78];             // the cream brow and cheek crescent
+WS_HORN :: [3] f32.[0.2, 0.17, 0.15];
+WS_LEG :: [3] f32.[0.16, 0.12, 0.11];
+WS_EYE :: [3] f32.[0.05, 0.035, 0.03];
+WS_EYE_RING :: [3] f32.[0.62, 0.42, 0.24];
+
+// The quail's own space: +x forward, +y up, +z to its right; scaled and turned to its heading.
+ws_q_world :: (q: Quail, scale: f32, gy: f32, lx: f32, ly: f32, lz: f32) -> WsV {
+  c := cos(q.face); s := sin(q.face);
+  x := lx * scale; y := ly * scale; z := lz * scale;
+  return ws_v(q.x + x * c - z * s, gy + y, q.z + x * s + z * c);
+}
+
+// The head's own space, nodded (dip, lift) and turned about the neck, into the quail's space.
+ws_q_head :: (q: Quail, lx: f32, ly: f32, lz: f32) -> [3] f32 {
+  nx: f32 = 0.085; ny: f32 = 0.215;     // the neck
+  nod := -q.head_dip * 1.05 + q.head_up * 0.15;
+  x := lx - nx; y := ly - ny;
+  cn := cos(nod); sn := sin(nod);
+  x1 := x * cn - y * sn; y1 := x * sn + y * cn;
+  ct := cos(q.head_turn); st := sin(q.head_turn);
+  x2 := x1 * ct - lz * st; z2 := x1 * st + lz * ct;
+  lift := q.head_up * 0.02 - q.head_dip * 0.045;
+  return [3] f32.[nx + x2 + q.head_dip * 0.04, ny + y1 + lift, z2];
+}
+
+ws_q_hp :: (q: Quail, k: f32, gy: f32, lift: f32, lx: f32, ly: f32, lz: f32) -> WsV {
+  h := ws_q_head(q, lx, ly, lz);
+  return ws_q_world(q, k, gy, h[0], h[1] + lift, h[2]);
+}
+
+// The quail from the Obsidian Quail model sheet: a plump teardrop body in warm brown-black, folded
+// wing plates down each side, a short layered tail, a round head with a cream brow curving behind
+// the eye and a cream crescent down the cheek, a ringed eye, and a thick plume curling forward from
+// the crown into a teardrop. Long thin legs with three toes.
+ws_quail_draw :: (s: [] WsSkin, q: Quail, t: WsTune, eye: WsV) {
+  k: f32 = t.quail_scale;
+  gy := ws_ground_y(q.x, q.z);
+  walk := ifx q.speed > 0 then 1.0f32 else 0.0f32;
+  bounce := 0.01 * abs(sin(q.phase)) * walk;
+  lean := 0.18 - q.head_dip * 0.25 + q.head_up * 0.08;   // nose-up when alert, level when pecking
+  // body: a plump faceted teardrop, chest forward
+  b: WsBlob;
+  c := ws_q_world(q, k, gy, 0.005, 0.14 + bounce, 0);
+  b.x = c.x; b.y = c.y; b.z = c.z; b.rx = 0.135 * k; b.ry = 0.095 * k; b.rz = 0.098 * k;
+  b.yaw = -q.face; b.roll = lean; b.seg = 10; b.rings = 6; b.seed = 77; b.jag = 0.025;
+  ws_skin_blob(s, b, WS_OBSIDIAN);
+  // the chest, fuller and a shade lighter where the light catches it
+  br := ws_q_world(q, k, gy, 0.07, 0.15 + bounce, 0);
+  b.x = br.x; b.y = br.y; b.z = br.z; b.rx = 0.07 * k; b.ry = 0.08 * k; b.rz = 0.082 * k; b.seed = 79; b.seg = 9; b.rings = 5; b.jag = 0.02; b.roll = lean + 0.3;
+  ws_skin_blob(s, b, WS_OBSIDIAN_SHEEN);
+  // folded wings: a broad plate down each side, its tip layered toward the tail
+  for wi: 0..<2 {
+    side: f32 = ifx wi == 0 then -1.0f32 else 1.0f32;
+    wc := ws_q_world(q, k, gy, -0.025, 0.158 + bounce, side * 0.078);
+    b.x = wc.x; b.y = wc.y; b.z = wc.z; b.rx = 0.105 * k; b.ry = 0.06 * k; b.rz = 0.022 * k;
+    b.yaw = -q.face; b.roll = lean - 0.12; b.pitch = side * 0.08; b.seg = 8; b.rings = 4; b.seed = 90 + wi; b.jag = 0.02;
+    ws_skin_blob(s, b, WS_WING);
+    b.pitch = 0;
+    for f: 0..<3 {
+      fy: f32 = 0.15 - 0.022 * cast(f32) f;
+      f0 := ws_q_world(q, k, gy, -0.07, fy + bounce, side * (0.095 - 0.004 * cast(f32) f));
+      f1 := ws_q_world(q, k, gy, -0.165 + 0.012 * cast(f32) f, fy - 0.02 + bounce, side * (0.06 - 0.006 * cast(f32) f));
+      ws_skin_strip(s, f0, f1, ws_v(0, 1, 0), 0.012 * k, 0.004 * k, WS_WING_EDGE, eye);
+    }
+  }
+  // the neck up into the head
+  nk := ws_q_world(q, k, gy, 0.09, 0.205 + bounce, 0);
+  b.x = nk.x; b.y = nk.y; b.z = nk.z; b.rx = 0.045 * k; b.ry = 0.05 * k; b.rz = 0.043 * k; b.seed = 85; b.roll = 0.0; b.seg = 6; b.rings = 3;
+  ws_skin_blob(s, b, WS_OBSIDIAN);
+  // the tail: three short layered plates, angled down behind
+  for tf: 0..<3 {
+    tz: f32 = (cast(f32) tf - 1) * 0.022;
+    t0 := ws_q_world(q, k, gy, -0.11, 0.135 + bounce, tz - 0.02); t1 := ws_q_world(q, k, gy, -0.11, 0.135 + bounce, tz + 0.02);
+    tt := ws_q_world(q, k, gy, -0.205 + 0.01 * abs(cast(f32) tf - 1), 0.1 + bounce - 0.008 * cast(f32) tf, tz * 1.6);
+    ws_skin_tri(s, t0, t1, tt, ifx tf == 1 then WS_OBSIDIAN else WS_WING_EDGE, ws_q_world(q, k, gy, -0.1, 0.4, 0));
+  }
+  // head: round
+  hc := ws_q_hp(q, k, gy, bounce, 0.125, 0.26, 0);
+  b.x = hc.x; b.y = hc.y; b.z = hc.z; b.rx = 0.052 * k; b.ry = 0.05 * k; b.rz = 0.046 * k;
+  b.yaw = -q.face - q.head_turn; b.roll = -q.head_dip * 1.0; b.seed = 81; b.seg = 9; b.rings = 5; b.jag = 0.02;
+  ws_skin_blob(s, b, WS_OBSIDIAN);
+  // beak: short, hooked a little
+  pt := ws_q_hp(q, k, gy, bounce, 0.193, 0.247, 0); pu := ws_q_hp(q, k, gy, bounce, 0.167, 0.266, 0);
+  pl := ws_q_hp(q, k, gy, bounce, 0.168, 0.243, -0.014); pr := ws_q_hp(q, k, gy, bounce, 0.168, 0.243, 0.014);
+  ws_skin_tri(s, pt, pu, pl, WS_HORN, hc); ws_skin_tri(s, pt, pr, pu, WS_HORN, hc); ws_skin_tri(s, pt, pl, pr, WS_HORN, hc);
+  // the face's cream marks and the ringed eye, on both sides
+  up := ws_v(0, 1, 0);
+  for side_i: 0..<2 {
+    sz: f32 = ifx side_i == 0 then -0.05f32 else 0.05f32;
+    // the brow: from over the beak, over the eye, curving down behind it
+    br0 := ws_q_hp(q, k, gy, bounce, 0.165, 0.284, sz * 0.6);
+    br1 := ws_q_hp(q, k, gy, bounce, 0.135, 0.293, sz * 0.92);
+    br2 := ws_q_hp(q, k, gy, bounce, 0.1, 0.282, sz * 0.97);
+    br3 := ws_q_hp(q, k, gy, bounce, 0.086, 0.258, sz * 0.92);
+    ws_skin_strip(s, br0, br1, up, 0.004 * k, 0.0055 * k, WS_MARK, eye);
+    ws_skin_strip(s, br1, br2, up, 0.0055 * k, 0.005 * k, WS_MARK, eye);
+    ws_skin_strip(s, br2, br3, ws_v(1, 0, 0), 0.005 * k, 0.003 * k, WS_MARK, eye);
+    // the cheek crescent: from behind the eye down round the jaw toward the throat
+    ck0 := ws_q_hp(q, k, gy, bounce, 0.122, 0.262, sz * 1.0);
+    ck1 := ws_q_hp(q, k, gy, bounce, 0.118, 0.236, sz * 0.98);
+    ck2 := ws_q_hp(q, k, gy, bounce, 0.135, 0.216, sz * 0.86);
+    ws_skin_strip(s, ck0, ck1, ws_v(1, 0, 0), 0.006 * k, 0.006 * k, WS_MARK, eye);
+    ws_skin_strip(s, ck1, ck2, ws_v(1, 0, 0), 0.006 * k, 0.0035 * k, WS_MARK, eye);
+    // the eye: a warm ring and a dark middle
+    e0 := ws_q_hp(q, k, gy, bounce, 0.152, 0.272, sz * 1.02);
+    ws_skin_strip(s, e0, ws_q_hp(q, k, gy, bounce, 0.138, 0.272, sz * 1.04), up, 0.0085 * k, 0.0085 * k, WS_EYE_RING, eye);
+    e1 := ws_q_hp(q, k, gy, bounce, 0.149, 0.272, sz * 1.07);
+    ws_skin_strip(s, e1, ws_q_hp(q, k, gy, bounce, 0.141, 0.272, sz * 1.08), up, 0.005 * k, 0.005 * k, WS_EYE, eye);
+  }
+  // the plume: a thick stalk up from the crown, curling forward into a teardrop
+  bob := 0.22 * sin(q.phase) * walk + 0.05 * sin(q.phase * 0.5 + 1) + q.head_up * 0.05;
+  pts: [6] WsV;
+  for i: 0..<6 {
+    f := cast(f32) i / 5;
+    ang := 1.5 - f * (1.95 + bob);
+    rad := 0.068 * f;
+    pts[i] = ws_q_hp(q, k, gy, bounce, 0.128 + cos(ang) * rad * 0.95, 0.305 + sin(ang) * rad * 1.1, 0);
+  }
+  sc := cos(q.face); ss := sin(q.face);
+  across := ws_v(-ss, 0, sc);
+  widths := [6] f32.[0.007, 0.007, 0.0075, 0.008, 0.009, 0.01];
+  for i: 0..<5 { ws_skin_strip(s, pts[i], pts[i + 1], across, widths[i] * k, widths[i + 1] * k, WS_OBSIDIAN, eye); }
+  // the teardrop at its tip
+  b.x = pts[5].x; b.y = pts[5].y; b.z = pts[5].z; b.rx = 0.024 * k; b.ry = 0.017 * k; b.rz = 0.012 * k;
+  b.yaw = -q.face - q.head_turn; b.roll = -0.6 - bob; b.seg = 6; b.rings = 3; b.seed = 87; b.jag = 0.05;
+  ws_skin_blob(s, b, WS_OBSIDIAN);
+  // legs: long and thin, three toes forward and one back, stepping in turn
+  for l: 0..<2 {
+    sgn: f32 = ifx l == 0 then -1.0f32 else 1.0f32;
+    swing := 0.035 * sin(q.phase + (ifx l == 0 then 0.0f32 else 3.14159f32)) * walk + 0.018 * q.scratch * (ifx l == 0 then 1.0f32 else 0.0f32);
+    hip := ws_q_world(q, k, gy, 0.0, 0.075 + bounce, sgn * 0.032);
+    knee := ws_q_world(q, k, gy, swing * 0.5 - 0.012, 0.04 + bounce * 0.5, sgn * 0.034);
+    foot := ws_q_world(q, k, gy, swing, 0.0, sgn * 0.035);
+    ws_skin_strip(s, hip, knee, ws_v(cos(q.face), 0, sin(q.face)), 0.0065 * k, 0.005 * k, WS_LEG, eye);
+    ws_skin_strip(s, knee, foot, ws_v(cos(q.face), 0, sin(q.face)), 0.005 * k, 0.0035 * k, WS_LEG, eye);
+    for toe_i: 0..<3 {
+      spread: f32 = (cast(f32) toe_i - 1) * 0.012;
+      toe := ws_q_world(q, k, gy, swing + 0.036, 0.0, sgn * 0.035 + spread);
+      ws_skin_strip(s, foot, toe, ws_cross(ws_unit(ws_sub(toe, foot)), up), 0.0035 * k, 0.0015 * k, WS_LEG, ws_add(foot, up));
+    }
+    heel := ws_q_world(q, k, gy, swing - 0.022, 0.0, sgn * 0.035);
+    ws_skin_strip(s, foot, heel, ws_cross(ws_unit(ws_sub(heel, foot)), up), 0.003 * k, 0.0015 * k, WS_LEG, ws_add(foot, up));
+  }
+}
+
+#test "the quail keeps to its range through a long day of every behaviour, clues and alerts" #steps 40000000000 {
+  q: [1] Quail; t: WsTune;
+  seen: [8] int;
+  clues: [3] int;
+  for i: 0..<60000 {
+    clue := (i / 9000) % 4 - 1;           // all found, then each clue in turn
+    alert := (i % 4111) == 0;
+    calm := (i / 20000) == 1;
+    dt: f32 = 0.004 + 0.03 * ws_rand(3, i);
+    ws_quail_step(q[..], t, dt, clue, calm, alert);
+    #assert ws_q_in_range(q[0]);
+    seen[q[0].state] += 1;
+    if q[0].clued >= 0 { clues[q[0].clued] += 1; }
+  }
+  for s: 0..<8 { #assert seen[s] > 0; }
+  for c: 0..<3 { #assert clues[c] > 0; }
+}
+
+#test "the quail's clue spots are inside its range, and going still holds it still" {
+  for c: 0..<3 {
+    #assert WS_CLUE_AT[c * 2] > WS_RANGE[0] && WS_CLUE_AT[c * 2] < WS_RANGE[2] && WS_CLUE_AT[c * 2 + 1] >= WS_RANGE[1] && WS_CLUE_AT[c * 2 + 1] < WS_RANGE[3];
+  }
+  q: [1] Quail; t: WsTune;
+  ws_quail_step(q[..], t, 0.02, -1, false, true);
+  x := q[0].x; z := q[0].z;
+  for i: 0..<100 { ws_quail_step(q[..], t, 0.02, 2, false, false); }
+  #assert q[0].state == WS_Q_ALERT && q[0].x == x && q[0].z == z;
+}
+
+#test "the quail is drawn as closed facets into its store" {
+  out: [6000 * WS_SKIN_FLOATS] f32; s: [1] WsSkin; s[0].out = out[..];
+  q: [1] Quail; t: WsTune;
+  ws_quail_draw(s[..], q[0], t, ws_v(0, 2, 6));
+  #assert !s[0].full && s[0].n > 150 && s[0].n % 3 == 0;
+}

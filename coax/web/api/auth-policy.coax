@@ -24,9 +24,12 @@
 //                    OA_API_SITE_ORIGINS, byte for byte), or another
 //   ap_site_route    the routes a listed site's page reaches at all, on the whole API: GET
 //                    /api/auth/account, the four writes below, POST /api/chat/complete/v1
-//                    (the account chat, whose own rules are account-chat.c's), and a GameBuilder
-//                    build agent: POST /api/gamebuilder/agents/v1 starts one, GET
-//                    /api/gamebuilder/agent/v1 and /api/gamebuilder/agent/events/v1 read it
+//                    (the account chat, whose own rules are account-chat.c's), a GameBuilder
+//                    build agent (POST /api/gamebuilder/agents/v1, GET /api/gamebuilder/agent/v1
+//                    and /api/gamebuilder/agent/events/v1), and The Whispering Spring's shared
+//                    grove guest & room routes (/api/playtest/player, /api/playtest/player/name,
+//                    /api/playtest/chat/whispering-spring, /api/playtest/chat/whispering-spring-ribbons,
+//                    and /api/playtest/presence/whispering-spring)
 //   ap_site_post     the auth writes a site may send: ours and no Origin, all of them; a listed
 //                    site, only email/start, email/verify, logout and cli/code; another site, none
 //   ap_site_login    a listed site's email code is a plain browser login: never a link, a merge
@@ -353,6 +356,13 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/chat/complete/v1");
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/code") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/cli/code") && !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/cli/code");
   #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/redeem") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/code/") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli");
+  // The Whispering Spring's five shared-grove guest & room routes (no other playtest room or admin remove route)
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/player") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/player");
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/player/name") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/player/name");
+  #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/chat/whispering-spring") && ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/chat/whispering-spring");
+  #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/chat/whispering-spring-ribbons") && ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/chat/whispering-spring-ribbons");
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/presence/whispering-spring") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/presence/whispering-spring");
+  #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/chat/whispering-spring/remove") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/playtest/chat/everglade") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/playtest/chat/everglade") && !ap_site_route(AP_SITE_LISTED, "PUT", "/api/playtest/chat/whispering-spring");
   #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "", "/api/chat/complete/v1");
   #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/logout") && !ap_site_route(AP_SITE_LISTED, "DELETE", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "", "/api/auth/account");
   chats := [16] string.["/api/chat/complete", "/api/chat/complete/", "/api/chat/complete/v1/", "/api/chat/complete/v2", "/api/chat/complete/v", "/api/chat/world/complete/v1",
@@ -557,10 +567,16 @@ ap_site :: (has: bool, from: string, ours: string, listed: string) -> int #expor
 // check, as before.
 ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #effects(all) {
   if site != AP_SITE_LISTED { return true; }
-  if method == "GET" { return path == "/api/auth/account" || path == "/api/gamebuilder/agent/v1" || path == "/api/gamebuilder/agent/events/v1"; }
+  if method == "GET" {
+    return path == "/api/auth/account" || path == "/api/gamebuilder/agent/v1" || path == "/api/gamebuilder/agent/events/v1"
+        || path == "/api/playtest/chat/whispering-spring" || path == "/api/playtest/chat/whispering-spring-ribbons";
+  }
   if method != "POST" { return false; }
   return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1" || path == "/api/gamebuilder/agents/v1"
-      || path == "/api/auth/cli/code";
+      || path == "/api/auth/cli/code"
+      || path == "/api/playtest/player" || path == "/api/playtest/player/name"
+      || path == "/api/playtest/chat/whispering-spring" || path == "/api/playtest/chat/whispering-spring-ribbons"
+      || path == "/api/playtest/presence/whispering-spring";
 }
 
 // op: the route under /api/auth/ of a POST in auth.c's own table (the other auth files keep

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around gcloud; holds no logic).
-# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots)
+# gamebuilder.org on Google Cloud: static landing page + standalone WebGPU worlds (/fated-dragon, /splicebots, /whispering-spring)
 # served from gs://openagentsgemini-gamebuilder-web behind Cloud CDN.
 # Accounts use OpenAgents login (https://openagents.com); gamebuilder.org hosts no separate login.
 #
@@ -42,6 +42,13 @@ if [[ "${1:-}" == domain ]]; then
     api="  - paths: ['/api/rows/*', '/api/levels/*', '/api/play/*', '/api/pictures/*', '/g/*', '/api/capabilities', '/api/openapi.json', '/api/count', '/mcp']
     service: $base/backendServices/gamebuilder-api"
   fi
+  # The Whispering Spring's shared grove: guest keys, its chat and its ribbon tree are the OpenAgents
+  # API's moderated rooms (coax/web/api/room.c), the same Cloud Run service openagents.com routes to.
+  rooms=""
+  if has compute backend-services describe oa-api --global; then
+    rooms="  - paths: ['/api/playtest/player', '/api/playtest/player/name', '/api/playtest/chat/whispering-spring', '/api/playtest/chat/whispering-spring-ribbons', '/api/playtest/presence/whispering-spring']
+    service: $base/backendServices/oa-api"
+  fi
   snapshot_paths=""
   if has compute backend-buckets describe gamebuilder-player-releases; then
     snapshot_paths="  - paths: ['/player-releases/*']
@@ -63,6 +70,7 @@ pathMatchers:
   pathRules:
 $snapshot_paths
 $api
+$rooms
   - paths: ['/fated-dragon/', '/fated-dragon/index.html']
     urlRedirect:
       pathRedirect: /fated-dragon
@@ -74,6 +82,10 @@ $api
   - paths: ['/spicebots', '/spicebots/', '/spicebots/index.html']
     urlRedirect:
       pathRedirect: /splicebots
+      redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
+  - paths: ['/whispering-spring/', '/whispering-spring/index.html']
+    urlRedirect:
+      pathRedirect: /whispering-spring
       redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
   - paths: ['/credits/', '/credits/index.html']
     urlRedirect:
@@ -117,7 +129,7 @@ fi
 # Upload immutable release assets before HTML pages that reference them.
 g storage cp --recursive "$stage/b/$release/fonts" "$bucket/b/$release/" --cache-control "$kept" > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/fonts" "$bucket/b/$release/splicebots/" --cache-control "$kept" > /dev/null
-g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
+g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$stage/b/$release/whispering-spring" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/build" "$stage/b/$release/splicebots/splice-jam.wgsl" "$bucket/b/$release/splicebots/" --cache-control "$kept" --content-encoding gzip > /dev/null
 
 # Extensionless HTML routes served directly (trailing slashes and /index.html 301-redirect here).
@@ -128,16 +140,18 @@ cache="no-cache"
 cp "$stage/credits.html" "$pages/credits"
 mv "$stage/fated-dragon/index.html" "$pages/fated-dragon"
 mv "$stage/splicebots/index.html" "$pages/splicebots"
-rmdir "$stage/fated-dragon" "$stage/splicebots" 2>/dev/null || true
+mv "$stage/whispering-spring/index.html" "$pages/whispering-spring"
+rmdir "$stage/fated-dragon" "$stage/splicebots" "$stage/whispering-spring" 2>/dev/null || true
 
-# Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
-g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$' --cache-control "$cache" > /dev/null
+# Sync top-level pages, images, unversioned manifests, and content-verified packs; remove stale unmanaged legacy objects.
+g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$,^whispering-spring$' --cache-control "$cache" > /dev/null
 g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
 
-# Upload extensionless HTML pages after rsync; packs live under /packs/splicebots/ so no prefix collides.
+# Upload extensionless HTML pages after rsync; packs live under /packs/ and manifests under /manifests/ so no prefix collides.
 g storage cp "$pages/credits" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/fated-dragon" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$pages/splicebots" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/whispering-spring" "$bucket/whispering-spring" --content-type "text/html" --cache-control "$cache" > /dev/null
 
 # Prune old immutable releases, keeping the previous release during rollout.
 for old in $(g storage ls "$bucket/b/" 2> /dev/null); do

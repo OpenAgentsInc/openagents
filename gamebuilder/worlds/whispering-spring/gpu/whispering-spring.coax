@@ -1,0 +1,69 @@
+// The Whispering Spring's shaders: the Metaverse Engine's stylized shading (sky, grove, sun shadows,
+// bloom & tone post pass) plus the live grove: the quail, stones, ribbon, ripples and blooming gold.
+// Emitted to WGSL by coax/web/wgsl-module.coax. Nothing written in WGSL by hand.
+#load "../../../../metaverse-engine/render/shade/stylized.coax";
+#load "../../../../metaverse-engine/render/livery.coax";
+#load "../spring-layout.coax";
+
+WsStroke :: struct { pos: V4; ink: V4; edge: V2; }
+ws_fx_vs_in :: struct { a: V4; b: V4; }
+
+ws_bg_vs :: (i: u32, iid: u32) -> V4 { return stylized_bg_vs(i, iid); }
+ws_bg_fs :: (pos: V4, u: [] f32) -> StyFilm { return stylized_film_bg_fs(pos, u); }
+ws_bloom_fs :: (pos: V4, bloom_src: Tex2D, bloom_lin: Sampler, bloom_step: [] f32) -> V4 { return stylized_bloom_fs(pos, bloom_src, bloom_lin, bloom_step); }
+ws_post_fs :: (pos: V4, u: [] f32, post_light: Tex2D, post_quarter: Tex2D, post_eighth: Tex2D, post_lin: Sampler) -> V4 { return stylized_post_fs(pos, u, post_light, post_quarter, post_eighth, post_lin); }
+
+ws_skin_at :: (id: u32, tris: [] u32) -> int { return cast(int) tris[cast(int) id] * WS_SKIN_FLOATS; }
+
+ws_scene_vs :: (id: u32, instance: u32, u: [] f32, mesh: [] f32, objects: [] StyObj, skin: [] f32, tris: [] u32) -> StyS {
+  if (instance >= WS_SKIN_AT) {
+    k: int = ws_skin_at(id, tris);
+    s: StyS;
+    s.world = v3(skin[k], skin[k + 1], skin[k + 2]);
+    s.normal = v3(skin[k + 3], skin[k + 4], skin[k + 5]);
+    s.uv = v2(0.0f32, 0.0f32);
+    s.tint = v3(skin[k + 6], skin[k + 7], skin[k + 8]);
+    s.wash = v3(1.0f32, 1.0f32, 1.0f32);
+    s.info = v4(0.0f32, 0.0f32, 1.0f32, 1.0f32);
+    s.pos = sty_clip(s.world, u, STY_U_VIEW);
+    return s;
+  }
+  return sty_stand(id, instance, u, mesh, objects);
+}
+
+ws_shadow_vs :: (id: u32, instance: u32, u: [] f32, mesh: [] f32, objects: [] StyObj, skin: [] f32, tris: [] u32) -> StyShade {
+  if (instance >= WS_SKIN_AT) {
+    k: int = ws_skin_at(id, tris);
+    s: StyShade;
+    s.pos = sty_clip(v3(skin[k], skin[k + 1], skin[k + 2]), u, STY_U_LIGHT);
+    return s;
+  }
+  return stylized_shadow_vs(id, instance, u, mesh, objects);
+}
+ws_shadow_fs :: (s: StyShade) {}
+
+ws_scene_fs :: (s: StyS, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> StyFilm {
+  c: StyFilm = stylized_film_scene_fs(s, u, shadow_map, shadow_cmp);
+  if (s.info.w > 0.5f32) {
+    if (u[WS_U_EXTRA + 2] > 0.5f32) { gpu_demote_helper(); }
+    to: V3 = normalize3(sub3(wg_at3(u, STY_U_EYE), s.world));
+    n0: V3 = normalize3(s.normal); ndv: f32 = dot3(n0, to);
+    n: V3 = ifx ndv < 0.0f32 then normalize3(sub3(n0, scale3(to, ndv * 1.05f32))) else n0;
+    lit: V3 = sty_lit(sty_decode(s.tint), n, dot3(n, wg_at3(u, STY_U_SUN)), sty_shadow(s.world, n, u, shadow_map, shadow_cmp), u);
+    lit = add3(lit, scale3(wg_at3(u, STY_U_SKY_LIGHT), ifx ndv < 0.0f32 then 0.0f32 else engine_livery_rim(ndv)));
+    return sty_film(sty_haze(lit, s.world, u), u);
+  }
+  return c;
+}
+
+ws_fx_vs :: (_vid: u32, _iid: u32, in_: ws_fx_vs_in, u: [] f32) -> WsStroke {
+  o: WsStroke;
+  o.pos = v4(((in_.a.x / u[STY_U_SIZE]) * 2.0f32) - 1.0f32, 1.0f32 - ((in_.a.y / u[STY_U_SIZE + 1]) * 2.0f32), 0.0f32, 1.0f32);
+  o.ink = v4(in_.a.z, in_.a.w, in_.b.x, in_.b.y);
+  o.edge = v2(in_.b.z, in_.b.w);
+  return o;
+}
+ws_fx_fs :: (s: WsStroke) -> V4 {
+  a: f32 = s.ink.w * saturate(s.edge.y + 0.5f32 - abs(s.edge.x));
+  return v4(s.ink.x * a, s.ink.y * a, s.ink.z * a, a);
+}

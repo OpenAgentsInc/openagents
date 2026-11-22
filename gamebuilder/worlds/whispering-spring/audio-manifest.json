@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "note": "Every sound in The Whispering Spring. All of it is a placeholder until the artist supplies files: set an entry's \"file\" to its URL (under /whispering-spring/audio/) and audio.js plays the recording instead of the placeholder recipe. Titles, lyrics and transcripts marked placeholder are stand-ins too.",
+  "album": { "title": "The Whispering Spring", "artist": "(artist name to come)" },
+  "tracks": [
+    {
+      "id": "spring", "n": 1, "title": "The Spring (placeholder title)", "discovery": "spring", "file": null,
+      "placeholder": { "seconds": 64, "bpm": 66, "chords": ["D3 A3 E4 F#4", "B2 F#3 D4 A4", "G2 D3 B3 F#4", "A2 E3 C#4 E4"], "lead": "piano", "melody": ["F#5", "E5", "D5", "A4", "B4", "A4", "F#4", "E4"] },
+      "credits": "Placeholder synthesis by world-spring audio.js"
+    },
+    {
+      "id": "cairn", "n": 2, "title": "Stone on Stone (placeholder title)", "discovery": "cairn", "file": null,
+      "placeholder": { "seconds": 58, "bpm": 76, "chords": ["D3 A3 C#4 E4", "E3 B3 D4 F#4", "F#3 C#4 E4 A4", "A2 E3 C#4 F#4"], "lead": "marimba", "melody": ["A4", "C#5", "E5", "F#5", "E5", "C#5", "B4", "A4"] },
+      "credits": "Placeholder synthesis by world-spring audio.js"
+    },
+    {
+      "id": "ribbon", "n": 3, "title": "What the Wind Keeps (placeholder title)", "discovery": "ribbon", "file": null,
+      "placeholder": { "seconds": 70, "bpm": 58, "chords": ["G2 D3 B3 F#4", "E2 B2 G3 D4", "C3 G3 E4 B4", "D3 A3 F#4 C#5"], "lead": "pad", "melody": ["B4", "D5", "F#5", "E5", "D5", "B4", "A4", "G4"] },
+      "credits": "Placeholder synthesis by world-spring audio.js"
+    }
+  ],
+  "fragments": {
+    "spring.phrase1": { "file": null, "caption": "The water answers: a low ringing note.", "placeholder": { "kind": "bell", "notes": ["D3", "A3"], "seconds": 3.0 } },
+    "spring.phrase2": { "file": null, "caption": "A second answer: three notes rising.", "placeholder": { "kind": "piano", "notes": ["F#4", "A4", "D5"], "seconds": 3.4 } },
+    "spring.phrase3": { "file": null, "caption": "The spring sings: a single piano line (placeholder for the isolated vocal phrase).", "placeholder": { "kind": "melody", "notes": ["D5", "E5", "F#5", "A5", "F#5", "E5", "D5"], "pad": "D3 A3 E4 F#4", "seconds": 6.5 } },
+    "cairn.chord": { "file": null, "caption": "The cairn plays the chord you stacked.", "placeholder": { "kind": "chord" } },
+    "ribbon.tie": { "file": null, "caption": "The ribbon is tied. It catches the wind.", "placeholder": { "kind": "swish" } },
+    "ribbon.tie.bell": { "file": null, "caption": "The ribbon is tied; its bell rings as it catches the wind.", "placeholder": { "kind": "bell-charm" } }
+  },
+  "stems": {
+    "stone.flat": { "file": null, "note": "D3", "caption": "The flat stone sounds a low D." },
+    "stone.long": { "file": null, "note": "A3", "caption": "The long stone sounds an A." },
+    "stone.round": { "file": null, "note": "F#4", "caption": "The round stone sounds an F sharp." },
+    "stone.wedge": { "file": null, "note": "E4", "caption": "The wedge stone sounds an E, the ninth." },
+    "stone.pebble": { "file": null, "note": "C#5", "caption": "The pebble sounds a high C sharp, the seventh." },
+    "stone.lift": { "file": null, "caption": null },
+    "stone.slip": { "file": null, "caption": "The stone slides off." }
+  },
+  "extras": [
+    {
+      "id": 0, "kind": "lyric", "track": "spring", "title": "Handwritten lyric", "file": null,
+      "text": "(Placeholder lyric — the artist's handwritten page goes here.)\n\nI came down to the water\nwhere the cedar roots let go,\nand it answered me in three words\nI was too still to know.",
+      "credits": "Placeholder text"
+    },
+    {
+      "id": 1, "kind": "alternate", "track": "cairn", "title": "Alternate take", "file": null,
+      "placeholder": { "seconds": 40, "bpm": 64, "chords": ["D3 A3 E4", "F#3 C#4 A4", "A2 E3 C#4", "E3 B3 F#4"], "lead": "piano", "melody": ["E5", "C#5", "A4", "F#4"] },
+      "credits": "Placeholder synthesis by world-spring audio.js"
+    },
+    {
+      "id": 2, "kind": "voice", "track": "ribbon", "title": "Voice note", "file": null,
+      "transcript": "(Placeholder transcript — the artist's voice note will be transcribed here.) This one started on a walk by the creek. I tied a ribbon for someone I miss, and the song is what the wind did with it.",
+      "credits": "Placeholder text"
+    }
+  ],
+  "lore": {
+    "note": "What each discovery reveals: a page of the musician's and the album's lore. Placeholder pages until the artist writes hers; a page may also name an image (\"image\") or a reading of it (\"file\").",
+    "pages": [
+      {
+        "id": "spring", "n": 1, "title": "The Spring That Answers", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nLong before the grove had a name, a black quail came down the bank at dusk to drink. The water did not reflect her. It answered her: one low note, then three rising, then a voice that sounded like her own singing back from somewhere far below.\n\nShe stayed until the stars came out, learning the shape of that voice. It is said that every song of hers began as an answer from the spring."
+      },
+      {
+        "id": "cairn", "n": 2, "title": "The Cairn Keeper", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nThe creek stones remember the water that shaped them. The quail learned to listen to each one: the flat stone hums low, the round one rings, the pebble keeps a high, bright note to itself.\n\nWhen she stacks them, the cairn holds a chord. Travellers who find one standing are told never to knock it down, only to add a stone of their own, and to listen to what it adds."
+      },
+      {
+        "id": "ribbon", "n": 3, "title": "What the Wind Keeps", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nEvery ribbon tied in the grove is a word given to the wind. The quail does not read them; she keeps watch over them. On still nights she walks beneath the limbs and the ribbons stir, though no breeze moves.\n\nThey say the wind carries each word to whoever it was meant for, and that the songs are what the wind sings on the way back."
+      }
+    ]
+  },
+  "voice": {
+    "note": "What the quail says, in the musician's own voice. Placeholder lines until the artist writes theirs. Each plays with the quail's babble voice; a line with a \"file\" plays that recording instead.",
+    "greeting": [
+      "Welcome to the spring, friend. Sit a while; the water remembers every song.",
+      "You found your way here. Listen close, and the grove will share a few songs with you."
+    ],
+    "prayers": [
+      "May the water keep you, and the wind carry what you cannot.",
+      "For every tired heart that finds this place: rest here, and go on lighter.",
+      "Bless the roots that hold the bank, and the hands that tie the ribbons.",
+      "May you hear your own song in the quiet."
+    ],
+    "ribbon": [
+      "I will keep watch over that one. May the wind carry it home.",
+      "Tied with care. The tree holds it now, and so do I."
+    ],
+    "found_all": [
+      "You have uncovered every page of my story here. Come back whenever you need the quiet."
+    ]
+  },
+  "ambience": {
+    "brook": { "file": null, "placeholder": { "kind": "brook" } },
+    "wind": { "file": null, "placeholder": { "kind": "wind" } },
+    "quail.call": { "file": null, "caption": "The quail calls softly.", "placeholder": { "kind": "quail" } }
+  }
+}

@@ -1,0 +1,34 @@
+// The Whispering Spring's tunables, all in one place: the quail's timing, the gold particles,
+// the bloom and the audio levels. The world reads these; the audio levels go to the page
+// once at load ("tune|..." in world-spring.coax), so audio.js never keeps numbers of its own.
+//   coax/bin/coax test gamebuilder/worlds/whispering-spring/world-spring.coax --library
+
+WsTune :: struct {
+  // The quail. Seconds each behaviour lasts (a random share more, up to `vary`).
+  forage_s: f32 = 2.6;
+  scurry_s: f32 = 0.9;
+  scan_s: f32 = 3.0;
+  peck_s: f32 = 1.6;
+  call_s: f32 = 1.2;
+  attend_s: f32 = 3.4;      // how long it stays at a clue: scratching, pausing, head up
+  alert_s: f32 = 2.8;       // how long it goes still when the water first answers
+  resume_s: f32 = 0.6;
+  vary: f32 = 0.6;
+  walk_speed: f32 = 0.26;   // metres a second while foraging
+  scurry_speed: f32 = 0.9;
+  attend_every_s: f32 = 9.0;  // after this long without a clue, the next choice is a clue
+  quail_scale: f32 = 3.1;   // stylized: a real quail is about 0.25 m long
+  // The gold. Particles a second in the plume, how long one lives, how many at most.
+  plume_rate: f32 = 42.0;
+  plume_life: f32 = 4.2;
+  plume_rate_reduced: f32 = 14.0;  // reduced motion
+  glints: int = 9;                 // broken gold reflections over the spillway
+  // Bloom: the gold's display colour is multiplied by this (over 1 blooms in the post pass).
+  gold_hdr: f32 = 1.55;
+  gold_hdr_reduced: f32 = 0.62;    // reduced bloom: the brightest gold stays under 1.1
+  // Audio levels, 0..1, sent to the page once.
+  music: f32 = 0.8;
+  ambience: f32 = 0.45;
+  calls: f32 = 0.5;
+  phrases: f32 = 0.9;
+}

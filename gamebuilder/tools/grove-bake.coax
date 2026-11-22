@@ -1,0 +1,239 @@
+// Bakes The Whispering Spring's modelled grove pieces (gamebuilder/worlds/whispering-spring/models/*.glb,
+// from the Obsidian Quail grove asset kit) into one raw binary WSG1 asset that world-spring.coax reads.
+// Offline; the page never runs it.
+//
+//   coax/web/tool.sh gamebuilder/tools/grove-bake.coax OUT.wsg A.glb [B.glb ...]
+//
+// Each GLB is one module, in the order given. A module is its scene's root nodes, each placed by its
+// own translation, rotation and scale (child nodes, skins and textures are refused, not guessed), every
+// triangle coloured by its material's base colour (linear in glTF, written as a display colour).
+// Layout (little endian):
+//   "WSG1", u32 modules, then per module: u32 triangles, then per triangle 22 bytes:
+//   three corners x y z (9 i16, 1/1024 m, +y up, as the GLB has them), colour r g b (3 u8, display), a spare u8.
+// tool.sh: release
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#import "Basic";
+
+GB_GLB_MAX :: 1048576;
+GB_JSON_NODES :: 32768;
+GB_OUT_MAX :: 2097152;
+GB_MAX_MODULES :: 16;
+GB_TRI_BYTES :: 22;
+GB_POS :: 1024.0;
+
+GbAcc :: struct { off: int; stride: int; count: int; comp: int; comps: int; }
+
+GbWork :: struct {
+  glb: [GB_GLB_MAX] u8; glb_n: int;
+  bin_at: int; bin_n: int;
+  nodes: [GB_JSON_NODES] JvNode;
+  doc: [1] Jv;
+  out: [GB_OUT_MAX] u8; out_n: int;
+}
+
+gb_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+gb_u32 :: (b: [] u8, at: int) -> int { return gb_u16(b, at) | (gb_u16(b, at + 2) << 16); }
+gb_f32 :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) gb_u32(b, at)); }
+
+gb_put_u8 :: (w: [] GbWork, v: int) -> bool {
+  if w[0].out_n >= GB_OUT_MAX { return false; }
+  w[0].out[w[0].out_n] = cast,trunc(u8) v; w[0].out_n += 1; return true;
+}
+gb_put_u32 :: (w: [] GbWork, v: int) -> bool {
+  return gb_put_u8(w, v & 255) && gb_put_u8(w, (v >> 8) & 255) && gb_put_u8(w, (v >> 16) & 255) && gb_put_u8(w, (v >> 24) & 255);
+}
+gb_put_i16 :: (w: [] GbWork, v: f32) -> bool {
+  k := cast(int) floor(v * f32(GB_POS) + 0.5);
+  if k < -32767 || k > 32767 { return false; }
+  u := k & 65535;
+  return gb_put_u8(w, u & 255) && gb_put_u8(w, (u >> 8) & 255);
+}
+gb_set_u32 :: (w: [] GbWork, at: int, v: int) {
+  w[0].out[at] = cast,trunc(u8) (v & 255); w[0].out[at + 1] = cast,trunc(u8) ((v >> 8) & 255);
+  w[0].out[at + 2] = cast,trunc(u8) ((v >> 16) & 255); w[0].out[at + 3] = cast,trunc(u8) ((v >> 24) & 255);
+}
+
+gb_parse_f64 :: (s: string, fallback: f64) -> f64 {
+  if s.count == 0 { return fallback; }
+  i := 0; neg := false;
+  if s[i] == '-' { neg = true; i += 1; } else if s[i] == '+' { i += 1; }
+  val: f64 = 0.0; digits := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { val = val * 10.0 + cast(f64) (s[i] - '0'); i += 1; digits += 1; }
+  if i < s.count && s[i] == '.' {
+    i += 1; frac: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { val += cast(f64) (s[i] - '0') * frac; frac *= 0.1; i += 1; digits += 1; }
+  }
+  if digits == 0 { return fallback; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; eneg := false;
+    if i < s.count && s[i] == '-' { eneg = true; i += 1; } else if i < s.count && s[i] == '+' { i += 1; }
+    ep := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { ep = ep * 10 + cast(int) (s[i] - '0'); i += 1; }
+    scale: f64 = 1.0;
+    for k: 0..<ep { scale *= 10.0; }
+    if eneg { val /= scale; } else { val *= scale; }
+  }
+  if i != s.count { return fallback; }
+  return ifx neg then -val else val;
+}
+gb_num :: (d: Jv, at: int, fallback: f32) -> f32 {
+  if jv_kind(d, at) != JV_NUMBER { return fallback; }
+  return cast(f32) gb_parse_f64(jv_raw(d, at), cast(f64) fallback);
+}
+
+// glTF base colours are linear; the grove's tints are display colours.
+gb_display :: (c0: f32) -> int {
+  c := clamp_f(c0, 0, 1);
+  s := ifx c <= 0.0031308 then 12.92 * c else 1.055 * pow(c, 1.0f32 / 2.4f32) - 0.055;
+  return cast(int) floor(clamp_f(s, 0, 1) * 255 + 0.5);
+}
+clamp_f :: (v: f32, lo: f32, hi: f32) -> f32 { if v < lo { return lo; } if v > hi { return hi; } return v; }
+
+// Reads a GLB's two chunks: the JSON (parsed into doc) and the binary buffer (bin_at, bin_n).
+gb_open :: (w: [] GbWork, n: int) -> string {
+  b := w[0].glb[..];
+  if n < 28 || gb_u32(b, 0) != 0x46546C67 { return "not a GLB file"; }
+  if gb_u32(b, 4) != 2 { return "only glTF 2 GLB files are read"; }
+  jlen := gb_u32(b, 12);
+  if gb_u32(b, 16) != 0x4E4F534A || 20 + jlen > n { return "first chunk is not JSON"; }
+  if !jv_parse(w[0].doc[..], cast(string) b[20..<20 + jlen], w[0].nodes[..]) { return "invalid glTF JSON"; }
+  at := 20 + jlen;
+  if at + 8 > n { return "no binary chunk"; }
+  blen := gb_u32(b, at);
+  if gb_u32(b, at + 4) != 0x004E4942 || at + 8 + blen > n { return "second chunk is not BIN"; }
+  w[0].bin_at = at + 8; w[0].bin_n = blen;
+  return "";
+}
+
+gb_acc :: (w: [] GbWork, idx: int, a: [] GbAcc) -> bool {
+  d := w[0].doc[0];
+  an := jv_at(d, jv_get(d, 0, "accessors"), idx);
+  if an < 0 { return false; }
+  vn := jv_at(d, jv_get(d, 0, "bufferViews"), jv_int(d, jv_get(d, an, "bufferView"), -1));
+  if vn < 0 || jv_int(d, jv_get(d, vn, "buffer"), 0) != 0 { return false; }
+  comp := jv_int(d, jv_get(d, an, "componentType"), 0);
+  cnt := jv_int(d, jv_get(d, an, "count"), 0);
+  tn := jv_raw(d, jv_get(d, an, "type"));
+  comps := ifx jv_raw_eq(tn, "SCALAR") then 1 else ifx jv_raw_eq(tn, "VEC3") then 3 else 0;
+  if comps == 0 { return false; }
+  csize := ifx comp == 5121 then 1 else ifx comp == 5123 then 2 else ifx comp == 5125 || comp == 5126 then 4 else 0;
+  if csize == 0 { return false; }
+  off := jv_int(d, jv_get(d, vn, "byteOffset"), 0) + jv_int(d, jv_get(d, an, "byteOffset"), 0);
+  stride := jv_int(d, jv_get(d, vn, "byteStride"), csize * comps);
+  if off < 0 || cnt < 0 || stride < csize * comps { return false; }
+  if cnt > 0 && off + (cnt - 1) * stride + csize * comps > w[0].bin_n { return false; }
+  a[0] = GbAcc.{off = w[0].bin_at + off, stride = stride, count = cnt, comp = comp, comps = comps};
+  return true;
+}
+gb_index :: (w: [] GbWork, a: GbAcc, i: int) -> int {
+  at := a.off + i * a.stride;
+  if a.comp == 5121 { return cast(int) w[0].glb[at]; }
+  if a.comp == 5123 { return gb_u16(w[0].glb[..], at); }
+  return gb_u32(w[0].glb[..], at);
+}
+
+// A node's placement: translation, rotation (quaternion x y z w), scale.
+GbTrs :: struct { t: [3] f32; q: [4] f32; s: [3] f32; }
+gb_trs :: (d: Jv, nd: int) -> GbTrs {
+  r: GbTrs; r.q[3] = 1; r.s = [3] f32.[1, 1, 1];
+  t := jv_get(d, nd, "translation"); q := jv_get(d, nd, "rotation"); s := jv_get(d, nd, "scale");
+  for k: 0..<3 { r.t[k] = gb_num(d, jv_at(d, t, k), 0); r.s[k] = gb_num(d, jv_at(d, s, k), 1); }
+  for k: 0..<4 { r.q[k] = gb_num(d, jv_at(d, q, k), ifx k == 3 then 1.0f32 else 0.0f32); }
+  return r;
+}
+gb_place :: (p: GbTrs, x0: f32, y0: f32, z0: f32) -> [3] f32 {
+  x := x0 * p.s[0]; y := y0 * p.s[1]; z := z0 * p.s[2];
+  qx := p.q[0]; qy := p.q[1]; qz := p.q[2]; qw := p.q[3];
+  // v + 2w (q x v) + 2 q x (q x v)
+  cx := qy * z - qz * y; cy := qz * x - qx * z; cz := qx * y - qy * x;
+  ex := qy * cz - qz * cy; ey := qz * cx - qx * cz; ez := qx * cy - qy * cx;
+  return [3] f32.[x + 2 * (qw * cx + ex) + p.t[0], y + 2 * (qw * cy + ey) + p.t[1], z + 2 * (qw * cz + ez) + p.t[2]];
+}
+
+// One module: every triangle of every root node's mesh, placed and coloured. Returns an error or "".
+gb_module :: (w: [] GbWork, tris: [] int) -> string {
+  d := w[0].doc[0];
+  if jv_kind(d, jv_get(d, 0, "skins")) != 0 { return "skinned meshes are not baked"; }
+  scene := jv_at(d, jv_get(d, 0, "scenes"), jv_int(d, jv_get(d, 0, "scene"), 0));
+  roots := jv_get(d, scene, "nodes");
+  for r: 0..<jv_len(d, roots) {
+    nd := jv_at(d, jv_get(d, 0, "nodes"), jv_int(d, jv_at(d, roots, r), -1));
+    if nd < 0 { return "a scene names a node that is not there"; }
+    if jv_kind(d, jv_get(d, nd, "children")) != 0 { return "nested nodes are not baked; flatten the scene first"; }
+    if jv_kind(d, jv_get(d, nd, "matrix")) != 0 { return "node matrices are not baked; use translation, rotation and scale"; }
+    mi := jv_int(d, jv_get(d, nd, "mesh"), -1);
+    if mi < 0 { continue; }
+    place := gb_trs(d, nd);
+    prims := jv_get(d, jv_at(d, jv_get(d, 0, "meshes"), mi), "primitives");
+    for k: 0..<jv_len(d, prims) {
+      pr := jv_at(d, prims, k);
+      if jv_int(d, jv_get(d, pr, "mode"), 4) != 4 { return "only triangle lists are baked"; }
+      pos: [1] GbAcc; ind: [1] GbAcc;
+      if !gb_acc(w, jv_int(d, jv_path(d, pr, "attributes.POSITION"), -1), pos[..]) || pos[0].comp != 5126 || pos[0].comps != 3 { return "a primitive's POSITION can't be read"; }
+      has_ind := jv_kind(d, jv_get(d, pr, "indices")) != 0;
+      if has_ind && (!gb_acc(w, jv_int(d, jv_get(d, pr, "indices"), -1), ind[..]) || ind[0].comps != 1) { return "a primitive's indices can't be read"; }
+      mat := jv_at(d, jv_get(d, 0, "materials"), jv_int(d, jv_get(d, pr, "material"), -1));
+      base := jv_path(d, mat, "pbrMetallicRoughness.baseColorFactor");
+      if jv_kind(d, jv_path(d, mat, "pbrMetallicRoughness.baseColorTexture")) != 0 { return "textured materials are not baked; use a flat base colour"; }
+      rgb: [3] int;
+      for c: 0..<3 { rgb[c] = gb_display(gb_num(d, jv_at(d, base, c), 0.8)); }
+      n := ifx has_ind then ind[0].count else pos[0].count;
+      for t: 0..<n / 3 {
+        for corner: 0..<3 {
+          vi := ifx has_ind then gb_index(w, ind[0], t * 3 + corner) else t * 3 + corner;
+          if vi < 0 || vi >= pos[0].count { return "an index points past its vertices"; }
+          at := pos[0].off + vi * pos[0].stride;
+          v := gb_place(place, gb_f32(w[0].glb[..], at), gb_f32(w[0].glb[..], at + 4), gb_f32(w[0].glb[..], at + 8));
+          if !gb_put_i16(w, v[0]) || !gb_put_i16(w, v[1]) || !gb_put_i16(w, v[2]) { return "a corner is out of range or the output is too large"; }
+        }
+        if !gb_put_u8(w, rgb[0]) || !gb_put_u8(w, rgb[1]) || !gb_put_u8(w, rgb[2]) || !gb_put_u8(w, 0) { return "output too large"; }
+        tris[0] += 1;
+      }
+    }
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 || args_count(a[..]) > GB_MAX_MODULES + 1 {
+    tool_errln("usage: tool.sh gamebuilder/tools/grove-bake.coax OUT.wsg A.glb [B.glb ...]");
+    return 2;
+  }
+  dst := args_at(a[..], 0);
+  w: [1] GbWork = ---;
+  w[0].out_n = 0;
+  modules := args_count(a[..]) - 1;
+  if !gb_put_u8(w[..], 'W') || !gb_put_u8(w[..], 'S') || !gb_put_u8(w[..], 'G') || !gb_put_u8(w[..], '1') || !gb_put_u32(w[..], modules) { return 1; }
+  total := 0;
+  for m: 0..<modules {
+    src := args_at(a[..], m + 1);
+    n := fs_read(src, w[0].glb[..]);
+    if n <= 0 || n >= GB_GLB_MAX { tool_err("grove-bake: could not read "); tool_errln(src); return 1; }
+    err := gb_open(w[..], n);
+    if err != "" { tool_err("grove-bake: "); tool_err(src); tool_err(": "); tool_errln(err); return 1; }
+    count_at := w[0].out_n;
+    if !gb_put_u32(w[..], 0) { return 1; }
+    tris: [1] int;
+    err = gb_module(w[..], tris[..]);
+    if err != "" { tool_err("grove-bake: "); tool_err(src); tool_err(": "); tool_errln(err); return 1; }
+    gb_set_u32(w[..], count_at, tris[0]);
+    print("grove-bake: % (% triangles)\n", src, tris[0]);
+    total += tris[0];
+  }
+  if !fs_mkdir(fs_dir(dst)) || !fs_write(dst, cast(string) w[0].out[0..<w[0].out_n]) { tool_errln("grove-bake: could not write output file"); return 1; }
+  print("grove-bake: % modules, % triangles, % bytes -> %\n", modules, total, w[0].out_n, dst);
+  return 0;
+}
+
+#test "a node's rotation, scale and translation place a corner as glTF does, and colours become display colours" {
+  p: GbTrs; p.t = [3] f32.[1, 2, 3]; p.s = [3] f32.[2, 1, 1];
+  // a quarter turn about +y takes +x to -z
+  p.q = [4] f32.[0, 0.7071068, 0, 0.7071068];
+  v := gb_place(p, 1, 0, 0);
+  #assert abs(v[0] - 1) < 0.001 && abs(v[1] - 2) < 0.001 && abs(v[2] - 1) < 0.001;
+  #assert gb_display(0) == 0 && gb_display(1) == 255 && gb_display(0.2140) > 125 && gb_display(0.2140) < 131;
+  #assert abs(cast(f32) (gb_parse_f64("-1.25e-2", 0) + 0.0125)) < 0.00001;
+}
