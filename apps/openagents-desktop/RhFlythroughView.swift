@@ -3216,7 +3216,22 @@ final class RhFlythroughView: NSView {
         return CGImageDestinationFinalize(dest)
     }
 
-    // MARK: - Native Hardware-Accelerated 1080p Walkthrough Video Recorder (Metal 4x MSAA HDR + AVAssetWriter H.264)
+    // MARK: - Native Hardware-Accelerated 1080p Cinematic Narration Video Recorder (Metal 4x MSAA HDR + AVAssetWriter H.264)
+
+    private struct VideoHeroTag {
+        let pos: SIMD3<Float>
+        let text: String
+        let color: NSColor
+        let stationIndex: Int
+    }
+
+    private struct VideoStationScript {
+        let stepNum: String
+        let kicker: String
+        let title: String
+        let beatA: String // WHAT YOU SEE (concise, big text, <= 20 words)
+        let beatB: String // WHY IT MATTERS (concise significance, <= 20 words)
+    }
 
     func recordWalkthroughMP4(to url: URL, width: Int = 1920, height: Int = 1080, fps: Int = 30) -> Bool {
         guard let dev = device, let queue = commandQueue, stations.count >= 8 else { return false }
@@ -3229,7 +3244,7 @@ final class RhFlythroughView: NSView {
         writer.shouldOptimizeForNetworkUse = true
 
         let compression: [String: Any] = [
-            AVVideoAverageBitRateKey: 7_500_000,
+            AVVideoAverageBitRateKey: 8_000_000,
             AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
             AVVideoMaxKeyFrameIntervalKey: fps * 2,
         ]
@@ -3264,20 +3279,100 @@ final class RhFlythroughView: NSView {
         texDesc.storageMode = .shared
         guard let colorTex = dev.makeTexture(descriptor: texDesc) else { return false }
 
-        // Helper: compute stage-centered camera pose for station i at local orbit progress u in [0, 1]
+        // Concise, punchy 2-beat narration script (short lines, big text, readable on any screen)
+        let scripts: [VideoStationScript] = [
+            VideoStationScript(
+                stepNum: "01 / 08", kicker: "THE 167-YEAR MYSTERY",
+                title: "Prime Numbers Have a Hidden Rhythm",
+                beatA: "This wave tracks prime numbers. Every dip to zero shoots a gold spike on one exact glass wall.",
+                beatB: "Proving no zero ever leaves this wall locks down where primes appear — turning hundreds of conjectures into fact."
+            ),
+            VideoStationScript(
+                stepNum: "02 / 08", kicker: "THE 5,040 GUT-CHECK",
+                title: "A Simple Whole-Number Test",
+                beatA: "Each bar measures a number's divisors. Up to 5,040, a few early rebels poke through the cyan ceiling.",
+                beatB: "Past 5,040, none ever break through again — giving skeptics a dead-simple check on the real Riemann Hypothesis."
+            ),
+            VideoStationScript(
+                stepNum: "03 / 08", kicker: "THE BREAKTHROUGH",
+                title: "Smashing the 100-Year 2/3 Wall",
+                beatA: "For a century, older proof methods (red bars) stalled under this 2/3 wall — leaving space for rogue zeros.",
+                beatB: "Levent Alpöge's 8-step cyan staircase punches clean past 2/3 — shutting every last hiding spot for good."
+            ),
+            VideoStationScript(
+                stepNum: "04 / 08", kicker: "THE ENGINE ROOM",
+                title: "Turning Chaotic Primes Into Smooth Waves",
+                beatA: "Eight geometric translators turn jagged prime numbers into smooth waves vibrating on curved spaces.",
+                beatB: "Like noise-canceling headphones for math: once flipped into wave symmetries, the random static cancels itself out."
+            ),
+            VideoStationScript(
+                stepNum: "05 / 08", kicker: "HISTORIC SCALE · HUMAN + AI",
+                title: "The 17.37-Million-Line Proof City",
+                beatA: "Every skyscraper here is a real folder of Lean 4 code — 175,182 files built by Alpöge working with AI.",
+                beatB: "No hand-waving, no skipped steps: every microscopic logical detail is formalized — larger than many operating systems."
+            ),
+            VideoStationScript(
+                stepNum: "06 / 08", kicker: "ZERO LOOPHOLES",
+                title: "Error-Proof Mathematical Safety Nets",
+                beatA: "Golden Weil arches cap how wild waves can grow. The amber Behrend sphere blocks sneaky repeating traps.",
+                beatB: "Dozens of past RH claims died on tiny leftover errors. These guardrails weld every last crack shut."
+            ),
+            VideoStationScript(
+                stepNum: "07 / 08", kicker: "DON'T TRUST, VERIFY",
+                title: "4 Independent Computer Fact-Checkers",
+                beatA: "Four separate verifier kernels — written in Lean, C++, and Rust — checked every single line from scratch.",
+                beatB: "You never have to trust the author OR the AI. Zero cheated steps, 3 standard axioms — certified in 24 hours."
+            ),
+            VideoStationScript(
+                stepNum: "08 / 08", kicker: "Q.E.D. · NOV 21, 2026",
+                title: "813,182 Theorems Lock Into 4 Lines",
+                beatA: "Every glowing conduit converges into one final theorem in Main.lean: theorem riemannHypothesis := rhOfAll.",
+                beatB: "Math's crown jewel since 1859 is solved — and human + AI + formal verification just changed science forever."
+            ),
+        ]
+
+        // Only 2-3 BIG, ultra-clean hero 3D callouts per station (zero clutter!)
+        let heroTags: [VideoHeroTag] = [
+            // Station 1
+            VideoHeroTag(pos: SIMD3(-42.0, 5.55, -3.5), text: "CRITICAL WALL (Re = 1/2)", color: GridTokens.nsAmber, stationIndex: 0),
+            VideoHeroTag(pos: SIMD3(-42.0, 4.45,  0.4), text: "PRIME WAVE ZEROS", color: GridTokens.nsCyan, stationIndex: 0),
+            VideoHeroTag(pos: SIMD3(-45.2, 2.55,  2.8), text: "ZETA WAVE SURFACE", color: GridTokens.nsWhite, stationIndex: 0),
+            // Station 2
+            VideoHeroTag(pos: SIMD3(-29.7, 5.15,  0.0), text: "5,040 · FINAL REBEL", color: GridTokens.nsAmber, stationIndex: 1),
+            VideoHeroTag(pos: SIMD3(-26.8, 3.65, -2.5), text: "DIVISOR CEILING (1.0)", color: GridTokens.nsCyan, stationIndex: 1),
+            // Station 3
+            VideoHeroTag(pos: SIMD3(-20.4, 4.25, -2.5), text: "100-YEAR 2/3 WALL", color: GridTokens.nsRed, stationIndex: 2),
+            VideoHeroTag(pos: SIMD3(-14.6, 6.10,  0.5), text: "ALPÖGE BREAKTHROUGH", color: GridTokens.nsCyan, stationIndex: 2),
+            // Station 4
+            VideoHeroTag(pos: SIMD3(-6.0,  5.25,  0.0), text: "MIRROR TRANSLATOR CORE", color: GridTokens.nsCyan, stationIndex: 3),
+            VideoHeroTag(pos: SIMD3(-9.3,  5.15, -1.5), text: "8 GEOMETRIC GEARS", color: GridTokens.nsWhite, stationIndex: 3),
+            // Station 5
+            VideoHeroTag(pos: SIMD3( 2.6,  8.65, -3.1), text: "99,187 FILES · ABELIAN", color: GridTokens.nsWhite, stationIndex: 4),
+            VideoHeroTag(pos: SIMD3( 7.2,  7.10,  1.8), text: "175,182 LEAN 4 FILES", color: GridTokens.nsCyan, stationIndex: 4),
+            // Station 6
+            VideoHeroTag(pos: SIMD3(18.0,  6.40,  0.0), text: "WEIL SPEED-LIMIT ARCHES", color: GridTokens.nsAmber, stationIndex: 5),
+            VideoHeroTag(pos: SIMD3(18.0,  3.50,  2.5), text: "BEHREND SAFETY CAGE", color: GridTokens.nsWhite, stationIndex: 5),
+            // Station 7
+            VideoHeroTag(pos: SIMD3(30.0,  4.85,  0.0), text: "0 CHEATS · 3 AXIOMS", color: GridTokens.nsCyan, stationIndex: 6),
+            VideoHeroTag(pos: SIMD3(27.2,  6.05, -2.8), text: "4 INDEPENDENT KERNELS", color: GridTokens.nsWhite, stationIndex: 6),
+            VideoHeroTag(pos: SIMD3(30.0,  1.80,  4.4), text: "6 AUDITED HELPERS", color: GridTokens.nsAmber, stationIndex: 6),
+            // Station 8
+            VideoHeroTag(pos: SIMD3(42.0, 10.75,  0.0), text: "RIEMANN HYPOTHESIS · Q.E.D.", color: GridTokens.nsAmber, stationIndex: 7),
+            VideoHeroTag(pos: SIMD3(44.8,  3.10,  2.8), text: "813,182 PROVEN THEOREMS", color: GridTokens.nsCyan, stationIndex: 7),
+        ]
+
+        // Full-screen dead-center camera pose (NO right-sidebar offset!)
         func stationPose(_ idx: Int, orbitU: Float) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
             let st = stations[idx]
             let baseOffset = st.eye - st.pos
-            let rXZ = hypot(baseOffset.x, baseOffset.z)
+            let rXZ = hypot(baseOffset.x, baseOffset.z) * 0.96
             let baseYaw = atan2(baseOffset.x, baseOffset.z)
             let smoothU = orbitU * orbitU * (3.0 - 2.0 * orbitU)
-            let yaw = baseYaw + (smoothU - 0.5) * 0.42 // smooth +-12 degree gentle orbit
-            let lift = sin(orbitU * .pi) * 0.45
+            let yaw = baseYaw + (smoothU - 0.5) * 0.48 // smooth +-14 deg gentle cinema orbit
+            let lift = sin(orbitU * .pi) * 0.50
             let e = st.pos + SIMD3<Float>(rXZ * sin(yaw), baseOffset.y + lift, rXZ * cos(yaw))
-            // Shift look target slightly right (+2.2m) so the 3D landmark sits dead-center in the open stage left of the Guide card
-            let fwd = simd_normalize(st.pos - e)
-            let right = simd_normalize(simd_cross(fwd, SIMD3<Float>(0, 1, 0)))
-            let t = st.pos + right * 2.2
+            // Keep target slightly lower so the landmark sits cleanly centered between top title and bottom caption plate
+            let t = st.pos + SIMD3<Float>(0, -0.25, 0)
             return (e, t)
         }
 
@@ -3286,32 +3381,139 @@ final class RhFlythroughView: NSView {
             return t * t * (3.0 - 2.0 * t)
         }
 
-        // 70.0-second cinematic guided walkthrough:
-        //   0.0 - 4.5s  : Panoramic Overview Opening ("The Big Picture in 30 Seconds")
-        //   4.5 - 64.5s : 8 Stations x 7.5s each (1.7s smooth glide + 5.8s living orbit dwell with full Explainer & Significance)
-        //   64.5 - 70.0s: Grand Finale pullback to full 8-station Overview + fade out
-        let introDur: Float = 4.5
-        let stationSlot: Float = 7.5
-        let glideDur: Float = 1.7
-        let outroStart: Float = introDur + Float(stations.count) * stationSlot // 64.5s
-        let totalDur: Float = 70.0
+        func drawWrapped(_ str: String, in rect: CGRect, attrs: [NSAttributedString.Key: Any]) {
+            let storage = NSTextStorage(attributedString: NSAttributedString(string: str, attributes: attrs))
+            let container = NSTextContainer(size: CGSize(width: rect.width, height: max(rect.height, 800)))
+            container.lineFragmentPadding = 0
+            let lm = NSLayoutManager()
+            lm.addTextContainer(container)
+            storage.addLayoutManager(lm)
+            let range = lm.glyphRange(for: container)
+            lm.drawGlyphs(forGlyphRange: range, at: rect.origin)
+        }
+
+        func drawHeroCallouts(in ctx: CGContext, overview: Bool, activeIdx: Int, alpha: CGFloat) {
+            guard alpha > 0.02 else { return }
+            let w = Float(width), h = Float(height)
+            let vp = rh3dPerspective(fovY: 0.82, aspect: w / h, nearZ: 0.2, farZ: 280.0) * rh3dLookAt(eye: eye, target: target)
+            let font = NSFont.monospacedSystemFont(ofSize: overview ? 16.0 : 18.5, weight: .bold)
+
+            var items: [(rect: CGRect, anchor: CGPoint, text: String, color: NSColor)] = []
+            if overview {
+                let bannerHeights: [Float] = [7.6, 6.2, 9.4, 6.4, 10.6, 6.8, 9.0, 11.4]
+                for (i, st) in stations.enumerated() {
+                    let wp = SIMD3<Float>(st.pos.x, bannerHeights[i % bannerHeights.count], st.pos.z)
+                    let clip = vp * SIMD4<Float>(wp, 1.0)
+                    guard clip.w > 0.3 else { continue }
+                    let ndc = SIMD3<Float>(clip.x, clip.y, clip.z) / clip.w
+                    let sx = CGFloat((ndc.x * 0.5 + 0.5) * w)
+                    let sy = CGFloat((0.5 - ndc.y * 0.5) * h)
+                    let text = st.shortName.uppercased()
+                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .kern: 0.9]
+                    let sz = (text as NSString).size(withAttributes: attrs)
+                    let pw = sz.width + 26, ph: CGFloat = 34
+                    var r = CGRect(x: max(20, min(CGFloat(width) - pw - 20, sx - pw * 0.5)), y: max(195, sy - 26 - ph), width: pw, height: ph)
+                    var tries = 0
+                    while tries < 3 && items.contains(where: { $0.rect.intersects(r.insetBy(dx: -8, dy: -6)) }) {
+                        r.origin.y -= (ph + 10)
+                        tries += 1
+                    }
+                    items.append((r, CGPoint(x: sx, y: sy), text, nsColor(st.accent)))
+                }
+            } else {
+                for tag in heroTags where tag.stationIndex == activeIdx {
+                    let clip = vp * SIMD4<Float>(tag.pos, 1.0)
+                    guard clip.w > 0.3 else { continue }
+                    let ndc = SIMD3<Float>(clip.x, clip.y, clip.z) / clip.w
+                    if ndc.x < -0.92 || ndc.x > 0.92 || ndc.y < -0.70 || ndc.y > 0.90 { continue }
+                    let sx = CGFloat((ndc.x * 0.5 + 0.5) * w)
+                    let sy = CGFloat((0.5 - ndc.y * 0.5) * h)
+                    if sy < 150 || sy > CGFloat(height) - 210 { continue }
+                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .kern: 1.0]
+                    let sz = (tag.text as NSString).size(withAttributes: attrs)
+                    let pw = sz.width + 30, ph: CGFloat = 38
+                    var r = CGRect(x: max(28, min(CGFloat(width) - pw - 28, sx - pw * 0.5)), y: max(145, sy - 28 - ph), width: pw, height: ph)
+                    var tries = 0
+                    while tries < 2 && items.contains(where: { $0.rect.intersects(r.insetBy(dx: -10, dy: -8)) }) {
+                        r.origin.y -= (ph + 12)
+                        tries += 1
+                    }
+                    items.append((r, CGPoint(x: sx, y: sy), tag.text, tag.color))
+                }
+            }
+
+            ctx.saveGState()
+            ctx.setAlpha(alpha)
+            for it in items {
+                // Crisp hairline leader stem
+                let bottomMid = CGPoint(x: it.rect.midX, y: it.rect.maxY)
+                ctx.setStrokeColor(NSColor(white: 0.94, alpha: 0.42).cgColor)
+                ctx.setLineWidth(1.4)
+                ctx.beginPath()
+                ctx.move(to: it.anchor)
+                ctx.addLine(to: bottomMid)
+                ctx.strokePath()
+
+                // Diamond reticle anchor
+                let dR: CGFloat = 5.0
+                ctx.beginPath()
+                ctx.move(to: CGPoint(x: it.anchor.x, y: it.anchor.y - dR))
+                ctx.addLine(to: CGPoint(x: it.anchor.x + dR, y: it.anchor.y))
+                ctx.addLine(to: CGPoint(x: it.anchor.x, y: it.anchor.y + dR))
+                ctx.addLine(to: CGPoint(x: it.anchor.x - dR, y: it.anchor.y))
+                ctx.closePath()
+                ctx.setFillColor(NSColor(calibratedWhite: 0.01, alpha: 0.92).cgColor)
+                ctx.fillPath()
+                ctx.setStrokeColor(it.color.cgColor)
+                ctx.setLineWidth(1.6)
+                ctx.strokePath()
+
+                // Chamfered obsidian glass tag
+                drawGridHudFrame(in: ctx, rect: it.rect, cut: 7.0, fillAlpha: 0.84, drawBrackets: false, drawScanlines: false)
+                // Bright left accent bar
+                ctx.setFillColor(it.color.cgColor)
+                ctx.fill(CGRect(x: it.rect.minX + 1.5, y: it.rect.minY + 4, width: 3.5, height: it.rect.height - 8))
+
+                let tAttrs: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: GridTokens.nsWhite,
+                    .kern: overview ? 0.9 : 1.0,
+                ]
+                let tSize = (it.text as NSString).size(withAttributes: tAttrs)
+                (it.text as NSString).draw(at: CGPoint(x: it.rect.minX + 14, y: it.rect.midY - tSize.height * 0.5), withAttributes: tAttrs)
+            }
+            ctx.restoreGState()
+        }
+
+        // 81.0-second cinematic concise walkthrough (comfortable reading pace, big text, 2 short beats per station):
+        //   0.0 - 6.2s   : Opening Full-Grid Panorama (2 short narration beats)
+        //   6.2 - 75.0s  : 8 Stations x 8.6s each (1.4s smooth glide + 7.2s living orbit; Beat A 3.9s -> Beat B 3.8s)
+        //   75.0 - 81.0s : Grand Finale Pullback to Full 8-Station Panorama + clean fade-out
+        let introDur: Float = 6.2
+        let stationSlot: Float = 8.6
+        let glideDur: Float = 1.4
+        let outroStart: Float = introDur + Float(stations.count) * stationSlot // 75.0s
+        let totalDur: Float = 81.0
         let totalFrames = Int((totalDur * Float(fps)).rounded())
 
-        let uiScale = CGFloat(width) / 1536.0
-        let logicalSize = CGSize(width: CGFloat(width) / uiScale, height: CGFloat(height) / uiScale)
         let cs = CGColorSpaceCreateDeviceRGB()
         let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
 
         let ovStartEye = SIMD3<Float>(-7.0, 33.5, 76.0)
         let ovEndEye   = SIMD3<Float>( 4.0, 31.5, 72.0)
         let ovFinalEye = SIMD3<Float>( 0.0, 32.0, 74.0)
-        let ovTarget   = SIMD3<Float>( 0.0,  3.0,  0.0)
+        let ovTarget   = SIMD3<Float>( 0.0,  2.8,  0.0)
 
         let prevShowGuide = showGuide
         let prevShowLabels = showLabels
-        showGuide = true
-        showLabels = true
+        showGuide = false
+        showLabels = false
         selectedPick = nil
+
+        let paraCenter = NSMutableParagraphStyle()
+        paraCenter.alignment = .center
+        paraCenter.lineSpacing = 6.0
+        paraCenter.lineBreakMode = .byWordWrapping
 
         let tStart = CACurrentMediaTime()
         for frameIdx in 0..<totalFrames {
@@ -3319,30 +3521,59 @@ final class RhFlythroughView: NSView {
             totalElapsedS = t
             flyTimeS = t
 
-            var guideAlpha: CGFloat = 1.0
+            var headerAlpha: CGFloat = 1.0
+            var calloutAlpha: CGFloat = 1.0
+            var captionTag = ""
+            var captionTagColor = GridTokens.nsCyan
+            var captionText = ""
+            var captionAlpha: CGFloat = 0.0
+            var heroTitle = ""
+            var heroSub = ""
+            var stepHeaderNum = ""
+            var stepHeaderKicker = ""
+            var stepHeaderTitle = ""
+
             var fadeBlack: CGFloat = 0.0
             if t < 0.65 {
                 fadeBlack = CGFloat(1.0 - smoothstep(0.0, 0.65, t))
-            } else if t > totalDur - 0.85 {
-                fadeBlack = CGFloat(smoothstep(totalDur - 0.85, totalDur, t))
+            } else if t > totalDur - 0.90 {
+                fadeBlack = CGFloat(smoothstep(totalDur - 0.90, totalDur, t))
             }
 
             if t < introDur {
-                // Opening Overview drift
                 let u = t / introDur
                 let s = u * u * (3.0 - 2.0 * u)
                 eye = ovStartEye + (ovEndEye - ovStartEye) * s
                 target = ovTarget
                 isOverviewMode = true
                 activeStation = 0
-                guideAlpha = CGFloat(smoothstep(0.25, 0.95, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
+                heroTitle = "THE RIEMANN HYPOTHESIS — SOLVED"
+                heroSub = "1859 → NOV 20, 2026   ·   17.37 MILLION LINES OF LEAN 4   ·   VERIFIED BY 4 KERNELS"
+                headerAlpha = CGFloat(smoothstep(0.25, 0.85, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
+                calloutAlpha = headerAlpha
+
+                if t < 3.3 {
+                    captionTag = "THE BIG PICTURE"
+                    captionTagColor = GridTokens.nsAmber
+                    captionText = "Unsolved for 167 years, the $1,000,000 Riemann Hypothesis was just solved and machine-verified."
+                    captionAlpha = CGFloat(smoothstep(0.35, 0.75, t) * (1.0 - smoothstep(3.0, 3.3, t)))
+                } else {
+                    captionTag = "8-STEP WALKTHROUGH"
+                    captionTagColor = GridTokens.nsCyan
+                    captionText = "Here is how the 175,182-file proof works — in 8 simple steps."
+                    captionAlpha = CGFloat(smoothstep(3.35, 3.70, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
+                }
             } else if t < outroStart {
-                // Guided tour across Stations 0..7
                 let local = t - introDur
                 let stIdx = min(stations.count - 1, Int(local / stationSlot))
                 let stT = local - Float(stIdx) * stationSlot
                 activeStation = stIdx
                 isOverviewMode = false
+
+                let sc = scripts[stIdx]
+                stepHeaderNum = sc.stepNum
+                stepHeaderKicker = sc.kicker
+                stepHeaderTitle = sc.title
 
                 if stT < glideDur {
                     let u = stT / glideDur
@@ -3351,45 +3582,61 @@ final class RhFlythroughView: NSView {
                         ? (ovEndEye, ovTarget)
                         : stationPose(stIdx - 1, orbitU: 1.0)
                     let toPose = stationPose(stIdx, orbitU: 0.0)
-                    let arcLift = sin(u * .pi) * (stIdx == 0 ? 2.0 : 1.35)
+                    let arcLift = sin(u * .pi) * (stIdx == 0 ? 2.2 : 1.4)
                     eye = fromPose.eye + (toPose.eye - fromPose.eye) * s + SIMD3<Float>(0, arcLift, 0)
                     target = fromPose.target + (toPose.target - fromPose.target) * s
-                    // Crossfade Guide card smoothly into the arriving station
-                    guideAlpha = CGFloat(smoothstep(glideDur * 0.45, glideDur, stT))
                 } else {
                     let dwellU = min(1.0, (stT - glideDur) / max(0.01, stationSlot - glideDur))
                     let pose = stationPose(stIdx, orbitU: dwellU)
                     eye = pose.eye
                     target = pose.target
-                    let outFade = 1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)
-                    guideAlpha = CGFloat(outFade)
+                }
+
+                headerAlpha = CGFloat(smoothstep(0.45, 0.95, stT) * (1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)))
+                calloutAlpha = CGFloat(smoothstep(0.95, 1.45, stT) * (1.0 - smoothstep(stationSlot - 0.35, stationSlot, stT)))
+
+                let splitT: Float = 4.65
+                if stT < splitT {
+                    captionTag = "WHAT YOU SEE"
+                    captionTagColor = GridTokens.nsCyan
+                    captionText = sc.beatA
+                    captionAlpha = CGFloat(smoothstep(0.60, 1.00, stT) * (1.0 - smoothstep(splitT - 0.28, splitT, stT)))
+                } else {
+                    captionTag = "WHY IT MATTERS"
+                    captionTagColor = GridTokens.nsAmber
+                    captionText = sc.beatB
+                    captionAlpha = CGFloat(smoothstep(splitT + 0.05, splitT + 0.38, stT) * (1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)))
                 }
             } else {
-                // Grand Finale pullback to full panoramic Overview
                 let ot = t - outroStart
-                let pullDur: Float = 3.0
+                let pullDur: Float = 2.6
                 if ot < pullDur {
                     let u = ot / pullDur
                     let s = u * u * (3.0 - 2.0 * u)
                     let fromPose = stationPose(stations.count - 1, orbitU: 1.0)
                     eye = fromPose.eye + (ovFinalEye - fromPose.eye) * s + SIMD3<Float>(0, sin(u * .pi) * 3.0, 0)
                     target = fromPose.target + (ovTarget - fromPose.target) * s
-                    isOverviewMode = (u > 0.52)
-                    activeStation = stations.count - 1
-                    guideAlpha = isOverviewMode ? CGFloat(smoothstep(0.55, 0.95, u)) : 0.0
+                    isOverviewMode = (u > 0.50)
                 } else {
                     let driftU = (ot - pullDur) / max(0.1, (totalDur - outroStart) - pullDur)
                     eye = ovFinalEye + SIMD3<Float>(driftU * 2.5, driftU * 0.8, driftU * 1.5)
                     target = ovTarget
                     isOverviewMode = true
-                    activeStation = stations.count - 1
-                    guideAlpha = 1.0
                 }
+                activeStation = stations.count - 1
+                heroTitle = "RIEMANN HYPOTHESIS · VERIFIED (Q.E.D.)"
+                heroSub = "175,182 LEAN 4 FILES   ·   813,182 THEOREMS   ·   OPENAGENTS DESKTOP"
+                headerAlpha = isOverviewMode ? CGFloat(smoothstep(1.35, 2.20, ot)) : 0.0
+                calloutAlpha = headerAlpha
+                captionTag = "EXPLORE LIVE IN OPENAGENTS"
+                captionTagColor = GridTokens.nsCyan
+                captionText = "Fly through the live 3D proof, run real Lean checks, and inspect every file inside OpenAgents Desktop."
+                captionAlpha = CGFloat(smoothstep(1.60, 2.25, ot))
             }
 
             autoreleasepool {
                 guard let cmd = queue.makeCommandBuffer() else { return }
-                encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: Float(uiScale))
+                encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: 1.25)
                 cmd.commit()
                 cmd.waitUntilCompleted()
 
@@ -3409,93 +3656,134 @@ final class RhFlythroughView: NSView {
                         NSGraphicsContext.saveGraphicsState()
                         ctx.saveGState()
                         ctx.translateBy(x: 0, y: CGFloat(height))
-                        ctx.scaleBy(x: uiScale, y: -uiScale)
+                        ctx.scaleBy(x: 1.0, y: -1.0)
                         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
 
-                        // 1. Crisp 3D projected labels
-                        let proj = computeProjectedLabels(viewSize: logicalSize)
-                        RhLabelsOverlayView.drawLabels(proj, in: ctx)
+                        let W = CGFloat(width), H = CGFloat(height)
 
-                        // 2. Smoothly faded Friendly Explainer & Significance Guide Card
-                        if guideAlpha > 0.01 {
+                        // 1. Minimalist BIG 3D Hero Callouts (only 2-3 crisp tags on the active station!)
+                        drawHeroCallouts(in: ctx, overview: isOverviewMode, activeIdx: activeStation, alpha: calloutAlpha)
+
+                        // 2. Top Header (Centered Hero Title on Overview / Clean Top-Left Chapter Title on Stations 1-8)
+                        if headerAlpha > 0.01 {
                             ctx.saveGState()
-                            ctx.setAlpha(guideAlpha)
-                            let guideContent = buildGuideContent(overview: isOverviewMode)
-                            let guideRect = isOverviewMode
-                                ? CGRect(x: 20, y: 18, width: logicalSize.width - 40, height: 156)
-                                : CGRect(x: logicalSize.width - 412, y: 20, width: 392, height: 616)
-                            GridExplainerPanelView.drawExplainer(guideContent, in: ctx, rect: guideRect)
+                            ctx.setAlpha(headerAlpha)
+                            if isOverviewMode {
+                                let tAttrs: [NSAttributedString.Key: Any] = [
+                                    .font: NSFont.monospacedSystemFont(ofSize: 44.0, weight: .bold),
+                                    .foregroundColor: GridTokens.nsWhite,
+                                    .kern: 3.2,
+                                ]
+                                let sAttrs: [NSAttributedString.Key: Any] = [
+                                    .font: NSFont.monospacedSystemFont(ofSize: 18.0, weight: .semibold),
+                                    .foregroundColor: GridTokens.nsCyan,
+                                    .kern: 1.8,
+                                ]
+                                let tSz = (heroTitle as NSString).size(withAttributes: tAttrs)
+                                let sSz = (heroSub as NSString).size(withAttributes: sAttrs)
+                                (heroTitle as NSString).draw(at: CGPoint(x: (W - tSz.width) * 0.5, y: 42), withAttributes: tAttrs)
+                                // Thin luminous divider under hero title
+                                ctx.setFillColor(NSColor(white: 0.94, alpha: 0.24).cgColor)
+                                ctx.fill(CGRect(x: (W - 360) * 0.5, y: 100, width: 360, height: 1.5))
+                                ctx.setFillColor(GridTokens.nsCyan.cgColor)
+                                ctx.fill(CGRect(x: (W - 90) * 0.5, y: 100, width: 90, height: 2.0))
+                                (heroSub as NSString).draw(at: CGPoint(x: (W - sSz.width) * 0.5, y: 112), withAttributes: sAttrs)
+                            } else {
+                                // Clean floating top-left chapter title (no heavy box!)
+                                let stepAttrs: [NSAttributedString.Key: Any] = [
+                                    .font: NSFont.monospacedSystemFont(ofSize: 17.5, weight: .bold),
+                                    .foregroundColor: GridTokens.nsCyan,
+                                    .kern: 1.8,
+                                ]
+                                let kickAttrs: [NSAttributedString.Key: Any] = [
+                                    .font: NSFont.monospacedSystemFont(ofSize: 17.5, weight: .semibold),
+                                    .foregroundColor: GridTokens.nsAmber,
+                                    .kern: 1.8,
+                                ]
+                                let titleAttrs: [NSAttributedString.Key: Any] = [
+                                    .font: NSFont.systemFont(ofSize: 38.0, weight: .bold),
+                                    .foregroundColor: GridTokens.nsWhite,
+                                ]
+                                // Subtle left vertical accent bar
+                                ctx.setFillColor(GridTokens.nsCyan.cgColor)
+                                ctx.fill(CGRect(x: 44, y: 38, width: 4, height: 74))
+
+                                let numStr = "\(stepHeaderNum)  ·  "
+                                let numW = (numStr as NSString).size(withAttributes: stepAttrs).width
+                                (numStr as NSString).draw(at: CGPoint(x: 62, y: 38), withAttributes: stepAttrs)
+                                (stepHeaderKicker as NSString).draw(at: CGPoint(x: 62 + numW, y: 38), withAttributes: kickAttrs)
+                                (stepHeaderTitle as NSString).draw(at: CGPoint(x: 62, y: 65), withAttributes: titleAttrs)
+                            }
                             ctx.restoreGState()
                         }
 
-                        // 3. Bottom OpenAgents Grid Navigation Bar + Live Progress Track + 8 Station Step Strip
-                        let cardRect = CGRect(x: 20, y: logicalSize.height - 108, width: logicalSize.width - 40, height: 92)
-                        drawGridHudFrame(in: ctx, rect: cardRect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: true)
+                        // 3. Bottom-Center Cinematic Narration Subtitle Plate (BIG 28px concise text + live progress!)
+                        let plateW: CGFloat = 1360
+                        let plateH: CGFloat = 156
+                        let plateRect = CGRect(x: (W - plateW) * 0.5, y: H - plateH - 28, width: plateW, height: plateH)
+                        drawGridHudFrame(in: ctx, rect: plateRect, cut: 14.0, fillAlpha: 0.88, drawBrackets: true, drawScanlines: true)
 
-                        ("OPENAGENTS / VERSE  ·  THE GRID  ·  RIEMANN HYPOTHESIS WALKTHROUGH" as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 8), withAttributes: [
-                            .font: NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium),
-                            .foregroundColor: GridTokens.nsMid,
-                            .kern: 1.0,
-                        ])
+                        // Narration Beat Tag + Big Readable 2-Line Caption (cross-fades cleanly!)
+                        if captionAlpha > 0.01 && !captionText.isEmpty {
+                            ctx.saveGState()
+                            ctx.setAlpha(captionAlpha)
 
+                            let tagAttrs: [NSAttributedString.Key: Any] = [
+                                .font: NSFont.monospacedSystemFont(ofSize: 14.0, weight: .bold),
+                                .foregroundColor: captionTagColor,
+                                .kern: 1.6,
+                            ]
+                            let tagSz = (captionTag as NSString).size(withAttributes: tagAttrs)
+                            let tagRect = CGRect(x: plateRect.minX + 28, y: plateRect.minY + 14, width: tagSz.width + 18, height: 24)
+                            ctx.setFillColor(captionTagColor.withAlphaComponent(0.15).cgColor)
+                            ctx.fill(tagRect)
+                            ctx.setStrokeColor(captionTagColor.withAlphaComponent(0.65).cgColor)
+                            ctx.setLineWidth(1.2)
+                            ctx.stroke(tagRect)
+                            (captionTag as NSString).draw(at: CGPoint(x: tagRect.minX + 9, y: tagRect.minY + 3.5), withAttributes: tagAttrs)
+
+                            let capAttrs: [NSAttributedString.Key: Any] = [
+                                .font: NSFont.systemFont(ofSize: 27.5, weight: .medium),
+                                .foregroundColor: NSColor(calibratedWhite: 0.98, alpha: 1.0),
+                                .paragraphStyle: paraCenter,
+                            ]
+                            drawWrapped(captionText, in: CGRect(x: plateRect.minX + 36, y: plateRect.minY + 46, width: plateRect.width - 72, height: 82), attrs: capAttrs)
+                            ctx.restoreGState()
+                        }
+
+                        // Subtle timecode top-right of narration plate
                         let curSec = Int(t), totSec = Int(totalDur)
                         let timeStr = String(format: "%02d:%02d / %02d:%02d", curSec / 60, curSec % 60, totSec / 60, totSec % 60)
                         let timeAttrs: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
-                            .foregroundColor: GridTokens.nsLight,
-                            .kern: 0.8,
+                            .font: NSFont.monospacedSystemFont(ofSize: 13.5, weight: .medium),
+                            .foregroundColor: GridTokens.nsMid,
+                            .kern: 1.0,
                         ]
-                        let tw = (timeStr as NSString).size(withAttributes: timeAttrs).width
-                        (timeStr as NSString).draw(at: CGPoint(x: cardRect.maxX - 18 - tw, y: cardRect.minY + 8), withAttributes: timeAttrs)
+                        let tW = (timeStr as NSString).size(withAttributes: timeAttrs).width
+                        (timeStr as NSString).draw(at: CGPoint(x: plateRect.maxX - 28 - tW, y: plateRect.minY + 17), withAttributes: timeAttrs)
 
-                        let titleStr = (isOverviewMode ? "THE FULL STORY — 8 STATIONS FROM 1859 MYSTERY TO Q.E.D. (175,182 LEAN FILES)" : stations[activeStation].title).uppercased()
-                        let subStr = isOverviewMode ? "1. Prime Music → 2. 5040 Test → 3. 2/3 Wall → 4. Mirror Bridge → 5. 175k City → 6. Safety Nets → 7. 4 Checkers → 8. Solved (Q.E.D.)" : stations[activeStation].subtitle
-
-                        (titleStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 21), withAttributes: [
-                            .font: NSFont.monospacedSystemFont(ofSize: 12.8, weight: .bold),
-                            .foregroundColor: GridTokens.nsWhite,
-                            .kern: 0.4,
-                        ])
-                        (subStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 40), withAttributes: [
-                            .font: NSFont.monospacedSystemFont(ofSize: 9.8, weight: .medium),
-                            .foregroundColor: GridTokens.nsCyan,
-                        ])
-
-                        // Live animated cyan progress bar
-                        let trackRect = CGRect(x: cardRect.minX + 18, y: cardRect.minY + 57, width: cardRect.width - 36, height: 2.0)
+                        // Sleek 8-segment chapter progress track along bottom of plate
+                        let barX = plateRect.minX + 28
+                        let barW = plateRect.width - 56
+                        let barY = plateRect.maxY - 16
                         ctx.setFillColor(NSColor(white: 0.94, alpha: 0.14).cgColor)
-                        ctx.fill(trackRect)
-                        let fillW = trackRect.width * CGFloat(max(0.0, min(1.0, t / totalDur)))
+                        ctx.fill(CGRect(x: barX, y: barY, width: barW, height: 3.0))
+                        let fillW = barW * CGFloat(max(0.0, min(1.0, t / totalDur)))
                         ctx.setFillColor(GridTokens.nsCyan.cgColor)
-                        ctx.fill(CGRect(x: trackRect.minX, y: trackRect.minY, width: fillW, height: 2.0))
+                        ctx.fill(CGRect(x: barX, y: barY, width: fillW, height: 3.0))
 
-                        // 8 Station Step Strip along bottom
-                        let pillGap: CGFloat = 5
-                        let pillW = (trackRect.width - pillGap * 7) / 8.0
-                        let pillY = cardRect.minY + 65
+                        // Subtle chapter ticks along the timeline bar
                         for i in 0..<8 {
-                            let px = trackRect.minX + CGFloat(i) * (pillW + pillGap)
-                            let pRect = CGRect(x: px, y: pillY, width: pillW, height: 19)
-                            let isAct = (!isOverviewMode && i == activeStation)
-                            ctx.setFillColor((isAct ? NSColor(calibratedRed: 0.04, green: 0.15, blue: 0.16, alpha: 0.92) : NSColor(calibratedRed: 0.016, green: 0.020, blue: 0.026, alpha: 0.85)).cgColor)
-                            ctx.fill(pRect)
-                            ctx.setStrokeColor((isAct ? GridTokens.nsCyan.withAlphaComponent(0.85) : NSColor(white: 0.94, alpha: 0.22)).cgColor)
-                            ctx.setLineWidth(1.0)
-                            ctx.stroke(pRect)
-                            let pStr = stations[i].shortName.uppercased()
-                            let pAttrs: [NSAttributedString.Key: Any] = [
-                                .font: NSFont.monospacedSystemFont(ofSize: 9.0, weight: isAct ? .bold : .medium),
-                                .foregroundColor: isAct ? GridTokens.nsCyan : GridTokens.nsLight,
-                                .kern: 0.5,
-                            ]
-                            let sz = (pStr as NSString).size(withAttributes: pAttrs)
-                            (pStr as NSString).draw(at: CGPoint(x: pRect.midX - sz.width * 0.5, y: pRect.midY - sz.height * 0.5), withAttributes: pAttrs)
+                            let frac = CGFloat((introDur + Float(i) * stationSlot) / totalDur)
+                            let tx = barX + barW * frac
+                            ctx.setFillColor(NSColor(white: 0.96, alpha: (!isOverviewMode && i == activeStation) ? 0.95 : 0.35).cgColor)
+                            ctx.fill(CGRect(x: tx - 1, y: barY - 3, width: 2, height: 9))
                         }
 
                         // Cinematic fade-in / fade-out
                         if fadeBlack > 0.005 {
                             ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: fadeBlack).cgColor)
-                            ctx.fill(CGRect(origin: .zero, size: logicalSize))
+                            ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
                         }
 
                         ctx.restoreGState()
@@ -3508,7 +3796,7 @@ final class RhFlythroughView: NSView {
                 adaptor.append(pb, withPresentationTime: pts)
             }
 
-            if frameIdx > 0 && frameIdx % (fps * 10) == 0 {
+            if frameIdx > 0 && frameIdx % (fps * 15) == 0 {
                 let elapsed = CACurrentMediaTime() - tStart
                 print(String(format: "rh3d record: %d/%d frames (%.1fs elapsed)", frameIdx, totalFrames, elapsed))
                 fflush(stdout)
