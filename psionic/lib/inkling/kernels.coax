@@ -2402,22 +2402,36 @@ ink_attn_scores_mma :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:
         }
         am_sg_spill_64x32(acc[..],a[..]);
         scale:=1.0f32/sqrt(f32(head_dim));
-        for thread:0..<128 {
-            for i:0..<16 {
-                e:=thread+128*i;
-                t:=t0+e/32;j:=j0+e%32;
-                if t<n_tok && j<span {
-                    p:=pos0+t;kp:=k_start+j;
-                    if kp<=p && (is_swa==0 || p-kp<swa) {
-                        dist:=p-kp;
-                        rb:f32=0.0f32;
+        no_rb:=is_swa==0 && k_start+j0+31<=pos0+t0 && (pos0+t0)-(k_start+j0+31)>=extent;
+        if no_rb {
+            for thread:0..<128 {
+                for i:0..<16 {
+                    e:=thread+128*i;
+                    t:=t0+e/32;j:=j0+e%32;
+                    if t<n_tok && j<span {
                         th:=t*n_head+h;
-                        if dist<extent {
-                            rb_base:=dist*n_rel;
-                            r_base:=th*n_rel;
-                            for m:0..<INK_REL {rb+=rel_bias[rb_base+m]*r[r_base+m];}
+                        scores[(h*n_tok+t)*score_stride+j]=am_to_f16(a[e]*scale-sinks[th]);
+                    }
+                }
+            }
+        } else {
+            for thread:0..<128 {
+                for i:0..<16 {
+                    e:=thread+128*i;
+                    t:=t0+e/32;j:=j0+e%32;
+                    if t<n_tok && j<span {
+                        p:=pos0+t;kp:=k_start+j;
+                        if kp<=p && (is_swa==0 || p-kp<swa) {
+                            dist:=p-kp;
+                            rb:f32=0.0f32;
+                            th:=t*n_head+h;
+                            if dist<extent {
+                                rb_base:=dist*n_rel;
+                                r_base:=th*n_rel;
+                                for m:0..<INK_REL {rb+=rel_bias[rb_base+m]*r[r_base+m];}
+                            }
+                            scores[(h*n_tok+t)*score_stride+j]=am_to_f16(a[e]*scale+rb-sinks[th]);
                         }
-                        scores[(h*n_tok+t)*score_stride+j]=am_to_f16(a[e]*scale+rb-sinks[th]);
                     }
                 }
             }
@@ -2953,8 +2967,8 @@ ink_moe_mm_bf16_16 :: (item:int,e_lo:int,rows:int,cols:int,w_bf16:[]u32,x_exp:[]
     }
 }
 
-// Sprint 27: Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (64x64 tile, ZERO w_bf16 DRAM staging!).
-ink_moe_mm_iq4 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+// Sprint 52: Native BF16xBF16 Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (64x64 tile).
+ink_moe_mm_iq4 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]u16,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
     tg:[4096]u16;
     r_tiles:=(rows+63)/64;
     t_idx:=item/r_tiles;
@@ -2970,7 +2984,7 @@ ink_moe_mm_iq4 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]
         w_lo:=exp_id*w_stride;
         x_lo:=e_off*cols;
         y_lo:=e_off*rows;
-        am_matmul_iq4(128,64,64,rows,cols,nm,r0,m0,
+        am_matmul_iq4_bf16(128,64,64,rows,cols,nm,r0,m0,
             w_iq4[w_lo..<w_lo+w_stride],
             x_exp[x_lo..<x_lo+nm*cols],
             y_exp[y_lo..<y_lo+nm*rows],
@@ -2978,8 +2992,8 @@ ink_moe_mm_iq4 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]
     }
 }
 
-// Sprint 27: Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (16x64 tile for small/medium prompts, ZERO w_bf16 DRAM staging!).
-ink_moe_mm_iq4_16 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+// Sprint 52: Native BF16xBF16 Metal 4 Neural Accelerator MoE GEMM with IN-TILE IQ4_NL dequantization (16x64 tile).
+ink_moe_mm_iq4_16 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]u16,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
     tg:[4096]u16;
     r_tiles:=(rows+63)/64;
     t_idx:=item/r_tiles;
@@ -2995,7 +3009,7 @@ ink_moe_mm_iq4_16 :: (item:int,rows:int,cols:int,w_iq4:[]u16,x_exp:[]f32,exp_cnt
         w_lo:=exp_id*w_stride;
         x_lo:=e_off*cols;
         y_lo:=e_off*rows;
-        am_matmul_iq4(128,16,64,rows,cols,nm,r0,m0,
+        am_matmul_iq4_bf16(128,16,64,rows,cols,nm,r0,m0,
             w_iq4[w_lo..<w_lo+w_stride],
             x_exp[x_lo..<x_lo+nm*cols],
             y_exp[y_lo..<y_lo+nm*rows],
@@ -3631,8 +3645,8 @@ ink_moe_down_q4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]
     }
 }
 
-// ---- Sprint 42: Double-M-tile (TM=128, TN=64, 128 threads) in-tile IQ4_NL MoE GEMM!
-ink_moe_mm_iq4_128 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+// ---- Sprint 52: Native BF16xBF16 Double/Quad-M-tile IQ4_NL MoE GEMMs!
+ink_moe_mm_iq4_128 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]u16,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
     tg:[4096]u16;
     r_tiles:=(rows+63)/64;
     t_idx:=item/r_tiles;
@@ -3646,12 +3660,11 @@ ink_moe_mm_iq4_128 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]f32,exp_cnt:[]
         eoff:=cast(int)exp_off[exp_id];
         row_words:=(cols/32)*9;
         w_off:=exp_id*rows*row_words;
-        am_matmul_iq4(128,128,64,rows,cols,ec,r0,m0,w[w_off..<w_off+rows*row_words],x_exp[eoff*cols..<(eoff+ec)*cols],y_exp[eoff*rows..<(eoff+ec)*rows],tg[..]);
+        am_matmul_iq4_bf16(128,128,64,rows,cols,ec,r0,m0,w[w_off..<w_off+rows*row_words],x_exp[eoff*cols..<(eoff+ec)*cols],y_exp[eoff*rows..<(eoff+ec)*rows],tg[..]);
     }
 }
 
-// ---- Sprint 44: Quad-M-tile (TM=256, TN=64, 128 threads) in-tile IQ4_NL MoE GEMM!
-ink_moe_mm_iq4_256 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]f32,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
+ink_moe_mm_iq4_256 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]u16,exp_cnt:[]u32,exp_off:[]u32,tile_exp:[]u32,tile_m0:[]u32,tile_cnt:[]u32,y_exp:[]f32) #export_c #effects(all) {
     tg:[4096]u16;
     r_tiles:=(rows+63)/64;
     t_idx:=item/r_tiles;
@@ -3665,6 +3678,225 @@ ink_moe_mm_iq4_256 :: (item:int,rows:int,cols:int,w:[]u16,x_exp:[]f32,exp_cnt:[]
         eoff:=cast(int)exp_off[exp_id];
         row_words:=(cols/32)*9;
         w_off:=exp_id*rows*row_words;
-        am_matmul_iq4(128,256,64,rows,cols,ec,r0,m0,w[w_off..<w_off+rows*row_words],x_exp[eoff*cols..<(eoff+ec)*cols],y_exp[eoff*rows..<(eoff+ec)*rows],tg[..]);
+        am_matmul_iq4_bf16(128,256,64,rows,cols,ec,r0,m0,w[w_off..<w_off+rows*row_words],x_exp[eoff*cols..<(eoff+ec)*cols],y_exp[eoff*rows..<(eoff+ec)*rows],tg[..]);
+    }
+}
+
+ink_moe_gather_bf16 :: (item:int,dim:int,n_used:int,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_wts:[]f32,exp_cnt:[]u32,exp_off:[]u32,x_exp:[]u16,row_dst:[]u32,row_wt:[]f32) #export_c #effects(all) {
+    exp_id:=item/8;
+    sub:=item%8;
+    cnt:=cast(int)exp_cnt[exp_id];
+    if sub<cnt {
+        ebase:=exp_id*INK_PREFILL_B;
+        off:=cast(int)exp_off[exp_id];
+        steps:=(dim+127)/128;
+        iters:=(cnt-sub+7)/8;
+        for thread:0..<128 {
+            for k:0..<iters {
+                c:=sub+k*8;
+                tok:=cast(int)exp_toks[ebase+c];
+                dst_row:=off+c;
+                if thread==0 {
+                    sl:=cast(int)exp_slots[ebase+c];
+                    row_dst[dst_row]=cast(u32)(tok*n_used+sl);
+                    row_wt[dst_row]=exp_wts[ebase+c];
+                }
+                sbase:=tok*dim;
+                dbase:=dst_row*dim;
+                for st:0..<steps {
+                    r:=st*128+thread;
+                    if r<dim {x_exp[dbase+r]=cast(u16)(f32_bits(x[sbase+r])>>16);}
+                }
+            }
+        }
+    }
+}
+
+ink_situ_batch_bf16 :: (item:int,n_ff:int,beta:f32,lb:f32,gu_out:[]f32,hid:[]u16) #export_c #effects(all) {
+    base:=item*2*n_ff;
+    hbase:=item*n_ff;
+    steps:=(n_ff+127)/128;
+    for thread:0..<128 {
+        for s:0..<steps {
+            row:=s*128+thread;
+            if row<n_ff {
+                g:=gu_out[base+row];
+                u:=gu_out[base+n_ff+row];
+                act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
+                if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
+                hid[hbase+row]=cast(u16)(f32_bits(act*u)>>16);
+            }
+        }
+    }
+}
+
+// ---- Sprint 50: 4-row-per-TG (128-thread) Fused Q + R + Gate Q4_0 matvec (-96 dispatches/tok!).
+// Launch items = (n_q + n_r + n_q + 3) / 4, lanes = 128.
+ink_dv_q4_qrg :: (item:int,n_q:int,n_r:int,cols:int,w:[]u16,x:[]f32,out_q:[]f32,out_r:[]f32,out_g:[]f32) #export_c #effects(all) {
+    blocks:=cols/32;words:=blocks*9;
+    n_qr:=n_q+n_r;
+    tot_rows:=n_qr+n_q;
+    for thread:0..<128 {
+        row:=item*4+thread/32;
+        lane:=thread%32;
+        if row<tot_rows {
+            tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
+            if lane==0 {
+                if row<n_q {out_q[row]=tot;}
+                else if row<n_qr {out_r[row-n_q]=tot;}
+                else {out_g[row-n_qr]=tot;}
+            }
+        }
+    }
+}
+
+// ---- Sprint 50: Fused 3-TG RMSNorm for (Q, K, V) inputs (-72 dispatches/tok!).
+// Launch items = 3, lanes = 256.
+ink_rmsnorm_3 :: (item:int,dim:int,is_swa:int,eps:f32,xq:[]f32,xk:[]f32,xv:[]f32,wq:[]f32,wk:[]f32,wv:[]f32,oq:[]f32,ok:[]f32,ov:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    steps:=(dim+255)/256;
+    for thread:0..<INK_NT {
+        s:f32=0;
+        for k:0..<steps {
+            i:=k*256+thread;
+            if i<dim {
+                v:=ifx item==0 then xq[i] else (ifx item==1 then xk[i] else xv[i]);
+                s+=v*v;
+            }
+        }
+        part[thread]=am_simd_sum(s);
+    }
+    for thread:0..<INK_NT {
+        tot:=part[0]+part[32]+part[64]+part[96]+part[128]+part[160]+part[192]+part[224];
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<steps {
+            i:=k*256+thread;
+            if i<dim {
+                if item==0 {oq[i]=xq[i]*inv*wq[i];}
+                else if item==1 {ok[i]=xk[i]*inv*(ifx is_swa!=0 then wq[i] else wk[i]);}
+                else {ov[i]=xv[i]*inv*(ifx is_swa!=0 then wq[i] else wv[i]);}
+            }
+        }
+    }
+}
+
+// ---- Sprint 50: 32-lane ZERO-TGEM/ZERO-BARRIER Fused K (shortconv+clip+KV) + V (shortconv+RMSNorm+KV) (-48 dispatches/tok!).
+// Launch items = 2 * n_head_kv, lanes = 32 (head_dim == 128).
+ink_conv_kv_both :: (item:int,n_head_kv:int,n_kv_elem:int,slot_pos:int,has_dyn:int,threshold:f32,eps:f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
+    is_v:=item/n_head_kv;
+    h:=item%n_head_kv;
+    base:=h*128;
+    dbase:=slot_pos*n_kv_elem+base;
+    inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
+    dyn_base:=(is_v*n_head_kv+h)*4;
+    for lane:0..<32 {
+        d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+        if has_dyn!=0 {d0=dyn[dyn_base+0];d1=dyn[dyn_base+1];d2=dyn[dyn_base+2];d3=dyn[dyn_base+3];}
+        if is_v==0 {
+            c0:=base+lane;c1:=c0+32;c2:=c0+64;c3:=c0+96;
+            x0:=k_hist[c0*3+0];x1:=k_hist[c0*3+1];x2:=k_hist[c0*3+2];x3:=k_raw[c0];
+            k_hist[c0*3+0]=x1;k_hist[c0*3+1]=x2;k_hist[c0*3+2]=x3;
+            a0:=x0*kw[c0*4+0]+x1*kw[c0*4+1]+x2*kw[c0*4+2]+x3*kw[c0*4+3];
+            if has_dyn!=0 {a0+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v0:=(x3+a0)*inv_s;
+            x0=k_hist[c1*3+0];x1=k_hist[c1*3+1];x2=k_hist[c1*3+2];x3=k_raw[c1];
+            k_hist[c1*3+0]=x1;k_hist[c1*3+1]=x2;k_hist[c1*3+2]=x3;
+            a1:=x0*kw[c1*4+0]+x1*kw[c1*4+1]+x2*kw[c1*4+2]+x3*kw[c1*4+3];
+            if has_dyn!=0 {a1+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v1:=(x3+a1)*inv_s;
+            x0=k_hist[c2*3+0];x1=k_hist[c2*3+1];x2=k_hist[c2*3+2];x3=k_raw[c2];
+            k_hist[c2*3+0]=x1;k_hist[c2*3+1]=x2;k_hist[c2*3+2]=x3;
+            a2:=x0*kw[c2*4+0]+x1*kw[c2*4+1]+x2*kw[c2*4+2]+x3*kw[c2*4+3];
+            if has_dyn!=0 {a2+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v2:=(x3+a2)*inv_s;
+            x0=k_hist[c3*3+0];x1=k_hist[c3*3+1];x2=k_hist[c3*3+2];x3=k_raw[c3];
+            k_hist[c3*3+0]=x1;k_hist[c3*3+1]=x2;k_hist[c3*3+2]=x3;
+            a3:=x0*kw[c3*4+0]+x1*kw[c3*4+1]+x2*kw[c3*4+2]+x3*kw[c3*4+3];
+            if has_dyn!=0 {a3+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v3:=(x3+a3)*inv_s;
+            tot:=am_simd_sum(v0*v0+v1*v1+v2*v2+v3*v3);
+            fac:=threshold/(sqrt(tot)+0.000001f32);
+            if fac>1.0f32 {fac=1.0f32;}
+            k_cache[dbase+lane]=am_to_f16(v0*fac);
+            k_cache[dbase+lane+32]=am_to_f16(v1*fac);
+            k_cache[dbase+lane+64]=am_to_f16(v2*fac);
+            k_cache[dbase+lane+96]=am_to_f16(v3*fac);
+        } else {
+            c0:=base+lane;c1:=c0+32;c2:=c0+64;c3:=c0+96;
+            x0:=v_hist[c0*3+0];x1:=v_hist[c0*3+1];x2:=v_hist[c0*3+2];x3:=v_raw[c0];
+            v_hist[c0*3+0]=x1;v_hist[c0*3+1]=x2;v_hist[c0*3+2]=x3;
+            a0:=x0*vw[c0*4+0]+x1*vw[c0*4+1]+x2*vw[c0*4+2]+x3*vw[c0*4+3];
+            if has_dyn!=0 {a0+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v0:=(x3+a0)*inv_s;
+            x0=v_hist[c1*3+0];x1=v_hist[c1*3+1];x2=v_hist[c1*3+2];x3=v_raw[c1];
+            v_hist[c1*3+0]=x1;v_hist[c1*3+1]=x2;v_hist[c1*3+2]=x3;
+            a1:=x0*vw[c1*4+0]+x1*vw[c1*4+1]+x2*vw[c1*4+2]+x3*vw[c1*4+3];
+            if has_dyn!=0 {a1+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v1:=(x3+a1)*inv_s;
+            x0=v_hist[c2*3+0];x1=v_hist[c2*3+1];x2=v_hist[c2*3+2];x3=v_raw[c2];
+            v_hist[c2*3+0]=x1;v_hist[c2*3+1]=x2;v_hist[c2*3+2]=x3;
+            a2:=x0*vw[c2*4+0]+x1*vw[c2*4+1]+x2*vw[c2*4+2]+x3*vw[c2*4+3];
+            if has_dyn!=0 {a2+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v2:=(x3+a2)*inv_s;
+            x0=v_hist[c3*3+0];x1=v_hist[c3*3+1];x2=v_hist[c3*3+2];x3=v_raw[c3];
+            v_hist[c3*3+0]=x1;v_hist[c3*3+1]=x2;v_hist[c3*3+2]=x3;
+            a3:=x0*vw[c3*4+0]+x1*vw[c3*4+1]+x2*vw[c3*4+2]+x3*vw[c3*4+3];
+            if has_dyn!=0 {a3+=d0*x3+d1*x2+d2*x1+d3*x0;}
+            v3:=(x3+a3)*inv_s;
+            tot:=am_simd_sum(v0*v0+v1*v1+v2*v2+v3*v3);
+            inv:=1.0f32/sqrt(tot/128.0f32+eps);
+            v_cache[dbase+lane]=am_to_f16(v0*inv);
+            v_cache[dbase+lane+32]=am_to_f16(v1*inv);
+            v_cache[dbase+lane+64]=am_to_f16(v2*inv);
+            v_cache[dbase+lane+96]=am_to_f16(v3*inv);
+        }
+    }
+}
+
+// ---- Sprint 51: Fused 1-dispatch lossless F16 ctrl_down[0..2] (-48 dispatches/tok!).
+// Launch items = (3 * rank + 3) / 4, lanes = 128.
+ink_dv_q4_ctrl_down_3 :: (item:int,rank:int,cols:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
+    tot_rows:=3*rank;
+    for thread:0..<128 {
+        row:=item*4+thread/32;
+        lane:=thread%32;
+        if row<tot_rows {
+            slot:=row/rank;
+            tot:=am_dot_f16_lane(w,row*cols,x,slot*cols,cols);
+            if lane==0 {out[row]=tot;}
+        }
+    }
+}
+
+// ---- Sprint 51: Fused 1-dispatch F16 ctrl_up_apply[0..2] (-48 dispatches/tok!).
+// Launch items = 3 * ceil(dim / 64), lanes = 64.
+ink_ctrl_up_apply_f16_3 :: (item:int,dim:int,rank:int,is_swa:int,w_gain:[]u16,w_forget:[]u16,gate:[]f32,cur:[]f32,msg:[]f32,out_q:[]f32,out_k:[]f32,out_v:[]f32) #export_c #effects(all) {
+    gsh:[64]f32;
+    per:=(dim+INK_T-1)/INK_T;
+    slot:=item/per;
+    tile:=item%per;
+    wbase:=slot*rank*dim;
+    cbase:=ifx is_swa!=0 then 0 else slot*dim;
+    mbase:=slot*dim;
+    gbase:=slot*rank;
+    for thread:0..<INK_T {
+        if thread<rank {gsh[thread]=gate[gbase+thread];}
+    }
+    for thread:0..<INK_T {
+        row:=tile*INK_T+thread;
+        if row<dim {
+            sg:f32=0;sf:f32=0;
+            for k:0..<rank {
+                gv:=gsh[k];
+                idx:=wbase+k*dim+row;
+                sg+=am_f16(cast(u32)w_gain[idx])*gv;
+                sf+=am_f16(cast(u32)w_forget[idx])*gv;
+            }
+            c:=cur[cbase+row];m:=msg[mbase+row];
+            val:=c-ink_tanh(sf)*c+ink_tanh(sg)*m;
+            if slot==0 {out_q[row]=val;}
+            else if slot==1 {out_k[row]=val;}
+            else {out_v[row]=val;}
+        }
     }
 }

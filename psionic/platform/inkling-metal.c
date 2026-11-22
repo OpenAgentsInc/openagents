@@ -104,6 +104,13 @@ enum {
     K_DEQUANT_Q4_BF16,
     K_MOE_MM_IQ4_128,
     K_MOE_MM_IQ4_256,
+    K_DV_Q4_QRG,
+    K_RMSNORM_3,
+    K_CONV_KV_BOTH,
+    K_DV_Q4_CTRL_DOWN_3,
+    K_CTRL_UP_APPLY_F16_3,
+    K_MOE_GATHER_BF16,
+    K_SITU_BATCH_BF16,
     K_COUNT
 };
 
@@ -195,6 +202,13 @@ static const char *const k_names[K_COUNT] = {
     "ink_dequant_q4_bf16",
     "ink_moe_mm_iq4_128",
     "ink_moe_mm_iq4_256",
+    "ink_dv_q4_qrg",
+    "ink_rmsnorm_3",
+    "ink_conv_kv_both",
+    "ink_dv_q4_ctrl_down_3",
+    "ink_ctrl_up_apply_f16_3",
+    "ink_moe_gather_bf16",
+    "ink_situ_batch_bf16",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -285,6 +299,13 @@ static const int64_t k_lanes[K_COUNT] = {
     96,     /* K_DEQUANT_Q4_BF16 */
     128,    /* K_MOE_MM_IQ4_128 */
     128,    /* K_MOE_MM_IQ4_256 */
+    128,    /* K_DV_Q4_QRG */
+    INK_NT, /* K_RMSNORM_3 */
+    32,     /* K_CONV_KV_BOTH */
+    128,    /* K_DV_Q4_CTRL_DOWN_3 */
+    INK_T,  /* K_CTRL_UP_APPLY_F16_3 */
+    128,    /* K_MOE_GATHER_BF16 */
+    128,    /* K_SITU_BATCH_BF16 */
 };
 
 typedef struct {
@@ -299,6 +320,7 @@ typedef struct {
     FastSpan attn_sink_proj, attn_k_conv_proj, attn_v_conv_proj;
     FastSpan moe_gu_q4, moe_dn_q4;
     FastSpan ctrl_down[4], ctrl_gain[4], ctrl_forget[4];
+    FastSpan ctrl_down_qkv_q4, ctrl_down3_q4, ctrl_gain_qkv, ctrl_forget_qkv;
 } FastLayer;
 
 struct InkSession {
@@ -595,11 +617,23 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
                  a_f32v(v_src, v_off, d), a_f32v(s->messages, msg_base + 2 * d, d), a_f32v(s->ctrl_cat, 2 * 2 * d, 2 * d));
             pm_barrier(batch);
         }
-        if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[0], &FL->ctrl_down[0], rank, 2 * d, 0, s->ctrl_cat, 0 * 2 * d, s->ctrl_gate, 0 * rank)) return 1;
-        if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[1], &FL->ctrl_down[1], rank, 2 * d, 0, s->ctrl_cat, 1 * 2 * d, s->ctrl_gate, 1 * rank)) return 1;
-        if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[2], &FL->ctrl_down[2], rank, 2 * d, 0, s->ctrl_cat, 2 * 2 * d, s->ctrl_gate, 2 * rank)) return 1;
+        if (s->fast_buf && FL->ctrl_down_qkv_q4.off >= 0) {
+            CALL(s, batch, K_DV_Q4_CTRL_DOWN_3, (3 * rank + 3) / 4, a_int(rank), a_int(2 * d),
+                 a_fast_u16(s, &FL->ctrl_down_qkv_q4), a_f32v(s->ctrl_cat, 0, 6 * d), a_f32v(s->ctrl_gate, 0, 3 * rank));
+        } else {
+            if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[0], &FL->ctrl_down[0], rank, 2 * d, 0, s->ctrl_cat, 0 * 2 * d, s->ctrl_gate, 0 * rank)) return 1;
+            if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[1], &FL->ctrl_down[1], rank, 2 * d, 0, s->ctrl_cat, 1 * 2 * d, s->ctrl_gate, 1 * rank)) return 1;
+            if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[2], &FL->ctrl_down[2], rank, 2 * d, 0, s->ctrl_cat, 2 * 2 * d, s->ctrl_gate, 2 * rank)) return 1;
+        }
         pm_barrier(batch);
-        if (s->fast_buf && FL->ctrl_gain[0].off >= 0 && FL->ctrl_forget[0].off >= 0 && rank <= 64) {
+        if (s->fast_buf && FL->ctrl_gain_qkv.off >= 0 && FL->ctrl_forget_qkv.off >= 0 && rank <= 64 && q_src == s->mix_out && k_src == s->mix_out && v_src == s->mix_out) {
+            int64_t citems = (d + INK_T - 1) / INK_T;
+            CALL(s, batch, K_CTRL_UP_APPLY_F16_3, 3 * citems, a_int(d), a_int(rank), a_int(is_swa ? 1 : 0),
+                 a_fast_u16(s, &FL->ctrl_gain_qkv), a_fast_u16(s, &FL->ctrl_forget_qkv),
+                 a_f32v(s->ctrl_gate, 0, 3 * rank), a_f32v(s->mix_out, 0, 3 * d), a_f32v(s->messages, msg_base, 3 * d),
+                 a_f32v(s->inp_q, 0, d), a_f32v(s->inp_k, 0, d), a_f32v(s->inp_v, 0, d));
+            pm_barrier(batch);
+        } else if (s->fast_buf && FL->ctrl_gain[0].off >= 0 && FL->ctrl_forget[0].off >= 0 && rank <= 64) {
             int64_t citems = (d + INK_T - 1) / INK_T;
             CALL(s, batch, K_CTRL_UP_APPLY_F16, citems, a_int(d), a_int(rank),
                  a_fast_u16(s, &FL->ctrl_gain[0]), a_fast_u16(s, &FL->ctrl_forget[0]),
@@ -641,12 +675,10 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         k_in = s->inp_q;
         v_in = s->inp_q;
     } else if (is_swa && has_messages) {
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(q_src, q_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_q, 0, d));
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(k_src, k_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_k, 0, d));
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(v_src, v_off, d), a_tensor_f32(s, &L->attn_norm), a_f32v(s->inp_v, 0, d));
+        CALL(s, batch, K_RMSNORM_3, 3, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(q_src, q_off, d), a_f32v(k_src, k_off, d), a_f32v(v_src, v_off, d),
+             a_tensor_f32(s, &L->attn_norm), a_tensor_f32(s, &L->attn_norm), a_tensor_f32(s, &L->attn_norm),
+             a_f32v(s->inp_q, 0, d), a_f32v(s->inp_k, 0, d), a_f32v(s->inp_v, 0, d));
         pm_barrier(batch);
     } else if (is_swa) {
         CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
@@ -655,23 +687,28 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         v_in = s->inp_q;
         pm_barrier(batch);
     } else {
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(q_src, q_off, d), a_tensor_f32(s, &L->attn_q_inp_norm), a_f32v(s->inp_q, 0, d));
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(k_src, k_off, d), a_tensor_f32(s, &L->attn_k_inp_norm), a_f32v(s->inp_k, 0, d));
-        CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-             a_f32v(v_src, v_off, d), a_tensor_f32(s, &L->attn_v_inp_norm), a_f32v(s->inp_v, 0, d));
+        CALL(s, batch, K_RMSNORM_3, 3, a_int(d), a_int(0), a_f32(hp->rms_eps),
+             a_f32v(q_src, q_off, d), a_f32v(k_src, k_off, d), a_f32v(v_src, v_off, d),
+             a_tensor_f32(s, &L->attn_q_inp_norm), a_tensor_f32(s, &L->attn_k_inp_norm), a_tensor_f32(s, &L->attn_v_inp_norm),
+             a_f32v(s->inp_q, 0, d), a_f32v(s->inp_k, 0, d), a_f32v(s->inp_v, 0, d));
         pm_barrier(batch);
     }
     prof_mark(bp, 0); batch = *bp; /* 0: mix + ctrl + rmsnorm */
 
-    /* Wave 3: ALL independent attention input projections run CONCURRENTLY! */
-    if (dispatch_mv_q4(s, batch, &L->attn_q, &FL->attn_q, n_q, d, 0, q_in, 0, s->q_buf, 0)) return 1;
+    /* Wave 3 (Sprint 50): Fused 128-thread Q+R+Gate (-96 dispatches/tok!) + K/V/Sinks/Dyn concurrently! */
+    if (s->fast_buf && FL->attn_qrg.off >= 0) {
+        int64_t qrg_rows = n_q + n_head * n_rel + n_q;
+        CALL(s, batch, K_DV_Q4_QRG, (qrg_rows + 3) / 4, a_int(n_q), a_int(n_head * n_rel), a_int(d),
+             a_fast_u16(s, &FL->attn_qrg), a_f32v(q_in, 0, d),
+             a_f32v(s->q_buf, 0, n_q), a_f32v(s->r_buf, 0, n_head * n_rel), a_f32v(s->gate_buf, 0, n_q));
+    } else {
+        if (dispatch_mv_q4(s, batch, &L->attn_q, &FL->attn_q, n_q, d, 0, q_in, 0, s->q_buf, 0)) return 1;
+        if (dispatch_mv_q4(s, batch, &L->attn_rel, &FL->attn_rel, n_head * n_rel, d, 0, q_in, 0, s->r_buf, 0)) return 1;
+        if (dispatch_mv_q4(s, batch, &L->attn_gate, &FL->attn_gate, n_q, d, 0, q_in, 0, s->gate_buf, 0)) return 1;
+    }
     if (dispatch_mv_q4(s, batch, &L->attn_k, &FL->attn_k, n_kv, d, 0, k_in, 0, s->k_raw, 0)) return 1;
     if (dispatch_mv_q4(s, batch, &L->attn_v, &FL->attn_v, n_kv, d, 0, v_in, 0, s->v_raw, 0)) return 1;
-    if (dispatch_mv_q4(s, batch, &L->attn_rel, &FL->attn_rel, n_head * n_rel, d, 0, q_in, 0, s->r_buf, 0)) return 1;
     if (dispatch_mv_f16_small(s, batch, &L->attn_sink_proj, &FL->attn_sink_proj, n_head, d, 0, q_in, 0, s->sinks_buf, 0)) return 1;
-    if (dispatch_mv_q4(s, batch, &L->attn_gate, &FL->attn_gate, n_q, d, 0, q_in, 0, s->gate_buf, 0)) return 1;
     int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
     int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
     int64_t dyn_sz = n_head_kv * hp->conv_len;
@@ -686,20 +723,30 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     pm_barrier(batch);
     prof_mark(bp, 1); batch = *bp; /* 1: attn input projs (Q/K/V/R/Gate/Sinks/Dyn) */
 
-    /* Wave 4 (Sprint 47): When using 1-pass GQA, Q-clip & R-clip are FUSED into K_ATTN_GQA_1PASS (-96 dispatches/tok!). */
+    /* Wave 4 (Sprint 50): 32-lane ZERO-TGEM fused K+V conv+clip/norm+KV store (-48 dispatches/tok!) + fused Q/R clip in GQA 1pass! */
     float q_tau = is_swa ? 1.0f : tau;
     int64_t kv_cap = s->kv_cap[il];
     int64_t slot_pos = is_swa ? (s->pos % kv_cap) : s->pos;
     int64_t n_keys_attn = (is_swa && s->pos >= hp->swa) ? hp->swa : (s->pos + 1);
     int use_1pass = (n_head == n_head_kv * 3 && hd == 128 && n_keys_attn >= 1 && n_keys_attn <= 256);
-    CALL(s, batch, K_CONV_CLIP_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos), a_int(has_k_dyn ? 1 : 0),
-         a_f32(hp->qk_clip), a_f32v(s->k_raw, 0, n_kv), a_tensor_f32(s, &L->attn_k_conv),
-         has_k_dyn ? a_f32v(s->dyn_buf, 0, dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_k[il], 0, n_kv * 3), a_u16v(s->kv_k[il], 0, kv_cap * n_kv));
-    CALL(s, batch, K_CONV_HEAD_RMSNORM_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos), a_int(has_v_dyn ? 1 : 0),
-         a_f32(hp->rms_eps), a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
-         has_v_dyn ? a_f32v(s->dyn_buf, dyn_sz, dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_v[il], 0, n_kv * 3), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    if (hd == 128 && has_k_dyn == has_v_dyn) {
+        CALL(s, batch, K_CONV_KV_BOTH, 2 * n_head_kv, a_int(n_head_kv), a_int(n_kv), a_int(slot_pos),
+             a_int(has_k_dyn ? 1 : 0), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
+             a_f32v(s->k_raw, 0, n_kv), a_f32v(s->v_raw, 0, n_kv),
+             a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
+             has_k_dyn ? a_f32v(s->dyn_buf, 0, 2 * dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->conv_v[il], 0, n_kv * 3),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    } else {
+        CALL(s, batch, K_CONV_CLIP_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos), a_int(has_k_dyn ? 1 : 0),
+             a_f32(hp->qk_clip), a_f32v(s->k_raw, 0, n_kv), a_tensor_f32(s, &L->attn_k_conv),
+             has_k_dyn ? a_f32v(s->dyn_buf, 0, dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_u16v(s->kv_k[il], 0, kv_cap * n_kv));
+        CALL(s, batch, K_CONV_HEAD_RMSNORM_KV, n_head_kv, a_int(hd), a_int(n_kv), a_int(slot_pos), a_int(has_v_dyn ? 1 : 0),
+             a_f32(hp->rms_eps), a_f32v(s->v_raw, 0, n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             has_v_dyn ? a_f32v(s->dyn_buf, dyn_sz, dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    }
     if (!use_1pass) {
         CALL(s, batch, K_CLIP, n_head, a_int(hd), a_int(L->attn_q_clip.present ? 1 : 0),
              a_f32(hp->qk_clip), a_f32(q_tau),
@@ -1045,11 +1092,36 @@ static void convert_q8_to_q4(const uint8_t *src, size_t nbytes, uint8_t *dst) {
     }
 }
 
+static void convert_f32_to_q4(const uint8_t *src, size_t nbytes, uint8_t *dst) {
+    const float *f = (const float *)src;
+    size_t nb = (nbytes / 4) / 32;
+    for (size_t b = 0; b < nb; b++) {
+        const float *fb = f + b * 32;
+        uint8_t *db = dst + b * 18;
+        float max_a = 0.0f, max_v = 0.0f;
+        for (int i = 0; i < 32; i++) {
+            float a = fb[i] < 0.0f ? -fb[i] : fb[i];
+            if (a > max_a) { max_a = a; max_v = fb[i]; }
+        }
+        float d4 = (max_a > 0.0f) ? (max_v / -8.0f) : 0.0f;
+        float inv = (d4 != 0.0f) ? (1.0f / d4) : 0.0f;
+        uint16_t d4u = f32_to_f16_host(d4);
+        memcpy(db, &d4u, 2);
+        for (int j = 0; j < 16; j++) {
+            int q0 = (int)(fb[j] * inv + 8.5f);
+            if (q0 < 0) q0 = 0; else if (q0 > 15) q0 = 15;
+            int q1 = (int)(fb[j + 16] * inv + 8.5f);
+            if (q1 < 0) q1 = 0; else if (q1 > 15) q1 = 15;
+            db[2 + j] = (uint8_t)(q0 | (q1 << 4));
+        }
+    }
+}
+
 typedef struct {
     const uint8_t *src;
     size_t src_bytes;
     uint8_t *dst;
-    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose */
+    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose, 3 = f32->q4 */
     int64_t rows, cols;
 } FastJob;
 
@@ -1066,6 +1138,7 @@ static void *fast_worker(void *arg) {
         const FastJob *j = &a->jobs[i];
         if (j->kind == 1) convert_q8_to_q4(j->src, j->src_bytes, j->dst);
         else if (j->kind == 2) convert_f32_to_f16_transpose(j->src, j->rows, j->cols, j->dst);
+        else if (j->kind == 3) convert_f32_to_q4(j->src, j->src_bytes, j->dst);
         else convert_f32_to_f16(j->src, j->src_bytes, j->dst);
     }
     return NULL;
@@ -1082,6 +1155,7 @@ static void build_fast_weights(InkSession *s) {
         fl->ffn_gate_inp.off = -1;
         fl->attn_sink_proj.off = fl->attn_k_conv_proj.off = fl->attn_v_conv_proj.off = -1;
         for (int c = 0; c < 4; c++) fl->ctrl_down[c].off = fl->ctrl_gain[c].off = fl->ctrl_forget[c].off = -1;
+        fl->ctrl_down_qkv_q4.off = fl->ctrl_down3_q4.off = fl->ctrl_gain_qkv.off = fl->ctrl_forget_qkv.off = -1;
     }
     s->fast_output.off = -1;
 
@@ -1125,10 +1199,48 @@ static void build_fast_weights(InkSession *s) {
         ADD_FAST_F16(L->attn_sink_proj, FL->attn_sink_proj);
         ADD_FAST_F16(L->attn_k_conv_proj, FL->attn_k_conv_proj);
         ADD_FAST_F16(L->attn_v_conv_proj, FL->attn_v_conv_proj);
-        for (int c = 0; c < 4; c++) {
-            ADD_FAST_F16(L->loop_ctrl_down[c], FL->ctrl_down[c]);
-            ADD_FAST_F16_T(L->loop_ctrl_gain[c], FL->ctrl_gain[c], hp->n_embd, hp->gate_rank);
-            ADD_FAST_F16_T(L->loop_ctrl_forget[c], FL->ctrl_forget[c], hp->n_embd, hp->gate_rank);
+        if (L->loop_ctrl_down[0].present && L->loop_ctrl_down[0].type == INK_GGML_F32 &&
+            L->loop_ctrl_down[1].present && L->loop_ctrl_down[1].type == INK_GGML_F32 &&
+            L->loop_ctrl_down[2].present && L->loop_ctrl_down[2].type == INK_GGML_F32 && n_jobs + 3 <= 1024) {
+            int64_t b0 = (int64_t)(L->loop_ctrl_down[0].nbytes / 2);
+            int64_t b1 = (int64_t)(L->loop_ctrl_down[1].nbytes / 2);
+            int64_t b2 = (int64_t)(L->loop_ctrl_down[2].nbytes / 2);
+            FL->ctrl_down_qkv_q4.off = total_bytes;
+            FL->ctrl_down_qkv_q4.words = (b0 + b1 + b2) / 2;
+            FL->ctrl_down[0].off = total_bytes; FL->ctrl_down[0].words = b0 / 2;
+            FL->ctrl_down[1].off = total_bytes + b0; FL->ctrl_down[1].words = b1 / 2;
+            FL->ctrl_down[2].off = total_bytes + b0 + b1; FL->ctrl_down[2].words = b2 / 2;
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes, (uint8_t *)(uintptr_t)(total_bytes), 0, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0), 0, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0 + b1), 0, 0, 0 };
+            total_bytes = (total_bytes + b0 + b1 + b2 + 63) & ~63LL;
+            ADD_FAST_F16(L->loop_ctrl_down[3], FL->ctrl_down[3]);
+        } else {
+            for (int c = 0; c < 4; c++) ADD_FAST_F16(L->loop_ctrl_down[c], FL->ctrl_down[c]);
+        }
+        if (L->loop_ctrl_gain[0].present && L->loop_ctrl_gain[0].type == INK_GGML_F32 &&
+            L->loop_ctrl_gain[1].present && L->loop_ctrl_gain[1].type == INK_GGML_F32 &&
+            L->loop_ctrl_gain[2].present && L->loop_ctrl_gain[2].type == INK_GGML_F32 && n_jobs + 6 <= 1024) {
+            int64_t bg = (int64_t)(L->loop_ctrl_gain[0].nbytes / 2);
+            FL->ctrl_gain_qkv.off = total_bytes; FL->ctrl_gain_qkv.words = (3 * bg) / 2;
+            for (int c = 0; c < 3; c++) {
+                FL->ctrl_gain[c].off = total_bytes + c * bg; FL->ctrl_gain[c].words = bg / 2;
+                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[c].offset, (size_t)L->loop_ctrl_gain[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank };
+            }
+            total_bytes = (total_bytes + 3 * bg + 63) & ~63LL;
+            FL->ctrl_forget_qkv.off = total_bytes; FL->ctrl_forget_qkv.words = (3 * bg) / 2;
+            for (int c = 0; c < 3; c++) {
+                FL->ctrl_forget[c].off = total_bytes + c * bg; FL->ctrl_forget[c].words = bg / 2;
+                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_forget[c].offset, (size_t)L->loop_ctrl_forget[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank };
+            }
+            total_bytes = (total_bytes + 3 * bg + 63) & ~63LL;
+            ADD_FAST_F16_T(L->loop_ctrl_gain[3], FL->ctrl_gain[3], hp->n_embd, hp->gate_rank);
+            ADD_FAST_F16_T(L->loop_ctrl_forget[3], FL->ctrl_forget[3], hp->n_embd, hp->gate_rank);
+        } else {
+            for (int c = 0; c < 4; c++) {
+                ADD_FAST_F16_T(L->loop_ctrl_gain[c], FL->ctrl_gain[c], hp->n_embd, hp->gate_rank);
+                ADD_FAST_F16_T(L->loop_ctrl_forget[c], FL->ctrl_forget[c], hp->n_embd, hp->gate_rank);
+            }
         }
         if (do_q4 && L->attn_q.present && L->attn_q.type == INK_GGML_Q8_0 &&
             L->attn_rel.present && L->attn_rel.type == INK_GGML_Q8_0 &&
@@ -2093,34 +2205,34 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
              a_u32v(s->exp_cnt, 0, hp->n_expert),
              a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
         pm_barrier(batch);
-        CALL(s, batch, K_MOE_GATHER_X, hp->n_expert * 8, a_int(d), a_int(hp->n_expert_used),
+        CALL(s, batch, K_MOE_GATHER_BF16, hp->n_expert * 8, a_int(d), a_int(hp->n_expert_used),
              a_f32v(s->norm_buf, 0, bd),
              a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
              a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
              a_f32v(s->exp_wts, 0, hp->n_expert * INK_PREFILL_B),
              a_u32v(s->exp_cnt, 0, hp->n_expert),
              a_u32v(s->exp_off, 0, hp->n_expert),
-             a_f32v(s->moe_slot_out, 0, tot_rows * d),
+             a_u16v(s->moe_slot_out, 0, tot_rows * d),
              a_u32v(s->row_dst, 0, tot_rows),
              a_f32v(s->row_wt, 0, tot_rows));
         pm_barrier(batch);
-        /* Gate+Up in ONE single dispatch across all 128 experts! */
+        /* Gate+Up in ONE single dispatch across all 128 experts (native BF16xBF16 Neural Accelerator)! */
         CALL(s, batch, moe_mm_k, max_tiles * gu_r_tiles, a_int(gu_rows), a_int(d),
              a_tensor_u16(s, &L->ffn_gate_up_exps),
-             a_f32v(s->moe_slot_out, 0, tot_rows * d),
+             a_u16v(s->moe_slot_out, 0, tot_rows * d),
              a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
              a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16),
              a_f32v(s->moe_gu, 0, tot_rows * gu_rows));
         pm_barrier(batch);
-        CALL(s, batch, K_SITU_BATCH, tot_rows,
+        CALL(s, batch, K_SITU_BATCH_BF16, tot_rows,
              a_int(n_ff), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
              a_f32v(s->moe_gu, 0, tot_rows * gu_rows),
-             a_f32v(s->moe_hid, 0, tot_rows * n_ff));
+             a_u16v(s->moe_hid, 0, tot_rows * n_ff));
         pm_barrier(batch);
-        /* Down in ONE single dispatch across all 128 experts! */
+        /* Down in ONE single dispatch across all 128 experts (native BF16xBF16 Neural Accelerator)! */
         CALL(s, batch, moe_mm_k, max_tiles * dn_r_tiles, a_int(d), a_int(n_ff),
              a_tensor_u16(s, &L->ffn_down_exps),
-             a_f32v(s->moe_hid, 0, tot_rows * n_ff),
+             a_u16v(s->moe_hid, 0, tot_rows * n_ff),
              a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
              a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16),
              a_f32v(s->moe_gu, 0, tot_rows * d));

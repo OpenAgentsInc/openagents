@@ -515,7 +515,7 @@ WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 // Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
 static bool is_device_primitive(const ProcDecl *p) {
-  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_iq4"));
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16"));
 }
 // The integer value of a constant expression (a literal or a named constant).
 static int64_t constant_of_expr(const Expr *e) {
@@ -1778,8 +1778,9 @@ struct Emitter {
           if (kind == 5) return "coax_am_sg_zero(" + whole(0) + ")";
           apple_tensor = true;
           auto value = [&](int i) { return std::to_string(constant_of_expr(e->args[i])); };
-          if (kind == 4) {
-            std::string s = "coax_am_matmul_iq4<" + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
+          if (kind == 4 || kind == 7) {
+            std::string fn = (kind == 7) ? "coax_am_matmul_iq4_bf16<" : "coax_am_matmul_iq4<";
+            std::string s = fn + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
             for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
             return s + "(threadgroup bfloat *)" + whole(11) + ".e, coax_lane, " + line + ", coax_err)";
           }
@@ -3367,7 +3368,7 @@ COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
     float4 xl = *(const device float4 *)bx;
     float4 xh = *(const device float4 *)(bx + 16);
     float sc = float(as_type<half>(bw[0]));
-    uint32_t v0 = bw[1 + k0], v1 = bw[2 + k0];
+    ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
     float s = coax_iq4_lut[v0 & 15u] * xl.x
             + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
             + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3400,7 +3401,7 @@ COAX_DEV float coax_am_dot_q4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int
     float4 xh = *(const device float4 *)(bx + 16);
     float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
     float sc = float(as_type<half>(bw[0]));
-    uint32_t v0 = bw[1 + k0], v1 = bw[2 + k0];
+    ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
     float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
             + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
             + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3432,8 +3433,8 @@ COAX_DEV float coax_am_dot_iq4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, c
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    uint32_t g0 = bg[1 + k0], g1 = bg[2 + k0];
-    uint32_t u0 = bu[1 + k0], u1 = bu[2 + k0];
+    ushort2 _gv = *(const device ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
+    ushort2 _uv = *(const device ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
     float sg = coax_iq4_lut[g0 & 15u] * xl.x
              + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x
              + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y
@@ -3482,8 +3483,8 @@ COAX_DEV float coax_am_dot_q4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, co
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    uint32_t g0 = bg[1 + k0], g1 = bg[2 + k0];
-    uint32_t u0 = bu[1 + k0], u1 = bu[2 + k0];
+    ushort2 _gv = *(const device ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
+    ushort2 _uv = *(const device ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
     float sg = float(g0 & 15u) * xl.x + float((g0 >> 4u) & 15u) * xh.x
              + float((g0 >> 8u) & 15u) * xl.y + float(g0 >> 12u) * xh.y
              + float(g1 & 15u) * xl.z + float((g1 >> 4u) & 15u) * xh.z
@@ -3529,7 +3530,7 @@ COAX_DEV float coax_am_dot_iq4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32
       float4 xl = *(const device float4 *)bx;
       float4 xh = *(const device float4 *)(bx + 16);
       float sc = float(as_type<half>(bw[0]));
-      uint32_t v0 = bw[1 + k0], v1 = bw[2 + k0];
+      ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
       float s = coax_iq4_lut[v0 & 15u] * xl.x
               + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
               + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3571,7 +3572,7 @@ COAX_DEV float coax_am_dot_q4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32 
       float4 xh = *(const device float4 *)(bx + 16);
       float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
       float sc = float(as_type<half>(bw[0]));
-      uint32_t v0 = bw[1 + k0], v1 = bw[2 + k0];
+      ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
       float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
               + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
               + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3605,8 +3606,8 @@ COAX_DEV float coax_am_dot_f16_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
   }
   return simd_sum(acc);
 }
-template <int TM, int TN, int SG>
-COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, coax_v_f32 x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
+template <int TM, int TN, int SG, typename XT, typename XV>
+COAX_DEV void coax_am_matmul_iq4_impl(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, XV x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
   using namespace mpp::tensor_ops;
   int64_t n_blocks = cols >> 5;
   int64_t row_words = n_blocks * 9;
@@ -3615,13 +3616,14 @@ COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int
     coax_trap_(line, coax_err);
     return;
   }
+  const device XT *xdata = (const device XT *)x.data;
   int c = (int)cols, nt = (int)min((int64_t)TM, tokens - t0), nr = (int)min((int64_t)TN, rows - r0);
   constexpr int SUB_M = (TM == 128 || TM == 256) ? 64 : TM;
   int nt0 = min(SUB_M, nt);
   int nt1 = (TM >= 128 && nt > 64) ? min(64, nt - 64) : 0;
   int nt2 = (TM == 256 && nt > 128) ? min(64, nt - 128) : 0;
   int nt3 = (TM == 256 && nt > 192) ? min(64, nt - 192) : 0;
-  auto X0 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols, dextents<int32_t, 2>(64, nt0), array<int32_t, 2>({1, c}));
+  auto X0 = tensor<device XT, dextents<int32_t, 2>, tensor_inline>((device XT *)(xdata + t0 * cols), dextents<int32_t, 2>(64, nt0), array<int32_t, 2>({1, c}));
   auto W0 = tensor<threadgroup bfloat, dextents<int32_t, 2>, tensor_inline>(W_tg, dextents<int32_t, 2>(64, nr), array<int32_t, 2>({1, 64}));
   auto C0 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(out.data + t0 * rows + r0, dextents<int32_t, 2>(nr, nt0), array<int32_t, 2>({1, (int)rows}));
   constexpr auto d = matmul2d_descriptor(SUB_M, TN, 64, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
@@ -3659,21 +3661,21 @@ COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int
       }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    auto Xk0 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols + k0, dextents<int32_t, 2>(64, nt0), array<int32_t, 2>({1, c}));
+    auto Xk0 = tensor<device XT, dextents<int32_t, 2>, tensor_inline>((device XT *)(xdata + t0 * cols + k0), dextents<int32_t, 2>(64, nt0), array<int32_t, 2>({1, c}));
     op.run(Xk0, W0, ct0);
     if constexpr (TM >= 128) {
       if (nt1 > 0) {
-        auto Xk1 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + (t0 + 64) * cols + k0, dextents<int32_t, 2>(64, nt1), array<int32_t, 2>({1, c}));
+        auto Xk1 = tensor<device XT, dextents<int32_t, 2>, tensor_inline>((device XT *)(xdata + (t0 + 64) * cols + k0), dextents<int32_t, 2>(64, nt1), array<int32_t, 2>({1, c}));
         op.run(Xk1, W0, ct1);
       }
     }
     if constexpr (TM == 256) {
       if (nt2 > 0) {
-        auto Xk2 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + (t0 + 128) * cols + k0, dextents<int32_t, 2>(64, nt2), array<int32_t, 2>({1, c}));
+        auto Xk2 = tensor<device XT, dextents<int32_t, 2>, tensor_inline>((device XT *)(xdata + (t0 + 128) * cols + k0), dextents<int32_t, 2>(64, nt2), array<int32_t, 2>({1, c}));
         op.run(Xk2, W0, ct2);
       }
       if (nt3 > 0) {
-        auto Xk3 = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + (t0 + 192) * cols + k0, dextents<int32_t, 2>(64, nt3), array<int32_t, 2>({1, c}));
+        auto Xk3 = tensor<device XT, dextents<int32_t, 2>, tensor_inline>((device XT *)(xdata + (t0 + 192) * cols + k0), dextents<int32_t, 2>(64, nt3), array<int32_t, 2>({1, c}));
         op.run(Xk3, W0, ct3);
       }
     }
@@ -3696,6 +3698,14 @@ COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int
       ct3.store(C3);
     }
   }
+}
+template <int TM, int TN, int SG>
+COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, coax_v_f32 x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
+  coax_am_matmul_iq4_impl<TM, TN, SG, float>(rows, cols, tokens, r0, t0, w, x, out, W_tg, tid, line, coax_err);
+}
+template <int TM, int TN, int SG>
+COAX_DEV void coax_am_matmul_iq4_bf16(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, coax_v_u16 x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
+  coax_am_matmul_iq4_impl<TM, TN, SG, bfloat>(rows, cols, tokens, r0, t0, w, x, out, W_tg, tid, line, coax_err);
 }
 )COAXRT";
 

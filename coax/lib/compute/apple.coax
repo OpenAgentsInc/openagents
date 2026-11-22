@@ -237,6 +237,33 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
         }
     }
 }
+am_bf16_u16 :: (bits:u16)->f32 #effects(all) { return f32_from_bits(cast(u32)bits<<16); }
+am_matmul_iq4_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u16,x:[]u16,out:[]f32,tg:[]u16) #effects(all) {
+    #assert am_matmul_iq4_valid(rows,cols,tokens,r0,t0,tn,w.count,x.count,out.count,tg.count);
+    #assert am_iq4_tile_valid(threads,tm,tn);
+    blocks:=cols/32;
+    row_words:=blocks*9;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for b:0..<blocks {
+                base:=ar*row_words+b*9;
+                sc:=f64(am_f16(cast(u32)w[base]));
+                for k:0..<8 {
+                    v:=cast(u32)w[base+1+k];
+                    k2:=b*32+2*k;
+                    sum+=sc*f64(am_iq4_lut(v&15))*f64(am_bf16_u16(x[at*cols+k2]));
+                    sum+=sc*f64(am_iq4_lut((v>>4)&15))*f64(am_bf16_u16(x[at*cols+k2+16]));
+                    sum+=sc*f64(am_iq4_lut((v>>8)&15))*f64(am_bf16_u16(x[at*cols+k2+1]));
+                    sum+=sc*f64(am_iq4_lut((v>>12)&15))*f64(am_bf16_u16(x[at*cols+k2+17]));
+                }
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
 
 #test "BF16 halves decode exactly" {
     #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
@@ -324,6 +351,11 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
     am_matmul_iq4(128,16,64,2,128,2,0,0,w[..],x[..],out[..],tg[..]);
     #assert out[0]>0 && out[1]==out[0]*2.0f32 && out[2]==out[0]*2.0f32 && out[3]==out[0]*4.0f32;
     #assert out[0]==f32(128*129/2 + 12*(4*(18+20+22+24+26+28+30+32) + 8*(0+32+64+96)));
+    #assert am_bf16_u16(0x3f80)==1.0f32 && am_bf16_u16(0xc000)==-2.0f32;
+    xb:[256]u16;outb:[4]f32;
+    for i:0..<256 {xb[i]=cast(u16)(f32_bits(x[i])>>16);}
+    am_matmul_iq4_bf16(128,16,64,2,128,2,0,0,w[..],xb[..],outb[..],tg[..]);
+    #assert outb[0]==out[0] && outb[1]==out[1] && outb[2]==out[2] && outb[3]==out[3];
 }
 #test "the simdgroup tile adds a b^T into acc" {
     acc:[2048]f32;a:[2048]f32;b:[1024]f32;out:[2048]f32;
