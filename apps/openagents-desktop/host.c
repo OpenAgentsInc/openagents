@@ -1007,6 +1007,7 @@ int cd_experimental(void *page) { CoderHost *c = page; return c ? coder_page_exp
 void cd_flags_set(void *page, int64_t mask) { CoderHost *c = page; if (!c) return; coder_page_flags_set(cd_state(c), mask); cd_woke(c); }
 int64_t cd_flags(void *page) { CoderHost *c = page; return c ? coder_page_flags(cd_state(c)) : 0; }
 void cd_local_state(void *page, int os_ok, int hw_ok, int ram_gb, int dl_state, int pct, int dl_mb, int total_mb, const char *err) { CoderHost *c = page; if (!c) return; coder_page_local_state(cd_state(c), os_ok != 0, hw_ok != 0, ram_gb, dl_state, pct, dl_mb, total_mb, cd_string(err)); cd_woke(c); }
+void cd_agy_connect(void *page, int avail, int state, const char *msg, int pct, int dl_mb, int total_mb) { CoderHost *c = page; if (!c) return; coder_page_agy_connect(cd_state(c), avail != 0, state, cd_string(msg), pct, dl_mb, total_mb); cd_woke(c); }
 void cd_cloud_authed_set(void *page, int on) { CoderHost *c = page; if (!c) return; coder_page_set_cloud_authed(cd_state(c), on != 0); cd_woke(c); }
 int cd_gym_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_gym_rect(cd_state(c), (coax_v_f32){out, 4}); }
 void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind) { CoderHost *c = page; if (!c) return; coder_page_git_status(cd_state(c), in_repo != 0, in_worktree != 0, dirty, ahead, behind); cd_woke(c); }

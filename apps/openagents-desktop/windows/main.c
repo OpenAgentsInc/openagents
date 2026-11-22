@@ -391,6 +391,69 @@ static void oa_dl_stop(OaSubproc *p) {
   p->active = 0;
 }
 
+#define OA_PROC_ENVS 4
+// A program run in the background, no window, its stdout and stderr appended to log_path: argv[0]
+// the program and argv NULL-ended; envs, when not NULL, up to OA_PROC_ENVS "NAME=value" entries
+// (NULL-ended) set for it alone. Polled and stopped with oa_dl_poll / oa_dl_stop. 1 when it started.
+static int oa_proc_logged(OaSubproc *p, const char *const *argv, const char *const *envs, const char *log_path) {
+  if (!p || !argv || !argv[0] || !log_path) return 0;
+  memset(p, 0, sizeof *p);
+  char cmd[8192];
+  size_t at = 0;
+  for (int i = 0; argv[i]; i++) {
+    int w = snprintf(cmd + at, sizeof cmd - at, "%s\"%s\"", i ? " " : "", argv[i]);
+    if (w < 0 || (size_t)w >= sizeof cmd - at) return 0;
+    at += (size_t)w;
+  }
+  wchar_t wcmd[8192];
+  oa_wide(cmd, wcmd, sizeof wcmd / sizeof wcmd[0]);
+  wchar_t wlog[MAX_PATH * 4];
+  oa_wide(log_path, wlog, sizeof wlog / sizeof wlog[0]);
+  oa_back(wlog);
+  SECURITY_ATTRIBUTES sa;
+  memset(&sa, 0, sizeof sa);
+  sa.nLength = sizeof sa;
+  sa.bInheritHandle = TRUE;
+  HANDLE hlog = CreateFileW(wlog, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  // the variables are set in this process around CreateProcess (the child copies the block) and put back after
+  static wchar_t wname[OA_PROC_ENVS][256], wold[OA_PROC_ENVS][4096];
+  wchar_t wval[4096];
+  int had_old[OA_PROC_ENVS] = {0}, nset = 0;
+  for (int i = 0; envs && envs[i] && nset < OA_PROC_ENVS; i++) {
+    const char *env = envs[i];
+    const char *eq = strchr(env, '=');
+    if (!eq || eq == env || (size_t)(eq - env) >= 255) continue;
+    char name[256];
+    memcpy(name, env, (size_t)(eq - env)); name[eq - env] = '\0';
+    oa_wide(name, wname[nset], 256);
+    oa_wide(eq + 1, wval, 4096);
+    had_old[nset] = GetEnvironmentVariableW(wname[nset], wold[nset], 4096) > 0;
+    SetEnvironmentVariableW(wname[nset], wval);
+    nset++;
+  }
+  STARTUPINFOW si;
+  PROCESS_INFORMATION pi;
+  memset(&si, 0, sizeof si); si.cb = sizeof si;
+  memset(&pi, 0, sizeof pi);
+  BOOL inherit = FALSE;
+  if (hlog != INVALID_HANDLE_VALUE) {
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = hlog;
+    si.hStdError = hlog;
+    si.hStdInput = INVALID_HANDLE_VALUE;
+    inherit = TRUE;
+  }
+  BOOL ok = CreateProcessW(NULL, wcmd, NULL, NULL, inherit, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+  for (int i = 0; i < nset; i++) SetEnvironmentVariableW(wname[i], had_old[i] ? wold[i] : NULL);
+  if (hlog != INVALID_HANDLE_VALUE) CloseHandle(hlog);
+  if (!ok) return 0;
+  CloseHandle(pi.hThread);
+  p->proc = pi.hProcess;
+  p->pid = pi.dwProcessId;
+  p->active = 1;
+  return 1;
+}
+
 typedef struct { void (*fn)(void *); void *arg; } OaThreadBox;
 static DWORD WINAPI oa_thread_trampoline(LPVOID raw) {
   OaThreadBox *b = (OaThreadBox *)raw;

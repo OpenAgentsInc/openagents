@@ -5,7 +5,7 @@
 # (apps/shared/host/windows/), and mcworker.exe, for x86_64 and aarch64 Windows.
 #   apps/openagents-desktop/windows/build.sh [--full|--minimal] [--arch x64|arm64|all] [--check] [--zip DIR]
 # --minimal (or OA_RELEASE_MINIMAL=1): build the v1.0 minimal release slice (omits wallet units,
-#   claudeworker.exe and agyworker.exe; builds gitguard.exe; bundles psionic-inkling-serve.exe +
+#   claudeworker.exe; keeps agyworker.exe for the onboarding's Connect Google Antigravity; builds gitguard.exe; bundles psionic-inkling-serve.exe +
 #   kernels if present; verifies the output folder with v1-bundle-check.coax). Default is --full.
 # --check builds both and keeps nothing (coax/remote/check.sh windows-build; any compile or link
 # error fails it). --zip writes OpenAgents-windows-ARCH.zip into DIR: OpenAgents.exe,
@@ -76,8 +76,8 @@ fi
 "$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
 if [[ "$minimal" == 0 ]]; then
   "$coax" c "$repo/coder/tui/claudeworker.coax" --library > "$work/c/claudeworker.c"
-  "$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
 fi
+"$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
 "$coax" c "$repo/coder/tui/gitguard.coax" --library > "$work/c/gitguard.c"
 "$coax" c "$repo/coder/tui/host.coax" --run-steps 250000000 --library > "$work/c/coder-host.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs \
@@ -177,11 +177,13 @@ for arch in "${arches[@]}"; do
       "$work/c/claudeworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
       "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
       -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/claudeworker.exe"
-    zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
-      "$work/c/agyworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
-      "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
-      -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/agyworker.exe"
   fi
+  # Antigravity ships in both profiles: the minimal release's onboarding offers Connect Google
+  # Antigravity where Inkling cannot run (agyworker --connect installs agy and signs in).
+  zig cc -target "$target" "${common[@]}" ${strip_flags[@]+"${strip_flags[@]}"} -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
+    "$work/c/agyworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/agyworker.exe"
   zig cc -target "$target" "${common[@]}" ${strip_flags[@]+"${strip_flags[@]}"} -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
     "$work/c/gitguard.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \

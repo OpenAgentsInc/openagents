@@ -133,6 +133,7 @@ CP_ASK_INSTRUCTIONS_RESET :: 45;  // Settings > General > Agent instructions: Re
 CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and manager UI (#13826)
 CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding: start downloading Inkling 2 Mini
 CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding: cancel Inkling 2 Mini download
+CP_ASK_AGY_CONNECT :: 162;    // First-run onboarding where Inkling cannot run: install agy if needed, sign in, use Antigravity
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
@@ -170,6 +171,8 @@ CP_LOCAL_CANCEL :: 401;     // first-run onboarding: Cancel download
 CP_TURN_INFO :: 402;        // reply hover lane info icon button: toggles model/harness metadata visibility
 CP_EFFORT_MENU :: 403;      // composer thinking-level chip: toggles the thinking-level dropdown menu
 CP_EFFORT_PICK :: 404;      // thinking-level menu option (coder.effort.1..5): selects that level and closes the menu
+CP_AGY_CONNECT :: 405;      // first-run onboarding on a machine that cannot run Inkling: Connect Google Antigravity / Try again
+CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
@@ -377,6 +380,13 @@ CoderPage :: struct {
   local_dl_mb: int;           // downloaded MB so far
   local_dl_total_mb: int;     // expected total MB (16811 MiB / 17628 MB)
   local_dl_err: [256] u8; local_dl_err_n: int;   // last download or SHA-256 verification error
+  // Connecting Google Antigravity from the onboarding when Inkling cannot run here (coder_page_agy_connect):
+  // whether this build has agyworker to offer it, CP_AGY_IDLE/_BUSY/_FAILED, and the step or why it failed.
+  agy_avail: bool;
+  agy_conn: int;
+  agy_conn_msg: [256] u8; agy_conn_msg_n: int;
+  agy_dl_pct: int;            // the Antigravity CLI's download: percent (-1: not downloading), MB done, MB in all (0: unknown)
+  agy_dl_mb: int; agy_dl_total_mb: int;
   migrated_from: [64] u8; migrated_from_n: int;  // kept chat's prior model id when its flag is off (next turn runs on Inkling)
   gym_open: bool;             // the Gym Workbench is open beside the sidebar (#13792, #13946)
   gym_mode: int;              // CP_GYM_BENCH (0), CP_GYM_PLE (1), CP_GYM_LEAN (2)

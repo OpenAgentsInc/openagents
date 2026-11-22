@@ -447,6 +447,14 @@ oa_core_flags_write_experimental :: (on: int) -> int #export_c #effects(all) {
   return ifx dcos_set_setting("experimentalFeatures", ifx on != 0 then "1" else "0", DC_SET_BOOL) then 1 else 0;
 }
 
+// One named flag kept on (or off) for this install as the "flag.NAME" setting oa_core_flags_resolve
+// reads, e.g. models.antigravity once the onboarding connected Google Antigravity. 1 when saved.
+oa_core_flag_persist :: (name: string, on: int) -> int #export_c #effects(all) {
+  if dc_flag_find(name) < 0 { return 0; }
+  kb: [64] u8; kn := dc_copy(kb[..], "flag."); kn = dc_cat(kb[..], kn, name);
+  return ifx dcos_set_setting(cast(string) kb[0..<kn], ifx on != 0 then "1" else "0", DC_SET_BOOL) then 1 else 0;
+}
+
 // Resolve desktop feature flags from settings, ~/.openagents/desktop-flags.json, OA_FLAGS / OA_EXPERIMENTAL, and CLI argv lines.
 oa_core_flags_resolve :: (args_nl: string) -> int #export_c #effects(all) {
   sb: [64] u8;

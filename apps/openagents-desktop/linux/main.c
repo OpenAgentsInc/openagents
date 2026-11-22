@@ -295,6 +295,32 @@ static void oa_dl_stop(OaSubproc *p) {
   p->pid = -1;
 }
 
+// A program run in the background, its stdout and stderr appended to log_path: argv[0] the
+// program and argv NULL-ended; envs, when not NULL, "NAME=value" entries (NULL-ended) set for it
+// alone. Polled and stopped with oa_dl_poll / oa_dl_stop. 1 when it started.
+static int oa_proc_logged(OaSubproc *p, const char *const *argv, const char *const *envs, const char *log_path) {
+  if (!p || !argv || !argv[0] || !log_path) return 0;
+  memset(p, 0, sizeof *p);
+  pid_t pid = fork();
+  if (pid < 0) return 0;
+  if (pid == 0) {
+    int devnull = open("/dev/null", O_RDONLY);
+    if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
+    int lfd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (lfd >= 0) {
+      dup2(lfd, 1);
+      dup2(lfd, 2);
+      if (lfd > 2) close(lfd);
+    }
+    for (int i = 0; envs && envs[i]; i++) putenv((char *)envs[i]);
+    execv(argv[0], (char *const *)argv);
+    _exit(127);
+  }
+  p->pid = pid;
+  p->active = 1;
+  return 1;
+}
+
 typedef struct { void (*fn)(void *); void *arg; } OaThreadBox;
 static void *oa_thread_trampoline(void *raw) {
   OaThreadBox *b = (OaThreadBox *)raw;

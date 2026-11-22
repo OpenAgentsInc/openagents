@@ -126,6 +126,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
     return name == "OpenAgents"
       || name == "coder-host"
       || name == "mcworker"
+      || name == "agyworker"   // the onboarding's Connect Google Antigravity where Inkling cannot run
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels-cuda.cu"
       || name == "inkling-kernels-vulkan.spv"
@@ -141,6 +142,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
     return name == "OpenAgents.exe"
       || name == "coder-host.exe"
       || name == "mcworker.exe"
+      || name == "agyworker.exe"   // the onboarding's Connect Google Antigravity where Inkling cannot run
       || name == "psionic-inkling-serve.exe"
       || name == "inkling-kernels-cuda.cu"
       || name == "inkling-kernels-vulkan.spv"
@@ -572,12 +574,12 @@ tool_main :: () -> int #export_c #effects(all) {
   // Linux & Windows allowlists
   #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");
   #assert vbc_resource_allowed(VBC_LINUX, "inkling-kernels-cuda.cu") && vbc_resource_allowed(VBC_LINUX, "inkling-kernels-vulkan.spv");
-  #assert !vbc_resource_allowed(VBC_LINUX, "claudeworker") && !vbc_resource_allowed(VBC_LINUX, "agyworker");
+  #assert !vbc_resource_allowed(VBC_LINUX, "claudeworker") && vbc_resource_allowed(VBC_LINUX, "agyworker");
 
   #assert vbc_resource_allowed(VBC_WINDOWS, "OpenAgents.exe") && vbc_resource_allowed(VBC_WINDOWS, "psionic-inkling-serve.exe");
   #assert vbc_resource_allowed(VBC_WINDOWS, "gitguard.exe") && vbc_resource_allowed(VBC_WINDOWS, "inkling-kernels-cuda.cu");
   #assert vbc_resource_allowed(VBC_WINDOWS, "resources") && vbc_resource_allowed(VBC_WINDOWS, "res");
-  #assert !vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
+  #assert !vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
   #assert !vbc_resource_allowed(0, "OpenAgents");
 }
 

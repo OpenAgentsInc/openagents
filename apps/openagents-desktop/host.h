@@ -426,6 +426,10 @@ int cd_experimental(void *page);
 void cd_flags_set(void *page, int64_t mask);
 int64_t cd_flags(void *page);
 void cd_local_state(void *page, int os_ok, int hw_ok, int ram_gb, int dl_state, int pct, int dl_mb, int total_mb, const char *err);
+// The onboarding's Connect Google Antigravity (where Inkling cannot run): whether agyworker is bundled
+// to offer it, 0 idle / 1 connecting / 2 failed, the step it is on or why it failed, and while the
+// Antigravity CLI downloads its percent (-1 otherwise), MB done and MB in all (0 unknown).
+void cd_agy_connect(void *page, int avail, int state, const char *msg, int pct, int dl_mb, int total_mb);
 void cd_cloud_authed_set(void *page, int on);
 // Git Actions toolbar (page/gitactions.coax, GitHub #13871). cd_action 49 asks; cd_git_op says which op.
 void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind);
