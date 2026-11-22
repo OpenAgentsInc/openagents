@@ -10,6 +10,7 @@
 pylon_usage :: () {
   print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
   print("%\n", "  pylon onboard [--json] [--relay URL] [--device REF] [--armed] [--daily-cap SAT]  run local digest self-test & operator readiness audit");
+  print("%\n", "  pylon verify-relay --relay URL [--worker-device A] [--validator-device B] [--json]  one-command live relay rehearsal (30210 -> Ch 234 -> 30211 -> 3-leg dry-run)");
   print("%\n", "  pylon start [--model psionic-toy|elephant-1] [--label TEXT] [--slug NAME]");
   print("%\n", "              [--relay wss://HOST] [--self-test] [--official] [--wait SECONDS]");
   print("%\n", "              [--trainer NPUB | --no-link]   links it to your npub by default");
@@ -212,6 +213,7 @@ pylon_logs :: (a: [] Args, r: [] Rep) -> int {
 
 pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "onboard" { return pylon_onboard_main(a, r, profile); }
+  if verb == "verify-relay" { return pylon_verify_relay_main(a, r, profile); }
   if verb == "executor" { return pylon_executor_main(a, r, profile); }
   if verb == "validate" { return pylon_validate_main(a, r, profile); }
   if verb == "settle" { return pylon_settle_main(a, r, profile); }
@@ -223,7 +225,7 @@ pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "status" || verb == "" { return pylon_status(a, r); }
   if verb == "stop" { return pylon_stop(a, r); }
   if verb == "logs" { return pylon_logs(a, r); }
-  return fail(r, EXIT_USAGE, "pylon: onboard, start, status, stop, logs, claim, unclaim, list, executor, validate, settle or pool-feed (openagents help)");
+  return fail(r, EXIT_USAGE, "pylon: onboard, verify-relay, start, status, stop, logs, claim, unclaim, list, executor, validate, settle or pool-feed (openagents help)");
 }
 
 // ---- links, claims and the network's Pylons ----------------------------------

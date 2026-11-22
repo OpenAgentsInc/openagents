@@ -38,6 +38,20 @@ apps/openagents-cli/build/openagents pylon onboard --json
 - `can_run_training`: ready to join `cj-training` (`>= 4` verified modules installed)
 - `can_settle_mainnet`: **default OFF** (`blocker: "mainnet_unarmed"`) until you explicitly pass `--armed` with a valid `--daily-cap` (`1..1,000,000` sats) and a configured Spark wallet
 
+## 3b. Run the One-Command Pre-Mainnet Relay Rehearsal (`openagents pylon verify-relay`)
+
+Before arming real Bitcoin mainnet settlement, rehearse the complete relay round-trip end-to-end with zero real satoshis moved:
+
+```sh
+apps/openagents-cli/build/openagents pylon verify-relay \
+  --relay wss://relay.openagents.com \
+  --worker-device my-worker-box \
+  --validator-device my-validator-box \
+  --json
+```
+
+`pylon verify-relay` runs the real `wasm-exec-v1` digest self-test + 1-byte artifact tamper falsifier, executes a live 10×10 Hungarian job (`20,966` steps, `6,575` weight calls), signs and publishes a kind `30210` `ExecutionTraceReceipt` to `--relay`, fetches it back under a distinct ephemeral validator identity/device, proves Ch 234 exact replay and 1-byte tamper-injected trace refusal, publishes and fetches back a signed kind `30211` `ReplayVerdict`, and checks `#authority` 3-leg settlement admission (default-OFF unarmed hold + armed dry-run release across worker, validator, and module author). Passing identical `--worker-device` and `--validator-device` values is refused fail-closed (`same_device_self_validation_refused`).
+
 ## 4. Run a Worker (`cj-executor`) or Independent Validator (`cj-validate`)
 
 On **Device A** (e.g. Apple Silicon Mac):

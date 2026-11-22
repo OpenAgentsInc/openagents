@@ -180,3 +180,267 @@ pylon_onboard_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   }
   return rep_done(r, EXIT_OK);
 }
+
+// One-Command Pre-Mainnet Relay Rehearsal (`openagents pylon verify-relay --relay URL [--json]`, #13963).
+// Runs a real end-to-end live relay rehearsal without moving real Bitcoin:
+//   1. Enforces distinct worker vs validator devices & keys (refuses same-device fail-closed).
+//   2. Runs wasm-exec-v1 digest self-test + 1-byte artifact tamper falsifier.
+//   3. Executes a real 10x10 Hungarian wasm-exec-v1 job & publishes signed kind 30210 receipt.
+//   4. Fetches back the kind 30210 event as a distinct ephemeral validator, proves Ch 234 exact
+//      replay AND proves 1-byte tamper-injected trace refusal, then publishes signed kind 30211
+//      ReplayVerdict and verifies relay round-trip fetch.
+//   5. Evaluates #authority 3-leg settlement admission (unarmed default-OFF -> held, armed dry-run -> release).
+pylon_verify_relay_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if args_has(a, "--help") || args_has(a, "-h") {
+    return fail(r, EXIT_USAGE, "pylon verify-relay --relay URL [--worker-device REF] [--validator-device REF] [--window N] [--json]");
+  }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay must be a ws:// or wss:// URL"); }
+  wdev := args_value(a, "--worker-device", "rehearsal-worker-a");
+  vdev := args_value(a, "--validator-device", "rehearsal-validator-b");
+  win_num := 1;
+  wn := json_int(args_value(a, "--window", "1"));
+  if wn.ok && wn.value >= 1 { win_num = wn.value; }
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+
+  // 1. Load worker NIP-06 key & generate distinct ephemeral validator key
+  wk: [1] Key;
+  if !load_key(profile, wk[..]) {
+    return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`");
+  }
+  wpk_b: [64] u8;
+  if !pubkey_hex(wk[0].secret[..], wpk_b[..]) {
+    wipe(wk[0].secret[..]);
+    return fail(r, EXIT_FAIL, "could not derive worker public key");
+  }
+  wpk := cast(string) wpk_b[..];
+
+  vsec: [32] u8;
+  vpk_b: [64] u8;
+  if cxrand_draw(vsec[..], 32) != 0 || !pubkey_hex(vsec[..], vpk_b[..]) {
+    wipe(wk[0].secret[..]); wipe(vsec[..]);
+    return fail(r, EXIT_FAIL, "could not generate ephemeral rehearsal validator key");
+  }
+  vpk := cast(string) vpk_b[..];
+
+  // Fail closed if worker_device == validator_device (or same key) via #authority executor-audit.coax
+  if wdev == "" || vdev == "" || wdev == vdev ||
+     ea_check_pairing(pe_id_hash(wpk), pe_id_hash(wpk), pe_id_hash(wdev),
+                      pe_id_hash(vpk), pe_id_hash(vpk), pe_id_hash(vdev), true) != EaStatus.ok {
+    wipe(wk[0].secret[..]); wipe(vsec[..]);
+    return fail(r, EXIT_FAIL, "same_device_self_validation_refused: --worker-device and --validator-device must be distinct non-empty IDs");
+  }
+  // Explicitly verify same-device pairing is refused by #authority policy
+  same_dev_refused := ea_check_pairing(pe_id_hash(wpk), pe_id_hash(wpk), pe_id_hash(wdev),
+                                       pe_id_hash(vpk), pe_id_hash(vpk), pe_id_hash(wdev), true) != EaStatus.ok;
+
+  // 2. Compile & load wasm-exec-v1 core + run #authority digest self-test & 1-byte artifact tamper check
+  layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  weights: [WX_CORE_MAX_WEIGHTS] f64;
+  core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+  sc_ok := pe_run_selfcheck(core, false);
+  sc_tamper := pe_run_selfcheck(core, true);
+  if !sc_ok.may_advertise_executor || sc_tamper.may_advertise_executor {
+    wipe(wk[0].secret[..]); wipe(vsec[..]);
+    return fail(r, EXIT_FAIL, "wasm-exec-v1 self-test or 1-byte artifact tamper falsifier failed");
+  }
+  art_hex_b: [64] u8;
+  art_hex := pe_hex32(core.artifact_hash, art_hex_b[..]);
+
+  // 3. Execute real W1.2 10x10 Hungarian program & publish signed kind 30210 receipt to --relay
+  wb: [1] WmBuilder; fns: [4] WsmFunc;
+  nf := pe_build_window_prog(win_num, wb[..], fns[..]);
+  nodes: [512] HtNode;
+  rc := wx_run(core, wb[0].ops[0..<wb[0].n], fns[0..<nf], 256, 500000, nodes[..]);
+  if rc.status != WmStatus.ok {
+    wipe(wk[0].secret[..]); wipe(vsec[..]);
+    return fail(r, EXIT_FAIL, "wasm-exec-v1 Hungarian execution failed");
+  }
+  ph_b: [64] u8; ph_hex := pe_hex32(rc.program_hash, ph_b[..]);
+  td_b: [64] u8; td_hex := pe_hex32(rc.trace_digest, td_b[..]);
+
+  now := cxcli_now_s();
+  r_body: [2048] u8; r_tags: [512] u8; r_ev: [8192] u8;
+  rbn := 0;
+  rbn = json_raw(r_body[..], rbn, "{\"v\":\"openagents.executor.trace-receipt.v1alpha1\",\"profile\":\"wasm-exec-v1\",\"window\":");
+  rbn = json_write_int(r_body[..], rbn, win_num);
+  rbn = json_raw(r_body[..], rbn, ",\"device_ref\":\""); rbn = json_raw(r_body[..], rbn, wdev);
+  rbn = json_raw(r_body[..], rbn, "\",\"program_hash\":\""); rbn = json_raw(r_body[..], rbn, ph_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"executor_artifact_hash\":\""); rbn = json_raw(r_body[..], rbn, art_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"trace_digest\":\""); rbn = json_raw(r_body[..], rbn, td_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"steps\":"); rbn = json_write_int(r_body[..], rbn, rc.steps);
+  rbn = json_raw(r_body[..], rbn, ",\"result\":"); rbn = json_write_int(r_body[..], rbn, rc.result);
+  rbn = json_raw(r_body[..], rbn, ",\"weight_calls\":"); rbn = json_write_int(r_body[..], rbn, rc.weight_calls);
+  rbn = json_raw(r_body[..], rbn, "}");
+
+  ws_b: [24] u8; ws := int_text(win_num, ws_b[..]);
+  rtn := json_raw(r_tags[..], 0, "[[\"d\",\"rehearsal-win-"); rtn = json_raw(r_tags[..], rtn, ws);
+  rtn = json_raw(r_tags[..], rtn, "\"],[\"t\",\"oa:executor-receipt:v1\"],[\"device\",\""); rtn = json_raw(r_tags[..], rtn, wdev);
+  rtn = json_raw(r_tags[..], rtn, "\"],[\"x\",\""); rtn = json_raw(r_tags[..], rtn, td_hex);
+  rtn = json_raw(r_tags[..], rtn, "\"]]");
+  ren := sign_event_at(wk[0].secret[..], now, PE_KIND_RECEIPT, cast(string) r_tags[0..<rtn], cast(string) r_body[0..<rbn], r_ev[..]);
+
+  cw: [1] CliRelay;
+  if ren <= 0 || !cr_open(cw[..], url, wk[0].secret[..]) || !cr_publish(cw[..], cast(string) r_ev[0..<ren], deadline) {
+    wipe(wk[0].secret[..]); wipe(vsec[..]); cr_close(cw[..]);
+    return fail(r, EXIT_FAIL, "could not publish kind 30210 ExecutionTraceReceipt to relay");
+  }
+  wipe(wk[0].secret[..]);
+  cr_close(cw[..]);
+  rid_b: [64] u8;
+  for i: 0..<64 { rid_b[i] = r_ev[7 + i]; }
+  rid := cast(string) rid_b[..];
+
+  // 4. Fetch back kind 30210 from --relay as distinct validator & verify signature + Ch 234 replay + tamper refusal
+  cv: [1] CliRelay;
+  if !cr_open(cv[..], url, vsec[..]) {
+    wipe(vsec[..]); cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "validator could not connect to relay");
+  }
+  rf_b: [256] u8;
+  rfn := json_raw(rf_b[..], 0, "{\"ids\":[\""); rfn = json_raw(rf_b[..], rfn, rid); rfn = json_raw(rf_b[..], rfn, "\"]}");
+  if !cr_req(cv[..], cast(string) rf_b[0..<rfn]) {
+    wipe(vsec[..]); cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "validator could not send REQ for kind 30210 receipt");
+  }
+  got_receipt := false;
+  fetched_body: [2048] u8;
+  fetched_n := 0;
+  while true {
+    s := cr_next(cv[..], deadline);
+    if s == CR_EOSE { cr_req_end(cv[..]); break; }
+    if s != CR_EVENT {
+      wipe(vsec[..]); cr_close(cv[..]);
+      return fail(r, EXIT_FAIL, "relay closed or timed out before EOSE while fetching kind 30210 receipt");
+    }
+    scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+    ev := ev_of(cr_event(cv[..]), scratch[..], buf[..]);
+    if ev.ok && ev.kind == PE_KIND_RECEIPT && cast(string) ev.id[..] == rid && cast(string) ev.author[..] == wpk && ev.content_n > 0 && ev.content_n <= 2048 {
+      for j: 0..<ev.content_n { fetched_body[j] = buf[j]; }
+      fetched_n = ev.content_n;
+      got_receipt = true;
+    }
+  }
+  if !got_receipt {
+    wipe(vsec[..]); cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "published kind 30210 receipt was not returned by relay");
+  }
+
+  fstr := cast(string) fetched_body[0..<fetched_n];
+  f_steps := pe_json_int(fstr, "steps");
+  f_res := pe_json_int(fstr, "result");
+  f_td_b: [128] u8; f_td_n := pe_json_str(fstr, "trace_digest", f_td_b[..]);
+  f_ph_b: [128] u8; f_ph_n := pe_json_str(fstr, "program_hash", f_ph_b[..]);
+  claim := WxReceipt.{status = WmStatus.ok, steps = f_steps, result = f_res, has_result = true};
+  ok_h := f_td_n == 64 && f_ph_n == 64 &&
+          pe_unhex32(cast(string) f_ph_b[0..<64], claim.program_hash[..]) &&
+          pe_unhex32(cast(string) f_td_b[0..<64], claim.trace_digest[..]);
+  nodes_v: [512] HtNode;
+  rep_ok := wx_replay_verify(wb[0].ops[0..<wb[0].n], fns[0..<nf], 256, 500000, claim, nodes_v[..]);
+
+  // Tamper-injected trace MUST fail Ch 234 replay!
+  tampered := claim;
+  tampered.trace_digest[0] ^= 1;
+  nodes_t: [512] HtNode;
+  rep_tamper := wx_replay_verify(wb[0].ops[0..<wb[0].n], fns[0..<nf], 256, 500000, tampered, nodes_t[..]);
+  tamper_trace_refused := rep_tamper.verdict != RxVerdict.exact;
+
+  if !ok_h || rep_ok.verdict != RxVerdict.exact || !tamper_trace_refused {
+    wipe(vsec[..]); cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "Ch 234 replay verification or tamper-trace refusal failed");
+  }
+
+  // Promote through #authority EaQuarantine with distinct worker vs validator keys & devices
+  q: [1] EaQuarantine;
+  rid_h := pe_id_hash(rid);
+  qs := ea_submit_quarantine(q[..], rid_h, pe_id_hash(wpk), pe_id_hash(wpk), pe_id_hash(wdev), true, true, true, false);
+  vs := ea_apply_verdict(q[..], rid_h, pe_id_hash(vpk), pe_id_hash(vpk), pe_id_hash(vdev), true, true, true);
+  if qs != EaStatus.ok || vs != EaStatus.ok || q[0].admitted_count != 1 {
+    wipe(vsec[..]); cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "quarantine admission or distinct-device verdict promotion failed");
+  }
+
+  // Publish signed kind 30211 ReplayVerdict & verify relay round-trip fetch
+  v_body: [1024] u8; v_tags: [512] u8; v_ev: [8192] u8;
+  vbn := json_raw(v_body[..], 0, "{\"v\":\"openagents.executor.replay-verdict.v1alpha1\",\"verdict\":\"EXACT_REPLAY\",\"receipt_id\":\"");
+  vbn = json_raw(v_body[..], vbn, rid);
+  vbn = json_raw(v_body[..], vbn, "\",\"replayed_steps\":"); vbn = json_write_int(v_body[..], vbn, rep_ok.replayed_steps);
+  vbn = json_raw(v_body[..], vbn, ",\"quarantine_state\":\"verified\",\"device_ref\":\""); vbn = json_raw(v_body[..], vbn, vdev);
+  vbn = json_raw(v_body[..], vbn, "\"}");
+  vtn := json_raw(v_tags[..], 0, "[[\"e\",\""); vtn = json_raw(v_tags[..], vtn, rid);
+  vtn = json_raw(v_tags[..], vtn, "\"],[\"p\",\""); vtn = json_raw(v_tags[..], vtn, wpk);
+  vtn = json_raw(v_tags[..], vtn, "\"],[\"t\",\"oa:replay-verdict:v1\"],[\"device\",\""); vtn = json_raw(v_tags[..], vtn, vdev);
+  vtn = json_raw(v_tags[..], vtn, "\"]]");
+  ven := sign_event_at(vsec[..], now, PE_KIND_VERDICT, cast(string) v_tags[0..<vtn], cast(string) v_body[0..<vbn], v_ev[..]);
+  wipe(vsec[..]);
+  if ven <= 0 || !cr_publish(cv[..], cast(string) v_ev[0..<ven], deadline) {
+    cr_close(cv[..]);
+    return fail(r, EXIT_FAIL, "relay did not accept kind 30211 ReplayVerdict");
+  }
+  vid_b: [64] u8;
+  for i: 0..<64 { vid_b[i] = v_ev[7 + i]; }
+  vid := cast(string) vid_b[..];
+
+  // Fetch back kind 30211 to verify full persistence + signature round-trip
+  vf_b: [256] u8;
+  vfn := json_raw(vf_b[..], 0, "{\"ids\":[\""); vfn = json_raw(vf_b[..], vfn, vid); vfn = json_raw(vf_b[..], vfn, "\"]}");
+  got_verdict := false;
+  if cr_req(cv[..], cast(string) vf_b[0..<vfn]) {
+    while true {
+      s := cr_next(cv[..], deadline);
+      if s == CR_EOSE { cr_req_end(cv[..]); break; }
+      if s != CR_EVENT { cr_req_end(cv[..]); break; }
+      scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+      ev := ev_of(cr_event(cv[..]), scratch[..], buf[..]);
+      if ev.ok && ev.kind == PE_KIND_VERDICT && cast(string) ev.id[..] == vid && cast(string) ev.author[..] == vpk {
+        got_verdict = true;
+      }
+    }
+  }
+  cr_close(cv[..]);
+  if !got_verdict {
+    return fail(r, EXIT_FAIL, "published kind 30211 ReplayVerdict was not returned by relay");
+  }
+
+  // 5. Dry-run #authority 3-leg settlement admission check (unarmed held + armed dry release; 0 sats moved)
+  utc_day := now / 86400;
+  if utc_day <= 0 { utc_day = 1; }
+  split_ok := es_admit_three_leg_split(750, 200, 50, 500) == ES_RELEASE;
+  unarmed_pol := EsPolicy.{owner_armed = false, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 10000};
+  armed_pol := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 10000};
+  st0 := EsPeriodState.{utc_day = utc_day, global_spent_sat = 0, pubkey_spent_sat = 0};
+  rw_req := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 750, utc_day = utc_day, already_paid_leg = false};
+  rv_req := EsPayoutRequest.{leg = ES_LEG_VALIDATOR, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 200, utc_day = utc_day, already_paid_leg = false};
+  ra_req := EsPayoutRequest.{leg = ES_LEG_AUTHOR, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 50, utc_day = utc_day, already_paid_leg = false};
+  unarmed_held := es_admit_payout(unarmed_pol, st0, rw_req) == ES_HOLD_OWNER &&
+                  es_admit_payout(unarmed_pol, st0, rv_req) == ES_HOLD_OWNER &&
+                  es_admit_payout(unarmed_pol, st0, ra_req) == ES_HOLD_OWNER;
+  armed_dry_ok := split_ok &&
+                  es_admit_payout(armed_pol, st0, rw_req) == ES_RELEASE &&
+                  es_admit_payout(armed_pol, st0, rv_req) == ES_RELEASE &&
+                  es_admit_payout(armed_pol, st0, ra_req) == ES_RELEASE;
+
+  passed := same_dev_refused && tamper_trace_refused && unarmed_held && armed_dry_ok;
+  rep_str(r, "relay", url);
+  rep_str(r, "worker_device", wdev);
+  rep_str(r, "validator_device", vdev);
+  rep_str(r, "artifact_sha256", art_hex);
+  rep_int(r, "window", win_num);
+  rep_int(r, "steps", rc.steps);
+  rep_int(r, "result", rc.result);
+  rep_int(r, "weight_calls", rc.weight_calls);
+  rep_str(r, "receipt_id", rid);
+  rep_str(r, "verdict_id", vid);
+  rep_bool(r, "relay_roundtrip_ok", true);
+  rep_bool(r, "selfcheck_ok", true);
+  rep_bool(r, "tamper_artifact_refused", true);
+  rep_bool(r, "tamper_trace_refused", tamper_trace_refused);
+  rep_bool(r, "same_device_refused", same_dev_refused);
+  rep_bool(r, "three_leg_unarmed_held", unarmed_held);
+  rep_bool(r, "three_leg_armed_dry_ok", armed_dry_ok);
+  rep_bool(r, "real_bitcoin_moved", false);
+  rep_bool(r, "rehearsal_passed", passed);
+  return rep_done(r, ifx passed then EXIT_OK else EXIT_FAIL);
+}
