@@ -382,7 +382,7 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   }
   uiframe_unclip(f);
   s[0].set_list_content = ry + at - y;
-  _ := set_account_row(f, "set.me", x, h - t.list_pad - t.account, w, "Local", "L", s[0].set_page == CP_PG_ACCOUNT, true, CP_SET_ACCOUNT, CP_SET_TOGGLE);
+  _ := cp_side_settings_row(f, "set.me", 0, h - t.list_pad - t.account, lw, t.account, true, CP_SET_TOGGLE);
   set_nav_edge(f, lw, 0, h, s[0].hover == 1 || s[0].drag == 1);
 }
 // One row, and where it is when the search asked for it.
@@ -904,8 +904,8 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   }
   me := cp_set_test_row(s, "set.me");
   t := cp_skin().set;
-  #assert me.action == CP_SET_ACCOUNT && abs(me.y + t.account + t.list_pad - h) < 0.01;
-  #assert abs(me.y - gear.y) < 0.01;   // the account row stays where it was
+  #assert me.action == CP_SET_TOGGLE && abs(me.y + t.account + t.list_pad - h) < 0.01;
+  #assert abs(me.y - gear.y) < 0.01;   // the settings footer stays where it was
   #assert cp_set_test_row(s, "set.title").w > 0 && cp_set_test_row(s, "set.folder.a").action == CP_SET_ACT;
   // Back: the chat as it was
   #assert cp_settings_press(s, CP_SET_BACK, "set.back") && !s[0].set_open && s[0].scroll == 40;

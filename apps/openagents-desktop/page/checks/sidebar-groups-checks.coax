@@ -29,9 +29,18 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert s[0].nchats == 5 && s[0].sb[0].nprojects == 2;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Both project headers and their chats are visible; Pinned stays at top.
+  // Both project headers and their chats are visible; Pinned stays at top, Projects heading + folder-add sit above folders.
   #assert surface_find(s[0].surface[..], "coder.pinned") >= 0;
   #assert surface_find(s[0].surface[..], "chat.p1") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.projects") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.add_project") >= 0;
+  // The old Active/Archived toolbar and split Local account pill are gone; single unified Settings footer remains.
+  #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
+  #assert surface_find(s[0].surface[..], "coder.me") < 0 && surface_find(s[0].surface[..], "coder.me.settings") >= 0;
+  // Projects heading and folder-plus button sit on the same horizontal row.
+  ph := surface_rows(s[0].surface[..]).rows[surface_find(s[0].surface[..], "coder.projects")];
+  pb := surface_rows(s[0].surface[..]).rows[surface_find(s[0].surface[..], "coder.sb.add_project")];
+  #assert pb.x > ph.x && pb.y >= ph.y && pb.y + pb.h <= ph.y + ph.h + 1.0f32;
   #assert surface_find(s[0].surface[..], "coder.proj.0") >= 0;
   #assert surface_find(s[0].surface[..], "coder.proj.1") >= 0;
   #assert surface_find(s[0].surface[..], "chat.a1") >= 0 && surface_find(s[0].surface[..], "chat.a2") >= 0;
@@ -93,17 +102,18 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert cp_sb_archived_count(s) == 1;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Active view shows c1 and hides c2.
+  // Active view shows c1 and hides c2; no Active/Archived toolbar tabs are rendered.
+  #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c2") < 0;
-  // Switch to Archived view via tab click -> shows c2, hides c1.
-  #assert cp_sb_click_id(s, "coder.sb.tab.archived", 0);
+  // Programmatic Archived view still shows c2 and hides c1.
+  coder_page_sb_set_view(s, CP_SB_VIEW_ARCHIVED);
   #assert coder_page_sb_view(s) == CP_SB_VIEW_ARCHIVED;
   #assert cp_sb_test_frame(s, f[..], 0.02f32);
   #assert surface_find(s[0].surface[..], "chat.c2") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c1") < 0;
   // Switch back to Active view.
-  #assert cp_sb_click_id(s, "coder.sb.tab.active", 0);
+  coder_page_sb_set_view(s, CP_SB_VIEW_ACTIVE);
   #assert coder_page_sb_view(s) == CP_SB_VIEW_ACTIVE;
   // Undo toast: show, click Undo -> dispatches CP_ASK_SIDEBAR + CP_SB_OP_UNDO.
   s[0].clock = 10.0f32;

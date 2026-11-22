@@ -84,3 +84,18 @@
  #assert app_test_end(t[..]) && app_test_texts(t[..],"5m")==1 && app_test_texts(t[..],"Needs you")==1 && app_test_texts(t[..],"2h")==0;
  #assert app_test_row(t[..],"r.b").h==height && app_test_pressable(t[..],"r.a");
 }
+
+#test "app nav: Projects heading supports a trailing folder-plus button, folder rows carry icons, and child chats indent with a tree rail" {
+  t: [1] AppTest; app_test_init(t[..]);
+  rows := [3] AppSideRow.[
+    AppSideRow.{id = "p.head", title = "Projects", heading = true, trail_icon = ICON_FOLDER_ADD, head_btn_id = "p.add", head_btn_label = "Add project", head_btn_action = 41},
+    AppSideRow.{id = "p.0", title = "openagents", status = "3", icon = ICON_FOLDER, trail_icon = ICON_CHEVRON, action = 42, state = EL_S_EXPANDS | EL_S_EXPANDED},
+    AppSideRow.{id = "c.0", title = "Fix sidebar", indent = 24.0f32, tree_line = true}];
+  app_test_begin(t[..], "", "", true);
+  _ := app_side_window(t[0].f[..], 0, 0, 260, 200, rows[..], 0, 0, 43);
+  #assert app_test_end(t[..]);
+  #assert app_test_row(t[..], "p.head").role == EL_HEADING && !app_test_pressable(t[..], "p.head");
+  #assert app_test_row(t[..], "p.add").role == EL_BUTTON && app_test_row(t[..], "p.add").action == 41 && app_test_pressable(t[..], "p.add");
+  #assert app_test_row(t[..], "p.0").action == 42 && app_test_has(t[..], "p.0", EL_S_EXPANDS | EL_S_EXPANDED);
+  #assert app_test_row(t[..], "c.0").action == 43 && app_test_prims(t[..], PRIM_ICON) == 3 && app_test_prims(t[..], PRIM_BOX) == 1;
+}

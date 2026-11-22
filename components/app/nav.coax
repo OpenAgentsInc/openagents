@@ -31,6 +31,36 @@ app_side_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: stri
   _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, a.side_head, 0, 0);
   return a.side_head;
 }
+// A section head with a trailing quiet icon button on the right edge (e.g. "Projects" + folder-add).
+app_side_head_action :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, btn_id: string, btn_label: string, icon: int, btn_action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  btn := 22.0f32; ico := 14.0f32;
+  if btn > a.side_head { btn = a.side_head; }
+  ty := y + a.side_head - s.small.line - a.gap_small;
+  mid := ty + s.small.line / 2.0f32;
+  by := mid - btn / 2.0f32;
+  if by < y { by = y; }
+  if by + btn > y + a.side_head { by = y + a.side_head - btn; }
+  pad := (btn - ico) / 2.0f32;
+  bx := x + w - a.side_pad - ico - pad;
+  head_w := bx - x - a.gap_small;
+  if head_w < 0 { head_w = 0; }
+  if head_w > a.side_pad {
+    _ := sheet_text(sh, f[0].m, -1, x + a.side_pad, ty, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, title, head_w - a.side_pad));
+  }
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, head_w, a.side_head, 0, 0);
+  if btn_id.count > 0 && icon >= 0 && bx > x + a.side_pad {
+    k := uiframe_key(f, btn_id);
+    p := uiframe_press(f, k, btn_id);
+    hv := uiframe_hover(f, k, btn_id);
+    if hv > 0 { sheet_fill(sh, bx, by, btn, btn, 6.0f32, opacity(s.raised, 0.85f32 * hv)); }
+    if p > 0 { sheet_fill(sh, bx, by, btn, btn, 6.0f32, opacity(s.hover, p)); }
+    sheet_icon(sh, icon, bx + pad, by + (btn - ico) / 2.0f32, ico, rgba_mix(s.muted, s.ink, hv));
+    brow := uiframe_semantic(f, btn_id, EL_BUTTON, btn_label, bx, by, btn, btn, 0, btn_action);
+    sheet_hit(sh, UIFRAME_HIT, brow, 0, bx, by, btn, btn);
+  }
+  return a.side_head;
+}
 // A history row in the sidebar at (x, y), w wide: a title cut with an
 // ellipsis and, when it has one, a second line under it (a time, a model).
 // EL_S_CURRENT is the chat that is shown, on a lit ground; EL_S_BUSY shows the
@@ -113,9 +143,86 @@ AppSideRow :: struct {
   state: int;                 // EL_S_CURRENT, EL_S_BUSY
   heading: bool;
   unread: bool;
-  action: int= -1;             // -1 uses the list's action
+  action: int= -1;            // -1 uses the list's action
   status: string;             // at the right of its title: a time ("5m"), or a word when `attention` ("Needs you")
   attention: bool;            // it waits for the person: the word in full ink with the accent dot
+  icon: int = -1;             // optional leading icon (e.g. ICON_FOLDER on a project row)
+  trail_icon: int = -1;       // optional small trailing icon (disclosure chevron on a folder row, or action icon on a heading)
+  indent: f32 = 0.0f32;       // optional left text indent (e.g. chats nested inside an expanded project folder)
+  tree_line: bool;            // draw a subtle vertical folder-tree rail on the left of an indented child row
+  head_btn_id: string;        // optional trailing icon button on a section heading
+  head_btn_label: string;     // accessible label for the heading's trailing icon button
+  head_btn_action: int;       // action dispatched when the heading's trailing icon button is pressed
+}
+// Rich row painter supporting leading icon, trailing disclosure icon, left indent, and tree guide rail.
+app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, title: string, detail: string, list_action: int) -> f32 {
+  act := ifx r.action >= 0 then r.action else list_action;
+  if r.icon < 0 && r.trail_icon < 0 && r.indent == 0.0f32 && !r.tree_line {
+    return app_side_row_status(f, r.id, x, y, w, title, detail, r.status, r.attention, r.state, r.unread, act);
+  }
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  current := (r.state & EL_S_CURRENT) != 0; off := (r.state & EL_S_DISABLED) != 0;
+  busy := (r.state & EL_S_BUSY) != 0 && !(r.attention && r.status.count > 0);
+  word := ifx busy || off then "" else r.status;
+  mark_unread := (r.unread || r.attention && word.count > 0) && !busy && !current && !off;
+  h := ifx detail.count > 0 then a.side_row_two else a.side_row;
+  k := uiframe_key(f, r.id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, r.id);
+  hovered := !off && uiframe_hovered(f, r.id);
+  hv := ifx off then 0.0f32 else uiframe_hover_on(f, k, r.id, hovered);
+  pill_x := x + a.row_inset;
+  pill_w := w - 2.0f32 * a.row_inset;
+  if r.tree_line {
+    gx := x + a.side_pad + a.icon / 2.0f32;
+    sheet_fill(sh, gx - 0.5f32, y, 1.0f32, h, 0, opacity(s.ink, 0.08f32));
+    pill_x = gx + 6.0f32;
+    pill_w = x + w - a.row_inset - pill_x;
+  }
+  if pill_w > 0 {
+    if current { sheet_fill(sh, pill_x, y, pill_w, h, a.row_radius, s.raised); }
+    else if hv > 0 { sheet_fill(sh, pill_x, y, pill_w, h, a.row_radius, opacity(s.raised, 0.75f32 * hv)); }
+    if p > 0 { sheet_fill(sh, pill_x, y, pill_w, h, a.row_radius, opacity(s.hover, p)); }
+  }
+  row := uiframe_semantic(f, r.id, EL_ROW, title, x, y, w, h, r.state, ifx off then 0 else act);
+  elt_value(f[0].rows, row, ifx word.count == 0 then detail else ifx detail.count == 0 then word else app_side_said_pooled(sh, word, detail));
+  tx := x + a.side_pad + r.indent;
+  if r.icon >= 0 {
+    mark := a.icon;
+    sheet_icon(sh, r.icon, tx, y + (h - mark) / 2.0f32, mark, ifx off then s.faint else ifx current then s.ink else rgba_mix(s.muted, s.ink, hv));
+    tx += mark + a.row_inset;
+  }
+  rx := x + w - a.side_pad;
+  if r.trail_icon >= 0 && !busy {
+    tmark := 10.0f32;
+    sheet_icon(sh, r.trail_icon, rx - tmark, y + (h - tmark) / 2.0f32, tmark, ifx off then s.faint else rgba_mix(s.faint, s.muted, hv));
+    rx -= tmark + 6.0f32;
+  }
+  dot := a.dot;
+  dot_inset := ifx a.icon > dot then (a.icon + dot) / 2.0f32 else dot;
+  if busy {
+    activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+    rx -= a.icon + a.gap;
+  }
+  tf := ifx a.side_text.line > 0 then a.side_text else s.body;
+  lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32);
+  ty := y + (h - lines) / 2.0f32;
+  if mark_unread {
+    sheet_fill(sh, rx - dot_inset, ifx word.count > 0 then ty + (tf.line - dot) / 2.0f32 else y + (h - dot) / 2.0f32, dot, dot, dot / 2.0f32, s.accent);
+    rx -= dot_inset + a.gap;
+  }
+  ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
+  if ww > 0 && ww + a.gap < (rx - tx) / 2.0f32 {
+    _ := sheet_text(sh, m, -1, rx - ww, ty + (tf.line - s.small.line) / 2.0f32, s.small.line, s.small.face, ifx r.attention then s.ink else s.faint, word);
+    rx -= ww + a.gap;
+  }
+  room := rx - tx;
+  ink := ifx off then s.faint else ifx current || mark_unread then s.ink else rgba_mix(opacity(s.ink, 0.95f32), s.ink, hv);
+  if room > 0 {
+    _ := sheet_text(sh, m, -1, tx, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
+    if detail.count > 0 { _ := sheet_text(sh, m, -1, tx, ty + tf.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
+  }
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
 }
 // "Needs you, MacBook Pro": the row's status and its second line, read together.
 app_side_said :: (status: string, detail: string, b: [] u8) -> string {
@@ -160,8 +267,11 @@ app_side_window_at :: (f:[]UiFrame,x:f32,top:f32,w:f32,viewport:f32,rows:[]AppSi
  content:=app_side_content(f,rows)+(ifx tail>0 then tail else 0.0f32);at:=scroll_clamp(offset,content,viewport)+stretch;cursor:f32=0;
  uiframe_clip(f,x,top,x+w,top+viewport);
  for r:rows {h:=app_side_height(f,r);y:=top+cursor-at;cursor+=h;if y+h<=top || y>=top+viewport {continue;}
-  if r.heading {_:=app_side_head(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title));}
-  else {_:=app_side_row_status(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),sheet_single_line(f[0].sheet,r.detail),r.status,r.attention,r.state,r.unread,ifx r.action>=0 then r.action else action);}
+  if r.heading {
+   if r.head_btn_id.count>0 && r.trail_icon>=0 {_:=app_side_head_action(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),r.head_btn_id,r.head_btn_label,r.trail_icon,r.head_btn_action);}
+   else {_:=app_side_head(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title));}
+  }
+  else {_:=app_side_row_item(f,r,x,y,w,sheet_single_line(f[0].sheet,r.title),sheet_single_line(f[0].sheet,r.detail),action);}
  }
  uiframe_unclip(f);return content;
 }

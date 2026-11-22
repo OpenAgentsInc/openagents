@@ -362,7 +362,7 @@ cp_sb_undo_paint :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   app_overlay_end_panel(f, frosted);
 }
 
-// ---- Sidebar toolbar (Active | Archived | + Project) and Bulk Action Bar
+// ---- Multi-select Bulk Action Bar
 
 cp_sb_pill_btn :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, label: string, active: bool, danger: bool, action: int) {
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
@@ -376,31 +376,6 @@ cp_sb_pill_btn :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, la
   _ := sheet_text(sh, m, -1, tx, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, app_fit(f, k.small.face, label, w - 8.0f32));
   row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, ifx active then EL_S_CURRENT else 0, action);
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
-}
-
-// Compact sidebar strip below Foreman/Gym: Active | Archived (N) | + Project.
-// Returns its height.
-cp_sb_toolbar :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32) -> f32 {
-  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
-  h := 24.0f32;
-  x := a.row_inset;
-  avail := sw - 2.0f32 * a.row_inset;
-  if avail < 120.0f32 { return 0.0f32; }
-  act_on := s[0].sb[0].view_mode == CP_SB_VIEW_ACTIVE;
-  arch_on := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
-  n_arch := cp_sb_archived_count(s);
-  ab: [32] u8; an := el_put(ab[..], 0, "Archived");
-  if n_arch > 0 { an = el_put(ab[..], an, " "); an = el_put_i(ab[..], an, n_arch); }
-  arch_lbl := sheet_pool(sh, cast(string) ab[0..<an]);
-  w_act := ceil(measure_width(m, k.small.face, "Active")) + 14.0f32;
-  w_arch := ceil(measure_width(m, k.small.face, arch_lbl)) + 14.0f32;
-  w_add := ceil(measure_width(m, k.small.face, "+ Project")) + 14.0f32;
-  cp_sb_pill_btn(f, "coder.sb.tab.active", x, sy, w_act, h, "Active", act_on, false, CP_SB_VIEW_ACTIVE_ACT);
-  cp_sb_pill_btn(f, "coder.sb.tab.archived", x + w_act + 2.0f32, sy, w_arch, h, arch_lbl, arch_on, false, CP_SB_VIEW_ARCHIVED_ACT);
-  if x + w_act + 2.0f32 + w_arch + 4.0f32 + w_add <= x + avail {
-    cp_sb_pill_btn(f, "coder.sb.add_project", x + avail - w_add, sy, w_add, h, "+ Project", false, false, CP_SB_ADD_PROJECT_ACT);
-  }
-  return h + 4.0f32;
 }
 
 // Multi-select Bulk Action Bar shown when sel_count > 0. Returns its height.
