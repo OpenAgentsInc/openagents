@@ -30,7 +30,7 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   t := [1] ElTable.[cp_test_pill_rows(s)];
   comp := elt_find(t[..], "coder.composer"); head := elt_find(t[..], "coder.empty"); model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
   #assert comp >= 0 && head < 0 && model >= 0 && folder >= 0;
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;   // 76 of text, 42 of controls, the border
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 123;   // 76 of text, 45 of controls, the border
   #assert t[0].rows[comp].y > 200 && t[0].rows[comp].y + t[0].rows[comp].h < 600;
   // T3 Code layout: model sits inside the composer's bottom row, folder sits in the quiet foot below
   #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
@@ -38,6 +38,11 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   #assert elt_find(t[..], "coder.backend") < 0 && elt_find(t[..], "coder.cost") < 0;
   add := elt_find(t[..], "coder.composer.add"); send := elt_find(t[..], "coder.composer.send");
   #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[model].x && t[0].rows[model].x < t[0].rows[send].x;
+  // bottom control row keeps comfortable horizontal (14pt inner) and bottom (12pt Send / 14pt chips) padding inside the card
+  #assert abs((t[0].rows[add].x - t[0].rows[comp].x) - 15.0f32) < 0.01;
+  #assert abs((t[0].rows[comp].y + t[0].rows[comp].h - (t[0].rows[add].y + t[0].rows[add].h)) - 15.0f32) < 0.01;
+  #assert abs((t[0].rows[comp].x + t[0].rows[comp].w - (t[0].rows[send].x + t[0].rows[send].w)) - 15.0f32) < 0.01;
+  #assert abs((t[0].rows[comp].y + t[0].rows[comp].h - (t[0].rows[send].y + t[0].rows[send].h)) - 13.0f32) < 0.01;
   #assert cp_press(s, add) && coder_page_action(s) == CP_ASK_ADD;
   // microphone dictation button sits beside Send (#13882)
   mic := elt_find(t[..], "coder.composer.mic");
@@ -49,20 +54,20 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
   comp := elt_find(t[..], "coder.composer");
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 123;
   // model is inside the card's bottom row, folder is in the foot under the card
   model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
   #assert t[0].rows[model].y >= t[0].rows[comp].y && t[0].rows[model].y + t[0].rows[model].h <= t[0].rows[comp].y + t[0].rows[comp].h;
   #assert t[0].rows[folder].y >= t[0].rows[comp].y + t[0].rows[comp].h && t[0].rows[folder].y + t[0].rows[folder].h <= 800;
-  // adding newlines expands the card taller, clearing returns to 120
+  // adding newlines expands the card taller, clearing returns to 123
   #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && coder_page_key(s, KEY_ENTER, MOD_SHIFT) && coder_page_key(s, KEY_ENTER, MOD_SHIFT);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h > 120;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h > 123;
   #assert coder_page_key(s, 97, MOD_CMD) && coder_page_key(s, KEY_BACKSPACE, 0);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h == 120;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h == 123;
 }
 // A chat with one finished message, a branch, a paused goal and the last model call's counts
 // (cp_ctx_take reads them from a worker's attempt line).

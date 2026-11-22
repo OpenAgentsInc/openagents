@@ -29,7 +29,7 @@ cp_test_draft_is :: (s: [] CoderPage, want: string) -> bool {
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
   comp := elt_find(t[..], "coder.composer"); c0 := elt_find(t[..], "coder.cargo.0"); c1 := elt_find(t[..], "coder.cargo.1");
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120 + 52;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 123 + 52;
   #assert c0 >= 0 && c1 >= 0 && t[0].rows[c0].h == 40 && t[0].rows[c1].w == 56 && t[0].rows[c0].y > t[0].rows[comp].y;
   #assert elt_value_of(t[..], c0) == "TXT · 900 B";
   // a chip opens its file

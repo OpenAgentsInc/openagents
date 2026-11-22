@@ -859,6 +859,12 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   s[0].bar_h = 0.0f32;
 }
 
+// Bottom control row inset inside the composer card (decoupled from k.cmp.radius = 16 so the
+// 28pt paperclip/chips sit 14pt from the inner side/bottom edges and the 32pt Send button sits
+// 14pt from the right and 12pt from the bottom instead of collapsing to 1pt/-1pt).
+CP_COMPOSER_FOOT_INSET :: 14;
+CP_COMPOSER_FOOT_CORNER :: CP_COMPOSER_FOOT_INSET + ZC_CONTROL / 2;
+
 // The composer, x and cw as the conversation (#13743): Zeron's pill (components/zeron/composer.coax's
 // zc_pill), compact on one 49 row while the draft fits and expanded over it, and its foot under it:
 // the model (Command-/ opens its menu, when extra model flags are enabled) on the left, and on the right
@@ -877,7 +883,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   g := cp_pill_shape(s, f, cw);
   box_y := h - cast(f32) CP_BOTTOM - foot - g.height;
   if centred {
-    least := zc_pill(cw, 0, 0, k.cmp.line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, false, false).height;
+    least := zc_pill(cw, 0, 0, k.cmp.line, cast(f32) ZC_TRAILING, cast(f32) CP_COMPOSER_FOOT_CORNER, true, false, false).height;
     top := (h - least - foot) / 2;
     if top < cast(f32) CP_CORNER + a.icon_button { top = cast(f32) CP_CORNER + a.icon_button; }
     if top < box_y { box_y = top; }
@@ -976,7 +982,7 @@ cp_pill_shape :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> ZcPill {
   rows := cast(f32) cp_ed_lines(s, k, open_w) * line;
   cargo := cp_cargo_n(s) > 0;   // attachments keep it expanded, their strip over the text (#13699)
   // Always use the 2-row expanded T3 Code card layout (prompt area on top, controls row inside bottom).
-  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, lines, s[0].pill_next);
+  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, cast(f32) CP_COMPOSER_FOOT_CORNER, true, lines, s[0].pill_next);
   s[0].pill_next = target.next_text;
   if cargo { target = zc_with_cargo(target, cp_cargo_height(s, f, cw)); }
   g := zc_motion_step(s[0].pill[..], target, f[0].dt, s[0].reduced);
@@ -1046,8 +1052,8 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   min_chip_x := lx + control + 8.0f32;
   e_label := cp_effort_label(s, cp_model_index(s));
   w_effort := cp_foot_chip_width(f, -1, e_label, true);
-  if right_x - 4.0f32 - w_effort >= min_chip_x {
-    right_x -= 4.0f32 + w_effort;
+  if right_x - 6.0f32 - w_effort >= min_chip_x {
+    right_x -= 6.0f32 + w_effort;
     s[0].effort_x = right_x;
     _ := cp_foot_chip(f, "coder.effort", "Thinking level (⇧Tab)", right_x, chip_y, w_effort, -1, e_label, true, ifx s[0].effort_menu then EL_S_CURRENT else 0, CP_EFFORT_MENU);
   } else {
