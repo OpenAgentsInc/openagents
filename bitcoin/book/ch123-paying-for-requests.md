@@ -55,19 +55,22 @@ worker pubkey:
    has_payment_id)` returns `false` if a caller claims `real_bitcoin_moved =
    true` without both `settled_sat > 0` and a real Spark/Lightning payment ID.
 
-## The `#authority` two-leg settlement policy
+## The `#authority` three-leg settlement policy
 
-[`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) (`63/63`
+[`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) (`101/101`
 mutants killed, `0` survived) defines the satoshi upper bound (`21,000,000 BTC`),
-the two settlement legs (`WORKER` and `VALIDATOR`), the verdicts, and the
-policy/period structs:
+the maximum module-author royalty cap (`25%` / `2500 bps`), the three settlement
+legs (`WORKER`, `VALIDATOR`, and `AUTHOR`), the verdicts, and the policy/period
+structs:
 
 <!-- source: pay/executor-settlement.coax types -->
 ```jai
 ES_MAX_SAT :: 2_100_000_000_000_000;
+ES_MAX_AUTHOR_ROYALTY_BPS :: 2500;
 
 ES_LEG_WORKER :: 1;
 ES_LEG_VALIDATOR :: 2;
+ES_LEG_AUTHOR :: 3;
 
 ES_VERDICT_EXACT_REPLAY :: 1;
 ES_VERDICT_TRAINING_ACCEPTED :: 2;
@@ -103,7 +106,8 @@ EsPayoutRequest :: struct {
 ```
 
 The admission function checks inputs, duplicate leg delivery, verdict status,
-owner arming, and rolling daily caps in fixed fail-closed order, and
+owner arming, and rolling daily caps in fixed fail-closed order, `es_admit_three_leg_split`
+enforces the bounded author royalty share across `(worker, validator, author)`, and
 `es_receipt_truthful` prevents dry-runs or mocks from ever inflating settled
 Bitcoin totals:
 
@@ -122,10 +126,10 @@ es_roll_period :: (st: EsPeriodState, req_utc_day: int) -> EsPeriodState #effect
   return st;
 }
 
-// Decides whether a WORKER or VALIDATOR leg payout may release, must be held for
+// Decides whether a WORKER, VALIDATOR, or AUTHOR leg payout may release, must be held for
 // owner review, must be withheld on failed verdict, or refused as duplicate/invalid.
 es_admit_payout :: (pol: EsPolicy, st: EsPeriodState, req: EsPayoutRequest) -> int #effects(traps) {
-  if req.leg != ES_LEG_WORKER && req.leg != ES_LEG_VALIDATOR { return ES_REFUSE_BAD_INPUT; }
+  if req.leg != ES_LEG_WORKER && req.leg != ES_LEG_VALIDATOR && req.leg != ES_LEG_AUTHOR { return ES_REFUSE_BAD_INPUT; }
   if req.amount_sat <= 0 || req.amount_sat > ES_MAX_SAT { return ES_REFUSE_BAD_INPUT; }
   if req.utc_day <= 0 { return ES_REFUSE_BAD_INPUT; }
   if req.already_paid_leg { return ES_REFUSE_DUPLICATE; }
@@ -142,6 +146,22 @@ es_admit_payout :: (pol: EsPolicy, st: EsPeriodState, req: EsPayoutRequest) -> i
   if pol.global_daily_cap_sat > 0 && cur.global_spent_sat + req.amount_sat > pol.global_daily_cap_sat {
     return ES_HOLD_OWNER;
   }
+  return ES_RELEASE;
+}
+
+// Three-leg split & royalty cap admission (Worker + Validator + Module Author, #13961).
+// Enforces positive worker/validator legs, non-negative author royalty within ES_MAX_SAT,
+// max_royalty_bps bounded by ES_MAX_AUTHOR_ROYALTY_BPS (25%), and author/total <= max_royalty_bps/10000.
+es_admit_three_leg_split :: (worker_sat: int, validator_sat: int, author_sat: int, max_royalty_bps: int) -> int #effects(traps) {
+  if worker_sat <= 0 || validator_sat <= 0 || author_sat < 0 { return ES_REFUSE_BAD_INPUT; }
+  if max_royalty_bps < 0 || max_royalty_bps > ES_MAX_AUTHOR_ROYALTY_BPS { return ES_REFUSE_BAD_INPUT; }
+  rem := ES_MAX_SAT - worker_sat;
+  if validator_sat > rem { return ES_REFUSE_BAD_INPUT; }
+  if author_sat > rem - validator_sat { return ES_REFUSE_BAD_INPUT; }
+  total := worker_sat + validator_sat + author_sat;
+  // Overflow-safe check of author_sat * 10000 <= total * max_royalty_bps:
+  // since total <= 2.1e15 and max_royalty_bps <= 2500, total * max_royalty_bps <= 5.25e18 < 2^63-1!
+  if author_sat * 10000 > total * max_royalty_bps { return ES_REFUSE_BAD_INPUT; }
   return ES_RELEASE;
 }
 
@@ -178,7 +198,7 @@ receipt real+id: true real+no_id: false dry_run: true
 ## Live Bitcoin mainnet qualification and checks
 
 - **Unit & mutation checks:** `coax/bin/coax test pay/executor-settlement.coax`
-  and `coax/bin/coax mutate pay/executor-settlement.coax --root-only` (`63/63`
+  and `coax/bin/coax mutate pay/executor-settlement.coax --root-only` (`101/101`
   mutants killed, `0` survived).
 - **Live two-device Bitcoin mainnet qualification (W4.3, `#13922`):** Verified
   end-to-end across two distinct physical machines (Apple M5 Max worker +

@@ -1,0 +1,165 @@
+// Single #authority Coax codec for `openagents.executor.author-royalty.v1`
+// (proto/psionic/author-royalty-v1.json, GitHub #13961).
+//
+// Append-only 3rd-leg module author royalty settlement record written and replayed
+// by `openagents pylon settle` (`author-royalties.jsonl`). Enforces canonical JCS
+// key ordering, 64-hex digests/pubkeys, Bitcoin-only networks, no leaked secrets,
+// and truthful `real_bitcoin_moved` invariants.
+//   coax/bin/coax test psionic/lib/peer/author-royalty-wire.coax
+//   coax/bin/coax mutate psionic/lib/peer/author-royalty-wire.coax --root-only
+#load "../executor-wire.coax";
+#load "../../../pay/executor-settlement.coax";
+#authority;
+
+ARW_SCHEMA :: "openagents.executor.author-royalty.v1";
+ARW_MAX_SAT :: EXW_INT_MAX / 1000;
+
+ArwReceipt :: struct {
+  amount_sat: int;
+  author_pubkey: string;
+  network: string;
+  period_id: string;
+  real_bitcoin_moved: bool;
+  receipt_digest: string;
+  settled_at: int;
+  settlement_commitment: string;
+  verdict_digest: string;
+}
+
+arw_valid :: (r: ArwReceipt) -> ExwErr #effects(all) {
+  if r.amount_sat < 1 || r.amount_sat > ARW_MAX_SAT { return ExwErr.bounds; }
+  e := exw_check_hex(r.author_pubkey, 64); if e != ExwErr.ok { return e; }
+  nets := EXW_NETWORK_NAMES;
+  if !exw_in_list(r.network, nets[..]) { return ExwErr.invalid_enum; }
+  if !exw_period_ok(r.period_id) { return ExwErr.bounds; }
+  e = exw_check_hex(r.receipt_digest, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(r.verdict_digest, 64); if e != ExwErr.ok { return e; }
+  if r.real_bitcoin_moved {
+    if r.settled_at < 1 || r.settled_at > EXW_INT_MAX { return ExwErr.invariant; }
+    if !exw_hex_nonzero(r.settlement_commitment) { return ExwErr.invariant; }
+    if !es_receipt_truthful(true, r.amount_sat, true) { return ExwErr.invariant; } // mutant: equivalent — amount_sat >= 1 and commitment already checked non-zero 64-hex
+  } else {
+    if r.settled_at != 0 || r.settlement_commitment.count != 0 { return ExwErr.invariant; }
+  }
+  return ExwErr.ok;
+}
+
+arw_write :: (r: ArwReceipt, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := arw_valid(r);
+  if e != ExwErr.ok { return ExwOut.{err = e}; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "amount_sat"); jo_int(o[..], r.amount_sat);
+  jo_key(o[..], "author_pubkey"); jo_str(o[..], r.author_pubkey);
+  jo_key(o[..], "leg"); jo_str(o[..], "author");
+  jo_key(o[..], "network"); jo_str(o[..], r.network);
+  jo_key(o[..], "period_id"); jo_str(o[..], r.period_id);
+  jo_key(o[..], "real_bitcoin_moved"); jo_bool(o[..], r.real_bitcoin_moved);
+  jo_key(o[..], "receipt_digest"); jo_str(o[..], r.receipt_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], ARW_SCHEMA);
+  jo_key(o[..], "settled_at"); jo_int(o[..], r.settled_at);
+  jo_key(o[..], "settlement_commitment"); jo_str(o[..], r.settlement_commitment);
+  jo_key(o[..], "verdict_digest"); jo_str(o[..], r.verdict_digest);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+arw_read :: (raw: string, out: [] ArwReceipt, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  if out.count < 1 { return ExwErr.truncated; }
+  d: [1] Jv; nodes: [64] JvNode;
+  keys := [11] string.[
+    "amount_sat", "author_pubkey", "leg", "network", "period_id",
+    "real_bitcoin_moved", "receipt_digest", "schema", "settled_at",
+    "settlement_commitment", "verdict_digest"
+  ];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], ARW_SCHEMA);
+  if e != ExwErr.ok { return e; }
+  v := d[0];
+  a := [1] ExwArena.[ExwArena.{buf = arena}];
+  leg := exw_str(v, 0, "leg", a[..]);
+  rb := exw_bool(v, 0, "real_bitcoin_moved");
+  if !rb.ok { return ExwErr.bounds; }
+  next := ArwReceipt.{
+    amount_sat = exw_uint(v, 0, "amount_sat"),
+    author_pubkey = exw_str(v, 0, "author_pubkey", a[..]),
+    network = exw_str(v, 0, "network", a[..]),
+    period_id = exw_str(v, 0, "period_id", a[..]),
+    real_bitcoin_moved = rb.val,
+    receipt_digest = exw_str(v, 0, "receipt_digest", a[..]),
+    settled_at = exw_uint(v, 0, "settled_at"),
+    settlement_commitment = exw_str(v, 0, "settlement_commitment", a[..]),
+    verdict_digest = exw_str(v, 0, "verdict_digest", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  if leg != "author" { return ExwErr.invalid_enum; }
+  e = arw_valid(next);
+  if e != ExwErr.ok { return e; }
+  out[0] = next;
+  return ExwErr.ok;
+}
+
+ARW_T_REC :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ARW_T_VRD :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+ARW_T_AUT :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+ARW_T_COM :: "1111111111111111111111111111111111111111111111111111111111111111";
+ARW_T_ZERO :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+ARW_GOLDEN_DRY :: "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"regtest\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":0,\"settlement_commitment\":\"\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}";
+ARW_GOLDEN_REAL :: "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"bitcoin\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":1795200005,\"settlement_commitment\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}";
+
+#test "author-royalty-wire: canonical JCS goldens, bounds, Bitcoin-only & truthful receipts (#13961)" {
+  dry := ArwReceipt.{
+    amount_sat = 50, author_pubkey = ARW_T_AUT, network = "regtest", period_id = "2026-11-22",
+    real_bitcoin_moved = false, receipt_digest = ARW_T_REC, settled_at = 0,
+    settlement_commitment = "", verdict_digest = ARW_T_VRD
+  };
+  buf: [1024] u8;
+  w := arw_write(dry, buf[..]);
+  #assert w.err == ExwErr.ok && cast(string) buf[0..<w.len] == ARW_GOLDEN_DRY;
+
+  real := dry;
+  real.network = "bitcoin"; real.real_bitcoin_moved = true;
+  real.settled_at = 1795200005; real.settlement_commitment = ARW_T_COM;
+  wr := arw_write(real, buf[..]);
+  #assert wr.err == ExwErr.ok && cast(string) buf[0..<wr.len] == ARW_GOLDEN_REAL;
+
+  // Round-trip read both goldens & check every field
+  out: [1] ArwReceipt; arena: [1024] u8;
+  #assert arw_read(ARW_GOLDEN_DRY, out[..], arena[..]) == ExwErr.ok;
+  #assert out[0].amount_sat == 50 && out[0].author_pubkey == ARW_T_AUT && out[0].network == "regtest";
+  #assert out[0].period_id == "2026-11-22" && !out[0].real_bitcoin_moved && out[0].receipt_digest == ARW_T_REC;
+  #assert out[0].settled_at == 0 && out[0].settlement_commitment == "" && out[0].verdict_digest == ARW_T_VRD;
+
+  #assert arw_read(ARW_GOLDEN_REAL, out[..], arena[..]) == ExwErr.ok;
+  #assert out[0].real_bitcoin_moved && out[0].settled_at == 1795200005 && out[0].settlement_commitment == ARW_T_COM && out[0].network == "bitcoin";
+
+  // Exact boundaries: amount_sat 1 and ARW_MAX_SAT, settled_at 1 and EXW_INT_MAX
+  edge := real; edge.amount_sat = 1; edge.settled_at = 1;
+  #assert arw_valid(edge) == ExwErr.ok;
+  edge_hi := real; edge_hi.amount_sat = ARW_MAX_SAT; edge_hi.settled_at = EXW_INT_MAX;
+  #assert arw_valid(edge_hi) == ExwErr.ok;
+
+  // Refusals: bounds, digests, non-Bitcoin networks, periods, lying real_bitcoin_moved, secrets, bad leg/schema/arena
+  b1 := dry; b1.amount_sat = 0; #assert arw_write(b1, buf[..]).err == ExwErr.bounds;
+  b2 := dry; b2.amount_sat = ARW_MAX_SAT + 1; #assert arw_valid(b2) == ExwErr.bounds;
+  b3 := dry; b3.author_pubkey = "bad"; #assert arw_valid(b3) == ExwErr.digest;
+  b4 := dry; b4.network = "usdc"; #assert arw_valid(b4) == ExwErr.invalid_enum;
+  b5 := dry; b5.period_id = "bad"; #assert arw_valid(b5) == ExwErr.bounds;
+  b6 := dry; b6.receipt_digest = "bad"; #assert arw_valid(b6) == ExwErr.digest;
+  b7 := dry; b7.verdict_digest = "bad"; #assert arw_valid(b7) == ExwErr.digest;
+  b8 := real; b8.settled_at = 0; #assert arw_valid(b8) == ExwErr.invariant;
+  b9 := real; b9.settled_at = EXW_INT_MAX + 1; #assert arw_valid(b9) == ExwErr.invariant;
+  b10 := real; b10.settlement_commitment = ARW_T_ZERO; #assert arw_valid(b10) == ExwErr.invariant;
+  b11 := dry; b11.settled_at = 1; #assert arw_valid(b11) == ExwErr.invariant;
+  b12 := dry; b12.settlement_commitment = ARW_T_COM; #assert arw_valid(b12) == ExwErr.invariant;
+
+  // Read error paths
+  #assert arw_read(ARW_GOLDEN_DRY, out[0..<0], arena[..]) == ExwErr.truncated;
+  #assert arw_read(ARW_GOLDEN_DRY, out[..], arena[0..<16]) == ExwErr.truncated;
+  #assert arw_read("{}", out[..], arena[..]) == ExwErr.schema;
+  bad_bool := "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"regtest\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":1,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":0,\"settlement_commitment\":\"\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}";
+  #assert arw_read(bad_bool, out[..], arena[..]) == ExwErr.bounds;
+  bad_leg := "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"worker\",\"network\":\"regtest\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":0,\"settlement_commitment\":\"\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}";
+  #assert arw_read(bad_leg, out[..], arena[..]) == ExwErr.invalid_enum;
+  bad_amt := "{\"amount_sat\":0,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"regtest\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":0,\"settlement_commitment\":\"\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}";
+  #assert arw_read(bad_amt, out[..], arena[..]) == ExwErr.bounds;
+}

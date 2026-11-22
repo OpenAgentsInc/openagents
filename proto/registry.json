@@ -7104,6 +7104,19 @@
         "coax/lib/tbench/wire-checks.coax"
       ],
       "note": "Append-only #authority hillclimbing round ledger row recording train/held-out pass counts, quarantine gate verdict, and Ch 247 redacted distillation count (#13953)."
+    },
+    {
+      "id": "openagents.executor.author-royalty.v1",
+      "kind": "profile",
+      "owner": "psionic",
+      "schema": "proto/psionic/author-royalty-v1.json",
+      "codec": "psionic/lib/peer/author-royalty-wire.coax",
+      "check": "coax/bin/coax test psionic/lib/peer/author-royalty-wire.coax",
+      "step": "new",
+      "tests": [
+        "proto/psionic/author-royalty-v1.json"
+      ],
+      "note": "Append-only 3rd-leg module author royalty settlement receipt keyed by (receipt_digest, author) with Bitcoin-only networks and truthful real_bitcoin_moved reporting (#13961)."
     }
   ]
 }

@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.executor.author-royalty.v1",
+  "owner": "psionic",
+  "codec": "psionic/lib/peer/author-royalty-wire.coax",
+  "issue": "#13961",
+  "note": "Append-only 3rd-leg module author royalty settlement record (author-royalties.jsonl) keyed by (receipt_digest, author) with Bitcoin-only networks and truthful real_bitcoin_moved reporting.",
+  "goldens": [
+    {
+      "name": "dry_run_regtest",
+      "json": "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"regtest\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":0,\"settlement_commitment\":\"\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"
+    },
+    {
+      "name": "real_bitcoin_mainnet",
+      "json": "{\"amount_sat\":50,\"author_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"leg\":\"author\",\"network\":\"bitcoin\",\"period_id\":\"2026-11-22\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.executor.author-royalty.v1\",\"settled_at\":1795200005,\"settlement_commitment\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"verdict_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"
+    }
+  ]
+}

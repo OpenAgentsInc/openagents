@@ -8,6 +8,7 @@
 // append-only W2.1 SettlementReceipt ledger -> #authority reconciled settled feed &
 // NIP-PYLON kind 30201 pool aggregate (`psionic/lib/peer/settled-feed.coax`).
 #load "../../psionic/lib/peer/pay.coax";
+#load "../../psionic/lib/peer/author-royalty-wire.coax";
 #load "../../psionic/lib/peer/settled-feed.coax";
 
 PS_MAX_LEDGER_BYTES :: 262144;
@@ -94,6 +95,59 @@ ps_load_receipts :: (
     out_recs[out_count[0]] = one[0];
     out_count[0] += 1;
     arena_pos += 1024;
+  }
+  return true;
+}
+
+// Replay persisted author-royalties.jsonl lines into VpExecLedger under ES_LEG_AUTHOR
+// for zero-double-spend restart idempotency (#13961).
+ps_replay_author_royalties :: (
+  path: string,
+  period_id: string,
+  utc_day: int,
+  ledger: [] VpExecLedger
+) -> bool {
+  if fs_kind(path) != FS_FILE { return true; }
+  raw: [PS_MAX_LEDGER_BYTES] u8;
+  rn := fs_read(path, raw[..]);
+  if rn < 0 { return false; }
+  if rn == 0 { return true; }
+  i := 0;
+  while i < rn {
+    start := i;
+    while i < rn && raw[i] != '\n' { i += 1; }
+    end := i;
+    if i < rn && raw[i] == '\n' { i += 1; }
+    if end == start { continue; }
+    line := cast(string) raw[start..<end];
+    rec: [1] ArwReceipt;
+    arena: [1024] u8;
+    if arw_read(line, rec[..], arena[..]) != ExwErr.ok { return false; }
+    ar := rec[0];
+    if vp_exec_find_leg(ledger[0], ar.receipt_digest, ES_LEG_AUTHOR) < 0 && ledger[0].n_legs < VP_EXEC_MAX_LEGS {
+      row := VpExecLeg.{
+        receipt = kept64(ar.receipt_digest),
+        payee = kept64(ar.author_pubkey),
+        leg = ES_LEG_AUTHOR,
+        amount_sat = ar.amount_sat,
+        utc_day = utc_day,
+        net = vp_net_code(ar.network),
+        state = ifx ar.real_bitcoin_moved then VpExecState.settled else VpExecState.released,
+        real_bitcoin_moved = ar.real_bitcoin_moved,
+        settled_at = ar.settled_at
+      };
+      if ar.real_bitcoin_moved {
+        row.commitment = kept64(ar.settlement_commitment);
+        ledger[0].settled_real_sat += ar.amount_sat;
+      }
+      if ar.period_id == period_id {
+        ledger[0].global_spent_sat += ar.amount_sat;
+        _ = vp_exec_add_key_spend(ledger, ar.author_pubkey, ar.amount_sat);
+      }
+      ledger[0].released_sat += ar.amount_sat;
+      ledger[0].legs[ledger[0].n_legs] = row;
+      ledger[0].n_legs += 1;
+    }
   }
   return true;
 }
@@ -349,7 +403,7 @@ ps_publish_and_save_pool :: (
 // `openagents pylon settle`
 pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if args_has(a, "--help") || args_has(a, "-h") {
-    return fail(r, EXIT_USAGE, "pylon settle [--relay URL] [--network regtest|signet|testnet|bitcoin] [--ledger DIR] [--pool NAME] [--worker-sats N] [--validator-sats N] [--per-payout-cap N] [--per-pubkey-cap N] [--global-daily-cap N] [--armed] [--arm-mainnet-owner-approved] [--wallet-bridge dry-run|spark-helper|desktop-rpc] [--worker-dest ADDR] [--validator-dest ADDR] [--publish-pool]");
+    return fail(r, EXIT_USAGE, "pylon settle [--relay URL] [--network regtest|signet|testnet|bitcoin] [--ledger DIR] [--pool NAME] [--worker-sats N] [--validator-sats N] [--author-sats N] [--author-pubkey HEX|NPUB] [--author-dest ADDR] [--max-royalty-bps N] [--per-payout-cap N] [--per-pubkey-cap N] [--global-daily-cap N] [--armed] [--arm-mainnet-owner-approved] [--wallet-bridge dry-run|spark-helper|desktop-rpc] [--worker-dest ADDR] [--validator-dest ADDR] [--publish-pool]");
   }
 
   url := args_value(a, "--relay", "wss://relay.openagents.com");
@@ -368,11 +422,24 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
 
   worker_sats := cli_parse_u64(args_value(a, "--worker-sats", "800"));
   validator_sats := cli_parse_u64(args_value(a, "--validator-sats", "200"));
+  author_sats := cli_parse_u64(args_value(a, "--author-sats", "0"));
+  max_royalty_bps := cli_parse_u64(args_value(a, "--max-royalty-bps", "500"));
   per_payout_cap := cli_parse_u64(args_value(a, "--per-payout-cap", "1000"));
   per_pubkey_cap := cli_parse_u64(args_value(a, "--per-pubkey-cap", "5000"));
   global_daily_cap := cli_parse_u64(args_value(a, "--global-daily-cap", "10000"));
-  if worker_sats <= 0 || validator_sats <= 0 || per_payout_cap < 0 || per_pubkey_cap < 0 || global_daily_cap < 0 {
-    return fail(r, EXIT_USAGE, "payout amounts must be positive sats and caps non-negative");
+  if worker_sats <= 0 || validator_sats <= 0 || author_sats < 0 || max_royalty_bps < 0 || max_royalty_bps > ES_MAX_AUTHOR_ROYALTY_BPS || per_payout_cap < 0 || per_pubkey_cap < 0 || global_daily_cap < 0 {
+    return fail(r, EXIT_USAGE, "payout amounts must be positive sats, author-sats non-negative, max-royalty-bps in 0..2500, and caps non-negative");
+  }
+  if author_sats > 0 && es_admit_three_leg_split(worker_sats, validator_sats, author_sats, max_royalty_bps) != ES_RELEASE {
+    return fail(r, EXIT_USAGE, "three-leg split refused by #authority policy: author royalty exceeds --max-royalty-bps or ES_MAX_SAT");
+  }
+  author_pk_b: [64] u8;
+  author_pk := "";
+  if author_sats > 0 {
+    author_pk = key_hex_of(args_value(a, "--author-pubkey", ""), author_pk_b[..]);
+    if author_pk == "" {
+      return fail(r, EXIT_USAGE, "--author-sats > 0 requires --author-pubkey (64-hex or npub1...)");
+    }
   }
 
   owner_armed := args_has(a, "--armed");
@@ -380,6 +447,7 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   mainnet_armed := args_has(a, "--arm-mainnet-owner-approved") && proc_getenv("OA_EXECUTOR_MAINNET_ARMED", mn_env_b[..]) == "1";
   worker_dest := args_value(a, "--worker-dest", "");
   validator_dest := args_value(a, "--validator-dest", "");
+  author_dest := args_value(a, "--author-dest", "");
   spark_dir := args_value(a, "--spark-storage-dir", "");
   publish_pool := args_has(a, "--publish-pool");
 
@@ -416,10 +484,11 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   pol_digest := ps_policy_digest(es_pol, mainnet_armed, network, pdig_b[..]);
   vp_pol := VpExecPolicy.{es = es_pol, mainnet_armed = mainnet_armed, owner_policy_digest = pol_digest};
 
-  // 1. Replay persisted append-only SettlementReceipt log into VpExecLedger for restart idempotency
-  rpath_b: [1024] u8; ipath_b: [1024] u8;
+  // 1. Replay persisted append-only SettlementReceipt & author-royalty logs into VpExecLedger
+  rpath_b: [1024] u8; ipath_b: [1024] u8; apath_b: [1024] u8;
   rpath := fs_join(ldir, "settlement-receipts.jsonl", rpath_b[..]);
   ipath := fs_join(ldir, "payout-intents.jsonl", ipath_b[..]);
+  apath := fs_join(ldir, "author-royalties.jsonl", apath_b[..]);
   existing_recs: [SF_MAX_RECEIPTS] ExwSettlementReceipt;
   rec_arena: [SF_MAX_RECEIPTS * 1024] u8;
   n_existing: [1] int;
@@ -428,12 +497,12 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
     return fail(r, EXIT_FAIL, "failed to load or verify persisted settlement-receipts.jsonl");
   }
 
-  ledger: VpExecLedger;
-  ledger.utc_day = utc_day;
+  ledger_box: [1] VpExecLedger;
+  ledger_box[0].utc_day = utc_day;
   for i: 0..<n_existing[0] {
     er := existing_recs[i];
     es_leg := ifx er.leg == ExwPayoutLeg.worker then ES_LEG_WORKER else ES_LEG_VALIDATOR;
-    if vp_exec_find_leg(ledger, er.receipt_digest, es_leg) < 0 && ledger.n_legs < VP_EXEC_MAX_LEGS {
+    if vp_exec_find_leg(ledger_box[0], er.receipt_digest, es_leg) < 0 && ledger_box[0].n_legs < VP_EXEC_MAX_LEGS {
       sats := er.amount_msat / 1000;
       row := VpExecLeg.{
         receipt = kept64(er.receipt_digest),
@@ -447,16 +516,21 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
       };
       if er.real_bitcoin_moved {
         row.commitment = kept64(er.settlement_commitment);
-        ledger.settled_real_sat += sats;
+        ledger_box[0].settled_real_sat += sats;
       }
       if er.period_id == period_id {
-        ledger.global_spent_sat += sats;
+        ledger_box[0].global_spent_sat += sats;
       }
-      ledger.released_sat += sats;
-      ledger.legs[ledger.n_legs] = row;
-      ledger.n_legs += 1;
+      ledger_box[0].released_sat += sats;
+      ledger_box[0].legs[ledger_box[0].n_legs] = row;
+      ledger_box[0].n_legs += 1;
     }
   }
+  if !ps_replay_author_royalties(apath, period_id, utc_day, ledger_box[..]) {
+    wipe(k[0].secret[..]);
+    return fail(r, EXIT_FAIL, "failed to load or verify persisted author-royalties.jsonl");
+  }
+  ledger := ledger_box[0];
 
   // 2. Connect to live Nostr relay & fetch signed 30210 ExecutionTraceReceipt + 30211 ReplayVerdict events
   c: [1] CliRelay;
@@ -533,6 +607,11 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   rejected_pairing := 0;
   settled_real_legs := 0;
   unfunded_legs := 0;
+  author_released_legs := 0;
+  author_held_legs := 0;
+  author_withheld_legs := 0;
+  author_duplicate_legs := 0;
+  author_settled_real_legs := 0;
   last_bridge_status: [64] u8;
   last_bridge_n := 0;
 
@@ -626,6 +705,61 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
         else { unfunded_legs += 1; }
       }
     }
+
+    // Optional 3rd leg (ES_LEG_AUTHOR module author royalty, #13961)
+    if author_sats > 0 {
+      au := vp_exec_admit_author_leg(
+        ledger, vp_pol, rid, v_id, author_pk, vp_replay_verdict_code(outcome),
+        worker_sats, validator_sats, author_sats, max_royalty_bps, utc_day, period_id, network
+      );
+      ledger = au.ledger;
+      if au.code == ES_REFUSE_DUPLICATE { author_duplicate_legs += 1; duplicate_legs += 1; }
+      else if au.code == ES_HOLD_OWNER { author_held_legs += 1; held_legs += 1; }
+      else if au.code == ES_WITHHOLD_FAILED { author_withheld_legs += 1; withheld_legs += 1; }
+      else if au.code == ES_RELEASE {
+        author_released_legs += 1;
+        released_legs += 1;
+
+        ik_a: [80] u8;
+        ika_n := copy(rid, ik_a[..]);
+        ika_n += copy("-author", ik_a[ika_n..<80]);
+        idem_a := cast(string) ik_a[0..<ika_n];
+
+        rem_a := ifx global_daily_cap > ledger.global_spent_sat then global_daily_cap - ledger.global_spent_sat + author_sats else author_sats;
+        bo_a: [1] PsBridgeOut;
+        ps_execute_bridge(bridge, network, author_dest, author_sats, idem_a, rem_a, spark_dir, mainnet_armed, bo_a[..]);
+        last_bridge_n = copy(cast(string) bo_a[0].status[0..<bo_a[0].status_n], last_bridge_status[..]);
+
+        commit_a := ifx bo_a[0].has_commitment then cast(string) bo_a[0].commitment[..] else "";
+        sr_a := vp_exec_record_author_settlement(
+          ledger, vp_pol, rid, bo_a[0].real_bitcoin_moved, bo_a[0].settled_at, commit_a, period_id
+        );
+        if sr_a.code == ES_RELEASE {
+          ledger = sr_a.ledger;
+          abuf: [1024] u8;
+          arw_rec := ArwReceipt.{
+            amount_sat = author_sats,
+            author_pubkey = author_pk,
+            network = network,
+            period_id = period_id,
+            real_bitcoin_moved = bo_a[0].real_bitcoin_moved,
+            receipt_digest = rid,
+            settled_at = bo_a[0].settled_at,
+            settlement_commitment = commit_a,
+            verdict_digest = v_id
+          };
+          aw := arw_write(arw_rec, abuf[..]);
+          if aw.err == ExwErr.ok {
+            ajson := cast(string) abuf[0..<aw.len];
+            if !sf_has_secret(ajson) {
+              _ = ps_append_jsonl(apath, ajson);
+            }
+          }
+          if bo_a[0].real_bitcoin_moved { author_settled_real_legs += 1; settled_real_legs += 1; }
+          else { unfunded_legs += 1; }
+        }
+      }
+    }
   }
 
   // 4. Reconcile strictly from append-only disk log & emit NIP-PYLON 30201 pool aggregate
@@ -658,6 +792,13 @@ pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   rep_int(r, "duplicate_legs", duplicate_legs);
   rep_int(r, "settled_real_legs", settled_real_legs);
   rep_int(r, "unfunded_or_dry_legs", unfunded_legs);
+  rep_int(r, "author_sats", author_sats);
+  rep_int(r, "max_royalty_bps", max_royalty_bps);
+  rep_int(r, "author_released_legs", author_released_legs);
+  rep_int(r, "author_held_legs", author_held_legs);
+  rep_int(r, "author_withheld_legs", author_withheld_legs);
+  rep_int(r, "author_duplicate_legs", author_duplicate_legs);
+  rep_int(r, "author_settled_real_legs", author_settled_real_legs);
   if last_bridge_n > 0 { rep_str(r, "last_bridge_status", cast(string) last_bridge_status[0..<last_bridge_n]); }
   rep_int(r, "feed_settled_count", f.settled_count);
   rep_int(r, "feed_excluded_simulated", f.excluded_simulated_count);

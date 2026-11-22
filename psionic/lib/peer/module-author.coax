@@ -79,10 +79,10 @@ ma_admit_submission :: (sub: MaSubmission) -> MaStatus #effects(all) {
   return MaStatus.admitted;
 }
 
-// Build the exact WORKER / EXACT_REPLAY payout request for an admitted third-party module author.
+// Build the exact AUTHOR / EXACT_REPLAY payout request for an admitted third-party module author.
 ma_build_payout_request :: (amount_sat: int, utc_day: int, already_paid: bool) -> EsPayoutRequest #effects(all) {
   return EsPayoutRequest.{
-    leg = ES_LEG_WORKER,
+    leg = ES_LEG_AUTHOR,
     verdict = ES_VERDICT_EXACT_REPLAY,
     amount_sat = amount_sat,
     utc_day = utc_day,
@@ -98,6 +98,24 @@ ma_admit_author_payout :: (
   if ma_admit_submission(sub) != MaStatus.admitted { return ES_WITHHOLD_FAILED; }
   req := ma_build_payout_request(amount_sat, utc_day, already_paid);
   return es_admit_payout(pol, st, req);
+}
+
+// Full 3-leg execution royalty admission (#13961): requires an admitted Class-E module submission,
+// distinct worker != validator keys, a valid 3-leg royalty split within max_royalty_bps, and
+// passing ES_LEG_AUTHOR cap/idempotency admission through pay/executor-settlement.coax.
+ma_admit_three_leg_royalty :: (
+  sub: MaSubmission, pol: EsPolicy, st: EsPeriodState,
+  worker_key: int, validator_key: int,
+  worker_sat: int, validator_sat: int, author_sat: int,
+  max_royalty_bps: int, utc_day: int, already_paid: bool
+) -> int #effects(all) {
+  if worker_key == 0 || validator_key == 0 || worker_key == validator_key {
+    return ES_REFUSE_BAD_INPUT;
+  }
+  if es_admit_three_leg_split(worker_sat, validator_sat, author_sat, max_royalty_bps) != ES_RELEASE {
+    return ES_REFUSE_BAD_INPUT;
+  }
+  return ma_admit_author_payout(sub, pol, st, author_sat, utc_day, already_paid);
 }
 
 #test "module-author: #authority third-party Class-E admission & payout gate (#13955)" {
@@ -159,7 +177,7 @@ ma_admit_author_payout :: (
 
   // Author payout request fields & gating through pay/executor-settlement.coax
   req := ma_build_payout_request(500, 20778, false);
-  #assert req.leg == ES_LEG_WORKER && req.verdict == ES_VERDICT_EXACT_REPLAY && req.amount_sat == 500 && req.utc_day == 20778 && !req.already_paid_leg;
+  #assert req.leg == ES_LEG_AUTHOR && req.verdict == ES_VERDICT_EXACT_REPLAY && req.amount_sat == 500 && req.utc_day == 20778 && !req.already_paid_leg;
   pol := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 20000};
   st := EsPeriodState.{utc_day = 20778, global_spent_sat = 0, pubkey_spent_sat = 0};
   #assert ma_admit_author_payout(good, pol, st, 500, 20778, false) == ES_RELEASE;
@@ -167,4 +185,13 @@ ma_admit_author_payout :: (
   #assert ma_admit_author_payout(b_lift, pol, st, 500, 20778, false) == ES_WITHHOLD_FAILED;
   unarmed := pol; unarmed.owner_armed = false;
   #assert ma_admit_author_payout(good, unarmed, st, 500, 20778, false) == ES_HOLD_OWNER;
+
+  // Full 3-leg royalty admission (worker != validator, split cap, module admission, idempotency)
+  #assert ma_admit_three_leg_royalty(good, pol, st, 11, 22, 750, 200, 50, 500, 20778, false) == ES_RELEASE;
+  #assert ma_admit_three_leg_royalty(good, pol, st, 0, 22, 750, 200, 50, 500, 20778, false) == ES_REFUSE_BAD_INPUT;
+  #assert ma_admit_three_leg_royalty(good, pol, st, 11, 0, 750, 200, 50, 500, 20778, false) == ES_REFUSE_BAD_INPUT;
+  #assert ma_admit_three_leg_royalty(good, pol, st, 11, 11, 750, 200, 50, 500, 20778, false) == ES_REFUSE_BAD_INPUT;
+  #assert ma_admit_three_leg_royalty(good, pol, st, 11, 22, 750, 200, 51, 500, 20778, false) == ES_REFUSE_BAD_INPUT;
+  #assert ma_admit_three_leg_royalty(good, pol, st, 11, 22, 750, 200, 50, 500, 20778, true) == ES_REFUSE_DUPLICATE;
+  #assert ma_admit_three_leg_royalty(b_lift, pol, st, 11, 22, 750, 200, 50, 500, 20778, false) == ES_WITHHOLD_FAILED;
 }
