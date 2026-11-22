@@ -146,6 +146,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
       || name == "inkling-kernels-vulkan.spv"
       || name == "gitguard.exe"
       || name == "res"
+      || name == "resources"
       || name == "Components"
       || name == "OpenAgents.ico"
       || name == "LICENSE"
@@ -575,7 +576,9 @@ tool_main :: () -> int #export_c #effects(all) {
 
   #assert vbc_resource_allowed(VBC_WINDOWS, "OpenAgents.exe") && vbc_resource_allowed(VBC_WINDOWS, "psionic-inkling-serve.exe");
   #assert vbc_resource_allowed(VBC_WINDOWS, "gitguard.exe") && vbc_resource_allowed(VBC_WINDOWS, "inkling-kernels-cuda.cu");
+  #assert vbc_resource_allowed(VBC_WINDOWS, "resources") && vbc_resource_allowed(VBC_WINDOWS, "res");
   #assert !vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
+  #assert !vbc_resource_allowed(0, "OpenAgents");
 }
 
 #test "v1-bundle-check: dynamic link denylists for otool, ldd, and objdump" {
