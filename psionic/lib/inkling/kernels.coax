@@ -413,6 +413,7 @@ ink_ctrl_up_apply :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate
 }
 
 // ---- Sprint 31A: MoE gate_up + SITU (IQ4_NL) via vectorized am_dot_iq4_lane (ZERO TGEM, ZERO barriers, 16 blocks/step!).
+// ---- Sprint 60: 1-row-per-warp (4 rows/TG, 128 threads) IQ4_NL MoE gate_up + SITU with simd_shuffle LUT + packed_ushort2!
 ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
     groups_per_exp:=(n_ff+3)/4;
     slot:=item/groups_per_exp;
@@ -501,12 +502,28 @@ ink_moe_gu_q8 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids
 
 // ---- Sprint 35: MoE down (IQ4_NL) 1 row/simdgroup via am_dot_iq4_moe_lane (simd_shuffle LUT + 0 x re-reads!).
 // ---- Sprint 44: 4-row-per-TG (128 threads, 576 TGs) contiguous-cache-line MoE down + shortconv!
-ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+// ---- Sprint 59: 2-row-per-warp (8 rows/TG, 128 threads) IQ4_NL MoE down + post_conv + residual (shares xl,xh across 2 rows + packed_ushort2!).
+ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,tmp:[]f32,out:[]f32) #export_c #effects(all) {
     blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
     for thread:0..<128 {
-        row:=item*4+thread/32;
+        row:=item*8+(thread/32)*2;
         lane:=thread%32;
-        if row<rows {
+        if row+1<rows {
+            am_dot_iq4_moe_2_write(w,ids,wts,x,exp_words,row*row_words,(row+1)*row_words,cols,n_used,0,tmp,row,row+1);
+            if lane==0 {
+                s0:=tmp[row];
+                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
+                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=s0;
+                acc0:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+s0*conv_w[row*4+3];
+                out[row]=res[row]+(s0+acc0)*0.4472135954999579f32;
+                r1:=row+1;
+                s1:=tmp[r1];
+                y0:=hist[r1*3+0];y1:=hist[r1*3+1];y2:=hist[r1*3+2];
+                hist[r1*3+0]=y1;hist[r1*3+1]=y2;hist[r1*3+2]=s1;
+                acc1:=y0*conv_w[r1*4+0]+y1*conv_w[r1*4+1]+y2*conv_w[r1*4+2]+s1*conv_w[r1*4+3];
+                out[r1]=res[r1]+(s1+acc1)*0.4472135954999579f32;
+            }
+        } else if row<rows {
             sum0:=am_dot_iq4_moe_lane(w,ids,wts,x,exp_words,row*row_words,cols,n_used);
             if lane==0 {
                 x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
@@ -3637,15 +3654,26 @@ ink_moe_sum_batch :: (item:int,dim:int,n_used:int,slot_out:[]f32,out:[]f32) #exp
 }
 
 // ---- Sprint 31A: Zero-LUT, Zero-TGEM, Zero-Barrier Q4_0 matvec via am_dot_q4_lane (16 blocks/step!).
+// ---- Sprint 59: 2-row-per-warp (8 rows/TG, 128 threads) Q4_0 matvec (shares xl,xh,xsum + packed_ushort2!).
 ink_dv_q4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     blocks:=cols/32;words:=blocks*9;
     for thread:0..<128 {
-        row:=item*4+thread/32;
+        row:=item*8+(thread/32)*2;
         lane:=thread%32;
-        if row<rows {
-            tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
-            if lane==0 {
-                if add!=0 {out[row]=out[row]+tot;} else {out[row]=tot;}
+        if add==0 && row+1<rows {
+            am_dot_q4_2_write(w,row*words,(row+1)*words,x,0,blocks,out,row,row+1);
+        } else {
+            if row<rows {
+                tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
+                if lane==0 {
+                    if add!=0 {out[row]=out[row]+tot;} else {out[row]=tot;}
+                }
+            }
+            if row+1<rows {
+                tot:=am_simd_sum(am_dot_q4_lane(w,(row+1)*words,x,0,blocks));
+                if lane==0 {
+                    if add!=0 {out[row+1]=out[row+1]+tot;} else {out[row+1]=tot;}
+                }
             }
         }
     }
@@ -3671,14 +3699,33 @@ ink_dv_q4_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
 
 // ---- Sprint 46: 4-row-per-TG (128 threads, 1 row/warp) Vectorized half4+float4 F16 small-row matvec!
 ink_dv_f16_small :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
-    for thread:0..<128 {
-        row:=item*4+thread/32;
+    for thread:0..<64 {
+        row:=item*2+thread/32;
         lane:=thread%32;
         if row<rows {
             tot:=am_dot_f16_lane(w,row*cols,x,0,cols);
             if lane==0 {
                 if add!=0 {out[row]=out[row]+tot;} else {out[row]=tot;}
             }
+        }
+    }
+}
+
+// ---- Sprint 58B: 64-lane (2 rows/TG) F16 GEMV with fused RMSNorm scale (weights pre-folded with norm_w) -> runs CONCURRENTLY with K_RMSNORM!
+// Launch items = (rows + 1) / 2, lanes = 64.
+ink_dv_f16_norm :: (item:int,rows:int,cols:int,eps:f32,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
+    for thread:0..<64 {
+        row:=item*2+thread/32;
+        lane:=thread%32;
+        if row<rows {
+            ss:f32=0.0f32;
+            for k:0..<(cols+31)/32 {
+                i:=k*32+lane;
+                if i<cols {v:=x[i];ss+=v*v;}
+            }
+            inv:=1.0f32/sqrt(am_simd_sum(ss)/f32(cols)+eps);
+            tot:=am_dot_f16_lane(w,row*cols,x,0,cols)*inv;
+            if lane==0 {out[row]=tot;}
         }
     }
 }
@@ -3831,19 +3878,37 @@ ink_situ_batch_bf16 :: (item:int,n_ff:int,beta:f32,lb:f32,gu_out:[]f32,hid:[]u16
 
 // ---- Sprint 50: 4-row-per-TG (128-thread) Fused Q + R + Gate Q4_0 matvec (-96 dispatches/tok!).
 // Launch items = (n_q + n_r + n_q + 3) / 4, lanes = 128.
+// ---- Sprint 59: 2-row-per-warp (8 rows/TG, 128 threads) fused Q+R+Gate Q4_0 matvec!
 ink_dv_q4_qrg :: (item:int,n_q:int,n_r:int,cols:int,w:[]u16,x:[]f32,out_q:[]f32,out_r:[]f32,out_g:[]f32) #export_c #effects(all) {
     blocks:=cols/32;words:=blocks*9;
     n_qr:=n_q+n_r;
     tot_rows:=n_qr+n_q;
     for thread:0..<128 {
-        row:=item*4+thread/32;
+        row:=item*8+(thread/32)*2;
         lane:=thread%32;
-        if row<tot_rows {
-            tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
-            if lane==0 {
-                if row<n_q {out_q[row]=tot;}
-                else if row<n_qr {out_r[row-n_q]=tot;}
-                else {out_g[row-n_qr]=tot;}
+        if row+1<n_q {
+            am_dot_q4_2_write(w,row*words,(row+1)*words,x,0,blocks,out_q,row,row+1);
+        } else if row>=n_q && row+1<n_qr {
+            am_dot_q4_2_write(w,row*words,(row+1)*words,x,0,blocks,out_r,row-n_q,row+1-n_q);
+        } else if row>=n_qr && row+1<tot_rows {
+            am_dot_q4_2_write(w,row*words,(row+1)*words,x,0,blocks,out_g,row-n_qr,row+1-n_qr);
+        } else {
+            if row<tot_rows {
+                tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
+                if lane==0 {
+                    if row<n_q {out_q[row]=tot;}
+                    else if row<n_qr {out_r[row-n_q]=tot;}
+                    else {out_g[row-n_qr]=tot;}
+                }
+            }
+            if row+1<tot_rows {
+                tot:=am_simd_sum(am_dot_q4_lane(w,(row+1)*words,x,0,blocks));
+                if lane==0 {
+                    r1:=row+1;
+                    if r1<n_q {out_q[r1]=tot;}
+                    else if r1<n_qr {out_r[r1-n_q]=tot;}
+                    else {out_g[r1-n_qr]=tot;}
+                }
             }
         }
     }

@@ -220,6 +220,22 @@ am_dot_f16_lane :: (w:[]u16,base:int,x:[]f32,x_off:int,cols:int)->f32 #effects(a
     return sum;
 }
 
+am_dot_q4_2_write :: (w:[]u16,b0:int,b1:int,x:[]f32,x_off:int,blocks:int,out:[]f32,r0:int,r1:int) #effects(all) {
+    out[r0]=am_dot_q4_lane(w,b0,x,x_off,blocks);
+    out[r1]=am_dot_q4_lane(w,b1,x,x_off,blocks);
+}
+
+am_dot_iq4_situ_2_write :: (w:[]u16,gb0:int,ub0:int,gb1:int,ub1:int,x:[]f32,x_off:int,blocks:int,beta:f32,lb:f32,out:[]f32,o0:int,o1:int) #effects(all) {
+    out[o0]=am_dot_iq4_situ_lane(w,gb0,ub0,x,x_off,blocks,beta,lb);
+    out[o1]=am_dot_iq4_situ_lane(w,gb1,ub1,x,x_off,blocks,beta,lb);
+}
+
+am_dot_iq4_moe_2_write :: (w:[]u16,ids:[]u32,wts:[]f32,x:[]f32,exp_words:int,r0_off:int,r1_off:int,cols:int,n_used:int,add:int,out:[]f32,o0:int,o1:int) #effects(all) {
+    v0:=am_dot_iq4_moe_lane(w,ids,wts,x,exp_words,r0_off,cols,n_used);
+    v1:=am_dot_iq4_moe_lane(w,ids,wts,x,exp_words,r1_off,cols,n_used);
+    if add!=0 {out[o0]=out[o0]+v0;out[o1]=out[o1]+v1;} else {out[o0]=v0;out[o1]=v1;}
+}
+
 am_iq4_tile_valid :: (threads:int,tm:int,tn:int)->bool #effects(all) {
     if tm==128 || tm==256 {return am_tile_valid(threads,64,tn);}
     return am_tile_valid(threads,tm,tn);
@@ -343,6 +359,19 @@ am_matmul_iq4_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0
     exp_f16:=1.0f32*xq[4]+2.0f32*xq[5]-1.0f32*xq[6]+0.5f32*xq[7];
     #assert abs(am_dot_f16_lane(wf[..],0,xq[..],4,4)-exp_f16)<0.0001f32;
     #assert am_dot_f16_lane(wf[..],4,xq[..],0,0)==0.0f32;
+    // 2-row-per-warp write helpers
+    out2:[4]f32;out2[0]=99.0f32;out2[1]=99.0f32;out2[2]=99.0f32;out2[3]=99.0f32;
+    am_dot_q4_2_write(wq[..],0,9,xq[..],0,1,out2[..],0,1);
+    #assert abs(out2[0]-g_q)<0.0001f32 && abs(out2[1]-u_q)<0.0001f32;
+    am_dot_iq4_situ_2_write(wq[..],0,9,9,0,xq[..],0,1,3.0f32,2.0f32,out2[..],2,3);
+    #assert abs(out2[2]-am_dot_iq4_situ_lane(wq[..],0,9,xq[..],0,1,3.0f32,2.0f32))<0.0001f32;
+    #assert abs(out2[3]-am_dot_iq4_situ_lane(wq[..],9,0,xq[..],0,1,3.0f32,2.0f32))<0.0001f32;
+    out2[0]=1.0f32;out2[1]=2.0f32;
+    am_dot_iq4_moe_2_write(wq[..],mids[..],mwts[..],xq[..],18,0,9,32,2,0,out2[..],0,1);
+    exp_m0:=am_dot_iq4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,0,32,2);
+    #assert abs(out2[0]-exp_m0)<0.0001f32 && abs(out2[1]-exp_mi)<0.0001f32;
+    am_dot_iq4_moe_2_write(wq[..],mids[..],mwts[..],xq[..],18,0,9,32,2,1,out2[..],0,1);
+    #assert abs(out2[0]-2.0f32*exp_m0)<0.0001f32 && abs(out2[1]-2.0f32*exp_mi)<0.0001f32;
 }
 #test "am_matmul_iq4 decodes IQ4_NL weights and multiplies" {
     exp_lut:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];

@@ -1813,6 +1813,20 @@ struct Emitter {
             return s + "coax_lane, " + line + ", coax_err)";
           }
         }
+        if (opts.metal_compute && e->proc && e->args.count == 9 && str_eq(e->proc->name, "am_dot_q4_2_write")) {
+          apple_tensor = true;
+          std::string s = "coax_am_dot_q4_2_write(";
+          for (int i = 0; i < 9; i++) s += ex(e->args[i]) + ", ";
+          return s + "coax_lane, " + line + ", coax_err)";
+        }
+        if (opts.metal_compute && e->proc && e->args.count == 13) {
+          if (str_eq(e->proc->name, "am_dot_iq4_situ_2_write") || str_eq(e->proc->name, "am_dot_iq4_moe_2_write")) {
+            apple_tensor = true;
+            std::string s = str_eq(e->proc->name, "am_dot_iq4_situ_2_write") ? "coax_am_dot_iq4_situ_2_write(" : "coax_am_dot_iq4_moe_2_write(";
+            for (int i = 0; i < 13; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+        }
         if (opts.metal_compute && e->proc && e->args.count == 1) {
           if (str_eq(e->proc->name, "am_simd_sum")) return "simd_sum(" + ex(e->args[0]) + ")";
           if (str_eq(e->proc->name, "am_simd_max")) return "simd_max(" + ex(e->args[0]) + ")";
@@ -3384,7 +3398,7 @@ COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
     float4 xl = *(const device float4 *)bx;
     float4 xh = *(const device float4 *)(bx + 16);
     float sc = float(as_type<half>(bw[0]));
-    uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
+    packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
     float s = coax_iq4_lut[v0 & 15u] * xl.x
             + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
             + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3417,7 +3431,7 @@ COAX_DEV float coax_am_dot_q4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int
     float4 xh = *(const device float4 *)(bx + 16);
     float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
     float sc = float(as_type<half>(bw[0]));
-    uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
+    packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
     float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
             + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
             + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3449,8 +3463,8 @@ COAX_DEV float coax_am_dot_iq4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, c
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    uint32_t g0 = (uint32_t)bg[1 + k0], g1 = (uint32_t)bg[2 + k0];
-    uint32_t u0 = (uint32_t)bu[1 + k0], u1 = (uint32_t)bu[2 + k0];
+    packed_ushort2 _gv = *(const device packed_ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
+    packed_ushort2 _uv = *(const device packed_ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
     float sg = coax_iq4_lut[g0 & 15u] * xl.x
              + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x
              + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y
@@ -3499,8 +3513,8 @@ COAX_DEV float coax_am_dot_q4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, co
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    uint32_t g0 = (uint32_t)bg[1 + k0], g1 = (uint32_t)bg[2 + k0];
-    uint32_t u0 = (uint32_t)bu[1 + k0], u1 = (uint32_t)bu[2 + k0];
+    packed_ushort2 _gv = *(const device packed_ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
+    packed_ushort2 _uv = *(const device packed_ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
     float sg = float(g0 & 15u) * xl.x + float((g0 >> 4u) & 15u) * xh.x
              + float((g0 >> 8u) & 15u) * xl.y + float(g0 >> 12u) * xh.y
              + float(g1 & 15u) * xl.z + float((g1 >> 4u) & 15u) * xh.z
@@ -3546,7 +3560,7 @@ COAX_DEV float coax_am_dot_iq4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32
       float4 xl = *(const device float4 *)bx;
       float4 xh = *(const device float4 *)(bx + 16);
       float sc = float(as_type<half>(bw[0]));
-      uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
+      packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
       float s = coax_iq4_lut[v0 & 15u] * xl.x
               + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
               + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3588,7 +3602,7 @@ COAX_DEV float coax_am_dot_q4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32 
       float4 xh = *(const device float4 *)(bx + 16);
       float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
       float sc = float(as_type<half>(bw[0]));
-      uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
+      packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
       float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
               + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
               + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3621,6 +3635,142 @@ COAX_DEV float coax_am_dot_f16_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
     acc += float(as_type<half>(wp[tail + (int)lane])) * xp[tail + (int)lane];
   }
   return simd_sum(acc);
+}
+COAX_DEV void coax_am_dot_q4_2_write(coax_v_u16 w, int64_t b0, int64_t b1, coax_v_f32 x, int64_t x_off, int64_t blocks, coax_v_f32 out, int64_t r0, int64_t r1, uint32_t tid, int32_t line, COAX_ERR) {
+  if (blocks < 0 || b0 < 0 || b0 + blocks * 9 > w.count || b1 < 0 || b1 + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count || r0 < 0 || r0 >= out.count || r1 < 0 || r1 >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u);
+  int xq = (int)(qtr * 4u);
+  const device uint16_t *wp0 = w.data + b0;
+  const device uint16_t *wp1 = w.data + b1;
+  const device float *xp = x.data + x_off;
+  float acc0 = 0.0f, acc1 = 0.0f;
+  for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 xl = *(const device float4 *)bx;
+    float4 xh = *(const device float4 *)(bx + 16);
+    float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
+    const device uint16_t *bw0 = wp0 + b * 9;
+    const device uint16_t *bw1 = wp1 + b * 9;
+    float sc0 = float(as_type<half>(bw0[0]));
+    float sc1 = float(as_type<half>(bw1[0]));
+    packed_ushort2 p0 = *(const device packed_ushort2 *)(bw0 + 1 + k0);
+    packed_ushort2 p1 = *(const device packed_ushort2 *)(bw1 + 1 + k0);
+    uint32_t v0 = p0.x, v1 = p0.y, u0 = p1.x, u1 = p1.y;
+    float s0 = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
+             + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
+             + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
+             + float((v1 >> 8u) & 15u) * xl.w + float(v1 >> 12u) * xh.w - 8.0f * xsum;
+    float s1 = float(u0 & 15u) * xl.x + float((u0 >> 4u) & 15u) * xh.x
+             + float((u0 >> 8u) & 15u) * xl.y + float(u0 >> 12u) * xh.y
+             + float(u1 & 15u) * xl.z + float((u1 >> 4u) & 15u) * xh.z
+             + float((u1 >> 8u) & 15u) * xl.w + float(u1 >> 12u) * xh.w - 8.0f * xsum;
+    acc0 += sc0 * s0;
+    acc1 += sc1 * s1;
+  }
+  float t0 = simd_sum(acc0);
+  float t1 = simd_sum(acc1);
+  if (lane == 0) { out.data[r0] = t0; out.data[r1] = t1; }
+}
+COAX_DEV void coax_am_dot_iq4_situ_2_write(coax_v_u16 w, int64_t gb0, int64_t ub0, int64_t gb1, int64_t ub1, coax_v_f32 x, int64_t x_off, int64_t blocks, float beta, float lb, coax_v_f32 out, int64_t o0, int64_t o1, uint32_t tid, int32_t line, COAX_ERR) {
+  if (blocks < 0 || gb0 < 0 || gb0 + blocks * 9 > w.count || ub0 < 0 || ub0 + blocks * 9 > w.count || gb1 < 0 || gb1 + blocks * 9 > w.count || ub1 < 0 || ub1 + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count || o0 < 0 || o0 >= out.count || o1 < 0 || o1 >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u);
+  int xq = (int)(qtr * 4u);
+  const device uint16_t *wgp0 = w.data + gb0, *wup0 = w.data + ub0;
+  const device uint16_t *wgp1 = w.data + gb1, *wup1 = w.data + ub1;
+  const device float *xp = x.data + x_off;
+  float ag0 = 0.0f, au0 = 0.0f, ag1 = 0.0f, au1 = 0.0f;
+  for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 xl = *(const device float4 *)bx;
+    float4 xh = *(const device float4 *)(bx + 16);
+    const device uint16_t *bg0 = wgp0 + b * 9, *bu0 = wup0 + b * 9;
+    const device uint16_t *bg1 = wgp1 + b * 9, *bu1 = wup1 + b * 9;
+    float scg0 = float(as_type<half>(bg0[0])), scu0 = float(as_type<half>(bu0[0]));
+    float scg1 = float(as_type<half>(bg1[0])), scu1 = float(as_type<half>(bu1[0]));
+    packed_ushort2 pg0 = *(const device packed_ushort2 *)(bg0 + 1 + k0);
+    packed_ushort2 pu0 = *(const device packed_ushort2 *)(bu0 + 1 + k0);
+    packed_ushort2 pg1 = *(const device packed_ushort2 *)(bg1 + 1 + k0);
+    packed_ushort2 pu1 = *(const device packed_ushort2 *)(bu1 + 1 + k0);
+    uint32_t g0 = pg0.x, g1 = pg0.y, u0 = pu0.x, u1 = pu0.y;
+    ag0 += scg0 * (coax_iq4_lut[g0 & 15u] * xl.x + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y + coax_iq4_lut[g0 >> 12u] * xh.y
+                 + coax_iq4_lut[g1 & 15u] * xl.z + coax_iq4_lut[(g1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(g1 >> 8u) & 15u] * xl.w + coax_iq4_lut[g1 >> 12u] * xh.w);
+    au0 += scu0 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
+                 + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
+    g0 = pg1.x; g1 = pg1.y; u0 = pu1.x; u1 = pu1.y;
+    ag1 += scg1 * (coax_iq4_lut[g0 & 15u] * xl.x + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y + coax_iq4_lut[g0 >> 12u] * xh.y
+                 + coax_iq4_lut[g1 & 15u] * xl.z + coax_iq4_lut[(g1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(g1 >> 8u) & 15u] * xl.w + coax_iq4_lut[g1 >> 12u] * xh.w);
+    au1 += scu1 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
+                 + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
+  }
+  float vg0 = simd_sum(ag0), vu0 = simd_sum(au0);
+  float vg1 = simd_sum(ag1), vu1 = simd_sum(au1);
+  if (lane == 0) {
+    float a0 = beta * tanh(vg0 / beta) / (1.0f + exp(-vg0));
+    float a1 = beta * tanh(vg1 / beta) / (1.0f + exp(-vg1));
+    if (lb > 0.0f) { vu0 = lb * tanh(vu0 / lb); vu1 = lb * tanh(vu1 / lb); }
+    out.data[o0] = a0 * vu0;
+    out.data[o1] = a1 * vu1;
+  }
+}
+COAX_DEV void coax_am_dot_iq4_moe_2_write(coax_v_u16 w, coax_v_u32 ids, coax_v_f32 wts, coax_v_f32 x, int64_t exp_words, int64_t r0_off, int64_t r1_off, int64_t cols, int64_t n_used, int64_t add, coax_v_f32 out, int64_t o0, int64_t o1, uint32_t tid, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  if (n_used < 0 || cols < 0 || (cols & 31) != 0 || n_used > ids.count || n_used > wts.count || n_used * cols > x.count || r0_off < 0 || r1_off < 0 || exp_words < 0 || o0 < 0 || o0 >= out.count || o1 < 0 || o1 >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u);
+  int xq = (int)(qtr * 4u);
+  float acc0 = 0.0f, acc1 = 0.0f;
+  for (int slot = 0; slot < (int)n_used; slot++) {
+    int64_t eid = (int64_t)ids.data[slot];
+    int64_t rb0 = eid * exp_words + r0_off;
+    int64_t rb1 = eid * exp_words + r1_off;
+    if (rb0 + blocks * 9 > w.count || rb1 + blocks * 9 > w.count) { coax_trap_(line, coax_err); return; }
+    float ew = wts.data[slot];
+    const device uint16_t *wp0 = w.data + rb0;
+    const device uint16_t *wp1 = w.data + rb1;
+    const device float *xp = x.data + slot * cols;
+    float sa0 = 0.0f, sa1 = 0.0f;
+    for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
+      const device float *bx = xp + b * 32 + xq;
+      float4 xl = *(const device float4 *)bx;
+      float4 xh = *(const device float4 *)(bx + 16);
+      const device uint16_t *bw0 = wp0 + b * 9;
+      const device uint16_t *bw1 = wp1 + b * 9;
+      float sc0 = float(as_type<half>(bw0[0]));
+      float sc1 = float(as_type<half>(bw1[0]));
+      packed_ushort2 p0 = *(const device packed_ushort2 *)(bw0 + 1 + k0);
+      packed_ushort2 p1 = *(const device packed_ushort2 *)(bw1 + 1 + k0);
+      uint32_t v0 = p0.x, v1 = p0.y, u0 = p1.x, u1 = p1.y;
+      sa0 += sc0 * (coax_iq4_lut[v0 & 15u] * xl.x + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y + coax_iq4_lut[v0 >> 12u] * xh.y
+                  + coax_iq4_lut[v1 & 15u] * xl.z + coax_iq4_lut[(v1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(v1 >> 8u) & 15u] * xl.w + coax_iq4_lut[v1 >> 12u] * xh.w);
+      sa1 += sc1 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
+                  + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
+    }
+    acc0 += ew * sa0;
+    acc1 += ew * sa1;
+  }
+  float t0 = simd_sum(acc0);
+  float t1 = simd_sum(acc1);
+  if (lane == 0) {
+    if (add != 0) { out.data[o0] += t0; out.data[o1] += t1; }
+    else { out.data[o0] = t0; out.data[o1] = t1; }
+  }
 }
 template <int TM, int TN, int SG, typename XT, typename XV>
 COAX_DEV void coax_am_matmul_iq4_impl(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, XV x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {

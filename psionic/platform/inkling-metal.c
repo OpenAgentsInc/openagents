@@ -113,6 +113,7 @@ enum {
     K_MOE_GATHER_BF16,
     K_SITU_BATCH_BF16,
     K_F32_TO_BF16,
+    K_DV_F16_NORM,
     K_COUNT
 };
 
@@ -212,6 +213,7 @@ static const char *const k_names[K_COUNT] = {
     "ink_moe_gather_bf16",
     "ink_situ_batch_bf16",
     "ink_f32_to_bf16",
+    "ink_dv_f16_norm",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -293,7 +295,7 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MOE_SUM_BATCH */
     128,    /* K_DV_Q4 */
     128,    /* K_DV_Q4_CONV */
-    128,    /* K_DV_F16_SMALL */
+    64,     /* K_DV_F16_SMALL */
     INK_T,  /* K_CTRL_UP_APPLY_F16 */
     128,    /* K_MOE_GU_Q4 */
     128,    /* K_MOE_DOWN_Q4 */
@@ -310,6 +312,7 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MOE_GATHER_BF16 */
     128,    /* K_SITU_BATCH_BF16 */
     256,    /* K_F32_TO_BF16 */
+    64,     /* K_DV_F16_NORM */
 };
 
 typedef struct {
@@ -320,7 +323,7 @@ typedef struct {
 typedef struct {
     FastSpan attn_q, attn_k, attn_v, attn_output, attn_gate, attn_rel;
     FastSpan attn_qrg; /* contiguous Q + R + Gate in Q4_0 for fused 1-dispatch Wave 3! */
-    FastSpan ffn_gate_inp;
+    FastSpan ffn_gate_inp, ffn_gate_inp_normed;
     FastSpan attn_sink_proj, attn_k_conv_proj, attn_v_conv_proj;
     FastSpan moe_gu_q4, moe_dn_q4;
     FastSpan ctrl_down[4], ctrl_gain[4], ctrl_forget[4];
@@ -490,7 +493,7 @@ static PmArg a_fast_u16(InkSession *s, const FastSpan *fs) {
 static int dispatch_mv_q4(InkSession *s, PmBatch batch, const InkTensor *w, const FastSpan *fs, int64_t rows, int64_t cols, int add,
                           PmBuffer x_buf, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
     if (s->fast_buf && fs && fs->off >= 0) {
-        CALL(s, batch, K_DV_Q4, (rows + 3) / 4, a_int(rows), a_int(cols), a_int(add),
+        CALL(s, batch, K_DV_Q4, (rows + 7) / 8, a_int(rows), a_int(cols), a_int(add),
              a_fast_u16(s, fs), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
         return 0;
     }
@@ -500,7 +503,7 @@ static int dispatch_mv_q4(InkSession *s, PmBatch batch, const InkTensor *w, cons
 static int dispatch_mv_f16_small(InkSession *s, PmBatch batch, const InkTensor *w, const FastSpan *fs, int64_t rows, int64_t cols, int add,
                                  PmBuffer x_buf, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
     if (s->fast_buf && fs && fs->off >= 0) {
-        CALL(s, batch, K_DV_F16_SMALL, (rows + 3) / 4, a_int(rows), a_int(cols), a_int(add),
+        CALL(s, batch, K_DV_F16_SMALL, (rows + 1) / 2, a_int(rows), a_int(cols), a_int(add),
              a_fast_u16(s, fs), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
         return 0;
     }
@@ -704,7 +707,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     /* Wave 3 (Sprint 50): Fused 128-thread Q+R+Gate (-96 dispatches/tok!) + K/V/Sinks/Dyn concurrently! */
     if (s->fast_buf && FL->attn_qrg.off >= 0) {
         int64_t qrg_rows = n_q + n_head * n_rel + n_q;
-        CALL(s, batch, K_DV_Q4_QRG, (qrg_rows + 3) / 4, a_int(n_q), a_int(n_head * n_rel), a_int(d),
+        CALL(s, batch, K_DV_Q4_QRG, (qrg_rows + 7) / 8, a_int(n_q), a_int(n_head * n_rel), a_int(d),
              a_fast_u16(s, &FL->attn_qrg), a_f32v(q_in, 0, d),
              a_f32v(s->q_buf, 0, n_q), a_f32v(s->r_buf, 0, n_head * n_rel), a_f32v(s->gate_buf, 0, n_q));
     } else {
@@ -712,11 +715,15 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         if (dispatch_mv_q4(s, batch, &L->attn_rel, &FL->attn_rel, n_head * n_rel, d, 0, q_in, 0, s->r_buf, 0)) return 1;
         if (dispatch_mv_q4(s, batch, &L->attn_gate, &FL->attn_gate, n_q, d, 0, q_in, 0, s->gate_buf, 0)) return 1;
     }
+    int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
+    int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
+    int64_t kv_cap = s->kv_cap[il];
+    int64_t slot_pos = is_swa ? (s->pos % kv_cap) : s->pos;
+    int64_t n_keys_attn = (is_swa && s->pos >= hp->swa) ? hp->swa : (s->pos + 1);
+    int use_1pass = (n_head == n_head_kv * 3 && hd == 128 && n_keys_attn >= 1 && n_keys_attn <= 256);
     if (dispatch_mv_q4(s, batch, &L->attn_k, &FL->attn_k, n_kv, d, 0, k_in, 0, s->k_raw, 0)) return 1;
     if (dispatch_mv_q4(s, batch, &L->attn_v, &FL->attn_v, n_kv, d, 0, v_in, 0, s->v_raw, 0)) return 1;
     if (dispatch_mv_f16_small(s, batch, &L->attn_sink_proj, &FL->attn_sink_proj, n_head, d, 0, q_in, 0, s->sinks_buf, 0)) return 1;
-    int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
-    int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
     int64_t dyn_sz = n_head_kv * hp->conv_len;
     if (has_k_dyn) {
         if (dispatch_mv_f16_small(s, batch, &L->attn_k_conv_proj, &FL->attn_k_conv_proj, dyn_sz, d, 0,
@@ -731,10 +738,6 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
 
     /* Wave 4 (Sprint 50): 32-lane ZERO-TGEM fused K+V conv+clip/norm+KV store (-48 dispatches/tok!) + fused Q/R clip in GQA 1pass! */
     float q_tau = is_swa ? 1.0f : tau;
-    int64_t kv_cap = s->kv_cap[il];
-    int64_t slot_pos = is_swa ? (s->pos % kv_cap) : s->pos;
-    int64_t n_keys_attn = (is_swa && s->pos >= hp->swa) ? hp->swa : (s->pos + 1);
-    int use_1pass = (n_head == n_head_kv * 3 && hd == 128 && n_keys_attn >= 1 && n_keys_attn <= 256);
     if (hd == 128 && has_k_dyn == has_v_dyn) {
         CALL(s, batch, K_CONV_KV_BOTH, 2 * n_head_kv, a_int(n_head_kv), a_int(n_kv), a_int(slot_pos),
              a_int(has_k_dyn ? 1 : 0), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
@@ -874,6 +877,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     if (!moe_dn_inplace) {
         CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d), a_f32v(s->cur, 0, d), a_f32v(s->ffn_inp, 0, d));
     }
+    int router_done = 0;
     if (!has_messages) {
         CALL(s, batch, K_MIX_RMSNORM, 1, a_int(d), a_int(*n_blocks), a_f32(hp->rms_eps),
              a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
@@ -897,20 +901,28 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
             if (dispatch_mv_f16_small(s, batch, &L->loop_ctrl_down[3], &FL->ctrl_down[3], rank, 2 * d, 0, s->ctrl_cat, 0, s->ctrl_gate, 0)) return 1;
             pm_barrier(batch);
             int64_t citems = (d + INK_T - 1) / INK_T;
+            int conc_rtr = (s->fast_buf && FL->ffn_gate_inp_normed.off >= 0);
+            PmBuffer cu_out = conc_rtr ? s->o_raw : s->norm_buf;
             if (s->fast_buf && FL->ctrl_gain[3].off >= 0 && FL->ctrl_forget[3].off >= 0) {
                 CALL(s, batch, K_CTRL_UP_APPLY_F16, citems, a_int(d), a_int(rank),
                      a_fast_u16(s, &FL->ctrl_gain[3]), a_fast_u16(s, &FL->ctrl_forget[3]),
                      a_f32v(s->ctrl_gate, 0, rank), a_f32v(s->norm_buf, 0, d), a_f32v(s->messages, msg_base + 3 * d, d),
-                     a_f32v(s->norm_buf, 0, d));
+                     a_f32v(cu_out, 0, d));
             } else {
                 CALL(s, batch, K_CTRL_UP_APPLY, citems, a_int(d), a_int(rank),
                      a_tensor_f32(s, &L->loop_ctrl_gain[3]), a_tensor_f32(s, &L->loop_ctrl_forget[3]),
                      a_f32v(s->ctrl_gate, 0, rank), a_f32v(s->norm_buf, 0, d), a_f32v(s->messages, msg_base + 3 * d, d),
-                     a_f32v(s->norm_buf, 0, d));
+                     a_f32v(cu_out, 0, d));
             }
             pm_barrier(batch);
             CALL(s, batch, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
-                 a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, d));
+                 a_f32v(cu_out, 0, d), a_tensor_f32(s, &L->ffn_norm), a_f32v(s->norm_buf, 0, d));
+            if (conc_rtr) {
+                /* Sprint 58B: Run router GEMV (pre-folded with ffn_norm) CONCURRENTLY with K_RMSNORM (-36 barriers/tok!). */
+                CALL(s, batch, K_DV_F16_NORM, (hp->n_expert + 1) / 2, a_int(hp->n_expert), a_int(d), a_f32(hp->rms_eps),
+                     a_fast_u16(s, &FL->ffn_gate_inp_normed), a_f32v(cu_out, 0, d), a_f32v(s->router_logits, 0, hp->n_expert));
+                router_done = 1;
+            }
             pm_barrier(batch);
         } else {
             CALL(s, batch, K_MIX, 1, a_int(d), a_int(*n_blocks),
@@ -927,8 +939,10 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     }
 
     /* MoE router */
-    if (dispatch_mv_f16_small(s, batch, &L->ffn_gate_inp, &FL->ffn_gate_inp, hp->n_expert, d, 0, s->norm_buf, 0, s->router_logits, 0)) return 1;
-    pm_barrier(batch);
+    if (!router_done) {
+        if (dispatch_mv_f16_small(s, batch, &L->ffn_gate_inp, &FL->ffn_gate_inp, hp->n_expert, d, 0, s->norm_buf, 0, s->router_logits, 0)) return 1;
+        pm_barrier(batch);
+    }
     CALL(s, batch, K_ROUTER, 1, a_int(hp->n_expert), a_int(hp->n_expert_used),
          a_int(L->ffn_exp_probs_b.present ? 1 : 0), a_f32(hp->expert_weights_scale),
          a_f32v(s->router_logits, 0, hp->n_expert),
@@ -984,7 +998,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         pm_barrier(batch);
         prof_mark(bp, (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? 7 : 8); batch = *bp;
     } else if (L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
-        CALL(s, batch, K_MOE_DOWN_IQ4, (d + 3) / 4, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
+        CALL(s, batch, K_MOE_DOWN_IQ4, (d + 7) / 8, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
              a_tensor_u16(s, &L->ffn_down_exps),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
@@ -992,6 +1006,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
              a_tensor_f32(s, &L->ffn_post_conv),
              a_f32v(s->conv_fo[il], 0, d * 3),
              a_f32v(s->cur, 0, d),
+             a_f32v(s->moe_out, 0, d),
              a_f32v(s->cur, 0, d));
         pm_barrier(batch);
         prof_mark(bp, 7); batch = *bp; /* 7: moe_down_iq4 */
@@ -1127,9 +1142,20 @@ typedef struct {
     const uint8_t *src;
     size_t src_bytes;
     uint8_t *dst;
-    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose, 3 = f32->q4 */
+    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose, 3 = f32->q4, 4 = f32*norm->f16 */
     int64_t rows, cols;
+    const float *norm_w;
 } FastJob;
+
+static void convert_f32_norm_to_f16(const uint8_t *src, const float *nw, int64_t rows, int64_t cols, uint8_t *dst) {
+    const float *f = (const float *)src;
+    uint16_t *h = (uint16_t *)dst;
+    for (int64_t r = 0; r < rows; r++) {
+        const float *fr = f + r * cols;
+        uint16_t *hr = h + r * cols;
+        for (int64_t c = 0; c < cols; c++) hr[c] = f32_to_f16_host(fr[c] * nw[c]);
+    }
+}
 
 typedef struct {
     const FastJob *jobs;
@@ -1145,6 +1171,7 @@ static void *fast_worker(void *arg) {
         if (j->kind == 1) convert_q8_to_q4(j->src, j->src_bytes, j->dst);
         else if (j->kind == 2) convert_f32_to_f16_transpose(j->src, j->rows, j->cols, j->dst);
         else if (j->kind == 3) convert_f32_to_q4(j->src, j->src_bytes, j->dst);
+        else if (j->kind == 4) convert_f32_norm_to_f16(j->src, j->norm_w, j->rows, j->cols, j->dst);
         else convert_f32_to_f16(j->src, j->src_bytes, j->dst);
     }
     return NULL;
@@ -1158,7 +1185,7 @@ static void build_fast_weights(InkSession *s) {
         FastLayer *fl = &s->fast_layers[ip];
         fl->attn_q.off = fl->attn_k.off = fl->attn_v.off = fl->attn_output.off = fl->attn_gate.off = fl->attn_rel.off = fl->attn_qrg.off = -1;
         fl->moe_gu_q4.off = fl->moe_dn_q4.off = -1;
-        fl->ffn_gate_inp.off = -1;
+        fl->ffn_gate_inp.off = fl->ffn_gate_inp_normed.off = -1;
         fl->attn_sink_proj.off = fl->attn_k_conv_proj.off = fl->attn_v_conv_proj.off = -1;
         for (int c = 0; c < 4; c++) fl->ctrl_down[c].off = fl->ctrl_gain[c].off = fl->ctrl_forget[c].off = -1;
         fl->ctrl_down_qkv_q4.off = fl->ctrl_down3_q4.off = fl->ctrl_gain_qkv.off = fl->ctrl_forget_qkv.off = -1;
@@ -1174,7 +1201,7 @@ static void build_fast_weights(InkSession *s) {
     if ((T).present && (T).type == INK_GGML_F32 && n_jobs < 1024) { \
         int64_t bytes = (int64_t)((T).nbytes / 2); \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 0, 0, 0 }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 0, 0, 0, NULL }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -1183,7 +1210,7 @@ static void build_fast_weights(InkSession *s) {
     if ((T).present && (T).type == INK_GGML_F32 && n_jobs < 1024) { \
         int64_t bytes = (int64_t)((T).nbytes / 2); \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 2, (ROWS), (COLS) }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 2, (ROWS), (COLS), NULL }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -1193,7 +1220,7 @@ static void build_fast_weights(InkSession *s) {
         int64_t nb = (int64_t)((T).nbytes / 34); \
         int64_t bytes = nb * 18; \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 1, 0, 0 }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, 1, 0, 0, NULL }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -1202,6 +1229,16 @@ static void build_fast_weights(InkSession *s) {
         const InkLayerTensors *L = &s->gguf.layers[ip];
         FastLayer *FL = &s->fast_layers[ip];
         ADD_FAST_F16(L->ffn_gate_inp, FL->ffn_gate_inp);
+        if (L->ffn_gate_inp.present && L->ffn_gate_inp.type == INK_GGML_F32 &&
+            L->ffn_norm.present && L->ffn_norm.type == INK_GGML_F32 && n_jobs < 1024) {
+            int64_t bytes = (int64_t)(L->ffn_gate_inp.nbytes / 2);
+            FL->ffn_gate_inp_normed.off = total_bytes;
+            FL->ffn_gate_inp_normed.words = bytes / 2;
+            jobs[n_jobs++] = (FastJob){ base + L->ffn_gate_inp.offset, (size_t)L->ffn_gate_inp.nbytes,
+                                        (uint8_t *)(uintptr_t)total_bytes, 4, hp->n_expert, hp->n_embd,
+                                        (const float *)(base + L->ffn_norm.offset) };
+            total_bytes = (total_bytes + bytes + 63) & ~63LL;
+        }
         ADD_FAST_F16(L->attn_sink_proj, FL->attn_sink_proj);
         ADD_FAST_F16(L->attn_k_conv_proj, FL->attn_k_conv_proj);
         ADD_FAST_F16(L->attn_v_conv_proj, FL->attn_v_conv_proj);
@@ -1216,9 +1253,9 @@ static void build_fast_weights(InkSession *s) {
             FL->ctrl_down[0].off = total_bytes; FL->ctrl_down[0].words = b0 / 2;
             FL->ctrl_down[1].off = total_bytes + b0; FL->ctrl_down[1].words = b1 / 2;
             FL->ctrl_down[2].off = total_bytes + b0 + b1; FL->ctrl_down[2].words = b2 / 2;
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes, (uint8_t *)(uintptr_t)(total_bytes), 0, 0, 0 };
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0), 0, 0, 0 };
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0 + b1), 0, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes, (uint8_t *)(uintptr_t)(total_bytes), 0, 0, 0, NULL };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0), 0, 0, 0, NULL };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0 + b1), 0, 0, 0, NULL };
             total_bytes = (total_bytes + b0 + b1 + b2 + 63) & ~63LL;
             ADD_FAST_F16(L->loop_ctrl_down[3], FL->ctrl_down[3]);
         } else {
@@ -1231,13 +1268,13 @@ static void build_fast_weights(InkSession *s) {
             FL->ctrl_gain_qkv.off = total_bytes; FL->ctrl_gain_qkv.words = (3 * bg) / 2;
             for (int c = 0; c < 3; c++) {
                 FL->ctrl_gain[c].off = total_bytes + c * bg; FL->ctrl_gain[c].words = bg / 2;
-                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[c].offset, (size_t)L->loop_ctrl_gain[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank };
+                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[c].offset, (size_t)L->loop_ctrl_gain[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank, NULL };
             }
             total_bytes = (total_bytes + 3 * bg + 63) & ~63LL;
             FL->ctrl_forget_qkv.off = total_bytes; FL->ctrl_forget_qkv.words = (3 * bg) / 2;
             for (int c = 0; c < 3; c++) {
                 FL->ctrl_forget[c].off = total_bytes + c * bg; FL->ctrl_forget[c].words = bg / 2;
-                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_forget[c].offset, (size_t)L->loop_ctrl_forget[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank };
+                jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_forget[c].offset, (size_t)L->loop_ctrl_forget[c].nbytes, (uint8_t *)(uintptr_t)(total_bytes + c * bg), 2, hp->n_embd, hp->gate_rank, NULL };
             }
             total_bytes = (total_bytes + 3 * bg + 63) & ~63LL;
             ADD_FAST_F16_T(L->loop_ctrl_gain[3], FL->ctrl_gain[3], hp->n_embd, hp->gate_rank);
@@ -1259,9 +1296,9 @@ static void build_fast_weights(InkSession *s) {
             FL->attn_q.off = total_bytes;           FL->attn_q.words = bq / 2;
             FL->attn_rel.off = total_bytes + bq;    FL->attn_rel.words = br / 2;
             FL->attn_gate.off = total_bytes + bq + br; FL->attn_gate.words = bg / 2;
-            jobs[n_jobs++] = (FastJob){ base + L->attn_q.offset, (size_t)L->attn_q.nbytes, (uint8_t *)(uintptr_t)(total_bytes), 1, 0, 0 };
-            jobs[n_jobs++] = (FastJob){ base + L->attn_rel.offset, (size_t)L->attn_rel.nbytes, (uint8_t *)(uintptr_t)(total_bytes + bq), 1, 0, 0 };
-            jobs[n_jobs++] = (FastJob){ base + L->attn_gate.offset, (size_t)L->attn_gate.nbytes, (uint8_t *)(uintptr_t)(total_bytes + bq + br), 1, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->attn_q.offset, (size_t)L->attn_q.nbytes, (uint8_t *)(uintptr_t)(total_bytes), 1, 0, 0, NULL };
+            jobs[n_jobs++] = (FastJob){ base + L->attn_rel.offset, (size_t)L->attn_rel.nbytes, (uint8_t *)(uintptr_t)(total_bytes + bq), 1, 0, 0, NULL };
+            jobs[n_jobs++] = (FastJob){ base + L->attn_gate.offset, (size_t)L->attn_gate.nbytes, (uint8_t *)(uintptr_t)(total_bytes + bq + br), 1, 0, 0, NULL };
             total_bytes = (total_bytes + bq + br + bg + 63) & ~63LL;
         } else {
             ADD_FAST_Q4(L->attn_q, FL->attn_q);
