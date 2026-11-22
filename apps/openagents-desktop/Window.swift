@@ -212,16 +212,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                      Unmanaged.passUnretained(self).toOpaque())
         // Push the resolved 28-flag mask first; all gated probes, services, and UI stay off when their flag is off.
         cd_flags_set(page, FeatureFlags.mask)
+        cd_agy(page, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) { cd_skills(page, coderSkillsNote()) } else { cd_skills(page, "") }
         if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(page) } else { cd_claude(page, 0) }
-        if FeatureFlags.isOn(.modelsAgy) { cd_agy(page, CoderWorker.hasAntigravity ? 1 : 0) } else { cd_agy(page, 0) }
         if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
         if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(page) }
         #else
         cd_skills(page, "")
         cd_claude(page, 0)
-        cd_agy(page, 0)
         #endif
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
         cd_chats(page, chatLines)
@@ -249,10 +248,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // the agent instructions every agent is told (~/.openagents/instructions.md): the default on first run, never over a file there (#13808)
         AgentInstructions.seed()
         cd_settings_instructions(page, AgentInstructions.words)
+        CoderProbes.apply(page)
+        if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
+            CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
+        }
         #if OA_FULL
-        if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { CoderProbes.apply(page) }
         if FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
-        if FeatureFlags.isOn(.modelsAgy) { CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() } }
         if FeatureFlags.isOn(.foreman) { startForemanServer() }
         if FeatureFlags.isOn(.gym) { startGymRequests() }
         #endif
@@ -273,8 +274,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         } else { setFolder(folder, keep: false) }
         cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
         syncSettingsInfo()
-        #if OA_FULL
         setupProvidersSettings()
+        #if OA_FULL
         if FeatureFlags.isOn(.usage) { setupUsageDashboard() }
         if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
@@ -591,8 +592,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 146: if FeatureFlags.isOn(.modelsExecutor) { manageExecutorModels() }
         case 147: if FeatureFlags.isOn(.modelsExecutor) { managePylonExecutorNetwork() }
         case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
-        case 170...187: providersSettingsAsked(what)
         #endif
+        case 170...187: providersSettingsAsked(what)
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
         case 163:
@@ -758,8 +759,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         retireEnvironments()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
-        AntigravityProfileManager.retireTempDirs()
         #endif
+        AntigravityProfileManager.retireTempDirs()
         if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
         for back in runs.values { keep(back, closing: true); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }

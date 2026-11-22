@@ -248,6 +248,12 @@ extension CoderWindow {
         if mode.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
         wake()
     }
+    /// The Gemini sign-in and Antigravity's real model (CoderProbes) on the shown page and every run's.
+    func applyProbes() {
+        CoderProbes.apply(page)
+        for r in runs.values where r.page != page { CoderProbes.apply(r.page) }
+        wake()
+    }
     #if OA_FULL
     /// Propagates the current flag mask, OpenAgents account login state, and Gemini API key to the shown page and background runs.
     func syncCloudAuth() {
@@ -265,13 +271,6 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsGemini) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
-        wake()
-    }
-    /// The Gemini sign-in and Antigravity's real model (CoderProbes) on the shown page and every run's.
-    func applyProbes() {
-        guard FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) else { return }
-        CoderProbes.apply(page)
-        for r in runs.values where r.page != page { CoderProbes.apply(r.page) }
         wake()
     }
     /// Applies the resolved 28-flag mask across UI pages, host background services, and menu bar items.
@@ -384,12 +383,11 @@ extension CoderWindow {
         cd_settings_instructions(page, AgentInstructions.words)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
+        syncProvidersSettingsPage()
+        applyProbes()
         #if OA_FULL
         if FeatureFlags.isOn(.modelsAgy) { syncAntigravitySettings() }
         if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
-        if FeatureFlags.isOn(.modelsAgy) || FeatureFlags.isOn(.modelsExternal) || FeatureFlags.isOn(.modelsClaude) || FeatureFlags.isOn(.modelsGemini) {
-            syncProvidersSettingsPage()
-        }
         #endif
         #if OA_WALLET
         if FeatureFlags.isOn(.wallet) { syncWalletSettings() }
@@ -399,7 +397,6 @@ extension CoderWindow {
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
         if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
         if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }
-        if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { applyProbes() }
         if FeatureFlags.isOn(.modelsGemini) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
@@ -407,7 +404,7 @@ extension CoderWindow {
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
         let ui = LocalModelStore.uiState()
-        let singleModel = !FeatureFlags.anyExtraModel
+        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasEnabledAntigravityBinary
         var status = LocalModelStore.statusSummary()
         var statusCode = ui.statusCode
         var err = ui.err
@@ -445,7 +442,7 @@ extension CoderWindow {
         LocalModelStore.verifyExistingIfNeeded { [weak self] in
             self?.syncLocalModels()
         }
-        if prewarm && LocalModelStore.isSelectable && (!FeatureFlags.anyExtraModel || cd_model_inkling(page) != 0) {
+        if prewarm && LocalModelStore.isSelectable && ((!FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasEnabledAntigravityBinary) || cd_model_inkling(page) != 0) {
             LocalModelServer.shared.prewarmIfReady()
         }
         syncLocalState(on: page)

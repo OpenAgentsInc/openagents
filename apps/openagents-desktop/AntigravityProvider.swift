@@ -1,7 +1,6 @@
 // Firm reason: 6 (Swift host backend for T3-parity Settings -> Providers, multi-instance Antigravity runtime,
 // managed binary lifecycle with SHA-512 + live ACP verify, interactive OAuth/Enterprise/API-key/Vertex auth,
 // live model & thought-level probing, quota limits probing, and skills discovery).
-#if OA_FULL
 import AppKit
 import CryptoKit
 import Foundation
@@ -1215,6 +1214,7 @@ enum AntigravityUsageLimitsProber {
         return nil
     }
 
+    #if OA_FULL
     static func probeQuotaWindows(for inst: ProviderInstanceConfig, completion: @escaping (UsageAccountSnapshot?) -> Void) {
         guard inst.driver == .antigravity, inst.enabled, inst.authMethod == .oauthPersonal else {
             completion(nil)
@@ -1314,6 +1314,7 @@ enum AntigravityUsageLimitsProber {
             status: 1, why: "", gotMs: nowMs, limited: wins.contains { $0.usedBp >= 10000 }, limitResetS: 0, windows: wins
         )
     }
+    #endif
 }
 
 // MARK: - Antigravity Skills Discovery (100% Port of AntigravitySkills.ts)
@@ -1416,11 +1417,51 @@ final class ProviderInstancesStore {
         }
     }
 
+    private static func findCliExecutable(_ names: [String]) -> String? {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        var dirs = CoderWorker.path.split(separator: ":").map(String.init)
+        for extra in [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", home + "/.cursor/bin"] {
+            if !dirs.contains(extra) { dirs.append(extra) }
+        }
+        for name in names {
+            for dir in dirs {
+                let candidate = dir + "/" + name
+                if fm.isExecutableFile(atPath: candidate) { return candidate }
+            }
+        }
+        return nil
+    }
+
+    private static func codexCliStatus() -> (installed: Bool, auth: String) {
+        let envBin = (ProcessInfo.processInfo.environment["CODER_CODEX_BIN"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let bin: String? = (!envBin.isEmpty && FileManager.default.isExecutableFile(atPath: (envBin as NSString).expandingTildeInPath))
+            ? (envBin as NSString).expandingTildeInPath
+            : findCliExecutable(["codex"])
+        guard bin != nil else { return (false, "Codex CLI is not installed.") }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let hasAuthFile = FileManager.default.fileExists(atPath: home + "/.codex/auth.json")
+        let hasKey = !(ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "").isEmpty
+        return (true, hasAuthFile ? "Signed in (~/.codex/auth.json)" : (hasKey ? "OPENAI_API_KEY set" : "Run `codex login` to sign in"))
+    }
+
+    private static func cursorCliStatus() -> (installed: Bool, auth: String) {
+        let envBin = (ProcessInfo.processInfo.environment["CODER_CURSOR_BIN"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let bin: String? = (!envBin.isEmpty && FileManager.default.isExecutableFile(atPath: (envBin as NSString).expandingTildeInPath))
+            ? (envBin as NSString).expandingTildeInPath
+            : findCliExecutable(["agent", "cursor-agent"])
+        guard bin != nil else { return (false, "Cursor CLI is not installed.") }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let hasCursorDir = FileManager.default.fileExists(atPath: home + "/.cursor")
+        let hasKey = !(ProcessInfo.processInfo.environment["CURSOR_API_KEY"] ?? "").isEmpty
+        return (true, hasKey ? "CURSOR_API_KEY set" : (hasCursorDir ? "Cursor profile detected (~/.cursor)" : "Run `agent login` to sign in"))
+    }
+
     static func defaultInstances() -> [ProviderInstanceConfig] {
         [
             ProviderInstanceConfig(
                 id: "codex", driver: .codex, displayName: "Codex",
-                enabled: ExternalProviders.codexBinaryPath() != nil,
+                enabled: codexCliStatus().installed,
                 isDefault: true, accent: 0, authMethod: .oauthPersonal,
                 gcpProject: "", gcpLocation: "", binaryPath: "", extraPath: "",
                 envVars: [], models: []
@@ -1482,6 +1523,12 @@ final class ProviderInstancesStore {
         if let sel = selectedInstance, sel.driver == .antigravity, sel.enabled { return sel }
         return instances.first { $0.driver == .antigravity && $0.enabled }
             ?? instances.first { $0.driver == .antigravity }
+    }
+
+    var hasEnabledAntigravityBinary: Bool {
+        instances.contains { inst in
+            inst.driver == .antigravity && inst.enabled && AntigravityRuntimeManager.shared.resolveBinary(for: inst).path != nil
+        }
     }
 
     func select(index: Int) {
@@ -1641,7 +1688,7 @@ final class ProviderInstancesStore {
         }
         switch inst.driver {
         case .codex:
-            let st = ExternalProviders.codexStatus()
+            let st = Self.codexCliStatus()
             probes[inst.id] = ProviderProbeSnapshot(
                 status: st.installed ? 1 : 2,
                 headline: st.installed ? "Ready" : "Needs attention",
@@ -1659,7 +1706,7 @@ final class ProviderInstancesStore {
                 hasAutoMode: false, defaultModel: "", checkedAt: Date()
             )
         case .cursor:
-            let st = ExternalProviders.cursorStatus()
+            let st = Self.cursorCliStatus()
             probes[inst.id] = ProviderProbeSnapshot(
                 status: st.installed ? 1 : 2,
                 headline: st.installed ? "Ready" : "Needs attention",
@@ -1862,8 +1909,7 @@ final class ProviderInstancesStore {
             // Keep legacy CoderProbes cache aligned for the composer chip.
             if inst.id == "antigravity" && !defModel.isEmpty {
                 let defName = !defModelName.isEmpty ? defModelName : (rawModels.first { ($0["slug"] as? String) == defModel }?["name"] as? String ?? defModel)
-                UserDefaults.standard.set(defModel, forKey: "agy.seen.id")
-                UserDefaults.standard.set(defName, forKey: "agy.seen.name")
+                CoderProbes.recordAgySeen(id: defModel, name: defName)
             }
         } else {
             let needsAuth = authSt == "unauthenticated"
@@ -1882,4 +1928,239 @@ final class ProviderInstancesStore {
         }
     }
 }
-#endif
+
+// MARK: - CoderWindow Settings -> Providers (Core Basic Flow)
+
+extension CoderWindow {
+    func setupProvidersSettings() {
+        ProviderInstancesStore.shared.onChange = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.syncProvidersSettingsPage()
+                #if OA_FULL
+                if FeatureFlags.isOn(.modelsAgy) { self.syncAntigravitySettings() }
+                #endif
+                let hasAgy: Int32 = ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0
+                cd_agy(self.page, hasAgy)
+                for r in self.runs.values where r.page != self.page { cd_agy(r.page, hasAgy) }
+                self.applyProbes()
+                self.wake()
+            }
+        }
+        syncProvidersSettingsPage()
+        AntigravityRuntimeManager.shared.checkLatestRelease()
+    }
+
+    func syncProvidersSettingsPage() {
+        let store = ProviderInstancesStore.shared
+        let host = store.hostDisplayName
+        cd_ps_set_meta(page, host, "All projects", store.checkedAgeLabel(), store.refreshing ? 1 : 0)
+        cd_ps_clear(page)
+        for inst in store.instances {
+            let probe = store.probes[inst.id]
+            let status: Int32 = inst.enabled ? (probe?.status ?? 2) : 0
+            let headline = inst.enabled ? (probe?.headline ?? "Needs attention") : "Disabled"
+            let summary = inst.enabled ? (probe?.summary ?? "") : ""
+            let version = probe?.version ?? ""
+            _ = cd_ps_add_instance(
+                page, inst.id, inst.driver.uiIndex, inst.displayName, version,
+                inst.enabled ? 1 : 0, inst.isDefault ? 1 : 0,
+                status, headline, summary, Int32(inst.accent)
+            )
+        }
+        cd_ps_select(page, Int32(store.selectedIndex))
+
+        guard let sel = store.selectedInstance else { return }
+        let probe = store.probes[sel.id]
+        cd_ps_set_detail_config(
+            page, sel.displayName, Int32(sel.accent), sel.authMethod.uiIndex,
+            ProviderSecretStore.hasApiKey(for: sel.id) ? 1 : 0,
+            sel.gcpProject, sel.gcpLocation, sel.binaryPath, sel.extraPath
+        )
+
+        if sel.driver == .antigravity {
+            let rt = AntigravityRuntimeManager.shared.snapshot(for: sel)
+            cd_ps_set_detail_runtime(page, rt.state, rt.statusText, rt.buttonLabel, rt.progressPct, rt.canRemove ? 1 : 0, rt.errorText)
+            let authSess = AntigravityAuthManager.shared.session(for: sel, probe: probe, hostName: host)
+            let authBtn = AntigravityAuthManager.shared.buttonLabel(for: sel, session: authSess)
+            cd_ps_set_detail_auth(page, authSess.state, authSess.subtitle, authSess.detail, authBtn, authSess.canSignOut ? 1 : 0, authSess.authUrl)
+        } else {
+            cd_ps_set_detail_runtime(page, 1, probe?.headline ?? "", "", -1, 0, "")
+            let authSub = sel.enabled
+                ? (probe?.summary ?? "Configured on \(host).")
+                : "Enable \(sel.displayName) to configure credentials on \(host)."
+            let authState: Int32 = (probe?.status == 1) ? 1 : 0
+            cd_ps_set_detail_auth(page, authState, authSub, "", authState == 1 ? "Re-check" : "Connect", 0, "")
+        }
+
+        cd_ps_env_clear(page)
+        for ev in sel.envVars {
+            let hasSec = ev.secret && ProviderSecretStore.hasEnvSecret(for: sel.id, key: ev.key)
+            _ = cd_ps_env_add(page, ev.key, ev.secret ? "" : ev.value, ev.secret ? 1 : 0, hasSec ? 1 : 0)
+        }
+
+        cd_ps_models_clear(page)
+        for m in sel.models {
+            _ = cd_ps_models_add(page, m.slug, m.name, m.enabled ? 1 : 0, m.favorite ? 1 : 0, m.thinking ? 1 : 0, m.custom ? 1 : 0)
+        }
+
+        if cd_settings_page(page) == 14 && store.lastCheckedAt == nil && !store.refreshing {
+            store.refreshAll()
+        }
+    }
+
+    private func psReadField(_ which: Int32) -> String {
+        var buf = [CChar](repeating: 0, count: 1024)
+        let n = cd_ps_field(page, which, &buf, Int32(buf.count))
+        return n > 0 ? String(cString: buf) : ""
+    }
+
+    func providersSettingsAsked(_ what: Int32) {
+        let store = ProviderInstancesStore.shared
+        switch what {
+        case 170: // CP_ASK_PS_REFRESH
+            store.refreshAll()
+        case 171: // CP_ASK_PS_SELECT
+            let idx = Int(cd_ps_selected(page))
+            store.select(index: idx)
+        case 172: // CP_ASK_PS_TOGGLE
+            let idx = Int(cd_ps_action_idx(page))
+            let on = cd_ps_inst_enabled(page, Int32(idx)) != 0
+            store.setEnabled(index: idx, enabled: on)
+            configureWorkerEnv(run, isForeman: isForemanShown)
+        case 173: // CP_ASK_PS_CONFIG
+            let name = psReadField(0)
+            let apiKey = psReadField(1)
+            let gcpProj = psReadField(2)
+            let gcpLoc = psReadField(3)
+            let binPath = psReadField(4)
+            let extraPath = psReadField(5)
+            let accent = Int(cd_ps_int(page, 0))
+            let authMethod = AntigravityAuthMethod.from(uiIndex: cd_ps_int(page, 1))
+            store.updateSelectedConfig(
+                displayName: name, accent: accent, authMethod: authMethod,
+                newApiKey: apiKey, gcpProject: gcpProj, gcpLocation: gcpLoc,
+                binaryPath: binPath, extraPath: extraPath
+            )
+            configureWorkerEnv(run, isForeman: isForemanShown)
+        case 174: // CP_ASK_PS_API_CLEAR
+            store.clearSelectedApiKey()
+            configureWorkerEnv(run, isForeman: isForemanShown)
+        case 175: // CP_ASK_PS_RESET
+            store.resetSelectedDefault()
+            configureWorkerEnv(run, isForeman: isForemanShown)
+            cd_toast(page, "Reset provider to default settings.", 0)
+        case 176: // CP_ASK_PS_DELETE
+            let name = store.selectedInstance?.displayName ?? "provider"
+            store.deleteSelectedCustom()
+            cd_toast(page, "Deleted \(name).", 0)
+        case 177: // CP_ASK_PS_RT_ACTION
+            let mgr = AntigravityRuntimeManager.shared
+            if mgr.isInstalling {
+                mgr.cancelInstall()
+            } else {
+                mgr.startInstallOrUpdate()
+            }
+        case 178: // CP_ASK_PS_RT_REMOVE
+            let res = AntigravityRuntimeManager.shared.removeManagedRuntime(instances: store.instances)
+            cd_toast(page, res.message, res.ok ? 0 : 1)
+            store.refreshAll()
+        case 179: // CP_ASK_PS_AUTH_START
+            guard let sel = store.selectedInstance else { return }
+            if sel.driver == .antigravity {
+                let probe = store.probes[sel.id]
+                let forceLogin = probe?.authStatus == "authenticated"
+                AntigravityAuthManager.shared.startAuth(for: sel, forceLogin: forceLogin, hostName: store.hostDisplayName)
+            } else {
+                store.probeInstance(id: sel.id)
+            }
+        case 180: // CP_ASK_PS_AUTH_CANCEL
+            if let sel = store.selectedInstance {
+                AntigravityAuthManager.shared.cancelAuth(instanceId: sel.id)
+            }
+        case 181: // CP_ASK_PS_AUTH_SIGNOUT
+            guard let sel = store.selectedInstance else { return }
+            // Stop idle Antigravity worker so logout takes effect cleanly.
+            if run.worker.program == "agyworker" && cd_running(page) == 0 {
+                run.worker.stop()
+            }
+            AntigravityAuthManager.shared.signOut(for: sel) {
+                store.probeInstance(id: sel.id)
+                cd_toast(self.page, "Signed out of \(sel.displayName).", 0)
+            }
+        case 182: // CP_ASK_PS_AUTH_OPEN_URL
+            let urlStr = psReadField(7)
+            if let url = URL(string: urlStr),
+               let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+                NSWorkspace.shared.open(url)
+            }
+        case 183: // CP_ASK_PS_AUTH_COPY_URL
+            let urlStr = psReadField(7)
+            if !urlStr.isEmpty {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(urlStr, forType: .string)
+                cd_toast(page, "Sign-in link copied.", 0)
+            }
+        case 184: // CP_ASK_PS_AUTH_SUBMIT
+            if let sel = store.selectedInstance {
+                let code = psReadField(6)
+                AntigravityAuthManager.shared.submitCode(instanceId: sel.id, rawInput: code)
+            }
+        case 185: // CP_ASK_PS_ENV_SAVE
+            let n = Int(cd_ps_int(page, 5))
+            var vars: [(key: String, val: String, secret: Bool, hasSecret: Bool)] = []
+            var kbuf = [CChar](repeating: 0, count: 128)
+            var vbuf = [CChar](repeating: 0, count: 512)
+            for i in 0..<n {
+                var sec: Int32 = 0, hasSec: Int32 = 0
+                if cd_ps_env_get(page, Int32(i), &kbuf, Int32(kbuf.count), &vbuf, Int32(vbuf.count), &sec, &hasSec) != 0 {
+                    vars.append((String(cString: kbuf), String(cString: vbuf), sec != 0, hasSec != 0))
+                }
+            }
+            store.updateSelectedEnvVars(vars)
+            configureWorkerEnv(run, isForeman: isForemanShown)
+        case 186: // CP_ASK_PS_MODELS_SAVE
+            let n = Int(cd_ps_int(page, 6))
+            let existing = Dictionary(uniqueKeysWithValues: (store.selectedInstance?.models ?? []).map { ($0.slug, $0) })
+            var models: [ProviderModelConfig] = []
+            var sbuf = [CChar](repeating: 0, count: 160)
+            var nbuf = [CChar](repeating: 0, count: 160)
+            for i in 0..<n {
+                var en: Int32 = 0, fav: Int32 = 0, th: Int32 = 0, cu: Int32 = 0
+                if cd_ps_model_get(page, Int32(i), &sbuf, Int32(sbuf.count), &nbuf, Int32(nbuf.count), &en, &fav, &th, &cu) != 0 {
+                    let slug = String(cString: sbuf)
+                    let name = String(cString: nbuf)
+                    let prev = existing[slug]
+                    models.append(ProviderModelConfig(
+                        slug: slug, name: name,
+                        enabled: en != 0, favorite: fav != 0, thinking: th != 0,
+                        thoughtLevels: prev?.thoughtLevels ?? [], custom: cu != 0
+                    ))
+                }
+            }
+            store.updateSelectedModels(models)
+        case 187: // CP_ASK_PS_WIZ_CREATE
+            let drv = ProviderDriverKind.from(uiIndex: cd_ps_int(page, 2))
+            let accent = Int(cd_ps_int(page, 3))
+            let authMethod = AntigravityAuthMethod.from(uiIndex: cd_ps_int(page, 4))
+            store.addInstance(
+                driver: drv,
+                label: psReadField(10),
+                id: psReadField(11),
+                accent: accent,
+                authMethod: authMethod,
+                apiKey: psReadField(12),
+                gcpProject: psReadField(13),
+                gcpLocation: psReadField(14),
+                binaryPath: psReadField(15),
+                extraPath: psReadField(16)
+            )
+            cd_toast(page, "Added \(store.selectedInstance?.displayName ?? "provider") instance.", 0)
+        default:
+            break
+        }
+        syncProvidersSettingsPage()
+        wake()
+    }
+}

@@ -30,6 +30,7 @@
 #load "page/compose.coax";
 #load "page/skin.coax";
 #load "page/models.coax";
+#load "page/providers_settings.coax";
 #load "page/goal.coax";
 #load "page/transcript.coax";
 #load "page/chats.coax";
@@ -76,8 +77,9 @@
   #assert cp_tr(CP_LOCALE_EN, "send") == "Send";
   #assert cp_tr(CP_LOCALE_EN, "stop") == "Stop";
 
-  // Only v1.0 Settings pages are allowed (General, Models, About & updates).
+  // Core v1.0 Settings pages are allowed (General, Providers, Models, About & updates).
   #assert cp_set_page_ok_flags(0, CP_PG_GENERAL);
+  #assert cp_set_page_ok_flags(0, CP_PG_PROVIDERS);
   #assert cp_set_page_ok_flags(0, CP_PG_MODELS);
   #assert cp_set_page_ok_flags(0, CP_PG_ABOUT);
   #assert !cp_set_page_ok_flags(0, CP_PG_WALLET);
@@ -86,6 +88,19 @@
   #assert !cp_set_page_ok_flags(0, CP_PG_USAGE);
   #assert !cp_set_page_ok_flags(0, CP_PG_VOICE);
   #assert !cp_set_page_ok_flags(0, CP_PG_SCHED);
+
+  // Enabling Antigravity in core v1.0 exposes the model picker and switches provider kind cleanly.
+  coder_page_set_agy(s[..], true);
+  #assert cp_has_model_picker(s[..]);
+  #assert coder_page_pick_model(s[..], "antigravity") && coder_page_model_agy(s[..]) && coder_page_model_provider(s[..]) == 1;
+  #assert coder_page_pick_model(s[..], "inkling-2-mini") && coder_page_model_provider(s[..]) == 2;
+  coder_page_set_agy(s[..], false);
+  #assert !cp_has_model_picker(s[..]) && coder_page_model_provider(s[..]) == 2;
+
+  // Settings -> Providers opens directly on the slim v1.0 page without any feature flag.
+  coder_page_settings_open(s[..], CP_PG_PROVIDERS, "");
+  #assert coder_page_settings_page(s[..]) == CP_PG_PROVIDERS;
+  coder_page_settings_open(s[..], -2, "");
 
   // Sending a message and rendering a frame succeed cleanly on the slim page.
   #assert coder_page_set_text(s[..], "Hello Inkling");

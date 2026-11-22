@@ -26,7 +26,7 @@ res="$app/Contents/Resources"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$res/Components"
 if [[ "$minimal" == "1" ]]; then
   rm -rf "$app/Contents/Frameworks" \
-    "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/agyworker" "$res/oasim" \
+    "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/oasim" \
     "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" \
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
@@ -67,7 +67,7 @@ link_flags=(
   -framework UserNotifications -framework IOKit
 )
 core_swift=(
-  "$here/Activation.swift" "$here/AppDelegate.swift" "$here/DaemonClient.swift"
+  "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/DaemonClient.swift"
   "$here/DefaultsMigration.swift" "$here/DesktopCore.swift" "$here/LocalModels.swift"
   "$here/Notifications.swift" "$here/Store.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"
@@ -105,7 +105,7 @@ if [[ "$minimal" != "1" ]]; then
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
     "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
-    "$here/Window+McpSkills.swift" "$here/AntigravityProvider.swift" "$here/Window+Providers.swift" "$here/Window+GitDiff.swift"
+    "$here/Window+McpSkills.swift" "$here/Window+Providers.swift" "$here/Window+GitDiff.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift"
@@ -139,9 +139,12 @@ mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
-# The native Inkling 2.0 worker (coder/tui/inky.coax): sole shipped worker in v1.0 (--minimal) and local Inkling worker in --full.
+# The native Inkling 2.0 worker (coder/tui/inky.coax): local Inkling worker in both --minimal and --full.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/inky-$coax_hash" "$res/inky"
+# The Antigravity worker (coder/tui/agyworker.coax), for core Settings -> Providers & Antigravity ACP runs (GitHub #13802).
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null
+cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
 # Its git guard (coder/tui/gitguard.coax), the PreToolUse hook workers find beside them (GitHub #13771).
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
@@ -168,9 +171,6 @@ if [[ "$minimal" != "1" ]]; then
   # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
   COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
   cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"
-  # The Antigravity worker (coder/tui/agyworker.coax), for Antigravity ACP runs (GitHub #13802).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null
-  cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
   # oasim, the iOS Simulator's command and its helper (coder/tui/oasim.coax, GitHub #13811).
   COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" help < /dev/null > /dev/null 2>&1 || true
   cp "$repo/coax/web/build/tools/oasim-$coax_hash" "$res/oasim"

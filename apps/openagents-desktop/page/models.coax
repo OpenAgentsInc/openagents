@@ -49,7 +49,7 @@ cp_model_list :: (s: [] CoderPage, out: [] CpModelEntry) -> int {
       if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_OPENROUTER, slot = 0}; n += 1; }
     }
   }
-  if cp_flag(s, DC_FLAG_MODELS_ANTIGRAVITY) && s[0].agy {
+  if s[0].agy {
     if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_AGY, slot = 0}; n += 1; }
   }
   // Inkling 2 Mini is the built-in first-release model: always present in single-model release

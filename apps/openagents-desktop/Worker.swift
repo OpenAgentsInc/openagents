@@ -44,10 +44,8 @@ final class CoderWorker {
             }
         }
     }
-    #if OA_FULL
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
     static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
-    #endif
 
     private func extraEnvLines() -> String {
         extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
@@ -510,6 +508,9 @@ enum CoderGemini {
     }
 }
 
+func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
+#endif
+
 /// What the bundled workers report about this Mac, asked of the workers themselves so the app and a
 /// run never disagree: the sign-in Gemini models run on (`mcworker --auth`: Vertex AI from a service
 /// account or ADC, else a Gemini API key) and the model Antigravity really opens a session on with
@@ -589,6 +590,12 @@ enum CoderProbes {
             }
         }
     }
+    static func recordAgySeen(id: String, name: String) {
+        guard !id.isEmpty else { return }
+        d.set(agySignature, forKey: "agy.seen.for")
+        d.set(id, forKey: "agy.seen.id")
+        d.set(name.isEmpty ? id : name, forKey: "agy.seen.name")
+    }
     /// Both told to a page.
     static func apply(_ page: UnsafeMutableRawPointer?) {
         let a = geminiAuth, seen = agySeen
@@ -596,8 +603,6 @@ enum CoderProbes {
         cd_agy_seen(page, seen.id, seen.name)
     }
 }
-
-func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
 
 /// Antigravity CLI (`agy`) detection, version check (>= 1.5.0), and persisted settings (#13803).
 enum CoderAntigravity {
@@ -808,6 +813,7 @@ enum CoderAntigravity {
     }
 }
 
+#if OA_FULL
 /// What a chat is told about the tools the app ships (ple-run; docs/desktop/steer-ple-from-chat.md):
 /// the words are Coax's (dc_tools_note); this finds the program. Gym is experimental, and so is this.
 func coderToolsNote() -> String {

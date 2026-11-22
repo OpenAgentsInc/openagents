@@ -89,9 +89,9 @@ extension CoderWindow {
             r.worker.folder = r.folder.path
             needsRecall = false
         }
+        let useAgy = cd_model_agy(r.page) != 0
         #if OA_FULL
-        let useAgy = FeatureFlags.isOn(.modelsAgy) && cd_model_agy(r.page) != 0
-        let useInkling = cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel
+        let useInkling = !useAgy && (cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel)
         let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
         // Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
@@ -100,15 +100,14 @@ extension CoderWindow {
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = FeatureFlags.isOn(.modelsGemini) && (CoderGemini.saved != nil || CoderProbes.geminiReady || (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn))
         if !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
-            cd_failed(r.page, FeatureFlags.isOn(.modelsAgy) && CoderWorker.hasAntigravity
+            cd_failed(r.page, ProviderInstancesStore.shared.hasEnabledAntigravityBinary
                 ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
                 : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models.")
             wake()
             return
         }
         #else
-        let useAgy = false
-        let useInkling = true
+        let useInkling = !useAgy
         let useHybrid = false
         #endif
         if useInkling || useHybrid {
@@ -202,7 +201,7 @@ extension CoderWindow {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("inky", 2, nil)
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
@@ -233,7 +232,7 @@ extension CoderWindow {
             guard cd_running(r.page) != 0 else { return }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
-                let fallbackErr = r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
+                let fallbackErr = r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
                 cd_failed(r.page, r.worker.failure ?? fallbackErr)
                 self.wake()
                 return
@@ -289,20 +288,19 @@ extension CoderWindow {
             }
             cd_flags_set(back, FeatureFlags.mask)
             syncLocalState(on: back)
+            cd_agy(back, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
             #if OA_FULL
             if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
-            cd_agy(back, (FeatureFlags.isOn(.modelsAgy) && CoderWorker.hasAntigravity) ? 1 : 0)
             if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
             cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
-            if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { CoderProbes.apply(back) }
             #else
             cd_claude(back, 0)
-            cd_agy(back, 0)
             cd_cloud_authed_set(back, 0)
             cd_settings_gemini(back, "")
             #endif
+            CoderProbes.apply(back)
             syncSkillsNote(for: back, isForeman: FeatureFlags.isOn(.foreman) && t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {
@@ -542,16 +540,14 @@ extension CoderWindow {
         #endif
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
-        #if OA_FULL
         var env: [String: String] = [:]
-        if FeatureFlags.isOn(.modelsAgy) {
-            if let inst = ProviderInstancesStore.shared.activeAntigravityInstance() {
-                let res = AntigravityRuntimeManager.shared.resolveBinary(for: inst)
-                env = AntigravityProfileManager.workerEnv(for: inst, resolvedBinary: res.path)
-            } else {
-                env = CoderAntigravity.workerEnv()
-            }
+        if let inst = ProviderInstancesStore.shared.activeAntigravityInstance() {
+            let res = AntigravityRuntimeManager.shared.resolveBinary(for: inst)
+            env = AntigravityProfileManager.workerEnv(for: inst, resolvedBinary: res.path)
+        } else {
+            env = CoderAntigravity.workerEnv()
         }
+        #if OA_FULL
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
         }
@@ -567,7 +563,7 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "hybrid-exec-v1"
-        } else if cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel {
+        } else if cd_model_inkling(r.page) != 0 || (!FeatureFlags.anyExtraModel && cd_model_agy(r.page) == 0) {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "inkling-2-mini"
         }
@@ -577,10 +573,10 @@ extension CoderWindow {
             env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
         #else
-        let env: [String: String] = [
-            "PSIONIC_BASE_URL": LocalModelServer.baseURL,
-            "PSIONIC_MODEL": "inkling-2-mini",
-        ]
+        if cd_model_agy(r.page) == 0 {
+            env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+            env["PSIONIC_MODEL"] = "inkling-2-mini"
+        }
         #endif
         let cwd = (r === run ? folder : r.folder).path
         let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
@@ -619,6 +615,7 @@ extension CoderWindow {
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
         syncLocalState(on: back)
+        cd_agy(back, ProviderInstancesStore.shared.hasEnabledAntigravityBinary ? 1 : 0)
         #if OA_FULL
         if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
         #endif

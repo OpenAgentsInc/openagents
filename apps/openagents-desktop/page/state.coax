@@ -532,10 +532,10 @@ CpCheckStore :: struct {
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
   return s.count > 0 && dc_flag_on(s[0].flags, flag);
 }
-// True when any extra non-Inkling model flag is on (shows the composer model picker & model switchers).
-// Off in the Inkling-only first release: only one model exists, so no model selector is shown.
+// True when any extra non-Inkling model flag is on or Antigravity is enabled in core Providers.
+// Off in the Inkling-only first release until Antigravity is installed & enabled.
 cp_has_model_picker :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && dc_flags_any_extra_model(s[0].flags);
+  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy);
 }
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {

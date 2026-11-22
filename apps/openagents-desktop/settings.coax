@@ -115,10 +115,9 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_PROVIDERS, id = "", name = "Providers", terms = "antigravity claude codex cursor acp sign-in method gcp project location vertex ai gemini enterprise api key binary path managed runtime add provider"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
-// In the Inkling-only first release (flags == 0): only General, Models (Local), and About & updates show.
+// Core release pages (flags == 0): General, Providers, Models (Local), and About & updates.
 cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
-  if page == CP_PG_GENERAL || page == CP_PG_MODELS || page == CP_PG_ABOUT { return true; }
-  if page == CP_PG_PROVIDERS { return dc_flag_on(flags, DC_FLAG_MODELS_ANTIGRAVITY) || dc_flag_on(flags, DC_FLAG_MODELS_EXTERNAL) || dc_flag_on(flags, DC_FLAG_MODELS_CLAUDE) || dc_flag_on(flags, DC_FLAG_MODELS_GEMINI); }
+  if page == CP_PG_GENERAL || page == CP_PG_MODELS || page == CP_PG_PROVIDERS || page == CP_PG_ABOUT { return true; }
   if page == CP_PG_FOREMAN { return dc_flag_on(flags, DC_FLAG_FOREMAN); }
   if page == CP_PG_ACCOUNT { return dc_flag_on(flags, DC_FLAG_ACCOUNT); }
   if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
@@ -1003,9 +1002,9 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   coder_page_gym_set(s, true);
   #assert !coder_page_gym_open(s);
   #assert cp_settings_press(s, CP_SET_ACCOUNT, "coder.me") && s[0].set_open && s[0].set_page == CP_PG_GENERAL;
-  // the list: General, Models and About only; Foreman's and Account's pages open General
+  // the list: General, Providers, Models and About; Foreman's and Account's pages open General
   #assert cp_set_test_frame(s, 1200, 700);
-  #assert surface_find(s[0].surface[..], "set.page.0") >= 0 && surface_find(s[0].surface[..], "set.page.1") >= 0 && surface_find(s[0].surface[..], "set.page.4") >= 0;
+  #assert surface_find(s[0].surface[..], "set.page.0") >= 0 && surface_find(s[0].surface[..], "set.page.1") >= 0 && surface_find(s[0].surface[..], "set.page.14") >= 0 && surface_find(s[0].surface[..], "set.page.4") >= 0;
   #assert surface_find(s[0].surface[..], "set.page.2") < 0 && surface_find(s[0].surface[..], "set.page.3") < 0;
   coder_page_settings_open(s, CP_PG_FOREMAN, "");
   #assert coder_page_settings_page(s) == CP_PG_GENERAL;

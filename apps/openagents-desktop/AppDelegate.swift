@@ -206,9 +206,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func openThreadProof(_ sender: Any?) { guard FeatureFlags.isOn(.proof) else { return }; ThreadProofDrawer.shared.present(window: main) }
     @objc func openAgentsPage(_ sender: Any?) { guard FeatureFlags.isOn(.agents) else { return }; AgentsPageController.shared.present(window: main) }
     @objc func openCapabilityStudio(_ sender: Any?) { guard FeatureFlags.isOn(.capabilities) else { return }; CapabilityStudio.shared.present(window: main) }
-    @objc func chooseModel(_ sender: Any?) { guard FeatureFlags.anyExtraModel else { return }; main?.toggleModels() }
     @objc func openScene(_ sender: Any?) { guard FeatureFlags.isOn(.scenes) else { return }; main?.chooseSceneFile() }
     #endif
+    @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
@@ -254,7 +254,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(accountSecurity(_:)) || item.action == #selector(accountLinkDevice(_:)) || item.action == #selector(accountLogout(_:)) {
             return FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn
         }
-        if item.action == #selector(chooseModel(_:)) { return FeatureFlags.anyExtraModel }
         if item.action == #selector(openScene(_:)) { return FeatureFlags.isOn(.scenes) }
         if item.action == #selector(toggleSimulator(_:)) { return FeatureFlags.isOn(.simulator) }
         if item.action == #selector(toggleTerminal(_:)) { return FeatureFlags.isOn(.terminal) }
@@ -458,7 +457,18 @@ enum TestLaunch {
         return ok == shots.count ? 0 : 1
     }
 
+    private static func runRh3dRecord(outPath: String) -> Int32 {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
+        let view = RhFlythroughView(frame: NSRect(x: 0, y: 0, width: 1536, height: 864))
+        let url = URL(fileURLWithPath: outPath)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return view.recordWalkthroughMP4(to: url, width: 1920, height: 1080, fps: 30) ? 0 : 1
+    }
+    #endif
+
     /// Offscreen Metal PNG capture of Settings -> Providers and Add provider 3-step modal wizard (ZERO windows).
+    /// Renders with flags == 0 (core basic flow, no feature flags enabled).
     static func runProvidersShots(outDir: String) -> Int32 {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path else {
             fputs("OpenAgents --shot-providers: missing Components resources\n", stderr); return 1
@@ -468,8 +478,7 @@ enum TestLaunch {
         guard let page = cd_open_ex(resources, 1, 1340, 880) else {
             fputs("OpenAgents --shot-providers: cd_open_ex(offscreen=1) failed\n", stderr); return 1
         }
-        cd_experimental_set(page, 1)
-        cd_flags_set(page, -1)
+        cd_flags_set(page, 0)
         cd_settings_open(page, 14, "")
         cd_ps_set_meta(page, "Christopher's MacBook Pro (2)", "All projects", "Checked 1h ago", 0)
         cd_ps_clear(page)
@@ -523,23 +532,13 @@ enum TestLaunch {
         return ok == 7 ? 0 : 1
     }
 
-    private static func runRh3dRecord(outPath: String) -> Int32 {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.prohibited)
-        let view = RhFlythroughView(frame: NSRect(x: 0, y: 0, width: 1536, height: 864))
-        let url = URL(fileURLWithPath: outPath)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        return view.recordWalkthroughMP4(to: url, width: 1920, height: 1080, fps: 30) ? 0 : 1
-    }
-    #endif
-
     static func main() {
+        if let at = CommandLine.arguments.firstIndex(of: "--shot-providers"), at + 1 < CommandLine.arguments.count {
+            exit(runProvidersShots(outDir: CommandLine.arguments[at + 1]))
+        }
         #if OA_FULL
         if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
             exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
-        }
-        if let at = CommandLine.arguments.firstIndex(of: "--shot-providers"), at + 1 < CommandLine.arguments.count {
-            exit(runProvidersShots(outDir: CommandLine.arguments[at + 1]))
         }
         if let at = CommandLine.arguments.firstIndex(of: "--shot-rh-3d"), at + 1 < CommandLine.arguments.count {
             exit(runRh3dShots(outDir: CommandLine.arguments[at + 1]))
@@ -590,10 +589,9 @@ enum TestLaunch {
         }
         view.addItem(.separator())
         view.addItem(withTitle: "Toggle Sidebar", action: #selector(CoderDelegate.toggleSidebar(_:)), keyEquivalent: "b").target = delegate
-        #if OA_FULL
         let chooseModelItem = view.addItem(withTitle: "Choose Model", action: #selector(CoderDelegate.chooseModel(_:)), keyEquivalent: "/")
         chooseModelItem.target = delegate
-        delegate.gatedMenuItems.append((chooseModelItem, { FeatureFlags.anyExtraModel }))
+        #if OA_FULL
         let sim = view.addItem(withTitle: "iOS Simulator", action: #selector(CoderDelegate.toggleSimulator(_:)), keyEquivalent: "s")
         sim.target = delegate; sim.keyEquivalentModifierMask = [.command, .option]
         delegate.gatedMenuItems.append((sim, { FeatureFlags.isOn(.simulator) }))

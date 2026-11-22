@@ -103,6 +103,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
   if platform == VBC_MAC {
     return name == "coder-host"
       || name == "inky"
+      || name == "agyworker"   // Antigravity ACP worker (core Settings -> Providers)
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels.metal"
       || name == "gitguard"
@@ -243,6 +244,7 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   // macOS v1.0 core allowed
   #assert vbc_resource_allowed(VBC_MAC, "coder-host");
   #assert vbc_resource_allowed(VBC_MAC, "inky");
+  #assert vbc_resource_allowed(VBC_MAC, "agyworker");
   #assert vbc_resource_allowed(VBC_MAC, "psionic-inkling-serve");
   #assert vbc_resource_allowed(VBC_MAC, "inkling-kernels.metal");
   #assert vbc_resource_allowed(VBC_MAC, "gitguard");
@@ -254,7 +256,6 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   // All excluded macOS artifacts rejected (including deprecated mcworker)
   #assert !vbc_resource_allowed(VBC_MAC, "mcworker");
   #assert !vbc_resource_allowed(VBC_MAC, "claudeworker");
-  #assert !vbc_resource_allowed(VBC_MAC, "agyworker");
   #assert !vbc_resource_allowed(VBC_MAC, "oasim");
   #assert !vbc_resource_allowed(VBC_MAC, "lean-run");
   #assert !vbc_resource_allowed(VBC_MAC, "tbench-run");
