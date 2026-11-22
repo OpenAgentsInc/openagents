@@ -8,7 +8,7 @@
 #define INK_GGML_F32    0
 #define INK_GGML_Q8_0   8
 #define INK_GGML_IQ4_NL 20
-#define INK_MAX_SLOTS   64
+#define INK_MAX_SLOTS   128
 
 typedef struct {
     uint64_t offset;   /* byte offset from start of GGUF file (mmap base) */

@@ -6090,10 +6090,13 @@
       ],
       "source": [
         "psionic/examples/looped-moe-transformer.coax",
-        "psionic/lib/inkling-loop.coax"
+        "psionic/lib/inkling-loop.coax",
+        "psionic/platform/inkling-metal.c",
+        "psionic/platform/inkling-cli.c"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
       "adopted_by": []
     },

@@ -1,10 +1,26 @@
 // Chapter 267: A looped MoE transformer for Inkling 2 Mini (K=3) and TML-d24-varloop-research (variable K).
+// Implements:
+//   - Production looped schedule & per-pass logical/physical KV-slot mapping matching psionic/platform/inkling-metal.c
+//   - Full-math looped MoE transformer (RMSNorm, causal scaled dot-product Q/K/V attention,
+//     per-pass KV cache, cross-pass recurrence gate, top-k softmax MoE router + per-expert SiLU FFN)
+//   - Genuine layer-major sequence prefill (inkling_moe_prefill) vs single-token autoregressive decode (inkling_moe_decode_token)
 #authority;
 
 INKLING_LOOP_MAX_PASSES :: 16;
 INKLING_LOOP_MAX_DIM :: 64;
 INKLING_LOOP_MAX_EXPERTS :: 8;
 INKLING_LOOP_MAX_SEQ :: 32;
+
+// Production Inkling 2 Mini upper bounds for schedule planning.
+INKLING_PROD_MAX_DIM :: 2304;
+INKLING_PROD_MAX_EXPERTS :: 128;
+INKLING_PROD_MAX_SEQ :: 32768;
+
+// Bounds for the self-contained CPU/book reference Looped MoE forward pass.
+INKLING_REF_MAX_DIM :: 16;
+INKLING_REF_MAX_HIDDEN :: 32;
+INKLING_REF_MAX_EXPERTS :: 8;
+INKLING_REF_MAX_SEQ :: 16;
 
 // book:begin types
 InklingLoopStatus :: enum u8 {ok;shape;limit;pass;capacity;}
@@ -24,66 +40,18 @@ InklingLoopPlan :: struct {
     total_steps:int;
     kv_slots:int;
 }
+InklingMoEWeights :: struct {
+    hidden:int;
+    wq:[]f32;          // [n_phys * dim * dim]
+    wk:[]f32;          // [n_phys * dim * dim]
+    wv:[]f32;          // [n_phys * dim * dim]
+    wo:[]f32;          // [n_phys * dim * dim]
+    w_router:[]f32;    // [n_phys * experts * dim]
+    w_up:[]f32;        // [n_phys * experts * hidden * dim]
+    w_down:[]f32;      // [n_phys * experts * dim * hidden]
+    w_loop_gate:[]f32; // [loop_layers * dim]
+}
 // book:end types
-
-#test "looped schedule validates bounds and computes per-pass KV slots" {
-    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=8};
-    p := inkling_loop_plan(cfg);
-    #assert p.status == InklingLoopStatus.ok && p.total_steps == 5 && p.kv_slots == 40;
-
-    // Each (stage, layer, pass, pos) maps to a distinct KV slot.
-    s_pre := inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 0, 2);
-    s_p0  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 0, 2);
-    s_p1  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 1, 2);
-    s_p2  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 2, 2);
-    s_post := inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 2);
-    #assert s_pre == 2 && s_p0 == 10 && s_p1 == 18 && s_p2 == 26 && s_post == 34;
-
-    // Refused inputs: L=0, out-of-bounds pass index, invalid position.
-    bad := cfg; bad.loop_count = 0;
-    #assert inkling_loop_plan(bad).status == InklingLoopStatus.pass;
-    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 3, 0) == -1;
-    #assert inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 1, 0) == -1;
-    #assert inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 8) == -1;
-}
-
-#test "prefill and step-by-step decode match across K=1, K=3, and K=5 loops" {
-    for k: [3]int.[1, 3, 5] {
-        cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=k,dim=4,experts=4,top_k=2,max_seq=4};
-        // Deterministic tiny weights.
-        router_w := [16]f32.[
-            0.5f32, -0.2f32, 0.1f32, 0.3f32,
-            -0.4f32, 0.6f32, 0.2f32, -0.1f32,
-            0.2f32, 0.1f32, -0.5f32, 0.4f32,
-            -0.1f32, -0.3f32, 0.7f32, 0.2f32
-        ];
-        expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
-        inputs := [12]f32.[
-            1.0f32, 0.5f32, -0.25f32, 0.75f32,
-            -0.5f32, 1.25f32, 0.5f32, -0.25f32,
-            0.25f32, -0.75f32, 1.0f32, 0.5f32
-        ];
-
-        kv_pre: [256]f32;
-        kv_dec: [256]f32;
-        out_pre: [12]f32;
-        out_dec: [12]f32;
-
-        st1 := inkling_loop_prefill(cfg, 3, inputs[..], router_w[..], expert_scale[..], kv_pre[..], out_pre[..]);
-        #assert st1 == InklingLoopStatus.ok;
-
-        for pos: 0..<3 {
-            st2 := inkling_loop_decode_token(cfg, pos, inputs[pos*4..<(pos+1)*4], router_w[..], expert_scale[..], kv_dec[..], out_dec[pos*4..<(pos+1)*4]);
-            #assert st2 == InklingLoopStatus.ok;
-        }
-
-        for i: 0..<12 {
-            diff := out_pre[i] - out_dec[i];
-            if diff < 0.0f32 { diff = -diff; }
-            #assert diff < 0.000001f32;
-        }
-    }
-}
 
 // book:begin plan
 inkling_loop_plan :: (cfg:InklingLoopConfig)->InklingLoopPlan #export_c #effects(all) {
@@ -93,14 +61,42 @@ inkling_loop_plan :: (cfg:InklingLoopConfig)->InklingLoopPlan #export_c #effects
     if cfg.prelude_layers < 0 || cfg.loop_layers < 1 || cfg.postlude_layers < 0 {
         return InklingLoopPlan.{status=InklingLoopStatus.shape};
     }
-    if cfg.dim < 1 || cfg.dim > INKLING_LOOP_MAX_DIM || cfg.experts < 1 || cfg.experts > INKLING_LOOP_MAX_EXPERTS {
+    if cfg.dim < 1 || cfg.dim > INKLING_PROD_MAX_DIM || cfg.experts < 1 || cfg.experts > INKLING_PROD_MAX_EXPERTS {
         return InklingLoopPlan.{status=InklingLoopStatus.limit};
     }
-    if cfg.top_k < 1 || cfg.top_k > cfg.experts || cfg.max_seq < 1 || cfg.max_seq > INKLING_LOOP_MAX_SEQ {
+    if cfg.top_k < 1 || cfg.top_k > cfg.experts || cfg.max_seq < 1 || cfg.max_seq > INKLING_PROD_MAX_SEQ {
         return InklingLoopPlan.{status=InklingLoopStatus.shape};
     }
     total_steps := cfg.prelude_layers + cfg.loop_layers * cfg.loop_count + cfg.postlude_layers;
     return InklingLoopPlan.{status=InklingLoopStatus.ok, total_steps=total_steps, kv_slots=total_steps * cfg.max_seq};
+}
+
+// Logical KV/shortconv slot index matching psionic/platform/inkling-metal.c:
+//   - Pass 0 and prelude/postlude occupy slots [0 .. n_phys)
+//   - Recurrent passes p >= 1 occupy slots n_phys + (p - 1) * loop_layers + layer_in_stage
+inkling_logical_slot :: (cfg:InklingLoopConfig, stage:InklingLoopStage, layer_in_stage:int, pass_idx:int)->int #export_c #effects(all) {
+    if layer_in_stage < 0 { return -1; }
+    n_phys := cfg.prelude_layers + cfg.loop_layers + cfg.postlude_layers;
+    if stage == InklingLoopStage.prelude {
+        if pass_idx != 0 || layer_in_stage >= cfg.prelude_layers { return -1; }
+        return layer_in_stage;
+    } else if stage == InklingLoopStage.loop_body {
+        if pass_idx < 0 || pass_idx >= cfg.loop_count || layer_in_stage >= cfg.loop_layers { return -1; }
+        if pass_idx == 0 { return cfg.prelude_layers + layer_in_stage; }
+        return n_phys + (pass_idx - 1) * cfg.loop_layers + layer_in_stage;
+    } else {
+        if pass_idx != 0 || layer_in_stage >= cfg.postlude_layers { return -1; }
+        return cfg.prelude_layers + cfg.loop_layers + layer_in_stage;
+    }
+}
+
+// Physical layer index owning a logical KV slot (inverse of inkling_logical_slot, matching inkling-metal.c:1294).
+inkling_physical_layer :: (cfg:InklingLoopConfig, logical_slot:int)->int #export_c #effects(all) {
+    n_phys := cfg.prelude_layers + cfg.loop_layers + cfg.postlude_layers;
+    total := cfg.prelude_layers + cfg.loop_layers * cfg.loop_count + cfg.postlude_layers;
+    if logical_slot < 0 || logical_slot >= total || cfg.loop_layers < 1 { return -1; }
+    if logical_slot < n_phys { return logical_slot; }
+    return cfg.prelude_layers + ((logical_slot - n_phys) % cfg.loop_layers);
 }
 
 inkling_kv_slot :: (cfg:InklingLoopConfig, stage:InklingLoopStage, layer_in_stage:int, pass_idx:int, pos:int)->int #export_c #effects(all) {
@@ -120,7 +116,274 @@ inkling_kv_slot :: (cfg:InklingLoopConfig, stage:InklingLoopStage, layer_in_stag
 }
 // book:end plan
 
-// book:begin forward
+// ---- Full-math Looped MoE Transformer (RMSNorm + Causal Q/K/V Attention + Cross-Pass Recurrence + Top-K SiLU MoE)
+
+il_rmsnorm :: (x:[]f32, out:[]f32, dim:int) #effects(all) {
+    ss: f32 = 0.0f32;
+    for d: 0..<dim { ss += x[d] * x[d]; }
+    inv := cast(f32)(1.0 / sqrt(cast(f64)(ss / cast(f32)dim) + 0.000001));
+    for d: 0..<dim { out[d] = x[d] * inv; }
+}
+
+il_sigmoid :: (x:f32)->f32 #effects(all) {
+    return cast(f32)(1.0 / (1.0 + exp(cast(f64)(-x))));
+}
+
+il_silu :: (x:f32)->f32 #effects(all) {
+    return x * il_sigmoid(x);
+}
+
+il_matvec :: (w:[]f32, w_off:int, x:[]f32, out:[]f32, rows:int, cols:int) #effects(all) {
+    for r: 0..<rows {
+        acc: f32 = 0.0f32;
+        base := w_off + r * cols;
+        for c: 0..<cols { acc += w[base + c] * x[c]; }
+        out[r] = acc;
+    }
+}
+
+il_moe_validate :: (cfg:InklingLoopConfig, w:InklingMoEWeights, kv_slots:int, k_cache_len:int, v_cache_len:int)->InklingLoopStatus #effects(all) {
+    if cfg.dim > INKLING_REF_MAX_DIM || cfg.experts > INKLING_REF_MAX_EXPERTS || cfg.max_seq > INKLING_REF_MAX_SEQ {
+        return InklingLoopStatus.limit;
+    }
+    if w.hidden < 1 || w.hidden > INKLING_REF_MAX_HIDDEN { return InklingLoopStatus.shape; }
+    n_phys := cfg.prelude_layers + cfg.loop_layers + cfg.postlude_layers;
+    dd := n_phys * cfg.dim * cfg.dim;
+    if w.wq.count < dd || w.wk.count < dd || w.wv.count < dd || w.wo.count < dd { return InklingLoopStatus.capacity; }
+    if w.w_router.count < n_phys * cfg.experts * cfg.dim { return InklingLoopStatus.capacity; }
+    ehd := n_phys * cfg.experts * w.hidden * cfg.dim;
+    if w.w_up.count < ehd || w.w_down.count < ehd { return InklingLoopStatus.capacity; }
+    if w.w_loop_gate.count < cfg.loop_layers * cfg.dim { return InklingLoopStatus.capacity; }
+    need_kv := kv_slots * cfg.dim;
+    if k_cache_len < need_kv || v_cache_len < need_kv { return InklingLoopStatus.capacity; }
+    return InklingLoopStatus.ok;
+}
+
+// book:begin moe-layer
+// Apply one physical layer `ip` at logical KV slot `slot` and sequence position `pos`.
+// Shared weights in `w` are read-only and never mutated across passes.
+il_layer_qkv_write :: (
+    cfg:InklingLoopConfig, w:InklingMoEWeights, ip:int, slot:int, pos:int,
+    use_msg:bool, loop_layer_idx:int, msg:[]f32,
+    h:[]f32, q_out:[]f32, k_cache:[]f32, v_cache:[]f32
+) #effects(all) {
+    d := cfg.dim;
+    if use_msg {
+        gbase := loop_layer_idx * d;
+        for i: 0..<d {
+            g := il_sigmoid(w.w_loop_gate[gbase + i] * msg[i]);
+            h[i] = h[i] + g * (msg[i] - h[i]);
+        }
+    }
+    xn: [INKLING_REF_MAX_DIM]f32;
+    il_rmsnorm(h, xn[..], d);
+    w_off := ip * d * d;
+    il_matvec(w.wq, w_off, xn[..], q_out, d, d);
+    kv_off := (slot * cfg.max_seq + pos) * d;
+    il_matvec(w.wk, w_off, xn[..], k_cache[kv_off..<kv_off + d], d, d);
+    il_matvec(w.wv, w_off, xn[..], v_cache[kv_off..<kv_off + d], d, d);
+}
+
+il_layer_attn_and_moe :: (
+    cfg:InklingLoopConfig, w:InklingMoEWeights, ip:int, slot:int, pos:int,
+    q:[]f32, k_cache:[]f32, v_cache:[]f32, h:[]f32
+) #effects(all) {
+    d := cfg.dim;
+    scale := cast(f32)(1.0 / sqrt(cast(f64)d));
+
+    // Causal scaled dot-product attention over t = 0..pos in this logical slot's KV cache.
+    scores: [INKLING_REF_MAX_SEQ]f32;
+    max_s: f32 = -1000000000.0f32;
+    for t: 0..<(pos + 1) {
+        k_off := (slot * cfg.max_seq + t) * d;
+        dot: f32 = 0.0f32;
+        for i: 0..<d { dot += q[i] * k_cache[k_off + i]; }
+        sc := dot * scale;
+        scores[t] = sc;
+        if sc > max_s { max_s = sc; } // mutant: equivalent (softmax is shift-invariant to max_s tie vs strict >)
+    }
+    probs: [INKLING_REF_MAX_SEQ]f32;
+    psum: f32 = 0.0f32;
+    for t: 0..<(pos + 1) {
+        p := cast(f32)exp(cast(f64)(scores[t] - max_s));
+        probs[t] = p;
+        psum += p;
+    }
+    ctx: [INKLING_REF_MAX_DIM]f32;
+    for t: 0..<(pos + 1) {
+        wt := probs[t] / psum;
+        v_off := (slot * cfg.max_seq + t) * d;
+        for i: 0..<d { ctx[i] += wt * v_cache[v_off + i]; }
+    }
+    ao: [INKLING_REF_MAX_DIM]f32;
+    il_matvec(w.wo, ip * d * d, ctx[..], ao[..], d, d);
+    for i: 0..<d { h[i] += ao[i]; }
+
+    // Per-pass top-k softmax MoE FFN with SiLU activation.
+    fn: [INKLING_REF_MAX_DIM]f32;
+    il_rmsnorm(h, fn[..], d);
+    rlog: [INKLING_REF_MAX_EXPERTS]f32;
+    il_matvec(w.w_router, ip * cfg.experts * d, fn[..], rlog[..], cfg.experts, d);
+
+    chosen: [INKLING_REF_MAX_EXPERTS]bool;
+    pick_e: [INKLING_REF_MAX_EXPERTS]int;
+    pick_s: [INKLING_REF_MAX_EXPERTS]f32;
+    max_r: f32 = -1000000000.0f32;
+    for k: 0..<cfg.top_k {
+        be := -1; // mutant: equivalent (cfg.top_k <= cfg.experts guarantees an unchosen expert overwrites be)
+        bs: f32 = -1000000000.0f32;
+        for e: 0..<cfg.experts {
+            if !chosen[e] && rlog[e] > bs { bs = rlog[e]; be = e; }
+        }
+        chosen[be] = true;
+        pick_e[k] = be;
+        pick_s[k] = bs;
+        if bs > max_r { max_r = bs; } // mutant: equivalent (softmax is shift-invariant to max_r)
+    }
+    rsum: f32 = 0.0f32;
+    rw: [INKLING_REF_MAX_EXPERTS]f32;
+    for k: 0..<cfg.top_k {
+        v := cast(f32)exp(cast(f64)(pick_s[k] - max_r));
+        rw[k] = v;
+        rsum += v;
+    }
+    delta: [INKLING_REF_MAX_DIM]f32;
+    u: [INKLING_REF_MAX_HIDDEN]f32;
+    eo: [INKLING_REF_MAX_DIM]f32;
+    for k: 0..<cfg.top_k {
+        e := pick_e[k];
+        wt := rw[k] / rsum;
+        up_off := (ip * cfg.experts + e) * w.hidden * d;
+        dn_off := (ip * cfg.experts + e) * d * w.hidden;
+        il_matvec(w.w_up, up_off, fn[..], u[..], w.hidden, d);
+        for j: 0..<w.hidden { u[j] = il_silu(u[j]); }
+        il_matvec(w.w_down, dn_off, u[..], eo[..], d, w.hidden);
+        for i: 0..<d { delta[i] += wt * eo[i]; }
+    }
+    for i: 0..<d { h[i] += delta[i]; }
+}
+// book:end moe-layer
+
+// book:begin moe-forward
+// Single-token autoregressive decode across prelude -> K recurrent loop passes -> postlude.
+inkling_moe_decode_token :: (
+    cfg:InklingLoopConfig, w:InklingMoEWeights, pos:int, token_in:[]f32,
+    k_cache:[]f32, v_cache:[]f32, token_out:[]f32
+)->InklingLoopStatus #export_c #effects(all) {
+    p := inkling_loop_plan(cfg);
+    if p.status != InklingLoopStatus.ok { return p.status; }
+    vst := il_moe_validate(cfg, w, p.kv_slots, k_cache.count, v_cache.count);
+    if vst != InklingLoopStatus.ok { return vst; }
+    if pos < 0 || pos >= cfg.max_seq { return InklingLoopStatus.shape; }
+    if token_in.count < cfg.dim || token_out.count < cfg.dim { return InklingLoopStatus.capacity; }
+
+    d := cfg.dim;
+    h: [INKLING_REF_MAX_DIM]f32;
+    pre_h: [INKLING_REF_MAX_DIM]f32;
+    bank_h: [INKLING_REF_MAX_DIM]f32;
+    q: [INKLING_REF_MAX_DIM]f32;
+    for i: 0..<d { h[i] = token_in[i]; }
+
+    for l: 0..<cfg.prelude_layers {
+        slot := inkling_logical_slot(cfg, InklingLoopStage.prelude, l, 0);
+        il_layer_qkv_write(cfg, w, l, slot, pos, false, 0, bank_h[..], h[..], q[..], k_cache, v_cache); // mutant: equivalent (loop_layer_idx unused when use_msg is false)
+        il_layer_attn_and_moe(cfg, w, l, slot, pos, q[..], k_cache, v_cache, h[..]);
+    }
+    for i: 0..<d { pre_h[i] = h[i]; }
+
+    for pass: 0..<cfg.loop_count {
+        if pass > 0 { // mutant: equivalent (on pass == 0 h already equals pre_h and bank_h is unused)
+            for i: 0..<d { bank_h[i] = h[i]; h[i] = pre_h[i]; }
+        }
+        for l: 0..<cfg.loop_layers {
+            ip := cfg.prelude_layers + l;
+            slot := inkling_logical_slot(cfg, InklingLoopStage.loop_body, l, pass);
+            il_layer_qkv_write(cfg, w, ip, slot, pos, pass > 0, l, bank_h[..], h[..], q[..], k_cache, v_cache);
+            il_layer_attn_and_moe(cfg, w, ip, slot, pos, q[..], k_cache, v_cache, h[..]);
+        }
+    }
+
+    for l: 0..<cfg.postlude_layers {
+        ip := cfg.prelude_layers + cfg.loop_layers + l;
+        slot := inkling_logical_slot(cfg, InklingLoopStage.postlude, l, 0);
+        il_layer_qkv_write(cfg, w, ip, slot, pos, false, 0, bank_h[..], h[..], q[..], k_cache, v_cache); // mutant: equivalent (loop_layer_idx unused when use_msg is false)
+        il_layer_attn_and_moe(cfg, w, ip, slot, pos, q[..], k_cache, v_cache, h[..]);
+    }
+
+    for i: 0..<d { token_out[i] = h[i]; }
+    return InklingLoopStatus.ok;
+}
+
+// Genuine layer-major / pass-major batched sequence prefill across seq_len tokens.
+inkling_moe_prefill :: (
+    cfg:InklingLoopConfig, w:InklingMoEWeights, seq_len:int, tokens_in:[]f32,
+    k_cache:[]f32, v_cache:[]f32, tokens_out:[]f32
+)->InklingLoopStatus #export_c #effects(all) {
+    p := inkling_loop_plan(cfg);
+    if p.status != InklingLoopStatus.ok { return p.status; }
+    vst := il_moe_validate(cfg, w, p.kv_slots, k_cache.count, v_cache.count);
+    if vst != InklingLoopStatus.ok { return vst; }
+    if seq_len < 1 || seq_len > cfg.max_seq { return InklingLoopStatus.shape; }
+    if tokens_in.count < seq_len * cfg.dim || tokens_out.count < seq_len * cfg.dim { return InklingLoopStatus.capacity; }
+
+    d := cfg.dim;
+    cur: [INKLING_REF_MAX_SEQ * INKLING_REF_MAX_DIM]f32;
+    pre_h: [INKLING_REF_MAX_SEQ * INKLING_REF_MAX_DIM]f32;
+    bank_h: [INKLING_REF_MAX_SEQ * INKLING_REF_MAX_DIM]f32;
+    q_all: [INKLING_REF_MAX_SEQ * INKLING_REF_MAX_DIM]f32;
+    for i: 0..<(seq_len * d) { cur[i] = tokens_in[i]; }
+
+    for l: 0..<cfg.prelude_layers {
+        slot := inkling_logical_slot(cfg, InklingLoopStage.prelude, l, 0);
+        for pos: 0..<seq_len {
+            off := pos * d;
+            il_layer_qkv_write(cfg, w, l, slot, pos, false, 0, bank_h[off..<off + d], cur[off..<off + d], q_all[off..<off + d], k_cache, v_cache); // mutant: equivalent (loop_layer_idx unused when use_msg is false)
+        }
+        for pos: 0..<seq_len {
+            off := pos * d;
+            il_layer_attn_and_moe(cfg, w, l, slot, pos, q_all[off..<off + d], k_cache, v_cache, cur[off..<off + d]);
+        }
+    }
+    for i: 0..<(seq_len * d) { pre_h[i] = cur[i]; }
+
+    for pass: 0..<cfg.loop_count {
+        if pass > 0 { // mutant: equivalent (on pass == 0 cur already equals pre_h and bank_h is unused)
+            for i: 0..<(seq_len * d) { bank_h[i] = cur[i]; cur[i] = pre_h[i]; }
+        }
+        for l: 0..<cfg.loop_layers {
+            ip := cfg.prelude_layers + l;
+            slot := inkling_logical_slot(cfg, InklingLoopStage.loop_body, l, pass);
+            for pos: 0..<seq_len {
+                off := pos * d;
+                il_layer_qkv_write(cfg, w, ip, slot, pos, pass > 0, l, bank_h[off..<off + d], cur[off..<off + d], q_all[off..<off + d], k_cache, v_cache);
+            }
+            for pos: 0..<seq_len {
+                off := pos * d;
+                il_layer_attn_and_moe(cfg, w, ip, slot, pos, q_all[off..<off + d], k_cache, v_cache, cur[off..<off + d]);
+            }
+        }
+    }
+
+    for l: 0..<cfg.postlude_layers {
+        ip := cfg.prelude_layers + cfg.loop_layers + l;
+        slot := inkling_logical_slot(cfg, InklingLoopStage.postlude, l, 0);
+        for pos: 0..<seq_len {
+            off := pos * d;
+            il_layer_qkv_write(cfg, w, ip, slot, pos, false, 0, bank_h[off..<off + d], cur[off..<off + d], q_all[off..<off + d], k_cache, v_cache); // mutant: equivalent (loop_layer_idx unused when use_msg is false)
+        }
+        for pos: 0..<seq_len {
+            off := pos * d;
+            il_layer_attn_and_moe(cfg, w, ip, slot, pos, q_all[off..<off + d], k_cache, v_cache, cur[off..<off + d]);
+        }
+    }
+
+    for i: 0..<(seq_len * d) { tokens_out[i] = cur[i]; }
+    return InklingLoopStatus.ok;
+}
+// book:end moe-forward
+
+// ---- Legacy compatibility helpers (used by ch268 CPU fixture; unchanged from origin/main) ----
+
 inkling_moe_residual :: (h:[]f32, router_w:[]f32, expert_scale:[]f32, dim:int, experts:int, top_k:int) #effects(all) {
     scores: [INKLING_LOOP_MAX_EXPERTS]f32;
     for e: 0..<experts {
@@ -224,4 +487,284 @@ inkling_loop_prefill :: (cfg:InklingLoopConfig, seq_len:int, tokens_in:[]f32, ro
     }
     return InklingLoopStatus.ok;
 }
-// book:end forward
+
+// ---- Deterministic fixture builder for tests & ch267 example ----
+
+il_test_fill :: (dst:[]f32, seed:int, scale:f32) #effects(all) {
+    st := seed;
+    for i: 0..<dst.count {
+        st = (st * 1103515245 + 12345) & 0x7fffffff;
+        v := cast(f32)((st % 2001) - 1000) / 1000.0f32;
+        dst[i] = v * scale;
+    }
+}
+
+#test "production Inkling 2 Mini 24-phys / 48-slot schedule and variable K=1..5 bijection" {
+    ink3 := InklingLoopConfig.{prelude_layers=6, loop_layers=12, postlude_layers=6, loop_count=3, dim=2304, experts=128, top_k=8, max_seq=32768};
+    p3 := inkling_loop_plan(ink3);
+    #assert p3.status == InklingLoopStatus.ok && p3.total_steps == 48 && p3.kv_slots == 48 * 32768;
+
+    #assert inkling_logical_slot(ink3, InklingLoopStage.prelude, 0, 0) == 0;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.prelude, 5, 0) == 5;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 0, 0) == 6;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 11, 0) == 17;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.postlude, 0, 0) == 18;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.postlude, 5, 0) == 23;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 0, 1) == 24;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 11, 1) == 35;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 0, 2) == 36;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 11, 2) == 47;
+
+    for l: 0..<6 { #assert inkling_physical_layer(ink3, l) == l; }
+    for pass: 0..<3 {
+        for l: 0..<12 {
+            s := inkling_logical_slot(ink3, InklingLoopStage.loop_body, l, pass);
+            #assert inkling_physical_layer(ink3, s) == 6 + l;
+        }
+    }
+    for l: 0..<6 { #assert inkling_physical_layer(ink3, 18 + l) == 18 + l; }
+
+    // Single-loop-layer boundary (loop_layers == 1) and non-divisible n_phys (e.g. 5) so (slot - n_phys) vs (slot + n_phys) differs.
+    one_l := InklingLoopConfig.{prelude_layers=2, loop_layers=1, postlude_layers=2, loop_count=3, dim=4, experts=2, top_k=1, max_seq=4};
+    #assert inkling_physical_layer(one_l, 5) == 2;
+    odd_l := InklingLoopConfig.{prelude_layers=1, loop_layers=3, postlude_layers=1, loop_count=3, dim=4, experts=2, top_k=1, max_seq=4};
+    // n_phys = 5, slot 5 -> (5 - 5) % 3 = 0 -> phys 1; (5 + 5) % 3 = 1 -> phys 2 (kills - -> +).
+    #assert inkling_physical_layer(odd_l, 5) == 1;
+    #assert inkling_physical_layer(odd_l, 6) == 2;
+    #assert inkling_physical_layer(odd_l, 7) == 3;
+
+    ink1 := ink3; ink1.loop_count = 1;
+    ink5 := ink3; ink5.loop_count = 5;
+    #assert inkling_loop_plan(ink1).total_steps == 24;
+    #assert inkling_loop_plan(ink5).total_steps == 72;
+    #assert inkling_logical_slot(ink5, InklingLoopStage.loop_body, 11, 4) == 71;
+    #assert inkling_physical_layer(ink5, 71) == 17;
+
+    // Boundary tests on exact max & min values.
+    min_ok := InklingLoopConfig.{prelude_layers=0, loop_layers=1, postlude_layers=0, loop_count=1, dim=1, experts=1, top_k=1, max_seq=1};
+    #assert inkling_loop_plan(min_ok).status == InklingLoopStatus.ok;
+    max_ok := InklingLoopConfig.{prelude_layers=0, loop_layers=1, postlude_layers=0, loop_count=INKLING_LOOP_MAX_PASSES, dim=INKLING_PROD_MAX_DIM, experts=INKLING_PROD_MAX_EXPERTS, top_k=INKLING_PROD_MAX_EXPERTS, max_seq=INKLING_PROD_MAX_SEQ};
+    #assert inkling_loop_plan(max_ok).status == InklingLoopStatus.ok;
+
+    // Refused boundary inputs.
+    bad_k0 := ink3; bad_k0.loop_count = 0;
+    bad_k17 := ink3; bad_k17.loop_count = 17;
+    bad_pre := ink3; bad_pre.prelude_layers = -1;
+    bad_loop := ink3; bad_loop.loop_layers = 0;
+    bad_post := ink3; bad_post.postlude_layers = -1;
+    bad_dim0 := ink3; bad_dim0.dim = 0;
+    bad_dim := ink3; bad_dim.dim = INKLING_PROD_MAX_DIM + 1;
+    bad_exp0 := ink3; bad_exp0.experts = 0;
+    bad_exp := ink3; bad_exp.experts = INKLING_PROD_MAX_EXPERTS + 1;
+    bad_tk0 := ink3; bad_tk0.top_k = 0;
+    bad_tk := ink3; bad_tk.top_k = 129;
+    bad_seq0 := ink3; bad_seq0.max_seq = 0;
+    bad_seq := ink3; bad_seq.max_seq = INKLING_PROD_MAX_SEQ + 1;
+    #assert inkling_loop_plan(bad_k0).status == InklingLoopStatus.pass;
+    #assert inkling_loop_plan(bad_k17).status == InklingLoopStatus.pass;
+    #assert inkling_loop_plan(bad_pre).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_loop).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_post).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_dim0).status == InklingLoopStatus.limit;
+    #assert inkling_loop_plan(bad_dim).status == InklingLoopStatus.limit;
+    #assert inkling_loop_plan(bad_exp0).status == InklingLoopStatus.limit;
+    #assert inkling_loop_plan(bad_exp).status == InklingLoopStatus.limit;
+    #assert inkling_loop_plan(bad_tk0).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_tk).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_seq0).status == InklingLoopStatus.shape;
+    #assert inkling_loop_plan(bad_seq).status == InklingLoopStatus.shape;
+
+    #assert inkling_logical_slot(ink3, InklingLoopStage.prelude, -1, 0) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.prelude, 0, 1) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.prelude, 6, 0) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 0, -1) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 0, 3) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.loop_body, 12, 0) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.postlude, 0, 1) == -1;
+    #assert inkling_logical_slot(ink3, InklingLoopStage.postlude, 6, 0) == -1;
+    #assert inkling_physical_layer(ink3, -1) == -1;
+    #assert inkling_physical_layer(ink3, 48) == -1;
+    #assert inkling_physical_layer(bad_loop, 0) == -1;
+}
+
+#test "full-math looped MoE matches Python oracle & prefill==decode across K=1, K=3, K=5" {
+    wq: [64]f32; wk: [64]f32; wv: [64]f32; wo: [64]f32;
+    wr: [64]f32; wup: [384]f32; wdn: [384]f32; wlg: [8]f32;
+    il_test_fill(wq[..], 11, 0.35f32);
+    il_test_fill(wk[..], 23, 0.35f32);
+    il_test_fill(wv[..], 37, 0.35f32);
+    il_test_fill(wo[..], 53, 0.30f32);
+    il_test_fill(wr[..], 71, 0.50f32);
+    il_test_fill(wup[..], 89, 0.35f32);
+    il_test_fill(wdn[..], 101, 0.30f32);
+    il_test_fill(wlg[..], 131, 0.60f32);
+    w := InklingMoEWeights.{hidden=6, wq=wq[..], wk=wk[..], wv=wv[..], wo=wo[..], w_router=wr[..], w_up=wup[..], w_down=wdn[..], w_loop_gate=wlg[..]};
+
+    // Exact Python reference oracle outputs (all 3 tokens x 4 dims) for K=1, K=3, K=5.
+    gold_k1 := [12]f32.[1.011787f32, -0.902547f32, 0.108753f32, 0.573325f32, -0.490247f32, 1.003720f32, -0.488974f32, 0.671761f32, 0.840378f32, 0.457105f32, -1.223198f32, 0.458725f32];
+    gold_k3 := [12]f32.[1.198266f32, -1.028948f32, 0.093434f32, 0.613270f32, -0.532945f32, 1.091900f32, -0.599115f32, 0.667380f32, 0.898735f32, 0.788205f32, -1.259376f32, 0.519828f32];
+    gold_k5 := [12]f32.[1.333824f32, -1.087125f32, 0.080697f32, 0.631856f32, -0.542576f32, 1.160707f32, -0.642569f32, 0.667022f32, 0.926646f32, 0.982158f32, -1.281773f32, 0.541474f32];
+
+    inputs := [12]f32.[
+        1.0f32, -0.5f32, 0.25f32, 0.75f32,
+        -0.4f32, 1.1f32, -0.3f32, 0.6f32,
+        0.8f32, 0.2f32, -0.9f32, 0.5f32
+    ];
+
+    // Check RMSNorm epsilon behavior on exact zero vector (kills + -> - on 1e-6).
+    z4 := [4]f32.[0.0f32, 0.0f32, 0.0f32, 0.0f32];
+    zn: [4]f32;
+    il_rmsnorm(z4[..], zn[..], 4);
+    #assert zn[0] == 0.0f32 && zn[3] == 0.0f32;
+
+    for ki: 0..<3 {
+        k := ifx ki == 0 then 1 else ifx ki == 1 then 3 else 5;
+        cfg := InklingLoopConfig.{prelude_layers=1, loop_layers=2, postlude_layers=1, loop_count=k, dim=4, experts=4, top_k=2, max_seq=4};
+        kp: [512]f32; vp: [512]f32; kd: [512]f32; vd: [512]f32;
+        out_pre: [12]f32; out_dec: [12]f32;
+
+        #assert inkling_moe_prefill(cfg, w, 3, inputs[..], kp[..], vp[..], out_pre[..]) == InklingLoopStatus.ok;
+        for pos: 0..<3 {
+            #assert inkling_moe_decode_token(cfg, w, pos, inputs[pos*4..<(pos+1)*4], kd[..], vd[..], out_dec[pos*4..<(pos+1)*4]) == InklingLoopStatus.ok;
+        }
+        for i: 0..<12 {
+            d := out_pre[i] - out_dec[i];
+            if d < 0.0f32 { d = -d; }
+            #assert d < 0.000001f32;
+            g := ifx ki == 0 then gold_k1[i] else ifx ki == 1 then gold_k3[i] else gold_k5[i];
+            dg := out_pre[i] - g;
+            if dg < 0.0f32 { dg = -dg; }
+            #assert dg < 0.00001f32;
+        }
+        p := inkling_loop_plan(cfg);
+        for i: 0..<(p.kv_slots * 4) {
+            dk := kp[i] - kd[i]; if dk < 0.0f32 { dk = -dk; }
+            dv := vp[i] - vd[i]; if dv < 0.0f32 { dv = -dv; }
+            #assert dk < 0.000001f32 && dv < 0.000001f32;
+        }
+    }
+
+    // Exact capacity and limit boundary checks on il_moe_validate, inkling_moe_decode_token, inkling_moe_prefill.
+    cfg := InklingLoopConfig.{prelude_layers=1, loop_layers=2, postlude_layers=1, loop_count=3, dim=4, experts=4, top_k=2, max_seq=4};
+    // Exact-size buffers must pass (kills < -> <= on every capacity check).
+    p := inkling_loop_plan(cfg);
+    kp_exact: [128]f32; vp_exact: [128]f32;
+    #assert p.kv_slots * 4 == 128;
+    #assert il_moe_validate(cfg, w, p.kv_slots, 128, 128) == InklingLoopStatus.ok;
+    #assert il_moe_validate(cfg, w, p.kv_slots, 127, 128) == InklingLoopStatus.capacity;
+    #assert il_moe_validate(cfg, w, p.kv_slots, 128, 127) == InklingLoopStatus.capacity;
+
+    w_q := w; w_q.wq = wq[0..<63]; #assert il_moe_validate(cfg, w_q, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_k := w; w_k.wk = wk[0..<63]; #assert il_moe_validate(cfg, w_k, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_v := w; w_v.wv = wv[0..<63]; #assert il_moe_validate(cfg, w_v, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_o := w; w_o.wo = wo[0..<63]; #assert il_moe_validate(cfg, w_o, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_r := w; w_r.w_router = wr[0..<63]; #assert il_moe_validate(cfg, w_r, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_u := w; w_u.w_up = wup[0..<383]; #assert il_moe_validate(cfg, w_u, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_d := w; w_d.w_down = wdn[0..<383]; #assert il_moe_validate(cfg, w_d, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+    w_g := w; w_g.w_loop_gate = wlg[0..<7]; #assert il_moe_validate(cfg, w_g, p.kv_slots, 128, 128) == InklingLoopStatus.capacity;
+
+    // Exact max ref limits pass validate (dim==16, experts==8, max_seq==16, hidden==1 and hidden==32).
+    cfg_lim := InklingLoopConfig.{prelude_layers=0, loop_layers=1, postlude_layers=0, loop_count=1, dim=INKLING_REF_MAX_DIM, experts=INKLING_REF_MAX_EXPERTS, top_k=1, max_seq=INKLING_REF_MAX_SEQ};
+    big_w: [4096]f32;
+    w_h1 := InklingMoEWeights.{hidden=1, wq=big_w[..], wk=big_w[..], wv=big_w[..], wo=big_w[..], w_router=big_w[..], w_up=big_w[..], w_down=big_w[..], w_loop_gate=big_w[..]};
+    #assert il_moe_validate(cfg_lim, w_h1, 16, 256, 256) == InklingLoopStatus.ok;
+    w_h32 := w_h1; w_h32.hidden = INKLING_REF_MAX_HIDDEN;
+    #assert il_moe_validate(cfg_lim, w_h32, 16, 256, 256) == InklingLoopStatus.ok;
+    w_h0 := w_h1; w_h0.hidden = 0;
+    #assert il_moe_validate(cfg_lim, w_h0, 16, 256, 256) == InklingLoopStatus.shape;
+    w_h33 := w_h1; w_h33.hidden = INKLING_REF_MAX_HIDDEN + 1;
+    #assert il_moe_validate(cfg_lim, w_h33, 16, 256, 256) == InklingLoopStatus.shape;
+
+    cfg_d17 := cfg_lim; cfg_d17.dim = INKLING_REF_MAX_DIM + 1;
+    cfg_e9 := cfg_lim; cfg_e9.experts = INKLING_REF_MAX_EXPERTS + 1;
+    cfg_s17 := cfg_lim; cfg_s17.max_seq = INKLING_REF_MAX_SEQ + 1;
+    #assert il_moe_validate(cfg_d17, w_h1, 16, 4096, 4096) == InklingLoopStatus.limit;
+    #assert il_moe_validate(cfg_e9, w_h1, 16, 4096, 4096) == InklingLoopStatus.limit;
+    #assert il_moe_validate(cfg_s17, w_h1, 16, 4096, 4096) == InklingLoopStatus.limit;
+
+    out: [12]f32;
+    cfg_badk := cfg; cfg_badk.loop_count = 0;
+    #assert inkling_moe_decode_token(cfg_badk, w, 0, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.pass;
+    #assert inkling_moe_decode_token(cfg, w_h0, 0, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.shape;
+    #assert inkling_moe_decode_token(cfg, w, -1, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.shape;
+    #assert inkling_moe_decode_token(cfg, w, 4, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.shape;
+    #assert inkling_moe_decode_token(cfg, w, 0, inputs[0..<3], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.capacity;
+    #assert inkling_moe_decode_token(cfg, w, 0, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<3]) == InklingLoopStatus.capacity;
+
+    #assert inkling_moe_prefill(cfg_badk, w, 1, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.pass;
+    #assert inkling_moe_prefill(cfg, w_h0, 1, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.shape;
+    #assert inkling_moe_prefill(cfg, w, 0, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.shape;
+    #assert inkling_moe_prefill(cfg, w, 5, inputs[..], kp_exact[..], vp_exact[..], out[..]) == InklingLoopStatus.shape;
+    #assert inkling_moe_prefill(cfg, w, 1, inputs[0..<3], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.capacity;
+    #assert inkling_moe_prefill(cfg, w, 1, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<3]) == InklingLoopStatus.capacity;
+    #assert inkling_moe_prefill(cfg, w, 4, inputs[..], kp_exact[..], vp_exact[..], out[..]) == InklingLoopStatus.capacity;
+    // Exact seq_len == max_seq (4) with exact 16-elem buffers passes (kills > -> >= on seq_len and < -> <= on tokens_in/out).
+    in16: [16]f32; out16: [16]f32;
+    for i: 0..<12 { in16[i] = inputs[i]; }
+    #assert inkling_moe_prefill(cfg, w, 4, in16[..], kp_exact[..], vp_exact[..], out16[..]) == InklingLoopStatus.ok;
+    // Exact single-token seq_len == 1 passes (kills < 1 -> <= 1 on seq_len).
+    #assert inkling_moe_prefill(cfg, w, 1, inputs[0..<4], kp_exact[..], vp_exact[..], out[0..<4]) == InklingLoopStatus.ok;
+
+    // Multi-postlude check (postlude_layers == 2) ensures ip = prelude + loop + l (not - l) in both decode & prefill.
+    cfg_p2 := InklingLoopConfig.{prelude_layers=1, loop_layers=1, postlude_layers=2, loop_count=2, dim=4, experts=4, top_k=2, max_seq=2};
+    kp2: [64]f32; vp2: [64]f32; kd2: [64]f32; vd2: [64]f32; op2: [4]f32; od2: [4]f32;
+    // Set layer 3 (postlude l=1) distinct from layer 1 (prelude+loop-1): scale wo[3] by 5x.
+    wo2: [64]f32; for i: 0..<64 { wo2[i] = wo[i]; }
+    for i: 48..<64 { wo2[i] = 0.0f32; }
+    wo2[48] = 1.0f32; wo2[53] = 1.0f32; wo2[58] = 1.0f32; wo2[63] = 1.0f32;
+    w_p2 := w; w_p2.wo = wo2[..];
+    #assert inkling_moe_prefill(cfg_p2, w_p2, 1, inputs[0..<4], kp2[..], vp2[..], op2[..]) == InklingLoopStatus.ok;
+    #assert inkling_moe_decode_token(cfg_p2, w_p2, 0, inputs[0..<4], kd2[..], vd2[..], od2[..]) == InklingLoopStatus.ok;
+    // Compare against replacing layer 3 with layer 1's weights: output must differ because l=1 reads ip=3, not ip=1.
+    wo2_swap := wo2;
+    for i: 0..<16 { wo2_swap[48 + i] = wo2[16 + i]; }
+    w_p2_swap := w_p2; w_p2_swap.wo = wo2_swap[..];
+    op2_s: [4]f32; od2_s: [4]f32;
+    #assert inkling_moe_prefill(cfg_p2, w_p2_swap, 1, inputs[0..<4], kp2[..], vp2[..], op2_s[..]) == InklingLoopStatus.ok;
+    #assert inkling_moe_decode_token(cfg_p2, w_p2_swap, 0, inputs[0..<4], kd2[..], vd2[..], od2_s[..]) == InklingLoopStatus.ok;
+    dp2: f32 = 0.0f32; dd2: f32 = 0.0f32;
+    for i: 0..<4 {
+        a := op2[i] - op2_s[i]; if a < 0.0f32 { a = -a; } dp2 += a;
+        b := od2[i] - od2_s[i]; if b < 0.0f32 { b = -b; } dd2 += b;
+    }
+    #assert dp2 > 0.01f32 && dd2 > 0.01f32;
+
+    // Softmax numerical stability (kills '-' -> '+' in scores[t] - max_s and pick_s[k] - max_r) + router tie-break (> vs >=).
+    cfg_stab := InklingLoopConfig.{prelude_layers=0, loop_layers=1, postlude_layers=0, loop_count=1, dim=2, experts=2, top_k=1, max_seq=2};
+    wq_s := [4]f32.[400.0f32, 0.0f32, 0.0f32, 400.0f32];
+    wk_s := [4]f32.[400.0f32, 0.0f32, 0.0f32, 400.0f32];
+    wv_s := [4]f32.[1.0f32, 0.0f32, 0.0f32, 1.0f32];
+    wo_s := [4]f32.[0.5f32, 0.0f32, 0.0f32, 0.5f32];
+    // Equal large router logits for expert 0 and expert 1 -> lower index 0 must win, and exp(r - max_r) must stay finite.
+    wr_s := [4]f32.[500.0f32, 0.0f32, 500.0f32, 0.0f32];
+    wup_s := [4]f32.[1.0f32, 0.0f32, -1.0f32, 0.0f32]; // expert 0: +1, expert 1: -1
+    wdn_s := [4]f32.[2.0f32, 0.0f32, -2.0f32, 0.0f32];
+    wlg_s := [2]f32.[0.0f32, 0.0f32];
+    w_s := InklingMoEWeights.{hidden=1, wq=wq_s[..], wk=wk_s[..], wv=wv_s[..], wo=wo_s[..], w_router=wr_s[..], w_up=wup_s[..], w_down=wdn_s[..], w_loop_gate=wlg_s[..]};
+    in_s := [2]f32.[1.0f32, 0.0f32];
+    ks: [8]f32; vs: [8]f32; os: [2]f32;
+    #assert inkling_moe_decode_token(cfg_stab, w_s, 0, in_s[..], ks[..], vs[..], os[..]) == InklingLoopStatus.ok;
+    // Expert 0 chosen -> silu(+1.414) > 0 * 2.0 > 0, so os[0] > 2.5 and finite (NaN fails comparison).
+    #assert os[0] > 2.5f32 && os[0] < 10.0f32;
+}
+
+#test "legacy inkling_kv_slot and inkling_loop_prefill compatibility" {
+    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=8};
+    #assert inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 0, 2) == 2;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 0, 2) == 10;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 1, 2) == 18;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 2, 2) == 26;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 2) == 34;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 3, 0) == -1;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 1, 0) == -1;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 8) == -1;
+
+    rw := [16]f32.[0.5f32, -0.2f32, 0.1f32, 0.3f32, -0.4f32, 0.6f32, 0.2f32, -0.1f32, 0.2f32, 0.1f32, -0.5f32, 0.4f32, -0.1f32, -0.3f32, 0.7f32, 0.2f32];
+    es := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
+    inp := [8]f32.[1.0f32, 0.5f32, -0.25f32, 0.75f32, -0.5f32, 1.25f32, 0.5f32, -0.25f32];
+    kv1: [256]f32; kv2: [256]f32; o1: [8]f32; o2: [8]f32;
+    #assert inkling_loop_prefill(cfg, 2, inp[..], rw[..], es[..], kv1[..], o1[..]) == InklingLoopStatus.ok;
+    #assert inkling_loop_decode_token(cfg, 0, inp[0..<4], rw[..], es[..], kv2[..], o2[0..<4]) == InklingLoopStatus.ok;
+    #assert inkling_loop_decode_token(cfg, 1, inp[4..<8], rw[..], es[..], kv2[..], o2[4..<8]) == InklingLoopStatus.ok;
+    for i: 0..<8 { d := o1[i] - o2[i]; if d < 0.0f32 { d = -d; } #assert d < 0.000001f32; }
+}

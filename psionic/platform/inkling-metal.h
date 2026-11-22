@@ -50,9 +50,12 @@ typedef struct {
 
 /* Open an Inkling 2 Mini GGUF checkpoint on Metal.
    metal_path is a file containing MSL produced by `coax metal-compute psionic/lib/inkling/kernels.coax`.
-   max_ctx is the maximum context length for full-attention layers (e.g. 4096 or 8192). */
+   max_ctx is the maximum context length for full-attention layers (e.g. 4096 or 8192).
+   loop_count_override > 0 overrides the checkpoint's middle-block loop count K (e.g. 1, 3, 5). */
 int  ink_open(const char *gguf_path, const char *metal_path, int max_ctx,
               InkSession **out, char *err, size_t err_bytes);
+int  ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
+                 int loop_count_override, InkSession **out, char *err, size_t err_bytes);
 void ink_close(InkSession *s);
 void ink_reset(InkSession *s);
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits);

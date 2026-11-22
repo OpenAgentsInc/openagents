@@ -1,2 +1,4 @@
-Inkling looped schedule (K=3): 5 logical steps, 20 KV slots
-prefill == step-by-step decode verified across 3 passes
+Inkling 2 Mini schedule: K=1 -> 24 slots, K=3 -> 48 slots, K=5 -> 72 slots
+K=1 prefill==decode exact; tok2_x1e4=8403,4571,-12231,4587
+K=3 prefill==decode exact; tok2_x1e4=8987,7882,-12593,5198
+K=5 prefill==decode exact; tok2_x1e4=9266,9821,-12817,5414

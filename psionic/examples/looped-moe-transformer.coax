@@ -3,30 +3,54 @@
 
 // book:begin example
 main :: () {
-    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=4};
-    plan := inkling_loop_plan(cfg);
-    #assert plan.status == InklingLoopStatus.ok;
-    print("Inkling looped schedule (K=%): % logical steps, % KV slots\n", cfg.loop_count, plan.total_steps, plan.kv_slots);
+    // 1. Production Inkling 2 Mini schedule (24 phys layers: 6 prelude + 12 loop x K + 6 coda).
+    ink3 := InklingLoopConfig.{prelude_layers=6, loop_layers=12, postlude_layers=6, loop_count=3, dim=2304, experts=128, top_k=8, max_seq=32768};
+    ink1 := ink3; ink1.loop_count = 1;
+    ink5 := ink3; ink5.loop_count = 5;
+    p1 := inkling_loop_plan(ink1);
+    p3 := inkling_loop_plan(ink3);
+    p5 := inkling_loop_plan(ink5);
+    #assert p1.status == InklingLoopStatus.ok && p3.status == InklingLoopStatus.ok && p5.status == InklingLoopStatus.ok;
+    print("Inkling 2 Mini schedule: K=1 -> % slots, K=3 -> % slots, K=5 -> % slots\n", p1.total_steps, p3.total_steps, p5.total_steps);
 
-    router_w := [16]f32.[
-        0.5f32, -0.2f32, 0.1f32, 0.3f32,
-        -0.4f32, 0.6f32, 0.2f32, -0.1f32,
-        0.2f32, 0.1f32, -0.5f32, 0.4f32,
-        -0.1f32, -0.3f32, 0.7f32, 0.2f32
+    // 2. Full-math Looped MoE (RMSNorm + causal Q/K/V attention + cross-pass gate + top-2 SiLU MoE).
+    wq: [64]f32; wk: [64]f32; wv: [64]f32; wo: [64]f32;
+    wr: [64]f32; wup: [384]f32; wdn: [384]f32; wlg: [8]f32;
+    il_test_fill(wq[..], 11, 0.35f32);
+    il_test_fill(wk[..], 23, 0.35f32);
+    il_test_fill(wv[..], 37, 0.35f32);
+    il_test_fill(wo[..], 53, 0.30f32);
+    il_test_fill(wr[..], 71, 0.50f32);
+    il_test_fill(wup[..], 89, 0.35f32);
+    il_test_fill(wdn[..], 101, 0.30f32);
+    il_test_fill(wlg[..], 131, 0.60f32);
+    w := InklingMoEWeights.{hidden=6, wq=wq[..], wk=wk[..], wv=wv[..], wo=wo[..], w_router=wr[..], w_up=wup[..], w_down=wdn[..], w_loop_gate=wlg[..]};
+    inputs := [12]f32.[
+        1.0f32, -0.5f32, 0.25f32, 0.75f32,
+        -0.4f32, 1.1f32, -0.3f32, 0.6f32,
+        0.8f32, 0.2f32, -0.9f32, 0.5f32
     ];
-    expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
-    inputs := [8]f32.[1.0f32, 0.5f32, -0.25f32, 0.75f32, -0.5f32, 1.25f32, 0.5f32, -0.25f32];
-    kv_pre: [128]f32; kv_dec: [128]f32; out_pre: [8]f32; out_dec: [8]f32;
 
-    #assert inkling_loop_prefill(cfg, 2, inputs[..], router_w[..], expert_scale[..], kv_pre[..], out_pre[..]) == InklingLoopStatus.ok;
-    #assert inkling_loop_decode_token(cfg, 0, inputs[0..<4], router_w[..], expert_scale[..], kv_dec[..], out_dec[0..<4]) == InklingLoopStatus.ok;
-    #assert inkling_loop_decode_token(cfg, 1, inputs[4..<8], router_w[..], expert_scale[..], kv_dec[..], out_dec[4..<8]) == InklingLoopStatus.ok;
-
-    for i: 0..<8 {
-        d := out_pre[i] - out_dec[i];
-        if d < 0.0f32 { d = -d; }
-        #assert d < 0.000001f32;
+    for ki: 0..<3 {
+        k := ifx ki == 0 then 1 else ifx ki == 1 then 3 else 5;
+        cfg := InklingLoopConfig.{prelude_layers=1, loop_layers=2, postlude_layers=1, loop_count=k, dim=4, experts=4, top_k=2, max_seq=4};
+        kp: [512]f32; vp: [512]f32; kd: [512]f32; vd: [512]f32;
+        out_pre: [12]f32; out_dec: [12]f32;
+        #assert inkling_moe_prefill(cfg, w, 3, inputs[..], kp[..], vp[..], out_pre[..]) == InklingLoopStatus.ok;
+        for pos: 0..<3 {
+            #assert inkling_moe_decode_token(cfg, w, pos, inputs[pos*4..<(pos+1)*4], kd[..], vd[..], out_dec[pos*4..<(pos+1)*4]) == InklingLoopStatus.ok;
+        }
+        for i: 0..<12 {
+            d := out_pre[i] - out_dec[i];
+            if d < 0.0f32 { d = -d; }
+            #assert d < 0.000001f32;
+        }
+        // Print token-2 hidden state scaled to 1e-4 integers for deterministic cross-checking against Python reference.
+        h0 := cast(int)(out_pre[8] * 10000.0f32);
+        h1 := cast(int)(out_pre[9] * 10000.0f32);
+        h2 := cast(int)(out_pre[10] * 10000.0f32);
+        h3 := cast(int)(out_pre[11] * 10000.0f32);
+        print("K=% prefill==decode exact; tok2_x1e4=%,%,%,%\n", k, h0, h1, h2, h3);
     }
-    print("prefill == step-by-step decode verified across 3 passes\n");
 }
 // book:end example

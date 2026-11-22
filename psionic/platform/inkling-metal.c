@@ -1291,6 +1291,11 @@ static void build_fast_weights(InkSession *s) {
 }
 
 int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSession **out, char *err, size_t err_bytes) {
+    return ink_open_ex(gguf_path, metal_path, max_ctx, 0, out, err, err_bytes);
+}
+
+int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
+                int loop_count_override, InkSession **out, char *err, size_t err_bytes) {
     *out = NULL;
     InkSession *s = (InkSession *)calloc(1, sizeof *s);
     if (!s) { snprintf(err, err_bytes, "out of memory"); return 1; }
@@ -1298,7 +1303,15 @@ int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSess
     if (ink_gguf_open(gguf_path, &s->gguf, err, err_bytes) != 0) {
         free(s); return 1;
     }
-    const InkHParams *hp = &s->gguf.hp;
+    InkHParams *hp = &s->gguf.hp;
+    if (loop_count_override < 0 || loop_count_override > 16) {
+        snprintf(err, err_bytes, "invalid loop_count_override %d (expected 0 or 1..16)", loop_count_override);
+        ink_close(s); return 1;
+    }
+    if (loop_count_override > 0) {
+        hp->loop_count = loop_count_override;
+        hp->n_slot = hp->n_phys + (hp->loop_count > 1 ? (hp->loop_count - 1) * (hp->loop_end - hp->loop_start) : 0);
+    }
     if (max_ctx <= 0) max_ctx = 4096;
     if (max_ctx > 32768) max_ctx = 32768;
     s->max_ctx = max_ctx;
