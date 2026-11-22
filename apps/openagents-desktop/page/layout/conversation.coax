@@ -730,14 +730,17 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, "Private, on-device coding powered by Inkling 2 Mini", iw));
   y += sub_h + a.gap;
   if !s[0].local_os_ok {
-    _ := app_notice(f, "coder.onboarding.unsupported", cx + pad, y, iw,
-                    "Inkling 2 Mini requires macOS on Apple Silicon (M1 or newer). Local Metal inference is not supported on this platform.", APP_NOTICE_ERROR);
+    // The host says why in its own platform's terms; the fallback names every supported machine.
+    why: string = "Inkling 2 Mini needs an Apple Silicon Mac with 32 GB of memory, or an NVIDIA GPU with 8 GB of VRAM. No supported GPU was found.";
+    if s[0].local_dl_err_n > 0 { why = sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n]); }
+    _ := app_notice(f, "coder.onboarding.unsupported", cx + pad, y, iw, why, APP_NOTICE_ERROR);
   } else if !s[0].local_hw_ok {
-    rb: [192] u8; rn := el_put(rb[..], 0, "Inkling 2 Mini requires at least 32 GB of unified memory");
+    // The host's reason (unified memory on a Mac, VRAM on an NVIDIA GPU), then what this machine has.
+    rb: [320] u8; rn := 0;
+    if s[0].local_dl_err_n > 0 { rn = el_put(rb[..], 0, cast(string) s[0].local_dl_err[0..<(ifx s[0].local_dl_err_n < 240 then s[0].local_dl_err_n else 240)]); }
+    else { rn = el_put(rb[..], 0, "Inkling 2 Mini needs an Apple Silicon Mac with 32 GB of memory, or an NVIDIA GPU with 8 GB of VRAM."); }
     if s[0].local_ram_gb > 0 {
-      rn = el_put(rb[..], rn, " (this Mac has "); rn = el_put_i(rb[..], rn, s[0].local_ram_gb); rn = el_put(rb[..], rn, " GB).");
-    } else {
-      rn = el_put(rb[..], rn, ".");
+      rn = el_put(rb[..], rn, " This computer has "); rn = el_put_i(rb[..], rn, s[0].local_ram_gb); rn = el_put(rb[..], rn, " GB.");
     }
     _ := app_notice(f, "coder.onboarding.ram", cx + pad, y, iw, sheet_pool(sh, cast(string) rb[0..<rn]), APP_NOTICE_ERROR);
   } else if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {

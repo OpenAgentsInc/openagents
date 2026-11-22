@@ -32,8 +32,8 @@ LM_PORT_MAX :: 65535;
 
 // Hardware residency floors (docs/desktop/openagents-v1-spec.md §3, §5.4).
 LM_MAC_MIN_RAM_GB :: 32;
-LM_CUDA_IQ4_MIN_VRAM_GB :: 24;
-LM_CUDA_NVFP4_MIN_VRAM_GB :: 16;
+LM_CUDA_IQ4_MIN_VRAM_GB :: 8;   // psionic-cuda keeps the experts that do not fit in VRAM in host memory
+LM_CUDA_NVFP4_MIN_VRAM_GB :: 8;
 LM_VULKAN_MIN_MEM_GB :: 32;
 
 // OS codes (match DC_OS_MAC / DC_OS_LINUX / DC_OS_WINDOWS in paths.coax).
@@ -184,7 +184,7 @@ lm_hw_reason :: (verdict: int) -> string #effects() {
   if verdict == LM_HW_INTEL_MAC { return "Inkling 2 Mini requires an Apple Silicon Mac."; }
   if verdict == LM_HW_LOW_RAM_MAC { return "Inkling 2 Mini requires at least 32 GB unified memory on macOS."; }
   if verdict == LM_HW_NO_GPU { return "No supported Psionic GPU backend detected."; }
-  if verdict == LM_HW_LOW_VRAM_CUDA { return "Insufficient NVIDIA VRAM for Inkling 2 Mini."; }
+  if verdict == LM_HW_LOW_VRAM_CUDA { return "Inkling 2 Mini requires an NVIDIA GPU with at least 8 GB of VRAM."; }
   if verdict == LM_HW_LOW_MEM_VULKAN { return "Inkling 2 Mini requires at least 32 GB Vulkan device memory."; }
   return "Unsupported operating system for local Inkling 2 Mini.";
 }
@@ -420,16 +420,20 @@ lm_resolve_port :: (env_port: int) -> int #effects() {
   #assert lm_admit_hardware(mac_nogpu) == LM_HW_NO_GPU;
   #assert lm_hw_reason(LM_HW_NO_GPU) == "No supported Psionic GPU backend detected.";
 
-  // Linux & Windows CUDA IQ4_NL (24 GB floor) and NVFP4 (16 GB floor)
+  // Linux & Windows CUDA: an 8 GB floor (experts that do not fit in VRAM stream from host memory)
   lin24 := LmHostCaps.{os = LM_OS_LINUX, is_apple_silicon = false, system_ram_gb = 64, backend = LM_BACKEND_CUDA, gpu_vram_gb = 24, quant = LM_QUANT_IQ4_NL};
   #assert lm_admit_hardware(lin24) == LM_HW_OK;
-  lin23 := lin24; lin23.gpu_vram_gb = 23;
+  lin16 := lin24; lin16.gpu_vram_gb = 16;
+  #assert lm_admit_hardware(lin16) == LM_HW_OK;
+  lin8 := lin24; lin8.gpu_vram_gb = 8;
+  #assert lm_admit_hardware(lin8) == LM_HW_OK;
+  lin23 := lin24; lin23.gpu_vram_gb = 7;
   #assert lm_admit_hardware(lin23) == LM_HW_LOW_VRAM_CUDA;
-  #assert lm_hw_reason(LM_HW_LOW_VRAM_CUDA) == "Insufficient NVIDIA VRAM for Inkling 2 Mini.";
+  #assert lm_hw_reason(LM_HW_LOW_VRAM_CUDA) == "Inkling 2 Mini requires an NVIDIA GPU with at least 8 GB of VRAM.";
 
   win16_nvfp4 := LmHostCaps.{os = LM_OS_WINDOWS, is_apple_silicon = false, system_ram_gb = 32, backend = LM_BACKEND_CUDA, gpu_vram_gb = 16, quant = LM_QUANT_NVFP4};
   #assert lm_admit_hardware(win16_nvfp4) == LM_HW_OK;
-  win15_nvfp4 := win16_nvfp4; win15_nvfp4.gpu_vram_gb = 15;
+  win15_nvfp4 := win16_nvfp4; win15_nvfp4.gpu_vram_gb = 7;
   #assert lm_admit_hardware(win15_nvfp4) == LM_HW_LOW_VRAM_CUDA;
 
   // Vulkan 32 GB floor + no GPU

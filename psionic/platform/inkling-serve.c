@@ -2130,6 +2130,33 @@ static void conn_thread(void *arg) {
     sock_close(cfd);
 }
 
+/* The kernel source to use when --kernels is not given: the engine's file
+   beside this executable, where the desktop bundles put it. */
+static const char *default_kernels(const char *argv0, char *out, size_t cap) {
+    char exe[4096] = "";
+#ifdef _WIN32
+    DWORD n = GetModuleFileNameA(NULL, exe, (DWORD)sizeof exe - 1);
+    exe[n < sizeof exe ? n : sizeof exe - 1] = '\0';
+#else
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n > 0) exe[n] = '\0';
+    else snprintf(exe, sizeof exe, "%s", argv0 ? argv0 : "");
+#endif
+    (void)argv0;
+    char *slash = strrchr(exe, '/');
+#ifdef _WIN32
+    char *back = strrchr(exe, '\\');
+    if (back && (!slash || back > slash)) slash = back;
+#endif
+    if (slash) slash[1] = '\0'; else exe[0] = '\0';
+    const char *name = strcmp(ink_backend_name(NULL), "psionic-cuda") == 0 ? "inkling-kernels-cuda.cu" : "inkling-kernels.metal";
+    snprintf(out, cap, "%s%s", exe, name);
+    FILE *f = fopen(out, "rb");
+    if (!f) return NULL;
+    fclose(f);
+    return out;
+}
+
 int main(int argc, char **argv) {
     const char *gguf = NULL;
     const char *metal = NULL;
@@ -2146,9 +2173,12 @@ int main(int argc, char **argv) {
         else if ((!strcmp(argv[i], "--ctx") || !strcmp(argv[i], "--ctx-size")) && i + 1 < argc) max_ctx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--idle-exit-s") && i + 1 < argc) idle_exit_s = atoi(argv[++i]);
     }
+    char kernels_beside[4200];
+    if (!metal) metal = default_kernels(argv[0], kernels_beside, sizeof kernels_beside);
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --kernels PATH [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
-                        "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option)\n", argv[0]);
+        fprintf(stderr, "usage: %s --model PATH.gguf [--kernels PATH] [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
+                        "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option).\n"
+                        "             Default: that file in this program's directory.\n", argv[0]);
         return 2;
     }
 
