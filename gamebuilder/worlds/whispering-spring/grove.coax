@@ -24,11 +24,16 @@ WS_CAIRN_X :: -2.35; WS_CAIRN_Z :: 0.45; WS_CAIRN_TOP :: 0.08;
 WS_RANGE :: [4] f32.[-1.7, 0.1, 0.9, 1.9];   // x0, z0, x1, z1
 // Where the quail goes to give each clue (inside its range): stones, ribbon, pool.
 WS_CLUE_AT :: [6] f32.[-1.55, 0.9,  -1.05, 0.2,  0.3, 0.15];
+// The spout: a carved limestone mouth in the bank above the pool, the water falling from its lip
+// into the pool's back (world-spring.coax draws the moving water).
+WS_SPOUT :: [3] f32.[0.4, 1.55, -3.62];        // the mouth's middle, on the bank's face
+WS_SPOUT_LIP :: [3] f32.[0.4, 1.38, -3.3];     // where the water leaves the stone
+WS_SPOUT_FALL :: [3] f32.[0.4, -0.1, -2.45];   // where it meets the pool
 // The interaction spots the pointer and keyboard pick: x, y, z, radius. The quail's spot moves with it.
 WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOT_QUAIL :: 3; WS_SPOTS :: 4;
 WS_SPOT :: [12] f32.[0.4, -0.05, -1.6, 1.25,   -2.65, 0.15, 0.9, 0.75,   -2.7, 2.35, -1.0, 0.95];
 // What the camera aims at, and the box every frame must show (x0, y0, z0, x1, y1, z1).
-WS_AIM :: [3] f32.[0.0, 1.0, -1.2];
+WS_AIM :: [3] f32.[0.0, 1.5, -1.4];   // a low camera, looking a little up
 WS_SAFE :: [6] f32.[-3.35, 0.0, -2.9, 3.1, 3.1, 1.95];
 
 // ---- the palette (display colours; the shaders decode them)
@@ -53,7 +58,7 @@ WS_LEAF_SUN :: [3] f32.[0.52, 0.55, 0.26];
 WS_AGAVE :: [3] f32.[0.42, 0.5, 0.26];
 
 // ---- trees: x, z, base y, height, crown radius, seed, lean x, lean z (twisted live oaks and cedars)
-WS_TREES :: 10;
+WS_TREES :: 14;
 WS_TREE_FLOATS :: 8;
 WS_TREE_AT :: [WS_TREES * WS_TREE_FLOATS] f32.[
   -4.5, -2.7, 0.0, 5.8, 1.6, 3,   0.3, 0.2,    // the ribbon cedar, back left (limbs 0 and 4)
@@ -65,7 +70,11 @@ WS_TREE_AT :: [WS_TREES * WS_TREE_FLOATS] f32.[
    1.6, -8.1, 3.2, 4.0, 1.8, 19,  0.1, 0.0,
    5.2, -6.7, 3.2, 3.6, 1.5, 23, -0.1, 0.1,
   -8.4,  3.6, 0.0, 6.0, 1.8, 29,  0.4, -0.2,
-   8.8, -1.6, 0.0, 4.6, 1.6, 31, -0.3, 0.1];
+   8.8, -1.6, 0.0, 4.6, 1.6, 31, -0.3, 0.1,
+  -7.2, -1.2, 0.0, 5.4, 1.8, 37,  0.5, 0.1,    // more trees at the edges
+   7.0, -1.0, 0.0, 5.2, 1.8, 41, -0.5, 0.1,
+  -8.6,  6.2, 0.0, 6.8, 2.2, 43,  0.6, -0.4,   // foreground framing, left and right
+   8.4,  6.0, 0.0, 6.6, 2.2, 47, -0.6, -0.4];
 WS_TREE_CLUMPS :: 7;
 
 // ---- the prayer limbs: three points each (from the trunk, its middle, its tip), the tree they grow from
@@ -80,6 +89,16 @@ WS_LIMB_AT :: [WS_LIMBS * 9] f32.[
   -4.1,  2.95, -2.55,   -2.8,  3.3,  -2.4,    -1.6,  3.35, -2.5,    // 4 the far limb, before the bank
    4.3,  3.1,   0.2,     3.4,  3.35, -0.45,    2.5,  3.4,  -0.95];  // 5 the right high limb
 WS_LIMB_TRUNK :: [WS_LIMBS] int.[0, 1, 1, 2, 0, 2];
+
+// ---- bare limbs reaching in from the edge trees, framing the top of the shot (three points each)
+WS_FRAME_LIMBS :: 6;
+WS_FRAME_LIMB_AT :: [WS_FRAME_LIMBS * 9] f32.[
+  -6.7, 3.6, -0.9,   -5.4, 4.3, -0.6,   -4.1, 4.6, -0.9,
+   6.5, 3.4, -0.7,    5.2, 4.1, -0.5,    4.0, 4.5, -0.9,
+  -7.6, 4.6,  5.2,   -5.9, 5.5,  4.0,   -4.4, 5.8,  3.0,
+   7.4, 4.5,  5.0,    5.8, 5.3,  3.9,    4.3, 5.7,  3.0,
+  -4.4, 4.4, -2.5,   -3.4, 4.9, -2.9,   -2.4, 5.0, -3.3,
+   4.4, 4.3, -2.7,    3.4, 4.8, -3.0,    2.5, 5.0, -3.3];
 
 // ---- boulders (x, z, size, seed) and agave clumps (x, z, size)
 WS_BOULDERS :: 12;
@@ -290,6 +309,12 @@ ws_tie :: (l: int, slot: int) -> WsV {
 }
 clamp_slot :: (s: int) -> int { if s < 0 { return 0; } if s >= WS_LIMB_SLOTS { return WS_LIMB_SLOTS - 1; } return s; }
 
+ws_frame_limb_point :: (l: int, t: f32) -> WsV {
+  q: [] const f32 = WS_FRAME_LIMB_AT[l * 9..<l * 9 + 9];
+  u := 1 - t;
+  return ws_v(u * u * q[0] + 2 * u * t * q[3] + t * t * q[6], u * u * q[1] + 2 * u * t * q[4] + t * t * q[7], u * u * q[2] + 2 * u * t * q[5] + t * t * q[8]);
+}
+
 ws_spot :: (s: int) -> [4] f32 {
   if s < 0 || s >= 3 { return [4] f32.[0, 0, 0, 0]; }
   q: [] const f32 = WS_SPOT[s * 4..<s * 4 + 4];
@@ -298,7 +323,7 @@ ws_spot :: (s: int) -> [4] f32 {
 
 // ---- the grove's mesh, once
 WS_FAR :: 220.0;
-WS_MESH_VERTICES :: 64000;
+WS_MESH_VERTICES :: 80000;
 
 ws_pen_tree :: (p: [] ArchPen, t: int) {
   q: [] const f32 = WS_TREE_AT[t * WS_TREE_FLOATS..<(t + 1) * WS_TREE_FLOATS];
@@ -475,6 +500,37 @@ ws_build_grove :: (p: [] ArchPen) {
   f0 := ws_v(bx0 - 0.3, by0, bz0 + 0.05); f1 := ws_v(bx0 + 0.3, by0, bz0 - 0.08);
   front := ws_v(lx - 3, -3, lz - 3);
   ws_pen_tri(p, e0, e1, f1, front); ws_pen_tri(p, e0, f1, f0, front);
+  // The spout: a dark mouth in the bank, framed in carved limestone, a lip jutting out under it.
+  sx: f32 = WS_SPOUT[0]; sy: f32 = WS_SPOUT[1]; szz: f32 = WS_SPOUT[2];
+  ws_paint3(p, ARCH_M_PLASTER, [3] f32.[0.08, 0.05, 0.04]);
+  mouth := ws_v(sx, sy, szz + 0.04);
+  for i: 0..<10 {
+    a0 := f32(WS_TAU) * cast(f32) i / 10; a1 := f32(WS_TAU) * cast(f32) (i + 1) / 10;
+    ws_pen_tri(p, mouth, ws_v(sx + cos(a0) * 0.2, sy + sin(a0) * 0.2, szz + 0.04), ws_v(sx + cos(a1) * 0.2, sy + sin(a1) * 0.2, szz + 0.04), ws_v(sx, sy, szz - 3));
+  }
+  ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
+  for i: 0..<8 {
+    a := f32(WS_TAU) * (cast(f32) i + 0.5) / 8;
+    ws_pen_box(p, sx + cos(a) * 0.28, sy + sin(a) * 0.28, szz + 0.06, 0.1, 0.09, 0.08, -a * 0.3);
+  }
+  ws_paint(p, ARCH_M_SMOOTH, WS_LIME_SHADE[..]);
+  ws_pen_box(p, WS_SPOUT_LIP[0], WS_SPOUT_LIP[1] - 0.05, (szz + f32(WS_SPOUT_LIP[2])) * 0.5, 0.16, 0.05, 0.2, 0);
+  // Bare limbs reaching in from the edges.
+  ws_paint(p, ARCH_M_BARK, WS_BARK_DARK[..]);
+  for l: 0..<WS_FRAME_LIMBS {
+    for s: 0..<6 {
+      a := ws_frame_limb_point(l, cast(f32) s / 6); b := ws_frame_limb_point(l, cast(f32) (s + 1) / 6);
+      ra := 0.12 - 0.015 * cast(f32) s; rb := ra - 0.015;
+      arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, ra, rb, 5);
+    }
+    tip := ws_frame_limb_point(l, 0.85);
+    arch_limb(p, tip.x, tip.y, tip.z, tip.x + 0.2, tip.y + 0.45, tip.z + 0.1, 0.04, 0.015, 4);
+    mid := ws_frame_limb_point(l, 0.55);
+    b: WsBlob;
+    b.x = mid.x; b.y = mid.y + 0.25; b.z = mid.z; b.rx = 0.6; b.ry = 0.32; b.rz = 0.5; b.seed = 600 + l; b.seg = 6; b.rings = 3; b.jag = 0.32;
+    ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF_SUN[..], ws_rand(77, l)));
+    ws_pen_blob(p, b);
+  }
   // Boulders.
   for i: 0..<WS_BOULDERS {
     q: [] const f32 = WS_BOULDER_AT[i * 4..<i * 4 + 4];
@@ -511,7 +567,7 @@ ws_build_grove :: (p: [] ArchPen) {
 
 // ---- what could stand in the way: every piece of scenery as rough spheres (for the tests and
 // for nothing else; the mesh above is what is drawn).
-WS_PROPS :: WS_TREES * (WS_TREE_CLUMPS + 4) + WS_LIMBS * 8 + WS_BOULDERS + 4;
+WS_PROPS :: WS_TREES * (WS_TREE_CLUMPS + 4) + WS_LIMBS * 8 + WS_FRAME_LIMBS * 8 + WS_BOULDERS + 4;
 ws_props :: (out: [] f32) -> int {
   n := 0;
   for t: 0..<WS_TREES {
@@ -532,6 +588,14 @@ ws_props :: (out: [] f32) -> int {
     }
     near := ws_limb_point(l, 0.12);
     out[n * 4] = near.x; out[n * 4 + 1] = near.y + 0.3; out[n * 4 + 2] = near.z - 0.05; out[n * 4 + 3] = 0.55; n += 1;
+  }
+  for l: 0..<WS_FRAME_LIMBS {
+    for s: 0..<7 {
+      a := ws_frame_limb_point(l, cast(f32) s / 6);
+      out[n * 4] = a.x; out[n * 4 + 1] = a.y; out[n * 4 + 2] = a.z; out[n * 4 + 3] = 0.16; n += 1;
+    }
+    mid := ws_frame_limb_point(l, 0.55);
+    out[n * 4] = mid.x; out[n * 4 + 1] = mid.y + 0.25; out[n * 4 + 2] = mid.z; out[n * 4 + 3] = 0.66; n += 1;
   }
   for i: 0..<WS_BOULDERS {
     q: [] const f32 = WS_BOULDER_AT[i * 4..<i * 4 + 4];

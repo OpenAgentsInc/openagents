@@ -363,7 +363,7 @@ clamp_int :: (v: int, lo: int, hi: int) -> int { if v < lo { return lo; } if v >
 
 // ---- the camera: one composed shot, moved straight back until the safe box fits the picture
 WS_FOV :: 0.8029;      // 46 degrees tall
-WS_BACK :: [3] f32.[0.0, 0.24, 1.0];
+WS_BACK :: [3] f32.[0.0, -0.05, 1.0];   // the eye a little below what it aims at: tilted up
 WS_FIT_MARGIN :: 0.03;
 
 ws_fits :: (u: [] f32, width: f32, height: f32, x: f32, y: f32, z: f32, margin: f32) -> bool {
@@ -409,14 +409,17 @@ ws_camera_for :: (width: f32, height: f32) -> StyCamera {
 ws_look :: () -> StyLook {
   l: StyLook;
   // dusk: a low warm sun from the left, just behind the grove, so its glow is in the shot and its light rakes the bank
-  l.sun_x = -0.9; l.sun_y = 0.13; l.sun_z = -0.32; l.shadow = 0.45;
-  l.sun_r = 0.98; l.sun_g = 0.64; l.sun_b = 0.44; l.band = 0.45;
-  l.sky_r = 0.32; l.sky_g = 0.25; l.sky_b = 0.3;
-  l.ground_r = 0.27; l.ground_g = 0.2; l.ground_b = 0.12;
-  l.zenith_r = 0.32; l.zenith_g = 0.52; l.zenith_b = 0.8;
-  l.horizon_r = 0.78; l.horizon_g = 0.83; l.horizon_b = 0.86;
-  l.haze_r = 0.86; l.haze_g = 0.7; l.haze_b = 0.5; l.haze = 0.008; l.haze_start = 12; l.haze_most = 0.55;
-  l.air = 1.45; l.cloud = 0.35; l.cloud_scale = 1.2;
+  l.sun_x = -0.9; l.sun_y = 0.085; l.sun_z = -0.35; l.shadow = 0.4;
+  l.sun_r = 1.25; l.sun_g = 0.8; l.sun_b = 0.6; l.band = 0.5;    // over 1: what it lights blooms
+  l.sky_r = 0.4; l.sky_g = 0.3; l.sky_b = 0.42;
+  l.ground_r = 0.3; l.ground_g = 0.2; l.ground_b = 0.16;
+  // the painted sky, its colours set by hand: lavender overhead, peach and rose at the horizon, a sunset glow
+  l.air = 0;
+  l.zenith_r = 0.36; l.zenith_g = 0.3; l.zenith_b = 0.6;
+  l.horizon_r = 0.98; l.horizon_g = 0.66; l.horizon_b = 0.62;
+  l.glow_r = 0.95; l.glow_g = 0.5; l.glow_b = 0.4;
+  l.cloud = 0.4; l.cloud_scale = 1.2; l.cloud_dim = 0.18;
+  l.haze_r = 0.88; l.haze_g = 0.6; l.haze_b = 0.62; l.haze = 0.008; l.haze_start = 12; l.haze_most = 0.55;
   return l;
 }
 
@@ -718,7 +721,8 @@ ws_draw_stones :: (h: [] Spring, s: [] WsSkin) {
 // wind; `seed` gives each its own sway.
 ws_draw_one_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV, fabric: int, colour: int, charm: int, l: int, slot: int, caught: f32, seed: int) {
   tie := ws_tie(l, slot);
-  col := [3] f32.[WS_RIBBON_COL[colour * 3], WS_RIBBON_COL[colour * 3 + 1], WS_RIBBON_COL[colour * 3 + 2]];
+  shine: f32 = ifx h[0].soft then 1.0f32 else 1.28f32;   // ribbons glow a little at dusk
+  col := [3] f32.[WS_RIBBON_COL[colour * 3] * shine, WS_RIBBON_COL[colour * 3 + 1] * shine, WS_RIBBON_COL[colour * 3 + 2] * shine];
   wide: f32 = WS_FABRIC_WIDE[fabric];
   flutter: f32 = WS_FABRIC_FLUTTER[fabric];
   amp: f32 = 0.11 * flutter * caught * (ifx h[0].calm then 0.3f32 else 1.0f32);
@@ -820,6 +824,56 @@ ws_draw_clue :: (h: [] Spring, s: [] WsSkin) {
   ws_skin_octa(s, ws_v(q[0], q[1] + lift, q[2]), 0.02 + 0.006 * pulse, 1.9, ws_gold(h, pulse));
 }
 
+// The spout's water: a glowing ribbon arcing from the stone lip into the pool, light running down it,
+// and a small splash where it lands.
+ws_draw_spout :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
+  lip := ws_v(WS_SPOUT_LIP[0], WS_SPOUT_LIP[1], WS_SPOUT_LIP[2]);
+  fall := ws_v(WS_SPOUT_FALL[0], WS_SPOUT_FALL[1], WS_SPOUT_FALL[2]);
+  glow: f32 = ifx h[0].soft then 0.95f32 else 1.35f32;
+  n := 12;
+  pts: [13] WsV;
+  for i: 0..<n + 1 {
+    f := cast(f32) i / cast(f32) n;
+    pts[i] = ws_v(lip.x + (fall.x - lip.x) * f, lip.y + (fall.y - lip.y) * f * f, lip.z + (fall.z - lip.z) * (1 - (1 - f) * (1 - f)));
+  }
+  side := ws_v(1, 0, 0);
+  for i: 0..<n {
+    f := cast(f32) i / cast(f32) n;
+    run := ifx h[0].calm then 0.5f32 else 0.5 + 0.5 * sin(h[0].time * 7 - f * 9);
+    k := glow * (0.78 + 0.22 * run);
+    ws_skin_strip(s, pts[i], pts[i + 1], side, 0.05 - 0.012 * f, 0.05 - 0.012 * (f + 0.08), [3] f32.[0.72 * k, 0.88 * k, 0.86 * k], eye);
+  }
+  // the splash: a ring that keeps spreading, and a few drops
+  y: f32 = WS_WATER_Y + 0.014;
+  for r: 0..<2 {
+    age := (h[0].time * 0.9 + 0.5 * cast(f32) r) - floor(h[0].time * 0.9 + 0.5 * cast(f32) r);
+    ws_skin_ring(s, fall.x, fall.z, y, 0.06 + age * 0.3, 0.02 * (1 - age), [3] f32.[0.8 * glow, 0.92 * glow, 0.9 * glow]);
+  }
+  if !h[0].calm {
+    for d: 0..<5 {
+      ph := (h[0].time * 1.6 + 0.2 * cast(f32) d) - floor(h[0].time * 1.6 + 0.2 * cast(f32) d);
+      a := 1.3 * cast(f32) d;
+      ws_skin_octa(s, ws_v(fall.x + cos(a) * ph * 0.18, fall.y + 0.25 * ph * (1 - ph) * 2, fall.z + sin(a) * ph * 0.12), 0.012, 1.4, [3] f32.[0.8 * glow, 0.92 * glow, 0.92 * glow]);
+    }
+  }
+}
+
+// Fireflies at dusk: gold motes drifting about the grove, each glowing and fading in its own time.
+WS_FIREFLIES :: 36;
+ws_draw_fireflies :: (h: [] Spring, s: [] WsSkin) {
+  count := ifx h[0].calm then 14 else WS_FIREFLIES;
+  for i: 0..<count {
+    bx: f32 = -4.6 + 9.2 * ws_rand(1301, i); bz: f32 = -3.2 + 5.6 * ws_rand(1303, i); by: f32 = 0.5 + 2.6 * ws_rand(1307, i);
+    sp: f32 = 0.25 + 0.3 * ws_rand(1309, i);
+    tt := ifx h[0].calm then 0.0f32 else h[0].time * sp;
+    x := bx + 0.45 * sin(tt + cast(f32) i); y := by + 0.25 * sin(tt * 1.7 + cast(f32) i * 2); z := bz + 0.35 * cos(tt * 0.8 + cast(f32) i);
+    beat := 0.5 + 0.5 * sin(h[0].time * (1.1 + ws_rand(1311, i)) + cast(f32) i * 3);
+    k := beat * beat * 1.1;
+    if k < 0.06 { continue; }
+    ws_skin_octa(s, ws_v(x, y, z), 0.014 + 0.008 * k, 1.0, ws_gold(h, k));
+  }
+}
+
 ws_build_skin :: (h: [] Spring) {
   s: [1] WsSkin; s[0].out = h[0].skin[..];
   eye := ws_v(h[0].cam.x, h[0].cam.y, h[0].cam.z);
@@ -828,6 +882,8 @@ ws_build_skin :: (h: [] Spring) {
   ws_draw_ribbon(h, s[..], eye);
   ws_draw_water_light(h, s[..]);
   ws_draw_clue(h, s[..]);
+  ws_draw_spout(h, s[..], eye);
+  ws_draw_fireflies(h, s[..]);
   h[0].skin_n = s[0].n;
   h[0].tris_n = s[0].n;
   h[0].skin_gen += 1;

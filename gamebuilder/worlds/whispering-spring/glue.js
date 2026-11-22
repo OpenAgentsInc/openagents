@@ -77,8 +77,9 @@ function parseState(text) {
   }
   return next;
 }
-const trackOf = (id) => manifest.tracks.find((t) => t.id === id);
-const titleOf = (id) => trackOf(id)?.title || id;
+// Each discovery reveals a page of lore (manifest.lore.pages); the album itself is the listening route.
+const pageOf = (id) => (manifest.lore?.pages || []).find((p) => p.id === id);
+const titleOf = (id) => pageOf(id)?.title || id;
 const found = (id) => (state.f & BIT[id]) !== 0;
 
 addEventListener("coaxial", (e) => {
@@ -131,8 +132,8 @@ function placeCallout(sp, x, y) {
   calloutSpot = sp;
   const n = ["spring", "cairn", "ribbon"].filter(found).length;
   $("quest-goal").textContent = sp < 0 ? "Every song found. Stay as long as you like." : GOAL[sp];
-  $("quest-count").textContent = `${n} of 3 songs found`;
-  const busy = state.m !== 0 || !$("found").hidden || settings.text || bubbleShown;
+  $("quest-count").textContent = `${n} of 3 lore pages found`;
+  const busy = state.m !== 0 || state.s === 1 || !$("found").hidden || settings.text || bubbleShown;
   if (sp < 0 || busy || !inGrove) { c.hidden = true; return; }
   if (c.textContent !== CALLOUT[sp]) c.textContent = CALLOUT[sp];
   c.hidden = false;
@@ -404,7 +405,7 @@ function renderDiscoveries() {
     li.append(s, t); ul.append(li);
   }
   $("disc-count").textContent = `${n} of 3 found.`;
-  $("disc-clue").textContent = lastClue && n < 3 ? `Lately: ${CLUE_TEXT[lastClue]}` : n === 3 ? "You have found every track in the grove." : "Watch the quail: where it lingers matters.";
+  $("disc-clue").textContent = lastClue && n < 3 ? `Lately: ${CLUE_TEXT[lastClue]}` : n === 3 ? "You have found every page of the quail's story." : "Watch the quail: where it lingers matters.";
   for (const b of $("spots").querySelectorAll("button")) {
     const id = ["spring", "cairn", "ribbon"][Number(b.dataset.spot)];
     const clue = { pool: 0, stones: 1, ribbon: 2 }[lastClue];
@@ -481,15 +482,15 @@ $("ribbon-form").addEventListener("submit", (e) => {
 let foundId = "";
 function showFound(id) {
   foundId = id;
-  const extra = { spring: "A handwritten lyric is in your journal.", cairn: "An alternate take is in your journal.", ribbon: "A voice note is in your journal." }[id];
+  const n = ["spring", "cairn", "ribbon"].filter(found).length;
   $("found-title").textContent = titleOf(id);
-  $("found-extra").textContent = extra || "";
+  $("found-extra").textContent = `A new page of the quail's story is in your journal. ${n} of 3 pages found.`;
   $("found").hidden = false;
-  announce(`You found a track: ${titleOf(id)}. ${extra || ""}`);
+  announce(`You uncovered lore: ${titleOf(id)}. It is in your journal.`);
   $("found-play").focus();
 }
 const closeFound = () => { $("found").hidden = true; (settings.text ? document.querySelector("#textmode [data-spot]") : $("spots").querySelector("button"))?.focus(); };
-$("found-play").addEventListener("click", () => { closeFound(); playTrack(foundId); open("journal"); });
+$("found-play").addEventListener("click", () => { closeFound(); open("journal"); document.getElementById(`lore-${foundId}`)?.scrollIntoView({ block: "start" }); });
 $("found-journal").addEventListener("click", () => { closeFound(); open("journal"); });
 $("found-close").addEventListener("click", closeFound);
 
@@ -520,36 +521,22 @@ function downloadButton(label, make, name) {
 }
 function renderJournal() {
   const ul = $("journal-list"); if (!ul) return; ul.textContent = "";
-  for (const t of manifest.tracks) {
-    const li = document.createElement("li");
-    const h = document.createElement("h3"); h.textContent = `${t.n}. ${found(t.id) ? t.title : "Not yet found"}`;
+  const pages = manifest.lore?.pages || [];
+  pages.forEach((pg, i) => {
+    const li = document.createElement("li"); li.id = `lore-${pg.id}`;
+    const h = document.createElement("h3"); h.textContent = `${pg.n}. ${found(pg.id) ? pg.title : "A sealed page"}`;
     li.append(h);
-    if (!found(t.id)) { const p = document.createElement("p"); p.className = "muted small"; p.textContent = HINT[t.id]; li.append(p); ul.append(li); continue; }
+    if (!found(pg.id)) { const p = document.createElement("p"); p.className = "muted small"; p.textContent = HINT[pg.id]; li.append(p); ul.append(li); return; }
+    const text = document.createElement("p"); text.className = "lyric"; text.textContent = pg.text; li.append(text);
     const row = document.createElement("div"); row.className = "row"; row.style.marginTop = "8px";
-    row.append(playButton(t.id, "Play full track"), downloadButton("Download (.wav)", () => audio.download(t.id), `${slug(t.title) || t.id}.wav`));
-    li.append(row);
-    const x = manifest.extras.find((e) => e.track === t.id);
-    if (x) {
-      const box = document.createElement("div"); box.style.marginTop = "10px";
-      const xh = document.createElement("p"); xh.className = "status found"; xh.textContent = x.title; box.append(xh);
-      const xr = document.createElement("div"); xr.className = "row"; xr.style.marginTop = "6px";
-      if (x.kind === "lyric") {
-        const p = document.createElement("p"); p.className = "lyric"; p.textContent = x.text; box.append(p);
-        xr.append(downloadButton("Download lyric (.txt)", async () => new Blob([x.text], { type: "text/plain" }), "lyric.txt"));
-      } else if (x.kind === "alternate") {
-        xr.append(playButton(x.id, "Play alternate take"), downloadButton("Download (.wav)", () => audio.download(x.id), "alternate-take.wav"));
-      } else if (x.kind === "voice") {
-        xr.append(playButton(x.id, "Play voice note"));
-        const p = document.createElement("p"); p.className = "transcript"; p.textContent = `Transcript: ${x.transcript}`; box.append(p);
-        xr.append(downloadButton("Download transcript (.txt)", async () => new Blob([x.transcript], { type: "text/plain" }), "voice-note-transcript.txt"));
-      }
-      const kept = (state.x & (1 << x.id)) !== 0;
-      const keep = document.createElement("button"); keep.type = "button"; keep.className = "btn"; keep.textContent = kept ? "Saved to journal ✓" : "Save to journal";
-      keep.disabled = kept; keep.addEventListener("click", () => send(MSG.extra, String(x.id)));
-      xr.append(keep); box.append(xr); li.append(box);
-    }
+    if (pg.file) row.append(playButton(`lore:${pg.id}`, "Hear it read"));
+    row.append(downloadButton("Download page (.txt)", async () => new Blob([`${pg.title}\n\n${pg.text}\n`], { type: "text/plain" }), `${slug(pg.title)}.txt`));
+    const kept = (state.x & (1 << i)) !== 0;
+    const keep = document.createElement("button"); keep.type = "button"; keep.className = "btn"; keep.textContent = kept ? "Kept in your journal ✓" : "Keep this page";
+    keep.disabled = kept; keep.addEventListener("click", () => send(MSG.extra, String(i)));
+    row.append(keep); li.append(row);
     ul.append(li);
-  }
+  });
 }
 function renderAlbum() {
   const ul = $("album-list"); if (!ul) return; ul.textContent = "";

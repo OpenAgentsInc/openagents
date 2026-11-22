@@ -12,8 +12,9 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2321170f'/%3E%3Cellipse cx='16' cy='20' rx='10' ry='5' fill='%235e8c86'/%3E%3Ccircle cx='16' cy='11' r='2.5' fill='%23d9c08a'/%3E%3C/svg%3E">
 <style>
 :root{
-  --walnut:#21170f; --panel:rgba(28,20,13,.9); --panel-soft:rgba(28,20,13,.72); --line:rgba(239,231,214,.2);
-  --cream:#efe7d6; --cream-dim:#c9bfa9; --gold:#d9c08a; --gold-strong:#f0d79c; --water:#5e8c86; --olive:#7d8450;
+  --walnut:#1c1320; --panel:rgba(38,22,42,.92); --panel-soft:rgba(38,22,42,.74); --line:rgba(246,214,222,.22);
+  --rose:#e9a3a8; --lilac:#b9a3da; --dusk-hi:rgba(74,40,78,.92); --dusk-lo:rgba(30,18,36,.9);
+  --cream:#f7ece6; --cream-dim:#d9c4c9; --gold:#e8c48c; --gold-strong:#f8dca6; --water:#7fb0aa; --olive:#7d8450;
   --serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --tap:48px;
@@ -31,7 +32,7 @@ button{cursor:pointer}
 h1,h2,h3{font-family:var(--serif);font-weight:500;letter-spacing:.01em}
 .btn{min-height:var(--tap);min-width:var(--tap);padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:rgba(239,231,214,.06);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:left}
 .btn:hover{background:rgba(239,231,214,.14)}
-.btn.primary{background:var(--gold);color:#22170c;border-color:var(--gold);font-weight:600}
+.btn.primary{background:linear-gradient(180deg,var(--gold-strong),var(--gold));color:#2a1626;border-color:var(--gold);font-weight:600}
 .btn.primary:hover{background:var(--gold-strong)}
 .btn[aria-pressed="true"]{border-color:var(--gold);background:rgba(217,192,138,.2)}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
@@ -50,20 +51,20 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 .check input{width:22px;height:22px;accent-color:var(--gold)}
 
 /* the title page: the grove itself, the title over the bank, the way in on the water */
-#landing{position:fixed;inset:0;z-index:30;overflow:hidden;background:radial-gradient(ellipse at 50% 32%,rgba(20,12,6,0) 30%,rgba(20,12,6,.35) 100%),linear-gradient(180deg,rgba(28,16,30,.38),rgba(20,12,6,0) 38%,rgba(20,12,6,0) 70%,rgba(20,12,6,.5))}
+#landing{position:fixed;inset:0;z-index:30;overflow:hidden;background:radial-gradient(ellipse at 50% 32%,rgba(30,12,30,0) 30%,rgba(30,12,30,.35) 100%),linear-gradient(180deg,rgba(84,44,104,.42),rgba(150,70,110,.12) 38%,rgba(20,12,20,0) 70%,rgba(24,12,28,.55))}
 #landing .title{position:absolute;left:0;right:0;top:18%;text-align:center;padding:0 16px}
-#landing h1{font-family:"Obsidian Quail Display",var(--serif);font-weight:400;font-size:clamp(40px,8.5vw,104px);letter-spacing:.14em;text-transform:uppercase;line-height:1;color:#f7efdc;text-shadow:0 2px 18px rgba(40,18,6,.65),0 0 2px rgba(40,18,6,.8)}
-#landing .album{margin-top:10px;font-family:var(--serif);font-style:italic;font-size:clamp(17px,2.4vw,24px);color:#f2e3c4;text-shadow:0 1px 10px rgba(30,14,4,.8)}
-#enter{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);min-width:260px;min-height:72px;padding:14px 40px;border-radius:50%/50%;border:1px solid rgba(240,215,156,.75);background:radial-gradient(ellipse at 50% 50%,rgba(16,46,46,.88),rgba(16,46,46,.62) 70%,rgba(16,46,46,.2));color:#f7efdc;font-family:var(--serif);font-size:clamp(22px,2.6vw,30px);letter-spacing:.04em;box-shadow:0 0 0 10px rgba(240,215,156,.10),0 0 0 22px rgba(240,215,156,.07),0 0 0 36px rgba(240,215,156,.05),0 0 30px rgba(240,215,156,.35)}
+#landing h1{font-family:"Obsidian Quail Display",var(--serif);font-weight:400;font-size:clamp(40px,8.5vw,104px);letter-spacing:.14em;text-transform:uppercase;line-height:1;color:#fbf1e6;text-shadow:0 0 28px rgba(233,163,168,.55),0 2px 18px rgba(40,14,40,.65),0 0 2px rgba(40,14,40,.8)}
+#landing .album{margin-top:10px;font-family:var(--serif);font-style:italic;font-size:clamp(17px,2.4vw,24px);color:#f6dcd6;text-shadow:0 1px 10px rgba(30,14,4,.8)}
+#enter{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);min-width:260px;min-height:72px;padding:14px 40px;border-radius:50%/50%;border:1px solid rgba(240,215,156,.75);background:radial-gradient(ellipse at 50% 50%,rgba(40,44,74,.9),rgba(52,38,78,.66) 70%,rgba(60,34,80,.22));color:#fbf1e6;font-family:var(--serif);font-size:clamp(22px,2.6vw,30px);letter-spacing:.04em;box-shadow:0 0 0 10px rgba(240,215,156,.10),0 0 0 22px rgba(240,215,156,.07),0 0 0 36px rgba(240,215,156,.05),0 0 30px rgba(240,215,156,.35)}
 #enter::before{content:"";position:absolute;left:50%;top:-30px;width:2px;height:22px;margin-left:-1px;background:linear-gradient(#fff8,#f0d79c00);border-radius:1px;box-shadow:0 0 12px 3px rgba(255,236,190,.65)}
-#enter:hover,#enter:focus-visible{background:radial-gradient(ellipse at 50% 50%,rgba(22,62,60,.95),rgba(22,62,60,.7) 70%,rgba(22,62,60,.25))}
+#enter:hover,#enter:focus-visible{background:radial-gradient(ellipse at 50% 50%,rgba(56,58,98,.96),rgba(70,48,100,.72) 70%,rgba(80,44,100,.26))}
 @media (prefers-reduced-motion:no-preference){#enter{animation:ripple 4.5s ease-in-out infinite}}
 @keyframes ripple{0%,100%{box-shadow:0 0 0 10px rgba(240,215,156,.10),0 0 0 22px rgba(240,215,156,.07),0 0 0 36px rgba(240,215,156,.05),0 0 30px rgba(240,215,156,.35)}50%{box-shadow:0 0 0 14px rgba(240,215,156,.12),0 0 0 30px rgba(240,215,156,.07),0 0 0 48px rgba(240,215,156,.035),0 0 38px rgba(240,215,156,.45)}}
 #listen{position:absolute;right:7%;top:52%;min-height:64px;padding:16px 26px 14px;border-radius:22px 30px 18px 26px;border:0;background:linear-gradient(160deg,#ece2cd,#cdbfa3 60%,#b7a888);color:#3a2a17;font-family:var(--serif);font-size:clamp(17px,1.8vw,21px);box-shadow:inset 0 -6px 12px rgba(80,60,30,.25),0 8px 18px rgba(0,0,0,.35);text-shadow:0 1px 0 rgba(255,255,255,.4)}
 #listen .moon{display:block;text-align:center;font-size:22px;line-height:1;color:#b8892e;text-shadow:0 0 8px rgba(240,200,110,.7)}
 #listen:hover,#listen:focus-visible{background:linear-gradient(160deg,#f4ebd8,#d8cbb0 60%,#c3b494)}
 #landing .corner{position:absolute;right:18px;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-#l-sound{border-radius:999px;background:rgba(20,14,9,.55);border-color:rgba(240,215,156,.5);font-family:var(--serif);font-size:18px;padding:8px 18px 8px 10px}
+#l-sound{border-radius:999px;background:rgba(38,22,42,.6);border-color:rgba(240,215,156,.5);font-family:var(--serif);font-size:18px;padding:8px 18px 8px 10px}
 #l-sound .icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid rgba(240,215,156,.6);font-size:16px}
 #sound-more{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:260px}
 #sound-more summary{cursor:pointer;color:var(--cream-dim);font-size:14px;list-style:none;text-align:right}
@@ -81,7 +82,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 .text-mode #spots{display:none}
 #hud > *{pointer-events:auto}
 /* the in-grove frame: quest card top left, journal card right, a callout on the scene, sound bottom left, a bar bottom right */
-.frame-card{position:fixed;background:linear-gradient(180deg,rgba(38,24,14,.88),rgba(26,16,9,.86));border:1px solid rgba(217,192,138,.7);border-radius:6px;box-shadow:inset 0 0 0 4px rgba(26,16,9,.6),inset 0 0 0 5px rgba(217,192,138,.35),0 8px 24px rgba(0,0,0,.35);color:var(--cream)}
+.frame-card{position:fixed;background:linear-gradient(180deg,var(--dusk-hi),var(--dusk-lo));border:1px solid rgba(232,196,140,.75);border-radius:6px;box-shadow:inset 0 0 0 4px rgba(30,18,36,.6),inset 0 0 0 5px rgba(232,196,140,.35),0 0 22px rgba(233,163,168,.18),0 8px 24px rgba(0,0,0,.35);color:var(--cream)}
 .frame-card h2{font-family:"Obsidian Quail Display",var(--serif);font-size:20px;letter-spacing:.16em;text-transform:uppercase;font-weight:400}
 .frame-card .rule{display:block;height:1px;margin:6px 0 10px;background:linear-gradient(90deg,transparent,rgba(217,192,138,.8),transparent);position:relative}
 .frame-card .rule::after{content:"\2726";position:absolute;left:50%;top:-9px;transform:translateX(-50%);font-size:12px;color:var(--gold-strong)}
@@ -94,12 +95,12 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #minijournal .seal{width:40px;height:26px;border:1px solid rgba(217,192,138,.7);border-radius:3px;position:relative;flex:none;background:linear-gradient(160deg,transparent 48%,rgba(217,192,138,.5) 49%,transparent 51%),linear-gradient(20deg,transparent 48%,rgba(217,192,138,.5) 49%,transparent 51%)}
 #minijournal .seal::after{content:"";position:absolute;left:50%;top:50%;width:9px;height:9px;margin:-4px 0 0 -4px;border-radius:50%;background:#c58a32;box-shadow:0 0 5px rgba(240,190,90,.8)}
 #minijournal .found-mark{width:40px;text-align:center;color:var(--gold-strong);font-size:20px;flex:none}
-#callout{position:fixed;z-index:15;transform:translate(24px,-100%);padding:10px 22px;border-radius:999px;border:1.5px solid rgba(240,215,156,.9);background:rgba(26,16,9,.86);color:#f7efdc;font-family:var(--serif);font-size:clamp(17px,1.8vw,22px);box-shadow:0 0 16px rgba(240,215,156,.35);white-space:nowrap;min-height:var(--tap)}
+#callout{position:fixed;z-index:15;transform:translate(24px,-100%);padding:10px 22px;border-radius:999px;border:1.5px solid rgba(248,220,166,.9);background:linear-gradient(180deg,rgba(70,38,76,.9),rgba(36,20,42,.9));color:#f7efdc;font-family:var(--serif);font-size:clamp(17px,1.8vw,22px);box-shadow:0 0 16px rgba(240,215,156,.35);white-space:nowrap;min-height:var(--tap)}
 #callout::before{content:"";position:absolute;left:-20px;bottom:-14px;width:28px;height:1.5px;background:rgba(240,215,156,.9);transform:rotate(-38deg);transform-origin:right center}
 #callout::after{content:"";position:absolute;left:-26px;bottom:-26px;width:10px;height:10px;border-radius:50%;border:1.5px solid rgba(240,215,156,.95);background:rgba(240,215,156,.35)}
-#g-sound{position:fixed;left:16px;bottom:16px;border-radius:999px;background:rgba(20,14,9,.6);border-color:rgba(240,215,156,.5);font-family:var(--serif);font-size:17px;padding:8px 16px 8px 8px}
+#g-sound{position:fixed;left:16px;bottom:16px;border-radius:999px;background:rgba(38,22,42,.66);border-color:rgba(240,215,156,.5);font-family:var(--serif);font-size:17px;padding:8px 16px 8px 8px}
 #g-sound .icon{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid rgba(240,215,156,.6)}
-#bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(240,215,156,.6);background:rgba(20,14,9,.72);padding:4px}
+#bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.82),rgba(34,20,40,.82));box-shadow:0 0 18px rgba(233,163,168,.16);padding:4px}
 #bar .btn{border:0;background:none;border-radius:999px;font-family:var(--serif);font-size:17px;padding:8px 16px}
 #bar .btn:hover{background:rgba(240,215,156,.12)}
 #bar .sep{width:1px;height:26px;background:rgba(240,215,156,.35)}
@@ -150,9 +151,9 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #textmode .inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:16px;font-family:var(--serif);font-size:19px}
 #textmode .actions .btn{font-family:var(--sans);font-size:16px}
 /* the quail's speech bubble */
-#bubble{position:fixed;z-index:17;max-width:min(340px,calc(100% - 32px));padding:12px 16px 14px;border-radius:16px;background:#f6efe0;color:#2a1d12;font-family:var(--serif);font-size:18px;line-height:1.4;box-shadow:0 6px 22px rgba(0,0,0,.35);transform:translate(-50%,calc(-100% - 18px));pointer-events:none;transition:opacity .25s}
-#bubble::after{content:"";position:absolute;left:50%;bottom:-10px;margin-left:-10px;border:10px solid transparent;border-bottom:0;border-top-color:#f6efe0}
-#bubble .who{display:block;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7a5a2c;margin-bottom:2px}
+#bubble{position:fixed;z-index:17;max-width:min(340px,calc(100% - 32px));padding:12px 16px 14px;border-radius:16px;background:#fbefe9;color:#3a2232;font-family:var(--serif);font-size:18px;line-height:1.4;box-shadow:0 6px 22px rgba(0,0,0,.35);transform:translate(-50%,calc(-100% - 18px));pointer-events:none;transition:opacity .25s}
+#bubble::after{content:"";position:absolute;left:50%;bottom:-10px;margin-left:-10px;border:10px solid transparent;border-bottom:0;border-top-color:#fbefe9}
+#bubble .who{display:block;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a4a62;margin-bottom:2px}
 #bubble.gone{opacity:0}
 /* grove chat */
 #chat{position:fixed;z-index:18;left:12px;bottom:80px;width:min(340px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;max-height:46vh}
@@ -202,7 +203,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     <section id="quest" class="frame-card" aria-labelledby="quest-title">
       <h2 id="quest-title">Album Quest</h2><span class="rule" aria-hidden="true"></span>
       <p id="quest-goal">Listen to the spring</p>
-      <p id="quest-count">0 of 3 songs found</p>
+      <p id="quest-count">0 of 3 lore pages found</p>
     </section>
     <button id="minijournal" class="frame-card" type="button" aria-label="Open the album journal" aria-controls="journal">
       <h2>Album Journal</h2><span class="rule" aria-hidden="true"></span>
@@ -290,7 +291,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
   <section id="journal" class="panel wide" hidden aria-labelledby="journal-title" tabindex="-1">
     <h2 id="journal-title">Album journal</h2>
     <button class="btn close" type="button" data-close aria-label="Close journal">✕</button>
-    <p class="small muted">Tracks you have found, and what came with them. All recordings are placeholders until the artist's files arrive.</p>
+    <p class="small muted">Pages of the quail's story you have uncovered. The words are placeholders until the artist writes her own.</p>
     <ul class="list" id="journal-list" style="margin-top:10px"></ul>
   </section>
 
@@ -347,11 +348,11 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
   <!-- Found -->
   <div id="found" hidden role="dialog" aria-modal="true" aria-labelledby="found-title">
     <div class="card stack">
-      <p class="status found">You found a track</p>
+      <p class="status found">You uncovered lore</p>
       <h2 id="found-title"></h2>
       <p class="muted" id="found-extra"></p>
       <div class="row" style="justify-content:center">
-        <button class="btn primary" id="found-play" type="button">Play full track</button>
+        <button class="btn primary" id="found-play" type="button">Read it now</button>
         <button class="btn" id="found-journal" type="button">Open the journal</button>
         <button class="btn" id="found-close" type="button">Stay in the grove</button>
       </div>

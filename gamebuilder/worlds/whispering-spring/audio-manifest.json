@@ -53,6 +53,23 @@
       "credits": "Placeholder text"
     }
   ],
+  "lore": {
+    "note": "What each discovery reveals: a page of the musician's and the album's lore. Placeholder pages until the artist writes hers; a page may also name an image (\"image\") or a reading of it (\"file\").",
+    "pages": [
+      {
+        "id": "spring", "n": 1, "title": "The Spring That Answers", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nLong before the grove had a name, a black quail came down the bank at dusk to drink. The water did not reflect her. It answered her: one low note, then three rising, then a voice that sounded like her own singing back from somewhere far below.\n\nShe stayed until the stars came out, learning the shape of that voice. It is said that every song of hers began as an answer from the spring."
+      },
+      {
+        "id": "cairn", "n": 2, "title": "The Cairn Keeper", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nThe creek stones remember the water that shaped them. The quail learned to listen to each one: the flat stone hums low, the round one rings, the pebble keeps a high, bright note to itself.\n\nWhen she stacks them, the cairn holds a chord. Travellers who find one standing are told never to knock it down, only to add a stone of their own, and to listen to what it adds."
+      },
+      {
+        "id": "ribbon", "n": 3, "title": "What the Wind Keeps", "file": null, "image": null,
+        "text": "(Placeholder lore, to be written by the artist.)\n\nEvery ribbon tied in the grove is a word given to the wind. The quail does not read them; she keeps watch over them. On still nights she walks beneath the limbs and the ribbons stir, though no breeze moves.\n\nThey say the wind carries each word to whoever it was meant for, and that the songs are what the wind sings on the way back."
+      }
+    ]
+  },
   "voice": {
     "note": "What the quail says, in the musician's own voice. Placeholder lines until the artist writes theirs. Each plays with the quail's babble voice; a line with a \"file\" plays that recording instead.",
     "greeting": [
@@ -70,7 +87,7 @@
       "Tied with care. The tree holds it now, and so do I."
     ],
     "found_all": [
-      "You have heard everything the grove had to give. Come back whenever you need the quiet."
+      "You have uncovered every page of my story here. Come back whenever you need the quiet."
     ]
   },
   "ambience": {
