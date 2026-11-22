@@ -85,6 +85,13 @@ ikw_ended :: (o: [] u8, ending: string, text: string) {
   ikw_send(o, mww_ended(o, ending, text));
 }
 
+// Non-blocking drain (0 ms) when the last poll emitted streaming tokens, 10 ms when waiting for
+// the next token during an active turn, 200 ms when idle.
+ikw_poll_wait_ms :: (running: bool, polled: bool) -> int {
+  if !running { return 200; }
+  return ifx polled then 0 else 10;
+}
+
 // ---------------------------------------------------------------- local endpoint resolution
 
 IkEndpoint :: struct {
@@ -363,9 +370,11 @@ tool_main :: () -> int #export_c #effects(all) {
 
   while true {
     ended := "";
+    polled := false;
     if running {
       ev: [32] IkRunEvent;
       n := ik_run_poll(run[..], hist[..], bufs[..], ev[..]);
+      polled = n > 0;
       for i: 0..<n {
         if ev[i].kind == IK_EV_ENDED {
           running = false;
@@ -381,7 +390,7 @@ tool_main :: () -> int #export_c #effects(all) {
     fed := false;
     if !running && nl == 0 { nl = ikw_dispatch(q[..], f[..], line[..], out[..]); fed = nl > 0; }
     if !fed {
-      ch := cxterm_byte(ifx running then 10 else 200);
+      ch := cxterm_byte(ikw_poll_wait_ms(running, polled));
       if ch == -2 { break; }
       got_line := false;
       while ch >= 0 {
@@ -544,4 +553,11 @@ tool_main :: () -> int #export_c #effects(all) {
     _ = ik_run_stop(run[..], ev[..]);
   }
   return 0;
+}
+
+#test "inky worker: poll wait drains streaming tokens with 0 ms delay" {
+  #assert ikw_poll_wait_ms(false, false) == 200;
+  #assert ikw_poll_wait_ms(false, true) == 200;
+  #assert ikw_poll_wait_ms(true, false) == 10;
+  #assert ikw_poll_wait_ms(true, true) == 0;
 }

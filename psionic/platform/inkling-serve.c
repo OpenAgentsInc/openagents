@@ -118,6 +118,7 @@ static void sock_close_listener(int fd) { (void)fd; close_listen_once(); } /* a 
 /* Winsock's SO_REUSEADDR lets a second process listen on a port that is in
    use; SO_EXCLUSIVEADDRUSE makes that bind fail, as it does on POSIX. */
 static void sock_reuse_port(int fd) { BOOL on = TRUE; setsockopt((SOCKET)fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&on, sizeof on); }
+static void sock_nodelay(int fd) { BOOL on = TRUE; setsockopt((SOCKET)fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&on, sizeof on); }
 static double now_sec(void) {
     LARGE_INTEGER f, c;
     QueryPerformanceFrequency(&f);
@@ -127,6 +128,7 @@ static double now_sec(void) {
 #else
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <pthread.h>
 #include <strings.h>
@@ -209,6 +211,7 @@ static void stop_signals(int listen_fd) {
 }
 static void sock_close_listener(int fd) { close(fd); }
 static void sock_reuse_port(int fd) { int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one); }
+static void sock_nodelay(int fd) { int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one); }
 static double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -2873,6 +2876,7 @@ int main(int argc, char **argv) {
             if (!g_stop && sock_interrupted()) continue;
             break;
         }
+        sock_nodelay(cfd);
         ConnArg *ca = (ConnArg *)malloc(sizeof *ca);
         if (!ca) { sock_close(cfd); continue; }
         ca->sv = &sv;

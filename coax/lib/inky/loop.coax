@@ -69,6 +69,7 @@ IkLoop :: struct {
 
 IkFeedRes :: struct {
   emit_thought: bool;
+  thought_delta: string;
   emit_reply: bool;
   reply_delta: string;
 }
@@ -197,17 +198,22 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   return body;
 }
 
-ik_loop_append_think :: (l: [] IkLoop, text: string) {
-  if l[0].think_cut || text.count == 0 { return; }
+// Appends one streamed reasoning delta to l[0].think (UTF-8 safe, capped at 32 KB) and returns
+// the slice of bytes just appended so callers can emit thinking tokens immediately as they arrive.
+ik_loop_append_think :: (l: [] IkLoop, text: string) -> string {
+  if l[0].think_cut || text.count == 0 { return ""; }
+  start := l[0].nthink;
   if l[0].nthink + text.count <= IK_THINK_CAP {
     for c: text { l[0].think[l[0].nthink] = c; l[0].nthink += 1; }
-    return;
+    return cast(string) l[0].think[start..<l[0].nthink];
   }
   room := IK_THINK_CAP - l[0].nthink;
+  while room != 0 && text[room] >= 128 && text[room] < 192 { room -= 1; }
   for i: 0..<room { l[0].think[l[0].nthink] = text[i]; l[0].nthink += 1; }
   note := "\n[thinking truncated at 32 KB]";
-  for c: note { if l[0].nthink < l[0].think.count { l[0].think[l[0].nthink] = c; l[0].nthink += 1; } }
+  for c: note { l[0].think[l[0].nthink] = c; l[0].nthink += 1; }
   l[0].think_cut = true;
+  return cast(string) l[0].think[start..<l[0].nthink];
 }
 
 // Consumes one GwEvent during IK_PH_STREAM; returns what UI deltas should be emitted now.
@@ -216,14 +222,14 @@ ik_loop_event :: (l: [] IkLoop, ev: GwEvent) -> IkFeedRes {
   if l[0].phase != IK_PH_STREAM { return res; }
   _ = gwt_step_feed(l[0].tstep[..], ev);
   if ev.kind == GW_EV_REASONING {
-    ik_loop_append_think(l, ev.text);
+    delta := ik_loop_append_think(l, ev.text);
+    if delta.count > 0 {
+      res.emit_thought = true;
+      res.thought_delta = delta;
+    }
     return res;
   }
   if ev.kind == GW_EV_TEXT {
-    if !l[0].thought_emitted && l[0].nthink > 0 {
-      l[0].thought_emitted = true;
-      res.emit_thought = true;
-    }
     for c: ev.text {
       if l[0].nreply < IK_REPLY_CAP { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; }
     }
@@ -233,21 +239,10 @@ ik_loop_event :: (l: [] IkLoop, ev: GwEvent) -> IkFeedRes {
     }
     return res;
   }
-  if ev.kind == GW_EV_TOOL {
-    if !l[0].thought_emitted && l[0].nthink > 0 {
-      l[0].thought_emitted = true;
-      res.emit_thought = true;
-    }
-    return res;
-  }
   if ev.kind == GW_EV_DONE {
     l[0].last_usage = ev.usage;
     if ev.usage.input_tokens > 0 { l[0].obs_input_tokens = ev.usage.input_tokens; }
     l[0].ndone = ik_loop_copy(l[0].done_reason[..], ev.reason);
-    if !l[0].thought_emitted && l[0].nthink > 0 {
-      l[0].thought_emitted = true;
-      res.emit_thought = true;
-    }
     return res;
   }
   if ev.kind == GW_EV_REFUSED {
@@ -407,13 +402,17 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   body := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", false, body_buf[..], why[..]);
   #assert body.count > 0 && l[0].phase == IK_PH_STREAM && l[0].step == 1;
 
-  f1 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Plain greeting, answer directly."});
-  #assert !f1.emit_thought && !f1.emit_reply;
+  f1 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Plain greeting, "});
+  #assert f1.emit_thought && f1.thought_delta == "Plain greeting, " && !f1.emit_reply;
+  f1b := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "answer directly."});
+  #assert f1b.emit_thought && f1b.thought_delta == "answer directly." && !f1b.emit_reply;
+  #assert ik_loop_think(l[..]) == "Plain greeting, answer directly.";
   f2 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "Hello! "});
-  #assert f2.emit_thought && f2.emit_reply && f2.reply_delta == "Hello! " && ik_loop_think(l[..]) == "Plain greeting, answer directly.";
+  #assert !f2.emit_thought && f2.emit_reply && f2.reply_delta == "Hello! ";
   f3 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "How can I help?"});
   #assert !f3.emit_thought && f3.emit_reply && f3.reply_delta == "How can I help?";
-  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  f4 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  #assert !f4.emit_thought && !f4.emit_reply;
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED;
   #assert l[0].ending == IK_END_FINISHED && ik_loop_final(l[..]) == "Hello! How can I help?";
   #assert h[0].n == 2;
@@ -431,9 +430,10 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   l[0].max_thinking_tokens = 2048;
   b1 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
   #assert b1.count > 0 && cl_raw(b1, "tools").count > 10 && cl_raw(b1, "temperature") == "0.00" && cl_int(b1, "seed").value == 0 && cl_int(b1, "max_thinking_tokens").value == 2048;
-  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Read both."});
+  ft := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Read both."});
+  #assert ft.emit_thought && ft.thought_delta == "Read both.";
   f := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c1", text = "read_file", reason = "{\"path\":\"a.coax\"}"});
-  #assert f.emit_thought;
+  #assert !f.emit_thought;
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 1, call_id = "c2", text = "read_file", reason = "{\"path\":\"b.coax\"}"});
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
@@ -480,7 +480,77 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", false, body_buf[..], why[..]).count > 0;
   before_n := h[0].n;
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REFUSED, status = 400, reason = "context_length_exceeded"});
+  #assert l[0].refuse_status == 400;
   // Should compact via Stage 2 and transition back to IK_PH_MODEL on same step!
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], false, false) == IK_PH_MODEL;
   #assert h[0].n < before_n && l[0].retried_ctx && l[0].retrying_same_step;
+}
+
+#test "inky loop: reasoning deltas stream live with UTF-8-safe 32 KB truncation" {
+  l: [1] IkLoop;
+  // Ignored outside IK_PH_STREAM
+  l[0].phase = IK_PH_MODEL;
+  #assert !ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "nope"}).emit_thought;
+
+  // Empty and 1-byte reasoning deltas
+  l[0].phase = IK_PH_STREAM;
+  #assert !ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = ""}).emit_thought;
+  f_one := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "a"});
+  #assert f_one.emit_thought && f_one.thought_delta == "a";
+
+  // Exact fit at IK_THINK_CAP does not truncate
+  l[0].nthink = IK_THINK_CAP - 3;
+  f_exact := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "abc"});
+  #assert f_exact.emit_thought && f_exact.thought_delta == "abc" && !l[0].think_cut && l[0].nthink == IK_THINK_CAP;
+
+  // Overflow with ASCII boundary (0x7F = 127) copies remaining room + note once, then suppresses further deltas
+  l[0].nthink = IK_THINK_CAP - 2;
+  l[0].think_cut = false;
+  asc_cut := [4] u8.['x', 'y', 0x7F, 'z'];
+  f_asc := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = cast(string) asc_cut[..]});
+  #assert f_asc.emit_thought && f_asc.thought_delta == "xy\n[thinking truncated at 32 KB]" && l[0].think_cut;
+  f_after := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "more"});
+  #assert !f_after.emit_thought && f_after.thought_delta == "";
+
+  // Overflow where room lands on 0xC0 (192, first non-continuation byte) keeps preceding bytes intact
+  l[0].nthink = IK_THINK_CAP - 2;
+  l[0].think_cut = false;
+  lead_cut := [4] u8.['a', 'b', 0xC0, 0xA9];
+  f_lead := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = cast(string) lead_cut[..]});
+  #assert f_lead.emit_thought && f_lead.thought_delta == "ab\n[thinking truncated at 32 KB]" && l[0].think_cut;
+
+  // Overflow where room lands inside a 3-byte UTF-8 char (continuation bytes 0x80 and 0xBF) backs up cleanly
+  l[0].nthink = IK_THINK_CAP - 2;
+  l[0].think_cut = false;
+  mid_cut := [4] u8.['x', 0xE2, 0x80, 0xBF];
+  f_mid := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = cast(string) mid_cut[..]});
+  #assert f_mid.emit_thought && f_mid.thought_delta == "x\n[thinking truncated at 32 KB]" && l[0].think_cut;
+
+  // Overflow where room lands on 0xBF (191) and backs up to 0 copies 0 prefix bytes + note
+  l[0].nthink = IK_THINK_CAP - 1;
+  l[0].think_cut = false;
+  zero_cut := [2] u8.[0xC2, 0xBF];
+  f_zero := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = cast(string) zero_cut[..]});
+  #assert f_zero.emit_thought && f_zero.thought_delta == "\n[thinking truncated at 32 KB]" && l[0].think_cut;
+
+  // Overflow where room == 0 with leading continuation byte (0x80) stops at 0 without underflow
+  l[0].nthink = IK_THINK_CAP;
+  l[0].think_cut = false;
+  cont_zero := [1] u8.[0x80];
+  f_full := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = cast(string) cont_zero[..]});
+  #assert f_full.emit_thought && f_full.thought_delta == "\n[thinking truncated at 32 KB]" && l[0].think_cut;
+
+  // Empty vs 1-byte text delta and reply capacity boundary
+  #assert !ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = ""}).emit_reply;
+  l[0].nreply = IK_REPLY_CAP - 1;
+  ft1 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "z"});
+  #assert ft1.emit_reply && ft1.reply_delta == "z" && l[0].nreply == IK_REPLY_CAP && l[0].reply[IK_REPLY_CAP - 1] == 'z';
+  ft2 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "q"});
+  #assert ft2.emit_reply && l[0].nreply == IK_REPLY_CAP;
+
+  // DONE updates last_usage, obs_input_tokens only when > 0, and done_reason
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop", usage = GwUsage.{input_tokens = 1, output_tokens = 2}});
+  #assert l[0].last_usage.output_tokens == 2 && l[0].obs_input_tokens == 1 && cast(string) l[0].done_reason[0..<l[0].ndone] == "stop";
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "length", usage = GwUsage.{input_tokens = 0, output_tokens = 0}});
+  #assert l[0].obs_input_tokens == 1 && cast(string) l[0].done_reason[0..<l[0].ndone] == "length";
 }

@@ -9,6 +9,7 @@
 
 #load "loop.coax";
 #load "instructions.coax";
+#load "run-poll-host.coax";
 #load "../sys/fs.coax";
 #load "../sys/proc.coax";
 #load "../agent/journal-file.coax";
@@ -1365,86 +1366,16 @@ ik_run_answer :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, ticket: int, al
   return 0;
 }
 
-// Non-blocking poll of the active Inky turn; returns emitted IkRunEvents count.
-ik_run_poll :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent) -> int {
-  if !r[0].active || r[0].ended { return 0; }
-  if r[0].asking { return 0; }
-  ne := 0;
-
-  // 1. Active async command?
-  if r[0].cmd[0].active {
-    if ik_cmd_poll(r[0].cmd[..], b) {
-      ne = ik_finish_cmd(r, h, b, out, ne);
-    }
-    return ne;
+// Emits live thought and reply deltas produced by ik_loop_event onto out.
+ik_emit_feed :: (out: [] IkRunEvent, ne: int, fr: IkFeedRes) -> int {
+  n := ne;
+  if fr.emit_thought {
+    n = ik_put_ev(out, n, IkRunEvent.{kind = IK_EV_THOUGHT, text = fr.thought_delta});
   }
-
-  // 2. Active streaming model call?
-  if r[0].calling {
-    gevs: [16] GwEvent;
-    ng := gw_call_poll(r[0].call[..], gevs[..]);
-    now := proc_now_ms();
-    for i: 0..<ng {
-      ev := gevs[i];
-      if r[0].first_ms < 0 && (ev.kind == GW_EV_TEXT || ev.kind == GW_EV_REASONING || ev.kind == GW_EV_TOOL) {
-        r[0].first_ms = now - r[0].req_start_ms;
-      }
-      if ev.kind == GW_EV_REFUSED { r[0].attempt_status = ev.status; }
-      if ev.kind == GW_EV_DONE { r[0].attempt_status = 200; }
-      fr := ik_loop_event(r[0].l[..], ev);
-      if fr.emit_thought {
-        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_THOUGHT, text = ik_loop_think(r[0].l[..])});
-      }
-      if fr.emit_reply {
-        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_REPLY, text = fr.reply_delta});
-      }
-    }
-    if r[0].call[0].finished {
-      r[0].calling = false;
-      clean := r[0].call[0].complete;
-      total_ms := proc_now_ms() - r[0].req_start_ms;
-      ttft := ifx r[0].first_ms >= 0 then r[0].first_ms else -1;
-      dec := ifx r[0].first_ms >= 0 && total_ms > r[0].first_ms then total_ms - r[0].first_ms else total_ms;
-      u := r[0].l[0].last_usage;
-      if r[0].journal.count > 0 && r[0].journal[0].flow.phase == AfPhase.model {
-        rep := ik_loop_reply(r[0].l[..]);
-        if rep.count > 0 { _ = jf_reply(r[0].journal, rep); }
-        _ = jf_model_end(r[0].journal, ifx clean then "done" else "refused");
-      }
-      ne = ik_put_ev(out, ne, IkRunEvent.{
-        kind = IK_EV_ATTEMPT,
-        gateway = r[0].g.name,
-        model = ik_run_model(r),
-        effort = ik_run_effort(r),
-        outcome = ifx clean && !r[0].l[0].refused then "done" else "refused",
-        status = ifx clean && !r[0].l[0].refused then 200 else r[0].attempt_status,
-        usage = u,
-        ttft_ms = ttft,
-        decode_ms = dec,
-        output_tokens = u.output_tokens,
-      });
-      has_steers := r[0].steers.count > 0 && r[0].steers[0].n > 0;
-      next_ph := ik_loop_stream_end(r[0].l[..], h, b[0].hist_tmp[..], clean, has_steers);
-      if next_ph == IK_PH_ENDED {
-        r[0].active = false; r[0].ended = true;
-        if r[0].journal.count > 0 { _ = jf_stop(r[0].journal, ik_ending_name(r[0].l[0].ending)); }
-        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
-      }
-    }
-    return ne;
+  if fr.emit_reply {
+    n = ik_put_ev(out, n, IkRunEvent.{kind = IK_EV_REPLY, text = fr.reply_delta});
   }
-
-  // 3. Pending tool calls? Execute one per poll so worker stays responsive to stdin.
-  if r[0].l[0].phase == IK_PH_TOOLS {
-    return ik_dispatch_next_tool(r, h, b, out, ne);
-  }
-
-  // 4. Ready to start next model call!
-  if r[0].l[0].phase == IK_PH_MODEL {
-    return ik_start_model_call(r, h, b, out, ne);
-  }
-
-  return ne;
+  return n;
 }
 
 ik_run_stop :: (r: [] IkRun, out: [] IkRunEvent) -> int {
@@ -1467,4 +1398,13 @@ ik_run_stop :: (r: [] IkRun, out: [] IkRunEvent) -> int {
   #assert ik_put_ev(ev[..], 1, IkRunEvent.{kind = IK_EV_THOUGHT, text = "t"}) == 2;
   #assert ik_put_ev(ev[..], 2, IkRunEvent.{kind = IK_EV_ENDED}) == 2;
   #assert ev[0].kind == IK_EV_REPLY && ev[1].kind == IK_EV_THOUGHT;
+
+  fev: [4] IkRunEvent;
+  #assert ik_emit_feed(fev[..], 0, IkFeedRes.{}) == 0;
+  n1 := ik_emit_feed(fev[..], 0, IkFeedRes.{emit_thought = true, thought_delta = "step 1"});
+  #assert n1 == 1 && fev[0].kind == IK_EV_THOUGHT && fev[0].text == "step 1";
+  n2 := ik_emit_feed(fev[..], n1, IkFeedRes.{emit_reply = true, reply_delta = "ok"});
+  #assert n2 == 2 && fev[1].kind == IK_EV_REPLY && fev[1].text == "ok";
+  n3 := ik_emit_feed(fev[..], n2, IkFeedRes.{emit_thought = true, thought_delta = "t2", emit_reply = true, reply_delta = "r2"});
+  #assert n3 == 4 && fev[2].kind == IK_EV_THOUGHT && fev[2].text == "t2" && fev[3].kind == IK_EV_REPLY && fev[3].text == "r2";
 }
