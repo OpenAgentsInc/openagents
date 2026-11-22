@@ -120,15 +120,19 @@ g storage cp --recursive "$stage/b/$release/splicebots/fonts" "$bucket/b/$releas
 g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "$stage/b/$release/fated-dragon" "$bucket/b/$release/" --cache-control "$kept" --content-encoding gzip > /dev/null
 g storage cp --recursive "$stage/b/$release/splicebots/build" "$stage/b/$release/splicebots/splice-jam.wgsl" "$bucket/b/$release/splicebots/" --cache-control "$kept" --content-encoding gzip > /dev/null
 
-# Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
-cache="no-cache"
-g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^(credits|fated-dragon|splicebots)$|^b/' --cache-control "$cache" > /dev/null
-g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
-
 # Extensionless HTML routes served directly (trailing slashes and /index.html 301-redirect here).
+# Remove directory index.html files from $stage before rsync so GCS --web-main-page-suffix
+# does not 301-redirect /fated-dragon -> /fated-dragon/index.html into a loop with the URL map.
+cache="no-cache"
 g storage cp "$stage/credits.html" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$stage/fated-dragon/index.html" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
 g storage cp "$stage/splicebots/index.html" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
+rm -f "$stage/fated-dragon/index.html" "$stage/splicebots/index.html"
+rmdir "$stage/fated-dragon" 2>/dev/null || true
+
+# Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
+g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^(credits|fated-dragon|splicebots)$|^b/' --cache-control "$cache" > /dev/null
+g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
 
 # Prune old immutable releases, keeping the previous release during rollout.
 for old in $(g storage ls "$bucket/b/" 2> /dev/null); do
