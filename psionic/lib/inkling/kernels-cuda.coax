@@ -20,6 +20,7 @@ INK_DR :: 4;
 INK_D :: 8;
 INK_HEAD :: 128;
 INK_REL :: 16;
+INK_RANK :: 64;  // the recurrence gate's rank
 INK_NEG_INF :: -300000000000000000000000000000000000000.0f32;
 
 // ---- Scalars.
@@ -359,43 +360,128 @@ ink_mix :: (item:int,dim:int,n_blocks:int,nq:int,stride:int,blocks_buf:[]f32,cur
     }
 }
 
-// ---- Loop control prep: concat(rms(cur, 1e-6), rms(msg, 1e-6)) into out[0..2*dim-1].
-// Launch 1 work item (256 threads).
-ink_ctrl_prep :: (item:int,dim:int,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;part2:[256]f32;
-    d:=cast(u32)dim;cb:=mul_wrap(cast(u32)item,d);ob:=mul_wrap(cb,2);
+// ---- RMSNorm of the vectors a layer feeds its projections: out[v, tok] =
+// x[v or 0, tok] * rsqrt(mean(x^2) + eps) * w_v. Vectors lie [vector][batch]
+// [dim], `stack` floats from one vector to the next. xsingle != 0: every
+// output is the norm of vector 0 (with its own weight). w0, w1 and w2 are the
+// three weights' places in `arena`, the resident weights as f32. Launch items
+// = vectors * np, a group of 256 threads each. The sum of squares adds the
+// threads' parts as 16 sums of 16, then their sum.
+ink_rmsn :: (item:int,dim:int,np:int,stack:int,xsingle:int,eps:f32,w0:int,w1:int,w2:int,arena:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;mid:[16]f32;
+    v:=item/np;tok:=item%np;
+    xb:=(ifx xsingle!=0 then 0 else v)*stack+tok*dim;ob:=v*stack+tok*dim;
+    wb:=ifx v==0 then w0 else ifx v==1 then w1 else w2;
     for thread:0..<INK_NT {
-        s1:f32=0;s2:f32=0;t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
-                a:=cur[cast(int)add_wrap(cb,i)];b:=msg[cast(int)add_wrap(cb,i)];
-                s1+=a*a;s2+=b*b;
-            }
+        s:f32=0;
+        for k:0..<(dim+INK_NT-1)/INK_NT {
+            i:=k*INK_NT+thread;
+            if i<dim {xv:=x[xb+i];s+=xv*xv;}
         }
-        part[thread]=s1;part2[thread]=s2;
+        part[thread]=s;
     }
     for thread:0..<INK_NT {
-        t1:f32=0;t2:f32=0;for j:0..<INK_NT {t1+=part[j];t2+=part2[j];}
-        inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
-        inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
-        t:=cast(u32)thread;
-        for k:cast(u32)0..<(d+255)/256 {
-            i:=add_wrap(mul_wrap(k,256),t);
-            if i<d {
-                out[cast(int)add_wrap(ob,i)]=cur[cast(int)add_wrap(cb,i)]*inv1;
-                out[cast(int)add_wrap(ob,add_wrap(d,i))]=msg[cast(int)add_wrap(cb,i)]*inv2;
-            }
+        if thread<16 {
+            s:f32=0;
+            for j:0..<16 {s+=part[thread*16+j];}
+            mid[thread]=s;
+        }
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;
+        for j:0..<16 {tot+=mid[j];}
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+INK_NT-1)/INK_NT {
+            i:=k*INK_NT+thread;
+            if i<dim {out[ob+i]=x[xb+i]*inv*arena[wb+i];}
         }
     }
 }
 
-// ---- Loop control apply: out[i] = cur[i] - tanh(forget[i])*cur[i] + tanh(gain[i])*msg[i].
-// Launch ceil(dim/256) items, 1 lane per item (or items=dim, lanes=1).
-ink_ctrl_apply :: (item:int,dim:int,cur:[]f32,msg:[]f32,gain:[]f32,forget:[]f32,out:[]f32) #export_c #effects(all) {
-    if item<dim {
-        c:=cur[item];m:=msg[item];
-        out[item]=c-ink_tanh(forget[item])*c+ink_tanh(gain[item])*m;
+// ---- The cross-pass recurrence gate, for up to three inputs of a layer at
+// once: out = cur - tanh(forget) cur + tanh(gain) msg, where gate = D [rms(cur),
+// rms(msg)] (rank INK_RANK), gain = G gate and forget = F gate.
+// flags = swa | (c0 << 8): input c of this call uses message c0 + c, and with
+// swa != 0 every input is vector 0 of cur. Vectors lie [vector][batch][dim],
+// `stack` floats apart.
+
+// ink_ctrl_gate: launch items = inputs * np * INK_RANK, a group of 1024
+// threads for one gate value. off0..off2 are the inputs' D matrices in
+// `arena` ([INK_RANK, 2*dim] f32). The group adds up D.cur, D.msg and the two
+// sums of squares together (32 sums of 32, then their sum), so the norms need
+// no pass of their own: gate = D_cur.cur * inv_cur + D_msg.msg * inv_msg.
+ink_ctrl_gate :: (item:int,dim:int,np:int,stack:int,flags:int,off0:int,off1:int,off2:int,arena:[]f32,cur:[]f32,msg:[]f32,gate:[]f32) #export_c #effects(all) {
+    pa:[1024]f32;pb:[1024]f32;pc:[1024]f32;pm:[1024]f32;ma:[32]f32;mb:[32]f32;mc:[32]f32;mm:[32]f32;
+    swa:=flags&255;c0:=(flags>>8)&255;
+    cl:=item/(np*INK_RANK);tok:=(item/INK_RANK)%np;r:=item%INK_RANK;
+    cb:=(ifx swa!=0 then 0 else cl)*stack+tok*dim;gb:=(c0+cl)*stack+tok*dim;
+    wb:=(ifx cl==0 then off0 else ifx cl==1 then off1 else off2)+r*2*dim;
+    for thread:0..<INK_MT {
+        sa:f32=0;sb:f32=0;sc:f32=0;sm:f32=0;
+        for k:0..<(dim+INK_MT-1)/INK_MT {
+            i:=k*INK_MT+thread;
+            if i<dim {
+                a:=cur[cb+i];m:=msg[gb+i];wa:=arena[wb+i];wm:=arena[wb+dim+i];
+                sa+=wa*a;sb+=wm*m;sc+=a*a;sm+=m*m;
+            }
+        }
+        pa[thread]=sa;pb[thread]=sb;pc[thread]=sc;pm[thread]=sm;
+    }
+    for thread:0..<INK_MT {
+        if thread<32 {
+            sa:f32=0;sb:f32=0;sc:f32=0;sm:f32=0;
+            for j:0..<32 {sa+=pa[thread*32+j];sb+=pb[thread*32+j];sc+=pc[thread*32+j];sm+=pm[thread*32+j];}
+            ma[thread]=sa;mb[thread]=sb;mc[thread]=sc;mm[thread]=sm;
+        }
+    }
+    for thread:0..<INK_MT {
+        if thread==0 {
+            sa:f32=0;sb:f32=0;sc:f32=0;sm:f32=0;
+            for j:0..<32 {sa+=ma[j];sb+=mb[j];sc+=mc[j];sm+=mm[j];}
+            inv_c:=1.0f32/sqrt(sc/f32(dim)+0.000001f32);
+            inv_m:=1.0f32/sqrt(sm/f32(dim)+0.000001f32);
+            gate[item]=sa*inv_c+sb*inv_m;
+        }
+    }
+}
+
+// ink_ctrl_out: launch items = inputs * np * dim, one thread for one output.
+// gf0..gf2 hold each input's G and F places in `arena` ([dim, INK_RANK] f32):
+// G in the low 32 bits, F in the high. Every load is asked for before the
+// two dot products use any.
+ink_ctrl_out :: (item:int,dim:int,np:int,stack:int,flags:int,gf0:int,gf1:int,gf2:int,arena:[]f32,cur:[]f32,msg:[]f32,gate:[]f32,out:[]f32) #export_c #effects(all) {
+    gs:[64]f32;ws:[64]f32;fs:[64]f32;
+    swa:=flags&255;c0:=(flags>>8)&255;
+    n:=np*dim;cl:=item/n;tok:=(item/dim)%np;i:=item%dim;
+    if cl<3 {
+        gf:=ifx cl==0 then gf0 else ifx cl==1 then gf1 else gf2;
+        gw:=(gf&4294967295)+i*INK_RANK;fw:=((gf>>32)&4294967295)+i*INK_RANK;gb:=(cl*np+tok)*INK_RANK;
+        for j:0..<INK_RANK {gs[j]=gate[gb+j];}
+        for j:0..<INK_RANK {ws[j]=arena[gw+j];}
+        for j:0..<INK_RANK {fs[j]=arena[fw+j];}
+        c:=cur[(ifx swa!=0 then 0 else cl)*stack+tok*dim+i];m:=msg[(c0+cl)*stack+tok*dim+i];
+        gain:f32=0;forget:f32=0;
+        for j:0..<INK_RANK {gain+=ws[j]*gs[j];forget+=fs[j]*gs[j];}
+        out[cl*stack+tok*dim+i]=c-ink_tanh(forget)*c+ink_tanh(gain)*m;
+    }
+}
+
+// ---- The end of a layer's attention for one channel of every token: the
+// post short convolution of the output projection with its history, then
+// either the residual add into cur, or, at a block's first layer, cur saved
+// as the block's entry and replaced. Launch items = n_channels.
+ink_attn_post :: (item:int,n_channels:int,nb:int,block_start:int,o:[]f32,w:[]f32,hist:[]f32,cur:[]f32,blk:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        c:=item;
+        x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];
+        for b:0..<nb {
+            idx:=b*n_channels+c;x3:=o[idx];
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            y:=(x3+acc)/sqrt(5.0f32);
+            if block_start!=0 {blk[idx]=cur[idx];cur[idx]=y;} else {cur[idx]=cur[idx]+y;}
+            x0=x1;x1=x2;x2=x3;
+        }
+        hist[c*3+0]=x0;hist[c*3+1]=x1;hist[c*3+2]=x2;
     }
 }
 
@@ -919,6 +1005,83 @@ ink_mvq_s :: (item:int,rows:int,n_blocks:int,add:int,part:[]f32,out:[]f32) #expo
         }
         for b:(nb/8)*8..<nb {sum+=part[cast(int)add_wrap(mul_wrap(b,nr),r)];}
         if add!=0 {out[item]=out[item]+sum;}else {out[item]=sum;}
+    }
+}
+
+// ---- A layer's attention projections in one launch. Its Q8_0 matrices that
+// read the layer's inputs (Q, K, V, the K and V convolution taps, the
+// relative-position and sink projections and the output gate) are listed in
+// `desc`, ten words a matrix:
+//   0 its codes' place in wq    1 its scales' place in wd   2 rows
+//   3 rows it is stored with    4 its input's place in x    5 its output's place
+//   6 its shares' place in part 7 the end of its ink_proj_p items
+//   8 the end of its rows among all the rows
+// ink_proj_p is ink_mvq_p over all of them (launch items = word 7 of the last
+// matrix) and ink_proj_s is ink_mvq_s (launch items = word 8 of the last).
+// `tok` is the token of the batch: its input is cols further on for each
+// token, and a matrix's output rows further on.
+ink_proj_p :: (item:int,n_mats:int,tok:int,cols:int,desc:[]u32,wq:[]u32,wd:[]u16,x:[]f32,part:[]f32) #export_c #effects(all) {
+    gi:=cast(u32)item;nm:=cast(u32)n_mats;m:u32=0;first:u32=0;
+    for i:cast(u32)0..<nm {
+        e:=desc[cast(int)add_wrap(mul_wrap(i,10),7)];
+        if gi>=e {m=add_wrap(i,1);first=e;}
+    }
+    if m<nm {
+        at:=cast(int)mul_wrap(m,10);
+        q0:=desc[at];d0:=desc[at+1];nr:=desc[at+2];lr:=desc[at+3];
+        x0b:=add_wrap(desc[at+4],mul_wrap(cast(u32)tok,cast(u32)cols));p0:=desc[at+6];
+        local:=gi-first;quarter:=nr/4;b:=local/quarter;
+        r0:=local%quarter;r1:=add_wrap(r0,quarter);r2:=add_wrap(r1,quarter);r3:=add_wrap(r2,quarter);
+        xb:=add_wrap(x0b,mul_wrap(b,32));db:=add_wrap(d0,mul_wrap(b,lr));pb:=add_wrap(p0,mul_wrap(b,nr));
+        xs:[32]f32;ws:[32]u32;
+        for j:0..<32 {xs[j]=x[cast(int)add_wrap(xb,cast(u32)j)];}
+        for k:0..<8 {
+            qi:=add_wrap(q0,mul_wrap(add_wrap(mul_wrap(b,8),cast(u32)k),lr));
+            ws[k*4]=wq[cast(int)add_wrap(qi,r0)];ws[k*4+1]=wq[cast(int)add_wrap(qi,r1)];
+            ws[k*4+2]=wq[cast(int)add_wrap(qi,r2)];ws[k*4+3]=wq[cast(int)add_wrap(qi,r3)];
+        }
+        e0:=cast(u32)wd[cast(int)add_wrap(db,r0)];e1:=cast(u32)wd[cast(int)add_wrap(db,r1)];
+        e2:=cast(u32)wd[cast(int)add_wrap(db,r2)];e3:=cast(u32)wd[cast(int)add_wrap(db,r3)];
+        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;sx:f32=0;
+        for k:0..<8 {
+            x0:=xs[k*4];x1:=xs[k*4+1];x2:=xs[k*4+2];x3:=xs[k*4+3];
+            sx+=(x0+x1)+(x2+x3);
+            v:=ws[k*4]^0x80808080;
+            s0+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+1]^0x80808080;
+            s1+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+2]^0x80808080;
+            s2+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+3]^0x80808080;
+            s3+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+        }
+        off:=128.0f32*sx;
+        part[cast(int)add_wrap(pb,r0)]=ink_half(e0)*(s0-off);
+        part[cast(int)add_wrap(pb,r1)]=ink_half(e1)*(s1-off);
+        part[cast(int)add_wrap(pb,r2)]=ink_half(e2)*(s2-off);
+        part[cast(int)add_wrap(pb,r3)]=ink_half(e3)*(s3-off);
+    }
+}
+
+ink_proj_s :: (item:int,n_mats:int,tok:int,n_blocks:int,desc:[]u32,part:[]f32,out:[]f32) #export_c #effects(all) {
+    gi:=cast(u32)item;nm:=cast(u32)n_mats;m:u32=0;first:u32=0;
+    for i:cast(u32)0..<nm {
+        e:=desc[cast(int)add_wrap(mul_wrap(i,10),8)];
+        if gi>=e {m=add_wrap(i,1);first=e;}
+    }
+    if m<nm {
+        at:=cast(int)mul_wrap(m,10);
+        nr:=desc[at+2];r:=gi-first;p0:=add_wrap(desc[at+6],r);nb:=cast(u32)n_blocks;sum:f32=0;
+        for g:cast(u32)0..<nb/8 {
+            pa:=add_wrap(p0,mul_wrap(mul_wrap(g,8),nr));
+            v0:=part[cast(int)pa];v1:=part[cast(int)add_wrap(pa,nr)];
+            v2:=part[cast(int)add_wrap(pa,mul_wrap(nr,2))];v3:=part[cast(int)add_wrap(pa,mul_wrap(nr,3))];
+            v4:=part[cast(int)add_wrap(pa,mul_wrap(nr,4))];v5:=part[cast(int)add_wrap(pa,mul_wrap(nr,5))];
+            v6:=part[cast(int)add_wrap(pa,mul_wrap(nr,6))];v7:=part[cast(int)add_wrap(pa,mul_wrap(nr,7))];
+            sum+=((v0+v1)+(v2+v3))+((v4+v5)+(v6+v7));
+        }
+        for b:(nb/8)*8..<nb {sum+=part[cast(int)add_wrap(p0,mul_wrap(b,nr))];}
+        out[cast(int)add_wrap(add_wrap(desc[at+5],mul_wrap(cast(u32)tok,nr)),r)]=sum;
     }
 }
 
