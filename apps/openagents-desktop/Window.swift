@@ -313,7 +313,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
-        if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count { _ = cd_pick_model(page, CommandLine.arguments[at + 1]) }
+        if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
+            let requested = CommandLine.arguments[at + 1]
+            if cd_pick_model(page, requested) == 0 && ["inkling-2-mini", "inkling", "Inkling 2 Mini"].contains(requested) {
+                if !LocalModelStore.hardwareSupported {
+                    present(.notice("Inkling 2 Mini requires 32 GB RAM", LocalModelStore.statusSummary()))
+                } else {
+                    manageLocalModels()
+                }
+            }
+        }
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
         // Coder --send A --new B sends B in a new chat while A's reply runs, which goes on out of view.

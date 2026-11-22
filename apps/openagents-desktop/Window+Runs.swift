@@ -106,7 +106,11 @@ extension CoderWindow {
                     return
                 }
             } else if !LocalModelStore.isSelectable {
-                cd_failed(r.page, "Inkling 2 Mini is not downloaded. Open Settings → Models → Local Models to download it.")
+                let msg = !LocalModelStore.hardwareSupported
+                    ? "Inkling 2 Mini requires >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
+                    : "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Open Settings → Models → Local Models to download or verify it."
+                cd_failed(r.page, msg)
+                if shown { manageLocalModels() }
                 wake()
                 return
             }

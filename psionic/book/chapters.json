@@ -6172,18 +6172,25 @@
       "title": "Run Inkling 2 Mini in OpenAgents Desktop",
       "file": "ch271-run-inkling-2-mini-in-openagents-desktop.md",
       "status": "implemented",
-      "profile": "bounded OpenAgents Desktop readiness, hardware preflight, and selectable model-picker gating",
+      "profile": "OpenAgents Desktop selectable Inkling 2 Mini integration, 32K Metal runner, verified Local Models store, and Microcoder tool-use routing",
       "depends_on": [
         270
       ],
       "source": [
         "psionic/examples/inkling-desktop.coax",
-        "psionic/lib/inkling-desktop.coax"
+        "psionic/lib/inkling-desktop.coax",
+        "apps/openagents-desktop/LocalModels.swift",
+        "apps/openagents-desktop/page/models.coax",
+        "apps/openagents-desktop/Window+Dialogs.swift",
+        "apps/openagents-desktop/Window+Runs.swift"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/page/models.coax"
+      ]
     },
     {
       "number": 272,

@@ -1,12 +1,18 @@
-// ch271: Run Inkling 2 Mini in OpenAgents Desktop (#13825).
+// ch271: Run Inkling 2 Mini in OpenAgents Desktop (#13825, #13826).
 
 #load "../lib/inkling-desktop.coax";
 
+// book:begin example
 main :: () {
-  ready := inkling_desktop_status(32768, true, false, 100);
-  low := inkling_desktop_status(16384, true, false, 100);
-  missing := inkling_desktop_status(65536, false, false, 0);
-  print("% (%): selectable=%\n", INKLING_MODEL_LABEL, inkling_desktop_summary(ready), ready.selectable);
+  ready := inkling_desktop_readiness(32768, 40000, true, false, false, false, 100);
+  low := inkling_desktop_readiness(16384, 40000, true, false, false, false, 100);
+  verifying := inkling_desktop_readiness(65536, 40000, false, false, false, true, 64);
+  paused := inkling_desktop_readiness(65536, 40000, false, false, true, false, 42);
+  disk_low := inkling_desktop_readiness(65536, 12000, false, false, false, false, 0);
+  print("% (%): selectable=% ctx=%\n", INKLING_MODEL_LABEL, inkling_desktop_summary(ready), ready.selectable, ready.ctx_tokens);
   print("16GB Mac: % (selectable=%)\n", inkling_desktop_summary(low), low.selectable);
-  print("64GB Mac before download: % (selectable=%)\n", inkling_desktop_summary(missing), missing.selectable);
+  print("64GB Mac verifying %: % (selectable=%)\n", verifying.download_pct, inkling_desktop_summary(verifying), verifying.selectable);
+  print("64GB Mac paused %: % (selectable=%)\n", paused.download_pct, inkling_desktop_summary(paused), paused.selectable);
+  print("64GB Mac low disk: % (selectable=%)\n", inkling_desktop_summary(disk_low), disk_low.selectable);
 }
+// book:end example

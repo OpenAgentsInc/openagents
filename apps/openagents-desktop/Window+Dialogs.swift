@@ -272,7 +272,14 @@ final class LocalModelServer {
     static let shared = LocalModelServer()
     static let host = "127.0.0.1"
     static let port = 18794
+    static let contextTokens = 32768
     static var baseURL: String { "http://\(host):\(port)" }
+    static var logURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents", isDirectory: true)
+            .appendingPathComponent("logs", isDirectory: true)
+            .appendingPathComponent("psionic-inkling-serve.log")
+    }
     private var process: Process?
     private let queue = DispatchQueue(label: "openagents.local-model-server")
 
@@ -290,32 +297,55 @@ final class LocalModelServer {
         return nil
     }
 
-    private func isHealthy() -> Bool {
-        guard let url = URL(string: Self.baseURL + "/health") else { return false }
+    private enum HealthProbe { case psionicHealthy, otherService(Int), down }
+
+    private func probeHealth() -> HealthProbe {
+        guard let url = URL(string: Self.baseURL + "/health") else { return .down }
         var req = URLRequest(url: url)
         req.timeoutInterval = 1.0
         let sem = DispatchSemaphore(value: 0)
-        var ok = false
+        var result: HealthProbe = .down
         URLSession.shared.dataTask(with: req) { data, resp, _ in
-            if let http = resp as? HTTPURLResponse, http.statusCode == 200,
-               let data, let body = String(data: data, encoding: .utf8),
-               body.contains("psionic-metal") {
-                ok = true
+            if let http = resp as? HTTPURLResponse {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                if http.statusCode == 200 && body.contains("psionic-metal") {
+                    result = .psionicHealthy
+                } else {
+                    result = .otherService(http.statusCode)
+                }
             }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 1.5)
-        return ok
+        return result
+    }
+
+    private func recentLogTail() -> String {
+        guard let text = try? String(contentsOf: Self.logURL, encoding: .utf8) else { return "" }
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return lines.suffix(2).joined(separator: " | ")
     }
 
     func ensureRunning(completion: @escaping (String?) -> Void) {
         queue.async {
-            if self.isHealthy() {
+            switch self.probeHealth() {
+            case .psionicHealthy:
                 DispatchQueue.main.async { completion(nil) }
+                return
+            case .otherService(let code):
+                DispatchQueue.main.async {
+                    completion("Port \(Self.port) is already in use by another process (HTTP \(code) on \(Self.baseURL)/health). Stop that process to run Inkling 2 Mini.")
+                }
+                return
+            case .down:
+                break
+            }
+            guard LocalModelStore.hardwareSupported else {
+                DispatchQueue.main.async { completion("Inkling 2 Mini requires >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).") }
                 return
             }
             guard LocalModelStore.isInstalled else {
-                DispatchQueue.main.async { completion("Inkling 2 Mini weights are not downloaded.") }
+                DispatchQueue.main.async { completion("Inkling 2 Mini weights are not verified on disk (\(LocalModelStore.statusSummary())).") }
                 return
             }
             guard let server = Self.findPsionicServer() else {
@@ -330,10 +360,19 @@ final class LocalModelServer {
                     "--metal", server.metal,
                     "--host", Self.host,
                     "--port", String(Self.port),
-                    "--ctx", "8192",
+                    "--ctx", String(Self.contextTokens),
                 ]
-                p.standardOutput = FileHandle.nullDevice
-                p.standardError = FileHandle.nullDevice
+                let fm = FileManager.default
+                try? fm.createDirectory(at: Self.logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                fm.createFile(atPath: Self.logURL.path, contents: nil)
+                if let fh = try? FileHandle(forWritingTo: Self.logURL) {
+                    try? fh.truncate(atOffset: 0)
+                    p.standardOutput = fh
+                    p.standardError = fh
+                } else {
+                    p.standardOutput = FileHandle.nullDevice
+                    p.standardError = FileHandle.nullDevice
+                }
                 do {
                     try p.run()
                     self.process = p
@@ -342,24 +381,31 @@ final class LocalModelServer {
                     return
                 }
             }
-            for _ in 0..<90 {
-                if self.isHealthy() {
+            for _ in 0..<120 {
+                if case .psionicHealthy = self.probeHealth() {
                     DispatchQueue.main.async { completion(nil) }
                     return
                 }
                 if self.process?.isRunning != true {
-                    DispatchQueue.main.async { completion("Psionic Metal server exited before becoming ready.") }
+                    let status = self.process?.terminationStatus ?? -1
+                    let tail = self.recentLogTail()
+                    let detail = tail.isEmpty ? "See \(Self.logURL.path)." : tail
+                    DispatchQueue.main.async { completion("Psionic Metal server exited (\(status)): \(detail)") }
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.5)
             }
-            DispatchQueue.main.async { completion("Timed out waiting for Psionic Metal server on \(Self.baseURL).") }
+            let tail = self.recentLogTail()
+            let suffix = tail.isEmpty ? "See \(Self.logURL.path)." : tail
+            DispatchQueue.main.async { completion("Timed out waiting for Psionic Metal server on \(Self.baseURL). \(suffix)") }
         }
     }
 
     func stop() {
-        queue.async {
-            self.process?.terminate()
+        queue.sync {
+            if let p = self.process, p.isRunning {
+                p.terminate()
+            }
             self.process = nil
         }
     }

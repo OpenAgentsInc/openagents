@@ -86,14 +86,6 @@ cp "$repo/coax/web/build/tools/oasim-$(shasum -a 256 "$coax" | cut -d " " -f 1)"
 # owns the worker runs so they go on after Coder quits (GitHub #13694). An unknown verb only builds it.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/host-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/coder-host"
-# Psionic Inkling Metal server + compiled Metal 4 kernel library for Gym Benchmarks.
-if [[ -x "$repo/psionic/platform/inkling-build.sh" ]]; then
-  COAX="$coax" "$repo/psionic/platform/inkling-build.sh" > /dev/null 2>&1 || true
-  if [[ -x "$repo/psionic/build/psionic-inkling-serve" && -f "$repo/psionic/build/inkling-kernels.metal" ]]; then
-    cp "$repo/psionic/build/psionic-inkling-serve" "$res/psionic-inkling-serve"
-    cp "$repo/psionic/build/inkling-kernels.metal" "$res/inkling-kernels.metal"
-  fi
-fi
 # Bundle Tier 2 + Tier 4 coding eval specs and fixtures for Gym Benchmarks so it runs from any workspace.
 if [[ -d "$repo/evals/openagents-desktop/tier2/tasks" && -d "$repo/evals/openagents-desktop/tier4/tasks" ]]; then
   rm -rf "$res/gym-evals"

@@ -155,6 +155,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         DesktopActivation.shared.stop()
         ScheduledTaskManager.shared.stop()
+        LocalModelServer.shared.stop()
         main?.retire()
         for w in extraWindows { w.retire() }
         TestLaunch.stopHost()

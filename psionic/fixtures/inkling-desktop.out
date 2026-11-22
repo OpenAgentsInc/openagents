@@ -1,3 +1,5 @@
-Inkling 2 Mini (Local) (Installed (~20 GB)): selectable=true
+Inkling 2 Mini (Local) (Installed (17.63 GB · SHA-256 verified)): selectable=true ctx=32768
 16GB Mac: Requires 32 GB RAM (selectable=false)
-64GB Mac before download: Not downloaded (~20 GB) (selectable=false)
+64GB Mac verifying 64: Verifying SHA-256... (selectable=false)
+64GB Mac paused 42: Paused (resume available) (selectable=false)
+64GB Mac low disk: Insufficient disk space (need 17.63 GB) (selectable=false)
