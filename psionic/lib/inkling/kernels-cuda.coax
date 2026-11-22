@@ -15,6 +15,7 @@
 INK_T :: 64;
 INK_NT :: 256;
 INK_AT :: 1024;  // threads of an attention group
+INK_MT :: 1024;  // threads of a direct expert group
 INK_DR :: 4;
 INK_D :: 8;
 INK_HEAD :: 128;
@@ -758,11 +759,34 @@ ink_q8_round :: (item:int,n:int,x:[]f32,out:[]f32) #export_c #effects(all) {
     }
 }
 
-// ---- Row-per-group kernels. A GPU thread is slow alone and fast in a crowd,
-// so these give a whole group of 256 threads to one output row and each
-// thread about one 32-value weight block, in place of a few threads walking
-// many blocks. A row's sum adds the threads' parts in a fixed order: 16 sums
-// of 16, then their sum.
+// ---- Quantized weights on the device. A quantized matrix [rows, cols] is
+// stored block-major, not in GGUF order, so that the 32 threads of a warp
+// that hold 32 neighbouring rows read one contiguous run of memory:
+//   wq[(b*W + k)*rows + r]  word k of row r's block b: bytes 4k..4k+3 of its
+//                           codes (W = 4 words for IQ4_NL, 8 for Q8_0)
+//   wd[b*rows + r]          the block's f16 scale
+// The bits are the GGUF's; ink_relayout only moves them. Each kernel below
+// gives a group of 1024 threads to 32 rows: warp c takes the rows' blocks
+// c*run .. c*run+run-1, and the row's sum adds the 32 warps' parts in order.
+
+// GGUF order -> device order for n rows that start at row row0 of a matrix of
+// `rows` rows. raw holds those n rows as GGUF blocks (u16 words: an f16
+// scale, then the codes). pair > 0 (an expert's gate_up, pair = n_ff, n =
+// rows): device row 2i is gate row i and device row 2i+1 is up row i, so a
+// hidden unit's two rows are neighbours. Launch items = n*blocks*(words+1).
+ink_relayout :: (item:int,rows:int,row0:int,n:int,blocks:int,words:int,pair:int,raw:[]u16,lq:[]u32,ld:[]u16) #export_c #effects(all) {
+    nq:=n*blocks*words;bw:=1+2*words;
+    if item<nq {
+        rl:=item%n;bk:=item/n;b:=bk/words;k:=bk%words;
+        src:=ifx pair>0 then (rl%2)*pair+rl/2 else rl;
+        at:=(src*blocks+b)*bw+1+2*k;
+        lq[bk*rows+row0+rl]=cast(u32)raw[at]|(cast(u32)raw[at+1]<<16);
+    } else if item<nq+n*blocks {
+        j:=item-nq;rl:=j%n;b:=j/n;
+        src:=ifx pair>0 then (rl%2)*pair+rl/2 else rl;
+        ld[b*rows+row0+rl]=raw[(src*blocks+b)*bw];
+    }
+}
 
 // IQ4_NL code -> value, from the table packed four values to a word.
 ink_iq4_fast :: (q:u32)->f32 {
@@ -771,210 +795,357 @@ ink_iq4_fast :: (q:u32)->f32 {
     return ink_signed((word>>((q&3)*8))&255);
 }
 
-// One 32-value block of a quantized row times 32 values of x. q8 != 0: Q8_0
-// (17 words: an f16 scale, 32 signed bytes); else IQ4_NL (9 words: an f16
-// scale, 16 bytes whose low nibbles are values 0..15 and high nibbles 16..31).
-ink_block_dot :: (q8:int,w:[]u16,at:int,x:[]f32,xb:int)->f32 {
+// One block of one row times 32 values of x, without the block's scale. qi is
+// the index in wq of the block's word 0 for this row; the next word is
+// `stride` further on. An IQ4_NL byte j holds value j in its low nibble and
+// value j+16 in its high nibble.
+ink_lblock :: (q8:int,wq:[]u32,qi:u32,stride:u32,x:[]f32,xb:u32)->f32 {
     sum:f32=0;
     if q8!=0 {
-        for k:0..<16 {
-            v:=cast(u32)w[at+1+k];
-            sum+=ink_signed(v&255)*x[xb+2*k]+ink_signed(v>>8)*x[xb+2*k+1];
+        for k:cast(u32)0..<8 {
+            v:=wq[cast(int)add_wrap(qi,mul_wrap(k,stride))];
+            xo:=cast(int)add_wrap(xb,mul_wrap(k,4));
+            sum+=ink_signed(v&255)*x[xo]+ink_signed((v>>8)&255)*x[xo+1]
+                +ink_signed((v>>16)&255)*x[xo+2]+ink_signed(v>>24)*x[xo+3];
         }
     } else {
-        for k:0..<8 {
-            v:=cast(u32)w[at+1+k];
-            sum+=ink_iq4_fast(v&15)*x[xb+2*k]+ink_iq4_fast((v>>4)&15)*x[xb+16+2*k]
-                +ink_iq4_fast((v>>8)&15)*x[xb+2*k+1]+ink_iq4_fast(v>>12)*x[xb+16+2*k+1];
+        for k:cast(u32)0..<4 {
+            v:=wq[cast(int)add_wrap(qi,mul_wrap(k,stride))];
+            xo:=cast(int)add_wrap(xb,mul_wrap(k,4));
+            sum+=ink_iq4_fast(v&15)*x[xo]+ink_iq4_fast((v>>4)&15)*x[xo+16]
+                +ink_iq4_fast((v>>8)&15)*x[xo+1]+ink_iq4_fast((v>>12)&15)*x[xo+17]
+                +ink_iq4_fast((v>>16)&15)*x[xo+2]+ink_iq4_fast((v>>20)&15)*x[xo+18]
+                +ink_iq4_fast((v>>24)&15)*x[xo+3]+ink_iq4_fast(v>>28)*x[xo+19];
         }
     }
-    return ink_half(cast(u32)w[at])*sum;
+    return sum;
 }
 
-// MoE down projection and weighted sum over the n_used chosen experts.
-// Launch items = tokens * ceil(rows / 4): a group writes 4 rows of one token,
-// and each thread takes about one block of all 4, so a value of x is read
-// once for the 4 rows. w is [slots, rows, cols] quantized; x is [tokens,
-// n_used, cols]; ids are the chosen experts' slots in w, n_used per token.
-ink_moe_down :: (item:int,rows:int,cols:int,n_used:int,q8:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[1024]f32;mid:[64]f32;
-    blocks:=cols/32;bw:=ifx q8!=0 then 17 else 9;row_words:=blocks*bw;exp_words:=rows*row_words;
-    total:=n_used*blocks;groups:=(rows+3)/4;tok:=item/groups;row0:=(item%groups)*4;sb:=tok*n_used;
-    for thread:0..<INK_NT {
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:0..<(total+INK_NT-1)/INK_NT {
-            gb:=step*INK_NT+thread;
-            if gb<total {
-                slot:=sb+gb/blocks;block:=gb%blocks;ew:=wts[slot];
-                at:=cast(int)ids[slot]*exp_words+row0*row_words+block*bw;xb:=slot*cols+block*32;
-                s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                if q8!=0 {
-                    for k:0..<16 {
-                        x0:=x[xb+2*k];x1:=x[xb+2*k+1];
-                        if row0<rows {v:=cast(u32)w[at+1+k];s0+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+1<rows {v:=cast(u32)w[at+row_words+1+k];s1+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+2<rows {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+3<rows {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                    }
-                } else {
-                    for k:0..<8 {
-                        x0:=x[xb+2*k];x1:=x[xb+16+2*k];x2:=x[xb+2*k+1];x3:=x[xb+16+2*k+1];
-                        if row0<rows {v:=cast(u32)w[at+1+k];s0+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+1<rows {v:=cast(u32)w[at+row_words+1+k];s1+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+2<rows {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+3<rows {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                    }
+// Quantized matvec (Q8_0 or IQ4_NL): out[tok, row] = W x[tok]. Launch items =
+// tokens * ceil(rows / 32). A group of 1024 threads takes 32 rows; warp c
+// takes blocks c*run .. c*run+run-1. lrows is the number of rows the matrix
+// is stored with (rows <= lrows: the output head computes only the unpadded
+// vocabulary).
+ink_mvq :: (item:int,rows:int,lrows:int,cols:int,add:int,q8:int,wq:[]u32,wd:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[1024]f32;
+    groups:=(rows+31)/32;tok:=item/groups;row0:=(item%groups)*32;
+    nr:=cast(u32)rows;lr:=cast(u32)lrows;blocks:=cast(u32)cols/32;words:=ifx q8!=0 then cast(u32)8 else cast(u32)4;
+    run:=(blocks+31)/32;xt:=mul_wrap(cast(u32)tok,cast(u32)cols);
+    for thread:0..<INK_MT {
+        t:=cast(u32)thread;row:=add_wrap(cast(u32)row0,t%32);chunk:=t/32;acc:f32=0;
+        if row<nr {
+            for bb:cast(u32)0..<run {
+                b:=add_wrap(mul_wrap(chunk,run),bb);
+                if b<blocks {
+                    s:=ink_lblock(q8,wq,add_wrap(mul_wrap(mul_wrap(b,words),lr),row),lr,x,add_wrap(xt,mul_wrap(b,32)));
+                    acc+=ink_half(cast(u32)wd[cast(int)add_wrap(mul_wrap(b,lr),row)])*s;
                 }
-                if row0<rows {a0+=ew*ink_half(cast(u32)w[at])*s0;}
-                if row0+1<rows {a1+=ew*ink_half(cast(u32)w[at+row_words])*s1;}
-                if row0+2<rows {a2+=ew*ink_half(cast(u32)w[at+2*row_words])*s2;}
-                if row0+3<rows {a3+=ew*ink_half(cast(u32)w[at+3*row_words])*s3;}
             }
         }
-        part[thread*4]=a0;part[thread*4+1]=a1;part[thread*4+2]=a2;part[thread*4+3]=a3;
+        part[thread]=acc;
     }
-    // Threads 0..63: thread r*16+g sums 16 parts of row r.
-    for thread:0..<INK_NT {
-        if thread<64 {
-            r:=thread/16;g:=thread%16;sum:f32=0;
-            for j:0..<16 {sum+=part[(g*16+j)*4+r];}
-            mid[thread]=sum;
-        }
-    }
-    for thread:0..<INK_NT {
-        if thread<4 && row0+thread<rows {
+    for thread:0..<INK_MT {
+        if thread<32 && row0+thread<rows {
             sum:f32=0;
-            for j:0..<16 {sum+=mid[thread*16+j];}
-            out[tok*rows+row0+thread]=sum;
-        }
-    }
-}
-
-// Quantized matvec (Q8_0 or IQ4_NL), 1 token. Launch items = ceil(rows / 4):
-// a group of 64 threads writes 4 rows, and thread t takes blocks t, t+64, ...
-// of all 4, so a value of x is read once for the 4 rows.
-ink_dvq :: (item:int,rows:int,cols:int,add:int,q8:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;mid:[32]f32;
-    blocks:=cols/32;bw:=ifx q8!=0 then 17 else 9;row_words:=blocks*bw;
-    groups:=(rows+3)/4;tok:=item/groups;row0:=(item%groups)*4;
-    for thread:0..<INK_T {
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;
-        for step:0..<(blocks+INK_T-1)/INK_T {
-            block:=step*INK_T+thread;
-            if block<blocks {
-                at:=row0*row_words+block*bw;xb:=tok*cols+block*32;
-                s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;
-                if q8!=0 {
-                    for k:0..<16 {
-                        x0:=x[xb+2*k];x1:=x[xb+2*k+1];
-                        if row0<rows {v:=cast(u32)w[at+1+k];s0+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+1<rows {v:=cast(u32)w[at+1*row_words+1+k];s1+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+2<rows {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+3<rows {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                    }
-                } else {
-                    for k:0..<8 {
-                        x0:=x[xb+2*k];x1:=x[xb+16+2*k];x2:=x[xb+2*k+1];x3:=x[xb+16+2*k+1];
-                        if row0<rows {v:=cast(u32)w[at+1+k];s0+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+1<rows {v:=cast(u32)w[at+1*row_words+1+k];s1+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+2<rows {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+3<rows {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                    }
-                }
-                if row0<rows {a0+=ink_half(cast(u32)w[at])*s0;}
-                if row0+1<rows {a1+=ink_half(cast(u32)w[at+1*row_words])*s1;}
-                if row0+2<rows {a2+=ink_half(cast(u32)w[at+2*row_words])*s2;}
-                if row0+3<rows {a3+=ink_half(cast(u32)w[at+3*row_words])*s3;}
-            }
-        }
-        part[thread*4]=a0;part[thread*4+1]=a1;part[thread*4+2]=a2;part[thread*4+3]=a3;
-    }
-    // Threads 0..31: thread r*8+g sums 8 parts of row r.
-    for thread:0..<INK_T {
-        if thread<32 {
-            r:=thread/8;g:=thread%8;sum:f32=0;
-            for j:0..<8 {sum+=part[(g*8+j)*4+r];}
-            mid[thread]=sum;
-        }
-    }
-    for thread:0..<INK_T {
-        if thread<4 && row0+thread<rows {
-            sum:f32=0;
-            for j:0..<8 {sum+=mid[thread*8+j];}
+            for c:0..<32 {sum+=part[c*32+thread];}
             oi:=tok*rows+row0+thread;
             if add!=0 {out[oi]=out[oi]+sum;}else {out[oi]=sum;}
         }
     }
 }
 
-// MoE gate_up and SITU for the n_used chosen experts. w is [slots, 2*n_ff,
-// cols] quantized: an expert's n_ff gate rows, then its n_ff up rows.
-// Launch items = n_used * ceil(n_ff / 4): a group of 64 threads takes 4 gate
-// rows and the matching 4 up rows of one expert, reads each value of x once
-// for the 8, and writes situ(gate, up) into out[slot, row].
-ink_moe_gu :: (item:int,n_ff:int,cols:int,n_used:int,q8:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
-    part:[512]f32;mid:[64]f32;
-    groups:=(n_ff+3)/4;slot:=item/groups;row0:=(item%groups)*4;
-    blocks:=cols/32;bw:=ifx q8!=0 then 17 else 9;row_words:=blocks*bw;
-    exp_base:=cast(int)ids[slot]*(2*n_ff*row_words);
-    for thread:0..<INK_T {
-        a0:f32=0;a1:f32=0;a2:f32=0;a3:f32=0;a4:f32=0;a5:f32=0;a6:f32=0;a7:f32=0;
-        for step:0..<(blocks+INK_T-1)/INK_T {
-            block:=step*INK_T+thread;
-            if block<blocks {
-                at:=exp_base+row0*row_words+block*bw;xb:=(slot/n_used)*cols+block*32;
-                s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;s4:f32=0;s5:f32=0;s6:f32=0;s7:f32=0;
-                if q8!=0 {
-                    for k:0..<16 {
-                        x0:=x[xb+2*k];x1:=x[xb+2*k+1];
-                        if row0<n_ff {v:=cast(u32)w[at+1+k];s0+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+1<n_ff {v:=cast(u32)w[at+1*row_words+1+k];s1+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+2<n_ff {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+3<n_ff {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0<n_ff {v:=cast(u32)w[at+(n_ff+0)*row_words+1+k];s4+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+1<n_ff {v:=cast(u32)w[at+(n_ff+1)*row_words+1+k];s5+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+2<n_ff {v:=cast(u32)w[at+(n_ff+2)*row_words+1+k];s6+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                        if row0+3<n_ff {v:=cast(u32)w[at+(n_ff+3)*row_words+1+k];s7+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;}
-                    }
-                } else {
-                    for k:0..<8 {
-                        x0:=x[xb+2*k];x1:=x[xb+16+2*k];x2:=x[xb+2*k+1];x3:=x[xb+16+2*k+1];
-                        if row0<n_ff {v:=cast(u32)w[at+1+k];s0+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+1<n_ff {v:=cast(u32)w[at+1*row_words+1+k];s1+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+2<n_ff {v:=cast(u32)w[at+2*row_words+1+k];s2+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+3<n_ff {v:=cast(u32)w[at+3*row_words+1+k];s3+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0<n_ff {v:=cast(u32)w[at+(n_ff+0)*row_words+1+k];s4+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+1<n_ff {v:=cast(u32)w[at+(n_ff+1)*row_words+1+k];s5+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+2<n_ff {v:=cast(u32)w[at+(n_ff+2)*row_words+1+k];s6+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                        if row0+3<n_ff {v:=cast(u32)w[at+(n_ff+3)*row_words+1+k];s7+=ink_iq4_fast(v&15)*x0+ink_iq4_fast((v>>4)&15)*x1+ink_iq4_fast((v>>8)&15)*x2+ink_iq4_fast(v>>12)*x3;}
-                    }
-                }
-                if row0<n_ff {a0+=ink_half(cast(u32)w[at])*s0;}
-                if row0+1<n_ff {a1+=ink_half(cast(u32)w[at+1*row_words])*s1;}
-                if row0+2<n_ff {a2+=ink_half(cast(u32)w[at+2*row_words])*s2;}
-                if row0+3<n_ff {a3+=ink_half(cast(u32)w[at+3*row_words])*s3;}
-                if row0<n_ff {a4+=ink_half(cast(u32)w[at+(n_ff+0)*row_words])*s4;}
-                if row0+1<n_ff {a5+=ink_half(cast(u32)w[at+(n_ff+1)*row_words])*s5;}
-                if row0+2<n_ff {a6+=ink_half(cast(u32)w[at+(n_ff+2)*row_words])*s6;}
-                if row0+3<n_ff {a7+=ink_half(cast(u32)w[at+(n_ff+3)*row_words])*s7;}
+// Q8_0 matvec for one token in two steps. A thread's time is what it does in
+// a row, so ink_mvq_p gives every thread one block of four rows and nothing
+// else, and ink_mvq_s adds a row's blocks.
+// ink_mvq_p: launch items = (cols / 32) * (rows / 4), rows a multiple of 4.
+// Thread (b, q) takes block b of rows q, q + rows/4, q + 2 rows/4 and q + 3
+// rows/4, reading each value of x once for the four, and writes their shares
+// part[b*rows + row]. A code byte c means c - 256 for c >= 128; with the top
+// bit flipped, u = c ^ 128 is the value plus 128, so a block's sum is
+// sum(u * x) - 128 * sum(x), and sum(x) is shared by the four rows.
+ink_mvq_p :: (item:int,rows:int,lrows:int,cols:int,wq:[]u32,wd:[]u16,x:[]f32,part:[]f32) #export_c #effects(all) {
+    nr:=cast(u32)rows;lr:=cast(u32)lrows;blocks:=cast(u32)cols/32;quarter:=nr/4;
+    gi:=cast(u32)item;b:=gi/quarter;
+    if b<blocks {
+        r0:=gi%quarter;r1:=add_wrap(r0,quarter);r2:=add_wrap(r1,quarter);r3:=add_wrap(r2,quarter);
+        xb:=mul_wrap(b,32);db:=mul_wrap(b,lr);pb:=mul_wrap(b,nr);
+        // Every load first, then the arithmetic: a thread waits for a load
+        // only when it needs the value, so loads asked for together arrive
+        // together.
+        xs:[32]f32;ws:[32]u32;
+        for j:0..<32 {xs[j]=x[cast(int)add_wrap(xb,cast(u32)j)];}
+        for k:0..<8 {
+            qi:=mul_wrap(add_wrap(mul_wrap(b,8),cast(u32)k),lr);
+            ws[k*4]=wq[cast(int)add_wrap(qi,r0)];ws[k*4+1]=wq[cast(int)add_wrap(qi,r1)];
+            ws[k*4+2]=wq[cast(int)add_wrap(qi,r2)];ws[k*4+3]=wq[cast(int)add_wrap(qi,r3)];
+        }
+        d0:=cast(u32)wd[cast(int)add_wrap(db,r0)];d1:=cast(u32)wd[cast(int)add_wrap(db,r1)];
+        d2:=cast(u32)wd[cast(int)add_wrap(db,r2)];d3:=cast(u32)wd[cast(int)add_wrap(db,r3)];
+        s0:f32=0;s1:f32=0;s2:f32=0;s3:f32=0;sx:f32=0;
+        for k:0..<8 {
+            x0:=xs[k*4];x1:=xs[k*4+1];x2:=xs[k*4+2];x3:=xs[k*4+3];
+            sx+=(x0+x1)+(x2+x3);
+            v:=ws[k*4]^0x80808080;
+            s0+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+1]^0x80808080;
+            s1+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+2]^0x80808080;
+            s2+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+            v=ws[k*4+3]^0x80808080;
+            s3+=f32(v&255)*x0+f32((v>>8)&255)*x1+f32((v>>16)&255)*x2+f32(v>>24)*x3;
+        }
+        off:=128.0f32*sx;
+        part[cast(int)add_wrap(pb,r0)]=ink_half(d0)*(s0-off);
+        part[cast(int)add_wrap(pb,r1)]=ink_half(d1)*(s1-off);
+        part[cast(int)add_wrap(pb,r2)]=ink_half(d2)*(s2-off);
+        part[cast(int)add_wrap(pb,r3)]=ink_half(d3)*(s3-off);
+    }
+}
+
+// ink_mvq_s: out[row] = the sum of the row's n_blocks shares, in block order.
+// Launch items = rows.
+ink_mvq_s :: (item:int,rows:int,n_blocks:int,add:int,part:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<rows {
+        nr:=cast(u32)rows;r:=cast(u32)item;sum:f32=0;nb:=cast(u32)n_blocks;
+        // Eight loads at a time, all asked for before any is used: a thread
+        // waits for a load only when it needs the value.
+        for g:cast(u32)0..<nb/8 {
+            at:=add_wrap(mul_wrap(mul_wrap(g,8),nr),r);
+            v0:=part[cast(int)at];v1:=part[cast(int)add_wrap(at,nr)];
+            v2:=part[cast(int)add_wrap(at,mul_wrap(nr,2))];v3:=part[cast(int)add_wrap(at,mul_wrap(nr,3))];
+            v4:=part[cast(int)add_wrap(at,mul_wrap(nr,4))];v5:=part[cast(int)add_wrap(at,mul_wrap(nr,5))];
+            v6:=part[cast(int)add_wrap(at,mul_wrap(nr,6))];v7:=part[cast(int)add_wrap(at,mul_wrap(nr,7))];
+            sum+=((v0+v1)+(v2+v3))+((v4+v5)+(v6+v7));
+        }
+        for b:(nb/8)*8..<nb {sum+=part[cast(int)add_wrap(mul_wrap(b,nr),r)];}
+        if add!=0 {out[item]=out[item]+sum;}else {out[item]=sum;}
+    }
+}
+
+// ---- Table kernels for IQ4_NL experts, one token at a time. An IQ4_NL byte
+// holds two codes: value j of its block in the low nibble and value j+16 in
+// the high one. For one block of x, a 16 x 256 table in the group's shared
+// memory holds T[low]*x[j] + T[high]*x[j+16] for every byte value, so a row's
+// 32 products are 16 lookups and 16 additions. One group of 256 threads per
+// (expert, block): the threads build the table (16 entries each), then each
+// takes every 256th row. A group's results are that block's share of each
+// row's sum; the next kernel adds a row's shares in block order.
+
+// gate_up shares for one token. Launch items = n_used * (cols / 32). wq and
+// wd are the layer's expert cache; part is [n_used, cols/32, 2*n_ff] with the
+// rows in device order (gate i, up i, gate i+1, ...).
+ink_moe_gu_t :: (item:int,n_ff:int,cols:int,wq:[]u32,wd:[]u16,x:[]f32,ids:[]u32,part:[]f32) #export_c #effects(all) {
+    tab:[4096]f32;
+    gi:=cast(u32)item;blocks:=cast(u32)cols/32;slot:=gi/blocks;block:=gi%blocks;
+    rows:=mul_wrap(cast(u32)n_ff,2);cells:=mul_wrap(rows,blocks);id:=ids[cast(int)slot];
+    qb:=add_wrap(mul_wrap(id,add_wrap(mul_wrap(cells,4),cells/2)),mul_wrap(mul_wrap(block,4),rows));
+    db:=add_wrap(add_wrap(mul_wrap(id,mul_wrap(cells,9)),mul_wrap(cells,8)),mul_wrap(block,rows));
+    xb:=mul_wrap(block,32);ob:=mul_wrap(gi,rows);
+    for thread:0..<INK_NT {
+        t:=cast(u32)thread;j:=t/16;hi:=t%16;
+        a:=ink_iq4_fast(hi)*x[cast(int)add_wrap(xb,add_wrap(j,16))];
+        xl:=x[cast(int)add_wrap(xb,j)];
+        for k:0..<16 {tab[thread*16+k]=ink_iq4_fast(cast(u32)k)*xl+a;}
+    }
+    for thread:0..<INK_NT {
+        t:=cast(u32)thread;
+        for rr:cast(u32)0..<(rows+255)/256 {
+            row:=add_wrap(mul_wrap(rr,256),t);
+            if row<rows {
+                at:=add_wrap(qb,row);
+                v0:=wq[cast(int)at];v1:=wq[cast(int)add_wrap(at,rows)];
+                v2:=wq[cast(int)add_wrap(at,mul_wrap(rows,2))];v3:=wq[cast(int)add_wrap(at,mul_wrap(rows,3))];
+                dw:=cast(u32)wd[cast(int)add_wrap(db,row)];
+                // A row's block from its table: word k holds bytes 4k..4k+3,
+                // and byte j looks up entry j*256 + its value. The 16 lookups
+                // are asked for together.
+                a0:=tab[cast(int)(v0&255)];a1:=tab[cast(int)(256+((v0>>8)&255))];a2:=tab[cast(int)(512+((v0>>16)&255))];a3:=tab[cast(int)(768+(v0>>24))];
+                b0:=tab[cast(int)(1024+(v1&255))];b1:=tab[cast(int)(1280+((v1>>8)&255))];b2:=tab[cast(int)(1536+((v1>>16)&255))];b3:=tab[cast(int)(1792+(v1>>24))];
+                c0:=tab[cast(int)(2048+(v2&255))];c1:=tab[cast(int)(2304+((v2>>8)&255))];c2:=tab[cast(int)(2560+((v2>>16)&255))];c3:=tab[cast(int)(2816+(v2>>24))];
+                e0:=tab[cast(int)(3072+(v3&255))];e1:=tab[cast(int)(3328+((v3>>8)&255))];e2:=tab[cast(int)(3584+((v3>>16)&255))];e3:=tab[cast(int)(3840+(v3>>24))];
+                sum:=(((a0+a1)+(a2+a3))+((b0+b1)+(b2+b3)))+(((c0+c1)+(c2+c3))+((e0+e1)+(e2+e3)));
+                part[cast(int)add_wrap(ob,row)]=ink_half(dw)*sum;
             }
         }
-        part[thread*8+0]=a0;part[thread*8+1]=a1;part[thread*8+2]=a2;part[thread*8+3]=a3;part[thread*8+4]=a4;part[thread*8+5]=a5;part[thread*8+6]=a6;part[thread*8+7]=a7;
     }
-    // Thread r*8+g sums 8 parts of row r (rows 0..3 gate, 4..7 up).
-    for thread:0..<INK_T {
-        r:=thread/8;g:=thread%8;sum:f32=0;
-        for j:0..<8 {sum+=part[(g*8+j)*8+r];}
-        mid[thread]=sum;
+}
+
+// down shares for one token. Launch items = n_used * (cols / 32); cols =
+// n_ff. A group first adds up the gate_up shares of its block's 32 hidden
+// units (in four runs of blocks, then the four), applies SITU and the
+// expert's router weight, and builds its table from those. gu_part is
+// ink_moe_gu_t's output for in_cols input columns; part is [n_used, cols/32,
+// rows].
+ink_moe_down_t :: (item:int,rows:int,cols:int,in_cols:int,beta:f32,lb:f32,wq:[]u32,wd:[]u16,gu_part:[]f32,ids:[]u32,wts:[]f32,part:[]f32) #export_c #effects(all) {
+    tab:[4096]f32;mid:[256]f32;hid:[32]f32;
+    gi:=cast(u32)item;blocks:=cast(u32)cols/32;slot:=gi/blocks;block:=gi%blocks;
+    nr:=cast(u32)rows;cells:=mul_wrap(nr,blocks);id:=ids[cast(int)slot];
+    qb:=add_wrap(mul_wrap(id,add_wrap(mul_wrap(cells,4),cells/2)),mul_wrap(mul_wrap(block,4),nr));
+    db:=add_wrap(add_wrap(mul_wrap(id,mul_wrap(cells,9)),mul_wrap(cells,8)),mul_wrap(block,nr));
+    gb:=cast(u32)in_cols/32;gu_rows:=mul_wrap(cast(u32)cols,2);run:=(gb+3)/4;
+    ob:=mul_wrap(gi,nr);ew:=wts[cast(int)slot];
+    for thread:0..<INK_NT {
+        t:=cast(u32)thread;j:=t%32;half:=(t/32)%2;chunk:=t/64;
+        row:=add_wrap(mul_wrap(add_wrap(mul_wrap(block,32),j),2),half);
+        s:f32=0;
+        for bb:cast(u32)0..<run {
+            b:=add_wrap(mul_wrap(chunk,run),bb);
+            if b<gb {s+=gu_part[cast(int)add_wrap(mul_wrap(add_wrap(mul_wrap(slot,gb),b),gu_rows),row)];}
+        }
+        mid[thread]=s;
     }
-    for thread:0..<INK_T {
-        if thread<4 && row0+thread<n_ff {
-            gate:f32=0;up:f32=0;
-            for j:0..<8 {gate+=mid[thread*8+j];up+=mid[(4+thread)*8+j];}
+    for thread:0..<INK_NT {
+        if thread<32 {
+            gate:=(mid[thread]+mid[64+thread])+(mid[128+thread]+mid[192+thread]);
+            up:=(mid[32+thread]+mid[96+thread])+(mid[160+thread]+mid[224+thread]);
             act:=beta*ink_tanh(gate/beta)*ink_sigmoid(gate);
             if lb>0.0f32 {up=lb*ink_tanh(up/lb);}
-            out[slot*n_ff+row0+thread]=act*up;
+            hid[thread]=act*up*ew;
         }
+    }
+    for thread:0..<INK_NT {
+        j:=thread/16;hi:=cast(u32)(thread%16);
+        a:=ink_iq4_fast(hi)*hid[j+16];
+        xl:=hid[j];
+        for k:0..<16 {tab[thread*16+k]=ink_iq4_fast(cast(u32)k)*xl+a;}
+    }
+    for thread:0..<INK_NT {
+        t:=cast(u32)thread;
+        for rr:cast(u32)0..<(nr+255)/256 {
+            row:=add_wrap(mul_wrap(rr,256),t);
+            if row<nr {
+                at:=add_wrap(qb,row);
+                v0:=wq[cast(int)at];v1:=wq[cast(int)add_wrap(at,nr)];
+                v2:=wq[cast(int)add_wrap(at,mul_wrap(nr,2))];v3:=wq[cast(int)add_wrap(at,mul_wrap(nr,3))];
+                dw:=cast(u32)wd[cast(int)add_wrap(db,row)];
+                // A row's block from its table: word k holds bytes 4k..4k+3,
+                // and byte j looks up entry j*256 + its value. The 16 lookups
+                // are asked for together.
+                a0:=tab[cast(int)(v0&255)];a1:=tab[cast(int)(256+((v0>>8)&255))];a2:=tab[cast(int)(512+((v0>>16)&255))];a3:=tab[cast(int)(768+(v0>>24))];
+                b0:=tab[cast(int)(1024+(v1&255))];b1:=tab[cast(int)(1280+((v1>>8)&255))];b2:=tab[cast(int)(1536+((v1>>16)&255))];b3:=tab[cast(int)(1792+(v1>>24))];
+                c0:=tab[cast(int)(2048+(v2&255))];c1:=tab[cast(int)(2304+((v2>>8)&255))];c2:=tab[cast(int)(2560+((v2>>16)&255))];c3:=tab[cast(int)(2816+(v2>>24))];
+                e0:=tab[cast(int)(3072+(v3&255))];e1:=tab[cast(int)(3328+((v3>>8)&255))];e2:=tab[cast(int)(3584+((v3>>16)&255))];e3:=tab[cast(int)(3840+(v3>>24))];
+                sum:=(((a0+a1)+(a2+a3))+((b0+b1)+(b2+b3)))+(((c0+c1)+(c2+c3))+((e0+e1)+(e2+e3)));
+                part[cast(int)add_wrap(ob,row)]=ink_half(dw)*sum;
+            }
+        }
+    }
+}
+
+// A token's MoE output from its down shares: out[row] = the sum of n_parts
+// shares. Launch items = ceil(rows / 32): a group of 256 threads takes 32
+// rows, warp c adds a run of the shares, and lane l of warp 0 adds the eight
+// runs of row l.
+ink_moe_sum :: (item:int,rows:int,n_parts:int,part:[]f32,out:[]f32) #export_c #effects(all) {
+    mid:[256]f32;
+    nr:=cast(u32)rows;np:=cast(u32)n_parts;run:=(np+7)/8;row0:=mul_wrap(cast(u32)item,32);
+    for thread:0..<INK_NT {
+        t:=cast(u32)thread;row:=add_wrap(row0,t%32);chunk:=t/32;s:f32=0;
+        if row<nr {
+            for pp:cast(u32)0..<run {
+                p:=add_wrap(mul_wrap(chunk,run),pp);
+                if p<np {s+=part[cast(int)add_wrap(mul_wrap(p,nr),row)];}
+            }
+        }
+        mid[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        if thread<32 && item*32+thread<rows {
+            sum:f32=0;
+            for c:0..<8 {sum+=mid[c*32+thread];}
+            out[item*32+thread]=sum;
+        }
+    }
+}
+
+// MoE gate_up and SITU for the n_used chosen experts of every token. wq and
+// wd are a layer's whole expert cache: [slots] experts of 2*n_ff rows stored
+// with gate row i and up row i as neighbours (ink_relayout, pair). Launch
+// items = tokens * n_used * ceil(n_ff / 16): a group takes 16 hidden units of
+// one expert, 32 rows. ids are the experts' slots in the cache; out is
+// [tokens * n_used, n_ff].
+ink_moe_gu :: (item:int,n_ff:int,cols:int,n_used:int,q8:int,beta:f32,lb:f32,wq:[]u32,wd:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
+    part:[1024]f32;
+    groups:=(n_ff+15)/16;slot:=item/groups;i0:=(item%groups)*16;
+    nr:=mul_wrap(cast(u32)n_ff,2);blocks:=cast(u32)cols/32;words:=ifx q8!=0 then cast(u32)8 else cast(u32)4;
+    run:=(blocks+31)/32;cells:=mul_wrap(nr,blocks);id:=ids[slot];
+    qb:=mul_wrap(id,add_wrap(mul_wrap(cells,words),cells/2));
+    db:=add_wrap(mul_wrap(id,mul_wrap(cells,add_wrap(mul_wrap(words,2),1))),mul_wrap(cells,mul_wrap(words,2)));
+    xt:=mul_wrap(cast(u32)(slot/n_used),cast(u32)cols);
+    for thread:0..<INK_MT {
+        t:=cast(u32)thread;row:=add_wrap(mul_wrap(cast(u32)i0,2),t%32);chunk:=t/32;acc:f32=0;
+        if row<nr {
+            for bb:cast(u32)0..<run {
+                b:=add_wrap(mul_wrap(chunk,run),bb);
+                if b<blocks {
+                    s:=ink_lblock(q8,wq,add_wrap(qb,add_wrap(mul_wrap(mul_wrap(b,words),nr),row)),nr,x,add_wrap(xt,mul_wrap(b,32)));
+                    acc+=ink_half(cast(u32)wd[cast(int)add_wrap(db,add_wrap(mul_wrap(b,nr),row))])*s;
+                }
+            }
+        }
+        part[thread]=acc;
+    }
+    for thread:0..<INK_MT {
+        if thread<16 && i0+thread<n_ff {
+            gate:f32=0;up:f32=0;
+            for c:0..<32 {gate+=part[c*32+2*thread];up+=part[c*32+2*thread+1];}
+            act:=beta*ink_tanh(gate/beta)*ink_sigmoid(gate);
+            if lb>0.0f32 {up=lb*ink_tanh(up/lb);}
+            out[slot*n_ff+i0+thread]=act*up;
+        }
+    }
+}
+
+// MoE down projection and the weighted sum over a token's n_used experts.
+// Launch items = tokens * ceil(rows / 32). The work of 32 rows is n_used *
+// (cols / 32) (expert, block) pairs, shared out among the group's 32 warps.
+// x is [tokens * n_used, cols]; ids and wts are the experts' cache slots and
+// router weights.
+ink_moe_down :: (item:int,rows:int,cols:int,n_used:int,q8:int,wq:[]u32,wd:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[1024]f32;
+    groups:=(rows+31)/32;tok:=item/groups;row0:=(item%groups)*32;
+    nr:=cast(u32)rows;blocks:=cast(u32)cols/32;words:=ifx q8!=0 then cast(u32)8 else cast(u32)4;
+    units:=mul_wrap(cast(u32)n_used,blocks);run:=(units+31)/32;cells:=mul_wrap(nr,blocks);
+    sb:=mul_wrap(cast(u32)tok,cast(u32)n_used);
+    for thread:0..<INK_MT {
+        t:=cast(u32)thread;row:=add_wrap(cast(u32)row0,t%32);chunk:=t/32;acc:f32=0;
+        if row<nr {
+            for uu:cast(u32)0..<run {
+                u:=add_wrap(mul_wrap(chunk,run),uu);
+                if u<units {
+                    b:=u%blocks;slot:=cast(int)add_wrap(sb,u/blocks);id:=ids[slot];
+                    qb:=mul_wrap(id,add_wrap(mul_wrap(cells,words),cells/2));
+                    db:=add_wrap(mul_wrap(id,mul_wrap(cells,add_wrap(mul_wrap(words,2),1))),mul_wrap(cells,mul_wrap(words,2)));
+                    s:=ink_lblock(q8,wq,add_wrap(qb,add_wrap(mul_wrap(mul_wrap(b,words),nr),row)),nr,x,add_wrap(mul_wrap(cast(u32)slot,cast(u32)cols),mul_wrap(b,32)));
+                    acc+=wts[slot]*ink_half(cast(u32)wd[cast(int)add_wrap(db,add_wrap(mul_wrap(b,nr),row))])*s;
+                }
+            }
+        }
+        part[thread]=acc;
+    }
+    for thread:0..<INK_MT {
+        if thread<32 && row0+thread<rows {
+            sum:f32=0;
+            for c:0..<32 {sum+=part[c*32+thread];}
+            out[tok*rows+row0+thread]=sum;
+        }
+    }
+}
+
+// The end of a layer's MoE for one channel of every token: the post short
+// convolution with its history, and the residual add.
+// Launch items = n_channels, one thread each.
+ink_moe_post :: (item:int,n_channels:int,nb:int,moe:[]f32,w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        c:=item;
+        x0:=hist[c*3+0];x1:=hist[c*3+1];x2:=hist[c*3+2];
+        for b:0..<nb {
+            x3:=moe[b*n_channels+c];
+            acc:=x0*w[c*4+0]+x1*w[c*4+1]+x2*w[c*4+2]+x3*w[c*4+3];
+            out[b*n_channels+c]=res[b*n_channels+c]+(x3+acc)/sqrt(5.0f32);
+            x0=x1;x1=x2;x2=x3;
+        }
+        hist[c*3+0]=x0;hist[c*3+1]=x1;hist[c*3+2]=x2;
     }
 }
 
