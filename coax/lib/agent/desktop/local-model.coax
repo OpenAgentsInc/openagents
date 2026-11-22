@@ -1,0 +1,636 @@
+// Cross-platform local model admission, manifest, and lifecycle policy
+// for OpenAgents Desktop v1.0 (Inkling 2 Mini; GitHub #13965, #13825, #13826).
+//
+// Single #authority source of truth shared by macOS (Swift), Linux (host-main.c),
+// and Windows (host-main.c) hosts. Decides hardware/VRAM compatibility, pinned
+// checkpoint verification, tamper-evident manifest admission, disk budgets,
+// lifecycle state transitions, safe weight deletion, and quit-time server lifetime.
+//
+// Checks:
+//   coax/bin/coax test coax/lib/agent/desktop/local-model.coax
+//   coax/bin/coax mutate coax/lib/agent/desktop/local-model.coax --root-only
+#load "../../json/json.coax";
+#authority;
+
+// ---- Pinned Inkling 2 Mini v1.0 checkpoint & runtime constants ----
+
+LM_MODEL_ID :: "inkling-2-mini";
+LM_MODEL_NAME :: "Inkling 2 Mini";
+LM_WEIGHTS_FILE :: "Inkling-2-Mini-IQ4_NL.gguf";
+LM_PARTIAL_FILE :: "Inkling-2-Mini-IQ4_NL.gguf.part";
+LM_MANIFEST_FILE :: "manifest.json";
+LM_DOWNLOAD_URL :: "https://huggingface.co/ggml-org/Inkling-2-Mini-GGUF/resolve/main/Inkling-2-Mini-IQ4_NL.gguf";
+LM_EXPECTED_BYTES :: 17_627_940_768;
+LM_EXPECTED_SHA256 :: "cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4";
+LM_DISK_HEADROOM_BYTES :: 536_870_912;   // 512 MiB
+LM_DEFAULT_LOOPS :: 3;
+LM_DEFAULT_CTX :: 32768;
+LM_DEFAULT_PORT :: 18794;
+LM_DEFAULT_IDLE_EXIT_S :: 300;
+LM_PORT_MIN :: 1024;
+LM_PORT_MAX :: 65535;
+
+// Hardware residency floors (docs/desktop/openagents-v1-spec.md §3, §5.4).
+LM_MAC_MIN_RAM_GB :: 32;
+LM_CUDA_IQ4_MIN_VRAM_GB :: 24;
+LM_CUDA_NVFP4_MIN_VRAM_GB :: 16;
+LM_VULKAN_MIN_MEM_GB :: 32;
+
+// OS codes (match DC_OS_MAC / DC_OS_LINUX / DC_OS_WINDOWS in paths.coax).
+LM_OS_MAC :: 1;
+LM_OS_LINUX :: 2;
+LM_OS_WINDOWS :: 3;
+
+// GPU inference backend codes.
+LM_BACKEND_NONE :: 0;
+LM_BACKEND_METAL :: 1;
+LM_BACKEND_CUDA :: 2;
+LM_BACKEND_VULKAN :: 3;
+
+// Checkpoint quantization profiles.
+LM_QUANT_IQ4_NL :: 0;
+LM_QUANT_NVFP4 :: 1;
+
+// Hardware admission verdicts.
+LM_HW_OK :: 0;
+LM_HW_UNSUPPORTED_OS :: 1;
+LM_HW_INTEL_MAC :: 2;
+LM_HW_LOW_RAM_MAC :: 3;
+LM_HW_NO_GPU :: 4;
+LM_HW_LOW_VRAM_CUDA :: 5;
+LM_HW_LOW_MEM_VULKAN :: 6;
+
+// Local model lifecycle states.
+LM_STATE_UNSUPPORTED_HW :: 0;
+LM_STATE_NOT_INSTALLED :: 1;
+LM_STATE_DOWNLOADING :: 2;
+LM_STATE_PAUSED :: 3;
+LM_STATE_VERIFYING :: 4;
+LM_STATE_INSTALLED :: 5;
+LM_STATE_ERROR :: 6;
+
+// Download admission verdicts.
+LM_DL_OK :: 0;
+LM_DL_UNSUPPORTED_HW :: 1;
+LM_DL_ALREADY_INSTALLED :: 2;
+LM_DL_BUSY :: 3;
+LM_DL_LOW_DISK :: 4;
+
+// Removal admission verdicts.
+LM_RM_OK :: 0;
+LM_RM_ACTIVE_RUNS :: 1;
+LM_RM_BUSY :: 2;
+
+// Quit-time local server actions.
+LM_QUIT_STOP :: 0;
+LM_QUIT_KEEP_DETACHED :: 1;
+
+LmHostCaps :: struct {
+  os: int;
+  is_apple_silicon: bool;
+  system_ram_gb: int;
+  backend: int;
+  gpu_vram_gb: int;
+  quant: int;
+}
+
+LmManifest :: struct {
+  ok: bool;
+  model_id: [64] u8;
+  model_id_n: int;
+  weights: [128] u8;
+  weights_n: int;
+  bytes: int;
+  sha256: [64] u8;
+  sha256_n: int;
+  mtime: int;
+  verified: bool;
+  loops: int;
+  verified_at: int;
+}
+
+LmStatusInput :: struct {
+  hw_verdict: int;
+  manifest_valid: bool;
+  downloading: bool;
+  paused: bool;
+  verifying: bool;
+  has_error: bool;
+  partial_bytes: int;
+}
+
+// ---- Pure helpers ----
+
+lm_ascii_lower :: (c: u8) -> u8 #effects(traps) {
+  if c >= 'A' && c <= 'Z' { return cast(u8) (c + 32); }
+  return c;
+}
+
+lm_is_hex :: (c: u8) -> bool #effects(traps) {
+  if c >= '0' && c <= '9' { return true; }
+  lo := lm_ascii_lower(c);
+  return lo >= 'a' && lo <= 'f';
+}
+
+lm_sha256_valid :: (s: string) -> bool #effects(reads, traps) {
+  if s.count != 64 { return false; }
+  for i: 0..<64 {
+    if !lm_is_hex(s[i]) { return false; }
+  }
+  return true;
+}
+
+lm_sha256_eq :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if !lm_sha256_valid(a) || !lm_sha256_valid(b) { return false; }
+  for i: 0..<64 {
+    if lm_ascii_lower(a[i]) != lm_ascii_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+// ---- Hardware & backend admission ----
+
+lm_backend_engine_name :: (backend: int) -> string #effects() {
+  if backend == LM_BACKEND_METAL { return "psionic-metal"; }
+  if backend == LM_BACKEND_CUDA { return "psionic-cuda"; }
+  if backend == LM_BACKEND_VULKAN { return "psionic-vulkan"; }
+  return "";
+}
+
+lm_admit_hardware :: (caps: LmHostCaps) -> int #effects() {
+  if caps.os == LM_OS_MAC {
+    if !caps.is_apple_silicon { return LM_HW_INTEL_MAC; }
+    if caps.system_ram_gb < LM_MAC_MIN_RAM_GB { return LM_HW_LOW_RAM_MAC; }
+    if caps.backend != LM_BACKEND_METAL { return LM_HW_NO_GPU; }
+    return LM_HW_OK;
+  }
+  if caps.os == LM_OS_LINUX || caps.os == LM_OS_WINDOWS {
+    if caps.backend == LM_BACKEND_CUDA {
+      min_vram := ifx caps.quant == LM_QUANT_NVFP4 then LM_CUDA_NVFP4_MIN_VRAM_GB else LM_CUDA_IQ4_MIN_VRAM_GB;
+      if caps.gpu_vram_gb < min_vram { return LM_HW_LOW_VRAM_CUDA; }
+      return LM_HW_OK;
+    }
+    if caps.backend == LM_BACKEND_VULKAN {
+      if caps.gpu_vram_gb < LM_VULKAN_MIN_MEM_GB { return LM_HW_LOW_MEM_VULKAN; }
+      return LM_HW_OK;
+    }
+    return LM_HW_NO_GPU;
+  }
+  return LM_HW_UNSUPPORTED_OS;
+}
+
+lm_hw_reason :: (verdict: int) -> string #effects() {
+  if verdict == LM_HW_OK { return "Supported"; }
+  if verdict == LM_HW_INTEL_MAC { return "Inkling 2 Mini requires an Apple Silicon Mac."; }
+  if verdict == LM_HW_LOW_RAM_MAC { return "Inkling 2 Mini requires at least 32 GB unified memory on macOS."; }
+  if verdict == LM_HW_NO_GPU { return "No supported Psionic GPU backend detected."; }
+  if verdict == LM_HW_LOW_VRAM_CUDA { return "Insufficient NVIDIA VRAM for Inkling 2 Mini."; }
+  if verdict == LM_HW_LOW_MEM_VULKAN { return "Inkling 2 Mini requires at least 32 GB Vulkan device memory."; }
+  return "Unsupported operating system for local Inkling 2 Mini.";
+}
+
+// ---- Disk & progress math ----
+
+lm_required_free_disk :: (partial_bytes: int, expected_bytes: int, headroom_bytes: int) -> int #effects(traps) {
+  if expected_bytes <= 0 { return 0; }
+  done := ifx partial_bytes > 0 then partial_bytes else 0; // mutant: equivalent (at partial_bytes == 0 both branches yield 0)
+  rem := ifx done < expected_bytes then expected_bytes - done else 0; // mutant: equivalent (at done == expected_bytes both branches yield 0)
+  pad := ifx headroom_bytes > 0 then headroom_bytes else 0; // mutant: equivalent (at headroom_bytes == 0 both branches yield 0)
+  return rem + pad;
+}
+
+lm_download_pct :: (downloaded_bytes: int, expected_bytes: int) -> int #effects(traps) {
+  if expected_bytes <= 0 || downloaded_bytes <= 0 { return 0; } // mutant: equivalent (when downloaded_bytes == 0 and expected_bytes > 0, (0 * 100) / expected_bytes == 0)
+  if downloaded_bytes >= expected_bytes { return 100; } // mutant: equivalent (when downloaded_bytes == expected_bytes > 0, (x * 100) / x == 100)
+  pct := (downloaded_bytes * 100) / expected_bytes;
+  return ifx pct > 100 then 100 else pct; // mutant: equivalent (downloaded_bytes < expected_bytes guarantees (downloaded_bytes * 100) / expected_bytes <= 99)
+}
+
+// ---- Tamper-evident manifest JSON codec & admission ----
+
+lm_manifest_write :: (
+  model_id: string,
+  weights: string,
+  bytes: int,
+  sha256: string,
+  mtime: int,
+  verified: bool,
+  loops: int,
+  verified_at: int,
+  out: [] u8
+) -> int #effects(all) {
+  if model_id.count == 0 || model_id.count > 64 { return -1; }
+  if weights.count == 0 || weights.count > 128 { return -1; }
+  if bytes <= 0 || mtime <= 0 || loops <= 0 || verified_at < 0 { return -1; }
+  if !lm_sha256_valid(sha256) { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "model_id"); jo_str(o[..], model_id);
+  jo_key(o[..], "weights"); jo_str(o[..], weights);
+  jo_key(o[..], "bytes"); jo_int(o[..], bytes);
+  jo_key(o[..], "sha256"); jo_str(o[..], sha256);
+  jo_key(o[..], "mtime"); jo_int(o[..], mtime);
+  jo_key(o[..], "verified"); jo_bool(o[..], verified);
+  jo_key(o[..], "loops"); jo_int(o[..], loops);
+  jo_key(o[..], "verified_at"); jo_int(o[..], verified_at);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+lm_manifest_parse :: (text: string, out: [] LmManifest) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = LmManifest.{};
+  nodes: [64] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  v := d[0];
+  if jv_kind(v, 0) != JV_OBJECT { return false; }
+
+  n_id := jv_get(v, 0, "model_id");
+  n_wt := jv_get(v, 0, "weights");
+  n_by := jv_get(v, 0, "bytes");
+  n_sh := jv_get(v, 0, "sha256");
+  n_mt := jv_get(v, 0, "mtime");
+  n_vf := jv_get(v, 0, "verified");
+  n_lp := jv_get(v, 0, "loops");
+  n_va := jv_get(v, 0, "verified_at");
+
+  vf_kind := jv_kind(v, n_vf);
+  if vf_kind != JV_TRUE && vf_kind != JV_FALSE { return false; }
+
+  id_len := jv_str(v, n_id, out[0].model_id[..]);
+  wt_len := jv_str(v, n_wt, out[0].weights[..]);
+  sh_len := jv_str(v, n_sh, out[0].sha256[..]);
+  if id_len <= 0 || wt_len <= 0 || sh_len != 64 { return false; }
+
+  by := jv_int(v, n_by, 0);
+  mt := jv_int(v, n_mt, 0);
+  lp := jv_int(v, n_lp, 0);
+  va := jv_int(v, n_va, -1);
+  if by <= 0 || mt <= 0 || lp <= 0 || va < 0 { return false; }
+
+  out[0].model_id_n = id_len;
+  out[0].weights_n = wt_len;
+  out[0].sha256_n = sh_len;
+  out[0].bytes = by;
+  out[0].mtime = mt;
+  out[0].verified = vf_kind == JV_TRUE;
+  out[0].loops = lp;
+  out[0].verified_at = va;
+  out[0].ok = true;
+  return true;
+}
+
+lm_manifest_admits :: (
+  m: LmManifest,
+  disk_bytes: int,
+  disk_mtime: int,
+  expected_id: string,
+  expected_weights: string,
+  expected_bytes: int,
+  expected_sha256: string
+) -> bool #effects(reads, traps) {
+  if !m.ok || !m.verified { return false; }
+  if expected_bytes <= 0 || disk_bytes != expected_bytes || disk_mtime <= 0 { return false; }
+  if m.bytes != expected_bytes || m.mtime != disk_mtime { return false; }
+  if m.model_id_n <= 0 || m.model_id_n > 64 { return false; }
+  if m.weights_n <= 0 || m.weights_n > 128 { return false; }
+  if m.sha256_n != 64 { return false; }
+  ml := m;
+  if cast(string) ml.model_id[0..<ml.model_id_n] != expected_id { return false; }
+  if cast(string) ml.weights[0..<ml.weights_n] != expected_weights { return false; }
+  return lm_sha256_eq(cast(string) ml.sha256[0..<64], expected_sha256);
+}
+
+// ---- Lifecycle, action admission & server policy ----
+
+lm_resolve_state :: (st: LmStatusInput) -> int #effects() {
+  if st.hw_verdict != LM_HW_OK { return LM_STATE_UNSUPPORTED_HW; }
+  if st.downloading { return LM_STATE_DOWNLOADING; }
+  if st.verifying { return LM_STATE_VERIFYING; }
+  if st.manifest_valid { return LM_STATE_INSTALLED; }
+  if st.has_error { return LM_STATE_ERROR; }
+  if st.paused && st.partial_bytes > 0 { return LM_STATE_PAUSED; }
+  return LM_STATE_NOT_INSTALLED;
+}
+
+lm_state_label :: (state: int) -> string #effects() {
+  if state == LM_STATE_UNSUPPORTED_HW { return "Unsupported Hardware"; }
+  if state == LM_STATE_NOT_INSTALLED { return "Not Downloaded"; }
+  if state == LM_STATE_DOWNLOADING { return "Downloading"; }
+  if state == LM_STATE_PAUSED { return "Paused"; }
+  if state == LM_STATE_VERIFYING { return "Verifying SHA-256"; }
+  if state == LM_STATE_INSTALLED { return "Verified & Ready"; }
+  if state == LM_STATE_ERROR { return "Error"; }
+  return "Unknown";
+}
+
+lm_admit_download :: (
+  hw_verdict: int,
+  manifest_valid: bool,
+  busy: bool,
+  avail_disk_bytes: int,
+  partial_bytes: int,
+  expected_bytes: int,
+  headroom_bytes: int
+) -> int #effects(traps) {
+  if hw_verdict != LM_HW_OK { return LM_DL_UNSUPPORTED_HW; }
+  if manifest_valid { return LM_DL_ALREADY_INSTALLED; }
+  if busy { return LM_DL_BUSY; }
+  need := lm_required_free_disk(partial_bytes, expected_bytes, headroom_bytes);
+  if avail_disk_bytes < need { return LM_DL_LOW_DISK; }
+  return LM_DL_OK;
+}
+
+lm_admit_remove :: (running_count: int, busy: bool) -> int #effects() {
+  if running_count > 0 { return LM_RM_ACTIVE_RUNS; }
+  if busy { return LM_RM_BUSY; }
+  return LM_RM_OK;
+}
+
+lm_server_quit_action :: (runs_outlive_quit: bool, active_local_runs: int) -> int #effects() {
+  if runs_outlive_quit && active_local_runs > 0 { return LM_QUIT_KEEP_DETACHED; }
+  return LM_QUIT_STOP;
+}
+
+lm_resolve_port :: (env_port: int) -> int #effects() {
+  if env_port >= LM_PORT_MIN && env_port <= LM_PORT_MAX { return env_port; }
+  return LM_DEFAULT_PORT;
+}
+
+// ---- Authority checks ----
+
+#forall "local-model: ASCII lowercase and hex classification cover all ASCII bytes" c: 0..<128 {
+  lo := lm_ascii_lower(cast(u8) c);
+  if c >= 65 && c <= 90 {
+    #assert lo == cast(u8) (c + 32);
+  } else {
+    #assert lo == cast(u8) c;
+  }
+  want_hex := (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
+  #assert lm_is_hex(cast(u8) c) == want_hex;
+}
+
+#test "local-model: pinned Inkling 2 Mini constants and SHA-256 validation" {
+  #assert LM_MODEL_ID == "inkling-2-mini";
+  #assert LM_EXPECTED_BYTES == 17_627_940_768;
+  #assert LM_DEFAULT_CTX == 32768;
+  #assert LM_DEFAULT_PORT == 18794;
+  #assert LM_DEFAULT_IDLE_EXIT_S == 300;
+  #assert lm_sha256_valid(LM_EXPECTED_SHA256);
+  #assert !lm_sha256_valid("");
+  #assert !lm_sha256_valid("cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af");   // 63 chars
+  #assert !lm_sha256_valid("cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af40"); // 65 chars
+  #assert !lm_sha256_valid("zbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4");  // invalid char at 0
+  #assert !lm_sha256_valid("cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81afg");  // invalid char at 63
+
+  upper := "CBDF3FA9DC50A4124977980F37DA4F1FA764B0CFE800D275CD43D26CE2A81AF4";
+  diff_first := "dbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4";
+  diff_last := "cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af5";
+  #assert lm_sha256_eq(LM_EXPECTED_SHA256, upper);
+  #assert !lm_sha256_eq(LM_EXPECTED_SHA256, diff_first);
+  #assert !lm_sha256_eq(LM_EXPECTED_SHA256, diff_last);
+  #assert !lm_sha256_eq("cbdf3", LM_EXPECTED_SHA256);
+  #assert !lm_sha256_eq(LM_EXPECTED_SHA256, "cbdf3");
+}
+
+#test "local-model: hardware admission across macOS, Linux, and Windows backends" {
+  // Backend engine names
+  #assert lm_backend_engine_name(LM_BACKEND_METAL) == "psionic-metal";
+  #assert lm_backend_engine_name(LM_BACKEND_CUDA) == "psionic-cuda";
+  #assert lm_backend_engine_name(LM_BACKEND_VULKAN) == "psionic-vulkan";
+  #assert lm_backend_engine_name(LM_BACKEND_NONE) == "";
+
+  // macOS boundaries
+  mac32 := LmHostCaps.{os = LM_OS_MAC, is_apple_silicon = true, system_ram_gb = 32, backend = LM_BACKEND_METAL, gpu_vram_gb = 32, quant = LM_QUANT_IQ4_NL};
+  #assert lm_admit_hardware(mac32) == LM_HW_OK;
+  #assert lm_hw_reason(LM_HW_OK) == "Supported";
+
+  mac_intel := mac32; mac_intel.is_apple_silicon = false;
+  #assert lm_admit_hardware(mac_intel) == LM_HW_INTEL_MAC;
+  #assert lm_hw_reason(LM_HW_INTEL_MAC) == "Inkling 2 Mini requires an Apple Silicon Mac.";
+
+  mac31 := mac32; mac31.system_ram_gb = 31;
+  #assert lm_admit_hardware(mac31) == LM_HW_LOW_RAM_MAC;
+  #assert lm_hw_reason(LM_HW_LOW_RAM_MAC) == "Inkling 2 Mini requires at least 32 GB unified memory on macOS.";
+
+  mac_nogpu := mac32; mac_nogpu.backend = LM_BACKEND_NONE;
+  #assert lm_admit_hardware(mac_nogpu) == LM_HW_NO_GPU;
+  #assert lm_hw_reason(LM_HW_NO_GPU) == "No supported Psionic GPU backend detected.";
+
+  // Linux & Windows CUDA IQ4_NL (24 GB floor) and NVFP4 (16 GB floor)
+  lin24 := LmHostCaps.{os = LM_OS_LINUX, is_apple_silicon = false, system_ram_gb = 64, backend = LM_BACKEND_CUDA, gpu_vram_gb = 24, quant = LM_QUANT_IQ4_NL};
+  #assert lm_admit_hardware(lin24) == LM_HW_OK;
+  lin23 := lin24; lin23.gpu_vram_gb = 23;
+  #assert lm_admit_hardware(lin23) == LM_HW_LOW_VRAM_CUDA;
+  #assert lm_hw_reason(LM_HW_LOW_VRAM_CUDA) == "Insufficient NVIDIA VRAM for Inkling 2 Mini.";
+
+  win16_nvfp4 := LmHostCaps.{os = LM_OS_WINDOWS, is_apple_silicon = false, system_ram_gb = 32, backend = LM_BACKEND_CUDA, gpu_vram_gb = 16, quant = LM_QUANT_NVFP4};
+  #assert lm_admit_hardware(win16_nvfp4) == LM_HW_OK;
+  win15_nvfp4 := win16_nvfp4; win15_nvfp4.gpu_vram_gb = 15;
+  #assert lm_admit_hardware(win15_nvfp4) == LM_HW_LOW_VRAM_CUDA;
+
+  // Vulkan 32 GB floor + no GPU
+  lin_vk32 := LmHostCaps.{os = LM_OS_LINUX, is_apple_silicon = false, system_ram_gb = 64, backend = LM_BACKEND_VULKAN, gpu_vram_gb = 32, quant = LM_QUANT_IQ4_NL};
+  #assert lm_admit_hardware(lin_vk32) == LM_HW_OK;
+  lin_vk31 := lin_vk32; lin_vk31.gpu_vram_gb = 31;
+  #assert lm_admit_hardware(lin_vk31) == LM_HW_LOW_MEM_VULKAN;
+  #assert lm_hw_reason(LM_HW_LOW_MEM_VULKAN) == "Inkling 2 Mini requires at least 32 GB Vulkan device memory.";
+
+  win_nogpu := LmHostCaps.{os = LM_OS_WINDOWS, is_apple_silicon = false, system_ram_gb = 64, backend = LM_BACKEND_NONE, gpu_vram_gb = 0, quant = LM_QUANT_IQ4_NL};
+  #assert lm_admit_hardware(win_nogpu) == LM_HW_NO_GPU;
+
+  // Unknown OS
+  bad_os := mac32; bad_os.os = 99;
+  #assert lm_admit_hardware(bad_os) == LM_HW_UNSUPPORTED_OS;
+  #assert lm_hw_reason(LM_HW_UNSUPPORTED_OS) == "Unsupported operating system for local Inkling 2 Mini.";
+}
+
+#test "local-model: disk headroom and download percentage boundaries" {
+  #assert lm_required_free_disk(0, 0, 512) == 0;
+  #assert lm_required_free_disk(0, -1, 512) == 0;
+  #assert lm_required_free_disk(0, 1, 0) == 1;
+  #assert lm_required_free_disk(1, 10, 0) == 9;
+  #assert lm_required_free_disk(0, 10, 1) == 11;
+  #assert lm_required_free_disk(0, 1000, 500) == 1500;
+  #assert lm_required_free_disk(-50, 1000, -10) == 1000;
+  #assert lm_required_free_disk(400, 1000, 500) == 1100;
+  #assert lm_required_free_disk(1000, 1000, 500) == 500;
+  #assert lm_required_free_disk(1200, 1000, 0) == 0;
+
+  #assert lm_download_pct(0, 1000) == 0;
+  #assert lm_download_pct(-5, 1000) == 0;
+  #assert lm_download_pct(500, 0) == 0;
+  #assert lm_download_pct(500, -10) == 0;
+  #assert lm_download_pct(1, 1) == 100;
+  #assert lm_download_pct(1, 2) == 50;
+  #assert lm_download_pct(1, 1000) == 0;
+  #assert lm_download_pct(250, 1000) == 25;
+  #assert lm_download_pct(999, 1000) == 99;
+  #assert lm_download_pct(1000, 1000) == 100;
+  #assert lm_download_pct(1500, 1000) == 100;
+}
+
+#test "local-model: manifest JSON round-trip and tamper-evident admission" {
+  buf: [512] u8;
+  n := lm_manifest_write(
+    LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256,
+    1763700000, true, LM_DEFAULT_LOOPS, 1763700005, buf[..]
+  );
+  #assert n > 0;
+  text := cast(string) buf[0..<n];
+
+  // Parse back & admit
+  m: [1] LmManifest;
+  #assert lm_manifest_parse(text, m[..]);
+  #assert m[0].ok && m[0].verified && m[0].bytes == LM_EXPECTED_BYTES && m[0].mtime == 1763700000 && m[0].loops == 3 && m[0].verified_at == 1763700005;
+  #assert lm_manifest_admits(m[0], LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+
+  // Write validation boundaries
+  #assert lm_manifest_write("", LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[..]) == -1;
+  id65 := "01234567890123456789012345678901234567890123456789012345678901234";
+  #assert lm_manifest_write(id65, LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, "", 10, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[..]) == -1;
+  wt129 := "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678";
+  #assert lm_manifest_write(LM_MODEL_ID, wt129, 10, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 0, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 0, true, 3, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 1, true, 0, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 1, true, 3, -1, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 10, "not-a-sha", 1, true, 3, 0, buf[..]) == -1;
+  #assert lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, 10, LM_EXPECTED_SHA256, 1, true, 3, 0, buf[0..<16]) == -1;
+
+  // Exact max lengths (64 and 128) & verified_at == 0 & verified == false succeed
+  id64 := id65[0..<64];
+  wt128 := wt129[0..<128];
+  n_max := lm_manifest_write(id64, wt128, 1, LM_EXPECTED_SHA256, 1, false, 1, 0, buf[..]);
+  #assert n_max > 0;
+  m2: [1] LmManifest;
+  #assert lm_manifest_parse(cast(string) buf[0..<n_max], m2[..]);
+  #assert m2[0].ok && !m2[0].verified && m2[0].model_id_n == 64 && m2[0].weights_n == 128 && m2[0].verified_at == 0;
+
+  // Exact min lengths (1 and 1) succeed for both parse and admit
+  n_min := lm_manifest_write("a", "w", 1, LM_EXPECTED_SHA256, 1, true, 1, 0, buf[..]);
+  #assert n_min > 0;
+  m_min: [1] LmManifest;
+  #assert lm_manifest_parse(cast(string) buf[0..<n_min], m_min[..]);
+  #assert m_min[0].ok && m_min[0].model_id_n == 1 && m_min[0].weights_n == 1;
+  #assert lm_manifest_admits(m_min[0], 1, 1, "a", "w", 1, LM_EXPECTED_SHA256);
+
+  // Parse rejection cases also reset previously-valid output
+  empty_m: [1] LmManifest;
+  m_bad: [1] LmManifest;
+  m_bad[0] = m[0];
+  #assert !lm_manifest_parse(text, empty_m[0..<0]);
+  #assert !lm_manifest_parse("not json", m_bad[..]) && !m_bad[0].ok;
+  #assert !lm_manifest_parse("[]", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":1,\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":1,\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":1,\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":\"1\",\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":\"1\",\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":\"3\",\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":\"0\"}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":1,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"short\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":0,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":0,\"verified\":true,\"loops\":3,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":0,\"verified_at\":0}", m_bad[..]);
+  #assert !lm_manifest_parse("{\"model_id\":\"a\",\"weights\":\"w\",\"bytes\":1,\"sha256\":\"cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4\",\"mtime\":1,\"verified\":true,\"loops\":3,\"verified_at\":-1}", m_bad[..]);
+
+  // Tamper / mismatch refusal in lm_manifest_admits
+  bad := m[0]; bad.ok = false;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.verified = false;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.bytes = 0;
+  #assert !lm_manifest_admits(bad, 0, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, 0, LM_EXPECTED_SHA256);
+  #assert !lm_manifest_admits(m[0], LM_EXPECTED_BYTES - 1, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.mtime = 0;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 0, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.bytes = LM_EXPECTED_BYTES - 1;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  #assert !lm_manifest_admits(m[0], LM_EXPECTED_BYTES, 1763700001, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.model_id_n = 0;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, "", LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.model_id_n = 65;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.weights_n = 0;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, "", LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.weights_n = 129;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  bad = m[0]; bad.sha256_n = 63;
+  #assert !lm_manifest_admits(bad, LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  #assert !lm_manifest_admits(m[0], LM_EXPECTED_BYTES, 1763700000, "other-model", LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  #assert !lm_manifest_admits(m[0], LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, "other.gguf", LM_EXPECTED_BYTES, LM_EXPECTED_SHA256);
+  #assert !lm_manifest_admits(m[0], LM_EXPECTED_BYTES, 1763700000, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, "0000000000000000000000000000000000000000000000000000000000000000");
+
+  // Boundary: max-length model_id (64) & weights (128) admitted when verified
+  m2[0].verified = true;
+  #assert lm_manifest_admits(m2[0], 1, 1, id64, wt128, 1, LM_EXPECTED_SHA256);
+}
+
+#test "local-model: lifecycle states, action admission, quit lifetime, and port policy" {
+  // Lifecycle state priority
+  base := LmStatusInput.{hw_verdict = LM_HW_OK};
+  #assert lm_resolve_state(base) == LM_STATE_NOT_INSTALLED;
+  #assert lm_state_label(LM_STATE_NOT_INSTALLED) == "Not Downloaded";
+
+  s_hw := base; s_hw.hw_verdict = LM_HW_LOW_RAM_MAC; s_hw.downloading = true; s_hw.manifest_valid = true;
+  #assert lm_resolve_state(s_hw) == LM_STATE_UNSUPPORTED_HW;
+  #assert lm_state_label(LM_STATE_UNSUPPORTED_HW) == "Unsupported Hardware";
+
+  s_dl := base; s_dl.downloading = true; s_dl.verifying = true; s_dl.manifest_valid = true;
+  #assert lm_resolve_state(s_dl) == LM_STATE_DOWNLOADING;
+  #assert lm_state_label(LM_STATE_DOWNLOADING) == "Downloading";
+
+  s_vf := base; s_vf.verifying = true; s_vf.manifest_valid = true;
+  #assert lm_resolve_state(s_vf) == LM_STATE_VERIFYING;
+  #assert lm_state_label(LM_STATE_VERIFYING) == "Verifying SHA-256";
+
+  s_ok := base; s_ok.manifest_valid = true; s_ok.has_error = true;
+  #assert lm_resolve_state(s_ok) == LM_STATE_INSTALLED;
+  #assert lm_state_label(LM_STATE_INSTALLED) == "Verified & Ready";
+
+  s_err := base; s_err.has_error = true; s_err.paused = true; s_err.partial_bytes = 100;
+  #assert lm_resolve_state(s_err) == LM_STATE_ERROR;
+  #assert lm_state_label(LM_STATE_ERROR) == "Error";
+
+  s_pause0 := base; s_pause0.paused = true; s_pause0.partial_bytes = 0;
+  #assert lm_resolve_state(s_pause0) == LM_STATE_NOT_INSTALLED;
+  s_pause1 := base; s_pause1.paused = true; s_pause1.partial_bytes = 1;
+  #assert lm_resolve_state(s_pause1) == LM_STATE_PAUSED;
+  #assert lm_state_label(LM_STATE_PAUSED) == "Paused";
+  #assert lm_state_label(99) == "Unknown";
+
+  // Download admission
+  #assert lm_admit_download(LM_HW_LOW_RAM_MAC, false, false, 999999, 0, 1000, 100) == LM_DL_UNSUPPORTED_HW;
+  #assert lm_admit_download(LM_HW_OK, true, false, 999999, 0, 1000, 100) == LM_DL_ALREADY_INSTALLED;
+  #assert lm_admit_download(LM_HW_OK, false, true, 999999, 0, 1000, 100) == LM_DL_BUSY;
+  #assert lm_admit_download(LM_HW_OK, false, false, 1099, 0, 1000, 100) == LM_DL_LOW_DISK;
+  #assert lm_admit_download(LM_HW_OK, false, false, 1100, 0, 1000, 100) == LM_DL_OK;
+  #assert lm_admit_download(LM_HW_OK, false, false, 600, 500, 1000, 100) == LM_DL_OK;
+
+  // Removal admission
+  #assert lm_admit_remove(1, false) == LM_RM_ACTIVE_RUNS;
+  #assert lm_admit_remove(1, true) == LM_RM_ACTIVE_RUNS;
+  #assert lm_admit_remove(0, true) == LM_RM_BUSY;
+  #assert lm_admit_remove(0, false) == LM_RM_OK;
+
+  // Quit-time server lifetime
+  #assert lm_server_quit_action(true, 1) == LM_QUIT_KEEP_DETACHED;
+  #assert lm_server_quit_action(true, 0) == LM_QUIT_STOP;
+  #assert lm_server_quit_action(false, 2) == LM_QUIT_STOP;
+
+  // Port bounds
+  #assert lm_resolve_port(0) == LM_DEFAULT_PORT;
+  #assert lm_resolve_port(1023) == LM_DEFAULT_PORT;
+  #assert lm_resolve_port(1024) == 1024;
+  #assert lm_resolve_port(18894) == 18894;
+  #assert lm_resolve_port(65535) == 65535;
+  #assert lm_resolve_port(65536) == LM_DEFAULT_PORT;
+}

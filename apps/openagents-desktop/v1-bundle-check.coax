@@ -1,0 +1,602 @@
+// OpenAgents Desktop v1.0 minimal release bundle verification gate
+// (docs/desktop/openagents-v1-spec.md §4.5; GitHub #13965).
+//
+// Verifies a --minimal release bundle on macOS, Linux, or Windows:
+//   1. Unpacked size budget (macOS Stage 1 <= 18 MiB, Stage 2 <= 14 MiB; Linux/Windows <= 12 MiB)
+//   2. Optional archive size budget (--archive PATH: <= 7 MiB Stage 1, <= 5 MiB Stage 2 / Linux / Windows)
+//   3. Zero bundled frameworks on macOS (Contents/Frameworks absent or empty)
+//   4. Strict shipped-files allowlist & required core artifacts
+//   5. Strict dynamic-link denylist (otool -L on macOS, ldd on Linux, objdump -p on Windows)
+//
+// Usage:
+//   coax/web/tool.sh apps/openagents-desktop/v1-bundle-check.coax [--platform macos|linux|windows] [--stage 1|2] [--archive FILE] [--skip-ld] PATH
+//   coax/bin/coax test apps/openagents-desktop/v1-bundle-check.coax
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+VBC_MAC :: 1;
+VBC_LINUX :: 2;
+VBC_WINDOWS :: 3;
+
+VBC_MIB :: 1048576;
+VBC_MAC_S1_UNPACKED_MAX :: 18 * VBC_MIB;
+VBC_MAC_S2_UNPACKED_MAX :: 14 * VBC_MIB;
+VBC_XPLAT_UNPACKED_MAX :: 12 * VBC_MIB;
+
+VBC_MAC_S1_ARCHIVE_MAX :: 7 * VBC_MIB;
+VBC_MAC_S2_ARCHIVE_MAX :: 5 * VBC_MIB;
+VBC_XPLAT_ARCHIVE_MAX :: 5 * VBC_MIB;
+
+// ---- Pure policy & parsing helpers ----
+
+vbc_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+vbc_ends_with :: (s: string, suffix: string) -> bool {
+  if s.count < suffix.count { return false; }
+  off := s.count - suffix.count;
+  for i: 0..<suffix.count {
+    if s[off + i] != suffix[i] { return false; }
+  }
+  return true;
+}
+
+vbc_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  limit := hay.count - needle.count + 1;
+  for i: 0..<limit {
+    ok := true;
+    for j: 0..<needle.count {
+      if vbc_lower(hay[i + j]) != vbc_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+vbc_trim :: (s: string) -> string {
+  lo := 0;
+  while lo < s.count && (s[lo] == ' ' || s[lo] == '\t' || s[lo] == '\r' || s[lo] == '\n') { lo += 1; }
+  hi := s.count;
+  while hi > lo && (s[hi - 1] == ' ' || s[hi - 1] == '\t' || s[hi - 1] == '\r' || s[hi - 1] == '\n') { hi -= 1; }
+  return s[lo..<hi];
+}
+
+vbc_parse_platform :: (s: string) -> int {
+  if s == "macos" || s == "mac" || s == "darwin" { return VBC_MAC; }
+  if s == "linux" { return VBC_LINUX; }
+  if s == "windows" || s == "win" { return VBC_WINDOWS; }
+  return 0;
+}
+
+vbc_platform_name :: (platform: int) -> string {
+  if platform == VBC_MAC { return "macos"; }
+  if platform == VBC_LINUX { return "linux"; }
+  if platform == VBC_WINDOWS { return "windows"; }
+  return "unknown";
+}
+
+vbc_parse_stage :: (s: string) -> int {
+  if s == "1" { return 1; }
+  if s == "2" { return 2; }
+  return 0;
+}
+
+vbc_max_unpacked_bytes :: (platform: int, stage: int) -> int {
+  if platform == VBC_MAC {
+    return ifx stage == 1 then VBC_MAC_S1_UNPACKED_MAX else VBC_MAC_S2_UNPACKED_MAX;
+  }
+  return VBC_XPLAT_UNPACKED_MAX;
+}
+
+vbc_max_archive_bytes :: (platform: int, stage: int) -> int {
+  if platform == VBC_MAC {
+    return ifx stage == 1 then VBC_MAC_S1_ARCHIVE_MAX else VBC_MAC_S2_ARCHIVE_MAX;
+  }
+  return VBC_XPLAT_ARCHIVE_MAX;
+}
+
+vbc_macos_contents_allowed :: (name: string) -> bool {
+  return name == "MacOS"
+    || name == "Resources"
+    || name == "Info.plist"
+    || name == "_CodeSignature"
+    || name == "Frameworks"
+    || name == "PkgInfo";
+}
+
+vbc_macos_binary_allowed :: (name: string) -> bool {
+  return name == "OpenAgents";
+}
+
+vbc_resource_allowed :: (platform: int, name: string) -> bool {
+  if platform == VBC_MAC {
+    return name == "coder-host"
+      || name == "mcworker"
+      || name == "psionic-inkling-serve"
+      || name == "inkling-kernels.metal"
+      || name == "gitguard"
+      || name == "Components"
+      || name == "OpenAgents.icns";
+  }
+  if platform == VBC_LINUX {
+    return name == "OpenAgents"
+      || name == "coder-host"
+      || name == "mcworker"
+      || name == "psionic-inkling-serve"
+      || name == "inkling-kernels-cuda.cu"
+      || name == "inkling-kernels-vulkan.spv"
+      || name == "gitguard"
+      || name == "resources"
+      || name == "Components"
+      || name == "openagents-desktop.desktop"
+      || name == "OpenAgents.png"
+      || name == "LICENSE"
+      || name == "NOTICE";
+  }
+  if platform == VBC_WINDOWS {
+    return name == "OpenAgents.exe"
+      || name == "coder-host.exe"
+      || name == "mcworker.exe"
+      || name == "psionic-inkling-serve.exe"
+      || name == "inkling-kernels-cuda.cu"
+      || name == "inkling-kernels-vulkan.spv"
+      || name == "gitguard.exe"
+      || name == "res"
+      || name == "Components"
+      || name == "OpenAgents.ico"
+      || name == "LICENSE"
+      || name == "NOTICE";
+  }
+  return false;
+}
+
+// Returns the forbidden library/framework token matched in one dependency line, or "".
+vbc_dylib_forbidden :: (platform: int, stage: int, line: string) -> string {
+  t := vbc_trim(line);
+  if t.count == 0 { return ""; }
+  if platform == VBC_MAC {
+    if vbc_ends_with(t, ":") { return ""; }
+    if vbc_contains_ci(t, "breez_sdk_sparkFFI") { return "breez_sdk_sparkFFI"; }
+    if stage >= 2 {
+      if vbc_contains_ci(t, "WebKit.framework") { return "WebKit.framework"; }
+      if vbc_contains_ci(t, "Speech.framework") { return "Speech.framework"; }
+      if vbc_contains_ci(t, "AVFoundation.framework") { return "AVFoundation.framework"; }
+      if vbc_contains_ci(t, "AVFAudio.framework") { return "AVFAudio.framework"; }
+      if vbc_contains_ci(t, "CoreMedia.framework") { return "CoreMedia.framework"; }
+      if vbc_contains_ci(t, "CoreVideo.framework") { return "CoreVideo.framework"; }
+      if vbc_contains_ci(t, "AuthenticationServices.framework") { return "AuthenticationServices.framework"; }
+    }
+    return "";
+  }
+  if platform == VBC_LINUX {
+    if vbc_contains_ci(t, "libcuda.so") { return "libcuda.so"; }
+    if vbc_contains_ci(t, "libnvrtc.so") { return "libnvrtc.so"; }
+    if vbc_contains_ci(t, "libcublas.so") { return "libcublas.so"; }
+    if vbc_contains_ci(t, "libcudnn.so") { return "libcudnn.so"; }
+    if vbc_contains_ci(t, "libbreez_sdk_spark") { return "libbreez_sdk_spark"; }
+    return "";
+  }
+  if platform == VBC_WINDOWS {
+    if !vbc_contains_ci(t, "DLL Name:") { return ""; }
+    if vbc_contains_ci(t, "nvcuda.dll") { return "nvcuda.dll"; }
+    if vbc_contains_ci(t, "nvrtc64_") { return "nvrtc64_*.dll"; }
+    if vbc_contains_ci(t, "cublas") { return "cublas*.dll"; }
+    if vbc_contains_ci(t, "cudnn") { return "cudnn*.dll"; }
+    if vbc_contains_ci(t, "breez_sdk_spark") { return "breez_sdk_spark.dll"; }
+    return "";
+  }
+  return "";
+}
+
+// Parse leading KiB integer from `du -sk PATH` output, or -1 on error.
+vbc_parse_du_kib :: (out: string) -> int {
+  i := 0;
+  while i < out.count && (out[i] == ' ' || out[i] == '\t') { i += 1; }
+  if i >= out.count || out[i] < '0' || out[i] > '9' { return -1; }
+  v := 0;
+  while i < out.count && out[i] >= '0' && out[i] <= '9' {
+    v = v * 10 + cast(int) (out[i] - '0');
+    i += 1;
+  }
+  return v;
+}
+
+vbc_scan_link_output :: (platform: int, stage: int, output: string, label: string, report: bool) -> int {
+  hits := 0;
+  i := 0;
+  while i < output.count {
+    start := i;
+    while i < output.count && output[i] != '\n' { i += 1; }
+    ln := output[start..<i];
+    if i < output.count && output[i] == '\n' { i += 1; }
+    bad := vbc_dylib_forbidden(platform, stage, ln);
+    if bad.count > 0 {
+      hits += 1;
+      if report {
+        print("FAIL [dylib] % links forbidden library '%' (%)\n", label, bad, vbc_trim(ln));
+      }
+    }
+  }
+  return hits;
+}
+
+// ---- Filesystem & process helpers ----
+
+vbc_walk_bytes :: (path: string, depth: int) -> int {
+  if depth > 16 { return 0; }
+  k := fs_kind(path);
+  if k == FS_FILE {
+    sz := fs_size(path);
+    return ifx sz > 0 then sz else 0;
+  }
+  if k != FS_DIR { return 0; }
+  entries: [1] FsList;
+  n := fs_list(path, entries[..]);
+  if n <= 0 { return 0; }
+  total := 0;
+  child: [FS_PATH_MAX] u8;
+  for i: 0..<n {
+    name := fs_entry(entries[..], i);
+    full := fs_join(path, name, child[..]);
+    if full.count > 0 {
+      total += vbc_walk_bytes(full, depth + 1);
+    }
+  }
+  return total;
+}
+
+vbc_measure_unpacked_bytes :: (path: string) -> int {
+  argv := [3] string.["du", "-sk", path];
+  out: [4096] u8;
+  err: [1024] u8;
+  r := proc_run(argv[..], 15000, out[..], err[..]);
+  if r.started == 0 && r.status == 0 {
+    kib := vbc_parse_du_kib(cast(string) out[0..<r.out_n]);
+    if kib >= 0 { return kib * 1024; }
+  }
+  return vbc_walk_bytes(path, 0);
+}
+
+vbc_check_required :: (base: string, rel: string, label: string) -> int {
+  buf: [FS_PATH_MAX] u8;
+  p := fs_join(base, rel, buf[..]);
+  if fs_kind(p) <= 0 {
+    print("FAIL [missing] required v1.0 artifact absent: %\n", label);
+    return 1;
+  }
+  return 0;
+}
+
+vbc_check_binary_links :: (platform: int, stage: int, bin_path: string, label: string) -> int {
+  if fs_kind(bin_path) != FS_FILE { return 0; }
+  out: [65536] u8;
+  err: [4096] u8;
+  if platform == VBC_MAC {
+    argv := [3] string.["otool", "-L", bin_path];
+    r := proc_run(argv[..], 15000, out[..], err[..]);
+    if r.started != 0 || r.status != 0 {
+      print("FAIL [dylib] could not run otool -L on %\n", label);
+      return 1;
+    }
+    return vbc_scan_link_output(VBC_MAC, stage, cast(string) out[0..<r.out_n], label, true);
+  }
+  if platform == VBC_LINUX {
+    argv := [2] string.["ldd", bin_path];
+    r := proc_run(argv[..], 15000, out[..], err[..]);
+    if r.started != 0 || r.status != 0 {
+      print("FAIL [dylib] could not run ldd on %\n", label);
+      return 1;
+    }
+    return vbc_scan_link_output(VBC_LINUX, stage, cast(string) out[0..<r.out_n], label, true);
+  }
+  if platform == VBC_WINDOWS {
+    tools := [3] string.["objdump", "llvm-objdump", "x86_64-w64-mingw32-objdump"];
+    for i: 0..<3 {
+      argv := [3] string.[tools[i], "-p", bin_path];
+      r := proc_run(argv[..], 15000, out[..], err[..]);
+      if r.started == 0 && r.status == 0 {
+        return vbc_scan_link_output(VBC_WINDOWS, stage, cast(string) out[0..<r.out_n], label, true);
+      }
+    }
+    print("FAIL [dylib] could not run objdump/llvm-objdump on %\n", label);
+    return 1;
+  }
+  return 0;
+}
+
+vbc_usage :: () {
+  print("usage: v1-bundle-check [--platform macos|linux|windows] [--stage 1|2] [--archive FILE] [--skip-ld] PATH\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("v1-bundle-check: arguments did not fit"); return 2; }
+
+  platform := 0;
+  stage := 2;
+  archive := "";
+  target := "";
+  skip_ld := false;
+
+  i := 0;
+  while i < a[0].n {
+    arg := args_at(a[..], i);
+    if arg == "-h" || arg == "--help" { vbc_usage(); return 0; }
+    if arg == "--platform" && i + 1 < a[0].n {
+      platform = vbc_parse_platform(args_at(a[..], i + 1));
+      if platform == 0 { tool_errln("v1-bundle-check: unknown --platform (use macos, linux, or windows)"); return 2; }
+      i += 2; continue;
+    }
+    if arg == "--stage" && i + 1 < a[0].n {
+      stage = vbc_parse_stage(args_at(a[..], i + 1));
+      if stage == 0 { tool_errln("v1-bundle-check: unknown --stage (use 1 or 2)"); return 2; }
+      i += 2; continue;
+    }
+    if arg == "--archive" && i + 1 < a[0].n {
+      archive = args_at(a[..], i + 1);
+      i += 2; continue;
+    }
+    if arg == "--skip-ld" {
+      skip_ld = true;
+      i += 1; continue;
+    }
+    if arg.count > 0 && arg[0] == '-' {
+      tool_err("v1-bundle-check: unknown flag: "); tool_errln(arg);
+      return 2;
+    }
+    target = arg;
+    i += 1;
+  }
+
+  if target.count == 0 { vbc_usage(); return 2; }
+  if platform == 0 { platform = VBC_MAC; }
+
+  if fs_kind(target) != FS_DIR {
+    tool_err("v1-bundle-check: bundle directory not found: "); tool_errln(target);
+    return 2;
+  }
+
+  violations := 0;
+
+  // 1. Unpacked size budget
+  unpacked_bytes := vbc_measure_unpacked_bytes(target);
+  max_unpacked := vbc_max_unpacked_bytes(platform, stage);
+  if unpacked_bytes > max_unpacked {
+    print("FAIL [size] unpacked bundle is % bytes (% MiB), exceeds % MiB budget\n",
+          unpacked_bytes, unpacked_bytes / VBC_MIB, max_unpacked / VBC_MIB);
+    violations += 1;
+  }
+
+  // 2. Optional archive size budget
+  if archive.count > 0 {
+    arc_sz := fs_size(archive);
+    max_arc := vbc_max_archive_bytes(platform, stage);
+    if arc_sz < 0 {
+      print("FAIL [archive] archive not found or unreadable: %\n", archive);
+      violations += 1;
+    } else if arc_sz > max_arc {
+      print("FAIL [archive] archive is % bytes (% MiB), exceeds % MiB budget\n",
+            arc_sz, arc_sz / VBC_MIB, max_arc / VBC_MIB);
+      violations += 1;
+    }
+  }
+
+  // 3. Platform structure, frameworks, required files & allowlists
+  pbuf: [FS_PATH_MAX] u8;
+  pbuf2: [FS_PATH_MAX] u8;
+  list: [1] FsList;
+
+  if platform == VBC_MAC {
+    contents := fs_join(target, "Contents", pbuf[..]);
+    if fs_kind(contents) != FS_DIR {
+      print("FAIL [structure] missing Contents/ inside %\n", target);
+      violations += 1;
+    } else {
+      // Check top-level Contents/ allowlist
+      nc := fs_list(contents, list[..]);
+      for k: 0..<nc {
+        nm := fs_entry(list[..], k);
+        if !vbc_macos_contents_allowed(nm) {
+          print("FAIL [structure] unexpected entry in Contents/: %\n", nm);
+          violations += 1;
+        }
+      }
+
+      // Required core files
+      violations += vbc_check_required(contents, "Info.plist", "Contents/Info.plist");
+      violations += vbc_check_required(contents, "MacOS/OpenAgents", "Contents/MacOS/OpenAgents");
+      violations += vbc_check_required(contents, "Resources/coder-host", "Contents/Resources/coder-host");
+      violations += vbc_check_required(contents, "Resources/mcworker", "Contents/Resources/mcworker");
+      violations += vbc_check_required(contents, "Resources/psionic-inkling-serve", "Contents/Resources/psionic-inkling-serve");
+      violations += vbc_check_required(contents, "Resources/inkling-kernels.metal", "Contents/Resources/inkling-kernels.metal");
+      violations += vbc_check_required(contents, "Resources/Components", "Contents/Resources/Components");
+
+      // Contents/Frameworks must be absent or empty
+      fw_dir := fs_join(contents, "Frameworks", pbuf2[..]);
+      if fs_kind(fw_dir) == FS_DIR {
+        nf := fs_list(fw_dir, list[..]);
+        for k: 0..<nf {
+          nm := fs_entry(list[..], k);
+          print("FAIL [frameworks] disallowed framework bundled: Contents/Frameworks/%\n", nm);
+          violations += 1;
+        }
+      }
+
+      // Contents/MacOS allowlist
+      macos_dir := fs_join(contents, "MacOS", pbuf2[..]);
+      if fs_kind(macos_dir) == FS_DIR {
+        nm_cnt := fs_list(macos_dir, list[..]);
+        for k: 0..<nm_cnt {
+          nm := fs_entry(list[..], k);
+          if !vbc_macos_binary_allowed(nm) {
+            print("FAIL [macos] unexpected binary in Contents/MacOS/: %\n", nm);
+            violations += 1;
+          }
+        }
+      }
+
+      // Contents/Resources allowlist
+      res_dir := fs_join(contents, "Resources", pbuf2[..]);
+      if fs_kind(res_dir) == FS_DIR {
+        nr := fs_list(res_dir, list[..]);
+        for k: 0..<nr {
+          nm := fs_entry(list[..], k);
+          if !vbc_resource_allowed(VBC_MAC, nm) {
+            print("FAIL [resources] disallowed artifact in Contents/Resources/: %\n", nm);
+            violations += 1;
+          }
+        }
+      }
+
+      // Dynamic link check
+      if !skip_ld {
+        main_bin := fs_join(contents, "MacOS/OpenAgents", pbuf2[..]);
+        violations += vbc_check_binary_links(VBC_MAC, stage, main_bin, "Contents/MacOS/OpenAgents");
+        srv_bin := fs_join(contents, "Resources/psionic-inkling-serve", pbuf2[..]);
+        violations += vbc_check_binary_links(VBC_MAC, stage, srv_bin, "Contents/Resources/psionic-inkling-serve");
+      }
+    }
+  } else if platform == VBC_LINUX {
+    violations += vbc_check_required(target, "OpenAgents", "OpenAgents");
+    violations += vbc_check_required(target, "coder-host", "coder-host");
+    violations += vbc_check_required(target, "mcworker", "mcworker");
+    violations += vbc_check_required(target, "psionic-inkling-serve", "psionic-inkling-serve");
+
+    nl := fs_list(target, list[..]);
+    for k: 0..<nl {
+      nm := fs_entry(list[..], k);
+      if !vbc_resource_allowed(VBC_LINUX, nm) {
+        print("FAIL [resources] disallowed artifact in Linux bundle: %\n", nm);
+        violations += 1;
+      }
+    }
+    if !skip_ld {
+      main_bin := fs_join(target, "OpenAgents", pbuf[..]);
+      violations += vbc_check_binary_links(VBC_LINUX, stage, main_bin, "OpenAgents");
+      srv_bin := fs_join(target, "psionic-inkling-serve", pbuf[..]);
+      violations += vbc_check_binary_links(VBC_LINUX, stage, srv_bin, "psionic-inkling-serve");
+    }
+  } else if platform == VBC_WINDOWS {
+    violations += vbc_check_required(target, "OpenAgents.exe", "OpenAgents.exe");
+    violations += vbc_check_required(target, "coder-host.exe", "coder-host.exe");
+    violations += vbc_check_required(target, "mcworker.exe", "mcworker.exe");
+    violations += vbc_check_required(target, "psionic-inkling-serve.exe", "psionic-inkling-serve.exe");
+
+    nw := fs_list(target, list[..]);
+    for k: 0..<nw {
+      nm := fs_entry(list[..], k);
+      if !vbc_resource_allowed(VBC_WINDOWS, nm) {
+        print("FAIL [resources] disallowed artifact in Windows bundle: %\n", nm);
+        violations += 1;
+      }
+    }
+    if !skip_ld {
+      main_bin := fs_join(target, "OpenAgents.exe", pbuf[..]);
+      violations += vbc_check_binary_links(VBC_WINDOWS, stage, main_bin, "OpenAgents.exe");
+      srv_bin := fs_join(target, "psionic-inkling-serve.exe", pbuf[..]);
+      violations += vbc_check_binary_links(VBC_WINDOWS, stage, srv_bin, "psionic-inkling-serve.exe");
+    }
+  }
+
+  if violations == 0 {
+    print("PASS v1-bundle-check (% stage %, unpacked=% bytes / % MiB budget)\n",
+          vbc_platform_name(platform), stage, unpacked_bytes, max_unpacked / VBC_MIB);
+    return 0;
+  }
+  print("FAIL v1-bundle-check: % violation(s) on % stage % (%)\n",
+        violations, vbc_platform_name(platform), stage, target);
+  return 1;
+}
+
+// ---- Unit checks ----
+
+#test "v1-bundle-check: platform, stage, and size budget rules" {
+  #assert vbc_parse_platform("macos") == VBC_MAC && vbc_parse_platform("mac") == VBC_MAC && vbc_parse_platform("darwin") == VBC_MAC;
+  #assert vbc_parse_platform("linux") == VBC_LINUX;
+  #assert vbc_parse_platform("windows") == VBC_WINDOWS && vbc_parse_platform("win") == VBC_WINDOWS;
+  #assert vbc_parse_platform("ios") == 0;
+  #assert vbc_platform_name(VBC_MAC) == "macos" && vbc_platform_name(VBC_LINUX) == "linux" && vbc_platform_name(VBC_WINDOWS) == "windows";
+
+  #assert vbc_parse_stage("1") == 1 && vbc_parse_stage("2") == 2 && vbc_parse_stage("3") == 0;
+  #assert vbc_max_unpacked_bytes(VBC_MAC, 1) == 18 * VBC_MIB;
+  #assert vbc_max_unpacked_bytes(VBC_MAC, 2) == 14 * VBC_MIB;
+  #assert vbc_max_unpacked_bytes(VBC_LINUX, 2) == 12 * VBC_MIB;
+  #assert vbc_max_unpacked_bytes(VBC_WINDOWS, 2) == 12 * VBC_MIB;
+
+  #assert vbc_max_archive_bytes(VBC_MAC, 1) == 7 * VBC_MIB;
+  #assert vbc_max_archive_bytes(VBC_MAC, 2) == 5 * VBC_MIB;
+  #assert vbc_max_archive_bytes(VBC_LINUX, 2) == 5 * VBC_MIB;
+  #assert vbc_max_archive_bytes(VBC_WINDOWS, 2) == 5 * VBC_MIB;
+
+  #assert vbc_parse_du_kib("61952\t/tmp/OpenAgents.app\n") == 61952;
+  #assert vbc_parse_du_kib("  128 /tmp/foo") == 128;
+  #assert vbc_parse_du_kib("bad") == -1 && vbc_parse_du_kib("") == -1;
+}
+
+#test "v1-bundle-check: macOS, Linux, and Windows shipped-file allowlists reject excluded artifacts" {
+  // macOS v1.0 core allowed
+  #assert vbc_resource_allowed(VBC_MAC, "coder-host");
+  #assert vbc_resource_allowed(VBC_MAC, "mcworker");
+  #assert vbc_resource_allowed(VBC_MAC, "psionic-inkling-serve");
+  #assert vbc_resource_allowed(VBC_MAC, "inkling-kernels.metal");
+  #assert vbc_resource_allowed(VBC_MAC, "gitguard");
+  #assert vbc_resource_allowed(VBC_MAC, "Components");
+  #assert vbc_resource_allowed(VBC_MAC, "OpenAgents.icns");
+  #assert vbc_macos_contents_allowed("MacOS") && vbc_macos_contents_allowed("Resources") && vbc_macos_contents_allowed("Info.plist");
+  #assert vbc_macos_binary_allowed("OpenAgents") && !vbc_macos_binary_allowed("OpenAgentsHelper");
+
+  // All 17 excluded macOS artifacts rejected
+  #assert !vbc_resource_allowed(VBC_MAC, "claudeworker");
+  #assert !vbc_resource_allowed(VBC_MAC, "agyworker");
+  #assert !vbc_resource_allowed(VBC_MAC, "oasim");
+  #assert !vbc_resource_allowed(VBC_MAC, "lean-run");
+  #assert !vbc_resource_allowed(VBC_MAC, "tbench-run");
+  #assert !vbc_resource_allowed(VBC_MAC, "ple-run");
+  #assert !vbc_resource_allowed(VBC_MAC, "tester-cli");
+  #assert !vbc_resource_allowed(VBC_MAC, "proof-export");
+  #assert !vbc_resource_allowed(VBC_MAC, "capability-eval");
+  #assert !vbc_resource_allowed(VBC_MAC, "agents-catalog");
+  #assert !vbc_resource_allowed(VBC_MAC, "foreman-ctl");
+  #assert !vbc_resource_allowed(VBC_MAC, "gym-evals");
+  #assert !vbc_resource_allowed(VBC_MAC, "fixtures");
+  #assert !vbc_resource_allowed(VBC_MAC, "bip39-english.txt");
+  #assert !vbc_resource_allowed(VBC_MAC, "tbench-harbor");
+  #assert !vbc_resource_allowed(VBC_MAC, "tbench-policies");
+  #assert !vbc_resource_allowed(VBC_MAC, "lean-checker");
+
+  // Linux & Windows allowlists
+  #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");
+  #assert vbc_resource_allowed(VBC_LINUX, "inkling-kernels-cuda.cu") && vbc_resource_allowed(VBC_LINUX, "inkling-kernels-vulkan.spv");
+  #assert !vbc_resource_allowed(VBC_LINUX, "claudeworker") && !vbc_resource_allowed(VBC_LINUX, "agyworker");
+
+  #assert vbc_resource_allowed(VBC_WINDOWS, "OpenAgents.exe") && vbc_resource_allowed(VBC_WINDOWS, "psionic-inkling-serve.exe");
+  #assert vbc_resource_allowed(VBC_WINDOWS, "gitguard.exe") && vbc_resource_allowed(VBC_WINDOWS, "inkling-kernels-cuda.cu");
+  #assert !vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
+}
+
+#test "v1-bundle-check: dynamic link denylists for otool, ldd, and objdump" {
+  // macOS otool -L
+  otool_full := "OpenAgents.app/Contents/MacOS/OpenAgents:\n\t@rpath/breez_sdk_sparkFFI.framework/Versions/A/breez_sdk_sparkFFI (compatibility version 0.0.0)\n\t/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit\n\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal\n\t/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit\n\t/System/Library/Frameworks/Speech.framework/Versions/A/Speech\n\t/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation\n\t/System/Library/Frameworks/AuthenticationServices.framework/Versions/A/AuthenticationServices\n";
+  #assert vbc_scan_link_output(VBC_MAC, 1, otool_full, "OpenAgents", false) == 1;
+  #assert vbc_scan_link_output(VBC_MAC, 2, otool_full, "OpenAgents", false) == 5;
+
+  otool_clean := "OpenAgents.app/Contents/MacOS/OpenAgents:\n\t/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit\n\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal\n\t/System/Library/Frameworks/CryptoKit.framework/Versions/A/CryptoKit\n";
+  #assert vbc_scan_link_output(VBC_MAC, 1, otool_clean, "OpenAgents", false) == 0;
+  #assert vbc_scan_link_output(VBC_MAC, 2, otool_clean, "OpenAgents", false) == 0;
+
+  // Linux ldd (forbids hard-linked CUDA, NVRTC, cuBLAS, cuDNN, Spark)
+  ldd_bad := "\tlinux-vdso.so.1\n\tlibvulkan.so.1 => /usr/lib/libvulkan.so.1\n\tlibcuda.so.1 => /usr/lib/libcuda.so.1\n\tlibcublas.so.12 => /usr/lib/libcublas.so.12\n\tlibnvrtc.so.12 => /usr/lib/libnvrtc.so.12\n";
+  #assert vbc_scan_link_output(VBC_LINUX, 2, ldd_bad, "OpenAgents", false) == 3;
+  ldd_clean := "\tlinux-vdso.so.1\n\tlibvulkan.so.1 => /usr/lib/libvulkan.so.1\n\tlibwayland-client.so.0 => /usr/lib/libwayland-client.so.0\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6\n";
+  #assert vbc_scan_link_output(VBC_LINUX, 2, ldd_clean, "OpenAgents", false) == 0;
+
+  // Windows objdump -p (forbids hard-linked nvcuda.dll, nvrtc64, cublas, cudnn, spark)
+  win_bad := "There is an import table in .idata\n\tDLL Name: KERNEL32.dll\n\tDLL Name: vulkan-1.dll\n\tDLL Name: nvcuda.dll\n\tDLL Name: nvrtc64_120_0.dll\n\tDLL Name: cublas64_12.dll\n";
+  #assert vbc_scan_link_output(VBC_WINDOWS, 2, win_bad, "OpenAgents.exe", false) == 3;
+  win_clean := "There is an import table in .idata\n\tDLL Name: KERNEL32.dll\n\tDLL Name: USER32.dll\n\tDLL Name: vulkan-1.dll\n\tDLL Name: WS2_32.dll\n";
+  #assert vbc_scan_link_output(VBC_WINDOWS, 2, win_clean, "OpenAgents.exe", false) == 0;
+}
