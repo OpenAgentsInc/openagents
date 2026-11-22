@@ -20,12 +20,13 @@ WS_KIT :: [3] f32.[0.0, -0.55, 3.2];   // where the kit's scene sits in the grov
 WS_STREAM_Y :: -0.47;   // the kit's stream below the spill sheet, once placed
 // the spill: a low limestone step at the pool's front right, the brook running on toward the camera
 WS_LIP_X :: 0.1;    WS_LIP_Z :: 0.0;    WS_LIP_YAW :: 0.0;   // the kit's spillway sill, along x
-WS_PILE_X :: -4.6;  WS_PILE_Z :: 2.7;
-WS_CAIRN_X :: -4.1; WS_CAIRN_Z :: 1.75; WS_CAIRN_TOP :: 0.13;
+// the creek stones, near the camera at the front left, clear of the quail's strip and its sight lines
+WS_PILE_X :: -2.6;  WS_PILE_Z :: 4.5;
+WS_CAIRN_X :: -3.75; WS_CAIRN_Z :: 3.9; WS_CAIRN_TOP :: 0.19; WS_CAIRN_HW :: 0.52;
 // The quail's range: the near bank left of the stream, with nothing in it or between it and the camera.
 WS_RANGE :: [4] f32.[-3.5, 0.4, -1.95, 2.7];   // x0, z0, x1, z1
 // Where the quail goes to give each clue (inside its range): stones, ribbon, pool.
-WS_CLUE_AT :: [6] f32.[-3.35, 1.85,  -3.1, 0.6,  -2.1, 0.55];
+WS_CLUE_AT :: [6] f32.[-3.1, 2.55,  -3.1, 0.6,  -2.1, 0.55];
 // The spout: a carved limestone mouth in the bank above the pool, the water falling from its lip
 // into the pool's back (world-spring.coax draws the moving water).
 WS_SPOUT :: [3] f32.[0.4, 1.4, -4.07];         // the mouth's middle, on the kit bank's face
@@ -33,7 +34,7 @@ WS_SPOUT_LIP :: [3] f32.[0.4, 1.25, -3.77];    // where the water leaves the sto
 WS_SPOUT_FALL :: [3] f32.[0.4, 0.0, -3.0];     // where it meets the pool
 // The interaction spots the pointer and keyboard pick: x, y, z, radius. The quail's spot moves with it.
 WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOT_QUAIL :: 3; WS_SPOTS :: 4;
-WS_SPOT :: [12] f32.[0.4, 0.05, -1.9, 1.4,   -4.35, 0.2, 2.2, 0.8,   -2.7, 2.35, -1.0, 0.95];
+WS_SPOT :: [12] f32.[0.4, 0.05, -1.9, 1.4,   -3.1, 0.3, 4.3, 0.9,   -2.7, 2.35, -1.0, 0.95];
 // What the camera aims at, and the box every frame must show (x0, y0, z0, x1, y1, z1).
 WS_AIM :: [3] f32.[0.0, 1.35, -0.8];   // a low camera, looking a little up
 WS_SAFE :: [6] f32.[-4.95, 0.0, -3.7, 3.4, 3.1, 3.05];
@@ -111,7 +112,7 @@ WS_BOULDER_AT :: [WS_BOULDERS * 4] f32.[
 WS_AGAVES :: 10;
 WS_AGAVE_AT :: [WS_AGAVES * 3] f32.[
   -3.4, -1.7, 0.55,   -5.4, 0.4, 0.5,   3.3, 1.8, 0.55,   4.6, -2.2, 0.45,   -4.0, 0.1, 0.6,
-   4.2, -1.4, 0.5,    2.4, 3.0, 0.45,   -3.6, -2.8, 0.4,   3.6, 3.4, 0.6,    -3.9, 3.2, 0.55];
+   4.2, -1.4, 0.5,    2.4, 3.0, 0.45,   -3.6, -2.8, 0.4,   3.6, 3.4, 0.6,    -4.7, 2.8, 0.55];
 // Roots over the bank's face: x along the bank, how far down it hangs.
 WS_ROOTS :: 9;
 WS_ROOT_AT :: [WS_ROOTS * 2] f32.[-3.0, 1.2, -2.0, 1.7, -1.1, 1.1, -0.2, 2.0, 0.7, 1.4, 1.5, 1.9, 2.3, 1.0, 3.1, 1.6, 3.8, 0.9];
@@ -591,7 +592,7 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
   }
   // the cairn's slab
   ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
-  ws_pen_box(p, WS_CAIRN_X, f32(WS_CAIRN_TOP) - 0.05, WS_CAIRN_Z, 0.4, 0.05, 0.3, 0.2);
+  ws_pen_box(p, WS_CAIRN_X, f32(WS_CAIRN_TOP) - 0.07, WS_CAIRN_Z, 0.62, 0.08, 0.52, 0.2);
   // water: the pool's surface as a fan, the brook as a strip, the spill falls between them
   ws_paint(p, ARCH_M_WATER, WS_WATER[..]);
   segs := ifx mk then 0 else 20;

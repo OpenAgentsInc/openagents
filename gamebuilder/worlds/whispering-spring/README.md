@@ -8,8 +8,12 @@ in a live grove chat. "Listen to the Album" plays the music on its own.
 
 - **Listen to the water**: touch the pool; it answers in three phrases, the last with a curling plume
   of champagne gold. A lore page opens.
-- **Stack creek stones**: pick, turn and set four stones; each sounds a note and the cairn holds a
-  chord (assisted placement gives the same reward). A lore page opens.
+- **Stack creek stones**: click a stone in the pile to pick it up, carry it over the cairn and click to
+  let it go. It falls, and settles with a wobble, or tips off and rolls back to the pile (faux physics).
+  It is meant to be easy: a stone comes up the right way round and is drawn to the stack's middle.
+  The wheel or Q / E turns it. Four stones sound a chord; assisted placement always holds. A lore page opens.
+- **Decorate**: a basket of six things (lantern, candles, bluebonnets, crystal, sage bundle, offering
+  bowl) to set about the grove, move or clear; up to sixteen, kept in the save.
 - **Hang a prayer ribbon** on one of six limbs: fabric, colour, charm, an intention (shared only if
   the visitor chooses). It joins everyone's ribbons on the tree. A lore page opens.
 - **Greet the quail**: she turns to you and says a prayer in a cozy-game babble voice.

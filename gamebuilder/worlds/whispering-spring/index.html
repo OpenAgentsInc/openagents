@@ -106,6 +106,14 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.82),rgba(34,20,40,.82));box-shadow:0 0 18px rgba(233,163,168,.16);padding:4px}
 #bar .btn{border:0;background:none;border-radius:999px;font-family:var(--serif);font-size:17px;padding:8px 16px}
 #bar .btn:hover{background:rgba(240,215,156,.12)}
+#hint{position:fixed;z-index:30;left:50%;bottom:84px;transform:translateX(-50%);max-width:calc(100% - 24px);padding:10px 18px;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.9),rgba(34,20,40,.9));color:#f7efdc;font-size:16px;text-align:center;box-shadow:0 0 18px rgba(233,163,168,.2)}
+#hint[data-ok="1"] b{color:var(--gold)}#hint[data-ok="0"] b{color:#f0a0ad}
+#hint kbd{font:inherit;font-size:13px;padding:1px 6px;border:1px solid rgba(248,220,166,.5);border-radius:6px}
+.decor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.decor-grid .btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px;font-size:14px}
+.decor-grid .btn .ico{font-size:24px;line-height:1}
+.decor-grid .btn[aria-pressed="true"]{border-color:var(--gold);box-shadow:0 0 10px rgba(240,215,156,.4)}
+#decor.panel{width:min(330px,calc(100% - 24px))}
 #bar .sep{width:1px;height:26px;background:rgba(240,215,156,.35)}
 #menu{position:fixed;right:16px;bottom:76px;display:flex;flex-direction:column;gap:4px;padding:8px;min-width:220px;background:var(--panel);border:1px solid var(--line);border-radius:14px;z-index:19}
 #menu .btn,#menu a{justify-content:flex-start;border:0;background:none;color:var(--cream);text-decoration:none;font-size:16px;min-height:44px;padding:8px 12px;border-radius:8px;display:flex;align-items:center}
@@ -217,6 +225,8 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     <nav id="bar" aria-label="Grove">
       <button class="btn" id="t-chat" type="button" aria-controls="chat" aria-expanded="false"><span aria-hidden="true">&#128172;</span> <span class="label">Live Chat</span> <span id="chat-unread" class="small"></span></button>
       <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="t-decor" type="button" aria-controls="decor" aria-expanded="false"><span aria-hidden="true">&#10047;</span> <span class="label">Decorate</span></button>
+      <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="t-menu" type="button" aria-controls="menu" aria-expanded="false"><span aria-hidden="true">&#9776;</span> <span class="label">Menu</span></button>
       <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="t-quiet" type="button" aria-pressed="false"><span aria-hidden="true">&#9790;</span> <span class="label">Quiet View</span></button>
@@ -258,7 +268,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
   <section id="stones" class="panel" hidden aria-labelledby="stones-title" tabindex="-1">
     <h2 id="stones-title">Stack creek stones</h2>
     <button class="btn close" type="button" data-close aria-label="Close stones">✕</button>
-    <p class="small muted">Pick a stone, turn it, set it on the cairn. Each stone you set plays a note; four make a chord you voiced. Wide, flat stones hold best low down; a round stone only takes a pebble.</p>
+    <p class="small muted">Click a stone in the pile to pick it up, then click over the cairn to let it go. Near the middle it holds; too far off and it tumbles back to the pile. The mouse wheel or Q / E turns it. Each stone plays a note; four make a chord you voiced. Here you can do the same with buttons.</p>
     <fieldset style="margin-top:10px"><legend>Stone in hand</legend><div id="stone-choices"></div></fieldset>
     <div class="row" style="margin-top:10px">
       <button class="btn" id="turn-l" type="button" aria-label="Turn left 15 degrees" aria-keyshortcuts="Q">↺ Turn</button>
@@ -273,6 +283,26 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     <p class="small muted" style="margin-top:8px" id="cairn-desc"></p>
     <div class="row" style="margin-top:8px"><button class="btn small" id="rebuild" type="button">Take the cairn down</button></div>
   </section>
+
+  <!-- Decorate -->
+  <section id="decor" class="panel" hidden aria-labelledby="decor-title" tabindex="-1">
+    <h2 id="decor-title">Decorate the grove</h2>
+    <button class="btn close" type="button" data-close aria-label="Close decorating">✕</button>
+    <p class="small muted">Pick something from the basket, then click the ground to set it there. Click one you've set to move it.</p>
+    <div class="decor-grid" id="decor-items"></div>
+    <p class="small" id="decor-status" aria-live="polite" style="margin-top:10px"></p>
+    <div class="row" id="decor-keys" style="margin-top:8px" hidden>
+      <button class="btn small" type="button" data-move="-2 0" aria-label="Move left">←</button>
+      <button class="btn small" type="button" data-move="0 -2" aria-label="Move back">↑</button>
+      <button class="btn small" type="button" data-move="0 2" aria-label="Move forward">↓</button>
+      <button class="btn small" type="button" data-move="2 0" aria-label="Move right">→</button>
+      <button class="btn small primary" id="decor-set" type="button">Set it here</button>
+      <button class="btn small" id="decor-back" type="button">Put back</button>
+      <button class="btn small" id="decor-remove" type="button" hidden>Remove</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="decor-clear" type="button">Clear all</button></div>
+  </section>
+  <p id="hint" hidden aria-live="polite"></p>
 
   <!-- Ribbon -->
   <section id="ribbon" class="panel wide" hidden aria-labelledby="ribbon-title" tabindex="-1">
@@ -328,7 +358,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
       <label class="check"><input type="checkbox" id="s-text"> Text-first grove (the same discoveries, in words)</label>
       <label class="check"><input type="checkbox" id="s-voice" checked> The quail's voice (babble when it speaks)</label>
       <div class="row"><label for="s-name" style="min-width:90px">Your name in the grove</label><input id="s-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Guest" style="flex:1"><button class="btn small" id="s-name-save" type="button">Save</button></div>
-      <p class="small muted">Keys: 1 water · 2 stones · 3 ribbon · D discoveries · J journal · P pause · Esc close. In the stones: Q / E turn, Enter set.</p>
+      <p class="small muted">Keys: 1 water · 2 stones · 3 ribbon · D discoveries · J journal · P pause · Esc close. Holding a stone: Q / E or the wheel turn it, Esc puts it back. Decorating: arrows move, Enter sets.</p>
       <button class="btn small" id="s-forget" type="button">Start over (forget what you found)</button>
     </div>
   </section>

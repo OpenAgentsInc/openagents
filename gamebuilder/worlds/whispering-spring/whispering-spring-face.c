@@ -34,6 +34,7 @@ EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32
 }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) { (void)state; return i == 0 ? (uint32_t)ws_asset_cap() : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) { ws_asset_ready(at(state), i, (int64_t)bytes); }
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { ws_wheel(at(state), dy); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)ws_cursor(at(state)); }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { ws_blur(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)raw(state)->action; }

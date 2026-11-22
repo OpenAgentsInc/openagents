@@ -173,6 +173,8 @@ export class SpringAudio {
     if (e?.file) { this.playFile(e.file, out, t); return; }
     if (id === "quail.call") { chirp(ac, out, t, 1900, 2600, 0.11, 0.05); chirp(ac, out, t + 0.16, 2500, 1700, 0.14, 0.05); chirp(ac, out, t + 0.36, 1800, 2300, 0.18, 0.04); return; }
     if (id === "stone.lift") { marimba(ac, out, 180, t, 0.25, 0.05); return; }
+    if (id === "decor.set") { marimba(ac, out, 392, t, 0.6, 0.06); marimba(ac, out, 784, t + 0.08, 0.9, 0.03); return; }
+    if (id === "decor.lift") { marimba(ac, out, 523, t, 0.3, 0.04); return; }
     if (id === "stone.slip") { chirp(ac, out, t, 300, 120, 0.3, 0.07); return; }
     if (id.startsWith("stone.")) { marimba(ac, out, hz(e?.note), t, 2.0, 0.22); return; }
     if (id === "cairn.chord") {

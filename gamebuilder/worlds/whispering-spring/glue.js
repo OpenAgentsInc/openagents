@@ -4,7 +4,7 @@ import { SpringAudio } from "./audio.js";
 import { GroveRoom, placeRibbons } from "./room.js";
 
 const $ = (id) => document.getElementById(id);
-const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129, shared: 131, speak: 132 };
+const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129, shared: 131, speak: 132, decor: 133 };
 const HIDDEN_KEY = "whispering-spring.hidden.v1", MUTED_KEY = "whispering-spring.muted.v1";
 const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || "[]")); } catch { return new Set(); } };
 const keepSet = (k, s) => { try { localStorage.setItem(k, JSON.stringify([...s].slice(-500))); } catch {} };
@@ -35,8 +35,10 @@ const STONES = [
   ["wedge", "Wedge", "sits best tipped 15°"], ["pebble", "Pebble", "small; sits anywhere"],
 ];
 const BALANCE = ["Steady: it will hold.", "It will hold, with a wobble.", "It would slide off."];
-const WHY = ["", " Try turning it.", " It is wider than the stone below: put wider stones lower.", " The round stone below would roll: only a pebble sits on it."];
-const SLIP = ["", "It slid off at that angle. Try turning it.", "Too wide for the stone below; it slid off. Wider stones go lower.", "The round stone rolled it off. Only a pebble sits on a round stone."];
+const DECOR = [["Lantern", "\u{1F3EE}"], ["Candles", "\u{1F56F}\uFE0F"], ["Bluebonnets", "\u{1F33C}"], ["Crystal", "\u{1F48E}"], ["Sage bundle", "\u{1F33F}"], ["Offering bowl", "\u{1F963}"]];
+let decor = { n: 0, k: -1, ok: 0, m: -1, l: "" };
+const WHY = ["", " Turned a little far.", " Wider than the stone below.", " The round stone below rocks a little."];
+const SLIP = ["", "It slid off at that angle. Turn it back toward level.", "", "", "Too far off the middle: it tumbled back to the pile. Let go nearer the centre."];
 const FABRICS = ["Cotton", "Silk", "Linen"];
 const COLOURS = [["Prickly-pear rose", "#bc546b"], ["Bluebonnet", "#4d61b3"], ["Limestone cream", "#e0d6b8"], ["Sage", "#8c9e7a"], ["Persimmon", "#d97338"], ["Indigo", "#383873"]];
 const CHARMS = ["None", "Bell", "Bead", "Feather"];
@@ -66,7 +68,7 @@ fetch("/whispering-spring/audio-manifest.json").then((r) => r.json()).then((m) =
 const applySound = () => audio.setVolumes(settings.sound, settings.music / 100, (inGrove ? settings.ambience : 0) / 100);
 
 // ---- state from the world
-let state = { f: 0, x: 0, m: 0, s: 0, h: -1, o: 0, p: 31, a: 0, b: 0, w: 0, c: "", r: 0, rb: "", rw: "" };
+let state = { f: 0, x: 0, m: 0, s: 0, h: -1, o: 0, p: 31, a: 0, b: 0, w: 0, g: 0, y: 0, c: "", r: 0, rb: "", rw: "" };
 let inGrove = false, paused = false, lastClue = "";
 function parseState(text) {
   const next = { ...state, c: "", rb: "", rw: "" };
@@ -100,6 +102,12 @@ addEventListener("coaxial", (e) => {
   else if (kind === "found") showFound(rest);
   else if (kind === "replayed") announce(`${titleOf(rest)} again.`);
   else if (kind === "mode") { if (rest === "stones") open("stones"); else if (rest === "ribbon") openRibbon(); }
+  else if (kind === "hold") { const s = STONES.find((x) => x[0] === rest); announce(`${s ? s[1] : "A stone"} in your hand. Click over the cairn to let it go.`); }
+  else if (kind === "decor") {
+    if (rest === "blocked") { announce("It can't stand there. Try the grass."); $("decor-status").textContent = "It can't stand there. Try the grass."; }
+    else if (rest === "full") announce("The grove holds sixteen things at most. Move or remove one.");
+    else { const d = {}; for (const p of rest.split(";")) { const i = p.indexOf("="); if (i > 0) d[p.slice(0, i)] = p.slice(i + 1); } decor = { n: Number(d.n) || 0, k: Number(d.k), ok: Number(d.ok), m: Number(d.m), l: d.l || "" }; renderDecor(); renderHint(); }
+  }
   else if (kind === "slip") { const w = Number(rest) || 1; announce(SLIP[w]); $("balance").textContent = SLIP[w]; $("balance").dataset.b = "2"; }
   else if (kind === "speak") quailSpeak("prayers");
   else if (kind === "cpos") { const [sp, x, y] = rest.split(",").map(Number); placeCallout(sp, x, y); }
@@ -108,7 +116,8 @@ addEventListener("coaxial", (e) => {
 
 function onState(before) {
   if (!$("stones").hidden && state.m !== 1 && before.m === 1) close("stones");
-  renderStones(); renderDiscoveries(); renderJournal(); renderText(); renderMini();
+  renderStones(); renderDiscoveries(); renderJournal(); renderText(); renderMini(); renderHint();
+  if (!$("decor").hidden && state.m !== 3 && before.m === 3 && decor.k < 0) close("decor", false);
   const any = state.f || state.c || state.r;
   $("enter").textContent = any ? "Return to the Grove" : "Enter the Grove";
   // a ribbon just tied: hang it on the shared tree at the tie point the world chose, and the quail blesses it
@@ -296,8 +305,8 @@ function quailSays(i, text) {
 }
 
 // ---- panels
-const PANELS = ["discoveries", "stones", "ribbon", "journal", "prayers", "album", "settings"];
-const toolFor = { discoveries: "t-disc", journal: "t-journal", prayers: "t-prayers", settings: "t-settings" };
+const PANELS = ["discoveries", "stones", "decor", "ribbon", "journal", "prayers", "album", "settings"];
+const toolFor = { decor: "t-decor", discoveries: "t-disc", journal: "t-journal", prayers: "t-prayers", settings: "t-settings" };
 let returnFocus = null;
 function open(id) {
   for (const p of PANELS) if (p !== id && !$(p).hidden) close(p, false);
@@ -308,6 +317,7 @@ function open(id) {
   if (id === "discoveries") renderDiscoveries();
   if (id === "album") renderAlbum();
   if (id === "stones") renderStones();
+  if (id === "decor") { send(MSG.decor, "o"); renderDecor(); }
   $(id).focus();
 }
 function close(id, refocus = true) {
@@ -315,6 +325,7 @@ function close(id, refocus = true) {
   $(id).hidden = true;
   if (toolFor[id]) $(toolFor[id]).setAttribute("aria-expanded", "false");
   if ((id === "stones" || id === "ribbon") && state.m !== 0) send(MSG.close, "0");
+  if (id === "decor") send(MSG.decor, "q");
   if (refocus && returnFocus?.isConnected) returnFocus.focus();
 }
 const toggle = (id) => ($(id).hidden ? open(id) : close(id));
@@ -443,6 +454,54 @@ $("place").addEventListener("click", () => send(MSG.stones, "p"));
 $("assist").addEventListener("change", (e) => send(MSG.stones, `a ${e.target.checked ? 1 : 0}`));
 $("rebuild").addEventListener("click", () => send(MSG.stones, "r"));
 
+// ---- the hint while something is in hand
+function renderHint() {
+  const el = $("hint");
+  let html = "";
+  if (state.h >= 0 && state.y === 1) {
+    html = (state.g ? "<b>It will hold here.</b> " : "<b>It would fall here.</b> Move it over the middle. ") +
+      "Click to let go · <kbd>Q</kbd>/<kbd>E</kbd> or the wheel turns it · <kbd>Esc</kbd> puts it back";
+    el.dataset.ok = state.g ? "1" : "0";
+  } else if (decor.k >= 0) {
+    html = (decor.ok ? "<b>It can stand here.</b> " : "<b>Not here.</b> ") + `Click the ground to set the ${DECOR[decor.k][0].toLowerCase()} · <kbd>Esc</kbd> puts it back`;
+    el.dataset.ok = decor.ok ? "1" : "0";
+  } else if (state.m === 1 && $("stones").hidden && state.c.split(",").filter(Boolean).length < 4) {
+    html = "Click a creek stone in the pile to pick it up"; el.dataset.ok = "1";
+  }
+  el.hidden = !html || !inGrove;
+  if (html && el.innerHTML !== html) el.innerHTML = html;
+}
+
+// ---- decorating
+function renderDecor() {
+  const box = $("decor-items");
+  if (!box.children.length) {
+    DECOR.forEach(([name, ico], k) => {
+      const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.dataset.k = k;
+      b.innerHTML = `<span class="ico" aria-hidden="true">${ico}</span>${name}`;
+      b.addEventListener("click", () => { audio.start(); send(MSG.decor, `k ${k}`); });
+      box.append(b);
+    });
+  }
+  for (const b of box.children) b.setAttribute("aria-pressed", String(Number(b.dataset.k) === decor.k));
+  const carrying = decor.k >= 0;
+  $("decor-keys").hidden = !carrying;
+  $("decor-remove").hidden = !(carrying && decor.m >= 0);
+  $("decor-set").disabled = !decor.ok;
+  const counts = {}; for (const k of decor.l.split(",").filter((s) => s !== "")) counts[k] = (counts[k] || 0) + 1;
+  const list = Object.entries(counts).map(([k, n]) => `${n} ${DECOR[k][0].toLowerCase()}`).join(", ");
+  $("decor-status").textContent = carrying
+    ? `Carrying the ${DECOR[decor.k][0].toLowerCase()}. ${decor.ok ? "It can stand here." : "Not here: find some grass."}`
+    : decor.n ? `In the grove: ${list}. (${16 - decor.n} more can go.)` : "Nothing set out yet.";
+  $("decor-clear").disabled = !decor.n;
+}
+$("t-decor").addEventListener("click", () => toggle("decor"));
+for (const b of document.querySelectorAll("[data-move]")) b.addEventListener("click", () => send(MSG.decor, `m ${b.dataset.move}`));
+$("decor-set").addEventListener("click", () => send(MSG.decor, "p"));
+$("decor-back").addEventListener("click", () => send(MSG.decor, "x"));
+$("decor-remove").addEventListener("click", () => send(MSG.decor, "d"));
+$("decor-clear").addEventListener("click", () => { if (confirm("Take every decoration out of the grove?")) send(MSG.decor, "c"); });
+
 // ---- ribbon
 function radios(box, name, items, label) {
   box.textContent = "";
@@ -565,6 +624,8 @@ addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const typing = e.target instanceof HTMLInputElement && (e.target.type === "text" || e.target.type === "range");
   if (e.key === "Escape") {
+    if (inGrove && state.h >= 0 && state.y === 1) { send(MSG.stones, "b"); e.preventDefault(); return; }
+    if (inGrove && decor.k >= 0) { send(MSG.decor, "x"); e.preventDefault(); return; }
     if (!$("menu").hidden) { setMenu(false); $("t-menu").focus(); e.preventDefault(); return; }
     if (!$("found").hidden) { closeFound(); e.preventDefault(); return; }
     const p = topPanel(); if (p) { close(p); e.preventDefault(); return; }
@@ -573,7 +634,12 @@ addEventListener("keydown", (e) => {
   }
   if (typing || !inGrove || paused || !$("found").hidden) return;
   const k = e.key.toLowerCase();
-  if (!$("stones").hidden) {
+  if (decor.k >= 0) {
+    const mv = { arrowleft: "-2 0", arrowright: "2 0", arrowup: "0 -2", arrowdown: "0 2" }[k];
+    if (mv) { send(MSG.decor, `m ${mv}`); e.preventDefault(); return; }
+    if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement)) { send(MSG.decor, "p"); e.preventDefault(); return; }
+  }
+  if (!$("stones").hidden || (state.h >= 0 && state.y === 1)) {
     if (k === "q") { send(MSG.stones, "t -1"); e.preventDefault(); return; }
     if (k === "e") { send(MSG.stones, "t 1"); e.preventDefault(); return; }
     if (e.key === "Enter" && e.target === $("stones")) { send(MSG.stones, "p"); e.preventDefault(); return; }

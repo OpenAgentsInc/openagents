@@ -61,7 +61,9 @@ assets; it is the place for the real files once they exist.)
 Progress is one line of text the world keeps through the host's keep action (action 4:
 IndexedDB `coaxial/kept`, key `whispering-spring`, localStorage if IndexedDB is refused):
 
-    WS1;f=<found bits>;x=<saved extras bits>;c=<stone>:<roll>,...;r=<fabric>,<colour>,<charm>,<branch>,<word>
+    WS1;f=<found bits>;x=<saved extras bits>;c=<stone>:<roll>:<x cm>:<z cm>,...;d=<kind>:<x cm>:<z cm>,...;r=<fabric>,<colour>,<charm>,<branch>,<word>
+
+(A cairn saved before the offsets, `c=<stone>:<roll>`, still loads.)
 
 `WS1` is the version, so an account can later take the same text over and migrate it. Settings
 (sound, volumes, captions, reduced motion and bloom, text-first) are per-viewer and live in
@@ -139,3 +141,24 @@ left of the stream (`WS_RANGE`), with the creek stones and cairn beyond it on th
 prayer-limb trunks keep their limbs and wear the kit cedar's crowns. The camera stands at a fixed low
 height, tilted up (`WS_TILT`), and moves straight back until the safe box fits; a phone held upright gets a
 wider lens. The fit, nothing-in-the-way and long-visit tests all pass at 16:9, portrait and ultra-wide.
+
+## Fifth pass: hands-on stones and decorating (built)
+
+- **The creek stones moved to the front left**, near the camera (cairn at (-3.75, 3.9), pile round (-2.6, 4.5)),
+  outside the quail's strip and its sight lines, and the stones are 1.7 times their old size and lighter in colour.
+  A test keeps the pile and a full cairn in the picture at 16:9, phone portrait and ultra-wide.
+- **Click to place, with faux physics** (`world-spring.coax` "the cairn"): a click on a pile stone lifts it
+  (no panel). It hangs over the stack and follows the pointer (a ray to the stack's top plane). A click lets it go:
+  it falls under gravity and either settles with a wobble, keeping where it landed, or tips off, tumbles to the
+  ground and rolls back to the pile. A ring under it shows gold where it will hold and rose where it will fall,
+  and the page's hint says the same. The wheel (`coaxial_wheel`) or Q / E turns it. Esc, or a click far away,
+  puts it back.
+- **Easy by design:** a stone comes up at its best angle. Within its support plus `WS_MAGNET` it is drawn to the
+  middle, and it holds within `WS_HOLD_SHARE` of the support's half width. Shape (a round stone below, or a wider
+  stone on top) only wobbles it, so no stack is a dead end. Only a stone turned well past its tolerance, or let go
+  well off the stack, falls. Assisted placement always lands it centred. The panel and keys drive the same physics.
+- **Decorating** (`WS_MSG_DECOR`, the Decorate button): a basket of six things. Pick one and it hangs under the
+  pointer with a ring (gold where it can stand, rose in the water, the stream or on the cairn). A click sets it down,
+  with a small drop and bounce. While decorating, a click on one already set picks it up to move it. Arrows and
+  Enter work from the keyboard. Up to 16 are kept in the save. Lantern, candles and crystal glow (under 1.1 with
+  reduced bloom).
