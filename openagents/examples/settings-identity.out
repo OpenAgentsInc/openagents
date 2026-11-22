@@ -1,0 +1,6 @@
+read_queued=true held=1
+loaded=true source=2 pubkey_prefix=79be667ef9dc
+rotate_armed=true cancel_ok=true confirm=0
+restore_refused_early=true restore_confirmed=true public_only_effect=true
+after_logout_loaded=false pubkey_empty=true
+ok=true

@@ -1,0 +1,5 @@
+onboard_unarmed_blocker=mainnet_unarmed same_dev_can_val=false armed_can_mainnet=true
+three_leg_ok=true legs=3 released_sat=1000
+dup_refused=true over_bps_refused=true same_day_held=true next_day_reset=true
+truthful_settled_sats=250
+ok=true

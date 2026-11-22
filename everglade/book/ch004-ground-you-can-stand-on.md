@@ -246,6 +246,102 @@ pack route with no refusal and no memory growth.
 coax/bin/coax test everglade/world/ground.coax --library
 coax/bin/coax test everglade/world/forest.coax --library
 coax/bin/coax test --library metaverse-engine/world/terrain-tile.coax
+coax/bin/coax run everglade/examples/terrain-seams.coax
+```
+
+## Runnable example
+
+[`everglade/examples/terrain-seams.coax`](../examples/terrain-seams.coax) builds two adjacent 8×8 fine tiles (0.65 m) and a 4×4 coarse tile (1.3 m) on Everglade II's shared f64 lattice, verifies admission, shared-edge bit-exactness, cross-seam triangle walk sampling (`seam_gap_mm=0`), fine-to-coarse LOD edge stitching, and fail-closed refusals on a perturbed edge or invalid hole byte (committed transcript [`everglade/examples/terrain-seams.out`](../examples/terrain-seams.out)):
+
+<!-- source: everglade/examples/terrain-seams.coax terrain-seams -->
+```jai
+ts_fill_tile :: (
+  mats: [] e2tt.TerrainMaterial, ix0: int, iz0: int, step: int, n: int,
+  h: [] f32, holes: [] u8, ids: [] u8, wt: [] u8
+) -> e2tt.TerrainTile {
+  for j: 0..<n + 1 {
+    z := e2g_at(f32(E2G_SOUTH), iz0 + j * step);
+    for i: 0..<n + 1 {
+      x := e2g_at(f32(E2G_WEST), ix0 + i * step);
+      q := j * (n + 1) + i;
+      h[q] = e2_height(x, z);
+      ids[q * 4] = E2G_MEADOW; wt[q * 4] = 255;
+      ids[q * 4 + 1] = e2tt.TERRAIN_TILE_NO_MATERIAL; wt[q * 4 + 1] = 0;
+      ids[q * 4 + 2] = e2tt.TERRAIN_TILE_NO_MATERIAL; wt[q * 4 + 2] = 0;
+      ids[q * 4 + 3] = e2tt.TERRAIN_TILE_NO_MATERIAL; wt[q * 4 + 3] = 0;
+    }
+  }
+  for c: 0..<n * n { holes[c] = 0; }
+  t: e2tt.TerrainTile;
+  t.cells = n;
+  t.spacing = f32(step) * f32(E2G_SPACING);
+  t.origin_x = f64(f32(E2G_WEST)) + f64(ix0) * e2g_s64();
+  t.origin_z = f64(f32(E2G_SOUTH)) + f64(iz0) * e2g_s64();
+  t.table = e2tt.terrain_materials_revision(mats);
+  return t;
+}
+
+ts_run :: () -> bool {
+  mats: [4] e2tt.TerrainMaterial;
+  e2g_table(mats[..]);
+
+  // 1. Build two adjacent 8x8 fine tiles (0.65 m) on Everglade II's shared f64 lattice: west (ix=0) & east (ix=8).
+  ha: [TS_PTS] f32; hla: [TS_CELLS] u8; ida: [TS_PTS * 4] u8; wta: [TS_PTS * 4] u8;
+  hb: [TS_PTS] f32; hlb: [TS_CELLS] u8; idb: [TS_PTS * 4] u8; wtb: [TS_PTS * 4] u8;
+  ta := ts_fill_tile(mats[..], 0, 0, 1, TS_N, ha[..], hla[..], ida[..], wta[..]);
+  tb := ts_fill_tile(mats[..], TS_N, 0, 1, TS_N, hb[..], hlb[..], idb[..], wtb[..]);
+
+  ra := e2tt.terrain_tile_admit(ta, mats[..], ha[..], hla[..], ida[..], wta[..]);
+  rb := e2tt.terrain_tile_admit(tb, mats[..], hb[..], hlb[..], idb[..], wtb[..]);
+  edges_ok := e2tt.terrain_tile_edges_agree(ta, ha[..], ida[..], wta[..], tb, hb[..], idb[..], wtb[..]);
+  print("admit_a=% admit_b=% shared_edge_bit_exact=%\n",
+    ra.code == e2tt.TERRAIN_TILE_OK, rb.code == e2tt.TERRAIN_TILE_OK, edges_ok);
+
+  // 2. Walk height sampled from both tiles right across the shared seam agrees within <= 2 mm.
+  fa := e2tt.terrain_tile_ground(ta, 0.0, 0.0);
+  fb := e2tt.terrain_tile_ground(tb, 0.0, 0.0);
+  seam_x := e2g_at(f32(E2G_WEST), TS_N);
+  seam_z := e2g_at(f32(E2G_SOUTH), 4);
+  qa := e2tt.terrain_tile_sample(fa, ha[..], hla[..], seam_x - 0.001, seam_z);
+  qb := e2tt.terrain_tile_sample(fb, hb[..], hlb[..], seam_x + 0.001, seam_z);
+  gap_mm := cast(int) (abs(qa.height - qb.height) * 1000.0);
+  print("sample_ok=% seam_gap_mm=%\n", qa.ok && qb.ok, gap_mm);
+
+  // 3. Fine-to-coarse LOD edge stitching: coarse 4x4 (1.3 m) south tile stitched onto fine 8x8 south edge.
+  hc: [25] f32; hlc: [16] u8; idc: [100] u8; wtc: [100] u8;
+  _ := ts_fill_tile(mats[..], 0, -TS_N, 2, 4, hc[..], hlc[..], idc[..], wtc[..]);
+  stitch_ok := true;
+  for e: 0..<TS_N + 1 {
+    stitched_y := e2tt.terrain_tile_stitched(ha[..], TS_N, 0, 1, e);
+    if e % 2 == 0 {
+      coarse_y := hc[e2tt.terrain_tile_edge_index(4, 2, e / 2)];
+      if f32_bits(stitched_y) != f32_bits(coarse_y) { stitch_ok = false; }
+    }
+  }
+  print("fine_coarse_stitch_exact=%\n", stitch_ok);
+
+  // 4. Refusals: perturbing one shared edge sample breaks seam agreement; invalid hole byte refuses admission.
+  hb[4 * (TS_N + 1)] += 0.01;
+  tampered_edge_ok := e2tt.terrain_tile_edges_agree(ta, ha[..], ida[..], wta[..], tb, hb[..], idb[..], wtb[..]);
+  hlb[0] = 2;
+  bad_hole := e2tt.terrain_tile_admit(tb, mats[..], hb[..], hlb[..], idb[..], wtb[..]);
+  print("tampered_edge_refused=% bad_hole_refused=%\n",
+    !tampered_edge_ok, bad_hole.code != e2tt.TERRAIN_TILE_OK);
+
+  return ra.code == e2tt.TERRAIN_TILE_OK && rb.code == e2tt.TERRAIN_TILE_OK &&
+         edges_ok && qa.ok && qb.ok && gap_mm <= 2 && stitch_ok &&
+         !tampered_edge_ok && bad_hole.code != e2tt.TERRAIN_TILE_OK;
+}
+```
+
+Output (`coax/bin/coax run everglade/examples/terrain-seams.coax`, identical in `--release`):
+
+```text
+admit_a=true admit_b=true shared_edge_bit_exact=true
+sample_ok=true seam_gap_mm=0
+fine_coarse_stitch_exact=true
+tampered_edge_refused=true bad_hole_refused=true
+ok=true
 ```
 
 ## Mistakes

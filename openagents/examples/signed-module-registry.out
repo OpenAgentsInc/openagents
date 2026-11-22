@@ -1,0 +1,4 @@
+compiled=oa-exec-patch-rebase bytes=14592 sha256=685c0985c26cc61b
+read=ok install_admit=ok search_match=true
+refuse_kind=bad_kind refuse_d=bad_d_tag refuse_tamper=digest_mismatch refuse_self_review=self_review
+ok=true

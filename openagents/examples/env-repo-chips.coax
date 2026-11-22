@@ -1,0 +1,73 @@
+// Runnable example for The OpenAgents Book Chapter 8: Environment and repository chips.
+// Exercises the production EnvSelect module (apps/shared/app/environment/select.coax):
+// logged-out login prompt, catalog & station reachability fetch, selecting an online
+// computer & its repositories, refusing an offline (503) computer without changing the
+// conversation's environment, and per-draft isolation.
+//   coax/bin/coax run openagents/examples/env-repo-chips.coax
+#import "Basic";
+#load "../../apps/shared/app/environment/select.coax";
+
+ERC_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ERC_B :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+ERC_C :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+ERC_CATALOG :: "{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[{\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"MacBook Pro\"},{\"host_pubkey\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"display_name\":\"coderos\"},{\"host_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"display_name\":\"Studio\"}]}";
+
+erc_fact :: (host: string, at: int, r1: string, r2: string) -> EsStationFact #effects(all) {
+  f: EsStationFact; f.ok = true; f.reported_at_ms = at;
+  for c, i: host { f.host[i] = c; }
+  if r1.count > 0 { f.repos[f.nr].nn = es_copy(f.repos[f.nr].name[..], r1); f.nr += 1; }
+  if r2.count > 0 { f.repos[f.nr].nn = es_copy(f.repos[f.nr].name[..], r2); f.nr += 1; }
+  return f;
+}
+
+// book:begin env-repo-chips
+erc_run :: () -> bool {
+  s := [1] EnvSelect.[es_new()];
+
+  // Logged out: pressing a chip asks for login and opens nothing.
+  _ := es_press(s[..], "composer.environment", 0);
+  need_login := es_take_login(s[..]);
+  print("logged_out_asks_login=% sheet=% env=%\n", need_login, s[0].sheet, es_env_value(s[..]));
+
+  // Log in, enable manual environment + repo selection, open picker, deliver catalog & stations.
+  es_capabilities(s[..], true, true);
+  es_login(s[..], true);
+  es_open_env(s[..], 1000);
+  e: [1] EsEffect;
+  _ = es_take(s[..], e[..]);
+  _ = es_catalog_done(s[..], e[0].op, e[0].generation, ES_O_DONE, 200, ERC_CATALOG, 1000);
+  ops: [3] int;
+  for k: 0..<3 { _ = es_take(s[..], e[..]); ops[k] = e[0].op; }
+  _ = es_station_done(s[..], ops[0], s[0].generation, ES_O_DONE, 200, erc_fact(ERC_A, 1000, "OpenAgentsInc/openagents", "OpenAgentsInc/coax"), 1000);
+  _ = es_station_done(s[..], ops[1], s[0].generation, ES_O_DONE, 200, erc_fact(ERC_B, 1000, "OpenAgentsInc/openagents", "OpenAgentsInc/everglade"), 1000);
+  _ = es_station_done(s[..], ops[2], s[0].generation, ES_O_DONE, 503, EsStationFact.{}, 1000);
+  print("catalog=% online_b=% offline_c=%\n", s[0].catalog[0].n, es_reach_words(s[0].computers[1].reach), es_reach_words(s[0].computers[2].reach));
+
+  // Select online computer B ("coderos") and one of its repositories.
+  b: [ES_EL_ID] u8;
+  pick_b := es_press(s[..], es_computer_id(s[..], 1, b[..]), 1000);
+  l: [1] EsRepoList;
+  es_repo_list(s[..], l[..]);
+  _ = es_press(s[..], "composer.repo", 1000);
+  pick_repo := es_press(s[..], "env.repo.1", 1000);
+  print("pick_b=% env=% repos=% pick_repo=% repo=%\n", pick_b, es_env_value(s[..]), l[0].n, pick_repo, es_repo_name(s[..]));
+
+  // Refusal: pressing offline computer C (503) is refused and keeps "coderos".
+  _ = es_press(s[..], "composer.environment", 1000);
+  pick_offline := es_press(s[..], es_computer_id(s[..], 2, b[..]), 1000);
+  print("pick_offline=% env_kept=%\n", pick_offline, es_env_value(s[..]));
+
+  // Per-draft isolation: a second conversation keeps Default until explicitly changed.
+  es_draft(s[..], "conv_other");
+  other_env := es_env_value(s[..]);
+  es_draft(s[..], "");
+  print("other_draft_env=% original_draft_env=%\n", other_env, es_env_value(s[..]));
+
+  return need_login && pick_b && pick_repo && !pick_offline && es_env_value(s[..]) == "coderos" && other_env == "Default";
+}
+// book:end env-repo-chips
+
+main :: () {
+  ok := erc_run();
+  print("ok=%\n", ok);
+}

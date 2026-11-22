@@ -4,17 +4,20 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: chapters 1–6 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
-> Chapters 1–6 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
+> **Status: chapters 1–9, 54–55, and 69–70 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
+> Chapters 1–9, 54–55, and 69–70 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
 > with verified debug/release transcripts grounded in
 > [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-> [`apps/shared/app/core/effects.coax`](../../apps/shared/app/core/effects.coax),
-> [`apps/shared/app/login/flow.coax`](../../apps/shared/app/login/flow.coax), and
-> [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
-> grounded primarily in the desktop app ([`apps/openagents-desktop`](../../apps/openagents-desktop))
-> and consumed by the mobile app ([`apps/openagents-ios`](../../apps/openagents-ios))
-> as a second native host. Native host accessibility UI tests (`macos-arm64`,
-> `ios-simulator`, `ios-device`) remain open per [CONTRACT.md](CONTRACT.md).
+> [`apps/shared/app/history/index.coax`](../../apps/shared/app/history/index.coax),
+> [`apps/shared/app/environment/select.coax`](../../apps/shared/app/environment/select.coax),
+> [`apps/shared/app/settings/identity.coax`](../../apps/shared/app/settings/identity.coax),
+> [`psionic/lib/peer/module-registry.coax`](../../psionic/lib/peer/module-registry.coax),
+> [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax),
+> [`psionic/lib/hybrid-exec.coax`](../../psionic/lib/hybrid-exec.coax),
+> [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax), and
+> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax).
+> Native host accessibility UI tests (`macos-arm64`, `ios-simulator`, `ios-device`)
+> and public external-operator scale remain open per [CONTRACT.md](CONTRACT.md).
 > Where a piece already runs in the repository, such as the desktop shell,
 > the login service, and the GPU login screen, the chapter says so and
 > builds on it. [CONTRACT.md](CONTRACT.md) says what moves a chapter
@@ -195,9 +198,9 @@ NIPs, old crates and protocol packages.
 
 | Chapter | Status |
 | --- | --- |
-| [7. History and the sidebar](ch007-history-and-the-sidebar.md) | Unimplemented: design draft |
-| [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Unimplemented: design draft |
-| [9. Settings](ch009-settings.md) | Unimplemented: design draft |
+| [7. History and the sidebar](ch007-history-and-the-sidebar.md) | Partly implemented: cpu |
+| [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Partly implemented: cpu |
+| [9. Settings](ch009-settings.md) | Partly implemented: cpu |
 | [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | Unimplemented: design draft |
 | [11. The web](ch011-the-web.md) | Unimplemented: design draft |
 
@@ -262,8 +265,8 @@ NIPs, old crates and protocol packages.
 | [51. Revalidation](ch051-revalidation.md) | Unimplemented: design draft |
 | [52. The Gym](ch052-the-gym.md) | Unimplemented: design draft |
 | [53. Why an open market](ch053-why-an-open-market.md) | Unimplemented: design draft |
-| [54. Releases as signed events](ch054-releases-as-signed-events.md) | Unimplemented: design draft |
-| [55. Everyone gets it](ch055-everyone-gets-it.md) | Unimplemented: design draft |
+| [54. Releases as signed events](ch054-releases-as-signed-events.md) | Partly implemented: cpu |
+| [55. Everyone gets it](ch055-everyone-gets-it.md) | Partly implemented: cpu |
 | [56. Paid calls](ch056-paid-calls.md) | Unimplemented: design draft |
 | [57. Metering and receipts](ch057-metering-and-receipts.md) | Unimplemented: design draft |
 | [58. Payouts to authors](ch058-payouts-to-authors.md) | Unimplemented: design draft |
@@ -277,8 +280,8 @@ NIPs, old crates and protocol packages.
 | [66. The compliance rule](ch066-the-compliance-rule.md) | Planned |
 | [67. Host it yourself](ch067-host-it-yourself.md) | Unimplemented: design draft |
 | [68. One gateway](ch068-one-gateway.md) | Unimplemented: design draft |
-| [69. Models we serve](ch069-models-we-serve.md) | Unimplemented: design draft |
-| [70. Pylons](ch070-pylons.md) | Unimplemented: design draft |
+| [69. Models we serve](ch069-models-we-serve.md) | Partly implemented: cpu |
+| [70. Pylons](ch070-pylons.md) | Partly implemented: cpu |
 
 ### VII. Worlds and delivery
 

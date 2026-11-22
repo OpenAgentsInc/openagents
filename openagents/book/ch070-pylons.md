@@ -1,7 +1,17 @@
 # 70. Pylons
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` external Pylon onboarding gate
+> ([`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax)),
+> `#authority` 3-leg settlement ledger (`Worker + Validator + Module Author` in
+> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax) and
+> [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)),
+> live relay rehearsal (`openagents pylon verify-relay` in
+> [`apps/openagents-cli/pylon-onboard.coax`](../../apps/openagents-cli/pylon-onboard.coax)),
+> and live 3-leg settlement runner (`apps/openagents-cli/pylon-settle.coax`) run
+> today and are grounded on `cpu` by
+> [`openagents/examples/pylon-onboard-settle.coax`](../examples/pylon-onboard-settle.coax)
+> and [`openagents/examples/pylon-onboard-settle.out`](../examples/pylon-onboard-settle.out).
+> Remaining: public external-operator fleet scaling and open market bidding.
 
 ## Premise
 
@@ -87,20 +97,27 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** a Pylon from the one-command install, a fake relay that
-  records events, the gateway, a fake Lightning payer and the controlled
-  clock.
-- **Trace:** the Pylon's kind 30200 beacon; a decision routed to it and
-  answered; a recompute of a sampled result on a second machine that
-  matches; a kind 3201 service receipt; and the payout record from chapter
-  58.
-- **Refusal:** a Pylon that returns a wrong answer on a sampled result gets
-  no receipt for it and is not paid. The gateway prints the job ID and `not
-  reproduced`, and stops routing to that Pylon.
-- **Independent check:** event IDs and signatures are recomputed by
-  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs), and
-  the receipt's bytes are decoded by Python's protobuf library against
-  [`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto).
+- **Source:** [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax),
+  [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax),
+  [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax),
+  [`apps/openagents-cli/pylon-onboard.coax`](../../apps/openagents-cli/pylon-onboard.coax),
+  [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax),
+  [`openagents/examples/pylon-onboard-settle.coax`](../examples/pylon-onboard-settle.coax),
+  and the committed stdout transcript [`openagents/examples/pylon-onboard-settle.out`](../examples/pylon-onboard-settle.out).
+- **Trace:** audits default-OFF mainnet arming (`onboard_unarmed_blocker=mainnet_unarmed`),
+  admits a 3-leg settlement (`750` worker + `200` validator + `50` author = `1000`
+  sats, `500` bps cap, `legs=3 released_sat=1000`), resets the rolling UTC daily
+  cap cleanly on day `20779`, and counts only `real_bitcoin_moved == true` rows
+  (`truthful_settled_sats=250`).
+- **Refusal:** same-device validation is refused (`same_dev_can_val=false`);
+  replaying an already-settled author leg is refused with `ES_REFUSE_DUPLICATE`
+  (`dup_refused=true`); royalties exceeding `max_royalty_bps` are refused with
+  `ES_REFUSE_BAD_INPUT` (`over_bps_refused=true`); exceeding the daily cap holds
+  with `ES_HOLD_OWNER` (`same_day_held=true`).
+- **Independent check:** `coax/bin/coax run openagents/examples/pylon-onboard-settle.coax`
+  and `--release` match [`openagents/examples/pylon-onboard-settle.out`](../examples/pylon-onboard-settle.out),
+  beside live `openagents pylon verify-relay` (#13963) and 3-leg settlement E2E
+  against `nostr/relay/bin/relay` (#13961).
 
 Planned paths: none. Pylons are [`psionic/lib/pylon`](../../psionic/lib/pylon).
 
@@ -132,3 +149,69 @@ Planned paths: none. Pylons are [`psionic/lib/pylon`](../../psionic/lib/pylon).
    redundant replication to sampled validation?
 3. Beyond our own coding agents and the Metaverse, who is the first external
    buyer of verified execution or DiLoCo training capacity?
+
+## Source listing
+
+Run the Chapter 70 example in [`openagents/examples/pylon-onboard-settle.coax`](../examples/pylon-onboard-settle.coax) (committed transcript [`openagents/examples/pylon-onboard-settle.out`](../examples/pylon-onboard-settle.out)):
+
+<!-- source: openagents/examples/pylon-onboard-settle.coax pylon-onboard-settle -->
+```jai
+pos_run :: () -> bool {
+  // 1. External Pylon onboarding readiness audit: unarmed default-OFF vs same-device vs armed.
+  base := PoInputs.{
+    has_nostr_key = true, executor_selftest_ok = true, tamper_refused_ok = true,
+    modules_installed = 8, relay_configured = true, distinct_validator_device = true,
+    wallet_ready = true, mainnet_armed = false, daily_cap_sat = 5000,
+  };
+  r_unarmed := po_evaluate(base);
+  same_dev := base; same_dev.distinct_validator_device = false;
+  r_same := po_evaluate(same_dev);
+  armed := base; armed.mainnet_armed = true;
+  r_armed := po_evaluate(armed);
+  print("onboard_unarmed_blocker=% same_dev_can_val=% armed_can_mainnet=%\n",
+    po_blocker_name(r_unarmed.blocker), r_same.can_run_validator, r_armed.can_settle_mainnet);
+
+  // 2. Three-leg escrow admission (750 worker + 200 validator + 50 author = 1000 sats, 500 bps).
+  pol := VpExecPolicy.{
+    es = EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 1000, global_daily_cap_sat = 1000},
+    mainnet_armed = true,
+    owner_policy_digest = POS_POL
+  };
+  l: VpExecLedger;
+  pair := vp_exec_admit_replay_pair(l, pol, POS_REC, POS_VRD, POS_WRK, POS_VAL, ExwReplayOutcome.exact_replay, 750, 200, 20778, "2026-11-21", "bitcoin");
+  au := vp_exec_admit_author_leg(pair.ledger, pol, POS_REC, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  l = au.ledger;
+  print("three_leg_ok=% legs=% released_sat=%\n",
+    pair.worker.code == ES_RELEASE && pair.validator.code == ES_RELEASE && au.code == ES_RELEASE,
+    l.n_legs, l.released_sat);
+
+  // 3. Refusals: duplicate author leg refused, over-cap royalty (51/1001 > 500 bps) refused, cap hit on same UTC day -> held.
+  dup := vp_exec_admit_author_leg(l, pol, POS_REC, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  over_bps := es_admit_three_leg_split(750, 200, 51, 500);
+  same_day := vp_exec_admit_author_leg(l, pol, POS_REC2, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  next_day := vp_exec_admit_author_leg(l, pol, POS_REC2, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20779, "2026-11-22", "bitcoin");
+  print("dup_refused=% over_bps_refused=% same_day_held=% next_day_reset=%\n",
+    dup.code == ES_REFUSE_DUPLICATE, over_bps == ES_REFUSE_BAD_INPUT,
+    same_day.code == ES_HOLD_OWNER, next_day.code == ES_RELEASE);
+
+  // 4. Truthful settled-sat accumulator ignores simulated/dry-run rows.
+  acc := po_accumulate_settled_sat(0, 1000, false);
+  acc = po_accumulate_settled_sat(acc, 250, true);
+  print("truthful_settled_sats=%\n", acc);
+
+  return !r_unarmed.can_settle_mainnet && !r_same.can_run_validator && r_armed.can_settle_mainnet &&
+         l.n_legs == 3 && l.released_sat == 1000 && dup.code == ES_REFUSE_DUPLICATE &&
+         over_bps == ES_REFUSE_BAD_INPUT && same_day.code == ES_HOLD_OWNER &&
+         next_day.code == ES_RELEASE && acc == 250;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/pylon-onboard-settle.coax`, identical in `--release`):
+
+```text
+onboard_unarmed_blocker=mainnet_unarmed same_dev_can_val=false armed_can_mainnet=true
+three_leg_ok=true legs=3 released_sat=1000
+dup_refused=true over_bps_refused=true same_day_held=true next_day_reset=true
+truthful_settled_sats=250
+ok=true
+```

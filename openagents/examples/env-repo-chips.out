@@ -1,0 +1,6 @@
+logged_out_asks_login=true sheet=0 env=Default
+catalog=3 online_b=Ready offline_c=Not reachable
+pick_b=true env=coderos repos=2 pick_repo=true repo=OpenAgentsInc/everglade
+pick_offline=false env_kept=coderos
+other_draft_env=Default original_draft_env=coderos
+ok=true

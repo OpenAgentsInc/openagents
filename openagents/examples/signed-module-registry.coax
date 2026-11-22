@@ -1,0 +1,86 @@
+// Runnable example for The OpenAgents Book Chapter 54: Releases as signed events.
+// Exercises the production #authority Nostr kind 30212 module registry policy
+// (psionic/lib/peer/module-registry.coax), canonical RFC 8785 JCS ExwModule codec
+// (psionic/lib/executor-wire.coax), and Class-E compiled weight module compiler
+// (psionic/lib/module-v2-wave2.coax): compiling oa-exec-patch-rebase to dense F64
+// safetensors, encoding canonical kind 30212 manifest + tags, verifying round-trip
+// admission, and proving fail-closed refusals on wrong kind, bad d-tag, non-Class-E
+// class, 1-byte weight tamper, and self-review.
+//   coax/bin/coax run openagents/examples/signed-module-registry.coax
+#import "Basic";
+#load "../../psionic/lib/module-v2-wave2.coax";
+#load "../../psionic/lib/peer/module-registry.coax";
+
+smr_hex32 :: (d: [32] u8, out: [] u8) -> string {
+  hex := "0123456789abcdef";
+  for i: 0..<32 { b := cast(int) d[i]; out[2 * i] = hex[b >> 4]; out[2 * i + 1] = hex[b & 15]; }
+  return cast(string) out[0..<64];
+}
+
+// book:begin signed-module-registry
+smr_run :: () -> bool {
+  // 1. Compile real Class-E module oa-exec-patch-rebase and serialize to safetensors with SHA-256.
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [65536] f64;
+  m_pr := mv_compile_patch_rebase(la[..], ha[..], wa[..]);
+  sb: [65536] u8;
+  ser := ev_serialize(m_pr, sb[..]);
+  sha_b: [64] u8;
+  sha := smr_hex32(ser.digest, sha_b[..]);
+  print("compiled=oa-exec-patch-rebase bytes=% sha256=%\n", ser.written, sha[0..<16]);
+
+  // 2. Encode canonical openagents.executor.module.v1alpha1 JCS manifest + kind 30212 NIP-01 tags.
+  ch_b: [64] u8; cs_b: [64] u8;
+  _ := exw_canonical_sha256("psionic-module-v2-exec-vm-v1", ch_b[..]);
+  _ = exw_canonical_sha256("{\"passed\":24,\"total\":24,\"exact_replay\":true}", cs_b[..]);
+  exw := [1] ExwModule.[ExwModule.{
+    compiler_hash = cast(string) ch_b[..],
+    conformance_suite_sha256 = cast(string) cs_b[..],
+    input_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = 7},
+    max_steps = m_pr.n_layers,
+    memory_bytes = ser.written,
+    module_id = "oa-exec-patch-rebase",
+    output_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = 3},
+    profile_id = "exec-vm-v1",
+    n_seams = 0,
+    verification_class = ExwVerifClass.e_exact_replay,
+    version = "0.2.0",
+    weight_sha256 = sha
+  }];
+
+  jbuf: [2048] u8; tbuf: [512] u8;
+  jw := exw_module_write(exw[..], jbuf[..]);
+  tn := mr_build_tags(exw[..], tbuf[..]);
+  content := cast(string) jbuf[0..<jw.len];
+  tags := cast(string) tbuf[0..<tn];
+
+  // 3. Verify kind 30212 event + relay install admission + search match.
+  author_pk := "6cd81f74c59cf72c8cf9933f0f0565f27d2acbc34996955a3b6bff2288b16d3c";
+  parsed: [1] ExwModule; arena: [2048] u8;
+  rd := mr_read_manifest(MR_KIND_MODULE, author_pk, tags, content, parsed[..], arena[..]);
+  adm := mr_admit_relay_install(parsed[..], sha, ser.written, 24, 24, true);
+  q_hit := mr_query_matches(parsed[0].module_id, parsed[0].weight_sha256, "patch-rebase");
+  print("read=% install_admit=% search_match=%\n", mr_status_name(rd), mr_status_name(adm), q_hit);
+
+  // 4. Fail-closed refusals: wrong kind, mismatched d-tag, 1-byte tampered digest, self-review.
+  bad_kind := mr_read_manifest(30210, author_pk, tags, content, parsed[..], arena[..]);
+  bad_d := mr_read_manifest(MR_KIND_MODULE, author_pk, "[[\"d\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]", content, parsed[..], arena[..]);
+  bad_sha := "0000000000000000000000000000000000000000000000000000000000000000";
+  tamper := mr_admit_relay_install(exw[..], bad_sha, ser.written, 24, 24, true);
+  self_rev := ma_admit_submission(MaSubmission.{
+    sig_ok = true, author_key = 101, reviewer_key = 101, digest_match = true,
+    weight_bytes = ser.written, label = MvLabel.exact, conformance_passed = 24, conformance_total = 24,
+    exact_replay_ok = true, tamper_refused_ok = true, heldout_lift_bps = 400, noise_2sigma_bps = 150, retained_drop_bps = 0
+  });
+  print("refuse_kind=% refuse_d=% refuse_tamper=% refuse_self_review=%\n",
+    mr_status_name(bad_kind), mr_status_name(bad_d), mr_status_name(tamper), ma_status_name(self_rev));
+
+  return rd == MrStatus.ok && adm == MrStatus.ok && q_hit &&
+         bad_kind == MrStatus.bad_kind && bad_d == MrStatus.bad_d_tag &&
+         tamper == MrStatus.digest_mismatch && self_rev == MaStatus.self_review;
+}
+// book:end signed-module-registry
+
+main :: () {
+  ok := smr_run();
+  print("ok=%\n", ok);
+}

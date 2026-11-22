@@ -82,7 +82,9 @@
         "everglade/world/forest.coax",
         "everglade/client/gpu/everglade2.coax",
         "metaverse-engine/world/terrain-tile.coax",
-        "metaverse/character-glade.coax"
+        "metaverse/character-glade.coax",
+        "everglade/examples/terrain-seams.coax",
+        "everglade/examples/terrain-seams.out"
       ],
       "qualified_targets": [
         "cpu"
@@ -309,7 +311,9 @@
       "source": [
         "rules/srd/engine.coax",
         "rules/srd/ability-check-math.coax",
-        "rules/srd/condition-rolls.coax"
+        "rules/srd/condition-rolls.coax",
+        "everglade/examples/srd-d20-rolls.coax",
+        "everglade/examples/srd-d20-rolls.out"
       ],
       "qualified_targets": [
         "cpu"
@@ -628,7 +632,9 @@
         "everglade/shapeshift.coax",
         "everglade/dragon-clips.coax",
         "scripts/blender/dragon.py",
-        "metaverse/tools/assets/dragon_bake.py"
+        "metaverse/tools/assets/dragon_bake.py",
+        "everglade/examples/dragon-flight-breath.coax",
+        "everglade/examples/dragon-flight-breath.out"
       ],
       "qualified_targets": [
         "cpu"

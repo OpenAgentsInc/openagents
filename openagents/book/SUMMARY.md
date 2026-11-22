@@ -16,9 +16,9 @@
 
 ## II. What the app adds next
 
-- [7. History and the sidebar](ch007-history-and-the-sidebar.md) — design draft
-- [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — design draft
-- [9. Settings](ch009-settings.md) — design draft
+- [7. History and the sidebar](ch007-history-and-the-sidebar.md) — partly implemented
+- [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — partly implemented
+- [9. Settings](ch009-settings.md) — partly implemented
 - [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) — design draft
 - [11. The web](ch011-the-web.md) — design draft
 
@@ -75,8 +75,8 @@
 - [51. Revalidation](ch051-revalidation.md) — design draft
 - [52. The Gym](ch052-the-gym.md) — design draft
 - [53. Why an open market](ch053-why-an-open-market.md) — design draft
-- [54. Releases as signed events](ch054-releases-as-signed-events.md) — design draft
-- [55. Everyone gets it](ch055-everyone-gets-it.md) — design draft
+- [54. Releases as signed events](ch054-releases-as-signed-events.md) — partly implemented
+- [55. Everyone gets it](ch055-everyone-gets-it.md) — partly implemented
 - [56. Paid calls](ch056-paid-calls.md) — design draft
 - [57. Metering and receipts](ch057-metering-and-receipts.md) — design draft
 - [58. Payouts to authors](ch058-payouts-to-authors.md) — design draft
@@ -90,8 +90,8 @@
 - [66. The compliance rule](ch066-the-compliance-rule.md) — planned
 - [67. Host it yourself](ch067-host-it-yourself.md) — design draft
 - [68. One gateway](ch068-one-gateway.md) — design draft
-- [69. Models we serve](ch069-models-we-serve.md) — design draft
-- [70. Pylons](ch070-pylons.md) — design draft
+- [69. Models we serve](ch069-models-we-serve.md) — partly implemented
+- [70. Pylons](ch070-pylons.md) — partly implemented
 
 ## VII. Worlds and delivery
 

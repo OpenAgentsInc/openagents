@@ -122,6 +122,62 @@ A hit deals 1d8 + 3 piercing damage, 7.5 on average. The 150-foot range is
 ```sh
 coax/bin/coax test --library rules/srd/class-ranger-checks.coax
 coax/bin/coax test --library rules/srd/condition-roll-checks.coax
+coax/bin/coax run everglade/examples/srd-d20-rolls.coax
+```
+
+## Runnable example
+
+[`everglade/examples/srd-d20-rolls.coax`](../examples/srd-d20-rolls.coax) runs the Ranger longbow worked example directly against `rules/srd/` (`rs_mod`, `rs_proficiency`, `rs_edge`, `rs_d20`, and `rs_line_attack`), verifying Advantage/Disadvantage cancellation, exact fixed-die counts, and deterministic seeded rolls against a Goblin Warrior (AC 15) (committed transcript [`everglade/examples/srd-d20-rolls.out`](../examples/srd-d20-rolls.out)):
+
+<!-- source: everglade/examples/srd-d20-rolls.coax srd-d20-rolls -->
+```jai
+srd_run :: () -> bool {
+  // Ranger DEX 16 -> +3, proficiency at levels 1/5/9/17 -> +2/+3/+4/+6.
+  dex_mod := rs_mod(16);
+  p1 := rs_proficiency(1);
+  p5 := rs_proficiency(5);
+  p9 := rs_proficiency(9);
+  p17 := rs_proficiency(17);
+  atk_l1 := dex_mod + p1;
+  atk_archery := atk_l1 + 2;
+  print("dex16_mod=% prof=%,%,%,% longbow_l1=% archery_l2=%\n", dex_mod, p1, p5, p9, p17, atk_l1, atk_archery);
+
+  // Advantage and Disadvantage: any of each cancel to plain roll (0 -> 1 die rolled).
+  e_adv := rs_edge(2, 0);
+  e_dis := rs_edge(0, 1);
+  e_cancel := rs_edge(2, 1);
+  print("edge_adv=% edge_dis=% edge_cancel=%\n", e_adv, e_dis, e_cancel);
+
+  // Fixed dice roll half the die size (10 on d20) and record exact die count rolled.
+  df := [1] RsDice.[RsDice.{fixed = true}];
+  r_plain := rs_d20(df[..], e_cancel);
+  rolled_after_cancel := df[0].rolled;
+  r_adv := rs_d20(df[..], e_adv);
+  rolled_after_adv := df[0].rolled;
+  print("fixed_plain=% dice=% fixed_adv=% dice=%\n", r_plain.roll, rolled_after_cancel, r_adv.roll, rolled_after_adv);
+
+  // Deterministic seeded Ranger Longbow (+5, 1d8+3 Piercing) vs Goblin Warrior AC 15.
+  ranger := RsStatLine.{name = "Ranger", ac = 14, hp = 12, dex = 3, attack = atk_l1, dice = 1, sides = 8, bonus = dex_mod, kind = RS_PIERCING};
+  ds := [1] RsDice.[rs_dice(20261121)];
+  a1 := rs_line_attack(ds[..], ranger, 15);
+  a2 := rs_line_attack(ds[..], ranger, 15);
+  print("shot1_roll=% total=% hit=% dmg=%\n", a1.roll, a1.total, a1.hit, a1.damage);
+  print("shot2_roll=% total=% hit=% dmg=%\n", a2.roll, a2.total, a2.hit, a2.damage);
+
+  return dex_mod == 3 && p1 == 2 && p17 == 6 && e_adv == 1 && e_dis == -1 && e_cancel == 0 &&
+         rolled_after_cancel == 1 && rolled_after_adv == 3;
+}
+```
+
+Output (`coax/bin/coax run everglade/examples/srd-d20-rolls.coax`, identical in `--release`):
+
+```text
+dex16_mod=3 prof=2,3,4,6 longbow_l1=5 archery_l2=7
+edge_adv=1 edge_dis=-1 edge_cancel=0
+fixed_plain=10 dice=1 fixed_adv=10 dice=3
+shot1_roll=8 total=13 hit=false dmg=0
+shot2_roll=17 total=22 hit=true dmg=11
+ok=true
 ```
 
 ## Mistakes

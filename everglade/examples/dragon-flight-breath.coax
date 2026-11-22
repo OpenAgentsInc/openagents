@@ -1,0 +1,70 @@
+// Runnable example for Everglade Book Chapter 33: Let's build a dragon.
+// Exercises the production winged flight profile (metaverse-engine/action/flight.coax),
+// Adult Red Dragon Fire Breath 60-ft cone & Recharge 5-6 (rules/srd/dragon-actions.coax),
+// and SRD 5.2.1 Shapechange transformation + clean restoration (rules/srd/shapechange.coax).
+//   coax/bin/coax run everglade/examples/dragon-flight-breath.coax
+#import "Basic";
+#load "../../metaverse-engine/action/flight.coax";
+#load "../../rules/srd/battle.coax";
+
+// book:begin dragon-flight-breath
+dfb_try_l16 :: () -> bool {
+  b: [1] RsBattle; r: [1] RsRoom;
+  rs_have(b[..], r[..]);
+  shape_battle(b[..], 16);
+  return !rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);
+}
+
+dfb_run :: () -> bool {
+  // 1. Flight from SRD speeds (40 ft walk, 80 ft fly at realm 30-ft pace 4.5 m/s -> 6.0 / 12.0 m/s).
+  wp := wing_profile_srd(40, 80, 4.5);
+  ws := wing_at(0.0, 0.0, 0.0, 0.0);
+  // Press jump on ground -> enters WING_TAKEOFF, rises cleanly over 1.0s of fixed 0.1s steps.
+  ws = wing_step(wp, ws, WingInput.{mz = 1.0, jump = true, climb = true}, 0.0, 0.1);
+  for step: 0..<9 {
+    ws = wing_step(wp, ws, WingInput.{mz = 1.0, climb = true}, 0.0, 0.1);
+  }
+  print("walk_mps=% fly_mps=% airborne=% phase=% y_cm=%\n",
+    cast(int) (wp.walk * 10.0), cast(int) (wp.fly * 10.0), wing_flying(ws), ws.phase, cast(int) (ws.y * 100.0));
+
+  // 2. 60-foot Fire Breath cone (width == distance -> half-angle atan(1/2)) and Recharge 5-6.
+  in_center := rs_in_cone(30.0, 0.0, 1.0, 0.0, 60.0);
+  on_edge := rs_in_cone(40.0, 20.0, 1.0, 0.0, 60.0);
+  out_wide := rs_in_cone(40.0, 21.0, 1.0, 0.0, 60.0);
+  past_tip := rs_in_cone(61.0, 0.0, 1.0, 0.0, 60.0);
+  print("cone_center=% on_edge=% out_wide=% past_tip=% recharge4=% recharge5=%\n",
+    in_center, on_edge, out_wide, past_tip, rs_recharges(4), rs_recharges(5));
+
+  // 3. SRD Shapechange: level 16 refused (CR 17 > 16); level 17 Druid becomes Adult Red Dragon,
+  //    gains AC 19 / STR 27 / Fly 80 / 256 Temp HP, breathes fire, and restores cleanly on leave.
+  refuse_l16 := dfb_try_l16();
+  b: [1] RsBattle; br: [1] RsRoom;
+  rs_have(b[..], br[..]);
+  shape_battle(b[..], 17);
+  own_ac := b[0].c[0].ac;
+  own_str := b[0].c[0].score[RS_STR];
+  shifted := rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);
+  d_ac := b[0].c[0].ac;
+  d_str := b[0].c[0].score[RS_STR];
+  d_fly := b[0].c[0].fly;
+  d_temp := b[0].c[0].temp;
+  // Next turn: unleash Fire Breath on Foe at (6, 4) -> +10 ft east inside 60-ft cone.
+  rs_fresh(b[..], 0);
+  hit_n := rs_fire_breath(b[..], 0, 1.0, 0.0);
+  spent := b[0].c[0].breath_spent;
+  left := rs_shapechange_leave(b[..], 0);
+  restored := b[0].c[0].shape_form == 0 && b[0].c[0].ac == own_ac && b[0].c[0].score[RS_STR] == own_str && b[0].c[0].temp == 0;
+  print("refuse_l16=% shifted=% dragon_ac=% str=% fly=% temp=% breath_hits=% spent=% restored=%\n",
+    refuse_l16, shifted, d_ac, d_str, d_fly, d_temp, hit_n, spent, restored);
+
+  return wing_flying(ws) && in_center && on_edge && !out_wide && !past_tip &&
+         !rs_recharges(4) && rs_recharges(5) && refuse_l16 && shifted &&
+         d_ac == 19 && d_str == 27 && d_fly == 80 && d_temp == 256 &&
+         hit_n == 1 && spent && left && restored;
+}
+// book:end dragon-flight-breath
+
+main :: () {
+  ok := dfb_run();
+  print("ok=%\n", ok);
+}

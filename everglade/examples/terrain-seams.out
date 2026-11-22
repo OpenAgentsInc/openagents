@@ -1,0 +1,5 @@
+admit_a=true admit_b=true shared_edge_bit_exact=true
+sample_ok=true seam_gap_mm=0
+fine_coarse_stitch_exact=true
+tampered_edge_refused=true bad_hole_refused=true
+ok=true

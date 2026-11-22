@@ -1,0 +1,77 @@
+// Runnable example for The OpenAgents Book Chapter 70: Pylons.
+// Exercises the production #authority external Pylon onboarding gate
+// (psionic/lib/pylon/onboard.coax) and #authority 3-leg settlement ledger
+// (psionic/lib/peer/pay.coax + pay/executor-settlement.coax):
+//   - Default-OFF mainnet arming & same-device validator refusal
+//   - 3-leg payout release (750 worker + 200 validator + 50 author = 1000 sats, 500 bps)
+//   - Duplicate-leg zero-double-spend refusal & over-cap royalty refusal
+//   - Truthful settled-sat accounting (real_bitcoin_moved == false adds 0 sats)
+//   - Rolling 24-hour UTC day reset
+//   coax/bin/coax run openagents/examples/pylon-onboard-settle.coax
+#import "Basic";
+#load "../../psionic/lib/pylon/onboard.coax";
+#load "../../psionic/lib/peer/pay.coax";
+
+POS_REC :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+POS_VRD :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+POS_WRK :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+POS_VAL :: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+POS_AUT :: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+POS_POL :: "1111111111111111111111111111111111111111111111111111111111111111";
+POS_REC2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+
+// book:begin pylon-onboard-settle
+pos_run :: () -> bool {
+  // 1. External Pylon onboarding readiness audit: unarmed default-OFF vs same-device vs armed.
+  base := PoInputs.{
+    has_nostr_key = true, executor_selftest_ok = true, tamper_refused_ok = true,
+    modules_installed = 8, relay_configured = true, distinct_validator_device = true,
+    wallet_ready = true, mainnet_armed = false, daily_cap_sat = 5000,
+  };
+  r_unarmed := po_evaluate(base);
+  same_dev := base; same_dev.distinct_validator_device = false;
+  r_same := po_evaluate(same_dev);
+  armed := base; armed.mainnet_armed = true;
+  r_armed := po_evaluate(armed);
+  print("onboard_unarmed_blocker=% same_dev_can_val=% armed_can_mainnet=%\n",
+    po_blocker_name(r_unarmed.blocker), r_same.can_run_validator, r_armed.can_settle_mainnet);
+
+  // 2. Three-leg escrow admission (750 worker + 200 validator + 50 author = 1000 sats, 500 bps).
+  pol := VpExecPolicy.{
+    es = EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 1000, global_daily_cap_sat = 1000},
+    mainnet_armed = true,
+    owner_policy_digest = POS_POL
+  };
+  l: VpExecLedger;
+  pair := vp_exec_admit_replay_pair(l, pol, POS_REC, POS_VRD, POS_WRK, POS_VAL, ExwReplayOutcome.exact_replay, 750, 200, 20778, "2026-11-21", "bitcoin");
+  au := vp_exec_admit_author_leg(pair.ledger, pol, POS_REC, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  l = au.ledger;
+  print("three_leg_ok=% legs=% released_sat=%\n",
+    pair.worker.code == ES_RELEASE && pair.validator.code == ES_RELEASE && au.code == ES_RELEASE,
+    l.n_legs, l.released_sat);
+
+  // 3. Refusals: duplicate author leg refused, over-cap royalty (51/1001 > 500 bps) refused, cap hit on same UTC day -> held.
+  dup := vp_exec_admit_author_leg(l, pol, POS_REC, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  over_bps := es_admit_three_leg_split(750, 200, 51, 500);
+  same_day := vp_exec_admit_author_leg(l, pol, POS_REC2, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20778, "2026-11-21", "bitcoin");
+  next_day := vp_exec_admit_author_leg(l, pol, POS_REC2, POS_VRD, POS_AUT, ES_VERDICT_EXACT_REPLAY, 750, 200, 50, 500, 20779, "2026-11-22", "bitcoin");
+  print("dup_refused=% over_bps_refused=% same_day_held=% next_day_reset=%\n",
+    dup.code == ES_REFUSE_DUPLICATE, over_bps == ES_REFUSE_BAD_INPUT,
+    same_day.code == ES_HOLD_OWNER, next_day.code == ES_RELEASE);
+
+  // 4. Truthful settled-sat accumulator ignores simulated/dry-run rows.
+  acc := po_accumulate_settled_sat(0, 1000, false);
+  acc = po_accumulate_settled_sat(acc, 250, true);
+  print("truthful_settled_sats=%\n", acc);
+
+  return !r_unarmed.can_settle_mainnet && !r_same.can_run_validator && r_armed.can_settle_mainnet &&
+         l.n_legs == 3 && l.released_sat == 1000 && dup.code == ES_REFUSE_DUPLICATE &&
+         over_bps == ES_REFUSE_BAD_INPUT && same_day.code == ES_HOLD_OWNER &&
+         next_day.code == ES_RELEASE && acc == 250;
+}
+// book:end pylon-onboard-settle
+
+main :: () {
+  ok := pos_run();
+  print("ok=%\n", ok);
+}

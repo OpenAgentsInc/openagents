@@ -1,0 +1,4 @@
+walk_mps=60 fly_mps=120 airborne=true phase=2 y_cm=590
+cone_center=true on_edge=true out_wide=false past_tip=false recharge4=false recharge5=true
+refuse_l16=true shifted=true dragon_ac=19 str=27 fly=80 temp=256 breath_hits=1 spent=true restored=true
+ok=true

@@ -42,6 +42,55 @@
       "stdout": "openagents/examples/opening-case-runner.out",
       "exit_status": 0,
       "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/history-sidebar.coax",
+      "chapter": "openagents/book/ch007-history-and-the-sidebar.md",
+      "stdout": "openagents/examples/history-sidebar.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/env-repo-chips.coax",
+      "chapter": "openagents/book/ch008-environment-and-repository-chips.md",
+      "stdout": "openagents/examples/env-repo-chips.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/settings-identity.coax",
+      "chapter": "openagents/book/ch009-settings.md",
+      "stdout": "openagents/examples/settings-identity.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/signed-module-registry.coax",
+      "chapter": "openagents/book/ch054-releases-as-signed-events.md",
+      "stdout": "openagents/examples/signed-module-registry.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/pinned-defaults-rollout.coax",
+      "chapter": "openagents/book/ch055-everyone-gets-it.md",
+      "stdout": "openagents/examples/pinned-defaults-rollout.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/psionic-hybrid-serve.coax",
+      "chapter": "openagents/book/ch069-models-we-serve.md",
+      "stdout": "openagents/examples/psionic-hybrid-serve.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/pylon-onboard-settle.coax",
+      "chapter": "openagents/book/ch070-pylons.md",
+      "stdout": "openagents/examples/pylon-onboard-settle.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
     }
   ],
   "libraries": []

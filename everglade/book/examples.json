@@ -1,5 +1,27 @@
 {
   "schema": 1,
-  "examples": [],
+  "examples": [
+    {
+      "source": "everglade/examples/terrain-seams.coax",
+      "chapter": "everglade/book/ch004-ground-you-can-stand-on.md",
+      "stdout": "everglade/examples/terrain-seams.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/srd-d20-rolls.coax",
+      "chapter": "everglade/book/ch014-ability-scores-proficiency-and-the-d20.md",
+      "stdout": "everglade/examples/srd-d20-rolls.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/dragon-flight-breath.coax",
+      "chapter": "everglade/book/ch033-lets-build-a-dragon.md",
+      "stdout": "everglade/examples/dragon-flight-breath.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    }
+  ],
   "libraries": []
 }

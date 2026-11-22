@@ -144,39 +144,57 @@
       "number": 7,
       "title": "History and the sidebar",
       "file": "ch007-history-and-the-sidebar.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         6
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "apps/shared/app/history/index.coax",
+        "openagents/examples/history-sidebar.coax",
+        "openagents/examples/history-sidebar.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
       "number": 8,
       "title": "Environment and repository chips",
       "file": "ch008-environment-and-repository-chips.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         7
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "apps/shared/app/environment/select.coax",
+        "openagents/examples/env-repo-chips.coax",
+        "openagents/examples/env-repo-chips.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
       "number": 9,
       "title": "Settings",
       "file": "ch009-settings.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         7
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "apps/shared/app/settings/identity.coax",
+        "openagents/examples/settings-identity.coax",
+        "openagents/examples/settings-identity.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
@@ -788,28 +806,44 @@
       "number": 54,
       "title": "Releases as signed events",
       "file": "ch054-releases-as-signed-events.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         38,
         53
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "psionic/lib/peer/module-registry.coax",
+        "psionic/lib/executor-wire.coax",
+        "psionic/lib/module-v2-wave2.coax",
+        "apps/openagents-cli/module.coax",
+        "openagents/examples/signed-module-registry.coax",
+        "openagents/examples/signed-module-registry.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
       "number": 55,
       "title": "Everyone gets it",
       "file": "ch055-everyone-gets-it.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         49,
         54
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "psionic/lib/module-v2-wave2.coax",
+        "psionic/lib/peer/release-promote.coax",
+        "openagents/examples/pinned-defaults-rollout.coax",
+        "openagents/examples/pinned-defaults-rollout.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
@@ -998,28 +1032,45 @@
       "number": 69,
       "title": "Models we serve",
       "file": "ch069-models-we-serve.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         16,
         68
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "psionic/lib/hybrid-exec.coax",
+        "psionic/lib/module-v2-wave2.coax",
+        "openagents/examples/psionic-hybrid-serve.coax",
+        "openagents/examples/psionic-hybrid-serve.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {
       "number": 70,
       "title": "Pylons",
       "file": "ch070-pylons.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         58,
         69
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "psionic/lib/pylon/onboard.coax",
+        "psionic/lib/peer/pay.coax",
+        "pay/executor-settlement.coax",
+        "apps/openagents-cli/pylon-onboard.coax",
+        "apps/openagents-cli/pylon-settle.coax",
+        "openagents/examples/pylon-onboard-settle.coax",
+        "openagents/examples/pylon-onboard-settle.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
       "adopted_by": []
     },
     {

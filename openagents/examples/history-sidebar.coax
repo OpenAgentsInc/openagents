@@ -1,0 +1,73 @@
+// Runnable example for The OpenAgents Book Chapter 7: History and the sidebar.
+// Exercises the production ChatIndex sidebar/history module (apps/shared/app/history/index.coax)
+// over AppCore: signed-in page fetch via canonical ctr_summary/ctr_index records, cursor
+// pagination, case-insensitive title search across pages, non-advancing cursor refusal
+// (scan_limit), and sign-out state clearing.
+//   coax/bin/coax run openagents/examples/history-sidebar.coax
+#import "Basic";
+#load "../../apps/shared/app/history/index.coax";
+
+// book:begin history-sidebar
+hs_run :: () -> bool {
+  c: [1] AppCore;
+  app_init(c[..]);
+  h: [1] ChatIndex;
+  lib: [1] ChatLibrary;
+
+  // Logged out: syncing requests no history HTTP effect.
+  c[0].foreground = true;
+  hi_sync(h[..], c[..], true);
+  print("logged_out_op=% loaded=%\n", h[0].op, h[0].loaded);
+
+  // Sign in and open the sidebar: ChatIndex queues GET /api/chat/conversations/v2alpha1.
+  c[0].auth = AUTH_IN;
+  hi_sync(h[..], c[..], true);
+  op1 := h[0].op;
+  print("signed_in_op_queued=%\n", op1 > 0);
+
+  // Build canonical page 1 (2 conversations + next cursor) via ctr_summary/ctr_index and deliver through AppCore.
+  row0: [512] u8; row1: [512] u8; raw: [4096] u8;
+  cv0 := [1] CtConversation.[CtConversation.{id = "cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", title = "Alpha build", revision = 1, created = 1, updated = 2}];
+  cv1 := [1] CtConversation.[CtConversation.{id = "cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", title = "Executor settlement", revision = 1, created = 2, updated = 3}];
+  n0 := ctr_summary(cv0[..], row0[..]);
+  n1 := ctr_summary(cv1[..], row1[..]);
+  items := [2] string.[cast(string) row0[0..<n0], cast(string) row1[0..<n1]];
+  rn := ctr_index(items[..], "cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", raw[..]);
+  page1 := cast(string) raw[0..<rn];
+
+  _ := fx_take(c[0].out[..], op1);
+  gen := fx_generation(c[0].out[..], HI_OWNER);
+  _ = app_dispatch(c[..], AppEvent.{kind = EV_DONE, op = op1, generation = gen, outcome = FXO_DONE, status = 200, text = page1});
+  ok_g := hi_guest(h[..], c[..], page1);
+  p1_ok := ok_g && h[0].loaded && h[0].page[0].n == 2 && h[0].page[0].next_n > 0;
+  print("page1_handled=% loaded=% items=% has_next=%\n", ok_g, h[0].loaded, h[0].page[0].n, h[0].page[0].next_n > 0);
+
+  // Case-insensitive title search scans existing pages without an unversioned wire filter.
+  hi_query(h[..], c[..], "executor", lib[..]);
+  h[0].held[0] = h[0].page[0];
+  h[0].held_at = 0;
+  hi_scan_fill(h[..]);
+  search_ok := h[0].found[0].n == 1 && h[0].scan && !h[0].scan_done;
+  print("search_matches=% scan_more=% scan_done=%\n", h[0].found[0].n, h[0].scan, h[0].scan_done);
+
+  // Refusal: a non-advancing cursor terminates cleanly with scan_limit=true instead of looping.
+  h[0].sent_n = h[0].held[0].next_n;
+  h[0].sent = h[0].held[0].next;
+  h[0].held_at = h[0].held[0].n;
+  hi_scan_fill(h[..]);
+  limit_ok := h[0].scan_limit && !h[0].scan_done;
+  print("stalled_cursor_limit=% scan_done=%\n", h[0].scan_limit, h[0].scan_done);
+
+  // Sign out clears loaded history immediately.
+  c[0].auth = AUTH_OUT;
+  hi_sync(h[..], c[..], true);
+  print("after_logout_loaded=% items=%\n", h[0].loaded, h[0].page[0].n);
+
+  return p1_ok && search_ok && limit_ok && !h[0].loaded && h[0].page[0].n == 0;
+}
+// book:end history-sidebar
+
+main :: () {
+  ok := hs_run();
+  print("ok=%\n", ok);
+}

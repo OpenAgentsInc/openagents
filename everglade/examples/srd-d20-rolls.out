@@ -1,0 +1,6 @@
+dex16_mod=3 prof=2,3,4,6 longbow_l1=5 archery_l2=7
+edge_adv=1 edge_dis=-1 edge_cancel=0
+fixed_plain=10 dice=1 fixed_adv=10 dice=3
+shot1_roll=8 total=13 hit=false dmg=0
+shot2_roll=17 total=22 hit=true dmg=11
+ok=true

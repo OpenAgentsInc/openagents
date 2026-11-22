@@ -1,0 +1,4 @@
+composite_layers=7 reload_ok=true out=1,28,102 tamper_refused=true
+healthy_canary=true healthy_promote=true active=2000 pct=100
+refuse_inexact=true rollback_triggered=true restored_active=1000
+ok=true

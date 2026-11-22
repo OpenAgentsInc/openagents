@@ -1,7 +1,15 @@
 # 55. Everyone gets it
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** Hash-pinned zero-recompilation linked
+> weight-module composites ([`psionic/lib/module-v2-wave2.coax`](../../psionic/lib/module-v2-wave2.coax))
+> and the `#authority` `shadow -> canary -> promoted` rollout gate with
+> automatic rollback on canary divergence ([`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax))
+> run on `cpu` with their runnable book example
+> [`openagents/examples/pinned-defaults-rollout.coax`](../examples/pinned-defaults-rollout.coax)
+> and committed debug/release transcript
+> [`openagents/examples/pinned-defaults-rollout.out`](../examples/pinned-defaults-rollout.out).
+> Remaining: `openagents/registry/install.coax`, `openagents/registry/defaults/`,
+> and the in-app provenance browser UI.
 
 ## Premise
 
@@ -50,6 +58,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`psionic/lib/module-v2-wave2.coax`](../../psionic/lib/module-v2-wave2.coax) (zero-recompilation linked composites with exact SHA-256 verification)
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/crypto`](../../coax/lib/crypto)
@@ -65,20 +74,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** install by hash in `openagents/registry/install.coax` and the
-  defaults package in `openagents/registry/defaults/`.
-- **Trace:** an app installs a fixture release from a fake relay, and
-  `state plugins` prints it pinned at its hash. A new defaults release that
-  cites an adoption is published; after the next sync, `state plugins` lists
-  the member, and the provenance view walks to the release, the adoption and
-  the report.
-- **Refusal:** a component whose bytes do not match the release's hash is
-  refused, and the install stays at the old pin. A run in progress keeps its
-  lock across the defaults update.
-- **Independent check:** `shasum -a 256` over the fixture components gives
-  the pinned hashes, and the existing EXT reader,
-  [`coax/lib/nostr/ext/install.coax`](../../coax/lib/nostr/ext/install.coax),
-  accepts the release with `EXT_OK`.
+- **Source:** [`psionic/lib/module-v2-wave2.coax`](../../psionic/lib/module-v2-wave2.coax),
+  [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax),
+  [`openagents/examples/pinned-defaults-rollout.coax`](../examples/pinned-defaults-rollout.coax),
+  and the committed stdout transcript [`openagents/examples/pinned-defaults-rollout.out`](../examples/pinned-defaults-rollout.out)
+  (remaining: `openagents/registry/install.coax` and `openagents/registry/defaults/`).
+- **Trace:** links `wire-gate -> patch-rebase` into a 7-layer composite with
+  zero recompilation, reloads by exact SHA-256 (`out=1,28,102`), advances a
+  qualified candidate through `shadow -> canary (10%) -> promoted (100%)`
+  (`active=2000 pct=100`).
+- **Refusal:** flipping 1 bit of the serialized weights refuses deserialization
+  with `EvStatus.digest` (`tamper_refused=true`); a candidate below 100% exact
+  replay is blocked before canary (`refuse_inexact=true`); 1 canary divergence
+  automatically rolls back to the pinned target (`restored_active=1000`).
+- **Independent check:** `coax/bin/coax run openagents/examples/pinned-defaults-rollout.coax`
+  and `--release` produce identical transcripts matching
+  [`openagents/examples/pinned-defaults-rollout.out`](../examples/pinned-defaults-rollout.out),
+  beside `coax/bin/coax test psionic/lib/peer/release-promote.coax` and
+  `coax/bin/coax test psionic/lib/module-v2-wave2.coax`.
 
 Planned paths: `openagents/registry/install.coax`, `openagents/registry/defaults/`.
 
@@ -97,3 +110,73 @@ Planned paths: `openagents/registry/install.coax`, `openagents/registry/defaults
 ## Open questions for the owner
 
 1. Does a defaults update install on its own, or does each person confirm it?
+
+## Source listing
+
+Run the Chapter 55 example in [`openagents/examples/pinned-defaults-rollout.coax`](../examples/pinned-defaults-rollout.coax) (committed transcript [`openagents/examples/pinned-defaults-rollout.out`](../examples/pinned-defaults-rollout.out)):
+
+<!-- source: openagents/examples/pinned-defaults-rollout.coax pinned-defaults-rollout -->
+```jai
+pdr_run :: () -> bool {
+  // 1. Link wire-gate -> patch-rebase with ZERO recompilation, verify exact SHA-256 reload & 1-byte tamper refusal.
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [65536] f64;
+  lb: [MV_MAX_LAYERS] EvLayerDesc; hb: [MV_MAX_HEADS] EvHeadDesc; wb: [65536] f64;
+  lc: [MV_MAX_LAYERS] EvLayerDesc; hc: [MV_MAX_HEADS] EvHeadDesc; wc: [131072] f64;
+  m_wg := mv_compile_wire_gate(la[..], ha[..], wa[..]);
+  m_pr := mv_compile_patch_rebase(lb[..], hb[..], wb[..]);
+  wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+  m_comp := mv_link_models(m_wg, m_pr, wire[..], lc[..], hc[..], wc[..]);
+
+  sb: [131072] u8;
+  ser := ev_serialize(m_comp, sb[..]);
+  lr: [MV_MAX_LAYERS] EvLayerDesc; hr: [MV_MAX_HEADS] EvHeadDesc; wr: [131072] f64;
+  reloaded := ev_deserialize(sb[0..<ser.written], ser.digest, true, lr[..], hr[..], wr[..]);
+  inp := [10] int.[2, 16, 64, 10, 4, 7, 25, 3, 2, 100];
+  out: [3] int;
+  ev_ok := reloaded.model.status == EvStatus.ok && mv_eval_model(reloaded.model, inp[..], out[..]) == EvStatus.ok;
+  sb[ser.written - 1] ^= 1;
+  tampered := ev_deserialize(sb[0..<ser.written], ser.digest, true, lr[..], hr[..], wr[..]);
+  print("composite_layers=% reload_ok=% out=%,%,% tamper_refused=%\n",
+    m_comp.n_layers, ev_ok, out[0], out[1], out[2], tampered.model.status == EvStatus.digest);
+
+  // 2. Healthy #authority defaults rollout: shadow -> canary (10%) -> promoted (100%).
+  r: [1] RpRelease;
+  r[0] = rp_init(1000);
+  q := RpQual.{
+    sig_ok = true, digest_ok = true,
+    base_pass_bps = 6800, cand_pass_bps = 7400, min_lift_bps = 500,
+    exact_replay_bps = 10000, crash_rate_bps = 5, max_crash_bps = 10,
+  };
+  s_can := rp_enter_canary(r[..], 2000, 1000, 10, q);
+  s_pro := rp_finalize_canary(r[..], 100, 50, 0, 5, 10);
+  print("healthy_canary=% healthy_promote=% active=% pct=%\n",
+    s_can == RpStatus.ok, s_pro == RpStatus.ok, r[0].active_sha, r[0].canary_pct);
+
+  // 3. Refusal: non-100% exact replay blocked before canary; 1 canary divergence auto-rolls back to pinned target.
+  r_bad: [1] RpRelease;
+  r_bad[0] = rp_init(1000);
+  q_inexact := q; q_inexact.exact_replay_bps = 9999;
+  refuse_inexact := rp_enter_canary(r_bad[..], 2001, 1000, 10, q_inexact) == RpStatus.exactness_failed;
+
+  r_rb: [1] RpRelease;
+  r_rb[0] = rp_init(1000);
+  _ := rp_enter_canary(r_rb[..], 2002, 1000, 10, q);
+  rb_st := rp_finalize_canary(r_rb[..], 100, 50, 1, 5, 10);
+  print("refuse_inexact=% rollback_triggered=% restored_active=%\n",
+    refuse_inexact, rb_st == RpStatus.canary_unhealthy && r_rb[0].channel == RpChannel.rolled_back, r_rb[0].active_sha);
+
+  return ev_ok && out[0] == 1 && out[1] == 28 && out[2] == 102 &&
+         tampered.model.status == EvStatus.digest &&
+         s_pro == RpStatus.ok && r[0].active_sha == 2000 &&
+         refuse_inexact && r_rb[0].active_sha == 1000;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/pinned-defaults-rollout.coax`, identical in `--release`):
+
+```text
+composite_layers=7 reload_ok=true out=1,28,102 tamper_refused=true
+healthy_canary=true healthy_promote=true active=2000 pct=100
+refuse_inexact=true rollback_triggered=true restored_active=1000
+ok=true
+```
