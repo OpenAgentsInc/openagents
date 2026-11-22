@@ -6133,7 +6133,10 @@
       ],
       "source": [
         "psionic/examples/inkling-metal.coax",
-        "psionic/lib/inkling-metal.coax"
+        "psionic/lib/inkling-metal.coax",
+        "psionic/lib/inkling/kernels.coax",
+        "psionic/platform/inkling-metal.c",
+        "psionic/platform/inkling-cli.c"
       ],
       "qualified_targets": [
         "cpu",

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sysctl.h>
 #include <time.h>
 
 #define INK_T   64
@@ -393,6 +394,7 @@ struct InkSession {
     int n_slots;
     int max_ctx;
     int prefill_b;
+    InkMemoryBudget budget;
     int kv_cap[INK_MAX_SLOTS];
     PmBuffer kv_k[INK_MAX_SLOTS];   /* [kv_cap * n_kv_elem] u16 */
     PmBuffer kv_v[INK_MAX_SLOTS];   /* [kv_cap * n_kv_elem] u16 */
@@ -1290,6 +1292,20 @@ static void build_fast_weights(InkSession *s) {
     pm_mark_readonly(s->fast_buf);
 }
 
+static int64_t ink_host_ram_mb(void) {
+    const char *ov = getenv("INK_TEST_RAM_MB");
+    if (ov && *ov) {
+        long long v = atoll(ov);
+        if (v > 0) return (int64_t)v;
+    }
+    uint64_t mem = 0;
+    size_t sz = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &sz, NULL, 0) == 0 && mem > 0) {
+        return (int64_t)(mem / (1024ULL * 1024ULL));
+    }
+    return 0;
+}
+
 int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSession **out, char *err, size_t err_bytes) {
     return ink_open_ex(gguf_path, metal_path, max_ctx, 0, out, err, err_bytes);
 }
@@ -1326,6 +1342,71 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         snprintf(err, err_bytes, "pm_open: %s", pm_log());
         ink_close(s); return 1;
     }
+
+    /* Unified-memory residency guardrail (>= 32 GB Apple Silicon floor + exact KV & scratch budget). */
+    int64_t ram_mb = ink_host_ram_mb();
+    if (ram_mb <= 0 && info.working_set_bytes > 0) {
+        ram_mb = (int64_t)(info.working_set_bytes / (1024ULL * 1024ULL));
+    }
+    s->prefill_b = (s->max_ctx <= 8192) ? INK_PREFILL_B
+                 : (s->max_ctx <= 16384) ? 2048
+                 : (ram_mb > 0 && ram_mb <= 40960) ? 512 : 1024;
+
+    size_t B = (size_t)s->prefill_b;
+    size_t d = (size_t)hp->n_embd;
+    size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
+    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
+    int full_slots = 0, swa_slots = 0;
+    size_t kv_bytes = 0;
+    for (int il = 0; il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
+        int swa_cap = hp->swa + s->prefill_b;
+        int cap = hp->is_swa[ip] ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
+        if (hp->is_swa[ip]) swa_slots++; else full_slots++;
+        kv_bytes += (size_t)cap * n_kv * 4 + (2 * n_kv + 2 * d) * 3 * 4;
+    }
+    size_t attn_prefill_bytes = B * (size_t)hp->n_head * (size_t)s->max_ctx * 2;
+    size_t attn_decode_bytes = (size_t)hp->n_head * (size_t)s->max_ctx * 4;
+    size_t attn_bytes = attn_prefill_bytes > attn_decode_bytes ? attn_prefill_bytes : attn_decode_bytes;
+    size_t scratch_bytes = attn_bytes + (size_t)44 * 1024 * 1024 * 4 +
+                           B * (size_t)(48 * d + 6 * n_q + 4 * n_kv + 3 * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp) * 4;
+    int64_t os_reserve_mb = 4096;
+    int64_t weights_mb = (int64_t)((s->gguf.map_size + 1048575ULL) / 1048576ULL);
+    int64_t kv_mb = (int64_t)((kv_bytes + 1048575ULL) / 1048576ULL);
+    int64_t scratch_mb = (int64_t)((scratch_bytes + 1048575ULL) / 1048576ULL);
+    int64_t total_mb = os_reserve_mb + weights_mb + kv_mb + scratch_mb;
+    int64_t fixed_mb = os_reserve_mb + weights_mb + scratch_mb;
+    int64_t max_ctx_fit = 0;
+    if (ram_mb > fixed_mb && full_slots > 0) {
+        int64_t swa_ring_bytes = (int64_t)swa_slots * (int64_t)(hp->swa + s->prefill_b) * (int64_t)(n_kv * 4);
+        int64_t avail_full = (ram_mb - fixed_mb) * 1048576LL - swa_ring_bytes;
+        if (avail_full > 0) max_ctx_fit = avail_full / ((int64_t)full_slots * (int64_t)(n_kv * 4));
+    }
+    s->budget = (InkMemoryBudget){
+        .device_ram_mb = ram_mb,
+        .os_reserve_mb = os_reserve_mb,
+        .weights_mb = weights_mb,
+        .kv_cache_mb = kv_mb,
+        .scratchpad_mb = scratch_mb,
+        .total_mb = total_mb,
+        .headroom_mb = (ram_mb > total_mb) ? (ram_mb - total_mb) : 0,
+        .max_context_len = max_ctx_fit,
+        .full_slots = full_slots,
+        .swa_slots = swa_slots,
+    };
+    if (ram_mb > 0 && ram_mb < 32768) {
+        snprintf(err, err_bytes,
+                 "insufficient unified memory: %lld MB detected (requires >= 32768 MB for Inkling 2 Mini; weights=%lld MB)",
+                 (long long)ram_mb, (long long)weights_mb);
+        ink_close(s); return 1;
+    }
+    if (ram_mb > 0 && total_mb > ram_mb) {
+        snprintf(err, err_bytes,
+                 "context %d exceeds unified memory budget (%lld MB required > %lld MB RAM; max_ctx=%lld)",
+                 s->max_ctx, (long long)total_mb, (long long)ram_mb, (long long)max_ctx_fit);
+        ink_close(s); return 1;
+    }
+
     size_t metal_len = 0;
     char *metal_src = read_entire_file(metal_path, &metal_len);
     if (!metal_src) {
@@ -1350,12 +1431,6 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         snprintf(err, err_bytes, "pm_wrap(%zu): %s", s->gguf.map_size, pm_log());
         ink_close(s); return 1;
     }
-
-    s->prefill_b = (s->max_ctx <= 8192) ? INK_PREFILL_B : (s->max_ctx <= 16384) ? 2048 : 1024;
-    size_t B = (size_t)s->prefill_b;
-    size_t d = (size_t)hp->n_embd;
-    size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
 
     if (alloc_buf(s, &s->cur, B * d * 4) ||
         alloc_buf(s, &s->inp_sa, B * d * 4) ||
@@ -1383,7 +1458,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         alloc_buf(s, &s->dyn_buf, 2 * B * (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
         alloc_buf(s, &s->sinks_buf, B * (size_t)hp->n_head * 4) ||
         alloc_buf(s, &s->gate_buf, B * n_q * 4) ||
-        alloc_buf(s, &s->attn_scores, B * (size_t)hp->n_head * (size_t)s->max_ctx * 4) ||
+        alloc_buf(s, &s->attn_scores, attn_bytes) ||
         alloc_buf(s, &s->attn_out, B * n_q * 4) ||
         alloc_buf(s, &s->o_raw, B * d * 4) ||
         alloc_buf(s, &s->norm_buf, B * d * 4) ||
@@ -2744,3 +2819,218 @@ int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_
 
 const char *ink_error(const InkSession *s) { return s ? s->error : "null session"; }
 double ink_last_gpu_seconds(const InkSession *s) { return s ? s->total_gpu_seconds : 0.0; }
+const InkMemoryBudget *ink_memory_budget(const InkSession *s) { return s ? &s->budget : NULL; }
+
+static float cpu_nvfp4_val(uint32_t nib) {
+    static const float t[8] = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f};
+    float v = t[nib & 7u];
+    return (nib & 8u) ? -v : v;
+}
+static float cpu_fp8_e4m3(uint32_t b) {
+    uint32_t e = (b >> 3) & 15u, m = b & 7u;
+    float v;
+    if (e == 0) {
+        v = (float)m * (1.0f / 512.0f);
+    } else {
+        uint32_t bits = ((e + 120u) << 23) | (m << 20);
+        memcpy(&v, &bits, 4);
+    }
+    return (b & 128u) ? -v : v;
+}
+static float cpu_ue8m0(uint32_t e) {
+    uint32_t bits = (e == 0) ? 0x00400000u : ((e & 255u) << 23);
+    float v; memcpy(&v, &bits, 4); return v;
+}
+static float cpu_iq4_val(uint32_t q) {
+    static const int8_t t[16] = {-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113};
+    return (float)t[q & 15u];
+}
+
+int ink_test_quant_kernels(const char *metal_path, char *err, size_t err_bytes) {
+    PmDeviceInfo info;
+    if (pm_open(&info) != PM_OK) { snprintf(err, err_bytes, "pm_open: %s", pm_log()); return 1; }
+    size_t metal_len = 0;
+    char *src = read_entire_file(metal_path, &metal_len);
+    if (!src) { snprintf(err, err_bytes, "cannot read %s", metal_path); return 1; }
+    PmModule mod = NULL; double compile_s = 0.0;
+    PmStatus st = pm_compile(src, metal_len, "inkling_quant_test", &mod, &compile_s);
+    free(src);
+    if (st != PM_OK) { snprintf(err, err_bytes, "pm_compile: %s", pm_log()); return 1; }
+
+    PmKernel k_nv = NULL, k_mx = NULL, k_iq = NULL;
+    if (pm_kernel(mod, "ink_dv_nvfp4", &k_nv) != PM_OK ||
+        pm_kernel(mod, "ink_dv_mxfp8", &k_mx) != PM_OK ||
+        pm_kernel(mod, "ink_dv_iq4",   &k_iq) != PM_OK) {
+        snprintf(err, err_bytes, "pm_kernel: %s", pm_log());
+        if (k_nv) pm_kernel_free(k_nv);
+        if (k_mx) pm_kernel_free(k_mx);
+        if (k_iq) pm_kernel_free(k_iq);
+        pm_unload(mod); return 1;
+    }
+
+    int rc = 1;
+    const int rows = 8, cols = 64; /* 4 NVFP4 blocks/row, 2 MXFP8 blocks/row, 2 IQ4 blocks/row */
+    PmBuffer b_x = NULL, b_out = NULL, b_nv_p = NULL, b_nv_s = NULL, b_mx_w = NULL, b_mx_s = NULL, b_iq_w = NULL;
+    if (pm_alloc(cols * 4, &b_x) != PM_OK ||
+        pm_alloc(rows * 4, &b_out) != PM_OK ||
+        pm_alloc(rows * (cols / 16) * 8, &b_nv_p) != PM_OK ||
+        pm_alloc(rows * (cols / 16), &b_nv_s) != PM_OK ||
+        pm_alloc(rows * cols, &b_mx_w) != PM_OK ||
+        pm_alloc(rows * (cols / 32), &b_mx_s) != PM_OK ||
+        pm_alloc(rows * (cols / 32) * 18, &b_iq_w) != PM_OK) {
+        snprintf(err, err_bytes, "pm_alloc failed");
+        goto cleanup;
+    }
+
+    float *x = (float *)pm_contents(b_x);
+    for (int c = 0; c < cols; c++) x[c] = (float)((c % 11) - 5) * 0.25f;
+
+    /* 1. Verify Metal ink_dv_nvfp4 against exact CPU FP4 E2M1 + E4M3 + global_scale reference */
+    const float gscale = 0.5f;
+    uint32_t *nv_p = (uint32_t *)pm_contents(b_nv_p);
+    uint8_t  *nv_sb = (uint8_t *)pm_contents(b_nv_s);
+    const uint8_t e4m3_scales[4] = {0x38, 0x40, 0x30, 0x04}; /* 1.0, 2.0, 0.5, subnormal 4/512 */
+    for (int r = 0; r < rows; r++) {
+        for (int b = 0; b < cols / 16; b++) {
+            int bi = r * (cols / 16) + b;
+            uint32_t w0 = 0, w1 = 0;
+            for (int j = 0; j < 8; j++) {
+                uint32_t n0 = (uint32_t)((r * 3 + b * 5 + j) & 15);
+                uint32_t n1 = (uint32_t)((r * 7 + b * 2 + j + 8) & 15);
+                w0 |= n0 << (j * 4);
+                w1 |= n1 << (j * 4);
+            }
+            nv_p[bi * 2] = w0; nv_p[bi * 2 + 1] = w1;
+            nv_sb[bi] = e4m3_scales[(r + b) & 3];
+        }
+    }
+    PmBatch batch = NULL;
+    if (pm_begin(&batch) != PM_OK) { snprintf(err, err_bytes, "pm_begin: %s", pm_log()); goto cleanup; }
+    PmArg nv_args[7] = {
+        a_int(rows), a_int(cols), a_f32(gscale),
+        a_u32v(b_nv_p, 0, rows * (cols / 16) * 2),
+        a_u32v(b_nv_s, 0, (rows * (cols / 16)) / 4),
+        a_f32v(b_x, 0, cols), a_f32v(b_out, 0, rows)
+    };
+    if (pm_launch(batch, k_nv, rows, 32, 32, nv_args, 7) != PM_OK || pm_wait(batch, NULL) != PM_OK) {
+        snprintf(err, err_bytes, "ink_dv_nvfp4 launch: %s", pm_log()); goto cleanup;
+    }
+    const float *got = (const float *)pm_contents(b_out);
+    float max_nv = 0.0f;
+    for (int r = 0; r < rows; r++) {
+        float ref = 0.0f;
+        for (int b = 0; b < cols / 16; b++) {
+            int bi = r * (cols / 16) + b;
+            float sc = cpu_fp8_e4m3(nv_sb[bi]) * gscale;
+            float s = 0.0f;
+            for (int j = 0; j < 8; j++) {
+                s += cpu_nvfp4_val((nv_p[bi * 2] >> (j * 4)) & 15u) * x[b * 16 + j];
+                s += cpu_nvfp4_val((nv_p[bi * 2 + 1] >> (j * 4)) & 15u) * x[b * 16 + 8 + j];
+            }
+            ref += sc * s;
+        }
+        float d = fabsf(got[r] - ref);
+        if (d > max_nv) max_nv = d;
+    }
+    if (max_nv > 1e-5f) { snprintf(err, err_bytes, "ink_dv_nvfp4 mismatch: max_abs=%g", max_nv); goto cleanup; }
+
+    /* 2. Verify Metal ink_dv_mxfp8 against exact CPU E4M3 + UE8M0 reference */
+    uint8_t *mx_wb = (uint8_t *)pm_contents(b_mx_w);
+    uint8_t *mx_sb = (uint8_t *)pm_contents(b_mx_s);
+    const uint8_t e4m3_vals[8] = {0x38, 0xb8, 0x40, 0xc0, 0x34, 0x06, 0x44, 0xbc};
+    for (int r = 0; r < rows; r++) {
+        for (int b = 0; b < cols / 32; b++) {
+            int bi = r * (cols / 32) + b;
+            mx_sb[bi] = (uint8_t)(125 + ((r + b) % 5));
+            for (int j = 0; j < 32; j++) mx_wb[bi * 32 + j] = e4m3_vals[(r + b * 3 + j) & 7];
+        }
+    }
+    if (pm_begin(&batch) != PM_OK) { snprintf(err, err_bytes, "pm_begin: %s", pm_log()); goto cleanup; }
+    PmArg mx_args[6] = {
+        a_int(rows), a_int(cols),
+        a_u32v(b_mx_w, 0, (rows * cols) / 4),
+        a_u32v(b_mx_s, 0, (rows * (cols / 32)) / 4),
+        a_f32v(b_x, 0, cols), a_f32v(b_out, 0, rows)
+    };
+    if (pm_launch(batch, k_mx, rows, 32, 32, mx_args, 6) != PM_OK || pm_wait(batch, NULL) != PM_OK) {
+        snprintf(err, err_bytes, "ink_dv_mxfp8 launch: %s", pm_log()); goto cleanup;
+    }
+    float max_mx = 0.0f;
+    for (int r = 0; r < rows; r++) {
+        float ref = 0.0f;
+        for (int b = 0; b < cols / 32; b++) {
+            int bi = r * (cols / 32) + b;
+            float sc = cpu_ue8m0(mx_sb[bi]);
+            float s = 0.0f;
+            for (int j = 0; j < 32; j++) s += cpu_fp8_e4m3(mx_wb[bi * 32 + j]) * x[b * 32 + j];
+            ref += sc * s;
+        }
+        float d = fabsf(got[r] - ref);
+        if (d > max_mx) max_mx = d;
+    }
+    if (max_mx > 1e-5f) { snprintf(err, err_bytes, "ink_dv_mxfp8 mismatch: max_abs=%g", max_mx); goto cleanup; }
+
+    /* 3. Verify Metal ink_dv_iq4 against exact CPU IQ4_NL reference */
+    uint16_t *iq_w = (uint16_t *)pm_contents(b_iq_w);
+    const uint16_t f16_scales[4] = {0x3800, 0x3c00, 0x3400, 0xbc00}; /* 0.5, 1.0, 0.25, -1.0 */
+    const float f16_vals[4] = {0.5f, 1.0f, 0.25f, -1.0f};
+    for (int r = 0; r < rows; r++) {
+        for (int b = 0; b < cols / 32; b++) {
+            uint16_t *blk = iq_w + (r * (cols / 32) + b) * 9;
+            blk[0] = f16_scales[(r + b) & 3];
+            for (int k = 0; k < 8; k++) {
+                uint32_t q0 = (uint32_t)((r + b + 2 * k) & 15);
+                uint32_t q1 = (uint32_t)((r + b + 2 * k + 5) & 15);
+                uint32_t q2 = (uint32_t)((r + b + 2 * k + 1) & 15);
+                uint32_t q3 = (uint32_t)((r + b + 2 * k + 9) & 15);
+                blk[1 + k] = (uint16_t)(q0 | (q1 << 4) | (q2 << 8) | (q3 << 12));
+            }
+        }
+    }
+    if (pm_begin(&batch) != PM_OK) { snprintf(err, err_bytes, "pm_begin: %s", pm_log()); goto cleanup; }
+    PmArg iq_args[6] = {
+        a_int(rows), a_int(cols), a_int(0),
+        a_u16v(b_iq_w, 0, rows * (cols / 32) * 9),
+        a_f32v(b_x, 0, cols), a_f32v(b_out, 0, rows)
+    };
+    if (pm_launch(batch, k_iq, (rows + INK_D - 1) / INK_D, INK_T, INK_T, iq_args, 6) != PM_OK || pm_wait(batch, NULL) != PM_OK) {
+        snprintf(err, err_bytes, "ink_dv_iq4 launch: %s", pm_log()); goto cleanup;
+    }
+    float max_iq = 0.0f;
+    for (int r = 0; r < rows; r++) {
+        float ref = 0.0f;
+        for (int b = 0; b < cols / 32; b++) {
+            const uint16_t *blk = iq_w + (r * (cols / 32) + b) * 9;
+            float sc = f16_vals[(r + b) & 3];
+            float s = 0.0f;
+            for (int k = 0; k < 8; k++) {
+                uint16_t v = blk[1 + k];
+                s += cpu_iq4_val(v & 15u) * x[b * 32 + 2 * k]
+                   + cpu_iq4_val((v >> 4) & 15u) * x[b * 32 + 16 + 2 * k]
+                   + cpu_iq4_val((v >> 8) & 15u) * x[b * 32 + 2 * k + 1]
+                   + cpu_iq4_val((v >> 12) & 15u) * x[b * 32 + 16 + 2 * k + 1];
+            }
+            ref += sc * s;
+        }
+        float d = fabsf(got[r] - ref);
+        if (d > max_iq) max_iq = d;
+    }
+    if (max_iq > 1e-4f) { snprintf(err, err_bytes, "ink_dv_iq4 mismatch: max_abs=%g", max_iq); goto cleanup; }
+
+    fprintf(stderr,
+            "metal-quant-kernels device='%s' compile=%.2fs nvfp4_max_abs=%.2e mxfp8_max_abs=%.2e iq4_max_abs=%.2e ok=true\n",
+            info.name, compile_s, max_nv, max_mx, max_iq);
+    rc = 0;
+
+cleanup:
+    if (b_x) pm_free(b_x);
+    if (b_out) pm_free(b_out);
+    if (b_nv_p) pm_free(b_nv_p);
+    if (b_nv_s) pm_free(b_nv_s);
+    if (b_mx_w) pm_free(b_mx_w);
+    if (b_mx_s) pm_free(b_mx_s);
+    if (b_iq_w) pm_free(b_iq_w);
+    pm_kernel_free(k_nv); pm_kernel_free(k_mx); pm_kernel_free(k_iq);
+    pm_unload(mod);
+    return rc;
+}

@@ -48,14 +48,31 @@ typedef struct {
     int   top_k;
 } InkSampleParams;
 
+typedef struct {
+    int64_t device_ram_mb;
+    int64_t os_reserve_mb;
+    int64_t weights_mb;
+    int64_t kv_cache_mb;
+    int64_t scratchpad_mb;
+    int64_t total_mb;
+    int64_t headroom_mb;
+    int64_t max_context_len;
+    int     full_slots;
+    int     swa_slots;
+} InkMemoryBudget;
+
 /* Open an Inkling 2 Mini GGUF checkpoint on Metal.
    metal_path is a file containing MSL produced by `coax metal-compute psionic/lib/inkling/kernels.coax`.
-   max_ctx is the maximum context length for full-attention layers (e.g. 4096 or 8192).
+   max_ctx is the maximum context length for full-attention layers (e.g. 4096, 8192, 32768).
    loop_count_override > 0 overrides the checkpoint's middle-block loop count K (e.g. 1, 3, 5). */
 int  ink_open(const char *gguf_path, const char *metal_path, int max_ctx,
               InkSession **out, char *err, size_t err_bytes);
 int  ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
                  int loop_count_override, InkSession **out, char *err, size_t err_bytes);
+const InkMemoryBudget *ink_memory_budget(const InkSession *s);
+/* Compile metal_path on Metal GPU and verify Coax-emitted ink_dv_nvfp4, ink_dv_mxfp8, and ink_dv_iq4
+   against exact CPU reference dequantization (returns 0 on pass). */
+int  ink_test_quant_kernels(const char *metal_path, char *err, size_t err_bytes);
 void ink_close(InkSession *s);
 void ink_reset(InkSession *s);
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits);

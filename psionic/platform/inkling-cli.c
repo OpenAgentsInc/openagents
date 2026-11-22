@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
     int max_ctx = 4096;
     int loops = 0;
     int verify_prefill_decode = 0;
+    int test_quant_kernels = 0;
     int raw = 0;
     float temp = 0.0f;
 
@@ -30,11 +31,21 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--ctx") && i + 1 < argc) max_ctx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--loops") && i + 1 < argc) loops = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--verify-prefill-decode")) verify_prefill_decode = 1;
+        else if (!strcmp(argv[i], "--test-quant-kernels")) test_quant_kernels = 1;
         else if (!strcmp(argv[i], "--temp") && i + 1 < argc) temp = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--raw")) raw = 1;
     }
+    if (test_quant_kernels) {
+        if (!metal) { fprintf(stderr, "usage: %s --metal PATH.metal --test-quant-kernels\n", argv[0]); return 2; }
+        char qerr[512];
+        if (ink_test_quant_kernels(metal, qerr, sizeof qerr) != 0) {
+            fprintf(stderr, "test-quant-kernels failed: %s\n", qerr);
+            return 1;
+        }
+        return 0;
+    }
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--prompt TEXT] [--max-tokens N] [--ctx N] [--loops K] [--verify-prefill-decode] [--raw]\n", argv[0]);
+        fprintf(stderr, "usage: %s --model PATH.gguf --metal PATH.metal [--prompt TEXT] [--max-tokens N] [--ctx N] [--loops K] [--verify-prefill-decode] [--test-quant-kernels] [--raw]\n", argv[0]);
         return 2;
     }
 
@@ -46,10 +57,17 @@ int main(int argc, char **argv) {
         return 1;
     }
     const InkHParams *hp = ink_hparams(s);
+    const InkMemoryBudget *mb = ink_memory_budget(s);
     fprintf(stderr, "loaded in %.2fs (vocab=%d unpadded=%d bos=%d eos=%d phys=%lld loop=[%lld..%lld) K=%lld slots=%lld)\n",
             now_sec() - t0, ink_vocab_size(s), ink_vocab_unpadded(s), ink_bos_token(s), ink_eos_token(s),
             (long long)hp->n_phys, (long long)hp->loop_start, (long long)hp->loop_end,
             (long long)hp->loop_count, (long long)hp->n_slot);
+    if (mb) {
+        fprintf(stderr, "memory budget: ram=%lld MB weights=%lld MB kv=%lld MB (%d full + %d swa) scratch=%lld MB os=%lld MB total=%lld MB headroom=%lld MB max_ctx=%lld\n",
+                (long long)mb->device_ram_mb, (long long)mb->weights_mb, (long long)mb->kv_cache_mb,
+                mb->full_slots, mb->swa_slots, (long long)mb->scratchpad_mb, (long long)mb->os_reserve_mb,
+                (long long)mb->total_mb, (long long)mb->headroom_mb, (long long)mb->max_context_len);
+    }
 
     char formatted[16384];
     if (raw) {

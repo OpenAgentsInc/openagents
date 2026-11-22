@@ -1,3 +1,4 @@
-32GB Mac @ 4k ctx: 768 MB KV, 26368 MB total, 6400 MB headroom (max ctx 38229)
-16GB Mac refused: OOM before allocation
-fused NVFP4 matvec matches CPU reference: y[0] = -0.5
+32GB Mac @ 32k ctx: 1264 MB KV (8 full + 40 SWA), 23708 MB total, 9060 MB headroom (max ctx 322688)
+16GB Mac refused: OOM before Metal allocation
+512k ctx on 32GB refused: context_limit before allocation
+register-dequant reference: nvfp4 y[0]=-0.5 mxfp8 y[0]=16.0

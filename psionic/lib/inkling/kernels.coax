@@ -242,6 +242,7 @@ ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
 }
 
 // ---- Matvec IQ4_NL (1 token): group of 64 threads writes INK_D=8 rows.
+// book:begin iq4-metal-kernel
 // w is [rows, cols] IQ4_NL stored as u16 (9 u16 per 32 values: 1 f16 d, 8 u16 = 16 qs bytes).
 // qs byte j has low nibble for elem j (0..15) and high nibble for elem j+16 (16..31).
 ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
@@ -316,6 +317,7 @@ ink_dv_iq4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #ex
         }
     }
 }
+// book:end iq4-metal-kernel
 
 
 // ---- Matvec F32 (1 token): 1 group of 64 threads writes INK_D=8 rows.
@@ -3900,3 +3902,92 @@ ink_ctrl_up_apply_f16_3 :: (item:int,dim:int,rank:int,is_swa:int,w_gain:[]u16,w_
         }
     }
 }
+
+// book:begin quant-metal-kernels
+// FP4 E2M1 value table (NVFP4 micro-block element: 1 sign bit + 3-bit magnitude).
+ink_nvfp4_val :: (nib:u32)->f32 #effects(all) {
+    m:=nib&7;
+    v:f32=ifx m==0 then 0.0f32 else ifx m==1 then 0.5f32 else ifx m==2 then 1.0f32 else ifx m==3 then 1.5f32
+        else ifx m==4 then 2.0f32 else ifx m==5 then 3.0f32 else ifx m==6 then 4.0f32 else 6.0f32;
+    return ifx (nib&8)!=0 then -v else v;
+}
+
+// FP8 E4M3FN byte -> f32 (bias 7, subnormals exact via f32_from_bits).
+ink_fp8_e4m3 :: (b:u32)->f32 #effects(all) {
+    e:=(b>>3)&15; m:=b&7;
+    v:f32=ifx e==0 then f32(m)*(1.0f32/512.0f32) else f32_from_bits(((e+120)<<23)|(m<<20));
+    return ifx (b&128)!=0 then -v else v;
+}
+
+// UE8M0 shared microscaling exponent -> f32 (2^(e - 127), exact power of two).
+ink_ue8m0 :: (e:u32)->f32 #effects(all) {
+    if e==0 { return f32_from_bits(0x00400000); }
+    return f32_from_bits((e&255)<<23);
+}
+
+// Register-dequantizing NVFP4 GEMV on Metal (16-element micro-blocks: 2 u32 packed nibbles + E4M3 block scale + f32 global_scale).
+// 1 warp (32 lanes) per row; launch items = rows, lanes = 32. Zero FP16/FP32 weight buffer materialization.
+ink_dv_nvfp4 :: (item:int,rows:int,cols:int,global_scale:f32,packed:[]u32,scales:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    blocks:=cols/16;
+    for thread:0..<32 {
+        row:=item;
+        acc:f32=0;
+        if row<rows {
+            for step:0..<(blocks+31)/32 {
+                blk:=step*32+thread;
+                if blk<blocks {
+                    bidx:=row*blocks+blk;
+                    w0:=packed[bidx*2];
+                    w1:=packed[bidx*2+1];
+                    sc_word:=scales[bidx/4];
+                    sc_byte:=(sc_word>>cast(u32)((bidx&3)*8))&255;
+                    sc:=ink_fp8_e4m3(sc_byte)*global_scale;
+                    xb:=blk*16;
+                    s:f32=0;
+                    for j:0..<8 {
+                        s+=ink_nvfp4_val((w0>>cast(u32)(j*4))&15)*x[xb+j];
+                        s+=ink_nvfp4_val((w1>>cast(u32)(j*4))&15)*x[xb+8+j];
+                    }
+                    acc+=sc*s;
+                }
+            }
+            tot:=am_simd_sum(acc);
+            if thread==0 { out[row]=tot; }
+        }
+    }
+}
+
+// Register-dequantizing MXFP8 GEMV on Metal (32-element micro-blocks: 8 u32 E4M3 bytes + UE8M0 shared exponent).
+// 1 warp (32 lanes) per row; launch items = rows, lanes = 32. Zero FP16/FP32 weight buffer materialization.
+ink_dv_mxfp8 :: (item:int,rows:int,cols:int,weights:[]u32,scales:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    blocks:=cols/32;
+    for thread:0..<32 {
+        row:=item;
+        acc:f32=0;
+        if row<rows {
+            for step:0..<(blocks+31)/32 {
+                blk:=step*32+thread;
+                if blk<blocks {
+                    bidx:=row*blocks+blk;
+                    sc_word:=scales[bidx/4];
+                    sc_byte:=(sc_word>>cast(u32)((bidx&3)*8))&255;
+                    sc:=ink_ue8m0(sc_byte);
+                    xb:=blk*32;
+                    wbase:=bidx*8;
+                    s:f32=0;
+                    for j:0..<8 {
+                        wd:=weights[wbase+j];
+                        s+=ink_fp8_e4m3(wd&255)*x[xb+j*4]
+                          +ink_fp8_e4m3((wd>>8)&255)*x[xb+j*4+1]
+                          +ink_fp8_e4m3((wd>>16)&255)*x[xb+j*4+2]
+                          +ink_fp8_e4m3((wd>>24)&255)*x[xb+j*4+3];
+                    }
+                    acc+=sc*s;
+                }
+            }
+            tot:=am_simd_sum(acc);
+            if thread==0 { out[row]=tot; }
+        }
+    }
+}
+// book:end quant-metal-kernels

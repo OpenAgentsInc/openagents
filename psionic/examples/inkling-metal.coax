@@ -1,22 +1,30 @@
-// Chapter 269 example: Inkling 2 Mini on Metal residency budget and fused NVFP4/MXFP8 matvec parity.
+// Chapter 269 example: Inkling 2 Mini on Metal 4 split SWA+Full residency budget and NVFP4/MXFP8 matvec reference.
 #import "Basic";
 #load "../lib/inkling-metal.coax";
 
 // book:begin example
 main :: () {
-    s4k := InklingMetalBudgetSpec.{
-        device_ram_mb=32768, os_reserve_mb=4096, weights_mb=20480,
-        kv_bytes_per_token_pass=65536, loop_count=3, context_len=4096, scratchpad_mb=1024
+    // Production Inkling 2 Mini IQ4_NL GGUF on a 32 GB Mac at full 32,768 context:
+    // 16,812 MiB weights, 8 full-attention slots + 40 SWA-1024 slots (K=3), 4096 B/slot-tok.
+    s32k := InklingSplitKvSpec.{
+        device_ram_mb=32768, os_reserve_mb=4096, weights_mb=16812,
+        full_slots=8, swa_slots=40, swa_window=1536, kv_bytes_per_slot_tok=4096,
+        context_len=32768, scratchpad_mb=1536
     };
-    p4k := inkling_metal_plan(s4k);
-    #assert p4k.status == InklingMetalStatus.ok;
-    print("32GB Mac @ 4k ctx: % MB KV, % MB total, % MB headroom (max ctx %)\n",
-        p4k.kv_cache_mb, p4k.total_mb, p4k.headroom_mb, p4k.max_context_len);
+    p32k := inkling_metal_split_plan(s32k);
+    #assert p32k.status == InklingMetalStatus.ok;
+    print("32GB Mac @ 32k ctx: % MB KV (8 full + 40 SWA), % MB total, % MB headroom (max ctx %)\n",
+        p32k.kv_cache_mb, p32k.total_mb, p32k.headroom_mb, p32k.max_context_len);
 
-    s16g := s4k; s16g.device_ram_mb = 16384;
-    #assert inkling_metal_plan(s16g).status == InklingMetalStatus.oom;
-    print("16GB Mac refused: OOM before allocation\n");
+    s16g := s32k; s16g.device_ram_mb = 16384;
+    #assert inkling_metal_split_plan(s16g).status == InklingMetalStatus.oom;
+    print("16GB Mac refused: OOM before Metal allocation\n");
 
+    sover := s32k; sover.context_len = 524288;
+    #assert inkling_metal_split_plan(sover).status == InklingMetalStatus.context_limit;
+    print("512k ctx on 32GB refused: context_limit before allocation\n");
+
+    // Reference check matching Metal GPU ink_dv_nvfp4 and ink_dv_mxfp8 kernels.
     packed := [8]u8.[0x20, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
     scales := [1]u8.[0x38];
     x := [16]f32.[
@@ -25,6 +33,11 @@ main :: () {
     ];
     y: [1]f32;
     #assert inkling_metal_nvfp4_matvec(packed[..], scales[..], 0.5f32, x[..], 1, 16, y[..]) == InklingMetalStatus.ok;
-    print("fused NVFP4 matvec matches CPU reference: y[0] = %\n", y[0]);
+    mbytes: [32]u8; for i: 0..<32 { mbytes[i] = 0x38; }
+    mscales := [1]u8.[128];
+    x32: [32]f32; for i: 0..<32 { x32[i] = 0.25f32; }
+    ym8: [1]f32;
+    #assert inkling_metal_mxfp8_matvec(mbytes[..], mscales[..], x32[..], 1, 32, ym8[..]) == InklingMetalStatus.ok;
+    print("register-dequant reference: nvfp4 y[0]=% mxfp8 y[0]=%\n", y[0], ym8[0]);
 }
 // book:end example
