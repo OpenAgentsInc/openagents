@@ -466,5 +466,22 @@ issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qE "^$c26b [0-9a-f]+ $c26b 2/3
   ok "26: a part whose head has the tools runs again at its own head, not the newest" || { bad "26: own head"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
 unset OA_AFTER_MUTATE_TOOLS
 
+# 27: args_for maps coder/desktop/reports/room steps and falls back to the job arg when unknown (#13931, #13968)
+a27="$(bash -c '
+  eval "$(awk "/^args_for\(\)/,/^}/" "'"$here"'/after.sh")"
+  printf "%s|%s|%s|%s|%s|%s\n" \
+    "$(args_for "step desktop-linux-smoke")" \
+    "$(args_for "step windows-build")" \
+    "$(args_for "step desktop-core-smoke")" \
+    "$(args_for "step desktop-units")" \
+    "$(args_for "step room-webtransport")" \
+    "$(args_for "step future-step" "coder")"
+')"
+[[ "$a27" == "coder|coder|coder|reports|room|coder" ]] &&
+  grep -q 'args_for "\$check" "\$job"' "$here/after.sh" &&
+  grep -q 'file_issue "\$item" "\$culprit" "\$agent" "\$out" "\${bjobs\[\$k\]}"' "$here/after.sh" &&
+  ok "27: args_for maps desktop/reports/room steps and file_issue forwards the bisect job" ||
+  bad "27: args_for/file_issue got '$a27'"
+
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

@@ -503,9 +503,9 @@ args_for() {   # item job-args...
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
     job\ *) echo "${item#job }" ;;
-    step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ editor-skin|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
-    step\ room-build) echo "room" ;;
-    step\ coder-checks|step\ coder-smoke|step\ coder-desktop-evals) echo "coder" ;;
+    step\ assets-sync|step\ tools-check|step\ remote-cleanup|step\ after-gates|step\ release-rules|step\ serve-image|step\ everglade-parity|step\ splice-content|step\ everglade-content|step\ wire-check|step\ layer-check|step\ editor-skin|step\ prepush-replay|step\ wgsl|step\ agent-reference|step\ migration-check|step\ migration-schema|step\ realm-pages|step\ changelog-page|step\ desktop-units|step\ pack-reader-c|step\ host-core-c|step\ rig-source|step\ rig-poses|step\ rig-packs|step\ packs-admitted|step\ host-core|step\ format-profiles|step\ frame-plan-h|step\ frame-plan-walk|step\ pack-cells|step\ native-style|step\ app-realms|step\ realm-cards) echo "reports" ;;
+    step\ room-build|step\ room-webtransport|step\ encounter-ttk|step\ bot-bars|step\ zone-cells|step\ room-fuzz) echo "room" ;;
+    step\ coder-checks|step\ coder-smoke|step\ coder-desktop-evals|step\ coder-desktop-scenarios|step\ coder-desktop-compaction|step\ coder-desktop-page-slots|step\ desktop-core-smoke|step\ desktop-linux-smoke|step\ windows-build) echo "coder" ;;
     step\ check-visuals) echo "visuals" ;;
     e2\ *) echo "e2 $(cat "$results/production" 2> /dev/null)" ;;
     *) echo "$*" ;;   # the whole job again
@@ -568,9 +568,9 @@ bisect() {   # dir good bad check-args...
   echo "${list[$hi]}"
 }
 
-file_issue() {   # check culprit agent outfile → issue number ("" when none)
+file_issue() {   # check culprit agent outfile [job] → issue number ("" when none)
   [[ "$pl_issues" == 1 ]] || { echo ""; return; }
-  local check="$1" culprit="$2" agent="$3" out="$4" subject body url
+  local check="$1" culprit="$2" agent="$3" out="$4" job="${5:-}" subject body url
   subject="$(git log -1 --format=%s "$culprit")"
   body="The after-landing check \`$check\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`.
 
@@ -582,7 +582,7 @@ Output (last 60 lines):
 $(tail -n 60 "$out" 2> /dev/null | cut -c1-300)
 \`\`\`
 
-Fixing this comes before new work for \`$agent\`. If it still fails 30 minutes from now, the integrator reverts ${culprit:0:10}. Run the check alone with \`coax/remote/remote.sh run -- coax/remote/check.sh $(args_for "$check")\`."
+Fixing this comes before new work for \`$agent\`. If it still fails 30 minutes from now, the integrator reverts ${culprit:0:10}. Run the check alone with \`coax/remote/remote.sh run -- coax/remote/check.sh $(args_for "$check" "$job")\`."
   url="$(gh issue create --repo "$pl_repo" --title "Red main: $check fails since ${culprit:0:10}" --body "$body" 2> /dev/null)" || { echo ""; return; }
   echo "${url##*/}"
 }
@@ -1420,17 +1420,17 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     # at the head had no round of its own, and its issue showed empty output.
     out="$(ls -td "$dir/bisect-$k"/r*-"${culprit:0:10}" "$dir/bisect-$k"/c*-"${culprit:0:10}" 2> /dev/null | head -1)"
     if [[ -n "$out" ]]; then out="$out/out"; else out="$dir/${bjobs[$k]//[ \/]/-}/out"; fi
-    issue="$(file_issue "$item" "$culprit" "$agent" "$out")"
+    issue="$(file_issue "$item" "$culprit" "$agent" "$out" "${bjobs[$k]}")"
     pl_red_update '. + [{id: $id, check: $c, culprit: $s, subject: $sub, agent: $a, issue: (if $i == "" then null else $i end), opened: ($t | tonumber), seen: ($t | tonumber), status: "open", revert: ""}]' \
       --arg id "${culprit:0:10}:$item" --arg c "$item" --arg s "$culprit" --arg sub "$subject" --arg a "$agent" --arg i "$issue" --arg t "$(date +%s)"
     pl_message "$agent" "Your commit ${culprit:0:10} (\"$subject\") broke \`$item\` on $pl_main.${issue:+ Issue: https://github.com/$pl_repo/issues/$issue.}
 Output: $out
-Run it alone: coax/remote/remote.sh run -- coax/remote/check.sh $(args_for "$item" "$job")
+Run it alone: coax/remote/remote.sh run -- coax/remote/check.sh $(args_for "$item" "${bjobs[$k]}")
 Fixing it comes before new work. If it still fails 30 minutes from now, the integrator reverts the commit."
     # The issues the culprit's subject names hear of it too, before any revert.
     local r
     for r in $(grep -oE '#[0-9]+' <<< "$subject" | tr -d '#' | sort -u); do
-      [[ "$r" == "$issue" ]] || pl_issue_comment "$r" "The after-landing check \`$item\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`${issue:+: #$issue}. If it still fails 30 minutes from now, the integrator queues a revert of ${culprit:0:10}; a fix on \`$pl_main\` before then means nothing is reverted. Run the check alone with \`coax/remote/remote.sh run -- $([[ "$(args_for "$item" "$job")" == visuals ]] && echo "coax/web/check-visuals.sh apps/openagents-web" || echo "coax/remote/check.sh $(args_for "$item" "$job")")\`."
+      [[ "$r" == "$issue" ]] || pl_issue_comment "$r" "The after-landing check \`$item\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`${issue:+: #$issue}. If it still fails 30 minutes from now, the integrator queues a revert of ${culprit:0:10}; a fix on \`$pl_main\` before then means nothing is reverted. Run the check alone with \`coax/remote/remote.sh run -- $([[ "$(args_for "$item" "${bjobs[$k]}")" == visuals ]] && echo "coax/web/check-visuals.sh apps/openagents-web" || echo "coax/remote/check.sh $(args_for "$item" "${bjobs[$k]}")")\`."
     done
     pl_say "after: $item: culprit ${culprit:0:10} by $agent${issue:+ (#$issue)}"
     # A count's baseline is main-green, not the last full green run: it never moves main-green back.
