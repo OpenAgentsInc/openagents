@@ -1,0 +1,10 @@
+// Fated Dragon's frame block: what follows the Metaverse Engine's stylized frame
+// (metaverse-engine/render/shade/stylized-layout.coax, STY_UNIFORM_FLOATS floats).
+// Loaded after stylized-layout.coax by both fated-dragon.coax and gpu/fated-dragon.coax.
+//   FD_U_EXTRA: [0] dpr, [1] shown (0..1), [2] gone (1 when first-person eye is inside head), [3] spare
+FD_U_EXTRA :: STY_UNIFORM_FLOATS;
+FD_UNIFORMS :: STY_UNIFORM_FLOATS + 4;
+// A scene draw whose first instance is this or more is the dragon and its flames:
+// vertices come from the `skin` and `tris` stores, not the static world `mesh`.
+FD_DRAGON_AT :: 4096;
+FD_SKIN_FLOATS :: 9;   // x y z, nx ny nz, r g b (display values; >1 for HDR blooming flames)

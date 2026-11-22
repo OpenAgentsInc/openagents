@@ -1,0 +1,822 @@
+// Fated Dragon — standalone GameBuilder world (https://gamebuilder.org/fated-dragon).
+// A playable Shapechange dragon exploring a 2.2 km stone megalith: three levels under one flat roof,
+// four wings with 80x60 m galleries, four sky-open atriums with 200-step flights, Victorian gardens,
+// cobbled ring road through tree avenues, and eight giant sleeping dragons on the top plaza.
+// Controls: WASD move, Space jump, double-Space fly (5x creative flight, Shift descend), E fire breath,
+// mouse drag / arrows / scroll wheel camera (scroll all the way in for first person), touch sticks on mobile.
+//   coax/bin/coax test gamebuilder/worlds/fated-dragon/fated-dragon.coax --library
+#load "../../../metaverse-engine/render/shade/stylized-frame.coax";
+#load "../../../metaverse-engine/physics/collide.coax";
+#load "../../../metaverse-engine/cam/kinds.coax";
+#load "../../../metaverse-engine/cam/mouselook.coax" as ml;
+#load "../../../metaverse-engine/move/creative-fly.coax" as fly;
+#load "../../../metaverse-engine/core/sticks.coax" as pad;
+#load "../../../metaverse/splice-bots/rules/walk.coax";
+#load "mountain.coax";
+#load "dragon-rig.coax";
+#load "fated-dragon-layout.coax";
+
+FD_PI :: 3.14159265;
+FD_DAWN :: 0.55;             // rose-gold dawn sky (between sunrise 0.46 and morning 0.66)
+FD_FOG :: 0.08;              // thin fog: the megalith is miles across
+FD_HAZE_AT :: 10.0;          // haze starts 10x further out
+FD_NEAR :: 400.0;            // metres round the dragon the megalith's colliders are taken from
+FD_NEAR_AGAIN :: 100.0;      // how far it moves before refreshing near colliders
+
+// Messages from glue.js
+FD_KEYS_MSG :: 104;
+FD_WHEEL_MSG :: 108;
+
+// Keys held bitmask
+FD_KEY_FORE :: 1; FD_KEY_BACK :: 2; FD_KEY_LEFT :: 4; FD_KEY_RIGHT :: 8; FD_KEY_JUMP :: 16;
+FD_KEY_TURN_LEFT :: 32; FD_KEY_TURN_RIGHT :: 64; FD_KEY_TILT_UP :: 128; FD_KEY_TILT_DOWN :: 256;
+FD_KEY_ZOOM_IN :: 512; FD_KEY_ZOOM_OUT :: 1024;
+FD_KEY_DOWN :: 2048;         // Shift: descend while flying
+FD_KEY_BREATH :: 4096;       // E: dragon fire breath
+FD_KEYS_ALL :: 8191;
+
+// Movement, camera & dragon feel
+FD_BODY :: 0.3;
+FD_TALL :: 1.8;
+FD_STRIDE :: 4.4;
+FD_STILL :: 0.4;
+FD_LAND :: 0.45;
+FD_TAP_JUMP :: 0.3;
+FD_WORLD_FAR :: 9.5;
+FD_WORLD_PITCH :: 0.12;
+FD_GONE :: 14.0;
+FD_GROUND_HALF :: 4000.0;
+FD_GROUND_STEP :: 256.0;
+
+// Fire breath & banked flight
+FD_FIRE :: 180;
+FD_OCTA_AT :: [18] f32.[1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1];
+FD_OCTA :: [24] int.[2, 4, 0, 2, 0, 5, 2, 5, 1, 2, 1, 4, 3, 0, 4, 3, 5, 0, 3, 1, 5, 3, 4, 1];
+FD_FIRE_FLOATS :: 9;
+FD_FIRE_RATE :: 140.0;
+FD_FIRE_SPEED :: 9.0;
+FD_FIRE_FROM :: 0.55;
+FD_FIRE_TO :: 1.75;
+FD_TURN_FOOT :: 6.0;
+FD_TURN_AIR :: 2.6;
+FD_BANK_MAX :: 0.7;
+FD_PITCH_MAX :: 0.35;
+FD_PIVOT_Y :: 0.9;
+
+// Eight sleeping dragons on the top plaza: x, z from plaza middle, scale, yaw (rad), RGB tint
+FD_SLEEPERS :: 8;
+FD_SLEEP :: [FD_SLEEPERS * 7] f32.[
+     0, -80, 10, 0.4,    0.78, 0.6, 0.4,
+   130,  50, 6.5, 2.2,   0.42, 0.72, 0.55,
+  -140,  40, 4.5, -1.1,  0.5, 0.58, 0.78,
+    60, 160, 3, 3.6,     0.86, 0.36, 0.34,
+   -70, 175, 2, 1.4,     0.88, 0.88, 0.9,
+   175, -95, 1.2, -2.5,  0.6, 0.46, 0.78,
+  -175,-110, 0.8, 0.9,   0.92, 0.76, 0.3,
+    25, 100, 0.5, 2.9,   0.66, 0.86, 0.58];
+FD_SLEEP_ROLL :: 1.25;
+FD_SLEEP_VERTICES :: FD_SLEEPERS * 3 * 3400;
+
+FD_MESH_VERTICES :: 6 + MT_VERTICES + FD_SLEEP_VERTICES;
+FD_RECORDS :: 2;
+FD_RECORD_FLOATS :: 16;
+FD_DRAWS :: 4;
+FD_INBOX :: 512;
+
+FatedDragon :: struct {
+  time: f32;
+  wide: f32; high: f32; dpr: f32 = 1;
+  keys: int; taps: int;
+  born: bool;
+  foot: SrOnFoot;
+  fly: fly.Fly;
+  cx: f32; cy: f32; cz: f32;
+  face: f32;
+  land: f32;
+  // Dragon body orientation & fire breath
+  breath: f32 = -1; breath_was: bool;
+  fire: [FD_FIRE * FD_FIRE_FLOATS] f32; fire_n: int; fire_k: int; fire_owe: f32;
+  mouth: [6] f32;
+  look: f32; lag: f32; yaw_rate: f32;
+  bank: f32; pitch: f32; rise: f32; was_y: f32;
+  // Camera & input
+  orbit: Orbit; orbiting: bool; gone: f32;
+  mouse: [1] ml.Mouselook;
+  drag: bool; drag_id: int; drag_x: f32; drag_y: f32;
+  look_yaw: f32; look_pitch: f32;
+  sticks: pad.Sticks; tap: f32;
+  // World & colliders
+  mountain: [1] Mountain;
+  near_x: f32; near_z: f32; near_ok: bool;
+  nb: int; boxes: [MT_BOXES * QUERY_BOX] f32;
+  sleep_ok: bool; sleep_lo: [3] f32; sleep_hi: [3] f32;
+  sleep_boxes: [FD_SLEEPERS * QUERY_BOX] f32;
+  // Dragon rig (shared once to bake sleepers on asset load, then live player)
+  dragon: [1] DragonRig;
+  // GPU stores
+  at_x: f32; at_z: f32;
+  mesh_built: bool; mesh_has_sleepers: bool;
+  mesh_n: int; mesh: [FD_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32;
+  gen: int; rec_gen: int;
+  records: [FD_RECORDS * FD_RECORD_FLOATS] f32;
+  skin: [(DR_V + FD_FIRE * 6) * FD_SKIN_FLOATS] f32; skin_gen: int;
+  tris: [(DR_T + FD_FIRE * 8) * 3] u32; tris_n: int; tris_gen: int;
+  host_draws: [FD_DRAWS * 4] u32; draw_n: int;
+  inbox: [FD_INBOX] u8;
+}
+
+fd_rand :: (seed: int, k: int) -> f32 {
+  h := sin(cast(f32) (seed * 19 + k * 73) * 1.6180339) * 43758.5453;
+  return h - floor(h);
+}
+
+fd_axis :: (keys: int, plus: int, minus: int) -> f32 {
+  return (ifx (keys & plus) != 0 then 1.0f32 else 0.0f32) - (ifx (keys & minus) != 0 then 1.0f32 else 0.0f32);
+}
+
+fd_feet :: (h: [] FatedDragon) -> Point { return v3(h[0].cx, h[0].cy, -h[0].cz); }
+
+fd_colliders :: (h: [] FatedDragon) -> Colliders {
+  return Colliders.{ground = 0.0f32, ground_enabled = true, boxes = h[0].boxes[0..<h[0].nb * QUERY_BOX], hulls = h[0].boxes[0..<0], capsules = h[0].boxes[0..<0]};
+}
+
+fd_floor :: (h: [] FatedDragon, x: f32, z: f32, feet: f32) -> f32 {
+  return query_stand(fd_colliders(h), x, z, feet, FD_BODY * 0.6).y;
+}
+
+fd_solids :: (h: [] FatedDragon) {
+  m := h[0].mountain[..];
+  mt_make(m);
+  h[0].nb = 0;
+  h[0].near_x = h[0].cx; h[0].near_z = h[0].cz; h[0].near_ok = true;
+  x0 := h[0].cx - FD_NEAR; x1 := h[0].cx + FD_NEAR;
+  z0 := h[0].cz - FD_NEAR; z1 := h[0].cz + FD_NEAR;
+  for i: 0..<m[0].nb {
+    mb := m[0].boxes[i * 6..<i * 6 + 6];
+    if mb[3] < x0 || mb[0] > x1 || mb[5] < z0 || mb[2] > z1 { continue; }
+    if h[0].nb >= MT_BOXES - FD_SLEEPERS { break; }
+    o := h[0].nb * QUERY_BOX;
+    for e: 0..<6 { h[0].boxes[o + e] = mb[e]; }
+    h[0].nb += 1;
+  }
+  if h[0].sleep_ok {
+    for d: 0..<FD_SLEEPERS {
+      o := h[0].nb * QUERY_BOX;
+      for e: 0..<6 { h[0].boxes[o + e] = h[0].sleep_boxes[d * QUERY_BOX + e]; }
+      h[0].nb += 1;
+    }
+  }
+}
+
+fd_near :: (h: [] FatedDragon) {
+  if !h[0].near_ok { fd_solids(h); return; }
+  dx := h[0].cx - h[0].near_x; dz := h[0].cz - h[0].near_z;
+  if dx * dx + dz * dz > FD_NEAR_AGAIN * FD_NEAR_AGAIN { fd_solids(h); }
+}
+
+fd_slide :: (h: [] FatedDragon, x0: f32, z0: f32, feet: f32, dx: f32, dz: f32) -> [2] f32 {
+  c := fd_colliders(h);
+  x := x0; z := z0; bx := dx; bz := dz;
+  for pass: 0..<3 {
+    if bx * bx + bz * bz < 0.0000001 { break; }
+    from := WorldPoint.{x = x, y = feet + FD_BODY + 0.32, z = z};
+    hit := query_sweep(c, from, FD_BODY, WorldPoint.{x = bx, y = 0, z = bz});
+    if hit.status != QueryStatus.ok { break; }
+    if !hit.hit { x += bx; z += bz; break; }
+    mag := sqrt(bx * bx + bz * bz);
+    t := hit.t - 0.02 / mag; if t < 0 { t = 0; }
+    x += bx * t; z += bz * t;
+    nx := hit.normal.x; nz := hit.normal.z;
+    nl := sqrt(nx * nx + nz * nz);
+    if nl < 0.0001 { break; }
+    nx /= nl; nz /= nl;
+    rx := bx * (1 - t); rz := bz * (1 - t);
+    into := rx * nx + rz * nz;
+    if into > 0 { break; }
+    bx = rx - nx * into; bz = rz - nz * into;
+  }
+  profile := CollideProfile.{radius = FD_BODY, height = FD_TALL};
+  out := collide_walls(c, profile, CollideState.{feet = WorldPoint.{x = x, y = feet, z = z}});
+  return [2] f32.[out.feet.x, out.feet.z];
+}
+
+fd_sleep_box :: (h: [] FatedDragon, d: int) -> [6] f32 {
+  q: [] const f32 = FD_SLEEP[d * 7..<d * 7 + 7];
+  size := q[2]; c := cos(q[3]); s := sin(q[3]);
+  lo := h[0].sleep_lo; hi := h[0].sleep_hi;
+  mx := (lo[0] + hi[0]) * 0.5 * size; mz := (lo[2] + hi[2]) * 0.5 * size;
+  ex := (hi[0] - lo[0]) * 0.5 * size * 0.75; ez := (hi[2] - lo[2]) * 0.5 * size * 0.75;
+  x := MT_CX + q[0] + mx * c + mz * s; z := MT_CZ + q[1] - (-mx * s + mz * c);
+  hx := abs(c) * ex + abs(s) * ez; hz := abs(s) * ex + abs(c) * ez;
+  return [6] f32.[x - hx, MT_PLAZA_Y, z - hz, x + hx, MT_PLAZA_Y + (hi[1] - lo[1]) * size * 0.8, z + hz];
+}
+
+// Writes the static scene mesh once: ground quad + megalith + (when dragon rig is loaded) 8 sleeping dragons.
+// When dragon is loaded, poses it in the curled landing pose, emits all 8 sleepers, computes their colliders,
+// and resets the rig so the player dragon starts fresh in idle.
+fd_build_mesh :: (h: [] FatedDragon) {
+  m := h[0].mountain[..];
+  mt_make(m);
+  p: [1] ArchPen; arch_pen(p[..], h[0].mesh[..]);
+  arch_material(p[..], ARCH_M_GROUND, 0, 0, 0);
+  g: f32 = FD_GROUND_HALF;
+  arch_quad(p[..], arch_at(-g, 0, g, 0, 1, 0, 1, 0), arch_at(g, 0, g, 0, 1, 0, 1, 0), arch_at(g, 0, -g, 0, 1, 0, 1, 0), arch_at(-g, 0, -g, 0, 1, 0, 1, 0));
+  mt_mesh(m, p[..], p[0].n + MT_VERTICES);
+  d := h[0].dragon[..];
+  if d[0].ready {
+    // Pose once as the sleeping dragon rolled on its side
+    dragon_play(d, DR_LAND, 100, 0, 0, false);
+    dragon_skin(d);
+    roll: f32 = FD_SLEEP_ROLL; rc := cos(roll); rs := sin(roll);
+    for i: 0..<d[0].nv {
+      x := d[0].pos[i * 3]; y := d[0].pos[i * 3 + 1];
+      d[0].pos[i * 3] = x * rc - y * rs; d[0].pos[i * 3 + 1] = x * rs + y * rc;
+      nx := d[0].nor[i * 3]; ny := d[0].nor[i * 3 + 1];
+      d[0].nor[i * 3] = nx * rc - ny * rs; d[0].nor[i * 3 + 1] = nx * rs + ny * rc;
+    }
+    for e: 0..<3 { h[0].sleep_lo[e] = 1000; h[0].sleep_hi[e] = -1000; }
+    for i: 0..<d[0].nv {
+      for e: 0..<3 {
+        v := d[0].pos[i * 3 + e];
+        if v < h[0].sleep_lo[e] { h[0].sleep_lo[e] = v; }
+        if v > h[0].sleep_hi[e] { h[0].sleep_hi[e] = v; }
+      }
+    }
+    h[0].sleep_ok = true;
+    for si: 0..<FD_SLEEPERS {
+      sb := fd_sleep_box(h, si);
+      for e: 0..<6 { h[0].sleep_boxes[si * QUERY_BOX + e] = sb[e]; }
+    }
+    room := p[0].n + FD_SLEEP_VERTICES;
+    for si: 0..<FD_SLEEPERS {
+      if p[0].n + d[0].nt * 3 > room { break; }
+      q: [] const f32 = FD_SLEEP[si * 7..<si * 7 + 7];
+      size := q[2]; c := cos(q[3]); s := sin(q[3]);
+      x := MT_CX + q[0]; z := -(MT_CZ + q[1]); y := MT_PLAZA_Y - h[0].sleep_lo[1] * size;
+      p[0].material = cast(f32) ARCH_M_SMOOTH;
+      for i: 0..<d[0].nt {
+        for k: 0..<3 {
+          v := dragon_corner(d, i, k);
+          mx := d[0].pos[v * 3]; my := d[0].pos[v * 3 + 1]; mz := d[0].pos[v * 3 + 2];
+          nx := d[0].nor[v * 3]; ny := d[0].nor[v * 3 + 1]; nz := d[0].nor[v * 3 + 2];
+          lum := 0.3 * d[0].paint[v * 3] + 0.59 * d[0].paint[v * 3 + 1] + 0.11 * d[0].paint[v * 3 + 2];
+          f := 0.55 + 0.7 * lum;
+          p[0].tint = [3] f32.[q[4] * f, q[5] * f, q[6] * f];
+          arch_put(p[..], arch_at(x + size * (mx * c + mz * s), y + size * my, z + size * (-mx * s + mz * c), nx * c + nz * s, ny, -nx * s + nz * c, 0, 0));
+        }
+      }
+    }
+    // Reset rig for live player animation
+    d[0].clip = -1; d[0].time = 0; d[0].clock = 0; d[0].changed = 0; d[0].fade = 0;
+    h[0].mesh_has_sleepers = true;
+  }
+  h[0].mesh_n = p[0].n;
+  h[0].mesh_built = true;
+  h[0].gen += 1;
+  fd_write_records(h);
+}
+
+fd_write_records :: (h: [] FatedDragon) {
+  for i: 0..<FD_RECORDS * FD_RECORD_FLOATS { h[0].records[i] = 0; }
+  for r: 0..<FD_RECORDS {
+    o := r * FD_RECORD_FLOATS;
+    h[0].records[o + 4] = 1; h[0].records[o + 8] = 1; h[0].records[o + 9] = 1; h[0].records[o + 10] = 1;
+  }
+  h[0].records[0] = h[0].at_x; h[0].records[2] = h[0].at_z;
+  h[0].rec_gen += 1;
+}
+
+fd_pivot :: (h: [] FatedDragon, step: f32, air: bool) {
+  if !(step > 0) { return; }
+  rate := ifx air then f32(FD_TURN_AIR) else f32(FD_TURN_FOOT);
+  diff := wrap_angle(h[0].face - h[0].look);
+  turn := diff * clamp(step * 7, 0, 1);
+  most := rate * step;
+  if turn > most { turn = most; }
+  if turn < -most { turn = -most; }
+  h[0].look = wrap_angle(h[0].look + turn);
+  h[0].lag = wrap_angle(h[0].look - h[0].face);
+  h[0].yaw_rate += (turn / step - h[0].yaw_rate) * clamp(step * 8, 0, 1);
+  vy := (h[0].cy - h[0].was_y) / step; h[0].was_y = h[0].cy;
+  if !(abs(vy) < 50) { vy = 0; }
+  h[0].rise += (vy - h[0].rise) * clamp(step * 5, 0, 1);
+  roll := ifx air then f32(FD_BANK_MAX) else 0.12f32;
+  want_bank := clamp(h[0].yaw_rate * 0.35, -roll, roll);
+  want_pitch := ifx air then clamp(h[0].rise * 0.08, -f32(FD_PITCH_MAX), f32(FD_PITCH_MAX)) else 0.0f32;
+  h[0].bank += (want_bank - h[0].bank) * clamp(step * 4, 0, 1);
+  h[0].pitch += (want_pitch - h[0].pitch) * clamp(step * 4, 0, 1);
+}
+
+fd_walk :: (h: [] FatedDragon, step: f32) {
+  fd_near(h);
+  t: SrWalkTuning;
+  t.air_jumps = 0;   // double-Space toggles creative flight
+  if !h[0].born { h[0].foot.jump = sr_her_jump(0, t); h[0].born = true; }
+  k := h[0].keys;
+  go := clamp(fd_axis(k, FD_KEY_FORE, FD_KEY_BACK) + h[0].sticks.pad_y, -1, 1);
+  side := clamp(fd_axis(k, FD_KEY_LEFT, FD_KEY_RIGHT) - h[0].sticks.pad_x, -1, 1);
+  jump := (k & FD_KEY_JUMP) != 0;
+  was := h[0].foot.walk;
+  view := ifx h[0].orbiting then wrap_angle(FD_PI - h[0].orbit.yaw) else 0.0f32;
+  was.face_off = wrap_angle(was.face_off - wrap_angle(view - was.yaw));
+  was.yaw = view;
+  if h[0].sticks.jump { h[0].tap = FD_TAP_JUMP; }
+  if h[0].tap > 0 { h[0].tap -= step; }
+  j := h[0].foot.jump;
+  space := (k & FD_KEY_JUMP) != 0; sink := (k & FD_KEY_DOWN) != 0;
+  ft: fly.FlyTuning;
+  ft.speed *= MT_FLY; ft.rise *= MT_FLY; ft.sink *= MT_FLY;
+  toggled := false;
+  for e: 0..<h[0].taps {
+    j = sr_jump_press(sr_jump_press(j, false), true);
+    up := fly.fly_press(fly.fly_press(h[0].fly, false, ft).fly, true, ft);
+    h[0].fly = up.fly; toggled = toggled != up.toggled;
+  }
+  h[0].taps = 0;
+  j = sr_jump_press(j, jump || h[0].tap > 0);
+  j.air_jumps = 0;
+  pr := fly.fly_press(h[0].fly, space, ft);
+  h[0].fly = fly.fly_tick(pr.fly, step);
+  if toggled != pr.toggled { j.presses.waiting = 0; j.waiting_time = 0; j.vy = 0; j.on_ground = false; }
+  flying := h[0].fly.on;
+  n := sr_walk_step(was, go, side, sr_walk_pace(h[0].foot.stance, t), sr_jump_airborne(j), t, step);
+  if flying {
+    v := fly.fly_velocity(sin(was.yaw) * go - cos(was.yaw) * side, cos(was.yaw) * go + sin(was.yaw) * side, space, sink, ft);
+    n.vx = v.x; n.vz = v.z; n.speed = sqrt(v.x * v.x + v.z * v.z);
+    n.x = was.x + v.x * step; n.z = was.z + v.z * step;
+  }
+  want_vx := n.vx; want_vz := n.vz;
+  at := fd_slide(h, was.x, was.z, j.y, n.x - was.x, n.z - was.z);
+  if step > 0 && (at[0] != n.x || at[1] != n.z) {
+    n.vx = (at[0] - was.x) / step; n.vz = (at[1] - was.z) / step;
+    n.speed = sqrt(n.vx * n.vx + n.vz * n.vz);
+    wanted := sqrt(want_vx * want_vx + want_vz * want_vz);
+    if n.speed > wanted { less := ifx n.speed > 0 then wanted / n.speed else 0.0f32; n.vx *= less; n.vz *= less; n.speed = wanted; }
+  }
+  n.x = at[0]; n.z = at[1];
+  ground := fd_floor(h, n.x, n.z, j.y);
+  if flying {
+    up := fly.fly_velocity(0, 0, space, sink, ft).y;
+    j.prev_y = j.y; j.y += up * step; j.vy = up; j.on_ground = false; j.presses.waiting = 0; j.waiting_time = 0; j.landed = false;
+    if j.y <= ground {
+      j.y = ground;
+      h[0].fly = fly.fly_ground(h[0].fly, true, sink && !space);
+      if !h[0].fly.on { j.on_ground = true; j.landed = true; j.impact = 0; }
+    }
+  } else {
+    j = sr_jump_advance(j, t, ground, step);
+  }
+  if j.vy > 0 {
+    for i: 0..<h[0].nb {
+      b := h[0].boxes[i * QUERY_BOX..<(i + 1) * QUERY_BOX];
+      if n.x > b[0] && n.x < b[3] && n.z > b[2] && n.z < b[5] && j.prev_y + FD_TALL <= b[1] + 0.05 && j.y + FD_TALL > b[1] {
+        j.y = b[1] - FD_TALL; j.vy = 0; if j.prev_y > j.y { j.prev_y = j.y; }
+      }
+    }
+  }
+  if j.y > MT_SKY { j.y = MT_SKY; if j.prev_y > j.y { j.prev_y = j.y; } if j.vy > 0 { j.vy = 0; } }
+  if flying { j.prev_y = j.y; j.vy = 0; j.clock = 0; }
+  h[0].foot.walk = n; h[0].foot.jump = j; h[0].foot.stance = sr_stance_tick(h[0].foot.stance, step);
+  h[0].cx = n.x; h[0].cz = n.z; h[0].cy = sr_feet_y(h[0].foot, ground, t);
+  h[0].face = sr_face_yaw(n);
+  air := sr_jump_airborne(h[0].foot.jump);
+  fd_pivot(h, step, air);
+
+  g := h[0].dragon[..];
+  if !g[0].ready { return; }
+  if ((h[0].keys & FD_KEY_BREATH) != 0 || h[0].breath_was) && h[0].breath < 0 { h[0].breath = 0; }
+  h[0].breath_was = false;
+  if h[0].foot.jump.landed { h[0].land = ifx n.speed < 1.5 then f32(FD_LAND) else 0.0f32; }
+  if air || n.speed >= 1.5 { h[0].land = 0; }
+  left := -h[0].yaw_rate;
+  if h[0].breath >= 0 {
+    dragon_play(g, DR_BREATH, step, step, 0.12, false);
+    h[0].breath += step;
+    if h[0].breath >= g[0].seconds[DR_BREATH] { h[0].breath = -1; }
+  } else if air && h[0].fly.on {
+    if left > 0.9 { dragon_play(g, DR_BANK_LEFT, step, step, 0.35, true); }
+    else if left < -0.9 { dragon_play(g, DR_BANK_RIGHT, step, step, 0.35, true); }
+    else { dragon_play(g, DR_FLY, step * (ifx n.speed > FD_STILL then 1.25f32 else 1.0f32), step, 0.3, true); }
+  } else if air {
+    if h[0].rise > 0.5 { dragon_play(g, DR_FLY, step, step, 0.2, true); }
+    else { dragon_play(g, DR_GLIDE, step, step, 0.3, true); }
+  } else if h[0].land > 0 {
+    h[0].land -= step;
+    dragon_play(g, DR_LAND, step, step, 0.08, false);
+  } else if n.speed > FD_STILL {
+    dragon_play(g, DR_WALK, n.speed * step / FD_STRIDE * g[0].seconds[DR_WALK], step, 0.16, true);
+  } else if abs(h[0].yaw_rate) > 0.8 {
+    dragon_play(g, DR_WALK, abs(h[0].yaw_rate) * step * 0.3, step, 0.2, true);
+  } else {
+    dragon_play(g, DR_IDLE, step, step, 0.25, true);
+  }
+  dragon_skin(g);
+}
+
+fd_fire_step :: (h: [] FatedDragon, step: f32) {
+  if !(step > 0) { return; }
+  drag := 1.0f32 - clamp(step * 2.2, 0, 0.9);
+  n := 0;
+  for i: 0..<h[0].fire_n {
+    o := i * FD_FIRE_FLOATS;
+    age := h[0].fire[o + 6] + step; life := h[0].fire[o + 7];
+    if age >= life { continue; }
+    vx := h[0].fire[o + 3] * drag; vy := h[0].fire[o + 4] * drag + 2.5 * step; vz := h[0].fire[o + 5] * drag;
+    x := h[0].fire[o] + vx * step; y := h[0].fire[o + 1] + vy * step; z := h[0].fire[o + 2] + vz * step;
+    q := n * FD_FIRE_FLOATS;
+    h[0].fire[q] = x; h[0].fire[q + 1] = y; h[0].fire[q + 2] = z;
+    h[0].fire[q + 3] = vx; h[0].fire[q + 4] = vy; h[0].fire[q + 5] = vz;
+    h[0].fire[q + 6] = age; h[0].fire[q + 7] = life; h[0].fire[q + 8] = h[0].fire[o + 8];
+    n += 1;
+  }
+  h[0].fire_n = n;
+  if h[0].breath < f32(FD_FIRE_FROM) || h[0].breath > f32(FD_FIRE_TO) { h[0].fire_owe = 0; return; }
+  h[0].fire_owe += step * FD_FIRE_RATE;
+  w := h[0].foot.walk;
+  while h[0].fire_owe >= 1 && h[0].fire_n < FD_FIRE {
+    h[0].fire_owe -= 1;
+    k := h[0].fire_k; h[0].fire_k += 1;
+    r1 := fd_rand(7, k * 5); r2 := fd_rand(7, k * 5 + 1); r3 := fd_rand(7, k * 5 + 2); r4 := fd_rand(7, k * 5 + 3); r5 := fd_rand(7, k * 5 + 4);
+    dx := h[0].mouth[3] + (r1 - 0.5) * 0.35; dy := h[0].mouth[4] + (r2 - 0.5) * 0.25; dz := h[0].mouth[5] + (r3 - 0.5) * 0.35;
+    speed := FD_FIRE_SPEED * (0.75 + 0.5 * r4);
+    q := h[0].fire_n * FD_FIRE_FLOATS;
+    h[0].fire[q] = h[0].mouth[0] + dx * 0.05; h[0].fire[q + 1] = h[0].mouth[1] + dy * 0.05; h[0].fire[q + 2] = h[0].mouth[2] + dz * 0.05;
+    h[0].fire[q + 3] = dx * speed + w.vx; h[0].fire[q + 4] = dy * speed; h[0].fire[q + 5] = dz * speed - w.vz;
+    h[0].fire[q + 6] = 0; h[0].fire[q + 7] = 0.45 + 0.4 * r5; h[0].fire[q + 8] = r1 * 6.2831853;
+    h[0].fire_n += 1;
+  }
+}
+
+fd_flames :: (h: [] FatedDragon) {
+  g := h[0].dragon[..];
+  for f: 0..<FD_FIRE {
+    q := f * FD_FIRE_FLOATS;
+    x := h[0].mouth[0]; y := h[0].mouth[1]; z := h[0].mouth[2];
+    r: f32 = 0; long: f32 = 1; cr: f32 = 0; cg: f32 = 0; cb: f32 = 0;
+    fx: f32 = 0; fy: f32 = 0; fz: f32 = 1; ux: f32 = 1; uy: f32 = 0; uz: f32 = 0; vx: f32 = 0; vy: f32 = 1; vz: f32 = 0;
+    if f < h[0].fire_n {
+      x = h[0].fire[q]; y = h[0].fire[q + 1]; z = h[0].fire[q + 2];
+      t := clamp(h[0].fire[q + 6] / h[0].fire[q + 7], 0, 1);
+      r = 0.07f32 + 0.38 * t; if t > 0.75 { r *= (1 - t) * 4; }
+      long = 2.4f32 - 1.4 * t;
+      if t < 0.15 { k := t / 0.15; cr = 7; cg = 6 - 1.5 * k; cb = 3.5 - 2.5 * k; }
+      else if t < 0.5 { k := (t - 0.15) / 0.35; cr = 7 - 2 * k; cg = 4.5 - 2.8 * k; cb = 1 - 0.8 * k; }
+      else { k := (t - 0.5) / 0.5; cr = 5 - 3.8 * k; cg = 1.7 - 1.45 * k; cb = 0.2 - 0.15 * k; }
+      sp := sqrt(h[0].fire[q + 3] * h[0].fire[q + 3] + h[0].fire[q + 4] * h[0].fire[q + 4] + h[0].fire[q + 5] * h[0].fire[q + 5]);
+      if sp > 0.05 { fx = h[0].fire[q + 3] / sp; fy = h[0].fire[q + 4] / sp; fz = h[0].fire[q + 5] / sp; }
+      ax: f32 = fz; ay: f32 = 0; az: f32 = -fx;
+      al := sqrt(ax * ax + az * az); if al < 0.05 { ax = 0; ay = -fz; az = fy; al = sqrt(ay * ay + az * az); }
+      ax /= al; ay /= al; az /= al;
+      bx := fy * az - fz * ay; by := fz * ax - fx * az; bz := fx * ay - fy * ax;
+      spin := h[0].fire[q + 8] + h[0].fire[q + 6] * 7;
+      cs := cos(spin); sn := sin(spin);
+      ux = ax * cs + bx * sn; uy = ay * cs + by * sn; uz = az * cs + bz * sn;
+      vx = fy * uz - fz * uy; vy = fz * ux - fx * uz; vz = fx * uy - fy * ux;
+    }
+    for e: 0..<6 {
+      o := (g[0].nv + f * 6 + e) * FD_SKIN_FLOATS;
+      a := FD_OCTA_AT[e * 3] * r; b := FD_OCTA_AT[e * 3 + 1] * r; c := FD_OCTA_AT[e * 3 + 2] * r * long;
+      h[0].skin[o] = x + ux * a + vx * b + fx * c; h[0].skin[o + 1] = y + uy * a + vy * b + fy * c; h[0].skin[o + 2] = z + uz * a + vz * b + fz * c;
+      h[0].skin[o + 3] = 0; h[0].skin[o + 4] = 1; h[0].skin[o + 5] = 0;
+      h[0].skin[o + 6] = cr; h[0].skin[o + 7] = cg; h[0].skin[o + 8] = cb;
+    }
+  }
+}
+
+fd_skin :: (h: [] FatedDragon) {
+  g := h[0].dragon[..];
+  if !g[0].ready || g[0].clip < 0 { return; }
+  if h[0].tris_n == 0 {
+    for i: 0..<g[0].nt { for k: 0..<3 { h[0].tris[i * 3 + k] = cast(u32) dragon_corner(g, i, k); } }
+    for f: 0..<FD_FIRE {
+      for e: 0..<24 { h[0].tris[(g[0].nt + f * 8) * 3 + e] = cast(u32) (g[0].nv + f * 6 + FD_OCTA[e]); }
+    }
+    h[0].tris_n = (g[0].nt + FD_FIRE * 8) * 3;
+    h[0].tris_gen += 1;
+  }
+  turn := FD_PI - (h[0].face + h[0].lag);
+  c := cos(turn); s := sin(turn);
+  cb := cos(h[0].bank); sb := sin(h[0].bank); cp := cos(h[0].pitch); sp := sin(h[0].pitch);
+  for i: 0..<g[0].nv {
+    mx := g[0].pos[i * 3]; my := g[0].pos[i * 3 + 1]; mz := g[0].pos[i * 3 + 2];
+    nx := g[0].nor[i * 3]; ny := g[0].nor[i * 3 + 1]; nz := g[0].nor[i * 3 + 2];
+    ry := my - FD_PIVOT_Y;
+    ax := mx * cb - ry * sb; ay := mx * sb + ry * cb;
+    my = FD_PIVOT_Y + ay * cp + mz * sp; mz = mz * cp - ay * sp; mx = ax;
+    tnx := nx * cb - ny * sb; tny := nx * sb + ny * cb;
+    ny = tny * cp + nz * sp; nz = nz * cp - tny * sp; nx = tnx;
+    o := i * FD_SKIN_FLOATS;
+    h[0].skin[o] = h[0].cx + mx * c + mz * s; h[0].skin[o + 1] = h[0].cy + my; h[0].skin[o + 2] = -h[0].cz - mx * s + mz * c;
+    h[0].skin[o + 3] = nx * c + nz * s; h[0].skin[o + 4] = ny; h[0].skin[o + 5] = -nx * s + nz * c;
+    for k: 0..<3 { h[0].skin[o + 6 + k] = g[0].paint[i * 3 + k]; }
+  }
+  so := g[0].snout * FD_SKIN_FLOATS;
+  h[0].mouth[0] = h[0].skin[so]; h[0].mouth[1] = h[0].skin[so + 1]; h[0].mouth[2] = h[0].skin[so + 2];
+  dip := h[0].pitch - 0.2;
+  h[0].mouth[3] = cos(dip) * s; h[0].mouth[4] = sin(dip); h[0].mouth[5] = cos(dip) * c;
+  fd_flames(h);
+  h[0].skin_gen += 1;
+}
+
+fd_orbit :: (h: [] FatedDragon, step: f32) {
+  kd := cam_kind(CAM_KIND_THIRD);
+  if !h[0].orbiting {
+    o := cam_kind_start(kd, fd_feet(h), FD_PI);
+    o.want = FD_WORLD_FAR; o.zoom = FD_WORLD_FAR; o.pitch = FD_WORLD_PITCH;
+    o.shown = metaverse_orbit_ray(o).far;
+    h[0].orbit = o; h[0].orbiting = true; h[0].gone = 0;
+  }
+  in: CamChaseIn;
+  in.feet = fd_feet(h); in.heading = FD_PI - h[0].face; in.moving = h[0].foot.walk.speed > 0.6;
+  k := h[0].keys;
+  in.look_yaw = h[0].look_yaw + h[0].sticks.dyaw; in.look_pitch = h[0].look_pitch + h[0].sticks.dpitch;
+  in.turn = fd_axis(k, FD_KEY_TURN_LEFT, FD_KEY_TURN_RIGHT);
+  in.tilt = fd_axis(k, FD_KEY_TILT_UP, FD_KEY_TILT_DOWN);
+  in.zoom = fd_axis(k, FD_KEY_ZOOM_OUT, FD_KEY_ZOOM_IN);
+  h[0].look_yaw = 0; h[0].look_pitch = 0;
+  o := cam_kind_pinch(kd, h[0].orbit, h[0].sticks.zoom);
+  mode: CamMode;
+  o = cam_kind_keep(kd, cam_chase_orbit(mode, o, cam_kind_in(kd, in), step), FD_PI);
+  boxes: [(MT_BOXES + 1) * 6] f32;
+  nbox := h[0].nb;
+  for i: 0..<nbox {
+    b := h[0].boxes[i * QUERY_BOX..<(i + 1) * QUERY_BOX]; q := i * 6;
+    boxes[q] = b[0]; boxes[q + 1] = b[1]; boxes[q + 2] = -b[5]; boxes[q + 3] = b[3]; boxes[q + 4] = b[4]; boxes[q + 5] = -b[2];
+  }
+  g := nbox * 6; far: f32 = 100000;
+  boxes[g] = o.pivot.x - far; boxes[g + 1] = -100; boxes[g + 2] = o.pivot.z - far;
+  boxes[g + 3] = o.pivot.x + far; boxes[g + 4] = 0; boxes[g + 5] = o.pivot.z + far;
+  room := metaverse_orbit_room(o, boxes[0..<0], boxes[0..<g + 6]);
+  o = metaverse_orbit_limit(o, room, step);
+  h[0].orbit = o;
+  want := ifx metaverse_orbit_unseen(o) then 1.0f32 else 0.0f32;
+  ease := step * FD_GONE; if ease > 1 { ease = 1; }
+  h[0].gone += (want - h[0].gone) * ease;
+  if abs(want - h[0].gone) < 0.004 { h[0].gone = want; }
+}
+
+fd_camera :: (h: [] FatedDragon) -> StyCamera {
+  s := metaverse_orbit_shot(h[0].orbit);
+  return StyCamera.{x = s.eye.x, y = s.eye.y, z = s.eye.z, yaw = wrap_angle(FD_PI - h[0].orbit.yaw), pitch = -h[0].orbit.pitch, fov = cam_kind(CAM_KIND_THIRD).fov, near = 0.1, far = 3000};
+}
+
+fd_day :: () -> StyLook {
+  l: StyLook;
+  l.sun_x = 0.426; l.sun_y = 0.669; l.sun_z = -0.609; l.shadow = 0.85;
+  l.sun_r = 0.74; l.sun_g = 0.67; l.sun_b = 0.54; l.band = 0.45;
+  l.sky_r = 0.27; l.sky_g = 0.34; l.sky_b = 0.4;
+  l.ground_r = 0.2; l.ground_g = 0.21; l.ground_b = 0.17;
+  l.zenith_r = 0.13; l.zenith_g = 0.4; l.zenith_b = 0.88;
+  l.horizon_r = 0.64; l.horizon_g = 0.81; l.horizon_b = 0.96;
+  l.haze_r = l.horizon_r; l.haze_g = l.horizon_g; l.haze_b = l.horizon_b; l.haze = 0.012; l.haze_start = 20; l.haze_most = 1;
+  l.air = 1; l.cloud = 0.42; l.cloud_scale = 1;
+  l.sun_disc = 0.017;
+  l.lush = 1;
+  l.blade = 0.46; l.blade_wide = 0.046; l.grass_cell = 0.16; l.grass_reach = 60;
+  l.meadow_dry = 0.22;
+  return l;
+}
+
+fd_draws :: (h: [] FatedDragon) {
+  d := h[0].host_draws[..];
+  n := 0;
+  d[0] = 0; d[1] = 6; d[2] = 0x80000000; d[3] = 1; n = 1;
+  if h[0].mesh_n > 6 { d[4] = 6; d[5] = cast(u32) (h[0].mesh_n - 6); d[6] = 0x80000001; d[7] = 1; n = 2; }
+  if h[0].tris_n > 0 {
+    o := n * 4;
+    d[o] = 0; d[o + 1] = cast(u32) h[0].tris_n; d[o + 2] = 0x80000000 | FD_DRAGON_AT; d[o + 3] = 1;
+    n += 1;
+  }
+  h[0].draw_n = n;
+}
+
+fd_mouse :: (h: [] FatedDragon, step: f32) {
+  m := h[0].mouse[..];
+  able := h[0].orbiting && metaverse_orbit_inside(h[0].orbit);
+  if !able { m[0].free = true; m[0].refused = false; }
+  m[0].able = able;
+  ml.ml_step(m, step);
+}
+
+FdInt :: struct { ok: bool; value: int; at: int; }
+fd_read_int :: (t: string, at: int) -> FdInt {
+  i := at;
+  while i < t.count && (t[i] == ' ' || t[i] == '\n' || t[i] == '\r' || t[i] == '\t') { i += 1; }
+  if i >= t.count { return FdInt.{}; }
+  neg := false;
+  if t[i] == '-' { neg = true; i += 1; }
+  if i >= t.count || t[i] < '0' || t[i] > '9' { return FdInt.{}; }
+  v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  return FdInt.{ok = true, value = ifx neg then -v else v, at = i};
+}
+
+// ---- C / Wasm host entry points
+
+fd_max_vertices :: () -> int #export_c #effects(all) { return 6; }
+fd_vertex_floats :: () -> int #export_c #effects(all) { return 8; }
+fd_uniform_floats :: () -> int #export_c #effects(all) { return FD_UNIFORMS; }
+fd_inbox_cap :: () -> int #export_c #effects(all) { return FD_INBOX; }
+fd_asset_cap :: () -> int #export_c #effects(all) { return DR_BYTES; }
+
+fd_asset_ready :: (h: [] FatedDragon, i: int, bytes: int) #export_c #effects(all) {
+  if h.count < 1 || i != 0 { return; }
+  if !dragon_parse(h[0].dragon[..], bytes) { return; }
+  h[0].tris_n = 0;
+  h[0].mesh_built = false;
+  fd_build_mesh(h);
+  fd_solids(h);
+}
+
+fd_frame :: (h: [] FatedDragon, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  h[0].time += step;
+  h[0].wide = width; h[0].high = height; h[0].dpr = d;
+  if !h[0].mesh_built { fd_build_mesh(h); fd_solids(h); }
+  fd_mouse(h, step);
+  fd_walk(h, step);
+  fd_orbit(h, step);
+  h[0].sticks = pad.metaverse_sticks_used(h[0].sticks);
+  if uniforms.count >= FD_UNIFORMS && width >= 1 && height >= 1 {
+    u := uniforms;
+    eye := fd_camera(h);
+    look := sty_sunrise(fd_day(), FD_DAWN, 0, -1);
+    look.haze *= FD_FOG;
+    look.haze_start *= FD_HAZE_AT;
+    _ = sty_frame(u, width, height, h[0].time, eye, look);
+    _ = sty_shadow_box(u, h[0].cx, h[0].cy, -h[0].cz, 26, 60);
+    _ = sty_reveal(u, 0, 0, 0, 0);
+    _ = sty_mover(u, 0, 0, 0);
+    _ = sty_wind(u, 0.8, 0.6, 0.3, 3);
+    _ = sty_bare(u, 0, 0, 0, 1, 0.17, 0.17, 0.17, 4);
+    sty_ground_table(u, 0, 0, 1, 0);
+    sty_path_clear(u);
+    u[FD_U_EXTRA] = d; u[FD_U_EXTRA + 1] = 1.0; u[FD_U_EXTRA + 2] = h[0].gone; u[FD_U_EXTRA + 3] = 0;
+    gx := floor(eye.x / FD_GROUND_STEP + 0.5) * FD_GROUND_STEP;
+    gz := floor(eye.z / FD_GROUND_STEP + 0.5) * FD_GROUND_STEP;
+    if gx != h[0].at_x || gz != h[0].at_z { h[0].at_x = gx; h[0].at_z = gz; fd_write_records(h); }
+  }
+  fd_skin(h);
+  fd_fire_step(h, step);
+  fd_draws(h);
+  return 0;
+}
+
+fd_pointer :: (h: [] FatedDragon, x: f32, y: f32, phase: int, kind: int, id: int, button: int) #export_c #effects(all) {
+  if h.count < 1 { return; }
+  if kind != 0 {
+    if phase == 0 { ml.ml_press(h[0].mouse[..], kind); }
+    h[0].sticks = pad.metaverse_sticks_world_touch(h[0].sticks, id, phase, x, y, h[0].wide, h[0].high, h[0].dpr, cast(f64) h[0].time);
+    return;
+  }
+  if phase == 0 {
+    ml.ml_press(h[0].mouse[..], 0);
+    h[0].drag = true; h[0].drag_id = id; h[0].drag_x = x; h[0].drag_y = y;
+    return;
+  }
+  if !h[0].drag || id != h[0].drag_id { return; }
+  if phase == 1 {
+    t := cam_drag(x - h[0].drag_x, y - h[0].drag_y, h[0].dpr);
+    h[0].look_yaw += t[0]; h[0].look_pitch += t[1];
+    h[0].drag_x = x; h[0].drag_y = y;
+    return;
+  }
+  h[0].drag = false;
+}
+
+fd_mouselook :: (h: [] FatedDragon) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else ml.ml_host(h[0].mouse[0]); }
+fd_look_delta :: (h: [] FatedDragon, dx: f32, dy: f32) #export_c #effects(all) {
+  if h.count < 1 { return; }
+  t := ml.ml_turn(h[0].mouse[0], dx, dy);
+  h[0].look_yaw -= t[0]; h[0].look_pitch -= t[1];
+}
+fd_pointer_lock :: (h: [] FatedDragon, status: int) #export_c #effects(all) { if h.count > 0 { ml.ml_lock(h[0].mouse[..], status); } }
+
+fd_blur :: (h: [] FatedDragon) #export_c #effects(all) {
+  if h.count < 1 { return; }
+  h[0].drag = false; h[0].sticks = pad.metaverse_sticks_reset(); h[0].tap = 0;
+  h[0].keys = 0; h[0].taps = 0;
+}
+
+fd_message :: (h: [] FatedDragon, kind: int, length: int) #export_c #effects(all) {
+  if h.count < 1 || length < 0 || length > FD_INBOX { return; }
+  t := cast(string) h[0].inbox[0..<length];
+  if kind == FD_KEYS_MSG {
+    v := fd_read_int(t, 0);
+    now := ifx v.ok then v.value & FD_KEYS_ALL else 0;
+    if (now & FD_KEY_JUMP) != 0 && (h[0].keys & FD_KEY_JUMP) == 0 && h[0].taps < 4 { h[0].taps += 1; }
+    if (now & FD_KEY_BREATH) != 0 && (h[0].keys & FD_KEY_BREATH) == 0 { h[0].breath_was = true; }
+    h[0].keys = now;
+    return;
+  }
+  if kind == FD_WHEEL_MSG {
+    dy := fd_read_int(t, 0);
+    if dy.ok && h[0].orbiting { h[0].orbit = cam_kind_wheel(cam_kind(CAM_KIND_THIRD), h[0].orbit, cast(f32) dy.value); }
+    return;
+  }
+}
+
+fd_draw_count :: (h: [] FatedDragon) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else h[0].draw_n; }
+fd_draw_blend :: (h: [] FatedDragon, i: int) -> int #export_c #effects(all) { return 0; }
+fd_store_cap :: (k: int) -> int #export_c #effects(all) {
+  if k == 0 { return FD_MESH_VERTICES * ARCH_VERTEX_FLOATS * 4; }
+  if k == 1 { return FD_RECORDS * FD_RECORD_FLOATS * 4; }
+  if k == 2 { return (DR_V + FD_FIRE * 6) * FD_SKIN_FLOATS * 4; }
+  if k == 3 { return (DR_T + FD_FIRE * 8) * 12; }
+  return 0;
+}
+fd_store_bytes :: (h: [] FatedDragon, k: int) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  if k == 0 { return (ifx h[0].mesh_n < 6 then 6 else h[0].mesh_n) * ARCH_VERTEX_FLOATS * 4; }
+  if k == 1 { return FD_RECORDS * FD_RECORD_FLOATS * 4; }
+  if k == 2 { return (ifx h[0].dragon[0].nv < 1 then 1 else h[0].dragon[0].nv + FD_FIRE * 6) * FD_SKIN_FLOATS * 4; }
+  if k == 3 { return (ifx h[0].tris_n < 3 then 3 else h[0].tris_n) * 4; }
+  return 0;
+}
+fd_store_version :: (h: [] FatedDragon, k: int) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  if k == 0 { return h[0].gen; }
+  if k == 1 { return h[0].rec_gen; }
+  if k == 2 { return h[0].skin_gen; }
+  if k == 3 { return h[0].tris_gen; }
+  return 0;
+}
+
+// ---- Tests
+
+FdTest :: struct { h: [1] FatedDragon; out: [48] f32; u: [FD_UNIFORMS] f32; }
+
+fd_test_say :: (h: [] FatedDragon, kind: int, s: string) {
+  for i: 0..<s.count { h[0].inbox[i] = s[i]; }
+  fd_message(h, kind, s.count);
+}
+fd_test_run :: (t: [] FdTest, frames: int, dt: f32) {
+  for i: 0..<frames { _ = fd_frame(t[0].h[..], t[0].out[..], t[0].u[..], 1280, 720, 2, dt); }
+}
+
+#test "megalith walk, atrium 200-step stairs, plaza and sleeping dragons work in the standalone world" #steps 400000000000 {
+  t: [1] FdTest; h := t[0].h[..];
+  n := dragon_test_fill(h[0].dragon[..]);
+  fd_asset_ready(h, 0, n);
+  #assert h[0].dragon[0].ready && h[0].sleep_ok && h[0].mesh_built && h[0].mesh_has_sleepers;
+  #assert h[0].mesh_n > 150000 && h[0].nb >= FD_SLEEPERS && h[0].nb < h[0].mountain[0].nb;
+  // Walk into south wing great door: clear path down gallery, wall stops beside door
+  w := 1;
+  h[0].cx = mt_wx(w, 900, 0); h[0].cz = mt_wz(w, 900, 0); fd_near(h);
+  #assert h[0].near_x == h[0].cx && h[0].near_z == h[0].cz;
+  c := fd_colliders(h);
+  from := WorldPoint.{x = mt_wx(w, 1200, 0), y = 0.32 + FD_BODY, z = mt_wz(w, 1200, 0)};
+  to := WorldPoint.{x = mt_wx(w, 700, 0), y = 0, z = mt_wz(w, 700, 0)};
+  hit := query_sweep(c, from, FD_BODY, WorldPoint.{x = to.x - from.x, y = 0, z = to.z - from.z});
+  #assert hit.status == QueryStatus.ok && !hit.hit;
+  from2 := WorldPoint.{x = mt_wx(w, 1095, 120), y = 0.32 + FD_BODY, z = mt_wz(w, 1095, 120)};
+  hit2 := query_sweep(c, from2, FD_BODY, WorldPoint.{x = mt_wx(w, 900, 120) - from2.x, y = 0, z = mt_wz(w, 900, 120) - from2.z});
+  #assert hit2.status == QueryStatus.ok && hit2.hit;
+  // Climb 200-step atrium flight to level 1 (100 m) and level 2 (200 m)
+  y: f32 = 0;
+  cc: f32 = MT_ATRIUM_C - MT_LEDGE - MT_FLIGHT * 0.5;
+  for s: 0..<MT_FLIGHT_STEPS {
+    a: f32 = MT_ATRIUM_A0 + MT_LEDGE + MT_RUN * (cast(f32) s + 0.5);
+    f := fd_floor(h, mt_wx(w, a, cc), mt_wz(w, a, cc), y);
+    #assert abs(f - MT_RISE * cast(f32) (s + 1)) < 0.01;
+    y = f;
+  }
+  #assert abs(y - MT_LEVEL_Y[1]) < 0.01;
+  for s: 0..<MT_FLIGHT_STEPS {
+    a: f32 = MT_ATRIUM_A1 - MT_LEDGE - MT_RUN * (cast(f32) s + 0.5);
+    f := fd_floor(h, mt_wx(w, a, -cc), mt_wz(w, a, -cc), y);
+    #assert abs(f - MT_LEVEL_Y[1] - MT_RISE * cast(f32) (s + 1)) < 0.01;
+    y = f;
+  }
+  #assert abs(y - MT_LEVEL_Y[2]) < 0.01;
+  // Plaza floor & first sleeper box
+  h[0].cx = MT_CX; h[0].cz = MT_CZ; fd_near(h);
+  #assert abs(fd_floor(h, MT_CX - 20, MT_CZ + 220, MT_PLAZA_Y) - MT_PLAZA_Y) < 0.01;
+  sb := fd_sleep_box(h, 0);
+  #assert sb[1] == MT_PLAZA_Y && sb[4] > MT_PLAZA_Y && sb[3] > sb[0] && sb[5] > sb[2];
+}
+
+#test "dragon double-Space 5x flight and E fire breath work without touching shared hud defaults" #steps 400000000000 {
+  t: [1] FdTest; h := t[0].h[..];
+  n := dragon_test_fill(h[0].dragon[..]);
+  fd_asset_ready(h, 0, n);
+  fd_test_run(t[..], 3, 0.016);
+  #assert h[0].dragon[0].clip == DR_IDLE && fd_draw_count(h) == 3;
+  // Double-Space toggles 5x flight and climbs high above the megalith
+  fd_test_say(h, FD_KEYS_MSG, "16"); fd_test_run(t[..], 1, 0.05);
+  fd_test_say(h, FD_KEYS_MSG, "0");  fd_test_run(t[..], 1, 0.05);
+  fd_test_say(h, FD_KEYS_MSG, "16"); fd_test_run(t[..], 20, 0.05);
+  #assert h[0].fly.on && h[0].cy > 20.0;
+  fd_test_say(h, FD_KEYS_MSG, "0");
+  // E fire breath rears back, emits blooming octahedron flames, then clears
+  fd_test_say(h, FD_KEYS_MSG, "4096"); fd_test_run(t[..], 2, 0.05);
+  #assert h[0].dragon[0].clip == DR_BREATH && h[0].breath > 0 && h[0].fire_n == 0;
+  fd_test_say(h, FD_KEYS_MSG, "0"); fd_test_run(t[..], 16, 0.05);
+  #assert h[0].fire_n > 20;
+  f0 := h[0].dragon[0].nv * FD_SKIN_FLOATS;
+  #assert h[0].skin[f0 + 6] > 1.0;
+  fd_test_run(t[..], 45, 0.05);
+  #assert h[0].fire_n == 0 && h[0].breath < 0;
+}

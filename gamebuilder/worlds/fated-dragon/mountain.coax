@@ -1,0 +1,626 @@
+// The megalith: a great stone hall in the web world (third and first person), built at a dragon's
+// scale: three stories high under one flat roof (MT_ROOF), a core with four wings reaching north,
+// east, south and west. Nothing stops you flying as high as you like over it (MT_SKY).
+//
+// Inside, it is a palace cut from the rock, its floors marble:
+//   - three levels (MT_LEVEL_Y), each a gallery 80 m wide and 60 m high down the middle of every wing,
+//     from the wing's end (a great door at the ground, balconies over the gardens above it) to the core;
+//   - in the core, a ring corridor at each of the two lower levels, joining the four wings' galleries;
+//   - the top level's galleries open on the plaza: a grass courtyard at the mountain's heart, open to
+//     the sky through the roof, where dragons sleep (hud.coax draws them);
+//   - halfway down each wing, an atrium 200 m square, open from the ground to the sky. A ledge runs
+//     round it at each upper level, and stairs climb its walls from level to level. Every stair joins
+//     two levels, and every level leads on to the galleries, the rings and the other wings: there is
+//     no dead end.
+// Outside each wing's end is a Victorian garden: hedged parterres of carpet bedding round a fountain,
+// a bandstand, and each garden its own flowers. A cobbled ring path 60 m wide joins the four gardens
+// round the mountain, through avenues of trees, a different kind on each quarter.
+//
+// It is all axis-square boxes, so the engine's queries walk it as they walk any block: rock columns
+// (a grid, each solid from the ground to its top but for the halls carved out of it), and the ledges,
+// steps, hedges and the rest after them. It is made once, from fixed numbers (no randomness that
+// differs between runs). Colliders are in the page's axes (mt_boxes); the mesh (mt_mesh) is in the
+// engine's axes and leaves out every face that rock hides.
+//   coax/bin/coax test web/world-mountain.coax --library
+
+#load "../../../metaverse-engine/arch/solid.coax";
+
+MT_N :: 56;                  // columns a side
+MT_CELL :: 40.0;             // metres a column's side
+MT_CX :: 0.0; MT_CZ :: 1560.0;    // its middle, the page's axes: ahead of where you start, at a garden's gate
+MT_GAPS :: 6;                // halls a column is carved by at most
+MT_RUNS :: MT_GAPS + 1;      // so its solid runs at most
+// what a column is
+MT_K_OUT :: 0; MT_K_CORE :: 1; MT_K_WING :: 2; MT_K_PLAZA :: 3; MT_K_ATRIUM :: 4;
+MT_CORE :: 440.0;            // the core's half side (a cell's edge)
+MT_CORE_ROUND :: 560.0;      // and its corners cut off this far out
+MT_ROOF :: 280.0;            // the flat roof over everything: three stories and a roof 20 m thick
+MT_PLAZA_R :: 270.0;         // the plaza's radius (a column is in it when its middle is)
+MT_PLAZA_Y :: 200.0;         // and its grass, the top level's floor
+MT_WING_END :: 1080.0;       // how far out a wing reaches
+MT_WING_HALF :: 200.0;       // and half its width
+MT_SEGMENTS :: 4;
+MT_SEG_A :: [4] f32.[600, 840, 960, 1080];   // a wing's terraces: each one out to here
+MT_SEG_H :: [4] f32.[820, 620, 480, 380];    // at this height
+MT_LEVELS :: 3;
+MT_LEVEL_Y :: [3] f32.[0, 100, 200];    // the palace's three floors
+MT_HALL_H :: 60.0;           // a gallery's height (and a ring's)
+MT_GALLERY :: 40.0;          // half a gallery's width
+MT_RING_IN :: 320.0; MT_RING_OUT :: 400.0;   // the core's ring corridors: between these from the middle (the larger of x and z)
+MT_ATRIUM_A0 :: 600.0; MT_ATRIUM_A1 :: 840.0; MT_ATRIUM_C :: 120.0;   // the atrium in each wing: along it, and half across
+MT_LEDGE :: 24.0; MT_LEDGE_T :: 6.0;         // the ledges round an atrium: wide, and thick
+MT_FLIGHT :: 24.0;           // a stair's width
+MT_RISE :: 0.5; MT_RUN :: 0.96;              // a step: up (no more than a walker steps up) and along
+MT_FLIGHT_STEPS :: 200;      // a level's 100 m in steps, along 192 m of the atrium's side
+MT_SKY :: 1000000.0;         // metres up anyone flies to round the megalith: no limit
+MT_FLY :: 5.0;               // and how many times faster than in the meadow (a wing is half a mile long)
+// the gardens, in a wing's own frame: a along it from the middle, c across
+MT_GARDEN_A :: 1300.0;       // the ring path's line through each garden, and the fountain on it
+MT_GARDEN_IN :: 1110.0; MT_GARDEN_OUT :: 1480.0; MT_GARDEN_C :: 240.0;
+MT_PATH :: 30.0;             // half the width of the ring path and the walks: room for a dragon ten times yours
+MT_RING_R :: 1060.0;         // the ring path's arcs between the gardens: about (±240, ±240) from the middle
+MT_TREES :: 24;              // trees a side of each arc
+MT_HEDGE_H :: 3.5; MT_HEDGE_T :: 3.0;
+MT_BOXES :: 6000;            // colliders at most
+MT_SPARE :: 16;              // of which hud.coax keeps this many for its sleeping dragons
+MT_VERTICES :: 200000;       // drawn vertices at most
+MT_DX :: [4] f32.[1, 0, -1, 0]; MT_DZ :: [4] f32.[0, 1, 0, -1];   // the wings: east, south, west, north (the page's axes)
+
+Mountain :: struct {
+  made: bool;
+  top: [MT_N * MT_N] f32;                     // each column's top
+  kind: [MT_N * MT_N] int;                    // and what it is
+  gn: [MT_N * MT_N] int; gap: [MT_N * MT_N * MT_GAPS * 2] f32;   // the halls carved in it: bottom, top
+  rn: [MT_N * MT_N] int; run: [MT_N * MT_N * MT_RUNS * 2] f32;   // its solid runs, low to high
+  nb: int; boxes: [MT_BOXES * 6] f32;         // the colliders, the page's axes: x0 y0 z0 x1 y1 z1
+  columns: int; ledges: int; steps: int;      // where each kind ends: the columns' runs, the ledges, the steps (then the gardens')
+  steps_n: int;
+}
+
+// A number from a column and a salt, the same every time: 0 up to 1.
+mt_hash :: (i: int, j: int, s: int) -> f32 {
+  n := ((i + 101) * 1619 + (j + 211) * 31337 + (s + 7) * 6971) % 2147483647;
+  n = (n * 48271) % 2147483647; n = (n * 48271) % 2147483647;
+  return cast(f32) n / 2147483647.0;
+}
+mt_x :: (i: int) -> f32 { return MT_CX + (cast(f32) i - cast(f32) MT_N * 0.5 + 0.5) * MT_CELL; }
+mt_z :: (j: int) -> f32 { return MT_CZ + (cast(f32) j - cast(f32) MT_N * 0.5 + 0.5) * MT_CELL; }
+// The column a point is over, or -1 off the grid.
+mt_cell :: (x: f32, z: f32) -> int {
+  i := cast(int) floor((x - MT_CX) / MT_CELL + cast(f32) MT_N * 0.5);
+  j := cast(int) floor((z - MT_CZ) / MT_CELL + cast(f32) MT_N * 0.5);
+  if i < 0 || j < 0 || i >= MT_N || j >= MT_N { return -1; }
+  return j * MT_N + i;
+}
+// A point in wing w's frame (a along it from the middle, c across) in the page's axes.
+mt_wx :: (w: int, a: f32, c: f32) -> f32 { return MT_CX + a * MT_DX[w] - c * MT_DZ[w]; }
+mt_wz :: (w: int, a: f32, c: f32) -> f32 { return MT_CZ + a * MT_DZ[w] + c * MT_DX[w]; }
+// A rectangle in wing w's frame, as the page's x0 z0 x1 z1.
+mt_rect :: (w: int, a0: f32, a1: f32, c0: f32, c1: f32) -> [4] f32 {
+  x0 := mt_wx(w, a0, c0); x1 := mt_wx(w, a1, c1); z0 := mt_wz(w, a0, c0); z1 := mt_wz(w, a1, c1);
+  return [4] f32.[ifx x0 < x1 then x0 else x1, ifx z0 < z1 then z0 else z1, ifx x0 < x1 then x1 else x0, ifx z0 < z1 then z1 else z0];
+}
+
+// What the column at (x, z) is (from the middle), and how high its rock stands.
+mt_kind :: (x: f32, z: f32) -> int {
+  ax := abs(x); az := abs(z); mx := ifx ax > az then ax else az; r := sqrt(x * x + z * z);
+  if r <= MT_PLAZA_R { return MT_K_PLAZA; }
+  if mx < MT_CORE && r <= MT_CORE_ROUND { return MT_K_CORE; }
+  a: f32 = 0; c: f32 = 0;
+  if az < MT_WING_HALF && ax < MT_WING_END { a = ax; c = z; }
+  else if ax < MT_WING_HALF && az < MT_WING_END { a = az; c = x; }
+  else { return MT_K_OUT; }
+  if a > MT_ATRIUM_A0 && a < MT_ATRIUM_A1 && abs(c) < MT_ATRIUM_C { return MT_K_ATRIUM; }
+  return MT_K_WING;
+}
+mt_wing_top :: (a: f32) -> f32 { return MT_ROOF; }   // (one flat roof)
+
+// A hall from y0 up to y1 carved in column c (the same one twice is kept once).
+mt_hollow :: (m: [] Mountain, c: int, y0: f32, y1: f32) {
+  n := m[0].gn[c];
+  for g: 0..<n { o := (c * MT_GAPS + g) * 2; if m[0].gap[o] == y0 && m[0].gap[o + 1] == y1 { return; } }
+  if n >= MT_GAPS { return; }
+  o := (c * MT_GAPS + n) * 2; m[0].gap[o] = y0; m[0].gap[o + 1] = y1; m[0].gn[c] = n + 1;
+}
+// A collider (its corners, the page's axes).
+mt_add :: (m: [] Mountain, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  if m[0].nb >= MT_BOXES - MT_SPARE { return; }
+  o := m[0].nb * 6;
+  m[0].boxes[o] = x0; m[0].boxes[o + 1] = y0; m[0].boxes[o + 2] = z0;
+  m[0].boxes[o + 3] = x1; m[0].boxes[o + 4] = y1; m[0].boxes[o + 5] = z1;
+  m[0].nb += 1;
+}
+// One in wing w's frame.
+mt_add_w :: (m: [] Mountain, w: int, a0: f32, a1: f32, c0: f32, c1: f32, y0: f32, y1: f32) {
+  r := mt_rect(w, a0, a1, c0, c1); mt_add(m, r[0], y0, r[1], r[2], y1, r[3]);
+}
+
+// The ledges round wing w's atrium: at each level over the ground, a walk round all four walls.
+mt_ledges :: (m: [] Mountain, w: int) {
+  a0: f32 = MT_ATRIUM_A0; a1: f32 = MT_ATRIUM_A1; c: f32 = MT_ATRIUM_C; l: f32 = MT_LEDGE;
+  for k: 1..<MT_LEVELS {
+    y := MT_LEVEL_Y[k]; b := y - MT_LEDGE_T;
+    mt_add_w(m, w, a0, a0 + l, -c, c, b, y);           // under the gallery from the core
+    mt_add_w(m, w, a1 - l, a1, -c, c, b, y);           // under the gallery out to the wing's end
+    mt_add_w(m, w, a0 + l, a1 - l, c - l, c, b, y);    // along each side
+    mt_add_w(m, w, a0 + l, a1 - l, -c, -c + l, b, y);
+  }
+}
+// The stair up wing w's atrium from level k to the next: beside a side's ledge, from the ledge (or
+// the floor) at one end wall to the next level's ledge at the other. Levels 0 and 2 climb outward
+// on the +c side, level 1 back inward on the -c side, so no stair is ever over another.
+mt_flight :: (m: [] Mountain, w: int, k: int) {
+  y0 := MT_LEVEL_Y[k];
+  out := k % 2 == 0;
+  c0: f32 = ifx out then MT_ATRIUM_C - MT_LEDGE - MT_FLIGHT else -(MT_ATRIUM_C - MT_LEDGE);
+  lo: f32 = MT_ATRIUM_A0 + MT_LEDGE; hi: f32 = MT_ATRIUM_A1 - MT_LEDGE;
+  for s: 0..<MT_FLIGHT_STEPS {
+    top := y0 + MT_RISE * cast(f32) (s + 1);
+    a0: f32 = 0; a1: f32 = 0;
+    if out { a0 = lo + MT_RUN * cast(f32) s; a1 = a0 + MT_RUN; } else { a1 = hi - MT_RUN * cast(f32) s; a0 = a1 - MT_RUN; }
+    mt_add_w(m, w, a0, a1, c0, c0 + MT_FLIGHT, y0, top);
+    m[0].steps_n += 1;
+  }
+}
+
+// A garden's quarter: q's rectangle in the wing's frame (a0 a1 c0 c1), the quarters inner and outer, each side.
+mt_quarter :: (q: int) -> [4] f32 {
+  inner := q < 2; side: f32 = ifx q % 2 == 0 then 1 else -1;
+  a0: f32 = ifx inner then 1110 else 1350; a1: f32 = ifx inner then 1250 else 1470;
+  c0: f32 = 80; c1: f32 = 236;
+  if side < 0 { return [4] f32.[a0, a1, -c1, -c0]; }
+  return [4] f32.[a0, a1, c0, c1];
+}
+// The hedges round a quarter: a wall on each side, open in its middle.
+mt_hedges :: (m: [] Mountain, w: int, q: [4] f32) {
+  t: f32 = MT_HEDGE_T; g: f32 = 12; am := (q[0] + q[1]) * 0.5; cm := (q[2] + q[3]) * 0.5;
+  for e: 0..<2 {
+    a := ifx e == 0 then q[0] else q[1] - t;
+    mt_add_w(m, w, a, a + t, q[2], cm - g, 0, MT_HEDGE_H); mt_add_w(m, w, a, a + t, cm + g, q[3], 0, MT_HEDGE_H);
+    c := ifx e == 0 then q[2] else q[3] - t;
+    mt_add_w(m, w, q[0] + t, am - g, c, c + t, 0, MT_HEDGE_H); mt_add_w(m, w, am + g, q[1] - t, c, c + t, 0, MT_HEDGE_H);
+  }
+}
+// The ring path's tree k (of the 4 arcs' 2 sides' MT_TREES): where it stands (the page's axes), how
+// tall, and its kind (the arc: cherry, maple, lime, copper beech).
+MtTree :: struct { x: f32; z: f32; h: f32; kind: int; }
+mt_tree :: (k: int) -> MtTree {
+  q := k / (2 * MT_TREES); s := (k / MT_TREES) % 2; t := k % MT_TREES;
+  sx: f32 = ifx q == 0 || q == 3 then 1 else -1; sz: f32 = ifx q < 2 then 1 else -1;
+  a0: f32 = ifx sx > 0 then 0 else 3.14159265;
+  a := a0 + sx * sz * 1.5707963 * (cast(f32) t + 0.5) / cast(f32) MT_TREES;
+  r: f32 = MT_RING_R + (ifx s == 0 then -55.0f32 else 55.0f32);
+  return MtTree.{x = MT_CX + sx * MT_GARDEN_C + r * cos(a), z = MT_CZ + sz * MT_GARDEN_C + r * sin(a), h = 18 + 10 * mt_hash(k, q, 9), kind = q};
+}
+MT_TREE_N :: 8 * MT_TREES;
+
+// The whole mountain, once.
+mt_make :: (m: [] Mountain) {
+  if m[0].made { return; }
+  m[0].made = true; m[0].nb = 0; m[0].steps_n = 0;
+  // each column: what it is, its top, and the halls carved through it
+  for j: 0..<MT_N { for i: 0..<MT_N {
+    c := j * MT_N + i; x := mt_x(i) - MT_CX; z := mt_z(j) - MT_CZ;
+    ax := abs(x); az := abs(z); mx := ifx ax > az then ax else az; r := sqrt(x * x + z * z);
+    k := mt_kind(x, z);
+    t: f32 = 0;
+    if k == MT_K_CORE { t = MT_ROOF; }
+    if k == MT_K_WING { t = mt_wing_top(mx); }
+    if k == MT_K_PLAZA { t = MT_PLAZA_Y; }
+    m[0].top[c] = t; m[0].kind[c] = k; m[0].gn[c] = 0; m[0].rn[c] = 0;
+    if k != MT_K_CORE && k != MT_K_WING { continue; }
+    // the galleries down the wings' middles: the lower three from the core's ring, the top one from the plaza
+    for w: 0..<4 {
+      a := x * MT_DX[w] + z * MT_DZ[w]; across := -x * MT_DZ[w] + z * MT_DX[w];
+      if abs(across) >= MT_GALLERY { continue; }
+      for l: 0..<MT_LEVELS {
+        from: f32 = ifx l == MT_LEVELS - 1 then MT_PLAZA_R else MT_RING_IN;
+        if a > from { mt_hollow(m, c, MT_LEVEL_Y[l], MT_LEVEL_Y[l] + MT_HALL_H); }
+      }
+    }
+    // the core's rings
+    if k == MT_K_CORE && mx > MT_RING_IN && mx < MT_RING_OUT { for l: 0..<MT_LEVELS - 1 { mt_hollow(m, c, MT_LEVEL_Y[l], MT_LEVEL_Y[l] + MT_HALL_H); } }
+  } }
+  // each column's solid runs: the ground to its top, less its halls
+  for c: 0..<MT_N * MT_N { mt_runs(m, c); }
+  m[0].columns = m[0].nb;
+  // the atriums' ledges, then their stairs
+  for w: 0..<4 { mt_ledges(m, w); }
+  m[0].ledges = m[0].nb;
+  for w: 0..<4 { for k: 0..<MT_LEVELS - 1 { mt_flight(m, w, k); } }
+  m[0].steps = m[0].nb;
+  // the gardens: hedges, each fountain's basin, each bandstand's floor; the ring path's trees
+  for w: 0..<4 {
+    for q: 0..<4 { mt_hedges(m, w, mt_quarter(q)); }
+    mt_add_w(m, w, MT_GARDEN_A - 26, MT_GARDEN_A + 26, -26, 26, 0, 1.6);
+    mt_add_w(m, w, 1410, 1450, -20, 20, 0, 0.5);
+  }
+  for k: 0..<MT_TREE_N { t := mt_tree(k); mt_add(m, t.x - 2, 0, t.z - 2, t.x + 2, t.h * 0.5, t.z + 2); }
+}
+// Column c's solid runs (and a collider each): its halls in order, the rock between them.
+mt_runs :: (m: [] Mountain, c: int) {
+  top := m[0].top[c]; if !(top > 0.05) { return; }
+  n := m[0].gn[c];
+  lo: [MT_GAPS] f32; hi: [MT_GAPS] f32;
+  for g: 0..<n { lo[g] = m[0].gap[(c * MT_GAPS + g) * 2]; hi[g] = m[0].gap[(c * MT_GAPS + g) * 2 + 1]; }
+  for g: 1..<n { k := g; while k > 0 && lo[k - 1] > lo[k] { a := lo[k]; lo[k] = lo[k - 1]; lo[k - 1] = a; b := hi[k]; hi[k] = hi[k - 1]; hi[k - 1] = b; k -= 1; } }
+  at: f32 = 0;
+  for g: 0..<n + 1 {
+    end := ifx g < n then lo[g] else top;
+    if end > top { end = top; }
+    if end - at > 0.05 { mt_run(m, c, at, end); }
+    if g < n && hi[g] > at { at = hi[g]; }
+    if at >= top { break; }
+  }
+}
+mt_run :: (m: [] Mountain, c: int, y0: f32, y1: f32) {
+  k := m[0].rn[c];
+  if k < MT_RUNS { o := (c * MT_RUNS + k) * 2; m[0].run[o] = y0; m[0].run[o + 1] = y1; m[0].rn[c] = k + 1; }
+  i := c % MT_N; j := c / MT_N; h: f32 = MT_CELL * 0.5;
+  mt_add(m, mt_x(i) - h, y0, mt_z(j) - h, mt_x(i) + h, y1, mt_z(j) + h);
+}
+// Whether the column at (i, j) is solid all the way from y0 to y1 (a face against it is hidden).
+mt_covers :: (m: [] Mountain, i: int, j: int, y0: f32, y1: f32) -> bool {
+  if i < 0 || j < 0 || i >= MT_N || j >= MT_N { return false; }
+  c := j * MT_N + i;
+  for k: 0..<m[0].rn[c] { o := (c * MT_RUNS + k) * 2; if m[0].run[o] <= y0 + 0.001 && m[0].run[o + 1] >= y1 - 0.001 { return true; } }
+  return false;
+}
+
+// ---------------------------------------------------------------- drawn
+
+// A flat face like the kit's (arch_face_uv), its surface's pattern k times as fine (under 1: coarser,
+// the megalith's own scale).
+mt_face :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, u0: f32, v0: f32, k: f32) {
+  e1 := arch_vnorm(arch_vsub(b, a));
+  far := arch_vsub(d, a);
+  if arch_vlen(far) < 0.000001 { far = arch_vsub(c, a); }
+  n := arch_vnorm(arch_vcross(arch_vsub(b, a), far));
+  e2 := arch_vcross(n, e1);
+  q: [4] ArchPoint; c4 := [4] [3] f32.[a, b, c, d];
+  for e: 0..<4 {
+    r := arch_vsub(c4[e], a);
+    q[e] = arch_at(c4[e][0], c4[e][1], c4[e][2], n[0], n[1], n[2], (u0 + arch_vdot(r, e1)) * k, (v0 + arch_vdot(r, e2)) * k);
+  }
+  arch_tri(p, q[0], q[1], q[2]);
+  if arch_vlen(arch_vsub(d, c)) > 0.000001 { arch_tri(p, q[0], q[2], q[3]); }
+}
+// A flat face looking up, the same (u, v) at every corner (the ground's material reads them as how
+// much grass and how much paving), its corners in the engine's axes in either turn.
+mt_flat :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, u: f32, v: f32) {
+  up := (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+  qa := arch_at(a[0], a[1], a[2], 0, 1, 0, u, v); qb := arch_at(b[0], b[1], b[2], 0, 1, 0, u, v);
+  qc := arch_at(c[0], c[1], c[2], 0, 1, 0, u, v); qd := arch_at(d[0], d[1], d[2], 0, 1, 0, u, v);
+  if up >= 0 { arch_quad(p, qa, qb, qc, qd); } else { arch_quad(p, qa, qd, qc, qb); }
+}
+// A rectangle of it in wing w's frame, at height y.
+mt_flat_w :: (p: [] ArchPen, w: int, a0: f32, a1: f32, c0: f32, c1: f32, y: f32, u: f32, v: f32) {
+  r := mt_rect(w, a0, a1, c0, c1);
+  mt_flat(p, arch_v(r[0], y, -r[1]), arch_v(r[2], y, -r[1]), arch_v(r[2], y, -r[3]), arch_v(r[0], y, -r[3]), u, v);
+}
+// A disc of it round (x, z) (the page's axes).
+mt_disc :: (p: [] ArchPen, x: f32, z: f32, r: f32, y: f32, u: f32, v: f32, segments: int) {
+  for s: 0..<segments {
+    a := 6.2831853 * cast(f32) s / cast(f32) segments; b := 6.2831853 * cast(f32) (s + 1) / cast(f32) segments;
+    o := arch_v(x, y, -z);
+    mt_flat(p, o, arch_v(x + r * cos(a), y, -(z + r * sin(a))), arch_v(x + r * cos(b), y, -(z + r * sin(b))), o, u, v);
+  }
+}
+// A box by its corners in the page's axes, its pattern k times as fine; its underside only if asked.
+mt_slab :: (p: [] ArchPen, px0: f32, y0: f32, pz0: f32, px1: f32, y1: f32, pz1: f32, k: f32, under: bool) {
+  x0 := px0; x1 := px1; z0 := -pz1; z1 := -pz0;
+  mt_face(p, arch_v(x0, y0, z1), arch_v(x1, y0, z1), arch_v(x1, y1, z1), arch_v(x0, y1, z1), x0, y0, k);
+  mt_face(p, arch_v(x1, y0, z0), arch_v(x0, y0, z0), arch_v(x0, y1, z0), arch_v(x1, y1, z0), -x1, y0, k);
+  mt_face(p, arch_v(x1, y0, z1), arch_v(x1, y0, z0), arch_v(x1, y1, z0), arch_v(x1, y1, z1), -z1, y0, k);
+  mt_face(p, arch_v(x0, y0, z0), arch_v(x0, y0, z1), arch_v(x0, y1, z1), arch_v(x0, y1, z0), z0, y0, k);
+  mt_face(p, arch_v(x0, y1, z1), arch_v(x1, y1, z1), arch_v(x1, y1, z0), arch_v(x0, y1, z0), x0, -z1, k);
+  if under { mt_face(p, arch_v(x0, y0, z0), arch_v(x1, y0, z0), arch_v(x1, y0, z1), arch_v(x0, y0, z1), x0, z0, k); }
+}
+// A raised bed or a basin's ring round (x, z) (the page's axes): its top and its outer side.
+mt_bed :: (p: [] ArchPen, x: f32, z: f32, r0: f32, r1: f32, h: f32, segments: int) {
+  for s: 0..<segments {
+    a := 6.2831853 * cast(f32) s / cast(f32) segments; b := 6.2831853 * cast(f32) (s + 1) / cast(f32) segments;
+    ca := cos(a); sa := sin(a); cb := cos(b); sb := sin(b);
+    // (the page's z turned round: a point at angle a is (x + r cos a, -(z + r sin a)))
+    ia := arch_at(x + r0 * ca, h, -(z + r0 * sa), 0, 1, 0, 0, 0); ib := arch_at(x + r0 * cb, h, -(z + r0 * sb), 0, 1, 0, 0, 0);
+    oa := arch_at(x + r1 * ca, h, -(z + r1 * sa), 0, 1, 0, 0, 0); ob := arch_at(x + r1 * cb, h, -(z + r1 * sb), 0, 1, 0, 0, 0);
+    if r0 > 0.001 { arch_quad(p, ia, oa, ob, ib); } else { arch_tri(p, ia, oa, ob); }
+    ga := arch_at(x + r1 * ca, 0, -(z + r1 * sa), ca, 0, -sa, 0, 0); gb := arch_at(x + r1 * cb, 0, -(z + r1 * sb), cb, 0, -sb, 0, 1);
+    oa.nx = ca; oa.ny = 0; oa.nz = -sa; ob.nx = cb; ob.ny = 0; ob.nz = -sb;
+    arch_quad(p, ga, gb, ob, oa);
+  }
+}
+
+// The colours: the gardens' (east lavender, south tulips, west hydrangeas, north roses), each three
+// flowers, its hedges and its topiary.
+MT_BLOOM :: [4 * 9] f32.[
+  0.58, 0.42, 0.82,  0.38, 0.24, 0.62,  0.78, 0.8, 0.74,
+  0.98, 0.82, 0.15,  0.98, 0.45, 0.1,   0.9, 0.12, 0.1,
+  0.36, 0.52, 0.92,  0.72, 0.6, 0.92,   0.96, 0.96, 1.0,
+  0.78, 0.08, 0.14,  0.96, 0.52, 0.62,  0.98, 0.95, 0.9];
+MT_HEDGE :: [4 * 3] f32.[0.3, 0.42, 0.28,  0.22, 0.5, 0.18,  0.2, 0.4, 0.2,  0.12, 0.3, 0.14];
+MT_TREE_LEAF :: [4 * 3] f32.[0.96, 0.62, 0.76,  0.92, 0.42, 0.12,  0.36, 0.56, 0.2,  0.46, 0.16, 0.2];
+
+// Topiary in a garden's own kind, standing at (x, z), `s` times its usual size: clipped cypress
+// spires (lavender), balls on stems (tulips), tiered cakes (hydrangeas), yew cones (roses).
+mt_topiary :: (p: [] ArchPen, style: int, x: f32, z: f32, s: f32) {
+  arch_material(p, ARCH_M_LEAF, MT_HEDGE[style * 3] * 0.85, MT_HEDGE[style * 3 + 1] * 0.85, MT_HEDGE[style * 3 + 2] * 0.85);
+  ez := -z;
+  if style == 0 { arch_ellipsoid(p, x, 9 * s, ez, 2.6 * s, 9 * s, 2.6 * s, 8, 6); }
+  if style == 1 {
+    arch_material(p, ARCH_M_BARK, 0.42, 0.32, 0.22); arch_limb(p, x, 0, ez, x, 6 * s, ez, 0.5 * s, 0.4 * s, 6);
+    arch_material(p, ARCH_M_LEAF, MT_HEDGE[3] * 0.9, MT_HEDGE[4] * 0.9, MT_HEDGE[5] * 0.9); arch_ellipsoid(p, x, 8 * s, ez, 3.6 * s, 3.6 * s, 3.6 * s, 8, 5);
+  }
+  if style == 2 { for t: 0..<3 { f := cast(f32) t; arch_ellipsoid(p, x, (2 + 4.2 * f) * s, ez, (5 - 1.4 * f) * s, 2 * s, (5 - 1.4 * f) * s, 8, 4); } }
+  if style == 3 { arch_limb(p, x, 0, ez, x, 12 * s, ez, 4 * s, 0.3 * s, 8); arch_ellipsoid(p, x, 12.6 * s, ez, 0.9 * s, 0.9 * s, 0.9 * s, 6, 4); }
+}
+// A round bed of carpet bedding: rings of three flowers, low box round it, topiary in its middle.
+mt_round_bed :: (p: [] ArchPen, style: int, x: f32, z: f32, r: f32, s: f32) {
+  arch_material(p, ARCH_M_LEAF, MT_HEDGE[style * 3], MT_HEDGE[style * 3 + 1], MT_HEDGE[style * 3 + 2]);
+  mt_bed(p, x, z, r, r + 1.5, 0.9, 12);
+  for k: 0..<3 {
+    o := style * 9 + k * 3;
+    arch_material(p, ARCH_M_PETAL, MT_BLOOM[o], MT_BLOOM[o + 1], MT_BLOOM[o + 2]);
+    f := cast(f32) k;
+    mt_bed(p, x, z, ifx k == 2 then 0.0f32 else r * (0.62 - 0.3 * f), r * (1 - 0.38 * f), 0.5 + 0.25 * f, 12);
+  }
+  mt_topiary(p, style, x, z, s);
+}
+// Wing w's garden: its walks and the ring path's straight through it, the round plaza with the
+// fountain, the four hedged quarters with their beds, and the bandstand at the far end of its walk.
+mt_garden :: (p: [] ArchPen, w: int) {
+  style := w;
+  arch_material(p, ARCH_M_GROUND, 0, 0, 0);
+  mt_flat_w(p, w, MT_WING_END, MT_GARDEN_OUT, -MT_PATH, MT_PATH, 0.12, 0, 1);
+  mt_flat_w(p, w, MT_GARDEN_A - MT_PATH, MT_GARDEN_A + MT_PATH, -MT_GARDEN_C, MT_GARDEN_C, 0.12, 0, 1);
+  fx := mt_wx(w, MT_GARDEN_A, 0); fz := mt_wz(w, MT_GARDEN_A, 0);
+  mt_disc(p, fx, fz, 70, 0.22, 0, 1, 32);
+  mt_disc(p, mt_wx(w, 1430, 0), mt_wz(w, 1430, 0), 34, 0.22, 0, 1, 24);
+  // the fountain: a basin, its water, a pedestal and its bowl, the jet over it
+  arch_material(p, ARCH_M_SMOOTH, 0.92, 0.9, 0.86);
+  mt_bed(p, fx, fz, 22, 26, 1.6, 32);
+  arch_limb(p, fx, 0, -fz, fx, 9, -fz, 3, 2, 10);
+  arch_ellipsoid(p, fx, 9.5, -fz, 8, 1.4, 8, 14, 4);
+  arch_limb(p, fx, 9.5, -fz, fx, 14, -fz, 1.2, 0.8, 8);
+  arch_material(p, ARCH_M_WATER, 0.55, 0.75, 0.88);
+  mt_disc(p, fx, fz, 22, 1.1, 0, 0, 32);
+  arch_ellipsoid(p, fx, 15.5, -fz, 2.2, 3, 2.2, 8, 5);
+  arch_ellipsoid(p, fx, 10.6, -fz, 7, 0.4, 7, 14, 3);
+  // the quarters: hedged, a great round bed in each, a small one in each corner
+  for q: 0..<4 {
+    r := mt_quarter(q);
+    arch_material(p, ARCH_M_LEAF, MT_HEDGE[style * 3], MT_HEDGE[style * 3 + 1], MT_HEDGE[style * 3 + 2]);
+    t: f32 = MT_HEDGE_T; g: f32 = 12; am := (r[0] + r[1]) * 0.5; cm := (r[2] + r[3]) * 0.5;
+    for e: 0..<2 {
+      a := ifx e == 0 then r[0] else r[1] - t; c := ifx e == 0 then r[2] else r[3] - t;
+      mt_hedge(p, mt_rect(w, a, a + t, r[2], cm - g)); mt_hedge(p, mt_rect(w, a, a + t, cm + g, r[3]));
+      mt_hedge(p, mt_rect(w, r[0] + t, am - g, c, c + t)); mt_hedge(p, mt_rect(w, am + g, r[1] - t, c, c + t));
+    }
+    mt_round_bed(p, style, mt_wx(w, am, cm), mt_wz(w, am, cm), 40, 1.2);
+    for k: 0..<4 {
+      da: f32 = ifx k % 2 == 0 then 1 else -1; dc: f32 = ifx k < 2 then 1 else -1;
+      ba := am + da * ((r[1] - r[0]) * 0.5 - 20); bc := cm + dc * ((r[3] - r[2]) * 0.5 - 20);
+      mt_round_bed(p, style, mt_wx(w, ba, bc), mt_wz(w, ba, bc), 11, 0.55);
+    }
+  }
+  // the bandstand: a round floor, eight slender columns, a verdigris roof
+  bx := mt_wx(w, 1430, 0); bz := mt_wz(w, 1430, 0);
+  arch_material(p, ARCH_M_SMOOTH, 0.94, 0.92, 0.88);
+  mt_bed(p, bx, bz, 0, 22, 0.5, 24);
+  for k: 0..<8 { a := 0.7853982 * cast(f32) k + 0.39; cx := bx + 18 * cos(a); cz := bz + 18 * sin(a); arch_limb(p, cx, 0.5, -cz, cx, 12, -cz, 0.7, 0.6, 6); }
+  arch_material(p, ARCH_M_ROOF, 0.36, 0.62, 0.56);
+  arch_limb(p, bx, 12, -bz, bx, 21, -bz, 25, 0.6, 12);
+  arch_ellipsoid(p, bx, 12, -bz, 25, 0.5, 25, 16, 3);
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_limb(p, bx, 20.5, -bz, bx, 25, -bz, 0.5, 0.1, 6);
+}
+mt_hedge :: (p: [] ArchPen, b: [4] f32) { mt_slab(p, b[0], 0, b[1], b[2], MT_HEDGE_H, b[3], 0.5, false); }
+// The ring path's arcs between the gardens, and their avenues.
+mt_ring :: (p: [] ArchPen) {
+  arch_material(p, ARCH_M_GROUND, 0, 0, 0);
+  n := 48;
+  for q: 0..<4 {
+    sx: f32 = ifx q == 0 || q == 3 then 1 else -1; sz: f32 = ifx q < 2 then 1 else -1;
+    ox := MT_CX + sx * MT_GARDEN_C; oz := MT_CZ + sz * MT_GARDEN_C;
+    a0: f32 = ifx sx > 0 then 0 else 3.14159265; way := sx * sz * 1.5707963;
+    for s: 0..<n {
+      a := a0 + way * cast(f32) s / cast(f32) n; b := a0 + way * cast(f32) (s + 1) / cast(f32) n;
+      ri: f32 = MT_RING_R - MT_PATH; ro: f32 = MT_RING_R + MT_PATH;
+      mt_flat(p, arch_v(ox + ri * cos(a), 0.12, -(oz + ri * sin(a))), arch_v(ox + ro * cos(a), 0.12, -(oz + ro * sin(a))),
+                 arch_v(ox + ro * cos(b), 0.12, -(oz + ro * sin(b))), arch_v(ox + ri * cos(b), 0.12, -(oz + ri * sin(b))), 0, 1);
+    }
+  }
+  for k: 0..<MT_TREE_N {
+    t := mt_tree(k); h := t.h;
+    arch_material(p, ARCH_M_BARK, 0.4, 0.3, 0.22);
+    arch_limb(p, t.x, 0, -t.z, t.x, h * 0.55, -t.z, h * 0.05, h * 0.035, 6);
+    arch_material(p, ARCH_M_LEAF, MT_TREE_LEAF[t.kind * 3], MT_TREE_LEAF[t.kind * 3 + 1], MT_TREE_LEAF[t.kind * 3 + 2]);
+    rx: f32 = ifx t.kind == 0 then 0.5 * h else ifx t.kind == 2 then 0.28 * h else 0.42 * h;
+    ry: f32 = ifx t.kind == 0 then 0.28 * h else ifx t.kind == 2 then 0.45 * h else 0.38 * h;
+    arch_ellipsoid(p, t.x, h - ry, -t.z, rx, ry, rx, 8, 5);
+  }
+}
+
+// The mountain drawn (the engine's axes: z the page's turned round). Each column's runs, with only
+// the faces rock doesn't hide: outside, cliff rock with moss on what faces up; inside, dressed stone
+// walls and ceilings and floors of marble in great squares of white and grey; the plaza's grass.
+// Then the ledges and stairs in marble, each atrium's pool, the gardens and the ring path. It stops
+// short of `room` vertices.
+mt_mesh :: (m: [] Mountain, p: [] ArchPen, room: int) {
+  if !m[0].made { return; }
+  h: f32 = MT_CELL * 0.5; mk: f32 = 1.0 / 6.0;
+  for c: 0..<MT_N * MT_N {
+    i := c % MT_N; j := c / MT_N; kd := m[0].kind[c];
+    if kd == MT_K_OUT { continue; }
+    if p[0].n + 400 > room { return; }
+    x0 := mt_x(i) - h; x1 := mt_x(i) + h; z0 := -(mt_z(j) + h); z1 := -(mt_z(j) - h);
+    s := 0.85f32 + 0.25 * mt_hash(i, j, 3);
+    light := (i + j) % 2 == 0;
+    // a hall's floor at the ground: marble over it
+    if m[0].rn[c] == 0 || m[0].run[c * MT_RUNS * 2] > 0.01 { mt_marble(p, light); mt_face(p, arch_v(x0, 0.1, z1), arch_v(x1, 0.1, z1), arch_v(x1, 0.1, z0), arch_v(x0, 0.1, z0), x0, -z1, mk); }
+    for k: 0..<m[0].rn[c] {
+      o := (c * MT_RUNS + k) * 2; y0 := m[0].run[o]; y1 := m[0].run[o + 1];
+      last := k == m[0].rn[c] - 1;
+      // its sides, each only where its neighbour doesn't cover it
+      mt_sides(m, p, i, j - 1, 0, y0, y1, x0, x1, z0, z1, s);
+      mt_sides(m, p, i, j + 1, 1, y0, y1, x0, x1, z0, z1, s);
+      mt_sides(m, p, i + 1, j, 2, y0, y1, x0, x1, z0, z1, s);
+      mt_sides(m, p, i - 1, j, 3, y0, y1, x0, x1, z0, z1, s);
+      // its top: the plaza's grass, a plateau's rock, or a hall's marble floor
+      if last && kd == MT_K_PLAZA { arch_material(p, ARCH_M_GROUND, 0, 0, 0); mt_flat(p, arch_v(x0, y1, z1), arch_v(x1, y1, z1), arch_v(x1, y1, z0), arch_v(x0, y1, z0), 1, 0); }
+      else if last { arch_material(p, ARCH_M_ROCK, 0.78 * s, 0.74 * s, 0.7 * s); mt_face(p, arch_v(x0, y1, z1), arch_v(x1, y1, z1), arch_v(x1, y1, z0), arch_v(x0, y1, z0), x0, -z1, 0.125); }
+      else { mt_marble(p, light); mt_face(p, arch_v(x0, y1, z1), arch_v(x1, y1, z1), arch_v(x1, y1, z0), arch_v(x0, y1, z0), x0, -z1, mk); }
+      // its underside: a hall's ceiling
+      if y0 > 0.01 { arch_material(p, ARCH_M_ASHLAR, 0.66 * s, 0.63 * s, 0.6 * s); mt_face(p, arch_v(x0, y0, z0), arch_v(x1, y0, z0), arch_v(x1, y0, z1), arch_v(x0, y0, z1), x0, z0, 0.125); }
+    }
+  }
+  // the ledges and the stairs, marble
+  for k: m[0].columns..<m[0].ledges {
+    if p[0].n + 36 > room { return; }
+    b := m[0].boxes[k * 6..<k * 6 + 6];
+    mt_marble(p, k % 2 == 0);
+    mt_slab(p, b[0], b[1], b[2], b[3], b[4], b[5], mk, b[1] > 0.01);
+  }
+  for w: 0..<4 { for k: 0..<MT_LEVELS - 1 { if p[0].n + MT_FLIGHT_STEPS * 12 + 36 > room { return; } mt_flight_mesh(p, w, k); } }
+  for w: 0..<4 {
+    if p[0].n + 20000 > room { return; }
+    // each atrium's pool at its foot
+    px := mt_wx(w, (MT_ATRIUM_A0 + MT_ATRIUM_A1) * 0.5, 0); pz := mt_wz(w, (MT_ATRIUM_A0 + MT_ATRIUM_A1) * 0.5, 0);
+    arch_material(p, ARCH_M_SMOOTH, 0.95, 0.94, 0.9); mt_bed(p, px, pz, 34, 38, 0.8, 32);
+    arch_material(p, ARCH_M_WATER, 0.5, 0.72, 0.86); mt_disc(p, px, pz, 34, 0.45, 0, 0, 32);
+    mt_garden(p, w);
+  }
+  if p[0].n + 50000 > room { return; }
+  mt_ring(p);
+}
+// A face (its corners in the engine's axes) turned to look the way `want` points, its pattern k times as fine.
+mt_toward :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, want: [3] f32, k: f32) {
+  n := arch_vcross(arch_vsub(b, a), arch_vsub(d, a));
+  if arch_vdot(n, want) >= 0 { mt_face(p, a, b, c, d, 0, 0, k); } else { mt_face(p, a, d, c, b, 0, 0, k); }
+}
+// A point in wing w's frame at height y, in the engine's axes.
+mt_ev :: (w: int, a: f32, c: f32, y: f32) -> [3] f32 { return arch_v(mt_wx(w, a, c), y, -mt_wz(w, a, c)); }
+// Wing w's stair from level k drawn as a stair is seen (its colliders are mt_flight's solid steps):
+// each step's tread and riser, a stringer wall down each side from just over the treads' edges to
+// its foot, its back, and under it when it stands over the floor: a third of the faces of a box a step.
+mt_flight_mesh :: (p: [] ArchPen, w: int, k: int) {
+  y0 := MT_LEVEL_Y[k]; out := k % 2 == 0;
+  c0: f32 = ifx out then MT_ATRIUM_C - MT_LEDGE - MT_FLIGHT else -(MT_ATRIUM_C - MT_LEDGE);
+  c1: f32 = c0 + MT_FLIGHT;
+  lo: f32 = MT_ATRIUM_A0 + MT_LEDGE; hi: f32 = MT_ATRIUM_A1 - MT_LEDGE;
+  sg: f32 = ifx out then 1 else -1;
+  up := arch_v(0, 1, 0);
+  down := arch_v(-sg * MT_DX[w], 0, sg * MT_DZ[w]);      // back down the stair (the engine's axes)
+  across := arch_v(-MT_DZ[w], 0, -MT_DX[w]);             // toward +c
+  run: f32 = MT_RUN; rise: f32 = MT_RISE;
+  start: f32 = ifx out then lo else hi; end: f32 = ifx out then hi else lo;
+  for s: 0..<MT_FLIGHT_STEPS {
+    mt_marble(p, s % 2 == 0);
+    top := y0 + rise * cast(f32) (s + 1);
+    a := start + sg * run * cast(f32) s; b := a + sg * run;
+    mt_toward(p, mt_ev(w, a, c0, top), mt_ev(w, b, c0, top), mt_ev(w, b, c1, top), mt_ev(w, a, c1, top), up, 0.5);
+    mt_toward(p, mt_ev(w, a, c0, top - rise), mt_ev(w, a, c1, top - rise), mt_ev(w, a, c1, top), mt_ev(w, a, c0, top), down, 0.5);
+  }
+  arch_material(p, ARCH_M_SLAB, 0.84, 0.82, 0.8);
+  t0 := y0 + rise; t1 := y0 + rise * cast(f32) (MT_FLIGHT_STEPS + 1); last := y0 + rise * cast(f32) MT_FLIGHT_STEPS;
+  sixth: f32 = 1.0 / 6.0;
+  for e: 0..<2 {
+    c := ifx e == 0 then c0 else c1;
+    want := ifx e == 0 then arch_vmul(across, -1) else across;
+    mt_toward(p, mt_ev(w, start, c, y0), mt_ev(w, end, c, y0), mt_ev(w, end, c, t1), mt_ev(w, start, c, t0), want, sixth);
+  }
+  mt_toward(p, mt_ev(w, end, c0, y0), mt_ev(w, end, c1, y0), mt_ev(w, end, c1, last), mt_ev(w, end, c0, last), arch_vmul(down, -1), sixth);
+  if y0 > 0.01 { mt_toward(p, mt_ev(w, start, c0, y0), mt_ev(w, end, c0, y0), mt_ev(w, end, c1, y0), mt_ev(w, start, c1, y0), arch_v(0, -1, 0), sixth); }
+}
+// Marble: white, or a pale grey veined one, in turn.
+mt_marble :: (p: [] ArchPen, light: bool) {
+  if light { arch_material(p, ARCH_M_SLAB, 0.96, 0.95, 0.92); } else { arch_material(p, ARCH_M_SLAB, 0.72, 0.7, 0.7); }
+}
+// Column (i, j)'s run from y0 to y1, its side `face` (toward its neighbour ni, nj): the stretches of
+// it the neighbour doesn't cover, each in dressed stone where it faces into a hall (under the
+// neighbour's top), or cliff where it faces out.
+mt_sides :: (m: [] Mountain, p: [] ArchPen, ni: int, nj: int, face: int, y0: f32, y1: f32, x0: f32, x1: f32, z0: f32, z1: f32, s: f32) {
+  on := ni >= 0 && nj >= 0 && ni < MT_N && nj < MT_N;
+  nc := ifx on then nj * MT_N + ni else -1;
+  top := ifx on then m[0].top[nc] else 0.0f32;
+  at := y0;
+  if on {
+    for k: 0..<m[0].rn[nc] {
+      o := (nc * MT_RUNS + k) * 2; r0 := m[0].run[o]; r1 := m[0].run[o + 1];
+      if r1 <= at { continue; }
+      if r0 >= y1 { break; }
+      if r0 > at { mt_open(p, face, at, r0, top, x0, x1, z0, z1, s); }
+      if r1 > at { at = r1; }
+      if at >= y1 { break; }
+    }
+  }
+  if at < y1 { mt_open(p, face, at, y1, top, x0, x1, z0, z1, s); }
+}
+mt_open :: (p: [] ArchPen, face: int, a: f32, b: f32, top: f32, x0: f32, x1: f32, z0: f32, z1: f32, s: f32) {
+  if a < top { arch_material(p, ARCH_M_ASHLAR, 0.88 * s, 0.84 * s, 0.78 * s); mt_wall(p, face, a, ifx b < top then b else top, x0, x1, z0, z1); }
+  if b > top { arch_material(p, ARCH_M_ROCK, 0.78 * s, 0.74 * s, 0.7 * s); mt_wall(p, face, ifx a > top then a else top, b, x0, x1, z0, z1); }
+}
+mt_wall :: (p: [] ArchPen, face: int, a: f32, b: f32, x0: f32, x1: f32, z0: f32, z1: f32) {
+  k: f32 = 0.125;
+  // (the engine's +z face is the page's low-z side, its neighbour j - 1; its -z face j + 1)
+  if face == 0 { mt_face(p, arch_v(x0, a, z1), arch_v(x1, a, z1), arch_v(x1, b, z1), arch_v(x0, b, z1), x0, a, k); }
+  if face == 1 { mt_face(p, arch_v(x1, a, z0), arch_v(x0, a, z0), arch_v(x0, b, z0), arch_v(x1, b, z0), -x1, a, k); }
+  if face == 2 { mt_face(p, arch_v(x1, a, z1), arch_v(x1, a, z0), arch_v(x1, b, z0), arch_v(x1, b, z1), -z1, a, k); }
+  if face == 3 { mt_face(p, arch_v(x0, a, z0), arch_v(x0, a, z1), arch_v(x0, b, z1), arch_v(x0, b, z0), z0, a, k); }
+}
+
+// ---------------------------------------------------------------- checks
+
+MtTest :: struct { m: [1] Mountain; }
+mt_test_column :: (m: [] Mountain, x: f32, z: f32) -> int { return mt_cell(MT_CX + x, MT_CZ + z); }
+mt_test_open :: (m: [] Mountain, c: int, y0: f32, y1: f32) -> bool { return !mt_covers(m, c % MT_N, c / MT_N, y0, y1); }
+
+#test "the megalith: three stories under one flat roof, the plaza open to the sky, its colliders within their room" #steps 8000000000 {
+  t: [1] MtTest; m := t[0].m[..];
+  mt_make(m);
+  #assert m[0].made && m[0].nb <= MT_BOXES - MT_SPARE && m[0].columns > 1000 && m[0].steps_n == 4 * (MT_LEVELS - 1) * MT_FLIGHT_STEPS;
+  #assert MT_RISE <= 0.55 && abs(MT_RUN * cast(f32) MT_FLIGHT_STEPS - (MT_ATRIUM_A1 - MT_ATRIUM_A0 - 2 * MT_LEDGE)) < 0.01 && abs(MT_RISE * cast(f32) MT_FLIGHT_STEPS - 100) < 0.01;
+  // one flat roof over the core and the wings; the plaza is the top level's floor, open to the sky
+  #assert m[0].top[mt_test_column(m, 420, 140)] == MT_ROOF && m[0].top[mt_test_column(m, 0, 0)] == MT_PLAZA_Y;
+  #assert m[0].top[mt_test_column(m, 500, 20)] == MT_ROOF && m[0].top[mt_test_column(m, 1060, 60)] == MT_ROOF && m[0].top[mt_test_column(m, -1060, 60)] == MT_ROOF;
+  // the top level's galleries have a roof over them
+  #assert mt_covers(m, mt_test_column(m, 1060, 20) % MT_N, mt_test_column(m, 1060, 20) / MT_N, MT_LEVEL_Y[MT_LEVELS - 1] + MT_HALL_H, MT_ROOF);
+  // an atrium is open to the sky
+  #assert m[0].rn[mt_test_column(m, 0, 720)] == 0 && m[0].kind[mt_test_column(m, 0, 720)] == MT_K_ATRIUM;
+  // a second time makes nothing new
+  n := m[0].nb; mt_make(m); #assert m[0].nb == n;
+  for k: 0..<m[0].nb { o := k * 6; #assert m[0].boxes[o + 3] > m[0].boxes[o] && m[0].boxes[o + 4] > m[0].boxes[o + 1] && m[0].boxes[o + 5] > m[0].boxes[o + 2]; }
+}
+
+#test "connected: every wing's gallery at every level runs from its end to the core, the rings join them, the top level opens on the plaza" #steps 8000000000 {
+  t: [1] MtTest; m := t[0].m[..];
+  mt_make(m);
+  for w: 0..<4 {
+    for l: 0..<MT_LEVELS {
+      y := MT_LEVEL_Y[l];
+      // all the way along the wing's middle: room to stand, and a floor
+      a: f32 = 1060;
+      while a > MT_RING_IN {
+        c := mt_cell(mt_wx(w, a, 20), mt_wz(w, a, 20));
+        #assert mt_test_open(m, c, y + 0.1, y + MT_HALL_H - 0.1);
+        if l > 0 && m[0].kind[c] != MT_K_ATRIUM { #assert mt_covers(m, c % MT_N, c / MT_N, y - 1, y); }
+        a -= MT_CELL;
+      }
+    }
+    // the top level reaches the plaza
+    c := mt_cell(mt_wx(w, 300, 20), mt_wz(w, 300, 20)); #assert mt_test_open(m, c, MT_PLAZA_Y + 0.1, MT_PLAZA_Y + MT_HALL_H - 1);
+  }
+  // the rings round the core: open at the lower levels, at a corner too
+  for l: 0..<MT_LEVELS - 1 { y := MT_LEVEL_Y[l]; #assert mt_test_open(m, mt_test_column(m, 340, 300), y + 0.1, y + MT_HALL_H - 0.1) && mt_test_open(m, mt_test_column(m, -380, 100), y + 0.1, y + MT_HALL_H - 0.1); }
+  // and between the halls, rock: no hall at 150 m in a ring
+  #assert mt_covers(m, mt_test_column(m, 340, 300) % MT_N, mt_test_column(m, 340, 300) / MT_N, 61, 99);
+}
+
+#test "drawn: the mesh fits its room and leaves out the faces rock hides" #steps 40000000000 {
+  t: [1] MtTest; m := t[0].m[..];
+  mt_make(m);
+  mesh: [MT_VERTICES * ARCH_VERTEX_FLOATS] f32;
+  p: [1] ArchPen; arch_pen(p[..], mesh[..]);
+  mt_mesh(m, p[..], MT_VERTICES);
+  #assert p[0].n > 50000 && p[0].n < MT_VERTICES - 1000 && !p[0].full;
+}

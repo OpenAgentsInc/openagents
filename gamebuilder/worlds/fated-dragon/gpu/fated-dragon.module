@@ -1,0 +1,3 @@
+--vertices fd_bg_vs,fd_shadow_vs,fd_scene_vs,fd_fx_vs
+--fragments fd_bg_fs,fd_shadow_fs,fd_scene_fs,fd_bloom_fs,fd_post_fs,fd_fx_fs
+--bindings gamebuilder/worlds/fated-dragon/gpu/fated-dragon.bindings --strip fd_

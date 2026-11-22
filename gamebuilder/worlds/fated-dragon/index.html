@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fated Dragon — GAMEBUILDER</title>
+<meta name="description" content="Explore a 2.2 km stone megalith as a dragon: walk its galleries and 200-step atriums, take flight over its gardens, breathe fire, and find the sleeping dragons on the plaza.">
+<meta property="og:title" content="Fated Dragon — GAMEBUILDER">
+<meta property="og:description" content="Explore a 2.2 km stone megalith as a dragon on gamebuilder.org.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gamebuilder.org/fated-dragon">
+<meta property="og:image" content="https://gamebuilder.org/img/fated-dragon.jpg">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M9 9h14v14H9z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Geist Mono';src:url('/fonts/GeistMono.woff2') format('woff2');font-weight:400;font-display:swap}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0b0f;color:#e8eaf0;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+#coaxial{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#fd-back{position:fixed;top:14px;left:16px;z-index:20;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(10,11,15,.58);border:1px solid rgba(255,255,255,.16);color:#e8eaf0;text-decoration:none;font-size:11px;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(6px);transition:background .15s,border-color .15s}
+#fd-back:hover{background:rgba(10,11,15,.85);border-color:rgba(255,255,255,.45)}
+#fd-hint{position:fixed;left:16px;bottom:14px;z-index:20;padding:7px 11px;background:rgba(10,11,15,.56);border:1px solid rgba(255,255,255,.12);color:rgba(232,234,240,.84);font-size:11px;letter-spacing:.04em;line-height:1.5;backdrop-filter:blur(6px);pointer-events:none;transition:opacity .6s}
+#fd-hint.dim{opacity:.42}
+#fd-nogpu{display:none;position:fixed;inset:0;z-index:30;background:#09090b;align-items:center;justify-content:center;padding:24px;text-align:center}
+#fd-nogpu.show{display:flex}
+#fd-nogpu .box{max-width:440px;border:1px solid rgba(255,255,255,.18);padding:28px 24px;background:#0e0f14}
+#fd-nogpu h1{font-size:16px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px}
+#fd-nogpu p{font-size:13px;line-height:1.6;color:#a8adbc;margin-bottom:16px}
+#fd-nogpu a{color:#fff;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+@media (max-width:640px){#fd-hint{font-size:10px;right:16px;bottom:10px}}
+</style>
+</head>
+<body>
+<canvas id="coaxial"></canvas>
+<a id="fd-back" href="/">← GAMEBUILDER</a>
+<div id="fd-hint">WASD move · Space jump · 2× Space fly · Shift descend · E fire · Drag / Scroll camera</div>
+<div id="fd-nogpu">
+  <div class="box">
+    <h1>WebGPU required</h1>
+    <p>Fated Dragon runs directly on your GPU using WebGPU. Open this page in Chrome, Edge, Safari 26+, or Firefox with WebGPU enabled.</p>
+    <a href="/">← Back to GameBuilder</a>
+  </div>
+</div>
+<script>
+if (!("gpu" in navigator)) document.getElementById("fd-nogpu").classList.add("show");
+</script>
+<script type="module" src="/coaxial/host.js"
+  data-app="fated-dragon"
+  data-root="/fated-dragon"
+  data-wasm="/fated-dragon/build/fated-dragon.wasm"
+  data-wgsl="/fated-dragon/fated-dragon.wgsl"
+  data-assets="data:/fated-dragon/assets/dragon.gbd1"></script>
+<script type="module" src="/fated-dragon/glue.js"></script>
+</body>
+</html>

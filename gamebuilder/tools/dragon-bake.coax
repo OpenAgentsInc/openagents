@@ -1,0 +1,587 @@
+// Bakes the Shapechange dragon (assets/metaverse/beasts/dragon.gltf, CC0 1.0) into a raw binary
+// GBD1 asset read by gamebuilder/worlds/fated-dragon/dragon-rig.coax. Offline; the page never runs it.
+//
+//   coax/web/tool.sh gamebuilder/tools/dragon-bake.coax assets/metaverse/beasts/dragon.gltf OUT.gbd1 [SCALE]
+//
+// Layout (little endian), as tools/ghost-bake.coax's GBG1 but "GBD1", 20-byte vertices with a colour:
+//   "GBD1", then u32s: vertices, triangles, joints, clips, samples a second, moved joints
+//   a joint: its parent (u8, 255 none); its rest translation (3 f32); its inverse bind, 3 rows of 4 (12 f32)
+//   a moved joint: its number (u8)
+//   a clip: samples (u32), seconds (f32), metres a loop (f32)
+//   a vertex, 20 bytes: x y z (i16, 1/8192 m), normal (3 i8), four joints (u8), four weights (u8), colour (3 u8, display)
+//   a triangle: three vertices (u16)
+//   a clip's samples: each joint's rotation x y z w (4 i16, 32767ths), then each moved joint's translation (3 i16)
+// Metres, +y up, +z the way it faces, its left +x.
+// tool.sh: stack-gib 2
+// tool.sh: release
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../metaverse-engine/anim/pose.coax";
+#import "Basic";
+
+DB_GLTF_MAX :: 2097152;
+DB_BIN_MAX :: 4194304;
+DB_JSON_NODES :: 65536;
+DB_MAX_NODES :: 256;
+DB_MAX_JOINTS :: 64;
+DB_MAX_VERTS :: 16384;
+DB_MAX_TRIS :: 32768;
+DB_MAX_KEYS :: 4096;
+DB_OUT_MAX :: 1048576;
+DB_FPS :: 24;
+DB_CLIPS :: 8;
+DB_POS :: 8192.0;
+DB_CLIP_NAMES :: [DB_CLIPS] string.["idle", "walk", "glide", "land", "breath", "fly", "bank_left", "bank_right"];
+
+DbAcc :: struct {
+  off: int; stride: int; count: int; comp: int; comps: int; normalized: bool;
+}
+
+DbTrack :: struct {
+  has: bool; step: bool; n: int;
+  times: [DB_MAX_KEYS] f32;
+  vals: [DB_MAX_KEYS * 4] f32;
+}
+
+DbWork :: struct {
+  gltf: [DB_GLTF_MAX] u8;
+  bin: [DB_BIN_MAX] u8; bin_n: int;
+  nodes: [DB_JSON_NODES] JvNode;
+  doc: [1] Jv;
+  node_parent: [DB_MAX_NODES] int;
+  jindex: [DB_MAX_NODES] int;
+  joints: [DB_MAX_JOINTS] int; jn: int;
+  parent: [DB_MAX_JOINTS] int;
+  rest_t: [DB_MAX_JOINTS * 3] f32;
+  rest_r: [DB_MAX_JOINTS * 4] f32;
+  bind: [DB_MAX_JOINTS * 12] f32;
+  moved_flag: [DB_MAX_JOINTS] bool;
+  moved: [DB_MAX_JOINTS] int; nm: int;
+  nv: int;
+  vp: [DB_MAX_VERTS * 3] f32;
+  vn: [DB_MAX_VERTS * 3] f32;
+  vj: [DB_MAX_VERTS * 4] u8;
+  vw: [DB_MAX_VERTS * 4] u8;
+  vc: [DB_MAX_VERTS * 3] u8;
+  nt: int;
+  tri: [DB_MAX_TRIS * 3] u16;
+  clip_frames: [DB_CLIPS] int;
+  clip_secs: [DB_CLIPS] f32;
+  tr_r: [DB_MAX_JOINTS] DbTrack;
+  tr_t: [DB_MAX_JOINTS] DbTrack;
+  clip_buf: [DB_OUT_MAX] u8; clip_n: int;
+  out: [DB_OUT_MAX] u8; out_n: int;
+}
+
+db_u16_le :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+db_u32_le :: (b: [] u8, at: int) -> int { return db_u16_le(b, at) | (db_u16_le(b, at + 2) << 16); }
+db_f32_le :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) db_u32_le(b, at)); }
+
+db_put_u8 :: (buf: [] u8, at: [] int, v: int) -> bool {
+  if at[0] >= buf.count { return false; }
+  buf[at[0]] = cast,trunc(u8) v; at[0] += 1; return true;
+}
+db_put_u16 :: (buf: [] u8, at: [] int, v: int) -> bool {
+  return db_put_u8(buf, at, v & 255) && db_put_u8(buf, at, (v >> 8) & 255);
+}
+db_put_i16 :: (buf: [] u8, at: [] int, v: int) -> bool {
+  x := ifx v < -32767 then -32767 else ifx v > 32767 then 32767 else v;
+  return db_put_u16(buf, at, x & 65535);
+}
+db_put_i8 :: (buf: [] u8, at: [] int, v: int) -> bool {
+  x := ifx v < -127 then -127 else ifx v > 127 then 127 else v;
+  return db_put_u8(buf, at, x & 255);
+}
+db_put_u32 :: (buf: [] u8, at: [] int, v: int) -> bool {
+  return db_put_u16(buf, at, v & 65535) && db_put_u16(buf, at, (v >> 16) & 65535);
+}
+db_put_f32 :: (buf: [] u8, at: [] int, v: f32) -> bool {
+  return db_put_u32(buf, at, cast(int) f32_bits(v));
+}
+
+db_round :: (x: f64) -> int {
+  if x >= 0.0 { return cast(int) floor(cast(f32) (x + 0.5)); }
+  return -cast(int) floor(cast(f32) (-x + 0.5));
+}
+
+db_round64 :: (x: f64) -> int {
+  if x >= 0.0 {
+    i := cast(int) x;
+    return ifx x - cast(f64) i >= 0.5 then i + 1 else i;
+  }
+  a := -x;
+  i := cast(int) a;
+  return -(ifx a - cast(f64) i >= 0.5 then i + 1 else i);
+}
+
+db_srgb :: (c0: f64) -> f64 {
+  c := ifx c0 < 0.0 then 0.0 else ifx c0 > 1.0 then 1.0 else c0;
+  if c <= 0.0031308 { return 12.92 * c; }
+  return 1.055 * cast(f64) pow(cast(f32) c, 1.0f32 / 2.4f32) - 0.055;
+}
+
+db_parse_f64 :: (s: string, fallback: f64) -> f64 {
+  if s.count == 0 { return fallback; }
+  i := 0; neg := false;
+  if s[i] == '-' { neg = true; i += 1; }
+  else if s[i] == '+' { i += 1; }
+  val: f64 = 0.0; digits := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    val = val * 10.0 + cast(f64) (s[i] - '0');
+    i += 1; digits += 1;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1; frac: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      val += cast(f64) (s[i] - '0') * frac;
+      frac *= 0.1; i += 1; digits += 1;
+    }
+  }
+  if digits == 0 { return fallback; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; eneg := false;
+    if i < s.count && s[i] == '-' { eneg = true; i += 1; }
+    else if i < s.count && s[i] == '+' { i += 1; }
+    ep := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { ep = ep * 10 + cast(int) (s[i] - '0'); i += 1; }
+    scale: f64 = 1.0;
+    for k: 0..<ep { scale *= 10.0; }
+    if eneg { val /= scale; } else { val *= scale; }
+  }
+  if i != s.count { return fallback; }
+  return ifx neg then -val else val;
+}
+
+db_jv_f32 :: (d: Jv, at: int, fallback: f32) -> f32 {
+  if jv_kind(d, at) != JV_NUMBER { return fallback; }
+  return cast(f32) db_parse_f64(jv_raw(d, at), cast(f64) fallback);
+}
+
+db_acc :: (w: [] DbWork, idx: int, a: [] DbAcc) -> bool {
+  d := w[0].doc[0];
+  accs := jv_get(d, 0, "accessors");
+  views := jv_get(d, 0, "bufferViews");
+  an := jv_at(d, accs, idx);
+  if an < 0 { return false; }
+  bvi := jv_int(d, jv_get(d, an, "bufferView"), -1);
+  vn := jv_at(d, views, bvi);
+  if vn < 0 { return false; }
+  comp := jv_int(d, jv_get(d, an, "componentType"), 0);
+  cnt := jv_int(d, jv_get(d, an, "count"), 0);
+  tn := jv_get(d, an, "type");
+  comps := 0;
+  if jv_raw_eq(jv_raw(d, tn), "SCALAR") { comps = 1; }
+  else if jv_raw_eq(jv_raw(d, tn), "VEC2") { comps = 2; }
+  else if jv_raw_eq(jv_raw(d, tn), "VEC3") { comps = 3; }
+  else if jv_raw_eq(jv_raw(d, tn), "VEC4") { comps = 4; }
+  else if jv_raw_eq(jv_raw(d, tn), "MAT4") { comps = 16; }
+  else { return false; }
+  csize := 0;
+  if comp == 5120 || comp == 5121 { csize = 1; }
+  else if comp == 5122 || comp == 5123 { csize = 2; }
+  else if comp == 5125 || comp == 5126 { csize = 4; }
+  else { return false; }
+  boff := jv_int(d, jv_get(d, vn, "byteOffset"), 0) + jv_int(d, jv_get(d, an, "byteOffset"), 0);
+  stride := jv_int(d, jv_get(d, vn, "byteStride"), csize * comps);
+  if boff < 0 || cnt < 0 || stride < csize * comps { return false; }
+  if cnt > 0 && boff + (cnt - 1) * stride + csize * comps > w[0].bin_n { return false; }
+  a[0] = DbAcc.{off = boff, stride = stride, count = cnt, comp = comp, comps = comps, normalized = jv_bool(d, jv_get(d, an, "normalized"))};
+  return true;
+}
+
+db_acc_elem :: (w: [] DbWork, a: DbAcc, item: int, comp_i: int) -> f32 {
+  csize := ifx a.comp == 5120 || a.comp == 5121 then 1 else ifx a.comp == 5122 || a.comp == 5123 then 2 else 4;
+  at := a.off + item * a.stride + comp_i * csize;
+  b := w[0].bin[..];
+  v: f32 = 0;
+  if a.comp == 5126 { return db_f32_le(b, at); }
+  else if a.comp == 5121 { v = cast(f32) b[at]; if a.normalized { v /= 255.0; } }
+  else if a.comp == 5120 { u := cast(int) b[at]; if u >= 128 { u -= 256; } v = cast(f32) u; if a.normalized { v /= 127.0; } }
+  else if a.comp == 5123 { v = cast(f32) db_u16_le(b, at); if a.normalized { v /= 65535.0; } }
+  else if a.comp == 5122 { u := db_u16_le(b, at); if u >= 32768 { u -= 65536; } v = cast(f32) u; if a.normalized { v /= 32767.0; } }
+  else if a.comp == 5125 { v = cast(f32) db_u32_le(b, at); }
+  return v;
+}
+
+db_acc_int :: (w: [] DbWork, a: DbAcc, item: int, comp_i: int) -> int {
+  csize := ifx a.comp == 5120 || a.comp == 5121 then 1 else ifx a.comp == 5122 || a.comp == 5123 then 2 else 4;
+  at := a.off + item * a.stride + comp_i * csize;
+  b := w[0].bin[..];
+  if a.comp == 5121 { return cast(int) b[at]; }
+  if a.comp == 5123 { return db_u16_le(b, at); }
+  if a.comp == 5125 { return db_u32_le(b, at); }
+  return cast(int) db_acc_elem(w, a, item, comp_i);
+}
+
+db_load_track :: (w: [] DbWork, anim_node: int, nd: int, path: string, out: [] DbTrack) -> bool {
+  d := w[0].doc[0];
+  out[0].has = false; out[0].n = 0; out[0].step = false;
+  chans := jv_get(d, anim_node, "channels");
+  samps := jv_get(d, anim_node, "samplers");
+  for i: 0..<jv_len(d, chans) {
+    ch := jv_at(d, chans, i);
+    tgt := jv_get(d, ch, "target");
+    if jv_int(d, jv_get(d, tgt, "node"), -1) != nd { continue; }
+    if !jv_raw_eq(jv_raw(d, jv_get(d, tgt, "path")), path) { continue; }
+    si := jv_int(d, jv_get(d, ch, "sampler"), -1);
+    sn := jv_at(d, samps, si);
+    if sn < 0 { return false; }
+    ia: [1] DbAcc; oa: [1] DbAcc;
+    if !db_acc(w, jv_int(d, jv_get(d, sn, "input"), -1), ia[..]) ||
+       !db_acc(w, jv_int(d, jv_get(d, sn, "output"), -1), oa[..]) { return false; }
+    if ia[0].count <= 0 || ia[0].count > DB_MAX_KEYS || ia[0].count != oa[0].count { return false; }
+    out[0].has = true;
+    out[0].n = ia[0].count;
+    out[0].step = jv_raw_eq(jv_raw(d, jv_get(d, sn, "interpolation")), "STEP");
+    for k: 0..<ia[0].count {
+      out[0].times[k] = db_acc_elem(w, ia[0], k, 0);
+      for c: 0..<oa[0].comps { out[0].vals[k * 4 + c] = db_acc_elem(w, oa[0], k, c); }
+    }
+    return true;
+  }
+  return true;
+}
+
+db_sample_q :: (tr: [] DbTrack, t: f32) -> Quat {
+  n := tr[0].n;
+  if t <= tr[0].times[0] { return Quat.{x = tr[0].vals[0], y = tr[0].vals[1], z = tr[0].vals[2], w = tr[0].vals[3]}; }
+  if t >= tr[0].times[n - 1] { o := (n - 1) * 4; return Quat.{x = tr[0].vals[o], y = tr[0].vals[o + 1], z = tr[0].vals[o + 2], w = tr[0].vals[o + 3]}; }
+  for i: 0..<n - 1 {
+    t0 := tr[0].times[i]; t1 := tr[0].times[i + 1];
+    if t >= t0 && t <= t1 {
+      o0 := i * 4;
+      qa := Quat.{x = tr[0].vals[o0], y = tr[0].vals[o0 + 1], z = tr[0].vals[o0 + 2], w = tr[0].vals[o0 + 3]};
+      if tr[0].step || !(t1 > t0) { return quat_unit(qa); }
+      o1 := (i + 1) * 4;
+      qb := Quat.{x = tr[0].vals[o1], y = tr[0].vals[o1 + 1], z = tr[0].vals[o1 + 2], w = tr[0].vals[o1 + 3]};
+      return quat_unit(slerp(qa, qb, (t - t0) / (t1 - t0)));
+    }
+  }
+  o := (n - 1) * 4;
+  return quat_unit(Quat.{x = tr[0].vals[o], y = tr[0].vals[o + 1], z = tr[0].vals[o + 2], w = tr[0].vals[o + 3]});
+}
+
+db_sample_v3 :: (tr: [] DbTrack, t: f32) -> [3] f32 {
+  n := tr[0].n;
+  if t <= tr[0].times[0] { return [3] f32.[tr[0].vals[0], tr[0].vals[1], tr[0].vals[2]]; }
+  if t >= tr[0].times[n - 1] { o := (n - 1) * 4; return [3] f32.[tr[0].vals[o], tr[0].vals[o + 1], tr[0].vals[o + 2]]; }
+  for i: 0..<n - 1 {
+    t0 := tr[0].times[i]; t1 := tr[0].times[i + 1];
+    if t >= t0 && t <= t1 {
+      o0 := i * 4;
+      if tr[0].step || !(t1 > t0) { return [3] f32.[tr[0].vals[o0], tr[0].vals[o0 + 1], tr[0].vals[o0 + 2]]; }
+      f := (t - t0) / (t1 - t0); o1 := (i + 1) * 4;
+      return [3] f32.[
+        tr[0].vals[o0] + (tr[0].vals[o1] - tr[0].vals[o0]) * f,
+        tr[0].vals[o0 + 1] + (tr[0].vals[o1 + 1] - tr[0].vals[o0 + 1]) * f,
+        tr[0].vals[o0 + 2] + (tr[0].vals[o1 + 2] - tr[0].vals[o0 + 2]) * f,
+      ];
+    }
+  }
+  o := (n - 1) * 4;
+  return [3] f32.[tr[0].vals[o], tr[0].vals[o + 1], tr[0].vals[o + 2]];
+}
+
+db_find_anim :: (d: Jv, name: string) -> int {
+  anims := jv_get(d, 0, "animations");
+  for i: 0..<jv_len(d, anims) {
+    an := jv_at(d, anims, i);
+    if jv_raw_eq(jv_raw(d, jv_get(d, an, "name")), name) { return an; }
+  }
+  return -1;
+}
+
+// Bakes gltf_text + bin into w[0].out[0..<w[0].out_n]. Empty string on success, else error message.
+db_bake :: (w: [] DbWork, gltf_text: string, bin_len: int, scale: f64) -> string {
+  w[0].bin_n = bin_len;
+  if !jv_parse(w[0].doc[..], gltf_text, w[0].nodes[..]) { return "could not parse glTF JSON"; }
+  d := w[0].doc[0];
+  nodes := jv_get(d, 0, "nodes");
+  nn := jv_len(d, nodes);
+  if nn <= 0 || nn > DB_MAX_NODES { return "unexpected glTF node count"; }
+  for i: 0..<nn { w[0].node_parent[i] = -1; w[0].jindex[i] = -1; }
+  for i: 0..<nn {
+    nd := jv_at(d, nodes, i);
+    ch := jv_get(d, nd, "children");
+    for k: 0..<jv_len(d, ch) {
+      ci := jv_int(d, jv_at(d, ch, k), -1);
+      if ci >= 0 && ci < nn { w[0].node_parent[ci] = i; }
+    }
+  }
+  skin := jv_at(d, jv_get(d, 0, "skins"), 0);
+  if skin < 0 { return "glTF has no skin"; }
+  jarr := jv_get(d, skin, "joints");
+  jn := jv_len(d, jarr);
+  if jn <= 0 || jn > DB_MAX_JOINTS { return "unexpected joint count"; }
+  w[0].jn = jn;
+  for k: 0..<jn {
+    nd := jv_int(d, jv_at(d, jarr, k), -1);
+    if nd < 0 || nd >= nn { return "joint node index out of range"; }
+    w[0].joints[k] = nd;
+    w[0].jindex[nd] = k;
+  }
+  for k: 0..<jn {
+    p := w[0].node_parent[w[0].joints[k]];
+    pk := ifx p >= 0 then w[0].jindex[p] else -1;
+    if pk >= k { return "joint order: a parent after its child"; }
+    w[0].parent[k] = pk;
+  }
+  root_p := w[0].node_parent[w[0].joints[0]];
+  if root_p >= 0 {
+    rn := jv_at(d, nodes, root_p);
+    tr := jv_get(d, rn, "translation");
+    for c: 0..<jv_len(d, tr) { if abs(db_jv_f32(d, jv_at(d, tr, c), 0)) > 0.000001 { return "the rig's node moves: not handled"; } }
+    rt := jv_get(d, rn, "rotation");
+    if jv_len(d, rt) == 4 {
+      if abs(db_jv_f32(d, jv_at(d, rt, 0), 0)) > 0.000001 || abs(db_jv_f32(d, jv_at(d, rt, 1), 0)) > 0.000001 ||
+         abs(db_jv_f32(d, jv_at(d, rt, 2), 0)) > 0.000001 || abs(db_jv_f32(d, jv_at(d, rt, 3), 1) - 1) > 0.000001 {
+        return "the rig's node rotates: not handled";
+      }
+    }
+    sc := jv_get(d, rn, "scale");
+    for c: 0..<jv_len(d, sc) { if abs(db_jv_f32(d, jv_at(d, sc, c), 1) - 1) > 0.000001 { return "the rig's node scales: not handled"; } }
+  }
+  for k: 0..<jn {
+    nd := jv_at(d, nodes, w[0].joints[k]);
+    tr := jv_get(d, nd, "translation");
+    for c: 0..<3 { w[0].rest_t[k * 3 + c] = ifx c < jv_len(d, tr) then cast(f32) (cast(f64) db_jv_f32(d, jv_at(d, tr, c), 0) * scale) else 0.0f32; }
+    rt := jv_get(d, nd, "rotation");
+    w[0].rest_r[k * 4] = ifx jv_len(d, rt) == 4 then db_jv_f32(d, jv_at(d, rt, 0), 0) else 0.0f32;
+    w[0].rest_r[k * 4 + 1] = ifx jv_len(d, rt) == 4 then db_jv_f32(d, jv_at(d, rt, 1), 0) else 0.0f32;
+    w[0].rest_r[k * 4 + 2] = ifx jv_len(d, rt) == 4 then db_jv_f32(d, jv_at(d, rt, 2), 0) else 0.0f32;
+    w[0].rest_r[k * 4 + 3] = ifx jv_len(d, rt) == 4 then db_jv_f32(d, jv_at(d, rt, 3), 1) else 1.0f32;
+  }
+  ibm: [1] DbAcc;
+  if !db_acc(w, jv_int(d, jv_get(d, skin, "inverseBindMatrices"), -1), ibm[..]) || ibm[0].count != jn {
+    return "could not read inverseBindMatrices";
+  }
+  for k: 0..<jn {
+    for r: 0..<3 {
+      o := k * 12 + r * 4;
+      w[0].bind[o] = db_acc_elem(w, ibm[0], k, 0 * 4 + r);
+      w[0].bind[o + 1] = db_acc_elem(w, ibm[0], k, 1 * 4 + r);
+      w[0].bind[o + 2] = db_acc_elem(w, ibm[0], k, 2 * 4 + r);
+      w[0].bind[o + 3] = cast(f32) (cast(f64) db_acc_elem(w, ibm[0], k, 3 * 4 + r) * scale);
+    }
+  }
+
+  // Mesh primitives and material colours
+  w[0].nv = 0; w[0].nt = 0;
+  mesh := jv_at(d, jv_get(d, 0, "meshes"), 0);
+  prims := jv_get(d, mesh, "primitives");
+  mats := jv_get(d, 0, "materials");
+  for pi: 0..<jv_len(d, prims) {
+    pr := jv_at(d, prims, pi);
+    at := jv_get(d, pr, "attributes");
+    mi := jv_int(d, jv_get(d, pr, "material"), 0);
+    mat := jv_at(d, mats, mi);
+    pbr := jv_get(d, mat, "pbrMetallicRoughness");
+    bcf := jv_get(d, pbr, "baseColorFactor");
+    emf := jv_get(d, mat, "emissiveFactor");
+    col: [3] u8;
+    for c: 0..<3 {
+      base := ifx c < jv_len(d, bcf) then cast(f64) db_jv_f32(d, jv_at(d, bcf, c), 1) else 1.0;
+      glow := ifx c < jv_len(d, emf) then cast(f64) db_jv_f32(d, jv_at(d, emf, c), 0) else 0.0;
+      v := db_srgb(base) + glow * 0.5;
+      if v > 1.0 { v = 1.0; } if v < 0.0 { v = 0.0; }
+      col[c] = cast,trunc(u8) db_round64(v * 255.0);
+    }
+    ap: [1] DbAcc; an: [1] DbAcc; aj: [1] DbAcc; aw: [1] DbAcc;
+    if !db_acc(w, jv_int(d, jv_get(d, at, "POSITION"), -1), ap[..]) ||
+       !db_acc(w, jv_int(d, jv_get(d, at, "NORMAL"), -1), an[..]) ||
+       !db_acc(w, jv_int(d, jv_get(d, at, "JOINTS_0"), -1), aj[..]) ||
+       !db_acc(w, jv_int(d, jv_get(d, at, "WEIGHTS_0"), -1), aw[..]) {
+      return "missing primitive vertex attributes";
+    }
+    first := w[0].nv;
+    if first + ap[0].count > DB_MAX_VERTS { return "too many vertices"; }
+    for k: 0..<ap[0].count {
+      vi := w[0].nv; w[0].nv += 1;
+      for c: 0..<3 {
+        w[0].vp[vi * 3 + c] = db_acc_elem(w, ap[0], k, c);
+        w[0].vn[vi * 3 + c] = db_acc_elem(w, an[0], k, c);
+        w[0].vc[vi * 3 + c] = col[c];
+      }
+      wf: [4] f64; sum: f64 = 0.0;
+      for c: 0..<4 {
+        w[0].vj[vi * 4 + c] = cast,trunc(u8) db_acc_int(w, aj[0], k, c);
+        x := cast(f64) db_acc_elem(w, aw[0], k, c);
+        if x < 0.0 { x = 0.0; }
+        wf[c] = x; sum += x;
+      }
+      if !(sum > 0.0) { sum = 1.0; }
+      wb: [4] int; wsum := 0; best := 0;
+      for c: 0..<4 {
+        wb[c] = db_round64(wf[c] / sum * 255.0);
+        wsum += wb[c];
+        if wb[c] > wb[best] { best = c; }
+      }
+      wb[best] += 255 - wsum;
+      for c: 0..<4 { w[0].vw[vi * 4 + c] = cast,trunc(u8) wb[c]; }
+    }
+    in_id := jv_int(d, jv_get(d, pr, "indices"), -1);
+    if in_id >= 0 {
+      ai: [1] DbAcc;
+      if !db_acc(w, in_id, ai[..]) { return "could not read primitive indices"; }
+      nt_add := ai[0].count / 3;
+      if w[0].nt + nt_add > DB_MAX_TRIS { return "too many triangles"; }
+      for k: 0..<nt_add {
+        ti := w[0].nt; w[0].nt += 1;
+        for c: 0..<3 { w[0].tri[ti * 3 + c] = cast,trunc(u16) (first + db_acc_int(w, ai[0], k * 3 + c, 0)); }
+      }
+    } else {
+      nt_add := ap[0].count / 3;
+      if w[0].nt + nt_add > DB_MAX_TRIS { return "too many triangles"; }
+      for k: 0..<nt_add {
+        ti := w[0].nt; w[0].nt += 1;
+        for c: 0..<3 { w[0].tri[ti * 3 + c] = cast,trunc(u16) (first + k * 3 + c); }
+      }
+    }
+  }
+
+  // Moved joints across the 8 clips
+  for k: 0..<jn { w[0].moved_flag[k] = false; }
+  for ci: 0..<DB_CLIPS {
+    an := db_find_anim(d, DB_CLIP_NAMES[ci]);
+    if an < 0 { return "missing expected animation clip"; }
+    for k: 0..<jn {
+      if !db_load_track(w, an, w[0].joints[k], "translation", w[0].tr_t[k..<k + 1]) { return "could not read translation track"; }
+      if w[0].tr_t[k].has {
+        for s: 0..<w[0].tr_t[k].n {
+          for c: 0..<3 {
+            rest_raw := cast(f64) w[0].rest_t[k * 3 + c] / scale;
+            if abs(cast(f64) w[0].tr_t[k].vals[s * 4 + c] - rest_raw) > 0.0001 { w[0].moved_flag[k] = true; }
+          }
+        }
+      }
+    }
+  }
+  w[0].nm = 0;
+  for k: 0..<jn { if w[0].moved_flag[k] { w[0].moved[w[0].nm] = k; w[0].nm += 1; } }
+
+  // Sample clips at DB_FPS
+  cn := [1] int.[0];
+  for ci: 0..<DB_CLIPS {
+    an := db_find_anim(d, DB_CLIP_NAMES[ci]);
+    t0: f32 = 1e9; t1: f32 = -1e9; any_t := false;
+    for k: 0..<jn {
+      if !db_load_track(w, an, w[0].joints[k], "rotation", w[0].tr_r[k..<k + 1]) ||
+         !db_load_track(w, an, w[0].joints[k], "translation", w[0].tr_t[k..<k + 1]) { return "could not read clip tracks"; }
+      if w[0].tr_r[k].has {
+        for s: 0..<w[0].tr_r[k].n { tv := w[0].tr_r[k].times[s]; if tv < t0 { t0 = tv; } if tv > t1 { t1 = tv; } any_t = true; }
+      }
+      if w[0].tr_t[k].has {
+        for s: 0..<w[0].tr_t[k].n { tv := w[0].tr_t[k].times[s]; if tv < t0 { t0 = tv; } if tv > t1 { t1 = tv; } any_t = true; }
+      }
+    }
+    if !any_t { return "clip has no keyframes"; }
+    secs := t1 - t0;
+    if secs < 1.0f32 / cast(f32) DB_FPS { secs = 1.0f32 / cast(f32) DB_FPS; }
+    frames := db_round64(cast(f64) secs * cast(f64) DB_FPS) + 1;
+    if frames < 2 { frames = 2; }
+    w[0].clip_frames[ci] = frames;
+    w[0].clip_secs[ci] = secs;
+    for f: 0..<frames {
+      t := t0 + secs * cast(f32) f / cast(f32) (frames - 1);
+      for k: 0..<jn {
+        q := ifx w[0].tr_r[k].has then db_sample_q(w[0].tr_r[k..<k + 1], t)
+             else Quat.{x = w[0].rest_r[k * 4], y = w[0].rest_r[k * 4 + 1], z = w[0].rest_r[k * 4 + 2], w = w[0].rest_r[k * 4 + 3]};
+        if !db_put_i16(w[0].clip_buf[..], cn[..], db_round64(cast(f64) q.x * 32767.0)) ||
+           !db_put_i16(w[0].clip_buf[..], cn[..], db_round64(cast(f64) q.y * 32767.0)) ||
+           !db_put_i16(w[0].clip_buf[..], cn[..], db_round64(cast(f64) q.z * 32767.0)) ||
+           !db_put_i16(w[0].clip_buf[..], cn[..], db_round64(cast(f64) q.w * 32767.0)) { return "clip buffer overflow"; }
+      }
+      for mi: 0..<w[0].nm {
+        k := w[0].moved[mi];
+        v: [3] f32;
+        if w[0].tr_t[k].has {
+          v = db_sample_v3(w[0].tr_t[k..<k + 1], t);
+          for c: 0..<3 { v[c] = cast(f32) (cast(f64) v[c] * scale); }
+        } else {
+          for c: 0..<3 { v[c] = w[0].rest_t[k * 3 + c]; }
+        }
+        for c: 0..<3 {
+          if !db_put_i16(w[0].clip_buf[..], cn[..], db_round64(cast(f64) v[c] * DB_POS)) { return "clip buffer overflow"; }
+        }
+      }
+    }
+  }
+  w[0].clip_n = cn[0];
+
+  // Assemble GBD1 binary
+  on := [1] int.[0];
+  out := w[0].out[..];
+  _ = db_put_u8(out, on[..], 'G'); _ = db_put_u8(out, on[..], 'B'); _ = db_put_u8(out, on[..], 'D'); _ = db_put_u8(out, on[..], '1');
+  _ = db_put_u32(out, on[..], w[0].nv); _ = db_put_u32(out, on[..], w[0].nt);
+  _ = db_put_u32(out, on[..], jn); _ = db_put_u32(out, on[..], DB_CLIPS);
+  _ = db_put_u32(out, on[..], DB_FPS); _ = db_put_u32(out, on[..], w[0].nm);
+  for k: 0..<jn { _ = db_put_u8(out, on[..], ifx w[0].parent[k] < 0 then 255 else w[0].parent[k]); }
+  for i: 0..<jn * 3 { _ = db_put_f32(out, on[..], w[0].rest_t[i]); }
+  for i: 0..<jn * 12 { _ = db_put_f32(out, on[..], w[0].bind[i]); }
+  for i: 0..<w[0].nm { _ = db_put_u8(out, on[..], w[0].moved[i]); }
+  for ci: 0..<DB_CLIPS {
+    _ = db_put_u32(out, on[..], w[0].clip_frames[ci]);
+    _ = db_put_f32(out, on[..], w[0].clip_secs[ci]);
+    _ = db_put_f32(out, on[..], 0.0f32);
+  }
+  for i: 0..<w[0].nv {
+    for c: 0..<3 { _ = db_put_i16(out, on[..], db_round64(cast(f64) w[0].vp[i * 3 + c] * scale * DB_POS)); }
+    for c: 0..<3 { _ = db_put_i8(out, on[..], db_round64(cast(f64) w[0].vn[i * 3 + c] * 127.0)); }
+    for c: 0..<4 { _ = db_put_u8(out, on[..], cast(int) w[0].vj[i * 4 + c]); }
+    for c: 0..<4 { _ = db_put_u8(out, on[..], cast(int) w[0].vw[i * 4 + c]); }
+    for c: 0..<3 { _ = db_put_u8(out, on[..], cast(int) w[0].vc[i * 3 + c]); }
+  }
+  for i: 0..<w[0].nt {
+    for c: 0..<3 { _ = db_put_u16(out, on[..], cast(int) w[0].tri[i * 3 + c]); }
+  }
+  if on[0] + w[0].clip_n > out.count { return "output buffer overflow"; }
+  for i: 0..<w[0].clip_n { out[on[0] + i] = w[0].clip_buf[i]; }
+  w[0].out_n = on[0] + w[0].clip_n;
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 || args_count(a[..]) > 3 {
+    tool_errln("usage: tool.sh gamebuilder/tools/dragon-bake.coax assets/metaverse/beasts/dragon.gltf OUT.gbd1 [SCALE]");
+    return 2;
+  }
+  src := args_at(a[..], 0);
+  dst := args_at(a[..], 1);
+  scale: f64 = 0.3;
+  if args_count(a[..]) == 3 {
+    scale = db_parse_f64(args_at(a[..], 2), -1.0);
+    if !(scale > 0.0 && scale < 100.0) { tool_errln("dragon-bake: invalid SCALE"); return 2; }
+  }
+  w: [1] DbWork = ---;
+  gn := fs_read(src, w[0].gltf[..]);
+  if gn <= 0 || gn >= DB_GLTF_MAX { tool_errln("dragon-bake: could not read glTF file"); return 1; }
+  if !jv_parse(w[0].doc[..], cast(string) w[0].gltf[0..<gn], w[0].nodes[..]) { tool_errln("dragon-bake: invalid glTF JSON"); return 1; }
+  buf0 := jv_at(w[0].doc[0], jv_get(w[0].doc[0], 0, "buffers"), 0);
+  uri_b: [256] u8;
+  uri_n := jv_str(w[0].doc[0], jv_get(w[0].doc[0], buf0, "uri"), uri_b[..]);
+  if uri_n <= 0 { tool_errln("dragon-bake: missing buffers[0].uri"); return 1; }
+  bin_p: [4096] u8;
+  bin_path := fs_join(fs_dir(src), cast(string) uri_b[0..<uri_n], bin_p[..]);
+  bn := fs_read(bin_path, w[0].bin[..]);
+  if bn <= 0 || bn >= DB_BIN_MAX { tool_errln("dragon-bake: could not read glTF binary buffer"); return 1; }
+  err := db_bake(w[..], cast(string) w[0].gltf[0..<gn], bn, scale);
+  if err != "" { tool_err("dragon-bake: "); tool_errln(err); return 1; }
+  if !fs_mkdir(fs_dir(dst)) || !fs_write(dst, cast(string) w[0].out[0..<w[0].out_n]) {
+    tool_errln("dragon-bake: could not write output file");
+    return 1;
+  }
+  print("dragon-bake: % vertices, % triangles, % joints (% moved), % bytes -> %\n",
+    w[0].nv, w[0].nt, w[0].jn, w[0].nm, w[0].out_n, dst);
+  return 0;
+}
+
+#test "float parsing, rounding and sRGB conversion match the glTF baker's expectations" {
+  #assert abs(cast(f32) (db_parse_f64("0.3", 0.0) - 0.3)) < 0.0001;
+  #assert abs(cast(f32) (db_parse_f64("-1.25e-2", 0.0) + 0.0125)) < 0.00001;
+  #assert db_parse_f64("bad", 9.0) == 9.0;
+  #assert db_round64(0.5) == 1 && db_round64(-0.5) == -1 && db_round64(2.4) == 2 && db_round64(-2.6) == -3;
+  #assert db_srgb(0.0) == 0.0 && abs(cast(f32) (db_srgb(1.0) - 1.0)) < 0.001;
+  #assert db_srgb(0.5) > 0.72 && db_srgb(0.5) < 0.75;
+}

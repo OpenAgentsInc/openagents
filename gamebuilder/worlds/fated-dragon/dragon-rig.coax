@@ -1,0 +1,222 @@
+// Fated Dragon's skeletal dragon rig: reads raw binary GBD1 bytes baked from
+// assets/metaverse/beasts/dragon.gltf (CC0 1.0) by gamebuilder/tools/dragon-bake.coax,
+// plays its 8 clips with cross-faded local pose blending, and skins vertices on the CPU.
+//   coax/bin/coax test gamebuilder/worlds/fated-dragon/dragon-rig.coax --library
+#load "../../../metaverse-engine/anim/pose.coax";
+
+DR_J :: 27;
+DR_V :: 8192;
+DR_T :: 16384;
+DR_BYTES :: 393216;
+DR_CLIPS :: 8;
+DR_IDLE :: 0; DR_WALK :: 1; DR_GLIDE :: 2; DR_LAND :: 3; DR_BREATH :: 4;
+DR_FLY :: 5; DR_BANK_LEFT :: 6; DR_BANK_RIGHT :: 7;
+DR_POS :: 0.0001220703125;   // 1 / 8192 m
+DR_VERTEX :: 20;             // 3 i16 pos, 3 i8 nor, 4 u8 joints, 4 u8 weights, 3 u8 display colour
+
+DragonRig :: struct {
+  ready: bool;
+  data: [DR_BYTES] u8;
+  data_n: int;
+  nv: int; nt: int; nm: int; fps: int;
+  parent: [DR_J] int; rest: [DR_J * 3] f32; bind: [DR_J * 12] f32;
+  moved: [DR_J] int;
+  frames: [DR_CLIPS] int; seconds: [DR_CLIPS] f32; metres: [DR_CLIPS] f32; clip_at: [DR_CLIPS] int;
+  verts_at: int; tris_at: int;
+  snout: int;
+  clip: int = -1;
+  time: f32;
+  clock: f32; changed: f32; fade: f32;
+  from: [DR_J] SkinLocal; now: [DR_J] SkinLocal;
+  palette: [DR_J * 12] f32;
+  pos: [DR_V * 3] f32; nor: [DR_V * 3] f32;
+  paint: [DR_V * 3] f32;
+}
+
+dr_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+dr_u32 :: (b: [] u8, at: int) -> int { return dr_u16(b, at) | (dr_u16(b, at + 2) << 16); }
+dr_i16 :: (b: [] u8, at: int) -> f32 { u := dr_u16(b, at); if u >= 32768 { u -= 65536; } return cast(f32) u; }
+dr_i8 :: (b: [] u8, at: int) -> f32 { u := cast(int) b[at]; if u >= 128 { u -= 256; } return cast(f32) u; }
+dr_f32 :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) dr_u32(b, at)); }
+
+// Parses the GBD1 payload already written into g[0].data[0..<n].
+dragon_parse :: (g: [] DragonRig, n: int) -> bool {
+  g[0].ready = false;
+  g[0].data_n = 0;
+  if n < 28 || n > DR_BYTES { return false; }
+  b := g[0].data[..];
+  if b[0] != 'G' || b[1] != 'B' || b[2] != 'D' || b[3] != '1' { return false; }
+  nv := dr_u32(b, 4); nt := dr_u32(b, 8); nm := dr_u32(b, 24);
+  if nv < 1 || nv > DR_V || nt < 1 || nt > DR_T || dr_u32(b, 12) != DR_J || dr_u32(b, 16) != DR_CLIPS || nm > DR_J { return false; }
+  g[0].nv = nv; g[0].nt = nt; g[0].nm = nm; g[0].fps = dr_u32(b, 20);
+  at := 28;
+  if at + DR_J * 61 + nm + DR_CLIPS * 12 + nv * DR_VERTEX + nt * 6 > n || g[0].fps < 1 { return false; }
+  for j: 0..<DR_J {
+    p := cast(int) b[at + j];
+    g[0].parent[j] = ifx p == 255 then -1 else p;
+    g[0].moved[j] = -1;
+    if g[0].parent[j] >= j { return false; }
+  }
+  at += DR_J;
+  for i: 0..<DR_J * 3 { g[0].rest[i] = dr_f32(b, at + i * 4); }
+  at += DR_J * 12;
+  for i: 0..<DR_J * 12 { g[0].bind[i] = dr_f32(b, at + i * 4); }
+  at += DR_J * 48;
+  for i: 0..<nm { j := cast(int) b[at + i]; if j >= DR_J { return false; } g[0].moved[j] = i; }
+  at += nm;
+  for c: 0..<DR_CLIPS {
+    g[0].frames[c] = dr_u32(b, at); g[0].seconds[c] = dr_f32(b, at + 4); g[0].metres[c] = dr_f32(b, at + 8);
+    if g[0].frames[c] < 2 || !(g[0].seconds[c] > 0) { return false; }
+    at += 12;
+  }
+  g[0].verts_at = at; at += nv * DR_VERTEX;
+  g[0].tris_at = at; at += nt * 6;
+  for i: 0..<nt * 3 { if dr_u16(b, g[0].tris_at + i * 2) >= nv { return false; } }
+  for i: 0..<nv { for k: 0..<4 { if cast(int) b[g[0].verts_at + i * DR_VERTEX + 9 + k] >= DR_J { return false; } } }
+  for c: 0..<DR_CLIPS { g[0].clip_at[c] = at; at += g[0].frames[c] * (DR_J * 8 + nm * 6); }
+  if at != n { return false; }
+  for i: 0..<nv { for k: 0..<3 { g[0].paint[i * 3 + k] = cast(f32) b[g[0].verts_at + i * DR_VERTEX + 17 + k] / 255.0; } }
+  g[0].snout = 0;
+  for i: 1..<nv { if dr_i16(b, g[0].verts_at + i * DR_VERTEX + 4) > dr_i16(b, g[0].verts_at + g[0].snout * DR_VERTEX + 4) { g[0].snout = i; } }
+  g[0].data_n = n;
+  g[0].clip = -1;
+  g[0].time = 0; g[0].clock = 0; g[0].changed = 0; g[0].fade = 0;
+  g[0].ready = true;
+  return true;
+}
+
+dragon_corner :: (g: [] DragonRig, i: int, k: int) -> int { return dr_u16(g[0].data[..], g[0].tris_at + (i * 3 + k) * 2); }
+
+dragon_sample :: (g: [] DragonRig, c: int, j: int, time: f32) -> SkinLocal {
+  b := g[0].data[..];
+  last := g[0].frames[c] - 1;
+  at := clamp01(time / g[0].seconds[c]) * cast(f32) last;
+  i := cast(int) floor(at); if i >= last { i = last - 1; }
+  f := at - cast(f32) i;
+  wide := DR_J * 8 + g[0].nm * 6;
+  a := g[0].clip_at[c] + i * wide; e := a + wide;
+  qa := Quat.{x = dr_i16(b, a + j * 8), y = dr_i16(b, a + j * 8 + 2), z = dr_i16(b, a + j * 8 + 4), w = dr_i16(b, a + j * 8 + 6)};
+  qb := Quat.{x = dr_i16(b, e + j * 8), y = dr_i16(b, e + j * 8 + 2), z = dr_i16(b, e + j * 8 + 4), w = dr_i16(b, e + j * 8 + 6)};
+  l := SkinLocal.{t = v3(g[0].rest[j * 3], g[0].rest[j * 3 + 1], g[0].rest[j * 3 + 2]), q = slerp(quat_unit(qa), quat_unit(qb), f)};
+  m := g[0].moved[j];
+  if m >= 0 {
+    o := DR_J * 8 + m * 6;
+    ta := v3(dr_i16(b, a + o), dr_i16(b, a + o + 2), dr_i16(b, a + o + 4));
+    tb := v3(dr_i16(b, e + o), dr_i16(b, e + o + 2), dr_i16(b, e + o + 4));
+    l.t = times(mix(ta, tb, f), DR_POS);
+  }
+  return l;
+}
+
+dragon_play :: (g: [] DragonRig, c: int, seconds: f32, dt: f32, fade: f32, loops: bool) {
+  if !g[0].ready || c < 0 || c >= DR_CLIPS { return; }
+  first := g[0].clip < 0;
+  if c != g[0].clip {
+    for j: 0..<DR_J { g[0].from[j] = g[0].now[j]; }
+    g[0].time = 0; g[0].changed = g[0].clock; g[0].fade = ifx first then 0.0f32 else fade; g[0].clip = c;
+  }
+  d := g[0].seconds[c];
+  g[0].time += ifx finite(seconds) && seconds > 0 then seconds else 0.0f32;
+  if loops { g[0].time -= d * floor(g[0].time / d); } else if g[0].time > d { g[0].time = d; }
+  g[0].clock += ifx finite(dt) && dt > 0 then dt else 0.0f32;
+  f := ifx g[0].fade > 0 then pose_fade(g[0].clock - g[0].changed, g[0].fade) else 1.0f32;
+  for j: 0..<DR_J {
+    target := dragon_sample(g, c, j, g[0].time);
+    g[0].now[j] = ifx f >= 1 then target else pose_blend(g[0].from[j], target, f);
+  }
+}
+
+dragon_skin :: (g: [] DragonRig) {
+  if !g[0].ready { return; }
+  gq: [DR_J] Quat; gt: [DR_J] Point;
+  for j: 0..<DR_J {
+    pose_chain(gq[..], gt[..], g[0].parent[j], j, g[0].now[j]);
+    pose_palette(gq[j], gt[j], g[0].bind[..], j, g[0].palette[..]);
+  }
+  b := g[0].data[..];
+  for i: 0..<g[0].nv {
+    at := g[0].verts_at + i * DR_VERTEX;
+    x := dr_i16(b, at) * DR_POS; y := dr_i16(b, at + 2) * DR_POS; z := dr_i16(b, at + 4) * DR_POS;
+    nx := dr_i8(b, at + 6); ny := dr_i8(b, at + 7); nz := dr_i8(b, at + 8);
+    px: f32 = 0; py: f32 = 0; pz: f32 = 0; qx: f32 = 0; qy: f32 = 0; qz: f32 = 0;
+    for k: 0..<4 {
+      w := cast(f32) b[at + 13 + k];
+      if !(w > 0) { continue; }
+      w /= 255.0;
+      m := cast(int) b[at + 9 + k] * 12;
+      p := g[0].palette[..];
+      px += w * (p[m] * x + p[m + 1] * y + p[m + 2] * z + p[m + 3]);
+      py += w * (p[m + 4] * x + p[m + 5] * y + p[m + 6] * z + p[m + 7]);
+      pz += w * (p[m + 8] * x + p[m + 9] * y + p[m + 10] * z + p[m + 11]);
+      qx += w * (p[m] * nx + p[m + 1] * ny + p[m + 2] * nz);
+      qy += w * (p[m + 4] * nx + p[m + 5] * ny + p[m + 6] * nz);
+      qz += w * (p[m + 8] * nx + p[m + 9] * ny + p[m + 10] * nz);
+    }
+    l := sqrt(qx * qx + qy * qy + qz * qz); if !(l > 0.0001) { l = 1; qy = 1; }
+    g[0].pos[i * 3] = px; g[0].pos[i * 3 + 1] = py; g[0].pos[i * 3 + 2] = pz;
+    g[0].nor[i * 3] = qx / l; g[0].nor[i * 3 + 1] = qy / l; g[0].nor[i * 3 + 2] = qz / l;
+  }
+}
+
+dragon_box :: (g: [] DragonRig, box: [] f32) {
+  for k: 0..<3 { box[k] = 1000; box[k + 3] = -1000; }
+  for i: 0..<g[0].nv { for k: 0..<3 { v := g[0].pos[i * 3 + k]; if v < box[k] { box[k] = v; } if v > box[k + 3] { box[k + 3] = v; } } }
+}
+
+dr_t8 :: (b: [] u8, at: [] int, v: int) { b[at[0]] = cast,trunc(u8) v; at[0] += 1; }
+dr_t16 :: (b: [] u8, at: [] int, v: int) { dr_t8(b, at, v & 255); dr_t8(b, at, (v >> 8) & 255); }
+dr_t32 :: (b: [] u8, at: [] int, v: int) { dr_t16(b, at, v & 65535); dr_t16(b, at, (v >> 16) & 65535); }
+dr_tf :: (b: [] u8, at: [] int, v: f32) { dr_t32(b, at, cast(int) f32_bits(v)); }
+
+// Writes a minimal synthetic valid GBD1 dragon (3 vertices, 1 triangle, 27 joints, 8 clips) into g[0].data for tests.
+dragon_test_fill :: (g: [] DragonRig) -> int {
+  b := g[0].data[..];
+  pos := [1] int.[0];
+  dr_t8(b, pos[..], 'G'); dr_t8(b, pos[..], 'B'); dr_t8(b, pos[..], 'D'); dr_t8(b, pos[..], '1');
+  dr_t32(b, pos[..], 3); dr_t32(b, pos[..], 1); dr_t32(b, pos[..], DR_J); dr_t32(b, pos[..], DR_CLIPS); dr_t32(b, pos[..], 24); dr_t32(b, pos[..], 0);
+  for j: 0..<DR_J { dr_t8(b, pos[..], ifx j == 0 then 255 else j - 1); }
+  for j: 0..<DR_J * 3 { dr_tf(b, pos[..], 0.0f32); }
+  for j: 0..<DR_J {
+    dr_tf(b, pos[..], 1); dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 0);
+    dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 1); dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 0);
+    dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 0); dr_tf(b, pos[..], 1); dr_tf(b, pos[..], 0);
+  }
+  for c: 0..<DR_CLIPS { dr_t32(b, pos[..], 2); dr_tf(b, pos[..], 1.9167f32); dr_tf(b, pos[..], 0.0f32); }
+  // 3 vertices: vertex 2 is furthest +z (snout at z=1.5m, y=1.2m)
+  coords := [9] int.[0, 0, 0, 8192, 0, 0, 0, 9830, 12288];
+  for v: 0..<3 {
+    dr_t16(b, pos[..], coords[v * 3] & 65535); dr_t16(b, pos[..], coords[v * 3 + 1] & 65535); dr_t16(b, pos[..], coords[v * 3 + 2] & 65535);
+    dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 127); dr_t8(b, pos[..], 0);
+    dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 0);
+    dr_t8(b, pos[..], 255); dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 0); dr_t8(b, pos[..], 0);
+    dr_t8(b, pos[..], 200); dr_t8(b, pos[..], 40); dr_t8(b, pos[..], 30);
+  }
+  dr_t16(b, pos[..], 0); dr_t16(b, pos[..], 1); dr_t16(b, pos[..], 2);
+  for c: 0..<DR_CLIPS {
+    for f: 0..<2 {
+      for j: 0..<DR_J { dr_t16(b, pos[..], 0); dr_t16(b, pos[..], 0); dr_t16(b, pos[..], 0); dr_t16(b, pos[..], 32767); }
+    }
+  }
+  return pos[0];
+}
+
+DragonRigTest :: struct { g: [1] DragonRig; }
+
+#test "dragon rig parses GBD1 binary, finds snout tip, plays clips and skins with unit normals" #steps 400000000 {
+  t: [1] DragonRigTest; g := t[0].g[..];
+  #assert !dragon_parse(g, 10);
+  n := dragon_test_fill(g);
+  #assert dragon_parse(g, n) && g[0].ready && g[0].nv == 3 && g[0].nt == 1 && g[0].snout == 2;
+  #assert dragon_corner(g, 0, 2) == 2 && g[0].paint[0] > 0.7 && g[0].paint[1] < 0.2;
+  dragon_play(g, DR_IDLE, 0.5, 0.016, 0.1, true);
+  dragon_skin(g);
+  box: [6] f32; dragon_box(g, box[..]);
+  #assert abs(box[5] - 1.5) < 0.01 && abs(box[4] - 1.2) < 0.01;
+  for i: 0..<g[0].nv {
+    l := g[0].nor[i * 3] * g[0].nor[i * 3] + g[0].nor[i * 3 + 1] * g[0].nor[i * 3 + 1] + g[0].nor[i * 3 + 2] * g[0].nor[i * 3 + 2];
+    #assert l > 0.98 && l < 1.02;
+  }
+  // Corrupt magic refused
+  g[0].data[0] = 'X';
+  #assert !dragon_parse(g, n) && !g[0].ready;
+}
