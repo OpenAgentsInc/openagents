@@ -298,6 +298,9 @@ extension CoderWindow {
         case ExternalProviders.providerClaude:
             program = "claudeworker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
+        case ExternalProviders.providerInkling:
+            program = "inky"
+            r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerCodex:
             program = "mcworker"
             if let bin = ExternalProviders.codexBinaryPath() {

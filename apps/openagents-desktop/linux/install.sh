@@ -42,10 +42,10 @@ put_data() { install -m 0644 "$1" "$2.new" && mv -f "$2.new" "$2"; }
 put "$src_dir/OpenAgents" "$app_dir/OpenAgents"
 # the workers and the run daemon build.sh puts beside OpenAgents (host-main.c looks for them there)
 if [[ "$minimal" == 1 ]]; then
-  rm -f "$app_dir/claudeworker" "$app_dir/openagents-daemon"
-  helpers=(mcworker agyworker coder-host gitguard psionic-inkling-serve)
+  rm -f "$app_dir/mcworker" "$app_dir/claudeworker" "$app_dir/openagents-daemon"
+  helpers=(inky agyworker coder-host gitguard psionic-inkling-serve)
 else
-  helpers=(mcworker claudeworker agyworker gitguard coder-host openagents-daemon psionic-inkling-serve)
+  helpers=(inky mcworker claudeworker agyworker gitguard coder-host openagents-daemon psionic-inkling-serve)
 fi
 for name in "${helpers[@]}"; do
   if [[ -x "$src_dir/$name" ]]; then put "$src_dir/$name" "$app_dir/$name"; fi

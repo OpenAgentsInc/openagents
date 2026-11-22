@@ -73,8 +73,9 @@ else
   profile_defs=(-DOA_MINIMAL)
   strip_flags=("-Wl,-s")
 fi
-"$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
+"$coax" c "$repo/coder/tui/inky.coax" --library > "$work/c/inky.c"
 if [[ "$minimal" == 0 ]]; then
+  "$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
   "$coax" c "$repo/coder/tui/claudeworker.coax" --library > "$work/c/claudeworker.c"
 fi
 "$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
@@ -169,10 +170,14 @@ for arch in "${arches[@]}"; do
     -Wl,--stack,67108864 -lole32 -luuid -lshell32 -limm32 -lbcrypt -lws2_32 -luser32 -lgdi32 -ladvapi32 \
     -o "$out/OpenAgents.exe"
   zig cc -target "$target" "${common[@]}" ${strip_flags[@]+"${strip_flags[@]}"} -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
-    "$work/c/mcworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$work/c/inky.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
-    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/inky.exe"
   if [[ "$minimal" == 0 ]]; then
+    zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
+      "$work/c/mcworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+      "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+      -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
     zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
       "$work/c/claudeworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
       "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \

@@ -12,7 +12,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
-WORKER="mcworker"
+WORKER="inky"
 T3_ARGS=""
 HERE="$ROOT/evals/openagents-desktop"
 

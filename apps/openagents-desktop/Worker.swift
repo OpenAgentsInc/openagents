@@ -27,7 +27,11 @@ final class CoderWorker {
 
     var alive: Bool { process?.isRunning == true || runID != nil }
     var isDaemonRun: Bool { runID != nil }
+    #if OA_MINIMAL
+    var program = "inky"
+    #else
     var program = "mcworker"
+    #endif
     var extraEnv: [String: String] = [:]
     var folder = ""
 
@@ -543,10 +547,14 @@ enum CoderProbes {
     }
     static var geminiReady: Bool { geminiAuth.kind == "vertex" || geminiAuth.kind == "key" }
     private static func readAuth() -> (kind: String, text: String) {
+        #if OA_MINIMAL
+        return ("none", "")
+        #else
         let line = ask("mcworker", ["--auth"], timeout: 10)
         let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
         guard let kind = parts.first, kind == "vertex" || kind == "key" else { return ("none", "") }
         return (kind, parts.count > 1 ? parts[1] : "")
+        #endif
     }
     static func refreshGeminiAuth(_ done: @escaping () -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {

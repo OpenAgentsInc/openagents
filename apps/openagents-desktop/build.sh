@@ -2,7 +2,7 @@
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
 # Builds OpenAgents.app for this Mac: the page (app.coax / app-v1.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
-# component shader emitted as Metal, the Microcoder worker (coder/tui/mcworker.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
+# component shader emitted as Metal, the Inky local worker (coder/tui/inky.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
 #   apps/openagents-desktop/build.sh [--full|--minimal] [--open]
 #   OA_RELEASE_MINIMAL=1 apps/openagents-desktop/build.sh          builds the v1.0 minimal release app
 #   CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh        builds into another folder
@@ -26,7 +26,7 @@ res="$app/Contents/Resources"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$res/Components"
 if [[ "$minimal" == "1" ]]; then
   rm -rf "$app/Contents/Frameworks" \
-    "$res/bip39-english.txt" "$res/claudeworker" "$res/agyworker" "$res/oasim" \
+    "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/agyworker" "$res/oasim" \
     "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" \
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
@@ -139,9 +139,9 @@ mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
-# The Microcoder worker (coder/tui/mcworker.coax): tool.sh builds its image, named by the compiler's hash; the app runs the copy.
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null
-cp "$repo/coax/web/build/tools/mcworker-$coax_hash" "$res/mcworker"
+# The native Inkling 2.0 worker (coder/tui/inky.coax): sole shipped worker in v1.0 (--minimal) and local Inkling worker in --full.
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null
+cp "$repo/coax/web/build/tools/inky-$coax_hash" "$res/inky"
 # Its git guard (coder/tui/gitguard.coax), the PreToolUse hook workers find beside them (GitHub #13771).
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
@@ -162,6 +162,9 @@ cp "$repo/components/NOTICE" "$res/Components/NOTICE"
 
 if [[ "$minimal" != "1" ]]; then
   cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
+  # The legacy Microcoder worker (coder/tui/mcworker.coax), for cloud models in --full developer builds.
+  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null
+  cp "$repo/coax/web/build/tools/mcworker-$coax_hash" "$res/mcworker"
   # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
   COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
   cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"

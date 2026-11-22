@@ -87,11 +87,16 @@ def stage_app(built: Path, run_dir: Path) -> tuple[Path, Path]:
     info["CFBundleIdentifier"] = BUNDLE_ID
     plist.write_bytes(plistlib.dumps(info))
     # the real worker stays beside the stand-in: the follow-ups flow runs it on recorded answers
-    shutil.copy2(app / "Contents/Resources/mcworker", app / "Contents/Resources/mcworker-real")
-    for name in ("mcworker", "claudeworker"):
-        w = app / "Contents/Resources" / name
-        w.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I "{HERE / "mock_router.py"}" "$@"\n', encoding="utf-8")
-        w.chmod(0o755)
+    res_dir = app / "Contents/Resources"
+    for name in ("inky", "mcworker"):
+        src = res_dir / name
+        if src.exists():
+            shutil.copy2(src, res_dir / f"{name}-real")
+    for name in ("inky", "mcworker", "claudeworker"):
+        w = res_dir / name
+        if w.exists() or name == "inky":
+            w.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I "{HERE / "mock_router.py"}" "$@"\n', encoding="utf-8")
+            w.chmod(0o755)
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
     dylib = run_dir / "probe.dylib"
     subprocess.run(["clang", "-dynamiclib", "-fobjc-arc", "-mmacosx-version-min=14.0", "-framework", "AppKit",
@@ -175,6 +180,9 @@ class App:
         rec.mkdir(parents=True, exist_ok=True)
         wfile = case_dir / "workers.json"
         wfile.write_text(json.dumps(workers), encoding="utf-8")
+        real_mc = binary.parent.parent / "Resources/mcworker-real"
+        real_inky = binary.parent.parent / "Resources/inky-real"
+        real_worker = real_mc if real_mc.exists() else real_inky
         env = {
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             "HOME": str(home), "CFFIXED_USER_HOME": str(home), "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
@@ -182,7 +190,7 @@ class App:
             "CODER_HOME": str(home), "CODER_RELEASE_HOME": str(home / ".cache/coder-release"),
             "CODER_UPDATE_URL": "", "BROWSER": "/usr/bin/true", "LANG": "en_US.UTF-8",
             "CODER_T3_SOCKET": str(self.sock_path), "CODER_T3_WORKERS": str(wfile), "CODER_T3_RECORD": str(rec),
-            "CODER_T3_REAL_WORKER": str(binary.parent.parent / "Resources/mcworker-real"),
+            "CODER_T3_REAL_WORKER": str(real_worker),
             "DYLD_INSERT_LIBRARIES": str(dylib),
             # a test launch (#13752): quits itself after this long with no driver command
             "CODER_TEST_LAUNCH": "tier3", "CODER_TEST_IDLE_S": "300",

@@ -113,13 +113,14 @@ typedef struct {
   char exe_dir[OA_PATH];
   char resources[OA_PATH];
   char worker_bin[OA_PATH];
+  char inky_worker_bin[OA_PATH];
   char claude_worker_bin[OA_PATH];
   char agy_worker_bin[OA_PATH];
   char daemon_bin[OA_PATH];
   char agy_bin[OA_PATH];
   char agy_model[128];
   int agy_mode;
-  int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude
+  int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude, 3 Inky
   // Connect Google Antigravity from the onboarding where Inkling cannot run: agyworker --connect,
   // its lines read from a log in its own temporary folder (agy_connect_start / pump_agy_connect).
   OaSubproc agy_conn_proc;
@@ -853,7 +854,8 @@ static int ensure_worker(DesktopApp *a) {
   int want_claude = !want_agy && cd_model_claude(a->page) != 0 && a->claude_worker_bin[0] != '\0';
   int want_inkling = !want_agy && !want_claude && !a->test_mode && !a->custom_worker &&
                      (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags));
-  int want_kind = want_agy ? 1 : want_claude ? 2 : 0;
+  int use_inky = want_inkling && a->inky_worker_bin[0] != '\0';
+  int want_kind = want_agy ? 1 : want_claude ? 2 : use_inky ? 3 : 0;
   if (want_inkling) {
     char srv_err[512] = {0};
     if (!local_ensure_server(a, srv_err, sizeof srv_err)) {
@@ -869,9 +871,9 @@ static int ensure_worker(DesktopApp *a) {
       return 1;
     }
   }
-  const char *bin = want_agy ? a->agy_worker_bin : want_claude ? a->claude_worker_bin : a->worker_bin;
+  const char *bin = want_agy ? a->agy_worker_bin : want_claude ? a->claude_worker_bin : use_inky ? a->inky_worker_bin : a->worker_bin;
   if (!bin[0]) {
-    cd_failed(a->page, want_agy ? "agyworker binary not found" : "mcworker binary not found");
+    cd_failed(a->page, want_agy ? "agyworker binary not found" : "local agent worker binary not found");
     return 0;
   }
   maybe_prepare_worktree(a);
@@ -2659,6 +2661,8 @@ static int oa_main(int argc, char **argv) {
   if (!file_exists(app.resources)) snprintf(app.resources, sizeof(app.resources), "%s", app.exe_dir);
   snprintf(app.worker_bin, sizeof(app.worker_bin), "%s/%s", app.exe_dir, OA_WORKER);
   if (!file_exists(app.worker_bin)) snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", OA_WORKER);
+  snprintf(app.inky_worker_bin, sizeof(app.inky_worker_bin), "%s/%s", app.exe_dir, OA_INKY_WORKER);
+  if (!file_exists(app.inky_worker_bin)) app.inky_worker_bin[0] = '\0';
   snprintf(app.claude_worker_bin, sizeof(app.claude_worker_bin), "%s/%s", app.exe_dir, OA_CLAUDE_WORKER);
   if (!file_exists(app.claude_worker_bin)) app.claude_worker_bin[0] = '\0';
   snprintf(app.agy_worker_bin, sizeof(app.agy_worker_bin), "%s/%s", app.exe_dir, OA_AGY_WORKER);

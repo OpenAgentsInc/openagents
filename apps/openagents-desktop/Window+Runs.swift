@@ -178,7 +178,7 @@ extension CoderWindow {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("mcworker", 2, nil)
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("inky", 2, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
@@ -204,7 +204,8 @@ extension CoderWindow {
             guard cd_running(r.page) != 0 else { return }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
-                cd_failed(r.page, r.worker.failure ?? (r.worker.program == "claudeworker" ? "Claude could not start." : "Microcoder could not start."))
+                let fallbackErr = r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
+                cd_failed(r.page, r.worker.failure ?? fallbackErr)
                 self.wake()
                 return
             }

@@ -12,7 +12,7 @@
 //
 // Usage:
 //   coax/web/tool.sh apps/openagents-desktop/release-v1.coax selftest
-//   coax/bin/coax test apps/openagents-desktop/release-v1.coax
+//   coax/bin/coax test apps/openagents-desktop/release-v1-tests.coax --library
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
 #load "../../coax/lib/agent/desktop/release-v1-policy.coax";
@@ -930,7 +930,7 @@ rv1_make_mac_fixture :: (app_dir: string, dirty_leak: bool) -> bool #effects(all
   plist := "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.openagents.desktop</string></dict></plist>\n";
   if !fs_write(fs_join(contents, "Info.plist", p2[..]), plist) { return false; }
   if !fs_write(fs_join(contents, "Resources/coder-host", p2[..]), "stub-coder-host\n") { return false; }
-  if !fs_write(fs_join(contents, "Resources/mcworker", p2[..]), "stub-mcworker\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/inky", p2[..]), "stub-inky\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/inkling-kernels.metal", p2[..]), "// metal kernels\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/gitguard", p2[..]), "stub-gitguard\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/OpenAgents.icns", p2[..]), "icns") { return false; }
@@ -1143,95 +1143,4 @@ tool_main :: () -> int #export_c #effects(all) {
   tool_err("release-v1: unknown subcommand: "); tool_errln(cmd);
   rv1_usage();
   return 2;
-}
-
-// ---- Unit checks ----
-
-#test "release-v1: Ed25519 key derivation and signing match RFC 8032 TEST 1, 2, 3" #steps 400000000000 #traversal 4294967296 {
-  seed: [32] u8; pub: [32] u8; pub_hex: [64] u8; sig: [64] u8; sig_hex: [128] u8; msg: [4] u8;
-
-  // TEST 1 (empty message)
-  #assert rv1_hex_decode_32("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", seed[..]);
-  #assert rv1_ed25519_pubkey(seed[..], pub[..]) && rv1_hex_encode(pub[..], pub_hex[..]);
-  #assert cast(string) pub_hex[..] == ED_T1_KEY;
-  #assert rv1_ed25519_sign(seed[..], msg[0..<0], sig[..], pub[..]) && rv1_hex_encode(sig[..], sig_hex[..]);
-  #assert cast(string) sig_hex[..] == ED_T1_SIG && ed25519_verify(sig[..], msg[0..<0], pub[..]);
-
-  // TEST 2 (1-byte message 0x72)
-  #assert rv1_hex_decode_32("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb", seed[..]);
-  msg[0] = 0x72;
-  #assert rv1_ed25519_sign(seed[..], msg[0..<1], sig[..], pub[..]);
-  #assert rv1_hex_encode(pub[..], pub_hex[..]) && cast(string) pub_hex[..] == ED_T2_KEY;
-  #assert rv1_hex_encode(sig[..], sig_hex[..]) && cast(string) sig_hex[..] == ED_T2_SIG;
-  #assert ed25519_verify(sig[..], msg[0..<1], pub[..]);
-
-  // TEST 3 (2-byte message 0xaf82)
-  #assert rv1_hex_decode_32("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7", seed[..]);
-  msg[0] = 0xaf; msg[1] = 0x82;
-  #assert rv1_ed25519_sign(seed[..], msg[0..<2], sig[..], pub[..]);
-  #assert rv1_hex_encode(pub[..], pub_hex[..]) && cast(string) pub_hex[..] == ED_T3_KEY;
-  #assert rv1_hex_encode(sig[..], sig_hex[..]) && cast(string) sig_hex[..] == ED_T3_SIG;
-  #assert ed25519_verify(sig[..], msg[0..<2], pub[..]);
-}
-
-#test "release-v1: Ed25519 feed signing verifies against CryptoKit fixture key and update.coax verifier" #steps 400000000000 #traversal 4294967296 {
-  // Pinned CryptoKit test seed (01..20 hex) from proto/coder/desktop-update-v1.json
-  seed: [32] u8;
-  for i: 0..<32 { seed[i] = cast(u8) (i + 1); }
-  pub: [32] u8; pub_hex: [64] u8; sig: [64] u8;
-  #assert rv1_ed25519_pubkey(seed[..], pub[..]) && rv1_hex_encode(pub[..], pub_hex[..]);
-  #assert cast(string) pub_hex[..] == DC_UPDATE_TEST_KEY;
-
-  // Sign the exact payload from DC_UPDATE_TEST_ENVELOPE with seed 01..20 and confirm signature verifies cleanly
-  // (CryptoKit uses hedged nonces, while RFC 8032 pure Ed25519 is deterministic and verifies under both).
-  fj: [1] Jv; fnodes: [64] JvNode;
-  #assert jv_parse(fj[..], DC_UPDATE_TEST_ENVELOPE, fnodes[..]);
-  fp_b64: [4096] u8; fpn := jv_str(fj[0], jv_get(fj[0], 0, "payload"), fp_b64[..]);
-  #assert fpn > 0;
-  fraw: [4096] u8; frn := b64_decode(cast(string) fp_b64[0..<fpn], fraw[..]);
-  #assert frn > 0 && rv1_ed25519_sign(seed[..], fraw[0..<frn], sig[..], pub[..]);
-  #assert ed25519_verify(sig[..], fraw[0..<frn], pub[..]);
-  fenv: [8192] u8;
-  fen := dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, cast(string) fraw[0..<frn], cast(string) sig[..], fenv[..]);
-  #assert fen > 0;
-  fkeys: [1] DcKey; dc_key(fkeys[..], DC_UPDATE_TEST_KEY_ID, cast(string) pub_hex[..]);
-  fm: [1] DcManifest;
-  #assert dc_update_verify(cast(string) fenv[0..<fen], fkeys[..], "1.2.2", 0, false, fm[..]) == DC_UPD_OK;
-  #assert dc_manifest_version(fm[..]) == "1.2.3" && fm[0].build == 42;
-
-  // Build canonical payload via update.coax, sign with Ed25519, wrap via update.coax, verify via update.coax.
-  sha := "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
-  payload: [4096] u8;
-  pn := dc_manifest_write("1.0.0", true, 1, DC_UPDATE_BUNDLE, DC_UPDATE_TEAM, "https://github.com/OpenAgentsInc/openagents/releases/download/v1.0.0/OpenAgents.zip", sha, 4096, "v1.0.0", payload[..]);
-  #assert pn > 0;
-  #assert rv1_ed25519_sign(seed[..], payload[0..<pn], sig[..], pub[..]);
-  env: [8192] u8;
-  en := dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, cast(string) payload[0..<pn], cast(string) sig[..], env[..]);
-  #assert en > 0;
-  keys: [1] DcKey; dc_key(keys[..], DC_UPDATE_TEST_KEY_ID, cast(string) pub_hex[..]);
-  m: [1] DcManifest;
-  #assert dc_update_verify(cast(string) env[0..<en], keys[..], "0.0.0", 0, false, m[..]) == DC_UPD_OK;
-  #assert dc_manifest_version(m[..]) == "1.0.0" && m[0].size == 4096 && dc_manifest_sha(m[..]) == sha;
-}
-
-#test "release-v1: scorecard JSON and Markdown formatting" {
-  t2: [1] Rv1EvalStats; sh: [1] Rv1EvalStats;
-  t2_src := "{\"engine\":\"psionic-metal\",\"ctx\":32768,\"server_boot_ms\":1284,\"peak_rss_mb\":3613,\"models\":[\"inkling-2-mini\"],\"total\":10,\"applicable_total\":10,\"all_tasks_total\":15,\"not_applicable_count\":5,\"passed\":10,\"mean_ttft_ms\":5000,\"mean_decode_tps\":14.4,\"cases\":[{\"id\":\"a1\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":4000,\"decode_tps\":15.0},{\"id\":\"a2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":6000,\"decode_tps\":17.0}]}";
-  sh_src := "{\"total\":27,\"candidate_passed\":27}";
-  #assert rv1_parse_summary(t2_src, t2[..]) && rv1_parse_summary(sh_src, sh[..]);
-
-  jbuf: [16384] u8; mbuf: [16384] u8;
-  jn := rv1_write_scorecard_json(RV1_PLAT_MAC, "32 GB Apple Silicon", t2[..], sh[..], 144900, 2000, 160000, jbuf[..]);
-  mn := rv1_write_scorecard_md(RV1_PLAT_MAC, "32 GB Apple Silicon", t2[..], sh[..], 144900, 2000, 160000, mbuf[..]);
-  #assert jn > 0 && mn > 0;
-  d: [1] Jv; nodes: [512] JvNode;
-  #assert jv_parse(d[..], cast(string) jbuf[0..<jn], nodes[..]);
-  #assert jv_kind(d[0], jv_get(d[0], 0, "release_ready")) == JV_TRUE;
-  #assert jv_len(d[0], jv_get(d[0], 0, "blockers")) == 0;
-  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.median_decode_tps")) == "16.00";
-  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.median_prefill_tps")) == "1449.00";
-  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.oracle_decode_pct")) == "80.0";
-  #assert jv_int(d[0], jv_path(d[0], 0, "responsiveness.median_ttft_ms"), -1) == 5000;
-  md := cast(string) mbuf[0..<mn];
-  #assert rv1_str_has(md, "READY FOR v1.0") && rv1_str_has(md, "16.00 tok/s") && rv1_str_has(md, "1449.00 tok/s") && rv1_str_has(md, "80.0% oracle");
 }

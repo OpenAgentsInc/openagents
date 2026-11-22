@@ -983,7 +983,7 @@ def main() -> int:
     ap.add_argument("--ctx", type=int, default=DEFAULT_LOCAL_CTX, help="context length for auto-launched psionic-inkling-serve (default 32768)")
     ap.add_argument("--timeout-floor", type=int, default=-1, help="minimum per-task timeout in seconds (default 600 for local Inkling, 0 for cloud)")
     ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
-    ap.add_argument("--worker", default="mcworker", choices=["mcworker", "inky"], help="worker binary to run (mcworker or inky; default mcworker)")
+    ap.add_argument("--worker", default="inky", choices=["mcworker", "inky"], help="worker binary to run (inky or mcworker; default inky)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     args = ap.parse_args()
 

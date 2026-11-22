@@ -54,11 +54,11 @@ dr_dir :: () -> bool {
   return fs_exists(d);
 }
 
-// A worker program Coder may start: an absolute path ending in /mcworker, /claudeworker or /agyworker.
+// A worker program Coder may start: an absolute path ending in /inky, /mcworker, /claudeworker or /agyworker.
 dr_program_ok :: (p: string) -> bool {
   if p.count < 2 || p[0] != '/' { return false; }
   for c: p { if c == 0 { return false; } }
-  return hs_ends(p, "/mcworker") || hs_ends(p, "/claudeworker") || hs_ends(p, "/agyworker");
+  return hs_ends(p, "/inky") || hs_ends(p, "/mcworker") || hs_ends(p, "/claudeworker") || hs_ends(p, "/agyworker");
 }
 hs_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
 
@@ -387,9 +387,11 @@ dr_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
 }
 
 #test "only the bundled workers may be started" {
+  #assert dr_program_ok("/Applications/OpenAgents.app/Contents/Resources/inky");
   #assert dr_program_ok("/Applications/Coder.app/Contents/Resources/mcworker");
   #assert dr_program_ok("/tmp/build/Coder.app/Contents/Resources/claudeworker");
   #assert dr_program_ok("/tmp/build/Coder.app/Contents/Resources/agyworker");
+  #assert !dr_program_ok("inky") && !dr_program_ok("/tmp/inky.sh");
   #assert !dr_program_ok("mcworker") && !dr_program_ok("/bin/sh") && !dr_program_ok("/tmp/mcworker.sh") && !dr_program_ok("");
 }
 
