@@ -943,9 +943,9 @@ agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
       if code.count > 0 {
         _ = proc_send(h, code); _ = proc_send(h, "\n");
         sent_code = true;
+        _ = fs_remove(code_path);
         agyw_say(s, "step", "Finishing the Google sign-in…");
       }
-      _ = fs_remove(code_path);
     }
     if cxproc_now_ms() > deadline { timed_out = true; break; }
   }

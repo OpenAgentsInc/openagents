@@ -100,6 +100,13 @@ static int oa_mkdir(const char *path) {
   oa_back(w);
   return CreateDirectoryW(w, NULL) != 0;
 }
+static void oa_rmdir(const char *path) {
+  if (!path || !path[0]) return;
+  wchar_t w[MAX_PATH * 4];
+  oa_wide(path, w, sizeof w / sizeof w[0]);
+  oa_back(w);
+  RemoveDirectoryW(w);
+}
 static int oa_temp_dir(char *out, size_t cap) {
   wchar_t w[MAX_PATH + 1];
   DWORD n = GetTempPathW(MAX_PATH + 1, w);

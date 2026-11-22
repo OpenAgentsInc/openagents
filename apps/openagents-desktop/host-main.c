@@ -10,7 +10,7 @@
 //   oa_home(out, cap)                         the home folder ("" unknown), forward slashes
 //   oa_working_dir(out, cap)                  the folder the app starts in
 //   oa_absolute(path)                         whether a path names a place on its own
-//   oa_temp_dir(out, cap), oa_mkdir(path)     a new private temporary folder; a folder
+//   oa_temp_dir(out, cap), oa_mkdir(path), oa_rmdir(path)  a new private temporary folder; create/remove a folder
 //   oa_open_external(target)                  a link or file in the system's own app
 //   oa_proc_logged(p, argv, envs, log)        a program in the background, its output appended to a log
 //   oa_fail(why), oa_started()                a startup failure told to the person; the window is up
@@ -1206,15 +1206,27 @@ static void agy_connect_sync(DesktopApp *a) {
                  a->agy_connecting ? a->agy_dl_pct : -1, a->agy_dl_mb, a->agy_dl_total_mb);
 }
 
+static void agy_connect_cleanup_dir(DesktopApp *a) {
+  if (!a->agy_conn_dir[0]) return;
+  char path[OA_PATH];
+  snprintf(path, sizeof path, "%s/connect.log", a->agy_conn_dir); remove(path);
+  snprintf(path, sizeof path, "%s/code.txt", a->agy_conn_dir); remove(path);
+  snprintf(path, sizeof path, "%s/code.txt.tmp", a->agy_conn_dir); remove(path);
+  oa_rmdir(a->agy_conn_dir);
+  a->agy_conn_dir[0] = '\0';
+}
+
 static void agy_connect_fail(DesktopApp *a, const char *why) {
   a->agy_connecting = 0;
   a->agy_conn_failed = 1;
+  agy_connect_cleanup_dir(a);
   snprintf(a->agy_conn_err, sizeof a->agy_conn_err, "%s", why && why[0] ? why : "Google Antigravity could not be connected.");
   agy_connect_sync(a);
 }
 
 static void agy_connect_start(DesktopApp *a) {
   if (a->agy_connecting) { agy_connect_sync(a); return; }
+  agy_connect_cleanup_dir(a);
   a->agy_conn_failed = 0; a->agy_conn_ok = 0; a->agy_conn_err[0] = '\0';
   if (!a->agy_worker_bin[0]) { agy_connect_fail(a, "This build has no Antigravity worker (agyworker)."); return; }
   if (!oa_temp_dir(a->agy_conn_dir, sizeof a->agy_conn_dir)) { agy_connect_fail(a, "Could not make a temporary folder to connect Antigravity in."); return; }
@@ -1293,25 +1305,37 @@ static void agy_connect_line(DesktopApp *a, char *line) {
 
 // The lines agyworker --connect added to its log since the last look (whole lines only).
 static void agy_connect_read(DesktopApp *a) {
+  if (!a->agy_conn_dir[0]) return;
   char log[OA_PATH];
   snprintf(log, sizeof log, "%s/connect.log", a->agy_conn_dir);
   FILE *f = fopen(log, "rb");
   if (!f) return;
-  if (fseek(f, a->agy_conn_read, SEEK_SET) != 0) { fclose(f); return; }
   char buf[8192];
-  size_t n = fread(buf, 1, sizeof buf - 1, f);
-  fclose(f);
-  buf[n] = '\0';
-  char *start = buf;
   for (;;) {
-    char *nl = memchr(start, '\n', (size_t)(buf + n - start));
-    if (!nl) break;
-    a->agy_conn_read += (long)(nl - start) + 1;
-    *nl = '\0';
-    if (nl > start && nl[-1] == '\r') nl[-1] = '\0';
-    agy_connect_line(a, start);
-    start = nl + 1;
+    if (fseek(f, a->agy_conn_read, SEEK_SET) != 0) break;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    if (n == 0) break;
+    buf[n] = '\0';
+    char *start = buf;
+    int got_line = 0;
+    for (;;) {
+      char *nl = memchr(start, '\n', (size_t)(buf + n - start));
+      if (!nl) break;
+      got_line = 1;
+      a->agy_conn_read += (long)(nl - start) + 1;
+      *nl = '\0';
+      if (nl > start && nl[-1] == '\r') nl[-1] = '\0';
+      agy_connect_line(a, start);
+      start = nl + 1;
+    }
+    if (!got_line) {
+      // A single line longer than buf: skip this chunk so polling never stalls on it.
+      if (n == sizeof buf - 1) { a->agy_conn_read += (long)n; continue; }
+      break;
+    }
+    if (n < sizeof buf - 1) break;
   }
+  fclose(f);
 }
 
 static void pump_agy_connect(DesktopApp *a) {
@@ -1327,6 +1351,7 @@ static void pump_agy_connect(DesktopApp *a) {
   if (a->agy_conn_ok) {
     a->agy_connecting = 0;
     a->agy_conn_failed = 0;
+    agy_connect_cleanup_dir(a);
     agy_connect_sync(a);
     return;
   }
@@ -1479,12 +1504,15 @@ static void pump_dialog(DesktopApp *a) {
     case OA_DIALOG_AGY_CODE:
       if (!a->agy_connecting) break;
       if (answer == 1 && vn > 0) {
-        // agyworker hands the code to agy and deletes the file
-        char code_path[OA_PATH];
+        // Write to a sibling temp file then rename atomically so agyworker never reads a partial file.
+        char code_path[OA_PATH], tmp_path[OA_PATH];
         snprintf(code_path, sizeof code_path, "%s/code.txt", a->agy_conn_dir);
-        FILE *cf = fopen(code_path, "wb");
-        if (!cf || fwrite(v, 1, vn, cf) != vn) { if (cf) fclose(cf); oa_dl_stop(&a->agy_conn_proc); agy_connect_fail(a, "The code could not be passed to the Antigravity CLI."); break; }
-        fclose(cf);
+        snprintf(tmp_path, sizeof tmp_path, "%s/code.txt.tmp", a->agy_conn_dir);
+        FILE *cf = fopen(tmp_path, "wb");
+        int wrote = cf && fwrite(v, 1, vn, cf) == vn;
+        if (cf && fclose(cf) != 0) wrote = 0;
+        if (wrote) { remove(code_path); if (rename(tmp_path, code_path) != 0) wrote = 0; }
+        if (!wrote) { remove(tmp_path); oa_dl_stop(&a->agy_conn_proc); agy_connect_fail(a, "The code could not be passed to the Antigravity CLI."); break; }
         snprintf(a->agy_conn_step, sizeof a->agy_conn_step, "Finishing the Google sign-in…");
         agy_connect_sync(a);
       } else if (answer != 1) {
@@ -2758,6 +2786,8 @@ static int oa_main(int argc, char **argv) {
   }
 
   if (app.local.downloading) oa_dl_stop(&app.local.dl_proc);
+  if (app.agy_connecting) oa_dl_stop(&app.agy_conn_proc);
+  agy_connect_cleanup_dir(&app);
   stop_all_terms(&app);
   stop_all_subagents(&app);
   {

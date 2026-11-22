@@ -693,4 +693,6 @@ oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
 
   #assert oa_flags_json_to_csv("not{json", cb[..]) > 0;
   #assert oa_flags_json_to_csv("{bad", cb[..]) == 0;
+  #assert oa_core_flag_persist("models.does_not_exist", 1) == 0;
+  #assert oa_core_flag_persist("", 1) == 0;
 }

@@ -160,6 +160,23 @@ agy_selftest :: () -> int {
   if fs_kind(d1) != FS_NONE { tool_errln("selftest: rid1 should be deleted"); return 1; }
   if fs_kind(d2) != FS_DIR { tool_errln("selftest: active rid2 should remain"); return 1; }
 
+  // 5. External non-tar.gz Windows --artifact is copied in pure Coax without destroying the source file.
+  wsrcb: [1200] u8; wsrc := fs_join(tmp, "external-agy.exe", wsrcb[..]);
+  if !fs_write(wsrc, "MZ-fake-windows-agy-binary") { tool_errln("selftest: write fake exe failed"); return 1; }
+  whb: [128] u8; wh := agy_sha512_file_hex(wsrc, whb[..]);
+  if wh.count != 128 { tool_errln("selftest: windows sha512 failed"); return 1; }
+  wrootb: [1200] u8; wroot := fs_join(tmp, "managed-win", wrootb[..]);
+  wmb: [512] u8; wmn := 0;
+  wmn += cl_copy(wmb[wmn..<wmb.count], "{\"version\":\"1.5.14\",\"url\":\"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.14-100/windows-x64/cli_windows_x64.exe\",\"sha512\":\"");
+  wmn += cl_copy(wmb[wmn..<wmb.count], wh);
+  wmn += cl_copy(wmb[wmn..<wmb.count], "\"}");
+  werr := agy_install_from_manifest(wroot, cast(string) wmb[0..<wmn], "windows", "x64", false, wsrc, false, exeb[..]);
+  if werr.count > 0 { tool_errln(werr); return 1; }
+  if fs_kind(wsrc) != FS_FILE { tool_errln("selftest: external --artifact file was moved or deleted"); return 1; }
+  wridb: [80] u8; wrid := agy_release_id_from_sha512(wh, wridb[..]);
+  wexeb: [1280] u8; wexe := agy_managed_exe_path(wroot, wrid, true, wexeb[..]);
+  if fs_kind(wexe) != FS_FILE { tool_errln("selftest: windows managed exe missing"); return 1; }
+
   _ = fs_remove(tmp);
   agy_print("agy-install selftest: PASS\n");
   return 0;

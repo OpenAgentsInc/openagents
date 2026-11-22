@@ -35,6 +35,39 @@ agy_sha512_file_hex :: (path: string, out_hex: [] u8) -> string {
   return cast(string) out_hex[0..<128];
 }
 
+// Copy a file in 64 KiB chunks in pure Coax (works on Windows and POSIX without cp).
+agy_copy_file :: (from: string, to: string) -> bool {
+  sz := fs_size(from);
+  if sz < 0 { return false; }
+  if sz == 0 { return fs_write(to, ""); }
+  chunk: [65536] u8;
+  off := 0;
+  while off < sz {
+    n := fs_read_at(from, off, chunk[..]);
+    if n <= 0 { return false; }
+    ok := ifx off == 0 then fs_write(to, cast(string) chunk[0..<n]) else fs_append(to, cast(string) chunk[0..<n]);
+    if !ok { return false; }
+    off += n;
+  }
+  return true;
+}
+
+// True when path is located directly under dir (e.g., <root>/staging/<rid>.progress).
+agy_under_dir :: (path: string, dir: string) -> bool {
+  if dir.count == 0 || path.count <= dir.count + 1 { return false; }
+  if cast(string) path[0..<dir.count] != dir { return false; }
+  sep := path[dir.count];
+  return sep == '/' || sep == '\\';
+}
+
+#test "agy-install-lib: agy_under_dir distinguishes staging paths from external artifacts" {
+  #assert agy_under_dir("/root/staging/abc.progress", "/root/staging");
+  #assert agy_under_dir("C:\\root\\staging\\abc.progress", "C:\\root\\staging");
+  #assert !agy_under_dir("/root/staging2/abc.exe", "/root/staging");
+  #assert !agy_under_dir("/tmp/user.exe", "/root/staging");
+  #assert !agy_under_dir("/root/staging", "/root/staging");
+}
+
 // Retry fs_remove with bounded backoff for briefly locked Windows runtime folders (#13839).
 agy_remove_retry :: (path: string) -> bool {
   if fs_remove(path) { return true; }
@@ -241,23 +274,17 @@ agy_install_from_manifest :: (
       }
     } else {
       dest_in_ext_b: [1280] u8; dest_in_ext := fs_join(ext_dir, exe_name, dest_in_ext_b[..]);
-      if downloaded {
+      if downloaded || agy_under_dir(dl_path, stg_root) {
         if !agy_rename_retry(dl_path, dest_in_ext) {
           _ = agy_remove_retry(ext_dir);
           return "failed to stage Windows executable";
         }
         downloaded = false;
       } else {
-        // a downloaded artifact (agyworker --connect fetched it with progress) is moved into place:
-        // Windows has no cp; fall back to cp elsewhere
-        if !agy_rename_retry(dl_path, dest_in_ext) {
-          argv := [3] string.["cp", dl_path, dest_in_ext];
-          co: [256] u8; ce: [256] u8;
-          cr := proc_run(argv[..], 30000, co[..], ce[..]);
-          if cr.started != 0 || cr.status != 0 {
-            _ = agy_remove_retry(ext_dir);
-            return "failed to copy Windows executable";
-          }
+        // Keep external --artifact inputs intact; copy in pure Coax so Windows needs no cp.
+        if !agy_copy_file(dl_path, dest_in_ext) {
+          _ = agy_remove_retry(ext_dir);
+          return "failed to copy Windows executable";
         }
       }
     }

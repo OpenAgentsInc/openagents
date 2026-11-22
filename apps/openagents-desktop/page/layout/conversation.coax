@@ -766,7 +766,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   pad := 20.0f32;
   iw := card_w - 2.0f32 * pad;
   // Estimate card height so it stays centered vertically in the window.
-  est_h := 220.0f32;
+  est_h := ifx (!s[0].local_os_ok || !s[0].local_hw_ok) && s[0].agy_avail then 390.0f32 else 220.0f32;
   cy := (h - est_h) / 2.0f32;
   min_y := cp_bar(s) + a.gap;
   if cy < min_y { cy = min_y; }
@@ -782,7 +782,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   else if s[0].local_dl_state == CP_LOCAL_ERROR || s[0].local_dl_state == CP_LOCAL_SERVER_ERROR { body_h = 128.0f32; }
   total_h := 2.0f32 * pad + title_h + a.gap_small + sub_h + a.gap + body_h;
   card := sheet_box(sh, cx, cy, card_w, total_h, 16.0f32, 1.0f32, th.surface, th.border);
-  _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Inkling 2 Mini setup", cx, cy, card_w, total_h, 0, 0);
+  region := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Inkling 2 Mini setup", cx, cy, card_w, total_h, 0, 0);
   _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.strong.line, k.strong.face, th.text, app_fit(f, k.strong.face, "OpenAgents Desktop", iw));
   y += title_h + a.gap_small;
   _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, "Private, on-device coding powered by Inkling 2 Mini", iw));
@@ -796,6 +796,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     if s[0].agy_avail {
       y = cp_onboarding_agy(s, f, cx + pad, y + a.gap, iw);
       if card >= 0 { sh[0].under[card].h = y + pad - cy; }
+      if region >= 0 { f[0].rows[0].rows[region].h = y + pad - cy; }
     }
   } else if !s[0].local_hw_ok {
     // The host's reason (unified memory on a Mac, VRAM on an NVIDIA GPU), then what this machine has.
@@ -809,6 +810,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     if s[0].agy_avail {
       y = cp_onboarding_agy(s, f, cx + pad, y + a.gap, iw);
       if card >= 0 { sh[0].under[card].h = y + pad - cy; }
+      if region >= 0 { f[0].rows[0].rows[region].h = y + pad - cy; }
     }
   } else if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {
     pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini (IQ4_NL) — ");
