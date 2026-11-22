@@ -28,10 +28,87 @@
 #define OA_SUBAGENTS 8
 #define OA_TERMS 8
 
+// Constants matching #authority coax/lib/agent/desktop/local-model.coax.
+enum {
+  OA_LM_HW_OK = 0, OA_LM_HW_UNSUPPORTED_OS = 1, OA_LM_HW_INTEL_MAC = 2,
+  OA_LM_HW_LOW_RAM_MAC = 3, OA_LM_HW_NO_GPU = 4, OA_LM_HW_LOW_VRAM_CUDA = 5,
+  OA_LM_HW_LOW_MEM_VULKAN = 6
+};
+enum {
+  OA_LM_STATE_UNSUPPORTED_HW = 0, OA_LM_STATE_NOT_INSTALLED = 1,
+  OA_LM_STATE_DOWNLOADING = 2, OA_LM_STATE_PAUSED = 3,
+  OA_LM_STATE_VERIFYING = 4, OA_LM_STATE_INSTALLED = 5, OA_LM_STATE_ERROR = 6
+};
+enum {
+  OA_LM_DL_OK = 0, OA_LM_DL_UNSUPPORTED_HW = 1, OA_LM_DL_ALREADY_INSTALLED = 2,
+  OA_LM_DL_BUSY = 3, OA_LM_DL_LOW_DISK = 4
+};
+enum { OA_LM_RM_OK = 0, OA_LM_RM_ACTIVE_RUNS = 1, OA_LM_RM_BUSY = 2 };
+enum { OA_LM_QUIT_STOP = 0, OA_LM_QUIT_KEEP_DETACHED = 1 };
+enum { OA_LM_CTX = 32768, OA_LM_IDLE_EXIT_S = 300 };
+
+typedef struct {
+  OaLocalHw hw;
+  int hw_verdict;
+  int hw_probed;
+  char hw_reason[256];
+  char models_dir[OA_PATH];
+  char weights_path[OA_PATH];
+  char partial_path[OA_PATH];
+  char logs_dir[OA_PATH];
+  char dl_log_path[OA_PATH];
+  char srv_log_path[OA_PATH];
+  char server_bin[OA_PATH];
+  char download_url[1024];
+  char expected_sha[65];
+  int64_t expected_bytes;
+  int64_t weights_bytes;
+  int64_t weights_mtime;
+  int64_t partial_bytes;
+  int port;
+
+  OaSubproc dl_proc;
+  int downloading;
+  int paused;
+  int pause_requested;
+  int cancel_requested;
+  int64_t last_sample_ms;
+  int64_t last_sample_bytes;
+  double bytes_per_sec;
+
+  volatile int verifying;
+  volatile int verify_done;
+  volatile int verify_ok;
+  volatile int verify_from_part;
+  char verify_sha[65];
+  char verify_err[256];
+  char auto_verify_key[256];
+
+  char last_error[512];
+  int manifest_valid;
+  int last_state;
+  int64_t last_sync_ms;
+
+  int dialog_state;
+  int btn_download;
+  int btn_pause;
+  int btn_cancel_dl;
+  int btn_verify;
+  int btn_reveal;
+  int btn_delete;
+  int btn_close;
+
+  int64_t server_pid;
+} LocalModelCtx;
+
 typedef struct {
   void *page;
   Portal *portal;
   coax_t_OaCore *core;
+  LocalModelCtx local;
+  int64_t flags;
+  int custom_worker;
+  int test_mode;
   char exe_dir[OA_PATH];
   char resources[OA_PATH];
   char worker_bin[OA_PATH];
@@ -101,6 +178,10 @@ static void refresh_chats(DesktopApp *a) {
   cd_current(a->page, a->chat_id);
 }
 
+enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE };
+static void local_sync(DesktopApp *a);
+static void ask_local_models(DesktopApp *a);
+
 static void refresh_settings_info(DesktopApp *a) {
   char ck[256] = {0}, ok[256] = {0};
   oa_core_key_read(cs("claude-key"), vu(ck, (int)sizeof(ck)));
@@ -113,6 +194,7 @@ static void refresh_settings_info(DesktopApp *a) {
     a->foreman_tier = (int)tier;
   }
   cd_foreman(a->page, 0, a->foreman_tier);
+  if (!a->test_mode && a->local.hw_probed) local_sync(a);
 }
 
 static void set_folder(DesktopApp *a, const char *folder) {
@@ -177,8 +259,560 @@ static void maybe_prepare_worktree(DesktopApp *a) {
   }
 }
 
-// The worker's extra environment: the OpenRouter key kept in settings (ask_key), which
-// Microcoder reads there (coder/tui/microcoder_keys.coax), plus optional Antigravity CLI/model.
+// ---- Cross-platform Inkling 2 Mini local model lifecycle (#13965, §3 & §5.5) ----
+
+static void local_format_bytes(int64_t bytes, char *out, size_t cap) {
+  double d = bytes > 0 ? (double)bytes : 0.0;
+  if (d >= 1e9) snprintf(out, cap, "%.2f GB", d / 1e9);
+  else if (d >= 1e6) snprintf(out, cap, "%.1f MB", d / 1e6);
+  else if (d >= 1e3) snprintf(out, cap, "%.0f KB", d / 1e3);
+  else snprintf(out, cap, "%lld B", (long long)(bytes > 0 ? bytes : 0));
+}
+
+static void local_find_server_bin(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  l->server_bin[0] = '\0';
+  char cand[OA_PATH];
+  snprintf(cand, sizeof cand, "%s/%s", a->exe_dir, OA_LOCAL_SERVER);
+  if (file_exists(cand)) { snprintf(l->server_bin, sizeof l->server_bin, "%s", cand); return; }
+  snprintf(cand, sizeof cand, "%s/%s", a->resources, OA_LOCAL_SERVER);
+  if (file_exists(cand)) { snprintf(l->server_bin, sizeof l->server_bin, "%s", cand); return; }
+  char hb[OA_PATH] = {0};
+  const char *home = oa_home(hb, sizeof hb);
+  if (home && home[0]) {
+    snprintf(cand, sizeof cand, "%s/.openagents/bin/%s", home, OA_LOCAL_SERVER);
+    if (file_exists(cand)) { snprintf(l->server_bin, sizeof l->server_bin, "%s", cand); return; }
+  }
+}
+
+static void local_init(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  oa_probe_local_hw(&l->hw);
+  l->hw_probed = 1;
+  l->hw_verdict = (int)oa_core_local_admit_hw(
+      l->hw.os, l->hw.is_apple_silicon, l->hw.system_ram_gb,
+      l->hw.backend, l->hw.gpu_vram_gb, l->hw.quant);
+  oa_core_local_hw_reason(l->hw_verdict, vu(l->hw_reason, (int)sizeof l->hw_reason));
+  oa_core_local_models_dir(vu(l->models_dir, (int)sizeof l->models_dir));
+  oa_core_local_logs_dir(vu(l->logs_dir, (int)sizeof l->logs_dir));
+  oa_core_local_download_url(vu(l->download_url, (int)sizeof l->download_url));
+  oa_core_local_expected_sha(vu(l->expected_sha, (int)sizeof l->expected_sha));
+  l->expected_bytes = oa_core_local_expected_bytes();
+  char wname[128] = {0}, pname[128] = {0};
+  oa_core_local_weights_name(vu(wname, (int)sizeof wname));
+  oa_core_local_partial_name(vu(pname, (int)sizeof pname));
+  if (l->models_dir[0] && wname[0]) snprintf(l->weights_path, sizeof l->weights_path, "%s/%s", l->models_dir, wname);
+  if (l->models_dir[0] && pname[0]) snprintf(l->partial_path, sizeof l->partial_path, "%s/%s", l->models_dir, pname);
+  if (l->logs_dir[0]) {
+    snprintf(l->dl_log_path, sizeof l->dl_log_path, "%s/inkling-download.log", l->logs_dir);
+    snprintf(l->srv_log_path, sizeof l->srv_log_path, "%s/psionic-inkling-serve.log", l->logs_dir);
+  }
+  const char *env_p = getenv("OA_INKLING_PORT");
+  int parsed_p = (env_p && env_p[0]) ? atoi(env_p) : 0;
+  l->port = (int)oa_core_local_port(parsed_p);
+  local_find_server_bin(a);
+  l->last_state = -1;
+}
+
+static void local_refresh_disk(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  int64_t wb = 0, wm = 0, pb = 0;
+  if (oa_file_stat(l->weights_path, &wb, &wm)) {
+    l->weights_bytes = wb;
+    l->weights_mtime = wm;
+  } else {
+    l->weights_bytes = 0;
+    l->weights_mtime = 0;
+  }
+  if (oa_file_stat(l->partial_path, &pb, NULL)) l->partial_bytes = pb;
+  else l->partial_bytes = 0;
+  // Avoid re-entering oa_core file effects while the background SHA-256 thread is running.
+  if (!l->verifying) {
+    if (l->weights_bytes > 0 && l->weights_mtime > 0 && l->models_dir[0]) {
+      l->manifest_valid = (int)oa_core_local_manifest_valid(cs(l->models_dir), l->weights_bytes, l->weights_mtime);
+    } else {
+      l->manifest_valid = 0;
+    }
+  }
+}
+
+static int local_current_state(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  return (int)oa_core_local_state(
+      l->hw_verdict, l->manifest_valid, l->downloading,
+      l->paused || (!l->downloading && l->partial_bytes > 0),
+      l->verifying, l->last_error[0] != '\0', l->partial_bytes);
+}
+
+static int local_is_selectable(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  return l->hw_verdict == OA_LM_HW_OK && l->manifest_valid && !l->downloading && !l->verifying;
+}
+
+static void local_status_summary(DesktopApp *a, char *out, size_t cap) {
+  LocalModelCtx *l = &a->local;
+  int st = local_current_state(a);
+  char b1[32], b2[32];
+  if (st == OA_LM_STATE_UNSUPPORTED_HW) {
+    if (l->hw_verdict == OA_LM_HW_LOW_VRAM_CUDA) {
+      snprintf(out, cap, "Requires >= 24 GB NVIDIA VRAM (%d GB detected)", l->hw.gpu_vram_gb);
+    } else {
+      snprintf(out, cap, "%s", l->hw_reason[0] ? l->hw_reason : "Unsupported hardware");
+    }
+  } else if (st == OA_LM_STATE_VERIFYING) {
+    snprintf(out, cap, "Verifying SHA-256...");
+  } else if (st == OA_LM_STATE_DOWNLOADING) {
+    int pct = (int)oa_core_local_download_pct(l->partial_bytes, l->expected_bytes);
+    local_format_bytes(l->partial_bytes, b1, sizeof b1);
+    local_format_bytes(l->expected_bytes, b2, sizeof b2);
+    if (l->bytes_per_sec > 1024.0) {
+      snprintf(out, cap, "Downloading %d%% · %s / %s · %.1f MB/s", pct, b1, b2, l->bytes_per_sec / 1e6);
+    } else {
+      snprintf(out, cap, "Downloading %d%% · %s / %s", pct, b1, b2);
+    }
+  } else if (st == OA_LM_STATE_PAUSED) {
+    int pct = (int)oa_core_local_download_pct(l->partial_bytes, l->expected_bytes);
+    local_format_bytes(l->partial_bytes, b1, sizeof b1);
+    local_format_bytes(l->expected_bytes, b2, sizeof b2);
+    snprintf(out, cap, "Paused %d%% · %s / %s · Resume...", pct, b1, b2);
+  } else if (st == OA_LM_STATE_INSTALLED) {
+    local_format_bytes(l->weights_bytes, b1, sizeof b1);
+    snprintf(out, cap, "Installed (%s · SHA-256 verified)", b1);
+  } else if (st == OA_LM_STATE_ERROR) {
+    snprintf(out, cap, "Error: %s", l->last_error);
+  } else if (l->weights_bytes == l->expected_bytes && l->expected_bytes > 0) {
+    snprintf(out, cap, "Unverified weights on disk · Verify SHA-256");
+  } else {
+    local_format_bytes(l->expected_bytes, b2, sizeof b2);
+    snprintf(out, cap, "Not downloaded (%s) · Download...", b2);
+  }
+}
+
+static void local_dialog_body(DesktopApp *a, char *out, size_t cap) {
+  LocalModelCtx *l = &a->local;
+  int st = local_current_state(a);
+  int64_t avail = oa_avail_disk_bytes(l->models_dir);
+  char exp_s[32], avail_s[32], used_s[32], part_s[32], state_lbl[64] = {0};
+  local_format_bytes(l->expected_bytes, exp_s, sizeof exp_s);
+  local_format_bytes(avail, avail_s, sizeof avail_s);
+  local_format_bytes(l->weights_bytes + l->partial_bytes, used_s, sizeof used_s);
+  local_format_bytes(l->partial_bytes, part_s, sizeof part_s);
+  oa_core_local_state_label(st, vu(state_lbl, (int)sizeof state_lbl));
+  char gpu_desc[192];
+  if (l->hw.backend == 2) {
+    if (l->hw.gpu_name[0]) snprintf(gpu_desc, sizeof gpu_desc, "NVIDIA CUDA (%s, %d GB VRAM)", l->hw.gpu_name, l->hw.gpu_vram_gb);
+    else snprintf(gpu_desc, sizeof gpu_desc, "NVIDIA CUDA (%d GB VRAM)", l->hw.gpu_vram_gb);
+  } else {
+    snprintf(gpu_desc, sizeof gpu_desc, "No supported CUDA GPU detected");
+  }
+  char sha_short[32] = {0};
+  if (strlen(l->expected_sha) >= 20) {
+    snprintf(sha_short, sizeof sha_short, "%.12s...%s", l->expected_sha, l->expected_sha + strlen(l->expected_sha) - 8);
+  }
+  size_t pos = 0;
+  pos += (size_t)snprintf(out + pos, cap - pos,
+      "Inkling 2 Mini — 26.4B total / 3.4B active looped MoE (3 passes)\n"
+      "Format: IQ4_NL GGUF · Size: %s · SHA-256: %s\n"
+      "Host (%s): %s · RAM: %d GB · Free disk: %s\n"
+      "Cache: %s · Disk usage: %s\n"
+      "Server: 127.0.0.1:%d (--ctx %d --idle-exit-s %d)\n\n",
+      exp_s, sha_short, OA_PLATFORM_NAME, gpu_desc, l->hw.system_ram_gb, avail_s,
+      l->models_dir, used_s, l->port, OA_LM_CTX, OA_LM_IDLE_EXIT_S);
+  if (st == OA_LM_STATE_UNSUPPORTED_HW && pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s — %s", state_lbl, l->hw_reason);
+  } else if (st == OA_LM_STATE_INSTALLED && pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s · Ready for local coding on Psionic (%s).", state_lbl, l->server_bin[0] ? l->server_bin : "psionic-inkling-serve pending");
+  } else if (st == OA_LM_STATE_VERIFYING && pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s — Streaming Coax SHA-256 check on disk...", state_lbl);
+  } else if (st == OA_LM_STATE_DOWNLOADING && pos < cap) {
+    int pct = (int)oa_core_local_download_pct(l->partial_bytes, l->expected_bytes);
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: Downloading %d%% (%s / %s, resumable)\nLog: %s",
+                            pct, part_s, exp_s, l->dl_log_path);
+  } else if (st == OA_LM_STATE_PAUSED && pos < cap) {
+    int pct = (int)oa_core_local_download_pct(l->partial_bytes, l->expected_bytes);
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: Paused at %d%% (%s / %s). Click Resume to continue.", pct, part_s, exp_s);
+  } else if (l->weights_bytes == l->expected_bytes && l->expected_bytes > 0 && pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: Unverified checkpoint found on disk. Click Verify SHA-256 to authenticate.");
+  } else if (pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s — Ready to download (%s, resumable, SHA-256 verified).", state_lbl, exp_s);
+  }
+  if (l->last_error[0] && pos < cap) {
+    snprintf(out + pos, cap - pos, "\n\nLast error: %s", l->last_error);
+  }
+}
+
+static void local_verify_thread(void *raw) {
+  DesktopApp *a = (DesktopApp *)raw;
+  LocalModelCtx *l = &a->local;
+  const char *path = l->verify_from_part ? l->partial_path : l->weights_path;
+  l->verify_ok = 0;
+  l->verify_sha[0] = '\0';
+  l->verify_err[0] = '\0';
+  int64_t fbytes = 0, fmtime = 0;
+  if (!oa_file_stat(path, &fbytes, &fmtime)) {
+    snprintf(l->verify_err, sizeof l->verify_err, "Could not read weights file for SHA-256 verification.");
+  } else if (fbytes != l->expected_bytes) {
+    if (l->verify_from_part) remove(l->partial_path);
+    snprintf(l->verify_err, sizeof l->verify_err, "Size mismatch: got %lld bytes, expected %lld bytes.",
+             (long long)fbytes, (long long)l->expected_bytes);
+  } else {
+    char sha[65] = {0};
+    int ok = (int)oa_core_local_verify_file(cs(path), vu(sha, (int)sizeof sha));
+    snprintf(l->verify_sha, sizeof l->verify_sha, "%s", sha);
+    if (ok) {
+      int promoted = 1;
+      if (l->verify_from_part) {
+        promoted = oa_rename_replace(l->partial_path, l->weights_path);
+      }
+      if (!promoted) {
+        snprintf(l->verify_err, sizeof l->verify_err, "Verified SHA-256, but could not promote .part file to %s.", l->weights_path);
+      } else {
+        int64_t final_bytes = fbytes, final_mtime = fmtime;
+        oa_file_stat(l->weights_path, &final_bytes, &final_mtime);
+        int64_t now_s = (int64_t)time(NULL);
+        if (oa_core_local_manifest_write(cs(l->models_dir), final_bytes, cs(sha), final_mtime, now_s)) {
+          l->verify_ok = 1;
+        } else {
+          snprintf(l->verify_err, sizeof l->verify_err, "Verified SHA-256, but could not write manifest.json.");
+        }
+      }
+    } else {
+      if (l->verify_from_part) {
+        remove(l->partial_path);
+      } else {
+        char mpath[OA_PATH + 32];
+        snprintf(mpath, sizeof mpath, "%s/manifest.json", l->models_dir);
+        remove(mpath);
+      }
+      if (sha[0]) {
+        snprintf(l->verify_err, sizeof l->verify_err, "SHA-256 mismatch: got %.12s..., expected %.12s....",
+                 sha, l->expected_sha);
+      } else {
+        snprintf(l->verify_err, sizeof l->verify_err, "SHA-256 verification failed while reading weights.");
+      }
+    }
+  }
+  l->verifying = 0;
+  l->verify_done = 1;
+}
+
+static void local_start_verify(DesktopApp *a, int from_part) {
+  LocalModelCtx *l = &a->local;
+  if (l->downloading || l->verifying) return;
+  l->verifying = 1;
+  l->verify_done = 0;
+  l->verify_ok = 0;
+  l->verify_from_part = from_part;
+  l->last_error[0] = '\0';
+  if (!oa_spawn_thread(local_verify_thread, a)) {
+    l->verifying = 0;
+    snprintf(l->last_error, sizeof l->last_error, "Could not start background SHA-256 verification thread.");
+  }
+  local_sync(a);
+}
+
+static void local_server_stop(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  if (l->server_pid > 0) {
+    oa_server_pid_stop(l->server_pid);
+    l->server_pid = 0;
+  }
+}
+
+static void local_start_download(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  local_refresh_disk(a);
+  int64_t avail = oa_avail_disk_bytes(l->models_dir);
+  int verdict = (int)oa_core_local_admit_download(
+      l->hw_verdict, l->manifest_valid, l->downloading || l->verifying, avail, l->partial_bytes);
+  if (verdict == OA_LM_DL_UNSUPPORTED_HW) {
+    snprintf(l->last_error, sizeof l->last_error, "%s", l->hw_reason[0] ? l->hw_reason : "Hardware unsupported for Inkling 2 Mini.");
+    if (a->page) cd_toast(a->page, l->last_error, 1);
+    local_sync(a);
+    return;
+  }
+  if (verdict == OA_LM_DL_ALREADY_INSTALLED) {
+    l->last_error[0] = '\0';
+    local_sync(a);
+    return;
+  }
+  if (verdict == OA_LM_DL_BUSY) return;
+  if (verdict == OA_LM_DL_LOW_DISK) {
+    char avail_s[32];
+    local_format_bytes(avail, avail_s, sizeof avail_s);
+    snprintf(l->last_error, sizeof l->last_error, "Insufficient free disk space (%s available; need ~18.2 GB free).", avail_s);
+    if (a->page) cd_toast(a->page, l->last_error, 1);
+    local_sync(a);
+    return;
+  }
+  oa_mkdir_all(l->models_dir);
+  oa_mkdir_all(l->logs_dir);
+  l->last_error[0] = '\0';
+  l->pause_requested = 0;
+  l->cancel_requested = 0;
+  l->paused = 0;
+  l->bytes_per_sec = 0.0;
+  l->last_sample_ms = oa_core_now_ms();
+  l->last_sample_bytes = l->partial_bytes;
+  if (!oa_dl_start(&l->dl_proc, l->download_url, l->partial_path, l->dl_log_path)) {
+    snprintf(l->last_error, sizeof l->last_error, "Could not launch curl to download Inkling 2 Mini.");
+    if (a->page) cd_toast(a->page, l->last_error, 1);
+    local_sync(a);
+    return;
+  }
+  l->downloading = 1;
+  local_sync(a);
+}
+
+static void local_pause_download(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  if (!l->downloading) return;
+  l->pause_requested = 1;
+  oa_dl_stop(&l->dl_proc);
+  l->downloading = 0;
+  l->paused = 1;
+  l->bytes_per_sec = 0.0;
+  local_sync(a);
+}
+
+static void local_cancel_download(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  l->cancel_requested = 1;
+  l->pause_requested = 0;
+  if (l->downloading) {
+    oa_dl_stop(&l->dl_proc);
+    l->downloading = 0;
+  }
+  remove(l->partial_path);
+  l->paused = 0;
+  l->bytes_per_sec = 0.0;
+  l->last_error[0] = '\0';
+  local_sync(a);
+}
+
+static int local_running_count(DesktopApp *a) {
+  int n = (a->page && cd_running(a->page)) ? 1 : 0;
+  for (int i = 0; i < OA_SUBAGENTS; i++) {
+    if (a->sub_active[i]) n++;
+  }
+  return n;
+}
+
+static int local_remove_weights(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  int rm = (int)oa_core_local_admit_remove(local_running_count(a), l->downloading || l->verifying);
+  if (rm == OA_LM_RM_ACTIVE_RUNS) {
+    if (a->page) cd_toast(a->page, "Stop the active Inkling 2 Mini reply before deleting its cached weights.", 1);
+    return 0;
+  }
+  if (rm == OA_LM_RM_BUSY) {
+    if (a->page) cd_toast(a->page, "Cancel or finish the active download/verification before removing weights.", 1);
+    return 0;
+  }
+  local_server_stop(a);
+  remove(l->weights_path);
+  remove(l->partial_path);
+  char mpath[OA_PATH + 32];
+  snprintf(mpath, sizeof mpath, "%s/manifest.json", l->models_dir);
+  remove(mpath);
+  l->manifest_valid = 0;
+  l->auto_verify_key[0] = '\0';
+  l->last_error[0] = '\0';
+  local_sync(a);
+  return 1;
+}
+
+static void local_read_log_tail(const char *path, char *out, size_t cap) {
+  out[0] = '\0';
+  FILE *f = fopen(path, "rb");
+  if (!f) return;
+  char buf[2048];
+  fseek(f, 0, SEEK_END);
+  long sz = ftell(f);
+  long off = sz > (long)(sizeof buf - 1) ? sz - (long)(sizeof buf - 1) : 0;
+  fseek(f, off, SEEK_SET);
+  size_t n = fread(buf, 1, sizeof buf - 1, f);
+  fclose(f);
+  buf[n] = '\0';
+  while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' ')) buf[--n] = '\0';
+  char *last = strrchr(buf, '\n');
+  const char *tail = last ? last + 1 : buf;
+  snprintf(out, cap, "%s", tail);
+}
+
+static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
+  LocalModelCtx *l = &a->local;
+  local_refresh_disk(a);
+  int hp = oa_http_probe_health(l->port);
+  if (hp == 1) return 1;
+  if (hp == 2) {
+    char who[160] = {0};
+    if (!oa_port_conflict(l->port, who, sizeof who) || !who[0]) snprintf(who, sizeof who, "another HTTP server");
+    snprintf(err, err_cap, "Port %d is already in use by %s. Stop that process or launch with OA_INKLING_PORT=<free-port>.", l->port, who);
+    return 0;
+  }
+  char who[160] = {0};
+  if (oa_port_conflict(l->port, who, sizeof who)) {
+    snprintf(err, err_cap, "Port %d is already in use by %s. Stop that process or launch with OA_INKLING_PORT=<free-port>.",
+             l->port, who[0] ? who : "another process");
+    return 0;
+  }
+  if (l->hw_verdict != OA_LM_HW_OK) {
+    snprintf(err, err_cap, "%s", l->hw_reason[0] ? l->hw_reason : "Hardware unsupported for local Inkling 2 Mini.");
+    return 0;
+  }
+  if (!l->manifest_valid) {
+    char sum[256] = {0};
+    local_status_summary(a, sum, sizeof sum);
+    snprintf(err, err_cap, "Inkling 2 Mini weights are not verified on disk (%s).", sum);
+    return 0;
+  }
+  local_find_server_bin(a);
+  if (!l->server_bin[0]) {
+    snprintf(err, err_cap, "%s not found beside OpenAgents or in ~/.openagents/bin.", OA_LOCAL_SERVER);
+    return 0;
+  }
+  if (l->server_pid <= 0 || !oa_server_pid_alive(l->server_pid)) {
+    oa_mkdir_all(l->logs_dir);
+    int64_t pid = oa_server_spawn_detached(
+        l->server_bin, l->weights_path, "127.0.0.1",
+        l->port, OA_LM_CTX, OA_LM_IDLE_EXIT_S, l->srv_log_path);
+    if (pid <= 0) {
+      snprintf(err, err_cap, "Could not launch %s (see %s).", l->server_bin, l->srv_log_path);
+      return 0;
+    }
+    l->server_pid = pid;
+  }
+  for (int i = 0; i < 240; i++) {
+    if (oa_http_probe_health(l->port) == 1) return 1;
+    if (!oa_server_pid_alive(l->server_pid)) {
+      l->server_pid = 0;
+      char tail[256] = {0};
+      local_read_log_tail(l->srv_log_path, tail, sizeof tail);
+      if (tail[0]) snprintf(err, err_cap, "psionic-inkling-serve exited before ready: %s", tail);
+      else snprintf(err, err_cap, "psionic-inkling-serve exited before ready (see %s).", l->srv_log_path);
+      return 0;
+    }
+    oa_sleep_ms(250);
+  }
+  char tail[256] = {0};
+  local_read_log_tail(l->srv_log_path, tail, sizeof tail);
+  snprintf(err, err_cap, "Timed out waiting for psionic-inkling-serve on 127.0.0.1:%d. %s",
+           l->port, tail[0] ? tail : l->srv_log_path);
+  return 0;
+}
+
+static void local_sync(DesktopApp *a) {
+  if (!a || !a->page) return;
+  LocalModelCtx *l = &a->local;
+  if (!l->hw_probed) local_init(a);
+  local_refresh_disk(a);
+  // One-time automatic SHA-256 verification if unmanifested full-size weights already exist on disk.
+  if (l->hw_verdict == OA_LM_HW_OK && !l->manifest_valid && !l->downloading && !l->verifying &&
+      l->expected_bytes > 0 && l->weights_bytes == l->expected_bytes && l->weights_mtime > 0) {
+    char key[256];
+    snprintf(key, sizeof key, "%lld#%lld", (long long)l->weights_bytes, (long long)l->weights_mtime);
+    if (strcmp(l->auto_verify_key, key) != 0) {
+      snprintf(l->auto_verify_key, sizeof l->auto_verify_key, "%s", key);
+      local_start_verify(a, 0);
+      return;
+    }
+  }
+  int st = local_current_state(a);
+  int os_ok = (l->hw_verdict != OA_LM_HW_UNSUPPORTED_OS && l->hw_verdict != OA_LM_HW_NO_GPU) ? 1 : 0;
+  int hw_ok = (l->hw_verdict == OA_LM_HW_OK) ? 1 : 0;
+  int ram_gb = (l->hw.backend == 2 && l->hw.gpu_vram_gb > 0) ? l->hw.gpu_vram_gb : l->hw.system_ram_gb;
+  int dl_state = 0; // CP_LOCAL_NOT_INSTALLED
+  if (st == OA_LM_STATE_DOWNLOADING) dl_state = 1;
+  else if (st == OA_LM_STATE_VERIFYING) dl_state = 2;
+  else if (st == OA_LM_STATE_INSTALLED) dl_state = 3;
+  else if (st == OA_LM_STATE_ERROR) dl_state = 4;
+  int total_mb = (int)(l->expected_bytes / (1024 * 1024));
+  int64_t done_bytes = l->manifest_valid ? l->expected_bytes : l->partial_bytes;
+  int dl_mb = (int)(done_bytes / (1024 * 1024));
+  int pct = l->manifest_valid ? 100 : (int)oa_core_local_download_pct(done_bytes, l->expected_bytes);
+  const char *err_s = l->last_error[0] ? l->last_error : (l->hw_verdict != OA_LM_HW_OK ? l->hw_reason : "");
+  cd_local_state(a->page, os_ok, hw_ok, ram_gb, dl_state, pct, dl_mb, total_mb, err_s);
+  if (!a->test_mode) cd_inkling(a->page, local_is_selectable(a) ? 1 : 0);
+  char summary[256] = {0};
+  local_status_summary(a, summary, sizeof summary);
+  cd_settings_local(a->page, summary);
+  l->last_state = st;
+  l->last_sync_ms = oa_core_now_ms();
+}
+
+static void pump_local(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  int need_sync = 0;
+  if (l->downloading) {
+    int code = 0;
+    if (oa_dl_poll(&l->dl_proc, &code)) {
+      l->downloading = 0;
+      l->bytes_per_sec = 0.0;
+      if (l->cancel_requested) {
+        l->cancel_requested = 0;
+        remove(l->partial_path);
+        l->paused = 0;
+        l->last_error[0] = '\0';
+        need_sync = 1;
+      } else if (l->pause_requested) {
+        l->pause_requested = 0;
+        l->paused = 1;
+        need_sync = 1;
+      } else if (code == 0) {
+        local_start_verify(a, 1);
+      } else {
+        local_refresh_disk(a);
+        l->paused = l->partial_bytes > 0 ? 1 : 0;
+        snprintf(l->last_error, sizeof l->last_error,
+                 "Download interrupted (curl exit %d). See %s.", code, l->dl_log_path);
+        need_sync = 1;
+      }
+    } else {
+      int64_t now = oa_core_now_ms();
+      if (now - l->last_sync_ms >= 500) {
+        local_refresh_disk(a);
+        int64_t dt = now - l->last_sample_ms;
+        if (dt >= 250) {
+          int64_t delta = l->partial_bytes - l->last_sample_bytes;
+          if (delta < 0) delta = 0;
+          double inst = ((double)delta * 1000.0) / (double)dt;
+          l->bytes_per_sec = l->bytes_per_sec > 0.0 ? (l->bytes_per_sec * 0.65 + inst * 0.35) : inst;
+          l->last_sample_bytes = l->partial_bytes;
+          l->last_sample_ms = now;
+        }
+        need_sync = 1;
+      }
+    }
+  }
+  if (l->verify_done) {
+    l->verify_done = 0;
+    if (l->verify_ok) {
+      l->last_error[0] = '\0';
+      if (a->page) cd_toast(a->page, "Inkling 2 Mini verified and ready.", 0);
+    } else {
+      snprintf(l->last_error, sizeof l->last_error, "%s",
+               l->verify_err[0] ? l->verify_err : "SHA-256 verification failed.");
+      if (a->page) cd_toast(a->page, l->last_error, 1);
+    }
+    need_sync = 1;
+  }
+  if (need_sync) {
+    local_sync(a);
+    if (a->dialog == OA_DIALOG_LOCAL && a->page && cd_overlay_open(a->page)) {
+      int cur = local_current_state(a);
+      if (cur == l->dialog_state) {
+        char body[2048];
+        local_dialog_body(a, body, sizeof body);
+        cd_dialog_body(a->page, body);
+      } else {
+        ask_local_models(a);
+      }
+    }
+  }
+}
+
+// The worker's extra environment: OpenRouter key, Antigravity CLI/model, and Psionic Inkling URL/model.
 static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
   char key[1024] = {0};
   size_t pos = 0;
@@ -191,13 +825,27 @@ static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
     if (a->agy_bin[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_BIN=%s\n", a->agy_bin);
     if (a->agy_model[0] && pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_MODEL=%s\n", a->agy_model);
   }
+  if (!is_agy && a && a->page && (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags))) {
+    int port = a->local.port > 0 ? a->local.port : 18794;
+    if (pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "PSIONIC_BASE_URL=http://127.0.0.1:%d\n", port);
+    if (pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "PSIONIC_MODEL=inkling-2-mini\n");
+  }
 }
 
 static int ensure_worker(DesktopApp *a) {
   int want_agy = cd_model_agy(a->page) != 0 && a->agy_worker_bin[0] != '\0';
   // a chat on a Claude model runs on the Claude worker (kind 2), as its sub-agents do
   int want_claude = !want_agy && cd_model_claude(a->page) != 0 && a->claude_worker_bin[0] != '\0';
+  int want_inkling = !want_agy && !want_claude && !a->test_mode && !a->custom_worker &&
+                     (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags));
   int want_kind = want_agy ? 1 : want_claude ? 2 : 0;
+  if (want_inkling) {
+    char srv_err[512] = {0};
+    if (!local_ensure_server(a, srv_err, sizeof srv_err)) {
+      cd_failed(a->page, srv_err[0] ? srv_err : "could not start psionic-inkling-serve");
+      return 0;
+    }
+  }
   if (oa_core_worker_alive(vc(a))) {
     if (a->worker_is_agy == want_kind) return 1;
     if (!cd_running(a->page)) {
@@ -452,8 +1100,6 @@ static void full_path(DesktopApp *a, const char *path, char *out, size_t cap) {
 }
 
 // Dialogs drawn by the page (page/overlay.coax): one at a time, answered in pump_dialog.
-enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN };
-
 static void show_dialog(DesktopApp *a, int kind, int confirm, int cancel) {
   a->dialog = kind;
   a->dialog_status = cd_goal_status(a->page);
@@ -541,6 +1187,77 @@ static void ask_clear_foreman(DesktopApp *a) {
   show_dialog(a, OA_DIALOG_CLEAR_FOREMAN, 1, 0);
 }
 
+static void ask_local_delete(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  int rm = (int)oa_core_local_admit_remove(local_running_count(a), l->downloading || l->verifying);
+  if (rm == OA_LM_RM_ACTIVE_RUNS) {
+    cd_toast(a->page, "Stop the active Inkling 2 Mini reply before deleting its cached weights.", 1);
+    return;
+  }
+  if (rm == OA_LM_RM_BUSY) {
+    cd_toast(a->page, "Finish or cancel the active download/verification before removing weights.", 1);
+    return;
+  }
+  char used_s[32], body[512];
+  local_format_bytes(l->weights_bytes + l->partial_bytes, used_s, sizeof used_s);
+  snprintf(body, sizeof body,
+           "This removes %s from %s and stops the local Psionic server. You can re-download it later.",
+           used_s, l->models_dir);
+  cd_dialog_begin(a->page, 0, "Delete Inkling 2 Mini?", body);
+  cd_dialog_button(a->page, "Delete", 2, 1);
+  cd_dialog_button(a->page, "Cancel", 0, 0);
+  show_dialog(a, OA_DIALOG_LOCAL_DELETE, 1, 1);
+}
+
+static void ask_local_models(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  local_sync(a);
+  int st = local_current_state(a);
+  l->dialog_state = st;
+  l->btn_download = l->btn_pause = l->btn_cancel_dl = l->btn_verify = l->btn_reveal = l->btn_delete = l->btn_close = -9;
+  char body[2048];
+  local_dialog_body(a, body, sizeof body);
+  cd_dialog_begin(a->page, 2, "Local Models — Inkling 2 Mini", body);
+  int idx = 0, confirm = 0, cancel = 0;
+  if (st == OA_LM_STATE_INSTALLED) {
+    l->btn_delete = idx++; cd_dialog_button(a->page, "Delete...", 2, 1);
+    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
+    l->btn_verify = idx++; cd_dialog_button(a->page, "Verify SHA-256", 1, 0);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Done", 0, 0);
+    confirm = l->btn_close; cancel = l->btn_close;
+  } else if (st == OA_LM_STATE_DOWNLOADING) {
+    l->btn_cancel_dl = idx++; cd_dialog_button(a->page, "Cancel Download", 2, 1);
+    l->btn_pause = idx++; cd_dialog_button(a->page, "Pause", 1, 0);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Close", 0, 0);
+    confirm = l->btn_close; cancel = l->btn_close;
+  } else if (st == OA_LM_STATE_VERIFYING) {
+    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 1);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Close", 0, 0);
+    confirm = l->btn_close; cancel = l->btn_close;
+  } else if (st == OA_LM_STATE_PAUSED) {
+    l->btn_cancel_dl = idx++; cd_dialog_button(a->page, "Cancel Download", 2, 1);
+    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Close", 1, 0);
+    l->btn_download = idx++; cd_dialog_button(a->page, "Resume", 0, 0);
+    confirm = l->btn_download; cancel = l->btn_close;
+  } else if (st == OA_LM_STATE_UNSUPPORTED_HW) {
+    l->btn_close = idx++; cd_dialog_button(a->page, "Close", 0, 0);
+    confirm = l->btn_close; cancel = l->btn_close;
+  } else if (l->weights_bytes == l->expected_bytes && l->expected_bytes > 0) {
+    l->btn_delete = idx++; cd_dialog_button(a->page, "Delete...", 2, 1);
+    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Cancel", 1, 0);
+    l->btn_verify = idx++; cd_dialog_button(a->page, "Verify SHA-256", 0, 0);
+    confirm = l->btn_verify; cancel = l->btn_close;
+  } else {
+    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 1);
+    l->btn_close = idx++; cd_dialog_button(a->page, "Cancel", 1, 0);
+    l->btn_download = idx++; cd_dialog_button(a->page, "Download (17.6 GB)", 0, 0);
+    confirm = l->btn_download; cancel = l->btn_close;
+  }
+  show_dialog(a, OA_DIALOG_LOCAL, confirm, cancel);
+}
+
 static void new_chat(DesktopApp *a);
 
 // The answer to the dialog that is up, once the person gave one.
@@ -611,6 +1328,38 @@ static void pump_dialog(DesktopApp *a) {
         oa_core_store_remove(vc(a), cs("foreman"));
         refresh_chats(a);
         cd_toast(a->page, "Foreman history cleared.", 0);
+      }
+      break;
+    case OA_DIALOG_LOCAL: {
+      LocalModelCtx *l = &a->local;
+      if (answer == l->btn_download) {
+        local_start_download(a);
+        ask_local_models(a);
+      } else if (answer == l->btn_pause) {
+        local_pause_download(a);
+        ask_local_models(a);
+      } else if (answer == l->btn_cancel_dl) {
+        local_cancel_download(a);
+        ask_local_models(a);
+      } else if (answer == l->btn_verify) {
+        local_start_verify(a, 0);
+        ask_local_models(a);
+      } else if (answer == l->btn_reveal) {
+        oa_mkdir_all(l->models_dir);
+        oa_open_external(l->models_dir);
+        ask_local_models(a);
+      } else if (answer == l->btn_delete) {
+        ask_local_delete(a);
+      } else {
+        local_sync(a);
+      }
+      break;
+    }
+    case OA_DIALOG_LOCAL_DELETE:
+      if (answer == 0) {
+        if (local_remove_weights(a)) {
+          cd_toast(a->page, "Inkling 2 Mini weights removed.", 0);
+        }
       }
       break;
     default: break;
@@ -906,7 +1655,15 @@ static void handle_action(DesktopApp *a, int act) {
       if (!oa_core_key_save(cs("claude-effort"), cs(levels))) cd_toast(a->page, "The setting could not be saved.", 0);
       break;
     }
-    case 36: break;   // Experimental features: the page shows or hides them; Foreman and the Gym are Mac-only
+    case 36: { // Experimental features toggled in Settings > General
+      int exp_on = cd_experimental(a->page) != 0 ? 1 : 0;
+      oa_core_flags_write_experimental(exp_on);
+      a->flags = cd_flags(a->page);
+      cd_claude(a->page, ((a->flags & (1LL << 1)) && a->claude_worker_bin[0]) ? 1 : 0);
+      cd_agy(a->page, ((a->flags & (1LL << 3)) && a->agy_worker_bin[0]) ? 1 : 0);
+      local_sync(a);
+      break;
+    }
     case 37: fork_shown(a); break;
     case 40: handle_file_save(a); break;
     case 41: {
@@ -915,6 +1672,9 @@ static void handle_action(DesktopApp *a, int act) {
       break;
     }
     case 42: cd_file_close(a->page); break;
+    case 47: ask_local_models(a); break;
+    case 160: local_start_download(a); break;
+    case 161: local_cancel_download(a); break;
     case 52: {
       int op = cd_term_op(a->page);
       int tid = cd_term_op_tab(a->page);
@@ -1044,6 +1804,7 @@ static void pump_host(DesktopApp *a) {
   }
   pump_subagents(a);
   pump_terms(a);
+  pump_local(a);
   if (cd_save_due(a->page)) save_current_chat(a);
   if (a->interactive) {
     static int oa_last_running = 0;
@@ -1082,6 +1843,7 @@ static int run_update_cli(const char *path) {
 // 3. Exercises git worktree creation through desktop core.
 // 4. Exercises signed update envelope verification through desktop core.
 static int run_smoke(DesktopApp *a, const char *shot_out) {
+  a->test_mode = 1;
   char tmp[OA_PATH];
   if (!oa_temp_dir(tmp, sizeof tmp)) { fprintf(stderr, "smoke: could not make a temporary folder\n"); return 1; }
 
@@ -1101,6 +1863,7 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     fprintf(stderr, "smoke: cd_open_ex(offscreen=1) failed (resources=%s)\n", a->resources);
     return 1;
   }
+  cd_inkling(a->page, 1);
   set_folder(a, tmp);
   refresh_settings_info(a);
   refresh_chats(a);
@@ -1260,6 +2023,70 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     printf("smoke: pty ok (%s, %d bytes)\n", OA_PLATFORM, acc_n);
   }
 
+  // 7. Cross-platform local-model policy bridge, dynamic CUDA probe, manifest round-trip, and Coax SHA-256.
+  {
+    local_init(a);
+    local_sync(a);
+    if (oa_core_local_admit_hw(2, 0, 64, 2, 24, 0) != OA_LM_HW_OK ||
+        oa_core_local_admit_hw(2, 0, 64, 2, 16, 0) != OA_LM_HW_LOW_VRAM_CUDA ||
+        oa_core_local_admit_hw(3, 0, 32, 0, 0, 0) != OA_LM_HW_NO_GPU) {
+      fprintf(stderr, "smoke: local-model hardware admission check failed\n");
+      return 1;
+    }
+    char reason[256] = {0};
+    if (oa_core_local_hw_reason(a->local.hw_verdict, vu(reason, (int)sizeof reason)) <= 0) {
+      fprintf(stderr, "smoke: oa_core_local_hw_reason empty\n");
+      return 1;
+    }
+    char lm_dir[OA_PATH], probe_file[OA_PATH];
+    snprintf(lm_dir, sizeof lm_dir, "%s/local-model", tmp);
+    int64_t exp_b = oa_core_local_expected_bytes();
+    char exp_sha[65] = {0};
+    oa_core_local_expected_sha(vu(exp_sha, (int)sizeof exp_sha));
+    if (!oa_core_local_manifest_write(cs(lm_dir), exp_b, cs(exp_sha), 1763700000, 1763700005)) {
+      fprintf(stderr, "smoke: oa_core_local_manifest_write failed\n");
+      return 1;
+    }
+    if (!oa_core_local_manifest_valid(cs(lm_dir), exp_b, 1763700000) ||
+        oa_core_local_manifest_valid(cs(lm_dir), exp_b, 1763700001) ||
+        oa_core_local_manifest_valid(cs(lm_dir), exp_b - 1, 1763700000)) {
+      fprintf(stderr, "smoke: oa_core_local_manifest_valid tamper check failed\n");
+      return 1;
+    }
+    snprintf(probe_file, sizeof probe_file, "%s/abc.bin", lm_dir);
+    FILE *pf = fopen(probe_file, "wb");
+    if (!pf) { fprintf(stderr, "smoke: could not create probe file\n"); return 1; }
+    fwrite("abc", 1, 3, pf);
+    fclose(pf);
+    char got_sha[65] = {0};
+    int vres = (int)oa_core_local_verify_file(cs(probe_file), vu(got_sha, (int)sizeof got_sha));
+    if (vres != 0 || strcmp(got_sha, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") != 0) {
+      fprintf(stderr, "smoke: oa_core_local_verify_file SHA-256 mismatch (got=%s, vres=%d)\n", got_sha, vres);
+      return 1;
+    }
+    if (oa_core_local_admit_remove(1, 0) != OA_LM_RM_ACTIVE_RUNS ||
+        oa_core_local_admit_remove(0, 0) != OA_LM_RM_OK ||
+        oa_core_local_quit_action(1, 1) != OA_LM_QUIT_KEEP_DETACHED ||
+        oa_core_local_quit_action(1, 0) != OA_LM_QUIT_STOP ||
+        oa_core_local_port(0) != 18794 || oa_core_local_port(19123) != 19123) {
+      fprintf(stderr, "smoke: local-model policy bridge checks failed\n");
+      return 1;
+    }
+    char mdir[OA_PATH] = {0}, ldir[OA_PATH] = {0}, flg[256] = {0};
+    if (oa_core_local_models_dir(vu(mdir, (int)sizeof mdir)) <= 0 || !strstr(mdir, ".openagents/models/inkling-2-mini") ||
+        oa_core_local_logs_dir(vu(ldir, (int)sizeof ldir)) <= 0 || !strstr(ldir, ".openagents/logs")) {
+      fprintf(stderr, "smoke: local-model dirs invalid (models=%s, logs=%s)\n", mdir, ldir);
+      return 1;
+    }
+    (void)oa_core_flags_read_file(vu(flg, (int)sizeof flg));
+    char who[128] = {0};
+    (void)oa_http_probe_health(a->local.port);
+    (void)oa_port_conflict(a->local.port, who, sizeof who);
+    printf("smoke: local-model ok (os=%d, backend=%d, vram=%dGB, ram=%dGB, verdict=%d, port=%d)\n",
+           a->local.hw.os, a->local.hw.backend, a->local.hw.gpu_vram_gb,
+           a->local.hw.system_ram_gb, a->local.hw_verdict, a->local.port);
+  }
+
   cd_close(a->page);
   a->page = NULL;
   printf("openagents-desktop-%s smoke: ok (chat=%s, store=%d)\n", OA_PLATFORM, a->chat_id, (int)oa_core_store_count(vc(a)));
@@ -1332,6 +2159,7 @@ static int flow_write_file(const char *path, const char *text) {
   return ok;
 }
 static int run_flow(DesktopApp *a, const char *shot_out) {
+  a->test_mode = 1;
   char store[OA_PATH] = {0}, detail[OA_PATH + 128], list[65536];
   if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
   oa_core_store_path(vc(a), vu(store, (int)sizeof(store)));
@@ -1345,6 +2173,7 @@ static int run_flow(DesktopApp *a, const char *shot_out) {
 
   a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
   if (!a->page) return flow_fail("page", "cd_open_ex(offscreen) failed");
+  cd_inkling(a->page, 1);
   set_folder(a, a->folder);
   refresh_settings_info(a);
   refresh_chats(a);
@@ -1580,10 +2409,12 @@ static int input_step(DesktopApp *a, const char *shot_out) {
   return 0;
 }
 static int run_input(DesktopApp *a, const char *shot_out) {
+  a->test_mode = 1;
   if (!getenv("WAYLAND_DISPLAY")) return input_fail("display", "no WAYLAND_DISPLAY (input-test.sh starts a headless compositor)");
   if (!oa_core_init(vc(a), cs(""), cs("")) || oa_core_store_count(vc(a)) != 0) return input_fail("store", "the test store did not open empty");
   a->page = cd_open_ex(a->resources, 0, 1200, 820);
   if (!a->page) return input_fail("window", "cd_open_ex failed");
+  cd_inkling(a->page, 1);
   set_folder(a, a->folder);
   refresh_settings_info(a);
   refresh_chats(a);
@@ -1646,7 +2477,7 @@ static int oa_main(int argc, char **argv) {
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
-    else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", argv[++i]);
+    else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) { snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", argv[++i]); app.custom_worker = 1; }
     else if (strcmp(argv[i], "--daemon") == 0 && i + 1 < argc) snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s", argv[++i]);
     else if (strcmp(argv[i], "--cwd") == 0 && i + 1 < argc) snprintf(app.folder, sizeof(app.folder), "%s", argv[++i]);
     else if (strcmp(argv[i], "--check-update") == 0 && i + 1 < argc) update_file = argv[++i];
@@ -1693,21 +2524,23 @@ static int oa_main(int argc, char **argv) {
   }
   app.portal = shot ? NULL : portal_open();
   oa_started();
-  // Resolve the 28-flag mask via #authority coax/lib/agent/desktop/flags.coax (all off by default).
+  // Resolve the 28-flag mask via #authority coax/lib/agent/desktop/flags.coax (all off by default),
+  // reading optional persisted flags from ~/.openagents/desktop-flags.json first.
   int64_t dc_flags = 0;
   {
+    char persisted_flags[1024] = {0};
+    (void)oa_core_flags_read_file(vu(persisted_flags, (int)sizeof persisted_flags));
     char args_nl[4096] = {0};
     size_t pos = 0;
     for (int i = 1; i < argc && pos + 2 < sizeof(args_nl); i++) {
       int w = snprintf(args_nl + pos, sizeof(args_nl) - pos, "%s\n", argv[i]);
       if (w > 0) pos += (size_t)w;
     }
-    const char *env_f = getenv("OA_FLAGS");
-    const char *env_e = getenv("OA_EXPERIMENTAL");
-    dc_flags = oa_core_flags_resolve(0, 0, cs(env_f ? env_f : ""), cs(env_e ? env_e : ""), (coax_string){args_nl, (int64_t)pos});
+    dc_flags = oa_core_flags_resolve((coax_string){args_nl, (int64_t)pos});
+    app.flags = dc_flags;
     cd_flags_set(app.page, dc_flags);
-    // Inkling 2 Mini Metal runtime is Apple Silicon macOS only; report unsupported OS on Linux/Windows.
-    cd_local_state(app.page, 0, 0, 0, 0, 0, 0, 16811, "");
+    local_init(&app);
+    local_sync(&app);
   }
   cd_claude(app.page, ((dc_flags & (1LL << 1)) && app.claude_worker_bin[0]) ? 1 : 0);
   if (dc_flags & (1LL << 1)) {
@@ -1746,9 +2579,21 @@ static int oa_main(int argc, char **argv) {
     oa_keep_awake(0);
   }
 
+  if (app.local.downloading) oa_dl_stop(&app.local.dl_proc);
   stop_all_terms(&app);
   stop_all_subagents(&app);
-  if (oa_core_worker_alive(vc(&app))) oa_core_worker_stop(vc(&app), 0);
+  {
+    int runs_outlive = oa_core_daemon_owns_runs(vc(&app)) != 0 ? 1 : 0;
+    int active_local_runs = (cd_running(app.page) != 0 &&
+                             (cd_model_inkling(app.page) != 0 || !oa_core_flags_any_extra_model(app.flags))) ? 1 : 0;
+    int quit_act = (int)oa_core_local_quit_action(runs_outlive, active_local_runs);
+    if (quit_act == OA_LM_QUIT_KEEP_DETACHED) {
+      if (oa_core_worker_alive(vc(&app))) oa_core_worker_detach(vc(&app));
+    } else {
+      if (oa_core_worker_alive(vc(&app))) oa_core_worker_stop(vc(&app), 0);
+      local_server_stop(&app);
+    }
+  }
   if (app.portal) { portal_cancel(app.portal); portal_close(app.portal); }
   cd_close(app.page);
   free(app.core); free(app.line_buf); free(app.save_buf);

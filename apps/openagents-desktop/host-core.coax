@@ -6,6 +6,7 @@
 #load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
 #load "../../coax/lib/agent/desktop/flags.coax";
+#load "../../coax/lib/agent/desktop/local-model.coax";
 
 OA_MAX_SUBAGENTS :: 8;
 
@@ -230,6 +231,10 @@ oa_core_worker_stop :: (c: [] OaCore, forget: int) #export_c #effects(all) {
   dc_worker_stop(c[0].worker[..], c[0].daemon[..], forget != 0);
 }
 
+oa_core_worker_detach :: (c: [] OaCore) #export_c #effects(all) {
+  dc_worker_detach(c[0].worker[..], c[0].daemon[..]);
+}
+
 oa_core_subagent_start :: (c: [] OaCore, slot: int, program: string, folder: string, extra_env: string, err_out: [] u8) -> int #export_c #effects(all) {
   if slot < 0 || slot >= OA_MAX_SUBAGENTS { return 0; }
   hb: [DC_PATH] u8; home := dcos_home(hb[..]);
@@ -335,7 +340,114 @@ oa_core_update_verify_archive :: (path: string, expected_sha: string, expected_s
   return 0;
 }
 
-// Resolve desktop feature flags from settings, OA_FLAGS / OA_EXPERIMENTAL, and CLI argv lines.
+// ---- Persisted desktop feature flags (~/.openagents/desktop-flags.json) ----
+
+oa_flags_append_tok :: (buf: [] u8, pos: int, tok: string) -> int {
+  t := dc_flag_trim(tok);
+  if t.count == 0 { return pos; }
+  n := pos;
+  if n > 0 { n = dc_cat(buf, n, ","); }
+  return dc_cat(buf, n, t);
+}
+
+oa_flags_bool_node :: (v: Jv, idx: int) -> int {
+  k := jv_kind(v, idx);
+  if k == JV_TRUE { return 1; }
+  if k == JV_FALSE { return 0; }
+  if k == JV_STRING {
+    sb: [32] u8;
+    sn := jv_str(v, idx, sb[..]);
+    if sn > 0 {
+      s := dc_flag_trim(cast(string) sb[0..<sn]);
+      if s == "1" || s == "true" || s == "TRUE" || s == "YES" || s == "yes" { return 1; }
+      if s == "0" || s == "false" || s == "FALSE" || s == "NO" || s == "no" { return 0; }
+    }
+  }
+  return -1;
+}
+
+oa_flags_json_to_csv :: (text: string, out: [] u8) -> int {
+  if out.count <= 0 { return 0; }
+  t := dc_flag_trim(text);
+  if t.count == 0 { out[0] = 0; return 0; }
+  if t[0] != '{' { return oa_copy_out(t, out); }
+  j: [1] Jv; nodes: [256] JvNode;
+  if !jv_parse(j[..], t, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { out[0] = 0; return 0; }
+  v := j[0];
+  tmp: [1024] u8;
+  tn := 0;
+  ex1 := oa_flags_bool_node(v, jv_get(v, 0, "experimentalFeatures"));
+  ex2 := oa_flags_bool_node(v, jv_get(v, 0, "experimental"));
+  if ex1 == 1 || ex2 == 1 { tn = oa_flags_append_tok(tmp[..], tn, "all"); }
+  nf := jv_get(v, 0, "flags");
+  fk := jv_kind(v, nf);
+  if fk == JV_STRING {
+    fb: [512] u8;
+    fn := jv_str(v, nf, fb[..]);
+    if fn > 0 { tn = oa_flags_append_tok(tmp[..], tn, cast(string) fb[0..<fn]); }
+  } else if fk == JV_ARRAY {
+    for ai: 0..<jv_len(v, nf) {
+      el := jv_at(v, nf, ai);
+      if jv_kind(v, el) == JV_STRING {
+        eb: [128] u8;
+        en := jv_str(v, el, eb[..]);
+        if en > 0 { tn = oa_flags_append_tok(tmp[..], tn, cast(string) eb[0..<en]); }
+      }
+    }
+  }
+  for i: 0..<DC_FLAG_COUNT {
+    name := dc_flag_name(i);
+    b := oa_flags_bool_node(v, jv_get(v, 0, name));
+    if b < 0 {
+      kb: [64] u8; kn := dc_copy(kb[..], "flag."); kn = dc_cat(kb[..], kn, name);
+      b = oa_flags_bool_node(v, jv_get(v, 0, cast(string) kb[0..<kn]));
+    }
+    if b == 1 {
+      tn = oa_flags_append_tok(tmp[..], tn, name);
+    } else if b == 0 {
+      nb: [64] u8; nn := dc_copy(nb[..], "-"); nn = dc_cat(nb[..], nn, name);
+      tn = oa_flags_append_tok(tmp[..], tn, cast(string) nb[0..<nn]);
+    }
+  }
+  return oa_copy_out(dc_fits(tmp[..], tn), out);
+}
+
+oa_flags_file_path :: (home: string, out: [] u8) -> string {
+  if home.count == 0 { return ""; }
+  return dc_join(home, ".openagents/desktop-flags.json", out);
+}
+
+oa_flags_read_file_only :: (out: [] u8) -> int #effects(all) {
+  if out.count <= 0 { return 0; }
+  pb: [DC_PATH] u8;
+  path := dcos_getenv("OA_FLAGS_FILE", pb[..]);
+  if path.count == 0 {
+    hb: [DC_PATH] u8;
+    path = oa_flags_file_path(dcos_home(hb[..]), pb[..]);
+  }
+  if path.count == 0 { out[0] = 0; return 0; }
+  buf: [16384] u8;
+  n := dcos_read(path, buf[..]);
+  if n <= 0 { out[0] = 0; return 0; }
+  return oa_flags_json_to_csv(cast(string) buf[0..<n], out);
+}
+
+// Read optional persisted flags from ~/.openagents/desktop-flags.json (falling back to OA_FLAGS env).
+oa_core_flags_read_file :: (out: [] u8) -> int #export_c #effects(all) {
+  n := oa_flags_read_file_only(out);
+  if n > 0 { return n; }
+  eb: [512] u8;
+  env_flags := dcos_getenv("OA_FLAGS", eb[..]);
+  if env_flags.count > 0 { return oa_copy_out(env_flags, out); }
+  if out.count > 0 { out[0] = 0; }
+  return 0;
+}
+
+oa_core_flags_write_experimental :: (on: int) -> int #export_c #effects(all) {
+  return ifx dcos_set_setting("experimentalFeatures", ifx on != 0 then "1" else "0", DC_SET_BOOL) then 1 else 0;
+}
+
+// Resolve desktop feature flags from settings, ~/.openagents/desktop-flags.json, OA_FLAGS / OA_EXPERIMENTAL, and CLI argv lines.
 oa_core_flags_resolve :: (args_nl: string) -> int #export_c #effects(all) {
   sb: [64] u8;
   exp_s := dcos_setting("experimentalFeatures", sb[..]);
@@ -346,6 +458,11 @@ oa_core_flags_resolve :: (args_nl: string) -> int #export_c #effects(all) {
     vb: [32] u8; v := dcos_setting(cast(string) kb[0..<kn], vb[..]);
     if v == "1" || v == "true" || v == "YES" { def_mask = dc_flag_set(def_mask, i, true); }
   }
+  fb: [1024] u8;
+  fn := oa_flags_read_file_only(fb[..]);
+  if fn > 0 {
+    def_mask = dc_flags_parse_csv(def_mask, cast(string) fb[0..<fn]);
+  }
   eb: [512] u8; env_flags := dcos_getenv("OA_FLAGS", eb[..]);
   xb: [32] u8; env_exp := dcos_getenv("OA_EXPERIMENTAL", xb[..]);
   return dc_flags_resolve(exp_on, def_mask, env_flags, env_exp, args_nl);
@@ -354,3 +471,217 @@ oa_core_flags_resolve :: (args_nl: string) -> int #export_c #effects(all) {
 oa_core_flags_all :: () -> int #export_c #effects(all) { return DC_FLAGS_ALL; }
 oa_core_flag_on :: (mask: int, flag: int) -> int #export_c #effects(all) { return ifx dc_flag_on(mask, flag) then 1 else 0; }
 oa_core_flags_any_extra_model :: (mask: int) -> int #export_c #effects(all) { return ifx dc_flags_any_extra_model(mask) then 1 else 0; }
+
+// ---- Cross-platform Local Model policy bridge (#authority coax/lib/agent/desktop/local-model.coax) ----
+
+oa_local_models_path :: (home: string, out: [] u8) -> string {
+  if home.count == 0 { return ""; }
+  return dc_join(home, ".openagents/models/inkling-2-mini", out);
+}
+
+oa_local_logs_path :: (home: string, out: [] u8) -> string {
+  if home.count == 0 { return ""; }
+  return dc_join(home, ".openagents/logs", out);
+}
+
+oa_core_local_admit_hw :: (os: int, is_apple_silicon: int, ram_gb: int, backend: int, vram_gb: int, quant: int) -> int #export_c #effects(all) {
+  caps := LmHostCaps.{
+    os = os,
+    is_apple_silicon = is_apple_silicon != 0,
+    system_ram_gb = ram_gb,
+    backend = backend,
+    gpu_vram_gb = vram_gb,
+    quant = quant,
+  };
+  return lm_admit_hardware(caps);
+}
+
+oa_core_local_hw_reason :: (verdict: int, out: [] u8) -> int #export_c #effects(all) {
+  return oa_copy_out(lm_hw_reason(verdict), out);
+}
+
+oa_core_local_manifest_valid :: (dir: string, disk_bytes: int, disk_mtime: int) -> int #export_c #effects(all) {
+  if dir.count == 0 { return 0; }
+  pb: [DC_PATH] u8;
+  path := dc_join(dir, LM_MANIFEST_FILE, pb[..]);
+  if path.count == 0 { return 0; }
+  buf: [4096] u8;
+  n := dcos_read(path, buf[..]);
+  if n <= 0 { return 0; }
+  m: [1] LmManifest;
+  if !lm_manifest_parse(cast(string) buf[0..<n], m[..]) { return 0; }
+  return ifx lm_manifest_admits(m[0], disk_bytes, disk_mtime, LM_MODEL_ID, LM_WEIGHTS_FILE, LM_EXPECTED_BYTES, LM_EXPECTED_SHA256) then 1 else 0;
+}
+
+oa_core_local_manifest_write :: (dir: string, bytes: int, sha256: string, mtime: int, verified_at: int) -> int #export_c #effects(all) {
+  if dir.count == 0 || !dcos_mkdirs(dir) { return 0; }
+  buf: [1024] u8;
+  n := lm_manifest_write(LM_MODEL_ID, LM_WEIGHTS_FILE, bytes, sha256, mtime, true, LM_DEFAULT_LOOPS, verified_at, buf[0..<buf.count - 1]);
+  if n <= 0 { return 0; }
+  buf[n] = '\n';
+  pb: [DC_PATH] u8;
+  path := dc_join(dir, LM_MANIFEST_FILE, pb[..]);
+  if path.count == 0 { return 0; }
+  return ifx dcos_write(path, cast(string) buf[0..<n + 1]) then 1 else 0;
+}
+
+// Stream-hashes path via coax/lib/crypto/sha256.coax (dc_update_file_sha, zero shell sha256sum)
+// and verifies exact pinned Inkling 2 Mini byte size and SHA-256 digest.
+oa_core_local_verify_file :: (path: string, out_sha: [] u8) -> int #export_c #effects(all) {
+  if out_sha.count > 0 { out_sha[0] = 0; }
+  if path.count == 0 { return 0; }
+  sz: [1] int;
+  hex: [64] u8;
+  if !dc_update_file_sha(path, sz[..], hex[..]) { return 0; }
+  _ := oa_copy_out(cast(string) hex[..], out_sha);
+  if sz[0] != LM_EXPECTED_BYTES { return 0; }
+  return ifx lm_sha256_eq(cast(string) hex[..], LM_EXPECTED_SHA256) then 1 else 0;
+}
+
+oa_core_local_state :: (hw_verdict: int, manifest_valid: int, downloading: int, paused: int, verifying: int, has_error: int, partial_bytes: int) -> int #export_c #effects(all) {
+  st := LmStatusInput.{
+    hw_verdict = hw_verdict,
+    manifest_valid = manifest_valid != 0,
+    downloading = downloading != 0,
+    paused = paused != 0,
+    verifying = verifying != 0,
+    has_error = has_error != 0,
+    partial_bytes = partial_bytes,
+  };
+  return lm_resolve_state(st);
+}
+
+oa_core_local_state_label :: (state: int, out: [] u8) -> int #export_c #effects(all) {
+  return oa_copy_out(lm_state_label(state), out);
+}
+
+oa_core_local_admit_download :: (hw_verdict: int, manifest_valid: int, busy: int, avail_disk_bytes: int, partial_bytes: int) -> int #export_c #effects(all) {
+  return lm_admit_download(hw_verdict, manifest_valid != 0, busy != 0, avail_disk_bytes, partial_bytes, LM_EXPECTED_BYTES, LM_DISK_HEADROOM_BYTES);
+}
+
+oa_core_local_admit_remove :: (running_count: int, busy: int) -> int #export_c #effects(all) {
+  return lm_admit_remove(running_count, busy != 0);
+}
+
+oa_core_local_quit_action :: (runs_outlive_quit: int, active_local_runs: int) -> int #export_c #effects(all) {
+  return lm_server_quit_action(runs_outlive_quit != 0, active_local_runs);
+}
+
+oa_core_local_port :: (env_port: int) -> int #export_c #effects(all) {
+  return lm_resolve_port(env_port);
+}
+
+oa_core_local_download_pct :: (downloaded: int, expected: int) -> int #export_c #effects(all) {
+  total := ifx expected > 0 then expected else LM_EXPECTED_BYTES;
+  return lm_download_pct(downloaded, total);
+}
+
+oa_core_local_expected_bytes :: () -> int #export_c #effects(all) { return LM_EXPECTED_BYTES; }
+oa_core_local_download_url :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_DOWNLOAD_URL, out); }
+oa_core_local_weights_name :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_WEIGHTS_FILE, out); }
+oa_core_local_partial_name :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_PARTIAL_FILE, out); }
+oa_core_local_expected_sha :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_EXPECTED_SHA256, out); }
+
+oa_core_local_models_dir :: (out: [] u8) -> int #export_c #effects(all) {
+  hb: [DC_PATH] u8; pb: [DC_PATH] u8;
+  return oa_copy_out(oa_local_models_path(dcos_home(hb[..]), pb[..]), out);
+}
+
+oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
+  hb: [DC_PATH] u8; pb: [DC_PATH] u8;
+  return oa_copy_out(oa_local_logs_path(dcos_home(hb[..]), pb[..]), out);
+}
+
+// ---- Host-core bridge checks ----
+
+#test "host-core local-model bridge: hardware admission, reasons, lifecycle, removal, quit, port, and pct" {
+  // Hardware admission across macOS, Linux, Windows
+  #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 24, LM_QUANT_IQ4_NL) == LM_HW_OK;
+  #assert oa_core_local_admit_hw(LM_OS_LINUX, 0, 64, LM_BACKEND_CUDA, 23, LM_QUANT_IQ4_NL) == LM_HW_LOW_VRAM_CUDA;
+  #assert oa_core_local_admit_hw(LM_OS_WINDOWS, 0, 32, LM_BACKEND_CUDA, 16, LM_QUANT_NVFP4) == LM_HW_OK;
+  #assert oa_core_local_admit_hw(LM_OS_WINDOWS, 0, 32, LM_BACKEND_NONE, 0, LM_QUANT_IQ4_NL) == LM_HW_NO_GPU;
+  #assert oa_core_local_admit_hw(LM_OS_MAC, 1, 32, LM_BACKEND_METAL, 32, LM_QUANT_IQ4_NL) == LM_HW_OK;
+  #assert oa_core_local_admit_hw(LM_OS_MAC, 0, 64, LM_BACKEND_METAL, 64, LM_QUANT_IQ4_NL) == LM_HW_INTEL_MAC;
+
+  rb: [128] u8;
+  rn := oa_core_local_hw_reason(LM_HW_NO_GPU, rb[..]);
+  #assert rn > 0 && cast(string) rb[0..<rn] == "No supported Psionic GPU backend detected.";
+  rn = oa_core_local_hw_reason(LM_HW_LOW_VRAM_CUDA, rb[..]);
+  #assert rn > 0 && cast(string) rb[0..<rn] == "Insufficient NVIDIA VRAM for Inkling 2 Mini.";
+
+  // Lifecycle state, labels, download admission, removal, quit, port, pct
+  #assert oa_core_local_state(LM_HW_NO_GPU, 0, 0, 0, 0, 0, 0) == LM_STATE_UNSUPPORTED_HW;
+  #assert oa_core_local_state(LM_HW_OK, 0, 0, 0, 0, 0, 0) == LM_STATE_NOT_INSTALLED;
+  #assert oa_core_local_state(LM_HW_OK, 0, 1, 0, 0, 0, 1024) == LM_STATE_DOWNLOADING;
+  #assert oa_core_local_state(LM_HW_OK, 0, 0, 1, 0, 0, 1024) == LM_STATE_PAUSED;
+  #assert oa_core_local_state(LM_HW_OK, 0, 0, 0, 1, 0, 0) == LM_STATE_VERIFYING;
+  #assert oa_core_local_state(LM_HW_OK, 1, 0, 0, 0, 0, 0) == LM_STATE_INSTALLED;
+  #assert oa_core_local_state(LM_HW_OK, 0, 0, 0, 0, 1, 0) == LM_STATE_ERROR;
+  ln := oa_core_local_state_label(LM_STATE_INSTALLED, rb[..]);
+  #assert cast(string) rb[0..<ln] == "Verified & Ready";
+
+  #assert oa_core_local_admit_download(LM_HW_NO_GPU, 0, 0, 100_000_000_000, 0) == LM_DL_UNSUPPORTED_HW;
+  #assert oa_core_local_admit_download(LM_HW_OK, 1, 0, 100_000_000_000, 0) == LM_DL_ALREADY_INSTALLED;
+  #assert oa_core_local_admit_download(LM_HW_OK, 0, 1, 100_000_000_000, 0) == LM_DL_BUSY;
+  #assert oa_core_local_admit_download(LM_HW_OK, 0, 0, 1024, 0) == LM_DL_LOW_DISK;
+  #assert oa_core_local_admit_download(LM_HW_OK, 0, 0, LM_EXPECTED_BYTES + LM_DISK_HEADROOM_BYTES, 0) == LM_DL_OK;
+
+  #assert oa_core_local_admit_remove(1, 0) == LM_RM_ACTIVE_RUNS;
+  #assert oa_core_local_admit_remove(0, 1) == LM_RM_BUSY;
+  #assert oa_core_local_admit_remove(0, 0) == LM_RM_OK;
+
+  #assert oa_core_local_quit_action(1, 1) == LM_QUIT_KEEP_DETACHED;
+  #assert oa_core_local_quit_action(1, 0) == LM_QUIT_STOP;
+  #assert oa_core_local_quit_action(0, 1) == LM_QUIT_STOP;
+
+  #assert oa_core_local_port(0) == LM_DEFAULT_PORT;
+  #assert oa_core_local_port(80) == LM_DEFAULT_PORT;
+  #assert oa_core_local_port(19400) == 19400;
+
+  #assert oa_core_local_download_pct(0, 0) == 0;
+  #assert oa_core_local_download_pct(LM_EXPECTED_BYTES / 2, 0) == 50;
+  #assert oa_core_local_download_pct(LM_EXPECTED_BYTES, 0) == 100;
+  #assert oa_core_local_expected_bytes() == LM_EXPECTED_BYTES;
+
+  ub: [256] u8;
+  un := oa_core_local_download_url(ub[..]);
+  #assert cast(string) ub[0..<un] == LM_DOWNLOAD_URL;
+  wn := oa_core_local_weights_name(ub[..]);
+  #assert cast(string) ub[0..<wn] == LM_WEIGHTS_FILE;
+  pn := oa_core_local_partial_name(ub[..]);
+  #assert cast(string) ub[0..<pn] == LM_PARTIAL_FILE;
+  sn := oa_core_local_expected_sha(ub[..]);
+  #assert cast(string) ub[0..<sn] == LM_EXPECTED_SHA256;
+}
+
+#test "host-core local-model bridge: paths on POSIX & Windows and desktop-flags.json parsing" {
+  p1: [DC_PATH] u8; p2: [DC_PATH] u8;
+  #assert oa_local_models_path("/home/alice", p1[..]) == "/home/alice/.openagents/models/inkling-2-mini";
+  #assert oa_local_logs_path("/home/alice", p2[..]) == "/home/alice/.openagents/logs";
+  #assert oa_local_models_path("C:/Users/alice", p1[..]) == "C:/Users/alice/.openagents/models/inkling-2-mini";
+  #assert oa_local_logs_path("C:/Users/alice", p2[..]) == "C:/Users/alice/.openagents/logs";
+  #assert oa_local_models_path("", p1[..]) == "" && oa_local_logs_path("", p2[..]) == "";
+  #assert oa_flags_file_path("/home/alice", p1[..]) == "/home/alice/.openagents/desktop-flags.json";
+  #assert oa_flags_file_path("C:/Users/alice", p1[..]) == "C:/Users/alice/.openagents/desktop-flags.json";
+
+  // desktop-flags.json formats
+  cb: [512] u8;
+  cn := oa_flags_json_to_csv("{\"flags\":[\"git\",\"terminal\"]}", cb[..]);
+  m := dc_flags_parse_csv(0, cast(string) cb[0..<cn]);
+  #assert dc_flag_on(m, DC_FLAG_GIT) && dc_flag_on(m, DC_FLAG_TERMINAL) && !dc_flag_on(m, DC_FLAG_WALLET);
+
+  cn = oa_flags_json_to_csv("{\"experimentalFeatures\":true,\"wallet\":false}", cb[..]);
+  m = dc_flags_parse_csv(0, cast(string) cb[0..<cn]);
+  #assert dc_flag_on(m, DC_FLAG_GIT) && dc_flag_on(m, DC_FLAG_MODELS_CLAUDE) && !dc_flag_on(m, DC_FLAG_WALLET);
+
+  cn = oa_flags_json_to_csv("{\"flag.models.claude\":true,\"git\":\"1\",\"terminal\":false}", cb[..]);
+  m = dc_flags_parse_csv(dc_flag_bit(DC_FLAG_TERMINAL), cast(string) cb[0..<cn]);
+  #assert dc_flag_on(m, DC_FLAG_MODELS_CLAUDE) && dc_flag_on(m, DC_FLAG_GIT) && !dc_flag_on(m, DC_FLAG_TERMINAL);
+
+  cn = oa_flags_json_to_csv("git,voice", cb[..]);
+  m = dc_flags_parse_csv(0, cast(string) cb[0..<cn]);
+  #assert dc_flag_on(m, DC_FLAG_GIT) && dc_flag_on(m, DC_FLAG_VOICE);
+
+  #assert oa_flags_json_to_csv("not{json", cb[..]) > 0;
+  #assert oa_flags_json_to_csv("{bad", cb[..]) == 0;
+}
