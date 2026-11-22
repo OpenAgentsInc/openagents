@@ -1577,7 +1577,8 @@ function parseAssets(text) {
     else if (kind === "sounds") { if (/^\/[a-z0-9/_-]+\/$/.test(rest)) soundDir = rest; }
     else if (kind === "blocks") packBlocks = rest.split(",").filter((tag) => /^[a-z0-9]{1,8}$/.test(tag));
     // A .vpk3 pack loads by ranges (coax/web/pack-host.js); in development ?ranges=N sets how many at once.
-    else if (kind === "pack") { const pack = { url: rest, ranges: dev ? Number(new URLSearchParams(location.search).get("ranges")) || undefined : undefined }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
+    // pack:URL@catalog loads only the pack's catalog and sounds (no GPU vertex/index/layer bindings).
+    else if (kind === "pack") { const catalogOnly = rest.endsWith("@catalog"), url = catalogOnly ? rest.slice(0, -8) : rest; const pack = { url, catalogOnly, ranges: dev ? Number(new URLSearchParams(location.search).get("ranges")) || undefined : undefined }; for (const part of catalogOnly ? ["data"] : PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
       // private:NAME@catalog: a later pack of data only (the jam's tables, metaverse/splice-bots/jam/jam-data.coax):
       // one asset, its catalog, and no vertices, indices or layers, so it binds nothing on the GPU; its sounds

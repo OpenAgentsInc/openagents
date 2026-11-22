@@ -1,19 +1,10 @@
 # GAMEBUILDER
 
-make a game. pick a portal.
+Playable 3D worlds in the browser — built in Coax on the OpenAgents Metaverse Engine with WebGPU. No downloads and no separate login (accounts live at [openagents.com](https://openagents.com)).
 
-build it in your browser. nothing to install.
+## Worlds
 
-1. [third person](https://gamebuilder.org/play?type=third-person): 3d. the camera behind you. orbit it.
-2. [first person](https://gamebuilder.org/play?type=first-person): fps. through your own eyes.
-3. [top-down](https://gamebuilder.org/play?type=top-down): from above. the camera never turns.
-4. [side-scroller](https://gamebuilder.org/play?type=side-scroller): 2d. from the side. run and jump.
-5. [medieval village](https://gamebuilder.org/play?type=village): a village green. thatch and timber.
-6. [crates](https://gamebuilder.org/play?type=crates): push crates onto pads. open the gate.
-7. [platformer](https://gamebuilder.org/play?type=platformer): run, jump, jump again. reach the goal.
-8. [racing](https://gamebuilder.org/play?type=racing): three laps against the clock. no cutting.
-9. [drift](https://gamebuilder.org/play?type=drift): fly the rings in order. zero g.
-
-also on iphone / ipad / mac.
+1. [Fated Dragon](https://gamebuilder.org/fated-dragon): Take wing as a fire-breathing dragon over a 2.2 km stone megalith — three levels of marble galleries, 200-step sky atriums, Victorian gardens, cobbled avenues, and eight sleeping dragons on the summit plaza.
+2. [SPLICEBOTS](https://gamebuilder.org/splicebots): Ported from Unreal Engine 5.9 to Coax on WebGPU — explore the solar farm and desert compound, scavenge scrap and batteries, craft Microduck companions, and battle raiders through the night garage.
 
 [credits](https://gamebuilder.org/credits). [built on openagents](https://openagents.com). © 2026 openagents, inc.

@@ -1,0 +1,31 @@
+{
+  "schema": "oa-blob-collection-lock-v1",
+  "group": "splicebots",
+  "base_url": "https://storage.googleapis.com/openagentsgemini-assets/sha256",
+  "blobs": [
+    {
+      "path": "gamebuilder/web/splicebots/packs/splice-bots-jam.pack",
+      "sha256": "8ebd2580aef4c477aac4b0602c0861a7f84ea592d081f9ac5de87d60d388b44e",
+      "bytes": 64914324,
+      "group": "splicebots"
+    },
+    {
+      "path": "gamebuilder/web/splicebots/packs/splice-bots-jam-chars.pack",
+      "sha256": "2f495913150745063585194ab73a4467b5e4f50441d6dc0f6058facf4eb2853d",
+      "bytes": 12607648,
+      "group": "splicebots"
+    },
+    {
+      "path": "gamebuilder/web/splicebots/packs/splice-bots-jam-tables.pack",
+      "sha256": "533b7fd9470c661e24704417bdc440096278b3249d78ccddca14029817e6426c",
+      "bytes": 35964,
+      "group": "splicebots"
+    },
+    {
+      "path": "gamebuilder/web/splicebots/packs/splice-bots-jam-sounds.pack",
+      "sha256": "80cf3565cd2b914fbcf77788481decd16de73a8c3c00f06ef9facdbe17cdc9ea",
+      "bytes": 5471248,
+      "group": "splicebots"
+    }
+  ]
+}

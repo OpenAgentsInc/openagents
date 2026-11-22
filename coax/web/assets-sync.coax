@@ -1,11 +1,11 @@
 // Content-addressed asset & fixture hydrator (#13853, #13844).
-// Reads assets/registry/collections/{realms,psionic-fixtures,gamebuilder}.lock.json,
+// Reads assets/registry/collections/{realms,psionic-fixtures,gamebuilder,splicebots}.lock.json,
 // verifies SHA-256 against ~/.openagents/assets/sha256/<aa>/<sha256> (fetching from
 // base_url on cache miss, failing closed on any digest mismatch), and materializes
 // regular files (APFS clonefile or copy, never symlinks since coax/web/serve.c
 // rejects symlinks) into the workspace.
 //
-//   coax/web/tool.sh assets-sync [--group all|realms|psionic|gamebuilder] [--check]
+//   coax/web/tool.sh assets-sync [--group all|realms|psionic|gamebuilder|splicebots] [--check]
 //   coax/bin/coax test coax/web/assets-sync.coax --library
 #import "Basic";
 #load "../lib/sys/tool.coax";
@@ -308,6 +308,9 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if group == "all" || group == "gamebuilder" {
     if !as_sync_lock("assets/registry/collections/gamebuilder.lock.json", home, check_only, fetched[..], hydrated[..], ok_count[..]) { ok = false; }
+  }
+  if group == "all" || group == "gamebuilder" || group == "splicebots" {
+    if !as_sync_lock("assets/registry/collections/splicebots.lock.json", home, check_only, fetched[..], hydrated[..], ok_count[..]) { ok = false; }
   }
   if !ok { return 1; }
   print("assets-sync: ok (% blobs verified, % hydrated, % fetched, group=%)\n", ok_count[0], hydrated[0], fetched[0], group);

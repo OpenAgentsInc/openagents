@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Credits — GAMEBUILDER</title>
+<meta name="description" content="Credits and open licences for the worlds hosted on gamebuilder.org.">
+<link rel="canonical" href="https://gamebuilder.org/credits">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M9 9h14v14H9z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Geist';src:url('/fonts/Geist.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Geist';src:url('/fonts/Geist-Medium.woff2') format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Geist Mono';src:url('/fonts/GeistMono.woff2') format('woff2');font-weight:400;font-display:swap}
+:root{--bg:#060608;--ink:#f4f5f7;--muted:#9ba0ae;--dim:#6c7180;--line:rgba(255,255,255,.11)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:780px;margin:0 auto;padding:0 24px;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:24px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:12px;font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;letter-spacing:.2em;text-transform:uppercase}
+.mark{width:14px;height:14px;border:1.5px solid var(--ink);display:inline-block}
+.back{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;color:var(--muted)}
+.back:hover{color:var(--ink)}
+main{flex:1;padding:56px 0 64px}
+h1{font-size:32px;font-weight:500;letter-spacing:-.025em;margin-bottom:12px}
+.sub{color:var(--muted);font-size:15px;line-height:1.6;margin-bottom:36px}
+.list{display:flex;flex-direction:column;gap:20px}
+.item{padding-top:20px;border-top:1px solid var(--line)}
+.item h2{font-size:16px;font-weight:500;margin-bottom:6px}
+.item p{font-size:14px;line-height:1.6;color:var(--muted)}
+.item a{text-decoration:underline;text-underline-offset:3px;color:var(--ink)}
+footer{padding:24px 0 32px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span><span>GAMEBUILDER</span></a>
+    <a class="back" href="/">← worlds</a>
+  </header>
+  <main>
+    <h1>Credits</h1>
+    <p class="sub">Assets, typefaces, and engine software used by the worlds hosted on gamebuilder.org.</p>
+    <div class="list">
+      <section class="item">
+        <h2>Fated Dragon</h2>
+        <p>World design and stone megalith architecture by Kiki David. Uses the OpenAgents Shapechange dragon model and animations (CC0 1.0 Public Domain).</p>
+      </section>
+      <section class="item">
+        <h2>SPLICEBOTS</h2>
+        <p>Ported from Unreal Engine 5.9 into Coax on WebGPU. Uses IBM Plex Mono and Michroma typefaces (SIL Open Font License 1.1) and includes the Microduck mesh notice from the SPLICEBOTS source project.</p>
+      </section>
+      <section class="item">
+        <h2>Typography</h2>
+        <p>Geist and Geist Mono by Vercel, licensed under the <a href="/fonts/Geist-OFL.txt">SIL Open Font License 1.1</a>.</p>
+      </section>
+      <section class="item">
+        <h2>OpenAgents Metaverse Engine &amp; Coax</h2>
+        <p>All worlds compile from Coax to WebAssembly and WGSL shaders running on WebGPU. Built on <a href="https://openagents.com">OpenAgents</a>.</p>
+      </section>
+    </div>
+  </main>
+  <footer>
+    <a href="/">gamebuilder.org</a>
+    <span>© 2026 openagents, inc.</span>
+  </footer>
+</div>
+</body>
+</html>

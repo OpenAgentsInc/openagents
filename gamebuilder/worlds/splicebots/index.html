@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SPLICEBOTS — GAMEBUILDER</title>
+<meta name="description" content="Play SPLICEBOTS directly in your browser on WebGPU: explore the desert compound, scavenge scrap and batteries, craft Microducks, and battle raiders.">
+<meta property="og:title" content="SPLICEBOTS — GAMEBUILDER">
+<meta property="og:description" content="Play SPLICEBOTS directly in your browser on WebGPU at gamebuilder.org.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gamebuilder.org/splicebots">
+<meta property="og:image" content="https://gamebuilder.org/img/splicebots.jpg">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M9 9h14v14H9z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Geist Mono';src:url('/fonts/GeistMono.woff2') format('woff2');font-weight:400;font-display:swap}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#eee;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+canvas{display:block;width:100%;height:100%;touch-action:none;user-select:none}
+canvas[data-cursor=none]{cursor:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=crosshair]{cursor:crosshair}
+#sb-back{position:fixed;top:14px;left:16px;z-index:20;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(10,11,15,.58);border:1px solid rgba(255,255,255,.16);color:#e8eaf0;text-decoration:none;font-size:11px;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(6px);transition:background .15s,border-color .15s}
+#sb-back:hover{background:rgba(10,11,15,.85);border-color:rgba(255,255,255,.45)}
+#coaxial-load{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+#coaxial-load.gone{display:none}
+.lb{display:block;width:240px;height:3px;background:#333;margin:16px auto}
+.lb i{display:block;height:100%;background:#88d7da;transform:scaleX(0);transform-origin:left}
+.le,.la{display:none}
+#coaxial-load[data-state=fail] .le,#coaxial-load[data-state=fail] .la{display:block}
+#coaxial-load[data-state=fail] .lb,#coaxial-load[data-state=fail] .lr{display:none}
+.la{color:#a8e9ec}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-label="SPLICEBOTS"></canvas>
+<a id="sb-back" href="/">← GAMEBUILDER</a>
+<div id="coaxial-load" role="progressbar" aria-label="Loading SPLICEBOTS" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <strong>SPLICEBOTS</strong>
+  <span class="lb"><i></i></span>
+  <p class="lr"><span class="lt">Loading</span> <span class="lp"></span></p>
+  <p class="le">The game could not load. Use a browser with WebGPU on this computer.</p>
+  <a class="la" href="/splicebots">Reload</a>
+</div>
+<script type="module" src="/coaxial/host.js"
+  data-app="splice-jam"
+  data-slot="splicebots-shipping-v1"
+  data-root="/splicebots"
+  data-wasm="/splicebots/build/splice-jam.wasm"
+  data-wgsl="/splicebots/splice-jam.wgsl"
+  data-ui-font-src="/splicebots/fonts/IBMPlexMono-Medium.ttf"
+  data-ui-font-family="SplicePlexMono"
+  data-ui-title-font-src="/splicebots/fonts/Michroma-Regular.ttf"
+  data-ui-title-font-family="SpliceMichroma"
+  data-ui-title-font-weight="400"
+  data-ui-title-font-scale="0.7"
+  data-style="anime"
+  data-variant="dusk"
+  data-clock="fixed:0.78"
+  data-assets="
+    pack:/splicebots/packs/splice-bots-jam.pack
+    pack:/splicebots/packs/splice-bots-jam-chars.pack
+    pack:/splicebots/packs/splice-bots-jam-tables.pack@catalog
+    pack:/splicebots/packs/splice-bots-jam-sounds.pack@catalog"></script>
+</body>
+</html>

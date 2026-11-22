@@ -278,3 +278,7 @@ gamebuilder/assets/scrappers.gbm
 gamebuilder/build/
 gamebuilder/web/build/
 gamebuilder/web/host/
+gamebuilder/web/coaxial/
+gamebuilder/web/fated-dragon/
+gamebuilder/web/splicebots/
+gamebuilder/web/credits/
