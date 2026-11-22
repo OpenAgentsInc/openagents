@@ -54,7 +54,10 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(Realm) * 1000003u + offsetof(Realm, scene) * 7u + offsetof(coax_t_IceRealm, outbox) * 13u + 0x49434742u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(Realm); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_IceScene(&state_at(state)->scene); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) {
+  coax_default_t_IceScene(&state_at(state)->scene);
+  state_at(state)->scene.plays.e[0].start_on_title = true;
+}
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_ice_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_ice_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_ice_uniform_floats(); }
@@ -88,11 +91,12 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { ice_blur(at(state)); acts(state); icecream_blur(scene_at(state)); }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { icecream_wheel(scene_at(state), dy); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  int64_t zone = ice_pointer(at(state), x, y, phase, kind, id);
+  int32_t pid = id & 0x3fffffff;
+  int64_t zone = ice_pointer(at(state), x, y, phase, kind, pid);
   acts(state);
   if (zone >= 0) return 1u;
   coax_t_IceRealm *h = &state_at(state)->hud;
-  icecream_pointer(scene_at(state), x, y, phase, kind, id, zone == -2 ? 1 : 0, h->stick_cx, h->stick_cy);
+  icecream_pointer(scene_at(state), x, y, phase, kind, pid, zone == -2 ? 1 : 0, h->stick_cx, h->stick_cy);
   return 1u;
 }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)ice_cursor(at(state)); }

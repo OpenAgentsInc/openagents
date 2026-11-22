@@ -50,6 +50,7 @@ IceScene :: struct {
   built: bool;
   sent: int;
   seed: u64;
+  built_run: u32;
   games: [1] Game;
   plays: [1] Play;
   scratch: [SCRATCH] Vtx;
@@ -133,10 +134,11 @@ icecream_scene_build :: (s: [] IceScene) #export_c #effects(all) {
     align_chunk(s);
   }
   s[0].built = true;
+  s[0].built_run = s[0].plays[0].run_id;
   s[0].sent = 0;
 }
-// The run's house changed (a new run, another seed): build it again.
-icecream_scene_stale :: (s: [] IceScene) -> bool #export_c #effects(all) { return !s[0].built || s[0].seed != s[0].games[0].house.seed || s[0].games[0].house.room_n == 0; }
+// The run's house changed (a new run, another seed, or a changed difficulty): build it again.
+icecream_scene_stale :: (s: [] IceScene) -> bool #export_c #effects(all) { return !s[0].built || s[0].seed != s[0].games[0].house.seed || s[0].built_run != s[0].plays[0].run_id || s[0].games[0].house.room_n == 0; }
 
 // ---- the objects this frame (world.cpp drawScene)
 

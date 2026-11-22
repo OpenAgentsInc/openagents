@@ -36,7 +36,7 @@
   --mint:#3ee07a;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
 #coaxial{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .hide{display:none!important}
 .mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -56,7 +56,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .la{color:var(--mine)}
 
 /* Pre-match Loadout Overlay (docked bottom-center over the live 3v3 showcase) */
-#sa-lobby{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:space-between;padding:56px 20px 22px;pointer-events:none;background:linear-gradient(180deg,rgba(8,10,20,.42) 0%,rgba(8,10,20,0) 32%,rgba(8,10,20,.12) 60%,rgba(8,10,20,.78) 100%)}
+#sa-lobby{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:space-between;padding:56px 20px 22px;pointer-events:none;touch-action:pan-y;background:linear-gradient(180deg,rgba(8,10,20,.42) 0%,rgba(8,10,20,0) 32%,rgba(8,10,20,.12) 60%,rgba(8,10,20,.78) 100%)}
 .lobby-head{text-align:center;pointer-events:none}
 .lobby-eyebrow{font:400 11px/1 'Geist Mono',monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;text-shadow:0 2px 12px rgba(0,0,0,.7)}
 .lobby-head h1{font-size:clamp(28px,4.5vw,46px);font-weight:600;letter-spacing:-.02em;text-shadow:0 4px 24px rgba(0,0,0,.75)}
@@ -163,11 +163,48 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   .hud-hint{display:none}
   #sa-lobby{padding:48px 12px 14px;overflow-y:auto}
 }
+
+/* Touch Controls Overlay (iPhone & iPad, portrait & landscape; coordinates match play.coax play_button_*) */
+#sa-touch{position:fixed;inset:0;z-index:26;pointer-events:none;display:none}
+body.touch-ui #sa-touch{display:block}
+body.touch-ui #sa-lock-hint,body.touch-ui .hud-hint,body.touch-ui #sa-view-btn{display:none!important}
+body.touch-ui .hud-bottom{width:260px}
+@media (max-width:740px){
+  body.in-match #sa-back{top:10px;left:10px;padding:5px 8px;font-size:10px}
+  body.in-match .hud-actions{top:10px;right:10px;gap:4px}
+  body.in-match .hud-btn{padding:5px 7px;font-size:9px}
+  body.in-match .hud-top{top:42px}
+  body.in-match .sc-team{padding:6px 12px;font-size:18px;min-width:48px}
+  body.in-match .sc-mid{padding:4px 10px}
+  body.touch-ui .hud-bottom{bottom:auto;top:102px;width:min(244px,calc(100% - 140px));padding:6px 10px;gap:4px}
+  body.touch-ui #sa-feed{top:186px}
+}
+#sa-stick{position:fixed;left:98px;top:calc(100% - 116px);width:120px;height:120px;border-radius:50%;transform:translate(-50%,-50%);background:rgba(10,12,22,.34);border:2px solid rgba(255,255,255,.26);box-shadow:inset 0 0 24px rgba(56,158,255,.12);transition:border-color .1s,background .1s}
+#sa-stick.active{background:rgba(56,158,255,.14);border-color:rgba(56,158,255,.82)}
+#sa-stick-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:500 10px/1 'Geist Mono',monospace;letter-spacing:.14em;color:rgba(244,246,251,.55)}
+#sa-stick.active #sa-stick-label{opacity:0}
+#sa-stick-knob{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle at 35% 30%,rgba(130,210,255,.92),rgba(56,158,255,.78));border:2px solid rgba(255,255,255,.82);box-shadow:0 4px 16px rgba(56,158,255,.45)}
+.t-btn{position:fixed;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 11px/1 'Geist Mono',monospace;letter-spacing:.1em;color:var(--ink);background:rgba(10,12,22,.52);border:2px solid rgba(255,255,255,.32);backdrop-filter:blur(6px);text-shadow:0 1px 4px rgba(0,0,0,.8);transition:transform .08s,background .1s,border-color .1s,box-shadow .1s}
+.t-btn span{font:400 9px/1 'Geist Mono',monospace;color:rgba(244,246,251,.72)}
+/* Centers match gamebuilder/core/play.coax: fire (w-92,h-112,r=46), super (w-196,h-76,r=34), jump (w-66,h-214,r=30), view (w-44,112,r=22) */
+#sa-btn-fire{right:46px;bottom:66px;width:92px;height:92px;background:rgba(255,74,88,.26);border-color:rgba(255,112,124,.78);font-size:13px;box-shadow:0 6px 24px rgba(255,74,88,.24)}
+#sa-btn-fire.on{background:rgba(255,74,88,.62);border-color:#fff;transform:scale(.95);box-shadow:0 0 28px rgba(255,74,88,.65)}
+#sa-btn-super{right:162px;bottom:42px;width:68px;height:68px;background:rgba(56,158,255,.20);border-color:rgba(56,158,255,.55);font-size:10px}
+#sa-btn-super.ready{background:rgba(255,210,63,.34);border-color:var(--gold);color:#fff8d6;box-shadow:0 0 22px rgba(255,210,63,.55);animation:saPulse 1.1s ease-in-out infinite}
+#sa-btn-jump{right:36px;bottom:184px;width:60px;height:60px;font-size:10px}
+#sa-btn-jump.on{background:rgba(56,158,255,.45);border-color:#fff;transform:scale(.94)}
+#sa-btn-view{right:22px;top:90px;width:44px;height:44px;font-size:9px;letter-spacing:.06em}
+#sa-touch-pill{position:fixed;bottom:112px;left:50%;transform:translateX(-50%);padding:5px 11px;background:rgba(10,12,22,.62);border:1px solid rgba(56,158,255,.4);color:#cde8ff;font:400 10px/1 'Geist Mono',monospace;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;backdrop-filter:blur(6px)}
+@media (max-width:740px){
+  #sa-stick{left:78px}
+  #sa-touch-pill{bottom:18px;font-size:9px}
+}
+@keyframes saPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 </style>
 </head>
 <body>
 <canvas id="coaxial" aria-label="Scrappers Arena"></canvas>
-<a id="sa-back" href="/">← GAMEBUILDER</a>
+<a id="sa-back" href="/" data-coaxial-dock>← GAMEBUILDER</a>
 
 <div id="coaxial-load" role="progressbar" aria-label="Loading Scrappers Arena" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
   <strong>SCRAPPERS ARENA</strong>
@@ -178,7 +215,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 </div>
 
 <!-- Pre-match Loadout Overlay over the live 3v3 dusk arena showcase -->
-<div id="sa-lobby">
+<div id="sa-lobby" data-coaxial-dock>
   <div class="lobby-head">
     <p class="lobby-eyebrow">GameBuilder · Live 3D Arena</p>
     <h1>Scrappers Arena</h1>
@@ -259,7 +296,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     <div id="sa-ball" class="hide">HOLDING BALL</div>
   </div>
 
-  <div class="hud-actions">
+  <div class="hud-actions" data-coaxial-dock>
     <button id="sa-view-btn" class="hud-btn" type="button">1ST (V)</button>
     <button id="sa-mute-btn" class="hud-btn" type="button">SOUND ON</button>
     <button id="sa-menu-btn" class="hud-btn" type="button">ESC</button>
@@ -270,6 +307,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   <div id="sa-feed" class="hide"></div>
   <div id="sa-respawn" class="hide"></div>
   <div id="sa-lock-hint">Click arena to lock mouse · WASD move · Left-click fire</div>
+
+  <div id="sa-touch">
+    <div id="sa-stick">
+      <div id="sa-stick-label">MOVE</div>
+      <div id="sa-stick-knob"></div>
+    </div>
+    <div id="sa-btn-fire" class="t-btn">FIRE</div>
+    <div id="sa-btn-super" class="t-btn">SUPER<span id="sa-btn-super-pct">0%</span></div>
+    <div id="sa-btn-jump" class="t-btn">JUMP</div>
+    <div id="sa-btn-view" class="t-btn">1ST</div>
+    <div id="sa-touch-pill">AUTO-FIRE ON · DRAG LEFT TO MOVE · RIGHT TO AIM</div>
+  </div>
 
   <div class="hud-bottom">
     <div class="hb-meta">
@@ -288,7 +337,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 </div>
 
 <!-- Pause Menu -->
-<div id="sa-pause" class="modal hide">
+<div id="sa-pause" class="modal hide" data-coaxial-dock>
   <div class="modal-card">
     <h2>PAUSED</h2>
     <p class="mono" style="font-size:12px;color:var(--muted)">Switch Scrapper or mode, or return to the match.</p>
@@ -301,7 +350,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 </div>
 
 <!-- Match Over -->
-<div id="sa-over" class="modal hide">
+<div id="sa-over" class="modal hide" data-coaxial-dock>
   <div class="modal-card">
     <h2 id="sa-over-title" class="win">VICTORY</h2>
     <div id="sa-over-score">10 — 6</div>

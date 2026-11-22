@@ -105,8 +105,54 @@ requestAnimationFrame(drainQueue);
 let pickKind = 0;
 let pickMode = 0;
 let pickSize = 3;
-let cur = { lb: 1, pa: 0, lk: 0, ov: 0, wn: -1, md: 0, sz: 3, kd: 0, hp: 100, sp: 0, s0: 0, s1: 0, tm: 1500, rs: 0, th: 0, mk: 0, ht: 0, od: 0, gl: 10, ct: 0, sh: 0, ft: 1, ko: 0, fl: 0, bl: 0, a0: 3, a1: 3, bt: 1, fd: "" };
+let touchUI = matchMedia("(pointer:coarse)").matches || ((navigator.maxTouchPoints || 0) > 1 && /iPad|iPhone|iPod|Macintosh|Android/i.test(navigator.userAgent));
+let hasMovedTouch = false;
+let cur = { lb: 1, pa: 0, lk: 0, ov: 0, wn: -1, md: 0, sz: 3, kd: 0, hp: 100, sp: 0, s0: 0, s1: 0, tm: 1500, rs: 0, th: 0, mk: 0, ht: 0, od: 0, gl: 10, ct: 0, sh: 0, ft: 1, ko: 0, fl: 0, bl: 0, a0: 3, a1: 3, bt: 1, tc: 0, st: 0, sox: 0, soy: 0, skx: 0, sky: 0, fr: 0, fd: "" };
 let held = 0, sentHeld = -1;
+// Local low-latency mirror of active touch stick & buttons (mirrors gamebuilder/core/play.coax geometry)
+const PLAY_STICK = 60;
+const touchState = { stickId: null, ox: 0, oy: 0, dx: 0, dy: 0, fireId: null, jumpId: null };
+
+function setTouchUI(on) {
+  touchUI = !!on;
+  document.body.classList.toggle("touch-ui", touchUI);
+}
+
+function hitCircle(x, y, cx, cy, r) {
+  const dx = x - cx, dy = y - cy;
+  return dx * dx + dy * dy <= r * r * 1.3;
+}
+
+function updateStickVisual() {
+  const stick = $("sa-stick"), knob = $("sa-stick-knob");
+  if (!stick || !knob) return;
+  const localOn = touchState.stickId !== null;
+  const active = localOn || cur.st === 1;
+  stick.classList.toggle("active", active);
+  if (localOn) {
+    stick.style.left = `${touchState.ox}px`;
+    stick.style.top = `${touchState.oy}px`;
+    knob.style.transform = `translate(calc(-50% + ${touchState.dx}px), calc(-50% + ${touchState.dy}px))`;
+  } else if (cur.st === 1 && (cur.sox > 0 || cur.soy > 0)) {
+    stick.style.left = `${cur.sox}px`;
+    stick.style.top = `${cur.soy}px`;
+    knob.style.transform = `translate(calc(-50% + ${(cur.skx / 100) * PLAY_STICK}px), calc(-50% + ${(cur.sky / 100) * PLAY_STICK}px))`;
+  } else {
+    stick.style.left = "";
+    stick.style.top = "";
+    knob.style.transform = "translate(-50%, -50%)";
+  }
+  $("sa-btn-fire")?.classList.toggle("on", touchState.fireId !== null || cur.fr === 1);
+  $("sa-btn-jump")?.classList.toggle("on", touchState.jumpId !== null);
+}
+
+function clearTouchVisuals() {
+  touchState.stickId = null;
+  touchState.dx = 0; touchState.dy = 0;
+  touchState.fireId = null;
+  touchState.jumpId = null;
+  updateStickVisual();
+}
 
 const BITS = {
   KeyW: 1, ArrowUp: 1,
@@ -149,17 +195,21 @@ function updatePickerUI() {
 function startMatch() {
   ensureAudio();
   held = 0; sentHeld = -1;
-  send(MSG.start, `${pickKind} ${pickMode} ${pickSize}`);
+  hasMovedTouch = false;
+  clearTouchVisuals();
+  send(MSG.start, `${pickKind} ${pickMode} ${pickSize} ${touchUI ? 1 : 0}`);
 }
 
 function openLobby() {
   held = 0; sentHeld = -1;
+  clearTouchVisuals();
   try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
   send(MSG.lobby, "1");
 }
 
 function setPaused(p) {
   held = 0; sentHeld = -1;
+  clearTouchVisuals();
   if (p) { try { if (document.pointerLockElement) document.exitPointerLock(); } catch {} }
   send(MSG.pause, p ? "1" : "0");
 }
@@ -172,9 +222,12 @@ function fmtClock(tenths) {
 }
 
 function renderHud() {
+  if (cur.tc === 1 && !touchUI) setTouchUI(true);
+
   const inLobby = cur.lb === 1;
   const paused = !inLobby && cur.pa === 1;
   const over = !inLobby && cur.ov === 1;
+  document.body.classList.toggle("in-match", !inLobby);
 
   $("sa-lobby")?.classList.toggle("hide", !inLobby);
   $("sa-hud")?.classList.toggle("hide", inLobby);
@@ -206,7 +259,9 @@ function renderHud() {
   if (ballEl) {
     ballEl.classList.toggle("hide", cur.bl !== 1);
     if (cur.bl === 1) {
-      ballEl.textContent = cur.md === 3 ? "HOLDING BALL — CLICK TO THROW AT HOOP" : "HOLDING BALL — CLICK TO KICK INTO GOAL";
+      ballEl.textContent = touchUI
+        ? (cur.md === 3 ? "HOLDING BALL — TAP THROW AT HOOP" : "HOLDING BALL — TAP KICK INTO GOAL")
+        : (cur.md === 3 ? "HOLDING BALL — CLICK TO THROW AT HOOP" : "HOLDING BALL — CLICK TO KICK INTO GOAL");
     }
   }
 
@@ -255,9 +310,23 @@ function renderHud() {
   // Mouse lock prompt
   const lockEl = $("sa-lock-hint");
   if (lockEl) {
-    const coarse = matchMedia("(pointer:coarse)").matches;
-    lockEl.classList.toggle("hide", coarse || cur.lk === 1 || paused || over);
+    lockEl.classList.toggle("hide", touchUI || cur.lk === 1 || paused || over);
   }
+
+  // Touch HUD labels & states
+  const fireBtn = $("sa-btn-fire");
+  if (fireBtn) {
+    fireBtn.textContent = cur.bl === 1 ? (cur.md === 3 ? "THROW" : "KICK") : "FIRE";
+  }
+  const superBtn = $("sa-btn-super");
+  const superPct = $("sa-btn-super-pct");
+  if (superBtn) superBtn.classList.toggle("ready", cur.sp >= 100 || cur.od === 1);
+  if (superPct) superPct.textContent = cur.od === 1 ? "ON!" : cur.sp >= 100 ? "GO!" : `${Math.max(0, Math.min(100, cur.sp))}%`;
+  const touchView = $("sa-btn-view");
+  if (touchView) touchView.textContent = cur.th ? "3RD" : "1ST";
+  const touchPill = $("sa-touch-pill");
+  if (touchPill) touchPill.classList.toggle("hide", hasMovedTouch || over || paused || cur.rs > 0 || cur.bl === 1);
+  updateStickVisual();
 
   // Health & Super bars
   const hp = Math.max(0, Math.min(100, cur.hp));
@@ -376,8 +445,62 @@ addEventListener("keyup", (e) => {
   flushKeys();
 });
 
-addEventListener("blur", () => { held = 0; sentHeld = -1; send(MSG.keys, 0); send(MSG.fire, 0); });
+addEventListener("blur", () => { held = 0; sentHeld = -1; clearTouchVisuals(); send(MSG.keys, 0); send(MSG.fire, 0); });
 addEventListener("contextmenu", (e) => { if (cur.lb === 0) e.preventDefault(); });
 
+// Mirror live touch stick & right-side button states at display frame rate (matches play.coax zones)
+addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "mouse") {
+    if (!touchUI) setTouchUI(true);
+    ensureAudio();
+  }
+  if (e.pointerType === "mouse" || cur.lb === 1 || cur.pa === 1 || cur.ov === 1) return;
+  if (e.target?.closest?.("[data-coaxial-dock]")) return;
+  const x = e.clientX, y = e.clientY, w = innerWidth, h = innerHeight;
+  if (hitCircle(x, y, w - 44, 112, 22)) return;
+  if (hitCircle(x, y, w - 66, h - 214, 30)) {
+    if (touchState.jumpId === null) touchState.jumpId = e.pointerId;
+    updateStickVisual();
+    return;
+  }
+  if (hitCircle(x, y, w - 196, h - 76, 34)) return;
+  if (hitCircle(x, y, w - 92, h - 112, 46)) {
+    if (touchState.fireId === null) touchState.fireId = e.pointerId;
+    updateStickVisual();
+    return;
+  }
+  if (x < w * 0.5 && touchState.stickId === null) {
+    touchState.stickId = e.pointerId;
+    touchState.ox = x;
+    touchState.oy = y;
+    touchState.dx = 0;
+    touchState.dy = 0;
+    updateStickVisual();
+  }
+}, { passive: true });
+
+addEventListener("pointermove", (e) => {
+  if (touchState.stickId !== e.pointerId) return;
+  let dx = e.clientX - touchState.ox;
+  let dy = e.clientY - touchState.oy;
+  const mag = Math.hypot(dx, dy);
+  if (mag > PLAY_STICK) { dx = (dx / mag) * PLAY_STICK; dy = (dy / mag) * PLAY_STICK; }
+  if (mag > 12 && !hasMovedTouch) { hasMovedTouch = true; $("sa-touch-pill")?.classList.add("hide"); }
+  touchState.dx = dx;
+  touchState.dy = dy;
+  updateStickVisual();
+}, { passive: true });
+
+function endTouch(e) {
+  let changed = false;
+  if (touchState.stickId === e.pointerId) { touchState.stickId = null; touchState.dx = 0; touchState.dy = 0; changed = true; }
+  if (touchState.fireId === e.pointerId) { touchState.fireId = null; changed = true; }
+  if (touchState.jumpId === e.pointerId) { touchState.jumpId = null; changed = true; }
+  if (changed) updateStickVisual();
+}
+addEventListener("pointerup", endTouch, { passive: true });
+addEventListener("pointercancel", endTouch, { passive: true });
+
+setTouchUI(touchUI);
 updatePickerUI();
 renderHud();

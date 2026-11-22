@@ -47,7 +47,7 @@ PACK_BACK :: 12.0f32;        // seconds until a taken one is there again
 PACK_REACH :: 1.1f32;
 PLAY_STICK :: 60.0f32;       // points the move stick travels
 PLAY_BOT_DAMAGE :: 0.35f32;   // of a Scrapper's damage a bot's shot does: you are the one who decides a match
-PLAY_BOT_AIM :: 0.16f32;     // radians a bot's aim wanders, at most
+PLAY_BOT_AIM :: 0.08f32;     // radians a bot's aim wanders, at most
 // The open field's targets and enemies (palette.coax places them)
 TARGETS :: 16;               // targets in a field, at most
 FIELD_ENEMIES :: 9;          // enemies in a field, at most: every seat but yours
@@ -728,7 +728,9 @@ play_bot :: (p: [] Play, i: s64) {
   if f.target >= 0 && p[0].f[f.target].alive {
     g := p[0].f[f.target];
     gx = g.x; gz = g.z; gy = g.y + 0.95;
-    seen = play_sees(p, play_eye(f), play_chest(g));
+    // Check visibility from actual shot muzzle height (eye - 0.15) so bots flank around 1.2 m cover instead of shooting into it
+    muzzle := WorldPoint.{x = f.x, y = f.y + PLAY_EYE - 0.15, z = f.z};
+    seen = play_sees(p, muzzle, play_chest(g));
   }
   if pack >= 0 { gx = p[0].packs[pack].x; gz = p[0].packs[pack].z; seen = false; }
   dx := gx - f.x; dz := gz - f.z;
@@ -737,7 +739,7 @@ play_bot :: (p: [] Play, i: s64) {
   turn := play_wrap(want - f.yaw);
   most := 7.0 * PLAY_STEP;
   f.yaw = play_wrap(f.yaw + (ifx turn > most then most else (ifx turn < -most then -most else turn)));
-  f.pitch = angle_atan2(gy - (f.y + PLAY_EYE), play_max(dist, 0.5));
+  f.pitch = angle_atan2(gy - (f.y + PLAY_EYE - 0.15), play_max(dist, 0.5));
   ahead: f32 = 1; side: f32 = 0;
   in_range := seen && dist < CLASS_RANGE[k] * 0.85;
   if in_range {
@@ -759,7 +761,7 @@ play_bot :: (p: [] Play, i: s64) {
     }
   }
   play_fall(p, i, false);
-  if in_range && abs(turn) < 0.2 {
+  if in_range && abs(turn) < 0.09 {
     play_fire(p, i, play_ahead(p[0].f[i].yaw, p[0].f[i].pitch));
     if dist < PLAY_SLAM_REACH || k != 1 { play_super(p, i); }
   }
@@ -773,18 +775,20 @@ play_aim :: (p: [] Play) -> PlayAim {
   f := p[0].f[0];
   ahead := play_ahead(f.yaw, f.pitch);
   eye := play_eye(f);
-  best := PLAY_AIM_HELP; out := PlayAim.{dir = ahead};
+  muzzle := WorldPoint.{x = eye.x, y = eye.y - 0.15, z = eye.z};
+  best: f32 = ifx p[0].touch then 0.16f32 else PLAY_AIM_HELP;
+  out := PlayAim.{dir = ahead};
   for j: 0..<FIGHTERS {
     g := p[0].f[j];
     if g.team == f.team || !g.alive { continue; }
     m := play_chest(g);
-    dx := m.x - eye.x; dy := m.y - eye.y; dz := m.z - eye.z;
+    dx := m.x - muzzle.x; dy := m.y - muzzle.y; dz := m.z - muzzle.z;
     d := sqrt(dx * dx + dy * dy + dz * dz);
     if d < 0.5 || d > CLASS_RANGE[f.kind] { continue; }
     dx /= d; dy /= d; dz /= d;
     dot := dx * ahead.x + dy * ahead.y + dz * ahead.z;
     off := sqrt(play_max(2 - 2 * dot, 0));   // the angle between them, about, for a small one
-    if off < best && play_sees(p, eye, m) { best = off; out = PlayAim.{dir = WorldPoint.{x = dx, y = dy, z = dz}, locked = true}; }
+    if off < best && play_sees(p, muzzle, m) { best = off; out = PlayAim.{dir = WorldPoint.{x = dx, y = dy, z = dz}, locked = true}; }
   }
   return out;
 }
@@ -974,9 +978,10 @@ PLAY_TOUCH_DOWN :: 0; PLAY_TOUCH_MOVE :: 1; PLAY_TOUCH_UP :: 2;
 // stick, wherever the finger lands; the right looks around; the buttons
 // fire (and look, while held), jump, use the super and change the view.
 ed_play_touch :: (e: [] Editor, id: s32, phase: s32, x: f32, y: f32) #export_c #effects(all) {
-  if e.count != 1 || !e[0].play[0].on || id < 0 { return; }
+  if e.count != 1 || !e[0].play[0].on { return; }
   p := e[0].play[..];
-  t := id + 1;
+  // WebKit on iPadOS can emit PointerEvent.pointerId values >= 2^31 (negative as s32): fold into [1, 2^30]
+  t := (id & 0x3fffffff) + 1;
   if phase == PLAY_TOUCH_DOWN {
     p[0].touch = true;
     if p[0].over { return; }
@@ -992,7 +997,7 @@ ed_play_touch :: (e: [] Editor, id: s32, phase: s32, x: f32, y: f32) #export_c #
       if p[0].trigger == 0 { p[0].trigger = t; p[0].fire = true; p[0].look_x = x; p[0].look_y = y; }
       return;
     }
-    if x < e[0].w * 0.45 {
+    if x < e[0].w * 0.5 {
       if p[0].stick == 0 { p[0].stick = t; p[0].stick_ox = x; p[0].stick_oy = y; p[0].stick_x = 0; p[0].stick_y = 0; }
       return;
     }

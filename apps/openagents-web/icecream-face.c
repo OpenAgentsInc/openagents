@@ -174,15 +174,16 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { track_blur(tr()); ice_blur(at(state)); acts(state); icecream_blur(scene_at(state)); }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { icecream_wheel(scene_at(state), dy); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+  int32_t pid = id & 0x3fffffff;
   track_start();
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
-  int64_t zone = ice_pointer(at(state), x, y, phase, kind, id);
+  int64_t zone = ice_pointer(at(state), x, y, phase, kind, pid);
   acts(state);
   edit_face_drain(ed(state));
   if (zone >= 0) return 1u;
   coax_t_IceRealm *h = &state_at(state)->hud;
-  icecream_pointer(scene_at(state), x, y, phase, kind, id, zone == -2 ? 1 : 0, h->stick_cx, h->stick_cy);
+  icecream_pointer(scene_at(state), x, y, phase, kind, pid, zone == -2 ? 1 : 0, h->stick_cx, h->stick_cy);
   return 1u;
 }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)ice_cursor(at(state)); }

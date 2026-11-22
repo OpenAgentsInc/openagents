@@ -38,6 +38,7 @@ ScrappersWorld :: struct {
   high: f32 = 720;
   dpr: f32 = 1;
   locked: bool;
+  touch_mode: bool;
   drag: bool; drag_id: int; drag_x: f32; drag_y: f32;
   keys: int;
   // Binary asset destination for scrappers.gbm
@@ -378,6 +379,14 @@ sa_pack_hud_event :: (w: [] ScrappersWorld, force: bool) {
   n = sa_put(o, n, ";a1="); n = sa_put_int(o, n, cast(int) (h[56] + 0.5f32));
   n = sa_put(o, n, ";bt="); n = sa_put_int(o, n, cast(int) (h[57] + 0.5f32));
   n = sa_put(o, n, ";gm="); n = sa_put_int(o, n, ifx e[0].meshes[0].ok then 1 else 0);
+  p := e[0].play[0];
+  n = sa_put(o, n, ";tc="); n = sa_put_int(o, n, ifx w[0].touch_mode || p.touch then 1 else 0);
+  n = sa_put(o, n, ";st="); n = sa_put_int(o, n, ifx p.stick != 0 then 1 else 0);
+  n = sa_put(o, n, ";sox="); n = sa_put_int(o, n, cast(int) (p.stick_ox + 0.5f32));
+  n = sa_put(o, n, ";soy="); n = sa_put_int(o, n, cast(int) (p.stick_oy + 0.5f32));
+  n = sa_put(o, n, ";skx="); n = sa_put_int(o, n, cast(int) (p.stick_x * 100.0f32));
+  n = sa_put(o, n, ";sky="); n = sa_put_int(o, n, cast(int) (p.stick_y * 100.0f32));
+  n = sa_put(o, n, ";fr="); n = sa_put_int(o, n, ifx p.fire || p.trigger != 0 then 1 else 0);
   // Knockout / goal / round feed banner text
   fn := cast(int) ed_play_feed(e, w[0].feed_buf[..]);
   if fn > 0 && !w[0].lobby {
@@ -466,7 +475,7 @@ sa_frame :: (w: [] ScrappersWorld, _verts: [] f32, u: [] f32, width: f32, height
 // ---- input, mouselook, messages & hash
 
 sa_mouselook :: (w: [] ScrappersWorld) -> int #export_c #effects(all) {
-  if w.count < 1 || w[0].lobby || w[0].paused || w[0].ed[0].play[0].over { return 0; }
+  if w.count < 1 || w[0].lobby || w[0].paused || w[0].touch_mode || w[0].ed[0].play[0].over { return 0; }
   return 2;
 }
 
@@ -489,12 +498,16 @@ sa_pointer :: (w: [] ScrappersWorld, x: f32, y: f32, phase: int, kind: int, id: 
   sa_ensure_init(w);
   e := w[0].ed[..];
   if kind != 0 {
-    // Touch screen: forward CSS points directly to play.coax touch sticks & buttons
+    // Touch screen (iPhone, iPad, tablets): sanitize 32-bit pointerId (iPadOS Safari can emit values >= 2^31)
+    w[0].touch_mode = true;
     px := x / w[0].dpr; py := y / w[0].dpr;
     tp: s32 = ifx phase == 0 then PLAY_TOUCH_DOWN else (ifx phase == 1 then PLAY_TOUCH_MOVE else PLAY_TOUCH_UP);
-    ed_play_touch(e, cast(s32) id, tp, px, py);
+    safe_id: s32 = cast(s32) (id & 0x3fffffff);
+    ed_play_touch(e, safe_id, tp, px, py);
+    if phase != 1 { sa_pack_hud_event(w, true); }
     return;
   }
+  if phase == 0 { w[0].touch_mode = false; }
   if w[0].locked {
     // Pointer locked: left click holds fire, right click activates super
     if phase == 0 {
@@ -541,7 +554,12 @@ sa_message :: (w: [] ScrappersWorld, kind: int, length: int) #export_c #effects(
     a := sa_read_int(t, 0);
     b := sa_read_int(t, a.next);
     c := sa_read_int(t, b.next);
+    d := sa_read_int(t, c.next);
     sa_start_match(w, ifx a.ok then cast(s32) a.v else w[0].pick_kind, ifx b.ok then cast(s32) b.v else w[0].pick_mode, ifx c.ok then cast(s32) c.v else w[0].pick_size);
+    if d.ok && d.v != 0 {
+      w[0].touch_mode = true;
+      e[0].play[0].touch = true;
+    }
     sa_pack_hud_event(w, true);
     return;
   }
@@ -602,7 +620,10 @@ sa_message :: (w: [] ScrappersWorld, kind: int, length: int) #export_c #effects(
   if kind == SA_MSG_TOUCH {
     if w[0].lobby || w[0].paused { return; }
     a := sa_read_int(t, 0); b := sa_read_int(t, a.next); c := sa_read_int(t, b.next); d := sa_read_int(t, c.next);
-    if a.ok && b.ok && c.ok && d.ok { ed_play_touch(e, cast(s32) a.v, cast(s32) b.v, cast(f32) c.v, cast(f32) d.v); }
+    if a.ok && b.ok && c.ok && d.ok {
+      w[0].touch_mode = true;
+      ed_play_touch(e, cast(s32) (a.v & 0x3fffffff), cast(s32) b.v, cast(f32) c.v, cast(f32) d.v);
+    }
   }
 }
 
@@ -684,4 +705,38 @@ SaTest :: struct { w: [1] ScrappersWorld; u: [SA_UNIFORM_FLOATS] f32; fx: [64] f
   // Returning to lobby frees the cursor
   sa_start_showcase(w);
   #assert w[0].lobby && sa_mouselook(w) == 0;
+}
+
+#test "iPad touch (negative pointerId) moves, looks, fires, auto-shoots, and 1v1 Last Stand bot hits stationary player" {
+  t: [1] SaTest; w := t[0].w[..];
+  _ = sa_frame(w, t[0].fx[..], t[0].u[..], 2360, 1640, 2, 0.016, false);
+  // Start 1v1 Lumen Last Stand
+  sa_start_match(w, 2, MODE_LAST_STAND, 1);
+  w[0].ed[0].play[0].count = 0;
+  _ = sa_frame(w, t[0].fx[..], t[0].u[..], 2360, 1640, 2, 0.016, false);
+  // Simulate iPadOS Safari negative 32-bit pointerId touching left half of screen and dragging up
+  z0 := w[0].ed[0].play[0].f[0].z;
+  sa_pointer(w, 400, 1100, 0, 1, -1346864815, 0);
+  sa_pointer(w, 400, 960, 1, 1, -1346864815, 0);
+  #assert w[0].touch_mode && sa_mouselook(w) == 0 && w[0].ed[0].play[0].touch && w[0].ed[0].play[0].stick != 0;
+  for k: 0..<30 { _ = sa_frame(w, t[0].fx[..], t[0].u[..], 2360, 1640, 2, 0.033, false); }
+  #assert w[0].ed[0].play[0].f[0].z > z0 + 2.0;
+  sa_pointer(w, 400, 960, 2, 1, -1346864815, 0);
+  #assert w[0].ed[0].play[0].stick == 0;
+  // Right-side touch drag turns camera with another negative pointerId
+  yaw0 := w[0].ed[0].vp[0].fyaw;
+  sa_pointer(w, 1600, 800, 0, 1, -777123456, 0);
+  sa_pointer(w, 1740, 800, 1, 1, -777123456, 0);
+  sa_pointer(w, 1740, 800, 2, 1, -777123456, 0);
+  #assert w[0].ed[0].vp[0].fyaw != yaw0;
+  // Fresh 1v1 Lumen Last Stand: stand completely still — rival bot must flank cover and damage or knock out player!
+  sa_start_match(w, 2, MODE_LAST_STAND, 1);
+  w[0].ed[0].play[0].count = 0;
+  full_hp := w[0].ed[0].play[0].f[0].hp;
+  hurt := false;
+  for k: 0..<450 {
+    _ = sa_frame(w, t[0].fx[..], t[0].u[..], 2360, 1640, 2, 0.033, false);
+    if w[0].ed[0].play[0].f[0].hp < full_hp || w[0].ed[0].play[0].falls > 0 || w[0].ed[0].play[0].score[1] > 0 { hurt = true; break; }
+  }
+  #assert hurt;
 }

@@ -39,10 +39,11 @@ F_KNOB_X :: 28; F_KNOB_Y :: 29; F_SPRINT :: 30; F_SCARE :: 31; F_SCARY :: 32; F_
 F_BEST :: 36; F_NEW_BEST :: 37; F_RUN_KEYS :: 38; F_HITS :: 39; F_ACCURACY :: 40; F_MELTED_MINIONS :: 41;
 F_DIFFICULTY :: 42; F_NEXT_DIFFICULTY :: 43; F_TIMER_ON :: 44; F_JUMPSCARES :: 45; F_SPRINT_TAP :: 46;
 F_KEEP :: 47; F_FIRST_PERSON :: 48; F_STICK :: 49; F_WON :: 50; F_SHIFT_LOCK :: 51; F_TICK :: 52;
+F_STAMINA :: 53; F_STICK_X :: 54; F_STICK_Y :: 55; F_TIRED :: 56;
 FACTS :: 64;
 A_MENU :: 1; A_RESUME :: 2; A_NEW_HOUSE :: 3; A_KEEP :: 4; A_CYCLE :: 5; A_SELECT :: 6; A_VIEW :: 7;
 A_HELD :: 8; A_TIMER :: 9; A_JUMPSCARES :: 10; A_DIFFICULTY :: 11; A_SPRINT_MODE :: 12; A_TOUR :: 13;
-A_TOUR_NEXT :: 14; A_TOUR_BACK :: 15; A_TOUR_END :: 16; A_PLAY :: 17;
+A_TOUR_NEXT :: 14; A_TOUR_BACK :: 15; A_TOUR_END :: 16; A_PLAY :: 17; A_START_DIFFICULTY :: 18;
 A_GALAXY :: 100;
 PH_TITLE :: 0; PH_PLAYING :: 1; PH_MENU :: 2; PH_ENDING :: 3; PH_OVER :: 4;
 ST_PLAYING :: 0; ST_ESCAPED :: 1; ST_MELTED :: 2; ST_SCOOPED :: 3;
@@ -70,7 +71,7 @@ TOUR_KEYS :: [8] string.[
   "Three check-out keys are hidden in the house. Walk over one to pick it up.",
   "Then hold E at the front door to escape. Press E by a closet to hide, or by a fridge for more ammo. Esc opens the menu."];
 TOUR_TOUCH :: [8] string.[
-  "Drag the stick on the left to walk. Hold Sprint to run. You can make it a tap in the menu.", "Tap Jump to jump. Jump over his sprinkles!",
+  "Drag anywhere on the left to walk. Hold Sprint to run and watch your stamina.", "Tap Jump to jump. Jump over his sprinkles!",
   "Drag on the right side of the screen to look around.",
   "Your tools aim at him when he's in front of you. Tap View to switch between first person and third person.",
   "Tap Fire to use your tool. To switch tools, tap one in the bar at the bottom, or tap Next.",
@@ -218,9 +219,11 @@ h_button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
 // A pointer: >= 0 the HUD took it, -2 a thumb on the stick, -1 the run's (to look, aim or fire).
 ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> int #export_c #effects(all) {
   if !s[0].started { ice_reset(s); }
-  if redit_pointer(s[0].ed[..], x, y, ph, id) { return 0; }
+  pid := id & 0x3fffffff;   // iPadOS Safari pointerIds can exceed 2^31 (negative s32)
+  if kind != 0 { s[0].touch = true; }
+  if redit_pointer(s[0].ed[..], x, y, ph, pid) { return 0; }
   for h: 0..<HOLDS {
-    if s[0].hold_id[h] == id && s[0].hold_id[h] >= 0 {
+    if s[0].hold_id[h] == pid && s[0].hold_id[h] >= 0 {
       if ph == POINTER_UP || ph == POINTER_CANCEL { h_queue_act(s, A_HELD, h * 2); s[0].hold_id[h] = -1; }
       return 0;
     }
@@ -231,7 +234,7 @@ ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> 
     if b >= 0 {
       h := s[0].holds[b];
       if h >= 0 {
-        if s[0].hold_id[h] < 0 { s[0].hold_id[h] = id; h_queue_act(s, A_HELD, h * 2 + 1); }
+        if s[0].hold_id[h] < 0 { s[0].hold_id[h] = pid; h_queue_act(s, A_HELD, h * 2 + 1); }
         return 0;
       }
       if h_card_on(s) || s[0].acts[b] / 256 == A_GALAXY { s[0].press = b; } else { h_do_act(s, s[0].acts[b]); }
@@ -240,10 +243,15 @@ ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> 
     // the tour's card still lets a thumb take the stick it names: walking closes it (qa-icm-tour-walk)
     tour := s[0].facts[F_TOUR] >= 0;
     if h_card_on(s) && !(tour && run_phase(s) == PH_PLAYING) { return 0; }
-    if kind != 0 && run_phase(s) == PH_PLAYING && s[0].touch {
+    // While not hiding in a closet, touching anywhere on the left half engages a floating joystick!
+    if kind != 0 && run_phase(s) == PH_PLAYING && s[0].touch && s[0].facts[F_CLOSET] <= 0.5 {
       dx := x - s[0].stick_cx; dy := y - s[0].stick_cy;
       r := (s[0].stick.x1 - s[0].stick.x0) * 0.5 + 20 * s[0].dpr;
-      if dx * dx + dy * dy <= r * r { return -2; }
+      on_ring := dx * dx + dy * dy <= r * r;
+      if on_ring || (!tour && x < s[0].width * 0.5) {
+        if !on_ring { s[0].stick_cx = x; s[0].stick_cy = y; }
+        return -2;
+      }
     }
     if h_card_on(s) { return 0; }
     return -1;
@@ -351,8 +359,19 @@ h_draw_playing :: (s: [] IceRealm, out: [] f32, at: int) -> int {
   buf: [64] u8;
   m := put_int(buf[..], 0, cast(int) floor(health + 0.5));
   n = h_say(s, out, n, cast(string) buf[0..<m], hb.x0 + 142 * k, hb.y0 + 21 * k, 8 * k, h_white(k, 0.9));
+  // Stamina: generous sprint bar directly under Health.
+  stam := clamp(f[F_STAMINA], 0, 100);
+  sb := h_rect(g, hb.y1 + 6 * k, 172 * k, 30 * k);
+  h_plate(s, sb, 0.9, LOOK_PLAIN, 0);
+  n = h_say(s, out, n, "Stamina", sb.x0 + 10 * k, sb.y0 + 19 * k, 7.5 * k, h_white(k, 0.9));
+  sr := 0.36f32; sg := 0.85f32; sbl := 0.96f32;
+  if f[F_TIRED] > 0.5 || stam <= 20 { sr = 1.0; sg = 0.37; sbl = 0.49; }
+  else if stam <= 45 { sr = 0.97; sg = 0.77; sbl = 0.17; }
+  n = h_meter(s, out, n, sb.x0 + 76 * k, sb.y0 + 15 * k, 58 * k, stam / 100, sr, sg, sbl);
+  m = put_int(buf[..], 0, cast(int) floor(stam + 0.5));
+  n = h_say(s, out, n, cast(string) buf[0..<m], sb.x0 + 142 * k, sb.y0 + 19 * k, 7.5 * k, h_white(k, 0.9));
   // The keys: a dot each, gold once found.
-  kb := h_rect(g, hb.y1 + 8 * k, 132 * k, 34 * k);
+  kb := h_rect(g, sb.y1 + 6 * k, 132 * k, 34 * k);
   h_plate(s, kb, 0.9, LOOK_PLAIN, 0);
   n = h_say(s, out, n, "Keys", kb.x0 + 10 * k, kb.y0 + 21 * k, 8 * k, h_white(k, 0.9));
   for i: 0..<3 {
@@ -438,7 +457,7 @@ h_draw_playing :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     x += sw + 8 * k;
   }
   if s[0].touch { n = h_button(s, out, n, h_rect(x, y, sw, sh), "Next", A_CYCLE * 256, -1, LOOK_LIT, 0, 9 * k); }
-  // The prompt, with the front door's unlock bar.
+  // The prompt, with the front door's unlock bar (also directly clickable/tappable to Use or Leave).
   if f[F_PROMPT] >= 0 {
     p := PROMPTS[cast(int) f[F_PROMPT] % 8];
     if f[F_UNLOCK] >= 0 { p = "Unlocking…"; }
@@ -446,7 +465,10 @@ h_draw_playing :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     cap := 10 * k;
     pw := h_text_w(p, cap) + 28 * k + (ifx key then 30 * k else 0.0f32) + (ifx f[F_UNLOCK] >= 0 then 104 * k else 0.0f32);
     pb := h_rect((w - pw) * 0.5, y - 48 * k - 10 * k, pw, 36 * k);
-    h_plate(s, pb, 0.92, LOOK_READY, 0);
+    pi := s[0].button_n;
+    if pi < MAX_BUTTONS { s[0].boxes[pi] = pb; s[0].acts[pi] = A_HELD * 256; s[0].holds[pi] = 2; s[0].button_n = pi + 1; }
+    plook: f32 = ifx s[0].hover == pi || s[0].hold_id[2] >= 0 then LOOK_HOVER else LOOK_READY;
+    h_plate(s, pb, 0.92, plook, 0);
     px := pb.x0 + 14 * k;
     if key {
       h_plate(s, h_rect(px - 4 * k, pb.y0 + 7 * k, 22 * k, 22 * k), 1, LOOK_LIT, 0);
@@ -456,20 +478,29 @@ h_draw_playing :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     n = h_say(s, out, n, p, px, pb.y0 + 23 * k, cap, h_white(k, 1.0));
     if f[F_UNLOCK] >= 0 { n = h_meter(s, out, n, pb.x1 - 104 * k, pb.y0 + 18 * k, 90 * k, f[F_UNLOCK], 0.97, 0.77, 0.17); }
   }
-  // A phone's thumbs: the stick on the left, the buttons on the right.
+  // A phone's thumbs: floating stick anywhere on the left, buttons on the right.
   if s[0].touch {
     tab: f32 = ifx lo(w, h) >= 700 * k then 1.3f32 else 1.0f32;
     q := k * tab;
     st := h_rect(28 * q, h - 120 * k - 120 * q, 120 * q, 120 * q);
     s[0].stick = st;
-    s[0].stick_cx = (st.x0 + st.x1) * 0.5; s[0].stick_cy = (st.y0 + st.y1) * 0.5;
-    h_plate(s, st, 0.45, LOOK_PLAIN, 60 * q);
-    kx := s[0].stick_cx + f[F_KNOB_X] * k; ky := s[0].stick_cy + f[F_KNOB_Y] * k;
+    rest_cx := (st.x0 + st.x1) * 0.5; rest_cy := (st.y0 + st.y1) * 0.5;
+    s[0].stick_cx = rest_cx; s[0].stick_cy = rest_cy;
+    draw_cx := rest_cx; draw_cy := rest_cy;
+    if f[F_STICK] > 0.5 && (f[F_STICK_X] > 0 || f[F_STICK_Y] > 0) {
+      draw_cx = clamp(f[F_STICK_X] * k, 60 * q, w - 60 * q);
+      draw_cy = clamp(f[F_STICK_Y] * k, 60 * q, h - 60 * q);
+    }
+    ring := h_rect(draw_cx - 60 * q, draw_cy - 60 * q, 120 * q, 120 * q);
+    h_plate(s, ring, ifx f[F_STICK] > 0.5 then 0.58f32 else 0.38f32, LOOK_PLAIN, 60 * q);
+    kx := clamp(draw_cx + f[F_KNOB_X] * k, 25 * q, w - 25 * q);
+    ky := clamp(draw_cy + f[F_KNOB_Y] * k, 25 * q, h - 25 * q);
     h_plate(s, h_rect(kx - 25 * q, ky - 25 * q, 50 * q, 50 * q), 0.95, LOOK_ON, 25 * q);
     n = h_thumb(s, out, n, 24, 104, 84, q, "Fire", A_HELD * 256, 1, LOOK_ON);
     n = h_thumb(s, out, n, 118, 92, 64, q, "Jump", A_HELD * 256, 0, LOOK_LIT);
     n = h_thumb(s, out, n, 34, 200, 62, q, "Use", A_HELD * 256, 2, ifx f[F_PROMPT] >= 0 then LOOK_READY else LOOK_LIT);
-    n = h_thumb(s, out, n, 120, 170, 62, q, "Sprint", A_HELD * 256, 3, ifx f[F_SPRINT] > 0 then LOOK_HOT else LOOK_LIT);
+    sp_look: f32 = ifx f[F_TIRED] > 0.5 then LOOK_PLAIN else ifx f[F_SPRINT] > 0 then LOOK_HOT else LOOK_LIT;
+    n = h_thumb(s, out, n, 120, 170, 62, q, "Sprint", A_HELD * 256, 3, sp_look);
     n = h_thumb(s, out, n, 40, 276, 50, q, "View", A_VIEW * 256, -1, LOOK_LIT);
   }
   return n;
@@ -515,11 +546,14 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
   } else if run_phase(s) == PH_TITLE {
     title = "The Ice Cream Man";
     lines[0] = "You're stuck in an Airbnb that keeps going. Find three keys and get out before he scoops you.";
-    lines[1] = "Check-out is at 11. Don't let him in.";
+    lines[1] = "Would you want easy, normal, or hard?";
     line_n = 2;
-    buttons[0] = CardButton.{label = "Help", act = A_TOUR * 256};
-    buttons[1] = CardButton.{label = "Play", act = A_PLAY * 256, main = true};
-    button_n = 2;
+    picked := cast(int) f[F_NEXT_DIFFICULTY] % 3;
+    buttons[0] = CardButton.{label = "Easy", act = A_START_DIFFICULTY * 256 + 0, main = picked == 0};
+    buttons[1] = CardButton.{label = "Normal", act = A_START_DIFFICULTY * 256 + 1, main = picked == 1};
+    buttons[2] = CardButton.{label = "Hard", act = A_START_DIFFICULTY * 256 + 2, main = picked == 2};
+    buttons[3] = CardButton.{label = "Help", act = A_TOUR * 256};
+    button_n = 4;
   } else if run_phase(s) == PH_MENU {
     title = "Paused";
     at_pool = put(pool[..], 0, "House number "); at_pool = put_u64(pool[..], at_pool, s[0].seed);
@@ -703,7 +737,7 @@ coaxial_ice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM
 
 h_playing_facts :: (f: [] f32) {
   for i: 0..<FACTS { f[i] = 0; }
-  f[F_PHASE] = PH_PLAYING; f[F_TOUR] = -1; f[F_HEALTH] = 100; f[F_OWNED] = 7; f[F_TOOL] = 0;
+  f[F_PHASE] = PH_PLAYING; f[F_TOUR] = -1; f[F_HEALTH] = 100; f[F_STAMINA] = 100; f[F_OWNED] = 7; f[F_TOOL] = 0;
   f[F_COUNT] = 12; f[F_COUNT + 1] = 3; f[F_COUNT + 2] = 1; for t: 3..<8 { f[F_COUNT + t] = -1; }
   f[F_BOSS] = -1; f[F_PROMPT] = -1; f[F_UNLOCK] = -1; f[F_TIMER] = 42.3; f[F_SCARE] = -1;
 }
@@ -748,7 +782,24 @@ h_playing_facts :: (f: [] f32) {
   b = s[0].boxes[slot];
   #assert ice_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 6) == 0 && ice_next_act(s[..]) == A_SELECT * 256 + 1;
   #assert ice_pointer(s[..], s[0].stick_cx, s[0].stick_cy, POINTER_DOWN, 1, 7) == -2;
+  // Touching anywhere on the left half (well above the drawn ring) engages the floating stick
+  #assert ice_pointer(s[..], 240, 800, POINTER_DOWN, 1, -1346864815) == -2;
+  #assert s[0].stick_cx == 240 && s[0].stick_cy == 800;
   #assert ice_pointer(s[..], 600, 900, POINTER_DOWN, 1, 8) == -1;
+  // Prompt ("Leave") is directly tappable even with a negative iPad pointerId and releases cleanly
+  f[F_PROMPT] = 1; f[F_CLOSET] = 1;
+  n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true, f[..], 3);
+  leave := -1;
+  for i: 0..<s[0].button_n { if s[0].holds[i] == 2 && s[0].boxes[i].x0 > 200 && s[0].boxes[i].x1 < 950 { leave = i; } }
+  #assert leave >= 0;
+  lb := s[0].boxes[leave];
+  #assert ice_pointer(s[..], (lb.x0 + lb.x1) * 0.5, (lb.y0 + lb.y1) * 0.5, POINTER_DOWN, 1, -999999) == 0;
+  #assert ice_next_act(s[..]) == A_HELD * 256 + 5;
+  #assert ice_pointer(s[..], (lb.x0 + lb.x1) * 0.5, (lb.y0 + lb.y1) * 0.5, POINTER_UP, 1, -999999) == 0;
+  #assert ice_next_act(s[..]) == A_HELD * 256 + 4;
+  // While hiding in a closet, dragging on the left side moves the camera (-1) instead of the stick (-2)
+  #assert ice_pointer(s[..], 240, 800, POINTER_DOWN, 1, 11) == -1;
+  f[F_PROMPT] = -1; f[F_CLOSET] = 0;
   // the tour's card up: a thumb on the stick still walks (and the run ends the tour); elsewhere the card keeps it
   f[F_TOUR] = 0;
   n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true, f[..], 3);
