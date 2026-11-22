@@ -399,6 +399,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// The composer (or settings' search) takes the keyboard: the page's view is the first responder.
     func focusComposer() { cd_focus(page, 1); window.makeFirstResponder(canvas); wake() }
     func focusSearch() { cd_focus(page, 2); window.makeFirstResponder(canvas); wake() }
+    func focusProvidersField() { cd_focus(page, 7); window.makeFirstResponder(canvas); wake() }
     /// Routes Edit menu items (Cmd+A/C/X/V/Z/Shift+Cmd+Z) to the Coax GPU editor when canvas owns focus (#13903).
     func performEditChord(_ code: Int32, mods: Int32) -> Bool {
         guard window.firstResponder === canvas && (cd_wants_text(page) != 0 || cd_has_selection(page) != 0) else { return false }
@@ -593,6 +594,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
         #endif
         case 170...187: providersSettingsAsked(what)
+        case 188: focusProvidersField()
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
         case 163:

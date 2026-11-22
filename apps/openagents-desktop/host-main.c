@@ -1771,6 +1771,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 21: oa_open_external("https://openagents.com/login"); break;
     case 22: check_update_from_feed(a); break;
     case 23: cd_focus(a->page, 2); break;
+    case 188: cd_focus(a->page, 7); break;
     case 24: { // a file a row or a reply names: opened in the file pane
       char path[OA_PATH] = {0};
       if (cd_open_path(a->page, path, (int)sizeof(path)) > 0) handle_file_open(a, path);

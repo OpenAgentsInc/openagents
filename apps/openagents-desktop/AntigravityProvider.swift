@@ -2312,6 +2312,7 @@ extension CoderWindow {
             break
         }
         syncProvidersSettingsPage()
+        if cd_wants_text(page) != 0 { window.makeFirstResponder(canvas) }
         wake()
     }
 }

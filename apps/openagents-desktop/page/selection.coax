@@ -528,6 +528,7 @@ cp_ed_over :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
     if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
     if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
     if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }
+    if i == CP_ED_PROV && (over || !cp_ps_ed_can_hit(s) || (!cp_ps_ed_is_over(s) && (uy < s[0].ps[0].card_y || uy >= s[0].ps[0].card_y + s[0].ps[0].card_h))) { continue; }
     c := fl[0].ed[i].body[..];
     if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }
     if ux >= c[0].text_x && ux < c[0].text_x + c[0].text_w && uy >= c[0].text_y && uy < c[0].text_y + c[0].view_h { return true; }
@@ -557,6 +558,7 @@ coder_page_cursor :: (s: [] CoderPage) -> int #export_c #effects(all) {
     tb := surface_rows(s[0].surface[..]);
     if row < tb.n {
       if tb.rows[row].role == EL_LINK { return 2; }
+      if tb.rows[row].role == EL_FIELD { return 1; }
       if tb.rows[row].action != 0 { return 0; }
     }
   }

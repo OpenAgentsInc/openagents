@@ -456,6 +456,14 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
     }
   }
   if phase == 0 {
+    if surface_action(s[0].surface[..], row) == CP_PS_FIELD_FOCUS {
+      fld := cp_number(id, "ps.ed.");
+      if fld > 0 {
+        cp_ps_focus_click(s, row, fld, ux, uy, clicks, mods);
+        s[0].touching = false; s[0].pressed_n = 0;
+        return true;
+      }
+    }
     s[0].touching = true;
     s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0;
     s[0].pin_drag = 0; s[0].pin_dragging = false;

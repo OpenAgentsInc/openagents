@@ -99,7 +99,7 @@ cp_ed_publish :: (s: [] CoderPage, which: int) {
 // The keyboard goes to a field (CP_KB_*), and the host is asked to give the view the keyboard.
 cp_ed_focus :: (s: [] CoderPage, kb: int) {
   s[0].fld[0].kb = kb;
-  s[0].ask = ifx kb == CP_KB_SEARCH then CP_ASK_SEARCH else ifx kb == CP_KB_FILE || kb == CP_KB_FT_FILTER then CP_ASK_FILE_FOCUS else ifx kb == CP_KB_FIND then CP_ASK_FIND_FOCUS else CP_ASK_FOCUS;
+  s[0].ask = ifx kb == CP_KB_SEARCH then CP_ASK_SEARCH else ifx kb == CP_KB_PROV then CP_ASK_PS_FOCUS else ifx kb == CP_KB_FILE || kb == CP_KB_FT_FILTER then CP_ASK_FILE_FOCUS else ifx kb == CP_KB_FIND then CP_ASK_FIND_FOCUS else CP_ASK_FOCUS;
 }
 // The skin a field draws in: the composer's draft in Geist 14 on a 22 line, settings' search in
 // the settings' description face. The accent caret and selection are Zeron's.
@@ -166,7 +166,7 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
       if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
       if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
       if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }
-      if i == CP_ED_PROV && (over || !cp_ps_ed_can_hit(s)) { continue; }
+      if i == CP_ED_PROV && (over || !cp_ps_ed_can_hit(s) || (!cp_ps_ed_is_over(s) && (y < s[0].ps[0].card_y || y >= s[0].ps[0].card_y + s[0].ps[0].card_h))) { continue; }
       c := fl[0].ed[i].body[..];
       if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }
       if x >= c[0].text_x && x < c[0].text_x + c[0].text_w && y >= c[0].text_y && y < c[0].text_y + c[0].view_h { which = i; }
@@ -287,7 +287,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     if key == -15 { return true; }   // Tab stays in the search
   } else if which == CP_ED_PROV {
     if key == KEY_ENTER && mods == 0 { return cp_ps_key_enter(s); }
-    if key == -15 { cp_ps_commit_ed(s); return true; }
+    if key == -15 && (mods == 0 || mods == MOD_SHIFT) { return cp_ps_key_tab(s, (mods & MOD_SHIFT) != 0); }
   }
   // A real key event delivered to the focused field still edits even when the window is inactive
   // (e.g. Edit menu chords or background-window automation); preserve `focused` for caret paint.

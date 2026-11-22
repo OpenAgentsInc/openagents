@@ -88,6 +88,7 @@ CP_ASK_PS_AUTH_SUBMIT :: 184;
 CP_ASK_PS_ENV_SAVE :: 185;
 CP_ASK_PS_MODELS_SAVE :: 186;
 CP_ASK_PS_WIZ_CREATE :: 187;
+CP_ASK_PS_FOCUS :: 188;
 
 // Row dispatch actions (CP_*, free range 410..448).
 CP_PS_FIRST :: 410;
@@ -232,6 +233,7 @@ CpProvSettings :: struct {
   wiz: [1] CpPsWizard;
   ed_field: int;
   ed_dirty: bool;
+  env_sync_skip: bool;
   auth_menu_open: bool;
   auth_menu_x: f32; auth_menu_y: f32; auth_menu_w: f32;
   accent_menu_open: bool;
@@ -337,7 +339,9 @@ cp_ps_ed_active :: (s: [] CoderPage) -> bool {
 }
 
 cp_ps_ed_can_hit :: (s: [] CoderPage) -> bool {
-  return cp_ps_ed_active(s) && !s[0].ps[0].auth_menu_open && !s[0].ps[0].accent_menu_open && !s[0].ps[0].wiz[0].auth_menu_open;
+  if !cp_ps_ed_active(s) || s[0].ps[0].auth_menu_open || s[0].ps[0].accent_menu_open || s[0].ps[0].wiz[0].auth_menu_open { return false; }
+  if s[0].ps[0].wiz[0].open && !cp_ps_ed_is_over(s) { return false; }
+  return true;
 }
 
 cp_ps_ed_is_over :: (s: [] CoderPage) -> bool {
@@ -456,14 +460,80 @@ cp_ps_close_popups :: (s: [] CoderPage) {
 
 cp_ps_focus_ed :: (s: [] CoderPage, field: int) {
   ps := s[0].ps[..];
-  if ps[0].ed_field != field { cp_ps_commit_ed(s); }
+  changed := ps[0].ed_field != field;
+  if changed { cp_ps_commit_ed(s); }
   ps[0].ed_field = field;
   ps[0].auth_menu_open = false;
   ps[0].accent_menu_open = false;
   ps[0].wiz[0].auth_menu_open = false;
-  // Reset editor epoch so UiEditor opens fresh on the new field's string.
-  s[0].fld[0].ed[CP_ED_PROV].owner = 0;
+  // Reset editor epoch when switching fields so UiEditor opens fresh on the new field's string.
+  if changed || s[0].fld[0].ed[CP_ED_PROV].owner == 0 {
+    s[0].fld[0].ed[CP_ED_PROV].owner = 0;
+  }
+  prev_ask := s[0].ask;
   cp_ed_focus(s, CP_KB_PROV);
+  if prev_ask == CP_ASK_PS_CONFIG || prev_ask == CP_ASK_PS_ENV_SAVE {
+    s[0].ask = prev_ask;
+  }
+}
+
+cp_ps_focus_click :: (s: [] CoderPage, row: int, field: int, ux: f32, uy: f32, clicks: int, mods: int) {
+  cp_ps_focus_ed(s, field);
+  fl := s[0].fld[..]; a := s[0].atlas[..];
+  e := cp_ed(s, CP_ED_PROV);
+  if !a[0].ready { return; }
+  tb := surface_rows(s[0].surface[..]);
+  if row >= 0 && row < tb.n {
+    r := tb.rows[row];
+    if r.w > 20.0f32 && r.h > 0 {
+      k := cp_skin_for(s);
+      dl := k.set.desc_line;
+      box := [4] f32.[r.x + 10.0f32, r.y + (r.h - dl) / 2, r.w - 20.0f32, dl];
+      _ = ue_layout(e, a, box[..], cp_ed_skin(s, k, CP_ED_PROV), 0);
+    }
+  }
+  ue_unmark(e);
+  e[0].body[0].focused = true;
+  if e[0].body[0].text_w > 0 {
+    if cp_ed_secure(s, CP_ED_PROV) { ue_mask_pointer(e, a, fl[0].mask[..], ux, uy, 0, clicks, (mods & MOD_SHIFT) != 0); }
+    else { _ = composer_press(e[0].body[..], a, ux, uy, ifx clicks < 1 then 1 else clicks, (mods & MOD_SHIFT) != 0); }
+    fl[0].drag = CP_ED_PROV + 1;
+  }
+}
+
+cp_ps_key_tab :: (s: [] CoderPage, back: bool) -> bool {
+  ps := s[0].ps[..]; w := ps[0].wiz[..];
+  ef := ps[0].ed_field;
+  order: [8] int; n := 0;
+  if w[0].open {
+    if w[0].step == 1 {
+      order[0] = CP_PS_ED_WIZ_LABEL; order[1] = CP_PS_ED_WIZ_ID; n = 2;
+    } else if w[0].step == 2 {
+      if w[0].driver == CP_PS_DRV_ANTIGRAVITY {
+        order[0] = CP_PS_ED_WIZ_API_KEY; order[1] = CP_PS_ED_WIZ_GCP_PROJ; order[2] = CP_PS_ED_WIZ_GCP_LOC; order[3] = CP_PS_ED_WIZ_BIN; n = 4;
+      } else {
+        order[0] = CP_PS_ED_WIZ_BIN; n = 1;
+        if w[0].driver != CP_PS_DRV_CURSOR { order[1] = CP_PS_ED_WIZ_EXTRA; n = 2; }
+      }
+    }
+  } else if ps[0].selected >= 0 && ps[0].selected < ps[0].ninst {
+    drv := ps[0].insts[ps[0].selected].driver;
+    if drv == CP_PS_DRV_ANTIGRAVITY {
+      order[0] = CP_PS_ED_DISPLAY_NAME; order[1] = CP_PS_ED_API_KEY; order[2] = CP_PS_ED_GCP_PROJECT; order[3] = CP_PS_ED_GCP_LOCATION; order[4] = CP_PS_ED_BINARY_PATH; n = 5;
+    } else {
+      order[0] = CP_PS_ED_DISPLAY_NAME; order[1] = CP_PS_ED_BINARY_PATH; n = 2;
+      if drv != CP_PS_DRV_CURSOR { order[2] = CP_PS_ED_EXTRA_PATH; n = 3; }
+    }
+  }
+  for i: 0..<n {
+    if order[i] == ef {
+      nxt := ifx back then (ifx i > 0 then i - 1 else n - 1) else (ifx i + 1 < n then i + 1 else 0);
+      cp_ps_focus_ed(s, order[nxt]);
+      return true;
+    }
+  }
+  cp_ps_commit_ed(s);
+  return true;
 }
 
 cp_ps_key_enter :: (s: [] CoderPage) -> bool {
@@ -1978,11 +2048,15 @@ coder_page_ps_set_detail_auth :: (s: [] CoderPage, auth_state: int, auth_sub: st
 
 coder_page_ps_env_clear :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].ps[0].detail[0].nenv = 0;
+  ef := s[0].ps[0].ed_field;
+  editing_env := ef >= CP_PS_ED_ENV_KEY_BASE && ef < CP_PS_ED_ENV_VAL_BASE + CP_PS_MAX_ENV;
+  s[0].ps[0].env_sync_skip = editing_env;
+  if !editing_env { s[0].ps[0].detail[0].nenv = 0; }
 }
 
 coder_page_ps_env_add :: (s: [] CoderPage, key: string, val: string, secret: bool, has_secret: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
+  if s[0].ps[0].env_sync_skip { return -1; }
   d := s[0].ps[0].detail[..];
   if d[0].nenv >= CP_PS_MAX_ENV { return -1; }
   i := d[0].nenv;

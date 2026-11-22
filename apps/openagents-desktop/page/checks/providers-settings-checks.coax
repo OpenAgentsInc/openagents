@@ -60,18 +60,46 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert am1 >= 0 && cp_press(s, am1) && !s[0].ps[0].auth_menu_open;
   #assert coder_page_action(s) == CP_ASK_PS_CONFIG && coder_page_ps_int(s, 1) == CP_PS_AUTH_BUSINESS;
 
-  // Focus GCP project inline editor, edit text, commit via Enter -> dispatches CP_ASK_PS_CONFIG.
+  // Focus GCP project inline editor via REAL (x, y) pointer click, verify I-beam cursor & CP_ASK_PS_FOCUS
+  // (never CP_ASK_FOCUS which would clobber keyboard focus back to the composer!), simulate host focus,
+  // type via IME, then click straight into GCP location and verify CP_ASK_PS_CONFIG is NOT lost.
   s[0].ps[0].detail_scroll = 300;
   #assert cp_ps_test_frame(s, 1280, 840);
   proj_ed := surface_find(s[0].surface[..], "ps.ed.3");
-  #assert proj_ed >= 0 && cp_press(s, proj_ed);
-  #assert cp_ed_which(s) == CP_ED_PROV && s[0].ps[0].ed_field == CP_PS_ED_GCP_PROJECT;
-  #assert coder_page_paste(s, "-prod");
-  #assert coder_page_key(s, KEY_ENTER, 0);
-  #assert coder_page_action(s) == CP_ASK_PS_CONFIG;
+  #assert proj_ed >= 0;
+  tb := surface_rows(s[0].surface[..]);
+  pr := tb.rows[proj_ed];
+  px := pr.x + pr.w * 0.5f32;
+  py := pr.y + pr.h * 0.5f32;
+  // Hover over GCP project box -> I-beam cursor (1).
+  _ = coder_page_press(s, px, py, 1, 0, 0);
+  #assert coder_page_cursor(s) == 1;
+  // Click GCP project box -> focuses immediately on mouseDown, emits CP_ASK_PS_FOCUS (188), NOT CP_ASK_FOCUS (2).
+  #assert coder_page_press(s, px, py, 0, 1, 0);
+  #assert coder_page_action(s) == CP_ASK_PS_FOCUS;
+  // Simulate host handling CP_ASK_PS_FOCUS -> calls coder_page_focus(s, CP_KB_PROV).
+  coder_page_focus(s, CP_KB_PROV);
+  _ = coder_page_press(s, px, py, 2, 1, 0);
+  #assert coder_page_wants_text(s) && cp_ed_which(s) == CP_ED_PROV && s[0].ps[0].ed_field == CP_PS_ED_GCP_PROJECT;
+  // Type via IME and paste, verify text updates live.
+  coder_page_ime_replace(s, -1, -1, "-prod");
   buf: [128] u8;
   bn := coder_page_ps_field(s, 2, buf[..]);
   #assert cast(string) buf[0..<bn] == "openagents-gemini-prod";
+  // Click directly from dirty GCP project into GCP location -> commits GCP project (CP_ASK_PS_CONFIG preserved!)
+  // while keeping keyboard focus in GCP location.
+  #assert cp_ps_test_frame(s, 1280, 840);
+  loc_ed := surface_find(s[0].surface[..], "ps.ed.4");
+  #assert loc_ed >= 0;
+  tb2 := surface_rows(s[0].surface[..]);
+  lr := tb2.rows[loc_ed];
+  #assert coder_page_press(s, lr.x + lr.w * 0.5f32, lr.y + lr.h * 0.5f32, 0, 1, 0);
+  #assert coder_page_action(s) == CP_ASK_PS_CONFIG;
+  _ = coder_page_press(s, lr.x + lr.w * 0.5f32, lr.y + lr.h * 0.5f32, 2, 1, 0);
+  #assert coder_page_wants_text(s) && cp_ed_which(s) == CP_ED_PROV && s[0].ps[0].ed_field == CP_PS_ED_GCP_LOCATION;
+  // Tab advances from GCP location -> Binary path; Enter blurs and commits cleanly.
+  #assert coder_page_key(s, -15, 0) && s[0].ps[0].ed_field == CP_PS_ED_BINARY_PATH && cp_ed_which(s) == CP_ED_PROV;
+  #assert coder_page_key(s, KEY_ENTER, 0) && s[0].ps[0].ed_field == CP_PS_ED_NONE && !coder_page_wants_text(s);
 
   // Add environment variable, mark secret, then remove.
   #assert cp_ps_test_frame(s, 1280, 840);
