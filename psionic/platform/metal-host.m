@@ -43,6 +43,7 @@ static uint64_t m4_arg_gpu[2];
 static size_t m4_arg_cap;
 static size_t m4_arg_off[2];
 static double m4_t_submit[2];
+static double m4_t_last_done = 0.0;
 static id<MTLSharedEvent> m4_ev;
 static uint64_t m4_ev_val = 0;
 static int m4_res_dirty = 1;
@@ -130,8 +131,10 @@ static PmStatus compile_impl(const char *source, size_t length, const char *name
         MTLCompileOptions *options = [MTLCompileOptions new];
         if (@available(macOS 15.0, *)) {
             if (fast_math) {
-                options.mathMode = MTLMathModeFast;
+                /* Safe IEEE arithmetic preserves bit-exact parity & Q4S precision; Fast FP functions accelerate exp/tanh/rsqrt. */
+                options.mathMode = MTLMathModeSafe;
                 options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsFast;
+                options.preprocessorMacros = @{ @"COAX_METAL_FAST_MATH": @1 };
             } else {
                 /* IEEE arithmetic, one rounding per operation, precise math functions. */
                 options.mathMode = MTLMathModeSafe;
@@ -470,6 +473,8 @@ void pm_abort(PmBatch batch) {
                 id<MTL4ComputeCommandEncoder> enc4 = (__bridge_transfer id<MTL4ComputeCommandEncoder>)b->encoder;
                 [enc4 endEncoding];
                 [m4_cb[sl] endCommandBuffer];
+                /* Detach uncommitted command buffer from m4_alloc[sl] before next begin_impl resets the allocator. */
+                m4_cb[sl] = [device newCommandBuffer];
                 free(b);
                 return;
             }
@@ -633,12 +638,12 @@ PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
     PmBatchImpl *b = (PmBatchImpl *)batch;
     PmKernelImpl *k = (PmKernelImpl *)kernel;
     PmBufImpl *ibi = (PmBufImpl *)indirect_buf;
-    if (!ibi || max_items < 0 || lanes <= 32 || lanes % 32 != 0 || lanes > 1024 || count < 0 || count > 16) {
+    if (!ibi || max_items < 0 || lanes <= 32 || lanes % 32 != 0 || lanes > 1024 || count < 0 || count > 32) {
         note("malformed indirect launch");
         return PM_ARGUMENT;
     }
     if (max_items == 0) return PM_OK;
-    uint8_t stack_bytes[8 + 16 * 16];
+    uint8_t stack_bytes[8 + 32 * 16];
     uint8_t *dst = stack_bytes;
 #if defined(__MAC_26_0)
     size_t ring_off = 0;
@@ -674,6 +679,26 @@ PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
             default: note("argument %d: unknown kind", i); return PM_ARGUMENT;
         }
     }
+    if (b->prof_mode == 1 && b->prof_count < b->prof_cap) {
+        if (b->encoder) {
+            id<MTLComputeCommandEncoder> old_enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
+            [old_enc endEncoding];
+            b->encoder = NULL;
+        }
+        id<MTLCommandBuffer> cmds = (__bridge id<MTLCommandBuffer>)b->commands;
+        int idx = b->prof_count++;
+        b->prof_recs[idx].name = k->name;
+        b->prof_recs[idx].items = max_items;
+        b->prof_recs[idx].lanes = lanes;
+        id<MTLComputeCommandEncoder> new_enc = prof_open_pass(b, cmds, idx);
+        b->encoder = (__bridge_retained void *)new_enc;
+    } else if (b->prof_mode == 2 && b->prof_count > 0 && b->prof_count <= b->prof_cap) {
+        if (!b->prof_recs[b->prof_count - 1].name) {
+            b->prof_recs[b->prof_count - 1].name = k->name;
+            b->prof_recs[b->prof_count - 1].items = max_items;
+            b->prof_recs[b->prof_count - 1].lanes = lanes;
+        }
+    }
     id enc = (__bridge id)b->encoder;
     if (b->last_pipeline != kernel) {
         b->fn_set_pso(enc, @selector(setComputePipelineState:), (__bridge id<MTLComputePipelineState>)k->pso);
@@ -700,7 +725,7 @@ PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
     return PM_OK;
 }
 
-PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out) {
+PmStatus pm_submit_async_after(PmBatch batch, uint64_t wait_ticket, uint64_t *ticket, int *slot_out) {
     @autoreleasepool {
         PmBatchImpl *b = (PmBatchImpl *)batch;
 #if defined(__MAC_26_0)
@@ -712,6 +737,9 @@ PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out) {
                 [enc4 endEncoding];
                 [m4_cb[sl] endCommandBuffer];
                 m4_t_submit[sl] = now();
+                if (wait_ticket > 0) {
+                    [m4_queue waitForEvent:m4_ev value:wait_ticket];
+                }
                 id<MTL4CommandBuffer> cba = m4_cb[sl];
                 [m4_queue commit:&cba count:1];
                 uint64_t sig = ++m4_ev_val;
@@ -722,9 +750,13 @@ PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out) {
             }
         }
 #endif
-        (void)ticket; (void)slot_out;
+        (void)wait_ticket; (void)ticket; (void)slot_out;
         return pm_wait(batch, NULL);
     }
+}
+
+PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out) {
+    return pm_submit_async_after(batch, 0, ticket, slot_out);
 }
 
 PmStatus pm_wait_ticket(uint64_t ticket, int slot, double *gpu_seconds) {
@@ -738,7 +770,10 @@ PmStatus pm_wait_ticket(uint64_t ticket, int slot, double *gpu_seconds) {
                     return PM_DEVICE;
                 }
                 double t1 = now();
-                if (gpu_seconds) *gpu_seconds = t1 - m4_t_submit[sl];
+                double t0 = m4_t_submit[sl];
+                if (m4_t_last_done > t0) t0 = m4_t_last_done;
+                m4_t_last_done = t1;
+                if (gpu_seconds) *gpu_seconds = (t1 > t0) ? (t1 - t0) : 0.0;
                 const uint32_t *words = m4_errors[sl].contents;
                 if (words[0]) { note("%u Coax checks failed inside the launches (largest source line %u)", words[0], words[1]); return PM_CHECK; }
                 return PM_OK;

@@ -102,6 +102,7 @@ int pm_is_m4(void);
 PmStatus pm_begin_concurrent_slot(PmBatch *batch, int slot);
 void pm_patch_first_arg_int(PmBatch batch, int64_t value);
 PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out);
+PmStatus pm_submit_async_after(PmBatch batch, uint64_t wait_ticket, uint64_t *ticket, int *slot_out);
 PmStatus pm_wait_ticket(uint64_t ticket, int slot, double *gpu_seconds);
 void pm_abort(PmBatch batch);
 
