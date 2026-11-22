@@ -316,9 +316,11 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
       _ := sheet_text(sh, m, -1, rx - ww, ty + (tf.line - s.small.line) / 2.0f32, s.small.line, s.small.face, s.ink, word);
       rx -= ww + 6.0f32;
     }
-    spin_s := ifx a.icon > 13.0f32 then 13.0f32 else a.icon;
-    activity(sh, s, rx - spin_s, y + (h - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
-    rx -= spin_s + 6.0f32;
+    if (r.state & EL_S_EXPANDED) == 0 {
+      bdot := 5.0f32;
+      sheet_fill(sh, rx - bdot, y + (h - bdot) / 2.0f32, bdot, bdot, bdot / 2.0f32, s.accent);
+      rx -= bdot + 6.0f32;
+    }
   } else {
     if busy {
       activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);

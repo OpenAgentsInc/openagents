@@ -387,6 +387,12 @@ extension CoderWindow {
             else { one.follow() }
         }
     }
+    /// True when `name` is an auto-generated internal worktree branch (e.g. `coder/<uuid>`).
+    private static func isAutoWorktreeBranch(_ name: String) -> Bool {
+        guard name.hasPrefix("coder/") else { return false }
+        let suffix = name.dropFirst(6)
+        return suffix.count >= 16 && suffix.allSatisfy { $0.isHexDigit || $0 == "-" }
+    }
     /// Fast zero-subprocess `.git/HEAD` reader for sidebar card branch labels.
     private static func quickGitBranch(at dir: String) -> String {
         guard !dir.isEmpty else { return "" }
@@ -406,7 +412,10 @@ extension CoderWindow {
         }
         guard let head = try? String(contentsOfFile: headPath, encoding: .utf8) else { return "" }
         let line = head.trimmingCharacters(in: .whitespacesAndNewlines)
-        if line.hasPrefix("ref: refs/heads/") { return String(line.dropFirst(16)) }
+        if line.hasPrefix("ref: refs/heads/") {
+            let b = String(line.dropFirst(16))
+            return isAutoWorktreeBranch(b) ? "" : b
+        }
         if line.count >= 7 { return String(line.prefix(7)) }
         return ""
     }
@@ -428,7 +437,7 @@ extension CoderWindow {
                 .replacingOccurrences(of: "\n", with: "")
             let updatedMs = Int64(chat.updated * 1000)
             let branch: String
-            if let wb = chat.worktreeBranch, !wb.isEmpty {
+            if let wb = chat.worktreeBranch, !wb.isEmpty, !CoderWindow.isAutoWorktreeBranch(wb) {
                 branch = wb
             } else if let cached = branchCache[proj] {
                 branch = cached
