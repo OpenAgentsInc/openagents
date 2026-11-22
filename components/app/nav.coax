@@ -160,8 +160,8 @@ AppSideRow :: struct {
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
-APP_SIDE_CARD_FOLDER_ICON :: 8.0f32;
-APP_SIDE_CARD_FOLDER_GAP :: 7.0f32;
+APP_SIDE_CARD_FOLDER_ICON :: 11.0f32;
+APP_SIDE_CARD_FOLDER_GAP :: 6.0f32;
 // Compact 2-line sidebar chat card painter:
 //   Line 1: Chat title (13pt Medium)                 [spinner Working | dot Done | relative time]
 //   Line 2: [small folder icon] repo · branch                                     [harness icon]
@@ -239,12 +239,12 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   r2_right := irx;
   if r.harness_icon >= 0 {
     hi := APP_SIDE_CARD_ICON;
-    sheet_icon(sh, r.harness_icon, r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.78f32));
+    sheet_icon(sh, r.harness_icon, r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.46f32));
     r2_right -= hi + 6.0f32;
   }
   lx2 := ix0;
   if r.icon >= 0 {
-    is_folder := r.icon == ICON_FOLDER_8 || r.icon == ICON_FOLDER;
+    is_folder := r.icon == ICON_FOLDER_11 || r.icon == ICON_FOLDER;
     ic := ifx is_folder then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
     ig := ifx is_folder then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
     sheet_icon(sh, r.icon, lx2, y2 + (s.small.line - ic) / 2.0f32, ic, s.muted);

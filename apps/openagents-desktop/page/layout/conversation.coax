@@ -1098,10 +1098,10 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
                       row_y = sy - y, send_x = sx - x, send = send};
 }
 
-CP_FOOT_FOLDER_ICON :: 8.0f32;
+CP_FOOT_FOLDER_ICON :: 11.0f32;
 CP_FOOT_FOLDER_GAP :: 6.0f32;
-cp_foot_chip_icon_size :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER_8 || icon == ICON_FOLDER then CP_FOOT_FOLDER_ICON else c.chip_icon; }
-cp_foot_chip_icon_gap :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER_8 || icon == ICON_FOLDER then CP_FOOT_FOLDER_GAP else c.chip_gap; }
+cp_foot_chip_icon_size :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER_11 || icon == ICON_FOLDER then CP_FOOT_FOLDER_ICON else c.chip_icon; }
+cp_foot_chip_icon_gap :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER_11 || icon == ICON_FOLDER then CP_FOOT_FOLDER_GAP else c.chip_gap; }
 
 // A chip of the composer's foot (Zeron's quiet chip): no ground until hovered or pressed; an icon
 // (-1: none), its text cut to w, a chevron when it opens a menu. EL_S_CURRENT holds it lit,
@@ -1195,8 +1195,8 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   // their widths, and what folds
   show_fu_draft := running && eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0;
   show_folder := s[0].folder_n > 0 && !show_fu_draft;
-  w_folder := ifx show_folder then cp_foot_chip_width(f, ICON_FOLDER_8, cast(string) fb[0..<fn], false) else 0.0f32;
-  w_short := ifx show_folder then cp_foot_chip_width(f, ICON_FOLDER_8, cast(string) fb[0..<short_n], false) else 0.0f32;
+  w_folder := ifx show_folder then cp_foot_chip_width(f, ICON_FOLDER_11, cast(string) fb[0..<fn], false) else 0.0f32;
+  w_short := ifx show_folder then cp_foot_chip_width(f, ICON_FOLDER_11, cast(string) fb[0..<short_n], false) else 0.0f32;
   cap := cast(f32) CP_FOLDER_MOST;
   if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
   w_fu := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else 0.0f32;
@@ -1283,7 +1283,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if show_folder && fw > 2 * c.chip_pad {
     rx -= fw;
     shown := sheet_pool(f[0].sheet, cast(string) fb[0..<(ifx show_branch then fn else short_n)]);
-    _ := cp_foot_chip(f, "coder.folder", "Working folder", rx, y, fw, ICON_FOLDER_8, shown, false, 0, CP_FOLDER);
+    _ := cp_foot_chip(f, "coder.folder", "Working folder", rx, y, fw, ICON_FOLDER_11, shown, false, 0, CP_FOLDER);
     rx -= gap;
   }
   if show_usage && rx - w_usage >= fx { rx -= w_usage; cp_usage_ring(s, f, rx, y); rx -= gap; }

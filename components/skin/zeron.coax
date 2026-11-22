@@ -63,7 +63,7 @@ ICON_SET_COMMAND :: 52;   // the Command key's sign on a key cap (a display face
 // the zoom's out, in and fit, More and Record; OpenAgents' own, drawn in Solar's Linear style
 ICON_SIM_HOME :: 53; ICON_SIM_ROTATE :: 54; ICON_SIM_CAMERA :: 55; ICON_SIM_ZOOM_OUT :: 56; ICON_SIM_ZOOM_IN :: 57;
 ICON_SIM_FIT :: 58; ICON_SIM_MORE :: 59; ICON_SIM_RECORD :: 60;
-ICON_FOLDER_ADD :: 61; ICON_BRAIN :: 62; ICON_FOLDER_8 :: 63;
+ICON_FOLDER_ADD :: 61; ICON_BRAIN :: 62; ICON_FOLDER_11 :: 63;
 ICON_COUNT :: 64;
 ICON_NAMES :: [64] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
@@ -79,7 +79,7 @@ ICON_SIZES :: [64] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 
                         14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
                         16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11,
                         16, 16, 16, 16, 16, 16, 16, 16,
-                        16, 16, 8];
+                        16, 16, 11];
 
 // Zeron Dark: zgx's themes/zeron-dark.json (Zeron e393c4a8), the one source of its colours. A
 // skin reads its roles from here, and so does a page that draws a part the skin has no role for
