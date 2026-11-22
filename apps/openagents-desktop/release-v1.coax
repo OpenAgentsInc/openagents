@@ -1,0 +1,1237 @@
+// OpenAgents Desktop v1.0 release packager, signed update-feed generator,
+// and 4-number release scorecard CLI (docs/desktop/openagents-v1-spec.md §4.5, §6.2).
+//
+// Subcommands:
+//   package   --platform macos|linux|windows [--stage 1|2] --bundle PATH --out ARCHIVE [--skip-ld]
+//   feed      --version X.Y.Z --url HTTPS_URL --archive FILE [--build N] [--notes TEXT]
+//             [--key-id ID] [--bundle-id ID] [--team-id ID] [--key-hex HEX | --ephemeral-test-key] --out FEED.json
+//   scorecard --platform macos|linux|windows --hardware-tier LABEL --tier2 SUMMARY.json
+//             [--session-history SUMMARY.json] [--prefill-tps N] [--oracle-decode-tps N]
+//             [--oracle-prefill-tps N] [--out FILE.json] [--markdown FILE.md] [--strict]
+//   selftest
+//
+// Usage:
+//   coax/web/tool.sh apps/openagents-desktop/release-v1.coax selftest
+//   coax/bin/coax test apps/openagents-desktop/release-v1.coax
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/agent/desktop/update.coax";
+#load "../../coax/lib/agent/desktop/release-v1-policy.coax";
+
+RV1_FILE_MAX :: 1048576;
+RV1_OUT_MAX :: 262144;
+RV1_EPHEMERAL_KEY_ID :: "openagents-desktop-ephemeral-test";
+
+// ---- Hex & formatting helpers ----
+
+rv1_hex_encode :: (bytes: [] u8, out: [] u8) -> bool #effects(all) {
+  if out.count < bytes.count * 2 { return false; }
+  hexd := "0123456789abcdef";
+  for i: 0..<bytes.count {
+    out[2 * i] = hexd[cast(int) (bytes[i] >> 4)];
+    out[2 * i + 1] = hexd[cast(int) (bytes[i] & 15)];
+  }
+  return true;
+}
+
+rv1_hex_decode_32 :: (hex: string, out: [] u8) -> bool #effects(all) {
+  if out.count < 32 || !rv1_hex64_valid(hex) { return false; }
+  for i: 0..<32 {
+    hi := rv1_hex_nibble(hex[2 * i]);
+    lo := rv1_hex_nibble(hex[2 * i + 1]);
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+rv1_buf_put :: (dst: [] u8, at: [] int, s: string) #effects(all) {
+  for c: s {
+    if at[0] >= dst.count { break; }
+    dst[at[0]] = c;
+    at[0] += 1;
+  }
+}
+
+rv1_buf_int :: (dst: [] u8, at: [] int, v_in: int) #effects(all) {
+  v := v_in;
+  if v < 0 { rv1_buf_put(dst, at, "-"); v = -v; }
+  tmp: [24] u8; k := 0;
+  while true {
+    tmp[k] = cast(u8) ('0' + (v % 10));
+    k += 1;
+    v /= 10;
+    if v == 0 { break; }
+  }
+  for i: 0..<k {
+    if at[0] < dst.count { dst[at[0]] = tmp[k - 1 - i]; at[0] += 1; }
+  }
+}
+
+// Formats fixed-point tenths (e.g. 800 -> "80.0").
+rv1_fmt_x10 :: (val: int, out: [] u8) -> string #effects(all) {
+  at: [1] int;
+  rv1_buf_int(out, at[..], val / 10);
+  rv1_buf_put(out, at[..], ".");
+  rv1_buf_int(out, at[..], val % 10);
+  return cast(string) out[0..<at[0]];
+}
+
+// Formats fixed-point hundredths (e.g. 1485 -> "14.85", 1440 -> "14.40").
+rv1_fmt_x100 :: (val: int, out: [] u8) -> string #effects(all) {
+  at: [1] int;
+  rv1_buf_int(out, at[..], val / 100);
+  rv1_buf_put(out, at[..], ".");
+  frac := val % 100;
+  rv1_buf_int(out, at[..], frac / 10);
+  rv1_buf_int(out, at[..], frac % 10);
+  return cast(string) out[0..<at[0]];
+}
+
+rv1_trim_trailing_slash :: (p: string) -> string {
+  hi := p.count;
+  while hi > 1 && p[hi - 1] == '/' { hi -= 1; }
+  return p[0..<hi];
+}
+
+rv1_abs_path :: (path: string, out: [] u8) -> string #effects(all) {
+  if path.count > 0 && path[0] == '/' {
+    n := dc_copy(out, path);
+    return dc_fits(out, n);
+  }
+  cwd_buf: [FS_PATH_MAX] u8;
+  cwd := fs_cwd(cwd_buf[..]);
+  if cwd.count == 0 { return ""; }
+  return fs_join(cwd, path, out);
+}
+
+rv1_repo_root :: (out: [] u8) -> string #effects(all) {
+  r := proc_getenv("COAX_TOOL_REPO", out);
+  if r.count > 0 { return r; }
+  return fs_cwd(out);
+}
+
+rv1_str_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    if hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+// ---- RFC 8032 Pure Ed25519 signing over coax/lib/crypto/ed25519.coax ----
+
+rv1_ed25519_pubkey :: (seed: [] u8, pub_out: [] u8) -> bool #effects(all) {
+  if seed.count != 32 || pub_out.count < 32 { return false; }
+  h: [64] u8;
+  if !sha512(seed, h[..]) { return false; }
+  h[0] &= 248;
+  h[31] &= 127;
+  h[31] |= 64;
+  s := ed_load(h[0..<32]);
+  pt := ed_double_mul(s, P2Num.{}, ed_identity());
+  ed_encode(pt, pub_out[0..<32]);
+  for i: 0..<64 { h[i] = 0; }
+  for i: 0..<8 { s.limbs[i] = 0; }
+  return true;
+}
+
+rv1_ed25519_sign :: (seed: [] u8, msg: [] u8, sig_out: [] u8, pub_out: [] u8) -> bool #effects(all) {
+  if seed.count != 32 || sig_out.count < 64 || pub_out.count < 32 { return false; }
+  if msg.count > SHA512_MAX - 64 { return false; }
+  h: [64] u8;
+  if !sha512(seed, h[..]) { return false; }
+  h[0] &= 248;
+  h[31] &= 127;
+  h[31] |= 64;
+
+  s_clamped := ed_load(h[0..<32]);
+  pub_pt := ed_double_mul(s_clamped, P2Num.{}, ed_identity());
+  ed_encode(pub_pt, pub_out[0..<32]);
+
+  r_hash: [64] u8;
+  ok := sha512_two(h[32..<64], msg, r_hash[..]);
+  r := ed_reduce64(r_hash[..]);
+  r_bytes: [32] u8;
+  ed_encode(ed_double_mul(r, P2Num.{}, ed_identity()), r_bytes[..]);
+
+  k_pre: [64] u8;
+  for i: 0..<32 { k_pre[i] = r_bytes[i]; k_pre[32 + i] = pub_out[i]; }
+  k_hash: [64] u8;
+  ok = ok && sha512_two(k_pre[..], msg, k_hash[..]);
+  k := ed_reduce64(k_hash[..]);
+
+  // S = (r + k * s) mod L; p2_to reduces any 256-bit clamped scalar into Montgomery form mod L.
+  s_m := p2_to(s_clamped, ED_L);
+  ks := p2_mont(k, s_m, ED_L);
+  s_val := p2_add(r, ks, ED_L);
+
+  if ok {
+    for i: 0..<32 { sig_out[i] = r_bytes[i]; }
+    ed_store(s_val, sig_out[32..<64]);
+  }
+  for i: 0..<64 { h[i] = 0; r_hash[i] = 0; k_hash[i] = 0; }
+  for i: 0..<8 { s_clamped.limbs[i] = 0; s_m.limbs[i] = 0; r.limbs[i] = 0; ks.limbs[i] = 0; }
+  return ok;
+}
+
+// ---- Subcommand 1: package ----
+
+rv1_run_with_cwd :: (argv: [] string, cwd: string, timeout_ms: int, out: [] u8, err: [] u8) -> ProcRun #effects(all) {
+  r: ProcRun;
+  h := proc_new();
+  if h < 0 { r.started = PROC_ERROR; return r; }
+  ok := argv.count > 0;
+  for arg: argv { ok = ok && proc_arg(h, arg); }
+  if cwd.count > 0 { ok = ok && proc_cwd(h, cwd); }
+  if !ok { _ := proc_release(h); r.started = PROC_ERROR; return r; }
+  r.started = proc_start(h);
+  if r.started != 0 { _ := proc_release(h); return r; }
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, proc_left(deadline, proc_now_ms()), line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n == PROC_TIMEOUT { r.timed_out = true; break; }
+    if n == PROC_TOO_LONG { r.cut = true; continue; }
+    if r.out_n > 0 { if r.out_n < out.count { out[r.out_n] = '\n'; r.out_n += 1; } else { r.cut = true; } }
+    for i: 0..<n { if r.out_n < out.count { out[r.out_n] = line[i]; r.out_n += 1; } else { r.cut = true; } }
+  }
+  if r.timed_out { _ := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, ifx r.timed_out then 2000 else proc_left(deadline, proc_now_ms()));
+  if r.status == PROC_RUNNING { r.timed_out = true; _ := proc_kill(h, PROC_SIGKILL); r.status = proc_wait(h, 2000); }
+  r.err_n = proc_stderr(h, err).count;
+  _ := proc_release(h);
+  return r;
+}
+
+cmd_package :: (a: Args) -> int #effects(all) {
+  plat := 0;
+  stage := 2;
+  bundle_arg := "";
+  out_arg := "";
+  skip_ld := false;
+
+  i := 1;
+  while i < a.n {
+    k := a.v[i];
+    if k == "--skip-ld" { skip_ld = true; i += 1; continue; }
+    if i + 1 >= a.n { tool_err("release-v1 package: missing value for "); tool_errln(k); return 2; }
+    v := a.v[i + 1]; i += 2;
+    if k == "--platform" {
+      plat = rv1_parse_platform(v);
+      if plat == 0 { tool_errln("release-v1 package: unknown --platform (use macos, linux, or windows)"); return 2; }
+    } else if k == "--stage" {
+      stage = rv1_parse_stage(v);
+      if stage == 0 { tool_errln("release-v1 package: unknown --stage (use 1 or 2)"); return 2; }
+    } else if k == "--bundle" { bundle_arg = v; }
+    else if k == "--out" { out_arg = v; }
+    else { tool_err("release-v1 package: unknown option: "); tool_errln(k); return 2; }
+  }
+
+  if plat == 0 || bundle_arg.count == 0 || out_arg.count == 0 {
+    tool_errln("usage: release-v1 package --platform macos|linux|windows [--stage 1|2] --bundle PATH --out ARCHIVE [--skip-ld]");
+    return 2;
+  }
+
+  bundle := rv1_trim_trailing_slash(bundle_arg);
+  if fs_kind(bundle) != FS_DIR {
+    tool_err("release-v1 package: bundle directory not found: "); tool_errln(bundle);
+    return 1;
+  }
+
+  out_abs_buf: [FS_PATH_MAX] u8;
+  out_abs := rv1_abs_path(out_arg, out_abs_buf[..]);
+  if out_abs.count == 0 { tool_errln("release-v1 package: cannot resolve --out path"); return 1; }
+  parent := fs_dir(out_abs);
+  if parent.count > 0 && !fs_mkdir_all(parent) {
+    tool_err("release-v1 package: cannot create output directory: "); tool_errln(parent);
+    return 1;
+  }
+  _ := fs_remove(out_abs);
+
+  // Archive using the platform's canonical tool.
+  pout: [65536] u8; perr: [16384] u8;
+  ar: ProcRun;
+  if plat == RV1_PLAT_MAC {
+    argv := [6] string.["ditto", "-c", "-k", "--keepParent", bundle, out_abs];
+    ar = proc_run(argv[..], 120000, pout[..], perr[..]);
+  } else if plat == RV1_PLAT_LINUX {
+    argv := [6] string.["tar", "-czf", out_abs, "-C", fs_dir(bundle), fs_base(bundle)];
+    ar = proc_run(argv[..], 120000, pout[..], perr[..]);
+  } else {
+    argv := [4] string.["zip", "-qr", out_abs, fs_base(bundle)];
+    ar = rv1_run_with_cwd(argv[..], fs_dir(bundle), 120000, pout[..], perr[..]);
+  }
+  if ar.started != 0 || ar.status != 0 {
+    tool_errln("release-v1 package: archiver failed");
+    if ar.err_n > 0 { tool_errln(cast(string) perr[0..<ar.err_n]); }
+    if ar.out_n > 0 { tool_errln(cast(string) pout[0..<ar.out_n]); }
+    _ := fs_remove(out_abs);
+    return 1;
+  }
+
+  // Exact byte size + chunked SHA-256 via coax/lib/crypto/sha256.coax (dc_update_file_sha).
+  size: [1] int;
+  sha: [64] u8;
+  if !dc_update_file_sha(out_abs, size[..], sha[..]) || size[0] <= 0 {
+    tool_errln("release-v1 package: failed to hash archive");
+    _ := fs_remove(out_abs);
+    return 1;
+  }
+
+  // Mandatory automated bundle verification gate (apps/openagents-desktop/v1-bundle-check.coax).
+  repo_buf: [FS_PATH_MAX] u8;
+  repo := rv1_repo_root(repo_buf[..]);
+  tool_buf: [FS_PATH_MAX] u8;
+  tool_sh := fs_join(repo, "coax/web/tool.sh", tool_buf[..]);
+  chk_buf: [FS_PATH_MAX] u8;
+  vbc_path := fs_join(repo, "apps/openagents-desktop/v1-bundle-check.coax", chk_buf[..]);
+  stage_str := ifx stage == 1 then "1" else "2";
+
+  vargv: [10] string; vn := 0;
+  vargv[vn] = tool_sh; vn += 1;
+  vargv[vn] = vbc_path; vn += 1;
+  vargv[vn] = "--platform"; vn += 1;
+  vargv[vn] = rv1_platform_name(plat); vn += 1;
+  vargv[vn] = "--stage"; vn += 1;
+  vargv[vn] = stage_str; vn += 1;
+  vargv[vn] = "--archive"; vn += 1;
+  vargv[vn] = out_abs; vn += 1;
+  if skip_ld { vargv[vn] = "--skip-ld"; vn += 1; }
+  vargv[vn] = bundle; vn += 1;
+
+  vr := proc_run(vargv[0..<vn], 120000, pout[..], perr[..]);
+  if vr.started != 0 || vr.status != 0 {
+    tool_errln("release-v1 package: v1-bundle-check rejected bundle");
+    if vr.out_n > 0 { tool_errln(cast(string) pout[0..<vr.out_n]); }
+    if vr.err_n > 0 { tool_errln(cast(string) perr[0..<vr.err_n]); }
+    _ := fs_remove(out_abs);
+    return 1;
+  }
+
+  // Emit JSON receipt to stdout.
+  jbuf: [16384] u8; o: [1] Jo;
+  jo_start(o[..], jbuf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "platform"); jo_str(o[..], rv1_platform_name(plat));
+  jo_key(o[..], "stage"); jo_int(o[..], stage);
+  jo_key(o[..], "bundle"); jo_str(o[..], bundle);
+  jo_key(o[..], "archive"); jo_str(o[..], out_arg);
+  jo_key(o[..], "bytes"); jo_int(o[..], size[0]);
+  jo_key(o[..], "sha256"); jo_str(o[..], cast(string) sha[..]);
+  jo_key(o[..], "verified"); jo_bool(o[..], true);
+  jo_end(o[..]);
+  if o[0].bad { tool_errln("release-v1 package: receipt overflow"); return 1; }
+  print("%\n", jo_text(o[..]));
+  return 0;
+}
+
+// ---- Subcommand 2: feed ----
+
+cmd_feed :: (a: Args) -> int #effects(all) {
+  version := "";
+  url := "";
+  archive := "";
+  bundle_id := DC_UPDATE_BUNDLE;
+  team_id := DC_UPDATE_TEAM;
+  key_id := "";
+  key_hex := "";
+  ephemeral := false;
+  has_build := false;
+  build := 0;
+  notes := "";
+  out_path := "";
+
+  i := 1;
+  while i < a.n {
+    k := a.v[i];
+    if k == "--ephemeral-test-key" { ephemeral = true; i += 1; continue; }
+    if i + 1 >= a.n { tool_err("release-v1 feed: missing value for "); tool_errln(k); return 2; }
+    v := a.v[i + 1]; i += 2;
+    if k == "--version" { version = v; }
+    else if k == "--url" { url = v; }
+    else if k == "--archive" { archive = v; }
+    else if k == "--bundle-id" { bundle_id = v; }
+    else if k == "--team-id" { team_id = v; }
+    else if k == "--key-id" { key_id = v; }
+    else if k == "--key-hex" { key_hex = v; }
+    else if k == "--notes" { notes = v; }
+    else if k == "--out" { out_path = v; }
+    else if k == "--build" {
+      b := dc_int_part(v);
+      if b < 0 { tool_errln("release-v1 feed: invalid --build"); return 2; }
+      build = b; has_build = true;
+    } else {
+      tool_err("release-v1 feed: unknown option: "); tool_errln(k);
+      return 2;
+    }
+  }
+
+  if version.count == 0 || url.count == 0 || archive.count == 0 || out_path.count == 0 {
+    tool_errln("usage: release-v1 feed --version X.Y.Z --url HTTPS_URL --archive FILE [--bundle-id ID] [--team-id ID] [--key-id ID] [--build N] [--notes TEXT] [--key-hex HEX | --ephemeral-test-key] --out FEED.json");
+    return 2;
+  }
+  if ephemeral && key_hex.count > 0 {
+    tool_errln("release-v1 feed: pass either --key-hex or --ephemeral-test-key, not both");
+    return 2;
+  }
+  if key_id.count == 0 {
+    key_id = ifx ephemeral then RV1_EPHEMERAL_KEY_ID else DC_UPDATE_KEY_ID;
+  }
+
+  // Exact byte size + chunked SHA-256 via coax/lib/crypto/sha256.coax (dc_update_file_sha).
+  size: [1] int;
+  sha: [64] u8;
+  if !dc_update_file_sha(archive, size[..], sha[..]) {
+    tool_err("release-v1 feed: cannot read or hash archive: "); tool_errln(archive);
+    return 1;
+  }
+
+  valid_code := rv1_feed_inputs_valid(version, url, bundle_id, team_id, size[0], cast(string) sha[..]);
+  if valid_code != RV1_FEED_OK {
+    tool_err("release-v1 feed: "); tool_errln(rv1_feed_error_text(valid_code));
+    return 2;
+  }
+
+  seed: [32] u8;
+  defer { for z: 0..<32 { seed[z] = 0; } }
+  if ephemeral {
+    if !dcos_random(seed[..]) {
+      tool_errln("release-v1 feed: failed to draw entropy for ephemeral test key");
+      return 1;
+    }
+  } else {
+    env_hex_buf: [256] u8;
+    use_hex := key_hex;
+    if use_hex.count == 0 { use_hex = proc_getenv("OA_UPDATE_SIGN_SEED_HEX", env_hex_buf[..]); }
+    use_hex = dc_trim(use_hex);
+    if !rv1_hex_decode_32(use_hex, seed[..]) {
+      tool_errln("release-v1 feed: 64-hex-char Ed25519 seed required via --key-hex, OA_UPDATE_SIGN_SEED_HEX, or --ephemeral-test-key");
+      return 2;
+    }
+  }
+
+  // Build canonical payload using the registered codec in coax/lib/agent/desktop/update.coax.
+  payload: [DC_UPDATE_MAX] u8;
+  pn := dc_manifest_write(version, has_build, build, bundle_id, team_id, url, cast(string) sha[..], size[0], notes, payload[..]);
+  if pn <= 0 { tool_errln("release-v1 feed: manifest encoding failed"); return 1; }
+
+  // Sign raw payload bytes with Ed25519 (RFC 8032 over coax/lib/crypto/ed25519.coax).
+  sig: [64] u8;
+  pub: [32] u8;
+  if !rv1_ed25519_sign(seed[..], payload[0..<pn], sig[..], pub[..]) {
+    tool_errln("release-v1 feed: Ed25519 signing failed");
+    return 1;
+  }
+
+  // Wrap signed envelope via update.coax's codec.
+  env: [DC_UPDATE_MAX] u8;
+  en := dc_update_envelope_write(key_id, cast(string) payload[0..<pn], cast(string) sig[..], env[..]);
+  if en <= 0 || en + 1 > env.count { tool_errln("release-v1 feed: envelope encoding failed"); return 1; }
+  env[en] = '\n';
+  en += 1;
+
+  out_dir := fs_dir(out_path);
+  if out_dir.count > 0 && !fs_mkdir_all(out_dir) {
+    tool_err("release-v1 feed: cannot create output directory: "); tool_errln(out_dir);
+    return 1;
+  }
+  if !dcos_write(out_path, cast(string) env[0..<en]) {
+    tool_err("release-v1 feed: cannot write feed file: "); tool_errln(out_path);
+    return 1;
+  }
+
+  // Self-verify the written envelope from disk through update.coax's verifier + archive verifier.
+  verify_buf: [DC_UPDATE_MAX] u8;
+  vn := fs_read(out_path, verify_buf[..]);
+  if vn <= 0 {
+    tool_errln("release-v1 feed: self-verify failed to read written envelope");
+    _ := fs_remove(out_path);
+    return 1;
+  }
+  pub_hex: [64] u8;
+  _ := rv1_hex_encode(pub[..], pub_hex[..]);
+  keys: [1] DcKey;
+  dc_key(keys[..], key_id, cast(string) pub_hex[..]);
+  m: [1] DcManifest;
+  vc := dc_update_verify(cast(string) verify_buf[0..<vn], keys[..], "0.0.0", 0, false, m[..]);
+  if vc != DC_UPD_OK {
+    tool_err("release-v1 feed: self-verify rejected envelope: "); tool_errln(dc_update_words(vc));
+    _ := fs_remove(out_path);
+    return 1;
+  }
+  ac := dc_update_archive(archive, m[..]);
+  if ac != DC_UPD_OK {
+    tool_err("release-v1 feed: self-verify rejected archive match: "); tool_errln(dc_update_words(ac));
+    _ := fs_remove(out_path);
+    return 1;
+  }
+
+  // Emit receipt JSON to stdout.
+  jbuf: [16384] u8; o: [1] Jo;
+  jo_start(o[..], jbuf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "version"); jo_str(o[..], version);
+  if has_build { jo_key(o[..], "build"); jo_int(o[..], build); }
+  jo_key(o[..], "url"); jo_str(o[..], url);
+  jo_key(o[..], "archive"); jo_str(o[..], archive);
+  jo_key(o[..], "bytes"); jo_int(o[..], size[0]);
+  jo_key(o[..], "sha256"); jo_str(o[..], cast(string) sha[..]);
+  jo_key(o[..], "bundle_id"); jo_str(o[..], bundle_id);
+  jo_key(o[..], "team_id"); jo_str(o[..], team_id);
+  jo_key(o[..], "key_id"); jo_str(o[..], key_id);
+  jo_key(o[..], "public_key"); jo_str(o[..], cast(string) pub_hex[..]);
+  jo_key(o[..], "ephemeral_test_key"); jo_bool(o[..], ephemeral);
+  jo_key(o[..], "out"); jo_str(o[..], out_path);
+  jo_key(o[..], "verified"); jo_bool(o[..], true);
+  jo_end(o[..]);
+  if o[0].bad { tool_errln("release-v1 feed: receipt overflow"); return 1; }
+  print("%\n", jo_text(o[..]));
+  return 0;
+}
+
+// ---- Subcommand 3: scorecard ----
+
+rv1_format_blocker_sh :: (sh: [] Rv1EvalStats, sh_gate: int, out: [] u8) -> string #effects(all) {
+  at: [1] int;
+  if sh_gate == RV1_GATE_MISSING {
+    rv1_buf_put(out, at[..], "Session History eval missing (0/");
+    rv1_buf_int(out, at[..], RV1_SH_REQUIRED);
+    rv1_buf_put(out, at[..], " tasks)");
+  } else if sh_gate == RV1_GATE_INCOMPLETE {
+    rv1_buf_put(out, at[..], "Session History eval incomplete (");
+    rv1_buf_int(out, at[..], sh[0].applicable_total);
+    rv1_buf_put(out, at[..], "/");
+    rv1_buf_int(out, at[..], RV1_SH_REQUIRED);
+    rv1_buf_put(out, at[..], " tasks)");
+  } else if sh_gate == RV1_GATE_FAIL {
+    rv1_buf_put(out, at[..], "Session History eval failed (");
+    rv1_buf_int(out, at[..], sh[0].passed);
+    rv1_buf_put(out, at[..], "/");
+    rv1_buf_int(out, at[..], sh[0].applicable_total);
+    rv1_buf_put(out, at[..], ")");
+    if sh[0].failed_n > 0 {
+      rv1_buf_put(out, at[..], ": ");
+      for i: 0..<sh[0].failed_n {
+        if i > 0 { rv1_buf_put(out, at[..], ", "); }
+        rv1_buf_put(out, at[..], rv1_eval_failed_id(sh, i));
+      }
+    }
+  }
+  return cast(string) out[0..<at[0]];
+}
+
+rv1_format_blocker_t2 :: (t2: [] Rv1EvalStats, t2_gate: int, out: [] u8) -> string #effects(all) {
+  at: [1] int;
+  if t2_gate == RV1_GATE_INCOMPLETE {
+    rv1_buf_put(out, at[..], "Tier 2 applicable eval incomplete (");
+    rv1_buf_int(out, at[..], t2[0].applicable_total);
+    rv1_buf_put(out, at[..], "/");
+    rv1_buf_int(out, at[..], RV1_TIER2_REQUIRED);
+    rv1_buf_put(out, at[..], " applicable tasks)");
+  } else if t2_gate == RV1_GATE_FAIL {
+    rv1_buf_put(out, at[..], "Tier 2 applicable eval failed (");
+    rv1_buf_int(out, at[..], t2[0].passed);
+    rv1_buf_put(out, at[..], "/");
+    rv1_buf_int(out, at[..], t2[0].applicable_total);
+    rv1_buf_put(out, at[..], ")");
+    if t2[0].failed_n > 0 {
+      rv1_buf_put(out, at[..], ": ");
+      for i: 0..<t2[0].failed_n {
+        if i > 0 { rv1_buf_put(out, at[..], ", "); }
+        rv1_buf_put(out, at[..], rv1_eval_failed_id(t2, i));
+      }
+    }
+  }
+  return cast(string) out[0..<at[0]];
+}
+
+rv1_format_blocker_ctx :: (ctx: int, out: [] u8) -> string #effects(all) {
+  at: [1] int;
+  rv1_buf_put(out, at[..], "Context length is ");
+  rv1_buf_int(out, at[..], ctx);
+  rv1_buf_put(out, at[..], " (v1.0 requires --ctx ");
+  rv1_buf_int(out, at[..], RV1_REQUIRED_CTX);
+  rv1_buf_put(out, at[..], ")");
+  return cast(string) out[0..<at[0]];
+}
+
+rv1_write_scorecard_json :: (
+  plat: int,
+  hw_tier: string,
+  t2: [] Rv1EvalStats,
+  sh: [] Rv1EvalStats,
+  prefill_override_x100: int,
+  oracle_dec_x100: int,
+  oracle_pre_x100: int,
+  out: [] u8
+) -> int #effects(all) {
+  sh_gate := rv1_gate_status(sh[0].provided, sh[0].passed, sh[0].applicable_total, RV1_SH_REQUIRED);
+  t2_gate := rv1_gate_status(t2[0].provided, t2[0].passed, t2[0].applicable_total, RV1_TIER2_REQUIRED);
+  ready := rv1_release_ready(t2, sh);
+
+  eff_prefill := ifx prefill_override_x100 > 0 then prefill_override_x100 else t2[0].median_prefill_tps_x100;
+  oracle_dec_pct := ifx oracle_dec_x100 > 0 && t2[0].median_decode_tps_x100 > 0 then rv1_pct_x10(t2[0].median_decode_tps_x100, oracle_dec_x100) else 0;
+  oracle_pre_pct := ifx oracle_pre_x100 > 0 && eff_prefill > 0 then rv1_pct_x10(eff_prefill, oracle_pre_x100) else 0;
+
+  nb: [32] u8;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "spec"); jo_str(o[..], "docs/desktop/openagents-v1-spec.md#6.2");
+  jo_key(o[..], "platform"); jo_str(o[..], rv1_platform_name(plat));
+  jo_key(o[..], "committed_target"); jo_bool(o[..], rv1_is_committed_platform(plat));
+  jo_key(o[..], "hardware_tier"); jo_str(o[..], hw_tier);
+  jo_key(o[..], "engine"); jo_str(o[..], rv1_eval_engine(t2));
+  jo_key(o[..], "model"); jo_str(o[..], rv1_eval_model(t2));
+  jo_key(o[..], "ctx"); jo_int(o[..], t2[0].ctx);
+  jo_key(o[..], "git_sha"); jo_str(o[..], rv1_eval_git_sha(t2));
+  jo_key(o[..], "created"); jo_str(o[..], rv1_eval_created(t2));
+  jo_key(o[..], "release_ready"); jo_bool(o[..], ready);
+
+  jo_key(o[..], "blockers");
+  jo_arr(o[..]);
+  bb: [1024] u8;
+  if sh_gate != RV1_GATE_PASS { jo_str(o[..], rv1_format_blocker_sh(sh, sh_gate, bb[..])); }
+  if t2_gate != RV1_GATE_PASS { jo_str(o[..], rv1_format_blocker_t2(t2, t2_gate, bb[..])); }
+  if t2[0].ctx != RV1_REQUIRED_CTX { jo_str(o[..], rv1_format_blocker_ctx(t2[0].ctx, bb[..])); }
+  jo_end(o[..]);
+
+  // 1. Session-history pass rate
+  jo_key(o[..], "session_history");
+  jo_obj(o[..]);
+  jo_key(o[..], "provided"); jo_bool(o[..], sh[0].provided);
+  jo_key(o[..], "status"); jo_str(o[..], rv1_gate_label(sh_gate));
+  jo_key(o[..], "passed"); jo_int(o[..], sh[0].passed);
+  jo_key(o[..], "total"); jo_int(o[..], sh[0].applicable_total);
+  jo_key(o[..], "required"); jo_int(o[..], RV1_SH_REQUIRED);
+  jo_key(o[..], "pass_rate_pct"); jo_raw(o[..], rv1_fmt_x10(rv1_pct_x10(sh[0].passed, sh[0].applicable_total), nb[..]));
+  jo_key(o[..], "complete"); jo_bool(o[..], sh[0].provided && sh[0].applicable_total >= RV1_SH_REQUIRED);
+  jo_key(o[..], "failed_ids");
+  jo_arr(o[..]);
+  for i: 0..<sh[0].failed_n { jo_str(o[..], rv1_eval_failed_id(sh, i)); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+
+  // 2. Tier 2 applicable pass rate
+  jo_key(o[..], "tier2");
+  jo_obj(o[..]);
+  jo_key(o[..], "status"); jo_str(o[..], rv1_gate_label(t2_gate));
+  jo_key(o[..], "passed"); jo_int(o[..], t2[0].passed);
+  jo_key(o[..], "applicable_total"); jo_int(o[..], t2[0].applicable_total);
+  jo_key(o[..], "all_tasks_total"); jo_int(o[..], t2[0].all_tasks_total);
+  jo_key(o[..], "not_applicable_count"); jo_int(o[..], t2[0].not_applicable_count);
+  jo_key(o[..], "required_applicable"); jo_int(o[..], RV1_TIER2_REQUIRED);
+  jo_key(o[..], "pass_rate_pct"); jo_raw(o[..], rv1_fmt_x10(rv1_pct_x10(t2[0].passed, t2[0].applicable_total), nb[..]));
+  jo_key(o[..], "complete"); jo_bool(o[..], t2[0].applicable_total >= RV1_TIER2_REQUIRED);
+  jo_key(o[..], "failed_ids");
+  jo_arr(o[..]);
+  for i: 0..<t2[0].failed_n { jo_str(o[..], rv1_eval_failed_id(t2, i)); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+
+  // 3. Throughput
+  jo_key(o[..], "throughput");
+  jo_obj(o[..]);
+  jo_key(o[..], "median_decode_tps"); jo_raw(o[..], rv1_fmt_x100(t2[0].median_decode_tps_x100, nb[..]));
+  jo_key(o[..], "mean_decode_tps"); jo_raw(o[..], rv1_fmt_x100(t2[0].mean_decode_tps_x100, nb[..]));
+  jo_key(o[..], "median_prefill_tps");
+  if eff_prefill > 0 { jo_raw(o[..], rv1_fmt_x100(eff_prefill, nb[..])); } else { jo_null(o[..]); }
+  jo_key(o[..], "oracle_decode_pct");
+  if oracle_dec_pct > 0 { jo_raw(o[..], rv1_fmt_x10(oracle_dec_pct, nb[..])); } else { jo_null(o[..]); }
+  jo_key(o[..], "oracle_prefill_pct");
+  if oracle_pre_pct > 0 { jo_raw(o[..], rv1_fmt_x10(oracle_pre_pct, nb[..])); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+
+  // 4. Responsiveness & footprint
+  jo_key(o[..], "responsiveness");
+  jo_obj(o[..]);
+  jo_key(o[..], "median_ttft_ms"); jo_int(o[..], t2[0].median_ttft_ms);
+  jo_key(o[..], "mean_ttft_ms"); jo_int(o[..], t2[0].mean_ttft_ms);
+  jo_key(o[..], "server_boot_ms"); jo_int(o[..], t2[0].server_boot_ms);
+  jo_key(o[..], "peak_rss_mb"); jo_int(o[..], t2[0].peak_rss_mb);
+  jo_key(o[..], "peak_vram_mb");
+  if t2[0].has_peak_vram { jo_int(o[..], t2[0].peak_vram_mb); } else { jo_null(o[..]); }
+  jo_key(o[..], "wall_ms"); jo_int(o[..], t2[0].wall_ms);
+  jo_key(o[..], "wall_p50_ms"); jo_int(o[..], t2[0].wall_p50_ms);
+  jo_key(o[..], "wall_p95_ms"); jo_int(o[..], t2[0].wall_p95_ms);
+  jo_end(o[..]);
+
+  jo_end(o[..]);
+  jo_byte(o[..], '\n');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+rv1_write_scorecard_md :: (
+  plat: int,
+  hw_tier: string,
+  t2: [] Rv1EvalStats,
+  sh: [] Rv1EvalStats,
+  prefill_override_x100: int,
+  oracle_dec_x100: int,
+  oracle_pre_x100: int,
+  out: [] u8
+) -> int #effects(all) {
+  sh_gate := rv1_gate_status(sh[0].provided, sh[0].passed, sh[0].applicable_total, RV1_SH_REQUIRED);
+  t2_gate := rv1_gate_status(t2[0].provided, t2[0].passed, t2[0].applicable_total, RV1_TIER2_REQUIRED);
+  ready := rv1_release_ready(t2, sh);
+  eff_prefill := ifx prefill_override_x100 > 0 then prefill_override_x100 else t2[0].median_prefill_tps_x100;
+  oracle_dec_pct := ifx oracle_dec_x100 > 0 && t2[0].median_decode_tps_x100 > 0 then rv1_pct_x10(t2[0].median_decode_tps_x100, oracle_dec_x100) else 0;
+  oracle_pre_pct := ifx oracle_pre_x100 > 0 && eff_prefill > 0 then rv1_pct_x10(eff_prefill, oracle_pre_x100) else 0;
+
+  at: [1] int;
+  nb: [32] u8;
+  bb: [1024] u8;
+
+  rv1_buf_put(out, at[..], "# OpenAgents v1.0 Release Scorecard (");
+  rv1_buf_put(out, at[..], rv1_platform_name(plat));
+  rv1_buf_put(out, at[..], " — ");
+  rv1_buf_put(out, at[..], hw_tier);
+  rv1_buf_put(out, at[..], ")\n\n");
+
+  rv1_buf_put(out, at[..], "- **Release Gate:** ");
+  rv1_buf_put(out, at[..], ifx ready then "**READY FOR v1.0**" else "**NOT READY — BLOCKERS PRESENT**");
+  rv1_buf_put(out, at[..], "\n- **Platform Tier:** ");
+  rv1_buf_put(out, at[..], ifx rv1_is_committed_platform(plat) then "Tier 1 (Committed v1.0.0)" else "Tier 2 (Optional Stretch)");
+  rv1_buf_put(out, at[..], "\n- **Engine / Model / Ctx:** `");
+  rv1_buf_put(out, at[..], ifx t2[0].engine_n > 0 then rv1_eval_engine(t2) else "unknown");
+  rv1_buf_put(out, at[..], "` / `");
+  rv1_buf_put(out, at[..], ifx t2[0].model_n > 0 then rv1_eval_model(t2) else "unknown");
+  rv1_buf_put(out, at[..], "` / `ctx=");
+  rv1_buf_int(out, at[..], t2[0].ctx);
+  rv1_buf_put(out, at[..], "`");
+  if t2[0].git_sha_n > 0 {
+    rv1_buf_put(out, at[..], " (`");
+    rv1_buf_put(out, at[..], rv1_eval_git_sha(t2));
+    rv1_buf_put(out, at[..], "`)");
+  }
+  rv1_buf_put(out, at[..], "\n\n## 4-Number Scorecard (Spec §6.2)\n\n");
+  rv1_buf_put(out, at[..], "| # | Metric | Measured | Gate |\n");
+  rv1_buf_put(out, at[..], "| --- | --- | --- | --- |\n");
+
+  // Row 1: Session-history pass rate
+  rv1_buf_put(out, at[..], "| 1 | **Session-history pass rate** (27 tasks) | ");
+  if sh[0].provided {
+    rv1_buf_int(out, at[..], sh[0].passed);
+    rv1_buf_put(out, at[..], "/");
+    rv1_buf_int(out, at[..], sh[0].applicable_total);
+    rv1_buf_put(out, at[..], " (");
+    rv1_buf_put(out, at[..], rv1_fmt_x10(rv1_pct_x10(sh[0].passed, sh[0].applicable_total), nb[..]));
+    rv1_buf_put(out, at[..], "%)");
+  } else {
+    rv1_buf_put(out, at[..], "not provided (0/27)");
+  }
+  rv1_buf_put(out, at[..], " | ");
+  rv1_buf_put(out, at[..], rv1_gate_label(sh_gate));
+  rv1_buf_put(out, at[..], " |\n");
+
+  // Row 2: Tier 2 applicable pass rate
+  rv1_buf_put(out, at[..], "| 2 | **Tier 2 applicable pass rate** (10 applicable) | ");
+  rv1_buf_int(out, at[..], t2[0].passed);
+  rv1_buf_put(out, at[..], "/");
+  rv1_buf_int(out, at[..], t2[0].applicable_total);
+  rv1_buf_put(out, at[..], " (");
+  rv1_buf_put(out, at[..], rv1_fmt_x10(rv1_pct_x10(t2[0].passed, t2[0].applicable_total), nb[..]));
+  rv1_buf_put(out, at[..], "%, ");
+  rv1_buf_int(out, at[..], t2[0].not_applicable_count);
+  rv1_buf_put(out, at[..], " N/A) | ");
+  rv1_buf_put(out, at[..], rv1_gate_label(t2_gate));
+  rv1_buf_put(out, at[..], " |\n");
+
+  // Row 3: Throughput
+  rv1_buf_put(out, at[..], "| 3 | **Throughput** (median decode / prefill) | decode ");
+  rv1_buf_put(out, at[..], rv1_fmt_x100(t2[0].median_decode_tps_x100, nb[..]));
+  rv1_buf_put(out, at[..], " tok/s");
+  if oracle_dec_pct > 0 {
+    rv1_buf_put(out, at[..], " (");
+    rv1_buf_put(out, at[..], rv1_fmt_x10(oracle_dec_pct, nb[..]));
+    rv1_buf_put(out, at[..], "% oracle)");
+  }
+  rv1_buf_put(out, at[..], "; prefill ");
+  if eff_prefill > 0 {
+    rv1_buf_put(out, at[..], rv1_fmt_x100(eff_prefill, nb[..]));
+    rv1_buf_put(out, at[..], " tok/s");
+    if oracle_pre_pct > 0 {
+      rv1_buf_put(out, at[..], " (");
+      rv1_buf_put(out, at[..], rv1_fmt_x10(oracle_pre_pct, nb[..]));
+      rv1_buf_put(out, at[..], "% oracle)");
+    }
+  } else {
+    rv1_buf_put(out, at[..], "N/A");
+  }
+  rv1_buf_put(out, at[..], " | INFO |\n");
+
+  // Row 4: Responsiveness & footprint
+  rv1_buf_put(out, at[..], "| 4 | **Responsiveness & footprint** (TTFT / boot / memory) | median TTFT ");
+  rv1_buf_int(out, at[..], t2[0].median_ttft_ms);
+  rv1_buf_put(out, at[..], " ms, boot ");
+  rv1_buf_int(out, at[..], t2[0].server_boot_ms);
+  rv1_buf_put(out, at[..], " ms, peak RSS ");
+  rv1_buf_int(out, at[..], t2[0].peak_rss_mb);
+  rv1_buf_put(out, at[..], " MB");
+  if t2[0].has_peak_vram {
+    rv1_buf_put(out, at[..], ", peak VRAM ");
+    rv1_buf_int(out, at[..], t2[0].peak_vram_mb);
+    rv1_buf_put(out, at[..], " MB");
+  }
+  rv1_buf_put(out, at[..], " | ");
+  rv1_buf_put(out, at[..], ifx t2[0].ctx == RV1_REQUIRED_CTX then "PASS" else "FAIL");
+  rv1_buf_put(out, at[..], " |\n");
+
+  if !ready {
+    rv1_buf_put(out, at[..], "\n## Blockers & Flags\n\n");
+    if sh_gate != RV1_GATE_PASS {
+      rv1_buf_put(out, at[..], "- ");
+      rv1_buf_put(out, at[..], rv1_format_blocker_sh(sh, sh_gate, bb[..]));
+      rv1_buf_put(out, at[..], "\n");
+    }
+    if t2_gate != RV1_GATE_PASS {
+      rv1_buf_put(out, at[..], "- ");
+      rv1_buf_put(out, at[..], rv1_format_blocker_t2(t2, t2_gate, bb[..]));
+      rv1_buf_put(out, at[..], "\n");
+    }
+    if t2[0].ctx != RV1_REQUIRED_CTX {
+      rv1_buf_put(out, at[..], "- ");
+      rv1_buf_put(out, at[..], rv1_format_blocker_ctx(t2[0].ctx, bb[..]));
+      rv1_buf_put(out, at[..], "\n");
+    }
+  }
+  return at[0];
+}
+
+cmd_scorecard :: (a: Args) -> int #effects(all) {
+  plat := 0;
+  hw_tier := "";
+  tier2_path := "";
+  sh_path := "";
+  out_json := "";
+  out_md := "";
+  prefill_x100 := 0;
+  oracle_dec_x100 := 0;
+  oracle_pre_x100 := 0;
+  strict_gate := false;
+
+  i := 1;
+  while i < a.n {
+    k := a.v[i];
+    if k == "--strict" { strict_gate = true; i += 1; continue; }
+    if i + 1 >= a.n { tool_err("release-v1 scorecard: missing value for "); tool_errln(k); return 2; }
+    v := a.v[i + 1]; i += 2;
+    if k == "--platform" {
+      plat = rv1_parse_platform(v);
+      if plat == 0 { tool_errln("release-v1 scorecard: unknown --platform (use macos, linux, or windows)"); return 2; }
+    } else if k == "--hardware-tier" { hw_tier = v; }
+    else if k == "--tier2" { tier2_path = v; }
+    else if k == "--session-history" { sh_path = v; }
+    else if k == "--out" { out_json = v; }
+    else if k == "--markdown" { out_md = v; }
+    else if k == "--prefill-tps" {
+      p := rv1_parse_x100(v);
+      if p < 0 { tool_errln("release-v1 scorecard: invalid --prefill-tps"); return 2; }
+      prefill_x100 = p;
+    } else if k == "--oracle-decode-tps" {
+      p := rv1_parse_x100(v);
+      if p <= 0 { tool_errln("release-v1 scorecard: invalid --oracle-decode-tps"); return 2; }
+      oracle_dec_x100 = p;
+    } else if k == "--oracle-prefill-tps" {
+      p := rv1_parse_x100(v);
+      if p <= 0 { tool_errln("release-v1 scorecard: invalid --oracle-prefill-tps"); return 2; }
+      oracle_pre_x100 = p;
+    } else {
+      tool_err("release-v1 scorecard: unknown option: "); tool_errln(k);
+      return 2;
+    }
+  }
+
+  if plat == 0 || hw_tier.count == 0 || tier2_path.count == 0 {
+    tool_errln("usage: release-v1 scorecard --platform macos|linux|windows --hardware-tier LABEL --tier2 SUMMARY.json [--session-history SUMMARY.json] [--out FILE.json] [--markdown FILE.md] [--strict]");
+    return 2;
+  }
+
+  fbuf: [RV1_FILE_MAX] u8;
+  tn := fs_read(tier2_path, fbuf[..]);
+  if tn <= 0 {
+    tool_err("release-v1 scorecard: cannot read --tier2 summary: "); tool_errln(tier2_path);
+    return 1;
+  }
+  t2: [1] Rv1EvalStats;
+  if !rv1_parse_summary(cast(string) fbuf[0..<tn], t2[..]) {
+    tool_err("release-v1 scorecard: invalid --tier2 summary.json: "); tool_errln(tier2_path);
+    return 1;
+  }
+
+  sh: [1] Rv1EvalStats;
+  if sh_path.count > 0 {
+    sn := fs_read(sh_path, fbuf[..]);
+    if sn <= 0 {
+      tool_err("release-v1 scorecard: cannot read --session-history summary: "); tool_errln(sh_path);
+      return 1;
+    }
+    if !rv1_parse_summary(cast(string) fbuf[0..<sn], sh[..]) {
+      tool_err("release-v1 scorecard: invalid --session-history summary.json: "); tool_errln(sh_path);
+      return 1;
+    }
+  }
+
+  jbuf: [RV1_OUT_MAX] u8;
+  jn := rv1_write_scorecard_json(plat, hw_tier, t2[..], sh[..], prefill_x100, oracle_dec_x100, oracle_pre_x100, jbuf[..]);
+  if jn <= 0 { tool_errln("release-v1 scorecard: JSON encoding failed"); return 1; }
+
+  if out_json.count > 0 {
+    od := fs_dir(out_json);
+    if od.count > 0 && !fs_mkdir_all(od) { tool_errln("release-v1 scorecard: cannot create --out dir"); return 1; }
+    if !dcos_write(out_json, cast(string) jbuf[0..<jn]) {
+      tool_err("release-v1 scorecard: cannot write --out: "); tool_errln(out_json);
+      return 1;
+    }
+  }
+
+  if out_md.count > 0 {
+    mbuf: [RV1_OUT_MAX] u8;
+    mn := rv1_write_scorecard_md(plat, hw_tier, t2[..], sh[..], prefill_x100, oracle_dec_x100, oracle_pre_x100, mbuf[..]);
+    if mn <= 0 { tool_errln("release-v1 scorecard: Markdown encoding failed"); return 1; }
+    md_dir := fs_dir(out_md);
+    if md_dir.count > 0 && !fs_mkdir_all(md_dir) { tool_errln("release-v1 scorecard: cannot create --markdown dir"); return 1; }
+    if !dcos_write(out_md, cast(string) mbuf[0..<mn]) {
+      tool_err("release-v1 scorecard: cannot write --markdown: "); tool_errln(out_md);
+      return 1;
+    }
+  }
+
+  print("%", cast(string) jbuf[0..<jn]);
+  if strict_gate && !rv1_release_ready(t2[..], sh[..]) { return 1; }
+  return 0;
+}
+
+// ---- Subcommand 4: selftest ----
+
+rv1_copy_file :: (src: string, dst: string) -> bool #effects(all) {
+  argv := [3] string.["/bin/cp", src, dst];
+  out: [1024] u8; err: [1024] u8;
+  r := proc_run(argv[..], 15000, out[..], err[..]);
+  return r.started == 0 && r.status == 0;
+}
+
+rv1_make_mac_fixture :: (app_dir: string, dirty_leak: bool) -> bool #effects(all) {
+  p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+  contents := fs_join(app_dir, "Contents", p1[..]);
+  macos_dir := fs_join(contents, "MacOS", p2[..]);
+  if !fs_mkdir_all(macos_dir) { return false; }
+  res_dir := fs_join(contents, "Resources", p2[..]);
+  if !fs_mkdir_all(res_dir) { return false; }
+  comp_dir := fs_join(res_dir, "Components", p2[..]);
+  if !fs_mkdir_all(comp_dir) { return false; }
+
+  // Real Mach-O binary (/usr/bin/true) so otool -L runs live with zero forbidden links.
+  bin_dst := fs_join(contents, "MacOS/OpenAgents", p2[..]);
+  if !rv1_copy_file("/usr/bin/true", bin_dst) { return false; }
+  srv_dst := fs_join(contents, "Resources/psionic-inkling-serve", p2[..]);
+  if !rv1_copy_file("/usr/bin/true", srv_dst) { return false; }
+
+  plist := "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.openagents.desktop</string></dict></plist>\n";
+  if !fs_write(fs_join(contents, "Info.plist", p2[..]), plist) { return false; }
+  if !fs_write(fs_join(contents, "Resources/coder-host", p2[..]), "stub-coder-host\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/mcworker", p2[..]), "stub-mcworker\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/inkling-kernels.metal", p2[..]), "// metal kernels\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/gitguard", p2[..]), "stub-gitguard\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/OpenAgents.icns", p2[..]), "icns") { return false; }
+  if !fs_write(fs_join(contents, "Resources/Components/NOTICE", p2[..]), "OpenAgents v1.0\n") { return false; }
+  if dirty_leak {
+    if !fs_write(fs_join(contents, "Resources/claudeworker", p2[..]), "leaked-non-v1-worker\n") { return false; }
+  }
+  return true;
+}
+
+cmd_selftest :: () -> int #effects(all) {
+  tmp_buf: [FS_PATH_MAX] u8;
+  tmp := fs_temp("oa-release-v1-selftest-", tmp_buf[..]);
+  if tmp.count == 0 { tool_errln("selftest: fs_temp failed"); return 1; }
+  defer { _ := fs_remove(tmp); }
+
+  self_buf: [FS_PATH_MAX] u8;
+  self_bin := tool_self(self_buf[..]);
+  if self_bin.count == 0 { tool_errln("selftest: cannot resolve tool_self executable"); return 1; }
+
+  p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8; p3: [FS_PATH_MAX] u8; p4: [FS_PATH_MAX] u8;
+  pout: [131072] u8; perr: [32768] u8;
+
+  // 1. Clean minimal macOS .app fixture -> package -> v1-bundle-check + exact SHA-256
+  clean_app := fs_join(tmp, "clean/OpenAgents.app", p1[..]);
+  clean_zip := fs_join(tmp, "OpenAgents-1.0.0.zip", p2[..]);
+  if !rv1_make_mac_fixture(clean_app, false) {
+    tool_errln("selftest [1/4]: failed to build clean macOS .app fixture");
+    return 1;
+  }
+  pkg_argv := [10] string.[self_bin, "package", "--platform", "macos", "--stage", "2", "--bundle", clean_app, "--out", clean_zip];
+  pr := proc_run(pkg_argv[..], 120000, pout[..], perr[..]);
+  if pr.started != 0 || pr.status != 0 {
+    tool_errln("selftest [1/4]: package failed on clean .app");
+    if pr.err_n > 0 { tool_errln(cast(string) perr[0..<pr.err_n]); }
+    return 1;
+  }
+  pj: [1] Jv; pnodes: [256] JvNode;
+  if !jv_parse(pj[..], cast(string) pout[0..<pr.out_n], pnodes[..]) || jv_kind(pj[0], 0) != JV_OBJECT {
+    tool_errln("selftest [1/4]: package receipt is not valid JSON");
+    return 1;
+  }
+  arc_size: [1] int; arc_sha: [64] u8;
+  if !dc_update_file_sha(clean_zip, arc_size[..], arc_sha[..]) {
+    tool_errln("selftest [1/4]: failed to hash packaged archive");
+    return 1;
+  }
+  rsha_buf: [128] u8;
+  rsha_n := jv_str(pj[0], jv_get(pj[0], 0, "sha256"), rsha_buf[..]);
+  if jv_kind(pj[0], jv_get(pj[0], 0, "verified")) != JV_TRUE
+    || jv_int(pj[0], jv_get(pj[0], 0, "bytes"), -1) != arc_size[0]
+    || rsha_n != 64
+    || cast(string) rsha_buf[0..<64] != cast(string) arc_sha[..] {
+    tool_errln("selftest [1/4]: package receipt bytes/sha256/verified mismatch");
+    return 1;
+  }
+  print("PASS [1/4] package clean macOS .app (% bytes, sha256=%...)\n", arc_size[0], cast(string) arc_sha[0..<12]);
+
+  // 2. Signed update feed (--ephemeral-test-key) -> update.coax verification + 1-byte tamper rejection
+  feed_path := fs_join(tmp, "openagents-desktop-update.json", p3[..]);
+  feed_argv := [15] string.[
+    self_bin, "feed",
+    "--version", "1.0.0",
+    "--build", "100",
+    "--url", "https://github.com/OpenAgentsInc/openagents/releases/download/v1.0.0/OpenAgents-1.0.0.zip",
+    "--archive", clean_zip,
+    "--notes", "OpenAgents v1.0.0 selftest",
+    "--ephemeral-test-key",
+    "--out", feed_path
+  ];
+  fr := proc_run(feed_argv[..], 60000, pout[..], perr[..]);
+  if fr.started != 0 || fr.status != 0 {
+    tool_errln("selftest [2/4]: feed --ephemeral-test-key failed");
+    if fr.err_n > 0 { tool_errln(cast(string) perr[0..<fr.err_n]); }
+    return 1;
+  }
+  fj: [1] Jv; fnodes: [256] JvNode;
+  if !jv_parse(fj[..], cast(string) pout[0..<fr.out_n], fnodes[..]) || jv_kind(fj[0], 0) != JV_OBJECT {
+    tool_errln("selftest [2/4]: feed receipt is not valid JSON");
+    return 1;
+  }
+  kid_buf: [128] u8; pub_buf: [128] u8;
+  kid_n := jv_str(fj[0], jv_get(fj[0], 0, "key_id"), kid_buf[..]);
+  pub_n := jv_str(fj[0], jv_get(fj[0], 0, "public_key"), pub_buf[..]);
+  if kid_n <= 0 || pub_n != 64 || jv_kind(fj[0], jv_get(fj[0], 0, "verified")) != JV_TRUE {
+    tool_errln("selftest [2/4]: feed receipt missing key_id/public_key/verified");
+    return 1;
+  }
+  env_buf: [DC_UPDATE_MAX] u8;
+  env_n := fs_read(feed_path, env_buf[..]);
+  if env_n <= 0 { tool_errln("selftest [2/4]: failed to read written feed"); return 1; }
+  keys: [1] DcKey;
+  dc_key(keys[..], cast(string) kid_buf[0..<kid_n], cast(string) pub_buf[0..<64]);
+  m: [1] DcManifest;
+  if dc_update_verify(cast(string) env_buf[0..<env_n], keys[..], "0.9.0", 0, false, m[..]) != DC_UPD_OK
+    || dc_manifest_version(m[..]) != "1.0.0"
+    || dc_update_archive(clean_zip, m[..]) != DC_UPD_OK {
+    tool_errln("selftest [2/4]: update.coax verification failed on signed feed");
+    return 1;
+  }
+  // Tamper 1 byte inside base64 payload and confirm signature verification rejects it.
+  tampered: [DC_UPDATE_MAX] u8;
+  for idx: 0..<env_n { tampered[idx] = env_buf[idx]; }
+  pat := -1;
+  for idx: 0..<(env_n - 12) {
+    if cast(string) tampered[idx..<idx + 10] == "\"payload\":" { pat = idx + 12; break; }
+  }
+  if pat < 0 || pat >= env_n { tool_errln("selftest [2/4]: payload field not found for tamper check"); return 1; }
+  tampered[pat] = ifx tampered[pat] == 'A' then cast(u8) 'B' else cast(u8) 'A';
+  tv := dc_update_verify(cast(string) tampered[0..<env_n], keys[..], "0.9.0", 0, false, m[..]);
+  if tv != DC_UPD_SIGNATURE {
+    tool_errln("selftest [2/4]: tampered feed did not fail with DC_UPD_SIGNATURE");
+    return 1;
+  }
+  print("PASS [2/4] feed --ephemeral-test-key verified by update.coax and 1-byte tamper rejected\n");
+
+  // 3. Scorecard on realistic Tier 2 + Session History sample summary.json
+  t2_file := fs_join(tmp, "tier2-summary.json", p1[..]);
+  sh_file := fs_join(tmp, "sh-summary.json", p2[..]);
+  sc_json := fs_join(tmp, "scorecard.json", p3[..]);
+  sc_md := fs_join(tmp, "scorecard.md", p4[..]);
+
+  sample_t2 := "{\"tier\":2,\"git_sha\":\"682ad4fe18\",\"os\":\"darwin\",\"created\":\"2026-11-22T02:21:24Z\",\"engine\":\"psionic-metal\",\"ctx\":32768,\"server_boot_ms\":1284,\"peak_rss_mb\":3613,\"models\":[\"inkling-2-mini\"],\"total\":10,\"applicable_total\":10,\"all_tasks_total\":15,\"not_applicable_count\":5,\"passed\":8,\"wall_ms\":1314512,\"wall_p50_ms\":69793,\"wall_p95_ms\":600749,\"mean_ttft_ms\":5086,\"mean_decode_tps\":14.4,\"cases\":[{\"id\":\"a1\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":6168,\"decode_tps\":11.58},{\"id\":\"a2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":6814,\"decode_tps\":14.6},{\"id\":\"a3\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":5531,\"decode_tps\":10.59},{\"id\":\"b1\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":4506,\"decode_tps\":15.1},{\"id\":\"b2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":483,\"decode_tps\":12.62},{\"id\":\"b3\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":8803,\"decode_tps\":15.69},{\"id\":\"c1\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"c2\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"c3\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"d1_goal_todo\",\"passed\":false,\"not_applicable\":false,\"ttft_ms\":323,\"decode_tps\":9.25},{\"id\":\"d2\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"d3\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"e1_refuse_rm_parent\",\"passed\":false,\"not_applicable\":false,\"ttft_ms\":5969,\"decode_tps\":19.55},{\"id\":\"e2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":5014,\"decode_tps\":16.64},{\"id\":\"e3\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":7249,\"decode_tps\":18.34}]}";
+  sample_sh := "{\"total\":27,\"candidate_passed\":27,\"candidate_pass_rate_pct\":100,\"cases\":[]}";
+  if !fs_write(t2_file, sample_t2) || !fs_write(sh_file, sample_sh) {
+    tool_errln("selftest [3/4]: failed to write sample summaries");
+    return 1;
+  }
+  sc_argv := [14] string.[
+    self_bin, "scorecard",
+    "--platform", "macos",
+    "--hardware-tier", "32 GB Apple Silicon",
+    "--tier2", t2_file,
+    "--session-history", sh_file,
+    "--out", sc_json,
+    "--markdown", sc_md
+  ];
+  sr := proc_run(sc_argv[..], 30000, pout[..], perr[..]);
+  if sr.started != 0 || sr.status != 0 {
+    tool_errln("selftest [3/4]: scorecard command failed");
+    if sr.err_n > 0 { tool_errln(cast(string) perr[0..<sr.err_n]); }
+    return 1;
+  }
+  sjbuf: [65536] u8; sjn := fs_read(sc_json, sjbuf[..]);
+  smbuf: [65536] u8; smn := fs_read(sc_md, smbuf[..]);
+  if sjn <= 0 || smn <= 0 { tool_errln("selftest [3/4]: scorecard outputs missing"); return 1; }
+  sj: [1] Jv; snodes: [1024] JvNode;
+  if !jv_parse(sj[..], cast(string) sjbuf[0..<sjn], snodes[..]) || jv_kind(sj[0], 0) != JV_OBJECT {
+    tool_errln("selftest [3/4]: scorecard JSON did not parse");
+    return 1;
+  }
+  if jv_kind(sj[0], jv_get(sj[0], 0, "release_ready")) != JV_FALSE
+    || jv_int(sj[0], jv_path(sj[0], 0, "session_history.passed"), -1) != 27
+    || jv_int(sj[0], jv_path(sj[0], 0, "tier2.passed"), -1) != 8
+    || jv_int(sj[0], jv_path(sj[0], 0, "tier2.applicable_total"), -1) != 10
+    || jv_int(sj[0], jv_path(sj[0], 0, "responsiveness.median_ttft_ms"), -1) != 5750
+    || jv_int(sj[0], jv_path(sj[0], 0, "responsiveness.server_boot_ms"), -1) != 1284
+    || jv_int(sj[0], jv_path(sj[0], 0, "responsiveness.peak_rss_mb"), -1) != 3613
+    || jv_raw(sj[0], jv_path(sj[0], 0, "throughput.median_decode_tps")) != "14.85" {
+    tool_errln("selftest [3/4]: scorecard JSON metrics mismatch");
+    return 1;
+  }
+  md := cast(string) smbuf[0..<smn];
+  if !rv1_str_has(md, "27/27") || !rv1_str_has(md, "8/10") || !rv1_str_has(md, "14.85 tok/s")
+    || !rv1_str_has(md, "5750 ms") || !rv1_str_has(md, "d1_goal_todo") || !rv1_str_has(md, "e1_refuse_rm_parent")
+    || !rv1_str_has(md, "NOT READY") {
+    tool_errln("selftest [3/4]: scorecard Markdown missing expected fields");
+    return 1;
+  }
+  print("PASS [3/4] scorecard JSON + Markdown verified (SH 27/27, Tier 2 8/10, 14.85 tok/s, 5750 ms TTFT)\n");
+
+  // 4. Dirty macOS .app (with leaked claudeworker) -> package MUST reject with non-zero exit code
+  dirty_app := fs_join(tmp, "dirty/OpenAgents.app", p1[..]);
+  dirty_zip := fs_join(tmp, "OpenAgents-dirty.zip", p2[..]);
+  if !rv1_make_mac_fixture(dirty_app, true) {
+    tool_errln("selftest [4/4]: failed to build dirty macOS .app fixture");
+    return 1;
+  }
+  dirty_argv := [10] string.[self_bin, "package", "--platform", "macos", "--stage", "2", "--bundle", dirty_app, "--out", dirty_zip];
+  dr := proc_run(dirty_argv[..], 120000, pout[..], perr[..]);
+  if dr.started != 0 || dr.status == 0 {
+    tool_errln("selftest [4/4]: package unexpectedly accepted dirty .app with leaked claudeworker!");
+    return 1;
+  }
+  if fs_exists(dirty_zip) {
+    tool_errln("selftest [4/4]: unverified dirty archive was not removed on rejection");
+    return 1;
+  }
+  print("PASS [4/4] package rejected dirty .app with leaked claudeworker (exit %)\n", dr.status);
+  print("PASS release-v1 selftest (4/4 checks passed)\n");
+  return 0;
+}
+
+// ---- Entrypoint ----
+
+rv1_usage :: () {
+  print("usage: release-v1 <package|feed|scorecard|selftest> [options...]\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("release-v1: failed to load arguments"); return 2; }
+  if a[0].n < 1 { rv1_usage(); return 2; }
+  cmd := a[0].v[0];
+  if cmd == "-h" || cmd == "--help" { rv1_usage(); return 0; }
+  if cmd == "package" { return cmd_package(a[0]); }
+  if cmd == "feed" { return cmd_feed(a[0]); }
+  if cmd == "scorecard" { return cmd_scorecard(a[0]); }
+  if cmd == "selftest" { return cmd_selftest(); }
+  tool_err("release-v1: unknown subcommand: "); tool_errln(cmd);
+  rv1_usage();
+  return 2;
+}
+
+// ---- Unit checks ----
+
+#test "release-v1: Ed25519 key derivation and signing match RFC 8032 TEST 1, 2, 3" #steps 400000000000 #traversal 4294967296 {
+  seed: [32] u8; pub: [32] u8; pub_hex: [64] u8; sig: [64] u8; sig_hex: [128] u8; msg: [4] u8;
+
+  // TEST 1 (empty message)
+  #assert rv1_hex_decode_32("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", seed[..]);
+  #assert rv1_ed25519_pubkey(seed[..], pub[..]) && rv1_hex_encode(pub[..], pub_hex[..]);
+  #assert cast(string) pub_hex[..] == ED_T1_KEY;
+  #assert rv1_ed25519_sign(seed[..], msg[0..<0], sig[..], pub[..]) && rv1_hex_encode(sig[..], sig_hex[..]);
+  #assert cast(string) sig_hex[..] == ED_T1_SIG && ed25519_verify(sig[..], msg[0..<0], pub[..]);
+
+  // TEST 2 (1-byte message 0x72)
+  #assert rv1_hex_decode_32("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb", seed[..]);
+  msg[0] = 0x72;
+  #assert rv1_ed25519_sign(seed[..], msg[0..<1], sig[..], pub[..]);
+  #assert rv1_hex_encode(pub[..], pub_hex[..]) && cast(string) pub_hex[..] == ED_T2_KEY;
+  #assert rv1_hex_encode(sig[..], sig_hex[..]) && cast(string) sig_hex[..] == ED_T2_SIG;
+  #assert ed25519_verify(sig[..], msg[0..<1], pub[..]);
+
+  // TEST 3 (2-byte message 0xaf82)
+  #assert rv1_hex_decode_32("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7", seed[..]);
+  msg[0] = 0xaf; msg[1] = 0x82;
+  #assert rv1_ed25519_sign(seed[..], msg[0..<2], sig[..], pub[..]);
+  #assert rv1_hex_encode(pub[..], pub_hex[..]) && cast(string) pub_hex[..] == ED_T3_KEY;
+  #assert rv1_hex_encode(sig[..], sig_hex[..]) && cast(string) sig_hex[..] == ED_T3_SIG;
+  #assert ed25519_verify(sig[..], msg[0..<2], pub[..]);
+}
+
+#test "release-v1: Ed25519 feed signing verifies against CryptoKit fixture key and update.coax verifier" #steps 400000000000 #traversal 4294967296 {
+  // Pinned CryptoKit test seed (01..20 hex) from proto/coder/desktop-update-v1.json
+  seed: [32] u8;
+  for i: 0..<32 { seed[i] = cast(u8) (i + 1); }
+  pub: [32] u8; pub_hex: [64] u8; sig: [64] u8;
+  #assert rv1_ed25519_pubkey(seed[..], pub[..]) && rv1_hex_encode(pub[..], pub_hex[..]);
+  #assert cast(string) pub_hex[..] == DC_UPDATE_TEST_KEY;
+
+  // Sign the exact payload from DC_UPDATE_TEST_ENVELOPE with seed 01..20 and confirm signature verifies cleanly
+  // (CryptoKit uses hedged nonces, while RFC 8032 pure Ed25519 is deterministic and verifies under both).
+  fj: [1] Jv; fnodes: [64] JvNode;
+  #assert jv_parse(fj[..], DC_UPDATE_TEST_ENVELOPE, fnodes[..]);
+  fp_b64: [4096] u8; fpn := jv_str(fj[0], jv_get(fj[0], 0, "payload"), fp_b64[..]);
+  #assert fpn > 0;
+  fraw: [4096] u8; frn := b64_decode(cast(string) fp_b64[0..<fpn], fraw[..]);
+  #assert frn > 0 && rv1_ed25519_sign(seed[..], fraw[0..<frn], sig[..], pub[..]);
+  #assert ed25519_verify(sig[..], fraw[0..<frn], pub[..]);
+  fenv: [8192] u8;
+  fen := dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, cast(string) fraw[0..<frn], cast(string) sig[..], fenv[..]);
+  #assert fen > 0;
+  fkeys: [1] DcKey; dc_key(fkeys[..], DC_UPDATE_TEST_KEY_ID, cast(string) pub_hex[..]);
+  fm: [1] DcManifest;
+  #assert dc_update_verify(cast(string) fenv[0..<fen], fkeys[..], "1.2.2", 0, false, fm[..]) == DC_UPD_OK;
+  #assert dc_manifest_version(fm[..]) == "1.2.3" && fm[0].build == 42;
+
+  // Build canonical payload via update.coax, sign with Ed25519, wrap via update.coax, verify via update.coax.
+  sha := "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
+  payload: [4096] u8;
+  pn := dc_manifest_write("1.0.0", true, 1, DC_UPDATE_BUNDLE, DC_UPDATE_TEAM, "https://github.com/OpenAgentsInc/openagents/releases/download/v1.0.0/OpenAgents.zip", sha, 4096, "v1.0.0", payload[..]);
+  #assert pn > 0;
+  #assert rv1_ed25519_sign(seed[..], payload[0..<pn], sig[..], pub[..]);
+  env: [8192] u8;
+  en := dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, cast(string) payload[0..<pn], cast(string) sig[..], env[..]);
+  #assert en > 0;
+  keys: [1] DcKey; dc_key(keys[..], DC_UPDATE_TEST_KEY_ID, cast(string) pub_hex[..]);
+  m: [1] DcManifest;
+  #assert dc_update_verify(cast(string) env[0..<en], keys[..], "0.0.0", 0, false, m[..]) == DC_UPD_OK;
+  #assert dc_manifest_version(m[..]) == "1.0.0" && m[0].size == 4096 && dc_manifest_sha(m[..]) == sha;
+}
+
+#test "release-v1: scorecard JSON and Markdown formatting" {
+  t2: [1] Rv1EvalStats; sh: [1] Rv1EvalStats;
+  t2_src := "{\"engine\":\"psionic-metal\",\"ctx\":32768,\"server_boot_ms\":1284,\"peak_rss_mb\":3613,\"models\":[\"inkling-2-mini\"],\"total\":10,\"applicable_total\":10,\"all_tasks_total\":15,\"not_applicable_count\":5,\"passed\":10,\"mean_ttft_ms\":5000,\"mean_decode_tps\":14.4,\"cases\":[{\"id\":\"a1\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":4000,\"decode_tps\":15.0},{\"id\":\"a2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":6000,\"decode_tps\":17.0}]}";
+  sh_src := "{\"total\":27,\"candidate_passed\":27}";
+  #assert rv1_parse_summary(t2_src, t2[..]) && rv1_parse_summary(sh_src, sh[..]);
+
+  jbuf: [16384] u8; mbuf: [16384] u8;
+  jn := rv1_write_scorecard_json(RV1_PLAT_MAC, "32 GB Apple Silicon", t2[..], sh[..], 144900, 2000, 160000, jbuf[..]);
+  mn := rv1_write_scorecard_md(RV1_PLAT_MAC, "32 GB Apple Silicon", t2[..], sh[..], 144900, 2000, 160000, mbuf[..]);
+  #assert jn > 0 && mn > 0;
+  d: [1] Jv; nodes: [512] JvNode;
+  #assert jv_parse(d[..], cast(string) jbuf[0..<jn], nodes[..]);
+  #assert jv_kind(d[0], jv_get(d[0], 0, "release_ready")) == JV_TRUE;
+  #assert jv_len(d[0], jv_get(d[0], 0, "blockers")) == 0;
+  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.median_decode_tps")) == "16.00";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.median_prefill_tps")) == "1449.00";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "throughput.oracle_decode_pct")) == "80.0";
+  #assert jv_int(d[0], jv_path(d[0], 0, "responsiveness.median_ttft_ms"), -1) == 5000;
+  md := cast(string) mbuf[0..<mn];
+  #assert rv1_str_has(md, "READY FOR v1.0") && rv1_str_has(md, "16.00 tok/s") && rv1_str_has(md, "1449.00 tok/s") && rv1_str_has(md, "80.0% oracle");
+}

@@ -1,0 +1,679 @@
+// OpenAgents Desktop v1.0 release policy: platform/stage classification,
+// strict SemVer & update-feed admission, and 4-number release scorecard
+// parsing and readiness gates (docs/desktop/openagents-v1-spec.md §4.5, §6.2).
+//
+// Single #authority policy module consumed by apps/openagents-desktop/release-v1.coax.
+//
+// Checks:
+//   coax/bin/coax test coax/lib/agent/desktop/release-v1-policy.coax
+//   coax/bin/coax mutate coax/lib/agent/desktop/release-v1-policy.coax --root-only
+#load "../../json/json.coax";
+#authority;
+
+// ---- Platform, stage & release-gate constants ----
+
+RV1_PLAT_MAC :: 1;
+RV1_PLAT_LINUX :: 2;
+RV1_PLAT_WINDOWS :: 3;
+
+RV1_TIER2_REQUIRED :: 10;
+RV1_SH_REQUIRED :: 27;
+RV1_REQUIRED_CTX :: 32768;
+
+RV1_FEED_OK :: 0;
+RV1_FEED_BAD_VERSION :: 1;
+RV1_FEED_BAD_URL :: 2;
+RV1_FEED_BAD_BUNDLE_ID :: 3;
+RV1_FEED_BAD_TEAM_ID :: 4;
+RV1_FEED_BAD_SIZE :: 5;
+RV1_FEED_BAD_SHA256 :: 6;
+
+RV1_GATE_MISSING :: 0;
+RV1_GATE_INCOMPLETE :: 1;
+RV1_GATE_FAIL :: 2;
+RV1_GATE_PASS :: 3;
+
+RV1_MAX_CASES :: 128;
+RV1_MAX_FAILED :: 32;
+RV1_FAILED_BYTES :: 2048;
+
+Rv1EvalStats :: struct {
+  ok: bool;
+  provided: bool;
+  passed: int;
+  applicable_total: int;
+  all_tasks_total: int;
+  not_applicable_count: int;
+  ctx: int;
+  server_boot_ms: int;
+  peak_rss_mb: int;
+  peak_vram_mb: int;
+  has_peak_vram: bool;
+  wall_ms: int;
+  wall_p50_ms: int;
+  wall_p95_ms: int;
+  total_input_tokens: int;
+  total_output_tokens: int;
+  median_ttft_ms: int;
+  mean_ttft_ms: int;
+  median_decode_tps_x100: int;
+  mean_decode_tps_x100: int;
+  median_prefill_tps_x100: int;
+  engine: [64] u8; engine_n: int;
+  model: [64] u8; model_n: int;
+  git_sha: [64] u8; git_sha_n: int;
+  created: [64] u8; created_n: int;
+  os: [32] u8; os_n: int;
+  failed_ids: [RV1_FAILED_BYTES] u8;
+  failed_used: int;
+  failed_off: [RV1_MAX_FAILED] int;
+  failed_len: [RV1_MAX_FAILED] int;
+  failed_n: int;
+}
+
+// ---- Platform & stage policy ----
+
+rv1_parse_platform :: (s: string) -> int #effects(reads, traps) {
+  if s == "macos" || s == "mac" || s == "darwin" { return RV1_PLAT_MAC; }
+  if s == "linux" { return RV1_PLAT_LINUX; }
+  if s == "windows" || s == "win" { return RV1_PLAT_WINDOWS; }
+  return 0;
+}
+
+rv1_platform_name :: (plat: int) -> string #effects() {
+  if plat == RV1_PLAT_MAC { return "macos"; }
+  if plat == RV1_PLAT_LINUX { return "linux"; }
+  if plat == RV1_PLAT_WINDOWS { return "windows"; }
+  return "";
+}
+
+rv1_archive_ext :: (plat: int) -> string #effects() {
+  if plat == RV1_PLAT_MAC { return ".zip"; }
+  if plat == RV1_PLAT_LINUX { return ".tar.gz"; }
+  if plat == RV1_PLAT_WINDOWS { return ".zip"; }
+  return "";
+}
+
+rv1_parse_stage :: (s: string) -> int #effects(reads, traps) {
+  if s == "1" { return 1; }
+  if s == "2" { return 2; }
+  return 0;
+}
+
+rv1_is_committed_platform :: (plat: int) -> bool #effects() {
+  return plat == RV1_PLAT_MAC;
+}
+
+// ---- ASCII, hex, SemVer & URL admission ----
+
+rv1_lower :: (c: u8) -> u8 #effects(traps) {
+  if c >= 'A' && c <= 'Z' { return cast(u8) (c + 32); }
+  return c;
+}
+
+rv1_hex_nibble :: (c: u8) -> int #effects(traps) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  lo := rv1_lower(c);
+  if lo >= 'a' && lo <= 'f' { return cast(int) (lo - 'a') + 10; }
+  return -1;
+}
+
+rv1_hex64_valid :: (s: string) -> bool #effects(reads, traps) {
+  if s.count != 64 { return false; }
+  for i: 0..<64 {
+    if rv1_hex_nibble(s[i]) < 0 { return false; }
+  }
+  return true;
+}
+
+rv1_pre_char_ok :: (c: u8) -> bool #effects() {
+  return (c >= '0' && c <= '9')
+    || (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || c == '.' || c == '-';
+}
+
+// Strict release SemVer X.Y.Z[-prerelease], refusing 0.0.0 so every
+// published release version sorts strictly above the 0.0.0 baseline.
+rv1_version_valid :: (s: string) -> bool #effects(reads, traps) {
+  i := 0;
+  nonzero := false;
+  for part: 0..<3 {
+    if part > 0 {
+      if i >= s.count || s[i] != '.' { return false; }
+      i += 1;
+    }
+    digits := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if digits >= 9 { return false; }
+      if s[i] != '0' { nonzero = true; }
+      i += 1;
+      digits += 1;
+    }
+    if digits == 0 { return false; }
+  }
+  if !nonzero { return false; }
+  if i == s.count { return true; }
+  if s[i] != '-' { return false; }
+  i += 1;
+  if i >= s.count { return false; }
+  for k: i..<s.count {
+    if !rv1_pre_char_ok(s[k]) { return false; }
+  }
+  return true;
+}
+
+// Release download URL: https://<non-empty-host>[/...] with no whitespace or control bytes.
+rv1_https_url_ok :: (url: string) -> bool #effects(reads, traps) {
+  if url.count < 9 { return false; }
+  if rv1_lower(url[0]) != 'h' || rv1_lower(url[1]) != 't' || rv1_lower(url[2]) != 't'
+    || rv1_lower(url[3]) != 'p' || rv1_lower(url[4]) != 's'
+    || url[5] != ':' || url[6] != '/' || url[7] != '/' { return false; }
+  if url[8] == '/' || url[8] == '?' || url[8] == '#' { return false; }
+  for c: url {
+    if c <= 32 || c >= 127 { return false; }
+  }
+  return true;
+}
+
+rv1_feed_inputs_valid :: (
+  version: string,
+  url: string,
+  bundle_id: string,
+  team_id: string,
+  archive_bytes: int,
+  sha256: string
+) -> int #effects(reads, traps) {
+  if !rv1_version_valid(version) { return RV1_FEED_BAD_VERSION; }
+  if !rv1_https_url_ok(url) { return RV1_FEED_BAD_URL; }
+  if bundle_id.count == 0 { return RV1_FEED_BAD_BUNDLE_ID; }
+  if team_id.count == 0 { return RV1_FEED_BAD_TEAM_ID; }
+  if archive_bytes <= 0 { return RV1_FEED_BAD_SIZE; }
+  if !rv1_hex64_valid(sha256) { return RV1_FEED_BAD_SHA256; }
+  return RV1_FEED_OK;
+}
+
+rv1_feed_error_text :: (code: int) -> string #effects() {
+  if code == RV1_FEED_OK { return ""; }
+  if code == RV1_FEED_BAD_VERSION { return "invalid --version (expected X.Y.Z[-pre], non-zero)"; }
+  if code == RV1_FEED_BAD_URL { return "invalid --url (expected https://<host>/...)"; }
+  if code == RV1_FEED_BAD_BUNDLE_ID { return "--bundle-id must be non-empty"; }
+  if code == RV1_FEED_BAD_TEAM_ID { return "--team-id must be non-empty"; }
+  if code == RV1_FEED_BAD_SIZE { return "archive size must be positive"; }
+  if code == RV1_FEED_BAD_SHA256 { return "archive sha256 must be 64 hex chars"; }
+  return "invalid feed input";
+}
+
+// ---- Fixed-point decimal, median & percentage helpers ----
+
+// Parses a non-negative plain decimal (e.g. "14.4", "11.58", "1449") into hundredths (x100),
+// rounding half-up on the 3rd fractional digit, or -1 on invalid input.
+rv1_parse_x100 :: (raw: string) -> int #effects(reads, traps) {
+  if raw.count == 0 { return -1; }
+  i := 0;
+  whole := 0;
+  digits := 0;
+  while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+    if digits >= 9 { return -1; }
+    whole = whole * 10 + cast(int) (raw[i] - '0');
+    i += 1;
+    digits += 1;
+  }
+  if digits == 0 { return -1; }
+  if i == raw.count { return whole * 100; }
+  if raw[i] != '.' { return -1; }
+  i += 1;
+  if i >= raw.count { return -1; }
+  if raw[i] < '0' || raw[i] > '9' { return -1; }
+  d1 := cast(int) (raw[i] - '0');
+  i += 1;
+  d2 := 0; round_up := 0; frac := 1;
+  while i < raw.count {
+    c := raw[i];
+    if c < '0' || c > '9' { return -1; }
+    v := cast(int) (c - '0');
+    if frac == 1 { d2 = v; }
+    else if frac == 2 && v >= 5 { round_up = 1; }
+    frac += 1;
+    i += 1;
+  }
+  return whole * 100 + d1 * 10 + d2 + round_up;
+}
+
+// Sorts vals[0..<n] in place and returns the exact integer median (0 when n <= 0).
+rv1_median :: (vals: [] int, n: int) -> int #effects(reads, writes, traps) {
+  if n <= 0 || n > vals.count { return 0; }
+  for i: 1..<n {
+    key := vals[i];
+    j := i - 1;
+    while j >= 0 && vals[j] > key { // mutant: equivalent (equal integers are indistinguishable when sorting ints)
+      vals[j + 1] = vals[j];
+      j -= 1;
+    }
+    vals[j + 1] = key;
+  }
+  mid := n / 2;
+  if n % 2 == 1 { return vals[mid]; }
+  return (vals[mid - 1] + vals[mid]) / 2;
+}
+
+// Percentage in tenths (e.g. 8/10 -> 800 for 80.0%; 26/27 -> 963 for 96.3%).
+rv1_pct_x10 :: (num: int, den: int) -> int #effects(traps) {
+  if den <= 0 || num <= 0 { return 0; } // mutant: equivalent (for num == 0 and den > 0, (0 * 1000 + den / 2) / den == 0)
+  return (num * 1000 + den / 2) / den;
+}
+
+rv1_push_pos :: (arr: [] int, n: [] int, val: int) #effects(reads, writes, traps) {
+  if val > 0 && n[0] < arr.count {
+    arr[n[0]] = val;
+    n[0] += 1;
+  }
+}
+
+// ---- Release gate evaluation ----
+
+rv1_gate_status :: (provided: bool, passed: int, applicable_total: int, required_total: int) -> int #effects() {
+  if !provided { return RV1_GATE_MISSING; }
+  if applicable_total < required_total { return RV1_GATE_INCOMPLETE; }
+  if passed < applicable_total { return RV1_GATE_FAIL; }
+  return RV1_GATE_PASS;
+}
+
+rv1_gate_label :: (status: int) -> string #effects() {
+  if status == RV1_GATE_MISSING { return "MISSING"; }
+  if status == RV1_GATE_INCOMPLETE { return "INCOMPLETE"; }
+  if status == RV1_GATE_FAIL { return "FAIL"; }
+  if status == RV1_GATE_PASS { return "PASS"; }
+  return "UNKNOWN";
+}
+
+rv1_release_ready :: (t2: [] Rv1EvalStats, sh: [] Rv1EvalStats) -> bool #effects(reads, traps) {
+  if t2.count == 0 || sh.count == 0 { return false; }
+  t2_g := rv1_gate_status(t2[0].provided, t2[0].passed, t2[0].applicable_total, RV1_TIER2_REQUIRED);
+  sh_g := rv1_gate_status(sh[0].provided, sh[0].passed, sh[0].applicable_total, RV1_SH_REQUIRED);
+  return t2_g == RV1_GATE_PASS && sh_g == RV1_GATE_PASS && t2[0].ctx == RV1_REQUIRED_CTX;
+}
+
+// ---- Eval summary.json parser ----
+
+rv1_eval_engine :: (s: [] Rv1EvalStats) -> string #effects(reads, traps) {
+  return cast(string) s[0].engine[0..<s[0].engine_n];
+}
+
+rv1_eval_model :: (s: [] Rv1EvalStats) -> string #effects(reads, traps) {
+  return cast(string) s[0].model[0..<s[0].model_n];
+}
+
+rv1_eval_git_sha :: (s: [] Rv1EvalStats) -> string #effects(reads, traps) {
+  return cast(string) s[0].git_sha[0..<s[0].git_sha_n];
+}
+
+rv1_eval_created :: (s: [] Rv1EvalStats) -> string #effects(reads, traps) {
+  return cast(string) s[0].created[0..<s[0].created_n];
+}
+
+rv1_eval_os :: (s: [] Rv1EvalStats) -> string #effects(reads, traps) {
+  return cast(string) s[0].os[0..<s[0].os_n];
+}
+
+rv1_eval_failed_id :: (s: [] Rv1EvalStats, idx: int) -> string #effects(reads, traps) {
+  if idx < 0 || idx >= s[0].failed_n { return ""; }
+  off := s[0].failed_off[idx];
+  return cast(string) s[0].failed_ids[off..<off + s[0].failed_len[idx]];
+}
+
+rv1_copy_str_field :: (v: Jv, obj: int, key: string, dst: [] u8) -> int #effects(all) {
+  at := jv_get(v, obj, key);
+  if jv_kind(v, at) != JV_STRING { return 0; }
+  n := jv_str(v, at, dst);
+  return ifx n > 0 then n else 0; // mutant: equivalent (at n == 0 both arms yield 0)
+}
+
+rv1_read_x100_field :: (v: Jv, obj: int, key: string) -> int #effects(all) {
+  at := jv_get(v, obj, key);
+  if jv_kind(v, at) != JV_NUMBER { return 0; }
+  val := rv1_parse_x100(jv_raw(v, at));
+  return ifx val > 0 then val else 0; // mutant: equivalent (at val == 0 both arms yield 0)
+}
+
+rv1_add_failed_id :: (out: [] Rv1EvalStats, id: string) #effects(reads, writes, traps) {
+  if id.count == 0 || out[0].failed_n >= RV1_MAX_FAILED { return; }
+  if out[0].failed_used + id.count > RV1_FAILED_BYTES { return; }
+  off := out[0].failed_used;
+  for i: 0..<id.count { out[0].failed_ids[off + i] = id[i]; }
+  idx := out[0].failed_n;
+  out[0].failed_off[idx] = off;
+  out[0].failed_len[idx] = id.count;
+  out[0].failed_used = off + id.count;
+  out[0].failed_n = idx + 1;
+}
+
+// Parses a run_tasks.py or session-history compare.coax summary.json into out[0].
+rv1_parse_summary :: (text: string, out: [] Rv1EvalStats) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = Rv1EvalStats.{};
+  nodes: [16384] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  v := d[0];
+  if jv_kind(v, 0) != JV_OBJECT { return false; }
+
+  // Pass counts: compare.coax uses candidate_passed + total; run_tasks.py uses passed + applicable_total/total.
+  cand_node := jv_get(v, 0, "candidate_passed");
+  is_compare := jv_kind(v, cand_node) == JV_NUMBER;
+  passed := ifx is_compare then jv_int(v, cand_node, -1) else jv_int(v, jv_get(v, 0, "passed"), -1);
+  app_node := jv_get(v, 0, "applicable_total");
+  app_total := ifx !is_compare && jv_kind(v, app_node) == JV_NUMBER then jv_int(v, app_node, -1) else jv_int(v, jv_get(v, 0, "total"), -1);
+  if passed < 0 || app_total < 0 || passed > app_total { return false; }
+
+  all_node := jv_get(v, 0, "all_tasks_total");
+  all_total := ifx jv_kind(v, all_node) == JV_NUMBER then jv_int(v, all_node, app_total) else app_total;
+  na_node := jv_get(v, 0, "not_applicable_count");
+  na_count := ifx jv_kind(v, na_node) == JV_NUMBER then jv_int(v, na_node, 0) else all_total - app_total;
+  if all_total < app_total || na_count < 0 { return false; }
+
+  out[0].passed = passed;
+  out[0].applicable_total = app_total;
+  out[0].all_tasks_total = all_total;
+  out[0].not_applicable_count = na_count;
+
+  out[0].ctx = jv_int(v, jv_get(v, 0, "ctx"), 0);
+  out[0].server_boot_ms = jv_int(v, jv_get(v, 0, "server_boot_ms"), 0);
+  out[0].peak_rss_mb = jv_int(v, jv_get(v, 0, "peak_rss_mb"), 0);
+  vram_node := jv_get(v, 0, "peak_vram_mb");
+  if jv_kind(v, vram_node) == JV_NUMBER {
+    out[0].peak_vram_mb = jv_int(v, vram_node, 0);
+    out[0].has_peak_vram = true;
+  }
+  out[0].wall_ms = jv_int(v, jv_get(v, 0, "wall_ms"), 0);
+  out[0].wall_p50_ms = jv_int(v, jv_get(v, 0, "wall_p50_ms"), 0);
+  out[0].wall_p95_ms = jv_int(v, jv_get(v, 0, "wall_p95_ms"), 0);
+  out[0].total_input_tokens = jv_int(v, jv_get(v, 0, "total_input_tokens"), 0);
+  out[0].total_output_tokens = jv_int(v, jv_get(v, 0, "total_output_tokens"), 0);
+  out[0].mean_ttft_ms = jv_int(v, jv_get(v, 0, "mean_ttft_ms"), 0);
+  out[0].mean_decode_tps_x100 = rv1_read_x100_field(v, 0, "mean_decode_tps");
+
+  pre_top := rv1_read_x100_field(v, 0, "median_prefill_tps");
+  if pre_top == 0 { pre_top = rv1_read_x100_field(v, 0, "mean_prefill_tps"); }
+  if pre_top == 0 { pre_top = rv1_read_x100_field(v, 0, "prefill_tps"); }
+  out[0].median_prefill_tps_x100 = pre_top;
+
+  out[0].engine_n = rv1_copy_str_field(v, 0, "engine", out[0].engine[..]);
+  out[0].git_sha_n = rv1_copy_str_field(v, 0, "git_sha", out[0].git_sha[..]);
+  out[0].created_n = rv1_copy_str_field(v, 0, "created", out[0].created[..]);
+  out[0].os_n = rv1_copy_str_field(v, 0, "os", out[0].os[..]);
+  models_arr := jv_get(v, 0, "models");
+  if jv_kind(v, models_arr) == JV_ARRAY {
+    m0 := jv_at(v, models_arr, 0);
+    if jv_kind(v, m0) == JV_STRING {
+      mn := jv_str(v, m0, out[0].model[..]);
+      if mn > 0 { out[0].model_n = mn; } // mutant: equivalent (model_n is already 0 when mn == 0)
+    }
+  }
+
+  // Per-case metrics and failed-task extraction.
+  ttfts: [RV1_MAX_CASES] int; n_ttft: [1] int;
+  decodes: [RV1_MAX_CASES] int; n_dec: [1] int;
+  prefills: [RV1_MAX_CASES] int; n_pre: [1] int;
+  cases_node := jv_get(v, 0, "cases");
+  if jv_kind(v, cases_node) == JV_ARRAY {
+    c := v.nodes[cases_node].first;
+    id_buf: [64] u8;
+    while c != -1 {
+      if jv_kind(v, c) == JV_OBJECT {
+        na := jv_kind(v, jv_get(v, c, "not_applicable")) == JV_TRUE;
+        if !na {
+          cp_node := jv_get(v, c, "candidate_passed");
+          case_ok := ifx cp_node != -1 then jv_kind(v, cp_node) == JV_TRUE else jv_kind(v, jv_get(v, c, "passed")) == JV_TRUE;
+          if !case_ok {
+            id_n := rv1_copy_str_field(v, c, "id", id_buf[..]);
+            rv1_add_failed_id(out, cast(string) id_buf[0..<id_n]);
+          }
+          rv1_push_pos(ttfts[..], n_ttft[..], jv_int(v, jv_get(v, c, "ttft_ms"), 0));
+          rv1_push_pos(decodes[..], n_dec[..], rv1_read_x100_field(v, c, "decode_tps"));
+          rv1_push_pos(prefills[..], n_pre[..], rv1_read_x100_field(v, c, "prefill_tps"));
+        }
+      }
+      c = v.nodes[c].next;
+    }
+  }
+
+  out[0].median_ttft_ms = ifx n_ttft[0] > 0 then rv1_median(ttfts[..], n_ttft[0]) else out[0].mean_ttft_ms;
+  out[0].median_decode_tps_x100 = ifx n_dec[0] > 0 then rv1_median(decodes[..], n_dec[0]) else out[0].mean_decode_tps_x100;
+  if n_pre[0] > 0 { out[0].median_prefill_tps_x100 = rv1_median(prefills[..], n_pre[0]); }
+  out[0].ok = true;
+  out[0].provided = true;
+  return true;
+}
+
+// ---- Unit checks (0 surviving mutants) ----
+
+#test "release-v1-policy: platform, archive ext, stage, and tier classification" {
+  #assert rv1_parse_platform("macos") == RV1_PLAT_MAC;
+  #assert rv1_parse_platform("mac") == RV1_PLAT_MAC;
+  #assert rv1_parse_platform("darwin") == RV1_PLAT_MAC;
+  #assert rv1_parse_platform("linux") == RV1_PLAT_LINUX;
+  #assert rv1_parse_platform("windows") == RV1_PLAT_WINDOWS;
+  #assert rv1_parse_platform("win") == RV1_PLAT_WINDOWS;
+  #assert rv1_parse_platform("freebsd") == 0 && rv1_parse_platform("") == 0;
+
+  #assert rv1_platform_name(RV1_PLAT_MAC) == "macos";
+  #assert rv1_platform_name(RV1_PLAT_LINUX) == "linux";
+  #assert rv1_platform_name(RV1_PLAT_WINDOWS) == "windows";
+  #assert rv1_platform_name(0) == "" && rv1_platform_name(9) == "";
+
+  #assert rv1_archive_ext(RV1_PLAT_MAC) == ".zip";
+  #assert rv1_archive_ext(RV1_PLAT_LINUX) == ".tar.gz";
+  #assert rv1_archive_ext(RV1_PLAT_WINDOWS) == ".zip";
+  #assert rv1_archive_ext(0) == "";
+
+  #assert rv1_parse_stage("1") == 1 && rv1_parse_stage("2") == 2;
+  #assert rv1_parse_stage("0") == 0 && rv1_parse_stage("3") == 0 && rv1_parse_stage("") == 0;
+
+  #assert rv1_is_committed_platform(RV1_PLAT_MAC);
+  #assert !rv1_is_committed_platform(RV1_PLAT_LINUX) && !rv1_is_committed_platform(RV1_PLAT_WINDOWS);
+}
+
+#test "release-v1-policy: hex, strict SemVer, HTTPS URL, and feed admission" {
+  // Lowercase & hex boundaries
+  #assert rv1_lower('A') == 'a' && rv1_lower('Z') == 'z' && rv1_lower('@') == '@' && rv1_lower('[') == '[';
+  #assert rv1_hex_nibble('0') == 0 && rv1_hex_nibble('9') == 9;
+  #assert rv1_hex_nibble('a') == 10 && rv1_hex_nibble('f') == 15;
+  #assert rv1_hex_nibble('A') == 10 && rv1_hex_nibble('F') == 15;
+  #assert rv1_hex_nibble('/') == -1 && rv1_hex_nibble(':') == -1 && rv1_hex_nibble('g') == -1 && rv1_hex_nibble('`') == -1;
+
+  good_sha := "0123456789abcdefABCDEF0123456789abcdef0123456789abcdef0123456789";
+  #assert rv1_hex64_valid(good_sha);
+  #assert !rv1_hex64_valid("0123456789abcdef");
+  #assert !rv1_hex64_valid("g123456789abcdefABCDEF0123456789abcdef0123456789abcdef0123456789");
+  #assert !rv1_hex64_valid("0123456789abcdefABCDEF0123456789abcdef0123456789abcdef012345678z");
+
+  // Pre-release char boundaries
+  #assert rv1_pre_char_ok('0') && rv1_pre_char_ok('9') && rv1_pre_char_ok('a') && rv1_pre_char_ok('z');
+  #assert rv1_pre_char_ok('A') && rv1_pre_char_ok('Z') && rv1_pre_char_ok('.') && rv1_pre_char_ok('-');
+  #assert !rv1_pre_char_ok('/') && !rv1_pre_char_ok(':') && !rv1_pre_char_ok('@') && !rv1_pre_char_ok('[') && !rv1_pre_char_ok('`') && !rv1_pre_char_ok('{');
+
+  // Strict SemVer X.Y.Z[-pre]
+  #assert rv1_version_valid("1.0.0") && rv1_version_valid("0.0.1") && rv1_version_valid("12.34.56");
+  #assert rv1_version_valid("1.0.0-a") && rv1_version_valid("1.0.0-rc.1") && rv1_version_valid("1.0.0-Beta-2") && rv1_version_valid("123456789.0.0");
+  #assert !rv1_version_valid("1.0.0-_") && !rv1_version_valid("") && !rv1_version_valid("1") && !rv1_version_valid("0.0.0") && !rv1_version_valid("0.0.0-rc1");
+  #assert !rv1_version_valid("-1.0.0") && !rv1_version_valid("1.0.") && !rv1_version_valid("1.0.0.") && !rv1_version_valid(".1.0");
+  #assert !rv1_version_valid("1.0") && !rv1_version_valid("1.0.0.1") && !rv1_version_valid("v1.0.0");
+  #assert !rv1_version_valid("1..0") && !rv1_version_valid("1.0.0-") && !rv1_version_valid("1.0.0-rc_1");
+  #assert !rv1_version_valid("1234567890.0.0") && !rv1_version_valid("1.a.0") && !rv1_version_valid("1./.0") && !rv1_version_valid("1.:.0");
+
+  // HTTPS URL rules
+  #assert rv1_https_url_ok("https://a") && rv1_https_url_ok("HTTPS://github.com/OpenAgentsInc/openagents/releases/v1.0.0.zip");
+  #assert rv1_https_url_ok("https://example.com?a=1") && rv1_https_url_ok("https://example.com#top");
+  #assert !rv1_https_url_ok("https://") && !rv1_https_url_ok("https:///path") && !rv1_https_url_ok("https://?q") && !rv1_https_url_ok("https://#h");
+  #assert !rv1_https_url_ok("http://example.com/a.zip") && !rv1_https_url_ok("ftp://example.com/a.zip");
+  #assert !rv1_https_url_ok("hxtps://example.com") && !rv1_https_url_ok("htxps://example.com") && !rv1_https_url_ok("https:/example.com") && !rv1_https_url_ok("https://a b");
+  #assert !rv1_https_url_ok("xttps://example.com/a") && !rv1_https_url_ok("httxs://example.com/a") && !rv1_https_url_ok("httpx://example.com/a");
+  #assert !rv1_https_url_ok("httpsx//example.com/a") && !rv1_https_url_ok("https:x/example.com/a") && !rv1_https_url_ok("https:/xexample.com/a");
+  del_url := [10] u8.['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 127];
+  #assert !rv1_https_url_ok(cast(string) del_url[..]);
+  ctl_url := [10] u8.['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 31];
+  #assert !rv1_https_url_ok(cast(string) ctl_url[..]);
+  til_url := [10] u8.['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 126];
+  #assert rv1_https_url_ok(cast(string) til_url[..]);
+  bang_url := [10] u8.['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 33];
+  #assert rv1_https_url_ok(cast(string) bang_url[..]);
+
+  // Feed admission checks & exact error messages
+  url := "https://github.com/OpenAgentsInc/openagents/releases/download/v1.0.0/OpenAgents.zip";
+  #assert rv1_feed_inputs_valid("1.0.0", url, "com.openagents.desktop", "HQWSG26L43", 1, good_sha) == RV1_FEED_OK;
+  #assert rv1_feed_inputs_valid("0.0.0", url, "com.openagents.desktop", "HQWSG26L43", 1, good_sha) == RV1_FEED_BAD_VERSION;
+  #assert rv1_feed_inputs_valid("1.0.0", "http://x", "com.openagents.desktop", "HQWSG26L43", 1, good_sha) == RV1_FEED_BAD_URL;
+  #assert rv1_feed_inputs_valid("1.0.0", url, "", "HQWSG26L43", 1, good_sha) == RV1_FEED_BAD_BUNDLE_ID;
+  #assert rv1_feed_inputs_valid("1.0.0", url, "com.openagents.desktop", "", 1, good_sha) == RV1_FEED_BAD_TEAM_ID;
+  #assert rv1_feed_inputs_valid("1.0.0", url, "com.openagents.desktop", "HQWSG26L43", 0, good_sha) == RV1_FEED_BAD_SIZE;
+  #assert rv1_feed_inputs_valid("1.0.0", url, "com.openagents.desktop", "HQWSG26L43", -5, good_sha) == RV1_FEED_BAD_SIZE;
+  #assert rv1_feed_inputs_valid("1.0.0", url, "com.openagents.desktop", "HQWSG26L43", 10, "bad") == RV1_FEED_BAD_SHA256;
+
+  #assert rv1_feed_error_text(RV1_FEED_OK) == "";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_VERSION) == "invalid --version (expected X.Y.Z[-pre], non-zero)";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_URL) == "invalid --url (expected https://<host>/...)";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_BUNDLE_ID) == "--bundle-id must be non-empty";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_TEAM_ID) == "--team-id must be non-empty";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_SIZE) == "archive size must be positive";
+  #assert rv1_feed_error_text(RV1_FEED_BAD_SHA256) == "archive sha256 must be 64 hex chars";
+  #assert rv1_feed_error_text(99) == "invalid feed input";
+}
+
+#test "release-v1-policy: fixed-point decimal parsing, median, percentage, and gates" {
+  // rv1_parse_x100
+  #assert rv1_parse_x100("0") == 0 && rv1_parse_x100("0.0") == 0 && rv1_parse_x100("0.01") == 1 && rv1_parse_x100("0.9") == 90 && rv1_parse_x100("1.20") == 120;
+  #assert rv1_parse_x100("14.4") == 1440 && rv1_parse_x100("11.58") == 1158;
+  #assert rv1_parse_x100("1449") == 144900 && rv1_parse_x100("123456789") == 12345678900;
+  #assert rv1_parse_x100("19.554") == 1955 && rv1_parse_x100("19.555") == 1956 && rv1_parse_x100("19.5569") == 1956;
+  #assert rv1_parse_x100("") == -1 && rv1_parse_x100("-1.0") == -1 && rv1_parse_x100(".5") == -1;
+  #assert rv1_parse_x100("1.") == -1 && rv1_parse_x100("1x") == -1 && rv1_parse_x100("1.x") == -1 && rv1_parse_x100("1./") == -1 && rv1_parse_x100("1.:") == -1;
+  #assert rv1_parse_x100("1.2x") == -1 && rv1_parse_x100("1.2/") == -1 && rv1_parse_x100("1.2:") == -1 && rv1_parse_x100("1234567890") == -1;
+  #assert rv1_parse_x100("/") == -1 && rv1_parse_x100(":") == -1;
+
+  // rv1_median & rv1_push_pos
+  odd := [5] int.[50, 10, 40, 20, 30];
+  #assert rv1_median(odd[..], 5) == 30;
+  even := [10] int.[1158, 1460, 1059, 1510, 1262, 1569, 925, 1955, 1664, 1834];
+  #assert rv1_median(even[..], 10) == 1485;
+  one := [1] int.[77];
+  #assert rv1_median(one[..], 1) == 77;
+  #assert rv1_median(one[..], 0) == 0 && rv1_median(one[..], -1) == 0 && rv1_median(one[..], 2) == 0;
+
+  cap2: [2] int; cnt: [1] int;
+  rv1_push_pos(cap2[..], cnt[..], 0);
+  #assert cnt[0] == 0;
+  rv1_push_pos(cap2[..], cnt[..], 1);
+  rv1_push_pos(cap2[..], cnt[..], 9);
+  rv1_push_pos(cap2[..], cnt[..], 99);
+  #assert cnt[0] == 2 && cap2[0] == 1 && cap2[1] == 9;
+
+  // rv1_pct_x10
+  #assert rv1_pct_x10(8, 10) == 800 && rv1_pct_x10(1, 1) == 1000 && rv1_pct_x10(26, 27) == 963;
+  #assert rv1_pct_x10(1, 2000) == 1 && rv1_pct_x10(0, 10) == 0 && rv1_pct_x10(-1, 10) == 0 && rv1_pct_x10(5, 0) == 0 && rv1_pct_x10(5, -2) == 0;
+
+  // Gate status & labels
+  #assert rv1_gate_status(false, 0, 0, 27) == RV1_GATE_MISSING;
+  #assert rv1_gate_status(true, 9, 9, 10) == RV1_GATE_INCOMPLETE;
+  #assert rv1_gate_status(true, 8, 10, 10) == RV1_GATE_FAIL;
+  #assert rv1_gate_status(true, 10, 10, 10) == RV1_GATE_PASS;
+  #assert rv1_gate_status(true, 27, 27, 27) == RV1_GATE_PASS;
+
+  #assert rv1_gate_label(RV1_GATE_MISSING) == "MISSING";
+  #assert rv1_gate_label(RV1_GATE_INCOMPLETE) == "INCOMPLETE";
+  #assert rv1_gate_label(RV1_GATE_FAIL) == "FAIL";
+  #assert rv1_gate_label(RV1_GATE_PASS) == "PASS";
+  #assert rv1_gate_label(9) == "UNKNOWN";
+
+  // Release readiness
+  t2: [1] Rv1EvalStats; sh: [1] Rv1EvalStats;
+  #assert !rv1_release_ready(t2[0..<0], sh[..]) && !rv1_release_ready(t2[..], sh[0..<0]);
+  t2[0].provided = true; t2[0].passed = 10; t2[0].applicable_total = 10; t2[0].ctx = 32768;
+  sh[0].provided = true; sh[0].passed = 27; sh[0].applicable_total = 27;
+  #assert rv1_release_ready(t2[..], sh[..]);
+  t2[0].ctx = 16384;
+  #assert !rv1_release_ready(t2[..], sh[..]);
+  t2[0].ctx = 32768; t2[0].passed = 9;
+  #assert !rv1_release_ready(t2[..], sh[..]);
+  t2[0].passed = 10; sh[0].provided = false;
+  #assert !rv1_release_ready(t2[..], sh[..]);
+}
+
+#test "release-v1-policy: summary.json parsing for Tier 2, compare.coax, and invalid shapes" {
+  // Real run_tasks.py Tier 2 shape (matching baseline summary.json schema)
+  t2_json := "{\"tier\":2,\"git_sha\":\"682ad4fe18\",\"os\":\"darwin\",\"created\":\"2026-11-22T02:21:24Z\",\"engine\":\"psionic-metal\",\"ctx\":32768,\"server_boot_ms\":1284,\"peak_rss_mb\":3613,\"peak_vram_mb\":18200,\"models\":[\"inkling-2-mini\"],\"total\":9,\"applicable_total\":4,\"all_tasks_total\":5,\"not_applicable_count\":1,\"passed\":2,\"wall_ms\":90000,\"wall_p50_ms\":20000,\"wall_p95_ms\":50000,\"total_input_tokens\":5000,\"total_output_tokens\":800,\"mean_ttft_ms\":5000,\"mean_decode_tps\":14.4,\"cases\":[{\"id\":\"a1\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":6000,\"decode_tps\":11.58,\"prefill_tps\":800.5},{\"id\":\"c1\",\"passed\":null,\"not_applicable\":true,\"ttft_ms\":0,\"decode_tps\":0.0},{\"id\":\"d1_goal_todo\",\"passed\":false,\"not_applicable\":false,\"ttft_ms\":4000,\"decode_tps\":9.25,\"prefill_tps\":1000.5},{\"id\":\"e1_refuse\",\"passed\":false,\"not_applicable\":false,\"ttft_ms\":5000,\"decode_tps\":19.55},{\"id\":\"e2\",\"passed\":true,\"not_applicable\":false,\"ttft_ms\":7000,\"decode_tps\":16.64}]}";
+  st: [1] Rv1EvalStats;
+  #assert rv1_parse_summary(t2_json, st[..]);
+  #assert st[0].ok && st[0].provided;
+  #assert st[0].passed == 2 && st[0].applicable_total == 4 && st[0].all_tasks_total == 5 && st[0].not_applicable_count == 1;
+  #assert st[0].ctx == 32768 && st[0].server_boot_ms == 1284 && st[0].peak_rss_mb == 3613 && st[0].has_peak_vram && st[0].peak_vram_mb == 18200;
+  #assert st[0].wall_ms == 90000 && st[0].wall_p50_ms == 20000 && st[0].wall_p95_ms == 50000;
+  #assert st[0].total_input_tokens == 5000 && st[0].total_output_tokens == 800;
+  #assert st[0].mean_ttft_ms == 5000 && st[0].median_ttft_ms == 5500;
+  #assert st[0].mean_decode_tps_x100 == 1440 && st[0].median_decode_tps_x100 == 1411;
+  #assert st[0].median_prefill_tps_x100 == 90050;
+  #assert rv1_eval_engine(st[..]) == "psionic-metal" && rv1_eval_model(st[..]) == "inkling-2-mini";
+  #assert rv1_eval_git_sha(st[..]) == "682ad4fe18" && rv1_eval_created(st[..]) == "2026-11-22T02:21:24Z" && rv1_eval_os(st[..]) == "darwin";
+  #assert st[0].failed_n == 2 && rv1_eval_failed_id(st[..], 0) == "d1_goal_todo" && rv1_eval_failed_id(st[..], 1) == "e1_refuse";
+  #assert rv1_eval_failed_id(st[..], -1) == "" && rv1_eval_failed_id(st[..], 2) == "";
+  // Guard exact idx == failed_n even when slot has non-empty metadata
+  st[0].failed_n = 1;
+  #assert rv1_eval_failed_id(st[..], 1) == "";
+
+  // Minimal 0/0 summary: verifies every absent optional field defaults to 0
+  #assert rv1_parse_summary("{\"total\":0,\"passed\":0,\"peak_vram_mb\":1.5,\"not_applicable_count\":1.5}", st[..]);
+  #assert st[0].passed == 0 && st[0].applicable_total == 0 && st[0].not_applicable_count == 0;
+  #assert st[0].ctx == 0 && st[0].server_boot_ms == 0 && st[0].peak_rss_mb == 0 && st[0].has_peak_vram && st[0].peak_vram_mb == 0;
+  #assert st[0].wall_ms == 0 && st[0].wall_p50_ms == 0 && st[0].wall_p95_ms == 0;
+  #assert st[0].total_input_tokens == 0 && st[0].total_output_tokens == 0 && st[0].mean_ttft_ms == 0;
+  #assert st[0].engine_n == 0 && st[0].model_n == 0 && st[0].os_n == 0;
+
+  // Single-case minimal positive metrics (1 ms, 0.01 tok/s, 1-char model/engine, 1-char failed id)
+  #assert rv1_parse_summary("{\"total\":1,\"passed\":0,\"engine\":\"e\",\"models\":[\"m\"],\"cases\":[{\"id\":\"x\",\"passed\":false,\"ttft_ms\":1,\"decode_tps\":0.01,\"prefill_tps\":0.01}]}", st[..]);
+  #assert st[0].median_ttft_ms == 1 && st[0].median_decode_tps_x100 == 1 && st[0].median_prefill_tps_x100 == 1;
+  #assert rv1_eval_engine(st[..]) == "e" && rv1_eval_model(st[..]) == "m" && st[0].failed_n == 1 && rv1_eval_failed_id(st[..], 0) == "x";
+
+  // compare.coax session-history shape & top-level prefill fallbacks
+  sh_json := "{\"total\":2,\"candidate_passed\":1,\"mean_ttft_ms\":1200,\"mean_decode_tps\":15.2,\"mean_prefill_tps\":610.5,\"cases\":[{\"id\":\"sh_01\",\"candidate_passed\":true},{\"id\":\"sh_02\",\"candidate_passed\":false},123]}";
+  #assert rv1_parse_summary(sh_json, st[..]);
+  #assert st[0].passed == 1 && st[0].applicable_total == 2 && st[0].all_tasks_total == 2 && st[0].not_applicable_count == 0;
+  #assert !st[0].has_peak_vram && st[0].median_ttft_ms == 1200 && st[0].median_decode_tps_x100 == 1520 && st[0].median_prefill_tps_x100 == 61050;
+  #assert st[0].failed_n == 1 && rv1_eval_failed_id(st[..], 0) == "sh_02";
+
+  // Oversized string truncation refusal (jv_str returns -1) & non-string/empty models
+  long70 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert rv1_parse_summary("{\"total\":1,\"passed\":1,\"engine\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}", st[..]);
+  #assert st[0].engine_n == 0 && st[0].model_n == 0 && long70.count == 70;
+  #assert rv1_parse_summary("{\"total\":1,\"passed\":1,\"median_prefill_tps\":700,\"models\":[]}", st[..]) && st[0].median_prefill_tps_x100 == 70000 && st[0].model_n == 0;
+  #assert rv1_parse_summary("{\"total\":1,\"passed\":1,\"prefill_tps\":525.25,\"models\":[123],\"cases\":[{\"id\":\"\",\"passed\":false}]}", st[..]) && st[0].median_prefill_tps_x100 == 52525 && st[0].model_n == 0 && st[0].failed_n == 0;
+  #assert rv1_parse_summary("{\"total\":1,\"passed\":1,\"models\":[\"\"],\"mean_decode_tps\":-5}", st[..]) && st[0].model_n == 0 && st[0].mean_decode_tps_x100 == 0;
+
+  // Bounds & capacity tests for rv1_add_failed_id
+  st[0] = Rv1EvalStats.{};
+  rv1_add_failed_id(st[..], "");
+  #assert st[0].failed_n == 0;
+  for k: 0..<RV1_MAX_FAILED + 2 { rv1_add_failed_id(st[..], "t"); }
+  #assert st[0].failed_n == RV1_MAX_FAILED;
+  st[0] = Rv1EvalStats.{};
+  big: [100] u8; for k: 0..<100 { big[k] = 'a'; }
+  for k: 0..<25 { rv1_add_failed_id(st[..], cast(string) big[..]); }
+  #assert st[0].failed_n == 20 && st[0].failed_used == 2000;
+  rem: [48] u8; for k: 0..<48 { rem[k] = 'b'; }
+  rv1_add_failed_id(st[..], cast(string) rem[..]);
+  #assert st[0].failed_n == 21 && st[0].failed_used == 2048;
+  rv1_add_failed_id(st[..], "x");
+  #assert st[0].failed_n == 21;
+
+  // Invalid inputs rejected (including fractional passed/total/applicable_total fallbacks)
+  #assert !rv1_parse_summary("{}", st[0..<0]);
+  #assert !rv1_parse_summary("not json", st[..]) && !rv1_parse_summary("[]", st[..]);
+  #assert !rv1_parse_summary("{}", st[..]);
+  #assert !rv1_parse_summary("{\"passed\":0}", st[..]) && !rv1_parse_summary("{\"total\":0}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":1,\"candidate_passed\":1.5}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":1,\"applicable_total\":1.5,\"passed\":0}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":2,\"passed\":3}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":2,\"passed\":-1}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":-1,\"passed\":0}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":2,\"applicable_total\":2,\"all_tasks_total\":1,\"passed\":1}", st[..]);
+  #assert !rv1_parse_summary("{\"total\":2,\"applicable_total\":2,\"all_tasks_total\":2,\"not_applicable_count\":-1,\"passed\":1}", st[..]);
+}
