@@ -14,17 +14,21 @@ CP_BAR_TOGGLE_PT :: 88.0f32;   // the toggle's left edge, past the lights (title
 CP_BAR_FULL_PT :: 12.0f32;     // in full screen the lights hide and the toggle takes the edge
 CP_BAR_LIGHTS_PT :: 14.0f32;   // the lights' left edge: Close's middle 21 less half its 14
 CP_BAR_LIGHTS_END_PT :: 74.0f32;   // their right edge: Zoom's middle 67 and half its 14
+CP_BAR_GAP_PT :: 4.0f32;       // gap between left-cluster title bar icon buttons (toggle, search)
 CP_BAR_ROW_PAD_PT :: 10.0f32;  // the island's room past its last control (TITLEBAR_CLUSTER_PAD)
 // zeron.island: its corner, its inset from the window's edge, its padding round its controls and
-// their size (one control: the toggle).
+// their size (the sidebar toggle and the search button).
 CP_ISLAND_RADIUS :: 12.0f32; CP_ISLAND_INSET :: 6.0f32; CP_ISLAND_PAD :: 4.0f32; CP_ISLAND_CONTROL :: 24.0f32;
 
-// The bar's height, its line and the toggle's left edge, in the page's units.
+// The bar's height, its line, the toggle's and search button's left edges, in the page's units.
 cp_bar :: (s: [] CoderPage) -> f32 { return CP_BAR_PT / cp_scale(s); }
 cp_bar_line :: (s: [] CoderPage) -> f32 { return CP_BAR_LINE_PT / cp_scale(s); }
 cp_bar_toggle_x :: (s: [] CoderPage) -> f32 { return (ifx s[0].bar_full then CP_BAR_FULL_PT else CP_BAR_TOGGLE_PT) / cp_scale(s); }
+cp_bar_search_x :: (s: [] CoderPage, has_toggle: bool) -> f32 {
+  return cp_bar_toggle_x(s) + (ifx has_toggle then CP_ISLAND_CONTROL + CP_BAR_GAP_PT / cp_scale(s) else 0.0f32);
+}
 // Where the bar's controls at the left end, with the room past them: what shares the line starts past it.
-cp_bar_clear :: (s: [] CoderPage) -> f32 { return cp_bar_toggle_x(s) + CP_ISLAND_CONTROL + CP_BAR_ROW_PAD_PT / cp_scale(s); }
+cp_bar_clear :: (s: [] CoderPage) -> f32 { return cp_bar_search_x(s, true) + CP_ISLAND_CONTROL + CP_BAR_ROW_PAD_PT / cp_scale(s); }
 // A control on the bar's line, size tall, from the top: never above the window's edge.
 cp_bar_y :: (s: [] CoderPage, size: f32) -> f32 { y := cp_bar_line(s) - size / 2; return ifx y < 0 then 0.0f32 else y; }
 
@@ -37,15 +41,14 @@ CpIsland :: struct { x: f32; y: f32; w: f32; h: f32; }
 cp_island :: (s: [] CoderPage, toggle: bool) -> CpIsland {
   sc := cp_scale(s); c := CP_ISLAND_CONTROL; pad := CP_ISLAND_PAD / sc;
   x := CP_ISLAND_INSET / sc;
-  end := ifx toggle then cp_bar_toggle_x(s) + c + CP_BAR_ROW_PAD_PT / sc
-         else ifx s[0].bar_full then x else (CP_BAR_LIGHTS_END_PT + CP_BAR_LIGHTS_PT - CP_ISLAND_INSET) / sc;   // as far past the lights as before them
+  end := cp_bar_search_x(s, toggle) + c + CP_BAR_ROW_PAD_PT / sc;
   h := c + 2 * pad;
   return CpIsland.{x = x, y = cp_bar_y(s, h), w = end - x, h = h};
 }
 
-// The bar over the page: with the sidebar open (left its width) the toggle stands on it, and with
-// it collapsed (left 0) the island gathers behind the lights and the toggle when there is one
-// (`toggle`: the window is wide enough to show the sidebar). Drawn after the page's parts, over them.
+// The bar over the page: with the sidebar open (left its width) the toggle and search icon stand on
+// it, and with it collapsed (left 0) the island gathers behind the lights, the toggle (when the
+// window is wide enough to show the sidebar), and the search icon. Drawn after the page's parts.
 cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
   k := f[0].skin; sh := f[0].sheet;
   if left == 0 {
@@ -56,12 +59,18 @@ cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
       sheet_fill(sh, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, th.menu);
     }
   }
-  if !toggle && left == 0 { return; }
-  // the toggle: the app's icon button at the island's control size
+  has_toggle := toggle || left > 0;
+  loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
+  // left-cluster controls: the app's icon buttons at the island's control size
   keep := f[0].skin;
   f[0].skin.app.icon_button = CP_ISLAND_CONTROL; f[0].skin.app.icon_well = CP_ISLAND_CONTROL;
-  _ := app_icon_button(f, "coder.side.toggle", cp_bar_toggle_x(s), cp_bar_y(s, CP_ISLAND_CONTROL), k.app.icon_nav,
-                       ifx left > 0 then "Hide sidebar" else "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+  by := cp_bar_y(s, CP_ISLAND_CONTROL);
+  if has_toggle {
+    _ := app_icon_button(f, "coder.side.toggle", cp_bar_toggle_x(s), by, k.app.icon_nav,
+                         ifx left > 0 then "Hide sidebar" else "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+  }
+  _ := app_icon_button(f, "coder.search", cp_bar_search_x(s, has_toggle), by, ICON_MAGNIFER,
+                       cp_tr(loc, "search"), APP_BUTTON_QUIET, 0, CP_PALETTE);
   f[0].skin = keep;
 }
 

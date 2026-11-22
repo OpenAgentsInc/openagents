@@ -473,7 +473,7 @@ NEW_CHAT = "coder.new"   # the sidebar's New chat row (the first row with that i
 def side_edge_x(f: Flow) -> float:
     """The chats' sidebar's right edge: its rows are inset the same at both sides (app_side_action)."""
     assert f.app is not None
-    b = f.app.do("box coder.search")
+    b = f.app.do("box coder.new")
     return 2 * b["x"] + b["w"]
 
 

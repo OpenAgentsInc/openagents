@@ -157,7 +157,7 @@ test copies grew to 12–26 GB each and the Mac ran out of memory).
 Controls are pressed where the page draws them: the probe's `box ID` asks the page for that row's
 drawn box (`cd_box`, `coder_page_box`) and the runner clicks its middle. New chat is `coder.new`,
 Stop is `coder.composer.send`, Resume is `coder.fu.resume`, a kept chat's sidebar row is `chat.` and
-the chat's id (its file's name), and the sidebar's edge is found from the `coder.search` row (inset
+the chat's id (its file's name), and the sidebar's edge is found from the `coder.new` row (inset
 the same at both sides). No flow clicks a fixed point, so a layout change moves the click with the
 control.
 

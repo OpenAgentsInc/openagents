@@ -278,33 +278,38 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar(s) == 38 && cp_bar_line(s) == 20 && cp_bar_toggle_x(s) == 88;
   #assert coder_page_set_text(s, "check the bar") && coder_page_submit(s);
   #assert cp_bar_draw(s, f[..], 1400, 900) && s[0].side > 0;
-  // open: the toggle on the bar, 24 across, centred on the lights' line 20 down
+  // open: the toggle and search icon on the bar, 24 across, centred on the lights' line 20 down
   t := cp_bar_row(s, "coder.side.toggle");
+  sr := cp_bar_row(s, "coder.search");
   #assert t.x == 88 && t.w == 24 && abs(t.y + t.h / 2 - 20) < 0.01 && t.action == CP_SIDE_TOGGLE;
   #assert cast(string) t.label[0..<t.label_n] == "Hide sidebar";
+  #assert sr.x == 88 + 24 + 4 && sr.w == 24 && abs(sr.y + sr.h / 2 - 20) < 0.01 && sr.action == CP_PALETTE;
+  #assert cast(string) sr.label[0..<sr.label_n] == "Search";
   // the sidebar's first row, the first message and the corners' buttons: under the bar, or on its line
   #assert cp_bar_row(s, "coder.new").y >= 38 && cp_bar_row(s, "t0.u").y >= 38;
   c := cp_bar_row(s, "coder.copy");
   #assert c.y >= 0 && c.y + c.h <= 38 && abs(c.y + c.h / 2 - 20) < 0.01;
-  // the bar moves the window where nothing is: not on the toggle, a corner's button, under the bar or on the sidebar's edge
+  // the bar moves the window where nothing is: not on the toggle, search icon, a corner's button, under the bar or on the sidebar's edge
   #assert coder_page_bar_drags(s, 200, 10) && coder_page_bar_drags(s, 700, 30);
-  #assert !coder_page_bar_drags(s, t.x + 4, t.y + 4) && !coder_page_bar_drags(s, c.x + 4, c.y + 4);
+  #assert !coder_page_bar_drags(s, t.x + 4, t.y + 4) && !coder_page_bar_drags(s, sr.x + 4, sr.y + 4) && !coder_page_bar_drags(s, c.x + 4, c.y + 4);
   #assert !coder_page_bar_drags(s, 700, 38) && !coder_page_bar_drags(s, s[0].side, 10);
-  // collapsed: the toggle stays where it was, Show sidebar, with the island behind it and the lights
+  // collapsed: the toggle and search stay where they were, Show sidebar, with the island behind them and the lights
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
   #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) < 60 && s[0].side == 0;
   t = cp_bar_row(s, "coder.side.toggle");
+  sr = cp_bar_row(s, "coder.search");
   #assert t.x == 88 && abs(t.y + t.h / 2 - 20) < 0.01 && cast(string) t.label[0..<t.label_n] == "Show sidebar";
+  #assert sr.x == 88 + 24 + 4 && abs(sr.y + sr.h / 2 - 20) < 0.01;
   i := cp_island(s, true);
-  #assert i.x == 6 && i.y == 4 && i.h == 32 && i.x + i.w == 88 + 24 + 10;   // zeron.island: inset 6, pad 4, control 24
-  #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 150, 20);
-  // a narrow window can't show the sidebar: no toggle, the island behind the lights alone
-  #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") < 0;
+  #assert i.x == 6 && i.y == 4 && i.h == 32 && i.x + i.w == 88 + 24 + 4 + 24 + 10;   // zeron.island: inset 6, pad 4, two 24pt controls + 4pt gap
+  #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 170, 20);
+  // a narrow window can't show the sidebar: no toggle, search icon sits past the lights in the island
+  #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") < 0 && cp_bar_row(s, "coder.search").x == 88;
   i = cp_island(s, false);
-  #assert i.x == 6 && i.x + i.w == 82;
-  // full screen hides the lights: the toggle takes the window's edge
+  #assert i.x == 6 && i.x + i.w == 88 + 24 + 10;
+  // full screen hides the lights: the toggle takes the window's edge and search sits beside it
   coder_page_bar_full(s, true);
-  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_bar_row(s, "coder.side.toggle").x == 12;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_bar_row(s, "coder.side.toggle").x == 12 && cp_bar_row(s, "coder.search").x == 12 + 24 + 4;
   coder_page_bar_full(s, false);
   // a larger text size keeps the bar's places in window points
   #assert coder_page_zoom_set(s, 7) == 7 && abs(cp_bar(s) * cp_scale(s) - 38) < 0.01 && abs(cp_bar_toggle_x(s) * cp_scale(s) - 88) < 0.01;

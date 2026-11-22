@@ -27,7 +27,6 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), 0, CP_NEW);
-  sy += app_side_action(f, "coder.search", 0, sy, sw, ICON_SET_SEARCH, cp_tr(loc, "search"), 0, CP_PALETTE);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Flag-gated sidebar destinations: off in the Inkling first release.
   if cp_flag(s, DC_FLAG_FOREMAN) {

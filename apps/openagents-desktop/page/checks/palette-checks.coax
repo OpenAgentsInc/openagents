@@ -36,13 +36,17 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert abs(p[0].w - 640) < 0.01 && abs(p[0].y - 88) < 0.01;
   #assert !coder_page_palette_toggle(s, APP_PAL_ALL) && !coder_page_palette_open(s);
 }
-#test "the sidebar's Search opens it on Sessions and asks the host to watch it" {
+#test "the title bar's Search icon opens it on Sessions and asks the host to watch it" {
   pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame; cp_pal_test_page(s);
   #assert cp_pal_test_draw(s, f[..], 0.016);
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
-  #assert elt_label(t[..], elt_find(t[..], "coder.search")) == "Search";
-  y := cp_bar(s) + cp_skin().app.side_row * 1.5f32;
-  #assert coder_page_pointer(s, 40, y, 0) && coder_page_pointer(s, 40, y, 2);
+  si := elt_find(t[..], "coder.search");
+  ti := elt_find(t[..], "coder.side.toggle");
+  #assert si >= 0 && ti >= 0 && elt_label(t[..], si) == "Search";
+  sr := t[0].rows[si]; tr := t[0].rows[ti];
+  #assert sr.y + sr.h <= cp_bar(s) && sr.x > tr.x + tr.w;
+  cx := sr.x + sr.w * 0.5f32; cy := sr.y + sr.h * 0.5f32;
+  #assert coder_page_pointer(s, cx, cy, 0) && coder_page_pointer(s, cx, cy, 2);
   #assert coder_page_action(s) == CP_ASK_PALETTE && coder_page_palette_command(s) == 0;
   #assert coder_page_palette_open(s) && cp_pal(s)[0].scope == APP_PAL_SESSIONS;
 }
