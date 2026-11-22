@@ -163,7 +163,7 @@ APP_SIDE_CARD_ICON :: 11.0f32;
 APP_SIDE_CARD_FOLDER_ICON :: 11.0f32;
 APP_SIDE_CARD_FOLDER_GAP :: 6.0f32;
 // Compact 2-line sidebar chat card painter:
-//   Line 1: Chat title (13pt Medium)                 [spinner Working | dot Done | relative time]
+//   Line 1: Chat title (13pt Medium)                         [spinner | dot Done | relative time]
 //   Line 2: [small folder icon] repo · branch                                     [harness icon]
 app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, title: string, list_action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
@@ -197,18 +197,14 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   pad_y := 7.0f32;
   ix0 := pill_x + pad_x;
   irx := pill_x + pill_w - pad_x;
-  // Line 1: chat title (left) | Working / Done / relative time (right)
+  // Line 1: chat title (left) | spinner / Done / relative time (right)
   tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   y1 := pill_y + pad_y;
   sy1 := y1 + (tf.line - s.small.line) / 2.0f32;
   r1_right := irx;
   if busy {
-    w_lbl := "Working";
-    ww := measure_width(m, s.small.face, w_lbl);
     spin_s := 11.0f32;
-    if r1_right - ww - spin_s - 4.0f32 > ix0 + 24.0f32 {
-      _ := sheet_text(sh, m, -1, r1_right - ww, sy1, s.small.line, s.small.face, s.accent, w_lbl);
-      r1_right -= ww + 4.0f32;
+    if r1_right - spin_s > ix0 + 24.0f32 {
       activity(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
       r1_right -= spin_s + 8.0f32;
     }

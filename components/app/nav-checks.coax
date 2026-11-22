@@ -132,3 +132,14 @@
   #assert folder_icons == 1 && harness_icons == 2 && ICON_SIZES[ICON_FOLDER_11] == 11.0f32;
   #assert app_test_text_x(t[..], "openagents") == folder_right + APP_SIDE_CARD_FOLDER_GAP;
 }
+
+#test "app nav: busy sidebar chat card draws spinner icon only without Working text" {
+  t: [1] AppTest; app_test_init(t[..]);
+  rows := [1] AppSideRow.[
+    AppSideRow.{id = "chat.busy", title = "Running task", status = "now", state = EL_S_BUSY, icon = ICON_FOLDER_11, card = true, repo = "openagents", branch = "main", harness_icon = ICON_BOT}];
+  app_test_begin(t[..], "", "", true);
+  _ := app_side_window(t[0].f[..], 0, 0, 260, 120, rows[..], 0, 0, 50);
+  #assert app_test_end(t[..]);
+  #assert app_test_texts(t[..], "Running task") == 1 && app_test_texts(t[..], "Working") == 0;
+  #assert app_test_prims(t[..], PRIM_ARC) == 2;
+}
