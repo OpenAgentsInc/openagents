@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Makes the process's ANSI code page UTF-8 (Windows 10 1903 and later), so
+     argv, getenv, fopen, CreateFileA and LoadLibraryA all take UTF-8 paths and
+     a model under a non-ASCII user folder opens. Linked by inkling-cuda-build.sh. -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

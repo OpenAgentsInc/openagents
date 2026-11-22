@@ -21,7 +21,9 @@
    map_size, or writes why not into err. */
 #ifdef _WIN32
 static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
-    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    /* Share like POSIX open(): a downloader, sync client or scanner holding
+       the file must not make the open fail. */
+    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) { snprintf(err, err_bytes, "open %s: Windows error %lu", path, (unsigned long)GetLastError()); return 1; }
     LARGE_INTEGER size;
     if (!GetFileSizeEx(file, &size) || size.QuadPart < 64) {

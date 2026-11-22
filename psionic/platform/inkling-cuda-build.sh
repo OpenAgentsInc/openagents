@@ -24,7 +24,10 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wall -Wextra -I"$here" -I
 if [ "$target" = windows ]; then
   cc="${CC:-x86_64-w64-mingw32-gcc}"
   exe=.exe
-  libs=(-lws2_32 -lm)
+  # The UTF-8 code page manifest, so paths outside the system code page work.
+  windres="${WINDRES:-${cc%gcc}windres}"
+  (cd "$here" && "$windres" -O coff inkling-utf8.rc -o "$out/obj/inkling-utf8.res")
+  libs=("$out/obj/inkling-utf8.res" -lws2_32 -lm)
 else
   cc="${CC:-cc}"
   exe=
