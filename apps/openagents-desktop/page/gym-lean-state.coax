@@ -55,8 +55,8 @@ CP_LEAN_MATH_CHI :: 376;     // coder.lean.chi.<0..4>
 CP_LEAN_MATH_SIGMA :: 377;   // coder.lean.sig.<0..4>
 CP_LEAN_MATH_TMAX :: 378;    // coder.lean.tmax.<0..2>
 CP_LEAN_MATH_ROBIN :: 379;   // coder.lean.rob.<0..11>
-CP_LEAN_MATH_STAGE :: 380;   // coder.lean.stg.<1..8>
-CP_LEAN_MATH_ALPHA :: 381;   // coder.lean.alp.<0..2>
+CP_LEAN_MATH_ZEROS :: 380;   // coder.lean.nz.<0..7>
+CP_LEAN_MATH_XMAX :: 381;    // coder.lean.xmax.<0..2>
 CP_LEAN_SEARCH_PRESET :: 382;// coder.lean.sp.<0..7>
 CP_LEAN_SEARCH_HIT :: 383;   // coder.lean.sh.<0..23>
 CP_LEAN_PATH_HOP :: 384;     // coder.lean.hop.<0..19>
@@ -137,13 +137,13 @@ CpLeanRh :: struct {
   atlas_sel_cluster: int;      // -1 or 0..clusters_n-1
   atlas_zoom: f32;             // 1.0 .. 3.0
   // Math visualizers state
-  math_tab: int;               // 0 = Critical Strip, 1 = Robin/Lagarias, 2 = Theta-Lift
+  math_tab: int;               // 0 = Critical Strip, 1 = Robin/Lagarias, 2 = Primes from zeros
   math_chi: int;               // 0..4
   math_sigma_idx: int;         // 0..4 -> 0.25, 0.35, 0.50, 0.65, 0.75
   math_tmax_idx: int;          // 0..2 -> 35, 50, 70
   math_robin_idx: int;         // 0..11 (default 6 = n=5040)
-  math_theta_stage: int;       // 1..8 (default 5)
-  math_theta_alpha_idx: int;   // 0..2 -> 0.75, 1.0, 1.30
+  math_zero_idx: int;          // 0..7 -> 0, 1, 2, 3, 5, 10, 20, 30 zeros (default 5)
+  math_xmax_idx: int;          // 0..2 -> x up to 30, 60, 100
   // Module inspector & search state
   search_q: [96] u8; search_q_n: int;
   search_ms: int;
@@ -190,8 +190,8 @@ cp_lean_init :: (s: [] CoderPage) {
   l[0].math_sigma_idx = 2;    // Re(s) = 0.50 critical line
   l[0].math_tmax_idx = 1;     // t_max = 50
   l[0].math_robin_idx = 6;    // n = 5040 (Robin's last exception!)
-  l[0].math_theta_stage = 5;
-  l[0].math_theta_alpha_idx = 1;
+  l[0].math_zero_idx = 5;
+  l[0].math_xmax_idx = 1;
   l[0].sel_mod_n = lw_put(l[0].sel_mod[..], "Main");
   l[0].status_n = lw_put(l[0].status[..], "Click Refresh or run `lean-run rh index` to load 175k-module RH Atlas");
 }
@@ -214,7 +214,7 @@ cp_lean_view_name :: (v: int) -> string {
 
 cp_lean_math_tab_name :: (t: int) -> string {
   if t == 1 { return "robin"; }
-  if t == 2 { return "theta"; }
+  if t == 2 { return "primes"; }
   return "strip";
 }
 
@@ -502,7 +502,7 @@ cp_lean_apply_plan :: (s: [] CoderPage, plan_json: string) -> bool {
     ms := cast(string) mtb[0..<mtn];
     if ms == "strip" { l[0].math_tab = 0; }
     else if ms == "robin" { l[0].math_tab = 1; }
-    else if ms == "theta" { l[0].math_tab = 2; }
+    else if ms == "primes" || ms == "theta" { l[0].math_tab = 2; }
   }
   mb: [256] u8; mn := jv_str(d, jv_get(d, 0, "module"), mb[..]);
   if mn > 0 {

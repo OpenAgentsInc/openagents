@@ -247,14 +247,14 @@ cp_lean_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     if ri >= 0 && ri < RHM_ROBIN_MARKS_N { l[0].math_robin_idx = ri; return true; }
     return false;
   }
-  if act == CP_LEAN_MATH_STAGE {
-    st := cp_number(id, "stg.");
-    if st >= 1 && st <= 8 { l[0].math_theta_stage = st; return true; }
+  if act == CP_LEAN_MATH_ZEROS {
+    zi := cp_number(id, "nz.");
+    if zi >= 0 && zi <= 7 { l[0].math_zero_idx = zi; return true; }
     return false;
   }
-  if act == CP_LEAN_MATH_ALPHA {
-    ai := cp_number(id, "alp.");
-    if ai >= 0 && ai <= 2 { l[0].math_theta_alpha_idx = ai; return true; }
+  if act == CP_LEAN_MATH_XMAX {
+    xi := cp_number(id, "xmax.");
+    if xi >= 0 && xi <= 2 { l[0].math_xmax_idx = xi; return true; }
     return false;
   }
   if act == CP_LEAN_SEARCH_PRESET {

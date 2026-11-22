@@ -18,32 +18,44 @@ private struct Rh3dStationData {
     let eye: SIMD3<Float>
     let timeS: Float
     let shortName: String
-    let badge: String
+    let kicker: String
     let title: String
-    let subtitle: String
-    let plainEnglish: String
-    let whyItMatters: String
-    let analogy: String
-    let nextLink: String
+    let caption: String
+    let detail: String
+    let source: String
     let moduleName: String
     let accent: SIMD4<Float>
 }
 
 private struct Rh3dGuideContent {
     let stepTag: String
-    let badge: String
-    let badgeColor: NSColor
+    let kicker: String
+    let kickerColor: NSColor
     let title: String
-    let whatYouSee: String
-    let whyItMatters: String
-    let analogy: String
-    let nextLink: String
+    let caption: String
+    let detail: String
+    let source: String
     let isCompactWide: Bool
+}
+
+// Everything oa_dc_rh3d_scene_json returns besides the stations.
+private struct Rh3dScene {
+    var zeros: [Float] = []            // imaginary parts of the zeros of zeta, computed in Coax
+    var t0: Float = 8, t1: Float = 52  // the range of t the zeta floor covers
+    var heightClip: Float = 3
+    var zNs = 0, zNt = 0
+    var zHeights: [Float] = []         // |zeta(sigma + it)|, row j = t, column i = sigma in [0, 1]
+    var psiX0: Float = 2, psiX1: Float = 60
+    var psiSteps: [(x: Float, v: Float)] = []   // psi(x) right after each of its jumps
+    var robin: [(n: Int, ratio: Float)] = []
+    var libs: [(name: String, files: Int, lines: Int)] = []
+    var checkers: [(name: String, tag: String)] = []
+    var theoremNames: [String] = []
 }
 
 private struct Rh3dLabelAnchor {
     let worldPos: SIMD3<Float>
-    let text: String
+    var text: String
     let subtext: String
     let color: NSColor
     let stationIndex: Int
@@ -413,7 +425,8 @@ fragment float4 rh3d_terrain_fs(TerrainOut in [[stage_in]], constant Uniforms &u
     base += float3(0.04, 0.14, 0.16) * fresnel;
 
     // Crisp holographic (sigma, t) coordinate mesh via fwidth
-    float2 meshCoord = in.uv * float2(18.0, 26.0);
+    // One mesh line per 0.25 in sigma and per 4 in t.
+    float2 meshCoord = in.uv * float2(4.0, 11.0);
     float meshLine = analytical_grid_line(meshCoord, fwidth(meshCoord), 1.15);
 
     // Crisp topographic elevation contour lines
@@ -499,7 +512,7 @@ fragment float4 rh3d_mesh_fs(MeshOut in [[stage_in]], constant Uniforms &u [[buf
     // Distance-attenuated edge intensity so far landmarks stay crisp without turning into solid blobs
     float distScale = mix(1.0, 0.62, clamp((dist - 12.0) / 55.0, 0.0, 1.0));
 
-    // ---- Mode 4: Translucent Laser-Etched Glass Plane (Critical Wall, Robin 1.0 Ceiling, 2/3 Barrier) ----
+    // ---- Mode 4: Translucent Laser-Etched Glass Plane (critical line, Robin ceiling, the strip of station 5) ----
     if (mode > 3.5) {
         float2 dEdge = min(in.uv, 1.0 - in.uv) / max(fwidth(in.uv), float2(1e-4));
         float frame = 1.0 - smoothstep(edgeW * 0.55, edgeW * 0.55 + 1.1, min(dEdge.x, dEdge.y));
@@ -509,7 +522,7 @@ fragment float4 rh3d_mesh_fs(MeshOut in [[stage_in]], constant Uniforms &u [[buf
         float laserGrid = analytical_grid_line(planeCoord * 1.0, fwidth(planeCoord * 1.0), 1.05);
 
         // Subtle animated scan sweep across the plane
-        float scan = exp(-pow(fract(planeCoord.x * 0.12 - u.viewport.w * 0.16) - 0.5, 2.0) * 90.0) * 0.35;
+        float scan = 0.0;   // a moving highlight here read as data on the charts, so the planes stay even
 
         float3 glassRGB = in.faceColor.rgb * (0.45 + 0.55 * fresnel)
                         + eCol * (laserGrid * 0.42 + scan + frame * 1.45) * edgeInt * distScale;
@@ -952,173 +965,139 @@ private final class GridExplainerPanelView: NSView {
     }
 
     static func drawExplainer(_ c: Rh3dGuideContent, in ctx: CGContext, rect: CGRect) {
-        drawGridHudFrame(in: ctx, rect: rect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: true)
+        drawGridHudFrame(in: ctx, rect: rect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: false)
 
-        let padX: CGFloat = 16
+        let padX: CGFloat = 18
         let innerW = rect.width - padX * 2
         let x0 = rect.minX + padX
+        var y = rect.minY + 14
 
         let stepAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 9.0, weight: .semibold),
+            .font: NSFont.monospacedSystemFont(ofSize: 10.0, weight: .semibold),
             .foregroundColor: GridTokens.nsMid,
             .kern: 1.0,
         ]
-        let badgeAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 8.6, weight: .bold),
-            .foregroundColor: c.badgeColor,
-            .kern: 0.6,
+        let kickerAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 10.0, weight: .bold),
+            .foregroundColor: c.kickerColor,
+            .kern: 0.8,
         ]
         let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: c.isCompactWide ? 13.5 : 13.8, weight: .bold),
+            .font: NSFont.systemFont(ofSize: c.isCompactWide ? 19.0 : 18.0, weight: .bold),
             .foregroundColor: GridTokens.nsWhite,
             .paragraphStyle: bodyPara(1.5),
         ]
-        let headCyanAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 8.8, weight: .bold),
-            .foregroundColor: GridTokens.nsCyan,
-            .kern: 0.9,
+        let captionAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14.5, weight: .medium),
+            .foregroundColor: GridTokens.nsWhite,
+            .paragraphStyle: bodyPara(3.0),
         ]
-        let headAmberAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 8.8, weight: .bold),
-            .foregroundColor: GridTokens.nsAmber,
-            .kern: 0.9,
-        ]
-        let headMutedAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 8.6, weight: .bold),
+        let detailAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .regular),
             .foregroundColor: GridTokens.nsLight,
-            .kern: 0.8,
+            .paragraphStyle: bodyPara(3.0),
         ]
-        let bodyAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11.4, weight: .regular),
-            .foregroundColor: NSColor(calibratedWhite: 0.90, alpha: 1.0),
+        let sourceAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11.0, weight: .regular),
+            .foregroundColor: GridTokens.nsMid,
             .paragraphStyle: bodyPara(2.0),
         ]
-        let sigBodyAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11.6, weight: .medium),
-            .foregroundColor: NSColor(calibratedWhite: 0.97, alpha: 1.0),
-            .paragraphStyle: bodyPara(2.2),
-        ]
-        let analogyAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11.0, weight: .regular),
-            .foregroundColor: NSColor(calibratedRed: 0.82, green: 0.96, blue: 0.96, alpha: 1.0),
-            .paragraphStyle: bodyPara(1.8),
-        ]
-        let nextAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 10.6, weight: .regular),
-            .foregroundColor: GridTokens.nsLight.withAlphaComponent(0.86),
-            .paragraphStyle: bodyPara(1.8),
-        ]
 
-        // Compact wide layout for Overview (sits cleanly in the open pitch-black sky above the 8 landmarks!)
-        if c.isCompactWide {
-            var y = rect.minY + 11
-            (c.stepTag as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: stepAttrs)
-            let badgeW = (c.badge as NSString).size(withAttributes: badgeAttrs).width + 12
-            let badgeRect = CGRect(x: rect.maxX - padX - badgeW, y: y - 2, width: badgeW, height: 15)
-            ctx.setFillColor(c.badgeColor.withAlphaComponent(0.14).cgColor)
-            ctx.fill(badgeRect)
-            ctx.setStrokeColor(c.badgeColor.withAlphaComponent(0.60).cgColor)
-            ctx.setLineWidth(1.0)
-            ctx.stroke(badgeRect)
-            (c.badge as NSString).draw(at: CGPoint(x: badgeRect.minX + 6, y: y), withAttributes: badgeAttrs)
-
-            y += 17
-            drawText(c.title, in: CGRect(x: x0, y: y, width: innerW, height: 22), attrs: titleAttrs)
-            y += 22
-
-            // Two crisp columns: left = What Happened, right = Why It's a Huge Deal
-            let colGap: CGFloat = 18
-            let colW = (innerW - colGap) * 0.5
-            let leftX = x0
-            let rightX = x0 + colW + colGap
-
-            ctx.setFillColor(NSColor(white: 0.94, alpha: 0.14).cgColor)
-            ctx.fill(CGRect(x: x0, y: y, width: innerW, height: 1))
-            y += 7
-
-            ("WHAT JUST HAPPENED" as NSString).draw(at: CGPoint(x: leftX, y: y), withAttributes: headCyanAttrs)
-            ("WHY THIS IS A HISTORIC DEAL" as NSString).draw(at: CGPoint(x: rightX, y: y), withAttributes: headAmberAttrs)
-            y += 14
-
-            let availH = max(40, rect.maxY - y - 10)
-            drawText(c.whatYouSee, in: CGRect(x: leftX, y: y, width: colW, height: availH), attrs: bodyAttrs)
-            drawText(c.whyItMatters, in: CGRect(x: rightX, y: y, width: colW, height: availH), attrs: sigBodyAttrs)
-            return
-        }
-
-        // Standard vertical right-side Guide Panel for Stations 1-8 (exact NSTextContainer heights = ZERO clipped lines!)
-        var y = rect.minY + 13
-
-        // Step tag (short & crisp) + right-aligned colored badge pill (zero overlap!)
         (c.stepTag as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: stepAttrs)
-        let badgeW = min(innerW - 78, (c.badge as NSString).size(withAttributes: badgeAttrs).width + 12)
-        let badgeRect = CGRect(x: rect.maxX - padX - badgeW, y: y - 2, width: badgeW, height: 16)
-        ctx.setFillColor(c.badgeColor.withAlphaComponent(0.14).cgColor)
-        ctx.fill(badgeRect)
-        ctx.setStrokeColor(c.badgeColor.withAlphaComponent(0.62).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.stroke(badgeRect)
-        (c.badge as NSString).draw(at: CGPoint(x: badgeRect.minX + 6, y: y), withAttributes: badgeAttrs)
-        y += 20
+        if !c.kicker.isEmpty {
+            let kw = (c.kicker as NSString).size(withAttributes: kickerAttrs).width
+            (c.kicker as NSString).draw(at: CGPoint(x: rect.maxX - padX - kw, y: y), withAttributes: kickerAttrs)
+        }
+        y += 22
 
-        // Title
         let th = textHeight(c.title, width: innerW, attrs: titleAttrs)
         drawText(c.title, in: CGRect(x: x0, y: y, width: innerW, height: th), attrs: titleAttrs)
-        y += th + 7
+        y += th + 8
 
-        // Hairline divider with cyan lead accent
-        ctx.setFillColor(NSColor(white: 0.94, alpha: 0.14).cgColor)
-        ctx.fill(CGRect(x: x0, y: y, width: innerW, height: 1))
-        ctx.setFillColor(GridTokens.nsCyan.withAlphaComponent(0.85).cgColor)
-        ctx.fill(CGRect(x: x0, y: y, width: 42, height: 1.5))
-        y += 10
+        ctx.setFillColor(c.kickerColor.withAlphaComponent(0.9).cgColor)
+        ctx.fill(CGRect(x: x0, y: y, width: 34, height: 2))
+        y += 12
 
-        // Section 1: WHAT YOU'RE LOOKING AT
-        ("WHAT YOU'RE LOOKING AT" as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: headCyanAttrs)
-        y += 14
-        let wh = textHeight(c.whatYouSee, width: innerW, attrs: bodyAttrs)
-        drawText(c.whatYouSee, in: CGRect(x: x0, y: y, width: innerW, height: wh), attrs: bodyAttrs)
-        y += wh + 12
+        let ch = textHeight(c.caption, width: innerW, attrs: captionAttrs)
+        drawText(c.caption, in: CGRect(x: x0, y: y, width: innerW, height: ch), attrs: captionAttrs)
+        y += ch + 12
 
-        // Section 2: WHY IT MATTERS (THE SIGNIFICANCE) — highlighted with warm amber left accent bar!
-        let sigInsetX = x0 + 10
-        let sigW = innerW - 14
-        let sh = textHeight(c.whyItMatters, width: sigW, attrs: sigBodyAttrs)
-        let sigBlockH = 14 + sh + 8
-        ctx.setFillColor(GridTokens.nsAmber.withAlphaComponent(0.07).cgColor)
-        ctx.fill(CGRect(x: x0, y: y - 4, width: innerW, height: sigBlockH + 4))
-        ctx.setFillColor(GridTokens.nsAmber.withAlphaComponent(0.92).cgColor)
-        ctx.fill(CGRect(x: x0, y: y - 4, width: 2.5, height: sigBlockH + 4))
+        if c.isCompactWide { return }
 
-        ("WHY IT MATTERS · THE SIGNIFICANCE" as NSString).draw(at: CGPoint(x: sigInsetX, y: y), withAttributes: headAmberAttrs)
-        y += 14
-        drawText(c.whyItMatters, in: CGRect(x: sigInsetX, y: y, width: sigW, height: sh), attrs: sigBodyAttrs)
-        y += sh + 16
-
-        // Section 3: THINK OF IT LIKE... (Analogy Callout Box)
-        if !c.analogy.isEmpty && y + 44 < rect.maxY {
-            let anaW = innerW - 18
-            let ah = textHeight(c.analogy, width: anaW, attrs: analogyAttrs)
-            let boxH = ah + 26
-            let boxRect = CGRect(x: x0, y: y, width: innerW, height: boxH)
-            ctx.setFillColor(NSColor(calibratedRed: 0.02, green: 0.08, blue: 0.09, alpha: 0.62).cgColor)
-            ctx.fill(boxRect)
-            ctx.setFillColor(GridTokens.nsCyan.withAlphaComponent(0.85).cgColor)
-            ctx.fill(CGRect(x: x0, y: y, width: 2.0, height: boxH))
-            ("THINK OF IT LIKE..." as NSString).draw(at: CGPoint(x: x0 + 10, y: y + 6), withAttributes: headCyanAttrs)
-            drawText(c.analogy, in: CGRect(x: x0 + 10, y: y + 20, width: anaW, height: ah), attrs: analogyAttrs)
-            y += boxH + 12
+        if !c.detail.isEmpty {
+            let dh = textHeight(c.detail, width: innerW, attrs: detailAttrs)
+            if y + dh < rect.maxY - 12 {
+                drawText(c.detail, in: CGRect(x: x0, y: y, width: innerW, height: dh), attrs: detailAttrs)
+                y += dh + 12
+            }
         }
+        if !c.source.isEmpty {
+            let sh = textHeight(c.source, width: innerW, attrs: sourceAttrs)
+            if y + sh + 26 < rect.maxY {
+                ctx.setFillColor(NSColor(white: 0.94, alpha: 0.12).cgColor)
+                ctx.fill(CGRect(x: x0, y: y, width: innerW, height: 1))
+                y += 9
+                ("WHERE THIS COMES FROM" as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: stepAttrs)
+                y += 16
+                drawText(c.source, in: CGRect(x: x0, y: y, width: innerW, height: sh), attrs: sourceAttrs)
+            }
+        }
+    }
 
-        // Section 4: UP NEXT
-        if !c.nextLink.isEmpty && y + 32 < rect.maxY {
-            ctx.setFillColor(NSColor(white: 0.94, alpha: 0.12).cgColor)
-            ctx.fill(CGRect(x: x0, y: y, width: innerW, height: 1))
-            y += 8
-            ("HOW THIS CONNECTS NEXT →" as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: headMutedAttrs)
-            y += 14
-            let nh = textHeight(c.nextLink, width: innerW, attrs: nextAttrs)
-            drawText(c.nextLink, in: CGRect(x: x0, y: y, width: innerW, height: nh), attrs: nextAttrs)
+    // The video's caption: one short statement in large type across the bottom of the frame,
+    // with a progress strip of one segment per station. `size` is in the caller's drawing units.
+    static let videoCaptionHeight: CGFloat = 178
+    static func drawVideoCaption(step: String, kicker: String, title: String, caption: String, accent: NSColor, segments: Int, progress: CGFloat, in ctx: CGContext, size: CGSize) {
+        let rect = CGRect(x: 36, y: size.height - videoCaptionHeight - 26, width: size.width - 72, height: videoCaptionHeight)
+        drawGridHudFrame(in: ctx, rect: rect, cut: 14.0, fillAlpha: 0.93, drawBrackets: true, drawScanlines: false)
+        let x0 = rect.minX + 28
+        let innerW = rect.width - 56
+        var y = rect.minY + 16
+
+        let stepAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 13.0, weight: .bold),
+            .foregroundColor: accent,
+            .kern: 1.4,
+        ]
+        let kickerAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 13.0, weight: .semibold),
+            .foregroundColor: GridTokens.nsMid,
+            .kern: 1.4,
+        ]
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 27.0, weight: .bold),
+            .foregroundColor: GridTokens.nsWhite,
+        ]
+        let captionAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 20.0, weight: .regular),
+            .foregroundColor: NSColor(calibratedWhite: 0.90, alpha: 1.0),
+            .paragraphStyle: bodyPara(4.0),
+        ]
+        (step as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: stepAttrs)
+        if !kicker.isEmpty {
+            let sw = (step as NSString).size(withAttributes: stepAttrs).width
+            (("·  " + kicker) as NSString).draw(at: CGPoint(x: x0 + sw + 12, y: y), withAttributes: kickerAttrs)
+        }
+        y += 24
+        (title as NSString).draw(at: CGPoint(x: x0, y: y), withAttributes: titleAttrs)
+        y += 40
+        let ch = textHeight(caption, width: innerW, attrs: captionAttrs)
+        drawText(caption, in: CGRect(x: x0, y: y, width: innerW, height: ch), attrs: captionAttrs)
+
+        // Progress: one segment per station, filled as the video advances.
+        let n = max(1, segments)
+        let gap: CGFloat = 6
+        let segW = (innerW - gap * CGFloat(n - 1)) / CGFloat(n)
+        let py = rect.maxY - 16
+        for i in 0..<n {
+            let r = CGRect(x: x0 + CGFloat(i) * (segW + gap), y: py, width: segW, height: 4)
+            ctx.setFillColor(NSColor(white: 0.94, alpha: 0.16).cgColor)
+            ctx.fill(r)
+            let f = max(0.0, min(1.0, progress * CGFloat(n) - CGFloat(i)))
+            if f > 0 {
+                ctx.setFillColor(accent.cgColor)
+                ctx.fill(CGRect(x: r.minX, y: r.minY, width: r.width * f, height: 4))
+            }
         }
     }
 }
@@ -1138,6 +1117,8 @@ private struct ProjectedLabel {
 
 private final class RhLabelsOverlayView: NSView {
     var labels: [ProjectedLabel] = []
+    // 1 in the app; the video recorder raises it so labels stay readable at 1080p.
+    static var scale: CGFloat = 1.0
     var onClickStation: ((Int) -> Void)?
 
     override var isFlipped: Bool { true }
@@ -1166,9 +1147,10 @@ private final class RhLabelsOverlayView: NSView {
     }
 
     static func drawLabels(_ labels: [ProjectedLabel], in ctx: CGContext) {
-        let titleBannerFont = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
-        let titlePartFont = NSFont.monospacedSystemFont(ofSize: 9.8, weight: .medium)
-        let subFont = NSFont.monospacedSystemFont(ofSize: 8.8, weight: .regular)
+        let s = scale
+        let titleBannerFont = NSFont.monospacedSystemFont(ofSize: 10.5 * s, weight: .semibold)
+        let titlePartFont = NSFont.monospacedSystemFont(ofSize: 9.8 * s, weight: .medium)
+        let subFont = NSFont.monospacedSystemFont(ofSize: 8.8 * s, weight: .regular)
 
         for lbl in labels {
             ctx.saveGState()
@@ -1208,25 +1190,27 @@ private final class RhLabelsOverlayView: NSView {
             )
 
             // Signature newland.coax crisp accent rule right under the title
-            let ruleY = lbl.rect.minY + 17.5
+            if !lbl.subtext.isEmpty {
+            let ruleY = lbl.rect.minY + 17.5 * s
             ctx.setFillColor(NSColor(white: 0.94, alpha: 0.16).cgColor)
             ctx.fill(CGRect(x: lbl.rect.minX + 8, y: ruleY, width: max(12, lbl.rect.width - 16), height: 1.0))
             ctx.setFillColor(lbl.color.withAlphaComponent(0.92).cgColor)
             ctx.fill(CGRect(x: lbl.rect.minX + 8, y: ruleY, width: min(26, max(12, lbl.rect.width * 0.36)), height: 1.5))
+            }
 
             let tAttrs: [NSAttributedString.Key: Any] = [
                 .font: lbl.isBanner ? titleBannerFont : titlePartFont,
                 .foregroundColor: GridTokens.nsWhite,
                 .kern: lbl.isBanner ? 0.7 : 0.3,
             ]
-            (lbl.title as NSString).draw(at: CGPoint(x: lbl.rect.minX + 8, y: lbl.rect.minY + 3.5), withAttributes: tAttrs)
+            (lbl.title as NSString).draw(at: CGPoint(x: lbl.rect.minX + 8, y: lbl.rect.minY + 3.5 * s), withAttributes: tAttrs)
 
             if !lbl.subtext.isEmpty {
                 let sAttrs: [NSAttributedString.Key: Any] = [
                     .font: subFont,
                     .foregroundColor: GridTokens.nsLight.withAlphaComponent(0.82),
                 ]
-                (lbl.subtext as NSString).draw(at: CGPoint(x: lbl.rect.minX + 8, y: lbl.rect.minY + 20.5), withAttributes: sAttrs)
+                (lbl.subtext as NSString).draw(at: CGPoint(x: lbl.rect.minX + 8, y: lbl.rect.minY + 20.5 * s), withAttributes: sAttrs)
             }
             ctx.restoreGState()
         }
@@ -1301,6 +1285,26 @@ final class RhFlythroughView: NSView {
     private var stations: [Rh3dStationData] = []
     private var labelAnchors: [Rh3dLabelAnchor] = []
     private var pickables: [Rh3dPickable] = []
+    private var lineSegs: [Rh3dQuadLineSeg] = []
+    private var overviewTitle = ""
+    private var overviewCaption = ""
+    private var closingCaption = ""
+    private var sceneFiles = 0
+    private var sceneLines = 0
+    private var sceneTheorems = 0
+
+    // Station 2's animated curve: psiCurves holds psiRows rows of psiSamples values; row k is
+    // the explicit formula with the first k zeros. The curve on screen is rebuilt when k changes.
+    private let psiSamples = 175
+    private var psiRows = 0
+    private var psiCurves: [Float] = []
+    private var psiShown = -1
+    private var psiX0: Float = 2
+    private var psiX1: Float = 60
+    private var psiLabelIndex = -1
+    private var dynLinesVB: MTLBuffer?
+    private var dynLineSegCount = 0
+    private var videoCard = 0   // 0 = a station's caption, 1 = the opening card, 2 = the closing card
 
     // Camera state (Y-up right-handed matching metaverse-engine/cam/flyover.coax)
     private var eye = SIMD3<Float>(-49, 8.5, 15)
@@ -1342,7 +1346,7 @@ final class RhFlythroughView: NSView {
     private var explainerOverviewConstraints: [NSLayoutConstraint] = []
 
     private let storyCard = GridHudFrameView()
-    private let storyKicker = NSTextField(labelWithString: "OPENAGENTS / VERSE  ·  THE GRID  ·  RIEMANN HYPOTHESIS")
+    private let storyKicker = NSTextField(labelWithString: "THE RIEMANN HYPOTHESIS")
     private let storyTitle = NSTextField(labelWithString: "")
     private let storySubtitle = NSTextField(labelWithString: "")
     private let storyBody = NSTextField(wrappingLabelWithString: "")
@@ -1586,82 +1590,132 @@ final class RhFlythroughView: NSView {
     // MARK: - Build All 8 Real-Data OpenAgents Grid Landmarks
 
     private func loadSceneFromCoaxAndAtlas() {
-        let jsonStr = DesktopCore.callString(65536) { oa_dc_rh3d_scene_json($0) }
+        let jsonStr = DesktopCore.callString(262144) { oa_dc_rh3d_scene_json($0) }
         guard let data = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
         if let durMs = obj["duration_ms"] as? Int {
             durationS = Float(durMs) / 1000.0
         }
+        overviewTitle = (obj["overview_title"] as? String) ?? ""
+        overviewCaption = (obj["overview_caption"] as? String) ?? ""
+        closingCaption = (obj["closing_caption"] as? String) ?? ""
+        sceneFiles = (obj["files"] as? Int) ?? 0
+        sceneLines = (obj["lines"] as? Int) ?? 0
+        sceneTheorems = (obj["theorems"] as? Int) ?? 0
 
-        // Strict OpenAgents Grid Palette: monochrome white/silver + electric cyan + surgical amber (zero rainbow!)
+        // One accent per station: cyan for computed mathematics, amber for the historical claims,
+        // white for the part nobody has explained yet.
         let accents: [SIMD4<Float>] = [
-            GridTokens.cyan,      // 1. Zeta Terrain
-            GridTokens.amber,     // 2. Robin 5040
-            GridTokens.cyan,      // 3. 2/3 Barrier
-            GridTokens.greyWhite, // 4. Theta Bridge
-            GridTokens.cyan,      // 5. 175k City
-            GridTokens.amber,     // 6. Behrend/Weil
-            GridTokens.cyan,      // 7. 4 Kernels
-            GridTokens.amberHot,  // 8. Summit Q.E.D.
+            GridTokens.cyan, GridTokens.cyan, GridTokens.amber, GridTokens.greyWhite,
+            GridTokens.amber, GridTokens.cyan, GridTokens.cyan, GridTokens.amberHot,
         ]
 
+        func mm(_ s: [String: Any], _ k: String) -> Float { Float((s[k] as? Int) ?? 0) / 1000.0 }
         stations.removeAll()
         if let stArr = obj["stations"] as? [[String: Any]] {
             for (i, s) in stArr.enumerated() {
-                let pos = SIMD3<Float>(
-                    Float((s["x_mm"] as? Int) ?? 0) / 1000.0,
-                    Float((s["y_mm"] as? Int) ?? 0) / 1000.0,
-                    Float((s["z_mm"] as? Int) ?? 0) / 1000.0
-                )
-                let ev = SIMD3<Float>(
-                    Float((s["eye_x_mm"] as? Int) ?? 0) / 1000.0,
-                    Float((s["eye_y_mm"] as? Int) ?? 0) / 1000.0,
-                    Float((s["eye_z_mm"] as? Int) ?? 0) / 1000.0
-                )
                 stations.append(Rh3dStationData(
                     index: i,
-                    pos: pos,
-                    eye: ev,
-                    timeS: Float((s["time_ms"] as? Int) ?? 0) / 1000.0,
-                    shortName: (s["short_name"] as? String) ?? "Station \(i+1)",
-                    badge: (s["badge"] as? String) ?? "STEP \(i+1) OF 8",
+                    pos: SIMD3(mm(s, "x_mm"), mm(s, "y_mm"), mm(s, "z_mm")),
+                    eye: SIMD3(mm(s, "eye_x_mm"), mm(s, "eye_y_mm"), mm(s, "eye_z_mm")),
+                    timeS: mm(s, "time_ms"),
+                    shortName: (s["short_name"] as? String) ?? "\(i + 1)",
+                    kicker: (s["kicker"] as? String) ?? "",
                     title: (s["title"] as? String) ?? "",
-                    subtitle: (s["subtitle"] as? String) ?? "",
-                    plainEnglish: (s["plain_english"] as? String) ?? "",
-                    whyItMatters: (s["why_it_matters"] as? String) ?? "",
-                    analogy: (s["analogy"] as? String) ?? "",
-                    nextLink: (s["next_link"] as? String) ?? "",
+                    caption: (s["caption"] as? String) ?? "",
+                    detail: (s["detail"] as? String) ?? "",
+                    source: (s["source"] as? String) ?? "",
                     moduleName: (s["module"] as? String) ?? "Main",
                     accent: accents[i % accents.count]
                 ))
             }
         }
+        guard stations.count == 8 else { return }
 
-        let zeros = ((obj["zeros_mm"] as? [Int]) ?? []).map { Float($0) / 1000.0 }
-        let robin = (obj["robin"] as? [[String: Any]]) ?? []
-        let theta = (obj["theta"] as? [[String: Any]]) ?? []
-        let zNs = (obj["zeta_ns"] as? Int) ?? 0
-        let zNt = (obj["zeta_nt"] as? Int) ?? 0
-        let zHeights = ((obj["zeta_mm"] as? [Int]) ?? []).map { Float($0) / 1000.0 }
+        var sc = Rh3dScene()
+        let zerosU6 = (obj["zeros_u6"] as? [Int]) ?? []
+        sc.zeros = zerosU6.map { Float(Double($0) / 1_000_000.0) }
+        sc.t0 = mm(obj, "t0_mm")
+        sc.t1 = mm(obj, "t1_mm")
+        sc.heightClip = mm(obj, "height_clip_mm")
+        sc.zNs = (obj["zeta_ns"] as? Int) ?? 0
+        sc.zNt = (obj["zeta_nt"] as? Int) ?? 0
+        sc.zHeights = ((obj["zeta_mm"] as? [Int]) ?? []).map { Float($0) / 1000.0 }
+        sc.psiX0 = mm(obj, "psi_x0_mm")
+        sc.psiX1 = mm(obj, "psi_x1_mm")
+        for st in (obj["psi_steps"] as? [[Int]]) ?? [] where st.count == 2 {
+            sc.psiSteps.append((Float(st[0]), Float(st[1]) / 1000.0))
+        }
+        for r in (obj["robin"] as? [[String: Any]]) ?? [] {
+            sc.robin.append(((r["n"] as? Int) ?? 0, Float(Double((r["ratio_u6"] as? Int) ?? 0) / 1_000_000.0)))
+        }
+        for l in (obj["libs"] as? [[String: Any]]) ?? [] {
+            sc.libs.append(((l["name"] as? String) ?? "", (l["files"] as? Int) ?? 0, (l["lines"] as? Int) ?? 0))
+        }
+        for c in (obj["checkers"] as? [[String: Any]]) ?? [] {
+            sc.checkers.append(((c["name"] as? String) ?? "", (c["tag"] as? String) ?? ""))
+        }
+        sc.theoremNames = (obj["theorem_names"] as? [String]) ?? []
+        psiX0 = sc.psiX0
+        psiX1 = sc.psiX1
 
-        buildWorldGeometry(zeros: zeros, robin: robin, theta: theta, zNs: zNs, zNt: zNt, zHeights: zHeights)
+        loadPsiCurves(zerosU6: zerosU6)
+        buildWorldGeometry(sc)
         uploadInstanceBuffers()
+        refreshPsiCurve(zerosShown: psiRows - 1)
         evaluateMetaverseSpline(at: 0.0)
+    }
+
+    // Station 2's curves: row k is the explicit formula with the first k zeros (computed in Coax).
+    private func loadPsiCurves(zerosU6: [Int]) {
+        var zs = zerosU6.map { Int64($0) }
+        let rows = zs.count + 1
+        let samples = psiSamples
+        var out = [Int64](repeating: 0, count: rows * samples)
+        let got: Int64 = DesktopCore.onCoreStack {
+            zs.withUnsafeMutableBufferPointer { zb in
+                out.withUnsafeMutableBufferPointer { ob in
+                    oa_dc_rh3d_psi_curves(
+                        coax_v_s64(data: zb.baseAddress, count: Int64(zb.count)),
+                        Int64(samples),
+                        coax_v_s64(data: ob.baseAddress, count: Int64(ob.count))
+                    )
+                }
+            }
+        }
+        psiRows = Int(got)
+        psiCurves = got > 0 ? out.map { Float($0) / 1000.0 } : []
     }
 
     private func nsColor(_ c: SIMD4<Float>) -> NSColor {
         NSColor(calibratedRed: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1.0)
     }
 
-    private func addLabel(_ pos: SIMD3<Float>, _ text: String, sub: String = "", color: SIMD4<Float>, station: Int, banner: Bool = false, maxDist: Float = 28.0) {
+    private func fmtInt(_ n: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "en_US")
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
+    private func addLabel(_ pos: SIMD3<Float>, _ text: String, sub: String = "", color: SIMD4<Float>, station: Int, banner: Bool = false, maxDist: Float = 30.0) {
         labelAnchors.append(Rh3dLabelAnchor(
             worldPos: pos, text: text, subtext: sub, color: nsColor(color),
             stationIndex: station, isStationBanner: banner, maxDist: maxDist
         ))
     }
 
-    // Helper: emit a sleek dark-obsidian box edged in crisp luminous Grid wireframe
+    private func addLine(_ a: SIMD3<Float>, _ b: SIMD3<Float>, color: SIMD4<Float>, light: Float = 0.85, core: Float = 0.85, glow: Float = 4.0, pulseSpeed: Float = 0, pulsePhase: Float = 0) {
+        lineSegs.append(Rh3dQuadLineSeg(
+            p0Width: SIMD4(a, core),
+            p1Glow: SIMD4(b, glow),
+            color: SIMD4(color.x, color.y, color.z, light),
+            anim: SIMD4(pulseSpeed, pulsePhase, pulseSpeed > 0.001 ? 1.0 : 0.0, 0)
+        ))
+    }
+
+    // A dark box with bright edges.
     private func addGridBox(
         center: SIMD3<Float>, size: SIMD3<Float>, rotY: Float = 0,
         face: SIMD4<Float> = GridTokens.obsidianBody,
@@ -1681,7 +1735,6 @@ final class RhFlythroughView: NSView {
         if translucent { transBoxes.append(inst) } else { opaqueBoxes.append(inst) }
     }
 
-    // Helper: emit a dark-obsidian cylinder with crisp luminous top/bottom rings & vertical ribs
     private func addGridCyl(
         center: SIMD3<Float>, size: SIMD3<Float>,
         face: SIMD4<Float> = GridTokens.obsidianBody,
@@ -1697,7 +1750,6 @@ final class RhFlythroughView: NSView {
         ))
     }
 
-    // Helper: emit a radiant wireframe-faceted crystal core (mode 3)
     private func addGridCrystal(
         center: SIMD3<Float>, size: SIMD3<Float>,
         core: SIMD4<Float>, edge: SIMD4<Float>,
@@ -1711,7 +1763,15 @@ final class RhFlythroughView: NSView {
         ))
     }
 
-    private func buildWorldGeometry(zeros: [Float], robin: [[String: Any]], theta: [[String: Any]], zNs: Int, zNt: Int, zHeights: [Float]) {
+    private func addRing(center: SIMD3<Float>, radius: Float, color: SIMD4<Float>, light: Float) {
+        for k in 0..<32 {
+            let a0 = Float(k) / 32.0 * .pi * 2
+            let a1 = Float(k + 1) / 32.0 * .pi * 2
+            addLine(center + SIMD3(cos(a0) * radius, 0, sin(a0) * radius), center + SIMD3(cos(a1) * radius, 0, sin(a1) * radius), color: color, light: light, core: 1.0, glow: 5.0)
+        }
+    }
+
+    private func buildWorldGeometry(_ sc: Rh3dScene) {
         opaqueBoxes.removeAll()
         opaqueCyls.removeAll()
         opaqueOcts.removeAll()
@@ -1719,512 +1779,346 @@ final class RhFlythroughView: NSView {
         transCyls.removeAll()
         labelAnchors.removeAll()
         pickables.removeAll()
+        lineSegs.removeAll()
 
-        var segs: [Rh3dQuadLineSeg] = []
-        func addLine(_ a: SIMD3<Float>, _ b: SIMD3<Float>, color: SIMD4<Float>, light: Float = 0.85, core: Float = 0.85, glow: Float = 4.0, pulseSpeed: Float = 0, pulsePhase: Float = 0) {
-            let mode: Float = pulseSpeed > 0.001 ? 1.0 : 0.0
-            segs.append(Rh3dQuadLineSeg(
-                p0Width: SIMD4(a, core),
-                p1Glow: SIMD4(b, glow),
-                color: SIMD4(color.x, color.y, color.z, light),
-                anim: SIMD4(pulseSpeed, pulsePhase, mode, 0)
-            ))
+        buildStationBases()
+        buildZetaLandscape(sc)
+        buildPrimeStaircase(sc)
+        buildRobinTest(sc)
+        buildThetaChain()
+        buildLastStep(sc)
+        buildProofCity(sc)
+        buildCheckers(sc)
+        buildSummit(sc)
+
+        quadLineSegCount = lineSegs.count
+        if let dev = device, !lineSegs.isEmpty {
+            quadLinesVB = dev.makeBuffer(bytes: lineSegs, length: lineSegs.count * MemoryLayout<Rh3dQuadLineSeg>.stride, options: .storageModeShared)
         }
+    }
 
-        // Helper: Open Grid-style Wireframe Pavilion Portal (homage to the iconic GYM wireframe frame in the-grid.jpg!)
-        func addGridPortalFrame(centerX: Float, zOffset: Float, width: Float, height: Float, depth: Float, color: SIMD4<Float>, light: Float = 0.62) {
-            let hw = width * 0.5, hd = depth * 0.5
-            let x0 = centerX - hw, x1 = centerX + hw
-            let z0 = zOffset - hd, z1 = zOffset + hd
-            let y0: Float = 0.08, y1 = height
-            // 4 vertical corner columns
-            addLine(SIMD3(x0, y0, z0), SIMD3(x0, y1, z0), color: color, light: light, core: 0.9, glow: 3.8)
-            addLine(SIMD3(x1, y0, z0), SIMD3(x1, y1, z0), color: color, light: light, core: 0.9, glow: 3.8)
-            addLine(SIMD3(x0, y0, z1), SIMD3(x0, y1, z1), color: color, light: light * 0.7, core: 0.75, glow: 3.0)
-            addLine(SIMD3(x1, y0, z1), SIMD3(x1, y1, z1), color: color, light: light * 0.7, core: 0.75, glow: 3.0)
-            // Top beam frame
-            addLine(SIMD3(x0, y1, z0), SIMD3(x1, y1, z0), color: color, light: light * 1.15, core: 1.0, glow: 4.5)
-            addLine(SIMD3(x0, y1, z1), SIMD3(x1, y1, z1), color: color, light: light * 0.85, core: 0.8, glow: 3.5)
-            addLine(SIMD3(x0, y1, z0), SIMD3(x0, y1, z1), color: color, light: light * 0.85, core: 0.8, glow: 3.5)
-            addLine(SIMD3(x1, y1, z0), SIMD3(x1, y1, z1), color: color, light: light * 0.85, core: 0.8, glow: 3.5)
-            // Base perimeter trim
-            addLine(SIMD3(x0, y0, z0), SIMD3(x1, y0, z0), color: color, light: light * 0.55, core: 0.7, glow: 2.8)
-            addLine(SIMD3(x0, y0, z1), SIMD3(x1, y0, z1), color: color, light: light * 0.55, core: 0.7, glow: 2.8)
-        }
-
-        // ---- 0. Station Bays, Sleek Obsidian Plinths, Proof Highway Conduits & Animated Data Pulses ----
+    // A platform, a banner and a light track to the next station, for each of the eight.
+    private func buildStationBases() {
+        let bannerHeights: [Float] = [6.4, 7.6, 6.6, 6.0, 10.2, 8.6, 6.8, 10.6]
         for (i, st) in stations.enumerated() {
-            // Sleek obsidian architectural base platform edged in crisp silver-white
-            addGridBox(
-                center: SIMD3(st.pos.x, 0.09, st.pos.z),
-                size: SIMD3(9.2, 0.18, 9.2),
-                face: GridTokens.obsidianDeep,
-                edge: GridTokens.greyLight,
-                edgeIntensity: 0.78,
-                edgePx: 1.35
-            )
-            // Fine glowing accent edge tracks along front & rear of bay
+            addGridBox(center: SIMD3(st.pos.x, 0.09, st.pos.z), size: SIMD3(9.2, 0.18, 9.2), face: GridTokens.obsidianDeep, edge: GridTokens.greyLight, edgeIntensity: 0.78)
             addLine(SIMD3(st.pos.x - 4.6, 0.20, 4.6), SIMD3(st.pos.x + 4.6, 0.20, 4.6), color: st.accent, light: 0.95, core: 0.95, glow: 4.8)
-            addLine(SIMD3(st.pos.x - 4.6, 0.20, -4.6), SIMD3(st.pos.x + 4.6, 0.20, -4.6), color: GridTokens.greyLight, light: 0.50, core: 0.75, glow: 3.2)
-
-            // Station banner floating above landmark (staggered heights so ALL 8 banners display cleanly in Overview & close-ups)
-            let bannerHeights: [Float] = [7.6, 6.2, 9.2, 6.4, 10.6, 6.8, 9.0, 11.4]
-            let bannerY: Float = bannerHeights[i % bannerHeights.count]
-            addLabel(SIMD3(st.pos.x, bannerY, st.pos.z), st.shortName.uppercased(), sub: st.badge, color: st.accent, station: i, banner: true, maxDist: 145.0)
-            pickables.append(Rh3dPickable(center: SIMD3(st.pos.x, 3.0, st.pos.z), radius: 5.0, title: st.title, detail: st.plainEnglish, significance: st.whyItMatters, moduleName: st.moduleName, stationIndex: i))
-
-            // Glowing proof conduit + animated light pulse flowing from Station i -> Station i+1
+            addLabel(SIMD3(st.pos.x, bannerHeights[i % bannerHeights.count], st.pos.z), st.shortName.uppercased(), sub: st.kicker, color: st.accent, station: i, banner: true, maxDist: 145.0)
+            pickables.append(Rh3dPickable(center: SIMD3(st.pos.x, 3.0, st.pos.z), radius: 5.0, title: st.title, detail: st.detail, significance: "", moduleName: st.moduleName, stationIndex: i))
             if i + 1 < stations.count {
                 let nxt = stations[i + 1]
-                let p0 = SIMD3<Float>(st.pos.x + 4.6, 0.22, 0)
-                let p1 = SIMD3<Float>(nxt.pos.x - 4.6, 0.22, 0)
-                addLine(p0, p1, color: GridTokens.cyan, light: 0.92, core: 1.1, glow: 6.2, pulseSpeed: 0.45, pulsePhase: Float(i) * 0.14)
-                addLine(p0 + SIMD3(0, 0, 0.28), p1 + SIMD3(0, 0, 0.28), color: GridTokens.greyMid, light: 0.35, core: 0.65, glow: 2.4)
-                addLine(p0 + SIMD3(0, 0, -0.28), p1 + SIMD3(0, 0, -0.28), color: GridTokens.greyMid, light: 0.35, core: 0.65, glow: 2.4)
-
-                // Graceful curved multi-segment data arc overhead linking stations
-                let arcSteps = 10
-                var prevArc: SIMD3<Float>? = nil
-                for k in 0...arcSteps {
-                    let u = Float(k) / Float(arcSteps)
-                    let ax = (st.pos.x + 3.0) + ((nxt.pos.x - 3.0) - (st.pos.x + 3.0)) * u
-                    let ay = 2.0 + sin(u * .pi) * 2.5
-                    let az: Float = -4.2 - sin(u * .pi) * 0.7
-                    let pt = SIMD3<Float>(ax, ay, az)
-                    if let pa = prevArc {
-                        addLine(pa, pt, color: GridTokens.greyLight, light: 0.45, core: 0.72, glow: 3.4, pulseSpeed: 0.32, pulsePhase: Float(i) * 0.22 + u * 0.18)
-                    }
-                    prevArc = pt
-                }
+                addLine(SIMD3(st.pos.x + 4.6, 0.22, 0), SIMD3(nxt.pos.x - 4.6, 0.22, 0), color: GridTokens.cyan, light: 0.92, core: 1.1, glow: 6.2, pulseSpeed: 0.45, pulsePhase: Float(i) * 0.14)
             }
         }
+    }
 
-        // ---- STATION 1 (X = -42): HOLOGRAPHIC LIDAR RIEMANN ZETA TERRAIN + CRITICAL LINE LASER WALL + 10 ZERO BEACONS ----
-        let x1: Float = -42.0
-        if zNs >= 2 && zNt >= 2 && zHeights.count >= zNs * zNt, let dev = device {
-            let widthX: Float = 8.4
-            let depthZ: Float = 8.4
-            func terrainPos(_ i: Int, _ j: Int) -> SIMD3<Float> {
-                let u = Float(i) / Float(zNs - 1)
-                let v = Float(j) / Float(zNt - 1)
-                let h = zHeights[j * zNs + i]
-                return SIMD3<Float>(x1 + (u - 0.5) * widthX, 0.24 + h * 0.88, (v - 0.5) * depthZ)
+    // ---- Station 1: |zeta(s)| over the critical strip, with the zeros on Re(s) = 1/2 ----
+    private func buildZetaLandscape(_ sc: Rh3dScene) {
+        let cx = stations[0].pos.x
+        let widthX: Float = 4.8      // sigma from 0 to 1
+        let depthZ: Float = 8.6      // t from sc.t0 to sc.t1
+        let hScale: Float = 0.80
+        let baseY: Float = 0.24
+        let ns = sc.zNs, nt = sc.zNt
+        // sigma = 1 (where zeta is small) is on the camera's side, so the line of zeros is in
+        // clear view and the tall side near sigma = 0 is the backdrop. Low t is nearest.
+        func xOf(_ sigma: Float) -> Float { cx + (0.5 - sigma) * widthX }
+        func zOf(_ t: Float) -> Float { (0.5 - (t - sc.t0) / (sc.t1 - sc.t0)) * depthZ }
+
+        if ns >= 2 && nt >= 2 && sc.zHeights.count >= ns * nt, let dev = device {
+            func vert(_ i: Int, _ j: Int, _ n: SIMD3<Float>) -> Rh3dTerrainVert {
+                let u = Float(i) / Float(ns - 1)
+                let v = Float(j) / Float(nt - 1)
+                let h = sc.zHeights[j * ns + i]
+                let p = SIMD3<Float>(xOf(u), baseY + h * hScale, (0.5 - v) * depthZ)
+                return Rh3dTerrainVert(posHeight: SIMD4(p, h), normalCrit: SIMD4(n, abs(u - 0.5)), uvPad: SIMD4(u, v, 0, 0))
+            }
+            func up(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> SIMD3<Float> {
+                let n = simd_normalize(simd_cross(b - a, c - a))
+                return n.y < 0 ? -n : n
             }
             var tVerts: [Rh3dTerrainVert] = []
-            for j in 0..<(zNt - 1) {
-                for i in 0..<(zNs - 1) {
-                    let p00 = terrainPos(i, j), p10 = terrainPos(i + 1, j)
-                    let p01 = terrainPos(i, j + 1), p11 = terrainPos(i + 1, j + 1)
-                    let nA = simd_normalize(simd_cross(p01 - p00, p10 - p00))
-                    let nB = simd_normalize(simd_cross(p01 - p10, p11 - p10))
-                    func mkV(_ ii: Int, _ jj: Int, _ p: SIMD3<Float>, _ n: SIMD3<Float>) -> Rh3dTerrainVert {
-                        let u = Float(ii) / Float(zNs - 1)
-                        let v = Float(jj) / Float(zNt - 1)
-                        let h = zHeights[jj * zNs + ii]
-                        return Rh3dTerrainVert(
-                            posHeight: SIMD4(p, h),
-                            normalCrit: SIMD4(n, abs(u - 0.5)),
-                            uvPad: SIMD4(u, v, 0, 0)
-                        )
-                    }
+            tVerts.reserveCapacity((ns - 1) * (nt - 1) * 6)
+            let zero = SIMD3<Float>(0, 1, 0)
+            for j in 0..<(nt - 1) {
+                for i in 0..<(ns - 1) {
+                    let p00 = vert(i, j, zero).posHeight, p10 = vert(i + 1, j, zero).posHeight
+                    let p01 = vert(i, j + 1, zero).posHeight, p11 = vert(i + 1, j + 1, zero).posHeight
+                    let a = SIMD3(p00.x, p00.y, p00.z), b = SIMD3(p10.x, p10.y, p10.z)
+                    let c = SIMD3(p01.x, p01.y, p01.z), d = SIMD3(p11.x, p11.y, p11.z)
+                    let nA = up(a, c, b), nB = up(b, c, d)
                     tVerts.append(contentsOf: [
-                        mkV(i, j, p00, nA), mkV(i, j + 1, p01, nA), mkV(i + 1, j, p10, nA),
-                        mkV(i + 1, j, p10, nB), mkV(i, j + 1, p01, nB), mkV(i + 1, j + 1, p11, nB),
+                        vert(i, j, nA), vert(i, j + 1, nA), vert(i + 1, j, nA),
+                        vert(i + 1, j, nB), vert(i, j + 1, nB), vert(i + 1, j + 1, nB),
                     ])
                 }
             }
             terrainVCount = tVerts.count
             terrainVB = dev.makeBuffer(bytes: tVerts, length: tVerts.count * MemoryLayout<Rh3dTerrainVert>.stride, options: .storageModeShared)
         }
-        // Sleek laser-etched amber-gold Critical Wall at Re(s) = 1/2 (mode 4)
-        addGridBox(
-            center: SIMD3(x1, 2.75, 0), size: SIMD3(0.06, 5.0, 8.5),
-            face: SIMD4(0.08, 0.05, 0.015, 0.16),
-            edge: GridTokens.amber, edgeIntensity: 1.15, edgePx: 1.5, mode: 4.0, translucent: true
-        )
-        addLine(SIMD3(x1, 5.26, -4.25), SIMD3(x1, 5.26, 4.25), color: GridTokens.amberHot, light: 1.35, core: 1.15, glow: 6.5)
-        addLabel(SIMD3(x1, 5.65, -4.18), "THE CRITICAL WALL (Re = 1/2)", sub: "Every prime note must sit right on this wall", color: GridTokens.amber, station: 0)
-        addLabel(SIMD3(x1 - 3.2, 2.6, 2.6), "PRIME SOUND-WAVE LANDSCAPE", sub: "Dips to 0 = hidden rhythm of prime numbers", color: GridTokens.cyan, station: 0)
 
-        // 10 Real Riemann Zero Light Needles along Re(s) = 1/2
-        for (zi, gamma) in zeros.enumerated() {
-            let v = max(0.0, min(1.0, (gamma - 4.0) / 46.0))
-            let zPos = (v - 0.5) * 8.4
-            let pillarH: Float = 3.2 + (zi == 0 ? 0.95 : 0.0)
-            addLine(SIMD3(x1, 0.24, zPos), SIMD3(x1, 0.24 + pillarH, zPos), color: GridTokens.amberHot, light: 1.25, core: 1.1, glow: 5.8)
-            addGridCrystal(
-                center: SIMD3(x1, 0.34 + pillarH, zPos), size: SIMD3(0.36, 0.50, 0.36),
-                core: SIMD4(0.06, 0.24, 0.26, 1.0), edge: GridTokens.cyan, intensity: 1.55, phase: Float(zi) * 0.7
-            )
-            if zi == 0 || zi == 2 || zi == 7 {
-                addLabel(SIMD3(x1, 0.68 + pillarH, zPos), String(format: "PRIME NOTE #%d (%.2f)", zi + 1, gamma), sub: "Wave hits zero right on the wall", color: GridTokens.cyan, station: 0)
+        // The critical line Re(s) = 1/2 as a thin glass wall with a bright top edge.
+        addGridBox(center: SIMD3(cx, 2.0, 0), size: SIMD3(0.05, 3.5, depthZ), face: SIMD4(0.08, 0.05, 0.015, 0.12), edge: GridTokens.amber, edgeIntensity: 1.1, edgePx: 1.5, mode: 4.0, translucent: true)
+        addLine(SIMD3(cx, 3.76, -depthZ * 0.5), SIMD3(cx, 3.76, depthZ * 0.5), color: GridTokens.amberHot, light: 1.35, core: 1.2, glow: 6.5)
+        addLabel(SIMD3(cx, 3.8, -0.6), "THE CRITICAL LINE", sub: "Real part = 1/2", color: GridTokens.amber, station: 0)
+
+        // One needle per zero, at the heights computed in Coax.
+        var shown = 0
+        for gamma in sc.zeros where gamma > sc.t0 && gamma < sc.t1 {
+            let z = zOf(gamma)
+            let top: Float = shown == 0 ? 3.3 : 2.7
+            addLine(SIMD3(cx, baseY, z), SIMD3(cx, top, z), color: GridTokens.amberHot, light: 1.25, core: 1.1, glow: 5.8)
+            addGridCrystal(center: SIMD3(cx, top + 0.2, z), size: SIMD3(0.30, 0.42, 0.30), core: SIMD4(0.30, 0.18, 0.03, 1.0), edge: GridTokens.amberHot, intensity: 1.6, phase: Float(shown) * 0.7)
+            if shown == 0 {
+                addLabel(SIMD3(cx, top + 0.45, z), "THE FIRST ZERO", sub: String(format: "1/2 + %.4f i", gamma), color: GridTokens.amberHot, station: 0)
             }
+            shown += 1
         }
+        addLabel(SIMD3(xOf(0.95), baseY + 1.0, zOf(sc.t0 + (sc.t1 - sc.t0) * 0.30)), "HEIGHT = SIZE OF ZETA", sub: "Computed, not drawn", color: GridTokens.cyan, station: 0)
+    }
 
-        // ---- STATION 2 (X = -30): ROBIN'S CRITERION (1984) & THE 5040 WIREFRAME GATE ----
-        let x2: Float = -30.0
-        let ceilingY: Float = 3.40
-        // Grid-style open architectural wireframe pavilion framing Robin's 5040 Gate (homage to GYM in the-grid.jpg!)
-        addGridPortalFrame(centerX: x2, zOffset: -3.2, width: 8.6, height: 5.8, depth: 1.4, color: GridTokens.greyLight, light: 0.55)
-        // Laser-etched horizontal Robin Ceiling plane at ratio = 1.0
-        addGridBox(
-            center: SIMD3(x2, ceilingY, 0), size: SIMD3(8.4, 0.05, 6.2),
-            face: SIMD4(0.015, 0.055, 0.06, 0.16),
-            edge: GridTokens.cyan, edgeIntensity: 1.05, edgePx: 1.4, mode: 4.0, translucent: true
-        )
-        addLabel(SIMD3(x2 + 3.4, ceilingY + 0.18, -2.6), "THE DIVISOR CEILING", sub: "RH is true iff NO number > 5,040 pokes through", color: GridTokens.cyan, station: 1)
+    // ---- Station 2: psi(x) and von Mangoldt's explicit formula ----
+    private func psiPoint(_ x: Float, _ v: Float, z: Float = 0) -> SIMD3<Float> {
+        let cx = stations.count > 1 ? stations[1].pos.x : -30
+        let u = (x - psiX0) / max(1, psiX1 - psiX0)
+        let top = psiX1 * 1.04
+        return SIMD3(cx - 4.0 + u * 8.0, 0.45 + max(0, min(top, v)) / top * 5.6, z)
+    }
 
-        for (ri, r) in robin.enumerated() {
-            let nVal = (r["n"] as? Int) ?? 0
-            let ratio = Float((r["ratio_mm"] as? Int) ?? 900) / 1000.0
-            let u = Float(ri) / Float(max(1, robin.count - 1))
-            let bx = x2 + (u - 0.5) * 7.4
-            let barH = max(0.55, min(5.4, (ratio - 0.68) * 10.0))
-            let is5040 = (nVal == 5040)
-            let exceeds = ratio >= 1.0
-            let edgeCol: SIMD4<Float> = is5040 ? GridTokens.amberHot : (exceeds ? GridTokens.alertRed : GridTokens.cyan)
-            let faceCol: SIMD4<Float> = is5040 ? SIMD4(0.06, 0.04, 0.014, 1.0) : GridTokens.obsidianBody
-            let bw: Float = is5040 ? 0.56 : 0.40
-            addGridBox(
-                center: SIMD3(bx, 0.18 + barH * 0.5, 0), size: SIMD3(bw, barH, bw),
-                face: faceCol, edge: edgeCol, edgeIntensity: is5040 ? 1.65 : (exceeds ? 1.05 : 0.88), edgePx: is5040 ? 1.6 : 1.35
-            )
-            // Luminous crisp top cap ring on each bar
-            if is5040 {
-                addGridCrystal(
-                    center: SIMD3(bx, barH + 0.72, 0), size: SIMD3(0.62, 0.88, 0.62),
-                    core: SIMD4(0.28, 0.18, 0.04, 1.0), edge: GridTokens.amberHot, intensity: 1.85, phase: 0.3
-                )
-                addLine(SIMD3(bx, barH + 0.2, 0), SIMD3(bx, barH + 1.3, 0), color: GridTokens.amberHot, light: 1.2, core: 1.0, glow: 5.5)
-                addLabel(SIMD3(bx, barH + 1.25, 0), "5,040: THE FINAL REBEL NUMBER", sub: String(format: "Last number in math above ceiling (%.4f)", ratio), color: GridTokens.amber, station: 1)
-            } else if nVal == 12 {
-                addLabel(SIMD3(bx, barH + 0.35, 0.6), "SMALL REBEL NUMBERS (12..2520)", sub: "Poke above ceiling before 5,040", color: GridTokens.alertRed, station: 1)
-            } else if nVal == 55440 {
-                addLabel(SIMD3(bx, barH + 0.35, 0.6), "SAFE FOREVER PAST 5,040", sub: String(format: "n = 55,440 stays under (%.4f < 1.0)", ratio), color: GridTokens.cyan, station: 1)
-            }
-        }
+    private func buildPrimeStaircase(_ sc: Rh3dScene) {
+        let cx = stations[1].pos.x
+        // A dark back plate so the curves read against the sky.
+        addGridBox(center: SIMD3(cx, 3.25, -0.12), size: SIMD3(8.5, 6.0, 0.06), face: SIMD4(0.004, 0.006, 0.009, 0.80), edge: GridTokens.greyMid, edgeIntensity: 0.6, edgePx: 1.2, mode: 4.0, translucent: true)
+        addLine(psiPoint(sc.psiX0, 0), psiPoint(sc.psiX1, 0), color: GridTokens.greyMid, light: 0.6, core: 0.8, glow: 2.5)
+        addLine(psiPoint(sc.psiX0, 0), psiPoint(sc.psiX0, sc.psiX1), color: GridTokens.greyMid, light: 0.6, core: 0.8, glow: 2.5)
 
-        // ---- STATION 3 (X = -18): SMASHING THE 2/3 CLASSICAL BARRIER ----
-        let x3: Float = -18.0
-        let barrierY: Float = 3.8
-        // Sleek laser-etched crimson-amber 2/3 barrier slab with central portal breached by Alpoge's cyan staircase
-        addGridBox(
-            center: SIMD3(x3, barrierY, -2.5), size: SIMD3(8.2, 0.16, 2.1),
-            face: SIMD4(0.09, 0.018, 0.018, 0.22), edge: GridTokens.alertRed, edgeIntensity: 1.25, edgePx: 1.5, mode: 4.0, translucent: true
-        )
-        addGridBox(
-            center: SIMD3(x3, barrierY, 2.5), size: SIMD3(8.2, 0.16, 2.1),
-            face: SIMD4(0.09, 0.018, 0.018, 0.22), edge: GridTokens.alertRed, edgeIntensity: 1.25, edgePx: 1.5, mode: 4.0, translucent: true
-        )
-        // Dark obsidian stanchions supporting the 2/3 barrier
-        addGridBox(center: SIMD3(x3 - 3.9, barrierY * 0.5, -2.5), size: SIMD3(0.28, barrierY, 0.28), face: GridTokens.obsidianBody, edge: GridTokens.alertRed, edgeIntensity: 0.95)
-        addGridBox(center: SIMD3(x3 + 3.9, barrierY * 0.5, -2.5), size: SIMD3(0.28, barrierY, 0.28), face: GridTokens.obsidianBody, edge: GridTokens.alertRed, edgeIntensity: 0.95)
-        addLine(SIMD3(x3 - 4.1, barrierY, -1.45), SIMD3(x3 + 4.1, barrierY, -1.45), color: GridTokens.alertRed, light: 1.25, core: 1.1, glow: 5.5)
-        addLabel(SIMD3(x3 - 2.6, barrierY + 0.35, -2.6), "THE 100-YEAR '2/3' BRICK WALL", sub: "Every older proof method got stuck here", color: GridTokens.alertRed, station: 2)
+        // The exact staircase: flat, then a jump of ln p at each prime power.
+        var px = sc.psiX0
+        var pv: Float = 0
+        for st in sc.psiSteps {
+            if st.x > px { addLine(psiPoint(px, pv), psiPoint(st.x, pv), color: GridTokens.greyWhite, light: 0.42, core: 3.2, glow: 1.2) }
+            addLine(psiPoint(st.x, pv), psiPoint(st.x, st.v), color: GridTokens.greyWhite, light: 0.42, core: 3.2, glow: 1.2)
+            addLine(psiPoint(st.x, 0), psiPoint(st.x, -1.2), color: GridTokens.greyLight, light: 0.55, core: 0.7, glow: 2.0)
+            px = st.x
+            pv = st.v
+        }
+        addLine(psiPoint(px, pv), psiPoint(sc.psiX1, pv), color: GridTokens.greyWhite, light: 0.42, core: 3.2, glow: 1.2)
 
-        for (ti, th) in theta.enumerated() {
-            let cls = Float((th["classical_mm"] as? Int) ?? 500) / 1000.0
-            let alp = Float((th["alpoge_mm"] as? Int) ?? 700) / 1000.0
-            let u = Float(ti) / Float(max(1, theta.count - 1))
-            let sx = x3 + (u - 0.5) * 6.8
-            let clsH = cls * 5.7
-            let alpH = alp * 5.7
-            // Stalled obsidian columns behind (trapped under 2/3, subtle red wireframe edges)
-            addGridBox(
-                center: SIMD3(sx, 0.18 + clsH * 0.5, -1.5), size: SIMD3(0.44, clsH, 0.44),
-                face: GridTokens.obsidianDeep, edge: GridTokens.alertRed, edgeIntensity: 0.72, edgePx: 1.25
-            )
-            // Alpoge's dark-obsidian & blazing electric-cyan staircase punching cleanly past 2/3!
-            let crossed = alp > 0.6667
-            let sEdge = crossed ? GridTokens.cyan : GridTokens.greyLight
-            addGridBox(
-                center: SIMD3(sx, 0.18 + alpH * 0.5, 0.5), size: SIMD3(0.56, alpH, 0.70),
-                face: crossed ? SIMD4(0.014, 0.036, 0.042, 1.0) : GridTokens.obsidianBody,
-                edge: sEdge, edgeIntensity: crossed ? 1.38 : 0.80, edgePx: 1.45
-            )
-            if ti == 7 {
-                addGridCrystal(
-                    center: SIMD3(sx, alpH + 0.72, 0.5), size: SIMD3(0.54, 0.76, 0.54),
-                    core: SIMD4(0.04, 0.24, 0.26, 1.0), edge: GridTokens.cyan, intensity: 1.75, phase: 1.2
-                )
-                addLabel(SIMD3(sx, alpH + 1.18, 0.5), "THE BREAKTHROUGH STAIRCASE", sub: String(format: "8 boosts hit %.2f — vaults past 2/3!", alp), color: GridTokens.cyan, station: 2)
-            }
-            if ti == 3 {
-                addLabel(SIMD3(sx, clsH + 0.30, -1.5), "OLDER METHODS STALL OUT", sub: String(format: "Stuck under red ceiling (%.2f < 0.67)", cls), color: GridTokens.alertRed, station: 2)
-            }
-        }
+        addLabel(psiPoint(23, 20.5), "THE PRIME STAIRCASE", sub: "A step up at every prime", color: GridTokens.greyWhite, station: 1)
+        psiLabelIndex = labelAnchors.count
+        addLabel(psiPoint(53, 54), "FORMULA WITH 100 ZEROS", sub: "One wave per zero", color: GridTokens.cyan, station: 1)
+        addLabel(psiPoint(sc.psiX0, -2.5), "2", color: GridTokens.greyLight, station: 1)
+        addLabel(psiPoint(sc.psiX1, -2.5), "\(Int(sc.psiX1))", color: GridTokens.greyLight, station: 1)
+    }
 
-        // ---- STATION 4 (X = -6): THETA-LIFT & FORMAL DEGREE CATHEDRAL (Pure Monochrome Silver + Cyan Pulses) ----
-        let x4: Float = -6.0
-        let pillars4 = [
-            ("WAVE CALIBRATOR", "FormalDegreeBessel · tunes wave amplitude"),
-            ("8-STEP BOOST CHAIN", "ThetaPairLifts · pushes past 2/3 wall"),
-            ("PERIOD INTEGRALS", "Whittaker · measures prime rhythms"),
-            ("CURVED SPACE WAVES", "Automorphic · smooth prime harmonics"),
-            ("FREQUENCY SPLITTER", "Spectral · cancels out random static"),
-            ("BESSEL KERNELS", "BesselKernels · smooth wave filters"),
-            ("EIGENVALUE LOCKS", "HeckeEigen · bounds prime spikes"),
-            ("SYMMETRY SPLITTER", "Endoscopy · breaks huge math into pieces"),
-        ]
-        let core4 = SIMD3<Float>(x4, 3.7, 0)
-        addGridCrystal(
-            center: core4, size: SIMD3(1.45, 2.15, 1.45),
-            core: SIMD4(0.04, 0.14, 0.16, 1.0), edge: GridTokens.cyan, intensity: 1.75, phase: 2.0
-        )
-        // Concentric wireframe orbital ring around Theta Core
-        for rStep in 0..<24 {
-            let a0 = Float(rStep) / 24.0 * .pi * 2
-            let a1 = Float(rStep + 1) / 24.0 * .pi * 2
-            addLine(
-                SIMD3(x4 + cos(a0) * 1.9, 3.7, sin(a0) * 1.9),
-                SIMD3(x4 + cos(a1) * 1.9, 3.7, sin(a1) * 1.9),
-                color: GridTokens.greyWhite, light: 0.78, core: 0.85, glow: 3.6
-            )
-        }
-        addLabel(SIMD3(x4, 5.2, 0), "THE MIRROR TRANSLATOR CORE", sub: "Turns messy primes into smooth waves", color: GridTokens.cyan, station: 3)
-        for (pi, (pname, psub)) in pillars4.enumerated() {
-            let ang = Float(pi) / Float(pillars4.count) * .pi * 2.0 - .pi * 0.25
-            let px = x4 + cos(ang) * 3.45
-            let pz = sin(ang) * 3.45
-            let ph: Float = 4.2 + Float(pi % 3) * 0.72
-            let pEdge = (pi % 2 == 0) ? GridTokens.greyWhite : GridTokens.greyLight
-            addGridCyl(center: SIMD3(px, 0.18 + ph * 0.5, pz), size: SIMD3(0.54, ph, 0.54), face: GridTokens.obsidianBody, edge: pEdge, edgeIntensity: 0.92)
-            // Crisp silver capital cap
-            addGridBox(center: SIMD3(px, ph + 0.28, pz), size: SIMD3(0.72, 0.16, 0.72), face: GridTokens.obsidianSlate, edge: GridTokens.cyan, edgeIntensity: 1.15)
-            // Pulsing energy filament into central Theta Core
-            addLine(SIMD3(px, ph + 0.25, pz), core4, color: GridTokens.cyan, light: 0.92, core: 0.85, glow: 4.8, pulseSpeed: 0.65, pulsePhase: Float(pi) * 0.13)
-            if pi == 0 || pi == 1 || pi == 4 || pi == 7 {
-                addLabel(SIMD3(px, ph + 0.6, pz), pname, sub: psub, color: GridTokens.greyWhite, station: 3)
-            }
-        }
+    // How many zeros the animated curve uses at `phase` in [0, 1]: none, then one at a time,
+    // then faster, then all of them.
+    private func psiZerosShown(phase: Float) -> Int {
+        let top = max(0, psiRows - 1)
+        if phase < 0.10 { return 0 }
+        if phase > 0.86 { return top }
+        let w = (phase - 0.10) / 0.76
+        return min(top, max(1, Int((Float(top) * w * w).rounded())))
+    }
 
-        // ---- STATION 5 (X = +6): REAL 175,182-FILE OBSIDIAN-GLASS PROOF METROPOLIS (HYDRATED FROM rh-atlas.json!) ----
-        let x5: Float = 6.0
-        buildRealProofCity(centerX: x5, addLine: addLine)
-
-        // ---- STATION 6 (X = +18): BEHREND SPHERE WIREFRAME LATTICE + WEIL BOUND ARCHES ----
-        let x6: Float = 18.0
-        // Outer precision wireframe bounding cube around the 3D Behrend lattice
-        let bMin = SIMD3<Float>(x6 - 2.6, 0.6, -2.6), bMax = SIMD3<Float>(x6 + 2.6, 5.2, 2.6)
-        let cubeCorners: [SIMD3<Float>] = [
-            SIMD3(bMin.x, bMin.y, bMin.z), SIMD3(bMax.x, bMin.y, bMin.z), SIMD3(bMax.x, bMax.y, bMin.z), SIMD3(bMin.x, bMax.y, bMin.z),
-            SIMD3(bMin.x, bMin.y, bMax.z), SIMD3(bMax.x, bMin.y, bMax.z), SIMD3(bMax.x, bMax.y, bMax.z), SIMD3(bMin.x, bMax.y, bMax.z),
-        ]
-        let cubeEdges = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
-        for (a, b) in cubeEdges {
-            addLine(cubeCorners[a], cubeCorners[b], color: GridTokens.greyDim, light: 0.45, core: 0.65, glow: 2.6)
+    private func refreshPsiCurve(zerosShown k: Int) {
+        guard psiRows > 0, k >= 0, k < psiRows, k != psiShown, let dev = device else { return }
+        psiShown = k
+        let n = psiSamples
+        var segs: [Rh3dQuadLineSeg] = []
+        segs.reserveCapacity(n - 1)
+        for i in 0..<(n - 1) {
+            let xa = psiX0 + (psiX1 - psiX0) * Float(i) / Float(n - 1)
+            let xb = psiX0 + (psiX1 - psiX0) * Float(i + 1) / Float(n - 1)
+            segs.append(Rh3dQuadLineSeg(
+                p0Width: SIMD4(psiPoint(xa, psiCurves[k * n + i], z: 0.10), 1.15),
+                p1Glow: SIMD4(psiPoint(xb, psiCurves[k * n + i + 1], z: 0.10), 3.0),
+                color: SIMD4(GridTokens.cyan.x * 0.3, GridTokens.cyan.y, GridTokens.cyan.z, 1.6),
+                anim: SIMD4(0, 0, 0, 0)
+            ))
         }
-        for ix in -2...2 {
-            for iy in 0...4 {
-                for iz in -2...2 {
-                    let fx = Float(ix), fy = Float(iy) - 2.0, fz = Float(iz)
-                    let r2 = fx * fx + fy * fy + fz * fz
-                    let onBehrendShell = (r2 >= 3.8 && r2 <= 5.2)
-                    let p = SIMD3<Float>(x6 + fx * 1.12, 1.05 + Float(iy) * 0.92, fz * 1.12)
-                    if onBehrendShell {
-                        addGridBox(
-                            center: p, size: SIMD3(0.38, 0.38, 0.38),
-                            face: SIMD4(0.08, 0.045, 0.012, 1.0), edge: GridTokens.amberHot, edgeIntensity: 1.50, edgePx: 1.45
-                        )
-                    } else if (ix + iy + iz) % 2 == 0 {
-                        addGridBox(
-                            center: p, size: SIMD3(0.20, 0.20, 0.20),
-                            face: GridTokens.obsidianGlass, edge: GridTokens.greyDim, edgeIntensity: 0.45, edgePx: 1.0, translucent: true
-                        )
-                    }
-                }
-            }
+        let bytes = segs.count * MemoryLayout<Rh3dQuadLineSeg>.stride
+        if dynLinesVB == nil || dynLinesVB!.length < bytes {
+            dynLinesVB = dev.makeBuffer(length: bytes, options: .storageModeShared)
         }
-        // 3 razor-sharp luminous parabolic Weil finite-field arches overhead
-        for (ai, az) in ([-2.3 as Float, 0.0, 2.3]).enumerated() {
-            var prev: SIMD3<Float>? = nil
-            for step in 0...16 {
-                let a = Float(step) / 16.0 * .pi
-                let pt = SIMD3<Float>(x6 + cos(a) * 4.1, 1.5 + sin(a) * 4.7, az)
-                if let p0 = prev {
-                    addLine(p0, pt, color: ai == 1 ? GridTokens.amberHot : GridTokens.greyLight, light: ai == 1 ? 1.20 : 0.72, core: ai == 1 ? 1.1 : 0.82, glow: ai == 1 ? 5.8 : 3.8, pulseSpeed: ai == 1 ? 0.40 : 0, pulsePhase: Float(step) * 0.06)
-                }
-                prev = pt
-            }
+        if let vb = dynLinesVB {
+            segs.withUnsafeBytes { vb.contents().copyMemory(from: $0.baseAddress!, byteCount: bytes) }
+            dynLineSegCount = segs.count
         }
-        addLabel(SIMD3(x6, 3.6, 2.5), "ANTI-COLLISION CAGE (BEHREND)", sub: "Blocks sneaky repeating-error traps", color: GridTokens.amber, station: 5)
-        addLabel(SIMD3(x6, 6.3, 0), "NOISE SPEED-LIMIT ARCHES (WEIL)", sub: "Caps leftover waves so zero loopholes exist", color: GridTokens.amberHot, station: 5)
-
-        // ---- STATION 7 (X = +30): MULTI-KERNEL VERIFICATION FORTRESS ----
-        let x7: Float = 30.0
-        let core7 = SIMD3<Float>(x7, 3.25, 0)
-        addGridPortalFrame(centerX: x7, zOffset: 0.0, width: 8.6, height: 6.2, depth: 8.6, color: GridTokens.greyDim, light: 0.36)
-        addGridCrystal(
-            center: core7, size: SIMD3(1.55, 2.35, 1.55),
-            core: SIMD4(0.03, 0.22, 0.24, 1.0), edge: GridTokens.cyan, intensity: 1.85, phase: 3.1
-        )
-        addLabel(SIMD3(x7, 4.75, 0), "ZERO CHEATS · 3 BASIC AXIOMS", sub: "No sorry · No shortcuts · 100% pure logic", color: GridTokens.cyan, station: 6)
-
-        let kernels: [(String, String, Float, Float, SIMD4<Float>)] = [
-            ("CHECKER #1: LEAN KERNEL", "Official strict verifier (lake --paranoid)", -2.8, -2.8, GridTokens.cyan),
-            ("CHECKER #2: LEANCHECKER", "Independent C++ referee",  2.8, -2.8, GridTokens.greyWhite),
-            ("CHECKER #3: NANODA (RUST)", "Built from scratch in Rust",  2.8,  2.8, GridTokens.greyWhite),
-            ("CHECKER #4: CON-LECHE/RON", "Independent multi-kernel audit", -2.8,  2.8, GridTokens.cyan),
-        ]
-        for (ki, (kname, ksub, dx, dz, kcol)) in kernels.enumerated() {
-            let kh: Float = 5.4
-            // Tall obsidian monolith with razor-sharp wireframe edges + vertical luminous core slit
-            addGridBox(
-                center: SIMD3(x7 + dx, 0.18 + kh * 0.5, dz), size: SIMD3(1.12, kh, 1.12),
-                face: GridTokens.obsidianBody, edge: kcol, edgeIntensity: 1.15, edgePx: 1.45, mode: 1.0, floorBands: 9.0
-            )
-            addLine(SIMD3(x7 + dx, 0.5, dz), SIMD3(x7 + dx, kh - 0.1, dz), color: kcol, light: 1.15, core: 1.1, glow: 5.5)
-            // Animated cyan verification beam locking into the central axiom crystal
-            addLine(SIMD3(x7 + dx, kh - 0.3, dz), core7, color: GridTokens.cyan, light: 1.15, core: 0.95, glow: 5.4, pulseSpeed: 0.72, pulsePhase: Float(ki) * 0.25)
-            addLabel(SIMD3(x7 + dx, kh + 0.55, dz), kname, sub: ksub, color: kcol, station: 6)
-        }
-        // 6 sharp amber sentinel crystals on outer front edge = exact 6 audited metaprogramming sites
-        for mi in 0..<6 {
-            let ang = -0.75 + Float(mi) * 0.30
-            let mx = x7 + sin(ang) * 4.3
-            let mz = 3.9 + cos(ang) * 0.5
-            addGridCrystal(
-                center: SIMD3(mx, 1.15, mz), size: SIMD3(0.34, 0.48, 0.34),
-                core: SIMD4(0.18, 0.10, 0.02, 1.0), edge: GridTokens.amberHot, intensity: 1.55, phase: Float(mi) * 0.5
-            )
-        }
-        addLabel(SIMD3(x7, 1.75, 4.4), "6 HUMAN-AUDITED HELPERS", sub: "Only 6 script files — all inspected by hand", color: GridTokens.amber, station: 6)
-
-        // ---- STATION 8 (X = +42): THE SUMMIT — Main.riemannHypothesis (Q.E.D.) ----
-        let x8: Float = 42.0
-        // Sleek terraced obsidian ziggurat edged in razor-sharp luminous white-silver & cyan
-        let tiers: [(Float, Float, Float, SIMD4<Float>, Float)] = [
-            (6.8, 0.55, 0.35, GridTokens.greyLight, 0.85),
-            (5.2, 0.65, 0.98, GridTokens.greyWhite, 0.98),
-            (3.6, 0.85, 1.78, GridTokens.cyan,      1.15),
-            (2.2, 1.15, 2.82, GridTokens.amberHot,  1.35),
-        ]
-        for (tw, th, ty, edgeC, eInt) in tiers {
-            addGridBox(
-                center: SIMD3(x8, ty, 0), size: SIMD3(tw, th, tw),
-                face: GridTokens.obsidianBody, edge: edgeC, edgeIntensity: eInt, edgePx: 1.45
-            )
-        }
-        // Central obsidian-and-gold fluted spire rising to Y = 9.4 + sky-piercing light needle
-        addGridCyl(
-            center: SIMD3(x8, 6.2, 0), size: SIMD3(0.76, 6.2, 0.76),
-            face: GridTokens.obsidianDeep, edge: GridTokens.amberHot, edgeIntensity: 1.45, edgePx: 1.4
-        )
-        addLine(SIMD3(x8, 3.2, 0), SIMD3(x8, 16.5, 0), color: GridTokens.amberHot, light: 1.45, core: 1.15, glow: 8.5, pulseSpeed: 0.38, pulsePhase: 0.0)
-        // Radiant Q.E.D. Double-Crystal Crown
-        addGridCrystal(
-            center: SIMD3(x8, 10.1, 0), size: SIMD3(1.48, 2.20, 1.48),
-            core: SIMD4(0.32, 0.22, 0.05, 1.0), edge: GridTokens.amberHot, intensity: 2.0, phase: 0.0
-        )
-        // Double concentric luminous Grid halo rings around Summit Crown
-        for hi in 0..<24 {
-            let a0 = Float(hi) / 24.0 * .pi * 2
-            let a1 = Float(hi + 1) / 24.0 * .pi * 2
-            addLine(
-                SIMD3(x8 + cos(a0) * 2.55, 8.6, sin(a0) * 2.55),
-                SIMD3(x8 + cos(a1) * 2.55, 8.6, sin(a1) * 2.55),
-                color: GridTokens.cyan, light: 1.25, core: 1.05, glow: 5.8
-            )
-            addLine(
-                SIMD3(x8 + cos(a0) * 3.20, 8.6, sin(a0) * 3.20),
-                SIMD3(x8 + cos(a1) * 3.20, 8.6, sin(a1) * 3.20),
-                color: GridTokens.greyWhite, light: 0.72, core: 0.75, glow: 3.5
-            )
-        }
-        addLabel(SIMD3(x8, 10.4, 0), "SOLVED: RIEMANN HYPOTHESIS (Q.E.D.)", sub: "167 years later · 4 lines in src/Main.lean", color: GridTokens.amberHot, station: 7)
-        addLabel(SIMD3(x8 + 2.8, 3.0, 2.8), "813,182 MACHINE-PROVEN FACTS", sub: "17.37M lines · Certified Nov 21, 2026", color: GridTokens.cyan, station: 7)
-
-        // Upload screen-space quad-expanded vector lines buffer
-        quadLineSegCount = segs.count
-        if let dev = device, !segs.isEmpty {
-            quadLinesVB = dev.makeBuffer(bytes: segs, length: segs.count * MemoryLayout<Rh3dQuadLineSeg>.stride, options: .storageModeShared)
+        if psiLabelIndex >= 0 && psiLabelIndex < labelAnchors.count {
+            labelAnchors[psiLabelIndex].text = k == 0 ? "SMOOTH TREND, NO ZEROS YET" : (k == 1 ? "FORMULA WITH 1 ZERO" : "FORMULA WITH \(k) ZEROS")
         }
     }
 
-    private func buildRealProofCity(
-        centerX x5: Float,
-        addLine: (SIMD3<Float>, SIMD3<Float>, SIMD4<Float>, Float, Float, Float, Float, Float) -> Void
-    ) {
-        let atlasURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/lean/index/rh-atlas.json")
+    // ---- Station 3: Robin's criterion ----
+    private func buildRobinTest(_ sc: Rh3dScene) {
+        let cx = stations[2].pos.x
+        // The ratio for n = 12 is 1.44, far above the rest; the pillars start at 60 so that
+        // the small gap between 5,040 (just over) and 10,080 (just under) stays visible.
+        let marks = sc.robin.filter { $0.n >= 60 }
+        guard !marks.isEmpty else { return }
+        func heightOf(_ ratio: Float) -> Float { (ratio - 0.90) * 24.0 }
+        let ceilingY = 0.18 + heightOf(1.0)
+        addGridBox(center: SIMD3(cx, ceilingY, 0), size: SIMD3(8.6, 0.04, 3.0), face: SIMD4(0.015, 0.055, 0.06, 0.16), edge: GridTokens.cyan, edgeIntensity: 1.05, edgePx: 1.4, mode: 4.0, translucent: true)
+        addLabel(SIMD3(cx - 4.0, ceilingY + 0.05, 1.5), "THE CEILING", sub: "Ratio = 1", color: GridTokens.cyan, station: 2)
 
-        // Strict Grid architectural skyline: Obsidian glass towers with crisp white/silver & cyan floor tiers + amber Root beacon
-        func districtEdgeColor(_ libIdx: Int) -> (SIMD4<Float>, Float) {
-            switch abs(libIdx) % 10 {
-            case 0: return (GridTokens.amberHot, 1.35) // Root / Main
-            case 1: return (GridTokens.cyan,     1.12) // Formalism (130k files)
-            case 2: return (GridTokens.greyWhite, 1.05) // Supplements (44.5k files)
-            case 5: return (GridTokens.cyanSoft, 0.95) // Bessel
-            default: return (GridTokens.greyLight, 0.82)
+        for (i, m) in marks.enumerated() {
+            let u = Float(i) / Float(max(1, marks.count - 1))
+            let bx = cx + (u - 0.5) * 7.6
+            let h = max(0.3, heightOf(m.ratio))
+            let over = m.ratio >= 1.0
+            let is5040 = m.n == 5040
+            let edge: SIMD4<Float> = is5040 ? GridTokens.amberHot : (over ? GridTokens.amber : GridTokens.cyan)
+            addGridBox(center: SIMD3(bx, 0.18 + h * 0.5, 0), size: SIMD3(is5040 ? 0.52 : 0.40, h, is5040 ? 0.52 : 0.40), face: is5040 ? SIMD4(0.06, 0.04, 0.014, 1.0) : GridTokens.obsidianBody, edge: edge, edgeIntensity: is5040 ? 1.65 : 0.95, edgePx: is5040 ? 1.6 : 1.35)
+            if is5040 {
+                addGridCrystal(center: SIMD3(bx, 0.18 + h + 0.5, 0), size: SIMD3(0.44, 0.62, 0.44), core: SIMD4(0.30, 0.18, 0.03, 1.0), edge: GridTokens.amberHot, intensity: 1.7)
+                addLabel(SIMD3(bx, 0.18 + h + 0.95, 0), "5,040: THE LAST ONE OVER", sub: String(format: "Ratio %.4f", m.ratio), color: GridTokens.amberHot, station: 2)
+            } else if i == 0 {
+                addLabel(SIMD3(bx, 0.18 + h + 0.1, 0), "n = \(fmtInt(m.n))", sub: String(format: "Ratio %.3f", m.ratio), color: GridTokens.amber, station: 2)
+            } else if i == marks.count - 1 {
+                addLabel(SIMD3(bx, 0.18 + h + 0.1, 0), "n = \(fmtInt(m.n))", sub: String(format: "Ratio %.3f, under", m.ratio), color: GridTokens.cyan, station: 2)
             }
         }
+    }
 
-        var builtFromAtlas = false
+    // ---- Station 4: the one idea the author's note names ----
+    private func buildThetaChain() {
+        let cx = stations[3].pos.x
+        // Three example lengths X and their chains of sqrt(X) links. This shows how the chain
+        // grows; it is not a picture of what a theta lift does.
+        let rows: [(x: Int, links: Int)] = [(16, 4), (64, 8), (256, 16)]
+        for (r, row) in rows.enumerated() {
+            let z: Float = 2.4 - Float(r) * 2.4
+            let y: Float = 1.2 + Float(r) * 1.5
+            let x0 = cx - 3.9
+            let spacing: Float = 0.52
+            var prev: SIMD3<Float>? = nil
+            for k in 0..<row.links {
+                let p = SIMD3<Float>(x0 + Float(k) * spacing, y, z)
+                addGridCrystal(center: p, size: SIMD3(0.26, 0.36, 0.26), core: SIMD4(0.10, 0.11, 0.12, 1.0), edge: GridTokens.greyWhite, intensity: 1.35, phase: Float(k) * 0.4)
+                if let q = prev {
+                    addLine(q, p, color: GridTokens.cyan, light: 1.0, core: 1.0, glow: 4.5, pulseSpeed: 0.6, pulsePhase: Float(k) * 0.09)
+                }
+                prev = p
+            }
+            let end = SIMD3<Float>(x0 + Float(row.links - 1) * spacing + 0.5, y + 0.2, z)
+            addLabel(end, "X = \(row.x): \(row.links) LIFTS", sub: r == 2 ? "Chain length grows like √X" : "", color: GridTokens.greyWhite, station: 3)
+        }
+    }
+
+    // ---- Station 5: no zeros right of the line, plus the mirror symmetry ----
+    private func buildLastStep(_ sc: Rh3dScene) {
+        let cx = stations[4].pos.x
+        // The critical strip stood upright and seen from the front: real part across, t upward.
+        let y0: Float = 0.5, y1: Float = 8.3, half: Float = 3.6
+        func yOf(_ t: Float) -> Float { y0 + (t - sc.t0) / (sc.t1 - sc.t0) * (y1 - y0) }
+        let midY = (y0 + y1) * 0.5, hgt = y1 - y0
+        // Right half (real part above 1/2): what the Lean proof establishes.
+        addGridBox(center: SIMD3(cx + half * 0.5, midY, 0), size: SIMD3(half, hgt, 0.05), face: SIMD4(0.015, 0.07, 0.075, 0.30), edge: GridTokens.cyan, edgeIntensity: 1.1, edgePx: 1.4, mode: 4.0, translucent: true)
+        // Left half: follows from the functional equation.
+        addGridBox(center: SIMD3(cx - half * 0.5, midY, 0), size: SIMD3(half, hgt, 0.05), face: SIMD4(0.05, 0.05, 0.055, 0.22), edge: GridTokens.greyLight, edgeIntensity: 0.8, edgePx: 1.3, mode: 4.0, translucent: true)
+        addLine(SIMD3(cx, y0, 0.05), SIMD3(cx, y1 + 0.5, 0.05), color: GridTokens.amberHot, light: 1.4, core: 1.3, glow: 6.5)
+
+        for (i, gamma) in sc.zeros.enumerated() where gamma > sc.t0 && gamma < sc.t1 {
+            addGridCrystal(center: SIMD3(cx, yOf(gamma), 0.1), size: SIMD3(0.26, 0.36, 0.26), core: SIMD4(0.30, 0.18, 0.03, 1.0), edge: GridTokens.amberHot, intensity: 1.6, phase: Float(i) * 0.7)
+        }
+        // The mirror: s and 1 - conj(s) are zeros together. Arcs carry right to left.
+        for k in 0..<4 {
+            let y = y0 + 1.0 + Float(k) * 2.0
+            var prev: SIMD3<Float>? = nil
+            for j in 0...14 {
+                let u = Float(j) / 14.0
+                let p = SIMD3<Float>(cx + 2.3 - u * 4.6, y, 0.15 + sin(u * .pi) * 1.5)
+                if let q = prev {
+                    addLine(q, p, color: GridTokens.greyWhite, light: 0.7, core: 0.8, glow: 3.2, pulseSpeed: 0.5, pulsePhase: Float(k) * 0.2 + u * 0.3)
+                }
+                prev = p
+            }
+        }
+        addLabel(SIMD3(cx + half * 0.62, midY + 1.4, 0.1), "NO ZEROS HERE", sub: "Proved in Lean (allChi)", color: GridTokens.cyan, station: 4)
+        addLabel(SIMD3(cx - half * 0.62, midY - 0.6, 0.1), "SO NONE HERE", sub: "By mirror symmetry", color: GridTokens.greyWhite, station: 4)
+        addLabel(SIMD3(cx, y1 + 0.9, 0), "ALL ZEROS ON THE LINE", color: GridTokens.amberHot, station: 4)
+    }
+
+    // ---- Station 6: the proof's folders as towers ----
+    private func buildProofCity(_ sc: Rh3dScene) {
+        let cx = stations[5].pos.x
+        let atlasURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/lean/index/rh-atlas.json")
+        func towerHeight(lines: Int) -> Float { max(0.7, min(7.4, Float(log10(Double(max(10, lines)))) * 1.18 - 0.6)) }
+
+        var towers: [(name: String, files: Int, lines: Int, hub: String)] = []
         if let data = try? Data(contentsOf: atlasURL),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let clusters = obj["clusters"] as? [[String: Any]], !clusters.isEmpty {
-            builtFromAtlas = true
-            let sorted = clusters.sorted { (($0["modules"] as? Int) ?? 0) > (($1["modules"] as? Int) ?? 0) }
-            let count = min(42, sorted.count)
-            let cols = 7
-            let rows = (count + cols - 1) / cols
-            for idx in 0..<count {
-                let cl = sorted[idx]
-                let name = (cl["name"] as? String) ?? "Cluster"
-                let mods = (cl["modules"] as? Int) ?? 1
-                let lines = (cl["lines"] as? Int) ?? 100
-                let libIdx = (cl["lib"] as? Int) ?? 1
-                let (eCol, eInt) = districtEdgeColor(libIdx)
-
-                let gx = idx % cols
-                let gz = idx / cols
-                let bx = x5 + (Float(gx) - Float(cols - 1) * 0.5) * 1.15
-                let bz = (Float(gz) - Float(rows - 1) * 0.5) * 1.25
-                let bh = max(0.85, min(7.6, Float(log10(Double(max(10, lines)))) * 1.18 - 0.6))
-                let bw = max(0.42, min(0.90, 0.36 + Float(log10(Double(max(1, mods)))) * 0.14))
-                let bands = max(4.0, (bh * 2.2).rounded())
-
-                // Mode 1 = Architectural Obsidian Glass Skyscraper with glowing horizontal floor bands & wireframe corners!
-                addGridBox(
-                    center: SIMD3(bx, 0.18 + bh * 0.5, bz),
-                    size: SIMD3(bw, bh, bw),
-                    face: GridTokens.obsidianDeep,
-                    edge: eCol,
-                    edgeIntensity: idx < 5 ? eInt * 1.18 : eInt * 0.85,
-                    edgePx: idx < 5 ? 1.40 : 1.20,
-                    mode: 1.0,
-                    floorBands: bands
-                )
-                // Sleek vertical spire antenna + glowing rooftop parapet on top 5 districts
-                if idx < 5 {
-                    addGridBox(
-                        center: SIMD3(bx, 0.24 + bh, bz), size: SIMD3(bw * 1.04, 0.10, bw * 1.04),
-                        face: GridTokens.obsidianSlate, edge: GridTokens.greyWhite, edgeIntensity: 1.45, edgePx: 1.4
-                    )
-                    addLine(SIMD3(bx, 0.3 + bh, bz), SIMD3(bx, 1.35 + bh, bz), eCol, 1.15, 0.85, 4.5, 0, 0)
-                    let friendlyDist = (idx == 0) ? "BIGGEST TOWER: \(mods) FILES" : "DISTRICT #\(idx + 1): \(mods) FILES"
-                    addLabel(SIMD3(bx, bh + 0.65, bz), friendlyDist, sub: "\(lines / 1000)k lines · \(name)", color: eCol, station: 4)
-                    pickables.append(Rh3dPickable(
-                        center: SIMD3(bx, bh * 0.5, bz), radius: 1.0,
-                        title: "Real Proof District: \(name)",
-                        detail: "This skyscraper represents \(mods) real machine-checked Lean 4 files totaling \(lines) lines of code from ~/.openagents/lean/index/rh-atlas.json.",
-                        significance: "Every single line inside this folder was verified from scratch by 4 independent Lean kernels — zero skipped steps, zero hand-waving. Click SOURCE → to browse the actual Lean code.",
-                        moduleName: (cl["hub"] as? String) ?? name, stationIndex: 4
-                    ))
-                }
+            for cl in clusters {
+                let name = (cl["name"] as? String) ?? ""
+                towers.append((name, (cl["modules"] as? Int) ?? 1, (cl["lines"] as? Int) ?? 100, (cl["hub"] as? String) ?? name))
             }
+        } else {
+            // No local index: fall back to the published per-library totals.
+            towers = sc.libs.map { ($0.name, $0.files, $0.lines, "Main") }
         }
-
-        if !builtFromAtlas {
-            let fallback: [(String, Float, Float, Float, SIMD4<Float>)] = [
-                ("FORMALISM (130K FILES)", -1.6, 0.0, 7.2, GridTokens.cyan),
-                ("SUPPLEMENTS (44.5K FILES)", 1.6, 0.0, 5.8, GridTokens.greyWhite),
-                ("ROOT / MAIN", 0.0, -2.2, 3.6, GridTokens.amberHot),
-            ]
-            for (nm, dx, dz, h, c) in fallback {
-                addGridBox(center: SIMD3(x5 + dx, 0.18 + h * 0.5, dz), size: SIMD3(1.5, h, 1.5), face: GridTokens.obsidianDeep, edge: c, edgeIntensity: 1.15, edgePx: 1.4, mode: 1.0, floorBands: h * 2.2)
-                addLabel(SIMD3(x5 + dx, h + 0.6, dz), nm, sub: "Lean 4 Library", color: c, station: 4)
+        towers.sort { $0.files > $1.files }
+        let count = min(42, towers.count)
+        let cols = count > 12 ? 7 : 4
+        let rows = (count + cols - 1) / cols
+        if towers.count > count {
+            addLabel(SIMD3(cx + 3.4, 1.2, 4.2), "THE \(count) LARGEST FOLDERS", sub: "Of \(towers.count); heights on a log scale", color: GridTokens.cyan, station: 5)
+        }
+        for idx in 0..<count {
+            let tw = towers[idx]
+            let bx = cx + (Float(idx % cols) - Float(cols - 1) * 0.5) * (count > 12 ? 1.15 : 1.9)
+            let bz = (Float(idx / cols) - Float(rows - 1) * 0.5) * (count > 12 ? 1.25 : 2.2)
+            let bh = towerHeight(lines: tw.lines)
+            let bw = max(0.42, min(0.90, 0.36 + Float(log10(Double(max(1, tw.files)))) * 0.14))
+            let edge: SIMD4<Float> = idx == 0 ? GridTokens.amberHot : (idx < 6 ? GridTokens.cyan : GridTokens.greyLight)
+            addGridBox(center: SIMD3(bx, 0.18 + bh * 0.5, bz), size: SIMD3(bw, bh, bw), face: GridTokens.obsidianDeep, edge: edge, edgeIntensity: idx < 6 ? 1.2 : 0.75, edgePx: idx < 6 ? 1.40 : 1.20, mode: 1.0, floorBands: max(4.0, (bh * 2.2).rounded()))
+            if idx == 0 {
+                let short = tw.name.split(separator: ".").last.map(String.init) ?? tw.name
+                addLabel(SIMD3(bx, bh + 0.45, bz), "THE LARGEST: " + short.uppercased(), sub: "\(fmtInt(tw.files)) files · \(fmtInt(tw.lines)) lines", color: edge, station: 5)
             }
+            pickables.append(Rh3dPickable(center: SIMD3(bx, bh * 0.5, bz), radius: 0.8, title: tw.name, detail: "\(fmtInt(tw.files)) Lean files and \(fmtInt(tw.lines)) lines, as counted by the local index.", significance: "", moduleName: tw.hub, stationIndex: 5))
         }
+    }
+
+    // ---- Station 7: the independent checkers ----
+    private func buildCheckers(_ sc: Rh3dScene) {
+        let cx = stations[6].pos.x
+        let n = sc.checkers.count
+        guard n > 0 else { return }
+        let src = SIMD3<Float>(cx, 0.75, 2.9)
+        addGridBox(center: src, size: SIMD3(1.5, 1.1, 1.1), face: GridTokens.obsidianSlate, edge: GridTokens.greyWhite, edgeIntensity: 1.3, edgePx: 1.5)
+        addLabel(src + SIMD3(0, 0.7, 0), "THE PROOF", sub: "\(fmtInt(sceneLines)) lines", color: GridTokens.greyWhite, station: 6)
+        for (i, ck) in sc.checkers.enumerated() {
+            let u = n > 1 ? Float(i) / Float(n - 1) : 0.5
+            let px = cx + (u - 0.5) * 7.4
+            let h: Float = i % 2 == 0 ? 3.0 : 4.5
+            let pz: Float = -1.4
+            addGridCyl(center: SIMD3(px, 0.18 + h * 0.5, pz), size: SIMD3(0.9, h, 0.9), face: GridTokens.obsidianBody, edge: GridTokens.cyan, edgeIntensity: 1.05)
+            addGridCrystal(center: SIMD3(px, 0.18 + h + 0.5, pz), size: SIMD3(0.42, 0.60, 0.42), core: SIMD4(0.06, 0.24, 0.26, 1.0), edge: GridTokens.cyan, intensity: 1.6, phase: Float(i) * 0.9)
+            addLine(src + SIMD3(0, -0.4, -0.55), SIMD3(px, 0.25, pz + 0.45), color: GridTokens.cyan, light: 0.9, core: 0.9, glow: 4.5, pulseSpeed: 0.55, pulsePhase: Float(i) * 0.17)
+            addLabel(SIMD3(px, 0.18 + h + 0.95, pz), ck.name, sub: ck.tag, color: GridTokens.cyan, station: 6)
+        }
+    }
+
+    // ---- Station 8: the theorem ----
+    private func buildSummit(_ sc: Rh3dScene) {
+        let cx = stations[7].pos.x
+        addGridBox(center: SIMD3(cx, 3.3, 0), size: SIMD3(1.7, 6.2, 1.7), face: GridTokens.obsidianDeep, edge: GridTokens.amberHot, edgeIntensity: 1.3, edgePx: 1.5, mode: 1.0, floorBands: 12)
+        addGridCrystal(center: SIMD3(cx, 7.5, 0), size: SIMD3(1.1, 1.6, 1.1), core: SIMD4(0.30, 0.18, 0.03, 1.0), edge: GridTokens.amberHot, intensity: 1.9)
+        addRing(center: SIMD3(cx, 6.5, 0), radius: 2.0, color: GridTokens.amberHot, light: 1.2)
+        addRing(center: SIMD3(cx, 6.5, 0), radius: 2.6, color: GridTokens.greyWhite, light: 0.6)
+        // One marker for each theorem of src/Main.lean.
+        let n = sc.theoremNames.count
+        for i in 0..<n {
+            let a = Float.pi * (0.15 + 0.70 * Float(i) / Float(max(1, n - 1)))
+            let p = SIMD3<Float>(cx - cos(a) * 3.4, 0.6, sin(a) * 3.4)
+            addGridBox(center: SIMD3(p.x, 0.48, p.z), size: SIMD3(0.5, 0.6, 0.5), face: GridTokens.obsidianBody, edge: i < 2 ? GridTokens.amberHot : GridTokens.cyan, edgeIntensity: 1.1)
+            addLine(SIMD3(p.x, 0.8, p.z), SIMD3(cx, 2.4, 0), color: i < 2 ? GridTokens.amber : GridTokens.cyan, light: 0.7, core: 0.8, glow: 3.5, pulseSpeed: 0.5, pulsePhase: Float(i) * 0.2)
+        }
+        addLabel(SIMD3(cx, 8.6, 0), "THE RIEMANN HYPOTHESIS", sub: "Now a theorem: riemannHypothesis", color: GridTokens.amberHot, station: 7)
+        addLabel(SIMD3(cx - 3.2, 1.4, 2.4), "\(n) THEOREMS IN MAIN.LEAN", sub: "2 for zeta, 3 for every Dirichlet L-function", color: GridTokens.cyan, station: 7)
+        addLabel(SIMD3(cx + 2.9, 4.2, 0.5), "\(fmtInt(sceneTheorems)) THEOREMS AND LEMMAS", sub: "In \(fmtInt(sceneFiles)) files", color: GridTokens.greyWhite, station: 7)
     }
 
     private func uploadInstanceBuffers() {
@@ -2296,7 +2190,7 @@ final class RhFlythroughView: NSView {
         addSubview(topLeftFrame)
 
         topLeftBadge.translatesAutoresizingMaskIntoConstraints = false
-        topLeftBadge.stringValue = "OPENAGENTS / THE GRID  ·  DRAG ORBIT · SCROLL ZOOM · WASD FLY · SPACE PLAY"
+        topLeftBadge.stringValue = "DRAG TO ORBIT · SCROLL TO ZOOM · WASD TO FLY · SPACE TO PLAY"
         topLeftBadge.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
         topLeftBadge.textColor = GridTokens.nsLight
         topLeftFrame.addSubview(topLeftBadge)
@@ -2474,50 +2368,24 @@ final class RhFlythroughView: NSView {
     private func buildGuideContent(overview: Bool) -> Rh3dGuideContent {
         if overview {
             return Rh3dGuideContent(
-                stepTag: "THE BIG PICTURE IN 30 SECONDS  ·  8-STEP WALKTHROUGH",
-                badge: "SOLVED NOV 20, 2026 · $1M PRIZE",
-                badgeColor: GridTokens.nsAmber,
-                title: "Why Everyone Is Talking About This: The 167-Year Riemann Hypothesis Was Just Machine-Proven",
-                whatYouSee: "From left to right, these 8 stations walk you through the entire proof: the prime-number wave mystery (1) → the 5,040 whole-number check (2) → smashing the 100-year '2/3' barrier (3–4) → the real 175,182-file proof city (5) → error-proof safety nets (6) → 4 independent computer fact-checkers (7) → Q.E.D. (8).",
-                whyItMatters: "Unsolved since 1859, the Riemann Hypothesis was the #1 open prize problem in math — locking down the hidden rhythm of prime numbers and upgrading hundreds of 'assuming RH' theorems into unconditional truth. Even bigger: Levent Alpöge + AI wrote 17.37M lines of Lean 4, and 4 independent computer verifiers checked EVERY step in 24 hours — zero trust required.",
-                analogy: "",
-                nextLink: "",
-                isCompactWide: true
+                stepTag: "OVERVIEW", kicker: "8 STOPS", kickerColor: GridTokens.nsAmber,
+                title: overviewTitle, caption: overviewCaption, detail: "", source: "", isCompactWide: true
             )
         }
-        if let pick = selectedPick {
-            let st = (pick.stationIndex >= 0 && pick.stationIndex < stations.count) ? stations[pick.stationIndex] : nil
+        if let pick = selectedPick, pick.radius < 4.0 {
             return Rh3dGuideContent(
-                stepTag: "SELECTED 3D OBJECT · STEP \(pick.stationIndex + 1) OF \(max(1, stations.count))",
-                badge: st?.badge ?? "INSPECTED LANDMARK",
-                badgeColor: GridTokens.nsCyan,
-                title: pick.title,
-                whatYouSee: pick.detail,
-                whyItMatters: pick.significance.isEmpty ? (st?.whyItMatters ?? "") : pick.significance,
-                analogy: st?.analogy ?? "",
-                nextLink: st?.nextLink ?? "",
-                isCompactWide: false
+                stepTag: "SELECTED", kicker: "STOP \(pick.stationIndex + 1) OF \(max(1, stations.count))", kickerColor: GridTokens.nsCyan,
+                title: pick.title, caption: pick.detail, detail: "", source: "Lean module: \(pick.moduleName)", isCompactWide: false
             )
         }
         if activeStation >= 0 && activeStation < stations.count {
             let st = stations[activeStation]
-            let isAmberBadge = (activeStation == 0 || activeStation == 1 || activeStation == 5 || activeStation == 7)
             return Rh3dGuideContent(
-                stepTag: "STEP \(activeStation + 1) / \(stations.count)",
-                badge: st.badge,
-                badgeColor: isAmberBadge ? GridTokens.nsAmber : GridTokens.nsCyan,
-                title: st.title,
-                whatYouSee: st.plainEnglish,
-                whyItMatters: st.whyItMatters,
-                analogy: st.analogy,
-                nextLink: st.nextLink,
-                isCompactWide: false
+                stepTag: "STOP \(activeStation + 1) OF \(stations.count)", kicker: st.kicker, kickerColor: nsColor(st.accent),
+                title: st.title, caption: st.caption, detail: st.detail, source: st.source, isCompactWide: false
             )
         }
-        return Rh3dGuideContent(
-            stepTag: "EXPLAINER", badge: "THE GRID", badgeColor: GridTokens.nsCyan,
-            title: "Riemann Hypothesis 3D Flythrough", whatYouSee: "", whyItMatters: "", analogy: "", nextLink: "", isCompactWide: false
-        )
+        return Rh3dGuideContent(stepTag: "", kicker: "", kickerColor: GridTokens.nsCyan, title: overviewTitle, caption: "", detail: "", source: "", isCompactWide: false)
     }
 
     private func applyGuideLayout() {
@@ -2563,15 +2431,15 @@ final class RhFlythroughView: NSView {
 
     private func syncStoryHUD() {
         if isOverviewMode {
-            storyTitle.stringValue = "THE FULL STORY — 8 STATIONS FROM 1859 MYSTERY TO Q.E.D. (175,182 LEAN FILES)"
-            storySubtitle.stringValue = "Click any glowing station banner or tab below to swoop in, or press PLAY for the guided tour"
+            storyTitle.stringValue = overviewTitle
+            storySubtitle.stringValue = "Click a stop to fly to it, or press PLAY for the tour"
         } else if let pick = selectedPick {
-            storyTitle.stringValue = pick.title.uppercased()
-            storySubtitle.stringValue = "SELECTED 3D OBJECT · LEAN MODULE: \(pick.moduleName)"
+            storyTitle.stringValue = pick.title
+            storySubtitle.stringValue = "Lean module: \(pick.moduleName)"
         } else if activeStation >= 0 && activeStation < stations.count {
             let st = stations[activeStation]
-            storyTitle.stringValue = st.title.uppercased()
-            storySubtitle.stringValue = st.subtitle
+            storyTitle.stringValue = st.title
+            storySubtitle.stringValue = "STOP \(activeStation + 1) OF \(stations.count)  ·  \(st.kicker)"
         }
         updateGridButtonTitle(playPauseBtn, flyPlaying ? "PAUSE" : "PLAY", accent: GridTokens.nsCyan)
         updateGridButtonTitle(guideBtn, showGuide ? "GUIDE: ON" : "GUIDE: OFF", accent: showGuide ? GridTokens.nsAmber : nil)
@@ -2845,6 +2713,12 @@ final class RhFlythroughView: NSView {
             applyKeyboardFly(dt: dt)
         }
 
+        // Station 2 adds the zeros one at a time, on a 14-second loop; elsewhere it shows them all.
+        if activeStation == 1 && !isOverviewMode {
+            refreshPsiCurve(zerosShown: psiZerosShown(phase: (totalElapsedS / 14.0).truncatingRemainder(dividingBy: 1.0)))
+        } else {
+            refreshPsiCurve(zerosShown: max(0, psiRows - 1))
+        }
         renderMetalFrame()
         updateProjectedLabels()
     }
@@ -2884,7 +2758,7 @@ final class RhFlythroughView: NSView {
     private func buildUniforms(width: Int, height: Int, dpr: Float) -> Rh3dUniforms {
         let aspect = Float(max(1, width)) / Float(max(1, height))
         let vp = rh3dPerspective(fovY: 0.82, aspect: aspect, nearZ: 0.2, farZ: 280.0) * rh3dLookAt(eye: eye, target: target)
-        let accentModes: [Float] = [0, 1, 0, 3, 0, 1, 0, 1]
+        let accentModes: [Float] = [0, 0, 1, 3, 1, 0, 0, 1]
         func stVec(_ idx: Int) -> SIMD4<Float> {
             let x = (idx < stations.count) ? stations[idx].pos.x : Float(-42 + idx * 12)
             let z = (idx < stations.count) ? stations[idx].pos.z : 0.0
@@ -2985,6 +2859,10 @@ final class RhFlythroughView: NSView {
                 enc.setVertexBytes(&uniforms, length: MemoryLayout<Rh3dUniforms>.stride, index: 1)
                 enc.setFragmentBytes(&uniforms, length: MemoryLayout<Rh3dUniforms>.stride, index: 1)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: quadLineSegCount * 6)
+                if let dyn = dynLinesVB, dynLineSegCount > 0 {
+                    enc.setVertexBuffer(dyn, offset: 0, index: 0)
+                    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: dynLineSegCount * 6)
+                }
             }
             enc.endEncoding()
         }
@@ -3045,39 +2923,45 @@ final class RhFlythroughView: NSView {
 
     // MARK: - 3D-to-2D Projected Callout Labels
 
-    private func computeProjectedLabels(viewSize: CGSize) -> [ProjectedLabel] {
+    // `video` lays the labels out for the recorded walkthrough: larger type, no station banners
+    // while the camera is at a station, and nothing under the caption.
+    private func computeProjectedLabels(viewSize: CGSize, video: Bool = false) -> [ProjectedLabel] {
         guard showLabels, viewSize.width > 10, viewSize.height > 10 else { return [] }
         let w = Float(viewSize.width)
         let h = Float(viewSize.height)
         let vp = rh3dPerspective(fovY: 0.82, aspect: w / h, nearZ: 0.2, farZ: 280.0) * rh3dLookAt(eye: eye, target: target)
+        let s = RhLabelsOverlayView.scale
 
-        let titleBannerFont = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
-        let titlePartFont = NSFont.monospacedSystemFont(ofSize: 9.8, weight: .medium)
-        let subFont = NSFont.monospacedSystemFont(ofSize: 8.8, weight: .regular)
+        let titleBannerFont = NSFont.monospacedSystemFont(ofSize: 10.5 * s, weight: .semibold)
+        let titlePartFont = NSFont.monospacedSystemFont(ofSize: 9.8 * s, weight: .medium)
+        let subFont = NSFont.monospacedSystemFont(ofSize: 8.8 * s, weight: .regular)
 
-        let rightLimit: CGFloat = (showGuide && !isOverviewMode) ? (viewSize.width - 420) : (viewSize.width - 12)
-        let topLimit: CGFloat = (showGuide && isOverviewMode) ? 204 : 46
+        let rightLimit: CGFloat = (!video && showGuide && !isOverviewMode) ? (viewSize.width - 420) : (viewSize.width - 12)
+        let topLimit: CGFloat = video ? 16 : ((showGuide && isOverviewMode) ? 204 : 46)
+        let bottomLimit: CGFloat = video ? (viewSize.height - GridExplainerPanelView.videoCaptionHeight - 40) : (viewSize.height - 118)
 
         var candidates: [(dist: Float, priority: Int, label: ProjectedLabel)] = []
         for anc in labelAnchors {
+            if video && anc.isStationBanner && !isOverviewMode { continue }
+            if video && !anc.isStationBanner && anc.stationIndex != activeStation { continue }
             let dist = simd_length(eye - anc.worldPos)
             if dist > anc.maxDist { continue }
             let clip = vp * SIMD4<Float>(anc.worldPos, 1.0)
             guard clip.w > 0.35 else { continue }
             let ndc = SIMD3<Float>(clip.x, clip.y, clip.z) / clip.w
-            if ndc.x < -0.96 || ndc.x > 0.96 || ndc.y < -0.78 || ndc.y > 0.97 { continue }
+            if ndc.x < -0.98 || ndc.x > 0.98 || ndc.y < -0.90 || ndc.y > 0.98 { continue }
 
             let sx = CGFloat((ndc.x * 0.5 + 0.5) * w)
             let sy = CGFloat((0.5 - ndc.y * 0.5) * h)
             if sx > rightLimit - 14 { continue }
             let minSY: CGFloat = anc.isStationBanner ? max(18, topLimit - 24) : max(50, topLimit)
-            if sy < minSY || sy > viewSize.height - 118 { continue }
+            if sy < minSY || sy > bottomLimit { continue }
 
             let tw = (anc.text as NSString).size(withAttributes: [.font: anc.isStationBanner ? titleBannerFont : titlePartFont, .kern: anc.isStationBanner ? 0.7 : 0.3]).width
             let sw = anc.subtext.isEmpty ? 0 : (anc.subtext as NSString).size(withAttributes: [.font: subFont]).width
-            let pw = max(tw, sw) + 20
-            let ph: CGFloat = anc.subtext.isEmpty ? 22 : 35
-            let stemH: CGFloat = anc.isStationBanner ? 22 : 17
+            let pw = max(tw, sw) + 20 * s
+            let ph: CGFloat = (anc.subtext.isEmpty ? 22 : 35) * s
+            let stemH: CGFloat = (anc.isStationBanner ? 22 : 17) * s
             let rx = max(12, min(rightLimit - pw, sx - pw * 0.5))
             let ry = max(topLimit, sy - stemH - ph)
             let alpha: CGFloat = anc.isStationBanner
@@ -3089,12 +2973,8 @@ final class RhFlythroughView: NSView {
             candidates.append((dist, prio, ProjectedLabel(
                 rect: CGRect(x: rx, y: ry, width: pw, height: ph),
                 anchorPt: CGPoint(x: sx, y: sy),
-                title: anc.text,
-                subtext: anc.subtext,
-                color: anc.color,
-                isBanner: anc.isStationBanner,
-                alpha: alpha,
-                stationIndex: anc.stationIndex
+                title: anc.text, subtext: anc.subtext, color: anc.color,
+                isBanner: anc.isStationBanner, alpha: alpha, stationIndex: anc.stationIndex
             )))
         }
 
@@ -3103,28 +2983,21 @@ final class RhFlythroughView: NSView {
             return a.dist < b.dist
         }
 
+        // A label that would cover another moves up a row or two before it gives up.
         var placed: [ProjectedLabel] = []
         for c in candidates {
-            var lbl = c.label
-            if lbl.isBanner {
-                var r = lbl.rect
-                var tries = 0
-                while tries < 3 && placed.contains(where: { $0.rect.intersects(r.insetBy(dx: -5, dy: -4)) }) {
-                    r.origin.y -= (r.height + 8)
-                    tries += 1
-                }
-                if r.origin.y < 42 || placed.contains(where: { $0.rect.intersects(r.insetBy(dx: -5, dy: -4)) }) {
-                    continue
-                }
-                lbl = ProjectedLabel(
-                    rect: r, anchorPt: lbl.anchorPt, title: lbl.title, subtext: lbl.subtext,
-                    color: lbl.color, isBanner: lbl.isBanner, alpha: lbl.alpha, stationIndex: lbl.stationIndex
-                )
-            } else {
-                let padded = lbl.rect.insetBy(dx: -5, dy: -4)
-                if placed.contains(where: { $0.rect.intersects(padded) }) { continue }
+            var r = c.label.rect
+            var tries = 0
+            func hits(_ r: CGRect) -> Bool { placed.contains { $0.rect.intersects(r.insetBy(dx: -5, dy: -4)) } }
+            while tries < 3 && hits(r) {
+                r.origin.y -= (r.height + 8)
+                tries += 1
             }
-            placed.append(lbl)
+            if r.origin.y < topLimit - 30 || hits(r) { continue }
+            placed.append(ProjectedLabel(
+                rect: r, anchorPt: c.label.anchorPt, title: c.label.title, subtext: c.label.subtext,
+                color: c.label.color, isBanner: c.label.isBanner, alpha: c.label.alpha, stationIndex: c.label.stationIndex
+            ))
             if placed.count >= 16 { break }
         }
         return placed
@@ -3135,11 +3008,201 @@ final class RhFlythroughView: NSView {
         labelsOverlay.needsDisplay = true
     }
 
-    // MARK: - Headless Offscreen Metal PNG Capture (Full HDR 4x MSAA + Bloom + metaverse_tone Pipeline!)
+    // MARK: - Overlays shared by still frames and the video
 
+    // The app's own HUD (labels, guide card, title bar) drawn into a still frame.
+    private func drawAppOverlay(in ctx: CGContext, size: CGSize) {
+        RhLabelsOverlayView.drawLabels(computeProjectedLabels(viewSize: size), in: ctx)
+        let guideRect = isOverviewMode
+            ? CGRect(x: 20, y: 20, width: size.width - 40, height: 158)
+            : CGRect(x: size.width - 412, y: 24, width: 392, height: 616)
+        GridExplainerPanelView.drawExplainer(buildGuideContent(overview: isOverviewMode), in: ctx, rect: guideRect)
+
+        let cardRect = CGRect(x: 20, y: size.height - 96, width: size.width - 40, height: 78)
+        drawGridHudFrame(in: ctx, rect: cardRect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: false)
+        let st = activeStation < stations.count ? stations[activeStation] : nil
+        let kicker = isOverviewMode ? "OVERVIEW" : "STOP \(activeStation + 1) OF \(stations.count)  ·  \(st?.kicker ?? "")"
+        (kicker as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 10), withAttributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 9.2, weight: .medium), .foregroundColor: GridTokens.nsMid, .kern: 1.1,
+        ])
+        ((isOverviewMode ? overviewTitle : (st?.title ?? "")) as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 28), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 17.0, weight: .bold), .foregroundColor: GridTokens.nsWhite,
+        ])
+    }
+
+    // The video's overlay: scene labels in large type and one caption across the bottom.
+    private func drawVideoOverlay(in ctx: CGContext, size: CGSize, cardAlpha: CGFloat, fade: CGFloat, progress: CGFloat) {
+        RhLabelsOverlayView.scale = 1.55
+        RhLabelsOverlayView.drawLabels(computeProjectedLabels(viewSize: size, video: true), in: ctx)
+        RhLabelsOverlayView.scale = 1.0
+
+        if cardAlpha > 0.01 {
+            var step = "", kicker = "", title = overviewTitle, caption = overviewCaption
+            var accent = GridTokens.nsAmber
+            if videoCard == 2 {
+                step = "SOURCES"
+                caption = closingCaption
+            } else if videoCard == 1 || activeStation >= stations.count {
+                step = "THE RIEMANN HYPOTHESIS"
+                kicker = "OPEN 1859 TO 2026"
+            } else {
+                let st = stations[activeStation]
+                step = "\(activeStation + 1) OF \(stations.count)"
+                kicker = st.kicker
+                title = st.title
+                caption = st.caption
+                accent = nsColor(st.accent)
+            }
+            ctx.saveGState()
+            ctx.setAlpha(cardAlpha)
+            GridExplainerPanelView.drawVideoCaption(step: step, kicker: kicker, title: title, caption: caption, accent: accent, segments: stations.count, progress: progress, in: ctx, size: size)
+            ctx.restoreGState()
+        }
+        if fade > 0.005 {
+            ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: fade).cgColor)
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+    }
+
+    // MARK: - The recorded walkthrough's timeline
+
+    private let videoIntro: Float = 6.0
+    private let videoSlot: Float = 11.0
+    private let videoGlide: Float = 2.2
+    private let videoOutro: Float = 8.0
+    var videoDuration: Float { videoIntro + Float(stations.count) * videoSlot + videoOutro }
+
+    // The camera pose for station `idx`, drifting a few degrees over orbitU in [0, 1]. It looks
+    // a little below the landmark so the landmark sits above the caption.
+    private func videoStationPose(_ idx: Int, orbitU: Float) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        let st = stations[idx]
+        let off = st.eye - st.pos
+        // How close the camera comes (1 = the app's own station view) and how far below the
+        // landmark it aims, chosen per station so each one fills the frame above the caption.
+        let zoom: [Float] = [0.70, 0.92, 0.80, 0.78, 0.95, 1.25, 0.88, 1.02]
+        let aimDown: [Float] = [2.6, 1.4, 2.3, 2.8, 2.0, 1.5, 2.7, 2.3]
+        let z = zoom[idx % zoom.count]
+        let rXZ = hypot(off.x, off.z) * z
+        let yaw = atan2(off.x, off.z) + (orbitU * orbitU * (3.0 - 2.0 * orbitU) - 0.5) * 0.30
+        let e = st.pos + SIMD3<Float>(rXZ * sin(yaw), off.y * z + sin(orbitU * .pi) * 0.4, rXZ * cos(yaw))
+        return (e, st.pos - SIMD3<Float>(0, aimDown[idx % aimDown.count], 0))
+    }
+
+    // Sets the camera, the active station and the animated curve for time `t` of the video.
+    // Returns the caption's opacity, the fade to black, and progress through the stations.
+    private func applyVideoFrame(_ t: Float) -> (cardAlpha: CGFloat, fade: CGFloat, progress: CGFloat) {
+        func ss(_ a: Float, _ b: Float, _ x: Float) -> Float {
+            let u = max(0.0, min(1.0, (x - a) / max(1e-5, b - a)))
+            return u * u * (3.0 - 2.0 * u)
+        }
+        let n = stations.count
+        let total = videoDuration
+        let outroStart = videoIntro + Float(n) * videoSlot
+        totalElapsedS = t
+        flyTimeS = t
+        selectedPick = nil
+
+        let ovStart = SIMD3<Float>(-7.0, 33.5, 76.0), ovEnd = SIMD3<Float>(4.0, 31.5, 72.0)
+        let ovFinal = SIMD3<Float>(0.0, 32.0, 74.0), ovTarget = SIMD3<Float>(0.0, -4.0, 0.0)
+        var card: Float = 1.0
+        var zerosShown = max(0, psiRows - 1)
+        let fade = t < 0.7 ? 1.0 - ss(0.0, 0.7, t) : (t > total - 0.9 ? ss(total - 0.9, total, t) : 0.0)
+
+        if t < videoIntro {
+            eye = ovStart + (ovEnd - ovStart) * ss(0, videoIntro, t)
+            target = ovTarget
+            isOverviewMode = true
+            activeStation = 0
+            videoCard = 1
+            card = ss(0.3, 1.0, t) * (1.0 - ss(videoIntro - 0.4, videoIntro, t))
+        } else if t < outroStart {
+            let local = t - videoIntro
+            let idx = min(n - 1, Int(local / videoSlot))
+            let stT = local - Float(idx) * videoSlot
+            activeStation = idx
+            isOverviewMode = false
+            videoCard = 0
+            if stT < videoGlide {
+                let u = stT / videoGlide
+                let s = u * u * (3.0 - 2.0 * u)
+                let from: (eye: SIMD3<Float>, target: SIMD3<Float>) = idx == 0 ? (ovEnd, ovTarget) : videoStationPose(idx - 1, orbitU: 1.0)
+                let to = videoStationPose(idx, orbitU: 0.0)
+                eye = from.eye + (to.eye - from.eye) * s + SIMD3<Float>(0, sin(u * .pi) * (idx == 0 ? 2.0 : 1.3), 0)
+                target = from.target + (to.target - from.target) * s
+                card = ss(videoGlide * 0.45, videoGlide, stT)
+            } else {
+                let pose = videoStationPose(idx, orbitU: min(1.0, (stT - videoGlide) / (videoSlot - videoGlide)))
+                eye = pose.eye
+                target = pose.target
+                card = 1.0 - ss(videoSlot - 0.35, videoSlot, stT)
+            }
+            if idx == 1 {
+                zerosShown = psiZerosShown(phase: (stT - videoGlide) / (videoSlot - videoGlide - 1.2))
+            }
+        } else {
+            let ot = t - outroStart
+            let pull: Float = 3.0
+            if ot < pull {
+                let u = ot / pull
+                let s = u * u * (3.0 - 2.0 * u)
+                let from = videoStationPose(n - 1, orbitU: 1.0)
+                eye = from.eye + (ovFinal - from.eye) * s + SIMD3<Float>(0, sin(u * .pi) * 3.0, 0)
+                target = from.target + (ovTarget - from.target) * s
+                isOverviewMode = u > 0.5
+                activeStation = n - 1
+                card = isOverviewMode ? ss(0.55, 0.95, u) : 0.0
+            } else {
+                let u = (ot - pull) / max(0.1, videoOutro - pull)
+                eye = ovFinal + SIMD3<Float>(u * 2.5, u * 0.8, u * 1.5)
+                target = ovTarget
+                isOverviewMode = true
+                activeStation = n - 1
+            }
+            videoCard = 2
+        }
+        refreshPsiCurve(zerosShown: zerosShown)
+        let progress = max(0.0, min(1.0, (t - videoIntro) / (outroStart - videoIntro)))
+        return (CGFloat(card), CGFloat(fade), CGFloat(progress))
+    }
+
+    // MARK: - Headless still frames (the full HDR, 4x MSAA and bloom pipeline)
+
+    private func renderFrame(width: Int, height: Int, dpr: Float, overlayScale: CGFloat, overlay: (CGContext, CGSize) -> Void) -> CGImage? {
+        guard let dev = device, let queue = commandQueue else { return nil }
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]
+        texDesc.storageMode = .shared
+        guard let colorTex = dev.makeTexture(descriptor: texDesc), let cmd = queue.makeCommandBuffer() else { return nil }
+        encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: dpr)
+        cmd.commit()
+        cmd.waitUntilCompleted()
+
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        colorTex.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let ctx = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: cs, bitmapInfo: bi.rawValue) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: overlayScale, y: -overlayScale)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        overlay(ctx, CGSize(width: CGFloat(width) / overlayScale, height: CGFloat(height) / overlayScale))
+        ctx.restoreGState()
+        NSGraphicsContext.restoreGraphicsState()
+        return ctx.makeImage()
+    }
+
+    private func writePNG(_ img: CGImage?, to url: URL) -> Bool {
+        guard let img = img, let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
+        CGImageDestinationAddImage(dest, img, nil)
+        return CGImageDestinationFinalize(dest)
+    }
+
+    // A still of the app view: at `timeSeconds` of the flyover, or the overview.
     func renderOffscreenPNG(to url: URL, width: Int = 1440, height: Int = 900, timeSeconds: Float? = nil, overview: Bool = false) -> Bool {
-        guard let dev = device, let queue = commandQueue else { return false }
         isOverviewMode = overview
+        selectedPick = nil
         if overview {
             eye = SIMD3<Float>(0, 32.0, 74.0)
             target = SIMD3<Float>(0, 3.0, 0)
@@ -3149,92 +3212,26 @@ final class RhFlythroughView: NSView {
             totalElapsedS = t
             evaluateMetaverseSpline(at: t)
         }
-
-        let texDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        texDesc.usage = [.renderTarget, .shaderRead]
-        texDesc.storageMode = .shared
-        guard let colorTex = dev.makeTexture(descriptor: texDesc),
-              let cmd = queue.makeCommandBuffer() else { return false }
-
-        encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: 1.25)
-        cmd.commit()
-        cmd.waitUntilCompleted()
-
-        var bytes = [UInt8](repeating: 0, count: width * height * 4)
-        colorTex.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        guard let ctx = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: cs, bitmapInfo: bi.rawValue) else { return false }
-
-        NSGraphicsContext.saveGraphicsState()
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: CGFloat(height))
-        ctx.scaleBy(x: 1, y: -1)
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-
-        let viewSize = CGSize(width: width, height: height)
-        let proj = computeProjectedLabels(viewSize: viewSize)
-        RhLabelsOverlayView.drawLabels(proj, in: ctx)
-
-        // Draw authentic OpenAgents Grid Friendly Explainer & Significance Guide Card
-        let guideContent = buildGuideContent(overview: overview)
-        let guideRect = overview
-            ? CGRect(x: 20, y: 20, width: CGFloat(width) - 40, height: 158)
-            : CGRect(x: CGFloat(width) - 412, y: 24, width: 392, height: 616)
-        GridExplainerPanelView.drawExplainer(guideContent, in: ctx, rect: guideRect)
-
-        // Draw sleek bottom OpenAgents Grid Navigation Bar
-        let cardRect = CGRect(x: 20, y: CGFloat(height) - 96, width: CGFloat(width) - 40, height: 78)
-        drawGridHudFrame(in: ctx, rect: cardRect, cut: 12.0, fillAlpha: 0.90, drawBrackets: true, drawScanlines: true)
-
-        ("OPENAGENTS / VERSE  ·  THE GRID  ·  RIEMANN HYPOTHESIS" as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 10), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 9.2, weight: .medium),
-            .foregroundColor: GridTokens.nsMid,
-            .kern: 1.1,
-        ])
-
-        let titleStr = (overview ? "THE FULL STORY — 8 STATIONS FROM 1859 MYSTERY TO Q.E.D. (175,182 LEAN FILES)" : (activeStation < stations.count ? stations[activeStation].title : "")).uppercased()
-        let subStr = overview ? "1. Prime Music → 2. 5040 Test → 3. 2/3 Wall → 4. Mirror Bridge → 5. 175k City → 6. Safety Nets → 7. 4 Checkers → 8. Solved (Q.E.D.)" : (activeStation < stations.count ? stations[activeStation].subtitle : "")
-
-        (titleStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 26), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 13.2, weight: .bold),
-            .foregroundColor: GridTokens.nsWhite,
-            .kern: 0.5,
-        ])
-        (subStr as NSString).draw(at: CGPoint(x: cardRect.minX + 18, y: cardRect.minY + 48), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 10.2, weight: .medium),
-            .foregroundColor: GridTokens.nsCyan,
-        ])
-
-        ctx.restoreGState()
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let cgImg = ctx.makeImage(),
-              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
-        CGImageDestinationAddImage(dest, cgImg, nil)
-        return CGImageDestinationFinalize(dest)
+        refreshPsiCurve(zerosShown: max(0, psiRows - 1))
+        return writePNG(renderFrame(width: width, height: height, dpr: 1.25, overlayScale: 1.0) { ctx, size in
+            self.drawAppOverlay(in: ctx, size: size)
+        }, to: url)
     }
 
-    // MARK: - Native Hardware-Accelerated 1080p Cinematic Narration Video Recorder (Metal 4x MSAA HDR + AVAssetWriter H.264)
-
-    private struct VideoHeroTag {
-        let pos: SIMD3<Float>
-        let text: String
-        let color: NSColor
-        let stationIndex: Int
+    // A still of the recorded walkthrough at `seconds` into it, exactly as the video shows it.
+    func renderVideoStill(to url: URL, atSeconds seconds: Float, width: Int = 1920, height: Int = 1080) -> Bool {
+        guard stations.count == 8 else { return false }
+        let state = applyVideoFrame(seconds)
+        let uiScale = CGFloat(width) / 1280.0
+        return writePNG(renderFrame(width: width, height: height, dpr: Float(uiScale), overlayScale: uiScale) { ctx, size in
+            self.drawVideoOverlay(in: ctx, size: size, cardAlpha: state.cardAlpha, fade: state.fade, progress: state.progress)
+        }, to: url)
     }
 
-    private struct VideoStationScript {
-        let stepNum: String
-        let kicker: String
-        let title: String
-        let beatA: String // WHAT YOU SEE (concise, big text, <= 20 words)
-        let beatB: String // WHY IT MATTERS (concise significance, <= 20 words)
-    }
+    // MARK: - Walkthrough video recorder (Metal frames into AVAssetWriter H.264)
 
     func recordWalkthroughMP4(to url: URL, width: Int = 1920, height: Int = 1080, fps: Int = 30) -> Bool {
-        guard let dev = device, let queue = commandQueue, stations.count >= 8 else { return false }
+        guard let dev = device, let queue = commandQueue, stations.count == 8 else { return false }
 
         try? FileManager.default.removeItem(at: url)
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else {
@@ -3242,32 +3239,27 @@ final class RhFlythroughView: NSView {
             return false
         }
         writer.shouldOptimizeForNetworkUse = true
-
-        let compression: [String: Any] = [
-            AVVideoAverageBitRateKey: 8_000_000,
-            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-            AVVideoMaxKeyFrameIntervalKey: fps * 2,
-        ]
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: compression,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 10_000_000,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                AVVideoMaxKeyFrameIntervalKey: fps * 2,
+            ] as [String: Any],
         ]
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput.expectsMediaDataInRealTime = false
-
-        let pixelAttrs: [String: Any] = [
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height,
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
-        ]
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: pixelAttrs)
+        ])
         guard writer.canAdd(videoInput) else { return false }
         writer.add(videoInput)
-
         guard writer.startWriting() else {
             fputs("rh3d record: startWriting failed: \(writer.error?.localizedDescription ?? "unknown")\n", stderr)
             return false
@@ -3279,531 +3271,52 @@ final class RhFlythroughView: NSView {
         texDesc.storageMode = .shared
         guard let colorTex = dev.makeTexture(descriptor: texDesc) else { return false }
 
-        // Concise, punchy 2-beat narration script (short lines, big text, readable on any screen)
-        let scripts: [VideoStationScript] = [
-            VideoStationScript(
-                stepNum: "01 / 08", kicker: "THE 167-YEAR MYSTERY",
-                title: "Prime Numbers Have a Hidden Rhythm",
-                beatA: "This wave tracks prime numbers. Every dip to zero shoots a gold spike on one exact glass wall.",
-                beatB: "Proving no zero ever leaves this wall locks down where primes appear — turning hundreds of conjectures into fact."
-            ),
-            VideoStationScript(
-                stepNum: "02 / 08", kicker: "THE 5,040 GUT-CHECK",
-                title: "A Simple Whole-Number Test",
-                beatA: "Each bar measures a number's divisors. Up to 5,040, a few early rebels poke through the cyan ceiling.",
-                beatB: "Past 5,040, none ever break through again — giving skeptics a dead-simple check on the real Riemann Hypothesis."
-            ),
-            VideoStationScript(
-                stepNum: "03 / 08", kicker: "THE BREAKTHROUGH",
-                title: "Smashing the 100-Year 2/3 Wall",
-                beatA: "For a century, older proof methods (red bars) stalled under this 2/3 wall — leaving space for rogue zeros.",
-                beatB: "Levent Alpöge's 8-step cyan staircase punches clean past 2/3 — shutting every last hiding spot for good."
-            ),
-            VideoStationScript(
-                stepNum: "04 / 08", kicker: "THE ENGINE ROOM",
-                title: "Turning Chaotic Primes Into Smooth Waves",
-                beatA: "Eight geometric translators turn jagged prime numbers into smooth waves vibrating on curved spaces.",
-                beatB: "Like noise-canceling headphones for math: once flipped into wave symmetries, the random static cancels itself out."
-            ),
-            VideoStationScript(
-                stepNum: "05 / 08", kicker: "HISTORIC SCALE · HUMAN + AI",
-                title: "The 17.37-Million-Line Proof City",
-                beatA: "Every skyscraper here is a real folder of Lean 4 code — 175,182 files built by Alpöge working with AI.",
-                beatB: "No hand-waving, no skipped steps: every microscopic logical detail is formalized — larger than many operating systems."
-            ),
-            VideoStationScript(
-                stepNum: "06 / 08", kicker: "ZERO LOOPHOLES",
-                title: "Error-Proof Mathematical Safety Nets",
-                beatA: "Golden Weil arches cap how wild waves can grow. The amber Behrend sphere blocks sneaky repeating traps.",
-                beatB: "Dozens of past RH claims died on tiny leftover errors. These guardrails weld every last crack shut."
-            ),
-            VideoStationScript(
-                stepNum: "07 / 08", kicker: "DON'T TRUST, VERIFY",
-                title: "4 Independent Computer Fact-Checkers",
-                beatA: "Four separate verifier kernels — written in Lean, C++, and Rust — checked every single line from scratch.",
-                beatB: "You never have to trust the author OR the AI. Zero cheated steps, 3 standard axioms — certified in 24 hours."
-            ),
-            VideoStationScript(
-                stepNum: "08 / 08", kicker: "Q.E.D. · NOV 21, 2026",
-                title: "813,182 Theorems Lock Into 4 Lines",
-                beatA: "Every glowing conduit converges into one final theorem in Main.lean: theorem riemannHypothesis := rhOfAll.",
-                beatB: "Math's crown jewel since 1859 is solved — and human + AI + formal verification just changed science forever."
-            ),
-        ]
-
-        // Only 2-3 BIG, ultra-clean hero 3D callouts per station (zero clutter!)
-        let heroTags: [VideoHeroTag] = [
-            // Station 1
-            VideoHeroTag(pos: SIMD3(-42.0, 5.55, -3.5), text: "CRITICAL WALL (Re = 1/2)", color: GridTokens.nsAmber, stationIndex: 0),
-            VideoHeroTag(pos: SIMD3(-42.0, 4.45,  0.4), text: "PRIME WAVE ZEROS", color: GridTokens.nsCyan, stationIndex: 0),
-            VideoHeroTag(pos: SIMD3(-45.2, 2.55,  2.8), text: "ZETA WAVE SURFACE", color: GridTokens.nsWhite, stationIndex: 0),
-            // Station 2
-            VideoHeroTag(pos: SIMD3(-29.7, 5.15,  0.0), text: "5,040 · FINAL REBEL", color: GridTokens.nsAmber, stationIndex: 1),
-            VideoHeroTag(pos: SIMD3(-26.8, 3.65, -2.5), text: "DIVISOR CEILING (1.0)", color: GridTokens.nsCyan, stationIndex: 1),
-            // Station 3
-            VideoHeroTag(pos: SIMD3(-20.4, 4.25, -2.5), text: "100-YEAR 2/3 WALL", color: GridTokens.nsRed, stationIndex: 2),
-            VideoHeroTag(pos: SIMD3(-14.6, 6.10,  0.5), text: "ALPÖGE BREAKTHROUGH", color: GridTokens.nsCyan, stationIndex: 2),
-            // Station 4
-            VideoHeroTag(pos: SIMD3(-6.0,  5.25,  0.0), text: "MIRROR TRANSLATOR CORE", color: GridTokens.nsCyan, stationIndex: 3),
-            VideoHeroTag(pos: SIMD3(-9.3,  5.15, -1.5), text: "8 GEOMETRIC GEARS", color: GridTokens.nsWhite, stationIndex: 3),
-            // Station 5
-            VideoHeroTag(pos: SIMD3( 2.6,  8.65, -3.1), text: "99,187 FILES · ABELIAN", color: GridTokens.nsWhite, stationIndex: 4),
-            VideoHeroTag(pos: SIMD3( 7.2,  7.10,  1.8), text: "175,182 LEAN 4 FILES", color: GridTokens.nsCyan, stationIndex: 4),
-            // Station 6
-            VideoHeroTag(pos: SIMD3(18.0,  6.40,  0.0), text: "WEIL SPEED-LIMIT ARCHES", color: GridTokens.nsAmber, stationIndex: 5),
-            VideoHeroTag(pos: SIMD3(18.0,  3.50,  2.5), text: "BEHREND SAFETY CAGE", color: GridTokens.nsWhite, stationIndex: 5),
-            // Station 7
-            VideoHeroTag(pos: SIMD3(30.0,  4.85,  0.0), text: "0 CHEATS · 3 AXIOMS", color: GridTokens.nsCyan, stationIndex: 6),
-            VideoHeroTag(pos: SIMD3(27.2,  6.05, -2.8), text: "4 INDEPENDENT KERNELS", color: GridTokens.nsWhite, stationIndex: 6),
-            VideoHeroTag(pos: SIMD3(30.0,  1.80,  4.4), text: "6 AUDITED HELPERS", color: GridTokens.nsAmber, stationIndex: 6),
-            // Station 8
-            VideoHeroTag(pos: SIMD3(42.0, 10.75,  0.0), text: "RIEMANN HYPOTHESIS · Q.E.D.", color: GridTokens.nsAmber, stationIndex: 7),
-            VideoHeroTag(pos: SIMD3(44.8,  3.10,  2.8), text: "813,182 PROVEN THEOREMS", color: GridTokens.nsCyan, stationIndex: 7),
-        ]
-
-        // Full-screen dead-center camera pose (NO right-sidebar offset!)
-        func stationPose(_ idx: Int, orbitU: Float) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-            let st = stations[idx]
-            let baseOffset = st.eye - st.pos
-            let rXZ = hypot(baseOffset.x, baseOffset.z) * 0.96
-            let baseYaw = atan2(baseOffset.x, baseOffset.z)
-            let smoothU = orbitU * orbitU * (3.0 - 2.0 * orbitU)
-            let yaw = baseYaw + (smoothU - 0.5) * 0.48 // smooth +-14 deg gentle cinema orbit
-            let lift = sin(orbitU * .pi) * 0.50
-            let e = st.pos + SIMD3<Float>(rXZ * sin(yaw), baseOffset.y + lift, rXZ * cos(yaw))
-            // Keep target slightly lower so the landmark sits cleanly centered between top title and bottom caption plate
-            let t = st.pos + SIMD3<Float>(0, -0.25, 0)
-            return (e, t)
-        }
-
-        func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-            let t = max(0.0, min(1.0, (x - edge0) / max(1e-5, edge1 - edge0)))
-            return t * t * (3.0 - 2.0 * t)
-        }
-
-        func drawWrapped(_ str: String, in rect: CGRect, attrs: [NSAttributedString.Key: Any]) {
-            let storage = NSTextStorage(attributedString: NSAttributedString(string: str, attributes: attrs))
-            let container = NSTextContainer(size: CGSize(width: rect.width, height: max(rect.height, 800)))
-            container.lineFragmentPadding = 0
-            let lm = NSLayoutManager()
-            lm.addTextContainer(container)
-            storage.addLayoutManager(lm)
-            let range = lm.glyphRange(for: container)
-            lm.drawGlyphs(forGlyphRange: range, at: rect.origin)
-        }
-
-        func drawHeroCallouts(in ctx: CGContext, overview: Bool, activeIdx: Int, alpha: CGFloat) {
-            guard alpha > 0.02 else { return }
-            let w = Float(width), h = Float(height)
-            let vp = rh3dPerspective(fovY: 0.82, aspect: w / h, nearZ: 0.2, farZ: 280.0) * rh3dLookAt(eye: eye, target: target)
-            let font = NSFont.monospacedSystemFont(ofSize: overview ? 16.0 : 18.5, weight: .bold)
-
-            var items: [(rect: CGRect, anchor: CGPoint, text: String, color: NSColor)] = []
-            if overview {
-                let bannerHeights: [Float] = [7.6, 6.2, 9.4, 6.4, 10.6, 6.8, 9.0, 11.4]
-                for (i, st) in stations.enumerated() {
-                    let wp = SIMD3<Float>(st.pos.x, bannerHeights[i % bannerHeights.count], st.pos.z)
-                    let clip = vp * SIMD4<Float>(wp, 1.0)
-                    guard clip.w > 0.3 else { continue }
-                    let ndc = SIMD3<Float>(clip.x, clip.y, clip.z) / clip.w
-                    let sx = CGFloat((ndc.x * 0.5 + 0.5) * w)
-                    let sy = CGFloat((0.5 - ndc.y * 0.5) * h)
-                    let text = st.shortName.uppercased()
-                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .kern: 0.9]
-                    let sz = (text as NSString).size(withAttributes: attrs)
-                    let pw = sz.width + 26, ph: CGFloat = 34
-                    var r = CGRect(x: max(20, min(CGFloat(width) - pw - 20, sx - pw * 0.5)), y: max(195, sy - 26 - ph), width: pw, height: ph)
-                    var tries = 0
-                    while tries < 3 && items.contains(where: { $0.rect.intersects(r.insetBy(dx: -8, dy: -6)) }) {
-                        r.origin.y -= (ph + 10)
-                        tries += 1
-                    }
-                    items.append((r, CGPoint(x: sx, y: sy), text, nsColor(st.accent)))
-                }
-            } else {
-                for tag in heroTags where tag.stationIndex == activeIdx {
-                    let clip = vp * SIMD4<Float>(tag.pos, 1.0)
-                    guard clip.w > 0.3 else { continue }
-                    let ndc = SIMD3<Float>(clip.x, clip.y, clip.z) / clip.w
-                    if ndc.x < -0.92 || ndc.x > 0.92 || ndc.y < -0.70 || ndc.y > 0.90 { continue }
-                    let sx = CGFloat((ndc.x * 0.5 + 0.5) * w)
-                    let sy = CGFloat((0.5 - ndc.y * 0.5) * h)
-                    if sy < 150 || sy > CGFloat(height) - 210 { continue }
-                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .kern: 1.0]
-                    let sz = (tag.text as NSString).size(withAttributes: attrs)
-                    let pw = sz.width + 30, ph: CGFloat = 38
-                    var r = CGRect(x: max(28, min(CGFloat(width) - pw - 28, sx - pw * 0.5)), y: max(145, sy - 28 - ph), width: pw, height: ph)
-                    var tries = 0
-                    while tries < 2 && items.contains(where: { $0.rect.intersects(r.insetBy(dx: -10, dy: -8)) }) {
-                        r.origin.y -= (ph + 12)
-                        tries += 1
-                    }
-                    items.append((r, CGPoint(x: sx, y: sy), tag.text, tag.color))
-                }
-            }
-
-            ctx.saveGState()
-            ctx.setAlpha(alpha)
-            for it in items {
-                // Crisp hairline leader stem
-                let bottomMid = CGPoint(x: it.rect.midX, y: it.rect.maxY)
-                ctx.setStrokeColor(NSColor(white: 0.94, alpha: 0.42).cgColor)
-                ctx.setLineWidth(1.4)
-                ctx.beginPath()
-                ctx.move(to: it.anchor)
-                ctx.addLine(to: bottomMid)
-                ctx.strokePath()
-
-                // Diamond reticle anchor
-                let dR: CGFloat = 5.0
-                ctx.beginPath()
-                ctx.move(to: CGPoint(x: it.anchor.x, y: it.anchor.y - dR))
-                ctx.addLine(to: CGPoint(x: it.anchor.x + dR, y: it.anchor.y))
-                ctx.addLine(to: CGPoint(x: it.anchor.x, y: it.anchor.y + dR))
-                ctx.addLine(to: CGPoint(x: it.anchor.x - dR, y: it.anchor.y))
-                ctx.closePath()
-                ctx.setFillColor(NSColor(calibratedWhite: 0.01, alpha: 0.92).cgColor)
-                ctx.fillPath()
-                ctx.setStrokeColor(it.color.cgColor)
-                ctx.setLineWidth(1.6)
-                ctx.strokePath()
-
-                // Chamfered obsidian glass tag
-                drawGridHudFrame(in: ctx, rect: it.rect, cut: 7.0, fillAlpha: 0.84, drawBrackets: false, drawScanlines: false)
-                // Bright left accent bar
-                ctx.setFillColor(it.color.cgColor)
-                ctx.fill(CGRect(x: it.rect.minX + 1.5, y: it.rect.minY + 4, width: 3.5, height: it.rect.height - 8))
-
-                let tAttrs: [NSAttributedString.Key: Any] = [
-                    .font: font,
-                    .foregroundColor: GridTokens.nsWhite,
-                    .kern: overview ? 0.9 : 1.0,
-                ]
-                let tSize = (it.text as NSString).size(withAttributes: tAttrs)
-                (it.text as NSString).draw(at: CGPoint(x: it.rect.minX + 14, y: it.rect.midY - tSize.height * 0.5), withAttributes: tAttrs)
-            }
-            ctx.restoreGState()
-        }
-
-        // 81.0-second cinematic concise walkthrough (comfortable reading pace, big text, 2 short beats per station):
-        //   0.0 - 6.2s   : Opening Full-Grid Panorama (2 short narration beats)
-        //   6.2 - 75.0s  : 8 Stations x 8.6s each (1.4s smooth glide + 7.2s living orbit; Beat A 3.9s -> Beat B 3.8s)
-        //   75.0 - 81.0s : Grand Finale Pullback to Full 8-Station Panorama + clean fade-out
-        let introDur: Float = 6.2
-        let stationSlot: Float = 8.6
-        let glideDur: Float = 1.4
-        let outroStart: Float = introDur + Float(stations.count) * stationSlot // 75.0s
-        let totalDur: Float = 81.0
+        let totalDur = videoDuration
         let totalFrames = Int((totalDur * Float(fps)).rounded())
-
+        let uiScale = CGFloat(width) / 1280.0
+        let logicalSize = CGSize(width: CGFloat(width) / uiScale, height: CGFloat(height) / uiScale)
         let cs = CGColorSpaceCreateDeviceRGB()
         let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-
-        let ovStartEye = SIMD3<Float>(-7.0, 33.5, 76.0)
-        let ovEndEye   = SIMD3<Float>( 4.0, 31.5, 72.0)
-        let ovFinalEye = SIMD3<Float>( 0.0, 32.0, 74.0)
-        let ovTarget   = SIMD3<Float>( 0.0,  2.8,  0.0)
-
-        let prevShowGuide = showGuide
         let prevShowLabels = showLabels
-        showGuide = false
-        showLabels = false
-        selectedPick = nil
-
-        let paraCenter = NSMutableParagraphStyle()
-        paraCenter.alignment = .center
-        paraCenter.lineSpacing = 6.0
-        paraCenter.lineBreakMode = .byWordWrapping
+        showLabels = true
 
         let tStart = CACurrentMediaTime()
+        var appended = 0
         for frameIdx in 0..<totalFrames {
-            let t = Float(frameIdx) / Float(fps)
-            totalElapsedS = t
-            flyTimeS = t
-
-            var headerAlpha: CGFloat = 1.0
-            var calloutAlpha: CGFloat = 1.0
-            var captionTag = ""
-            var captionTagColor = GridTokens.nsCyan
-            var captionText = ""
-            var captionAlpha: CGFloat = 0.0
-            var heroTitle = ""
-            var heroSub = ""
-            var stepHeaderNum = ""
-            var stepHeaderKicker = ""
-            var stepHeaderTitle = ""
-
-            var fadeBlack: CGFloat = 0.0
-            if t < 0.65 {
-                fadeBlack = CGFloat(1.0 - smoothstep(0.0, 0.65, t))
-            } else if t > totalDur - 0.90 {
-                fadeBlack = CGFloat(smoothstep(totalDur - 0.90, totalDur, t))
-            }
-
-            if t < introDur {
-                let u = t / introDur
-                let s = u * u * (3.0 - 2.0 * u)
-                eye = ovStartEye + (ovEndEye - ovStartEye) * s
-                target = ovTarget
-                isOverviewMode = true
-                activeStation = 0
-                heroTitle = "THE RIEMANN HYPOTHESIS — SOLVED"
-                heroSub = "1859 → NOV 20, 2026   ·   17.37 MILLION LINES OF LEAN 4   ·   VERIFIED BY 4 KERNELS"
-                headerAlpha = CGFloat(smoothstep(0.25, 0.85, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
-                calloutAlpha = headerAlpha
-
-                if t < 3.3 {
-                    captionTag = "THE BIG PICTURE"
-                    captionTagColor = GridTokens.nsAmber
-                    captionText = "Unsolved for 167 years, the $1,000,000 Riemann Hypothesis was just solved and machine-verified."
-                    captionAlpha = CGFloat(smoothstep(0.35, 0.75, t) * (1.0 - smoothstep(3.0, 3.3, t)))
-                } else {
-                    captionTag = "8-STEP WALKTHROUGH"
-                    captionTagColor = GridTokens.nsCyan
-                    captionText = "Here is how the 175,182-file proof works — in 8 simple steps."
-                    captionAlpha = CGFloat(smoothstep(3.35, 3.70, t) * (1.0 - smoothstep(introDur - 0.35, introDur, t)))
-                }
-            } else if t < outroStart {
-                let local = t - introDur
-                let stIdx = min(stations.count - 1, Int(local / stationSlot))
-                let stT = local - Float(stIdx) * stationSlot
-                activeStation = stIdx
-                isOverviewMode = false
-
-                let sc = scripts[stIdx]
-                stepHeaderNum = sc.stepNum
-                stepHeaderKicker = sc.kicker
-                stepHeaderTitle = sc.title
-
-                if stT < glideDur {
-                    let u = stT / glideDur
-                    let s = u * u * (3.0 - 2.0 * u)
-                    let fromPose: (eye: SIMD3<Float>, target: SIMD3<Float>) = (stIdx == 0)
-                        ? (ovEndEye, ovTarget)
-                        : stationPose(stIdx - 1, orbitU: 1.0)
-                    let toPose = stationPose(stIdx, orbitU: 0.0)
-                    let arcLift = sin(u * .pi) * (stIdx == 0 ? 2.2 : 1.4)
-                    eye = fromPose.eye + (toPose.eye - fromPose.eye) * s + SIMD3<Float>(0, arcLift, 0)
-                    target = fromPose.target + (toPose.target - fromPose.target) * s
-                } else {
-                    let dwellU = min(1.0, (stT - glideDur) / max(0.01, stationSlot - glideDur))
-                    let pose = stationPose(stIdx, orbitU: dwellU)
-                    eye = pose.eye
-                    target = pose.target
-                }
-
-                headerAlpha = CGFloat(smoothstep(0.45, 0.95, stT) * (1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)))
-                calloutAlpha = CGFloat(smoothstep(0.95, 1.45, stT) * (1.0 - smoothstep(stationSlot - 0.35, stationSlot, stT)))
-
-                let splitT: Float = 4.65
-                if stT < splitT {
-                    captionTag = "WHAT YOU SEE"
-                    captionTagColor = GridTokens.nsCyan
-                    captionText = sc.beatA
-                    captionAlpha = CGFloat(smoothstep(0.60, 1.00, stT) * (1.0 - smoothstep(splitT - 0.28, splitT, stT)))
-                } else {
-                    captionTag = "WHY IT MATTERS"
-                    captionTagColor = GridTokens.nsAmber
-                    captionText = sc.beatB
-                    captionAlpha = CGFloat(smoothstep(splitT + 0.05, splitT + 0.38, stT) * (1.0 - smoothstep(stationSlot - 0.30, stationSlot, stT)))
-                }
-            } else {
-                let ot = t - outroStart
-                let pullDur: Float = 2.6
-                if ot < pullDur {
-                    let u = ot / pullDur
-                    let s = u * u * (3.0 - 2.0 * u)
-                    let fromPose = stationPose(stations.count - 1, orbitU: 1.0)
-                    eye = fromPose.eye + (ovFinalEye - fromPose.eye) * s + SIMD3<Float>(0, sin(u * .pi) * 3.0, 0)
-                    target = fromPose.target + (ovTarget - fromPose.target) * s
-                    isOverviewMode = (u > 0.50)
-                } else {
-                    let driftU = (ot - pullDur) / max(0.1, (totalDur - outroStart) - pullDur)
-                    eye = ovFinalEye + SIMD3<Float>(driftU * 2.5, driftU * 0.8, driftU * 1.5)
-                    target = ovTarget
-                    isOverviewMode = true
-                }
-                activeStation = stations.count - 1
-                heroTitle = "RIEMANN HYPOTHESIS · VERIFIED (Q.E.D.)"
-                heroSub = "175,182 LEAN 4 FILES   ·   813,182 THEOREMS   ·   OPENAGENTS DESKTOP"
-                headerAlpha = isOverviewMode ? CGFloat(smoothstep(1.35, 2.20, ot)) : 0.0
-                calloutAlpha = headerAlpha
-                captionTag = "EXPLORE LIVE IN OPENAGENTS"
-                captionTagColor = GridTokens.nsCyan
-                captionText = "Fly through the live 3D proof, run real Lean checks, and inspect every file inside OpenAgents Desktop."
-                captionAlpha = CGFloat(smoothstep(1.60, 2.25, ot))
-            }
-
+            let state = applyVideoFrame(Float(frameIdx) / Float(fps))
             autoreleasepool {
                 guard let cmd = queue.makeCommandBuffer() else { return }
-                encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: 1.25)
+                encodeFullGridFrame(cmd: cmd, destTexture: colorTex, width: width, height: height, dpr: Float(uiScale))
                 cmd.commit()
                 cmd.waitUntilCompleted()
 
-                while !videoInput.isReadyForMoreMediaData {
-                    Thread.sleep(forTimeInterval: 0.002)
-                }
+                while !videoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.002) }
                 guard let pool = adaptor.pixelBufferPool else { return }
                 var pbOpt: CVPixelBuffer?
                 guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pbOpt) == kCVReturnSuccess, let pb = pbOpt else { return }
-
                 CVPixelBufferLockBaseAddress(pb, [])
                 if let baseAddr = CVPixelBufferGetBaseAddress(pb) {
                     let bpr = CVPixelBufferGetBytesPerRow(pb)
                     colorTex.getBytes(baseAddr, bytesPerRow: bpr, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-
                     if let ctx = CGContext(data: baseAddr, width: width, height: height, bitsPerComponent: 8, bytesPerRow: bpr, space: cs, bitmapInfo: bi.rawValue) {
                         NSGraphicsContext.saveGraphicsState()
                         ctx.saveGState()
                         ctx.translateBy(x: 0, y: CGFloat(height))
-                        ctx.scaleBy(x: 1.0, y: -1.0)
+                        ctx.scaleBy(x: uiScale, y: -uiScale)
                         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-
-                        let W = CGFloat(width), H = CGFloat(height)
-
-                        // 1. Minimalist BIG 3D Hero Callouts (only 2-3 crisp tags on the active station!)
-                        drawHeroCallouts(in: ctx, overview: isOverviewMode, activeIdx: activeStation, alpha: calloutAlpha)
-
-                        // 2. Top Header (Centered Hero Title on Overview / Clean Top-Left Chapter Title on Stations 1-8)
-                        if headerAlpha > 0.01 {
-                            ctx.saveGState()
-                            ctx.setAlpha(headerAlpha)
-                            if isOverviewMode {
-                                let tAttrs: [NSAttributedString.Key: Any] = [
-                                    .font: NSFont.monospacedSystemFont(ofSize: 44.0, weight: .bold),
-                                    .foregroundColor: GridTokens.nsWhite,
-                                    .kern: 3.2,
-                                ]
-                                let sAttrs: [NSAttributedString.Key: Any] = [
-                                    .font: NSFont.monospacedSystemFont(ofSize: 18.0, weight: .semibold),
-                                    .foregroundColor: GridTokens.nsCyan,
-                                    .kern: 1.8,
-                                ]
-                                let tSz = (heroTitle as NSString).size(withAttributes: tAttrs)
-                                let sSz = (heroSub as NSString).size(withAttributes: sAttrs)
-                                (heroTitle as NSString).draw(at: CGPoint(x: (W - tSz.width) * 0.5, y: 42), withAttributes: tAttrs)
-                                // Thin luminous divider under hero title
-                                ctx.setFillColor(NSColor(white: 0.94, alpha: 0.24).cgColor)
-                                ctx.fill(CGRect(x: (W - 360) * 0.5, y: 100, width: 360, height: 1.5))
-                                ctx.setFillColor(GridTokens.nsCyan.cgColor)
-                                ctx.fill(CGRect(x: (W - 90) * 0.5, y: 100, width: 90, height: 2.0))
-                                (heroSub as NSString).draw(at: CGPoint(x: (W - sSz.width) * 0.5, y: 112), withAttributes: sAttrs)
-                            } else {
-                                // Clean floating top-left chapter title (no heavy box!)
-                                let stepAttrs: [NSAttributedString.Key: Any] = [
-                                    .font: NSFont.monospacedSystemFont(ofSize: 17.5, weight: .bold),
-                                    .foregroundColor: GridTokens.nsCyan,
-                                    .kern: 1.8,
-                                ]
-                                let kickAttrs: [NSAttributedString.Key: Any] = [
-                                    .font: NSFont.monospacedSystemFont(ofSize: 17.5, weight: .semibold),
-                                    .foregroundColor: GridTokens.nsAmber,
-                                    .kern: 1.8,
-                                ]
-                                let titleAttrs: [NSAttributedString.Key: Any] = [
-                                    .font: NSFont.systemFont(ofSize: 38.0, weight: .bold),
-                                    .foregroundColor: GridTokens.nsWhite,
-                                ]
-                                // Subtle left vertical accent bar
-                                ctx.setFillColor(GridTokens.nsCyan.cgColor)
-                                ctx.fill(CGRect(x: 44, y: 38, width: 4, height: 74))
-
-                                let numStr = "\(stepHeaderNum)  ·  "
-                                let numW = (numStr as NSString).size(withAttributes: stepAttrs).width
-                                (numStr as NSString).draw(at: CGPoint(x: 62, y: 38), withAttributes: stepAttrs)
-                                (stepHeaderKicker as NSString).draw(at: CGPoint(x: 62 + numW, y: 38), withAttributes: kickAttrs)
-                                (stepHeaderTitle as NSString).draw(at: CGPoint(x: 62, y: 65), withAttributes: titleAttrs)
-                            }
-                            ctx.restoreGState()
-                        }
-
-                        // 3. Bottom-Center Cinematic Narration Subtitle Plate (BIG 28px concise text + live progress!)
-                        let plateW: CGFloat = 1360
-                        let plateH: CGFloat = 156
-                        let plateRect = CGRect(x: (W - plateW) * 0.5, y: H - plateH - 28, width: plateW, height: plateH)
-                        drawGridHudFrame(in: ctx, rect: plateRect, cut: 14.0, fillAlpha: 0.88, drawBrackets: true, drawScanlines: true)
-
-                        // Narration Beat Tag + Big Readable 2-Line Caption (cross-fades cleanly!)
-                        if captionAlpha > 0.01 && !captionText.isEmpty {
-                            ctx.saveGState()
-                            ctx.setAlpha(captionAlpha)
-
-                            let tagAttrs: [NSAttributedString.Key: Any] = [
-                                .font: NSFont.monospacedSystemFont(ofSize: 14.0, weight: .bold),
-                                .foregroundColor: captionTagColor,
-                                .kern: 1.6,
-                            ]
-                            let tagSz = (captionTag as NSString).size(withAttributes: tagAttrs)
-                            let tagRect = CGRect(x: plateRect.minX + 28, y: plateRect.minY + 14, width: tagSz.width + 18, height: 24)
-                            ctx.setFillColor(captionTagColor.withAlphaComponent(0.15).cgColor)
-                            ctx.fill(tagRect)
-                            ctx.setStrokeColor(captionTagColor.withAlphaComponent(0.65).cgColor)
-                            ctx.setLineWidth(1.2)
-                            ctx.stroke(tagRect)
-                            (captionTag as NSString).draw(at: CGPoint(x: tagRect.minX + 9, y: tagRect.minY + 3.5), withAttributes: tagAttrs)
-
-                            let capAttrs: [NSAttributedString.Key: Any] = [
-                                .font: NSFont.systemFont(ofSize: 27.5, weight: .medium),
-                                .foregroundColor: NSColor(calibratedWhite: 0.98, alpha: 1.0),
-                                .paragraphStyle: paraCenter,
-                            ]
-                            drawWrapped(captionText, in: CGRect(x: plateRect.minX + 36, y: plateRect.minY + 46, width: plateRect.width - 72, height: 82), attrs: capAttrs)
-                            ctx.restoreGState()
-                        }
-
-                        // Subtle timecode top-right of narration plate
-                        let curSec = Int(t), totSec = Int(totalDur)
-                        let timeStr = String(format: "%02d:%02d / %02d:%02d", curSec / 60, curSec % 60, totSec / 60, totSec % 60)
-                        let timeAttrs: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.monospacedSystemFont(ofSize: 13.5, weight: .medium),
-                            .foregroundColor: GridTokens.nsMid,
-                            .kern: 1.0,
-                        ]
-                        let tW = (timeStr as NSString).size(withAttributes: timeAttrs).width
-                        (timeStr as NSString).draw(at: CGPoint(x: plateRect.maxX - 28 - tW, y: plateRect.minY + 17), withAttributes: timeAttrs)
-
-                        // Sleek 8-segment chapter progress track along bottom of plate
-                        let barX = plateRect.minX + 28
-                        let barW = plateRect.width - 56
-                        let barY = plateRect.maxY - 16
-                        ctx.setFillColor(NSColor(white: 0.94, alpha: 0.14).cgColor)
-                        ctx.fill(CGRect(x: barX, y: barY, width: barW, height: 3.0))
-                        let fillW = barW * CGFloat(max(0.0, min(1.0, t / totalDur)))
-                        ctx.setFillColor(GridTokens.nsCyan.cgColor)
-                        ctx.fill(CGRect(x: barX, y: barY, width: fillW, height: 3.0))
-
-                        // Subtle chapter ticks along the timeline bar
-                        for i in 0..<8 {
-                            let frac = CGFloat((introDur + Float(i) * stationSlot) / totalDur)
-                            let tx = barX + barW * frac
-                            ctx.setFillColor(NSColor(white: 0.96, alpha: (!isOverviewMode && i == activeStation) ? 0.95 : 0.35).cgColor)
-                            ctx.fill(CGRect(x: tx - 1, y: barY - 3, width: 2, height: 9))
-                        }
-
-                        // Cinematic fade-in / fade-out
-                        if fadeBlack > 0.005 {
-                            ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: fadeBlack).cgColor)
-                            ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
-                        }
-
+                        drawVideoOverlay(in: ctx, size: logicalSize, cardAlpha: state.cardAlpha, fade: state.fade, progress: state.progress)
                         ctx.restoreGState()
                         NSGraphicsContext.restoreGraphicsState()
                     }
                 }
                 CVPixelBufferUnlockBaseAddress(pb, [])
-
-                let pts = CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(fps))
-                adaptor.append(pb, withPresentationTime: pts)
+                if adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(fps))) { appended += 1 }
             }
-
-            if frameIdx > 0 && frameIdx % (fps * 15) == 0 {
-                let elapsed = CACurrentMediaTime() - tStart
-                print(String(format: "rh3d record: %d/%d frames (%.1fs elapsed)", frameIdx, totalFrames, elapsed))
+            if frameIdx > 0 && frameIdx % (fps * 10) == 0 {
+                print(String(format: "rh3d record: %d/%d frames (%.1fs elapsed)", frameIdx, totalFrames, CACurrentMediaTime() - tStart))
                 fflush(stdout)
             }
         }
-
-        showGuide = prevShowGuide
         showLabels = prevShowLabels
 
         videoInput.markAsFinished()
@@ -3811,12 +3324,11 @@ final class RhFlythroughView: NSView {
         writer.finishWriting { sem.signal() }
         sem.wait()
 
-        let elapsed = CACurrentMediaTime() - tStart
-        if writer.status == .completed {
-            print(String(format: "rh3d record: wrote %@ (%dx%d @ %dfps, %.1fs in %.1fs)", url.path, width, height, fps, totalDur, elapsed))
+        if writer.status == .completed && appended == totalFrames {
+            print(String(format: "rh3d record: wrote %@ (%dx%d @ %dfps, %.1fs in %.1fs)", url.path, width, height, fps, totalDur, CACurrentMediaTime() - tStart))
             return true
         }
-        fputs("rh3d record: writer finished with error: \(writer.error?.localizedDescription ?? "unknown")\n", stderr)
+        fputs("rh3d record: \(appended)/\(totalFrames) frames, writer error: \(writer.error?.localizedDescription ?? "none")\n", stderr)
         return false
     }
 }

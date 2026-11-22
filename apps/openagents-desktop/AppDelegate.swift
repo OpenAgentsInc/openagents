@@ -354,7 +354,7 @@ enum TestLaunch {
             ("02b-atlas-lod1.png", "{\"ok\":true,\"id\":\"s2b\",\"open\":true,\"view\":\"atlas\"}", 1),
             ("03-math-strip.png", "{\"ok\":true,\"id\":\"s3\",\"open\":true,\"view\":\"math\",\"math_tab\":\"strip\"}", nil),
             ("04-math-robin.png", "{\"ok\":true,\"id\":\"s4\",\"open\":true,\"view\":\"math\",\"math_tab\":\"robin\"}", nil),
-            ("05-math-theta.png", "{\"ok\":true,\"id\":\"s5\",\"open\":true,\"view\":\"math\",\"math_tab\":\"theta\"}", nil),
+            ("05-math-primes.png", "{\"ok\":true,\"id\":\"s5\",\"open\":true,\"view\":\"math\",\"math_tab\":\"primes\"}", nil),
             ("06-inspect-main.png", "{\"ok\":true,\"id\":\"s6\",\"open\":true,\"view\":\"inspect\",\"module\":\"Main\"}", nil),
             ("07-trust.png", "{\"ok\":true,\"id\":\"s7\",\"open\":true,\"view\":\"trust\"}", nil),
             ("08-prover.png", "{\"ok\":true,\"id\":\"s8\",\"open\":true,\"view\":\"prover\"}", nil),
@@ -388,13 +388,13 @@ enum TestLaunch {
         let shots: [(String, Float?, Bool)] = [
             ("00-overview.png", nil, true),
             ("01-zeta-terrain.png", 0.0, false),
-            ("02-robin-5040.png", 7.0, false),
-            ("03-barrier-23.png", 14.0, false),
-            ("04-theta-bridge.png", 21.0, false),
-            ("05-city-175k.png", 28.0, false),
-            ("06-behrend-weil.png", 35.0, false),
-            ("07-kernels.png", 42.0, false),
-            ("08-summit-qed.png", 49.0, false),
+            ("02-primes.png", 7.0, false),
+            ("03-robin-5040.png", 14.0, false),
+            ("04-idea.png", 21.0, false),
+            ("05-last-step.png", 28.0, false),
+            ("06-proof-city.png", 35.0, false),
+            ("07-checkers.png", 42.0, false),
+            ("08-theorem.png", 49.0, false),
         ]
         var ok = 0
         for (name, t, ov) in shots {

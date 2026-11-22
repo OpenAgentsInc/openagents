@@ -2,7 +2,7 @@
 // Lean 4 & Riemann Hypothesis Proof Workbench (Epic #13943, #13946):
 //   1. Guided Tour (20 remark.pdf steps + Top-Down Onion Peel from Main.lean)
 //   2. 60 fps Semantic-Zoom Proof Atlas (LOD 0: 10 Libraries -> LOD 1: 226 Domains -> LOD 2: Module Cone)
-//   3. Interactive Math Visuals (Critical Strip & Hardy Z(t) / Dirichlet L, Robin/Lagarias sigma(n), sqrt(X) Theta Lifts)
+//   3. Interactive Math Visuals (Critical Strip & Hardy Z(t) / Dirichlet L, Robin/Lagarias sigma(n), Primes from Zeros)
 //   4. Zero-Comment Module Inspector (real .lean source, shortest path to Main, upstream/downstream cones, search)
 //   5. Provenance & Multi-Kernel Trust Ledger (4-criterion Buzzard checklist, MIT matrix, 6 metaprog sites, SHA-256)
 //   6. Live Lean 4 Prover Scratchpad (preset valid + adversarial anti-cheat proofs -> real lean-run verify)
@@ -545,7 +545,7 @@ cp_lean_draw_math :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h:
   sheet_fill(sh, x, y, w, bar_h, 0, k.surface);
   sheet_rule(sh, x, y + bar_h, w, k.border, k.menu_divider);
   tx := x + 16.0f32; ty := y + 6.0f32;
-  mtabs := [3] string.["Critical Strip & Hardy Z(t)", "Robin & Lagarias σ(n)", "√X Iterated Theta-Lift Chain"];
+  mtabs := [3] string.["Critical Strip & Hardy Z(t)", "Robin & Lagarias σ(n)", "Primes from Zeros"];
   for ti: 0..<3 {
     tx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.mtab.", ti), tx, ty, mtabs[ti], l[0].math_tab == ti, k.success, CP_LEAN_MATH_TAB) + 8.0f32;
   }
@@ -695,54 +695,73 @@ cp_lean_draw_math :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h:
       }
     }
   } else {
-    // ---- TAB C: ALPOGE'S sqrt(X) ITERATED THETA-LIFT CHAIN VS 2/3 BARRIER ----
-    _ := sheet_text(sh, m, -1, cx, cy, k.small.line, k.small.face, k.muted, "ALPOGE'S CORE BREAKTHROUGH (STEPS 18-20): √X SAVINGS + ITERATED THETA LIFTS BREAK THE CLASSICAL 2/3 MODULARITY BARRIER");
+    // ---- TAB C: PRIMES FROM ZEROS (VON MANGOLDT'S EXPLICIT FORMULA) ----
+    _ := sheet_text(sh, m, -1, cx, cy, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, "EXPLICIT FORMULA: ψ(x) = x − Σ x^ρ/ρ − ln 2π − ½ ln(1 − x⁻²)   ·   EACH ZERO ρ = ½ + iγ ADDS ONE WAVE, AND THE WAVES ADD UP TO THE PRIMES", cw));
     cy += 22.0f32;
     px := cx;
-    for stg: 1..<9 {
-      sb: [16] u8; sn := el_put(sb[..], 0, "Lift k="); sn = el_put_i(sb[..], sn, stg);
-      px += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.stg.", stg), px, cy, sheet_pool(sh, cast(string) sb[0..<sn]), l[0].math_theta_stage == stg, k.syntax[4], CP_LEAN_MATH_STAGE) + 5.0f32;
+    zcounts := [8] int.[0, 1, 2, 3, 5, 10, 20, 30];
+    for zi: 0..<8 {
+      sb: [16] u8; sn := el_put_i(sb[..], 0, zcounts[zi]); sn = el_put(sb[..], sn, ifx zcounts[zi] == 1 then " zero" else " zeros");
+      px += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.nz.", zi), px, cy, sheet_pool(sh, cast(string) sb[0..<sn]), l[0].math_zero_idx == zi, k.syntax[4], CP_LEAN_MATH_ZEROS) + 5.0f32;
     }
-    alphas := [3] f64.[0.75, 1.00, 1.30];
-    al_lbls := [3] string.["α=0.75", "α=1.00", "α=1.30"];
+    xmaxs := [3] f64.[30.0, 60.0, 100.0];
+    xm_lbls := [3] string.["x<=30", "x<=60", "x<=100"];
     rx := cx + cw - 196.0f32;
     if rx > px {
-      for ai: 0..<3 {
-        rx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.alp.", ai), rx, cy, al_lbls[ai], l[0].math_theta_alpha_idx == ai, k.warning, CP_LEAN_MATH_ALPHA) + 5.0f32;
+      for xi: 0..<3 {
+        rx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.xmax.", xi), rx, cy, xm_lbls[xi], l[0].math_xmax_idx == xi, k.warning, CP_LEAN_MATH_XMAX) + 5.0f32;
       }
     }
     cy += 34.0f32;
 
-    alpha := alphas[l[0].math_theta_alpha_idx];
-    v_cl := rhm_theta_classical(l[0].math_theta_stage, alpha);
-    v_al := rhm_theta_alpoge(l[0].math_theta_stage, alpha);
+    n_zeros := zcounts[l[0].math_zero_idx];
+    xmax := xmaxs[l[0].math_xmax_idx];
+    zs: [RHM_ZEROS_N] f64;
+    for zi: 0..<RHM_ZEROS_N { zs[zi] = RHM_ZEROS[zi]; }
+
+    // Mean distance between the formula and the true staircase, sampled between the jumps.
+    gap_sum := 0.0; gap_n := 0;
+    for gi: 0..<80 {
+      gx := 2.5 + (xmax - 2.5) * cast(f64) gi / 79.0;
+      gd := rhm_psi_explicit(gx, zs[..], n_zeros) - rhm_psi(gx);
+      gap_sum += ifx gd < 0.0 then -gd else gd;
+      gap_n += 1;
+    }
     gap: f32 = 10.0f32; kw := (cw - gap * 2.0f32) / 3.0f32;
-    cp_lr_metric(f, cx, cy, kw, 68.0f32, "CLASSICAL HECKE TRANSFER", cp_lr_fmt_f3(sh, v_cl), "Stalls strictly below 0.667", k.danger);
-    cp_lr_metric(f, cx + kw + gap, cy, kw, 68.0f32, "ALPOGE √X THETA-LIFT CHAIN", cp_lr_fmt_f3(sh, v_al), ifx v_al > 0.6667 then "CROSSED 2/3 BARRIER!" else "Climbing toward 2/3", k.success);
-    cp_lr_metric(f, cx + 2.0f32 * (kw + gap), cy, kw, 68.0f32, "KEY LEAN MODULE", "VwinOfRow (depth 3)", "DenseThresholdCases · 141k Dev", k.syntax[4]);
+    cp_lr_metric(f, cx, cy, kw, 68.0f32, "ZEROS USED", cp_lr_fmt_int(sh, n_zeros), ifx n_zeros == 0 then "Smooth trend only" else "First zeros on Re(s) = 1/2", k.syntax[4]);
+    cp_lr_metric(f, cx + kw + gap, cy, kw, 68.0f32, "MEAN GAP TO THE PRIME STAIRCASE", cp_lr_fmt_f3(sh, gap_sum / cast(f64) gap_n), "Shrinks as zeros are added", k.success);
+    cp_lr_metric(f, cx + 2.0f32 * (kw + gap), cy, kw, 68.0f32, "WHAT RH SAYS HERE", "Re(ρ) = 1/2", "Every wave grows like √x, no faster", k.warning);
     cy += 80.0f32;
 
     chart_h := y + h - cy - 16.0f32;
     if chart_h > 120.0f32 {
       _ := sheet_box(sh, cx, cy, cw, chart_h, 10.0f32, k.border, k.sunk, opacity(k.syntax[4], 0.36f32));
       bx0 := cx + 26.0f32; by0 := cy + 28.0f32; bw := cw - 52.0f32; bh := chart_h - 54.0f32;
-      y_bar := by0 + bh * (1.00f32 - 0.6667f32) / 0.75f32;
-      sheet_under(sh, prim_line(sh[0].under, sh[0].nu, bx0, y_bar, bx0 + bw, y_bar, 2.0f32, k.warning));
-      _ := sheet_text(sh, m, -1, bx0 + 8.0f32, y_bar - 18.0f32, k.small.line, k.small.face, k.warning, "2/3 Modularity Threshold (0.667) — Classical Obstruction");
+      y_top := xmax * 1.04;
+      _ := sheet_text(sh, m, -1, bx0 + 8.0f32, by0 - 20.0f32, k.small.line, k.small.face, k.ink, "ψ(x): the exact prime staircase (jumps by ln p at each prime power)");
+      _ := sheet_text(sh, m, -1, bx0 + bw - 330.0f32, by0 + bh - 20.0f32, k.small.line, k.small.face, k.success, "Explicit formula with the zeros selected above");
 
-      px_c := bx0; py_c := by0; px_a := bx0; py_a := by0;
-      for stg: 0..<9 {
-        st_x := bx0 + bw * cast(f32) stg / 8.0f32;
-        yc := by0 + bh * cast(f32) ((1.0 - rhm_theta_classical(stg, alpha)) / 0.75);
-        ya := by0 + bh * cast(f32) ((1.0 - rhm_theta_alpoge(stg, alpha)) / 0.75);
-        if stg > 0 {
-          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, px_c, py_c, st_x, yc, 2.2f32, k.danger));
-          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, px_a, py_a, st_x, ya, 2.6f32, k.success));
+      samples := 260;
+      px_s := bx0; py_s := by0 + bh; px_e := bx0; py_e := by0 + bh; px_t := bx0; py_t := by0 + bh;
+      for si: 0..<samples {
+        xv := 2.0 + (xmax - 2.0) * cast(f64) si / cast(f64) (samples - 1);
+        sx := bx0 + bw * cast(f32) ((xv - 2.0) / (xmax - 2.0));
+        v_s := rhm_psi(xv);
+        v_e := rhm_psi_explicit(xv, zs[..], n_zeros);
+        v_t := rhm_psi_explicit(xv, zs[..], 0);
+        if v_e < 0.0 { v_e = 0.0; }
+        if v_e > y_top { v_e = y_top; }
+        ys := by0 + bh * cast(f32) (1.0 - v_s / y_top);
+        ye := by0 + bh * cast(f32) (1.0 - v_e / y_top);
+        yt := by0 + bh * cast(f32) (1.0 - v_t / y_top);
+        if si > 0 {
+          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, px_t, py_t, sx, yt, 1.0f32, opacity(k.muted, 0.55f32)));
+          // The staircase is drawn as true steps: flat, then a vertical jump.
+          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, px_s, py_s, sx, py_s, 2.0f32, k.ink));
+          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, sx, py_s, sx, ys, 2.0f32, k.ink));
+          sheet_under(sh, prim_line(sh[0].under, sh[0].nu, px_e, py_e, sx, ye, 2.4f32, k.success));
         }
-        r := ifx stg == l[0].math_theta_stage then 6.0f32 else 3.5f32;
-        sheet_fill(sh, st_x - r, yc - r, r * 2.0f32, r * 2.0f32, r, k.danger);
-        sheet_fill(sh, st_x - r, ya - r, r * 2.0f32, r * 2.0f32, r, k.success);
-        px_c = st_x; py_c = yc; px_a = st_x; py_a = ya;
+        px_s = sx; py_s = ys; px_e = sx; py_e = ye; px_t = sx; py_t = yt;
       }
     }
   }

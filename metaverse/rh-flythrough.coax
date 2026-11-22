@@ -1,10 +1,18 @@
-// Metaverse Engine 3D Flythrough realm data & Catmull-Rom spline camera for the
-// Riemann Hypothesis Proof Workbench (OpenAgents Desktop Gym -> Lean · RH -> 1. 3D Flythrough).
+// Scene data and camera path for the Riemann Hypothesis flythrough
+// (OpenAgents Desktop: Gym -> Lean · RH -> 1. 3D Flythrough, and its recorded walkthrough video).
 //
-// Reuses:
-//   - metaverse-engine/cam/flyover.coax (Catmull-Rom spline flyover camera `fly_parse` / `fly_shot`)
-//   - coax/lib/lean/rh-math.coax (real Riemann-Siegel Hardy Z(t) & |zeta(s)|, exact Robin 5040
-//     divisor ratios, and Alpoge's 8-stage sqrt(X) theta-lift chain vs 2/3 barrier)
+// Rule for this file: everything a viewer sees is either real mathematics computed in
+// coax/lib/lean/rh-math.coax, or a fact taken from a named primary source:
+//   - the joint statement of the Lean and Mathlib communities, 2026-11-21
+//     (leanprover-community.github.io/blog/posts/riemann-hypothesis/)
+//   - the author's note (alpo.ge/remark.pdf)
+//   - leanprover-community/riemann-hypothesis: README.md, verification/NOTES.md, src/Main.lean
+//   - Andrew Sutherland's verification page (math.mit.edu/~drew/grh/)
+// Nobody has yet published a human-readable account of the proof, so no station draws how the
+// proof works inside. Station 4 shows only what the author's note states, and says so.
+//
+// Each station has a caption of at most RH3D_CAPTION_WORDS words. The video shows the caption
+// alone in large type, so it has to be readable in the time the camera stays at a station.
 //
 //   coax/bin/coax test metaverse/rh-flythrough.coax --library
 #load "../metaverse-engine/cam/flyover.coax";
@@ -13,11 +21,28 @@
 
 RH3D_STATIONS :: 8;
 RH3D_DURATION :: 62.0f32;
+RH3D_CAPTION_WORDS :: 30;
 
-// 10-key Metaverse Engine Catmull-Rom flyover spline (Y-up meters, matching metaverse-engine/cam/flyover.coax):
-//   t=0..49s glides smoothly through all 8 stations (X = -42 .. +42, 12m apart along Z = 0),
-//   t=55s sweeps high into a full panoramic vista of all 8 stations end-to-end,
-//   t=62s loops cleanly back toward Station 1 (Prime Music / Zeta Terrain).
+// Published size of the proof (verification/NOTES.md, "Size").
+RH3D_FILES :: 175187;
+RH3D_LINES :: 17374215;
+RH3D_THEOREMS :: 818755;
+
+// The critical-strip floor of stations 1 and 5: sigma from 0 to 1, t from RH3D_T0 to RH3D_T1.
+RH3D_T0 :: 8.0;
+RH3D_T1 :: 52.0;
+RH3D_GRID_NS :: 41;    // sigma step 0.025; column 20 is the critical line sigma = 1/2
+RH3D_GRID_NT :: 177;   // t step 0.25
+RH3D_HEIGHT_CLIP :: 3.0;
+
+// The prime staircase of station 2: psi(x) for RH3D_PSI_X0 <= x <= RH3D_PSI_X1.
+RH3D_PSI_X0 :: 2.0;
+RH3D_PSI_X1 :: 60.0;
+RH3D_PSI_ZEROS :: 100;
+
+// 10-key Catmull-Rom flyover (Y-up meters, as metaverse-engine/cam/flyover.coax reads it):
+//   t = 0..49 s passes the 8 stations (x = -42 .. +42, 12 m apart, on z = 0),
+//   t = 55 s rises to a view of all 8, and t = 62 s returns to station 1.
 RH3D_FLY_PATH :: "0,-49,8.5,15,-42,2.6,0~7,-34,7.2,13.5,-30,2.8,0~14,-21,7.5,14,-18,3.2,0~21,-8,8.5,15,-6,3.8,0~28,6,11.5,18,6,4.5,0~35,19,8.0,14.5,18,3.2,0~42,32,8.5,15,30,3.6,0~49,47,10.5,16,42,5.5,0~55,0,32.0,74,0,3.0,0~62,-49,8.5,15,-42,2.6,0";
 
 Rh3dStation :: struct {
@@ -28,15 +53,13 @@ Rh3dStation :: struct {
   eye_x: f32;
   eye_y: f32;
   eye_z: f32;
-  short_name: string;
-  badge: string;
+  short_name: string;   // the tab under the view, e.g. "2. The primes"
+  kicker: string;       // a few words above the title
   title: string;
-  subtitle: string;
-  plain_english: string;
-  why_it_matters: string;
-  analogy: string;
-  next_link: string;
-  module_name: string;
+  caption: string;      // the one thing to take away; all the video shows
+  detail: string;       // the fuller explanation in the app's guide card
+  source: string;       // where the numbers and claims on this station come from
+  module_name: string;  // the Lean module the SOURCE button opens
 }
 
 rh3d_station :: (idx: int) -> Rh3dStation {
@@ -44,14 +67,12 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -42.0f32, y = 2.6f32, z = 0.0f32, time_s = 0.0f32,
       eye_x = -49.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "1. Prime Music",
-      badge = "167-YEAR MYSTERY · $1M PRIZE",
-      title = "1. The 167-Year Mystery: Do Primes Have a Hidden Rhythm?",
-      subtitle = "Unsolved from 1859 until Nov 20, 2026 · Clay $1,000,000 Millennium Prize",
-      plain_english = "The glowing wireframe hills are Riemann's zeta wave computed live in Coax. Every place the wave dives straight down to zero shoots up a glowing gold spike — and every single spike lines up dead-center on that one golden glass wall (Re = 1/2).",
-      why_it_matters = "Prime numbers (2, 3, 5, 7, 11...) are the atoms of math and internet encryption, yet they look totally chaotic. In 1859 Riemann discovered these zero spikes act like hidden sound notes predicting where primes appear. Proving NO zero ever drifts off this wall settles the distribution of primes forever and turns hundreds of 'assuming RH' theorems across math and computer science into proven fact.",
-      analogy = "Like discovering that static noise on a radio is actually a hidden symphony — and proving every single musical note in the universe is tuned to the exact same frequency line.",
-      next_link = "Checking an infinite wave sounds impossible. Next: a surprisingly simple whole-number gut-check that is 100% equivalent to RH.",
+      short_name = "1. The question",
+      kicker = "RIEMANN, 1859",
+      title = "Where are the zeros of the zeta function?",
+      caption = "This landscape is the size of Riemann's zeta function. It touches zero only at the gold needles, and every needle stands on one line.",
+      detail = "The floor is the critical strip: the numbers s whose real part is between 0 and 1. The height is |ζ(s)|, computed for imaginary part 8 to 52. Ten zeros are in view, the first at height 14.13 up the strip. The Riemann Hypothesis says every zero in the strip has real part exactly 1/2, which is the gold line.",
+      source = "Computed here by Euler-Maclaurin summation (coax/lib/lean/rh-math.coax). The zeros are found from sign changes of Hardy's Z(t).",
       module_name = "Statements",
     };
   }
@@ -59,108 +80,151 @@ rh3d_station :: (idx: int) -> Rh3dStation {
     return Rh3dStation.{
       x = -30.0f32, y = 2.8f32, z = 0.0f32, time_s = 7.0f32,
       eye_x = -34.0f32, eye_y = 7.2f32, eye_z = 13.5f32,
-      short_name = "2. 5040 Test",
-      badge = "THE WHOLE-NUMBER GUT CHECK",
-      title = "2. The 5,040 Test: A Whole-Number Check Anyone Can Understand",
-      subtitle = "Guy Robin (1984): RH is 100% identical to a simple ceiling on divisors past 5,040",
-      plain_english = "Each pillar is a whole number, and its height measures how rich its list of divisors is. Early rebel numbers (red bars on the left) poke right through the cyan glass ceiling. The blazing gold tower is 5,040 — the very last rebel. Every number to the right stays safely under the glass.",
-      why_it_matters = "This does two huge things: it translates abstract complex waves into plain whole-number arithmetic, and it gives the Lean proof an independent sanity check (Challenge.lean). Skeptics can inspect this short statement and know immediately the proof really proves the famous Riemann Hypothesis — no hidden definitions or loopholes.",
-      analogy = "Like checking whether a 100-story skyscraper is truly straight using a pocket bubble level: if even ONE number larger than 5,040 ever broke the cyan ceiling, RH would collapse.",
-      next_link = "Stating RH simply is one thing; proving it was a 167-year brick wall. Next: the infamous 2/3 barrier that stopped everyone cold.",
-      module_name = "Challenge",
+      short_name = "2. The primes",
+      kicker = "WHY THE ZEROS MATTER",
+      title = "The zeros draw the prime numbers",
+      caption = "The white staircase steps up at every prime. Add one wave for each zero, and the cyan curve bends into the same staircase.",
+      detail = "The staircase is Chebyshev's ψ(x), which rises by ln p at each power of a prime p. Von Mangoldt's explicit formula writes ψ(x) as x minus one wave for each zero of zeta. The curve adds the first 100 zeros one at a time. If every zero has real part 1/2, every wave grows like √x and no faster, which is the tightest possible control on where the primes fall.",
+      source = "ψ(x) is exact. The curve is x − Σ x^ρ/ρ − ln 2π − ½ ln(1 − x⁻²) over the first 100 zeros, computed in rh-math.coax.",
+      module_name = "Statements",
     };
   }
   if idx == 2 {
     return Rh3dStation.{
       x = -18.0f32, y = 3.2f32, z = 0.0f32, time_s = 14.0f32,
       eye_x = -21.0f32, eye_y = 7.5f32, eye_z = 14.0f32,
-      short_name = "3. 2/3 Wall",
-      badge = "THE HISTORIC BREAKTHROUGH",
-      title = "3. The Breakthrough: Smashing the 100-Year '2/3' Brick Wall",
-      subtitle = "Classical math stalled below 2/3 for a century; Alpoge's 8-step chain vaults clean over it",
-      plain_english = "The glowing red horizontal slab is the infamous 2/3 density wall. Notice the dim red columns behind it — a century of older proof methods — all stalling underneath. Front and center, the glowing cyan staircase climbs 8 stages straight through the gap and punches well past 2/3.",
-      why_it_matters = "THIS is the exact lightning bolt that cracked RH open. Older techniques could squeeze most zeros near the line, but always hit a hard ceiling at 2/3 — leaving room for rogue zeros to hide off the wall. Levent Alpoge chained square-root cancellation with 8 iterated mirror-symmetry boosts that finally clear 2/3 and eliminate every hiding spot.",
-      analogy = "Like trying to reach orbit when every rocket fuel on Earth tops out at 66% escape velocity. Alpoge built an 8-stage booster that finally breaks out into orbit.",
-      next_link = "How does that 8-stage mathematical booster actually work? Next: step inside the Mirror-Symmetry Engine Room.",
-      module_name = "Supplements.ThetaPairLifts",
+      short_name = "3. A number test",
+      kicker = "ROBIN, 1984",
+      title = "The same claim, in whole numbers",
+      caption = "Add up a number's divisors and compare with a ceiling. Small numbers break through, and 5,040 is the last. The Riemann Hypothesis says no larger number ever does.",
+      detail = "Each pillar is one number n. Its height is σ(n), the sum of its divisors, divided by e^γ · n · ln ln n. Robin proved in 1984 that the Riemann Hypothesis is true exactly when this ratio stays below 1 for every n above 5,040. The pillars right of 5,040 are the numbers that come closest, and they stay under.",
+      source = "Ratios computed exactly in rh-math.coax. Andrew Sutherland combined the Lean proof with the independent Robin1984 formalization to derive this inequality in Lean with no mention of zeta.",
+      module_name = "Main",
     };
   }
   if idx == 3 {
     return Rh3dStation.{
       x = -6.0f32, y = 3.8f32, z = 0.0f32, time_s = 21.0f32,
       eye_x = -8.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "4. Mirror Bridge",
-      badge = "HOW THE ENGINE WORKS",
-      title = "4. The Engine Room: Turning Chaotic Primes Into Smooth Geometry",
-      subtitle = "44,578 Supplements files translating primes into waves on curved mirror-symmetric spaces",
-      plain_english = "Eight tall obsidian pillars beam pulsing cyan light into the hovering diamond translator core. Each pillar is one gear of the analytic engine — spectral frequency splitters, Bessel wave kernels, symmetry transfer, and iterated theta lifts working together.",
-      why_it_matters = "Attacking prime numbers head-on is a dead end because they look too jagged. Modern number theory's biggest superpower is translating primes into smooth vibrating waves on curved higher-dimensional shapes. In that curved mirror world, hidden symmetries force massive chunks of chaotic error to cancel themselves out.",
-      analogy = "Like putting noise-canceling headphones on prime numbers: in raw air the static looks hopeless, but flipped into clean frequencies, opposite noise waves erase each other.",
-      next_link = "Writing out every microscopic logical step of this engine without skipping a single detail takes staggering scale. Next: the 175,182-file Proof City.",
-      module_name = "Supplements.FormalDegreeBessel",
+      short_name = "4. The idea",
+      kicker = "FROM THE AUTHOR'S NOTE",
+      title = "The new idea: a chain of about √X steps",
+      caption = "The author's note names one key idea: for a prime sum of length X, chain about √X steps called theta lifts. No plain account of the full proof exists yet.",
+      detail = "The note says the argument descends from Stepanov's proof of the Riemann Hypothesis for curves over finite fields, which needs a function that vanishes many times at one point. Over the whole numbers there was no known way to get that. In the new proof each theta lift wins one more unit of this multiplicity, and Claude suggested a chain of about √X of them. The rows show only how the chain grows with X. They do not model the proof.",
+      source = "alpo.ge/remark.pdf, which lists 20 dated steps from 6 October to 16 November 2026 and says the proof will be greatly simplified.",
+      module_name = "Development.AutomorphicArithmetic.CharacterBoxes.MainConclusion",
     };
   }
   if idx == 4 {
     return Rh3dStation.{
       x = 6.0f32, y = 4.5f32, z = 0.0f32, time_s = 28.0f32,
       eye_x = 6.0f32, eye_y = 11.5f32, eye_z = 18.0f32,
-      short_name = "5. 175k City",
-      badge = "17.37 MILLION LINES · HUMAN + AI",
-      title = "5. The 17.37-Million-Line City: Every Real File of the Proof",
-      subtitle = "Real 3D skyline of all 175,182 Lean 4 files hydrated live from rh-atlas.json",
-      plain_english = "Every dark-glass skyscraper here is a REAL folder from the actual proof repo on disk — taller building means more lines of code. The tallest tower alone (AbelianVarietyTheory) packs 99,187 files and 8.14 million lines of computer-checked mathematics!",
-      why_it_matters = "This is a historic shift in how humanity does math and science. Traditional journal papers skip thousands of routine details and take years for humans to referee. Partnering with AI (Claude), Levent Alpoge spelled out EVERY single logical step across 17.37 million lines — bigger than many operating systems — with zero hand-waving.",
-      analogy = "If a blackboard proof is an architect's rough napkin sketch, this city is the full CAD blueprint down to every single bolt and rivet — stress-tested in a physics engine before opening day.",
-      next_link = "Even a 0.0001% leftover error could topple a city this huge. Next: the two mathematical safety nets that lock down every loophole.",
-      module_name = "Formalism",
+      short_name = "5. The last step",
+      kicker = "HOW MAIN.LEAN FINISHES",
+      title = "No zeros on the right means all zeros on the line",
+      caption = "The proof shows there are no zeros right of the line, for zeta and every Dirichlet L-function. A mirror symmetry then rules out the left side. Only the line remains.",
+      detail = "Main.lean reaches the Riemann Hypothesis in two moves. The first, allChi, is the 17-million-line part: no Dirichlet L-function, zeta included, is zero where the real part is above 1/2. The second is classical. The functional equation pairs each zero with a mirror image across the line, so a zero on the left would force one on the right.",
+      source = "verification/NOTES.md, section Statements; src/Supplements/Kernels/MainTheorems.lean; Formalism/GammaFactorNonvanishing/CritLine.lean.",
+      module_name = "Supplements.Kernels.MainTheorems",
     };
   }
   if idx == 5 {
     return Rh3dStation.{
       x = 18.0f32, y = 3.2f32, z = 0.0f32, time_s = 35.0f32,
       eye_x = 19.0f32, eye_y = 8.0f32, eye_z = 14.5f32,
-      short_name = "6. Safety Nets",
-      badge = "ZERO LOOPHOLES ALLOWED",
-      title = "6. The Safety Nets: Locking Down Every Last Leftover Error",
-      subtitle = "Behrend anti-collision cages + Weil wave speed-limits prove no error can hide a zero",
-      plain_english = "Inside the wireframe cube, glowing amber blocks sit ONLY on a thin hollow sphere shell — a Behrend set where no three blocks ever form an evenly spaced line. Three sweeping golden Weil arches tower overhead like protective containment domes.",
-      why_it_matters = "Over 167 years, dozens of claimed RH proofs collapsed because a tiny leftover 'error term' wasn't tightly bounded and could secretly conceal a rogue off-line zero. These two tools weld every crack shut: Behrend cages forbid sneaky aligned patterns, and Weil bounds cap wave noise at strict square-root speed limits.",
-      analogy = "Like guarding a vault with both motion sensors (Weil speed-limits) and laser grids with zero blind corridors (Behrend spheres) — nothing can sneak past.",
-      next_link = "Wait: 17 million lines written with AI?! How do we KNOW there's no hallucination or sneaky cheat buried inside? Next: the #1 reason everyone knows it's real.",
-      module_name = "Formalism.BehrendSets.FinalE",
+      short_name = "6. The size",
+      kicker = "THE PROOF AS RELEASED",
+      title = "175,187 files and 17.4 million lines",
+      caption = "Each tower is a real folder of the proof, and taller towers hold more lines of Lean code. In total: 175,187 files, 17.4 million lines, no comments.",
+      detail = "The proof was released as Lean 4 source code only: 175,187 files, 17,374,215 lines, and 818,755 theorems and lemmas, every one of them imported by Main.lean. The towers are the 42 largest folders, with heights on a log scale. The tallest, Development.AbelianVarietyTheory, holds more than half of the files. The author says a readable write-up will follow.",
+      source = "Totals from verification/NOTES.md. Tower sizes from the local index built by lean-run rh index.",
+      module_name = "Development.AbelianVarietyTheory.Definitions.Divisors.CTSmallCone",
     };
   }
   if idx == 6 {
     return Rh3dStation.{
       x = 30.0f32, y = 3.6f32, z = 0.0f32, time_s = 42.0f32,
       eye_x = 32.0f32, eye_y = 8.5f32, eye_z = 15.0f32,
-      short_name = "7. 4 Checkers",
-      badge = "WHY YOU DON'T HAVE TO TRUST AI",
-      title = "7. Don't Trust, Verify: 4 Independent Computer Fact-Checkers",
-      subtitle = "Lean kernel + C++ leanchecker + Rust nanoda + multi-audit · 0 cheats · 3 basic axioms",
-      plain_english = "Four towering fortress monoliths lock cyan laser beams onto the central logic crystal. Each tower is a completely separate, tiny verifier program written from scratch. The 6 small amber gems in front are the ONLY 6 helper scripts in the entire 17M-line repo — all audited by human experts.",
-      why_it_matters = "THIS is why the Lean FRO & Mathlib community could certify a 17-million-line proof in ONE day! Nobody on Earth could read 17M lines by eye without missing a bug — and you don't have to trust the author OR the AI. If even ONE single step were invalid or cheated ('sorry'), all 4 independent referees would instantly reject it. All 4 passed 100% from just 3 standard math axioms.",
-      analogy = "Bitcoin's 'don't trust, verify' applied to pure math: it doesn't matter whether a human or an AI typed the proof — four tiny independent referee programs verified every single atom of logic.",
-      next_link = "Follow the final glowing conduit to the Summit — where 813,182 proven theorems lock into 4 legendary lines of code.",
-      module_name = "BuildAid.D1",
+      short_name = "7. The check",
+      kicker = "CERTIFIED 21 NOVEMBER 2026",
+      title = "How a 17-million-line proof can be trusted",
+      caption = "Nobody can read 17 million lines. Programs check them instead: separate proof checkers, written by different people in different languages, each replayed every step and accepted it.",
+      detail = "The Lean and Mathlib communities certified four things. The statement is Mathlib's own definition of the Riemann Hypothesis. The library compiles. It proves exactly that statement, confirmed by two tools. And the exported proof is accepted by several independent checkers. Two of them, con-leche and con-ron, come with a formal proof that they cannot accept a false proof. The theorems rest only on Lean's three standard axioms.",
+      source = "Joint statement of the Lean and Mathlib communities, endorsed by the Lean FRO and the Mathlib Initiative; math.mit.edu/~drew/grh/.",
+      module_name = "Main",
     };
   }
   return Rh3dStation.{
     x = 42.0f32, y = 5.5f32, z = 0.0f32, time_s = 49.0f32,
     eye_x = 47.0f32, eye_y = 10.5f32, eye_z = 16.0f32,
-    short_name = "8. Solved Q.E.D.",
-    badge = "HISTORY MADE · NOV 21, 2026",
-    title = "8. The Summit: Main.riemannHypothesis — 167 Years Later, Q.E.D.",
-    subtitle = "813,182 machine-verified theorems snap into 4 final lines in src/Main.lean",
-    plain_english = "Every glowing conduit from all 7 stations converges into this terraced obsidian ziggurat and shoots straight up the golden light needle through double cyan halo rings into the Q.E.D. crown — the final 4-line theorem sealing the proof.",
-    why_it_matters = "Two world-changing milestones just landed on the same day: (1) The most famous unsolved math problem since 1859 ($1M Millennium Prize) is now certified truth, instantly promoting hundreds of conditional theorems in math and algorithms into unconditional facts. (2) It proves human insight + AI scale + formal Lean verification can solve and certify problems at a scale no human team could ever audit alone.",
-    analogy = "The Moon landing for mathematics — except anyone with a laptop can download the code, run a verifier, and prove to themselves beyond a shadow of a doubt that it's 100% true.",
-    next_link = "Click OVERVIEW to see the full 8-step story end-to-end, SOURCE to inspect real Lean files, or jump to Tabs 2–6 to run your own live checks!",
+    short_name = "8. The result",
+    kicker = "A THEOREM AFTER 167 YEARS",
+    title = "The Riemann Hypothesis is proved",
+    caption = "Levent Alpöge, working with Claude, released the proof on 20 November 2026. It was certified the next day. The Riemann Hypothesis, open since 1859, is now a theorem.",
+    detail = "Main.lean states five theorems: Mathlib's RiemannHypothesis, the same statement written out, and three forms of the Generalized Riemann Hypothesis for every Dirichlet L-function. Dedekind zeta functions and general automorphic L-functions are not covered. The author expects much shorter proofs to follow.",
+    source = "src/Main.lean; alpo.ge/remark.pdf; the joint statement of 21 November 2026.",
     module_name = "Main",
   };
 }
 
-// Evaluates the Metaverse Engine Catmull-Rom flyover spline at `t_sec` (wrapping modulo RH3D_DURATION).
+// The overview card shown when the camera is above all eight stations.
+RH3D_OVERVIEW_TITLE :: "The Riemann Hypothesis: proved, and checked by machine";
+// The last card of the video.
+RH3D_CLOSING_CAPTION :: "Facts from the joint statement of the Lean and Mathlib communities, the author's note, and the proof's repository. Every curve and zero shown was computed, not drawn by hand.";
+RH3D_OVERVIEW_CAPTION :: "Eight stops: the question, why it matters, a whole-number test, the new idea, the last step, the size of the proof, how it was checked, and the result.";
+
+// The proof's libraries with their published file and line counts (verification/NOTES.md).
+Rh3dLib :: struct {
+  name: string;
+  files: int;
+  lines: int;
+}
+
+RH3D_LIBS :: 8;
+rh3d_lib :: (i: int) -> Rh3dLib {
+  if i == 0 { return Rh3dLib.{name = "Development", files = 141928, lines = 12232663}; }
+  if i == 1 { return Rh3dLib.{name = "Formalism", files = 18254, lines = 3200748}; }
+  if i == 2 { return Rh3dLib.{name = "GroundTheory", files = 8507, lines = 1119138}; }
+  if i == 3 { return Rh3dLib.{name = "ReciprocityTheory", files = 3845, lines = 563016}; }
+  if i == 4 { return Rh3dLib.{name = "CompanionTheory", files = 2027, lines = 194218}; }
+  if i == 5 { return Rh3dLib.{name = "PositivityTheory", files = 449, lines = 55130}; }
+  if i == 6 { return Rh3dLib.{name = "Lemmata", files = 167, lines = 9232}; }
+  return Rh3dLib.{name = "Main and supplements", files = 10, lines = 70};
+}
+
+// The independent checkers that accepted the proof, as the joint statement and Sutherland's page
+// describe them.
+Rh3dChecker :: struct {
+  name: string;
+  tag: string;     // two or three words, for the label in the scene
+  about: string;
+}
+
+RH3D_CHECKERS :: 5;
+rh3d_checker :: (i: int) -> Rh3dChecker {
+  if i == 0 { return Rh3dChecker.{name = "LEAN KERNEL", tag = "Official, C++", about = "Lean's official checker, in C++"}; }
+  if i == 1 { return Rh3dChecker.{name = "NANODA", tag = "Rust", about = "Independent checker, in Rust"}; }
+  if i == 2 { return Rh3dChecker.{name = "LEAN4LEAN", tag = "Written in Lean", about = "A Lean checker written in Lean"}; }
+  if i == 3 { return Rh3dChecker.{name = "CON-LECHE", tag = "Proved sound", about = "Proved unable to accept a false proof"}; }
+  return Rh3dChecker.{name = "CON-RON", tag = "Proved sound", about = "Proved sound too, in Rust"};
+}
+
+// The five theorems of src/Main.lean, in order.
+RH3D_THEOREM_NAMES :: [5] string.[
+  "riemannHypothesis", "riemannZeta_eq_zero_re", "LFunction_ne_zero_of_half_lt_re",
+  "LFunction_eq_zero_re", "LFunction_eq_zero_re_of_isPrimitive"
+];
+
+rh3d_word_count :: (s: string) -> int {
+  n := 0;
+  in_word := false;
+  for ch: s {
+    if ch == ' ' { in_word = false; } else if !in_word { in_word = true; n += 1; }
+  }
+  return n;
+}
+
+// Evaluates the flyover spline at `t_sec`, wrapping modulo RH3D_DURATION.
 rh3d_eval_fly :: (t_sec: f32) -> Shot {
   p := fly_parse(RH3D_FLY_PATH);
   t := t_sec;
@@ -169,21 +233,20 @@ rh3d_eval_fly :: (t_sec: f32) -> Shot {
   return fly_shot(p, t);
 }
 
-// Evaluates clamped |zeta(sigma + i*t)| height in [0.0, 4.5] for 3D terrain rendering.
+// |zeta(sigma + i*t)|, clipped at RH3D_HEIGHT_CLIP so the growth toward sigma = 0 stays in frame.
 rh3d_zeta_height :: (sigma: f64, t: f64) -> f32 {
   mag := rhm_l_abs(0, sigma, t);
-  if mag < 0.0 { mag = 0.0; }
-  if mag > 4.5 { mag = 4.5; }
+  if mag > RH3D_HEIGHT_CLIP { mag = RH3D_HEIGHT_CLIP; }
   return cast(f32) mag;
 }
 
-// Fills an `ns * nt` grid of real |zeta(sigma + it)| elevations for sigma in [0.12, 0.88], t in [4.0, 50.0].
+// Fills an `ns * nt` grid of |zeta(sigma + it)| for sigma in [0, 1] and t in [RH3D_T0, RH3D_T1].
 rh3d_fill_zeta_grid :: (ns: int, nt: int, out: [] f32) -> int {
   if ns < 2 || nt < 2 || out.count < ns * nt { return 0; }
   for j: 0..<nt {
-    t := 4.0 + (46.0 * cast(f64) j) / cast(f64) (nt - 1);
+    t := RH3D_T0 + ((RH3D_T1 - RH3D_T0) * cast(f64) j) / cast(f64) (nt - 1);
     for i: 0..<ns {
-      sigma := 0.12 + (0.76 * cast(f64) i) / cast(f64) (ns - 1);
+      sigma := cast(f64) i / cast(f64) (ns - 1);
       out[j * ns + i] = rh3d_zeta_height(sigma, t);
     }
   }
@@ -204,10 +267,34 @@ oa_dc_rh3d_fly_shot :: (t_ms: int, out_mm: [] int) -> int #export_c #effects(all
   return 1;
 }
 
+// The explicit-formula curves of station 2. `zeros_u6` holds the zeros' imaginary parts times
+// 1e6 (as oa_dc_rh3d_scene_json returns them). Row k (k = 0 .. zeros_u6.count) holds `n_samples`
+// values, times 1000, of the formula with the first k zeros, at x evenly spaced from RH3D_PSI_X0
+// to RH3D_PSI_X1. Returns the number of rows written, or 0 when `out_mm` is too small.
+oa_dc_rh3d_psi_curves :: (zeros_u6: [] int, n_samples: int, out_mm: [] int) -> int #export_c #effects(all) {
+  rows := zeros_u6.count + 1;
+  if n_samples < 2 || zeros_u6.count > 256 || out_mm.count < rows * n_samples { return 0; }
+  zs: [256] f64;
+  for i: 0..<zeros_u6.count { zs[i] = cast(f64) zeros_u6[i] / 1000000.0; }
+  for k: 0..<rows {
+    for i: 0..<n_samples {
+      x := RH3D_PSI_X0 + (RH3D_PSI_X1 - RH3D_PSI_X0) * cast(f64) i / cast(f64) (n_samples - 1);
+      out_mm[k * n_samples + i] = cast(int) (rhm_psi_explicit(x, zs[0..<zeros_u6.count], k) * 1000.0);
+    }
+  }
+  return rows;
+}
+
 oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
   o: [1] Jo; jo_start(o[..], out);
   jo_obj(o[..]);
   jo_key(o[..], "duration_ms"); jo_int(o[..], cast(int) (RH3D_DURATION * 1000.0f32));
+  jo_key(o[..], "overview_title"); jo_str(o[..], RH3D_OVERVIEW_TITLE);
+  jo_key(o[..], "overview_caption"); jo_str(o[..], RH3D_OVERVIEW_CAPTION);
+  jo_key(o[..], "closing_caption"); jo_str(o[..], RH3D_CLOSING_CAPTION);
+  jo_key(o[..], "files"); jo_int(o[..], RH3D_FILES);
+  jo_key(o[..], "lines"); jo_int(o[..], RH3D_LINES);
+  jo_key(o[..], "theorems"); jo_int(o[..], RH3D_THEOREMS);
   jo_key(o[..], "stations"); jo_arr(o[..]);
   for i: 0..<RH3D_STATIONS {
     st := rh3d_station(i);
@@ -220,45 +307,84 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
     jo_key(o[..], "eye_y_mm"); jo_int(o[..], cast(int) (st.eye_y * 1000.0f32));
     jo_key(o[..], "eye_z_mm"); jo_int(o[..], cast(int) (st.eye_z * 1000.0f32));
     jo_key(o[..], "short_name"); jo_str(o[..], st.short_name);
-    jo_key(o[..], "badge"); jo_str(o[..], st.badge);
+    jo_key(o[..], "kicker"); jo_str(o[..], st.kicker);
     jo_key(o[..], "title"); jo_str(o[..], st.title);
-    jo_key(o[..], "subtitle"); jo_str(o[..], st.subtitle);
-    jo_key(o[..], "plain_english"); jo_str(o[..], st.plain_english);
-    jo_key(o[..], "why_it_matters"); jo_str(o[..], st.why_it_matters);
-    jo_key(o[..], "analogy"); jo_str(o[..], st.analogy);
-    jo_key(o[..], "next_link"); jo_str(o[..], st.next_link);
+    jo_key(o[..], "caption"); jo_str(o[..], st.caption);
+    jo_key(o[..], "detail"); jo_str(o[..], st.detail);
+    jo_key(o[..], "source"); jo_str(o[..], st.source);
     jo_key(o[..], "module"); jo_str(o[..], st.module_name);
     jo_end(o[..]);
   }
   jo_end(o[..]);
-  jo_key(o[..], "zeros_mm"); jo_arr(o[..]);
-  for i: 0..<10 { jo_int(o[..], cast(int) (RHM_ZEROS[i] * 1000.0)); }
+
+  // Zeros, computed here rather than read from a table: imaginary parts times 1e6.
+  zeros: [128] f64;
+  zn := rhm_find_zeros(237.0, zeros[..]);
+  if zn > RH3D_PSI_ZEROS { zn = RH3D_PSI_ZEROS; }
+  jo_key(o[..], "zeros_u6"); jo_arr(o[..]);
+  for i: 0..<zn { jo_int(o[..], cast(int) (zeros[i] * 1000000.0 + 0.5)); }
   jo_end(o[..]);
+
+  // Station 1 and 5 floor: |zeta| on the critical strip.
+  jo_key(o[..], "t0_mm"); jo_int(o[..], cast(int) (RH3D_T0 * 1000.0));
+  jo_key(o[..], "t1_mm"); jo_int(o[..], cast(int) (RH3D_T1 * 1000.0));
+  jo_key(o[..], "height_clip_mm"); jo_int(o[..], cast(int) (RH3D_HEIGHT_CLIP * 1000.0));
+  grid: [RH3D_GRID_NS * RH3D_GRID_NT] f32;
+  gn := rh3d_fill_zeta_grid(RH3D_GRID_NS, RH3D_GRID_NT, grid[..]);
+  jo_key(o[..], "zeta_ns"); jo_int(o[..], RH3D_GRID_NS);
+  jo_key(o[..], "zeta_nt"); jo_int(o[..], RH3D_GRID_NT);
+  jo_key(o[..], "zeta_mm"); jo_arr(o[..]);
+  for i: 0..<gn { jo_int(o[..], cast(int) (grid[i] * 1000.0f32)); }
+  jo_end(o[..]);
+
+  // Station 2: every jump of psi(x) up to RH3D_PSI_X1, as [x, psi(x) * 1000] at each prime power.
+  jo_key(o[..], "psi_x0_mm"); jo_int(o[..], cast(int) (RH3D_PSI_X0 * 1000.0));
+  jo_key(o[..], "psi_x1_mm"); jo_int(o[..], cast(int) (RH3D_PSI_X1 * 1000.0));
+  jo_key(o[..], "psi_steps"); jo_arr(o[..]);
+  prev := 0.0;
+  for n: 2..<cast(int) RH3D_PSI_X1 + 1 {
+    v := rhm_psi(cast(f64) n);
+    if v > prev + 0.000001 {
+      jo_arr(o[..]); jo_int(o[..], n); jo_int(o[..], cast(int) (v * 1000.0)); jo_end(o[..]);
+      prev = v;
+    }
+  }
+  jo_end(o[..]);
+
+  // Station 3: Robin ratios.
   jo_key(o[..], "robin"); jo_arr(o[..]);
   for i: 0..<RHM_ROBIN_MARKS_N {
     n := RHM_ROBIN_MARKS[i];
     jo_obj(o[..]);
     jo_key(o[..], "n"); jo_int(o[..], n);
-    jo_key(o[..], "ratio_mm"); jo_int(o[..], cast(int) (rhm_robin_ratio(n) * 1000.0));
+    jo_key(o[..], "ratio_u6"); jo_int(o[..], cast(int) (rhm_robin_ratio(n) * 1000000.0));
     jo_end(o[..]);
   }
   jo_end(o[..]);
-  jo_key(o[..], "theta"); jo_arr(o[..]);
-  for k: 1..<9 {
+
+  // Station 6: libraries. Station 7: checkers. Station 8: theorem names.
+  jo_key(o[..], "libs"); jo_arr(o[..]);
+  for i: 0..<RH3D_LIBS {
+    lb := rh3d_lib(i);
     jo_obj(o[..]);
-    jo_key(o[..], "stage"); jo_int(o[..], k);
-    jo_key(o[..], "classical_mm"); jo_int(o[..], cast(int) (rhm_theta_classical(k, 1.0) * 1000.0));
-    jo_key(o[..], "alpoge_mm"); jo_int(o[..], cast(int) (rhm_theta_alpoge(k, 1.0) * 1000.0));
+    jo_key(o[..], "name"); jo_str(o[..], lb.name);
+    jo_key(o[..], "files"); jo_int(o[..], lb.files);
+    jo_key(o[..], "lines"); jo_int(o[..], lb.lines);
     jo_end(o[..]);
   }
   jo_end(o[..]);
-  ns := 24; nt := 36;
-  grid: [864] f32;
-  gn := rh3d_fill_zeta_grid(ns, nt, grid[..]);
-  jo_key(o[..], "zeta_ns"); jo_int(o[..], ns);
-  jo_key(o[..], "zeta_nt"); jo_int(o[..], nt);
-  jo_key(o[..], "zeta_mm"); jo_arr(o[..]);
-  for i: 0..<gn { jo_int(o[..], cast(int) (grid[i] * 1000.0f32)); }
+  jo_key(o[..], "checkers"); jo_arr(o[..]);
+  for i: 0..<RH3D_CHECKERS {
+    ck := rh3d_checker(i);
+    jo_obj(o[..]);
+    jo_key(o[..], "name"); jo_str(o[..], ck.name);
+    jo_key(o[..], "tag"); jo_str(o[..], ck.tag);
+    jo_key(o[..], "about"); jo_str(o[..], ck.about);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "theorem_names"); jo_arr(o[..]);
+  for i: 0..<5 { jo_str(o[..], RH3D_THEOREM_NAMES[i]); }
   jo_end(o[..]);
   jo_end(o[..]);
   if o[0].bad { return 0; }
@@ -266,7 +392,7 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
   return o[0].n;
 }
 
-#test "rh3d flythrough: Metaverse Engine Catmull-Rom spline is valid, smooth, and all 8 stations have friendly explainers" {
+#test "rh3d flythrough: the camera path is valid and passes every station" {
   p := fly_parse(RH3D_FLY_PATH);
   #assert p.ok && p.flight.count == 10 && p.length == RH3D_DURATION;
 
@@ -283,24 +409,86 @@ oa_dc_rh3d_scene_json :: (out: [] u8) -> int #export_c #effects(all) {
     b := rh3d_eval_fly(t + 1.0f32);
     #assert length(sub(a.eye, b.eye)) < 35.0f32;
   }
-
   for i: 0..<RH3D_STATIONS {
     st := rh3d_station(i);
-    #assert st.badge.count > 4 && st.plain_english.count > 40 && st.why_it_matters.count > 60 && st.analogy.count > 30 && st.next_link.count > 20;
+    sh := rh3d_eval_fly(st.time_s);
+    #assert sh.at.x == st.x && sh.eye.x == st.eye_x && sh.eye.z == st.eye_z;
   }
-
-  h_zero := rh3d_zeta_height(0.5, RHM_ZEROS[0]);
-  h_peak := rh3d_zeta_height(0.5, 17.5);
-  #assert h_zero < 0.12f32 && h_peak > 1.0f32;
-
-  grid: [64] f32;
-  #assert rh3d_fill_zeta_grid(8, 8, grid[..]) == 64;
-
   mm: [6] int;
   #assert oa_dc_rh3d_fly_shot(0, mm[..]) == 1 && mm[0] == -49000 && mm[3] == -42000;
 }
 
-#test "rh3d flythrough: scene JSON export serializes all 8 stations, explainers, and zeta grid" {
-  jb: [32768] u8;
-  #assert oa_dc_rh3d_scene_json(jb[..]) > 6000;
+#test "rh3d flythrough: every caption fits the video and every station names its source" {
+  #assert rh3d_word_count("one  two three") == 3 && rh3d_word_count("") == 0;
+  for i: 0..<RH3D_STATIONS {
+    st := rh3d_station(i);
+    words := rh3d_word_count(st.caption);
+    #assert words >= 12 && words <= RH3D_CAPTION_WORDS;
+    #assert rh3d_word_count(st.title) <= 11 && rh3d_word_count(st.kicker) <= 5 && rh3d_word_count(st.short_name) <= 4;
+    #assert st.detail.count > 120 && st.source.count > 30 && st.module_name.count > 0;
+  }
+  #assert rh3d_word_count(RH3D_OVERVIEW_CAPTION) <= RH3D_CAPTION_WORDS && rh3d_word_count(RH3D_CLOSING_CAPTION) <= RH3D_CAPTION_WORDS;
+}
+
+#test "rh3d flythrough: published counts add up and the checker and theorem lists are complete" {
+  files := 0; lines := 0;
+  for i: 0..<RH3D_LIBS {
+    lb := rh3d_lib(i);
+    files += lb.files;
+    lines += lb.lines;
+  }
+  #assert files == RH3D_FILES && lines == RH3D_LINES;
+  for i: 0..<RH3D_CHECKERS {
+    ck := rh3d_checker(i);
+    #assert ck.name.count > 3 && ck.about.count > 10 && ck.tag.count > 3 && rh3d_word_count(ck.tag) <= 3;
+  }
+  #assert RH3D_THEOREM_NAMES[0] == "riemannHypothesis" && RH3D_THEOREM_NAMES[4] == "LFunction_eq_zero_re_of_isPrimitive";
+}
+
+#test "rh3d flythrough: the zeta floor is zero exactly on the critical line at the zeros" {
+  // The floor covers the first ten zeros and has a grid column on sigma = 1/2.
+  #assert RHM_ZEROS[0] > RH3D_T0 && RHM_ZEROS[9] < RH3D_T1 && RHM_ZEROS[10] > RH3D_T1;
+  #assert (RH3D_GRID_NS - 1) % 2 == 0;
+  for i: 0..<10 {
+    #assert rh3d_zeta_height(0.5, RHM_ZEROS[i]) < 0.000001f32;
+    #assert rh3d_zeta_height(0.25, RHM_ZEROS[i]) > 0.05f32 && rh3d_zeta_height(0.75, RHM_ZEROS[i]) > 0.05f32;
+  }
+  #assert rh3d_zeta_height(0.5, 17.5) > 1.0f32 && rh3d_zeta_height(0.0, 50.0) <= cast(f32) RH3D_HEIGHT_CLIP;
+
+  grid: [64] f32;
+  #assert rh3d_fill_zeta_grid(8, 8, grid[..]) == 64 && rh3d_fill_zeta_grid(8, 9, grid[..]) == 0;
+}
+
+#test "rh3d flythrough: psi curves start at the smooth trend and close in on the staircase" {
+  zs: [128] f64;
+  zn := rhm_find_zeros(237.0, zs[..]);
+  #assert zn == RH3D_PSI_ZEROS;
+  zu: [RH3D_PSI_ZEROS] int;
+  for i: 0..<zn { zu[i] = cast(int) (zs[i] * 1000000.0 + 0.5); }
+  n_samples := 59;   // x = 2, 3, ..., 60
+  out: [(RH3D_PSI_ZEROS + 1) * 59] int;
+  #assert oa_dc_rh3d_psi_curves(zu[..], n_samples, out[..]) == RH3D_PSI_ZEROS + 1;
+  #assert oa_dc_rh3d_psi_curves(zu[..], n_samples, out[0..<100]) == 0;
+  // At a jump the formula converges to the midpoint of the step, so compare at x + 1/2.
+  e0 := 0.0; e100 := 0.0;
+  for i: 0..<58 {
+    x := 2.5 + cast(f64) i;
+    truth := rhm_psi(x);
+    d0 := rhm_psi_explicit(x, zs[0..<zn], 0) - truth;
+    d1 := rhm_psi_explicit(x, zs[0..<zn], zn) - truth;
+    e0 += ifx d0 < 0.0 then -d0 else d0;
+    e100 += ifx d1 < 0.0 then -d1 else d1;
+  }
+  #assert e100 < e0 * 0.45;
+  // Row 0 is the trend x - ln(2 pi) - ..., within rounding to 1/1000.
+  trend := rhm_psi_explicit(60.0, zs[0..<zn], 0);
+  #assert out[58] == cast(int) (trend * 1000.0);
+}
+
+#test "rh3d flythrough: the scene JSON carries all stations, 100 zeros and the zeta grid" {
+  jb: [200000] u8;
+  n := oa_dc_rh3d_scene_json(jb[..]);
+  #assert n > 40000 && n < 200000;
+  small: [4096] u8;
+  #assert oa_dc_rh3d_scene_json(small[..]) == 0;
 }

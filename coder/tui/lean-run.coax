@@ -10,7 +10,7 @@
 //   lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]
 //   lean-run sample [--out DIR]
 //   lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD] [--decl DECL]
-//                [--tour-step N] [--search QUERY] [--math-tab strip|robin|theta]
+//                [--tour-step N] [--search QUERY] [--math-tab strip|robin|primes]
 //                [--file PATH] [--line N] [--no-open] [--wait S]
 //   lean-run card --out FILE.jpg [--fail]
 //   lean-run help
@@ -53,7 +53,7 @@ lr_usage :: () -> int {
   print("  lean-run mcp\n");
   print("  lean-run sample [--out DIR]\n");
   print("  lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD]\n");
-  print("               [--decl DECL] [--tour-step N] [--search Q] [--math-tab strip|robin|theta]\n");
+  print("               [--decl DECL] [--tour-step N] [--search Q] [--math-tab strip|robin|primes]\n");
   print("               [--no-open] [--wait S]\n");
   print("  lean-run card --out FILE.jpg [--fail]\n");
   print("  lean-run rh fetch [--dest DIR]\n");

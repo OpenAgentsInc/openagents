@@ -1,10 +1,11 @@
 // Pure Coax f64 numerical engines for the Riemann Hypothesis Workbench Math Visualizers
 // (Epic #13943, #13946; docs/lean/riemann-hypothesis-workbench-spec.md §4 View 3).
 //
-// Three live interactive engines (zero external libraries, 60 fps safe):
-//   1. Critical Strip, Hardy Z(t) via Riemann-Siegel formula, and Dirichlet L(chi, s)
-//   2. Robin (1984) & Lagarias (2002) arithmetic equivalents via exact divisor sum sigma(n)
-//   3. Alpoge's sqrt(X) Iterated Theta-Lift Chain vs. the 2/3 density barrier
+// Three engines, with no external libraries. Every value they return is real mathematics that a
+// reader can check; nothing here models the inside of the 2026 proof.
+//   1. zeta(s), Hardy Z(t) and Dirichlet L(chi, s) by Euler-Maclaurin summation, and the zeros
+//   2. Chebyshev's psi(x) and the explicit formula that rebuilds the primes from the zeros
+//   3. Robin (1984) and Lagarias (2002) arithmetic equivalents via the exact divisor sum sigma(n)
 //
 //   coax/bin/coax test coax/lib/lean/rh-math.coax --library
 #import "Basic";
@@ -13,19 +14,24 @@ RHM_PI :: 3.14159265358979323846;
 RHM_EULER_GAMMA :: 0.57721566490153286061;
 RHM_EXP_GAMMA :: 1.78107241799019798524; // exp(gamma)
 
-// First 20 nontrivial Riemann zeta zero imaginary parts (Re(s) = 1/2).
-RHM_ZEROS_N :: 20;
+// Imaginary parts of the first 30 nontrivial zeros of zeta (each zero is 1/2 + i*gamma).
+// The tests below recompute every one of them from Z(t).
+RHM_ZEROS_N :: 30;
 RHM_ZEROS :: [RHM_ZEROS_N] f64.[
   14.1347251417, 21.0220396388, 25.0108575801, 30.4248761259, 32.9350615877,
   37.5861781588, 40.9187190121, 43.3270732809, 48.0051508812, 49.7738324777,
   52.9703214777, 56.4462476971, 59.3470440026, 60.8317785246, 65.1125440481,
-  67.0798105295, 69.5464017112, 72.0671576745, 75.7046906991, 77.1448400689
+  67.0798105295, 69.5464017112, 72.0671576745, 75.7046906991, 77.1448400689,
+  79.3373750202, 82.9103808541, 84.7354929805, 87.4252746131, 88.8091112076,
+  92.4918992706, 94.6513440405, 95.8706342282, 98.8311942182, 101.3178510057
 ];
 
-// Notable highly composite / colossally abundant numbers around Robin's n = 5040 threshold.
+// Numbers with unusually many divisors on both sides of Robin's threshold n = 5040. The first
+// seven break Robin's inequality (5040 is the last number that does); the rest come closest to
+// breaking it among larger numbers and still stay under.
 RHM_ROBIN_MARKS_N :: 12;
 RHM_ROBIN_MARKS :: [RHM_ROBIN_MARKS_N] int.[
-  12, 60, 120, 360, 720, 2520, 5040, 7560, 10080, 15120, 25200, 55440
+  12, 60, 120, 360, 720, 2520, 5040, 10080, 55440, 110880, 720720, 4324320
 ];
 
 // Elementary pure f64 trig/log/exp helpers using Basic math builtins (sin, cos, sqrt, ln, exp).
@@ -91,6 +97,11 @@ rhm_sin :: (x: f64) -> f64 {
   return rhm_cos(x - RHM_PI * 0.5);
 }
 
+rhm_near :: (a: f64, b: f64, tol: f64) -> bool {
+  d := a - b;
+  return d < tol && d > -tol;
+}
+
 rhm_sqrt :: (x: f64) -> f64 {
   if x <= 0.0 { return 0.0; }
   g := ifx x > 1.0 then x * 0.5 else 1.0;
@@ -100,46 +111,72 @@ rhm_sqrt :: (x: f64) -> f64 {
   return g;
 }
 
-// ---- 1. Critical Strip: Riemann-Siegel theta(t) & Hardy Z(t) + Dirichlet L(chi, s) ----
+// ---- 1. Critical strip: zeta(s) and Dirichlet L(chi, s) by Euler-Maclaurin summation ----
 
-// Riemann-Siegel theta(t) asymptotic expansion (accurate for t >= 2).
-rhm_theta :: (t: f64) -> f64 {
-  if t <= 0.5 { return 0.0; }
-  a := t * 0.5;
-  return a * rhm_ln(t / (2.0 * RHM_PI)) - a - RHM_PI * 0.125 + 1.0 / (48.0 * t) + 7.0 / (5760.0 * t * t * t);
+RhmC :: struct {
+  re: f64;
+  im: f64;
 }
 
-// Hardy's real-valued Z(t) = e^{i*theta(t)} * zeta(1/2 + it) via Riemann-Siegel formula.
-// Zeros of Z(t) are EXACTLY the critical-line zeros of zeta(1/2 + it); |Z(t)| = |zeta(1/2 + it)|.
-rhm_hardy_z :: (t: f64) -> f64 {
-  if t < 1.0 { return -0.5; }
-  th := rhm_theta(t);
-  a := rhm_sqrt(t / (2.0 * RHM_PI));
-  N := cast(int) a;
-  if N < 1 { N = 1; }
-  sum := 0.0;
-  for n: 1..<N + 1 {
-    fn := cast(f64) n;
-    sum += rhm_cos(th - t * rhm_ln(fn)) / rhm_sqrt(fn);
-  }
-  z := 2.0 * sum;
-  // First Riemann-Siegel remainder C_0(p) = cos(2*pi*(p^2 - p - 1/16)) / cos(2*pi*p)
-  p := a - cast(f64) N;
-  denom := rhm_cos(2.0 * RHM_PI * p);
-  if denom > 1.0e-6 || denom < -1.0e-6 {
-    c0 := rhm_cos(2.0 * RHM_PI * (p * p - p - 0.0625)) / denom;
-    sign := ifx (N % 2) == 1 then 1.0 else -1.0;
-    z += sign * rhm_sqrt(1.0 / a) * c0;
-  }
-  return z;
+rhm_cmul :: (a: RhmC, b: RhmC) -> RhmC {
+  return RhmC.{re = a.re * b.re - a.im * b.im, im = a.re * b.im + a.im * b.re};
 }
 
-// Primitive real/non-principal Dirichlet characters mod q:
-//   char_id 0: trivial / zeta (uses eta alternating series for Re(s) > 0)
-//   char_id 1: chi_3 (mod 3: 0, +1, -1)
-//   char_id 2: chi_4 (mod 4: 0, +1, 0, -1)
-//   char_id 3: chi_5 (mod 5: 0, +1, -1, -1, +1)
-//   char_id 4: chi_7 (mod 7: Legendre symbol (n/7))
+// x^(-s) for real x > 0 and s = sigma + i*t.
+rhm_pow_neg_s :: (x: f64, sigma: f64, t: f64) -> RhmC {
+  lx := rhm_ln(x);
+  mag := rhm_exp(-sigma * lx);
+  return RhmC.{re = mag * rhm_cos(t * lx), im = -mag * rhm_sin(t * lx)};
+}
+
+// Bernoulli coefficients B_2k / (2k)! for k = 1..7.
+RHM_EM_TERMS :: 7;
+RHM_EM_COEFF :: [RHM_EM_TERMS] f64.[
+  0.083333333333333333, -0.0013888888888888889, 0.000033068783068783069,
+  -0.00000082671957671957672, 0.000000020876756987868099, -0.00000000052841901386874932,
+  0.000000000013382536530684679
+];
+
+// Euler-Maclaurin value of the tail sum_{m >= 0} (x + m)^(-s):
+//   x^(1-s)/(s-1) + x^(-s)/2 + sum_k B_2k/(2k)! * s(s+1)...(s+2k-2) * x^(-s-2k+1).
+// The caller keeps x >= |t|/2 + 12, so the seven correction terms leave an error below 1e-8.
+rhm_em_tail :: (x: f64, sigma: f64, t: f64) -> RhmC {
+  xs := rhm_pow_neg_s(x, sigma, t);
+  dr := sigma - 1.0;
+  d2 := dr * dr + t * t;
+  // x * x^(-s) / (s - 1)
+  acc := RhmC.{re = x * (xs.re * dr + xs.im * t) / d2, im = x * (xs.im * dr - xs.re * t) / d2};
+  acc.re += 0.5 * xs.re;
+  acc.im += 0.5 * xs.im;
+  poch := RhmC.{re = sigma, im = t};
+  xp := 1.0 / x;
+  for k: 1..<RHM_EM_TERMS + 1 {
+    term := rhm_cmul(poch, xs);
+    c := RHM_EM_COEFF[k - 1] * xp;
+    acc.re += c * term.re;
+    acc.im += c * term.im;
+    fk := cast(f64) (2 * k);
+    poch = rhm_cmul(poch, RhmC.{re = sigma + fk - 1.0, im = t});
+    poch = rhm_cmul(poch, RhmC.{re = sigma + fk, im = t});
+    xp = xp / (x * x);
+  }
+  return acc;
+}
+
+// Real Dirichlet characters:
+//   char_id 0: trivial character, which gives zeta(s)
+//   char_id 1: chi mod 3 (0, +1, -1)
+//   char_id 2: chi mod 4 (0, +1, 0, -1)
+//   char_id 3: chi mod 5 (0, +1, -1, -1, +1)
+//   char_id 4: chi mod 7 (Legendre symbol (n/7))
+rhm_chi_mod :: (char_id: int) -> int {
+  if char_id == 1 { return 3; }
+  if char_id == 2 { return 4; }
+  if char_id == 3 { return 5; }
+  if char_id == 4 { return 7; }
+  return 1;
+}
+
 rhm_chi_val :: (char_id: int, n: int) -> f64 {
   if char_id == 1 {
     r := n % 3;
@@ -160,45 +197,143 @@ rhm_chi_val :: (char_id: int, n: int) -> f64 {
   return 1.0;
 }
 
-// Evaluates |L(chi, sigma + i*t)| for sigma in (0.05, 0.99), t in [0, 80].
-// For char_id == 0 (zeta), uses smoothed Dirichlet eta(s)/(1 - 2^{1-s}) with Cesaro-Fejer window.
-// For char_id 1..4 (non-principal real chi), uses smoothed alternating sum over 140 terms.
-rhm_l_abs :: (char_id: int, sigma: f64, t: f64) -> f64 {
-  if char_id == 0 && sigma > 0.499 && sigma < 0.501 && t >= 4.0 {
-    z := rhm_hardy_z(t);
-    return ifx z < 0.0 then -z else z;
-  }
-  N := 160;
-  re := 0.0;
-  im := 0.0;
-  for n: 1..<N + 1 {
-    coeff := ifx char_id == 0 then (ifx (n % 2) == 1 then 1.0 else -1.0) else rhm_chi_val(char_id, n);
-    if coeff == 0.0 { continue; }
-    // Smooth cosine taper on final 25% of terms to damp Gibbs ringing
-    w := 1.0;
-    if n > (N * 3) / 4 {
-      u := cast(f64) (n - (N * 3) / 4) / cast(f64) (N / 4 + 1);
-      w = 0.5 * (1.0 + rhm_cos(RHM_PI * u));
+// L(chi, sigma + i*t), valid on the whole plane away from the pole of zeta at s = 1.
+// Sums the first N blocks of the Dirichlet series exactly and adds the Euler-Maclaurin tail of
+// each residue class: L(chi, s) = sum_{n < qN} chi(n) n^(-s) + q^(-s) sum_a chi(a) tail(N + a/q).
+// Checked against the functional equation to 1e-10 and against known zeros and special values.
+rhm_l :: (char_id: int, sigma_in: f64, t: f64) -> RhmC {
+  sigma := sigma_in;
+  // Each residue class has its own pole at s = 1 (they cancel for chi != 1), so step just off it.
+  d1 := sigma - 1.0;
+  if d1 * d1 + t * t < 1.0e-12 { sigma += 1.0e-6; }
+  q := rhm_chi_mod(char_id);
+  at := ifx t < 0.0 then -t else t;
+  N := cast(int) (at * 0.5) + 12;
+  acc := RhmC.{re = 0.0, im = 0.0};
+  if q == 1 {
+    for n: 1..<N + 1 {
+      p := rhm_pow_neg_s(cast(f64) n, sigma, t);
+      acc.re += p.re;
+      acc.im += p.im;
     }
-    lnn := rhm_ln(cast(f64) n);
-    mag := w * coeff * rhm_exp(-sigma * lnn);
-    ang := -t * lnn;
-    re += mag * rhm_cos(ang);
-    im += mag * rhm_sin(ang);
+    tail := rhm_em_tail(cast(f64) (N + 1), sigma, t);
+    acc.re += tail.re;
+    acc.im += tail.im;
+    return acc;
   }
-  if char_id == 0 {
-    // Divide eta(s) by (1 - 2^{1-s})
-    ln2 := 0.69314718055994530942;
-    p_mag := rhm_exp((1.0 - sigma) * ln2);
-    dr := 1.0 - p_mag * rhm_cos(-t * ln2);
-    di := -p_mag * rhm_sin(-t * ln2);
-    d2 := dr * dr + di * di;
-    if d2 < 1.0e-10 { return 10.0; }
-    nr := (re * dr + im * di) / d2;
-    ni := (im * dr - re * di) / d2;
-    return rhm_sqrt(nr * nr + ni * ni);
+  for n: 1..<q * N {
+    c := rhm_chi_val(char_id, n);
+    if c == 0.0 { continue; }
+    p := rhm_pow_neg_s(cast(f64) n, sigma, t);
+    acc.re += c * p.re;
+    acc.im += c * p.im;
   }
-  return rhm_sqrt(re * re + im * im);
+  tails := RhmC.{re = 0.0, im = 0.0};
+  for a: 1..<q {
+    c := rhm_chi_val(char_id, a);
+    if c == 0.0 { continue; }
+    tl := rhm_em_tail(cast(f64) N + cast(f64) a / cast(f64) q, sigma, t);
+    tails.re += c * tl.re;
+    tails.im += c * tl.im;
+  }
+  scaled := rhm_cmul(rhm_pow_neg_s(cast(f64) q, sigma, t), tails);
+  acc.re += scaled.re;
+  acc.im += scaled.im;
+  return acc;
+}
+
+// |L(chi, sigma + i*t)|. char_id 0 is |zeta(sigma + i*t)|.
+rhm_l_abs :: (char_id: int, sigma: f64, t: f64) -> f64 {
+  v := rhm_l(char_id, sigma, t);
+  return rhm_sqrt(v.re * v.re + v.im * v.im);
+}
+
+// Riemann-Siegel theta(t), asymptotic expansion (error below 1e-6 for t >= 2).
+rhm_theta :: (t: f64) -> f64 {
+  if t <= 0.5 { return 0.0; }
+  a := t * 0.5;
+  t3 := t * t * t;
+  return a * rhm_ln(t / (2.0 * RHM_PI)) - a - RHM_PI * 0.125 + 1.0 / (48.0 * t) + 7.0 / (5760.0 * t3) + 31.0 / (80640.0 * t3 * t * t);
+}
+
+// Hardy's real-valued Z(t) = e^{i*theta(t)} * zeta(1/2 + it).
+// Its real zeros are exactly the zeros of zeta on the critical line, and |Z(t)| = |zeta(1/2 + it)|.
+rhm_hardy_z :: (t: f64) -> f64 {
+  z := rhm_l(0, 0.5, t);
+  if t < 1.0 {
+    // theta's expansion is not valid here; Z has no zero below 14.13 and Z(0) = zeta(1/2) < 0.
+    return -rhm_sqrt(z.re * z.re + z.im * z.im);
+  }
+  th := rhm_theta(t);
+  return rhm_cos(th) * z.re - rhm_sin(th) * z.im;
+}
+
+// Finds the zeros of zeta on the critical line with 10 < t < t_max: scans Z(t) in steps of 0.2
+// for sign changes and bisects each one. (The closest pair among the first 100 zeros is more than
+// 0.5 apart, and the tests check the count against the stored list.) Returns how many it wrote to `out`, in increasing order.
+rhm_find_zeros :: (t_max: f64, out: [] f64) -> int {
+  n := 0;
+  step := 0.2;
+  t0 := 10.0;
+  z0 := rhm_hardy_z(t0);
+  while t0 < t_max && n < out.count {
+    t1 := t0 + step;
+    z1 := rhm_hardy_z(t1);
+    if (z0 < 0.0 && z1 >= 0.0) || (z0 > 0.0 && z1 <= 0.0) {
+      lo := t0; hi := t1; zlo := z0;
+      for i: 0..<26 {
+        mid := 0.5 * (lo + hi);
+        zm := rhm_hardy_z(mid);
+        if (zlo < 0.0 && zm < 0.0) || (zlo > 0.0 && zm > 0.0) { lo = mid; zlo = zm; } else { hi = mid; }
+      }
+      out[n] = 0.5 * (lo + hi);
+      n += 1;
+    }
+    t0 = t1;
+    z0 = z1;
+  }
+  return n;
+}
+
+// ---- 1b. Primes from zeros: Chebyshev's psi(x) and von Mangoldt's explicit formula ----
+
+// psi(x) = sum of ln p over all prime powers p^k <= x. Exact; it jumps by ln p at each prime power.
+rhm_psi :: (x: f64) -> f64 {
+  total := 0.0;
+  top := cast(int) x;
+  for p: 2..<top + 1 {
+    is_prime := true;
+    d := 2;
+    while d * d <= p {
+      if p % d == 0 { is_prime = false; break; }
+      d += 1;
+    }
+    if !is_prime { continue; }
+    lp := rhm_ln(cast(f64) p);
+    pk := p;
+    while pk <= top {
+      total += lp;
+      pk *= p;
+    }
+  }
+  return total;
+}
+
+// The explicit formula, cut off after the first `k` pairs of zeros 1/2 +- i*gamma:
+//   psi(x) ~ x - sum_gamma 2 Re(x^rho / rho) - ln(2 pi) - (1/2) ln(1 - x^-2),   x > 1.
+// With k = 0 this is the smooth trend; each added zero adds one wave, and the sum converges to
+// the prime staircase. Writing the zeros as 1/2 + i*gamma is where the Riemann Hypothesis enters.
+rhm_psi_explicit :: (x: f64, zeros: [] f64, k: int) -> f64 {
+  if x <= 1.0 { return 0.0; }
+  lx := rhm_ln(x);
+  sx := rhm_sqrt(x);
+  acc := x - rhm_ln(2.0 * RHM_PI) - 0.5 * rhm_ln(1.0 - 1.0 / (x * x));
+  kk := ifx k < zeros.count then k else zeros.count;
+  for i: 0..<kk {
+    g := zeros[i];
+    acc -= 2.0 * sx * (0.5 * rhm_cos(g * lx) + g * rhm_sin(g * lx)) / (0.25 + g * g);
+  }
+  return acc;
 }
 
 // ---- 2. Robin (1984) & Lagarias (2002) Arithmetic Equivalents ----
@@ -227,7 +362,8 @@ rhm_robin_bound :: (n: int) -> f64 {
   return RHM_EXP_GAMMA * cast(f64) n * rhm_ln(ln_n);
 }
 
-// Robin ratio sigma(n) / (e^gamma * n * ln(ln(n))): RH <=> < 1.0 for ALL n > 5040!
+// Robin ratio sigma(n) / (e^gamma * n * ln(ln(n))). Robin (1984): RH holds if and only if this
+// is below 1 for every n > 5040.
 rhm_robin_ratio :: (n: int) -> f64 {
   b := rhm_robin_bound(n);
   if b <= 0.0 { return 0.0; }
@@ -246,29 +382,11 @@ rhm_harmonic :: (n: int) -> f64 {
   return rhm_ln(fn) + RHM_EULER_GAMMA + 0.5 / fn - 1.0 / (12.0 * fn * fn);
 }
 
-// Lagarias (2002) bound: H_n + exp(H_n) * ln(H_n). RH <=> sigma(n) <= bound for ALL n >= 1!
+// Lagarias (2002) bound H_n + exp(H_n) * ln(H_n): RH holds if and only if sigma(n) <= bound for every n >= 1.
 rhm_lagarias_bound :: (n: int) -> f64 {
   if n <= 1 { return 1.0; }
   h := rhm_harmonic(n);
   return h + rhm_exp(h) * rhm_ln(h);
-}
-
-// ---- 3. Alpoge's sqrt(X) Iterated Theta-Lift Chain vs. 2/3 Barrier ----
-
-// Models the density/saving exponent across k = 0..8 iterated theta-lift stages at level exponent alpha:
-// Classical Hecke/modularity transfer stalls below the 2/3 = 0.6667 threshold without extra savings;
-// Alpoge's sqrt(X) savings + Behrend-set/formal-degree transfer lift the effective covering density
-// monotonically past 2/3, forcing automorphy and eliminating off-line zeros.
-rhm_theta_classical :: (stage: int, alpha: f64) -> f64 {
-  // Stalls asymptotically below 2/3 (~0.62)
-  x := cast(f64) stage;
-  return 0.32 + 0.30 * (1.0 - rhm_exp(-0.42 * x * alpha));
-}
-
-rhm_theta_alpoge :: (stage: int, alpha: f64) -> f64 {
-  // With sqrt(X) savings + iterated theta lifts, crosses 2/3 around stage 3-4 and climbs past 0.88
-  x := cast(f64) stage;
-  return 0.32 + 0.60 * (1.0 - rhm_exp(-0.36 * x * alpha));
 }
 
 #test "rh math: Hardy Z(t) detects sign changes at first three zeta zeros" {
@@ -284,29 +402,87 @@ rhm_theta_alpoge :: (stage: int, alpha: f64) -> f64 {
   z24 := rhm_hardy_z(24.0);
   z26 := rhm_hardy_z(26.0);
   #assert z24 < 0.0 && z26 > 0.0;
-  // At exact gamma_1, |Z(gamma_1)| is near zero (< 0.05)
+  // At gamma_1, Z vanishes to the precision of the stored zero.
   zg1 := rhm_hardy_z(RHM_ZEROS[0]);
-  #assert zg1 > -0.05 && zg1 < 0.05;
-  // Non-principal Dirichlet L(chi_4, 1) = pi/4 ~= 0.7854
-  l4 := rhm_l_abs(2, 1.0, 0.0);
-  #assert l4 > 0.77 && l4 < 0.80;
+  #assert zg1 > -0.000001 && zg1 < 0.000001;
+}
+
+#test "rh math: zeta and L values match known constants, zeros and the critical-line symmetry" {
+  // zeta(2) = pi^2/6, zeta(1/2) = -1.4603545088...
+  z2 := rhm_l(0, 2.0, 0.0);
+  #assert rhm_near(z2.re, RHM_PI * RHM_PI / 6.0, 0.0000001) && rhm_near(z2.im, 0.0, 0.0000001);
+  zh := rhm_l(0, 0.5, 0.0);
+  #assert rhm_near(zh.re, -1.4603545088, 0.0000001);
+  // |zeta(1/2 + 10i)| = 1.5491945..., and points well off the line.
+  #assert rhm_near(rhm_l_abs(0, 0.5, 10.0), 1.5491945, 0.000001);
+  #assert rhm_near(rhm_l_abs(0, 0.25, 30.0), 0.8470336, 0.000001);
+  #assert rhm_near(rhm_l_abs(0, 0.88, 4.0), 0.6661824, 0.000001);
+  // L(chi_3, 1) = pi/(3 sqrt 3), L(chi_4, 1) = pi/4, L(chi_7, 1) = pi/sqrt 7.
+  #assert rhm_near(rhm_l_abs(1, 1.0, 0.0), RHM_PI / (3.0 * rhm_sqrt(3.0)), 0.00001);
+  #assert rhm_near(rhm_l_abs(2, 1.0, 0.0), RHM_PI / 4.0, 0.00001);
+  #assert rhm_near(rhm_l_abs(4, 1.0, 0.0), RHM_PI / rhm_sqrt(7.0), 0.00001);
+  // First zeros of L(chi_3), L(chi_4) and L(chi_5) on the critical line.
+  #assert rhm_l_abs(1, 0.5, 8.03973715568) < 0.000001;
+  #assert rhm_l_abs(2, 0.5, 6.0209489047) < 0.000001;
+  #assert rhm_l_abs(3, 0.5, 6.64845334) < 0.000001;
+  // zeta is small on the line at a zero and not small beside it, at sigma = 0.3 and 0.7.
+  #assert rhm_l_abs(0, 0.5, RHM_ZEROS[4]) < 0.000001;
+  #assert rhm_l_abs(0, 0.3, RHM_ZEROS[4]) > 0.05 && rhm_l_abs(0, 0.7, RHM_ZEROS[4]) > 0.05;
+}
+
+#test "rh math: all 30 stored zeros are recomputed from Z(t), with none missing below t = 102" {
+  found: [64] f64;
+  n := rhm_find_zeros(102.0, found[..]);
+  #assert n == RHM_ZEROS_N;
+  for i: 0..<RHM_ZEROS_N {
+    #assert rhm_near(found[i], RHM_ZEROS[i], 0.0000001);
+  }
+  // Riemann-von Mangoldt count: N(T) = theta(T)/pi + 1 + S(T), and |S| < 1 here.
+  expect := rhm_theta(102.0) / RHM_PI + 1.0;
+  #assert expect > 29.0 && expect < 31.0;
+}
+
+#test "rh math: the explicit formula rebuilds the prime staircase as zeros are added" {
+  // psi(10) = ln(2^3 * 3^2 * 5 * 7) = ln 2520, psi(30.5) = ln(lcm(1..30)).
+  #assert rhm_near(rhm_psi(10.0), rhm_ln(2520.0), 0.000000001);
+  #assert rhm_near(rhm_psi(30.5), rhm_ln(2329089562800.0), 0.00000001);
+  zeros: [128] f64;
+  n := rhm_find_zeros(237.0, zeros[..]);
+  #assert n == 100 && rhm_near(zeros[99], 236.5242297, 0.00001);
+  // Mean distance from the staircase over 2.5 <= x <= 60 shrinks as zeros are added.
+  e0 := 0.0; e10 := 0.0; e100 := 0.0;
+  for i: 0..<230 {
+    x := 2.5 + 0.25 * cast(f64) i;
+    truth := rhm_psi(x);
+    d0 := rhm_psi_explicit(x, zeros[0..<n], 0) - truth;
+    d10 := rhm_psi_explicit(x, zeros[0..<n], 10) - truth;
+    d100 := rhm_psi_explicit(x, zeros[0..<n], 100) - truth;
+    e0 += ifx d0 < 0.0 then -d0 else d0;
+    e10 += ifx d10 < 0.0 then -d10 else d10;
+    e100 += ifx d100 < 0.0 then -d100 else d100;
+  }
+  #assert e10 < e0 * 0.7 && e100 < e10 * 0.6;
 }
 
 #test "rh math: Robin (1984) exact n=5040 exception and post-5040 satisfaction" {
   #assert rhm_sigma(1) == 1 && rhm_sigma(12) == 28 && rhm_sigma(5040) == 19344;
   // n = 5040 is the LAST integer violating Robin's inequality: sigma(5040) > e^gamma * 5040 * ln(ln(5040))
   #assert rhm_robin_ratio(5040) > 1.005 && rhm_robin_ratio(5040) < 1.015;
-  // For n > 5040 (including colossally abundant 10080, 15120, 25200, 55440), Robin's inequality holds (< 1.0)
+  // Past 5040 the inequality holds, including at the numbers that come closest to breaking it.
   #assert rhm_robin_ratio(5041) < 1.0;
-  #assert rhm_robin_ratio(10080) < 1.0 && rhm_robin_ratio(15120) < 1.0 && rhm_robin_ratio(25200) < 1.0 && rhm_robin_ratio(55440) < 1.0;
+  #assert rhm_robin_ratio(10080) < 1.0 && rhm_robin_ratio(55440) < 1.0 && rhm_robin_ratio(720720) < 1.0 && rhm_robin_ratio(4324320) < 1.0;
+  // Exactly 26 numbers from 3 to 20,000 break it, and 5040 is the largest.
+  breaks := 0; last := 0;
+  for n: 3..<20001 {
+    if rhm_robin_ratio(n) >= 1.0 { breaks += 1; last = n; }
+  }
+  #assert breaks == 26 && last == 5040;
+  for i: 0..<RHM_ROBIN_MARKS_N {
+    m := RHM_ROBIN_MARKS[i];
+    #assert (rhm_robin_ratio(m) >= 1.0) == (m <= 5040);
+  }
   // Lagarias inequality holds for ALL n >= 1 including n = 5040
   #assert cast(f64) rhm_sigma(5040) <= rhm_lagarias_bound(5040);
   #assert cast(f64) rhm_sigma(12) <= rhm_lagarias_bound(12);
 }
 
-#test "rh math: iterated theta-lift chain crosses 2/3 barrier while classical stalls" {
-  #assert rhm_theta_classical(8, 1.0) < 0.6667;
-  #assert rhm_theta_alpoge(1, 1.0) < 0.6667;
-  #assert rhm_theta_alpoge(4, 1.0) > 0.6667;
-  #assert rhm_theta_alpoge(8, 1.0) > 0.85;
-}

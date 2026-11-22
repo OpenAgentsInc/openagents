@@ -87,3 +87,4 @@ int64_t oa_dc_exec_release_promote(coax_string home, coax_v_u8 out_err);
 int64_t oa_dc_exec_release_rollback(coax_string home, coax_v_u8 out_err);
 int64_t oa_dc_rh3d_fly_shot(int64_t t_ms, coax_v_s64 out_mm);
 int64_t oa_dc_rh3d_scene_json(coax_v_u8 out);
+int64_t oa_dc_rh3d_psi_curves(coax_v_s64 zeros_u6, int64_t n_samples, coax_v_s64 out_mm);

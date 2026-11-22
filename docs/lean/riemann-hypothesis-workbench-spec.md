@@ -58,7 +58,7 @@ flowchart TB
   subgraph CoaxCore["coax/lib/lean/ (Pure Coax, Zero Python Runtime)"]
     RHIDX["rh-index.coax (streaming scanner, DAG layout, BFS shortest path, FTS)"]
     RHTOUR["rh-tour.coax (20-step remark.pdf -> Lean module anchors & reading tracks)"]
-    RHMATH["rh-math.coax (numerical zeta/L-function, Robin/Lagarias σ(n), theta-chain model)"]
+    RHMATH["rh-math.coax (numerical zeta/L-function, Robin/Lagarias σ(n), ψ(x) and the explicit formula)"]
     RHSIMP["rh-simplify.coax (#authority drop-in signature preservation & diff verifier)"]
     HOST["host.coax (oa-leanhost: Lean v4.33.1 lake serve + Lean v4.36.0 con-leche/comparator)"]
   end
@@ -67,7 +67,7 @@ flowchart TB
     NAV["RH Workbench Shell (page/gym-rh.coax, inside Gym -> Lean)"]
     V1["1. Guided 20-Step Story & Reading Paths"]
     V2["2. 60fps Semantic-Zoom Proof Atlas (components/paint)"]
-    V3["3. Interactive Math Visualizers (Zeta, Robin/Lagarias, Theta Chain)"]
+    V3["3. Interactive Math Visualizers (Zeta, Robin/Lagarias, Primes from Zeros)"]
     V4["4. Module Inspector + Live Infoview + Grounded AI Explainer + Simplification Lab"]
     V5["5. Provenance & Multi-Kernel Trust Ledger"]
   end
@@ -146,11 +146,9 @@ Pure Coax numerical computation (`coax/lib/lean/rh-math.coax`, double-precision 
 2. **Robin & Lagarias Divisor-Sum Visualizer (`Robin1984` Cross-Check):**
    - Interactive scrubber over $n \in [1, 100{,}000]$ (plus curated colossally abundant numbers $n = 2, 6, 12, 60, 120, 360, 2520, 5040, 55440, 720720, \dots$) plotting $\sigma(n) / (e^\gamma n \log \log n)$ against the constant ceiling $1.0$ (highlighting the last equality/exception at $n = 5040$, above which `robin_inequality` proves the curve stays strictly below $1$ forever) and Lagarias's ratio $\sigma(n) / (H_n + e^{H_n} \log H_n) \le 1$.
    - Shows why this cross-check is philosophically powerful: a concrete elementary arithmetic inequality verified by `con-leche` and `nanoda` without depending on Mathlib's complex `riemannZeta` definition.
-3. **Iterated Theta-Lift Chain & Stepanov Multiplicity Explorer (`remark.pdf` Breakthrough):**
-   - Interactive parameter sliders for von Mangoldt sum length $X$ and lift chain length $m \in [1, 2\sqrt{X}]$, visualizing:
-     - The chain of totally definite unitary groups $U(X_0) \to U(X_1) \to \cdots \to U(X_m)$ and the seesaw reduction to a Bessel period.
-     - How multiplicity gain scales against per-lift analytic/level cost, showing visually why naive lifting hits the **$2/3$ barrier** noted in `remark.pdf` item 14 and how the integral-structure averaging / $\sqrt{X}$ length overcomes it.
-   - Each diagram node links directly to the corresponding `Formalism` / `GroundTheory` modules.
+3. **Primes from Zeros (von Mangoldt's explicit formula):**
+   - Plots Chebyshev's $\psi(x)$, the exact prime staircase, against $x - \sum_\rho x^\rho/\rho - \ln 2\pi - \tfrac12\ln(1 - x^{-2})$ summed over the first $0, 1, 2, 3, 5, 10, 20$ or $30$ zeros, for $x$ up to 30, 60 or 100. Adding zeros bends the curve into the staircase, which shows why the zeros control the primes.
+   - This tab replaced an earlier "theta-lift chain versus the $2/3$ barrier" chart. That chart drew hard-coded curves: `remark.pdf` names the $\sqrt{X}$ chain of theta lifts and the $2/3$ count but gives no formula, so nothing could be plotted from it honestly. The 3D flythrough's stop 4 shows only what the note states.
 
 ### View 4: Zero-Comment Module Inspector, Grounded AI Explainer & Simplification Lab (`page/gym-rh-inspect.coax`)
 

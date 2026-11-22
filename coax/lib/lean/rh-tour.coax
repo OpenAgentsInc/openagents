@@ -92,18 +92,18 @@ rht_step :: (i: int) -> RhTourStep {
       title = "Third-Place Series & Iterated Theta Lifts",
       subtitle = "814 lines, 195 theorems driving the core lifting engine",
       mod_name = "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.EveryCharacterOfLiteratureOfVWin", decl = "UpperTheory.LiteratureTheorems.every_character_of_literature_of_vWin",
-      summary = "Executes Alpoge's iterated theta-pair lift chain across third-place series, transferring automorphic positivity and non-vanishing constraints across unitary and symplectic dual pairs.",
-      why_rh = "Supplies the central analytic-automorphic mechanism (Step 18-20 of remark.pdf) that eliminates off-line zeros."
+      summary = "The theta-pair lift modules. The author's note names a chain of about sqrt(X) theta lifts as the key idea; how the chain works has not yet been explained outside the Lean code.",
+      why_rh = "The note says each theta lift stands in for one more unit of multiplicity, the ingredient Stepanov's method needs."
     };
   }
   if i == 7 {
     return RhTourStep.{
       number = 8, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL,
-      title = "Dense Threshold Modularity (> 2/3 Barrier)",
-      subtitle = "Breaking past the classical 2/3 density obstruction",
+      title = "Dense Threshold Cases",
+      subtitle = "The threshold arguments of the modularity step",
       mod_name = "Development.AutomorphicArithmetic.AutomorphicVarieties.ModularityArgument.ThresholdArguments.DenseThresholdCases.VwinOfRow", decl = "UpperTheory.One.vwin_of_row",
-      summary = "Converts Row0b Galois data into a winning dense-threshold window (vWin), leveraging sqrt(X) savings to beat the classical 2/3 modularity barrier.",
-      why_rh = "Without breaking the 2/3 threshold, classical potential-automorphy arguments stall; this closes the decisive gap."
+      summary = "Proves vwin_of_row, one of the inputs MainConclusion combines. Its name and folder place it in the dense threshold cases of the modularity argument.",
+      why_rh = "The author's note says a first count of costs stops at 2/3 and that extra averaging gets past it. Nobody has yet said which modules carry that step, so this tour does not guess."
     };
   }
   if i == 8 {

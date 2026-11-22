@@ -117,7 +117,8 @@
   #assert cp_lean_press(s, CP_LEAN_MATH_CHI, "coder.lean.chi.2") && s[0].lean[0].math_chi == 2;
   #assert cp_lean_press(s, CP_LEAN_MATH_TAB, "coder.lean.mtab.1") && s[0].lean[0].math_tab == 1;
   #assert cp_lean_press(s, CP_LEAN_MATH_ROBIN, "coder.lean.rob.3") && s[0].lean[0].math_robin_idx == 3;
-  #assert cp_lean_press(s, CP_LEAN_MATH_TAB, "coder.lean.mtab.2") && cp_lean_press(s, CP_LEAN_MATH_STAGE, "coder.lean.stg.5") && s[0].lean[0].math_theta_stage == 5;
+  #assert cp_lean_press(s, CP_LEAN_MATH_TAB, "coder.lean.mtab.2") && cp_lean_press(s, CP_LEAN_MATH_ZEROS, "coder.lean.nz.7") && s[0].lean[0].math_zero_idx == 7;
+  #assert cp_lean_press(s, CP_LEAN_MATH_XMAX, "coder.lean.xmax.2") && s[0].lean[0].math_xmax_idx == 2 && !cp_lean_press(s, CP_LEAN_MATH_ZEROS, "coder.lean.nz.8");
 
   // Search preset, Trust audit metaprogramming click, Prover run, and wheel scroll
   #assert cp_lean_press(s, CP_LEAN_SEARCH_PRESET, "coder.lean.sp.2") && coder_page_action(s) == CP_ASK_LEAN_SEARCH;

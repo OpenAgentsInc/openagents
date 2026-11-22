@@ -10,7 +10,7 @@
 
 DLG_KEYS :: [11] string.["schema", "id", "open", "view", "module", "decl", "tour_step", "search", "math_tab", "file", "line"];
 DLG_VIEWS :: [7] string.["fly3d", "tour", "atlas", "math", "inspect", "trust", "prover"];
-DLG_MATH_TABS :: [3] string.["strip", "robin", "theta"];
+DLG_MATH_TABS :: [3] string.["strip", "robin", "primes"];
 
 dlg_known_key :: (key: string) -> bool {
   for k: 0..<DLG_KEYS.count { if key == DLG_KEYS[k] { return true; } }
@@ -34,7 +34,7 @@ dlg_norm_math_tab :: (t: string) -> string {
   if t.count == 0 { return ""; }
   if t == "zeta" || t == "critical_strip" { return "strip"; }
   if t == "sigma" || t == "lagarias" { return "robin"; }
-  if t == "lift" || t == "sqrt_x" { return "theta"; }
+  if t == "psi" || t == "explicit" || t == "theta" || t == "lift" || t == "sqrt_x" { return "primes"; }
   for k: 0..<DLG_MATH_TABS.count { if t == DLG_MATH_TABS[k] { return DLG_MATH_TABS[k]; } }
   return "?";
 }
@@ -80,7 +80,7 @@ dc_lean_gym_plan :: (req: string, out: [] u8) -> string {
   vw := dlg_norm_view(vw_raw);
   if vw == "?" { return dlg_err(out, "view must be tour, atlas, math, inspect, trust or prover"); }
   mt := dlg_norm_math_tab(mt_raw);
-  if mt == "?" { return dlg_err(out, "math_tab must be strip, robin or theta"); }
+  if mt == "?" { return dlg_err(out, "math_tab must be strip, robin or primes"); }
 
   open := true;
   op := jv_get(d, 0, "open");
@@ -136,14 +136,16 @@ dc_lean_gym_plan :: (req: string, out: [] u8) -> string {
   // every canonical math_tab and alias
   #assert dlg_norm_math_tab("strip") == "strip" && dlg_norm_math_tab("zeta") == "strip" && dlg_norm_math_tab("critical_strip") == "strip";
   #assert dlg_norm_math_tab("robin") == "robin" && dlg_norm_math_tab("sigma") == "robin" && dlg_norm_math_tab("lagarias") == "robin";
-  #assert dlg_norm_math_tab("theta") == "theta" && dlg_norm_math_tab("lift") == "theta" && dlg_norm_math_tab("sqrt_x") == "theta";
+  #assert dlg_norm_math_tab("primes") == "primes" && dlg_norm_math_tab("psi") == "primes" && dlg_norm_math_tab("explicit") == "primes";
+  // names of the chart this tab replaced still open it
+  #assert dlg_norm_math_tab("theta") == "primes" && dlg_norm_math_tab("lift") == "primes" && dlg_norm_math_tab("sqrt_x") == "primes";
   #assert dlg_norm_math_tab("") == "" && dlg_norm_math_tab("bogus") == "?";
 
   // valid requests including schema, open true/false, exact boundary tour_step 0 and 20, line 0 and 42
   p := dc_lean_gym_plan("{\"schema\":\"lean-gym-request.v1\",\"id\":\"r1\",\"view\":\"graph\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":20,\"math_tab\":\"zeta\",\"open\":true}", b[..]);
   #assert p == "{\"ok\":true,\"id\":\"r1\",\"open\":true,\"view\":\"atlas\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":20,\"search\":\"\",\"math_tab\":\"strip\",\"file\":\"\",\"line\":0}";
   #assert dc_lean_gym_plan("{}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"view\":\"\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"\",\"file\":\"\",\"line\":0}";
-  #assert dc_lean_gym_plan("{\"open\":false,\"view\":\"ledger\",\"tour_step\":0,\"math_tab\":\"sqrt_x\",\"line\":42}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":false,\"view\":\"trust\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"theta\",\"file\":\"\",\"line\":42}";
+  #assert dc_lean_gym_plan("{\"open\":false,\"view\":\"ledger\",\"tour_step\":0,\"math_tab\":\"sqrt_x\",\"line\":42}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":false,\"view\":\"trust\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"primes\",\"file\":\"\",\"line\":42}";
   #assert dc_lean_gym_plan("{\"line\":0,\"id\":\"\"}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"view\":\"\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"\",\"file\":\"\",\"line\":0}";
   #assert dc_lean_gym_plan("{\"schema\":\"x\"}", b[..]) == "{\"ok\":false,\"error\":\"unexpected schema version\"}";
 
@@ -154,7 +156,7 @@ dc_lean_gym_plan :: (req: string, out: [] u8) -> string {
   #assert dc_lean_gym_plan("{\"id\":7}", b[..]) == "{\"ok\":false,\"error\":\"string fields must be bounded UTF-8 strings\"}";
   #assert dc_lean_gym_plan("{\"schema\":\"other.v1\"}", b[..]) == "{\"ok\":false,\"error\":\"unexpected schema version\"}";
   #assert dc_lean_gym_plan("{\"view\":\"bogus\"}", b[..]) == "{\"ok\":false,\"error\":\"view must be tour, atlas, math, inspect, trust or prover\"}";
-  #assert dc_lean_gym_plan("{\"math_tab\":\"bogus\"}", b[..]) == "{\"ok\":false,\"error\":\"math_tab must be strip, robin or theta\"}";
+  #assert dc_lean_gym_plan("{\"math_tab\":\"bogus\"}", b[..]) == "{\"ok\":false,\"error\":\"math_tab must be strip, robin or primes\"}";
   #assert dc_lean_gym_plan("{\"open\":\"yes\"}", b[..]) == "{\"ok\":false,\"error\":\"open must be true or false\"}";
   #assert dc_lean_gym_plan("{\"tour_step\":\"5\"}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
   #assert dc_lean_gym_plan("{\"tour_step\":-1}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
