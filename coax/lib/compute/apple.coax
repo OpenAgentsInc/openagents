@@ -86,6 +86,23 @@ am_matmul_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int
         }
     }
 }
+am_matmul_bf16_x16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u32,x:[]u16,out:[]f32) #effects(all) {
+    #assert am_matmul_valid(rows,cols,tokens,r0,t0,w.count,x.count,out.count);
+    #assert am_tile_valid(threads,tm,tn);
+    half:=cols/2;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for ap:0..<half {
+                word:=w[ar*half+ap];
+                sum+=f64(am_bf16_u16(x[at*cols+2*ap]))*f64(am_bf16(word,false))+f64(am_bf16_u16(x[at*cols+2*ap+1]))*f64(am_bf16(word,true));
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
 am_iq4_lut :: (q:u32)->f32 #effects(all) {
     t:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];
     return t[cast(int)(q&15)];
@@ -356,6 +373,12 @@ am_matmul_iq4_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0
     for i:0..<256 {xb[i]=cast(u16)(f32_bits(x[i])>>16);}
     am_matmul_iq4_bf16(128,16,64,2,128,2,0,0,w[..],xb[..],outb[..],tg[..]);
     #assert outb[0]==out[0] && outb[1]==out[1] && outb[2]==out[2] && outb[3]==out[3];
+    wb:[4]u32;x2:[8]u16;o2:[4]f32;
+    wb[0]=0x40003f80;wb[1]=0x40804040;wb[2]=0x3f804040;wb[3]=0x40004080;
+    x2[0]=0x3f80;x2[1]=0x4000;x2[2]=0x4040;x2[3]=0x4080;
+    x2[4]=0x4000;x2[5]=0x3f80;x2[6]=0x4080;x2[7]=0x4040;
+    am_matmul_bf16_x16(128,16,32,2,4,2,0,0,wb[..],x2[..],o2[..]);
+    #assert o2[0]==30.0f32 && o2[1]==25.0f32 && o2[2]==28.0f32 && o2[3]==29.0f32;
 }
 #test "the simdgroup tile adds a b^T into acc" {
     acc:[2048]f32;a:[2048]f32;b:[1024]f32;out:[2048]f32;

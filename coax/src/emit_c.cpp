@@ -515,7 +515,7 @@ WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 // Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
 static bool is_device_primitive(const ProcDecl *p) {
-  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16"));
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_bf16_x16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16"));
 }
 // The integer value of a constant expression (a literal or a named constant).
 static int64_t constant_of_expr(const Expr *e) {
@@ -1784,7 +1784,7 @@ struct Emitter {
             for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
             return s + "(threadgroup bfloat *)" + whole(11) + ".e, coax_lane, " + line + ", coax_err)";
           }
-          std::string s = "coax_am_matmul<" + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
+          std::string s = std::string(kind == 8 ? "coax_am_matmul_x16<" : "coax_am_matmul<") + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
           for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
           return s + line + ", coax_err)";
         }
@@ -3347,6 +3347,22 @@ COAX_DEV void coax_am_matmul(int64_t rows, int64_t cols, int64_t tokens, int64_t
   matmul2d<d, execution_simdgroups<SG>> op;
   op.run(X, W, C);
 }
+template <int TM, int TN, int SG>
+COAX_DEV void coax_am_matmul_x16(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u32 w, coax_v_u16 x, coax_v_f32 out, int32_t line, COAX_ERR) {
+  using namespace mpp::tensor_ops;
+  if (rows < 1 || cols < 2 || cols % 2 != 0 || tokens < 1 || r0 < 0 || r0 >= rows || t0 < 0 || t0 >= tokens || rows > 2147483647 / cols ||
+      tokens > 2147483647 / cols || tokens > 2147483647 / rows || w.count < rows * (cols / 2) || x.count < tokens * cols || out.count < tokens * rows) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int c = (int)cols, nt = (int)min((int64_t)TM, tokens - t0), nr = (int)min((int64_t)TN, rows - r0);
+  auto X = tensor<device bfloat, dextents<int32_t, 2>, tensor_inline>((device bfloat *)x.data + t0 * cols, dextents<int32_t, 2>(c, nt), array<int32_t, 2>({1, c}));
+  auto W = tensor<device bfloat, dextents<int32_t, 2>, tensor_inline>((device bfloat *)w.data + r0 * cols, dextents<int32_t, 2>(c, nr), array<int32_t, 2>({1, c}));
+  auto C = tensor<device float, dextents<int32_t, 2>, tensor_inline>(out.data + t0 * rows + r0, dextents<int32_t, 2>(nr, nt), array<int32_t, 2>({1, (int)rows}));
+  constexpr auto d = matmul2d_descriptor(TM, TN, static_cast<int>(dynamic_extent), false, true, true);
+  matmul2d<d, execution_simdgroups<SG>> op;
+  op.run(X, W, C);
+}
 static constant float coax_iq4_lut[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -35.0f, -22.0f, -10.0f, 1.0f, 13.0f, 25.0f, 38.0f, 53.0f, 69.0f, 89.0f, 113.0f};
 static constant int8_t coax_iq4_lut_i8[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
 COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int64_t x_off, int64_t blocks, uint32_t tid, int32_t line, COAX_ERR) {
@@ -3368,7 +3384,7 @@ COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
     float4 xl = *(const device float4 *)bx;
     float4 xh = *(const device float4 *)(bx + 16);
     float sc = float(as_type<half>(bw[0]));
-    ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
+    uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
     float s = coax_iq4_lut[v0 & 15u] * xl.x
             + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
             + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3401,7 +3417,7 @@ COAX_DEV float coax_am_dot_q4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int
     float4 xh = *(const device float4 *)(bx + 16);
     float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
     float sc = float(as_type<half>(bw[0]));
-    ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
+    uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
     float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
             + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
             + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3433,8 +3449,8 @@ COAX_DEV float coax_am_dot_iq4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, c
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    ushort2 _gv = *(const device ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
-    ushort2 _uv = *(const device ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
+    uint32_t g0 = (uint32_t)bg[1 + k0], g1 = (uint32_t)bg[2 + k0];
+    uint32_t u0 = (uint32_t)bu[1 + k0], u1 = (uint32_t)bu[2 + k0];
     float sg = coax_iq4_lut[g0 & 15u] * xl.x
              + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x
              + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y
@@ -3483,8 +3499,8 @@ COAX_DEV float coax_am_dot_q4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, co
     const device uint16_t *bu = wup + b * 9;
     float scg = float(as_type<half>(bg[0]));
     float scu = float(as_type<half>(bu[0]));
-    ushort2 _gv = *(const device ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
-    ushort2 _uv = *(const device ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
+    uint32_t g0 = (uint32_t)bg[1 + k0], g1 = (uint32_t)bg[2 + k0];
+    uint32_t u0 = (uint32_t)bu[1 + k0], u1 = (uint32_t)bu[2 + k0];
     float sg = float(g0 & 15u) * xl.x + float((g0 >> 4u) & 15u) * xh.x
              + float((g0 >> 8u) & 15u) * xl.y + float(g0 >> 12u) * xh.y
              + float(g1 & 15u) * xl.z + float((g1 >> 4u) & 15u) * xh.z
@@ -3530,7 +3546,7 @@ COAX_DEV float coax_am_dot_iq4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32
       float4 xl = *(const device float4 *)bx;
       float4 xh = *(const device float4 *)(bx + 16);
       float sc = float(as_type<half>(bw[0]));
-      ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
+      uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
       float s = coax_iq4_lut[v0 & 15u] * xl.x
               + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x
               + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y
@@ -3572,7 +3588,7 @@ COAX_DEV float coax_am_dot_q4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32 
       float4 xh = *(const device float4 *)(bx + 16);
       float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
       float sc = float(as_type<half>(bw[0]));
-      ushort2 _vv = *(const device ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
+      uint32_t v0 = (uint32_t)bw[1 + k0], v1 = (uint32_t)bw[2 + k0];
       float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
               + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
               + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
@@ -3650,7 +3666,7 @@ COAX_DEV void coax_am_matmul_iq4_impl(int64_t rows, int64_t cols, int64_t tokens
         float sc = float(as_type<half>(src[0]));
         #pragma unroll
         for (int k = 0; k < 8; k++) {
-          uint32_t v = src[1 + k];
+          uint32_t v = (uint32_t)src[1 + k];
           dst[2 * k]      = bfloat(sc * coax_iq4_lut[v & 15u]);
           dst[2 * k + 16] = bfloat(sc * coax_iq4_lut[(v >> 4u) & 15u]);
           dst[2 * k + 1]  = bfloat(sc * coax_iq4_lut[(v >> 8u) & 15u]);
