@@ -80,6 +80,7 @@
 #load "../../metaverse-engine/cam/frame.coax";
 #load "world-racing.coax";
 #load "world-drift.coax";
+#load "world-mountain.coax";   // the megalith in the third- and first-person world, once the page asks for it (HUD_PEAK_MSG)
 #load "ring.coax";   // the home page's ring of portals (issue 30)
 
 HUD_PANELS :: 40;
@@ -93,6 +94,26 @@ HUD_OVER_MSG :: 107; HUD_WHEEL_MSG :: 108;   // the camera's: is the next press 
 HUD_FOLLOW_MSG :: 109;    // the page's follow camera button: 1 on, 0 off
 HUD_TYPING_MSG :: 112;    // the caret is in one of the page's fields (1) or not (0): typing frees a held pointer
 HUD_TOOL_MSG :: 113;      // the hotbar's state, the page's: "TOOL EDIT ID GRAVITY CAMERA MODE" (the placing tool or -1, edit mode, the selected thing's id or 0, gravity in tenths of the normal, the camera menu's camera: 0 orbit, 1 follow, 2 first person, 3 top-down, the placing mode)
+HUD_PEAK_MSG :: 140;      // the megalith (world-mountain.coax): 1 stands it in the third- and first-person world, 0 takes it away
+HUD_PEAK_DAWN :: 0.55;    // the megalith's sky: a bright dawn, between world.time_of_day's sunrise (0.46) and morning (0.66)
+HUD_PEAK_FOG :: 0.08;     // and its fog: so many times the world's haze (thin: the megalith is miles across)
+HUD_PEAK_HAZE_AT :: 10.0; // and its haze starts so many times further out
+// The dragons asleep on the plaza (world-mountain.coax): each where it lies from the plaza's middle
+// (x, z, the page's axes), its size (times yours), its turn (radians) and its colour.
+HUD_SLEEPERS :: 8;
+HUD_SLEEP :: [HUD_SLEEPERS * 7] f32.[
+     0, -80, 10, 0.4,    0.78, 0.6, 0.4,
+   130,  50, 6.5, 2.2,   0.42, 0.72, 0.55,
+  -140,  40, 4.5, -1.1,  0.5, 0.58, 0.78,
+    60, 160, 3, 3.6,     0.86, 0.36, 0.34,
+   -70, 175, 2, 1.4,     0.88, 0.88, 0.9,
+   175, -95, 1.2, -2.5,  0.6, 0.46, 0.78,
+  -175,-110, 0.8, 0.9,   0.92, 0.76, 0.3,
+    25, 100, 0.5, 2.9,   0.66, 0.86, 0.58];
+HUD_NEAR :: 400.0;        // metres round the character the megalith's colliders are taken from (hud_solids)
+HUD_NEAR_AGAIN :: 100.0;  // and how far it goes before they are taken again (hud_near)
+HUD_SLEEP_ROLL :: 1.25;   // radians each lies rolled onto its side
+HUD_SLEEP_VERTICES :: HUD_SLEEPERS * 3 * 3400;   // (the dragon is 3260 triangles)
 HUD_M_SNAP :: 0; HUD_M_FREE :: 1;   // how a placing tool places (web/blocks.coax's BL_M_*): on the grid or exactly where it is pointed, at rest either way (nothing placed drops in)
 HUD_EDIT :: 114;          // the action that tells the page an edit a tool made: a plan line of web/blocks.coax, or "select bN"
 HUD_T_BLOCK :: 0; HUD_T_BALL :: 1; HUD_T_SLAB :: 2; HUD_T_PILLAR :: 3;   // the shapes the placing tool places (web/blocks.coax's BL_T_*): a cube, a sphere, a slab, a pillar
@@ -206,7 +227,23 @@ HUD_PART :: 0.8;          // metres round the character its feet part the grass
 HUD_KEY_FORE :: 1; HUD_KEY_BACK :: 2; HUD_KEY_LEFT :: 4; HUD_KEY_RIGHT :: 8; HUD_KEY_JUMP :: 16;
 HUD_KEY_TURN_LEFT :: 32; HUD_KEY_TURN_RIGHT :: 64; HUD_KEY_TILT_UP :: 128; HUD_KEY_TILT_DOWN :: 256; HUD_KEY_ZOOM_IN :: 512; HUD_KEY_ZOOM_OUT :: 1024;
 HUD_KEY_DOWN :: 2048;     // Shift: descend, while flying only (it is nothing on foot: there is no walk key)
-HUD_KEYS_ALL :: 4095;
+HUD_KEY_BREATH :: 4096;   // E: the dragon breathes fire
+HUD_KEYS_ALL :: 8191;
+// The dragon's fire and flight (hud_fire_step, hud_flames, hud_pivot):
+HUD_FIRE :: 180;          // flames alive at once (each drawn as an octahedron after the dragon's own mesh)
+// An octahedron's corners (+x, -x, +y, -y, +z, -z) and its eight faces, wound outward.
+HUD_OCTA_AT :: [18] f32.[1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1];
+HUD_OCTA :: [24] int.[2, 4, 0, 2, 0, 5, 2, 5, 1, 2, 1, 4, 3, 0, 4, 3, 5, 0, 3, 1, 5, 3, 4, 1];
+HUD_FIRE_FLOATS :: 9;     // a flame: x y z (the engine's axes, metres), its velocity, its age and its life (seconds), its spin
+HUD_FIRE_RATE :: 140.0;   // flames a second while it breathes
+HUD_FIRE_SPEED :: 9.0;    // metres a second a flame leaves the snout at
+HUD_FIRE_FROM :: 0.55;    // seconds into the breath clip the fire starts (it rears back first) ...
+HUD_FIRE_TO :: 1.75;      // ... and stops
+HUD_TURN_FOOT :: 6.0;     // the most it turns a second, radians, on the ground ...
+HUD_TURN_AIR :: 2.6;      // ... and in the air: a wide, banking turn
+HUD_BANK_MAX :: 0.7;      // the most it rolls into a turn in the air, radians (about 40 degrees)
+HUD_PITCH_MAX :: 0.35;    // the most it pitches its nose up climbing (or down diving), radians
+HUD_PIVOT_Y :: 0.9;       // metres up its body it rolls and pitches round
 HUD_FLY_SOFT :: 0.2;      // and the share of its flying speed it is taken to meet a thing with (12 m/s would send a ball off at 18)
 HUD_FLY_PUSH :: 1500.0;   // newtons the character pushes a thing with while it flies: a nudge, an eighth of its shove on foot
 HUD_ASSEMBLE :: 0.9;      // seconds a frame takes to draw itself in
@@ -218,7 +255,7 @@ HUD_BALL_NEAR :: 12;         // balls drawn smooth, the nearest the character; t
 HUD_LOW_SEGMENTS :: 8; HUD_LOW_RINGS :: 5;
 // the ground's two triangles, a patch of earth (6) under each of the village's solids, and the things at their most: all balls,
 // HUD_BALL_NEAR of them smooth (588 vertices: 14 segments by 7 bands of 6) and the rest low (192)
-HUD_MESH_VERTICES :: 6 + 6 * VL_SOLIDS + HUD_BALL_NEAR * 588 + (HUD_BLOCKS - HUD_BALL_NEAR) * 192 + RG_MAX * RG_VERTICES;   // (and the home page's ring)
+HUD_MESH_VERTICES :: 6 + MT_VERTICES + HUD_SLEEP_VERTICES + 6 * VL_SOLIDS + HUD_BALL_NEAR * 588 + (HUD_BLOCKS - HUD_BALL_NEAR) * 192 + RG_MAX * RG_VERTICES;   // (and the home page's ring)
 HUD_KIT_RECORDS :: 2;        // the ground's and the blocks'
 HUD_RECORDS :: HUD_KIT_RECORDS + VL_GHOST_AT + 1;   // and one a building of the village, and the building tool's ghost
 HUD_RECORD_FLOATS :: 16;
@@ -238,7 +275,10 @@ Hud :: struct {
   zoom: f32;                                    // how far the camera has come down to the world's character, 0 to 1
   keys: int;                                    // the keys held, the character's while the world is shown
   observe_wait: f32; observe_seq: int; observe_on: bool; // opt-in own-frame diagnostics
-  nb: int; boxes: [(HUD_BLOCKS + VL_SOLIDS) * QUERY_BOX] f32; // the world's and placed blocks' colliders
+  nb: int; boxes: [(HUD_BLOCKS + VL_SOLIDS + MT_BOXES) * QUERY_BOX] f32; // the world's and placed blocks' colliders (and the megalith's)
+  peak: bool; mountain: [1] Mountain;          // whether the megalith stands (the page's HUD_PEAK_MSG), and it
+  near_x: f32; near_z: f32;                   // where the megalith's near colliders were last taken round (hud_near)
+  sleeper: [1] Ghost; sleep_ok: bool; sleep_lo: [3] f32; sleep_hi: [3] f32;   // the plaza's sleeping dragons: the dragon curled up, and how far it reaches
   nh: int; hulls: [HUD_BLOCKS * HUD_HULL] f32;  // boxes that have turned or tipped (their six faces),
   nc: int; balls: [HUD_BLOCKS * QUERY_CAPSULE] f32;   // and balls
   things: [1] Bodies;                           // the things themselves: the engine's rigid bodies under the page's ids, the page's axes; all shared (none is local decoration)
@@ -298,6 +338,12 @@ Hud :: struct {
   table_for: int;                               // whose ground table is in `table`: 0 none, 1 the village's, 2 the circuit's
   act: int = -1;                                // the page's count of presses of the world's own action (113: reset the room); -1 before it is first told
   fly_n: int = -1; fly_ask: bool;               // the page's count of presses of "fly" (113), -1 before it is first told; one more asks the step to fly or land
+  // the dragon: its breath (seconds into the clip, -1 none), its flames, and how its body turns, rolls and pitches as drawn
+  breath: f32 = -1; breath_was: bool;           // (breath_was: E was pressed since the last step, held or not)
+  fire: [HUD_FIRE * HUD_FIRE_FLOATS] f32; fire_n: int; fire_k: int; fire_owe: f32;
+  mouth: [6] f32;                               // where its snout is (the engine's axes) and the way its fire goes
+  look: f32; lag: f32; yaw_rate: f32;           // the way it is drawn facing, how far that is behind `face`, and how fast it turns
+  bank: f32; pitch: f32; rise: f32; was_y: f32; // its roll into a turn, its nose up or down, how fast it climbs (smoothed), and its height a step ago
   noted: int;                                   // what the page was last told the world is (hud_says)
   line_x: f32; line_z: f32;                     // side on: a point of the line the character is held on (where it stood as the world came up)
   sticks: pad.Sticks; tap: f32;                 // a phone's thumbs (the engine's sticks), and seconds left of a tap's jump
@@ -482,7 +528,100 @@ hud_solids :: (h: [] Hud) {
   // and what stands in the world itself: the village's buildings, once they have risen
   for k: 0..<h[0].ns * QUERY_BOX { h[0].boxes[h[0].nb * QUERY_BOX + k] = h[0].statics[k]; }
   h[0].nb += h[0].ns;
+  // and the megalith's: its columns' runs and its steps, only those within HUD_NEAR of the character
+  // (thousands in all; the character, the camera and the tools meet only what is near, and this list
+  // is made again whenever the character has come HUD_NEAR_AGAIN from where it was last made: hud_near)
+  if hud_mountain(h) {
+    m := h[0].mountain[..]; mt_make(m);
+    h[0].near_x = h[0].cx; h[0].near_z = h[0].cz;
+    x0 := h[0].cx - HUD_NEAR; x1 := h[0].cx + HUD_NEAR; z0 := h[0].cz - HUD_NEAR; z1 := h[0].cz + HUD_NEAR;
+    for i: 0..<m[0].nb {
+      mb := m[0].boxes[i * 6..<i * 6 + 6];
+      if mb[3] < x0 || mb[0] > x1 || mb[5] < z0 || mb[2] > z1 { continue; }
+      o := h[0].nb * QUERY_BOX;
+      for e: 0..<6 { h[0].boxes[o + e] = mb[e]; }
+      h[0].nb += 1;
+    }
+    // and its sleeping dragons', a box each (MT_SPARE of the megalith's room is theirs)
+    if hud_sleep_pose(h) {
+      for d: 0..<HUD_SLEEPERS {
+        sb := hud_sleep_box(h, d); o := h[0].nb * QUERY_BOX;
+        for e: 0..<6 { h[0].boxes[o + e] = sb[e]; }
+        h[0].nb += 1;
+      }
+    }
+  }
 }
+// The plaza's sleeping dragons' pose: the dragon at the end of its landing, crouched low, once.
+hud_sleep_pose :: (h: [] Hud) -> bool {
+  if h[0].sleep_ok { return true; }
+  g := h[0].sleeper[..];
+  if !ghost_load(g) { return false; }
+  ghost_play(g, GHOST_LAND, 100, 0, 0, false);
+  ghost_skin(g);
+  // laid down on its side, curled: rolled about its length (its own pose is this one copy's alone)
+  roll: f32 = HUD_SLEEP_ROLL; rc := cos(roll); rs := sin(roll);
+  for i: 0..<g[0].nv {
+    x := g[0].pos[i * 3]; y := g[0].pos[i * 3 + 1]; g[0].pos[i * 3] = x * rc - y * rs; g[0].pos[i * 3 + 1] = x * rs + y * rc;
+    nx := g[0].nor[i * 3]; ny := g[0].nor[i * 3 + 1]; g[0].nor[i * 3] = nx * rc - ny * rs; g[0].nor[i * 3 + 1] = nx * rs + ny * rc;
+  }
+  for e: 0..<3 { h[0].sleep_lo[e] = 1000; h[0].sleep_hi[e] = -1000; }
+  for i: 0..<g[0].nv { for e: 0..<3 { v := g[0].pos[i * 3 + e]; if v < h[0].sleep_lo[e] { h[0].sleep_lo[e] = v; } if v > h[0].sleep_hi[e] { h[0].sleep_hi[e] = v; } } }
+  h[0].sleep_ok = true;
+  return true;
+}
+// Sleeper d's collider (the page's axes): its middle, turned, three quarters of its reach across and
+// four fifths of its height, from the plaza's grass.
+hud_sleep_box :: (h: [] Hud, d: int) -> [6] f32 {
+  q: [] const f32 = HUD_SLEEP[d * 7..<d * 7 + 7]; size := q[2]; c := cos(q[3]); s := sin(q[3]);
+  lo := h[0].sleep_lo; hi := h[0].sleep_hi;
+  mx := (lo[0] + hi[0]) * 0.5 * size; mz := (lo[2] + hi[2]) * 0.5 * size;
+  ex := (hi[0] - lo[0]) * 0.5 * size * 0.75; ez := (hi[2] - lo[2]) * 0.5 * size * 0.75;
+  // (the engine's axes turn the figure by (c, s): x' = x c + z s, z' = -x s + z c; the page's z is that turned round)
+  x := MT_CX + q[0] + mx * c + mz * s; z := MT_CZ + q[1] - (-mx * s + mz * c);
+  hx := abs(c) * ex + abs(s) * ez; hz := abs(s) * ex + abs(c) * ez;
+  return [6] f32.[x - hx, MT_PLAZA_Y, z - hz, x + hx, MT_PLAZA_Y + (hi[1] - lo[1]) * size * 0.8, z + hz];
+}
+// And drawn, into the world's mesh (the engine's axes), each in its own colour over the dragon's own
+// markings, its triangles in the order the dragon's are.
+hud_sleep_mesh :: (h: [] Hud, p: [] ArchPen, room: int) {
+  if !hud_sleep_pose(h) { return; }
+  g := h[0].sleeper[..];
+  for d: 0..<HUD_SLEEPERS {
+    if p[0].n + g[0].nt * 3 > room { return; }
+    q: [] const f32 = HUD_SLEEP[d * 7..<d * 7 + 7]; size := q[2]; c := cos(q[3]); s := sin(q[3]);
+    x := MT_CX + q[0]; z := -(MT_CZ + q[1]); y := MT_PLAZA_Y - h[0].sleep_lo[1] * size;
+    p[0].material = cast(f32) ARCH_M_SMOOTH;
+    for i: 0..<g[0].nt {
+      for k: 0..<3 {
+        v := ghost_corner(g, i, k);
+        mx := g[0].pos[v * 3]; my := g[0].pos[v * 3 + 1]; mz := g[0].pos[v * 3 + 2];
+        nx := g[0].nor[v * 3]; ny := g[0].nor[v * 3 + 1]; nz := g[0].nor[v * 3 + 2];
+        lum := 0.3 * g[0].paint[v * 3] + 0.59 * g[0].paint[v * 3 + 1] + 0.11 * g[0].paint[v * 3 + 2];
+        f := 0.55 + 0.7 * lum;
+        p[0].tint = [3] f32.[q[4] * f, q[5] * f, q[6] * f];
+        arch_put(p, arch_at(x + size * (mx * c + mz * s), y + size * my, z + size * (-mx * s + mz * c), nx * c + nz * s, ny, -nx * s + nz * c, 0, 0));
+      }
+    }
+  }
+}
+// How far up the sun has come (world.time_of_day's share of the day): round the megalith a dawn,
+// low and rose-gold, unless the world's time of day is set.
+hud_day_share :: (h: [] Hud) -> f32 {
+  pp := h[0].props[..];
+  if hud_mountain(h) && !pr_changed(pp, TW_TIME_OF_DAY) { return HUD_PEAK_DAWN; }
+  return TW_DAY_SHARE[pr_value(pp, TW_TIME_OF_DAY)];
+}
+// Whether the megalith stands: the page has asked for it, in the third- or first-person world (types 0 and 1, the camera kinds' own numbers).
+// Round the megalith, its colliders taken again once the character has gone HUD_NEAR_AGAIN from where they were last taken.
+hud_near :: (h: [] Hud) {
+  if !hud_mountain(h) { return; }
+  dx := h[0].cx - h[0].near_x; dz := h[0].cz - h[0].near_z;
+  if dx * dx + dz * dz > HUD_NEAR_AGAIN * HUD_NEAR_AGAIN { hud_solids(h); }
+}
+// How high anyone flies: HUD_SKY, or round the megalith MT_SKY (under its crags).
+hud_sky :: (h: [] Hud) -> f32 { return ifx hud_mountain(h) then f32(MT_SKY) else f32(HUD_SKY); }
+hud_mountain :: (h: [] Hud) -> bool { return h[0].peak && (h[0].type == CAM_KIND_THIRD || h[0].type == CAM_KIND_FIRST); }
 // The world's own solids, made again (when a building has risen, the pack has come in, the game type
 // has changed): the one list of boxes (vl_solids: each building's model's solids). They are the
 // character's and the camera's colliders (hud_solids), the rigid bodies' walls (the engine's
@@ -546,6 +685,7 @@ hud_slide :: (h: [] Hud, x0: f32, z0: f32, feet: f32, dx: f32, dz: f32) -> [2] f
 // the clip that shows it: the air loop off the floor, the landing after it when it lands on the
 // spot, the run by the ground it covers, else idle.
 hud_walk :: (h: [] Hud, step: f32) {
+  hud_near(h);
   if h[0].type == HUD_RACING { hud_race_feet(h); return; }   // (racing: no one walks; the camera follows the car)
   if h[0].type == HUD_DRIFT { hud_drift_feet(h); return; }   // (drift: nor here; the camera follows the ship)
   t := hud_tuning(h);
@@ -583,6 +723,7 @@ hud_walk :: (h: [] Hud, step: f32) {
     // (each press of Space told since the last frame, in order: let go, then down, so a tap shorter than a frame counts)
     space := (k & HUD_KEY_JUMP) != 0; sink := (k & HUD_KEY_DOWN) != 0;
     ft: fly.FlyTuning; toggled := false;
+    if hud_mountain(h) { ft.speed *= MT_FLY; ft.rise *= MT_FLY; ft.sink *= MT_FLY; }   // (round the megalith: miles to fly)
     may := hud_may_fly(h);   // (player.fly: with it off, as side on, a second press is no flight)
     for e: 0..<h[0].taps {
       j = sr_jump_press(sr_jump_press(j, false), true);
@@ -646,8 +787,9 @@ hud_walk :: (h: [] Hud, step: f32) {
       }
     }
     // the sky's limit: it rises no higher than HUD_SKY over the ground (with no gravity a jump would never end)
-    if j.y > HUD_SKY { j.y = HUD_SKY; if j.prev_y > j.y { j.prev_y = j.y; } if j.vy > 0 { j.vy = 0; } if !h[0].atop { h[0].atop = true; h[0].limit = HUD_L_SKY; } }
-    if j.y < HUD_SKY - 1 { h[0].atop = false; }
+    sky := hud_sky(h);
+    if j.y > sky { j.y = sky; if j.prev_y > j.y { j.prev_y = j.y; } if j.vy > 0 { j.vy = 0; } if !h[0].atop { h[0].atop = true; h[0].limit = HUD_L_SKY; } }
+    if j.y < sky - 1 { h[0].atop = false; }
     // (flying, it is drawn where it is: its steps are the frame's own, with nothing between to blend)
     if flying { j.prev_y = j.y; j.vy = 0; j.clock = 0; }
     h[0].foot.walk = n; h[0].foot.jump = j; h[0].foot.stance = sr_stance_tick(h[0].foot.stance, step);
@@ -664,23 +806,102 @@ hud_walk :: (h: [] Hud, step: f32) {
   h[0].face = sr_face_yaw(w);
   ease := step * 10; if ease > 1 { ease = 1; }
   h[0].pace += (w.speed / t.walk_speed - h[0].pace) * ease;
+  air := sr_jump_airborne(h[0].foot.jump);
+  hud_pivot(h, step, air);
   // its clip
   if h[0].bare || (h[0].zoom <= 0.003 && h[0].view != HUD_WORLD) { return; }   // not seen: nothing is posed (or loaded)
   g := h[0].ghost[..];
   if !ghost_load(g) { return; }
-  air := sr_jump_airborne(h[0].foot.jump);
+  // E: a breath of fire (the clip rears back, then breathes out); held, it breathes again once the last is done
+  if h[0].view == HUD_WORLD && ((h[0].keys & HUD_KEY_BREATH) != 0 || h[0].breath_was) && h[0].breath < 0 { h[0].breath = 0; }
+  h[0].breath_was = false;
   if h[0].foot.jump.landed { h[0].land = ifx w.speed < 1.5 then f32(HUD_LAND) else 0.0f32; }
   if air || w.speed >= 1.5 { h[0].land = 0; }
-  if air { ghost_play(g, GHOST_AIR, step, step, 0.14, true); }
+  left := -h[0].yaw_rate;   // how fast it turns to its left (radians a second; to its right below zero)
+  if h[0].breath >= 0 {
+    ghost_play(g, GHOST_BREATH, step, step, 0.12, false);
+    h[0].breath += step;
+    if h[0].breath >= g[0].seconds[GHOST_BREATH] { h[0].breath = -1; }
+  }
+  // flying: its wings beat, and in a turn it banks
+  else if air && h[0].fly.on {
+    if left > 0.9 { ghost_play(g, GHOST_BANK_LEFT, step, step, 0.35, true); }
+    else if left < -0.9 { ghost_play(g, GHOST_BANK_RIGHT, step, step, 0.35, true); }
+    else { ghost_play(g, GHOST_FLY, step * (ifx w.speed > HUD_STILL then 1.25f32 else 1.0f32), step, 0.3, true); }
+  }
+  // off the ground in a jump: wings beating on the way up, gliding on the way down
+  else if air { if h[0].rise > 0.5 { ghost_play(g, GHOST_FLY, step, step, 0.2, true); } else { ghost_play(g, GHOST_AIR, step, step, 0.3, true); } }
   else if h[0].land > 0 { h[0].land -= step; ghost_play(g, GHOST_LAND, step, step, 0.08, false); }
   else if w.speed > HUD_STILL { ghost_play(g, GHOST_RUN, w.speed * step / HUD_STRIDE * g[0].seconds[GHOST_RUN], step, 0.16, true); }
+  // turning on the spot: it steps round, its feet keeping time with the turn
+  else if abs(h[0].yaw_rate) > 0.8 { ghost_play(g, GHOST_RUN, abs(h[0].yaw_rate) * step * 0.3, step, 0.2, true); }
   else { ghost_play(g, GHOST_IDLE, step, step, 0.25, true); }
   ghost_skin(g);
-  // the platformer's hero: solid, in the runner's livery, its head, hands and feet swollen (the engine's render/livery.coax)
-  if hud_hero(h) { ghost_paint(g, LIVERY_RUNNER); ghost_swell(g); }
+  // the dragon carries its own colours (ghost_load, GHOST_OWN): nothing is repainted
 }
-// Whether the character is drawn as a hero, solid and in a livery (the platformer's), not as a ghost.
-hud_hero :: (h: [] Hud) -> bool { return h[0].type == HUD_PLATFORMER; }
+
+// How the dragon's body turns as drawn: it swings round to `face` no faster than it can turn
+// (briskly on its feet, in a wide arc in the air) and eases in at the end; in the air it rolls into
+// the turn, its inside wing down, and pitches its nose with its climb; on its feet it leans a little.
+hud_pivot :: (h: [] Hud, step: f32, air: bool) {
+  if !(step > 0) { return; }
+  rate := ifx air then f32(HUD_TURN_AIR) else f32(HUD_TURN_FOOT);
+  diff := wrap_angle(h[0].face - h[0].look);
+  turn := diff * clamp(step * 7, 0, 1);
+  most := rate * step;
+  if turn > most { turn = most; } if turn < -most { turn = -most; }
+  h[0].look = wrap_angle(h[0].look + turn);
+  h[0].lag = wrap_angle(h[0].look - h[0].face);
+  h[0].yaw_rate += (turn / step - h[0].yaw_rate) * clamp(step * 8, 0, 1);
+  vy := (h[0].cy - h[0].was_y) / step; h[0].was_y = h[0].cy;
+  if !(abs(vy) < 50) { vy = 0; }
+  h[0].rise += (vy - h[0].rise) * clamp(step * 5, 0, 1);
+  // (a turn to its left is the facing going down: its roll is that way, its left wing, +x, dipping)
+  roll := ifx air then f32(HUD_BANK_MAX) else 0.12f32;
+  want_bank := clamp(h[0].yaw_rate * 0.35, -roll, roll);
+  want_pitch := ifx air then clamp(h[0].rise * 0.08, -f32(HUD_PITCH_MAX), f32(HUD_PITCH_MAX)) else 0.0f32;
+  h[0].bank += (want_bank - h[0].bank) * clamp(step * 4, 0, 1);
+  h[0].pitch += (want_pitch - h[0].pitch) * clamp(step * 4, 0, 1);
+}
+
+// The dragon's fire: flames leave its snout in a cone while the breath clip breathes out, carry its
+// speed, slow in the air, rise as they burn, and go out at the end of their short lives.
+hud_fire_step :: (h: [] Hud, step: f32) {
+  if !(step > 0) { return; }
+  drag := 1.0f32 - clamp(step * 2.2, 0, 0.9);
+  n := 0;
+  for i: 0..<h[0].fire_n {
+    o := i * HUD_FIRE_FLOATS;
+    age := h[0].fire[o + 6] + step; life := h[0].fire[o + 7];
+    if age >= life { continue; }
+    vx := h[0].fire[o + 3] * drag; vy := h[0].fire[o + 4] * drag + 2.5 * step; vz := h[0].fire[o + 5] * drag;
+    x := h[0].fire[o] + vx * step; y := h[0].fire[o + 1] + vy * step; z := h[0].fire[o + 2] + vz * step;
+    q := n * HUD_FIRE_FLOATS;
+    h[0].fire[q] = x; h[0].fire[q + 1] = y; h[0].fire[q + 2] = z;
+    h[0].fire[q + 3] = vx; h[0].fire[q + 4] = vy; h[0].fire[q + 5] = vz;
+    h[0].fire[q + 6] = age; h[0].fire[q + 7] = life; h[0].fire[q + 8] = h[0].fire[o + 8];
+    n += 1;
+  }
+  h[0].fire_n = n;
+  if h[0].breath < f32(HUD_FIRE_FROM) || h[0].breath > f32(HUD_FIRE_TO) { h[0].fire_owe = 0; return; }
+  h[0].fire_owe += step * HUD_FIRE_RATE;
+  w := h[0].foot.walk;
+  while h[0].fire_owe >= 1 && h[0].fire_n < HUD_FIRE {
+    h[0].fire_owe -= 1;
+    k := h[0].fire_k; h[0].fire_k += 1;
+    r1 := ax_random(7, k * 5); r2 := ax_random(7, k * 5 + 1); r3 := ax_random(7, k * 5 + 2); r4 := ax_random(7, k * 5 + 3); r5 := ax_random(7, k * 5 + 4);
+    dx := h[0].mouth[3] + (r1 - 0.5) * 0.35; dy := h[0].mouth[4] + (r2 - 0.5) * 0.25; dz := h[0].mouth[5] + (r3 - 0.5) * 0.35;
+    speed := HUD_FIRE_SPEED * (0.75 + 0.5 * r4);
+    q := h[0].fire_n * HUD_FIRE_FLOATS;
+    h[0].fire[q] = h[0].mouth[0] + dx * 0.05; h[0].fire[q + 1] = h[0].mouth[1] + dy * 0.05; h[0].fire[q + 2] = h[0].mouth[2] + dz * 0.05;
+    h[0].fire[q + 3] = dx * speed + w.vx; h[0].fire[q + 4] = dy * speed; h[0].fire[q + 5] = dz * speed - w.vz;
+    h[0].fire[q + 6] = 0; h[0].fire[q + 7] = 0.45 + 0.4 * r5; h[0].fire[q + 8] = r1 * 6.2831853;
+    h[0].fire_n += 1;
+  }
+}
+
+// Whether the character is drawn solid in its colours, not as a ghost: the dragon always is.
+hud_hero :: (h: [] Hud) -> bool { return h.count >= 0; }
 
 // The app's walk and jump rules as this world tunes them: their own numbers, the gravity (rising
 // and falling) the world's multiple of theirs. A jump is as fast off the ground as ever, so it goes
@@ -818,7 +1039,7 @@ hud_orbit :: (h: [] Hud, step: f32) {
   o = cam_kind_keep(kd, cam_chase_orbit(mode, o, cam_kind_in(kd, in), step), HUD_PI);
   if h[0].type == HUD_RACING { o = hud_race_chase(h, o, step); }
   // what stands in the way, in the engine's axes: the blocks, and the ground as a slab
-  boxes: [(HUD_BLOCKS + VL_SOLIDS + 1) * 6] f32;
+  boxes: [(HUD_BLOCKS + VL_SOLIDS + MT_BOXES + 1) * 6] f32;
   // (crates: the view is from over the whole room, held on its middle: a crate dropping in there, or standing there, is not in its way)
   nbox := ifx h[0].type >= HUD_CRATES then 0 else h[0].nb;
   for i: 0..<nbox {
@@ -1029,6 +1250,8 @@ hud_build :: (h: [] Hud, shown: bool) {
   // (drift's floor falls away too, as its tiles rise as the rocks)
   g: f32 = HUD_GROUND_HALF; gy := ifx h[0].type == HUD_PLATFORMER then pf_floor(h[0].plat[..]) else ifx h[0].type == HUD_DRIFT then dr_floor(h[0].drift[..]) else 0.0f32;
   if !(h[0].type == HUD_PLATFORMER && pf_up(h[0].plat[..])) && !(h[0].type == HUD_DRIFT && dr_up(h[0].drift[..])) { arch_quad(p[..], arch_at(-g, gy, g, 0, 1, 0, 1, 0), arch_at(g, gy, g, 0, 1, 0, 1, 0), arch_at(g, gy, -g, 0, 1, 0, 1, 0), arch_at(-g, gy, -g, 0, 1, 0, 1, 0)); }
+  // the megalith, in its rock (world-mountain.coax: only the faces rock doesn't hide)
+  if hud_mountain(h) { mt_mesh(h[0].mountain[..], p[..], p[0].n + MT_VERTICES); hud_sleep_mesh(h, p[..], p[0].n + HUD_SLEEP_VERTICES); }
   // the earth under the village's buildings and rocks (no grass grows there: the ground table)
   if h[0].table_for == 1 { all: [VL_SOLIDS * QUERY_BOX] f32; n := vl_all_solids(h[0].village[..], all[..]); vl_earth(all[0..<n * QUERY_BOX], p[..]); }
   // the things: the kit's smooth stone, a pale grey. A block is the kit's box turned as it is; a
@@ -1117,21 +1340,82 @@ hud_skin :: (h: [] Hud) {
   if !g[0].ready || g[0].clip < 0 { return; }
   if h[0].tris_n == 0 {
     for i: 0..<g[0].nt { for k: 0..<3 { h[0].tris[i * 3 + k] = cast(u32) ghost_corner(g, i, k); } }
-    h[0].tris_n = g[0].nt * 3; h[0].tris_gen += 1;
+    // and after it, its flames: each an octahedron, six corners and eight faces (hud_flames)
+    for f: 0..<HUD_FIRE {
+      for e: 0..<24 { h[0].tris[(g[0].nt + f * 8) * 3 + e] = cast(u32) (g[0].nv + f * 6 + HUD_OCTA[e]); }
+    }
+    h[0].tris_n = (g[0].nt + HUD_FIRE * 8) * 3; h[0].tris_gen += 1;
   }
   // facing `face` in the page's axes is (sin, cos) of it: the engine's (sin, -cos)
-  turn := 3.14159265 - h[0].face;
+  // (drawn facing `look`, which swings round behind `face` as fast as it can turn: hud_pivot)
+  turn := 3.14159265 - (h[0].face + h[0].lag);
   c := cos(turn); s := sin(turn);
+  cb := cos(h[0].bank); sb := sin(h[0].bank); cp := cos(h[0].pitch); sp := sin(h[0].pitch);
   hero := hud_hero(h) && g[0].livery >= 0;   // its colours with it, else black: the shader draws it as a ghost
   for i: 0..<g[0].nv {
     mx := g[0].pos[i * 3]; my := g[0].pos[i * 3 + 1]; mz := g[0].pos[i * 3 + 2];
     nx := g[0].nor[i * 3]; ny := g[0].nor[i * 3 + 1]; nz := g[0].nor[i * 3 + 2];
+    // rolled round its length, then pitched round its width, both about its body's middle
+    ry := my - HUD_PIVOT_Y;
+    ax := mx * cb - ry * sb; ay := mx * sb + ry * cb;
+    my = HUD_PIVOT_Y + ay * cp + mz * sp; mz = mz * cp - ay * sp; mx = ax;
+    tnx := nx * cb - ny * sb; tny := nx * sb + ny * cb;
+    ny = tny * cp + nz * sp; nz = nz * cp - tny * sp; nx = tnx;
     o := i * HUD_SKIN_FLOATS;
     h[0].skin[o] = h[0].cx + mx * c + mz * s; h[0].skin[o + 1] = h[0].cy + my; h[0].skin[o + 2] = -h[0].cz - mx * s + mz * c;
     h[0].skin[o + 3] = nx * c + nz * s; h[0].skin[o + 4] = ny; h[0].skin[o + 5] = -nx * s + nz * c;
     for k: 0..<3 { h[0].skin[o + 6 + k] = ifx hero then g[0].paint[i * 3 + k] else 0.0f32; }
   }
+  // its mouth: the snout's tip as drawn, and the way its breath goes (ahead, pitched with it, a little down)
+  so := g[0].snout * HUD_SKIN_FLOATS;
+  h[0].mouth[0] = h[0].skin[so]; h[0].mouth[1] = h[0].skin[so + 1]; h[0].mouth[2] = h[0].skin[so + 2];
+  dip := h[0].pitch - 0.2;
+  h[0].mouth[3] = cos(dip) * s; h[0].mouth[4] = sin(dip); h[0].mouth[5] = cos(dip) * c;
+  hud_flames(h);
   h[0].skin_gen += 1;
+}
+// The flames as part of the character's mesh, after its own vertices: each flame an octahedron
+// round where it is, swelling as it burns and shrinking away as it dies; its colour far brighter
+// than paint (white-hot, yellow, orange, a dull red) so the scene's bloom makes it glow; its
+// corners face the sky, so the sun's side and the shadow's light it alike. A slot with no flame is
+// a point: nothing is drawn.
+hud_flames :: (h: [] Hud) {
+  g := h[0].ghost[..];
+  for f: 0..<HUD_FIRE {
+    q := f * HUD_FIRE_FLOATS;
+    x := h[0].mouth[0]; y := h[0].mouth[1]; z := h[0].mouth[2];
+    r: f32 = 0; long: f32 = 1; cr: f32 = 0; cg: f32 = 0; cb: f32 = 0;
+    // its frame: ahead along its flight, and two ways across it, spun by its own turn as it burns
+    fx: f32 = 0; fy: f32 = 0; fz: f32 = 1; ux: f32 = 1; uy: f32 = 0; uz: f32 = 0; vx: f32 = 0; vy: f32 = 1; vz: f32 = 0;
+    if f < h[0].fire_n {
+      x = h[0].fire[q]; y = h[0].fire[q + 1]; z = h[0].fire[q + 2];
+      t := clamp(h[0].fire[q + 6] / h[0].fire[q + 7], 0, 1);
+      r = 0.07f32 + 0.38 * t; if t > 0.75 { r *= (1 - t) * 4; }
+      long = 2.4f32 - 1.4 * t;   // a streak as it leaves the snout, rounder as it slows and burns out
+      if t < 0.15 { k := t / 0.15; cr = 7; cg = 6 - 1.5 * k; cb = 3.5 - 2.5 * k; }
+      else if t < 0.5 { k := (t - 0.15) / 0.35; cr = 7 - 2 * k; cg = 4.5 - 2.8 * k; cb = 1 - 0.8 * k; }
+      else { k := (t - 0.5) / 0.5; cr = 5 - 3.8 * k; cg = 1.7 - 1.45 * k; cb = 0.2 - 0.15 * k; }
+      sp := sqrt(h[0].fire[q + 3] * h[0].fire[q + 3] + h[0].fire[q + 4] * h[0].fire[q + 4] + h[0].fire[q + 5] * h[0].fire[q + 5]);
+      if sp > 0.05 { fx = h[0].fire[q + 3] / sp; fy = h[0].fire[q + 4] / sp; fz = h[0].fire[q + 5] / sp; }
+      // across: square to its flight and to the sky (or to x, flying straight up or down), then the third way
+      ax: f32 = fz; ay: f32 = 0; az: f32 = -fx;
+      al := sqrt(ax * ax + az * az); if al < 0.05 { ax = 0; ay = -fz; az = fy; al = sqrt(ay * ay + az * az); }
+      ax /= al; ay /= al; az /= al;
+      bx := fy * az - fz * ay; by := fz * ax - fx * az; bz := fx * ay - fy * ax;
+      spin := h[0].fire[q + 8] + h[0].fire[q + 6] * 7;
+      cs := cos(spin); sn := sin(spin);
+      ux = ax * cs + bx * sn; uy = ay * cs + by * sn; uz = az * cs + bz * sn;
+      // (the third way is ahead x across, so its corners keep their faces' winding outward)
+      vx = fy * uz - fz * uy; vy = fz * ux - fx * uz; vz = fx * uy - fy * ux;
+    }
+    for e: 0..<6 {
+      o := (g[0].nv + f * 6 + e) * HUD_SKIN_FLOATS;
+      a := HUD_OCTA_AT[e * 3] * r; b := HUD_OCTA_AT[e * 3 + 1] * r; c := HUD_OCTA_AT[e * 3 + 2] * r * long;
+      h[0].skin[o] = x + ux * a + vx * b + fx * c; h[0].skin[o + 1] = y + uy * a + vy * b + fy * c; h[0].skin[o + 2] = z + uz * a + vz * b + fz * c;
+      h[0].skin[o + 3] = 0; h[0].skin[o + 4] = 1; h[0].skin[o + 5] = 0;
+      h[0].skin[o + 6] = cr; h[0].skin[o + 7] = cg; h[0].skin[o + 8] = cb;
+    }
+  }
 }
 // The scene's draws (coax/web/host.js: first, count, base instance with its top bit set for
 // vertices in order, instances): the ground, the blocks, and last the character, which is blended.
@@ -1385,7 +1669,7 @@ hud_frame :: (h: [] Hud, out: [] f32, uniforms: [] f32, width: f32, height: f32,
   }
   // the sun comes up with it, once, and stays up; leaving the world, the sky goes back to black with the grass
   // (world.time_of_day: the sun comes up as far as that and stays; set earlier in the day, it goes back down there twice as fast)
-  noon := HUD_SUNRISE * TW_DAY_SHARE[pr_value(h[0].props[..], TW_TIME_OF_DAY)];
+  noon := HUD_SUNRISE * hud_day_share(h);
   if h[0].view == HUD_WORLD && hud_meadow(h) {
     if h[0].dawn <= noon { h[0].dawn += step; if h[0].dawn > noon { h[0].dawn = noon; } }
     else { h[0].dawn -= step * 2; if h[0].dawn < noon { h[0].dawn = noon; } }
@@ -1402,6 +1686,8 @@ hud_frame :: (h: [] Hud, out: [] f32, uniforms: [] f32, width: f32, height: f32,
     // the registry's part of the look: the haze, and the grass's height and how thick it grows
     pp := h[0].props[..];
     look.haze *= cast(f32) pr_value(pp, TW_HAZE) * 0.01;
+    // round the megalith a thick fog lies, unless the world's haze is set: it closes in, and the stone looms out of it
+    if hud_mountain(h) && !pr_changed(pp, TW_HAZE) { look.haze *= HUD_PEAK_FOG; look.haze_start *= HUD_PEAK_HAZE_AT; }
     look.blade = cast(f32) pr_value(pp, TW_GRASS_HEIGHT) * 0.01;
     thick := sqrt(cast(f32) pr_value(pp, TW_GRASS_DENSITY) * 0.01);
     if pr_changed(pp, TW_GRASS_DENSITY) { look.grass_cell /= thick; }
@@ -1418,7 +1704,8 @@ hud_frame :: (h: [] Hud, out: [] f32, uniforms: [] f32, width: f32, height: f32,
       ok = sty_shadow_box(u, eye.x + f[0] * reach, 0, eye.z + f[2] * reach, 32, 80) && ok;
     } else { ok = sty_shadow_box(u, h[0].cx, h[0].cy, -h[0].cz, 26, 60) && ok; }
     // the grass: a field ahead of the eye, once the reveal has begun; its wind; the character parts it
-    if front > 0 {
+    h[0].blades = 0;
+    if front > 0 && !hud_mountain(h) {
       // a square of it, HUD_GRASS_BEHIND behind the eye and the rest ahead, whichever way the camera looks
       // (a small window, a phone's, has a smaller field of fewer, wider blades: under a sixth of the vertices)
       cols := HUD_GRASS_COLS; rows := HUD_GRASS_ROWS;
@@ -1458,6 +1745,7 @@ hud_frame :: (h: [] Hud, out: [] f32, uniforms: [] f32, width: f32, height: f32,
   shown := h[0].zoom > 0.003;
   if h[0].stale || h[0].moved || (h[0].built > 0.5) != shown { hud_build(h, shown); }
   if !h[0].bare && !h[0].still && h[0].zoom > 0.003 { hud_skin(h); }
+  hud_fire_step(h, step);
   hud_ghost_building(h);
   hud_draws(h);
   o: [1] HudOut; o[0].v = out;
@@ -1504,7 +1792,7 @@ hud_store_cap :: (k: int) -> int #export_c #effects(all) {
 hud_store_bytes :: (h: [] Hud, k: int) -> int #export_c #effects(all) {
   if h.count < 1 { return 0; }
   if k == 0 { return (ifx h[0].mesh_n < 6 then 6 else h[0].mesh_n) * ARCH_VERTEX_FLOATS * 4; }
-  if k == 3 { return (ifx h[0].ghost[0].nv < 1 then 1 else h[0].ghost[0].nv) * HUD_SKIN_FLOATS * 4; }
+  if k == 3 { return (ifx h[0].ghost[0].nv < 1 then 1 else h[0].ghost[0].nv + HUD_FIRE * 6) * HUD_SKIN_FLOATS * 4; }   // (its vertices, then its flames')
   if k == 4 { return (ifx h[0].tris_n < 3 then 3 else h[0].tris_n) * 4; }
   if k == 5 { return (ifx h[0].ring_n < 1 then 1 else h[0].ring_n) * RG_PIC_W * RG_PIC_H * 4; }   // (the pictures of the portals there are)
   return hud_store_cap(k);
@@ -1544,7 +1832,7 @@ hud_calm :: (h: [] Hud) -> bool { return h[0].calm != 0; }
 hud_settle :: (h: [] Hud) {
   h[0].zoom = 1; h[0].tilt = 1;
   if hud_meadow(h) || h[0].type == HUD_RACING { h[0].from_x = h[0].cx; h[0].from_z = h[0].cz; h[0].spread = HUD_SPREAD; }
-  if hud_meadow(h) { h[0].dawn = HUD_SUNRISE * TW_DAY_SHARE[pr_value(h[0].props[..], TW_TIME_OF_DAY)]; }
+  if hud_meadow(h) { h[0].dawn = HUD_SUNRISE * hud_day_share(h); }
 }
 // A pointer, from the page host (coax/web/host.js: device pixels; phase 0 down, 1 moved, 2 up, 3
 // cancelled; kind 0 a mouse, else a finger; id the pointer's). A mouse held on the world and dragged
@@ -2482,12 +2770,19 @@ hud_message :: (h: [] Hud, kind: int, length: int) #export_c #effects(all) {
     h[0].calm = ifx v.ok then v.value & 3 else 0;
     return;
   }
+  if kind == HUD_PEAK_MSG {
+    v := hud_read(t, 0);
+    want := v.ok && v.value == 1;
+    if want != h[0].peak { h[0].peak = want; hud_statics(h); }
+    return;
+  }
   if kind == HUD_KEYS_MSG {
     // the keys held now, as bits; anything that is not a number lets them all go
     v := hud_read(t, 0);
     now := ifx v.ok then v.value & HUD_KEYS_ALL else 0;
     // (a press of Space is counted as it is told, so one made and let go between two frames is still a press)
     if (now & HUD_KEY_JUMP) != 0 && (h[0].keys & HUD_KEY_JUMP) == 0 && h[0].taps < 4 { h[0].taps += 1; }
+    if (now & HUD_KEY_BREATH) != 0 && (h[0].keys & HUD_KEY_BREATH) == 0 { h[0].breath_was = true; }   // (and E's: a tap still breathes)
     h[0].keys = now;
     return;
   }
@@ -3348,7 +3643,7 @@ hud_test_world :: (t: [] HudTest) { t[0].h[0].bare = true; hud_test_say(t[0].h[.
   hud_test_say(h, HUD_KEYS_MSG, "256"); hud_test_run(t[..], 40, 0.01); #assert h[0].orbit.pitch > pitch + 0.2;
   hud_test_say(h, HUD_KEYS_MSG, "512"); hud_test_run(t[..], 50, 0.01); #assert h[0].orbit.want < HUD_WORLD_FAR - 2;
   hud_test_say(h, HUD_KEYS_MSG, "1024"); hud_test_run(t[..], 100, 0.01); #assert h[0].orbit.want > HUD_WORLD_FAR;
-  hud_test_say(h, HUD_KEYS_MSG, "4095"); #assert h[0].keys == HUD_KEYS_ALL;
+  hud_test_say(h, HUD_KEYS_MSG, "8191"); #assert h[0].keys == HUD_KEYS_ALL;
 }
 
 #test "the wheel zooms out to 12 m and in to 1.5 m, and on into the character's head: first person, its body out of the view" #steps 2000000000 {
@@ -4398,28 +4693,28 @@ hud_test_put_keys :: (h: [] Hud, keys: int) { text: [12] u8; n := hud_test_put(t
   h[0].foot.walk.x = 4; h[0].foot.walk.z = 7;
   n := hud_frame(h, t[0].out[..], t[0].u[..], 1600, 1200, 2, 0.016);
   g := h[0].ghost[..];
-  #assert g[0].ready && g[0].clip == GHOST_IDLE && h[0].tris_n == g[0].nt * 3 && hud_draw_count(h) == 2 && h[0].ghost_draw == 1;
+  #assert g[0].ready && g[0].clip == GHOST_IDLE && h[0].tris_n == (g[0].nt + HUD_FIRE * 8) * 3 && hud_draw_count(h) == 2 && h[0].ghost_draw == 1;
   // its draw is the last: its triangles in order from the `tris` store, marked as the character's, blended as the engine's ghost
-  #assert h[0].host_draws[4] == 0 && h[0].host_draws[5] == cast(u32) (g[0].nt * 3) && h[0].host_draws[6] == (0x80000000 | HUD_GHOST_AT) && h[0].host_draws[7] == 1;
-  #assert hud_draw_blend(h, 1) == 2 && hud_draw_blend(h, 0) == 0 && hud_draw_blend(h, 2) == 0;
-  #assert hud_store_bytes(h, 3) == g[0].nv * HUD_SKIN_FLOATS * 4 && hud_store_bytes(h, 4) == g[0].nt * 12 && hud_store_version(h, 4) == 1 && hud_store_version(h, 3) > 0;
-  for i: 0..<h[0].tris_n { #assert cast(int) h[0].tris[i] < g[0].nv; }
+  #assert h[0].host_draws[4] == 0 && h[0].host_draws[5] == cast(u32) ((g[0].nt + HUD_FIRE * 8) * 3) && h[0].host_draws[6] == (0x80000000 | HUD_GHOST_AT) && h[0].host_draws[7] == 1;
+  #assert hud_draw_blend(h, 1) == 0 && hud_draw_blend(h, 0) == 0 && hud_draw_blend(h, 2) == 0;   // the dragon is solid, not blended
+  #assert hud_store_bytes(h, 3) == (g[0].nv + HUD_FIRE * 6) * HUD_SKIN_FLOATS * 4 && hud_store_bytes(h, 4) == (g[0].nt + HUD_FIRE * 8) * 12 && hud_store_version(h, 4) == 1 && hud_store_version(h, 3) > 0;
+  for i: 0..<h[0].tris_n { #assert cast(int) h[0].tris[i] < g[0].nv + HUD_FIRE * 6; }
   // every skinned vertex is within the figure's reach of where it stands (the engine's z is the page's, turned), with a unit normal,
   // and the figure stands in the window's middle, a little under two metres tall
   loy: f32 = 9999; hiy: f32 = -9999; top: f32 = 9999; foot: f32 = -9999;
   for i: 0..<g[0].nv {
     o := i * HUD_SKIN_FLOATS;
-    #assert abs(h[0].skin[o] - 4) < 1.2 && abs(h[0].skin[o + 2] + 7) < 1.2 && h[0].skin[o + 1] > -0.1 && h[0].skin[o + 1] < 2.1;
+    #assert abs(h[0].skin[o] - 4) < 3.6 && abs(h[0].skin[o + 2] + 7) < 3.6 && h[0].skin[o + 1] > -0.2 && h[0].skin[o + 1] < 3.0;   // the dragon's reach: its wings and tail
     l := h[0].skin[o + 3] * h[0].skin[o + 3] + h[0].skin[o + 4] * h[0].skin[o + 4] + h[0].skin[o + 5] * h[0].skin[o + 5];
     #assert l > 0.97 && l < 1.03;
     if h[0].skin[o + 1] < loy { loy = h[0].skin[o + 1]; } if h[0].skin[o + 1] > hiy { hiy = h[0].skin[o + 1]; }
     s := sty_project(t[0].u[..], h[0].skin[o], h[0].skin[o + 1], h[0].skin[o + 2]);
-    #assert s.ahead && s.x > 560 && s.x < 1040 && s.y > 300 && s.y < 900;
+    #assert s.ahead && s.x > 0 && s.x < 1600 && s.y > 0 && s.y < 1200;
     if s.y < top { top = s.y; } if s.y > foot { foot = s.y; }
   }
-  #assert hiy - loy > 1.6 && hiy - loy < 2.0 && loy < 0.1 && foot - top > 180 && foot - top < 420;
-  // a ghost here: no livery, so no colour goes with its vertices
-  #assert g[0].livery < 0 && h[0].skin[6] == 0 && h[0].skin[7] == 0 && h[0].skin[8] == 0 && !hud_hero(h);
+  #assert hiy - loy > 1.2 && hiy - loy < 2.9 && loy < 0.2 && foot - top > 120 && foot - top < 900;
+  // the dragon: its own colours go with its vertices, drawn solid
+  #assert g[0].livery == GHOST_OWN && h[0].skin[6] + h[0].skin[7] + h[0].skin[8] > 0 && hud_hero(h);
   // turned a quarter to face the page's +x, each vertex has gone a quarter round it: what was ahead of it is to its right
   h[0].face = 0; hud_skin(h);
   ax := h[0].skin[0] - 4; az := h[0].skin[2] + 7; nx := h[0].skin[3]; nz := h[0].skin[5];
@@ -4429,11 +4724,26 @@ hud_test_put_keys :: (h: [] Hud, keys: int) { text: [12] u8; n := hud_test_put(t
   hud_test_say(h, HUD_KEYS_MSG, "1"); hud_test_run(t[..], 3, 0.05);
   #assert g[0].clip == GHOST_RUN;
   hud_test_say(h, HUD_KEYS_MSG, "16"); hud_test_run(t[..], 3, 0.05);
-  #assert g[0].clip == GHOST_AIR && h[0].cy > 0;
+  #assert (g[0].clip == GHOST_AIR || g[0].clip == GHOST_FLY) && h[0].cy > 0;   // (the dragon beats its wings on the way up, glides down)
   h[0].bare = true; hud_test_run(t[..], 14, 0.05); h[0].bare = false;
   #assert h[0].foot.jump.on_ground && h[0].foot.walk.speed < 1;
   hud_test_run(t[..], 1, 0.05);
   #assert g[0].clip == GHOST_LAND || g[0].clip == GHOST_IDLE;
+  // E: it breathes fire: it rears back, flames pour from its snout, and they go out once it is done
+  hud_test_say(h, HUD_KEYS_MSG, "4096"); hud_test_run(t[..], 2, 0.05);
+  #assert g[0].clip == GHOST_BREATH && h[0].breath > 0 && h[0].fire_n == 0;
+  hud_test_say(h, HUD_KEYS_MSG, "0"); hud_test_run(t[..], 16, 0.05);
+  #assert h[0].fire_n > 20;
+  // the flames are in the character's mesh: the first one's corners apart, bright, near the dragon; a slot past them a point
+  hud_skin(h);
+  f0 := g[0].nv * HUD_SKIN_FLOATS; f1 := (g[0].nv + 1) * HUD_SKIN_FLOATS;
+  #assert abs(h[0].skin[f0] - h[0].skin[f1]) > 0.01 && h[0].skin[f0 + 6] > 1 && abs(h[0].skin[f0] - h[0].cx) < 12 && abs(h[0].skin[f0 + 2] + h[0].cz) < 12;
+  fl := (g[0].nv + (HUD_FIRE - 1) * 6) * HUD_SKIN_FLOATS;
+  #assert h[0].skin[fl] == h[0].skin[fl + HUD_SKIN_FLOATS] && h[0].skin[fl + 6] == 0;
+  #assert hud_store_bytes(h, 3) >= (g[0].nv + h[0].fire_n * 6) * HUD_SKIN_FLOATS * 4;
+  for i: 0..<h[0].fire_n { #assert abs(h[0].fire[i * HUD_FIRE_FLOATS] - h[0].cx) < 12 && h[0].fire[i * HUD_FIRE_FLOATS + 6] < h[0].fire[i * HUD_FIRE_FLOATS + 7]; }
+  hud_test_run(t[..], 40, 0.05);
+  #assert h[0].fire_n == 0 && h[0].breath < 0 && g[0].clip != GHOST_BREATH;
   // and it fades out with the camera's rise when the world is left, and is gone at the top
   hud_test_say(h, HUD_VIEW_MSG, "0");
   mid := hud_frame(h, t[0].out[..], t[0].u[..], 1600, 1200, 2, 0.05);
@@ -4530,7 +4840,7 @@ hud_test_told :: (t: [] HudTest, frames: int) -> string {
   // balls are things like any other: as many as the list says, up to the one cap; and a thousand balls fit the mesh
   hud_test_say(h, HUD_BLOCKS_MSG, "10\n1 1 1 1 0 0 0 60 60 60\n2 1 1 1 100 0 0 60 60 60\n3 1 1 1 200 0 0 60 60 60\n4 1 1 1 300 0 0 60 60 60\n5 1 1 1 400 0 0 60 60 60\n6 1 1 1 500 0 0 60 60 60\n7 1 1 1 600 0 0 60 60 60\n8 1 1 1 700 0 0 60 60 60\n9 1 1 1 800 0 0 60 60 60\n10 0 1 1 900 0 0 100 100 100\n");
   #assert bd_count(b) == 10 && b[0].id[9] == 10 && b[0].kind[9] == Bd_Kind.box && h[0].nc == 9 && h[0].nk == 10;
-  #assert 6 + HUD_BALL_NEAR * HUD_BALL_VERTICES + (HUD_BLOCKS - HUD_BALL_NEAR) * HUD_LOW_SEGMENTS * (HUD_LOW_RINGS - 1) * 6 + VL_SOLIDS * 6 + RG_MAX * RG_VERTICES == HUD_MESH_VERTICES && HUD_BALL_VERTICES == HUD_BALL_SEGMENTS * (HUD_BALL_RINGS - 1) * 6 && HUD_BLOCKS <= BD_MAX && VL_SOLIDS <= BD_WALLS;
+  #assert 6 + HUD_BALL_NEAR * HUD_BALL_VERTICES + (HUD_BLOCKS - HUD_BALL_NEAR) * HUD_LOW_SEGMENTS * (HUD_LOW_RINGS - 1) * 6 + VL_SOLIDS * 6 + RG_MAX * RG_VERTICES + MT_VERTICES + HUD_SLEEP_VERTICES == HUD_MESH_VERTICES && HUD_BALL_VERTICES == HUD_BALL_SEGMENTS * (HUD_BALL_RINGS - 1) * 6 && HUD_BLOCKS <= BD_MAX && VL_SOLIDS <= BD_WALLS;
   #assert 6 + RC_MESH <= HUD_MESH_VERTICES && 6 + PF_MESH <= HUD_MESH_VERTICES;
 }
 
@@ -5817,26 +6127,20 @@ hud_test_rings :: (h: [] Hud, s: [] GtThing, n: int, moved: int) {
   h[0].bare = false;   // (drawn: the course's checks leave it out)
   hud_test_run(t[..], 30, 0.016666668);
   g := h[0].ghost[..];
-  #assert hud_hero(h) && g[0].ready && g[0].livery == LIVERY_RUNNER && h[0].ghost_draw >= 0 && hud_draw_blend(h, h[0].ghost_draw) == 0;
-  caps := 0; jackets := 0;
+  #assert hud_hero(h) && g[0].ready && g[0].livery == GHOST_OWN && h[0].ghost_draw >= 0 && hud_draw_blend(h, h[0].ghost_draw) == 0;
+  // the dragon: every vertex in its own colour, mostly the crimson hide
+  hide := 0;
   for i: 0..<g[0].nv {
     o := i * HUD_SKIN_FLOATS;
-    #assert h[0].skin[o + 6] + h[0].skin[o + 7] + h[0].skin[o + 8] > 0.5;
+    #assert h[0].skin[o + 6] + h[0].skin[o + 7] + h[0].skin[o + 8] > 0.05;
     for k: 0..<3 { #assert h[0].skin[o + 6 + k] == g[0].paint[i * 3 + k]; }
-    if g[0].part[i] == LIVERY_CAP { caps += 1; } if g[0].part[i] == LIVERY_JACKET { jackets += 1; }
+    if g[0].paint[i * 3] > g[0].paint[i * 3 + 1] * 2 && g[0].paint[i * 3] > 0.4 { hide += 1; }
   }
-  #assert caps > 10 && jackets > 50;
-  // the head is swollen: taller than the ghost's (its own head, unswollen, from the same pose)
-  hl: f32 = 9; hh: f32 = -9;
-  for i: 0..<g[0].nv { if g[0].group[i] == 1 && g[0].share[i] > 0.99 { y := g[0].pos[i * 3 + 1]; if y < hl { hl = y; } if y > hh { hh = y; } } }
-  ghost_skin(g);
-  gl: f32 = 9; gh: f32 = -9;
-  for i: 0..<g[0].nv { if g[0].group[i] == 1 && g[0].share[i] > 0.99 { y := g[0].pos[i * 3 + 1]; if y < gl { gl = y; } if y > gh { gh = y; } } }
-  #assert hh - hl > (gh - gl) * 1.25;
-  // the meadow: the ghost, blended, its vertices black
+  #assert hide > 1000;
+  // the meadow's player is the dragon too, solid
   hud_test_say(h, HUD_KIND_MSG, "2");
   hud_test_run(t[..], 5, 0.016666668);
-  #assert !hud_hero(h) && (h[0].ghost_draw < 0 || hud_draw_blend(h, h[0].ghost_draw) == 2) && h[0].skin[6] == 0 && h[0].skin[HUD_SKIN_FLOATS * 7 + 7] == 0;
+  #assert hud_hero(h) && (h[0].ghost_draw < 0 || hud_draw_blend(h, h[0].ghost_draw) == 0);
 }
 
 #test "crates stays fully framed through portrait and landscape, in every room" #steps 200000000000 {
@@ -5960,4 +6264,59 @@ hud_test_settled :: (kind: int, calm: string) -> bool {
   hud_test_say(h, HUD_CALM_MSG, "0"); #assert !hud_calm(h);
   hud_test_say(h, HUD_VIEW_MSG, "2"); hud_test_run(t[..], 1, 0.01);
   #assert h[0].zoom < 0.2 && h[0].spread < 0.05 && h[0].dawn < 0.05 && hud_looks(h);
+}
+
+#test "the megalith: asked for, it stands in the third-person world; you walk in at a wing's end, climb an atrium's stairs level to level, and dragons sleep on the plaza's grass" #steps 400000000000 {
+  t: [1] HudTest; h := t[0].h[..];
+  h[0].type = CAM_KIND_THIRD;
+  #assert !hud_mountain(h) && hud_sky(h) == HUD_SKY;
+  hud_test_say(h, HUD_PEAK_MSG, "1");
+  m := h[0].mountain[..];
+  #assert hud_mountain(h) && m[0].made && h[0].sleep_ok && h[0].nb >= HUD_SLEEPERS && h[0].nb < m[0].nb && hud_sky(h) == MT_SKY;
+  // only the megalith's colliders near the character are met: taken again once it has gone far enough
+  w := 1;
+  h[0].cx = mt_wx(w, 900, 0); h[0].cz = mt_wz(w, 900, 0); hud_near(h);
+  #assert h[0].near_x == h[0].cx && h[0].near_z == h[0].cz;
+  c := hud_colliders(h);
+  // the south wing's great door: from its garden's walk straight in down the gallery to the atrium, nothing stops a walker
+  from := WorldPoint.{x = mt_wx(w, 1200, 0), y = 0.32 + HUD_BODY, z = mt_wz(w, 1200, 0)};
+  to := WorldPoint.{x = mt_wx(w, 700, 0), y = 0, z = mt_wz(w, 700, 0)};
+  hit := query_sweep(c, from, HUD_BODY, WorldPoint.{x = to.x - from.x, y = 0, z = to.z - from.z});
+  #assert hit.status == QueryStatus.ok && !hit.hit;
+  // beside the door, the wing's end wall stops it
+  from2 := WorldPoint.{x = mt_wx(w, 1095, 120), y = 0.32 + HUD_BODY, z = mt_wz(w, 1095, 120)};
+  hit2 := query_sweep(c, from2, HUD_BODY, WorldPoint.{x = mt_wx(w, 900, 120) - from2.x, y = 0, z = mt_wz(w, 900, 120) - from2.z});
+  #assert hit2.status == QueryStatus.ok && hit2.hit;
+  // the atrium's first stair: each step stood on from the one before, up to the first level
+  y: f32 = 0;
+  cc: f32 = MT_ATRIUM_C - MT_LEDGE - MT_FLIGHT * 0.5;
+  for s: 0..<MT_FLIGHT_STEPS {
+    a: f32 = MT_ATRIUM_A0 + MT_LEDGE + MT_RUN * (cast(f32) s + 0.5);
+    f := hud_floor(h, mt_wx(w, a, cc), mt_wz(w, a, cc), y);
+    #assert abs(f - MT_RISE * cast(f32) (s + 1)) < 0.01;
+    y = f;
+  }
+  #assert abs(y - MT_LEVEL_Y[1]) < 0.01;
+  // off its top onto the ledge, and on to the first level's gallery out to the wing's end
+  e: f32 = MT_ATRIUM_A1 - 12;
+  #assert abs(hud_floor(h, mt_wx(w, e, 0), mt_wz(w, e, 0), y) - MT_LEVEL_Y[1]) < 0.01;
+  #assert abs(hud_floor(h, mt_wx(w, 1000, 0), mt_wz(w, 1000, 0), y) - MT_LEVEL_Y[1]) < 0.01;
+  // the second climbs back the other way, to the second level's ledge at the core's end
+  for s: 0..<MT_FLIGHT_STEPS {
+    a: f32 = MT_ATRIUM_A1 - MT_LEDGE - MT_RUN * (cast(f32) s + 0.5);
+    f := hud_floor(h, mt_wx(w, a, -cc), mt_wz(w, a, -cc), y);
+    #assert abs(f - MT_LEVEL_Y[1] - MT_RISE * cast(f32) (s + 1)) < 0.01;
+    y = f;
+  }
+  e = MT_ATRIUM_A0 + 12;
+  #assert abs(hud_floor(h, mt_wx(w, e, 0), mt_wz(w, e, 0), y) - MT_LEVEL_Y[2]) < 0.01;
+  // the plaza's grass is the top level's floor, and its dragons lie on it
+  h[0].cx = MT_CX; h[0].cz = MT_CZ; hud_near(h);
+  #assert abs(hud_floor(h, MT_CX - 20, MT_CZ + 220, MT_PLAZA_Y) - MT_PLAZA_Y) < 0.01;
+  b := hud_sleep_box(h, 0); #assert b[1] == MT_PLAZA_Y && b[4] > MT_PLAZA_Y + 3 && b[3] > b[0] && b[5] > b[2];
+  // drawn: the world's mesh carries the megalith, its gardens and its sleepers
+  hud_build(h, true); #assert h[0].mesh_n > 150000;
+  // taken away again, it is gone
+  hud_test_say(h, HUD_PEAK_MSG, "0");
+  #assert !hud_mountain(h) && h[0].nb == 0;
 }

@@ -166,6 +166,7 @@ const report = () => {
   countTell();
   loaded();
   if (observeRequested) say(116, "1");
+  say(140, "1");   // the megalith stands in the third- and first-person world (hud.coax HUD_PEAK_MSG)
   const panels = document.querySelectorAll(".hud");
   let text = panels.length + "\n";
   for (const el of panels) {
@@ -283,12 +284,13 @@ for (const kind of ["paste", "copy", "cut"]) {
 }
 // The keys the world reads, as the bits hud.coax names: forward 1, back 2, left 4, right 8, jump 16
 // (Space: taken here, so the page doesn't scroll), and the camera's, as Everglade's: turn left 32 and
-// right 64, tilt up 128 and down 256, zoom in 512 and out 1024; and Shift 2048 (descend, while flying).
+// right 64, tilt up 128 and down 256, zoom in 512 and out 1024; Shift 2048 (descend, while flying); and E 4096
+// (the dragon breathes fire: no longer the hotbar's next tool, which Q still steps back through).
 let overBar = false, drag = null;
 let held = 0, told = -1, view = 0, blocks = null, since = 0, stateTold = "", roomTold = "", picking = false, kindTold = null, shownPicker = false, typed = null;
 // (the chat's own box, by its place in the chat: a guest has none, and the login's fields over the world are not it)
 const chatBox = () => document.querySelector("#coaxial-root .saybar input");
-const bit = (e) => ({ KeyW: 1, KeyS: 2, KeyA: 4, KeyD: 8, Space: 16, ArrowLeft: 32, ArrowRight: 64, ArrowUp: 128, ArrowDown: 256, Equal: 512, NumpadAdd: 512, Minus: 1024, NumpadSubtract: 1024, ShiftLeft: 2048, ShiftRight: 2048 })[e.code] || 0;
+const bit = (e) => ({ KeyW: 1, KeyS: 2, KeyA: 4, KeyD: 8, Space: 16, ArrowLeft: 32, ArrowRight: 64, ArrowUp: 128, ArrowDown: 256, Equal: 512, NumpadAdd: 512, Minus: 1024, NumpadSubtract: 1024, ShiftLeft: 2048, ShiftRight: 2048, KeyE: 4096 })[e.code] || 0;
 addEventListener("keydown", (e) => {
   const field = typed_in(e.target);
   // the ring's keys: 1 to 9 take that portal (its name pressed), the arrows turn to the next portal left or right, and
@@ -334,7 +336,7 @@ addEventListener("keydown", (e) => {
   // the hotbar's keys go to the page as they are (its hidden field): a slot's number, Escape, Delete, and Q and E (the shapes tool's shape) and Z and X (its mode), and R (a world's own action: crates resets its room).
   // What each does is the page's (page.coax, through the shared hotbar)
   if (!field && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    const key = /^[0-9]$/.test(e.key) ? e.key : e.key === "Escape" ? "esc" : e.key === "Delete" || e.key === "Backspace" ? "del" : e.code === "KeyQ" ? "q" : e.code === "KeyE" ? "e" : e.code === "KeyZ" ? "z" : e.code === "KeyX" ? "x" : e.code === "KeyR" ? (e.shiftKey ? "R" : "r") : "";
+    const key = /^[0-9]$/.test(e.key) ? e.key : e.key === "Escape" ? "esc" : e.key === "Delete" || e.key === "Backspace" ? "del" : e.code === "KeyQ" ? "q" : e.code === "KeyZ" ? "z" : e.code === "KeyX" ? "x" : e.code === "KeyR" ? (e.shiftKey ? "R" : "r") : "";
     const to = key && document.querySelector("input.gs-hotkey");
     if (to) { to.tabIndex = -1; to.value = key; to.dispatchEvent(new Event("input", { bubbles: true })); e.preventDefault(); return; }
   }
