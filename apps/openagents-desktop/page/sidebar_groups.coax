@@ -11,6 +11,7 @@
 
 CP_CHAT_FOLDER :: 160;        // bytes of a chat's project/working folder path
 CP_SB_MAX_GROUPS :: 64;       // max distinct project groups shown in sidebar
+CP_SB_GROUP_LIMIT :: 10;      // max chats shown per expanded project before "See all"
 CP_SB_UNDO_TEXT :: 160;       // bytes of undo toast message
 CP_SB_UNDO_LIFE :: 6.0f32;    // default undo toast auto-dismiss seconds
 
@@ -48,11 +49,13 @@ CP_SB_BULK_PIN_ACT :: 217;
 CP_SB_BULK_CLEAR_ACT :: 218;
 CP_SB_UNDO_ACT :: 219;
 CP_SB_UNDO_CLOSE_ACT :: 220;
+CP_SB_GROUP_ALL :: 221;
 
 CpSbProject :: struct {
   path: [CP_CHAT_FOLDER] u8; path_n: int;
   label: [64] u8; label_n: int;
   collapsed: bool;
+  show_all: bool;             // expanded past CP_SB_GROUP_LIMIT via "See all"
   added: bool;                // added via folder picker or drag-and-drop (shown even when empty)
 }
 
@@ -165,7 +168,7 @@ cp_sb_ensure_project :: (s: [] CoderPage, path: string, added: bool) -> int {
   }
   if s[0].sb[0].nprojects >= CP_SB_MAX_GROUPS { return -1; }
   k := s[0].sb[0].nprojects;
-  s[0].sb[0].projects[k] = CpSbProject.{added = added};
+  s[0].sb[0].projects[k] = CpSbProject.{collapsed = true, added = added};
   s[0].sb[0].projects[k].path_n = cp_out(s[0].sb[0].projects[k].path[..], norm);
   s[0].sb[0].projects[k].label_n = cp_sb_folder_label(norm, s[0].sb[0].projects[k].label[..]);
   s[0].sb[0].nprojects += 1;
@@ -196,6 +199,7 @@ cp_sb_has_projects :: (s: [] CoderPage) -> bool {
 cp_sb_toggle_group :: (s: [] CoderPage, idx: int) -> bool {
   if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
   s[0].sb[0].projects[idx].collapsed = !s[0].sb[0].projects[idx].collapsed;
+  if s[0].sb[0].projects[idx].collapsed { s[0].sb[0].projects[idx].show_all = false; }
   return true;
 }
 
@@ -411,6 +415,12 @@ cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_SB_GROUP_TOGGLE {
     idx := cp_number(id, "coder.proj.");
     return cp_sb_toggle_group(s, idx);
+  }
+  if act == CP_SB_GROUP_ALL {
+    idx := cp_number(id, "coder.proj.all.");
+    if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
+    s[0].sb[0].projects[idx].show_all = true;
+    return true;
   }
   if act == CP_SB_VIEW_ACTIVE_ACT {
     s[0].sb[0].view_mode = CP_SB_VIEW_ACTIVE;

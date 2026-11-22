@@ -221,6 +221,38 @@ cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
     cp_long_set(s, q, text);
   }
 }
+// A streamed reasoning delta for turn i (or sub-agent j when j >= 0): appends into the currently
+// open thought row so tokens appear live without splitting into separate rows per chunk.
+cp_thought_stream :: (s: [] CoderPage, i: int, j: int, piece: string) {
+  if piece.count == 0 { return; }
+  open := ifx j >= 0 then s[0].turns[i].agents[j].thought_open else s[0].turns[i].thought_open;
+  q := (ifx j >= 0 then s[0].turns[i].agents[j].tail else s[0].turns[i].tail) - 1;
+  if !open || q < 0 || !s[0].calls[q].thought {
+    cp_thought_add(s, i, j, piece, false);
+    if j >= 0 { s[0].turns[i].agents[j].thought_open = true; } else { s[0].turns[i].thought_open = true; }
+    return;
+  }
+  c := s[0].calls[q];
+  room := CP_THOUGHT_MAX - cp_call_text(s, q).count;
+  take := ifx piece.count < room then piece.count else room;
+  while take > 0 && take < piece.count && piece[take] >= 128 && piece[take] < 192 { take -= 1; }
+  if take <= 0 { return; }
+  if c.long_n == 0 && c.out_n + take <= CP_CMD_OUT {
+    for k: 0..<take { s[0].calls[q].out[c.out_n + k] = piece[k]; }
+    s[0].calls[q].out_n = c.out_n + take;
+  } else if c.long_n > 0 && c.long_at + c.long_n == s[0].long_n && s[0].long_n + take <= s[0].long_buf.count {
+    for k: 0..<take { s[0].long_buf[s[0].long_n + k] = piece[k]; }
+    s[0].long_n += take; s[0].calls[q].long_n = c.long_n + take;
+  } else {
+    jb: [CP_THOUGHT_MAX] u8; old := cp_call_text(s, q);
+    n := cp_out(jb[..], old); for k: 0..<take { if n < jb.count { jb[n] = piece[k]; n += 1; } }
+    cp_long_set(s, q, cast(string) jb[0..<n]);
+  }
+  hb: [CP_CMD] u8; hn := cp_row_head(cp_call_text(s, q), hb[..]);
+  s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], cast(string) hb[0..<hn]);
+  s[0].calls[q].h = 0;
+  s[0].turns[i].h = 0;
+}
 // A piece of what sub-agent j says, as its model streams it: one model call's pieces are one row
 // (a model that streams a few bytes at a time made a row of each). In place at the pool's end when
 // the row's text is there, else the row's text and the piece are kept again.
@@ -805,6 +837,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     else { n = cp_out(ab, "a call failed (HTTP "); n = el_put_i(ab, n, st); n += cp_out(ab[n..<ab.count], ") and is being sent again"); }
     s[0].turns[i].agents[j].again_n = n;
   } else if kind != MWW_ATTEMPT { s[0].turns[i].agents[j].again_n = 0; }
+  if kind != MWW_NONE && kind != MWW_THOUGHT && kind != MWW_TODOS { s[0].turns[i].agents[j].thought_open = false; }
   if kind == MWW_ASK && !claude && s[0].turns[i].agents[j].quiet >= CP_QUIET {
     // 100 tool calls in a row with no file changed: this command waits, and Microcoder decides (GitHub #13676)
     s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = true;
@@ -849,7 +882,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
       s[0].turns[i].agents[j].note_why_n = cp_out(s[0].turns[i].agents[j].note_why[..], ifx l[0].reason.count > 0 then l[0].reason else "refused");
       cp_round_check(s, i);
     } else if s[0].turns[i].agents[j].note == CP_NOTE_SENT { s[0].turns[i].agents[j].note = 0; }
-  } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text, false);
+  } else if kind == MWW_THOUGHT { cp_thought_stream(s, i, j, l[0].text);
   } else if kind == MWW_REPLY { cp_said_add(s, i, j, l[0].text);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";

@@ -476,7 +476,7 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
     if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && skip[0] > 0 { skip[0] -= 1; s_user(s, "(follow-up)"); open = true; text_since = false; ask = -1; }
     else if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && nasks > 0 { s_user(s, asks[asks.count - nasks]); nasks -= 1; open = true; text_since = false; ask = -1; }
     else if kind == MWW_TURN { s_user(s, ifx l[0].text.count > 0 then l[0].text else "(follow-up)"); open = true; text_since = false; ask = -1; }
-    else if kind == MWW_THOUGHT { k := s_part(s, P_THINK); if k >= 0 { s_append(s, k, l[0].text); } }
+    else if kind == MWW_THOUGHT { s_delta(s, P_THINK, l[0].text); }
     else if kind == MWW_REPLY { s_delta(s, P_TEXT, l[0].text); text_since = true; }
     else if kind == MWW_ASK { ask = dk_tool(s, "Bash", TK_EXEC, l[0].command); }
     else if kind == MWW_COMMAND {

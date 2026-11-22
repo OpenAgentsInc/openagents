@@ -41,7 +41,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
   stop := sy + 2.0f32;
-  rows: [CP_CHATS + CP_SB_MAX_GROUPS + 8] AppSideRow;
+  rows: [CP_CHATS + CP_SB_MAX_GROUPS * 2 + 8] AppSideRow;
   nrows := 0;
   s[0].sb[0].vis_n = 0;
   now_ms := s[0].sb[0].now_ms;
@@ -99,15 +99,27 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
                                   action = CP_SB_GROUP_TOGGLE};
         nrows += 1;
         if !collapsed {
+          show_all := s[0].sb[0].projects[g].show_all;
+          shown := 0;
           for q: 0..<s[0].nchats {
             if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
             if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] == ppath {
+              if !show_all && shown >= CP_SB_GROUP_LIMIT { break; }
               cr := cp_side_chat_row(s, f, q, cur, running);
               cr.indent = a.icon + a.row_inset;
               cr.tree_line = true;
               rows[nrows] = cr;
-              nrows += 1; visible_chats += 1;
+              nrows += 1; visible_chats += 1; shown += 1;
             }
+          }
+          if !show_all && gcount > CP_SB_GROUP_LIMIT {
+            ab_id: [32] u8; an := el_put(ab_id[..], 0, "coder.proj.all."); an = el_put_i(ab_id[..], an, g);
+            rows[nrows] = AppSideRow.{id = sheet_pool(f[0].sheet, cast(string) ab_id[0..<an]),
+                                      title = "See all",
+                                      indent = a.icon + a.row_inset,
+                                      tree_line = true,
+                                      action = CP_SB_GROUP_ALL};
+            nrows += 1;
           }
         }
       }
@@ -162,7 +174,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       rh := ifx r.heading then a.side_head else a.side_row;
       ry := stop + cursor - at;
       cursor += rh;
-      if r.heading || r.action == CP_SB_GROUP_TOGGLE { continue; }
+      if r.heading || r.action == CP_SB_GROUP_TOGGLE || r.action == CP_SB_GROUP_ALL { continue; }
       slot += 1;
       if slot > 9 { break; }
       if ry + rh <= stop || ry >= stop + s[0].side_view { continue; }

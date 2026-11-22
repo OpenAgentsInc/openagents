@@ -1227,7 +1227,7 @@ void ink_close(InkSession *s) {
         }
         for (int ip = 0; ip < 32; ip++) { free_buf(&s->experts[ip].gu); free_buf(&s->experts[ip].dn); }
         PcBuffer *scratch[] = {
-            &s->weights, &s->embd_row, &s->cur, &s->prelude, &s->bank_out,
+            &s->weights, &s->stage, &s->embd_row, &s->cur, &s->prelude, &s->bank_out,
             &s->blocks, &s->prelude_blk, &s->bank_blk, &s->messages,
             &s->inp3, &s->inp3b, &s->norm_b2, &s->ctrl_gate,
             &s->proj, &s->proj_desc, &s->k_buf, &s->v_buf,

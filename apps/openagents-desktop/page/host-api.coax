@@ -191,6 +191,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   if !cp_running(s) { return kind; }
   i := s[0].nturns - 1;
   if kind != 0 { s[0].turns[i].heard = true; }   // the turn has begun: no longer Sending…
+  if kind != MWW_NONE && kind != MWW_THOUGHT && kind != MWW_TODOS { s[0].turns[i].thought_open = false; }
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
   if kind == MWW_REPLY {
@@ -221,7 +222,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
   else if kind == MWW_THOUGHT {
     if s[0].turns[i].first_tok < 0 { s[0].turns[i].first_tok = s[0].clock; }
-    cp_thought_add(s, i, -1, l[0].text, false);
+    cp_thought_stream(s, i, -1, l[0].text);
   }
   else if kind == MWW_TODOS { cp_todos_take(s, l[0].todos); }
   else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }

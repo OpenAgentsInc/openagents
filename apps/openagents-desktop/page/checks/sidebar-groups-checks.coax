@@ -21,15 +21,16 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   return coder_page_press(s, cx, cy, 2, 1, mods);
 }
 
-#test "sidebar groups chats by project folder, collapses headers, and lifts the 50-chat cap" {
+#test "sidebar groups chats by project folder, defaults collapsed, caps expanded projects at 10 with See all, and lifts the 50-chat cap" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   // Two projects + one pinned chat + one unassigned chat.
   coder_page_chats(s, "p1\tPinned task\t0\t1\t0\t0\t0\t0\t/Users/dev/work/openagents\na1\tFix sidebar\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\na2\tAdd tests\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents/\nb1\tShip iOS\t0\t0\t0\t0\t0\t0\t/Users/dev/work/app-ios\ng1\tQuick note\t0\t0\t0\t0\t0\t0\t\n");
   #assert s[0].nchats == 5 && s[0].sb[0].nprojects == 2;
+  #assert s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
-  // Both project headers and their chats are visible; Pinned stays at top, Projects heading + folder-add sit above folders.
+  // Both project headers are visible and collapsed by default; Pinned stays at top, Projects heading + folder-add sit above folders.
   #assert surface_find(s[0].surface[..], "coder.pinned") >= 0;
   #assert surface_find(s[0].surface[..], "chat.p1") >= 0;
   #assert surface_find(s[0].surface[..], "coder.projects") >= 0;
@@ -43,23 +44,24 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert pb.x > ph.x && pb.y >= ph.y && pb.y + pb.h <= ph.y + ph.h + 1.0f32;
   #assert surface_find(s[0].surface[..], "coder.proj.0") >= 0;
   #assert surface_find(s[0].surface[..], "coder.proj.1") >= 0;
-  #assert surface_find(s[0].surface[..], "chat.a1") >= 0 && surface_find(s[0].surface[..], "chat.a2") >= 0;
-  #assert surface_find(s[0].surface[..], "chat.b1") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
-  // Click project 0 header to collapse it: a1 and a2 hide, b1 stays visible.
-  #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert s[0].sb[0].projects[0].collapsed;
-  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  // Project chats stay hidden until their project folder is expanded; unassigned g1 stays visible.
   #assert surface_find(s[0].surface[..], "chat.a1") < 0 && surface_find(s[0].surface[..], "chat.a2") < 0;
-  #assert surface_find(s[0].surface[..], "chat.b1") >= 0;
-  // Reloading chats preserves the collapsed state of project 0.
+  #assert surface_find(s[0].surface[..], "chat.b1") < 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
+  // Click project 0 header to expand it: a1 and a2 appear, b1 stays collapsed.
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert !s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  #assert surface_find(s[0].surface[..], "chat.a1") >= 0 && surface_find(s[0].surface[..], "chat.a2") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.b1") < 0;
+  // Reloading chats preserves the expanded state of project 0 and collapsed state of project 1.
   coder_page_chats(s, "a1\tFix sidebar\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\nb1\tShip iOS\t0\t0\t0\t0\t0\t0\t/Users/dev/work/app-ios\n");
-  #assert s[0].sb[0].projects[0].collapsed;
-  // Click project 0 header again to expand it.
+  #assert !s[0].sb[0].projects[0].collapsed && s[0].sb[0].projects[1].collapsed;
+  // Click project 0 header again to collapse it.
   #assert cp_sb_test_frame(s, f[..], 0.04f32);
   #assert cp_sb_click_id(s, "coder.proj.0", 0);
-  #assert !s[0].sb[0].projects[0].collapsed;
+  #assert s[0].sb[0].projects[0].collapsed;
   #assert cp_sb_test_frame(s, f[..], 0.06f32);
-  #assert surface_find(s[0].surface[..], "chat.a1") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.a1") < 0;
   // Lift 50-chat visibility cap: 75 chats load with chats_more == 0.
   lb: [4096] u8; ln := 0;
   for i: 0..<75 {
@@ -69,6 +71,43 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   }
   coder_page_chats(s, cast(string) lb[0..<ln]);
   #assert s[0].nchats == 75 && s[0].chats_more == 0;
+}
+
+#test "expanded project shows at most 10 chats with a See all button that expands the rest" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  lb: [2048] u8; ln := 0;
+  for i: 0..<14 {
+    ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, i);
+    ln = el_put(lb[..], ln, "\tThread "); ln = el_put_i(lb[..], ln, i);
+    ln = el_put(lb[..], ln, "\t0\t0\t0\t0\t0\t0\t/tmp/bigproj\n");
+  }
+  coder_page_chats(s, cast(string) lb[0..<ln]);
+  #assert s[0].nchats == 14 && s[0].sb[0].nprojects == 1 && s[0].sb[0].projects[0].collapsed;
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  #assert surface_find(s[0].surface[..], "chat.c0") < 0 && surface_find(s[0].surface[..], "coder.proj.all.0") < 0;
+  // Expand project 0 -> shows c0..c9 plus "See all", hides c10..c13.
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  #assert surface_find(s[0].surface[..], "chat.c0") >= 0 && surface_find(s[0].surface[..], "chat.c9") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c10") < 0 && surface_find(s[0].surface[..], "chat.c13") < 0;
+  see_all := surface_find(s[0].surface[..], "coder.proj.all.0");
+  #assert see_all >= 0 && surface_say(s[0].surface[..], see_all) == "See all";
+  // Click "See all" -> reveals c10..c13 and hides the "See all" button.
+  #assert cp_sb_click_id(s, "coder.proj.all.0", 0);
+  #assert s[0].sb[0].projects[0].show_all;
+  #assert cp_sb_test_frame(s, f[..], 0.04f32);
+  #assert surface_find(s[0].surface[..], "chat.c10") >= 0 && surface_find(s[0].surface[..], "chat.c13") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.proj.all.0") < 0;
+  // Collapsing and re-expanding resets back to the 10-chat cap + "See all".
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert s[0].sb[0].projects[0].collapsed && !s[0].sb[0].projects[0].show_all;
+  #assert cp_sb_test_frame(s, f[..], 0.06f32);
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.08f32);
+  #assert surface_find(s[0].surface[..], "chat.c9") >= 0 && surface_find(s[0].surface[..], "chat.c10") < 0;
+  #assert surface_find(s[0].surface[..], "coder.proj.all.0") >= 0;
 }
 
 #test "adding projects via + Project button and folder drag-and-drop works" {
@@ -102,6 +141,8 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert cp_sb_archived_count(s) == 1;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.01f32);
   // Active view shows c1 and hides c2; no Active/Archived toolbar tabs are rendered.
   #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
@@ -142,6 +183,8 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert cp_sb_snoozed_count(s) == 1;
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.01f32);
   #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c2") < 0;
   // Advance wall-clock past snoozed_until_ms -> c2 resurfaces automatically!
@@ -157,6 +200,8 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   coder_page_chats(s, "c1\tFirst\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc2\tSecond\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc3\tThird\t0\t0\t0\t0\t0\t0\t/tmp/proj\nc4\tFourth\t0\t0\t0\t0\t0\t0\t/tmp/proj\n");
   f: [1] UiFrame;
   #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  #assert cp_sb_click_id(s, "coder.proj.0", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.01f32);
   // Cmd-click (mods=8) on c1 selects c1 without opening it.
   #assert cp_sb_click_id(s, "chat.c1", 8);
   #assert coder_page_sb_sel_count(s) == 1;

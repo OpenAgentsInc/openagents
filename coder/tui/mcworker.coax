@@ -29,7 +29,7 @@
 //        {"queue":"open|update|delete|move|promote|pause|resume|clear|list",...}   the follow-up queue (mcworker-queue.coax)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
-//        {"kind":"thought","text":"..."}  a step's thinking, whole, before its reply or its commands (GitHub #13671)
+//        {"kind":"thought","text":"..."}  streamed reasoning deltas for the current step (GitHub #13671)
 //        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
 //        {"kind":"view","path":"a.txt","found":true}

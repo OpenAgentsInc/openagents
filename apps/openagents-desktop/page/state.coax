@@ -227,6 +227,7 @@ CpAgent :: struct {
   again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on
   after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
   said_open: bool;            // its newest row is what it says in the model call still streaming: the next piece joins it
+  thought_open: bool;         // its newest row is a thought still streaming: the next piece joins it
   fold: int;                  // its pane's activity group as the person left it: APP_ACT_UNCHOSEN, _OPENED or _FOLDED (#13744)
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
@@ -259,6 +260,7 @@ CpTurn :: struct {
   stat_tokens: int; stat_decode_ms: int; attempt_tokens: int; first_tok: f32;   // per-turn timing accumulators
   ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
   fresh: bool;                // a model request ended: the next reply text starts the reply again
+  thought_open: bool;         // its newest row is a thought still streaming: the next MWW_THOUGHT delta joins it
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 // One kept chat in the sidebar's list.

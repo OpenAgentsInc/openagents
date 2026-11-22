@@ -171,7 +171,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
     te := cl_int(t, "earlier"); s[0].turns[i].early_cmds = ifx te.ok && te.value > 0 then te.value else 0;
-    s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;
+    s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].thought_open = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;
     s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
     cmds := cl_raw(t, "cmds"); nc := ifx cmds.count > 0 then cl_count(cmds) else 0;
     for at: 0..<nc { cp_load_row(s, i, -1, cl_json(cmds, cl_item(cmds, at))); }

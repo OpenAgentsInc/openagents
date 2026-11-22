@@ -930,3 +930,39 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   #assert coder_page_line(r, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hi there\"}") == MWW_ENDED;
   #assert r[0].turns[2].ttft_ms == 500 && r[0].turns[2].tok_s_x10 == 250;
 }
+
+#test "streamed thinking deltas coalesce live into one thought row and split cleanly across tool calls" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
+  // First token opens a live thought row immediately visible in the transcript.
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Checking \"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].ncmds == 1 && cp_call_text(s, cp_nth(s, 0, -1, 0)) == "Checking ";
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  w0 := surface_find(s[0].surface[..], "t0.x0.words");
+  #assert w0 >= 0 && elt_value_of(tb[..], w0) == "Checking ";
+  // Subsequent deltas append into the same thought row without creating extra rows.
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"the \"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"repo.\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].ncmds == 1 && cp_call_text(s, cp_nth(s, 0, -1, 0)) == "Checking the repo.";
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  tb[0] = surface_rows(s[0].surface[..]);
+  w1 := surface_find(s[0].surface[..], "t0.x0.words");
+  #assert w1 >= 0 && elt_value_of(tb[..], w1) == "Checking the repo.";
+  // A command closes the active thought stream so the next reasoning step opens a second thought row.
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Now \"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"replying.\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].ncmds == 3;
+  #assert cp_call_text(s, cp_nth(s, 0, -1, 0)) == "Checking the repo.";
+  #assert cp_call_text(s, cp_nth(s, 0, -1, 2)) == "Now replying.";
+  // Sub-agent streamed thought deltas also coalesce and split across commands.
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"scan\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"thought\",\"text\":\"Scan \"}") == MWW_THOUGHT;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"thought\",\"text\":\"files.\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].agents[0].nrows == 1 && cp_call_text(s, cp_nth(s, 0, 0, 0)) == "Scan files.";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"thought\",\"text\":\"Done.\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].agents[0].nrows == 3 && cp_call_text(s, cp_nth(s, 0, 0, 2)) == "Done.";
+}
