@@ -274,6 +274,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
         syncSettingsInfo()
         #if OA_FULL
+        setupProvidersSettings()
         if FeatureFlags.isOn(.usage) { setupUsageDashboard() }
         if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
@@ -363,9 +364,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym") { openGym() }
         if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym-lean") { openGym(mode: 2) }
         #endif
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice).
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice, connections, scheduled, appearance, keybindings, providers).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -590,6 +591,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 146: if FeatureFlags.isOn(.modelsExecutor) { manageExecutorModels() }
         case 147: if FeatureFlags.isOn(.modelsExecutor) { managePylonExecutorNetwork() }
         case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
+        case 170...187: providersSettingsAsked(what)
         #endif
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
@@ -756,6 +758,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         retireEnvironments()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
+        AntigravityProfileManager.retireTempDirs()
         #endif
         if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)

@@ -346,6 +346,7 @@ extension CoderWindow {
     /// Esc in settings: a search is emptied first, then settings closes.
     func escape() {
         if overlay.escape() { return }   // a dialog or a menu over settings closes first
+        if cd_settings_page(page) == 14 && cd_key(page, -1, 0) != 0 { wake(); return }
         if cd_search_clear(page) != 0 { focusSearch(); return }
         closeSettings()
     }
@@ -386,6 +387,9 @@ extension CoderWindow {
         #if OA_FULL
         if FeatureFlags.isOn(.modelsAgy) { syncAntigravitySettings() }
         if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
+        if FeatureFlags.isOn(.modelsAgy) || FeatureFlags.isOn(.modelsExternal) || FeatureFlags.isOn(.modelsClaude) || FeatureFlags.isOn(.modelsGemini) {
+            syncProvidersSettingsPage()
+        }
         #endif
         #if OA_WALLET
         if FeatureFlags.isOn(.wallet) { syncWalletSettings() }

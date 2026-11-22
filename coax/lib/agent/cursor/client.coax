@@ -19,7 +19,7 @@ CU_CMD_BUF :: 1024;
 
 CU_INITIALIZE :: 1; CU_AUTHENTICATE :: 2; CU_SESSION_NEW :: 3; CU_SESSION_PROMPT :: 4;
 CU_SESSION_LOAD :: 5; CU_SESSION_CANCEL :: 6; CU_SESSION_SET_MODE :: 7; CU_SESSION_SET_CONFIG :: 8;
-CU_OTHER :: 9; CU_SESSION_RESUME :: 10; CU_SESSION_SET_MODEL :: 11;
+CU_OTHER :: 9; CU_SESSION_RESUME :: 10; CU_SESSION_SET_MODEL :: 11; CU_LOGOUT :: 12;
 
 CU_ASK_PERMISSION :: 1; CU_ASK_QUESTION :: 2; CU_ASK_PLAN :: 3;
 
@@ -430,10 +430,35 @@ cu_authenticate_with :: (c: [] CuClient, method: string) -> int {
   return id;
 }
 
+// ACP logout RPC (Antigravity agentCapabilities.logout; signs out the active profile).
+cu_logout :: (c: [] CuClient) -> int {
+  id := cu_open(c, CU_LOGOUT, "logout");
+  cl_put(c[0].out[..], "{}");
+  cu_close(c);
+  return id;
+}
+
+// Extract optional agy.security.warning message from a session/request_permission params object.
+cu_perm_security_warning :: (params: string, ar: [] ClArena) -> string {
+  w := cl_str(ar, params, "_meta.agy.security.warning");
+  if w.count > 0 { return w; }
+  return cl_str(ar, params, "toolCall._meta.agy.security.warning");
+}
+
 cu_session_new :: (c: [] CuClient, cwd: string) -> int {
+  return cu_session_new_meta(c, cwd, "");
+}
+
+cu_session_new_meta :: (c: [] CuClient, cwd: string, system_prompt_append: string) -> int {
   id := cu_open(c, CU_SESSION_NEW, "session/new");
   o := c[0].out[..];
-  cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]}");
+  cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]");
+  if system_prompt_append.count > 0 {
+    cl_put(o, ",\"_meta\":{\"antigravity\":{\"systemPrompt\":{\"append\":");
+    cl_put_string(o, system_prompt_append);
+    cl_put(o, "}}}");
+  }
+  cl_put(o, "}");
   cu_close(c);
   return id;
 }

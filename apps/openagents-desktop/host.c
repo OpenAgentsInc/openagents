@@ -2069,3 +2069,101 @@ void cd_file_lean_goal(void *page, int line, int ok, int accomplished, const cha
   coder_page_file_lean_goal(cd_state(c), line, ok != 0, accomplished != 0, cd_string(summary));
   cd_woke(c);
 }
+// Settings -> Providers screen & Add provider 3-step modal wizard (page/providers_settings.coax).
+void cd_ps_set_meta(void *page, const char *host_name, const char *project_scope, const char *checked_label, int refreshing) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_set_meta(cd_state(c), cd_string(host_name), cd_string(project_scope), cd_string(checked_label), refreshing != 0);
+  cd_woke(c);
+}
+void cd_ps_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_ps_add_instance(void *page, const char *id, int driver, const char *display_name, const char *version, int enabled, int is_default, int status, const char *headline, const char *summary, int accent) {
+  CoderHost *c = page; if (!c) return -1;
+  int r = (int)coder_page_ps_add_instance(cd_state(c), cd_string(id), driver, cd_string(display_name), cd_string(version), enabled != 0, is_default != 0, status, cd_string(headline), cd_string(summary), accent);
+  cd_woke(c);
+  return r;
+}
+void cd_ps_select(void *page, int idx) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_select(cd_state(c), idx);
+  cd_woke(c);
+}
+void cd_ps_set_detail_config(void *page, const char *display_name, int accent, int auth_method, int api_key_set, const char *gcp_project, const char *gcp_location, const char *binary_path, const char *extra_path) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_set_detail_config(cd_state(c), cd_string(display_name), accent, auth_method, api_key_set != 0, cd_string(gcp_project), cd_string(gcp_location), cd_string(binary_path), cd_string(extra_path));
+  cd_woke(c);
+}
+void cd_ps_set_detail_runtime(void *page, int rt_state, const char *rt_status, const char *rt_btn, int rt_pct, int rt_can_remove, const char *rt_err) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_set_detail_runtime(cd_state(c), rt_state, cd_string(rt_status), cd_string(rt_btn), rt_pct, rt_can_remove != 0, cd_string(rt_err));
+  cd_woke(c);
+}
+void cd_ps_set_detail_auth(void *page, int auth_state, const char *auth_sub, const char *auth_detail, const char *auth_btn, int auth_can_signout, const char *auth_url) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_set_detail_auth(cd_state(c), auth_state, cd_string(auth_sub), cd_string(auth_detail), cd_string(auth_btn), auth_can_signout != 0, cd_string(auth_url));
+  cd_woke(c);
+}
+void cd_ps_env_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_env_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_ps_env_add(void *page, const char *key, const char *val, int secret, int has_secret) {
+  CoderHost *c = page; if (!c) return -1;
+  int r = (int)coder_page_ps_env_add(cd_state(c), cd_string(key), cd_string(val), secret != 0, has_secret != 0);
+  cd_woke(c);
+  return r;
+}
+void cd_ps_models_clear(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_models_clear(cd_state(c));
+  cd_woke(c);
+}
+int cd_ps_models_add(void *page, const char *slug, const char *name, int enabled, int favorite, int thinking, int custom) {
+  CoderHost *c = page; if (!c) return -1;
+  int r = (int)coder_page_ps_models_add(cd_state(c), cd_string(slug), cd_string(name), enabled != 0, favorite != 0, thinking != 0, custom != 0);
+  cd_woke(c);
+  return r;
+}
+int cd_ps_selected(void *page) { CoderHost *c = page; return c ? (int)coder_page_ps_selected(cd_state(c)) : -1; }
+int cd_ps_action_idx(void *page) { CoderHost *c = page; return c ? (int)coder_page_ps_action_idx(cd_state(c)) : -1; }
+int cd_ps_inst_id(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_ps_inst_id(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_ps_inst_enabled(void *page, int idx) { CoderHost *c = page; return c && coder_page_ps_inst_enabled(cd_state(c), idx) ? 1 : 0; }
+int cd_ps_field(void *page, int which, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_ps_field(cd_state(c), which, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_ps_int(void *page, int which) { CoderHost *c = page; return c ? (int)coder_page_ps_int(cd_state(c), which) : 0; }
+int cd_ps_env_get(void *page, int idx, char *key_out, int key_cap, char *val_out, int val_cap, int *secret_out, int *has_secret_out) {
+  CoderHost *c = page; if (!c || !key_out || !val_out || key_cap < 2 || val_cap < 2) return 0;
+  int64_t fl[4] = {0, 0, 0, 0};
+  if (!coder_page_ps_env_get(cd_state(c), idx, (coax_v_u8){(uint8_t *)key_out, key_cap - 1}, (coax_v_u8){(uint8_t *)val_out, val_cap - 1}, (coax_v_s64){fl, 4})) return 0;
+  cd_text_out((int)fl[0], key_out, key_cap);
+  cd_text_out((int)fl[1], val_out, val_cap);
+  if (secret_out) *secret_out = (int)fl[2];
+  if (has_secret_out) *has_secret_out = (int)fl[3];
+  return 1;
+}
+int cd_ps_model_get(void *page, int idx, char *slug_out, int slug_cap, char *name_out, int name_cap, int *enabled_out, int *fav_out, int *thinking_out, int *custom_out) {
+  CoderHost *c = page; if (!c || !slug_out || !name_out || slug_cap < 2 || name_cap < 2) return 0;
+  int64_t fl[6] = {0, 0, 0, 0, 0, 0};
+  if (!coder_page_ps_model_get(cd_state(c), idx, (coax_v_u8){(uint8_t *)slug_out, slug_cap - 1}, (coax_v_u8){(uint8_t *)name_out, name_cap - 1}, (coax_v_s64){fl, 6})) return 0;
+  cd_text_out((int)fl[0], slug_out, slug_cap);
+  cd_text_out((int)fl[1], name_out, name_cap);
+  if (enabled_out) *enabled_out = (int)fl[2];
+  if (fav_out) *fav_out = (int)fl[3];
+  if (thinking_out) *thinking_out = (int)fl[4];
+  if (custom_out) *custom_out = (int)fl[5];
+  return 1;
+}
+void cd_ps_ui_set(void *page, int wiz_open, int wiz_step, float detail_scroll, int focus_field) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_ps_ui_set(cd_state(c), wiz_open != 0, wiz_step, detail_scroll, focus_field);
+  cd_woke(c);
+}

@@ -37,6 +37,7 @@
 #load "skin.coax";
 #load "models.coax";
 #load "providers.coax";
+#load "providers_settings.coax";
 #load "goal.coax";
 #load "transcript.coax";
 #load "chats.coax";

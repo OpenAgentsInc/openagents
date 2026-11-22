@@ -76,8 +76,9 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
     v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
     v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
   }
-  // Preserve semantic scientific color roles inside the Lean 4 & RH Proof Workbench (#13946).
-  if cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN) { gpu_monochrome(out, v); }
+  // Preserve semantic scientific color roles inside Lean 4 & RH Proof Workbench (#13946)
+  // and provider brand/status/accent colors on Settings -> Providers.
+  if cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN) && !(s[0].set_open && s[0].set_page == CP_PG_PROVIDERS) { gpu_monochrome(out, v); }
   return v;
 }
 // An icon's size in the atlas, in points. An icon draws at this size wherever it is, so the ones that

@@ -1,0 +1,2111 @@
+// Settings -> Providers screen & Add provider 3-step modal wizard.
+// Mirrors T3 Code's Providers settings layout and full Antigravity multi-instance controls:
+//   - Breadcrumb header (Settings / Providers) + close button
+//   - Scope context bar (Applying settings for [All projects v] on [Host v])
+//   - Providers + header and Checked <age> refresh control
+//   - Master-detail split card: left provider list with status dot, 2-line summary, blue pill switch,
+//     and + Add provider row; right independently scrollable detail pane with Status, Display name
+//     (+ accent picker), Setup (Environment, Runtime, Account + inline OAuth card), Runtime
+//     (Sign-in method dropdown, API key, GCP project, GCP location, Binary path), Environment
+//     (Variables + Add variable), and Models (Favorites / All / Hidden, star, reorder, toggles).
+//   - 3-step Add provider modal wizard (1 Provider -> 2 Identity -> 3 Config).
+
+// ---- Constants ----
+
+CP_PS_MAX_INST :: 12;
+CP_PS_MAX_ENV :: 16;
+CP_PS_MAX_MODELS :: 32;
+CP_PS_ACCENTS :: 8;
+
+CP_PS_DRV_ANTIGRAVITY :: 0;
+CP_PS_DRV_CLAUDE :: 1;
+CP_PS_DRV_CODEX :: 2;
+CP_PS_DRV_CURSOR :: 3;
+CP_PS_DRV_ACP :: 4;
+CP_PS_DRV_COUNT :: 5;
+
+CP_PS_ST_DISABLED :: 0;
+CP_PS_ST_READY :: 1;
+CP_PS_ST_WARNING :: 2;
+CP_PS_ST_ERROR :: 3;
+
+CP_PS_AUTH_PERSONAL :: 0;
+CP_PS_AUTH_BUSINESS :: 1;
+CP_PS_AUTH_API_KEY :: 2;
+CP_PS_AUTH_VERTEX :: 3;
+CP_PS_AUTH_COUNT :: 4;
+
+CP_PS_RT_NONE :: 0;
+CP_PS_RT_INSTALLED :: 1;
+CP_PS_RT_MANAGED :: 2;
+CP_PS_RT_UPDATE :: 3;
+CP_PS_RT_INSTALLING :: 4;
+CP_PS_RT_ERROR :: 5;
+
+CP_PS_AS_IDLE :: 0;
+CP_PS_AS_AUTHENTICATED :: 1;
+CP_PS_AS_STARTING :: 2;
+CP_PS_AS_WAITING :: 3;
+CP_PS_AS_VERIFYING :: 4;
+CP_PS_AS_FAILED :: 5;
+
+// Inline editor field slots routed through CP_ED_PROV / CP_KB_PROV (page/editor.coax).
+CP_PS_ED_NONE :: 0;
+CP_PS_ED_DISPLAY_NAME :: 1;
+CP_PS_ED_API_KEY :: 2;
+CP_PS_ED_GCP_PROJECT :: 3;
+CP_PS_ED_GCP_LOCATION :: 4;
+CP_PS_ED_BINARY_PATH :: 5;
+CP_PS_ED_EXTRA_PATH :: 6;
+CP_PS_ED_OAUTH_CODE :: 7;
+CP_PS_ED_CUSTOM_MODEL :: 8;
+CP_PS_ED_ENV_KEY_BASE :: 20;
+CP_PS_ED_ENV_VAL_BASE :: 40;
+CP_PS_ED_WIZ_LABEL :: 60;
+CP_PS_ED_WIZ_ID :: 61;
+CP_PS_ED_WIZ_API_KEY :: 62;
+CP_PS_ED_WIZ_GCP_PROJ :: 63;
+CP_PS_ED_WIZ_GCP_LOC :: 64;
+CP_PS_ED_WIZ_BIN :: 65;
+CP_PS_ED_WIZ_EXTRA :: 66;
+
+// Host asks (CP_ASK_*, free range 170..189).
+CP_ASK_PS_REFRESH :: 170;
+CP_ASK_PS_SELECT :: 171;
+CP_ASK_PS_TOGGLE :: 172;
+CP_ASK_PS_CONFIG :: 173;
+CP_ASK_PS_API_CLEAR :: 174;
+CP_ASK_PS_RESET :: 175;
+CP_ASK_PS_DELETE :: 176;
+CP_ASK_PS_RT_ACTION :: 177;
+CP_ASK_PS_RT_REMOVE :: 178;
+CP_ASK_PS_AUTH_START :: 179;
+CP_ASK_PS_AUTH_CANCEL :: 180;
+CP_ASK_PS_AUTH_SIGNOUT :: 181;
+CP_ASK_PS_AUTH_OPEN_URL :: 182;
+CP_ASK_PS_AUTH_COPY_URL :: 183;
+CP_ASK_PS_AUTH_SUBMIT :: 184;
+CP_ASK_PS_ENV_SAVE :: 185;
+CP_ASK_PS_MODELS_SAVE :: 186;
+CP_ASK_PS_WIZ_CREATE :: 187;
+
+// Row dispatch actions (CP_*, free range 410..448).
+CP_PS_FIRST :: 410;
+CP_PS_SELECT :: 410;
+CP_PS_TOGGLE :: 411;
+CP_PS_REFRESH :: 412;
+CP_PS_ADD_OPEN :: 413;
+CP_PS_RESET :: 414;
+CP_PS_DELETE :: 415;
+CP_PS_ACCENT_OPEN :: 416;
+CP_PS_ACCENT_PICK :: 417;
+CP_PS_ENABLE_NOW :: 418;
+CP_PS_RT_ACTION :: 419;
+CP_PS_RT_REMOVE :: 420;
+CP_PS_AUTH_PRIMARY :: 421;
+CP_PS_AUTH_SIGNOUT :: 422;
+CP_PS_AUTH_OPEN_URL :: 423;
+CP_PS_AUTH_COPY_URL :: 424;
+CP_PS_AUTH_SUBMIT :: 425;
+CP_PS_FIELD_FOCUS :: 426;
+CP_PS_AUTH_METHOD_MENU :: 427;
+CP_PS_AUTH_METHOD_PICK :: 428;
+CP_PS_API_KEY_CLEAR :: 429;
+CP_PS_ENV_ADD :: 430;
+CP_PS_ENV_SECRET :: 431;
+CP_PS_ENV_REMOVE :: 432;
+CP_PS_MODEL_BULK :: 433;
+CP_PS_MODEL_TOGGLE :: 434;
+CP_PS_MODEL_STAR :: 435;
+CP_PS_MODEL_UP :: 436;
+CP_PS_MODEL_DOWN :: 437;
+CP_PS_MODEL_ADD_CUSTOM :: 438;
+CP_PS_WIZ_CLOSE :: 439;
+CP_PS_WIZ_STEP :: 440;
+CP_PS_WIZ_DRIVER :: 441;
+CP_PS_WIZ_ACCENT :: 442;
+CP_PS_WIZ_AUTH_MENU :: 443;
+CP_PS_WIZ_AUTH_PICK :: 444;
+CP_PS_WIZ_BACK :: 445;
+CP_PS_WIZ_NEXT :: 446;
+CP_PS_WIZ_DIM :: 447;
+CP_PS_LAST :: 448;
+
+CP_PS_AUTH_LABELS :: [CP_PS_AUTH_COUNT] string.["Google account", "Gemini Enterprise", "Gemini API key", "Agent Platform (Vertex AI)"];
+CP_PS_AUTH_SLUGS :: [CP_PS_AUTH_COUNT] string.["oauth-personal", "oauth-business", "gemini-api-key", "agent-platform"];
+CP_PS_DRV_NAMES :: [CP_PS_DRV_COUNT] string.["Antigravity", "Claude", "Codex", "Cursor", "ACP Registry"];
+CP_PS_DRV_DESCS :: [CP_PS_DRV_COUNT] string.[
+  "Google's CLI with Gemini models.",
+  "Anthropic's Claude Code CLI.",
+  "OpenAI's Codex CLI.",
+  "Cursor Agent CLI via ACP.",
+  "Custom ACP-compatible binary."
+];
+
+// ---- Data structs ----
+
+CpPsInstance :: struct {
+  id: [64] u8; id_n: int;
+  driver: int;
+  display_name: [64] u8; display_name_n: int;
+  version: [32] u8; version_n: int;
+  enabled: bool;
+  is_default: bool;
+  status: int;
+  headline: [64] u8; headline_n: int;
+  summary: [192] u8; summary_n: int;
+  accent: int;
+}
+
+CpPsEnvVar :: struct {
+  key: [64] u8; key_n: int;
+  val: [256] u8; val_n: int;
+  secret: bool;
+  has_secret: bool;
+}
+
+CpPsModel :: struct {
+  slug: [96] u8; slug_n: int;
+  name: [96] u8; name_n: int;
+  enabled: bool;
+  favorite: bool;
+  thinking: bool;
+  custom: bool;
+}
+
+CpPsDetail :: struct {
+  display_name: [64] u8; display_name_n: int;
+  accent: int;
+  auth_method: int;
+  api_key: [256] u8; api_key_n: int;
+  api_key_set: bool;
+  gcp_project: [128] u8; gcp_project_n: int;
+  gcp_location: [64] u8; gcp_location_n: int;
+  binary_path: [256] u8; binary_path_n: int;
+  extra_path: [256] u8; extra_path_n: int;
+  rt_state: int;
+  rt_status: [128] u8; rt_status_n: int;
+  rt_btn: [48] u8; rt_btn_n: int;
+  rt_pct: int;
+  rt_can_remove: bool;
+  rt_err: [192] u8; rt_err_n: int;
+  auth_state: int;
+  auth_sub: [160] u8; auth_sub_n: int;
+  auth_detail: [256] u8; auth_detail_n: int;
+  auth_btn: [48] u8; auth_btn_n: int;
+  auth_can_signout: bool;
+  auth_url: [512] u8; auth_url_n: int;
+  auth_code: [512] u8; auth_code_n: int;
+  auth_copied: bool;
+  envs: [CP_PS_MAX_ENV] CpPsEnvVar; nenv: int;
+  models: [CP_PS_MAX_MODELS] CpPsModel; nmodels: int;
+  custom_model: [96] u8; custom_model_n: int;
+}
+
+CpPsWizard :: struct {
+  open: bool;
+  step: int;
+  driver: int;
+  label: [64] u8; label_n: int;
+  inst_id: [64] u8; inst_id_n: int;
+  id_edited: bool;
+  accent: int;
+  auth_method: int;
+  api_key: [256] u8; api_key_n: int;
+  gcp_project: [128] u8; gcp_project_n: int;
+  gcp_location: [64] u8; gcp_location_n: int;
+  binary_path: [256] u8; binary_path_n: int;
+  extra_path: [256] u8; extra_path_n: int;
+  err: [192] u8; err_n: int;
+  auth_menu_open: bool;
+  auth_menu_x: f32; auth_menu_y: f32; auth_menu_w: f32;
+}
+
+CpProvSettings :: struct {
+  host_name: [96] u8; host_name_n: int;
+  project_scope: [96] u8; project_scope_n: int;
+  checked_label: [64] u8; checked_label_n: int;
+  refreshing: bool;
+  insts: [CP_PS_MAX_INST] CpPsInstance; ninst: int;
+  selected: int;
+  detail: [1] CpPsDetail;
+  wiz: [1] CpPsWizard;
+  ed_field: int;
+  ed_dirty: bool;
+  auth_menu_open: bool;
+  auth_menu_x: f32; auth_menu_y: f32; auth_menu_w: f32;
+  accent_menu_open: bool;
+  accent_x: f32; accent_y: f32;
+  list_scroll: f32; list_content: f32; list_view: f32;
+  detail_scroll: f32; detail_content: f32; detail_view: f32;
+  split_x: f32;
+  card_x: f32; card_y: f32; card_w: f32; card_h: f32;
+  action_idx: int;
+}
+
+// ---- Helpers & Colors ----
+
+cp_ps_str :: (buf: [] const u8, n: int) -> string {
+  k := ifx n < 0 then 0 else ifx n > buf.count then buf.count else n;
+  return cast(string) buf[0..<k];
+}
+
+cp_ps_accent_rgba :: (idx: int) -> Rgba {
+  if idx == 1 { return hex(0x3b82f6, 1); }
+  if idx == 2 { return hex(0x6366f1, 1); }
+  if idx == 3 { return hex(0x8b5cf6, 1); }
+  if idx == 4 { return hex(0xf43f5e, 1); }
+  if idx == 5 { return hex(0xf59e0b, 1); }
+  if idx == 6 { return hex(0x10b981, 1); }
+  if idx == 7 { return hex(0x06b6d4, 1); }
+  return hex(0x346bf1, 1);
+}
+
+cp_ps_status_dot :: (st: int) -> Rgba {
+  if st == CP_PS_ST_READY { return hex(0x34d399, 1); }
+  if st == CP_PS_ST_WARNING { return hex(0xfe9a00, 1); }
+  if st == CP_PS_ST_ERROR { return hex(0xfb414a, 1); }
+  return hex(0x71717a, 1);
+}
+
+cp_ps_slugify :: (src: string, out: [] u8) -> int {
+  n := 0; last_dash := true;
+  for c: src {
+    if n >= out.count { break; }
+    ch := c;
+    if ch >= 'A' && ch <= 'Z' { ch = ch + 32; }
+    if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+      out[n] = ch; n += 1; last_dash = false;
+    } else if !last_dash && n > 0 {
+      out[n] = '-'; n += 1; last_dash = true;
+    }
+  }
+  while n > 0 && out[n - 1] == '-' { n -= 1; }
+  return n;
+}
+
+cp_ps_init :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  ps := s[0].ps[..];
+  ps[0] = CpProvSettings.{};
+  ps[0].host_name_n = cp_out(ps[0].host_name[..], "This Mac");
+  ps[0].project_scope_n = cp_out(ps[0].project_scope[..], "All projects");
+  ps[0].checked_label_n = cp_out(ps[0].checked_label[..], "Checked just now");
+  // Seed default 3 instances so the screen is immediately meaningful before host sync arrives.
+  ps[0].ninst = 3;
+  ps[0].insts[0].id_n = cp_out(ps[0].insts[0].id[..], "codex");
+  ps[0].insts[0].driver = CP_PS_DRV_CODEX;
+  ps[0].insts[0].display_name_n = cp_out(ps[0].insts[0].display_name[..], "Codex");
+  ps[0].insts[0].is_default = true;
+  ps[0].insts[0].enabled = false;
+  ps[0].insts[0].status = CP_PS_ST_DISABLED;
+  ps[0].insts[0].headline_n = cp_out(ps[0].insts[0].headline[..], "Disabled");
+
+  ps[0].insts[1].id_n = cp_out(ps[0].insts[1].id[..], "claude");
+  ps[0].insts[1].driver = CP_PS_DRV_CLAUDE;
+  ps[0].insts[1].display_name_n = cp_out(ps[0].insts[1].display_name[..], "Claude");
+  ps[0].insts[1].is_default = true;
+  ps[0].insts[1].enabled = false;
+  ps[0].insts[1].status = CP_PS_ST_DISABLED;
+  ps[0].insts[1].headline_n = cp_out(ps[0].insts[1].headline[..], "Disabled");
+
+  ps[0].insts[2].id_n = cp_out(ps[0].insts[2].id[..], "antigravity");
+  ps[0].insts[2].driver = CP_PS_DRV_ANTIGRAVITY;
+  ps[0].insts[2].display_name_n = cp_out(ps[0].insts[2].display_name[..], "Antigravity");
+  ps[0].insts[2].is_default = true;
+  ps[0].insts[2].enabled = true;
+  ps[0].insts[2].status = CP_PS_ST_WARNING;
+  ps[0].insts[2].headline_n = cp_out(ps[0].insts[2].headline[..], "Needs attention");
+  ps[0].insts[2].summary_n = cp_out(ps[0].insts[2].summary[..], "Connect Antigravity to load models.");
+  ps[0].selected = 2;
+  d := ps[0].detail[..];
+  d[0].display_name_n = cp_out(d[0].display_name[..], "Antigravity");
+  d[0].auth_method = CP_PS_AUTH_PERSONAL;
+  d[0].rt_state = CP_PS_RT_NONE;
+  d[0].rt_status_n = cp_out(d[0].rt_status[..], "Not installed.");
+  d[0].rt_btn_n = cp_out(d[0].rt_btn[..], "Install Antigravity");
+  d[0].rt_pct = -1;
+  d[0].auth_state = CP_PS_AS_IDLE;
+  d[0].auth_sub_n = cp_out(d[0].auth_sub[..], "Sign in with Google on this device to load models.");
+  d[0].auth_btn_n = cp_out(d[0].auth_btn[..], "Sign in");
+}
+
+// ---- Inline editor bridge (CP_ED_PROV / CP_KB_PROV in page/editor.coax) ----
+
+cp_ps_ed_active :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && s[0].set_open && s[0].set_page == CP_PG_PROVIDERS && s[0].ps[0].ed_field != CP_PS_ED_NONE;
+}
+
+cp_ps_ed_can_hit :: (s: [] CoderPage) -> bool {
+  return cp_ps_ed_active(s) && !s[0].ps[0].auth_menu_open && !s[0].ps[0].accent_menu_open && !s[0].ps[0].wiz[0].auth_menu_open;
+}
+
+cp_ps_ed_is_over :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && s[0].ps[0].wiz[0].open && s[0].ps[0].ed_field >= CP_PS_ED_WIZ_LABEL;
+}
+
+cp_ps_ed_secure :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  ef := s[0].ps[0].ed_field;
+  if ef == CP_PS_ED_API_KEY || ef == CP_PS_ED_WIZ_API_KEY { return true; }
+  if ef >= CP_PS_ED_ENV_VAL_BASE && ef < CP_PS_ED_ENV_VAL_BASE + CP_PS_MAX_ENV {
+    idx := ef - CP_PS_ED_ENV_VAL_BASE;
+    if idx < s[0].ps[0].detail[0].nenv { return s[0].ps[0].detail[0].envs[idx].secret; }
+  }
+  return false;
+}
+
+cp_ps_ed_text :: (s: [] CoderPage) -> string {
+  if s.count < 1 { return ""; }
+  ps := s[0].ps[..]; d := ps[0].detail[..]; w := ps[0].wiz[..];
+  ef := ps[0].ed_field;
+  if ef == CP_PS_ED_DISPLAY_NAME { return cp_ps_str(d[0].display_name[..], d[0].display_name_n); }
+  if ef == CP_PS_ED_API_KEY { return cp_ps_str(d[0].api_key[..], d[0].api_key_n); }
+  if ef == CP_PS_ED_GCP_PROJECT { return cp_ps_str(d[0].gcp_project[..], d[0].gcp_project_n); }
+  if ef == CP_PS_ED_GCP_LOCATION { return cp_ps_str(d[0].gcp_location[..], d[0].gcp_location_n); }
+  if ef == CP_PS_ED_BINARY_PATH { return cp_ps_str(d[0].binary_path[..], d[0].binary_path_n); }
+  if ef == CP_PS_ED_EXTRA_PATH { return cp_ps_str(d[0].extra_path[..], d[0].extra_path_n); }
+  if ef == CP_PS_ED_OAUTH_CODE { return cp_ps_str(d[0].auth_code[..], d[0].auth_code_n); }
+  if ef == CP_PS_ED_CUSTOM_MODEL { return cp_ps_str(d[0].custom_model[..], d[0].custom_model_n); }
+  if ef >= CP_PS_ED_ENV_KEY_BASE && ef < CP_PS_ED_ENV_KEY_BASE + CP_PS_MAX_ENV {
+    idx := ef - CP_PS_ED_ENV_KEY_BASE;
+    if idx < d[0].nenv { return cp_ps_str(d[0].envs[idx].key[..], d[0].envs[idx].key_n); }
+  }
+  if ef >= CP_PS_ED_ENV_VAL_BASE && ef < CP_PS_ED_ENV_VAL_BASE + CP_PS_MAX_ENV {
+    idx := ef - CP_PS_ED_ENV_VAL_BASE;
+    if idx < d[0].nenv { return cp_ps_str(d[0].envs[idx].val[..], d[0].envs[idx].val_n); }
+  }
+  if ef == CP_PS_ED_WIZ_LABEL { return cp_ps_str(w[0].label[..], w[0].label_n); }
+  if ef == CP_PS_ED_WIZ_ID { return cp_ps_str(w[0].inst_id[..], w[0].inst_id_n); }
+  if ef == CP_PS_ED_WIZ_API_KEY { return cp_ps_str(w[0].api_key[..], w[0].api_key_n); }
+  if ef == CP_PS_ED_WIZ_GCP_PROJ { return cp_ps_str(w[0].gcp_project[..], w[0].gcp_project_n); }
+  if ef == CP_PS_ED_WIZ_GCP_LOC { return cp_ps_str(w[0].gcp_location[..], w[0].gcp_location_n); }
+  if ef == CP_PS_ED_WIZ_BIN { return cp_ps_str(w[0].binary_path[..], w[0].binary_path_n); }
+  if ef == CP_PS_ED_WIZ_EXTRA { return cp_ps_str(w[0].extra_path[..], w[0].extra_path_n); }
+  return "";
+}
+
+cp_ps_ed_publish :: (s: [] CoderPage, text: string) {
+  if s.count < 1 { return; }
+  ps := s[0].ps[..]; d := ps[0].detail[..]; w := ps[0].wiz[..];
+  ef := ps[0].ed_field;
+  if ef == CP_PS_ED_DISPLAY_NAME {
+    d[0].display_name_n = cp_out(d[0].display_name[..], text);
+    if ps[0].selected >= 0 && ps[0].selected < ps[0].ninst {
+      ps[0].insts[ps[0].selected].display_name_n = cp_out(ps[0].insts[ps[0].selected].display_name[..], text);
+    }
+    ps[0].ed_dirty = true;
+    return;
+  }
+  if ef == CP_PS_ED_API_KEY { d[0].api_key_n = cp_out(d[0].api_key[..], text); ps[0].ed_dirty = true; return; }
+  if ef == CP_PS_ED_GCP_PROJECT { d[0].gcp_project_n = cp_out(d[0].gcp_project[..], text); ps[0].ed_dirty = true; return; }
+  if ef == CP_PS_ED_GCP_LOCATION { d[0].gcp_location_n = cp_out(d[0].gcp_location[..], text); ps[0].ed_dirty = true; return; }
+  if ef == CP_PS_ED_BINARY_PATH { d[0].binary_path_n = cp_out(d[0].binary_path[..], text); ps[0].ed_dirty = true; return; }
+  if ef == CP_PS_ED_EXTRA_PATH { d[0].extra_path_n = cp_out(d[0].extra_path[..], text); ps[0].ed_dirty = true; return; }
+  if ef == CP_PS_ED_OAUTH_CODE { d[0].auth_code_n = cp_out(d[0].auth_code[..], text); return; }
+  if ef == CP_PS_ED_CUSTOM_MODEL { d[0].custom_model_n = cp_out(d[0].custom_model[..], text); return; }
+  if ef >= CP_PS_ED_ENV_KEY_BASE && ef < CP_PS_ED_ENV_KEY_BASE + CP_PS_MAX_ENV {
+    idx := ef - CP_PS_ED_ENV_KEY_BASE;
+    if idx < d[0].nenv { d[0].envs[idx].key_n = cp_out(d[0].envs[idx].key[..], text); ps[0].ed_dirty = true; }
+    return;
+  }
+  if ef >= CP_PS_ED_ENV_VAL_BASE && ef < CP_PS_ED_ENV_VAL_BASE + CP_PS_MAX_ENV {
+    idx := ef - CP_PS_ED_ENV_VAL_BASE;
+    if idx < d[0].nenv { d[0].envs[idx].val_n = cp_out(d[0].envs[idx].val[..], text); ps[0].ed_dirty = true; }
+    return;
+  }
+  if ef == CP_PS_ED_WIZ_LABEL {
+    w[0].label_n = cp_out(w[0].label[..], text);
+    if !w[0].id_edited { w[0].inst_id_n = cp_ps_slugify(text, w[0].inst_id[..]); }
+    w[0].err_n = 0;
+    return;
+  }
+  if ef == CP_PS_ED_WIZ_ID { w[0].inst_id_n = cp_out(w[0].inst_id[..], text); w[0].id_edited = true; w[0].err_n = 0; return; }
+  if ef == CP_PS_ED_WIZ_API_KEY { w[0].api_key_n = cp_out(w[0].api_key[..], text); w[0].err_n = 0; return; }
+  if ef == CP_PS_ED_WIZ_GCP_PROJ { w[0].gcp_project_n = cp_out(w[0].gcp_project[..], text); w[0].err_n = 0; return; }
+  if ef == CP_PS_ED_WIZ_GCP_LOC { w[0].gcp_location_n = cp_out(w[0].gcp_location[..], text); w[0].err_n = 0; return; }
+  if ef == CP_PS_ED_WIZ_BIN { w[0].binary_path_n = cp_out(w[0].binary_path[..], text); w[0].err_n = 0; return; }
+  if ef == CP_PS_ED_WIZ_EXTRA { w[0].extra_path_n = cp_out(w[0].extra_path[..], text); w[0].err_n = 0; return; }
+}
+
+cp_ps_commit_ed :: (s: [] CoderPage) {
+  ps := s[0].ps[..];
+  if !ps[0].ed_dirty { return; }
+  ef := ps[0].ed_field;
+  ps[0].ed_dirty = false;
+  if ef >= CP_PS_ED_ENV_KEY_BASE && ef < CP_PS_ED_ENV_VAL_BASE + CP_PS_MAX_ENV {
+    s[0].ask = CP_ASK_PS_ENV_SAVE;
+  } else if ef >= CP_PS_ED_DISPLAY_NAME && ef <= CP_PS_ED_EXTRA_PATH {
+    s[0].ask = CP_ASK_PS_CONFIG;
+  }
+}
+
+cp_ps_blur_ed :: (s: [] CoderPage) {
+  cp_ps_commit_ed(s);
+  s[0].ps[0].ed_field = CP_PS_ED_NONE;
+  if s[0].fld[0].kb == CP_KB_PROV { s[0].fld[0].kb = CP_KB_NONE; }
+}
+
+cp_ps_close_popups :: (s: [] CoderPage) {
+  cp_ps_blur_ed(s);
+  s[0].ps[0].wiz[0].open = false;
+  s[0].ps[0].wiz[0].auth_menu_open = false;
+  s[0].ps[0].auth_menu_open = false;
+  s[0].ps[0].accent_menu_open = false;
+}
+
+cp_ps_focus_ed :: (s: [] CoderPage, field: int) {
+  ps := s[0].ps[..];
+  if ps[0].ed_field != field { cp_ps_commit_ed(s); }
+  ps[0].ed_field = field;
+  ps[0].auth_menu_open = false;
+  ps[0].accent_menu_open = false;
+  ps[0].wiz[0].auth_menu_open = false;
+  // Reset editor epoch so UiEditor opens fresh on the new field's string.
+  s[0].fld[0].ed[CP_ED_PROV].owner = 0;
+  cp_ed_focus(s, CP_KB_PROV);
+}
+
+cp_ps_key_enter :: (s: [] CoderPage) -> bool {
+  ps := s[0].ps[..];
+  ef := ps[0].ed_field;
+  if ef == CP_PS_ED_OAUTH_CODE {
+    if ps[0].detail[0].auth_code_n > 0 { s[0].ask = CP_ASK_PS_AUTH_SUBMIT; }
+    return true;
+  }
+  if ef == CP_PS_ED_CUSTOM_MODEL {
+    if ps[0].detail[0].custom_model_n > 0 { _ = cp_ps_add_custom_model_now(s); }
+    return true;
+  }
+  if ef >= CP_PS_ED_WIZ_LABEL {
+    _ = cp_ps_wiz_advance(s);
+    return true;
+  }
+  cp_ps_blur_ed(s);
+  return true;
+}
+
+cp_ps_escape :: (s: [] CoderPage) -> bool {
+  if !s[0].set_open || s[0].set_page != CP_PG_PROVIDERS { return false; }
+  ps := s[0].ps[..];
+  if ps[0].wiz[0].auth_menu_open { ps[0].wiz[0].auth_menu_open = false; return true; }
+  if ps[0].auth_menu_open { ps[0].auth_menu_open = false; return true; }
+  if ps[0].accent_menu_open { ps[0].accent_menu_open = false; return true; }
+  if ps[0].ed_field != CP_PS_ED_NONE { cp_ps_blur_ed(s); return true; }
+  if ps[0].wiz[0].open { ps[0].wiz[0].open = false; return true; }
+  return false;
+}
+
+cp_ps_scroll :: (s: [] CoderPage, delta: f32) {
+  ps := s[0].ps[..];
+  if ps[0].wiz[0].open { return; }
+  if s[0].px >= ps[0].card_x && s[0].px < ps[0].split_x {
+    ps[0].list_scroll = scroll_clamp(ps[0].list_scroll + delta, ps[0].list_content, ps[0].list_view);
+  } else {
+    ps[0].detail_scroll = scroll_clamp(ps[0].detail_scroll + delta, ps[0].detail_content, ps[0].detail_view);
+  }
+}
+
+cp_ps_dismiss_popovers :: (s: [] CoderPage, act: int) -> bool {
+  if !s[0].set_open || s[0].set_page != CP_PG_PROVIDERS { return false; }
+  ps := s[0].ps[..];
+  if ps[0].wiz[0].auth_menu_open && act != CP_PS_WIZ_AUTH_MENU && act != CP_PS_WIZ_AUTH_PICK {
+    ps[0].wiz[0].auth_menu_open = false;
+    return true;
+  }
+  if ps[0].auth_menu_open && act != CP_PS_AUTH_METHOD_MENU && act != CP_PS_AUTH_METHOD_PICK {
+    ps[0].auth_menu_open = false;
+    return true;
+  }
+  if ps[0].accent_menu_open && act != CP_PS_ACCENT_OPEN && act != CP_PS_ACCENT_PICK {
+    ps[0].accent_menu_open = false;
+    return true;
+  }
+  if ps[0].ed_field != CP_PS_ED_NONE && act != CP_PS_FIELD_FOCUS {
+    cp_ps_blur_ed(s);
+  }
+  return false;
+}
+
+// ---- Actions & Wizard Logic ----
+
+cp_ps_wiz_open :: (s: [] CoderPage) {
+  cp_ps_blur_ed(s);
+  ps := s[0].ps[..];
+  ps[0].auth_menu_open = false;
+  ps[0].accent_menu_open = false;
+  w := ps[0].wiz[..];
+  w[0] = CpPsWizard.{};
+  w[0].open = true;
+  w[0].step = 0;
+  w[0].driver = CP_PS_DRV_ANTIGRAVITY;
+  w[0].label_n = cp_out(w[0].label[..], "Antigravity");
+  w[0].inst_id_n = cp_out(w[0].inst_id[..], "antigravity-2");
+  w[0].auth_method = CP_PS_AUTH_PERSONAL;
+  w[0].gcp_location_n = cp_out(w[0].gcp_location[..], "us-central1");
+}
+
+cp_ps_wiz_pick_driver :: (s: [] CoderPage, drv: int) {
+  if drv < 0 || drv >= CP_PS_DRV_COUNT { return; }
+  w := s[0].ps[0].wiz[..];
+  w[0].driver = drv;
+  name := CP_PS_DRV_NAMES[drv];
+  w[0].label_n = cp_out(w[0].label[..], name);
+  // Generate unique default slug (<driver>-2, -3, ...)
+  base: [48] u8; bn := cp_ps_slugify(name, base[..]);
+  cand: [64] u8; cn := cp_out(cand[..], cast(string) base[0..<bn]);
+  suffix := 2;
+  while suffix < 20 {
+    exists := false;
+    cur := cast(string) cand[0..<cn];
+    for i: 0..<s[0].ps[0].ninst {
+      if cp_ps_str(s[0].ps[0].insts[i].id[..], s[0].ps[0].insts[i].id_n) == cur { exists = true; break; }
+    }
+    if !exists { break; }
+    cn = el_put(cand[..], 0, cast(string) base[0..<bn]);
+    cn = el_put(cand[..], cn, "-");
+    cn = el_put_i(cand[..], cn, suffix);
+    suffix += 1;
+  }
+  w[0].inst_id_n = cp_out(w[0].inst_id[..], cast(string) cand[0..<cn]);
+  w[0].id_edited = false;
+  w[0].err_n = 0;
+}
+
+cp_ps_wiz_advance :: (s: [] CoderPage) -> bool {
+  ps := s[0].ps[..]; w := ps[0].wiz[..];
+  if w[0].step == 0 {
+    w[0].step = 1;
+    w[0].err_n = 0;
+    cp_ps_focus_ed(s, CP_PS_ED_WIZ_LABEL);
+    return true;
+  }
+  if w[0].step == 1 {
+    lbl := cp_trim(cp_ps_str(w[0].label[..], w[0].label_n));
+    iid := cp_trim(cp_ps_str(w[0].inst_id[..], w[0].inst_id_n));
+    if lbl.count == 0 {
+      w[0].err_n = cp_out(w[0].err[..], "Display name is required.");
+      return true;
+    }
+    if iid.count == 0 {
+      w[0].inst_id_n = cp_ps_slugify(lbl, w[0].inst_id[..]);
+      iid = cp_ps_str(w[0].inst_id[..], w[0].inst_id_n);
+    }
+    for i: 0..<ps[0].ninst {
+      if cp_ps_str(ps[0].insts[i].id[..], ps[0].insts[i].id_n) == iid {
+        w[0].err_n = cp_out(w[0].err[..], "An instance with that ID already exists.");
+        return true;
+      }
+    }
+    cp_ps_blur_ed(s);
+    w[0].step = 2;
+    w[0].err_n = 0;
+    return true;
+  }
+  // Step 3 -> validate & create
+  if w[0].driver == CP_PS_DRV_ANTIGRAVITY {
+    am := w[0].auth_method;
+    proj := cp_trim(cp_ps_str(w[0].gcp_project[..], w[0].gcp_project_n));
+    key := cp_trim(cp_ps_str(w[0].api_key[..], w[0].api_key_n));
+    if am == CP_PS_AUTH_BUSINESS && proj.count == 0 {
+      w[0].err_n = cp_out(w[0].err[..], "Gemini Enterprise requires a GCP project.");
+      return true;
+    }
+    if am == CP_PS_AUTH_API_KEY && key.count == 0 {
+      w[0].err_n = cp_out(w[0].err[..], "Gemini API key sign-in requires an API key.");
+      return true;
+    }
+    if am == CP_PS_AUTH_VERTEX && key.count == 0 && proj.count == 0 {
+      w[0].err_n = cp_out(w[0].err[..], "Agent Platform requires an API key or a GCP project.");
+      return true;
+    }
+  }
+  cp_ps_blur_ed(s);
+  w[0].open = false;
+  w[0].err_n = 0;
+  s[0].ask = CP_ASK_PS_WIZ_CREATE;
+  return true;
+}
+
+cp_ps_add_custom_model_now :: (s: [] CoderPage) -> bool {
+  d := s[0].ps[0].detail[..];
+  slug := cp_trim(cp_ps_str(d[0].custom_model[..], d[0].custom_model_n));
+  if slug.count == 0 || d[0].nmodels >= CP_PS_MAX_MODELS { return false; }
+  for i: 0..<d[0].nmodels {
+    if cp_ps_str(d[0].models[i].slug[..], d[0].models[i].slug_n) == slug { return false; }
+  }
+  k := d[0].nmodels;
+  d[0].models[k] = CpPsModel.{};
+  d[0].models[k].slug_n = cp_out(d[0].models[k].slug[..], slug);
+  d[0].models[k].name_n = cp_out(d[0].models[k].name[..], slug);
+  d[0].models[k].enabled = true;
+  d[0].models[k].custom = true;
+  d[0].nmodels += 1;
+  d[0].custom_model_n = 0;
+  s[0].fld[0].ed[CP_ED_PROV].owner = 0;
+  s[0].ask = CP_ASK_PS_MODELS_SAVE;
+  return true;
+}
+
+cp_ps_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  ps := s[0].ps[..]; d := ps[0].detail[..]; w := ps[0].wiz[..];
+  if act == CP_PS_SELECT {
+    idx := cp_number(id, "ps.inst.");
+    if idx < 0 || idx >= ps[0].ninst { return false; }
+    cp_ps_blur_ed(s);
+    ps[0].auth_menu_open = false; ps[0].accent_menu_open = false;
+    ps[0].selected = idx;
+    ps[0].detail_scroll = 0;
+    ps[0].action_idx = idx;
+    s[0].ask = CP_ASK_PS_SELECT;
+    return true;
+  }
+  if act == CP_PS_TOGGLE {
+    idx := cp_number(id, "ps.tog.");
+    if idx < 0 || idx >= ps[0].ninst { return false; }
+    cp_ps_blur_ed(s);
+    ps[0].insts[idx].enabled = !ps[0].insts[idx].enabled;
+    ps[0].action_idx = idx;
+    s[0].ask = CP_ASK_PS_TOGGLE;
+    return true;
+  }
+  if act == CP_PS_ENABLE_NOW {
+    if ps[0].selected < 0 || ps[0].selected >= ps[0].ninst { return false; }
+    ps[0].insts[ps[0].selected].enabled = true;
+    ps[0].action_idx = ps[0].selected;
+    s[0].ask = CP_ASK_PS_TOGGLE;
+    return true;
+  }
+  if act == CP_PS_REFRESH {
+    ps[0].refreshing = true;
+    s[0].ask = CP_ASK_PS_REFRESH;
+    return true;
+  }
+  if act == CP_PS_ADD_OPEN {
+    cp_ps_wiz_open(s);
+    return true;
+  }
+  if act == CP_PS_RESET {
+    ps[0].action_idx = ps[0].selected;
+    s[0].ask = CP_ASK_PS_RESET;
+    return true;
+  }
+  if act == CP_PS_DELETE {
+    ps[0].action_idx = ps[0].selected;
+    s[0].ask = CP_ASK_PS_DELETE;
+    return true;
+  }
+  if act == CP_PS_ACCENT_OPEN {
+    ps[0].accent_menu_open = !ps[0].accent_menu_open;
+    ps[0].auth_menu_open = false;
+    return true;
+  }
+  if act == CP_PS_ACCENT_PICK {
+    c := cp_number(id, "ps.acc.");
+    ps[0].accent_menu_open = false;
+    if c < 0 || c >= CP_PS_ACCENTS { return false; }
+    d[0].accent = c;
+    if ps[0].selected >= 0 && ps[0].selected < ps[0].ninst { ps[0].insts[ps[0].selected].accent = c; }
+    s[0].ask = CP_ASK_PS_CONFIG;
+    return true;
+  }
+  if act == CP_PS_RT_ACTION {
+    s[0].ask = CP_ASK_PS_RT_ACTION;
+    return true;
+  }
+  if act == CP_PS_RT_REMOVE {
+    s[0].ask = CP_ASK_PS_RT_REMOVE;
+    return true;
+  }
+  if act == CP_PS_AUTH_PRIMARY {
+    st := d[0].auth_state;
+    if st == CP_PS_AS_STARTING || st == CP_PS_AS_WAITING || st == CP_PS_AS_VERIFYING {
+      s[0].ask = CP_ASK_PS_AUTH_CANCEL;
+    } else {
+      s[0].ask = CP_ASK_PS_AUTH_START;
+    }
+    return true;
+  }
+  if act == CP_PS_AUTH_SIGNOUT {
+    s[0].ask = CP_ASK_PS_AUTH_SIGNOUT;
+    return true;
+  }
+  if act == CP_PS_AUTH_OPEN_URL {
+    s[0].ask = CP_ASK_PS_AUTH_OPEN_URL;
+    return true;
+  }
+  if act == CP_PS_AUTH_COPY_URL {
+    d[0].auth_copied = true;
+    s[0].ask = CP_ASK_PS_AUTH_COPY_URL;
+    return true;
+  }
+  if act == CP_PS_AUTH_SUBMIT {
+    if d[0].auth_code_n > 0 { s[0].ask = CP_ASK_PS_AUTH_SUBMIT; }
+    return true;
+  }
+  if act == CP_PS_FIELD_FOCUS {
+    fld := cp_number(id, "ps.ed.");
+    if fld <= 0 { return false; }
+    cp_ps_focus_ed(s, fld);
+    return true;
+  }
+  if act == CP_PS_AUTH_METHOD_MENU {
+    cp_ps_blur_ed(s);
+    ps[0].auth_menu_open = !ps[0].auth_menu_open;
+    ps[0].accent_menu_open = false;
+    return true;
+  }
+  if act == CP_PS_AUTH_METHOD_PICK {
+    m := cp_number(id, "ps.am.");
+    ps[0].auth_menu_open = false;
+    if m < 0 || m >= CP_PS_AUTH_COUNT { return false; }
+    if d[0].auth_method != m {
+      d[0].auth_method = m;
+      s[0].ask = CP_ASK_PS_CONFIG;
+    }
+    return true;
+  }
+  if act == CP_PS_API_KEY_CLEAR {
+    d[0].api_key_n = 0;
+    d[0].api_key_set = false;
+    s[0].fld[0].ed[CP_ED_PROV].owner = 0;
+    s[0].ask = CP_ASK_PS_API_CLEAR;
+    return true;
+  }
+  if act == CP_PS_ENV_ADD {
+    if d[0].nenv >= CP_PS_MAX_ENV { return false; }
+    idx := d[0].nenv;
+    d[0].envs[idx] = CpPsEnvVar.{};
+    d[0].nenv += 1;
+    cp_ps_focus_ed(s, CP_PS_ED_ENV_KEY_BASE + idx);
+    return true;
+  }
+  if act == CP_PS_ENV_SECRET {
+    idx := cp_number(id, "ps.envs.");
+    if idx < 0 || idx >= d[0].nenv { return false; }
+    d[0].envs[idx].secret = !d[0].envs[idx].secret;
+    s[0].ask = CP_ASK_PS_ENV_SAVE;
+    return true;
+  }
+  if act == CP_PS_ENV_REMOVE {
+    idx := cp_number(id, "ps.envx.");
+    if idx < 0 || idx >= d[0].nenv { return false; }
+    cp_ps_blur_ed(s);
+    k := idx;
+    while k + 1 < d[0].nenv { d[0].envs[k] = d[0].envs[k + 1]; k += 1; }
+    d[0].nenv -= 1;
+    s[0].ask = CP_ASK_PS_ENV_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_BULK {
+    any_on := false;
+    for i: 0..<d[0].nmodels { if d[0].models[i].enabled { any_on = true; break; } }
+    want := !any_on;
+    for i: 0..<d[0].nmodels { d[0].models[i].enabled = want; }
+    s[0].ask = CP_ASK_PS_MODELS_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_TOGGLE {
+    idx := cp_number(id, "ps.mt.");
+    if idx < 0 || idx >= d[0].nmodels { return false; }
+    d[0].models[idx].enabled = !d[0].models[idx].enabled;
+    s[0].ask = CP_ASK_PS_MODELS_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_STAR {
+    idx := cp_number(id, "ps.ms.");
+    if idx < 0 || idx >= d[0].nmodels { return false; }
+    d[0].models[idx].favorite = !d[0].models[idx].favorite;
+    s[0].ask = CP_ASK_PS_MODELS_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_UP {
+    idx := cp_number(id, "ps.mu.");
+    if idx <= 0 || idx >= d[0].nmodels { return false; }
+    tmp := d[0].models[idx - 1]; d[0].models[idx - 1] = d[0].models[idx]; d[0].models[idx] = tmp;
+    s[0].ask = CP_ASK_PS_MODELS_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_DOWN {
+    idx := cp_number(id, "ps.md.");
+    if idx < 0 || idx + 1 >= d[0].nmodels { return false; }
+    tmp := d[0].models[idx + 1]; d[0].models[idx + 1] = d[0].models[idx]; d[0].models[idx] = tmp;
+    s[0].ask = CP_ASK_PS_MODELS_SAVE;
+    return true;
+  }
+  if act == CP_PS_MODEL_ADD_CUSTOM {
+    return cp_ps_add_custom_model_now(s);
+  }
+  // Wizard actions
+  if act == CP_PS_WIZ_CLOSE || act == CP_PS_WIZ_DIM {
+    cp_ps_blur_ed(s);
+    w[0].open = false; w[0].auth_menu_open = false;
+    return true;
+  }
+  if act == CP_PS_WIZ_STEP {
+    st := cp_number(id, "ps.ws.");
+    if st >= 0 && st < w[0].step {
+      cp_ps_blur_ed(s);
+      w[0].step = st; w[0].err_n = 0; w[0].auth_menu_open = false;
+    }
+    return true;
+  }
+  if act == CP_PS_WIZ_DRIVER {
+    drv := cp_number(id, "ps.wd.");
+    cp_ps_wiz_pick_driver(s, drv);
+    return true;
+  }
+  if act == CP_PS_WIZ_ACCENT {
+    c := cp_number(id, "ps.wa.");
+    if c >= 0 && c < CP_PS_ACCENTS { w[0].accent = c; }
+    return true;
+  }
+  if act == CP_PS_WIZ_AUTH_MENU {
+    cp_ps_blur_ed(s);
+    w[0].auth_menu_open = !w[0].auth_menu_open;
+    return true;
+  }
+  if act == CP_PS_WIZ_AUTH_PICK {
+    m := cp_number(id, "ps.wam.");
+    w[0].auth_menu_open = false;
+    if m >= 0 && m < CP_PS_AUTH_COUNT { w[0].auth_method = m; w[0].err_n = 0; }
+    return true;
+  }
+  if act == CP_PS_WIZ_BACK {
+    cp_ps_blur_ed(s);
+    if w[0].step > 0 { w[0].step -= 1; w[0].err_n = 0; w[0].auth_menu_open = false; }
+    else { w[0].open = false; }
+    return true;
+  }
+  if act == CP_PS_WIZ_NEXT {
+    return cp_ps_wiz_advance(s);
+  }
+  return false;
+}
+
+// ---- Drawing primitives (crisp vector marks, pill toggle, inline input, outlined button) ----
+
+cp_ps_line :: (sh: [] Sheet, over: bool, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, col: Rgba) {
+  if over { sheet_over_n(sh, prim_line(sh[0].over, sh[0].no, x0, y0, x1, y1, w, col)); }
+  else { sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x0, y0, x1, y1, w, col)); }
+}
+
+cp_ps_arc :: (sh: [] Sheet, over: bool, x: f32, y: f32, w: f32, h: f32, sw: f32, start: f32, sweep: f32, col: Rgba) {
+  if over { sheet_over_n(sh, prim_arc(sh[0].over, sh[0].no, x, y, w, h, sw, start, sweep, col)); }
+  else { sheet_under(sh, prim_arc(sh[0].under, sh[0].nu, x, y, w, h, sw, start, sweep, col)); }
+}
+
+// Crisp Antigravity stylized "A" chevron mark (blue-indigo gradient feel).
+cp_ps_agy_mark :: (sh: [] Sheet, over: bool, x: f32, y: f32, sz: f32, muted: bool) {
+  c1 := ifx muted then hex(0x6b7280, 1) else hex(0x60a5fa, 1);
+  c2 := ifx muted then hex(0x52525b, 1) else hex(0x3b82f6, 1);
+  sw := ifx sz >= 16 then 2.1f32 else 1.8f32;
+  ax := x + sz * 0.50f32; ay := y + sz * 0.14f32;
+  lx := x + sz * 0.14f32; ly := y + sz * 0.86f32;
+  rx := x + sz * 0.86f32; ry := y + sz * 0.86f32;
+  cp_ps_line(sh, over, lx, ly, ax, ay, sw, c1);
+  cp_ps_line(sh, over, ax, ay, rx, ry, sw, c2);
+  // Subtle inner arch crossbar matching the Antigravity mark.
+  cp_ps_line(sh, over, x + sz * 0.28f32, y + sz * 0.66f32, ax, y + sz * 0.52f32, sw * 0.78f32, c1);
+  cp_ps_line(sh, over, ax, y + sz * 0.52f32, x + sz * 0.72f32, y + sz * 0.66f32, sw * 0.78f32, c2);
+}
+
+cp_ps_driver_icon :: (sh: [] Sheet, over: bool, drv: int, x: f32, y: f32, sz: f32, enabled: bool) {
+  if drv == CP_PS_DRV_ANTIGRAVITY {
+    cp_ps_agy_mark(sh, over, x, y, sz, !enabled);
+    return;
+  }
+  icon := ifx drv == CP_PS_DRV_CODEX then ICON_OPENAI
+     else ifx drv == CP_PS_DRV_CLAUDE then ICON_CLAUDE
+     else ifx drv == CP_PS_DRV_CURSOR then ICON_TERMINAL
+     else ICON_BOT;
+  tint := ifx !enabled then (ifx drv == CP_PS_DRV_CLAUDE then hex(0x9a5a44, 1) else hex(0x71717a, 1))
+     else ifx drv == CP_PS_DRV_CLAUDE then hex(0xd97757, 1)
+     else hex(0xe4e4e7, 1);
+  if over { app_ov_icon(sh, icon, x, y, sz, tint); }
+  else { sheet_icon(sh, icon, x, y, sz, tint); }
+}
+
+// Small monitor icon for scope pill (on [ [monitor] Host v ]).
+cp_ps_monitor_icon :: (sh: [] Sheet, x: f32, y: f32, tint: Rgba) {
+  _ := sheet_box(sh, x, y + 1, 12, 8.5f32, 1.8f32, 1.1f32, Rgba.{}, tint);
+  sheet_fill(sh, x + 4.5f32, y + 9.5f32, 3.0f32, 1.5f32, 0, tint);
+  sheet_fill(sh, x + 3.0f32, y + 11.0f32, 6.0f32, 1.1f32, 0.5f32, tint);
+}
+
+// Small circular refresh / undo arrow icon.
+cp_ps_refresh_icon :: (sh: [] Sheet, x: f32, y: f32, sz: f32, tint: Rgba, ccw: bool) {
+  cp_ps_arc(sh, false, x + 1, y + 1, sz - 2, sz - 2, 1.3f32, ifx ccw then 0.10f32 else 0.08f32, 0.72f32, tint);
+  if ccw {
+    cp_ps_line(sh, false, x + 2.5f32, y + 3.0f32, x + 5.5f32, y + 2.0f32, 1.2f32, tint);
+    cp_ps_line(sh, false, x + 2.5f32, y + 3.0f32, x + 3.0f32, y + 6.2f32, 1.2f32, tint);
+  } else {
+    cp_ps_line(sh, false, x + sz - 2.5f32, y + 3.2f32, x + sz - 5.5f32, y + 2.2f32, 1.2f32, tint);
+    cp_ps_line(sh, false, x + sz - 2.5f32, y + 3.2f32, x + sz - 3.0f32, y + 6.2f32, 1.2f32, tint);
+  }
+}
+
+// Crisp plus icon (+).
+cp_ps_plus_icon :: (sh: [] Sheet, over: bool, x: f32, y: f32, sz: f32, tint: Rgba) {
+  mid_x := x + sz / 2; mid_y := y + sz / 2;
+  arm := sz * 0.42f32;
+  if over {
+    app_ov_box(sh, mid_x - arm, mid_y - 0.65f32, arm * 2, 1.3f32, 0.5f32, 0, tint, tint);
+    app_ov_box(sh, mid_x - 0.65f32, mid_y - arm, 1.3f32, arm * 2, 0.5f32, 0, tint, tint);
+  } else {
+    sheet_fill(sh, mid_x - arm, mid_y - 0.65f32, arm * 2, 1.3f32, 0.5f32, tint);
+    sheet_fill(sh, mid_x - 0.65f32, mid_y - arm, 1.3f32, arm * 2, 0.5f32, tint);
+  }
+}
+
+// Crisp trash icon.
+cp_ps_trash_icon :: (sh: [] Sheet, x: f32, y: f32, tint: Rgba) {
+  sheet_fill(sh, x + 3.5f32, y + 1.5f32, 5.0f32, 1.2f32, 0.5f32, tint);
+  sheet_fill(sh, x + 1.5f32, y + 3.2f32, 9.0f32, 1.2f32, 0.5f32, tint);
+  _ := sheet_box(sh, x + 2.5f32, y + 4.4f32, 7.0f32, 7.2f32, 1.2f32, 1.1f32, Rgba.{}, tint);
+}
+
+// T3 blue pill toggle switch (34x18pt, r=9pt, #346bf1 on / #27272a off).
+cp_ps_switch :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, on: bool, action: int) {
+  sh := f[0].sheet;
+  w: f32 = 34.0f32; h: f32 = 18.0f32;
+  hov := uiframe_hovered(f, id);
+  track := ifx on then (ifx hov then hex(0x4b7cf3, 1) else hex(0x346bf1, 1))
+      else (ifx hov then hex(0x323236, 1) else hex(0x27272a, 1));
+  thumb := ifx on then hex(0xffffff, 1) else hex(0xa1a1aa, 1);
+  sheet_fill(sh, x, y, w, h, h / 2, track);
+  tx := ifx on then x + w - 16.0f32 else x + 2.0f32;
+  sheet_fill(sh, tx, y + 2.0f32, 14.0f32, 14.0f32, 7.0f32, thumb);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, EL_S_TOGGLES | (ifx on then EL_S_PRESSED else 0), action);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+
+// T3 outlined dark button (or blue primary button when primary == true).
+cp_ps_btn_w :: (f: [] UiFrame, label: string) -> f32 {
+  return set_width(f, f[0].skin.set.desc_face, label) + 24.0f32;
+}
+
+cp_ps_btn :: (f: [] UiFrame, over: bool, id: string, x: f32, y: f32, h: f32, label: string, primary: bool, danger: bool, disabled: bool, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  w := cp_ps_btn_w(f, label);
+  hov := !disabled && uiframe_hovered(f, id);
+  bg := ifx primary then (ifx hov then hex(0x4b7cf3, 1) else hex(0x346bf1, 1))
+   else ifx danger then (ifx hov then hex(0x2d1417, 1) else hex(0x1a0e10, 1))
+   else (ifx hov then hex(0x1c1c20, 1) else hex(0x111114, 1));
+  edge := ifx primary then bg
+     else ifx danger then hex(0x5c2229, 1)
+     else (ifx hov then hex(0x3a3a40, 1) else hex(0x27272a, 1));
+  ink := ifx disabled then hex(0x52525b, 1)
+    else ifx primary then hex(0xffffff, 1)
+    else ifx danger then hex(0xfb7185, 1)
+    else hex(0xe4e4e7, 1);
+  if over { app_ov_box(sh, x, y, w, h, 6.0f32, 1.0f32, bg, edge); }
+  else { _ := sheet_box(sh, x, y, w, h, 6.0f32, 1.0f32, bg, edge); }
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, ifx disabled then EL_S_DISABLED else 0, ifx disabled then 0 else action);
+  _ := set_line(f, x + 12.0f32, y + (h - t.desc_line) / 2, w - 24.0f32, t.desc_face, t.desc_line, ink, label);
+  if !disabled { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return w;
+}
+
+// Inline rounded dark text input (T3 style with crisp blue #346bf1 focus ring & live UiEditor).
+cp_ps_input :: (s: [] CoderPage, f: [] UiFrame, over: bool, field: int, x: f32, y: f32, w: f32, h: f32, value: string, placeholder: string, secure: bool, has_stored_secret: bool) {
+  t := f[0].skin.set; sh := f[0].sheet;
+  ps := s[0].ps[..];
+  focused := ps[0].ed_field == field && cp_ed_which(s) == CP_ED_PROV;
+  ib: [24] u8; in_n := el_put(ib[..], 0, "ps.ed."); in_n = el_put_i(ib[..], in_n, field);
+  id := sheet_pool(sh, cast(string) ib[0..<in_n]);
+  hov := uiframe_hovered(f, id);
+  bg := hex(0x0b0b0e, 1);
+  edge := ifx focused then hex(0x346bf1, 1) else ifx hov then hex(0x3a3a40, 1) else hex(0x27272a, 1);
+  bw := ifx focused then 1.5f32 else 1.0f32;
+  if over { app_ov_box(sh, x, y, w, h, 6.0f32, bw, bg, edge); }
+  else { _ := sheet_box(sh, x, y, w, h, 6.0f32, bw, bg, edge); }
+  row := uiframe_semantic(f, id, EL_FIELD, placeholder, x, y, w, h, 0, CP_PS_FIELD_FOCUS);
+  tx := x + 10.0f32; tw := w - 20.0f32;
+  ty := y + (h - t.desc_line) / 2;
+  if focused {
+    cp_ed_draw(s, f, CP_ED_PROV, tx, ty, tw, t.desc_line, placeholder);
+  } else {
+    if value.count > 0 {
+      shown := value;
+      if secure { shown = "••••••••••••"; }
+      _ := set_line(f, tx, ty, tw, t.desc_face, t.desc_line, hex(0xe4e4e7, 1), shown);
+    } else if has_stored_secret {
+      _ := set_line(f, tx, ty, tw, t.desc_face, t.desc_line, hex(0xa1a1aa, 1), "••••••••••••");
+    } else {
+      _ := set_line(f, tx, ty, tw, t.desc_face, t.desc_line, hex(0x52525b, 1), placeholder);
+    }
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+
+// Select button (Sign-in method dropdown trigger).
+cp_ps_select_box :: (f: [] UiFrame, over: bool, id: string, x: f32, y: f32, w: f32, h: f32, label: string, open: bool, action: int) {
+  t := f[0].skin.set; sh := f[0].sheet;
+  hov := uiframe_hovered(f, id);
+  bg := ifx hov || open then hex(0x16161a, 1) else hex(0x0f0f12, 1);
+  edge := ifx open then hex(0x346bf1, 1) else ifx hov then hex(0x3a3a40, 1) else hex(0x27272a, 1);
+  if over { app_ov_box(sh, x, y, w, h, 6.0f32, 1.0f32, bg, edge); }
+  else { _ := sheet_box(sh, x, y, w, h, 6.0f32, 1.0f32, bg, edge); }
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, action);
+  _ := set_line(f, x + 10.0f32, y + (h - t.desc_line) / 2, w - 32.0f32, t.desc_face, t.desc_line, hex(0xe4e4e7, 1), label);
+  if over { app_ov_icon(sh, ICON_CHEVRON, x + w - 22.0f32, y + (h - 12.0f32) / 2, 12.0f32, hex(0x71717a, 1)); }
+  else { sheet_icon(sh, ICON_CHEVRON, x + w - 22.0f32, y + (h - 12.0f32) / 2, 12.0f32, hex(0x71717a, 1)); }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+
+// ---- Main Settings -> Providers page ----
+
+cp_settings_providers :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, top: f32, h: f32) {
+  k := f[0].skin; t := k.set; sh := f[0].sheet;
+  ps := s[0].ps[..]; d := ps[0].detail[..];
+  if ps[0].selected < 0 || ps[0].selected >= ps[0].ninst { ps[0].selected = ifx ps[0].ninst > 0 then 0 else -1; }
+
+  // 1. Top Breadcrumb Header: "Settings  /  Providers" on left, "×" close button on right.
+  bar_y := top;
+  bar_h: f32 = 40.0f32;
+  sheet_fill(sh, px, bar_y, pw, bar_h, 0, hex(0x000000, 1));
+  bx := px + 24.0f32;
+  by := bar_y + (bar_h - t.text_line) / 2;
+  sw_s := set_line(f, bx, by, 80.0f32, t.text_face, t.text_line, hex(0x818181, 1), "Settings");
+  sw_sl := set_line(f, bx + sw_s + 8.0f32, by, 16.0f32, t.text_face, t.text_line, hex(0x52525b, 1), "/");
+  _ := set_line(f, bx + sw_s + sw_sl + 16.0f32, by, 160.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Providers");
+  _ := uiframe_semantic(f, "set.title", EL_HEADING, "Providers", bx, by, 200.0f32, t.name_line, 0, 0);
+  // Top-right close × button (closes settings back to chat).
+  cx := px + pw - 44.0f32; cy := bar_y + (bar_h - 26.0f32) / 2;
+  chov := uiframe_hovered(f, "ps.close");
+  if chov { sheet_fill(sh, cx, cy, 26.0f32, 26.0f32, 6.0f32, hex(0x18181b, 1)); }
+  crow := uiframe_semantic(f, "ps.close", EL_BUTTON, "Close settings", cx, cy, 26.0f32, 26.0f32, 0, CP_SET_BACK);
+  sheet_icon(sh, ICON_CLOSE, cx + 6.0f32, cy + 6.0f32, 14.0f32, ifx chov then hex(0xf5f5f5, 1) else hex(0x818181, 1));
+  sheet_hit(sh, UIFRAME_HIT, crow, 0, cx, cy, 26.0f32, 26.0f32);
+  sheet_fill(sh, px, bar_y + bar_h - 1.0f32, pw, 1.0f32, 0, hex(0x161618, 1));
+
+  // Content container centered inside right area (up to 920pt wide, 28pt min side pad).
+  pad_x: f32 = 28.0f32;
+  cw := pw - 2 * pad_x;
+  if cw > 920.0f32 { cw = 920.0f32; }
+  if cw < 420.0f32 { cw = ifx pw > 40.0f32 then pw - 24.0f32 else pw; }
+  cx0 := px + (pw - cw) / 2;
+  y := bar_y + bar_h + 18.0f32;
+
+  // 2. Scope Context Bar: "Applying settings for  [All projects v]  on  [[monitor] Host v]"
+  scope_y := y;
+  sx := cx0;
+  w_ap := set_line(f, sx, scope_y + 5.0f32, 150.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), "Applying settings for");
+  sx += w_ap + 8.0f32;
+  proj_lbl := sheet_pool(sh, cp_ps_str(ps[0].project_scope[..], ps[0].project_scope_n));
+  if proj_lbl.count == 0 { proj_lbl = "All projects"; }
+  pw_pill := set_width(f, t.desc_face, proj_lbl) + 34.0f32;
+  _ := sheet_box(sh, sx, scope_y, pw_pill, 26.0f32, 6.0f32, 1.0f32, hex(0x111114, 1), hex(0x26262a, 1));
+  _ := set_line(f, sx + 10.0f32, scope_y + 5.0f32, pw_pill - 28.0f32, t.desc_face, t.desc_line, hex(0xe4e4e7, 1), proj_lbl);
+  sheet_icon(sh, ICON_CHEVRON, sx + pw_pill - 18.0f32, scope_y + 7.5f32, 11.0f32, hex(0x71717a, 1));
+  sx += pw_pill + 10.0f32;
+
+  w_on := set_line(f, sx, scope_y + 5.0f32, 30.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), "on");
+  sx += w_on + 8.0f32;
+  host_lbl := sheet_pool(sh, cp_ps_str(ps[0].host_name[..], ps[0].host_name_n));
+  if host_lbl.count == 0 { host_lbl = "This Mac"; }
+  hw_pill := set_width(f, t.desc_face, host_lbl) + 52.0f32;
+  max_hp := cx0 + cw - sx;
+  if hw_pill > max_hp && max_hp > 80.0f32 { hw_pill = max_hp; }
+  _ := sheet_box(sh, sx, scope_y, hw_pill, 26.0f32, 6.0f32, 1.0f32, hex(0x111114, 1), hex(0x26262a, 1));
+  cp_ps_monitor_icon(sh, sx + 9.0f32, scope_y + 7.0f32, hex(0xa1a1aa, 1));
+  _ := set_line(f, sx + 27.0f32, scope_y + 5.0f32, hw_pill - 46.0f32, t.desc_face, t.desc_line, hex(0xe4e4e7, 1), host_lbl);
+  sheet_icon(sh, ICON_CHEVRON, sx + hw_pill - 18.0f32, scope_y + 7.5f32, 11.0f32, hex(0x71717a, 1));
+  y += 26.0f32 + 24.0f32;
+
+  // 3. Providers Toolbar Row: "Providers  +" on left, "↻ Checked 1h ago" on right.
+  pw_lbl := set_line(f, cx0, y, 120.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Providers");
+  add_x := cx0 + pw_lbl + 6.0f32;
+  ahov := uiframe_hovered(f, "ps.add.top");
+  if ahov { sheet_fill(sh, add_x, y - 2.0f32, 22.0f32, 22.0f32, 5.0f32, hex(0x1c1c20, 1)); }
+  arow := uiframe_semantic(f, "ps.add.top", EL_BUTTON, "Add provider", add_x, y - 2.0f32, 22.0f32, 22.0f32, 0, CP_PS_ADD_OPEN);
+  cp_ps_plus_icon(sh, false, add_x + 5.0f32, y + 3.0f32, 12.0f32, ifx ahov then hex(0xf5f5f5, 1) else hex(0x818181, 1));
+  sheet_hit(sh, UIFRAME_HIT, arow, 0, add_x, y - 2.0f32, 22.0f32, 22.0f32);
+
+  chk_lbl := ifx ps[0].refreshing then "Checking…" else sheet_pool(sh, cp_ps_str(ps[0].checked_label[..], ps[0].checked_label_n));
+  if chk_lbl.count == 0 { chk_lbl = "Check now"; }
+  rw := set_width(f, t.desc_face, chk_lbl) + 28.0f32;
+  rx := cx0 + cw - rw;
+  rhov := uiframe_hovered(f, "ps.refresh");
+  if rhov { sheet_fill(sh, rx, y - 3.0f32, rw, 24.0f32, 6.0f32, hex(0x16161a, 1)); }
+  rrow := uiframe_semantic(f, "ps.refresh", EL_BUTTON, "Refresh providers", rx, y - 3.0f32, rw, 24.0f32, 0, CP_PS_REFRESH);
+  rink := ifx rhov || ps[0].refreshing then hex(0xe4e4e7, 1) else hex(0x818181, 1);
+  cp_ps_refresh_icon(sh, rx + 5.0f32, y + 2.5f32, 12.0f32, rink, false);
+  _ := set_line(f, rx + 21.0f32, y + 1.0f32, rw - 24.0f32, t.desc_face, t.desc_line, rink, chk_lbl);
+  sheet_hit(sh, UIFRAME_HIT, rrow, 0, rx, y - 3.0f32, rw, 24.0f32);
+  y += 28.0f32;
+
+  // 4. Master-Detail Split Card
+  card_x := cx0; card_y := y; card_w := cw;
+  card_h := h - card_y - 20.0f32;
+  if card_h < 280.0f32 { card_h = 280.0f32; }
+  list_w: f32 = ifx card_w >= 680.0f32 then 252.0f32 else ifx card_w >= 500.0f32 then 210.0f32 else 175.0f32;
+  ps[0].card_x = card_x; ps[0].card_y = card_y; ps[0].card_w = card_w; ps[0].card_h = card_h;
+  ps[0].split_x = card_x + list_w;
+
+  // Outer card frame (#0c0c0e fill, 1px #222226 border, 12pt radius).
+  _ := sheet_box(sh, card_x, card_y, card_w, card_h, 12.0f32, 1.0f32, hex(0x0b0b0d, 1), hex(0x222226, 1));
+  // Vertical split divider.
+  sheet_fill(sh, card_x + list_w, card_y + 1.0f32, 1.0f32, card_h - 2.0f32, 0, hex(0x1d1d21, 1));
+
+  // ---- 4A. Left Provider List Pane ----
+  ps[0].list_view = card_h - 2.0f32;
+  lat := scroll_clamp(ps[0].list_scroll, ps[0].list_content, ps[0].list_view);
+  uiframe_clip(f, card_x + 1.0f32, card_y + 1.0f32, card_x + list_w, card_y + card_h - 1.0f32);
+  ly0 := card_y + 2.0f32 - lat;
+  ly := ly0;
+  ib: [32] u8; tb: [32] u8;
+  for i: 0..<ps[0].ninst {
+    inst := ps[0].insts[i];
+    in_n := el_put(ib[..], 0, "ps.inst."); in_n = el_put_i(ib[..], in_n, i);
+    rid := sheet_pool(sh, cast(string) ib[0..<in_n]);
+    tn := el_put(tb[..], 0, "ps.tog."); tn = el_put_i(tb[..], tn, i);
+    tid := sheet_pool(sh, cast(string) tb[0..<tn]);
+    sel := i == ps[0].selected;
+    hov := uiframe_hovered(f, rid);
+
+    name_s := sheet_pool(sh, cp_ps_str(inst.display_name[..], inst.display_name_n));
+    head_s := sheet_pool(sh, cp_ps_str(inst.headline[..], inst.headline_n));
+    sum_s := sheet_pool(sh, cp_ps_str(inst.summary[..], inst.summary_n));
+    ver_s := sheet_pool(sh, cp_ps_str(inst.version[..], inst.version_n));
+    has_sub := inst.enabled && sum_s.count > 0;
+    rh: f32 = ifx has_sub then 78.0f32 else 60.0f32;
+
+    if sel { sheet_fill(sh, card_x + 1.0f32, ly, list_w - 1.0f32, rh, 0, hex(0x161619, 1)); }
+    else if hov { sheet_fill(sh, card_x + 1.0f32, ly, list_w - 1.0f32, rh, 0, hex(0x111114, 1)); }
+
+    // Row click target (left of toggle switch so clicking switch only toggles).
+    row := uiframe_semantic(f, rid, EL_TAB, name_s, card_x + 1.0f32, ly, list_w - 50.0f32, rh, ifx sel then EL_S_CURRENT else 0, CP_PS_SELECT);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, card_x + 1.0f32, ly, list_w - 50.0f32, rh);
+
+    ix := card_x + 14.0f32; iy := ly + 13.0f32;
+    cp_ps_driver_icon(sh, false, inst.driver, ix, iy, 15.0f32, inst.enabled);
+    tx := ix + 24.0f32;
+    tw_max := list_w - 92.0f32;
+    name_ink := ifx inst.enabled || sel then hex(0xf5f5f5, 1) else hex(0x818181, 1);
+    nw := set_line(f, tx, iy - 1.0f32, tw_max, t.name_face, t.name_line, name_ink, name_s);
+    if ver_s.count > 0 && nw + 42.0f32 < tw_max {
+      _ := set_line(f, tx + nw + 6.0f32, iy + 1.0f32, tw_max - nw - 6.0f32, t.head_face, t.head_line, hex(0x52525b, 1), ver_s);
+    }
+
+    // Status line(s) under provider name.
+    sy := iy + 19.0f32;
+    if !inst.enabled {
+      _ := set_line(f, tx, sy, list_w - 86.0f32, t.desc_face, t.desc_line, hex(0x65656c, 1), "Disabled");
+    } else {
+      sheet_fill(sh, tx, sy + 5.0f32, 6.0f32, 6.0f32, 3.0f32, cp_ps_status_dot(inst.status));
+      hb_lbl: [96] u8; hbn := el_put(hb_lbl[..], 0, head_s);
+      if sum_s.count > 0 { hbn = el_put(hb_lbl[..], hbn, " ·"); }
+      _ := set_line(f, tx + 11.0f32, sy, list_w - 86.0f32, t.desc_face, t.desc_line, hex(0xa1a1aa, 1), sheet_pool(sh, cast(string) hb_lbl[0..<hbn]));
+      if sum_s.count > 0 {
+        _ := set_line(f, tx + 11.0f32, sy + 16.0f32, list_w - 86.0f32, t.desc_face, t.desc_line, hex(0x71717a, 1), sum_s);
+      }
+    }
+
+    // Right-aligned pill toggle switch.
+    cp_ps_switch(f, tid, name_s, card_x + list_w - 48.0f32, ly + (rh - 18.0f32) / 2, inst.enabled, CP_PS_TOGGLE);
+
+    // Bottom divider between instances.
+    sheet_fill(sh, card_x + 1.0f32, ly + rh - 1.0f32, list_w - 1.0f32, 1.0f32, 0, hex(0x18181b, 1));
+    ly += rh;
+  }
+
+  // Bottom "+ Add provider" row.
+  add_ry := ly + 4.0f32;
+  add_rh: f32 = 38.0f32;
+  abhov := uiframe_hovered(f, "ps.add.list");
+  if abhov { sheet_fill(sh, card_x + 6.0f32, add_ry, list_w - 12.0f32, add_rh, 6.0f32, hex(0x151518, 1)); }
+  abrow := uiframe_semantic(f, "ps.add.list", EL_BUTTON, "Add provider", card_x + 6.0f32, add_ry, list_w - 12.0f32, add_rh, 0, CP_PS_ADD_OPEN);
+  abink := ifx abhov then hex(0xf5f5f5, 1) else hex(0x818181, 1);
+  cp_ps_plus_icon(sh, false, card_x + 16.0f32, add_ry + 13.0f32, 12.0f32, abink);
+  _ := set_line(f, card_x + 36.0f32, add_ry + 11.0f32, list_w - 50.0f32, t.desc_face, t.desc_line, abink, "Add provider");
+  sheet_hit(sh, UIFRAME_HIT, abrow, 0, card_x + 6.0f32, add_ry, list_w - 12.0f32, add_rh);
+  ly = add_ry + add_rh + 12.0f32;
+  uiframe_unclip(f);
+  ps[0].list_content = ly - ly0;
+
+  // ---- 4B. Right Detail Pane ----
+  dx0 := card_x + list_w + 1.0f32;
+  dw := card_w - list_w - 2.0f32;
+  ps[0].detail_view = card_h - 2.0f32;
+  dat := scroll_clamp(ps[0].detail_scroll, ps[0].detail_content, ps[0].detail_view);
+  uiframe_clip(f, dx0, card_y + 1.0f32, dx0 + dw, card_y + card_h - 1.0f32);
+
+  if ps[0].selected >= 0 && ps[0].selected < ps[0].ninst {
+    inst := ps[0].insts[ps[0].selected];
+    is_agy := inst.driver == CP_PS_DRV_ANTIGRAVITY;
+    ix := dx0 + 22.0f32;
+    iw := dw - 44.0f32;
+    dy0 := card_y + 20.0f32 - dat;
+    dy := dy0;
+
+    // 1) Instance Header: [Icon] [Display Name] [version]        [Reset / Delete]
+    dname := sheet_pool(sh, cp_ps_str(d[0].display_name[..], d[0].display_name_n));
+    if dname.count == 0 { dname = sheet_pool(sh, cp_ps_str(inst.display_name[..], inst.display_name_n)); }
+    cp_ps_driver_icon(sh, false, inst.driver, ix, dy + 2.0f32, 16.0f32, true);
+    hw := set_line(f, ix + 24.0f32, dy, iw - 90.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), dname);
+    dver := sheet_pool(sh, cp_ps_str(inst.version[..], inst.version_n));
+    if dver.count > 0 {
+      _ := set_line(f, ix + 30.0f32 + hw, dy + 2.0f32, 100.0f32, t.head_face, t.head_line, hex(0x71717a, 1), dver);
+    }
+    if inst.is_default {
+      rst_x := ix + iw - 26.0f32;
+      rst_hov := uiframe_hovered(f, "ps.reset");
+      if rst_hov { sheet_fill(sh, rst_x, dy - 3.0f32, 26.0f32, 26.0f32, 6.0f32, hex(0x1a1a1e, 1)); }
+      rst_row := uiframe_semantic(f, "ps.reset", EL_BUTTON, "Reset to defaults", rst_x, dy - 3.0f32, 26.0f32, 26.0f32, 0, CP_PS_RESET);
+      cp_ps_refresh_icon(sh, rst_x + 7.0f32, dy + 4.0f32, 12.0f32, ifx rst_hov then hex(0xf5f5f5, 1) else hex(0x71717a, 1), true);
+      sheet_hit(sh, UIFRAME_HIT, rst_row, 0, rst_x, dy - 3.0f32, 26.0f32, 26.0f32);
+    } else {
+      del_w := cp_ps_btn_w(f, "Delete");
+      _ := cp_ps_btn(f, false, "ps.delete", ix + iw - del_w, dy - 4.0f32, 26.0f32, "Delete", false, true, false, CP_PS_DELETE);
+    }
+    dy += 34.0f32;
+
+    // 2) Status section
+    _ := set_line(f, ix, dy, iw, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Status");
+    dy += 22.0f32;
+    sheet_fill(sh, ix, dy + 5.0f32, 6.0f32, 6.0f32, 3.0f32, cp_ps_status_dot(inst.status));
+    st_buf: [280] u8; stn := 0;
+    stn = el_put(st_buf[..], stn, cp_ps_str(inst.headline[..], inst.headline_n));
+    if inst.summary_n > 0 {
+      stn = el_put(st_buf[..], stn, " · ");
+      stn = el_put(st_buf[..], stn, cp_ps_str(inst.summary[..], inst.summary_n));
+    }
+    st_txt := sheet_pool(sh, cast(string) st_buf[0..<stn]);
+    st_h := set_wrap(f, ix + 13.0f32, dy, iw - 13.0f32, t.desc_face, t.desc_line, hex(0xa1a1aa, 1), st_txt);
+    dy += st_h + 20.0f32;
+
+    // 3) Display name row: label left, accent button + inline input right
+    _ := set_line(f, ix, dy + 7.0f32, iw * 0.42f32, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Display name");
+    dn_w: f32 = ifx iw > 460.0f32 then 220.0f32 else iw * 0.48f32;
+    dn_x := ix + iw - dn_w;
+    acc_x := dn_x - 34.0f32;
+    ps[0].accent_x = acc_x; ps[0].accent_y = dy + 32.0f32;
+    acc_hov := uiframe_hovered(f, "ps.accent");
+    if acc_hov || ps[0].accent_menu_open { sheet_fill(sh, acc_x, dy + 2.0f32, 26.0f32, 26.0f32, 6.0f32, hex(0x1a1a1e, 1)); }
+    acc_row := uiframe_semantic(f, "ps.accent", EL_BUTTON, "Accent color", acc_x, dy + 2.0f32, 26.0f32, 26.0f32, 0, CP_PS_ACCENT_OPEN);
+    if d[0].accent > 0 {
+      sheet_fill(sh, acc_x + 7.0f32, dy + 9.0f32, 12.0f32, 12.0f32, 6.0f32, cp_ps_accent_rgba(d[0].accent));
+    } else {
+      cp_ps_plus_icon(sh, false, acc_x + 7.0f32, dy + 9.0f32, 12.0f32, ifx acc_hov then hex(0xf5f5f5, 1) else hex(0x818181, 1));
+    }
+    sheet_hit(sh, UIFRAME_HIT, acc_row, 0, acc_x, dy + 2.0f32, 26.0f32, 26.0f32);
+    cp_ps_input(s, f, false, CP_PS_ED_DISPLAY_NAME, dn_x, dy, dn_w, 30.0f32, dname, CP_PS_DRV_NAMES[inst.driver], false, false);
+    dy += 48.0f32;
+
+    // 4) Setup section
+    _ := set_line(f, ix, dy, iw, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Setup");
+    dy += 28.0f32;
+
+    // 4a) Environment row
+    _ := set_line(f, ix, dy, iw * 0.55f32, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Environment");
+    _ := set_line(f, ix, dy + 20.0f32, iw * 0.55f32, t.desc_face, t.desc_line, hex(0x71717a, 1), "Device that runs this provider.");
+    h_w := set_width(f, t.desc_face, host_lbl);
+    _ := set_line(f, ix + iw - h_w, dy + 8.0f32, h_w + 4.0f32, t.desc_face, t.desc_line, hex(0xa1a1aa, 1), host_lbl);
+    if !inst.enabled {
+      eb: [80] u8; ebn := el_put(eb[..], 0, "Enable "); ebn = el_put(eb[..], ebn, dname);
+      elbl := sheet_pool(sh, cast(string) eb[0..<ebn]);
+      ew := cp_ps_btn_w(f, elbl);
+      _ := cp_ps_btn(f, false, "ps.enable", ix + iw - ew, dy + 30.0f32, 28.0f32, elbl, false, false, false, CP_PS_ENABLE_NOW);
+      dy += 68.0f32;
+    } else {
+      dy += 48.0f32;
+    }
+    sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+    dy += 16.0f32;
+
+    // 4b) Runtime row (Antigravity managed runtime install/update/reinstall/remove)
+    if is_agy {
+      _ := set_line(f, ix, dy, iw * 0.50f32, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Runtime");
+      _ := set_line(f, ix, dy + 20.0f32, iw * 0.50f32, t.desc_face, t.desc_line, hex(0x71717a, 1), "Install and manage Antigravity.");
+      rt_st := sheet_pool(sh, cp_ps_str(d[0].rt_status[..], d[0].rt_status_n));
+      if rt_st.count == 0 { rt_st = "Not installed."; }
+      rt_sw := set_width(f, t.desc_face, rt_st);
+      _ := set_line(f, ix + iw - rt_sw, dy - 2.0f32, rt_sw + 4.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), rt_st);
+
+      rt_btn := sheet_pool(sh, cp_ps_str(d[0].rt_btn[..], d[0].rt_btn_n));
+      if rt_btn.count == 0 { rt_btn = "Install managed runtime"; }
+      rbw := cp_ps_btn_w(f, rt_btn);
+      rem_extra: f32 = ifx d[0].rt_can_remove && d[0].rt_state != CP_PS_RT_INSTALLING then 34.0f32 else 0.0f32;
+      _ := cp_ps_btn(f, false, "ps.rt.act", ix + iw - rbw - rem_extra, dy + 20.0f32, 28.0f32, rt_btn, false, false, false, CP_PS_RT_ACTION);
+      if rem_extra > 0 {
+        rx_rem := ix + iw - 28.0f32;
+        rem_hov := uiframe_hovered(f, "ps.rt.rem");
+        _ := sheet_box(sh, rx_rem, dy + 20.0f32, 28.0f32, 28.0f32, 6.0f32, 1.0f32, ifx rem_hov then hex(0x2a1417, 1) else hex(0x111114, 1), ifx rem_hov then hex(0x5c2229, 1) else hex(0x27272a, 1));
+        rem_row := uiframe_semantic(f, "ps.rt.rem", EL_BUTTON, "Remove downloaded runtime", rx_rem, dy + 20.0f32, 28.0f32, 28.0f32, 0, CP_PS_RT_REMOVE);
+        cp_ps_trash_icon(sh, rx_rem + 8.0f32, dy + 27.5f32, ifx rem_hov then hex(0xfb7185, 1) else hex(0x818181, 1));
+        sheet_hit(sh, UIFRAME_HIT, rem_row, 0, rx_rem, dy + 20.0f32, 28.0f32, 28.0f32);
+      }
+      dy += 58.0f32;
+      if d[0].rt_state == CP_PS_RT_INSTALLING {
+        sheet_fill(sh, ix, dy, iw, 5.0f32, 2.5f32, hex(0x1c1c22, 1));
+        pct := ifx d[0].rt_pct >= 0 && d[0].rt_pct <= 100 then cast(f32) d[0].rt_pct / 100.0f32 else 0.35f32;
+        sheet_fill(sh, ix, dy, iw * pct, 5.0f32, 2.5f32, hex(0x346bf1, 1));
+        dy += 14.0f32;
+      }
+      if d[0].rt_err_n > 0 {
+        rerr := sheet_pool(sh, cp_ps_str(d[0].rt_err[..], d[0].rt_err_n));
+        eh := set_wrap(f, ix, dy, iw, t.desc_face, t.desc_line, hex(0xfb414a, 1), rerr);
+        dy += eh + 10.0f32;
+      }
+      sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+      dy += 16.0f32;
+    }
+
+    // 4c) Account row (Sign in / Connect / Retry connection / Change account / Sign out / inline OAuth panel)
+    _ := set_line(f, ix, dy, iw * 0.56f32, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Account");
+    asub := sheet_pool(sh, cp_ps_str(d[0].auth_sub[..], d[0].auth_sub_n));
+    if asub.count == 0 { asub = "Connect to load models."; }
+    adet := sheet_pool(sh, cp_ps_str(d[0].auth_detail[..], d[0].auth_detail_n));
+    abtn := sheet_pool(sh, cp_ps_str(d[0].auth_btn[..], d[0].auth_btn_n));
+    if abtn.count == 0 { abtn = "Sign in"; }
+
+    so_w: f32 = ifx d[0].auth_can_signout then cp_ps_btn_w(f, "Sign out") + 8.0f32 else 0.0f32;
+    ab_w := cp_ps_btn_w(f, abtn);
+    left_w := iw - ab_w - so_w - 16.0f32;
+    if left_w < 160.0f32 { left_w = iw * 0.52f32; }
+    sub_h := set_wrap(f, ix, dy + 20.0f32, left_w, t.desc_face, t.desc_line, hex(0x71717a, 1), asub);
+    det_h: f32 = 0.0f32;
+    if adet.count > 0 {
+      det_ink := ifx d[0].auth_state == CP_PS_AS_FAILED then hex(0xa1a1aa, 1) else ifx d[0].auth_state == CP_PS_AS_AUTHENTICATED then hex(0x34d399, 1) else hex(0xa1a1aa, 1);
+      det_h = 4.0f32 + set_wrap(f, ix, dy + 20.0f32 + sub_h + 4.0f32, left_w, t.desc_face, t.desc_line, det_ink, adet);
+    }
+    _ := cp_ps_btn(f, false, "ps.auth.act", ix + iw - ab_w - so_w, dy + 12.0f32, 28.0f32, abtn, false, false, !inst.enabled, CP_PS_AUTH_PRIMARY);
+    if d[0].auth_can_signout {
+      _ := cp_ps_btn(f, false, "ps.auth.out", ix + iw - (so_w - 8.0f32), dy + 12.0f32, 28.0f32, "Sign out", false, true, false, CP_PS_AUTH_SIGNOUT);
+    }
+    row_h := 20.0f32 + sub_h + det_h;
+    if row_h < 48.0f32 { row_h = 48.0f32; }
+    dy += row_h + 14.0f32;
+
+    // Inline OAuth waiting card (Open browser, Copy link, code/callback URL paste + Submit)
+    if d[0].auth_state == CP_PS_AS_WAITING {
+      oy := dy;
+      oh: f32 = 114.0f32;
+      _ := sheet_box(sh, ix, oy, iw, oh, 8.0f32, 1.0f32, hex(0x111115, 1), hex(0x27272e, 1));
+      _ := set_line(f, ix + 12.0f32, oy + 10.0f32, iw - 24.0f32, t.desc_face, t.desc_line, hex(0xd4d4d8, 1), "Complete sign-in in your browser, then paste the authorization code or callback URL.");
+      ob_w := cp_ps_btn(f, false, "ps.auth.open", ix + 12.0f32, oy + 34.0f32, 26.0f32, "Open browser", false, false, false, CP_PS_AUTH_OPEN_URL);
+      _ := cp_ps_btn(f, false, "ps.auth.copy", ix + 12.0f32 + ob_w + 8.0f32, oy + 34.0f32, 26.0f32, ifx d[0].auth_copied then "Copied" else "Copy link", false, false, false, CP_PS_AUTH_COPY_URL);
+      sub_bw := cp_ps_btn_w(f, "Submit");
+      code_s := sheet_pool(sh, cp_ps_str(d[0].auth_code[..], d[0].auth_code_n));
+      cp_ps_input(s, f, false, CP_PS_ED_OAUTH_CODE, ix + 12.0f32, oy + 70.0f32, iw - sub_bw - 32.0f32, 30.0f32, code_s, "Paste code or https://antigravity.google/oauth-callback?...", false, false);
+      _ := cp_ps_btn(f, false, "ps.auth.sub", ix + iw - sub_bw - 12.0f32, oy + 70.0f32, 30.0f32, "Submit", true, false, false, CP_PS_AUTH_SUBMIT);
+      dy += oh + 14.0f32;
+    }
+
+    // 5) Runtime section (exact T3 fields for Antigravity, plus tailored fields for other drivers)
+    dy += 10.0f32;
+    _ := set_line(f, ix, dy, iw, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Runtime");
+    dy += 28.0f32;
+    ctl_w: f32 = ifx iw > 500.0f32 then 236.0f32 else iw * 0.48f32;
+    ctl_x := ix + iw - ctl_w;
+    lbl_w := ctl_x - ix - 16.0f32;
+
+    if is_agy {
+      // 5a) Sign-in method
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Sign-in method");
+      mh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Google accounts use your subscription; API keys and Agent Platform bill usage.");
+      am := ifx d[0].auth_method >= 0 && d[0].auth_method < CP_PS_AUTH_COUNT then d[0].auth_method else 0;
+      ps[0].auth_menu_x = ctl_x; ps[0].auth_menu_y = dy + 38.0f32; ps[0].auth_menu_w = ctl_w;
+      cp_ps_select_box(f, false, "ps.am.btn", ctl_x, dy + 4.0f32, ctl_w, 32.0f32, CP_PS_AUTH_LABELS[am], ps[0].auth_menu_open, CP_PS_AUTH_METHOD_MENU);
+      dy += (ifx 19.0f32 + mh > 42.0f32 then 19.0f32 + mh else 42.0f32) + 14.0f32;
+      sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+      dy += 14.0f32;
+
+      // 5b) API key
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "API key");
+      kh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Gemini or Vertex AI express key. Stored separately on the host.");
+      ak_s := sheet_pool(sh, cp_ps_str(d[0].api_key[..], d[0].api_key_n));
+      has_clr := d[0].api_key_set || d[0].api_key_n > 0;
+      ak_w := ifx has_clr then ctl_w - 30.0f32 else ctl_w;
+      cp_ps_input(s, f, false, CP_PS_ED_API_KEY, ctl_x, dy + 4.0f32, ak_w, 32.0f32, ak_s, "Not set", true, d[0].api_key_set);
+      if has_clr {
+        clx := ctl_x + ak_w + 4.0f32;
+        clh := uiframe_hovered(f, "ps.ak.clr");
+        _ := sheet_box(sh, clx, dy + 6.0f32, 26.0f32, 28.0f32, 6.0f32, 1.0f32, ifx clh then hex(0x1e1e24, 1) else hex(0x111114, 1), hex(0x27272a, 1));
+        clrow := uiframe_semantic(f, "ps.ak.clr", EL_BUTTON, "Clear API key", clx, dy + 6.0f32, 26.0f32, 28.0f32, 0, CP_PS_API_KEY_CLEAR);
+        sheet_icon(sh, ICON_CLOSE, clx + 7.0f32, dy + 14.0f32, 12.0f32, ifx clh then hex(0xf5f5f5, 1) else hex(0x818181, 1));
+        sheet_hit(sh, UIFRAME_HIT, clrow, 0, clx, dy + 6.0f32, 26.0f32, 28.0f32);
+      }
+      dy += (ifx 19.0f32 + kh > 42.0f32 then 19.0f32 + kh else 42.0f32) + 14.0f32;
+      sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+      dy += 14.0f32;
+
+      // 5c) GCP project
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "GCP project");
+      ph := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Required for Gemini Enterprise. Agent Platform uses it when no API key is set.");
+      gp_s := sheet_pool(sh, cp_ps_str(d[0].gcp_project[..], d[0].gcp_project_n));
+      cp_ps_input(s, f, false, CP_PS_ED_GCP_PROJECT, ctl_x, dy + 4.0f32, ctl_w, 32.0f32, gp_s, "my-project-id", false, false);
+      dy += (ifx 19.0f32 + ph > 42.0f32 then 19.0f32 + ph else 42.0f32) + 14.0f32;
+      sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+      dy += 14.0f32;
+
+      // 5d) GCP location
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "GCP location");
+      lh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Region for Gemini Enterprise or Agent Platform.");
+      gl_s := sheet_pool(sh, cp_ps_str(d[0].gcp_location[..], d[0].gcp_location_n));
+      cp_ps_input(s, f, false, CP_PS_ED_GCP_LOCATION, ctl_x, dy + 4.0f32, ctl_w, 32.0f32, gl_s, "us-central1", false, false);
+      dy += (ifx 19.0f32 + lh > 42.0f32 then 19.0f32 + lh else 42.0f32) + 14.0f32;
+      sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+      dy += 14.0f32;
+
+      // 5e) Binary path
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Binary path");
+      bh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Custom ACP executable. Leave empty to select automatically.");
+      bp_s := sheet_pool(sh, cp_ps_str(d[0].binary_path[..], d[0].binary_path_n));
+      cp_ps_input(s, f, false, CP_PS_ED_BINARY_PATH, ctl_x, dy + 4.0f32, ctl_w, 32.0f32, bp_s, "Automatic", false, false);
+      dy += (ifx 19.0f32 + bh > 42.0f32 then 19.0f32 + bh else 42.0f32) + 18.0f32;
+    } else {
+      // Binary path + driver-specific extra field (Codex home / Claude config dir / ACP args)
+      _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Binary path");
+      bh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Custom CLI executable. Leave empty to use PATH.");
+      bp_s := sheet_pool(sh, cp_ps_str(d[0].binary_path[..], d[0].binary_path_n));
+      cp_ps_input(s, f, false, CP_PS_ED_BINARY_PATH, ctl_x, dy + 4.0f32, ctl_w, 32.0f32, bp_s, "Automatic", false, false);
+      dy += (ifx 19.0f32 + bh > 42.0f32 then 19.0f32 + bh else 42.0f32) + 14.0f32;
+      if inst.driver != CP_PS_DRV_CURSOR {
+        sheet_fill(sh, ix, dy, iw, 1.0f32, 0, hex(0x1a1a1e, 1));
+        dy += 14.0f32;
+        elbl := ifx inst.driver == CP_PS_DRV_CODEX then "Codex home path" else ifx inst.driver == CP_PS_DRV_CLAUDE then "Claude config directory" else "Arguments";
+        edesc := ifx inst.driver == CP_PS_DRV_CODEX then "Override CODEX_HOME for this instance." else ifx inst.driver == CP_PS_DRV_CLAUDE then "Override CLAUDE_CONFIG_DIR for this instance." else "Space-separated arguments passed to the ACP binary.";
+        ephc := ifx inst.driver == CP_PS_DRV_ACP then "--acp" else "Default";
+        _ := set_line(f, ix, dy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), elbl);
+        eh := set_wrap(f, ix, dy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), edesc);
+        ex_s := sheet_pool(sh, cp_ps_str(d[0].extra_path[..], d[0].extra_path_n));
+        cp_ps_input(s, f, false, CP_PS_ED_EXTRA_PATH, ctl_x, dy + 4.0f32, ctl_w, 32.0f32, ex_s, ephc, false, false);
+        dy += (ifx 19.0f32 + eh > 42.0f32 then 19.0f32 + eh else 42.0f32) + 18.0f32;
+      }
+    }
+
+    // 6) Environment section
+    dy += 8.0f32;
+    _ := set_line(f, ix, dy, iw, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Environment");
+    dy += 28.0f32;
+    _ := set_line(f, ix, dy, iw - 140.0f32, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Variables");
+    _ := set_line(f, ix, dy + 20.0f32, iw - 140.0f32, t.desc_face, t.desc_line, hex(0x71717a, 1), "API keys, base URLs, and other per-instance CLI settings.");
+    av_w := cp_ps_btn_w(f, "+ Add variable");
+    _ := cp_ps_btn(f, false, "ps.env.add", ix + iw - av_w, dy + 6.0f32, 28.0f32, "+ Add variable", false, false, d[0].nenv >= CP_PS_MAX_ENV, CP_PS_ENV_ADD);
+    dy += 48.0f32;
+
+    if d[0].nenv > 0 {
+      for ei: 0..<d[0].nenv {
+        ev := d[0].envs[ei];
+        ek_s := sheet_pool(sh, cp_ps_str(ev.key[..], ev.key_n));
+        ev_s := sheet_pool(sh, cp_ps_str(ev.val[..], ev.val_n));
+        kw: f32 = (iw - 116.0f32) * 0.40f32;
+        vw: f32 = (iw - 116.0f32) * 0.60f32;
+        cp_ps_input(s, f, false, CP_PS_ED_ENV_KEY_BASE + ei, ix, dy, kw, 30.0f32, ek_s, "VAR_NAME", false, false);
+        cp_ps_input(s, f, false, CP_PS_ED_ENV_VAL_BASE + ei, ix + kw + 8.0f32, dy, vw, 30.0f32, ev_s, "Value", ev.secret, ev.has_secret);
+        sb: [24] u8; sn := el_put(sb[..], 0, "ps.envs."); sn = el_put_i(sb[..], sn, ei);
+        sid := sheet_pool(sh, cast(string) sb[0..<sn]);
+        _ := cp_ps_btn(f, false, sid, ix + kw + vw + 16.0f32, dy, 30.0f32, ifx ev.secret then "Secret" else "Plain", ev.secret, false, false, CP_PS_ENV_SECRET);
+        xb: [24] u8; xn := el_put(xb[..], 0, "ps.envx."); xn = el_put_i(xb[..], xn, ei);
+        xid := sheet_pool(sh, cast(string) xb[0..<xn]);
+        rx_x := ix + iw - 28.0f32;
+        xhov := uiframe_hovered(f, xid);
+        _ := sheet_box(sh, rx_x, dy + 1.0f32, 28.0f32, 28.0f32, 6.0f32, 1.0f32, ifx xhov then hex(0x2a1417, 1) else hex(0x111114, 1), hex(0x27272a, 1));
+        xrow := uiframe_semantic(f, xid, EL_BUTTON, "Remove variable", rx_x, dy + 1.0f32, 28.0f32, 28.0f32, 0, CP_PS_ENV_REMOVE);
+        sheet_icon(sh, ICON_CLOSE, rx_x + 8.0f32, dy + 9.0f32, 12.0f32, ifx xhov then hex(0xfb7185, 1) else hex(0x818181, 1));
+        sheet_hit(sh, UIFRAME_HIT, xrow, 0, rx_x, dy + 1.0f32, 28.0f32, 28.0f32);
+        dy += 38.0f32;
+      }
+      dy += 6.0f32;
+    }
+
+    // 7) Models section
+    dy += 12.0f32;
+    _ := set_line(f, ix, dy, iw - 120.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), "Models");
+    any_on := false; n_fav := 0; n_hid := 0;
+    for mi: 0..<d[0].nmodels {
+      if d[0].models[mi].enabled { any_on = true; } else { n_hid += 1; }
+      if d[0].models[mi].favorite { n_fav += 1; }
+    }
+    if d[0].nmodels > 0 {
+      blk_lbl := ifx any_on then "Disable all" else "Enable all";
+      blkw := cp_ps_btn_w(f, blk_lbl);
+      _ := cp_ps_btn(f, false, "ps.m.bulk", ix + iw - blkw, dy - 4.0f32, 26.0f32, blk_lbl, false, false, false, CP_PS_MODEL_BULK);
+    }
+    dy += 24.0f32;
+    mh_sub := set_wrap(f, ix, dy, iw, t.desc_face, t.desc_line, hex(0x71717a, 1), "Model preferences and custom models are saved on the selected environment and shared across projects.");
+    dy += mh_sub + 10.0f32;
+
+    if !is_agy {
+      cm_bw := cp_ps_btn_w(f, "+ Add model");
+      cm_s := sheet_pool(sh, cp_ps_str(d[0].custom_model[..], d[0].custom_model_n));
+      cp_ps_input(s, f, false, CP_PS_ED_CUSTOM_MODEL, ix, dy, iw - cm_bw - 8.0f32, 30.0f32, cm_s, "Add custom model slug...", false, false);
+      _ := cp_ps_btn(f, false, "ps.m.add", ix + iw - cm_bw, dy, 30.0f32, "+ Add model", false, false, d[0].nmodels >= CP_PS_MAX_MODELS, CP_PS_MODEL_ADD_CUSTOM);
+      dy += 40.0f32;
+    }
+
+    if d[0].nmodels == 0 {
+      _ := set_line(f, ix, dy, iw, t.desc_face, t.desc_line, hex(0x65656c, 1), "No models loaded yet. Connect or refresh to discover models.");
+      dy += 24.0f32;
+    } else {
+      mbuf: [96] u8; mn := el_put_i(mbuf[..], 0, d[0].nmodels);
+      mn = el_put(mbuf[..], mn, ifx d[0].nmodels == 1 then " model" else " models");
+      if n_fav > 0 { mn = el_put(mbuf[..], mn, " · "); mn = el_put_i(mbuf[..], mn, n_fav); mn = el_put(mbuf[..], mn, " favorites"); }
+      if n_hid > 0 { mn = el_put(mbuf[..], mn, " · "); mn = el_put_i(mbuf[..], mn, n_hid); mn = el_put(mbuf[..], mn, " hidden"); }
+      _ := set_line(f, ix, dy, iw, t.head_face, t.head_line, hex(0x71717a, 1), sheet_pool(sh, cast(string) mbuf[0..<mn]));
+      dy += 22.0f32;
+
+      // Render grouped models: pass 0 = Favorites (enabled & favorite), pass 1 = All (enabled & !favorite), pass 2 = Hidden (!enabled)
+      gnames := [3] string.["Favorites", "All", "Hidden from picker"];
+      for grp: 0..<3 {
+        cnt := 0;
+        for mi: 0..<d[0].nmodels {
+          m := d[0].models[mi];
+          in_g := (grp == 0 && m.enabled && m.favorite) || (grp == 1 && m.enabled && !m.favorite) || (grp == 2 && !m.enabled);
+          if in_g { cnt += 1; }
+        }
+        if cnt == 0 { continue; }
+        _ := set_line(f, ix, dy, iw, t.head_face, t.head_line, hex(0x71717a, 1), gnames[grp]);
+        dy += 18.0f32;
+        for mi: 0..<d[0].nmodels {
+          m := d[0].models[mi];
+          in_g := (grp == 0 && m.enabled && m.favorite) || (grp == 1 && m.enabled && !m.favorite) || (grp == 2 && !m.enabled);
+          if !in_g { continue; }
+          mrh: f32 = 44.0f32;
+          _ := sheet_box(sh, ix, dy, iw, mrh, 8.0f32, 1.0f32, hex(0x0f0f12, 1), hex(0x1c1c21, 1));
+          // Star favorite button
+          msb: [24] u8; msn := el_put(msb[..], 0, "ps.ms."); msn = el_put_i(msb[..], msn, mi);
+          msid := sheet_pool(sh, cast(string) msb[0..<msn]);
+          mshov := uiframe_hovered(f, msid);
+          msrow := uiframe_semantic(f, msid, EL_BUTTON, "Toggle favorite", ix + 6.0f32, dy + 8.0f32, 26.0f32, 28.0f32, 0, CP_PS_MODEL_STAR);
+          star_col := ifx m.favorite then hex(0xf59e0b, 1) else ifx mshov then hex(0xa1a1aa, 1) else hex(0x52525b, 1);
+          // Crisp star/diamond badge
+          sheet_fill(sh, ix + 14.0f32, dy + 17.0f32, 9.0f32, 9.0f32, ifx m.favorite then 4.5f32 else 2.0f32, star_col);
+          sheet_hit(sh, UIFRAME_HIT, msrow, 0, ix + 6.0f32, dy + 8.0f32, 26.0f32, 28.0f32);
+
+          mname := sheet_pool(sh, cp_ps_str(m.name[..], m.name_n));
+          mslug := sheet_pool(sh, cp_ps_str(m.slug[..], m.slug_n));
+          nw2 := set_line(f, ix + 34.0f32, dy + 6.0f32, iw - 150.0f32, t.desc_face, t.desc_line, ifx m.enabled then hex(0xf4f4f5, 1) else hex(0x71717a, 1), mname);
+          if m.thinking {
+            txp := ix + 40.0f32 + nw2;
+            if txp + 58.0f32 < ix + iw - 100.0f32 {
+              sheet_fill(sh, txp, dy + 6.0f32, 54.0f32, 16.0f32, 4.0f32, hex(0x1a1c28, 1));
+              _ := set_line(f, txp + 6.0f32, dy + 7.0f32, 46.0f32, t.head_face, t.head_line, hex(0x93c5fd, 1), "Thinking");
+            }
+          }
+          _ := set_line(f, ix + 34.0f32, dy + 23.0f32, iw - 150.0f32, k.mono_tiny.face, k.mono_tiny.line, hex(0x65656c, 1), mslug);
+
+          // Reorder up/down buttons
+          mub: [24] u8; mun := el_put(mub[..], 0, "ps.mu."); mun = el_put_i(mub[..], mun, mi);
+          muid := sheet_pool(sh, cast(string) mub[0..<mun]);
+          ux := ix + iw - 92.0f32;
+          uhov := mi > 0 && uiframe_hovered(f, muid);
+          if uhov { sheet_fill(sh, ux, dy + 10.0f32, 20.0f32, 24.0f32, 4.0f32, hex(0x1c1c21, 1)); }
+          urow := uiframe_semantic(f, muid, EL_BUTTON, "Move up", ux, dy + 10.0f32, 20.0f32, 24.0f32, ifx mi == 0 then EL_S_DISABLED else 0, ifx mi == 0 then 0 else CP_PS_MODEL_UP);
+          _ := set_line(f, ux + 6.0f32, dy + 14.0f32, 12.0f32, t.desc_face, t.desc_line, ifx mi == 0 then hex(0x3f3f46, 1) else hex(0xa1a1aa, 1), "^");
+          if mi > 0 { sheet_hit(sh, UIFRAME_HIT, urow, 0, ux, dy + 10.0f32, 20.0f32, 24.0f32); }
+
+          mdb: [24] u8; mdn := el_put(mdb[..], 0, "ps.md."); mdn = el_put_i(mdb[..], mdn, mi);
+          mdid := sheet_pool(sh, cast(string) mdb[0..<mdn]);
+          dx_dn := ix + iw - 70.0f32;
+          dhov := mi + 1 < d[0].nmodels && uiframe_hovered(f, mdid);
+          if dhov { sheet_fill(sh, dx_dn, dy + 10.0f32, 20.0f32, 24.0f32, 4.0f32, hex(0x1c1c21, 1)); }
+          drow := uiframe_semantic(f, mdid, EL_BUTTON, "Move down", dx_dn, dy + 10.0f32, 20.0f32, 24.0f32, ifx mi + 1 >= d[0].nmodels then EL_S_DISABLED else 0, ifx mi + 1 >= d[0].nmodels then 0 else CP_PS_MODEL_DOWN);
+          _ := set_line(f, dx_dn + 6.0f32, dy + 14.0f32, 12.0f32, t.desc_face, t.desc_line, ifx mi + 1 >= d[0].nmodels then hex(0x3f3f46, 1) else hex(0xa1a1aa, 1), "v");
+          if mi + 1 < d[0].nmodels { sheet_hit(sh, UIFRAME_HIT, drow, 0, dx_dn, dy + 10.0f32, 20.0f32, 24.0f32); }
+
+          // Blue pill toggle switch for model visibility
+          mtb: [24] u8; mtn := el_put(mtb[..], 0, "ps.mt."); mtn = el_put_i(mtb[..], mtn, mi);
+          mtid := sheet_pool(sh, cast(string) mtb[0..<mtn]);
+          cp_ps_switch(f, mtid, mname, ix + iw - 44.0f32, dy + 13.0f32, m.enabled, CP_PS_MODEL_TOGGLE);
+          dy += mrh + 6.0f32;
+        }
+        dy += 8.0f32;
+      }
+    }
+
+    dy += 24.0f32;
+    ps[0].detail_content = dy - dy0 + 20.0f32;
+
+    // Subtle right-edge scrollbar indicator for detail pane (matches T3 screenshot).
+    if ps[0].detail_content > ps[0].detail_view && ps[0].detail_view > 40.0f32 {
+      track_h := ps[0].detail_view - 12.0f32;
+      thumb_h := track_h * (ps[0].detail_view / ps[0].detail_content);
+      if thumb_h < 36.0f32 { thumb_h = 36.0f32; }
+      if thumb_h > track_h { thumb_h = track_h; }
+      max_s := ps[0].detail_content - ps[0].detail_view;
+      frac := ifx max_s > 0 then dat / max_s else 0.0f32;
+      sheet_fill(sh, dx0 + dw - 6.0f32, card_y + 6.0f32 + frac * (track_h - thumb_h), 3.0f32, thumb_h, 1.5f32, hex(0x3f3f46, 0.75f32));
+    }
+  }
+  uiframe_unclip(f);
+}
+
+// ---- Floating popovers & Add provider 3-step modal overlay (drawn in `over` at end of cp_settings) ----
+
+cp_ps_paint_auth_menu :: (f: [] UiFrame, x: f32, y: f32, w: f32, chosen: int, id_prefix: string, action: int) {
+  t := f[0].skin.set; sh := f[0].sheet;
+  mh := cast(f32) CP_PS_AUTH_COUNT * 32.0f32 + 8.0f32;
+  app_ov_box(sh, x, y, w, mh, 8.0f32, 1.0f32, hex(0x121216, 1), hex(0x2a2a32, 1));
+  mb: [24] u8;
+  for i: 0..<CP_PS_AUTH_COUNT {
+    mn := el_put(mb[..], 0, id_prefix); mn = el_put_i(mb[..], mn, i);
+    mid := sheet_pool(sh, cast(string) mb[0..<mn]);
+    ry := y + 4.0f32 + cast(f32) i * 32.0f32;
+    hov := uiframe_hovered(f, mid);
+    if hov || i == chosen {
+      app_ov_box(sh, x + 4.0f32, ry, w - 8.0f32, 30.0f32, 6.0f32, 0, ifx hov then hex(0x1f1f26, 1) else hex(0x18181f, 1), Rgba.{});
+    }
+    row := uiframe_semantic(f, mid, EL_BUTTON, CP_PS_AUTH_LABELS[i], x + 4.0f32, ry, w - 8.0f32, 30.0f32, 0, action);
+    _ := set_line(f, x + 12.0f32, ry + 7.0f32, w - 36.0f32, t.desc_face, t.desc_line, ifx i == chosen then hex(0xffffff, 1) else hex(0xd4d4d8, 1), CP_PS_AUTH_LABELS[i]);
+    if i == chosen {
+      app_ov_icon(sh, ICON_CHECK, x + w - 24.0f32, ry + 9.0f32, 12.0f32, hex(0x346bf1, 1));
+    }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, x + 4.0f32, ry, w - 8.0f32, 30.0f32);
+  }
+}
+
+cp_ps_overlay :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
+  if !s[0].set_open || s[0].set_page != CP_PG_PROVIDERS { return; }
+  t := f[0].skin.set; sh := f[0].sheet;
+  ps := s[0].ps[..]; d := ps[0].detail[..]; w := ps[0].wiz[..];
+
+  // 1. Detail Accent color picker strip
+  if ps[0].accent_menu_open && !w[0].open {
+    ax := ps[0].accent_x - 60.0f32; ay := ps[0].accent_y;
+    aw: f32 = cast(f32) CP_PS_ACCENTS * 24.0f32 + 16.0f32;
+    if ax + aw > window_w - 16.0f32 { ax = window_w - aw - 16.0f32; }
+    app_ov_box(sh, ax, ay, aw, 36.0f32, 8.0f32, 1.0f32, hex(0x141418, 1), hex(0x2a2a32, 1));
+    ab: [20] u8;
+    for i: 0..<CP_PS_ACCENTS {
+      an := el_put(ab[..], 0, "ps.acc."); an = el_put_i(ab[..], an, i);
+      aid := sheet_pool(sh, cast(string) ab[0..<an]);
+      sx := ax + 8.0f32 + cast(f32) i * 24.0f32;
+      sy := ay + 9.0f32;
+      if i == d[0].accent { app_ov_box(sh, sx - 2.0f32, sy - 2.0f32, 22.0f32, 22.0f32, 11.0f32, 1.5f32, Rgba.{}, hex(0xf5f5f5, 1)); }
+      col := ifx i == 0 then hex(0x27272a, 1) else cp_ps_accent_rgba(i);
+      app_ov_box(sh, sx + 1.0f32, sy + 1.0f32, 16.0f32, 16.0f32, 8.0f32, 1.0f32, col, hex(0x3f3f46, 1));
+      row := uiframe_semantic(f, aid, EL_BUTTON, "Accent swatch", sx - 2.0f32, sy - 2.0f32, 22.0f32, 22.0f32, 0, CP_PS_ACCENT_PICK);
+      sheet_hit(sh, UIFRAME_HIT, row, 0, sx - 2.0f32, sy - 2.0f32, 22.0f32, 22.0f32);
+    }
+  }
+
+  // 2. Detail Sign-in method select popover
+  if ps[0].auth_menu_open && !w[0].open {
+    my := ps[0].auth_menu_y;
+    mh := cast(f32) CP_PS_AUTH_COUNT * 32.0f32 + 8.0f32;
+    if my + mh > h - 12.0f32 { my = ps[0].auth_menu_y - 38.0f32 - mh; }
+    cp_ps_paint_auth_menu(f, ps[0].auth_menu_x, my, ps[0].auth_menu_w, d[0].auth_method, "ps.am.", CP_PS_AUTH_METHOD_PICK);
+  }
+
+  // 3. Add provider 3-step modal wizard (exact match to Screenshot 1)
+  if !w[0].open { return; }
+
+  // Full-window dark scrim
+  app_ov_box(sh, 0, 0, window_w, h, 0, 0, rgba(0, 0, 0, 0.74f32), Rgba.{});
+  dim_row := uiframe_semantic(f, "ps.wiz.dim", EL_REGION, "Dismiss modal", 0, 0, window_w, h, 0, CP_PS_WIZ_DIM);
+  sheet_hit(sh, UIFRAME_HIT, dim_row, 0, 0, 0, window_w, h);
+
+  mw: f32 = ifx window_w - 48.0f32 < 560.0f32 then window_w - 48.0f32 else 560.0f32;
+  mh: f32 = ifx w[0].step == 2 then (ifx w[0].driver == CP_PS_DRV_ANTIGRAVITY then 474.0f32 else 324.0f32)
+       else ifx w[0].step == 1 then 366.0f32 else 388.0f32;
+  if w[0].err_n > 0 { mh += 28.0f32; }
+  mx := (window_w - mw) / 2;
+  my := (h - mh) / 2;
+  if my < 24.0f32 { my = 24.0f32; }
+
+  // Modal drop shadow & panel surface
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, 12.0f32, f[0].skin.shadows.dialog));
+  app_ov_box(sh, mx, my, mw, mh, 12.0f32, 1.0f32, hex(0x0b0b0d, 1), hex(0x27272b, 1));
+  panel_row := uiframe_semantic(f, "ps.wiz.card", EL_REGION, "Add provider", mx, my, mw, mh, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, panel_row, 0, mx, my, mw, mh);
+
+  // Close × button top-right
+  wcx := mx + mw - 38.0f32; wcy := my + 16.0f32;
+  wchov := uiframe_hovered(f, "ps.wiz.close");
+  if wchov { app_ov_box(sh, wcx, wcy, 24.0f32, 24.0f32, 6.0f32, 0, hex(0x1c1c20, 1), Rgba.{}); }
+  wcrow := uiframe_semantic(f, "ps.wiz.close", EL_BUTTON, "Close", wcx, wcy, 24.0f32, 24.0f32, 0, CP_PS_WIZ_CLOSE);
+  app_ov_icon(sh, ICON_CLOSE, wcx + 6.0f32, wcy + 6.0f32, 12.0f32, ifx wchov then hex(0xf5f5f5, 1) else hex(0x818181, 1));
+  sheet_hit(sh, UIFRAME_HIT, wcrow, 0, wcx, wcy, 24.0f32, 24.0f32);
+
+  // Title & subtitle
+  ix := mx + 22.0f32; iw := mw - 44.0f32;
+  vy := my + 22.0f32;
+  _ := set_line(f, ix, vy, iw - 32.0f32, t.title_face, t.title_line, hex(0xf5f5f5, 1), "Add provider");
+  vy += 28.0f32;
+  sub_b: [160] u8; sub_n := el_put(sub_b[..], 0, "Add an account or configure a provider on ");
+  sub_n = el_put(sub_b[..], sub_n, cp_ps_str(ps[0].host_name[..], ps[0].host_name_n));
+  sub_n = el_put(sub_b[..], sub_n, ".");
+  _ := set_line(f, ix, vy, iw, t.desc_face, t.desc_line, hex(0x818181, 1), sheet_pool(sh, cast(string) sub_b[0..<sub_n]));
+  vy += 26.0f32;
+
+  // 3-Step Indicator Bar: (1 Provider) (2 Identity) (3 Config)
+  step_h: f32 = 38.0f32;
+  app_ov_box(sh, ix, vy, iw, step_h, 8.0f32, 1.0f32, hex(0x08080a, 1), hex(0x1f1f24, 1));
+  snames := [3] string.["Provider", "Identity", "Config"];
+  snums := [3] string.["1", "2", "3"];
+  sw_col := (iw - 8.0f32) / 3.0f32;
+  wsb: [16] u8;
+  for si: 0..<3 {
+    sx := ix + 4.0f32 + cast(f32) si * sw_col;
+    sy := vy + 4.0f32;
+    done := si < w[0].step;
+    cur := si == w[0].step;
+    wsn := el_put(wsb[..], 0, "ps.ws."); wsn = el_put_i(wsb[..], wsn, si);
+    wsid := sheet_pool(sh, cast(string) wsb[0..<wsn]);
+    if cur {
+      app_ov_box(sh, sx, sy, sw_col, 30.0f32, 6.0f32, 1.0f32, hex(0x16161b, 1), hex(0x27272e, 1));
+    }
+    cx_b := sx + 10.0f32; cy_b := sy + 6.0f32;
+    if done {
+      app_ov_box(sh, cx_b, cy_b, 18.0f32, 18.0f32, 9.0f32, 0, hex(0x346bf1, 1), Rgba.{});
+      app_ov_icon(sh, ICON_CHECK, cx_b + 3.5f32, cy_b + 3.5f32, 11.0f32, hex(0xffffff, 1));
+    } else if cur {
+      app_ov_box(sh, cx_b, cy_b, 18.0f32, 18.0f32, 9.0f32, 1.0f32, hex(0x142244, 1), hex(0x346bf1, 1));
+      _ := set_line(f, cx_b + 6.0f32, cy_b + 2.0f32, 12.0f32, t.head_face, t.head_line, hex(0x60a5fa, 1), snums[si]);
+    } else {
+      app_ov_box(sh, cx_b, cy_b, 18.0f32, 18.0f32, 9.0f32, 1.0f32, hex(0x141418, 1), hex(0x2c2c33, 1));
+      _ := set_line(f, cx_b + 6.0f32, cy_b + 2.0f32, 12.0f32, t.head_face, t.head_line, hex(0x71717a, 1), snums[si]);
+    }
+    _ := set_line(f, cx_b + 24.0f32, sy + 7.0f32, sw_col - 38.0f32, t.desc_face, t.desc_line, ifx cur then hex(0xf5f5f5, 1) else hex(0xa1a1aa, 1), snames[si]);
+    if done {
+      srow := uiframe_semantic(f, wsid, EL_BUTTON, snames[si], sx, sy, sw_col, 30.0f32, 0, CP_PS_WIZ_STEP);
+      sheet_hit(sh, UIFRAME_HIT, srow, 0, sx, sy, sw_col, 30.0f32);
+    }
+  }
+  vy += step_h + 22.0f32;
+
+  // Step Body
+  if w[0].step == 0 {
+    // Step 1: Provider cards (2-column grid)
+    gap: f32 = 10.0f32;
+    gw := (iw - gap) / 2.0f32;
+    gh: f32 = 66.0f32;
+    wdb: [16] u8;
+    for drv: 0..<CP_PS_DRV_COUNT {
+      col := drv % 2; row_i := drv / 2;
+      gx := ix + cast(f32) col * (gw + gap);
+      gy := vy + cast(f32) row_i * (gh + gap);
+      wdn := el_put(wdb[..], 0, "ps.wd."); wdn = el_put_i(wdb[..], wdn, drv);
+      wdid := sheet_pool(sh, cast(string) wdb[0..<wdn]);
+      sel := w[0].driver == drv;
+      hov := uiframe_hovered(f, wdid);
+      bg := ifx sel then hex(0x111a2e, 1) else ifx hov then hex(0x141418, 1) else hex(0x0f0f12, 1);
+      edge := ifx sel then hex(0x346bf1, 1) else hex(0x242429, 1);
+      app_ov_box(sh, gx, gy, gw, gh, 8.0f32, ifx sel then 1.5f32 else 1.0f32, bg, edge);
+      cp_ps_driver_icon(sh, true, drv, gx + 12.0f32, gy + 14.0f32, 16.0f32, true);
+      _ := set_line(f, gx + 36.0f32, gy + 12.0f32, gw - 48.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), CP_PS_DRV_NAMES[drv]);
+      _ := set_line(f, gx + 36.0f32, gy + 32.0f32, gw - 48.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), CP_PS_DRV_DESCS[drv]);
+      drow := uiframe_semantic(f, wdid, EL_BUTTON, CP_PS_DRV_NAMES[drv], gx, gy, gw, gh, ifx sel then EL_S_CURRENT else 0, CP_PS_WIZ_DRIVER);
+      sheet_hit(sh, UIFRAME_HIT, drow, 0, gx, gy, gw, gh);
+    }
+  } else if w[0].step == 1 {
+    // Step 2: Identity (Display name, Instance ID, Accent color)
+    ctl_w: f32 = 240.0f32;
+    ctl_x := ix + iw - ctl_w;
+    lbl_w := ctl_x - ix - 14.0f32;
+
+    _ := set_line(f, ix, vy + 2.0f32, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Display name");
+    _ := set_line(f, ix, vy + 21.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Shown in the provider list and model picker.");
+    cp_ps_input(s, f, true, CP_PS_ED_WIZ_LABEL, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].label[..], w[0].label_n)), CP_PS_DRV_NAMES[w[0].driver], false, false);
+    vy += 58.0f32;
+
+    _ := set_line(f, ix, vy + 2.0f32, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Instance ID");
+    _ := set_line(f, ix, vy + 21.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Unique slug for isolated profile & credentials.");
+    cp_ps_input(s, f, true, CP_PS_ED_WIZ_ID, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].inst_id[..], w[0].inst_id_n)), "antigravity-work", false, false);
+    vy += 58.0f32;
+
+    _ := set_line(f, ix, vy + 2.0f32, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Accent color");
+    _ := set_line(f, ix, vy + 21.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Optional badge tint for this provider.");
+    wab: [16] u8;
+    for ci: 0..<CP_PS_ACCENTS {
+      wan := el_put(wab[..], 0, "ps.wa."); wan = el_put_i(wab[..], wan, ci);
+      waid := sheet_pool(sh, cast(string) wab[0..<wan]);
+      ax := ctl_x + cast(f32) ci * 26.0f32;
+      ay := vy + 10.0f32;
+      if ci == w[0].accent { app_ov_box(sh, ax - 2.0f32, ay - 2.0f32, 22.0f32, 22.0f32, 11.0f32, 1.5f32, Rgba.{}, hex(0xf5f5f5, 1)); }
+      col := ifx ci == 0 then hex(0x27272a, 1) else cp_ps_accent_rgba(ci);
+      app_ov_box(sh, ax + 1.0f32, ay + 1.0f32, 16.0f32, 16.0f32, 8.0f32, 1.0f32, col, hex(0x3f3f46, 1));
+      arow := uiframe_semantic(f, waid, EL_BUTTON, "Accent color", ax - 2.0f32, ay - 2.0f32, 22.0f32, 22.0f32, 0, CP_PS_WIZ_ACCENT);
+      sheet_hit(sh, UIFRAME_HIT, arow, 0, ax - 2.0f32, ay - 2.0f32, 22.0f32, 22.0f32);
+    }
+  } else {
+    // Step 3: Config (Exact match to Screenshot 1!)
+    ctl_w: f32 = 228.0f32;
+    ctl_x := ix + iw - ctl_w;
+    lbl_w := ctl_x - ix - 16.0f32;
+    if w[0].driver == CP_PS_DRV_ANTIGRAVITY {
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Sign-in method");
+      mh1 := set_wrap(f, ix, vy + 18.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Google accounts use your subscription; API keys and Agent Platform bill usage.");
+      wam := ifx w[0].auth_method >= 0 && w[0].auth_method < CP_PS_AUTH_COUNT then w[0].auth_method else 0;
+      w[0].auth_menu_x = ctl_x; w[0].auth_menu_y = vy + 38.0f32; w[0].auth_menu_w = ctl_w;
+      cp_ps_select_box(f, true, "ps.wam.btn", ctl_x, vy + 4.0f32, ctl_w, 32.0f32, CP_PS_AUTH_LABELS[wam], w[0].auth_menu_open, CP_PS_WIZ_AUTH_MENU);
+      vy += (ifx 18.0f32 + mh1 > 42.0f32 then 18.0f32 + mh1 else 42.0f32) + 14.0f32;
+
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "API key");
+      mh2 := set_wrap(f, ix, vy + 18.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Gemini or Vertex AI express key. Stored separately on the host.");
+      cp_ps_input(s, f, true, CP_PS_ED_WIZ_API_KEY, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].api_key[..], w[0].api_key_n)), "Not set", true, false);
+      vy += (ifx 18.0f32 + mh2 > 42.0f32 then 18.0f32 + mh2 else 42.0f32) + 14.0f32;
+
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "GCP project");
+      mh3 := set_wrap(f, ix, vy + 18.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Required for Gemini Enterprise. Agent Platform uses it when no API key is set.");
+      cp_ps_input(s, f, true, CP_PS_ED_WIZ_GCP_PROJ, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].gcp_project[..], w[0].gcp_project_n)), "my-project-id", false, false);
+      vy += (ifx 18.0f32 + mh3 > 42.0f32 then 18.0f32 + mh3 else 42.0f32) + 14.0f32;
+
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "GCP location");
+      mh4 := set_wrap(f, ix, vy + 18.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Region for Gemini Enterprise or Agent Platform.");
+      cp_ps_input(s, f, true, CP_PS_ED_WIZ_GCP_LOC, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].gcp_location[..], w[0].gcp_location_n)), "us-central1", false, false);
+      vy += (ifx 18.0f32 + mh4 > 42.0f32 then 18.0f32 + mh4 else 42.0f32) + 14.0f32;
+
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Binary path");
+      mh5 := set_wrap(f, ix, vy + 18.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Custom ACP executable. Leave empty to select automatically.");
+      cp_ps_input(s, f, true, CP_PS_ED_WIZ_BIN, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].binary_path[..], w[0].binary_path_n)), "Automatic", false, false);
+      vy += (ifx 18.0f32 + mh5 > 42.0f32 then 18.0f32 + mh5 else 42.0f32) + 10.0f32;
+    } else {
+      _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), "Binary path");
+      _ := set_line(f, ix, vy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Custom CLI executable. Leave empty for automatic.");
+      cp_ps_input(s, f, true, CP_PS_ED_WIZ_BIN, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].binary_path[..], w[0].binary_path_n)), "Automatic", false, false);
+      vy += 58.0f32;
+      if w[0].driver != CP_PS_DRV_CURSOR {
+        elbl := ifx w[0].driver == CP_PS_DRV_CODEX then "Codex home path" else ifx w[0].driver == CP_PS_DRV_CLAUDE then "Claude config dir" else "Arguments";
+        _ := set_line(f, ix, vy, lbl_w, t.name_face, t.name_line, hex(0xe4e4e7, 1), elbl);
+        _ := set_line(f, ix, vy + 19.0f32, lbl_w, t.desc_face, t.desc_line, hex(0x71717a, 1), "Optional per-instance path or CLI flags.");
+        cp_ps_input(s, f, true, CP_PS_ED_WIZ_EXTRA, ctl_x, vy + 4.0f32, ctl_w, 32.0f32, sheet_pool(sh, cp_ps_str(w[0].extra_path[..], w[0].extra_path_n)), "Default", false, false);
+      }
+    }
+  }
+
+  // Inline validation error (if any)
+  if w[0].err_n > 0 {
+    _ := set_line(f, ix, my + mh - 74.0f32, iw, t.desc_face, t.desc_line, hex(0xfb414a, 1), sheet_pool(sh, cp_ps_str(w[0].err[..], w[0].err_n)));
+  }
+
+  // Modal Footer: [Back]  [Next / Add instance (blue)]
+  foot_y := my + mh - 46.0f32;
+  next_lbl := ifx w[0].step == 2 then "Add instance" else "Next";
+  next_w := cp_ps_btn_w(f, next_lbl);
+  _ := cp_ps_btn(f, true, "ps.wiz.next", ix + iw - next_w, foot_y, 30.0f32, next_lbl, true, false, false, CP_PS_WIZ_NEXT);
+  back_lbl := ifx w[0].step == 0 then "Cancel" else "Back";
+  back_w := cp_ps_btn_w(f, back_lbl);
+  _ := cp_ps_btn(f, true, "ps.wiz.back", ix + iw - next_w - back_w - 8.0f32, foot_y, 30.0f32, back_lbl, false, false, false, CP_PS_WIZ_BACK);
+
+  // Floating Sign-in method menu inside Step 3 modal (drawn last so it sits on top)
+  if w[0].step == 2 && w[0].auth_menu_open {
+    cp_ps_paint_auth_menu(f, w[0].auth_menu_x, w[0].auth_menu_y, w[0].auth_menu_w, w[0].auth_method, "ps.wam.", CP_PS_WIZ_AUTH_PICK);
+  }
+}
+
+// ---- Host C API exports ----
+
+coder_page_ps_set_meta :: (s: [] CoderPage, host_name: string, project_scope: string, checked_label: string, refreshing: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  ps := s[0].ps[..];
+  ps[0].host_name_n = cp_out(ps[0].host_name[..], host_name);
+  ps[0].project_scope_n = cp_out(ps[0].project_scope[..], project_scope);
+  ps[0].checked_label_n = cp_out(ps[0].checked_label[..], checked_label);
+  ps[0].refreshing = refreshing;
+}
+
+coder_page_ps_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].ps[0].ninst = 0;
+}
+
+coder_page_ps_add_instance :: (s: [] CoderPage, id: string, driver: int, display_name: string, version: string, enabled: bool, is_default: bool, status: int, headline: string, summary: string, accent: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  ps := s[0].ps[..];
+  if ps[0].ninst >= CP_PS_MAX_INST { return -1; }
+  i := ps[0].ninst;
+  ps[0].insts[i] = CpPsInstance.{};
+  ps[0].insts[i].id_n = cp_out(ps[0].insts[i].id[..], id);
+  ps[0].insts[i].driver = driver;
+  ps[0].insts[i].display_name_n = cp_out(ps[0].insts[i].display_name[..], display_name);
+  ps[0].insts[i].version_n = cp_out(ps[0].insts[i].version[..], version);
+  ps[0].insts[i].enabled = enabled;
+  ps[0].insts[i].is_default = is_default;
+  ps[0].insts[i].status = status;
+  ps[0].insts[i].headline_n = cp_out(ps[0].insts[i].headline[..], headline);
+  ps[0].insts[i].summary_n = cp_out(ps[0].insts[i].summary[..], summary);
+  ps[0].insts[i].accent = accent;
+  ps[0].ninst += 1;
+  return i;
+}
+
+coder_page_ps_select :: (s: [] CoderPage, idx: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  ps := s[0].ps[..];
+  if idx >= 0 && idx < ps[0].ninst { ps[0].selected = idx; }
+}
+
+coder_page_ps_set_detail_config :: (s: [] CoderPage, display_name: string, accent: int, auth_method: int, api_key_set: bool, gcp_project: string, gcp_location: string, binary_path: string, extra_path: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  d := s[0].ps[0].detail[..];
+  ef := s[0].ps[0].ed_field;
+  if ef != CP_PS_ED_DISPLAY_NAME { d[0].display_name_n = cp_out(d[0].display_name[..], display_name); }
+  d[0].accent = accent;
+  d[0].auth_method = auth_method;
+  d[0].api_key_set = api_key_set;
+  if ef != CP_PS_ED_API_KEY { d[0].api_key_n = 0; }
+  if ef != CP_PS_ED_GCP_PROJECT { d[0].gcp_project_n = cp_out(d[0].gcp_project[..], gcp_project); }
+  if ef != CP_PS_ED_GCP_LOCATION { d[0].gcp_location_n = cp_out(d[0].gcp_location[..], gcp_location); }
+  if ef != CP_PS_ED_BINARY_PATH { d[0].binary_path_n = cp_out(d[0].binary_path[..], binary_path); }
+  if ef != CP_PS_ED_EXTRA_PATH { d[0].extra_path_n = cp_out(d[0].extra_path[..], extra_path); }
+}
+
+coder_page_ps_set_detail_runtime :: (s: [] CoderPage, rt_state: int, rt_status: string, rt_btn: string, rt_pct: int, rt_can_remove: bool, rt_err: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  d := s[0].ps[0].detail[..];
+  d[0].rt_state = rt_state;
+  d[0].rt_status_n = cp_out(d[0].rt_status[..], rt_status);
+  d[0].rt_btn_n = cp_out(d[0].rt_btn[..], rt_btn);
+  d[0].rt_pct = rt_pct;
+  d[0].rt_can_remove = rt_can_remove;
+  d[0].rt_err_n = cp_out(d[0].rt_err[..], rt_err);
+}
+
+coder_page_ps_set_detail_auth :: (s: [] CoderPage, auth_state: int, auth_sub: string, auth_detail: string, auth_btn: string, auth_can_signout: bool, auth_url: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  d := s[0].ps[0].detail[..];
+  if d[0].auth_state != auth_state {
+    d[0].auth_copied = false;
+    if auth_state != CP_PS_AS_WAITING { d[0].auth_code_n = 0; }
+  }
+  d[0].auth_state = auth_state;
+  d[0].auth_sub_n = cp_out(d[0].auth_sub[..], auth_sub);
+  d[0].auth_detail_n = cp_out(d[0].auth_detail[..], auth_detail);
+  d[0].auth_btn_n = cp_out(d[0].auth_btn[..], auth_btn);
+  d[0].auth_can_signout = auth_can_signout;
+  d[0].auth_url_n = cp_out(d[0].auth_url[..], auth_url);
+}
+
+coder_page_ps_env_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].ps[0].detail[0].nenv = 0;
+}
+
+coder_page_ps_env_add :: (s: [] CoderPage, key: string, val: string, secret: bool, has_secret: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  d := s[0].ps[0].detail[..];
+  if d[0].nenv >= CP_PS_MAX_ENV { return -1; }
+  i := d[0].nenv;
+  d[0].envs[i] = CpPsEnvVar.{};
+  d[0].envs[i].key_n = cp_out(d[0].envs[i].key[..], key);
+  d[0].envs[i].val_n = cp_out(d[0].envs[i].val[..], val);
+  d[0].envs[i].secret = secret;
+  d[0].envs[i].has_secret = has_secret;
+  d[0].nenv += 1;
+  return i;
+}
+
+coder_page_ps_models_clear :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].ps[0].detail[0].nmodels = 0;
+}
+
+coder_page_ps_models_add :: (s: [] CoderPage, slug: string, name: string, enabled: bool, favorite: bool, thinking: bool, custom: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  d := s[0].ps[0].detail[..];
+  if d[0].nmodels >= CP_PS_MAX_MODELS { return -1; }
+  i := d[0].nmodels;
+  d[0].models[i] = CpPsModel.{};
+  d[0].models[i].slug_n = cp_out(d[0].models[i].slug[..], slug);
+  d[0].models[i].name_n = cp_out(d[0].models[i].name[..], name);
+  d[0].models[i].enabled = enabled;
+  d[0].models[i].favorite = favorite;
+  d[0].models[i].thinking = thinking;
+  d[0].models[i].custom = custom;
+  d[0].nmodels += 1;
+  return i;
+}
+
+// Host read-back getters (called when CP_ASK_PS_* fires).
+
+coder_page_ps_selected :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].ps[0].selected else -1;
+}
+
+coder_page_ps_action_idx :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].ps[0].action_idx else -1;
+}
+
+coder_page_ps_inst_id :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].ps[0].ninst { return 0; }
+  return cp_out(out, cp_ps_str(s[0].ps[0].insts[idx].id[..], s[0].ps[0].insts[idx].id_n));
+}
+
+coder_page_ps_inst_enabled :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].ps[0].ninst { return false; }
+  return s[0].ps[0].insts[idx].enabled;
+}
+
+// Field getter for detail or wizard:
+//   0 display_name, 1 api_key, 2 gcp_project, 3 gcp_location, 4 binary_path, 5 extra_path, 6 auth_code, 7 auth_url
+//   10 wiz.label, 11 wiz.inst_id, 12 wiz.api_key, 13 wiz.gcp_project, 14 wiz.gcp_location, 15 wiz.binary_path, 16 wiz.extra_path
+coder_page_ps_field :: (s: [] CoderPage, which: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  d := s[0].ps[0].detail[..]; w := s[0].ps[0].wiz[..];
+  if which == 0 { return cp_out(out, cp_ps_str(d[0].display_name[..], d[0].display_name_n)); }
+  if which == 1 { return cp_out(out, cp_ps_str(d[0].api_key[..], d[0].api_key_n)); }
+  if which == 2 { return cp_out(out, cp_ps_str(d[0].gcp_project[..], d[0].gcp_project_n)); }
+  if which == 3 { return cp_out(out, cp_ps_str(d[0].gcp_location[..], d[0].gcp_location_n)); }
+  if which == 4 { return cp_out(out, cp_ps_str(d[0].binary_path[..], d[0].binary_path_n)); }
+  if which == 5 { return cp_out(out, cp_ps_str(d[0].extra_path[..], d[0].extra_path_n)); }
+  if which == 6 { return cp_out(out, cp_ps_str(d[0].auth_code[..], d[0].auth_code_n)); }
+  if which == 7 { return cp_out(out, cp_ps_str(d[0].auth_url[..], d[0].auth_url_n)); }
+  if which == 10 { return cp_out(out, cp_ps_str(w[0].label[..], w[0].label_n)); }
+  if which == 11 { return cp_out(out, cp_ps_str(w[0].inst_id[..], w[0].inst_id_n)); }
+  if which == 12 { return cp_out(out, cp_ps_str(w[0].api_key[..], w[0].api_key_n)); }
+  if which == 13 { return cp_out(out, cp_ps_str(w[0].gcp_project[..], w[0].gcp_project_n)); }
+  if which == 14 { return cp_out(out, cp_ps_str(w[0].gcp_location[..], w[0].gcp_location_n)); }
+  if which == 15 { return cp_out(out, cp_ps_str(w[0].binary_path[..], w[0].binary_path_n)); }
+  if which == 16 { return cp_out(out, cp_ps_str(w[0].extra_path[..], w[0].extra_path_n)); }
+  return 0;
+}
+
+// Int getter: 0 detail.accent, 1 detail.auth_method, 2 wiz.driver, 3 wiz.accent, 4 wiz.auth_method, 5 detail.nenv, 6 detail.nmodels
+coder_page_ps_int :: (s: [] CoderPage, which: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  d := s[0].ps[0].detail[..]; w := s[0].ps[0].wiz[..];
+  if which == 0 { return d[0].accent; }
+  if which == 1 { return d[0].auth_method; }
+  if which == 2 { return w[0].driver; }
+  if which == 3 { return w[0].accent; }
+  if which == 4 { return w[0].auth_method; }
+  if which == 5 { return d[0].nenv; }
+  if which == 6 { return d[0].nmodels; }
+  return 0;
+}
+
+coder_page_ps_env_get :: (s: [] CoderPage, idx: int, key_out: [] u8, val_out: [] u8, flags_out: [] int) -> bool #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].ps[0].detail[0].nenv { return false; }
+  ev := s[0].ps[0].detail[0].envs[idx];
+  kn := cp_out(key_out, cp_ps_str(ev.key[..], ev.key_n));
+  vn := cp_out(val_out, cp_ps_str(ev.val[..], ev.val_n));
+  if flags_out.count >= 4 {
+    flags_out[0] = kn;
+    flags_out[1] = vn;
+    flags_out[2] = ifx ev.secret then 1 else 0;
+    flags_out[3] = ifx ev.has_secret then 1 else 0;
+  }
+  return true;
+}
+
+coder_page_ps_model_get :: (s: [] CoderPage, idx: int, slug_out: [] u8, name_out: [] u8, flags_out: [] int) -> bool #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].ps[0].detail[0].nmodels { return false; }
+  m := s[0].ps[0].detail[0].models[idx];
+  sn := cp_out(slug_out, cp_ps_str(m.slug[..], m.slug_n));
+  nn := cp_out(name_out, cp_ps_str(m.name[..], m.name_n));
+  if flags_out.count >= 6 {
+    flags_out[0] = sn;
+    flags_out[1] = nn;
+    flags_out[2] = ifx m.enabled then 1 else 0;
+    flags_out[3] = ifx m.favorite then 1 else 0;
+    flags_out[4] = ifx m.thinking then 1 else 0;
+    flags_out[5] = ifx m.custom then 1 else 0;
+  }
+  return true;
+}
+
+// Helper for offscreen screenshot tests / UI state setup (open wizard at a given step, scroll detail, focus field).
+coder_page_ps_ui_set :: (s: [] CoderPage, wiz_open: bool, wiz_step: int, detail_scroll: f32, focus_field: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  ps := s[0].ps[..];
+  ps[0].wiz[0].open = wiz_open;
+  if wiz_step >= 0 && wiz_step <= 2 { ps[0].wiz[0].step = wiz_step; }
+  ps[0].detail_scroll = detail_scroll;
+  if focus_field > 0 { cp_ps_focus_ed(s, focus_field); }
+  else { ps[0].ed_field = CP_PS_ED_NONE; }
+}

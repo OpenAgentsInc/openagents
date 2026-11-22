@@ -1,0 +1,105 @@
+// Checks for Settings -> Providers screen & Add provider 3-step modal wizard (page/providers_settings.coax).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin_for(s), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], w, h);
+  return uiframe_end(f[..], s[0].surface[..]);
+}
+
+#test "providers settings: renders T3 master-detail split, flag-gated in v1, supports toggles, auth method, env vars, models, and 3-step wizard" #steps 60000000 {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+
+  // Hidden in v1 release mode (flags == 0); visible when Antigravity/External/Claude/Gemini flag is on.
+  #assert !cp_set_page_ok_flags(0, CP_PG_PROVIDERS);
+  #assert cp_set_page_ok_flags(DC_FLAG_MODELS_ANTIGRAVITY, CP_PG_PROVIDERS);
+  #assert cp_set_page_ok_flags(DC_FLAGS_ALL, CP_PG_PROVIDERS);
+
+  // Populate realistic state matching T3 screenshots.
+  coder_page_ps_set_meta(s, "Christopher's MacBook Pro (2)", "All projects", "Checked 1h ago", false);
+  coder_page_ps_clear(s);
+  #assert coder_page_ps_add_instance(s, "codex", CP_PS_DRV_CODEX, "Codex", "", false, true, CP_PS_ST_DISABLED, "Disabled", "", 0) == 0;
+  #assert coder_page_ps_add_instance(s, "claude", CP_PS_DRV_CLAUDE, "Claude", "", false, true, CP_PS_ST_DISABLED, "Disabled", "", 0) == 1;
+  #assert coder_page_ps_add_instance(s, "antigravity", CP_PS_DRV_ANTIGRAVITY, "Antigravity", "v1.5.2", true, true, CP_PS_ST_WARNING, "Needs attention", "Antigravity is installed. Connect with Agent Platform to load models.", 0) == 2;
+  coder_page_ps_select(s, 2);
+  coder_page_ps_set_detail_config(s, "Antigravity", 0, CP_PS_AUTH_VERTEX, false, "openagents-gemini", "us-central1", "", "");
+  coder_page_ps_set_detail_runtime(s, CP_PS_RT_INSTALLED, "Installed.", "Install managed runtime", -1, false, "");
+  coder_page_ps_set_detail_auth(s, CP_PS_AS_FAILED, "Connect on Christopher's MacBook Pro (2) to load models.", "Antigravity could not authenticate with the configured credentials.", "Retry connection", false, "");
+  coder_page_ps_models_clear(s);
+  #assert coder_page_ps_models_add(s, "gemini-4-neon", "Gemini 4 Neon", true, true, true, false) == 0;
+  #assert coder_page_ps_models_add(s, "gemini-4-carbon", "Gemini 4 Carbon", true, false, true, false) == 1;
+
+  // Open Settings -> Providers and render upper view.
+  coder_page_settings_open(s, CP_PG_PROVIDERS, "");
+  #assert coder_page_settings_page(s) == CP_PG_PROVIDERS;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  #assert surface_find(s[0].surface[..], "ps.inst.0") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.inst.1") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.inst.2") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.tog.2") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.add.list") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.refresh") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.rt.act") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.auth.act") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.am.btn") >= 0;
+
+  // Toggle Codex on -> dispatches CP_ASK_PS_TOGGLE.
+  t0 := surface_find(s[0].surface[..], "ps.tog.0");
+  #assert t0 >= 0 && cp_press(s, t0) && coder_page_action(s) == CP_ASK_PS_TOGGLE;
+  #assert coder_page_ps_action_idx(s) == 0 && coder_page_ps_inst_enabled(s, 0);
+
+  // Open Sign-in method menu -> pick Gemini Enterprise -> dispatches CP_ASK_PS_CONFIG.
+  amb := surface_find(s[0].surface[..], "ps.am.btn");
+  #assert amb >= 0 && cp_press(s, amb) && s[0].ps[0].auth_menu_open;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  am1 := surface_find(s[0].surface[..], "ps.am.1");
+  #assert am1 >= 0 && cp_press(s, am1) && !s[0].ps[0].auth_menu_open;
+  #assert coder_page_action(s) == CP_ASK_PS_CONFIG && coder_page_ps_int(s, 1) == CP_PS_AUTH_BUSINESS;
+
+  // Focus GCP project inline editor, edit text, commit via Enter -> dispatches CP_ASK_PS_CONFIG.
+  s[0].ps[0].detail_scroll = 300;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  proj_ed := surface_find(s[0].surface[..], "ps.ed.3");
+  #assert proj_ed >= 0 && cp_press(s, proj_ed);
+  #assert cp_ed_which(s) == CP_ED_PROV && s[0].ps[0].ed_field == CP_PS_ED_GCP_PROJECT;
+  #assert coder_page_paste(s, "-prod");
+  #assert coder_page_key(s, KEY_ENTER, 0);
+  #assert coder_page_action(s) == CP_ASK_PS_CONFIG;
+  buf: [128] u8;
+  bn := coder_page_ps_field(s, 2, buf[..]);
+  #assert cast(string) buf[0..<bn] == "openagents-gemini-prod";
+
+  // Add environment variable, mark secret, then remove.
+  #assert cp_ps_test_frame(s, 1280, 840);
+  env_add := surface_find(s[0].surface[..], "ps.env.add");
+  #assert env_add >= 0 && cp_press(s, env_add) && coder_page_ps_int(s, 5) == 1;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  env_sec := surface_find(s[0].surface[..], "ps.envs.0");
+  #assert env_sec >= 0 && cp_press(s, env_sec) && coder_page_action(s) == CP_ASK_PS_ENV_SAVE;
+  #assert s[0].ps[0].detail[0].envs[0].secret;
+
+  // Model toggle + reorder.
+  s[0].ps[0].detail_scroll = 520;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  m_star := surface_find(s[0].surface[..], "ps.ms.1");
+  #assert m_star >= 0 && cp_press(s, m_star) && coder_page_action(s) == CP_ASK_PS_MODELS_SAVE;
+  #assert s[0].ps[0].detail[0].models[1].favorite;
+
+  // Open Add provider 3-step modal wizard, step 1 -> 2 -> 3 -> Add instance.
+  add_btn := surface_find(s[0].surface[..], "ps.add.list");
+  #assert add_btn >= 0 && cp_press(s, add_btn) && s[0].ps[0].wiz[0].open && s[0].ps[0].wiz[0].step == 0;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  next1 := surface_find(s[0].surface[..], "ps.wiz.next");
+  #assert next1 >= 0 && cp_press(s, next1) && s[0].ps[0].wiz[0].step == 1;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  next2 := surface_find(s[0].surface[..], "ps.wiz.next");
+  #assert next2 >= 0 && cp_press(s, next2) && s[0].ps[0].wiz[0].step == 2;
+  #assert cp_ps_test_frame(s, 1280, 840);
+  #assert surface_find(s[0].surface[..], "ps.wam.btn") >= 0;
+  next3 := surface_find(s[0].surface[..], "ps.wiz.next");
+  #assert next3 >= 0 && cp_press(s, next3) && !s[0].ps[0].wiz[0].open;
+  #assert coder_page_action(s) == CP_ASK_PS_WIZ_CREATE;
+}

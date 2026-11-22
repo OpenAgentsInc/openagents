@@ -691,6 +691,10 @@ enum CoderAntigravity {
             let expanded = (custom as NSString).expandingTildeInPath
             if fm.isExecutableFile(atPath: expanded) { return expanded }
         }
+        if let managed = AntigravityRuntimeManager.shared.activeManaged(),
+           fm.isExecutableFile(atPath: managed.binaryPath) {
+            return managed.binaryPath
+        }
         let home = fm.homeDirectoryForCurrentUser.path
         var candidates = [
             "\(home)/.local/bin/agy",

@@ -543,7 +543,15 @@ extension CoderWindow {
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
         #if OA_FULL
-        var env: [String: String] = FeatureFlags.isOn(.modelsAgy) ? CoderAntigravity.workerEnv() : [:]
+        var env: [String: String] = [:]
+        if FeatureFlags.isOn(.modelsAgy) {
+            if let inst = ProviderInstancesStore.shared.activeAntigravityInstance() {
+                let res = AntigravityRuntimeManager.shared.resolveBinary(for: inst)
+                env = AntigravityProfileManager.workerEnv(for: inst, resolvedBinary: res.path)
+            } else {
+                env = CoderAntigravity.workerEnv()
+            }
+        }
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
         }

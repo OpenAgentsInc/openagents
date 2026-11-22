@@ -452,6 +452,7 @@ CoderPage :: struct {
   find: [1] CpFind;            // in-thread Find (⌘F), transcript minimap, and 3-mode Command Palette (find.coax; #13876)
   mcp_skills: [1] CpMcpSkills; // MCP server management, OAuth PKCE card, and Skills catalog (mcpskills.coax; #13879)
   prov: [1] CpProviders;       // Codex, Cursor, ACP Registry, budgeted handoff, Fresh Session & multi-model fan-out (providers.coax; #13878)
+  ps: [1] CpProvSettings;      // Settings -> Providers screen & Add provider 3-step modal wizard (providers_settings.coax)
   env: [1] CpEnvState;         // Remote SSH/Boat/WSL2 environments, Server Exposure & Keep-Awake (environments.coax; #13883)
   cust: [1] CpCustomizeState;  // Theme engine, when-clause keybindings & i18n locale (customize.coax; #13887)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
@@ -627,6 +628,7 @@ cp_init :: (s: [] CoderPage) {
   cp_cust_init(s);
   cp_forge_init(s);
   cp_lean_init(s);
+  cp_ps_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

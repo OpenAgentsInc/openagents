@@ -6,7 +6,7 @@
 #load "client.coax";
 #load "../../sys/fs.coax";
 
-CU_ENV :: 16;
+CU_ENV :: 48;
 CU_ARGS :: 16;
 
 // An ACP agent program and its quirks, so Cursor and Antigravity share one

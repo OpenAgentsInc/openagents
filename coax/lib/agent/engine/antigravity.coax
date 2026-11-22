@@ -43,6 +43,204 @@ AGY_MANIFEST_BASE :: "https://antigravity-cli-auto-updater-974169037036.us-centr
 AGY_STORAGE_PREFIX :: "https://storage.googleapis.com/antigravity-public/antigravity-cli/";
 AGY_MANAGED_SUBDIR :: "/.openagents/runtimes/agy";
 AGY_MAX_LEASES :: 32;
+AGY_BG_HOLD_MS :: 1800000;   // 30 minutes (T3 AntigravityAdapterV2)
+
+// T3 Antigravity authentication methods (antigravityAuthSupport.ts / contracts/settings.ts).
+AGY_AUTH_OAUTH_PERSONAL :: "oauth-personal";
+AGY_AUTH_OAUTH_BUSINESS :: "oauth-business";
+AGY_AUTH_GEMINI_API_KEY :: "gemini-api-key";
+AGY_AUTH_AGENT_PLATFORM :: "agent-platform";
+
+// Exact 19 ambient environment variables stripped by T3 antigravityAuthSupport.ts so isolated
+// profiles never leak ambient Google/GCP/Gemini credentials or XDG overrides.
+AGY_REMOVED_ENV_COUNT :: 19;
+AGY_REMOVED_ENV_KEYS :: [AGY_REMOVED_ENV_COUNT] string.[
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENAI_USE_VERTEXAI",
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_CLOUD_LOCATION",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "CLOUDSDK_CORE_PROJECT",
+  "CLOUDSDK_CONFIG",
+  "ANTIGRAVITY_API_KEY",
+  "ANTIGRAVITY_AUTH_METHOD",
+  "ANTIGRAVITY_PROFILE",
+  "AGY_PROFILE",
+  "GEMINI_CLI_HOME",
+  "GEMINI_CONFIG_DIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "SSH_CLIENT",
+  "SSH_TTY"
+];
+
+AgyAuthConfig :: struct {
+  method: string;
+  api_key: string;
+  gcp_project: string;
+  gcp_location: string;
+}
+
+agy_auth_normalize :: (raw: string) -> string {
+  if raw == AGY_AUTH_OAUTH_BUSINESS { return AGY_AUTH_OAUTH_BUSINESS; }
+  if raw == AGY_AUTH_GEMINI_API_KEY { return AGY_AUTH_GEMINI_API_KEY; }
+  if raw == AGY_AUTH_AGENT_PLATFORM { return AGY_AUTH_AGENT_PLATFORM; }
+  return AGY_AUTH_OAUTH_PERSONAL;
+}
+
+agy_auth_uses_browser :: (method: string) -> bool {
+  m := agy_auth_normalize(method);
+  return m == AGY_AUTH_OAUTH_PERSONAL || m == AGY_AUTH_OAUTH_BUSINESS;
+}
+
+agy_auth_label :: (method: string) -> string {
+  m := agy_auth_normalize(method);
+  if m == AGY_AUTH_OAUTH_BUSINESS { return "Gemini Enterprise"; }
+  if m == AGY_AUTH_GEMINI_API_KEY { return "Gemini API key"; }
+  if m == AGY_AUTH_AGENT_PLATFORM { return "Agent Platform (Vertex AI)"; }
+  return "Google account";
+}
+
+// Validate auth configuration (exact port of T3 antigravityAuthConfigIssue).
+// Returns "" when valid, else an actionable message.
+agy_auth_config_issue :: (cfg: AgyAuthConfig) -> string {
+  m := agy_auth_normalize(cfg.method);
+  if m == AGY_AUTH_OAUTH_PERSONAL { return ""; }
+  if m == AGY_AUTH_OAUTH_BUSINESS {
+    if cfg.gcp_project.count == 0 { return "Enter a GCP project for Gemini Enterprise."; }
+    if cfg.gcp_location.count == 0 { return "Enter a GCP location for Gemini Enterprise."; }
+    return "";
+  }
+  if m == AGY_AUTH_GEMINI_API_KEY {
+    if cfg.api_key.count == 0 { return "Enter an API key for Gemini API key sign-in."; }
+    return "";
+  }
+  // agent-platform: either express API key OR GCP project + location (gcloud ADC)
+  if cfg.api_key.count > 0 { return ""; }
+  if cfg.gcp_project.count == 0 { return "Enter an API key or a GCP project for Agent Platform."; }
+  if cfg.gcp_location.count == 0 { return "Enter an API key or a GCP location for Agent Platform."; }
+  return "";
+}
+
+// Format <profile>/antigravity-acp/settings.json content (exact T3 writeAntigravitySettings schema).
+agy_format_settings_json :: (cfg: AgyAuthConfig, out: [] u8) -> string {
+  o := [1] ClOut.[ClOut.{buf = out}];
+  m := agy_auth_normalize(cfg.method);
+  cl_put(o[..], "{\"auth\":{\"type\":");
+  cl_put_string(o[..], m);
+  cl_put(o[..], "}");
+  need_gcp := m == AGY_AUTH_OAUTH_BUSINESS || (m == AGY_AUTH_AGENT_PLATFORM && cfg.api_key.count == 0);
+  if need_gcp && (cfg.gcp_project.count > 0 || cfg.gcp_location.count > 0) {
+    cl_put(o[..], ",\"gcp\":{");
+    wrote := false;
+    if cfg.gcp_project.count > 0 {
+      cl_put(o[..], "\"project\":");
+      cl_put_string(o[..], cfg.gcp_project);
+      wrote = true;
+    }
+    if cfg.gcp_location.count > 0 {
+      if wrote { cl_put(o[..], ","); }
+      cl_put(o[..], "\"location\":");
+      cl_put_string(o[..], cfg.gcp_location);
+    }
+    cl_put(o[..], "}");
+  }
+  cl_put(o[..], "}\n");
+  if o[0].failed { return ""; }
+  return cast(string) out[0..<o[0].len];
+}
+
+// Materialize <profile>/antigravity-acp/settings.json durably on disk.
+agy_write_settings_json :: (profile_dir: string, cfg: AgyAuthConfig) -> bool {
+  if profile_dir.count == 0 { return false; }
+  db: [1200] u8; acp_dir := fs_join(profile_dir, AGY_APP_DATA_DIR, db[..]);
+  if acp_dir.count == 0 || !fs_mkdir_all(acp_dir) { return false; }
+  sb: [1280] u8; spath := fs_join(acp_dir, "settings.json", sb[..]);
+  if spath.count == 0 { return false; }
+  jb: [2048] u8; content := agy_format_settings_json(cfg, jb[..]);
+  if content.count == 0 { return false; }
+  return fs_replace_durable(spath, content);
+}
+
+// Prepare CuLaunch with full T3 Antigravity auth method, 19-key sanitization, and profile isolation.
+agy_prepare_launch_auth :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: string, profile_dir: string, cfg: AgyAuthConfig) {
+  l[0] = CuLaunch.{};
+  l[0].program = program; l[0].cwd = cwd;
+  m := agy_auth_normalize(cfg.method);
+  if !agy_env_has(e, "AGY_CLI_DISABLE_AUTO_UPDATE") {
+    agy_env_push(e, "AGY_CLI_DISABLE_AUTO_UPDATE=1");
+  }
+  if !agy_env_has(e, "AGY_ACP_FORCE_FILE_STORAGE") {
+    agy_env_push(e, "AGY_ACP_FORCE_FILE_STORAGE=1");
+  }
+  if profile_dir.count > 0 {
+    l[0].args[0] = "--gemini-dir";
+    l[0].args[1] = profile_dir;
+    l[0].args[2] = "--app-data-dir";
+    l[0].args[3] = AGY_APP_DATA_DIR;
+    l[0].args_n = 4;
+    if !agy_env_has(e, "GEMINI_HOME") {
+      agy_env_push_kv(e, "GEMINI_HOME", profile_dir);
+    }
+  }
+  // Strip all 19 ambient Google/GCP/Gemini/XDG/SSH variables (T3 removedEnvironmentKeys).
+  rem := AGY_REMOVED_ENV_KEYS;
+  for i: 0..<AGY_REMOVED_ENV_COUNT {
+    if l[0].unset_n < l[0].unset.count {
+      l[0].unset[l[0].unset_n] = rem[i];
+      l[0].unset_n += 1;
+    }
+  }
+  // SSH_CONNECTION forces pasted-code OAuth for oauth-personal; strip it for all other auth methods.
+  if m == AGY_AUTH_OAUTH_PERSONAL {
+    if !agy_env_has(e, "SSH_CONNECTION") {
+      agy_env_push(e, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
+    }
+  } else {
+    if l[0].unset_n < l[0].unset.count {
+      l[0].unset[l[0].unset_n] = "SSH_CONNECTION";
+      l[0].unset_n += 1;
+    }
+  }
+  // Inject API key for the matching auth method (never logged).
+  if m == AGY_AUTH_GEMINI_API_KEY && cfg.api_key.count > 0 {
+    agy_env_push_kv(e, "GEMINI_API_KEY", cfg.api_key);
+  } else if m == AGY_AUTH_AGENT_PLATFORM && cfg.api_key.count > 0 {
+    agy_env_push_kv(e, "GOOGLE_API_KEY", cfg.api_key);
+  }
+  for i: 0..<e[0].nvars {
+    if i < l[0].env.count { l[0].env[i] = e[0].vars[i]; }
+  }
+  l[0].env_n = ifx e[0].nvars < l[0].env.count then e[0].nvars else l[0].env.count;
+}
+
+agy_agent_with_auth :: (auth_method: string) -> CuAgent {
+  a := agy_agent();
+  if auth_method.count > 0 { a.login = agy_auth_normalize(auth_method); }
+  return a;
+}
+
+// Launch agy with full T3 auth config: writes settings.json, sanitizes all 19 ambient env vars,
+// authenticates eagerly with the configured authMethodId, and sets the 30-minute background hold.
+agy_launch_auth :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string, cfg: AgyAuthConfig) -> string {
+  m := agy_auth_normalize(cfg.method);
+  if profile_dir.count > 0 { _ = agy_write_settings_json(profile_dir, cfg); }
+  cue_agent(x, agy_agent_with_auth(m));
+  e: [1] AgyEnv;
+  l: [1] CuLaunch;
+  agy_prepare_launch_auth(l[..], e[..], program, cwd, profile_dir, cfg);
+  _ = agy_wrap_windows_cmd(l[..]);
+  why := cue_start(x, l[0], name, version);
+  if why.count == 0 {
+    cue_set_bg_hold_limit(x, AGY_BG_HOLD_MS);
+    stb: [32] u8; rb: [32] u8;
+    w := agy_watch_limits(cl_getenv("CODER_AGY_STALL_S", stb[..]), cl_getenv("CODER_AGY_RECOVER", rb[..]));
+    cue_watch_set(x, w.stall_ms, w.recoveries);
+  }
+  return why;
+}
 
 agy_agent :: () -> CuAgent {
   a: [1] CuAgent;
@@ -1495,4 +1693,271 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   lf := agy_lease_file_path("/tmp/agy", rid_a, 9876, lfb[..]);
   #assert agy_parse_lease_filename(fs_base(lf), ridb[..]) == 9876 && cast(string) ridb[0..<64] == rid_a;
   #assert agy_parse_lease_filename("bad.lease", ridb[..]) == -1;
+}
+
+// ---------------------------------------------------------------- T3 parity: OAuth parsing, verification, error classification
+
+AGY_OAUTH_MODE_NONE :: 0;
+AGY_OAUTH_MODE_CODE :: 1;      // /o/oauth2/auth -> redirect_uri=https://antigravity.google/oauth-callback
+AGY_OAUTH_MODE_LOOPBACK :: 2;  // /o/oauth2/v2/auth -> http://127.0.0.1:<port>/... or http://localhost:<port>/...
+
+agy_hex_val :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a' + 10); }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A' + 10); }
+  return -1;
+}
+
+// Percent-decode a query parameter value into out.
+agy_url_decode :: (raw: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < raw.count && n < out.count {
+    if raw[i] == '%' && i + 2 < raw.count {
+      hi := agy_hex_val(raw[i + 1]); lo := agy_hex_val(raw[i + 2]);
+      if hi >= 0 && lo >= 0 { out[n] = cast(u8) ((hi << 4) | lo); n += 1; i += 3; continue; }
+    } else if raw[i] == '+' {
+      out[n] = ' '; n += 1; i += 1; continue;
+    }
+    out[n] = raw[i]; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// Extract and percent-decode query parameter `key` from url into out, or "" if absent.
+agy_query_param :: (url: string, key: string, out: [] u8) -> string {
+  q := -1;
+  for i: 0..<url.count { if url[i] == '?' { q = i + 1; break; } }
+  if q < 0 || key.count == 0 { return ""; }
+  at := q;
+  while at < url.count {
+    amp := at;
+    while amp < url.count && url[amp] != '&' && url[amp] != '#' { amp += 1; }
+    eq := at;
+    while eq < amp && url[eq] != '=' { eq += 1; }
+    if eq < amp && cast(string) url[at..<eq] == key {
+      return agy_url_decode(cast(string) url[eq + 1..<amp], out);
+    }
+    if amp < url.count && url[amp] == '#' { break; }
+    at = amp + 1;
+  }
+  return "";
+}
+
+// Parse and validate an Antigravity Google OAuth URL (exact port of T3 parseAntigravityAuthorizationUrl).
+// Returns AGY_OAUTH_MODE_CODE (1), AGY_OAUTH_MODE_LOOPBACK (2), or AGY_OAUTH_MODE_NONE (0).
+agy_parse_auth_url_detail :: (text: string, url_out: [] u8, state_out: [] u8) -> int {
+  url := agy_parse_oauth_url(text, url_out);
+  if url.count == 0 { return AGY_OAUTH_MODE_NONE; }
+  code_pfx := "https://accounts.google.com/o/oauth2/auth?";
+  loop_pfx := "https://accounts.google.com/o/oauth2/v2/auth?";
+  is_code := url.count > code_pfx.count && cast(string) url[0..<code_pfx.count] == code_pfx;
+  is_loop := url.count > loop_pfx.count && cast(string) url[0..<loop_pfx.count] == loop_pfx;
+  if !is_code && !is_loop { return AGY_OAUTH_MODE_NONE; }
+  rtb: [64] u8; if agy_query_param(url, "response_type", rtb[..]) != "code" { return AGY_OAUTH_MODE_NONE; }
+  cb: [128] u8; if agy_query_param(url, "client_id", cb[..]).count == 0 { return AGY_OAUTH_MODE_NONE; }
+  rb: [256] u8; redir := agy_query_param(url, "redirect_uri", rb[..]);
+  _ = agy_query_param(url, "state", state_out);
+  if is_code && redir == "https://antigravity.google/oauth-callback" { return AGY_OAUTH_MODE_CODE; }
+  if (redir.count >= 17 && (cast(string) redir[0..<17] == "http://127.0.0.1:" || cast(string) redir[0..<17] == "http://localhost:")) {
+    return AGY_OAUTH_MODE_LOOPBACK;
+  }
+  return AGY_OAUTH_MODE_NONE;
+}
+
+// Parse a pasted authorization code or callback URL (exact port of T3 antigravityLoginResponse).
+// Accepts raw code (no whitespace/control chars) OR https://antigravity.google/oauth-callback?state=...&code=...
+// (or loopback http://127.0.0.1:.../http://localhost:...). Validates expected_state when non-empty.
+// Returns extracted code in out, or "" on error (writing reason into err_out).
+agy_parse_login_response :: (raw_input: string, expected_state: string, out: [] u8, err_out: [] u8) -> string {
+  a := 0; b := raw_input.count;
+  while a < b && raw_input[a] <= 32 { a += 1; }
+  while b > a && raw_input[b - 1] <= 32 { b -= 1; }
+  if a >= b { _ = cl_copy(err_out, "Paste the sign-in code or callback URL."); return ""; }
+  s := cast(string) raw_input[a..<b];
+  is_url := (s.count >= 8 && cast(string) s[0..<8] == "https://") || (s.count >= 7 && cast(string) s[0..<7] == "http://");
+  if !is_url {
+    for c: s {
+      if c <= 32 || c == 127 { _ = cl_copy(err_out, "Authorization code must be a single line with no spaces."); return ""; }
+    }
+    if s.count > out.count { _ = cl_copy(err_out, "Authorization code is too long."); return ""; }
+    return cast(string) out[0..<cl_copy(out, s)];
+  }
+  agy_cb := "https://antigravity.google/oauth-callback";
+  is_agy_cb := s.count >= agy_cb.count && cast(string) s[0..<agy_cb.count] == agy_cb;
+  is_loop_cb := s.count >= 17 && (cast(string) s[0..<17] == "http://127.0.0.1:" || cast(string) s[0..<17] == "http://localhost:");
+  if !is_agy_cb && !is_loop_cb {
+    _ = cl_copy(err_out, "Paste the Antigravity callback URL or the sign-in code.");
+    return "";
+  }
+  eb: [128] u8; err_param := agy_query_param(s, "error", eb[..]);
+  if err_param.count > 0 {
+    n := cl_copy(err_out, "Google sign-in returned an error: ");
+    n += cl_copy(err_out[n..<err_out.count], err_param);
+    return "";
+  }
+  if expected_state.count > 0 {
+    sb: [256] u8; got_state := agy_query_param(s, "state", sb[..]);
+    if got_state != expected_state {
+      _ = cl_copy(err_out, "Sign-in callback state does not match this sign-in attempt.");
+      return "";
+    }
+  }
+  code := agy_query_param(s, "code", out);
+  if code.count == 0 { _ = cl_copy(err_out, "Callback URL does not contain an authorization code."); return ""; }
+  return code;
+}
+
+// Broad sign-in required error detection (exact port of T3 isAntigravitySignInRequiredError).
+agy_is_signin_required :: (message: string) -> bool {
+  if agy_signed_out(message) { return true; }
+  marks := [11] string.[
+    "not authenticated", "Not authenticated", "UNAUTHENTICATED",
+    "please log in", "Please log in", "sign in", "Sign in",
+    "invalid_grant", "token expired", "could not find default credentials",
+    "Reauthentication is needed"
+  ];
+  for m: marks { if agy_has(message, m) { return true; } }
+  return false;
+}
+
+// Format Antigravity version for UI display (exact port of T3 getProviderVersionLabel).
+// "agy_acp_server_20261120_1_rc" -> "2026-11-20 rc", "1.5.12" -> "v1.5.12".
+agy_version_label :: (version: string, out: [] u8) -> string {
+  if version.count == 0 { return ""; }
+  if version.count >= AGY_VERSION_PREFIX.count + 10 && cast(string) version[0..<AGY_VERSION_PREFIX.count] == AGY_VERSION_PREFIX {
+    rest := cast(string) version[AGY_VERSION_PREFIX.count..<version.count];
+    all_digits := true;
+    for i: 0..<8 { if rest[i] < '0' || rest[i] > '9' { all_digits = false; break; } }
+    if all_digits && rest[8] == '_' {
+      n := 0;
+      n += cl_copy(out[n..<out.count], cast(string) rest[0..<4]);
+      n += cl_copy(out[n..<out.count], "-");
+      n += cl_copy(out[n..<out.count], cast(string) rest[4..<6]);
+      n += cl_copy(out[n..<out.count], "-");
+      n += cl_copy(out[n..<out.count], cast(string) rest[6..<8]);
+      pos := 9;
+      while pos < rest.count && rest[pos] >= '0' && rest[pos] <= '9' { pos += 1; }
+      if pos + 1 < rest.count && rest[pos] == '_' {
+        n += cl_copy(out[n..<out.count], " ");
+        n += cl_copy(out[n..<out.count], cast(string) rest[pos + 1..<rest.count]);
+      }
+      return cast(string) out[0..<n];
+    }
+  }
+  if version[0] >= '0' && version[0] <= '9' {
+    n := cl_copy(out, "v");
+    n += cl_copy(out[n..<out.count], version);
+    return cast(string) out[0..<n];
+  }
+  return cast(string) out[0..<cl_copy(out, version)];
+}
+
+// Client info name rule (T3 AntigravityAcpSupport.ts): "openagents" on >= 1.5.1, "zed" on 1.5.0.
+agy_client_info_name :: (agent_version: string) -> string {
+  if agent_version == "1.5.0" || agent_version == "v1.5.0" || agent_version == "agy_acp_server_1.5.0" {
+    return "zed";
+  }
+  return "openagents";
+}
+
+// Verify an ACP initialize result from a downloaded managed agy binary (exact port of T3 AntigravityInstallation.ts).
+agy_verify_init_result :: (result: string, ar: [] ClArena) -> string {
+  name := cl_str(ar, result, "agentInfo.name");
+  if name != "Antigravity ACP Server" { return "Downloaded binary is not Antigravity ACP Server."; }
+  ver := cl_str(ar, result, "agentInfo.version");
+  if !agy_version_ok(ver) { return AGY_OLD_VERSION; }
+  if !cl_bool(result, "agentCapabilities.loadSession").value { return "Downloaded Antigravity binary does not support loadSession."; }
+  if cl_raw(result, "agentCapabilities.sessionCapabilities.resume").count == 0 { return "Downloaded Antigravity binary does not support session/resume."; }
+  return "";
+}
+
+// Parse Go duration strings like "1h2m3s", "500ms", "1500us" into milliseconds (T3 AntigravityTurnOutcome.ts).
+agy_parse_go_duration_ms :: (dur: string) -> int {
+  if dur.count == 0 { return 0; }
+  total_ms := 0;
+  i := 0;
+  while i < dur.count {
+    if dur[i] < '0' || dur[i] > '9' { return 0; }
+    whole := 0;
+    while i < dur.count && dur[i] >= '0' && dur[i] <= '9' { whole = whole * 10 + cast(int) (dur[i] - '0'); i += 1; }
+    frac := 0; frac_div := 1;
+    if i < dur.count && dur[i] == '.' {
+      i += 1;
+      while i < dur.count && dur[i] >= '0' && dur[i] <= '9' {
+        if frac_div < 1000000 { frac = frac * 10 + cast(int) (dur[i] - '0'); frac_div *= 10; }
+        i += 1;
+      }
+    }
+    u0 := i;
+    while i < dur.count && (dur[i] < '0' || dur[i] > '9') { i += 1; }
+    unit := cast(string) dur[u0..<i];
+    if unit == "h" { total_ms += whole * 3600000 + (frac * 3600000) / frac_div; }
+    else if unit == "m" { total_ms += whole * 60000 + (frac * 60000) / frac_div; }
+    else if unit == "s" { total_ms += whole * 1000 + (frac * 1000) / frac_div; }
+    else if unit == "ms" { total_ms += whole + frac / frac_div; }
+    else if unit == "us" || unit == "µs" || unit == "μs" { total_ms += whole / 1000; }
+    else if unit == "ns" { total_ms += whole / 1000000; }
+    else { return 0; }
+  }
+  return total_ms;
+}
+
+#test "antigravity: T3 auth methods, settings.json, 19-key sanitization, OAuth parsing, init verification, and Go durations" {
+  // 1. Auth config validation & labels
+  #assert agy_auth_normalize("") == AGY_AUTH_OAUTH_PERSONAL;
+  #assert agy_auth_normalize("bogus") == AGY_AUTH_OAUTH_PERSONAL;
+  #assert agy_auth_normalize("agent-platform") == AGY_AUTH_AGENT_PLATFORM;
+  #assert agy_auth_uses_browser("oauth-personal") && agy_auth_uses_browser("oauth-business");
+  #assert !agy_auth_uses_browser("gemini-api-key") && !agy_auth_uses_browser("agent-platform");
+  #assert agy_auth_label("oauth-personal") == "Google account";
+  #assert agy_auth_label("oauth-business") == "Gemini Enterprise";
+  #assert agy_auth_label("gemini-api-key") == "Gemini API key";
+  #assert agy_auth_label("agent-platform") == "Agent Platform (Vertex AI)";
+
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "oauth-personal"}) == "";
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "oauth-business"}).count > 0;
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "oauth-business", gcp_project = "p", gcp_location = "us-central1"}) == "";
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "gemini-api-key"}).count > 0;
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "gemini-api-key", api_key = "AIzaTest"}) == "";
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "agent-platform"}).count > 0;
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "agent-platform", api_key = "AIzaExpress"}) == "";
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "agent-platform", gcp_project = "openagentsgemini", gcp_location = "global"}) == "";
+  #assert agy_auth_config_issue(AgyAuthConfig.{method = "agent-platform", gcp_project = "openagentsgemini"}).count > 0;
+
+  // 2. settings.json formatting
+  jb: [512] u8;
+  #assert agy_format_settings_json(AgyAuthConfig.{method = "oauth-personal"}, jb[..]) == "{\"auth\":{\"type\":\"oauth-personal\"}}\n";
+  #assert agy_format_settings_json(AgyAuthConfig.{method = "agent-platform", gcp_project = "openagentsgemini", gcp_location = "global"}, jb[..]) == "{\"auth\":{\"type\":\"agent-platform\"},\"gcp\":{\"project\":\"openagentsgemini\",\"location\":\"global\"}}\n";
+  #assert agy_format_settings_json(AgyAuthConfig.{method = "agent-platform", api_key = "k1", gcp_project = "ignored"}, jb[..]) == "{\"auth\":{\"type\":\"agent-platform\"}}\n";
+
+  // 3. Full 19-key sanitization & method-specific env injection
+  e1: [1] AgyEnv; l1: [1] CuLaunch;
+  agy_prepare_launch_auth(l1[..], e1[..], "agy", "/w", "/tmp/p1", AgyAuthConfig.{method = "oauth-personal"});
+  #assert l1[0].unset_n == 19 && agy_env_has(e1[..], "AGY_ACP_FORCE_FILE_STORAGE") && agy_env_has(e1[..], "SSH_CONNECTION");
+  e2: [1] AgyEnv; l2: [1] CuLaunch;
+  agy_prepare_launch_auth(l2[..], e2[..], "agy", "/w", "/tmp/p2", AgyAuthConfig.{method = "agent-platform", api_key = "express-k"});
+  #assert l2[0].unset_n == 20 && !agy_env_has(e2[..], "SSH_CONNECTION") && agy_env_has(e2[..], "GOOGLE_API_KEY");
+  e3: [1] AgyEnv; l3: [1] CuLaunch;
+  agy_prepare_launch_auth(l3[..], e3[..], "agy", "/w", "/tmp/p3", AgyAuthConfig.{method = "gemini-api-key", api_key = "gem-k"});
+  #assert l3[0].unset_n == 20 && agy_env_has(e3[..], "GEMINI_API_KEY") && !agy_env_has(e3[..], "GOOGLE_API_KEY");
+
+  // 4. OAuth URL detail & login response parsing
+  ub: [512] u8; sb: [128] u8;
+  m1 := agy_parse_auth_url_detail("Visit https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=cid&state=st42&redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback", ub[..], sb[..]);
+  #assert m1 == AGY_OAUTH_MODE_CODE && cast(string) sb[0..<4] == "st42";
+  cb: [128] u8; eb: [128] u8;
+  #assert agy_parse_login_response("https://antigravity.google/oauth-callback?state=st42&code=4%2Fabc123", "st42", cb[..], eb[..]) == "4/abc123";
+  #assert agy_parse_login_response("https://antigravity.google/oauth-callback?state=wrong&code=4%2Fabc123", "st42", cb[..], eb[..]) == "";
+  #assert agy_parse_login_response("raw-code-xyz", "st42", cb[..], eb[..]) == "raw-code-xyz";
+
+  // 5. Version label, init verification & Go duration parser
+  vb: [64] u8;
+  #assert agy_version_label("agy_acp_server_20261120_1_rc", vb[..]) == "2026-11-20 rc";
+  #assert agy_version_label("1.5.12", vb[..]) == "v1.5.12";
+  #assert agy_client_info_name("1.5.0") == "zed" && agy_client_info_name("1.5.12") == "openagents";
+  ab: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  #assert agy_verify_init_result("{\"agentInfo\":{\"name\":\"Antigravity ACP Server\",\"version\":\"1.5.12\"},\"agentCapabilities\":{\"loadSession\":true,\"sessionCapabilities\":{\"resume\":{}}}}", ar[..]) == "";
+  #assert agy_verify_init_result("{\"agentInfo\":{\"name\":\"Other\",\"version\":\"1.5.12\"}}", ar[..]).count > 0;
+  #assert agy_parse_go_duration_ms("1h2m3.5s") == 3723500 && agy_parse_go_duration_ms("500ms") == 500;
+  #assert agy_is_signin_required("UNAUTHENTICATED: please log in") && agy_is_signin_required("could not find default credentials");
 }

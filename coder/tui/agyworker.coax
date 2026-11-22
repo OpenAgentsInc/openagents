@@ -77,6 +77,10 @@ AgywConfig :: struct {
   mode: [32] u8; mode_n: int;
   model: [128] u8; model_n: int;
   effort: [32] u8; effort_n: int;
+  auth_method: [32] u8; auth_method_n: int;
+  api_key: [512] u8; api_key_n: int;
+  gcp_project: [256] u8; gcp_project_n: int;
+  gcp_location: [128] u8; gcp_location_n: int;
   mcp_url: [256] u8; mcp_url_n: int;
   mcp_token: [256] u8; mcp_token_n: int;
   mcp_stdio: [512] u8; mcp_stdio_n: int;
@@ -223,11 +227,42 @@ agyw_load_env :: (s: [] AgywState) {
   s[0].cfg.model_n = agyw_copy(s[0].cfg.model[..], mod);
   eff := agyw_resolve_effort("", cl_getenv("CODER_AGY_EFFORT", eb[..]));
   s[0].cfg.effort_n = agyw_copy(s[0].cfg.effort[..], eff);
+  amb: [64] u8; am := agyw_trim(cl_getenv("CODER_AGY_AUTH_METHOD", amb[..]));
+  s[0].cfg.auth_method_n = agyw_copy(s[0].cfg.auth_method[..], am);
+  akb: [512] u8; ak := agyw_trim(cl_getenv("CODER_AGY_API_KEY", akb[..]));
+  s[0].cfg.api_key_n = agyw_copy(s[0].cfg.api_key[..], ak);
+  gpb: [256] u8; gp := agyw_trim(cl_getenv("CODER_AGY_GCP_PROJECT", gpb[..]));
+  s[0].cfg.gcp_project_n = agyw_copy(s[0].cfg.gcp_project[..], gp);
+  glb: [128] u8; gl := agyw_trim(cl_getenv("CODER_AGY_GCP_LOCATION", glb[..]));
+  s[0].cfg.gcp_location_n = agyw_copy(s[0].cfg.gcp_location[..], gl);
   ib: [16] u8; intr := agyw_trim(cl_getenv("CODER_AGY_INTERACTIVE", ib[..]));
   s[0].cfg.interactive = intr == "1" || intr == "true";
   mub: [256] u8; s[0].cfg.mcp_url_n = agyw_copy(s[0].cfg.mcp_url[..], agyw_trim(cl_getenv("CODER_MCP_URL", mub[..])));
   mtb: [256] u8; s[0].cfg.mcp_token_n = agyw_copy(s[0].cfg.mcp_token[..], agyw_trim(cl_getenv("CODER_MCP_TOKEN", mtb[..])));
   msb: [512] u8; s[0].cfg.mcp_stdio_n = agyw_copy(s[0].cfg.mcp_stdio[..], agyw_trim(cl_getenv("CODER_MCP_STDIO", msb[..])));
+}
+
+agyw_auth_config :: (s: [] AgywState) -> AgyAuthConfig {
+  return AgyAuthConfig.{
+    method = agyw_str(s[0].cfg.auth_method[..], s[0].cfg.auth_method_n),
+    api_key = agyw_str(s[0].cfg.api_key[..], s[0].cfg.api_key_n),
+    gcp_project = agyw_str(s[0].cfg.gcp_project[..], s[0].cfg.gcp_project_n),
+    gcp_location = agyw_str(s[0].cfg.gcp_location[..], s[0].cfg.gcp_location_n),
+  };
+}
+
+// Launch agy using T3 auth config when CODER_AGY_AUTH_METHOD is configured, else legacy agy_launch_with.
+agyw_launch_engine :: (s: [] AgywState, x: [] CuEngine, cwd: string) -> string {
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  if s[0].cfg.auth_method_n > 0 {
+    return agy_launch_auth(x, prog, cwd, "openagents-agyworker", "1.0", prof, agyw_auth_config(s));
+  }
+  return agy_launch_with(x, prog, cwd, "openagents-agyworker", "1.0", prof);
+}
+
+agyw_is_logout :: (text: string) -> bool {
+  return agyw_trim(text) == "/logout";
 }
 
 agyw_apply_mcp :: (s: [] AgywState, c: [] CuClient) {
@@ -809,7 +844,7 @@ agyw_open_once :: (s: [] AgywState, x: [] CuEngine, why_out: [] u8) -> string {
   hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
   if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
   if cwd.count == 0 { cwd = "."; }
-  why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+  why := agyw_launch_engine(s, x, cwd);
   if why.count > 0 { return cast(string) why_out[0..<agyw_copy(why_out, why)]; }
   agyw_lease_acquire(s, x[0].p[0].pid);
   until := cxproc_now_ms() + AGYW_PROBE_MS;
@@ -844,11 +879,255 @@ agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
   agyw_write_line(s, n);
   return 0;
 }
-agyw_probe_asked :: () -> bool {
+agyw_flag_asked :: (flag: string) -> bool {
   a: [1] Args;
   if !args_load(a[..]) { return false; }
-  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--probe" { return true; } }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == flag { return true; } }
   return false;
+}
+agyw_probe_asked :: () -> bool { return agyw_flag_asked("--probe"); }
+agyw_probe_json_asked :: () -> bool { return agyw_flag_asked("--probe-json"); }
+agyw_logout_asked :: () -> bool { return agyw_flag_asked("--logout"); }
+
+// Extract thought_level config option into JSON snippet: "thinkingId":"...","thinkingDefault":"...","thinkingLevels":[{"value":"...","label":"..."}]
+agyw_put_thinking_json :: (o: [] ClOut, result: string, ar: [] ClArena) {
+  opts := cl_raw(result, "configOptions");
+  n := cl_count(opts);
+  for i: 0..<n {
+    item := cl_json(opts, cl_item(opts, i));
+    if cl_str(ar, item, "category") != "thought_level" { continue; }
+    oid := cl_str(ar, item, "id");
+    cur := cl_str(ar, item, "currentValue");
+    cl_put(o, ",\"thinkingId\":"); cl_put_string(o, oid);
+    cl_put(o, ",\"thinkingDefault\":"); cl_put_string(o, cur);
+    cl_put(o, ",\"thinkingLevels\":[");
+    choices := cl_raw(item, "options");
+    m := cl_count(choices);
+    wrote := false;
+    for j: 0..<m {
+      ch := cl_json(choices, cl_item(choices, j));
+      val := cl_str(ar, ch, "value");
+      if val.count == 0 { continue; }
+      lbl := cl_str(ar, ch, "name");
+      if lbl.count == 0 { lbl = val; }
+      if wrote { cl_put(o, ","); }
+      cl_put(o, "{\"value\":"); cl_put_string(o, val);
+      cl_put(o, ",\"label\":"); cl_put_string(o, lbl);
+      cl_put(o, "}");
+      wrote = true;
+    }
+    cl_put(o, "]");
+    return;
+  }
+}
+
+// agyworker --probe-json: full T3 AntigravityProvider status + catalog probe.
+// Emits one JSON line with version, authStatus, authMethod, models (with per-model thought_level options),
+// hasAutoMode, defaultModel, and error message. Never logs API keys or tokens.
+agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
+  auth_cfg := agyw_auth_config(s);
+  method := agy_auth_normalize(auth_cfg.method);
+  o := [1] ClOut.[ClOut.{buf = s[0].out[..]}];
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  if prog.count == 0 {
+    cl_put(o[..], "{\"installed\":false,\"authStatus\":\"unknown\",\"authMethod\":"); cl_put_string(o[..], method);
+    cl_put(o[..], ",\"status\":\"error\",\"message\":"); cl_put_string(o[..], AGY_MISSING);
+    cl_put(o[..], ",\"models\":[]}");
+    agyw_write_line(s, o[0].len);
+    return 0;
+  }
+  issue := ifx s[0].cfg.auth_method_n > 0 then agy_auth_config_issue(auth_cfg) else "";
+  if issue.count > 0 {
+    cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
+    cl_put(o[..], ",\"authStatus\":\"unauthenticated\",\"authMethod\":"); cl_put_string(o[..], method);
+    cl_put(o[..], ",\"status\":\"warning\",\"message\":"); cl_put_string(o[..], issue);
+    cl_put(o[..], ",\"models\":[]}");
+    agyw_write_line(s, o[0].len);
+    return 0;
+  }
+  hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
+  if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
+  if cwd.count == 0 { cwd = "."; }
+  why := agyw_launch_engine(s, x, cwd);
+  if why.count > 0 {
+    cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
+    cl_put(o[..], ",\"authStatus\":\"unknown\",\"authMethod\":"); cl_put_string(o[..], method);
+    cl_put(o[..], ",\"status\":\"error\",\"message\":"); cl_put_string(o[..], why);
+    cl_put(o[..], ",\"models\":[]}");
+    agyw_write_line(s, o[0].len);
+    return 0;
+  }
+  agyw_lease_acquire(s, x[0].p[0].pid);
+  until := cxproc_now_ms() + AGYW_PROBE_MS;
+  sess_buf: [65536] u8; sess_n := 0;
+  ver_buf: [64] u8; ver_n := 0;
+  err_buf: [1024] u8; err_n := 0;
+  authed := false;
+  auth_refused := false;
+  while x[0].live && sess_n == 0 && !auth_refused && cxproc_now_ms() < until {
+    ev: [1] CuEvent;
+    cue_poll(x, ev[..]);
+    if ev[0].kind == CuEventKind.idle { proc_sleep(20); continue; }
+    if ev[0].kind == CuEventKind.initialized {
+      ver_n = agyw_copy(ver_buf[..], cu_version(x[0].c));
+      vw := agy_check_version(cast(string) ver_buf[0..<ver_n]);
+      if vw.count > 0 { err_n = agyw_copy(err_buf[..], vw); break; }
+    } else if ev[0].kind == CuEventKind.refused && (ev[0].of == CU_AUTHENTICATE || ev[0].of == CU_SESSION_NEW) {
+      auth_refused = true;
+      err_n = agyw_copy(err_buf[..], ev[0].message);
+      break;
+    } else if ev[0].kind == CuEventKind.answered && ev[0].of == CU_SESSION_NEW {
+      authed = true;
+      sess_n = agyw_copy(sess_buf[..], ev[0].result);
+      break;
+    } else if ev[0].kind == CuEventKind.end || ev[0].kind == CuEventKind.failed {
+      err_n = agyw_copy(err_buf[..], cue_why(x));
+      break;
+    }
+  }
+  if !authed {
+    if err_n == 0 {
+      w := cue_why(x);
+      if w.count == 0 { w = "Antigravity could not authenticate with the configured credentials."; }
+      err_n = agyw_copy(err_buf[..], w);
+    }
+    if x[0].live { cue_close(x); }
+    agyw_lease_release(s);
+    err_str := cast(string) err_buf[0..<err_n];
+    is_unauth := auth_refused || agy_is_signin_required(err_str);
+    if is_unauth && agy_auth_uses_browser(method) && (agy_has(err_str, "remote (SSH)") || agy_has(err_str, "No browser")) {
+      err_str = ifx method == AGY_AUTH_OAUTH_BUSINESS then "Antigravity is installed. Sign in with Gemini Enterprise to load models." else "Antigravity is installed. Sign in with Google to load models.";
+    }
+    cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
+    cl_put(o[..], ",\"version\":"); cl_put_string(o[..], cast(string) ver_buf[0..<ver_n]);
+    cl_put(o[..], ",\"authStatus\":"); cl_put_string(o[..], ifx is_unauth then "unauthenticated" else "unknown");
+    cl_put(o[..], ",\"authMethod\":"); cl_put_string(o[..], method);
+    cl_put(o[..], ",\"status\":"); cl_put_string(o[..], ifx is_unauth then "warning" else "error");
+    cl_put(o[..], ",\"message\":"); cl_put_string(o[..], err_str);
+    cl_put(o[..], ",\"models\":[]}");
+    agyw_write_line(s, o[0].len);
+    return 0;
+  }
+  // Authenticated! Extract default model + models list (with base thinking config + per-model probe).
+  sid_buf: [CU_ID] u8; sid_n := agyw_copy(sid_buf[..], cu_session_id(x[0].c));
+  sess_json := cast(string) sess_buf[0..<sess_n];
+  pab: [65536] u8; par := [1] ClArena.[ClArena.{buf = pab[..]}];
+  def_id_buf: [128] u8;
+  def_id := agy_effective_at(sess_json, "", "", AGYW_EFFORT, par[..], def_id_buf[..]);
+  def_name := agy_model_shown(sess_json, def_id, par[..]);
+  cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
+  cl_put(o[..], ",\"version\":"); cl_put_string(o[..], cast(string) ver_buf[0..<ver_n]);
+  cl_put(o[..], ",\"authStatus\":\"authenticated\",\"authMethod\":"); cl_put_string(o[..], method);
+  cl_put(o[..], ",\"authLabel\":"); cl_put_string(o[..], agy_auth_label(method));
+  cl_put(o[..], ",\"status\":\"ready\",\"hasAutoMode\":");
+  cl_put(o[..], ifx cu_has_auto_mode(x[0].c) then "true" else "false");
+  cl_put(o[..], ",\"defaultModel\":"); cl_put_string(o[..], def_id);
+  cl_put(o[..], ",\"defaultModelName\":"); cl_put_string(o[..], def_name);
+  cl_put(o[..], ",\"models\":[");
+  models := cl_raw(sess_json, "models.availableModels");
+  mc := cl_count(models);
+  wrote_m := false;
+  probe_limit := ifx mc > 24 then 24 else mc;
+  for i: 0..<probe_limit {
+    par[0].at = 0; par[0].full = false;
+    item := cl_json(models, cl_item(models, i));
+    mid := cl_str(par[..], item, "modelId");
+    if mid.count == 0 { continue; }
+    mname := cl_str(par[..], item, "name");
+    if mname.count == 0 { mname = mid; }
+    // Probe per-model thinking config options via session/set_model (port of T3 AntigravityProvider.ts).
+    mres_buf: [16384] u8; mres_n := 0;
+    if x[0].live && cxproc_now_ms() < until {
+      _ = cu_set_model(x[0].c, mid);
+      m_until := cxproc_now_ms() + 3000;
+      while x[0].live && cxproc_now_ms() < m_until {
+        mev: [1] CuEvent;
+        cue_poll(x, mev[..]);
+        if mev[0].kind == CuEventKind.idle { proc_sleep(10); continue; }
+        if mev[0].kind == CuEventKind.answered && mev[0].of == CU_SESSION_SET_MODEL {
+          if cl_raw(mev[0].result, "configOptions").count > 0 {
+            mres_n = agyw_copy(mres_buf[..], mev[0].result);
+          }
+          break;
+        }
+        if mev[0].kind == CuEventKind.refused && mev[0].of == CU_SESSION_SET_MODEL { break; }
+        if mev[0].kind == CuEventKind.notification && mev[0].method == "session/update" {
+          upd := cl_raw(mev[0].params, "update");
+          if cl_str(x[0].c[0].ar[..], upd, "sessionUpdate") == "config_option_update" {
+            mres_n = agyw_copy(mres_buf[..], upd);
+          }
+        }
+        if mev[0].kind == CuEventKind.end || mev[0].kind == CuEventKind.failed { break; }
+      }
+    }
+    if wrote_m { cl_put(o[..], ","); }
+    cl_put(o[..], "{\"slug\":"); cl_put_string(o[..], mid);
+    cl_put(o[..], ",\"name\":"); cl_put_string(o[..], mname);
+    agyw_put_thinking_json(o[..], ifx mres_n > 0 then cast(string) mres_buf[0..<mres_n] else sess_json, par[..]);
+    cl_put(o[..], "}");
+    wrote_m = true;
+  }
+  cl_put(o[..], "]}");
+  cue_close(x);
+  agyw_lease_release(s);
+  agyw_probe_cleanup(agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n), cwd, cast(string) sid_buf[0..<sid_n], cwd);
+  agyw_write_line(s, o[0].len);
+  return 0;
+}
+
+// agyworker --logout: sign out the profile via ACP logout RPC (port of T3 AntigravityAuth.ts signOut).
+agyw_logout :: (s: [] AgywState, x: [] CuEngine) -> int {
+  o := [1] ClOut.[ClOut.{buf = s[0].out[..]}];
+  hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
+  if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
+  if cwd.count == 0 { cwd = "."; }
+  // Start without auto-opening a session: send logout immediately after initialize!
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  if prog.count == 0 {
+    cl_put(o[..], "{\"ok\":false,\"error\":\"Antigravity CLI not found\"}");
+    agyw_write_line(s, o[0].len);
+    return 1;
+  }
+  cue_agent(x, agy_agent());
+  e: [1] AgyEnv; l: [1] CuLaunch;
+  agy_prepare_launch_auth(l[..], e[..], prog, cwd, prof, agyw_auth_config(s));
+  _ = agy_wrap_windows_cmd(l[..]);
+  why := cue_start(x, l[0], "openagents-agyworker", "1.0");
+  if why.count > 0 {
+    cl_put(o[..], "{\"ok\":false,\"error\":"); cl_put_string(o[..], why); cl_put(o[..], "}");
+    agyw_write_line(s, o[0].len);
+    return 1;
+  }
+  until := cxproc_now_ms() + 15000;
+  sent_logout := false;
+  ok := false;
+  err_buf: [512] u8; err_n := 0;
+  while x[0].live && cxproc_now_ms() < until {
+    ev: [1] CuEvent;
+    ev[0] = cu_poll(x[0].c, x[0].p, 0);
+    if ev[0].kind == CuEventKind.idle { proc_sleep(20); continue; }
+    if ev[0].kind == CuEventKind.initialized && !sent_logout {
+      _ = cu_logout(x[0].c);
+      sent_logout = true;
+    } else if ev[0].kind == CuEventKind.answered && ev[0].of == CU_LOGOUT {
+      ok = true; break;
+    } else if ev[0].kind == CuEventKind.refused && ev[0].of == CU_LOGOUT {
+      err_n = agyw_copy(err_buf[..], ev[0].message); break;
+    } else if ev[0].kind == CuEventKind.end || ev[0].kind == CuEventKind.failed {
+      err_n = agyw_copy(err_buf[..], cu_error(x[0].c)); break;
+    }
+  }
+  cue_close(x);
+  if ok {
+    cl_put(o[..], "{\"ok\":true}");
+    agyw_write_line(s, o[0].len);
+    return 0;
+  }
+  err_str := ifx err_n > 0 then cast(string) err_buf[0..<err_n] else "Logout timed out or failed.";
+  cl_put(o[..], "{\"ok\":false,\"error\":"); cl_put_string(o[..], err_str); cl_put(o[..], "}");
+  agyw_write_line(s, o[0].len);
+  return 1;
 }
 
 // ---------------------------------------------------------------- --connect (the desktop's "Connect Google Antigravity")
@@ -899,11 +1178,14 @@ agyw_ends_with :: (s: string, tail: string) -> bool {
   return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail;
 }
 
-// `agy acp --login`: the sign-in page's address relayed as "url", the code from code_path handed to
-// agy's stdin, its end awaited: "" when agy signed in, else why not.
+// `agy acp --login`: the sign-in page's address relayed as "url", the code (or callback URL) from
+// code_path validated and handed to agy's stdin, its end awaited: "" when agy signed in, else why not.
 agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
   prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
   prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  auth_cfg := agyw_auth_config(s);
+  method := agy_auth_normalize(auth_cfg.method);
+  if prof.count > 0 && s[0].cfg.auth_method_n > 0 { _ = agy_write_settings_json(prof, auth_cfg); }
   h := proc_new();
   if h < 0 { return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the Antigravity CLI to sign in.")]; }
   ok := true;
@@ -914,10 +1196,17 @@ agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
   if prof.count > 0 {
     ok = ok && proc_arg(h, "--gemini-dir") && proc_arg(h, prof) && proc_arg(h, "--app-data-dir") && proc_arg(h, AGY_APP_DATA_DIR);
     gb: [1100] u8; gn := agyw_copy(gb[..], "GEMINI_HOME="); gn += agyw_copy(gb[gn..<gb.count], prof);
-    ok = ok && proc_env(h, cast(string) gb[0..<gn]) && proc_env(h, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
+    ok = ok && proc_env(h, cast(string) gb[0..<gn]);
+    if method == AGY_AUTH_OAUTH_PERSONAL {
+      ok = ok && proc_env(h, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
+    } else {
+      ok = ok && proc_unset(h, "SSH_CONNECTION");
+    }
   }
-  ok = ok && proc_arg(h, "--login") && proc_env(h, "AGY_CLI_DISABLE_AUTO_UPDATE=1");
-  // no display: agy prints the sign-in address instead of opening a browser itself (#13837)
+  ok = ok && proc_arg(h, "--login") && proc_env(h, "AGY_CLI_DISABLE_AUTO_UPDATE=1") && proc_env(h, "AGY_ACP_FORCE_FILE_STORAGE=1");
+  // Strip all 19 ambient credentials + DISPLAY/WAYLAND_DISPLAY so agy prints the sign-in address (#13837).
+  rem := AGY_REMOVED_ENV_KEYS;
+  for i: 0..<AGY_REMOVED_ENV_COUNT { ok = ok && proc_unset(h, rem[i]); }
   ok = ok && proc_unset(h, "DISPLAY") && proc_unset(h, "WAYLAND_DISPLAY") && proc_err_to_out(h);
   hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
   if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
@@ -926,6 +1215,7 @@ agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
   if proc_start(h) != 0 { _ = proc_release(h); return cast(string) why_out[0..<agyw_copy(why_out, "Could not start the Antigravity CLI to sign in.")]; }
   deadline := cxproc_now_ms() + AGYW_LOGIN_MS;
   sent_url := false; sent_code := false; timed_out := false;
+  state_buf: [256] u8; state_n := 0;
   line: [8192] u8;
   tail: [512] u8; tail_n := 0;
   while true {
@@ -933,18 +1223,35 @@ agyw_login :: (s: [] AgywState, code_path: string, why_out: [] u8) -> string {
     if n == PROC_EOF || n == PROC_ERROR { break; }
     if n >= 0 {
       text := agyw_trim(cast(string) line[0..<n]);
-      ub: [4096] u8; u := ifx sent_url then "" else agy_parse_oauth_url(text, ub[..]);
-      if u.count > 0 { agyw_say(s, "url", u); sent_url = true; }
-      else if text.count > 0 { tail_n = agyw_copy(tail[..], text); }
+      ub: [4096] u8;
+      if !sent_url {
+        st_tmp: [256] u8;
+        mode := agy_parse_auth_url_detail(text, ub[..], st_tmp[..]);
+        u := ifx mode != AGY_OAUTH_MODE_NONE then agy_parse_oauth_url(text, ub[..]) else agy_parse_oauth_url(text, ub[..]);
+        if u.count > 0 {
+          st_str := agy_query_param(u, "state", state_buf[..]);
+          state_n = st_str.count;
+          agyw_say(s, "url", u);
+          sent_url = true;
+        } else if text.count > 0 { tail_n = agyw_copy(tail[..], text); }
+      } else if text.count > 0 { tail_n = agyw_copy(tail[..], text); }
     }
     if sent_url && !sent_code && code_path.count > 0 && fs_exists(code_path) {
       cb: [4096] u8; cn := fs_read(code_path, cb[..]);
-      code := ifx cn > 0 then agyw_trim(cast(string) cb[0..<cn]) else "";
-      if code.count > 0 {
-        _ = proc_send(h, code); _ = proc_send(h, "\n");
-        sent_code = true;
+      raw := ifx cn > 0 then agyw_trim(cast(string) cb[0..<cn]) else "";
+      if raw.count > 0 {
+        parsed_buf: [2048] u8; err_buf: [256] u8;
+        code := agy_parse_login_response(raw, cast(string) state_buf[0..<state_n], parsed_buf[..], err_buf[..]);
         _ = fs_remove(code_path);
-        agyw_say(s, "step", "Finishing the Google sign-in…");
+        if code.count > 0 {
+          _ = proc_send(h, code); _ = proc_send(h, "\n");
+          sent_code = true;
+          agyw_say(s, "step", "Finishing the Google sign-in…");
+        } else {
+          err_msg := cast(string) err_buf[0..<256];
+          en := 0; while en < err_msg.count && err_msg[en] != 0 { en += 1; }
+          agyw_say(s, "warn", ifx en > 0 then cast(string) err_buf[0..<en] else "Invalid sign-in code or callback URL.");
+        }
       }
     }
     if cxproc_now_ms() > deadline { timed_out = true; break; }
@@ -1110,21 +1417,37 @@ agyw_signed_in_file :: (s: [] AgywState) -> bool {
 
 agyw_connect :: (s: [] AgywState, x: [] CuEngine) -> int {
   cpb: [1024] u8; code_path := agyw_arg_value("--code", cpb[..]);
+  auth_cfg := agyw_auth_config(s);
+  method := agy_auth_normalize(auth_cfg.method);
+  if s[0].cfg.auth_method_n > 0 {
+    issue := agy_auth_config_issue(auth_cfg);
+    if issue.count > 0 { agyw_say(s, "fail", issue); return 1; }
+  }
   if s[0].cfg.program_n == 0 {
     agyw_say(s, "step", "Downloading the Antigravity CLI from Google…");
     ib: [1024] u8; iw := agyw_install(s, ib[..]);
     if iw.count > 0 { agyw_say(s, "fail", iw); return 1; }
   }
   agyw_default_profile(s);
-  agyw_say(s, "profile", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+  prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  if prof.count > 0 && s[0].cfg.auth_method_n > 0 { _ = agy_write_settings_json(prof, auth_cfg); }
+  agyw_say(s, "profile", prof);
   wb: [1024] u8;
+  // Non-browser auth methods (gemini-api-key, agent-platform): verify credentials directly.
+  if s[0].cfg.auth_method_n > 0 && !agy_auth_uses_browser(method) {
+    agyw_say(s, "step", "Verifying Antigravity credentials…");
+    why := agyw_open_once(s, x, wb[..]);
+    if why.count > 0 { agyw_say(s, "fail", why); return 1; }
+    return agyw_connected(s);
+  }
   why := "";
   signed := agyw_signed_in_file(s);
-  if signed {
+  force_login := agyw_flag_asked("--force-login");
+  if signed && !force_login {
     agyw_say(s, "step", "Checking your Antigravity sign-in…");
     why = agyw_open_once(s, x, wb[..]);
     if why.count == 0 { return agyw_connected(s); }
-    if !agy_signed_out(why) && agyw_signed_in_file(s) { agyw_say(s, "fail", why); return 1; }
+    if !agy_is_signin_required(why) && agyw_signed_in_file(s) { agyw_say(s, "fail", why); return 1; }
   }
   agyw_say(s, "step", "Opening the Google sign-in…");
   lb: [1024] u8; lw := agyw_login(s, code_path, lb[..]);
@@ -1190,6 +1513,13 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     return;
   }
   if ev.kind == CuEventKind.refused {
+    if ev.of == CU_AUTHENTICATE {
+      why := ifx ev.message.count > 0 then ev.message else "Antigravity could not authenticate with the configured credentials.";
+      cue_close(x);
+      agyw_lease_release(s);
+      if s[0].turn_active { agyw_finish_turn(s, "failed", why, emit); }
+      return;
+    }
     if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
       cue_owed(x, s[0].turn_active);
       return;
@@ -1250,6 +1580,8 @@ tool_main :: () -> int #export_c #effects(all) {
   cu_line: [65536] u8; cu_arena: [65536] u8; cu_out: [65536] u8;
   cue_attach(x, cb[..], pb[..], cu_line[..], cu_arena[..], cu_out[..]);
   if agyw_probe_asked() { return agyw_probe(s, x); }
+  if agyw_probe_json_asked() { return agyw_probe_json(s, x); }
+  if agyw_logout_asked() { return agyw_logout(s, x); }
   if agyw_connect_asked() { return agyw_connect(s, x); }
 
   in_buf: [AGYW_LINE] u8; in_len: [1] int;
@@ -1339,9 +1671,12 @@ tool_main :: () -> int #export_c #effects(all) {
             }
             s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], prompt);
 
-            if !x[0].live {
+            if agyw_is_logout(req[0].task) {
+              if x[0].live { _ = cu_logout(x[0].c); _ = cu_flush(x[0].c, x[0].p); proc_sleep(300); agy_signout_drain(x); agyw_lease_release(s); }
+              agyw_finish_turn(s, "finished", "Signed out of Antigravity.", true);
+            } else if !x[0].live {
               agyw_apply_mcp(s, x[0].c);
-              why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+              why := agyw_launch_engine(s, x, cwd);
               if why.count > 0 {
                 agyw_finish_turn(s, "failed", why, true);
               } else {

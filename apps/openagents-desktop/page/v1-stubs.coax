@@ -600,3 +600,45 @@ coder_page_lean_search_set :: (s: [] CoderPage, json_str: string) -> bool #expor
 coder_page_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
 coder_page_lean_verify_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) { return false; }
 coder_page_lean_view_set :: (s: [] CoderPage, view: int) #export_c #effects(all) {}
+
+// ---- providers_settings.coax stubs ----
+CP_PS_FIRST :: 410;
+CP_PS_LAST :: 448;
+CpProvSettings :: struct { unused: int; }
+cp_ps_init :: (s: [] CoderPage) {}
+cp_ps_ed_active :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_ed_can_hit :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_ed_is_over :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_ed_secure :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_ed_text :: (s: [] CoderPage) -> string { return ""; }
+cp_ps_ed_publish :: (s: [] CoderPage, text: string) {}
+cp_ps_commit_ed :: (s: [] CoderPage) {}
+cp_ps_blur_ed :: (s: [] CoderPage) {}
+cp_ps_close_popups :: (s: [] CoderPage) {}
+cp_ps_key_enter :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_escape :: (s: [] CoderPage) -> bool { return false; }
+cp_ps_scroll :: (s: [] CoderPage, delta: f32) {}
+cp_ps_dismiss_popovers :: (s: [] CoderPage, act: int) -> bool { return false; }
+cp_ps_press :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
+cp_settings_providers :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, top: f32, h: f32) {}
+cp_ps_overlay :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {}
+coder_page_ps_set_meta :: (s: [] CoderPage, host_name: string, project_scope: string, checked_label: string, refreshing: bool) #export_c #effects(all) {}
+coder_page_ps_clear :: (s: [] CoderPage) #export_c #effects(all) {}
+coder_page_ps_add_instance :: (s: [] CoderPage, id: string, driver: int, display_name: string, version: string, enabled: bool, is_default: bool, status: int, headline: string, summary: string, accent: int) -> int #export_c #effects(all) { return -1; }
+coder_page_ps_select :: (s: [] CoderPage, idx: int) #export_c #effects(all) {}
+coder_page_ps_set_detail_config :: (s: [] CoderPage, display_name: string, accent: int, auth_method: int, api_key_set: bool, gcp_project: string, gcp_location: string, binary_path: string, extra_path: string) #export_c #effects(all) {}
+coder_page_ps_set_detail_runtime :: (s: [] CoderPage, rt_state: int, rt_status: string, rt_btn: string, rt_pct: int, rt_can_remove: bool, rt_err: string) #export_c #effects(all) {}
+coder_page_ps_set_detail_auth :: (s: [] CoderPage, auth_state: int, auth_sub: string, auth_detail: string, auth_btn: string, auth_can_signout: bool, auth_url: string) #export_c #effects(all) {}
+coder_page_ps_env_clear :: (s: [] CoderPage) #export_c #effects(all) {}
+coder_page_ps_env_add :: (s: [] CoderPage, key: string, val: string, secret: bool, has_secret: bool) -> int #export_c #effects(all) { return -1; }
+coder_page_ps_models_clear :: (s: [] CoderPage) #export_c #effects(all) {}
+coder_page_ps_models_add :: (s: [] CoderPage, slug: string, name: string, enabled: bool, favorite: bool, thinking: bool, custom: bool) -> int #export_c #effects(all) { return -1; }
+coder_page_ps_selected :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
+coder_page_ps_action_idx :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
+coder_page_ps_inst_id :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
+coder_page_ps_inst_enabled :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
+coder_page_ps_field :: (s: [] CoderPage, which: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
+coder_page_ps_int :: (s: [] CoderPage, which: int) -> int #export_c #effects(all) { return 0; }
+coder_page_ps_env_get :: (s: [] CoderPage, idx: int, key_out: [] u8, val_out: [] u8, flags_out: [] int) -> bool #export_c #effects(all) { return false; }
+coder_page_ps_model_get :: (s: [] CoderPage, idx: int, slug_out: [] u8, name_out: [] u8, flags_out: [] int) -> bool #export_c #effects(all) { return false; }
+coder_page_ps_ui_set :: (s: [] CoderPage, wiz_open: bool, wiz_step: int, detail_scroll: f32, focus_field: int) #export_c #effects(all) {}

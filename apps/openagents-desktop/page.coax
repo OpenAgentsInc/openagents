@@ -42,6 +42,7 @@
 #load "page/checks/usage-checks.coax" #test;
 #load "page/checks/mcpskills-checks.coax" #test;
 #load "page/checks/providers-checks.coax" #test;
+#load "page/checks/providers-settings-checks.coax" #test;
 #load "page/checks/voice-checks.coax" #test;
 #load "page/checks/environments-checks.coax" #test;
 #load "page/checks/rich-checks.coax" #test;

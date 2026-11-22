@@ -458,6 +458,71 @@ enum TestLaunch {
         return ok == shots.count ? 0 : 1
     }
 
+    /// Offscreen Metal PNG capture of Settings -> Providers and Add provider 3-step modal wizard (ZERO windows).
+    static func runProvidersShots(outDir: String) -> Int32 {
+        guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path else {
+            fputs("OpenAgents --shot-providers: missing Components resources\n", stderr); return 1
+        }
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+        guard let page = cd_open_ex(resources, 1, 1340, 880) else {
+            fputs("OpenAgents --shot-providers: cd_open_ex(offscreen=1) failed\n", stderr); return 1
+        }
+        cd_experimental_set(page, 1)
+        cd_flags_set(page, -1)
+        cd_settings_open(page, 14, "")
+        cd_ps_set_meta(page, "Christopher's MacBook Pro (2)", "All projects", "Checked 1h ago", 0)
+        cd_ps_clear(page)
+        _ = cd_ps_add_instance(page, "codex", 2, "Codex", "", 0, 1, 0, "Disabled", "", 0)
+        _ = cd_ps_add_instance(page, "claude", 1, "Claude", "", 0, 1, 0, "Disabled", "", 0)
+        _ = cd_ps_add_instance(page, "antigravity", 0, "Antigravity", "", 1, 1, 2, "Needs attention", "Antigravity is installed. Connect with Agent Platform to load models.", 0)
+        cd_ps_select(page, 2)
+        cd_ps_set_detail_config(page, "Antigravity", 0, 3, 0, "openagents-gemini", "us-central1", "", "")
+        cd_ps_set_detail_runtime(page, 1, "Installed.", "Install managed runtime", -1, 0, "")
+        cd_ps_set_detail_auth(page, 5, "Connect on Christopher's MacBook Pro (2) to load models.", "Antigravity could not authenticate with the configured credentials.", "Retry connection", 0, "")
+        cd_ps_env_clear(page)
+        cd_ps_models_clear(page)
+        _ = cd_ps_models_add(page, "gemini-4-neon", "Gemini 4 Neon", 1, 1, 1, 0)
+        _ = cd_ps_models_add(page, "gemini-4-carbon", "Gemini 4 Carbon", 1, 0, 1, 0)
+        _ = cd_ps_models_add(page, "gemini-4-hydrogen", "Gemini 4 Hydrogen", 0, 0, 0, 0)
+
+        func snap(_ name: String) -> Bool {
+            cd_env(page, 1, 0)
+            for _ in 0..<5 { _ = cd_shot_frame(page, 1340, 880, 0.016) }
+            let path = (outDir as NSString).appendingPathComponent(name)
+            return cd_shot_write(page, path) != 0
+        }
+
+        var ok = 0
+        // 1. Upper view (matching Screenshot 3)
+        cd_ps_ui_set(page, 0, 0, 0, 0)
+        if snap("01-providers-top.png") { ok += 1; print("wrote 01-providers-top.png") }
+
+        // 2. Scrolled down with GCP project focused (blue focus ring, matching Screenshot 2)
+        cd_ps_ui_set(page, 0, 0, 448, 3)
+        if snap("02-providers-scrolled.png") { ok += 1; print("wrote 02-providers-scrolled.png") }
+
+        // 3. Inline OAuth waiting card + env var + Models list
+        cd_ps_set_detail_auth(page, 3, "Finish sign-in in your browser on Christopher's MacBook Pro (2).", "", "Cancel", 0, "https://accounts.google.com/o/oauth2/v2/auth?client_id=antigravity")
+        _ = cd_ps_env_add(page, "VERTEX_CUSTOM_ENDPOINT", "https://us-central1-aiplatform.googleapis.com", 0, 0)
+        cd_ps_ui_set(page, 0, 0, 210, 0)
+        if snap("03a-providers-oauth.png") { ok += 1; print("wrote 03a-providers-oauth.png") }
+        cd_ps_ui_set(page, 0, 0, 760, 0)
+        if snap("03-providers-models.png") { ok += 1; print("wrote 03-providers-models.png") }
+
+        // 4. Add provider wizard Steps 1, 2, 3 (reset auth card so background matches Screenshot 1)
+        cd_ps_set_detail_auth(page, 5, "Connect on Christopher's MacBook Pro (2) to load models.", "Antigravity could not authenticate with the configured credentials.", "Retry connection", 0, "")
+        cd_ps_ui_set(page, 1, 0, 0, 0)
+        if snap("04-wizard-step1.png") { ok += 1; print("wrote 04-wizard-step1.png") }
+        cd_ps_ui_set(page, 1, 1, 0, 0)
+        if snap("04b-wizard-step2.png") { ok += 1; print("wrote 04b-wizard-step2.png") }
+        cd_ps_ui_set(page, 1, 2, 0, 0)
+        if snap("05-wizard-step3.png") { ok += 1; print("wrote 05-wizard-step3.png") }
+
+        cd_close(page)
+        return ok == 7 ? 0 : 1
+    }
+
     private static func runRh3dRecord(outPath: String) -> Int32 {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
@@ -472,6 +537,9 @@ enum TestLaunch {
         #if OA_FULL
         if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
             exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
+        }
+        if let at = CommandLine.arguments.firstIndex(of: "--shot-providers"), at + 1 < CommandLine.arguments.count {
+            exit(runProvidersShots(outDir: CommandLine.arguments[at + 1]))
         }
         if let at = CommandLine.arguments.firstIndex(of: "--shot-rh-3d"), at + 1 < CommandLine.arguments.count {
             exit(runRh3dShots(outDir: CommandLine.arguments[at + 1]))

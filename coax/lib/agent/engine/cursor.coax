@@ -57,11 +57,13 @@ CuEngine :: struct {
   agent: CuAgent;                 // the agent and its quirks; none (no name) is Cursor's
   notice: [1024] u8; notice_n: int; // the turn's words were agy's failure notice (antigravity.coax, agy_chunk)
   // background command & detached subagent held-turn state (defer_finalize_background)
-  bg_tools: [CUE_TOOLS] int; nbg_tools: int; // active non-daemon execute tool calls (hashed ids)
+  bg_tools: [CUE_TOOLS] int; nbg_tools: int; // active non-daemon execute/schedule tool calls (hashed ids)
   bg_subagents: int;              // live detached subagents (e.g. agr_subagents_running; excludes SUBAGENT_STATE_KILLED)
   held_bg: bool;                  // session/prompt settled while background work is active
   held_bg_since: int;             // owner's clock (ms) when held_bg began (-1 until first cue_watch)
+  bg_hold_limit_ms: int;          // optional override for CUE_BG_HOLD_LIMIT_MS (0 uses default 120000; Antigravity uses 1800000 = 30m)
   detached_stream: bool;          // detached session/update or permission arrived while held_bg
+  system_append: [2048] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
   // the stall watchdog (cue_watch): off while stall_ms is 0, as for Cursor; agy_launch turns it on
   stall_ms: int; recover_max: int;
   heard: bool;                    // the agent sent something since the last cue_watch
@@ -240,10 +242,17 @@ cue_session :: (x: [] CuEngine, k: CuEventKind, of: int) {
 cue_open :: (x: [] CuEngine) {
   c := x[0].c;
   cwd := e_str(x[0].cwd[..], x[0].ncwd);
-  if x[0].nresume == 0 { r := cu_session_new(c, cwd); return; }
+  sys_app := e_str(x[0].system_append[..], x[0].system_append_n);
+  if x[0].nresume == 0 { r := cu_session_new_meta(c, cwd, sys_app); return; }
   if cue_profile(x).resume == CU_SESSION_RESUME { r := cu_session_resume(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
   else { x[0].replay = true; r := cu_session_load(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
   x[0].nresume = 0;
+}
+cue_set_system_append :: (x: [] CuEngine, text: string) {
+  x[0].system_append_n = e_set(x[0].system_append[..], 0, text);
+}
+cue_set_bg_hold_limit :: (x: [] CuEngine, ms: int) {
+  x[0].bg_hold_limit_ms = ifx ms > 0 then ms else 0;
 }
 // A request during a replay, answered: no question asked, no plan accepted, nothing allowed. Whether it was one.
 cue_replayed :: (c: [] CuClient, k: CuEventKind) -> bool {
@@ -373,6 +382,9 @@ cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
       if defer_bg {
         if !x[0].held_bg && !cue_prompting(x) { x[0].held_bg = true; x[0].held_bg_since = -1; x[0].detached_stream = true; }
         tk := cl_str(ar, update, "kind");
+        tname := cl_str(ar, update, "name");
+        if tname.count == 0 { tname = cl_str(ar, update, "title"); }
+        if tname == "schedule" { tk = "execute"; }
         raw := cl_raw(update, "rawInput");
         is_daemon := cl_bool(raw, "IsDaemon").value;
         cue_bg_tool(x, tid, st, tk, is_daemon);
@@ -432,7 +444,7 @@ cue_watch :: (x: [] CuEngine, now: int) -> int {
       x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false;
       return CUE_WATCH_BG_DONE;
     }
-    if now - x[0].held_bg_since >= CUE_BG_HOLD_LIMIT_MS {
+    if now - x[0].held_bg_since >= (ifx x[0].bg_hold_limit_ms > 0 then x[0].bg_hold_limit_ms else CUE_BG_HOLD_LIMIT_MS) {
       x[0].held_bg = false; x[0].held_bg_since = -1; x[0].detached_stream = false; x[0].nbg_tools = 0; x[0].bg_subagents = 0;
       return CUE_WATCH_BG_DONE;
     }

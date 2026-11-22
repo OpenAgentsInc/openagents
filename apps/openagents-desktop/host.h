@@ -730,4 +730,25 @@ void cd_lean_atlas_lod_set(void *page, int lod);
 void cd_lean_view_set(void *page, int view);
 int cd_lean_3d_rect(void *page, float out[4]);
 void cd_file_lean_goal(void *page, int line, int ok, int accomplished, const char *summary);
+// Settings -> Providers screen & Add provider 3-step modal wizard (page/providers_settings.coax).
+void cd_ps_set_meta(void *page, const char *host_name, const char *project_scope, const char *checked_label, int refreshing);
+void cd_ps_clear(void *page);
+int cd_ps_add_instance(void *page, const char *id, int driver, const char *display_name, const char *version, int enabled, int is_default, int status, const char *headline, const char *summary, int accent);
+void cd_ps_select(void *page, int idx);
+void cd_ps_set_detail_config(void *page, const char *display_name, int accent, int auth_method, int api_key_set, const char *gcp_project, const char *gcp_location, const char *binary_path, const char *extra_path);
+void cd_ps_set_detail_runtime(void *page, int rt_state, const char *rt_status, const char *rt_btn, int rt_pct, int rt_can_remove, const char *rt_err);
+void cd_ps_set_detail_auth(void *page, int auth_state, const char *auth_sub, const char *auth_detail, const char *auth_btn, int auth_can_signout, const char *auth_url);
+void cd_ps_env_clear(void *page);
+int cd_ps_env_add(void *page, const char *key, const char *val, int secret, int has_secret);
+void cd_ps_models_clear(void *page);
+int cd_ps_models_add(void *page, const char *slug, const char *name, int enabled, int favorite, int thinking, int custom);
+int cd_ps_selected(void *page);
+int cd_ps_action_idx(void *page);
+int cd_ps_inst_id(void *page, int idx, char *out, int cap);
+int cd_ps_inst_enabled(void *page, int idx);
+int cd_ps_field(void *page, int which, char *out, int cap);
+int cd_ps_int(void *page, int which);
+int cd_ps_env_get(void *page, int idx, char *key_out, int key_cap, char *val_out, int val_cap, int *secret_out, int *has_secret_out);
+int cd_ps_model_get(void *page, int idx, char *slug_out, int slug_cap, char *name_out, int name_cap, int *enabled_out, int *fav_out, int *thinking_out, int *custom_out);
+void cd_ps_ui_set(void *page, int wiz_open, int wiz_step, float detail_scroll, int focus_field);
 #endif

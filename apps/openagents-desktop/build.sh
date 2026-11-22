@@ -105,7 +105,7 @@ if [[ "$minimal" != "1" ]]; then
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
     "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
-    "$here/Window+McpSkills.swift" "$here/Window+Providers.swift" "$here/Window+GitDiff.swift"
+    "$here/Window+McpSkills.swift" "$here/AntigravityProvider.swift" "$here/Window+Providers.swift" "$here/Window+GitDiff.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift"
