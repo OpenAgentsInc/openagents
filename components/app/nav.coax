@@ -160,6 +160,8 @@ AppSideRow :: struct {
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
+APP_SIDE_CARD_FOLDER_ICON :: 8.0f32;
+APP_SIDE_CARD_FOLDER_GAP :: 7.0f32;
 // Compact 2-line sidebar chat card painter:
 //   Line 1: Chat title (13pt Medium)                 [spinner Working | dot Done | relative time]
 //   Line 2: [small folder icon] repo · branch                                     [harness icon]
@@ -242,9 +244,10 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   }
   lx2 := ix0;
   if r.icon >= 0 {
-    ic := APP_SIDE_CARD_ICON;
+    ic := ifx r.icon == ICON_FOLDER then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
+    ig := ifx r.icon == ICON_FOLDER then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
     sheet_icon(sh, r.icon, lx2, y2 + (s.small.line - ic) / 2.0f32, ic, s.muted);
-    lx2 += ic + 4.0f32;
+    lx2 += ic + ig;
   }
   meta_room := r2_right - lx2;
   if r.repo.count > 0 && meta_room > 0 {

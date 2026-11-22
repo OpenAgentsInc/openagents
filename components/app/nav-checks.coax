@@ -112,14 +112,23 @@
   #assert app_test_row(t[..], "chat.1").h == APP_SIDE_CARD_H && app_test_row(t[..], "chat.2").h == APP_SIDE_CARD_H;
   #assert app_test_texts(t[..], "Collapse sidebar card") == 1 && app_test_texts(t[..], "2m") == 1;
   #assert app_test_texts(t[..], "openagents") == 1 && app_test_texts(t[..], "main") == 1;
-  // Folder and harness icons on chat cards draw at the compact 11pt size.
+  // Folder icon draws at 8pt with 7pt right padding; harness icons draw at 11pt.
   sh := surface_sheet(t[0].sf[..]);
-  small_icons := 0;
+  folder_icons := 0;
+  harness_icons := 0;
+  folder_right := 0.0f32;
   for i: 0..<sh.nu {
     if sh.under[i].kind == PRIM_ICON {
-      #assert sh.under[i].w == APP_SIDE_CARD_ICON && sh.under[i].h == APP_SIDE_CARD_ICON;
-      small_icons += 1;
+      if sh.under[i].id == ICON_FOLDER {
+        #assert sh.under[i].w == APP_SIDE_CARD_FOLDER_ICON && sh.under[i].h == APP_SIDE_CARD_FOLDER_ICON;
+        folder_right = sh.under[i].x + sh.under[i].w;
+        folder_icons += 1;
+      } else {
+        #assert sh.under[i].w == APP_SIDE_CARD_ICON && sh.under[i].h == APP_SIDE_CARD_ICON;
+        harness_icons += 1;
+      }
     }
   }
-  #assert small_icons == 3;   // chat.1 folder + harness, chat.2 harness
+  #assert folder_icons == 1 && harness_icons == 2;
+  #assert app_test_text_x(t[..], "openagents") == folder_right + APP_SIDE_CARD_FOLDER_GAP;
 }
