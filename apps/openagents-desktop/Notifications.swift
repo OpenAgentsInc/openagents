@@ -143,9 +143,11 @@ final class CoderNotifications: NSObject, UNUserNotificationCenterDelegate {
             }
             return
         }
+        #if OA_FULL
         if AppAuth.noticeOpens(userInfo) {
             await MacAccount.shared.showSecurity()
         }
+        #endif
     }
 }
 

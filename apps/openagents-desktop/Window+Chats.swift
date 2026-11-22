@@ -20,19 +20,25 @@ extension CoderWindow {
         if keep { UserDefaults.standard.set(folder.path, forKey: "folder") }
         let home = FileManager.default.homeDirectoryForCurrentUser.path, path = folder.path
         cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
+        #if OA_FULL
         if FeatureFlags.isOn(.git) {
             refreshBranch()
             refreshGitDiff()
         } else {
             cd_branch(page, "")
         }
+        #else
+        cd_branch(page, "")
+        #endif
         wake()
     }
     /// The working folder's Git branch for the composer's foot (#13743): HEAD's branch, a detached
     /// HEAD's short commit, "" outside a repository. Read again when a reply ends.
     func refreshBranch() {
         cd_branch(page, ChatWorktree.shown(CoderWindow.gitBranch(folder)))
+        #if OA_FULL
         refreshGitStatus()
+        #endif
     }
     static func gitBranch(_ folder: URL) -> String {
         var dir = folder.standardizedFileURL
@@ -141,11 +147,23 @@ extension CoderWindow {
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
     /// with its run.
     func open(_ id: String) {
-        if id == Foreman.chatID { openForeman(); return }
-        if id == chat { closeGym(); clearViewedChatBadges(id); focusComposer(); wake(); return }
+        if id == Foreman.chatID {
+            #if OA_FULL
+            openForeman()
+            #endif
+            return
+        }
+        if id == chat {
+            #if OA_FULL
+            closeGym()
+            #endif
+            clearViewedChatBadges(id); focusComposer(); wake(); return
+        }
         let prevKey = chat ?? ""
         chatDrafts[prevKey] = draft
+        #if OA_FULL
         closeGym()
+        #endif
         guard detach() else { return }
         if let back = runs[id] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -159,10 +177,16 @@ extension CoderWindow {
             chat = id; recallDue = false; cd_current(page, id)
             _ = cd_set_text(page, chatDrafts[id] ?? "")
             setFolder(back.folder, keep: false)
+            #if OA_FULL
             refreshCheckpoints(for: id, in: back.folder.path)
+            #endif
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
-            cd_chats(page, chatLines); syncForemanUI(); updateDockBadge()
+            cd_chats(page, chatLines)
+            #if OA_FULL
+            syncForemanUI()
+            #endif
+            updateDockBadge()
             focusComposer(); wake()
             return
         }
@@ -178,13 +202,17 @@ extension CoderWindow {
         _ = cd_set_text(page, chatDrafts[id] ?? "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
+        #if OA_FULL
         syncForemanUI()
+        #endif
         if clearedUnread { cd_chats(page, chatLines) }
         updateDockBadge()
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         else { restoreWorktree(id) }
+        #if OA_FULL
         refreshCheckpoints(for: id, in: folder.path)
+        #endif
         showKeptQueue(id)
         focusComposer()
         wake()
@@ -274,14 +302,22 @@ extension CoderWindow {
         present(d) { [weak self] answer, _ in
             guard let self else { return }
             guard answer == 1 else { self.refocus(); return }
-            if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
+            if id == self.chat {
+                guard cd_running(self.page) == 0 else { return }
+                self.chat = nil; _ = cd_new(self.page); cd_current(self.page, "")
+                #if OA_FULL
+                self.syncForemanUI()
+                #endif
+            }
             guard !self.busy(id) else { return }
             let snapMeta = self.store.meta(id)
             let snapText = self.store.text(id)
             self.unread.remove(id)
             self.needsAttention.remove(id)
+            #if OA_FULL
             let delFolder = self.store.folder(id) ?? self.store.worktree(id)?.source
             self.cleanupCheckpoints(for: id, in: delFolder)
+            #endif
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: title) }
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -302,7 +338,10 @@ extension CoderWindow {
         let title = store.title(id) ?? "Chat"
         if id == chat {
             guard cd_running(page) == 0 else { return }
-            chat = nil; _ = cd_new(page); cd_current(page, ""); syncForemanUI()
+            chat = nil; _ = cd_new(page); cd_current(page, "")
+            #if OA_FULL
+            syncForemanUI()
+            #endif
         }
         store.setArchived(id, true)
         daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -326,7 +365,10 @@ extension CoderWindow {
         store.setSnoozed(id, untilMs: wakeMs)
         cd_sb_now_ms(page, nowMs)
         if id == chat && cd_running(page) == 0 {
-            chat = nil; _ = cd_new(page); cd_current(page, ""); syncForemanUI()
+            chat = nil; _ = cd_new(page); cd_current(page, "")
+            #if OA_FULL
+            syncForemanUI()
+            #endif
         }
         cd_chats(page, chatLines)
         cd_toast(page, "Snoozed “" + (store.title(id) ?? "Chat") + "”", 0)
@@ -465,7 +507,10 @@ extension CoderWindow {
             guard !ids.isEmpty else { return }
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
-                    chat = nil; _ = cd_new(page); cd_current(page, ""); syncForemanUI()
+                    chat = nil; _ = cd_new(page); cd_current(page, "")
+                    #if OA_FULL
+                    syncForemanUI()
+                    #endif
                 }
                 store.setArchived(id, true)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -490,12 +535,17 @@ extension CoderWindow {
             var snaps: [(meta: CoderChat, text: String)] = []
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
-                    chat = nil; _ = cd_new(page); cd_current(page, ""); syncForemanUI()
+                    chat = nil; _ = cd_new(page); cd_current(page, "")
+                    #if OA_FULL
+                    syncForemanUI()
+                    #endif
                 }
                 if let m = store.meta(id), let t = store.text(id) { snaps.append((meta: m, text: t)) }
                 unread.remove(id)
+                #if OA_FULL
                 let delFolder = store.folder(id) ?? store.worktree(id)?.source
                 cleanupCheckpoints(for: id, in: delFolder)
+                #endif
                 if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "Chat") }
                 store.remove(id)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -547,6 +597,9 @@ extension CoderWindow {
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)
         if r.bound != id { r.bound = id; bindQueue(r) }
-        cd_chats(page, chatLines); syncForemanUI()
+        cd_chats(page, chatLines)
+        #if OA_FULL
+        syncForemanUI()
+        #endif
     }
 }

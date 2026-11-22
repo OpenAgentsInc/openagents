@@ -2,6 +2,7 @@
 // Settings (settings.coax): opening and closing, the search's keyboard, and what only the app knows.
 import AppKit
 
+#if OA_FULL
 /// Settings > Models > the model new chats start on: Gemini 4 Neon unless set, else one of the
 /// Claude models (0 Fable 5.2, 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5), which Claude Code runs.
 /// Kept in UserDefaults (`orchestratorClaude`, `orchestratorClaudeModel`).
@@ -37,6 +38,7 @@ func coderApplyClaude(_ page: UnsafeMutableRawPointer?) {
     cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
     CoderOrchestrator.apply(page)
 }
+#endif
 
 /// Compile-time bit positions matching coax/lib/agent/desktop/flags.coax (single source of truth).
 enum DesktopFlag: Int64, CaseIterable {
@@ -73,6 +75,7 @@ enum DesktopFlag: Int64, CaseIterable {
 /// Resolved desktop feature flag mask backed by #authority coax/lib/agent/desktop/flags.coax.
 /// All 28 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
 enum FeatureFlags {
+    #if OA_FULL
     private static let flagNames: [String] = {
         let n = Int(DesktopCore.onCoreStack { oa_dc_flag_count() })
         return (0..<n).map { i in
@@ -110,6 +113,12 @@ enum FeatureFlags {
     static var anyExtraModel: Bool {
         DesktopCore.onCoreStack { oa_dc_flags_any_extra_model(mask) } != 0
     }
+    #else
+    // Minimal v1.0 release build: excluded features are stripped at compile time and stay permanently off.
+    static var mask: Int64 { 0 }
+    static func isOn(_ flag: DesktopFlag) -> Bool { false }
+    static var anyExtraModel: Bool { false }
+    #endif
 }
 
 /// Settings > General > Experimental features, off unless set (UserDefaults `experimentalFeatures`):
@@ -117,9 +126,11 @@ enum FeatureFlags {
 enum Experimental {
     static let key = "experimentalFeatures"
     static var on: Bool {
+        #if OA_FULL
         if UserDefaults.standard.bool(forKey: key) { return true }
         if ProcessInfo.processInfo.arguments.contains("--experimental") { return true }
         if ProcessInfo.processInfo.environment["OA_EXPERIMENTAL"] == "1" { return true }
+        #endif
         return false
     }
 }
@@ -204,6 +215,7 @@ extension CoderWindow {
         }
     }
 
+    #if OA_FULL
     /// The page's Experimental features row was pressed (CP_ASK_EXPERIMENTAL): keep it, then show or
     /// hide what it covers here and in the menu bar.
     /// Settings > Models > "New chats start on" or "Claude model" was pressed (CP_ASK_ORCHESTRATOR):
@@ -224,6 +236,7 @@ extension CoderWindow {
         UserDefaults.standard.set(on, forKey: Experimental.key)
         applyFlags()
     }
+    #endif
     /// Settings > General > Notifications row was pressed (CP_ASK_NOTIFY): persist and request OS permission if needed.
     func notificationModeChanged() {
         let mode = CoderNotifyMode(clamping: cd_notify_mode(page))
@@ -234,6 +247,7 @@ extension CoderWindow {
         if mode.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
         wake()
     }
+    #if OA_FULL
     /// Propagates the current flag mask, OpenAgents account login state, and Gemini API key to the shown page and background runs.
     func syncCloudAuth() {
         let m = FeatureFlags.mask
@@ -311,6 +325,7 @@ extension CoderWindow {
             ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
         }
     }
+    #endif
     // MARK: - Settings (settings.coax)
     /// Coder > Settings… (Command-comma), and the menu items that open one of its pages: 0 General,
     /// 1 Models, 2 Foreman, 3 Account, 4 About & updates (-1 the last one shown), at a row ("" the top).
@@ -339,6 +354,10 @@ extension CoderWindow {
     func refocus() { if !settingsOpen { focusComposer() } else { window.makeFirstResponder(canvas); syncSettingsInfo(); wake() } }
     /// What settings' pages show that only the app knows: the keys' ends and the version.
     func syncSettingsInfo() {
+        let info = Bundle.main.infoDictionary
+        var version = info?["CFBundleShortVersionString"] as? String ?? ""
+        if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
+        #if OA_FULL
         func ends(_ key: String) -> String { "Ends " + String(key.suffix(4)) }
         var claude = ""
         if FeatureFlags.isOn(.modelsClaude) {
@@ -348,19 +367,26 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsOpenrouter) {
             if let kept = CoderOpenRouter.saved { openrouter = ends(kept) } else if CoderOpenRouter.hasKey { openrouter = "From openrouter.env" }
         }
-        let info = Bundle.main.infoDictionary
-        var version = info?["CFBundleShortVersionString"] as? String ?? ""
-        if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
         let gemini = FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { ends($0) } ?? "") : ""
+        #else
+        let claude = ""
+        let openrouter = ""
+        let gemini = ""
+        #endif
         cd_flags_set(page, FeatureFlags.mask)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
+        #if OA_FULL
         if FeatureFlags.isOn(.modelsAgy) { syncAntigravitySettings() }
         if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
+        #endif
+        #if OA_WALLET
         if FeatureFlags.isOn(.wallet) { syncWalletSettings() }
+        #endif
+        #if OA_FULL
         if FeatureFlags.isOn(.usage) && cd_settings_page(page) == 6 { refreshUsageDashboard() }
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
         if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
@@ -369,6 +395,7 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsGemini) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
+        #endif
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
         let status = LocalModelStore.statusSummary()
@@ -394,14 +421,20 @@ extension CoderWindow {
                 manageLocalModels()
             }
         }
+        #if OA_FULL
         if FeatureFlags.isOn(.modelsExecutor) {
             syncExecutorModels()
         } else {
             cd_hybrid_exec(page, 0)
             for r in runs.values where r.page != page { cd_hybrid_exec(r.page, 0) }
         }
+        #else
+        cd_hybrid_exec(page, 0)
+        for r in runs.values where r.page != page { cd_hybrid_exec(r.page, 0) }
+        #endif
         wake()
     }
+    #if OA_FULL
     func syncExecutorModels() {
         let snap = ExecutorModelStore.scan()
         let on: Int32 = snap.selectable ? 1 : 0
@@ -445,4 +478,5 @@ extension CoderWindow {
         CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
         wake()
     }
+    #endif
 }

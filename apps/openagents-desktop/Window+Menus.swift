@@ -9,11 +9,13 @@ extension CoderWindow {
         cd_chats(page, chatLines)
         wake()
     }
+    #if OA_FULL
     private func toggleOperatorTierRaise() {
         let on = !UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
         UserDefaults.standard.set(on, forKey: ForemanAPI.operatorTierRaiseKey)
         foremanAudit.record(action: "operator_tier_raise", tier: foremanTier, detail: ["allowed": on, "principal": "user"])
     }
+    #endif
     /// A right-click on the Foreman row or a chat in the sidebar opens its menu at the pointer. While
     /// a dialog is up the click is the dialog's; while a menu is up another opens where it was made.
     func rightClick(_ event: NSEvent) -> Bool {
@@ -25,6 +27,7 @@ extension CoderWindow {
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         let px = Float(at.x * scale), py = Float(y * scale)
         typealias Item = CoderOverlay.MenuItem
+        #if OA_FULL
         if FeatureFlags.isOn(.foreman) && cd_foreman_at(page, px, py) != 0 {
             let raise = UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
             var items = [Item(label: "Open Foreman"), Item(kind: 2)]
@@ -42,6 +45,7 @@ extension CoderWindow {
             overlay.presentMenu(items, x: px, y: py) { chosen in if chosen >= 0 && chosen < acts.count { acts[chosen]() } }
             return true
         }
+        #endif
         var out = [CChar](repeating: 0, count: 128)
         guard cd_chat_at(page, px, py, &out, Int32(out.count)) > 0 else {
             // a right-click on nothing closes a menu that is up
@@ -61,10 +65,12 @@ extension CoderWindow {
             { [weak self] in self?.rename(id) },
             { [weak self] in self?.fork(id) },
         ]
+        #if OA_FULL
         if FeatureFlags.isOn(.rich) {
             items.append(Item(label: "Open in Side Pane"))
             acts.append { [weak self] in self?.openSideChat(id) }
         }
+        #endif
         items.append(Item(kind: 2)); acts.append {}
         items.append(Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)))
         acts.append { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } }

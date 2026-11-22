@@ -10,10 +10,12 @@ extension CoderWindow {
     /// A file a row, a reply or an attachment names: opens in the pane (editable text up to 128 KB,
     /// syntax-highlighted code, or rich read-only preview for CSV/TSV, .ipynb, images, PDFs, binary hex).
     func openNamedFile(_ url: URL) {
+        #if OA_FULL
         if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
             openFileInPane(url)
             return
         }
+        #endif
         openFileInPane(url)
     }
 
@@ -36,18 +38,24 @@ extension CoderWindow {
         let name = url.lastPathComponent
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) else {
+            #if OA_FULL
             hideScenePanel()
+            #endif
             cd_file_failed(page, shown, "Coder couldn't find \(name). It may have been moved or deleted."); wake(); return
         }
         if isFolder.boolValue {
+            #if OA_FULL
             hideScenePanel()
+            #endif
             cd_file_failed(page, shown, "\(name) is a folder, not a file."); wake(); return
         }
+        #if OA_FULL
         if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
             openSceneInPane(url, shown: shown)
             return
         }
         hideScenePanel()
+        #endif
         let size = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
         let most = Int64(cd_file_most())
         if size > most {
@@ -65,11 +73,14 @@ extension CoderWindow {
         if ok == 0 { cd_file_failed(page, shown, "Coder couldn't show \(name) here.") }
         else {
             if cd_file_mode(page) == 1 { window.makeFirstResponder(canvas) }
+            #if OA_FULL
             if url.pathExtension.lowercased() == "lean" { refreshFilePaneLeanGoal() }
+            #endif
         }
         wake()
     }
 
+    #if OA_FULL
     /// Asynchronously queries oa-leanhost (`lean-run goal`) for the open .lean file at cursor line (#13947).
     func refreshFilePaneLeanGoal() {
         guard let url = fileURL, url.pathExtension.lowercased() == "lean" else { return }
@@ -89,6 +100,7 @@ extension CoderWindow {
             self.wake()
         }
     }
+    #endif
 
     /// What the pane asked (cd_action 40 to 43).
     func fileAsked(_ what: Int32) {
@@ -138,7 +150,9 @@ extension CoderWindow {
     }
     func dropFile() {
         let hadKeys = cd_wants_text(page) != 0
+        #if OA_FULL
         hideScenePanel()
+        #endif
         cd_file_close(page); fileURL = nil
         if hadKeys { refocus() } else { wake() }
     }
@@ -341,6 +355,7 @@ extension CoderWindow {
         }
     }
 
+    #if OA_FULL
     // MARK: - 3D PLE Scene Viewport (SceneView.swift, GitHub #13792)
 
     /// Opens a `.ple-scene.json`, `.ple-scene.v1.json`, or `.ifc` file in the right-hand pane's
@@ -522,8 +537,10 @@ extension CoderWindow {
             return view.convert(c, from: canvas)
         }
     }
+    #endif
 }
 
+#if OA_FULL
 /// A view that holds others and takes no press itself: the live 3D card's clip (#13812), so a press
 /// outside its viewport, or in a hole the page cut in it, reaches the page under it.
 final class PassThroughView: NSView {
@@ -532,3 +549,4 @@ final class PassThroughView: NSView {
         return hit === self ? nil : hit
     }
 }
+#endif

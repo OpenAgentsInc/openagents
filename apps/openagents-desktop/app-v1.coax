@@ -1,0 +1,33 @@
+// OpenAgents v1.0 minimal compiled Coax root (docs/desktop/openagents-v1-spec.md §4.4, §5.6).
+// Shared by macOS, Linux, and Windows --minimal release builds. Uses page-v1.coax
+// (omitting the 19 flagged-off UI panels) and stubs the tailnet host codec so
+// carrier.c / host.c compile and link without modification.
+#load "../../components/raster/host-tables.coax";
+#load "page-v1.coax";
+#load "../../coax/lib/image/image.coax";
+
+coder_img_info :: (src: [] u8, out_w: [] int, out_h: [] int, out_work: [] int) -> int #export_c #effects(all) {
+  r := img_info(src);
+  if out_w.count > 0 { out_w[0] = r.w; }
+  if out_h.count > 0 { out_h[0] = r.h; }
+  if out_work.count > 0 { out_work[0] = r.work; }
+  return r.status;
+}
+
+coder_img_decode :: (src: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  return img_decode(src, work, out);
+}
+
+coder_img_half :: (src: [] u8, w: int, h: int, dst: [] u8) #export_c #effects(all) {
+  img_half(src, w, h, dst);
+}
+
+// Tailnet host codec stubs (pairing is excluded in v1.0; host.c includes tailnet-codec.c).
+oa_ht_request_write :: (chats: bool, out: [] u8) -> int #export_c #effects(all) { return 0; }
+oa_ht_request_read :: (raw: string) -> int #export_c #effects(all) { return 0; }
+oa_ht_answer_write :: (host: string, label: string, invitation: string, refused: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
+oa_ht_answer_read :: (raw: string, expected_host: string, out: [] u8, label_out: [] u8, label_n: [] int) -> int #export_c #effects(all) { return 0; }
+oa_ht_direct_hello_write :: (out: [] u8) -> int #export_c #effects(all) { return 0; }
+oa_ht_direct_hello_read :: (raw: string) -> bool #export_c #effects(all) { return false; }
+oa_ht_direct_ack_write :: (refused: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
+oa_ht_direct_ack_read :: (raw: string, out: [] u8) -> int #export_c #effects(all) { return 0; }

@@ -40,8 +40,10 @@ final class CoderWorker {
             }
         }
     }
+    #if OA_FULL
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
     static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
+    #endif
 
     private func extraEnvLines() -> String {
         extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
@@ -50,10 +52,14 @@ final class CoderWorker {
     private func environment() -> (set: [String: String], unset: [String]) {
         var env: [String: String] = ["PATH": CoderWorker.path]
         for (k, v) in extraEnv { env[k] = v }
+        #if OA_FULL
         // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
         if let res = Bundle.main.resourcePath, FileManager.default.isExecutableFile(atPath: res + "/oasim"), let p = env["PATH"], !p.split(separator: ":").contains(Substring(res)) { env["PATH"] = p + ":" + res }
+        #endif
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
+        #if OA_FULL
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
+        #endif
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
@@ -99,7 +105,11 @@ final class CoderWorker {
     private func startRun(_ path: String, _ daemon: CoderDaemonClient) -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
+        #else
+        let claudeKey = ""
+        #endif
         let extra = extraEnvLines()
         var idBuf = [UInt8](repeating: 0, count: 128)
         var failBuf = [UInt8](repeating: 0, count: 512)
@@ -153,7 +163,11 @@ final class CoderWorker {
     private func startRunAsync(_ path: String, _ daemon: CoderDaemonClient, completion: @escaping (Bool) -> Void) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
+        #else
+        let claudeKey = ""
+        #endif
         let extra = extraEnvLines()
         let prog = program
         let fld = folder
@@ -390,6 +404,7 @@ final class CoderWorker {
     }
 }
 
+#if OA_FULL
 enum CoderKey {
     static var file: URL {
         let p = DesktopCore.withCoaxString("claude-key") { cn in
@@ -800,3 +815,7 @@ func coderToolsNote() -> String {
 func coderSkillsNote(repoFolder: URL? = nil) -> String {
     return SkillsCatalog.enabledSkillsNote(repoFolder: repoFolder)
 }
+#else
+func coderToolsNote() -> String { "" }
+func coderSkillsNote(repoFolder: URL? = nil) -> String { "" }
+#endif

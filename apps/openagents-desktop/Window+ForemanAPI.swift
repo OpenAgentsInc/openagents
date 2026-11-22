@@ -22,11 +22,15 @@ extension CoderWindow {
             return
         }
         if request.path.hasPrefix("/v1/wallet/") {
+            #if OA_WALLET
             guard FeatureFlags.isOn(.wallet) else {
                 done(ForemanResponse(status: 403, body: ["error": "wallet feature flag is disabled"]))
                 return
             }
             handleWalletRPC(request, done: done)
+            #else
+            done(ForemanResponse(status: 403, body: ["error": "wallet is not included in this build"]))
+            #endif
             return
         }
         if request.path == "/v1/gym" && (request.method == "GET" || request.method == "POST") {

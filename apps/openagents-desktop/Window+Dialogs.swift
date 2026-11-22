@@ -162,6 +162,7 @@ final class CoderOverlay: NSObject {
 
 private var coderOverlays: [ObjectIdentifier: CoderOverlay] = [:]
 
+#if OA_FULL
 /// SHA-256 verified Executor Models & Compiled Weight-Module store (~/.openagents/modules)
 /// backed by Coax #authority admission (psionic/lib/executor-desktop.coax via oa_dc_exec_scan; #13924).
 enum ExecutorModelStore {
@@ -267,6 +268,7 @@ enum ExecutorModelStore {
         }
     }
 }
+#endif
 
 /// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:<port> (default 18794, override via OA_INKLING_PORT).
 final class LocalModelServer {
@@ -477,6 +479,7 @@ extension CoderWindow {
         overlay.present(dialog, done: done ?? { [weak self] _, _ in self?.refocus() })
     }
 
+    #if OA_FULL
     /// Asks for a new max budget (USD) for the shown chat thread.
     func editBudget() {
         let currentCost = Double(cd_cost_usd_micros(page)) / 1_000_000.0
@@ -500,6 +503,7 @@ extension CoderWindow {
             self.wake()
         }
     }
+    #endif
     /// Opens the thread goal editor (/goal or /goal edit) to create, edit, pause/resume, or clear a thread goal.
     func editGoal() {
         let status = cd_goal_status(page)
@@ -548,6 +552,7 @@ extension CoderWindow {
             self.wake()
         }
     }
+    #if OA_FULL
     /// Settings > Models > Gemini API key: sets, replaces or removes the user's Gemini API key.
     func chooseGeminiKey() {
         var about = "Use your own Gemini API key (from Google AI Studio) to run Microcoder on Gemini models. Coder keeps it in a file only you can read."
@@ -579,6 +584,7 @@ extension CoderWindow {
             self.refocus()
         }
     }
+    #endif
     /// Onboarding / Settings direct actions (CP_ASK_LOCAL_DOWNLOAD=160, CP_ASK_LOCAL_CANCEL=161).
     func startInklingDownload() {
         LocalModelStore.startDownload { [weak self] in
@@ -741,6 +747,7 @@ extension CoderWindow {
             }
         }
     }
+    #if OA_FULL
     /// Settings > Models > Executor Models & Weight Modules (CP_ASK_EXECUTOR_MODELS; #13924):
     /// displays live SHA-256 verification status, verification-class badges ([E]/[D]/[S]/[N]),
     /// and per-module lineage from oa_dc_exec_scan, with Verify Now and Install Built-ins actions.
@@ -987,6 +994,7 @@ extension CoderWindow {
             self.refocus()
         }
     }
+    #endif
     /// Interactive Secret / Credential request card (page/permit.coax; GitHub #13873):
     /// prompts in a masked secure dialog, saves to a 0600 file under ~/Library/Application Support/Coder/secrets/
     /// (and known provider key stores when applicable) without ever logging or echoing the secret into the transcript.
@@ -1016,17 +1024,21 @@ extension CoderWindow {
                 self.present(.notice("Secret could not be saved.", "Coder could not write the 0600 secret file for \(secretName)."))
                 return
             }
+            #if OA_FULL
             if secretName.uppercased() == "GEMINI_API_KEY" { self.syncCloudAuth() }
+            #endif
             _ = cd_permit_secret_done(self.page, 1)
             self.pump(self.run)
             self.wake()
         }
     }
     private static func saveRequestedSecret(name: String, value: String) -> Bool {
+        #if OA_FULL
         let upper = name.uppercased()
         if upper == "GEMINI_API_KEY" { _ = CoderGemini.save(value) }
         else if upper == "ANTHROPIC_API_KEY" || upper == "CODER_CLAUDE_KEY" { _ = CoderKey.save(value) }
         else if upper == "OPENROUTER_API_KEY" { _ = CoderOpenRouter.save(value) }
+        #endif
         let safe = name.lowercased().map { ch -> Character in
             (ch.isASCII && (ch.isLetter || ch.isNumber || ch == "-" || ch == "_")) ? ch : "-"
         }

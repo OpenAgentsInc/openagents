@@ -80,6 +80,7 @@ extension CoderWindow {
             r.worker.folder = r.folder.path
             needsRecall = false
         }
+        #if OA_FULL
         let useAgy = FeatureFlags.isOn(.modelsAgy) && cd_model_agy(r.page) != 0
         let useInkling = cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel
         let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
@@ -96,7 +97,13 @@ extension CoderWindow {
             wake()
             return
         }
+        #else
+        let useAgy = false
+        let useInkling = true
+        let useHybrid = false
+        #endif
         if useInkling || useHybrid {
+            #if OA_FULL
             if useHybrid {
                 let snap = ExecutorModelStore.scan()
                 if !snap.selectable {
@@ -123,6 +130,26 @@ extension CoderWindow {
                 wake()
                 return
             }
+            #else
+            if !LocalModelStore.isSelectable {
+                let why: String
+                if !LocalModelStore.isAppleSilicon {
+                    why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
+                } else if !LocalModelStore.hardwareSupported {
+                    why = "Inkling 2 Mini requires at least 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
+                } else if LocalModelStore.isVerifying {
+                    why = "Inkling 2 Mini is verifying its SHA-256 checksum. Please wait a moment."
+                } else if LocalModelStore.isDownloading {
+                    why = "Inkling 2 Mini is still downloading (\(LocalModelStore.statusSummary()))."
+                } else {
+                    why = "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Download or verify it in Settings → Models → Local Model."
+                }
+                cd_failed(r.page, why)
+                if shown && LocalModelStore.hardwareSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
+                wake()
+                return
+            }
+            #endif
             r.startingWorker = true
             LocalModelServer.shared.ensureRunning { [weak self, weak r] err in
                 guard let self, let r else { return }
@@ -139,7 +166,11 @@ extension CoderWindow {
         launchWorker(r, useAgy: useAgy, needsRecall: needsRecall)
     }
     private func launchWorker(_ r: CoderRun, useAgy: Bool, needsRecall: Bool) {
+        #if OA_FULL
         let resolved = resolveProviderWorker(r)
+        #else
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("mcworker", 2, nil)
+        #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
         let switchedProgram = r.worker.program != wantProgram || switchedProvider
@@ -186,7 +217,9 @@ extension CoderWindow {
             let n = cd_task(r.page, r.session, cwd, &out, Int32(out.count))
             r.worker.write(out, count: Int(n))
             self.beginTurn(r, from: from)
+            #if OA_FULL
             self.captureBaseCheckpointIfNeeded(for: r)
+            #endif
             self.bindQueue(r)
             self.wake()
         }
@@ -217,6 +250,7 @@ extension CoderWindow {
             }
             cd_flags_set(back, FeatureFlags.mask)
             syncLocalState(on: back)
+            #if OA_FULL
             if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
             cd_agy(back, (FeatureFlags.isOn(.modelsAgy) && CoderWorker.hasAntigravity) ? 1 : 0)
@@ -224,6 +258,12 @@ extension CoderWindow {
             cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
             if FeatureFlags.isOn(.modelsGemini) || FeatureFlags.isOn(.modelsAgy) { CoderProbes.apply(back) }
+            #else
+            cd_claude(back, 0)
+            cd_agy(back, 0)
+            cd_cloud_authed_set(back, 0)
+            cd_settings_gemini(back, "")
+            #endif
             syncSkillsNote(for: back, isForeman: FeatureFlags.isOn(.foreman) && t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {
@@ -252,7 +292,11 @@ extension CoderWindow {
                 if one.isLive { CoderWorker.logStop(id, "stopped at launch: idle, no kept message names it"); daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
             }
         }
-        cd_chats(page, chatLines); syncForemanUI(); updateDockBadge()
+        cd_chats(page, chatLines)
+        #if OA_FULL
+        syncForemanUI()
+        #endif
+        updateDockBadge()
     }
     /// Every daemon run this Coder holds: each chat's worker and sub-agents, in view or out, and the
     /// runs its kept messages name.
@@ -351,6 +395,7 @@ extension CoderWindow {
     }
     var isForemanShown: Bool { chat == Foreman.chatID }
     func syncFromDaemon() {
+        #if OA_FULL
         daemonClient.readForeman { [weak self] state in
             guard let self, let rawTier = state?.tier, let tier = ForemanTier(rawValue: rawTier) else { return }
             if self.foremanTier != tier {
@@ -360,6 +405,7 @@ extension CoderWindow {
                 self.wake()
             }
         }
+        #endif
         daemonClient.listSessionMeta { [weak self] items in
             guard let self, !items.isEmpty else { return }
             var changed = false
@@ -384,11 +430,14 @@ extension CoderWindow {
             }
         }
     }
+    #if OA_FULL
     func syncForemanUI() {
         let busy = runs[Foreman.chatID] != nil || (chat == Foreman.chatID && cd_running(page) != 0)
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
     }
+    #endif
     func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
+        #if OA_FULL
         let base = FeatureFlags.isOn(.mcp) ? coderSkillsNote(repoFolder: folder) : ""
         if isForeman && FeatureFlags.isOn(.foreman) {
             let note = Foreman.systemPrompt(tier: foremanTier, workspace: folder.path, chatCount: store.orderedList.count, runningCount: runningCount, baseSkills: base)
@@ -396,8 +445,12 @@ extension CoderWindow {
         } else {
             cd_skills(pagePtr, base)
         }
+        #else
+        cd_skills(pagePtr, "")
+        #endif
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
+        #if OA_FULL
         var env: [String: String] = FeatureFlags.isOn(.modelsAgy) ? CoderAntigravity.workerEnv() : [:]
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
@@ -423,6 +476,12 @@ extension CoderWindow {
             env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
             env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
+        #else
+        let env: [String: String] = [
+            "PSIONIC_BASE_URL": LocalModelServer.baseURL,
+            "PSIONIC_MODEL": "inkling-2-mini",
+        ]
+        #endif
         let cwd = (r === run ? folder : r.folder).path
         let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
         r.worker.extraEnv = env
@@ -444,7 +503,9 @@ extension CoderWindow {
             }
         }
         cd_chats(page, chatLines)
+        #if OA_FULL
         syncForemanUI()
+        #endif
         wake()
     }
     /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
@@ -458,7 +519,9 @@ extension CoderWindow {
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
         syncLocalState(on: back)
+        #if OA_FULL
         if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+        #endif
         guard cd_take(back, page) != 0 else { cd_close(back); return false }
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id
@@ -467,23 +530,34 @@ extension CoderWindow {
         chat = nil; recallDue = false; cd_current(page, "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
-        cd_chats(page, chatLines); syncForemanUI()
+        cd_chats(page, chatLines)
+        #if OA_FULL
+        syncForemanUI()
+        #endif
         wake()
         return true
     }
     /// A reply out of view ended: its chat is kept, its workers stop and its page goes.
     func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
+        #if OA_FULL
         let cost = Int(cd_cost_usd_micros(back.page))
         captureTurnCheckpoint(for: back)
+        #endif
         back.stop(); cd_close(back.page)
+        #if OA_FULL
         _ = foremanEvents.emit(type: "chat.finished", chatID: id, data: [
             "title": store.title(id) ?? "Chat",
             "cost_usd_micros": cost
         ])
+        #endif
         if id != chat { unread.insert(id) }
         needsAttention.remove(id)
         notifyTurnCompleted(chatID: id, isActiveChat: id == chat)
-        cd_chats(page, chatLines); syncForemanUI(); wake()
+        cd_chats(page, chatLines)
+        #if OA_FULL
+        syncForemanUI()
+        #endif
+        wake()
     }
 }
