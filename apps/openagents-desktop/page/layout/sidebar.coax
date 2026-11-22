@@ -41,14 +41,21 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
   stop := sy + 2.0f32;
-  rows: [CP_CHATS + CP_SB_MAX_GROUPS * 2 + 8] AppSideRow;
+  rows: [CP_CHATS + CP_SB_MAX_GROUPS * 2 + 12] AppSideRow;
   nrows := 0;
   s[0].sb[0].vis_n = 0;
   now_ms := s[0].sb[0].now_ms;
   is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
-  npinned := ifx is_arch then 0 else cp_pin_count(s);
+  nworking := ifx is_arch then 0 else cp_sb_working_count(s, cur, running);
+  npinned := 0;
+  if !is_arch {
+    for q: 0..<s[0].nchats {
+      if s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { npinned += 1; }
+    }
+  }
   has_projects := !is_arch && cp_sb_has_projects(s);
   visible_chats := 0;
+  pin_start_y := a.side_head;
   if is_arch {
     rows[nrows] = AppSideRow.{id = "coder.archived", title = "Archived", heading = true};
     nrows += 1;
@@ -58,11 +65,32 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       nrows += 1; visible_chats += 1;
     }
   } else {
+    // Working section (default-on, T3 Code Working shelf): in-progress chats move here until they
+    // need user input/permission or finish, so sending off threads clears the main list.
+    if nworking > 0 {
+      w_collapsed := s[0].sb[0].working_collapsed;
+      wcnt_b: [16] u8; wcn := el_put_i(wcnt_b[..], 0, nworking);
+      rows[nrows] = AppSideRow.{id = "coder.working",
+                                title = "Working",
+                                status = sheet_pool(f[0].sheet, cast(string) wcnt_b[0..<wcn]),
+                                state = EL_S_EXPANDS | (ifx !w_collapsed then EL_S_EXPANDED else 0) | EL_S_BUSY,
+                                trail_icon = ifx w_collapsed then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
+                                action = CP_SB_WORKING_TOGGLE};
+      nrows += 1;
+      if !w_collapsed {
+        for q: 0..<s[0].nchats {
+          if !cp_sb_is_working(s, q, cur, running) { continue; }
+          rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
+          nrows += 1; visible_chats += 1;
+        }
+      }
+    }
     if npinned > 0 {
+      pin_start_y = app_side_content(f, rows[0..<nrows]) + a.side_head;
       rows[nrows] = AppSideRow.{id = "coder.pinned", title = "Pinned", heading = true};
       nrows += 1;
       for q: 0..<s[0].nchats {
-        if !s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
+        if !s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
         rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
         nrows += 1; visible_chats += 1;
       }
@@ -78,22 +106,27 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       for g: 0..<s[0].sb[0].nprojects {
         ppath := cast(string) s[0].sb[0].projects[g].path[0..<s[0].sb[0].projects[g].path_n];
         gcount := 0;
+        gworking := 0;
         for q: 0..<s[0].nchats {
-          if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
-          if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] == ppath { gcount += 1; }
+          if !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
+          if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] != ppath { continue; }
+          if cp_sb_is_working(s, q, cur, running) { gworking += 1; continue; }
+          if !s[0].chats[q].pinned { gcount += 1; }
         }
-        if gcount == 0 && !s[0].sb[0].projects[g].added { continue; }
+        if gcount == 0 && gworking == 0 && !s[0].sb[0].projects[g].added { continue; }
         pid_b: [32] u8; pn := el_put(pid_b[..], 0, "coder.proj."); pn = el_put_i(pid_b[..], pn, g);
+        collapsed := s[0].sb[0].projects[g].collapsed;
+        proj_working := collapsed && gworking > 0;
         cnt_s := "";
-        if gcount > 0 {
-          cnt_b: [16] u8; cn := el_put_i(cnt_b[..], 0, gcount);
+        show_cnt := ifx proj_working then gworking else gcount;
+        if show_cnt > 0 {
+          cnt_b: [16] u8; cn := el_put_i(cnt_b[..], 0, show_cnt);
           cnt_s = sheet_pool(f[0].sheet, cast(string) cnt_b[0..<cn]);
         }
-        collapsed := s[0].sb[0].projects[g].collapsed;
         rows[nrows] = AppSideRow.{id = sheet_pool(f[0].sheet, cast(string) pid_b[0..<pn]),
                                   title = cast(string) s[0].sb[0].projects[g].label[0..<s[0].sb[0].projects[g].label_n],
                                   status = cnt_s,
-                                  state = EL_S_EXPANDS | (ifx !collapsed then EL_S_EXPANDED else 0),
+                                  state = EL_S_EXPANDS | (ifx !collapsed then EL_S_EXPANDED else 0) | (ifx proj_working then EL_S_BUSY else 0),
                                   icon = ICON_FOLDER,
                                   trail_icon = ifx collapsed then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
                                   action = CP_SB_GROUP_TOGGLE};
@@ -102,7 +135,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
           show_all := s[0].sb[0].projects[g].show_all;
           shown := 0;
           for q: 0..<s[0].nchats {
-            if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
+            if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
             if cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n] == ppath {
               if !show_all && shown >= CP_SB_GROUP_LIMIT { break; }
               cr := cp_side_chat_row(s, f, q, cur, running);
@@ -123,16 +156,16 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
           }
         }
       }
-      // Active non-pinned chats without a folder go in a trailing General section.
+      // Active non-pinned, non-working chats without a folder go in a trailing General section.
       unassigned := 0;
       for q: 0..<s[0].nchats {
-        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && s[0].chats[q].folder_n == 0 { unassigned += 1; }
+        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) && s[0].chats[q].folder_n == 0 { unassigned += 1; }
       }
       if unassigned > 0 {
         rows[nrows] = AppSideRow.{id = "coder.chats", title = "General", heading = true};
         nrows += 1;
         for q: 0..<s[0].nchats {
-          if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && s[0].chats[q].folder_n == 0 {
+          if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) && s[0].chats[q].folder_n == 0 {
             rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
             nrows += 1; visible_chats += 1;
           }
@@ -141,13 +174,13 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     } else {
       nrecent := 0;
       for q: 0..<s[0].nchats {
-        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) { nrecent += 1; }
+        if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { nrecent += 1; }
       }
       if nrecent > 0 || s[0].chats_more > 0 {
         rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
         nrows += 1;
         for q: 0..<s[0].nchats {
-          if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) { continue; }
+          if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
           rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
           nrows += 1; visible_chats += 1;
         }
@@ -174,7 +207,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       rh := ifx r.heading then a.side_head else a.side_row;
       ry := stop + cursor - at;
       cursor += rh;
-      if r.heading || r.action == CP_SB_GROUP_TOGGLE || r.action == CP_SB_GROUP_ALL { continue; }
+      if r.heading || r.action == CP_SB_GROUP_TOGGLE || r.action == CP_SB_GROUP_ALL || r.action == CP_SB_WORKING_TOGGLE { continue; }
       slot += 1;
       if slot > 9 { break; }
       if ry + rh <= stop || ry >= stop + s[0].side_view { continue; }
@@ -186,7 +219,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   }
   app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
   s[0].pin_row_h = a.side_row;
-  s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
+  s[0].pin_top = stop + pin_start_y - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
   if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
     from := cp_pin_index(s, s[0].pin_drag - 1);
     if from >= 0 {

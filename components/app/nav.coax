@@ -162,8 +162,9 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   }
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
   current := (r.state & EL_S_CURRENT) != 0; off := (r.state & EL_S_DISABLED) != 0;
+  expands := (r.state & EL_S_EXPANDS) != 0;
   busy := (r.state & EL_S_BUSY) != 0 && !(r.attention && r.status.count > 0);
-  word := ifx busy || off then "" else r.status;
+  word := ifx off || (busy && !expands) then "" else r.status;
   mark_unread := (r.unread || r.attention && word.count > 0) && !busy && !current && !off;
   h := ifx detail.count > 0 then a.side_row_two else a.side_row;
   k := uiframe_key(f, r.id);
@@ -192,28 +193,39 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
     tx += mark + a.row_inset;
   }
   rx := x + w - a.side_pad;
-  if r.trail_icon >= 0 && !busy {
+  if r.trail_icon >= 0 && (!busy || expands) {
     tmark := 10.0f32;
     sheet_icon(sh, r.trail_icon, rx - tmark, y + (h - tmark) / 2.0f32, tmark, ifx off then s.faint else rgba_mix(s.faint, s.muted, hv));
     rx -= tmark + 6.0f32;
   }
   dot := a.dot;
   dot_inset := ifx a.icon > dot then (a.icon + dot) / 2.0f32 else dot;
-  if busy {
-    activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
-    rx -= a.icon + a.gap;
-  }
   tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32);
   ty := y + (h - lines) / 2.0f32;
-  if mark_unread {
-    sheet_fill(sh, rx - dot_inset, ifx word.count > 0 then ty + (tf.line - dot) / 2.0f32 else y + (h - dot) / 2.0f32, dot, dot, dot / 2.0f32, s.accent);
-    rx -= dot_inset + a.gap;
-  }
-  ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
-  if ww > 0 && ww + a.gap < (rx - tx) / 2.0f32 {
-    _ := sheet_text(sh, m, -1, rx - ww, ty + (tf.line - s.small.line) / 2.0f32, s.small.line, s.small.face, ifx r.attention then s.ink else s.faint, word);
-    rx -= ww + a.gap;
+  if expands && busy {
+    ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
+    if ww > 0 && ww + 6.0f32 < (rx - tx) / 2.0f32 {
+      _ := sheet_text(sh, m, -1, rx - ww, ty + (tf.line - s.small.line) / 2.0f32, s.small.line, s.small.face, s.ink, word);
+      rx -= ww + 6.0f32;
+    }
+    spin_s := ifx a.icon > 13.0f32 then 13.0f32 else a.icon;
+    activity(sh, s, rx - spin_s, y + (h - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
+    rx -= spin_s + 6.0f32;
+  } else {
+    if busy {
+      activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+      rx -= a.icon + a.gap;
+    }
+    if mark_unread {
+      sheet_fill(sh, rx - dot_inset, ifx word.count > 0 then ty + (tf.line - dot) / 2.0f32 else y + (h - dot) / 2.0f32, dot, dot, dot / 2.0f32, s.accent);
+      rx -= dot_inset + a.gap;
+    }
+    ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
+    if ww > 0 && ww + a.gap < (rx - tx) / 2.0f32 {
+      _ := sheet_text(sh, m, -1, rx - ww, ty + (tf.line - s.small.line) / 2.0f32, s.small.line, s.small.face, ifx r.attention then s.ink else s.faint, word);
+      rx -= ww + a.gap;
+    }
   }
   room := rx - tx;
   ink := ifx off then s.faint else ifx current || mark_unread then s.ink else rgba_mix(opacity(s.ink, 0.95f32), s.ink, hv);

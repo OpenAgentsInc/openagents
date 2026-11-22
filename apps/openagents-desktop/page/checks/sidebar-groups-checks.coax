@@ -241,3 +241,47 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert cp_sb_click_id(s, "coder.sb.bulk.clear", 0);
   #assert coder_page_sb_sel_count(s) == 0 && coder_page_action(s) == CP_ASK_NONE;
 }
+
+#test "working chats move to top Working shelf by default, mark collapsed projects busy with count, and return on input or completion" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  // c1 is running in background in /tmp/openagents; c2 is idle in /tmp/openagents; g1 is running in General.
+  coder_page_chats(s, "c1\tdoes this work\t1\t0\t0\t0\t0\t0\t/tmp/openagents\nc2\tIdle chat\t0\t0\t0\t0\t0\t0\t/tmp/openagents\ng1\tQuick task\t1\t0\t0\t0\t0\t0\t\n");
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  // Working shelf is expanded by default at top with count 2; both c1 and g1 are visible immediately even though project 0 is collapsed.
+  w_idx := surface_find(s[0].surface[..], "coder.working");
+  #assert w_idx >= 0;
+  #assert (surface_rows(s[0].surface[..]).rows[w_idx].state & (EL_S_EXPANDS | EL_S_EXPANDED | EL_S_BUSY)) == (EL_S_EXPANDS | EL_S_EXPANDED | EL_S_BUSY);
+  #assert surface_find(s[0].surface[..], "chat.c1") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
+  // General heading is empty because its only chat (g1) moved into Working.
+  #assert surface_find(s[0].surface[..], "coder.chats") < 0;
+  // Collapsed project 0 carries EL_S_BUSY and shows working count "1".
+  p0 := surface_find(s[0].surface[..], "coder.proj.0");
+  p0_row := surface_rows(s[0].surface[..]).rows[p0];
+  #assert p0 >= 0 && (p0_row.state & EL_S_BUSY) != 0;
+  #assert cast(string) p0_row.value[0..<p0_row.value_n] == "1";
+  // Clicking Working collapses it and hides c1 and g1 from the Working shelf.
+  #assert cp_sb_click_id(s, "coder.working", 0);
+  #assert s[0].sb[0].working_collapsed;
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  #assert surface_find(s[0].surface[..], "chat.c1") < 0 && surface_find(s[0].surface[..], "chat.g1") < 0;
+  // Clicking Working again re-expands it.
+  #assert cp_sb_click_id(s, "coder.working", 0);
+  #assert !s[0].sb[0].working_collapsed;
+  #assert cp_sb_test_frame(s, f[..], 0.04f32);
+  #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
+  // When c1 is the active chat and opens a permission/input prompt, it leaves Working so it surfaces for user input.
+  coder_page_current(s, "c1");
+  s[0].permit[0].open = true;
+  #assert cp_sb_test_frame(s, f[..], 0.06f32);
+  // Only g1 remains in Working; project 0 no longer has any working chats.
+  p0 = surface_find(s[0].surface[..], "coder.proj.0");
+  #assert p0 >= 0 && (surface_rows(s[0].surface[..]).rows[p0].state & EL_S_BUSY) == 0;
+  // Once all chats finish, the Working shelf disappears and g1 returns to General.
+  s[0].permit[0].open = false;
+  coder_page_chats(s, "c1\tdoes this work\t0\t0\t0\t0\t0\t0\t/tmp/openagents\nc2\tIdle chat\t0\t0\t0\t0\t0\t0\t/tmp/openagents\ng1\tQuick task\t0\t0\t0\t0\t0\t0\t\n");
+  #assert cp_sb_test_frame(s, f[..], 0.08f32);
+  #assert surface_find(s[0].surface[..], "coder.working") < 0;
+  #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
+}

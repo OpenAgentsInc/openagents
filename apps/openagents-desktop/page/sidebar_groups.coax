@@ -50,6 +50,7 @@ CP_SB_BULK_CLEAR_ACT :: 218;
 CP_SB_UNDO_ACT :: 219;
 CP_SB_UNDO_CLOSE_ACT :: 220;
 CP_SB_GROUP_ALL :: 221;
+CP_SB_WORKING_TOGGLE :: 222;
 
 CpSbProject :: struct {
   path: [CP_CHAT_FOLDER] u8; path_n: int;
@@ -70,6 +71,7 @@ CpSbUndo :: struct {
 CpSidebar :: struct {
   view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
   now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
+  working_collapsed: bool;    // Working shelf collapse state (false = expanded by default)
   projects: [CP_SB_MAX_GROUPS] CpSbProject; nprojects: int;
   sel: [CP_CHATS] bool;       // multi-select bitset indexed by s[0].chats[q]
   sel_count: int;
@@ -129,6 +131,29 @@ cp_sb_is_snoozed :: (c: CpChat, now_ms: int) -> bool {
 // True when chat c should appear in the Active sidebar view.
 cp_sb_is_visible_active :: (c: CpChat, now_ms: int) -> bool {
   return !c.archived && !cp_sb_is_snoozed(c, now_ms);
+}
+
+// True when chat q is actively working in progress and does not currently need user input/approval.
+// Matches T3 Code's Working shelf semantics: in-progress chats move to Working at the top and stay
+// there until they need user input/permission or finish.
+cp_sb_is_working :: (s: [] CoderPage, q: int, cur: string, running: bool) -> bool {
+  if q < 0 || q >= s[0].nchats { return false; }
+  c := s[0].chats[q];
+  if !cp_sb_is_visible_active(c, s[0].sb[0].now_ms) { return false; }
+  id := cast(string) c.id[0..<c.id_n];
+  is_cur := cur.count > 0 && id == cur;
+  in_progress := (is_cur && running) || c.busy;
+  if !in_progress { return false; }
+  if is_cur && s[0].permit[0].open { return false; }
+  return true;
+}
+
+cp_sb_working_count :: (s: [] CoderPage, cur: string, running: bool) -> int {
+  n := 0;
+  for q: 0..<s[0].nchats {
+    if cp_sb_is_working(s, q, cur, running) { n += 1; }
+  }
+  return n;
 }
 
 cp_sb_archived_count :: (s: [] CoderPage) -> int {
@@ -420,6 +445,10 @@ cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     idx := cp_number(id, "coder.proj.all.");
     if idx < 0 || idx >= s[0].sb[0].nprojects { return false; }
     s[0].sb[0].projects[idx].show_all = true;
+    return true;
+  }
+  if act == CP_SB_WORKING_TOGGLE {
+    s[0].sb[0].working_collapsed = !s[0].sb[0].working_collapsed;
     return true;
   }
   if act == CP_SB_VIEW_ACTIVE_ACT {
