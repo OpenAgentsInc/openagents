@@ -64,10 +64,12 @@ tool_main :: () -> int #export_c #effects(all) {
   ne := ik_run_start(r[..], h[..], b[..], ws, "http://127.0.0.1:18795", "inkling-2-mini", "medium", "workspace-write", 3, false, true, 30, 32768, true, "macOS", "selftest", evs[..]);
   if ne != 0 { tool_errln("FAIL: ik_run_start failed"); return 1; }
 
-  // 1. write_file creates parent dirs and file
+  // 1. write_file creates parent dirs, emits IK_EV_COMMAND ("write ...") with Ch 234 replay pill
   ne = ik_st_run_tool(r[..], h[..], b[..], 1, "c1", "write_file", "{\"path\":\"src/app.txt\",\"content\":\"alpha\\nbeta\\ngamma\\nMC_SYSTEM_LINE\\ndelta\\n\"}", evs[..]);
   o1 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
-  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o1, "Wrote src/app.txt") { tool_errln("FAIL: write_file"); return 1; }
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o1, "Wrote src/app.txt") || !ik_st_has(o1, "[E] replay verified · sha256:") || ne != 1 || evs[0].kind != IK_EV_COMMAND || evs[0].text != "write src/app.txt" || !ik_st_has(evs[0].output, "[E] replay verified · sha256:") {
+    tool_errln("FAIL: write_file Class-E replay"); return 1;
+  }
 
   // Stage in git so git grep sees it.
   git_add := [5] string.["git", "-C", ws, "add", "."];
@@ -99,14 +101,35 @@ tool_main :: () -> int #export_c #effects(all) {
   o7 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
   if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o7, "src/app.txt:4:MC_SYSTEM_LINE") { tool_errln("FAIL: grep"); return 1; }
 
-  // 7. edit_file nearest-line error on miss, then clean apply on hit
+  // 7. edit_file Class-E pre-disk refusal with [E] replay refused pill, then clean apply with [E] replay verified pill
   ne = ik_st_run_tool(r[..], h[..], b[..], 8, "c8", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"MC_SYSTEM_LINE_TYPO\",\"new_string\":\"X\"}", evs[..]);
   o8 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
-  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o8, "not found") { tool_errln("FAIL: edit_file miss"); return 1; }
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o8, "not found") || !ik_st_has(o8, "[E] replay refused · sha256:") || ne != 1 || evs[0].kind != IK_EV_COMMAND || evs[0].exit != 1 {
+    tool_errln("FAIL: edit_file Class-E miss"); return 1;
+  }
 
   ne = ik_st_run_tool(r[..], h[..], b[..], 9, "c9", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"beta\",\"new_string\":\"BETA_UPDATED\"}", evs[..]);
   o9 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
-  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o9, "+ BETA_UPDATED") { tool_errln("FAIL: edit_file hit"); return 1; }
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o9, "+ BETA_UPDATED") || !ik_st_has(o9, "[E] replay verified · sha256:") || ne != 1 || evs[0].kind != IK_EV_COMMAND || evs[0].text != "edit src/app.txt" || !ik_st_has(evs[0].output, "\\ [E] replay verified · sha256:") {
+    tool_errln("FAIL: edit_file Class-E hit"); return 1;
+  }
+
+  // 7b. executor_verify native Class-E weight core tool (dep_sched ok + cycle refusal + semver ok)
+  ne = ik_st_run_tool(r[..], h[..], b[..], 9, "c9b", "executor_verify", "{\"module\":\"dep_sched\",\"args\":[0,0,2,8,5,0]}", evs[..]);
+  o9b := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o9b, "\"ok\":true") || !ik_st_has(o9b, "\"outputs\":[1,3,56]") || !ik_st_has(o9b, "[E] replay verified · sha256:") {
+    tool_errln("FAIL: executor_verify dep_sched ok"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 9, "c9c", "executor_verify", "{\"module\":\"dep_sched\",\"args\":[0,1,1,4,50,0]}", evs[..]);
+  o9c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !ik_st_has(o9c, "\"code\":\"cycle_detected\"") || !ik_st_has(o9c, "[E] replay refused · sha256:") {
+    tool_errln("FAIL: executor_verify dep_sched cycle"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 9, "c9d", "executor_verify", "{\"module\":\"semver_solve\",\"args\":[1,5,2,1,2,0,2]}", evs[..]);
+  o9d := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !ik_st_has(o9d, "\"ok\":true") || !ik_st_has(o9d, "[E] replay verified · sha256:") {
+    tool_errln("FAIL: executor_verify semver_solve"); return 1;
+  }
 
   // 8. run_command >16 KB spills to spill_dir and read_file can inspect spill file
   ne = ik_st_run_tool(r[..], h[..], b[..], 10, "c10", "run_command", "{\"command\":\"python3 -c 'for i in range(1, 1201): print(f\\\"row_{i:04d}_payload_0123456789\\\")'\"}", evs[..]);

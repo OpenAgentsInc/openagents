@@ -54,6 +54,8 @@ IkLoop :: struct {
   refuse_reason: [512] u8; nrefuse: int;
   done_reason: [32] u8; ndone: int;
   last_usage: GwUsage;
+  obs_input_tokens: int;
+  hybrid_exec: bool;
   retried_ctx: bool;
   retried_stream: bool;
   retrying_same_step: bool;
@@ -117,9 +119,13 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   }
   l[0].retrying_same_step = false;
 
-  need := ik_compact_needed(h, l[0].nsystem, l[0].max_ctx);
-  if need >= 1 { _ = ik_compact_stage1(h, tmp); }
-  if ik_compact_needed(h, l[0].nsystem, l[0].max_ctx) >= 2 { _ = ik_compact_stage2(h, tmp); }
+  need := ik_compact_needed_obs(h, l[0].nsystem, l[0].max_ctx, l[0].obs_input_tokens);
+  if need >= 1 {
+    if ik_compact_stage1(h, tmp) { l[0].obs_input_tokens = 0; }
+  }
+  if ik_compact_needed_obs(h, l[0].nsystem, l[0].max_ctx, l[0].obs_input_tokens) >= 2 {
+    if ik_compact_stage2(h, tmp) { l[0].obs_input_tokens = 0; }
+  }
 
   msgs: [IK_MAX_MSGS] GwMessage;
   gcalls: [IK_MAX_CALLS] GwToolCall;
@@ -127,7 +133,8 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   if nm <= 0 { out_why[0] = "empty conversation history"; return ""; }
 
   disable_tools := ik_guard_disable_tools(l[0].step, l[0].guard[0].max_steps);
-  tools := ik_prompt_tools_for(ik_loop_profile(l), disable_tools);
+  tbuf: [6144] u8;
+  tools := ik_prompt_tools_for_mode(ik_loop_profile(l), disable_tools, l[0].hybrid_exec, tbuf[..]);
 
   req := GwRequest.{
     model = model,
@@ -217,6 +224,7 @@ ik_loop_event :: (l: [] IkLoop, ev: GwEvent) -> IkFeedRes {
   }
   if ev.kind == GW_EV_DONE {
     l[0].last_usage = ev.usage;
+    if ev.usage.input_tokens > 0 { l[0].obs_input_tokens = ev.usage.input_tokens; }
     l[0].ndone = ik_loop_copy(l[0].done_reason[..], ev.reason);
     if !l[0].thought_emitted && l[0].nthink > 0 {
       l[0].thought_emitted = true;
@@ -320,12 +328,16 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
   tc := gwt_step_call(l[0].tstep[..], l[0].tool_idx);
   is_last := l[0].tool_idx + 1 >= l[0].tstep[0].n;
 
-  // Soft wrap-up notice appended once on the final tool of step == max_steps - 2.
+  // Soft wrap-up notice (step == max_steps - 2) or exploration nudge (steps 8, 14 with 0 edits).
   final_out := output;
   wbuf: [24576] u8;
   if is_last && ik_guard_warn_budget(l[0].step, l[0].guard[0].max_steps) {
     n := ik_fmt_put(wbuf[..], 0, output);
     n = ik_fmt_put(wbuf[..], n, "\n[Step budget nearly reached: synthesize your findings and answer the user now.]");
+    final_out = cast(string) wbuf[0..<n];
+  } else if is_last && ik_guard_nudge_explore(l[0].step, l[0].guard[0].files_edited) {
+    n := ik_fmt_put(wbuf[..], 0, output);
+    n = ik_fmt_put(wbuf[..], n, "\n[Note: you have spent several steps exploring without making edits. If this task requires code changes, apply your targeted edit_file change now; otherwise answer directly.]");
     final_out = cast(string) wbuf[0..<n];
   }
 

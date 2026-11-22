@@ -13,16 +13,20 @@
 
 IK_DEFAULT_CTX :: 32768;
 IK_MASK_MIN_BYTES :: 512;
-IK_STAGE1_PCT :: 70;
-IK_STAGE2_PCT :: 88;
+IK_STAGE1_PCT :: 80;
+IK_STAGE2_PCT :: 90;
 IK_STAGE1_MSGS :: 96;
 IK_STAGE2_MSGS :: 112;
 IK_STAGE1_CALLS :: 48;
 IK_STAGE2_CALLS :: 56;
 
-ik_compact_needed :: (h: [] IkHistory, system_bytes: int, max_ctx: int) -> int {
+ik_compact_needed_obs :: (h: [] IkHistory, system_bytes: int, max_ctx: int, last_input_tokens: int) -> int {
   ctx := ifx max_ctx > 1024 then max_ctx else IK_DEFAULT_CTX;
-  est := ik_hist_est_tokens(h) + (system_bytes * 10 + 34) / 35 + 600;
+  // Code tokenizes near ~2.8 bytes/token; take max with actual server-reported prompt tokens
+  // while keeping thresholds KV-cache-friendly (80% / 90%) so local GPUs avoid premature
+  // cache-busting compactions yet never hit hard 32K context overflow.
+  est := (ik_hist_est_tokens(h) * 5) / 4 + (system_bytes * 10 + 27) / 28 + 600;
+  if last_input_tokens > est { est = last_input_tokens; }
   if est >= (ctx * IK_STAGE2_PCT) / 100 || h[0].n >= IK_STAGE2_MSGS || h[0].nc >= IK_STAGE2_CALLS || h[0].na >= (IK_ARENA * 85) / 100 {
     return 2;
   }
@@ -30,6 +34,10 @@ ik_compact_needed :: (h: [] IkHistory, system_bytes: int, max_ctx: int) -> int {
     return 1;
   }
   return 0;
+}
+
+ik_compact_needed :: (h: [] IkHistory, system_bytes: int, max_ctx: int) -> int {
+  return ik_compact_needed_obs(h, system_bytes, max_ctx, 0);
 }
 
 ik_compact_stub :: (h: [] IkHistory, m: IkMsg, out: [] u8) -> int {

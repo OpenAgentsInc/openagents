@@ -27,11 +27,12 @@ ik_tool_kind :: (name: string) -> int #effects(all) {
   if name == "list_dir" { return IK_TK_LIST; }
   if name == "run_command" { return IK_TK_CMD; }
   if name == "update_todos" { return IK_TK_TODOS; }
+  if name == "executor_verify" { return IK_TK_EXEC; }
   return IK_TK_NONE;
 }
 
 ik_tool_is_readonly :: (kind: int) -> bool #effects(all) {
-  return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS;
+  return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC;
 }
 
 // Decides whether a tool call runs immediately, waits for MWW_ASK approval, or is denied.
@@ -148,6 +149,26 @@ IkWriteArgs :: struct { ok: bool; path: string; content: string; }
 IkGrepArgs :: struct { ok: bool; pattern: string; path: string; glob: string; fixed_strings: bool; max_results: int; }
 IkListArgs :: struct { ok: bool; path: string; depth: int; }
 IkCmdArgs :: struct { ok: bool; command: string; timeout_s: int; }
+IkExecArgs :: struct { ok: bool; module_id: int; n_args: int; args: [8] int; }
+
+ik_exec_module_id :: (name: string) -> int #effects(all) {
+  if name == "diff_verify" || name == "oa-exec-diff-verify" { return 1; }
+  if name == "json_schema" || name == "oa-exec-json-schema" { return 2; }
+  if name == "dep_sched" || name == "oa-exec-dep-sched" { return 3; }
+  if name == "arith_budget" || name == "oa-exec-arith-budget" { return 4; }
+  if name == "patch_rebase" || name == "oa-exec-patch-rebase" { return 5; }
+  if name == "glob_match" || name == "oa-exec-glob-match" { return 6; }
+  if name == "semver_solve" || name == "oa-exec-semver-solve" { return 7; }
+  if name == "wire_bounds" || name == "oa-exec-wire-bounds" { return 8; }
+  return 0;
+}
+
+ik_exec_module_arity :: (module_id: int) -> int #effects(all) {
+  if module_id == 2 { return 8; }
+  if module_id == 3 || module_id == 4 { return 6; }
+  if module_id == 1 || (module_id >= 5 && module_id <= 8) { return 7; }
+  return 0;
+}
 
 ik_admit_read :: (ar: [] ClArena, args_json: string) -> IkReadArgs #effects(all) {
   if !json_valid(args_json) { return IkReadArgs.{}; }
@@ -242,6 +263,24 @@ ik_admit_todos :: (args_json: string) -> bool #effects(all) {
   return true;
 }
 
+ik_admit_exec :: (ar: [] ClArena, args_json: string) -> IkExecArgs #effects(all) {
+  if !json_valid(args_json) || cl_at(args_json, "args").tok != JSON_ARRAY { return IkExecArgs.{}; }
+  m := cl_str(ar, args_json, "module");
+  if ar[0].full { return IkExecArgs.{}; }
+  mid := ik_exec_module_id(m);
+  want := ik_exec_module_arity(mid);
+  if want == 0 { return IkExecArgs.{}; }
+  arr := cl_raw(args_json, "args");
+  if cl_count(arr) != want { return IkExecArgs.{}; }
+  out := IkExecArgs.{ok = true, module_id = mid, n_args = want};
+  for i: 0..<want {
+    v := cl_int_of(arr, cl_item(arr, i));
+    if !v.ok { return IkExecArgs.{}; }
+    out.args[i] = v.value;
+  }
+  return out;
+}
+
 // 8-hex-digit FNV-1a 32-bit digest for read_file/edit_file/write_file version tracking.
 ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   if out.count < 8 { return -1; }
@@ -263,19 +302,19 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert ik_tool_kind("read_file") == IK_TK_READ && ik_tool_kind("edit_file") == IK_TK_EDIT;
   #assert ik_tool_kind("write_file") == IK_TK_WRITE && ik_tool_kind("grep") == IK_TK_GREP;
   #assert ik_tool_kind("list_dir") == IK_TK_LIST && ik_tool_kind("run_command") == IK_TK_CMD;
-  #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("other") == IK_TK_NONE;
-  #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS);
+  #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("executor_verify") == IK_TK_EXEC && ik_tool_kind("other") == IK_TK_NONE;
+  #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS) && ik_tool_is_readonly(IK_TK_EXEC);
   #assert !ik_tool_is_readonly(IK_TK_EDIT) && !ik_tool_is_readonly(IK_TK_WRITE) && !ik_tool_is_readonly(IK_TK_CMD) && !ik_tool_is_readonly(IK_TK_NONE);
 }
 
-#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<9, ceiling:-1..<5, gated:bool, edits_free:bool {
+#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<10, ceiling:-1..<5, gated:bool, edits_free:bool {
   profiles := [4] string.["read-only", "workspace-write", "danger-full-access", "bogus"];
   for pi: 0..<4 {
     p := profiles[pi];
     got := ik_tool_admit(kind, p, ceiling, gated, edits_free);
     want := IK_ADMIT_DENY;
-    if kind >= 1 && kind <= 7 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
-      if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS {
+    if kind >= 1 && kind <= 8 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
+      if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC {
         want = IK_ADMIT_RUN;
       } else if p != "read-only" {
         if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
@@ -478,6 +517,33 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert !ik_admit_list(tar[..], "{\"path\":\"\\u0061\\u0062\"}").ok;
   tar[0].at = 0; tar[0].full = false;
   #assert !ik_admit_cmd(tar[..], "{\"command\":\"\\u0061\\u0062\"}").ok;
+
+  // executor_verify (all 8 Class-E modules, short & canonical names, exact arities, rejections)
+  #assert ik_exec_module_id("diff_verify") == 1 && ik_exec_module_id("oa-exec-diff-verify") == 1 && ik_exec_module_arity(1) == 7;
+  #assert ik_exec_module_id("json_schema") == 2 && ik_exec_module_id("oa-exec-json-schema") == 2 && ik_exec_module_arity(2) == 8;
+  #assert ik_exec_module_id("dep_sched") == 3 && ik_exec_module_id("oa-exec-dep-sched") == 3 && ik_exec_module_arity(3) == 6;
+  #assert ik_exec_module_id("arith_budget") == 4 && ik_exec_module_id("oa-exec-arith-budget") == 4 && ik_exec_module_arity(4) == 6;
+  #assert ik_exec_module_id("patch_rebase") == 5 && ik_exec_module_id("oa-exec-patch-rebase") == 5 && ik_exec_module_arity(5) == 7;
+  #assert ik_exec_module_id("glob_match") == 6 && ik_exec_module_id("oa-exec-glob-match") == 6 && ik_exec_module_arity(6) == 7;
+  #assert ik_exec_module_id("semver_solve") == 7 && ik_exec_module_id("oa-exec-semver-solve") == 7 && ik_exec_module_arity(7) == 7;
+  #assert ik_exec_module_id("wire_bounds") == 8 && ik_exec_module_id("oa-exec-wire-bounds") == 8 && ik_exec_module_arity(8) == 7;
+  #assert ik_exec_module_id("unknown") == 0 && ik_exec_module_arity(0) == 0 && ik_exec_module_arity(9) == 0;
+  ar[0].at = 0; ar[0].full = false;
+  ex := ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":[7,0,1,4,50,0]}");
+  #assert ex.ok && ex.module_id == 3 && ex.n_args == 6 && ex.args[0] == 7 && ex.args[4] == 50;
+  ar[0].at = 0; ar[0].full = false;
+  ex = ik_admit_exec(ar[..], "{\"module\":\"oa-exec-json-schema\",\"args\":[1,10,256,1,5,1,5,1024]}");
+  #assert ex.ok && ex.module_id == 2 && ex.n_args == 8 && ex.args[7] == 1024;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":[0,0,1,4,50]}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":[0,0,1,4,\"bad\",0]}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":[\"bad\",0,1,4,50,0]}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":[0,0,1,4,50,0]} junk").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\",\"args\":{\"a\":0,\"b\":0,\"c\":1,\"d\":4,\"e\":50,\"f\":0}}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"unknown\",\"args\":[]}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"unknown\",\"args\":[1,2,3,4,5,6]}").ok;
+  #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\"}").ok && !ik_admit_exec(ar[..], "bad").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_exec(tar[..], "{\"module\":\"\\u0064ep_sched\",\"args\":[0,0,1,4,50,0]}").ok;
 
   // FNV-1a 8-hex digest
   hb: [8] u8;

@@ -21,6 +21,21 @@ IK_TOOLS_JSON :: "[{\"type\":\"function\",\"function\":{\"name\":\"read_file\",\
 // Read-only toolset when sandbox profile == "read-only".
 IK_TOOLS_READONLY_JSON :: "[{\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"description\":\"Read numbered lines from a file inside the workspace. Default up to 200 lines / 16 KB from start_line.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}},\"required\":[\"path\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"grep\",\"description\":\"Search workspace files for a regex or literal pattern. Returns PATH:LINE:text matches.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"glob\":{\"type\":\"string\"},\"fixed_strings\":{\"type\":\"boolean\"},\"max_results\":{\"type\":\"integer\"}},\"required\":[\"pattern\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"list_dir\",\"description\":\"List directory entries inside the workspace cleanly (skips .git).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"depth\":{\"type\":\"integer\"}},\"required\":[]}}},{\"type\":\"function\",\"function\":{\"name\":\"update_todos\",\"description\":\"Update the live checklist on multi-step tasks.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"id\",\"content\",\"status\"]}}},\"required\":[\"todos\"]}}}]";
 
+// Native Class-E compiled weight-module verification tool declaration (Executor W2.2 / hybrid-exec-v1).
+IK_TOOL_EXEC_JSON :: "{\"type\":\"function\",\"function\":{\"name\":\"executor_verify\",\"description\":\"Run a frozen, digest-pinned Class-E compiled dense F64 weight module with Ch 234 SHA-256 exact replay. Modules & integer arg tuples: diff_verify(7:[old_start,old_count,new_start,new_count,file_lines,matched_ctx,expected_ctx]), json_schema(8:[has_path,path_len,max_path,has_old,old_len,has_new,new_len,max_body]), dep_sched(6:[remaining_deps,has_cycle,running,max_slots,priority,blocked]), arith_budget(6:[balance_sats,spent_sats,req_sats,daily_cap,tokens_k,rate_sats]), patch_rebase(7:[h1_start,h1_old,h1_new,h2_start,h2_old,h2_new,file_lines]), glob_match(7:[path_segs,pat_segs,has_double_star,matched_prefix,req_prefix,matched_suffix,req_suffix]), semver_solve(7:[cand_maj,cand_min,cand_pat,min_maj,min_min,min_pat,max_maj_excl]), wire_bounds(7:[field_tag,max_tag,wire_type,varint_bytes,declared_len,frame_bytes,max_frame_bytes]).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"module\":{\"type\":\"string\",\"enum\":[\"diff_verify\",\"json_schema\",\"dep_sched\",\"arith_budget\",\"patch_rebase\",\"glob_match\",\"semver_solve\",\"wire_bounds\"]},\"args\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}},\"required\":[\"module\",\"args\"]}}}";
+
+ik_prompt_tools_for_mode :: (profile: string, tools_disabled: bool, hybrid_exec: bool, out: [] u8) -> string {
+  if tools_disabled { return ""; }
+  base := ifx profile == "read-only" then IK_TOOLS_READONLY_JSON else IK_TOOLS_JSON;
+  if !hybrid_exec { return base; }
+  if base.count < 2 || base.count + IK_TOOL_EXEC_JSON.count + 2 > out.count { return base; }
+  n := ik_fmt_put(out, 0, cast(string) base[0..<base.count - 1]);
+  n = ik_fmt_byte(out, n, ',');
+  n = ik_fmt_put(out, n, IK_TOOL_EXEC_JSON);
+  n = ik_fmt_byte(out, n, ']');
+  return cast(string) out[0..<n];
+}
+
 ik_prompt_tools_for :: (profile: string, tools_disabled: bool) -> string {
   if tools_disabled { return ""; }
   if profile == "read-only" { return IK_TOOLS_READONLY_JSON; }
@@ -68,14 +83,14 @@ ik_prompt_is_stock_uinstr :: (raw: string) -> bool {
 // Builds Inky's zero-contradiction system prompt into out; returns byte count.
 // Static rules precede per-workspace Environment metadata so cross-worktree/cross-chat
 // sessions share the longest possible KV cache prefix and Workspace stays in the SWA recency window.
-ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: string, workspace_instr: string, is_goal: bool, out: [] u8) -> int {
+ik_prompt_build_mode :: (os_name: string, cwd: string, git_info: string, user_instr: string, workspace_instr: string, is_goal: bool, hybrid_exec: bool, out: [] u8) -> int {
   has_custom_user := !ik_prompt_blank(user_instr) && !ik_prompt_is_stock_uinstr(user_instr);
   user_mentions_git := has_custom_user && (ik_prompt_has_ci(user_instr, "commit") || ik_prompt_has_ci(user_instr, "push"));
 
   n := ik_fmt_put(out, 0, "You are OpenAgents, a local coding assistant running in the user's workspace.\n\nHow to work:\n");
   n = ik_fmt_put(out, n, "- For plain questions or conversation, answer directly without calling tools.\n");
   n = ik_fmt_put(out, n, "- To inspect files or search the repo, prefer `list_dir`, `grep`, and `read_file` over `run_command`.\n");
-  n = ik_fmt_put(out, n, "- Before editing a file, read the relevant lines with `read_file`. Use `edit_file` for targeted changes and `write_file` for new files.\n");
+  n = ik_fmt_put(out, n, "- Before editing a file, read the relevant lines with `read_file`. Always use `edit_file` for targeted changes and `write_file` for new files—do not use `python3`, `sed`, or shell heredocs in `run_command` to edit files.\n");
   n = ik_fmt_put(out, n, "- After making code changes, run the relevant test or check command once with `run_command` to verify before answering.\n");
   n = ik_fmt_put(out, n, "- Stay inside the workspace directory below. Refuse destructive or out-of-workspace file operations unless explicitly authorized.\n");
   if !user_mentions_git {
@@ -106,6 +121,12 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
     n = ik_fmt_put(out, n, "- If genuinely blocked after exhausting alternatives, end with `[GOAL_BLOCKED]` and state the concrete blocker.\n");
   }
 
+  if hybrid_exec {
+    n = ik_fmt_put(out, n, "\nHybrid Executor mode:\n");
+    n = ik_fmt_put(out, n, "- Every `edit_file` and `write_file` call is pre-verified by compiled Class-E weight modules with Ch 234 SHA-256 replay receipts.\n");
+    n = ik_fmt_put(out, n, "- For exact diff bounds, schema caps, DAG scheduling, budget math, patch rebasing, glob matching, SemVer compatibility, or wire bounds, call `executor_verify` instead of doing mental arithmetic.\n");
+  }
+
   n = ik_fmt_put(out, n, "\nEnvironment:\n- OS: ");
   n = ik_fmt_put(out, n, ifx os_name.count > 0 then os_name else "macOS");
   n = ik_fmt_put(out, n, "\n- Workspace: ");
@@ -115,6 +136,10 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   n = ik_fmt_byte(out, n, '\n');
 
   return n;
+}
+
+ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: string, workspace_instr: string, is_goal: bool, out: [] u8) -> int {
+  return ik_prompt_build_mode(os_name, cwd, git_info, user_instr, workspace_instr, is_goal, false, out);
 }
 
 // ---------------------------------------------------------------- checks
@@ -156,6 +181,11 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   #assert ik_prompt_tools_for("workspace-write", false) == IK_TOOLS_JSON;
   #assert ik_prompt_tools_for("read-only", false) == IK_TOOLS_READONLY_JSON;
   #assert ik_prompt_tools_for("workspace-write", true) == "";
+  tbuf: [6144] u8;
+  ht := ik_prompt_tools_for_mode("workspace-write", false, true, tbuf[..]);
+  #assert json_valid(ht) && cl_count(ht) == 8;
+  hro := ik_prompt_tools_for_mode("read-only", false, true, tbuf[..]);
+  #assert json_valid(hro) && cl_count(hro) == 5;
   #assert ik_prompt_is_goal("Please finish <goal_objective>fix bug</goal_objective>");
   #assert !ik_prompt_is_goal("Hello, how is it going?");
 }

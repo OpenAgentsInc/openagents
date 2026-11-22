@@ -346,6 +346,8 @@ tool_main :: () -> int #export_c #effects(all) {
   env_steps := ikw_env_int("INKY_MAX_STEPS", 0);
   det_b: [16] u8;
   det_mode := gw_env("INKY_DETERMINISTIC", det_b[..]) == "1";
+  exec_b: [16] u8;
+  env_hybrid := gw_env("INKY_EXECUTOR", exec_b[..]) == "1";
 
   while true {
     ended := "";
@@ -483,6 +485,7 @@ tool_main :: () -> int #export_c #effects(all) {
     turn_steps := ifx ms_field.ok && ms_field.value > 0 then ms_field.value else env_steps;
 
     ev: [8] IkRunEvent;
+    run[0].hybrid_exec = env_hybrid;
     ne := ik_run_start(
       run[..], hist[..], bufs[..], cd,
       cast(string) ep[0].base[0..<ep[0].nbase],

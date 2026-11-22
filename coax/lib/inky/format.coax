@@ -361,6 +361,52 @@ ik_fmt_edit :: (content: string, path: string, old_str: string, new_str: string,
   return res;
 }
 
+ik_fmt_put_prefixed_lines :: (out: [] u8, at: int, prefix: u8, text: string, cap: int) -> int {
+  if text.count == 0 { return at; }
+  n := at;
+  pos := 0;
+  shown := 0;
+  while pos < text.count && shown < 24 && n + 4 < cap {
+    e := pos;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    ln := cast(string) text[pos..<e];
+    if ln.count > 200 { ln = cast(string) ln[0..<200]; }
+    n = ik_fmt_byte(out, n, prefix);
+    n = ik_fmt_put(out, n, ln);
+    n = ik_fmt_byte(out, n, '\n');
+    shown += 1;
+    pos = ifx e < text.count then e + 1 else e;
+  }
+  return n;
+}
+
+// Formats a Desktop-compatible unified diff hunk + optional Ch 234 replay pill
+// ("\ [E] replay verified · sha256:<12hex>") so OpenAgents Desktop renders native
+// edit/write rows with +/- stats and right-aligned verification badges (#13924).
+ik_fmt_unified_diff :: (start_line: int, old_str: string, new_str: string, pill: string, out: [] u8) -> int {
+  on := ik_fmt_count_lines(old_str);
+  nn := ik_fmt_count_lines(new_str);
+  sline := ifx start_line > 0 then start_line else 1;
+  cap := ifx out.count > 128 then out.count - 96 else out.count;
+  n := ik_fmt_put(out, 0, "@@ -");
+  n = ik_fmt_int(out, n, sline);
+  n = ik_fmt_byte(out, n, ',');
+  n = ik_fmt_int(out, n, on);
+  n = ik_fmt_put(out, n, " +");
+  n = ik_fmt_int(out, n, sline);
+  n = ik_fmt_byte(out, n, ',');
+  n = ik_fmt_int(out, n, nn);
+  n = ik_fmt_put(out, n, " @@\n");
+  n = ik_fmt_put_prefixed_lines(out, n, '-', old_str, (cap + n) / 2 + 128);
+  n = ik_fmt_put_prefixed_lines(out, n, '+', new_str, cap);
+  if pill.count > 0 && n + pill.count + 4 <= out.count {
+    n = ik_fmt_put(out, n, "\\ ");
+    n = ik_fmt_put(out, n, pill);
+    n = ik_fmt_byte(out, n, '\n');
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- run_command output budget
 
 // Formats command output with 16 KiB inline budget verbatim; past 16 KiB keeps
