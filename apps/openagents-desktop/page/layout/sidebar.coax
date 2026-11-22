@@ -180,7 +180,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     uiframe_unclip(f);
   }
   app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
-  s[0].pin_row_h = 74.0f32;
+  s[0].pin_row_h = APP_SIDE_CARD_H;
   s[0].pin_top = stop + pin_start_y - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
   if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
     from := cp_pin_index(s, s[0].pin_drag - 1);

@@ -1097,6 +1097,11 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
                       row_y = sy - y, send_x = sx - x, send = send};
 }
 
+CP_FOOT_FOLDER_ICON :: 11.0f32;
+CP_FOOT_FOLDER_GAP :: 5.0f32;
+cp_foot_chip_icon_size :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER then CP_FOOT_FOLDER_ICON else c.chip_icon; }
+cp_foot_chip_icon_gap :: (c: UiComposer, icon: int) -> f32 { return ifx icon == ICON_FOLDER then CP_FOOT_FOLDER_GAP else c.chip_gap; }
+
 // A chip of the composer's foot (Zeron's quiet chip): no ground until hovered or pressed; an icon
 // (-1: none), its text cut to w, a chevron when it opens a menu. EL_S_CURRENT holds it lit,
 // EL_S_DISABLED dims it and takes no press. Returns its width.
@@ -1109,7 +1114,12 @@ cp_foot_chip :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, w: f3
   if prs || hov || on { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx prs then th.pressed else th.hover); }
   ink := ifx off then th.faint else ifx on || hov || prs then th.text else th.muted;
   tx := x + c.chip_pad; room := w - 2 * c.chip_pad;
-  if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += c.chip_icon + c.chip_gap; room -= c.chip_icon + c.chip_gap; }
+  if icon >= 0 {
+    ic := cp_foot_chip_icon_size(c, icon);
+    ig := cp_foot_chip_icon_gap(c, icon);
+    sheet_icon(sh, icon, tx, y + (c.chip_h - ic) / 2, ic, ink);
+    tx += ic + ig; room -= ic + ig;
+  }
   chev := cast(f32) CP_CHEVRON;
   if chevron { room -= chev + c.chip_gap; sheet_icon(sh, ICON_CHEVRON, x + w - c.chip_pad - chev, y + (c.chip_h - chev) / 2, chev, ink); }
   if room > 0 { _ := sheet_text(sh, f[0].m, -1, tx, y + (c.chip_h - k.small.line) / 2, k.small.line, k.small.face, ink, app_fit(f, k.small.face, text, room + 0.5f32)); }
@@ -1119,7 +1129,7 @@ cp_foot_chip :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, w: f3
 cp_foot_chip_width :: (f: [] UiFrame, icon: int, text: string, chevron: bool) -> f32 {
   k := f[0].skin; c := k.cmp;
   w := 2 * c.chip_pad + ceil(measure_width(f[0].m, k.small.face, text));
-  if icon >= 0 { w += c.chip_icon + c.chip_gap; }
+  if icon >= 0 { w += cp_foot_chip_icon_size(c, icon) + cp_foot_chip_icon_gap(c, icon); }
   if chevron { w += cast(f32) CP_CHEVRON + c.chip_gap; }
   return w;
 }
