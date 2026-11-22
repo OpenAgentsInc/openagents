@@ -9,15 +9,15 @@ cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].
 // 14 (the composer's draft, as the platform editor sets it; the menus' search), then the library's display faces.
 CP_FONT_SIZES :: [16] f32.[15, 12, 12, 15, 13.5, 13, 12, 11, 14, 13, 11, 14, 24, 11, 12, 20];
 CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placeholder when the platform editor is not showing
-// T3 Code Dark palette (packages/shared/src/themePalettes.ts T3_CODE_DARK_THEME_COLORS):
-// pure black sidebar (#000000), obsidian canvas (#0a0a0a), low-glare #111111 composer & cards,
-// #1a1b1b active rows, #141414 dividers & bubbles, #f5f5f5 ink, #818181 muted, #346bf1 accent,
-// and #fb414a red stop/error.
+// T3 Code Dark palette with pure black backgrounds:
+// pure black canvas & sidebar (#000000), crisp dark-gray 1px borders (#262626),
+// low-glare #111111 composer & cards, #1a1b1b active rows, #141414 bubbles & menus,
+// #f5f5f5 ink, #818181 muted, #346bf1 accent, and #fb414a red stop/error.
 cp_t3_dark :: () -> Theme {
   text := hex(0xf5f5f5, 1);
   accent := hex(0x346bf1, 1);
   return Theme.{
-    shell = hex(0x0a0a0a, 1),
+    shell = hex(0x000000, 1),
     surface = hex(0x111111, 1),
     border = hex(0x222222, 1),
     text = text, muted = hex(0x818181, 1), faint = hex(0x656565, 1),
@@ -26,11 +26,11 @@ cp_t3_dark :: () -> Theme {
     accent_hover = hex(0x4b7cf3, 1), accent_active = hex(0x2858d0, 1),
     selection = opacity(accent, 0.35),
     focus_ring = opacity(accent, 0.6),
-    bg = hex(0x0a0a0a, 1),
+    bg = hex(0x000000, 1),
     claude = hex(0xd97757, 1),
-    line = hex(0x191919, 1),
-    line_subtle = hex(0x141414, 1),
-    line_strong = hex(0x303030, 1),
+    line = hex(0x222222, 1),
+    line_subtle = hex(0x262626, 1),
+    line_strong = hex(0x383838, 1),
     hover = rgba(1, 1, 1, 0.06),
     pressed = rgba(1, 1, 1, 0.12),
     selected = hex(0x1a1b1b, 1),
@@ -54,17 +54,18 @@ cp_t3_dark :: () -> Theme {
 cp_theme :: () -> Theme { return cp_t3_dark(); }
 // Builds Coder Desktop's UiSkin over any resolved Theme (T3 Dark default, Daylight, Grove, Ocean, Ember, or imported VS Code theme).
 cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
-  k := ifx base_noir then zeron_skin_from(cp_t3_dark()) else zeron_skin_from(th);
+  src := ifx base_noir then cp_t3_dark() else th;
+  k := zeron_skin_from(src);
   if base_noir {
     k.name = "t3-dark";
-    k.danger_muted = th.danger; k.warning_muted = th.warning;
-    k.hunk_wash = opacity(th.accent, 0.22);
-    k.file_tint = th.warning;
-    k.doc_tint = th.muted;
-    k.menu_divider = hex(0x141414, 1);
+    k.danger_muted = src.danger; k.warning_muted = src.warning;
+    k.hunk_wash = opacity(src.accent, 0.22);
+    k.file_tint = src.warning;
+    k.doc_tint = src.muted;
+    k.menu_divider = hex(0x262626, 1);
     palette := NOIR_SYNTAX;
     for i: 0..<UISKIN_SYNTAX { k.syntax[i] = hex(palette[i], 1); }
-    k.spinner[0] = th.info; k.spinner[1] = hex(0x93c5fd, 1); k.spinner[2] = th.muted;
+    k.spinner[0] = src.info; k.spinner[1] = hex(0x93c5fd, 1); k.spinner[2] = src.muted;
   }
   k.chat.enabled = true;
   // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
@@ -109,8 +110,8 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
   k.app.bubble_pad_y = 10.0f32;
   k.app.bubble_radius = 16.0f32;
   k.app.bubble_share = 0.80f32;
-  k.bubble = th.secondary;           // the bubble's ground (zeron.prose.bubble.bg)
-  k.float_ground = th.menu;          // Jump to latest on the menus' solid ground (zeron.menu.solid)
+  k.bubble = src.secondary;           // the bubble's ground (zeron.prose.bubble.bg)
+  k.float_ground = src.menu;          // Jump to latest on the menus' solid ground (zeron.menu.solid)
   k.app.code_head = 32.0f32;
   k.app.code_pad = 14.0f32;
   k.app.code_radius = 12.0f32;
@@ -150,8 +151,8 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
   // a thought's words a step smaller than a reply's, as Zeron's (prose.small 14/20, ds/activity.luau): Geist 14,
   // Medium 14 for **bold** (the atlas has no SemiBold 14), code 13
   k.act.thought_face = CP_COMPOSER_FACE; k.act.thought_bold = FONT_SEARCH; k.act.thought_code = FONT_CODE;
-  st := zeron_settings_from(th);
-  st.tint = th.base; st.field = th.surface; st.field_edge = th.border;
+  st := zeron_settings_from(src);
+  st.tint = src.base; st.field = src.surface; st.field_edge = src.border;
   k.set = st;
   return k;
 }
@@ -162,5 +163,10 @@ cp_skin_for :: (s: [] CoderPage) -> UiSkin {
   if s.count < 1 || !cp_flag(s, DC_FLAG_CUSTOMIZE) { return cp_skin(); }
   th := cp_cust_theme(s);
   is_default_noir := cp_cust_is_monochrome(s) && !s[0].cust[0].theme[0].high_contrast;
+  if cp_cust_is_monochrome(s) && !is_default_noir {
+    th.shell = hex(0x000000, 1);
+    th.bg = hex(0x000000, 1);
+    th.sidebar = hex(0x000000, 1);
+  }
   return cp_skin_from(th, is_default_noir);
 }

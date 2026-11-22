@@ -21,7 +21,7 @@ cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   py: f32 = 0.0f32;
   if s[0].todos[0].n > 0 {
     k := f[0].skin; a := k.app; sh := f[0].sheet;
-    if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
+    if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
     top := ifx px > 0 then cast(f32) CP_CORNER else cp_bar(s);
     th := cp_todos_tray(s, f, px + CP_PAD, top, pw - 2 * CP_PAD, false);
     s[0].todos[0].docked = true;
@@ -84,7 +84,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].side = 0; s[0].pane_w = shell.pane.w; s[0].pane_x = shell.pane.x; s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); cp_title_bar(s, f, 0, toggle); return; }
   // a pane comes in from the window's right edge at its whole width; one shutting leaves its edge behind
   if docked && right > 0 { cp_side_pane(s, f, window_w - right, pane_w, h); }
-  else if right > 0 { sheet_fill(f[0].sheet, window_w - right, 0, f[0].skin.border, h, 0, f[0].skin.menu_divider); }
+  else if right > 0 { cp_side_border_left(s, f[0].sheet, window_w - right, 0, h, f[0].skin.menu_divider); }
   w := window_w - right;   // from here w is where the conversation's side ends
   col := app_shell_column(left, w, CP_COLUMN, CP_PAD);
   cw := col.w; x := col.x;

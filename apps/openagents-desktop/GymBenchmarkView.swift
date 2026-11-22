@@ -86,7 +86,7 @@ final class GymChatSurfaceView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 8
-        layer?.backgroundColor = NSColor(red: 0.045, green: 0.050, blue: 0.062, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor.black.cgColor
         layer?.borderWidth = 1
         layer?.borderColor = accent.withAlphaComponent(0.32).cgColor
         layer?.masksToBounds = true
@@ -624,7 +624,7 @@ final class GymBenchmarkView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.055, green: 0.060, blue: 0.075, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor.black.cgColor
         setupUI()
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--gym-suite=tier2") {

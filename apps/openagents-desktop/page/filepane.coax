@@ -325,7 +325,7 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
 
   // When only the File Explorer tree is open (no file loaded yet): draw tree full-width
   if !fp[0].open {
-    if px > 0 { sheet_fill(f[0].sheet, px, 0, k.border, h, 0, k.menu_divider); }
+    if px > 0 { cp_side_border_left(s, f[0].sheet, px, 0, h, k.menu_divider); }
     ex := px + pw - CP_CORNER - side;
     ft[0].editor_btn_x = ex; ft[0].editor_btn_y = top + CP_CORNER;
     _ := app_icon_button(f, "coder.ft.editors", ex, top + CP_CORNER, ICON_SHARE, "Open in Editor", APP_BUTTON_QUIET, 0, CP_FT_EDITOR_MENU);

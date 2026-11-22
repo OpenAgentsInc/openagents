@@ -202,7 +202,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
-        window.title = "Coder"; window.titleVisibility = .hidden; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
+        window.title = "Coder"; window.titleVisibility = .hidden; window.backgroundColor = .black; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
         // the page fills the window, under its transparent title bar; a file shows in the page's own pane (page/filepane.coax)
         canvas.frame = NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size); canvas.autoresizingMask = [.width, .height]
         window.contentView = canvas

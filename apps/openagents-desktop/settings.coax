@@ -382,8 +382,8 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   }
   uiframe_unclip(f);
   s[0].set_list_content = ry + at - y;
-  _ := cp_side_settings_row(f, "set.me", 0, h - t.list_pad - t.account, lw, t.account, true, CP_SET_TOGGLE);
-  set_nav_edge(f, lw, 0, h, s[0].hover == 1 || s[0].drag == 1);
+  _ := cp_side_settings_row(f, "set.me", 0, h - t.list_pad - t.account, lw - cp_px(s), t.account, true, CP_SET_TOGGLE);
+  _ := cp_side_border(s, sh, lw, 0, h, ifx s[0].hover == 1 || s[0].drag == 1 then t.strong else t.subtle);
 }
 // One row, and where it is when the search asked for it.
 cp_set_row :: (s: [] CoderPage, f: [] UiFrame, r: SetRow, x: f32, y: f32, w: f32) -> f32 {

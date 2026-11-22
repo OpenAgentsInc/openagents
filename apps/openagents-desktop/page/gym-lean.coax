@@ -5,7 +5,7 @@
 // Draws the unified 36 pt top GYM mode switcher bar (shared across macOS, Linux, Windows).
 cp_gym_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
-  sheet_fill(sh, x, y, w, CP_GYM_BAR_H, 0, k.surface);
+  sheet_fill(sh, x, y, w, CP_GYM_BAR_H, 0, k.canvas);
   sheet_rule(sh, x, y + CP_GYM_BAR_H - k.border, w, k.border, k.menu_divider);
 
   px := x + 16.0f32;
@@ -68,8 +68,8 @@ cp_gym_lean :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) 
   l[0].fly_x = x; l[0].fly_y = vy; l[0].fly_w = w; l[0].fly_h = vh;
 
   if l[0].view == CP_LEAN_3D {
-    // Native macOS Metal 3D RhFlythroughView overlays this rect; keep clean dark backing underneath.
-    sheet_fill(sh, x, vy, w, vh, 0, k.sunk);
+    // Native macOS Metal 3D RhFlythroughView overlays this rect; keep clean black backing underneath.
+    sheet_fill(sh, x, vy, w, vh, 0, k.canvas);
     _ := sheet_text(sh, f[0].m, -1, x + 28.0f32, vy + 28.0f32, k.strong.line, k.strong.face, k.ink, "Metaverse Engine 3D Flythrough — Riemann Hypothesis Proof Palace");
     _ := sheet_text(sh, f[0].m, -1, x + 28.0f32, vy + 54.0f32, k.small.line, k.small.face, k.muted, "3D Metal viewport active on macOS OpenAgents Desktop (Catmull-Rom flyover via metaverse-engine/cam/flyover.coax).");
   } else if l[0].view == CP_LEAN_TOUR { cp_lean_draw_tour(s, f, x, vy, w, vh); }

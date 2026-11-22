@@ -50,15 +50,44 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert k.cmp.send == 28 && k.cmp.action_inset == 6 && k.cmp.chip_h == 28;
 }
 
-#test "Coder's skin is T3 Code Dark on Zeron's measures" {
+#test "Coder's skin is pure black canvas and sidebar with dark gray divider on Zeron's measures" {
   k := cp_skin(); th := cp_theme(); t3 := cp_t3_dark();
   #assert th.shell.r == t3.shell.r && th.sidebar.r == t3.sidebar.r && th.surface.r == t3.surface.r;
-  #assert k.canvas.r == th.shell.r && k.sidebar.a == 1 && k.sidebar.r == th.sidebar.r && k.sidebar.r < k.canvas.r;   // the sidebar darker than the main area
+  // Both main canvas and sidebar are pure black (#000000), separated by a dark gray hairline (#262626).
+  #assert k.canvas.r == 0 && k.canvas.g == 0 && k.canvas.b == 0 && k.canvas.a == 1;
+  #assert k.sidebar.r == 0 && k.sidebar.g == 0 && k.sidebar.b == 0 && k.sidebar.a == 1;
+  #assert abs(k.menu_divider.r - hex(0x262626, 1).r) < 0.001f32 && k.menu_divider.a == 1;
+  #assert abs(k.set.subtle.r - hex(0x262626, 1).r) < 0.001f32 && k.set.subtle.a == 1;
   #assert k.ink.r == th.text.r && k.muted.r == th.muted.r && k.faint.r == th.faint.r && k.accent.b == th.accent.b && k.warning.g == th.warning.g;
   #assert k.raised.r == th.raised.r && k.surface.r == th.surface.r;
   #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r && k.bubble.r == th.secondary.r;
   // T3 composer card radius 16, code blocks 12
   #assert k.cmp.radius == 16 && k.md.block_radius == 12 && k.app.code_radius == 12;
+}
+
+#test "sidebar draws pure black surface and exact 1-physical-pixel dark gray right border across DPR and zoom" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  k := cp_skin();
+  scales := [3] f32.[1.0f32, 2.0f32, 2.2f32];
+  for d: scales {
+    s[0].d = d;
+    f: [1] UiFrame;
+    uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+    cp_sidebar(s, f[..], 272.5f32, 800.0f32, false);
+    #assert uiframe_end(f[..], s[0].surface[..]);
+    sh := surface_sheet(s[0].surface[..]);
+    #assert sh.nu >= 2;
+    bg_p := sh.under[0];
+    edge_p := sh.under[1];
+    #assert bg_p.fill.r == 0 && bg_p.fill.g == 0 && bg_p.fill.b == 0 && bg_p.fill.a == 1;
+    #assert abs(edge_p.fill.r - k.menu_divider.r) < 0.001f32 && edge_p.fill.a == 1;
+    // Rasterized width in device pixels must be exactly 1.0 physical pixel.
+    dev_x0 := snap(edge_p.x, d);
+    dev_x1 := snap(edge_p.x + edge_p.w, d);
+    #assert dev_x1 - dev_x0 == 1.0f32;
+    #assert snap(bg_p.x + bg_p.w, d) == dev_x0;
+  }
 }
 
 #test "sidebar footer draws demo pills stacked in the footer region" {

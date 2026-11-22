@@ -559,7 +559,7 @@ final class GymTerminalBenchView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.055, green: 0.060, blue: 0.074, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor.black.cgColor
         setupUI()
         seedFallbackSuites()
     }

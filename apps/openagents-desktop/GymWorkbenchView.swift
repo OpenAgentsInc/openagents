@@ -272,7 +272,7 @@ final class GymWorkbenchView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.06, green: 0.065, blue: 0.08, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor.black.cgColor
         setupUI()
         applyModeVisibility()
     }
@@ -297,7 +297,7 @@ final class GymWorkbenchView: NSView {
     private func setupUI() {
         modeBar.translatesAutoresizingMaskIntoConstraints = false
         modeBar.wantsLayer = true
-        modeBar.layer?.backgroundColor = NSColor(red: 0.068, green: 0.072, blue: 0.090, alpha: 1).cgColor
+        modeBar.layer?.backgroundColor = NSColor.black.cgColor
         modeBar.isHidden = true
         addSubview(modeBar)
 
@@ -330,12 +330,12 @@ final class GymWorkbenchView: NSView {
 
         railView.translatesAutoresizingMaskIntoConstraints = false
         railView.wantsLayer = true
-        railView.layer?.backgroundColor = NSColor(red: 0.075, green: 0.08, blue: 0.10, alpha: 1).cgColor
+        railView.layer?.backgroundColor = NSColor.black.cgColor
         addSubview(railView)
 
         dividerView.translatesAutoresizingMaskIntoConstraints = false
         dividerView.wantsLayer = true
-        dividerView.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        dividerView.layer?.backgroundColor = NSColor(white: 38.0 / 255.0, alpha: 1).cgColor
         addSubview(dividerView)
 
         scenePanel.translatesAutoresizingMaskIntoConstraints = false
@@ -521,7 +521,7 @@ final class GymWorkbenchView: NSView {
         diagLogTextView.isEditable = false
         diagLogTextView.isSelectable = true
         diagLogTextView.drawsBackground = true
-        diagLogTextView.backgroundColor = NSColor(red: 0.05, green: 0.055, blue: 0.07, alpha: 1)
+        diagLogTextView.backgroundColor = NSColor.black
         diagLogTextView.textColor = NSColor(white: 0.84, alpha: 1)
         diagLogTextView.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .regular)
         diagLogTextView.textContainerInset = NSSize(width: 6, height: 6)
@@ -532,7 +532,7 @@ final class GymWorkbenchView: NSView {
 
         diagLogScroll.translatesAutoresizingMaskIntoConstraints = false
         diagLogScroll.drawsBackground = true
-        diagLogScroll.backgroundColor = NSColor(red: 0.05, green: 0.055, blue: 0.07, alpha: 1)
+        diagLogScroll.backgroundColor = NSColor.black
         diagLogScroll.hasVerticalScroller = true
         diagLogScroll.autohidesScrollers = true
         diagLogScroll.borderType = .noBorder
@@ -570,7 +570,7 @@ final class GymWorkbenchView: NSView {
         // Stage 4: Timeline Scrubber bar at the bottom of the 3D viewport
         timelineBar.translatesAutoresizingMaskIntoConstraints = false
         timelineBar.wantsLayer = true
-        timelineBar.layer?.backgroundColor = NSColor(red: 0.07, green: 0.078, blue: 0.098, alpha: 1).cgColor
+        timelineBar.layer?.backgroundColor = NSColor.black.cgColor
         addSubview(timelineBar)
 
         timelineTopDivider.translatesAutoresizingMaskIntoConstraints = false
@@ -677,7 +677,7 @@ final class GymWorkbenchView: NSView {
             dividerView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             dividerView.bottomAnchor.constraint(equalTo: bottomAnchor),
             dividerView.leadingAnchor.constraint(equalTo: railView.trailingAnchor),
-            dividerView.widthAnchor.constraint(equalToConstant: 1),
+            dividerView.widthAnchor.constraint(equalToConstant: 1.0 / max(1.0, NSScreen.main?.backingScaleFactor ?? 2.0)),
 
             scenePanel.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             scenePanel.bottomAnchor.constraint(equalTo: timelineBar.topAnchor),

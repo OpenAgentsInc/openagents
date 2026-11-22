@@ -681,7 +681,7 @@ cp_term_press :: (s: [] CoderPage, act: int, id: string) -> bool {
 cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme(); t := cp_term(s);
   top := ifx px > 0 then 0.0f32 else cp_bar(s);
-  if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
+  if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
   // header toolbar: Send to chat, Clear, +, Close on the right
   side := a.icon_button;
   mid := top + CP_CORNER + side / 2;
@@ -780,7 +780,7 @@ cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if !(body_w > 0) || !(body_h > 0) { return; }
 
   // dark terminal well
-  sheet_under(sh, prim_box(sh[0].under, sh[0].nu, body_x, body_y, body_w, body_h, 8, 1, rgba(0.06, 0.07, 0.09, 1.0), ifx cp_term_focused(s) then k.accent else th.border));
+  sheet_under(sh, prim_box(sh[0].under, sh[0].nu, body_x, body_y, body_w, body_h, 8, 1, k.canvas, ifx cp_term_focused(s) then k.accent else th.border));
   pad := 8.0f32;
   tx0 := body_x + pad; ty0 := body_y + pad; tw0 := body_w - 2 * pad; th0 := body_h - 2 * pad;
   face := k.mono.face; lh := k.mono.line;

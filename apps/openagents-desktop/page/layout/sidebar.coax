@@ -35,11 +35,40 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      harness_icon = h_icon};
 }
 
-  // the sidebar: Claude Desktop's structural hierarchy (surface separation, top primary action,
-  // section header, 32pt rows with 8pt inset/radius) in Coder's monochrome palette.
+// One physical device pixel in page units (1pt fallback when s[0].d is unset in headless checks).
+cp_px :: (s: [] CoderPage) -> f32 {
+  return ifx s.count > 0 && s[0].d > 0.0f32 then 1.0f32 / s[0].d else 1.0f32;
+}
+// Crisp single-physical-pixel vertical border whose right edge aligns with edge_x.
+// Returns the usable x left of the border so sidebar content never overlaps it.
+cp_side_border :: (s: [] CoderPage, sh: [] Sheet, edge_x: f32, y: f32, h: f32, color: Rgba) -> f32 {
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  ex := snap(edge_x, d);
+  x0 := (ex - 1.0f32) / d;
+  if x0 < 0.0f32 { x0 = 0.0f32; }
+  x1 := ex / d;
+  if x1 > x0 && h > 0.0f32 { sheet_fill(sh, x0, y, x1 - x0, h, 0, color); }
+  return x0;
+}
+// Crisp single-physical-pixel vertical border whose left edge aligns with edge_x (for right-side panes).
+cp_side_border_left :: (s: [] CoderPage, sh: [] Sheet, edge_x: f32, y: f32, h: f32, color: Rgba) {
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  ex := snap(edge_x, d);
+  x0 := ex / d;
+  x1 := (ex + 1.0f32) / d;
+  if x1 > x0 && h > 0.0f32 { sheet_fill(sh, x0, y, x1 - x0, h, 0, color); }
+}
+
+  // the sidebar: pure black surface with a tiny single-pixel dark gray right border.
 cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool) {
-  k := f[0].skin; a := k.app;
-  sw := app_sidebar_surface(f, 0, 0, left, h);
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
+  bg := ifx k.sidebar.a > 0 then k.sidebar else k.surface;
+  edge_c := ifx s[0].hover == 1 || s[0].drag == 1 then k.set.strong else k.menu_divider;
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  sw := (snap(left, d) - 1.0f32) / d;
+  if sw < 0.0f32 { sw = 0.0f32; }
+  if sw > 0.0f32 && h > 0.0f32 { sheet_fill(sh, 0, 0, sw, h, 0, bg); }
+  _ := cp_side_border(s, sh, left, 0, h, edge_c);
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
@@ -289,7 +318,7 @@ cp_side_settings_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, row_
 // T3 Code-style horizontal icon-only sidebar footer bar: Settings, Archived toggle, and flag-gated PRs/Issues & Gym.
 cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, row_h: f32) -> f32 {
   k := f[0].skin; a := k.app;
-  sheet_fill(f[0].sheet, x, y - 4.0f32, w, 1.0f32, 0, k.hairline);
+  sheet_fill(f[0].sheet, x, y - 4.0f32, w, cp_px(s), 0, k.hairline);
   side := ifx row_h < 28.0f32 then row_h else 28.0f32;
   by := y + (row_h - side) / 2.0f32;
   bx := x + a.row_inset;
