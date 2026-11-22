@@ -68,6 +68,60 @@ tb_propose_challenger :: (champ: [] TbPolicy, round_num: int, out: [] TbPolicy, 
   return tbw_put(note_out, note);
 }
 
+// Generate a deterministic Inky-native challenger policy manifest for `round_num` mutating from `champion`.
+// Covers Inkling 2.0 native tool-use axes (KV-friendly compaction, Class-E guards, headroom, and efficiency).
+tb_propose_inky_challenger :: (champ: [] TbPolicy, round_num: int, out: [] TbPolicy, note_out: [] u8) -> int #effects(all) {
+  out[0] = champ[0];
+  out[0].manifest_sha_n = 0;
+  step := (round_num - 1) % 4;
+  if step < 0 { step = 0; }
+
+  note := "";
+  if step == 0 {
+    out[0].id_n = tbw_put(out[0].id[..], "inky-native-r1");
+    out[0].label_n = tbw_put(out[0].label[..], "OpenAgents Native · Psionic + Class-E R1");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "inky-native");
+    out[0].compact_chars = 24000;
+    out[0].max_turns = 24;
+    out[0].max_tokens = 2048;
+    note = "inky-native prompt + KV-friendly 24K compaction + Class-E guards + 2048 max_tokens";
+  } else if step == 1 {
+    out[0].id_n = tbw_put(out[0].id[..], "inky-headroom-r2");
+    out[0].label_n = tbw_put(out[0].label[..], "OpenAgents Native · Psionic + Headroom R2");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "inky-native");
+    out[0].compact_chars = 28000;
+    out[0].max_turns = 28;
+    out[0].max_tokens = 3072;
+    note = "inky-native + expanded 28K compaction + 28 turns + 3072 max_tokens";
+  } else if step == 2 {
+    out[0].id_n = tbw_put(out[0].id[..], "inky-lean-r3");
+    out[0].label_n = tbw_put(out[0].label[..], "OpenAgents Native · Psionic + Lean R3");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "inky-native");
+    out[0].compact_chars = 16000;
+    out[0].max_turns = 16;
+    out[0].max_tokens = 1536;
+    note = "inky-native lean efficiency budget (16K compact, 16 turns, 1536 max_tokens)";
+  } else {
+    out[0].id_n = tbw_put(out[0].id[..], "inky-verify-r4");
+    out[0].label_n = tbw_put(out[0].label[..], "OpenAgents Native · Psionic + Verify R4");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "verify-first");
+    out[0].compact_chars = 24000;
+    out[0].max_turns = 24;
+    out[0].max_tokens = 2048;
+    note = "verify-first profile + KV-friendly 24K compaction + Class-E guards";
+  }
+  tbw_policy_hash(out);
+  return tbw_put(note_out, note);
+}
+
 // Compute arm summary + train/held-out counts from an array of trial records.
 tb_summarize_arm :: (
   p: [] TbPolicy,
@@ -228,4 +282,16 @@ tb_distill_train_atif :: (
     atif_verified = sb[0].atif_all_verified, heldout_contaminated = false,
   };
   #assert tb_admit_hillclimb(ev) == TB_GATE_PROMOTED;
+
+  // Verify Inky-native challenger proposals mutate cleanly across all 4 axes with distinct hashes.
+  ic1: [1] TbPolicy; ic2: [1] TbPolicy; ic3: [1] TbPolicy; ic4: [1] TbPolicy;
+  n1 := tb_propose_inky_challenger(champ[..], 1, ic1[..], note[..]);
+  n2 := tb_propose_inky_challenger(champ[..], 2, ic2[..], note[..]);
+  n3 := tb_propose_inky_challenger(champ[..], 3, ic3[..], note[..]);
+  n4 := tb_propose_inky_challenger(champ[..], 4, ic4[..], note[..]);
+  #assert n1 > 0 && n2 > 0 && n3 > 0 && n4 > 0;
+  #assert cast(string) ic1[0].prompt_profile[0..<ic1[0].prompt_profile_n] == "inky-native";
+  #assert ic1[0].executor_guard && ic1[0].compact_chars == 24000 && ic2[0].max_tokens == 3072 && ic3[0].max_turns == 16;
+  #assert cast(string) ic1[0].manifest_sha[0..<64] != cast(string) ic2[0].manifest_sha[0..<64];
+  #assert cast(string) ic2[0].manifest_sha[0..<64] != cast(string) ic3[0].manifest_sha[0..<64];
 }

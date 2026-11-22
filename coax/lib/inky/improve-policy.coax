@@ -1,0 +1,487 @@
+// #authority Inky Self-Improvement Policy, Offline ReAnchor Scorer & Ch 239/241/247 Promotion Gate.
+// Spec: docs/coder/inky-self-improvement.md (§3–§7).
+//
+// Hard invariants enforced here (single source of truth):
+//   - Policy manifest bounds and canonical SHA-256 hashing (inky-policy.v1).
+//   - Strict held-out task quarantine (Session History locked 6: sh_009/014/015/018/020/024
+//     and any task containing "heldout") — never admitted to ReAnchor CV, skill mining,
+//     distillation, or LoRA training.
+//   - Pure deterministic offline ReAnchor trace scoring and K-fold grouped CV (zero LLM calls).
+//   - Fail-closed Ch 239/241/247 promotion gate refusing contamination, unredacted secrets,
+//     unverified ATIF digests, any held-out or dev regression, or candidates lacking pass or
+//     >=15% efficiency gains.
+//
+// Checks:
+//   coax/bin/coax test coax/lib/inky/improve-policy.coax --library
+//   coax/bin/coax mutate coax/lib/inky/improve-policy.coax --root-only
+#load "../crypto/sha256.coax";
+#authority;
+
+IK_PROMOTE_OK :: 0;
+IK_PROMOTE_BAD_POLICY :: 1;
+IK_PROMOTE_NO_DEV :: 2;
+IK_PROMOTE_NO_HELDOUT :: 3;
+IK_PROMOTE_CONTAMINATED :: 4;
+IK_PROMOTE_SECRET_LEAK :: 5;
+IK_PROMOTE_ATIF_UNVERIFIED :: 6;
+IK_PROMOTE_HELDOUT_REGRESSED :: 7;
+IK_PROMOTE_DEV_REGRESSED :: 8;
+IK_PROMOTE_NO_GAIN :: 9;
+
+IkPolicy :: struct {
+  stage1_pct: int;
+  stage2_pct: int;
+  search_cap: int;
+  nudge_step: int;
+  adaptive_effort: bool;
+  temp_milli: int;
+  hybrid_exec: bool;
+  spec_lookup: bool;
+}
+
+IkTraceSummary :: struct {
+  passed: bool;
+  timed_out: bool;
+  heldout: bool;
+  wall_ms: int;
+  input_tokens: int;
+  cached_tokens: int;
+  output_tokens: int;
+  attempts: int;
+  tool_calls: int;
+  edit_calls: int;
+  shell_read_calls: int;
+  compactions: int;
+  guard_trips: int;
+  exec_verified: int;
+  exec_refused: int;
+  max_prompt_tokens: int;
+  zero_edit_steps: int;
+}
+
+IkCvResult :: struct {
+  dev_used: int;
+  heldout_skipped: int;
+  folds_eval: int;
+  folds_won: int;
+  baseline_mean: int;
+  cand_mean: int;
+  mean_delta: int;
+}
+
+IkPromoteEval :: struct {
+  policy: IkPolicy;
+  dev_total: int;
+  heldout_total: int;
+  champ_dev_pass: int;
+  cand_dev_pass: int;
+  champ_heldout_pass: int;
+  cand_heldout_pass: int;
+  champ_wall_ms: int;
+  cand_wall_ms: int;
+  champ_tokens: int;
+  cand_tokens: int;
+  heldout_contaminated: bool;
+  secret_clean: bool;
+  atif_verified: bool;
+}
+
+ik_imp_default_policy :: () -> IkPolicy #effects() {
+  return IkPolicy.{
+    stage1_pct = 80,
+    stage2_pct = 90,
+    search_cap = 4096,
+    nudge_step = 8,
+    adaptive_effort = false,
+    temp_milli = 600,
+    hybrid_exec = true,
+    spec_lookup = false,
+  };
+}
+
+// Validates all bounded numeric invariants of an inky-policy.v1 manifest.
+ik_imp_policy_valid :: (p: IkPolicy) -> bool #effects(traps) {
+  if p.stage1_pct < 50 || p.stage1_pct > 85 { return false; }
+  if p.stage2_pct < 65 || p.stage2_pct > 95 { return false; }
+  if p.stage2_pct < p.stage1_pct + 5 { return false; }
+  if p.search_cap < 1024 || p.search_cap > 16384 { return false; }
+  if p.nudge_step < 4 || p.nudge_step > 16 { return false; }
+  if p.temp_milli < 0 || p.temp_milli > 1000 { return false; }
+  return true;
+}
+
+ik_imp_starts_with :: (s: string, pfx: string) -> bool #effects(reads, traps) {
+  if pfx.count > s.count { return false; }
+  for i: 0..<pfx.count {
+    if s[i] != pfx[i] { return false; }
+  }
+  return true;
+}
+
+ik_imp_contains :: (s: string, sub: string) -> bool #effects(reads, traps) {
+  if sub.count == 0 || sub.count > s.count { return false; }
+  for i: 0..<s.count - sub.count + 1 {
+    ok := true;
+    for j: 0..<sub.count {
+      if s[i + j] != sub[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Authoritative Ch 247 held-out quarantine classifier.
+// Flags the 6 locked Session History held-out tasks and any task id marked "heldout".
+ik_imp_is_heldout_task :: (task_id: string) -> bool #effects(reads, traps) {
+  if ik_imp_starts_with(task_id, "sh_009") { return true; }
+  if ik_imp_starts_with(task_id, "sh_014") { return true; }
+  if ik_imp_starts_with(task_id, "sh_015") { return true; }
+  if ik_imp_starts_with(task_id, "sh_018") { return true; }
+  if ik_imp_starts_with(task_id, "sh_020") { return true; }
+  if ik_imp_starts_with(task_id, "sh_024") { return true; }
+  if ik_imp_contains(task_id, "heldout") { return true; }
+  if ik_imp_contains(task_id, "held_out") { return true; }
+  return false;
+}
+
+ik_imp_u64_le :: (sha: [] u8, v: u64) #effects(all) {
+  b: [8] u8;
+  for i: 0..<8 { b[i] = cast,trunc(u8) ((v >> cast(u64) (i * 8)) & 255); }
+  _ = sha256_update_checked(sha, b[..], false);
+}
+
+// Computes the canonical 64-char lowercase hex SHA-256 digest of an IkPolicy manifest.
+// Returns 64 on success, or -1 if output buffer < 64 bytes or policy is invalid.
+ik_imp_policy_hash :: (p: IkPolicy, out_hex: [] u8) -> int #effects(all) {
+  if out_hex.count < 64 || !ik_imp_policy_valid(p) { return -1; }
+  sha: [112] u8;
+  _ = sha256_init(sha[..]);
+  tag := "inky-policy.v1";
+  tb: [14] u8;
+  for i: 0..<14 { tb[i] = tag[i]; }
+  _ = sha256_update_checked(sha[..], tb[..], false);
+  ik_imp_u64_le(sha[..], cast(u64) p.stage1_pct);
+  ik_imp_u64_le(sha[..], cast(u64) p.stage2_pct);
+  ik_imp_u64_le(sha[..], cast(u64) p.search_cap);
+  ik_imp_u64_le(sha[..], cast(u64) p.nudge_step);
+  ik_imp_u64_le(sha[..], ifx p.adaptive_effort then cast(u64) 1 else cast(u64) 0);
+  ik_imp_u64_le(sha[..], cast(u64) p.temp_milli);
+  ik_imp_u64_le(sha[..], ifx p.hybrid_exec then cast(u64) 1 else cast(u64) 0);
+  ik_imp_u64_le(sha[..], ifx p.spec_lookup then cast(u64) 1 else cast(u64) 0);
+  dig: [32] u8;
+  _ = sha256_final_checked(sha[..], dig[..], false);
+  hex := "0123456789abcdef";
+  for i: 0..<32 {
+    out_hex[i * 2] = hex[(dig[i] >> 4) & 15];
+    out_hex[i * 2 + 1] = hex[dig[i] & 15];
+  }
+  return 64;
+}
+
+// Pure deterministic offline ReAnchor trace utility scorer (zero LLM calls).
+// Combines observed pass/wall outcomes with empirical counterfactual sensitivity terms
+// grounded in Inky's Metal 4 KV-cache, shell-read bloat, Class-E, and MoE fan-out physics.
+ik_imp_score_trace :: (t: IkTraceSummary, p: IkPolicy) -> int #effects(traps) {
+  if !ik_imp_policy_valid(p) { return -100000; }
+  score := ifx t.passed then 10000 else 0;
+  wall_pen := ifx t.wall_ms >= 100 then t.wall_ms / 100 else 0;
+  if wall_pen > 3500 { wall_pen = 3500; }   // mutant: equivalent (wall_pen == 3500 unchanged by clamping to 3500)
+  score -= wall_pen;
+
+  // KV-cache compaction thrash sensitivity (32K ctx): early stage1_pct triggers avoidable re-prefills.
+  stage1_toks := (32768 * p.stage1_pct) / 100;
+  if t.max_prompt_tokens > stage1_toks {
+    if p.stage1_pct < 75 { score -= 600; }
+    else if p.stage1_pct < 80 { score -= 250; }
+  }
+
+  // Mid-session adaptive effort mutates Inkling's system-position effort token, busting multi-turn KV cache.
+  if p.adaptive_effort && t.attempts >= 4 {
+    score -= 900;
+  }
+
+  // Read-only shell output trimming sensitivity (F2): tight 4 KB search cap prevents KV bloat.
+  if t.shell_read_calls >= 4 {
+    if p.search_cap <= 4096 { score += 350; }
+    else if p.search_cap > 8192 { score -= 350; }
+  }
+
+  // Exploration-spiral zero-edit nudge sensitivity (F4).
+  if t.timed_out && t.zero_edit_steps >= p.nudge_step {
+    if p.nudge_step <= 8 { score += 400; }
+    else { score += 100; }
+  }
+
+  // Class-E compiled pre-edit verification bonus on file-editing tasks.
+  if p.hybrid_exec && t.edit_calls > 0 {
+    score += 300;
+  }
+
+  // Sparse 128-expert Top-8 MoE speculative fan-out penalty on long decode generations.
+  if p.spec_lookup && t.output_tokens > 256 {
+    score -= 450;
+  }
+
+  // Deterministic sampling stability bonus on precision edit tasks.
+  if p.temp_milli == 0 && t.edit_calls > 0 {
+    score += 100;
+  }
+  return score;
+}
+
+// Offline K-fold grouped cross-validation comparing `cand` vs `base` over Dev-only traces.
+// Automatically quarantines any trace marked heldout == true.
+ik_imp_reanchor_cv :: (traces: [] IkTraceSummary, n: int, base: IkPolicy, cand: IkPolicy, k_folds: int) -> IkCvResult #effects(reads, traps) {
+  res := IkCvResult.{};
+  if n <= 0 || k_folds < 2 || k_folds > 8 { return res; }   // mutant: equivalent (n == 0 skips loop 0..<0 and returns zeroed res)
+  lim := ifx n < traces.count then n else traces.count;   // mutant: equivalent (n == traces.count yields identical lim)
+  folds := k_folds;
+  b_sum: [8] int;
+  c_sum: [8] int;
+  f_has: [8] bool;
+  tot_b := 0;
+  tot_c := 0;
+  dev_i := 0;
+  for i: 0..<lim {
+    if traces[i].heldout {
+      res.heldout_skipped += 1;
+      continue;
+    }
+    bs := ik_imp_score_trace(traces[i], base);
+    cs := ik_imp_score_trace(traces[i], cand);
+    f := dev_i % folds;
+    b_sum[f] += bs;
+    c_sum[f] += cs;
+    f_has[f] = true;
+    tot_b += bs;
+    tot_c += cs;
+    dev_i += 1;
+  }
+  res.dev_used = dev_i;
+  if dev_i == 0 { return res; }
+  res.baseline_mean = tot_b / dev_i;
+  res.cand_mean = tot_c / dev_i;
+  res.mean_delta = res.cand_mean - res.baseline_mean;
+  for f: 0..<folds {
+    if f_has[f] {
+      res.folds_eval += 1;
+      if c_sum[f] > b_sum[f] { res.folds_won += 1; }
+    }
+  }
+  return res;
+}
+
+// #authority Ch 239/241/247 promotion gate for Inky candidate policies.
+ik_imp_admit_candidate :: (e: IkPromoteEval) -> int #effects(traps) {
+  if !ik_imp_policy_valid(e.policy) { return IK_PROMOTE_BAD_POLICY; }
+  if e.dev_total <= 0 { return IK_PROMOTE_NO_DEV; }
+  if e.heldout_total <= 0 { return IK_PROMOTE_NO_HELDOUT; }
+  if e.heldout_contaminated { return IK_PROMOTE_CONTAMINATED; }
+  if !e.secret_clean { return IK_PROMOTE_SECRET_LEAK; }
+  if !e.atif_verified { return IK_PROMOTE_ATIF_UNVERIFIED; }
+  if e.cand_heldout_pass < e.champ_heldout_pass { return IK_PROMOTE_HELDOUT_REGRESSED; }
+  if e.cand_dev_pass < e.champ_dev_pass { return IK_PROMOTE_DEV_REGRESSED; }
+  if e.cand_dev_pass > e.champ_dev_pass { return IK_PROMOTE_OK; }
+  wall_win := e.cand_wall_ms > 0 && e.cand_wall_ms * 100 <= e.champ_wall_ms * 85;
+  tok_win := e.cand_tokens > 0 && e.cand_tokens * 100 <= e.champ_tokens * 85;
+  if wall_win || tok_win { return IK_PROMOTE_OK; }
+  return IK_PROMOTE_NO_GAIN;
+}
+
+ik_imp_promote_label :: (code: int) -> string #effects() {
+  if code == IK_PROMOTE_OK { return "PROMOTED"; }
+  if code == IK_PROMOTE_BAD_POLICY { return "REFUSED: invalid policy manifest bounds"; }
+  if code == IK_PROMOTE_NO_DEV { return "REFUSED: missing dev benchmark partition"; }
+  if code == IK_PROMOTE_NO_HELDOUT { return "REFUSED: missing held-out benchmark partition"; }
+  if code == IK_PROMOTE_CONTAMINATED { return "REFUSED: held-out contamination detected (Ch 247)"; }
+  if code == IK_PROMOTE_SECRET_LEAK { return "REFUSED: unredacted secret detected (Ch 247)"; }
+  if code == IK_PROMOTE_ATIF_UNVERIFIED { return "REFUSED: ATIF-v1.8 steps_digest unverified"; }
+  if code == IK_PROMOTE_HELDOUT_REGRESSED { return "REFUSED: held-out pass rate regressed"; }
+  if code == IK_PROMOTE_DEV_REGRESSED { return "REFUSED: dev pass rate regressed"; }
+  if code == IK_PROMOTE_NO_GAIN { return "HOLD: no dev pass gain and <15% wall/token improvement"; }
+  return "REFUSED: unknown code";
+}
+
+#test "improve-policy: manifest bounds, canonical SHA-256, held-out quarantine, ReAnchor CV, and #authority gate" {
+  // 1. Default policy and every boundary of ik_imp_policy_valid
+  p := ik_imp_default_policy();
+  #assert ik_imp_policy_valid(p);
+  #assert p.stage1_pct == 80 && p.stage2_pct == 90 && p.search_cap == 4096 && p.nudge_step == 8;
+  #assert !p.adaptive_effort && p.temp_milli == 600 && p.hybrid_exec && !p.spec_lookup;
+
+  p_lo := IkPolicy.{ stage1_pct = 50, stage2_pct = 65, search_cap = 1024, nudge_step = 4, adaptive_effort = false, temp_milli = 0, hybrid_exec = false, spec_lookup = false };
+  p_hi := IkPolicy.{ stage1_pct = 85, stage2_pct = 95, search_cap = 16384, nudge_step = 16, adaptive_effort = true, temp_milli = 1000, hybrid_exec = true, spec_lookup = true };
+  p_gap := IkPolicy.{ stage1_pct = 80, stage2_pct = 85, search_cap = 4096, nudge_step = 8, temp_milli = 0 };
+  #assert ik_imp_policy_valid(p_lo) && ik_imp_policy_valid(p_hi) && ik_imp_policy_valid(p_gap);
+
+  bad := p; bad.stage1_pct = 49; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.stage1_pct = 86; bad.stage2_pct = 95; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.stage2_pct = 64; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.stage2_pct = 96; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.stage1_pct = 81; bad.stage2_pct = 85; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.search_cap = 1023; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.search_cap = 16385; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.nudge_step = 3; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.nudge_step = 17; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.temp_milli = -1; #assert !ik_imp_policy_valid(bad);
+  bad = p; bad.temp_milli = 1001; #assert !ik_imp_policy_valid(bad);
+
+  // 2. Canonical SHA-256 matches independent golden digests and reacts to every single field
+  h1: [64] u8; h2: [64] u8; short_h: [63] u8;
+  #assert ik_imp_policy_hash(p, short_h[..]) == -1;
+  #assert ik_imp_policy_hash(bad, h1[..]) == -1;
+  #assert ik_imp_policy_hash(p, h1[..]) == 64;
+  #assert cast(string) h1[..] == "ca72731f08b06cc29402f58e95c5df7dae2a0500ed26ac1b58b72d97970a2ad8";
+  #assert ik_imp_policy_hash(p_hi, h2[..]) == 64;
+  #assert cast(string) h2[..] == "6e619ae6bf6cd7b890e06d03c6c448243124d9aaf62dbcb276ca5765c05bf2ef";
+  p_mut := p; p_mut.stage1_pct = 79; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.stage2_pct = 91; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.search_cap = 8192; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.nudge_step = 6; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.adaptive_effort = true; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.temp_milli = 0; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.hybrid_exec = false; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+  p_mut = p; p_mut.spec_lookup = true; #assert ik_imp_policy_hash(p_mut, h2[..]) == 64 && cast(string) h1[..] != cast(string) h2[..];
+
+  // 3. String helpers & Ch 247 held-out quarantine classifier
+  #assert ik_imp_starts_with("abc", "ab") && ik_imp_starts_with("abc", "abc") && !ik_imp_starts_with("ab", "abc") && !ik_imp_starts_with("abc", "ax") && !ik_imp_starts_with("xbc", "abc");
+  #assert ik_imp_contains("xxheldoutyy", "heldout") && ik_imp_contains("heldout", "heldout") && !ik_imp_contains("abc", "") && !ik_imp_contains("ab", "abc") && !ik_imp_contains("aaaa", "aaab") && !ik_imp_contains("xbc", "abc");
+  #assert ik_imp_is_heldout_task("sh_009_claude_xyz");
+  #assert ik_imp_is_heldout_task("sh_014_claude_xyz");
+  #assert ik_imp_is_heldout_task("sh_015_codex_xyz");
+  #assert ik_imp_is_heldout_task("sh_018_claude_xyz");
+  #assert ik_imp_is_heldout_task("sh_020_claude_xyz");
+  #assert ik_imp_is_heldout_task("sh_024_claude_xyz");
+  #assert ik_imp_is_heldout_task("custom_heldout_task");
+  #assert ik_imp_is_heldout_task("custom_held_out_task");
+  #assert !ik_imp_is_heldout_task("sh_008_claude_sidebar_composer_parity");
+  #assert !ik_imp_is_heldout_task("t2_single_turn_greeting");
+
+  // 4. ReAnchor offline scorer exact branches & boundaries
+  #assert ik_imp_score_trace(IkTraceSummary.{}, bad) == -100000;
+  t_base := IkTraceSummary.{ passed = true, wall_ms = 20000, attempts = 4, edit_calls = 1, shell_read_calls = 4, max_prompt_tokens = 25000, output_tokens = 300 };
+  // p default: +10000 - 200 (wall) + 350 (search<=4096) + 300 (hybrid_exec) = 10450
+  #assert ik_imp_score_trace(t_base, p) == 10450;
+  // Wall cap boundary (>350000 ms capped at 3500) & exact 99/100 ms boundary
+  p_plain := IkPolicy.{ stage1_pct = 80, stage2_pct = 90, search_cap = 6000, nudge_step = 8, temp_milli = 600 };
+  #assert ik_imp_score_trace(IkTraceSummary.{ passed = false, wall_ms = 350100 }, p_plain) == -3500;
+  #assert ik_imp_score_trace(IkTraceSummary.{ passed = false, wall_ms = 350000 }, p_plain) == -3500;
+  #assert ik_imp_score_trace(IkTraceSummary.{ passed = false, wall_ms = 100 }, p_plain) == -1;
+  #assert ik_imp_score_trace(IkTraceSummary.{ passed = false, wall_ms = 99 }, p_plain) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ passed = false, wall_ms = -100 }, p_plain) == 0;
+  // Compaction thrash branches: stage1=74 (<75 -> -600), stage1=75 (75..79 -> -250), stage1=80 (0)
+  p74 := p_plain; p74.stage1_pct = 74; // stage1_toks = 24248
+  p75 := p_plain; p75.stage1_pct = 75; // stage1_toks = 24576
+  p79 := p_plain; p79.stage1_pct = 79; // stage1_toks = 25886
+  #assert ik_imp_score_trace(IkTraceSummary.{ max_prompt_tokens = 24248 }, p74) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ max_prompt_tokens = 24249 }, p74) == -600;
+  #assert ik_imp_score_trace(IkTraceSummary.{ max_prompt_tokens = 24577 }, p75) == -250;
+  #assert ik_imp_score_trace(IkTraceSummary.{ max_prompt_tokens = 25887 }, p79) == -250;
+  #assert ik_imp_score_trace(IkTraceSummary.{ max_prompt_tokens = 30000 }, p_plain) == 0;
+  // Adaptive effort KV-bust penalty at attempts >= 4 vs 3
+  p_ae := p_plain; p_ae.adaptive_effort = true;
+  #assert ik_imp_score_trace(IkTraceSummary.{ attempts = 3 }, p_ae) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ attempts = 4 }, p_ae) == -900;
+  // Search cap branches at shell_read_calls == 3 vs 4, cap 4096 vs 4097 vs 8192 vs 8193
+  p_s4 := p_plain; p_s4.search_cap = 4096;
+  p_s4p := p_plain; p_s4p.search_cap = 4097;
+  p_s8 := p_plain; p_s8.search_cap = 8192;
+  p_s9 := p_plain; p_s9.search_cap = 8193;
+  #assert ik_imp_score_trace(IkTraceSummary.{ shell_read_calls = 3 }, p_s4) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ shell_read_calls = 4 }, p_s4) == 350;
+  #assert ik_imp_score_trace(IkTraceSummary.{ shell_read_calls = 4 }, p_s4p) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ shell_read_calls = 4 }, p_s8) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ shell_read_calls = 4 }, p_s9) == -350;
+  // Exploration-spiral nudge branches: timed_out + zero_edit_steps >= nudge_step
+  p_n9 := p_plain; p_n9.nudge_step = 9;
+  #assert ik_imp_score_trace(IkTraceSummary.{ timed_out = false, zero_edit_steps = 10 }, p_plain) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ timed_out = true, zero_edit_steps = 7 }, p_plain) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ timed_out = true, zero_edit_steps = 8 }, p_plain) == 400;
+  #assert ik_imp_score_trace(IkTraceSummary.{ timed_out = true, zero_edit_steps = 9 }, p_n9) == 100;
+  // Class-E bonus, MoE spec penalty, greedy edit bonus
+  p_he := p_plain; p_he.hybrid_exec = true;
+  #assert ik_imp_score_trace(IkTraceSummary.{ edit_calls = 0 }, p_he) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ edit_calls = 1 }, p_he) == 300;
+  p_sp := p_plain; p_sp.spec_lookup = true;
+  #assert ik_imp_score_trace(IkTraceSummary.{ output_tokens = 256 }, p_sp) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ output_tokens = 257 }, p_sp) == -450;
+  p_gr := p_plain; p_gr.temp_milli = 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ edit_calls = 0 }, p_gr) == 0;
+  #assert ik_imp_score_trace(IkTraceSummary.{ edit_calls = 1 }, p_gr) == 100;
+
+  // 5. ReAnchor K-fold grouped CV quarantines held-out traces and ranks superior policy across folds
+  tr: [5] IkTraceSummary;
+  tr[0] = IkTraceSummary.{ passed = true, wall_ms = 10000, edit_calls = 2, shell_read_calls = 5 };
+  tr[1] = IkTraceSummary.{ passed = false, timed_out = true, wall_ms = 300000, shell_read_calls = 8, zero_edit_steps = 10 };
+  tr[2] = IkTraceSummary.{ passed = true, heldout = true, wall_ms = 5000, edit_calls = 2, shell_read_calls = 5 };
+  tr[3] = IkTraceSummary.{ passed = true, wall_ms = 20000, edit_calls = 1, shell_read_calls = 6 };
+  tr[4] = IkTraceSummary.{ passed = false, timed_out = true, wall_ms = 300000, max_prompt_tokens = 28000, attempts = 10 };
+  p_old := IkPolicy.{ stage1_pct = 70, stage2_pct = 85, search_cap = 16384, nudge_step = 12, adaptive_effort = true, temp_milli = 600, hybrid_exec = false, spec_lookup = false };
+  #assert ik_imp_reanchor_cv(tr[..], 0, p_old, p, 2).dev_used == 0;
+  #assert ik_imp_reanchor_cv(tr[..], -1, p_old, p, 2).dev_used == 0;
+  #assert ik_imp_reanchor_cv(tr[..], 5, p_old, p, 1).dev_used == 0;
+  #assert ik_imp_reanchor_cv(tr[..], 5, p_old, p, 9).dev_used == 0;
+  cv_all_ho: [1] IkTraceSummary;
+  cv_all_ho[0] = IkTraceSummary.{ heldout = true };
+  cv_none := ik_imp_reanchor_cv(cv_all_ho[..], 1, p_old, p, 2);
+  #assert cv_none.dev_used == 0 && cv_none.heldout_skipped == 1;
+  // Single zero-score trace pins tot_b == 0 and tot_c == 0 initializers exactly
+  tr_z: [1] IkTraceSummary;
+  tr_z[0] = IkTraceSummary.{ passed = false, wall_ms = 0 };
+  cv_z := ik_imp_reanchor_cv(tr_z[..], 1, p_plain, p_plain, 2);
+  #assert cv_z.dev_used == 1 && cv_z.baseline_mean == 0 && cv_z.cand_mean == 0 && cv_z.folds_eval == 1 && cv_z.folds_won == 0;
+  cv := ik_imp_reanchor_cv(tr[..], 5, p_old, p, 2);
+  #assert cv.dev_used == 4 && cv.heldout_skipped == 1 && cv.folds_eval == 2 && cv.folds_won == 2 && cv.mean_delta > 0 && cv.cand_mean > cv.baseline_mean;
+  cv_tie := ik_imp_reanchor_cv(tr[..], 5, p, p, 8);
+  #assert cv_tie.folds_eval == 4 && cv_tie.folds_won == 0 && cv_tie.mean_delta == 0;
+  cv_clamp := ik_imp_reanchor_cv(tr[..], 99, p_old, p, 2);
+  #assert cv_clamp.dev_used == 4;
+
+  // 6. #authority promotion gate — exercise every single verdict & boundary
+  ev := IkPromoteEval.{
+    policy = p, dev_total = 1, heldout_total = 1,
+    champ_dev_pass = 0, cand_dev_pass = 1,
+    champ_heldout_pass = 1, cand_heldout_pass = 1,
+    champ_wall_ms = 100000, cand_wall_ms = 100000,
+    champ_tokens = 10000, cand_tokens = 10000,
+    heldout_contaminated = false, secret_clean = true, atif_verified = true,
+  };
+  #assert ik_imp_admit_candidate(ev) == IK_PROMOTE_OK;
+  e1 := ev; e1.policy = bad; #assert ik_imp_admit_candidate(e1) == IK_PROMOTE_BAD_POLICY;
+  e2 := ev; e2.dev_total = 0; #assert ik_imp_admit_candidate(e2) == IK_PROMOTE_NO_DEV;
+  e3 := ev; e3.heldout_total = 0; #assert ik_imp_admit_candidate(e3) == IK_PROMOTE_NO_HELDOUT;
+  e4 := ev; e4.heldout_contaminated = true; #assert ik_imp_admit_candidate(e4) == IK_PROMOTE_CONTAMINATED;
+  e5 := ev; e5.secret_clean = false; #assert ik_imp_admit_candidate(e5) == IK_PROMOTE_SECRET_LEAK;
+  e6 := ev; e6.atif_verified = false; #assert ik_imp_admit_candidate(e6) == IK_PROMOTE_ATIF_UNVERIFIED;
+  e7 := ev; e7.cand_heldout_pass = 0; #assert ik_imp_admit_candidate(e7) == IK_PROMOTE_HELDOUT_REGRESSED;
+  e8 := ev; e8.champ_dev_pass = 1; e8.cand_dev_pass = 0; #assert ik_imp_admit_candidate(e8) == IK_PROMOTE_DEV_REGRESSED;
+  // Equal dev pass: need >=15% wall or token win (exact 85% boundary & small positive values!)
+  e9 := ev; e9.champ_dev_pass = 1; e9.cand_dev_pass = 1; e9.cand_wall_ms = 85001; e9.cand_tokens = 8501;
+  #assert ik_imp_admit_candidate(e9) == IK_PROMOTE_NO_GAIN;
+  e9w := e9; e9w.cand_wall_ms = 85000; #assert ik_imp_admit_candidate(e9w) == IK_PROMOTE_OK;
+  e9t := e9; e9t.cand_tokens = 8500; #assert ik_imp_admit_candidate(e9t) == IK_PROMOTE_OK;
+  // Small positive boundaries (champ=1 / cand=1) kill > 0 -> > 1 and > -> >= mutants
+  e9w1 := e9; e9w1.champ_wall_ms = 2; e9w1.cand_wall_ms = 1; #assert ik_imp_admit_candidate(e9w1) == IK_PROMOTE_OK;
+  e9t1 := e9; e9t1.champ_tokens = 2; e9t1.cand_tokens = 1; #assert ik_imp_admit_candidate(e9t1) == IK_PROMOTE_OK;
+  e9wc1 := e9; e9wc1.champ_wall_ms = 1; e9wc1.cand_wall_ms = 1; e9wc1.champ_tokens = 1; e9wc1.cand_tokens = 1;
+  #assert ik_imp_admit_candidate(e9wc1) == IK_PROMOTE_NO_GAIN;
+  e9z := e9; e9z.champ_wall_ms = 0; e9z.cand_wall_ms = 0; e9z.champ_tokens = 0; e9z.cand_tokens = 0;
+  #assert ik_imp_admit_candidate(e9z) == IK_PROMOTE_NO_GAIN;
+  e9zc := e9; e9zc.cand_wall_ms = 0; e9zc.cand_tokens = 0;
+  #assert ik_imp_admit_candidate(e9zc) == IK_PROMOTE_NO_GAIN;
+  e9zm := e9; e9zm.champ_wall_ms = 0; e9zm.cand_wall_ms = 1; e9zm.champ_tokens = 0; e9zm.cand_tokens = 1;
+  #assert ik_imp_admit_candidate(e9zm) == IK_PROMOTE_NO_GAIN;
+
+  // 7. Labels cover every verdict code + unknown
+  #assert ik_imp_promote_label(IK_PROMOTE_OK) == "PROMOTED";
+  #assert ik_imp_promote_label(IK_PROMOTE_BAD_POLICY) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_NO_DEV) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_NO_HELDOUT) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_CONTAMINATED) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_SECRET_LEAK) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_ATIF_UNVERIFIED) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_HELDOUT_REGRESSED) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_DEV_REGRESSED) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(IK_PROMOTE_NO_GAIN) != ik_imp_promote_label(99);
+  #assert ik_imp_promote_label(99) == "REFUSED: unknown code";
+}

@@ -125,6 +125,9 @@ tba_compact_head_tail :: (src: string, lim: int, out: [] u8) -> string #effects(
 }
 
 tba_system_prompt :: (profile: string, exec_guard: bool) -> string #effects(all) {
+  if profile == "inky-native" {
+    return "You are OpenAgents, a local coding assistant solving a Linux Terminal-Bench task inside a real Docker container.\n\nHow to work:\n- Inspect files with `Read` before editing. Prefer targeted `Edit` over rewriting whole files, and `Write` for new files (every edit/write is verified pre-disk by deterministic Class-E weight guards).\n- Batch related shell inspection or verification steps into concise `Bash` commands rather than repeating single-line reads.\n- Keep reasoning concise and action-oriented; do not repeat identical read-only commands.\n- After applying changes, run ONE thorough verification command checking every explicit requirement (paths, syntax, edge cases, exit codes) before replying concisely with what you verified.";
+  }
   if profile == "tassadar-v2" {
     return "You are OpenAgents Microcoder (Tassadar W2.2 Executor-Guided) solving a Linux Terminal-Bench task inside a real Docker container. Follow strict high-efficiency engineering discipline:\n1. Keep internal reasoning brief and action-oriented (under 250 words per turn) so you never exhaust token budgets before issuing tool calls.\n2. Batch related inspection, installation, configuration, and verification commands into compound `Bash` scripts (`set -e`) rather than wasting turns on 1-line micro-commands.\n3. Use `Write` or `Edit` (pre-verified by deterministic W2.2 Class-E compiled weight guards before touching disk) or atomic heredoc scripts to create/update files cleanly.\n4. Before giving your final answer, run ONE comprehensive verification script checking EVERY explicit requirement in the prompt (file paths, permissions, syntax, exact formatting/delimiters/quotes, edge cases, service ports, and exit codes) and inspect the actual stdout/file contents to confirm 100% compliance.";
   }
@@ -438,22 +441,23 @@ tb_agent_loop :: (
   trunc_streak := 0;
   profile_s := cast(string) policy[0].prompt_profile[0..<policy[0].prompt_profile_n];
   is_tassadar_v2 := profile_s == "tassadar-v2";
-  verify_guard := policy[0].executor_guard || is_tassadar_v2;
+  is_inky_native := profile_s == "inky-native";
+  verify_guard := policy[0].executor_guard || is_tassadar_v2 || is_inky_native;
 
   for turn: 1..<(max_turns + 1) {
     res[0].turns = turn;
-    // Psionic adaptive reasoning_effort controller (inkling-serve.c lines 700-710):
-    //   tassadar-v2 runs at "low" (0.2) by default + exact KV/shortconv cache_prompt=true,
-    //   and steps down to "minimal" (0.1) -> "none" (0) immediately if a turn truncates.
+    // Psionic adaptive reasoning_effort controller (inkling-serve.c):
+    //   tassadar-v2 / inky-native run at "low" with exact KV/shortconv cache_prompt=true,
+    //   and step down only if a turn truncates.
     effort_s := "";
-    if is_tassadar_v2 {
+    if is_tassadar_v2 || is_inky_native {
       effort_s = ifx trunc_streak >= 2 then "none" else (ifx trunc_streak == 1 then "minimal" else "low");
     } else if trunc_streak >= 2 {
       effort_s = "none";
     } else if trunc_streak == 1 {
       effort_s = "minimal";
     }
-    req_n := tba_build_request(w, model, max_tokens, policy[0].temp_milli, effort_s, is_tassadar_v2);
+    req_n := tba_build_request(w, model, max_tokens, policy[0].temp_milli, effort_s, is_tassadar_v2 || is_inky_native);
     if req_n <= 0 {
       res[0].error_note_n = tbw_put(res[0].error_note[..], "request buffer exceeded");
       break;

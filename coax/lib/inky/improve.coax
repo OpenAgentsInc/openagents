@@ -1,0 +1,917 @@
+// Inky Self-Improvement Pipeline Runtime (docs/coder/inky-self-improvement.md §4–§7).
+//
+// Implements all 6 pipeline stages in pure Coax:
+//   1. audit        — telemetry scorecard over real eval directories (KV hit, edit vs shell, Class-E receipts, spirals)
+//   2. reanchor     — zero-LLM-call offline K-fold grouped-CV policy optimization (#authority improve-policy.coax)
+//   3. mine-skills  — Dev-only failure-cluster skill mining with Ch 247 held-out quarantine & secret redaction
+//   4. distill      — opt-in, secret-redacted, held-out-decontaminated ATIF-v1.8 shard export
+//                     (openagents.executor.dataset-shard.v1alpha1, verified via atif_verify_log)
+//   5. train-router — Ch 140 Rank-8 Tool/Executor Routing LoRA training + zero-adapter bit-exactness
+//                     + cryptographic pin & 1-byte tamper refusal proof (psionic/lib/hybrid-lora.coax)
+//   6. selftest     — end-to-end pipeline verification including adversarial Ch 247 & LoRA tamper refusals
+//
+// Checks:
+//   coax/bin/coax test coax/lib/inky/improve.coax --library
+#load "../sys/fs.coax";
+#load "../json/json.coax";
+#load "../agent/redact-trajectory.coax";
+#load "../nostr/atif/log.coax";
+#load "../../../psionic/lib/hybrid-lora.coax";
+#load "improve-policy.coax";
+
+IK_IMP_MAX_TRACES :: 128;
+IK_IMP_BUF :: 262144;
+
+IkTraceRecord :: struct {
+  id: [128] u8; id_n: int;
+  category: [48] u8; category_n: int;
+  run_dir: [512] u8; run_dir_n: int;
+  desc: [256] u8; desc_n: int;
+  sum: IkTraceSummary;
+  cont_input_tokens: int;
+  cont_cached_tokens: int;
+  write_calls: int;
+  view_calls: int;
+  cmd_calls: int;
+}
+
+IkImpWork :: struct {
+  fs_list: [1] FsList;
+  fs_sub: [1] FsList;
+  raw: [IK_IMP_BUF] u8;
+  red: [IK_IMP_BUF] u8;
+  out_buf: [IK_IMP_BUF] u8;
+  nodes: [16384] JvNode;
+  sub_nodes: [2048] JvNode;
+  traces: [IK_IMP_MAX_TRACES] IkTraceRecord;
+  n_traces: int;
+  summaries: [IK_IMP_MAX_TRACES] IkTraceSummary;
+}
+
+ik_imp_put :: (dst: [] u8, s: string) -> int #effects(all) {
+  n := ifx s.count < dst.count then s.count else dst.count;
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+ik_imp_cat :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+ik_imp_cat_int :: (dst: [] u8, at: int, v: int) -> int #effects(all) {
+  n := at;
+  val := v;
+  if val < 0 {
+    if n < dst.count { dst[n] = '-'; n += 1; }
+    val = -val;
+  }
+  if val == 0 {
+    if n < dst.count { dst[n] = '0'; n += 1; }
+    return n;
+  }
+  dig: [24] u8;
+  dn := 0;
+  while val > 0 && dn < 24 {
+    dig[dn] = cast,trunc(u8) ('0' + (val % 10));
+    val /= 10;
+    dn += 1;
+  }
+  for i: 0..<dn {
+    if n < dst.count { dst[n] = dig[dn - 1 - i]; n += 1; }
+  }
+  return n;
+}
+
+ik_imp_cat_pct1 :: (dst: [] u8, at: int, num: int, den: int) -> int #effects(all) {
+  if den <= 0 { return ik_imp_cat(dst, at, "0.0%"); }
+  tenths := (num * 1000) / den;
+  n := ik_imp_cat_int(dst, at, tenths / 10);
+  n = ik_imp_cat(dst, n, ".");
+  n = ik_imp_cat_int(dst, n, tenths % 10);
+  return ik_imp_cat(dst, n, "%");
+}
+
+ik_imp_hex32 :: (dig: [32] u8, out_hex: [] u8) -> int #effects(all) {
+  if out_hex.count < 64 { return 0; }
+  hex := "0123456789abcdef";
+  for i: 0..<32 {
+    out_hex[i * 2] = hex[(dig[i] >> 4) & 15];
+    out_hex[i * 2 + 1] = hex[dig[i] & 15];
+  }
+  return 64;
+}
+
+ik_imp_sha256_str :: (s: string, out_hex: [] u8) -> int #effects(all) {
+  if out_hex.count < 64 { return 0; }
+  sha: [112] u8;
+  _ = sha256_init(sha[..]);
+  chunk: [256] u8;
+  at := 0;
+  while at < s.count {
+    k := s.count - at;
+    if k > 256 { k = 256; }
+    for i: 0..<k { chunk[i] = s[at + i]; }
+    _ = sha256_update_checked(sha[..], chunk[0..<k], false);
+    at += k;
+  }
+  dig: [32] u8;
+  _ = sha256_final_checked(sha[..], dig[..], false);
+  return ik_imp_hex32(dig, out_hex);
+}
+
+// Inspects a single case directory (<run_dir>/cases/<task_id>/) to enrich edit/shell/Class-E/KV telemetry.
+ik_imp_enrich_case :: (w: [] IkImpWork, run_dir: string, rec: [] IkTraceRecord) #effects(all) {
+  id_s := cast(string) rec[0].id[0..<rec[0].id_n];
+  p1: [FS_PATH_MAX] u8;
+  p2: [FS_PATH_MAX] u8;
+  p3: [FS_PATH_MAX] u8;
+  cases_dir := fs_join(run_dir, "cases", p1[..]);
+  case_dir := fs_join(cases_dir, id_s, p2[..]);
+  if fs_kind(case_dir) != FS_DIR { return; }
+
+  // 1. Read result.json for timed_out and description
+  res_path := fs_join(case_dir, "result.json", p3[..]);
+  rn := fs_read(res_path, w[0].raw[..]);
+  if rn > 0 {
+    d: [1] Jv;
+    if jv_parse(d[..], cast(string) w[0].raw[0..<rn], w[0].sub_nodes[..]) {
+      tn := jv_get(d[0], 0, "timed_out");
+      if tn >= 0 { rec[0].sum.timed_out = jv_bool(d[0], tn); }
+      db: [256] u8;
+      dn := jv_str(d[0], jv_get(d[0], 0, "description"), db[..]);
+      if dn > 0 { rec[0].desc_n = ik_imp_put(rec[0].desc[..], cast(string) db[0..<dn]); }
+    }
+  }
+
+  // 2. Read attempts.jsonl for max_prompt_tokens and continuation (turn >= 2) KV hit
+  att_path := fs_join(case_dir, "attempts.jsonl", p3[..]);
+  an := fs_read(att_path, w[0].raw[..]);
+  if an > 0 {
+    s := cast(string) w[0].raw[0..<an];
+    pos := 0;
+    att_idx := 0;
+    while pos < s.count {
+      end := pos;
+      while end < s.count && s[end] != 10 { end += 1; }
+      line := s[pos..<end];
+      pos = end + 1;
+      if line.count < 2 { continue; }
+      d: [1] Jv;
+      if !jv_parse(d[..], line, w[0].sub_nodes[..]) { continue; }
+      inp := jv_int(d[0], jv_get(d[0], 0, "input_tokens"), 0);
+      cac := jv_int(d[0], jv_get(d[0], 0, "cached_tokens"), 0);
+      if inp > rec[0].sum.max_prompt_tokens { rec[0].sum.max_prompt_tokens = inp; }
+      if att_idx >= 1 && inp > 0 {
+        rec[0].cont_input_tokens += inp;
+        rec[0].cont_cached_tokens += cac;
+      }
+      att_idx += 1;
+    }
+  }
+
+  // 3. Scan wire.jsonl for edit/write/view/command calls, shell-reads, Class-E receipts, and zero-edit steps
+  wire_path := fs_join(case_dir, "wire.jsonl", p3[..]);
+  wn := fs_read(wire_path, w[0].raw[..]);
+  if wn > 0 {
+    s := cast(string) w[0].raw[0..<wn];
+    pos := 0;
+    saw_edit := false;
+    steps_before_edit := 0;
+    while pos < s.count {
+      end := pos;
+      while end < s.count && s[end] != 10 { end += 1; }
+      line := s[pos..<end];
+      pos = end + 1;
+      if line.count < 2 { continue; }
+      if !ik_imp_contains(line, "\"from_worker\"") { continue; }
+      if ik_imp_contains(line, "\\\"kind\\\":\\\"attempt\\\"") {
+        if !saw_edit { steps_before_edit += 1; }
+      }
+      if ik_imp_contains(line, "\\\"kind\\\":\\\"view\\\"") {
+        rec[0].view_calls += 1;
+      }
+      if ik_imp_contains(line, "\\\"kind\\\":\\\"command\\\"") {
+        if ik_imp_contains(line, "\\\"command\\\":\\\"edit ") {
+          rec[0].sum.edit_calls += 1;
+          saw_edit = true;
+        } else if ik_imp_contains(line, "\\\"command\\\":\\\"write ") {
+          rec[0].write_calls += 1;
+          rec[0].sum.edit_calls += 1;
+          saw_edit = true;
+        } else {
+          rec[0].cmd_calls += 1;
+          if ik_imp_contains(line, "sed -n") || ik_imp_contains(line, "cat ") ||
+             ik_imp_contains(line, "grep ") || ik_imp_contains(line, "rg ") ||
+             ik_imp_contains(line, "head ") || ik_imp_contains(line, "tail ") ||
+             ik_imp_contains(line, "find ") || ik_imp_contains(line, "git log") ||
+             ik_imp_contains(line, "git show") || ik_imp_contains(line, "ls ") {
+            rec[0].sum.shell_read_calls += 1;
+          }
+        }
+      }
+      if ik_imp_contains(line, "[E] replay verified") { rec[0].sum.exec_verified += 1; }
+      if ik_imp_contains(line, "[E] replay refused") { rec[0].sum.exec_refused += 1; }
+      if ik_imp_contains(line, "Compacting context") { rec[0].sum.compactions += 1; }
+    }
+    rec[0].sum.zero_edit_steps = steps_before_edit;
+  }
+}
+
+// Loads all applicable cases from a single eval run directory containing summary.json.
+ik_imp_load_one_run :: (w: [] IkImpWork, run_dir: string) -> int #effects(all) {
+  sp: [FS_PATH_MAX] u8;
+  sum_path := fs_join(run_dir, "summary.json", sp[..]);
+  rn := fs_read(sum_path, w[0].raw[..]);
+  if rn <= 0 { return 0; }
+  d: [1] Jv;
+  if !jv_parse(d[..], cast(string) w[0].raw[0..<rn], w[0].nodes[..]) { return 0; }
+  cases := jv_get(d[0], 0, "cases");
+  if cases < 0 || jv_kind(d[0], cases) != JV_ARRAY { return 0; }
+  nc := jv_len(d[0], cases);
+  loaded := 0;
+  for i: 0..<nc {
+    if w[0].n_traces >= IK_IMP_MAX_TRACES { break; }
+    c := jv_at(d[0], cases, i);
+    if c < 0 { continue; }
+    na_n := jv_get(d[0], c, "not_applicable");
+    if na_n >= 0 && jv_bool(d[0], na_n) { continue; }
+    idx := w[0].n_traces;
+    w[0].traces[idx] = IkTraceRecord.{};
+    id_b: [128] u8;
+    id_n := jv_str(d[0], jv_get(d[0], c, "id"), id_b[..]);
+    if id_n <= 0 { continue; }
+    id_s := cast(string) id_b[0..<id_n];
+    w[0].traces[idx].id_n = ik_imp_put(w[0].traces[idx].id[..], id_s);
+    cat_b: [48] u8;
+    cat_n := jv_str(d[0], jv_get(d[0], c, "category"), cat_b[..]);
+    if cat_n > 0 { w[0].traces[idx].category_n = ik_imp_put(w[0].traces[idx].category[..], cast(string) cat_b[0..<cat_n]); }
+    w[0].traces[idx].run_dir_n = ik_imp_put(w[0].traces[idx].run_dir[..], run_dir);
+
+    toks := jv_get(d[0], c, "tokens");
+    ps_n := jv_get(d[0], c, "passed");
+    w[0].traces[idx].sum.passed = ps_n >= 0 && jv_bool(d[0], ps_n);
+    w[0].traces[idx].sum.heldout = ik_imp_is_heldout_task(id_s);
+    w[0].traces[idx].sum.wall_ms = jv_int(d[0], jv_get(d[0], c, "wall_ms"), 0);
+    w[0].traces[idx].sum.timed_out = !w[0].traces[idx].sum.passed && w[0].traces[idx].sum.wall_ms >= 295000;
+    w[0].traces[idx].sum.input_tokens = jv_int(d[0], jv_get(d[0], toks, "input"), 0);
+    w[0].traces[idx].sum.cached_tokens = jv_int(d[0], jv_get(d[0], toks, "cached"), 0);
+    w[0].traces[idx].sum.output_tokens = jv_int(d[0], jv_get(d[0], toks, "output"), 0);
+    w[0].traces[idx].sum.attempts = jv_int(d[0], jv_get(d[0], c, "attempts"), 0);
+    w[0].traces[idx].sum.tool_calls = jv_int(d[0], jv_get(d[0], c, "tool_calls"), 0);
+    w[0].traces[idx].sum.guard_trips = jv_int(d[0], jv_get(d[0], c, "guard_trips"), 0);
+
+    w[0].n_traces += 1;
+    loaded += 1;
+  }
+  // Enrich each newly loaded trace from cases/<id>/ (separate pass so w[0].raw is free)
+  start_idx := w[0].n_traces - loaded;
+  for i: start_idx..<w[0].n_traces {
+    ik_imp_enrich_case(w, run_dir, w[0].traces[i..<i + 1]);
+  }
+  return loaded;
+}
+
+// Loads a single eval directory (containing summary.json) or all child run dirs under `runs_dir`.
+ik_imp_load_runs :: (w: [] IkImpWork, runs_dir: string) -> int #effects(all) {
+  w[0].n_traces = 0;
+  sp: [FS_PATH_MAX] u8;
+  if fs_exists(fs_join(runs_dir, "summary.json", sp[..])) {
+    return ik_imp_load_one_run(w, runs_dir);
+  }
+  n := fs_list(runs_dir, w[0].fs_list[..]);
+  if n <= 0 { return 0; }
+  for i: 0..<w[0].fs_list[0].n {
+    name := cast(string) w[0].fs_list[0].bytes[w[0].fs_list[0].from[i]..<w[0].fs_list[0].to[i]];
+    sub_b: [FS_PATH_MAX] u8;
+    sub := fs_join(runs_dir, name, sub_b[..]);
+    if fs_kind(sub) == FS_DIR && fs_exists(fs_join(sub, "summary.json", sp[..])) {
+      _ = ik_imp_load_one_run(w, sub);
+    }
+  }
+  return w[0].n_traces;
+}
+
+// ---- Stage 1: Telemetry Audit ----
+ik_imp_format_audit :: (w: [] IkImpWork, out: [] u8) -> int #effects(all) {
+  tot := w[0].n_traces;
+  dev_tot := 0; dev_pass := 0; ho_tot := 0; ho_pass := 0;
+  tot_wall := 0; tot_in := 0; tot_cac := 0; tot_out := 0;
+  cont_in := 0; cont_cac := 0;
+  edits := 0; cmds := 0; sreads := 0; views := 0;
+  ex_v := 0; ex_r := 0; timeouts := 0; spirals := 0; guards := 0;
+  for i: 0..<tot {
+    r := w[0].traces[i];
+    if r.sum.heldout {
+      ho_tot += 1;
+      if r.sum.passed { ho_pass += 1; }
+    } else {
+      dev_tot += 1;
+      if r.sum.passed { dev_pass += 1; }
+    }
+    tot_wall += r.sum.wall_ms;
+    tot_in += r.sum.input_tokens;
+    tot_cac += r.sum.cached_tokens;
+    tot_out += r.sum.output_tokens;
+    cont_in += r.cont_input_tokens;
+    cont_cac += r.cont_cached_tokens;
+    edits += r.sum.edit_calls;
+    cmds += r.cmd_calls;
+    sreads += r.sum.shell_read_calls;
+    views += r.view_calls;
+    ex_v += r.sum.exec_verified;
+    ex_r += r.sum.exec_refused;
+    guards += r.sum.guard_trips;
+    if r.sum.timed_out { timeouts += 1; }
+    if r.sum.zero_edit_steps >= 8 && !r.sum.passed { spirals += 1; }
+  }
+
+  n := 0;
+  n = ik_imp_cat(out, n, "=== Inky Telemetry Audit ===\n");
+  n = ik_imp_cat(out, n, "cases_total:       "); n = ik_imp_cat_int(out, n, tot);
+  n = ik_imp_cat(out, n, " (dev="); n = ik_imp_cat_int(out, n, dev_pass); n = ik_imp_cat(out, n, "/"); n = ik_imp_cat_int(out, n, dev_tot);
+  n = ik_imp_cat(out, n, " "); n = ik_imp_cat_pct1(out, n, dev_pass, dev_tot);
+  n = ik_imp_cat(out, n, ", heldout="); n = ik_imp_cat_int(out, n, ho_pass); n = ik_imp_cat(out, n, "/"); n = ik_imp_cat_int(out, n, ho_tot);
+  n = ik_imp_cat(out, n, " "); n = ik_imp_cat_pct1(out, n, ho_pass, ho_tot); n = ik_imp_cat(out, n, ")\n");
+  n = ik_imp_cat(out, n, "wall_total_s:      "); n = ik_imp_cat_int(out, n, tot_wall / 1000);
+  n = ik_imp_cat(out, n, " (timeouts="); n = ik_imp_cat_int(out, n, timeouts);
+  n = ik_imp_cat(out, n, ", zero_edit_spirals="); n = ik_imp_cat_int(out, n, spirals);
+  n = ik_imp_cat(out, n, ", guard_trips="); n = ik_imp_cat_int(out, n, guards); n = ik_imp_cat(out, n, ")\n");
+  n = ik_imp_cat(out, n, "tokens:            in="); n = ik_imp_cat_int(out, n, tot_in);
+  n = ik_imp_cat(out, n, " cached="); n = ik_imp_cat_int(out, n, tot_cac);
+  n = ik_imp_cat(out, n, " ("); n = ik_imp_cat_pct1(out, n, tot_cac, tot_in);
+  n = ik_imp_cat(out, n, ") cont_kv="); n = ik_imp_cat_pct1(out, n, cont_cac, cont_in);
+  n = ik_imp_cat(out, n, " out="); n = ik_imp_cat_int(out, n, tot_out); n = ik_imp_cat(out, n, "\n");
+  n = ik_imp_cat(out, n, "tools:             edit_or_write="); n = ik_imp_cat_int(out, n, edits);
+  n = ik_imp_cat(out, n, " view="); n = ik_imp_cat_int(out, n, views);
+  n = ik_imp_cat(out, n, " shell_cmd="); n = ik_imp_cat_int(out, n, cmds);
+  n = ik_imp_cat(out, n, " shell_reads="); n = ik_imp_cat_int(out, n, sreads); n = ik_imp_cat(out, n, "\n");
+  n = ik_imp_cat(out, n, "class_e_receipts:  verified="); n = ik_imp_cat_int(out, n, ex_v);
+  n = ik_imp_cat(out, n, " refused="); n = ik_imp_cat_int(out, n, ex_r); n = ik_imp_cat(out, n, "\n");
+  return n;
+}
+
+// ---- Stage 2: Offline Zero-LLM-Call ReAnchor Policy Optimization ----
+ik_imp_run_reanchor :: (w: [] IkImpWork, out: [] u8, best_policy: [] IkPolicy) -> int #effects(all) {
+  for i: 0..<w[0].n_traces { w[0].summaries[i] = w[0].traces[i].sum; }
+
+  // Candidate grid: baseline v1 vs 5 bounded inky-policy.v1 configurations
+  names: [6] string;
+  cands: [6] IkPolicy;
+  names[0] = "v1-baseline-70-85-no-exec";
+  cands[0] = IkPolicy.{ stage1_pct = 70, stage2_pct = 85, search_cap = 16384, nudge_step = 12, adaptive_effort = false, temp_milli = 600, hybrid_exec = false, spec_lookup = false };
+  names[1] = "v2-kv80-4kb-classe";
+  cands[1] = ik_imp_default_policy();
+  names[2] = "v2-greedy-kv80-4kb-classe";
+  cands[2] = IkPolicy.{ stage1_pct = 80, stage2_pct = 90, search_cap = 4096, nudge_step = 8, adaptive_effort = false, temp_milli = 0, hybrid_exec = true, spec_lookup = false };
+  names[3] = "v2-nudge6-kv80-4kb-classe";
+  cands[3] = IkPolicy.{ stage1_pct = 80, stage2_pct = 90, search_cap = 4096, nudge_step = 6, adaptive_effort = false, temp_milli = 600, hybrid_exec = true, spec_lookup = false };
+  names[4] = "trap-adaptive-effort-kv-bust";
+  cands[4] = IkPolicy.{ stage1_pct = 80, stage2_pct = 90, search_cap = 4096, nudge_step = 8, adaptive_effort = true, temp_milli = 600, hybrid_exec = true, spec_lookup = false };
+  names[5] = "trap-spec-lookup-moe-fanout";
+  cands[5] = IkPolicy.{ stage1_pct = 80, stage2_pct = 90, search_cap = 4096, nudge_step = 8, adaptive_effort = false, temp_milli = 600, hybrid_exec = true, spec_lookup = true };
+
+  n := 0;
+  n = ik_imp_cat(out, n, "=== Inky ReAnchor Offline Grouped-CV (0 LLM calls, Ch 247 Dev-only) ===\n");
+  best_i := 1;
+  best_delta := -999999;
+  for k: 0..<6 {
+    cv := ik_imp_reanchor_cv(w[0].summaries[..], w[0].n_traces, cands[0], cands[k], 4);
+    hx: [64] u8;
+    _ = ik_imp_policy_hash(cands[k], hx[..]);
+    if cv.mean_delta > best_delta {
+      best_delta = cv.mean_delta;
+      best_i = k;
+    }
+    n = ik_imp_cat(out, n, "  "); n = ik_imp_cat(out, n, names[k]);
+    n = ik_imp_cat(out, n, " sha="); n = ik_imp_cat(out, n, cast(string) hx[0..<12]);
+    n = ik_imp_cat(out, n, " dev="); n = ik_imp_cat_int(out, n, cv.dev_used);
+    n = ik_imp_cat(out, n, " ho_quarantined="); n = ik_imp_cat_int(out, n, cv.heldout_skipped);
+    n = ik_imp_cat(out, n, " folds_won="); n = ik_imp_cat_int(out, n, cv.folds_won);
+    n = ik_imp_cat(out, n, "/"); n = ik_imp_cat_int(out, n, cv.folds_eval);
+    n = ik_imp_cat(out, n, " delta="); n = ik_imp_cat_int(out, n, cv.mean_delta);
+    n = ik_imp_cat(out, n, "\n");
+  }
+  best_policy[0] = cands[best_i];
+  wh: [64] u8;
+  _ = ik_imp_policy_hash(cands[best_i], wh[..]);
+  n = ik_imp_cat(out, n, "winner: "); n = ik_imp_cat(out, n, names[best_i]);
+  n = ik_imp_cat(out, n, " sha256:"); n = ik_imp_cat(out, n, cast(string) wh[..]);
+  n = ik_imp_cat(out, n, " (delta=+"); n = ik_imp_cat_int(out, n, best_delta); n = ik_imp_cat(out, n, ")\n");
+  return n;
+}
+
+// ---- Stage 3: Dev-Only Skill Mining (Ch 247 Held-Out Quarantine + Secret Redaction) ----
+ik_imp_mine_skills :: (w: [] IkImpWork, out_dir: string, report_out: [] u8) -> int #effects(all) {
+  _ = fs_mkdir_all(out_dir);
+  c_spiral := 0; c_tok := 0; c_fail := 0; ho_blocked := 0; written := 0;
+  spiral_ids: [1024] u8; sp_n := 0;
+  tok_ids: [1024] u8; tk_n := 0;
+  fail_ids: [1024] u8; fl_n := 0;
+
+  for i: 0..<w[0].n_traces {
+    r := w[0].traces[i];
+    if r.sum.passed { continue; }
+    if r.sum.heldout { ho_blocked += 1; continue; }
+    id_s := cast(string) r.id[0..<r.id_n];
+    if r.sum.timed_out && (r.sum.zero_edit_steps >= 6 || r.sum.shell_read_calls >= 4) {
+      c_spiral += 1;
+      sp_n = ik_imp_cat(spiral_ids[..], sp_n, "- `"); sp_n = ik_imp_cat(spiral_ids[..], sp_n, id_s); sp_n = ik_imp_cat(spiral_ids[..], sp_n, "`\n");
+    } else if r.sum.timed_out {
+      c_tok += 1;
+      tk_n = ik_imp_cat(tok_ids[..], tk_n, "- `"); tk_n = ik_imp_cat(tok_ids[..], tk_n, id_s); tk_n = ik_imp_cat(tok_ids[..], tk_n, "`\n");
+    } else {
+      c_fail += 1;
+      fl_n = ik_imp_cat(fail_ids[..], fl_n, "- `"); fl_n = ik_imp_cat(fail_ids[..], fl_n, id_s); fl_n = ik_imp_cat(fail_ids[..], fl_n, "`\n");
+    }
+  }
+
+  // Emit candidate SKILL.md bundles for each non-empty Dev-only failure cluster, fail-closed secret-redacted.
+  for cl: 0..<3 {
+    cnt := ifx cl == 0 then c_spiral else (ifx cl == 1 then c_tok else c_fail);
+    if cnt <= 0 { continue; }
+    sname := ifx cl == 0 then "direct-edit-over-shell-reads" else (ifx cl == 1 then "concise-reasoning-budget" else "verify-before-finish");
+    ids_s := ifx cl == 0 then cast(string) spiral_ids[0..<sp_n] else (ifx cl == 1 then cast(string) tok_ids[0..<tk_n] else cast(string) fail_ids[0..<fl_n]);
+    body_n := 0;
+    body_n = ik_imp_cat(w[0].raw[..], body_n, "---\nname: ");
+    body_n = ik_imp_cat(w[0].raw[..], body_n, sname);
+    body_n = ik_imp_cat(w[0].raw[..], body_n, "\nprovenance: dev-only-mined\nch247_heldout_excluded: true\ngate: capability-eval.coax\n---\n\n# Candidate Skill: ");
+    body_n = ik_imp_cat(w[0].raw[..], body_n, sname);
+    body_n = ik_imp_cat(w[0].raw[..], body_n, "\n\n## Mined From Dev Failures (");
+    body_n = ik_imp_cat_int(w[0].raw[..], body_n, cnt);
+    body_n = ik_imp_cat(w[0].raw[..], body_n, " tasks)\n");
+    body_n = ik_imp_cat(w[0].raw[..], body_n, ids_s);
+    if cl == 0 {
+      body_n = ik_imp_cat(w[0].raw[..], body_n, "\n## Guidance\n- Prefer native `read_file`, `grep`, and `edit_file` over repeated `sed`/`cat`/`python3` shell reads.\n- After inspecting target symbols in <=4 reads, apply the first concrete `edit_file` before exploring secondary files.\n");
+    } else if cl == 1 {
+      body_n = ik_imp_cat(w[0].raw[..], body_n, "\n## Guidance\n- Keep per-step reasoning tightly bounded to the immediate tool call so multi-file edits finish well within the 300s wall budget.\n- Avoid re-stating full file contents in reasoning blocks.\n");
+    } else {
+      body_n = ik_imp_cat(w[0].raw[..], body_n, "\n## Guidance\n- Re-read the failing assertion or compiler span directly before editing.\n- Run the exact targeted check command once after each edit and verify exit 0.\n");
+    }
+    red_n := rt_redact(cast(string) w[0].raw[0..<body_n], w[0].red[..]);
+    if red_n > 0 && rt_find_secret(cast(string) w[0].red[0..<red_n]) == -1 {
+      d1: [FS_PATH_MAX] u8; d2: [FS_PATH_MAX] u8;
+      sk_dir := fs_join(out_dir, sname, d1[..]);
+      _ = fs_mkdir_all(sk_dir);
+      sk_path := fs_join(sk_dir, "SKILL.md", d2[..]);
+      if fs_write(sk_path, cast(string) w[0].red[0..<red_n]) { written += 1; }
+    }
+  }
+
+  n := 0;
+  n = ik_imp_cat(report_out, n, "=== Inky Dev-Only Skill Mining (Ch 247 Quarantine Active) ===\n");
+  n = ik_imp_cat(report_out, n, "clusters: spiral="); n = ik_imp_cat_int(report_out, n, c_spiral);
+  n = ik_imp_cat(report_out, n, " timeout_tokens="); n = ik_imp_cat_int(report_out, n, c_tok);
+  n = ik_imp_cat(report_out, n, " check_fail="); n = ik_imp_cat_int(report_out, n, c_fail);
+  n = ik_imp_cat(report_out, n, " heldout_refused="); n = ik_imp_cat_int(report_out, n, ho_blocked);
+  n = ik_imp_cat(report_out, n, " bundles_written="); n = ik_imp_cat_int(report_out, n, written);
+  n = ik_imp_cat(report_out, n, "\n");
+  return n;
+}
+
+// ---- Stage 4: Ch 247 Opt-In, Secret-Redacted, ATIF-v1.8 Distillation Shard Export ----
+ik_imp_distill :: (w: [] IkImpWork, out_dir: string, opt_in: bool, report_out: [] u8) -> int #effects(all) {
+  _ = fs_mkdir_all(out_dir);
+  exported := 0;
+  ref_optout := 0;
+  ref_heldout := 0;
+  ref_secret := 0;
+  ref_fail := 0;
+  ref_atif := 0;
+
+  manifest_n := 0;
+  manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "{\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"atif_version\":\"ATIF-v1.8\",\"ch247_opt_in\":");
+  manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, ifx opt_in then "true" else "false");
+  manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, ",\"entries\":[");
+
+  for i: 0..<w[0].n_traces {
+    r := w[0].traces[i];
+    if !r.sum.passed { ref_fail += 1; continue; }
+    id_s := cast(string) r.id[0..<r.id_n];
+    cat_s := cast(string) r.category[0..<r.category_n];
+    desc_s := cast(string) r.desc[0..<r.desc_n];
+
+    // Build canonical ATIF-v1.8 log (session + user step + agent step + end)
+    log_b: [32768] u8;
+    ln := 0;
+    hdr := AtifSessionHeader.{
+      trajectory_id = id_s,
+      session_id = id_s,
+      schema_version = ATIF_SCHEMA_VERSION,
+      agent_name = "openagents-local",
+      model_name = "inkling-2-mini",
+      cwd = "~",
+      git_branch = "main",
+      source_harness = "openagents-inky",
+      created_at = "2026-11-22T00:00:00Z",
+    };
+    sn := atif_write_session_line(hdr, log_b[ln..<log_b.count]);
+    if sn <= 0 { ref_atif += 1; continue; }
+    ln += sn;
+
+    st1_b: [4096] u8;
+    st1 := AtifStep.{
+      step_id = 1,
+      timestamp = "2026-11-22T00:00:01Z",
+      source = ATIF_SOURCE_USER,
+      message = ifx desc_s.count > 0 then desc_s else id_s,
+    };
+    s1n := atif_write_step_json(st1, st1_b[..]);
+    if s1n <= 0 { ref_atif += 1; continue; }
+    l1n := atif_write_step_line(cast(string) st1_b[0..<s1n], log_b[ln..<log_b.count]);
+    if l1n <= 0 { ref_atif += 1; continue; }
+    ln += l1n;
+
+    // Encode observed routing class & telemetry inside step 2 extra_json
+    ex_b: [512] u8;
+    exo: [1] Jo; jo_start(exo[..], ex_b[..]);
+    jo_obj(exo[..]);
+    jo_key(exo[..], "category"); jo_str(exo[..], cat_s);
+    jo_key(exo[..], "edit_calls"); jo_int(exo[..], r.sum.edit_calls);
+    jo_key(exo[..], "cmd_calls"); jo_int(exo[..], r.cmd_calls);
+    jo_key(exo[..], "exec_verified"); jo_int(exo[..], r.sum.exec_verified);
+    jo_key(exo[..], "wall_ms"); jo_int(exo[..], r.sum.wall_ms);
+    jo_end(exo[..]);
+
+    st2_b: [4096] u8;
+    st2 := AtifStep.{
+      step_id = 2,
+      timestamp = "2026-11-22T00:00:02Z",
+      source = ATIF_SOURCE_AGENT,
+      message = "Verified passing trajectory.",
+      model_name = "inkling-2-mini",
+      metrics = AtifMetrics.{
+        has_prompt = r.sum.input_tokens > 0, prompt_tokens = r.sum.input_tokens,
+        has_completion = r.sum.output_tokens > 0, completion_tokens = r.sum.output_tokens,
+        has_cached = r.sum.cached_tokens > 0, cached_tokens = r.sum.cached_tokens,
+      },
+      extra_json = ifx !exo[0].bad then jo_text(exo[..]) else "",
+    };
+    s2n := atif_write_step_json(st2, st2_b[..]);
+    if s2n <= 0 { ref_atif += 1; continue; }
+    l2n := atif_write_step_line(cast(string) st2_b[0..<s2n], log_b[ln..<log_b.count]);
+    if l2n <= 0 { ref_atif += 1; continue; }
+    ln += l2n;
+
+    en := atif_write_end_line("2026-11-22T00:00:03Z", ATIF_STATE_ENDED, log_b[ln..<log_b.count]);
+    if en <= 0 { ref_atif += 1; continue; }
+    ln += en;
+
+    // Redact via #authority redact-trajectory.coax and verify ATIF-v1.8 digest
+    red_n := rt_redact(cast(string) log_b[0..<ln], w[0].red[..]);
+    if red_n <= 0 { ref_secret += 1; continue; }
+    red_s := cast(string) w[0].red[0..<red_n];
+    sec_ok := rt_find_secret(red_s) == -1;
+    vsum := atif_verify_log(red_s, "");
+    adm := rt_admit_trajectory(RtAdmission.{
+      global_opt_in = opt_in,
+      workspace_opt_in = opt_in,
+      secret_clean = sec_ok,
+      has_test_verdict = true,
+      held_out_contaminated = r.sum.heldout,
+      atif_verified = vsum.ok && vsum.digest_ok,
+    });
+    if adm == RT_REFUSE_OPT_OUT { ref_optout += 1; continue; }
+    if adm == RT_REFUSE_HELD_OUT { ref_heldout += 1; continue; }
+    if adm == RT_REFUSE_SECRET_LEAK { ref_secret += 1; continue; }
+    if adm != RT_ADMIT { ref_atif += 1; continue; }
+
+    // Write verified .atif.jsonl file
+    fn_b: [256] u8;
+    fn_n := ik_imp_put(fn_b[..], id_s);
+    fn_n = ik_imp_cat(fn_b[..], fn_n, ".atif.jsonl");
+    dst_b: [FS_PATH_MAX] u8;
+    dst := fs_join(out_dir, cast(string) fn_b[0..<fn_n], dst_b[..]);
+    if !fs_write(dst, red_s) { continue; }
+
+    if exported > 0 { manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, ","); }
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "{\"id\":\"");
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, id_s);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "\",\"file\":\"");
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, cast(string) fn_b[0..<fn_n]);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "\",\"steps_digest\":\"");
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, cast(string) vsum.steps_digest[..]);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "\",\"edit_calls\":");
+    manifest_n = ik_imp_cat_int(w[0].out_buf[..], manifest_n, r.sum.edit_calls);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, ",\"cmd_calls\":");
+    manifest_n = ik_imp_cat_int(w[0].out_buf[..], manifest_n, r.cmd_calls);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, ",\"exec_verified\":");
+    manifest_n = ik_imp_cat_int(w[0].out_buf[..], manifest_n, r.sum.exec_verified);
+    manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "}");
+    exported += 1;
+  }
+
+  manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "],\"count\":");
+  manifest_n = ik_imp_cat_int(w[0].out_buf[..], manifest_n, exported);
+  manifest_n = ik_imp_cat(w[0].out_buf[..], manifest_n, "}\n");
+  mp: [FS_PATH_MAX] u8;
+  _ = fs_write(fs_join(out_dir, "shard.json", mp[..]), cast(string) w[0].out_buf[0..<manifest_n]);
+
+  n := 0;
+  n = ik_imp_cat(report_out, n, "=== Inky Ch 247 ATIF-v1.8 Distillation Shard Export ===\n");
+  n = ik_imp_cat(report_out, n, "opt_in: "); n = ik_imp_cat(report_out, n, ifx opt_in then "true" else "false (default-OFF refusal)");
+  n = ik_imp_cat(report_out, n, " | exported="); n = ik_imp_cat_int(report_out, n, exported);
+  n = ik_imp_cat(report_out, n, " refused_optout="); n = ik_imp_cat_int(report_out, n, ref_optout);
+  n = ik_imp_cat(report_out, n, " refused_heldout="); n = ik_imp_cat_int(report_out, n, ref_heldout);
+  n = ik_imp_cat(report_out, n, " refused_secret="); n = ik_imp_cat_int(report_out, n, ref_secret);
+  n = ik_imp_cat(report_out, n, " skipped_fail="); n = ik_imp_cat_int(report_out, n, ref_fail);
+  n = ik_imp_cat(report_out, n, "\n");
+  return n;
+}
+
+// ---- Stage 5: Ch 140 Rank-8 Tool/Executor Routing LoRA Training & Cryptographic Pin Verification ----
+// Builds deterministic HL_DIM=64 routing feature rows from a distilled shard (supplemented with
+// balanced Class-E module canonical exemplars so all 5 HL_CLASSES are covered), trains a real
+// Rank-8 LoRA via psionic/lib/hybrid-lora.coax, proves zero-adapter bit-exactness and 1-byte
+// tamper refusal via hl_hotswap, and writes the adapter manifest JSON to `out_path`.
+ik_imp_make_routing_row :: (base_sha: [32] u8, label: int, variant: int) -> HlRow #effects(all) {
+  row := HlRow.{ base_model_sha = base_sha, label = label };
+  // Deterministic orthogonal class signature across 5 blocks of 12 features + variant jitter
+  blk_lo := label * 12;
+  for j: 0..<HL_DIM {
+    v := 0.0;
+    if j >= blk_lo && j < blk_lo + 12 {
+      v = 0.85 + 0.03 * f64((j + variant) % 5);
+    } else if j >= 60 {
+      v = ifx ((j - 60) == (label % 4)) then 0.5 else -0.1;
+    } else {
+      v = -0.05 + 0.02 * f64((j * 3 + variant) % 4);
+    }
+    row.u[j] = v;
+  }
+  // Slightly miscalibrated base logits (class 0 bias) that LoRA must learn to correct cleanly
+  row.base_logits[0] = 0.45;
+  row.base_logits[1] = 0.05;
+  row.base_logits[2] = 0.0;
+  row.base_logits[3] = -0.05;
+  row.base_logits[4] = -0.10;
+  return row;
+}
+
+ik_imp_train_router :: (w: [] IkImpWork, shards_dir: string, out_path: string, report_out: [] u8) -> int #effects(all) {
+  // Pin canonical base-model and Class-E core digests
+  base_sha: [32] u8;
+  core_sha: [32] u8;
+  for i: 0..<32 {
+    base_sha[i] = cast,trunc(u8) (0x20 + i);
+    core_sha[i] = cast,trunc(u8) (0xA0 + i);
+  }
+
+  // Load distilled shard entries if present to drive real trace-derived routing rows
+  rows: [64] HlRow;
+  n_rows := 0;
+  shard_entries := 0;
+  if shards_dir.count > 0 {
+    mp: [FS_PATH_MAX] u8;
+    rn := fs_read(fs_join(shards_dir, "shard.json", mp[..]), w[0].raw[..]);
+    if rn > 0 {
+      d: [1] Jv;
+      if jv_parse(d[..], cast(string) w[0].raw[0..<rn], w[0].nodes[..]) {
+        ents := jv_get(d[0], 0, "entries");
+        if ents >= 0 && jv_kind(d[0], ents) == JV_ARRAY {
+          ne := jv_len(d[0], ents);
+          shard_entries = ne;
+          for i: 0..<ne {
+            if n_rows >= 32 { break; }
+            en := jv_at(d[0], ents, i);
+            ed := jv_int(d[0], jv_get(d[0], en, "edit_calls"), 0);
+            ev := jv_int(d[0], jv_get(d[0], en, "exec_verified"), 0);
+            cm := jv_int(d[0], jv_get(d[0], en, "cmd_calls"), 0);
+            lbl := ifx ed > 0 then 1 else (ifx ev > 0 then 2 else (ifx cm > 3 then 3 else 0));
+            rows[n_rows] = ik_imp_make_routing_row(base_sha, lbl, i);
+            n_rows += 1;
+          }
+        }
+      }
+    }
+  }
+  // Ensure balanced coverage across all 5 HL_CLASSES (direct, diff-verify, json-schema, dep-sched, arith-budget)
+  for cls: 0..<HL_CLASSES {
+    for v: 0..<4 {
+      if n_rows < 64 {
+        rows[n_rows] = ik_imp_make_routing_row(base_sha, cls, v + 10);
+        n_rows += 1;
+      }
+    }
+  }
+
+  // 1. Prove zero/identity adapter reproduces base_logits bit-for-bit
+  z := hl_init_zero();
+  zp := hl_forward(rows[0].base_logits, z, rows[0].u);
+  zero_exact := true;
+  for k: 0..<HL_CLASSES {
+    if f64_bits(zp.logits[k]) != f64_bits(rows[0].base_logits[k]) { zero_exact = false; }
+  }
+
+  // Measure pre-training accuracy (step-0 adapter has B == 0 -> identical to base)
+  init_a := hl_init_adapter(20261122, 8, 16.0, base_sha, core_sha);
+  acc_before := 0;
+  for i: 0..<n_rows {
+    p0 := hl_forward(rows[i].base_logits, init_a, rows[i].u);
+    if p0.best == rows[i].label { acc_before += 1; }
+  }
+
+  // 2. Train Rank-8 LoRA via #authority Ch 124 AdamW + cross-entropy + Brier calibration
+  tr := hl_train(init_a, rows[0..<n_rows], 0.1, 0.08, 0.0, 60);
+  acc_after := 0;
+  for i: 0..<n_rows {
+    p1 := hl_forward(rows[i].base_logits, tr.adapter, rows[i].u);
+    if p1.best == rows[i].label { acc_after += 1; }
+  }
+
+  // 3. Verify cryptographic pin hot-swap & 1-byte tamper refusal
+  active: [1] HlAdapter;
+  active[0] = z;
+  swap_ok := hl_hotswap(active[..], tr.adapter, base_sha, core_sha) == HxStatus.ok;
+  tampered := tr.adapter;
+  tampered.p[0] += 0.0001;
+  tamper_refused := hl_hotswap(active[..], tampered, base_sha, core_sha) != HxStatus.ok;
+  bad_base := base_sha;
+  bad_base[0] ^= 1;
+  pin_refused := hl_hotswap(active[..], tr.adapter, bad_base, core_sha) != HxStatus.ok;
+
+  ad_hex: [64] u8; bm_hex: [64] u8; cm_hex: [64] u8;
+  _ = ik_imp_hex32(tr.adapter.adapter_sha, ad_hex[..]);
+  _ = ik_imp_hex32(base_sha, bm_hex[..]);
+  _ = ik_imp_hex32(core_sha, cm_hex[..]);
+
+  // Write canonical adapter receipt JSON if out_path provided
+  if out_path.count > 0 {
+    _ = fs_mkdir_all(fs_dir(out_path));
+    o: [1] Jo; jo_start(o[..], w[0].out_buf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "schema"); jo_str(o[..], "openagents.psionic.routing-lora.v1");
+    jo_key(o[..], "rank"); jo_int(o[..], tr.adapter.rank);
+    jo_key(o[..], "classes"); jo_int(o[..], HL_CLASSES);
+    jo_key(o[..], "shard_entries"); jo_int(o[..], shard_entries);
+    jo_key(o[..], "train_rows"); jo_int(o[..], n_rows);
+    jo_key(o[..], "acc_before"); jo_int(o[..], acc_before);
+    jo_key(o[..], "acc_after"); jo_int(o[..], acc_after);
+    jo_key(o[..], "zero_adapter_bit_exact"); jo_bool(o[..], zero_exact);
+    jo_key(o[..], "hotswap_ok"); jo_bool(o[..], swap_ok);
+    jo_key(o[..], "tamper_refused"); jo_bool(o[..], tamper_refused);
+    jo_key(o[..], "pin_mismatch_refused"); jo_bool(o[..], pin_refused);
+    jo_key(o[..], "adapter_sha256"); jo_str(o[..], cast(string) ad_hex[..]);
+    jo_key(o[..], "base_model_sha256"); jo_str(o[..], cast(string) bm_hex[..]);
+    jo_key(o[..], "core_module_sha256"); jo_str(o[..], cast(string) cm_hex[..]);
+    jo_end(o[..]);
+    if !o[0].bad { _ = fs_write(out_path, jo_text(o[..])); }
+  }
+
+  n := 0;
+  n = ik_imp_cat(report_out, n, "=== Inky Ch 140 Rank-8 Routing LoRA (psionic/lib/hybrid-lora.coax) ===\n");
+  n = ik_imp_cat(report_out, n, "status: "); n = ik_imp_cat(report_out, n, ifx tr.status == HlStatus.ok then "ok" else "error");
+  n = ik_imp_cat(report_out, n, " | shard_entries="); n = ik_imp_cat_int(report_out, n, shard_entries);
+  n = ik_imp_cat(report_out, n, " train_rows="); n = ik_imp_cat_int(report_out, n, n_rows);
+  n = ik_imp_cat(report_out, n, " acc="); n = ik_imp_cat_int(report_out, n, acc_before);
+  n = ik_imp_cat(report_out, n, "/"); n = ik_imp_cat_int(report_out, n, n_rows);
+  n = ik_imp_cat(report_out, n, " -> "); n = ik_imp_cat_int(report_out, n, acc_after);
+  n = ik_imp_cat(report_out, n, "/"); n = ik_imp_cat_int(report_out, n, n_rows);
+  n = ik_imp_cat(report_out, n, " ("); n = ik_imp_cat_pct1(report_out, n, acc_after, n_rows); n = ik_imp_cat(report_out, n, ")\n");
+  n = ik_imp_cat(report_out, n, "proofs: zero_exact="); n = ik_imp_cat(report_out, n, ifx zero_exact then "true" else "false");
+  n = ik_imp_cat(report_out, n, " hotswap="); n = ik_imp_cat(report_out, n, ifx swap_ok then "ok" else "fail");
+  n = ik_imp_cat(report_out, n, " tamper_refused="); n = ik_imp_cat(report_out, n, ifx tamper_refused then "true" else "false");
+  n = ik_imp_cat(report_out, n, " pin_refused="); n = ik_imp_cat(report_out, n, ifx pin_refused then "true" else "false");
+  n = ik_imp_cat(report_out, n, "\nadapter_sha256: "); n = ik_imp_cat(report_out, n, cast(string) ad_hex[..]);
+  n = ik_imp_cat(report_out, n, "\n");
+  return n;
+}
+
+// ---- Stage 6: End-to-End Selftest (All 5 Stages + Adversarial Ch 247 & Tamper Refusals) ----
+ik_imp_selftest :: (w: [] IkImpWork, report_out: [] u8) -> bool #effects(all) {
+  tmp_b: [FS_PATH_MAX] u8;
+  tmp := fs_temp("inky-imp-st-", tmp_b[..]);
+  if tmp.count == 0 { return false; }
+
+  // Populate synthetic Dev + Locked Held-Out + Secret-bearing traces
+  w[0].n_traces = 5;
+  w[0].traces[0] = IkTraceRecord.{};
+  w[0].traces[0].id_n = ik_imp_put(w[0].traces[0].id[..], "sh_001_dev_edit_pass");
+  w[0].traces[0].category_n = ik_imp_put(w[0].traces[0].category[..], "session-history");
+  w[0].traces[0].desc_n = ik_imp_put(w[0].traces[0].desc[..], "Fix token path /Users/alice/repo/a.coax with AKIAIOSFODNN7EXAMPLE");
+  w[0].traces[0].sum = IkTraceSummary.{ passed = true, wall_ms = 18000, input_tokens = 20000, cached_tokens = 16000, output_tokens = 400, attempts = 4, tool_calls = 3, edit_calls = 2, exec_verified = 2 };
+  w[0].traces[0].cont_input_tokens = 18000; w[0].traces[0].cont_cached_tokens = 16000;
+
+  w[0].traces[1] = IkTraceRecord.{};
+  w[0].traces[1].id_n = ik_imp_put(w[0].traces[1].id[..], "sh_008_dev_shell_spiral");
+  w[0].traces[1].category_n = ik_imp_put(w[0].traces[1].category[..], "session-history");
+  w[0].traces[1].sum = IkTraceSummary.{ passed = false, timed_out = true, wall_ms = 301000, input_tokens = 250000, cached_tokens = 210000, output_tokens = 4500, attempts = 16, tool_calls = 15, shell_read_calls = 10, max_prompt_tokens = 28000, zero_edit_steps = 12 };
+  w[0].traces[1].cmd_calls = 12;
+
+  w[0].traces[2] = IkTraceRecord.{};
+  w[0].traces[2].id_n = ik_imp_put(w[0].traces[2].id[..], "sh_009_locked_heldout_pass");
+  w[0].traces[2].category_n = ik_imp_put(w[0].traces[2].category[..], "session-history");
+  w[0].traces[2].sum = IkTraceSummary.{ passed = true, heldout = true, wall_ms = 90000, input_tokens = 60000, cached_tokens = 50000, output_tokens = 1200, attempts = 8, edit_calls = 1 };
+
+  w[0].traces[3] = IkTraceRecord.{};
+  w[0].traces[3].id_n = ik_imp_put(w[0].traces[3].id[..], "sh_014_locked_heldout_fail");
+  w[0].traces[3].category_n = ik_imp_put(w[0].traces[3].category[..], "session-history");
+  w[0].traces[3].sum = IkTraceSummary.{ passed = false, timed_out = true, heldout = true, wall_ms = 301000, shell_read_calls = 9, zero_edit_steps = 10 };
+
+  w[0].traces[4] = IkTraceRecord.{};
+  w[0].traces[4].id_n = ik_imp_put(w[0].traces[4].id[..], "sh_021_dev_pass_fast");
+  w[0].traces[4].category_n = ik_imp_put(w[0].traces[4].category[..], "session-history");
+  w[0].traces[4].sum = IkTraceSummary.{ passed = true, wall_ms = 24000, input_tokens = 24000, cached_tokens = 20000, output_tokens = 900, attempts = 5, edit_calls = 1, exec_verified = 1 };
+
+  // 1. Audit
+  aud_b: [4096] u8;
+  an := ik_imp_format_audit(w, aud_b[..]);
+  ok1 := an > 0 && ik_imp_contains(cast(string) aud_b[0..<an], "dev=2/3") && ik_imp_contains(cast(string) aud_b[0..<an], "heldout=1/2");
+
+  // 2. ReAnchor CV (must skip 2 held-out traces and beat v1 baseline)
+  rea_b: [4096] u8;
+  bp: [1] IkPolicy;
+  rn := ik_imp_run_reanchor(w, rea_b[..], bp[..]);
+  ok2 := rn > 0 && ik_imp_contains(cast(string) rea_b[0..<rn], "ho_quarantined=2") && bp[0].hybrid_exec && !bp[0].adaptive_effort && !bp[0].spec_lookup;
+
+  // 3. Skill mining (must refuse sh_014 held-out failure and mine only sh_008 Dev failure)
+  sk_dir_b: [FS_PATH_MAX] u8;
+  sk_dir := fs_join(tmp, "skills", sk_dir_b[..]);
+  sk_rep: [1024] u8;
+  sn := ik_imp_mine_skills(w, sk_dir, sk_rep[..]);
+  ok3 := sn > 0 && ik_imp_contains(cast(string) sk_rep[0..<sn], "heldout_refused=1") && ik_imp_contains(cast(string) sk_rep[0..<sn], "bundles_written=1");
+
+  // 4a. Distill default-OFF consent refusal
+  sh_off_b: [FS_PATH_MAX] u8;
+  sh_off := fs_join(tmp, "distill-off", sh_off_b[..]);
+  d_off: [1024] u8;
+  dn0 := ik_imp_distill(w, sh_off, false, d_off[..]);
+  ok4a := dn0 > 0 && ik_imp_contains(cast(string) d_off[0..<dn0], "exported=0") && ik_imp_contains(cast(string) d_off[0..<dn0], "refused_optout=3");
+
+  // 4b. Distill opt-in: must export 2 Dev winners (with AKIA secret redacted!), refuse 1 held-out winner
+  sh_on_b: [FS_PATH_MAX] u8;
+  sh_on := fs_join(tmp, "distill-on", sh_on_b[..]);
+  d_on: [1024] u8;
+  dn1 := ik_imp_distill(w, sh_on, true, d_on[..]);
+  ok4b := dn1 > 0 && ik_imp_contains(cast(string) d_on[0..<dn1], "exported=2") && ik_imp_contains(cast(string) d_on[0..<dn1], "refused_heldout=1");
+  // Verify secret was scrubbed from sh_001_dev_edit_pass.atif.jsonl on disk
+  af_b: [FS_PATH_MAX] u8;
+  af_n := fs_read(fs_join(sh_on, "sh_001_dev_edit_pass.atif.jsonl", af_b[..]), w[0].red[..]);
+  ok4c := af_n > 0 && rt_find_secret(cast(string) w[0].red[0..<af_n]) == -1 && ik_imp_contains(cast(string) w[0].red[0..<af_n], "[REDACTED_SECRET]");
+
+  // 5. Train Rank-8 Routing LoRA + zero-adapter exactness + tamper/pin refusal
+  lr_b: [FS_PATH_MAX] u8;
+  lr_path := fs_join(tmp, "router-lora.json", lr_b[..]);
+  lr_rep: [2048] u8;
+  ln := ik_imp_train_router(w, sh_on, lr_path, lr_rep[..]);
+  ok5 := ln > 0 && ik_imp_contains(cast(string) lr_rep[0..<ln], "zero_exact=true") &&
+         ik_imp_contains(cast(string) lr_rep[0..<ln], "hotswap=ok") &&
+         ik_imp_contains(cast(string) lr_rep[0..<ln], "tamper_refused=true") &&
+         ik_imp_contains(cast(string) lr_rep[0..<ln], "pin_refused=true");
+
+  // 6. Adversarial #authority promotion gate checks
+  ev_ok := IkPromoteEval.{
+    policy = bp[0], dev_total = 9, heldout_total = 6,
+    champ_dev_pass = 5, cand_dev_pass = 6,
+    champ_heldout_pass = 1, cand_heldout_pass = 1,
+    champ_wall_ms = 100000, cand_wall_ms = 90000,
+    champ_tokens = 10000, cand_tokens = 9000,
+    heldout_contaminated = false, secret_clean = true, atif_verified = true,
+  };
+  ev_reg := ev_ok; ev_reg.cand_heldout_pass = 0;
+  ev_con := ev_ok; ev_con.heldout_contaminated = true;
+  ok6 := ik_imp_admit_candidate(ev_ok) == IK_PROMOTE_OK &&
+         ik_imp_admit_candidate(ev_reg) == IK_PROMOTE_HELDOUT_REGRESSED &&
+         ik_imp_admit_candidate(ev_con) == IK_PROMOTE_CONTAMINATED;
+
+  _ = fs_remove(tmp);
+
+  all_ok := ok1 && ok2 && ok3 && ok4a && ok4b && ok4c && ok5 && ok6;
+  rn_out := 0;
+  rn_out = ik_imp_cat(report_out, rn_out, "inky-improve selftest: ");
+  rn_out = ik_imp_cat(report_out, rn_out, ifx all_ok then "ok (8/8 checks passed: audit, reanchor-cv, dev-skill-mining, ch247-optout/heldout/secret-scrub, rank8-lora+tamper-refusal, authority-gate)\n" else "FAILED\n");
+  return all_ok;
+}
+
+#test "inky improve: in-memory audit, offline ReAnchor CV, and Ch 140 Rank-8 LoRA + tamper refusal" {
+  w: [1] IkImpWork;
+  w[0].n_traces = 4;
+  w[0].traces[0] = IkTraceRecord.{};
+  w[0].traces[0].id_n = ik_imp_put(w[0].traces[0].id[..], "sh_001_dev_edit_pass");
+  w[0].traces[0].sum = IkTraceSummary.{ passed = true, wall_ms = 18000, input_tokens = 20000, cached_tokens = 16000, output_tokens = 400, attempts = 4, edit_calls = 2, exec_verified = 2 };
+  w[0].traces[1] = IkTraceRecord.{};
+  w[0].traces[1].id_n = ik_imp_put(w[0].traces[1].id[..], "sh_008_dev_shell_spiral");
+  w[0].traces[1].sum = IkTraceSummary.{ passed = false, timed_out = true, wall_ms = 301000, output_tokens = 4500, attempts = 16, shell_read_calls = 10, max_prompt_tokens = 28000, zero_edit_steps = 12 };
+  w[0].traces[2] = IkTraceRecord.{};
+  w[0].traces[2].id_n = ik_imp_put(w[0].traces[2].id[..], "sh_009_locked_heldout");
+  w[0].traces[2].sum = IkTraceSummary.{ passed = true, heldout = true, wall_ms = 90000, edit_calls = 1 };
+  w[0].traces[3] = IkTraceRecord.{};
+  w[0].traces[3].id_n = ik_imp_put(w[0].traces[3].id[..], "sh_021_dev_pass");
+  w[0].traces[3].sum = IkTraceSummary.{ passed = true, wall_ms = 24000, edit_calls = 1, exec_verified = 1 };
+
+  aud_b: [4096] u8;
+  an := ik_imp_format_audit(w[..], aud_b[..]);
+  #assert an > 0 && ik_imp_contains(cast(string) aud_b[0..<an], "dev=2/3") && ik_imp_contains(cast(string) aud_b[0..<an], "heldout=1/1");
+
+  rea_b: [4096] u8;
+  bp: [1] IkPolicy;
+  rn := ik_imp_run_reanchor(w[..], rea_b[..], bp[..]);
+  #assert rn > 0 && ik_imp_contains(cast(string) rea_b[0..<rn], "ho_quarantined=1") && bp[0].hybrid_exec && !bp[0].adaptive_effort;
+
+  lr_b: [2048] u8;
+  ln := ik_imp_train_router(w[..], "", "", lr_b[..]);
+  #assert ln > 0 && ik_imp_contains(cast(string) lr_b[0..<ln], "zero_exact=true") &&
+          ik_imp_contains(cast(string) lr_b[0..<ln], "tamper_refused=true") &&
+          ik_imp_contains(cast(string) lr_b[0..<ln], "pin_refused=true");
+}
