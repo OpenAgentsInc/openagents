@@ -419,6 +419,34 @@ Unified onto `origin/main` alongside `71d5d3d92a`'s 8-slot SWA-backed prefix cac
 
 ---
 
+### 7.9 Fast 4-bit mode on Dev-9: same pass rate, about 10% faster, not made the default
+
+This test asks whether `INK_FAST_Q4=1` should be the default. It runs the nine Dev-9 tasks twice at commit `6c47efc473`, once per mode, with `--timeout-floor 600`.
+
+The two runs ran at the same time on the same M5 Max, each with its own server, so both saw the same load. The host was not clean: GPU utilization was 97% from other work, and Desktop's own server and an Xcode build were active. Compare the two columns with each other, not with clean-host numbers.
+
+| Measure | Default (lossless) | `INK_FAST_Q4=1` |
+| --- | --- | --- |
+| Tasks passed | 4/9 | 4/9 |
+| Passing tasks | `sh_001`, `sh_004`, `sh_010`, `sh_021` | the same four |
+| Total wall time | 3,091 s | 3,038 s |
+| Server-measured decode, all requests | 18.8 tok/s | 20.7 tok/s |
+| Decode below 8K context | 18.9 tok/s | 25.5 tok/s |
+| Decode at 8K–16K | 17.3 tok/s | 21.8 tok/s |
+| Decode above 16K | 19.3 tok/s | 20.1 tok/s |
+| Share of decode time spent above 16K | 71% | 79% |
+| Share of output tokens that are thinking | 64% | 62% |
+| Peak server memory | 25.9 GB | 34.0 GB |
+
+Findings:
+
+- **Quality held on this set.** Both modes pass and fail the same tasks. Nine tasks cannot show a small quality loss.
+- **The speed gain is about 10% inside tasks, not 2×.** The fast mode helps most on short prompts, and Inky spends 71–79% of its decode time above 16K context, where the gain is 4%.
+- **The default stays lossless.** A 10% gain does not justify 8 GB more memory and lossy weights.
+- **`sh_017` failed in both modes** by timeout. It passed on v2 in 166 s. The likely cause is the load on the host, so rerun it on a clean host before you count it as a regression.
+
+This points the same way as §9: most decode time is spent at long context and most output is thinking, so a small working context (§9.4) and a thinking limit (§9.2) are worth more than a faster short-context mode.
+
 ## 8. Benchmark Protocol
 
 On 2026-11-22 three agents worked on Inky and its engine at once. They duplicated speculative-decoding work in `inkling-metal.c` and skewed each other's GPU benchmarks. From now on one agent owns Inky end to end: the agent, the Metal and CUDA engines, and the evals. It works in its own worktree from `origin/main`, never in the main checkout.
