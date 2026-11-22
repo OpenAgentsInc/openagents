@@ -258,3 +258,102 @@ Only after Levels 0–3 capture all deterministic, harness, skill, and engine wi
 | **4** | **Failure-Mined Coax & Lean Skills Pipeline (`mine.coax` → Reflector → `capability-eval.coax`)** | Level 2 | `evals/session-history/tools/mine.coax`, `coax/lib/agent/desktop/capability-eval.coax` | Automatically distills recurring Coax (`E0216`/`E0381`/`E0400`) and Lean 4 tactic failures into two-arm-verified local skills. |
 | **5** | **Continuous Batching (`B = 4..8`) + Parallel Worktree `/goal` Racing for Self-Patching** | Engine + Level 3 | `psionic/platform/inkling-metal.c`, `coax/lib/inky/` | Enables Inky to race 4 parallel patches on its own repo or hard Buckets B–E tasks in ~1.8× wall time and promote only verified diffs. |
 | **6** | **Rank-8 Tool/Executor Routing LoRA (`H2_ROUTING_ONLY`) + DSpark Coax Draft Distillation** | Level 4 | `psionic/lib/hybrid-lora.coax`, `psionic/tools/diloco-round.coax` | Eliminates shell-edit fallback (`python3`/`sed` → Class-E `edit_file`) and pre-tool mental-math tax (`budget_big` `63.6 s → ~12 s`), gated by 6-tier Byzantine + 4-gate Quarantine Optimizer. |
+
+---
+
+## 7. Implementation & Verification Report (2026-11-22)
+
+All planned phases (Class-E executor integration, Level 0–1 harness upgrades, Psionic Metal 4 prefix-cache & speculative-verify engine work, `inky-improve` 6-stage self-improvement pipeline, Terminal-Bench `inky-native` port, and a strict host-cleanliness benchmark guard) have been implemented, unit- and mutation-tested, bundled into `OpenAgents.app`, and live-benchmarked on Apple M5 Max (128 GB unified memory, Metal 4, `Inkling-2-Mini-IQ4_NL.gguf`, 32,768 ctx, \$0.0000 inference).
+
+### 7.1 Shipped Commits & Architecture Summary
+
+| Phase | Commit | Key Deliverables |
+| --- | --- | --- |
+| **Phase 1 — Class-E Executor Integration** | `0f9e21e073` | Wired `#authority coax/lib/microcoder/executor-guard.coax` into `coax/lib/inky/run.coax` (`edit_file`/`write_file` pre-disk F64 dense cores `oa-exec-json-schema`, `oa-exec-diff-verify`, Desktop unified diff + Ch 234 `[E] replay verified/refused` pills); native 8th tool `executor_verify` (`INKY_EXECUTOR=1`); server-reported `obs_input_tokens` 80%/90% compaction + step-8/14 zero-edit nudges; removed user-facing `"Microcoder"` fallback strings in Desktop Swift views. |
+| **Phase 2 — Level 0–1 Harness Upgrades** | `7af77a2fdd` | Native `coax/lib/inky/instructions.coax` (2.5 KB `AGENTS.md`/`CLAUDE.md` loader + `##` heading index + `read_file` cursor); strict-unique indent-tolerant `ik_fmt_try_loose_edit` + `<1 ms` deterministic Coax pre-edit lint (`E0216`/`let`/`const`/`fn`) + 4 KB search-output cap (`coax/lib/inky/format.coax`); `#authority` normalized duplicate shell-read blocking (`coax/lib/inky/guard.coax`); Class-E `wire-bounds` & `step-budget` pre-exec guards + `INKY_MAX_TOKENS`. |
+| **Phase 3 — Psionic Metal 4 Engine** | `71d5d3d92a` | Expanded `InkSession` prefix cache `2 → 8` LRU + pinned SWA-backed checkpoints (`live_tokens` + `swa_valid_from`, SWA window backup gated on `headroom_mb >= 4096`), pinning both `tool_declare` end and `<|message_user|>` boundary across compaction and cross-task SWA wraps; lowered `direct_thresh` `16 → 7` (`-27.5%` GPU time on `nb=8` prefill tail chunks via `K_MOE_MM_IQ4_16`); added `ink_verify_draft` + opt-in `INK_SPEC_LOOKUP=1` (off by default — see §7.3); made `INKY_ADAPTIVE_EFFORT` opt-in (`== "1"`) to preserve multi-turn KV prefix cache. |
+| **Phase 4 — Self-Improvement Pipeline & TBench Port** | `2b74624632` | Ported `coax/lib/tbench/{agent,hillclimb}.coax` to first-class `inky-native` mode (`tb_propose_inky_challenger`, 4 bounded axes); added `#authority coax/lib/inky/improve-policy.coax` (`inky-policy.v1` SHA-256, Ch 247 held-out quarantine, zero-LLM-call offline ReAnchor K-fold CV, fail-closed Ch 239/241/247 promotion gate), `coax/lib/inky/improve.coax`, and CLI `coder/tui/inky-improve.coax` (`audit`, `reanchor`, `mine-skills`, `distill`, `train-router`, `selftest`). |
+| **Phase 5 — Host Cleanliness Benchmark Guard** | *(this commit)* | Added `evals/openagents-desktop/tier2/host_clean.py` + `test_host_clean.py` and wired preflight + per-task mid-run interference detection into `evals/openagents-desktop/tier2/run_tasks.py` (blocks local Metal runs on competing active GPU/LLM inference, memory pressure, thermal throttling, or concurrent evals unless `--allow-dirty-host` is explicitly passed; records `host_clean` & `host_preflight` in `summary.json`). |
+
+### 7.2 Verification & Zero-Survivor Mutation Receipts
+
+- **`#authority` Mutation Suites (all 0 survived):**
+  - `coax/lib/inky/guard.coax`: **215 mutants, 215 killed, 0 survived**
+  - `coax/lib/inky/tools.coax`: **467 mutants, 463 killed, 0 survived, 4 equivalent**
+  - `coax/lib/inky/improve-policy.coax`: **362 mutants, 359 killed, 0 survived, 3 equivalent**
+  - `coax/lib/tbench/policy.coax`: **317 mutants, 304 killed, 0 survived, 13 equivalent**
+- **Unit, Integration, & Repo Hygiene Suites:**
+  - `coax/lib/inky/selftest.coax`: **310/310** checks passed + **10/10** runtime selftests (`41` messages valid)
+  - `coax/lib/inky/improve.coax`: **146/146** checks passed; `coder/tui/inky-improve.coax selftest`: **8/8** checks passed
+  - `coax/lib/tbench/{policy,wire,agent,hillclimb}.coax`: **121/121** checks passed
+  - `evals/openagents-desktop/tier2/test_host_clean.py`: **7/7** unit tests passed
+  - `layer-check`, `wire-check`, `tools-check`: all **0 failed**
+  - `psionic-inkling-cli --test-quant-kernels`: `0.00e+00` max abs across NVFP4, MXFP8, and IQ4_NL; `--verify-prefill-decode`: `cos = 0.999918`, `top1_pre == top1_dec`
+  - `apps/openagents-desktop/check.sh`: **`OpenAgents.app` rebuilt & passed** (`account-check`, `sign-check`, `windows args`, `local-models-check 11/11`)
+
+### 7.3 Two Crucial Empirical Findings (Honest Negative Measurements)
+
+1. **Why Prompt-Lookup Speculative Decoding (`INK_SPEC_LOOKUP`) is Kept Opt-In (`0` by Default) on Inkling 2 Mini:**
+   - Live M5 Max Metal 4 A/B benchmarks on copy-heavy code-edit prompts (`max_tokens=512`, both short `438`-token and long `18,643`-token contexts) confirmed the lookup drafter works well — achieving **65.6%–79.0% draft acceptance** (`4.56–6.53` tokens verified per call on `draft=5..7`).
+   - However, because Inkling 2 Mini is a **128-expert Top-8 sparse MoE** (`16.8 GB` weights, memory-bandwidth bound on decode), verifying `nb = 6..8` tokens fans out from `8` active experts to `~40–50` unique active experts per forward pass (`~5–6×` expert weight memory traffic), while single-token `ink_step` already runs 67 sprints of fused Metal 4 decode kernels + double-buffered lookahead (`41.8–46.6 tok/s` at 18K ctx).
+   - Net result: `SPEC=1` measured **`30.6–40.7 tok/s`** vs **`41.8–46.6 tok/s`** for `SPEC=0` (net slower). Therefore `ink_verify_draft` ships cleanly behind opt-in `INK_SPEC_LOOKUP=1` (ready for dense models, MTP heads, or multi-request continuous batching), and default single-stream Metal decode stays on the faster fused `ink_step` path.
+   - **Implication for Roadmap Rank 1:** Real single-stream MoE speedup requires either **MTP-trained heads with expert-routing co-locality** or **multi-stream continuous batching (`B = 4..8`)** across parallel `/goal` worktree candidates rather than unfused single-stream prompt-lookup verification.
+2. **Why Mid-Session `INKY_ADAPTIVE_EFFORT` is Opt-In (`== "1"`):**
+   - In `psionic/platform/inkling-serve.c`, `Thinking effort level: <x>` is placed in `<|message_system|>` immediately before `<|message_user|>`. Mutating effort mid-conversation (e.g. `"low"` on steps 1–3 → `"medium"` on step 4) invalidates the entire multi-turn KV prefix cache (`90% → 15%`), costing multiple seconds of cold re-prefill. Keeping session effort constant preserves `80–95%` KV prefix hits and is reinforced by the offline ReAnchor scorer (`trap-adaptive-effort-kv-bust` scored `-734`).
+
+### 7.4 Measured Before vs After Benchmarks (Clean Local M5 Max Metal 4, \$0.0000)
+
+| Benchmark Suite | Before (Inky v1 Baseline) | After (Inky v3 + Metal SWA Prefix Cache + Class-E) | Delta |
+| --- | ---: | ---: | --- |
+| **Desktop Tier 2 Regression Lock** | 14/14 (100.0%), `232.3 s` (`16.6 s/task`), `62.8%` overall KV hit | **15/15 (100.0%)**, **`179.9 s`** (`12.0 s/task`), **`79.0%` overall / `81.1%` cont. KV hit**, `7/7` Class-E Ch 234 verified | **-27.7% wall/task**, **+16.2 pp KV hit**, +1 new task (`b4_self_prompt_citation` PASS in `24.4 s`, `0` shell cmds) |
+| **Session History Bucket A (6 tasks)** | 6/6 (100.0%), `194.4 s` (`5.41×` faster than `mcworker`'s `5/6` in `1,051 s`) | **6/6 (100.0%)**, **`141.7 s`** (`38.0–44.7 tok/s`), **`86.6%` overall / `89.6%` cont. KV hit**, `0` guard trips | **-27.1% wall** (**7.42× faster than `mcworker`**) |
+| **W6.1 Paired Multi-File Edit** | `mcworker`: `61.96–69.15 s` | **`17.21 s`** (`17.92 s` `hybrid-exec-v1`), `2/2` native `edit_file`, bit-identical Ch 234 digest `c3e731afbc4d` | **3.6–4.0× faster** |
+| **Zero-Shot `executor_verify` Routing (8 tasks)** | `206.9 s` raw | **8/8 (100.0%)** Attempt-1 routed, **`175.5 s`**, 8/8 Ch 234 receipts | **-15.2% wall**, zero LoRA required |
+| **Pinned SWA Prefix Cache (after 3,591-tok SWA wrap)** | `0%` hit once SWA ring wraps `> 2,048` | **`585/592` (`98.8%`) same-sys** (`0.38 s`) / **`408/524` (`77.9%`) diff-sys same-tools** (`0.56 s`), **100% bit-exact** | Instant cross-task & post-compaction KV hit |
+
+### 7.5 Live `inky-improve` 5-Stage Pipeline Results (on `goal-inky-v3-sh-bucketA`)
+
+Executed via `coax/web/tool.sh coder/tui/inky-improve.coax`:
+
+- **`audit`:** `6/6 (100.0%)`, `141 s`, `86.6%` overall / `89.6%` cont. KV hit, `0` timeouts, `0` zero-edit spirals, `0` guard trips, `class_e_receipts: verified=1 refused=0`.
+- **`reanchor` (0 LLM calls, Ch 247 Dev-only 4-fold grouped CV):**
+  - `v2-greedy-kv80-4kb-classe` (`sha256:596bcf64ad27...`): **`+183`** (winner)
+  - `v2-kv80-4kb-classe` (`sha256:ca72731f08b0...`): **`+166`**
+  - `v1-baseline-70-85-no-exec` (`sha256:c537c0ffc1ee...`): `0`
+  - `trap-spec-lookup-moe-fanout`: **`-284`** (rejected)
+  - `trap-adaptive-effort-kv-bust`: **`-734`** (rejected)
+- **`distill --opt-in`:** exported **`6/6`** passing Dev trajectories into verified `ATIF-v1.8` shards (`openagents.executor.dataset-shard.v1alpha1`), `0` held-out contamination, `0` secret leaks (and default-OFF without `--opt-in` refuses 100%).
+- **`train-router` (Ch 140 Rank-8 LoRA via `psionic/lib/hybrid-lora.coax`):**
+  - `train_rows=26`, routing accuracy **`7/26 → 26/26 (100.0%)`**.
+  - Verified proofs: `zero_exact=true`, `hotswap=ok`, `tamper_refused=true`, `pin_refused=true`, `adapter_sha256=69d1305714443bd77882d0d7c064f60cc1f0b394eea973d778c211f66828ffc8`.
+
+### 7.6 Host Cleanliness Guard & Clean-Host Follow-Up Benchmarks
+
+During the initial Dev-9 sweep, `/Applications/OpenAgents.app` spawned a competing `psionic-inkling-serve` instance on port `18795` (`4.1 GB` RSS) mid-task (`sh_008`). We aborted that contaminated run rather than publishing noisy timings and built `evals/openagents-desktop/tier2/host_clean.py` directly into `run_tasks.py`:
+
+- **Preflight Gate:** samples `ps` over a `1.5 s` window before starting any local Metal benchmark and refuses (`exit 2`) if any competing GPU/LLM server burns CPU/GPU (`pcpu >= 1.5%` or `delta_cputime >= 30 ms`), if competing resident GPU memory leaves `< 28 GB` RAM, if another eval runner or build storm is active, if `memory_pressure` free `< 30%`, or if macOS thermal throttling (`CPU_Speed_Limit < 85%`) is active.
+- **Per-Task Mid-Run Watchdog:** re-samples competing GPU servers before and after every task; if another server burns `>= 150 ms` CPU time mid-task, marks `host_contaminated: true` in `result.json`/`summary.json` and aborts (`exit 2`, overrideable only via `--allow-dirty-host`).
+
+When ready to run the remaining long-horizon suites on a dedicated host, verify cleanliness first and execute sequentially:
+
+```bash
+python3 evals/openagents-desktop/tier2/host_clean.py
+
+# 1. Session History Dev-9 remaining 7 tasks (baseline: 3/7 -> 5/9 combined)
+python3 evals/openagents-desktop/tier2/run_tasks.py --worker inky \
+  --tasks-dir evals/session-history/tasks \
+  --filter sh_008,sh_010,sh_013,sh_017,sh_019,sh_021,sh_023 \
+  --timeout-floor 300 --out evals/openagents-desktop/results/clean-inky-v3-sh-dev9-rest
+
+# 2. Session History Locked Held-Out 6 tasks (baseline: 0/6 timeouts)
+python3 evals/openagents-desktop/tier2/run_tasks.py --worker inky \
+  --tasks-dir evals/session-history/tasks \
+  --filter sh_009,sh_014,sh_015,sh_018,sh_020,sh_024 \
+  --timeout-floor 300 --out evals/openagents-desktop/results/clean-inky-v3-sh-heldout6
+
+# 3. Lean 4 Algebra & Logic (10 harder proofs la01..la10 + #authority lean-run verify)
+python3 evals/openagents-desktop/tier2/run_tasks.py --worker inky \
+  --tasks-dir evals/openagents-desktop/lean/lean-algebra-logic/tasks \
+  --timeout-floor 300 --out evals/openagents-desktop/results/clean-inky-v3-lean-alg
+```
+

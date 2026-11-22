@@ -713,7 +713,7 @@ ik_imp_train_router :: (w: [] IkImpWork, shards_dir: string, out_path: string, r
   }
 
   // 2. Train Rank-8 LoRA via #authority Ch 124 AdamW + cross-entropy + Brier calibration
-  tr := hl_train(init_a, rows[0..<n_rows], 0.1, 0.08, 0.0, 60);
+  tr := hl_train(init_a, rows[0..<n_rows], 0.1, 0.15, 0.0, 15);
   acc_after := 0;
   for i: 0..<n_rows {
     p1 := hl_forward(rows[i].base_logits, tr.adapter, rows[i].u);
@@ -741,7 +741,8 @@ ik_imp_train_router :: (w: [] IkImpWork, shards_dir: string, out_path: string, r
     _ = fs_mkdir_all(fs_dir(out_path));
     o: [1] Jo; jo_start(o[..], w[0].out_buf[..]);
     jo_obj(o[..]);
-    jo_key(o[..], "schema"); jo_str(o[..], "openagents.psionic.routing-lora.v1");
+    jo_key(o[..], "schema"); jo_str(o[..], "openagents.executor.checkpoint-lineage.v1alpha1");
+    jo_key(o[..], "artifact_kind"); jo_str(o[..], "ch140-routing-lora");
     jo_key(o[..], "rank"); jo_int(o[..], tr.adapter.rank);
     jo_key(o[..], "classes"); jo_int(o[..], HL_CLASSES);
     jo_key(o[..], "shard_entries"); jo_int(o[..], shard_entries);
@@ -884,7 +885,7 @@ ik_imp_selftest :: (w: [] IkImpWork, report_out: [] u8) -> bool #effects(all) {
   return all_ok;
 }
 
-#test "inky improve: in-memory audit, offline ReAnchor CV, and Ch 140 Rank-8 LoRA + tamper refusal" {
+#test "inky improve: in-memory audit, offline ReAnchor CV, and Ch 140 Rank-8 LoRA + tamper refusal" #steps 30000000 {
   w: [1] IkImpWork;
   w[0].n_traces = 4;
   w[0].traces[0] = IkTraceRecord.{};

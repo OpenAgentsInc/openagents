@@ -39,9 +39,13 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import host_clean as hc
 
 GIT_WORKTREE_LOCK = threading.Lock()
 
@@ -985,6 +989,7 @@ def main() -> int:
     ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
     ap.add_argument("--worker", default="inky", choices=["mcworker", "inky"], help="worker binary to run (inky or mcworker; default inky)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
+    ap.add_argument("--allow-dirty-host", action="store_true", help="allow local Metal benchmarks even when competing GPU/LLM servers or host pressure are detected")
     args = ap.parse_args()
 
     eff_model = args.model or DEFAULT_MODEL
@@ -1014,6 +1019,23 @@ def main() -> int:
         print("no tasks matched", file=sys.stderr)
         return 2
 
+    # Host cleanliness preflight for local Metal/GPU benchmarks: refuse to run contaminated timings.
+    own_port: int | None = args.port if args.port > 0 else None
+    env_psionic_url = os.environ.get("PSIONIC_BASE_URL", "").strip()
+    if env_psionic_url and own_port is None:
+        parsed_u = urllib.parse.urlparse(env_psionic_url)
+        if parsed_u.port:
+            own_port = parsed_u.port
+    preflight_meta: dict[str, Any] = {"clean": True, "skipped": not is_local}
+    if is_local:
+        pf = hc.check_host_preflight(own_port=own_port, sample_window_s=1.5)
+        preflight_meta = pf.to_dict()
+        preflight_meta["allow_dirty_host"] = bool(args.allow_dirty_host)
+        print(hc.format_preflight_summary(pf), flush=True)
+        if not pf.clean and not args.allow_dirty_host:
+            print("Refusing to run local Metal benchmark on a non-clean host (pass --allow-dirty-host to override).", file=sys.stderr)
+            return 2
+
     os.environ["BROWSER"] = "/usr/bin/true"
     build_driver()
     worker = build_worker(args.worker)
@@ -1030,19 +1052,38 @@ def main() -> int:
     results = []
     print_lock = threading.Lock()
     server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "worker": args.worker, "ctx": args.ctx if is_local else None,
-                                   "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0}
+                                   "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0,
+                                   "host_preflight": preflight_meta, "host_clean": bool(preflight_meta.get("clean", True)),
+                                   "mid_run_interference": []}
+    midrun_aborted = False
     try:
         with PsionicServerManager(enabled=is_local, run_dir=run_dir, port=args.port, ctx=args.ctx) as srv:
             server_meta["server_boot_ms"] = srv.boot_ms
             server_meta["server_reused"] = srv.reused
             server_meta["ctx"] = srv.ctx if is_local else None
+            srv_port = urllib.parse.urlparse(srv.base_url).port if srv.base_url else own_port
+            srv_pid = srv.proc.pid if srv.proc is not None else None
             if is_local:
                 print(f"[psionic-metal] ready at {srv.base_url} (ctx={srv.ctx}, boot={srv.boot_ms}ms, reused={srv.reused})", flush=True)
 
             def _run_one(t: dict[str, Any]) -> dict[str, Any]:
+                pre_procs = hc.sample_processes() if is_local else []
                 r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
                              eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na)
                 srv.sample_rss()
+                if is_local and not r.get("not_applicable"):
+                    post_procs = hc.sample_processes()
+                    hits = hc.detect_midrun_interference(
+                        pre_procs, post_procs, own_pid=os.getpid(), own_port=srv_port, own_server_pid=srv_pid,
+                    )
+                    r["host_contaminated"] = len(hits) > 0
+                    if hits:
+                        r["host_interference"] = hits
+                        server_meta["host_clean"] = False
+                        server_meta["mid_run_interference"].append({"task": r["id"], "procs": hits})
+                        case_res_p = run_dir / "cases" / t["id"] / "result.json"
+                        if case_res_p.exists():
+                            case_res_p.write_text(json.dumps(r, indent=2) + "\n")
                 if r.get("not_applicable"):
                     with print_lock:
                         print(f"N/A  task {r['id']}: {r['description']} ({r['not_applicable_reason']})", flush=True)
@@ -1050,17 +1091,23 @@ def main() -> int:
                 tag = "ok  " if r["passed"] else ("KNOWN" if r["known_failure"] else "FAIL")
                 fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
                 toks = r["tokens"]
+                dirty_note = " [HOST_CONTAMINATED]" if r.get("host_contaminated") else ""
                 with print_lock:
                     print(f"{tag} task {r['id']}: {r['description']} ({r['wall_ms']} ms, ${r['cost_usd_micros'] / 1e6:.4f}, "
                           f"{r['attempts']} attempts, {r['turns']} turns, {r['tool_calls']} commands, "
                           f"{toks['input']}in/{toks['output']}out, ttft={r['ttft_ms']}ms, {r['decode_tps']} tok/s)"
-                          + (f" -- {fails}" if fails else ""), flush=True)
+                          + (f" -- {fails}" if fails else "") + dirty_note, flush=True)
                 return r
 
             workers = 1 if is_local else max(1, int(args.workers))
             if workers == 1:
                 for t in tasks:
-                    results.append(_run_one(t))
+                    r = _run_one(t)
+                    results.append(r)
+                    if is_local and r.get("host_contaminated") and not args.allow_dirty_host:
+                        print(f"ABORT: competing GPU/LLM activity detected during {r['id']}; refusing to produce contaminated benchmark results.", file=sys.stderr, flush=True)
+                        midrun_aborted = True
+                        break
             else:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
                     results = list(ex.map(_run_one, tasks))
@@ -1076,9 +1123,11 @@ def main() -> int:
     failed = len(applicable) - passed - known
     total = sum(r["cost_usd_micros"] for r in applicable)
     print(f"Run directory: {run_dir}")
-    print(f"Engine: {server_meta['engine']} (ctx={server_meta['ctx']}, boot={server_meta['server_boot_ms']}ms, peak_rss={server_meta['peak_rss_mb']}MB)")
+    print(f"Engine: {server_meta['engine']} (ctx={server_meta['ctx']}, boot={server_meta['server_boot_ms']}ms, peak_rss={server_meta['peak_rss_mb']}MB, host_clean={server_meta['host_clean']})")
     print(f"Total cost: ${total / 1e6:.4f}")
     print(f"{len(applicable)} applicable checks ({na_count} N/A), {passed} passed, {failed + known} failed ({known} known)")
+    if midrun_aborted:
+        return 2
     return 0 if failed == 0 else 1
 
 
@@ -1117,6 +1166,9 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "ctx": meta.get("ctx"),
         "server_boot_ms": meta.get("server_boot_ms", 0),
         "peak_rss_mb": meta.get("peak_rss_mb", 0),
+        "host_clean": meta.get("host_clean", True),
+        "host_preflight": meta.get("host_preflight", {}),
+        "mid_run_interference": meta.get("mid_run_interference", []),
         "models": sorted({m for r in applicable for m in r["models"] if m}),
         "total": app_n,
         "applicable_total": app_n,
