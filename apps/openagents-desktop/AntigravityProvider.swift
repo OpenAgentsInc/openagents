@@ -1421,7 +1421,7 @@ final class ProviderInstancesStore {
     private let fm = FileManager.default
     private(set) var instances: [ProviderInstanceConfig] = []
     private(set) var probes: [String: ProviderProbeSnapshot] = [:]
-    private(set) var selectedIndex: Int = 2
+    private(set) var selectedIndex: Int = 0
     private(set) var refreshing = false
     private(set) var lastCheckedAt: Date?
 
@@ -1490,20 +1490,6 @@ final class ProviderInstancesStore {
     static func defaultInstances() -> [ProviderInstanceConfig] {
         [
             ProviderInstanceConfig(
-                id: "codex", driver: .codex, displayName: "Codex",
-                enabled: codexCliStatus().installed,
-                isDefault: true, accent: 0, authMethod: .oauthPersonal,
-                gcpProject: "", gcpLocation: "", binaryPath: "", extraPath: "",
-                envVars: [], models: []
-            ),
-            ProviderInstanceConfig(
-                id: "claude", driver: .claude, displayName: "Claude",
-                enabled: CoderWorker.hasClaude,
-                isDefault: true, accent: 0, authMethod: .oauthPersonal,
-                gcpProject: "", gcpLocation: "", binaryPath: "", extraPath: "",
-                envVars: [], models: []
-            ),
-            ProviderInstanceConfig(
                 id: "antigravity", driver: .antigravity, displayName: "Antigravity",
                 enabled: true,
                 isDefault: true, accent: 0, authMethod: .oauthPersonal,
@@ -1518,7 +1504,14 @@ final class ProviderInstancesStore {
         if let data = try? Data(contentsOf: storeURL),
            let decoded = try? JSONDecoder().decode([ProviderInstanceConfig].self, from: data),
            !decoded.isEmpty {
-            instances = decoded
+            let filtered = decoded.filter { $0.driver == .antigravity }
+            if !filtered.isEmpty {
+                instances = filtered
+                if filtered.count != decoded.count { save() }
+            } else {
+                instances = Self.defaultInstances()
+                save()
+            }
         } else {
             instances = Self.defaultInstances()
             save()

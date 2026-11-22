@@ -293,33 +293,17 @@ cp_ps_init :: (s: [] CoderPage) {
   ps[0].host_name_n = cp_out(ps[0].host_name[..], "This Mac");
   ps[0].project_scope_n = cp_out(ps[0].project_scope[..], "All projects");
   ps[0].checked_label_n = cp_out(ps[0].checked_label[..], "Checked just now");
-  // Seed default 3 instances so the screen is immediately meaningful before host sync arrives.
-  ps[0].ninst = 3;
-  ps[0].insts[0].id_n = cp_out(ps[0].insts[0].id[..], "codex");
-  ps[0].insts[0].driver = CP_PS_DRV_CODEX;
-  ps[0].insts[0].display_name_n = cp_out(ps[0].insts[0].display_name[..], "Codex");
+  // Seed default Antigravity instance so the screen is immediately meaningful before host sync arrives.
+  ps[0].ninst = 1;
+  ps[0].insts[0].id_n = cp_out(ps[0].insts[0].id[..], "antigravity");
+  ps[0].insts[0].driver = CP_PS_DRV_ANTIGRAVITY;
+  ps[0].insts[0].display_name_n = cp_out(ps[0].insts[0].display_name[..], "Antigravity");
   ps[0].insts[0].is_default = true;
-  ps[0].insts[0].enabled = false;
-  ps[0].insts[0].status = CP_PS_ST_DISABLED;
-  ps[0].insts[0].headline_n = cp_out(ps[0].insts[0].headline[..], "Disabled");
-
-  ps[0].insts[1].id_n = cp_out(ps[0].insts[1].id[..], "claude");
-  ps[0].insts[1].driver = CP_PS_DRV_CLAUDE;
-  ps[0].insts[1].display_name_n = cp_out(ps[0].insts[1].display_name[..], "Claude");
-  ps[0].insts[1].is_default = true;
-  ps[0].insts[1].enabled = false;
-  ps[0].insts[1].status = CP_PS_ST_DISABLED;
-  ps[0].insts[1].headline_n = cp_out(ps[0].insts[1].headline[..], "Disabled");
-
-  ps[0].insts[2].id_n = cp_out(ps[0].insts[2].id[..], "antigravity");
-  ps[0].insts[2].driver = CP_PS_DRV_ANTIGRAVITY;
-  ps[0].insts[2].display_name_n = cp_out(ps[0].insts[2].display_name[..], "Antigravity");
-  ps[0].insts[2].is_default = true;
-  ps[0].insts[2].enabled = true;
-  ps[0].insts[2].status = CP_PS_ST_WARNING;
-  ps[0].insts[2].headline_n = cp_out(ps[0].insts[2].headline[..], "Needs attention");
-  ps[0].insts[2].summary_n = cp_out(ps[0].insts[2].summary[..], "Connect Antigravity to load models.");
-  ps[0].selected = 2;
+  ps[0].insts[0].enabled = true;
+  ps[0].insts[0].status = CP_PS_ST_WARNING;
+  ps[0].insts[0].headline_n = cp_out(ps[0].insts[0].headline[..], "Needs attention");
+  ps[0].insts[0].summary_n = cp_out(ps[0].insts[0].summary[..], "Connect Antigravity to load models.");
+  ps[0].selected = 0;
   d := ps[0].detail[..];
   d[0].display_name_n = cp_out(d[0].display_name[..], "Antigravity");
   d[0].auth_method = CP_PS_AUTH_PERSONAL;
@@ -1771,7 +1755,7 @@ cp_ps_overlay :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
 
   mw: f32 = ifx window_w - 48.0f32 < 560.0f32 then window_w - 48.0f32 else 560.0f32;
   mh: f32 = ifx w[0].step == 2 then (ifx w[0].driver == CP_PS_DRV_ANTIGRAVITY then 474.0f32 else 324.0f32)
-       else ifx w[0].step == 1 then 366.0f32 else 388.0f32;
+       else ifx w[0].step == 1 then 366.0f32 else 284.0f32;
   if w[0].err_n > 0 { mh += 28.0f32; }
   mx := (window_w - mw) / 2;
   my := (h - mh) / 2;
@@ -1840,28 +1824,24 @@ cp_ps_overlay :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
 
   // Step Body
   if w[0].step == 0 {
-    // Step 1: Provider cards (2-column grid)
-    gap: f32 = 10.0f32;
-    gw := (iw - gap) / 2.0f32;
+    // Step 1: Antigravity provider card (Claude / Codex / other drivers hidden).
+    drv := CP_PS_DRV_ANTIGRAVITY;
+    w[0].driver = drv;
+    gw := iw;
     gh: f32 = 66.0f32;
-    wdb: [16] u8;
-    for drv: 0..<CP_PS_DRV_COUNT {
-      col := drv % 2; row_i := drv / 2;
-      gx := ix + cast(f32) col * (gw + gap);
-      gy := vy + cast(f32) row_i * (gh + gap);
-      wdn := el_put(wdb[..], 0, "ps.wd."); wdn = el_put_i(wdb[..], wdn, drv);
-      wdid := sheet_pool(sh, cast(string) wdb[0..<wdn]);
-      sel := w[0].driver == drv;
-      hov := uiframe_hovered(f, wdid);
-      bg := ifx sel then hex(0x111a2e, 1) else ifx hov then hex(0x141418, 1) else hex(0x0f0f12, 1);
-      edge := ifx sel then hex(0x346bf1, 1) else hex(0x242429, 1);
-      app_ov_box(sh, gx, gy, gw, gh, 8.0f32, ifx sel then 1.5f32 else 1.0f32, bg, edge);
-      cp_ps_driver_icon(sh, true, drv, gx + 12.0f32, gy + 14.0f32, 16.0f32, true);
-      _ := set_line(f, gx + 36.0f32, gy + 12.0f32, gw - 48.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), CP_PS_DRV_NAMES[drv]);
-      _ := set_line(f, gx + 36.0f32, gy + 32.0f32, gw - 48.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), CP_PS_DRV_DESCS[drv]);
-      drow := uiframe_semantic(f, wdid, EL_BUTTON, CP_PS_DRV_NAMES[drv], gx, gy, gw, gh, ifx sel then EL_S_CURRENT else 0, CP_PS_WIZ_DRIVER);
-      sheet_hit(sh, UIFRAME_HIT, drow, 0, gx, gy, gw, gh);
-    }
+    gx := ix;
+    gy := vy;
+    wdid := "ps.wd.0";
+    sel := true;
+    hov := uiframe_hovered(f, wdid);
+    bg := ifx sel then hex(0x111a2e, 1) else ifx hov then hex(0x141418, 1) else hex(0x0f0f12, 1);
+    edge := ifx sel then hex(0x346bf1, 1) else hex(0x242429, 1);
+    app_ov_box(sh, gx, gy, gw, gh, 8.0f32, 1.5f32, bg, edge);
+    cp_ps_driver_icon(sh, true, drv, gx + 12.0f32, gy + 14.0f32, 16.0f32, true);
+    _ := set_line(f, gx + 36.0f32, gy + 12.0f32, gw - 48.0f32, t.name_face, t.name_line, hex(0xf5f5f5, 1), CP_PS_DRV_NAMES[drv]);
+    _ := set_line(f, gx + 36.0f32, gy + 32.0f32, gw - 48.0f32, t.desc_face, t.desc_line, hex(0x818181, 1), CP_PS_DRV_DESCS[drv]);
+    drow := uiframe_semantic(f, wdid, EL_BUTTON, CP_PS_DRV_NAMES[drv], gx, gy, gw, gh, EL_S_CURRENT, CP_PS_WIZ_DRIVER);
+    sheet_hit(sh, UIFRAME_HIT, drow, 0, gx, gy, gw, gh);
   } else if w[0].step == 1 {
     // Step 2: Identity (Display name, Instance ID, Accent color)
     ctl_w: f32 = 240.0f32;

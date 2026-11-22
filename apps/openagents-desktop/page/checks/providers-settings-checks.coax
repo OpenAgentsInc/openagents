@@ -19,13 +19,14 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cp_set_page_ok_flags(DC_FLAGS_ALL, CP_PG_PROVIDERS);
   coder_page_flags_set(s, 0);
 
-  // Populate realistic state matching T3 screenshots.
+  // Default seed shows only Antigravity (Claude and Codex hidden).
+  #assert s[0].ps[0].ninst == 1 && s[0].ps[0].selected == 0 && s[0].ps[0].insts[0].driver == CP_PS_DRV_ANTIGRAVITY;
+
+  // Populate realistic Antigravity-only state.
   coder_page_ps_set_meta(s, "Christopher's MacBook Pro (2)", "All projects", "Checked 1h ago", false);
   coder_page_ps_clear(s);
-  #assert coder_page_ps_add_instance(s, "codex", CP_PS_DRV_CODEX, "Codex", "", false, true, CP_PS_ST_DISABLED, "Disabled", "", 0) == 0;
-  #assert coder_page_ps_add_instance(s, "claude", CP_PS_DRV_CLAUDE, "Claude", "", false, true, CP_PS_ST_DISABLED, "Disabled", "", 0) == 1;
-  #assert coder_page_ps_add_instance(s, "antigravity", CP_PS_DRV_ANTIGRAVITY, "Antigravity", "v1.5.2", true, true, CP_PS_ST_WARNING, "Needs attention", "Antigravity is installed. Connect with Agent Platform to load models.", 0) == 2;
-  coder_page_ps_select(s, 2);
+  #assert coder_page_ps_add_instance(s, "antigravity", CP_PS_DRV_ANTIGRAVITY, "Antigravity", "v1.5.2", true, true, CP_PS_ST_WARNING, "Needs attention", "Antigravity is installed. Connect with Agent Platform to load models.", 0) == 0;
+  coder_page_ps_select(s, 0);
   coder_page_ps_set_detail_config(s, "Antigravity", 0, CP_PS_AUTH_VERTEX, false, "openagents-gemini", "us-central1", "", "");
   coder_page_ps_set_detail_runtime(s, CP_PS_RT_INSTALLED, "Installed.", "Install managed runtime", -1, false, "");
   coder_page_ps_set_detail_auth(s, CP_PS_AS_FAILED, "Connect on Christopher's MacBook Pro (2) to load models.", "Antigravity could not authenticate with the configured credentials.", "Retry connection", false, "");
@@ -38,19 +39,19 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_settings_page(s) == CP_PG_PROVIDERS;
   #assert cp_ps_test_frame(s, 1280, 840);
   #assert surface_find(s[0].surface[..], "ps.inst.0") >= 0;
-  #assert surface_find(s[0].surface[..], "ps.inst.1") >= 0;
-  #assert surface_find(s[0].surface[..], "ps.inst.2") >= 0;
-  #assert surface_find(s[0].surface[..], "ps.tog.2") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.inst.1") < 0;
+  #assert surface_find(s[0].surface[..], "ps.tog.0") >= 0;
   #assert surface_find(s[0].surface[..], "ps.add.list") >= 0;
   #assert surface_find(s[0].surface[..], "ps.refresh") >= 0;
   #assert surface_find(s[0].surface[..], "ps.rt.act") >= 0;
   #assert surface_find(s[0].surface[..], "ps.auth.act") >= 0;
   #assert surface_find(s[0].surface[..], "ps.am.btn") >= 0;
 
-  // Toggle Codex on -> dispatches CP_ASK_PS_TOGGLE.
+  // Toggle Antigravity off then back on -> dispatches CP_ASK_PS_TOGGLE.
   t0 := surface_find(s[0].surface[..], "ps.tog.0");
   #assert t0 >= 0 && cp_press(s, t0) && coder_page_action(s) == CP_ASK_PS_TOGGLE;
-  #assert coder_page_ps_action_idx(s) == 0 && coder_page_ps_inst_enabled(s, 0);
+  #assert coder_page_ps_action_idx(s) == 0 && !coder_page_ps_inst_enabled(s, 0);
+  #assert cp_press(s, t0) && coder_page_action(s) == CP_ASK_PS_TOGGLE && coder_page_ps_inst_enabled(s, 0);
 
   // Open Sign-in method menu -> pick Gemini Enterprise -> dispatches CP_ASK_PS_CONFIG.
   amb := surface_find(s[0].surface[..], "ps.am.btn");
@@ -117,10 +118,12 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert m_star >= 0 && cp_press(s, m_star) && coder_page_action(s) == CP_ASK_PS_MODELS_SAVE;
   #assert s[0].ps[0].detail[0].models[1].favorite;
 
-  // Open Add provider 3-step modal wizard, step 1 -> 2 -> 3 -> Add instance.
+  // Open Add provider 3-step modal wizard: Step 1 shows only Antigravity (Claude/Codex hidden).
   add_btn := surface_find(s[0].surface[..], "ps.add.list");
   #assert add_btn >= 0 && cp_press(s, add_btn) && s[0].ps[0].wiz[0].open && s[0].ps[0].wiz[0].step == 0;
   #assert cp_ps_test_frame(s, 1280, 840);
+  #assert surface_find(s[0].surface[..], "ps.wd.0") >= 0;
+  #assert surface_find(s[0].surface[..], "ps.wd.1") < 0 && surface_find(s[0].surface[..], "ps.wd.2") < 0;
   next1 := surface_find(s[0].surface[..], "ps.wiz.next");
   #assert next1 >= 0 && cp_press(s, next1) && s[0].ps[0].wiz[0].step == 1;
   #assert cp_ps_test_frame(s, 1280, 840);
