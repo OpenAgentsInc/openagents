@@ -86,6 +86,25 @@ static int sock_poll_read(int fd, int timeout_ms) {
     tv.tv_usec = (timeout_ms % 1000) * 1000;
     return select(0, &rfds, NULL, NULL, &tv);
 }
+static int sock_disconnected(int fd) {
+    fd_set rfds, efds;
+    FD_ZERO(&rfds);
+    FD_ZERO(&efds);
+    FD_SET((SOCKET)fd, &rfds);
+    FD_SET((SOCKET)fd, &efds);
+    struct timeval tv = {0, 0};
+    int r = select(0, &rfds, NULL, &efds, &tv);
+    if (r < 0) return 1;
+    if (r == 0) return 0;
+    if (FD_ISSET((SOCKET)fd, &efds)) return 1;
+    if (FD_ISSET((SOCKET)fd, &rfds)) {
+        char b = 0;
+        int n = recv((SOCKET)fd, &b, 1, MSG_PEEK);
+        if (n == 0) return 1;
+        if (n < 0 && WSAGetLastError() != WSAEWOULDBLOCK) return 1;
+    }
+    return 0;
+}
 /* Ctrl+C, Ctrl+Break, a closed console, logoff and shutdown all stop the
    server: closing the listening socket ends the select/accept it is waiting in. */
 static BOOL WINAPI on_console(DWORD event) {
@@ -156,6 +175,27 @@ static int sock_poll_read(int fd, int timeout_ms) {
     int pr = poll(&pfd, 1, timeout_ms);
     if (pr > 0 && !(pfd.revents & POLLIN)) return 0;
     return pr;
+}
+static int sock_disconnected(int fd) {
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int pr = poll(&pfd, 1, 0);
+    if (pr < 0) return errno != EINTR;
+    if (pr == 0) return 0;
+    if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) return 1;
+    if (pfd.revents & POLLIN) {
+        char b = 0;
+#ifdef MSG_DONTWAIT
+        ssize_t n = recv(fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
+#else
+        ssize_t n = recv(fd, &b, 1, MSG_PEEK);
+#endif
+        if (n == 0) return 1;
+        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) return 1;
+    }
+    return 0;
 }
 static void stop_signals(int listen_fd) {
     (void)listen_fd;
@@ -244,29 +284,103 @@ static int send_all(int fd, const char *buf, size_t len) {
     return 0;
 }
 
-static int send_http_json(int fd, int status, const char *reason, const char *body, size_t body_len) {
-    char hdr[512];
-    int n = snprintf(hdr, sizeof hdr,
+/* Strict loopback Host & Origin validation (DNS rebinding + browser CSRF defense). */
+static int http_port_valid(const char *p) {
+    if (!*p) return 0;
+    for (const char *q = p; *q; q++) {
+        if (*q < '0' || *q > '9') return 0;
+    }
+    return 1;
+}
+
+static int http_loopback_host(const char *h) {
+    if (!h || !h[0]) return 1;
+    if (h[0] == '[') {
+        if (strncmp(h, "[::1]", 5) != 0) return 0;
+        return h[5] == '\0' || (h[5] == ':' && http_port_valid(h + 6));
+    }
+    const char *colon = strchr(h, ':');
+    size_t hlen = colon ? (size_t)(colon - h) : strlen(h);
+    if (colon && !http_port_valid(colon + 1)) return 0;
+    if (hlen == 9 && strncasecmp(h, "localhost", 9) == 0) return 1;
+    if (hlen == 9 && strncmp(h, "127.0.0.1", 9) == 0) return 1;
+    return 0;
+}
+
+static int http_origin_ok(const char *origin) {
+    if (!origin || !origin[0]) return 1;
+    for (const char *q = origin; *q; q++) {
+        if ((unsigned char)*q < 0x20 || *q == 0x7f) return 0;
+    }
+    const char *rest = NULL;
+    if (strncasecmp(origin, "http://", 7) == 0) rest = origin + 7;
+    else if (strncasecmp(origin, "https://", 8) == 0) rest = origin + 8;
+    else if (strncasecmp(origin, "openagents://", 13) == 0) return 1;
+    else if (strncasecmp(origin, "app://", 6) == 0) return 1;
+    else if (strncasecmp(origin, "tauri://", 8) == 0) return 1;
+    else return 0;
+    if (!rest[0]) return 0;
+    char host[128];
+    size_t n = 0;
+    while (rest[n] && rest[n] != '/' && n + 1 < sizeof host) {
+        host[n] = rest[n];
+        n++;
+    }
+    if (rest[n] && rest[n] != '/') return 0;
+    host[n] = '\0';
+    return http_loopback_host(host);
+}
+
+static int send_http_json(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len) {
+    char hdr[1024];
+    int n;
+    if (origin && origin[0]) {
+        n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 %d %s\r\n"
                      "Content-Type: application/json\r\n"
                      "Content-Length: %zu\r\n"
                      "Connection: close\r\n"
-                     "Access-Control-Allow-Origin: *\r\n"
+                     "Access-Control-Allow-Origin: %s\r\n"
+                     "Vary: Origin\r\n"
+                     "\r\n",
+                     status, reason, body_len, origin);
+    } else {
+        n = snprintf(hdr, sizeof hdr,
+                     "HTTP/1.1 %d %s\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n"
                      "\r\n",
                      status, reason, body_len);
+    }
+    if (n <= 0 || (size_t)n >= sizeof hdr) return 1;
     if (send_all(fd, hdr, (size_t)n)) return 1;
     return body_len ? send_all(fd, body, body_len) : 0;
 }
 
-static int send_sse_headers(int fd) {
-    const char *hdr =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/event-stream\r\n"
-        "Cache-Control: no-cache\r\n"
-        "Connection: close\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "\r\n";
-    return send_all(fd, hdr, strlen(hdr));
+static int send_sse_headers(int fd, const char *origin) {
+    char hdr[1024];
+    int n;
+    if (origin && origin[0]) {
+        n = snprintf(hdr, sizeof hdr,
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/event-stream\r\n"
+                     "Cache-Control: no-cache\r\n"
+                     "Connection: close\r\n"
+                     "Access-Control-Allow-Origin: %s\r\n"
+                     "Vary: Origin\r\n"
+                     "\r\n",
+                     origin);
+    } else {
+        n = snprintf(hdr, sizeof hdr,
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/event-stream\r\n"
+                     "Cache-Control: no-cache\r\n"
+                     "Connection: close\r\n"
+                     "\r\n");
+    }
+    if (n <= 0 || (size_t)n >= sizeof hdr) return 1;
+    return send_all(fd, hdr, (size_t)n);
 }
 
 static int send_sse_event(int fd, const char *event_name, const char *data, size_t data_len) {
@@ -1485,9 +1599,30 @@ static int detect_thinking_loop(const int32_t *toks, int start, int end) {
     return 0;
 }
 
-static void emit_chat_tool_call(int fd, int64_t created, const char *model, int idx,
-                                const char *id, const char *name, size_t name_len,
-                                const char *args, size_t args_len) {
+/* Secondary higher-threshold loop detector for text (channel 2) and tool JSON/text (channel 3/4).
+   Requires a 1,024-token grace window inside the channel so structured code/tables never false-trigger. */
+static int detect_output_loop(const int32_t *toks, int start, int end) {
+    int len = end - start;
+    if (len < 1024) return 0;
+    for (int p = 4; p <= 128; p++) {
+        int reps = (p >= 24) ? 12 : 16;
+        if (reps * p < 96 || len < reps * p) continue;
+        const int32_t *tail = toks + (end - p);
+        int ok = 1;
+        for (int k = 1; k < reps; k++) {
+            if (memcmp(tail, toks + (end - (k + 1) * p), (size_t)p * sizeof(int32_t)) != 0) {
+                ok = 0;
+                break;
+            }
+        }
+        if (ok) return p;
+    }
+    return 0;
+}
+
+static int emit_chat_tool_call(int fd, int64_t created, const char *model, int idx,
+                               const char *id, const char *name, size_t name_len,
+                               const char *args, size_t args_len) {
     Buf ev = {0};
     char head[256];
     snprintf(head, sizeof head,
@@ -1504,12 +1639,13 @@ static void emit_chat_tool_call(int fd, int64_t created, const char *model, int 
     buf_adds(&ev, "\",\"arguments\":\"");
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\"}}]},\"finish_reason\":null}]}");
-    send_sse_event(fd, NULL, ev.data, ev.len);
+    int rc = send_sse_event(fd, NULL, ev.data, ev.len);
     buf_free(&ev);
+    return rc;
 }
 
-static void emit_chat_delta(int fd, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
-    if (n == 0) return;
+static int emit_chat_delta(int fd, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
+    if (n == 0) return 0;
     Buf ev = {0};
     char head[256];
     snprintf(head, sizeof head,
@@ -1522,12 +1658,13 @@ static void emit_chat_delta(int fd, int64_t created, const char *model, int is_t
     buf_adds(&ev, "\":\"");
     buf_add_json_escaped(&ev, s, n);
     buf_adds(&ev, "\"},\"finish_reason\":null}]}");
-    send_sse_event(fd, NULL, ev.data, ev.len);
+    int rc = send_sse_event(fd, NULL, ev.data, ev.len);
     buf_free(&ev);
+    return rc;
 }
 
-static void emit_responses_delta(int fd, int is_thinking, const char *s, size_t n) {
-    if (n == 0) return;
+static int emit_responses_delta(int fd, int is_thinking, const char *s, size_t n) {
+    if (n == 0) return 0;
     Buf ev = {0};
     const char *etype = is_thinking ? "response.reasoning_summary_text.delta" : "response.output_text.delta";
     buf_adds(&ev, "{\"type\":\"");
@@ -1535,27 +1672,28 @@ static void emit_responses_delta(int fd, int is_thinking, const char *s, size_t 
     buf_adds(&ev, "\",\"delta\":\"");
     buf_add_json_escaped(&ev, s, n);
     buf_adds(&ev, "\"}");
-    send_sse_event(fd, etype, ev.data, ev.len);
+    int rc = send_sse_event(fd, etype, ev.data, ev.len);
     buf_free(&ev);
+    return rc;
 }
 
-static void emit_responses_tool_call(int fd, int idx, const char *id,
-                                     const char *name, size_t name_len,
-                                     const char *args, size_t args_len) {
+static int emit_responses_tool_call(int fd, int idx, const char *id,
+                                    const char *name, size_t name_len,
+                                    const char *args, size_t args_len) {
     Buf ev = {0};
     char head[160];
     snprintf(head, sizeof head, "{\"type\":\"response.output_item.added\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%s\",\"call_id\":\"%s\",\"name\":\"", idx, id, id);
     buf_adds(&ev, head);
     buf_add_json_escaped(&ev, name, name_len);
     buf_adds(&ev, "\",\"arguments\":\"\",\"status\":\"in_progress\"}}");
-    send_sse_event(fd, "response.output_item.added", ev.data, ev.len);
+    if (send_sse_event(fd, "response.output_item.added", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
     ev.len = 0;
 
     snprintf(head, sizeof head, "{\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_%s\",\"output_index\":%d,\"delta\":\"", id, idx);
     buf_adds(&ev, head);
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\"}");
-    send_sse_event(fd, "response.function_call_arguments.delta", ev.data, ev.len);
+    if (send_sse_event(fd, "response.function_call_arguments.delta", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
     ev.len = 0;
 
     snprintf(head, sizeof head, "{\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%s\",\"call_id\":\"%s\",\"name\":\"", idx, id, id);
@@ -1564,15 +1702,16 @@ static void emit_responses_tool_call(int fd, int idx, const char *id,
     buf_adds(&ev, "\",\"arguments\":\"");
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\",\"status\":\"completed\"}}");
-    send_sse_event(fd, "response.output_item.done", ev.data, ev.len);
+    int rc = send_sse_event(fd, "response.output_item.done", ev.data, ev.len);
     buf_free(&ev);
+    return rc;
 }
 
-static void handle_inference(Server *sv, int fd, int is_responses, const char *body, size_t body_len) {
+static void handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
         const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
-        send_http_json(fd, 400, "Bad Request", e, strlen(e));
+        send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
         req_free(&r);
         return;
     }
@@ -1585,7 +1724,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         js_sc = (coax_t_JsSchema *)calloc(1, sizeof *js_sc);
         if (!js_sc) {
             const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
-            send_http_json(fd, 500, "Internal Server Error", e, strlen(e));
+            send_http_json(fd, 500, "Internal Server Error", origin, e, strlen(e));
             req_free(&r);
             return;
         }
@@ -1599,7 +1738,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
         if (ok != 1 || ink_js_reset(scv, (coax_v_t_JsState){ &js_st, 1 }) != 1) {
             const char *e = "{\"error\":{\"message\":\"invalid or unsupported response_format json_schema\",\"type\":\"invalid_request_error\"}}";
-            send_http_json(fd, 400, "Bad Request", e, strlen(e));
+            send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
             free(js_sc);
             req_free(&r);
             return;
@@ -1617,11 +1756,18 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
 
     ink_mutex_lock(&sv->sess_mu);
 
+    if (sock_disconnected(fd)) {
+        ink_mutex_unlock(&sv->sess_mu);
+        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        buf_free(&prompt); free(js_sc); req_free(&r);
+        return;
+    }
+
     int max_ctx = ink_max_ctx(sv->sess);
     int32_t *toks = (int32_t *)malloc((size_t)(max_ctx + 1) * sizeof(int32_t));
     if (!toks) {
         const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
-        send_http_json(fd, 500, "Internal Server Error", e, strlen(e));
+        send_http_json(fd, 500, "Internal Server Error", origin, e, strlen(e));
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
@@ -1630,7 +1776,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     int n_prompt = ink_encode(sv->sess, prompt.data ? prompt.data : "", prompt.len, toks, max_ctx, 1);
     if (n_prompt <= 0) {
         const char *e = "{\"error\":{\"message\":\"empty prompt\",\"type\":\"invalid_request_error\"}}";
-        send_http_json(fd, 400, "Bad Request", e, strlen(e));
+        send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
@@ -1641,7 +1787,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         snprintf(ebuf, sizeof ebuf,
                  "{\"error\":{\"message\":\"This model's maximum context length is %d tokens. However, your messages exceeded the context length.\",\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\"}}",
                  max_ctx);
-        send_http_json(fd, 400, "Bad Request", ebuf, strlen(ebuf));
+        send_http_json(fd, 400, "Bad Request", origin, ebuf, strlen(ebuf));
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
@@ -1656,7 +1802,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     fflush(stderr);
 
     if (r.stream) {
-        if (send_sse_headers(fd) != 0) {
+        if (send_sse_headers(fd, origin) != 0) {
             ink_mutex_unlock(&sv->sess_mu);
             ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
@@ -1666,12 +1812,17 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
 
     double t0 = now_sec();
     int cached = 0;
+    int client_gone = 0;
     if (r.cache_prompt) {
         cached = ink_prefix_restore(sv->sess, toks, n_prompt);
     } else {
         ink_reset(sv->sess);
     }
     for (int i = cached; i < n_prompt && !g_stop; ) {
+        if (sock_disconnected(fd)) {
+            client_gone = 1;
+            break;
+        }
         int chunk = n_prompt - i;
         if (chunk > 3072) chunk = 3072;
         int need_logits = (i + chunk == n_prompt);
@@ -1679,7 +1830,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             if (!r.stream) {
                 char ebuf[512];
                 snprintf(ebuf, sizeof ebuf, "{\"error\":{\"message\":\"prefill failed: %s\"}}", ink_error(sv->sess));
-                send_http_json(fd, 500, "Internal Server Error", ebuf, strlen(ebuf));
+                send_http_json(fd, 500, "Internal Server Error", origin, ebuf, strlen(ebuf));
             }
             ink_mutex_unlock(&sv->sess_mu);
             ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
@@ -1689,12 +1840,18 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         i += chunk;
         if (r.stream && i < n_prompt) {
             if (send_all(fd, ": prefilling\n\n", 14) != 0) {
-                ink_mutex_unlock(&sv->sess_mu);
-                ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
-                free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-                return;
+                client_gone = 1;
+                break;
             }
         }
+    }
+    if (client_gone) {
+        fprintf(stderr, "[psionic-inkling-serve] req#%d aborted during prefill (client disconnected)\n", sv->req_seq);
+        fflush(stderr);
+        ink_mutex_unlock(&sv->sess_mu);
+        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
+        return;
     }
     if (r.cache_prompt && !g_stop && cached < n_prompt) {
         ink_prefix_save(sv->sess, toks, n_prompt, 1);
@@ -1717,7 +1874,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             buf_adds(&init, head);
             buf_add_json_escaped(&init, model, strlen(model));
             buf_adds(&init, "\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}");
-            send_sse_event(fd, NULL, init.data, init.len);
+            if (send_sse_event(fd, NULL, init.data, init.len) != 0) client_gone = 1;
             buf_free(&init);
         }
     }
@@ -1727,7 +1884,9 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     int in_header = 0;
     int js_started = 0;
     int think_start = -1;
+    int chan_start = -1;
     int think_broken = 0;
+    int out_loop_broken = 0;
     int n_reason = 0;
     Buf header_buf = {0};
     Buf tool_json = {0};
@@ -1749,7 +1908,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     const char *finish_reason = "length";
     double td0 = now_sec();
 
-    for (int i = 0; i < max_gen && !g_stop; i++) {
+    for (int i = 0; i < max_gen && !g_stop && !client_gone; i++) {
+        if ((i & 15) == 15 && sock_disconnected(fd)) {
+            client_gone = 1;
+            break;
+        }
         int32_t tok;
         if (use_js && channel == 2) {
             js_started = 1;
@@ -1762,6 +1925,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 tok != sv->tok_model && tok != sv->tok_thinking && tok != sv->tok_text &&
                 tok != sv->tok_end_msg && tok != sv->tok_eog && !ink_is_eog(sv->sess, tok)) {
                 channel = 2;
+                chan_start = n_all;
                 js_started = 1;
                 coax_t_JsState next_st;
                 if (js_tok_allowed(sv, js_sc, &js_st, tok, 0, &next_st)) {
@@ -1777,7 +1941,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         n_gen++;
 
         if (tok == sv->tok_eog || ink_is_eog(sv->sess, tok)) {
-            if (r.cache_prompt && !g_stop && n_all < max_ctx) {
+            if (r.cache_prompt && !g_stop && !client_gone && n_all < max_ctx) {
                 if (ink_step(sv->sess, tok, 0) == 0) all_toks[n_all++] = tok;
             }
             finish_reason = "stop";
@@ -1801,15 +1965,14 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     if (channel == 4) parse_invoked_tool_text(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
                     else parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
                     if (r.stream) {
-                        if (is_responses) {
-                            emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
-                                                     tc->name.data ? tc->name.data : "", tc->name.len,
-                                                     tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
-                        } else {
-                            emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
-                                                tc->name.data ? tc->name.data : "", tc->name.len,
-                                                tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
-                        }
+                        int erc = is_responses
+                            ? emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
+                                                       tc->name.data ? tc->name.data : "", tc->name.len,
+                                                       tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len)
+                            : emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                                                  tc->name.data ? tc->name.data : "", tc->name.len,
+                                                  tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        if (erc != 0) { client_gone = 1; break; }
                     }
                     n_emitted_tcs++;
                 }
@@ -1818,13 +1981,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 if (channel == 1) buf_append(&full_think, pending.data, pending.len);
                 else buf_append(&full_text, pending.data, pending.len);
                 if (r.stream) {
-                    if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, pending.len);
-                    else emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+                    int erc = is_responses
+                        ? emit_responses_delta(fd, channel == 1, pending.data, pending.len)
+                        : emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+                    if (erc != 0) { client_gone = 1; break; }
                 }
                 pending.len = 0;
             }
             channel = 0;
             think_start = -1;
+            chan_start = -1;
             if (was_js_text) {
                 finish_reason = "stop";
                 break;
@@ -1840,23 +2006,27 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             in_header = 0;
             pending.len = 0;
             think_start = n_all + 1;
+            chan_start = -1;
         } else if (tok == sv->tok_text) {
             channel = 2;
             in_header = 0;
             pending.len = 0;
             think_start = -1;
+            chan_start = n_all + 1;
         } else if (sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) {
             channel = 3;
             in_header = 0;
             pending.len = 0;
             tool_json.len = 0;
             think_start = -1;
+            chan_start = n_all + 1;
         } else if (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text) {
             channel = 4;
             in_header = 0;
             pending.len = 0;
             tool_json.len = 0;
             think_start = -1;
+            chan_start = n_all + 1;
         } else if (tok >= 200000) {
             /* Other special control token: ignore in user-visible output */
         } else {
@@ -1868,16 +2038,21 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     buf_append(&header_buf, piece, (size_t)plen);
                 } else if (channel == 3 || channel == 4) {
                     buf_append(&tool_json, piece, (size_t)plen);
+                    if (r.stream && (i & 63) == 63) {
+                        if (send_all(fd, ": generating\n\n", 14) != 0) { client_gone = 1; break; }
+                    }
                 } else {
-                    if (channel == 0) channel = 2;
+                    if (channel == 0) { channel = 2; chan_start = n_all; }
                     buf_append(&pending, piece, (size_t)plen);
                     size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, pending.len);
                     if (ready > 0) {
                         if (channel == 1) buf_append(&full_think, pending.data, ready);
                         else buf_append(&full_text, pending.data, ready);
                         if (r.stream) {
-                            if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, ready);
-                            else emit_chat_delta(fd, created, model, channel == 1, pending.data, ready);
+                            int erc = is_responses
+                                ? emit_responses_delta(fd, channel == 1, pending.data, ready)
+                                : emit_chat_delta(fd, created, model, channel == 1, pending.data, ready);
+                            if (erc != 0) { client_gone = 1; break; }
                         }
                         if (ready < pending.len) {
                             memmove(pending.data, pending.data + ready, pending.len - ready);
@@ -1890,8 +2065,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 if (pending.len > 0) {
                     buf_append(&full_text, pending.data, pending.len);
                     if (r.stream) {
-                        if (is_responses) emit_responses_delta(fd, 0, pending.data, pending.len);
-                        else emit_chat_delta(fd, created, model, 0, pending.data, pending.len);
+                        int erc = is_responses
+                            ? emit_responses_delta(fd, 0, pending.data, pending.len)
+                            : emit_chat_delta(fd, created, model, 0, pending.data, pending.len);
+                        if (erc != 0) client_gone = 1;
                     }
                     pending.len = 0;
                 }
@@ -1900,7 +2077,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             }
         }
 
-        if (i + 1 < max_gen) {
+        if (i + 1 < max_gen && !client_gone) {
             if (ink_step(sv->sess, tok, 1) != 0) {
                 fprintf(stderr, "[psionic-inkling-serve] step error: %s\n", ink_error(sv->sess));
                 break;
@@ -1912,8 +2089,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     if (pending.len > 0) {
                         buf_append(&full_think, pending.data, pending.len);
                         if (r.stream) {
-                            if (is_responses) emit_responses_delta(fd, 1, pending.data, pending.len);
-                            else emit_chat_delta(fd, created, model, 1, pending.data, pending.len);
+                            int erc = is_responses
+                                ? emit_responses_delta(fd, 1, pending.data, pending.len)
+                                : emit_chat_delta(fd, created, model, 1, pending.data, pending.len);
+                            if (erc != 0) { client_gone = 1; break; }
                         }
                         pending.len = 0;
                     }
@@ -1930,16 +2109,33 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     all_toks[n_all++] = sv->tok_end_msg;
                     n_gen++;
                 }
+            } else if ((channel == 2 || channel == 3 || channel == 4) && chan_start >= 0 && ((n_all - chan_start) & 15) == 0) {
+                int lp = detect_output_loop(all_toks, chan_start, n_all);
+                if (lp > 0) {
+                    fprintf(stderr, "[psionic-inkling-serve] req#%d output-loop breaker triggered (channel=%d, period=%d, chan_toks=%d)\n",
+                            sv->req_seq, channel, lp, n_all - chan_start);
+                    fflush(stderr);
+                    out_loop_broken = 1;
+                    if (channel == 3 || channel == 4) tool_json.len = 0; /* drop looping truncated tool JSON */
+                    finish_reason = "length";
+                    break;
+                }
             }
         }
     }
     if (r.has_seed) sv->rng = saved_rng;
-    if (r.cache_prompt && !g_stop && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
+    if (r.cache_prompt && !g_stop && !client_gone && !out_loop_broken && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
         ink_prefix_save(sv->sess, all_toks, n_all, 0);
     }
     free(all_toks);
 
-    if ((channel == 3 || channel == 4) && tool_json.len > 0) {
+    if (client_gone) {
+        fprintf(stderr, "[psionic-inkling-serve] req#%d aborted (client disconnected after %d gen toks)\n",
+                sv->req_seq, n_gen);
+        fflush(stderr);
+    }
+
+    if (!client_gone && (channel == 3 || channel == 4) && tool_json.len > 0) {
         if (n_emitted_tcs >= cap_emitted_tcs) {
             int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
             ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
@@ -1966,23 +2162,28 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             }
             n_emitted_tcs++;
         }
-    } else if (pending.len > 0 && (channel == 1 || channel == 2)) {
+    } else if (!client_gone && pending.len > 0 && (channel == 1 || channel == 2)) {
         if (channel == 1) buf_append(&full_think, pending.data, pending.len);
         else buf_append(&full_text, pending.data, pending.len);
         if (r.stream) {
-            if (is_responses) emit_responses_delta(fd, channel == 1, pending.data, pending.len);
-            else emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+            int erc = is_responses
+                ? emit_responses_delta(fd, channel == 1, pending.data, pending.len)
+                : emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+            if (erc != 0) client_gone = 1;
         }
     }
     if (n_emitted_tcs > 0 && !strcmp(finish_reason, "stop")) {
         finish_reason = "tool_calls";
     }
     double t_decode = now_sec() - td0;
-    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (cached=%d, %.2fs) gen=%d (reason=%d, %.2fs, %.1f tok/s) finish=%s\n",
+    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (cached=%d, %.2fs) gen=%d (reason=%d, %.2fs, %.1f tok/s) finish=%s%s\n",
             sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream,
-            n_prompt, cached, t_prefill, n_gen, n_reason, t_decode, n_gen / (t_decode + 1e-9), finish_reason);
+            n_prompt, cached, t_prefill, n_gen, n_reason, t_decode, n_gen / (t_decode + 1e-9), finish_reason,
+            client_gone ? " [aborted]" : "");
 
-    if (r.stream) {
+    if (client_gone) {
+        /* Client closed connection mid-generation; skip final SSE/JSON write. */
+    } else if (r.stream) {
         if (is_responses) {
             Buf done = {0};
             char u[448];
@@ -2067,7 +2268,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                  "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d},\"loop_count\":%lld}}",
                  n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, lc);
         buf_adds(&out, utail);
-        send_http_json(fd, 200, "OK", out.data, out.len);
+        send_http_json(fd, 200, "OK", origin, out.data, out.len);
         buf_free(&out);
     } else {
         Buf out = {0};
@@ -2107,7 +2308,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                  "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d}}}",
                  n_prompt, n_gen, n_prompt + n_gen, cached, n_reason);
         buf_adds(&out, utail);
-        send_http_json(fd, 200, "OK", out.data, out.len);
+        send_http_json(fd, 200, "OK", origin, out.data, out.len);
         buf_free(&out);
     }
 
@@ -2127,12 +2328,24 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     req_free(&r);
 }
 
-static int read_http_request(int fd, char *method, size_t mcap, char *path, size_t pcap, Buf *body) {
+static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t cap) {
+    while (val < eol && (*val == ' ' || *val == '\t')) val++;
+    while (eol > val && (eol[-1] == ' ' || eol[-1] == '\t')) eol--;
+    size_t n = (size_t)(eol - val);
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, val, n);
+    dst[n] = '\0';
+}
+
+static int read_http_request(int fd, char *method, size_t mcap, char *path, size_t pcap,
+                             char *host, size_t hcap, char *origin, size_t ocap, Buf *body) {
     Buf raw = {0};
     char tmp[8192];
     size_t hdr_end = 0;
     size_t content_len = 0;
     int have_hdr = 0;
+    if (host && hcap) host[0] = '\0';
+    if (origin && ocap) origin[0] = '\0';
 
     while (raw.len < 4 * 1024 * 1024) {
         ssize_t n = sock_recv(fd, tmp, sizeof tmp);
@@ -2144,7 +2357,7 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
             if (p) {
                 have_hdr = 1;
                 hdr_end = (size_t)(p - raw.data) + 4;
-                /* Parse Content-Length and Expect: 100-continue case-insensitively */
+                /* Parse Content-Length, Expect, Host, and Origin case-insensitively */
                 int expect_100 = 0;
                 const char *line = raw.data;
                 while (line < p) {
@@ -2152,6 +2365,10 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
                     if (!eol || eol > p) break;
                     if ((size_t)(eol - line) > 15 && strncasecmp(line, "Content-Length:", 15) == 0) {
                         content_len = (size_t)strtoull(line + 15, NULL, 10);
+                    } else if ((size_t)(eol - line) >= 5 && strncasecmp(line, "Host:", 5) == 0) {
+                        if (host && hcap) copy_trimmed_hdr(line + 5, eol, host, hcap);
+                    } else if ((size_t)(eol - line) >= 7 && strncasecmp(line, "Origin:", 7) == 0) {
+                        if (origin && ocap) copy_trimmed_hdr(line + 7, eol, origin, ocap);
                     } else if ((size_t)(eol - line) >= 7 && strncasecmp(line, "Expect:", 7) == 0) {
                         const char *v = line + 7;
                         while (v < eol && (*v == ' ' || *v == '\t')) v++;
@@ -2203,17 +2420,33 @@ static void conn_thread(void *arg) {
     int cfd = ca->cfd;
     free(ca);
 
-    char method[16] = {0}, path[256] = {0};
+    char method[16] = {0}, path[256] = {0}, host[256] = {0}, origin[256] = {0};
     Buf body = {0};
-    if (read_http_request(cfd, method, sizeof method, path, sizeof path, &body) == 0) {
-        if (!strcmp(method, "OPTIONS")) {
-            const char *cors =
-                "HTTP/1.1 204 No Content\r\n"
-                "Access-Control-Allow-Origin: *\r\n"
-                "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-                "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-                "Connection: close\r\n\r\n";
-            send_all(cfd, cors, strlen(cors));
+    if (read_http_request(cfd, method, sizeof method, path, sizeof path,
+                          host, sizeof host, origin, sizeof origin, &body) == 0) {
+        if (!http_loopback_host(host) || !http_origin_ok(origin)) {
+            const char *fb = "{\"error\":{\"message\":\"forbidden host or origin\",\"type\":\"permission_error\"}}";
+            send_http_json(cfd, 403, "Forbidden", NULL, fb, strlen(fb));
+        } else if (!strcmp(method, "OPTIONS")) {
+            char cors[768];
+            int n;
+            if (origin[0]) {
+                n = snprintf(cors, sizeof cors,
+                             "HTTP/1.1 204 No Content\r\n"
+                             "Access-Control-Allow-Origin: %s\r\n"
+                             "Vary: Origin\r\n"
+                             "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                             "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+                             "Connection: close\r\n\r\n",
+                             origin);
+            } else {
+                n = snprintf(cors, sizeof cors,
+                             "HTTP/1.1 204 No Content\r\n"
+                             "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                             "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+                             "Connection: close\r\n\r\n");
+            }
+            if (n > 0 && (size_t)n < sizeof cors) send_all(cfd, cors, (size_t)n);
         } else if (!strcmp(method, "GET") && !strcmp(path, "/health")) {
             ink_mutex_lock(&sv->state_mu);
             int busy = sv->in_flight > 0;
@@ -2222,20 +2455,20 @@ static void conn_thread(void *arg) {
             snprintf(ok, sizeof ok,
                      "{\"status\":\"ok\",\"engine\":\"%s\",\"ctx\":%d,\"busy\":%s}",
                      sv->engine, sv->max_ctx, busy ? "true" : "false");
-            send_http_json(cfd, 200, "OK", ok, strlen(ok));
+            send_http_json(cfd, 200, "OK", origin, ok, strlen(ok));
         } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
             char ms[224];
             snprintf(ms, sizeof ms,
                      "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"%s\"}]}",
                      sv->engine);
-            send_http_json(cfd, 200, "OK", ms, strlen(ms));
+            send_http_json(cfd, 200, "OK", origin, ms, strlen(ms));
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
-            handle_inference(sv, cfd, 0, body.data ? body.data : "", body.len);
+            handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len);
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
-            handle_inference(sv, cfd, 1, body.data ? body.data : "", body.len);
+            handle_inference(sv, cfd, 1, origin, body.data ? body.data : "", body.len);
         } else {
             const char *nf = "{\"error\":{\"message\":\"not found\"}}";
-            send_http_json(cfd, 404, "Not Found", nf, strlen(nf));
+            send_http_json(cfd, 404, "Not Found", origin, nf, strlen(nf));
         }
     }
     buf_free(&body);

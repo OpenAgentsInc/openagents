@@ -66,24 +66,18 @@ ik_prompt_is_stock_uinstr :: (raw: string) -> bool {
 }
 
 // Builds Inky's zero-contradiction system prompt into out; returns byte count.
+// Static rules precede per-workspace Environment metadata so cross-worktree/cross-chat
+// sessions share the longest possible KV cache prefix and Workspace stays in the SWA recency window.
 ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: string, workspace_instr: string, is_goal: bool, out: [] u8) -> int {
   has_custom_user := !ik_prompt_blank(user_instr) && !ik_prompt_is_stock_uinstr(user_instr);
   user_mentions_git := has_custom_user && (ik_prompt_has_ci(user_instr, "commit") || ik_prompt_has_ci(user_instr, "push"));
 
-  n := ik_fmt_put(out, 0, "You are OpenAgents, a local coding assistant running in the user's workspace.\n\nEnvironment:\n- OS: ");
-  n = ik_fmt_put(out, n, ifx os_name.count > 0 then os_name else "macOS");
-  n = ik_fmt_put(out, n, "\n- Workspace: ");
-  n = ik_fmt_put(out, n, ifx cwd.count > 0 then cwd else ".");
-  n = ik_fmt_put(out, n, "\n- Git repo: ");
-  n = ik_fmt_put(out, n, ifx git_info.count > 0 then git_info else "unknown");
-  n = ik_fmt_put(out, n, "\n\nHow to work:\n");
+  n := ik_fmt_put(out, 0, "You are OpenAgents, a local coding assistant running in the user's workspace.\n\nHow to work:\n");
   n = ik_fmt_put(out, n, "- For plain questions or conversation, answer directly without calling tools.\n");
   n = ik_fmt_put(out, n, "- To inspect files or search the repo, prefer `list_dir`, `grep`, and `read_file` over `run_command`.\n");
   n = ik_fmt_put(out, n, "- Before editing a file, read the relevant lines with `read_file`. Use `edit_file` for targeted changes and `write_file` for new files.\n");
   n = ik_fmt_put(out, n, "- After making code changes, run the relevant test or check command once with `run_command` to verify before answering.\n");
-  n = ik_fmt_put(out, n, "- Stay inside the workspace (");
-  n = ik_fmt_put(out, n, ifx cwd.count > 0 then cwd else ".");
-  n = ik_fmt_put(out, n, "). Refuse destructive or out-of-workspace file operations unless explicitly authorized.\n");
+  n = ik_fmt_put(out, n, "- Stay inside the workspace directory below. Refuse destructive or out-of-workspace file operations unless explicitly authorized.\n");
   if !user_mentions_git {
     n = ik_fmt_put(out, n, "- Never run `git commit` or `git push` unless the user explicitly asks you to in their message.\n");
   }
@@ -112,6 +106,14 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
     n = ik_fmt_put(out, n, "- If genuinely blocked after exhausting alternatives, end with `[GOAL_BLOCKED]` and state the concrete blocker.\n");
   }
 
+  n = ik_fmt_put(out, n, "\nEnvironment:\n- OS: ");
+  n = ik_fmt_put(out, n, ifx os_name.count > 0 then os_name else "macOS");
+  n = ik_fmt_put(out, n, "\n- Workspace: ");
+  n = ik_fmt_put(out, n, ifx cwd.count > 0 then cwd else ".");
+  n = ik_fmt_put(out, n, "\n- Git repo: ");
+  n = ik_fmt_put(out, n, ifx git_info.count > 0 then git_info else "unknown");
+  n = ik_fmt_byte(out, n, '\n');
+
   return n;
 }
 
@@ -135,6 +137,17 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   #assert ik_prompt_has_ci(p2, "Always commit with signoff.");
   #assert ik_prompt_has_ci(p2, "Use tabs.");
   #assert ik_prompt_has_ci(p2, "[GOAL_COMPLETE]");
+
+  // Cross-worktree KV prefix stability: different workspaces/branches share the entire
+  // static persona + How to work prefix (Environment sits at the end for SWA recency).
+  out_a: [IK_PROMPT_MAX] u8;
+  out_b: [IK_PROMPT_MAX] u8;
+  na := ik_prompt_build("macOS", "/work/wt-alpha", "yes (branch feat-a)", "", "", false, out_a[..]);
+  nb := ik_prompt_build("macOS", "/work/wt-beta", "yes (branch feat-b)", "", "", false, out_b[..]);
+  shared := 0;
+  lim := ifx na < nb then na else nb;
+  while shared < lim && out_a[shared] == out_b[shared] { shared += 1; }
+  #assert shared > 750;
 }
 
 #test "inky prompt: native tool declarations are valid JSON arrays with expected tool counts" {

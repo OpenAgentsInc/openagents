@@ -1,0 +1,51 @@
+{
+  "id": "f1_plain_greeting",
+  "category": "interactive_chat",
+  "fixture": "blank",
+  "description": "Plain greeting finishes in 1 call with 0 tools and no spurious commands",
+  "steps": [
+    {
+      "send": "Hello everyone, how is it GOING TODAY!"
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "attempt",
+      "main_only": true,
+      "min": 1,
+      "max": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "command",
+      "main_only": true,
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "view",
+      "main_only": true,
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 120
+}

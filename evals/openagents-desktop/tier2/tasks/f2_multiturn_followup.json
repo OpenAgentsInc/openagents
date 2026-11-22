@@ -1,0 +1,54 @@
+{
+  "id": "f2_multiturn_followup",
+  "category": "interactive_chat",
+  "fixture": "blank",
+  "description": "Multi-turn conversational follow-up recalls an earlier turn accurately with 0 tools",
+  "steps": [
+    {
+      "send": "Remember these three fruits: 1. Mango, 2. Apricot, 3. Fig. Reply with 'Noted' only and do not call any tools."
+    },
+    {
+      "send": "Which fruit was #2 in your previous message? Reply with just that fruit name."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "reply_contains",
+      "last": true,
+      "text": [
+        "Apricot"
+      ],
+      "ci": true
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "command",
+      "main_only": true,
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "attempt",
+      "main_only": true,
+      "min": 2,
+      "max": 2
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 120
+}
